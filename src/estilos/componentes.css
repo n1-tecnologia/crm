@@ -1,0 +1,529 @@
+/* ══════════════════════════════════════════════════════════════════════════════
+   COMPONENTES — as classes compartilhadas
+
+   Cresce junto com `design/`. O que mora aqui é o que não cabe em utilitário do
+   Tailwind: o brilho cônico, o fundo atmosférico, as animações e as regras que
+   valem para famílias inteiras de controle.
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+@layer components {
+  /* ── Lanterna ────────────────────────────────────────────────────────────
+     O efeito-assinatura do sistema: um aro cônico (aqui roxo) que gira conforme
+     a posição do cursor e some conforme ele se afasta.
+
+     `--angulo` vem de `atan2(dy, dx)` e `--proximidade` da distância à borda
+     com queda de 220px — os dois calculados em JS por UM listener delegado no
+     contêiner-pai (`design/lanterna.tsx`), nunca um por cartão.
+
+     `mask-composite: exclude` recorta o miolo e deixa só o aro de 1px. O par
+     `-webkit-mask-composite: xor` é obrigatório: sem ele o Safari pinta o
+     cartão inteiro de roxo.                                                  */
+
+  .lanterna {
+    position: relative;
+    --angulo: 0deg;
+    --proximidade: 0;
+  }
+
+  .lanterna::before,
+  .lanterna::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: conic-gradient(
+      from var(--angulo),
+      var(--lanterna-aro),
+      transparent 60deg,
+      transparent 300deg,
+      var(--lanterna-aro)
+    );
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    opacity: var(--proximidade);
+    transition: opacity 250ms ease;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  /* A segunda camada é o halo: mesmo aro, desfocado e mais fraco. */
+  .lanterna::after {
+    filter: blur(12px);
+    opacity: calc(var(--proximidade) * 0.6);
+    z-index: 1;
+  }
+
+  /* ── Fundo ───────────────────────────────────────────────────────────────
+     A grade de pontos é a textura do sistema — não há ruído nem grão. Fica no
+     app inteiro a 4%; os orbes e as estrelas só no login e no marketing.      */
+
+  .grade-pontos {
+    background-image: radial-gradient(
+      circle at 1px 1px,
+      var(--grade-ponto) 1px,
+      transparent 0
+    );
+    background-size: var(--grade-tamanho) var(--grade-tamanho);
+  }
+
+  .orbe {
+    position: absolute;
+    border-radius: var(--r-pilula);
+    pointer-events: none;
+  }
+
+  /* ── Superfícies ─────────────────────────────────────────────────────── */
+
+  .painel {
+    background: var(--superficie-1);
+    border: 1px solid var(--linha);
+    border-radius: var(--r-painel);
+    box-shadow: var(--sombra-repouso);
+  }
+
+  .painel-solido {
+    background: var(--card);
+    border: 1px solid var(--linha);
+    border-radius: var(--r-painel);
+    box-shadow: var(--sombra-repouso);
+  }
+
+  /* A casca de gradiente de 1px que embrulha o cartão de destaque do sistema */
+  .casca-destaque {
+    padding: 1px;
+    border-radius: var(--r-destaque);
+    background: linear-gradient(to bottom, var(--casca-gradiente), transparent);
+  }
+
+  .barra-vidro {
+    background: var(--barra-vidro);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--linha-sutil);
+  }
+
+  /* ── Flutuação ───────────────────────────────────────────────────────────
+     O sistema não tem elevação de cartão: ele tem LIFT mais o aro cônico.
+     `.flutua` é essa mesma ideia, medida para um app — sobe `--lift` (2 a 4px
+     conforme o degrau de tela), escurece embaixo e acende um aro de 1px.
+
+     Por que `transform` só no `:hover`: um `transform` permanente cria bloco de
+     contenção e prende qualquer `position: fixed` descendente ao elemento. O
+     painel lateral e o diálogo deste app são `fixed` sem portal, então a regra
+     é: transform é transitório, nunca estado de repouso.                     */
+
+  .flutua {
+    transition:
+      transform var(--dur-2) var(--easing),
+      box-shadow var(--dur-2) var(--easing),
+      border-color var(--dur-2) var(--easing),
+      background-color var(--dur-2) var(--easing);
+  }
+  .flutua:hover {
+    transform: translateY(var(--lift));
+    box-shadow: var(--sombra-flutuante);
+    border-color: var(--linha-forte);
+  }
+  .flutua:active {
+    transform: translateY(0);
+    transition-duration: var(--dur-1);
+  }
+
+  /* ── Peça independente ───────────────────────────────────────────────────
+     A linha de lista deixou de ser uma faixa separada por hairline e virou uma
+     peça com contorno, raio e sombra próprios. `.pilha-solta` é o contêiner que
+     abre o vão entre elas.                                                    */
+
+  .pilha-solta {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-solto);
+  }
+
+  /* A peça NUNCA é espremida. Numa pilha dentro de contêiner de altura travada
+     o flexbox encolheria cada peça até o conteúdo ser CORTADO — sem erro e sem
+     barra de rolagem; a última linha do item simplesmente some.              */
+  .pilha-solta > * {
+    flex-shrink: 0;
+  }
+
+  .grade-solta {
+    display: grid;
+    gap: var(--gap-solto);
+  }
+
+  .item-solto {
+    display: flex;
+    align-items: center;
+    gap: var(--e-3);
+    min-height: var(--linha-altura);
+    padding-inline: var(--celula-x);
+    background: var(--superficie-1);
+    border: 1px solid var(--linha);
+    border-radius: var(--r-painel);
+    box-shadow: var(--sombra-repouso);
+    transition:
+      transform var(--dur-2) var(--easing),
+      box-shadow var(--dur-2) var(--easing),
+      border-color var(--dur-2) var(--easing),
+      background-color var(--dur-2) var(--easing);
+  }
+  .item-solto:hover {
+    background: var(--superficie-2);
+    border-color: var(--linha-forte);
+    transform: translateY(var(--lift));
+    box-shadow: var(--sombra-flutuante);
+  }
+  .item-solto:active {
+    transform: translateY(0);
+    transition-duration: var(--dur-1);
+  }
+  /* Não lido, selecionado, em foco — o mesmo destaque em todo lugar. */
+  .item-solto[data-destacado="true"] {
+    background: var(--acento-lavado);
+    border-color: var(--linha-acento);
+  }
+  .item-solto[data-destacado="true"]:hover {
+    border-color: var(--linha-acento-forte);
+  }
+  /* Peça de bloco (cartão de quadro, comentário): empilha o conteúdo. */
+  .item-solto[data-bloco="true"] {
+    display: block;
+    padding: var(--e-3) var(--celula-x);
+    min-height: 0;
+  }
+  /* A peça de várias linhas alinha pelo topo. É atributo, e não `items-start`
+     no JSX: `.item-solto` fixa `align-items` e a ordem da cascata decidiria. */
+  .item-solto[data-alinhamento="topo"] {
+    align-items: flex-start;
+  }
+  /* Peça que NÃO clica — lançamento de hora, linha de histórico, dado de
+     leitura. Subir no hover prometeria um clique que não existe, e a promessa
+     falsa é pior que a peça parada. */
+  .item-solto[data-estatico="true"]:hover {
+    background: var(--superficie-1);
+    border-color: var(--linha);
+    transform: none;
+    box-shadow: var(--sombra-repouso);
+  }
+  /* Peça cumprida — tarefa concluída, conta paga. Recua sem sumir: ainda é
+     peça, só não disputa atenção com o que falta fazer. */
+  .item-solto[data-atenuado="true"] {
+    background: transparent;
+    border-color: var(--linha-sutil);
+    box-shadow: none;
+  }
+  .item-solto[data-atenuado="true"]:hover {
+    background: var(--superficie-1);
+    box-shadow: var(--sombra-repouso);
+  }
+
+  /* ── Superfície de trilho ────────────────────────────────────────────────
+     A coluna do quadro e o painel de navegação: fundo levemente rebaixado para
+     que as peças soltas em cima deles pareçam mesmo soltas.                   */
+
+  .trilho {
+    background: var(--superficie-rebaixada);
+    border: 1px solid var(--linha-sutil);
+    border-radius: var(--r-painel);
+  }
+
+  /* ── Interação ───────────────────────────────────────────────────────── */
+
+  /* Alvo de toque mínimo no mobile. No desktop os controles ficam em 32/36px;
+     abaixo de 768px todo controle interativo cresce para 44px. */
+  @media (max-width: 767px) {
+    .alvo-toque {
+      min-height: var(--controle-h-lg);
+      min-width: var(--controle-h-lg);
+    }
+  }
+
+  /* Alinhar um cabeçalho fixo com uma grade que rola. */
+  .rola-com-calha {
+    scrollbar-gutter: stable;
+  }
+  .desconta-calha {
+    margin-right: var(--barra-rolagem-w);
+  }
+
+  /* A seta de recolher. Rotação num `<svg>` folha não cai na armadilha do
+     bloco de contenção — o que prende `position: fixed` é transform em
+     elemento que tem descendente. */
+  .seta-recolhe {
+    display: inline-flex;
+    transition: transform var(--dur-2) var(--easing);
+  }
+  .seta-recolhe[data-aberto="true"] {
+    transform: rotate(90deg);
+  }
+
+  /* Sublinhado de navegação: régua de 1px que cresce da esquerda em 300ms */
+  .sublinhado {
+    position: relative;
+  }
+  .sublinhado::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: -1px;
+    height: 1px;
+    width: 100%;
+    background: var(--acento);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform var(--dur-2) var(--easing);
+  }
+  .sublinhado[data-ativo="true"]::after,
+  .sublinhado:hover::after {
+    transform: scaleX(1);
+  }
+
+  /* ── Animações ───────────────────────────────────────────────────────── */
+
+  @keyframes pulso {
+    0%,
+    100% {
+      opacity: 0.4;
+    }
+    50% {
+      opacity: 0.75;
+    }
+  }
+
+  .pulso {
+    animation: pulso 1.5s ease-in-out infinite;
+  }
+
+  @keyframes surgir {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .surgir {
+    animation: surgir var(--dur-2) var(--easing);
+  }
+
+  /* A entrada do sistema: "everything arrives out of focus" */
+  @keyframes revelar {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+      filter: blur(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+      filter: none;
+    }
+  }
+
+  .revelar {
+    animation: revelar var(--dur-3) var(--easing);
+  }
+
+  @keyframes girar {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .girando {
+    animation: girar 1s linear infinite;
+  }
+
+  /* ── A capa do Início ────────────────────────────────────────────────────
+     A concepção original do produto: a tela de entrada abre com uma CAPA, não
+     com uma lista. O laço de vídeo é o mesmo motivo da capa do manual — os
+     riscos de neon roxo —, e a orbe é o Assistente.
+
+     A capa NÃO é peça solta: é superfície de destaque. Por isso pode ter
+     "overflow: hidden" (é ele que recorta o vídeo no raio) e por isso não
+     sobe no hover — nada aqui promete um clique de cartão.
+
+     MEDIDO NO VÍDEO (12 quadros dos 10s, 1280×720): a luminância máxima é 1.00
+     (branco puro) nos terços da ESQUERDA e da DIREITA, e 0.0096 no MEIO. Com
+     a cor do cartão por cortina, texto branco só passa AA a partir de 82% de
+     opacidade. Daí o desenho da cortina: ela fecha quase por completo onde o
+     texto vive e abre numa JANELA em volta da orbe, que é decoração e tem
+     brilho próprio. Portar a cortina antiga literalmente deixaria o vídeo
+     passar por baixo do título: no sistema novo as superfícies são lavagens
+     em ALFA, não cor opaca — a cortina tem de sair de --card ou --page. */
+
+  .capa {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    border-radius: var(--r-destaque);
+    border: 1px solid var(--linha);
+    background: var(--card);
+    box-shadow: var(--sombra-suspensa);
+  }
+
+  /* O quadro parado, ATRÁS do laço. É ele que sobra quando o vídeo não roda —
+     movimento reduzido, telefone, rede lenta —, e por isso a capa nunca fica
+     um retângulo chapado. Some por cima dele o vídeo, quando há vídeo. */
+  .capa::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url("/marca/fundo-heroi.jpg");
+    background-size: cover;
+    background-position: center;
+    pointer-events: none;
+    z-index: -3;
+  }
+
+  /* O laço é DECORAÇÃO: atrás de tudo, sem clique, e o que está por cima
+     nunca depende dele para ser legível. */
+  .capa-video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+    z-index: -2;
+  }
+
+  .capa-cortina {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: -1;
+    background:
+      /* A janela: um disco em volta da orbe (72% da largura) onde o vídeo
+         aparece de verdade. Fora dele, 94% de cortina — o piso de 82% que a
+         medição pede, com folga para o texto. */
+      radial-gradient(
+        34rem 34rem at 72% 46%,
+        transparent 0%,
+        color-mix(in srgb, var(--card) 55%, transparent) 42%,
+        color-mix(in srgb, var(--card) 94%, transparent) 78%,
+        var(--card) 100%
+      ),
+      /* A base fecha por inteiro: é onde ficam os atalhos. */
+      linear-gradient(to top, var(--card) 0%, color-mix(in srgb, var(--card) 70%, transparent) 38%, transparent 62%),
+      /* E a coluna do texto fecha por inteiro à esquerda. */
+      linear-gradient(to right, var(--card) 0%, var(--card) 38%, color-mix(in srgb, var(--card) 70%, transparent) 52%, transparent 66%);
+  }
+
+  /* A aura da marca: o roxo vazando por trás, sem nunca virar fundo de texto. */
+  .capa::before {
+    content: "";
+    position: absolute;
+    top: -60%;
+    right: -6%;
+    width: 46rem;
+    height: 46rem;
+    border-radius: var(--r-pilula);
+    background: radial-gradient(
+      circle,
+      var(--aura-capa) 0%,
+      var(--aura-capa-fraca) 45%,
+      transparent 68%
+    );
+    filter: blur(30px);
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  /* ── A orbe do Assistente ─────────────────────────────────────────────────
+     Ela ABRE UMA SESSÃO DE CHAT. Não capta voz: um alvo deste tamanho com cara
+     de microfone prometeria o que o produto não faz. */
+
+  .orbe-assistente {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: var(--orbe-tam);
+    height: var(--orbe-tam);
+    border-radius: var(--r-pilula);
+  }
+
+  /* Cada anel respira no seu tempo: iguais, viram um piscar só, que incomoda. */
+  .orbe-anel {
+    position: absolute;
+    border-radius: var(--r-pilula);
+    border: 1px solid var(--linha-acento);
+    animation: orbe-respira 6s ease-in-out infinite;
+  }
+  .orbe-anel:nth-of-type(2) {
+    animation-delay: -2s;
+  }
+  .orbe-anel:nth-of-type(3) {
+    animation-delay: -4s;
+  }
+
+  /* O anel tracejado gira devagar: é o que dá a leitura de “ouvindo”. */
+  .orbe-varredura {
+    position: absolute;
+    border-radius: var(--r-pilula);
+    border: 1px dashed var(--linha-acento-forte);
+    animation: orbe-gira 24s linear infinite;
+  }
+
+  .orbe-nucleo {
+    position: relative;
+    display: grid;
+    place-items: center;
+    border-radius: var(--r-pilula);
+    background: var(--degrade-marca);
+    box-shadow: var(--brilho-orbe);
+    transition: box-shadow var(--dur-3) var(--easing);
+    animation: orbe-respira 6s ease-in-out infinite;
+  }
+
+  .orbe-assistente:hover .orbe-nucleo,
+  .orbe-assistente:focus-visible .orbe-nucleo {
+    box-shadow: var(--brilho-orbe-forte);
+  }
+
+  @keyframes orbe-respira {
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 0.9;
+    }
+    50% {
+      transform: scale(1.04);
+      opacity: 1;
+    }
+  }
+
+  @keyframes orbe-gira {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* Quem pediu menos movimento recebe o quadro parado, não o laço: a regra
+     global zera a DURAÇÃO da animação, mas um vídeo em autoplay não é animação
+     CSS e continuaria correndo. */
+  @media (prefers-reduced-motion: reduce) {
+    .capa-video {
+      display: none;
+    }
+  }
+
+  /* Sem ponteiro fino o vídeo também sai: num telefone ele custa bateria e
+     dados para um enfeite que a cortina já cobre quase por inteiro. */
+  @media (max-width: 767px) {
+    .capa-video {
+      display: none;
+    }
+  }
+}

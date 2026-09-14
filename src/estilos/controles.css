@@ -1,0 +1,575 @@
+/* ══════════════════════════════════════════════════════════════════════════════
+   CONTROLES — botão, campo, escolha, pílula, sobreposição e tabela
+
+   As variantes de botão vêm do design system: `contorno` (a primária dele),
+   `solido`, `fantasma`, `icone`, `magnetico`. `sutil` e `perigo` são derivadas:
+   uma barra de ferramentas com 6 botões contornados vira ruído, e um app sem
+   ação destrutiva não existe.
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+@layer components {
+  /* ── Botão ─────────────────────────────────────────────────────────────── */
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--e-2);
+    height: var(--controle-h);
+    padding-inline: var(--e-5);
+    border-radius: var(--r-controle);
+    border: 1px solid transparent;
+    font-size: var(--app-sm);
+    font-weight: 500;
+    letter-spacing: var(--tr-rotulo);
+    text-transform: uppercase;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      background-color var(--dur-2) var(--easing),
+      border-color var(--dur-2) var(--easing),
+      color var(--dur-2) var(--easing),
+      transform var(--dur-2) var(--easing);
+  }
+
+  .btn:disabled,
+  .btn[aria-disabled="true"] {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .btn-sm {
+    height: var(--controle-h-sm);
+    padding-inline: var(--e-3);
+    letter-spacing: var(--tr-meta);
+  }
+
+  /* Contorno — a variante primária do sistema */
+  .btn-contorno {
+    border-color: var(--linha-acento);
+    color: var(--acento-suave);
+  }
+  .btn-contorno:hover:not(:disabled):not([aria-disabled="true"]) {
+    background: var(--acento-lavado);
+    border-color: var(--acento);
+    transform: translateY(var(--lift));
+  }
+  .btn-contorno:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  /* Sólido — a ação de maior peso. A única superfície que carrega o gradiente
+     da marca: em superfície grande degrade vira ruído; num botão de 40px ele lê
+     como profundidade. A tinta é branca porque o gradiente é roxo ESCURO. */
+  .btn-solido {
+    background: var(--degrade-acento);
+    color: var(--sobre-degrade);
+    font-weight: 600;
+    box-shadow: var(--sombra-repouso);
+  }
+  .btn-solido:hover:not(:disabled):not([aria-disabled="true"]) {
+    background: var(--degrade-acento-hover);
+    transform: translateY(var(--lift));
+    box-shadow: var(--sombra-flutuante);
+  }
+  .btn-solido:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  /* Fantasma — ação secundária */
+  .btn-fantasma {
+    border-color: var(--linha-forte);
+    color: var(--texto-1);
+  }
+  .btn-fantasma:hover:not(:disabled):not([aria-disabled="true"]) {
+    border-color: var(--linha-acento-forte);
+    color: var(--acento-suave);
+    transform: translateY(var(--lift));
+  }
+  .btn-fantasma:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  /* Sutil — barra de ferramentas densa */
+  .btn-sutil {
+    color: var(--texto-3);
+    text-transform: none;
+    letter-spacing: normal;
+    font-size: var(--app-base);
+    padding-inline: var(--e-3);
+  }
+  .btn-sutil:hover:not(:disabled):not([aria-disabled="true"]) {
+    background: var(--superficie-hover);
+    color: var(--texto);
+  }
+
+  /* Perigo — destrutivo. Contorno em repouso, preenche no hover. */
+  .btn-perigo {
+    border-color: var(--erro);
+    color: var(--erro);
+  }
+  .btn-perigo:hover:not(:disabled):not([aria-disabled="true"]) {
+    background: var(--erro-lavado);
+  }
+
+  /* Ícone redondo — lift de 2px no hover, como o do sistema */
+  .btn-icone {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--controle-h);
+    height: var(--controle-h);
+    border-radius: var(--r-pilula);
+    border: 1px solid var(--linha);
+    color: var(--texto-3);
+    cursor: pointer;
+    transition:
+      color var(--dur-2) var(--easing),
+      border-color var(--dur-2) var(--easing),
+      background-color var(--dur-2) var(--easing),
+      transform var(--dur-2) var(--easing);
+  }
+  .btn-icone:hover:not(:disabled) {
+    color: var(--texto);
+    border-color: var(--linha-acento-forte);
+    transform: translateY(var(--lift));
+    box-shadow: var(--sombra-repouso);
+  }
+  .btn-icone:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  /* Sem borda, sem lift — para barra de ferramentas densa */
+  .btn-icone-nu {
+    border-color: transparent;
+    border-radius: var(--r-controle);
+    width: var(--controle-h-sm);
+    height: var(--controle-h-sm);
+  }
+  .btn-icone-nu:hover:not(:disabled) {
+    background: var(--superficie-hover);
+    border-color: transparent;
+    transform: none;
+  }
+
+  /* Magnético — o wipe da esquerda para a direita em 500ms */
+  .btn-magnetico {
+    position: relative;
+    overflow: hidden;
+    border-color: var(--linha-acento);
+    color: var(--acento-suave);
+    height: var(--controle-h-lg);
+    padding-inline: var(--e-8);
+  }
+  .btn-magnetico .wipe {
+    position: absolute;
+    inset: 0;
+    background: var(--acento);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform var(--dur-3) var(--easing-saida);
+  }
+  .btn-magnetico:hover:not(:disabled) {
+    color: var(--sobre-acento);
+  }
+  .btn-magnetico:hover:not(:disabled) .wipe {
+    transform: scaleX(1);
+  }
+  .btn-magnetico .conteudo {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--e-3);
+  }
+
+  /* ── Campo ─────────────────────────────────────────────────────────────── */
+
+  .campo {
+    width: 100%;
+    height: var(--controle-h);
+    padding-inline: var(--e-3);
+    background: var(--superficie-2);
+    border: 1px solid var(--linha);
+    border-radius: var(--r-controle);
+    color: var(--texto);
+    font-size: var(--app-base);
+    transition: border-color var(--dur-2) var(--easing);
+  }
+  .campo::placeholder {
+    color: var(--texto-4);
+    opacity: 1;
+  }
+  .campo:hover:not(:disabled):not(:focus) {
+    border-color: var(--linha-forte);
+  }
+  .campo:focus {
+    outline: none;
+    border-color: var(--linha-acento-forte);
+  }
+  .campo:disabled,
+  .campo[aria-disabled="true"] {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .campo[data-erro="true"],
+  .campo[aria-invalid="true"] {
+    border-color: var(--erro);
+  }
+  textarea.campo {
+    height: auto;
+    padding-block: var(--e-2);
+    resize: none;
+    line-height: 1.5;
+  }
+
+  .rotulo {
+    display: block;
+    font-size: var(--app-sm);
+    font-weight: 500;
+    color: var(--texto-2);
+    margin-bottom: var(--e-2);
+  }
+
+  .ajuda {
+    font-size: var(--app-xs);
+    line-height: var(--app-xs-lh);
+    color: var(--texto-4);
+    margin-top: var(--e-1);
+  }
+  .ajuda[data-erro="true"] {
+    color: var(--erro);
+  }
+
+  /* ── Escolha ───────────────────────────────────────────────────────────── */
+
+  .caixa {
+    width: var(--caixa-tam);
+    height: var(--caixa-tam);
+    border-radius: var(--r-caixa);
+    border: 1px solid var(--linha-forte);
+    background: var(--superficie-2);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--sobre-acento);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition:
+      background-color var(--dur-1) var(--easing),
+      border-color var(--dur-1) var(--easing);
+  }
+  .caixa[data-state="checked"],
+  .caixa[data-state="indeterminate"],
+  .caixa[aria-checked="true"] {
+    background: var(--acento);
+    border-color: var(--acento);
+  }
+  .caixa[data-disabled],
+  .caixa:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .radio {
+    width: var(--caixa-tam);
+    height: var(--caixa-tam);
+    border-radius: var(--r-pilula);
+    border: 1px solid var(--linha-forte);
+    background: var(--superficie-2);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: border-color var(--dur-1) var(--easing);
+  }
+  .radio[data-marcado="true"] {
+    border-color: var(--acento);
+  }
+  .radio-miolo {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: var(--r-pilula);
+    background: var(--acento);
+  }
+
+  .chave {
+    width: var(--chave-w);
+    height: var(--chave-h);
+    border-radius: var(--r-pilula);
+    background: var(--superficie-ativa);
+    border: 1px solid var(--linha);
+    position: relative;
+    cursor: pointer;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    padding: 0;
+    transition:
+      background-color var(--dur-1) var(--easing),
+      border-color var(--dur-1) var(--easing);
+  }
+  .chave[data-state="checked"],
+  .chave[aria-checked="true"] {
+    background: var(--acento);
+    border-color: var(--acento);
+  }
+  .chave:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .chave-polegar {
+    display: block;
+    width: var(--chave-polegar);
+    height: var(--chave-polegar);
+    border-radius: var(--r-pilula);
+    background: var(--texto);
+    transition: transform var(--dur-1) var(--easing);
+    transform: translateX(2px);
+  }
+  .chave[data-state="checked"] .chave-polegar,
+  .chave[aria-checked="true"] .chave-polegar {
+    transform: translateX(calc(var(--chave-w) - var(--chave-polegar) - 4px));
+    background: var(--sobre-acento);
+  }
+
+  /* ── Pílula ────────────────────────────────────────────────────────────── */
+
+  .pilula {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--e-1);
+    height: var(--pilula-h);
+    padding-inline: var(--e-3);
+    border-radius: var(--r-pilula);
+    font-size: var(--app-xs);
+    line-height: 1;
+    font-weight: 500;
+    white-space: nowrap;
+    border: 1px solid transparent;
+  }
+  .pilula-ponto {
+    width: 0.375rem;
+    height: 0.375rem;
+    border-radius: var(--r-pilula);
+    flex-shrink: 0;
+  }
+
+  /* O SELO de ciclo de vida é retangular de propósito: ele diz o que o registro
+     É (arquivado, na lixeira) e só muda por um ato. A forma diferente da pílula
+     é o que impede o olho de ler "arquivado" como uma situação passageira. */
+  .selo {
+    display: inline-block;
+    flex-shrink: 0;
+    border-radius: var(--r-caixa);
+    padding: 0.125rem var(--e-2);
+    font-size: var(--app-xs);
+    line-height: var(--app-xs-lh);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  /* ── Sobreposição ──────────────────────────────────────────────────────── */
+
+  .veu {
+    position: fixed;
+    inset: 0;
+    background: var(--veu-cor);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+
+  .flutuante {
+    background: var(--card);
+    border: 1px solid var(--linha);
+    border-radius: var(--r-painel);
+    box-shadow: var(--sombra-suspensa);
+  }
+
+  .item-menu {
+    display: flex;
+    align-items: center;
+    gap: var(--e-2);
+    min-height: var(--controle-h-sm);
+    padding-inline: var(--e-3);
+    border-radius: var(--r-controle);
+    font-size: var(--app-base);
+    color: var(--texto-1);
+    cursor: pointer;
+    outline: none;
+    user-select: none;
+    text-align: left;
+  }
+  .item-menu[data-highlighted],
+  .item-menu:hover {
+    background: var(--superficie-hover);
+    color: var(--texto);
+  }
+  .item-menu[data-destrutivo="true"] {
+    color: var(--erro);
+  }
+  .item-menu[data-disabled],
+  .item-menu:disabled,
+  .item-menu[aria-disabled="true"] {
+    opacity: 0.4;
+    pointer-events: none;
+  }
+
+  /* ── Tabela ────────────────────────────────────────────────────────────────
+     A linha não é mais uma faixa separada por hairline: é uma peça com
+     contorno, raio e sombra próprios, com um vão de `--gap-solto` entre uma e
+     outra. Isso é `border-collapse: separate` com `border-spacing` vertical, e
+     o raio aplicado na primeira e na última célula de cada linha.
+
+     ARMADILHA: esse vão fica também ENTRE o `thead` fixo e a primeira linha, e
+     as linhas apareceriam por trás do cabeçalho ali enquanto rolam. Quem tapa
+     é o `box-shadow` sólido no `th`, que estende a faixa opaca por exatamente o
+     tamanho do vão. Trocar esse `box-shadow` traz o vazamento de volta, e ele
+     só aparece com a tabela rolando.                                          */
+
+  .tabela {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 var(--gap-solto);
+    text-align: left;
+    /* O border-spacing abre um vão ACIMA do cabeçalho também; a margem
+       negativa o cancela, e o cabeçalho encosta no topo do corpo. */
+    margin-top: calc(-1 * var(--gap-solto));
+  }
+  /* O CABEÇALHO FIXO gruda no topo do corpo e termina num hairline. É opaco
+     na cor da página — o <main> é chapado, então ele some no fundo e só o
+     hairline desenha a barra. Vidro aqui deixava a linha que passa por baixo
+     aparecer como texto fantasma sobre os rótulos. */
+  .tabela thead th {
+    position: sticky;
+    /* O navegador prende o sticky na borda do CONTEÚDO do rolador, abaixo do
+       padding — o cabeçalho pararia 8px (ou 16px) abaixo do topo, com a linha
+       que passa aparecendo por cima. Subir exatamente o padding do corpo o
+       deixa colado na borda. */
+    top: calc(-1 * var(--corpo-pad-topo, 0px));
+    z-index: 2;
+    height: var(--linha-altura);
+    padding-inline: var(--celula-x);
+    background: var(--page);
+    border-bottom: 1px solid var(--linha);
+    white-space: nowrap;
+  }
+  .tabela tbody tr {
+    background: var(--superficie-1);
+    box-shadow: var(--sombra-repouso);
+    transition:
+      transform var(--dur-2) var(--easing),
+      box-shadow var(--dur-2) var(--easing),
+      background-color var(--dur-2) var(--easing);
+  }
+  .tabela tbody td {
+    height: var(--linha-altura);
+    padding-inline: var(--celula-x);
+    border-block: 1px solid var(--linha);
+    font-size: var(--app-base);
+    color: var(--texto-1);
+    transition: border-color var(--dur-2) var(--easing);
+  }
+  .tabela tbody td:first-child {
+    border-left: 1px solid var(--linha);
+    border-start-start-radius: var(--r-painel);
+    border-end-start-radius: var(--r-painel);
+  }
+  .tabela tbody td:last-child {
+    border-right: 1px solid var(--linha);
+    border-start-end-radius: var(--r-painel);
+    border-end-end-radius: var(--r-painel);
+  }
+  .tabela tbody tr:hover {
+    background: var(--superficie-2);
+    transform: translateY(var(--lift));
+    box-shadow: var(--sombra-flutuante);
+  }
+  .tabela tbody tr:hover td {
+    border-color: var(--linha-forte);
+  }
+  .tabela tbody tr[data-selecionada="true"] {
+    background: var(--acento-lavado);
+  }
+  .tabela tbody tr[data-selecionada="true"] td {
+    border-color: var(--linha-acento);
+  }
+  /* A FAIXA DE GRUPO não é peça: é rótulo. Sem isto, com `border-spacing` ela
+     ganharia raio, sombra e lift, prometendo um clique que não existe. */
+  .tabela tbody tr[data-faixa="true"],
+  .tabela tbody tr[data-faixa="true"]:hover {
+    background: transparent;
+    box-shadow: none;
+    transform: none;
+  }
+  .tabela tbody tr[data-faixa="true"] td {
+    height: auto;
+    padding-block: var(--e-2);
+    border: 0;
+    border-radius: 0;
+  }
+  .tabela th[data-ordenavel="true"] {
+    cursor: pointer;
+    user-select: none;
+  }
+  .tabela th[data-ordenavel="true"]:hover {
+    color: var(--texto-2);
+  }
+
+  /* Grade colada: a exceção deliberada. Planilha e prévia de importação querem
+     grade, não peças soltas. */
+  .tabela[data-densidade="compacta"] {
+    border-spacing: 0;
+  }
+  .tabela[data-densidade="compacta"] thead th {
+    height: var(--linha-altura-compacta);
+  }
+  .tabela[data-densidade="compacta"] tbody tr {
+    background: transparent;
+    box-shadow: none;
+  }
+  .tabela[data-densidade="compacta"] tbody tr:hover {
+    background: var(--superficie-1);
+    transform: none;
+    box-shadow: none;
+  }
+  .tabela[data-densidade="compacta"] tbody td {
+    height: var(--linha-altura-compacta);
+    border: none;
+    border-bottom: 1px solid var(--linha-sutil);
+    border-radius: 0;
+  }
+  .tabela[data-densidade="compacta"] tbody tr:last-child td {
+    border-bottom: none;
+  }
+}
+
+@layer components {
+  /* Corpo de tela: rolagem própria e respiro padrão. O cabeçalho de 44px fica
+     fixo acima; só isto rola. */
+  .corpo-de-tela {
+    /* O corpo é o BLOCO DE CONTENÇÃO do que rola. Sem isto, um rótulo
+       sr-only (position: absolute) lá no fundo da lista se posiciona em
+       relação ao <main>, o overflow dele vai para o <main>, e a tela ganha
+       um SEGUNDO scroll fantasma ao lado do do corpo. */
+    position: relative;
+    min-height: 0;
+    flex: 1;
+    overflow: auto;
+    padding: var(--celula-x);
+    /* O cabeçalho fixo da tabela lê isto para grudar na borda, não no conteúdo. */
+    --corpo-pad-topo: var(--celula-x);
+  }
+  .corpo-de-tela > :first-child {
+    margin-top: 0;
+  }
+
+  /* Lista que encosta nas bordas: cabeçalho e barra já dão o respiro. Peça
+     solta precisa de margem para a sombra não ser cortada, então `sem-respiro`
+     é respiro menor, não respiro zero. */
+  .corpo-de-tela.sem-respiro {
+    padding: var(--gap-solto) var(--celula-x) var(--celula-x);
+    --corpo-pad-topo: var(--gap-solto);
+  }
+}

@@ -1,0 +1,36 @@
+<title>Fluxos em wireframe — índice</title>
+<style>
+  body { margin: 0; background: #f6f6f6; color: #1c1c1c; font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 48px 24px 96px; }
+  h1 { font-size: 26px; margin: 0 0 10px; }
+  p.lead { color: #6b6b6b; margin: 0 0 28px; }
+  ol { list-style: none; counter-reset: f; padding: 0; margin: 0; }
+  li { counter-increment: f; margin-bottom: 10px; }
+  a.card { display: block; background: #fff; border: 1px solid #cfcfcf; border-radius: 3px; padding: 12px 14px 12px 46px; position: relative; text-decoration: none; color: inherit; }
+  a.card:hover { border-color: #8f8f8f; }
+  a.card::before { content: counter(f); position: absolute; left: 14px; top: 12px; width: 22px; height: 22px; border: 1px solid #8f8f8f; border-radius: 50%; font-size: 12px; line-height: 20px; text-align: center; color: #6b6b6b; }
+  a.card .t { font-weight: 600; font-size: 14px; }
+  a.card .d { color: #6b6b6b; font-size: 13px; margin-top: 2px; }
+  a.card .e { color: #8a8a8a; font-size: 12px; margin-top: 5px; }
+  a.card .e::before { content: "⊘ caminho de erro — "; }
+  .back { display: inline-block; margin-bottom: 22px; font-size: 13px; color: #6b6b6b; }
+</style>
+
+<main>
+  <a class="back" href="WIREFRAMES.html">← Wireframes das telas</a>
+  <h1>Os dez fluxos em wireframe</h1>
+  <p class="lead">Cada fluxo é uma sequência de esboços ligados, e o último passo é sempre o caminho de erro — um fluxo que só documenta o caminho feliz não foi documentado. Os esboços vivem na mesma página das telas, ancorados; este índice é a porta de entrada por fluxo.</p>
+
+  <ol>
+    <li><a class="card" href="WIREFRAMES.html#f1"><span class="t">Concluir uma Tarefa vencida</span><span class="d">Início → Tarefa → Checklist → concluída</span><span class="e">a Lista exige Checklists concluídos</span></a></li>
+    <li><a class="card" href="WIREFRAMES.html#f2"><span class="t">Decompor trabalho: Tarefa → Subtarefa → Checklist → conversão</span><span class="d">O item convertido sai do numerador e do denominador</span><span class="e">profundidade máxima de Subtarefas</span></a></li>
+    <li><a class="card" href="WIREFRAMES.html#f3"><span class="t">Mover Tarefa entre Listas com Conjuntos de Status distintos</span><span class="d">Mapeamento obrigatório dentro do diálogo</span><span class="e">mapeamento incompleto e colisão de Definição de Campo</span></a></li>
+    <li><a class="card" href="WIREFRAMES.html#f4"><span class="t">Avançar e ganhar um Negócio com Requisito de Etapa</span><span class="d">Encerrar é formulário, não botão</span><span class="e">valor ausente no ganho; reabrir um ganho</span></a></li>
+    <li><a class="card" href="WIREFRAMES.html#f5"><span class="t">Atender com Rascunho de IA, resolver e reabrir</span><span class="d">O Membro envia; o Agente consta como delegado</span><span class="e">fora da janela de resposta, só modelo aprovado</span></a></li>
+    <li><a class="card" href="WIREFRAMES.html#f6"><span class="t">Mesclar Contatos duplicados</span><span class="d">O diálogo antecipa cada consequência</span><span class="e">Contatos declarados distintos</span></a></li>
+    <li><a class="card" href="WIREFRAMES.html#f7"><span class="t">Agente assistido age em nome de um Membro, com aprovação</span><span class="d">Autonomia, teto do dono e prazo</span><span class="e">prazo vencido cancela a Execução; recusa a faz falhar</span></a></li>
+    <li><a class="card" href="WIREFRAMES.html#f8"><span class="t">Automação híbrida no Funil, com Execução de Agente filha</span><span class="d">Cadeia rastreável da raiz à folha</span><span class="e">publicação recusada, sem efeito nenhum</span></a></li>
+    <li><a class="card" href="WIREFRAMES.html#f9"><span class="t">Remover um Membro com sucessão</span><span class="d">Remover é suceder; nada acontece em silêncio</span><span class="e">Sucessor inválido — Convidado ou não ativo</span></a></li>
+    <li><a class="card" href="WIREFRAMES.html#f10"><span class="t">A Convidada: permissões visíveis, sem vazamento</span><span class="d">Nem esconder demais, nem revelar de menos</span><span class="e">acesso por URL direta a registro fora do alcance</span></a></li>
+  </ol>
+</main>

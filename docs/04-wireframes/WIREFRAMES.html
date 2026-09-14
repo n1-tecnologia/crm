@@ -1,0 +1,1309 @@
+<title>Wireframes — Fase 4</title>
+<style>
+  :root {
+    --ink: #1c1c1c;
+    --muted: #6b6b6b;
+    --faint: #9a9a9a;
+    --line: #cfcfcf;
+    --line-strong: #8f8f8f;
+    --fill: #ececec;
+    --fill-deep: #dedede;
+    --paper: #f6f6f6;
+    --card: #ffffff;
+    --danger-line: #8a8a8a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 14px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  a { color: inherit; }
+  .layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } nav.index { position: static !important; height: auto !important; } }
+
+  nav.index {
+    position: sticky; top: 0; height: 100vh; overflow-y: auto;
+    background: var(--card); border-right: 1px solid var(--line);
+    padding: 20px 16px;
+  }
+  nav.index h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--faint); margin: 18px 0 6px; }
+  nav.index h2:first-child { margin-top: 0; }
+  nav.index a { display: block; padding: 3px 0; font-size: 13px; color: var(--muted); text-decoration: none; }
+  nav.index a:hover { color: var(--ink); text-decoration: underline; }
+
+  main { padding: 28px 32px 96px; min-width: 0; }
+  header.doc { max-width: 860px; margin-bottom: 32px; }
+  header.doc h1 { font-size: 26px; margin: 0 0 8px; }
+  header.doc p { color: var(--muted); margin: 0 0 8px; max-width: 70ch; }
+
+  section.screen { margin: 0 0 44px; scroll-margin-top: 16px; }
+  section.screen > h3 { font-size: 17px; margin: 0 0 2px; }
+  section.screen > .why { color: var(--muted); margin: 0 0 12px; max-width: 78ch; font-size: 13px; }
+
+  /* ---- wireframe primitives: grey boxes, no brand colour, no final type ---- */
+  .frame { background: var(--card); border: 1px solid var(--line-strong); border-radius: 3px; overflow: hidden; }
+  .topbar { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-bottom: 1px solid var(--line); background: var(--fill); }
+  .body { display: flex; align-items: stretch; min-height: 300px; }
+  .side { width: 170px; flex: none; border-right: 1px solid var(--line); padding: 10px 8px; background: var(--card); }
+  .canvas { flex: 1; min-width: 0; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .rail { width: 210px; flex: none; border-left: 1px solid var(--line); padding: 12px 10px; display: flex; flex-direction: column; gap: 10px; }
+
+  .zone { border: 1px dashed var(--line-strong); border-radius: 3px; padding: 8px 10px; }
+  .zone > .zname { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--faint); margin-bottom: 6px; }
+
+  .bar { height: 9px; border-radius: 2px; background: var(--fill-deep); }
+  .bar.w25 { width: 25%; } .bar.w40 { width: 40%; } .bar.w55 { width: 55%; }
+  .bar.w70 { width: 70%; } .bar.w85 { width: 85%; } .bar.full { width: 100%; }
+  .bar.tall { height: 14px; }
+  .stack { display: flex; flex-direction: column; gap: 6px; }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .grow { flex: 1; min-width: 0; }
+
+  .btn { display: inline-block; border: 1px solid var(--line-strong); border-radius: 3px; padding: 3px 9px; font-size: 11px; background: var(--card); }
+  .btn.primary { background: var(--ink); color: var(--card); border-color: var(--ink); }
+  .btn.danger { background: var(--card); border-color: var(--danger-line); border-style: double; border-width: 3px; padding: 1px 7px; }
+  .btn.off { color: var(--faint); border-style: dashed; background: var(--fill); }
+  .field { border: 1px solid var(--line); border-radius: 3px; padding: 4px 8px; font-size: 11px; color: var(--faint); background: var(--card); }
+  .seal { display: inline-block; border: 1px solid var(--line-strong); border-radius: 2px; padding: 0 5px; font-size: 10px; background: var(--fill-deep); }
+  .marker { font-size: 10px; color: var(--muted); }
+  .marker::before { content: "• "; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-strong); display: inline-block; flex: none; }
+
+  .card { border: 1px solid var(--line); border-radius: 3px; padding: 8px; background: var(--card); }
+  .cols { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+  .col { width: 150px; flex: none; background: var(--fill); border-radius: 3px; padding: 6px; }
+  .col > .chd { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+
+  table.wire { width: 100%; border-collapse: collapse; font-size: 11px; }
+  table.wire th, table.wire td { border-bottom: 1px solid var(--line); padding: 5px 6px; text-align: left; }
+  table.wire th { color: var(--muted); font-weight: 600; background: var(--fill); }
+
+  .empty { border: 1px dashed var(--line-strong); border-radius: 3px; padding: 18px; text-align: center; font-size: 11px; color: var(--muted); background: var(--card); }
+  .blocked { border: 1px solid var(--line-strong); border-left-width: 4px; border-radius: 3px; padding: 7px 9px; font-size: 11px; color: var(--muted); background: var(--fill); }
+
+  .states { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin-top: 10px; }
+  .states > figure { margin: 0; }
+  .states figcaption { font-size: 11px; color: var(--faint); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .06em; }
+
+  .notes { margin: 10px 0 0; padding-left: 18px; font-size: 12px; color: var(--muted); max-width: 82ch; }
+  .notes li { margin-bottom: 3px; }
+  .rule { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--ink); background: var(--fill); padding: 0 3px; border-radius: 2px; }
+
+  .flow { margin: 0 0 40px; scroll-margin-top: 16px; }
+  .flow > h3 { font-size: 16px; margin: 0 0 2px; }
+  .flow > .why { color: var(--muted); font-size: 13px; margin: 0 0 10px; max-width: 78ch; }
+  .steps { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; align-items: stretch; }
+  .step { width: 190px; flex: none; border: 1px solid var(--line-strong); border-radius: 3px; background: var(--card); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .step .sn { font-size: 10px; color: var(--faint); text-transform: uppercase; letter-spacing: .07em; }
+  .step .st { font-size: 12px; font-weight: 600; }
+  .step .sd { font-size: 11px; color: var(--muted); }
+  .step.err { border-style: dashed; background: var(--fill); }
+  .arrow { align-self: center; color: var(--faint); font-size: 16px; flex: none; }
+  .toast { border: 1px solid var(--line-strong); border-left-width: 4px; border-radius: 3px; padding: 6px 9px; font-size: 11px; background: var(--card); }
+  .toast.ok::before { content: "✓ "; }
+  .toast.err { border-style: dashed; background: var(--fill); }
+  .toast.err::before { content: "⊘ "; }
+  .dialog { border: 2px solid var(--line-strong); border-radius: 3px; padding: 10px 12px; background: var(--card); box-shadow: 4px 4px 0 var(--fill-deep); }
+  .dialog > .dtitle { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+  .dialog > .dbody { font-size: 11px; color: var(--muted); }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 3px; padding: 10px 12px; background: var(--card); max-width: 860px; margin-bottom: 28px; }
+</style>
+
+<div class="layout">
+<nav class="index">
+  <h2>Documento</h2>
+  <a href="#leitura">Como ler</a>
+  <a href="#shell">Shell comum</a>
+  <h2>Telas</h2>
+  <a href="#t-entrar">Entrar</a>
+  <a href="#t-inicio">Início</a>
+  <a href="#t-espaco">Espaço</a>
+  <a href="#t-lista-lista">Lista · Lista</a>
+  <a href="#t-lista-quadro">Lista · Quadro</a>
+  <a href="#t-lista-calendario">Lista · Calendário</a>
+  <a href="#t-lista-tabela">Lista · Tabela</a>
+  <a href="#t-tarefa">Tarefa</a>
+  <a href="#t-config-container">Configurações de contêiner</a>
+  <a href="#t-contatos">Contatos</a>
+  <a href="#t-contato">Contato</a>
+  <a href="#t-empresas">Empresas</a>
+  <a href="#t-empresa">Empresa</a>
+  <a href="#t-negocios">Negócios · Quadro</a>
+  <a href="#t-negocio">Negócio</a>
+  <a href="#t-funil">Funil</a>
+  <a href="#t-caixa">Caixa de Entrada</a>
+  <a href="#t-conversa">Conversa</a>
+  <a href="#t-chat">Chat</a>
+  <a href="#t-agente">Agente</a>
+  <a href="#t-habilidade">Habilidade</a>
+  <a href="#t-automacao">Automação · editor</a>
+  <a href="#t-conhecimento">Conhecimento</a>
+  <a href="#t-aprovacoes">Aprovações</a>
+  <a href="#t-painel">Painel</a>
+  <a href="#t-membros">Membros</a>
+  <a href="#t-membro">Membro</a>
+  <a href="#t-busca">Busca</a>
+  <h2>Diálogos</h2>
+  <a href="#d01">D01 · Mover com Mapeamento</a>
+  <a href="#d03">D03 · Mesclar Contatos</a>
+  <a href="#d13">D13 · Converter Item</a>
+  <h2>Fluxos</h2>
+  <a href="#f1">1 · Concluir Tarefa vencida</a>
+  <a href="#f2">2 · Decompor trabalho</a>
+  <a href="#f3">3 · Mover entre Listas</a>
+  <a href="#f4">4 · Ganhar Negócio</a>
+  <a href="#f5">5 · Atender com Rascunho</a>
+  <a href="#f6">6 · Mesclar Contatos</a>
+  <a href="#f7">7 · Agente com aprovação</a>
+  <a href="#f8">8 · Automação híbrida</a>
+  <a href="#f9">9 · Remover Membro</a>
+  <a href="#f10">10 · A Convidada</a>
+</nav>
+
+<main>
+<header class="doc" id="leitura">
+  <h1>Wireframes dos fluxos</h1>
+  <p><strong>Fase 4.</strong> Baixa fidelidade de propósito: só cinzas, sem tipografia final e sem cor de marca. A pergunta aqui é uma só — <em>o layout sustenta o fluxo?</em> Cor e tipografia são decisão da Fase 5.</p>
+  <p>Cada esboço mostra as zonas da tela, a hierarquia entre elas, os controles disponíveis e os estados que a tela precisa saber assumir: com dados, vazia, e com a ação impedida.</p>
+</header>
+
+<div class="legend">
+  <span><span class="seal">selo</span> — o registro <strong>é</strong> isto (arquivado, na lixeira)</span>
+  <span><span class="marker">marcador</span> — o registro <strong>está assim agora</strong> (vencida, bloqueada)</span>
+  <span><span class="btn off">controle off</span> — desabilitado <strong>com motivo visível</strong></span>
+  <span><span class="btn danger">destrutivo</span> — confirma antes</span>
+  <span><span class="toast ok">aviso</span> — toda ação bem-sucedida se anuncia, nomeando o registro</span>
+  <span><span class="dialog" style="padding:2px 6px;box-shadow:none">diálogo</span> — confirmação, único componente do produto</span>
+</div>
+
+<section class="screen" id="shell">
+  <h3>Shell comum</h3>
+  <p class="why">Presente em toda tela exceto Entrar. A árvore lateral segue a contenção Espaço › Pasta › Subpasta › Lista. Um contêiner privado que o Membro não pode ver aparece como <strong>nome inerte</strong>: não vira link morto e não some — sumir esconderia a estrutura de quem tem direito a saber que ela existe.</p>
+  <div class="frame">
+    <div class="topbar">
+      <div class="bar w25" style="max-width:120px"></div>
+      <div class="field grow">buscar…</div>
+      <span class="btn">notificações</span>
+      <span class="dot"></span>
+    </div>
+    <div class="body">
+      <div class="side">
+        <div class="zone" style="border:none;padding:0">
+          <div class="zname">Trabalho</div>
+          <div class="stack">
+            <div class="row"><span class="dot"></span><div class="bar w70"></div></div>
+            <div class="row" style="padding-left:12px"><span class="dot"></span><div class="bar w55"></div></div>
+            <div class="row" style="padding-left:24px"><span class="dot"></span><div class="bar w40"></div></div>
+            <div class="row" style="padding-left:12px;opacity:.45"><span class="dot"></span><div class="bar w55"></div><span class="marker">inerte</span></div>
+          </div>
+          <div class="zname" style="margin-top:14px">CRM</div>
+          <div class="stack"><div class="bar w70"></div><div class="bar w55"></div><div class="bar w70"></div></div>
+          <div class="zname" style="margin-top:14px">IA</div>
+          <div class="stack"><div class="bar w55"></div><div class="bar w70"></div></div>
+        </div>
+      </div>
+      <div class="canvas">
+        <div class="zone"><div class="zname">Cabeçalho da tela — caminho · título · selo · ações</div><div class="row"><div class="bar w40 tall"></div><span class="seal">estado</span><div class="grow"></div><span class="btn primary">ação principal</span></div></div>
+        <div class="zone"><div class="zname">Faixa de aviso — toda ação bem-sucedida ou impedida aparece aqui, nomeando o registro</div><div class="stack"><div class="toast ok">Tarefa concluída.</div><div class="toast err">Não foi possível concluir: 2 itens de checklist abertos. <span style="text-decoration:underline">Ver a exigência</span></div></div></div>
+        <div class="zone grow"><div class="zname">Conteúdo</div><div class="stack"><div class="bar full"></div><div class="bar w85"></div><div class="bar w70"></div></div></div>
+      </div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>A barra superior é a mesma em todas as telas: busca global, notificações, Membro da sessão.</li>
+    <li>A ação principal de cada tela vive no cabeçalho, à direita, sempre no mesmo lugar.</li>
+    <li>A faixa de aviso é a mesma em toda tela: nenhuma ação "só muda" a tela em silêncio. Numa ação em cascata o aviso quantifica — "Pasta arquivada. 3 Listas e 47 Tarefas ficaram arquivadas."</li>
+  </ul>
+</section>
+
+<section class="screen" id="t-entrar">
+  <h3>Entrar</h3>
+  <p class="why">A única tela fora do shell: escolher o Membro é anterior a ter sessão. Trocar de Membro muda de verdade o que se vê — as permissões são reais, não simuladas por texto.</p>
+  <div class="frame" style="max-width:520px">
+    <div style="padding:24px">
+      <div class="bar w40 tall"></div>
+      <div class="stack" style="margin-top:6px"><div class="bar full"></div><div class="bar w70"></div></div>
+      <div class="stack" style="margin-top:16px">
+        <div class="card"><div class="row"><span class="dot" style="width:22px;height:22px;border-radius:50%"></span><div class="grow"><div class="bar w55"></div><div class="marker">Proprietária do Espaço de Trabalho</div></div></div></div>
+        <div class="card"><div class="row"><span class="dot" style="width:22px;height:22px;border-radius:50%"></span><div class="grow"><div class="bar w70"></div><div class="marker">Administrador</div></div></div></div>
+        <div class="card" style="opacity:.55"><div class="row"><span class="dot" style="width:22px;height:22px;border-radius:50%"></span><div class="grow"><div class="row"><div class="bar w55"></div><span class="seal">pendente</span></div><div class="marker">Convite não aceito — não entra.</div></div></div></div>
+        <div class="card" style="opacity:.55"><div class="row"><span class="dot" style="width:22px;height:22px;border-radius:50%"></span><div class="grow"><div class="row"><div class="bar w70"></div><span class="seal">removido</span></div><div class="marker">Participação encerrada; a autoria histórica permanece.</div></div></div></div>
+      </div>
+      <div class="marker" style="margin-top:12px">A autenticação de Usuário não faz parte deste protótipo: não há backend.</div>
+    </div>
+  </div>
+  <div class="states">
+    <figure><figcaption>Ação impedida</figcaption><div class="blocked">Membro <span class="seal">suspenso</span> entra apenas em leitura: perde todas as ações com efeito.</div></figure>
+  </div>
+</section>
+
+<section class="screen" id="t-inicio">
+  <h3>Início</h3>
+  <p class="why">Quatro blocos, cada um uma consulta filtrada sobre registros que já existem — nenhum conceito novo. "Meus Negócios" usa <strong>Proprietário</strong>, não Responsável: o Negócio não tem Responsável.</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="side"><div class="stack"><div class="bar w70"></div><div class="bar w55"></div><div class="bar w70"></div><div class="bar w40"></div></div></div>
+      <div class="canvas">
+        <div class="zone"><div class="zname">Saudação</div><div class="bar w40 tall"></div></div>
+        <div class="row" style="align-items:stretch;gap:10px">
+          <div class="zone grow">
+            <div class="zname">Minhas Tarefas — agrupadas por urgência</div>
+            <div class="stack">
+              <div class="marker" style="font-size:10px">VENCIDAS</div>
+              <div class="card"><div class="row"><div class="bar w70"></div><div class="grow"></div><span class="dot"></span></div><div class="row" style="margin-top:4px"><span class="marker">Vencida</span><span class="marker">Lista</span></div></div>
+              <div class="marker" style="font-size:10px">HOJE</div>
+              <div class="card"><div class="bar w55"></div></div>
+              <div class="marker" style="font-size:10px">ESTA SEMANA</div>
+              <div class="card"><div class="bar w70"></div></div>
+            </div>
+            <div class="zname" style="margin-top:12px">Aprovações pendentes para mim</div>
+            <div class="card"><div class="bar w55"></div><div class="row" style="margin-top:4px"><span class="marker">motivo</span><span class="marker">classe de efeito</span></div></div>
+          </div>
+          <div class="zone grow">
+            <div class="zname">Conversas atribuídas a mim</div>
+            <div class="stack">
+              <div class="card"><div class="row"><div class="bar w55"></div><div class="grow"></div><span class="marker">aberta</span></div></div>
+              <div class="card"><div class="row"><div class="bar w70"></div><div class="grow"></div><span class="marker">pendente</span></div></div>
+            </div>
+            <div class="zname" style="margin-top:12px">Meus Negócios abertos — sou o Proprietário</div>
+            <div class="stack">
+              <div class="card"><div class="row"><div class="bar w55"></div><div class="grow"></div><div class="bar w25" style="max-width:50px"></div></div><div class="marker">Etapa · probabilidade</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="states">
+    <figure><figcaption>Vazio</figcaption><div class="empty">Nenhuma Tarefa atribuída a você.</div></figure>
+    <figure><figcaption>Vazio com esclarecimento</figcaption><div class="empty">Você não é Proprietário de nenhum Negócio aberto.<br><span style="color:var(--faint)">O Negócio não tem Responsável: quem responde por ele é o Proprietário.</span></div></figure>
+  </div>
+</section>
+
+<section class="screen" id="t-espaco">
+  <h3>Espaço</h3>
+  <p class="why">O Espaço mostra o que contém, não o trabalho em si. Pastas e Listas diretas convivem no mesmo nível — a estrutura permite as duas.</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="side"><div class="stack"><div class="row"><span class="dot"></span><div class="bar w70"></div></div><div class="row" style="padding-left:12px"><span class="dot"></span><div class="bar w55"></div></div></div></div>
+      <div class="canvas">
+        <div class="zone"><div class="zname">Cabeçalho</div><div class="row"><span class="dot"></span><div class="bar w40 tall"></div><span class="seal">privado</span><div class="grow"></div><span class="btn">configurações</span><span class="btn primary">nova Lista</span></div></div>
+        <div class="zone"><div class="zname">Pastas</div><div class="row" style="gap:8px"><div class="card grow"><div class="bar w70"></div><div class="marker">3 Listas · 24 Tarefas</div></div><div class="card grow"><div class="bar w55"></div><div class="marker">1 Lista</div></div></div></div>
+        <div class="zone"><div class="zname">Listas diretas do Espaço</div><div class="stack"><div class="card"><div class="row"><div class="bar w55"></div><div class="grow"></div><span class="marker">12 Tarefas</span></div></div><div class="card"><div class="row"><div class="bar w70"></div><div class="grow"></div><span class="seal">arquivado</span></div></div></div></div>
+        <div class="zone"><div class="zname">Configuração efetiva — resumo com link para a tela cheia</div><div class="row"><span class="marker">Conjunto de Status: definido aqui</span><span class="marker">Funcionalidades: 4 de 12 ativas</span></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="states">
+    <figure><figcaption>Vazio</figcaption><div class="empty">Este Espaço ainda não tem Pastas nem Listas.<br><span style="color:var(--faint)">Uma Lista é onde as Tarefas vivem: comece por ela.</span></div></figure>
+    <figure><figcaption>Sem acesso — <em>não</em> é vazio</figcaption><div class="blocked">Pasta privada · sem acesso<br><span style="color:var(--faint)">Existe e o nome aparece; o conteúdo não.</span></div></figure>
+  </div>
+</section>
+
+<section class="screen" id="t-lista-lista">
+  <h3>Lista · Visualização Lista</h3>
+  <p class="why">O agrupamento padrão é por <strong>Status</strong>, na ordem do Conjunto de Status. A barra de Visualizações é a mesma nas quatro — trocar de Visualização não troca de tela nem perde filtro.</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="side"><div class="stack"><div class="row" style="padding-left:24px"><span class="dot"></span><div class="bar w55"></div></div></div></div>
+      <div class="canvas">
+        <div class="zone"><div class="zname">Cabeçalho — caminho até o Espaço</div><div class="row"><div class="bar w40 tall"></div><div class="grow"></div><span class="btn">configurações</span><span class="btn primary">nova Tarefa</span></div></div>
+        <div class="zone"><div class="zname">Visualizações · filtros</div><div class="row"><span class="btn primary">Lista</span><span class="btn">Quadro</span><span class="btn">Calendário</span><span class="btn">Tabela</span><div class="grow"></div><span class="field">Responsável</span><span class="field">Prioridade</span></div></div>
+        <div class="zone grow">
+          <div class="zname">Tarefas agrupadas por Status</div>
+          <div class="stack">
+            <div class="row"><span class="dot"></span><div class="bar w25"></div><span class="marker">não iniciado · 4</span></div>
+            <div class="card"><div class="row"><div class="bar w55"></div><div class="grow"></div><span class="marker">Responsável</span><span class="marker">vence 12/03</span></div></div>
+            <div class="card"><div class="row"><div class="bar w70"></div><div class="grow"></div><span class="marker">Vencida</span></div></div>
+            <div class="row" style="margin-top:6px"><span class="dot"></span><div class="bar w25"></div><span class="marker">em andamento · 2</span></div>
+            <div class="card"><div class="row"><div class="bar w55"></div><div class="grow"></div><span class="marker">Bloqueada</span></div></div>
+          </div>
+        </div>
+        <div class="row"><span class="marker">Mostrando 25 de 61</span><span class="btn">Mostrar mais</span></div>
+      </div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>A contagem por grupo é sempre visível: uma coleção que cresce se conta.</li>
+    <li>Vencida e Bloqueada são <em>marcadores</em>, não selos — limpam-se sozinhos quando a causa cessa.</li>
+  </ul>
+  <div class="states">
+    <figure><figcaption>Vazio</figcaption><div class="empty">Nenhuma Tarefa nesta Lista ainda.<br><span style="color:var(--faint)">Uma Lista é onde as Tarefas vivem: comece pela primeira.</span><div style="margin-top:8px"><span class="btn primary">Nova Tarefa</span></div></div></figure>
+    <figure><figcaption>Ação impedida — somente leitura</figcaption><div class="blocked">Lista arquivada. [Nova Tarefa] ausente e seletores desabilitados: uma Tarefa ativa numa Lista arquivada <em>é</em> arquivada.</div></figure>
+  </div>
+</section>
+
+<section class="screen" id="t-lista-quadro">
+  <h3>Lista · Visualização Quadro</h3>
+  <p class="why">Uma coluna por Status, na ordem do Conjunto. Arrastar muda o Status de verdade — e quando a mudança é recusada, o erro aparece em pt-BR, não em silêncio.</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="side"><div class="stack"><div class="bar w55"></div></div></div>
+      <div class="canvas">
+        <div class="zone"><div class="row"><span class="btn">Lista</span><span class="btn primary">Quadro</span><span class="btn">Calendário</span><span class="btn">Tabela</span></div></div>
+        <div class="cols">
+          <div class="col"><div class="chd"><span>não iniciado</span><span>4</span></div><div class="stack"><div class="card"><div class="bar full"></div><div class="marker">TSK-14</div></div><div class="card"><div class="bar w85"></div></div></div></div>
+          <div class="col"><div class="chd"><span>em andamento</span><span>2</span></div><div class="stack"><div class="card"><div class="bar w85"></div><div class="marker">Bloqueada</div></div></div></div>
+          <div class="col"><div class="chd"><span>em revisão</span><span>1</span></div><div class="stack"><div class="card"><div class="bar full"></div></div></div></div>
+          <div class="col"><div class="chd"><span>concluído</span><span>9</span></div><div class="stack"><div class="card" style="opacity:.6"><div class="bar w70"></div></div></div></div>
+        </div>
+        <div class="blocked">Não foi possível mover: a Lista exige Checklists concluídos para concluir a Tarefa. <span style="text-decoration:underline">Ver a exigência</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="states">
+    <figure><figcaption>Coluna vazia</figcaption><div class="col" style="width:auto"><div class="chd"><span>em revisão</span><span>0</span></div><div class="empty" style="padding:12px">Nenhuma Tarefa neste Status.</div></div></figure>
+  </div>
+</section>
+
+<section class="screen" id="t-lista-calendario">
+  <h3>Lista · Visualização Calendário</h3>
+  <p class="why">Posiciona por data de vencimento. Uma Tarefa sem data não desaparece: vai para a faixa "sem data" abaixo da grade, porque some-la esconderia trabalho real.</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="side"><div class="bar w55"></div></div>
+      <div class="canvas">
+        <div class="zone"><div class="row"><span class="btn">Lista</span><span class="btn">Quadro</span><span class="btn primary">Calendário</span><span class="btn">Tabela</span><div class="grow"></div><span class="btn">‹</span><span class="marker">março 2026</span><span class="btn">›</span></div></div>
+        <div class="zone">
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">
+            <div class="card" style="min-height:52px"><div class="marker">1</div></div>
+            <div class="card" style="min-height:52px"><div class="marker">2</div><div class="bar full" style="margin-top:4px"></div></div>
+            <div class="card" style="min-height:52px"><div class="marker">3</div></div>
+            <div class="card" style="min-height:52px"><div class="marker">4</div><div class="bar full" style="margin-top:4px"></div><div class="bar w85" style="margin-top:3px"></div></div>
+            <div class="card" style="min-height:52px"><div class="marker">5</div></div>
+            <div class="card" style="min-height:52px;background:var(--fill)"><div class="marker">6</div></div>
+            <div class="card" style="min-height:52px;background:var(--fill)"><div class="marker">7</div></div>
+          </div>
+        </div>
+        <div class="zone"><div class="zname">Sem data de vencimento — 7</div><div class="row"><div class="card grow"><div class="bar w70"></div></div><div class="card grow"><div class="bar w55"></div></div></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="states">
+    <figure><figcaption>Vazio</figcaption><div class="empty">Nenhuma Tarefa com data neste mês.<br><span style="color:var(--faint)">As sem data continuam na faixa abaixo da grade.</span></div></figure>
+    <figure><figcaption>Ação impedida</figcaption><div class="blocked">Arrastar para outro dia está indisponível: a Lista está arquivada.</div></figure>
+  </div>
+</section>
+
+<section class="screen" id="t-lista-tabela">
+  <h3>Lista · Visualização Tabela</h3>
+  <p class="why">Colunas são atributos que a ontologia define — nada é inventado aqui. Os Campos personalizados que alcançam este caminho entram como colunas adicionais.</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="side"><div class="bar w55"></div></div>
+      <div class="canvas">
+        <div class="zone"><div class="row"><span class="btn">Lista</span><span class="btn">Quadro</span><span class="btn">Calendário</span><span class="btn primary">Tabela</span></div></div>
+        <div class="frame" style="border-color:var(--line)">
+          <table class="wire">
+            <thead><tr><th>Tarefa</th><th>Status</th><th>Responsáveis</th><th>Vencimento</th><th>Prioridade</th><th>Campo</th></tr></thead>
+            <tbody>
+              <tr><td><div class="bar w85"></div></td><td><span class="dot"></span> em andamento</td><td><div class="bar w55"></div></td><td>12/03/2026</td><td>Alta</td><td><div class="bar w40"></div></td></tr>
+              <tr><td><div class="bar w70"></div></td><td><span class="dot"></span> não iniciado</td><td>sem Responsável</td><td>—</td><td>Normal</td><td>—</td></tr>
+              <tr><td><div class="bar full"></div></td><td><span class="dot"></span> concluído</td><td><div class="bar w40"></div></td><td>02/03/2026</td><td>Baixa</td><td><div class="bar w55"></div></td></tr>
+            </tbody>
+          </table>
+          <div class="row" style="padding:6px 8px;background:var(--fill);border-top:1px solid var(--line)"><span class="marker">Mostrando 25 de 61</span><div class="grow"></div><span class="btn">Mostrar mais</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="states">
+    <figure><figcaption>Vazio</figcaption><div class="empty">Nenhuma Tarefa nesta Lista ainda.<div style="margin-top:8px"><span class="btn primary">Nova Tarefa</span></div></div></figure>
+    <figure><figcaption>Coluna sem acesso</figcaption><div class="blocked">Coluna de Campo cuja Definição não alcança este caminho: aparece vazia com a marca “não aplicável”, nunca com um valor de outro contexto.</div></figure>
+  </div>
+</section>
+
+<section class="screen" id="t-tarefa">
+  <h3>Tarefa</h3>
+  <p class="why">O documento central do domínio. O seletor de Status agrupa por <strong>categoria</strong> — é a categoria, não o nome, que decide se a Tarefa está encerrada. Quando a Lista já reprova a transição, o Status terminal aparece desabilitado <em>com o motivo</em>, calculado do que está na própria tela.</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="canvas" style="border-right:1px solid var(--line)">
+        <div class="zone"><div class="zname">Caminho · título · selo · identificador legível</div><div class="row"><div class="bar w70 tall"></div><span class="seal">arquivado</span></div><div class="row" style="margin-top:5px"><span class="marker">TSK-41</span><span class="marker">criada por · há 3 dias</span><span class="marker">Vencida</span><span class="marker">Bloqueada</span></div></div>
+        <div class="zone">
+          <div class="zname">Status — agrupado por categoria</div>
+          <div class="row"><span class="btn primary">em andamento</span><span class="btn">em revisão</span><span class="btn off">concluído</span><span class="btn off">cancelado</span></div>
+          <div class="blocked" style="margin-top:6px">Concluir está indisponível: 2 itens de checklist abertos nesta Tarefa. <span style="text-decoration:underline">Ver a exigência nas configurações da Lista</span></div>
+        </div>
+        <div class="zone"><div class="zname">Checklists — com conversão em Subtarefa</div><div class="card"><div class="row"><div class="bar w25"></div><div class="grow"></div><span class="marker">1 de 2</span></div><div class="stack" style="margin-top:6px"><div class="row"><span>☑</span><div class="bar w70"></div></div><div class="row"><span>☐</span><div class="bar w55"></div><div class="grow"></div><span class="btn danger">converter em Subtarefa</span></div><div class="row" style="opacity:.55"><span>—</span><div class="bar w40"></div><span class="marker">convertido</span></div></div></div></div>
+        <div class="zone" style="border-style:solid;border-color:var(--line-strong)">
+          <div class="zname">D13 · Converter Item em Subtarefa — confirmação por digitação do nome</div>
+          <div class="dialog">
+            <div class="dtitle">Converter “Solicitar impressão dos folhetos” em Subtarefa?</div>
+            <div class="dbody">Sem conversão inversa. O Item ficará convertido e sairá do progresso — de “1 de 2” para “1 de 1”.</div>
+            <div class="row" style="margin-top:8px"><span class="marker">Tarefa pai</span><span class="field">Preparar kit de campanha ▾</span></div>
+            <div class="row" style="margin-top:6px"><span class="marker">Digite o nome do Item para confirmar</span><span class="field grow">…</span></div>
+            <div class="row" style="margin-top:8px"><span class="btn off">converter</span><span class="btn">cancelar</span></div>
+            <div class="blocked" style="margin-top:6px">Converter aqui criaria o nível 4. Escolha outra Tarefa pai ou converta a partir de um nível acima.</div>
+          </div>
+        </div>
+
+        <div class="zone"><div class="zname">Subtarefas</div><div class="stack"><div class="card"><div class="row"><div class="bar w55"></div><div class="grow"></div><span class="marker">status</span></div></div></div><div class="marker" style="margin-top:5px">Limite de 3 níveis de Subtarefa, definido no Espaço de Trabalho.</div></div>
+        <div class="zone"><div class="zname">Comentários</div><div class="card"><div class="marker">autor · em nome de · há 2 h</div><div class="bar full" style="margin-top:5px"></div></div></div>
+        <div class="zone"><div class="zname">Atividade — ator, delegado, antes → depois</div><div class="stack"><div class="bar w85"></div><div class="bar w70"></div></div></div>
+      </div>
+      <div class="rail">
+        <div class="zone"><div class="zname">Atributos</div><div class="stack"><div class="row"><span class="marker">Status</span><div class="grow"></div><span class="dot"></span></div><div class="row"><span class="marker">Prioridade</span><div class="grow"></div><div class="bar w25" style="max-width:40px"></div></div><div class="row"><span class="marker">Responsáveis</span><div class="grow"></div><div class="bar w25" style="max-width:50px"></div></div><div class="row"><span class="marker">Vencimento</span><div class="grow"></div><div class="bar w25" style="max-width:50px"></div></div></div></div>
+        <div class="zone"><div class="zname">Valores de Campo</div><div class="stack"><div class="row"><span class="marker">campo</span><div class="grow"></div><div class="bar w40"></div></div></div><div class="blocked" style="margin-top:6px">Campos não aplicáveis neste caminho (2) — preservados, reativam se a Tarefa voltar</div></div>
+        <div class="zone"><div class="zname">Dependências</div><div class="bar w70"></div></div>
+        <div class="zone"><div class="zname">Vínculos — Negócio, Contato, Conversa</div><div class="bar w55"></div></div>
+        <div class="zone"><div class="zname">Anexos</div><div class="empty" style="padding:10px">Nenhum Anexo.</div></div>
+      </div>
+    </div>
+  </div>
+  <ul class="notes">
+    <li>Um valor de Campo cuja Definição deixou de alcançar a Tarefa é <em>arquivado dentro do registro</em>, nunca descartado — e a tela diz isso, senão o dado parece ter sumido.</li>
+    <li>O selo de arquivado pode vir do contêiner: uma Tarefa ativa numa Lista arquivada <strong>é</strong> arquivada, e a tela nomeia a causa.</li>
+  </ul>
+</section>
+
+<section class="screen" id="t-config-container">
+  <h3>Configurações de contêiner — Espaço, Pasta, Lista</h3>
+  <p class="why">Uma tela para os três níveis. Cada aspecto é herdado, sobrescrito ou bloqueado — e a tela nunca mostra um "herdado" pelado: mostra <strong>de onde</strong> vem e <strong>como compõe</strong>, porque dois aspectos compõem de formas opostas.</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="side"><div class="bar w55"></div></div>
+      <div class="canvas">
+        <div class="zone"><div class="row"><div class="bar w55 tall"></div></div><div class="marker">Bloquear impede que qualquer nível abaixo sobrescreva.</div></div>
+        <div class="frame" style="border-color:var(--line)">
+          <table class="wire">
+            <thead><tr><th>Aspecto</th><th>Neste nível</th><th>Origem do valor</th><th>Como compõe</th></tr></thead>
+            <tbody>
+              <tr><td>Conjunto de Status</td><td><span class="seal">sobrescrito</span></td><td>definido aqui</td><td>substitui</td></tr>
+              <tr><td>Funcionalidades</td><td><span class="seal">herdado</span></td><td>vem de Comercial</td><td>substitui</td></tr>
+              <tr><td>Definições de Campo</td><td><span class="seal">sobrescrito</span></td><td>definido aqui</td><td>acumula</td></tr>
+              <tr><td>Tipos de Tarefa</td><td><span class="seal">bloqueado</span></td><td>definido aqui</td><td>acumula</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="row" style="align-items:stretch;gap:10px">
+          <div class="zone grow"><div class="zname">Conjunto de Status efetivo</div><div class="stack"><div class="row"><span class="dot"></span><div class="bar w70"></div><div class="grow"></div><span class="marker">não iniciado</span></div><div class="row"><span class="dot"></span><div class="bar w55"></div><div class="grow"></div><span class="marker">em andamento</span></div></div></div>
+          <div class="zone grow"><div class="zname">Funcionalidades efetivas</div><div class="stack"><div class="row"><span class="marker">Subtarefas</span><div class="grow"></div><span>ativa</span></div><div class="row"><span class="marker">Recorrência</span><div class="grow"></div><span style="color:var(--faint)">inativa</span></div></div></div>
+        </div>
+        <div class="zone"><div class="zname">Privacidade</div><div class="blocked">Contêiner privado — interrompe as permissões vindas do Papel e da herança. Aqui dentro só alcança quem recebeu Concessão direta ou compartilhamento.</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="t-contatos">
+  <h3>Contatos</h3>
+  <p class="why">Tabela com as colunas que decidem: identificador canônico, Empresa principal, Proprietário, última interação. A última interação é <em>derivada</em> das Conversas — não é um campo que alguém preenche.</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="side"><div class="stack"><div class="bar w70"></div><div class="bar w55"></div></div></div>
+      <div class="canvas">
+        <div class="zone"><div class="row"><div class="bar w40 tall"></div><div class="grow"></div><span class="btn">importar</span><span class="btn primary">novo Contato</span></div></div>
+        <div class="zone"><div class="row"><span class="field">Proprietário</span><span class="field">Qualificação</span><span class="field">Origem</span><span class="field">Tag</span><div class="grow"></div><span class="btn">suspeitas de duplicidade (3)</span><span class="marker">32 Contatos</span></div></div>
+        <div class="frame" style="border-color:var(--line)">
+          <table class="wire">
+            <thead><tr><th>Contato</th><th>Identificador</th><th>Empresa</th><th>Proprietário</th><th>Última interação</th></tr></thead>
+            <tbody>
+              <tr><td><div class="bar w85"></div></td><td><div class="bar w70"></div></td><td><div class="bar w55"></div></td><td><div class="bar w40"></div></td><td>há 2 dias</td></tr>
+              <tr><td><div class="row"><div class="bar w70"></div><span class="seal">mesclado</span></div></td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+              <tr><td><div class="bar w55"></div></td><td>sem identificador</td><td>—</td><td><div class="bar w40"></div></td><td>nunca</td></tr>
+            </tbody>
+          </table>
+          <div class="row" style="padding:6px 8px;background:var(--fill);border-top:1px solid var(--line)"><span class="marker">Mostrando 25 de 32</span><div class="grow"></div><span class="btn">Mostrar mais</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="frame" style="margin-top:12px">
+    <div class="topbar"><span class="zname" style="margin:0">Painel lateral · Suspeitas de Duplicidade — ponto de entrada do fluxo 6</span></div>
+    <div style="padding:10px">
+      <div class="stack">
+        <div class="card"><div class="row"><div class="bar w55"></div><span class="marker">mesmo telefone</span><div class="grow"></div><span class="btn">mesclar</span><span class="btn">marcar distintos</span></div></div>
+        <div class="card"><div class="row"><div class="bar w70"></div><span class="marker">mesmo e-mail</span><div class="grow"></div><span class="btn">mesclar</span><span class="btn">marcar distintos</span></div></div>
+      </div>
+      <div class="marker" style="margin-top:6px">Marcar distintos é permanente para o par: eles deixam de ser sugeridos.</div>
+    </div>
+  </div>
+  <div class="states">
+    <figure><figcaption>Vazio</figcaption><div class="empty">Nenhum Contato ainda.<br><span style="color:var(--faint)">Um Contato também nasce sozinho quando uma Mensagem chega por um Canal.</span></div></figure>
+    <figure><figcaption>Filtro sem resultado</figcaption><div class="empty">Nenhum Contato com estes filtros.<br><span style="color:var(--faint)">Ajuste Proprietário, Qualificação ou Origem.</span></div></figure>
+  </div>
+</section>
+
+<section class="screen" id="t-contato">
+  <h3>Contato</h3>
+  <p class="why">Duas colunas: o histórico à esquerda, a identidade à direita. Os <strong>Identificadores</strong> ganham zona própria porque são o que resolve uma Mensagem que chega — e um deles é o canônico.</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="canvas" style="border-right:1px solid var(--line)">
+        <div class="zone"><div class="row"><div class="bar w55 tall"></div><span class="seal">na lixeira</span><div class="grow"></div><span class="btn primary">restaurar</span><span class="btn off" title="Um Contato na lixeira não pode ser mesclado.">mesclar</span><span class="btn off" title="Já está na lixeira.">enviar à lixeira</span></div><div class="marker" style="margin-top:5px">Restaurar devolve ao estado anterior — que nem sempre é ativo: o que estava arquivado volta arquivado.</div></div>
+        <div class="zone"><div class="zname">Conversas</div><div class="stack"><div class="card"><div class="row"><div class="bar w55"></div><div class="grow"></div><span class="marker">resolvida</span></div></div><div class="card"><div class="row"><div class="bar w70"></div><div class="grow"></div><span class="marker">aberta</span></div></div></div></div>
+        <div class="zone"><div class="zname">Negócios vinculados</div><div class="card"><div class="row"><div class="bar w55"></div><div class="grow"></div><span class="marker">papel no Negócio · principal</span></div></div></div>
+        <div class="zone"><div class="zname">Atividade</div><div class="stack"><div class="bar w85"></div><div class="bar w70"></div></div></div>
+      </div>
+      <div class="rail">
+        <div class="zone"><div class="zname">Identificadores</div><div class="stack"><div class="row"><div class="bar w70"></div><span class="marker">canônico</span></div><div class="row"><div class="bar w55"></div></div></div><div class="btn" style="margin-top:6px">adicionar</div></div>
+        <div class="zone"><div class="zname">Empresas — vínculo com período</div><div class="stack"><div class="row"><div class="bar w70"></div><span class="marker">principal</span></div><div class="row" style="opacity:.55"><div class="bar w55"></div><span class="marker">encerrado</span></div></div></div>
+        <div class="zone"><div class="zname">Consentimentos por finalidade</div><div class="stack"><div class="row"><span class="marker">finalidade</span><div class="grow"></div><span>concedido</span></div><div class="row"><span class="marker">finalidade</span><div class="grow"></div><span style="color:var(--faint)">revogado</span></div></div></div>
+        <div class="zone"><div class="zname">Atributos</div><div class="stack"><div class="row"><span class="marker">Proprietário</span><div class="grow"></div><div class="bar w40"></div></div><div class="row"><span class="marker">Origem</span><div class="grow"></div><div class="bar w40"></div></div></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="states">
+    <figure><figcaption>Mesclado — terminal</figcaption><div class="blocked">Este Contato foi mesclado em outro. Nada aqui é editável. <span style="text-decoration:underline">Abrir o sobrevivente</span></div></figure>
+  </div>
+</section>
+
+<section class="screen" id="t-empresas">
+  <h3>Empresas</h3>
+  <p class="why">Mesma estrutura de Contatos. A coluna que importa é a contagem de Contatos vinculados <em>ativos</em> — vínculos encerrados não contam, senão o número mente.</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="side"><div class="bar w55"></div></div>
+      <div class="canvas">
+        <div class="zone"><div class="row"><div class="bar w40 tall"></div><div class="grow"></div><span class="btn primary">nova Empresa</span></div></div>
+        <div class="frame" style="border-color:var(--line)">
+          <table class="wire">
+            <thead><tr><th>Empresa</th><th>Nome fantasia</th><th>Contatos</th><th>Negócios abertos</th><th>Proprietário</th></tr></thead>
+            <tbody>
+              <tr><td><div class="bar w85"></div></td><td><div class="bar w55"></div></td><td>4</td><td>2</td><td><div class="bar w40"></div></td></tr>
+              <tr><td><div class="bar w70"></div></td><td>—</td><td>0</td><td>0</td><td><div class="bar w40"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="states">
+    <figure><figcaption>Vazio</figcaption><div class="empty">Nenhuma Empresa ainda.<br><span style="color:var(--faint)">Uma Empresa também nasce ao vincular um Contato a um domínio conhecido.</span><div style="margin-top:8px"><span class="btn primary">Nova Empresa</span></div></div></figure>
+    <figure><figcaption>Filtro sem resultado</figcaption><div class="empty">Nenhuma Empresa com estes filtros.</div></figure>
+  </div>
+</section>
+
+<section class="screen" id="t-empresa">
+  <h3>Empresa</h3>
+  <p class="why">O vínculo Contato–Empresa tem período: quem saiu continua no histórico, marcado como encerrado. Apagar o vínculo apagaria a história.</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="canvas" style="border-right:1px solid var(--line)">
+        <div class="zone"><div class="row"><div class="bar w55 tall"></div><div class="grow"></div><span class="btn danger">enviar à lixeira</span></div></div>
+        <div class="zone"><div class="zname">Contatos vinculados</div><div class="stack"><div class="card"><div class="row"><div class="bar w55"></div><div class="grow"></div><span class="marker">cargo · desde 2024</span></div></div><div class="card" style="opacity:.6"><div class="row"><div class="bar w40"></div><div class="grow"></div><span class="marker">encerrado em 2025</span></div></div></div></div>
+        <div class="zone"><div class="zname">Negócios</div><div class="card"><div class="row"><div class="bar w55"></div><div class="grow"></div><span class="marker">Etapa</span></div></div></div>
+        <div class="zone"><div class="zname">Empresas relacionadas</div><div class="row"><span class="marker">parceira</span><div class="bar w40"></div></div></div>
+      </div>
+      <div class="rail">
+        <div class="zone"><div class="zname">Identificadores</div><div class="stack"><div class="bar w70"></div><div class="bar w55"></div></div></div>
+        <div class="zone"><div class="zname">Atributos</div><div class="stack"><div class="bar w70"></div><div class="bar w55"></div></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="states">
+    <figure><figcaption>Sem Contatos vinculados</figcaption><div class="empty">Nenhum Contato vinculado.<br><span style="color:var(--faint)">O vínculo tem período: quem sai continua no histórico, marcado como encerrado.</span></div></figure>
+    <figure><figcaption>Ação impedida</figcaption><div class="blocked">Enviar à lixeira indisponível: 2 Negócios abertos referenciam esta Empresa. Feche, mova ou exclua antes.</div></figure>
+  </div>
+</section>
+
+<section class="screen" id="t-negocios">
+  <h3>Negócios · Quadro</h3>
+  <p class="why">Uma coluna por Etapa do Funil escolhido. <strong>Ganho e perdido não são colunas</strong> — toda Etapa é de progressão, e um Negócio encerrado preserva a última Etapa que ocupou. Os encerrados ficam numa faixa própria, abaixo.</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="side"><div class="bar w55"></div></div>
+      <div class="canvas">
+        <div class="zone"><div class="row"><div class="bar w40 tall"></div><div class="grow"></div><span class="field">Funil ▾</span></div><div class="row" style="margin-top:5px"><span class="marker">18 abertos</span><span class="marker">R$ 420.000 declarado</span><span class="marker">R$ 197.400 ponderado</span></div></div>
+        <div class="cols">
+          <div class="col"><div class="chd"><span>Qualificação</span><span>6</span></div><div class="marker" style="font-size:10px">20% padrão</div><div class="stack" style="margin-top:6px"><div class="card"><div class="bar full"></div><div class="marker">R$ 30.000 · 20%</div></div><div class="card"><div class="bar w85"></div></div></div></div>
+          <div class="col"><div class="chd"><span>Proposta</span><span>5</span></div><div class="marker" style="font-size:10px">50% padrão</div><div class="stack" style="margin-top:6px"><div class="card"><div class="bar full"></div></div></div><div class="marker" style="margin-top:6px;font-size:10px">2 exigências para entrar</div></div>
+          <div class="col"><div class="chd"><span>Negociação</span><span>4</span></div><div class="marker" style="font-size:10px">75% padrão</div><div class="stack" style="margin-top:6px"><div class="card"><div class="bar w85"></div></div></div></div>
+          <div class="col"><div class="chd"><span>Fechamento</span><span>3</span></div><div class="stack" style="margin-top:6px"><div class="empty" style="padding:12px">Nenhum Negócio nesta Etapa.</div></div></div>
+        </div>
+        <div class="zone"><div class="zname">Negócios encerrados — preservam a última Etapa, fora das colunas</div><div class="row"><div class="card grow"><div class="row"><div class="bar w55"></div><span class="seal">ganho</span></div><div class="marker">última Etapa: Fechamento</div></div><div class="card grow"><div class="row"><div class="bar w70"></div><span class="seal">perdido</span></div></div></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="t-negocio">
+  <h3>Negócio</h3>
+  <p class="why">Encerrar é <strong>formulário, não botão</strong>: o Funil pode exigir valor no ganho e Motivo na perda, então os campos aparecem antes da confirmação e o submit fica desabilitado até serem válidos. Uma Etapa não permitida pela transição aparece off, com o motivo.</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="canvas" style="border-right:1px solid var(--line)">
+        <div class="zone"><div class="row"><div class="bar w55 tall"></div><span class="seal">aberto</span><div class="grow"></div><span class="btn primary">marcar como ganho</span><span class="btn">marcar como perdido</span></div><div class="row" style="margin-top:5px"><span class="marker">Etapa Proposta</span><span class="marker">50%</span><span class="marker">na Etapa há 6 dias</span></div></div>
+        <div class="zone">
+          <div class="zname">D07 · Encerrar Negócio — diálogo endereçável por <code>?ganhar=</code></div>
+          <div class="dialog">
+            <div class="dtitle">Marcar como ganho</div>
+            <div class="dbody">O Negócio permanece na Etapa Proposta. Reabrir é possível depois, mas só um Administrador reabre um Negócio ganho.</div>
+            <div class="row" style="margin-top:8px;gap:8px"><div class="grow"><div class="marker">Valor (obrigatório neste Funil)</div><div class="field">0,00</div></div><div class="grow"><div class="marker">Motivo de Ganho (opcional)</div><div class="field">não informar ▾</div></div></div>
+            <div class="row" style="margin-top:8px"><span class="btn off" title="Este Funil exige um valor maior que zero para o Negócio ganho.">confirmar</span><span class="btn">cancelar</span></div>
+          </div>
+          <div class="marker" style="margin-top:5px">Não cobre a página: a coluna de atributos continua legível ao lado, porque é lá que está o valor já registrado.</div>
+        </div>
+        <div class="zone"><div class="zname">Etapa</div><div class="row"><span class="btn">Qualificação</span><span class="btn primary">Proposta</span><span class="btn">Negociação</span><span class="btn off" title="Este Funil não permite a transição direta de Proposta para Fechamento.">Fechamento</span></div><div class="marker" style="margin-top:5px">Exigência de entrada de Negociação: valor preenchido — ainda em branco</div></div>
+        <div class="zone"><div class="zname">Contatos vinculados — com papel</div><div class="card"><div class="row"><div class="bar w55"></div><div class="grow"></div><span class="marker">decisor · principal</span></div></div></div>
+        <div class="zone"><div class="zname">Histórico de Etapas — com tempo em cada uma</div><div class="stack"><div class="bar w85"></div><div class="bar w70"></div></div></div>
+      </div>
+      <div class="rail">
+        <div class="zone"><div class="zname">Atributos</div><div class="stack"><div class="row"><span class="marker">Proprietário</span><div class="grow"></div><div class="bar w40"></div></div><div class="row"><span class="marker">Empresa</span><div class="grow"></div><div class="bar w40"></div></div><div class="row"><span class="marker">Valor ponderado</span><div class="grow"></div><div class="bar w25" style="max-width:44px"></div></div></div></div>
+        <div class="zone"><div class="zname">Tags</div><div class="row"><span class="seal">tag</span><span class="seal">tag</span></div></div>
+        <div class="zone"><div class="zname">Anexos</div><div class="empty" style="padding:10px">Nenhum Anexo.</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="t-funil">
+  <h3>Funil</h3>
+  <p class="why">As Etapas em ordem, com probabilidade padrão e exigências. Remover uma Etapa não é botão simples: exige remapear <em>todo</em> Negócio que a referencia — inclusive os que estão na lixeira.</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="side"><div class="bar w55"></div></div>
+      <div class="canvas">
+        <div class="zone"><div class="row"><div class="bar w40 tall"></div><span class="seal">padrão</span><div class="grow"></div><span class="btn primary">nova Etapa</span></div></div>
+        <div class="zone">
+          <div class="zname">Etapas</div>
+          <div class="stack">
+            <div class="card"><div class="row"><span class="dot"></span><div class="bar w40"></div><div class="grow"></div><span class="marker">20%</span><span class="marker">6 Negócios</span><span class="btn danger">remover</span></div><div class="marker" style="margin-top:4px">Exigência de saída: valor preenchido</div></div>
+            <div class="card"><div class="row"><span class="dot"></span><div class="bar w55"></div><div class="grow"></div><span class="marker">50%</span><span class="marker">5 Negócios</span><span class="btn danger">remover</span></div></div>
+            <div class="card"><div class="row"><span class="dot"></span><div class="bar w40"></div><div class="grow"></div><span class="marker">75%</span><span class="marker">4 Negócios</span><span class="btn off">remover</span></div><div class="marker">Um Funil precisa de ao menos uma Etapa.</div></div>
+          </div>
+        </div>
+        <div class="zone" style="border-style:solid;border-color:var(--line-strong)">
+          <div class="zname">Remover Etapa — diálogo de remapeamento</div>
+          <div class="marker">6 Negócios ocupam esta Etapa, incluindo 1 na lixeira. Escolha para onde cada um vai. O remapeamento não avalia exigências de entrada e preserva a probabilidade ajustada à mão.</div>
+          <div class="row" style="margin-top:8px"><span class="marker">Mover todos para</span><span class="field">Etapa ▾</span></div>
+          <div class="row" style="margin-top:8px"><span class="btn off">confirmar remoção</span><span class="btn">cancelar</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="states">
+    <figure><figcaption>Funil com uma só Etapa</figcaption><div class="blocked">Remover indisponível: um Funil precisa de ao menos uma Etapa.</div></figure>
+    <figure><figcaption>Etapa sem Negócios</figcaption><div class="empty">Nenhum Negócio nesta Etapa.<br><span style="color:var(--faint)">Remover não exige remapeamento.</span></div></figure>
+    <figure><figcaption>Funil privado sem acesso</figcaption><div class="blocked">Funil privado · sem acesso. O nome aparece; as Etapas e os Negócios não.</div></figure>
+  </div>
+</section>
+
+<section class="screen" id="t-caixa">
+  <h3>Caixa de Entrada</h3>
+  <p class="why">Uma só por Espaço de Trabalho: Canais e Filas são <em>recortes</em> dela, nunca caixas separadas. Os filtros são leituras do mesmo conjunto — e o contador diz sempre quantos de quantos.</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="side"><div class="bar w55"></div></div>
+      <div class="canvas">
+        <div class="zone"><div class="row"><div class="bar w40 tall"></div><div class="grow"></div><span class="btn">configurações</span></div><div class="row" style="margin-top:5px"><span class="marker">8 abertas</span><span class="marker">4 pendentes</span><span class="marker">8 resolvidas</span><span class="marker">Prazo de reabertura: 72 h</span></div></div>
+        <div class="zone"><div class="row"><span class="field">Escopo ▾</span><span class="field">Estado ▾</span><span class="field">Canal ▾</span><span class="field">Fila ▾</span><div class="grow"></div><span class="marker">12 de 20</span></div></div>
+        <div class="frame" style="border-color:var(--line)">
+          <div style="border-bottom:1px solid var(--line);padding:8px 10px"><div class="row"><div class="grow"><div class="row"><div class="bar w40"></div><span class="marker">não resolvido</span></div><div class="bar w70" style="margin-top:4px"></div><div class="marker" style="margin-top:3px">recebida: …</div></div><div style="text-align:right"><div class="marker">aberta</div><div class="marker">WhatsApp</div><div class="marker">sem Atribuído</div><div class="marker">há 4 h</div></div></div></div>
+          <div style="border-bottom:1px solid var(--line);padding:8px 10px"><div class="row"><div class="grow"><div class="bar w55"></div><div class="bar w85" style="margin-top:4px"></div></div><div style="text-align:right"><div class="marker">pendente</div><div class="marker">E-mail</div><div class="marker">Atribuído</div></div></div></div>
+          <div style="padding:8px 10px"><div class="row"><div class="grow"><div class="row"><div class="bar w40"></div><span class="marker">adiada</span></div></div><div style="text-align:right"><div class="marker">resolvida</div></div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="states">
+    <figure><figcaption>Filtro sem resultado</figcaption><div class="empty">Nenhuma Conversa com estes filtros.<br><span style="color:var(--faint)">Ajuste o escopo, o estado, o Canal ou a Fila.</span></div></figure>
+  </div>
+</section>
+
+<section class="screen" id="t-conversa">
+  <h3>Conversa</h3>
+  <p class="why">Três colunas: a fila de Conversas à esquerda, a linha do tempo ao centro com o compositor abaixo, o contexto à direita. Atender é trabalho de fila — uma navegação por troca de Conversa é imposto cobrado centenas de vezes ao dia. <strong>Fora da janela de resposta o campo livre é substituído pelo seletor de modelo aprovado</strong> — não desabilitado com um erro depois do clique. A nota interna é visualmente distinta, porque confundi-la com uma resposta enviaria ao Contato o que era da equipe.</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="side" style="width:200px">
+        <div class="zname">Conversas</div>
+        <div class="row" style="margin-bottom:6px"><span class="field" style="font-size:10px">filtros ▾</span><span class="marker">12 de 20</span></div>
+        <div class="stack">
+          <div class="card" style="border-color:var(--line-strong)"><div class="row"><div class="bar w70"></div><span class="marker">aberta</span></div><div class="marker">há 4 h · Rascunho de IA</div></div>
+          <div class="card"><div class="row"><div class="bar w55"></div><span class="marker">pendente</span></div></div>
+          <div class="card"><div class="row"><div class="bar w70"></div><span class="marker">resolvida</span></div></div>
+        </div>
+        <div class="marker" style="margin-top:6px">A coluna fica: trocar de Conversa não custa navegação.</div>
+      </div>
+      <div class="canvas" style="border-right:1px solid var(--line)">
+        <div class="zone"><div class="row"><div class="bar w55 tall"></div><div class="grow"></div><span class="btn primary">resolver</span><span class="btn off" title="Só uma Conversa resolvida pode ir para a lixeira.">enviar à lixeira</span></div><div class="row" style="margin-top:5px"><span class="marker">aberta</span><span class="marker">WhatsApp</span><span class="marker">Canal desconectado</span><span class="marker">Fila Comercial</span></div></div>
+        <div class="zone grow">
+          <div class="zname">Linha do tempo</div>
+          <div class="stack">
+            <div class="row"><div class="card" style="max-width:70%"><div class="marker">Contato · há 2 dias</div><div class="bar full" style="margin-top:4px"></div></div></div>
+            <div class="row" style="justify-content:flex-end"><div class="card" style="max-width:70%;background:var(--ink)"><div class="marker" style="color:var(--faint)">Membro · há 2 dias · entregue</div><div class="bar full" style="margin-top:4px;background:#555"></div></div></div>
+            <div class="row" style="justify-content:flex-end"><div class="card" style="max-width:70%;border-style:dashed"><div class="marker">Membro · nota interna · há 1 dia</div><div class="bar w85" style="margin-top:4px"></div></div></div>
+            <div class="row"><div class="card" style="max-width:70%"><div class="marker">Contato · há 26 h</div><div class="bar w70" style="margin-top:4px"></div></div></div>
+          </div>
+        </div>
+        <div class="zone" style="border-style:solid;border-color:var(--line-strong)">
+          <div class="row"><span class="btn primary">responder</span><span class="btn">nota interna</span><div class="grow"></div><span class="marker">Dentro do Prazo de resposta · até 11/03 14:02</span></div>
+
+          <div class="card" style="margin-top:8px;border-style:dashed">
+            <div class="row"><span class="marker">Rascunho de IA · Agente “Qualificador SDR”</span><div class="grow"></div><span class="btn" style="font-size:10px">ver a Execução</span></div>
+            <div class="stack" style="margin-top:5px"><div class="bar full"></div><div class="bar w85"></div></div>
+            <div class="row" style="margin-top:6px"><span class="btn primary">usar</span><span class="btn danger">descartar</span><span class="marker">descartar é irrecuperável</span></div>
+          </div>
+
+          <div class="field" style="margin-top:6px;min-height:44px">escreva a resposta</div>
+          <div class="row" style="margin-top:6px"><div class="grow"></div><span class="btn primary">enviar</span></div>
+        </div>
+      </div>
+      <div class="rail">
+        <div class="zone"><div class="zname">Contato</div><div class="empty" style="padding:12px">Contato não resolvido.<br><span style="color:var(--faint)">Chegou por +55 11 …; vincule ou crie.</span></div></div>
+        <div class="zone"><div class="zname">Atribuído</div><div class="field">sem Atribuído ▾</div><div class="marker" style="margin-top:4px">Ser Atribuído não concede ver: o acesso vem do Papel e da Fila.</div></div>
+        <div class="zone"><div class="zname">Participantes</div><div class="stack"><div class="bar w70"></div><div class="bar w55"></div></div></div>
+        <div class="zone"><div class="row"><span class="zname" style="margin:0">Contexto</span><div class="grow"></div><span class="btn" style="font-size:10px">recolher</span></div><div class="marker">Recolhida, a linha do tempo recupera a largura sem que a fila se perca.</div></div>
+        <div class="zone"><div class="zname">Capacidades do tipo de Canal — somente leitura</div><div class="stack"><div class="row"><span class="marker">Prazo de resposta</span><div class="grow"></div><span>24 h</span></div><div class="row"><span class="marker">reações</span><div class="grow"></div><span>sim</span></div></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="states">
+    <figure>
+      <figcaption>Fora do Prazo de resposta — o campo livre é SUBSTITUÍDO</figcaption>
+      <div class="zone" style="border-style:solid;border-color:var(--line-strong)">
+        <div class="row"><span class="btn primary">responder</span><span class="btn">nota interna</span></div>
+        <div class="marker" style="margin-top:5px;color:var(--danger-line)">Prazo de resposta expirado em 10/03 14:02</div>
+        <div style="margin-top:6px"><div class="marker">Mensagem de modelo aprovada pelo provedor</div><div class="field">escolher modelo ▾</div></div>
+        <div class="marker" style="margin-top:5px">Escolher um modelo preenche o texto. Não há campo livre aqui: escrever para depois ser recusado desperdiça o trabalho.</div>
+        <div class="row" style="margin-top:6px"><div class="grow"></div><span class="btn off" title="Escolha uma Mensagem de modelo aprovada.">enviar</span></div>
+      </div>
+    </figure>
+    <figure>
+      <figcaption>Sem modelo aprovado no Canal</figcaption>
+      <div class="blocked">Este Canal não tem nenhuma Mensagem de modelo aprovada. Fora do Prazo, não é possível enviar — e a tela diz isso em vez de mostrar um seletor vazio.</div>
+    </figure>
+    <figure>
+      <figcaption>Sem consentimento de marketing</figcaption>
+      <div class="blocked">O modelo escolhido é de marketing e o Contato não tem consentimento vigente para essa finalidade neste Canal.</div>
+    </figure>
+  </div>
+</section>
+
+<section class="screen" id="t-chat">
+  <h3>Chat</h3>
+  <p class="why">Duas colunas: sessões à esquerda, conversa ao centro. O Chat é onde o Membro fala com um Agente — e cada resposta que resultou em ação carrega o link para a Execução que a produziu.</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="side"><div class="zname">Sessões</div><div class="stack"><div class="card"><div class="bar w70"></div><div class="marker">há 2 h</div></div><div class="card"><div class="bar w55"></div></div><div class="card"><div class="row"><div class="bar w70"></div><span class="marker">ancorada</span></div></div></div><div class="btn" style="margin-top:8px">nova Sessão</div></div>
+      <div class="canvas">
+        <div class="zone"><div class="row"><div class="bar w40 tall"></div><div class="grow"></div><span class="field">Agente ▾</span></div><div class="marker" style="margin-top:4px">Ancorada em: Negócio X — o Agente lê este contexto.</div></div>
+        <div class="zone grow"><div class="stack">
+          <div class="row" style="justify-content:flex-end"><div class="card" style="max-width:70%;background:var(--fill-deep)"><div class="bar full"></div></div></div>
+          <div class="row"><div class="card" style="max-width:78%"><div class="marker">Agente</div><div class="stack" style="margin-top:4px"><div class="bar full"></div><div class="bar w85"></div></div><div class="row" style="margin-top:6px"><span class="btn">ver a Execução</span><span class="marker">3 passos · 1 aprovação</span></div></div></div>
+        </div></div>
+        <div class="zone"><div class="field" style="min-height:38px">escreva para o Agente</div><div class="row" style="margin-top:6px"><div class="grow"></div><span class="btn primary">enviar</span></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="states">
+    <figure>
+      <figcaption>Execução em curso</figcaption>
+      <div class="card"><div class="row"><span class="marker">Execução · executando…</span><div class="grow"></div><span class="btn danger">cancelar</span></div><div class="bar w40" style="margin-top:5px"></div></div>
+    </figure>
+    <figure>
+      <figcaption>Parou para aprovação — cartão em linha</figcaption>
+      <div class="card" style="border-style:solid;border-color:var(--line-strong)">
+        <div class="row"><span class="marker">Execução · aguardando aprovação</span><div class="grow"></div><span class="marker">vence em 4 h</span></div>
+        <div class="card" style="margin-top:6px;background:var(--fill)"><div class="stack"><div class="bar full"></div><div class="bar w85"></div></div></div>
+        <div class="marker" style="margin-top:4px">Objeto integral, imutável: aprovar é aprovar exatamente isto.</div>
+        <div class="row" style="margin-top:6px"><span class="btn primary">aprovar</span><span class="btn danger">recusar</span></div>
+      </div>
+    </figure>
+    <figure>
+      <figcaption>Mensagem de sistema</figcaption>
+      <div class="card" style="background:var(--fill)"><div class="marker">Sistema · Execução cancelada por tempo limite de aprovação.</div></div>
+    </figure>
+    <figure>
+      <figcaption>Sessão vazia</figcaption>
+      <div class="empty">Nenhuma Mensagem nesta Sessão.<br><span style="color:var(--faint)">Escreva para o Agente ou ancore a Sessão num registro.</span></div>
+    </figure>
+  </div>
+</section>
+
+<section class="screen" id="t-agente">
+  <h3>Agente</h3>
+  <p class="why">O que o Agente <em>pode</em> é a informação central, não a descrição. Autonomia, Habilidades concedidas e teto de permissão do Proprietário ficam acima do histórico — porque é isso que decide se uma Execução vai parar para aprovação.</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="canvas" style="border-right:1px solid var(--line)">
+        <div class="zone"><div class="row"><div class="bar w55 tall"></div><span class="seal">pausado</span><div class="grow"></div><span class="btn">nova versão</span><span class="btn danger">enviar à lixeira</span></div><div class="row" style="margin-top:5px"><span class="marker">autonomia: assistido</span><span class="marker">Proprietário</span><span class="marker">Modelo</span></div></div>
+        <div class="zone"><div class="zname">Habilidades concedidas</div><div class="stack"><div class="card"><div class="row"><div class="bar w55"></div><div class="grow"></div><span class="marker">v3 fixada</span><span class="marker">disponível</span></div></div><div class="card"><div class="row"><div class="bar w70"></div><div class="grow"></div><span class="marker">indisponível — Ferramenta obrigatória ausente</span></div></div></div></div>
+        <div class="zone"><div class="zname">Execuções</div><div class="frame" style="border-color:var(--line)"><table class="wire"><thead><tr><th>Quando</th><th>Origem</th><th>Passos</th><th>Resultado</th></tr></thead><tbody><tr><td>há 2 h</td><td>Chat</td><td>4</td><td>concluída</td></tr><tr><td>há 1 d</td><td>Automação</td><td>2</td><td>falhou — aprovação recusada</td></tr></tbody></table></div></div>
+      </div>
+      <div class="rail">
+        <div class="zone"><div class="zname">Instrução da versão</div><div class="stack"><div class="bar full"></div><div class="bar w85"></div><div class="bar w70"></div></div></div>
+        <div class="zone"><div class="zname">Teto de permissão</div><div class="marker">O Agente nunca alcança mais do que o seu Proprietário alcança.</div></div>
+        <div class="zone"><div class="zname">Coleções recomendadas</div><div class="bar w70"></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="states">
+    <figure><figcaption>Sem Habilidade concedida</figcaption><div class="empty">Nenhuma Habilidade concedida a este Agente.<br><span style="color:var(--faint)">Sem Habilidade, o Agente responde mas não age.</span></div></figure>
+    <figure><figcaption>Sem Execuções</figcaption><div class="empty">Nenhuma Execução ainda.</div></figure>
+    <figure><figcaption>Ação impedida</figcaption><div class="blocked">Nova versão indisponível: o Agente está na lixeira. Restaure-o primeiro — ele volta pausado, nunca ativo.</div></figure>
+  </div>
+</section>
+
+<section class="screen" id="t-habilidade">
+  <h3>Habilidade</h3>
+  <p class="why">Versionada: o que se lê é uma versão, e o seletor deixa isso explícito. As Ferramentas exigidas aparecem com a marca de obrigatória — porque uma obrigatória ausente torna a concessão indisponível, e esse é o motivo mais comum de um Agente "não funcionar".</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="canvas" style="border-right:1px solid var(--line)">
+        <div class="zone"><div class="row"><div class="bar w55 tall"></div><div class="grow"></div><span class="field">versão 3 (publicada) ▾</span><span class="btn primary">publicar</span></div><div class="marker" style="margin-top:5px">Criador e Publicador. A Habilidade não tem Proprietário.</div></div>
+        <div class="zone"><div class="zname">Instrução</div><div class="stack"><div class="bar full"></div><div class="bar w85"></div></div></div>
+        <div class="zone"><div class="zname">Contrato de entrada</div><div class="frame" style="border-color:var(--line)"><table class="wire"><thead><tr><th>Parâmetro</th><th>Tipo</th><th>Obrigatório</th></tr></thead><tbody><tr><td><div class="bar w70"></div></td><td>texto</td><td>sim</td></tr><tr><td><div class="bar w55"></div></td><td>número</td><td>não</td></tr></tbody></table></div></div>
+        <div class="zone"><div class="zname">Ferramentas exigidas</div><div class="stack"><div class="row"><div class="bar w55"></div><span class="marker">obrigatória</span><span class="marker">classe: escrita reversível</span></div><div class="row"><div class="bar w40"></div><span class="marker">opcional</span></div></div></div>
+        <div class="zone"><div class="zname">Dependências de outras Habilidades</div><div class="bar w55"></div></div>
+      </div>
+      <div class="rail">
+        <div class="zone"><div class="zname">Versões</div><div class="stack"><div class="row"><span class="marker">v3</span><div class="grow"></div><span class="seal">publicada</span></div><div class="row"><span class="marker">v2</span><div class="grow"></div><span class="seal">obsoleta</span></div><div class="row"><span class="marker">v1</span><div class="grow"></div><span class="seal">obsoleta</span></div></div></div>
+        <div class="zone"><div class="zname">Concedida a</div><div class="stack"><div class="bar w70"></div><div class="bar w55"></div></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="states">
+    <figure><figcaption>Sem versão publicada</figcaption><div class="empty">Nenhuma versão publicada.<br><span style="color:var(--faint)">Um Agente só recebe Concessão de uma versão publicada.</span></div></figure>
+    <figure><figcaption>Ação impedida</figcaption><div class="blocked">Publicar indisponível: a Ferramenta obrigatória “ERP · consultar fatura” não está no Catálogo. A Concessão ficaria indisponível.</div></figure>
+  </div>
+</section>
+
+<section class="screen" id="t-automacao">
+  <h3>Automação · editor</h3>
+  <p class="why">Gatilho, condições e ações em coluna única — a leitura é de cima para baixo porque a execução é. Publicar valida tudo de uma vez e <strong>não tem efeito se falhar</strong>: por isso os erros aparecem juntos, ancorados no passo que os causou.</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="canvas" style="border-right:1px solid var(--line)">
+        <div class="zone"><div class="row"><div class="bar w55 tall"></div><span class="seal">rascunho</span><div class="grow"></div><span class="btn">testar</span><span class="btn primary">publicar</span></div></div>
+        <div class="zone"><div class="zname">Gatilho</div><div class="card"><div class="row"><span class="dot"></span><div class="bar w70"></div></div><div class="marker" style="margin-top:4px">escopo: Funil Comercial</div></div></div>
+        <div class="zone"><div class="zname">Condições</div><div class="stack"><div class="card"><div class="bar w55"></div></div><div class="card"><div class="bar w40"></div></div></div></div>
+        <div class="zone"><div class="zname">Ações — em ordem</div><div class="stack">
+          <div class="card"><div class="row"><span class="marker">1</span><div class="bar w70"></div><div class="grow"></div><span class="marker">Ferramenta</span></div></div>
+          <div class="card"><div class="row"><span class="marker">2</span><div class="bar w55"></div><div class="grow"></div><span class="marker">executar Agente</span></div><div class="marker" style="margin-top:4px">A Execução do Agente vira filha desta.</div></div>
+        </div></div>
+        <div class="zone" style="border-style:solid;border-color:var(--line-strong)"><div class="zname">Publicação recusada — nada foi alterado</div><div class="stack"><div class="blocked">Ação 2: o Agente não tem a Habilidade exigida concedida.</div><div class="blocked">Ação 1: a Ferramenta ultrapassa o teto de permissão do Proprietário.</div></div></div>
+      </div>
+      <div class="rail">
+        <div class="zone"><div class="zname">Versões</div><div class="stack"><div class="row"><span class="marker">v2</span><div class="grow"></div><span class="seal">rascunho</span></div><div class="row"><span class="marker">v1</span><div class="grow"></div><span class="seal">publicada</span></div></div><div class="marker" style="margin-top:5px">Publicar a v2 torna a v1 obsoleta no mesmo ato.</div></div>
+        <div class="zone"><div class="zname">Execuções recentes</div><div class="stack"><div class="bar w70"></div><div class="bar w55"></div></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="t-conhecimento">
+  <h3>Conhecimento</h3>
+  <p class="why">Coleções à esquerda, Documentos ao centro. A <strong>Origem</strong> de cada Documento é obrigatória e visível: um Documento sem procedência é um Documento em que não se pode confiar. Um Documento que sumiu da origem não é apagado — é marcado como ausente.</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="side"><div class="zname">Coleções</div><div class="stack"><div class="card"><div class="bar w70"></div><div class="marker">8 Documentos</div></div><div class="card"><div class="bar w55"></div><div class="marker">4 Documentos</div></div><div class="card"><div class="row"><div class="bar w70"></div><span class="seal">privada</span></div></div></div></div>
+      <div class="canvas">
+        <div class="zone"><div class="row"><div class="bar w40 tall"></div><div class="grow"></div><span class="btn primary">novo Documento</span></div><div class="marker" style="margin-top:4px">A Coleção é o único Recurso de permissão da camada de conhecimento.</div></div>
+        <div class="frame" style="border-color:var(--line)">
+          <table class="wire">
+            <thead><tr><th>Documento</th><th>Tipo</th><th>Origem</th><th>Versão</th><th>Estado</th></tr></thead>
+            <tbody>
+              <tr><td><div class="bar w85"></div></td><td>texto</td><td>manual</td><td>v2</td><td>—</td></tr>
+              <tr><td><div class="bar w70"></div></td><td>página web</td><td>URL</td><td>v5</td><td><span class="marker">ausente da origem há 12 d</span></td></tr>
+              <tr><td><div class="bar w55"></div></td><td>PDF</td><td>arquivo</td><td>v1</td><td><span class="seal">arquivado</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="states">
+    <figure><figcaption>Coleção vazia</figcaption><div class="empty">Nenhum Documento nesta Coleção.<br><span style="color:var(--faint)">Um Agente só consulta o que estiver aqui dentro.</span></div></figure>
+  </div>
+</section>
+
+<section class="screen" id="t-aprovacoes">
+  <h3>Aprovações</h3>
+  <p class="why">Três seções, e a ordem importa: o que espera <em>você</em> vem primeiro. O objeto da solicitação é imutável — aprovar é aprovar exatamente aquilo, então ele aparece integral, não resumido. Prazo vencido desabilita decidir, <strong>com o motivo escrito</strong>.</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="side"><div class="bar w55"></div></div>
+      <div class="canvas">
+        <div class="zone"><div class="bar w40 tall"></div><div class="marker" style="margin-top:4px">2 para você · 5 pendentes no Espaço de Trabalho</div></div>
+        <div class="zone">
+          <div class="zname">Aguardando a sua decisão</div>
+          <div class="card"><div class="row"><div class="grow"><div class="bar w55"></div><div class="marker">classe de efeito: escrita irreversível · motivo: autonomia · aprovador: você</div></div><span class="marker">vence em 4 h</span></div>
+            <div class="card" style="margin-top:8px;background:var(--fill)"><div class="stack"><div class="bar full"></div><div class="bar w85"></div></div></div>
+            <div class="marker" style="margin-top:5px">Cadeia: Automação → Agente → esta Execução</div>
+            <div class="row" style="margin-top:8px"><span class="btn primary">aprovar</span><span class="btn danger">rejeitar</span><span class="btn">ver o Agente</span></div>
+          </div>
+        </div>
+        <div class="zone">
+          <div class="zname">Aguardando outros aprovadores</div>
+          <div class="card"><div class="row"><div class="grow"><div class="bar w55"></div></div><span class="marker" style="color:var(--danger-line)">prazo vencido em 09/03</span></div>
+            <div class="row" style="margin-top:8px"><span class="btn off">aprovar</span><span class="btn off">rejeitar</span></div>
+            <div class="blocked" style="margin-top:6px">O prazo desta Solicitação venceu; a Execução foi cancelada.</div>
+          </div>
+        </div>
+        <div class="zone"><div class="zname">Decididas</div><div class="stack"><div class="row"><div class="bar w55"></div><div class="grow"></div><span class="marker">aprovada · 10/03</span></div><div class="row"><div class="bar w40"></div><div class="grow"></div><span class="marker">rejeitada · motivo registrado na Execução</span></div></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="states">
+    <figure><figcaption>Vazio</figcaption><div class="empty">Nenhuma Solicitação aguarda você.<br><span style="color:var(--faint)">Uma Solicitação chega quando uma Execução pede uma Ferramenta que a Concessão exige aprovar.</span></div></figure>
+  </div>
+</section>
+
+<section class="screen" id="t-painel">
+  <h3>Painel</h3>
+  <p class="why">Grade de Widgets. Cada Widget declara sua Fonte, Métrica, Dimensão e Período — e um Widget cuja Fonte o Membro não pode ver mostra "sem acesso", não zero. Zero seria mentira.</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="side"><div class="bar w55"></div></div>
+      <div class="canvas">
+        <div class="zone"><div class="row"><div class="bar w40 tall"></div><div class="grow"></div><span class="field">Período ▾</span><span class="btn primary">novo Widget</span></div></div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+          <div class="card"><div class="row"><div class="marker">Negócios ganhos · mês</div><div class="grow"></div><span class="btn" style="padding:0 5px">⋯</span></div><div class="bar tall w40" style="margin-top:8px"></div><div style="height:48px;border-bottom:1px solid var(--line);margin-top:8px"></div></div>
+          <div class="card"><div class="marker">Conversas por Canal</div><div class="row" style="margin-top:12px;align-items:flex-end;height:56px;gap:6px"><div style="width:16px;height:40px;background:var(--fill-deep)"></div><div style="width:16px;height:24px;background:var(--fill-deep)"></div><div style="width:16px;height:52px;background:var(--fill-deep)"></div></div></div>
+          <div class="card"><div class="marker">Tarefas por Status</div><div class="blocked" style="margin-top:10px">Fonte sem acesso</div></div>
+          <div class="card"><div class="marker">Valor ponderado</div><div class="bar tall w55" style="margin-top:8px"></div></div>
+          <div class="card"><div class="marker">Execuções que falharam</div><div class="empty" style="padding:12px;margin-top:8px">Sem dados no período.</div></div>
+        </div>
+        <div class="marker">Limite de 12 Widgets por Painel.</div>
+        <div class="zone"><div class="zname">Menu do Widget — aberto</div><div class="dialog" style="max-width:260px"><div class="stack" style="font-size:11px"><span>editar Widget</span><span>trocar a Fonte</span><span>reordenar no Leiaute</span><span style="color:var(--danger-line)">remover Widget</span></div></div><div class="marker" style="margin-top:5px">Remover Widget é configuração, não vai para a lixeira: confirmação simples.</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="t-membros">
+  <h3>Configurações · Membros</h3>
+  <p class="why">Remover <strong>é</strong> suceder. O diálogo mostra tudo o que passa ao Sucessor e tudo o que fica sem Responsável <em>antes</em> do ato, e o confirmar só habilita depois que um Sucessor válido for escolhido — ativo e não de base Convidado.</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="side"><div class="bar w55"></div></div>
+      <div class="canvas">
+        <div class="zone"><div class="row"><div class="bar w40 tall"></div><div class="grow"></div><span class="btn primary">convidar Membro</span></div><div class="marker" style="margin-top:4px">6 de 25 participações · 1 encerrada</div></div>
+        <div class="zone" style="border-style:solid;border-color:var(--line-strong);border-left-width:4px">
+          <div class="zname">Remover …</div>
+          <div class="marker">O Membro não é apagado: a autoria de tudo o que ele fez continua registrada.</div>
+          <div class="row" style="margin-top:8px;gap:10px;align-items:flex-start">
+            <div class="grow"><div class="zname">Passa ao Sucessor (7)</div><div class="stack"><div class="bar w85"></div><div class="bar w70"></div><div class="bar w55"></div></div></div>
+            <div class="grow"><div class="zname">Fica sem Responsável (12)</div><div class="stack"><div class="bar w70"></div><div class="bar w85"></div></div></div>
+          </div>
+          <div class="marker" style="margin-top:6px">2 Aprovações passam ao Sucessor · 1 Concessão sobre contêiner privado · 3 Sessões de Chat e a Memória do Usuário vão para a lixeira e são eliminadas em 30 dias — não são sucedidas; reconvite dentro do prazo as restaura.</div>
+          <div style="margin-top:8px"><div class="marker">Sucessor</div><div class="field">escolher Sucessor ▾</div><div class="marker">Precisa ser ativo e não pode ter Papel de base Convidado.</div></div>
+          <div class="row" style="margin-top:8px"><span class="btn off">remover Membro</span><span class="btn">cancelar</span></div>
+        </div>
+        <div class="frame" style="border-color:var(--line)">
+          <table class="wire">
+            <thead><tr><th>Membro</th><th>Papel</th><th>Estado</th><th>Disponibilidade</th><th></th></tr></thead>
+            <tbody>
+              <tr><td><div class="bar w70"></div></td><td>Proprietária</td><td>ativo</td><td>disponível</td><td><span class="btn off" title="Transfira a propriedade antes de remover este Membro.">remover</span></td></tr>
+              <tr><td><div class="bar w55"></div></td><td>Administrador</td><td>ativo</td><td>ausente</td><td><span class="btn danger">remover</span></td></tr>
+              <tr><td><div class="bar w70"></div></td><td>Convidada</td><td><span class="seal">suspenso</span></td><td>indisponível</td><td><span class="btn danger">remover</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="zone"><div class="zname">Participações removidas</div><div class="row"><div class="bar w40"></div><div class="grow"></div><span class="marker">sucedido por … · 02/2026</span></div><div class="marker" style="margin-top:4px">A autoria histórica permanece em todo Registro de Atividade que criou.</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="states">
+    <figure><figcaption>Limite atingido</figcaption><div class="blocked">[Convidar Membro] desabilitado: o limite de 25 Membros do Espaço de Trabalho foi atingido. Membros <span class="seal">pendente</span> contam para o limite.</div></figure>
+    <figure><figcaption>Sem permissão de governança</figcaption><div class="blocked">Só um Administrador ou o Proprietário convida e remove Membros. Para os demais, a ação não aparece.</div></figure>
+    <figure><figcaption>Nenhuma remoção ainda</figcaption><div class="empty">Nenhum Membro removido.</div></figure>
+  </div>
+</section>
+
+<section class="screen" id="t-membro">
+  <h3>Membro</h3>
+  <p class="why">Existe também para quem foi removido — a autoria histórica permanece, e uma ficha que some levaria junto a explicação de quem fez o quê. Nesse estado a tela apenas deixa de oferecer ações, e diz por quê.</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="canvas" style="border-right:1px solid var(--line)">
+        <div class="zone"><div class="row"><span class="dot" style="width:20px;height:20px;border-radius:50%"></span><div class="bar w40 tall"></div><span class="seal">removido</span></div><div class="row" style="margin-top:5px"><span class="marker">Papel</span><span class="marker">142 Registros de Atividade</span></div></div>
+        <div class="blocked">Membro removido em 02/2026, sucedido por Rafael Nunes. A autoria histórica permanece e nada aqui é editável.</div>
+        <div class="zone"><div class="zname">Papel</div><div class="field" style="opacity:.55">Membro ▾</div><div class="marker" style="margin-top:4px">Uma participação encerrada não muda de Papel.</div></div>
+        <div class="zone"><div class="zname">O que este Membro possui</div><div class="empty" style="padding:12px">Nada: tudo passou ao Sucessor na remoção.</div></div>
+        <div class="zone"><div class="zname">Atividade recente</div><div class="stack"><div class="bar w85"></div><div class="bar w70"></div></div><div class="marker" style="margin-top:4px">Mostrando 15 de 142. <span style="text-decoration:underline">Ver tudo na Auditoria</span></div></div>
+      </div>
+      <div class="rail">
+        <div class="zone"><div class="zname">Participação</div><div class="stack"><div class="row"><span class="marker">Estado</span><div class="grow"></div><span>removido</span></div><div class="row"><span class="marker">Sucessor</span><div class="grow"></div><div class="bar w40"></div></div></div></div>
+        <div class="zone"><div class="zname">Equipes</div><div class="empty" style="padding:10px">Retirado de todas as Equipes na remoção.</div></div>
+        <div class="zone"><div class="zname">Concessões diretas</div><div class="empty" style="padding:10px">Revogadas na remoção, exceto <code>administrar</code> sobre contêiner privado que ficaria sem administrador.</div></div>
+        <div class="zone"><div class="zname">Memória do Usuário</div><div class="marker">Na lixeira desde a remoção; eliminada em 30 dias. Só o próprio Membro a lê.</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="states">
+    <figure><figcaption>Membro ativo</figcaption><div class="zone"><div class="row"><span class="field">Papel ▾</span><span class="btn danger">remover</span></div><div class="marker" style="margin-top:4px">Rebaixar para base Convidado exige transferir a propriedade no mesmo ato.</div></div></figure>
+    <figure><figcaption>Sem permissão de governança</figcaption><div class="blocked">Só um Administrador ou o Proprietário muda o Papel de um Membro.</div></figure>
+  </div>
+</section>
+
+<section class="screen" id="t-busca">
+  <h3>Busca</h3>
+  <p class="why">Um campo sobre nove famílias, agrupado por entidade. O que uma permissão esconde simplesmente não entra no resultado — e a tela nunca confunde "nada encontrado" com "sem acesso".</p>
+  <div class="frame">
+    <div class="topbar"><div class="bar w25" style="max-width:120px"></div><div class="field grow">buscar…</div><span class="dot"></span></div>
+    <div class="body">
+      <div class="side"><div class="bar w55"></div></div>
+      <div class="canvas">
+        <div class="zone"><div class="row"><div class="field grow">termo</div><span class="marker">incluir arquivados e na lixeira</span></div></div>
+        <div class="marker">37 resultados em 5 famílias.</div>
+        <div class="zone"><div class="zname">Tarefas · 12</div><div class="stack"><div class="row"><div class="bar w70"></div><span class="seal">arquivado</span></div><div class="row"><div class="bar w55"></div></div></div><div class="marker" style="margin-top:4px">Mostrando 10 de 12. Refine o termo para ver o restante.</div></div>
+        <div class="zone"><div class="zname">Contatos · 9</div><div class="stack"><div class="bar w70"></div><div class="bar w55"></div></div></div>
+        <div class="zone"><div class="zname">Conversas · 8</div><div class="stack"><div class="bar w85"></div></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="states">
+    <figure><figcaption>Termo curto</figcaption><div class="empty">Escreva ao menos duas letras.</div></figure>
+    <figure><figcaption>Sem resultado</figcaption><div class="empty">Nada encontrado para "…".<br><span style="color:var(--faint)">Arquivados e na lixeira estão fora desta busca. Marque a opção acima para incluí-los.</span></div></figure>
+  </div>
+</section>
+
+<h2 style="font-size:20px;margin:48px 0 6px">Os diálogos que carregam decisão</h2>
+<p style="color:var(--muted);max-width:78ch;margin-top:0">Três diálogos concentram o risco do produto. Cada um antecipa a consequência <em>antes</em> do ato — é essa antecipação, e não o botão, que é o desenho.</p>
+
+<section class="screen" id="d01">
+  <h3>D01 · Mover Tarefa com Mapeamento de Status</h3>
+  <p class="why">Sem mapear, mover perderia o Status. O mapeamento vive aqui, no momento do movimento, porque um mapeamento pré-definido envelhece em silêncio quando o Conjunto muda.</p>
+  <div class="dialog" style="max-width:520px">
+    <div class="dtitle">Mover “Preparar kit de campanha” para outra Lista</div>
+    <div class="dbody">Os Conjuntos de Status diferem. Cada Status de origem precisa de um destino.</div>
+    <div class="row" style="margin-top:8px"><span class="marker">Lista de destino</span><span class="field grow">Campanhas › Execução ▾</span></div>
+    <div class="zone" style="margin-top:10px">
+      <div class="zname">Mapeamento de Status — obrigatório</div>
+      <div class="stack">
+        <div class="row"><span class="marker" style="width:110px">não iniciado</span><span>→</span><span class="field grow">A fazer ▾</span></div>
+        <div class="row"><span class="marker" style="width:110px">em revisão</span><span>→</span><span class="field grow" style="border-style:dashed">escolher ▾</span></div>
+        <div class="row"><span class="marker" style="width:110px">concluído</span><span>→</span><span class="field grow">Feito ▾</span></div>
+      </div>
+    </div>
+    <div class="blocked" style="margin-top:8px">2 Valores de Campo serão arquivados dentro da Tarefa: as Definições não alcançam o destino. Nada é descartado — reativam se a Tarefa voltar.</div>
+    <div class="row" style="margin-top:10px"><span class="btn off" title="Todo Status de origem precisa de um destino.">mover</span><span class="btn">cancelar</span></div>
+  </div>
+</section>
+
+<section class="screen" id="d03">
+  <h3>D03 · Mesclar Contatos</h3>
+  <p class="why">Irreversível na prática: a única saída é restauração de cópia. Por isso a confirmação exige digitar o nome — o gesto precisa custar tanto quanto a consequência.</p>
+  <div class="dialog" style="max-width:520px">
+    <div class="dtitle">Mesclar dois Contatos</div>
+    <div class="dbody">Um sobrevive por inteiro; o outro fica <span class="seal">mesclado</span>, terminal, legível, com link para o sobrevivente.</div>
+    <div class="row" style="margin-top:8px"><span class="marker">Sobrevivente</span><span class="field grow">Marina Alves ▾</span></div>
+    <div class="zone" style="margin-top:10px">
+      <div class="zname">O que passa ao sobrevivente</div>
+      <div class="stack" style="font-size:11px"><span>3 Conversas · 2 Negócios · 4 Identificadores · 1 Vínculo com Empresa</span><span>Consentimentos: o registro mais recente por finalidade prevalece</span></div>
+    </div>
+    <div class="row" style="margin-top:8px"><span class="marker">Digite o nome do Contato que será mesclado</span></div>
+    <div class="field">…</div>
+    <div class="row" style="margin-top:10px"><span class="btn off" title="Digite o nome para confirmar.">mesclar</span><span class="btn">cancelar</span></div>
+    <div class="blocked" style="margin-top:8px">Indisponível se os dois estiverem marcados como <code>distinto de</code>, ou se algum estiver <span class="seal">na lixeira</span> ou <span class="seal">mesclado</span>.</div>
+  </div>
+</section>
+
+<section class="screen" id="d13">
+  <h3>D13 · Converter Item de Checklist em Subtarefa</h3>
+  <p class="why">Terminal, sem conversão inversa. O que a maioria erra aqui é o progresso: o Item convertido sai do numerador <em>e</em> do denominador, então o número muda sem que nada tenha sido concluído — e o diálogo avisa antes.</p>
+  <div class="dialog" style="max-width:520px">
+    <div class="dtitle">Converter “Solicitar impressão dos folhetos” em Subtarefa?</div>
+    <div class="dbody">Sem conversão inversa. O Item ficará convertido e sairá do progresso: de “1 de 2” para “1 de 1”.</div>
+    <div class="row" style="margin-top:8px"><span class="marker">Tarefa pai</span><span class="field grow">Preparar kit de campanha ▾</span></div>
+    <div class="marker" style="margin-top:6px">Os subitens migram como Checklist da nova Subtarefa e saem deste.</div>
+    <div class="row" style="margin-top:8px"><span class="marker">Digite o nome do Item para confirmar</span></div>
+    <div class="field">…</div>
+    <div class="row" style="margin-top:10px"><span class="btn off" title="Digite o nome para confirmar.">converter</span><span class="btn">cancelar</span></div>
+    <div class="blocked" style="margin-top:8px">Converter aqui criaria o nível 4. Escolha outra Tarefa pai ou converta a partir de um nível acima. A rejeição ocorre antes de qualquer efeito.</div>
+  </div>
+</section>
+
+<h2 style="font-size:20px;margin:56px 0 6px" id="fluxos">Os dez fluxos</h2>
+<p style="color:var(--muted);max-width:78ch;margin-top:0">Cada fluxo é uma sequência de esboços ligados. O último passo de cada um é sempre o <strong>caminho de erro</strong>: um fluxo que só documenta o caminho feliz não foi documentado.</p>
+
+<div class="flow" id="f1">
+  <h3>Fluxo 1 · Concluir uma Tarefa vencida</h3>
+  <p class="why">O caso mais comum do produto, e o que expõe o acoplamento entre Status, categoria e as exigências da Lista.</p>
+  <div class="steps">
+    <div class="step"><div class="sn">1 · Início</div><div class="st">Bloco "Vencidas"</div><div class="sd">A Tarefa aparece com o marcador Vencida.</div><div class="bar full"></div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">2 · Tarefa</div><div class="st">Abre o registro</div><div class="sd">Seletor de Status agrupado por categoria.</div><div class="row"><span class="btn primary">em andamento</span><span class="btn off">concluído</span></div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">3 · Tarefa</div><div class="st">Fecha o Checklist</div><div class="sd">Os itens abertos eram o que travava.</div><div class="row"><span>☑</span><span>☑</span></div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">4 · Tarefa</div><div class="st">Conclui</div><div class="sd">O marcador Vencida some sozinho: a causa cessou.</div><div class="row"><span class="btn primary">concluído</span></div><div class="toast ok">Tarefa concluída.</div></div>
+    <span class="arrow">→</span>
+    <div class="step err"><div class="sn">⊘ Erro</div><div class="st">Checklist aberto</div><div class="sd">A Lista exige Checklists concluídos. Concluir aparece off <em>com o motivo</em> e link para a exigência — nunca falha no clique.</div><div class="blocked">2 itens de checklist abertos.</div></div>
+  </div>
+</div>
+
+<div class="flow" id="f2">
+  <h3>Fluxo 2 · Decompor trabalho: Tarefa → Subtarefa → Checklist → conversão</h3>
+  <p class="why">Prova que Checklist e Subtarefa não são a mesma coisa, e que converter um item é um ato com consequência visível.</p>
+  <div class="steps">
+    <div class="step"><div class="sn">1 · Tarefa</div><div class="st">Cria Subtarefa</div><div class="sd">Nasce na mesma Lista, um nível abaixo.</div><div class="bar full"></div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">2 · Tarefa</div><div class="st">Cria Checklist</div><div class="sd">Componente interno, sem identidade externa.</div><div class="row"><span>☐</span><div class="bar w70"></div></div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">3 · D13</div><div class="st">Confirma a conversão</div><div class="sd">Terminal: exige digitar o nome do Item. “Sem conversão inversa. O Item ficará convertido e sairá do progresso.”</div><div class="row"><span class="field grow">digite o nome</span></div><div class="row"><span class="btn danger">converter</span></div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">4 · Tarefa</div><div class="st">O progresso muda</div><div class="sd">O item convertido sai do numerador <em>e</em> do denominador — o progresso não mente.</div><div class="marker">1 de 1 (era 1 de 2)</div><div class="toast ok">Item convertido em Subtarefa.</div></div>
+    <span class="arrow">→</span>
+    <div class="step err"><div class="sn">⊘ Erro</div><div class="st">Profundidade máxima</div><div class="sd">No último nível permitido, criar Subtarefa aparece off com o limite nomeado.</div><div class="blocked">Limite de 3 níveis de Subtarefa, definido no Espaço de Trabalho.</div></div>
+  </div>
+</div>
+
+<div class="flow" id="f3">
+  <h3>Fluxo 3 · Mover Tarefa entre Listas com Conjuntos de Status distintos</h3>
+  <p class="why">O fluxo mais perigoso: mover sem mapear perderia o Status. O mapeamento é obrigatório e vive no diálogo, não numa tela de configuração distante.</p>
+  <div class="steps">
+    <div class="step"><div class="sn">1 · Tarefa</div><div class="st">Mover para…</div><div class="sd">Escolhe a Lista de destino.</div><div class="field">Lista ▾</div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">2 · Diálogo</div><div class="st">Mapeamento de Status</div><div class="sd">Os Conjuntos diferem: cada Status de origem escolhe um de destino.</div><div class="stack"><div class="row"><span class="marker">em revisão</span><span>→</span><span class="field">▾</span></div></div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">3 · Diálogo</div><div class="st">Campos que deixam de alcançar</div><div class="sd">São arquivados dentro da Tarefa, não descartados — e o diálogo diz isso.</div><div class="blocked">2 valores serão arquivados.</div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">4 · Tarefa</div><div class="st">Movida</div><div class="sd">Novo caminho no cabeçalho, novo Conjunto de Status.</div><div class="bar w85"></div></div>
+    <span class="arrow">→</span>
+    <div class="step err"><div class="sn">⊘ Erro</div><div class="st">Mapeamento incompleto</div><div class="sd">Confirmar fica off até todo Status de origem ter destino. Colisão de Definição de Campo é nomeada campo a campo.</div><div class="btn off">confirmar</div></div>
+  </div>
+</div>
+
+<div class="flow" id="f4">
+  <h3>Fluxo 4 · Avançar e ganhar um Negócio com Requisito de Etapa</h3>
+  <p class="why">Mostra que a exigência é síncrona e bloqueante — e que ela se explica antes do clique, não depois.</p>
+  <div class="steps">
+    <div class="step"><div class="sn">1 · Quadro</div><div class="st">Arrasta para Proposta</div><div class="sd">A coluna diz quantas exigências tem.</div><div class="col" style="width:auto"><div class="chd"><span>Proposta</span><span>5</span></div></div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">2 · Negócio</div><div class="st">Vincula o Contato</div><div class="sd">A exigência de entrada era essa.</div><div class="row"><div class="bar w70"></div><span class="marker">decisor</span></div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">3 · Negócio</div><div class="st">Marcar como ganho</div><div class="sd">Abre o formulário, não encerra direto.</div><div class="btn primary">marcar como ganho</div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">4 · Negócio</div><div class="st">Preenche e confirma</div><div class="sd">Permanece na Etapa Proposta com situação ganho.</div><div class="row"><span class="seal">ganho</span><span class="marker">Etapa Proposta</span></div><div class="toast ok">Negócio marcado como ganho.</div></div>
+    <span class="arrow">→</span>
+    <div class="step err"><div class="sn">⊘ Erro 1</div><div class="st">Exigência de entrada</div><div class="sd">Ao soltar na Etapa, o cartão <strong>volta à origem</strong> e o diálogo explica o que falta.</div><div class="dialog"><div class="dtitle">Não é possível entrar em Proposta</div><div class="dbody">Exige ao menos um Contato vinculado.</div><div class="row" style="margin-top:6px"><span class="btn primary">vincular Contato</span><span class="btn">cancelar</span></div></div></div>
+    <span class="arrow">→</span>
+    <div class="step err"><div class="sn">⊘ Erro 2</div><div class="st">Valor ausente no ganho</div><div class="sd">O Funil exige valor: confirmar fica off com o motivo. Reabrir um ganho, depois, só Administrador.</div><div class="blocked">Exige valor maior que zero.</div></div>
+  </div>
+</div>
+
+<div class="flow" id="f5">
+  <h3>Fluxo 5 · Atender com Rascunho de IA, resolver e reabrir</h3>
+  <p class="why">O Rascunho é sugestão, não envio. Quem envia é o Membro, e a autoria registra os dois.</p>
+  <div class="steps">
+    <div class="step"><div class="sn">1 · Caixa</div><div class="st">Abre a Conversa</div><div class="sd">Filtro "atribuídas a mim".</div><div class="bar w85"></div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">2 · Conversa</div><div class="st">Rascunho do Agente</div><div class="sd">Aparece no compositor, editável, marcado como rascunho de IA.</div><div class="field">texto sugerido</div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">3 · Conversa</div><div class="st">Edita e envia</div><div class="sd">A autoria é de quem envia: o Ator da Mensagem é o Membro. O Agente fica na <strong>Proveniência</strong> e na Execução — nunca como delegante.</div><div class="marker">Ator: Camila Duarte</div><div class="toast ok">Mensagem enviada.</div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">4 · Conversa</div><div class="st">Resolve; a resposta reabre</div><div class="sd">6 h depois, dentro do Prazo de reabertura de 72 h, a Mensagem recebida reabre a <strong>mesma</strong> Conversa.</div><div class="row"><span class="seal">aberta</span><span class="marker">reaberta 1×</span></div><div class="marker">Atividade: “Reaberta por Mensagem recebida”</div></div>
+    <span class="arrow">→</span>
+    <div class="step err"><div class="sn">⊘ Erro 1</div><div class="st">Fora do Prazo de resposta</div><div class="sd">O campo livre é substituído pelo seletor de modelo aprovado. Sem modelo aprovado no Canal, o envio é impossível e a tela diz por quê.</div><div class="blocked">Prazo expirado · só modelo aprovado.</div></div>
+    <span class="arrow">→</span>
+    <div class="step err"><div class="sn">⊘ Erro 2</div><div class="st">Depois de 72 h</div><div class="sd">A resposta cria uma <strong>Conversa nova</strong>, não reabre — com link para a anterior na linha do tempo do Contato.</div><div class="blocked">Nova Conversa por Comercial SP.</div></div>
+  </div>
+</div>
+
+<div class="flow" id="f6">
+  <h3>Fluxo 6 · Mesclar Contatos duplicados</h3>
+  <p class="why">Mesclar é irreversível na prática: o diálogo antecipa cada consequência antes de acontecer.</p>
+  <div class="steps">
+    <div class="step"><div class="sn">1 · Contatos</div><div class="st">Abre as Suspeitas de Duplicidade</div><div class="sd">O painel lateral lista os pares sugeridos e é o ponto de entrada do fluxo.</div><div class="row"><span class="btn">suspeitas (3)</span></div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">2 · D03</div><div class="st">Escolhe o sobrevivente</div><div class="sd">Um dos dois sobrevive por inteiro; o outro fica <span class="seal">mesclado</span>, terminal.</div><div class="row"><span class="field">sobrevivente ▾</span></div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">3 · Diálogo</div><div class="st">O que será reapontado</div><div class="sd">Conversas, Negócios, Vínculos e Identificadores passam ao sobrevivente.</div><div class="marker">3 Conversas · 2 Negócios</div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">4 · D03</div><div class="st">Confirma digitando o nome</div><div class="sd">Irreversível: a única saída é restauração de cópia. O mesclado não some — fica legível, marcado, com link para o sobrevivente.</div><div class="row"><span class="field grow">digite o nome</span></div><div class="row"><span class="btn danger">mesclar</span><span class="seal">mesclado</span></div></div>
+    <span class="arrow">→</span>
+    <div class="step err"><div class="sn">⊘ Erro 1</div><div class="st">Estado que não mescla</div><div class="sd">Um registro <span class="seal">na lixeira</span> ou <span class="seal">mesclado</span> não é oferecido nem como origem nem como destino.</div><div class="blocked">Só é possível mesclar Contatos ativos ou arquivados.</div></div>
+    <span class="arrow">→</span>
+    <div class="step err"><div class="sn">⊘ Erro 2</div><div class="st">Duas Conversas não resolvidas</div><div class="sd">O diálogo avisa <em>antes</em> de confirmar. As Mensagens não são movidas.</div><div class="blocked">O sobrevivente ficará com duas Conversas não resolvidas em Comercial SP. A de Mensagem mais recente permanece; a outra é resolvida com a causa mesclagem.</div></div>
+  </div>
+</div>
+
+<div class="flow" id="f7">
+  <h3>Fluxo 7 · Agente assistido age em nome de um Membro, com aprovação</h3>
+  <p class="why">O núcleo da governança de IA: autonomia, teto de permissão do Proprietário e aprovação com prazo.</p>
+  <div class="steps">
+    <div class="step"><div class="sn">1 · Chat</div><div class="st">Pede a ação</div><div class="sd">O Agente é assistido.</div><div class="field">pedido</div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">2 · Execução</div><div class="st">Para e solicita</div><div class="sd">A Ferramenta é de escrita irreversível: a Concessão exige aprovar.</div><div class="marker">aguardando aprovação</div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">3 · Aprovações</div><div class="st">O aprovador decide</div><div class="sd">Vê o objeto integral e a cadeia completa.</div><div class="row"><span class="btn primary">aprovar</span><span class="btn danger">rejeitar</span></div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">4 · Execução</div><div class="st">Retoma e conclui</div><div class="sd">O passo registra a aprovação que o liberou.</div><div class="marker">concluída · 4 passos</div></div>
+    <span class="arrow">→</span>
+    <div class="step err"><div class="sn">⊘ Erro</div><div class="st">Prazo vencido / recusa</div><div class="sd">Vencido: a Execução é cancelada e decidir fica off com o motivo. Recusada: a Execução falha e o motivo fica registrado nela.</div><div class="blocked">Prazo vencido · Execução cancelada.</div></div>
+  </div>
+</div>
+
+<div class="flow" id="f8">
+  <h3>Fluxo 8 · Automação híbrida no Funil, com Execução de Agente filha</h3>
+  <p class="why">Prova que a cadeia de Execuções é rastreável de ponta a ponta e que publicar valida tudo antes de qualquer efeito.</p>
+  <div class="steps">
+    <div class="step"><div class="sn">1 · Automação</div><div class="st">Monta o gatilho</div><div class="sd">Entrada na Etapa Proposta.</div><div class="bar w70"></div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">2 · Automação</div><div class="st">Publica</div><div class="sd">Valida escopo, ações, Ferramentas, Habilidades e teto do Proprietário. A versão anterior fica obsoleta no mesmo ato.</div><div class="btn primary">publicar</div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">3 · Negócio</div><div class="st">Dispara</div><div class="sd">A Automação executa; a ação 2 abre uma Execução de Agente filha.</div><div class="marker">Automação → Agente</div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">4 · Execução</div><div class="st">Cadeia visível</div><div class="sd">Da raiz até a folha, com o passo que cada uma produziu.</div><div class="bar w85"></div></div>
+    <span class="arrow">→</span>
+    <div class="step err"><div class="sn">⊘ Erro</div><div class="st">Publicação recusada</div><div class="sd">Sem efeito nenhum: os erros aparecem juntos, ancorados na ação que os causou, e a versão anterior continua publicada.</div><div class="blocked">Ação 2: Habilidade não concedida.</div></div>
+  </div>
+</div>
+
+<div class="flow" id="f9">
+  <h3>Fluxo 9 · Remover um Membro com sucessão</h3>
+  <p class="why">O ato de governança mais consequente. Nada acontece em silêncio.</p>
+  <div class="steps">
+    <div class="step"><div class="sn">1 · Membros</div><div class="st">Remover Membro</div><div class="sd">Off para o Proprietário: transfira a propriedade antes.</div><div class="row"><span class="btn danger">remover</span><span class="btn off">remover</span></div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">2 · Diálogo</div><div class="st">A sucessão inteira</div><div class="sd">O que passa ao Sucessor e o que fica sem Responsável, item a item.</div><div class="marker">7 transferências · 12 liberações</div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">3 · Diálogo</div><div class="st">Escolhe o Sucessor</div><div class="sd">Confirmar só habilita com um Sucessor ativo e não Convidado.</div><div class="field">Sucessor ▾</div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">4 · Membro</div><div class="st">Membro removido</div><div class="sd">A ficha continua existindo; a autoria histórica permanece em cada Registro.</div><div class="row"><span class="seal">removido</span></div><div class="toast ok">Marcos Lima removido. 7 registros e 2 aprovações passaram para Rafael Nunes.</div></div>
+    <span class="arrow">→</span>
+    <div class="step err"><div class="sn">⊘ Erro</div><div class="st">Sucessor inválido</div><div class="sd">Convidado ou não ativo: confirmar fica off, com a regra escrita ao lado do seletor.</div><div class="blocked">O Sucessor não pode ter Papel de base Convidado.</div></div>
+  </div>
+</div>
+
+<div class="flow" id="f10">
+  <h3>Fluxo 10 · A Convidada: permissões visíveis, sem vazamento</h3>
+  <p class="why">O teste de que a interface respeita a permissão sem mentir sobre ela — nem escondendo demais, nem revelando de menos.</p>
+  <div class="steps">
+    <div class="step"><div class="sn">1 · Entrar</div><div class="st">Sessão como Convidada</div><div class="sd">Trocar de Membro muda o que se vê de verdade.</div><div class="bar w70"></div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">2 · Árvore</div><div class="st">Ancestrais inertes</div><div class="sd">O caminho até o que ela alcança aparece como nome, sem link — não some, e não vira link morto.</div><div class="row" style="opacity:.5"><span class="dot"></span><div class="bar w55"></div></div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">3 · Lista</div><div class="st">Somente leitura</div><div class="sd">Compartilhada em <code>ver</code>: [Nova Tarefa] <strong>ausente</strong> e seletores desabilitados. A ação sem permissão não aparece — não aparece cinza.</div><div class="row"><span class="marker">nenhuma ação de escrita na tela</span></div></div>
+    <span class="arrow">→</span>
+    <div class="step"><div class="sn">4 · Busca</div><div class="st">Resultado filtrado</div><div class="sd">O que a permissão esconde não entra no conjunto — e "nada encontrado" nunca é confundido com "sem acesso".</div><div class="empty" style="padding:10px">Nada encontrado.</div></div>
+    <span class="arrow">→</span>
+    <div class="step err"><div class="sn">⊘ Erro</div><div class="st">URL direta</div><div class="sd">Acessando por link um registro fora do alcance, a tela responde "sem acesso" — nunca um vazio que sugira que o registro não existe.</div><div class="blocked">Sem acesso a este registro.</div></div>
+  </div>
+</div>
+
+</main>
+</div>

@@ -1,0 +1,748 @@
+/* ══════════════════════════════════════════════════════════════════════════════
+   TOKENS — a estrutura do design system do CRM-COMPLETO, com a marca N1 Digital
+
+   De onde vem cada coisa
+   ─────────────────────────────────────────────────────────────────────────────
+   A ESTRUTURA é a de `CRM-COMPLETO/estilos/tokens.css`, portada inteira: uma
+   página quase preta segurando tudo, superfícies como lavagens de branco em alfa,
+   hairline de 1px em todo lugar, duas escalas tipográficas (editorial e de
+   aplicação), quatro raios, uma elevação por lift, três degraus de tela.
+
+   A COR e a FONTE são as do `MANUAL DE MARCA - N1 DIGITAL.pdf`, e só dele:
+   · preto (45% da composição) como base — aqui #0f0f10, que lê como preto sem o
+     corte duro do #000000 contra tinta clara numa tela aberta o dia todo;
+   · #2A2A2A (20%) como o degrau de destaque;
+   · branco (25%) como tinta;
+   · o roxo #2C0263 → #9601C5 (10%) como acento, escasso e pontual;
+   · SF Pro Display, com Inter de reserva onde ela não vem do sistema.
+
+   REGRA DESTE ARQUIVO
+   ─────────────────────────────────────────────────────────────────────────────
+   Nenhum hex mora fora daqui. Nenhum `rem`/`ms` literal de escala mora fora
+   daqui. Quem precisar de uma cor nova acrescenta um token, não escreve o hex
+   na classe — `scripts/verificar-tokens.mjs` reprova o contrário.
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  color-scheme: dark;
+
+  /* ── Superfícies ─────────────────────────────────────────────────────────
+     "One near-black holds the page. Every surface above it is a white alpha
+     wash." — o sistema. Aqui o near-black é o preto da marca, neutro.        */
+  --cinza-900: #0f0f10;
+  --cinza-800: #161617;
+  --cinza-700: #1c1c1e;
+  --cinza-600: #2a2a2a; /* o #2A2A2A do manual */
+
+  --page: var(--cinza-900);              /* fundo da página                            */
+  --card: var(--cinza-800);              /* corpo opaco do cartão de destaque          */
+  --superficie-1: rgb(255 255 255 / 0.03);  /* painel padrão                  */
+  --superficie-2: rgb(255 255 255 / 0.04);  /* campo de formulário            */
+  --superficie-3: rgb(255 255 255 / 0.05);  /* item destacado de um grupo     */
+  --superficie-hover: rgb(255 255 255 / 0.06);
+  /* A única superfície que desce em vez de subir: o trilho que segura as
+     peças soltas. Sem ela, `.trilho` e `.item-solto` pintariam o mesmo branco
+     a 3% e o cartão só se separaria da coluna por 1px de borda.            */
+  --superficie-rebaixada: rgb(0 0 0 / 0.22);
+  --superficie-ativa: rgb(255 255 255 / 0.08);
+  --barra-vidro: rgb(15 15 16 / 0.4);        /* a ÚNICA superfície com blur    */
+
+  /* ── Linhas — sempre 1px. Não existe 2px no sistema inteiro. ───────────── */
+  --linha-sutil: rgb(255 255 255 / 0.05);   /* régua de cabeçalho e rodapé    */
+  --linha: rgb(255 255 255 / 0.1);          /* hairline padrão de cartão      */
+  --linha-forte: rgb(255 255 255 / 0.15);   /* botão fantasma                 */
+  --linha-acento: rgb(192 132 252 / 0.4);   /* contorno e foco                */
+  --linha-acento-forte: rgb(192 132 252 / 0.65);
+
+  /* ── Acento — o roxo do manual ───────────────────────────────────────── */
+  --roxo-900: #2c0263; /* a ponta escura do gradiente da marca               */
+  --roxo-700: #7a00a3;
+  --roxo-500: #9601c5; /* a ponta clara do gradiente da marca                */
+  --roxo-300: #c084fc; /* o acento sobre fundo escuro: AA sobre a página     */
+  --roxo-200: #d8b4fe;
+
+  --acento: var(--roxo-300);            /* a cor da marca, na versão que lê no escuro */
+  --acento-suave: var(--roxo-200);      /* hover do botão sólido                      */
+  --acento-forte: var(--roxo-500);      /* brilho e monograma                         */
+  --acento-lavado: rgb(192 132 252 / 0.12);  /* fundo do hover de contorno     */
+  --sobre-acento: var(--cinza-900);     /* tinta sobre o acento CHAPADO (lilás)       */
+  /* O botão sólido carrega o gradiente do manual, que é roxo ESCURO — a tinta
+     sobre ele é branca. É a única divergência do CRM, e é a marca que manda. */
+  --sobre-degrade: #ffffff;
+  --secundaria: #5eead4;                /* aparece UMA vez no sistema                 */
+
+  --degrade-acento: linear-gradient(135deg, var(--roxo-700), var(--roxo-500));
+  --degrade-acento-hover: linear-gradient(135deg, var(--roxo-500), var(--roxo-300));
+  --degrade-marca: linear-gradient(135deg, var(--roxo-900) 0%, var(--roxo-500) 100%);
+  --degrade-page: linear-gradient(180deg, var(--cinza-700) 0%, var(--cinza-900) 60%);
+
+  /* ── Rampa de texto ──────────────────────────────────────────────────── */
+  --texto: #ffffff;             /* títulos e nomes                            */
+  --texto-1: #e6e6e8;           /* corpo padrão                               */
+  --texto-2: #c8c8cc;           /* rótulo de cartão, citação                  */
+  --texto-3: #98989f;           /* parágrafo, nav, eyebrow                    */
+  --texto-4: #7c7c84;           /* meta, caption, placeholder                 */
+
+  /* ── Estados semânticos ──────────────────────────────────────────────────
+     Os valores são os que o N1 já tinha auditados para o escuro.            */
+  --sucesso: #4ade80;
+  --sucesso-lavado: rgb(74 222 128 / 0.12);
+  --info: #7dd3fc;
+  --info-lavado: rgb(125 211 252 / 0.12);
+  --aviso: #fbbf24;
+  --aviso-lavado: rgb(251 191 36 / 0.12);
+  --erro: #fca5a5;
+  --erro-lavado: rgb(252 165 165 / 0.12);
+  --neutro: #7c7c84;
+  --neutro-lavado: rgb(124 124 132 / 0.12);
+
+  /* ── Prioridade de tarefa — mapeada na paleta acima, zero cor nova ────── */
+  --prioridade-urgente: var(--erro);
+  --prioridade-alta: var(--aviso);
+  --prioridade-normal: var(--info);
+  --prioridade-baixa: var(--neutro);
+
+  /* ── Tipo de situação de trabalho ────────────────────────────────────── */
+  --situacao-nao-iniciado: var(--neutro);
+  --situacao-ativo: var(--info);
+  --situacao-concluido: var(--sucesso);
+
+  /* ── Situação de contato ─────────────────────────────────────────────── */
+  --contato-lead: var(--texto-3);
+  --contato-prospecto: var(--info);
+  --contato-cliente: var(--sucesso);
+  --contato-perdido: var(--erro);
+
+  /* ══ VOCABULÁRIO SEMÂNTICO DO N1 ═══════════════════════════════════════════
+     A cor aqui é vocabulário, não decoração: categoria de Status, situação de
+     Negócio, estado de Conversa, estado de Execução, selos de ciclo de vida,
+     domínio na navegação e tipo de Ator. Vieram do tokens.css anterior do N1,
+     já na versão escura auditada. Nenhum imita o acento.                  */
+
+  /* A CATEGORIA decide o encerramento, não o nome do Status. */
+  --cor-cat-nao-iniciado: #a8a29e;
+  --cor-cat-em-andamento: #fbbf24;
+  --cor-cat-concluido: #4ade80;
+  --cor-cat-fechado: #94a3b8;
+
+  /* `perdido` NÃO é vermelho: perder um Negócio é resultado do funil. */
+  --cor-neg-aberto: #7dd3fc;
+  --cor-neg-ganho: #4ade80;
+  --cor-neg-perdido: #a8a29e;
+
+  --cor-cxe-aberta: #7dd3fc;
+  --cor-cxe-pendente: #fbbf24;
+  --cor-cxe-resolvida: #a8a29e;
+
+  /* `aguardandoAprovacao` em índigo: o único estado que exige um humano. */
+  --cor-exe-pendente: #78716c;
+  --cor-exe-executando: #7dd3fc;
+  --cor-exe-aguardando: #a5b4fc;
+  --cor-exe-concluida: #4ade80;
+  --cor-exe-falhou: #fca5a5;
+  --cor-exe-cancelada: #a8a29e;
+
+  --cor-selo-arquivado: #fbbf24;
+  --cor-selo-arquivado-fundo: #451a03;
+  --cor-selo-lixeira: #fca5a5;
+  --cor-selo-lixeira-fundo: #450a0a;
+  --cor-selo-mesclado: #a5b4fc;
+  --cor-selo-mesclado-fundo: #1e1b4b;
+  --cor-selo-rascunho: #d6d3d1;
+  --cor-selo-rascunho-fundo: #3a3533;
+  --cor-selo-pausado: #fdba74;
+  --cor-selo-pausado-fundo: #431407;
+  --cor-selo-pendente: #7dd3fc;
+  --cor-selo-pendente-fundo: #082f49;
+
+  /* Domínio na navegação. Desaturado de propósito: orienta, não grita. */
+  --cor-dom-estrutura: #94a3b8;
+  --cor-dom-crm: #fbbf24;
+  --cor-dom-ia: #a5b4fc;
+  --cor-dom-paineis: #5eead4;
+
+  /* O Agente carrega marca distinta: uma ação pode ser "em nome de". */
+  --cor-ator-membro: #d6d3d1;
+  --cor-ator-agente: #a5b4fc;
+  --cor-ator-automacao: #5eead4;
+  --cor-ator-integracao: #7dd3fc;
+  --cor-ator-sistema: #57534e;
+  --cor-ator-texto: #1c1917;
+  --cor-ator-sistema-texto: #ffffff;
+
+  /* As famílias de aviso (fundo lavado opaco + traço + tinta). */
+  --cor-perigo: var(--erro);
+  --cor-perigo-forte: #fecaca;
+  --cor-perigo-texto-contraste: #450a0a; /* a tinta sobre o vermelho claro */
+  --cor-perigo-fraco: #450a0a;
+  --cor-perigo-traco: #7f1d1d;
+  --cor-perigo-texto: #fecaca;
+  --cor-sucesso-fraco: #052e16;
+  --cor-sucesso-traco: #14532d;
+  --cor-sucesso-texto: #bbf7d0;
+  --cor-atencao-fraco: #451a03;
+  --cor-atencao-traco: #78350f;
+  --cor-atencao-texto: #fde68a;
+  --cor-info-fraco: #082f49;
+  --cor-info-traco: #075985;
+  --cor-info-texto: #bae6fd;
+
+  /* A ilha do Construtor de Agentes: paleta própria, lida só por ele. */
+  --ab-fundo: var(--page);
+  --ab-painel: #121214;
+  --ab-campo: #19191d;
+  --ab-card: #17171a;
+  --ab-elevado: #212126;
+  --ab-borda: #303036;
+  --ab-borda-campo: #3a3a42;
+  --ab-texto: #f5f5f5;
+  --ab-texto-2: #afafaf;
+  --ab-texto-3: #86868f;
+  --ab-roxo: #a970ff;
+  --ab-roxo-forte: #7c3aed;
+  --ab-roxo-translucido: rgb(169 112 255 / 0.12);
+  --ab-alteracao: #f59e0b;
+
+  /* ── Escala EDITORIAL — a do sistema, para título e rótulo ─────────────
+     Uma família só (SF Pro Display); a hierarquia vem de tamanho, peso e
+     tracking, nunca de trocar de fonte.                                     */
+  --ed-display: 2.25rem;        /* 36px — título de tela                      */
+  --ed-display-lh: 2.5rem;
+  --ed-titulo: 1.5rem;          /* 24px — título de painel grande             */
+  --ed-titulo-lh: 1.875rem;
+  --ed-subtitulo: 1.125rem;     /* 18px — título de cartão                    */
+  --ed-subtitulo-lh: 1.75rem;
+  --ed-secao: 0.75rem;          /* 12px — rótulo de grupo, caixa-alta         */
+  --ed-eyebrow: 0.75rem;        /* 12px — sobre-título de seção               */
+
+  /* Escada de tracking do sistema, inteira */
+  --tr-hero: 0.6em;
+  --tr-subtitulo: 0.5em;
+  --tr-secao: 0.4em;
+  --tr-rotulo: 0.3em;           /* rótulo de cartão, índice e TODOS os botões */
+  --tr-nav: 0.25em;
+  --tr-meta: 0.2em;
+  --tr-titulo: -0.025em;        /* `tracking-tight` dos títulos               */
+
+  /* ── Escala de APLICAÇÃO — a densa, para dado ──────────────────────────
+     Tracking normal em tudo aqui. O tracking largo fica reservado a eyebrow,
+     rótulo de seção e botão.                                                 */
+  --app-xs: 0.6875rem;          /* 11px — meta, contador, carimbo de tempo    */
+  --app-xs-lh: 1rem;
+  --app-sm: 0.75rem;            /* 12px — cabeçalho de coluna, chip           */
+  --app-sm-lh: 1rem;
+  --app-base: 0.8125rem;        /* 13px — CORPO DO APP                        */
+  --app-base-lh: 1.25rem;
+  --app-md: 0.875rem;           /* 14px — nome de registro, título de cartão  */
+  --app-md-lh: 1.25rem;
+
+  /* ── Métrica de aplicação ────────────────────────────────────────────── */
+  --linha-altura: 2.25rem;      /* 36px — linha de tabela                     */
+  --linha-altura-compacta: 2rem;/* 32px                                       */
+  --controle-h-sm: 2rem;        /* 32px                                       */
+  --controle-h: 2.25rem;        /* 36px                                       */
+  --controle-h-lg: 2.75rem;     /* 44px — alvo de toque mínimo no mobile      */
+  --celula-x: 0.75rem;          /* 12px — padding horizontal de célula        */
+  --celula-y: 0.5rem;           /* 8px                                        */
+  --barra-lateral-w: 16.25rem;  /* 260px                                      */
+  --cabecalho-h: 3.5rem;        /* 56px                                       */
+
+  /* Casca e navegação. */
+  --cabecalho-tela-h: 2.75rem;  /* 44px — a barra de título de cada tela      */
+  --capa-h: 22rem;              /* 352px — a capa do Início                   */
+  --orbe-tam: 12rem;            /* 192px — o disco externo da orbe            */
+  --barra-filtros-h: 2.5rem;    /* 40px — a faixa de busca e chips            */
+  --trilha-w: 3.5rem;           /* 56px — etapa 1 da navegação (assuntos)     */
+  --painel-nav-w: 14.5rem;      /* 232px — etapa 2 (telas do assunto)         */
+  --item-trilha: 2.25rem;       /* 36px — o quadrado clicável da trilha       */
+  --item-nav-h: 1.75rem;        /* 28px — a linha do painel de navegação      */
+
+  /* Peças que antes eram literais dentro dos componentes. */
+  --pilula-h: 1.375rem;         /* 22px                                       */
+  --caixa-tam: 1rem;            /* 16px — caixa de seleção e radio            */
+  --chave-w: 2.25rem;
+  --chave-h: 1.25rem;
+  --chave-polegar: 0.875rem;
+  --avatar-xs: 1.25rem;
+  --avatar-sm: 1.5rem;
+  --avatar-md: 2rem;
+  --avatar-lg: 2.5rem;
+  --icone-xs: 0.875rem;         /* 14px                                       */
+  --icone-sm: 1rem;             /* 16px — o padrão                            */
+  --icone-md: 1.25rem;          /* 20px                                       */
+  --icone-tile: 1.375rem;       /* o ladrilho do ícone de espaço              */
+  --icone-lg: 3rem;             /* 48px — cartão de destaque                  */
+  --barra-viz-h: 0.5rem;        /* 8px — espessura de barra de gráfico        */
+  --gantt-dia: 2.125rem;        /* 34px — uma coluna de dia no cronograma     */
+  --gantt-nome: 15rem;          /* 240px — a coluna de nomes                  */
+  --popup-w: 80vw;
+  --popup-h: 80vh;
+
+  --modal-sm: 24rem;
+  --modal-md: 32rem;
+  --modal-lg: 48rem;
+  --modal-xl: 64rem;
+
+  /* O vão entre elementos independentes. É ele que dá o ar de peça solta.    */
+  --gap-solto: 0.5rem;
+  --barra-rolagem-w: 0.5rem;
+  /* Quanto uma peça sobe ao ser apontada.                                    */
+  --lift: -2px;
+
+  /* ── Espaçamento ─────────────────────────────────────────────────────── */
+  --e-1: 0.25rem;
+  --e-2: 0.5rem;
+  --e-3: 0.75rem;
+  --e-4: 1rem;
+  --e-5: 1.25rem;
+  --e-6: 1.5rem;
+  --e-8: 2rem;
+  --e-10: 2.5rem;
+  --e-12: 3rem;
+  --e-16: 4rem;
+
+  /* ── Raio — os quatro do sistema ─────────────────────────────────────── */
+  --r-controle: 0.5rem;         /* 8px — botão, campo, chip                   */
+  --r-caixa: 0.3125rem;         /* 5px — caixa de seleção                     */
+  --r-painel: 0.875rem;         /* 14px — cartão, linha solta, menu           */
+  --r-destaque: 1.75rem;        /* 28px — cartão de destaque com casca        */
+  --r-pilula: 9999px;
+
+  /* ── Elevação ────────────────────────────────────────────────────────────
+     Uma sombra, sempre colorida; elevação de cartão é lift + aro.
+     No escuro puro a sombra é discreta e o brilho de 1px no topo é o que
+     desenha o degrau — a mesma disciplina de sempre: cor por token.        */
+  --sombra: 0 25px 50px -12px rgb(0 0 0 / 0.65);
+  --sombra-suspensa: 0 12px 32px -8px rgb(0 0 0 / 0.72);
+  --sombra-repouso:
+    0 1px 2px rgb(0 0 0 / 0.45),
+    0 4px 12px -6px rgb(0 0 0 / 0.55),
+    inset 0 1px 0 rgb(255 255 255 / 0.05);
+  --sombra-flutuante:
+    0 2px 4px rgb(0 0 0 / 0.5),
+    0 12px 28px -10px rgb(0 0 0 / 0.7),
+    0 0 0 1px rgb(192 132 252 / 0.18);
+
+  /* O brilho do núcleo da orbe do Assistente: é a única fonte de luz do app,
+     e por isso pode ser generosa — 120px de halo sobre o preto da marca.   */
+  --brilho-orbe:
+    0 0 40px rgb(192 132 252 / 0.55),
+    0 0 120px rgb(192 132 252 / 0.28),
+    inset 0 1px 0 rgb(255 255 255 / 0.35);
+  --brilho-orbe-forte:
+    0 0 56px rgb(192 132 252 / 0.75),
+    0 0 160px rgb(192 132 252 / 0.4),
+    inset 0 1px 0 rgb(255 255 255 / 0.45);
+
+  /* ── Movimento — as durações e curvas do sistema ─────────────────────── */
+  --dur-1: 150ms;               /* chip, alternador                           */
+  --dur-2: 300ms;               /* cor, borda, deslize de ícone               */
+  --dur-3: 500ms;               /* lift de cartão, rotação, wipe              */
+  --dur-4: 700ms;               /* escala de imagem                           */
+  --easing: cubic-bezier(0.4, 0, 0.2, 1);
+  --easing-saida: cubic-bezier(0, 0, 0.2, 1);
+
+  /* ── Sobreposição ────────────────────────────────────────────────────── */
+  --veu-cor: rgb(0 0 0 / 0.72);
+
+  /* ── Lanterna — o aro cônico do sistema, agora roxo ──────────────────── */
+  --lanterna-aro: rgb(192 132 252 / 0.9);
+  --lanterna-halo: rgb(192 132 252 / 0.55);
+  --casca-gradiente: #2a2a2e;
+
+  /* ── Atmosfera — só no login e em marketing ──────────────────────────── */
+  /* A aura da capa do Início: o roxo da marca vazando por trás do conteúdo. */
+  --aura-capa: rgb(192 132 252 / 0.3);
+  --aura-capa-fraca: rgb(192 132 252 / 0.08);
+  --orbe-1: rgb(150 1 197 / 0.22);
+  --orbe-2: rgb(44 2 99 / 0.28);
+  --orbe-3: rgb(192 132 252 / 0.1);
+  --grade-ponto: rgb(255 255 255 / 0.04);
+  --grade-tamanho: 48px;
+  --estrela-forte: rgb(255 255 255 / 0.6);
+  --estrela-media: rgb(255 255 255 / 0.5);
+  --estrela-fraca: rgb(255 255 255 / 0.4);
+  --estrela-acento: rgb(216 180 254 / 0.5);
+  --estrela-info: rgb(125 211 252 / 0.5);
+  --selecao: rgb(192 132 252 / 0.32);
+
+  /* ── Camadas ─────────────────────────────────────────────────────────── */
+  --z-fundo: 0;
+  --z-conteudo: 10;
+  --z-cabecalho: 30;
+  --z-gaveta: 40;
+  --z-modal: 50;
+  --z-menu: 60;
+  --z-aviso: 70;
+
+  /* ── Fontes ──────────────────────────────────────────────────────────────
+     SF Pro Display é a tipografia da marca. Ela não se distribui por CDN: nos
+     aparelhos Apple vem do sistema; fora deles a Inter carregada por
+     `next/font` (`--font-sans`) assume, com a mesma métrica geométrica.     */
+  --fonte-corpo: "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont,
+    var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  --fonte-titulo: var(--fonte-corpo);
+  --fonte-mono: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* ══ CAMADA DE COMPATIBILIDADE ═════════════════════════════════════════════
+     As telas do N1 foram escritas contra os nomes antigos (`--cor-tinta`,
+     `--texto-base`, `--raio-controle`, `--esp-3`…). Elas continuam resolvendo,
+     mas para os tokens NOVOS acima — é o que faz o sistema inteiro trocar de
+     pele sem uma tela quebrar no meio da migração.
+
+     Quem escreve tela nova usa os nomes do sistema (`--texto`, `.app-base`,
+     `--r-painel`). Quem migra uma tela antiga troca o nome. Este bloco encolhe
+     conforme as telas migram, e some quando a última migrar.               */
+  --cor-tinta: var(--texto);
+  --cor-tinta-fraca: var(--texto-3);
+  --cor-tinta-tenue: var(--texto-4);
+  --cor-papel: var(--page);
+  --cor-superficie: var(--card);
+  --cor-superficie-2: var(--superficie-2);
+  --cor-superficie-3: var(--superficie-3);
+  --cor-traco: var(--linha);
+  --cor-traco-forte: var(--linha-forte);
+  --cor-acento: var(--acento);
+  --cor-acento-forte: var(--acento-forte);
+  --cor-acento-fraco: var(--acento-lavado);
+  --cor-acento-texto: var(--sobre-acento);
+  --gradiente-marca: var(--degrade-marca);
+  --gradiente-acao: var(--degrade-acento);
+  --cor-gradiente-texto: var(--sobre-degrade);
+  --cor-sucesso: var(--sucesso);
+  --cor-atencao: var(--aviso);
+  --cor-info: var(--info);
+  --cor-cortina: var(--veu-cor);
+  --fonte-interface: var(--fonte-corpo);
+  --texto-xs: var(--app-xs);
+  --texto-sm: var(--app-sm);
+  --texto-base: var(--app-base);
+  --texto-md: var(--app-md);
+  --texto-lg: var(--ed-subtitulo);
+  --texto-xl: var(--ed-titulo);
+  --peso-normal: 400;
+  --peso-medio: 500;
+  --peso-forte: 600;
+  --altura-densa: 1.35;
+  --altura-corpo: 1.55;
+  --esp-1: var(--e-1);
+  --esp-2: var(--e-2);
+  --esp-3: var(--e-3);
+  --esp-4: var(--e-4);
+  --esp-5: var(--e-5);
+  --esp-6: var(--e-6);
+  --esp-8: var(--e-8);
+  --esp-12: var(--e-12);
+  --altura-linha-tabela: var(--linha-altura);
+  --altura-controle: var(--controle-h);
+  --altura-controle-grande: var(--controle-h-lg);
+  --raio-controle: var(--r-controle);
+  --raio-superficie: var(--r-painel);
+  --raio-selo: var(--r-caixa);
+  --sombra-elevada: var(--sombra-suspensa);
+  --foco-anel: 2px;
+  --foco-deslocamento: 2px;
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   OS TRÊS DEGRAUS — o app cresce com a tela
+
+   Um app aberto num monitor de 27" com corpo de 13px e linha de 36px desperdiça
+   metade da tela e cansa a vista. O valor de `:root` acima é o piso (notebook);
+   daqui para baixo cada degrau engorda tipografia, altura de linha, alvo de
+   clique, respiro e raio — sem tocar em componente nenhum, porque tudo lá em
+   cima é token.
+
+   Os degraus são de LARGURA, não de altura: a leitura muda com a distância dos
+   olhos ao monitor, e largura é o proxy honesto disso.
+
+   REGRA: nenhum valor de escala novo pode nascer fora daqui. Se um componente
+   precisar de uma medida que cresce, ela vira token e entra nos três degraus.
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Degrau 1 · confortável (notebook grande e monitor 1080p) ──────────── */
+@media (min-width: 1440px) {
+  :root {
+    --app-xs: 0.75rem;          /* 12 */
+    --app-xs-lh: 1.125rem;
+    --app-sm: 0.8125rem;        /* 13 */
+    --app-sm-lh: 1.125rem;
+    --app-base: 0.875rem;       /* 14 */
+    --app-base-lh: 1.375rem;
+    --app-md: 0.9375rem;        /* 15 */
+    --app-md-lh: 1.375rem;
+
+    --ed-display: 2.75rem;
+    --ed-display-lh: 3rem;
+    --ed-titulo: 1.75rem;
+    --ed-titulo-lh: 2.125rem;
+    --ed-subtitulo: 1.25rem;
+    --ed-subtitulo-lh: 1.875rem;
+    --ed-secao: 0.8125rem;
+    --ed-eyebrow: 0.8125rem;
+
+    --linha-altura: 2.75rem;    /* 44 */
+    --linha-altura-compacta: 2.375rem;
+    --controle-h-sm: 2.125rem;
+    --controle-h: 2.5rem;       /* 40 */
+    --controle-h-lg: 3rem;
+    --celula-x: 1rem;
+    --celula-y: 0.625rem;
+
+    --cabecalho-tela-h: 3.25rem;
+    --capa-h: 24rem;
+    --orbe-tam: 13rem;
+    --barra-filtros-h: 3rem;
+    --trilha-w: 4rem;
+    --painel-nav-w: 16rem;
+    --item-trilha: 2.5rem;
+    --item-nav-h: 2.125rem;
+
+    --pilula-h: 1.625rem;
+    --caixa-tam: 1.125rem;
+    --chave-w: 2.5rem;
+    --chave-h: 1.375rem;
+    --chave-polegar: 1rem;
+    --avatar-xs: 1.5rem;
+    --avatar-sm: 1.75rem;
+    --avatar-md: 2.25rem;
+    --avatar-lg: 2.875rem;
+    --icone-xs: 1rem;
+    --icone-sm: 1.125rem;
+    --icone-md: 1.375rem;
+    --icone-tile: 1.625rem;
+    --icone-lg: 3.25rem;
+    --barra-viz-h: 0.625rem;
+    --gantt-dia: 2.5rem;
+    --gantt-nome: 16.5rem;
+    --modal-sm: 27rem;
+    --modal-md: 36rem;
+    --modal-lg: 54rem;
+    --modal-xl: 72rem;
+
+    --gap-solto: 0.5rem;
+    --lift: -2px;
+
+    --r-controle: 0.625rem;
+    --r-caixa: 0.375rem;
+    --r-painel: 1rem;
+    --r-destaque: 2rem;
+  }
+}
+
+/* ── Degrau 2 · amplo (1440p e ultrawide) ─────────────────────────────── */
+@media (min-width: 1760px) {
+  :root {
+    --app-xs: 0.8125rem;        /* 13 */
+    --app-xs-lh: 1.25rem;
+    --app-sm: 0.875rem;         /* 14 */
+    --app-sm-lh: 1.25rem;
+    --app-base: 0.9375rem;      /* 15 */
+    --app-base-lh: 1.5rem;
+    --app-md: 1rem;             /* 16 */
+    --app-md-lh: 1.5rem;
+
+    --ed-display: 3.25rem;
+    --ed-display-lh: 3.5rem;
+    --ed-titulo: 2rem;
+    --ed-titulo-lh: 2.375rem;
+    --ed-subtitulo: 1.375rem;
+    --ed-subtitulo-lh: 2rem;
+    --ed-secao: 0.875rem;
+    --ed-eyebrow: 0.875rem;
+
+    --linha-altura: 3.125rem;   /* 50 */
+    --linha-altura-compacta: 2.625rem;
+    --controle-h-sm: 2.375rem;
+    --controle-h: 2.75rem;      /* 44 */
+    --controle-h-lg: 3.25rem;
+    --celula-x: 1.25rem;
+    --celula-y: 0.75rem;
+
+    --cabecalho-tela-h: 3.5rem;
+    --capa-h: 26rem;
+    --orbe-tam: 14rem;
+    --barra-filtros-h: 3.25rem;
+    --trilha-w: 4.5rem;
+    --painel-nav-w: 17.5rem;
+    --item-trilha: 2.75rem;
+    --item-nav-h: 2.375rem;
+
+    --pilula-h: 1.75rem;
+    --caixa-tam: 1.25rem;
+    --chave-w: 2.75rem;
+    --chave-h: 1.5rem;
+    --chave-polegar: 1.125rem;
+    --avatar-xs: 1.75rem;
+    --avatar-sm: 2rem;
+    --avatar-md: 2.5rem;
+    --avatar-lg: 3.25rem;
+    --icone-xs: 1.125rem;
+    --icone-sm: 1.25rem;
+    --icone-md: 1.5rem;
+    --icone-tile: 1.875rem;
+    --icone-lg: 3.5rem;
+    --barra-viz-h: 0.75rem;
+    --gantt-dia: 2.875rem;
+    --gantt-nome: 18rem;
+    --modal-sm: 30rem;
+    --modal-md: 40rem;
+    --modal-lg: 60rem;
+    --modal-xl: 80rem;
+
+    --gap-solto: 0.625rem;
+    --lift: -3px;
+
+    --r-controle: 0.75rem;
+    --r-caixa: 0.4375rem;
+    --r-painel: 1.125rem;
+    --r-destaque: 2.25rem;
+  }
+}
+
+/* ── Degrau 3 · cinema (4K e televisor) ───────────────────────────────── */
+@media (min-width: 2200px) {
+  :root {
+    --app-xs: 0.875rem;         /* 14 */
+    --app-xs-lh: 1.375rem;
+    --app-sm: 0.9375rem;        /* 15 */
+    --app-sm-lh: 1.375rem;
+    --app-base: 1rem;           /* 16 */
+    --app-base-lh: 1.625rem;
+    --app-md: 1.0625rem;        /* 17 */
+    --app-md-lh: 1.625rem;
+
+    --ed-display: 3.75rem;
+    --ed-display-lh: 4rem;
+    --ed-titulo: 2.25rem;
+    --ed-titulo-lh: 2.625rem;
+    --ed-subtitulo: 1.5rem;
+    --ed-subtitulo-lh: 2.125rem;
+    --ed-secao: 0.9375rem;
+    --ed-eyebrow: 0.9375rem;
+
+    --linha-altura: 3.5rem;     /* 56 */
+    --linha-altura-compacta: 3rem;
+    --controle-h-sm: 2.625rem;
+    --controle-h: 3rem;         /* 48 */
+    --controle-h-lg: 3.5rem;
+    --celula-x: 1.5rem;
+    --celula-y: 0.875rem;
+
+    --cabecalho-tela-h: 3.875rem;
+    --capa-h: 28rem;
+    --orbe-tam: 15rem;
+    --barra-filtros-h: 3.5rem;
+    --trilha-w: 5rem;
+    --painel-nav-w: 19rem;
+    --item-trilha: 3rem;
+    --item-nav-h: 2.625rem;
+
+    --pilula-h: 2rem;
+    --caixa-tam: 1.25rem;
+    --chave-w: 3rem;
+    --chave-h: 1.625rem;
+    --chave-polegar: 1.25rem;
+    --avatar-xs: 2rem;
+    --avatar-sm: 2.25rem;
+    --avatar-md: 2.75rem;
+    --avatar-lg: 3.5rem;
+    --icone-xs: 1.25rem;
+    --icone-sm: 1.375rem;
+    --icone-md: 1.75rem;
+    --icone-tile: 2.125rem;
+    --icone-lg: 4rem;
+    --barra-viz-h: 0.875rem;
+    --gantt-dia: 3.25rem;
+    --gantt-nome: 19.5rem;
+    --modal-sm: 33rem;
+    --modal-md: 44rem;
+    --modal-lg: 66rem;
+    --modal-xl: 88rem;
+
+    --gap-solto: 0.75rem;
+    --lift: -4px;
+
+    --r-controle: 0.875rem;
+    --r-caixa: 0.5rem;
+    --r-painel: 1.25rem;
+    --r-destaque: 2.5rem;
+  }
+}
+
+/* ── Base ────────────────────────────────────────────────────────────────── */
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--page);
+  background-image: var(--degrade-page);
+  background-attachment: fixed;
+  color: var(--texto-1);
+  font-family: var(--fonte-corpo);
+  font-size: var(--app-base);
+  line-height: var(--app-base-lh);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* O preflight do Tailwind faz `svg { display: block }`, e aí todo ícone no meio
+   de uma frase cai de linha. Revertido — os ícones deste app vivem em linha. */
+svg {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+::selection {
+  background: var(--selecao);
+}
+
+/* Foco: o sistema apaga o outline e acende a borda. Mantido, mas com um anel
+   visível para quem navega por teclado. */
+:focus-visible {
+  outline: 2px solid var(--linha-acento-forte);
+  outline-offset: 2px;
+}
+
+/* ── Barra de rolagem, fina e escura ─────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: var(--barra-rolagem-w);
+  height: var(--barra-rolagem-w);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--linha);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--linha-forte);
+}
+
+.sem-barra {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.sem-barra::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Movimento reduzido ──────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

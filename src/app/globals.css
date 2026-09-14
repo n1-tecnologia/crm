@@ -1,0 +1,130 @@
+@import "tailwindcss";
+@import "../estilos/tokens.css";
+@import "../estilos/tipografia.css";
+@import "../estilos/componentes.css";
+@import "../estilos/controles.css";
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   PONTE PARA O TAILWIND
+
+   Só o mínimo. O grosso do estilo deste app é escrito com `var(--token)` em
+   classes próprias, não com utilitários — é o padrão do sistema e o que mantém
+   `scripts/verificar-tokens.mjs` capaz de auditar.
+
+   O que entra aqui é o que o Tailwind precisa conhecer para gerar utilitário:
+   cores usadas em `bg-*`/`text-*`/`border-*`, a família de fonte, as escalas.
+   Os nomes antigos do N1 (`tinta`, `papel`, `superficie`…) continuam expostos
+   porque as telas ainda migram; apontam para os tokens novos.
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+@theme inline {
+  --color-page: var(--page);
+  --color-card: var(--card);
+  --color-superficie-1: var(--superficie-1);
+  --color-superficie-2: var(--superficie-2);
+  --color-superficie-3: var(--superficie-3);
+  --color-superficie-hover: var(--superficie-hover);
+
+  --color-linha-sutil: var(--linha-sutil);
+  --color-linha: var(--linha);
+  --color-linha-forte: var(--linha-forte);
+  --color-linha-acento: var(--linha-acento);
+
+  --color-acento: var(--acento);
+  --color-acento-suave: var(--acento-suave);
+  --color-acento-forte: var(--acento-forte);
+  --color-sobre-acento: var(--sobre-acento);
+  --color-secundaria: var(--secundaria);
+
+  --color-texto: var(--texto);
+  --color-texto-1: var(--texto-1);
+  --color-texto-2: var(--texto-2);
+  --color-texto-3: var(--texto-3);
+  --color-texto-4: var(--texto-4);
+
+  --color-sucesso: var(--sucesso);
+  --color-info: var(--info);
+  --color-aviso: var(--aviso);
+  --color-erro: var(--erro);
+  --color-neutro: var(--neutro);
+
+  /* nomes antigos do N1 — as telas ainda migram */
+  --color-tinta: var(--texto);
+  --color-tinta-fraca: var(--texto-3);
+  --color-tinta-tenue: var(--texto-4);
+  --color-papel: var(--page);
+  --color-superficie: var(--card);
+  --color-traco: var(--linha);
+  --color-traco-forte: var(--linha-forte);
+  --color-perigo: var(--erro);
+  --color-atencao: var(--aviso);
+
+  --radius-controle: var(--r-controle);
+  --radius-painel: var(--r-painel);
+  --radius-destaque: var(--r-destaque);
+  --radius-superficie: var(--r-painel);
+  --radius-selo: var(--r-caixa);
+
+  --text-xs: var(--app-xs);
+  --text-sm: var(--app-sm);
+  --text-base: var(--app-base);
+  --text-md: var(--app-md);
+  --text-lg: var(--ed-subtitulo);
+  --text-xl: var(--ed-titulo);
+
+  --shadow-elevada: var(--sombra-suspensa);
+  --shadow-flutuante: var(--sombra);
+
+  --font-sans: var(--fonte-corpo);
+  --font-titulo: var(--fonte-titulo);
+  --font-mono: var(--fonte-mono);
+}
+
+/* A borda padrão do app é o hairline do sistema. Sem isto, todo `border` do
+   Tailwind sai na cor herdada e o desenho perde a linha de 10% que dá a
+   identidade. */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: var(--linha);
+  }
+}
+
+/* ── O cartão de Negócio no quadro ─────────────────────────────────────────
+   É peça solta como o resto, com UMA diferença: é ARRASTÁVEL, então não recebe
+   `flutua`. Um lift no hover disputaria com o gesto de pegar o cartão. Aqui a
+   elevação é de repouso, e o hover acende a borda em vez de mover a peça.   */
+.card-negocio {
+  border: 1px solid var(--linha);
+  background: var(--superficie-1);
+  border-radius: var(--r-painel);
+  box-shadow: var(--sombra-repouso);
+  transition:
+    border-color var(--dur-2) var(--easing),
+    box-shadow var(--dur-2) var(--easing);
+}
+
+.card-negocio:hover,
+.card-negocio:focus-visible {
+  border-color: var(--linha-acento-forte);
+  box-shadow: var(--sombra-flutuante);
+}
+
+/* O brilho de fundo do quadro de Negócios: decoração, atrás de tudo, sem
+   interceptar clique — arrastar um cartão é a ação principal desta tela. */
+.palco-quadro {
+  position: relative;
+  isolation: isolate;
+}
+
+.palco-quadro::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(60rem 40rem at 8% -10%, var(--orbe-3), transparent 70%),
+    radial-gradient(50rem 36rem at 95% 110%, var(--orbe-1), transparent 70%);
+}

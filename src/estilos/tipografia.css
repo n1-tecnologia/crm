@@ -1,0 +1,201 @@
+/* ══════════════════════════════════════════════════════════════════════════════
+   TIPOGRAFIA — as duas escalas
+
+   EDITORIAL (`.ed-*`) — tracking largo, ar. É a voz do sistema. Vai em: título
+   de tela, rótulo de seção, estado vazio, login, números grandes de indicador.
+
+   APLICAÇÃO (`.app-*`) — 13px, tracking normal, denso. Vai em: tabela, lista,
+   formulário, cartão de tarefa, tudo que é dado.
+
+   A regra prática: se o usuário LÊ, é editorial. Se o usuário VARRE, é aplicação.
+
+   As duas usam a MESMA família (SF Pro Display, do manual da N1): a hierarquia
+   vem de tamanho, peso e tracking, nunca de trocar de fonte.
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+@layer components {
+  /* ── Editorial ───────────────────────────────────────────────────────── */
+
+  .ed-display {
+    font-family: var(--fonte-titulo);
+    font-size: var(--ed-display);
+    line-height: var(--ed-display-lh);
+    font-weight: 600;
+    letter-spacing: var(--tr-titulo);
+    color: var(--texto);
+  }
+
+  .ed-titulo {
+    font-family: var(--fonte-titulo);
+    font-size: var(--ed-titulo);
+    line-height: var(--ed-titulo-lh);
+    font-weight: 600;
+    letter-spacing: var(--tr-titulo);
+    color: var(--texto);
+  }
+
+  .ed-subtitulo {
+    font-family: var(--fonte-titulo);
+    font-size: var(--ed-subtitulo);
+    line-height: var(--ed-subtitulo-lh);
+    font-weight: 600;
+    color: var(--texto);
+  }
+
+  /* Rótulo de grupo da barra lateral e cabeçalho de seção. */
+  .ed-secao {
+    font-size: var(--ed-secao);
+    line-height: 1rem;
+    font-weight: 600;
+    letter-spacing: var(--tr-rotulo);
+    text-transform: uppercase;
+    color: var(--texto-4);
+  }
+
+  /* Sobre-título de seção — com ícone à esquerda */
+  .ed-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--e-3);
+    font-size: var(--ed-eyebrow);
+    line-height: 1rem;
+    font-weight: 500;
+    letter-spacing: var(--tr-secao);
+    text-transform: uppercase;
+    color: var(--texto-3);
+  }
+
+  /* Parágrafo de estado vazio e de página de marketing */
+  .ed-corpo {
+    font-size: 1rem;
+    line-height: 1.625;
+    color: var(--texto-3);
+  }
+
+  /* ── Aplicação ───────────────────────────────────────────────────────── */
+
+  .app-xs {
+    font-size: var(--app-xs);
+    line-height: var(--app-xs-lh);
+  }
+
+  .app-sm {
+    font-size: var(--app-sm);
+    line-height: var(--app-sm-lh);
+  }
+
+  .app-base {
+    font-size: var(--app-base);
+    line-height: var(--app-base-lh);
+  }
+
+  .app-md {
+    font-size: var(--app-md);
+    line-height: var(--app-md-lh);
+    font-weight: 500;
+  }
+
+  /* Cabeçalho de coluna de tabela — o único lugar denso que mantém tracking,
+     porque é rótulo, não dado. */
+  .app-coluna {
+    font-size: var(--app-xs);
+    line-height: var(--app-xs-lh);
+    font-weight: 600;
+    letter-spacing: var(--tr-meta);
+    text-transform: uppercase;
+    color: var(--texto-4);
+  }
+
+  /* Meta: autor, data, contador — sempre em texto-4 */
+  .app-meta {
+    font-size: var(--app-xs);
+    line-height: var(--app-xs-lh);
+    color: var(--texto-4);
+  }
+
+  /* Número tabular para coluna de valor e de contagem — sem isso as colunas
+     de R$ dançam de linha para linha. */
+  .app-numero {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+
+  /* O identificador é copiado, comparado e lido em voz alta: proporcional
+     aqui é erro funcional, não de gosto. */
+  .identificador {
+    font-family: var(--fonte-mono);
+    font-size: var(--app-xs);
+    letter-spacing: 0.01em;
+  }
+
+  /* ── Texto rico (descrição e comentário salvos) ──────────────────────── */
+
+  .rico {
+    font-size: var(--app-base);
+    line-height: 1.6;
+    color: var(--texto-1);
+  }
+  .rico p {
+    margin: 0 0 0.5em;
+  }
+  .rico p:last-child {
+    margin-bottom: 0;
+  }
+  .rico h2 {
+    font-family: var(--fonte-titulo);
+    font-size: 1.15em;
+    font-weight: 600;
+    color: var(--texto);
+    margin: 0.8em 0 0.3em;
+  }
+  .rico ul,
+  .rico ol {
+    margin: 0 0 0.5em;
+    padding-left: 1.4em;
+  }
+  .rico ul {
+    list-style: disc;
+  }
+  .rico ol {
+    list-style: decimal;
+  }
+  .rico li {
+    margin: 0.15em 0;
+  }
+  .rico a {
+    color: var(--acento);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .rico blockquote {
+    border-left: 2px solid var(--linha-forte);
+    padding-left: 0.8em;
+    margin: 0.5em 0;
+    color: var(--texto-3);
+  }
+  .rico code {
+    background: var(--superficie-3);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+    font-size: 0.9em;
+  }
+  .rico pre {
+    background: var(--superficie-2);
+    border: 1px solid var(--linha);
+    border-radius: var(--r-controle);
+    padding: var(--e-3);
+    overflow-x: auto;
+    margin: 0.5em 0;
+  }
+  .rico pre code {
+    background: transparent;
+    padding: 0;
+  }
+  .rico .mencao {
+    color: var(--acento);
+    background: var(--acento-lavado);
+    border-radius: var(--r-pilula);
+    padding: 0.05em 0.4em;
+    font-weight: 500;
+  }
+}

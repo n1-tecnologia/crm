@@ -1,0 +1,200 @@
+"use client";
+
+/**
+ * T51 — Notificações.
+ *
+ * There is no Notificação entity in the ontology: what the Member has to answer
+ * is derived from records that already exist — Approvals addressed to them,
+ * Conversations assigned to them, overdue Tasks, blocked Tasks. Registered in
+ * PENDENCIAS-FRONTEND as an interface concept without an ontological base.
+ */
+
+import Link from "next/link";
+import { useState } from "react";
+import { useData, useSession } from "@/data/store";
+import {
+  contactDisplayName,
+  effectiveLifecycleOfTask,
+  isBlocked,
+  isOverdue,
+  isTerminalCategory,
+  pendingMentions,
+  statusCategory,
+} from "@/data/derive";
+import { useFormat } from "@/features/shell/use-format";
+import { ConditionMarker, CorpoDeTela, EmptyState, PageHeader, Section } from "@/features/shell/ui";
+
+export default function NotificacoesPage() {
+  const state = useData((data) => data);
+  const fmt = useFormat();
+  const { memberId } = useSession();
+  const [now] = useState(() => new Date());
+
+  const approvals = state.approvals.filter(
+    (approval) => approval.decision === undefined && approval.approverMemberId === memberId,
+  );
+
+  const myTasks = state.tasks
+    .filter((task) => task.assignees.some((a) => a.kind === "member" && a.id === memberId))
+    .filter((task) => effectiveLifecycleOfTask(state, task.id) === "ativo")
+    .filter((task) => !isTerminalCategory(statusCategory(state, task)));
+
+  const overdue = myTasks.filter((task) => isOverdue(state, task, now));
+  const blocked = myTasks.filter((task) => isBlocked(state, task));
+
+  const conversations = state.conversations.filter(
+    (conversation) =>
+      conversation.lifecycle === "ativo" &&
+      conversation.state !== "resolvida" &&
+      conversation.assignee?.kind === "member" &&
+      conversation.assignee.id === memberId,
+  );
+
+  const failedExecutions = state.agentExecutions.filter((execution) => {
+    if (execution.state !== "falhou") return false;
+    const agent = state.agents.find((a) => a.id === execution.agentId);
+    return agent?.ownerMemberId === memberId;
+  });
+
+  const mentions = pendingMentions(state, memberId);
+
+  const total =
+    approvals.length + mentions.length + overdue.length + blocked.length + conversations.length + failedExecutions.length;
+
+  return (
+    <div className="flex h-full flex-col">
+      <PageHeader title="Notificações" meta={total > 0 ? `${total} item(ns)` : undefined} />
+
+      <CorpoDeTela>
+        {total === 0 ? (
+          <EmptyState
+            title="Nada aguarda você."
+            hint="Aparecem aqui Aprovações para você decidir, menções a você em Comentários, Conversas atribuídas, Tarefas vencidas ou bloqueadas e Execuções que falharam."
+          />
+        ) : null}
+
+        {approvals.length > 0 ? (
+          <Section title="Aprovações para decidir" count={approvals.length}>
+            <ul className="pilha-solta">
+              {approvals.map((approval) => (
+                <li key={approval.id}>
+                  <Link href="/ia/aprovacoes" className="item-solto" data-bloco="true">
+                    <p className="app-base text-[var(--texto)]">
+                      {state.tools.find((t) => t.id === approval.object.toolId)?.name ??
+                        approval.object.toolId}
+                    </p>
+                    <p className="app-sm text-[var(--texto-3)]">
+                      motivo {approval.reason} · vence {fmt.relative(approval.deadline, now.getTime())}
+                    </p>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        ) : null}
+
+        {mentions.length > 0 ? (
+          <Section title="Menções a você" count={mentions.length}>
+            <ul className="pilha-solta">
+              {mentions.map(({ task, comment }) => {
+                const author =
+                  comment.author.kind === "member"
+                    ? state.members.find((m) => m.id === comment.author.id)?.displayName
+                    : state.agents.find((a) => a.id === comment.author.id)?.name;
+                return (
+                  <li key={comment.id}>
+                    <Link href={`/estrutura/tarefas/${task.id}#comentario-${comment.id}`} className="item-solto" data-bloco="true">
+                      <p className="app-base text-[var(--texto)]">
+                        {author ?? "Alguém"} mencionou você em “{task.title}”
+                      </p>
+                      <p className="app-sm truncate text-[var(--texto-3)]">
+                        {fmt.relative(comment.createdAt)} · {comment.content}
+                      </p>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+            <p className="app-meta px-1 pt-2">
+              Uma menção sai daqui quando a conversa em que ela está é resolvida.
+            </p>
+          </Section>
+        ) : null}
+
+        {conversations.length > 0 ? (
+          <Section title="Conversas atribuídas a você" count={conversations.length}>
+            <ul className="pilha-solta">
+              {conversations.map((conversation) => {
+                const contact = conversation.contactId
+                  ? state.contacts.find((c) => c.id === conversation.contactId)
+                  : undefined;
+                return (
+                  <li key={conversation.id}>
+                    <Link href={`/crm/caixa-de-entrada/${conversation.id}`} className="item-solto" data-bloco="true">
+                      <p className="app-base text-[var(--texto)]">
+                        {contact ? contactDisplayName(contact) : "Contato não resolvido"}
+                      </p>
+                      <p className="app-sm truncate text-[var(--texto-3)]">
+                        {conversation.state} · {conversation.title}
+                      </p>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </Section>
+        ) : null}
+
+        {overdue.length > 0 ? (
+          <Section title="Tarefas vencidas" count={overdue.length}>
+            <ul className="pilha-solta">
+              {overdue.map((task) => (
+                <li key={task.id}>
+                  <Link href={`/estrutura/tarefas/${task.id}`} className="item-solto">
+                    <span className="app-base min-w-0 flex-1 truncate text-[var(--texto)]">{task.title}</span>
+                    <ConditionMarker tone="danger">Vencida</ConditionMarker>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        ) : null}
+
+        {blocked.length > 0 ? (
+          <Section title="Tarefas bloqueadas" count={blocked.length}>
+            <ul className="pilha-solta">
+              {blocked.map((task) => (
+                <li key={task.id}>
+                  <Link href={`/estrutura/tarefas/${task.id}`} className="item-solto">
+                    <span className="app-base min-w-0 flex-1 truncate text-[var(--texto)]">{task.title}</span>
+                    <ConditionMarker tone="warning">Bloqueada por Dependência</ConditionMarker>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        ) : null}
+
+        {failedExecutions.length > 0 ? (
+          <Section title="Execuções que falharam" count={failedExecutions.length}>
+            <ul className="pilha-solta">
+              {failedExecutions.map((execution) => (
+                <li key={execution.id}>
+                  <Link href={`/ia/execucoes/${execution.id}`} className="item-solto" data-bloco="true">
+                    <p className="app-base text-[var(--texto)]">
+                      {state.agents.find((a) => a.id === execution.agentId)?.name ?? "Agente"}
+                    </p>
+                    <p className="app-sm text-[var(--texto-3)]">
+                      {execution.terminationReason ?? "sem motivo registrado"} ·{" "}
+                      {fmt.relative(execution.startedAt, now.getTime())}
+                    </p>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        ) : null}
+      </CorpoDeTela>
+    </div>
+  );
+}
