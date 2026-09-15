@@ -98,7 +98,7 @@ Estimativas para uma pessoa focada.
 | `docs/07-processos/solicitacao-de-pagamento.md` | **A lacuna mais séria do levantamento.** Contas a pagar e a receber têm spec lida da Lista real; a Solicitação não tem. Reconstruí o processo pelo código, que mostra o que está automatizado, não o que as pessoas fazem |
 | De-para: 6 IDs de usuário do ClickUp → Membros | Elifas `81591229`, Fabíola `81581798`, Thiago `81581826`, Iallas `81582295`, Financeiro `81581816`, revisor FO `81581802` |
 | Rotação das credenciais Omie do Marcos Paulo | Estão no histórico do git (`tenants/marcos-paulo/config.ts`) |
-| Contagem de linhas das tabelas legadas | Dimensiona a importação; nunca tive acesso ao banco ao vivo |
+| ~~Contagem de linhas das tabelas legadas~~ | **Feito.** Ver [inventário §5.7](01-inventario-financeiro-tria.md#57-volume-real). De quebra: a observabilidade (`automation_runs` e companhia) tem 9 linhas para 1.110 solicitações — pode ser descartada em vez de migrada, e `planos_de_contas` está vazia |
 
 ### Fase 1 — O CRM N1 ganha persistência e login · 3–4 semanas
 
@@ -195,7 +195,7 @@ Os dois **G** continuam sendo persistência e o motor de Automações — não s
 | `apps/api` fora do ar derruba o pipeline | O adapter degradava sem token; o novo degrada sem API — enfileira e repete, em vez de falhar o run |
 | Perder o "tempo em status" na importação | Importar o histórico como Registros de Atividade com a data original |
 | De-para de categorias fictício na plataforma | Fase 3 usa o plano real; RAG com validação contra ele, e `REVISAR` abaixo do threshold |
-| Volume desconhecido | Fase 0 mede antes de dimensionar a hidratação |
+| ~~Volume desconhecido~~ | **Fechado em 2026-09-15.** Medido: maior tabela 9.510 linhas (`omie_clientes`), solicitações 1.110, vendas 1.987. Nada pressiona importação nem hidratação — ver [inventário §5.7](01-inventario-financeiro-tria.md#57-volume-real) |
 | Credenciais Omie no histórico do git e por linha em duas tabelas | Rotacionar na Fase 0; nas telas novas, credencial só na Integração |
 | A Pessoa da conta vê chave Pix de todos hoje | Fase 3 aplica a permissão de `contas-a-pagar.md §10` |
 | Tipos divergindo entre os dois repositórios | Você adiou a unificação; um pacote de tipos compartilhado ou revisão a cada mudança de contrato evita a deriva |

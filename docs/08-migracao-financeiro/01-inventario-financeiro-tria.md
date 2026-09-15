@@ -148,7 +148,36 @@ Agrupado por função. `★` = tabela que o backend escreve; sem marca = só lid
 
 `financas_mp` (extratos), `gastos_financeiros`, `machine_marcos_paulo` e `omie_marcos` (vetoriais), `relatorio_semanal_marcos_paulo`.
 
-### 5.7 Fora do financeiro
+### 5.7 Volume real
+
+Medido em 2026-09-15 pela API do próprio projeto, com a service role key do `automation/.env`:
+
+| Tabela | Linhas | O que isso diz |
+|---|---:|---|
+| `omie_clientes` | 9.510 | A maior. Espelho do cadastro do Omie |
+| `transacoes` | 1.987 | Vendas para emissão de NF |
+| `solicitacoes_pagamentos` | 1.110 | **A tabela central do fluxo** |
+| `gastos_financeiros` | 882 | Auxiliar Marcos Paulo |
+| `contas_pagar` | 872 | Espelho de lançamentos do Omie |
+| `financas_mp` | 469 | Extratos do Marcos Paulo |
+| `conciliador_contas` (unificada) | 276 | A migration de unificação **rodou** |
+| `automation_workflow_runs` | 236 | Histórico de execuções, em uso |
+| `produtos_cadastrados_emissao_notas` | 42 | Alíquotas por produto |
+| `conciliador_contas_pagar_{pf,tria,finq}` | 62 · 51 · 31 | As antigas seguem populadas (não foram dropadas) |
+| `solicitacoes_pagamentos_marcos_paulo` | 22 | Tenant PF |
+| `contas_a_receber` | 10 | Quase vazia — coerente com a Lista dormente |
+| `automation_events` · `runs` · `steps` | 10 · 9 · 9 | **Praticamente não usadas** |
+| `payment_requests` | **0** | Confirma: desenhada e nunca usada |
+| `planos_de_contas` | **0** | **Vazia.** A tela de Plano de contas lê daqui |
+| `approval_tasks`, `automation_workflows` | 0 | Sem uso |
+
+Três leituras que mudam decisões:
+
+- **O volume não é problema.** Nada aqui pressiona a importação nem a hidratação da plataforma. O risco "volume desconhecido" do plano está fechado.
+- **A observabilidade nunca pegou.** 9 runs para 1.110 solicitações confirma o que `n8n-mastra-payment-matrix.md` diz: o painel sintetiza a partir de `solicitacoes_pagamentos`. As cinco tabelas de observabilidade podem ser descartadas em vez de migradas.
+- **`planos_de_contas` está vazia.** A tela de Plano de contas (oculta do menu) lê uma tabela sem nada. O de-para de categorias que funciona é o RAG em `conciliador_contas`, não esta tabela.
+
+### 5.8 Fora do financeiro
 
 `candidatos` (recrutamento), `webhook_test_log`.
 
