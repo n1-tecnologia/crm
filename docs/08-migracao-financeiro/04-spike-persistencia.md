@@ -72,7 +72,7 @@ A função `reordenar` faz relabeling mínimo: quem já tem posição coerente c
 
 ```
 apps/api/src/persistencia/
-  ../migracoes/001-plataforma.sql   schema plataforma: registros + workspaces
+  ../../migracoes/001-plataforma.sql   schema plataforma: registros + workspaces (apps/api/migracoes/)
   conexao.ts              o pool; lê apps/api/.env; TLS fora do localhost
   migrar.ts               aplica as migrações em ordem, uma vez cada (npm run migrar)
   repositorio.ts          hidratar, gravar por diferença, semear, reordenar
@@ -95,7 +95,9 @@ O custo é serializar escritas por Espaço de Trabalho. Para uma dezena de pesso
 
 ## O que vem agora na Fase 1
 
-1. Tabelas de identidade e sessão (Supabase Auth) — `/entrar` deixa de escolher Membro e passa a autenticar.
+1. ~~Supabase Auth — `/entrar` deixa de escolher Membro e passa a autenticar.~~ **Feito** no commit `d713253`, no mesmo dia: o Membro é resolvido por `Member.userId === usuario.id`.
 2. Uma rota por operação do domínio (16 módulos), com `store.ts` trocando `run()` local por `POST`.
 3. Bootstrap: `seed-financeiro.ts` vira script de criação do Espaço "Gestão", sem as Tarefas fictícias.
 4. Colunas geradas e índices para o que a tela de Contas a pagar filtra.
+
+A partir daqui o trabalho segue pelo GSD: `.planning/ROADMAP.md`, Phase 1.

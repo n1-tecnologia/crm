@@ -1,6 +1,8 @@
--- Schema da plataforma. Mora ao lado do `public` legado do financeiro, no
--- mesmo banco, sem encostar nele: os dois se enxergam por JOIN quando
--- precisarem, e nenhuma migration daqui toca nas 26 tabelas de lá.
+-- Schema da plataforma. Vive num projeto Supabase próprio, separado do
+-- banco do financeiro-tria: nada daqui encosta nas 26 tabelas de lá, e o
+-- que a plataforma precisar ler do financeiro chega por HTTP, nunca por JOIN.
+-- O nome `plataforma` (e não `public`) é deliberado: deixa claro de quem é
+-- cada tabela quando os dois bancos aparecem lado a lado numa conversa.
 
 create schema if not exists plataforma;
 
