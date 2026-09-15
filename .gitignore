@@ -1,7 +1,8 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
-/node_modules
+# sem barra inicial: pega tambem os node_modules de cada workspace
+node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -47,3 +48,8 @@ Thumbs.db
 
 # o manual de marca (PDF de 21 MB) fica fora do repositório
 MANUAL DE MARCA - N1 DIGITAL.pdf
+
+# monorepo: build e tipos por workspace
+apps/*/.next/
+apps/*/out/
+apps/*/next-env.d.ts

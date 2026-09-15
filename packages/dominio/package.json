@@ -1,0 +1,26 @@
+{
+  "name": "@n1/dominio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "O contrato: tipos, operações, leituras derivadas e seed. Não conhece interface nem transporte.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./operations": "./src/operations/index.ts",
+    "./operations/*": "./src/operations/*.ts",
+    "./types/*": "./src/types/*.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "zod": "^4.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.4",
+    "typescript": "^5",
+    "vitest": "^5.0.0"
+  }
+}

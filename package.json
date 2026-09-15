@@ -2,35 +2,21 @@
   "name": "n1-digital-plataforma",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "check": "npm run typecheck && npm run lint && npm run verificar:tokens && npm run test",
-    "verificar:tokens": "node scripts/verificar-tokens.mjs"
-  },
-  "dependencies": {
-    "lucide-react": "^1.44.0",
-    "next": "16.3.4",
-    "react": "19.2.8",
-    "react-dom": "19.2.8",
-    "zod": "^4.6.1",
-    "zustand": "^5.0.15"
+    "dev": "npm run dev -w @n1/web --",
+    "build": "npm run build -w @n1/web",
+    "start": "npm run start -w @n1/web --",
+    "lint": "npm run lint -w @n1/web --",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "verificar:tokens": "npm run verificar:tokens -w @n1/web",
+    "check": "npm run typecheck && npm run lint && npm run verificar:tokens && npm run test"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^24.13.4",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "@vitejs/plugin-react": "^6.1.1",
-    "eslint": "^9",
-    "eslint-config-next": "16.3.4",
-    "tailwindcss": "^4",
-    "typescript": "^5",
-    "vitest": "^5.0.0"
+    "typescript": "^5"
   }
 }
