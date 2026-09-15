@@ -15,10 +15,17 @@ Coisas que a interface precisa e que a ontologia não modela por não serem do s
 **Alternativa adotada.** O sino da barra superior é uma **visão derivada** de Eventos e Registros de Atividade dirigidos ao Membro logado, filtrada pelas suas permissões. Não é entidade, não é persistida como registro próprio, não tem estado de ciclo de vida e não aparece na matriz de cobertura como entidade.
 **Consequência.** "Lida / não lida" de notificação é estado de sessão do visualizador, como o Filtro interativo (B103 por analogia). Nada nela sobrevive a uma troca de Membro.
 
-### A2. Sessão simulada e "Trocar de Membro"
+### A2. ~~Sessão simulada e "Trocar de Membro"~~ — fechado em 2026-09-15
 **Situação.** A ontologia distingue Usuário (identidade global que se autentica) de Membro (relação com o Espaço de Trabalho) — A1.4 — mas não modela autenticação.
-**Alternativa adotada.** `/entrar` (T01) escolhe o Membro; a barra superior permite trocar. Nenhum dado é gravado: a escolha é estado da aplicação.
-**Consequência.** É o mecanismo que torna as permissões visíveis (fluxo 10). Numa versão com backend, `/entrar` seria substituída por autenticação de Usuário e a resolução do Membro seria automática.
+**Como era.** `/entrar` (T01) escolhia o Membro; a barra superior permitia trocar. Era o mecanismo que tornava as permissões visíveis no protótipo (fluxo 10).
+**Como ficou.** `/entrar` autentica o Usuário no Supabase Auth (e-mail e senha; sessão em cookie renovada pelo `proxy.ts`). O Membro é **resolvido** por `Member.userId === usuario.id`, exatamente como A1.4 pede — nunca escolhido. "Trocar de Membro" virou "Sair". Um Usuário autenticado sem Membro, ou com Membro `removido`/`pendente`, vê "Sem acesso" (RN-ET-08 / A6.4).
+**O que a mudança revelou.** O store zustand era um singleton de módulo, compartilhado entre requisições no servidor: a página de um Membro saía do servidor com os dados do Proprietário. Passou a ser um store por árvore, criado pelo `StoreProvider` já com a sessão certa. A API pública (`useData`, `useSession`…) não mudou.
+**Pendência que sobrou (A9).** Ver abaixo.
+
+### A9. Em nome de quem age uma resposta anônima a Formulário
+**Situação.** As rotas públicas (`/f/<segredo>`, `/p/<segredo>`) não têm sessão — quem responde não é Membro (Fase 4). Mas `run()` passa `session.memberId` como ator de toda operação, e o singleton antigo entregava o Proprietário por padrão. `submitForm` diz criar a Tarefa "em nome do dono do Formulário com Proveniência".
+**Alternativa adotada.** `PublicoProvider` mantém exatamente o comportamento anterior — sessão do Proprietário — para esta mudança não alterar semântica junto com infraestrutura.
+**Consequência.** Fica a pergunta: `submitForm` deveria ignorar a sessão e usar `form.ownerMemberId`, e a sessão pública deveria ser um Ator `sistema`? É decisão de ontologia (documento 19, Proveniência), não de interface.
 
 ### A3. Avatar e marca visual de Membro e de Agente
 **Situação.** A ontologia dá **Foto** ao Contato (documento 10, 6) e nada equivalente ao Membro nem ao Agente. B7 exige, porém, que o Agente seja distinguível de uma pessoa.

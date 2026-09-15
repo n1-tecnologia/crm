@@ -168,6 +168,15 @@ function telaAtiva(pathname: string, tela: Tela): boolean {
 
 /* ─────────────────────────────────────────────────────────── a casca */
 
+/** Encerra a sessão. É POST porque encerrar sessão muda estado; a rota redireciona para `/entrar`. */
+function sair(): void {
+  const form = document.createElement("form");
+  form.method = "post";
+  form.action = "/sair";
+  document.body.appendChild(form);
+  form.submit();
+}
+
 export function AppShell({ children }: { readonly children: React.ReactNode }) {
   const hidratado = useHidratado();
   const { collapsed, toggle } = useSidebarCollapsed();
@@ -285,8 +294,8 @@ function Navegacao({ onRecolher }: { readonly onRecolher: () => void }) {
 
         {/*
           Avatar e nome, e nada mais. O Papel e a Disponibilidade são do Membro
-          e vivem em `/minha-conta`. O menu continua ancorado aqui — sem ele,
-          "Trocar de Membro" não teria como ser alcançado de tela nenhuma.
+          e vivem em `/minha-conta`. "Sair" mora aqui porque é a única ação de
+          Usuário (não de Membro) que a casca oferece.
         */}
         <ActionMenu
           label={member?.displayName ?? "Escolher Membro"}
@@ -303,7 +312,7 @@ function Navegacao({ onRecolher }: { readonly onRecolher: () => void }) {
           items={[
             { label: "Minha conta", onSelect: () => router.push("/minha-conta") },
             { label: "Notificações", onSelect: () => router.push("/notificacoes") },
-            { label: "Trocar de Membro", onSelect: () => router.push("/entrar") },
+            { label: "Sair", onSelect: () => sair() },
           ]}
         />
       </nav>

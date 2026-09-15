@@ -1,97 +1,88 @@
 "use client";
 
 /**
- * T01 — choose the Member that simulates the session.
+ * T01 — entrar.
  *
- * The ontology distinguishes Usuário (global identity that authenticates) from
- * Membro (the relation with a workspace) — A1.4 — and this prototype simulates
- * only the second. Registered in PENDENCIAS-FRONTEND, A2.
+ * Até aqui esta tela escolhia o Membro que simulava a sessão (PENDÊNCIAS A2).
+ * Agora autentica o Usuário de verdade: e-mail e senha vão ao servidor
+ * (`actions.ts`), o cookie de sessão volta, e o Membro é resolvido a partir
+ * do Usuário — nunca escolhido.
  *
- * Fora da casca: um cartão sólido centrado sobre a grade de pontos, e cada
- * Membro é uma peça solta — o clicável ocupa a peça inteira.
+ * Os campos são nativos e não `TextInput` porque um formulário de Server
+ * Action lê `name`, e o `TextInput` do sistema é controlado e não expõe um.
+ * A classe é a mesma, então a aparência é a mesma.
+ *
+ * Fora da casca: um cartão sólido centrado sobre a grade de pontos.
  */
 
-import { useRouter } from "next/navigation";
-import { useData, useSession } from "@/dados/store";
-import { ActorAvatar, Painel, StateSeal } from "@/features/shell/ui";
+import { useActionState } from "react";
+import { useSearchParams } from "next/navigation";
+import { entrar, type EstadoDoLogin } from "./actions";
+import { Button, Field } from "@/design/components";
+import { Painel } from "@/features/shell/ui";
+
+const inicial: EstadoDoLogin = {};
 
 export default function EntrarPage() {
-  const router = useRouter();
-  const { setMemberId } = useSession();
-  const workspace = useData((data) => data.workspace);
-  const members = useData((data) => data.members);
-  const roles = useData((data) => data.roles);
-
-  const enter = (memberId: string) => {
-    setMemberId(memberId);
-    router.push("/");
-  };
+  const params = useSearchParams();
+  const para = params.get("para") ?? "";
+  const [estado, acao, pendente] = useActionState(entrar, inicial);
 
   return (
     <main className="grade-pontos flex min-h-screen items-center justify-center p-6">
-      <div className="w-full max-w-lg">
+      <div className="w-full max-w-sm">
         <Painel solido className="p-6">
-          <h1 className="ed-titulo">{workspace.name}</h1>
+          <h1 className="ed-titulo">N1 Digital</h1>
           <p className="app-base mt-1" style={{ color: "var(--texto-3)" }}>
-            Escolha o Membro que vai simular a sessão. Trocar de Membro muda tudo o que se vê: as
-            permissões são reais.
+            Entre com o e-mail e a senha da sua conta.
           </p>
 
-          <ul className="pilha-solta mt-6">
-            {members.map((member) => {
-              const role = roles.find((r) => r.id === member.roleId);
-              // RN-ET-08 / A6.4 — `pendente` and `removido` do not act.
-              const canEnter = member.state === "ativo" || member.state === "suspenso";
-              const reason =
-                member.state === "pendente"
-                  ? "Convite não aceito."
-                  : member.state === "removido"
-                    ? "Participação encerrada; a autoria histórica permanece."
-                    : member.state === "suspenso"
-                      ? "Participação suspensa: entra apenas em leitura."
-                      : "";
-              return (
-                <li key={member.id}>
-                  {/* Quem não entra não sobe no hover: a peça fica estática. */}
-                  <button
-                    type="button"
-                    onClick={() => enter(member.id)}
-                    disabled={!canEnter}
-                    title={canEnter ? undefined : reason}
-                    aria-disabled={!canEnter}
-                    data-alinhamento="topo"
-                    data-estatico={canEnter ? undefined : "true"}
-                    className="item-solto w-full text-left disabled:cursor-not-allowed disabled:opacity-60"
-                    style={{ paddingBlock: "var(--e-2)" }}
-                  >
-                    <ActorAvatar
-                      kind="member"
-                      name={member.displayName}
-                      size="grande"
-                      {...(member.photoFileId ? { photoFileId: member.photoFileId } : {})}
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-2">
-                        <span className="app-md" style={{ color: "var(--texto)" }}>
-                          {member.displayName}
-                        </span>
-                        <StateSeal state={member.state} />
-                      </span>
-                      <span className="app-base block" style={{ color: "var(--texto-3)" }}>
-                        {role?.name}
-                        {reason ? ` · ${reason}` : ""}
-                      </span>
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          <form action={acao} className="mt-6 flex flex-col gap-4">
+            <input type="hidden" name="para" value={para} />
+
+            <Field label="E-mail">
+              {(id) => (
+                <input
+                  id={id}
+                  name="email"
+                  type="email"
+                  autoComplete="username"
+                  required
+                  autoFocus
+                  className="campo alvo-toque"
+                  aria-invalid={Boolean(estado.erro)}
+                />
+              )}
+            </Field>
+
+            <Field label="Senha">
+              {(id) => (
+                <input
+                  id={id}
+                  name="senha"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  className="campo alvo-toque"
+                  aria-invalid={Boolean(estado.erro)}
+                />
+              )}
+            </Field>
+
+            {estado.erro ? (
+              <p role="alert" className="app-sm" style={{ color: "var(--erro)" }}>
+                {estado.erro}
+              </p>
+            ) : null}
+
+            <Button type="submit" variant="primary" full disabled={pendente}>
+              {pendente ? "Entrando…" : "Entrar"}
+            </Button>
+          </form>
         </Painel>
 
         <p className="app-sm mt-4 text-center" style={{ color: "var(--texto-3)" }}>
-          A autenticação de Usuário não faz parte deste protótipo: não há backend. A escolha do Membro
-          é estado da aplicação e não é gravada.
+          Quem entra é o Usuário; o Membro — e tudo o que ele pode ver — é resolvido a partir dele.
         </p>
       </div>
     </main>

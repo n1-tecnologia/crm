@@ -6,10 +6,12 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "migrar": "vite-node src/persistencia/migrar.cli.ts"
+    "migrar": "vite-node src/persistencia/migrar.cli.ts",
+    "usuarios:seed": "vite-node src/autenticacao/criar-usuarios-do-seed.ts"
   },
   "dependencies": {
     "@n1/dominio": "*",
+    "@supabase/supabase-js": "^2.116.0",
     "@types/pg": "^8.23.1",
     "pg": "^8.23.0"
   },

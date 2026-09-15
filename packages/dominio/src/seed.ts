@@ -8,6 +8,7 @@
 
 import { nextId, resetIdSequence } from "./operations/activity";
 import type { DataState } from "./state";
+import { usuarioDoSeed } from "./usuarios-do-seed";
 import type {
   ActivityRecord,
   ActorRef,
@@ -153,7 +154,7 @@ export function buildSeed(): DataState {
   ): Member => ({
     id,
     workspaceId: WORKSPACE_ID,
-    userId: `usr_${id}`,
+    userId: usuarioDoSeed(id),
     displayName,
     state,
     roleId,

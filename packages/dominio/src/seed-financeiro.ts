@@ -15,6 +15,7 @@
  */
 
 import type { DataState } from "./state";
+import { usuarioDoSeed } from "./usuarios-do-seed";
 import { CP } from "./operations/financeiro";
 import type {
   ActorRef,
@@ -50,7 +51,7 @@ export function applyContasAPagar(state: DataState, clock: Clock): void {
   const mk = (id: Id, displayName: string, roleId: Id): Member => ({
     id,
     workspaceId,
-    userId: `usr_${id}`,
+    userId: usuarioDoSeed(id),
     displayName,
     state: "ativo",
     roleId,
