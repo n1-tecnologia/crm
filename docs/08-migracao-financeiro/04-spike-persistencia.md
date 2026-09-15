@@ -1,6 +1,6 @@
 # Spike da Fase 1 — a hidratação do `DataState` funciona
 
-**2026-09-15.** Resultado: a aposta técnica da Fase 1 está **validada**, com três correções de desenho que só apareceram porque o spike existiu.
+**2026-09-15.** Resultado: a aposta técnica da Fase 1 está **validada** — primeiro num Postgres local, depois no Supabase de verdade — com quatro correções de desenho que só apareceram porque o spike existiu.
 
 ## A aposta
 
@@ -25,17 +25,22 @@ Sem `DATABASE_URL` os quatro pulam, para `npm run check` não depender de infrae
 
 ## Números
 
-| | Registros | Tempo |
-|---|---|---|
-| Espaço de Trabalho inteiro (seed) | 906 · 475 KB | — |
-| Semear do zero | 908 | 72 ms |
-| **Hidratar** | 906 | **18 ms** |
-| Hidratar com 10× | 3.714 | **32 ms** |
-| Gravar um Comentário | 2 | — |
+O banco da plataforma é um projeto Supabase **próprio** (`epomplsskqpluxuujpxl`), separado do financeiro. As medições abaixo separam o que é rede do que é trabalho, porque daqui — um notebook no Brasil — cada ida e volta ao servidor custa **~234 ms**, e isso distorceria qualquer leitura.
 
-Hidratar o Espaço de Trabalho inteiro custa menos que a maioria das chamadas de rede que a tela já faz. A abordagem tem folga larga antes de precisar de recorte por Lista.
+| | Registros | Postgres local | Supabase (mediana) | Além da rede |
+|---|---|---|---|---|
+| Semear do zero | 908 | 72 ms | ~2.000 ms | — |
+| **Hidratar** | 906 · 475 KB | **18 ms** | **316 ms** | **~82 ms** |
+| Hidratar com 10× | 3.714 | 32 ms | 496 ms | ~263 ms |
+| Gravar um Comentário | 2 linhas | — | — | — |
 
-## Os três achados
+A leitura que importa é a última coluna: o custo real de hidratar o Espaço de Trabalho inteiro é da ordem de **80 ms**. O resto é a distância física entre quem pergunta e o banco — e o `apps/api` não vai rodar num notebook.
+
+### Onde o banco está
+
+O projeto foi criado em **us-west-2 (Oregon)** — confirmado pela tabela oficial de faixas de IP da AWS. Daqui, uma conexão a Oregon leva 250 ms; a São Paulo (`sa-east-1`), 99 ms. Como o projeto está vazio (só o schema `plataforma`), **recriá-lo em São Paulo agora custa um `npm run migrar`**. Depois, custa uma migração de dados. É decisão do dono do projeto; o plano segue igual nos dois casos.
+
+## Os quatro achados
 
 ### 1. Coleção vazia não deixa rastro
 
@@ -57,12 +62,19 @@ O log de atividade é escrito com `state.activity.unshift(record)` — o mais no
 
 A função `reordenar` faz relabeling mínimo: quem já tem posição coerente com o antecessor fica onde está. O limite conhecido é a precisão do `double` depois de ~50 inserções sucessivas no mesmo ponto; quando a fração não cabe mais, ela renumera a partir dali com inteiros.
 
+### 4. Duas consultas em `Promise.all` no mesmo cliente são duas idas e voltas
+
+`hidratar` buscava os registros e a revisão do Espaço de Trabalho em paralelo — mas o cliente `pg` serializa consultas numa conexão, e cada uma pagava a rede inteira. Com latência alta e instável, a mediana foi a **11.413 ms**.
+
+**Correção:** uma consulta só, com a revisão vinda por `LEFT JOIN` em cada linha (8 bytes por registro contra uma ida e volta). **11.413 → 316 ms.** É o tipo de coisa que um Postgres local, a 0,2 ms de distância, jamais teria mostrado.
+
 ## O que ficou de pé
 
 ```
 apps/api/src/persistencia/
-  schema.sql              schema plataforma: registros + workspaces
-  conexao.ts              o pool
+  ../migracoes/001-plataforma.sql   schema plataforma: registros + workspaces
+  conexao.ts              o pool; lê apps/api/.env; TLS fora do localhost
+  migrar.ts               aplica as migrações em ordem, uma vez cada (npm run migrar)
   repositorio.ts          hidratar, gravar por diferença, semear, reordenar
   unidade-de-trabalho.ts  executar(): transação + revisão otimista
   persistencia.test.ts    as quatro verificações

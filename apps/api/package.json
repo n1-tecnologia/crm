@@ -5,7 +5,8 @@
   "description": "Esqueleto do backend. A camada HTTP ainda não foi escolhida — ver CONTEXT.md.",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "migrar": "vite-node src/persistencia/migrar.cli.ts"
   },
   "dependencies": {
     "@n1/dominio": "*",
@@ -15,6 +16,7 @@
   "devDependencies": {
     "@types/node": "^24.13.4",
     "typescript": "^5",
+    "vite-node": "^6.0.0",
     "vitest": "^5.0.0"
   }
 }

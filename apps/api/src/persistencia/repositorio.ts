@@ -61,17 +61,19 @@ export interface EstadoHidratado {
 }
 
 export async function hidratar(cliente: PoolClient, workspaceId: string): Promise<EstadoHidratado> {
-  const [linhas, ws] = await Promise.all([
-    cliente.query<{ colecao: string; id: string; dados: unknown; ordem: number }>(
-      "select colecao, id, dados, ordem from plataforma.registros where workspace_id = $1 order by colecao, ordem",
-      [workspaceId],
-    ),
-    cliente.query<{ revisao: string }>(
-      "select revisao from plataforma.workspaces where workspace_id = $1",
-      [workspaceId],
-    ),
-  ]);
-  if (ws.rowCount === 0) throw new Error(`Espaço de Trabalho "${workspaceId}" não existe.`);
+  // Uma ida e volta só. A revisão vem repetida em cada linha — são 8 bytes
+  // por registro contra uma latência de rede inteira; e o LEFT JOIN garante
+  // que um Espaço de Trabalho vazio ainda devolva a sua revisão.
+  const linhas = await cliente.query<{ colecao: string | null; id: string | null; dados: unknown; ordem: number | null; revisao: string }>(
+    `select r.colecao, r.id, r.dados, r.ordem, w.revisao
+       from plataforma.workspaces w
+       left join plataforma.registros r on r.workspace_id = w.workspace_id
+      where w.workspace_id = $1
+      order by r.colecao, r.ordem`,
+    [workspaceId],
+  );
+  if (linhas.rowCount === 0) throw new Error(`Espaço de Trabalho "${workspaceId}" não existe.`);
+  const revisao = Number(linhas.rows[0]!.revisao);
 
   // Toda coleção nasce vazia: uma sem registros não deixa linha no banco, e
   // `state.files` valendo `undefined` em vez de `[]` quebraria o domínio na
@@ -80,12 +82,13 @@ export async function hidratar(cliente: PoolClient, workspaceId: string): Promis
   const original: Original = new Map();
   const ordem: Ordem = new Map();
   for (const linha of linhas.rows) {
+    if (linha.colecao === null || linha.id === null) continue; // Espaço vazio: só a revisão veio.
     let daColecao = original.get(linha.colecao);
     if (!daColecao) original.set(linha.colecao, (daColecao = new Map()));
     daColecao.set(linha.id, canonico(linha.dados));
     let ordemDaColecao = ordem.get(linha.colecao);
     if (!ordemDaColecao) ordem.set(linha.colecao, (ordemDaColecao = new Map()));
-    ordemDaColecao.set(linha.id, linha.ordem);
+    ordemDaColecao.set(linha.id, linha.ordem!);
 
     if (SINGULARES.has(linha.colecao)) {
       state[linha.colecao] = linha.dados;
@@ -94,7 +97,7 @@ export async function hidratar(cliente: PoolClient, workspaceId: string): Promis
       lista.push(linha.dados);
     }
   }
-  return { state: state as unknown as DataState, revisao: Number(ws.rows[0]!.revisao), original, ordem };
+  return { state: state as unknown as DataState, revisao, original, ordem };
 }
 
 /**

@@ -7,18 +7,20 @@
  * os 214. É esse o argumento que este arquivo verifica, e não "o INSERT
  * funcionou".
  *
- * Precisa de um Postgres em DATABASE_URL. Sem ele, os testes são pulados em
- * vez de falhar, para `npm run check` não depender de infraestrutura.
+ * Precisa de um Postgres em DATABASE_URL — da variável de ambiente ou de
+ * `apps/api/.env`. Sem ele, os testes são pulados em vez de falhar, para
+ * `npm run check` não depender de infraestrutura.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildSeed } from "@n1/dominio/seed";
 import type { DataState } from "@n1/dominio";
 import { addTaskComment, changeTaskStatus, CP } from "@n1/dominio/operations";
-import { encerrar, pool } from "./conexao";
+import { carregarEnv, encerrar, pool } from "./conexao";
 import { hidratar, semear } from "./repositorio";
 import { executar } from "./unidade-de-trabalho";
 
+carregarEnv();
 const temBanco = Boolean(process.env.DATABASE_URL);
 const d = temBanco ? describe : describe.skip;
 
