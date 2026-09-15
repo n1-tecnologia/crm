@@ -14,6 +14,7 @@
 export * from "./types";
 export * from "./state";
 export * from "./rotulos";
+export * from "./colecoes";
 
 export * as operations from "./operations";
 export * as derive from "./derive";
