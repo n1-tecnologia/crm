@@ -1,0 +1,36 @@
+{
+  "source_path": "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1/docs/PENDENCIAS-FRONTEND.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "PENDÊNCIAS DO FRONTEND",
+  "summary": "Register of interface concepts the frontend resolved without ontological backing (A-series), open ontology questions (C-series), PRD divergences, and technical debts (P-series).",
+  "scope": [
+    "Notificação (visão derivada de Eventos)",
+    "Autenticação Supabase Auth e resolução de Membro (A2, fechado)",
+    "Sessão pública de Formulário / PublicoProvider (A9, aberto)",
+    "Avatar de Membro e Agente",
+    "Visualizações salvas no CRM",
+    "Busca global /buscar",
+    "Acesso administrativo a contêiner privado (Auditoria, D06)",
+    "Limites impostos e Política de lixeira",
+    "Pendências C5–C34 da constituição ontológica",
+    "C32 rebaixamento de Proprietário a base Convidado (deleteRole)",
+    "C33 espelho Negócio → Tarefa (seed-comercial)",
+    "C34 contas a receber",
+    "Divergências PRD vs ontologia (rotas, Painéis, Agentes, Conversa)",
+    "P1 fuso de renderização / makeFormatters (fechada)",
+    "P2 reconvite por identidade de Usuário (aberta)",
+    "StoreProvider zustand por árvore"
+  ],
+  "cross_refs": [
+    "docs/07-processos/contas-a-receber.md",
+    "app/src/data/operations/members.ts",
+    "app/src/data/seed-comercial.ts",
+    "app/src/features/shell/format.ts",
+    "proxy.ts"
+  ],
+  "locked": false,
+  "precedence": 4,
+  "notes": "Manifest declared type DOC and precedence 4; used as authoritative. Content signals agree (register of open questions and adopted readings, no locked decisions). Doc references ontology documents by number (01, 10, 19, 20, 21) and 'o PRD' without paths. Note: A9 is a newly opened question deferred to ontology (Proveniência); C32 is decided (alternative b) but self-described as reversible, not an ADR."
+}

@@ -1,0 +1,39 @@
+# Manifesto do /gsd-ingest-docs — os documentos que definem a migração do
+# Financeiro para a plataforma. A descoberta por convenção pegaria 24
+# arquivos, a maioria sobre o protótipo já construído (wireframes, design
+# system, telas): entrariam como requisitos de algo pronto e poluiriam o
+# roadmap. Aqui entra só o que diz o que falta fazer e por quê.
+#
+# Precedência: menor = manda. ADR (decisões validadas) > SPEC (o plano e os
+# processos lidos do ClickUp) > DOC (contexto).
+#
+# O PRD-FRONTEND-NAVEGAVEL.md fica de fora de propósito: descreve o protótipo
+# em memória ("sem backend") e a migração o supera. O plano já o referencia.
+docs:
+  - path: docs/08-migracao-financeiro/04-spike-persistencia.md
+    type: ADR
+    precedence: 0
+  - path: docs/08-migracao-financeiro/03-plano-de-migracao.md
+    type: SPEC
+    precedence: 1
+  - path: docs/07-processos/contas-a-pagar.md
+    type: SPEC
+    precedence: 2
+  - path: docs/07-processos/contas-a-receber.md
+    type: SPEC
+    precedence: 2
+  - path: docs/08-migracao-financeiro/00-LEIA-PRIMEIRO.md
+    type: DOC
+    precedence: 3
+  - path: docs/08-migracao-financeiro/01-inventario-financeiro-tria.md
+    type: DOC
+    precedence: 3
+  - path: docs/08-migracao-financeiro/02-comparativo-com-a-plataforma.md
+    type: DOC
+    precedence: 3
+  - path: docs/PENDENCIAS-FRONTEND.md
+    type: DOC
+    precedence: 4
+  - path: docs/03-fundacao/ARQUITETURA.md
+    type: DOC
+    precedence: 4

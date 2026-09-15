@@ -1,0 +1,36 @@
+{
+  "source_path": "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1/docs/03-fundacao/ARQUITETURA.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Arquitetura do frontend",
+  "summary": "Describes the prototype-phase (Fase 3) frontend architecture: stack, directory map, data layer (types/derive/operations/store/seed), routes, enforced UX patterns, language rules, and verification gates.",
+  "scope": [
+    "Next.js 16 App Router frontend",
+    "Stack (React 19, TypeScript strict, Tailwind 4, Zustand, Zod, Vitest)",
+    "Directory map app/src (app/, data/, features/)",
+    "Data layer: types per ontology region (primitives, workspace, structure, crm, ai, panels)",
+    "derive.ts (derived reads: effective lifecycle, effectiveListConfig, isOverdue, isBlocked, weightedValue, responseWindowOpenUntil, executionChainOf, marketingConsentMissing)",
+    "operations/ (OperationResult contract; tasks, deals, conversations, contacts, ai, members, activity)",
+    "store.ts (in-place mutation with revision counter, useData/useRun)",
+    "seed.ts (PRD II.7 volumes, six Members)",
+    "Routes (52 page.tsx, (shell) layout, AppShell TopBar/SideNav)",
+    "Transversal UX patterns as components (StateSeal, ConditionMarker, Button disabledReason, EmptyState, NoAccessState, RecordList)",
+    "pt-BR formatting via Intl (features/shell/format.ts)",
+    "Verification gates (tsc, eslint, vitest 45 tests)",
+    "Handoff to Fase 6 / Fase 5 visual decisions"
+  ],
+  "cross_refs": [
+    "docs/PENDENCIAS-FRONTEND.md",
+    "docs/02-mapa-ux/PADROES-TRANSVERSAIS.md",
+    "app/package.json",
+    "app/tsconfig.json",
+    "app/src/app/(shell)/estrutura/tarefas/[tarefa]/page.tsx",
+    "features/shell/app-shell.tsx",
+    "features/shell/format.ts",
+    "features/shell/ui.tsx"
+  ],
+  "locked": false,
+  "precedence": 4,
+  "notes": "Manifest declared DOC (precedence 4). Content contains architectural decisions (in-place mutation + revision counter, OperationResult error-as-value, derive/operations boundary, readonly-as-invariant) and a stack table that could read as SPEC/ADR signals, but manifest is authoritative. Paths inside refer to the pre-monorepo layout (app/src/...); code has since moved to apps/web/src and packages/dominio/src, so file references are historical. References PRD I.4, PRD II.7 and ontology rule ids (A4.3, A4.4, B25, B58, B59, INV-CXE-04, RN-CXE-19, RN-CON-16, A6.2, INV-ET-12, B103, B38e, B79, B14, DO-NEG-05) without file paths."
+}

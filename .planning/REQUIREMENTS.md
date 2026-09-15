@@ -1,0 +1,147 @@
+# Requirements: Plataforma N1 Digital
+
+**Defined:** 2026-09-15
+**Core Value:** Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de ponta a ponta sem abrir o ClickUp — dados no Postgres próprio, regras de `@n1/dominio` intactas.
+
+**Proveniência.** Não há PRD. Os 35 requisitos vêm dos entregáveis por fase do SPEC `docs/08-migracao-financeiro/03-plano-de-migracao.md` (Fases 0–5 e peças transversais do §4), com aceite vindo dos "Pronto quando" (CON-12) e dos SPECs de processo (`docs/07-processos/`). Dois vêm de DOC e estão marcados (prioridade a confirmar). Onde não há aceite escrito, a entrada diz "aceite: não especificado" — o planejador da fase não deve inventar.
+
+**Status verificado contra o código em 2026-09-15** (`.planning/intel/requirements.md`), não contra o que os documentos dizem: `feito` (4, marcados `[x]`) · `sobreposto` (1) · `em andamento` (4 — existem no protótipo em memória) · `bloqueado por decisão` (4) · `pendente` (22). Os IDs `REQ-…` entre parênteses são os da intel, para rastreio.
+
+## v1 Requirements
+
+### Fase 0 — Preparação (PREP)
+
+- [x] **PREP-01**: Schema `plataforma` criado, vazio, sem tocar nas 26 tabelas do `public` (`REQ-f0-schema-plataforma`). Aceite: schema existe; `npm run migrar` aplica `001-plataforma.sql`. **Feito** no projeto próprio `epomplsskqpluxuujpxl` (DEC-08) — `apps/api/migracoes/001-plataforma.sql`, commit `b20597d`.
+- [ ] **PREP-02**: Exportação completa das Listas `901109104938` (Solicitação), `901107637383` (Contas a pagar) e `901107648977` (Contas a receber): Tarefas, Campos, Comentários, histórico de status, anexos, com paginação (`REQ-f0-exportacao-clickup`). Aceite: é o insumo da importação e a prova de paridade depois (CON-09). Pendente — nenhum artefato no repositório.
+- [ ] **PREP-03**: Escrever `docs/07-processos/solicitacao-de-pagamento.md` lendo a Lista real `901109104938`, no padrão de `contas-a-pagar.md` (`REQ-f0-spec-solicitacao-de-pagamento`). **A lacuna mais séria do levantamento e o maior risco do plano** — o processo foi reconstruído pelo código, que mostra o que está automatizado, não o que as pessoas fazem. Aceite: spec com Status, Campos, papéis, fluxo, automações, permissões e regras, lida da Lista real, que responda D6 e D8 (ou os deixe explicitamente abertos) e absorva OQ-CMP-01/02/04. Pré-requisito de toda a Fase 2. Pendente — o arquivo não existe.
+- [ ] **PREP-04**: De-para dos 6 IDs de usuário do ClickUp → Membros (CON-11: Elifas `81591229`, Fabíola `81581798`, Thiago `81581826`, Iallas `81582295`, Financeiro `81581816`, revisor FO `81581802`), ampliado às 38 variáveis `CLICKUP_*` (`REQ-f0-de-para-usuarios-clickup`). Aceite: não especificado além da tabela. Usado pelas importações das Fases 2 e 3. Pendente.
+- [ ] **PREP-05**: Rotacionar as credenciais Omie do Marcos Paulo (hardcoded em `tenants/marcos-paulo/config.ts`, no histórico do git); nas telas novas, credencial só na Integração (CON-10) (`REQ-f0-rotacao-credenciais-omie`). Aceite: não especificado (observável: as credenciais antigas deixam de autenticar). Escopo: `financeiro-tria` + Omie — fora deste repositório. Pendente.
+- [x] **PREP-06**: Medir o volume das tabelas legadas (`REQ-f0-contagem-linhas-legado`). **Feito** 2026-09-15: maior tabela 9.510 linhas; `solicitacoes_pagamentos` 1.110; risco "volume desconhecido" fechado; subproduto CAND-03.
+
+### Fase 1 — O CRM N1 ganha persistência e login (PERS)
+
+Critério de pronto (CON-12 Fase 1, refinado por DEC-09): um Membro real cria uma Conta pela tela, ela está no Postgres, `npm run check` verde nos três workspaces; a prova hidratado ≡ seed vale pelos 214 testes. ClickUp e `automation/` intocados.
+
+- [x] **PERS-01**: Repositórios + Unidade de Trabalho: carrega o `DataState` do Espaço de Trabalho, roda a operação pura sem alterá-la, grava o diff com revisão otimista; preserva `packages/dominio` e os 214 testes (`REQ-f1-persistencia-unidade-de-trabalho`). Aceite: os quatro testes de `persistencia.test.ts` (hidratado `toStrictEqual` ao seed; operação grava só o que tocou; recusa grava nada; estado 10×) contra Postgres local e Supabase. **Feito** — DEC-01..07, DEC-09, DEC-10; `apps/api/src/persistencia/` (`conexao.ts`, `migrar.ts`, `repositorio.ts`, `unidade-de-trabalho.ts`), `packages/dominio/src/colecoes.ts`; commits `9fb2754`, `3fd7e1b`, `b20597d`.
+- [x] **PERS-02**: `/entrar` autentica (Supabase Auth, e-mail e senha) em vez de escolher Membro; Membro resolvido pelo Usuário (`Member.userId === usuario.id`), nunca escolhido; "Trocar de Membro" vira "Sair"; Membro `removido`/`pendente` ou inexistente vê "Sem acesso" (`REQ-f1-supabase-auth`). Aceite (verificado no dev server): redirecionamento sem sessão; rota pública aberta; Membro vendo a própria conta no HTML do servidor; Membro removido barrado; senha errada recusada; `/sair` apaga a sessão. **Feito** — commit `d713253`; `apps/web/src/autenticacao/`, `apps/web/src/proxy.ts`, `apps/api/src/autenticacao/criar-usuarios-do-seed.ts` (`npm run usuarios:seed`). Subprodutos: `StoreProvider` por árvore; `(publico)` com `PublicoProvider` (abriu OQ-PF-01).
+- [ ] **PERS-04**: `apps/api` servindo o domínio — uma rota HTTP por operação dos 16 módulos de `packages/dominio/src/operations`, `POST /operacoes/:nome` (CON-02), cada rota executando a operação dentro da Unidade de Trabalho (hidratar → operação → diff → revisão), com o Membro atuante vindo da sessão autenticada (`REQ-f1-rotas-por-operacao`). Aceite: não especificado além de CON-02 e do critério da fase; regra fixa: a rota não reimplementa regra de negócio. Inclui escolher a camada HTTP (pendente em `apps/api/src/rotas/CONTEXT.md`). Pendente — `rotas/` vazia, `index.ts` exporta `{}`, nenhuma dependência HTTP. Risco baixo, mecânico (CON-14).
+- [ ] **PERS-05**: `apps/web/src/dados/store.ts` troca `run(op)` local sobre `buildProductSeed()` por `POST /operacoes/:nome` e hidrata o `DataState` do backend (`REQ-f1-store-post`). Aceite: a API pública do store (`useData`, `useSession`, `useRun`…) não muda — "os cem arquivos que a consomem não sabem de onde o store vem"; recarregar a página mantém o que foi criado. Pendente — `store.ts` ainda cria `data: buildProductSeed()`.
+- [ ] **PERS-06**: `seed-financeiro.ts` (e `seed-contas-a-receber.ts`) viram script de bootstrap do Espaço "Gestão" › Pasta "Financeiro" › Listas, Campos, Status, Tags, Papéis — **sem as Tarefas fictícias** (`REQ-f1-bootstrap-espaco-gestao`). Contas a pagar conforme CON-CP-01..04 e CON-CP-09; Contas a receber conforme CON-CR-01..03, CON-CR-05, CON-CR-07, CON-CR-08. Aceite: não especificado além do critério da fase. Decisões que tocam: CAND-02 (só a data nativa), OQ-CP-03 (não replicar `Equipe`/`Produto`), D9 (status `aprovado`). Pendente.
+- [ ] **PERS-07**: Colunas geradas (`generated always as (dados->>'…') stored`) e índices em `plataforma.registros` para o que a tela de Contas a pagar filtra — Tarefa primeiro: status, Lista, vencimento, Tag `conta *`, Responsável, Pessoa (`REQ-f1-colunas-geradas-indices`). Aceite: não especificado (o ADR dá o padrão SQL, não a lista de colunas). Escopo: migração `002-*.sql`. Pendente. Substitui a parte "colunas tipadas para o que se filtra" de PERS-03.
+- [ ] **PERS-08**: Definir e executar onde o `apps/api` roda (`REQ-f1-deploy-apps-api`). Recomendação do plano: a mesma VPS do `automation/`, na nginx existente; o ADR lembra que a latência medida é de um notebook no Brasil a Oregon. Aceite: não especificado. **Bloqueado por D11** (interage com OQ-ADR-01, região do Supabase). Não bloqueia o código da fase; bloqueia o adapter da Fase 2 apontar para o `apps/api`.
+- [ ] **PERS-09**: RN-ET-11 — reconvidar um Usuário removido reativa o mesmo Membro; hoje `inviteMember` só casa por `invitedIdentity`, que some quando o Membro aceita (B27), quebrando INV-ET-04 (`REQ-f1-reconvite-por-usuario`). Derivado de DOC (`PENDENCIAS-FRONTEND.md` P2) — prioridade a confirmar. Aceite: não especificado. Escopo: `packages/dominio/src/operations/members.ts` + identidade de Usuário (Supabase Auth). Pendente — a pré-condição (Usuário real) agora existe.
+
+#### Sobreposto por decisão travada (não executar; fica para rastreio)
+
+- **PERS-03**: Uma tabela por entidade que o Financeiro toca, colunas tipadas para o que se filtra, `jsonb` para objetos de valor (`REQ-f1-tabelas-schema-plataforma`). **Sobreposto por DEC-02** (ADR > SPEC): tabela genérica `plataforma.registros` + `plataforma.workspaces`; a parte "colunas para o que se filtra" virou PERS-07. Ver `INGEST-CONFLICTS.md` INFO-02.
+
+### Fase 2 — Solicitação de pagamento: o front substitui o ClickUp (SOL)
+
+Pré-requisito: PREP-03. Critério de pronto: CON-12 Fase 2. Decisões abertas que a moldam: D6, D8, D9; OQ-PF-01 (A9) afeta o formulário; OQ-PLAN-01 é o ponto de revisão antes de começar.
+
+- [ ] **SOL-01**: Lista "Solicitações de pagamento" na ontologia, com os Status de CON-04 (`recebida → em validação → aguardando aprovação → aprovada / não aprovada / em revisão → convertida`) e os Campos que o mapper já lê (`01-inventario` §4.3) (`REQ-f2-lista-solicitacoes`). Aceite: CON-04. **Bloqueado por D6** (Lista própria — recomendação — ou Status iniciais na Lista de Contas).
+- [ ] **SOL-02**: Formulário de solicitação — substitui o formulário de Tarefa do ClickUp; "é por onde o pedido entra" (`REQ-f2-formulario-solicitacao`). Aceite: não especificado (depende da spec PREP-03). O protótipo já tem rotas públicas de Formulário (`/f/<segredo>`); OQ-PF-01 (em nome de quem age uma resposta anônima) afeta diretamente. Pendente.
+- [ ] **SOL-03**: Tela de aprovação — a decisão vira Solicitação de Aprovação (B80): um clique, não um texto classificado por IA; substitui responder no thread do comentário (`REQ-f2-tela-aprovacao`). Aceite: não especificado; a regra de roteamento do aprovador (`APPROVAL_ROUTES` por centro de custo e valor, R$ 5.000 como corte) precisa existir na plataforma — "quatro Membros e uma regra de roteamento". Pendente.
+- [ ] **SOL-04**: Timeline da solicitação: Comentários + Registros de Atividade — substitui a aba de comentários do ClickUp (`REQ-f2-timeline-solicitacao`). Aceite: não especificado. Pendente.
+- [ ] **SOL-05**: `adapters/plataforma.ts` no `automation/`: os 7 métodos (CON-01) contra o `apps/api` por HTTP (DEC-14); degrada enfileirando (CON-06); `clickup.ts` fica, desligado por env (`REQ-f2-adapter-plataforma`). Aceite: pipeline sem webhook do ClickUp; Omie recebe o mesmo `IncluirContaPagar`. Escopo: repositório `financeiro-tria`. Requer o contrato request/response dos 7 métodos escrito (CONCERNS.md) e tipos que não derivem (CON-13). Pendente — risco baixo, tamanho P.
+- [ ] **SOL-06**: `plataforma-payment-mapper.ts` substitui ~400 linhas de parsing do ClickUp por ~50 de leitura tipada de `fieldValues` — "a troca apaga código, não acrescenta"; não portar três vezes (`REQ-f2-mapper-plataforma`). Aceite: não especificado. Escopo: `financeiro-tria`. Pendente.
+- [ ] **SOL-07**: `POST /webhooks/plataforma/solicitacao-criada` (CON-03), disparado pelo `apps/api` quando a Tarefa de Solicitação nasce — nova entrada do pipeline (`REQ-f2-endpoint-solicitacao-criada`). Aceite: não especificado. Escopo: `apps/api` (disparo) + `automation/` (recepção). Requer no `apps/api` um mecanismo de evento de saída, hoje inexistente — decidir se é a mesma peça do motor de Automações (OQ-SYN-02). Pendente.
+- [ ] **SOL-08**: Classificador de comentário como fallback por 90 dias — quem responder por comentário em vez de clicar continua atendido (`REQ-f2-classificador-fallback`). **Bloqueado por D8** (recomendação: as duas, medir depois).
+- [ ] **SOL-09**: Importar `solicitacoes_pagamentos` (1.110 linhas): histórico vira Tarefas fechadas; `comentario` vira o Comentário do RESUMO; credenciais descartadas; `TaskID` + `origem` (CON-08, DEC-17) (`REQ-f2-importacao-solicitacoes`). Aceite: não especificado. Pendente.
+
+### Fase 3 — Contas a pagar (PAG)
+
+"A parte mais barata, porque a tela já existe." Critério de pronto: CON-12 Fase 3 — o Financeiro opera uma semana sem abrir o ClickUp. Depende do motor de Automações (AUTO-01), colocado nesta fase.
+
+- [ ] **PAG-01**: Importar a Lista `901107637383` com `date_created`, `date_closed` e histórico de status como Registros de Atividade com a data original (CON-09, CON-CP-12); campo `L` copiado para a Data de vencimento nativa (CAND-02); de-para de usuários (PREP-04) (`REQ-f3-importacao-contas-a-pagar`). Aceite: "tempo em `para pagar`" preservado como métrica (29–31 dias é o ciclo normal); paginação (>200 ativas + histórico). Pendente.
+- [ ] **PAG-02**: A1–A9 rodando no motor de Automações (CON-CP-06): recorrência ao entrar em `pago` com dia útil anterior (A1, CON-CP-05, OQ-CP-06), data de fechamento e Responsável (A2), troca de Responsável (A3/A4), cobrança de nota D-5/D-2 com Menção à Pessoa (A5/A6 — a única mudança de comportamento proposta), invocação do Agente D-1 (A7/A8), Observadores (A9) (`REQ-f3-automacoes-a1-a9`). Aceite: CON-CP-06; RN-CP-04..06. **Em andamento** — existem como dados da ontologia no seed em memória; falta o motor que as execute (AUTO-01).
+- [ ] **PAG-03**: `runLancamentoAgent` deixa de simular: a Ferramenta chama o `automation/`, que já sabe lançar (`IncluirContaPagar`, `IncluirAnexo`, idempotência CON-07); conhecimento do Agente extraído para uma Coleção de Conhecimento (OQ-CP-04); autonomia: Ensaio na primeira semana, Política de aprovação depois (OQ-CMP-05) (`REQ-f3-agente-lancamento-omie-real`). Aceite: CON-CP-07, CON-CP-08 (formato exato do RESUMO), INV-CP-01. **Em andamento** — `runLancamentoAgent` existe com Omie simulado.
+- [ ] **PAG-04**: Substituir `CATEGORIA_OMIE` (24 categorias com códigos inventados) e `CNPJ_POR_EMPRESA` (fictício) pelo plano real (`ListarCategorias`) ou pelo RAG do `automation/` (`conciliador_contas`), com validação contra o plano real e `REVISAR` abaixo do threshold; `CONTA_POR_TAG` + fallback por centro parcial; Departamento Omie falta (OQ-CMP-03) (`REQ-f3-de-para-categorias-real`). Aceite: não especificado. Depende de OQ-CP-04; com DEC-08, a leitura é por HTTP (OQ-SYN-03). Pendente.
+- [ ] **PAG-05**: Seleção múltipla + mudança de Status em lote na Lista (CON-CP-11) (`REQ-f3-pagamento-em-lote`). Aceite: 61 fechamentos num segundo; cada um dispara A1. **Em andamento** — `contas-view.tsx` tem "ações em lote"; falta a versão persistida (DEC-06: escritas serializadas por Espaço — medir).
+- [ ] **PAG-06**: Aplicar CON-CP-09 — a Pessoa da conta vê só as Tarefas em que é o valor do campo Pessoa (`comentar`; `editar` só Anexo e Data de Emissão); Aprovador `ver`/`editar` status e Responsável/`comentar`; demais Membros sem acesso (`REQ-f3-permissao-pessoa-da-conta`). Aceite: CON-CP-09. **Em andamento** — modelado no protótipo; a garantia real depende de o backend aplicar permissão (PERS-04).
+
+### Fase 4 — As outras telas do financeiro-tria (TELA)
+
+Critério de pronto: `financeiro-tria.vercel.app` pode sair do ar. Regra: DEC-16 — portadas como tela, lendo a API do `automation/` direto; nenhuma regra muda.
+
+- [ ] **TELA-01**: Portar como tela, no sistema de design do CRM N1, as leituras que o Financeiro precisa e que nunca viveram no ClickUp: Notas fiscais (`transacoes`), Produtos (`produtos_cadastrados_emissao_notas`), Plano de contas (CRUD + import; tabela hoje vazia), Extratos do Marcos (upload), Workflows (catálogo + runs), Dashboard, Problemas, Aprovações pendentes (`REQ-f4-telas-portadas`). Aceite: CON-12 Fase 4. Pré-requisito implícito: o `automation/` hoje é lido com `anon_read` e sem autenticação, e `AuthContext` + `anon_read` morrem — a plataforma precisa de um caminho autenticado para essas leituras (OQ-SYN-01, não especificado no plano). D10 (emissão manual de NF) afeta. Pendente.
+
+### Fase 5 — Contas a receber e os outros tenants (REC, TEN)
+
+- [ ] **REC-01**: Contas a receber na plataforma conforme D7: se o recebimento migrou para o Omie, a Lista vira espelho de leitura da Integração; se não, `createReceivableSeries` já existe e R2–R7 viram Automações no motor. Restrições CON-CR-01..10; leituras conservadoras CAND-05 (`REQ-f5-contas-a-receber`). Aceite: não especificado (o próprio SPEC condiciona tudo a OQ-CR-01). **Bloqueado por D7**. Protótipo em memória existe.
+- [ ] **TEN-01**: Marcos Paulo e Family Office: as Empresas viram opções do Campo `Empresa`; as regras de cada `config.ts` viram configuração por Empresa — sem clonar serviço; uma Integração Omie por Empresa (CAND-01, a confirmar); prefixo numérico + `02-Empresas` do FO e status `em revisão` (OQ-CMP-02) absorvidos (`REQ-f5-tenants-marcos-paulo-family-office`). Aceite: não especificado (observável: solicitações dos dois tenants nascem no CRM N1 e seus webhooks ClickUp são desligados). Pendente.
+
+### Transversal (AUTO)
+
+- [ ] **AUTO-01**: **Motor de Automações** — executa `Automation` da ontologia: gatilhos por evento (`AutomationTrigger.kind: evento`) e por agenda (`schedule`), ações `invocarAgente`, `solicitarAprovacao`, `aguardar`, `notificar` (tipos já existem em `packages/dominio/src/types/`), com Execuções auditáveis; necessário para A1–A9 (Fase 3), R2–R7 (Fase 5) e o gatilho "tempo em Status" que C34 pede (`REQ-x-motor-automacoes`). Peça **G, risco alto** — "infraestrutura genérica; o Financeiro é o primeiro cliente". Aceite: não especificado. Antipadrão a não repetir: o cron do `automation/` "sem fila, sem retry persistente: se o processo cair no minuto errado, o dia é pulado". OQ-PF-03 (C14) e OQ-SYN-02 (evento de saída) tocam o desenho. **Mapeado à Fase 3** (primeiro cliente). Pendente — não há código de execução de Automação em `apps/api`.
+- [ ] **AUTO-02**: Ação de notificar por Canal (WhatsApp via Evolution API) — a plataforma tem o campo `Z WhatsApp`; falta a Ação (`REQ-x-notificar-por-canal`). Derivado de DOC (`02-comparativo` §3.2) — prioridade a confirmar. Aceite: não especificado. **Mapeado à Fase 5** (tenant Marcos Paulo é quem usa a Evolution API hoje; o motor já existe desde a Fase 3). Pendente.
+
+## v2 Requirements
+
+Nenhum definido — o plano fecha na Fase 5. Candidatos naturais que já apareceram e ficam anotados sem ID: cache local/offline no frontend; troca de Espaço de Trabalho sem sair; recorte de hidratação por Lista quando um Espaço passar de ~2–3 mil registros (DEC-06); mover o `automation/` para o monorepo (D12); Go High Level (OQ-GHL-01); espelho Negócio → Tarefa (OQ-PF-02).
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| Reescrever o `automation/` dentro do `apps/api` | DEC-11: backend do financeiro-tria fica exatamente como está |
+| SQL direto do `automation/` no schema `plataforma` | DEC-14: pularia Registro de Atividade, Requisito de saída e permissão |
+| Uma tabela por entidade no schema `plataforma` (PERS-03) | DEC-02: tabela genérica + colunas geradas |
+| Portar as 23 telas do financeiro-tria como código | DEC-12: morrem; porta-se a leitura (TELA-01) |
+| Migrar observabilidade legada, `payment_requests`, 13 tabelas vetoriais + 7 views | CAND-03 (a confirmar): nunca pegaram / substituídas pela `conciliador_contas` unificada |
+| Emissão de NF, Guru/Kiwify/TMB, extratos por WhatsApp, sync de clientes Omie como lógica na plataforma | Continuam no `automation/` (DEC-11); a plataforma só lê |
+| Go High Level | Zero menções; pertence ao CRM; inventário próprio (OQ-GHL-01) |
+| Validação de dígito de CPF e consulta cnpj.ws na plataforma | OQ-CMP-04 aberta; hoje fica no `automation/` via Solicitação — decidir na spec PREP-03 |
+| Cerimônias, cronogramas, matriz de riscos | Uma pessoa + Claude |
+
+## Traceability
+
+Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pelas ferramentas): `Pending` · `In Progress` · `Blocked` · `Complete`. A coluna "Situação verificada" carrega o status da intel (código, 2026-09-15).
+
+| Requirement | Phase | Status | Situação verificada (intel) | ID intel |
+|-------------|-------|--------|-----------------------------|----------|
+| PREP-01 | Phase 0 | Complete | feito (`b20597d`) | REQ-f0-schema-plataforma |
+| PREP-02 | Phase 0 | Pending | pendente | REQ-f0-exportacao-clickup |
+| PREP-03 | Phase 0 | Pending | pendente — maior risco do plano; bloqueia a Fase 2 | REQ-f0-spec-solicitacao-de-pagamento |
+| PREP-04 | Phase 0 | Pending | pendente | REQ-f0-de-para-usuarios-clickup |
+| PREP-05 | Phase 0 | Pending | pendente — fora deste repositório | REQ-f0-rotacao-credenciais-omie |
+| PREP-06 | Phase 0 | Complete | feito (2026-09-15) | REQ-f0-contagem-linhas-legado |
+| PERS-01 | Phase 1 | Complete | feito (`9fb2754`, `3fd7e1b`, `b20597d`) | REQ-f1-persistencia-unidade-de-trabalho |
+| PERS-02 | Phase 1 | Complete | feito (`d713253`) | REQ-f1-supabase-auth |
+| PERS-03 | — | Superseded | sobreposto por DEC-02 (ver PERS-07) | REQ-f1-tabelas-schema-plataforma |
+| PERS-04 | Phase 1 | Pending | pendente | REQ-f1-rotas-por-operacao |
+| PERS-05 | Phase 1 | Pending | pendente | REQ-f1-store-post |
+| PERS-06 | Phase 1 | Pending | pendente | REQ-f1-bootstrap-espaco-gestao |
+| PERS-07 | Phase 1 | Pending | pendente | REQ-f1-colunas-geradas-indices |
+| PERS-08 | Phase 1 | Blocked | bloqueado por decisão (D11) | REQ-f1-deploy-apps-api |
+| PERS-09 | Phase 1 | Pending | pendente — derivado de DOC, prioridade a confirmar | REQ-f1-reconvite-por-usuario |
+| SOL-01 | Phase 2 | Blocked | bloqueado por decisão (D6) | REQ-f2-lista-solicitacoes |
+| SOL-02 | Phase 2 | Pending | pendente | REQ-f2-formulario-solicitacao |
+| SOL-03 | Phase 2 | Pending | pendente | REQ-f2-tela-aprovacao |
+| SOL-04 | Phase 2 | Pending | pendente | REQ-f2-timeline-solicitacao |
+| SOL-05 | Phase 2 | Pending | pendente — repositório `financeiro-tria` | REQ-f2-adapter-plataforma |
+| SOL-06 | Phase 2 | Pending | pendente — repositório `financeiro-tria` | REQ-f2-mapper-plataforma |
+| SOL-07 | Phase 2 | Pending | pendente | REQ-f2-endpoint-solicitacao-criada |
+| SOL-08 | Phase 2 | Blocked | bloqueado por decisão (D8) | REQ-f2-classificador-fallback |
+| SOL-09 | Phase 2 | Pending | pendente | REQ-f2-importacao-solicitacoes |
+| PAG-01 | Phase 3 | Pending | pendente | REQ-f3-importacao-contas-a-pagar |
+| PAG-02 | Phase 3 | In Progress | em andamento (dados no seed; falta o motor) | REQ-f3-automacoes-a1-a9 |
+| PAG-03 | Phase 3 | In Progress | em andamento (Omie simulado) | REQ-f3-agente-lancamento-omie-real |
+| PAG-04 | Phase 3 | Pending | pendente — depende de OQ-CP-04 | REQ-f3-de-para-categorias-real |
+| PAG-05 | Phase 3 | In Progress | em andamento (lote em memória) | REQ-f3-pagamento-em-lote |
+| PAG-06 | Phase 3 | In Progress | em andamento (modelado; backend precisa aplicar) | REQ-f3-permissao-pessoa-da-conta |
+| AUTO-01 | Phase 3 | Pending | pendente — peça G, risco alto, não iniciada | REQ-x-motor-automacoes |
+| TELA-01 | Phase 4 | Pending | pendente | REQ-f4-telas-portadas |
+| REC-01 | Phase 5 | Blocked | bloqueado por decisão (D7) | REQ-f5-contas-a-receber |
+| TEN-01 | Phase 5 | Pending | pendente | REQ-f5-tenants-marcos-paulo-family-office |
+| AUTO-02 | Phase 5 | Pending | pendente — derivado de DOC, prioridade a confirmar | REQ-x-notificar-por-canal |
+
+**Coverage:**
+- v1 requirements: 35 total (34 executáveis + 1 sobreposto por decisão travada)
+- Mapped to phases: 34 (Phase 0: 6 · Phase 1: 8 · Phase 2: 9 · Phase 3: 7 · Phase 4: 1 · Phase 5: 3)
+- Unmapped: 0 ✓ (PERS-03 não tem fase por ser sobreposto — sua parte viva é PERS-07)
+- Já feitos: 4 (PREP-01, PREP-06, PERS-01, PERS-02) · em andamento: 4 · bloqueados por decisão: 4 (D11, D6, D8, D7) · pendentes: 22
+
+---
+*Requirements defined: 2026-09-15*
+*Last updated: 2026-09-15 after ingest de docs + roadmap inicial*

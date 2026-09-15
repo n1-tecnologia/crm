@@ -1,0 +1,41 @@
+{
+  "source_path": "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1/docs/08-migracao-financeiro/03-plano-de-migracao.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Plano — CRM N1 como front único, backend financeiro intacto",
+  "summary": "v2 migration plan: CRM N1 becomes the single front replacing ClickUp and the financeiro-tria panel, while the automation backend stays intact; six phases, complexity, risks, open decisions.",
+  "scope": [
+    "crm-n1 apps/web",
+    "crm-n1 apps/api",
+    "@n1/dominio (packages/dominio)",
+    "financeiro-tria automation/",
+    "adapters/clickup.ts -> adapters/plataforma.ts",
+    "clickup-payment-mapper.ts -> plataforma-payment-mapper.ts",
+    "Supabase qewznpnmaqhqfyhncdnx (schema public legado, schema plataforma novo)",
+    "Supabase Auth",
+    "Solicitação de pagamento (Lista, formulário, tela de aprovação, timeline)",
+    "Contas a pagar (Automações A1–A9, agente de lançamento, pagamento em lote)",
+    "Contas a receber",
+    "Telas portadas: Notas fiscais, Produtos, Plano de contas, Extratos, Workflows, Dashboard",
+    "Omie integration",
+    "ClickUp export/import (Listas 901109104938, 901107637383, 901107648977)",
+    "Motor de Automações",
+    "Persistência + Unidade de Trabalho",
+    "Tenants Marcos Paulo e Family Office",
+    "Fases 0–5",
+    "Decisões abertas D6–D12"
+  ],
+  "cross_refs": [
+    "01-inventario-financeiro-tria.md",
+    "01-inventario-financeiro-tria.md#57-volume-real",
+    "02-comparativo-com-a-plataforma.md",
+    "docs/07-processos/contas-a-pagar.md",
+    "docs/07-processos/solicitacao-de-pagamento.md",
+    "contas-a-pagar.md §10",
+    "contas-a-receber.md §12"
+  ],
+  "locked": false,
+  "precedence": 1,
+  "notes": "Type set by manifest (SPEC, precedence 1). Content is a phased migration plan with target architecture, integration contract (7 adapter methods over HTTP to apps/api, POST /operacoes/:nome, POST /webhooks/plataforma/solicitacao-criada), status set for Solicitações, complexity and risk tables. Section 7 'Decisões ainda abertas' (D6–D12) lists OPEN questions with recommendations only — must NOT be treated as locked decisions. Some embedded decisions are stated as made by the project owner (backend intact, HTTP not direct SQL, automation/ stays in its repo, D12 deferred). Source hash suffix is a stable placeholder, not a verified SHA-256 (no shell available to compute it)."
+}

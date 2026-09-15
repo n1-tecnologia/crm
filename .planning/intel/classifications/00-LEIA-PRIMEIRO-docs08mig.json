@@ -1,0 +1,40 @@
+{
+  "source_path": "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1/docs/08-migracao-financeiro/00-LEIA-PRIMEIRO.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Migração do Financeiro Tria para a plataforma — leia primeiro",
+  "summary": "Entry-point overview for migrating financeiro-tria's frontend into CRM N1, keeping its backend intact and replacing ClickUp via a plataforma adapter.",
+  "scope": [
+    "financeiro-tria",
+    "crm-n1",
+    "apps/web",
+    "apps/api",
+    "packages/dominio",
+    "automation/",
+    "adapters/clickup.ts",
+    "adapters/plataforma.ts",
+    "clickup-payment-mapper.ts",
+    "schema plataforma",
+    "schema public (26 tabelas legadas)",
+    "Supabase",
+    "ClickUp",
+    "Omie",
+    "Solicitação de pagamento",
+    "Conta a pagar",
+    "Conta a receber",
+    "RESUMO DE PAGAMENTO",
+    "Automações A1-A9 e R1-R7",
+    "persistência e login (Fase 1)",
+    "Go High Level"
+  ],
+  "cross_refs": [
+    "01-inventario-financeiro-tria.md",
+    "02-comparativo-com-a-plataforma.md",
+    "03-plano-de-migracao.md",
+    "docs/07-processos/"
+  ],
+  "locked": false,
+  "precedence": 3,
+  "notes": "Manifest declared DOC. Content note for synthesizer: the doc states a headline architectural decision (keep financeiro-tria backend intact; CRM N1 becomes sole front; new tables go in a new 'plataforma' schema; adapter talks to apps/api via HTTP, never direct SQL) that reads like an ADR-style decision, plus open risks (Solicitação de pagamento lacks a spec). Kept as DOC per manifest."
+}

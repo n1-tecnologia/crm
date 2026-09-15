@@ -1,0 +1,34 @@
+{
+  "source_path": "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1/docs/08-migracao-financeiro/01-inventario-financeiro-tria.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Inventário — o que existe hoje no financeiro-tria",
+  "summary": "Code-derived inventory of the financeiro-tria repository: architecture, modules, payment-request pipeline, ClickUp coupling, Supabase data model, integrations, frontend screens, operations, and migration impact.",
+  "scope": [
+    "financeiro-tria repository",
+    "automation/ (Express + Mastra backend)",
+    "Solicitação de pagamento pipeline",
+    "Emissão de NF (Guru/Kiwify/TMB → Omie)",
+    "ClickUp webhooks, lists, custom fields and user IDs",
+    "Supabase schema (solicitacoes_pagamentos, transacoes, conciliador_contas, automation_* tables)",
+    "Omie ERP adapter (6 accounts)",
+    "Gemini / OpenAI / Evolution API / cnpj.ws integrations",
+    "Vite/React frontend /financeiro screens",
+    "PM2/VPS deploy and cron",
+    "Tenants tria, marcos-paulo, family-office",
+    "Migration impact: adapters/clickup.ts → adapters/plataforma.ts"
+  ],
+  "cross_refs": [
+    "03-plano-de-migracao.md",
+    "docs/07-processos/contas-a-pagar.md",
+    "docs/07-processos/contas-a-receber.md",
+    "docs/sistema-financeiro.md",
+    "docs/supabase-schemas.md",
+    "docs/n8n-mastra-payment-matrix.md",
+    "docs/changelog.md"
+  ],
+  "locked": false,
+  "precedence": 3,
+  "notes": "Manifest declared type DOC; content agrees (as-is inventory with tables, no requirements or decisions). Contains code-verified findings (row counts, credential exposure, unused tables) useful as constraints context. Output filename suffix uses path-derived slug instead of SHA-256 because no hashing tool was available."
+}

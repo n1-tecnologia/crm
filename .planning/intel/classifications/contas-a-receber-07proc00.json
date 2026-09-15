@@ -1,0 +1,29 @@
+{
+  "source_path": "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1/docs/07-processos/contas-a-receber.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Contas a receber — processo do Financeiro",
+  "summary": "Process specification of the accounts-receivable ClickUp list (dormant since Oct 2025) translated to platform ontology: statuses, fields, automations R1–R7, rules RN-CR-01..07, invariants, open decisions.",
+  "scope": [
+    "Lista Contas a receber (ClickUp 901107648977)",
+    "Conjunto de Status (para receber, disponível para saque, pendente, estornado, descartado, recebido)",
+    "Definições de Campo Personalizado (Centro de Custo, BU, Empresa, Produto, Valor, Data de pagamento, Integração manual, Equipe)",
+    "Vínculo Tarefa → Cliente (Gestão de clientes 901109161381)",
+    "Vínculo Cliente → Gestão contratual",
+    "Tags em cobrança / inadimplência / conta tria",
+    "Automações R1–R7",
+    "Regras RN-CR-01..07 e invariantes INV-CR-01/02",
+    "Permissões por papel (Financeiro, Comercial, Diretoria, Cliente)",
+    "Campos a acrescentar (Número da parcela, Tipo de recebimento, Forma de recebimento, Situação de cobrança, Contrato)",
+    "Saques de plataforma (TMB, Xgrow)",
+    "Fluxo de cobrança e escalonamento"
+  ],
+  "cross_refs": [
+    "contas-a-pagar.md",
+    "docs/07-processos/contas-a-pagar.md"
+  ],
+  "locked": false,
+  "precedence": 2,
+  "notes": "Type taken from manifest (SPEC, precedence 2); content confirms: status tables, field definitions, automation table, validation rules and invariants. Section 12 lists unverified items and pending product decisions (list dormant since Oct 2025; client entity mapping; unused statuses; saque values; escalation deadlines) — synthesizer should treat those as open questions, not constraints."
+}

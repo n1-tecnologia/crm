@@ -1,0 +1,27 @@
+{
+  "source_path": "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1/docs/07-processos/contas-a-pagar.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Contas a pagar — processo do Financeiro",
+  "summary": "Process specification for the Financeiro accounts-payable flow, translated from the real ClickUp list into platform entities: statuses, fields, tags, automations, agent, permissions, and validation rules.",
+  "scope": [
+    "Lista Contas a pagar",
+    "Tipo de Tarefa Conta",
+    "Conjunto de Status (para pagar, em lançamento omie, lançado omie, em remessa bancária, em autorização bancária, aprovado, negado, pago)",
+    "24 Definições de Campo Personalizado",
+    "Tags conta <origem>",
+    "Regra de Recorrência (gatilho ao entrar em fechado)",
+    "Automações A1-A9",
+    "Agente de lançamento (de-para ClickUp -> Omie)",
+    "Integração Omie",
+    "Permissões por papel (Financeiro, Aprovador, Pessoa da conta, Agente)",
+    "Regras RN-CP-01..07 e invariante INV-CP-01",
+    "Mudança de status em lote",
+    "Migração de dados do ClickUp (workspace 9011731314, lista 901107637383)"
+  ],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": 2,
+  "notes": "Manifest declared SPEC; content confirms (status definitions, field schemas with types/options, automation trigger/condition/action tables, business rules, invariant, permission matrix). No markdown links to other files; prose mentions 'constituição' (B 'mesmo universo de dados', B6) and 'Glossário' by name without paths. Section 12 lists unverified items requiring product decisions (status 'aprovado' unused, duplicate due-date field, inherited fields Equipe/Produto, missing ERP de-para table, recurrence day rule, migration volume). Output filename hash is a placeholder, not a true SHA-256 — no shell available to compute it."
+}

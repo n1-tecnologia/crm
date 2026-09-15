@@ -1,0 +1,34 @@
+{
+  "source_path": "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1/docs/08-migracao-financeiro/04-spike-persistencia.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Spike da Fase 1 — a hidratação do `DataState` funciona",
+  "summary": "Validated Phase 1 persistence spike: hydrate full workspace DataState from Postgres/Supabase, run pure domain operations unchanged, write only diffs; four design fixes locked.",
+  "scope": [
+    "DataState hydration",
+    "packages/dominio",
+    "apps/api/src/persistencia",
+    "plataforma.registros (jsonb per-entity table)",
+    "diff-based writes with canonical JSON comparison",
+    "fractional ordering (double precision position)",
+    "single-query hydration with LEFT JOIN revision",
+    "per-workspace optimistic revision (3 retries)",
+    "explicit collection registry (packages/dominio/src/colecoes.ts)",
+    "Supabase project epomplsskqpluxuujpxl (us-west-2)",
+    "Supabase Auth / Phase 1 next steps"
+  ],
+  "cross_refs": [
+    "03-plano-de-migracao.md#fase-1",
+    "apps/api/src/persistencia/persistencia.test.ts",
+    "apps/api/src/migracoes/001-plataforma.sql",
+    "apps/api/src/persistencia/conexao.ts",
+    "apps/api/src/persistencia/migrar.ts",
+    "apps/api/src/persistencia/repositorio.ts",
+    "apps/api/src/persistencia/unidade-de-trabalho.ts",
+    "packages/dominio/src/colecoes.ts"
+  ],
+  "locked": true,
+  "precedence": 0,
+  "notes": "Type set by manifest (ADR, precedence 0) and orchestrator instruction to treat as Accepted. Doc has no formal Status field or Context/Decision/Consequences headers; it is a dated spike report (2026-09-15) whose 'Os quatro achados' sections each end in a fixed correction, matching ADR intent. One open, non-locked item: relocating the Supabase project from us-west-2 to sa-east-1 is explicitly left to the project owner. Filename hash suffix is a deterministic placeholder, not a SHA-256 (no shell available to this agent)."
+}

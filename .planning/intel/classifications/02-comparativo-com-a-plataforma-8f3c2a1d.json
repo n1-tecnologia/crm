@@ -1,0 +1,42 @@
+{
+  "source_path": "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1/docs/08-migracao-financeiro/02-comparativo-com-a-plataforma.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Comparativo — o que a plataforma já tem, o que bate, o que falta",
+  "summary": "Side-by-side gap analysis between the financeiro-tria automation and the crm-n1 platform's Financeiro (Contas a pagar/receber): what matches, diverges, and is missing.",
+  "scope": [
+    "financeiro-tria",
+    "crm-n1 Financeiro",
+    "Contas a pagar (Lista 901107637383)",
+    "Contas a receber (Lista 901107648977)",
+    "Solicitação de pagamento (Lista 901109104938)",
+    "Omie integration",
+    "RESUMO DE PAGAMENTO",
+    "Agente de lançamento",
+    "Status, Campos, Tags, Papéis",
+    "CONTA_POR_TAG / CATEGORIA_OMIE",
+    "Automation / AgentExecution / Integration / RecurrenceRule",
+    "Emissão de notas fiscais",
+    "Go High Level (out of scope)"
+  ],
+  "cross_refs": [
+    "01-inventario-financeiro-tria.md",
+    "docs/07-processos/contas-a-pagar.md",
+    "docs/07-processos/contas-a-receber.md",
+    "packages/dominio/src/operations/financeiro.ts",
+    "seed-financeiro.ts",
+    "seed-contas-a-receber.ts",
+    "contas-a-receber.test.ts",
+    "operations.test.ts",
+    "apps/web/src/features/estrutura/financeiro/contas-view.tsx",
+    "apps/web/src/features/estrutura/financeiro/conta-drawer.tsx",
+    "apps/web/src/features/estrutura/financeiro/serie-dialog.tsx",
+    "packages/dominio/src/types/",
+    "payment-automation-service.ts",
+    "ontologia/03-crm/"
+  ],
+  "locked": false,
+  "precedence": 3,
+  "notes": "Manifest declared DOC; content agrees (comparative analysis, no locked decisions or formal requirements). Contains several 'Resolução proposta' and one explicit 'Decisão' (one Omie Integration per Empresa) that the synthesizer may want to surface as candidate decisions."
+}
