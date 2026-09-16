@@ -4,16 +4,21 @@
   "private": true,
   "description": "Esqueleto do backend. A camada HTTP ainda não foi escolhida — ver CONTEXT.md.",
   "scripts": {
+    "dev": "vite-node --watch src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "migrar": "vite-node src/persistencia/migrar.cli.ts",
     "usuarios:seed": "vite-node src/autenticacao/criar-usuarios-do-seed.ts"
   },
   "dependencies": {
+    "@fastify/cors": "^11.3.0",
+    "@fastify/type-provider-zod": "^1.0.0",
     "@n1/dominio": "*",
     "@supabase/supabase-js": "^2.116.0",
     "@types/pg": "^8.23.1",
-    "pg": "^8.23.0"
+    "fastify": "^5.12.5",
+    "pg": "^8.23.0",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^24.13.4",

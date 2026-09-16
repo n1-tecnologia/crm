@@ -1,0 +1,79 @@
+/**
+ * Monta o Fastify inteiro — CORS, validação/serialização por zod, rota de
+ * saúde, tratamento de erro — mas NUNCA escuta uma porta.
+ *
+ * É essa separação que permite `app.inject()` nos testes: monta o app,
+ * injeta uma requisição fake, sem abrir socket nem depender de banco ou de
+ * `SUPABASE_*` (D-DEC-09). Quem de fato escuta é `index.ts`, que chama
+ * `listen()` em cima do que `buildApp()` devolve.
+ */
+
+import cors from "@fastify/cors";
+import {
+  hasZodFastifySchemaValidationErrors,
+  serializerCompiler,
+  validatorCompiler,
+} from "@fastify/type-provider-zod";
+import Fastify, { type FastifyInstance } from "fastify";
+import { carregarEnv } from "./persistencia/conexao";
+
+export interface OpcoesDoApp {
+  /** Padrão: `process.env.WORKSPACE_ID ?? "ws_n1"`. */
+  readonly workspaceId?: string;
+  /** Origem permitida pelo CORS. Padrão: `process.env.WEB_ORIGIN ?? "http://localhost:3001"`. */
+  readonly webOrigin?: string;
+  /** Padrão: `false` em teste, `true` no boot (`index.ts`). */
+  readonly logger?: boolean;
+}
+
+export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
+  // Os padrões de porta/origem/workspace vêm de `apps/api/.env` quando não
+  // passados por opção — os testes passam tudo explícito e nunca dependem
+  // deste arquivo existir.
+  carregarEnv();
+
+  const webOrigin = opcoes.webOrigin ?? process.env.WEB_ORIGIN ?? "http://localhost:3001";
+
+  const app = Fastify({ logger: opcoes.logger ?? false });
+  app.setValidatorCompiler(validatorCompiler);
+  app.setSerializerCompiler(serializerCompiler);
+
+  // Allowlist explícita: nunca `*`. O `Authorization: Bearer` viaja com a
+  // origem do navegador, então um CORS aberto deixaria qualquer site chamar
+  // `apps/api` usando a sessão de quem estiver com outra aba logada (T-1-03).
+  app.register(cors, {
+    origin: [webOrigin],
+    credentials: false,
+    methods: ["GET", "POST"],
+    allowedHeaders: ["authorization", "content-type"],
+  });
+
+  app.setNotFoundHandler((_request, reply) => {
+    reply.status(404).send({ ok: false, error: "Rota não encontrada." });
+  });
+
+  app.setErrorHandler((erro, request, reply) => {
+    // Entrada mal formada: o corpo carrega a mensagem do schema, sem stack.
+    if (hasZodFastifySchemaValidationErrors(erro)) {
+      const primeira = erro.validation[0]?.message ?? "entrada inválida";
+      reply.status(400).send({ ok: false, error: `Entrada inválida: ${primeira}` });
+      return;
+    }
+    // Qualquer outro erro é inesperado: vai ao log do processo, nunca ao
+    // corpo da resposta — o cliente não tem por que ver mensagem nem stack
+    // de um bug interno (T-1-06).
+    request.log.error(erro);
+    reply.status(500).send({ ok: false, error: "Erro interno." });
+  });
+
+  // autenticação: Task 2 — registrarAutenticacao(app, { workspaceId, ... })
+  // entra aqui, antes de qualquer rota protegida. Até lá, nenhuma rota exige
+  // token e `GET /saude` é a única que existe.
+
+  app.get("/saude", { config: { publica: true } }, async () => ({
+    ok: true,
+    servico: "apps/api",
+  }));
+
+  return app;
+}
