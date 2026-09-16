@@ -1,8 +1,8 @@
 ---
 phase: 01-o-crm-n1-ganha-persist-ncia-e-login
-reviewed: 2026-09-16T00:00:00Z
+reviewed: 2026-09-16T20:03:40Z
 depth: standard
-files_reviewed: 61
+files_reviewed: 64
 files_reviewed_list:
   - apps/api/.env.example
   - apps/api/CONTEXT.md
@@ -32,6 +32,8 @@ files_reviewed_list:
   - apps/api/src/plugins/autenticacao.test.ts
   - apps/api/src/plugins/autenticacao.ts
   - apps/api/src/rotas/CONTEXT.md
+  - apps/api/src/rotas/esquemas-de-argumentos.test.ts
+  - apps/api/src/rotas/esquemas-de-argumentos.ts
   - apps/api/src/rotas/estado.test.ts
   - apps/api/src/rotas/estado.ts
   - apps/api/src/rotas/operacoes.test.ts
@@ -67,229 +69,274 @@ files_reviewed_list:
   - packages/dominio/src/seed-financeiro.ts
   - packages/dominio/src/seed.ts
 findings:
-  critical: 2
-  warning: 8
-  info: 9
-  total: 19
+  critical: 1
+  warning: 11
+  info: 11
+  total: 23
 status: issues_found
 ---
 
-# Fase 01: Relatório de Revisão de Código
+# Fase 01: Relatório de Revisão de Código (re-revisão após fechamento de lacunas)
 
-**Revisado em:** 2026-09-16
+**Revisado em:** 2026-09-16T20:03:40Z
 **Profundidade:** standard
-**Arquivos revisados:** 61
+**Arquivos revisados:** 64
 **Status:** issues_found
 
 ## Sumário
 
-Revisão adversarial dos 61 arquivos da Fase 1 (persistência + login): o `apps/api` (Fastify 5, hook de autenticação, Unidade de Trabalho, rotas `GET /estado` e `POST /operacoes/:nome`, serviço de convite, bootstrap), o `apps/web` (store híbrido, transporte HTTP, providers, casca) e o `packages/dominio` (registro de operações, diff, `syncIdSequence`, bootstrap de produção, reconvite).
+Re-revisão da Fase 1 depois dos Plans 01-10 (CR-01) e 01-11 (CR-02). A linha de base é o `01-REVIEW.md` anterior (`git show 3ba8b86:...`). `git diff --stat 3ba8b86..HEAD` confirma que **só 8 arquivos mudaram** (`members.ts`, `members-reconvite.test.ts`, `convidar-membro.test.ts`, `esquemas-de-argumentos.ts` + `.test.ts`, `operacoes.ts` + `.test.ts`, `rotas/CONTEXT.md`); os outros 56 são byte-idênticos ao que foi revisado — as constatações sobre eles são carregadas com o mesmo ID e o mesmo status, sem re-argumentar. O esforço foi gasto no delta.
 
-**O que está bem.** As expectativas de segurança listadas para a fase se confirmam no código: o Membro atuante vem sempre de `request.membro` (JWT verificado por `getClaims()`), nunca do corpo; o despacho de `POST /operacoes/:nome` passa por `Object.hasOwn(OPERACOES, nome)` mais um regex no path param (`__proto__`/`constructor` nunca resolvem); `WORKSPACE_ID` é configuração do servidor; CORS é allowlist explícita com `credentials: false`; o `setErrorHandler` não vaza stack; os `.env.example` só têm placeholders; `inviteMember` descarta qualquer `userId` do cliente via `.strip()`; a chave secreta do Supabase só existe em `apps/api`. A revisão otimista (`update ... where revisao = $2 returning revisao`) está correta sob READ COMMITTED; o `rollback` em `ok:false` e em exceção está certo; `gravar()` cobre remoções (inclusive coleção esvaziada); `hidratar()` inicializa todas as coleções de `COLECOES`; `syncIdSequence` com `{6}` exato não estoura `Number`; `listUsers` tem teto de páginas.
+**O que fechou.** CR-01 fechou no cenário reportado: `inviteMember` agora casa `existing` por `porUserId ?? porEmail` (`members.ts:346-349`), e o caso "pendente por `invitedIdentity` → conta criada no Auth → reconvite" recusa com "Já existe um convite pendente" em vez de criar um segundo Membro — provado no domínio (`members-reconvite.test.ts` (g)) e contra o Postgres pelo serviço (`convidar-membro.test.ts` (e)). O efeito 1 de CR-02 (500 por `TypeError`) fechou por inteiro: schema por operação para as 23 que a Fase 1 usa (`esquemas-de-argumentos.ts`, `satisfies Esquemas` sobre a assinatura real de `OPERACOES`), fallback estrutural para as demais, `TypeError` dentro da operação mapeado para 400 com rollback garantido pelo `catch` de `executar()` (`unidade-de-trabalho.ts:79-81`, que relança sem embrulhar — `erro instanceof ErroDeEntrada` funciona, como (q) prova). As 23 formas conferem campo a campo com `CreateTaskInput`, `UpdateTaskInput`, `ReceivableSeriesInput`, `TaskDate`, `ActorRef`, `FieldValue["value"]` e as assinaturas posicionais; `opcional()` mapeia o `null` que `JSON.stringify([id, undefined])` produz de volta para `undefined`; `z.date()` recusa `Invalid Date`. Verifiquei ainda que o zod 4.6.5 recria objetos (`z.object().strict()` e `z.record` via `Reflect.ownKeys`, pulando `__proto__`), então o dado que chega ao domínio tem protótipo limpo mesmo quando o `reviver` (IN-02) o troca no objeto intermediário.
 
-**As preocupações.** Duas coisas devem ser corrigidas antes de considerar a fase fechada: (1) `inviteMember` com `userId` resolvido ignora um convite `pendente` já existente para o mesmo e-mail e cria um segundo Membro — a regra RN-ET-11 que PERS-09 quis fechar reabre pelo outro lado; (2) a rota genérica repassa `args: unknown[]` diretamente às ~130 operações sem nenhuma validação de forma em runtime — o domínio foi escrito para um protótipo em memória e não se defende de entrada hostil, então um Membro autenticado consegue tanto derrubar a requisição em 500 (`TypeError`) quanto persistir registros malformados no `jsonb` que todos os outros Membros vão hidratar. Os avisos cobrem a configuração de produção do status "pago" (inalcançável no bootstrap), o `today` de `runScheduledAutomations` controlado pelo cliente, a chamada à Admin API antes da checagem de permissão, o `setErrorHandler` que transforma 400/413/415 do Fastify em 500, o `carregarEnv()` com valor vazio, e três lacunas do store (`enviar` sem `catch`, diffs descartados em `run()` com mais de uma chamada, cópia defasada enquanto há `pendentes`).
+**O que não fechou.** (1) O efeito 2 de CR-02 — persistir JSON malformado no `jsonb` que todos os Membros hidratam — continua aberto para as ~109 operações sem schema próprio: `ARGUMENTOS_GENERICOS` barra profundidade > 6 e funções, mas não tipo por campo. Provado nesta revisão: `createGoal` com `kind: 42` e `anchor: { type, id, lixo: {...} }` passa a validação e o domínio grava; `saveView` com `kind: "x"` e `filters: { qualquer: { coisa: true } }` idem. Todas alcançáveis por qualquer Membro autenticado, com ou sem tela na Fase 1. (2) A correção de CR-01 (que era a sugerida por esta revisão) deixa um caso descoberto: quando `porUserId` acha um `removido` e `porEmail` acha um `pendente` vivo, o `??` escolhe o `removido`, reativa-o e o `pendente` continua lá — dois Membros vivos para o mesmo e-mail (reproduzido: `mem_tiago` + `mem_0000ae`). O mesmo caminho por `porEmail` sobrescreve `existing.userId` sem conferir se já havia outro `userId` no registro. (3) Duas lacunas novas na rota: `reviverArgumentos` é recursivo sem limite e roda **antes** do zod, então um corpo de 400 KB de `[[[[...]]]]` estoura a pilha e vira 500 "Erro interno." com log `error` (reproduzido via `app.inject`); e o mapeamento `TypeError → 400` é aplicado também às 23 operações com schema, onde um `TypeError` depois da validação só pode ser bug — que passa a ser registrado como `warn` de entrada inválida. Os avisos WR-01..WR-08 e as informações IN-01, IN-03, IN-05..IN-09 continuam abertos nos arquivos inalterados; IN-04 fechou só em `rotas/CONTEXT.md`.
+
+## Status das constatações anteriores
+
+| ID | Status | Evidência |
+|---|---|---|
+| CR-01 | **RESOLVIDO** (cenário reportado) | `members.ts:346-349`; `members-reconvite.test.ts` (g)/(h)/(i); `convidar-membro.test.ts` (e). Resíduo novo em WR-09. |
+| CR-02 | **PARCIALMENTE RESOLVIDO** | Efeito 1 (500) fechado; efeito 2 (jsonb malformado) fechado para 23 operações, aberto para ~109. Mantido abaixo. |
+| WR-01 | STILL OPEN | `seed-financeiro.ts` / `bootstrap-gestao.ts` inalterados. |
+| WR-02 | STILL OPEN | `runScheduledAutomations: z.tuple([ID, z.date()])` valida a forma, mas o `today` continua vindo do cliente; `Invalid Date` agora é 400 (parte (b) da correção sugerida fechou). |
+| WR-03 | STILL OPEN | `convidar-membro.ts:33-34` resolve no Auth antes de `executar`; `ENTRADA_INVITE_MEMBER` (`operacoes.ts:82`) segue `z.string()` sem `.email()`. |
+| WR-04 | STILL OPEN | `app.ts:65-77` inalterado. |
+| WR-05 | STILL OPEN | `conexao.ts` inalterado. |
+| WR-06 | STILL OPEN | `store.ts` inalterado. |
+| WR-07 | STILL OPEN | `transporte.ts` / `store.ts` inalterados. |
+| WR-08 | STILL OPEN | `store.ts` inalterado. |
+| IN-01 | STILL OPEN | `membros.ts` inalterado; WR-09 mostra um caminho novo para a duplicata que o torna relevante. |
+| IN-02 | PARCIALMENTE (mitigado) | `registro.ts:457-466` inalterado; o zod recria o objeto, mas `z.object().strict()` lê `input.description` **herdado** e o materializa como próprio (reproduzido: `{"__proto__":{"description":"hijack"},"title":"ok"}` → `data[1].description === "hijack"`). Equivale a mandar o campo direto — sem impacto, mas a linha de defesa continua sendo o zod, não o `reviver`. |
+| IN-03 | STILL OPEN | `bootstrap/gestao.ts` inalterado. |
+| IN-04 | PARCIALMENTE RESOLVIDO | `rotas/CONTEXT.md` atualizado; `apps/api/CONTEXT.md:28-29, 40` ("Hoje só `GET /saude`", `src/repositorios/`) e `apps/api/package.json:5` ("A camada HTTP ainda não foi escolhida") continuam errados. |
+| IN-05 | STILL OPEN | `.env.example` / `persistencia/CONTEXT.md` inalterados. |
+| IN-06 | STILL OPEN | `sessao-provider.tsx` / `estado-inicial.ts` inalterados. |
+| IN-07 | STILL OPEN | `activity.ts` inalterado. |
+| IN-08 | STILL OPEN | `seed.ts` / `bootstrap-gestao.ts` inalterados. |
+| IN-09 | STILL OPEN | `transporte.ts` / `store.ts` inalterados. |
 
 ## Problemas Críticos
 
-### CR-01: `inviteMember` com `userId` não reencontra o convite `pendente` do mesmo e-mail — cria um segundo Membro
+### CR-02: `POST /operacoes/:nome` — efeito 2 (JSON malformado persistido no `jsonb` compartilhado) continua aberto para as ~109 operações sem schema próprio — PARCIALMENTE RESOLVIDO
 
-**Arquivo:** `packages/dominio/src/operations/members.ts:334-337` (e `apps/api/src/servicos/convidar-membro.ts:33-41`)
-**Problema:** Quando `input.userId` está presente, a busca por `existing` é **exclusivamente** por `member.userId === input.userId`; o caminho por `invitedIdentity` só roda quando `userId` é `undefined`:
-
-```ts
-const existing =
-  input.userId !== undefined
-    ? state.members.find((member) => member.userId === input.userId)
-    : state.members.find((member) => member.invitedIdentity?.value.toLowerCase() === email);
-```
-
-Cenário real e provável: o Administrador convida `ana@empresa.com` antes de a Ana ter conta no Auth → nasce `mem_X` `pendente` com `invitedIdentity` e **sem** `userId` (caminho (b) de `members-reconvite.test.ts`). A Ana cria a conta no Supabase (ou o `usuarios:seed` roda). O Administrador reenvia o convite → `resolverUsuarioPorEmail` agora devolve o `userId`, a busca por `userId` não acha ninguém (o `mem_X` não tem `userId`), o teste `existing && existing.state !== "removido"` não dispara, e um **segundo** Membro `pendente` para o mesmo e-mail é criado. Consequências: dois Membros contam para o limite RN-ET-23; quando o aceite (fase seguinte) gravar o `userId` nos dois, `membroPorUsuario` (`LIMIT 1` sem `ORDER BY`, ver IN-01) passa a resolver a sessão de forma não determinística. O cenário inverso também falha: um Membro `ativo` com `userId = U` e um `pendente` por `invitedIdentity` com outro e-mail do mesmo Usuário nunca se cruzam.
-**Correção:** Casar pelos dois critérios, com `userId` prevalecendo:
+**Arquivo:** `apps/api/src/rotas/esquemas-de-argumentos.ts:163-173` (`ARGUMENTOS_GENERICOS`), `apps/api/src/rotas/operacoes.ts:125-134`
+**Problema:** O que fechou: o efeito 1 (500 por `TypeError`) está resolvido — schema por operação para 23, `TypeError` dentro da operação mapeado para 400, rollback confirmado (`unidade-de-trabalho.ts:79-81`). O que **não** fechou: para toda operação fora de `ESQUEMAS`, `ARGUMENTOS_GENERICOS` só garante "JSON com profundidade ≤ 6, sem funções, `Date` válido" — não garante tipo por campo, valor de enum nem chaves conhecidas em objetos aninhados (`z.record(z.string(), …)` aceita qualquer chave). Reproduzido nesta revisão, a partir de `buildSeed()` com o Proprietário:
 
 ```ts
-const porUserId = input.userId !== undefined
-  ? state.members.find((member) => member.userId === input.userId)
-  : undefined;
-const porEmail = state.members.find(
-  (member) => member.invitedIdentity?.value.toLowerCase() === email,
-);
-const existing = porUserId ?? porEmail;
-if (existing && existing.state !== "removido") { /* recusa como hoje */ }
+ARGUMENTOS_GENERICOS.safeParse([{ name: "Meta", anchor: { type: "list", id: "lst_ativacao", lixo: { a: [1, 2] } }, kind: 42, target: 10 }]).success // true
+createGoal(state, me, ...data) // ok: true — state.goals[...] = { kind: 42, anchor: { …, lixo: {…} } }
+saveView(state, me, { listId, name: "V", kind: "x", filters: { qualquer: { coisa: true } } }) // ok: true, kind "x" e filters arbitrário gravados
 ```
 
-E, no reconvite de um `removido` reencontrado por e-mail, gravar o `userId` resolvido (a linha `if (input.userId !== undefined) existing.userId = input.userId;` já faz isso). Acrescentar em `members-reconvite.test.ts` o caso "pendente por invitedIdentity + userId resolvido depois → recusa 'Já existe um convite pendente', não cria segundo Membro".
-
-### CR-02: `POST /operacoes/:nome` repassa `args: unknown[]` às operações sem validação de forma — 500 por `TypeError` e persistência de JSON arbitrário
-
-**Arquivo:** `apps/api/src/rotas/operacoes.ts:36-43, 103, 110-113`
-**Problema:** O schema do corpo é `args: z.array(z.unknown()).max(32)`; depois de `reviverArgumentos`, os argumentos são espalhados direto na função do domínio (`operacao(state, request.membro.id, ...args)`). As operações de `packages/dominio` foram escritas para um protótipo em memória e confiam nos tipos do TypeScript, que não existem em runtime. Dois efeitos verificáveis:
-
-1. **Crash em 500.** `updateTask(state, actor, id, { title: 123 })` → `input.title.trim()` (`tasks.ts:1078`) lança `TypeError` → cai no `setErrorHandler` como "Erro interno." com log de erro, quando é entrada inválida (400). `runScheduledAutomations(..., today: "2026-01-01")` → `today.getFullYear` idem. Qualquer Membro autenticado consegue encher o log de erros do processo com entradas triviais.
-2. **Persistência de registros malformados.** `updateTask(..., { description: { a: 1 } })` passa (`tasks.ts:1085` só compara `!==`), a Unidade de Trabalho grava `description` como objeto no `jsonb`, e **todos** os Membros hidratam esse registro na próxima carga. O mesmo vale para `dueDate`, `fieldValues`, `assignees` e qualquer campo que uma operação atribua sem checar o tipo. É integridade do Espaço inteiro comprometida por um único Membro com direito de edição — a "verdade do servidor" (D-03) passa a conter o que o cliente quiser.
-
-A allowlist protege o **nome** da operação (T-1-04), mas não o **conteúdo** dos argumentos; o comentário da rota fala em "runtime seguro" só quanto à assinatura.
-**Correção:** Duas camadas, ambas no `apps/api` (a regra continua no domínio; aqui é validação de transporte):
+`createGoal` (`scale.ts:208-235`) só valida `name`, `target`, `measure` e `dueDate`; `kind` e `anchor` vão direto ao registro; `saveView` (`scale.ts:74-97`) copia `filters` e `kind` sem olhar. Pela Unidade de Trabalho isso vira `jsonb` em `plataforma.registros` e **todos** os Membros hidratam em `GET /estado` — uma tela que faça `goal.kind === "metrica" ? … : …` ou itere `view.filters` com a forma que o tipo promete quebra para o Espaço inteiro, plantada por um Membro comum com acesso a uma Lista. O comentário do arquivo (`:20-25`) reconhece que o estrutural é "conservador o bastante para barrar objeto onde o domínio espera escalar" — o oposto (escalar/enum errado onde o domínio espera outro, objeto com chaves a mais) continua passando. A rota não distingue "operação que a Fase 1 usa" de "operação alcançável": qualquer nome de `OPERACOES` é despachado.
+**Correção:** A opção (a) da revisão anterior custa zero funcionalidade na Fase 1, dado que — pelo próprio comentário de `esquemas-de-argumentos.ts:20-22` — o Espaço "Gestão" usa exatamente as 23 cobertas:
 
 ```ts
-// operacoes.ts — schema por operação, com fallback estrito para as que ainda não têm
-const SCHEMAS: Partial<Record<NomeDeOperacao, z.ZodTypeAny>> = {
-  createTask: z.tuple([z.object({ listId: z.string(), title: z.string(), /* ... */ }).strict()]),
-  updateTask: z.tuple([z.string(), z.object({ title: z.string().optional(), description: z.string().optional(), /* ... */ }).strict()]),
-  runScheduledAutomations: z.tuple([z.string(), z.date()]),
-  // ...
-};
-const schema = SCHEMAS[nome];
-if (!schema) return reply.code(404).send({ ok: false, error: `Operação "${nome}" ainda não exposta.` });
-const parsed = schema.safeParse(args);
-if (!parsed.success) return reply.code(400).send({ ok: false, error: "Entrada inválida para a operação." });
+// operacoes.ts — depois do 404 por nome
+const schema = ESQUEMAS[nome as keyof typeof ESQUEMAS];
+if (!schema) {
+  return reply.code(404).send({ ok: false, error: `Operação "${nome}" ainda não exposta.` });
+}
 ```
 
-Enquanto os schemas não cobrem o registro inteiro, ao menos: (a) tratar `TypeError` lançado **dentro** de `operacao(...)` como 400, não 500 (envolver a chamada e mapear); (b) restringir `args` a um schema estrutural conservador (`z.union([z.string(), z.number(), z.boolean(), z.null(), z.record(z.string(), escalarOuLista)])`, profundidade limitada) para barrar objetos aninhados onde o domínio espera escalar. Registrar um teste em `operacoes.test.ts`: `updateTask` com `title: 123` → 400, e `description: {}` → 400, nunca gravado.
+(mantendo `ARGUMENTOS_GENERICOS` só como camada extra dentro de cada schema, ou removendo-o). Se a decisão for manter as 109 alcançáveis, então cada uma precisa de schema antes de sair da fase — e o teste (j) de `esquemas-de-argumentos.test.ts` deve passar a exigir `Object.keys(ESQUEMAS).length === Object.keys(OPERACOES).length` em vez de `23`, para que o drift apareça como teste vermelho e não como registro malformado em produção. Em qualquer dos dois caminhos, registrar em `operacoes.test.ts`: `createGoal` com `kind: 42` → 400 (hoje seria 200 e gravado).
 
 ## Avisos
 
-### WR-01: No bootstrap de produção, o status "pago" tem `entryAllowedMemberIds` apontando para Membros que nunca vão existir — ninguém consegue fechar uma Conta
+### WR-01: No bootstrap de produção, o status "pago" tem `entryAllowedMemberIds` apontando para Membros que nunca vão existir — ninguém consegue fechar uma Conta — STILL OPEN
 
 **Arquivo:** `packages/dominio/src/seed-financeiro.ts:110` (via `packages/dominio/src/bootstrap-gestao.ts:190`)
-**Problema:** Com `{ fixtures: false }`, a definição de Status continua sendo `{ id: S.pago, ..., entryAllowedMemberIds: [CP.aprovadorId, CP.aprovadorKonqId] }`. Esses ids (`mem_marcos`/`mem_walter`, fixtures) não existem no Espaço "Gestão" e **não podem passar a existir**: um convite real gera `nextId("mem")`, nunca um id literal. `changeTaskStatus` (`tasks.ts:203`) recusa para todo Membro, inclusive a Proprietária. O teste `bootstrap-gestao.test.ts:97-101` celebra essa recusa como "processo configurado de verdade", mas o que ela prova é que o processo de Contas a pagar em produção nasce sem estado terminal. A mensagem de recusa ainda mostra os ids crus (`state.members.find(...)?.displayName ?? id`) — "Só mem_marcos, mem_walter move para pago". O comentário em `bootstrap-gestao.ts:53-58` aceita referências a `CP.aprovadorId` em **payloads de Automação** (JSON opaco), mas `entryAllowedMemberIds` é referência estrutural, aplicada pelo domínio.
-**Correção:** Em `applyContasAPagar`, condicionar a restrição às fixtures — `entryAllowedMemberIds: opcoes.fixtures ? [CP.aprovadorId, CP.aprovadorKonqId] : undefined` — e documentar em `bootstrap/CONTEXT.md` que RN-CP-04 é religada por `updateStatus` quando o Aprovador for convidado. Ajustar o teste para provar que a Proprietária **consegue** fechar como pago no bootstrap (ou que a recusa vem do requisito de saída de "para pagar", não de uma lista de ids fantasma). Aplicar a mesma varredura a `seed-contas-a-receber.ts` (o `mentionMemberId: CP.aprovadorId` de R5 está na categoria "payload", aceita).
+**Problema:** Inalterado desde a revisão anterior. Com `{ fixtures: false }`, `entryAllowedMemberIds: [CP.aprovadorId, CP.aprovadorKonqId]` referencia `mem_marcos`/`mem_walter`, ids de fixture que um convite real (`nextId("mem")`) nunca produz; `changeTaskStatus` recusa para todo Membro, inclusive a Proprietária; a mensagem exibe ids crus.
+**Correção:** `entryAllowedMemberIds: opcoes.fixtures ? [CP.aprovadorId, CP.aprovadorKonqId] : undefined` em `applyContasAPagar`; ajustar `bootstrap-gestao.test.ts:97-101` para provar que a Proprietária consegue fechar como pago; documentar em `bootstrap/CONTEXT.md` que RN-CP-04 é religada por `updateStatus`.
 
-### WR-02: `runScheduledAutomations` aceita `today` do cliente — o relógio das Automações temporais é do navegador, não do servidor
+### WR-02: `runScheduledAutomations` aceita `today` do cliente — o relógio das Automações temporais é do navegador, não do servidor — STILL OPEN
 
-**Arquivo:** `packages/dominio/src/operations/registro.ts:341` e `apps/api/src/rotas/operacoes.ts:103, 110-113` (assinatura em `packages/dominio/src/operations/automations.ts:316-329`)
-**Problema:** O único argumento `Date` do registro é exatamente o que define "hoje" para R2/R4/R5 (D+1, D+30, D+60 do vencimento) — e ele viaja no corpo como `{ $tipo: "Date", iso }`. Um Membro que administre a Lista pode mandar `iso: "2030-01-01"` e fazer todas as Contas entrarem em cobrança/escalonar à Diretoria agora, ou `iso: "garbage"` (vira `Invalid Date`, `NaN` em todas as comparações, e as Automações silenciosamente não rodam). O servidor é a verdade (D-03), mas delega ao cliente a variável que decide o efeito temporal.
-**Correção:** No `apps/api`, sobrescrever o argumento no despacho — por exemplo, uma entrada em `SERVICOS` (ou um mapa de "argumentos fixados pelo servidor"):
+**Arquivo:** `apps/api/src/rotas/esquemas-de-argumentos.ts:152` e `apps/api/src/rotas/operacoes.ts:125-144`
+**Problema:** A parte (b) da correção sugerida fechou (`z.date()` recusa `Invalid Date`, teste (n)). A parte principal não: `z.tuple([ID, z.date()])` valida que é uma data, não **qual** data — `{ $tipo: "Date", iso: "2030-01-01T00:00:00Z" }` continua fazendo todas as Contas entrarem em cobrança/escalonarem agora.
+**Correção:** Fixar o argumento no servidor, numa entrada em `SERVICOS` ou num mapa de "argumentos fixados": `runScheduledAutomations: (membro, args) => executar(membro.workspaceId, (state) => runScheduledAutomations(state, membro.id, String(args[0]), new Date()))`, e reduzir o schema a `z.tuple([ID])` (ou `z.tuple([ID, z.date()])` ignorando o segundo).
 
-```ts
-runScheduledAutomations: (membro, args) =>
-  executar(membro.workspaceId, (state) =>
-    runScheduledAutomations(state, membro.id, String(args[0]), new Date()),
-  ),
-```
+### WR-03: `convidarMembro` chama a Admin API (até 10 páginas × 1000 usuários) antes de qualquer checagem de permissão ou de formato do e-mail — STILL OPEN
 
-e, em `reviver`, rejeitar `iso` que não parse (`Number.isNaN(data.getTime())` → lançar `ErroDeEntrada`/400).
+**Arquivo:** `apps/api/src/servicos/convidar-membro.ts:33-34`, `apps/api/src/autenticacao/resolver-usuario.ts:34-35`, `apps/api/src/rotas/operacoes.ts:82, 98-107`
+**Problema:** Inalterado. `inviteMember` ficou de propósito fora de `ESQUEMAS` (comentário em `esquemas-de-argumentos.ts:27-31`), então `args[0]` passa pelo estrutural e por `ENTRADA_INVITE_MEMBER = z.object({ email: z.string(), roleId: z.string() }).strip()` — sem `.email()`, sem `.max()`. Qualquer Membro `ativo`/`suspenso`, inclusive Convidado, dispara até 10 `listUsers` por requisição antes de RN-ET-24 ser conferida.
+**Correção:** `ENTRADA_INVITE_MEMBER = z.object({ email: z.string().trim().email().max(254), roleId: z.string().min(1) }).strip()`; pré-voo barato da permissão (predicado puro `podeConvidar(state, actingMemberId)` exportado do domínio, rodado numa hidratação prévia, ou `executar` sem `userId` como ensaio) antes de tocar o Auth.
 
-### WR-03: `convidarMembro` chama a Admin API (até 10 páginas × 1000 usuários) antes de qualquer checagem de permissão ou de formato do e-mail
-
-**Arquivo:** `apps/api/src/servicos/convidar-membro.ts:33-34`, `apps/api/src/autenticacao/resolver-usuario.ts:34-35`, `apps/api/src/rotas/operacoes.ts:65`
-**Problema:** A ordem é resolver e-mail → `executar` → `inviteMember` (que só então verifica RN-ET-24 e o regex de e-mail). Qualquer Membro `ativo`/`suspenso` — inclusive um Convidado sem direito de convidar — dispara `POST /operacoes/inviteMember` com `{ email: "x", roleId: "y" }` e provoca até 10 chamadas a `auth.admin.listUsers` por requisição, em loop, sem custo para ele. O comentário em `resolver-usuario.ts:18-21` justifica o teto com "rota só alcançável por Membro de governança", mas essa premissa é falsa: a governança é conferida **depois**. `ENTRADA_INVITE_MEMBER` usa `z.string()` sem `.email()`, então nem a forma do e-mail barra a chamada.
-**Correção:** (1) `ENTRADA_INVITE_MEMBER = z.object({ email: z.string().trim().email().max(254), roleId: z.string().min(1) }).strip()`. (2) Antes de resolver, uma checagem barata da permissão sem duplicar a regra: exportar do domínio um predicado puro (`podeConvidar(state, actingMemberId): string | null`, extraído das três primeiras linhas de `inviteMember`) e rodá-lo numa hidratação prévia — ou, mais simples, rodar `executar` uma vez **sem** `userId` como pré-voo (recusa → devolve sem tocar o Auth; aceite → `rollback` e só então resolver e executar de verdade). (3) Registrar a defasagem: se a Admin API ficar indisponível, hoje o erro sobe como 500 genérico — aceitável, mas vale um teste.
-
-### WR-04: `setErrorHandler` devolve 500 "Erro interno." para erros de transporte 4xx do próprio Fastify (JSON malformado, corpo grande, media type errado)
+### WR-04: `setErrorHandler` devolve 500 "Erro interno." para erros de transporte 4xx do próprio Fastify — STILL OPEN
 
 **Arquivo:** `apps/api/src/app.ts:65-77`
-**Problema:** Só `hasZodFastifySchemaValidationErrors(erro)` vira 400; todo o resto é logado como `error` e devolvido como 500. O parser JSON do Fastify lança `FST_ERR_CTP_INVALID_JSON_BODY`/`FST_ERR_CTP_EMPTY_JSON_BODY` (statusCode 400), `FST_ERR_CTP_BODY_TOO_LARGE` (413) e `FST_ERR_CTP_INVALID_MEDIA_TYPE` (415) — todos com `statusCode` já definido. Um `curl` com corpo `{` recebe 500, e o log do processo registra como bug interno o que é cliente errado. Também esconde do `apps/web` a distinção "meu pedido está errado" vs. "o servidor caiu".
-**Correção:**
+**Problema:** Inalterado. `FST_ERR_CTP_INVALID_JSON_BODY` (400), `FST_ERR_CTP_BODY_TOO_LARGE` (413), `FST_ERR_CTP_INVALID_MEDIA_TYPE` (415) chegam com `statusCode` definido e saem como 500 com log `error`.
+**Correção:** Antes do `request.log.error`, `const status = typeof erro.statusCode === "number" ? erro.statusCode : 500; if (status >= 400 && status < 500) { reply.status(status).send({ ok: false, error: "Entrada inválida." }); return; }`. Teste em `app.test.ts` com `payload: "{"`.
 
-```ts
-app.setErrorHandler((erro, request, reply) => {
-  if (hasZodFastifySchemaValidationErrors(erro)) { /* 400 como hoje */ return; }
-  const status = typeof erro.statusCode === "number" ? erro.statusCode : 500;
-  if (status >= 400 && status < 500) {
-    reply.status(status).send({ ok: false, error: "Entrada inválida." }); // sem erro.message
-    return;
-  }
-  request.log.error(erro);
-  reply.status(500).send({ ok: false, error: "Erro interno." });
-});
-```
-
-Teste em `app.test.ts`: `POST /operacoes/createTask` com `payload: "{"` e `content-type: application/json` → 400.
-
-### WR-05: `carregarEnv()` grava valor vazio (`CHAVE=`) e os consumidores usam `??` — `PORT=` vira porta 0, `HOST=` vira "todas as interfaces"
+### WR-05: `carregarEnv()` grava valor vazio (`CHAVE=`) e os consumidores usam `??` — `PORT=` vira porta 0, `HOST=` vira "todas as interfaces" — STILL OPEN
 
 **Arquivo:** `apps/api/src/persistencia/conexao.ts:16-21`; consumidores em `apps/api/src/index.ts:20-21`, `apps/api/src/app.ts:44-45`, `apps/api/src/bootstrap/gestao.cli.ts:13`
-**Problema:** Uma linha `PORT=` (comum quando alguém copia o `.env.example` e apaga o valor) faz `process.env.PORT = ""`. `""` não é nullish, então `Number(process.env.PORT ?? 3002)` = `Number("")` = **0** → o Fastify escuta numa porta efêmera aleatória. `HOST=` → `""` chega intacto a `listen({ host: "" })`; o Fastify 5 só substitui `host == null` (`lib/server.js:70-72`), e o Node trata host vazio como "sem host" → **bind em `::`/todas as interfaces**, exatamente o que o README (§5) diz que nunca deve acontecer sem proxy. `WEB_ORIGIN=` → CORS com `[""]` (bloqueia tudo, silenciosamente). `WORKSPACE_ID=` → todo Membro recebe 403. `carregarEnv` também não trata aspas (`KEY="v"` guarda as aspas) nem `export KEY=`.
-**Correção:** Em `carregarEnv`, ignorar valores vazios (`if (valor === "") continue;`) e remover aspas simples/duplas envolventes; nos consumidores, usar `||` com validação: `const porta = Number(process.env.PORT || 3002); if (!Number.isInteger(porta) || porta <= 0) throw new Error("PORT inválida.");` e `const host = process.env.HOST || "127.0.0.1";`. Um teste unitário para `carregarEnv(caminhoTemporario)` com `PORT=`, `HOST=""`, `# comentário = x`.
+**Problema:** Inalterado. `""` não é nullish; `Number("")` é 0; `listen({ host: "" })` vira bind em todas as interfaces; `WEB_ORIGIN=` bloqueia todo CORS silenciosamente; `WORKSPACE_ID=` dá 403 a todos.
+**Correção:** `if (valor === "") continue;` e remoção de aspas envolventes em `carregarEnv`; `Number(process.env.PORT || 3002)` com validação de inteiro positivo; `process.env.HOST || "127.0.0.1"`. Teste unitário de `carregarEnv`.
 
-### WR-06: `enviar()` no store não tem `catch` — exceção do transporte vira rejeição não tratada e o usuário nunca recebe feedback
+### WR-06: `enviar()` no store não tem `catch` — exceção do transporte vira rejeição não tratada e o usuário nunca recebe feedback — STILL OPEN
 
-**Arquivo:** `apps/web/src/dados/store.ts:97-158` (try/finally sem catch; disparo com `void` em `:198`)
-**Problema:** `transporte.gravar` pode lançar fora do que está mapeado para `"falha"`: `resposta.json()` em um 200 sem JSON válido (`transporte.ts:117`), `resposta.json()` no `hidratar` (`:179`), ou uma exceção dentro de `rehidratar()`/`aplicarDiferenca`. O `finally` decrementa `pendentes`, mas `lastResult` fica com o `ok:true` otimista que `run()` já gravou — a tela mostra sucesso para algo que nunca persistiu, e o console recebe um `Unhandled promise rejection`. O `run()` promete "o cliente nunca fica com um estado que o servidor não tem"; neste caminho ele fica com um **feedback** que o servidor não deu.
+**Arquivo:** `apps/web/src/dados/store.ts:97-158, 198`
+**Problema:** Inalterado. `resposta.json()` em 200 sem JSON válido, ou exceção em `rehidratar()`/`aplicarDiferenca`, escapa do `try/finally`; `lastResult` fica com o `ok:true` otimista.
+**Correção:** `catch (erro) { set(estado => ({ lastResult: { ok: false, error: "Não foi possível gravar. Recarregue a página.", at: Date.now() }, revision: estado.revision + 1 })); console.error(erro); }` e `try/catch` nos `resposta.json()` do transporte devolvendo `{ tipo: "falha", erro: "Resposta inválida do servidor." }`.
+
+### WR-07: `run()` com mais de uma chamada descarta os diffs de todas menos a última e sempre força re-hidratação — STILL OPEN
+
+**Arquivo:** `apps/web/src/dados/transporte.ts:157-162`, `apps/web/src/dados/store.ts:103-112`
+**Problema:** Inalterado. Só a última resposta é devolvida; `revisaoAnterior` da segunda nunca casa com a local; se o `GET /estado` de re-hidratação falhar, o cliente fica sem o que o servidor já gravou.
+**Correção:** Acumular `diferencas: Diferenca[]` e aplicar em sequência comparando a `revisaoAnterior` da **primeira**; ou mandar as N chamadas num único `POST` na mesma Unidade de Trabalho.
+
+### WR-08: Enquanto há `pendentes > 0`, a cópia de `run()` é feita sobre um `data` que ainda não tem o resultado do `run()` anterior — ids repetidos e recusas falsas em ações encadeadas — STILL OPEN
+
+**Arquivo:** `apps/web/src/dados/store.ts:173-185, 198`
+**Problema:** Inalterado. Dois `run()` rápidos clonam o mesmo `data`; `syncIdSequence` gera o mesmo id nos dois; ação sobre registro recém-criado é recusada localmente sem ir à rede.
+**Correção:** Serializar `run()` enquanto `pendentes > 0`, ou clonar a última cópia aceita; expor `pendentes` para as telas.
+
+### WR-09: `porUserId ?? porEmail` escolhe um `removido` sobre um `pendente` vivo — dois Membros vivos para o mesmo e-mail; e a reativação por e-mail sobrescreve um `userId` já gravado (novo — resíduo da correção de CR-01)
+
+**Arquivo:** `packages/dominio/src/operations/members.ts:346-357, 370-378`
+**Problema:** A correção de CR-01 (a sugerida pela revisão anterior) resolve o cenário reportado, mas a precedência por `??` só olha um dos dois achados. Reproduzido nesta revisão a partir de `buildSeed()`:
+
+```ts
+inviteMember(state, "mem_thiago", { email: "x@empresa.com.br", roleId });                       // pendente mem_0000ae, sem userId
+inviteMember(state, "mem_thiago", { email: "x@empresa.com.br", roleId, userId: USUARIOS_DO_SEED.mem_tiago }); // mem_tiago está removido
+// → ok: true, value.id === "mem_tiago" (reativado); mem_0000ae continua pendente com o mesmo e-mail
+// vivos: 11 → 12
+```
+
+`porUserId` acha `mem_tiago` (`removido`), `porEmail` acha `mem_0000ae` (`pendente`); `existing = porUserId` passa pelo `state !== "removido"` e é reativado; o `pendente` nunca é conferido. Resultado: dois Membros não-removidos para o mesmo e-mail — o mesmo efeito que CR-01 queria impedir (RN-ET-11/INV-ET-04, dois na contagem RN-ET-23, e IN-01 volta a ser relevante quando o aceite gravar o `userId` nos dois). O caso (i) de `members-reconvite.test.ts` só cobre `porUserId` **ativo**. No mundo real o gatilho é um e-mail trocado no Auth (o Usuário `U` muda seu e-mail para o de um convite pendente sem conta) — improvável, mas é exatamente o tipo de estado que o domínio existe para não deixar nascer.
+
+Segundo ponto, na mesma função: quando `existing` vem de `porEmail` (um `pendente`/`removido` nascido com `invitedIdentity`) e já tinha `userId = V` (caminho (d): convite com conta conhecida), a linha `if (input.userId !== undefined) existing.userId = input.userId;` (`:378`) troca `V` por `U` sem conferir — o registro `mem_X` (com seu histórico de Atividade) passa a pertencer a outro Usuário. O gatilho é o mesmo (e-mail reatribuído no Auth).
+**Correção:** Conferir os dois achados e recusar quando divergem, e nunca trocar um `userId` já gravado:
+
+```ts
+const vivoPorEmail = porEmail && porEmail.state !== "removido" ? porEmail : undefined;
+const vivoPorUserId = porUserId && porUserId.state !== "removido" ? porUserId : undefined;
+const vivo = vivoPorUserId ?? vivoPorEmail;
+if (vivo) return fail(vivo.state === "pendente" ? "Já existe um convite pendente para este e-mail." : "Este e-mail já pertence a um Membro deste Espaço de Trabalho.", "email");
+const existing = porUserId ?? porEmail; // ambos removidos (ou um só achado): reativar
+if (existing && input.userId !== undefined && existing.userId !== undefined && existing.userId !== input.userId) {
+  return fail("Este convite corresponde a outra conta. Remova o Membro antigo antes de convidar de novo.", "email");
+}
+```
+
+Acrescentar em `members-reconvite.test.ts`: (j) `porUserId` removido + `porEmail` pendente vivo → recusa, `state.members` inalterado; (k) `porEmail` removido com `userId = V` + `input.userId = U` → recusa (ou, se a decisão for reatribuir, que seja explícita e registrada em Atividade).
+
+### WR-10: `reviverArgumentos` é recursivo sem limite e roda antes do zod — corpo de 400 KB de arrays aninhados estoura a pilha e vira 500 "Erro interno." com log `error` (novo)
+
+**Arquivo:** `apps/api/src/rotas/operacoes.ts:125-126`; `packages/dominio/src/operations/registro.ts:457-468`
+**Problema:** A ordem é `reviverArgumentos(request.body.args)` → `esquemaDeArgumentos(nome).safeParse(revividos)`. O limite de profundidade (`PROFUNDIDADE_MAXIMA = 6`) só existe no zod, que roda depois; `reviver` desce a árvore inteira por recursão direta. Reproduzido via `app.inject` com Membro autenticado:
+
+```ts
+const n = 200000;
+payload: `{"args":[${"[".repeat(n)}${"]".repeat(n)}]}`   // 400 011 bytes, abaixo do bodyLimit padrão (1 MiB)
+// → 500 {"ok":false,"error":"Erro interno."}
+// isolado: reviverArgumentos(args) lança RangeError: Maximum call stack size exceeded; ARGUMENTOS_GENERICOS.safeParse(args) devolve success:false sem lançar
+```
+
+`JSON.parse` do Node é iterativo e aceita; o `reviver` não. O `RangeError` sobe ao `setErrorHandler` → 500 + `request.log.error` — o mesmo efeito 1 de CR-02 (qualquer Membro autenticado enche o log de erros do processo com entrada trivial), só que por outro caminho. O comentário em `operacoes.ts:150-152` diz que `RangeError` "já não é sinal de entrada" — aqui é.
+**Correção:** Validar **antes** de reviver, ou limitar a profundidade no `reviver`. A menor mudança na rota:
+
+```ts
+let revividos: unknown[];
+try {
+  revividos = reviverArgumentos(request.body.args);
+} catch (erro) {
+  if (erro instanceof RangeError) return reply.code(400).send({ ok: false, error: mensagemDeEntradaInvalida(nome) });
+  throw erro;
+}
+```
+
+Melhor: `reviver(valor, nivel)` com `if (nivel > PROFUNDIDADE_MAXIMA) throw new ErroDeEntrada(...)` (ou devolver o valor intocado e deixar o zod recusar), e um teste em `operacoes.test.ts` com `n = 10000` → 400. Também `serializar`/`reviver` poderiam ser iterativos, mas o limite é suficiente.
+
+### WR-11: `TypeError → 400` também é aplicado às 23 operações com schema, onde um `TypeError` depois da validação só pode ser bug — registrado como `warn` de "entrada inválida" (novo)
+
+**Arquivo:** `apps/api/src/rotas/operacoes.ts:143-161`
+**Problema:** O mapeamento é indiscriminado: `if (erro instanceof TypeError)` vale para qualquer `nome`. Para uma operação em `ESQUEMAS`, os `args` já têm exatamente a forma da assinatura quando chegam ao domínio — um `TypeError` ali vem de um estado hidratado inconsistente (`jsonb` malformado por CR-02, uma coluna gerada fora de sincronia, um `find()` que devolveu `undefined` onde o domínio assumia registro) ou de um bug no domínio. A rota devolve 400 "Entrada inválida para `updateTask`" ao cliente e grava `warn`, não `error`: o `apps/web` mostra "entrada inválida" para um clique legítimo, o operador não vê nada no nível de alerta, e o bug fica escondido atrás de um código de cliente. O comentário em `:146-149` diz "para quem não tem schema próprio, um `TypeError` é o sinal de forma errada" — o código não faz essa distinção.
 **Correção:**
 
 ```ts
 } catch (erro) {
-  set((estado) => ({
-    lastResult: { ok: false, error: "Não foi possível gravar. Recarregue a página.", at: Date.now() },
-    revision: estado.revision + 1,
-  }));
-  console.error(erro);
-} finally { ... }
+  const temSchemaProprio = Object.hasOwn(ESQUEMAS, nome);
+  if (erro instanceof TypeError && !temSchemaProprio) {
+    request.log.warn({ operacao: nome, membro: request.membro.id, causa: erro.message }, "TypeError dentro da operação — tratado como entrada inválida");
+    throw new ErroDeEntrada(mensagemDeEntradaInvalida(nome));
+  }
+  throw erro; // 500 + log error: é bug, não entrada
+}
 ```
 
-E em `transporte.ts`, envolver os `resposta.json()` de sucesso em try/catch devolvendo `{ tipo: "falha", erro: "Resposta inválida do servidor." }`. Teste em `store.test.ts`: `gravarMock.mockRejectedValueOnce(new Error("x"))` → `lastResult.ok === false` e `pendentes === 0`.
-
-### WR-07: `run()` com mais de uma chamada descarta os diffs de todas menos a última e sempre força re-hidratação
-
-**Arquivo:** `apps/web/src/dados/transporte.ts:157-162` e `apps/web/src/dados/store.ts:103-112`
-**Problema:** Para `chamadas = [createChatSession, sendChatMessage]`, `transporteHttp.gravar` faz dois `POST` em sequência e devolve só a **última** resposta. O diff da primeira (a Sessão de Chat criada) é jogado fora. Depois, em `enviar`, `resposta.revisaoAnterior` da segunda chamada é `revisaoDoServidor + 1` (o servidor já incrementou na primeira), nunca igual a `get().revisaoDoServidor` → cai sempre em `rehidratar()`. Ou seja, o caminho "mais de uma chamada" nunca aplica diff: depende de um `GET /estado` de ~475 KB para cada clique desse tipo, e se esse `GET` falhar (rede), o cliente fica sem a Sessão de Chat que o servidor já tem. O teste `transporte.test.ts (g)` só confere que dois `fetch` saíram; `store.test.ts (h)` só confere a ordem das chamadas gravadas — nenhum cobre a aplicação do resultado.
-**Correção:** Acumular os diffs e devolver o conjunto: `gravar` devolve `{ tipo: "diferenca", diferencas: Diferenca[], revisaoAnterior: primeira.revisaoAnterior, revisao: ultima.revisao }`; `enviar` compara `revisaoAnterior` da **primeira** com a local e aplica `aplicarDiferenca` em sequência. Alternativa menor: mandar as N chamadas num único `POST` (`{ chamadas: [...] }`) executadas na mesma Unidade de Trabalho — que é também o único jeito de a segunda chamada ver a primeira no mesmo `state` sem depender de o servidor processar em ordem.
-
-### WR-08: Enquanto há `pendentes > 0`, a cópia de `run()` é feita sobre um `data` que ainda não tem o resultado do `run()` anterior — ids repetidos e recusas falsas em ações encadeadas
-
-**Arquivo:** `apps/web/src/dados/store.ts:173-185, 198`
-**Problema:** `run()` clona `get().data`, que só muda quando o diff volta. Dois cliques rápidos ("criar Tarefa" duas vezes) produzem duas cópias a partir do **mesmo** estado; `syncIdSequence(copia)` em cada uma gera o **mesmo** `resultado.value.id` para as duas (o servidor gera dois ids distintos). A tela que navega por `resultado.value.id` — a justificativa do comentário em `:176-181` — vai para o registro errado no segundo clique. Pior: uma ação sobre o registro recém-criado (comentar na Tarefa que acabou de nascer, mandar mensagem na Sessão de Chat recém-aberta em outro `run()`) é **recusada localmente** ("Tarefa não encontrada") sem ir à rede, mesmo que o servidor a aceitasse. O modelo D-05 só é coerente com `pendentes === 0`; o store não impõe isso nem sinaliza à tela.
-**Correção:** Serializar: enfileirar `run()` enquanto `pendentes > 0` (a operação roda quando o diff anterior chegar, sobre o estado já atualizado), ou expor `pendentes` na API pública para as telas desabilitarem ações encadeadas. No mínimo, quando `pendentes > 0`, clonar a **última cópia aceita** (mantida no store) em vez de `data`, e documentar que `resultado.value.id` só é confiável com `pendentes === 0`.
+(importando `ESQUEMAS` de `esquemas-de-argumentos.ts`). Se CR-02 for fechado pela opção (a) — 404 para operações sem schema — o mapeamento de `TypeError` pode ser removido por inteiro, o que é o desfecho mais limpo.
 
 ## Informações
 
-### IN-01: `membroPorUsuario` usa `LIMIT 1` sem `ORDER BY` — resolução de sessão não determinística se houver dois Membros com o mesmo `userId`
+### IN-01: `membroPorUsuario` usa `LIMIT 1` sem `ORDER BY` — resolução de sessão não determinística se houver dois Membros com o mesmo `userId` — STILL OPEN
 
 **Arquivo:** `apps/api/src/persistencia/membros.ts:18-26`
-**Problema:** Combinado com CR-01 (duplicata por e-mail que, no aceite, receberá o mesmo `userId`), a sessão pode cair ora no `removido`, ora no `ativo`. Nada no schema impede a duplicata (o índice `registros_members_user_id_idx` não é `unique`).
-**Correção:** `order by (dados->>'state') = 'ativo' desc, atualizado_em desc limit 1` e, em migração `003`, um índice único parcial `(workspace_id, (dados->>'userId')) where colecao = 'members' and dados->>'userId' is not null and dados->>'state' <> 'removido'`.
+**Problema:** Inalterado. WR-09 mostra um caminho novo (dois vivos para o mesmo e-mail) que, no aceite, produz exatamente a duplicata.
+**Correção:** `order by (dados->>'state') = 'ativo' desc, atualizado_em desc limit 1` e índice único parcial em migração `003`.
 
-### IN-02: `reviver()` copia a chave `__proto__` por atribuição — o objeto revivido herda campos que o cliente escolheu
+### IN-02: `reviver()` copia a chave `__proto__` por atribuição — PARCIALMENTE (mitigado pelo zod, não pelo `reviver`)
 
-**Arquivo:** `packages/dominio/src/operations/registro.ts:457-466` (e `serializar`, `:433-445`)
-**Problema:** `resultado[chave] = reviver(v)` com `chave === "__proto__"` (que `JSON.parse` produz como propriedade própria) troca o protótipo de `resultado`. Não polui `Object.prototype` (verificado: só o objeto local), e `canonico()`/`structuredClone` usam chaves próprias, então nada herdado persiste — mas leituras `input.campo` no domínio passam a enxergar valores herdados que não aparecem em `Object.keys`. É um vetor estranho que custa uma linha para fechar.
-**Correção:** `if (chave === "__proto__" || chave === "constructor" || chave === "prototype") continue;` ou construir com `Object.defineProperty`/`Object.create(null)` e converter no fim.
+**Arquivo:** `packages/dominio/src/operations/registro.ts:457-466`
+**Problema:** Inalterado. Verificado nesta revisão: com `[{"__proto__":{"title":"hijack"},"name":"x"}]`, o objeto revivido tem `title` herdado; `ARGUMENTOS_GENERICOS` recria via `Reflect.ownKeys` (limpo, `title` some); `ESQUEMAS.updateTask.safeParse(["t", {"__proto__":{"description":"hijack"},"title":"ok"}])` **lê** `input.description` herdado e o materializa como próprio na saída (`data[1].description === "hijack"`, protótipo limpo). Não é bypass — o valor passa pelo mesmo `z.string()` que passaria se enviado direto —, mas prova que a defesa é o zod e que o `reviver` continua produzindo objetos com protótipo escolhido pelo cliente.
+**Correção:** `if (chave === "__proto__" || chave === "constructor" || chave === "prototype") continue;` no `reviver` (e em `serializar`).
 
-### IN-03: `bootstrapGestao` confere "Espaço vazio" fora da transação (TOCTOU)
+### IN-03: `bootstrapGestao` confere "Espaço vazio" fora da transação (TOCTOU) — STILL OPEN
 
 **Arquivo:** `apps/api/src/bootstrap/gestao.ts:29-42`
-**Problema:** O `count(*)` roda antes do `begin`; duas execuções simultâneas do CLI passam as duas pela guarda. `semear` → `gravar` faz `on conflict do update`, então o resultado é sobrescrever com o mesmo conteúdo — hoje inofensivo, mas a garantia documentada ("só grava em Espaço vazio") não é atômica.
-**Correção:** Mover o `count` para dentro do `begin` com `select ... for update` na linha de `plataforma.workspaces` (inserindo-a antes com `on conflict do nothing`), ou `lock table plataforma.registros in share row exclusive mode`.
+**Problema:** Inalterado.
+**Correção:** `count` dentro do `begin` com `select ... for update` na linha de `plataforma.workspaces`.
 
-### IN-04: Documentação desatualizada em relação ao código entregue
+### IN-04: Documentação desatualizada em relação ao código entregue — PARCIALMENTE RESOLVIDO
 
-**Arquivo:** `apps/api/CONTEXT.md:28-29, 40-41`; `apps/api/package.json:5`
-**Problema:** `CONTEXT.md` ainda diz "Hoje só `GET /saude` (pública); as rotas por operação chegam no Plan 01-04" e lista `src/repositorios/` (a pasta real é `src/persistencia/`); `package.json` descreve o pacote como "Esqueleto do backend. A camada HTTP ainda não foi escolhida". `rotas/CONTEXT.md:7` diz "Nasce vazia". O projeto pede que os `CONTEXT.md` sejam lidos antes do código — estar errado é pior que não existir.
-**Correção:** Atualizar as três frases; trocar `src/repositorios/` por `src/persistencia/`; descrever o pacote como "Backend HTTP (Fastify) sobre `@n1/dominio`".
+**Arquivo:** `apps/api/CONTEXT.md:28-29, 40`; `apps/api/package.json:5`
+**Problema:** `rotas/CONTEXT.md` foi atualizado (lista os três arquivos, "Nasce vazia" saiu). `apps/api/CONTEXT.md` ainda diz "Hoje só `GET /saude` (pública); as rotas por operação … chegam no Plan 01-04" e lista `src/repositorios/` (a pasta é `src/persistencia/`); `package.json` ainda descreve "Esqueleto do backend. A camada HTTP ainda não foi escolhida".
+**Correção:** Atualizar as duas frases e o nome da pasta; descrever o pacote como "Backend HTTP (Fastify) sobre `@n1/dominio`".
 
-### IN-05: Referência do projeto Supabase em arquivo de exemplo e em documentação versionada
+### IN-05: Referência do projeto Supabase em arquivo de exemplo e em documentação versionada — STILL OPEN
 
 **Arquivo:** `apps/api/.env.example:26`; `apps/api/src/persistencia/CONTEXT.md:7`
-**Problema:** O `ref` `epomplsskqpluxuujpxl` identifica o projeto de produção. Não é segredo (aparece na URL pública), mas é informação de alvo que não precisa estar num arquivo de exemplo destinado a ser copiado — e o próprio `.env.example` já usa `SEU-PROJETO` na URL logo abaixo, contradizendo-se.
-**Correção:** Remover o `ref` do comentário (deixar "Projeto Supabase da plataforma") e da tabela do `CONTEXT.md`.
+**Problema:** Inalterado.
+**Correção:** Remover o `ref` do comentário e da tabela.
 
-### IN-06: `NEXT_PUBLIC_API_URL!` com asserção não nula e mensagem de erro que não cita `API_URL`
+### IN-06: `NEXT_PUBLIC_API_URL!` com asserção não nula e mensagem de erro que não cita `API_URL` — STILL OPEN
 
 **Arquivo:** `apps/web/src/dados/sessao-provider.tsx:38`; `apps/web/src/dados/estado-inicial.ts:43-44`
-**Problema:** Se `NEXT_PUBLIC_API_URL` faltar no navegador, o `fetch` vai para `undefined/operacoes/...` e a falha aparece como "Sem conexão com o servidor" — diagnóstico enganoso. No servidor, o erro diz "NEXT_PUBLIC_API_URL não definida" mesmo quando o que se lê primeiro é `API_URL`.
-**Correção:** No provider, `const apiUrl = process.env.NEXT_PUBLIC_API_URL; if (!apiUrl) throw new Error("NEXT_PUBLIC_API_URL não definida (apps/web/.env.local).");` na criação do transporte; no `estado-inicial.ts`, "API_URL/NEXT_PUBLIC_API_URL não definidas".
+**Problema:** Inalterado.
+**Correção:** Checagem explícita com mensagem que nomeia a variável e o arquivo `.env.local`.
 
-### IN-07: `syncIdSequence` é empurrado por ids literais de 6 caracteres — o contador nasce em ~1,95 bilhão e os ids gerados ficam parecidos com os escritos à mão
+### IN-07: `syncIdSequence` é empurrado por ids literais de 6 caracteres — STILL OPEN
 
 **Arquivo:** `packages/dominio/src/operations/activity.ts:31, 52-74`
-**Problema:** No seed, `mem_walter` (`parseInt("walter", 36)` = 1 952 731 683) casa o padrão; no bootstrap, `agt_padrao` (≈1,55 bi). O primeiro id gerado vira `tsk_walteu`, `act_waltev`… — visualmente indistinguível de um id hand-authored, o que confunde depuração e a regra "prefixo + 6 dígitos" do comentário. Sobram ~224 milhões de ids antes de `36^6`; passado esse ponto, `nextId` produz 7 caracteres, o regex `{6}` deixa de reconhecê-los e a sincronização seguinte voltaria o contador para baixo (colisão). Não é alcançável na prática desta fase, mas é uma invariante frágil escondida num regex.
-**Correção:** Excluir do casamento sufixos com letra (`^[a-z]+_([0-9]{6})$` não serve porque a base é 36); a alternativa robusta é reservar um formato distinto para ids gerados (por exemplo, prefixo + `_g` + base36) ou persistir o contador em `plataforma.workspaces` e sincronizar dali, não varrendo o estado.
+**Problema:** Inalterado.
+**Correção:** Formato distinto para ids gerados, ou contador persistido em `plataforma.workspaces`.
 
-### IN-08: `MODELOS_DA_PLATAFORMA` e `TOOLS` são compartilhados por referência entre todos os `DataState` montados no mesmo processo
+### IN-08: `MODELOS_DA_PLATAFORMA` e `TOOLS` são compartilhados por referência entre todos os `DataState` — STILL OPEN
 
 **Arquivo:** `packages/dominio/src/seed.ts:1898, 2391-2392`; `packages/dominio/src/bootstrap-gestao.ts:49`
-**Problema:** `buildSeed()` e `buildGestaoBootstrap()` colocam o **mesmo** array de módulo em `state.models`/`state.tools`. `aplicarDiferenca` muta arrays em lugar (`push`/`splice`), então um diff que toque `models` num store (`PublicoProvider` usa `buildProductSeed()`) altera a constante para todos os stores da mesma aba e para o próximo `buildSeed()`. Hoje nenhuma operação grava `models`/`tools`, então não há efeito observável — mas o `readonly` do tipo dá uma falsa sensação de imutabilidade.
-**Correção:** `models: [...MODELOS_DA_PLATAFORMA]`, `tools: [...TOOLS]` (ou `Object.freeze` nas constantes para o erro aparecer cedo).
+**Problema:** Inalterado.
+**Correção:** `models: [...MODELOS_DA_PLATAFORMA]`, `tools: [...TOOLS]` ou `Object.freeze`.
 
-### IN-09: `sessaoExpirada: true` é produzido pelo transporte mas ignorado pelo store — o usuário continua clicando com sessão morta
+### IN-09: `sessaoExpirada: true` é produzido pelo transporte mas ignorado pelo store — STILL OPEN
 
 **Arquivo:** `apps/web/src/dados/transporte.ts:93, 111`; `apps/web/src/dados/store.ts:147-153`
-**Problema:** O tipo `RespostaDeGravacao` carrega o sinal, o `case "falha"` do store descarta-o. Cada `run()` seguinte repete o `fetch` com 401 e a mesma mensagem, sem redirecionar para `/entrar`.
-**Correção:** No `case "falha"`, `if (resposta.sessaoExpirada) window.location.assign("/entrar");` (ou expor um callback `aoExpirarSessao` nas opções do `criarStore` para o provider decidir).
+**Problema:** Inalterado.
+**Correção:** No `case "falha"`, redirecionar para `/entrar` ou expor `aoExpirarSessao`.
+
+### IN-10: O "portão de drift" `satisfies Esquemas` só prende numa direção — um schema mais estrito que a assinatura compila e vira 400 falso para o `apps/web` (novo)
+
+**Arquivo:** `apps/api/src/rotas/esquemas-de-argumentos.ts:42, 121-156`
+**Problema:** `z.ZodType<ArgumentosDe<N>>` confere que a **saída** do schema é atribuível ao tipo da assinatura. É o que barra `updateTask: z.tuple([ID, z.object({ title: z.number() })])` (o exemplo do comentário). Mas o inverso passa sem erro: `createTask` com `parentTaskId: ID` (obrigatório em vez de opcional) tem saída `{ …, parentTaskId: string }`, atribuível a `CreateTaskInput` — compila, e toda criação de Tarefa raiz pelo `apps/web` (`listas/[lista]/page.tsx:247`, sem `parentTaskId`) passaria a receber 400. O mesmo para `moveTask: z.tuple([ID, ID])` (sem o terceiro elemento opcional) ou para um `.strict()` que esqueça uma chave que o web manda. Hoje as 23 conferem campo a campo (verificado contra `CreateTaskInput`, `UpdateTaskInput`, `ReceivableSeriesInput`, `addTaskComment`, `ActorRef`, `TaskDate`, `FieldValue["value"]`), então não há bug — mas o comentário promete uma garantia que o tipo não dá, e a rede real contra esse drift são os testes (b)/(d)/(e)/(f) com as formas literais do web, que cobrem só parte das 23.
+**Correção:** Ou documentar a assimetria no comentário ("um schema mais estrito compila; a proteção contra isso são os testes com as formas literais do web"), ou completar a rede: um teste por operação em `ESQUEMAS` com a forma **mínima** que o web envia (sem opcionais) e a forma **máxima**, geradas a partir dos call sites. Uma checagem de tipo bidirecional (`[A] extends [B] ? [B] extends [A] ? …`) não fecha por causa de `readonly` e `?:` vs `| undefined`, então não vale o esforço.
+
+### IN-11: A mensagem de 400 ecoa chaves de objeto fornecidas pelo cliente (`path.join(".")`), sem limite de tamanho (novo)
+
+**Arquivo:** `apps/api/src/rotas/operacoes.ts:77-80, 132`
+**Problema:** Para operações no fallback, `z.record(z.string(), …)` produz `issues[0].path` com o nome da chave que o cliente enviou (por exemplo, no estouro de profundidade: `["0", "<chave de 300 KB>", …]`). `mensagemDeEntradaInvalida` concatena isso no corpo da resposta: `Entrada inválida para "createChatFolder" em 0.<chave>…`. É JSON e o `apps/web` renderiza `lastResult.error` como texto em React, então não é XSS — mas é conteúdo do cliente refletido e potencialmente enorme numa mensagem que existe para ser curta. Os `problemas` completos já vão ao `request.log.warn`.
+**Correção:** Limitar o caminho aos elementos numéricos/declarados, ou truncar: `problema.path.slice(0, 4).map(p => String(p).slice(0, 40)).join(".")`; ou devolver só o índice do argumento (`em args[1]`) e deixar o detalhe no log.
 
 ---
 
-_Revisado em: 2026-09-16_
+_Revisado em: 2026-09-16T20:03:40Z_
 _Revisor: Claude (gsd-code-reviewer)_
 _Profundidade: standard_
