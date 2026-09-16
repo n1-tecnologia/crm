@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-02-PLAN.md (Fastify em apps/api, JWT do Supabase verificado, Membro resolvido por userId dentro do Espaço, npm run dev sobe web+api) — 24 testes em @n1/api, npm run check verde
-last_updated: "2026-09-16T15:55:19.884Z"
+stopped_at: Completed 01-07-PLAN.md (store.ts hidrata da API — run() híbrido, Transporte, casca resolvida pelo servidor) — 53 testes em @n1/web, npm run check verde
+last_updated: "2026-09-16T16:17:53.800Z"
 last_activity: 2026-09-16 -- Phase 1 execution started
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 9
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 1 (o-crm-n1-ganha-persist-ncia-e-login) — EXECUTING
-Plan: 5 of 9
+Plan: 6 of 9
 Status: Ready to execute
 Last activity: 2026-09-16 -- Phase 1 execution started
 
@@ -59,6 +59,7 @@ Progress: [░░░░░░░░░░] 0% (de planos GSD; em requisitos: 4/3
 | Phase 01 P03 | 35min | 2 tasks | 9 files |
 | Phase 01 P06 | 22min | 3 tasks | 3 files |
 | Phase 01 P02 | 75min | 3 tasks | 17 files |
+| Phase 01 P07 | 25min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -76,6 +77,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 01]: T-1-SC tratado — checkpoint humano bloqueante aprovou `fastify` 5.12.5, `@fastify/type-provider-zod` 1.0.0 (peer `zod >=4.2.0`, aceita o `zod ^4.6.1` do monorepo, sem fallback), `@fastify/cors` 11.3.0 e `concurrently` 10.0.5 nos repositórios oficiais no npm, antes de qualquer `npm install` da fase — Plan 01-02 liberado
 - [Phase 01]: D-02 materializado — apps/api verifica o JWT do Supabase por getClaims() e resolve o Membro por userId dentro do WORKSPACE_ID configurado, nunca por id que o cliente mande (T-1-02); state ativo/suspenso passam, removido/pendente 403 — a mesma regra do front, agora aplicada de verdade pelo backend — Plan 01-02
 - [Phase 01]: .gitignore ganhou exceção !.env.example/!.env.local.example — o padrão .env* pré-existente ignorava também os exemplos, então apps/api/.env.example nunca tinha sido commitado; sem segredo real nos três .example agora rastreados — Plan 01-02
+- [Phase 01]: Plan 01-07: store.ts hidrata de GET /estado e grava por POST /operacoes/:nome via um Transporte (transporteHttp/transporteEmMemoria); run() clona o DataState e decide a recusa do domínio sem rede (D-05); revisão defasada ou 409 sempre re-hidratam (D-06) — API pública do store (useData/useSession/useCurrentMember/useRun/useLastResult) inalterada; buildProductSeed() só sobrevive em PublicoProvider (OQ-PF-01)
 
 ### Pending Todos
 
@@ -107,6 +109,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-16T15:55:19.876Z
-Stopped at: Completed 01-02-PLAN.md (Fastify em apps/api, JWT do Supabase verificado, Membro resolvido por userId dentro do Espaço, npm run dev sobe web+api) — 24 testes em @n1/api, npm run check verde
+Last session: 2026-09-16T16:17:53.792Z
+Stopped at: Completed 01-07-PLAN.md (store.ts hidrata da API — run() híbrido, Transporte, casca resolvida pelo servidor) — 53 testes em @n1/web, npm run check verde
 Resume file: None
