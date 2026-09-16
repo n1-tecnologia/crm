@@ -15,6 +15,7 @@ export * from "./types";
 export * from "./state";
 export * from "./rotulos";
 export * from "./colecoes";
+export * from "./diferenca";
 export * from "./usuarios-do-seed";
 
 export * as operations from "./operations";
