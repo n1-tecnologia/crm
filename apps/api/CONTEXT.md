@@ -2,11 +2,21 @@
 
 Ler primeiro: [`../../CONTEXT.md`](../../CONTEXT.md)
 
-## Estado: esqueleto
+## Estado: servidor HTTP no ar
 
-Existem as pastas, o `tsconfig` e o ponto de composição. Não existe servidor.
-**A camada HTTP ainda não foi escolhida** — essa decisão é sua, e está em aberto
-de propósito.
+**Transporte:** Fastify 5 (D-01). `src/app.ts` monta o app inteiro — CORS,
+validação/serialização por `zod`, tratamento de erro, rotas — sem chamar
+`listen()`; `src/index.ts` é o único lugar que escuta. Essa separação é o
+que permite testar com `app.inject()`, sem socket nem banco.
+
+**Autenticação:** JWT do Supabase em `Authorization: Bearer` (D-02),
+verificado no hook `onRequest` de `src/plugins/autenticacao.ts` — todo
+Membro é resolvido por `userId === sub` dentro do `WORKSPACE_ID`
+configurado, nunca por um id que o cliente mande. Uma rota se isenta
+marcando `config: { publica: true }`.
+
+**Persistência:** `src/persistencia/` (já existia antes deste transporte) —
+`pool()` + tabela genérica `plataforma.registros`.
 
 ## O que entra
 
@@ -15,33 +25,32 @@ workspace não as reescreve.
 
 ## O que sai
 
-Uma API sobre o domínio. Quando existir.
+Uma API HTTP sobre o domínio. Hoje só `GET /saude` (pública); as rotas por
+operação (`POST /operacoes/:nome`, `GET /estado`) chegam no Plan 01-04.
 
 ## Como está organizada
 
 | Pasta | O contrato |
 |---|---|
-| `src/index.ts` | Ponto de composição: lê config, monta repositórios, injeta nos serviços, entrega ao transporte. |
+| `src/index.ts` | Ponto de composição: `carregarEnv()` + `buildApp()` + `listen()`. |
+| `src/app.ts` | Monta o Fastify (CORS, autenticação, rotas, erro) sem escutar — o que permite `app.inject()` nos testes. |
+| `src/plugins/` | Hooks transversais registrados na raiz, antes de qualquer rota — hoje só `autenticacao.ts`. |
 | `src/rotas/` | Um arquivo por recurso. Só traduz HTTP ↔ serviço: sem regra de negócio, sem SQL. |
 | `src/servicos/` | Casos de uso. Compõem operações do domínio e falam com repositórios. É aqui que mora a transação. |
 | `src/repositorios/` | Persistência. Uma interface por agregado, e a implementação atrás dela. |
+| `src/bootstrap/` | Script idempotente que materializa a configuração de um Espaço (Plan 01-05). |
 
 A direção é sempre `rotas → servicos → repositorios`. Uma rota que chama
 repositório pula a camada onde a regra deveria estar, e é assim que a lógica
 começa a se espalhar.
 
-## O que decidir antes da primeira linha
+## O que já foi decidido
 
-1. **Transporte** — Fastify, Hono, Nest, ou route handlers do próprio Next.
-   Muda o que entra em `src/index.ts` e nada mais.
-2. **Persistência** — qual banco, e com qual acesso (Prisma, Drizzle, SQL cru).
-   Fica atrás das interfaces de `src/repositorios/`.
-3. **Autenticação** — hoje a sessão é um `memberId` escolhido na interface
-   (`apps/web/src/dados/store.ts`). Virar identidade de verdade é trabalho desta
-   camada.
-
-Nenhuma das três está decidida no código. Quando a primeira for, o script `dev`
-deste workspace entra no `package.json` da raiz.
+As três decisões que este arquivo antes deixava em aberto de propósito estão
+travadas em `01-CONTEXT.md` (D-01, D-02) e materializadas no código: **transporte**
+é Fastify, processo próprio; **persistência** é `pg` sobre a tabela genérica
+`plataforma.registros`; **autenticação** é o JWT do Supabase Auth, verificado
+no servidor — não mais um `memberId` que a interface escolhe.
 
 ## O caminho de migração
 

@@ -9,7 +9,7 @@ o que existe, quem pode depender de quem, e onde uma mudança deve nascer.
 |---|---|---|
 | `packages/dominio/` | O contrato: tipos, operações, leituras derivadas e seed. As regras de negócio. | nada |
 | `apps/web/` | A interface. Next.js 16, App Router. | `@n1/dominio` |
-| `apps/api/` | O backend. Esqueleto — o transporte ainda não foi escolhido. | `@n1/dominio` |
+| `apps/api/` | O backend. Fastify sobre `@n1/dominio`, persistência no Postgres da plataforma. | `@n1/dominio` |
 
 ## A regra de dependência
 
@@ -32,9 +32,13 @@ retrabalho: a tela feita antes do tipo é a tela refeita depois dele.
 
 ## Estado atual
 
-O produto ainda roda inteiro na memória do navegador: `apps/web/src/dados/store.ts`
-monta o seed uma vez e muta em cima. Isso foi deliberado — o
-[PRD](PRD-FRONTEND-NAVEGAVEL.md) pede um protótipo navegável sem backend.
+A partir da Fase 1, `apps/api` é um servidor Fastify de verdade: sobe em
+processo próprio, verifica o JWT do Supabase em `Authorization: Bearer` e
+resolve o Membro por `userId` dentro do Espaço de Trabalho — o backend
+aplica a regra de acesso, não só a tela. `apps/web/src/dados/store.ts`
+ainda monta o seed e hidrata em memória (isso muda no Plan 01-07): a partir
+dele, o store passa a hidratar do `apps/api` por `GET /estado` e gravar por
+`POST /operacoes/:nome`.
 
 `apps/api/` existe para que o backend tenha onde nascer sem que a interface
 precise ser reescrita: o domínio já está fora do frontend, num pacote que os
@@ -46,7 +50,8 @@ Todos rodam da raiz:
 
 | Comando | O que faz |
 |---|---|
-| `npm run dev` | Sobe a interface (aceita `-- -p 3001`) |
+| `npm run dev` | Sobe web (3001) e api (3002) juntos, com prefixo de log por processo |
+| `npm run dev:web` | Só a interface (aceita `-- -p 3001`) |
 | `npm run build` | Compila a interface |
 | `npm run check` | Tipos, lint, tokens e testes — os três workspaces |
 | `npm run test` | Só os testes |

@@ -7,7 +7,8 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev -w @n1/web --",
+    "dev": "concurrently -k -n web,api -c cyan,magenta \"npm run dev -w @n1/web -- -p 3001\" \"npm run dev -w @n1/api\"",
+    "dev:web": "npm run dev -w @n1/web --",
     "build": "npm run build -w @n1/web",
     "start": "npm run start -w @n1/web --",
     "lint": "npm run lint -w @n1/web --",
