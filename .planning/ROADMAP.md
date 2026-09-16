@@ -45,7 +45,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 00-02-PLAN.md — De-para dos 6 ids → e-mail + Papel (`memberIdConhecido` para a Maryane) + catálogo das 38 `CLICKUP_*` + CLI de resolução de e-mails (PREP-04)
+- [x] 00-02-PLAN.md — De-para dos 6 ids → e-mail + Papel (`memberIdConhecido` para a Maryane) + catálogo das 38 `CLICKUP_*` + CLI de resolução de e-mails (PREP-04)
 - [ ] 00-03-PLAN.md — `exportarClickUp`: exportação bruta por Lista/recurso/página, retomável, anexos sanitizados, smoke test de `time_in_status` (PREP-02)
 
 **Wave 3** *(blocked on Wave 2 completion)*
@@ -209,7 +209,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 0. Preparação | 1/7 | In Progress|  |
+| 0. Preparação | 2/7 | In Progress|  |
 | 1. O CRM N1 ganha persistência e login | 11/11 | Complete   | 2026-09-16 |
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 0/TBD | Not started | - |
 | 3. Contas a pagar | 0/TBD | Not started | - |
