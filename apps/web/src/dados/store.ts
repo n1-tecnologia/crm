@@ -2,33 +2,49 @@
 
 /**
  * O store da interface: o `DataState` do domínio mais a sessão e o resultado
- * da última operação. Toda operação muta o grafo em lugar e incrementa uma
- * revisão para os assinantes recomputarem.
+ * da última operação. Continua um store por árvore (via contexto, não
+ * singleton — ver o porquê abaixo) e continua revisão em vez de objeto novo
+ * — mas agora **o servidor é a verdade**: o `DataState` real só muda quando
+ * o diff volta do `apps/api` (D-03); a cópia serve só para recusar na hora.
+ *
+ * `run()` é o híbrido de D-05: clona o estado (`structuredClone`), roda a
+ * operação pura na cópia. Se o domínio recusar, o erro aparece instantâneo e
+ * NADA vai à rede — a cópia é descartada. Se aceitar, a cópia também é
+ * descartada, mas os nomes+argumentos das operações chamadas (gravados pelo
+ * gravador de `@n1/dominio/operations/registro`, Plan 01-03) são mandados ao
+ * `apps/api`, e o estado real só muda quando o diff da resposta voltar. Se a
+ * revisão do cliente estava defasada — outra pessoa gravou no meio — ou o
+ * servidor devolver 409, o store re-hidrata por `GET /estado` em vez de
+ * aplicar qualquer coisa parcial (D-06): o cliente nunca fica com um estado
+ * que o servidor não tem.
  *
  * Por que uma revisão e não um objeto novo: o grafo é grande e todo ligado
- * (60 Tarefas, 25 Negócios, 20 Conversas com as suas Mensagens), e cloná-lo a
- * cada tecla custaria mais do que protege. As leituras passam por `useData`,
- * que recomputa quando a revisão muda.
+ * (60 Tarefas, 25 Negócios, 20 Conversas com as suas Mensagens), e trocar a
+ * referência a cada operação custaria mais do que protege. As leituras
+ * passam por `useData`, que recomputa quando a revisão muda.
  *
  * Por que um store por árvore, via contexto, e não um singleton de módulo:
  * no servidor, um singleton é compartilhado por todas as requisições — a
  * página da Maryane saía com a sessão de quem entrou antes — e o
  * `useSyncExternalStore` do SSR devolve o estado *inicial* do store, que num
  * singleton é sempre o Proprietário. Com o store nascendo dentro do
- * `StoreProvider`, cada requisição tem o seu, criado já com a sessão certa,
- * e o HTML do servidor mostra o Membro certo desde o primeiro byte. É o padrão
- * que o zustand documenta para o App Router.
+ * `StoreProvider`, cada requisição tem o seu, criado já com a sessão E o
+ * estado certos, e o HTML do servidor mostra o Membro certo desde o primeiro
+ * byte. É o padrão que o zustand documenta para o App Router.
  *
- * A API pública (`useData`, `useSession`, `useRun`…) não muda: os cem arquivos
- * que a consomem não sabem de onde o store vem.
+ * A API pública (`useData`, `useSession`, `useCurrentMember`, `useRun`,
+ * `useLastResult`) NÃO muda: os cem arquivos que a consomem não sabem de
+ * onde o store vem, nem que ele agora fala com uma API.
  */
 
 import { createContext, createElement, useContext, useState, type ReactNode } from "react";
 import { createStore, useStore as useZustandStore, type StoreApi } from "zustand";
-import { buildProductSeed } from "@n1/dominio/seed-produto";
 import type { DataState, OperationResult, Session } from "@n1/dominio/state";
 import * as operations from "@n1/dominio/operations";
+import { gravarChamadas, syncIdSequence } from "@n1/dominio/operations";
+import { aplicarDiferenca, type Ordens } from "@n1/dominio";
 import type { Id } from "@n1/dominio/types";
+import type { PedidoDeGravacao, Transporte } from "./transporte";
 
 interface StoreShape {
   readonly data: DataState;
@@ -36,9 +52,16 @@ interface StoreShape {
   session: Session & { readonly userId?: string };
   /** Last operation result, so a screen can render the feedback it produced. */
   lastResult: (OperationResult<unknown> & { readonly at: number }) | null;
+  /** colecao → id → ordem — o que `aplicarDiferenca` precisa para saber onde inserir um registro gravado. */
+  readonly ordens: Ordens;
+  /** A revisão do Espaço de Trabalho que o servidor confirmou por último — não a local, que não existe mais (D-05/D-06). */
+  revisaoDoServidor: number;
+  /** Quantos `run()` aceitos pelo domínio ainda esperam a confirmação do servidor. */
+  pendentes: number;
   setSession: (memberId: Id, userId?: string) => void;
   run: <T>(operation: (data: DataState, actingMemberId: Id) => OperationResult<T>) => OperationResult<T>;
-  reset: () => void;
+  /** Re-hidrata do zero por `GET /estado` — D-06: revisão defasada ou conflito. */
+  rehidratar: () => Promise<void>;
 }
 
 export interface SessaoInicial {
@@ -46,35 +69,173 @@ export interface SessaoInicial {
   readonly userId?: string;
 }
 
-function criarStore(sessao: SessaoInicial): StoreApi<StoreShape> {
-  return createStore<StoreShape>((set, get) => ({
-    data: buildProductSeed(),
-    revision: 0,
-    session: sessao.userId === undefined ? { memberId: sessao.memberId } : { memberId: sessao.memberId, userId: sessao.userId },
-    lastResult: null,
+interface EstadoInicialDoStore {
+  readonly data: DataState;
+  readonly revisao: number;
+  readonly ordens: Ordens;
+}
 
-    setSession: (memberId, userId) =>
-      set({ session: userId === undefined ? { memberId } : { memberId, userId }, revision: get().revision + 1 }),
+/**
+ * `criarStore` fica exposta (não só `StoreProvider`) para o teste montar um
+ * store sem React — `store.test.ts` injeta um `Transporte` falso e chama
+ * `run()`/`rehidratar()` direto no `StoreApi`.
+ */
+export function criarStore(opcoes: {
+  readonly sessao: SessaoInicial;
+  readonly estadoInicial: EstadoInicialDoStore;
+  readonly transporte: Transporte;
+}): StoreApi<StoreShape> {
+  const { sessao, estadoInicial, transporte } = opcoes;
 
-    run: (operation) => {
-      const { data, session } = get();
-      const result = operation(data, session.memberId);
-      set({ revision: get().revision + 1, lastResult: { ...result, at: Date.now() } });
-      return result;
-    },
+  return createStore<StoreShape>((set, get) => {
+    /**
+     * Manda o que `run()` já aceitou localmente para o servidor, e aplica a
+     * resposta. Roda depois de `run()` já ter devolvido o `OperationResult`
+     * da cópia para quem chamou — por isso é sempre disparada com `void`,
+     * nunca `await`ada pelo chamador.
+     */
+    async function enviar(pedido: PedidoDeGravacao): Promise<void> {
+      try {
+        const resposta = await transporte.gravar(pedido);
 
-    reset: () => set({ data: buildProductSeed(), revision: get().revision + 1, lastResult: null }),
-  }));
+        switch (resposta.tipo) {
+          case "diferenca": {
+            if (resposta.revisaoAnterior !== get().revisaoDoServidor) {
+              // Alguém gravou no meio (D-06): o diff foi calculado sobre uma
+              // revisão que já não é a de agora — aplicá-lo por cima seria
+              // arriscar um furo de ordem. Re-hidrata tudo.
+              await get().rehidratar();
+              if (!resposta.resultado.ok) {
+                set({ lastResult: { ...resposta.resultado, at: Date.now() } });
+              }
+              break;
+            }
+
+            // Mutação em lugar — o mesmo modelo do store: `aplicarDiferenca`
+            // nunca troca a referência das coleções, só o array por dentro.
+            aplicarDiferenca(get().data, get().ordens, resposta.diferenca);
+            set((estado) => ({ revisaoDoServidor: resposta.revisao, revision: estado.revision + 1 }));
+
+            if (!resposta.resultado.ok) {
+              // O servidor recusou o que a cópia aceitou — só acontece por
+              // não-determinismo (ex.: um prazo virou entre o clique e a
+              // resposta); o diff (vazio nesse caso) já aplicou, o erro do
+              // servidor prevalece sobre o `ok:true` que a cópia calculou.
+              set((estado) => ({ lastResult: { ...resposta.resultado, at: Date.now() }, revision: estado.revision + 1 }));
+            }
+            break;
+          }
+
+          case "estado": {
+            // Caminho do transporte em memória (rotas públicas): não há
+            // servidor divergindo — a cópia gravada VIRA o estado.
+            set((estado) => ({
+              data: resposta.estado.data,
+              ordens: resposta.estado.ordens,
+              revisaoDoServidor: resposta.estado.revisao,
+              revision: estado.revision + 1,
+            }));
+            break;
+          }
+
+          case "conflito": {
+            await get().rehidratar();
+            set({ lastResult: { ok: false, error: resposta.erro, at: Date.now() } });
+            break;
+          }
+
+          case "falha": {
+            set((estado) => ({
+              lastResult: { ok: false, error: resposta.erro, at: Date.now() },
+              revision: estado.revision + 1,
+            }));
+            break;
+          }
+        }
+      } finally {
+        set((estado) => ({ pendentes: estado.pendentes - 1 }));
+      }
+    }
+
+    return {
+      data: estadoInicial.data,
+      ordens: estadoInicial.ordens,
+      revisaoDoServidor: estadoInicial.revisao,
+      revision: 0,
+      pendentes: 0,
+      session: sessao.userId === undefined ? { memberId: sessao.memberId } : { memberId: sessao.memberId, userId: sessao.userId },
+      lastResult: null,
+
+      setSession: (memberId, userId) =>
+        set({ session: userId === undefined ? { memberId } : { memberId, userId }, revision: get().revision + 1 }),
+
+      run: (operation) => {
+        const { data, session, revisaoDoServidor } = get();
+
+        // O clone custa sub-ms para ~475 KB / ~900 registros (RESEARCH.md,
+        // Pitfall 3) — não é o gargalo, a rede é. Sincronizar o contador de
+        // ids faz a cópia gerar os MESMOS ids que o servidor vai gerar (a
+        // Unidade de Trabalho faz o mesmo antes de rodar a operação), então
+        // `resultado.value.id` — usado por telas que navegam para o registro
+        // recém-criado — já aponta para o registro certo, mesmo antes de o
+        // diff voltar.
+        const copia = structuredClone(data);
+        syncIdSequence(copia);
+
+        const { resultado, chamadas } = gravarChamadas(() => operation(copia, session.memberId));
+
+        if (!resultado.ok) {
+          // Recusa do domínio: a cópia é descartada, nada vai à rede (D-05).
+          set({ lastResult: { ...resultado, at: Date.now() } });
+          return resultado;
+        }
+
+        set((estado) => ({ pendentes: estado.pendentes + 1, lastResult: { ...resultado, at: Date.now() } }));
+
+        // Disparado sem `await`: `run()` continua síncrono para quem chama
+        // (a API pública não muda). O estado real só muda quando `enviar`
+        // aplicar o diff que voltar do servidor.
+        void enviar({ chamadas, revisao: revisaoDoServidor, copia, resultado });
+
+        return resultado;
+      },
+
+      rehidratar: async () => {
+        const r = await transporte.hidratar();
+        if ("tipo" in r) {
+          set({ lastResult: { ok: false, error: r.erro, at: Date.now() } });
+          return;
+        }
+        set((estado) => ({
+          data: r.data,
+          ordens: r.ordens,
+          revisaoDoServidor: r.revisao,
+          revision: estado.revision + 1,
+        }));
+      },
+    };
+  });
 }
 
 const StoreContext = createContext<StoreApi<StoreShape> | null>(null);
 
 /**
- * Cria o store uma vez por montagem, já com a sessão resolvida no servidor.
- * `useState` com inicializador garante uma criação só, mesmo em Strict Mode.
+ * Cria o store uma vez por montagem, já com a sessão E o estado resolvidos
+ * no servidor. `useState` com inicializador garante uma criação só, mesmo em
+ * Strict Mode.
  */
-export function StoreProvider({ sessao, children }: { readonly sessao: SessaoInicial; readonly children: ReactNode }) {
-  const [store] = useState(() => criarStore(sessao));
+export function StoreProvider({
+  sessao,
+  estadoInicial,
+  transporte,
+  children,
+}: {
+  readonly sessao: SessaoInicial;
+  readonly estadoInicial: EstadoInicialDoStore;
+  readonly transporte: Transporte;
+  readonly children: ReactNode;
+}) {
+  const [store] = useState(() => criarStore({ sessao, estadoInicial, transporte }));
   return createElement(StoreContext.Provider, { value: store }, children);
 }
 
