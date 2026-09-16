@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-07-PLAN.md (store.ts hidrata da API — run() híbrido, Transporte, casca resolvida pelo servidor) — 53 testes em @n1/web, npm run check verde
-last_updated: "2026-09-16T16:17:53.800Z"
+stopped_at: "Completed 01-04-PLAN.md (POST /operacoes/:nome e GET /estado — casca HTTP sobre a UoW; fix de syncIdSequence) — 322 testes no npm run check"
+last_updated: "2026-09-16T16:40:04.486Z"
 last_activity: 2026-09-16 -- Phase 1 execution started
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 9
-  completed_plans: 5
+  completed_plans: 6
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 1 (o-crm-n1-ganha-persist-ncia-e-login) — EXECUTING
-Plan: 6 of 9
+Plan: 7 of 9
 Status: Ready to execute
 Last activity: 2026-09-16 -- Phase 1 execution started
 
@@ -60,6 +60,7 @@ Progress: [░░░░░░░░░░] 0% (de planos GSD; em requisitos: 4/3
 | Phase 01 P06 | 22min | 3 tasks | 3 files |
 | Phase 01 P02 | 75min | 3 tasks | 17 files |
 | Phase 01 P07 | 25min | 3 tasks | 10 files |
+| Phase 01 P04 | 55min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -78,6 +79,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 01]: D-02 materializado — apps/api verifica o JWT do Supabase por getClaims() e resolve o Membro por userId dentro do WORKSPACE_ID configurado, nunca por id que o cliente mande (T-1-02); state ativo/suspenso passam, removido/pendente 403 — a mesma regra do front, agora aplicada de verdade pelo backend — Plan 01-02
 - [Phase 01]: .gitignore ganhou exceção !.env.example/!.env.local.example — o padrão .env* pré-existente ignorava também os exemplos, então apps/api/.env.example nunca tinha sido commitado; sem segredo real nos três .example agora rastreados — Plan 01-02
 - [Phase 01]: Plan 01-07: store.ts hidrata de GET /estado e grava por POST /operacoes/:nome via um Transporte (transporteHttp/transporteEmMemoria); run() clona o DataState e decide a recusa do domínio sem rede (D-05); revisão defasada ou 409 sempre re-hidratam (D-06) — API pública do store (useData/useSession/useCurrentMember/useRun/useLastResult) inalterada; buildProductSeed() só sobrevive em PublicoProvider (OQ-PF-01)
+- [Phase 01]: PERS-04 fechado: POST /operacoes/:nome (despacho por OPERACOES) e GET /estado servem os 132 casos de uso do domínio pela Unidade de Trabalho; gravar() devolve registros (não contagens), executar() sincroniza nextId e devolve revisao/revisaoAnterior (D-03/D-06) — Plan 01-04
+- [Phase 01]: syncIdSequence (packages/dominio/src/operations/activity.ts) casava qualquer id hand-authored de 6+ caracteres como sequência base36, estourando Number.MAX_SAFE_INTEGER com ids reais do seed (agt_classificador) e gerando ids duplicados — corrigido para casar só exatamente 6 caracteres, a largura que nextId() produz — Plan 01-04, Rule 1
 
 ### Pending Todos
 
@@ -109,6 +112,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-16T16:17:53.792Z
-Stopped at: Completed 01-07-PLAN.md (store.ts hidrata da API — run() híbrido, Transporte, casca resolvida pelo servidor) — 53 testes em @n1/web, npm run check verde
+Last session: 2026-09-16T16:40:04.478Z
+Stopped at: Completed 01-04-PLAN.md (POST /operacoes/:nome e GET /estado — casca HTTP sobre a UoW; fix de syncIdSequence) — 322 testes no npm run check
 Resume file: None

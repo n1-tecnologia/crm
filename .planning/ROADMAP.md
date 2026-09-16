@@ -62,7 +62,7 @@ Plans:
 - [x] 01-01-PLAN.md — Portão de legitimidade do `fastify` (checkpoint humano antes do `npm install`, T-1-SC)
 - [x] 01-02-PLAN.md — Fastify em `apps/api`: `buildApp()`, hook de autenticação (JWT do Supabase → Membro por `userId`), CORS, `npm run dev` web + api
 - [x] 01-03-PLAN.md — Domínio: registro `OPERACOES`, gravador de chamadas, `syncIdSequence`, `aplicarDiferenca`
-- [ ] 01-04-PLAN.md — `POST /operacoes/:nome` e `GET /estado`; `gravar()` devolve o diff; `executar()` devolve `revisao`/`revisaoAnterior`
+- [x] 01-04-PLAN.md — `POST /operacoes/:nome` e `GET /estado`; `gravar()` devolve o diff; `executar()` devolve `revisao`/`revisaoAnterior`
 - [ ] 01-05-PLAN.md — Bootstrap do Espaço "Gestão" (só configuração do Financeiro; Maryane Proprietária; sem fixtures)
 - [x] 01-06-PLAN.md — Migração `002`: colunas geradas e índices em `plataforma.registros`
 - [x] 01-07-PLAN.md — `store.ts` → API: `run()` híbrido (clone, recusa na hora, POST, diff, re-hidratação); casca hidrata por `GET /estado`
@@ -163,7 +163,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 0. Preparação | 0/TBD | In progress (2/6 requisitos feitos fora do GSD) | - |
-| 1. O CRM N1 ganha persistência e login | 5/9 | In Progress|  |
+| 1. O CRM N1 ganha persistência e login | 6/9 | In Progress|  |
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 0/TBD | Not started | - |
 | 3. Contas a pagar | 0/TBD | Not started | - |
 | 4. As outras telas do financeiro-tria | 0/TBD | Not started | - |
