@@ -66,7 +66,7 @@ Plans:
 - [x] 01-05-PLAN.md — Bootstrap do Espaço "Gestão" (só configuração do Financeiro; Maryane Proprietária; sem fixtures)
 - [x] 01-06-PLAN.md — Migração `002`: colunas geradas e índices em `plataforma.registros`
 - [x] 01-07-PLAN.md — `store.ts` → API: `run()` híbrido (clone, recusa na hora, POST, diff, re-hidratação); casca hidrata por `GET /estado`
-- [ ] 01-08-PLAN.md — Reconvite por Usuário: `inviteMember` casa por `userId`; e-mail resolvido no servidor (Admin API)
+- [x] 01-08-PLAN.md — Reconvite por Usuário: `inviteMember` casa por `userId`; e-mail resolvido no servidor (Admin API)
 - [ ] 01-09-PLAN.md — Teste ponta a ponta (critério 1) e portão da fase (`npm run check`); PERS-08 documentado (bloqueado por D11)
 
 Estado em 2026-09-15: **metade feita**. PERS-01 (persistência + Unidade de Trabalho) e PERS-02 (Supabase Auth) entregues, validados e commitados (`9fb2754` → `d713253`). Restam PERS-04 (rotas por operação — inclui escolher a camada HTTP), PERS-05 (`store.ts` → `POST`), PERS-06 (bootstrap do Espaço "Gestão"), PERS-07 (colunas geradas/índices, migração `002`), PERS-09 (reconvite). PERS-08 (onde o `apps/api` roda) está bloqueado por D11 e conversa com OQ-ADR-01 (região do Supabase — barata de mudar agora, cara depois): não bloqueia o código desta fase, mas precisa estar decidido antes de o adapter da Phase 2 apontar para o `apps/api`. PERS-03 (sobreposto por DEC-02) não é executado. Lacunas de teste a fechar aqui (CONCERNS.md): ponta a ponta tela → Postgres; resolução de sessão → Membro.
@@ -163,7 +163,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 0. Preparação | 0/TBD | In progress (2/6 requisitos feitos fora do GSD) | - |
-| 1. O CRM N1 ganha persistência e login | 7/9 | In Progress|  |
+| 1. O CRM N1 ganha persistência e login | 8/9 | In Progress|  |
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 0/TBD | Not started | - |
 | 3. Contas a pagar | 0/TBD | Not started | - |
 | 4. As outras telas do financeiro-tria | 0/TBD | Not started | - |

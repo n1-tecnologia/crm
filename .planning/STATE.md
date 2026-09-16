@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-05-PLAN.md (bootstrap do Espaco Gestao — PERS-06; ws_n1 criado no Supabase real com 98 registros, sem fixtures) — 336 testes no npm run check
-last_updated: "2026-09-16T17:07:09.427Z"
+stopped_at: Completed 01-08-PLAN.md (reconvite reativa o mesmo Membro — PERS-09; inviteMember casa por userId, resolverUsuarioPorEmail + convidarMembro em apps/api, SERVICOS descarta userId do corpo) — 349 testes no npm run check
+last_updated: "2026-09-16T17:28:36.225Z"
 last_activity: 2026-09-16 -- Phase 1 execution started
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 9
-  completed_plans: 7
+  completed_plans: 8
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 1 (o-crm-n1-ganha-persist-ncia-e-login) — EXECUTING
-Plan: 8 of 9
+Plan: 9 of 9
 Status: Ready to execute
 Last activity: 2026-09-16 -- Phase 1 execution started
 
@@ -62,6 +62,7 @@ Progress: [░░░░░░░░░░] 0% (de planos GSD; em requisitos: 4/3
 | Phase 01 P07 | 25min | 3 tasks | 10 files |
 | Phase 01 P04 | 55min | 2 tasks | 10 files |
 | Phase 01 P05 | 45min | 3 tasks | 11 files |
+| Phase 01 P08 | 50min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 01]: PERS-04 fechado: POST /operacoes/:nome (despacho por OPERACOES) e GET /estado servem os 132 casos de uso do domínio pela Unidade de Trabalho; gravar() devolve registros (não contagens), executar() sincroniza nextId e devolve revisao/revisaoAnterior (D-03/D-06) — Plan 01-04
 - [Phase 01]: syncIdSequence (packages/dominio/src/operations/activity.ts) casava qualquer id hand-authored de 6+ caracteres como sequência base36, estourando Number.MAX_SAFE_INTEGER com ids reais do seed (agt_classificador) e gerando ids duplicados — corrigido para casar só exatamente 6 caracteres, a largura que nextId() produz — Plan 01-04, Rule 1
 - [Phase 01]: PERS-06 fechado: applyContasAPagar/applyContasAReceber ganham opcoes.fixtures (padrao true) preservando buildSeed() byte a byte (233 testes provam); buildGestaoBootstrap() monta o DataState de producao so com a config do Financeiro + Maryane Proprietaria; bootstrapGestao() grava via semear() guardado por count(*)>0 - rodado contra o Supabase real, ws_n1 criado com 98 registros sem tasks/contacts/activity, segunda execucao confirmada no-op
+- [Phase 01]: PERS-09 fechado: inviteMember casa existing por userId antes de invitedIdentity quando o input traz o dado; resolverUsuarioPorEmail (apps/api) pagina admin.listUsers (sem filtro nativo por e-mail, A1 confirmada) e convidarMembro compõe I/O + operação antes de executar() — reconvite reativa o mesmo Membro removido de ponta a ponta, provado contra Postgres e Auth reais; SERVICOS na rota descarta qualquer userId do corpo (T-1-08)
 
 ### Pending Todos
 
@@ -114,6 +116,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-16T17:07:09.419Z
-Stopped at: Completed 01-05-PLAN.md (bootstrap do Espaco Gestao — PERS-06; ws_n1 criado no Supabase real com 98 registros, sem fixtures) — 336 testes no npm run check
+Last session: 2026-09-16T17:28:36.218Z
+Stopped at: Completed 01-08-PLAN.md (reconvite reativa o mesmo Membro — PERS-09; inviteMember casa por userId, resolverUsuarioPorEmail + convidarMembro em apps/api, SERVICOS descarta userId do corpo) — 349 testes no npm run check
 Resume file: None
