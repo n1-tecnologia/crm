@@ -1,8 +1,8 @@
 ---
 phase: 1
 slug: o-crm-n1-ganha-persist-ncia-e-login
-status: draft
-nyquist_compliant: false
+status: approved
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-09-16
 ---
@@ -95,11 +95,11 @@ Cada pré-requisito de teste nasce na task que o usa (não há plano de scaffold
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 45s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 45s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-09-16 (plan-checker: dimensões 8a–8d satisfeitas pelos 9 planos; `wave_0_complete` vira `true` quando a onda 0 rodar)
