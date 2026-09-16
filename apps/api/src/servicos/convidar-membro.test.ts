@@ -5,7 +5,11 @@
  * integração real com o Auth é `autenticacao/resolver-usuario.test.ts`. O
  * caso (c) passa pela ROTA, onde o resolvedor é sempre o real (a rota nunca
  * injeta `deps`) — só roda com `SUPABASE_*` E `DATABASE_URL` configurados.
- * O caso (d) é validação pura, sem banco.
+ * O caso (d) é validação pura, sem banco. O caso (e) reproduz o cenário CR-01
+ * do `01-REVIEW.md` (convite antes da conta no Auth, conta criada depois,
+ * reconvite) pelo serviço, contra o Postgres: prova que o segundo convite
+ * recusa em vez de criar um segundo Membro — o serviço não mudou; o domínio
+ * (Plan 01-10, Task 1) é que passou a casar `existing` pelos dois critérios.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -110,6 +114,55 @@ d("convidarMembro — contra o banco real, resolvedor falso", () => {
     expect(resultado.value.state).toBe("pendente");
     expect(resultado.value.userId).toBeUndefined();
     expect(resultado.value.invitedIdentity?.value).toBe("sememauth@empresa.com.br");
+  });
+
+  const ANA_USER = "22222222-2222-2222-2222-222222222222"; // não existe em USUARIOS_DO_SEED
+  const resolverSemConta: ResolverUsuario = async () => undefined;
+  const resolverComConta: ResolverUsuario = async (email) =>
+    email.trim().toLowerCase() === "ana@n1.teste" ? ANA_USER : undefined;
+
+  it("(e) convite sem conta no Auth, conta criada depois: o reconvite com userId resolvido recusa e não cria um segundo Membro", async () => {
+    const pedido = {
+      workspaceId: WS,
+      actingMemberId: "mem_thiago",
+      email: "ana@n1.teste",
+      roleId: "role_mem",
+    };
+
+    const primeiro = await convidarMembro(pedido, { resolverUsuario: resolverSemConta });
+
+    expect(primeiro.ok).toBe(true);
+    if (!primeiro.ok) throw new Error("deveria convidar");
+    expect(primeiro.value.state).toBe("pendente");
+    expect(primeiro.value.userId).toBeUndefined();
+    expect(primeiro.value.invitedIdentity?.value).toBe("ana@n1.teste");
+
+    let antes: number;
+    const clienteAntes = await pool().connect();
+    try {
+      const { state } = await hidratar(clienteAntes, WS);
+      antes = state.members.length;
+    } finally {
+      clienteAntes.release();
+    }
+
+    // A conta da Ana foi criada no Auth entre os dois convites — o e-mail
+    // agora resolve um userId.
+    const segundo = await convidarMembro(pedido, { resolverUsuario: resolverComConta });
+
+    expect(segundo.ok).toBe(false);
+    if (segundo.ok) throw new Error("deveria recusar");
+    expect(segundo.error).toContain("convite pendente");
+    expect("conflito" in segundo).toBe(false);
+
+    const clienteDepois = await pool().connect();
+    try {
+      const { state } = await hidratar(clienteDepois, WS);
+      expect(state.members.length).toBe(antes);
+      expect(state.members.filter((m) => m.invitedIdentity?.value === "ana@n1.teste").length).toBe(1);
+    } finally {
+      clienteDepois.release();
+    }
   });
 });
 
