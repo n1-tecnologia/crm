@@ -173,15 +173,10 @@ export function AppShell({ children }: { readonly children: React.ReactNode }) {
   const { collapsed, toggle } = useSidebarCollapsed();
   return (
     <div className="relative flex h-screen overflow-hidden" style={{ zIndex: "var(--z-conteudo)" }}>
-      {collapsed ? null : <Navegacao onRecolher={toggle} />}
+      {/* Recolher esconde só a 2ª etapa (o painel do assunto); o trilho de
+          assuntos fica sempre à esquerda. */}
+      <Navegacao recolhido={collapsed} onRecolher={toggle} />
       <div className="flex min-w-0 flex-1 flex-col">
-        {collapsed ? (
-          <div className="shrink-0 px-2 py-2">
-            <button type="button" onClick={toggle} aria-label="Abrir o menu" title="Abrir o menu" className="btn-icone btn-icone-nu">
-              <Icone de={ChevronRight} tamanho="xs" />
-            </button>
-          </div>
-        ) : null}
         {/*
           O conteúdo só entra depois da hidratação. O seed é construído em cada
           processo a partir de "hoje", e o servidor de desenvolvimento fica de
@@ -200,7 +195,7 @@ export function AppShell({ children }: { readonly children: React.ReactNode }) {
   );
 }
 
-function Navegacao({ onRecolher }: { readonly onRecolher: () => void }) {
+function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; readonly onRecolher: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
   const pendingApprovals = useData((data) => data.approvals.filter((a) => a.decision === undefined).length);
@@ -308,7 +303,14 @@ function Navegacao({ onRecolher }: { readonly onRecolher: () => void }) {
         />
       </nav>
 
-      {/* ── Etapa 2: o painel do assunto ── */}
+      {/* ── Etapa 2: o painel do assunto — some quando recolhido ── */}
+      {recolhido ? (
+        <div className="flex shrink-0 flex-col items-center py-2" style={{ borderRight: "1px solid var(--linha)", background: "var(--page)" }}>
+          <button type="button" onClick={onRecolher} aria-label="Abrir o menu" title="Abrir o menu" className="btn-icone btn-icone-nu">
+            <Icone de={ChevronRight} tamanho="xs" />
+          </button>
+        </div>
+      ) : (
       <aside
         aria-label="Navegação"
         className="flex flex-col"
@@ -422,6 +424,7 @@ function Navegacao({ onRecolher }: { readonly onRecolher: () => void }) {
           </div>
         ) : null}
       </aside>
+      )}
     </div>
   );
 }

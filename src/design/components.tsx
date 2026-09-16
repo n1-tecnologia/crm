@@ -40,6 +40,8 @@ import {
   Ellipsis,
   Info,
   Lock,
+  Maximize2,
+  Minimize2,
   Search,
   X,
 } from "lucide-react";
@@ -316,7 +318,7 @@ export function Select({
   const [query, setQuery] = useState("");
   const root = useRef<HTMLDivElement>(null);
   const listId = useId();
-  useDismiss(root, () => setOpen(false));
+  useDismiss(root, () => setOpen(false), open);
 
   const chosen = options.find((option) => option.value === value);
   const shown = query ? options.filter((option) => option.label.toLowerCase().includes(query.toLowerCase())) : options;
@@ -402,6 +404,7 @@ export function MultiSelect({
   options,
   onChange,
   placeholder = "Escolher",
+  abrirParaCima = false,
 }: {
   /** Required whenever a `Field` wraps it, or its `htmlFor` points at nothing. */
   readonly id?: string;
@@ -409,12 +412,14 @@ export function MultiSelect({
   readonly options: readonly Option[];
   readonly onChange: (values: readonly string[]) => void;
   readonly placeholder?: string;
+  /** Num compositor preso à base da tela o menu não tem para onde descer. */
+  readonly abrirParaCima?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const root = useRef<HTMLDivElement>(null);
   const listId = useId();
-  useDismiss(root, () => setOpen(false));
+  useDismiss(root, () => setOpen(false), open);
 
   const shown = query ? options.filter((option) => option.label.toLowerCase().includes(query.toLowerCase())) : options;
 
@@ -461,7 +466,7 @@ export function MultiSelect({
       </div>
 
       {open ? (
-        <div className="flutuante surgir absolute z-20 mt-1 w-full overflow-hidden">
+        <div className={cn("flutuante surgir absolute z-20 w-full overflow-hidden", abrirParaCima ? "bottom-full mb-1" : "mt-1")}>
           <BuscaDeOpcoes query={query} onChange={setQuery} />
           <ul id={listId} role="listbox" aria-multiselectable="true" className="relative max-h-64 overflow-y-auto p-1">
             {shown.length === 0 ? (
@@ -510,7 +515,7 @@ export function Chip({
   readonly color?: string;
 }) {
   return (
-    <Pilula {...(color ? { cor: color, comPonto: true } : {})} className="gap-1.5">
+    <Pilula {...(color ? { cor: color } : {})} className="gap-1.5">
       {children}
       {onRemove ? (
         <button type="button" onClick={onRemove} aria-label="Remover" className="ml-0.5 opacity-60 hover:opacity-100">
@@ -565,12 +570,12 @@ export function ConditionMarker({
   readonly tone?: "neutral" | "warning" | "danger";
   readonly title?: string;
 }) {
+  // Uma caixa colorida, não um ponto: o estado se lê de longe, como uma Tag.
   const cor = tone === "danger" ? "var(--erro)" : tone === "warning" ? "var(--aviso)" : "var(--texto-3)";
   return (
-    <span className="app-xs inline-flex items-center gap-1" style={{ color: cor }} title={title}>
-      <span aria-hidden="true">•</span>
+    <Pilula cor={cor} title={title}>
       {children}
-    </span>
+    </Pilula>
   );
 }
 
@@ -584,12 +589,15 @@ export function SidePanel({
   footer,
   wide = false,
   bare = false,
+  semRespiro = false,
 }: {
   readonly title: string;
   readonly open: boolean;
   readonly onClose: () => void;
   readonly children: ReactNode;
   readonly footer?: ReactNode;
+  /** O conteúdo distribui e rola por conta própria (a Tarefa completa): sem padding nem rolagem aqui. */
+  readonly semRespiro?: boolean;
   /**
    * Mantido pela compatibilidade das chamadas: hoje todo popup de conteúdo
    * tem o mesmo tamanho, 80% da tela nos dois eixos, como no CRM-COMPLETO.
@@ -599,7 +607,9 @@ export function SidePanel({
   readonly bare?: boolean;
 }) {
   const panel = useRef<HTMLElement>(null);
-  useModal(open, onClose, panel);
+  // Tela cheia: o popup ocupa a janela inteira até ser restaurado (ou fechado).
+  const [cheio, setCheio] = useState(false);
+  useModal(open, onClose, panel, semRespiro ? "raiz" : "campo");
   void wide;
   if (!open) return null;
   /*
@@ -614,7 +624,7 @@ export function SidePanel({
     repouso, senão o popup fica preso dentro dele.
   */
   return (
-    <div className="fixed inset-0 grid place-items-center p-4" style={{ zIndex: "var(--z-gaveta)" }}>
+    <div className={cn("fixed inset-0 grid place-items-center", !cheio && "p-4")} style={{ zIndex: "var(--z-gaveta)" }}>
       <div className="veu absolute inset-0" onClick={onClose} aria-hidden="true" />
       <aside
         ref={panel}
@@ -622,23 +632,39 @@ export function SidePanel({
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
-        className="flutuante surgir relative flex w-full flex-col overflow-hidden"
-        style={{
-          maxWidth: "min(var(--popup-w), 96rem)",
-          height: "var(--popup-h)",
-          maxHeight: "calc(100vh - var(--e-8))",
-          background: "var(--card)",
-        }}
+        className={cn("flutuante surgir relative flex w-full flex-col overflow-hidden", cheio && "rounded-none")}
+        style={
+          cheio
+            ? { maxWidth: "100vw", height: "100vh", maxHeight: "100vh", background: "var(--card)" }
+            : {
+                maxWidth: "min(var(--popup-w), 96rem)",
+                height: "var(--popup-h)",
+                maxHeight: "calc(100vh - var(--e-8))",
+                background: "var(--card)",
+              }
+        }
       >
         {bare ? null : (
           <header className="flex shrink-0 items-center justify-between gap-4 px-6 py-4" style={{ borderBottom: "1px solid var(--linha)" }}>
             <h2 className="ed-subtitulo truncate">{title}</h2>
-            <button type="button" onClick={onClose} aria-label="Fechar" title="Fechar" className="btn-icone btn-icone-nu">
-              <Icone de={X} />
-            </button>
+            <span className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setCheio((atual) => !atual)}
+                aria-label={cheio ? "Restaurar o tamanho" : "Tela cheia"}
+                title={cheio ? "Restaurar o tamanho" : "Tela cheia"}
+                aria-pressed={cheio}
+                className="btn-icone btn-icone-nu"
+              >
+                <Icone de={cheio ? Minimize2 : Maximize2} />
+              </button>
+              <button type="button" onClick={onClose} aria-label="Fechar" title="Fechar" className="btn-icone btn-icone-nu">
+                <Icone de={X} />
+              </button>
+            </span>
           </header>
         )}
-        <div className={cn("relative min-h-0 flex-1 overflow-y-auto", !bare && "px-6 py-5")}>{children}</div>
+        <div className={cn("relative min-h-0 flex-1", semRespiro ? "flex flex-col" : "overflow-y-auto", !bare && !semRespiro && "px-6 py-5")}>{children}</div>
         {footer ? (
           <footer className="flex shrink-0 items-center gap-2 px-6 py-4" style={{ borderTop: "1px solid var(--linha)" }}>
             {footer}
@@ -858,7 +884,7 @@ export function ActionMenu({
 }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
-  useDismiss(root, () => setOpen(false));
+  useDismiss(root, () => setOpen(false), open);
 
   return (
     <div ref={root} className="relative">
@@ -1119,57 +1145,128 @@ export function StatusPicker({
   /** Por opção: por que ESTA não pode ser escolhida agora. */
   readonly optionBlockReason?: (optionId: string) => string | undefined;
 }) {
+  // Um MENU, não uma parede de chips: o Status atual na sua caixa colorida e,
+  // ao abrir, as opções na ordem do Conjunto, cada uma com a categoria. As que
+  // não podem ser escolhidas continuam na lista e dizem por quê (§11).
   const isTerminal = (category: StatusCategory) => category === "concluido" || category === "fechado";
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const listId = useId();
+  useDismiss(root, () => setOpen(false), open);
+
+  const current = options.find((option) => option.id === value);
+  const reasonOf = (option: (typeof options)[number]): string | undefined => {
+    if (option.id === value) return undefined;
+    if (readOnly) return readOnlyReason || "Somente leitura.";
+    const porOpcao = optionBlockReason?.(option.id);
+    if (porOpcao !== undefined) return porOpcao;
+    if (isTerminal(option.category) && terminalBlockReason !== undefined) return terminalBlockReason;
+    return undefined;
+  };
+  const choose = (index: number) => {
+    const option = options[index];
+    if (!option) return;
+    if (option.id === value) {
+      setOpen(false);
+      return;
+    }
+    if (reasonOf(option) !== undefined) return;
+    onChange(option.id);
+    setOpen(false);
+  };
+  const { activeIndex, setActiveIndex, onKeyDown } = useListKeys(open, options.length, choose);
+
   return (
-    <div className="flex flex-wrap gap-1.5">
-      {options.map((option) => {
-        const porOpcao = optionBlockReason?.(option.id);
-        const blocked = (isTerminal(option.category) && terminalBlockReason !== undefined) || porOpcao !== undefined;
-        const disabled = readOnly || blocked;
-        const current = option.id === value;
-        return (
-          <button
-            key={option.id}
-            type="button"
-            onClick={disabled || current ? undefined : () => onChange(option.id)}
-            // Never `disabled`: a natively disabled button takes no focus, and
-            // the `aria-pressed` that marks the selection would never be
-            // announced. The current option stays reachable and inert.
-            aria-disabled={disabled || current}
-            aria-pressed={current}
-            title={readOnly ? readOnlyReason : (porOpcao ?? (blocked ? terminalBlockReason : undefined))}
-            className={cn("btn btn-sm", current ? "btn-solido" : "btn-fantasma", !current && disabled && "opacity-40")}
-            style={{ textTransform: "none", letterSpacing: "normal" }}
-          >
-            {!current ? <span aria-hidden="true" className="pilula-ponto" style={{ background: option.color }} /> : null}
-            {option.name}
-            <span className="app-meta" style={current ? { color: "inherit", opacity: 0.75 } : undefined}>
-              · {CATEGORY_LABEL[option.category]}
-            </span>
-          </button>
-        );
-      })}
+    <div ref={root} className="relative inline-block">
+      <button
+        type="button"
+        role="combobox"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
+        aria-activedescendant={open ? `${listId}-${activeIndex}` : undefined}
+        aria-disabled={readOnly}
+        title={readOnly ? readOnlyReason || undefined : "Mudar o Status"}
+        onKeyDown={readOnly ? undefined : onKeyDown}
+        onClick={readOnly ? undefined : () => setOpen((atual) => !atual)}
+        className={cn("flex items-center gap-1.5 rounded-[var(--r-controle)] py-0.5 pl-0.5 pr-1 transition-colors", !readOnly && "hover:bg-[var(--superficie-hover)]")}
+      >
+        {current ? (
+          <Pilula cor={current.color}>{current.name}</Pilula>
+        ) : (
+          <span className="app-base" style={{ color: "var(--texto-4)" }}>
+            sem Status
+          </span>
+        )}
+        {!readOnly ? <Icone de={ChevronDown} tamanho="xs" style={{ color: "var(--texto-4)" }} /> : null}
+      </button>
+
+      {open ? (
+        <div className="flutuante surgir absolute left-0 z-20 mt-1 overflow-hidden" style={{ minWidth: "16rem" }}>
+          <ul id={listId} role="listbox" className="relative max-h-72 overflow-y-auto p-1">
+            {options.map((option, index) => {
+              const reason = reasonOf(option);
+              const selected = option.id === value;
+              return (
+                <li key={option.id} role="none">
+                  <button
+                    type="button"
+                    role="option"
+                    id={`${listId}-${index}`}
+                    tabIndex={-1}
+                    aria-selected={selected}
+                    aria-disabled={reason !== undefined}
+                    title={reason}
+                    data-highlighted={index === activeIndex ? "" : undefined}
+                    onMouseEnter={() => setActiveIndex(index)}
+                    onClick={() => choose(index)}
+                    className={cn("item-menu w-full", reason !== undefined && !selected && "opacity-50")}
+                  >
+                    <Pilula cor={option.color}>{option.name}</Pilula>
+                    <span className="app-meta min-w-0 flex-1 truncate">{CATEGORY_LABEL[option.category]}</span>
+                    {selected ? <Icone de={Check} tamanho="xs" style={{ color: "var(--acento)" }} /> : null}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }
 
 /* ------------------------------------------------------------------ hooks */
 
-function useDismiss(ref: React.RefObject<HTMLElement | null>, close: () => void) {
+/** Verdadeiro se não há modal aberta, ou se `el` está dentro da modal mais interna. */
+export function dentroDaModalDoTopo(el: Element | null): boolean {
+  const modais = document.querySelectorAll('[aria-modal="true"]');
+  const topo = modais[modais.length - 1];
+  return !topo || (el !== null && topo.contains(el));
+}
+
+function useDismiss(ref: React.RefObject<HTMLElement | null>, close: () => void, open = true) {
   useEffect(() => {
+    if (!open) return;
     const onPointer = (event: PointerEvent) => {
       if (ref.current && !ref.current.contains(event.target as Node)) close();
     };
+    // Na fase de CAPTURA: um menu aberto dentro de um popup fecha só o menu
+    // com Esc — o popup (que escuta na fase de borbulha) não vê a tecla.
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
+      if (event.key !== "Escape") return;
+      // Se há uma modal por cima deste menu, o Esc é dela.
+      if (!dentroDaModalDoTopo(ref.current)) return;
+      event.stopPropagation();
+      close();
     };
     document.addEventListener("pointerdown", onPointer);
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
     return () => {
       document.removeEventListener("pointerdown", onPointer);
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
     };
-  }, [ref, close]);
+  }, [ref, close, open]);
 }
 
 const FOCUSABLE =
@@ -1181,26 +1278,48 @@ const FOCUSABLE =
  * So this moves focus in on open, keeps Tab inside, and gives focus back to
  * whatever opened it — plus Escape to close.
  */
-// Stacked modals (a confirm over a side panel): only the top one answers
-// Escape and Tab, otherwise one key press closes both.
-const openModals: symbol[] = [];
-
-function useModal(active: boolean, close: () => void, ref: React.RefObject<HTMLElement | null>) {
+function useModal(
+  active: boolean,
+  close: () => void,
+  ref: React.RefObject<HTMLElement | null>,
+  /** "campo": o 1º campo (um formulário). "raiz": o próprio diálogo (um registro
+   *  inteiro, onde o 1º campo pode estar lá embaixo e rolaria tudo até ele). */
+  focoInicial: "campo" | "raiz" = "campo",
+) {
+  // `close` costuma ser uma arrow nova a cada render. Ela vive num ref para que
+  // o efeito abaixo rode UMA vez por abertura — se rodasse a cada render, cada
+  // tecla digitada num campo devolveria o foco ao primeiro focável do diálogo.
+  const fechar = useRef(close);
+  useEffect(() => {
+    fechar.current = close;
+  }, [close]);
   useEffect(() => {
     if (!active) return;
     const opener = document.activeElement as HTMLElement | null;
     const node = ref.current;
     const focusables = () => Array.from(node?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []);
-    const first = focusables()[0];
-    if (first) first.focus();
-    else node?.focus();
-    const token = Symbol("modal");
-    openModals.push(token);
-
+    // O foco inicial vai para o primeiro campo, se houver; senão para o primeiro
+    // focável que não seja o "Fechar" do canto; senão para o próprio diálogo.
+    const itens = focusables();
+    const first =
+      focoInicial === "raiz"
+        ? undefined
+        : (itens.find((el) => el.matches("input, textarea, select, [contenteditable]")) ??
+          itens.find((el) => el.getAttribute("aria-label") !== "Fechar") ??
+          itens[0]);
+    if (first) first.focus({ preventScroll: true });
+    else node?.focus({ preventScroll: true });
+    // Só o diálogo MAIS INTERNO responde: o último `aria-modal` na ordem do
+    // documento (um ConfirmDialog dentro do popup vem depois dele). A ordem de
+    // montagem não serve — efeitos de filhos rodam antes dos de pais.
+    const noTopo = () => {
+      const abertos = document.querySelectorAll('[aria-modal="true"]');
+      return abertos[abertos.length - 1] === node;
+    };
     const onKey = (event: KeyboardEvent) => {
-      if (openModals.at(-1) !== token) return;
+      if (!noTopo()) return;
       if (event.key === "Escape") {
-        close();
+        fechar.current();
         return;
       }
       if (event.key !== "Tab") return;
@@ -1208,6 +1327,12 @@ function useModal(active: boolean, close: () => void, ref: React.RefObject<HTMLE
       const first = items[0];
       const last = items.at(-1);
       if (!first || !last) return;
+      // Do próprio diálogo (foco na raiz), Tab vai ao primeiro e Shift+Tab ao último.
+      if (document.activeElement === node) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+        return;
+      }
       if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
         last.focus();
@@ -1219,10 +1344,9 @@ function useModal(active: boolean, close: () => void, ref: React.RefObject<HTMLE
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
-      openModals.splice(openModals.indexOf(token), 1);
       opener?.focus();
     };
-  }, [active, close, ref]);
+  }, [active, ref, focoInicial]);
 }
 
 /**

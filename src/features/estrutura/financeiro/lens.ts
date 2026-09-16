@@ -212,6 +212,51 @@ export function financeProfileOf(listId: Id): FinanceProfile | undefined {
   return PROFILES[listId];
 }
 
+/**
+ * Onde uma conta nova nasce quando o "+" é o de um grupo — ou por que não
+ * nasce ali. Uma conta a pagar só nasce em "para pagar": sair dali exige a
+ * forma e o dado de pagamento (RN-CP-02/03), que uma conta recém-criada não
+ * tem. Os grupos derivados (vencidas) e os terminais (pagas, negadas,
+ * recebidas, descartadas) não são berço: a conta chega lá pelo processo. A
+ * receber, "em cobrança" (pendente) e "saque" aceitam nascimento — o
+ * createTask passa pelas mesmas regras de mover. Sem `statusId`, nasce no
+ * Status inicial da Lista.
+ */
+export function nascimentoNoGrupo(
+  profile: FinanceProfile,
+  grupo: FinanceGroup,
+): { readonly statusId?: Id; readonly recusa?: string } {
+  if (profile.kind === "pagar") {
+    switch (grupo) {
+      case "aPagar":
+        return {};
+      case "autorizacao":
+      case "programadas":
+        return { recusa: "Uma conta a pagar nasce em A pagar: para sair dali ela precisa da forma e do dado de pagamento (RN-CP-02/03)." };
+      case "vencidas":
+        return { recusa: "Vencida é a conta que passou do vencimento: lance-a em A pagar, com a data." };
+      case "pagas":
+        return { recusa: "Uma conta não nasce paga — ela chega a “pago” pelo Aprovador." };
+      default:
+        return { recusa: "Uma conta não nasce negada." };
+    }
+  }
+  switch (grupo) {
+    case "aReceber":
+      return {};
+    case "emCobranca":
+      return { statusId: CR.status.pendente };
+    case "saque":
+      return { statusId: CR.status.disponivelSaque };
+    case "vencidas":
+      return { recusa: "Vencida é a conta que passou do vencimento: lance-a em A receber, com a data." };
+    case "recebidas":
+      return { recusa: "Uma conta não nasce recebida." };
+    default:
+      return { recusa: "Uma conta não nasce descartada nem estornada." };
+  }
+}
+
 /** Compatibilidade: o grupo de uma conta pela lente da Lista dela. */
 export function financeGroupOf(state: DataState, task: Task, now: Date): FinanceGroup {
   return (financeProfileOf(task.listId) ?? PAGAR_PROFILE).groupOf(state, task, now);

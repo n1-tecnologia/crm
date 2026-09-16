@@ -298,7 +298,7 @@ export default function AprovacoesPage() {
                   <span className="app-base min-w-0 flex-1 truncate" style={{ color: "var(--texto)" }}>
                     {state.tools.find((t) => t.id === approval.object.toolId)?.name ?? approval.object.toolId}
                   </span>
-                  <Pilula tom={approval.decision === "aprovada" ? "sucesso" : "neutro"} comPonto className="shrink-0">
+                  <Pilula tom={approval.decision === "aprovada" ? "sucesso" : "neutro"} className="shrink-0">
                     {approval.decision}
                   </Pilula>
                   <span className="app-meta app-numero shrink-0">

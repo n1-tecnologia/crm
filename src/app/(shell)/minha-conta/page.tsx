@@ -78,7 +78,7 @@ export default function MinhaContaPage() {
           <>
             <Pilula tom="neutro">{role?.name ?? "Papel não encontrado"}</Pilula>
             {isOwner ? <Pilula tom="acento">Proprietário do Espaço de Trabalho</Pilula> : null}
-            <Pilula tom="neutro" comPonto>
+            <Pilula tom="neutro">
               {AVAILABILITY_LABEL[member.availability.value] ?? member.availability.value}
             </Pilula>
           </>

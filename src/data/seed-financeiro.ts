@@ -152,6 +152,8 @@ export function applyContasAPagar(state: DataState, clock: Clock): void {
     // Seção 10 — a Pessoa da conta preenche só Anexo e Data de Emissão.
     guestEditableDefinitionIds: [F.anexo, F.dataEmissao],
   });
+  // O Tipo padrão da plataforma é do Espaço: uma Lista nova direto em Gestão aceita Tarefa.
+  state.taskTypes.push({ id: "tt_tarefa_gestao", name: "Tarefa", icon: "circle-check", isPlatformDefault: true, definedAtType: "space", definedAtId: CP.spaceId });
   // O Tipo "Conta" é da Pasta: Contas a pagar e Contas a receber usam o mesmo (B25).
   state.taskTypes.push({ id: CP.taskTypeId, name: "Conta", icon: "receipt", isPlatformDefault: true, definedAtType: "folder", definedAtId: CP.folderId });
 

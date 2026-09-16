@@ -52,11 +52,13 @@ import {
   type FinanceQuickAction,
   FILTROS_INICIAIS,
   GROUP_LABEL,
+  nascimentoNoGrupo,
   pagoEm,
   textoDoCampo as textoDe,
   valorDaConta as valorDe,
 } from "./lens";
 import { PRIORITY_LABEL } from "@/features/shell/format";
+import { BotaoDeMais, CompositorNoGrupo } from "@/features/estrutura/novo-no-grupo";
 import { useFormat } from "@/features/shell/use-format";
 import {
   ActionMenu,
@@ -445,7 +447,7 @@ export function StatusBadge({
   readonly grupo: FinanceGroup;
 }) {
   return (
-    <Pilula cor={GROUP_TOKEN[grupo]} comPonto className="whitespace-nowrap">
+    <Pilula cor={GROUP_TOKEN[grupo]} className="whitespace-nowrap">
       {definition?.name ?? "—"}
     </Pilula>
   );
@@ -493,9 +495,11 @@ export function FinanceTable({
   onToggle,
   onToggleMany,
   selecionando,
-  filtrado,
+  grupoFiltrado,
   openTask,
   report,
+  onCreateInGroup,
+  criacaoRecusada,
 }: {
   readonly state: DataState;
   readonly profile: FinanceProfile;
@@ -505,10 +509,13 @@ export function FinanceTable({
   readonly onToggle: (taskId: string) => void;
   readonly onToggleMany: (ids: readonly string[], on: boolean) => void;
   readonly selecionando: boolean;
-  /** Com filtro ativo, um grupo vazio não é "nenhuma conta": é "nenhuma passa" — some. */
-  readonly filtrado: boolean;
+  /** O grupo escolhido no filtro aparece mesmo vazio: é a resposta à pergunta. */
+  readonly grupoFiltrado: FinanceGroup | "";
   readonly openTask: (taskId: string) => void;
   readonly report: Report;
+  /** O "+" do grupo: a conta nasce no Status daquele grupo. */
+  readonly onCreateInGroup?: (title: string, statusId?: string) => boolean;
+  readonly criacaoRecusada?: string;
 }) {
   const fmt = useFormat();
   const run = useRun();
@@ -532,17 +539,15 @@ export function FinanceTable({
       else n.add(grupo);
       return n;
     });
+  // Um grupo sem conta não aparece — a não ser que o filtro tenha escolhido
+  // exatamente esse grupo (aí o vazio, e o "+" dele, são a resposta).
   const grupos = profile.groups
     .map((g) => ({
       grupo: g,
       itens: tasks.filter((t) => profile.groupOf(state, t, now) === g),
     }))
-    .filter((g) =>
-      filtrado
-        ? g.itens.length > 0
-        : g.itens.length > 0 ||
-          (g.grupo !== "negadas" && g.grupo !== "descartadas"),
-    );
+    .filter((g) => g.itens.length > 0 || g.grupo === grupoFiltrado);
+  const [criandoEm, setCriandoEm] = useState<FinanceGroup | null>(null);
   const statusDe = (id: string) => definitions.find((d) => d.id === id);
   const mover = (task: Task, statusId: string, label: string) => {
     const r = run((data, me) => changeTaskStatus(data, me, task.id, statusId));
@@ -622,14 +627,23 @@ export function FinanceTable({
                         tamanho="xs"
                         style={{ color: "var(--texto-3)" }}
                       />
-                      <span
-                        aria-hidden="true"
-                        className="pilula-ponto"
-                        style={{ background: cor }}
-                      />
-                      {GROUP_LABEL[grupo]}
+                      <Pilula cor={cor}>{GROUP_LABEL[grupo]}</Pilula>
                     </button>
                     <span className="app-meta app-numero">{itens.length}</span>
+                    {(() => {
+                      const berco = nascimentoNoGrupo(profile, grupo);
+                      const motivo = !onCreateInGroup
+                        ? (criacaoRecusada ?? "Esta Lista não recebe contas novas.")
+                        : (criacaoRecusada ?? berco.recusa);
+                      return (
+                        <BotaoDeMais
+                          rotulo={GROUP_LABEL[grupo]}
+                          aberto={criandoEm === grupo}
+                          onClick={() => setCriandoEm((atual) => (atual === grupo ? null : grupo))}
+                          {...(motivo ? { motivo } : {})}
+                        />
+                      );
+                    })()}
                     <span
                       className="app-sm app-numero"
                       style={{ color: "var(--texto-1)" }}
@@ -683,6 +697,17 @@ export function FinanceTable({
                   </div>
                 </td>
               </tr>
+              {criandoEm === grupo && onCreateInGroup ? (
+                <tr data-faixa="true">
+                  <td colSpan={10}>
+                    <CompositorNoGrupo
+                      placeholder={`${profile.labels.novaPlaceholder} — em ${GROUP_LABEL[grupo].toLocaleLowerCase("pt-BR")}`}
+                      onCreate={(title) => onCreateInGroup(title, nascimentoNoGrupo(profile, grupo).statusId)}
+                      onCancel={() => setCriandoEm(null)}
+                    />
+                  </td>
+                </tr>
+              ) : null}
               {fechado ? null : itens.length === 0 ? (
                 <tr data-faixa="true">
                   <td colSpan={10} className="app-meta">
@@ -764,17 +789,16 @@ export function FinanceTable({
                         className="max-w-[22ch]"
                         style={{ paddingBlock: "var(--e-1)" }}
                       >
+                        {/* Só o nome: o identificador mora na ficha. */}
                         <button
                           type="button"
                           onClick={() => openTask(task.id)}
                           className="app-md block max-w-full truncate text-left hover:underline"
                           style={{ color: "var(--texto)" }}
+                          title={task.readableId ? `${task.readableId} · ${task.title}` : task.title}
                         >
                           {task.title}
                         </button>
-                        <span className="identificador block">
-                          {task.readableId ?? task.id}
-                        </span>
                       </td>
                       <td className="hidden max-w-[18ch] truncate @3xl:table-cell">
                         {profile.counterpart(state, task)}
@@ -843,12 +867,11 @@ export function FinanceTable({
                         <StatusBadge definition={definition} grupo={grupo} />
                       </td>
                       <td style={{ paddingInline: "var(--e-1)" }}>
-                        <span className="relative flex items-center justify-end">
-                          {/* As ações rápidas aparecem SOBRE a linha no hover: reservar a largura delas em cada linha custaria uma coluna inteira. */}
-                          <span
-                            className="pointer-events-none absolute right-full top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded-[var(--r-controle)] px-1 opacity-0 transition-opacity group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 md:flex"
-                            style={{ background: "var(--superficie-3)" }}
-                          >
+                        <span className="flex items-center justify-end gap-0.5">
+                          {/* As ações rápidas têm o seu lugar na linha (à esquerda do "…") e só se
+                              mostram no hover/foco — nunca por cima do Status. Onde a largura não
+                              cabe (abaixo de @5xl), ficam só no menu. */}
+                          <span className="invisible hidden items-center gap-0.5 group-focus-within:visible group-hover:visible @5xl:flex">
                             <QuickAction
                               label="Abrir detalhes"
                               onClick={() => openTask(task.id)}

@@ -80,7 +80,7 @@ export default function IntegracoesPage() {
                         <p className="app-meta mt-0.5">{integration.systemType}</p>
                       </div>
                       {integration.state === "conectada" ? (
-                        <Pilula tom="sucesso" comPonto className="shrink-0">
+                        <Pilula tom="sucesso" className="shrink-0">
                           conectada
                         </Pilula>
                       ) : (

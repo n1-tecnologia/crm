@@ -64,11 +64,19 @@ Toda tela dentro da casca tem o mesmo esqueleto:
 </div>
 ```
 
-**A única exceção é o Início**, que mantém a concepção original do produto: em vez da barra de 44 px ele abre com uma **capa** — o laço de vídeo do manual (riscos de neon roxo) sob uma cortina, a saudação em `ed-display`, a pergunta ao Assistente, os quatro atalhos, a **orbe** do Assistente e a régua dos quatro pilares do manifesto na base. As classes `.capa`, `.capa-video`, `.capa-cortina` e `.orbe-*` vivem em `componentes.css`. A cortina não é gosto, é medida: amostrando o vídeo, os terços da esquerda e da direita chegam a branco puro (texto branco precisa de ≥ 82 % de `--card` por cima) e o meio é quase preto — por isso o texto vive na coluna fechada e na régua opaca da base, e o vídeo só aparece numa janela em volta da orbe. No sistema novo as `--superficie-*` são lavagens em alfa: uma cortina feita delas deixaria o vídeo passar por baixo do título.
+**A única exceção é o Início**, que mantém a concepção original do produto: os quatro números (ícone na cor do que medem) e, em vez da barra de 44 px, uma **capa** — a atmosfera do sistema (três orbes desfocados, a grade de pontos e estrelas, tudo CSS), a saudação em `ed-display`, a pergunta ao Assistente, os quatro atalhos, o **globo de pontos** (`design/globo.tsx`: canvas, gira, inclina para o cursor, acende perto dele, abre o Chat) e as **Ações rápidas** na barra opaca da base. Abaixo, uma lista única do dia por urgência (Agora, Hoje, Esta semana, Depois) com Conversas e Negócios ao lado. As classes `.capa`, `.capa-orbe`, `.capa-estrela` vivem em `componentes.css`. Já foi um laço de vídeo com riscos de neon; saiu porque os riscos chegavam a branco puro e exigiam uma cortina pesada para o texto ler.
 
 O cabeçalho **não tem parágrafo explicativo**: a contagem ("15 contas", "3 de 49 ativas") fica ao lado do título e a tela se explica pelo conteúdo. Prosa que explicava um vazio virou `hint` do `EmptyState`; prosa que explicava uma regra virou `title` do controle ou sumiu.
 
-Telas de registro (Contato, Empresa, Negócio, Tarefa, Membro, Execução) usam o corpo em duas colunas — `grid xl:grid-cols-[minmax(0,1fr)_22rem]` — com painéis de título (`Painel` + `CabecalhoDePainel`) à esquerda e os atributos (`RecordPanel`/`RecordRow`) à direita.
+Telas de registro (Contato, Empresa, Negócio, Membro, Execução) usam o corpo em duas colunas — `grid xl:grid-cols-[minmax(0,1fr)_22rem]` — com painéis de título (`Painel` + `CabecalhoDePainel`) à esquerda e os atributos (`RecordPanel`/`RecordRow`) à direita.
+
+**A Tarefa é a exceção, no molde do ClickUp.** A ficha no centro (`max-w-4xl`): o Tipo em caixa colorida com o identificador, o título grande (`ed-display`) e a descrição — clicar em qualquer um abre o editor —, as propriedades em duas colunas de `LinhaDeProp` (ícone · rótulo · valor; o editor só existe ao clicar na linha), os Campos numa lista da mesma família com a etiqueta *obrigatório*, e abaixo as seções em régua (Checklists, Subtarefas, Dependências, Recorrência, Vínculos, Anexos, Observadores). À direita, numa coluna de 26 rem, a **Atividade**: os Comentários como conversa (balões, fios, compositor preso à base) e o Registro de Atividade recolhido num `details`. Abaixo de `xl` a Atividade empilha embaixo com `--conversa-empilhada-h`.
+
+O popup de uma Tarefa (aberto da Lista por `?tarefa=`) **é a mesma Tarefa completa**, com o chat à direita — não uma leitura resumida com botão de editar. Na barra de 44px todo botão é pequeno (`.acoes-de-tela`). Recolher o menu esconde só o painel do assunto; o trilho fica.
+
+Listas mistas (Notificações, Início) abrem cada linha com o **Selo** do que ela é: a Tarefa leva o ícone e a cor do seu Tipo (Conta = recibo verde, Reunião = pessoas azul, Incidente = alerta vermelho), e Aprovação, Conversa, Menção, Negócio e Execução têm os seus. Um estado de alerta (vencida, bloqueada) recolore o selo sem trocar o desenho.
+
+Grupos e colunas por Status que **não têm nada não aparecem** na Lista agrupada, a não ser que o filtro tenha escolhido aquele Status; no Quadro as colunas vazias ficam, porque são o alvo do arraste. Quadros rolam de lado com a barra **acima** dos cards (`RolagemNoTopo`).
 
 ---
 

@@ -112,16 +112,25 @@ export function createTask(
   }
 
   // Glossário — the default initial status is the first `naoIniciado` in order.
-  const initial =
-    (input.statusId
-      ? config.statusSet.definitions.find((d) => d.id === input.statusId)
-      : undefined) ??
-    [...config.statusSet.definitions]
-      .sort((a, b) => a.order - b.order)
-      .find((d) => d.category === "naoIniciado");
+  // Toda Tarefa NASCE nele; um `statusId` diferente (o "+" de um grupo) é uma
+  // mudança de Status logo depois de nascer, com as mesmas regras de quem move.
+  const initial = [...config.statusSet.definitions]
+    .sort((a, b) => a.order - b.order)
+    .find((d) => d.category === "naoIniciado");
   if (!initial) return fail("O Conjunto de Status efetivo não tem status inicial.");
+  const alvo = input.statusId && input.statusId !== initial.id ? config.statusSet.definitions.find((d) => d.id === input.statusId) : undefined;
+  if (input.statusId && input.statusId !== initial.id && !alvo) {
+    return fail("Este status não pertence ao Conjunto de Status efetivo desta Lista.");
+  }
 
-  const platformType = input.taskTypeId ?? config.taskTypeIds[0];
+  // Sem Tipo pedido, vale o Tipo padrão do nível mais próximo da Lista: numa
+  // Lista do Financeiro é "Conta" (da Pasta), não o "Tarefa" do Espaço.
+  const profundidade = (definedAtId: Id) => config.path.findIndex((node) => node.id === definedAtId);
+  const tipoPadrao = config.taskTypeIds
+    .map((id) => state.taskTypes.find((t) => t.id === id))
+    .filter((t): t is NonNullable<typeof t> => t !== undefined)
+    .sort((x, y) => profundidade(y.definedAtId) - profundidade(x.definedAtId) || Number(y.isPlatformDefault) - Number(x.isPlatformDefault))[0]?.id;
+  const platformType = input.taskTypeId ?? tipoPadrao;
   if (!platformType) return fail("A Lista não tem Tipo de Tarefa disponível.");
   if (!config.taskTypeIds.includes(platformType)) return fail("Este Tipo de Tarefa não alcança esta Lista.", "tipo");
 
@@ -166,6 +175,18 @@ export function createTask(
     objectId: task.id,
     objectName: task.title,
   });
+  if (alvo) {
+    // Requisitos de saída do inicial, entrada no alvo, quem pode entrar,
+    // Automações de "entrou em Status": tudo o que mover exige. Recusado, a
+    // Tarefa não nasce — e o motivo é o mesmo que o de mover.
+    const movida = changeTaskStatus(state, actingMemberId, task.id, alvo.id);
+    if (!movida.ok) {
+      state.tasks.splice(state.tasks.indexOf(task), 1);
+      state.activity = state.activity.filter((record) => record.objectId !== task.id);
+      if (state.workspace.taskReadableId.enabled) state.workspace.taskReadableId.next -= 1;
+      return fail(`Não nasce em “${alvo.name}”: ${movida.error}`);
+    }
+  }
   runListAutomations(state, { kind: "tarefaCriada", taskId: task.id });
   return ok(task);
 }

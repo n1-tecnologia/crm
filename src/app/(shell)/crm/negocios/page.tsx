@@ -26,6 +26,7 @@ import {
   Icone,
   PageHeader,
   Pilula,
+  RolagemNoTopo,
   Section,
   Select,
   Toast,
@@ -169,7 +170,8 @@ export default function NegociosPage() {
             hint="Um Negócio só existe dentro de uma Etapa: configure o Funil antes de criar."
           />
         ) : (
-          <div className="palco-quadro flex gap-4 overflow-x-auto pb-2">
+          <RolagemNoTopo>
+          <div className="palco-quadro flex gap-4">
             {stages.map((stage) => {
               const column = open.filter((deal) => deal.stageId === stage.id);
               const columnValue = column.reduce(
@@ -203,14 +205,7 @@ export default function NegociosPage() {
                         className="app-md flex items-center gap-1.5 truncate"
                         style={{ color: "var(--texto)" }}
                       >
-                        {stage.color ? (
-                          <span
-                            aria-hidden="true"
-                            className="pilula-ponto"
-                            style={{ backgroundColor: stage.color }}
-                          />
-                        ) : null}
-                        {stage.name}
+                        <Pilula {...(stage.color ? { cor: stage.color } : {})}>{stage.name}</Pilula>
                       </h2>
                       <span className="app-meta app-numero block truncate">
                         {stage.defaultProbability}% padrão ·{" "}
@@ -261,6 +256,7 @@ export default function NegociosPage() {
               );
             })}
           </div>
+          </RolagemNoTopo>
         )}
 
         <div className="mt-6">
@@ -305,7 +301,6 @@ export default function NegociosPage() {
                           </span>
                           <Pilula
                             cor={SITUACAO_COR[deal.situation] ?? "var(--texto-3)"}
-                            comPonto
                             className="shrink-0"
                           >
                             {DEAL_SITUATION_LABEL[deal.situation]}

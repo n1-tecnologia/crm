@@ -444,7 +444,7 @@ export function DealScreen({
         seal={
           <>
             <StateSeal state={deal.lifecycle} />
-            <Pilula cor={SITUACAO_COR[deal.situation] ?? "var(--texto-3)"} comPonto>
+            <Pilula cor={SITUACAO_COR[deal.situation] ?? "var(--texto-3)"}>
               {DEAL_SITUATION_LABEL[deal.situation]}
             </Pilula>
           </>

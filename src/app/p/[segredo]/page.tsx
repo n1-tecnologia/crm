@@ -60,7 +60,7 @@ export default function TarefaPublicaPage({ params }: { params: Promise<{ segred
           <h1 className="ed-titulo mt-2">{task.title}</h1>
           <div className="app-base mt-3 flex flex-wrap items-center gap-x-3 gap-y-1" style={{ color: "var(--texto-3)" }}>
             {definition ? (
-              <Pilula cor={definition.color} comPonto>
+              <Pilula cor={definition.color}>
                 {definition.name}
               </Pilula>
             ) : null}
@@ -101,7 +101,7 @@ export default function TarefaPublicaPage({ params }: { params: Promise<{ segred
                       {t.title}
                     </span>
                     {d ? (
-                      <Pilula cor={d.color} comPonto className="shrink-0">
+                      <Pilula cor={d.color} className="shrink-0">
                         {d.name}
                       </Pilula>
                     ) : (

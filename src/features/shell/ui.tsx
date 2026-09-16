@@ -17,7 +17,7 @@
  */
 
 import type { ReactNode } from "react";
-import { Painel, ReguaDeSecao } from "@/design/basicos";
+import { Painel, Pilula, ReguaDeSecao } from "@/design/basicos";
 import { CabecalhoDeTela } from "@/design/tela";
 
 export {
@@ -72,8 +72,9 @@ export {
   type Aba,
   type TomPilula,
 } from "@/design/basicos";
-export { BarraDeFiltros, CabecalhoDeTela, CorpoDeTela } from "@/design/tela";
+export { BarraDeFiltros, CabecalhoDeTela, CorpoDeTela, RolagemNoTopo } from "@/design/tela";
 export { CampoDeLanterna } from "@/design/lanterna";
+export { GloboDePontos } from "@/design/globo";
 export { cn } from "@/design/cn";
 
 /**
@@ -175,11 +176,7 @@ export function Card({ children, className }: { readonly children: ReactNode; re
 }
 
 /** A category always carries a label besides the colour (ui-ptbr.md). */
+/** O nome de um Status na cor dele — uma caixa colorida, não um ponto. */
 export function CategoryDot({ color, label }: { readonly color: string; readonly label: string }) {
-  return (
-    <span className="app-base inline-flex items-center gap-1.5">
-      <span aria-hidden="true" className="pilula-ponto" style={{ backgroundColor: color }} />
-      {label}
-    </span>
-  );
+  return <Pilula cor={color}>{label}</Pilula>;
 }

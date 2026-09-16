@@ -538,7 +538,7 @@ export default function ReuniaoPage({
                 */}
                   <dl className="grid gap-2">
                     <RecordRow label="Situação">
-                      <Pilula tom={emAndamento ? "sucesso" : "neutro"} comPonto>
+                      <Pilula tom={emAndamento ? "sucesso" : "neutro"}>
                         {emAndamento
                           ? "Em andamento"
                           : encerrada

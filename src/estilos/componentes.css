@@ -164,6 +164,9 @@
     align-items: center;
     gap: var(--e-3);
     min-height: var(--linha-altura);
+    /* Respiro vertical: numa linha só ele some dentro do min-height; numa peça
+       de duas linhas (título + meta) é o que separa o texto da borda. */
+    padding-block: var(--e-2);
     padding-inline: var(--celula-x);
     background: var(--superficie-1);
     border: 1px solid var(--linha);
@@ -347,21 +350,18 @@
 
   /* ── A capa do Início ────────────────────────────────────────────────────
      A concepção original do produto: a tela de entrada abre com uma CAPA, não
-     com uma lista. O laço de vídeo é o mesmo motivo da capa do manual — os
-     riscos de neon roxo —, e a orbe é o Assistente.
+     com uma lista. O fundo é a ATMOSFERA do sistema — a mesma do login do
+     CRM-COMPLETO: três orbes desfocados que derivam devagar, a grade de pontos
+     e um punhado de estrelas — e o globo de pontos é o Assistente.
+
+     Já foi um laço de vídeo (os riscos de neon do manual). Saiu porque os
+     riscos chegavam a branco puro e obrigavam uma cortina pesada para o texto
+     ler; a atmosfera nunca passa de roxo a 28% sobre o cartão, então o texto
+     lê em qualquer ponto sem cortina nenhuma.
 
      A capa NÃO é peça solta: é superfície de destaque. Por isso pode ter
-     "overflow: hidden" (é ele que recorta o vídeo no raio) e por isso não
-     sobe no hover — nada aqui promete um clique de cartão.
-
-     MEDIDO NO VÍDEO (12 quadros dos 10s, 1280×720): a luminância máxima é 1.00
-     (branco puro) nos terços da ESQUERDA e da DIREITA, e 0.0096 no MEIO. Com
-     a cor do cartão por cortina, texto branco só passa AA a partir de 82% de
-     opacidade. Daí o desenho da cortina: ela fecha quase por completo onde o
-     texto vive e abre numa JANELA em volta da orbe, que é decoração e tem
-     brilho próprio. Portar a cortina antiga literalmente deixaria o vídeo
-     passar por baixo do título: no sistema novo as superfícies são lavagens
-     em ALFA, não cor opaca — a cortina tem de sair de --card ou --page. */
+     "overflow: hidden" (é ele que recorta os orbes no raio) e por isso não
+     sobe no hover — nada aqui promete um clique de cartão. */
 
   .capa {
     position: relative;
@@ -373,72 +373,66 @@
     box-shadow: var(--sombra-suspensa);
   }
 
-  /* O quadro parado, ATRÁS do laço. É ele que sobra quando o vídeo não roda —
-     movimento reduzido, telefone, rede lenta —, e por isso a capa nunca fica
-     um retângulo chapado. Some por cima dele o vídeo, quando há vídeo. */
+  /* A textura: a grade de pontos do sistema, atrás de tudo. */
   .capa::after {
     content: "";
     position: absolute;
     inset: 0;
-    background-image: url("/marca/fundo-heroi.jpg");
-    background-size: cover;
-    background-position: center;
+    background-image: radial-gradient(circle at 1px 1px, var(--grade-ponto) 1px, transparent 0);
+    background-size: var(--grade-tamanho) var(--grade-tamanho);
     pointer-events: none;
     z-index: -3;
   }
 
-  /* O laço é DECORAÇÃO: atrás de tudo, sem clique, e o que está por cima
-     nunca depende dele para ser legível. */
-  .capa-video {
+  /* Os orbes: discos de cor sob desfoque pesado. "Three of them are the entire
+     page atmosphere." Cada um deriva no seu tempo — iguais, viram um balanço
+     só, que enjoa. */
+  .capa-orbe {
     position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
+    border-radius: var(--r-pilula);
+    filter: blur(70px);
     pointer-events: none;
     z-index: -2;
+    animation: capa-deriva 22s ease-in-out infinite alternate;
+  }
+  .capa-orbe:nth-of-type(2) {
+    animation-duration: 28s;
+    animation-delay: -9s;
+  }
+  .capa-orbe:nth-of-type(3) {
+    animation-duration: 34s;
+    animation-delay: -17s;
   }
 
-  .capa-cortina {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    z-index: -1;
-    background:
-      /* A janela: um disco em volta da orbe (72% da largura) onde o vídeo
-         aparece de verdade. Fora dele, 94% de cortina — o piso de 82% que a
-         medição pede, com folga para o texto. */
-      radial-gradient(
-        34rem 34rem at 72% 46%,
-        transparent 0%,
-        color-mix(in srgb, var(--card) 55%, transparent) 42%,
-        color-mix(in srgb, var(--card) 94%, transparent) 78%,
-        var(--card) 100%
-      ),
-      /* A base fecha por inteiro: é onde ficam os atalhos. */
-      linear-gradient(to top, var(--card) 0%, color-mix(in srgb, var(--card) 70%, transparent) 38%, transparent 62%),
-      /* E a coluna do texto fecha por inteiro à esquerda. */
-      linear-gradient(to right, var(--card) 0%, var(--card) 38%, color-mix(in srgb, var(--card) 70%, transparent) 52%, transparent 66%);
+  @keyframes capa-deriva {
+    from {
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    to {
+      transform: translate3d(6%, -8%, 0) scale(1.12);
+    }
   }
 
-  /* A aura da marca: o roxo vazando por trás, sem nunca virar fundo de texto. */
-  .capa::before {
-    content: "";
+  /* As estrelas: pontos fixos de 2–3px, poucos, nas cores do sistema. */
+  .capa-estrela {
     position: absolute;
-    top: -60%;
-    right: -6%;
-    width: 46rem;
-    height: 46rem;
     border-radius: var(--r-pilula);
-    background: radial-gradient(
-      circle,
-      var(--aura-capa) 0%,
-      var(--aura-capa-fraca) 45%,
-      transparent 68%
-    );
-    filter: blur(30px);
     pointer-events: none;
     z-index: -1;
+    animation: capa-cintila 4s ease-in-out infinite alternate;
+  }
+  .capa-estrela:nth-of-type(odd) {
+    animation-duration: 6s;
+    animation-delay: -2s;
+  }
+
+  @keyframes capa-cintila {
+    from {
+      opacity: 0.5;
+    }
+    to {
+      opacity: 1;
+    }
   }
 
   /* ── A orbe do Assistente ─────────────────────────────────────────────────
@@ -510,20 +504,4 @@
     }
   }
 
-  /* Quem pediu menos movimento recebe o quadro parado, não o laço: a regra
-     global zera a DURAÇÃO da animação, mas um vídeo em autoplay não é animação
-     CSS e continuaria correndo. */
-  @media (prefers-reduced-motion: reduce) {
-    .capa-video {
-      display: none;
-    }
-  }
-
-  /* Sem ponteiro fino o vídeo também sai: num telefone ele custa bateria e
-     dados para um enfeite que a cortina já cobre quase por inteiro. */
-  @media (max-width: 767px) {
-    .capa-video {
-      display: none;
-    }
-  }
 }

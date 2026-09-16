@@ -49,6 +49,7 @@ import {
   SaveTemplateDialog,
 } from "@/features/estrutura/template-dialogs";
 import { FILTRO_VAZIO, ViewBar } from "@/features/estrutura/view-bar";
+import { BotaoDeMais, CompositorNoGrupo } from "@/features/estrutura/novo-no-grupo";
 import {
   BulkStatusBar,
   RunScheduledButton,
@@ -79,7 +80,9 @@ import {
   ConditionMarker,
   EmptyState,
   PageHeader,
+  Pilula,
   ReguaDeSecao,
+  RolagemNoTopo,
   SidePanel,
   StateSeal,
 } from "@/features/shell/ui";
@@ -150,7 +153,8 @@ export default function ListaPage({
   const { openTaskId, openTask, closeTask } = useTaskPanel();
   const query = useSearchParams();
   const router = useRouter();
-  const { movingTaskId, openMove, closeMove } = useMoveTaskDialog();
+  // O popup da Tarefa abre o diálogo de mover pela URL; a Lista só o hospeda.
+  const { movingTaskId, closeMove } = useMoveTaskDialog();
 
   // B38a — a Lista que o Membro não alcança não existe para ele.
   const list = state.lists.find(
@@ -256,14 +260,39 @@ export default function ListaPage({
         text: `${financeira ? "Conta" : "Tarefa"} criada: ${result.value.title}.`,
         taskId: result.value.id,
       });
-      // Uma conta nasce só com o nome; Valor, Vencimento e Forma se editam na
-      // página completa (o drawer só lê), então é para lá que ela vai.
-      if (financeira) router.push(`/estrutura/tarefas/${result.value.id}`);
+      // Uma conta nasce só com o nome; Valor, Vencimento e Forma se editam no
+      // popup (que é a Tarefa completa), sem sair da Lista.
+      if (financeira) openTask(result.value.id);
     } else {
       setNotice(null);
       setError(result.error);
     }
   };
+
+  // O "+" de um grupo: a Tarefa nasce já naquele Status. A conta do Financeiro
+  // nasce só com o nome e abre no popup, onde Valor, Vencimento e Forma se editam.
+  const criarNoGrupo = (title: string, statusId?: string): boolean => {
+    const result = run((data, memberId) =>
+      createTask(data, memberId, {
+        listId: list.id,
+        title,
+        ...(statusId ? { statusId } : {}),
+      }),
+    );
+    if (result.ok) {
+      setError(null);
+      setNotice({
+        text: `${financeira ? "Conta" : "Tarefa"} criada: ${result.value.title}.`,
+        taskId: result.value.id,
+      });
+      if (financeira) openTask(result.value.id);
+      return true;
+    }
+    setNotice(null);
+    setError(result.error);
+    return false;
+  };
+  const criaNoGrupo = effective === "ativo" ? criarNoGrupo : undefined;
 
   return (
     <div className="flex h-full flex-col">
@@ -656,9 +685,8 @@ export default function ListaPage({
             definitions={definitions}
             onError={setError}
             openTask={abrirNoQuadro}
-            {...(effective === "ativo" && criacaoRecusada === undefined
-              ? { onCreate: () => document.getElementById("nova-tarefa")?.focus() }
-              : {})}
+            {...(criaNoGrupo ? { onCreateInGroup: criaNoGrupo } : {})}
+            {...(criacaoRecusada ? { criacaoRecusada } : {})}
           />
         ) : view === "quadro" ? (
           <Quadro
@@ -668,6 +696,8 @@ export default function ListaPage({
             listId={list.id}
             onError={setError}
             openTask={openTask}
+            {...(criaNoGrupo ? { onCreateInGroup: criaNoGrupo } : {})}
+            {...(criacaoRecusada ? { criacaoRecusada } : {})}
           />
         ) : view === "calendario" ? (
           <Calendario state={state} tasks={tasks} openTask={openTask} />
@@ -700,7 +730,9 @@ export default function ListaPage({
                 state={state}
                 profile={lente}
                 tasks={tasks}
-                filtrado={filtrando}
+                grupoFiltrado={financeFilters.grupo}
+                {...(criaNoGrupo ? { onCreateInGroup: criaNoGrupo } : {})}
+                {...(criacaoRecusada ? { criacaoRecusada } : {})}
                 definitions={definitions}
                 selected={selecionadas}
                 selecionando={selecionando}
@@ -735,6 +767,9 @@ export default function ListaPage({
             tasks={tasks}
             definitions={definitions}
             openTask={openTask}
+            filters={filters}
+            {...(criaNoGrupo ? { onCreateInGroup: criaNoGrupo } : {})}
+            {...(criacaoRecusada ? { criacaoRecusada } : {})}
             {...(selecionando
               ? {
                   selected: selecionadas,
@@ -795,12 +830,16 @@ export default function ListaPage({
           />
         </SidePanel>
       ) : (
-        <TaskPanel taskId={openTaskId} onClose={closeTask} onMove={openMove} />
+        <TaskPanel taskId={openTaskId} onClose={closeTask} />
       )}
       <MoveTaskDialog
         taskId={movingTaskId}
         onClose={closeMove}
-        onDone={(text) => setNotice({ text })}
+        onDone={(text) => {
+          // A Tarefa foi para outra Lista: o popup dela fecha, e o aviso fica à vista.
+          closeTask();
+          setNotice({ text });
+        }}
       />
     </div>
   );
@@ -857,6 +896,14 @@ function TaskRow({
           {task.priority !== "semPrioridade" ? (
             <span>{PRIORITY_LABEL[task.priority]}</span>
           ) : null}
+          {task.tagIds.map((id) => {
+            const tag = state.tags.find((t) => t.id === id);
+            return tag ? (
+              <Pilula key={id} cor={tag.color}>
+                {tag.name}
+              </Pilula>
+            ) : null;
+          })}
           {checklist ? (
             <span>
               checklist {checklist.done}/{checklist.total}
@@ -892,6 +939,9 @@ function ListaAgrupada({
   tasks,
   definitions,
   openTask,
+  filters,
+  onCreateInGroup,
+  criacaoRecusada,
   selected,
   onToggle,
 }: {
@@ -899,13 +949,30 @@ function ListaAgrupada({
   readonly tasks: readonly Task[];
   readonly definitions: readonly Definition[];
   readonly openTask: (taskId: string) => void;
+  /** Um grupo vazio só aparece quando o filtro pede por ele. */
+  readonly filters: ViewFilters;
+  /** O "+" do grupo: a Tarefa nasce naquele Status. Ausente = a Lista não recebe Tarefa. */
+  readonly onCreateInGroup?: (title: string, statusId: string) => boolean;
+  readonly criacaoRecusada?: string;
   /** Modo de seleção em lote: presente, cada linha ganha uma caixa. */
   readonly selected?: ReadonlySet<string>;
   readonly onToggle?: (taskId: string) => void;
 }) {
+  // Um Status sem Tarefa não ganha régua nem "Nenhuma Tarefa em…": o que não
+  // tem nada não aparece — a não ser que o filtro tenha escolhido exatamente
+  // esse Status (ou a categoria dele), e aí o vazio é a resposta à pergunta.
+  const visiveis = definitions.filter(
+    (definition) =>
+      tasks.some((task) => task.statusId === definition.id) ||
+      filters.statusId === definition.id ||
+      (filters.statusId === undefined && filters.statusCategory === definition.category),
+  );
+  // Qual grupo está compondo uma Tarefa nova (um de cada vez).
+  const [criandoEm, setCriandoEm] = useState<string | null>(null);
+  const motivoDoMais = onCreateInGroup ? criacaoRecusada : (criacaoRecusada ?? "Esta Lista não recebe Tarefas novas.");
   return (
     <div>
-      {definitions.map((definition) => {
+      {visiveis.map((definition) => {
         const group = tasks.filter((task) => task.statusId === definition.id);
         return (
           <section key={definition.id}>
@@ -913,9 +980,23 @@ function ListaAgrupada({
             <h2 className="flex items-center gap-3 pb-2 pt-5 first:pt-0">
               <CategoryDot color={definition.color} label={definition.name} />
               <span className="app-meta app-numero">{group.length}</span>
+              <BotaoDeMais
+                rotulo={definition.name}
+                aberto={criandoEm === definition.id}
+                onClick={() => setCriandoEm((atual) => (atual === definition.id ? null : definition.id))}
+                {...(motivoDoMais ? { motivo: motivoDoMais } : {})}
+              />
               <span className="h-px flex-1" style={{ background: "var(--linha-sutil)" }} />
               <span className="app-meta">{STATUS_CATEGORY_LABEL[definition.category]}</span>
             </h2>
+            {criandoEm === definition.id && onCreateInGroup ? (
+              <CompositorNoGrupo
+                className="mb-2"
+                placeholder={`Nova Tarefa em ${definition.name}`}
+                onCreate={(title) => onCreateInGroup(title, definition.id)}
+                onCancel={() => setCriandoEm(null)}
+              />
+            ) : null}
             {group.length === 0 ? (
               <p
                 className="app-meta rounded-[var(--r-painel)] border border-dashed px-3 py-2"
@@ -963,6 +1044,8 @@ function Quadro({
   listId,
   onError,
   openTask,
+  onCreateInGroup,
+  criacaoRecusada,
 }: {
   readonly state: DataState;
   readonly tasks: readonly Task[];
@@ -970,9 +1053,14 @@ function Quadro({
   readonly listId: string;
   readonly onError: (message: string | null) => void;
   readonly openTask: (taskId: string) => void;
+  /** O "+" da coluna: a Tarefa nasce naquele Status. */
+  readonly onCreateInGroup?: (title: string, statusId: string) => boolean;
+  readonly criacaoRecusada?: string;
 }) {
   const run = useRun();
   const [dragging, setDragging] = useState<string | null>(null);
+  const [criandoEm, setCriandoEm] = useState<string | null>(null);
+  const motivoDoMais = onCreateInGroup ? criacaoRecusada : (criacaoRecusada ?? "Esta Lista não recebe Tarefas novas.");
 
   const drop = (statusId: string) => {
     if (!dragging) return;
@@ -984,7 +1072,7 @@ function Quadro({
   };
 
   return (
-    <div className="overflow-x-auto pb-2">
+    <RolagemNoTopo>
       <div className="flex items-start gap-3">
         {definitions.map((definition) => {
           const group = tasks.filter((task) => task.statusId === definition.id);
@@ -995,13 +1083,27 @@ function Quadro({
               onDrop={() => drop(definition.id)}
               className="trilho flex w-72 shrink-0 flex-col p-2"
             >
-              <h2 className="mb-1 flex items-center justify-between px-1 pt-1">
+              <h2 className="mb-1 flex items-center gap-2 px-1 pt-1">
                 <CategoryDot color={definition.color} label={definition.name} />
-                <span className="app-meta app-numero">{group.length}</span>
+                <span className="app-meta app-numero flex-1">{group.length}</span>
+                <BotaoDeMais
+                  rotulo={definition.name}
+                  aberto={criandoEm === definition.id}
+                  onClick={() => setCriandoEm((atual) => (atual === definition.id ? null : definition.id))}
+                  {...(motivoDoMais ? { motivo: motivoDoMais } : {})}
+                />
               </h2>
               <p className="app-coluna mb-2 px-1">
                 {STATUS_CATEGORY_LABEL[definition.category]}
               </p>
+              {criandoEm === definition.id && onCreateInGroup ? (
+                <CompositorNoGrupo
+                  className="mb-2"
+                  placeholder={`Nova em ${definition.name}`}
+                  onCreate={(title) => onCreateInGroup(title, definition.id)}
+                  onCancel={() => setCriandoEm(null)}
+                />
+              ) : null}
               {group.length === 0 ? (
                 <p
                   className="app-meta rounded-[var(--r-painel)] border border-dashed px-2 py-4 text-center"
@@ -1032,7 +1134,7 @@ function Quadro({
         coluna recusa a Tarefa quando a Funcionalidade exige Subtarefas ou
         Checklists concluídos. Lista {listId}.
       </p>
-    </div>
+    </RolagemNoTopo>
   );
 }
 
