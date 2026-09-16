@@ -2,12 +2,18 @@
  * Processo "Contas a receber" (Financeiro) montado com as entidades da
  * ontologia, na mesma Pasta de Contas a pagar: Lista "Contas a receber";
  * Tipo "Conta" e Valor herdados da Pasta; seis Status com requisitos de
- * entrada e origens permitidas; Campos da seção 9; o cliente como Contato do
- * CRM ligado por Vínculo; as Automações R2–R6 (R1 é a operação "série de
- * parcelas", R7 é a Recorrência do saque); e Tarefas fictícias que reproduzem os
- * casos do histórico lido no ClickUp em 2026-09-14
- * (`docs/07-processos/contas-a-receber.md`): clientes, valores e datas são
- * inventados, com as datas perto de hoje para o processo poder rodar.
+ * entrada e origens permitidas; Campos da seção 9; as Automações R2–R6 (R1 é
+ * a operação "série de parcelas", R7 é a Recorrência do saque) — é isto que o
+ * bootstrap de produção (`bootstrap-gestao.ts`, D-07) grava, com
+ * `{ fixtures: false }`.
+ *
+ * Com `fixtures: true` (o padrão, usado por `buildSeed()`), a mesma função
+ * também acrescenta o cliente como Contato do CRM ligado por Vínculo e as
+ * Tarefas fictícias que reproduzem os casos do histórico lido no ClickUp em
+ * 2026-09-14 (`docs/07-processos/contas-a-receber.md`): clientes, valores e
+ * datas são inventados, com as datas perto de hoje para o processo poder
+ * rodar. D-07 proíbe Contatos fictícios no bootstrap de produção — por isso o
+ * Contato também é fixture, não configuração.
  *
  * Decisões da seção 12: `em cobrança`/`inadimplência` viram o Campo "Situação
  * de cobrança" (seção 6); `conta tria` vira o Campo "Conta de recebimento";
@@ -42,7 +48,12 @@ const member = (id: Id): ActorRef => ({ kind: "member", id });
 const F = CR.fields;
 const S = CR.status;
 
-export function applyContasAReceber(state: DataState, clock: Clock): void {
+/** `fixtures: false` monta só a configuração do processo (o que o bootstrap de produção grava). */
+export interface OpcoesDoSeed {
+  readonly fixtures: boolean;
+}
+
+export function applyContasAReceber(state: DataState, clock: Clock, opcoes: OpcoesDoSeed = { fixtures: true }): void {
   const { at, workspaceId } = clock;
   const d = (n: number) => {
     const hoje = new Date();
@@ -111,6 +122,54 @@ export function applyContasAReceber(state: DataState, clock: Clock): void {
     fd(F.contaRecebimento, "Conta de recebimento", "singleSelect", "list", ["TRIA", "KONQ", "KOPS", "ROBERTH", "AUTON", "TF TRIA", "ARKLINE", "INEVITAVEIS"], "Qual conta bancária recebe."),
   );
 
+  /* ── Automações (seção 8) — config: nenhuma referencia Contato por id ─── */
+  const automation = (id: Id, name: string, description: string, trigger: AutomationTrigger, conditions: AutomationCondition[], actions: AutomationAction[]): Automation => ({
+    id,
+    workspaceId,
+    createdBy: member(CP.financeiroId),
+    createdAt: at(100),
+    lifecycle: "ativo",
+    name,
+    description,
+    scopeType: "list",
+    scopeId: CR.listId,
+    ownerMemberId: CP.financeiroId,
+    reactsToAutomationEvents: false,
+    versions: [{ number: 1, state: "publicada", trigger, conditions, actions, errorPolicy: { onActionFailure: "interromper", retries: 0 }, publishedBy: CP.financeiroId, publishedAt: at(99), createdAt: at(100) }],
+  });
+  const entrou = (status: string): AutomationTrigger => ({ kind: "evento", eventType: "tarefaEntrouEmStatus", eventSubtype: status });
+  const vencimento = (dias: number): AutomationTrigger => ({ kind: "condicaoTemporal", temporalPredicate: JSON.stringify({ dueDateOffsetDays: dias }) });
+  const cond = (spec: object): AutomationCondition => ({ kind: "valorDeCampo", expression: JSON.stringify(spec) });
+  const acao = (order: number, toolId: string, params: object): AutomationAction => ({ order, kind: "escrita", toolId, params: JSON.stringify(params) });
+  state.automations.push(
+    // R1 (série na assinatura) é a operação `createReceivableSeries`: sem Gestão contratual, o gatilho é o botão da Lista.
+    automation("aut_cr_r2", "R2 · D+1: venceu, entra em cobrança", "Um dia após o vencimento, ainda “para receber”: vai para “pendente” (R2b marca a Situação) e avisa o Financeiro.", vencimento(1), [cond({ status: "para receber" })], [
+      acao(1, "tarefa.alterarStatus", { statusName: "pendente" }),
+      acao(2, "tarefa.comentar", { template: "Venceu em {{vencimento}} sem recebimento: {{cliente}} entrou em cobrança.", mentionMemberId: CP.financeiroId }),
+    ]),
+    automation("aut_cr_r2b", "R2b · Em pendente: Situação “em cobrança”", "Ao entrar em “pendente” — pelo relógio (R2) ou à mão (“Iniciar cobrança”) — a Situação de cobrança vira “em cobrança”.", entrou("pendente"), [], [
+      acao(1, "tarefa.definirCampo", { definitionId: F.situacao, value: CR.situacoes.emCobranca }),
+    ]),
+    automation("aut_cr_r3", "R3 · Recebido: data e situação", "Ao entrar em “recebido”, preenche a Data de pagamento com hoje (se o Financeiro não preencheu) e volta a Situação para “em dia”.", entrou("recebido"), [], [
+      acao(1, "tarefa.definirCampo", { definitionId: F.dataPagamento, today: true, onlyIfEmpty: true }),
+      acao(2, "tarefa.definirCampo", { definitionId: F.situacao, value: CR.situacoes.emDia }),
+    ]),
+    automation("aut_cr_r4", "R4 · 30 dias em cobrança: Comercial", "Trinta dias após o vencimento, ainda “pendente”: Comentário com Menção ao dono do cliente no CRM — o “para conhecimento” de hoje.", vencimento(30), [cond({ status: "pendente" })], [
+      acao(1, "tarefa.comentar", { template: "{{donoDoCliente}}, {{cliente}} está há 30 dias em cobrança ({{titulo}}, venceu {{vencimento}}). Para conhecimento.", mentionClientOwner: true }),
+    ]),
+    automation("aut_cr_r5", "R5 · 60 dias em cobrança: Diretoria", "Sessenta dias após o vencimento, ainda “pendente”: escalona à Diretoria.", vencimento(60), [cond({ status: "pendente" })], [
+      acao(1, "tarefa.comentar", { template: "{{cliente}} está há 60 dias em cobrança ({{titulo}}). Escalonado à Diretoria para ligar ao cliente.", mentionMemberId: CP.aprovadorId }),
+    ]),
+    automation("aut_cr_r6", "R6 · Descartado em cobrança: inadimplente", "Ao entrar em “descartado” com Situação “em cobrança”, a Situação vira “inadimplente”. Um cancelamento (sem cobrança) segue “em dia”.", entrou("descartado"), [cond({ definitionId: F.situacao, equals: CR.situacoes.emCobranca })], [
+      acao(1, "tarefa.definirCampo", { definitionId: F.situacao, value: CR.situacoes.inadimplente }),
+    ]),
+  );
+
+  // Fixture a partir daqui: D-07 proíbe Contato fictício no bootstrap de
+  // produção, e Tarefa/Vínculo/Histórico só existem para reproduzir o
+  // histórico do ClickUp com os clientes fictícios abaixo.
+  if (opcoes.fixtures) {
+
   /* ── Clientes no CRM (seção 2) ────────────────────────────────────────── */
   const contact = (id: Id, firstName: string, lastName: string, ownerMemberId: Id, email: string): Contact => ({
     id,
@@ -153,49 +212,6 @@ export function applyContasAReceber(state: DataState, clock: Clock): void {
   });
   // A Diretoria vê, comenta e muda Status; o Financeiro já administra o Espaço.
   state.grants.push(grant("gr_cr_diretoria", CP.aprovadorId, "editar", "list", CR.listId));
-
-  /* ── Automações (seção 8) ─────────────────────────────────────────────── */
-  const automation = (id: Id, name: string, description: string, trigger: AutomationTrigger, conditions: AutomationCondition[], actions: AutomationAction[]): Automation => ({
-    id,
-    workspaceId,
-    createdBy: member(CP.financeiroId),
-    createdAt: at(100),
-    lifecycle: "ativo",
-    name,
-    description,
-    scopeType: "list",
-    scopeId: CR.listId,
-    ownerMemberId: CP.financeiroId,
-    reactsToAutomationEvents: false,
-    versions: [{ number: 1, state: "publicada", trigger, conditions, actions, errorPolicy: { onActionFailure: "interromper", retries: 0 }, publishedBy: CP.financeiroId, publishedAt: at(99), createdAt: at(100) }],
-  });
-  const entrou = (status: string): AutomationTrigger => ({ kind: "evento", eventType: "tarefaEntrouEmStatus", eventSubtype: status });
-  const vencimento = (dias: number): AutomationTrigger => ({ kind: "condicaoTemporal", temporalPredicate: JSON.stringify({ dueDateOffsetDays: dias }) });
-  const cond = (spec: object): AutomationCondition => ({ kind: "valorDeCampo", expression: JSON.stringify(spec) });
-  const acao = (order: number, toolId: string, params: object): AutomationAction => ({ order, kind: "escrita", toolId, params: JSON.stringify(params) });
-  state.automations.push(
-    // R1 (série na assinatura) é a operação `createReceivableSeries`: sem Gestão contratual, o gatilho é o botão da Lista.
-    automation("aut_cr_r2", "R2 · D+1: venceu, entra em cobrança", "Um dia após o vencimento, ainda “para receber”: vai para “pendente” (R2b marca a Situação) e avisa o Financeiro.", vencimento(1), [cond({ status: "para receber" })], [
-      acao(1, "tarefa.alterarStatus", { statusName: "pendente" }),
-      acao(2, "tarefa.comentar", { template: "Venceu em {{vencimento}} sem recebimento: {{cliente}} entrou em cobrança.", mentionMemberId: CP.financeiroId }),
-    ]),
-    automation("aut_cr_r2b", "R2b · Em pendente: Situação “em cobrança”", "Ao entrar em “pendente” — pelo relógio (R2) ou à mão (“Iniciar cobrança”) — a Situação de cobrança vira “em cobrança”.", entrou("pendente"), [], [
-      acao(1, "tarefa.definirCampo", { definitionId: F.situacao, value: CR.situacoes.emCobranca }),
-    ]),
-    automation("aut_cr_r3", "R3 · Recebido: data e situação", "Ao entrar em “recebido”, preenche a Data de pagamento com hoje (se o Financeiro não preencheu) e volta a Situação para “em dia”.", entrou("recebido"), [], [
-      acao(1, "tarefa.definirCampo", { definitionId: F.dataPagamento, today: true, onlyIfEmpty: true }),
-      acao(2, "tarefa.definirCampo", { definitionId: F.situacao, value: CR.situacoes.emDia }),
-    ]),
-    automation("aut_cr_r4", "R4 · 30 dias em cobrança: Comercial", "Trinta dias após o vencimento, ainda “pendente”: Comentário com Menção ao dono do cliente no CRM — o “para conhecimento” de hoje.", vencimento(30), [cond({ status: "pendente" })], [
-      acao(1, "tarefa.comentar", { template: "{{donoDoCliente}}, {{cliente}} está há 30 dias em cobrança ({{titulo}}, venceu {{vencimento}}). Para conhecimento.", mentionClientOwner: true }),
-    ]),
-    automation("aut_cr_r5", "R5 · 60 dias em cobrança: Diretoria", "Sessenta dias após o vencimento, ainda “pendente”: escalona à Diretoria.", vencimento(60), [cond({ status: "pendente" })], [
-      acao(1, "tarefa.comentar", { template: "{{cliente}} está há 60 dias em cobrança ({{titulo}}). Escalonado à Diretoria para ligar ao cliente.", mentionMemberId: CP.aprovadorId }),
-    ]),
-    automation("aut_cr_r6", "R6 · Descartado em cobrança: inadimplente", "Ao entrar em “descartado” com Situação “em cobrança”, a Situação vira “inadimplente”. Um cancelamento (sem cobrança) segue “em dia”.", entrou("descartado"), [cond({ definitionId: F.situacao, equals: CR.situacoes.emCobranca })], [
-      acao(1, "tarefa.definirCampo", { definitionId: F.situacao, value: CR.situacoes.inadimplente }),
-    ]),
-  );
 
   /* ── Tarefas (seções 5 e 7) ───────────────────────────────────────────── */
   const val = (definitionId: Id, value: FieldValue["value"]): FieldValue => ({ definitionId, value, state: "ativo" });
@@ -351,6 +367,7 @@ export function applyContasAReceber(state: DataState, clock: Clock): void {
   for (const t of [gus4, gus5]) hist(t, member(CP.financeiroId), "para receber", "descartado", at(12, 10));
   hist(saqueAgo, member(CP.financeiroId), "para receber", "recebido", at(19, 10));
   hist(saqueSet, member(CP.financeiroId), "para receber", "disponível para saque", at(2, 9));
+  }
 
   state.views.push(
     { id: "viw_cr_cobranca", name: "Em cobrança", kind: "lista", ownerKind: "container", ownerId: CR.listId, listId: CR.listId, filters: { statusId: S.pendente }, sortBy: { by: "dueDate", direction: "asc" }, isDefault: false, createdBy: CP.financeiroId, createdAt: at(90) },

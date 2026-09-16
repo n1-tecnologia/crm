@@ -4,8 +4,13 @@
  * pagar"; Tipo "Conta"; oito Status com requisitos de saída e entrada
  * restrita; 21 Definições de Campo (4 no Espaço, herdadas); oito Tags
  * `conta *`; quatro papéis; o Agente de lançamento com sua Coleção de
- * Conhecimento; as Automações A2–A9 (A1 é a Recorrência da Tarefa); e Tarefas
- * fictícias que reproduzem os casos do histórico lido no ClickUp em 2026-09-13
+ * Conhecimento; as Automações A2–A9 (A1 é a Recorrência da Tarefa) — é isto
+ * que o bootstrap de produção (`bootstrap-gestao.ts`, D-07) grava, com
+ * `{ fixtures: false }`.
+ *
+ * Com `fixtures: true` (o padrão, usado por `buildSeed()`), a mesma função
+ * também acrescenta os Membros fictícios do processo e as Tarefas que
+ * reproduzem os casos do histórico lido no ClickUp em 2026-09-13
  * (`docs/07-processos/contas-a-pagar.md`) — fornecedores, CNPJs, chaves e
  * valores são inventados.
  *
@@ -44,29 +49,36 @@ const member = (id: Id): ActorRef => ({ kind: "member", id });
 const F = CP.fields;
 const S = CP.status;
 
-export function applyContasAPagar(state: DataState, clock: Clock): void {
+/** `fixtures: false` monta só a configuração do processo (o que o bootstrap de produção grava). */
+export interface OpcoesDoSeed {
+  readonly fixtures: boolean;
+}
+
+export function applyContasAPagar(state: DataState, clock: Clock, opcoes: OpcoesDoSeed = { fixtures: true }): void {
   const { at, day, workspaceId } = clock;
 
-  /* ── Membros ─────────────────────────────────────────────────────────── */
-  const mk = (id: Id, displayName: string, roleId: Id): Member => ({
-    id,
-    workspaceId,
-    userId: usuarioDoSeed(id),
-    displayName,
-    state: "ativo",
-    roleId,
-    joinedAt: at(300),
-    availability: { value: "disponivel", at: at(1), origin: "membro" },
-    userMemory: { enabled: true, items: [] },
-    weeklyCapacityMinutes: 40 * 60,
-  });
-  state.members.push(
-    mk(CP.financeiroId, "Maryane Generozo", "role_mem"),
-    mk(CP.aprovadorId, "Marcos Paulo", "role_mem"),
-    mk(CP.aprovadorKonqId, "Walter Galvão Neto", "role_mem"),
-    mk("mem_thiago_pereira", "Pedro Alencar", "role_conv"),
-    mk("mem_joao_konq", "Lucas Ferraz (Konq)", "role_conv"),
-  );
+  /* ── Membros (fixture — no bootstrap de produção só a Maryane existe, e nasce Proprietária) ── */
+  if (opcoes.fixtures) {
+    const mk = (id: Id, displayName: string, roleId: Id): Member => ({
+      id,
+      workspaceId,
+      userId: usuarioDoSeed(id),
+      displayName,
+      state: "ativo",
+      roleId,
+      joinedAt: at(300),
+      availability: { value: "disponivel", at: at(1), origin: "membro" },
+      userMemory: { enabled: true, items: [] },
+      weeklyCapacityMinutes: 40 * 60,
+    });
+    state.members.push(
+      mk(CP.financeiroId, "Maryane Generozo", "role_mem"),
+      mk(CP.aprovadorId, "Marcos Paulo", "role_mem"),
+      mk(CP.aprovadorKonqId, "Walter Galvão Neto", "role_mem"),
+      mk("mem_thiago_pereira", "Pedro Alencar", "role_conv"),
+      mk("mem_joao_konq", "Lucas Ferraz (Konq)", "role_conv"),
+    );
+  }
 
   /* ── Conjunto de Status (seção 3) ─────────────────────────────────────── */
   const dadoDePagamento = [
@@ -217,14 +229,28 @@ export function applyContasAPagar(state: DataState, clock: Clock): void {
     grantedBy: "mem_thiago",
     grantedAt: at(300),
   });
+  // gr_cp_financeiro e gr_cp_agente são do processo (config, §10: Financeiro
+  // administra, o Agente comenta); gr_cp_aprovador* e gr_cp_presidencia
+  // concedem a Membros fictícios — fixture, entram por convite na produção
+  // real (D-08).
   state.grants.push(
     grant("gr_cp_financeiro", "member", CP.financeiroId, "administrar", "space", CP.spaceId),
-    grant("gr_cp_aprovador", "member", CP.aprovadorId, "editar", "list", CP.listId),
-    grant("gr_cp_aprovador_konq", "member", CP.aprovadorKonqId, "editar", "list", CP.listId),
-    grant("gr_cp_agente", "agent", CP.agentId, "comentar", "list", CP.listId),
-    // A Presidência (Proprietário) enxerga a Gestão: é quem demonstra o processo.
-    grant("gr_cp_presidencia", "member", "mem_thiago", "administrar", "space", CP.spaceId),
   );
+  if (opcoes.fixtures) {
+    state.grants.push(
+      grant("gr_cp_aprovador", "member", CP.aprovadorId, "editar", "list", CP.listId),
+      grant("gr_cp_aprovador_konq", "member", CP.aprovadorKonqId, "editar", "list", CP.listId),
+    );
+  }
+  state.grants.push(
+    grant("gr_cp_agente", "agent", CP.agentId, "comentar", "list", CP.listId),
+  );
+  if (opcoes.fixtures) {
+    // A Presidência (Proprietário) enxerga a Gestão: é quem demonstra o processo.
+    state.grants.push(
+      grant("gr_cp_presidencia", "member", "mem_thiago", "administrar", "space", CP.spaceId),
+    );
+  }
 
   /* ── Agente de lançamento (seção 9) e seu Conhecimento ────────────────── */
   state.collections.push({
@@ -358,7 +384,17 @@ export function applyContasAPagar(state: DataState, clock: Clock): void {
     ]),
   );
 
-  /* ── Tarefas (seções 6 e 7) ───────────────────────────────────────────── */
+  // As Visualizações que o Financeiro usa: por conta bancária e o que falta
+  // pagar — config (só referenciam Status e Tags, que já existem sem fixtures).
+  state.views.push(
+    { id: "viw_cp_abertas", name: "Ainda a pagar", kind: "lista", ownerKind: "container", ownerId: CP.listId, listId: CP.listId, filters: { statusId: S.paraPagar }, sortBy: { by: "dueDate", direction: "asc" }, isDefault: false, createdBy: CP.financeiroId, createdAt: at(90) },
+    { id: "viw_cp_autorizacao", name: "Aguardando autorização", kind: "lista", ownerKind: "container", ownerId: CP.listId, listId: CP.listId, filters: { statusId: S.emAutorizacao }, sortBy: { by: "dueDate", direction: "asc" }, isDefault: false, createdBy: CP.financeiroId, createdAt: at(90) },
+    { id: "viw_cp_tria", name: "Conta Tria", kind: "lista", ownerKind: "container", ownerId: CP.listId, listId: CP.listId, filters: { tagId: tagIds["conta tria"] ?? "" }, isDefault: false, createdBy: CP.financeiroId, createdAt: at(90) },
+  );
+
+  /* ── Tarefas (seções 6 e 7) — fixture: reproduz o histórico do ClickUp ── */
+  if (opcoes.fixtures) {
+
   const val = (definitionId: Id, value: FieldValue["value"]): FieldValue => ({ definitionId, value, state: "ativo" });
   const recorrente = (defaultAssignee: Id = CP.financeiroId): RecurrenceRule => ({
     frequency: "mensal",
@@ -654,13 +690,6 @@ export function applyContasAPagar(state: DataState, clock: Clock): void {
   hist(recarga.id, recarga.title, member(CP.financeiroId), "para pagar", "em autorização bancária", at(3, 17));
   hist(recarga.id, recarga.title, member(CP.aprovadorId), "em autorização bancária", "pago", at(2, 9));
 
-  // As Visualizações que o Financeiro usa: por conta bancária e o que falta pagar.
-  state.views.push(
-    { id: "viw_cp_abertas", name: "Ainda a pagar", kind: "lista", ownerKind: "container", ownerId: CP.listId, listId: CP.listId, filters: { statusId: S.paraPagar }, sortBy: { by: "dueDate", direction: "asc" }, isDefault: false, createdBy: CP.financeiroId, createdAt: at(90) },
-    { id: "viw_cp_autorizacao", name: "Aguardando autorização", kind: "lista", ownerKind: "container", ownerId: CP.listId, listId: CP.listId, filters: { statusId: S.emAutorizacao }, sortBy: { by: "dueDate", direction: "asc" }, isDefault: false, createdBy: CP.financeiroId, createdAt: at(90) },
-    { id: "viw_cp_tria", name: "Conta Tria", kind: "lista", ownerKind: "container", ownerId: CP.listId, listId: CP.listId, filters: { tagId: tagIds["conta tria"] ?? "" }, isDefault: false, createdBy: CP.financeiroId, createdAt: at(90) },
-  );
-
   // Meta do Financeiro: contas em dia.
   state.goals.push({
     id: "gol_cp_em_dia",
@@ -675,4 +704,5 @@ export function applyContasAPagar(state: DataState, clock: Clock): void {
     target: 3,
     taskIds: [thiagoSet.id, aluguelSet.id, recarga.id],
   });
+  }
 }

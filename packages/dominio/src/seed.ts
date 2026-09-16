@@ -40,6 +40,7 @@ import type {
   List,
   Member,
   Message,
+  Model,
   Panel,
   Queue,
   Role,
@@ -1894,11 +1895,7 @@ export function buildSeed(): DataState {
   ];
 
   const state: DataState = {
-    models: [
-      { id: "mdl_base", name: "Modelo base", capabilities: { inputs: ["texto", "imagem", "documento"], outputs: ["texto"] }, discontinued: false },
-      { id: "mdl_rapido", name: "Modelo rápido", capabilities: { inputs: ["texto"], outputs: ["texto"] }, discontinued: false },
-      { id: "mdl_legado", name: "Modelo legado", capabilities: { inputs: ["texto"], outputs: ["texto"] }, discontinued: true },
-    ],
+    models: MODELOS_DA_PLATAFORMA,
     tools: TOOLS,
     workspace: buildWorkspace(),
     members,
@@ -2390,7 +2387,9 @@ function widget(
   };
 }
 
-const TOOLS = [
+// A1.3 — entidades globais, referenciadas nunca possuídas; o bootstrap de produção também precisa delas.
+export const MODELOS_DA_PLATAFORMA: Model[] = [{ id: "mdl_base", name: "Modelo base", capabilities: { inputs: ["texto", "imagem", "documento"], outputs: ["texto"] }, discontinued: false }, { id: "mdl_rapido", name: "Modelo rápido", capabilities: { inputs: ["texto"], outputs: ["texto"] }, discontinued: false }, { id: "mdl_legado", name: "Modelo legado", capabilities: { inputs: ["texto"], outputs: ["texto"] }, discontinued: true }];
+export const TOOLS = [
   tool("ler_tarefa", "Ler Tarefa", "task", "ver", "leitura"),
   tool("criar_tarefa", "Criar Tarefa", "list", "criar", "escritaReversivel"),
   tool("ler_contato", "Ler Contato", "contact", "ver", "leitura"),
