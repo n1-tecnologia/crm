@@ -37,6 +37,10 @@ yarn-error.log*
 !.env.example
 !.env.local.example
 
+# exportação do ClickUp (Fase 0, PREP-02/D-02): dados pessoais e financeiros fora do git (LGPD).
+# O manifesto (apps/api/exportacoes/MANIFESTO.*) fica fora deste padrão de propósito e é versionado.
+apps/api/exportacoes/clickup/
+
 # vercel
 .vercel
 
