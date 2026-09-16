@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: gaps_found
-stopped_at: Completed 01-09-PLAN.md (e2e criar-conta.test.ts prova o critério 1 do ROADMAP contra o Supabase real; apps/api/README.md; npm run check verde nos três workspaces com e sem DATABASE_URL — 357 testes; PERS-08 documentado como bloqueado por D11) — Fase 1 fechada, pronta para verificação
-last_updated: "2026-09-16T18:12:22.586Z"
-last_activity: 2026-09-16 -- Phase 1 execution started
+status: executing
+stopped_at: Planos de fechamento de lacunas 01-10 (CR-01 reconvite por invitedIdentity) e 01-11 (CR-02 validação de args) criados e verificados pelo plan-checker — prontos para /gsd-execute-phase 1 --gaps-only
+last_updated: "2026-09-16T19:11:05.635Z"
+last_activity: 2026-09-16 -- Phase 1 gap-closure plans 01-10/01-11 planned and verified
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 9
+  total_plans: 11
   completed_plans: 9
   percent: 17
 ---
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 1 (o-crm-n1-ganha-persist-ncia-e-login) — EXECUTING
-Plan: 9 of 9
-Status: Verification found 2 gaps (CR-01 reconvite por invitedIdentity; CR-02 args sem validação) — ver 01-VERIFICATION.md; próximo: /gsd-plan-phase 1 --gaps
-Last activity: 2026-09-16 -- Phase 1 execution started
+Plan: 9 of 11
+Status: Ready to execute — lacunas CR-01 e CR-02 da verificação planejadas em 01-10 e 01-11 (checker: 0 issues); próximo: /gsd-execute-phase 1 --gaps-only
+Last activity: 2026-09-16 -- Phase 1 gap-closure plans 01-10/01-11 planned and verified
 
 Progress: [░░░░░░░░░░] 0% (de planos GSD; em requisitos: 4/34 feitos, 2 deles da Phase 1)
 

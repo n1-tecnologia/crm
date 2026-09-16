@@ -56,20 +56,32 @@ Estado em 2026-09-15: PREP-01 e PREP-06 feitos. PREP-03 é o item não mecânico
 
 **Plans**: 11 plans (9 executados + 2 de fechamento de lacunas da verificação)
 **UI hint**: yes
-
 Plans:
+**Wave 1**
 
 - [x] 01-01-PLAN.md — Portão de legitimidade do `fastify` (checkpoint humano antes do `npm install`, T-1-SC)
-- [x] 01-02-PLAN.md — Fastify em `apps/api`: `buildApp()`, hook de autenticação (JWT do Supabase → Membro por `userId`), CORS, `npm run dev` web + api
 - [x] 01-03-PLAN.md — Domínio: registro `OPERACOES`, gravador de chamadas, `syncIdSequence`, `aplicarDiferenca`
-- [x] 01-04-PLAN.md — `POST /operacoes/:nome` e `GET /estado`; `gravar()` devolve o diff; `executar()` devolve `revisao`/`revisaoAnterior`
-- [x] 01-05-PLAN.md — Bootstrap do Espaço "Gestão" (só configuração do Financeiro; Maryane Proprietária; sem fixtures)
 - [x] 01-06-PLAN.md — Migração `002`: colunas geradas e índices em `plataforma.registros`
-- [x] 01-07-PLAN.md — `store.ts` → API: `run()` híbrido (clone, recusa na hora, POST, diff, re-hidratação); casca hidrata por `GET /estado`
-- [x] 01-08-PLAN.md — Reconvite por Usuário: `inviteMember` casa por `userId`; e-mail resolvido no servidor (Admin API)
-- [x] 01-09-PLAN.md — Teste ponta a ponta (critério 1) e portão da fase (`npm run check`); PERS-08 documentado (bloqueado por D11)
 - [ ] 01-10-PLAN.md — Fechamento de lacuna CR-01 (PERS-09, critério 5): `inviteMember` casa `existing` por `userId` E por `invitedIdentity` (`porUserId ?? porEmail`) — nunca um segundo Membro para o mesmo e-mail; testes no domínio e no serviço
 - [ ] 01-11-PLAN.md — Fechamento de lacuna CR-02 (PERS-04, critério 2): schemas por operação (tasks/financeiro/automations) + estrutural para as demais em `apps/api/src/rotas/esquemas-de-argumentos.ts`; `TypeError` dentro da operação → 400, nunca 500 nem `jsonb` malformado
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 01-02-PLAN.md — Fastify em `apps/api`: `buildApp()`, hook de autenticação (JWT do Supabase → Membro por `userId`), CORS, `npm run dev` web + api
+- [x] 01-07-PLAN.md — `store.ts` → API: `run()` híbrido (clone, recusa na hora, POST, diff, re-hidratação); casca hidrata por `GET /estado`
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 01-04-PLAN.md — `POST /operacoes/:nome` e `GET /estado`; `gravar()` devolve o diff; `executar()` devolve `revisao`/`revisaoAnterior`
+- [x] 01-05-PLAN.md — Bootstrap do Espaço "Gestão" (só configuração do Financeiro; Maryane Proprietária; sem fixtures)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 01-08-PLAN.md — Reconvite por Usuário: `inviteMember` casa por `userId`; e-mail resolvido no servidor (Admin API)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [x] 01-09-PLAN.md — Teste ponta a ponta (critério 1) e portão da fase (`npm run check`); PERS-08 documentado (bloqueado por D11)
 
 Estado em 2026-09-15: **metade feita**. PERS-01 (persistência + Unidade de Trabalho) e PERS-02 (Supabase Auth) entregues, validados e commitados (`9fb2754` → `d713253`). Restam PERS-04 (rotas por operação — inclui escolher a camada HTTP), PERS-05 (`store.ts` → `POST`), PERS-06 (bootstrap do Espaço "Gestão"), PERS-07 (colunas geradas/índices, migração `002`), PERS-09 (reconvite). PERS-08 (onde o `apps/api` roda) está bloqueado por D11 e conversa com OQ-ADR-01 (região do Supabase — barata de mudar agora, cara depois): não bloqueia o código desta fase, mas precisa estar decidido antes de o adapter da Phase 2 apontar para o `apps/api`. PERS-03 (sobreposto por DEC-02) não é executado. Lacunas de teste a fechar aqui (CONCERNS.md): ponta a ponta tela → Postgres; resolução de sessão → Membro.
 
