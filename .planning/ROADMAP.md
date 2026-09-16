@@ -41,7 +41,7 @@ Fase 0 e Fase 1 correm em paralelo: o que resta da Fase 0 não bloqueia terminar
 Plans:
 **Wave 1**
 
-- [ ] 00-01-PLAN.md — Cliente HTTP do ClickUp (auth sem Bearer, backoff 429) + paginação (page/last_page e start/start_id) + esqueleto do módulo, `.env.example`, `.gitignore` (PREP-02)
+- [x] 00-01-PLAN.md — Cliente HTTP do ClickUp (auth sem Bearer, backoff 429) + paginação (page/last_page e start/start_id) + esqueleto do módulo, `.env.example`, `.gitignore` (PREP-02)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -209,7 +209,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 0. Preparação | 0/TBD | In progress (2/6 requisitos feitos fora do GSD) | - |
+| 0. Preparação | 1/7 | In Progress|  |
 | 1. O CRM N1 ganha persistência e login | 11/11 | Complete   | 2026-09-16 |
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 0/TBD | Not started | - |
 | 3. Contas a pagar | 0/TBD | Not started | - |

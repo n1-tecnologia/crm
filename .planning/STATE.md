@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 0 planejada (00-01..00-07, 6 ondas, checker 0 blockers) — pronta para /gsd-execute-phase 0. Phase 1 continua com 01-12..01-16 planejados e não executados (/gsd-execute-phase 1 --gaps-only).
-last_updated: "2026-09-16T22:36:49.148Z"
-last_activity: 2026-09-16 -- Phase 0 planned (7 plans), research + patterns + validation done
+stopped_at: Completed 00-01-PLAN.md
+last_updated: "2026-09-16T23:17:46.513Z"
+last_activity: 2026-09-16 -- Phase 00 execution started
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 16
-  completed_plans: 11
+  total_plans: 23
+  completed_plans: 12
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-15)
 
 **Core value:** Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de ponta a ponta sem abrir o ClickUp — dados no Postgres próprio, regras de `@n1/dominio` intactas.
-**Current focus:** Phase 0 — prepara-o (planejada, a executar); Phase 1 — 01-12..01-16 pendentes
+**Current focus:** Phase 00 — prepara-o
 
 ## Current Position
 
-Phase: 00 (Preparação) — planejada, 0/7 executados · Phase 01 — 11/16 executados (rodada 2 de lacunas pendente)
-Plan: Phase 0: 00-01..00-07 prontos (6 ondas; 00-06 tem checkpoint humano) · Phase 1: 01-12..01-16 prontos
-Status: Ready to execute — /gsd-execute-phase 0 (ou /gsd-execute-phase 1 --gaps-only para fechar a Phase 1 primeiro)
-Last activity: 2026-09-16 -- Phase 0 planned (7 plans), research + patterns + validation done
+Phase: 00 (prepara-o) — EXECUTING
+Plan: 2 of 7
+Status: Ready to execute
+Last activity: 2026-09-16 -- Phase 00 execution started
 
 Progress: [██████████] 100% (11/11 planos GSD; em requisitos: 4/34 feitos, 2 deles da Phase 1 — PERS-09 agora com os dois lados de RN-ET-11 fechados)
 
@@ -66,6 +66,7 @@ Progress: [██████████] 100% (11/11 planos GSD; em requisitos
 | Phase 01 P09 | 40min | 2 tasks | 3 files |
 | Phase 01 P11 | 25min | 3 tasks | 5 files |
 | Phase 01 P10 | 10min | 2 tasks | 3 files |
+| Phase 00 P01 | 20min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -91,6 +92,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 01]: Fase 1 fechada: e2e/criar-conta.test.ts prova o critério 1 do ROADMAP inteiro por app.inject() contra o Supabase real (bootstrap → Membro real cria Conta → recarga → recusa em 200 → segundo processo sem colisão de ids → aplicarDiferenca ≡ re-hidratação); apps/api/README.md fecha o roteiro operacional e documenta PERS-08 como bloqueado por D11, sem nenhuma ação de deploy; npm run check verde nos três workspaces com e sem DATABASE_URL (357 testes com o Supabase real; os três arquivos de teste originais do domínio sem diff desde d713253) — Plan 01-09
 - [Phase 01]: Plan 01-11 fechado: CR-02 (gap 2 de 01-VERIFICATION.md) — esquemaDeArgumentos(nome) valida a FORMA dos args de POST /operacoes/:nome (23 schemas por operação via satisfies contra ArgumentosDe<N>, fallback estrutural de profundidade 6 para as demais) ANTES do despacho; TypeError dentro de uma operação sem schema próprio vira 400 com rollback (nunca 500); inviteMember fica fora de ESQUEMAS de propósito (T-1-08 preservado); app.ts e packages/dominio/apps/web intocados
 - [Phase 01]: Plan 01-10 fechado: CR-01 — inviteMember casa existing por porUserId ?? porEmail (porEmail sempre calculado); casos (g)/(h)/(i) em members-reconvite.test.ts e (e) em convidar-membro.test.ts provam que o caminho pendente-so-por-invitedIdentity nunca gera um segundo Membro quando o e-mail resolve um userId depois. Fase 1: 11/11 planos executados, pronta para nova rodada de /gsd-verify-phase 1.
+- [Phase 00 P01]: paginarPorCursor para em página PARCIAL (comprimento bruto < COMENTARIOS_POR_PAGINA), nunca em página cheia — RESEARCH.md Pattern 2 ('página parcial = última página'); testes (d)/(g) só passam juntos com essa regra, não com a leitura literal do texto de ação do plano
+- [Phase 00 P01]: campo cursor de PaginaPorCursor guarda o cursor da PRÓXIMA chamada (undefined na última página), não o usado na atual — semântica não especificada pelo plano, escolhida para facilitar retomada externa
 
 ### Pending Todos
 
@@ -122,6 +125,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-16T21:38:43.158Z
-Stopped at: Phase 0 context gathered
-Resume file: .planning/phases/00-prepara-o/00-CONTEXT.md
+Last session: 2026-09-16T23:17:46.506Z
+Stopped at: Completed 00-01-PLAN.md
+Resume file: None
