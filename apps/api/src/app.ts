@@ -15,13 +15,20 @@ import {
   validatorCompiler,
 } from "@fastify/type-provider-zod";
 import Fastify, { type FastifyInstance } from "fastify";
+import { verificarTokenDoSupabase, type VerificarToken } from "./autenticacao/verificar-token";
 import { carregarEnv } from "./persistencia/conexao";
+import { membroPorUsuario } from "./persistencia/membros";
+import { registrarAutenticacao, type OpcoesDeAutenticacao } from "./plugins/autenticacao";
 
 export interface OpcoesDoApp {
   /** Padrão: `process.env.WORKSPACE_ID ?? "ws_n1"`. */
   readonly workspaceId?: string;
   /** Origem permitida pelo CORS. Padrão: `process.env.WEB_ORIGIN ?? "http://localhost:3001"`. */
   readonly webOrigin?: string;
+  /** Padrão: `verificarTokenDoSupabase`. Testes injetam um stub, sem rede. */
+  readonly verificarToken?: VerificarToken;
+  /** Padrão: `membroPorUsuario`. Testes injetam um stub, sem banco. */
+  readonly resolverMembro?: OpcoesDeAutenticacao["resolverMembro"];
   /** Padrão: `false` em teste, `true` no boot (`index.ts`). */
   readonly logger?: boolean;
 }
@@ -32,6 +39,7 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
   // deste arquivo existir.
   carregarEnv();
 
+  const workspaceId = opcoes.workspaceId ?? process.env.WORKSPACE_ID ?? "ws_n1";
   const webOrigin = opcoes.webOrigin ?? process.env.WEB_ORIGIN ?? "http://localhost:3001";
 
   const app = Fastify({ logger: opcoes.logger ?? false });
@@ -66,9 +74,13 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
     reply.status(500).send({ ok: false, error: "Erro interno." });
   });
 
-  // autenticação: Task 2 — registrarAutenticacao(app, { workspaceId, ... })
-  // entra aqui, antes de qualquer rota protegida. Até lá, nenhuma rota exige
-  // token e `GET /saude` é a única que existe.
+  // Registrado antes de qualquer rota protegida: toda rota que nascer depois
+  // daqui exige token, a menos que se marque `config: { publica: true }`.
+  registrarAutenticacao(app, {
+    workspaceId,
+    verificarToken: opcoes.verificarToken ?? verificarTokenDoSupabase,
+    resolverMembro: opcoes.resolverMembro ?? membroPorUsuario,
+  });
 
   app.get("/saude", { config: { publica: true } }, async () => ({
     ok: true,

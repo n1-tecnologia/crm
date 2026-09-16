@@ -15,11 +15,11 @@ describe("buildApp — casca do apps/api", () => {
     expect(resposta.json()).toEqual({ ok: true, servico: "apps/api" });
   });
 
-  it("rota inexistente responde 404 (autenticação entra na Task 2 — ver Plan 01-02 Task 2)", async () => {
+  it("rota inexistente sem Authorization responde 401 — a autenticação vem antes do 404", async () => {
     const app = buildApp({ logger: false });
     const resposta = await app.inject({ method: "GET", url: "/nao-existe" });
-    expect(resposta.statusCode).toBe(404);
-    expect(resposta.json()).toEqual({ ok: false, error: "Rota não encontrada." });
+    expect(resposta.statusCode).toBe(401);
+    expect(resposta.json()).toEqual({ ok: false, error: "Sem sessão." });
   });
 
   it("CORS: origem permitida recebe access-control-allow-origin no preflight", async () => {
