@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Planos de fechamento de lacunas 01-10 (CR-01 reconvite por invitedIdentity) e 01-11 (CR-02 validação de args) criados e verificados pelo plan-checker — prontos para /gsd-execute-phase 1 --gaps-only
-last_updated: "2026-09-16T19:11:05.635Z"
-last_activity: 2026-09-16 -- Phase 1 gap-closure plans 01-10/01-11 planned and verified
+stopped_at: "Completed 01-11-PLAN.md (CR-02 — POST /operacoes/:nome valida a forma dos args antes do despacho e mapeia TypeError para 400; gap 2 de 01-VERIFICATION.md fechado) — falta 01-10 (CR-01) para a Fase 1 fechar de novo"
+last_updated: "2026-09-16T19:40:12.986Z"
+last_activity: "2026-09-16 -- Plan 01-11 executado (CR-02 — validação de argumentos em POST /operacoes/:nome)"
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 11
-  completed_plans: 9
-  percent: 17
+  completed_plans: 10
+  percent: 0
 ---
 
 # Project State
@@ -21,18 +21,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-15)
 
 **Core value:** Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de ponta a ponta sem abrir o ClickUp — dados no Postgres próprio, regras de `@n1/dominio` intactas.
-**Current focus:** Phase 1 — o-crm-n1-ganha-persist-ncia-e-login
+**Current focus:** Phase 01 — O CRM N1 ganha persistência e login
 
 ## Current Position
 
-Phase: 1 (o-crm-n1-ganha-persist-ncia-e-login) — EXECUTING
-Plan: 9 of 11
-Status: Ready to execute — lacunas CR-01 e CR-02 da verificação planejadas em 01-10 e 01-11 (checker: 0 issues); próximo: /gsd-execute-phase 1 --gaps-only
-Last activity: 2026-09-16 -- Phase 1 gap-closure plans 01-10/01-11 planned and verified
+Phase: 01 (O CRM N1 ganha persistência e login) — EXECUTING (fechamento de lacunas)
+Plan: 11 of 11 executado (01-11, CR-02); falta 01-10 (CR-01) para a Fase 1 fechar de novo
+Status: Plan 01-11 completo — pronto para executar 01-10, depois nova rodada de /gsd-verify-phase 1
+Last activity: 2026-09-16 -- Plan 01-11 executado (CR-02 — validação de argumentos em POST /operacoes/:nome)
 
-Progress: [░░░░░░░░░░] 0% (de planos GSD; em requisitos: 4/34 feitos, 2 deles da Phase 1)
+Progress: [█████████░] 91% (10/11 planos GSD; em requisitos: 4/34 feitos, 2 deles da Phase 1 — PERS-04 desta vez com o gap de validação fechado)
 
-**Restante da Phase 1:** rotas HTTP por operação (PERS-04 — inclui escolher a camada HTTP), `store.ts` → `POST /operacoes/:nome` (PERS-05), bootstrap do Espaço "Gestão" sem Tarefas fictícias (PERS-06), colunas geradas/índices — migração `002` (PERS-07), reconvite por Usuário (PERS-09). PERS-08 (deploy do `apps/api`) bloqueado por D11.
+**Restante da Phase 1:** Plan 01-10 (CR-01 — reconvite por Usuário: casar `existing` por `userId` OU `invitedIdentity`, com `userId` prevalecendo). Os 9 planos originais (01-01..01-09) e o gap-closure de CR-02 (01-11) estão feitos. PERS-08 (deploy do `apps/api`) bloqueado por D11.
 
 **Aberto na Phase 0 (paralela):** spec da Solicitação de pagamento (PREP-03 — maior risco do plano), exportação do ClickUp (PREP-02), de-para de usuários (PREP-04), rotação das credenciais Omie (PREP-05, fora deste repo). Nada disso bloqueia terminar a Phase 1; PREP-03 e PREP-04 **bloqueiam a Phase 2**.
 
@@ -64,6 +64,7 @@ Progress: [░░░░░░░░░░] 0% (de planos GSD; em requisitos: 4/3
 | Phase 01 P05 | 45min | 3 tasks | 11 files |
 | Phase 01 P08 | 50min | 2 tasks | 10 files |
 | Phase 01 P09 | 40min | 2 tasks | 3 files |
+| Phase 01 P11 | 25min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -87,6 +88,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 01]: PERS-06 fechado: applyContasAPagar/applyContasAReceber ganham opcoes.fixtures (padrao true) preservando buildSeed() byte a byte (233 testes provam); buildGestaoBootstrap() monta o DataState de producao so com a config do Financeiro + Maryane Proprietaria; bootstrapGestao() grava via semear() guardado por count(*)>0 - rodado contra o Supabase real, ws_n1 criado com 98 registros sem tasks/contacts/activity, segunda execucao confirmada no-op
 - [Phase 01]: PERS-09 fechado: inviteMember casa existing por userId antes de invitedIdentity quando o input traz o dado; resolverUsuarioPorEmail (apps/api) pagina admin.listUsers (sem filtro nativo por e-mail, A1 confirmada) e convidarMembro compõe I/O + operação antes de executar() — reconvite reativa o mesmo Membro removido de ponta a ponta, provado contra Postgres e Auth reais; SERVICOS na rota descarta qualquer userId do corpo (T-1-08)
 - [Phase 01]: Fase 1 fechada: e2e/criar-conta.test.ts prova o critério 1 do ROADMAP inteiro por app.inject() contra o Supabase real (bootstrap → Membro real cria Conta → recarga → recusa em 200 → segundo processo sem colisão de ids → aplicarDiferenca ≡ re-hidratação); apps/api/README.md fecha o roteiro operacional e documenta PERS-08 como bloqueado por D11, sem nenhuma ação de deploy; npm run check verde nos três workspaces com e sem DATABASE_URL (357 testes com o Supabase real; os três arquivos de teste originais do domínio sem diff desde d713253) — Plan 01-09
+- [Phase 01]: Plan 01-11 fechado: CR-02 (gap 2 de 01-VERIFICATION.md) — esquemaDeArgumentos(nome) valida a FORMA dos args de POST /operacoes/:nome (23 schemas por operação via satisfies contra ArgumentosDe<N>, fallback estrutural de profundidade 6 para as demais) ANTES do despacho; TypeError dentro de uma operação sem schema próprio vira 400 com rollback (nunca 500); inviteMember fica fora de ESQUEMAS de propósito (T-1-08 preservado); app.ts e packages/dominio/apps/web intocados
 
 ### Pending Todos
 
@@ -118,6 +120,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-16T18:12:22.579Z
-Stopped at: Completed 01-09-PLAN.md (e2e criar-conta.test.ts prova o critério 1 do ROADMAP contra o Supabase real; apps/api/README.md; npm run check verde nos três workspaces com e sem DATABASE_URL — 357 testes; PERS-08 documentado como bloqueado por D11) — Fase 1 fechada, pronta para verificação
+Last session: 2026-09-16T19:39:27.068Z
+Stopped at: Completed 01-11-PLAN.md (CR-02 — POST /operacoes/:nome valida a forma dos args antes do despacho e mapeia TypeError para 400; gap 2 de 01-VERIFICATION.md fechado) — falta 01-10 (CR-01) para a Fase 1 fechar de novo
 Resume file: None

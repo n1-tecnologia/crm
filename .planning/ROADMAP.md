@@ -63,7 +63,7 @@ Plans:
 - [x] 01-03-PLAN.md — Domínio: registro `OPERACOES`, gravador de chamadas, `syncIdSequence`, `aplicarDiferenca`
 - [x] 01-06-PLAN.md — Migração `002`: colunas geradas e índices em `plataforma.registros`
 - [ ] 01-10-PLAN.md — Fechamento de lacuna CR-01 (PERS-09, critério 5): `inviteMember` casa `existing` por `userId` E por `invitedIdentity` (`porUserId ?? porEmail`) — nunca um segundo Membro para o mesmo e-mail; testes no domínio e no serviço
-- [ ] 01-11-PLAN.md — Fechamento de lacuna CR-02 (PERS-04, critério 2): schemas por operação (tasks/financeiro/automations) + estrutural para as demais em `apps/api/src/rotas/esquemas-de-argumentos.ts`; `TypeError` dentro da operação → 400, nunca 500 nem `jsonb` malformado
+- [x] 01-11-PLAN.md — Fechamento de lacuna CR-02 (PERS-04, critério 2): schemas por operação (tasks/financeiro/automations) + estrutural para as demais em `apps/api/src/rotas/esquemas-de-argumentos.ts`; `TypeError` dentro da operação → 400, nunca 500 nem `jsonb` malformado
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -177,7 +177,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 0. Preparação | 0/TBD | In progress (2/6 requisitos feitos fora do GSD) | - |
-| 1. O CRM N1 ganha persistência e login | 9/9 | Complete   | 2026-09-16 |
+| 1. O CRM N1 ganha persistência e login | 10/11 | In Progress|  |
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 0/TBD | Not started | - |
 | 3. Contas a pagar | 0/TBD | Not started | - |
 | 4. As outras telas do financeiro-tria | 0/TBD | Not started | - |
