@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 01-08-PLAN.md (reconvite reativa o mesmo Membro — PERS-09; inviteMember casa por userId, resolverUsuarioPorEmail + convidarMembro em apps/api, SERVICOS descarta userId do corpo) — 349 testes no npm run check
-last_updated: "2026-09-16T17:28:36.225Z"
+status: verifying
+stopped_at: Completed 01-09-PLAN.md (e2e criar-conta.test.ts prova o critério 1 do ROADMAP contra o Supabase real; apps/api/README.md; npm run check verde nos três workspaces com e sem DATABASE_URL — 357 testes; PERS-08 documentado como bloqueado por D11) — Fase 1 fechada, pronta para verificação
+last_updated: "2026-09-16T18:12:22.586Z"
 last_activity: 2026-09-16 -- Phase 1 execution started
 progress:
   total_phases: 6
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 9
-  completed_plans: 8
-  percent: 0
+  completed_plans: 9
+  percent: 17
 ---
 
 # Project State
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 
 Phase: 1 (o-crm-n1-ganha-persist-ncia-e-login) — EXECUTING
 Plan: 9 of 9
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-16 -- Phase 1 execution started
 
 Progress: [░░░░░░░░░░] 0% (de planos GSD; em requisitos: 4/34 feitos, 2 deles da Phase 1)
@@ -63,6 +63,7 @@ Progress: [░░░░░░░░░░] 0% (de planos GSD; em requisitos: 4/3
 | Phase 01 P04 | 55min | 2 tasks | 10 files |
 | Phase 01 P05 | 45min | 3 tasks | 11 files |
 | Phase 01 P08 | 50min | 2 tasks | 10 files |
+| Phase 01 P09 | 40min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -85,6 +86,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 01]: syncIdSequence (packages/dominio/src/operations/activity.ts) casava qualquer id hand-authored de 6+ caracteres como sequência base36, estourando Number.MAX_SAFE_INTEGER com ids reais do seed (agt_classificador) e gerando ids duplicados — corrigido para casar só exatamente 6 caracteres, a largura que nextId() produz — Plan 01-04, Rule 1
 - [Phase 01]: PERS-06 fechado: applyContasAPagar/applyContasAReceber ganham opcoes.fixtures (padrao true) preservando buildSeed() byte a byte (233 testes provam); buildGestaoBootstrap() monta o DataState de producao so com a config do Financeiro + Maryane Proprietaria; bootstrapGestao() grava via semear() guardado por count(*)>0 - rodado contra o Supabase real, ws_n1 criado com 98 registros sem tasks/contacts/activity, segunda execucao confirmada no-op
 - [Phase 01]: PERS-09 fechado: inviteMember casa existing por userId antes de invitedIdentity quando o input traz o dado; resolverUsuarioPorEmail (apps/api) pagina admin.listUsers (sem filtro nativo por e-mail, A1 confirmada) e convidarMembro compõe I/O + operação antes de executar() — reconvite reativa o mesmo Membro removido de ponta a ponta, provado contra Postgres e Auth reais; SERVICOS na rota descarta qualquer userId do corpo (T-1-08)
+- [Phase 01]: Fase 1 fechada: e2e/criar-conta.test.ts prova o critério 1 do ROADMAP inteiro por app.inject() contra o Supabase real (bootstrap → Membro real cria Conta → recarga → recusa em 200 → segundo processo sem colisão de ids → aplicarDiferenca ≡ re-hidratação); apps/api/README.md fecha o roteiro operacional e documenta PERS-08 como bloqueado por D11, sem nenhuma ação de deploy; npm run check verde nos três workspaces com e sem DATABASE_URL (357 testes com o Supabase real; os três arquivos de teste originais do domínio sem diff desde d713253) — Plan 01-09
 
 ### Pending Todos
 
@@ -116,6 +118,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-16T17:28:36.218Z
-Stopped at: Completed 01-08-PLAN.md (reconvite reativa o mesmo Membro — PERS-09; inviteMember casa por userId, resolverUsuarioPorEmail + convidarMembro em apps/api, SERVICOS descarta userId do corpo) — 349 testes no npm run check
+Last session: 2026-09-16T18:12:22.579Z
+Stopped at: Completed 01-09-PLAN.md (e2e criar-conta.test.ts prova o critério 1 do ROADMAP contra o Supabase real; apps/api/README.md; npm run check verde nos três workspaces com e sem DATABASE_URL — 357 testes; PERS-08 documentado como bloqueado por D11) — Fase 1 fechada, pronta para verificação
 Resume file: None
