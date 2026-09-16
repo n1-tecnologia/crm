@@ -324,18 +324,29 @@ export function inviteMember(
     );
   }
 
-  // Depois que um Membro aceita um convite, o e-mail dele não fica guardado
-  // em lugar nenhum do estado (B27 apaga `invitedIdentity` na aceitação) —
-  // então casar só por `invitedIdentity` nunca reencontra um Membro que já
-  // foi `ativo` e depois `removido`. Quem sabe "que Usuário do Supabase Auth
-  // tem este e-mail" é o Auth, não o domínio puro; essa resolução chega aqui
-  // como `input.userId`, já resolvida pelo serviço de `apps/api`
+  // CR-01 (01-REVIEW.md) — casar `existing` por um critério só deixava passar
+  // os dois lados de RN-ET-11/INV-ET-04:
+  // (1) Depois que um Membro aceita um convite, o e-mail dele não fica
+  //     guardado em lugar nenhum do estado (B27 apaga `invitedIdentity` na
+  //     aceitação) — então casar só por `invitedIdentity` nunca reencontra um
+  //     Membro que já foi `ativo` e depois `removido`.
+  // (2) MAS um Membro que nasceu `pendente` antes de ter conta no Auth só tem
+  //     `invitedIdentity` (sem `userId`) — se o e-mail passar a resolver um
+  //     `userId` depois (a conta é criada, o convite é reenviado), buscar só
+  //     por `userId` não o acha, e nasceria um SEGUNDO Membro para o mesmo
+  //     e-mail: RN-ET-11/INV-ET-04 quebrados pelo outro lado, e dois Membros
+  //     passam a contar para o limite de RN-ET-23.
+  // Por isso os dois critérios rodam em paralelo, e `userId` prevalece quando
+  // os dois acham alguém (o Membro `ativo` ganha da recusa "convite
+  // pendente"). Quem sabe "que Usuário do Supabase Auth tem este e-mail" é o
+  // Auth, não o domínio puro; essa resolução chega aqui como `input.userId`,
+  // já resolvida pelo serviço de `apps/api`
   // (`convidarMembro`/`resolverUsuarioPorEmail`) antes de chamar esta
   // função — o domínio continua sem I/O, só recebe o dado pronto.
-  const existing =
-    input.userId !== undefined
-      ? state.members.find((member) => member.userId === input.userId)
-      : state.members.find((member) => member.invitedIdentity?.value.toLowerCase() === email);
+  const porUserId =
+    input.userId !== undefined ? state.members.find((member) => member.userId === input.userId) : undefined;
+  const porEmail = state.members.find((member) => member.invitedIdentity?.value.toLowerCase() === email);
+  const existing = porUserId ?? porEmail;
   if (existing && existing.state !== "removido") {
     return fail(
       existing.state === "pendente"

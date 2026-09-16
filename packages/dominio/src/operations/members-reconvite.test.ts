@@ -137,3 +137,90 @@ describe("inviteMember — reconvite por userId (PERS-09, RN-ET-11)", () => {
     expect(convite.value.state).toBe("removido");
   });
 });
+
+// Os casos (a)–(f) acima cobrem o caminho de um Membro que já foi `ativo` e
+// tem `userId` desde a criação. Os casos abaixo cobrem o caminho irmão do
+// (a): um Membro que NUNCA aceitou, nasceu `pendente` só com `invitedIdentity`
+// (sem `userId`), e cujo e-mail passa a resolver um `userId` depois — CR-01
+// do `01-REVIEW.md`.
+describe("inviteMember — os dois critérios em paralelo (CR-01, RN-ET-11/INV-ET-04)", () => {
+  let state: DataState;
+
+  beforeEach(() => {
+    state = buildSeed();
+  });
+
+  it("(g) pendente por invitedIdentity + userId resolvido depois → recusa 'Já existe um convite pendente', não cria um segundo Membro", () => {
+    const role = state.roles.find((r) => r.base === "membro");
+    if (!role) throw new Error("seed sem Papel de Membro");
+
+    const primeiro = inviteMember(state, THIAGO, { email: "ana@empresa.com.br", roleId: role.id });
+    expect(primeiro.ok).toBe(true);
+    if (!primeiro.ok) throw new Error("deveria convidar");
+    expect(primeiro.value.state).toBe("pendente");
+    expect(primeiro.value.userId).toBeUndefined();
+    expect(primeiro.value.invitedIdentity?.value).toBe("ana@empresa.com.br");
+    const before = state.members.length;
+
+    const segundo = inviteMember(state, THIAGO, {
+      email: "ana@empresa.com.br",
+      roleId: role.id,
+      userId: FAKE_USER_ID,
+    });
+
+    expect(segundo.ok).toBe(false);
+    if (segundo.ok) throw new Error("deveria recusar");
+    expect(segundo.error).toContain("convite pendente");
+    expect(segundo.field).toBe("email");
+    expect(state.members.length).toBe(before);
+    expect(state.members.filter((m) => m.invitedIdentity?.value === "ana@empresa.com.br").length).toBe(1);
+  });
+
+  it("(h) removido reencontrado só por invitedIdentity + userId resolvido depois → reativa o MESMO Membro e grava o userId", () => {
+    const role = state.roles.find((r) => r.base === "membro");
+    if (!role) throw new Error("seed sem Papel de Membro");
+
+    const convite = inviteMember(state, THIAGO, { email: "bia@empresa.com.br", roleId: role.id });
+    expect(convite.ok).toBe(true);
+    if (!convite.ok) throw new Error("convite inicial falhou");
+    // Nunca aceitou (B27 não rodou) — a remoção é forçada como em (f), sem
+    // passar por `removeMember`.
+    convite.value.state = "removido";
+    const before = state.members.length;
+
+    const reconvite = inviteMember(state, THIAGO, {
+      email: "bia@empresa.com.br",
+      roleId: role.id,
+      userId: FAKE_USER_ID,
+    });
+
+    expect(reconvite.ok).toBe(true);
+    if (!reconvite.ok) throw new Error("deveria reconvidar");
+    expect(reconvite.value.id).toBe(convite.value.id);
+    expect(reconvite.value.state).toBe("pendente");
+    expect(reconvite.value.userId).toBe(FAKE_USER_ID);
+    expect(reconvite.value.invitedIdentity?.value).toBe("bia@empresa.com.br");
+    expect(state.members.length).toBe(before);
+    expect(state.activity[0]?.action).toBe("Membro reconvidado");
+  });
+
+  it("(i) userId prevalece sobre invitedIdentity quando apontam para Membros diferentes", () => {
+    const role = state.roles.find((r) => r.base === "membro");
+    if (!role) throw new Error("seed sem Papel de Membro");
+
+    const pendenteA = inviteMember(state, THIAGO, { email: "carla@empresa.com.br", roleId: role.id });
+    expect(pendenteA.ok).toBe(true);
+    const before = state.members.length;
+
+    const result = inviteMember(state, THIAGO, {
+      email: "carla@empresa.com.br",
+      roleId: role.id,
+      userId: USUARIOS_DO_SEED.mem_thiago, // mem_thiago está ativo
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("deveria recusar");
+    expect(result.error).toContain("já pertence a um Membro");
+    expect(state.members.length).toBe(before);
+  });
+});
