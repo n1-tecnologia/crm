@@ -755,8 +755,16 @@ export function FinanceTable({
                   return (
                     <tr
                       key={task.id}
-                      className="group"
+                      className="group cursor-pointer"
                       data-selecionada={selecionada ? "true" : undefined}
+                      // A linha inteira abre a conta — não só o nome. Um clique
+                      // que nasce num controle (caixa, ação rápida, menu, link)
+                      // é dele, e não abre nada.
+                      onClick={(event) => {
+                        const alvo = event.target as HTMLElement;
+                        if (alvo.closest("button, a, input, select, textarea, [role=menu], [role=listbox]")) return;
+                        openTask(task.id);
+                      }}
                     >
                       <td style={{ paddingInline: "var(--e-2)" }}>
                         {selecionando ? (
