@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Phase 0 context gathered
-last_updated: "2026-09-16T21:38:43.166Z"
-last_activity: 2026-09-16 -- Phase 1 gap-closure round 2 planned (01-12..01-16), checker passed
+status: executing
+stopped_at: Phase 0 planejada (00-01..00-07, 6 ondas, checker 0 blockers) — pronta para /gsd-execute-phase 0. Phase 1 continua com 01-12..01-16 planejados e não executados (/gsd-execute-phase 1 --gaps-only).
+last_updated: "2026-09-16T22:36:49.148Z"
+last_activity: 2026-09-16 -- Phase 0 planned (7 plans), research + patterns + validation done
 progress:
   total_phases: 6
   completed_phases: 0
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-15)
 
 **Core value:** Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de ponta a ponta sem abrir o ClickUp — dados no Postgres próprio, regras de `@n1/dominio` intactas.
-**Current focus:** Phase 01 — O CRM N1 ganha persistência e login
+**Current focus:** Phase 0 — prepara-o (planejada, a executar); Phase 1 — 01-12..01-16 pendentes
 
 ## Current Position
 
-Phase: 01 (O CRM N1 ganha persistência e login) — 11/16 planos executados; rodada 2 de lacunas (01-12..01-16) planejada e verificada
-Plan: 11 de 16 executados (01-01..01-11); 01-12..01-16 planejados (CR-02 cobertura completa) — checker 0 issues
-Status: Ready to execute — /gsd-execute-phase 1 --gaps-only (wave 1: 01-12; wave 2: 01-13/14/15; wave 3: 01-16), depois re-verificação
-Last activity: 2026-09-16 -- Phase 1 gap-closure round 2 planned (01-12..01-16), checker passed
+Phase: 00 (Preparação) — planejada, 0/7 executados · Phase 01 — 11/16 executados (rodada 2 de lacunas pendente)
+Plan: Phase 0: 00-01..00-07 prontos (6 ondas; 00-06 tem checkpoint humano) · Phase 1: 01-12..01-16 prontos
+Status: Ready to execute — /gsd-execute-phase 0 (ou /gsd-execute-phase 1 --gaps-only para fechar a Phase 1 primeiro)
+Last activity: 2026-09-16 -- Phase 0 planned (7 plans), research + patterns + validation done
 
 Progress: [██████████] 100% (11/11 planos GSD; em requisitos: 4/34 feitos, 2 deles da Phase 1 — PERS-09 agora com os dois lados de RN-ET-11 fechados)
 

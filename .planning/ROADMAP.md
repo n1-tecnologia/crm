@@ -38,14 +38,30 @@ Fase 0 e Fase 1 correm em paralelo: o que resta da Fase 0 não bloqueia terminar
   5. (já verdadeiro) O schema `plataforma` existe no projeto Supabase próprio e `npm run migrar` o aplica; o volume das tabelas legadas está medido.
 
 **Plans**: 7 plans
-
 Plans:
+**Wave 1**
+
 - [ ] 00-01-PLAN.md — Cliente HTTP do ClickUp (auth sem Bearer, backoff 429) + paginação (page/last_page e start/start_id) + esqueleto do módulo, `.env.example`, `.gitignore` (PREP-02)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 00-02-PLAN.md — De-para dos 6 ids → e-mail + Papel (`memberIdConhecido` para a Maryane) + catálogo das 38 `CLICKUP_*` + CLI de resolução de e-mails (PREP-04)
 - [ ] 00-03-PLAN.md — `exportarClickUp`: exportação bruta por Lista/recurso/página, retomável, anexos sanitizados, smoke test de `time_in_status` (PREP-02)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 00-04-PLAN.md — Manifesto (sha256 por arquivo, sem PII) + CLI `npm run exportar:clickup` + teste de integração que pula sem token (PREP-02)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 00-05-PLAN.md — Execução real da exportação das 3 Listas + commit de `MANIFESTO.md/.json` (PREP-02)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 00-06-PLAN.md — Spec `solicitacao-de-pagamento.md` §1–§12 lida da Lista real, lacunas respondidas pelo dono (PREP-03)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
 - [ ] 00-07-PLAN.md — Fechamento: PREP-05 como risco aceito (D-13), REQUIREMENTS/README, `npm run check`, instrução para o critério 4 (PREP-01, PREP-05, PREP-06)
 
 Estado em 2026-09-15: PREP-01 e PREP-06 feitos. PREP-03 é o item não mecânico e o maior risco do plano — "a primeira tarefa da Fase 0". PREP-05 acontece fora deste repositório (financeiro-tria + Omie). Nada aqui bloqueia a Phase 1; PREP-03 e PREP-04 bloqueiam a Phase 2; PREP-02 e PREP-04 alimentam a Phase 3.
