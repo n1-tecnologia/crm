@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: gaps_found
-stopped_at: Planos 01-10 (CR-01) e 01-11 (CR-02) executados e commitados (982558d..fa261c1); npm run check verde (379 testes); re-verificação (ecdbea2 review + VERIFICATION) achou CR-02 parcialmente aberto — próximo /gsd-plan-phase 1 --gaps
-last_updated: "2026-09-16T19:51:14.960Z"
-last_activity: "2026-09-16 -- Plan 01-11 executado (CR-02 — validação de argumentos em POST /operacoes/:nome)"
+status: executing
+stopped_at: Segunda rodada de fechamento de CR-02 planejada e verificada (01-12..01-16, cobertura completa de schemas zod nas 132 operações) — pronta para /gsd-execute-phase 1 --gaps-only
+last_updated: "2026-09-16T21:08:15.053Z"
+last_activity: 2026-09-16 -- Phase 1 gap-closure round 2 planned (01-12..01-16), checker passed
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 11
+  total_plans: 16
   completed_plans: 11
   percent: 17
 ---
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 
 ## Current Position
 
-Phase: 01 (O CRM N1 ganha persistência e login) — 11/11 planos executados; re-verificada em 2026-09-16: gaps_found (CR-02 parcial)
-Plan: 11 de 11 executados (01-01..01-09 originais + 01-11 CR-02 + 01-10 CR-01). Nenhum plano pendente na Fase 1.
-Status: Re-verificação encontrou 1 lacuna remanescente (CR-02 parcial: ARGUMENTOS_GENERICOS não barra forma para ~109 operações; reviverArgumentos sem limite → 500) — CR-01 fechado; ver 01-VERIFICATION.md; próximo: /gsd-plan-phase 1 --gaps
-Last activity: 2026-09-16 -- Phase 1 gap-closure plans 01-10/01-11 executed; re-verification: gaps_found (CR-02 partial)
+Phase: 01 (O CRM N1 ganha persistência e login) — 11/16 planos executados; rodada 2 de lacunas (01-12..01-16) planejada e verificada
+Plan: 11 de 16 executados (01-01..01-11); 01-12..01-16 planejados (CR-02 cobertura completa) — checker 0 issues
+Status: Ready to execute — /gsd-execute-phase 1 --gaps-only (wave 1: 01-12; wave 2: 01-13/14/15; wave 3: 01-16), depois re-verificação
+Last activity: 2026-09-16 -- Phase 1 gap-closure round 2 planned (01-12..01-16), checker passed
 
 Progress: [██████████] 100% (11/11 planos GSD; em requisitos: 4/34 feitos, 2 deles da Phase 1 — PERS-09 agora com os dois lados de RN-ET-11 fechados)
 
