@@ -38,33 +38,48 @@ created: 2026-09-16
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 1-W0-01 | 01 | 0 | PERS-04 | — | N/A | infra | `apps/api/src/app.ts` separa montagem de `listen()` | ❌ W0 | ⬜ pending |
-| 1-01-01 | 01 | 1 | PERS-04 | T-1-01 | Sem `Authorization` → 401; token inválido → 401 | integration (`app.inject`) | `npm run test -w @n1/api -- plugins/autenticacao.test.ts` | ❌ W0 | ⬜ pending |
-| 1-01-02 | 01 | 1 | PERS-04 | T-1-02 | Membro sem acesso ao registro → recusa do domínio, nunca 500 | integration (`app.inject`) | `npm run test -w @n1/api -- rotas/operacoes.test.ts` | ❌ W0 | ⬜ pending |
-| 1-01-03 | 01 | 1 | PERS-04 | — | N/A | integration | `POST /operacoes/:nome` devolve `OperationResult` + diff + revisão (D-03) | ❌ W0 | ⬜ pending |
-| 1-02-01 | 02 | 2 | PERS-05 | — | N/A | unit (spy em `fetch`) | `npm run test -w @n1/web -- dados/store.test.ts` — recusa do domínio nunca dispara `fetch` (D-05) | ❌ W0 | ⬜ pending |
-| 1-02-02 | 02 | 2 | PERS-05 | — | N/A | unit | mesmo arquivo — diff aplicado preserva a ordem fracionária | ❌ W0 | ⬜ pending |
-| 1-03-01 | 03 | 2 | PERS-06 | — | N/A | integration (Postgres real) | `npm run test -w @n1/api -- bootstrap/gestao.test.ts` — Espaço vazio → Lista "Contas a pagar" sem Tarefas; só a Maryane, Proprietária | ❌ W0 | ⬜ pending |
-| 1-03-02 | 03 | 2 | PERS-07 | — | N/A | integration (Postgres real) | `npm run test -w @n1/api -- persistencia/colunas-geradas.test.ts` — migração `002` aplicada; filtros usam índice | ❌ W0 | ⬜ pending |
-| 1-04-01 | 04 | 3 | PERS-09 | T-1-03 | Reconvite nunca cria segundo Membro; e-mail resolvido no servidor, não confiado do cliente | unit (domínio) + integration | `npm run test -w @n1/dominio -- members` + `npm run test -w @n1/api -- autenticacao/resolver-usuario.test.ts` | Parcial | ⬜ pending |
-| 1-05-01 | 05 | 3 | Critério 1 | — | N/A | integration ponta a ponta | `npm run test -w @n1/api -- e2e/criar-conta.test.ts` — `inject POST /operacoes/createTask` → `inject GET /estado` → a Tarefa está lá | ❌ W0 | ⬜ pending |
+| 1-01-01 | 01 | 1 | PERS-04 | T-1-SC | `fastify` conferido por pessoa antes do `npm install` | checkpoint (blocking-human) | `npm view fastify repository.url` contém `fastify/fastify` | n/a | ⬜ pending |
+| 1-03-01 | 03 | 1 | PERS-04, PERS-05 | T-1-04 | `OPERACOES` explícito; `ehNomeDeOperacao` por `Object.hasOwn` (rejeita `__proto__`) | unit (domínio) | `npm run test -w @n1/dominio` — `src/operations/registro.test.ts` | ❌ criado na task | ⬜ pending |
+| 1-03-02 | 03 | 1 | PERS-04, PERS-05 | — | N/A | unit (domínio) | `npm run test -w @n1/dominio -- src/operations/id-sequence.test.ts src/diferenca.test.ts` | ❌ criado na task | ⬜ pending |
+| 1-06-01 | 06 | 1 | PERS-07 | T-1-13 | SQL sem `concurrently` (roda em transação), índices parciais | static | `grep -c "generated always as"` = 3; `grep -c "create index if not exists"` = 6; sem `concurrently` | ❌ criado na task | ⬜ pending |
+| 1-06-02 | 06 | 1 | PERS-07 | T-1-13 | [BLOCKING] migração aplicada uma vez, registrada | infra | `npm run migrar -w @n1/api` → `aplicada 002-…` ou `Nada a aplicar` | n/a | ⬜ pending |
+| 1-06-03 | 06 | 1 | PERS-07 | — | N/A | integration (Postgres real) | `npm run test -w @n1/api -- src/persistencia/colunas-geradas.test.ts src/persistencia/persistencia.test.ts` | ❌ criado na task | ⬜ pending |
+| 1-02-01 | 02 | 2 | PERS-04 | T-1-03, T-1-06 | CORS por allowlist; 500 sem stack; 404 JSON | integration (`app.inject`, sem banco) | `npm run test -w @n1/api -- src/app.test.ts` | ❌ criado na task | ⬜ pending |
+| 1-02-02 | 02 | 2 | PERS-04 | T-1-01, T-1-02 | Sem `Authorization` → 401; token inválido → 401; não-Membro/removido → 403 | integration (`app.inject`, stubs) + Postgres (bloco `temBanco`) | `npm run test -w @n1/api -- src/plugins/autenticacao.test.ts src/app.test.ts` | ❌ criado na task | ⬜ pending |
+| 1-02-03 | 02 | 2 | PERS-04 | — | N/A | static + manual | `node -e` (scripts `dev` com concurrently) + greps em `.env.example`/CONTEXT.md | n/a | ⬜ pending |
+| 1-07-01 | 07 | 2 | PERS-05 | T-1-11 | Token só em `authorization` para `apiUrl`; nunca em log | unit (`vi.stubGlobal("fetch")`) | `npm run test -w @n1/web -- src/dados/transporte.test.ts` | ❌ criado na task | ⬜ pending |
+| 1-07-02 | 07 | 2 | PERS-05 | T-1-15 | Recusa do domínio nunca dispara `fetch` (D-05); `revisaoAnterior` divergente/409 → re-hidrata (D-06) | unit (transporte falso) | `npm run test -w @n1/web -- src/dados/store.test.ts` | ❌ criado na task | ⬜ pending |
+| 1-07-03 | 07 | 2 | PERS-05 | — | N/A | typecheck + lint + tokens + manual | `npm run typecheck -w @n1/web && npm run lint -w @n1/web && npm run verificar:tokens -w @n1/web && npm run test -w @n1/web` | n/a | ⬜ pending |
+| 1-04-01 | 04 | 3 | PERS-04 | — | N/A | integration (Postgres real) | `npm run test -w @n1/api -- src/persistencia/persistencia.test.ts` (4 testes de PERS-01, com `.length` e `revisao`) | ✅ existe (ajustado) | ⬜ pending |
+| 1-04-02 | 04 | 3 | PERS-04 | T-1-04, T-1-02 | 404 para nome fora do registro/`__proto__`; Membro da sessão injetado; recusa em 200 | integration (`app.inject`; blocos com e sem banco) | `npm run test -w @n1/api -- src/rotas/operacoes.test.ts src/rotas/estado.test.ts` | ❌ criado na task | ⬜ pending |
+| 1-05-01 | 05 | 3 | PERS-06 | — | N/A | unit (domínio — os 214 intactos) | `npm run test -w @n1/dominio` + `git diff --stat` vazio nos 3 test files originais | ✅ existe | ⬜ pending |
+| 1-05-02 | 05 | 3 | PERS-06 | — | N/A | unit (domínio, puro) | `npm run test -w @n1/dominio -- src/bootstrap-gestao.test.ts` | ❌ criado na task | ⬜ pending |
+| 1-05-03 | 05 | 3 | PERS-06 | T-1-12 | Bootstrap recusa Espaço não vazio (segunda execução não grava) | integration (Postgres real) | `npm run test -w @n1/api -- src/bootstrap/gestao.test.ts` | ❌ criado na task | ⬜ pending |
+| 1-08-01 | 08 | 4 | PERS-09 | — | N/A | unit (domínio, arquivo novo) | `npm run test -w @n1/dominio` — `src/operations/members-reconvite.test.ts` | ❌ criado na task | ⬜ pending |
+| 1-08-02 | 08 | 4 | PERS-09 | T-1-08 | `userId` do cliente descartado; e-mail resolvido no servidor (Admin API) | integration (Postgres; Auth quando `SUPABASE_*`) | `npm run test -w @n1/api` — `src/servicos/convidar-membro.test.ts`, `src/autenticacao/resolver-usuario.test.ts` | ❌ criado na task | ⬜ pending |
+| 1-09-01 | 09 | 5 | Critério 1 (PERS-01/02/04/05/06) | T-1-12 | Só `ws_e2e_teste` é tocado | integration ponta a ponta (`inject`) | `npm run test -w @n1/api -- src/e2e/criar-conta.test.ts` | ❌ criado na task | ⬜ pending |
+| 1-09-02 | 09 | 5 | Critério 4; PERS-08 (documental) | — | N/A | full suite | `npm run check` (sem e com `DATABASE_URL`) | n/a | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
-*Os Task IDs acima são provisórios — o planejador renumera conforme os PLAN.md que criar; o que não muda é a cobertura: todo PERS-* tem ao menos um teste automatizado.*
+*Task IDs alinhados aos PLAN.md 01-01..01-09 (2026-09-16). Não há plano "Wave 0" separado: cada arquivo de teste nasce na mesma task que implementa o comportamento, e toda task tem `<automated>` — nenhuma task referencia um teste que ainda não existe. PERS-08 não tem teste: é item documental bloqueado por D11.*
 
 ---
 
 ## Wave 0 Requirements
 
-- [ ] `apps/api/src/app.ts` — montagem do Fastify separada de `listen()` (pré-requisito de todo `app.inject`)
-- [ ] `apps/api/src/rotas/operacoes.test.ts` — stubs para PERS-04
-- [ ] `apps/api/src/plugins/autenticacao.test.ts` — stubs para D-02 (401/403)
-- [ ] `apps/web/src/dados/store.test.ts` — stubs para PERS-05 (não existe teste de `store.ts` hoje)
-- [ ] `apps/api/src/bootstrap/gestao.test.ts` — stubs para PERS-06
-- [ ] `apps/api/src/persistencia/colunas-geradas.test.ts` — stubs para PERS-07 (reaproveita `temBanco ? describe : describe.skip` de `persistencia.test.ts`)
-- [ ] `apps/api/src/e2e/criar-conta.test.ts` — stub para o critério de sucesso 1 do ROADMAP
-- [ ] Sem instalação de framework: vitest já está nos três workspaces
+Cada pré-requisito de teste nasce na task que o usa (não há plano de scaffolding separado):
+
+- [ ] `apps/api/src/app.ts` — `buildApp()` sem `listen()` → Plan 01-02 Task 1 (pré-requisito de todo `app.inject`)
+- [ ] `apps/api/src/app.test.ts` e `apps/api/src/plugins/autenticacao.test.ts` → Plan 01-02 Tasks 1–2 (401/403 sem infraestrutura)
+- [ ] `packages/dominio/src/operations/registro.test.ts`, `id-sequence.test.ts`, `diferenca.test.ts` → Plan 01-03
+- [ ] `apps/api/src/rotas/operacoes.test.ts`, `estado.test.ts` → Plan 01-04 Task 2 (PERS-04)
+- [ ] `apps/web/src/dados/transporte.test.ts`, `store.test.ts` → Plan 01-07 Tasks 1–2 (PERS-05; transporte falso em vez de mock de `fetch` no store)
+- [ ] `packages/dominio/src/bootstrap-gestao.test.ts` (puro) e `apps/api/src/bootstrap/gestao.test.ts` (Postgres) → Plan 01-05 (PERS-06)
+- [ ] `apps/api/src/persistencia/colunas-geradas.test.ts` → Plan 01-06 Task 3 (PERS-07; padrão `temBanco ? describe : describe.skip`)
+- [ ] `packages/dominio/src/operations/members-reconvite.test.ts`, `apps/api/src/servicos/convidar-membro.test.ts`, `apps/api/src/autenticacao/resolver-usuario.test.ts` → Plan 01-08 (PERS-09)
+- [ ] `apps/api/src/e2e/criar-conta.test.ts` → Plan 01-09 Task 1 (critério 1 do ROADMAP; fecha a lacuna "sem teste ponta a ponta tela → Postgres")
+- [ ] Sem instalação de framework de teste: vitest já está nos três workspaces
 
 ---
 
