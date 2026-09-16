@@ -186,8 +186,9 @@ export function transporteHttp(opcoes: { readonly apiUrl: string; readonly obter
  * As rotas públicas: sem sessão, sem servidor. `gravar` devolve a própria
  * cópia como o novo estado — não há diff de servidor para aplicar por cima
  * dela. `hidratar` nunca é chamado na prática (a carga inicial das rotas
- * públicas vem de `buildProductSeed()`, não de `rehidratar()`), mas devolve
- * uma falha explícita em vez de lançar, coerente com a interface.
+ * públicas vem do seed do produto montado pelo `PublicoProvider`, não de
+ * `rehidratar()`), mas devolve uma falha explícita em vez de lançar,
+ * coerente com a interface.
  */
 export function transporteEmMemoria(): Transporte {
   return {
