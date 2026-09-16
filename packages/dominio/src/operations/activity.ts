@@ -19,7 +19,16 @@ export function resetIdSequence(at = 0): void {
   sequence = at;
 }
 
-const PADRAO_ID = /^[a-z]+_([0-9a-z]{6,})$/;
+// EXATAMENTE 6 — a largura que `nextId()` produz (`padStart(6, "0")`), nunca
+// "6 ou mais". Um id hand-authored mais longo que bate no padrão solto
+// (`{6,}`) — como `agt_classificador`, 13 caracteres — vira um número maior
+// que `Number.MAX_SAFE_INTEGER` (36^13 ≈ 6×10¹⁹): o `+= 1` de `nextId()`
+// perde precisão em ponto flutuante e devolve o MESMO id em toda chamada
+// seguinte, colidindo consigo mesmo (`ON CONFLICT DO UPDATE command cannot
+// affect row a second time` em `gravar()`). Um id de exatamente 6 caracteres
+// cabe em, no máximo, 36⁶-1 ≈ 2,17 bilhões — dentro da faixa segura do
+// `number`, então "só empurra o contador para cima" continua inofensivo.
+const PADRAO_ID = /^[a-z]+_([0-9a-z]{6})$/;
 
 /**
  * Coloca o contador de `nextId` acima de todo id já presente no estado.
@@ -36,9 +45,9 @@ const PADRAO_ID = /^[a-z]+_([0-9a-z]{6,})$/;
  * Percorre recursivamente TODO o estado (objetos e arrays, incluindo ids
  * aninhados: comentários dentro de Tarefa, mensagens dentro de Conversa,
  * itens de memória, lançamentos de tempo — todos nascem de `nextId`). Um id
- * literal como `mem_thiago` também casa a expressão (sufixo em base 36) e só
- * empurra o contador para cima — inofensivo. Custo: uma passada por ~900
- * registros, milissegundos.
+ * literal de 6 caracteres como `mem_walter` — 6 depois do prefixo — também
+ * casa a expressão e só empurra o contador para cima — inofensivo. Custo:
+ * uma passada por ~900 registros, milissegundos.
  */
 export function syncIdSequence(state: DataState): void {
   let maior = 0;

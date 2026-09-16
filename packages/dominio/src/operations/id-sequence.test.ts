@@ -67,6 +67,25 @@ describe("syncIdSequence", () => {
     expect(idsAntes.has(registroDeAtividade!.id)).toBe(false);
   });
 
+  it("um id hand-authored mais longo que 6 caracteres (agt_classificador, do seed real) não estoura Number.MAX_SAFE_INTEGER nem faz nextId repetir", () => {
+    // Regressão: `agt_classificador` (13 caracteres depois do prefixo) batia
+    // no padrão antigo (`{6,}`) e virava ~6×10¹⁹ em `parseInt(..., 36)` —
+    // muito além de `Number.MAX_SAFE_INTEGER` (~9×10¹⁵). O `sequence += 1` de
+    // `nextId()` perdia precisão em ponto flutuante e devolvia o MESMO id em
+    // toda chamada seguinte, colidindo consigo mesmo (o erro real visto
+    // contra o Postgres: "ON CONFLICT DO UPDATE command cannot affect row a
+    // second time").
+    const state = buildSeed();
+    expect(state.agents.some((a) => a.id === "agt_classificador")).toBe(true);
+    resetIdSequence(0);
+    syncIdSequence(state);
+
+    const primeiro = nextId("exe");
+    const segundo = nextId("exe");
+    const terceiro = nextId("aex");
+    expect(new Set([primeiro, segundo, terceiro]).size).toBe(3);
+  });
+
   it("estado sem nenhum id gerado não lança e nextId reinicia do começo", () => {
     const minimo: DataState = {
       models: [],

@@ -19,6 +19,8 @@ import { verificarTokenDoSupabase, type VerificarToken } from "./autenticacao/ve
 import { carregarEnv } from "./persistencia/conexao";
 import { membroPorUsuario } from "./persistencia/membros";
 import { registrarAutenticacao, type OpcoesDeAutenticacao } from "./plugins/autenticacao";
+import { rotasDeEstado } from "./rotas/estado";
+import { rotasDeOperacoes } from "./rotas/operacoes";
 
 export interface OpcoesDoApp {
   /** Padrão: `process.env.WORKSPACE_ID ?? "ws_n1"`. */
@@ -86,6 +88,15 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
     ok: true,
     servico: "apps/api",
   }));
+
+  // Depois do hook de autenticação: toda rota registrada aqui exige
+  // `Authorization: Bearer`, salvo `config: { publica: true }`. `buildApp`
+  // continua síncrono — `app.register` sem `await` enfileira o plugin, e o
+  // Fastify resolve a fila sozinho no primeiro `ready()`/`listen()`/`inject()`
+  // (é o mesmo motivo por que `app.register(cors, ...)` acima também não é
+  // aguardado).
+  app.register(rotasDeOperacoes);
+  app.register(rotasDeEstado);
 
   return app;
 }
