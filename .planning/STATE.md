@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Completed 01-06-PLAN.md (migração 002 — colunas geradas e índices, aplicada no Supabase do projeto) — 12/12 testes de persistência verdes
-last_updated: "2026-09-16T14:44:14.856Z"
+last_updated: "2026-09-16T15:00:00.000Z"
 last_activity: 2026-09-16 -- Phase 1 execution started
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 9
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 1 (o-crm-n1-ganha-persist-ncia-e-login) — EXECUTING
-Plan: 3 of 9
+Plan: 4 of 9
 Status: Ready to execute
 Last activity: 2026-09-16 -- Phase 1 execution started
 
@@ -72,6 +72,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 3]: motor de Automações (AUTO-01) colocado explicitamente na Phase 3 como infraestrutura genérica; o Financeiro é o primeiro cliente.
 - [Phase 01]: OPERACOES (registro.ts) tem 132 operações — allowlist de despacho de POST /operacoes/:nome; receiveMessage ficou de fora por não ter actingMemberId como segundo parâmetro — Plan 01-03
 - [Phase 01]: PERS-07 fechado: migração 002 (colunas geradas status_id/list_id/due_date + 6 índices parciais, 5 GIN jsonb_path_ops para arrays) aplicada e imutável no Supabase do projeto — Testada contra o banco real (8 casos); persistencia.test.ts continua verde — colunas geradas não entram em hidratar()/gravar()
+- [Phase 01]: T-1-SC tratado — checkpoint humano bloqueante aprovou `fastify` 5.12.5, `@fastify/type-provider-zod` 1.0.0 (peer `zod >=4.2.0`, aceita o `zod ^4.6.1` do monorepo, sem fallback), `@fastify/cors` 11.3.0 e `concurrently` 10.0.5 nos repositórios oficiais no npm, antes de qualquer `npm install` da fase — Plan 01-02 liberado
 
 ### Pending Todos
 
@@ -103,6 +104,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-16T14:44:14.848Z
-Stopped at: Completed 01-06-PLAN.md (migração 002 — colunas geradas e índices, aplicada no Supabase do projeto) — 12/12 testes de persistência verdes
+Last session: 2026-09-16T15:00:00.000Z
+Stopped at: Completed 01-01-PLAN.md (checkpoint humano de legitimidade de pacote aprovado — fastify e dependências conferidos no npm; Plan 01-02 liberado)
 Resume file: None
