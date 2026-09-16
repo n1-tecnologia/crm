@@ -7,6 +7,11 @@
  * sem depender de `DATABASE_URL`. A parte com Postgres real prova o caminho
  * inteiro — sucesso com diff, recusa do domínio em 200, Membro removido em
  * 403 — contra `apps/api/src/persistencia/unidade-de-trabalho.ts`.
+ *
+ * Os casos (k)–(r) provam CR-02: forma errada é 400 ANTES de `executar()`
+ * (sem banco, (k)–(o)) ou por `TypeError` mapeado dentro dela (com banco,
+ * (p)–(q)) — nada chega ao `jsonb`; (r) prova que o caminho feliz continua
+ * inteiro.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -15,7 +20,7 @@ import { buildSeed } from "@n1/dominio/seed";
 import { CP } from "@n1/dominio/operations";
 import { buildApp } from "../app";
 import { carregarEnv, encerrar, pool } from "../persistencia/conexao";
-import { semear } from "../persistencia/repositorio";
+import { hidratar, semear } from "../persistencia/repositorio";
 
 const MARYANE = usuarioDoSeed("mem_maryane"); // ativo, no seed do Financeiro
 const TIAGO = usuarioDoSeed("mem_tiago"); // removido, no seed do CRM
@@ -96,6 +101,65 @@ describe("POST /operacoes/:nome — sem banco", () => {
       url: "/operacoes/createTask",
       headers: { authorization: "Bearer token-maryane" },
       payload: { args: "x" },
+    });
+    expect(resposta.statusCode).toBe(400);
+    expect(resposta.json().ok).toBe(false);
+  });
+
+  it("(k) updateTask com title:123 responde 400 antes de executar() — nunca 500", async () => {
+    const resposta = await appDeTeste().inject({
+      method: "POST",
+      url: "/operacoes/updateTask",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: { args: ["t1", { title: 123 }] },
+    });
+    expect(resposta.statusCode).toBe(400);
+    const corpo = resposta.json();
+    expect(corpo.ok).toBe(false);
+    expect(corpo.error).toBe('Entrada inválida para "updateTask" em 1.title.');
+  });
+
+  it("(l) updateTask com description:{} responde 400 antes de executar()", async () => {
+    const resposta = await appDeTeste().inject({
+      method: "POST",
+      url: "/operacoes/updateTask",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: { args: ["t1", { description: {} }] },
+    });
+    expect(resposta.statusCode).toBe(400);
+    const corpo = resposta.json();
+    expect(corpo.ok).toBe(false);
+    expect(corpo.error).toContain("em 1.description");
+  });
+
+  it("(m) updateTask com chave desconhecida (titulo) responde 400 — .strict()", async () => {
+    const resposta = await appDeTeste().inject({
+      method: "POST",
+      url: "/operacoes/updateTask",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: { args: ["t1", { titulo: "x" }] },
+    });
+    expect(resposta.statusCode).toBe(400);
+    expect(resposta.json().ok).toBe(false);
+  });
+
+  it("(n) runScheduledAutomations com marcador de Date inválido responde 400", async () => {
+    const resposta = await appDeTeste().inject({
+      method: "POST",
+      url: "/operacoes/runScheduledAutomations",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: { args: ["l1", { $tipo: "Date", iso: "isso-nao-e-data" }] },
+    });
+    expect(resposta.statusCode).toBe(400);
+    expect(resposta.json().ok).toBe(false);
+  });
+
+  it("(o) trashTask com argumento a mais responde 400 — tupla fechada", async () => {
+    const resposta = await appDeTeste().inject({
+      method: "POST",
+      url: "/operacoes/trashTask",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: { args: ["t1", "a-mais"] },
     });
     expect(resposta.statusCode).toBe(400);
     expect(resposta.json().ok).toBe(false);
@@ -185,5 +249,95 @@ d("POST /operacoes/:nome — contra o banco real", () => {
       payload: { args: [tarefaDeContasAPagar!.id, { content: "Não deveria gravar." }] },
     });
     expect(resposta.statusCode).toBe(403);
+  });
+
+  it("(p) updateTask com title:123 e description:{} responde 400 e nunca persistido", async () => {
+    const clienteAntes = await pool().connect();
+    let tituloAntes: string | undefined;
+    try {
+      const { state } = await hidratar(clienteAntes, WS);
+      tituloAntes = state.tasks.find((t) => t.id === tarefaDeContasAPagar!.id)?.title;
+    } finally {
+      clienteAntes.release();
+    }
+
+    const respostaTitulo = await appDeTeste().inject({
+      method: "POST",
+      url: "/operacoes/updateTask",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: { args: [tarefaDeContasAPagar!.id, { title: 123 }] },
+    });
+    expect(respostaTitulo.statusCode).toBe(400);
+
+    const respostaDescricao = await appDeTeste().inject({
+      method: "POST",
+      url: "/operacoes/updateTask",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: { args: [tarefaDeContasAPagar!.id, { description: {} }] },
+    });
+    expect(respostaDescricao.statusCode).toBe(400);
+
+    const clienteDepois = await pool().connect();
+    try {
+      const { state } = await hidratar(clienteDepois, WS);
+      const tarefa = state.tasks.find((t) => t.id === tarefaDeContasAPagar!.id);
+      expect(tarefa?.title).toBe(tituloAntes);
+      expect(["string", "undefined"]).toContain(typeof tarefa?.description);
+    } finally {
+      clienteDepois.release();
+    }
+  });
+
+  it("(q) createChatFolder com name:123 estoura TypeError dentro da operação — mapeado para 400, nada persistido", async () => {
+    const clienteAntes = await pool().connect();
+    let quantidadeAntes: number;
+    try {
+      const { state } = await hidratar(clienteAntes, WS);
+      quantidadeAntes = state.chatFolders.length;
+    } finally {
+      clienteAntes.release();
+    }
+
+    const resposta = await appDeTeste().inject({
+      method: "POST",
+      url: "/operacoes/createChatFolder",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: { args: [{ name: 123 }] },
+    });
+    expect(resposta.statusCode).toBe(400);
+    const corpo = resposta.json();
+    expect(corpo.ok).toBe(false);
+    expect(corpo.error).toBe('Entrada inválida para "createChatFolder".');
+
+    const clienteDepois = await pool().connect();
+    try {
+      const { state } = await hidratar(clienteDepois, WS);
+      expect(state.chatFolders.length).toBe(quantidadeAntes);
+    } finally {
+      clienteDepois.release();
+    }
+  });
+
+  it("(r) updateTask com description válida grava e devolve o diff — o caminho feliz continua inteiro", async () => {
+    const resposta = await appDeTeste().inject({
+      method: "POST",
+      url: "/operacoes/updateTask",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: { args: [tarefaDeContasAPagar!.id, { description: "Descrição pela rota." }] },
+    });
+    expect(resposta.statusCode).toBe(200);
+    const corpo = resposta.json();
+    expect(corpo.ok).toBe(true);
+    expect(corpo.value.description).toBe("Descrição pela rota.");
+    expect(corpo.diferenca.gravados.some((g: { colecao: string }) => g.colecao === "tasks")).toBe(true);
+
+    const cliente = await pool().connect();
+    try {
+      const { state } = await hidratar(cliente, WS);
+      const tarefa = state.tasks.find((t) => t.id === tarefaDeContasAPagar!.id);
+      expect(tarefa?.description).toBe("Descrição pela rota.");
+    } finally {
+      cliente.release();
+    }
   });
 });
