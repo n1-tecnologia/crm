@@ -24,6 +24,7 @@ Pela porta da frente, `@n1/dominio`:
 | `@n1/dominio/diferenca` | A forma do diff que a persistência devolve (`RegistroGravado`/`RegistroRemovido`) e `aplicarDiferenca`, que o cliente usa para aplicá-lo respeitando a `ordem` fracionária |
 | `@n1/dominio/derive` | O que **recompõe**: leituras que nunca são armazenadas |
 | `@n1/dominio/seed*` | Os dados fictícios do protótipo |
+| `@n1/dominio/bootstrap-gestao` | `buildGestaoBootstrap()` — o estado inicial de produção do Espaço "Gestão": a configuração do Financeiro, sem fixtures |
 
 `operations` e `derive` são separados de propósito. `derive` recalcula a partir
 do estado gravado toda vez, porque a ontologia exige (B36, B45, B100, RN-CRM-16):
@@ -42,6 +43,11 @@ como chama — o closure continua o mesmo, só a exportação por baixo mudou.
 - **Texto de tela.** Com uma exceção: `rotulos.ts`, que `derive` precisa para
   nomear o Ator de um Registro. A interface reexporta de lá, para haver uma
   fonte só.
+
+`seed-financeiro.ts`/`seed-contas-a-receber.ts` aceitam `{ fixtures: false }`
+(padrão `true`): monta só a configuração do processo, sem os Membros e as
+Tarefas fictícias que reproduzem o histórico do ClickUp — é o que
+`bootstrap-gestao.ts` usa.
 
 ## Quando mexer
 
