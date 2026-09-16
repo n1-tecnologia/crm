@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: "Completed 01-10-PLAN.md (CR-01 — inviteMember casa existing por porUserId ?? porEmail; gap 1 de 01-VERIFICATION.md fechado) — Fase 1: 11/11 planos executados, pronta para nova rodada de /gsd-verify-phase 1"
+status: gaps_found
+stopped_at: Planos 01-10 (CR-01) e 01-11 (CR-02) executados e commitados (982558d..fa261c1); npm run check verde (379 testes); re-verificação (ecdbea2 review + VERIFICATION) achou CR-02 parcialmente aberto — próximo /gsd-plan-phase 1 --gaps
 last_updated: "2026-09-16T19:51:14.960Z"
 last_activity: "2026-09-16 -- Plan 01-11 executado (CR-02 — validação de argumentos em POST /operacoes/:nome)"
 progress:
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 
 Phase: 01 (O CRM N1 ganha persistência e login) — 11/11 planos executados, pronta para re-verificação
 Plan: 11 de 11 executados (01-01..01-09 originais + 01-11 CR-02 + 01-10 CR-01). Nenhum plano pendente na Fase 1.
-Status: Fechamento de lacunas concluído — os dois gaps de `01-VERIFICATION.md` (CR-01 e CR-02) têm código e teste correspondentes; próximo passo é rodar `/gsd-verify-phase 1` de novo para confirmar.
-Last activity: 2026-09-16 -- Plan 01-10 executado (CR-01 — inviteMember casa existing por porUserId ?? porEmail)
+Status: Re-verificação encontrou 1 lacuna remanescente (CR-02 parcial: ARGUMENTOS_GENERICOS não barra forma para ~109 operações; reviverArgumentos sem limite → 500) — CR-01 fechado; ver 01-VERIFICATION.md; próximo: /gsd-plan-phase 1 --gaps
+Last activity: 2026-09-16 -- Phase 1 gap-closure plans 01-10/01-11 executed; re-verification: gaps_found (CR-02 partial)
 
 Progress: [██████████] 100% (11/11 planos GSD; em requisitos: 4/34 feitos, 2 deles da Phase 1 — PERS-09 agora com os dois lados de RN-ET-11 fechados)
 
