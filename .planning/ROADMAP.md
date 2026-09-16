@@ -11,6 +11,7 @@ Fase 0 e Fase 1 correm em paralelo: o que resta da Fase 0 não bloqueia terminar
 ## Phases
 
 **Phase Numbering:**
+
 - Integer phases (0, 1, 2 …): trabalho planejado, numeração espelha as Fases do plano
 - Decimal phases (2.1, 2.2): inserções urgentes via `/gsd-phase --insert` (marcadas INSERTED)
 
@@ -24,36 +25,43 @@ Fase 0 e Fase 1 correm em paralelo: o que resta da Fase 0 não bloqueia terminar
 ## Phase Details
 
 ### Phase 0: Preparação
+
 **Goal**: Tudo o que a Fase 2 consome existe e é confiável — o processo de Solicitação de pagamento está escrito a partir da Lista real, o ClickUp está exportado como insumo e prova de paridade, os usuários do ClickUp têm Membro correspondente e nenhuma credencial exposta continua válida.
 **Depends on**: Nothing (first phase) — corre em paralelo com a Phase 1
 **Requirements**: PREP-01, PREP-02, PREP-03, PREP-04, PREP-05, PREP-06
 **Success Criteria** (what must be TRUE):
+
   1. `docs/07-processos/solicitacao-de-pagamento.md` existe, no padrão de `contas-a-pagar.md`, lido da Lista real `901109104938` (Status, Campos, papéis, fluxo, automações, permissões, regras), e responde D6 e D8 — ou os deixa explicitamente abertos — e absorve `Cartão`/`Link de pagamento`, `em revisão` e a validação CPF/CNPJ (OQ-CMP-01/02/04).
   2. As três Listas (`901109104938`, `901107637383`, `901107648977`) estão exportadas em disco com Tarefas, Campos, Comentários, histórico de status e anexos, paginadas — dá para contar e comparar depois da importação.
   3. Existe uma tabela de de-para dos 6 IDs de usuário do ClickUp (e das 38 variáveis `CLICKUP_*`) para Membros da plataforma, pronta para as importações das Phases 2 e 3.
   4. As credenciais Omie do Marcos Paulo que estão no histórico do git foram rotacionadas: as antigas não autenticam mais no Omie.
   5. (já verdadeiro) O schema `plataforma` existe no projeto Supabase próprio e `npm run migrar` o aplica; o volume das tabelas legadas está medido.
+
 **Plans**: TBD
 
 Estado em 2026-09-15: PREP-01 e PREP-06 feitos. PREP-03 é o item não mecânico e o maior risco do plano — "a primeira tarefa da Fase 0". PREP-05 acontece fora deste repositório (financeiro-tria + Omie). Nada aqui bloqueia a Phase 1; PREP-03 e PREP-04 bloqueiam a Phase 2; PREP-02 e PREP-04 alimentam a Phase 3.
 
 ### Phase 1: O CRM N1 ganha persistência e login
+
 **Goal**: O CRM N1 deixa de ser protótipo — um Membro real entra com e-mail e senha, cria uma Conta pela tela e ela está no Postgres da plataforma; toda operação do domínio chega ao backend por HTTP e roda na Unidade de Trabalho, sem que o domínio ou os 214 testes mudem.
 **Depends on**: Nothing (first phase) — corre em paralelo com a Phase 0
 **Requirements**: PERS-01, PERS-02, PERS-04, PERS-05, PERS-06, PERS-07, PERS-08, PERS-09
 **Success Criteria** (what must be TRUE):
+
   1. Um Membro real entra em `/entrar` com e-mail e senha, é resolvido pelo Usuário (nunca escolhido), cria uma Conta a pagar pela tela e, ao recarregar a página, a Conta continua lá — está no Postgres, não no seed.
   2. Toda operação dos 16 módulos do domínio chega ao `apps/api` por `POST /operacoes/:nome` e roda dentro da Unidade de Trabalho (hidratar → operação → diff → revisão) com o Membro da sessão; a API pública do store (`useData`, `useSession`, `useRun`) não muda e nenhum componente sabe de onde o store vem.
   3. O Espaço "Gestão" › Pasta "Financeiro" › Listas "Contas a pagar" e "Contas a receber" existem no banco com Status, Campos, Tags e Papéis conforme os SPECs de processo — sem Tarefas fictícias; a Lista de Contas a pagar filtra por status, vencimento, Tag `conta *`, Responsável e Pessoa com coluna gerada e índice.
   4. `npm run check` verde nos três workspaces; os 214 testes do domínio são os mesmos; a prova hidratado ≡ seed vale contra o Supabase; ClickUp e `automation/` intocados.
   5. Reconvidar um Usuário removido reativa o mesmo Membro (RN-ET-11), sem criar um segundo.
+
 **Plans**: 9 plans
 **UI hint**: yes
 
 Plans:
+
 - [ ] 01-01-PLAN.md — Portão de legitimidade do `fastify` (checkpoint humano antes do `npm install`, T-1-SC)
 - [ ] 01-02-PLAN.md — Fastify em `apps/api`: `buildApp()`, hook de autenticação (JWT do Supabase → Membro por `userId`), CORS, `npm run dev` web + api
-- [ ] 01-03-PLAN.md — Domínio: registro `OPERACOES`, gravador de chamadas, `syncIdSequence`, `aplicarDiferenca`
+- [x] 01-03-PLAN.md — Domínio: registro `OPERACOES`, gravador de chamadas, `syncIdSequence`, `aplicarDiferenca`
 - [ ] 01-04-PLAN.md — `POST /operacoes/:nome` e `GET /estado`; `gravar()` devolve o diff; `executar()` devolve `revisao`/`revisaoAnterior`
 - [ ] 01-05-PLAN.md — Bootstrap do Espaço "Gestão" (só configuração do Financeiro; Maryane Proprietária; sem fixtures)
 - [ ] 01-06-PLAN.md — Migração `002`: colunas geradas e índices em `plataforma.registros`
@@ -64,58 +72,70 @@ Plans:
 Estado em 2026-09-15: **metade feita**. PERS-01 (persistência + Unidade de Trabalho) e PERS-02 (Supabase Auth) entregues, validados e commitados (`9fb2754` → `d713253`). Restam PERS-04 (rotas por operação — inclui escolher a camada HTTP), PERS-05 (`store.ts` → `POST`), PERS-06 (bootstrap do Espaço "Gestão"), PERS-07 (colunas geradas/índices, migração `002`), PERS-09 (reconvite). PERS-08 (onde o `apps/api` roda) está bloqueado por D11 e conversa com OQ-ADR-01 (região do Supabase — barata de mudar agora, cara depois): não bloqueia o código desta fase, mas precisa estar decidido antes de o adapter da Phase 2 apontar para o `apps/api`. PERS-03 (sobreposto por DEC-02) não é executado. Lacunas de teste a fechar aqui (CONCERNS.md): ponta a ponta tela → Postgres; resolução de sessão → Membro.
 
 ### Phase 2: Solicitação de pagamento — o front substitui o ClickUp
+
 **Goal**: Toda solicitação de pagamento nova nasce no CRM N1 e percorre o pipeline do `automation/` sem o ClickUp — o solicitante preenche o formulário no CRM N1, o aprovador decide com um clique, e o Omie recebe o mesmo lançamento de sempre.
 **Depends on**: Phase 1 (persistência, rotas por operação, `apps/api` no ar — PERS-08/D11) e Phase 0 (PREP-03 spec da Solicitação, PREP-04 de-para de usuários)
 **Requirements**: SOL-01, SOL-02, SOL-03, SOL-04, SOL-05, SOL-06, SOL-07, SOL-08, SOL-09
 **Success Criteria** (what must be TRUE):
+
   1. Um solicitante cria o pedido pelo formulário do CRM N1 (não pelo formulário de Tarefa do ClickUp) e a Tarefa nasce na Lista "Solicitações de pagamento" com os Status de CON-04, com a resposta anônima atribuída conforme OQ-PF-01.
   2. O aprovador certo (roteado por centro de custo e valor) vê a solicitação no CRM N1 e decide com um clique — Solicitação de Aprovação, não texto classificado por IA — sem abrir o ClickUp; a decisão, o RESUMO e o progresso aparecem na timeline (Comentários + Registros de Atividade).
   3. O pipeline do `automation/` roda de ponta a ponta sem webhook do ClickUp: começa em `POST /webhooks/plataforma/solicitacao-criada` disparado pelo `apps/api` e fala com ele só pelos 7 métodos de `adapters/plataforma.ts`; com o `apps/api` fora do ar, o adapter enfileira e repete em vez de falhar o run; `clickup.ts` continua no repositório, desligado por env.
   4. Por duas semanas, o Omie recebe o mesmo `IncluirContaPagar` pelos dois caminhos — conferido por `ConsultarContaPagar` com `codigo_lancamento_integracao` idêntico; ao fim, os webhooks Tria do ClickUp são desligados e a Lista de Solicitação é arquivada.
   5. As 1.110 solicitações históricas aparecem como Tarefas fechadas, com `comentario` como Comentário do RESUMO, `TaskID` apontando para a Tarefa da plataforma, `origem` preenchida e nenhuma credencial copiada.
+
 **Plans**: TBD
 **UI hint**: yes
 
 Antes de planejar: revisar a divisão ontologia × telas portadas (OQ-PLAN-01 / DEC-16); fechar D6 (SOL-01) e D8 (SOL-08) — a spec PREP-03 deve respondê-las; decidir D9 (status `aprovado`); decidir se o evento de saída de SOL-07 é a semente do motor de Automações da Phase 3 (OQ-SYN-02) — recomendação: um mecanismo mínimo de evento de saída aqui, generalizado na Phase 3, sem antecipar o motor inteiro. O contrato request/response dos 7 métodos precisa estar escrito antes de SOL-05 (CON-13; CONCERNS.md), e o caminho autenticado para leituras do `automation/` (OQ-SYN-01) convém desenhar junto do adapter, mesmo sendo usado só na Phase 4. SOL-05 e SOL-06 vivem no repositório `financeiro-tria`. D12 (mover o `automation/`) reavalia-se ao fim desta fase.
 
 ### Phase 3: Contas a pagar
+
 **Goal**: O Financeiro opera as Contas a pagar inteiramente no CRM N1 — as Tarefas vêm do ClickUp com o histórico, as automações A1–A9 acontecem sozinhas num motor que não perde o dia se o processo cair, o Agente lança no Omie de verdade e as permissões são as que o processo precisa.
 **Depends on**: Phase 2 (a semana sem ClickUp inclui as Solicitações; adapter e contrato estáveis) e Phase 0 (PREP-02 exportação, PREP-04 de-para)
 **Requirements**: PAG-01, PAG-02, PAG-03, PAG-04, PAG-05, PAG-06, AUTO-01
 **Success Criteria** (what must be TRUE):
+
   1. O Financeiro passa uma semana sem abrir o ClickUp; a Lista `901107637383` está arquivada.
   2. As Tarefas importadas preservam `date_created`, `date_closed` e o histórico de status como Registros de Atividade com a data original — "tempo em `para pagar`" continua medível (29–31 dias é o ciclo normal); a data de vencimento vive só no campo nativo.
   3. Ao mover uma conta recorrente para `pago`, a ocorrência do mês seguinte aparece sozinha com vencimento no dia útil anterior (A1) — uma por fechamento, mesmo reabrindo (RN-CP-06); a troca de Responsável (A3/A4), a cobrança de nota D-5/D-2 com Menção à Pessoa (A5/A6), a invocação do Agente D-1 (A7/A8) e os Observadores (A9) acontecem sem ninguém acionar, cada uma com Execução auditável; se o processo cair no minuto errado, a agenda não é pulada.
   4. O Agente lança a conta no Omie de verdade via `automation/` (idempotente por `codigo_lancamento_integracao`), publica o RESUMO no formato exato de CON-CP-08 atribuído ao Financeiro e move para `lançado omie`; categorias e contas vêm do plano real do Omie (não de códigos inventados), com `REVISAR` abaixo do threshold; na primeira semana roda em Ensaio.
   5. O Financeiro fecha 61 contas em lote num só gesto e cada uma dispara A1; a Pessoa da conta vê só as Tarefas em que é o campo Pessoa (e edita só Anexo e Data de Emissão); demais Membros não veem a Lista.
+
 **Plans**: TBD
 **UI hint**: yes
 
 **Motor de Automações (AUTO-01) mora aqui.** É a única peça G de risco alto ainda não iniciada e é transversal: o Financeiro (A1–A9) é o primeiro cliente, Contas a receber (R2–R7, Phase 5) o segundo, e o gatilho "tempo em Status" (C34) o terceiro. Planejar como infraestrutura genérica de `apps/api` — gatilho por evento (sobre o mesmo evento de saída de SOL-07, OQ-SYN-02) e por agenda com fila e retry persistente (o cron do `automation/` "sem fila, sem retry persistente" é o antipadrão) — executando `Automation` da ontologia com as quatro ações (`invocarAgente`, `solicitarAprovacao`, `aguardar`, `notificar` — `notificar` in-app aqui; por Canal na Phase 5) e registrando Execuções. OQ-PF-03 (C14) toca o escopo das Automações de Espaço de Trabalho. Merece pesquisa própria em `/gsd-plan-phase 3`. Antes de codificar A1, confirmar a regra da recorrência com o Financeiro (OQ-CP-06); antes do Agente real, resolver OQ-CP-04 (de-para ERP alcançável pela API) e OQ-CMP-03/05; com DEC-08, `conciliador_contas` e `omie_clientes` são lidos por HTTP (OQ-SYN-03). Medir o lote de 61 contra a serialização de escritas por Espaço (DEC-06).
 
 ### Phase 4: As outras telas do financeiro-tria
+
 **Goal**: Tudo o que o Financeiro lia no painel do financeiro-tria está no CRM N1, no seu sistema de design, lendo a API do `automation/` por um caminho autenticado — e o painel sai do ar.
 **Depends on**: Phase 3 (ordem do plano; o Financeiro já opera no CRM N1) e o caminho autenticado para leituras do `automation/` (OQ-SYN-01, desenhado na Phase 2)
 **Requirements**: TELA-01
 **Success Criteria** (what must be TRUE):
+
   1. O Financeiro encontra no CRM N1 as oito leituras: Notas fiscais, Produtos, Plano de contas (com CRUD e import), Extratos do Marcos (upload), Workflows (catálogo + runs), Dashboard, Problemas e Aprovações pendentes — mesma leitura de hoje, visual do CRM N1, nenhuma regra alterada (DEC-16).
   2. Nenhuma dessas leituras usa `anon_read` nem credencial embutida no bundle: chegam ao CRM N1 autenticadas.
   3. `financeiro-tria.vercel.app` pode sair do ar sem ninguém sentir falta; `AuthContext` e a policy `anon_read` morrem com ele.
   4. A emissão manual de NF segue o que D10 decidir (ação na Tarefa, recomendação do plano — ou Google Sheets continua).
+
 **Plans**: TBD
 **UI hint**: yes
 
 Antes de planejar: decidir os 89 arquivos não commitados do frontend do financeiro-tria (regeneração shadcn/Lovable) só como referência de leitura — nada dali é portado como código. `planos_de_contas` está vazia hoje; o de-para real é o RAG em `conciliador_contas` (Phase 3).
 
 ### Phase 5: Contas a receber e os outros tenants
+
 **Goal**: Marcos Paulo e Family Office operam no CRM N1 como Empresas do Campo `Empresa`, cada uma com a sua Integração Omie e sem um terceiro clone do serviço; Contas a receber vive na plataforma na forma que D7 determinar; uma Automação sabe notificar por Canal.
 **Depends on**: Phase 3 (motor de Automações para R2–R7; Integração Omie por Empresa) — ordenada depois da Phase 4 pelo plano
 **Requirements**: REC-01, TEN-01, AUTO-02
 **Success Criteria** (what must be TRUE):
+
   1. Cada uma das 6 Empresas é opção do Campo `Empresa` e tem a própria Integração Omie (credencial só na Integração); as regras de cada `config.ts` viram configuração por Empresa — o prefixo numérico + `02-Empresas` do Family Office e o status `em revisão` são absorvidos, não clonados.
   2. Solicitações de Marcos Paulo e Family Office nascem no CRM N1 e percorrem o mesmo pipeline; os webhooks ClickUp dos dois tenants e as Listas `901109642259`/`901111928443` são desligados/arquivados.
   3. Contas a receber conforme D7: se o recebimento está no Omie, a Lista da plataforma espelha a Integração em leitura; se não, `createReceivableSeries` cria a série (Entrada + N parcelas) e R2–R7 rodam no motor com os prazos que o Financeiro confirmar (OQ-CR-05); a importação leva Data de pagamento sobre `date_closed` (CON-CR-10).
   4. Uma Automação consegue notificar por Canal (WhatsApp via Evolution API) usando o campo `WhatsApp` da Tarefa — prioridade a confirmar.
+
 **Plans**: TBD
 
 Antes de planejar: D7/OQ-CR-01 (perguntar ao Financeiro onde o recebimento é controlado hoje) decide o formato de REC-01; CAND-01 (uma Integração por Empresa) e CAND-05 (leituras conservadoras de C34) precisam ser confirmadas ou revistas; OQ-CR-02..06 e OQ-CMP-02 têm dono aqui.
@@ -143,7 +163,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 0. Preparação | 0/TBD | In progress (2/6 requisitos feitos fora do GSD) | - |
-| 1. O CRM N1 ganha persistência e login | 0/TBD | In progress (2/8 requisitos feitos fora do GSD — persistência e autenticação) | - |
+| 1. O CRM N1 ganha persistência e login | 1/9 | In Progress|  |
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 0/TBD | Not started | - |
 | 3. Contas a pagar | 0/TBD | Not started | - |
 | 4. As outras telas do financeiro-tria | 0/TBD | Not started | - |

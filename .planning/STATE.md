@@ -1,11 +1,16 @@
 ---
-gsd_state_version: '1.0'
-status: planning
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: executing
+stopped_at: Completed 01-03-PLAN.md (registro de operações, gravador de chamadas, syncIdSequence, aplicarDiferenca) — 232/232 testes de domínio verdes
+last_updated: "2026-09-16T14:16:08.769Z"
+last_activity: 2026-09-16 -- Phase 1 execution started
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 9
+  completed_plans: 1
   percent: 0
 ---
 
@@ -16,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-15)
 
 **Core value:** Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de ponta a ponta sem abrir o ClickUp — dados no Postgres próprio, regras de `@n1/dominio` intactas.
-**Current focus:** Phase 1 — O CRM N1 ganha persistência e login (terminar a metade que falta), com a Phase 0 em paralelo
+**Current focus:** Phase 1 — o-crm-n1-ganha-persist-ncia-e-login
 
 ## Current Position
 
-Phase: 1 of 6 (O CRM N1 ganha persistência e login) — fases numeradas 0–5
-Plan: 0 of TBD in current phase
-Status: Ready to plan — a Phase 1 está metade feita fora do GSD (persistência e autenticação entregues, validadas e commitadas em `d713253`); o primeiro plano cobre o que resta
-Last activity: 2026-09-15 — Roadmap criado a partir da intel do ingest (9 documentos, 0 blockers) e do mapa do código
+Phase: 1 (o-crm-n1-ganha-persist-ncia-e-login) — EXECUTING
+Plan: 2 of 9
+Status: Ready to execute
+Last activity: 2026-09-16 -- Phase 1 execution started
 
 Progress: [░░░░░░░░░░] 0% (de planos GSD; em requisitos: 4/34 feitos, 2 deles da Phase 1)
 
@@ -34,6 +39,7 @@ Progress: [░░░░░░░░░░] 0% (de planos GSD; em requisitos: 4/3
 ## Performance Metrics
 
 **Velocity:**
+
 - Total plans completed: 0
 - Average duration: —
 - Total execution time: 0 hours
@@ -45,10 +51,12 @@ Progress: [░░░░░░░░░░] 0% (de planos GSD; em requisitos: 4/3
 | - | - | - | - |
 
 **Recent Trend:**
+
 - Last 5 plans: —
 - Trend: —
 
 *Updated after each plan completion*
+| Phase 01 P03 | 35min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -61,10 +69,12 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 1]: DEC-09/10 — testes de persistência pulam sem `DATABASE_URL`; migrações numeradas e imutáveis (`002-*.sql` para colunas geradas).
 - [Phase 2]: DEC-11/14 — backend do financeiro-tria intacto; `automation/` fala com o `apps/api` só por HTTP pelos 7 métodos.
 - [Phase 3]: motor de Automações (AUTO-01) colocado explicitamente na Phase 3 como infraestrutura genérica; o Financeiro é o primeiro cliente.
+- [Phase 01]: OPERACOES (registro.ts) tem 132 operações — allowlist de despacho de POST /operacoes/:nome; receiveMessage ficou de fora por não ter actingMemberId como segundo parâmetro — Plan 01-03
 
 ### Pending Todos
 
 Nenhum em `.planning/todos/` ainda. Decisões com prazo (ver ROADMAP.md "Decisões a tomar antes de cada fase"):
+
 - OQ-ADR-01 região do Supabase — decidir até o fim da Phase 1 (barata agora, cara depois)
 - D11 onde o `apps/api` roda — antes do adapter da Phase 2
 - D6, D8, D9, OQ-PLAN-01, OQ-PF-01, OQ-SYN-02 — antes de planejar a Phase 2
@@ -91,6 +101,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-15
-Stopped at: PROJECT.md, REQUIREMENTS.md, ROADMAP.md e STATE.md criados a partir do ingest; próximo passo `/gsd-plan-phase 1` (planejar o que resta da Phase 1) — em paralelo, escrever a spec da Solicitação (PREP-03)
+Last session: 2026-09-16T14:16:08.761Z
+Stopped at: Completed 01-03-PLAN.md (registro de operações, gravador de chamadas, syncIdSequence, aplicarDiferenca) — 232/232 testes de domínio verdes
 Resume file: None
