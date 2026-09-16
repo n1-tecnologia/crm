@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-03-PLAN.md (registro de operações, gravador de chamadas, syncIdSequence, aplicarDiferenca) — 232/232 testes de domínio verdes
-last_updated: "2026-09-16T14:16:08.769Z"
+stopped_at: Completed 01-06-PLAN.md (migração 002 — colunas geradas e índices, aplicada no Supabase do projeto) — 12/12 testes de persistência verdes
+last_updated: "2026-09-16T14:44:14.856Z"
 last_activity: 2026-09-16 -- Phase 1 execution started
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 9
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 1 (o-crm-n1-ganha-persist-ncia-e-login) — EXECUTING
-Plan: 2 of 9
+Plan: 3 of 9
 Status: Ready to execute
 Last activity: 2026-09-16 -- Phase 1 execution started
 
@@ -57,6 +57,7 @@ Progress: [░░░░░░░░░░] 0% (de planos GSD; em requisitos: 4/3
 
 *Updated after each plan completion*
 | Phase 01 P03 | 35min | 2 tasks | 9 files |
+| Phase 01 P06 | 22min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -70,6 +71,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 2]: DEC-11/14 — backend do financeiro-tria intacto; `automation/` fala com o `apps/api` só por HTTP pelos 7 métodos.
 - [Phase 3]: motor de Automações (AUTO-01) colocado explicitamente na Phase 3 como infraestrutura genérica; o Financeiro é o primeiro cliente.
 - [Phase 01]: OPERACOES (registro.ts) tem 132 operações — allowlist de despacho de POST /operacoes/:nome; receiveMessage ficou de fora por não ter actingMemberId como segundo parâmetro — Plan 01-03
+- [Phase 01]: PERS-07 fechado: migração 002 (colunas geradas status_id/list_id/due_date + 6 índices parciais, 5 GIN jsonb_path_ops para arrays) aplicada e imutável no Supabase do projeto — Testada contra o banco real (8 casos); persistencia.test.ts continua verde — colunas geradas não entram em hidratar()/gravar()
 
 ### Pending Todos
 
@@ -101,6 +103,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-16T14:16:08.761Z
-Stopped at: Completed 01-03-PLAN.md (registro de operações, gravador de chamadas, syncIdSequence, aplicarDiferenca) — 232/232 testes de domínio verdes
+Last session: 2026-09-16T14:44:14.848Z
+Stopped at: Completed 01-06-PLAN.md (migração 002 — colunas geradas e índices, aplicada no Supabase do projeto) — 12/12 testes de persistência verdes
 Resume file: None
