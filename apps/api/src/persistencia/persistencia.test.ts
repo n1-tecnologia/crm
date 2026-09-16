@@ -91,13 +91,19 @@ d("persistência do DataState", () => {
     );
     expect(r.ok, "ok" in r ? String((r as { error?: string }).error) : "").toBe(true);
     if (!("diferenca" in r)) throw new Error("esperava resultado com diferença");
-    console.log(`  comentar: ${r.diferenca.gravados} gravados, ${r.diferenca.removidos} removidos`);
+    console.log(`  comentar: ${r.diferenca.gravados.length} gravados, ${r.diferenca.removidos.length} removidos`);
 
     // Um Comentário muda a Tarefa (que o contém) e acrescenta um Registro de
     // Atividade. Se isso gravasse as 900 linhas, a comparação por JSON não
     // estaria funcionando.
-    expect(r.diferenca.gravados).toBeLessThanOrEqual(4);
-    expect(r.diferenca.removidos).toBe(0);
+    expect(r.diferenca.gravados.length).toBeLessThanOrEqual(4);
+    expect(r.diferenca.removidos.length).toBe(0);
+
+    // D-03: a Unidade de Trabalho devolve os registros tocados (não só a
+    // contagem) e a revisão nova, uma a mais que a hidratada.
+    expect(r.diferenca.gravados.some((g) => g.colecao === "tasks" && g.id === alvo!.id)).toBe(true);
+    expect(r.diferenca.gravados.some((g) => g.colecao === "activity")).toBe(true);
+    expect(r.revisao).toBe(r.revisaoAnterior + 1);
 
     const cliente = await pool().connect();
     try {

@@ -14,7 +14,7 @@
  */
 
 import type { PoolClient } from "pg";
-import type { DataState } from "@n1/dominio";
+import type { DataState, Diferenca, Ordens, RegistroGravado, RegistroRemovido } from "@n1/dominio";
 import { COLECOES, SINGULARES as SINGULARES_DO_DOMINIO } from "@n1/dominio";
 
 /** Chaves de `DataState` que não são coleção: entidade única do Espaço. */
@@ -142,9 +142,13 @@ export function reordenar(ids: readonly string[], antigas: Map<string, number> |
   return resultado;
 }
 
-export interface Diferenca {
-  readonly gravados: number;
-  readonly removidos: number;
+/** `hidratar()` devolve `ordem` como `Map` (chave interna); `GET /estado` (D-04) precisa de um objeto simples que viaje em JSON. */
+export function ordensComoObjeto(ordem: EstadoHidratado["ordem"]): Ordens {
+  const resultado: Record<string, Record<string, number>> = {};
+  for (const [colecao, porId] of ordem) {
+    resultado[colecao] = Object.fromEntries(porId);
+  }
+  return resultado;
 }
 
 /**
@@ -161,6 +165,10 @@ export async function gravar(
   antes: EstadoHidratado,
 ): Promise<Diferenca> {
   const vistos: Original = new Map();
+  // Guarda também o próprio registro (não só o `json` canônico): `dados` na
+  // resposta HTTP (D-03) é o objeto que a operação produziu, não uma
+  // re-serialização — o Fastify já omite `undefined` como `canonico()` faz.
+  const registrosPorChave = new Map<string, unknown>();
   const upserts: Array<[string, string, string, number]> = [];
 
   for (const [colecao, valor] of Object.entries(depois as unknown as Record<string, unknown>)) {
@@ -176,6 +184,7 @@ export async function gravar(
       const id = (registro as { id?: string }).id;
       if (id === undefined) throw new Error(`Registro sem id em "${colecao}".`);
       daColecao.set(id, canonico(registro));
+      registrosPorChave.set(`${colecao} ${id}`, registro);
       ids.push(id);
     }
     const ordens = reordenar(ids, ordensAntigas);
@@ -219,7 +228,15 @@ export async function gravar(
     );
   }
 
-  return { gravados: upserts.length, removidos: removidos.length };
+  const gravados: RegistroGravado[] = upserts.map(([colecao, id, , ordem]) => ({
+    colecao,
+    id,
+    dados: registrosPorChave.get(`${colecao} ${id}`),
+    ordem,
+  }));
+  const removidosDetalhados: RegistroRemovido[] = removidos.map(([colecao, id]) => ({ colecao, id }));
+
+  return { gravados, removidos: removidosDetalhados };
 }
 
 /** Escreve um `DataState` inteiro num Espaço de Trabalho vazio (bootstrap, importação). */
@@ -230,5 +247,5 @@ export async function semear(cliente: PoolClient, workspaceId: string, state: Da
   );
   const vazio: EstadoHidratado = { state: {} as DataState, revisao: 1, original: new Map(), ordem: new Map() };
   const { gravados } = await gravar(cliente, workspaceId, state, vazio);
-  return gravados;
+  return gravados.length;
 }
