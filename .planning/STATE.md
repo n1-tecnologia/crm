@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
+status: gaps_found
 stopped_at: Completed 01-09-PLAN.md (e2e criar-conta.test.ts prova o critério 1 do ROADMAP contra o Supabase real; apps/api/README.md; npm run check verde nos três workspaces com e sem DATABASE_URL — 357 testes; PERS-08 documentado como bloqueado por D11) — Fase 1 fechada, pronta para verificação
 last_updated: "2026-09-16T18:12:22.586Z"
 last_activity: 2026-09-16 -- Phase 1 execution started
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 0
   total_plans: 9
   completed_plans: 9
   percent: 17
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 
 Phase: 1 (o-crm-n1-ganha-persist-ncia-e-login) — EXECUTING
 Plan: 9 of 9
-Status: Phase complete — ready for verification
+Status: Verification found 2 gaps (CR-01 reconvite por invitedIdentity; CR-02 args sem validação) — ver 01-VERIFICATION.md; próximo: /gsd-plan-phase 1 --gaps
 Last activity: 2026-09-16 -- Phase 1 execution started
 
 Progress: [░░░░░░░░░░] 0% (de planos GSD; em requisitos: 4/34 feitos, 2 deles da Phase 1)
