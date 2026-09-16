@@ -16,7 +16,7 @@ Fase 0 e Fase 1 correm em paralelo: o que resta da Fase 0 não bloqueia terminar
 - Decimal phases (2.1, 2.2): inserções urgentes via `/gsd-phase --insert` (marcadas INSERTED)
 
 - [ ] **Phase 0: Preparação** - Insumos e decisões que a Fase 2 precisa: spec da Solicitação lida da Lista real, exportação do ClickUp, de-para de usuários, credenciais rotacionadas (2/6 feitos)
-- [ ] **Phase 1: O CRM N1 ganha persistência e login** - Um Membro real entra, cria uma Conta pela tela e ela está no Postgres; rotas por operação, store falando `POST`, bootstrap do Espaço "Gestão", colunas geradas (persistência e autenticação já entregues)
+- [x] **Phase 1: O CRM N1 ganha persistência e login** - Um Membro real entra, cria uma Conta pela tela e ela está no Postgres; rotas por operação, store falando `POST`, bootstrap do Espaço "Gestão", colunas geradas (persistência e autenticação já entregues) (completed 2026-09-16)
 - [ ] **Phase 2: Solicitação de pagamento — o front substitui o ClickUp** - Toda solicitação nova nasce no CRM N1, o aprovador decide com um clique e o pipeline do `automation/` roda sem webhook do ClickUp
 - [ ] **Phase 3: Contas a pagar** - O Financeiro opera uma semana sem abrir o ClickUp: importação com histórico, motor de Automações executando A1–A9, Agente lançando no Omie de verdade, lote e permissões
 - [ ] **Phase 4: As outras telas do financeiro-tria** - As leituras que nunca viveram no ClickUp portadas como tela; `financeiro-tria.vercel.app` sai do ar
@@ -62,7 +62,7 @@ Plans:
 - [x] 01-01-PLAN.md — Portão de legitimidade do `fastify` (checkpoint humano antes do `npm install`, T-1-SC)
 - [x] 01-03-PLAN.md — Domínio: registro `OPERACOES`, gravador de chamadas, `syncIdSequence`, `aplicarDiferenca`
 - [x] 01-06-PLAN.md — Migração `002`: colunas geradas e índices em `plataforma.registros`
-- [ ] 01-10-PLAN.md — Fechamento de lacuna CR-01 (PERS-09, critério 5): `inviteMember` casa `existing` por `userId` E por `invitedIdentity` (`porUserId ?? porEmail`) — nunca um segundo Membro para o mesmo e-mail; testes no domínio e no serviço
+- [x] 01-10-PLAN.md — Fechamento de lacuna CR-01 (PERS-09, critério 5): `inviteMember` casa `existing` por `userId` E por `invitedIdentity` (`porUserId ?? porEmail`) — nunca um segundo Membro para o mesmo e-mail; testes no domínio e no serviço
 - [x] 01-11-PLAN.md — Fechamento de lacuna CR-02 (PERS-04, critério 2): schemas por operação (tasks/financeiro/automations) + estrutural para as demais em `apps/api/src/rotas/esquemas-de-argumentos.ts`; `TypeError` dentro da operação → 400, nunca 500 nem `jsonb` malformado
 
 **Wave 2** *(blocked on Wave 1 completion)*
@@ -177,7 +177,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 0. Preparação | 0/TBD | In progress (2/6 requisitos feitos fora do GSD) | - |
-| 1. O CRM N1 ganha persistência e login | 10/11 | In Progress|  |
+| 1. O CRM N1 ganha persistência e login | 11/11 | Complete   | 2026-09-16 |
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 0/TBD | Not started | - |
 | 3. Contas a pagar | 0/TBD | Not started | - |
 | 4. As outras telas do financeiro-tria | 0/TBD | Not started | - |

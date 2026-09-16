@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: "Completed 01-11-PLAN.md (CR-02 — POST /operacoes/:nome valida a forma dos args antes do despacho e mapeia TypeError para 400; gap 2 de 01-VERIFICATION.md fechado) — falta 01-10 (CR-01) para a Fase 1 fechar de novo"
-last_updated: "2026-09-16T19:40:12.986Z"
+status: verifying
+stopped_at: "Completed 01-10-PLAN.md (CR-01 — inviteMember casa existing por porUserId ?? porEmail; gap 1 de 01-VERIFICATION.md fechado) — Fase 1: 11/11 planos executados, pronta para nova rodada de /gsd-verify-phase 1"
+last_updated: "2026-09-16T19:51:14.960Z"
 last_activity: "2026-09-16 -- Plan 01-11 executado (CR-02 — validação de argumentos em POST /operacoes/:nome)"
 progress:
   total_phases: 6
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 11
-  completed_plans: 10
-  percent: 0
+  completed_plans: 11
+  percent: 17
 ---
 
 # Project State
@@ -25,14 +25,14 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 
 ## Current Position
 
-Phase: 01 (O CRM N1 ganha persistência e login) — EXECUTING (fechamento de lacunas)
-Plan: 11 of 11 executado (01-11, CR-02); falta 01-10 (CR-01) para a Fase 1 fechar de novo
-Status: Plan 01-11 completo — pronto para executar 01-10, depois nova rodada de /gsd-verify-phase 1
-Last activity: 2026-09-16 -- Plan 01-11 executado (CR-02 — validação de argumentos em POST /operacoes/:nome)
+Phase: 01 (O CRM N1 ganha persistência e login) — 11/11 planos executados, pronta para re-verificação
+Plan: 11 de 11 executados (01-01..01-09 originais + 01-11 CR-02 + 01-10 CR-01). Nenhum plano pendente na Fase 1.
+Status: Fechamento de lacunas concluído — os dois gaps de `01-VERIFICATION.md` (CR-01 e CR-02) têm código e teste correspondentes; próximo passo é rodar `/gsd-verify-phase 1` de novo para confirmar.
+Last activity: 2026-09-16 -- Plan 01-10 executado (CR-01 — inviteMember casa existing por porUserId ?? porEmail)
 
-Progress: [█████████░] 91% (10/11 planos GSD; em requisitos: 4/34 feitos, 2 deles da Phase 1 — PERS-04 desta vez com o gap de validação fechado)
+Progress: [██████████] 100% (11/11 planos GSD; em requisitos: 4/34 feitos, 2 deles da Phase 1 — PERS-09 agora com os dois lados de RN-ET-11 fechados)
 
-**Restante da Phase 1:** Plan 01-10 (CR-01 — reconvite por Usuário: casar `existing` por `userId` OU `invitedIdentity`, com `userId` prevalecendo). Os 9 planos originais (01-01..01-09) e o gap-closure de CR-02 (01-11) estão feitos. PERS-08 (deploy do `apps/api`) bloqueado por D11.
+**Fase 1 completa (código):** os 9 planos originais (01-01..01-09), o gap-closure de CR-02 (01-11, validação de argumentos em `POST /operacoes/:nome`) e o gap-closure de CR-01 (01-10, `inviteMember` casando `existing` pelos dois critérios) estão feitos e commitados. `npm run check` verde nos três workspaces (dominio 253, api 73, web 53). PERS-08 (deploy do `apps/api`) continua bloqueado por D11 — não é gap de código, é decisão de infraestrutura fora do escopo desta fase.
 
 **Aberto na Phase 0 (paralela):** spec da Solicitação de pagamento (PREP-03 — maior risco do plano), exportação do ClickUp (PREP-02), de-para de usuários (PREP-04), rotação das credenciais Omie (PREP-05, fora deste repo). Nada disso bloqueia terminar a Phase 1; PREP-03 e PREP-04 **bloqueiam a Phase 2**.
 
@@ -65,6 +65,7 @@ Progress: [█████████░] 91% (10/11 planos GSD; em requisitos:
 | Phase 01 P08 | 50min | 2 tasks | 10 files |
 | Phase 01 P09 | 40min | 2 tasks | 3 files |
 | Phase 01 P11 | 25min | 3 tasks | 5 files |
+| Phase 01 P10 | 10min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -89,6 +90,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 01]: PERS-09 fechado: inviteMember casa existing por userId antes de invitedIdentity quando o input traz o dado; resolverUsuarioPorEmail (apps/api) pagina admin.listUsers (sem filtro nativo por e-mail, A1 confirmada) e convidarMembro compõe I/O + operação antes de executar() — reconvite reativa o mesmo Membro removido de ponta a ponta, provado contra Postgres e Auth reais; SERVICOS na rota descarta qualquer userId do corpo (T-1-08)
 - [Phase 01]: Fase 1 fechada: e2e/criar-conta.test.ts prova o critério 1 do ROADMAP inteiro por app.inject() contra o Supabase real (bootstrap → Membro real cria Conta → recarga → recusa em 200 → segundo processo sem colisão de ids → aplicarDiferenca ≡ re-hidratação); apps/api/README.md fecha o roteiro operacional e documenta PERS-08 como bloqueado por D11, sem nenhuma ação de deploy; npm run check verde nos três workspaces com e sem DATABASE_URL (357 testes com o Supabase real; os três arquivos de teste originais do domínio sem diff desde d713253) — Plan 01-09
 - [Phase 01]: Plan 01-11 fechado: CR-02 (gap 2 de 01-VERIFICATION.md) — esquemaDeArgumentos(nome) valida a FORMA dos args de POST /operacoes/:nome (23 schemas por operação via satisfies contra ArgumentosDe<N>, fallback estrutural de profundidade 6 para as demais) ANTES do despacho; TypeError dentro de uma operação sem schema próprio vira 400 com rollback (nunca 500); inviteMember fica fora de ESQUEMAS de propósito (T-1-08 preservado); app.ts e packages/dominio/apps/web intocados
+- [Phase 01]: Plan 01-10 fechado: CR-01 — inviteMember casa existing por porUserId ?? porEmail (porEmail sempre calculado); casos (g)/(h)/(i) em members-reconvite.test.ts e (e) em convidar-membro.test.ts provam que o caminho pendente-so-por-invitedIdentity nunca gera um segundo Membro quando o e-mail resolve um userId depois. Fase 1: 11/11 planos executados, pronta para nova rodada de /gsd-verify-phase 1.
 
 ### Pending Todos
 
@@ -120,6 +122,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-16T19:39:27.068Z
-Stopped at: Completed 01-11-PLAN.md (CR-02 — POST /operacoes/:nome valida a forma dos args antes do despacho e mapeia TypeError para 400; gap 2 de 01-VERIFICATION.md fechado) — falta 01-10 (CR-01) para a Fase 1 fechar de novo
+Last session: 2026-09-16T19:51:14.950Z
+Stopped at: Completed 01-10-PLAN.md (CR-01 — inviteMember casa existing por porUserId ?? porEmail; gap 1 de 01-VERIFICATION.md fechado) — Fase 1: 11/11 planos executados, pronta para nova rodada de /gsd-verify-phase 1
 Resume file: None
