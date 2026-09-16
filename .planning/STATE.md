@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 
 ## Current Position
 
-Phase: 01 (O CRM N1 ganha persistência e login) — 11/11 planos executados, pronta para re-verificação
+Phase: 01 (O CRM N1 ganha persistência e login) — 11/11 planos executados; re-verificada em 2026-09-16: gaps_found (CR-02 parcial)
 Plan: 11 de 11 executados (01-01..01-09 originais + 01-11 CR-02 + 01-10 CR-01). Nenhum plano pendente na Fase 1.
 Status: Re-verificação encontrou 1 lacuna remanescente (CR-02 parcial: ARGUMENTOS_GENERICOS não barra forma para ~109 operações; reviverArgumentos sem limite → 500) — CR-01 fechado; ver 01-VERIFICATION.md; próximo: /gsd-plan-phase 1 --gaps
 Last activity: 2026-09-16 -- Phase 1 gap-closure plans 01-10/01-11 executed; re-verification: gaps_found (CR-02 partial)
