@@ -18,10 +18,12 @@
 
 import type { ZodTypeProvider } from "@fastify/type-provider-zod";
 import type { DataState, Id, OperationResult } from "@n1/dominio";
-import { ehNomeDeOperacao, OPERACOES, reviverArgumentos } from "@n1/dominio/operations/registro";
+import { ehNomeDeOperacao, OPERACOES, reviverArgumentos, type NomeDeOperacao } from "@n1/dominio/operations/registro";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { executar } from "../persistencia/unidade-de-trabalho";
+import type { MembroDaSessao } from "../plugins/autenticacao";
+import { executar, type ResultadoTransacao } from "../persistencia/unidade-de-trabalho";
+import { convidarMembro } from "../servicos/convidar-membro";
 
 const PARAMS = z.object({
   nome: z
@@ -54,6 +56,40 @@ const REGISTRO = OPERACOES as Record<
   (state: DataState, actingMemberId: Id, ...args: unknown[]) => OperationResult<unknown>
 >;
 
+/** Lançado por um serviço em `SERVICOS` quando `args[0]` não bate com o
+ * schema esperado — tratado aqui mesmo, nunca sobe ao `setErrorHandler`
+ * genérico de `app.ts` (que devolveria 500 para o que é, na verdade, uma
+ * entrada inválida — 400). */
+class ErroDeEntrada extends Error {}
+
+const ENTRADA_INVITE_MEMBER = z.object({ email: z.string(), roleId: z.string() }).strip();
+
+/**
+ * Operações que precisam de I/O ANTES da Unidade de Trabalho — hoje só
+ * `inviteMember`, que resolve e-mail → `userId` contra o Supabase Auth
+ * (PERS-09). O serviço recebe os mesmos `args` que a operação receberia
+ * (mesma forma de `REGISTRO[nome](state, actingMemberId, ...args)`), só que
+ * compõe I/O antes de entrar na transação em vez de rodar dentro dela. Uma
+ * operação sem entrada aqui segue o caminho de hoje: `executar()` direto.
+ */
+const SERVICOS: Partial<
+  Record<NomeDeOperacao, (membro: MembroDaSessao, args: readonly unknown[]) => Promise<ResultadoTransacao<unknown>>>
+> = {
+  // T-1-08 — `.strip()` descarta qualquer `userId` que o cliente mande em
+  // `args[0]`: a única fonte de `userId` é `resolverUsuarioPorEmail`, dentro
+  // de `convidarMembro`, nunca o corpo da requisição.
+  inviteMember: (membro, args) => {
+    const entrada = ENTRADA_INVITE_MEMBER.safeParse(args[0]);
+    if (!entrada.success) throw new ErroDeEntrada("Entrada inválida para inviteMember.");
+    return convidarMembro({
+      workspaceId: membro.workspaceId,
+      actingMemberId: membro.id,
+      email: entrada.data.email,
+      roleId: entrada.data.roleId,
+    });
+  },
+};
+
 export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
   app.withTypeProvider<ZodTypeProvider>().post(
     "/operacoes/:nome",
@@ -65,11 +101,22 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
       }
 
       const args = reviverArgumentos(request.body.args);
-      const operacao = REGISTRO[nome]!;
+      const servico = SERVICOS[nome];
 
-      const resultado = await executar(request.membro.workspaceId, (state) =>
-        operacao(state, request.membro.id, ...args),
-      );
+      let resultado: ResultadoTransacao<unknown>;
+      try {
+        resultado = servico
+          ? await servico(request.membro, args)
+          : await executar(request.membro.workspaceId, (state) => {
+              const operacao = REGISTRO[nome]!;
+              return operacao(state, request.membro.id, ...args);
+            });
+      } catch (erro) {
+        if (erro instanceof ErroDeEntrada) {
+          return reply.code(400).send({ ok: false, error: erro.message });
+        }
+        throw erro;
+      }
 
       if ("conflito" in resultado && resultado.conflito) {
         return reply.code(409).send(resultado);

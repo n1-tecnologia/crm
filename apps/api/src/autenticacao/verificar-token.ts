@@ -22,7 +22,13 @@ export type VerificarToken = (token: string) => Promise<ClaimsDaSessao | null>;
 
 let instancia: ReturnType<typeof createClient> | undefined;
 
-function cliente(): ReturnType<typeof createClient> {
+/**
+ * Client admin do Supabase, uma instância por processo. Exportado (não só
+ * uso interno) para `autenticacao/resolver-usuario.ts` reutilizar — a mesma
+ * disciplina de "client instanciado uma vez" que `criar-usuarios-do-seed.ts`
+ * já segue, sem duplicar a leitura de `SUPABASE_SECRET_KEY`.
+ */
+export function clienteAdmin(): ReturnType<typeof createClient> {
   if (!instancia) {
     carregarEnv();
     const url = process.env.SUPABASE_URL;
@@ -34,7 +40,7 @@ function cliente(): ReturnType<typeof createClient> {
 }
 
 export async function verificarTokenDoSupabase(token: string): Promise<ClaimsDaSessao | null> {
-  const { data, error } = await cliente().auth.getClaims(token);
+  const { data, error } = await clienteAdmin().auth.getClaims(token);
   if (error || !data?.claims?.sub) return null;
   return { sub: data.claims.sub, email: data.claims.email };
 }
