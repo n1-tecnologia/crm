@@ -54,7 +54,7 @@ Estado em 2026-09-15: PREP-01 e PREP-06 feitos. PREP-03 é o item não mecânico
   4. `npm run check` verde nos três workspaces; os 214 testes do domínio são os mesmos; a prova hidratado ≡ seed vale contra o Supabase; ClickUp e `automation/` intocados.
   5. Reconvidar um Usuário removido reativa o mesmo Membro (RN-ET-11), sem criar um segundo.
 
-**Plans**: 11 plans (9 executados + 2 de fechamento de lacunas da verificação)
+**Plans**: 16 plans (9 executados + 2 de fechamento de lacunas da verificação + 5 da segunda rodada de fechamento, CR-02 residual)
 **UI hint**: yes
 Plans:
 **Wave 1**
@@ -64,6 +64,14 @@ Plans:
 - [x] 01-06-PLAN.md — Migração `002`: colunas geradas e índices em `plataforma.registros`
 - [x] 01-10-PLAN.md — Fechamento de lacuna CR-01 (PERS-09, critério 5): `inviteMember` casa `existing` por `userId` E por `invitedIdentity` (`porUserId ?? porEmail`) — nunca um segundo Membro para o mesmo e-mail; testes no domínio e no serviço
 - [x] 01-11-PLAN.md — Fechamento de lacuna CR-02 (PERS-04, critério 2): schemas por operação (tasks/financeiro/automations) + estrutural para as demais em `apps/api/src/rotas/esquemas-de-argumentos.ts`; `TypeError` dentro da operação → 400, nunca 500 nem `jsonb` malformado
+
+**Segunda rodada de fechamento de lacunas (CR-02 residual — re-verificação de 2026-09-16T20:16Z; opção (b), cobertura total, porque `apps/web` chama 128/132 operações e o critério 2 exige que todas cheguem por HTTP)** — ondas relativas entre si, executar com `/gsd-execute-phase 1 --gaps-only`:
+
+- [ ] 01-12-PLAN.md — Onda 1: WR-10 (`reviverArgumentos` em `try/catch` na rota, `RangeError` → 400, caso (s)); `esquemas/fragmentos.ts` (fragmentos compartilhados + portão de enum `Igual<>`); os 23 schemas movidos para `esquemas/tarefas.ts`/`automacoes.ts`/`financeiro.ts`; `esquemas-de-argumentos.ts` vira composição
+- [ ] 01-13-PLAN.md — Onda 2 (paralelo): schemas de `deals`/`conversations`/`contacts` (40) em `esquemas/negocios.ts`, `conversas.ts`, `contatos.ts` + testes puros (cobertura, formas literais do web, hostis)
+- [ ] 01-14-PLAN.md — Onda 2 (paralelo): schemas de `ai`/`chat-folders`/`agent-builder`/`configuration`/`collaboration` (36) em `esquemas/ia.ts`, `pastas-de-chat.ts`, `construtor-de-agentes.ts`, `configuracao.ts`, `colaboracao.ts` + testes
+- [ ] 01-15-PLAN.md — Onda 2 (paralelo): schemas de `planning`/`scale`/`members`/`structure` (33) em `esquemas/planejamento.ts`, `escala.ts`, `membros.ts` (`inviteMember` com `.strip()`, T-1-08), `estrutura.ts` + testes — inclui as duas formas hostis do verificador (`createGoal` `kind:42`, `saveView` `filters` arbitrário)
+- [ ] 01-16-PLAN.md — Onda 3: `ESQUEMAS` = composição dos 15 módulos `satisfies EsquemasCompletos` (operação sem schema não compila); `ARGUMENTOS_GENERICOS` removido; mapeamento `TypeError → 400` removido (WR-11); (q) reapontado, (t)/(u)/(v) provam `createGoal`/`saveView` → 400 e nada persistido; `CONTEXT.md`s
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
