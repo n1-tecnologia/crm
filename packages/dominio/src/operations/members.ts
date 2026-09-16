@@ -299,7 +299,7 @@ export function transferWorkspaceOwnership(
 export function inviteMember(
   state: DataState,
   actingMemberId: Id,
-  input: { readonly email: string; readonly roleId: Id },
+  input: { readonly email: string; readonly roleId: Id; readonly userId?: Id },
 ): OperationResult<Member> {
   const acting = state.members.find((m) => m.id === actingMemberId);
   const actingRole = state.roles.find((r) => r.id === acting?.roleId);
@@ -324,9 +324,18 @@ export function inviteMember(
     );
   }
 
-  const existing = state.members.find(
-    (member) => member.invitedIdentity?.value.toLowerCase() === email,
-  );
+  // Depois que um Membro aceita um convite, o e-mail dele não fica guardado
+  // em lugar nenhum do estado (B27 apaga `invitedIdentity` na aceitação) —
+  // então casar só por `invitedIdentity` nunca reencontra um Membro que já
+  // foi `ativo` e depois `removido`. Quem sabe "que Usuário do Supabase Auth
+  // tem este e-mail" é o Auth, não o domínio puro; essa resolução chega aqui
+  // como `input.userId`, já resolvida pelo serviço de `apps/api`
+  // (`convidarMembro`/`resolverUsuarioPorEmail`) antes de chamar esta
+  // função — o domínio continua sem I/O, só recebe o dado pronto.
+  const existing =
+    input.userId !== undefined
+      ? state.members.find((member) => member.userId === input.userId)
+      : state.members.find((member) => member.invitedIdentity?.value.toLowerCase() === email);
   if (existing && existing.state !== "removido") {
     return fail(
       existing.state === "pendente"
@@ -353,6 +362,9 @@ export function inviteMember(
     existing.invitedBy = actingMemberId;
     delete existing.removedAt;
     delete existing.successorId;
+    // Mantém o vínculo com a conta do Auth — não recria `invitedIdentity`,
+    // que só existe enquanto não há Usuário conhecido (B27).
+    if (input.userId !== undefined) existing.userId = input.userId;
     recordActivity(state, {
       actor: memberActor(actingMemberId),
       action: "Membro reconvidado",
@@ -368,6 +380,11 @@ export function inviteMember(
   const member: Member = {
     id: nextId("mem"),
     workspaceId: state.workspace.id,
+    // `input.userId` presente permite um Membro `pendente` COM Usuário
+    // conhecido (o tipo já admite `userId?` fora do caminho de convite) — o
+    // aceite do convite, que muda o estado para `ativo`, não é operação
+    // desta fase.
+    ...(input.userId !== undefined ? { userId: input.userId } : {}),
     invitedIdentity: { type: "email", value: email },
     displayName: email,
     state: "pendente",
