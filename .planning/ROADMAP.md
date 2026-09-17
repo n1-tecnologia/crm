@@ -15,7 +15,7 @@ Fase 0 e Fase 1 correm em paralelo: o que resta da Fase 0 não bloqueia terminar
 - Integer phases (0, 1, 2 …): trabalho planejado, numeração espelha as Fases do plano
 - Decimal phases (2.1, 2.2): inserções urgentes via `/gsd-phase --insert` (marcadas INSERTED)
 
-- [ ] **Phase 0: Preparação** - Insumos e decisões que a Fase 2 precisa: spec da Solicitação lida da Lista real, exportação do ClickUp, de-para de usuários, credenciais rotacionadas (2/6 feitos)
+- [x] **Phase 0: Preparação** - Insumos e decisões que a Fase 2 precisa: spec da Solicitação lida da Lista real, exportação do ClickUp, de-para de usuários, rotação Omie retirada (D-13) (6/6 feitos) (completed 2026-09-17)
 - [x] **Phase 1: O CRM N1 ganha persistência e login** - Um Membro real entra, cria uma Conta pela tela e ela está no Postgres; rotas por operação, store falando `POST`, bootstrap do Espaço "Gestão", colunas geradas (persistência e autenticação já entregues) (completed 2026-09-16)
 - [ ] **Phase 2: Solicitação de pagamento — o front substitui o ClickUp** - Toda solicitação nova nasce no CRM N1, o aprovador decide com um clique e o pipeline do `automation/` roda sem webhook do ClickUp
 - [ ] **Phase 3: Contas a pagar** - O Financeiro opera uma semana sem abrir o ClickUp: importação com histórico, motor de Automações executando A1–A9, Agente lançando no Omie de verdade, lote e permissões
@@ -34,7 +34,7 @@ Fase 0 e Fase 1 correm em paralelo: o que resta da Fase 0 não bloqueia terminar
   1. `docs/07-processos/solicitacao-de-pagamento.md` existe, no padrão de `contas-a-pagar.md`, lido da Lista real `901109104938` (Status, Campos, papéis, fluxo, automações, permissões, regras), e responde D6 e D8 — ou os deixa explicitamente abertos — e absorve `Cartão`/`Link de pagamento`, `em revisão` e a validação CPF/CNPJ (OQ-CMP-01/02/04).
   2. As três Listas (`901109104938`, `901107637383`, `901107648977`) estão exportadas em disco com Tarefas, Campos, Comentários, histórico de status e anexos, paginadas — dá para contar e comparar depois da importação.
   3. Existe uma tabela de de-para dos 6 IDs de usuário do ClickUp (e das 38 variáveis `CLICKUP_*`) para Membros da plataforma, pronta para as importações das Phases 2 e 3.
-  4. As credenciais Omie do Marcos Paulo que estão no histórico do git foram rotacionadas: as antigas não autenticam mais no Omie.
+  4. (risco aceito pelo dono em 2026-09-16, D-13 — não cobrar) As credenciais Omie do Marcos Paulo que estão no histórico do git continuam em uso por decisão do dono; nenhuma rotação nesta fase. CON-10 vale para o que a plataforma cria.
   5. (já verdadeiro) O schema `plataforma` existe no projeto Supabase próprio e `npm run migrar` o aplica; o volume das tabelas legadas está medido.
 
 **Plans**: 7 plans
@@ -62,7 +62,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 00-07-PLAN.md — Fechamento: PREP-05 como risco aceito (D-13), REQUIREMENTS/README, `npm run check`, instrução para o critério 4 (PREP-01, PREP-05, PREP-06)
+- [x] 00-07-PLAN.md — Fechamento: PREP-05 como risco aceito (D-13), REQUIREMENTS/README, `npm run check`, instrução para o critério 4 (PREP-01, PREP-05, PREP-06)
 
 Estado em 2026-09-15: PREP-01 e PREP-06 feitos. PREP-03 é o item não mecânico e o maior risco do plano — "a primeira tarefa da Fase 0". PREP-05 acontece fora deste repositório (financeiro-tria + Omie). Nada aqui bloqueia a Phase 1; PREP-03 e PREP-04 bloqueiam a Phase 2; PREP-02 e PREP-04 alimentam a Phase 3.
 
@@ -209,7 +209,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 0. Preparação | 6/7 | In Progress|  |
+| 0. Preparação | 7/7 | Complete   | 2026-09-17 |
 | 1. O CRM N1 ganha persistência e login | 11/11 | Complete   | 2026-09-16 |
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 0/TBD | Not started | - |
 | 3. Contas a pagar | 0/TBD | Not started | - |

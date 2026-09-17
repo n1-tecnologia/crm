@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 00-06-PLAN.md (spec da Solicitação de pagamento — PREP-03 fechado)
-last_updated: "2026-09-17T03:23:38.712Z"
+status: verifying
+stopped_at: Completed 00-07-PLAN.md (fechamento da Fase 0 — rastreabilidade, README, portão CON-05)
+last_updated: "2026-09-17T03:38:02.337Z"
 last_activity: 2026-09-16 -- Phase 00 execution started
 progress:
   total_phases: 6
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 23
-  completed_plans: 17
-  percent: 0
+  completed_plans: 18
+  percent: 17
 ---
 
 # Project State
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 
 Phase: 00 (prepara-o) — EXECUTING
 Plan: 7 of 7
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-16 -- Phase 00 execution started
 
 Progress: [██████████] 100% (11/11 planos GSD; em requisitos: 4/34 feitos, 2 deles da Phase 1 — PERS-09 agora com os dois lados de RN-ET-11 fechados)
@@ -72,6 +72,7 @@ Progress: [██████████] 100% (11/11 planos GSD; em requisitos
 | Phase 00 P04 | 30min | 3 tasks | 7 files |
 | Phase 00 P05 | 130min | 2 tasks | 2 files |
 | Phase 00 P06 | 35min | 3 tasks | 1 files |
+| Phase 00 P07 | 35min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -107,6 +108,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 00]: Plan 00-05: exportação real das 3 Listas do ClickUp concluída sem interrupções (2h01m35s, 11.000 requisições, 0 avisos); MANIFESTO.md/.json commitados (11.001 arquivos, hashAgregado adf52d27...6d68); PREP-02 fechado
 - [Phase 00]: Plan 00-05: achado real — Lista 901109104938 (Solicitação de pagamento) só tem 19 Tarefas em disco, não as ~1.110 do inventário legado; as ~1.110 são linhas de solicitacoes_pagamentos no Supabase do financeiro-tria, não Tarefas retidas no ClickUp (verificado por list.json.task_count=18, paginação completa, 0 avisos) — impacta Plan 00-06 (spec lê Lista pequena) e a origem de dado da importação de histórico na Fase 2/3
 - [Phase 00]: Plan 00-06: PREP-03 fechado — docs/07-processos/solicitacao-de-pagamento.md (326 linhas, §1-§12) lida da exportação real da Lista 901109104938 (19 Tarefas) + código do automation/ (payment-rules.ts, clickup-payment-mapper.ts, payment-automation-service.ts, adapters/ai.ts, http/routes.ts); D6 e D8 fechados por texto; OQ-CMP-01/02/04 absorvidos. Diretriz geral do dono (2026-09-17) fechou L-02 (só os 4 Status atuais são oficiais) e L-08 (RESUMO funciona como no ClickUp, Markdown nos Comentarios); L-04, L-05, L-06, L-10 fechados por derivacao de codigo/exportacao (Cartao vira 4a opcao, W-Equipe fica como esta, creator=ClickBot em 6/19 Tarefas confirma Formulario coexistindo com Membro, mesma funcao resolveAccountConfig/resolveCategoryCodeAgainstOmie usada por Solicitacao e Contas a pagar). L-01 (momento em que a Conta a pagar nasce), L-03 (divergencia nao bloqueante em 868jxd42g), L-07 (cobranca quando Aprovador nao responde), L-09 (data de revisao do fallback) e L-11 (Revisor do RESUMO como Papel oficial) continuam abertos em §12 sem marcador, devolvidos ao dono para decisao antes/durante o planejamento da Fase 2. — A spec e pre-requisito de toda a Fase 2 (SOL-01..09); fechar o maximo possivel por dado real e codigo (em vez de esperar resposta item-a-item do dono) reduz o numero de decisoes humanas pendentes a so 5, todas genuinamente fora do alcance da exportacao/automation.
+- [Phase 00]: Plan 00-07: Fase 0 fechada — PREP-01..06 com status Complete/[x] e prova (commit ou decisão D-13) em REQUIREMENTS.md; PREP-05 (rotação Omie) é risco aceito pelo dono em 2026-09-16, não pendente; ROADMAP.md não editado pelas tasks de código (a Task 1 verificou git diff --quiet), mas ajustado no fechamento do plano — critério 4 e linha do índice da Phase 0 (ver SUMMARY 00-07 para o texto exato e o porquê de não ficar pendente para um orquestrador separado); README.md do apps/api ganha a seção de exportação do ClickUp; npm run check verde (dominio 253, api 120, web 53) com e sem CLICKUP_API_TOKEN/DATABASE_URL no shell
 
 ### Pending Todos
 
@@ -119,13 +121,12 @@ Nenhum em `.planning/todos/` ainda. Decisões com prazo (ver ROADMAP.md "Decisõ
 ### Blockers/Concerns
 
 - PERS-08 bloqueado por D11 (deploy do `apps/api`); não trava o código da Phase 1.
-- PREP-03 (spec da Solicitação) não existe e é pré-requisito de toda a Phase 2 — "o maior risco do plano".
 - SOL-01 (D6), SOL-08 (D8) e REC-01 (D7) bloqueados por decisão aberta.
 - `rejectUnauthorized: false` em `apps/api/src/persistencia/conexao.ts` — fixar a CA do Supabase antes de o `apps/api` ir para a VPS.
 - Sem teste ponta a ponta tela → Postgres nem de sessão → Membro (CONCERNS.md) — fechar na Phase 1.
-- Credenciais Omie no histórico do git do financeiro-tria e por linha em `solicitacoes_pagamentos`/`transacoes` — rotacionar (PREP-05), nunca copiar na importação.
-- PREP-04 parcial: revisor FO (ClickUp id 81581802) sem e-mail real — dono precisa informar o e-mail corporativo ou confirmar acesso ao Team Family Office/Marcos Paulo (9011658148) para nova tentativa de usuarios.cli.ts
 - Plan 00-06 (PREP-03): 5 decisoes abertas em docs/07-processos/solicitacao-de-pagamento.md §12 (L-01, L-03, L-07, L-09, L-11) que so o dono/Financeiro pode responder antes/durante o planejamento da Fase 2 -- nao bloqueiam PREP-03 em si (spec ja fecha D6/D8), mas devem ser revisitadas ao planejar SOL-01..09.
+- Credenciais Omie no histórico do git do financeiro-tria e por linha em `solicitacoes_pagamentos`/`transacoes` — risco aceito pelo dono (D-13, 2026-09-16); nunca copiar na importação.
+- PREP-04 fechado (Plan 00-07), mas o revisor FO (ClickUp id 81581802) segue sem e-mail real em de-para-usuarios.ts — dono precisa informar o e-mail corporativo ou confirmar acesso ao Team Family Office/Marcos Paulo (9011658148) para nova tentativa de usuarios.cli.ts antes de a Fase 2/3 convidar esta entrada.
 
 ## Deferred Items
 
@@ -140,6 +141,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-17T03:23:38.704Z
-Stopped at: Completed 00-06-PLAN.md (spec da Solicitação de pagamento — PREP-03 fechado)
+Last session: 2026-09-17T03:38:02.328Z
+Stopped at: Completed 00-07-PLAN.md (fechamento da Fase 0 — rastreabilidade, README, portão CON-05)
 Resume file: None
