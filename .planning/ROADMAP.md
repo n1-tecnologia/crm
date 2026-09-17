@@ -58,7 +58,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 00-06-PLAN.md — Spec `solicitacao-de-pagamento.md` §1–§12 lida da Lista real, lacunas respondidas pelo dono (PREP-03)
+- [x] 00-06-PLAN.md — Spec `solicitacao-de-pagamento.md` §1–§12 lida da Lista real, lacunas respondidas pelo dono (PREP-03)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -209,7 +209,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 0. Preparação | 5/7 | In Progress|  |
+| 0. Preparação | 6/7 | In Progress|  |
 | 1. O CRM N1 ganha persistência e login | 11/11 | Complete   | 2026-09-16 |
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 0/TBD | Not started | - |
 | 3. Contas a pagar | 0/TBD | Not started | - |
