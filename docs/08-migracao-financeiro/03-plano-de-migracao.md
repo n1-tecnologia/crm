@@ -97,7 +97,7 @@ Estimativas para uma pessoa focada.
 | Exportação completa das Listas ClickUp `901109104938` (Solicitação), `901107637383` (Contas a pagar), `901107648977` (Contas a receber) | Tarefas, Campos, Comentários, **histórico de status**, anexos, com paginação. É o insumo da importação e a prova de paridade depois |
 | `docs/07-processos/solicitacao-de-pagamento.md` | **A lacuna mais séria do levantamento.** Contas a pagar e a receber têm spec lida da Lista real; a Solicitação não tem. Reconstruí o processo pelo código, que mostra o que está automatizado, não o que as pessoas fazem |
 | De-para: 6 IDs de usuário do ClickUp → Membros | Elifas `81591229`, Fabíola `81581798`, Thiago `81581826`, Iallas `81582295`, Financeiro `81581816`, revisor FO `81581802` |
-| Rotação das credenciais Omie do Marcos Paulo | Estão no histórico do git (`tenants/marcos-paulo/config.ts`) |
+| ~~Rotação das credenciais Omie do Marcos Paulo~~ | **Retirada em 2026-09-16 por decisão do dono (D-13, risco aceito): as credenciais atuais continuam em uso.** Estão no histórico do git (`tenants/marcos-paulo/config.ts`) e por linha nas tabelas do legado; CON-10 vale para o que a plataforma cria. |
 | ~~Contagem de linhas das tabelas legadas~~ | **Feito.** Ver [inventário §5.7](01-inventario-financeiro-tria.md#57-volume-real). De quebra: a observabilidade (`automation_runs` e companhia) tem 9 linhas para 1.110 solicitações — pode ser descartada em vez de migrada, e `planos_de_contas` está vazia |
 
 ### Fase 1 — O CRM N1 ganha persistência e login · 3–4 semanas

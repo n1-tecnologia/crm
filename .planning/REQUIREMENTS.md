@@ -7,15 +7,17 @@
 
 **Status verificado contra o código em 2026-09-15** (`.planning/intel/requirements.md`), não contra o que os documentos dizem: `feito` (4, marcados `[x]`) · `sobreposto` (1) · `em andamento` (4 — existem no protótipo em memória) · `bloqueado por decisão` (4) · `pendente` (22). Os IDs `REQ-…` entre parênteses são os da intel, para rastreio.
 
+**Fase 0 fechada em 2026-09-17** (Plan 00-07): `feito` (7, marcados `[x]` — PREP-01/02/03/04/06 e PERS-01/02) · `risco aceito pelo dono` (1 — PREP-05, D-13) · `sobreposto` (1) · `em andamento` (4) · `bloqueado por decisão` (4) · `pendente` (18). Ver Coverage no fim deste arquivo para a contagem atualizada.
+
 ## v1 Requirements
 
 ### Fase 0 — Preparação (PREP)
 
 - [x] **PREP-01**: Schema `plataforma` criado, vazio, sem tocar nas 26 tabelas do `public` (`REQ-f0-schema-plataforma`). Aceite: schema existe; `npm run migrar` aplica `001-plataforma.sql`. **Feito** no projeto próprio `epomplsskqpluxuujpxl` (DEC-08) — `apps/api/migracoes/001-plataforma.sql`, commit `b20597d`.
-- [x] **PREP-02**: Exportação completa das Listas `901109104938` (Solicitação), `901107637383` (Contas a pagar) e `901107648977` (Contas a receber): Tarefas, Campos, Comentários, histórico de status, anexos, com paginação (`REQ-f0-exportacao-clickup`). Aceite: é o insumo da importação e a prova de paridade depois (CON-09). Pendente — nenhum artefato no repositório.
-- [x] **PREP-03**: Escrever `docs/07-processos/solicitacao-de-pagamento.md` lendo a Lista real `901109104938`, no padrão de `contas-a-pagar.md` (`REQ-f0-spec-solicitacao-de-pagamento`). **A lacuna mais séria do levantamento e o maior risco do plano** — o processo foi reconstruído pelo código, que mostra o que está automatizado, não o que as pessoas fazem. Aceite: spec com Status, Campos, papéis, fluxo, automações, permissões e regras, lida da Lista real, que responda D6 e D8 (ou os deixe explicitamente abertos) e absorva OQ-CMP-01/02/04. Pré-requisito de toda a Fase 2. Pendente — o arquivo não existe.
-- [ ] **PREP-04**: De-para dos 6 IDs de usuário do ClickUp → Membros (CON-11: Elifas `81591229`, Fabíola `81581798`, Thiago `81581826`, Iallas `81582295`, Financeiro `81581816`, revisor FO `81581802`), ampliado às 38 variáveis `CLICKUP_*` (`REQ-f0-de-para-usuarios-clickup`). Aceite: não especificado além da tabela. Usado pelas importações das Fases 2 e 3. Pendente.
-- [ ] **PREP-05**: Rotacionar as credenciais Omie do Marcos Paulo (hardcoded em `tenants/marcos-paulo/config.ts`, no histórico do git); nas telas novas, credencial só na Integração (CON-10) (`REQ-f0-rotacao-credenciais-omie`). Aceite: não especificado (observável: as credenciais antigas deixam de autenticar). Escopo: `financeiro-tria` + Omie — fora deste repositório. Pendente.
+- [x] **PREP-02**: Exportação completa das Listas `901109104938` (Solicitação), `901107637383` (Contas a pagar) e `901107648977` (Contas a receber): Tarefas, Campos, Comentários, histórico de status, anexos, com paginação (`REQ-f0-exportacao-clickup`). Aceite: é o insumo da importação e a prova de paridade depois (CON-09). **Feito** — Plans 00-01/00-03/00-04/00-05 (`apps/api/src/importacao/clickup/`, `apps/api/exportacoes/MANIFESTO.md`/`.json`, commit `7df69cc`): 3.118 Tarefas, 4.412 Comentários, 3.120 `time_in_status`, 1.595 anexos, 11.001 arquivos/504 MB fora do git. Ressalva: "histórico de status" entregue como `time_in_status` (tempo acumulado por status) + Comentários datados — a API do ClickUp não expõe histórico cronológico de transições.
+- [x] **PREP-03**: Escrever `docs/07-processos/solicitacao-de-pagamento.md` lendo a Lista real `901109104938`, no padrão de `contas-a-pagar.md` (`REQ-f0-spec-solicitacao-de-pagamento`). **A lacuna mais séria do levantamento e o maior risco do plano** — o processo foi reconstruído pelo código, que mostra o que está automatizado, não o que as pessoas fazem. Aceite: spec com Status, Campos, papéis, fluxo, automações, permissões e regras, lida da Lista real, que responda D6 e D8 (ou os deixe explicitamente abertos) e absorva OQ-CMP-01/02/04. Pré-requisito de toda a Fase 2. **Feito** — Plan 00-06 (`docs/07-processos/solicitacao-de-pagamento.md`, commits `f0311ac`/`f095369`): §1–§12, D6/D8 fechados, OQ-CMP-01/02/04 absorvidos; L-01, L-03, L-07, L-09, L-11 devolvidos ao dono em §12 antes/durante o planejamento da Fase 2.
+- [x] **PREP-04**: De-para dos 6 IDs de usuário do ClickUp → Membros (CON-11: Elifas `81591229`, Fabíola `81581798`, Thiago `81581826`, Iallas `81582295`, Financeiro `81581816`, revisor FO `81581802`), ampliado às 38 variáveis `CLICKUP_*` (`REQ-f0-de-para-usuarios-clickup`). Aceite: não especificado além da tabela. Usado pelas importações das Fases 2 e 3. **Feito** — Plan 00-02 (`apps/api/src/importacao/clickup/de-para-usuarios.ts`, commits `3daa954`/`a7cc636`): 6 entradas + catálogo de 62 variáveis `CLICKUP_*`/`MP_CLICKUP_*`/`FO_CLICKUP_*`. Ressalva: 5/6 e-mails resolvidos pela API real; o revisor FO (`81581802`) fica com `fonteDoEmail: "nao-resolvido"` e `email: ""` — `inviteMember` recusa e-mail vazio, então esta entrada não convida Membro até o dono informar o e-mail real. Não bloqueia o fechamento de PREP-04 (o aceite era "não especificado além da tabela", e a tabela existe, tipada e testada); bloqueia só o uso desta entrada específica na importação (Fase 2/3).
+- [x] **PREP-05**: **Retirado — risco aceito pelo dono em 2026-09-16 (D-13, `00-CONTEXT.md`).** As credenciais Omie do Marcos Paulo (hardcoded em `tenants/marcos-paulo/config.ts`, no histórico do git do financeiro-tria, e por linha em `solicitacoes_pagamentos`/`transacoes`) continuam em uso por decisão do dono; não há rotação nesta fase nem fase definida para ela (ver Deferred em `00-CONTEXT.md`). CON-10 continua valendo para o que a plataforma cria: credencial só na Integração, nunca por linha, nunca copiada na importação. Critério 4 da Fase 0 no ROADMAP: risco aceito — o verificador não deve cobrá-lo. (`REQ-f0-rotacao-credenciais-omie`)
 - [x] **PREP-06**: Medir o volume das tabelas legadas (`REQ-f0-contagem-linhas-legado`). **Feito** 2026-09-15: maior tabela 9.510 linhas; `solicitacoes_pagamentos` 1.110; risco "volume desconhecido" fechado; subproduto CAND-03.
 
 ### Fase 1 — O CRM N1 ganha persistência e login (PERS)
@@ -101,10 +103,10 @@ Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pe
 | Requirement | Phase | Status | Situação verificada (intel) | ID intel |
 |-------------|-------|--------|-----------------------------|----------|
 | PREP-01 | Phase 0 | Complete | feito (`b20597d`) | REQ-f0-schema-plataforma |
-| PREP-02 | Phase 0 | Complete | pendente | REQ-f0-exportacao-clickup |
-| PREP-03 | Phase 0 | Complete | pendente — maior risco do plano; bloqueia a Fase 2 | REQ-f0-spec-solicitacao-de-pagamento |
-| PREP-04 | Phase 0 | Pending | pendente | REQ-f0-de-para-usuarios-clickup |
-| PREP-05 | Phase 0 | Pending | pendente — fora deste repositório | REQ-f0-rotacao-credenciais-omie |
+| PREP-02 | Phase 0 | Complete | feito (`7df69cc`) — 3.118 Tarefas, 11.001 arquivos; `time_in_status` é aproximado, não histórico cronológico | REQ-f0-exportacao-clickup |
+| PREP-03 | Phase 0 | Complete | feito (`f095369`) — D6/D8 fechados; 5 lacunas (L-01/03/07/09/11) devolvidas ao dono para a Fase 2 | REQ-f0-spec-solicitacao-de-pagamento |
+| PREP-04 | Phase 0 | Complete | feito (`a7cc636`) — 5/6 e-mails resolvidos; revisor FO (81581802) sem e-mail real, aguardando o dono | REQ-f0-de-para-usuarios-clickup |
+| PREP-05 | Phase 0 | Complete | risco aceito pelo dono em 2026-09-16, D-13 — não rotacionar; critério 4 da Fase 0 não se aplica | REQ-f0-rotacao-credenciais-omie |
 | PREP-06 | Phase 0 | Complete | feito (2026-09-15) | REQ-f0-contagem-linhas-legado |
 | PERS-01 | Phase 1 | Complete | feito (`9fb2754`, `3fd7e1b`, `b20597d`) | REQ-f1-persistencia-unidade-de-trabalho |
 | PERS-02 | Phase 1 | Complete | feito (`d713253`) | REQ-f1-supabase-auth |
@@ -141,8 +143,8 @@ Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pe
 - v1 requirements: 35 total (34 executáveis + 1 sobreposto por decisão travada)
 - Mapped to phases: 34 (Phase 0: 6 · Phase 1: 8 · Phase 2: 9 · Phase 3: 7 · Phase 4: 1 · Phase 5: 3)
 - Unmapped: 0 ✓ (PERS-03 não tem fase por ser sobreposto — sua parte viva é PERS-07)
-- Já feitos: 4 (PREP-01, PREP-06, PERS-01, PERS-02) · em andamento: 4 · bloqueados por decisão: 4 (D11, D6, D8, D7) · pendentes: 22
+- Já feitos: 8 (PREP-01, PREP-02, PREP-03, PREP-04, PREP-06 — Fase 0 fechada em 2026-09-17, Plan 00-07 — mais PERS-01, PERS-02 da Fase 1) · risco aceito pelo dono: 1 (PREP-05, D-13) · em andamento: 4 · bloqueados por decisão: 4 (D11, D6, D8, D7) · pendentes: 18
 
 ---
 *Requirements defined: 2026-09-15*
-*Last updated: 2026-09-15 after ingest de docs + roadmap inicial*
+*Last updated: 2026-09-17 after fechamento da Fase 0 (Plan 00-07)*
