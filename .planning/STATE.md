@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 00-04-PLAN.md (manifesto.ts, exportar.cli.ts, exportar.integration.test.ts contra a API real)
-last_updated: "2026-09-17T00:31:29.796Z"
+stopped_at: Completed 00-05-PLAN.md (exportação real do ClickUp + manifesto commitado)
+last_updated: "2026-09-17T02:44:02.714Z"
 last_activity: 2026-09-16 -- Phase 00 execution started
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 23
-  completed_plans: 15
+  completed_plans: 16
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 00 (prepara-o) — EXECUTING
-Plan: 5 of 7
+Plan: 6 of 7
 Status: Ready to execute
 Last activity: 2026-09-16 -- Phase 00 execution started
 
@@ -70,6 +70,7 @@ Progress: [██████████] 100% (11/11 planos GSD; em requisitos
 | Phase 00 P02 | 24min | 2 tasks | 3 files |
 | Phase 00 P03 | 16min | 2 tasks | 2 files |
 | Phase 00 P04 | 30min | 3 tasks | 7 files |
+| Phase 00 P05 | 130min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -102,6 +103,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 00]: exportarClickUp: time_in_status é smoke-testado por execução inteira (não por Lista) — a primeira falha 4xx desliga o recurso globalmente; anexo já em disco conta em anexosBaixados para a retomada produzir as mesmas contagens da execução original — Plan 00-03
 - [Phase 00]: Plan 00-04: exportar.cli.ts CLICKUP_API_TOKEN= (variável definida vazia) prova o caminho sem token, não env -u sozinho — carregarEnv() repõe do .env qualquer chave ainda ausente
 - [Phase 00]: Plan 00-04: time_in_status confirmado DISPONÍVEL no Workspace Tria (smoke test real na Tarefa 868k8tn50) — responde Open Question 2 do RESEARCH.md; Plan 00-05 exporta o recurso sem o smoke test desligá-lo
+- [Phase 00]: Plan 00-05: exportação real das 3 Listas do ClickUp concluída sem interrupções (2h01m35s, 11.000 requisições, 0 avisos); MANIFESTO.md/.json commitados (11.001 arquivos, hashAgregado adf52d27...6d68); PREP-02 fechado
+- [Phase 00]: Plan 00-05: achado real — Lista 901109104938 (Solicitação de pagamento) só tem 19 Tarefas em disco, não as ~1.110 do inventário legado; as ~1.110 são linhas de solicitacoes_pagamentos no Supabase do financeiro-tria, não Tarefas retidas no ClickUp (verificado por list.json.task_count=18, paginação completa, 0 avisos) — impacta Plan 00-06 (spec lê Lista pequena) e a origem de dado da importação de histórico na Fase 2/3
 
 ### Pending Todos
 
@@ -134,6 +137,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-17T00:31:29.790Z
-Stopped at: Completed 00-04-PLAN.md (manifesto.ts, exportar.cli.ts, exportar.integration.test.ts contra a API real)
+Last session: 2026-09-17T02:44:02.704Z
+Stopped at: Completed 00-05-PLAN.md (exportação real do ClickUp + manifesto commitado)
 Resume file: None

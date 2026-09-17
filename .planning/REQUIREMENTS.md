@@ -12,7 +12,7 @@
 ### Fase 0 — Preparação (PREP)
 
 - [x] **PREP-01**: Schema `plataforma` criado, vazio, sem tocar nas 26 tabelas do `public` (`REQ-f0-schema-plataforma`). Aceite: schema existe; `npm run migrar` aplica `001-plataforma.sql`. **Feito** no projeto próprio `epomplsskqpluxuujpxl` (DEC-08) — `apps/api/migracoes/001-plataforma.sql`, commit `b20597d`.
-- [ ] **PREP-02**: Exportação completa das Listas `901109104938` (Solicitação), `901107637383` (Contas a pagar) e `901107648977` (Contas a receber): Tarefas, Campos, Comentários, histórico de status, anexos, com paginação (`REQ-f0-exportacao-clickup`). Aceite: é o insumo da importação e a prova de paridade depois (CON-09). Pendente — nenhum artefato no repositório.
+- [x] **PREP-02**: Exportação completa das Listas `901109104938` (Solicitação), `901107637383` (Contas a pagar) e `901107648977` (Contas a receber): Tarefas, Campos, Comentários, histórico de status, anexos, com paginação (`REQ-f0-exportacao-clickup`). Aceite: é o insumo da importação e a prova de paridade depois (CON-09). Pendente — nenhum artefato no repositório.
 - [ ] **PREP-03**: Escrever `docs/07-processos/solicitacao-de-pagamento.md` lendo a Lista real `901109104938`, no padrão de `contas-a-pagar.md` (`REQ-f0-spec-solicitacao-de-pagamento`). **A lacuna mais séria do levantamento e o maior risco do plano** — o processo foi reconstruído pelo código, que mostra o que está automatizado, não o que as pessoas fazem. Aceite: spec com Status, Campos, papéis, fluxo, automações, permissões e regras, lida da Lista real, que responda D6 e D8 (ou os deixe explicitamente abertos) e absorva OQ-CMP-01/02/04. Pré-requisito de toda a Fase 2. Pendente — o arquivo não existe.
 - [ ] **PREP-04**: De-para dos 6 IDs de usuário do ClickUp → Membros (CON-11: Elifas `81591229`, Fabíola `81581798`, Thiago `81581826`, Iallas `81582295`, Financeiro `81581816`, revisor FO `81581802`), ampliado às 38 variáveis `CLICKUP_*` (`REQ-f0-de-para-usuarios-clickup`). Aceite: não especificado além da tabela. Usado pelas importações das Fases 2 e 3. Pendente.
 - [ ] **PREP-05**: Rotacionar as credenciais Omie do Marcos Paulo (hardcoded em `tenants/marcos-paulo/config.ts`, no histórico do git); nas telas novas, credencial só na Integração (CON-10) (`REQ-f0-rotacao-credenciais-omie`). Aceite: não especificado (observável: as credenciais antigas deixam de autenticar). Escopo: `financeiro-tria` + Omie — fora deste repositório. Pendente.
@@ -101,7 +101,7 @@ Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pe
 | Requirement | Phase | Status | Situação verificada (intel) | ID intel |
 |-------------|-------|--------|-----------------------------|----------|
 | PREP-01 | Phase 0 | Complete | feito (`b20597d`) | REQ-f0-schema-plataforma |
-| PREP-02 | Phase 0 | Pending | pendente | REQ-f0-exportacao-clickup |
+| PREP-02 | Phase 0 | Complete | pendente | REQ-f0-exportacao-clickup |
 | PREP-03 | Phase 0 | Pending | pendente — maior risco do plano; bloqueia a Fase 2 | REQ-f0-spec-solicitacao-de-pagamento |
 | PREP-04 | Phase 0 | Pending | pendente | REQ-f0-de-para-usuarios-clickup |
 | PREP-05 | Phase 0 | Pending | pendente — fora deste repositório | REQ-f0-rotacao-credenciais-omie |
