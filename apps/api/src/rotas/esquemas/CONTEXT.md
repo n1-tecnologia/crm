@@ -29,10 +29,13 @@ ser válido", limites numéricos) continua exclusivamente no domínio.
    }`); ninguém dentro desta pasta importa dele. Sem ciclo:
    `fragmentos.ts` → `<modulo>.ts` → `esquemas-de-argumentos.ts` →
    `operacoes.ts`.
+7. `esquemas-de-argumentos.ts` compõe os 15 sob `satisfies
+   EsquemasCompletos` — um módulo novo no domínio exige um arquivo novo
+   aqui, senão não compila.
 
 ## Arquivos
 
-Ao fim deste plano (01-12):
+Todos presentes desde o Plan 01-16, que fechou a composição:
 
 | Arquivo | Módulo do domínio |
 |---|---|
@@ -40,11 +43,6 @@ Ao fim deste plano (01-12):
 | `tarefas.ts` | `tasks.ts` |
 | `automacoes.ts` | `automations.ts` |
 | `financeiro.ts` | `financeiro.ts` |
-
-Acrescentados pelos Plans 01-13/14/15 (onda 2, em paralelo):
-
-| Arquivo | Módulo do domínio |
-|---|---|
 | `negocios.ts` | `deals.ts` |
 | `conversas.ts` | `conversations.ts` |
 | `contatos.ts` | `contacts.ts` |
@@ -58,5 +56,6 @@ Acrescentados pelos Plans 01-13/14/15 (onda 2, em paralelo):
 | `membros.ts` | `members.ts` |
 | `estrutura.ts` | `structure.ts` |
 
-O Plan 01-16 fecha a composição (`ESQUEMAS satisfies EsquemasCompletos`),
-remove o fallback estrutural `ARGUMENTOS_GENERICOS` e limpa a rota.
+`esquemas-de-argumentos.ts` compõe os 15 sob `satisfies EsquemasCompletos`
+— toda operação de `OPERACOES` (132) tem schema; não existe mais fallback
+estrutural nem operação alcançável por HTTP sem schema próprio.

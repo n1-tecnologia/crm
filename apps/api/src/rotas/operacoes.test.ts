@@ -9,10 +9,13 @@
  * 403 — contra `apps/api/src/persistencia/unidade-de-trabalho.ts`.
  *
  * Os casos (k)–(r) provam CR-02: forma errada é 400 ANTES de `executar()`
- * (sem banco, (k)–(o)) ou por `TypeError` mapeado dentro dela (com banco,
- * (p)–(q)) — nada chega ao `jsonb`; (r) prova que o caminho feliz continua
- * inteiro.
+ * para TODA operação (sem banco, (k)–(o); com banco, (p)/(q)) — nada chega
+ * ao `jsonb`; (r) prova que o caminho feliz continua inteiro.
  * (s) prova WR-10 — o reviver protegido antes de qualquer schema.
+ * (t)–(v) fecham a segunda rodada de CR-02 (Plan 01-16): `createGoal` e
+ * `saveView` — antes só cobertas pelo fallback estrutural — agora têm
+ * schema próprio; nada muda no contrato HTTP em si, só a superfície
+ * coberta.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -183,6 +186,23 @@ describe("POST /operacoes/:nome — sem banco", () => {
     expect(respostaCorpo.ok).toBe(false);
     expect(respostaCorpo.error).toBe('Entrada inválida para "updateTask".');
   });
+
+  it("(t) createGoal com kind:42 e anchor.lixo responde 400 antes de executar() — a forma que o verificador reproduziu", async () => {
+    const resposta = await appDeTeste().inject({
+      method: "POST",
+      url: "/operacoes/createGoal",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: {
+        args: [
+          { name: "Meta", anchor: { type: "list", id: "lst_ativacao", lixo: { a: [1, 2] } }, kind: 42, target: 10 },
+        ],
+      },
+    });
+    expect(resposta.statusCode).toBe(400);
+    const corpo = resposta.json();
+    expect(corpo.ok).toBe(false);
+    expect(corpo.error.startsWith('Entrada inválida para "createGoal"')).toBe(true);
+  });
 });
 
 carregarEnv();
@@ -307,7 +327,7 @@ d("POST /operacoes/:nome — contra o banco real", () => {
     }
   });
 
-  it("(q) createChatFolder com name:123 estoura TypeError dentro da operação — mapeado para 400, nada persistido", async () => {
+  it("(q) createChatFolder com name:123 responde 400 pelo schema — antes de executar(), nada persistido", async () => {
     const clienteAntes = await pool().connect();
     let quantidadeAntes: number;
     try {
@@ -326,7 +346,7 @@ d("POST /operacoes/:nome — contra o banco real", () => {
     expect(resposta.statusCode).toBe(400);
     const corpo = resposta.json();
     expect(corpo.ok).toBe(false);
-    expect(corpo.error).toBe('Entrada inválida para "createChatFolder".');
+    expect(corpo.error).toBe('Entrada inválida para "createChatFolder" em 0.name.');
 
     const clienteDepois = await pool().connect();
     try {
@@ -358,5 +378,87 @@ d("POST /operacoes/:nome — contra o banco real", () => {
     } finally {
       cliente.release();
     }
+  });
+
+  it("(u) createGoal com kind:42 nunca persistido — state.goals inalterado", async () => {
+    const clienteAntes = await pool().connect();
+    let quantidadeAntes: number;
+    try {
+      const { state } = await hidratar(clienteAntes, WS);
+      quantidadeAntes = state.goals.length;
+    } finally {
+      clienteAntes.release();
+    }
+
+    const resposta = await appDeTeste().inject({
+      method: "POST",
+      url: "/operacoes/createGoal",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: {
+        args: [
+          { name: "Meta", anchor: { type: "list", id: "lst_ativacao", lixo: { a: [1, 2] } }, kind: 42, target: 10 },
+        ],
+      },
+    });
+    expect(resposta.statusCode).toBe(400);
+
+    const clienteDepois = await pool().connect();
+    try {
+      const { state } = await hidratar(clienteDepois, WS);
+      expect(state.goals.length).toBe(quantidadeAntes);
+    } finally {
+      clienteDepois.release();
+    }
+  });
+
+  it("(v) saveView com filters arbitrário responde 400 e state.views inalterado; com filters:{} responde 200", async () => {
+    const clienteAntes = await pool().connect();
+    let quantidadeAntes: number;
+    try {
+      const { state } = await hidratar(clienteAntes, WS);
+      quantidadeAntes = state.views.length;
+    } finally {
+      clienteAntes.release();
+    }
+
+    const respostaHostil = await appDeTeste().inject({
+      method: "POST",
+      url: "/operacoes/saveView",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: {
+        args: [
+          {
+            listId: CP.listId,
+            name: "V",
+            kind: "lista",
+            filters: { qualquer: { coisa: true } },
+            shared: false,
+          },
+        ],
+      },
+    });
+    expect(respostaHostil.statusCode).toBe(400);
+    const corpoHostil = respostaHostil.json();
+    expect(corpoHostil.ok).toBe(false);
+    expect(corpoHostil.error).toContain("em 0.filters");
+
+    const clienteDepois = await pool().connect();
+    try {
+      const { state } = await hidratar(clienteDepois, WS);
+      expect(state.views.length).toBe(quantidadeAntes);
+    } finally {
+      clienteDepois.release();
+    }
+
+    const respostaLegitima = await appDeTeste().inject({
+      method: "POST",
+      url: "/operacoes/saveView",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: {
+        args: [{ listId: CP.listId, name: "V", kind: "lista", filters: {}, shared: false }],
+      },
+    });
+    expect(respostaLegitima.statusCode).toBe(200);
+    expect(respostaLegitima.json().ok).toBe(true);
   });
 });

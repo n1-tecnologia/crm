@@ -1,19 +1,26 @@
 /**
- * `POST /operacoes/:nome` — a rota genérica que serve as ~130 operações do
+ * `POST /operacoes/:nome` — a rota genérica que serve as 132 operações do
  * registro (`OPERACOES`, `@n1/dominio/operations/registro`). CON-02 ("uma
  * rota por operação") é satisfeito pelo path param mapeado 1:1 a uma função
  * exportada: o contrato HTTP é idêntico ao de uma rota por operação, sem
- * repetir a mesma casca ~130 vezes.
+ * repetir a mesma casca 132 vezes.
  *
  * A rota não reimplementa regra de negócio nem toca banco diretamente
  * (`apps/api/src/rotas/CONTEXT.md`). Uma recusa do domínio
  * (`OperationResult.ok:false`) viaja em 200: é valor, não falha de
  * transporte (Pitfall 2, RESEARCH.md) — 4xx/5xx são reservados a falhas de
- * transporte (401/403 do hook, 404 nome fora do registro, 400 entrada
- * inválida — schema da operação (`esquemas-de-argumentos.ts`), `TypeError`
- * dentro dela (CR-02), ou aninhamento de `args` além do que `reviverArgumentos`
- * suporta (WR-10) — 409 conflito de revisão, 500 erro não tratado, que
- * sobe ao `setErrorHandler` de `app.ts`).
+ * transporte:
+ *   - 401/403 do hook de autenticação;
+ *   - 404 nome fora do registro (`OPERACOES`);
+ *   - 400 entrada inválida — schema da operação (todas as 132 têm o seu,
+ *     `esquemas-de-argumentos.ts`, CR-02) ou aninhamento de `args` além do
+ *     que `reviverArgumentos` suporta (WR-10);
+ *   - 409 conflito de revisão;
+ *   - 500 qualquer exceção dentro da operação (inclusive `TypeError`): é
+ *     bug, não entrada — sobe ao `setErrorHandler` de `app.ts` com log
+ *     `error`, de propósito (WR-11: o mapeamento `TypeError → 400` que
+ *     existia para operações sem schema próprio foi removido por inteiro,
+ *     não estreitado — não existe mais operação sem schema).
  *
  * O Membro atuante é SEMPRE `request.membro.id`, resolvido pelo hook de
  * autenticação a partir do token — nada do corpo o substitui (T-1-02).
@@ -49,13 +56,13 @@ const BODY = z.object({
 /**
  * `OPERACOES` é `as const satisfies Record<...>`: indexar por um
  * `NomeDeOperacao` genérico (não um literal específico) devolve a união das
- * assinaturas de todas as ~130 funções, que TypeScript não deixa chamar
- * diretamente. A ASSINATURA é garantida pela regra de inclusão de
- * `registro.ts` — toda entrada tem a forma
- * `(state, actingMemberId, ...args) => OperationResult` —; a FORMA dos
- * `args` é garantida por `esquemaDeArgumentos()` (`esquemas-de-argumentos.ts`,
- * CR-02) ANTES do despacho. O cast aqui só relaxa o que o compilador não
- * consegue expressar sem um genérico por chamada.
+ * assinaturas das 132 funções, que TypeScript não deixa chamar diretamente.
+ * A ASSINATURA é garantida pela regra de inclusão de `registro.ts` — toda
+ * entrada tem a forma `(state, actingMemberId, ...args) => OperationResult`
+ * —; a FORMA dos `args` é garantida por `esquemaDeArgumentos()`
+ * (`esquemas-de-argumentos.ts`, CR-02) para TODAS as operações, ANTES do
+ * despacho. O cast aqui só relaxa o que o compilador não consegue expressar
+ * sem um genérico por chamada.
  */
 const REGISTRO = OPERACOES as Record<
   string,
@@ -63,17 +70,19 @@ const REGISTRO = OPERACOES as Record<
 >;
 
 /** Lançado quando a entrada de uma operação não bate com a forma esperada —
- * de três origens: o schema de um serviço em `SERVICOS` (`args[0]`), o
- * schema por operação de `esquemaDeArgumentos()` (antes do despacho) ou um
- * `TypeError` lançado DENTRO da própria operação (CR-02). Tratado aqui
- * mesmo, nunca sobe ao `setErrorHandler` genérico de `app.ts` (que
- * devolveria 500 para o que é, na verdade, uma entrada inválida — 400). */
+ * de uma única origem depois desta rodada (WR-11): o schema de um serviço
+ * em `SERVICOS` (`args[0]`, ex. `inviteMember`). O 400 do schema por
+ * operação (`esquemaDeArgumentos()`) e o do `RangeError` de
+ * `reviverArgumentos` (WR-10) respondem direto, sem passar por esta classe.
+ * Tratado aqui mesmo, nunca sobe ao `setErrorHandler` genérico de `app.ts`
+ * (que devolveria 500 para o que é, na verdade, uma entrada inválida —
+ * 400). */
 class ErroDeEntrada extends Error {}
 
 /**
- * Mensagem única de 400 para as três origens de `ErroDeEntrada` — nunca a
- * `message` do zod nem a de um `TypeError` (T-1-06): o detalhe completo vai
- * ao `request.log.warn`, nunca ao corpo da resposta.
+ * Mensagem única de 400 — nunca a `message` do zod nem a de uma exceção
+ * (T-1-06): o detalhe completo vai ao `request.log.warn`, nunca ao corpo da
+ * resposta.
  */
 function mensagemDeEntradaInvalida(nome: string, problema?: { readonly path: ReadonlyArray<PropertyKey> }): string {
   const caminho = problema && problema.path.length > 0 ? ` em ${problema.path.join(".")}` : "";
@@ -140,11 +149,12 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
         throw erro;
       }
 
-      // CR-02 — a FORMA dos args, validada ANTES do despacho: schema por
-      // operação para as 23 mais expostas, estrutural para as demais. O
-      // dado que segue é `validacao.data`, re-criado pelo zod só com o que
-      // o schema conhece (`.strict()`; `null` de posicional opcional já
-      // virado `undefined`) — nunca os `args` crus do corpo.
+      // CR-02 — a FORMA dos args, validada ANTES do despacho: schema
+      // próprio para TODAS as 132 operações (`ESQUEMAS satisfies
+      // EsquemasCompletos`, Plan 01-16), sem fallback. O dado que segue é
+      // `validacao.data`, re-criado pelo zod só com o que o schema conhece
+      // (`.strict()`; `null` de posicional opcional já virado `undefined`)
+      // — nunca os `args` crus do corpo.
       const validacao = esquemaDeArgumentos(nome).safeParse(revividos);
       if (!validacao.success) {
         request.log.warn(
@@ -161,26 +171,15 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
         resultado = servico
           ? await servico(request.membro, args)
           : await executar(request.membro.workspaceId, (state) => {
-              const operacao = REGISTRO[nome]!;
-              try {
-                return operacao(state, request.membro.id, ...args);
-              } catch (erro) {
-                // As operações confiam nos tipos do TypeScript, que não
-                // existem em runtime; para quem não tem schema próprio, um
-                // `TypeError` é o sinal de forma errada, e forma errada é
-                // 400 — `executar()` já faz rollback antes de relançar
-                // (CR-02), então nada é gravado. `RangeError` NÃO é mapeado
-                // de propósito: com `z.date()` recusando `Invalid Date`, um
-                // `RangeError` já não é sinal de entrada.
-                if (erro instanceof TypeError) {
-                  request.log.warn(
-                    { operacao: nome, membro: request.membro.id, causa: erro.message },
-                    "TypeError dentro da operação — tratado como entrada inválida",
-                  );
-                  throw new ErroDeEntrada(mensagemDeEntradaInvalida(nome));
-                }
-                throw erro;
-              }
+              // WR-11 — `args` já tem exatamente a forma da assinatura
+              // (schema próprio, `satisfies EsquemasCompletos`); um erro
+              // aqui dentro (inclusive `TypeError`) só pode ser estado
+              // hidratado inconsistente ou bug do domínio, nunca entrada —
+              // sobe sem mapeamento, `executar()` já faz rollback antes de
+              // relançar, e o `setErrorHandler` de `app.ts` devolve 500 com
+              // log `error`, de propósito, para não ficar escondido atrás
+              // de um 400 ao cliente.
+              return REGISTRO[nome]!(state, request.membro.id, ...args);
             });
       } catch (erro) {
         if (erro instanceof ErroDeEntrada) {
