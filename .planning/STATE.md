@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 00-02-PLAN.md (PREP-04 parcial)
-last_updated: "2026-09-16T23:49:49.106Z"
+stopped_at: Completed 00-03-PLAN.md (exportar.ts — orquestração retomável, smoke test time_in_status, anexos com política)
+last_updated: "2026-09-17T00:07:58.728Z"
 last_activity: 2026-09-16 -- Phase 00 execution started
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 23
-  completed_plans: 13
+  completed_plans: 14
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 00 (prepara-o) — EXECUTING
-Plan: 3 of 7
+Plan: 4 of 7
 Status: Ready to execute
 Last activity: 2026-09-16 -- Phase 00 execution started
 
@@ -68,6 +68,7 @@ Progress: [██████████] 100% (11/11 planos GSD; em requisitos
 | Phase 01 P10 | 10min | 2 tasks | 3 files |
 | Phase 00 P01 | 20min | 3 tasks | 10 files |
 | Phase 00 P02 | 24min | 2 tasks | 3 files |
+| Phase 00 P03 | 16min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -97,6 +98,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 00 P01]: campo cursor de PaginaPorCursor guarda o cursor da PRÓXIMA chamada (undefined na última página), não o usado na atual — semântica não especificada pelo plano, escolhida para facilitar retomada externa
 - [Phase 00]: Plan 00-02: 5/6 e-mails do de-para resolvidos via GET /team real; revisor FO 81581802 não encontrado (provável Team Family Office/Marcos Paulo 9011658148, fora do alcance do token da Tria) — entrada explícita fonteDoEmail: nao-resolvido, email vazio recusado por inviteMember, sem inventar valor; PREP-04 fica parcial até o dono informar o e-mail real
 - [Phase 00]: Plan 00-02: CLICKUP_CONTAS_A_PAGAR_ID e variantes MP_/FO_ reclassificadas de id-de-lista para id-de-usuario no catálogo (Rule 1) — o código real usa contasAPagarUserId=81581816, o ClickUp user id do Financeiro, não uma Lista; a heurística de nome do plano estava imprecisa para esta variável
+- [Phase 00]: exportarClickUp: time_in_status é smoke-testado por execução inteira (não por Lista) — a primeira falha 4xx desliga o recurso globalmente; anexo já em disco conta em anexosBaixados para a retomada produzir as mesmas contagens da execução original — Plan 00-03
 
 ### Pending Todos
 
@@ -129,6 +131,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-16T23:49:49.099Z
-Stopped at: Completed 00-02-PLAN.md (PREP-04 parcial)
+Last session: 2026-09-17T00:07:58.720Z
+Stopped at: Completed 00-03-PLAN.md (exportar.ts — orquestração retomável, smoke test time_in_status, anexos com política)
 Resume file: None
