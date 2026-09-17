@@ -53,7 +53,68 @@ de integração rodam de verdade contra o Postgres do projeto — inclusive
 (ver `src/e2e/CONTEXT.md`). `npm run check` (raiz) roda os três workspaces:
 typecheck, lint, tokens e testes.
 
-## 4. Contrato HTTP
+## 4. Exportar o ClickUp (Fase 0, PREP-02)
+
+Insumo da importação das Fases 2/3 e prova de paridade (CON-09) — nada disto
+grava no Postgres da plataforma.
+
+**Pré-requisito:** `CLICKUP_API_TOKEN` em `apps/api/.env` — um token pessoal
+gerado em ClickUp › Configurações › Apps › API Token. Nunca commitado (o
+`.gitignore` já cobre `.env*`); `apps/api/.env.example` documenta só o nome
+da variável, sem valor.
+
+**Comando:**
+
+```
+npm run exportar:clickup -w @n1/api
+```
+
+Flags (`--chave=valor` ou booleanas, sem biblioteca de parsing):
+
+- `--lista=<id>` — repetível; default as 3 Listas do Financeiro (Solicitação,
+  Contas a pagar, Contas a receber)
+- `--amostra=<n>` — limita a `n` Tarefas por Lista; o manifesto sai marcado
+  `amostra: true` (não é prova de paridade)
+- `--sem-anexos` — pula o download de anexos
+- `--sem-time-in-status` — pula o `time_in_status` por Tarefa
+- `--pasta=<dir>` — muda a pasta de destino (default
+  `apps/api/exportacoes/clickup/`)
+- `--so-manifesto` — não exporta nada; só regenera `MANIFESTO.md`/`.json` a
+  partir do que já está em disco (não precisa de token)
+
+**O que esperar:** as três Listas completas levam de 1 a 2 horas (rate limit
+de 100 requisições/minuto do ClickUp) — a execução real do Plan 00-05 levou
+2h01m35s para 11.000 requisições, sem interrupção. Rode em segundo plano e
+acompanhe o progresso em `apps/api/exportacoes/clickup/exportacao.log`. Pode
+interromper a qualquer momento (`Ctrl+C`) e rodar o mesmo comando de novo: o
+próprio disco é o checkpoint — só o que falta é pedido de novo, nada é
+duplicado nem baixado duas vezes.
+
+**Onde fica o quê:** `apps/api/exportacoes/clickup/` (Tarefas, Campos,
+Comentários, `time_in_status`, anexos, um arquivo por recurso/página) fica
+**fora do git** — dado pessoal e financeiro (LGPD), o backup dessa pasta é
+responsabilidade do dono. Só `apps/api/exportacoes/MANIFESTO.md` e
+`MANIFESTO.json` são versionados: contagens por Lista/recurso, hash sha256
+por arquivo e um hash agregado — a prova de paridade, sem PII.
+
+**Ressalva de histórico de status:** a API pública do ClickUp não expõe uma
+trilha cronológica de mudança de status. O que a exportação grava é
+`time_in_status` — tempo acumulado por status, disponível só quando o
+ClickApp "Total time in Status" está ligado no Workspace (confirmado ligado
+nesta exportação) — mais os Comentários datados. Nenhum dos dois é um
+histórico de transições evento a evento.
+
+Para conferir a que e-mail um ClickUp user id corresponde:
+
+```
+npm run clickup:usuarios -w @n1/api -- <id> [<id> ...]
+```
+
+Para re-exportar do zero, apague a pasta (ou aponte `--pasta` para uma nova)
+e rode `exportar:clickup` de novo — o manifesto regenerado substitui o
+anterior no próximo commit.
+
+## 5. Contrato HTTP
 
 - `GET /saude` — pública, sem token; confirma que o processo está no ar.
 - `GET /estado` — carga inicial do Espaço de Trabalho: `DataState` inteiro,
@@ -63,7 +124,7 @@ typecheck, lint, tokens e testes.
   `OperationResult` (mesmo quando `ok:false`, sempre 200) mais o diff e a
   revisão nova (`Authorization: Bearer <token>`).
 
-## 5. PERS-08 — onde o `apps/api` roda: bloqueado por D11
+## 6. PERS-08 — onde o `apps/api` roda: bloqueado por D11
 
 **Ainda não decidido.** A recomendação do plano de migração é a mesma VPS
 que já roda o `automation/` (financeiro-tria), atrás da nginx existente —
