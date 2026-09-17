@@ -39,7 +39,7 @@ export function CabecalhoDeTela({
 }) {
   return (
     <header
-      className={cn("flex shrink-0 items-center gap-3 px-4", className)}
+      className={cn("cabecalho-de-tela flex shrink-0 items-center gap-3 px-4", className)}
       style={{
         minHeight: "var(--cabecalho-tela-h)",
         borderBottom: "1px solid var(--linha)",
@@ -69,7 +69,7 @@ export function CabecalhoDeTela({
 export function BarraDeFiltros({ children, className }: { readonly children: ReactNode; readonly className?: string }) {
   return (
     <div
-      className={cn("flex shrink-0 flex-wrap items-center gap-2 px-4", className)}
+      className={cn("barra-de-filtros flex shrink-0 flex-wrap items-center gap-2 px-4", className)}
       style={{
         minHeight: "var(--barra-filtros-h)",
         borderBottom: "1px solid var(--linha-sutil)",

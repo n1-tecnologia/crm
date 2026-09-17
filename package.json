@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "npm run typecheck && npm run lint && npm run verificar:tokens && npm run test",
-    "verificar:tokens": "node scripts/verificar-tokens.mjs"
+    "verificar:tokens": "node scripts/verificar-tokens.mjs",
+    "capturar:movimento": "node scripts/capturar-movimento.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.44.0",

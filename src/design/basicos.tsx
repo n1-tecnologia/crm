@@ -1,7 +1,7 @@
 "use client";
 
 import type { LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { cn } from "./cn";
 import { Icone } from "./icone";
 
@@ -54,28 +54,29 @@ export function CabecalhoDePainel({
 
 // ─── Esqueleto ───────────────────────────────────────────────────────────────
 
-/** O que aparece enquanto o armazém não hidratou. A forma é a do conteúdo real. */
+/**
+ * O que aparece enquanto o armazém não hidratou. A forma é a do conteúdo real;
+ * o estilo é `.esqueleto` (componentes.css). `indice` escalona a onda de pulso.
+ */
 export function Esqueleto({
   largura = "100%",
   altura = "1rem",
   redondo = false,
+  indice = 0,
   className,
 }: {
   readonly largura?: string | number;
   readonly altura?: string | number;
   readonly redondo?: boolean;
+  readonly indice?: number;
   readonly className?: string;
 }) {
   return (
     <span
       aria-hidden
-      className={cn("pulso block", className)}
-      style={{
-        width: largura,
-        height: altura,
-        background: "var(--superficie-3)",
-        borderRadius: redondo ? "var(--r-pilula)" : "var(--r-controle)",
-      }}
+      className={cn("esqueleto", className)}
+      data-redondo={redondo ? "" : undefined}
+      style={{ width: largura, height: altura, "--i": Math.min(indice, 24) } as CSSProperties}
     />
   );
 }
@@ -92,7 +93,7 @@ export function EsqueletoDeLinhas({
   return (
     <div className={cn("pilha-solta", className)}>
       {Array.from({ length: quantidade }, (_, i) => (
-        <Esqueleto key={i} altura={altura} />
+        <Esqueleto key={i} altura={altura} indice={i} />
       ))}
     </div>
   );
@@ -169,7 +170,7 @@ export function ReguaDeSecao({
   readonly className?: string;
 }) {
   return (
-    <div className={cn("flex items-center gap-3 pb-2 pt-5 first:pt-0", className)}>
+    <div className={cn("regua-de-secao flex items-center gap-3 pb-2 pt-5 first:pt-0", className)}>
       <span className="app-coluna" style={cor ? { color: cor } : undefined}>
         {rotulo}
       </span>

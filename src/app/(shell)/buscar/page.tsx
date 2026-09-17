@@ -238,7 +238,7 @@ export default function BuscarPage() {
         ) : (
           groups.map((group) => (
             <Section key={group.label} title={group.label} count={group.hits.length}>
-              <ul className="pilha-solta">
+              <ul className="cascata pilha-solta">
                 {group.hits.slice(0, 10).map((hit) => (
                   <li key={hit.id}>
                     <Link href={hit.href} className="item-solto" data-bloco="true">

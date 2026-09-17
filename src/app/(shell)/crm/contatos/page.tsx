@@ -21,6 +21,7 @@ import {
   ImportContactsDialog,
   useImportContactsDialog,
 } from "@/features/crm/import-contacts-dialog";
+import { ContactAvatar } from "@/features/crm/contact-card";
 import { RecordList } from "@/features/shell/record-list";
 import { StateSeal } from "@/features/shell/ui";
 import {
@@ -145,7 +146,18 @@ export default function ContatosPage() {
           emptyTitle="Nenhum Contato ainda."
           emptyHint="Contatos também são criados automaticamente quando uma Mensagem chega por um Canal."
           columns={[
-            { key: "nome", label: "Nome de exibição", render: (item) => contactDisplayName(item) },
+            {
+              key: "nome",
+              label: "Nome de exibição",
+              // a foto vem junto do nome: é o que faz a linha ser reconhecida
+              // de relance, antes de ler o texto
+              render: (item) => (
+                <span className="inline-flex min-w-0 items-center gap-2 align-middle">
+                  <ContactAvatar contact={item} />
+                  <span className="truncate">{contactDisplayName(item)}</span>
+                </span>
+              ),
+            },
             { key: "cargo", label: "Cargo de exibição", render: (item) => contactDisplayRole(state, item.id) || "—" },
             { key: "empresa", label: "Empresa principal", render: (item) => state.companies.find((c) => c.id === principalCompanyId(state, item.id))?.tradeName ?? "—" },
             { key: "qualificacao", label: "Qualificação", render: (item) => state.catalog.find((c) => c.id === item.qualificationId)?.name ?? "—" },

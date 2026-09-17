@@ -9,7 +9,7 @@
  */
 
 import Link from "next/link";
-import { Briefcase } from "lucide-react";
+import { Briefcase, MessageSquare } from "lucide-react";
 import { use, useState } from "react";
 import { useData, useRun, useSession } from "@/data/store";
 import {
@@ -34,7 +34,7 @@ import {
 } from "@/data/operations";
 import { PRIORITY_LABEL, STATUS_CATEGORY_LABEL } from "@/features/shell/format";
 import { useFormat } from "@/features/shell/use-format";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { TaskPanel, useTaskPanel } from "@/features/estrutura/task-panel";
 import {
   MoveTaskDialog,
@@ -50,6 +50,9 @@ import {
 } from "@/features/estrutura/template-dialogs";
 import { FILTRO_VAZIO, ViewBar } from "@/features/estrutura/view-bar";
 import { BotaoDeMais, CompositorNoGrupo } from "@/features/estrutura/novo-no-grupo";
+import { useRecente } from "@/features/shell/recente";
+import { TabelaDeTarefas } from "@/features/estrutura/tabela-de-tarefas";
+import { IniciarConversaDialog } from "@/features/crm/iniciar-conversa-dialog";
 import {
   BulkStatusBar,
   RunScheduledButton,
@@ -125,6 +128,8 @@ export default function ListaPage({
   );
   const [newTitle, setNewTitle] = useState("");
   const [criandoConta, setCriandoConta] = useState(false);
+  // "Iniciar conversa" (lado do CRM de Meus negócios): a Etapa vem do "+" do grupo.
+  const [iniciandoConversa, setIniciandoConversa] = useState<{ readonly stageId?: string } | null>(null);
   const [criandoSerie, setCriandoSerie] = useState(false);
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   const [financeFilters, setFinanceFilters] =
@@ -153,6 +158,7 @@ export default function ListaPage({
   const { openTaskId, openTask, closeTask } = useTaskPanel();
   const query = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
   // O popup da Tarefa abre o diálogo de mover pela URL; a Lista só o hospeda.
   const { movingTaskId, closeMove } = useMoveTaskDialog();
 
@@ -182,7 +188,11 @@ export default function ListaPage({
     effective !== list.lifecycle ? config.path.at(-2) : undefined;
   const administra = containerAdminRefusal(state, memberId, "list", list.id);
   // Quem não cria Tarefa aqui (Convidado) vê o porquê antes do clique.
-  const criacaoRecusada = listWriteRefusal(state, memberId, list.id);
+  // No lado do CRM da Pasta "Meus negócios" não nasce Tarefa: o Negócio nasce em Negócios.
+  const criacaoRecusada =
+    pathname.startsWith("/crm/") && config.path.some((node) => node.type === "folder" && node.id === MEUS_NEGOCIOS_ID)
+      ? "Um Negócio nasce em Negócios; esta é a cópia do Funil."
+      : listWriteRefusal(state, memberId, list.id);
   const reportar = (
     result: { ok: boolean; error?: string },
     message: string,
@@ -196,19 +206,31 @@ export default function ListaPage({
     }
   };
 
-  const todas = state.tasks
-    .filter(
-      (task) => task.listId === list.id && task.parentTaskId === undefined,
-    )
-    .filter((task) => effectiveLifecycleOfTask(state, task.id) !== "naLixeira");
   // As Listas do Financeiro (Contas a pagar, Contas a receber) têm a lente
   // financeira: pelo id da Lista, não pelo nome de um Tipo.
   const lente = financeProfileOf(list.id);
   const financeira = lente !== undefined;
-  // Lista de "Meus negócios": cópia do Funil, não sincronizada.
-  const espelhoComercial = config.path.some(
+  // Lista da Pasta "Meus negócios": cópia do Funil, não sincronizada. Ela tem
+  // dois lados. No CRM (/crm/meus-negocios/…) mostra os NEGÓCIOS espelhados —
+  // o que abre a conversa, o contato, o roteiro. Na Estrutura mostra só as
+  // TAREFAS (a call, o que se faz), como qualquer outra Lista.
+  const pastaDeNegocios = config.path.some(
     (node) => node.type === "folder" && node.id === MEUS_NEGOCIOS_ID,
   );
+  const noCrm = pathname.startsWith("/crm/");
+  // O Status da Lista espelhada guarda a Etapa: st_<lista>_<etapa>. Ganho e
+  // Perdido não são Etapa — um lead não começa ganho.
+  const etapaDoStatus = (statusId: string): string | undefined => {
+    const etapa = statusId.replace(`st_${list.id}_`, "");
+    return etapa === "ganho" || etapa === "perdido" ? undefined : etapa;
+  };
+  const espelhoComercial = pastaDeNegocios && noCrm;
+  const todas = state.tasks
+    .filter(
+      (task) => task.listId === list.id && task.parentTaskId === undefined,
+    )
+    .filter((task) => effectiveLifecycleOfTask(state, task.id) !== "naLixeira")
+    .filter((task) => !pastaDeNegocios || (task.provenance?.kind === "deal") === noCrm);
   const tarefaAberta = openTaskId ? todas.find((t) => t.id === openTaskId) : undefined;
   const negocioAberto =
     espelhoComercial && tarefaAberta?.provenance?.kind === "deal" ? dealOfTask(state, tarefaAberta) : undefined;
@@ -269,6 +291,19 @@ export default function ListaPage({
     }
   };
 
+  // A barra de criação de conta abre por dois caminhos — o botão "Nova conta"
+  // (estado) e o "+" da árvore (`?nova-tarefa=1`). Cancelar desfaz os dois:
+  // só o estado, e a URL segurava a barra aberta.
+  const fecharCriacao = () => {
+    setCriandoConta(false);
+    setNewTitle("");
+    if (query.get("nova-tarefa") !== null) {
+      const next = new URLSearchParams(query.toString());
+      next.delete("nova-tarefa");
+      router.replace(next.size > 0 ? `${pathname}?${next}` : pathname, { scroll: false });
+    }
+  };
+
   // O "+" de um grupo: a Tarefa nasce já naquele Status. A conta do Financeiro
   // nasce só com o nome e abre no popup, onde Valor, Vencimento e Forma se editam.
   const criarNoGrupo = (title: string, statusId?: string): boolean => {
@@ -297,25 +332,41 @@ export default function ListaPage({
   return (
     <div className="flex h-full flex-col">
       <PageHeader
-        path={config.path.map((node, index) => (
-          <span key={node.id}>
-            {index > 0 ? " › " : ""}
-            {node.type === "list" ? (
-              node.name
-            ) : (
-              <Link
-                href={
-                  node.type === "space"
-                    ? `/estrutura/espacos/${node.id}`
-                    : `/estrutura/pastas/${node.id}`
-                }
-                className="hover:underline"
-              >
-                {node.name}
+        path={
+          espelhoComercial ? (
+            <>
+              <Link href="/crm/negocios" className="hover:underline">
+                Negócios
               </Link>
-            )}
-          </span>
-        ))}
+              {" › "}
+              <Link href="/crm/meus-negocios" className="hover:underline">
+                Meus negócios
+              </Link>
+              {" › "}
+              {list.name}
+            </>
+          ) : (
+            config.path.map((node, index) => (
+              <span key={node.id}>
+                {index > 0 ? " › " : ""}
+                {node.type === "list" ? (
+                  node.name
+                ) : (
+                  <Link
+                    href={
+                      node.type === "space"
+                        ? `/estrutura/espacos/${node.id}`
+                        : `/estrutura/pastas/${node.id}`
+                    }
+                    className="hover:underline"
+                  >
+                    {node.name}
+                  </Link>
+                )}
+              </span>
+            ))
+          )
+        }
         title={list.name}
         {...(espelhoComercial
           ? {
@@ -466,7 +517,17 @@ export default function ListaPage({
         aoTrocar={(chave) => setView(chave as ViewKind)}
       />
 
+      {effective === "ativo" && espelhoComercial ? (
+        <BarraDeFiltros>
+          <Button size="sm" variant="primary" onClick={() => setIniciandoConversa({})} icon={<Icone de={MessageSquare} tamanho="xs" />}>
+            Iniciar conversa
+          </Button>
+          <span className="app-meta">Escolha o Contato, a Etapa em que o lead está e o Canal — e o chat abre.</span>
+        </BarraDeFiltros>
+      ) : null}
+
       {effective === "ativo" &&
+      !espelhoComercial &&
       (!financeira || criandoConta || query.get("nova-tarefa") !== null) ? (
         <BarraDeFiltros>
           <label className="sr-only" htmlFor="nova-tarefa">
@@ -478,6 +539,7 @@ export default function ListaPage({
             onChange={(event) => setNewTitle(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter") create();
+              if (event.key === "Escape" && financeira) fecharCriacao();
             }}
             placeholder={lente ? lente.labels.novaPlaceholder : "Nova Tarefa"}
             // O "+" da árvore chega aqui com `?nova-tarefa=1`: o campo já
@@ -506,14 +568,7 @@ export default function ListaPage({
             De modelo
           </Button>
           {financeira ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setCriandoConta(false);
-                setNewTitle("");
-              }}
-            >
+            <Button size="sm" variant="ghost" onClick={fecharCriacao}>
               Cancelar
             </Button>
           ) : (
@@ -664,6 +719,7 @@ export default function ListaPage({
           </p>
         ) : null}
 
+        <div key={view} className="aparecer">
         {tasks.length === 0 && (!financeira || todas.length === 0) ? (
           filtrando ? (
             <EmptyState
@@ -687,6 +743,7 @@ export default function ListaPage({
             openTask={abrirNoQuadro}
             {...(criaNoGrupo ? { onCreateInGroup: criaNoGrupo } : {})}
             {...(criacaoRecusada ? { criacaoRecusada } : {})}
+            {...(espelhoComercial && effective === "ativo" ? { onMais: (statusId: string) => setIniciandoConversa({ stageId: etapaDoStatus(statusId) }) } : {})}
           />
         ) : view === "quadro" ? (
           <Quadro
@@ -762,12 +819,18 @@ export default function ListaPage({
             </div>
           </>
         ) : (
-          <ListaAgrupada
+          // A Lista de Tarefas é a mesma tabela do Financeiro: grupos por Status,
+          // colunas, ações rápidas no hover e o menu de mover — só mudam as palavras.
+          <TabelaDeTarefas
             state={state}
             tasks={tasks}
             definitions={definitions}
             openTask={openTask}
             filters={filters}
+            report={reportar}
+            selecionando={selecionando}
+            rotulo={espelhoComercial ? "Negócio" : "Tarefa"}
+            {...(espelhoComercial && effective === "ativo" ? { onMais: (statusId: string) => setIniciandoConversa({ stageId: etapaDoStatus(statusId) }) } : {})}
             {...(criaNoGrupo ? { onCreateInGroup: criaNoGrupo } : {})}
             {...(criacaoRecusada ? { criacaoRecusada } : {})}
             {...(selecionando
@@ -780,10 +843,17 @@ export default function ListaPage({
                       else next.add(id);
                       return next;
                     }),
+                  onToggleMany: (ids: readonly string[], on: boolean) =>
+                    setSelecionadas((atual) => {
+                      const next = new Set(atual);
+                      for (const id of ids) if (on) next.add(id); else next.delete(id);
+                      return next;
+                    }),
                 }
               : {})}
           />
         )}
+        </div>
       </CorpoDeTela>
 
       {lente?.kind === "receber" ? (
@@ -798,6 +868,18 @@ export default function ListaPage({
               text: `${tasks.length} conta(s) a receber criada(s) para ${cliente}, em “A receber”.`,
               ...(tasks[0] ? { taskId: tasks[0].id } : {}),
             });
+          }}
+        />
+      ) : null}
+      {espelhoComercial && iniciandoConversa ? (
+        <IniciarConversaDialog
+          listId={list.id}
+          open
+          {...(iniciandoConversa?.stageId ? { stageId: iniciandoConversa.stageId } : {})}
+          onClose={() => setIniciandoConversa(null)}
+          onDone={(text) => {
+            setIniciandoConversa(null);
+            setNotice({ text });
           }}
         />
       ) : null}
@@ -854,12 +936,15 @@ function TaskRow({
   task,
   onOpen,
   arrastavel = false,
+  recente = false,
 }: {
   readonly state: DataState;
   readonly task: Task;
   readonly onOpen: (taskId: string) => void;
   /** No Quadro a peça é arrastada: lift e arraste brigam, então ela não sobe. */
   readonly arrastavel?: boolean;
+  /** É a peça do último resultado: acende por --dur-realce (`data-recente`). */
+  readonly recente?: boolean;
 }) {
   const fmt = useFormat();
   const checklist = checklistProgress(task);
@@ -880,6 +965,7 @@ function TaskRow({
           : "item-solto w-full text-left"
       }
       data-alinhamento="topo"
+      data-recente={recente ? "true" : undefined}
       style={{ paddingBlock: "var(--e-2)" }}
     >
       <div className="min-w-0 flex-1">
@@ -934,109 +1020,6 @@ function TaskRow({
   );
 }
 
-function ListaAgrupada({
-  state,
-  tasks,
-  definitions,
-  openTask,
-  filters,
-  onCreateInGroup,
-  criacaoRecusada,
-  selected,
-  onToggle,
-}: {
-  readonly state: DataState;
-  readonly tasks: readonly Task[];
-  readonly definitions: readonly Definition[];
-  readonly openTask: (taskId: string) => void;
-  /** Um grupo vazio só aparece quando o filtro pede por ele. */
-  readonly filters: ViewFilters;
-  /** O "+" do grupo: a Tarefa nasce naquele Status. Ausente = a Lista não recebe Tarefa. */
-  readonly onCreateInGroup?: (title: string, statusId: string) => boolean;
-  readonly criacaoRecusada?: string;
-  /** Modo de seleção em lote: presente, cada linha ganha uma caixa. */
-  readonly selected?: ReadonlySet<string>;
-  readonly onToggle?: (taskId: string) => void;
-}) {
-  // Um Status sem Tarefa não ganha régua nem "Nenhuma Tarefa em…": o que não
-  // tem nada não aparece — a não ser que o filtro tenha escolhido exatamente
-  // esse Status (ou a categoria dele), e aí o vazio é a resposta à pergunta.
-  const visiveis = definitions.filter(
-    (definition) =>
-      tasks.some((task) => task.statusId === definition.id) ||
-      filters.statusId === definition.id ||
-      (filters.statusId === undefined && filters.statusCategory === definition.category),
-  );
-  // Qual grupo está compondo uma Tarefa nova (um de cada vez).
-  const [criandoEm, setCriandoEm] = useState<string | null>(null);
-  const motivoDoMais = onCreateInGroup ? criacaoRecusada : (criacaoRecusada ?? "Esta Lista não recebe Tarefas novas.");
-  return (
-    <div>
-      {visiveis.map((definition) => {
-        const group = tasks.filter((task) => task.statusId === definition.id);
-        return (
-          <section key={definition.id}>
-            {/* A régua do grupo, com o ponto do Status: o mesmo desenho da ReguaDeSecao. */}
-            <h2 className="flex items-center gap-3 pb-2 pt-5 first:pt-0">
-              <CategoryDot color={definition.color} label={definition.name} />
-              <span className="app-meta app-numero">{group.length}</span>
-              <BotaoDeMais
-                rotulo={definition.name}
-                aberto={criandoEm === definition.id}
-                onClick={() => setCriandoEm((atual) => (atual === definition.id ? null : definition.id))}
-                {...(motivoDoMais ? { motivo: motivoDoMais } : {})}
-              />
-              <span className="h-px flex-1" style={{ background: "var(--linha-sutil)" }} />
-              <span className="app-meta">{STATUS_CATEGORY_LABEL[definition.category]}</span>
-            </h2>
-            {criandoEm === definition.id && onCreateInGroup ? (
-              <CompositorNoGrupo
-                className="mb-2"
-                placeholder={`Nova Tarefa em ${definition.name}`}
-                onCreate={(title) => onCreateInGroup(title, definition.id)}
-                onCancel={() => setCriandoEm(null)}
-              />
-            ) : null}
-            {group.length === 0 ? (
-              <p
-                className="app-meta rounded-[var(--r-painel)] border border-dashed px-3 py-2"
-                style={{ borderColor: "var(--linha-forte)" }}
-              >
-                Nenhuma Tarefa em <em>{definition.name}</em>.
-              </p>
-            ) : (
-              <ul className="pilha-solta">
-                {group.map((task) => (
-                  <li
-                    key={task.id}
-                    className={
-                      selected && onToggle ? "flex items-center gap-2" : ""
-                    }
-                  >
-                    {selected && onToggle ? (
-                      <input
-                        type="checkbox"
-                        checked={selected.has(task.id)}
-                        onChange={() => onToggle(task.id)}
-                        aria-label={`Selecionar ${task.title}`}
-                        className="shrink-0 accent-[var(--acento)]"
-                        style={{ width: "var(--caixa-tam)", height: "var(--caixa-tam)" }}
-                      />
-                    ) : null}
-                    <span className="min-w-0 flex-1">
-                      <TaskRow state={state} task={task} onOpen={openTask} />
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        );
-      })}
-    </div>
-  );
-}
-
 function Quadro({
   state,
   tasks,
@@ -1059,6 +1042,7 @@ function Quadro({
 }) {
   const run = useRun();
   const [dragging, setDragging] = useState<string | null>(null);
+  const recente = useRecente();
   const [criandoEm, setCriandoEm] = useState<string | null>(null);
   const motivoDoMais = onCreateInGroup ? criacaoRecusada : (criacaoRecusada ?? "Esta Lista não recebe Tarefas novas.");
 
@@ -1112,7 +1096,7 @@ function Quadro({
                   Nenhuma Tarefa em <em>{definition.name}</em>
                 </p>
               ) : (
-                <ul className="pilha-solta">
+                <ul className="cascata pilha-solta">
                   {group.map((task) => (
                     <li
                       key={task.id}
@@ -1120,7 +1104,7 @@ function Quadro({
                       onDragStart={() => setDragging(task.id)}
                       onDragEnd={() => setDragging(null)}
                     >
-                      <TaskRow state={state} task={task} onOpen={openTask} arrastavel />
+                      <TaskRow state={state} task={task} onOpen={openTask} arrastavel recente={task.id === recente} />
                     </li>
                   ))}
                 </ul>
@@ -1148,6 +1132,7 @@ function Calendario({
   readonly openTask: (taskId: string) => void;
 }) {
   const fmt = useFormat();
+  const recente = useRecente();
   const withDates = tasks.filter((task) => task.dueDate);
   const without = tasks.length - withDates.length;
 
@@ -1173,10 +1158,10 @@ function Calendario({
         .map(([date, group]) => (
           <section key={date}>
             <ReguaDeSecao rotulo={fmt.taskDate({ form: "civilDay", value: date })} contagem={group.length} />
-            <ul className="pilha-solta">
+            <ul className="cascata pilha-solta">
               {group.map((task) => (
                 <li key={task.id}>
-                  <TaskRow state={state} task={task} onOpen={openTask} />
+                  <TaskRow state={state} task={task} onOpen={openTask} recente={task.id === recente} />
                 </li>
               ))}
             </ul>
@@ -1199,6 +1184,7 @@ function Tabela({
   readonly tasks: readonly Task[];
 }) {
   const fmt = useFormat();
+  const recente = useRecente();
   return (
     <div>
       <table className="tabela">
@@ -1218,7 +1204,7 @@ function Tabela({
             ))}
           </tr>
         </thead>
-        <tbody>
+        <tbody className="cascata">
           {tasks.map((task) => {
             const definition = statusDefinition(
               state,
@@ -1227,7 +1213,7 @@ function Tabela({
             );
             const category = statusCategory(state, task);
             return (
-              <tr key={task.id}>
+              <tr key={task.id} data-recente={task.id === recente ? "true" : undefined}>
                 <td>
                   <Link
                     href={`/estrutura/tarefas/${task.id}`}

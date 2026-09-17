@@ -80,12 +80,68 @@ Grupos e colunas por Status que **não têm nada não aparecem** na Lista agrupa
 
 ---
 
-## 5. O que esta direção proíbe
+### O construtor de Flow, a única tela de três colunas
+
+`/ferramentas/flows/[flow]` é a exceção ao esqueleto de uma coluna: `grid xl:grid-cols-[16rem_minmax(0,1fr)_22rem]`, cada coluna um `Painel` (Telas · Tela selecionada e Componentes · Validação, Publicar, Versões, prévia). Sem arrastar-e-soltar — subir/descer e "mover para dentro de" no menu —, e a seleção mora na URL (`?tela=`), como toda aba e todo popup. Abaixo de `xl` as colunas empilham na ordem de leitura.
+
+## 5. Movimento — as quatro leis
+
+**Vigente desde 2026-09-17.** A tese cabe numa frase: **a casca nunca sai do lugar; a tela chega porque as suas peças chegam.** Cabeçalho primeiro, depois a barra de filtros, depois as peças descendo em cascata de 30 ms, tudo assentado em menos de 600 ms — e só na chegada, nunca em filtro, aba, "Mostrar mais" ou tecla. O que está carregando já tem a forma exata do que vem (esqueleto por família de rota; nunca ampulheta, nunca atraso fabricado). O que demora tem um fio de luz de 2 px no topo da tela, um ícone pulsando no trilho e, passada a carência, o carregador de ícones no centro — os objetos do produto se revezando dentro de um aro que gira, sem escurecer a tela velha. O que acabou de mudar se acende e apaga. Uma curva, durações por token, e `prefers-reduced-motion` desliga tudo sem perder nenhum estado.
+
+Onde mora: os tokens no bloco **Movimento** de `tokens.css` (`--dur-1` 150 ms · `--dur-2` 300 · `--dur-3` 500 · `--dur-4` 700 · `--easing` · `--easing-saida` · `--dur-passo` 30 ms · `--dur-cascata` 1 s · `--dur-realce` 1,5 s · `--dur-aviso` 6 s · `--dur-aviso-longo` 8 s · `--dur-progresso` · `--dur-pulso` · `--dur-giro` · `--dur-icone` 600 ms · `--dur-navegacao-max` 30 s · `--fio` 2 px · `--esqueleto` · os laços da atmosfera); o vocabulário (`surgir`, `revelar`, `aparecer`, `sumir`, `destacar`, `cascata`, `chegada`, `esqueleto`, `barra-progresso`, `regua-tempo`…) em `componentes.css` e `controles.css`; a ponte para o pouco que roda em JS em `design/movimento.ts`. `COMPONENTES.md` ("Movimento") descreve cada classe e cada hook.
+
+### As leis
+
+1. **Uma curva, durações por token, um passo.** Toda interação usa `var(--easing)`; toda duração é um `--dur-*`; toda cascata avança de `--dur-passo`. Nenhum `ms`/`s` literal fora de `tokens.css`; nenhum `animate-*`, `duration-*`, `ease-*` ou `transition-transform` do Tailwind — a sentinela reprova (§6). O porquê: um valor mudado num lugar muda o sistema inteiro, e uma curva só é o que faz duas peças parecerem do mesmo produto.
+2. **Contêiner só esmaece; peça e folha é que se movem.** O invólucro de rota (`.chegada`), o corpo da tela, o painel de navegação, o `<aside>` e qualquer ancestral de `SidePanel`/`ConfirmDialog` só recebem `opacity`. Nunca `transform`, `filter`, `will-change`, `contain`, `container-type` nem `overflow` neles: os popups são `fixed` sem portal, e um `transform` num ancestral os prende dentro dele (há popups que renderizam um `ConfirmDialog` dentro do próprio `aside`). Sem `scale` em popup.
+3. **Toda entrada termina em `transform: none` / `filter: none`.** `animation-fill-mode: backwards` só para cobrir o `animation-delay`; `forwards` só em `sumir` (a saída que desmonta) e nas folhas sem descendentes (`.barra-progresso`, `.regua-tempo`). O porquê: um `forwards` com transform deixa um bloco de contenção e uma camada de composição para sempre.
+4. **Movimento nunca é o único sinal.** `role=status`, `aria-busy`, `disabledReason`, texto e forma dizem o estado antes de a animação dizer. Nada anima em re-render por `revision`: só na montagem, dentro da janela de chegada, ou por ação da pessoa. Nunca um `setTimeout` para "mostrar" esqueleto ou spinner — o armazém é síncrono; o que aparece é o que existe.
+
+### A exceção nomeada: laços e medidores
+
+`--easing` é a curva de **interação**. Um laço (o pulso do esqueleto e do ícone pendente, o giro do spinner, a deriva das orbes, o cintilar das estrelas) usa `ease-in-out`; um medidor (a régua de tempo do Toast, a barra de rota rumo a 80 %) usa `linear` ou `--easing-saida`. Um laço não é interação — não começa nem termina numa ação da pessoa — e um medidor que acelera mente. São as únicas curvas além de `--easing`, e estão nomeadas aqui para que a lista não cresça.
+
+### O orçamento por tela
+
+| O quê | Quanto |
+| --- | --- |
+| A tela | 1 fade de 150 ms no invólucro + cabeçalho (0 ms) + barra, painéis e réguas (1 passo) + estado vazio (2 passos) + 1 onda de ≤ 10 degraus (a última peça começa em 270 ms e assenta em 570 ms). Tudo assentado em < 600 ms (Início < 900 ms, por causa da capa); a janela fecha em 1 s. |
+| Peça densa (linha, conversa, cartão, resultado) | `surgir`: 300 ms, 4 px, sem blur. Da 11ª peça em diante, `aparecer`, todas juntas no último degrau. Quadro: só opacidade. |
+| Superfície de pausa | `revelar`: 500 ms, 12 px + blur de 6 px — **só** em Notificações, Painéis e Entrar (mais a capa do Início e o estado vazio). |
+| Popup (`SidePanel`, `ConfirmDialog`) | entra em 300 ms, sai em 150 ms; sem escala, sem altura animada. |
+| Menu, seletor, subárvore | entra em 150 ms, sai em 0 — fecha no quadro da escolha. |
+| Toast | entra em 300 ms, sai em 150 ms; vive 6 s (8 s com ação); erro não expira. |
+| Laços infinitos | só no esqueleto (visível < 1 s), no spinner, no carregador de ícones (aro e ciclo), na capa do Início, na atmosfera do Entrar e na marca do Login (flutua e respira). |
+| Blur | só em `revelar` e no véu (2 px). Halo só no fio (`--brilho-fio`). |
+| Camadas | sem `will-change` em lugar nenhum; nenhuma camada de composição permanente depois de 1 s. `transition: width/height` só nas folhas de gráfico (poucas e pequenas). |
+| Por tela | count-up ≤ 8 nós · lanterna ≤ 12 por grade · esqueleto ≤ 24 linhas com `--i`. |
+
+Se o Início — a tela mais cara: orbes com blur, o globo em canvas, ~34 peças — cair abaixo de 50 fps com CPU 4×, os cortes são, nesta ordem: o globo já só liga depois da capa; tirar o `revelar` do estado vazio; `--dur-passo` de 30 para 20 ms. Nunca subir.
+
+### Movimento reduzido: o que desliga e o que fica
+
+`prefers-reduced-motion: reduce` e o freio da pessoa (abaixo) zeram, com `!important`, a duração, o delay e a iteração de toda animação e transição (`tokens.css`, bloco "Movimento reduzido"). Em JS, `reduzido()` é verdadeiro e `lerDuracao` devolve 0.
+
+- **Desliga:** cascata e chegada (tudo no primeiro quadro), `surgir`/`revelar`/`aparecer`/`sumir` (o popup desmonta na hora), a régua do Toast, pulso e giro (uma iteração → parados), a luz do trilho (salta), orbes e estrelas, a lanterna (não registra o listener), o globo (um quadro; nascimento = 1), o count-up (valor final no primeiro quadro), o realce, as transições de gráfico.
+- **Fica:** a barra de rota salta a 80 % depois da carência de 150 ms e some ao concluir — `transition-delay` não é zerado, porque a carência é informação; o esqueleto parado em `--esqueleto` (7 %), legível como forma; `role=status`, `aria-busy`, `disabledReason` e o `sr-only` com o valor final; o foco de volta ao abridor no instante do fechar; os prazos do aviso, por timer — `lerDuracao(token, { medidor: true })` devolve o valor cheio, porque tempo de leitura não é movimento.
+
+### O freio da pessoa
+
+`<html data-movimento="minimo">` liga o mesmo bloco de CSS do `prefers-reduced-motion`, e `reduzido()` o lê também. Este documento registra só o mecanismo: onde a pessoa liga isso (uma preferência em `/minha-conta`) está fora deste pacote — `docs/PENDENCIAS-FRONTEND.md`, P7.
+
+### Como se verifica
+
+Toda PR que toque movimento roda o checklist de `CHECKLIST-MOVIMENTO.md` com o harness `app/scripts/capturar-movimento.mjs` (`npm run capturar:movimento`): fotos em instantes fixos, com a interface 10× mais lenta pelos próprios tokens, movimento reduzido emulado e a contagem de resíduos em repouso.
+
+---
+
+## 6. O que esta direção proíbe
 
 - **Cor crua em TSX.** Nenhum `#hex`, `rgb()`, `hsl()`, `text-white`, `bg-black` fora de `estilos/tokens.css`. A sentinela `npm run verificar:tokens` reprova o build. A exceção é a cor que é **dado** (a paleta que o Espaço grava, a cor de um Status) — ela entra na lista `DISPENSADOS` da sentinela com o motivo escrito.
 - **Tamanho de fonte literal em TSX** (`text-[13px]`, `text-[1.75rem]`). Tamanho é classe `.ed-*` ou `.app-*`.
 - **Raio e sombra literais em `components.tsx`** (`rounded-[14px]`, `shadow-[…]`). `tokens.test.ts` reprova.
-- **`transform` em estado de repouso.** O painel lateral e o diálogo são `fixed` sem portal; um `transform` permanente num ancestral os prende. Lift só em `:hover`/`:active`.
+- **`transform` em estado de repouso.** O painel lateral e o diálogo são `fixed` sem portal; um `transform` permanente num ancestral os prende. Lift só em `:hover`/`:active`, e toda entrada termina em `transform: none` (§5, lei 3).
+- **Duração literal e utilitário de movimento.** Nenhum `300ms`/`1.5s` fora de `tokens.css`; nenhum `animate-*`, `duration-*`, `ease-*` ou `transition-transform` em `className`; nenhum `will-change`; `forwards` só em `sumir` e na régua do Toast. É a regra 4 da mesma sentinela: a curva e o tempo são do sistema, não da peça.
 - **`overflow: hidden` em volta de peça solta** — corta a sombra e o lift. E wrapper `overflow-x: auto` em volta de `.tabela` — vira contêiner de rolagem nos dois eixos e o `thead` deixa de grudar. Quem rola é o corpo da tela; colunas menos úteis somem por **largura do contêiner** (`@container` + `@3xl:table-cell`…), não por largura da janela, porque a casca come 320 px.
 - **Gradiente fora do botão sólido e da marca.** Os 10 % do manual são exatamente isso.
 - **Emoji como ícone; ícone fora de `<Icone>`** (Lucide, traço 1.5, quatro tamanhos por token).
@@ -93,10 +149,10 @@ Grupos e colunas por Status que **não têm nada não aparecem** na Lista agrupa
 
 ---
 
-## 6. Acessibilidade como restrição de origem
+## 7. Acessibilidade como restrição de origem
 
 - **Contraste AA verificado por teste** (`app/src/design/tokens.test.ts`): o teste resolve as cadeias `var()` do próprio `tokens.css` até o hex e reprova a rampa de texto que não atinge 4.5:1 sobre `--page`, `--card` e `--cinza-600`, o `--sobre-acento` sobre o acento, o `--sobre-degrade` sobre os dois extremos do gradiente, e as famílias semânticas sobre a página.
 - **Foco visível sempre**: anel de 2 px em `--acento`, deslocado, em `:focus-visible` global.
 - **Teclado** nos seletores, no menu e nos diálogos como antes; `SidePanel` e `ConfirmDialog` prendem e devolvem o foco.
-- **`prefers-reduced-motion`** desliga lift, lanterna e animações de entrada.
+- **`prefers-reduced-motion`** desliga tudo sem perder nenhum estado — cascata, popups, régua do Toast, laços, lanterna, globo, count-up (§5). O que informa fica: a barra de rota salta, o esqueleto para legível, `role=status`, `aria-busy` e o foco de volta ao abridor. `<html data-movimento="minimo">` é o mesmo freio nas mãos da pessoa.
 - **Alvo de toque**: 32/36 px no desktop; abaixo de 768 px todo controle com `.alvo-toque` cresce para 44 px.

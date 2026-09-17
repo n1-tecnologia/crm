@@ -68,6 +68,7 @@ import type {
 import { applyContasAPagar } from "./seed-financeiro";
 import { applyEspelhoComercial } from "./seed-comercial";
 import { applyContasAReceber } from "./seed-contas-a-receber";
+import { applyFerramentas } from "./seed-ferramentas";
 
 const BASE = Date.UTC(
   new Date().getUTCFullYear(),
@@ -1971,6 +1972,10 @@ export function buildSeed(): DataState {
     ],
     documents,
     panels,
+    grupos: [],
+    comunidades: [],
+    linksDeCaptacao: [],
+    flows: [],
     links: [
       { id: "lnk_1", fromType: "task", fromId: "tsk_seed_1", toType: "deal", toId: "deal_fim_1", createdBy: member("mem_thiago"), createdAt: at(10) },
       { id: "lnk_2", fromType: "conversation", fromId: "cnv_1", toType: "deal", toId: "deal_fim_1", createdBy: member("mem_julia"), createdAt: at(5) },
@@ -1987,6 +1992,8 @@ export function buildSeed(): DataState {
   applyContasAReceber(state, { at, workspaceId: WORKSPACE_ID });
   // Processo comercial na Estrutura: Comercial › Caixa de entrada › um Kanban por Funil.
   applyEspelhoComercial(state, { at, workspaceId: WORKSPACE_ID });
+  // Ferramentas do CRM (docs 23–25): Comunidade, Grupos, Link de Captação e Flow no Canal de WhatsApp.
+  applyFerramentas(state, { at, workspaceId: WORKSPACE_ID });
   return state;
 }
 

@@ -111,20 +111,3 @@
   box-shadow: var(--sombra-flutuante);
 }
 
-/* O brilho de fundo do quadro de Negócios: decoração, atrás de tudo, sem
-   interceptar clique — arrastar um cartão é a ação principal desta tela. */
-.palco-quadro {
-  position: relative;
-  isolation: isolate;
-}
-
-.palco-quadro::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(60rem 40rem at 8% -10%, var(--orbe-3), transparent 70%),
-    radial-gradient(50rem 36rem at 95% 110%, var(--orbe-1), transparent 70%);
-}

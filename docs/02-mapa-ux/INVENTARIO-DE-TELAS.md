@@ -11,6 +11,18 @@ Convenção: **[E]** entidade · **[A]** atributo · **[D]** derivado · **[VO]*
 
 # I. SESSÃO E INÍCIO
 
+## T00 · Login — `/login` ⟨01⟩
+
+**Propósito.** A porta fictícia do protótipo: usuário e senha, sem backend. A ontologia distingue Usuário (a identidade que autentica) de Membro (a relação com o Espaço de Trabalho — A1.4); o produto navegável simula só o segundo (T01), então aqui qualquer usuário e senha entram. Alcançada pelo menu da conta ("Sair"); nada redireciona para ela.
+
+**Exibe.** A marca (monograma em marca-d'água, logo completa) à esquerda; à direita o cartão com Usuário e Senha.
+
+**Estados.** Campo vazio ao enviar → erro inline "Informe o usuário e a senha." Enviando → botão em pendência (`carregando`) até o Início chegar.
+
+**Ações e regras.** Entrar (navega ao Início no ato); ir a T01 para escolher o Membro.
+
+**Cardinalidade.** Dois campos obrigatórios.
+
 ## T01 · Entrar — `/entrar` ⟨01⟩
 
 **Propósito.** Escolher qual Membro simula a sessão. Substitui a autenticação; a ontologia distingue Usuário (identidade global) de Membro (relação com o Espaço de Trabalho) — A1.4 — e o produto navegável simula só o segundo.
@@ -545,6 +557,34 @@ Convenção: **[E]** entidade · **[A]** atributo · **[D]** derivado · **[VO]*
 **Estado vazio.** "Nenhum elegível. As Conversas desta Fila ficarão sem Atribuído até alguém se auto-atribuir."
 
 **Permissões.** Papel de nível Administrador ou `administrar` sobre a Fila.
+
+---
+
+# IIIa. FERRAMENTAS (assunto próprio do trilho, abaixo de IA; docs 23–25)
+
+## T20a · Ferramentas — `/ferramentas/grupos` · `/ferramentas/comunidades` · `/ferramentas/flows` ⟨23, 24, 25⟩
+
+**Propósito.** Um assunto próprio do trilho (abaixo de IA), com os três gerenciadores dos Ativos de Canal do WhatsApp como telas do painel: **Grupos** (grupos espelhados, com Participações), **Comunidades** (agregados de Grupos com um Grupo de avisos) e **Flows** (formulários interativos versionados). O provedor é simulado em memória.
+
+**Exibe.** Grupos: Links de Captação (nome, `/l/slug`, Critério, elegíveis agora, cliques, próximo destino) e a lista de Grupos (Nome + marcadores sem privilégio / Canal ausente / link inválido / esgotado / Pedidos pendentes, Canal + Papel do Canal, Ocupação `vigentes / teto` + faixa, Captação + cliques, Link de convite, Comunidade + papel, Sincronização). Comunidades: Nome + marcadores, Canal + Papel, Grupos vinculados `n / limite`, Membros [D, RN-COM-06], Grupo de avisos, Sincronização. Flows: Nome, Categoria, Canal publicador, Versão publicada, rascunho, estado no provedor, Envios · Respostas · Taxa [D].
+
+**Popups (formato da Tarefa).** Grupo (`?grupo=`): propriedades espelhadas à esquerda (Nome, Canal, Papel, Ocupação, Link de convite + Regenerar, Sincronização, Identificador externo, Origem) e as da plataforma à direita (Configurações ×4 como Toggle — desligados com motivo —, Captação ativa, Limite de cliques, Teto, Cliques contabilizados + Zerar, Comunidade, Estado); seções Participações (encerradas escondidas; promover/rebaixar/remover; Adicionar participante), Pedidos de Entrada (aprovar/recusar com motivo; simular), Links de Captação elegíveis (ou o motivo de inelegibilidade), Conversa de grupo (compositor que cria a Conversa — RN-GRP-13); aside Atividade. Comunidade (`?comunidade=`): propriedades, Grupos (vincular/desvincular; o avisos não é desvinculável), Enviar à Comunidade (= Grupo de avisos; "enviar a todos os Grupos" desligado explicando DO-COM-05). Flow (`?flow=`): propriedades (Canal publicador, Ponto de troca de dados, métricas), Versões (criar rascunho a partir de, descartar), Envios, Enviar a um Contato.
+
+**Ações e regras.** Novo Grupo · Novo Link · Importar do Canal · Sincronizar tudo · Nova Comunidade · Novo Flow (→ construtor). Sair do Grupo / da Comunidade exige o nome digitado quando o Canal é o único administrador (24, 20.6). Ferramentas externas recusadas na ordem: lixeira → arquivado → sem Canal → Canal desconectado → `nunca conferido` (RN-ATV-08) → inacessível → sem privilégio (RN-GRP-05); a mesma frase vale para o botão desligado e para a operação.
+
+**Estado vazio.** Sem Grupo: "Crie um Grupo pelo Canal, ou importe os grupos de que o Canal já participa."
+
+**Permissões.** Membro ativo (não Convidado) para as Ferramentas; Proprietário/Administrador para sair, vincular/desvincular, publicar, despublicar, trocar Canal publicador, regenerar chaves.
+
+---
+
+## T20b · Construtor de Flow — `/ferramentas/flows/[flow]` ⟨23⟩
+
+**Propósito.** Editar o rascunho de um Flow (só ele é editável — RN-FLW-04), validar (7.5) e publicar (DO-FLW-03).
+
+**Exibe.** Três colunas: Telas (ordem = navegação padrão; `?tela=` seleciona); a Tela selecionada (Título, Identificador — renomear reescreve as Ações, RN-FLW-08 —, Terminal, Dados de Tela) e os Componentes (Selo por grupo do catálogo, Tipo, Nome, obrigatório, problemas; ↑↓; menu Duplicar / Mover para dentro de… / Remover); clicar num Componente abre o formulário gerado da spec do Tipo (limites com contadores, Ação com Tela de destino e carga útil, Condição). À direita: Validação ao vivo com "ir", Publicar, Versões, pré-visualização em moldura de telefone (o Rodapé navega). Abaixo de `xl` as colunas empilham.
+
+**Ações e regras.** Publicar desligado com motivo (arquivado → sem Canal → desconectado → N problemas); Rodapé único e último (7.5.6); `concluir` só em Tela terminal; `troca de dados` exige Ponto (RN-FLW-10); Nome único na Versão (INV-FLW-04).
 
 ---
 

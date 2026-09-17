@@ -1,17 +1,28 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useData } from "@/data/store";
 import { CreateRecordDialog, useCreateRecordDialog } from "@/features/crm/create-record-dialog";
-import { Button, CorpoDeTela, PageHeader } from "@/features/shell/ui";
+import { EmpresaPopup } from "@/features/crm/empresa-popup";
 import { RecordList } from "@/features/shell/record-list";
-import { StateSeal } from "@/features/shell/ui";
+import { Button, CorpoDeTela, PageHeader, StateSeal } from "@/features/shell/ui";
+
+/** A Empresa escolhida abre no popup, por `?empresa=<id>` — a lista fica atrás. */
+const EMPRESA_PARAM = "empresa";
 
 export default function EmpresasPage() {
   const state = useData((data) => data);
   const items = state.companies.filter((c) => c.lifecycle !== "naLixeira" && c.lifecycle !== "mesclado");
   const { creating, openCreate, closeCreate } = useCreateRecordDialog("empresa");
   const router = useRouter();
+  const pathname = usePathname();
+  const query = useSearchParams();
+  const aberta = query.get(EMPRESA_PARAM);
+  const fechar = () => {
+    const next = new URLSearchParams(query.toString());
+    next.delete(EMPRESA_PARAM);
+    router.replace(next.size > 0 ? `${pathname}?${next}` : pathname, { scroll: false });
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -31,7 +42,9 @@ export default function EmpresasPage() {
       <CorpoDeTela semRespiro>
         <RecordList
           items={items}
-          hrefOf={(item) => `/crm/empresas/${item.id}`}
+          // A ficha no formato da Tarefa, num popup sobre a lista; a página
+          // cheia continua a um clique no rodapé dele.
+          hrefOf={(item) => `${pathname}?${EMPRESA_PARAM}=${item.id}`}
           emptyTitle="Nenhuma Empresa ainda."
           columns={[
             { key: "nome", label: "Nome de exibição", render: (item) => item.tradeName || item.legalName },
@@ -43,6 +56,8 @@ export default function EmpresasPage() {
           ]}
         />
       </CorpoDeTela>
+
+      <EmpresaPopup companyId={aberta} onClose={fechar} />
     </div>
   );
 }

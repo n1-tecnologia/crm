@@ -19,19 +19,25 @@ export function BotaoDeMais({
   rotulo,
   onClick,
   motivo,
+  onBloqueado,
   aberto = false,
 }: {
   readonly rotulo: string;
   readonly onClick: () => void;
   /** Por que não cria aqui — vira o `title` e desabilita. */
   readonly motivo?: string;
+  /**
+   * O clique no "+" bloqueado. O `title` só fala com o mouse parado; quem
+   * clica quer criar, e merece a resposta na tela (o motivo, e o caminho).
+   */
+  readonly onBloqueado?: (motivo: string) => void;
   readonly aberto?: boolean;
 }) {
   const bloqueado = motivo !== undefined;
   return (
     <button
       type="button"
-      onClick={bloqueado ? undefined : onClick}
+      onClick={bloqueado ? () => onBloqueado?.(motivo) : onClick}
       aria-disabled={bloqueado}
       aria-expanded={aberto}
       aria-label={`Nova em ${rotulo}`}

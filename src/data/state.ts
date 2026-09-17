@@ -16,6 +16,7 @@ import type {
   ChatSession,
   Collection,
   CollectionGrant,
+  Comunidade,
   Company,
   CompanyCompanyLink,
   Contact,
@@ -24,14 +25,17 @@ import type {
   Deal,
   DistinctFromLink,
   FieldDefinition,
+  Flow,
   Folder,
   Funnel,
   Grant,
+  Grupo,
   Id,
   Inbox,
   Integration,
   KnowledgeDocument,
   Link,
+  LinkDeCaptacao,
   List,
   Member,
   Model,
@@ -108,16 +112,26 @@ export interface DataState {
 
   panels: Panel[];
 
+  /** Ativos de Canal (docs 23–25): Ferramentas do CRM. */
+  grupos: Grupo[];
+  comunidades: Comunidade[];
+  linksDeCaptacao: LinkDeCaptacao[];
+  flows: Flow[];
+
   links: Link[];
   activity: ActivityRecord[];
 }
 
-/** Every operation answers with a typed result; errors are pt-BR sentences. */
+/**
+ * Every operation answers with a typed result; errors are pt-BR sentences.
+ * `id` é o registro que a operação criou, alterou ou moveu: a tela acende essa
+ * peça por `--dur-realce` (`useRecente`). Opcional — sem ele não há realce.
+ */
 export type OperationResult<T = void> =
-  | { readonly ok: true; readonly value: T }
+  | { readonly ok: true; readonly value: T; readonly id?: Id }
   | { readonly ok: false; readonly error: string; readonly field?: string };
 
-export const ok = <T>(value: T): OperationResult<T> => ({ ok: true, value });
+export const ok = <T>(value: T, id?: Id): OperationResult<T> => (id === undefined ? { ok: true, value } : { ok: true, value, id });
 export const fail = <T = never>(error: string, field?: string): OperationResult<T> =>
   field === undefined ? { ok: false, error } : { ok: false, error, field };
 

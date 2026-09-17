@@ -118,7 +118,7 @@ export function decideApproval(
     after: decision,
     ...(reason ? { detail: reason } : {}),
   });
-  return ok(approval);
+  return ok(approval, approval.id);
 }
 
 /**
@@ -406,7 +406,7 @@ export function createChatSession(
     objectName: session.title,
     ...(anchor ? { detail: `Ancorada em ${anchor.nameAtTheTime}` } : {}),
   });
-  return ok(session);
+  return ok(session, session.id);
 }
 
 /**
@@ -509,7 +509,7 @@ export function configureChatSession(
     objectName: session.title,
     detail: mudancas.join(" · "),
   });
-  return ok(session);
+  return ok(session, session.id);
 }
 
 /**
@@ -546,7 +546,7 @@ export function sendChatMessage(
     at: now(),
   };
   session.messages.push(message);
-  return ok(message);
+  return ok(message, message.id);
 }
 
 function anchorName(state: DataState, type: ChatAnchor["type"], id: Id): string | undefined {

@@ -176,7 +176,7 @@ export function moveDealToStage(
   delete deal.overriddenProbability;
   deal.stageId = to.id;
   pushTransition(state, deal, actingMemberId, from, to, entryOriginFor(from, to), discarded);
-  return ok(deal);
+  return ok(deal, deal.id);
 }
 
 /** B62 — advance and retreat are derived from the order at the time. */
@@ -230,7 +230,7 @@ export function winDeal(
         }
       : {}),
   });
-  return ok(deal);
+  return ok(deal, deal.id);
 }
 
 export function loseDeal(
@@ -264,7 +264,7 @@ export function loseDeal(
     objectName: deal.title,
     after: state.catalog.find((c) => c.id === input.lossReasonId)?.name,
   });
-  return ok(deal);
+  return ok(deal, deal.id);
 }
 
 /**
@@ -336,7 +336,7 @@ export function reopenDeal(state: DataState, actingMemberId: Id, dealId: Id): Op
     after: "aberto",
     ...(cleared.length > 0 ? { detail: `Limpos no encerramento anterior — ${cleared.join(" · ")}` } : {}),
   });
-  return ok(deal);
+  return ok(deal, deal.id);
 }
 
 /** RN-NEG-07 — at most one link per pair; the first one is born principal. */
@@ -385,7 +385,7 @@ export function linkContactToDeal(
     objectName: deal.title,
     after: `${contact.firstName} ${contact.lastName}`.trim(),
   });
-  return ok(deal);
+  return ok(deal, deal.id);
 }
 
 /**
@@ -434,7 +434,7 @@ export function removeStage(
     after: target.name,
     detail: `${affected.length} Negócio(s) remapeado(s)`,
   });
-  return ok(funnel);
+  return ok(funnel, funnel.id);
 }
 
 /**
@@ -562,7 +562,7 @@ export function restoreDeal(state: DataState, actingMemberId: Id, dealId: Id): O
     objectName: deal.title,
     after: deal.lifecycle,
   });
-  return ok(deal);
+  return ok(deal, deal.id);
 }
 
 /**
@@ -657,7 +657,7 @@ export function moveDealToFunnel(
       ? { detail: `Proprietário: ${previousOwner?.displayName ?? "—"} → ${owner.displayName}` }
       : {}),
   });
-  return ok(deal);
+  return ok(deal, deal.id);
 }
 
 /**
@@ -760,7 +760,7 @@ export function createDeal(
     objectId: deal.id,
     objectName: deal.title,
   });
-  return ok(deal);
+  return ok(deal, deal.id);
 }
 
 /**
@@ -815,7 +815,7 @@ export function unlinkContactFromDeal(
     objectName: deal.title,
     before: contact ? `${contact.firstName} ${contact.lastName}`.trim() : link.contactId,
   });
-  return ok(deal);
+  return ok(deal, deal.id);
 }
 
 /**
@@ -878,5 +878,5 @@ export function setDealFieldValue(
     ...(antes !== undefined && antes !== null ? { before: String(antes) } : {}),
     ...(vazio ? {} : { after: String(value) }),
   });
-  return ok(deal);
+  return ok(deal, deal.id);
 }

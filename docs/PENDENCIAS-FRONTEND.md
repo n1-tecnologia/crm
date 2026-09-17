@@ -2,7 +2,7 @@
 
 Conceitos que a interface precisou resolver e que a ontologia **não** define, ou que ela deixou explicitamente em aberto. Cada item traz a **alternativa adotada** e a consequência. Nenhuma entidade nova foi criada (regra I.1 do PRD).
 
-Atualizado na Fase 6 · 2026-09-10. A Fase 2 abriu o documento; a Fase 3 acrescentou P1 e P2; a Fase 6 fechou P1 e decidiu C32.
+Atualizado na Fase 6 · 2026-09-10. A Fase 2 abriu o documento; a Fase 3 acrescentou P1 e P2; a Fase 6 fechou P1 e decidiu C32. O pacote de movimento (2026-09-17) abriu P3–P9, fora do seu escopo.
 
 ---
 
@@ -139,3 +139,89 @@ em vez de reativar o antigo, quebrando INV-ET-04.
 Hoje não dá para acontecer, porque o protótipo nunca faz um Membro `pendente`
 aceitar. Fecha quando existir um diretório de Usuário — ou seja, quando existir
 backend.
+
+## Pendências de movimento — fora do pacote de 2026-09-17
+
+O sistema de movimento (`docs/05-design-system/DIRECAO-VISUAL.md` §5) entrou inteiro,
+menos estes sete itens, deixados de fora de propósito. Cada um diz o que existe hoje,
+o que falta e por que não coube.
+
+### P3. Fila global de avisos e a migração dos 28 chamadores de `Toast`
+
+Hoje o `Toast` é **inline e sticky** no topo do corpo da tela: entra em `surgir`,
+expira pela régua de tempo e sai em `sumir`, mas empurra o conteúdo — é a única fonte
+conhecida de CLS. A fase seguinte é a fila fixa embaixo da tela (porta de
+`CRM-COMPLETO/components/ui/aviso.tsx`), com migração **por assunto** dos 28 lugares
+que renderizam `<Toast>` e `npm run check` verde a cada lote. Ficou de fora porque a
+API atual (`tone`, `children`, `onDismiss`, `acao`) é compatível com todos os
+chamadores e a fila muda o modelo (quem monta, quem empilha, quem dispensa).
+
+### P4. FLIP no drop dos quadros
+
+Soltar um cartão noutra coluna o faz aparecer lá sem trajeto; o sinal é o realce
+(`data-recente`, 1,5 s em `--acento-lavado`). Um FLIP (medir antes e depois, animar a
+diferença por `transform` transitório) daria o trajeto, mas o `.card-negocio` é
+arrastável e não pode carregar transform residual, e o `.rolagem-no-topo-corpo` tem
+`overflow` que recortaria o caminho. Pede desenho próprio.
+
+### P5. Largura animada do painel de navegação
+
+Recolher e expandir o painel do assunto troca a largura num quadro. Animar `width` do
+`<aside>` custaria layout da tela inteira por quadro, e o `<aside>` hospeda o
+`CreateContainerDialog` (`fixed` sem portal): nem `transform` nem `overflow` cabem
+nele (lei 2). O que anima hoje é só o conteúdo (`aparecer` no `nav`, `surgir-rapido`
+na subárvore, o chevron em `.seta-recolhe`).
+
+### P6. View Transitions
+
+Descartadas nesta versão: o React 19.2.8 estável não exporta `ViewTransition`, o Next
+16.3.4 não tem a opção `viewTransition`, e `document.startViewTransition` cru congela
+a tela velha até o chunk chegar — o oposto da tese (a tela velha fica inteira e
+responsiva; a barra de rota conta a espera). Reavaliar quando as duas bibliotecas
+estabilizarem a API.
+
+### P7. UI da preferência "Movimento mínimo"
+
+O mecanismo existe: `<html data-movimento="minimo">` liga o mesmo bloco de CSS do
+`prefers-reduced-motion`, e `reduzido()` (`design/movimento.ts`) o lê. Falta o
+controle (um `Toggle` em `/minha-conta`) e onde persistir: é preferência do Usuário
+(A1.4), e sem backend vira estado de sessão — o mesmo tratamento de A2.
+
+### P8. Destino da família `.orbe-assistente`
+
+`componentes.css` mantém `.orbe-assistente` (laços `orbe-respira` e `orbe-gira`, já
+em `--dur-respira` e `--dur-varredura`) sem nenhum uso. Ou vira o avatar do
+Assistente no Chat e no Início, ou sai. É decisão de produto; até lá a sentinela a
+tolera porque os tempos são token.
+
+### P10. O Login não é uma porta
+
+`/login` (usuário e senha, fictício) existe pelo rito e pela marca, alcançável por
+"Sair" no menu da conta; nada redireciona para ela e qualquer usuário e senha
+entram. Quando houver Usuário de verdade (A1.4), a rota vira o gate e `/entrar`
+vira a escolha de Espaço de Trabalho/Membro depois da autenticação.
+
+### P11. Painéis: a barra de Metas nunca foi vista
+
+A seed tem `goals: []`, então "Metas deste contêiner" nunca renderiza. A barra
+(`.barra-h > .preenchimento`, `role=progressbar`, `--i`) está implementada e passa
+em tsc/eslint, mas não foi fotografada. Falta uma Meta na seed.
+
+### P12. Início: o botão de enviar a pergunta é cru
+
+É um `<button className="btn-icone">`, não o `Button` do design: enquanto a rota
+chega ele só ganha `aria-busy` (o globo "pensa"), sem o spinner no lugar da seta
+como no Entrar. Troca pequena, decisão de desenho.
+
+### P13. Entrar: com 11 Membros o cartão passa de 900 px
+
+`min-h-screen` + `items-center` + 11 linhas: o último Membro fica abaixo da dobra
+num viewport de 900 px e a página rola. Pré-existente ao movimento.
+
+### P9. `caixa-de-entrada/layout.tsx`
+
+Para a coluna de 23 conversas não refazer a onda a cada clique, `chaveDeChegada`
+colapsa `/crm/caixa-de-entrada/[conversa]` no prefixo e o painel direito remonta com
+`key={conversationId}` + `aparecer`. A solução definitiva é um `layout.tsx` do
+segmento que mantenha a coluna montada e só troque o detalhe — aí o colapso na chave
+deixa de ser necessário.

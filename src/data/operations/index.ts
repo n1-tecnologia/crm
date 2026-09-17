@@ -14,3 +14,5 @@ export * from "./automations";
 export * from "./financeiro";
 export * from "./members";
 export * from "./structure";
+export * from "./iniciar-conversa";
+export * from "./ferramentas";

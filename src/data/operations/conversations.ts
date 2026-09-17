@@ -228,7 +228,7 @@ export function sendMessage(
       return parts.length > 0 ? { detail: parts.join(" ") } : {};
     })(),
   });
-  return ok(message);
+  return ok(message, message.id);
 }
 
 /** DO-CXE-07 — sending does not change the state by itself; resolving is an act. */
@@ -253,7 +253,7 @@ export function resolveConversation(
     before,
     after: "resolvida",
   });
-  return ok(conversation);
+  return ok(conversation, conversation.id);
 }
 
 /**
@@ -282,7 +282,7 @@ export function reopenConversation(
     before: "resolvida",
     after: "aberta",
   });
-  return ok(conversation);
+  return ok(conversation, conversation.id);
 }
 
 /**
@@ -403,7 +403,7 @@ export function receiveMessage(
     externalEdits: [],
     createdAt: now(),
   });
-  return ok(conversation);
+  return ok(conversation, conversation.id);
 }
 
 /** RN-CXE-12 — no distribution rule assigns to an Agent; only an explicit act. */
@@ -433,7 +433,7 @@ export function assignConversation(
     objectName: conversation.title,
     after: assignee?.id,
   });
-  return ok(conversation);
+  return ok(conversation, conversation.id);
 }
 
 /** RN-CXE-33 — only a resolved conversation goes to the trash. */
@@ -583,7 +583,7 @@ export function moveConversationToContact(
     before: previousName,
     detail: conversation.title,
   });
-  return ok(conversation);
+  return ok(conversation, conversation.id);
 }
 
 /**
@@ -654,7 +654,7 @@ export function restoreConversation(
     objectName: conversation.title,
     detail: `Volta ${conversation.state}.`,
   });
-  return ok(conversation);
+  return ok(conversation, conversation.id);
 }
 
 /**
@@ -750,7 +750,7 @@ export function startConversation(
     objectName: conversation.title,
     detail: channel.name,
   });
-  return ok(conversation);
+  return ok(conversation, conversation.id);
 }
 
 /**
@@ -781,7 +781,7 @@ export function toggleConversationStar(
     objectId: conversation.id,
     objectName: conversation.title,
   });
-  return ok(conversation);
+  return ok(conversation, conversation.id);
 }
 
 /**

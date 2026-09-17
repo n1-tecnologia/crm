@@ -13,6 +13,7 @@ import { use, useState } from "react";
 import { CheckCircle2, FileX } from "lucide-react";
 import { useData, useRun } from "@/data/store";
 import { useHidratado } from "@/features/shell/app-shell";
+import { EsqueletoDeTela } from "@/design/esqueletos";
 import { formBySecret, submitForm } from "@/data/operations";
 import { Button, EmptyState, Field, Icone, Painel, Select, TextArea, TextInput } from "@/features/shell/ui";
 
@@ -26,7 +27,7 @@ export default function FormularioPublicoPage({ params }: { params: Promise<{ se
   const [erro, setErro] = useState<{ text: string; field?: string } | null>(null);
   const pronto = useHidratado();
 
-  if (!pronto) return null;
+  if (!pronto) return <EsqueletoDeTela forma="formulario" />;
 
   if (!form || !form.enabled) {
     return (

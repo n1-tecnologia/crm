@@ -1,4 +1,5 @@
 import { Suspense, type ReactNode } from "react";
+import { EsqueletoDaCasca } from "@/design/esqueletos";
 import { AppShell } from "@/features/shell/app-shell";
 
 /**
@@ -18,18 +19,14 @@ export default function ShellLayout({ children }: { readonly children: ReactNode
    * árvore cliente não hidrata.
    */
   return (
-    <Suspense fallback={<ShellFallback />}>
+    <Suspense fallback={<EsqueletoDaCasca />}>
       <AppShell>{children}</AppShell>
     </Suspense>
   );
 }
 
-function ShellFallback() {
-  return (
-    <div className="p-6">
-      <p role="status" className="text-[length:var(--texto-base)] text-[var(--cor-tinta-fraca)]">
-        Carregando a tela…
-      </p>
-    </div>
-  );
-}
+/*
+  O fallback é a casca inteira em silhueta (`EsqueletoDaCasca`): trilho, painel
+  e um miolo na forma de tabela. É o único HTML que o servidor entrega para as
+  rotas da casca — a casca lê `useSearchParams` e por isso não pré-renderiza.
+*/

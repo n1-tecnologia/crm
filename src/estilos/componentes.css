@@ -48,7 +48,7 @@
       linear-gradient(#fff 0 0);
     mask-composite: exclude;
     opacity: var(--proximidade);
-    transition: opacity 250ms ease;
+    transition: opacity var(--dur-2) var(--easing);
     pointer-events: none;
     z-index: 2;
   }
@@ -289,7 +289,18 @@
     transform: scaleX(1);
   }
 
-  /* ── Animações ───────────────────────────────────────────────────────── */
+  /* ── Animações ───────────────────────────────────────────────────────────
+     O vocabulário de movimento. As quatro leis (DIRECAO-VISUAL §5):
+       1. uma curva (`--easing`) para interação, durações por token, um passo
+          (`--dur-passo`); laços e medidores têm curva própria (ease-in-out,
+          linear) e são a exceção nomeada;
+       2. contêiner só esmaece (`aparecer`); peça e folha é que recebem
+          `transform`/`filter`;
+       3. toda entrada termina em `transform: none`/`filter: none`: nunca
+          `forwards` numa entrada, `backwards` só para cobrir o delay;
+       4. movimento nunca é o único sinal (`role=status`, `aria-busy`, texto).
+     Nomes em pt-BR sem acento: o Tailwind v4 colide com `transform`, `filter`,
+     `blur`, `animate` e `container`.                                        */
 
   @keyframes pulso {
     0%,
@@ -302,13 +313,13 @@
   }
 
   .pulso {
-    animation: pulso 1.5s ease-in-out infinite;
+    animation: pulso var(--dur-pulso) ease-in-out infinite;
   }
 
   @keyframes surgir {
     from {
       opacity: 0;
-      transform: translateY(4px);
+      transform: translateY(var(--surgir-y));
     }
     to {
       opacity: 1;
@@ -316,16 +327,20 @@
     }
   }
 
+  /* Peça, cabeçalho, popup: 300ms. Menu, seletor, subárvore: 150ms. */
   .surgir {
     animation: surgir var(--dur-2) var(--easing);
   }
+  .surgir-rapido {
+    animation: surgir var(--dur-1) var(--easing);
+  }
 
-  /* A entrada do sistema: "everything arrives out of focus" */
+  /* A entrada do sistema: "everything arrives out of focus" — só onde a pessoa pausa. */
   @keyframes revelar {
     from {
       opacity: 0;
-      transform: translateY(12px);
-      filter: blur(6px);
+      transform: translateY(var(--chegada-y));
+      filter: blur(var(--chegada-desfoque));
     }
     to {
       opacity: 1;
@@ -338,6 +353,28 @@
     animation: revelar var(--dur-3) var(--easing);
   }
 
+  /* Contêiner só esmaece. */
+  @keyframes aparecer {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .aparecer {
+    animation: aparecer var(--dur-1) var(--easing);
+  }
+
+  /* Saída: só opacidade. O único lugar em que `forwards` é permitido — o nó
+     desmonta em seguida (`usePresenca`). */
+  @keyframes sumir {
+    to {
+      opacity: 0;
+    }
+  }
+
   @keyframes girar {
     to {
       transform: rotate(360deg);
@@ -345,7 +382,366 @@
   }
 
   .girando {
-    animation: girar 1s linear infinite;
+    animation: girar var(--dur-giro) linear infinite;
+  }
+
+  /* Uma folha que gira por estado (chevron, o "+" que vira "×"): a curva do
+     sistema, não a do utilitário `transition-transform`. */
+  .rotacao {
+    transition: transform var(--dur-2) var(--easing);
+  }
+
+  /* O que acabou de mudar: acende em `--acento-lavado` e apaga no próprio
+     fundo. A tela passa `data-recente` só à peça cujo id é o do último
+     resultado (`useRecente`), nunca a todas. */
+  @keyframes destacar {
+    from {
+      background-color: var(--acento-lavado);
+    }
+  }
+
+  [data-recente="true"] {
+    animation: destacar var(--dur-realce) var(--easing);
+  }
+  /* Uma peça já destacada (conversa não lida, item ativo) tem o fundo em
+     --acento-lavado: o realce parte de um tom mais forte, senão é invisível. */
+  @keyframes destacar-forte {
+    from {
+      background-color: var(--acento-lavado-forte);
+    }
+  }
+  [data-destacado="true"][data-recente="true"],
+  [data-selecionada="true"][data-recente="true"] {
+    animation-name: destacar-forte;
+  }
+
+  /* ── Chegada de tela ────────────────────────────────────────────────────
+     A casca nunca sai do lugar: a tela chega porque as suas peças chegam —
+     cabeçalho primeiro (0), depois a barra de filtros, os painéis e as réguas
+     (1 passo), o estado vazio (2 passos) e as peças em cascata de um passo
+     cada. Tudo só dentro da janela `[data-entrando]` (`--dur-cascata`), que
+     `features/shell/chegada.tsx` abre na montagem por rota e fecha em 1s.
+     Fora dela NADA anima: filtro, aba, "Mostrar mais", tecla.
+
+     O invólucro SÓ esmaece: é ancestral de todo SidePanel/ConfirmDialog
+     (`fixed` sem portal). Nunca transform/filter/will-change/contain/overflow
+     aqui. `height: 100%` mantém o `h-full` das raízes de página.
+
+     Tudo em `:where()` (especificidade zero) para que `--i` inline,
+     `[data-recente]` e `.surgir` direto vençam sem guerra.                  */
+
+  .chegada {
+    height: 100%;
+    animation: aparecer var(--dur-1) var(--easing);
+  }
+
+  /* A regra de .painel vem ANTES da de .cascata > *: um painel que é peça de
+     lista recebe a cascata. */
+  :where(.chegada[data-entrando]) :where(.painel, .regua-de-secao) {
+    animation: aparecer var(--dur-2) var(--easing) backwards;
+    animation-delay: var(--dur-passo);
+  }
+  :where(.chegada[data-entrando]) .cabecalho-de-tela {
+    animation: surgir var(--dur-2) var(--easing);
+  }
+  :where(.chegada[data-entrando]) .barra-de-filtros {
+    animation: surgir var(--dur-2) var(--easing) backwards;
+    animation-delay: var(--dur-passo);
+  }
+  :where(.chegada[data-entrando]) .estado-vazio {
+    animation: revelar var(--dur-3) var(--easing) backwards;
+    animation-delay: calc(2 * var(--dur-passo));
+  }
+
+  /* Cascata: só dentro da janela E só em contêiner que declara `.cascata`
+     (a janela é a do invólucro de rota, ou a do próprio contêiner quando ele
+     vive fora dela — o painel de navegação).
+     Contrato: `.surgir` DIRETO na peça = anima sempre que é inserida;
+               `.cascata` no CONTÊINER = as peças animam só na chegada.
+     `--cascata-inicio` é o único ajuste por contêiner (o Início espera a capa). */
+  :where(.chegada[data-entrando] .cascata, .cascata[data-entrando]) > * {
+    animation: surgir var(--dur-2) var(--easing) backwards;
+    animation-delay: calc(var(--cascata-inicio) + var(--i, 0) * var(--dur-passo));
+  }
+  :where(.chegada[data-entrando] .cascata, .cascata[data-entrando]) > :where(:nth-child(2)) {
+    --i: 1;
+  }
+  :where(.chegada[data-entrando] .cascata, .cascata[data-entrando]) > :where(:nth-child(3)) {
+    --i: 2;
+  }
+  :where(.chegada[data-entrando] .cascata, .cascata[data-entrando]) > :where(:nth-child(4)) {
+    --i: 3;
+  }
+  :where(.chegada[data-entrando] .cascata, .cascata[data-entrando]) > :where(:nth-child(5)) {
+    --i: 4;
+  }
+  :where(.chegada[data-entrando] .cascata, .cascata[data-entrando]) > :where(:nth-child(6)) {
+    --i: 5;
+  }
+  :where(.chegada[data-entrando] .cascata, .cascata[data-entrando]) > :where(:nth-child(7)) {
+    --i: 6;
+  }
+  :where(.chegada[data-entrando] .cascata, .cascata[data-entrando]) > :where(:nth-child(8)) {
+    --i: 7;
+  }
+  :where(.chegada[data-entrando] .cascata, .cascata[data-entrando]) > :where(:nth-child(9)) {
+    --i: 8;
+  }
+  :where(.chegada[data-entrando] .cascata, .cascata[data-entrando]) > :where(:nth-child(10)) {
+    --i: 9;
+  }
+  /* Teto: da 11ª peça em diante tudo chega junto, no último degrau, só por opacidade. */
+  :where(.chegada[data-entrando] .cascata, .cascata[data-entrando]) > :where(:nth-child(n + 11)) {
+    --i: 9;
+    animation-name: aparecer;
+  }
+
+  /* Superfícies de pausa (Notificações, ladrilhos de Painéis, membros do Entrar): desfocadas. */
+  :where(.chegada[data-entrando] .cascata[data-chegada="foco"], .cascata[data-entrando][data-chegada="foco"]) > :where(:nth-child(-n + 10)) {
+    animation-name: revelar;
+    animation-duration: var(--dur-3);
+  }
+
+  /* Quadro: `.rolagem-no-topo-corpo` recorta o deslocamento e o cartão é
+     arrastável (sem transform residual): só opacidade. */
+  :where(.chegada[data-entrando]) :where(.rolagem-no-topo-corpo .cascata) > * {
+    animation-name: aparecer;
+  }
+
+  /* ── Esqueleto ────────────────────────────────────────────────────────────
+     A forma exata do que vem, nunca uma ampulheta. A onda desce por `--i`
+     (delay NEGATIVO: cada linha nasce num ponto diferente do laço, sem o
+     salto de opacidade 1 → 0,4 que um delay positivo daria). Em movimento
+     reduzido ele para em `--esqueleto` (7%), legível como forma.            */
+  .esqueleto {
+    display: block;
+    background: var(--esqueleto);
+    border-radius: var(--r-controle);
+    animation: pulso var(--dur-pulso) ease-in-out infinite;
+    animation-delay: calc(var(--i, 0) * -2 * var(--dur-passo));
+  }
+  .esqueleto[data-redondo] {
+    border-radius: var(--r-pilula);
+  }
+
+  /* ── Carregador de ícones ─────────────────────────────────────────────────
+     A espera no centro da tela (design/carregador.tsx). Sobreposto ao que
+     está por baixo, sem escurecer e sem tomar o ponteiro. O aro é o mesmo
+     estêncil da lanterna (padding 1px + mask), girando no acento; os ícones
+     ficam empilhados e cada um vive 1/N do ciclo, entrando por baixo e saindo
+     por cima. `tardio`: espera a carência de --dur-1 (navegação curta nunca
+     o mostra). Em movimento reduzido o aro para e o primeiro ícone fica.   */
+  .carregador {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--e-3);
+    pointer-events: none;
+    z-index: var(--z-conteudo);
+  }
+  .carregador[data-tardio="true"] {
+    animation: aparecer var(--dur-2) var(--easing) backwards;
+    animation-delay: var(--dur-1);
+  }
+  .carregador-aro {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: var(--carregador-tam);
+    height: var(--carregador-tam);
+    border-radius: var(--r-pilula);
+    border: 1px solid var(--linha);
+    background: var(--card);
+    box-shadow: var(--sombra-suspensa), var(--brilho-fio);
+  }
+  .carregador-aro::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: conic-gradient(from 0deg, var(--acento), transparent 100deg, transparent 240deg, var(--acento));
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+    animation: girar calc(2 * var(--dur-giro)) linear infinite;
+  }
+  .carregador-icones {
+    position: relative;
+    width: var(--icone-md);
+    height: var(--icone-md);
+  }
+  .carregador-icone {
+    position: absolute;
+    inset: 0;
+    color: var(--acento);
+    opacity: 0;
+    animation: ciclo-icone calc(var(--carregador-n) * var(--dur-icone)) var(--easing) infinite;
+    animation-delay: calc(var(--i, 0) * var(--dur-icone));
+  }
+  /* 8 ícones: cada um ocupa 12,5% do ciclo — entra por baixo, para, sai por cima. */
+  @keyframes ciclo-icone {
+    0% {
+      opacity: 0;
+      transform: translateY(var(--surgir-y)) scale(0.85);
+    }
+    3% {
+      opacity: 1;
+      transform: none;
+    }
+    10% {
+      opacity: 1;
+      transform: none;
+    }
+    12.5%,
+    100% {
+      opacity: 0;
+      transform: translateY(calc(-1 * var(--surgir-y))) scale(0.85);
+    }
+  }
+  .carregador-rotulo {
+    color: var(--texto-3);
+  }
+  /* Movimento reduzido: um ícone fixo (o laço zerado terminaria em opacidade 0). */
+  @media (prefers-reduced-motion: reduce) {
+    .carregador-icone:first-child {
+      opacity: 1;
+      animation: none;
+    }
+  }
+  :root[data-movimento="minimo"] .carregador-icone:first-child {
+    opacity: 1;
+    animation: none;
+  }
+
+  /* ── Login ────────────────────────────────────────────────────────────────
+     A metade da marca (app/login). A marca-d'água é o monograma em
+     `currentColor` (acento) a 6%, maior que o painel, recortada pelo overflow
+     do painel; a logo completa flutua devagar sobre um halo que respira — os
+     dois são laços (exceção nomeada: ease-in-out) em folhas sem descendente
+     fixed, e param em movimento reduzido.                                     */
+  .login-marca-dagua {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: var(--acento);
+    opacity: 0.06;
+    pointer-events: none;
+    z-index: var(--z-fundo);
+  }
+  .login-marca-dagua svg {
+    width: 130%;
+    height: 130%;
+    max-width: none;
+  }
+  .login-marca {
+    position: relative;
+    z-index: var(--z-conteudo);
+    display: grid;
+    place-items: center;
+    animation: marca-flutua var(--dur-respira) ease-in-out infinite alternate;
+  }
+  .login-marca::before {
+    content: "";
+    position: absolute;
+    inset: -40%;
+    border-radius: var(--r-pilula);
+    background: radial-gradient(circle, var(--aura-capa) 0%, transparent 62%);
+    z-index: -1;
+    animation: marca-respira calc(2 * var(--dur-respira)) ease-in-out infinite alternate;
+  }
+  @keyframes marca-flutua {
+    from {
+      transform: translateY(0);
+    }
+    to {
+      transform: translateY(calc(-2 * var(--surgir-y)));
+    }
+  }
+  @keyframes marca-respira {
+    from {
+      opacity: 0.5;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  /* ── Atmosfera ────────────────────────────────────────────────────────────
+     A do Entrar: irmã do cartão, nunca wrapper, nunca atrás de lista. Usa os
+     mesmos `.capa-orbe`/`.capa-estrela` da capa do Início.                 */
+  .atmosfera {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    isolation: isolate;
+    z-index: var(--z-fundo);
+    pointer-events: none;
+  }
+
+  /* ── Gráficos ─────────────────────────────────────────────────────────────
+     A FOLHA de preenchimento cresce por transform na chegada; o valor muda
+     por width/height (poucas e pequenas, sem texto dentro).                 */
+  @keyframes crescer-x {
+    from {
+      transform: scaleX(0);
+    }
+  }
+  @keyframes crescer-y {
+    from {
+      transform: scaleY(0);
+    }
+  }
+  /* rosca: `<circle pathLength="100">` */
+  @keyframes desenhar {
+    from {
+      stroke-dasharray: 0 100;
+    }
+  }
+  .preenchimento {
+    transition:
+      width var(--dur-2) var(--easing),
+      height var(--dur-2) var(--easing);
+  }
+  :where(.chegada[data-entrando]) .barra-h > .preenchimento {
+    transform-origin: left;
+    animation: crescer-x var(--dur-3) var(--easing) backwards;
+    animation-delay: calc(var(--i, 0) * var(--dur-passo));
+  }
+  /* barra centrada (o Funil): cresce do meio para as pontas */
+  :where(.chegada[data-entrando]) .barra-c > .preenchimento {
+    transform-origin: center;
+    animation: crescer-x var(--dur-3) var(--easing) backwards;
+    animation-delay: calc(var(--i, 0) * var(--dur-passo));
+  }
+  :where(.chegada[data-entrando]) .barra-v > .preenchimento {
+    transform-origin: bottom;
+    animation: crescer-y var(--dur-3) var(--easing) backwards;
+    animation-delay: calc(var(--i, 0) * var(--dur-passo));
+  }
+  :where(.chegada[data-entrando]) .rosca-fatia {
+    animation: desenhar var(--dur-3) var(--easing) backwards;
+    animation-delay: calc(var(--i, 0) * var(--dur-passo));
+  }
+
+  /* "Digitando": três pontos em pulso escalonado. */
+  .digitando > * {
+    animation: pulso var(--dur-pulso) ease-in-out infinite;
+  }
+  .digitando > :nth-child(2) {
+    animation-delay: calc(4 * var(--dur-passo));
+  }
+  .digitando > :nth-child(3) {
+    animation-delay: calc(8 * var(--dur-passo));
   }
 
   /* ── A capa do Início ────────────────────────────────────────────────────
@@ -393,15 +789,15 @@
     filter: blur(70px);
     pointer-events: none;
     z-index: -2;
-    animation: capa-deriva 22s ease-in-out infinite alternate;
+    animation: capa-deriva var(--dur-deriva-1) ease-in-out infinite alternate;
   }
   .capa-orbe:nth-of-type(2) {
-    animation-duration: 28s;
-    animation-delay: -9s;
+    animation-duration: var(--dur-deriva-2);
+    animation-delay: var(--deriva-defasagem-2);
   }
   .capa-orbe:nth-of-type(3) {
-    animation-duration: 34s;
-    animation-delay: -17s;
+    animation-duration: var(--dur-deriva-3);
+    animation-delay: var(--deriva-defasagem-3);
   }
 
   @keyframes capa-deriva {
@@ -419,11 +815,11 @@
     border-radius: var(--r-pilula);
     pointer-events: none;
     z-index: -1;
-    animation: capa-cintila 4s ease-in-out infinite alternate;
+    animation: capa-cintila var(--dur-cintila-1) ease-in-out infinite alternate;
   }
   .capa-estrela:nth-of-type(odd) {
-    animation-duration: 6s;
-    animation-delay: -2s;
+    animation-duration: var(--dur-cintila-2);
+    animation-delay: var(--cintila-defasagem);
   }
 
   @keyframes capa-cintila {
@@ -453,13 +849,13 @@
     position: absolute;
     border-radius: var(--r-pilula);
     border: 1px solid var(--linha-acento);
-    animation: orbe-respira 6s ease-in-out infinite;
+    animation: orbe-respira var(--dur-respira) ease-in-out infinite;
   }
   .orbe-anel:nth-of-type(2) {
-    animation-delay: -2s;
+    animation-delay: var(--respira-defasagem-2);
   }
   .orbe-anel:nth-of-type(3) {
-    animation-delay: -4s;
+    animation-delay: var(--respira-defasagem-3);
   }
 
   /* O anel tracejado gira devagar: é o que dá a leitura de “ouvindo”. */
@@ -467,7 +863,7 @@
     position: absolute;
     border-radius: var(--r-pilula);
     border: 1px dashed var(--linha-acento-forte);
-    animation: orbe-gira 24s linear infinite;
+    animation: orbe-gira var(--dur-varredura) linear infinite;
   }
 
   .orbe-nucleo {
@@ -478,7 +874,7 @@
     background: var(--degrade-marca);
     box-shadow: var(--brilho-orbe);
     transition: box-shadow var(--dur-3) var(--easing);
-    animation: orbe-respira 6s ease-in-out infinite;
+    animation: orbe-respira var(--dur-respira) ease-in-out infinite;
   }
 
   .orbe-assistente:hover .orbe-nucleo,

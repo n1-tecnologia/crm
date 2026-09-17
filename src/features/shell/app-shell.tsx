@@ -16,18 +16,17 @@
  * corre por baixo.
  *
  * A árvore reproduz EXATAMENTE a cadeia de contenção aprovada (A3.1): Espaço →
- * Pasta → Subpasta → Lista. Tarefas nunca aparecem nela (A3.2). CRM, IA e
+ * Pasta → Subpasta → Lista. Tarefas nunca aparecem nela (A3.2). CRM, IA, Ferramentas e
  * Painéis são pares de ESTRUTURA, nunca aninhados sob ela (A2.2) — por isso
  * cada um é um assunto do trilho.
  */
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useState, useSyncExternalStore } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   Bell,
   Building2,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Contact,
@@ -37,6 +36,7 @@ import {
   Inbox as InboxIcon,
   LayoutDashboard,
   LayoutGrid,
+  Layers,
   ListTodo,
   Lock,
   MessageSquare,
@@ -46,15 +46,26 @@ import {
   SlidersHorizontal,
   Split,
   Target,
+  Users,
+  Workflow,
+  Wrench,
   type LucideIcon,
 } from "lucide-react";
 import { ActionMenu, ActorAvatar, Toast } from "@/design/components";
 import { Icone } from "@/design/icone";
+import { CarregadorDeIcones } from "@/design/carregador";
+import { EsqueletoDeTela } from "@/design/esqueletos";
+import { BarraDeRota } from "./barra-de-rota";
+import { CascataDeNavegacao, Chegada } from "./chegada";
+import { limpar, marcarSeMuda, useAlvo, useNavegando, useNavegar } from "./navegacao";
+import { PendenciaDoLink } from "./pendencia-do-link";
+import { chaveDeChegada, formaDe } from "./rotas";
 import type { ContainerKind } from "@/features/estrutura/create-container-dialog";
 import { shortcutHref } from "@/features/estrutura/shortcuts";
 import { BrandMark } from "./brand";
 
 import { useData, useRun, useSession } from "@/data/store";
+import { MEUS_NEGOCIOS_ID } from "@/data/seed-comercial";
 import { moveChatSessionToFolder } from "@/data/operations";
 import { useChatFolderDialogs } from "@/features/ia/chat-folder-dialogs";
 import { memberReachesContainer, memberSeesResource } from "@/data/derive";
@@ -89,13 +100,15 @@ type Tela = {
 };
 
 type Assunto = {
-  readonly chave: "trabalho" | "crm" | "ia" | "paineis";
+  readonly chave: "trabalho" | "crm" | "ia" | "ferramentas" | "paineis";
   readonly rotulo: string;
   readonly icone: LucideIcon;
   /** O assunto "Trabalho" desenha a árvore de Espaços abaixo das telas. */
   readonly comArvore?: boolean;
   /** O assunto "IA" desenha as Sessões de Chat abaixo das telas. */
   readonly comChat?: boolean;
+  /** O assunto "CRM" desenha as Listas de "Meus negócios" (uma por Funil) abaixo das telas. */
+  readonly comMeusNegocios?: boolean;
   readonly telas: ReadonlyArray<Tela>;
 };
 
@@ -117,6 +130,7 @@ const ASSUNTOS: ReadonlyArray<Assunto> = [
     chave: "crm",
     rotulo: "CRM",
     icone: Contact,
+    comMeusNegocios: true,
     telas: [
       { href: "/crm/caixa-de-entrada", rotulo: "Caixa de Entrada", icone: InboxIcon, prefixo: true },
       { href: "/crm/contatos", rotulo: "Contatos", icone: Contact, prefixo: true },
@@ -141,6 +155,17 @@ const ASSUNTOS: ReadonlyArray<Assunto> = [
     ],
   },
   {
+    // Os Ativos de Canal (docs 23–25): um assunto próprio, abaixo de IA, com uma tela por gerenciador.
+    chave: "ferramentas",
+    rotulo: "Ferramentas",
+    icone: Wrench,
+    telas: [
+      { href: "/ferramentas/grupos", rotulo: "Grupos", icone: Users, prefixo: true },
+      { href: "/ferramentas/comunidades", rotulo: "Comunidades", icone: Layers, prefixo: true },
+      { href: "/ferramentas/flows", rotulo: "Flows", icone: Workflow, prefixo: true },
+    ],
+  },
+  {
     chave: "paineis",
     rotulo: "Painéis",
     icone: LayoutDashboard,
@@ -148,11 +173,17 @@ const ASSUNTOS: ReadonlyArray<Assunto> = [
   },
 ];
 
+/** O quadrado do trilho que uma rota acende: um assunto, ou o de Configurações. */
+function chaveDoTrilho(pathname: string): string {
+  return pathname.startsWith("/configuracoes") ? "configuracoes" : assuntoDe(pathname).chave;
+}
+
 /** A rota manda no trilho, nunca o clique: chegar por link acende o certo. */
 function assuntoDe(pathname: string): Assunto {
   if (pathname.startsWith("/crm")) return ASSUNTOS[1]!;
   if (pathname.startsWith("/ia")) return ASSUNTOS[2]!;
-  if (pathname.startsWith("/paineis")) return ASSUNTOS[3]!;
+  if (pathname.startsWith("/ferramentas")) return ASSUNTOS[3]!;
+  if (pathname.startsWith("/paineis")) return ASSUNTOS[4]!;
   return ASSUNTOS[0]!;
 }
 
@@ -171,12 +202,25 @@ function telaAtiva(pathname: string, tela: Tela): boolean {
 export function AppShell({ children }: { readonly children: React.ReactNode }) {
   const hidratado = useHidratado();
   const { collapsed, toggle } = useSidebarCollapsed();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const navegando = useNavegando();
+  // O endereço mudou: a navegação chegou. Também no voltar/avançar do navegador.
+  useEffect(() => {
+    limpar();
+  }, [pathname, searchParams]);
+  useEffect(() => {
+    window.addEventListener("popstate", limpar);
+    return () => window.removeEventListener("popstate", limpar);
+  }, []);
   return (
     <div className="relative flex h-screen overflow-hidden" style={{ zIndex: "var(--z-conteudo)" }}>
       {/* Recolher esconde só a 2ª etapa (o painel do assunto); o trilho de
           assuntos fica sempre à esquerda. */}
       <Navegacao recolhido={collapsed} onRecolher={toggle} />
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        {/* Irmã de <main>, nunca dentro dele: dentro, rolaria com o conteúdo. */}
+        <BarraDeRota />
         {/*
           O conteúdo só entra depois da hidratação. O seed é construído em cada
           processo a partir de "hoje", e o servidor de desenvolvimento fica de
@@ -187,17 +231,104 @@ export function AppShell({ children }: { readonly children: React.ReactNode }) {
         */}
         {/* Chapado como o trilho e o painel: o degradê do body faria o cabeçalho
             fixo de cada tabela (que pinta --page) aparecer como uma faixa escura. */}
-        <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto" style={{ background: "var(--page)" }}>
-          {hidratado ? children : null}
+        {/*
+          Antes da hidratação, o esqueleto na forma da família da rota (só o
+          pathname alimenta isto). Depois, a tela dentro do invólucro de
+          chegada, chaveado por rota: a cascata É a transição.
+        */}
+        <main aria-busy={navegando || undefined} className="relative min-h-0 min-w-0 flex-1 overflow-y-auto" style={{ background: "var(--page)" }}>
+          {hidratado ? <Chegada key={chaveDeChegada(pathname)}>{children}</Chegada> : <EsqueletoDeTela forma={formaDe(pathname)} />}
         </main>
+        {/* Navegação que passa da carência: os ícones no centro, sobre a tela velha (que continua inteira e responsiva). Irmã de <main>: não rola. */}
+        {navegando ? <CarregadorDeIcones tardio /> : null}
       </div>
     </div>
   );
 }
 
+/**
+ * O RÓTULO DE GRUPO do painel: uma faixa baixa, em caixa, que divide um grupo
+ * de itens do próximo ("Trabalho", "Espaços", "Sessões") — como a etiqueta de
+ * um separador, não um título gritado. A ação do grupo (o "+" de Espaços)
+ * mora dentro dela.
+ */
+function RotuloDeGrupo({ children, acao }: { readonly children: React.ReactNode; readonly acao?: React.ReactNode }) {
+  return (
+    <div
+      className="mb-1 flex items-center gap-1 rounded-[var(--r-controle)] pl-3 pr-1"
+      style={{ height: "var(--controle-h-sm)", background: "var(--superficie-2)", border: "1px solid var(--linha)" }}
+    >
+      <span className="ed-secao min-w-0 flex-1 truncate">{children}</span>
+      {acao}
+    </div>
+  );
+}
+
+/**
+ * A Pasta "Meus negócios" no painel do CRM — a MESMA árvore da Estrutura
+ * (a pasta que abre e fecha, o "+" que cria Lista e Subpasta, Mostrar
+ * arquivados, cadeado, selo de arquivado), só que os nós apontam para o lado
+ * do CRM: /crm/meus-negocios e /crm/meus-negocios/<lista>. O "+" de uma Lista
+ * aqui cria um Negócio, que nasce em Negócios.
+ */
+function MeusNegociosNoPainel({
+  openCreate,
+}: {
+  readonly openCreate: (kind: ContainerKind, parentType?: "space" | "folder", parentId?: string) => void;
+}) {
+  const { memberId } = useSession();
+  const data = useData((current) => current);
+  const [showArchived, setShowArchived] = useState(false);
+  const pasta = data.folders.find((f) => f.id === MEUS_NEGOCIOS_ID);
+  if (!pasta || pasta.lifecycle === "naLixeira" || !memberSeesResource(data, memberId, pasta.id)) {
+    return <p className="app-meta px-3 py-1">Nenhum Funil visível para você.</p>;
+  }
+  const listsUnder = (parentId: Id) =>
+    data.lists
+      .filter((l) => l.parentId === parentId)
+      .filter((l) => l.lifecycle !== "naLixeira")
+      .filter((l) => l.lifecycle !== "arquivado" || showArchived)
+      .filter((l) => memberSeesResource(data, memberId, l.id));
+  const foldersUnder = (parentId: Id): Folder[] =>
+    data.folders
+      .filter((f) => f.parentId === parentId)
+      .filter((f) => f.lifecycle !== "naLixeira")
+      .filter((f) => f.lifecycle !== "arquivado" || showArchived);
+  const enderecos: EnderecosDaArvore = {
+    pasta: (folder) => (folder.id === MEUS_NEGOCIOS_ID ? "/crm/meus-negocios" : `/crm/meus-negocios?pasta=${folder.id}`),
+    lista: (list) => `/crm/meus-negocios/${list.id}`,
+    novoNaLista: { rotulo: "Negócio", href: () => "/crm/negocios" },
+  };
+  return (
+    <>
+      <ul>
+        <TreeFolder
+          folder={pasta}
+          depth={0}
+          inert={false}
+          foldersUnder={foldersUnder}
+          listsUnder={listsUnder}
+          openCreate={openCreate}
+          enderecos={enderecos}
+        />
+      </ul>
+      <button
+        type="button"
+        onClick={() => setShowArchived((value) => !value)}
+        className="app-meta mt-1 w-full rounded-[var(--r-controle)] px-3 py-1 text-left transition-colors hover:bg-[var(--superficie-hover)]"
+      >
+        {showArchived ? "Ocultar arquivados" : "Mostrar arquivados"}
+      </button>
+    </>
+  );
+}
+
 function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; readonly onRecolher: () => void }) {
   const pathname = usePathname();
-  const router = useRouter();
+  const [navegar] = useNavegar();
+  const alvo = useAlvo();
+  const trilho = useRef<HTMLElement>(null);
+  const luz = useRef<HTMLSpanElement>(null);
   const pendingApprovals = useData((data) => data.approvals.filter((a) => a.decision === undefined).length);
   const [showArchived, setShowArchived] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -208,14 +339,32 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
 
   const assunto = assuntoDe(pathname);
 
+  /*
+    A luz do trilho: UMA folha de 2px na borda esquerda, que desliza até o
+    quadrado do assunto ativo — ou do alvo pendente, otimista, desde o clique.
+    Medida por `offsetTop` e escrita direto no estilo, fora do render. Se a
+    navegação não chegar, `limpar()` a devolve ao assunto real.
+  */
+  const alvoCaminho = alvo?.split("?")[0] ?? null;
+  const chaveDaLuz = chaveDoTrilho(alvoCaminho ?? pathname);
+  useLayoutEffect(() => {
+    const botao = trilho.current?.querySelector<HTMLElement>(`[data-trilho="${chaveDaLuz}"]`);
+    const el = luz.current;
+    if (!botao || !el) return;
+    el.style.top = `${botao.offsetTop + (botao.offsetHeight - el.offsetHeight) / 2}px`;
+    el.style.opacity = "1";
+  }, [chaveDaLuz]);
+
   return (
     <div className="flex h-full shrink-0">
       {/* ── Etapa 1: o trilho de assuntos ── */}
       <nav
+        ref={trilho}
         aria-label="Assuntos"
-        className="flex shrink-0 flex-col items-center gap-1 py-2"
+        className="relative flex shrink-0 flex-col items-center gap-1 py-2"
         style={{ width: "var(--trilha-w)", borderRight: "1px solid var(--linha)", background: "var(--page)" }}
       >
+        <span ref={luz} className="trilho-luz" aria-hidden="true" style={{ opacity: 0, top: 0 }} />
         <Link
           href="/"
           aria-label="N1 Digital — início"
@@ -230,13 +379,17 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
         {ASSUNTOS.map((a) => {
           const ativo = a.chave === assunto.chave;
           const contador = a.chave === "ia" ? pendingApprovals : 0;
+          // O botão clicado pulsa (com a carência de 150ms) até a rota chegar.
+          const pendenteAqui = !ativo && alvoCaminho !== null && chaveDoTrilho(alvoCaminho) === a.chave;
           return (
             <button
               key={a.chave}
               type="button"
-              onClick={() => router.push(a.telas[0]!.href)}
+              data-trilho={a.chave}
+              onClick={() => navegar(a.telas[0]!.href)}
               aria-label={a.rotulo}
               aria-current={ativo ? "page" : undefined}
+              aria-busy={pendenteAqui || undefined}
               title={a.rotulo}
               className="flutua relative flex items-center justify-center rounded-[var(--r-painel)]"
               style={{
@@ -247,7 +400,7 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
                 border: `1px solid ${ativo ? "var(--linha-acento)" : "transparent"}`,
               }}
             >
-              <Icone de={a.icone} />
+              <Icone de={a.icone} className={pendenteAqui ? "pulso" : undefined} style={pendenteAqui ? { animationDelay: "var(--dur-1)" } : undefined} />
               {contador > 0 ? (
                 <span
                   className="app-xs app-numero absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1"
@@ -264,6 +417,8 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
 
         <Link
           href="/configuracoes"
+          data-trilho="configuracoes"
+          onNavigate={() => marcarSeMuda("/configuracoes")}
           aria-label="Configurações"
           title="Configurações"
           className="flutua flex items-center justify-center rounded-[var(--r-painel)]"
@@ -296,9 +451,10 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
             </span>
           }
           items={[
-            { label: "Minha conta", onSelect: () => router.push("/minha-conta") },
-            { label: "Notificações", onSelect: () => router.push("/notificacoes") },
-            { label: "Trocar de Membro", onSelect: () => router.push("/entrar") },
+            { label: "Minha conta", onSelect: () => navegar("/minha-conta") },
+            { label: "Notificações", onSelect: () => navegar("/notificacoes") },
+            { label: "Trocar de Membro", onSelect: () => navegar("/entrar") },
+            { label: "Sair", onSelect: () => navegar("/login") },
           ]}
         />
       </nav>
@@ -343,9 +499,9 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
           </Link>
         </div>
 
-        <p className="ed-secao px-3 pb-1 pt-1">{assunto.rotulo}</p>
-
-        <nav className="sem-barra min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+        {/* Chaveado pelo assunto: o painel esmaece e as telas caem em cascata na troca. */}
+        <CascataDeNavegacao key={assunto.chave} className="sem-barra min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+          <RotuloDeGrupo>{assunto.rotulo}</RotuloDeGrupo>
           {assunto.telas.map((t) => {
             const ativo = telaAtiva(pathname, t);
             const contador = t.href === "/notificacoes" ? pendingApprovals : 0;
@@ -353,6 +509,7 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
               <Link
                 key={t.href}
                 href={t.href}
+                onNavigate={() => marcarSeMuda(t.href)}
                 aria-current={ativo ? "page" : undefined}
                 className="app-base flex items-center gap-2 rounded-[var(--r-controle)] px-3 transition-colors hover:bg-[var(--superficie-hover)]"
                 style={{
@@ -363,7 +520,7 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
                 }}
               >
                 <Icone de={t.icone} tamanho="xs" style={{ color: ativo ? "var(--acento)" : "var(--texto-3)" }} />
-                <span className="min-w-0 flex-1 truncate">{t.rotulo}</span>
+                <PendenciaDoLink className="min-w-0 flex-1 truncate">{t.rotulo}</PendenciaDoLink>
                 {contador > 0 ? (
                   <span className="app-xs app-numero rounded-full px-1.5" style={{ background: "var(--acento)", color: "var(--sobre-acento)" }}>
                     {contador}
@@ -374,20 +531,23 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
           })}
 
           {assunto.comArvore ? (
-            <div className="mt-3">
-              <div className="flex items-center justify-between gap-1 pb-1 pl-3 pr-1">
-                <span className="ed-secao">Espaços</span>
-                <button
-                  type="button"
-                  onClick={() => openCreate("espaco")}
-                  aria-label="Novo Espaço"
-                  title="Novo Espaço"
-                  className="grid size-6 place-items-center rounded-[var(--r-controle)] transition-colors hover:bg-[var(--superficie-hover)]"
-                  style={{ color: "var(--texto-4)" }}
-                >
-                  <Icone de={Plus} tamanho="xs" />
-                </button>
-              </div>
+            <div className="mt-4 pt-3" style={{ borderTop: "1px solid var(--linha-sutil)" }}>
+              <RotuloDeGrupo
+                acao={
+                  <button
+                    type="button"
+                    onClick={() => openCreate("espaco")}
+                    aria-label="Novo Espaço"
+                    title="Novo Espaço"
+                    className="grid size-6 place-items-center rounded-[var(--r-controle)] transition-colors hover:bg-[var(--superficie-hover)]"
+                    style={{ color: "var(--texto-4)" }}
+                  >
+                    <Icone de={Plus} tamanho="xs" />
+                  </button>
+                }
+              >
+                Espaços
+              </RotuloDeGrupo>
               <StructureTree showArchived={showArchived} openCreate={openCreate} />
               <button
                 type="button"
@@ -400,20 +560,27 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
             </div>
           ) : null}
 
+          {assunto.comMeusNegocios ? (
+            <div className="mt-4 pt-3" style={{ borderTop: "1px solid var(--linha-sutil)" }}>
+              <RotuloDeGrupo>Pastas de Negócios</RotuloDeGrupo>
+              <MeusNegociosNoPainel openCreate={openCreate} />
+            </div>
+          ) : null}
+
           {assunto.comChat ? (
-            <div className="mt-3">
-              <p className="ed-secao pb-1 pl-3">Sessões</p>
+            <div className="mt-4 pt-3" style={{ borderTop: "1px solid var(--linha-sutil)" }}>
+              <RotuloDeGrupo>Sessões</RotuloDeGrupo>
               <ChatTree pathname={pathname} onNotice={setNotice} />
             </div>
           ) : null}
-        </nav>
+        </CascataDeNavegacao>
 
         <CreateContainerDialog
           target={creating}
           onClose={closeCreate}
           onDone={(message, href) => {
             setNotice(message);
-            router.push(href);
+            navegar(href);
           }}
         />
         {notice ? (
@@ -541,7 +708,7 @@ function TreeSpace({
         }
       />
       {open ? (
-        <ul>
+        <ul className="surgir-rapido">
           {/* O atalho abre o Espaço: a Caixa de entrada é o que se olha primeiro. */}
           {(space.shortcuts ?? []).map((shortcut) => (
             <TreeShortcut key={shortcut.id} shortcut={shortcut} depth={1} />
@@ -584,6 +751,21 @@ function TreeShortcut({ shortcut, depth }: { readonly shortcut: SpaceShortcut; r
   );
 }
 
+/**
+ * Onde cada nó da árvore leva. A Estrutura é o padrão; o lado do CRM
+ * ("Meus negócios") aponta os mesmos nós para /crm/meus-negocios/….
+ */
+type EnderecosDaArvore = {
+  readonly pasta: (folder: Folder) => string;
+  readonly lista: (list: List) => string;
+  /** O "+" de uma Lista: por padrão, a nova Tarefa na própria Lista. */
+  readonly novoNaLista?: { readonly rotulo: string; readonly href: (list: List) => string };
+};
+const ENDERECOS_DA_ESTRUTURA: EnderecosDaArvore = {
+  pasta: (folder) => `/estrutura/pastas/${folder.id}`,
+  lista: (list) => `/estrutura/listas/${list.id}`,
+};
+
 function TreeFolder({
   folder,
   depth,
@@ -591,6 +773,7 @@ function TreeFolder({
   foldersUnder,
   listsUnder,
   openCreate,
+  enderecos = ENDERECOS_DA_ESTRUTURA,
 }: {
   readonly folder: Folder;
   readonly depth: number;
@@ -598,8 +781,10 @@ function TreeFolder({
   readonly foldersUnder: (parentId: Id) => Folder[];
   readonly listsUnder: (parentId: Id) => List[];
   readonly openCreate: (kind: ContainerKind, parentType?: "space" | "folder", parentId?: string) => void;
+  readonly enderecos?: EnderecosDaArvore;
 }) {
   const [open, setOpen] = useState(true);
+  const pathname = usePathname();
   // A3.4 — a Subfolder never expands into another Subfolder.
   const subfolders = folder.parentType === "space" ? foldersUnder(folder.id) : [];
   const childLists = listsUnder(folder.id);
@@ -611,7 +796,8 @@ function TreeFolder({
         open={open}
         onToggle={() => setOpen((value) => !value)}
         hasChildren={subfolders.length + childLists.length > 0}
-        href={inert ? undefined : `/estrutura/pastas/${folder.id}`}
+        href={inert ? undefined : enderecos.pasta(folder)}
+        active={pathname === enderecos.pasta(folder)}
         label={folder.name}
         icon={<FolderIcon className="size-3.5 text-[var(--cor-tinta-fraca)]" aria-hidden="true" />}
         privateContainer={folder.isPrivate}
@@ -634,7 +820,7 @@ function TreeFolder({
         }
       />
       {open ? (
-        <ul>
+        <ul className="surgir-rapido">
           {subfolders.map((sub) => (
             <TreeFolder
               key={sub.id}
@@ -644,10 +830,11 @@ function TreeFolder({
               foldersUnder={foldersUnder}
               listsUnder={listsUnder}
               openCreate={openCreate}
+              enderecos={enderecos}
             />
           ))}
           {childLists.map((list) => (
-            <TreeList key={list.id} list={list} depth={depth + 1} />
+            <TreeList key={list.id} list={list} depth={depth + 1} enderecos={enderecos} />
           ))}
         </ul>
       ) : null}
@@ -655,30 +842,38 @@ function TreeFolder({
   );
 }
 
-function TreeList({ list, depth }: { readonly list: List; readonly depth: number }) {
+function TreeList({
+  list,
+  depth,
+  enderecos = ENDERECOS_DA_ESTRUTURA,
+}: {
+  readonly list: List;
+  readonly depth: number;
+  readonly enderecos?: EnderecosDaArvore;
+}) {
   const pathname = usePathname();
-  const router = useRouter();
+  const [navegar] = useNavegar();
+  const href = enderecos.lista(list);
+  const novo = enderecos.novoNaLista ?? {
+    // Dentro de uma Lista o que se cria é Tarefa, e o campo dela já vive na
+    // tela da Lista: o "+" leva até ele em vez de abrir um segundo.
+    rotulo: "Tarefa",
+    href: (l: List) => `/estrutura/listas/${l.id}?nova-tarefa=1`,
+  };
   return (
     <li>
       <TreeRow
         depth={depth}
         hasChildren={false}
-        href={`/estrutura/listas/${list.id}`}
+        href={href}
         label={list.name}
         icon={<ListTodo className="size-3.5 text-[var(--cor-tinta-fraca)]" aria-hidden="true" />}
         privateContainer={list.isPrivate}
         archived={list.lifecycle === "arquivado"}
-        active={pathname === `/estrutura/listas/${list.id}`}
+        active={pathname === href}
         creatable={
-          // Dentro de uma Lista o que se cria é Tarefa, e o campo dela já vive
-          // na tela da Lista: o "+" leva até ele em vez de abrir um segundo.
           list.lifecycle === "ativo"
-            ? [
-                {
-                  label: "Tarefa",
-                  onSelect: () => router.push(`/estrutura/listas/${list.id}?nova-tarefa=1`),
-                },
-              ]
+            ? [{ label: novo.rotulo, onSelect: () => navegar(novo.href(list)) }]
             : []
         }
       />
@@ -859,7 +1054,7 @@ function TreeRow({
           className="grid size-6 shrink-0 place-items-center rounded-[var(--r-controle)] text-[var(--texto-4)] transition-colors hover:bg-[var(--superficie-hover)] hover:text-[var(--texto)]"
           style={{ marginLeft: `${depth * 12}px` }}
         >
-          {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+          <ChevronRight className="seta-recolhe size-3.5" data-aberto={open ? "true" : "false"} />
         </button>
       ) : (
         <span className="w-6 shrink-0" style={{ marginLeft: `${depth * 12}px` }} />
@@ -867,6 +1062,7 @@ function TreeRow({
       {href ? (
         <Link
           href={href}
+          onNavigate={() => marcarSeMuda(href)}
           className={`app-base flex min-w-0 flex-1 items-center gap-2 rounded-[var(--r-controle)] px-2 transition-colors ${
             active ? "bg-[var(--acento-lavado)] font-medium text-[var(--texto)]" : "text-[var(--texto-2)] hover:bg-[var(--superficie-hover)] hover:text-[var(--texto)]"
           }`}

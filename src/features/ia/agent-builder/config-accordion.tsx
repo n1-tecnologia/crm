@@ -73,7 +73,7 @@ export function ConfigAccordion({
           className="grid size-8 shrink-0 place-items-center rounded-full text-[var(--ab-texto-2)] transition-colors hover:bg-[var(--ab-elevado)] hover:text-[var(--ab-texto)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ab-roxo)]"
         >
           <ChevronDown
-            className={`size-4 transition-transform ${open ? "rotate-180" : ""}`}
+            className={`rotacao size-4 ${open ? "rotate-180" : ""}`}
             aria-hidden="true"
           />
         </button>

@@ -12,6 +12,7 @@ import { use } from "react";
 import { Link2Off } from "lucide-react";
 import { useData } from "@/data/store";
 import { useHidratado } from "@/features/shell/app-shell";
+import { EsqueletoDeTela } from "@/design/esqueletos";
 import { taskByPublicSecret } from "@/data/operations";
 import { statusDefinition } from "@/data/derive";
 import { PRIORITY_LABEL } from "@/features/shell/format";
@@ -23,7 +24,7 @@ export default function TarefaPublicaPage({ params }: { params: Promise<{ segred
   const state = useData((data) => data);
   const fmt = useFormat();
   const pronto = useHidratado();
-  if (!pronto) return null;
+  if (!pronto) return <EsqueletoDeTela forma="formulario" />;
 
   const task = taskByPublicSecret(state, segredo);
   if (!task || !task.publicShare) {

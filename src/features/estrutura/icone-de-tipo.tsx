@@ -7,10 +7,12 @@ import {
   CircleCheck,
   FileCheck,
   Flag,
+  Layers,
   MessageSquare,
   Receipt,
   TriangleAlert,
   Users,
+  Workflow,
   type LucideIcon,
 } from "lucide-react";
 import type { DataState } from "@/data/state";
@@ -82,6 +84,9 @@ export const ICONE_DE_OBJETO = {
   negocio: Briefcase,
   mencao: AtSign,
   execucao: Bot,
+  grupo: Users,
+  comunidade: Layers,
+  flow: Workflow,
 } as const;
 
 /**

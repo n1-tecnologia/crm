@@ -129,14 +129,9 @@ export function AgentPreview({
             ))}
             {loading ? (
               <li className="flex justify-start" aria-live="polite" aria-label="O agente está respondendo">
-                <div className="flex items-center gap-1.5 rounded-[14px] border border-[var(--ab-borda)] bg-[var(--ab-campo)] px-4 py-3">
+                <div className="digitando flex items-center gap-1.5 rounded-[14px] border border-[var(--ab-borda)] bg-[var(--ab-campo)] px-4 py-3">
                   {[0, 1, 2].map((i) => (
-                    <span
-                      key={i}
-                      aria-hidden="true"
-                      className="size-2 animate-bounce rounded-full bg-[var(--ab-texto-2)]"
-                      style={{ animationDelay: `${i * 120}ms` }}
-                    />
+                    <span key={i} aria-hidden="true" className="size-2 rounded-full bg-[var(--ab-texto-2)]" />
                   ))}
                 </div>
               </li>

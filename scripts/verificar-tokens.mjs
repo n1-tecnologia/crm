@@ -8,10 +8,14 @@
  * nem o lint (é CSS), nem uma captura de tela, porque o elemento continua lá,
  * só que com a cor herdada.
  *
- * Três asserções:
+ * Quatro asserções:
  *   1. todo `var(--x)` usado existe definido em algum lugar;
  *   2. nenhuma cor crua (hex, rgb, hsl) fora de `src/estilos/tokens.css`;
- *   3. nenhum tamanho de fonte literal em TSX — as duas escalas são classes.
+ *   3. nenhum tamanho de fonte literal em TSX — as duas escalas são classes;
+ *   4. movimento por token: nenhuma duração literal (`300ms`, `1.5s`) fora de
+ *      tokens.css, nenhum utilitário de animação do Tailwind (`animate-spin`,
+ *      `duration-*`, `ease-*`, `transition-transform`) em className, nenhum
+ *      `will-change`, e `forwards` só nas saídas que desmontam.
  *
  * Rodar: npm run verificar:tokens
  */
@@ -65,6 +69,14 @@ const EXTERNAS = new Set([
 
 /** `linear-gradient(#fff 0 0)` dentro de `mask` não é cor: é estêncil. */
 const ESTENCIL = /linear-gradient\(#fff 0 0\)/g;
+
+/* Movimento. `forwards` numa entrada deixaria transform/filter residual
+   (bloco de contenção, camada de composição); só a SAÍDA que desmonta pode
+   segurar o último quadro. Os nomes abaixo são as exceções nomeadas. */
+const DISPENSADOS_MOVIMENTO = ["sumir", "regua-tempo"];
+const DURACAO_LITERAL = /(?<![\w.-])\d+(?:\.\d+)?m?s\b/g;
+const UTILITARIO_DE_MOVIMENTO =
+  /\b(?:animate-(?:spin|bounce|pulse|ping)|duration-\d+|ease-(?:in|out|linear|in-out)|transition-(?:all|transform))\b/g;
 
 function andar(dir, saida = []) {
   for (const nome of readdirSync(dir)) {
@@ -135,6 +147,30 @@ for (const f of arquivos) {
       }
     });
   }
+
+  // 4 · movimento por token
+  linhas.forEach((linha, i) => {
+    // (a) duração literal fora do canônico (css e tsx)
+    if (!f.endsWith(CANONICO)) {
+      for (const m of linha.matchAll(DURACAO_LITERAL)) {
+        falhas.push(`${rel}:${i + 1} · duração literal \`${m[0]}\` — vira token em tokens.css`);
+      }
+    }
+    // (b) utilitário de animação do Tailwind: curva e duração fora do sistema
+    if (f.endsWith(".tsx")) {
+      for (const m of linha.matchAll(UTILITARIO_DE_MOVIMENTO)) {
+        falhas.push(`${rel}:${i + 1} · utilitário de movimento \`${m[0]}\` — use .girando/.pulso/.rotacao/.surgir`);
+      }
+    }
+    // (c) will-change: camada de composição permanente
+    if (/will-change/.test(linha)) {
+      falhas.push(`${rel}:${i + 1} · will-change — o sistema não promove camadas`);
+    }
+    // (d) forwards só nas saídas que desmontam
+    if (f.endsWith(".css") && /\bforwards\b/.test(linha) && !DISPENSADOS_MOVIMENTO.some((d) => linha.includes(d))) {
+      falhas.push(`${rel}:${i + 1} · forwards fora de ${DISPENSADOS_MOVIMENTO.join("/")} — entrada termina em transform: none`);
+    }
+  });
 }
 
 /* ── placar ──────────────────────────────────────────────────────────────── */

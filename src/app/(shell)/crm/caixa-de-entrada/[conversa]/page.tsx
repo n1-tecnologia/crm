@@ -12,12 +12,20 @@
  */
 
 import Link from "next/link";
-import { Briefcase, Flame, Link2, PanelRight, User as UserIcon, Wallet } from "lucide-react";
+import { Briefcase, Flame, Link2, MessageSquare, PanelRight, Radio, Tag, User as UserIcon, UserRound, Users, Wallet } from "lucide-react";
 import { use, useState } from "react";
 import { useData, useRun } from "@/data/store";
 import { InboxColumns } from "@/features/crm/inbox-columns";
-import { ContactAvatar } from "@/features/crm/contact-card";
+import {
+  ContactAvatar,
+  ContactDataPanel,
+  ContactIdentity,
+  ContactQuickActions,
+  ContactSummary,
+} from "@/features/crm/contact-card";
 import { ConversationThread } from "@/features/crm/conversation-thread";
+import { ConversaDoGrupo } from "@/features/ferramentas/conversa-do-grupo";
+import { membrosDoGrupo } from "@/data/derive-ferramentas";
 import {
   MoveConversationDialog,
   useMoveConversationDialog,
@@ -123,6 +131,10 @@ export default function ConversaPage({ params }: { params: Promise<{ conversa: s
   const owner = state.members.find((m) => m.id === dealDoContato?.ownerMemberId);
   const origem = state.catalog.find((c) => c.id === dealDoContato?.originId)?.name;
   const canalQuebrado = channel.connection !== "conectada";
+  // Uma Conversa de grupo (INV-GRP-05) não tem Contato: quem fala é o Grupo.
+  const grupo = conversation.groupIdentifier
+    ? state.grupos.find((g) => g.canalId === conversation.channelId && g.identificadorExterno === conversation.groupIdentifier?.externalId)
+    : undefined;
 
   const report = (result: { ok: boolean; error?: string }, message: string) => {
     if (result.ok) {
@@ -142,6 +154,43 @@ export default function ConversaPage({ params }: { params: Promise<{ conversa: s
       assignee ? "Conversa atribuída." : "Atribuição removida.",
     );
   };
+
+  // Sob a identidade do Contato, como "Etapa · Qualificação" na ficha do
+  // Negócio: quem atende e em que situação a Conversa está.
+  const atribuidoESituacao = (
+    <div className="grid grid-cols-2 items-end gap-2">
+      <span className="grid min-w-0 gap-1.5">
+        <label className="app-sm" style={{ color: "var(--texto-3)" }} htmlFor="atribuido-da-conversa">
+          Atribuído
+        </label>
+        {/* Membros e Agentes na mesma lista: o detalhe de cada opção diz qual é qual. */}
+        <Select
+          id="atribuido-da-conversa"
+          value={conversation.assignee?.id ?? ""}
+          onChange={assignTo}
+          disabled={inTrash}
+          disabledReason="Esta Conversa está na lixeira."
+          options={[
+            { value: "", label: "Sem Atribuído" },
+            ...state.members
+              .filter((member) => member.state === "ativo")
+              .map((member) => ({ value: member.id, label: member.displayName, detail: "Membro" })),
+            ...state.agents
+              .filter((agent) => agent.lifecycle === "ativo")
+              .map((agent) => ({ value: agent.id, label: agent.name, detail: "Agente" })),
+          ]}
+        />
+      </span>
+      <span className="grid min-w-0 gap-1.5">
+        <span className="app-sm" style={{ color: "var(--texto-3)" }}>
+          Situação
+        </span>
+        <span className="campo flex items-center" style={{ color: "var(--texto)" }}>
+          {CONVERSATION_STATE_LABEL[conversation.state]}
+        </span>
+      </span>
+    </div>
+  );
 
   return (
     <InboxColumns>
@@ -222,6 +271,16 @@ export default function ConversaPage({ params }: { params: Promise<{ conversa: s
                 </div>
               ))}
             </dl>
+          ) : grupo ? (
+            <p className="app-meta">
+              Conversa de grupo ·{" "}
+              <Link href={`/ferramentas/grupos?grupo=${grupo.id}`} className="underline" style={{ color: "var(--acento)" }}>
+                {grupo.nome}
+              </Link>{" "}
+              · {membrosDoGrupo(grupo).length} membro(s){grupo.papelNaComunidade === "avisos" ? " · Grupo de avisos" : ""}
+            </p>
+          ) : conversation.groupIdentifier ? (
+            <p className="app-meta">Conversa de grupo · {conversation.groupIdentifier.name} · o Grupo não está mais na plataforma.</p>
           ) : (
             <p className="app-meta">
               {contact ? contactDisplayName(contact) : "Este Contato"} não tem Negócio aberto.{" "}
@@ -323,15 +382,20 @@ export default function ConversaPage({ params }: { params: Promise<{ conversa: s
         pedidos, abrem como coluna à direita — não empurram a conversa para baixo.
       */}
       <div className="flex min-h-0 flex-1">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {/* Chaveado pela Conversa: trocar de Conversa esmaece só este painel (150ms), nunca a coluna. */}
+        <div key={conversa} className="aparecer flex min-h-0 min-w-0 flex-1 flex-col">
           {notice ? (
             <div className="shrink-0 px-4 pt-3">
-              <Toast tone="success">{notice}</Toast>
+              <Toast tone="success" onDismiss={() => setNotice(null)}>
+                {notice}
+              </Toast>
             </div>
           ) : null}
           {error ? (
             <div className="shrink-0 px-4 pt-3">
-              <Toast tone="error">{error}</Toast>
+              <Toast tone="error" onDismiss={() => setError(null)}>
+                {error}
+              </Toast>
             </div>
           ) : null}
 
@@ -349,29 +413,72 @@ export default function ConversaPage({ params }: { params: Promise<{ conversa: s
                 flush
               />
             </div>
+          ) : grupo ? (
+            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+              <ConversaDoGrupo grupoId={grupo.id} report={report} dentroDaCaixa />
+            </div>
           ) : (
             <EmptyState
-              title="Contato não resolvido."
+              title={conversation.groupIdentifier ? "Conversa de grupo sem Grupo." : "Contato não resolvido."}
               hint={
-                conversation.unresolvedIdentifier
-                  ? `Chegou por ${conversation.unresolvedIdentifier.value}. Vincule a um Contato existente ou crie um novo para responder.`
-                  : "A Conversa existe sem Contato até que o identificador seja resolvido."
+                conversation.groupIdentifier
+                  ? `O grupo ${conversation.groupIdentifier.name} não está mais na plataforma; as Mensagens ficam na história.`
+                  : conversation.unresolvedIdentifier
+                    ? `Chegou por ${conversation.unresolvedIdentifier.value}. Vincule a um Contato existente ou crie um novo para responder.`
+                    : "A Conversa existe sem Contato até que o identificador seja resolvido."
               }
             />
           )}
         </div>
 
-        {/* A coluna lateral de um registro: os atributos em painéis de registro. */}
+        {/* A lateral é o CARTÃO DO CONTATO — o mesmo da ficha do Contato e do
+            Negócio: identidade, ações rápidas, dados, resumo. O que é só da
+            Conversa (Atribuído, Situação, Canal, Fila, Participantes, Tags,
+            Capacidades) vem depois, na mesma família de painéis. */}
         <aside
           hidden={!showingContact}
-          className="relative w-80 shrink-0 overflow-y-auto p-3"
+          className="relative w-[22rem] shrink-0 overflow-y-auto p-3"
           style={{ borderLeft: "1px solid var(--linha)" }}
         >
           <div className="grid content-start gap-3">
-            <RecordPanel title="Conversa">
+            {contact ? (
+              <>
+                <ContactIdentity contact={contact} editavel={!inTrash} abaixo={atribuidoESituacao} />
+                <ContactQuickActions contact={contact} onCanal={setCanal} />
+                <ContactDataPanel contact={contact} />
+                <ContactSummary contact={contact} />
+              </>
+            ) : (
+              <>
+                <RecordPanel title={grupo ? "Grupo" : "Contato"} icon={<Icone de={grupo ? Users : UserRound} tamanho="sm" />}>
+                  {grupo ? (
+                    <p className="app-base" style={{ color: "var(--texto)" }}>
+                      <Link href={`/ferramentas/grupos?grupo=${grupo.id}`} className="hover:underline">
+                        {grupo.nome}
+                      </Link>
+                      <span className="app-meta block">{membrosDoGrupo(grupo).length} membro(s) · a Participação é a fonte, não esta Conversa (RN-GRP-12)</span>
+                    </p>
+                  ) : (
+                  <EmptyState
+                    compact
+                    title="Contato não resolvido."
+                    hint={
+                      conversation.unresolvedIdentifier
+                        ? `Chegou por ${conversation.unresolvedIdentifier.value}. Vincule a um Contato existente ou crie um novo.`
+                        : "A Conversa existe sem Contato até que o identificador seja resolvido."
+                    }
+                  />
+                  )}
+                </RecordPanel>
+                <RecordPanel title="Atribuído" icon={<Icone de={UserRound} tamanho="sm" />}>
+                  {atribuidoESituacao}
+                </RecordPanel>
+              </>
+            )}
+
+            <RecordPanel title="Conversa" icon={<Icone de={MessageSquare} tamanho="sm" />}>
               <dl>
                 {[
-                  { rotulo: "Situação", valor: CONVERSATION_STATE_LABEL[conversation.state] },
                   { rotulo: "Canal", valor: channel.name },
                   { rotulo: "Fila", valor: queue?.name ?? "sem Fila" },
                   ...(conversation.reopenCount > 0
@@ -383,58 +490,12 @@ export default function ConversaPage({ params }: { params: Promise<{ conversa: s
                   </RecordRow>
                 ))}
               </dl>
-            </RecordPanel>
-
-            <RecordPanel title="Contato">
-              {contact ? (
-                <>
-                  <Link
-                    href={`/crm/contatos/${contact.id}`}
-                    className="app-md hover:underline"
-                    style={{ color: "var(--texto)" }}
-                  >
-                    {contactDisplayName(contact)}
-                  </Link>
-                  <p className="app-meta mt-1">
-                    {contact.identifiers.map((identifier) => identifier.displayValue).join(" · ")}
-                  </p>
-                </>
-              ) : (
-                <EmptyState
-                  compact
-                  title="Contato não resolvido."
-                  hint={
-                    conversation.unresolvedIdentifier
-                      ? `Chegou por ${conversation.unresolvedIdentifier.value}. Vincule a um Contato existente ou crie um novo.`
-                      : "A Conversa existe sem Contato até que o identificador seja resolvido."
-                  }
-                />
-              )}
-            </RecordPanel>
-
-            <RecordPanel title="Atribuído">
-              {/* Membros e Agentes na mesma lista: o detalhe de cada opção diz qual é qual. */}
-              <Select
-                value={conversation.assignee?.id ?? ""}
-                onChange={assignTo}
-                disabled={inTrash}
-                disabledReason="Esta Conversa está na lixeira."
-                options={[
-                  { value: "", label: "Sem Atribuído" },
-                  ...state.members
-                    .filter((member) => member.state === "ativo")
-                    .map((member) => ({ value: member.id, label: member.displayName, detail: "Membro" })),
-                  ...state.agents
-                    .filter((agent) => agent.lifecycle === "ativo")
-                    .map((agent) => ({ value: agent.id, label: agent.name, detail: "Agente" })),
-                ]}
-              />
               <p className="ajuda">
                 Ser Atribuído não concede permissão de ver: o acesso vem do Papel e da Fila.
               </p>
             </RecordPanel>
 
-            <RecordPanel title="Participantes" count={conversation.participants.length}>
+            <RecordPanel title="Participantes" count={conversation.participants.length} icon={<Icone de={Users} tamanho="sm" />}>
               {conversation.participants.length === 0 ? (
                 <EmptyState compact title="Nenhum Participante registrado." />
               ) : (
@@ -450,21 +511,24 @@ export default function ConversaPage({ params }: { params: Promise<{ conversa: s
               )}
             </RecordPanel>
 
-            <RecordPanel title="Tags" count={conversation.tagIds.length}>
+            <RecordPanel title="Tags" count={conversation.tagIds.length} icon={<Icone de={Tag} tamanho="sm" />}>
               {conversation.tagIds.length === 0 ? (
                 <EmptyState compact title="Nenhuma Tag." />
               ) : (
                 <ul className="flex flex-wrap gap-1">
-                  {conversation.tagIds.map((tagId) => (
-                    <li key={tagId}>
-                      <Pilula tom="neutro">{state.tags.find((t) => t.id === tagId)?.name ?? tagId}</Pilula>
-                    </li>
-                  ))}
+                  {conversation.tagIds.map((tagId) => {
+                    const tag = state.tags.find((t) => t.id === tagId);
+                    return (
+                      <li key={tagId}>
+                        <Pilula {...(tag?.color ? { cor: tag.color } : { tom: "neutro" })}>{tag?.name ?? tagId}</Pilula>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </RecordPanel>
 
-            <RecordPanel title="Capacidades do Canal">
+            <RecordPanel title="Capacidades do Canal" icon={<Icone de={Radio} tamanho="sm" />}>
               <dl>
                 <RecordRow label="Janela de resposta">
                   {capabilities.responseWindowHours === undefined

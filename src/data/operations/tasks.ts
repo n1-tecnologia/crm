@@ -188,7 +188,7 @@ export function createTask(
     }
   }
   runListAutomations(state, { kind: "tarefaCriada", taskId: task.id });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 /**
@@ -297,7 +297,7 @@ export function changeTaskStatus(
       });
     }
   }
-  return ok(task);
+  return ok(task, task.id);
 }
 
 /**
@@ -346,7 +346,7 @@ export function assignTask(
     objectName: task.title,
     after: assignee.id,
   });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 export interface StatusMapping {
@@ -460,7 +460,7 @@ export function moveTask(
     before: previousPath,
     after: to.path.map((p) => p.name).join(" › "),
   });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 function descendants(state: DataState, taskId: Id): Task[] {
@@ -617,7 +617,7 @@ export function restoreTask(state: DataState, actingMemberId: Id, taskId: Id): O
     objectName: task.title,
     after: task.lifecycle,
   });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 /**
@@ -668,7 +668,7 @@ export function restoreList(state: DataState, actingMemberId: Id, listId: Id): O
       ? { detail: `${trashedWithList.length} Tarefa(s) voltaram com ela.` }
       : {}),
   });
-  return ok(list);
+  return ok(list, list.id);
 }
 
 /** B2 — o Checklist é componente interno da Tarefa; não tem identidade externa. */
@@ -702,7 +702,7 @@ export function addChecklist(
     objectName: task.title,
     after: name.trim(),
   });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 export function addChecklistItem(
@@ -736,7 +736,7 @@ export function addChecklistItem(
     detail: checklist.name,
     after: text.trim(),
   });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 /**
@@ -783,7 +783,7 @@ export function setChecklistItemDone(
     objectName: task.title,
     detail: `${checklist.name} · ${item.text}`,
   });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 /**
@@ -845,7 +845,7 @@ export function startMeeting(
     objectId: task.id,
     objectName: task.title,
   });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 /**
@@ -891,7 +891,7 @@ export function endMeeting(
     objectName: task.title,
     ...(aberta?.durationMinutes ? { detail: `${aberta.durationMinutes} min` } : {}),
   });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -928,7 +928,7 @@ export function unassignTask(
     objectName: task.title,
     before: nome,
   });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 /**
@@ -1192,7 +1192,7 @@ export function updateTask(
       ...(mudanca.after !== undefined ? { after: mudanca.after } : {}),
     });
   }
-  return ok(task);
+  return ok(task, task.id);
 }
 
 /**
@@ -1313,7 +1313,7 @@ export function setTaskFieldValue(
     ...(antes !== undefined && antes !== null && antes !== "" ? { before: String(antes) } : {}),
     ...(vazio ? {} : { after: String(gravar) }),
   });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 /**
@@ -1388,7 +1388,7 @@ export function addTaskComment(
     objectName: task.title,
     detail: content.length > 80 ? `${content.slice(0, 77)}…` : content,
   });
-  return ok(comment);
+  return ok(comment, comment.id);
 }
 
 /** Resolver marca o fio como tratado; reabrir tira a marca. Nunca apaga. */
@@ -1421,7 +1421,7 @@ export function resolveTaskComment(
     objectId: task.id,
     objectName: task.title,
   });
-  return ok(comment);
+  return ok(comment, comment.id);
 }
 
 /** As Tags da Tarefa, do Catálogo do Espaço de Trabalho; nunca uma solta. */
@@ -1456,7 +1456,7 @@ export function setTaskTags(
     before: antes || "—",
     after: depois || "—",
   });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 /**
@@ -1497,5 +1497,5 @@ export function watchTask(
     objectName: task.title,
     detail: alvo.displayName,
   });
-  return ok(task);
+  return ok(task, task.id);
 }

@@ -71,6 +71,11 @@ Cinco regras estruturais determinam a forma da navegação. Nenhuma é escolha e
 │  Conhecimento    │                                                           │
 │  Aprovações  (3) │                                                           │
 │                  │                                                           │
+│ FERRAMENTAS      │  (assunto próprio do trilho, abaixo de IA)                │
+│  Grupos          │                                                           │
+│  Comunidades     │                                                           │
+│  Flows           │                                                           │
+│                  │                                                           │
 │ ◈ Painéis        │                                                           │
 │ ⚙ Configurações  │                                                           │
 └──────────────────┴───────────────────────────────────────────────────────────┘
@@ -87,7 +92,7 @@ Cinco regras estruturais determinam a forma da navegação. Nenhuma é escolha e
 | Contêiner `na lixeira` | Nunca aparece na árvore. Só em `/configuracoes/lixeira`. |
 | Ordem dos nós | Atributo Ordem de cada nível (DO-ESP-14, RN-PAS-05); arrastar reordena e exige `editar` no pai (`administrar` para Espaços — B46). |
 | Aprovações (contador) | Solicitações de Aprovação `pendente` em que o Membro logado é aprovador designado ou pode decidir (B80). |
-| Domínios CRM / IA / Painéis | Pares da Estrutura (A2.2); nunca aninhados sob Espaço, Pasta, Lista ou Tarefa. |
+| Domínios CRM / IA / Ferramentas / Painéis | Pares da Estrutura (A2.2); nunca aninhados sob Espaço, Pasta, Lista ou Tarefa. Ferramentas (Ativos de Canal, docs 23–25) é o quarto assunto do trilho, abaixo de IA. |
 
 ### 2.2 O que a casca não faz
 
@@ -106,6 +111,7 @@ Legenda de "Doc.": número do documento da ontologia (README do `ontologia/`). "
 
 | Rota | Tela | Entidades exibidas | Ações | Doc. |
 | --- | --- | --- | --- | --- |
+| `/login` | Login — usuário e senha (fictício, sem backend; alcançado por "Sair" no menu da conta) | Marca; formulário | Entrar (qualquer usuário e senha → Início); ir a Trocar de Membro | 01 |
 | `/entrar` | Entrar — escolher Membro para simular a sessão | Membro (nome, Papel, estado), Espaço de Trabalho | Escolher Membro; entrar | 01 |
 | `/` | Início | Tarefa (minhas, por vencimento), Conversa (atribuídas a mim), Negócio (meus `aberto`), Solicitação de Aprovação (pendentes para mim) | Abrir registro; concluir Tarefa; decidir Aprovação | 06, 12, 14, 17, 19 |
 | `/minha-conta` | Minha conta | Membro (Nome de exibição no Espaço de Trabalho, Papel, Equipes, Disponibilidade de atendimento), Memória do Usuário → Item de Memória | Editar nome de exibição; alterar Disponibilidade; habilitar/desabilitar Memória do Usuário; remover Item de Memória | 01 (7.1), 16 (7.5) |
@@ -143,6 +149,14 @@ Uma Subtarefa abre na mesma rota de Tarefa: Subtarefa não é entidade distinta 
 | `/crm/caixa-de-entrada/configuracoes` | Configurações da Caixa | Caixa de Entrada (Prazo de reabertura, Distribuição padrão, Proprietário padrão de Contatos, Horário de atendimento), Canal, Fila | Editar configurações; conectar/arquivar Canal; criar/editar Fila; definir elegíveis e Regra de distribuição | 14 |
 | `/crm/caixa-de-entrada/configuracoes/canais/[canal]` | Canal | Canal, Capacidades do Tipo de Canal, Configuração de mensagens de modelo → Mensagem de modelo, Fila padrão, Origem padrão | Reconectar; definir Fila padrão; sincronizar modelos; habilitar grupos; arquivar | 14 |
 | `/crm/caixa-de-entrada/configuracoes/filas/[fila]` | Fila | Fila, Elegíveis (Membro, Equipe), Regra de distribuição, Limite de Conversas por Atendente, Horário de atendimento, Painel de contexto | Editar elegíveis; mudar Regra de distribuição; arquivar (com transferência das não resolvidas); excluir | 14 |
+
+### 3.3a Ferramentas (assunto próprio do trilho, abaixo de IA; docs 23–25)
+
+| Rota | Tela | Entidades exibidas | Ações | Doc. |
+| --- | --- | --- | --- | --- |
+| `/ferramentas/grupos` · `/ferramentas/comunidades` · `/ferramentas/flows` (`/ferramentas` abre em Grupos) | Ferramentas — assunto do trilho abaixo de IA, uma tela por gerenciador (popups `?grupo=` `?comunidade=` `?flow=`, criação `?criar=`) | Grupo, Participação, Pedido de Entrada, Link de Captação, Clique, Comunidade, Grupo de avisos, Flow, Versão de Flow | Criar Grupo; importar do Canal; sincronizar; editar Configurações (externa); Captação; adicionar/remover/promover Participante; aprovar/recusar Pedido; regenerar Link de convite; sair do Grupo; enviar Mensagem ao Grupo; criar/editar Link de Captação, simular clique e entrada; criar Comunidade; vincular/desvincular Grupo; enviar à Comunidade; sair da Comunidade; criar Flow; enviar Flow a um Contato; despublicar; copiar; arquivar/lixeira | 23, 24, 25 |
+| `/ferramentas/grupos/[grupo]` · `/ferramentas/comunidades/[comunidade]` | Grupo / Comunidade em página cheia | idem popup | idem | 24, 25 |
+| `/ferramentas/flows/[flow]` | Construtor de Flow (três colunas; `?tela=`) | Flow, Versão (rascunho/publicada/obsoleta), Tela, Dados de Tela, Componente (catálogo 7.4), Ação, Condição, Validação 7.5, Definição publicável | Adicionar/renomear/reordenar/duplicar/remover Tela; adicionar/editar/mover/duplicar/remover Componente; Dados de Tela; validar; publicar (DO-FLW-03); descartar rascunho; criar rascunho a partir de Versão; pré-visualizar | 23 |
 
 ### 3.4 IA
 

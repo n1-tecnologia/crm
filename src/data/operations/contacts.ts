@@ -82,7 +82,7 @@ export function addContactIdentifier(
     objectName: contactDisplayName(contact),
     after: `${type}: ${value.trim()}`,
   });
-  return ok(contact);
+  return ok(contact, contact.id);
 }
 
 /**
@@ -127,7 +127,7 @@ export function transferContactIdentifier(
     objectName: contactDisplayName(to),
     after: identifier.displayValue,
   });
-  return ok(to);
+  return ok(to, to.id);
 }
 
 /**
@@ -236,7 +236,7 @@ export function mergeContacts(
     objectName: contactDisplayName(absorbed),
     after: contactDisplayName(survivor),
   });
-  return ok(survivor);
+  return ok(survivor, survivor.id);
 }
 
 /**
@@ -437,7 +437,7 @@ export function restoreMergedCopy(
     objectName: contactDisplayName(copy),
     detail: `A partir do Estado pré-mesclagem de ${contactDisplayName(merged)}, que permanece mesclado`,
   });
-  return ok(copy);
+  return ok(copy, copy.id);
 }
 
 /** One parsed row of the import, already mapped to attributes. */
@@ -629,7 +629,7 @@ export function restoreContact(
     objectName: contactDisplayName(contact),
     after: contact.lifecycle,
   });
-  return ok(contact);
+  return ok(contact, contact.id);
 }
 
 /**
@@ -673,7 +673,7 @@ export function restoreCompany(
     objectName: company.legalName,
     after: company.lifecycle,
   });
-  return ok(company);
+  return ok(company, company.id);
 }
 
 /**
@@ -741,8 +741,9 @@ export function addContactNote(
   if (contact.lifecycle === "naLixeira") return fail("Este Contato está na lixeira.");
   if (!content.trim()) return fail("Escreva a nota antes de salvar.", "nota");
 
+  const notaId = nextId("cmt");
   contact.comments.push({
-    id: nextId("cmt"),
+    id: notaId,
     author: memberActor(actingMemberId),
     content: content.trim(),
     attachments: [],
@@ -756,7 +757,7 @@ export function addContactNote(
     objectId: contact.id,
     objectName: contactDisplayName(contact),
   });
-  return ok(contact);
+  return ok(contact, notaId);
 }
 
 /**
@@ -882,7 +883,7 @@ export function createContact(
     objectId: contact.id,
     objectName: contactDisplayName(contact),
   });
-  return ok(contact);
+  return ok(contact, contact.id);
 }
 
 /** INV-EMP-01 — a Empresa precisa de nome fantasia OU razão social. */
@@ -944,7 +945,7 @@ export function createCompany(
     objectId: company.id,
     objectName: company.tradeName,
   });
-  return ok(company);
+  return ok(company, company.id);
 }
 
 function mayCreateCrmRecord(state: DataState, actingMemberId: Id): string | undefined {
@@ -1081,7 +1082,7 @@ export function addCompanyIdentifier(
     objectName: company.tradeName || company.legalName,
     after: canonical,
   });
-  return ok(company);
+  return ok(company, company.id);
 }
 
 /**
@@ -1134,5 +1135,117 @@ export function setContactCatalogValue(
     ...(anterior ? { before: anterior } : {}),
     ...(nome ? { after: nome } : {}),
   });
-  return ok(contact);
+  return ok(contact, contact.id);
+}
+
+/**
+ * Editar o cadastro da Empresa: nomes, descrição, Proprietário e Empresa
+ * matriz. INV-EMP-01 — ao menos um dos dois nomes fica; B51 — a matriz é uma
+ * floresta sem ciclo: a Empresa não é matriz de si nem de quem já está acima
+ * dela. Cada campo que muda vira um Registro de Atividade com o valor anterior.
+ */
+export function updateCompany(
+  state: DataState,
+  actingMemberId: Id,
+  companyId: Id,
+  patch: {
+    readonly tradeName?: string;
+    readonly legalName?: string;
+    readonly description?: string;
+    readonly ownerMemberId?: Id;
+    /** `null` desfaz a matriz. */
+    readonly parentCompanyId?: Id | null;
+  },
+): OperationResult<Company> {
+  const refusal = mayCreateCrmRecord(state, actingMemberId);
+  if (refusal) return fail(refusal);
+  const company = state.companies.find((c) => c.id === companyId);
+  if (!company) return fail("Empresa não encontrada.");
+  if (company.lifecycle === "mesclado") return fail("Uma Empresa mesclada é somente leitura.");
+  if (company.lifecycle !== "ativo") return fail("Esta Empresa não está ativa: restaure-a antes de editar.");
+
+  const tradeName = patch.tradeName !== undefined ? patch.tradeName.trim() : company.tradeName;
+  const legalName = patch.legalName !== undefined ? patch.legalName.trim() : company.legalName;
+  if (!tradeName && !legalName) return fail("A Empresa precisa de um nome de exibição ou de uma razão social (INV-EMP-01).", "nome");
+
+  if (patch.ownerMemberId !== undefined) {
+    const owner = state.members.find((m) => m.id === patch.ownerMemberId);
+    if (!owner || owner.state !== "ativo") return fail("Escolha um Membro ativo como Proprietário.", "proprietario");
+  }
+  if (patch.parentCompanyId) {
+    if (patch.parentCompanyId === companyId) return fail("Uma Empresa não é matriz de si mesma (B51).", "matriz");
+    const parent = state.companies.find((c) => c.id === patch.parentCompanyId && c.lifecycle === "ativo");
+    if (!parent) return fail("A Empresa matriz escolhida não está ativa.", "matriz");
+    // Sobe a cadeia da candidata: se chega nesta Empresa, fecharia um ciclo.
+    let acima: Company | undefined = parent;
+    const vistos = new Set<Id>();
+    while (acima && !vistos.has(acima.id)) {
+      if (acima.id === companyId) return fail("Essa Empresa já está abaixo desta: seria um ciclo (B51).", "matriz");
+      vistos.add(acima.id);
+      acima = acima.parentCompanyId ? state.companies.find((c) => c.id === acima?.parentCompanyId) : undefined;
+    }
+  }
+
+  const nomeDe = (id: Id | undefined) => (id ? state.companies.find((c) => c.id === id)?.tradeName || state.companies.find((c) => c.id === id)?.legalName || id : "—");
+  const membro = (id: Id | undefined) => (id ? state.members.find((m) => m.id === id)?.displayName ?? id : "—");
+  const mudancas: Array<{ readonly campo: string; readonly antes: string; readonly depois: string }> = [];
+  if (patch.tradeName !== undefined && tradeName !== company.tradeName) mudancas.push({ campo: "Nome de exibição", antes: company.tradeName || "—", depois: tradeName || "—" });
+  if (patch.legalName !== undefined && legalName !== company.legalName) mudancas.push({ campo: "Razão social", antes: company.legalName || "—", depois: legalName || "—" });
+  if (patch.description !== undefined && patch.description.trim() !== company.description) mudancas.push({ campo: "Descrição", antes: company.description || "—", depois: patch.description.trim() || "—" });
+  if (patch.ownerMemberId !== undefined && patch.ownerMemberId !== company.ownerMemberId) mudancas.push({ campo: "Proprietário", antes: membro(company.ownerMemberId), depois: membro(patch.ownerMemberId) });
+  if (patch.parentCompanyId !== undefined && (patch.parentCompanyId ?? undefined) !== company.parentCompanyId) mudancas.push({ campo: "Empresa matriz", antes: nomeDe(company.parentCompanyId), depois: nomeDe(patch.parentCompanyId ?? undefined) });
+  if (mudancas.length === 0) return ok(company);
+
+  company.tradeName = tradeName;
+  company.legalName = legalName;
+  if (patch.description !== undefined) company.description = patch.description.trim();
+  if (patch.ownerMemberId !== undefined) company.ownerMemberId = patch.ownerMemberId;
+  if (patch.parentCompanyId !== undefined) {
+    if (patch.parentCompanyId) company.parentCompanyId = patch.parentCompanyId;
+    else delete company.parentCompanyId;
+  }
+  for (const m of mudancas) {
+    recordActivity(state, {
+      actor: memberActor(actingMemberId),
+      action: `${m.campo} alterado`,
+      objectType: "company",
+      objectId: company.id,
+      objectName: company.tradeName || company.legalName,
+      before: m.antes,
+      after: m.depois,
+    });
+  }
+  return ok(company, company.id);
+}
+
+/** Nota interna na Empresa — o mesmo Comentário (A8) da nota no Contato: não sai da plataforma. */
+export function addCompanyNote(
+  state: DataState,
+  actingMemberId: Id,
+  companyId: Id,
+  content: string,
+): OperationResult<Company> {
+  const company = state.companies.find((c) => c.id === companyId);
+  if (!company) return fail("Empresa não encontrada.");
+  if (company.lifecycle === "mesclado") return fail("Uma Empresa mesclada é somente leitura.");
+  if (company.lifecycle === "naLixeira") return fail("Esta Empresa está na lixeira.");
+  if (!content.trim()) return fail("Escreva a nota antes de salvar.", "nota");
+
+  const notaId = nextId("cmt");
+  company.comments.push({
+    id: notaId,
+    author: memberActor(actingMemberId),
+    content: content.trim(),
+    attachments: [],
+    mentions: [],
+    createdAt: now(),
+  });
+  recordActivity(state, {
+    actor: memberActor(actingMemberId),
+    action: "Nota registrada na Empresa",
+    objectType: "company",
+    objectId: company.id,
+    objectName: company.tradeName || company.legalName,
+  });
+  return ok(company, notaId);
 }

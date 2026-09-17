@@ -76,7 +76,7 @@ export default function NotificacoesPage() {
 
         {approvals.length > 0 ? (
           <Section title="Aprovações para decidir" count={approvals.length}>
-            <ul className="pilha-solta">
+            <ul className="cascata pilha-solta" data-chegada="foco">
               {approvals.map((approval) => (
                 <li key={approval.id}>
                   <Link href="/ia/aprovacoes" className="item-solto py-3">
@@ -99,7 +99,7 @@ export default function NotificacoesPage() {
 
         {mentions.length > 0 ? (
           <Section title="Menções a você" count={mentions.length}>
-            <ul className="pilha-solta">
+            <ul className="cascata pilha-solta" data-chegada="foco">
               {mentions.map(({ task, comment }) => {
                 const author =
                   comment.author.kind === "member"
@@ -131,7 +131,7 @@ export default function NotificacoesPage() {
 
         {conversations.length > 0 ? (
           <Section title="Conversas atribuídas a você" count={conversations.length}>
-            <ul className="pilha-solta">
+            <ul className="cascata pilha-solta" data-chegada="foco">
               {conversations.map((conversation) => {
                 const contact = conversation.contactId
                   ? state.contacts.find((c) => c.id === conversation.contactId)
@@ -158,7 +158,7 @@ export default function NotificacoesPage() {
 
         {overdue.length > 0 ? (
           <Section title="Tarefas vencidas" count={overdue.length}>
-            <ul className="pilha-solta">
+            <ul className="cascata pilha-solta" data-chegada="foco">
               {overdue.map((task) => (
                 <li key={task.id}>
                   <Link href={`/estrutura/tarefas/${task.id}`} className="item-solto py-3">
@@ -181,7 +181,7 @@ export default function NotificacoesPage() {
 
         {blocked.length > 0 ? (
           <Section title="Tarefas bloqueadas" count={blocked.length}>
-            <ul className="pilha-solta">
+            <ul className="cascata pilha-solta" data-chegada="foco">
               {blocked.map((task) => (
                 <li key={task.id}>
                   <Link href={`/estrutura/tarefas/${task.id}`} className="item-solto py-3">
@@ -203,7 +203,7 @@ export default function NotificacoesPage() {
 
         {failedExecutions.length > 0 ? (
           <Section title="Execuções que falharam" count={failedExecutions.length}>
-            <ul className="pilha-solta">
+            <ul className="cascata pilha-solta" data-chegada="foco">
               {failedExecutions.map((execution) => (
                 <li key={execution.id}>
                   <Link href={`/ia/execucoes/${execution.id}`} className="item-solto py-3">

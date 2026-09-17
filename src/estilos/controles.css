@@ -400,6 +400,8 @@
     background: var(--veu-cor);
     backdrop-filter: blur(2px);
     -webkit-backdrop-filter: blur(2px);
+    /* entrada do véu: 300ms (o backdrop-filter não é animado) */
+    animation: aparecer var(--dur-2) var(--easing);
   }
 
   .flutuante {
@@ -407,6 +409,98 @@
     border: 1px solid var(--linha);
     border-radius: var(--r-painel);
     box-shadow: var(--sombra-suspensa);
+  }
+
+  /* Saída de SidePanel/ConfirmDialog: 150ms, só opacidade, véu e superfície
+     juntos. A raiz recebe `data-estado="saindo"` (`usePresenca`) e desmonta
+     em seguida — por isso este `forwards` é permitido. */
+  [data-estado="saindo"] > :is(.veu, .flutuante) {
+    animation: sumir var(--dur-1) var(--easing) forwards;
+    pointer-events: none;
+  }
+
+  /* ── Toast ─────────────────────────────────────────────────────────────── */
+
+  /* A régua de tempo é folha real, não pseudo: precisa de `animationend`.
+     Medidor: linear. Parar o ponteiro em cima congela o prazo. */
+  .regua-tempo {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: var(--fio);
+    background: var(--linha-acento);
+    border-radius: 0 0 var(--r-painel) var(--r-painel);
+    transform-origin: left;
+    animation: regua-tempo var(--duracao-aviso) linear forwards;
+  }
+  @keyframes regua-tempo {
+    from {
+      transform: scaleX(1);
+    }
+    to {
+      transform: scaleX(0);
+    }
+  }
+  .aviso:is(:hover, :focus-within) > .regua-tempo {
+    animation-play-state: paused;
+  }
+  .aviso[data-estado="saindo"] {
+    animation: sumir var(--dur-1) var(--easing) forwards;
+    pointer-events: none;
+  }
+
+  .btn[aria-busy="true"] {
+    cursor: progress;
+  }
+
+  /* ── Barra de rota e luz do trilho ─────────────────────────────────────── */
+
+  /* Folha sem descendentes: transform em repouso permitido (como .seta-recolhe).
+     Irmã de <main>, nunca dentro dele (rolaria com o conteúdo). */
+  .barra-progresso {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--fio);
+    background: var(--acento);
+    box-shadow: var(--brilho-fio);
+    transform-origin: left;
+    transform: scaleX(0);
+    opacity: 0;
+    z-index: var(--z-progresso);
+    pointer-events: none;
+  }
+  /* Os 150ms de delay são a CARÊNCIA: navegação que termina antes nunca mostra a barra. */
+  .barra-progresso[data-estado="pendente"] {
+    opacity: 1;
+    transform: scaleX(0.8);
+    transition:
+      transform var(--dur-progresso) var(--easing-saida) var(--dur-1),
+      opacity var(--dur-1) var(--easing) var(--dur-1);
+  }
+  .barra-progresso[data-estado="concluindo"] {
+    opacity: 0;
+    transform: scaleX(1);
+    transition:
+      transform var(--dur-1) var(--easing),
+      opacity var(--dur-2) var(--easing) var(--dur-1);
+  }
+
+  /* A luz que desliza entre os assuntos do trilho (folha; anima `top`, não transform). */
+  .trilho-luz {
+    position: absolute;
+    left: 0;
+    width: var(--fio);
+    height: var(--trilho-luz-h);
+    border-radius: var(--r-pilula);
+    background: var(--acento);
+    box-shadow: var(--brilho-fio);
+    transition:
+      top var(--dur-2) var(--easing),
+      opacity var(--dur-1) var(--easing);
+    pointer-events: none;
   }
 
   .item-menu {
@@ -474,8 +568,26 @@
     height: var(--linha-altura);
     padding-inline: var(--celula-x);
     background: var(--page);
-    border-bottom: 1px solid var(--linha);
+    border-bottom: 1px solid var(--linha-forte);
     white-space: nowrap;
+    /* Título de coluna como se escreve — sem caixa alta nem espaçamento largo
+       (vence o .app-coluna que as telas põem no <th>). */
+    font-size: var(--app-sm);
+    line-height: var(--app-sm-lh);
+    font-weight: 500;
+    letter-spacing: normal;
+    text-transform: none;
+    color: var(--texto-2);
+  }
+  /* As divisões entre colunas: um traço curto entre um título e o próximo. */
+  .tabela thead th:not(:first-child):not([data-vazia]):not([data-vazia] + th)::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 25%;
+    height: 50%;
+    width: 1px;
+    background: var(--linha-forte);
   }
   .tabela tbody tr {
     background: var(--superficie-1);

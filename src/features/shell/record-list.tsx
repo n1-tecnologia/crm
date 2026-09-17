@@ -15,6 +15,7 @@
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { Button, EmptyState } from "./ui";
+import { useRecente } from "./recente";
 
 export interface Column<T> {
   readonly key: string;
@@ -41,6 +42,8 @@ export function RecordList<T extends { readonly id: string }>({
   readonly emptyAction?: ReactNode;
 }) {
   const [shown, setShown] = useState(PAGE_SIZE);
+  // Só a linha do último resultado acende (`data-recente`), por --dur-realce.
+  const recente = useRecente();
 
   if (items.length === 0) {
     return <EmptyState title={emptyTitle} {...(emptyHint ? { hint: emptyHint } : {})} {...(emptyAction ? { action: emptyAction } : {})} />;
@@ -63,9 +66,9 @@ export function RecordList<T extends { readonly id: string }>({
             ))}
           </tr>
         </thead>
-        <tbody>
+        <tbody className="cascata">
           {visible.map((item) => (
-            <tr key={item.id}>
+            <tr key={item.id} data-recente={item.id === recente ? "true" : undefined}>
               {columns.map((column, index) => (
                 <td key={column.key} className={column.className}>
                   {index === 0 && hrefOf ? (

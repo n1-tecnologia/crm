@@ -65,6 +65,7 @@
   --acento-suave: var(--roxo-200);      /* hover do botão sólido                      */
   --acento-forte: var(--roxo-500);      /* brilho e monograma                         */
   --acento-lavado: rgb(192 132 252 / 0.12);  /* fundo do hover de contorno     */
+  --acento-lavado-forte: rgb(192 132 252 / 0.32); /* o realce sobre uma peça já lavada */
   --sobre-acento: var(--cinza-900);     /* tinta sobre o acento CHAPADO (lilás)       */
   /* O botão sólido carrega o gradiente do manual, que é roxo ESCURO — a tinta
      sobre ele é branca. É a única divergência do CRM, e é a marca que manda. */
@@ -275,6 +276,16 @@
   --icone-tile: 1.375rem;       /* o ladrilho do ícone de espaço              */
   --icone-lg: 3rem;             /* 48px — cartão de destaque                  */
   --barra-viz-h: 0.5rem;        /* 8px — espessura de barra de gráfico        */
+  /* Séries de gráfico (Painéis): a ordem em que fatias e barras recebem cor.
+     Começa no acento e segue pelas semânticas — aqui nenhuma significa nada,
+     só distingue uma série da outra; quem diz o que é cada uma é o rótulo. */
+  --serie-1: var(--acento);
+  --serie-2: var(--info);
+  --serie-3: var(--sucesso);
+  --serie-4: var(--aviso);
+  --serie-5: var(--erro);
+  --serie-6: var(--roxo-200);
+  --rosca-tam: 7rem;            /* 112px — o diâmetro da rosca                */
   --gantt-dia: 2.125rem;        /* 34px — uma coluna de dia no cronograma     */
   --gantt-nome: 15rem;          /* 240px — a coluna de nomes                  */
   --popup-w: 80vw;
@@ -345,6 +356,49 @@
   --easing: cubic-bezier(0.4, 0, 0.2, 1);
   --easing-saida: cubic-bezier(0, 0, 0.2, 1);
 
+  /* O passo e as janelas do sistema de movimento (DIRECAO-VISUAL §5).
+     Nenhum `ms`/`s` literal vive fora deste arquivo — a sentinela reprova. */
+  --dur-passo: 30ms;            /* degrau entre peças irmãs na cascata        */
+  --dur-cascata: 1000ms;        /* janela em que a chegada de tela existe     */
+  --surgir-y: 4px;              /* deslocamento de `surgir`                   */
+  --chegada-y: 12px;            /* deslocamento de `revelar`                  */
+  --chegada-desfoque: 6px;      /* desfoque de `revelar`                      */
+  --dur-progresso: 1800ms;      /* barra de rota: 0 → 80% (mede rede)         */
+  --dur-aviso: 6000ms;          /* vida do Toast de sucesso/neutro            */
+  --dur-aviso-longo: 8000ms;    /* Toast com ação: ler, decidir e clicar      */
+  --dur-realce: 1500ms;         /* peça recém-alterada esmaece ao fundo       */
+  --dur-navegacao-max: 30s;     /* navegação que passa disto é dada por morta */
+  --dur-pulso: 1.5s;            /* laço do esqueleto e do ícone pendente      */
+  --dur-giro: 1s;               /* laço do spinner                            */
+  --fio: 2px;                   /* barra de rota, luz do trilho, régua        */
+  --trilho-luz-h: 1.25rem;      /* a luz que desliza no trilho                */
+  --brilho-fio: 0 0 8px var(--lanterna-halo);
+  --esqueleto: rgb(255 255 255 / 0.07);   /* superfície do esqueleto          */
+  /* Ajustes por elemento, escritos inline por quem os usa (herdam daqui):
+     `--cascata-inicio` num contêiner .cascata espera algo antes da onda (a
+     capa do Início); `--duracao-aviso` na régua do Toast estende o prazo. */
+  --cascata-inicio: 0ms;
+  --duracao-aviso: var(--dur-aviso);
+  /* O carregador de ícones: cada ícone fica --dur-icone; o ciclo tem
+     --carregador-n ícones (os keyframes de `ciclo-icone` assumem 8). */
+  --dur-icone: 600ms;
+  --carregador-n: 8;
+  --carregador-tam: 5rem;
+
+  /* Laços ambientais (capa do Início, atmosfera do Entrar, orbe) */
+  --dur-deriva-1: 22s;
+  --dur-deriva-2: 28s;
+  --dur-deriva-3: 34s;
+  --deriva-defasagem-2: -9s;
+  --deriva-defasagem-3: -17s;
+  --dur-cintila-1: 4s;
+  --dur-cintila-2: 6s;
+  --cintila-defasagem: -2s;
+  --dur-respira: 6s;
+  --respira-defasagem-2: -2s;
+  --respira-defasagem-3: -4s;
+  --dur-varredura: 24s;
+
   /* ── Sobreposição ────────────────────────────────────────────────────── */
   --veu-cor: rgb(0 0 0 / 0.72);
 
@@ -373,6 +427,7 @@
   --z-fundo: 0;
   --z-conteudo: 10;
   --z-cabecalho: 30;
+  --z-progresso: 35;            /* barra de rota: sobre o cabeçalho sticky    */
   --z-gaveta: 40;
   --z-modal: 50;
   --z-menu: 60;
@@ -742,13 +797,28 @@ svg {
 
 /* ── Movimento reduzido ──────────────────────────────────────────────────── */
 
+/* Tudo aparece no primeiro quadro. `animation-delay` também zera: a cascata usa
+   `backwards` + delay, e sem isto as peças ficariam invisíveis por até 270ms.
+   `transition-delay` NÃO zera: é a carência da barra de rota (150ms), que
+   continua informando. O mesmo bloco vale para o freio da pessoa
+   (`<html data-movimento="minimo">`), lido também por `design/movimento.ts`. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+:root[data-movimento="minimo"] *,
+:root[data-movimento="minimo"] *::before,
+:root[data-movimento="minimo"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-delay: 0ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
 }

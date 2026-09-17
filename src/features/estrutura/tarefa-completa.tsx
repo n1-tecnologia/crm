@@ -1019,7 +1019,7 @@ export function TarefaCompleta({
           {/* ───────────────────────── os Campos, em lista compacta ────────── */}
           <details open className="group">
             <summary className="flex cursor-pointer list-none items-center gap-2">
-              <Icone de={ChevronRight} tamanho="xs" className="transition-transform group-open:rotate-90" style={{ color: "var(--texto-4)" }} />
+              <Icone de={ChevronRight} tamanho="xs" className="rotacao group-open:rotate-90" style={{ color: "var(--texto-4)" }} />
               <span className="app-md" style={{ color: "var(--texto)" }}>
                 Campos
               </span>

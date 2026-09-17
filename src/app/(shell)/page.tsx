@@ -8,7 +8,7 @@
  * novo (PRD I.1).
  *
  * A composição: a CAPA (a atmosfera, a saudação, a pergunta ao Assistente, o
- * globo de pontos que reage ao cursor e as Ações rápidas), e abaixo UMA LISTA
+ * globo de pontos que reage ao cursor), e abaixo UMA LISTA
  * do dia em ordem de urgência —
  * Agora, Hoje, Esta semana, Depois — com Conversas, Negócios e as Ações
  * rápidas ao lado. Nenhuma caixa dentro de caixa: cada item é uma linha com o
@@ -20,15 +20,12 @@
  */
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import {
   ArrowRight,
-  CalendarDays,
   CheckSquare,
   FileCheck,
   MessageSquare,
-  Plus,
   Search,
   Sparkles,
   TrendingUp,
@@ -46,6 +43,7 @@ import {
 } from "@/data/derive";
 import { APPROVAL_REASON_LABEL, EFFECT_CLASS_LABEL } from "@/features/shell/format";
 import { useFormat } from "@/features/shell/use-format";
+import { useNavegar } from "@/features/shell/navegacao";
 import { Selo, SeloDaTarefa } from "@/features/estrutura/icone-de-tipo";
 import {
   CorpoDeTela,
@@ -66,7 +64,8 @@ export default function InicioPage() {
   const state = useData((data) => data);
   const run = useRun();
   const fmt = useFormat();
-  const router = useRouter();
+  // `pendente` é a espera entre o push e a chegada da rota: o globo "pensa" nela.
+  const [navegar, pendente] = useNavegar();
   const [pergunta, setPergunta] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [now] = useState(() => new Date());
@@ -117,7 +116,7 @@ export default function InicioPage() {
     if (resultado.ok) {
       setErro(null);
       setPergunta("");
-      router.push(`/ia/chat/${resultado.value.id}`);
+      navegar(`/ia/chat/${resultado.value.id}`);
     } else {
       setErro(resultado.error);
     }
@@ -140,7 +139,8 @@ export default function InicioPage() {
           pergunta={pergunta}
           aoEscrever={setPergunta}
           aoPerguntar={perguntar}
-          aoFalar={() => router.push("/ia/chat")}
+          aoFalar={() => navegar("/ia/chat")}
+          pendente={pendente}
         />
 
         {erro ? (
@@ -152,7 +152,12 @@ export default function InicioPage() {
         ) : null}
 
 
-        <div className="mt-6 grid gap-x-8 gap-y-6 xl:grid-cols-[minmax(0,1fr)_24rem] xl:items-start">
+        {/* As seis listas em cascata só começam depois da capa assentar: a
+            capa é a porta, as seções chegam pela porta. */}
+        <div
+          className="mt-6 grid gap-x-8 gap-y-6 xl:grid-cols-[minmax(0,1fr)_24rem] xl:items-start"
+          style={{ "--cascata-inicio": "var(--dur-2)" } as CSSProperties}
+        >
           {/* ---------------------------------------------------- o seu dia
               Uma lista só, em ordem de urgência. Cada linha diz o tipo pelo
               ícone, o que é, o que importa e para onde leva. */}
@@ -162,7 +167,7 @@ export default function InicioPage() {
               {agora === 0 ? (
                 <p className="app-meta px-1">Nada vencido e nada esperando a sua decisão.</p>
               ) : (
-                <ul className="pilha-solta">
+                <ul className="cascata pilha-solta">
                   {vencidas.slice(0, HOME_PAGE_SIZE).map((task) => (
                     <LinhaDeTarefa key={task.id} task={task} state={state} tom="erro" nota="Vencida" />
                   ))}
@@ -202,7 +207,7 @@ export default function InicioPage() {
                   Nenhum horário marcado. Uma reunião é uma Tarefa de Tipo Reunião com data e hora.
                 </p>
               ) : (
-                <ul className="pilha-solta">
+                <ul className="cascata pilha-solta">
                   {agenda.slice(0, HOME_PAGE_SIZE).map((task) => {
                     const lista = state.lists.find((l) => l.id === task.listId);
                     const tipo = state.taskTypes.find((t) => t.id === task.taskTypeId);
@@ -240,7 +245,7 @@ export default function InicioPage() {
               {semana.length === 0 ? (
                 <p className="app-meta px-1">Nada vence nos próximos 7 dias.</p>
               ) : (
-                <ul className="pilha-solta">
+                <ul className="cascata pilha-solta">
                   {semana.slice(0, HOME_PAGE_SIZE).map((task) => (
                     <LinhaDeTarefa key={task.id} task={task} state={state} tom="acento" />
                   ))}
@@ -252,7 +257,7 @@ export default function InicioPage() {
             {depois.length > 0 || concluidas.length > 0 ? (
               <section>
                 <ReguaDeSecao rotulo="Depois" contagem={depois.length} />
-                <ul className="pilha-solta">
+                <ul className="cascata pilha-solta">
                   {depois.slice(0, HOME_PAGE_SIZE).map((task) => (
                     <LinhaDeTarefa key={task.id} task={task} state={state} tom="neutro" />
                   ))}
@@ -281,7 +286,7 @@ export default function InicioPage() {
               {conversas.length === 0 ? (
                 <p className="app-meta px-1">Nenhuma Conversa atribuída a você.</p>
               ) : (
-                <ul className="pilha-solta">
+                <ul className="cascata pilha-solta">
                   {conversas.slice(0, 3).map((conversation) => {
                     const contato = state.contacts.find((c) => c.id === conversation.contactId);
                     const ultima = conversation.messages.at(-1);
@@ -323,7 +328,7 @@ export default function InicioPage() {
               {negocios.length === 0 ? (
                 <p className="app-meta px-1">Você não é Proprietário de nenhum Negócio aberto.</p>
               ) : (
-                <ul className="pilha-solta">
+                <ul className="cascata pilha-solta">
                   {negocios.slice(0, 4).map((deal) => (
                     <li key={deal.id}>
                       <Link href={`/crm/negocios/${deal.id}`} className="item-solto">
@@ -388,7 +393,8 @@ const ESTRELAS = [
  * estrelas) e o globo de pontos é o Assistente: gira, inclina para o cursor,
  * acende perto dele — e abre uma Sessão de Chat no clique. Nada aqui é enfeite
  * sem função: o título dá o contexto, o campo abre uma Sessão de Chat, os
- * atalhos levam às quatro telas mais usadas e a base traz as Ações rápidas.
+ * atalhos levam às quatro telas mais usadas. A barra de Ações rápidas que
+ * fechava a base saiu a pedido — a capa termina na atmosfera.
  *
  * Já foi um laço de vídeo com riscos de neon; saiu porque os riscos chegavam a
  * branco puro e exigiam uma cortina pesada para o texto ler. A atmosfera nunca
@@ -401,6 +407,7 @@ function Capa({
   aoEscrever,
   aoPerguntar,
   aoFalar,
+  pendente,
 }: {
   readonly saudacao: string;
   readonly nome: string;
@@ -408,6 +415,8 @@ function Capa({
   readonly aoEscrever: (valor: string) => void;
   readonly aoPerguntar: () => void;
   readonly aoFalar: () => void;
+  /** Uma navegação a caminho: o globo pensa e o envio diz que está ocupado. */
+  readonly pendente: boolean;
 }) {
   return (
     <section className="capa revelar flex flex-col" style={{ minHeight: "var(--capa-h)" }}>
@@ -424,8 +433,14 @@ function Capa({
       ))}
 
       <div className="flex min-h-0 flex-1 items-center justify-between gap-6 p-6 xl:p-8">
-        <div className="min-w-0 flex-1" style={{ maxWidth: "38rem" }}>
-          <h1 className="ed-display">
+        {/*
+          O texto chega em degraus de dois passos (saudação, pergunta, atalhos)
+          enquanto a capa ainda revela: `surgir` sem blur, porque a capa inteira
+          já está sob o filter do `revelar` — dois desfoques somados borram
+          demais. Os `--i` são inline para o degrau ser de DOIS passos.
+        */}
+        <div className="cascata min-w-0 flex-1" style={{ maxWidth: "38rem" }}>
+          <h1 className="ed-display" style={{ "--i": 0 } as CSSProperties}>
             {comoVai}, <span style={{ color: "var(--acento)" }}>{nome}</span>.
           </h1>
 
@@ -434,10 +449,11 @@ function Capa({
           <div
             className="mt-5 flex items-center gap-2 rounded-[var(--r-controle)] px-3"
             style={{
+              "--i": 2,
               height: "var(--controle-h-lg)",
               background: "var(--page)",
               border: "1px solid var(--linha-acento)",
-            }}
+            } as CSSProperties}
           >
             <Icone de={Sparkles} tamanho="sm" style={{ color: "var(--acento)" }} />
             <label className="sr-only" htmlFor="pergunta">
@@ -458,6 +474,7 @@ function Capa({
               type="button"
               onClick={aoPerguntar}
               disabled={pergunta.trim() === ""}
+              aria-busy={pendente || undefined}
               aria-label="Abrir uma Sessão de Chat com esta pergunta"
               title={pergunta.trim() === "" ? "Escreva a pergunta primeiro." : "Abre uma Sessão de Chat com esta pergunta."}
               className="btn-icone shrink-0 disabled:opacity-40"
@@ -473,7 +490,7 @@ function Capa({
             </button>
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-2">
+          <div className="mt-4 flex flex-wrap items-center gap-2" style={{ "--i": 4 } as CSSProperties}>
             <Atalho href="/ia/chat" icone={Sparkles}>
               Falar com o Assistente
             </Atalho>
@@ -498,35 +515,16 @@ function Capa({
         <button
           type="button"
           onClick={aoFalar}
-          className="relative hidden shrink-0 lg:block xl:mr-6"
-          style={{ width: "var(--globo-tam)", height: "var(--globo-tam)" }}
+          className="aparecer relative hidden shrink-0 lg:block xl:mr-6"
+          // Esmaece no tempo da capa; o globo mesmo só nasce quando ela termina.
+          style={{ width: "var(--globo-tam)", height: "var(--globo-tam)", animationDuration: "var(--dur-3)" }}
           aria-label="Falar com o Assistente"
           title="Abre uma Sessão de Chat com o Assistente."
         >
-          <GloboDePontos className="absolute inset-0" />
+          <GloboDePontos className="absolute inset-0" ativo={pendente} />
         </button>
       </div>
 
-      {/* A base da capa: as Ações rápidas, onde os pilares do manifesto
-          ficavam. É uma barra opaca — o único lugar da capa que fecha o fundo. */}
-      <div
-        className="flex shrink-0 flex-wrap items-center gap-2 px-6 py-3 xl:px-8"
-        style={{ background: "var(--card)", borderTop: "1px solid var(--linha)" }}
-      >
-        <span className="ed-secao mr-2">Ações rápidas</span>
-        <AcaoRapida href="/estrutura" icone={Plus}>
-          Criar na Estrutura
-        </AcaoRapida>
-        <AcaoRapida href="/ia/chat" icone={Sparkles}>
-          Nova Sessão de Chat
-        </AcaoRapida>
-        <AcaoRapida href="/crm/contatos" icone={MessageSquare}>
-          Importar Contatos
-        </AcaoRapida>
-        <AcaoRapida href="/paineis" icone={CalendarDays}>
-          Ver Painéis
-        </AcaoRapida>
-      </div>
     </section>
   );
 }
@@ -607,11 +605,3 @@ function Corte({ mostradas, total, href }: { readonly mostradas: number; readonl
   );
 }
 
-function AcaoRapida({ href, icone, children }: { readonly href: string; readonly icone: LucideIcon; readonly children: React.ReactNode }) {
-  return (
-    <Link href={href} className="btn btn-fantasma btn-sm">
-      <Icone de={icone} tamanho="xs" />
-      {children}
-    </Link>
-  );
-}

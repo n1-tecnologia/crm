@@ -39,6 +39,7 @@ import {
   ChevronUp,
   Ellipsis,
   Info,
+  Loader2,
   Lock,
   Maximize2,
   Minimize2,
@@ -48,6 +49,7 @@ import {
 import { cn } from "./cn";
 import { Icone } from "./icone";
 import { Pilula } from "./basicos";
+import { lerDuracao, reduzido, usePresenca } from "./movimento";
 
 /* ------------------------------------------------------------------ button */
 
@@ -70,6 +72,7 @@ export function Button({
   icon,
   full = false,
   size = "md",
+  carregando = false,
 }: {
   readonly children: ReactNode;
   readonly onClick?: () => void;
@@ -81,8 +84,15 @@ export function Button({
   readonly icon?: ReactNode;
   readonly full?: boolean;
   readonly size?: "sm" | "md";
+  /**
+   * Pendência REAL (uma navegação a caminho, uma publicação): o ícone vira o
+   * spinner, `aria-busy` diz o estado, o clique é engolido e o rótulo fica —
+   * a largura não muda. Exige `disabledReason` ("Enviando…", "Abrindo…").
+   */
+  readonly carregando?: boolean;
 }) {
   const reasonId = useId();
+  const inativo = disabled || carregando;
   /**
    * §11 — a disabled control ALWAYS says why, and `title` alone says it only to
    * a mouse. A natively disabled button takes no focus and announces no tooltip,
@@ -99,19 +109,20 @@ export function Button({
       <button
         type={type}
         onClick={
-          disabled
+          inativo
             ? (event) => {
                 event.preventDefault();
                 event.stopPropagation();
               }
             : onClick
         }
-        aria-disabled={disabled}
-        {...(disabled && disabledReason ? { "aria-describedby": reasonId } : {})}
-        title={disabled ? disabledReason : undefined}
+        aria-disabled={inativo}
+        aria-busy={carregando || undefined}
+        {...(inativo && disabledReason ? { "aria-describedby": reasonId } : {})}
+        title={inativo ? disabledReason : undefined}
         className={cn("btn alvo-toque", BUTTON_CLASS[variant], size === "sm" && "btn-sm", full && "w-full")}
       >
-        {icon}
+        {carregando ? <Icone de={Loader2} className="girando" /> : icon}
         {children}
       </button>
       {/*
@@ -119,7 +130,7 @@ export function Button({
         e sem ancestral posicionado ele se ancora no documento inteiro. Um nó
         `display: none` continua sendo lido pelo `aria-describedby`.
       */}
-      {disabled && disabledReason ? (
+      {inativo && disabledReason ? (
         <span id={reasonId} hidden>
           {disabledReason}
         </span>
@@ -184,7 +195,7 @@ export function TextInput({
   readonly onChange: (value: string) => void;
   readonly placeholder?: string;
   readonly invalid?: boolean;
-  readonly type?: "text" | "email" | "search" | "number";
+  readonly type?: "text" | "email" | "search" | "number" | "password";
   readonly disabled?: boolean;
   /** §11 — um controle desligado sempre diz por quê. */
   readonly disabledReason?: string;
@@ -333,7 +344,7 @@ export function Select({
   const { activeIndex, setActiveIndex, onKeyDown } = useListKeys(open, shown.length, choose);
 
   return (
-    <div ref={root} className="relative">
+    <div ref={root} className="relative min-w-0">
       <button
         id={id}
         type="button"
@@ -360,7 +371,7 @@ export function Select({
       </button>
 
       {open ? (
-        <div className="flutuante surgir absolute z-20 mt-1 w-full overflow-hidden" style={{ minWidth: "12rem" }}>
+        <div className="flutuante surgir-rapido absolute z-20 mt-1 w-full overflow-hidden" style={{ minWidth: "12rem" }}>
           {searchable ? <BuscaDeOpcoes query={query} onChange={setQuery} /> : null}
           <ul id={listId} role="listbox" className="relative max-h-64 overflow-y-auto p-1">
             {shown.length === 0 ? (
@@ -432,7 +443,7 @@ export function MultiSelect({
   });
 
   return (
-    <div ref={root} className="relative">
+    <div ref={root} className="relative min-w-0">
       <div className="campo flex h-auto min-h-[var(--controle-h)] flex-wrap items-center gap-1 py-1">
         {values.length === 0 ? (
           <span className="app-base px-0.5" style={{ color: "var(--texto-4)" }}>
@@ -466,7 +477,7 @@ export function MultiSelect({
       </div>
 
       {open ? (
-        <div className={cn("flutuante surgir absolute z-20 w-full overflow-hidden", abrirParaCima ? "bottom-full mb-1" : "mt-1")}>
+        <div className={cn("flutuante surgir-rapido absolute z-20 w-full overflow-hidden", abrirParaCima ? "bottom-full mb-1" : "mt-1")}>
           <BuscaDeOpcoes query={query} onChange={setQuery} />
           <ul id={listId} role="listbox" aria-multiselectable="true" className="relative max-h-64 overflow-y-auto p-1">
             {shown.length === 0 ? (
@@ -609,9 +620,17 @@ export function SidePanel({
   const panel = useRef<HTMLElement>(null);
   // Tela cheia: o popup ocupa a janela inteira até ser restaurado (ou fechado).
   const [cheio, setCheio] = useState(false);
+  /*
+    Presença: fechar deixa o nó por 150ms em `saindo` (véu e superfície somem
+    juntos, só opacidade) e só então desmonta. Durante a saída a raiz fica
+    `inert`, sem `aria-modal` (o moribundo não conta como diálogo do topo) e
+    o foco já voltou ao abridor — `useModal` recebe `open`, não `montado`.
+  */
+  const { montado, estado } = usePresenca(open);
+  const saindo = estado === "saindo";
   useModal(open, onClose, panel, semRespiro ? "raiz" : "campo");
   void wide;
-  if (!open) return null;
+  if (!montado) return null;
   /*
     POPUP DE CONTEÚDO, não gaveta. O registro (Conta, Tarefa, Negócio) abre no
     centro, em 80% da tela nos dois eixos — o mesmo popup do CRM-COMPLETO. A
@@ -624,12 +643,18 @@ export function SidePanel({
     repouso, senão o popup fica preso dentro dele.
   */
   return (
-    <div className={cn("fixed inset-0 grid place-items-center", !cheio && "p-4")} style={{ zIndex: "var(--z-gaveta)" }}>
+    <div
+      className={cn("fixed inset-0 grid place-items-center", !cheio && "p-4")}
+      style={{ zIndex: "var(--z-gaveta)" }}
+      data-estado={saindo ? "saindo" : undefined}
+      inert={saindo || undefined}
+      aria-hidden={saindo || undefined}
+    >
       <div className="veu absolute inset-0" onClick={onClose} aria-hidden="true" />
       <aside
         ref={panel}
         role="dialog"
-        aria-modal="true"
+        aria-modal={saindo ? undefined : "true"}
         aria-label={title}
         tabIndex={-1}
         className={cn("flutuante surgir relative flex w-full flex-col overflow-hidden", cheio && "rounded-none")}
@@ -713,15 +738,23 @@ export function ConfirmDialog({
   const dialog = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const descriptionId = useId();
+  const { montado, estado } = usePresenca(open);
+  const saindo = estado === "saindo";
   useModal(open, onCancel, dialog);
-  if (!open) return null;
+  if (!montado) return null;
   return (
-    <div className="fixed inset-0 grid place-items-center p-4" style={{ zIndex: "var(--z-modal)" }}>
+    <div
+      className="fixed inset-0 grid place-items-center p-4"
+      style={{ zIndex: "var(--z-modal)" }}
+      data-estado={saindo ? "saindo" : undefined}
+      inert={saindo || undefined}
+      aria-hidden={saindo || undefined}
+    >
       <div className="veu" onClick={onCancel} aria-hidden="true" />
       <div
         ref={dialog}
         role="alertdialog"
-        aria-modal="true"
+        aria-modal={saindo ? undefined : "true"}
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
         tabIndex={-1}
@@ -784,27 +817,72 @@ export function Toast({
   tone,
   children,
   onDismiss,
+  acao,
 }: {
   readonly tone: ToastTone;
   readonly children: ReactNode;
   readonly onDismiss?: () => void;
+  /** Uma ação ao lado (Desfazer): o aviso vive mais (`--dur-aviso-longo`). */
+  readonly acao?: ReactNode;
 }) {
+  /*
+    Vida do aviso: sucesso e neutro expiram em `--dur-aviso` (8s com ação),
+    contados por uma régua de tempo real que o CSS anima e que o ponteiro em
+    cima pausa. Erro NÃO expira (WCAG 2.2.1): a pessoa dispensa. A saída é
+    `sumir` em 150ms e só então `onDismiss` desmonta. Em movimento reduzido a
+    régua chegaria ao fim na hora, então o prazo corre por timer — tempo de
+    leitura não é movimento.
+  */
+  const [saindo, setSaindo] = useState(false);
+  const expira = onDismiss !== undefined && tone !== "error";
+  const comAcao = acao !== undefined && acao !== null;
+  const dispensar = useRef(onDismiss);
+  useEffect(() => {
+    dispensar.current = onDismiss;
+  }, [onDismiss]);
+  const fechar = () => {
+    if (!dispensar.current) return;
+    if (lerDuracao("--dur-1") === 0) dispensar.current();
+    else setSaindo(true);
+  };
+  useEffect(() => {
+    if (!saindo) return;
+    const timer = setTimeout(() => dispensar.current?.(), lerDuracao("--dur-1"));
+    return () => clearTimeout(timer);
+  }, [saindo]);
+  useEffect(() => {
+    if (!expira || !reduzido()) return;
+    const timer = setTimeout(() => dispensar.current?.(), lerDuracao(comAcao ? "--dur-aviso-longo" : "--dur-aviso", { medidor: true }));
+    return () => clearTimeout(timer);
+  }, [expira, comAcao]);
   return (
     <div
       // An error must interrupt the screen reader; a success must not.
       role={tone === "error" ? "alert" : "status"}
       // Sticky: the action that produced it may live far below the fold, and a
       // toast the person cannot see is no feedback at all.
-      className="flutuante surgir sticky top-2 z-20 mb-3 flex items-center gap-3 px-4 py-3"
+      className="aviso flutuante surgir sticky top-2 z-20 mb-3 flex items-center gap-3 px-4 py-3"
+      data-estado={saindo ? "saindo" : undefined}
     >
       <Icone de={TOAST_ICON[tone]} style={{ color: TOAST_COLOR[tone] }} />
       <span className="app-base min-w-0 flex-1" style={{ color: "var(--texto)" }}>
         {children}
       </span>
+      {acao}
       {onDismiss ? (
-        <button type="button" onClick={onDismiss} aria-label="Dispensar aviso" className="shrink-0" style={{ color: "var(--texto-4)" }}>
+        <button type="button" onClick={fechar} aria-label="Dispensar aviso" className="shrink-0" style={{ color: "var(--texto-4)" }}>
           <Icone de={X} tamanho="xs" />
         </button>
+      ) : null}
+      {expira ? (
+        <span
+          className="regua-tempo"
+          aria-hidden="true"
+          style={{ "--duracao-aviso": comAcao ? "var(--dur-aviso-longo)" : "var(--dur-aviso)" } as CSSProperties}
+          onAnimationEnd={(event) => {
+            if (event.animationName === "regua-tempo" && !reduzido()) fechar();
+          }}
+        />
       ) : null}
     </div>
   );
@@ -827,7 +905,7 @@ export function EmptyState({
   readonly compact?: boolean;
 }) {
   return (
-    <div className={cn("flex flex-col items-center justify-center text-center", compact ? "gap-1.5 py-6" : "gap-2 py-10")}>
+    <div className={cn("estado-vazio flex flex-col items-center justify-center text-center", compact ? "gap-1.5 py-6" : "gap-2 py-10")}>
       {icon ? (
         <span aria-hidden style={{ color: "var(--texto-4)", opacity: 0.6 }}>
           {icon}
@@ -887,7 +965,7 @@ export function ActionMenu({
   useDismiss(root, () => setOpen(false), open);
 
   return (
-    <div ref={root} className="relative">
+    <div ref={root} className="relative min-w-0">
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
@@ -900,7 +978,7 @@ export function ActionMenu({
         {trigger ?? <Icone de={Ellipsis} />}
       </button>
       {open ? (
-        <ul role="menu" className="flutuante surgir absolute right-0 z-30 mt-1 min-w-48 p-1">
+        <ul role="menu" className="flutuante surgir-rapido absolute right-0 z-30 mt-1 min-w-48 p-1">
           {items.map((item) => (
             <li key={item.label} role="none">
               <button
@@ -1202,7 +1280,7 @@ export function StatusPicker({
       </button>
 
       {open ? (
-        <div className="flutuante surgir absolute left-0 z-20 mt-1 overflow-hidden" style={{ minWidth: "16rem" }}>
+        <div className="flutuante surgir-rapido absolute left-0 z-20 mt-1 overflow-hidden" style={{ minWidth: "16rem" }}>
           <ul id={listId} role="listbox" className="relative max-h-72 overflow-y-auto p-1">
             {options.map((option, index) => {
               const reason = reasonOf(option);

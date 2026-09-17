@@ -32,6 +32,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useData, useRun, useSession } from "@/data/store";
+import { useRecente } from "@/features/shell/recente";
 import {
   changeTaskStatus,
   CP,
@@ -519,6 +520,9 @@ export function FinanceTable({
 }) {
   const fmt = useFormat();
   const run = useRun();
+  // A conta que acabou de nascer ou mudar acende (`data-recente`); a criada
+  // pelo compositor inline já entra acesa, sem cascata.
+  const recente = useRecente();
   const router = useRouter();
   const [acao1, acao2] = profile.quickActions;
   const { memberId } = useSession();
@@ -539,15 +543,27 @@ export function FinanceTable({
       else n.add(grupo);
       return n;
     });
+  const [criandoEm, setCriandoEm] = useState<FinanceGroup | null>(null);
   // Um grupo sem conta não aparece — a não ser que o filtro tenha escolhido
-  // exatamente esse grupo (aí o vazio, e o "+" dele, são a resposta).
+  // exatamente esse grupo (aí o vazio, e o "+" dele, são a resposta), ou que
+  // o compositor esteja aberto nele.
   const grupos = profile.groups
     .map((g) => ({
       grupo: g,
       itens: tasks.filter((t) => profile.groupOf(state, t, now) === g),
     }))
-    .filter((g) => g.itens.length > 0 || g.grupo === grupoFiltrado);
-  const [criandoEm, setCriandoEm] = useState<FinanceGroup | null>(null);
+    .filter((g) => g.itens.length > 0 || g.grupo === grupoFiltrado || g.grupo === criandoEm);
+  // O "+" de um grupo que não recebe conta nova (vencidas, pagas…) não fica
+  // mudo: diz o motivo e abre o compositor no grupo onde a conta nasce.
+  const berco = profile.groups.find((g) => nascimentoNoGrupo(profile, g).recusa === undefined);
+  const redirecionarCriacao = (motivo: string) => {
+    if (berco && onCreateInGroup && criacaoRecusada === undefined) {
+      setCriandoEm(berco);
+      report({ ok: true }, `${motivo} O campo de criação abriu em ${GROUP_LABEL[berco]}.`);
+    } else {
+      report({ ok: false, error: motivo }, "");
+    }
+  };
   const statusDe = (id: string) => definitions.find((d) => d.id === id);
   const mover = (task: Task, statusId: string, label: string) => {
     const r = run((data, me) => changeTaskStatus(data, me, task.id, statusId));
@@ -583,6 +599,7 @@ export function FinanceTable({
           <tr>
             <th
               className="app-coluna"
+              data-vazia="true"
               style={{ width: "2rem", paddingInline: "var(--e-2)" }}
             >
               {selecionando ? (
@@ -599,7 +616,7 @@ export function FinanceTable({
             <th className="app-coluna hidden @7xl:table-cell">Prioridade</th>
             <th className="app-coluna hidden @5xl:table-cell">Responsável</th>
             <th className="app-coluna">Status</th>
-            <th className="app-coluna" style={{ width: "1%" }}>
+            <th className="app-coluna" data-vazia="true" style={{ width: "1%" }}>
               <span className="sr-only">Ações</span>
             </th>
           </tr>
@@ -640,6 +657,7 @@ export function FinanceTable({
                           rotulo={GROUP_LABEL[grupo]}
                           aberto={criandoEm === grupo}
                           onClick={() => setCriandoEm((atual) => (atual === grupo ? null : grupo))}
+                          onBloqueado={redirecionarCriacao}
                           {...(motivo ? { motivo } : {})}
                         />
                       );
@@ -755,6 +773,7 @@ export function FinanceTable({
                   return (
                     <tr
                       key={task.id}
+                      data-recente={task.id === recente ? "true" : undefined}
                       className="group cursor-pointer"
                       data-selecionada={selecionada ? "true" : undefined}
                       // A linha inteira abre a conta — não só o nome. Um clique
@@ -1016,12 +1035,13 @@ export function FinanceCards({
   readonly openTask: (taskId: string) => void;
 }) {
   const fmt = useFormat();
+  const recente = useRecente();
   const now = new Date();
   const config = tasks[0] ? effectiveListConfig(state, tasks[0].listId) : null;
   if (tasks.length === 0)
     return <EmptyState compact title="Nenhuma conta passa pelos filtros." />;
   return (
-    <ul className="pilha-solta">
+    <ul className="cascata pilha-solta">
       {tasks.map((task) => {
         const grupo = profile.groupOf(state, task, now);
         return (
@@ -1030,6 +1050,7 @@ export function FinanceCards({
               type="button"
               onClick={() => openTask(task.id)}
               className="item-solto w-full text-left"
+              data-recente={task.id === recente ? "true" : undefined}
               data-bloco="true"
             >
               <span className="flex items-baseline justify-between gap-2">

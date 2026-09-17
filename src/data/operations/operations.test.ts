@@ -1425,10 +1425,10 @@ describe("Volumes do seed (PRD II.7)", () => {
     expect(state.funnels).toHaveLength(4); // SDR, Closer, Validação Full Face Avançado e Venda direta
     expect(state.channels).toHaveLength(5); // + LinkedIn
     expect(state.queues).toHaveLength(2);
-    expect(state.conversations).toHaveLength(21); // + a conversa de WhatsApp do Negócio de referência
+    expect(state.conversations).toHaveLength(23); // + as duas Conversas de grupo (Ferramentas) + a conversa de WhatsApp do Negócio de referência
     expect(state.agents).toHaveLength(6); // + Enriquecedor, Classificador de conexão e Agente de lançamento
     expect(state.skills).toHaveLength(9); // + as três do processo SDR
-    expect(state.automations).toHaveLength(26); // 3 herdadas + 7 do SDR + 3 do Closer + 7 de Contas a pagar (A2–A7, A9) + 6 de Contas a receber (R2, R2b, R3–R6)
+    expect(state.automations).toHaveLength(27); // + Boas-vindas nos Grupos (Ferramentas) · 3 herdadas + 7 do SDR + 3 do Closer + 7 de Contas a pagar (A2–A7, A9) + 6 de Contas a receber (R2, R2b, R3–R6)
     expect(state.collections).toHaveLength(4); // + De-para Omie
     expect(state.documents).toHaveLength(16); // + De-para ClickUp → Omie
     expect(state.chatSessions).toHaveLength(6); // + a Sessão solta do Thiago, fora de pasta
@@ -3779,5 +3779,63 @@ describe("Espelho comercial na Estrutura (Comercial › Meus negócios › Funil
       expect(cartoes.every((t) => t.provenance?.kind === "deal" && state.links.some((l) => l.fromId === t.id && l.toType === "deal" && l.toId === t.provenance?.sourceId))).toBe(true);
       expect(state.views.some((v) => v.listId === lista.id && v.isDefault && v.kind === "quadro")).toBe(true);
     }
+  });
+});
+
+/**
+ * Realce (movimento §4.4): o resultado nomeia o registro que a operação criou,
+ * alterou ou moveu, e a tela acende só essa peça (`useRecente`). Enviar nomeia a
+ * Mensagem; comentar, o Comentário — a peça nova é a que surge, não o pai.
+ */
+describe("Realce — o resultado nomeia o registro tocado (OperationResult.id)", () => {
+  it("criar, alterar e mover devolvem o id da peça", () => {
+    const contato = createContact(state, THIAGO, { firstName: "Ana", lastName: "Realce" });
+    expect(contato.ok).toBe(true);
+    if (contato.ok) expect(contato.id).toBe(contato.value.id);
+
+    const negocio = createDeal(state, THIAGO, { title: "Acender", funnelId: "fnl_sdr" });
+    expect(negocio.ok).toBe(true);
+    if (!negocio.ok) return;
+    expect(negocio.id).toBe(negocio.value.id);
+    const etapa = state.funnels.find((f) => f.id === "fnl_sdr")?.stages.find((s) => s.id !== negocio.value.stageId && s.requirements.length === 0);
+    if (etapa) {
+      const movido = moveDealToStage(state, THIAGO, negocio.value.id, etapa.id);
+      expect(movido.ok).toBe(true);
+      if (movido.ok) expect(movido.id).toBe(negocio.value.id);
+    }
+
+    const tarefa = createTask(state, THIAGO, { listId: "lst_propostas", title: "Acender" });
+    expect(tarefa.ok).toBe(true);
+    if (!tarefa.ok) return;
+    expect(tarefa.id).toBe(tarefa.value.id);
+    const editada = updateTask(state, THIAGO, tarefa.value.id, { priority: "alta" });
+    expect(editada.ok).toBe(true);
+    if (editada.ok) expect(editada.id).toBe(tarefa.value.id);
+    for (const item of state.tasks.find((t) => t.id === "tsk_seed_1")?.checklists[0]?.items ?? []) item.done = true;
+    const status = changeTaskStatus(state, THIAGO, "tsk_seed_1", "st_ops_conc");
+    expect(status.ok).toBe(true);
+    if (status.ok) expect(status.id).toBe("tsk_seed_1");
+  });
+
+  it("uma operação que não muda nada não nomeia peça: nada acende", () => {
+    const tarefa = state.tasks.find((t) => t.id === "tsk_seed_1");
+    if (!tarefa) throw new Error("seed sem tsk_seed_1");
+    const parado = moveTask(state, THIAGO, tarefa.id, tarefa.listId);
+    expect(parado.ok).toBe(true);
+    if (parado.ok) expect(parado.id).toBeUndefined();
+  });
+
+  it("enviar nomeia a Mensagem; comentar, o Comentário", () => {
+    const enviada = sendMessage(state, THIAGO, { conversationId: "cnv_1", content: "Acendeu?" });
+    expect(enviada.ok).toBe(true);
+    if (enviada.ok) expect(enviada.id).toBe(enviada.value.id);
+
+    const chat = sendChatMessage(state, "mem_thiago", "cht_6", "Oi");
+    expect(chat.ok).toBe(true);
+    if (chat.ok) expect(chat.id).toBe(chat.value.id);
+
+    const comentario = addTaskComment(state, "mem_thiago", "tsk_seed_1", { content: "Falta o preço." });
+    expect(comentario.ok).toBe(true);
+    if (comentario.ok) expect(comentario.id).toBe(comentario.value.id);
   });
 });

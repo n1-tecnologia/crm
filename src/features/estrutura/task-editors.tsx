@@ -9,6 +9,7 @@
 import { Check, MessageSquareReply, RotateCcw, Send } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useData, useRun, useSession } from "@/data/store";
+import { useRecente } from "@/features/shell/recente";
 import {
   addTaskComment,
   resolveTaskComment,
@@ -642,7 +643,7 @@ function CommentComposer({
             id={`${id}-sugestoes`}
             role="listbox"
             aria-label="Pessoas para mencionar"
-            className={`flutuante surgir absolute left-0 z-20 w-full max-w-xs overflow-hidden p-1 ${presoNaBase ? "bottom-full mb-1" : "top-full mt-1"}`}
+            className={`flutuante surgir-rapido absolute left-0 z-20 w-full max-w-xs overflow-hidden p-1 ${presoNaBase ? "bottom-full mb-1" : "top-full mt-1"}`}
           >
             {sugestoes.map((membro, index) => (
               <li key={membro.id} role="none">
@@ -701,6 +702,8 @@ export function TaskComments({
   readonly antes?: React.ReactNode;
 }) {
   const run = useRun();
+  // O Comentário recém-enviado surge; os outros já estão.
+  const recente = useRecente();
   const fmt = useFormat();
   const { memberId } = useSession();
   const members = useData((data) => data.members);
@@ -757,7 +760,7 @@ export function TaskComments({
   const Balao = ({ comment, resposta }: { readonly comment: (typeof vivos)[number]; readonly resposta?: boolean }) => {
     const meu = minha(comment);
     return (
-      <div id={`comentario-${comment.id}`} className={`flex scroll-mt-4 ${meu ? "justify-end" : "justify-start"} ${resposta ? (meu ? "mr-5" : "ml-5") : ""}`}>
+      <div id={`comentario-${comment.id}`} className={`flex scroll-mt-4 ${meu ? "justify-end" : "justify-start"} ${resposta ? (meu ? "mr-5" : "ml-5") : ""}${comment.id === recente ? " surgir" : ""}`}>
         <div
           className={`min-w-0 max-w-[88%] rounded-[var(--r-painel)] px-3 py-2 ${meu ? "rounded-br-md" : "rounded-bl-md"}`}
           style={{

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { cn } from "./cn";
+import { bezierDe, lerDuracao, reduzido } from "./movimento";
 
 /**
  * GLOBO DE PONTOS — o "Jarvis" da capa.
@@ -16,8 +17,20 @@ import { cn } from "./cn";
  * escritas aqui: a sentinela reprova cor crua em TSX, e a regra vale para
  * canvas também. O alfa é `globalAlpha`, por isso o hex do token serve inteiro.
  *
- * Movimento reduzido: desenha um quadro parado e não anima. Aba escondida:
- * `requestAnimationFrame` já para sozinho.
+ * O NASCIMENTO: no mount desenha UM quadro parado (só as órbitas — a esfera
+ * ainda não existe) e espera a capa terminar de revelar (`animationend` de
+ * `revelar`, com um timer de `--dur-3` de segurança). Só então liga o laço e a
+ * esfera nasce em `--dur-4`: raio 0,7R→R e alfa dos pontos e do halo 0→1,
+ * pela curva do sistema (`bezierDe`) lida como variável no desenho — nunca
+ * `scale` num ancestral, porque `medir()` lê `getBoundingClientRect`.
+ *
+ * `ativo`: enquanto uma navegação está a caminho o Assistente "pensa" — o
+ * halo sobe de 0,14 a 0,30 e o giro fica 3× mais rápido, os dois com inércia
+ * (lerp 0,08 por quadro). A prop entra por ref: mudar `ativo` não reinicia o
+ * efeito nem o nascimento.
+ *
+ * Movimento reduzido: um quadro parado, já nascido (nascimento = 1), `ativo`
+ * ignorado. Aba escondida: `requestAnimationFrame` já para sozinho.
  */
 
 type Ponto = { readonly x: number; readonly y: number; readonly z: number };
@@ -38,10 +51,31 @@ function esfera(quantidade: number): Ponto[] {
 const PONTOS = 1100;
 /** Quão perto do cursor um ponto acende, em fração do raio. */
 const ALCANCE = 0.55;
+/** O raio com que a esfera nasce, em fração do raio final. */
+const RAIO_INICIAL = 0.7;
+/** O halo em repouso e "pensando". */
+const HALO_REPOUSO = 0.14;
+const HALO_ATIVO = 0.3;
+/** O giro por quadro em repouso; "pensando" é 3×. */
+const GIRO = 0.0028;
+const GIRO_ATIVO = 3;
+/** Inércia do "pensar": fração do caminho vencida por quadro. */
+const INERCIA = 0.08;
 
-export function GloboDePontos({ className, ...resto }: React.HTMLAttributes<HTMLDivElement>) {
+type Props = React.HTMLAttributes<HTMLDivElement> & {
+  /** Uma navegação a caminho: o Assistente pensa até a rota chegar. */
+  readonly ativo?: boolean;
+};
+
+export function GloboDePontos({ className, ativo = false, ...resto }: Props) {
   const caixa = useRef<HTMLDivElement>(null);
   const tela = useRef<HTMLCanvasElement>(null);
+  // O laço lê a prop daqui: mudar `ativo` não pode reiniciar o efeito.
+  const ativoRef = useRef(ativo);
+
+  useEffect(() => {
+    ativoRef.current = ativo;
+  }, [ativo]);
 
   useEffect(() => {
     const canvas = tela.current;
@@ -54,7 +88,9 @@ export function GloboDePontos({ className, ...resto }: React.HTMLAttributes<HTML
     const cor = estilo.getPropertyValue("--acento").trim();
     const corClara = estilo.getPropertyValue("--texto").trim();
     const corAnel = estilo.getPropertyValue("--roxo-500").trim();
-    const parado = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const parado = reduzido();
+    const curva = bezierDe("--easing");
+    const duracaoNascimento = lerDuracao("--dur-4");
 
     const pontos = esfera(PONTOS);
     let largura = 0;
@@ -71,6 +107,11 @@ export function GloboDePontos({ className, ...resto }: React.HTMLAttributes<HTML
     let inclY = 0;
     let giro = 0;
     let quadro = 0;
+    // 0 = ainda por nascer (só as órbitas), 1 = esfera inteira.
+    let nascimento = parado ? 1 : 0;
+    let inicioNascimento = 0;
+    // 0 = em repouso, 1 = pensando; anda com inércia rumo a `ativo`.
+    let intensidade = 0;
 
     const medir = () => {
       const r = raiz.getBoundingClientRect();
@@ -88,7 +129,7 @@ export function GloboDePontos({ className, ...resto }: React.HTMLAttributes<HTML
       ctx.clearRect(0, 0, largura, altura);
       const cx = largura / 2;
       const cy = altura / 2;
-      const raio = Math.min(largura, altura) * 0.4;
+      const raio = Math.min(largura, altura) * 0.4 * (RAIO_INICIAL + (1 - RAIO_INICIAL) * nascimento);
 
       // A inclinação segue o cursor com inércia; sem cursor, volta ao centro.
       inclX += (alvoX - inclX) * 0.06;
@@ -106,14 +147,15 @@ export function GloboDePontos({ className, ...resto }: React.HTMLAttributes<HTML
       halo.addColorStop(1, corAnel);
       ctx.save();
       ctx.filter = "blur(22px)";
-      ctx.globalAlpha = 0.14;
+      ctx.globalAlpha = (HALO_REPOUSO + (HALO_ATIVO - HALO_REPOUSO) * intensidade) * nascimento;
       ctx.fillStyle = halo;
       ctx.beginPath();
       ctx.arc(cx, cy, raio * 1.05, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
 
-      // Os anéis de órbita, em sentidos opostos.
+      // Os anéis de órbita, em sentidos opostos. Já estão lá antes da esfera
+      // nascer — é o quadro parado do mount.
       ctx.lineWidth = 1;
       ctx.strokeStyle = cor;
       for (const [inclinacao, sentido, escala] of [
@@ -163,7 +205,7 @@ export function GloboDePontos({ className, ...resto }: React.HTMLAttributes<HTML
           }
         }
 
-        ctx.globalAlpha = alfa;
+        ctx.globalAlpha = alfa * nascimento;
         ctx.fillStyle = tinta;
         ctx.beginPath();
         ctx.arc(sx, sy, tamanho, 0, Math.PI * 2);
@@ -172,8 +214,14 @@ export function GloboDePontos({ className, ...resto }: React.HTMLAttributes<HTML
       ctx.globalAlpha = 1;
     };
 
-    const laco = () => {
-      giro += 0.0028;
+    const laco = (agora: number) => {
+      if (nascimento < 1) {
+        if (!inicioNascimento) inicioNascimento = agora;
+        const fracao = duracaoNascimento === 0 ? 1 : Math.min(1, (agora - inicioNascimento) / duracaoNascimento);
+        nascimento = fracao === 1 ? 1 : curva(fracao);
+      }
+      intensidade += ((ativoRef.current ? 1 : 0) - intensidade) * INERCIA;
+      giro += GIRO * (1 + (GIRO_ATIVO - 1) * intensidade);
       desenhar();
       quadro = requestAnimationFrame(laco);
     };
@@ -206,25 +254,45 @@ export function GloboDePontos({ className, ...resto }: React.HTMLAttributes<HTML
       alvoY = 0;
     };
 
+    // A capa é a porta: o laço (e o nascimento) só ligam quando ela termina de
+    // revelar. Sem capa, ou se o evento não vier, o timer de `--dur-3` liga.
+    const capa = raiz.closest(".capa");
+    let ligado = false;
+    let temporizador: ReturnType<typeof setTimeout> | null = null;
+    const aoTerminarCapa = (e: Event) => {
+      if (e.target === capa && (e as AnimationEvent).animationName === "revelar") ligar();
+    };
+    const ligar = () => {
+      if (ligado) return;
+      ligado = true;
+      if (temporizador) clearTimeout(temporizador);
+      temporizador = null;
+      capa?.removeEventListener("animationend", aoTerminarCapa);
+      quadro = requestAnimationFrame(laco);
+    };
+
     medir();
     const observador = new ResizeObserver(() => {
       medir();
-      if (parado) desenhar();
+      if (parado || !ligado) desenhar();
     });
     observador.observe(raiz);
 
-    if (parado) {
-      desenhar();
-    } else {
+    // O quadro parado do mount, em todo caso.
+    desenhar();
+    if (!parado) {
       window.addEventListener("pointermove", aoMover, { passive: true });
       window.addEventListener("pointerleave", aoSair);
       document.addEventListener("pointerleave", aoSair);
-      quadro = requestAnimationFrame(laco);
+      capa?.addEventListener("animationend", aoTerminarCapa);
+      temporizador = setTimeout(ligar, lerDuracao("--dur-3"));
     }
 
     return () => {
+      if (temporizador) clearTimeout(temporizador);
       cancelAnimationFrame(quadro);
       observador.disconnect();
+      capa?.removeEventListener("animationend", aoTerminarCapa);
       window.removeEventListener("pointermove", aoMover);
       window.removeEventListener("pointerleave", aoSair);
       document.removeEventListener("pointerleave", aoSair);

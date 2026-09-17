@@ -15,6 +15,7 @@ import { useState } from "react";
 import { useData, useRun } from "@/data/store";
 import { weightedValue } from "@/data/derive";
 import { DealCard, dealCardData } from "@/features/crm/deal-card";
+import { useRecente } from "@/features/shell/recente";
 import { moveDealToStage } from "@/data/operations";
 import { DEAL_SITUATION_LABEL } from "@/features/shell/format";
 import { useFormat } from "@/features/shell/use-format";
@@ -43,6 +44,7 @@ const SITUACAO_COR: Record<string, string> = {
 };
 
 export default function NegociosPage() {
+  const recente = useRecente();
   const state = useData((data) => data);
   const fmt = useFormat();
   const run = useRun();
@@ -171,7 +173,7 @@ export default function NegociosPage() {
           />
         ) : (
           <RolagemNoTopo>
-          <div className="palco-quadro flex gap-4">
+          <div className="flex gap-4">
             {stages.map((stage) => {
               const column = open.filter((deal) => deal.stageId === stage.id);
               const columnValue = column.reduce(
@@ -214,7 +216,7 @@ export default function NegociosPage() {
                     </span>
                   </div>
 
-                  <div className="pilha-solta">
+                  <div className="cascata pilha-solta">
                     {column.length === 0 ? (
                       <button
                         type="button"
@@ -237,6 +239,7 @@ export default function NegociosPage() {
                       column.map((deal) => (
                         <DealCard
                           key={deal.id}
+                          recente={deal.id === recente}
                           data={dealCardData(state, deal)}
                           href={`/crm/negocios/${deal.id}`}
                           onDragStart={() => setDragging(deal.id)}

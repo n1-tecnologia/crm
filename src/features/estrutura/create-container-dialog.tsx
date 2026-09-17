@@ -15,18 +15,17 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useId, useState } from "react";
 import { useData, useRun } from "@/data/store";
 import { createFolder, createList, createSpace, instantiateListTemplate } from "@/data/operations";
-import { Circle } from "lucide-react";
+import { Check, CircleDot, Lock } from "lucide-react";
 import {
   ConfirmDialog,
   Field,
   Icone,
-  ReguaDeSecao,
   Select,
-  SettingRow,
   TextArea,
   TextInput,
   Toggle,
 } from "@/features/shell/ui";
+import { Selo } from "@/features/estrutura/icone-de-tipo";
 import type { DataState, OperationResult } from "@/data/state";
 import type { Folder, List, Space } from "@/data/types";
 
@@ -138,6 +137,8 @@ export function CreateContainerDialog({
 
   // Uma Pasta dentro de uma Pasta é Subpasta, e o nome muda com ela (B3).
   const label = kind === "pasta" && parentType === "folder" ? "Subpasta" : KIND_LABEL[kind];
+  // "este Espaço", "esta Pasta", "esta Lista": o artigo acompanha o nome.
+  const este = kind === "espaco" ? "este" : "esta";
 
   const locations = locationOptions(state, kind);
   const templates = state.templates.filter(
@@ -239,44 +240,58 @@ export function CreateContainerDialog({
         onClose();
       }}
     >
-      <div className="grid gap-4">
+      <div className="grid gap-5">
         <Field label="Nome" required>
           {(id) => (
-            <div className="flex items-center gap-2">
-              <TextInput
-                id={id}
-                value={name}
-                onChange={setName}
-                placeholder={
-                  kind === "espaco"
-                    ? "Por exemplo: Comercial, Operações"
-                    : kind === "pasta"
-                      ? "Por exemplo: Clientes, Campanhas"
-                      : "Por exemplo: Propostas em curso"
-                }
-              />
-              {kind === "espaco" ? (
-                <span className="flex shrink-0 items-center gap-1">
-                  {SPACE_COLORS.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      aria-label={option.label}
-                      aria-pressed={color === option.value}
-                      onClick={() => setColor(option.value)}
-                      className={`size-5 rounded-[var(--r-pilula)] ${
-                        color === option.value
-                          ? "ring-2 ring-[var(--acento)] ring-offset-2 ring-offset-[var(--card)]"
-                          : ""
-                      }`}
-                      style={{ backgroundColor: option.value }}
-                    />
-                  ))}
-                </span>
-              ) : null}
-            </div>
+            <TextInput
+              id={id}
+              value={name}
+              onChange={setName}
+              placeholder={
+                kind === "espaco"
+                  ? "Por exemplo: Comercial, Operações"
+                  : kind === "pasta"
+                    ? "Por exemplo: Clientes, Campanhas"
+                    : "Por exemplo: Propostas em curso"
+              }
+            />
           )}
         </Field>
+
+        {kind === "espaco" ? (
+          <Field label="Cor" hint="A cor marca o Espaço na árvore e nos cartões.">
+            {(id) => (
+              <div id={id} role="radiogroup" aria-label="Cor do Espaço" className="flex flex-wrap items-center gap-3">
+                <span className="flex items-center gap-2">
+                  {SPACE_COLORS.map((option) => {
+                    const escolhida = color === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={escolhida}
+                        aria-label={option.label}
+                        title={option.label}
+                        onClick={() => setColor(option.value)}
+                        className="rotacao grid size-7 place-items-center rounded-full hover:scale-110"
+                        style={{
+                          backgroundColor: option.value,
+                          boxShadow: escolhida ? "0 0 0 2px var(--card), 0 0 0 4px var(--acento)" : "inset 0 0 0 1px var(--linha-forte)",
+                        }}
+                      >
+                        {escolhida ? <Icone de={Check} tamanho="xs" style={{ color: "var(--sobre-acento)" }} /> : null}
+                      </button>
+                    );
+                  })}
+                </span>
+                <span className="app-sm" style={{ color: "var(--texto-3)" }}>
+                  {SPACE_COLORS.find((option) => option.value === color)?.label}
+                </span>
+              </div>
+            )}
+          </Field>
+        ) : null}
 
         <Field label="Descrição" hint="Opcional.">
           {(id) => (
@@ -285,7 +300,7 @@ export function CreateContainerDialog({
               value={description}
               onChange={setDescription}
               rows={2}
-              placeholder={`Conte para que serve esta ${label}.`}
+              placeholder={`Conte para que serve ${este} ${label}.`}
             />
           )}
         </Field>
@@ -312,42 +327,50 @@ export function CreateContainerDialog({
           </Field>
         )}
 
-        <div className="grid gap-2">
-          <ReguaDeSecao rotulo="Configurações" />
-          {/*
-            O contêiner nasce no padrão e o ajuste vem depois, nas
-            configurações dele: decidir herança na criação obriga a escolher
-            antes de existir o que comparar. A linha diz de onde o padrão vem,
-            para a decisão posterior ser informada.
-          */}
-          <SettingRow
-            icon={<Icone de={Circle} />}
-            title="Status"
-            value={statusOrigin(state, kind, parentType, parentId)}
-          />
-          <p className="app-sm" style={{ color: "var(--texto-3)" }}>
+        {/*
+          As configurações numa caixa só, uma linha por assunto. O contêiner
+          nasce no padrão e o ajuste vem depois, nas configurações dele:
+          decidir herança na criação obriga a escolher antes de existir o que
+          comparar. A linha diz de onde o padrão vem.
+        */}
+        <div className="grid gap-1.5">
+          <span className="rotulo">Configurações</span>
+          <div className="painel">
+            <div className="flex items-center gap-3 px-3 py-2.5">
+              <Selo icone={CircleDot} cor="var(--acento)" lavado="var(--acento-lavado)" />
+              <span className="min-w-0 flex-1">
+                <span className="app-base block" style={{ color: "var(--texto)" }}>
+                  Status
+                </span>
+                <span className="app-sm block" style={{ color: "var(--texto-3)" }}>
+                  {statusOrigin(state, kind, parentType, parentId)}
+                </span>
+              </span>
+            </div>
+            <div className="flex items-center gap-3 px-3 py-2.5" style={{ borderTop: "1px solid var(--linha)" }}>
+              <Selo icone={Lock} cor="var(--texto-2)" lavado="var(--superficie-2)" />
+              <span className="min-w-0 flex-1">
+                <span id={privacyLabelId} className="app-base block" style={{ color: "var(--texto)" }}>
+                  Tornar privado
+                </span>
+                <span id={privacyHintId} className="app-sm block" style={{ color: "var(--texto-3)" }}>
+                  Some da árvore para quem não tem concessão — inclusive para o Proprietário do Espaço
+                  de Trabalho. Quem fica de fora só entra por um ato de governança registrado (B38).
+                </span>
+              </span>
+              <Toggle
+                checked={isPrivate}
+                onChange={setIsPrivate}
+                labelledBy={privacyLabelId}
+                describedBy={privacyHintId}
+              />
+            </div>
+          </div>
+          <p className="ajuda">
             {kind === "espaco"
-              ? "Um Espaço sempre define o próprio Conjunto, porque é dele que todo o resto herda (RN-ESP-03). Ele se ajusta depois, nas configurações do Espaço."
+              ? "Um Espaço sempre define o próprio Conjunto de Status, porque é dele que todo o resto herda (RN-ESP-03). Ele se ajusta depois, nas configurações do Espaço."
               : `A herança é por aspecto (B25) e se ajusta depois, nas configurações da ${label}.`}
           </p>
-        </div>
-
-        <div className="painel flex items-start justify-between gap-4 px-3 py-2.5">
-          <span>
-            <span id={privacyLabelId} className="app-base block" style={{ color: "var(--texto)" }}>
-              Tornar privado
-            </span>
-            <span id={privacyHintId} className="app-sm block" style={{ color: "var(--texto-3)" }}>
-              Some da árvore para quem não tem concessão — inclusive para o Proprietário do Espaço de
-              Trabalho. Quem fica de fora só entra por um ato de governança registrado (B38).
-            </span>
-          </span>
-          <Toggle
-            checked={isPrivate}
-            onChange={setIsPrivate}
-            labelledBy={privacyLabelId}
-            describedBy={privacyHintId}
-          />
         </div>
 
         {error ? (
