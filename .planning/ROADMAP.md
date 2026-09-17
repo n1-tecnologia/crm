@@ -92,7 +92,7 @@ Plans:
 
 **Segunda rodada de fechamento de lacunas (CR-02 residual — re-verificação de 2026-09-16T20:16Z; opção (b), cobertura total, porque `apps/web` chama 128/132 operações e o critério 2 exige que todas cheguem por HTTP)** — ondas relativas entre si, executar com `/gsd-execute-phase 1 --gaps-only`:
 
-- [ ] 01-12-PLAN.md — Onda 1: WR-10 (`reviverArgumentos` em `try/catch` na rota, `RangeError` → 400, caso (s)); `esquemas/fragmentos.ts` (fragmentos compartilhados + portão de enum `Igual<>`); os 23 schemas movidos para `esquemas/tarefas.ts`/`automacoes.ts`/`financeiro.ts`; `esquemas-de-argumentos.ts` vira composição
+- [x] 01-12-PLAN.md — Onda 1: WR-10 (`reviverArgumentos` em `try/catch` na rota, `RangeError` → 400, caso (s)); `esquemas/fragmentos.ts` (fragmentos compartilhados + portão de enum `Igual<>`); os 23 schemas movidos para `esquemas/tarefas.ts`/`automacoes.ts`/`financeiro.ts`; `esquemas-de-argumentos.ts` vira composição
 - [ ] 01-13-PLAN.md — Onda 2 (paralelo): schemas de `deals`/`conversations`/`contacts` (40) em `esquemas/negocios.ts`, `conversas.ts`, `contatos.ts` + testes puros (cobertura, formas literais do web, hostis)
 - [ ] 01-14-PLAN.md — Onda 2 (paralelo): schemas de `ai`/`chat-folders`/`agent-builder`/`configuration`/`collaboration` (36) em `esquemas/ia.ts`, `pastas-de-chat.ts`, `construtor-de-agentes.ts`, `configuracao.ts`, `colaboracao.ts` + testes
 - [ ] 01-15-PLAN.md — Onda 2 (paralelo): schemas de `planning`/`scale`/`members`/`structure` (33) em `esquemas/planejamento.ts`, `escala.ts`, `membros.ts` (`inviteMember` com `.strip()`, T-1-08), `estrutura.ts` + testes — inclui as duas formas hostis do verificador (`createGoal` `kind:42`, `saveView` `filters` arbitrário)
@@ -210,7 +210,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 0. Preparação | 7/7 | Complete   | 2026-09-17 |
-| 1. O CRM N1 ganha persistência e login | 11/11 | Complete   | 2026-09-16 |
+| 1. O CRM N1 ganha persistência e login | 12/16 | In Progress|  |
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 0/TBD | Not started | - |
 | 3. Contas a pagar | 0/TBD | Not started | - |
 | 4. As outras telas do financeiro-tria | 0/TBD | Not started | - |
