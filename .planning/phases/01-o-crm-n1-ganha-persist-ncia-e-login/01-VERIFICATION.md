@@ -1,102 +1,44 @@
 ---
 phase: 01-o-crm-n1-ganha-persist-ncia-e-login
-verified: 2026-09-16T20:16:06Z
-status: gaps_found
-score: 4/5 critérios de sucesso do ROADMAP verificados sem ressalva (1 parcial); gap 1 (CR-01) fechado e confirmado por teste; gap 2 (CR-02) permanece parcialmente aberto
+verified: 2026-09-17T15:40:00Z
+status: human_needed
+score: 5/5 critérios de sucesso do ROADMAP verificados por evidência de código (CR-02 fechado por inteiro); Critério 1 segue pendente de verificação humana em navegador (não é gap de código)
 overrides_applied: 0
 re_verification:
   previous_status: gaps_found
-  previous_score: "4/5 critérios (1 parcial); 2 achados críticos confirmados"
+  previous_score: "4/5 critérios (1 parcial); gap CR-02 (Critério 2/PERS-04) parcialmente aberto"
   gaps_closed:
-    - "Reconvidar um Usuário removido reativa o mesmo Membro (RN-ET-11), sem criar um segundo — caminho irmão do `pendente` por `invitedIdentity` (CR-01)"
-  gaps_remaining:
-    - "POST /operacoes/:nome roda cada operação dentro da Unidade de Trabalho com segurança suficiente para não persistir dado corrompido nem cair em 500 por entrada hostil de um Membro autenticado (CR-02) — parcialmente fechado"
+    - "efeito 2 de CR-02: ~109 operações fora de ESQUEMAS aceitavam jsonb malformado via ARGUMENTOS_GENERICOS (kind/anchor/filters arbitrários) — fechado: ESQUEMAS agora cobre as 132 operações sob satisfies EsquemasCompletos, sem fallback estrutural"
+    - "reviverArgumentos (WR-10) sem limite de profundidade, RangeError subindo como 500 — fechado no Plan 01-12, reconfirmado nesta rodada: try/catch em operacoes.ts, caso (s) com n=10000 → 400"
+    - "TypeError → 400 (WR-11) aplicado indiscriminadamente, escondendo bug atrás de 400 — removido por inteiro: um TypeError dentro de operacao(...) agora sobe como 500 (bug), nunca mascarado"
+    - "createGoal com kind:42/anchor.lixo e saveView com filters arbitrário, as duas formas literais que o verificador anterior reproduziu contra ARGUMENTOS_GENERICOS — reproduzidas por mim de forma independente contra o código atual: ambas agora 400 (unrecognized_keys / invalid_value), nada persistido"
+  gaps_remaining: []
   regressions: []
-gaps:
-  - truth: "POST /operacoes/:nome roda cada operação dentro da Unidade de Trabalho com segurança suficiente para não persistir dado corrompido nem cair em 500 por entrada hostil de um Membro autenticado (decorre do Critério 2 do ROADMAP; PERS-04)"
-    status: partial
-    reason: >
-      O Plan 01-11 fechou por inteiro o efeito 1 do gap original (500 por
-      `TypeError`): schema por operação (`ESQUEMAS`, 23 entradas cobrindo
-      tasks/financeiro/automations — os módulos que o Espaço "Gestão" usa na
-      Fase 1) mais fallback estrutural para as demais; `TypeError` dentro de
-      qualquer operação vira 400 com rollback garantido por `executar()`
-      (`unidade-de-trabalho.ts:73-76`, que faz `rollback` e relança antes de
-      qualquer `commit`). Confirmado por mim: `npm run check` verde (379
-      testes: dominio 253, api 73, web 53), os 8 casos novos (k)-(r) de
-      `operacoes.test.ts` rodados isoladamente e verdes, incluindo (q)
-      (`createChatFolder` com `name:123` → 400 via `TypeError`, nada
-      persistido) e (p) (`updateTask` com `title:123`/`description:{}` → 400,
-      nunca persistido).
-
-      O efeito 2 (persistir `jsonb` malformado que todo o Espaço hidrata)
-      continua aberto para as ~109 operações fora de `ESQUEMAS` — reproduzido
-      de forma independente por mim, sem depender do relato do
-      `01-REVIEW.md`: `ARGUMENTOS_GENERICOS.safeParse([{ name: "Meta", anchor:
-      { type: "list", id: "lst_ativacao", lixo: { a: [1,2] } }, kind: 42,
-      target: 10 }])` devolve `success: true` (script rodado com `vite-node`
-      contra o código real de `esquemas-de-argumentos.ts`); a leitura de
-      `packages/dominio/src/operations/scale.ts` (`createGoal` linhas
-      208-236, `validateGoal` linhas 198-206) confirma que `input.kind` e
-      `input.anchor` são copiados para o registro sem checagem de tipo/enum
-      — `kind: 42` (não `"metrica"`/outro literal esperado) e
-      `anchor.lixo` (chave desconhecida em objeto aninhado) seriam gravados
-      no `jsonb` compartilhado. `saveView` (mesmo arquivo, linhas 74-101)
-      copia `input.kind`/`input.filters` do mesmo jeito. O comentário do
-      próprio `esquemas-de-argumentos.ts:20-25` ("conservador o bastante
-      para barrar objeto onde o domínio espera escalar") não é verdade para
-      o caso oposto (escalar/enum errado onde o domínio espera outro, ou
-      objeto com chave a mais dentro de um contêiner aninhado) — o
-      `01-REVIEW.md` (CR-02, PARCIALMENTE RESOLVIDO) chega à mesma conclusão
-      e eu a confirmo por reprodução própria, não por aceitação do relato.
-
-      Além disso, encontrei e confirmei por reprodução independente um
-      segundo caminho para o MESMO efeito 1 que o plano visava fechar
-      (500 por entrada hostil), não coberto pela correção: `reviverArgumentos`
-      (`packages/dominio/src/operations/registro.ts:456-468`) roda ANTES de
-      `esquemaDeArgumentos(...).safeParse(...)` em `operacoes.ts:125-126`, é
-      recursivo sem limite de profundidade, e um corpo de ~400 KB com arrays
-      aninhados (abaixo do `bodyLimit` padrão do Fastify de 1 MiB) estoura a
-      pilha (`RangeError: Maximum call stack size exceeded`) fora de
-      qualquer `try/catch` da rota — sobe ao `setErrorHandler` genérico como
-      500. Reproduzido por mim chamando `reviverArgumentos(JSON.parse(...))`
-      diretamente com `n=200000` níveis de aninhamento: `RangeError` lançado,
-      confirmando o achado WR-10 do `01-REVIEW.md` (novo, não fazia parte do
-      gap original, mas ataca exatamente a mesma garantia — "não cair em 500
-      por entrada hostil de um Membro autenticado" — pela mesma rota).
-    artifacts:
-      - path: "apps/api/src/rotas/esquemas-de-argumentos.ts"
-        issue: "ARGUMENTOS_GENERICOS (linhas ~163-173) só garante profundidade ≤ 6 e folhas JSON-primitivas; não garante tipo/enum por campo nem chaves conhecidas em objetos aninhados — confirmado por reprodução própria com createGoal/saveView"
-      - path: "apps/api/src/rotas/operacoes.ts"
-        issue: "reviverArgumentos(request.body.args) (linha ~125) roda fora de qualquer try/catch, antes da validação por schema — um RangeError de recursão profunda sobe ao setErrorHandler como 500, não como 400"
-    missing:
-      - "Fechar o efeito 2 para as operações fora de ESQUEMAS: ou (a) 404 para toda operação sem schema próprio (a opção que o próprio 01-REVIEW.md recomenda por custar zero funcionalidade na Fase 1, já que o Espaço 'Gestão' só usa as 23 cobertas), ou (b) schema próprio para as ~109 restantes, com o teste (j) de esquemas-de-argumentos.test.ts passando a exigir Object.keys(ESQUEMAS).length === Object.keys(OPERACOES).length"
-      - "Um teste em operacoes.test.ts provando que uma operação fora de ESQUEMAS (ex.: createGoal com kind:42) responde 400, não 200 com dado corrompido gravado"
-      - "Envolver reviverArgumentos(...) em try/catch (ou limitar a profundidade dentro do próprio reviver) para que um RangeError de recursão vire 400, não 500 — a correção mínima já desenhada em WR-10 do 01-REVIEW.md"
-      - "Um teste em operacoes.test.ts com um corpo profundamente aninhado (ex.: n=10000) → 400, não 500"
-deferred: []
-human_verification:
-  - test: "Logar como maryane@n1.teste (senha de desenvolvimento) em http://localhost:3001/entrar, abrir Gestão › Financeiro › Contas a pagar, criar uma Conta a pagar pela tela, recarregar a página (F5)."
-    expected: "A Lista abre vazia de Tarefas fictícias; a Conta criada aparece e CONTINUA lá depois do F5 — critério 1 do ROADMAP, a parte 'pela tela' que só um navegador prova (o e2e de apps/api/src/e2e/criar-conta.test.ts já prova o equivalente por inject, e essa prova passou; falta o olho humano na tela real)."
-    why_human: "Persistência através de recarga de página e a ausência de spinner/requisição numa recusa são efeitos visuais/perceptuais que app.inject() não reproduz."
-  - test: "Na mesma sessão, tentar mover a Conta recém-criada para 'pago' (RN-CP-04, a Maryane não é Aprovadora)."
-    expected: "A recusa aparece na hora, sem spinner e sem requisição na aba Rede do DevTools (D-05); no DevTools › Rede, a criação da Conta aparece como POST /operacoes/createTask com resposta 200 contendo diferenca e revisao."
-    why_human: "Percepção de latência (presença/ausência de requisição de rede) não é assertável por app.inject(); é o mesmo cenário que 01-07-PLAN.md e 01-09-PLAN.md documentam como <human-check> em tasks auto, deferido para o fim da fase."
-  - test: "Sair e entrar como tiago@n1.teste (removido no seed, não existe no Espaço 'Gestão' bootstrapado)."
-    expected: "'Sem acesso' — o Membro não existe no Espaço bootstrapado (só a Maryane é Membro, D-08)."
-    why_human: "Fluxo de cookie/sessão no navegador real; o hook de autenticação do apps/api já prova 403 para não-Membro por app.inject() (autenticacao.test.ts), mas a tela de 'Sem acesso' em si não foi inspecionada por mim."
 ---
 
-# Fase 1: O CRM N1 ganha persistência e login — Relatório de Verificação (re-verificação após fechamento de lacunas)
+# Fase 1: O CRM N1 ganha persistência e login — Relatório de Verificação (re-verificação após a segunda rodada de fechamento de CR-02)
 
 **Meta da fase:** O CRM N1 deixa de ser protótipo — um Membro real entra com e-mail e senha, cria uma Conta pela tela e ela está no Postgres da plataforma; toda operação do domínio chega ao backend por HTTP e roda na Unidade de Trabalho, sem que o domínio ou os 214 testes mudem.
-**Verificado em:** 2026-09-16T20:16:06Z
-**Status:** gaps_found
-**Re-verificação:** Sim — depois dos Plans 01-10 (CR-01) e 01-11 (CR-02); linha de base em `git show 3ba8b86:.planning/phases/01-o-crm-n1-ganha-persist-ncia-e-login/01-VERIFICATION.md`
+**Verificado em:** 2026-09-17T15:40:00Z
+**Status:** human_needed
+**Re-verificação:** Sim — depois dos Plans 01-12..01-16 (segunda rodada de fechamento de CR-02, commits `c6f0d1c..6d3103d`); linha de base em `.planning/phases/01-o-crm-n1-ganha-persist-ncia-e-login/01-VERIFICATION.md` de 2026-09-16T20:16Z (gap único: CR-02 parcialmente aberto)
 
 ## Metodologia
 
-Re-verificação goal-backward, focada nos dois gaps da rodada anterior. Nenhuma alegação de SUMMARY.md ou de `01-REVIEW.md` foi aceita sem evidência própria. Evidências coletadas por: leitura de `01-10-PLAN.md`/`01-10-SUMMARY.md`, `01-11-PLAN.md`/`01-11-SUMMARY.md` e do `01-REVIEW.md` (re-revisão pós-fechamento, `ecdbea2`); leitura linha a linha de `packages/dominio/src/operations/members.ts` (a busca `porUserId ?? porEmail`), `apps/api/src/rotas/esquemas-de-argumentos.ts` e `apps/api/src/rotas/operacoes.ts`; execução de `npm run check` na raiz (379 testes: dominio 253, api 73, web 53); execução isolada de `vitest run --reporter=verbose` em `packages/dominio` e `apps/api`, listando nominalmente os casos novos (g)/(h)/(i) de `members-reconvite.test.ts`, (e) de `convidar-membro.test.ts` e (k)-(r) de `operacoes.test.ts`; `git diff d713253 -- operations.test.ts seed-produto.test.ts contas-a-receber.test.ts` (vazio); e **três reproduções próprias, independentes do relato do `01-REVIEW.md`**, rodadas com `vite-node` contra o código real do repositório (não hipotéticas): (1) o cenário WR-09 (`inviteMember` chamado duas vezes contra `buildSeed()`, confirmando 12 Membros vivos e um e-mail com dois registros `pendente`); (2) `ARGUMENTOS_GENERICOS.safeParse(...)` com a forma hostil de `createGoal`/`saveView` do CR-02 residual (confirmando `success: true`); (3) `reviverArgumentos(JSON.parse(...))` com 200.000 níveis de aninhamento (confirmando `RangeError`, WR-10). Nenhum servidor (`npm run dev`, `apps/api`) foi subido por mim nesta rodada — as reproduções rodaram como scripts diretos contra os módulos TypeScript, sem HTTP. Um processo de `vitest --watch`-like ficou pendurado por um erro meu de sintaxe de comando (uso de `-w` fora de um workspace) e foi encerrado por mim (`kill -9`) antes de finalizar esta verificação; não era um servidor da aplicação e não gravou nada. Porta 3001 (`apps/web`, processo pré-existente do ambiente, não iniciado por mim) e porta 3002 (`apps/api`, livre) confirmadas ao final.
+Re-verificação goal-backward, focada no único gap da rodada anterior (CR-02, Critério 2 do ROADMAP, PERS-04). Nenhuma alegação de SUMMARY.md, `01-REVIEW.md` ou `STATE.md` foi aceita sem evidência própria.
+
+Evidência coletada por: leitura linha a linha de `apps/api/src/rotas/operacoes.ts` (estado atual — o handler completo, do `reviverArgumentos` protegido até o despacho por `esquemaDeArgumentos(nome).safeParse`, sem `instanceof TypeError`), de `apps/api/src/rotas/esquemas-de-argumentos.ts` (composição `satisfies EsquemasCompletos`, sem `ARGUMENTOS_GENERICOS`), de `apps/api/src/rotas/esquemas/CONTEXT.md` e de `packages/dominio/src/operations/collaboration.ts` (a função `shift()`, para o julgamento de WR-12); leitura de `01-12-PLAN.md`/`SUMMARY.md` até `01-16-PLAN.md`/`SUMMARY.md`, de `01-REVIEW.md` (rodada 2, `2026-09-17T14:03:22Z`) e de `01-11-SUMMARY.md`/`01-10-SUMMARY.md` para contexto da rodada anterior; execução de `npm run check` na raiz (**469 testes verdes: dominio 253, api 163, web 53** — batendo com o que `01-16-SUMMARY.md` e `STATE.md` alegam); execução isolada de `vitest run` em `apps/api` para `operacoes.test.ts` + `esquemas-de-argumentos.test.ts` (**33/33 verdes**, casos (a)–(v) e (a)–(k) listados nominalmente por grep, não por contagem cega); `git diff --stat c6f0d1c^..HEAD` (confirma que o delta desta rodada é só `apps/api/src/rotas/` + documentação — nada em `packages/dominio`, `apps/web` ou `apps/api/src/app.ts`); `git diff --quiet d713253 -- packages/dominio/src/operations/operations.test.ts packages/dominio/src/seed-produto.test.ts packages/dominio/src/contas-a-receber.test.ts` (saída vazia, confirmado).
+
+**Quatro reproduções próprias, independentes do relato de `01-REVIEW.md`/SUMMARYs**, rodadas com `vite-node` contra o código real do repositório (script descartado ao final, nenhum arquivo de produção tocado):
+
+1. `ESQUEMAS.createGoal.safeParse([{ name: "Meta", anchor: { type: "list", id: "lst_ativacao", lixo: { a: [1,2] } }, kind: 42, target: 10 }])` — a forma EXATA que o verificador anterior reproduziu contra `ARGUMENTOS_GENERICOS` (onde dava `success: true`).
+2. `ESQUEMAS.saveView.safeParse([{ listId: "lst_x", name: "V", kind: "lista", filters: { qualquer: { coisa: true } }, shared: false }])`.
+3. `reviverArgumentos(JSON.parse(...))` com 200.000 níveis de aninhamento (a mesma reprodução WR-10 da rodada anterior).
+4. `ESQUEMAS.createChatFolder.safeParse([{ name: 123 }])` e `ESQUEMAS.updateTask.safeParse(["tsk_x", { title: 123 }])` — as duas formas hostis citadas no prompt desta re-verificação.
+
+Adicionalmente, reproduzi por conta própria o achado WR-12 do `01-REVIEW.md` (não aceito por relato): `ESQUEMAS.updateTask.safeParse(["tsk_x", { dueDate: { form: "instant", value: "garbage" } }])` e `ESQUEMAS.setRecurrence.safeParse(["tsk_x", { frequency: "diaria", interval: 1e15, triggerMode: "aoConcluir", copies: {...} }])`, e confirmei em Node puro que `new Date("garbage")` seguido de `.setDate()` e `.toISOString()` lança `RangeError: Invalid time value` (o mesmo mecanismo que `shift()` em `packages/dominio/src/operations/collaboration.ts:339-347` usa) — ver "Julgamento sobre WR-12" abaixo.
+
+Nenhum servidor HTTP foi iniciado por mim; as reproduções chamaram os módulos TypeScript diretamente via `vite-node`, e o `npm run check` completo (que inclui os testes de rota via `app.inject`) foi rodado uma única vez.
 
 ## Goal Achievement
 
@@ -104,107 +46,143 @@ Re-verificação goal-backward, focada nos dois gaps da rodada anterior. Nenhuma
 
 | # | Critério | Status | Evidência |
 |---|----------|--------|-----------|
-| 1 | Membro real entra em `/entrar`, é resolvido pelo Usuário, cria uma Conta pela tela, e ela persiste no Postgres após recarregar | ⚠️ VERIFICADO PARCIALMENTE (metade automatizada, metade precisa de navegador) — inalterado desde a rodada anterior | Nenhum arquivo desta parte mudou nos Plans 01-10/01-11 (`git diff --stat 3ba8b86..HEAD` confirma só 8 arquivos alterados, nenhum em `apps/web` ou nos e2e). O e2e `criar-conta.test.ts` continua verde; a parte "pela tela, no navegador" continua em Human Verification. |
-| 2 | Toda operação dos 16 módulos chega por `POST /operacoes/:nome` e roda na UoW com o Membro da sessão; API pública do store não muda | ⚠️ VERIFICADO, COM RESSALVA DE ROBUSTEZ (gap CR-02 parcialmente fechado) | `apps/api/src/rotas/operacoes.ts` despacha por `OPERACOES[nome]` dentro de `executar()`, com `request.membro.id` sempre da sessão. O efeito 1 do gap anterior (500 por `TypeError`) está fechado: 23 schemas por operação (`esquemas-de-argumentos.ts`) + fallback estrutural, `TypeError` dentro de `operacao(...)` mapeado para 400 com rollback (confirmado lendo `unidade-de-trabalho.ts:73-76` e `operacoes.ts:143-161`; casos (k)-(r) de `operacoes.test.ts` rodados por mim, todos verdes). **Ressalva que permanece:** (a) o efeito 2 (persistir `jsonb` malformado) segue aberto para as ~109 operações fora de `ESQUEMAS` — confirmei por reprodução própria com `createGoal`/`saveView`; (b) um caminho NOVO para 500 por entrada hostil existe em `reviverArgumentos`, que roda antes da validação e não tem limite de profundidade — confirmei por reprodução própria (`RangeError` com um corpo de 400 KB). Ver Gaps. |
-| 3 | Espaço "Gestão" › Financeiro › Listas "Contas a pagar"/"Contas a receber" no banco, com Status/Campos/Tags/Papéis dos SPECs, sem Tarefas fictícias; Lista de Contas a pagar filtra por status, vencimento, Tag `conta *`, Responsável e Pessoa com coluna gerada e índice | ✓ VERIFICADO (inalterado) | Nenhum arquivo desta parte mudou nos Plans 01-10/01-11. `npm run check` desta rodada confirma `bootstrap-gestao.test.ts` e `colunas-geradas.test.ts` continuam verdes, sem regressão. |
-| 4 | `npm run check` verde nos 3 workspaces; 214 testes do domínio inalterados; hidratado ≡ seed vale contra o Supabase; ClickUp e `automation/` intocados | ✓ VERIFICADO | `npm run check` rodado por mim nesta rodada: **379 testes verdes** (253 domínio + 73 api + 53 web) — os números batem exatamente com o que 01-10-SUMMARY.md e 01-11-SUMMARY.md alegam (250+3 domínio; 54+10+8+1 api). `git diff d713253 -- packages/dominio/src/operations/operations.test.ts packages/dominio/src/seed-produto.test.ts packages/dominio/src/contas-a-receber.test.ts` devolveu vazio, confirmado por mim. `ClickUp`/`automation/` continuam fora deste repositório. |
-| 5 | Reconvidar um Usuário removido reativa o mesmo Membro (RN-ET-11), sem criar um segundo | ✓ VERIFICADO — gap CR-01 fechado no cenário reportado; residual WR-09 tratado como achado fora do critério (ver "Julgamento sobre WR-09" abaixo) | `members.ts:346-349`: `existing = porUserId ?? porEmail`, com `porEmail` calculado incondicionalmente (era a lacuna: antes só rodava quando `userId` estava ausente). Os três casos novos (g)/(h)/(i) de `members-reconvite.test.ts` e o caso (e) de `convidar-membro.test.ts` (contra o Postgres real) rodados por mim isoladamente, todos verdes — reproduzem literalmente o cenário do `missing` da rodada anterior (pendente por `invitedIdentity` + `userId` resolvido depois → recusa, não cria segundo Membro). |
+| 1 | Membro real entra em `/entrar`, é resolvido pelo Usuário, cria uma Conta pela tela, e ela persiste no Postgres após recarregar | ⚠️ VERIFICADO PARCIALMENTE (metade automatizada, metade precisa de navegador) — inalterado desde a rodada anterior | Nenhum arquivo desta parte mudou nos Plans 01-12..01-16 (`git diff --stat c6f0d1c^..HEAD` só toca `apps/api/src/rotas/` + docs). O e2e `apps/api/src/e2e/criar-conta.test.ts` continua verde (incluído no `npm run check` desta rodada). A parte "pela tela, no navegador real" continua em Human Verification, sem alteração. |
+| 2 | Toda operação dos 16 módulos chega por `POST /operacoes/:nome` e roda na UoW com o Membro da sessão; API pública do store não muda | ✓ VERIFICADO — CR-02 fechado por inteiro | `apps/api/src/rotas/esquemas-de-argumentos.ts`: `export const ESQUEMAS = { ...TAREFAS, ...AUTOMACOES, ...FINANCEIRO, ...NEGOCIOS, ...CONVERSAS, ...CONTATOS, ...IA, ...PASTAS_DE_CHAT, ...CONSTRUTOR_DE_AGENTES, ...CONFIGURACAO, ...COLABORACAO, ...PLANEJAMENTO, ...ESCALA, ...MEMBROS, ...ESTRUTURA } satisfies EsquemasCompletos` (confirmado por leitura própria e por `grep -c "satisfies EsquemasCompletos"` → 1). Reproduzi `Object.keys(ESQUEMAS).sort()` === `Object.keys(OPERACOES).sort()`, **132 === 132**. `grep -rc "ARGUMENTOS_GENERICOS" apps/api/src` → vazio (símbolo não existe mais em lugar nenhum). `apps/api/src/rotas/operacoes.ts`: `grep -c "instanceof TypeError"` → 0; `grep -c "instanceof RangeError"` → 1. Li o handler inteiro: `esquemaDeArgumentos(nome).safeParse(revividos)` roda ANTES de `executar()`/`REGISTRO[nome]!(...)`, para as 132 operações, sem exceção. |
+| 3 | Espaço "Gestão" › Financeiro › Listas "Contas a pagar"/"Contas a receber" no banco, com Status/Campos/Tags/Papéis dos SPECs, sem Tarefas fictícias; Lista de Contas a pagar filtra por status, vencimento, Tag `conta *`, Responsável e Pessoa com coluna gerada e índice | ✓ VERIFICADO (inalterado, sem regressão) | Nenhum arquivo desta parte tocado pelos Plans 01-12..01-16 (confirmado por `git diff --stat`). `npm run check` desta rodada roda `bootstrap-gestao.test.ts`/`colunas-geradas.test.ts` dentro dos 163 testes verdes de `apps/api` — sem regressão. |
+| 4 | `npm run check` verde nos 3 workspaces; 214 testes do domínio inalterados; hidratado ≡ seed vale contra o Supabase; ClickUp e `automation/` intocados | ✓ VERIFICADO | `npm run check` rodado por mim nesta rodada: **469 testes verdes** (253 domínio + 163 api + 53 web) — batem exatamente com `01-16-SUMMARY.md`/`STATE.md`. `git diff --quiet d713253 -- packages/dominio/src/operations/operations.test.ts packages/dominio/src/seed-produto.test.ts packages/dominio/src/contas-a-receber.test.ts` → exit 0, confirmado por mim. `git diff --quiet -- packages/dominio apps/web apps/api/src/app.ts` restrito a `c6f0d1c^..HEAD` → exit 0 (nenhum arquivo dessas três áreas tocado nesta rodada). `ClickUp`/`automation/` continuam fora deste repositório. |
+| 5 | Reconvidar um Usuário removido reativa o mesmo Membro (RN-ET-11), sem criar um segundo | ✓ VERIFICADO (inalterado desde a rodada anterior) | `packages/dominio/src/operations/members.ts` sem diff nesta rodada (só tocado pelo Plan 01-10, já verificado). Continua fora do escopo dos Plans 01-12..01-16, que só tocaram `apps/api/src/rotas/`. |
 
-**Placar:** 3/5 critérios totalmente verificados sem ressalva (3, 4, 5); 2/5 com ressalva (1 precisa de navegador — verificação pendente, não gap de código; 2 tem um gap de código real e reproduzido por mim, parcialmente fechado por esta rodada de planos).
+**Placar:** 5/5 critérios com evidência de código sem ressalva (2, 3, 4, 5 continuam integralmente verificados; o Critério 2/CR-02 agora fecha por inteiro — era o único parcial da rodada anterior). O Critério 1 permanece parcialmente verificado pela MESMA razão de sempre: a parte "pela tela, num navegador real" não é verificável por `app.inject()`/grep — está em Human Verification, não é um gap desta rodada nem de nenhuma anterior.
 
-### Julgamento sobre WR-09 (residual da correção de CR-01)
+### Julgamento sobre WR-12 (achado novo do `01-REVIEW.md`, rodada 2 — 2026-09-17T14:03:22Z)
 
-O `01-REVIEW.md` (re-revisão) registra que a correção `existing = porUserId ?? porEmail` deixa um caso descoberto: se `porUserId` encontra um Membro `removido` E `porEmail` encontra, em paralelo, um Membro `pendente` VIVO (para o mesmo e-mail), o `??` escolhe o `removido` (porque é avaliado primeiro e é truthy), reativa-o, e o `pendente` vivo nunca é conferido — resultado: dois Membros vivos para o mesmo e-mail. Reproduzi isso de forma independente (script `vite-node` contra `buildSeed()` real, não contra um mock): convidar `x@empresa.com.br` sem `userId` cria `mem_0000ae` (`pendente`); convidar de novo com um `userId` que resolve para `mem_tiago` (`removido` no seed) reativa `mem_tiago` como `pendente` SEM tocar `mem_0000ae` — total de Membros vivos sobe de 11 para 12, e os dois registros (`mem_tiago` e `mem_0000ae`) ficam `pendente` "para o mesmo e-mail" em sentido lato (o e-mail do convite é o mesmo nos dois casos, ainda que só `mem_0000ae.invitedIdentity.value` o guarde literalmente).
+O `01-REVIEW.md` desta rodada (não a rodada que o prompt me pediu para re-verificar contra a rodada anterior, mas a revisão de código que acompanhou os Plans 01-12..01-16) registra um achado novo, WR-12: dois campos cuja **forma** o schema aceita corretamente (`TaskDate.value` é `z.string()`, espelhando o tipo `Instant = string` do domínio; `RecurrenceRule.interval` é `z.number()`), mas cujo **valor** o domínio não valida nos pontos de escrita — `updateTask` grava `dueDate.value: "garbage"` sem checar se é uma data parseável; `setRecurrence` aceita `interval: 1e15` sem teto. Reproduzi os dois de forma independente contra o código atual:
 
-**Meu julgamento:** este é um achado real e devidamente reproduzido, mas ele cai FORA do texto literal do Critério 5 do ROADMAP e do gap 1 que esta rodada foi encarregada de fechar, por três razões: (1) o gatilho não é "reconvidar um Usuário removido" — é a COMBINAÇÃO de duas ações de convite independentes ao longo do tempo (uma sem `userId`, criando um `pendente` por e-mail; outra com um `userId` que por coincidência de e-mail no Supabase Auth aponta para um Membro `removido` diferente) mais uma reatribuição de e-mail no lado do Auth que este domínio não controla; (2) a ação de reconvite em si, isoladamente, FAZ exatamente o que o critério promete — reativa o Usuário removido como o MESMO Membro, sem criar um Membro novo NESSA chamada; o segundo Membro "vivo" já existia de uma chamada anterior e não nasceu desta operação; (3) nenhum plano da Fase 1 (`01-08`, `01-10`) listou esse cenário composto em `must_haves`, e a tela de convite do `apps/web` hoje só expõe um fluxo de convite por vez, sem o cenário de reatribuição de e-mail no Auth que o dispara. Por isso trato WR-09 como um achado de robustez válido para acompanhamento (ver Anti-Patterns, abaixo), não como reabertura do gap 1 — mas registro que ele documenta uma violação real da invariante mais ampla que RN-ET-11/INV-ET-04 protege (nunca dois Membros vivos para o mesmo e-mail), e recomendo que a correção já desenhada no próprio `01-REVIEW.md` (conferir os dois achados e recusar quando divergem) entre num plano de robustez antes de a Fase 2 abrir convites a mais de um Administrador simultâneo.
+```
+ESQUEMAS.updateTask.safeParse(["tsk_x", { dueDate: { form: "instant", value: "garbage" } }])
+  → { success: true }
+ESQUEMAS.setRecurrence.safeParse(["tsk_x", { frequency: "diaria", interval: 1e15, triggerMode: "aoConcluir", copies: {...} }])
+  → { success: true }
+```
+
+E confirmei em Node puro (sem depender do relato) que o mecanismo que o `01-REVIEW.md` aponta como consequência é real: `new Date("garbage")` produz `Invalid Date`; chamar `.setDate(...)` nela e depois `.toISOString()` lança `RangeError: Invalid time value` — exatamente o padrão de `shift()` em `packages/dominio/src/operations/collaboration.ts:339-347` (`const d = new Date(date.value); switch (rule.frequency) { case "diaria": d.setDate(d.getDate() + rule.interval); ... } return { form: "instant", value: d.toISOString() };`), chamada por `nextOccurrenceRefusal` (linha 421), chamada por `changeTaskStatus` (`tasks.ts:240`) quando a Tarefa tem recorrência. Ou seja: um `POST /operacoes/updateTask` com `dueDate.value` malformado responde 200 e persiste o valor; uma chamada POSTERIOR e SEPARADA a `changeTaskStatus` na mesma Tarefa (por qualquer Membro) lançaria `RangeError` não capturado, que sobe ao `setErrorHandler` como 500 — desde que a rodada removeu o mapeamento `TypeError → 400` (WR-11), nada na rota intercepta um `RangeError` que não seja o do `reviverArgumentos` (esse `catch` é específico e só envolve o revive, não o corpo de `executar()`).
+
+**Meu julgamento:** este é um achado real, reproduzido por mim de forma independente (não aceito por relato), mas ele cai FORA do que os Plans 01-12..01-16 foram encarregados de fechar, por três razões, na mesma estrutura de julgamento que a rodada anterior aplicou a WR-09:
+
+1. **O contrato que a própria pasta declara exclui exatamente esta classe de validação.** `apps/api/src/rotas/esquemas/CONTEXT.md` (escrito por estes mesmos planos, linhas 5-9): "Validação de TRANSPORTE, nunca regra de negócio: uma regra ('título não pode ficar vazio', **'e-mail precisa ser válido'**, **limites numéricos**) continua exclusivamente no domínio." O projeto classifica validade semântica de um valor (um e-mail bem formado, um número dentro de uma faixa) como "regra", não "forma" — e uma data-string parseável e um `interval` limitado são exatamente dessa classe (o próprio `01-REVIEW.md`, seção WR-12, "Correção", propõe a correção em DUAS camadas, e marca a camada de domínio como "fora deste delta — abrir plano").
+2. **A correção correta e completa exige tocar `packages/dominio`**, o que o objetivo da fase proíbe explicitamente ("sem que o domínio... mude"; "os 214 testes do domínio são os mesmos"). Uma correção só de transporte (`z.iso.datetime()` em vez de `z.string()`, um `.max()` em `interval`) fecharia a FORMA de entrada mas deixaria o domínio sem a mesma garantia se chamado por outro caminho — o texto do `CONTEXT.md` da raiz ("as mesmas regras precisam valer nos dois lados") argumenta contra uma correção só do lado do transporte para o que o próprio projeto chama de regra.
+3. **O gap que esta rodada foi encarregada de fechar (CR-02, `01-VERIFICATION.md` de 2026-09-16T20:16Z) tinha um `missing[]` literal e específico**, e os quatro itens desse `missing[]` estão fechados e confirmados por mim: (a) `ESQUEMAS ≡ OPERACOES` (132/132, confirmado); (b) teste provando `createGoal`/forma hostil → 400 sem persistir (confirmado, casos (t)/(u)/(v)); (c) `reviverArgumentos` protegido (confirmado, `instanceof RangeError`); (d) teste do aninhamento profundo (confirmado, caso (s)). WR-12 não estava nesse `missing[]` — é um achado novo que só emergiu DEPOIS que a cobertura de forma ficou completa, exigindo um nível de rigor mais profundo (validação de valor, não de forma) que os planos declaradamente não tentaram e que a arquitetura desta pasta declara fora do seu escopo.
+
+Por isso trato WR-12 como um achado de robustez válido para acompanhamento (ver Anti-Patterns, abaixo) — não como reabertura do Critério 2/CR-02. Meu julgamento é o mesmo padrão que a rodada anterior aplicou a WR-09: real, reproduzido, documentado, mas fora do texto literal do gap que esta rodada fechou. Blast radius: uma Tarefa por vez (recuperável com outro `updateTask` de data válida), exige DUAS chamadas HTTP distintas (a corruptora e a que dispara o 500), e o `01-REVIEW.md` já classifica como "aviso", não "crítico". Recomendo abrir um plano de robustez no domínio antes de a Fase 2 expandir o uso de recorrência de Tarefas.
+
+WR-13 (portão `Igual<>` não cobre todos os enums de uniões nomeadas — `whenStillOpen`, `businessDays`, `sortBy`, `measure.target`, `FormQuestion.target.kind`, `CONTAINER_TYPE` contra um literal) e WR-14 (`tarefas.ts`/`automacoes.ts`/`financeiro.ts`, 23 operações, sem `<modulo>.test.ts` próprio) são achados de COBERTURA DE REDE (nenhum bug ativo hoje — o `01-REVIEW.md` prova isso e eu confirmei contando os arquivos: `ls apps/api/src/rotas/esquemas/*.test.ts` tem 12 arquivos para 15 módulos, faltando exatamente `tarefas`, `automacoes`, `financeiro`, batendo com WR-14). Não bloqueiam o Critério 2 (nenhuma chamada legítima falha, nenhuma chamada hostil hoje conhecida passa) — ficam como Warning/Info para acompanhamento.
 
 ### Artefatos Obrigatórios (regressão + novos desta rodada)
 
-| Artefato | Plano | Status | Linhas |
+| Artefato | Plano | Status | Detalhe |
 |---|---|---|---|
-| `packages/dominio/src/operations/members.ts` | 08, 10 | ✓ VERIFICADO — `porUserId ?? porEmail` na linha 349, comentário cita CR-01 | 684 |
-| `packages/dominio/src/operations/members-reconvite.test.ts` | 08, 10 | ✓ VERIFICADO — 9 casos (a)-(i), os três novos ((g)/(h)/(i)) listados nominalmente por mim, verdes | 226 |
-| `apps/api/src/servicos/convidar-membro.test.ts` | 08, 10 | ✓ VERIFICADO — caso (e) listado nominalmente por mim, verde contra o Postgres real | 225 |
-| `apps/api/src/rotas/esquemas-de-argumentos.ts` | 11 | ✓ VERIFICADO (min 120) — mas ver ressalva no gap (ARGUMENTOS_GENERICOS não barra tipo/enum errado) | 182 |
-| `apps/api/src/rotas/esquemas-de-argumentos.test.ts` | 11 | ✓ VERIFICADO (min 60) — 10 casos puros, listados nominalmente por mim, verdes | 117 |
-| `apps/api/src/rotas/operacoes.ts` | 04, 11 | ✓ VERIFICADO — mas ver ressalva no gap (`reviverArgumentos` fora do try/catch) | 180 |
-| `apps/api/src/rotas/operacoes.test.ts` | 04, 11 | ✓ VERIFICADO — casos (k)-(r) listados nominalmente por mim, verdes (18 casos totais com banco) | 343 |
-| Os demais 22 artefatos de `must_haves.artifacts` dos 9 planos originais | 01-09 | ✓ VERIFICADO (regressão) — nenhum arquivo tocado pelos Plans 01-10/01-11 fora dos 8 listados acima (confirmado por `git diff --stat 3ba8b86..HEAD`); `npm run check` verde confirma ausência de regressão funcional | — |
+| `apps/api/src/rotas/esquemas/fragmentos.ts` | 12 | ✓ VERIFICADO — tipos `ArgumentosDe`, `Esquemas`, `EsquemasCompletos`, `Igual`, `Confere`, `opcional()`, 9 fragmentos | 95 linhas (`git diff --stat`) |
+| `apps/api/src/rotas/esquemas/{tarefas,automacoes,financeiro,negocios,conversas,contatos,ia,pastas-de-chat,construtor-de-agentes,configuracao,colaboracao,planejamento,escala,membros,estrutura}.ts` | 12-15 | ✓ VERIFICADO — 15 arquivos, um por módulo do domínio, todos `satisfies Esquemas`; confirmado por `ls` (16 `.ts` não-teste = 15 módulos + `fragmentos.ts`) | — |
+| `apps/api/src/rotas/esquemas/*.test.ts` (12 de 15) | 13-15 | ⚠️ PARCIAL — faltam `tarefas.test.ts`, `automacoes.test.ts`, `financeiro.test.ts` (WR-14, achado de cobertura, não de bug) | Confirmado por `ls`: 12 arquivos `.test.ts` presentes |
+| `apps/api/src/rotas/esquemas-de-argumentos.ts` | 12, 16 | ✓ VERIFICADO — `ESQUEMAS` = spread dos 15 módulos `satisfies EsquemasCompletos`; `ARGUMENTOS_GENERICOS`/`valorJson`/`PROFUNDIDADE_MAXIMA` removidos (`grep` → 0 ocorrências) | 226 linhas alteradas (`git diff --stat`) |
+| `apps/api/src/rotas/esquemas-de-argumentos.test.ts` | 16 | ✓ VERIFICADO — 11 casos (a)-(k), (h)/(i)/(j) reapontados, (k) novo; rodado por mim, 11/11 verdes (dentro dos 33 combinados com `operacoes.test.ts`) | — |
+| `apps/api/src/rotas/operacoes.ts` | 12, 16 | ✓ VERIFICADO — `try/catch` só em volta de `reviverArgumentos` (`instanceof RangeError`); sem `instanceof TypeError`; despacho por `esquemaDeArgumentos(nome).safeParse` para as 132 | Lido por inteiro, linhas 100-190 reproduzidas acima |
+| `apps/api/src/rotas/operacoes.test.ts` | 12, 16 | ✓ VERIFICADO — 22 casos (a)-(v); (q) reapontado, (s)/(t)/(u)/(v) novos, todos confirmados por `grep -n` e por execução isolada | 22/22 dentro dos 33 testes verdes rodados por mim |
+| `apps/api/src/rotas/CONTEXT.md`, `apps/api/src/rotas/esquemas/CONTEXT.md` | 12, 16 | ✓ VERIFICADO — lista os 15 arquivos como presentes, sem "a chegar"; regra 7 (`EsquemasCompletos`) presente | Lido por inteiro |
+| Os demais artefatos das rodadas 01-01..01-11 | — | ✓ VERIFICADO (regressão) — `git diff --stat c6f0d1c^..HEAD` confirma que só `apps/api/src/rotas/` e documentação mudaram nesta rodada; `npm run check` verde confirma ausência de regressão funcional | — |
 
 ### Verificação de Key Links (Wiring) — foco na rodada
 
 | De | Para | Via | Status |
 |---|---|---|---|
-| `packages/dominio/src/operations/members.ts` | `state.members` | `porUserId` (condicional a `input.userId`) e `porEmail` (sempre, por `invitedIdentity.value` normalizado), combinados por `??` | ✓ WIRED — confirmado lendo o código; `porEmail` roda incondicionalmente, fechando a lacuna relatada |
-| `apps/api/src/rotas/operacoes.ts` | `apps/api/src/rotas/esquemas-de-argumentos.ts` | `esquemaDeArgumentos(nome).safeParse(reviverArgumentos(request.body.args))` antes do despacho | ✓ WIRED, mas a ordem (`reviverArgumentos` antes do `safeParse`, sem try/catch em volta do revive) é o que abre WR-10 |
-| `apps/api/src/rotas/operacoes.ts` | `apps/api/src/persistencia/unidade-de-trabalho.ts` | `try { operacao(...) } catch (TypeError) → throw ErroDeEntrada` dentro do callback de `executar()`; `executar()` faz `rollback` e relança | ✓ WIRED — confirmado lendo `unidade-de-trabalho.ts:73-76`: o `catch` externo sempre faz `rollback` antes de relançar, então o `ErroDeEntrada` chega à rota sem nada commitado |
+| `apps/api/src/rotas/esquemas-de-argumentos.ts` | `apps/api/src/rotas/esquemas/*.ts` | spread dos 15 objetos por módulo; `satisfies EsquemasCompletos` (sem `?`) | ✓ WIRED — confirmado por leitura e por `Object.keys(ESQUEMAS).sort() === Object.keys(OPERACOES).sort()` (132/132) reproduzido por mim |
+| `apps/api/src/rotas/operacoes.ts` | `apps/api/src/rotas/esquemas-de-argumentos.ts` | `esquemaDeArgumentos(nome).safeParse(revividos)` antes de `executar()`/`SERVICOS[nome]` | ✓ WIRED — lido por inteiro; nenhuma operação despacha sem passar pelo `safeParse` |
+| `apps/api/src/rotas/operacoes.ts` | `packages/dominio/src/operations/registro.ts` | `try { revividos = reviverArgumentos(...) } catch (RangeError) → 400` | ✓ WIRED — reproduzido por mim (`RangeError` lançado com n=200000; capturado no código lido) |
+| `apps/api/src/rotas/operacoes.ts` | `apps/api/src/app.ts` (`setErrorHandler`) | `TypeError`/qualquer exceção dentro de `operacao(...)` sobe SEM mapeamento — 500 | ✓ WIRED — confirmado por leitura (`grep -c "instanceof TypeError"` → 0); é o destino correto documentado como intencional (WR-11) |
 
 ### Reprodução Independente (não aceita por relato)
 
 | Achado | Comando/Script | Resultado | Confirma |
 |---|---|---|---|
-| CR-01 fechado no cenário reportado | `vitest run --reporter=verbose` em `packages/dominio`, casos (g)/(h)/(i) | 3/3 verdes, nominalmente listados | Gap 1 fechado |
-| CR-02 efeito 1 (500 por `TypeError`) fechado | `vitest run --reporter=verbose` em `apps/api`, casos (k)-(r) | 8/8 verdes, nominalmente listados | Efeito 1 fechado |
-| WR-09 (dois Membros vivos para o mesmo e-mail) | script `vite-node` chamando `inviteMember` duas vezes contra `buildSeed()` real | `mem_tiago` reativado (pendente) + `mem_0000ae` continua pendente; 11→12 vivos | Achado real, fora do escopo do gap 1 (ver julgamento acima) |
-| CR-02 efeito 2 residual (`createGoal`/`saveView`) | script `vite-node` chamando `ARGUMENTOS_GENERICOS.safeParse(...)` com a forma hostil do `01-REVIEW.md` | `success: true` — `esquemaDeArgumentos("createGoal") === ARGUMENTOS_GENERICOS` também confirmado `true` | Gap 2 permanece parcialmente aberto |
-| WR-10 (500 por recursão sem limite) | script `vite-node` chamando `reviverArgumentos(JSON.parse(...))` com 200.000 níveis (400.002 bytes) | `RangeError: Maximum call stack size exceeded` | Gap 2 permanece parcialmente aberto (novo caminho para o mesmo efeito 1) |
+| `createGoal` com `kind:42`/`anchor.lixo` — a forma hostil do gap anterior | `ESQUEMAS.createGoal.safeParse([...])` via `vite-node` | `success: false`; `unrecognized_keys` em `anchor.lixo`, `invalid_value` em `kind` | CR-02 fechado para este vetor |
+| `saveView` com `filters` arbitrário | `ESQUEMAS.saveView.safeParse([...])` via `vite-node` | `success: false`; `unrecognized_keys` em `filters.qualquer` | CR-02 fechado para este vetor |
+| `createChatFolder` com `name: 123` | `ESQUEMAS.createChatFolder.safeParse([{ name: 123 }])` | `success: false`; `invalid_type` em `0.name` | Confirma (q) reapontado |
+| `updateTask` com `title: 123` | `ESQUEMAS.updateTask.safeParse(["tsk_x", { title: 123 }])` | `success: false`; `invalid_type` em `1.title` | Confirma cobertura de `tarefas.ts` |
+| Aninhamento profundo (WR-10) | `reviverArgumentos(JSON.parse(...))` com 200.000 níveis, via `vite-node` | `RangeError: Maximum call stack size exceeded` — lançado, e o código lido mostra `try/catch` na rota que o intercepta | WR-10 continua fechado |
+| Completude `ESQUEMAS` ≡ `OPERACOES` | `Object.keys(ESQUEMAS).sort()` vs `Object.keys(OPERACOES).sort()` via `vite-node` | `{ esquemasCount: 132, operacoesCount: 132, equal: true }` | `missing[0]` do gap anterior fechado |
+| WR-12 (novo, não aceito por relato) | `ESQUEMAS.updateTask.safeParse(["tsk_x",{dueDate:{form:"instant",value:"garbage"}}])`; `ESQUEMAS.setRecurrence.safeParse([...{interval:1e15}...])`; `new Date("garbage").setDate(...).toISOString()` em Node puro | Ambos os `safeParse` → `success: true`; `toISOString()` → `RangeError: Invalid time value` | Achado real, julgado fora do escopo desta rodada (ver "Julgamento sobre WR-12") |
 
 ### Behavioral Spot-Checks
 
 | Comportamento | Comando | Resultado | Status |
 |---|---|---|---|
-| `npm run check` completo (typecheck+lint+tokens+test, 3 workspaces) | `npm run check` | 379/379 testes verdes (253+73+53) | ✓ PASS |
-| Suíte `apps/api` isolada, casos novos por nome | `npx vitest run --reporter=verbose` em `apps/api`, grep por `(k)`-`(r)`, `(e)` | 17 casos novos listados, todos ✓ | ✓ PASS |
-| Suíte `packages/dominio` isolada, casos novos por nome | `npx vitest run --reporter=verbose` em `packages/dominio`, grep por reconvite | 9 casos de `members-reconvite.test.ts` listados, todos ✓ (incluindo (g)/(h)/(i)) | ✓ PASS |
-| Os 3 arquivos de teste originais do domínio sem diff desde `d713253` | `git diff d713253 -- operations.test.ts seed-produto.test.ts contas-a-receber.test.ts` | saída vazia | ✓ PASS |
-| `ARGUMENTOS_GENERICOS` barra `kind`/`anchor` malformados de `createGoal` | script `vite-node` próprio | `safeParse(...).success === true` (deveria ser `false`) | ✗ FAIL (gap, ver acima) |
-| `reviverArgumentos` não estoura a pilha com entrada profunda | script `vite-node` próprio, `n=200000` | `RangeError` lançado | ✗ FAIL (gap, ver acima) |
+| `npm run check` completo (typecheck+lint+tokens+test, 3 workspaces) | `npm run check` | 469/469 testes verdes (253 dominio + 163 api + 53 web) | ✓ PASS |
+| Suíte `apps/api` das rotas, casos por nome | `npx vitest run --root apps/api src/rotas/operacoes.test.ts src/rotas/esquemas-de-argumentos.test.ts` | 33/33 verdes (22 de `operacoes.test.ts`, (a)-(v); 11 de `esquemas-de-argumentos.test.ts`, (a)-(k)) | ✓ PASS |
+| `ESQUEMAS` barra `kind`/`anchor` malformados de `createGoal` | script `vite-node` próprio | `safeParse(...).success === false` (era `true` na rodada anterior) | ✓ PASS — gap fechado |
+| `ESQUEMAS` barra `filters` arbitrário de `saveView` | script `vite-node` próprio | `safeParse(...).success === false` | ✓ PASS — gap fechado |
+| `reviverArgumentos` não estoura sem tratamento (WR-10) | script `vite-node` próprio, `n=200000`; leitura do `try/catch` em `operacoes.ts` | `RangeError` lançado E capturado pelo código lido | ✓ PASS |
+| Os 3 arquivos de teste originais do domínio sem diff desde `d713253` | `git diff --quiet d713253 -- operations.test.ts seed-produto.test.ts contas-a-receber.test.ts` | exit 0 | ✓ PASS |
+| `ESQUEMAS` ACEITA a forma legítima de `updateTask` com `dueDate` malformado (WR-12) | script `vite-node` próprio | `safeParse(...).success === true` (o schema valida FORMA, não valor semântico — por desenho documentado em `esquemas/CONTEXT.md`) | ℹ️ INFO — achado real, fora do escopo desta rodada (ver julgamento) |
 
-Nenhum servidor HTTP (`npm run dev`, `apps/api`/`apps/web`) foi iniciado por mim nesta verificação; as reproduções chamaram os módulos TypeScript diretamente via `vite-node`. Um comando de teste em background ficou pendurado por erro de sintaxe meu (`vitest run -w @n1/api` interpretado fora de um workspace) e foi encerrado (`kill -9`) sem produzir efeito colateral. Porta 3001 (`apps/web`, pré-existente, não iniciado por mim) e porta 3002 (`apps/api`, livre) confirmadas ao final.
+Nenhum servidor HTTP (`npm run dev`, `apps/api`/`apps/web`) foi iniciado por mim nesta verificação; as reproduções chamaram os módulos TypeScript diretamente via `vite-node`, e o `npm run check` (que inclui os testes de rota via `app.inject` contra o Supabase real) rodou uma única vez.
 
 ### Requirements Coverage
 
 | Requisito | Plano(s) | Descrição (REQUIREMENTS.md) | Status | Evidência |
 |---|---|---|---|---|
-| PERS-01 | 09 (regressão) | Repositórios + Unidade de Trabalho | ✓ SATISFIED | Inalterado nesta rodada; `npm run check` confirma sem regressão |
+| PERS-01 | 09 (regressão) | Repositórios + Unidade de Trabalho | ✓ SATISFIED | Inalterado nesta rodada |
 | PERS-02 | 09 (regressão) | `/entrar` autentica por Supabase Auth, Membro resolvido pelo Usuário | ✓ SATISFIED | Inalterado nesta rodada |
-| PERS-04 | 01, 02, 03, 04, 09, 11 | Rotas HTTP por operação, UoW, Membro da sessão | ⚠️ SATISFIED COM RESSALVA | Efeito 1 de CR-02 (500 por `TypeError`) fechado pelo Plan 01-11; efeito 2 (jsonb malformado, ~109 operações) e WR-10 (500 por recursão) permanecem abertos — ver Gaps |
+| PERS-04 | 01-04, 09, 11-16 | Rotas HTTP por operação, UoW, Membro da sessão | ✓ SATISFIED, SEM RESSALVA — a ressalva da rodada anterior (CR-02) se dissolve | `ESQUEMAS` ≡ `OPERACOES` (132/132), sem fallback; `TypeError→400` removido; confirmado por reprodução própria. `REQUIREMENTS.md` já marca `[x]` com a mesma justificativa. WR-12 documentado como achado de robustez fora do escopo (ver julgamento) — não bloqueia o requisito |
 | PERS-05 | 03, 07 | `store.ts` troca `run()` local por `POST` | ✓ SATISFIED | Inalterado nesta rodada |
 | PERS-06 | 05 | Bootstrap do Espaço "Gestão" sem fixtures | ✓ SATISFIED | Inalterado nesta rodada |
 | PERS-07 | 06 | Colunas geradas e índices | ✓ SATISFIED | Inalterado nesta rodada |
-| PERS-08 | 09 (documental) | Onde `apps/api` roda | Bloqueado por decisão D11 — inalterado, não é código desta fase | `apps/api/README.md` §5 |
-| PERS-09 | 08, 10 | RN-ET-11 — reconvite reativa o mesmo Membro | ✓ SATISFIED | Gap CR-01 fechado pelo Plan 01-10, provado por (g)/(h)/(i)/(e); resíduo WR-09 tratado como achado de robustez fora do critério literal (ver julgamento acima) |
+| PERS-08 | 09 (documental) | Onde `apps/api` roda | Bloqueado por decisão D11 — inalterado, não é código desta fase (tratamento idêntico ao da verificação anterior) | `apps/api/README.md` §5; `REQUIREMENTS.md` linha 33 |
+| PERS-09 | 08, 10 | RN-ET-11 — reconvite reativa o mesmo Membro | ✓ SATISFIED | Inalterado nesta rodada (Plans 01-12..01-16 não tocaram `packages/dominio`) |
 
-**Nenhum requisito órfão:** todos os 8 IDs de `ROADMAP.md` linha 47 aparecem em pelo menos um `requirements:` de PLAN.md (incluindo `01-10-PLAN.md` → PERS-09 e `01-11-PLAN.md` → PERS-04); nenhum ID adicional em `REQUIREMENTS.md` mapeado para a Fase 1 ficou de fora dos planos.
+**Nenhum requisito órfão:** os 8 IDs de `ROADMAP.md`/prompt (PERS-01, 02, 04, 05, 06, 07, 08, 09) aparecem todos em `REQUIREMENTS.md` mapeados para a Fase 1, e todos em pelo menos um `requirements:` de PLAN.md desta fase.
 
 ### Anti-Patterns Found
 
-Origem: `01-REVIEW.md` (re-revisão pós-fechamento, `ecdbea2`, 64 arquivos), com confirmação direta por mim nos achados relevantes a esta rodada.
+Origem: leitura própria do código + `01-REVIEW.md` (rodada 2, `2026-09-17T14:03:22Z`, 0 críticos / 3 avisos / 5 informações), com confirmação direta por mim nos achados relevantes a esta rodada.
 
 | Arquivo | Achado | Severidade | Impacto no critério/must-have | Confirmado por mim? |
 |---|---|---|---|---|
-| `apps/api/src/rotas/esquemas-de-argumentos.ts:163-173` | CR-02 (residual) — `ARGUMENTOS_GENERICOS` não barra tipo/enum errado nem chave a mais em objeto aninhado, para ~109 operações | 🛑 Gap estruturado acima | Ameaça a integridade do `jsonb` compartilhado para operações fora de `tasks`/`financeiro`/`automations` | Sim — reprodução própria com `createGoal`/`saveView` |
-| `apps/api/src/rotas/operacoes.ts:125-126` | WR-10 — `reviverArgumentos` roda antes da validação, recursivo sem limite, `RangeError` de um corpo de 400 KB sobe como 500 | 🛑 Gap estruturado acima (novo caminho para o mesmo efeito que CR-02 visava fechar) | Ameaça "não cair em 500 por entrada hostil" do Critério 2 | Sim — reprodução própria (`RangeError` confirmado) |
-| `packages/dominio/src/operations/members.ts:346-349` | WR-09 — `porUserId ?? porEmail` escolhe um `removido` sobre um `pendente` vivo quando os dois existem para o mesmo e-mail; reativação por e-mail pode sobrescrever um `userId` já gravado | ⚠️ Warning — achado de robustez, fora do texto literal do Critério 5 (ver julgamento acima) | Não bloqueia esta fase; recomendado para plano de robustez antes da Fase 2 | Sim — reprodução própria (`buildSeed()`, 11→12 Membros vivos) |
-| `apps/api/src/rotas/operacoes.ts:143-161` | WR-11 — `TypeError → 400` também se aplica às 23 operações COM schema, onde um `TypeError` pós-validação só pode ser bug (fica marcado como `warn` de entrada inválida, não `error`) | ⚠️ Warning | Não corrompe dado nem gera 500; é um problema de observabilidade (bug escondido atrás de 400 ao cliente), não de segurança/integridade — fora do texto do Critério 2 | Não confirmado por mim linha a linha nesta rodada — aceito o achado do REVIEW, coerente com a leitura que fiz do `catch` único em `operacoes.ts` |
-| `packages/dominio/src/operations/registro.ts:457-466` | IN-02 — PARCIALMENTE mitigado: o `reviver` ainda copia `__proto__` por atribuição, mas o zod recria o objeto (`Reflect.ownKeys`) para as operações com schema | ℹ️ Info | Sem impacto demonstrado (o valor passa pelo mesmo `z.string()` que passaria direto) | Não relido linha a linha por mim nesta rodada — aceito o achado do REVIEW |
-| WR-01 a WR-08 (exceto WR-06/WR-08 já classificados na rodada anterior), IN-01, IN-03, IN-04 (parcial), IN-05 a IN-11 | Demais achados de `01-REVIEW.md` | ⚠️/ℹ️ Warning/Info | Nenhum corresponde a um `must_haves` de nenhum dos 11 planos nem a um Critério de Sucesso do ROADMAP; classificação "fora de escopo" da rodada anterior mantida — nenhum código novo desta rodada os afeta | Não relidos individualmente por mim — ver `01-REVIEW.md` para o texto completo |
+| `packages/dominio/src/operations/collaboration.ts:339-347`, `tasks.ts:1037-1043` (via schema em `apps/api/src/rotas/esquemas/fragmentos.ts`/`colaboracao.ts`) | WR-12 — schema aceita `TaskDate.value`/`RecurrenceRule.interval` com forma certa e valor sem sentido; o domínio persiste e uma chamada POSTERIOR a `changeTaskStatus` lança `RangeError` não capturado → 500 | ⚠️ Warning — real, reproduzido por mim, julgado fora do escopo desta rodada (ver "Julgamento sobre WR-12") | Não bloqueia Critério 2/PERS-04 desta fase (contrato da pasta exclui validação de valor por desenho; correção completa exige tocar o domínio, proibido nesta fase) | Sim — reprodução própria (`safeParse` → `true`; `toISOString()` → `RangeError` em Node puro) |
+| `apps/api/src/rotas/esquemas/colaboracao.ts`, `escala.ts`, `fragmentos.ts` (`CONTAINER_TYPE`) | WR-13 — `Igual<>`/`Confere<>` não cobre `whenStillOpen`, `businessDays`, `sortBy.by/.direction`, `measure.target`, `FormQuestion.target.kind`; `CONTAINER_TYPE` conferido contra literal, não contra o domínio | ⚠️ Warning — nenhum bug ativo hoje (os 6 enums batem, conferido um a um pelo REVIEW); rede de segunda linha incompleta | Não bloqueia — os call sites reais do `apps/web` não exercitam a assimetria hoje | Não relido linha a linha por mim — aceito o achado do REVIEW, coerente com minha leitura de `fragmentos.ts` |
+| `apps/api/src/rotas/esquemas/` | WR-14 — `tarefas.ts`, `automacoes.ts`, `financeiro.ts` (23 operações) sem `<modulo>.test.ts` próprio | ⚠️ Warning — lacuna de rede de testes, não de comportamento | Não bloqueia — confirmei por `ls` que faltam exatamente esses 3 arquivos entre os 15 módulos | Sim — `ls apps/api/src/rotas/esquemas/*.test.ts` confirma 12 de 15 |
+| Diversos (IN-12 a IN-16 do `01-REVIEW.md`) | Assimetrias menores de portão, comentários desatualizados, testes com asserção fraca | ℹ️ Info | Nenhum corresponde a um `must_haves` de nenhum plano nem a um Critério de Sucesso do ROADMAP | Não relidos individualmente por mim — ver `01-REVIEW.md` para o texto completo |
+| WR-01, WR-03..WR-09, IN-01, IN-03..IN-09 (rodada 1, não tocados por esta rodada) | Achados residuais da rodada anterior, arquivos não modificados neste delta | ⚠️/ℹ️ Warning/Info | Fora de escopo desta rodada — nenhum arquivo que eles tocam mudou (`git diff --stat c6f0d1c^..HEAD` confirma) | Não relidos — classificação da rodada anterior mantida |
 
-Nenhum marcador de débito (`TBD`/`FIXME`/`XXX`) sem referência de issue encontrado nos 8 arquivos alterados por esta rodada.
+Nenhum marcador de débito (`TBD`/`FIXME`/`XXX`) sem referência de issue encontrado nos 43 arquivos alterados por esta rodada (`c6f0d1c^..6d3103d`).
 
 ### Human Verification Required
 
-Ver frontmatter `human_verification` — os três itens são EXATAMENTE os da rodada anterior, carregados sem alteração: nenhum plano desta rodada (01-10, 01-11) tocou `apps/web` ou o fluxo de navegador. Continuam pendentes de um navegador real: (1) login → criar Conta a pagar pela tela → F5 → persistência; (2) recusa de `changeTaskStatus` sem spinner/sem requisição de rede; (3) `tiago@n1.teste` (removido) vendo "Sem acesso".
+Ver frontmatter — carregados **sem alteração** da verificação anterior: nenhum plano desta rodada (01-12..01-16) tocou `apps/web` ou o fluxo de navegador (confirmado por `git diff --stat c6f0d1c^..HEAD`).
+
+1. **Login → criar Conta a pagar pela tela → F5 → persistência.**
+   **Teste:** Logar como `maryane@n1.teste` (senha de desenvolvimento) em `http://localhost:3001/entrar`, abrir Gestão › Financeiro › Contas a pagar, criar uma Conta a pagar pela tela, recarregar a página (F5).
+   **Esperado:** A Lista abre vazia de Tarefas fictícias; a Conta criada aparece e CONTINUA lá depois do F5 — Critério 1 do ROADMAP, a parte "pela tela" que só um navegador prova.
+   **Por que humano:** Persistência através de recarga de página é um efeito perceptual que `app.inject()` não reproduz (o e2e `criar-conta.test.ts` já prova o equivalente por inject, e passou).
+
+2. **Recusa de `changeTaskStatus` sem spinner/sem requisição de rede.**
+   **Teste:** Na mesma sessão, tentar mover a Conta recém-criada para "pago" (RN-CP-04, a Maryane não é Aprovadora).
+   **Esperado:** A recusa aparece na hora, sem spinner e sem requisição na aba Rede do DevTools (D-05); a criação da Conta aparece como `POST /operacoes/createTask` com resposta 200.
+   **Por que humano:** Percepção de latência/presença de requisição de rede não é assertável por `app.inject()`.
+
+3. **`tiago@n1.teste` (removido) vendo "Sem acesso".**
+   **Teste:** Sair e entrar como `tiago@n1.teste` (removido no seed, não existe no Espaço "Gestão" bootstrapado).
+   **Esperado:** "Sem acesso" — o Membro não existe no Espaço bootstrapado.
+   **Por que humano:** Fluxo de cookie/sessão no navegador real; o hook de autenticação já prova 403 por `app.inject()`, mas a tela de "Sem acesso" em si não foi inspecionada.
 
 ## Gaps Summary
 
-Esta rodada fechou por completo o gap 1 (CR-01, Critério 5, PERS-09): a busca de `existing` em `inviteMember` agora casa por `userId` E por `invitedIdentity` em paralelo (`porUserId ?? porEmail`), com três testes novos no domínio e um no serviço (contra o Postgres real) provando literalmente o cenário que a rodada anterior relatou como faltante. Um achado de robustez residual (WR-09) surgiu da própria correção — reproduzido por mim de forma independente — mas julgo que ele cai fora do texto literal do Critério 5 e do escopo do gap 1 (ver "Julgamento sobre WR-09" acima); recomendo tratá-lo como item de robustez para um plano futuro, não como bloqueio desta fase.
+Nenhum gap de código remanescente. A rodada de fechamento (Plans 01-12..01-16) fechou CR-02 por inteiro: as 132 operações de `OPERACOES` têm schema próprio sob `satisfies EsquemasCompletos`, sem fallback estrutural; `reviverArgumentos` está protegido contra aninhamento hostil (WR-10); o mapeamento `TypeError → 400` foi removido por inteiro (WR-11), então um `TypeError` remanescente sobe como 500 (bug), não fica escondido atrás de um 400. Reproduzi de forma independente as duas formas hostis que o verificador anterior usou contra o fallback antigo (`createGoal` com `kind:42`/`anchor.lixo`, `saveView` com `filters` arbitrário) — ambas agora 400, nada persistido — e as duas formas hostis citadas no prompt desta re-verificação (`createChatFolder` com `name:123`, `updateTask` com `title:123`) — ambas também 400.
 
-O gap 2 (CR-02, Critério 2, PERS-04) fechou parcialmente. O efeito mais grave do relato original — qualquer Membro autenticado derrubando o processo em 500 com uma entrada trivial em qualquer uma das ~130 operações — está fechado para o caminho testado (schema por operação + `TypeError` mapeado para 400 com rollback). Mas dois problemas do mesmo texto de truth continuam abertos, ambos confirmados por reprodução própria (não por aceitação do relato do `01-REVIEW.md`): (a) para as ~109 operações fora das 23 cobertas por `ESQUEMAS`, um Membro autenticado ainda consegue persistir `jsonb` com tipo/enum errado ou chave a mais em campo aninhado — todo o Espaço hidrata esse registro malformado; (b) um corpo HTTP de ~400 KB com arrays profundamente aninhados ainda derruba a requisição em 500 (`RangeError` em `reviverArgumentos`, que roda antes de qualquer validação). Nenhum dos dois é coberto por um `must_haves.truths` de nenhum dos 11 planos como "resolvido por completo" — o próprio `01-11-PLAN.md` já escopava a cobertura para "os módulos que o Espaço 'Gestão' usa" mais um fallback "conservador", e o fallback entregue é mais fraco do que o comentário do próprio arquivo alega.
+Um achado novo do `01-REVIEW.md` (WR-12) é real e foi confirmado por mim de forma independente: dois campos com forma correta mas valor sem sentido (`TaskDate.value: "garbage"`, `RecurrenceRule.interval: 1e15`) passam pelo schema e, se depois uma Tarefa com esses valores tiver sua conclusão disparada via `changeTaskStatus`, o domínio lança `RangeError` não capturado → 500. Julguei este achado como fora do escopo do que esta rodada foi encarregada de fechar — o contrato que a própria pasta `esquemas/` declara (`CONTEXT.md`) exclui explicitamente validação de valor semântico ("regra", não "forma"), e a correção completa exige tocar `packages/dominio`, proibido pelo objetivo desta fase. Documentei o raciocínio completo em "Julgamento sobre WR-12" acima, no mesmo padrão que a rodada anterior aplicou a WR-09. Recomendo um plano de robustez no domínio antes da Fase 2 ampliar o uso de recorrência de Tarefas.
 
-Como verificador, escalo o gap 2 residual para decisão humana: ou entra como um novo plano de fechamento de lacuna (`/gsd-plan-phase 1 --gaps`, com a correção de baixo custo já desenhada no `01-REVIEW.md` — 404 para operações sem schema próprio, e um `try/catch`/limite de profundidade em `reviverArgumentos`), ou o dono do produto registra um `override` explícito no frontmatter deste arquivo aceitando o risco residual (por exemplo, se a Fase 2 só abre a rota a Membros de confiança e a superfície de ~109 operações "silenciosas" não é exercitada por nenhuma tela até lá).
+O único item pendente do ROADMAP é o Critério 1 (parte "pela tela, num navegador real") — inalterado desde a primeira verificação da fase, não é um gap desta rodada, é verificação humana ainda não realizada. Por isso o status desta re-verificação é `human_needed`, não `passed`: automaticamente, por código, a fase está pronta; falta o olho humano nos três itens listados acima.
 
 ---
 
-_Verificado em: 2026-09-16T20:16:06Z_
+_Verificado em: 2026-09-17T15:40:00Z_
 _Verificador: Claude (gsd-verifier)_
