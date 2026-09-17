@@ -28,10 +28,11 @@
  * (T-0-06, path traversal) e a coleta de anexos/usuários vistos.
  */
 
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { ClienteClickUp } from "./cliente";
+import { ErroClickUp, hostPermitido, type ClienteClickUp, type RespostaClickUp } from "./cliente";
+import { paginarPorCursor, paginarPorPagina, type CursorDeComentarios } from "./paginacao";
 
 export const LISTAS = {
   solicitacao: "901109104938",
@@ -166,7 +167,7 @@ export function caminhoDoAnexo(
 ): string {
   if (!ID_DE_CAMINHO_VALIDO.test(taskId) || !ID_DE_CAMINHO_VALIDO.test(attachmentId)) {
     throw new Error(
-      `caminhoDoAnexo: taskId ou attachmentId fora do formato esperado (taskId=${JSON.stringify(taskId)}, attachmentId=${JSON.stringify(attachmentId)})`,
+      `caminhoDoAnexo: taskId ou attachmentId fora do formato esperado (taskId="${taskId}", attachmentId="${attachmentId}")`,
     );
   }
   const pasta = path.resolve(pastaDaLista, "attachments", taskId);
@@ -347,4 +348,334 @@ export function coletarUsuarios(
       }
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Task 2 — orquestração
+// ---------------------------------------------------------------------------
+
+const LARGURA_DO_INDICE_DE_PAGINA = 3;
+
+function nomeDePagina(indice: number): string {
+  return `page-${String(indice).padStart(LARGURA_DO_INDICE_DE_PAGINA, "0")}.json`;
+}
+
+/** Constrói uma `RespostaClickUp` sintética a partir do disco — nunca chama rede (retomada, Pitfall 4). */
+function respostaDoDisco(corpoCru: string): RespostaClickUp {
+  return { status: 200, corpoCru, json: JSON.parse(corpoCru) as unknown, cabecalhos: new Headers() };
+}
+
+function extrairTarefas(json: unknown): { readonly itens: readonly unknown[]; readonly ultima: boolean } {
+  if (!ehObjeto(json)) return { itens: [], ultima: true };
+  return { itens: Array.isArray(json.tasks) ? json.tasks : [], ultima: json.last_page === true };
+}
+
+function extrairComentarios(json: unknown): readonly { readonly id: string; readonly date: string }[] {
+  if (!ehObjeto(json) || !Array.isArray(json.comments)) return [];
+  const resultado: { readonly id: string; readonly date: string }[] = [];
+  for (const bruto of json.comments) {
+    if (!ehObjeto(bruto)) continue;
+    const id = idComoString(bruto.id);
+    const date = typeof bruto.date === "string" ? bruto.date : undefined;
+    if (id === undefined || date === undefined) continue;
+    resultado.push({ id, date });
+  }
+  return resultado;
+}
+
+function contarElementos(json: unknown, chave: string): number {
+  if (!ehObjeto(json)) return 0;
+  const valor = json[chave];
+  return Array.isArray(valor) ? valor.length : 0;
+}
+
+function maiorDateUpdatedDeTarefas(json: unknown): string | undefined {
+  if (!ehObjeto(json) || !Array.isArray(json.tasks)) return undefined;
+  let maior: string | undefined;
+  for (const bruto of json.tasks) {
+    if (!ehObjeto(bruto) || typeof bruto.date_updated !== "string") continue;
+    if (maior === undefined || Number(bruto.date_updated) > Number(maior)) maior = bruto.date_updated;
+  }
+  return maior;
+}
+
+function maiorDeDuas(a: string | undefined, b: string | undefined): string | undefined {
+  if (a === undefined) return b;
+  if (b === undefined) return a;
+  return Number(a) >= Number(b) ? a : b;
+}
+
+async function arquivoExisteComTamanho(caminho: string): Promise<boolean> {
+  try {
+    const info = await stat(caminho);
+    return info.size > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Orquestra Lista → Campos → Membros → Tarefas (abertas + arquivadas) →
+ * detalhe por Tarefa → Comentários → `time_in_status` → anexos, por Lista,
+ * gravando o JSON bruto um arquivo por recurso/página (D-03). Retomável:
+ * antes de qualquer chamada de rede, `lerSeValido`/`respostaDoDisco` servem
+ * o que já está gravado — o filesystem é o checkpoint (Pitfall 4).
+ *
+ * `time_in_status` é um smoke test da EXECUÇÃO inteira (não por Lista): a
+ * primeira chamada que falhar com erro 4xx desliga o recurso para todas as
+ * Tarefas seguintes (Pitfall 2); falhas depois da primeira chamada
+ * bem-sucedida só contam em `timeInStatusIndisponivel`, sem abortar.
+ *
+ * Nunca grava no Postgres, nunca chama `inviteMember`. `log`/`avisos` só
+ * recebem ids, caminhos e contagens — nunca o corpo de Tarefa/Comentário nem
+ * qualquer token (T-0-01).
+ */
+export async function exportarClickUp(opcoes: OpcoesDaExportacao): Promise<ResultadoDaExportacao> {
+  const { cliente } = opcoes;
+  const log = opcoes.log ?? ((): void => undefined);
+  const politicaDeAnexos: PoliticaDeAnexos = opcoes.anexos ?? "todas";
+  const timeInStatusOptOut = opcoes.timeInStatus === "nao";
+  const listasAlvo = opcoes.listas ?? TODAS_AS_LISTAS;
+  const amostra = opcoes.limiteDeTarefas !== undefined;
+
+  const iniciadaEm = new Date().toISOString();
+  const avisos: string[] = [];
+  const usuariosVistos = new Map<string, UsuarioVisto>();
+  const contagensPorLista: ContagensDaLista[] = [];
+
+  let requisicoes = 0;
+  let timeInStatusDisponivel = true;
+  let smokeTestFeito = false;
+
+  async function getContado(caminho: string, query?: Record<string, string>): Promise<RespostaClickUp> {
+    requisicoes += 1;
+    return cliente.get(caminho, query);
+  }
+
+  async function baixarContado(url: string): Promise<{ readonly bytes: Uint8Array; readonly contentType: string | null }> {
+    requisicoes += 1;
+    return cliente.baixar(url);
+  }
+
+  async function materializarRecurso(caminho: string, buscar: () => Promise<RespostaClickUp>): Promise<string> {
+    const existente = await lerSeValido(caminho);
+    if (existente !== undefined) return existente;
+    const resposta = await buscar();
+    await gravarAtomico(caminho, resposta.corpoCru);
+    return resposta.corpoCru;
+  }
+
+  for (const listId of listasAlvo) {
+    const pastaDaLista = path.join(opcoes.pastaDestino, listId);
+
+    const listCorpo = await materializarRecurso(path.join(pastaDaLista, "list.json"), () => getContado(`/list/${listId}`));
+    const fieldsCorpo = await materializarRecurso(path.join(pastaDaLista, "fields.json"), () =>
+      getContado(`/list/${listId}/field`),
+    );
+    const membersCorpo = await materializarRecurso(path.join(pastaDaLista, "members.json"), () =>
+      getContado(`/list/${listId}/member`),
+    );
+
+    const statusDefinidos = contarElementos(JSON.parse(listCorpo) as unknown, "statuses");
+    const campos = contarElementos(JSON.parse(fieldsCorpo) as unknown, "fields");
+    const membros = contarElementos(JSON.parse(membersCorpo) as unknown, "members");
+
+    // Tarefas abertas (archived=false) — page/last_page (Pattern 1).
+    async function buscarPaginaDeTarefasAbertas(page: number): Promise<RespostaClickUp> {
+      const caminho = path.join(pastaDaLista, "tasks", nomeDePagina(page));
+      const existente = await lerSeValido(caminho);
+      if (existente !== undefined) return respostaDoDisco(existente);
+      const resposta = await getContado(`/list/${listId}/task`, {
+        page: String(page),
+        include_closed: "true",
+        subtasks: "true",
+        archived: "false",
+      });
+      await gravarAtomico(caminho, resposta.corpoCru);
+      return resposta;
+    }
+
+    // Segunda passada, arquivadas (archived=true) — mesma paginação, pasta irmã.
+    async function buscarPaginaDeTarefasArquivadas(page: number): Promise<RespostaClickUp> {
+      const caminho = path.join(pastaDaLista, "tasks-arquivadas", nomeDePagina(page));
+      const existente = await lerSeValido(caminho);
+      if (existente !== undefined) return respostaDoDisco(existente);
+      const resposta = await getContado(`/list/${listId}/task`, {
+        page: String(page),
+        include_closed: "true",
+        subtasks: "true",
+        archived: "true",
+      });
+      await gravarAtomico(caminho, resposta.corpoCru);
+      return resposta;
+    }
+
+    const idsAbertas: string[] = [];
+    let paginasDeTarefasAbertas = 0;
+    let maiorDateUpdated: string | undefined;
+    for await (const pagina of paginarPorPagina(buscarPaginaDeTarefasAbertas, extrairTarefas)) {
+      paginasDeTarefasAbertas += 1;
+      log(`lista ${listId} · tarefas página ${pagina.page} · ${pagina.itens.length} itens`);
+      for (const bruto of pagina.itens) {
+        const id = ehObjeto(bruto) ? idComoString(bruto.id) : undefined;
+        if (id !== undefined) idsAbertas.push(id);
+      }
+      maiorDateUpdated = maiorDeDuas(maiorDateUpdated, maiorDateUpdatedDeTarefas(JSON.parse(pagina.corpoCru) as unknown));
+    }
+
+    const idsArquivadas: string[] = [];
+    let paginasDeTarefasArquivadas = 0;
+    for await (const pagina of paginarPorPagina(buscarPaginaDeTarefasArquivadas, extrairTarefas)) {
+      paginasDeTarefasArquivadas += 1;
+      log(`lista ${listId} · tarefas arquivadas página ${pagina.page} · ${pagina.itens.length} itens`);
+      for (const bruto of pagina.itens) {
+        const id = ehObjeto(bruto) ? idComoString(bruto.id) : undefined;
+        if (id !== undefined) idsArquivadas.push(id);
+      }
+      maiorDateUpdated = maiorDeDuas(maiorDateUpdated, maiorDateUpdatedDeTarefas(JSON.parse(pagina.corpoCru) as unknown));
+    }
+
+    const todosOsIds = Array.from(new Set([...idsAbertas, ...idsArquivadas]));
+    const idsParaDetalhar = opcoes.limiteDeTarefas !== undefined ? todosOsIds.slice(0, opcoes.limiteDeTarefas) : todosOsIds;
+
+    let detalhes = 0;
+    let comentarios = 0;
+    let paginasDeComentarios = 0;
+    let anexosTotal = 0;
+    let anexosBaixados = 0;
+    let anexosPulados = 0;
+    let timeInStatusTotal = 0;
+    let timeInStatusIndisponivel = 0;
+
+    for (const taskId of idsParaDetalhar) {
+      const corpoDetalhe = await materializarRecurso(path.join(pastaDaLista, "task", `${taskId}.json`), () =>
+        getContado(`/task/${taskId}`),
+      );
+      detalhes += 1;
+      const detalheJson = JSON.parse(corpoDetalhe) as unknown;
+
+      // Comentários — start/start_id (Pattern 2); o índice do arquivo é o
+      // `indice` da página, não o cursor (que é opaco e vem da API).
+      const pastaDeComentarios = path.join(pastaDaLista, "comments", taskId);
+      let proximoIndice = 0;
+      async function buscarPaginaDeComentarios(cursor?: CursorDeComentarios): Promise<RespostaClickUp> {
+        const indice = proximoIndice;
+        proximoIndice += 1;
+        const caminho = path.join(pastaDeComentarios, nomeDePagina(indice));
+        const existente = await lerSeValido(caminho);
+        if (existente !== undefined) return respostaDoDisco(existente);
+        const query = cursor !== undefined ? { start: cursor.start, start_id: cursor.start_id } : undefined;
+        const resposta = await getContado(`/task/${taskId}/comment`, query);
+        await gravarAtomico(caminho, resposta.corpoCru);
+        return resposta;
+      }
+
+      const paginasDeComentariosJson: unknown[] = [];
+      let paginasDaTarefa = 0;
+      let comentariosDaTarefa = 0;
+      for await (const pagina of paginarPorCursor(buscarPaginaDeComentarios, extrairComentarios)) {
+        paginasDaTarefa += 1;
+        comentariosDaTarefa += pagina.itens.length;
+        paginasDeComentariosJson.push(JSON.parse(pagina.corpoCru) as unknown);
+      }
+      paginasDeComentarios += paginasDaTarefa;
+      comentarios += comentariosDaTarefa;
+
+      // time_in_status — best-effort, smoke test na primeira chamada da EXECUÇÃO.
+      if (!timeInStatusOptOut && timeInStatusDisponivel) {
+        const caminhoTis = path.join(pastaDaLista, "time-in-status", `${taskId}.json`);
+        const existenteTis = await lerSeValido(caminhoTis);
+        if (existenteTis !== undefined) {
+          timeInStatusTotal += 1;
+        } else {
+          const primeiraTentativa = !smokeTestFeito;
+          smokeTestFeito = true;
+          try {
+            const resposta = await getContado(`/task/${taskId}/time_in_status`);
+            await gravarAtomico(caminhoTis, resposta.corpoCru);
+            timeInStatusTotal += 1;
+          } catch (erro) {
+            const status = erro instanceof ErroClickUp ? erro.status : 0;
+            if (primeiraTentativa) {
+              timeInStatusDisponivel = false;
+              avisos.push(
+                `time_in_status indisponível (smoke test da lista ${listId}, status ${status}) — recurso não pedido para as demais Tarefas`,
+              );
+            } else {
+              timeInStatusIndisponivel += 1;
+            }
+          }
+        }
+      }
+
+      // Anexos — allowlist de host (T-0-07) e teto de tamanho (T-0-08) antes de qualquer download.
+      let anexosDaTarefa = 0;
+      let anexosBaixadosDaTarefa = 0;
+      for (const anexo of coletarAnexos(taskId, detalheJson, paginasDeComentariosJson)) {
+        anexosDaTarefa += 1;
+        anexosTotal += 1;
+        if (politicaDeAnexos === "nenhuma") continue;
+        if (!hostPermitido(anexo.url)) {
+          anexosPulados += 1;
+          avisos.push(`anexo ${anexo.id} da Tarefa ${taskId} pulado: host não permitido`);
+          continue;
+        }
+        if (anexo.tamanho !== undefined && anexo.tamanho > TAMANHO_MAXIMO_DE_ANEXO) {
+          anexosPulados += 1;
+          avisos.push(`anexo ${anexo.id} da Tarefa ${taskId} pulado: tamanho acima do máximo`);
+          continue;
+        }
+        const caminhoAnexo = caminhoDoAnexo(pastaDaLista, taskId, anexo.id, anexo.titulo);
+        if (await arquivoExisteComTamanho(caminhoAnexo)) {
+          anexosBaixados += 1;
+          anexosBaixadosDaTarefa += 1;
+          continue;
+        }
+        const { bytes } = await baixarContado(anexo.url);
+        await gravarAtomico(caminhoAnexo, bytes);
+        anexosBaixados += 1;
+        anexosBaixadosDaTarefa += 1;
+      }
+
+      coletarUsuarios(usuariosVistos, detalheJson, paginasDeComentariosJson);
+
+      log(`tarefa ${taskId} · comentários ${paginasDaTarefa} páginas · anexos ${anexosBaixadosDaTarefa}/${anexosDaTarefa}`);
+    }
+
+    contagensPorLista.push({
+      listId,
+      paginasDeTarefas: paginasDeTarefasAbertas + paginasDeTarefasArquivadas,
+      tarefas: idsAbertas.length,
+      tarefasArquivadas: idsArquivadas.length,
+      detalhes,
+      comentarios,
+      paginasDeComentarios,
+      anexos: anexosTotal,
+      anexosBaixados,
+      anexosPulados,
+      timeInStatus: timeInStatusTotal,
+      timeInStatusIndisponivel,
+      campos,
+      membros,
+      statusDefinidos,
+      maiorDateUpdated,
+    });
+  }
+
+  const usuariosVistosArray = Array.from(usuariosVistos.values()).sort((a, b) => b.ocorrencias - a.ocorrencias);
+  await gravarAtomico(path.join(opcoes.pastaDestino, "usuarios-vistos.json"), JSON.stringify(usuariosVistosArray, null, 2));
+
+  const resultado: ResultadoDaExportacao = {
+    iniciadaEm,
+    concluidaEm: new Date().toISOString(),
+    amostra,
+    timeInStatusDisponivel: timeInStatusOptOut ? "nao-verificado" : timeInStatusDisponivel,
+    listas: contagensPorLista,
+    usuariosVistos: usuariosVistosArray,
+    avisos,
+    requisicoes,
+  };
+  await gravarAtomico(path.join(opcoes.pastaDestino, "execucao.json"), JSON.stringify(resultado, null, 2));
+
+  return resultado;
 }
