@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 01-15-PLAN.md (esquemas planejamento/escala/membros/estrutura — CR-02 rodada 2, onda 2 concluída)
-last_updated: "2026-09-17T13:30:19.919Z"
+status: verifying
+stopped_at: Completed 01-16-PLAN.md (composição final ESQUEMAS satisfies EsquemasCompletos + rota sem TypeError→400 — CR-02 fechado por inteiro)
+last_updated: "2026-09-17T13:44:41.019Z"
 last_activity: 2026-09-17
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 23
-  completed_plans: 22
-  percent: 17
+  completed_plans: 23
+  percent: 33
 ---
 
 # Project State
@@ -25,14 +25,14 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 
 ## Current Position
 
-Phase: 01 (o-crm-n1-ganha-persist-ncia-e-login) — EXECUTING
-Plan: 16 of 16 (12 completos: 01-01..01-09, 01-10 CR-01, 01-11/01-12 CR-02 rodada 2 onda 1)
-Status: Ready to execute
+Phase: 01 (o-crm-n1-ganha-persist-ncia-e-login) — COMPLETE
+Plan: 16 of 16 (todos completos: 01-01..01-09, 01-10 CR-01, 01-11/01-12/01-13/01-14/01-15/01-16 CR-02 rodada 2)
+Status: Phase complete — ready for verification
 Last activity: 2026-09-17
 
-Progress: [██████░░░░] 75% (12/16 planos GSD na Phase 1; em requisitos: 4/34 feitos, 2 deles da Phase 1 — PERS-09 fechado; PERS-04 com ressalva até o Plan 01-16 fechar CR-02 por inteiro)
+Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PERS-04 fechado sem ressalva — CR-02 fechado por inteiro no Plan 01-16)
 
-**Fase 1 em execução (segunda rodada de CR-02):** os 9 planos originais (01-01..01-09), o gap-closure de CR-01 (01-10) e a primeira rodada de CR-02 (01-11) estão feitos e commitados. A re-verificação de 2026-09-16T20:16Z (`01-VERIFICATION.md`) encontrou CR-02 ainda parcialmente aberto (efeito 2 — `ARGUMENTOS_GENERICOS` não barra tipo/enum errado nas ~109 operações fora de `ESQUEMAS` — e WR-10 — `reviverArgumentos` sem limite de profundidade); decisão: cobertura total em 5 planos (01-12 fundação+WR-10, feito; 01-13/14/15 schemas por módulo em paralelo; 01-16 composição final). Plan 01-12 fechou WR-10 e criou `esquemas/fragmentos.ts` + o molde `tarefas.ts`/`automacoes.ts`/`financeiro.ts` que 01-13/14/15 copiam. `npm run check` verde nos três workspaces. PERS-08 (deploy do `apps/api`) continua bloqueado por D11 — não é gap de código, é decisão de infraestrutura fora do escopo desta fase.
+**Fase 1 fechada (segunda rodada de CR-02 concluída):** os 9 planos originais (01-01..01-09), o gap-closure de CR-01 (01-10) e as cinco rodadas de fechamento de CR-02 (01-11..01-16) estão feitos e commitados. A re-verificação de 2026-09-16T20:16Z (`01-VERIFICATION.md`) tinha encontrado CR-02 parcialmente aberto (efeito 2 — `ARGUMENTOS_GENERICOS` não barrava tipo/enum errado nas ~109 operações fora de `ESQUEMAS` — e WR-10 — `reviverArgumentos` sem limite de profundidade); a decisão de cobertura total em 5 planos (01-12 fundação+WR-10; 01-13/14/15 schemas por módulo em paralelo; 01-16 composição final) está executada: `ESQUEMAS` cobre as 132 operações sob `satisfies EsquemasCompletos`, sem fallback, e o mapeamento `TypeError → 400` saiu da rota (WR-11). `npm run check` verde nos três workspaces (dominio 253, web 53, api 163). PERS-08 (deploy do `apps/api`) continua bloqueado por D11 — não é gap de código, é decisão de infraestrutura fora do escopo desta fase. Pronta para nova rodada de `/gsd-verify-phase 1`.
 
 **Aberto na Phase 0 (paralela):** spec da Solicitação de pagamento (PREP-03 — maior risco do plano), exportação do ClickUp (PREP-02), de-para de usuários (PREP-04), rotação das credenciais Omie (PREP-05, fora deste repo). Nada disso bloqueia terminar a Phase 1; PREP-03 e PREP-04 **bloqueiam a Phase 2**.
 
@@ -77,6 +77,7 @@ Progress: [██████░░░░] 75% (12/16 planos GSD na Phase 1; em 
 | Phase 01 P13 | 20min | 2 tasks | 6 files |
 | Phase 01 P14 | 40min | 2 tasks | 10 files |
 | Phase 01 P15 | 35min | 2 tasks | 8 files |
+| Phase 01 P16 | 40min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -117,6 +118,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 01]: Plan 01-13 fechou esquemas/negocios.ts (12), esquemas/conversas.ts (11) e esquemas/contatos.ts (17) — 40/40 operações do CRM (deals/conversations/contacts) com schema próprio satisfies Esquemas, DEAL_CONTACT_ROLE/CONTACT_IDENTIFIER_TYPE/COMPANY_IDENTIFIER_TYPE fechados por Igual/Confere; provado contra os call sites reais de apps/web. Roda em paralelo com 01-14/01-15; ESQUEMAS e a rota só mudam no Plan 01-16 (composição final). PERS-04 continua com a ressalva de 01-VERIFICATION.md.
 - [Phase 01]: Plan 01-14 fechou esquemas/ia.ts (7), esquemas/pastas-de-chat.ts (4), esquemas/construtor-de-agentes.ts (2), esquemas/configuracao.ts (14) e esquemas/colaboracao.ts (9) — 36/36 operações de IA/Chat/configuração/colaboração com schema próprio satisfies Esquemas, CHAT_ANCHOR_TYPE/FIELD_TYPE/FEATURE/DEPENDENCY_KIND/MEDIA_TYPE fechados por Igual/Confere; provado contra os call sites reais de apps/web, inclusive AgentDraft (4 níveis) e RecurrenceRule (copies aninhado). createChatFolder ganha { name: z.string() }.strict() — o caso (q) de operacoes.test.ts passa a cair no schema, não mais em TypeError; o reapontamento é do Plan 01-16. Roda em paralelo com 01-13/01-15; ESQUEMAS e a rota só mudam no Plan 01-16 (composição final). PERS-04 continua com a ressalva de 01-VERIFICATION.md.
 - [Phase 01]: Plan 01-15 fechou esquemas/planejamento.ts (11), esquemas/escala.ts (14), esquemas/membros.ts (5) e esquemas/estrutura.ts (3) — 33/33 operações de planejamento/escala/Membros/estrutura com schema próprio satisfies Esquemas. As duas formas hostis que o verificador reproduziu contra ARGUMENTOS_GENERICOS (createGoal kind:42+anchor.lixo, saveView filters arbitrário) caem em teste puro. inviteMember ganha entrada em ESQUEMAS com o único .strip() da pasta — segunda barreira de T-1-08, SERVICOS.inviteMember em operacoes.ts intocado. Roda em paralelo com 01-13/01-14; ESQUEMAS e a rota só mudam no Plan 01-16 (composição final). PERS-04 continua com a ressalva de 01-VERIFICATION.md.
+- [Phase 01]: Plan 01-16 fechou CR-02 por inteiro: ESQUEMAS = spread dos 15 arquivos de esquemas/ satisfies EsquemasCompletos (portão de completude — operação de OPERACOES sem schema não compila), ARGUMENTOS_GENERICOS/fallback estrutural removidos, mapeamento TypeError->400 removido da rota (WR-11, por remoção — não existe mais operação sem schema). createGoal (kind:42+anchor.lixo) e saveView (filters arbitrário) provados 400 por HTTP com nada persistido (casos (t)/(u)/(v)); (q) reapontado para cair pelo schema de createChatFolder. npm run check verde (dominio 253, web 53, api 163); packages/dominio, apps/web e apps/api/src/app.ts sem diff em toda a rodada 01-12..01-16. PERS-04 marcado como requisito concluido — a ressalva de 01-VERIFICATION.md se dissolve. Fase 1: 16/16 planos GSD executados — instrução explícita do orquestrador para este plano de fechamento (onda 3 de 3 da segunda rodada de CR-02)
 
 ### Pending Todos
 
@@ -149,6 +151,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-17T13:30:19.911Z
-Stopped at: Completed 01-15-PLAN.md (esquemas planejamento/escala/membros/estrutura — CR-02 rodada 2, onda 2 concluída)
+Last session: 2026-09-17T13:44:41.012Z
+Stopped at: Completed 01-16-PLAN.md (composição final ESQUEMAS satisfies EsquemasCompletos + rota sem TypeError→400 — CR-02 fechado por inteiro)
 Resume file: 
