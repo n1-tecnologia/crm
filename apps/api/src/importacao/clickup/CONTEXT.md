@@ -24,26 +24,44 @@ página, mais novo primeiro) — dois generators independentes, cada um com
 teto (`TETO_DE_PAGINAS`) contra loop sem fim. `paginarPorCursor` deduplica
 por `id` porque a API é inclusiva (repete o item-cursor na página seguinte).
 
-## `exportar.ts` (chega no Plan 00-03)
+## `exportar.ts`
 
-`exportarClickUp(opcoes)` — orquestra: Campos → Membros → Tarefas (abertas e
-arquivadas) → Comentários → `time_in_status` → anexos, por Lista. Grava um
-arquivo por recurso/página em `apps/api/exportacoes/clickup/`, pulando o que
-já existe em disco (retomada natural — Pitfall 4 do RESEARCH.md). Não
-transforma o JSON da API (D-03).
+`exportarClickUp(opcoes)` — orquestra, por Lista: Lista → Campos → Membros →
+Tarefas (abertas + arquivadas, duas passadas) → detalhe por Tarefa →
+Comentários → `time_in_status` (smoke-testado por execução: a primeira falha
+4xx desliga o recurso para toda a chamada) → anexos (allowlist de host,
+teto de tamanho). Grava um arquivo por recurso/página em
+`apps/api/exportacoes/clickup/`, sempre atômico (`.tmp` + `rename`); antes
+de qualquer chamada de rede, confere se o arquivo já existe e é válido — o
+próprio filesystem é o checkpoint da retomada, sem mecanismo separado. Não
+transforma o JSON da API (D-03): grava o `corpoCru` exato, nunca
+reserializado. Devolve `ResultadoDaExportacao` (contagens por Lista, user
+ids vistos com contagem, avisos, requisições feitas nesta execução).
 
-## `exportar.cli.ts` (chega no Plan 00-03)
+## `exportar.cli.ts`
 
-`npm run exportar:clickup -w @n1/api` — CLI fino, só composição:
-`carregarEnv()`, chama `exportarClickUp`, formata o resultado. Aceita
-`--lista`, `--amostra`, `--sem-anexos`, `--sem-time-in-status`, `--pasta`,
-`--so-manifesto`.
+`npm run exportar:clickup -w @n1/api [-- flags]` — CLI fino, só composição:
+`carregarEnv()` → `criarClienteClickUp` → `exportarClickUp` →
+`gerarManifesto` → `escreverManifesto`; nunca toca o Postgres. Flags:
+`--lista=<id>` (repetível), `--amostra=<n>` (limita Tarefas por Lista,
+manifesto sai com `amostra: true`), `--sem-anexos`, `--sem-time-in-status`,
+`--pasta=<dir>` (default `apps/api/exportacoes/clickup/`), `--so-manifesto`
+(pula a exportação, só regenera `MANIFESTO.*` do que já está em disco). Sem
+`CLICKUP_API_TOKEN`, sai com `exit 1` apontando `apps/api/.env.example`
+(exceto com `--so-manifesto`, que não precisa de token). Loga em
+`exportacao.log`, dentro da pasta de destino — nunca o token, nunca corpo de
+Tarefa/Comentário.
 
-## `manifesto.ts` (chega no Plan 00-04)
+## `manifesto.ts`
 
-`gerarManifesto` — sha256 por arquivo exportado + contagens por Lista e por
-recurso, recontadas do disco (nunca confiadas em memória); escreve
-`apps/api/exportacoes/MANIFESTO.md`/`MANIFESTO.json`, a prova de paridade
+`gerarManifesto({ pastaExportada, exportadoEm, commit })` — sha256 por
+arquivo (`hashDoArquivo`, streaming) + `hashAgregado` determinístico;
+contagens por Lista e por recurso SEMPRE recontadas do disco
+(`contarRecursos`), nunca confiadas na memória de uma execução anterior;
+`usuariosVistos` vem de `usuarios-vistos.json` sem o campo `nome` (D-02).
+`manifestoEmMarkdown` resume por Lista, nunca lista arquivo a arquivo (isso
+é só o `.json`). `escreverManifesto` grava os dois em
+`apps/api/exportacoes/` — fora da pasta ignorada, a prova de paridade
 (CON-09) sem expor dado pessoal.
 
 ## `de-para-usuarios.ts` (chega no Plan 00-02)

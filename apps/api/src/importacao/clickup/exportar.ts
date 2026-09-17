@@ -123,6 +123,19 @@ export interface AnexoReferenciado {
 /** Só ids simples — nunca `/`, nunca `..` — entram num caminho de arquivo (T-0-06). */
 const ID_DE_CAMINHO_VALIDO = /^[A-Za-z0-9_-]+$/;
 
+/**
+ * O id de um anexo NUNCA vira um segmento de diretório sozinho — sempre
+ * concatenado como `${attachmentId}-${nome sanitizado}`, um único nome de
+ * arquivo — por isso pode conter `.` (a API real devolve alguns anexos
+ * embutidos em Comentário com id em formato de nome de arquivo, ex.: um
+ * UUID + extensão, ex.: `97df775c-...-b45.png`; descoberto rodando o CLI do
+ * Plan 00-04 contra a API real). Ainda assim recusa `/`, `\` e o valor
+ * exato `.`/`..` (que, sozinhos, teriam significado de diretório) — o
+ * resultado continua conferido contra a pasta esperada logo abaixo, defesa
+ * em profundidade que não depende só desta regex (T-0-06).
+ */
+const ID_DE_ANEXO_VALIDO = /^[A-Za-z0-9._-]+$/;
+
 function ehObjeto(valor: unknown): valor is Record<string, unknown> {
   return typeof valor === "object" && valor !== null;
 }
@@ -165,7 +178,12 @@ export function caminhoDoAnexo(
   attachmentId: string,
   titulo: string,
 ): string {
-  if (!ID_DE_CAMINHO_VALIDO.test(taskId) || !ID_DE_CAMINHO_VALIDO.test(attachmentId)) {
+  if (
+    !ID_DE_CAMINHO_VALIDO.test(taskId) ||
+    !ID_DE_ANEXO_VALIDO.test(attachmentId) ||
+    attachmentId === "." ||
+    attachmentId === ".."
+  ) {
     throw new Error(
       `caminhoDoAnexo: taskId ou attachmentId fora do formato esperado (taskId="${taskId}", attachmentId="${attachmentId}")`,
     );

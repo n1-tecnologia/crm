@@ -113,6 +113,17 @@ describe("exportar — utilitários: caminho, retomada, coleta", () => {
     expect(() => caminhoDoAnexo(base, "../fora", "att1", "x.pdf")).toThrow();
     expect(() => caminhoDoAnexo(base, "9hz", "../fora", "x.pdf")).toThrow();
     expect(() => caminhoDoAnexo(base, "9hz/outro", "att1", "x.pdf")).toThrow();
+
+    // Descoberto contra a API real (Plan 00-04): alguns anexos embutidos em
+    // Comentário têm `id` em formato de nome de arquivo (UUID + extensão) —
+    // o `.` precisa ser aceito aqui, mas nunca como caminho de diretório.
+    const idComoNomeDeArquivo = "97df775c-b4ab-4bec-beac-dbcf74311b45.png";
+    const caminhoComPonto = caminhoDoAnexo(base, "9hz", idComoNomeDeArquivo, "comprovante.png");
+    expect(caminhoComPonto.startsWith(pastaEsperada + path.sep)).toBe(true);
+    expect(path.basename(caminhoComPonto).startsWith(`${idComoNomeDeArquivo}-`)).toBe(true);
+
+    expect(() => caminhoDoAnexo(base, "9hz", ".", "x.pdf")).toThrow();
+    expect(() => caminhoDoAnexo(base, "9hz", "..", "x.pdf")).toThrow();
   });
 
   it("(c) gravarAtomico grava o texto exato sem deixar .tmp para trás; lerSeValido distingue ausente/vazio/inválido/válido", async () => {
