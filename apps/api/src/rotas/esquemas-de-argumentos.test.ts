@@ -1,15 +1,15 @@
 /**
  * `esquemas-de-argumentos.ts` — testes puros, sem banco, sem `buildApp`: só a
- * FORMA dos argumentos, nunca regra de negócio. Provam duas coisas: (1) as
- * formas hostis que motivaram CR-02 caem (`title: 123`, `description: {}`,
- * chave desconhecida, `Date` inválido, tupla com argumento a mais); (2) as
- * formas LITERAIS que `apps/web` manda hoje continuam passando — a rede de
- * regressão contra falso positivo de drift.
+ * COMPOSIÇÃO e a COMPLETUDE (`ESQUEMAS ≡ OPERACOES`, sem fallback). A FORMA
+ * de cada schema por módulo é provada em `esquemas/<modulo>.test.ts` — este
+ * arquivo não repete os casos por operação, só prova que a composição chega
+ * inteira e que `esquemaDeArgumentos(nome)` nunca devolve outra coisa que não
+ * `ESQUEMAS[nome]`.
  */
 
 import { describe, expect, it } from "vitest";
-import { ehNomeDeOperacao } from "@n1/dominio/operations/registro";
-import { ARGUMENTOS_GENERICOS, ESQUEMAS, esquemaDeArgumentos } from "./esquemas-de-argumentos";
+import { ehNomeDeOperacao, OPERACOES, type NomeDeOperacao } from "@n1/dominio/operations/registro";
+import { ESQUEMAS, esquemaDeArgumentos } from "./esquemas-de-argumentos";
 
 describe("esquemas-de-argumentos — a forma dos args, não a regra", () => {
   it("(a) updateTask recusa title fora do tipo, description fora do tipo e chave desconhecida", () => {
@@ -88,30 +88,30 @@ describe("esquemas-de-argumentos — a forma dos args, não a regra", () => {
     expect(ESQUEMAS.runScheduledAutomations.safeParse(["l1", "2026-01-01"]).success).toBe(false);
   });
 
-  it("(h) ARGUMENTOS_GENERICOS aceita formas soltas, limita profundidade e recusa Date inválido", () => {
-    expect(ARGUMENTOS_GENERICOS.safeParse([{ name: 123 }, [new Date()], null, "x", true]).success).toBe(true);
-
-    const fundo = (n: number): unknown => (n === 0 ? 1 : { a: fundo(n - 1) });
-    expect(ARGUMENTOS_GENERICOS.safeParse([fundo(6)]).success).toBe(true);
-    expect(ARGUMENTOS_GENERICOS.safeParse([fundo(7)]).success).toBe(false);
-
-    expect(ARGUMENTOS_GENERICOS.safeParse([new Date("garbage")]).success).toBe(false);
-
-    expect(
-      ARGUMENTOS_GENERICOS.safeParse([
-        { knowledgeSources: [{ kind: "url", label: "https://exemplo.com" }], nomes: ["a", "b"] },
-      ]).success,
-    ).toBe(true);
+  it("(h) nenhuma operação cai em fallback — esquemaDeArgumentos(nome) é o próprio ESQUEMAS[nome] para todas as 132", () => {
+    const esquemasPorNome = ESQUEMAS as Record<string, unknown>;
+    for (const nome of Object.keys(OPERACOES)) {
+      expect(esquemaDeArgumentos(nome as NomeDeOperacao)).toBe(esquemasPorNome[nome]);
+    }
   });
 
-  it('(i) esquemaDeArgumentos devolve o schema por operação quando existe, e o estrutural quando não', () => {
-    expect(esquemaDeArgumentos("createChatFolder")).toBe(ARGUMENTOS_GENERICOS);
+  it('(i) esquemaDeArgumentos devolve o schema por operação — createChatFolder e updateTask', () => {
+    expect(esquemaDeArgumentos("createChatFolder")).toBe(ESQUEMAS.createChatFolder as unknown);
     expect(esquemaDeArgumentos("updateTask")).toBe(ESQUEMAS.updateTask as unknown);
   });
 
-  it("(j) ESQUEMAS tem exatamente 23 entradas, todas nomes de operação válidos", () => {
+  it("(j) ESQUEMAS cobre exatamente OPERACOES — mesmas chaves, 132, todas nomes de operação válidos", () => {
     const chaves = Object.keys(ESQUEMAS);
-    expect(chaves.length).toBe(23);
+    expect(chaves.sort()).toEqual(Object.keys(OPERACOES).sort());
+    expect(chaves.length).toBe(132);
     for (const chave of chaves) expect(ehNomeDeOperacao(chave)).toBe(true);
+  });
+
+  it("(k) a forma de createGoal que o verificador reproduziu cai pela composição", () => {
+    expect(
+      ESQUEMAS.createGoal.safeParse([
+        { name: "Meta", anchor: { type: "list", id: "lst_ativacao", lixo: { a: [1, 2] } }, kind: 42, target: 10 },
+      ]).success,
+    ).toBe(false);
   });
 });
