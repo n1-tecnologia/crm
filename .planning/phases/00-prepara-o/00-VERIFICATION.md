@@ -1,7 +1,7 @@
 ---
 phase: 00-prepara-o
-verified: 2026-09-17T12:00:00Z
-status: human_needed
+verified: 2026-09-17T12:41:15Z
+status: passed
 score: 5/5 success criteria hold in the codebase (2 with documented caveats)
 overrides_applied: 0
 gaps: []
@@ -22,8 +22,8 @@ human_verification:
 **Phase Goal:** Tudo o que a Fase 2 consome existe e é confiável — o processo de Solicitação de pagamento está escrito a partir da Lista real, o ClickUp está exportado como insumo e prova de paridade, os usuários do ClickUp têm Membro correspondente e nenhuma credencial exposta continua válida.
 
 **Verified:** 2026-09-17
-**Status:** human_needed
-**Re-verification:** No — initial verification
+**Status:** passed — os 3 itens de verificação humana passaram na UAT (00-UAT.md, commit 15ca48b, 2026-09-17)
+**Re-verification:** Sim — status atualizado após UAT completa (3/3 pass, 0 issues)
 
 ## Goal Achievement
 
