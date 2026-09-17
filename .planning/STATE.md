@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-12-PLAN.md (WR-10 + fundação dos schemas por módulo, CR-02 rodada 2, onda 1)
-last_updated: "2026-09-17T13:00:48.601Z"
+stopped_at: Completed 01-13-PLAN.md (esquemas negocios/conversas/contatos — CR-02 rodada 2, onda 2)
+last_updated: "2026-09-17T13:11:14.566Z"
 last_activity: 2026-09-17
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 23
-  completed_plans: 19
+  completed_plans: 20
   percent: 17
 ---
 
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 01 (o-crm-n1-ganha-persist-ncia-e-login) — EXECUTING
-Plan: 13 of 16 (12 completos: 01-01..01-09, 01-10 CR-01, 01-11/01-12 CR-02 rodada 2 onda 1)
-Status: Executing Phase 01
+Plan: 14 of 16 (12 completos: 01-01..01-09, 01-10 CR-01, 01-11/01-12 CR-02 rodada 2 onda 1)
+Status: Ready to execute
 Last activity: 2026-09-17
 
 Progress: [██████░░░░] 75% (12/16 planos GSD na Phase 1; em requisitos: 4/34 feitos, 2 deles da Phase 1 — PERS-09 fechado; PERS-04 com ressalva até o Plan 01-16 fechar CR-02 por inteiro)
@@ -74,6 +74,7 @@ Progress: [██████░░░░] 75% (12/16 planos GSD na Phase 1; em 
 | Phase 00 P06 | 35min | 3 tasks | 1 files |
 | Phase 00 P07 | 35min | 2 tasks | 3 files |
 | Phase 01 P12 | 35min | 3 tasks | 8 files |
+| Phase 01 P13 | 20min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -111,6 +112,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 00]: Plan 00-06: PREP-03 fechado — docs/07-processos/solicitacao-de-pagamento.md (326 linhas, §1-§12) lida da exportação real da Lista 901109104938 (19 Tarefas) + código do automation/ (payment-rules.ts, clickup-payment-mapper.ts, payment-automation-service.ts, adapters/ai.ts, http/routes.ts); D6 e D8 fechados por texto; OQ-CMP-01/02/04 absorvidos. Diretriz geral do dono (2026-09-17) fechou L-02 (só os 4 Status atuais são oficiais) e L-08 (RESUMO funciona como no ClickUp, Markdown nos Comentarios); L-04, L-05, L-06, L-10 fechados por derivacao de codigo/exportacao (Cartao vira 4a opcao, W-Equipe fica como esta, creator=ClickBot em 6/19 Tarefas confirma Formulario coexistindo com Membro, mesma funcao resolveAccountConfig/resolveCategoryCodeAgainstOmie usada por Solicitacao e Contas a pagar). L-01 (momento em que a Conta a pagar nasce), L-03 (divergencia nao bloqueante em 868jxd42g), L-07 (cobranca quando Aprovador nao responde), L-09 (data de revisao do fallback) e L-11 (Revisor do RESUMO como Papel oficial) continuam abertos em §12 sem marcador, devolvidos ao dono para decisao antes/durante o planejamento da Fase 2. — A spec e pre-requisito de toda a Fase 2 (SOL-01..09); fechar o maximo possivel por dado real e codigo (em vez de esperar resposta item-a-item do dono) reduz o numero de decisoes humanas pendentes a so 5, todas genuinamente fora do alcance da exportacao/automation.
 - [Phase 00]: Plan 00-07: Fase 0 fechada — PREP-01..06 com status Complete/[x] e prova (commit ou decisão D-13) em REQUIREMENTS.md; PREP-05 (rotação Omie) é risco aceito pelo dono em 2026-09-16, não pendente; ROADMAP.md não editado pelas tasks de código (a Task 1 verificou git diff --quiet), mas ajustado no fechamento do plano — critério 4 e linha do índice da Phase 0 (ver SUMMARY 00-07 para o texto exato e o porquê de não ficar pendente para um orquestrador separado); README.md do apps/api ganha a seção de exportação do ClickUp; npm run check verde (dominio 253, api 120, web 53) com e sem CLICKUP_API_TOKEN/DATABASE_URL no shell
 - [Phase 01]: Plan 01-12 fechou WR-10 (reviverArgumentos dentro de try/catch na rota, RangeError vira 400, caso (s) 10.000 níveis) e criou a fundação dos schemas por módulo — esquemas/fragmentos.ts (portão de enum bidirecional Igual<A,B>/Confere<T>, IN-10) + esquemas/{tarefas,automacoes,financeiro}.ts, esquemas-de-argumentos.ts reduzido à composição por spread; molde que os Plans 01-13/14/15 copiam para os outros 12 módulos do domínio. Cobertura total (opção b) escolhida sobre 404-para-sem-schema (opção a): 128/132 operações são chamadas de fato por apps/web — nenhuma foi marcada como fechando PERS-04 (o gap CR-02 só fecha por inteiro no Plan 01-16)
+- [Phase 01]: Plan 01-13 fechou esquemas/negocios.ts (12), esquemas/conversas.ts (11) e esquemas/contatos.ts (17) — 40/40 operações do CRM (deals/conversations/contacts) com schema próprio satisfies Esquemas, DEAL_CONTACT_ROLE/CONTACT_IDENTIFIER_TYPE/COMPANY_IDENTIFIER_TYPE fechados por Igual/Confere; provado contra os call sites reais de apps/web. Roda em paralelo com 01-14/01-15; ESQUEMAS e a rota só mudam no Plan 01-16 (composição final). PERS-04 continua com a ressalva de 01-VERIFICATION.md.
 
 ### Pending Todos
 
@@ -143,6 +145,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-17T13:00:21.322Z
-Stopped at: Completed 01-12-PLAN.md (WR-10 + fundação dos schemas por módulo, CR-02 rodada 2, onda 1)
-Resume file: None
+Last session: 2026-09-17T13:11:14.559Z
+Stopped at: Completed 01-13-PLAN.md (esquemas negocios/conversas/contatos — CR-02 rodada 2, onda 2)
+Resume file: 
