@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-14-PLAN.md (esquemas ia/pastas-de-chat/construtor-de-agentes/configuracao/colaboracao — CR-02 rodada 2, onda 2)
-last_updated: "2026-09-17T13:20:24.551Z"
+stopped_at: Completed 01-15-PLAN.md (esquemas planejamento/escala/membros/estrutura — CR-02 rodada 2, onda 2 concluída)
+last_updated: "2026-09-17T13:30:19.919Z"
 last_activity: 2026-09-17
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 23
-  completed_plans: 21
+  completed_plans: 22
   percent: 17
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 01 (o-crm-n1-ganha-persist-ncia-e-login) — EXECUTING
-Plan: 15 of 16 (12 completos: 01-01..01-09, 01-10 CR-01, 01-11/01-12 CR-02 rodada 2 onda 1)
+Plan: 16 of 16 (12 completos: 01-01..01-09, 01-10 CR-01, 01-11/01-12 CR-02 rodada 2 onda 1)
 Status: Ready to execute
 Last activity: 2026-09-17
 
@@ -76,6 +76,7 @@ Progress: [██████░░░░] 75% (12/16 planos GSD na Phase 1; em 
 | Phase 01 P12 | 35min | 3 tasks | 8 files |
 | Phase 01 P13 | 20min | 2 tasks | 6 files |
 | Phase 01 P14 | 40min | 2 tasks | 10 files |
+| Phase 01 P15 | 35min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -115,6 +116,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 01]: Plan 01-12 fechou WR-10 (reviverArgumentos dentro de try/catch na rota, RangeError vira 400, caso (s) 10.000 níveis) e criou a fundação dos schemas por módulo — esquemas/fragmentos.ts (portão de enum bidirecional Igual<A,B>/Confere<T>, IN-10) + esquemas/{tarefas,automacoes,financeiro}.ts, esquemas-de-argumentos.ts reduzido à composição por spread; molde que os Plans 01-13/14/15 copiam para os outros 12 módulos do domínio. Cobertura total (opção b) escolhida sobre 404-para-sem-schema (opção a): 128/132 operações são chamadas de fato por apps/web — nenhuma foi marcada como fechando PERS-04 (o gap CR-02 só fecha por inteiro no Plan 01-16)
 - [Phase 01]: Plan 01-13 fechou esquemas/negocios.ts (12), esquemas/conversas.ts (11) e esquemas/contatos.ts (17) — 40/40 operações do CRM (deals/conversations/contacts) com schema próprio satisfies Esquemas, DEAL_CONTACT_ROLE/CONTACT_IDENTIFIER_TYPE/COMPANY_IDENTIFIER_TYPE fechados por Igual/Confere; provado contra os call sites reais de apps/web. Roda em paralelo com 01-14/01-15; ESQUEMAS e a rota só mudam no Plan 01-16 (composição final). PERS-04 continua com a ressalva de 01-VERIFICATION.md.
 - [Phase 01]: Plan 01-14 fechou esquemas/ia.ts (7), esquemas/pastas-de-chat.ts (4), esquemas/construtor-de-agentes.ts (2), esquemas/configuracao.ts (14) e esquemas/colaboracao.ts (9) — 36/36 operações de IA/Chat/configuração/colaboração com schema próprio satisfies Esquemas, CHAT_ANCHOR_TYPE/FIELD_TYPE/FEATURE/DEPENDENCY_KIND/MEDIA_TYPE fechados por Igual/Confere; provado contra os call sites reais de apps/web, inclusive AgentDraft (4 níveis) e RecurrenceRule (copies aninhado). createChatFolder ganha { name: z.string() }.strict() — o caso (q) de operacoes.test.ts passa a cair no schema, não mais em TypeError; o reapontamento é do Plan 01-16. Roda em paralelo com 01-13/01-15; ESQUEMAS e a rota só mudam no Plan 01-16 (composição final). PERS-04 continua com a ressalva de 01-VERIFICATION.md.
+- [Phase 01]: Plan 01-15 fechou esquemas/planejamento.ts (11), esquemas/escala.ts (14), esquemas/membros.ts (5) e esquemas/estrutura.ts (3) — 33/33 operações de planejamento/escala/Membros/estrutura com schema próprio satisfies Esquemas. As duas formas hostis que o verificador reproduziu contra ARGUMENTOS_GENERICOS (createGoal kind:42+anchor.lixo, saveView filters arbitrário) caem em teste puro. inviteMember ganha entrada em ESQUEMAS com o único .strip() da pasta — segunda barreira de T-1-08, SERVICOS.inviteMember em operacoes.ts intocado. Roda em paralelo com 01-13/01-14; ESQUEMAS e a rota só mudam no Plan 01-16 (composição final). PERS-04 continua com a ressalva de 01-VERIFICATION.md.
 
 ### Pending Todos
 
@@ -147,6 +149,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-17T13:20:24.543Z
-Stopped at: Completed 01-14-PLAN.md (esquemas ia/pastas-de-chat/construtor-de-agentes/configuracao/colaboracao — CR-02 rodada 2, onda 2)
+Last session: 2026-09-17T13:30:19.911Z
+Stopped at: Completed 01-15-PLAN.md (esquemas planejamento/escala/membros/estrutura — CR-02 rodada 2, onda 2 concluída)
 Resume file: 
