@@ -12,6 +12,7 @@
  * (sem banco, (k)–(o)) ou por `TypeError` mapeado dentro dela (com banco,
  * (p)–(q)) — nada chega ao `jsonb`; (r) prova que o caminho feliz continua
  * inteiro.
+ * (s) prova WR-10 — o reviver protegido antes de qualquer schema.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -163,6 +164,24 @@ describe("POST /operacoes/:nome — sem banco", () => {
     });
     expect(resposta.statusCode).toBe(400);
     expect(resposta.json().ok).toBe(false);
+  });
+
+  it("(s) corpo com 10.000 níveis de arrays aninhados em args responde 400 antes de qualquer schema — nunca 500 (WR-10)", async () => {
+    // Limiar medido neste repositório: `reviverArgumentos` lança `RangeError`
+    // a partir de ~3.000 níveis. 10.000 níveis são 20 KB — 50× abaixo do
+    // `bodyLimit` padrão (1 MiB) — e estouram com folga.
+    const n = 10000;
+    const corpo = `{"args":[${"[".repeat(n)}${"]".repeat(n)}]}`;
+    const resposta = await appDeTeste().inject({
+      method: "POST",
+      url: "/operacoes/updateTask",
+      headers: { authorization: "Bearer token-maryane", "content-type": "application/json" },
+      payload: corpo,
+    });
+    expect(resposta.statusCode).toBe(400);
+    const respostaCorpo = resposta.json();
+    expect(respostaCorpo.ok).toBe(false);
+    expect(respostaCorpo.error).toBe('Entrada inválida para "updateTask".');
   });
 });
 

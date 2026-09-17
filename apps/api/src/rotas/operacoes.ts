@@ -10,8 +10,9 @@
  * (`OperationResult.ok:false`) viaja em 200: é valor, não falha de
  * transporte (Pitfall 2, RESEARCH.md) — 4xx/5xx são reservados a falhas de
  * transporte (401/403 do hook, 404 nome fora do registro, 400 entrada
- * inválida — schema da operação (`esquemas-de-argumentos.ts`) ou `TypeError`
- * dentro dela (CR-02), 409 conflito de revisão, 500 erro não tratado, que
+ * inválida — schema da operação (`esquemas-de-argumentos.ts`), `TypeError`
+ * dentro dela (CR-02), ou aninhamento de `args` além do que `reviverArgumentos`
+ * suporta (WR-10) — 409 conflito de revisão, 500 erro não tratado, que
  * sobe ao `setErrorHandler` de `app.ts`).
  *
  * O Membro atuante é SEMPRE `request.membro.id`, resolvido pelo hook de
@@ -117,12 +118,33 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
         return reply.code(404).send({ ok: false, error: `Operação "${nome}" não existe.` });
       }
 
+      // WR-10 — `JSON.parse` do Node é iterativo e aceita qualquer
+      // profundidade abaixo do `bodyLimit`; `reviver` (`registro.ts`) é
+      // recursão direta e estoura a pilha a partir de ~3.000 níveis
+      // (medido) — por isso o revive é o PRIMEIRO ponto que precisa de
+      // proteção, antes de qualquer schema. O `RangeError` é capturado AQUI
+      // e não limitado dentro do próprio `reviver` porque o reviver mora em
+      // `packages/dominio`, que não conhece HTTP (regra de camada,
+      // `CONTEXT.md` da raiz).
+      let revividos: unknown[];
+      try {
+        revividos = reviverArgumentos(request.body.args);
+      } catch (erro) {
+        if (erro instanceof RangeError) {
+          request.log.warn(
+            { operacao: nome, membro: request.membro.id, causa: "RangeError em reviverArgumentos" },
+            "Argumentos aninhados além do que o reviver suporta — tratado como entrada inválida",
+          );
+          return reply.code(400).send({ ok: false, error: mensagemDeEntradaInvalida(nome) });
+        }
+        throw erro;
+      }
+
       // CR-02 — a FORMA dos args, validada ANTES do despacho: schema por
       // operação para as 23 mais expostas, estrutural para as demais. O
       // dado que segue é `validacao.data`, re-criado pelo zod só com o que
       // o schema conhece (`.strict()`; `null` de posicional opcional já
       // virado `undefined`) — nunca os `args` crus do corpo.
-      const revividos = reviverArgumentos(request.body.args);
       const validacao = esquemaDeArgumentos(nome).safeParse(revividos);
       if (!validacao.success) {
         request.log.warn(
