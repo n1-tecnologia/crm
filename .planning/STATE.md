@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 00-03-PLAN.md (exportar.ts — orquestração retomável, smoke test time_in_status, anexos com política)
-last_updated: "2026-09-17T00:07:58.728Z"
+stopped_at: Completed 00-04-PLAN.md (manifesto.ts, exportar.cli.ts, exportar.integration.test.ts contra a API real)
+last_updated: "2026-09-17T00:31:29.796Z"
 last_activity: 2026-09-16 -- Phase 00 execution started
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 23
-  completed_plans: 14
+  completed_plans: 15
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 00 (prepara-o) — EXECUTING
-Plan: 4 of 7
+Plan: 5 of 7
 Status: Ready to execute
 Last activity: 2026-09-16 -- Phase 00 execution started
 
@@ -69,6 +69,7 @@ Progress: [██████████] 100% (11/11 planos GSD; em requisitos
 | Phase 00 P01 | 20min | 3 tasks | 10 files |
 | Phase 00 P02 | 24min | 2 tasks | 3 files |
 | Phase 00 P03 | 16min | 2 tasks | 2 files |
+| Phase 00 P04 | 30min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -99,6 +100,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 00]: Plan 00-02: 5/6 e-mails do de-para resolvidos via GET /team real; revisor FO 81581802 não encontrado (provável Team Family Office/Marcos Paulo 9011658148, fora do alcance do token da Tria) — entrada explícita fonteDoEmail: nao-resolvido, email vazio recusado por inviteMember, sem inventar valor; PREP-04 fica parcial até o dono informar o e-mail real
 - [Phase 00]: Plan 00-02: CLICKUP_CONTAS_A_PAGAR_ID e variantes MP_/FO_ reclassificadas de id-de-lista para id-de-usuario no catálogo (Rule 1) — o código real usa contasAPagarUserId=81581816, o ClickUp user id do Financeiro, não uma Lista; a heurística de nome do plano estava imprecisa para esta variável
 - [Phase 00]: exportarClickUp: time_in_status é smoke-testado por execução inteira (não por Lista) — a primeira falha 4xx desliga o recurso globalmente; anexo já em disco conta em anexosBaixados para a retomada produzir as mesmas contagens da execução original — Plan 00-03
+- [Phase 00]: Plan 00-04: exportar.cli.ts CLICKUP_API_TOKEN= (variável definida vazia) prova o caminho sem token, não env -u sozinho — carregarEnv() repõe do .env qualquer chave ainda ausente
+- [Phase 00]: Plan 00-04: time_in_status confirmado DISPONÍVEL no Workspace Tria (smoke test real na Tarefa 868k8tn50) — responde Open Question 2 do RESEARCH.md; Plan 00-05 exporta o recurso sem o smoke test desligá-lo
 
 ### Pending Todos
 
@@ -131,6 +134,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-17T00:07:58.720Z
-Stopped at: Completed 00-03-PLAN.md (exportar.ts — orquestração retomável, smoke test time_in_status, anexos com política)
+Last session: 2026-09-17T00:31:29.790Z
+Stopped at: Completed 00-04-PLAN.md (manifesto.ts, exportar.cli.ts, exportar.integration.test.ts contra a API real)
 Resume file: None

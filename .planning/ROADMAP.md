@@ -50,7 +50,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 00-04-PLAN.md — Manifesto (sha256 por arquivo, sem PII) + CLI `npm run exportar:clickup` + teste de integração que pula sem token (PREP-02)
+- [x] 00-04-PLAN.md — Manifesto (sha256 por arquivo, sem PII) + CLI `npm run exportar:clickup` + teste de integração que pula sem token (PREP-02)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -209,7 +209,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 0. Preparação | 3/7 | In Progress|  |
+| 0. Preparação | 4/7 | In Progress|  |
 | 1. O CRM N1 ganha persistência e login | 11/11 | Complete   | 2026-09-16 |
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 0/TBD | Not started | - |
 | 3. Contas a pagar | 0/TBD | Not started | - |
