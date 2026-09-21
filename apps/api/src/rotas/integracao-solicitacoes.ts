@@ -202,10 +202,30 @@ function paginar<T>(itens: readonly T[], chaveDe: (item: T) => ChaveDeCursor, cu
   return { janela, nextCursor: temProxima && ultimo ? codificarCursor(chaveDe(ultimo)) : undefined };
 }
 
+/**
+ * Toda exceção não prevista (bug, projeção que lança, falha de I/O não
+ * classificada) responde o envelope do §3 — nunca o `{ ok:false, error }`
+ * genérico de `app.ts::setErrorHandler`, que não tem `code`/`requestId`
+ * (T-02-14). O detalhe completo vai só a `request.log.error`.
+ */
+function comSaneamentoDeErro(
+  rota: string,
+  manipulador: (request: FastifyRequest, reply: FastifyReply) => Promise<FastifyReply>,
+) {
+  return async (request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> => {
+    try {
+      return await manipulador(request, reply);
+    } catch (erro) {
+      request.log.error({ rota, requestId: request.id, erro }, "Erro interno em rota de integração");
+      return reply.code(500).send(erroDoContrato("ERRO_INTERNO", request.id));
+    }
+  };
+}
+
 export async function rotasDeIntegracaoDeSolicitacoes(app: FastifyInstance): Promise<void> {
   // ── Leituras (escopo `payment-requests:read`, sem Idempotency-Key) ───────
 
-  app.get("/payment-requests/:taskId", { config: { escopo: "payment-requests:read" } }, async (request, reply) => {
+  app.get("/payment-requests/:taskId", { config: { escopo: "payment-requests:read" } }, comSaneamentoDeErro(ROTA.getTask, async (request, reply) => {
     const params = ESQUEMAS_DE_INTEGRACAO_DE_SOLICITACOES.getTask.params.safeParse(request.params);
     if (!params.success) return responderSchemaInvalido(request, reply, ROTA.getTask, params.error);
 
@@ -217,9 +237,9 @@ export async function rotasDeIntegracaoDeSolicitacoes(app: FastifyInstance): Pro
     if (!dto) return responderNaoEncontrado(request, reply, ROTA.getTask, params.data.taskId);
     logarRota(request, { rota: ROTA.getTask, taskId: task.id, status: 200 });
     return reply.code(200).send(dto);
-  });
+  }));
 
-  app.get("/payment-requests", { config: { escopo: "payment-requests:read" } }, async (request, reply) => {
+  app.get("/payment-requests", { config: { escopo: "payment-requests:read" } }, comSaneamentoDeErro(ROTA.listPaymentRequestTasks, async (request, reply) => {
     const query = ESQUEMAS_DE_INTEGRACAO_DE_SOLICITACOES.listPaymentRequestTasks.query.safeParse(request.query);
     if (!query.success) return responderSchemaInvalido(request, reply, ROTA.listPaymentRequestTasks, query.error);
 
@@ -236,9 +256,9 @@ export async function rotasDeIntegracaoDeSolicitacoes(app: FastifyInstance): Pro
     const items = itens.filter((dto): dto is NonNullable<typeof dto> => dto !== undefined);
     logarRota(request, { rota: ROTA.listPaymentRequestTasks, status: 200 });
     return reply.code(200).send({ items, ...(nextCursor ? { nextCursor } : {}) });
-  });
+  }));
 
-  app.get("/payment-requests/comments/:commentId/replies", { config: { escopo: "payment-requests:read" } }, async (request, reply) => {
+  app.get("/payment-requests/comments/:commentId/replies", { config: { escopo: "payment-requests:read" } }, comSaneamentoDeErro(ROTA.getCommentReplies, async (request, reply) => {
     const params = ESQUEMAS_DE_INTEGRACAO_DE_SOLICITACOES.getCommentReplies.params.safeParse(request.params);
     if (!params.success) return responderSchemaInvalido(request, reply, ROTA.getCommentReplies, params.error);
     const query = ESQUEMAS_DE_INTEGRACAO_DE_SOLICITACOES.getCommentReplies.query.safeParse(request.query);
@@ -266,11 +286,11 @@ export async function rotasDeIntegracaoDeSolicitacoes(app: FastifyInstance): Pro
     const items = janela.map((c) => paraCommentDtoV1(state, raiz.task.id, c));
     logarRota(request, { rota: ROTA.getCommentReplies, status: 200 });
     return reply.code(200).send({ items, ...(nextCursor ? { nextCursor } : {}) });
-  });
+  }));
 
   // ── Escritas (escopo `payment-requests:write`, Idempotency-Key obrigatório) ─
 
-  app.post("/payment-requests/:taskId/comments", { config: { escopo: "payment-requests:write" } }, async (request, reply) => {
+  app.post("/payment-requests/:taskId/comments", { config: { escopo: "payment-requests:write" } }, comSaneamentoDeErro(ROTA.createComment, async (request, reply) => {
     const esquema = ESQUEMAS_DE_INTEGRACAO_DE_SOLICITACOES.createComment;
     const params = esquema.params.safeParse(request.params);
     if (!params.success) return responderSchemaInvalido(request, reply, ROTA.createComment, params.error);
@@ -325,9 +345,9 @@ export async function rotasDeIntegracaoDeSolicitacoes(app: FastifyInstance): Pro
     );
 
     return responderIdempotente(request, reply, ROTA.createComment, taskId, resultado);
-  });
+  }));
 
-  app.put("/payment-requests/:taskId/tags/:tagId", { config: { escopo: "payment-requests:write" } }, async (request, reply) => {
+  app.put("/payment-requests/:taskId/tags/:tagId", { config: { escopo: "payment-requests:write" } }, comSaneamentoDeErro(ROTA.addTaskTag, async (request, reply) => {
     const esquema = ESQUEMAS_DE_INTEGRACAO_DE_SOLICITACOES.addTaskTag;
     const params = esquema.params.safeParse(request.params);
     if (!params.success) return responderSchemaInvalido(request, reply, ROTA.addTaskTag, params.error);
@@ -366,9 +386,9 @@ export async function rotasDeIntegracaoDeSolicitacoes(app: FastifyInstance): Pro
     );
 
     return responderIdempotente(request, reply, ROTA.addTaskTag, taskId, resultado);
-  });
+  }));
 
-  app.put("/payment-requests/:taskId/due-date", { config: { escopo: "payment-requests:write" } }, async (request, reply) => {
+  app.put("/payment-requests/:taskId/due-date", { config: { escopo: "payment-requests:write" } }, comSaneamentoDeErro(ROTA.updateTaskDueDate, async (request, reply) => {
     const esquema = ESQUEMAS_DE_INTEGRACAO_DE_SOLICITACOES.updateTaskDueDate;
     const params = esquema.params.safeParse(request.params);
     if (!params.success) return responderSchemaInvalido(request, reply, ROTA.updateTaskDueDate, params.error);
@@ -409,9 +429,9 @@ export async function rotasDeIntegracaoDeSolicitacoes(app: FastifyInstance): Pro
     );
 
     return responderIdempotente(request, reply, ROTA.updateTaskDueDate, taskId, resultado);
-  });
+  }));
 
-  app.put("/payment-requests/:taskId/status", { config: { escopo: "payment-requests:write" } }, async (request, reply) => {
+  app.put("/payment-requests/:taskId/status", { config: { escopo: "payment-requests:write" } }, comSaneamentoDeErro(ROTA.updateTaskStatus, async (request, reply) => {
     const esquema = ESQUEMAS_DE_INTEGRACAO_DE_SOLICITACOES.updateTaskStatus;
     const params = esquema.params.safeParse(request.params);
     if (!params.success) return responderSchemaInvalido(request, reply, ROTA.updateTaskStatus, params.error);
@@ -460,5 +480,5 @@ export async function rotasDeIntegracaoDeSolicitacoes(app: FastifyInstance): Pro
     );
 
     return responderIdempotente(request, reply, ROTA.updateTaskStatus, taskId, resultado);
-  });
+  }));
 }
