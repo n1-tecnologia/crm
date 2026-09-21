@@ -18,8 +18,9 @@ import {
   memberSeesTask,
 } from "../derive";
 import { fail, ok, type DataState, type OperationResult } from "../state";
-import type { Form, FormQuestion, Goal, Id, PublicShare, Task, View, ViewFilters } from "../types";
+import type { ActorRef, Attachment, Form, FormQuestion, Goal, Id, PublicShare, Task, View, ViewFilters, WorkspaceFile } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
+import { runListAutomations } from "./automations";
 import { createTask, setTaskFieldValue } from "./tasks";
 
 const now = (): string => new Date().toISOString();
@@ -40,6 +41,42 @@ function secret(): string {
   const bytes = new Uint8Array(12);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * D-03 — Ator do envio anônimo de Formulário. Nunca o dono: o dono empresta
+ * autorização (`form.ownerMemberId` segue indo para `createTask` e
+ * `setTaskFieldValue`) e propriedade da Tarefa, mas quem preenche o pedido é
+ * o próprio Formulário — o Registro de Atividade do envio precisa distinguir
+ * isso explicitamente, com um `id` que a timeline reconhece como Ator próprio.
+ */
+export function formActor(formId: Id): ActorRef {
+  return { kind: "system", id: `formulario:${formId}` };
+}
+
+/** MIME informado pelo cliente → categoria do domínio; a validação de MIME em si é da borda (Plan 02-11). */
+function categorizeMediaType(mime: string): Attachment["mediaType"] {
+  const tipo = mime.toLocaleLowerCase("pt-BR");
+  if (tipo.startsWith("image/")) return "image";
+  if (tipo.startsWith("audio/")) return "audio";
+  if (tipo.startsWith("video/")) return "video";
+  if (tipo.includes("spreadsheet") || tipo.includes("excel") || tipo === "text/csv") return "spreadsheet";
+  return "document";
+}
+
+/** Entrada de um anexo do envio: referência já enviada ao objeto de Storage — o domínio nunca recebe bytes. */
+export interface SubmitFormAttachment {
+  readonly questionId: Id;
+  readonly objectKey: string;
+  readonly displayName: string;
+  readonly mediaType: string;
+  readonly sizeBytes: number;
+  readonly sha256?: string;
+}
+
+export interface SubmitFormInput {
+  readonly answers: Readonly<Record<Id, string>>;
+  readonly attachments?: ReadonlyArray<SubmitFormAttachment>;
 }
 
 /* ───────────────────────────── Visualizações salvas ───────────────────────────── */
@@ -463,35 +500,80 @@ export function formOutdatedReason(state: DataState, form: Form): string | undef
 }
 
 /**
- * Envio anônimo: vira `createTask` em nome do dono do Formulário, com
- * Proveniência `form`. Os obrigatórios da Lista valem — a validação das
- * perguntas garante que cada um tem pergunta obrigatória.
+ * Envio anônimo: vira `createTask` em nome do dono do Formulário — que
+ * empresta autorização e propriedade, mas nunca aparece como quem preencheu
+ * (D-03) — com Proveniência `form`. Atômico de verdade (RESEARCH.md, achado
+ * 3): Campos e anexos entram TODOS antes de qualquer automação enxergar a
+ * Tarefa, e o único Registro de Atividade do envio é do Ator `formulario:*`.
  */
-export function submitForm(state: DataState, secretValue: string, answers: Readonly<Record<Id, string>>): OperationResult<Task> {
+export function submitForm(state: DataState, secretValue: string, entrada: SubmitFormInput): OperationResult<Task> {
+  const { answers, attachments = [] } = entrada;
   const form = formBySecret(state, secretValue);
   if (!form) return fail("Este Formulário não existe mais ou o link foi renovado.");
   if (!form.enabled) return fail("Este Formulário está pausado.");
   if (formOutdatedReason(state, form)) return fail("Este Formulário está desatualizado: peça a quem o enviou para revisá-lo.");
+
+  const arquivoDefinitionId = (q: FormQuestion): Id | undefined => {
+    if (q.target.kind !== "field") return undefined;
+    const definitionId = q.target.definitionId;
+    return state.fieldDefinitions.find((d) => d.id === definitionId)?.type === "file" ? definitionId : undefined;
+  };
+
   for (const q of form.questions) {
-    if (q.required && !answers[q.id]?.trim()) return fail(`Responda “${q.label}”.`, q.id);
+    if (!q.required) continue;
+    if (arquivoDefinitionId(q) !== undefined) {
+      if (!attachments.some((a) => a.questionId === q.id)) return fail(`Responda “${q.label}”.`, q.id);
+    } else if (!answers[q.id]?.trim()) {
+      return fail(`Responda “${q.label}”.`, q.id);
+    }
   }
+
+  // Anexos: cada um precisa apontar para uma pergunta de arquivo real do Formulário, e nenhum objectKey se repete.
+  const chaves = attachments.map((a) => a.objectKey);
+  if (new Set(chaves).size !== chaves.length) return fail("Dois anexos apontam para o mesmo arquivo.");
+  for (const anexo of attachments) {
+    const pergunta = form.questions.find((q) => q.id === anexo.questionId);
+    if (!pergunta || arquivoDefinitionId(pergunta) === undefined) {
+      return fail("Um anexo aponta para uma pergunta que não existe ou não é de arquivo.");
+    }
+  }
+
   const titulo = form.questions.find((q) => q.target.kind === "title");
   const descricao = form.questions.find((q) => q.target.kind === "description");
-  // Tudo ou nada: uma resposta recusada desfaz a Tarefa, o Registro e o identificador consumido.
-  const antes = { tasks: state.tasks.length, activity: state.activity.length, readable: state.workspace.taskReadableId.next };
-  const desfazer = (motivo: string, field: Id): OperationResult<Task> => {
+
+  // Tudo ou nada: uma resposta recusada desfaz a Tarefa, o Registro, os anexos e o identificador consumido.
+  // A UoW do `apps/api` oferece rollback transacional real; este `desfazer` existe para o caminho em
+  // memória de `apps/web` e para não deixar estado parcial dentro do mesmo turno.
+  const antes = {
+    tasks: state.tasks.length,
+    activity: state.activity.length,
+    files: state.files.length,
+    readable: state.workspace.taskReadableId.next,
+  };
+  const desfazer = (motivo: string, field?: Id): OperationResult<Task> => {
     state.tasks.splice(antes.tasks);
+    // `recordActivity` insere no INÍCIO (`unshift`): os Registros novos ficam nos primeiros
+    // índices, empurrando os antigos para trás — por isso remove pela frente, não pelo fim.
     state.activity.splice(0, state.activity.length - antes.activity);
+    state.files.splice(antes.files);
     state.workspace.taskReadableId.next = antes.readable;
     return fail(motivo, field);
   };
-  const created = createTask(state, form.ownerMemberId, { listId: form.listId, title: (titulo ? answers[titulo.id] : "")?.trim() || "Sem título" });
+
+  // `runAutomations: false` — a automação só enxerga a Tarefa depois de Campos e anexos prontos, mais abaixo.
+  const created = createTask(
+    state,
+    form.ownerMemberId,
+    { listId: form.listId, title: (titulo ? answers[titulo.id] : "")?.trim() || "Sem título" },
+    { runAutomations: false },
+  );
   if (!created.ok) return fail("Não foi possível registrar agora: peça a quem enviou o link para verificar o Formulário.");
   const task = created.value;
   if (descricao && answers[descricao.id]?.trim()) task.description = answers[descricao.id]?.trim() ?? "";
   task.provenance = { kind: "form", sourceId: form.id, sourceName: form.name, at: now() };
+
   for (const q of form.questions) {
-    if (q.target.kind !== "field") continue;
+    if (q.target.kind !== "field" || arquivoDefinitionId(q) !== undefined) continue;
     const resposta = answers[q.id]?.trim();
     if (!resposta) continue;
     const def = state.fieldDefinitions.find((d) => d.id === (q.target as { definitionId: Id }).definitionId);
@@ -501,8 +583,44 @@ export function submitForm(state: DataState, secretValue: string, answers: Reado
     const r = setTaskFieldValue(state, form.ownerMemberId, task.id, (q.target as { definitionId: Id }).definitionId, valor);
     if (!r.ok) return desfazer(`“${q.label}”: ${r.error}`, q.id);
   }
+
+  // Anexos: cada um vira um `WorkspaceFile` do Ator do Formulário e liga ao Campo correspondente, no mesmo ato.
+  for (const anexo of attachments) {
+    const pergunta = form.questions.find((q) => q.id === anexo.questionId);
+    const definitionId = pergunta ? arquivoDefinitionId(pergunta) : undefined;
+    if (!pergunta || definitionId === undefined) return desfazer("Um anexo aponta para uma pergunta que não existe ou não é de arquivo.");
+    const workspaceFile: WorkspaceFile = {
+      id: nextId("fil"),
+      workspaceId: state.workspace.id,
+      name: anexo.displayName,
+      mediaType: categorizeMediaType(anexo.mediaType),
+      sizeBytes: anexo.sizeBytes,
+      objectKey: anexo.objectKey,
+      ...(anexo.sha256 ? { sha256: anexo.sha256 } : {}),
+      state: "enviado",
+      createdBy: formActor(form.id),
+      createdAt: now(),
+    };
+    state.files.push(workspaceFile);
+    const existente = task.fieldValues.find((v) => v.definitionId === definitionId);
+    const atuais = existente && Array.isArray(existente.value) ? existente.value : [];
+    const novoValor = [...atuais, workspaceFile.id];
+    if (existente) existente.value = novoValor;
+    else task.fieldValues.push({ definitionId, value: novoValor, state: "ativo" });
+  }
+
   form.submissions += 1;
-  recordActivity(state, { actor: memberActor(form.ownerMemberId), action: "Tarefa criada por Formulário", objectType: "task", objectId: task.id, objectName: task.title, detail: form.name });
+
+  // Consolida num único Registro de Atividade, do Ator do Formulário — nunca do Membro dono (D-03):
+  // remove os Registros transitórios de `createTask`/`setTaskFieldValue` (do contexto de autorização;
+  // `recordActivity` insere no início, então eles ainda estão nos primeiros índices) e registra o
+  // fato de negócio uma vez só, depois que a Tarefa já está completa.
+  state.activity.splice(0, state.activity.length - antes.activity);
+  recordActivity(state, { actor: formActor(form.id), action: "Tarefa criada por Formulário", objectType: "task", objectId: task.id, objectName: task.title, detail: form.name });
+
+  // Só agora a automação enxerga a Tarefa: Campos e anexos já estão completos.
+  runListAutomations(state, { kind: "tarefaCriada", taskId: task.id });
+
   return ok(task);
 }
 

@@ -53,6 +53,13 @@ export function createTask(
   state: DataState,
   actingMemberId: Id,
   input: CreateTaskInput,
+  /**
+   * `runAutomations: false` adia o gatilho `tarefaCriada` — usado por quem
+   * precisa terminar de montar a Tarefa (Campos, anexos) antes de qualquer
+   * automação enxergá-la (Plan 02-05: `submitForm`), disparando o mesmo
+   * evento manualmente depois. Todo outro chamador mantém o padrão atual.
+   */
+  options?: { readonly runAutomations?: boolean },
 ): OperationResult<Task> {
   const list = state.lists.find((l) => l.id === input.listId);
   if (!list) return fail("Lista não encontrada.");
@@ -166,7 +173,9 @@ export function createTask(
     objectId: task.id,
     objectName: task.title,
   });
-  runListAutomations(state, { kind: "tarefaCriada", taskId: task.id });
+  if (options?.runAutomations !== false) {
+    runListAutomations(state, { kind: "tarefaCriada", taskId: task.id });
+  }
   return ok(task);
 }
 
