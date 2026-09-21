@@ -25,6 +25,7 @@ import {
   type OpcoesDeAutenticacaoDeServico,
 } from "./plugins/autenticacao-servico";
 import { rotasDeEstado } from "./rotas/estado";
+import { rotasDeFormulariosPublicos, type OpcoesDeFormulariosPublicos } from "./rotas/formularios-publicos";
 import { rotasDeIntegracaoDeSolicitacoes } from "./rotas/integracao-solicitacoes";
 import { rotasDeOperacoes } from "./rotas/operacoes";
 
@@ -52,6 +53,13 @@ export interface OpcoesDoApp {
    * herdaria o hook).
    */
   readonly rotasDeIntegracaoParaTeste?: (integracao: FastifyInstance) => void;
+  /**
+   * Plan 02-16 — as três rotas públicas do Formulário (`./rotas/formularios-publicos.ts`)
+   * aceitam a mesma injeção de dependência dos outros pontos deste arquivo:
+   * testes trocam `lerEstado` por um stub sem banco e os limites de taxa por
+   * janelas curtas, sem precisar de `DATABASE_URL` (D-DEC-09).
+   */
+  readonly formulariosPublicos?: Omit<OpcoesDeFormulariosPublicos, "workspaceId">;
 }
 
 export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
@@ -145,6 +153,12 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
   // Fastify resolve a fila sozinho no primeiro `ready()`/`listen()`/`inject()`.
   app.register(rotasDeOperacoes);
   app.register(rotasDeEstado);
+  // D-02 — as únicas rotas SEM `Authorization: Bearer` desta instância: cada
+  // uma se isenta explicitamente com `config: { publica: true }`, o mesmo
+  // gancho de `/saude` acima (`plugins/autenticacao.ts`). CORS continua pela
+  // allowlist (`webOrigin`): estas rotas não vivem sob `PREFIXO_ROTAS_DE_SERVICO`,
+  // então o `delegator` de CORS acima aplica a mesma origem do resto do app.
+  app.register(rotasDeFormulariosPublicos, { workspaceId, ...opcoes.formulariosPublicos });
 
   // Rotas serviço-a-serviço: credencial própria
   // (`plugins/autenticacao-servico.ts`), nunca JWT humano. Rotas

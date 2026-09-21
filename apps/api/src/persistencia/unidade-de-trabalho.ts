@@ -14,6 +14,7 @@
  * registros diferentes.
  */
 
+import type { PoolClient } from "pg";
 import type { DataState, Diferenca, OperationResult } from "@n1/dominio";
 import { DIFERENCA_VAZIA } from "@n1/dominio";
 import { syncIdSequence } from "@n1/dominio/operations";
@@ -38,6 +39,20 @@ export interface OpcoesExecucao<T = unknown> {
    * aplicado ao lado de fora dele.
    */
   readonly eventos?: (valor: T, state: DataState) => readonly EventoDeSaida[];
+  /**
+   * Plan 02-16 — roda DEPOIS de gravar Tarefa/anexos e o(s) evento(s) de
+   * outbox, ANTES do `commit`: o MESMO `cliente`, a MESMA transação. Único
+   * uso até aqui é `consumirSessao` (`./sessoes-de-upload.ts`) — a submissão
+   * pública do Formulário precisa marcar a sessão de upload como consumida
+   * no mesmo commit que grava a Tarefa (T-02-06: uma sessão vira anexo uma
+   * vez só), sem que a Unidade de Trabalho precise saber o que é uma
+   * "sessão de upload". Escolhida em vez de expor o `cliente` inteiro à
+   * rota: menos superfície para quem chama `executar()` errar (um `cliente`
+   * solto convidaria a rodar SQL de negócio fora da revisão otimista desta
+   * função). Lançar aqui desfaz a transação inteira — mesmo efeito de uma
+   * exceção dentro de `operacao`.
+   */
+  readonly aoConfirmar?: (cliente: PoolClient, valor: T, state: DataState) => Promise<void>;
 }
 
 export async function executar<T>(
@@ -85,6 +100,7 @@ export async function executar<T>(
       // que outbox existe. Nunca chamar `fetch`/HTTP neste bloco — a entrega
       // é responsabilidade exclusiva de `outbox-worker.ts`, fora da UoW.
       await gravarEventos(cliente, workspaceId, opcoes.eventos?.(resultado.value, antes.state) ?? []);
+      if (opcoes.aoConfirmar) await opcoes.aoConfirmar(cliente, resultado.value, antes.state);
       await cliente.query("commit");
       // A nova revisão é a que o `update ... returning revisao` devolveu —
       // usar o valor lido em vez de `antes.revisao + 1` evita depender de
