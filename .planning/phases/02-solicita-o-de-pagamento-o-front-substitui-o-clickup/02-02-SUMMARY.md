@@ -126,3 +126,9 @@ None - no external service configuration required.
 ---
 *Phase: 02-solicita-o-de-pagamento-o-front-substitui-o-clickup*
 *Completed: 2026-09-21*
+
+## Self-Check: PASSED
+
+- Todos os 7 arquivos-chave (doc canônico, `v1.ts`, `erros.ts`, `CONTEXT.md`, `v1.test.ts`, README das fixtures, este SUMMARY) confirmados em disco.
+- 79/79 fixtures JSON confirmadas em `contratos/payment-requests-v1/`.
+- Commits `acc7781`, `4783c7d`, `892d293`, `58ffc1a` confirmados em `git log`.
