@@ -173,8 +173,8 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5)*
 
-- [ ] 02-23-PLAN.md — `apps/web`: upload direto ao bucket privado, confirmação pública e jornada Playwright (SOL-02, D-04/D-05)
-- [ ] 02-24-PLAN.md — Fallback por comentário: janela de 90 dias, `POST /v1/integrations/payment-approvals/classifications` e classificador (SOL-08, D-08/D-10)
+- [x] 02-23-PLAN.md — `apps/web`: upload direto ao bucket privado, confirmação pública e jornada Playwright (SOL-02, D-04/D-05)
+- [x] 02-24-PLAN.md — Fallback por comentário: janela de 90 dias, `POST /v1/integrations/payment-approvals/classifications` e classificador (SOL-08, D-08/D-10)
 - [ ] 02-25-PLAN.md — Importação: CLI dry-run/apply/resume, anexos históricos, manifesto sanitizado e execução real (SOL-09, D-25/D-26)
 
 **Wave 7** *(blocked on Wave 6)*
@@ -266,7 +266,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 |-------|----------------|--------|-----------|
 | 0. Preparação | 7/7 | Complete   | 2026-09-17 |
 | 1. O CRM N1 ganha persistência e login | 16/16 | Complete   | 2026-09-17 |
-| 2. Solicitação de pagamento — o front substitui o ClickUp | 21/28 | In Progress|  |
+| 2. Solicitação de pagamento — o front substitui o ClickUp | 23/28 | In Progress|  |
 | 3. Contas a pagar | 0/TBD | Not started | - |
 | 4. As outras telas do financeiro-tria | 0/TBD | Not started | - |
 | 5. Contas a receber e os outros tenants | 0/TBD | Not started | - |
