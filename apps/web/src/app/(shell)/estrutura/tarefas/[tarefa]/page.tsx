@@ -38,6 +38,8 @@ import { SaveTemplateDialog } from "@/features/estrutura/template-dialogs";
 import { ShareTaskDialog } from "@/features/estrutura/share-task-dialog";
 import { DialogoFluxoManual, fluxoManualRecusado } from "@/features/tarefa/fluxo-manual-dialog";
 import { PainelAprovacao } from "@/features/tarefa/painel-aprovacao";
+import { Timeline } from "@/features/tarefa/timeline";
+import { PainelDeAnexos } from "@/features/tarefa/anexos";
 import { use, useState, type ReactNode } from "react";
 import { useData, useRun, useSession } from "@/dados/store";
 import {
@@ -73,6 +75,7 @@ import {
   guestFieldWriter,
   parcelaDuplicada,
   statusOptionRefusal,
+  CP,
 } from "@n1/dominio/operations";
 import {
   ACTOR_KIND_LABEL,
@@ -191,6 +194,11 @@ export default function TarefaPage({
       </div>
     );
   }
+
+  // SOL-04 — a Timeline única e o download assinado do anexo só substituem os
+  // painéis desta Lista; outras Listas continuam com os dois painéis atuais
+  // (02-UI-SPEC.md proíbe redesenho geral da página da Tarefa).
+  const ehSolicitacaoDePagamento = task.listId === CP.listId;
 
   const effective = effectiveLifecycleOfTask(state, task.id);
   const escritaRecusada = taskWriteRefusal(state, memberId, task.id);
@@ -1051,20 +1059,24 @@ export default function TarefaPage({
               </Painel>
             ) : null}
 
-            <Painel>
-              <CabecalhoDePainel
-                titulo="Comentários"
-                contagem={task.comments.filter((c) => !c.deletedAt).length}
-              />
-              <div className="p-3">
-                <TaskComments
-                  task={task}
-                  report={report}
-                  authorLabel={(actor) => authorLabel(state, actor)}
-                  readOnly={!comenta}
+            {ehSolicitacaoDePagamento ? (
+              <Timeline task={task} fmt={fmt} readOnly={!comenta} />
+            ) : (
+              <Painel>
+                <CabecalhoDePainel
+                  titulo="Comentários"
+                  contagem={task.comments.filter((c) => !c.deletedAt).length}
                 />
-              </div>
-            </Painel>
+                <div className="p-3">
+                  <TaskComments
+                    task={task}
+                    report={report}
+                    authorLabel={(actor) => authorLabel(state, actor)}
+                    readOnly={!comenta}
+                  />
+                </div>
+              </Painel>
+            )}
 
             <Painel>
               <CabecalhoDePainel
@@ -1090,50 +1102,52 @@ export default function TarefaPage({
               </div>
             </Painel>
 
-            <Painel>
-              <CabecalhoDePainel titulo="Atividade" contagem={activity.length} />
-              <div className="p-3">
-                {activity.length === 0 ? (
-                  <EmptyState compact title="Nenhum Registro de Atividade nesta Tarefa." />
-                ) : (
-                  <ul className="pilha-solta">
-                    {activity.slice(0, ACTIVITY_PAGE_SIZE).map((record) => (
-                      <li
-                        key={record.id}
-                        className="item-solto app-base"
-                        data-bloco="true"
-                        data-estatico="true"
-                        style={{ color: "var(--texto)" }}
-                      >
-                        <span style={{ color: "var(--texto-3)" }}>
-                          {fmt.relative(record.at)}
-                        </span>{" "}
-                        · {authorLabel(state, record.actor)}
-                        {record.delegate
-                          ? ` em nome de ${authorLabel(state, record.delegate)}`
-                          : ""}{" "}
-                        · {record.action}
-                        {record.before || record.after ? (
+            {ehSolicitacaoDePagamento ? null : (
+              <Painel>
+                <CabecalhoDePainel titulo="Atividade" contagem={activity.length} />
+                <div className="p-3">
+                  {activity.length === 0 ? (
+                    <EmptyState compact title="Nenhum Registro de Atividade nesta Tarefa." />
+                  ) : (
+                    <ul className="pilha-solta">
+                      {activity.slice(0, ACTIVITY_PAGE_SIZE).map((record) => (
+                        <li
+                          key={record.id}
+                          className="item-solto app-base"
+                          data-bloco="true"
+                          data-estatico="true"
+                          style={{ color: "var(--texto)" }}
+                        >
                           <span style={{ color: "var(--texto-3)" }}>
-                            {" "}
-                            ({record.before ?? "—"} → {record.after ?? "—"})
-                          </span>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {activity.length > ACTIVITY_PAGE_SIZE ? (
-                  <p className="app-meta app-numero mt-2">
-                    Mostrando {ACTIVITY_PAGE_SIZE} de {activity.length}.{" "}
-                    <Link href="/configuracoes/auditoria" className="underline">
-                      Ver tudo na Auditoria
-                    </Link>
-                    .
-                  </p>
-                ) : null}
-              </div>
-            </Painel>
+                            {fmt.relative(record.at)}
+                          </span>{" "}
+                          · {authorLabel(state, record.actor)}
+                          {record.delegate
+                            ? ` em nome de ${authorLabel(state, record.delegate)}`
+                            : ""}{" "}
+                          · {record.action}
+                          {record.before || record.after ? (
+                            <span style={{ color: "var(--texto-3)" }}>
+                              {" "}
+                              ({record.before ?? "—"} → {record.after ?? "—"})
+                            </span>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {activity.length > ACTIVITY_PAGE_SIZE ? (
+                    <p className="app-meta app-numero mt-2">
+                      Mostrando {ACTIVITY_PAGE_SIZE} de {activity.length}.{" "}
+                      <Link href="/configuracoes/auditoria" className="underline">
+                        Ver tudo na Auditoria
+                      </Link>
+                      .
+                    </p>
+                  ) : null}
+                </div>
+              </Painel>
+            )}
           </div>
 
           {/* ───────────────────────── lateral: os atributos ────────────────── */}
@@ -1442,11 +1456,15 @@ export default function TarefaPage({
             </RecordPanel>
 
             <RecordPanel title="Anexos" count={task.attachments.length}>
-              <TaskAttachments
-                task={task}
-                report={report}
-                readOnly={!editavel}
-              />
+              {ehSolicitacaoDePagamento ? (
+                <PainelDeAnexos task={task} report={report} readOnly={!editavel} />
+              ) : (
+                <TaskAttachments
+                  task={task}
+                  report={report}
+                  readOnly={!editavel}
+                />
+              )}
             </RecordPanel>
           </aside>
         </div>
