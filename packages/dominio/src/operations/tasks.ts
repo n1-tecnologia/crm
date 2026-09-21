@@ -192,7 +192,7 @@ export function changeTaskStatus(
 ): OperationResult<Task> {
   const task = requireTask(state, taskId);
   if (!task) return fail("Tarefa não encontrada.");
-  const escrita = mayWriteTask(state, actingMemberId, taskId);
+  const escrita = mayWriteTaskStatus(state, actingMemberId, taskId);
   if (escrita) return fail(escrita);
   if (effectiveLifecycleOfTask(state, taskId) !== "ativo") {
     return fail("Esta Tarefa não está ativa. Restaure-a para editá-la.");
@@ -932,6 +932,29 @@ function mayWriteTask(state: DataState, actingMemberId: Id, taskId: Id): string 
 function mayWriteFieldOrComment(state: DataState, actingMemberId: Id, taskId: Id): string | undefined {
   if (guestFieldWriter(state, actingMemberId, taskId)) return undefined;
   return taskWriteRefusal(state, actingMemberId, taskId);
+}
+
+/** Escrita de Status: a regra geral, ou a exceção do Agente do pipeline (§9). */
+function mayWriteTaskStatus(state: DataState, actingMemberId: Id, taskId: Id): string | undefined {
+  if (guestStatusWriter(state, actingMemberId, taskId)) return undefined;
+  return taskWriteRefusal(state, actingMemberId, taskId);
+}
+
+/**
+ * §9 do catálogo Solicitação de pagamento — o Agente do pipeline: Convidado
+ * cujo Papel concede `editar` restrito a Status. Devolve `true` só quando o
+ * Convidado tem essa concessão E alcança a Tarefa; não muda nada além de
+ * Status — Tags, Vencimento e os demais Campos seguem a recusa categórica de
+ * `taskWriteRefusal` para Convidado, como antes.
+ */
+export function guestStatusWriter(state: DataState, actingMemberId: Id, taskId: Id): boolean {
+  const member = state.members.find((m) => m.id === actingMemberId);
+  if (!member || member.state !== "ativo") return false;
+  const role = state.roles.find((r) => r.id === member.roleId);
+  if (!role || role.base !== "convidado") return false;
+  const podeStatus = role.permissions.some((p) => p.action === "editar" && p.restrictedTo === "status");
+  if (!podeStatus) return false;
+  return memberSeesTask(state, actingMemberId, taskId);
 }
 
 /**

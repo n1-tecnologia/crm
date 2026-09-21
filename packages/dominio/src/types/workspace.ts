@@ -63,6 +63,12 @@ export interface Role {
     readonly action: PermissionAction;
     readonly resourceType: string;
     readonly scope: PermissionScope;
+    /**
+     * §9 do catálogo Solicitação de pagamento — quando `action` é `"editar"`,
+     * restringe a escrita a um único atributo (hoje só `"status"` existe).
+     * Ausente = `editar` alcança a Tarefa inteira, como sempre foi.
+     */
+    readonly restrictedTo?: "status";
   }>;
 }
 
