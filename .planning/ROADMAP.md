@@ -136,13 +136,13 @@ Estado em 2026-09-15: **metade feita**. PERS-01 (persistência + Unidade de Trab
 Plans:
 **Wave 1** *(fundações independentes)*
 
-- [ ] 02-01-PLAN.md — Wave 0 do `crm-n1`: Playwright contra build de produção, servidor HTTP falso e relógio injetável (portão de legitimidade de `@playwright/test`, T-02-SC)
-- [ ] 02-02-PLAN.md — Contrato HTTP v1 dos 7 métodos (D-16/CON-13): `docs/08-migracao-financeiro/04-contrato-plataforma-v1.md`, schemas zod em `apps/api/src/contratos/`, fixtures canônicas em `contratos/payment-requests-v1/`
+- [x] 02-01-PLAN.md — Wave 0 do `crm-n1`: Playwright contra build de produção, servidor HTTP falso e relógio injetável (portão de legitimidade de `@playwright/test`, T-02-SC)
+- [x] 02-02-PLAN.md — Contrato HTTP v1 dos 7 métodos (D-16/CON-13): `docs/08-migracao-financeiro/04-contrato-plataforma-v1.md`, schemas zod em `apps/api/src/contratos/`, fixtures canônicas em `contratos/payment-requests-v1/`
 - [ ] 02-03-PLAN.md — Migração `003`: outbox, idempotência HTTP, credenciais de serviço, sessões de upload e ledger de importação + `[BLOCKING] npm run migrar`
-- [ ] 02-04-PLAN.md — Domínio: `ApprovalRequest` vira união discriminada (D-06), `solicitarAprovacao` e `decideProcessApproval` (D-09/D-11)
-- [ ] 02-05-PLAN.md — Domínio: `submitForm` com Ator `sistema/Formulário` (D-03), envio atômico com anexos e `WorkspaceFile` com referência de Storage
-- [ ] 02-06-PLAN.md — Domínio: catálogo da Lista `Solicitações de pagamento` — 4 Status, 25 Campos, Tag, 5 Papéis e roteamento por Centro de Custo/Valor (D-01/D-07/D-13/D-14)
-- [ ] 02-07-PLAN.md — Wave 0 do `financeiro-tria`: fábrica do router Express, servidor falso, Omie falso e relógio (runner `tsx --test` confirmado)
+- [x] 02-04-PLAN.md — Domínio: `ApprovalRequest` vira união discriminada (D-06), `solicitarAprovacao` e `decideProcessApproval` (D-09/D-11)
+- [x] 02-05-PLAN.md — Domínio: `submitForm` com Ator `sistema/Formulário` (D-03), envio atômico com anexos e `WorkspaceFile` com referência de Storage
+- [x] 02-06-PLAN.md — Domínio: catálogo da Lista `Solicitações de pagamento` — 4 Status, 25 Campos, Tag, 5 Papéis e roteamento por Centro de Custo/Valor (D-01/D-07/D-13/D-14)
+- [x] 02-07-PLAN.md — Wave 0 do `financeiro-tria`: fábrica do router Express, servidor falso, Omie falso e relógio (runner `tsx --test` confirmado)
 
 **Wave 2** *(blocked on Wave 1)*
 
@@ -266,7 +266,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 |-------|----------------|--------|-----------|
 | 0. Preparação | 7/7 | Complete   | 2026-09-17 |
 | 1. O CRM N1 ganha persistência e login | 16/16 | Complete   | 2026-09-17 |
-| 2. Solicitação de pagamento — o front substitui o ClickUp | 0/28 | Planned | - |
+| 2. Solicitação de pagamento — o front substitui o ClickUp | 6/28 | In Progress|  |
 | 3. Contas a pagar | 0/TBD | Not started | - |
 | 4. As outras telas do financeiro-tria | 0/TBD | Not started | - |
 | 5. Contas a receber e os outros tenants | 0/TBD | Not started | - |

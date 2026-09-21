@@ -4,12 +4,12 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 02 UI-SPEC approved
-last_updated: "2026-09-21T13:21:16.904Z"
-last_activity: 2026-09-21 -- Phase 02 planning complete
+last_updated: "2026-09-21T13:35:28.622Z"
+last_activity: 2026-09-21 -- Phase 02 execution started
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 23
+  total_plans: 51
   completed_plans: 23
   percent: 33
 ---
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-15)
 
 **Core value:** Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de ponta a ponta sem abrir o ClickUp — dados no Postgres próprio, regras de `@n1/dominio` intactas.
-**Current focus:** Phase 01 — o-crm-n1-ganha-persist-ncia-e-login
+**Current focus:** Phase 02 — solicita-o-de-pagamento-o-front-substitui-o-clickup
 
 ## Current Position
 
-Phase: 01 (o-crm-n1-ganha-persist-ncia-e-login) — COMPLETE
-Plan: 16 of 16 (todos completos: 01-01..01-09, 01-10 CR-01, 01-11/01-12/01-13/01-14/01-15/01-16 CR-02 rodada 2)
-Status: Ready to execute
-Last activity: 2026-09-21 -- Phase 02 planning complete
+Phase: 02 (solicita-o-de-pagamento-o-front-substitui-o-clickup) — EXECUTING
+Plan: 1 of 28
+Status: Executing Phase 02
+Last activity: 2026-09-21 -- Phase 02 execution started
 
 Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PERS-04 fechado sem ressalva — CR-02 fechado por inteiro no Plan 01-16)
 
