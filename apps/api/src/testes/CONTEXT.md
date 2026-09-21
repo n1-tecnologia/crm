@@ -6,9 +6,12 @@ Ler primeiro: [`../../CONTEXT.md`](../../CONTEXT.md) e [`../CONTEXT.md`](../CONT
 
 Só peças consumidas por teste: `criarServidorFalso` (um servidor HTTP real
 que injeta timeout, resposta perdida, atraso e fila vazia) e `relogioFixo`/
-`relogioDoSistema` (a fonte de instante que o código sob teste lê). Nenhum
-arquivo de produção importa esta pasta — é o que o critério de aceite deste
-plano prova por `grep`.
+`relogioDoSistema` (a fonte de instante que o código sob teste lê).
+`outbox-worker.ts` importa `Relogio`/`relogioDoSistema` daqui — é a exceção
+prevista desde o Plan 02-01 (para os Planos 02-10, 02-17 e 02-24): o worker
+precisa de um relógio injetável em produção, não só no teste, e
+`relogioDoSistema` é a implementação real desse contrato, não um duplo de
+teste.
 
 ## Por que o servidor é real, não um mock de `fetch`
 

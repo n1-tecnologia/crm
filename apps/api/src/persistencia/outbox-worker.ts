@@ -9,7 +9,10 @@
  * `for update skip locked` sobre a fila `pending` — duas instâncias do
  * worker (duas conexões, dois processos) nunca reivindicam a mesma linha; a
  * que perde a corrida simplesmente não encontra nenhuma linha `pending`
- * disponível naquele instante.
+ * disponível naquele instante. `workspaceId` (opcional) estreita a fila a um
+ * Espaço de Trabalho só — sem ele, a reivindicação é global (o padrão de
+ * produção); com ele, um worker por tenant, ou um teste, nunca vê a fila de
+ * outro escopo.
  *
  * Backoff com jitter (RESEARCH.md "Outbox transacional"): tentativa
  * imediata (a primeira entrega acontece assim que a linha é reivindicada,
@@ -115,6 +118,13 @@ export interface OpcoesOutboxWorker {
   readonly token: string;
   /** Identifica esta instância em `locked_by` — dois processos precisam de valores distintos. */
   readonly workerId: string;
+  /**
+   * Quando definido, `reivindicar()` só considera linhas deste Espaço de
+   * Trabalho — um worker por tenant, ou (no teste) uma fatia isolada de uma
+   * tabela compartilhada. Ausente (padrão), reivindica globalmente, como a
+   * produção sempre fez.
+   */
+  readonly workspaceId?: string;
   readonly relogio?: Relogio;
   /** Padrão 10 (RESEARCH.md). */
   readonly maxTentativas?: number;
@@ -139,19 +149,25 @@ export interface OutboxWorker {
   processarUm(): Promise<boolean>;
 }
 
-async function reivindicar(cliente: PoolClient, workerId: string): Promise<LinhaOutbox | undefined> {
+async function reivindicar(cliente: PoolClient, workerId: string, workspaceId?: string): Promise<LinhaOutbox | undefined> {
+  const parametros: unknown[] = [workerId];
+  let filtroWorkspace = "";
+  if (workspaceId !== undefined) {
+    parametros.push(workspaceId);
+    filtroWorkspace = `and workspace_id = $${parametros.length}`;
+  }
   const r = await cliente.query<LinhaOutbox>(
     `update plataforma.integration_outbox
         set status = 'delivering', locked_at = now(), locked_by = $1, attempts = attempts + 1
       where id = (
         select id from plataforma.integration_outbox
-         where status = 'pending' and available_at <= now()
+         where status = 'pending' and available_at <= now() ${filtroWorkspace}
          order by available_at, id
          limit 1
            for update skip locked
       )
       returning *`,
-    [workerId],
+    parametros,
   );
   return r.rows[0];
 }
@@ -249,7 +265,7 @@ export function criarOutboxWorker(opcoes: OpcoesOutboxWorker): OutboxWorker {
     const cliente = await pool().connect();
     let linha: LinhaOutbox | undefined;
     try {
-      linha = await reivindicar(cliente, opcoes.workerId);
+      linha = await reivindicar(cliente, opcoes.workerId, opcoes.workspaceId);
     } finally {
       cliente.release();
     }

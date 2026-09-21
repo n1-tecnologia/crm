@@ -126,6 +126,21 @@ d("worker de entrega (Postgres real)", () => {
 
   afterEach(async () => {
     await servidor.fechar();
+    // Um `for update skip locked` global reivindica a linha mais antiga da
+    // TABELA INTEIRA, não só a deste `WORKSPACE` (é assim que a produção
+    // precisa se comportar). Sem isto, o caso (h) — que termina 'pending'
+    // de propósito, para provar backoff — sobrevive para o caso seguinte
+    // dentro da MESMA execução, e uma execução que falhe no meio deixa
+    // resíduo 'pending' que uma execução seguinte (outro processo, outro
+    // `WORKSPACE`) pode reivindicar depois que o `available_at` passar.
+    // Cada caso limpa a própria fatia aqui — não só em `afterAll` — para
+    // que uma corrida nunca envenene a próxima, dentro ou fora deste run.
+    const cliente = await pool().connect();
+    try {
+      await cliente.query("delete from plataforma.integration_outbox where workspace_id = $1", [WORKSPACE]);
+    } finally {
+      cliente.release();
+    }
   });
 
   afterAll(async () => {
@@ -142,7 +157,7 @@ d("worker de entrega (Postgres real)", () => {
     const id = await inserirLinhaPendente();
     servidor.enfileirar({ kind: "ok", status: 202, corpo: { ok: true } });
 
-    const worker = criarOutboxWorker({ destinoUrl: servidor.url, token: "tok_teste", workerId: "worker_g", relogio: relogioFixo(new Date()) });
+    const worker = criarOutboxWorker({ destinoUrl: servidor.url, token: "tok_teste", workerId: "worker_g", workspaceId: WORKSPACE, relogio: relogioFixo(new Date()) });
     const processou = await worker.processarUm();
 
     expect(processou).toBe(true);
@@ -158,7 +173,7 @@ d("worker de entrega (Postgres real)", () => {
     servidor.enfileirar({ kind: "ok", status: 503, corpo: { error: { code: "INDISPONIVEL" } } });
     const antes = Date.now();
 
-    const worker = criarOutboxWorker({ destinoUrl: servidor.url, token: "tok_teste", workerId: "worker_h", relogio: relogioFixo(new Date(antes)) });
+    const worker = criarOutboxWorker({ destinoUrl: servidor.url, token: "tok_teste", workerId: "worker_h", workspaceId: WORKSPACE, relogio: relogioFixo(new Date(antes)) });
     await worker.processarUm();
 
     const linha = await buscarLinha(id);
@@ -172,7 +187,7 @@ d("worker de entrega (Postgres real)", () => {
     const id = await inserirLinhaPendente();
     servidor.enfileirar({ kind: "respostaPerdida" });
 
-    const worker = criarOutboxWorker({ destinoUrl: servidor.url, token: "tok_teste", workerId: "worker_i", relogio: relogioFixo(new Date()) });
+    const worker = criarOutboxWorker({ destinoUrl: servidor.url, token: "tok_teste", workerId: "worker_i", workspaceId: WORKSPACE, relogio: relogioFixo(new Date()) });
     await worker.processarUm();
 
     let linha = await buscarLinha(id);
@@ -198,7 +213,7 @@ d("worker de entrega (Postgres real)", () => {
     const id = await inserirLinhaPendente();
     servidor.enfileirar({ kind: "ok", status: 422, corpo: { error: { code: "REGRA_DE_DOMINIO" } } });
 
-    const worker = criarOutboxWorker({ destinoUrl: servidor.url, token: "tok_teste", workerId: "worker_j", relogio: relogioFixo(new Date()) });
+    const worker = criarOutboxWorker({ destinoUrl: servidor.url, token: "tok_teste", workerId: "worker_j", workspaceId: WORKSPACE, relogio: relogioFixo(new Date()) });
     await worker.processarUm();
 
     const linha = await buscarLinha(id);
@@ -215,6 +230,7 @@ d("worker de entrega (Postgres real)", () => {
       destinoUrl: servidor.url,
       token: "tok_teste",
       workerId: "worker_k",
+      workspaceId: WORKSPACE,
       relogio: relogioFixo(new Date()),
       maxTentativas: 1,
     });
@@ -234,8 +250,8 @@ d("worker de entrega (Postgres real)", () => {
     servidor.enfileirar({ kind: "ok", status: 202 });
 
     const relogio = relogioFixo(new Date());
-    const workerA = criarOutboxWorker({ destinoUrl: servidor.url, token: "tok_teste", workerId: "worker_l_a", relogio });
-    const workerB = criarOutboxWorker({ destinoUrl: servidor.url, token: "tok_teste", workerId: "worker_l_b", relogio });
+    const workerA = criarOutboxWorker({ destinoUrl: servidor.url, token: "tok_teste", workerId: "worker_l_a", workspaceId: WORKSPACE, relogio });
+    const workerB = criarOutboxWorker({ destinoUrl: servidor.url, token: "tok_teste", workerId: "worker_l_b", workspaceId: WORKSPACE, relogio });
 
     const [a, b] = await Promise.all([workerA.processarUm(), workerB.processarUm()]);
 
