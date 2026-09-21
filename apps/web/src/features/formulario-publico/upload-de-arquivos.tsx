@@ -152,6 +152,10 @@ export function UploadDeArquivos({
   const limiteAtingido = totalArquivosNoEnvio >= MAX_ARQUIVOS_POR_ENVIO;
 
   async function iniciarEnvio(item: ArquivoDeUpload): Promise<void> {
+    // Cede um microtask antes de sair de "aguardando": o arquivo recém-escolhido (ou reenviado)
+    // fica visível nesse estado por pelo menos um instante — não é só cosmético, é o que permite a
+    // um lote de várias escolhas renderizar a fila inteira antes de qualquer ticket ser pedido.
+    await Promise.resolve();
     aoAtualizarArquivo(item.clientId, { status: "enviando", progresso: 0, erro: undefined });
 
     const resultado = await executarPedidoDeTicket((submissionIdAtual) =>
