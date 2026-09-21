@@ -13,9 +13,11 @@ import { IA } from "./ia";
 const viaJson = (args: unknown[]): unknown[] => JSON.parse(JSON.stringify(args)) as unknown[];
 
 describe("esquemas/ia — a forma dos args de ai.ts", () => {
-  it("(a) cobertura — as 7 chaves de ai.ts em registro.ts", () => {
+  it("(a) cobertura — as 9 chaves de ai.ts em registro.ts", () => {
     const esperadas = [
       "decideApproval",
+      "decideProcessApproval",
+      "solicitarAprovacao",
       "publishAutomation",
       "restoreAgent",
       "restoreAutomation",
@@ -51,6 +53,13 @@ describe("esquemas/ia — a forma dos args de ai.ts", () => {
       ["configureChatSession", ["cht1", { anchor: null, skillId: "s1" }]],
       ["configureChatSession", ["cht1", {}]],
       ["sendChatMessage", ["cht1", "oi"]],
+      ["solicitarAprovacao", [{ taskId: "tsk1", approverMemberId: "mem1", threadCommentId: "cmt1" }]],
+      [
+        "solicitarAprovacao",
+        [{ taskId: "tsk1", approverMemberId: "mem1", threadCommentId: "cmt1", reason: "roteamento" }],
+      ],
+      ["decideProcessApproval", ["apr1", "aprovada", { source: "click" }]],
+      ["decideProcessApproval", ["apr1", "rejeitada", { source: "comment", reason: "divergência" }]],
     ];
     for (const [nome, args] of FORMAS_DO_WEB) {
       expect(IA[nome].safeParse(viaJson(args)).success, nome).toBe(true);
@@ -70,5 +79,12 @@ describe("esquemas/ia — a forma dos args de ai.ts", () => {
     ).toBe(false);
     expect(IA.configureChatSession.safeParse(viaJson(["cht1", { folderId: 3 }])).success).toBe(false);
     expect(IA.sendChatMessage.safeParse(viaJson(["cht1", {}])).success).toBe(false);
+    expect(
+      IA.decideProcessApproval.safeParse(viaJson(["apr1", "talvez", { source: "click" }])).success,
+    ).toBe(false);
+    expect(
+      IA.decideProcessApproval.safeParse(viaJson(["apr1", "aprovada", { source: "carta" }])).success,
+    ).toBe(false);
+    expect(IA.solicitarAprovacao.safeParse(viaJson([{ taskId: "t1" }])).success).toBe(false);
   });
 });

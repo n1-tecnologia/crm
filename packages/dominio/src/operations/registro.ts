@@ -105,10 +105,12 @@ import {
   configureChatSession,
   createChatSession,
   decideApproval,
+  decideProcessApproval,
   publishAutomation,
   restoreAgent,
   restoreAutomation,
   sendChatMessage,
+  solicitarAprovacao,
 } from "./ai";
 
 // ── chat-folders.ts ─────────────────────────────────────────────────────
@@ -271,6 +273,8 @@ export const OPERACOES = {
   setContactCatalogValue,
   // ai.ts
   decideApproval,
+  decideProcessApproval,
+  solicitarAprovacao,
   publishAutomation,
   restoreAgent,
   restoreAutomation,
