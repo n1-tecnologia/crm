@@ -153,3 +153,18 @@ Este não é um desvio das regras 1-4 do executor — é uma restrição explíc
 ---
 *Phase: 02-solicita-o-de-pagamento-o-front-substitui-o-clickup*
 *Completed: 2026-09-21*
+
+## Self-Check: PASSED
+
+- FOUND: ../financeiro-tria/supabase/migrations/20260922120000_create_platform_adapter_commands.sql
+- FOUND: ../financeiro-tria/automation/src/adapters/plataforma.ts
+- FOUND: ../financeiro-tria/automation/src/adapters/plataforma.test.ts
+- FOUND: ../financeiro-tria/automation/src/adapters/platform-adapter-queue.ts
+- FOUND: ../financeiro-tria/automation/src/adapters/platform-adapter-queue.test.ts
+- FOUND: ../financeiro-tria/automation/src/http/routes.ts
+- FOUND: ../financeiro-tria/automation/src/adapters/CONTEXT.md
+- FOUND: .planning/phases/02-solicita-o-de-pagamento-o-front-substitui-o-clickup/02-17-SUMMARY.md
+- FOUND commit (../financeiro-tria): 79ce876 (Task 1 — migração, escrita/não aplicada)
+- FOUND commit (../financeiro-tria): bffdc09 (Task 2 — plataforma.ts)
+- FOUND commit (../financeiro-tria): 77faaf8 (Task 3 — fila + routes.ts + CONTEXT.md)
+- FOUND commit (crm-n1): 6628e08 (docs — este SUMMARY.md)
