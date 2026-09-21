@@ -27,6 +27,7 @@ import {
   CabecalhoDePainel,
   ConfirmDialog,
   EmptyState,
+  Esqueleto,
   Field,
   Painel,
   Pilula,
@@ -326,6 +327,11 @@ export function PainelAprovacao({
       <Painel>
         <CabecalhoDePainel titulo="Aprovação" />
         <div className="p-3 grid gap-2">
+          {controlador.erro ? (
+            <p role="alert" className="app-base" style={{ color: "var(--erro)" }}>
+              {controlador.erro}
+            </p>
+          ) : null}
           <div className="flex items-center gap-2">
             <h3 className="app-md" style={{ color: "var(--texto)" }}>
               Aprovação concluída
@@ -437,6 +443,35 @@ export function PainelAprovacao({
         onConfirm={() => controlador.decidir("rejeitada", motivo)}
         onCancel={() => setDialogoAberto(null)}
       />
+    </Painel>
+  );
+}
+
+/**
+ * UI-SPEC "Estados de carregamento, vazio e erro · Card da Tarefa": geometria
+ * final, `aria-hidden`, região que carrega anunciada por `role="status"`
+ * sr-only. `PainelAprovacao` nasce já hidratado nesta fase — o layout do
+ * shell aguarda `carregarEstadoInicial()` no servidor antes de montar a
+ * árvore (`(shell)/layout.tsx`) — então este esqueleto ainda não tem onde
+ * entrar em produção; fica pronto para o dia em que a Aprovação carregar à
+ * parte (por exemplo, a fusão em timeline única do Plan 02-19).
+ */
+export function PainelAprovacaoEsqueleto() {
+  return (
+    <Painel>
+      <CabecalhoDePainel titulo="Aprovação" />
+      <div className="p-3 grid gap-3" aria-hidden="true">
+        <Esqueleto largura="40%" altura="1.25rem" />
+        <Esqueleto largura="70%" />
+        <Esqueleto largura="55%" />
+        <div className="flex gap-2">
+          <Esqueleto largura="9rem" altura="var(--controle-h-lg)" />
+          <Esqueleto largura="9rem" altura="var(--controle-h-lg)" />
+        </div>
+      </div>
+      <p role="status" className="sr-only">
+        Carregando a Aprovação…
+      </p>
     </Painel>
   );
 }
