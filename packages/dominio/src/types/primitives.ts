@@ -151,6 +151,17 @@ export interface WorkspaceFile {
   readonly sizeBytes: number;
   readonly createdBy: ActorRef;
   readonly createdAt: Instant;
+  /**
+   * D-04 — referência opaca ao objeto no armazenamento privado de arquivos
+   * (caminho aleatório, nunca o nome de arquivo do usuário). Não é secreta,
+   * mas também não é adivinhável; sozinha não dá acesso, porque o
+   * armazenamento é privado. A URL de download é sempre gerada na leitura
+   * (contrato v1: `downloadUrl` + `expiresAt`) e nunca persistida aqui —
+   * nenhum campo de credencial, token ou URL assinada entra no domínio.
+   */
+  readonly objectKey: string;
+  readonly sha256?: string;
+  readonly state: "enviado" | "ausente";
 }
 
 /**

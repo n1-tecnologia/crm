@@ -251,14 +251,20 @@ export function attachFile(
   const limite = 25 * 1024 * 1024;
   if (file.sizeBytes > limite) return fail("O arquivo passa de 25 MB.");
 
+  const fileId = nextId("fil");
   const workspaceFile: WorkspaceFile = {
-    id: nextId("fil"),
+    id: fileId,
     workspaceId: state.workspace.id,
     name,
     mediaType: file.mediaType,
     sizeBytes: file.sizeBytes,
     createdBy: memberActor(actingMemberId),
     createdAt: now(),
+    // Este caminho antecede a integração real de Storage (D-04, Plan 02-11):
+    // o anexo direto na Tarefa ainda não tem um upload autorizado por trás,
+    // então a referência é um placeholder estável, nunca o nome do arquivo.
+    objectKey: `legado/${fileId}`,
+    state: "enviado",
   };
   state.files.push(workspaceFile);
   const attachment: Attachment = {
