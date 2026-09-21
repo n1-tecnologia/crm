@@ -1,0 +1,19 @@
+{
+  "descricao": "Credencial sem escopo payment-requests:read.",
+  "requisicao": {
+    "params": {
+      "taskId": "tarefa-001"
+    }
+  },
+  "resposta": {
+    "status": 403,
+    "corpo": {
+      "error": {
+        "code": "ESCOPO_INSUFICIENTE",
+        "message": "Credencial sem escopo para esta operação.",
+        "requestId": "corr-getTask-403",
+        "retryable": false
+      }
+    }
+  }
+}

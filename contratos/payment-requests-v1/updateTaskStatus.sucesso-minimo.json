@@ -1,0 +1,54 @@
+{
+  "descricao": "Transição sem motivo — de para fazer para em aprovação.",
+  "requisicao": {
+    "params": {
+      "taskId": "tarefa-002"
+    },
+    "headers": {
+      "idempotency-key": "status:tarefa-002:em aprovação"
+    },
+    "body": {
+      "status": "em aprovação"
+    }
+  },
+  "resposta": {
+    "status": 200,
+    "corpo": {
+      "id": "tarefa-002",
+      "readableId": "SOL-0002",
+      "origin": "plataforma",
+      "title": "Solicitação recém-criada",
+      "description": null,
+      "status": "em aprovação",
+      "dueDate": null,
+      "assigneeIds": [],
+      "tagIds": [],
+      "fields": {
+        "costCenter": "TRIA",
+        "businessUnit": null,
+        "company": null,
+        "paymentCategory": null,
+        "personId": null,
+        "supplierType": null,
+        "supplierDocument": null,
+        "supplierName": null,
+        "requesterName": null,
+        "requesterWhatsApp": null,
+        "issueDate": null,
+        "dueDate": null,
+        "amountCents": null,
+        "paymentMethod": null,
+        "pixKey": null,
+        "barcode": null,
+        "pixCopyPaste": null,
+        "paymentLink": null,
+        "manual": false,
+        "manualReason": null,
+        "productIds": []
+      },
+      "attachments": [],
+      "createdAt": "2026-09-21T08:00:00.000Z",
+      "updatedAt": "2026-09-21T08:00:00.000Z"
+    }
+  }
+}

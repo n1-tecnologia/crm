@@ -1,0 +1,68 @@
+{
+  "descricao": "fields.paymentMethod fora de FormaDePagamentoV1 deve ser rejeitado.",
+  "requisicao": {
+    "params": {
+      "taskId": "tarefa-001"
+    },
+    "headers": {
+      "idempotency-key": "duedate:tarefa-001:2026-10-05"
+    },
+    "body": {
+      "dueDate": "2026-10-05"
+    }
+  },
+  "resposta": {
+    "status": 200,
+    "corpo": {
+      "id": "tarefa-001",
+      "readableId": "SOL-0001",
+      "origin": "plataforma",
+      "title": "Pagamento fornecedor fictício",
+      "description": "Pagamento de serviço prestado em setembro.",
+      "status": "em aprovação",
+      "dueDate": "2026-09-25",
+      "assigneeIds": [
+        "membro-financeiro"
+      ],
+      "tagIds": [
+        "tag-conta-tria"
+      ],
+      "fields": {
+        "costCenter": "TRIA",
+        "businessUnit": "Tria Tech",
+        "company": "Tria Company",
+        "paymentCategory": "Prestação de Serviços",
+        "personId": null,
+        "supplierType": "CNPJ",
+        "supplierDocument": "00.000.000/0001-91",
+        "supplierName": "Fornecedor Fictício LTDA",
+        "requesterName": "Solicitante Fictício",
+        "requesterWhatsApp": "+5511999990000",
+        "issueDate": "2026-09-01",
+        "dueDate": "2026-09-25",
+        "amountCents": 123456,
+        "paymentMethod": "Dinheiro",
+        "pixKey": "financeiro@fornecedor-ficticio.com.br",
+        "barcode": null,
+        "pixCopyPaste": null,
+        "paymentLink": null,
+        "manual": false,
+        "manualReason": null,
+        "productIds": []
+      },
+      "attachments": [
+        {
+          "id": "anexo-001",
+          "role": "invoice",
+          "name": "nota-fiscal.pdf",
+          "mediaType": "application/pdf",
+          "size": 20480,
+          "downloadUrl": "https://storage.exemplo.com.br/anexo-001?token=abc123",
+          "expiresAt": "2026-09-21T12:05:00.000Z"
+        }
+      ],
+      "createdAt": "2026-09-01T12:00:00.000Z",
+      "updatedAt": "2026-09-10T09:30:00.000Z"
+    }
+  }
+}

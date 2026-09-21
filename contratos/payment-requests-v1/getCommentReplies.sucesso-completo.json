@@ -1,0 +1,35 @@
+{
+  "descricao": "Respostas com menção e página seguinte disponível.",
+  "requisicao": {
+    "params": {
+      "commentId": "comentario-001"
+    },
+    "query": {
+      "cursor": "cursor-opaco-1",
+      "limit": 50
+    }
+  },
+  "resposta": {
+    "status": 200,
+    "corpo": {
+      "items": [
+        {
+          "id": "comentario-001",
+          "taskId": "tarefa-001",
+          "parentCommentId": null,
+          "author": {
+            "kind": "automation",
+            "id": "agente-pipeline",
+            "displayName": "Agente do pipeline"
+          },
+          "text": "Fulano, para aprovação",
+          "mentionMemberIds": [
+            "membro-aprovador"
+          ],
+          "createdAt": "2026-09-10T09:30:00.000Z"
+        }
+      ],
+      "nextCursor": "cursor-opaco-2"
+    }
+  }
+}

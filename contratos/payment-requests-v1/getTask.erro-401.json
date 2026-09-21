@@ -1,0 +1,19 @@
+{
+  "descricao": "Credencial de serviço ausente.",
+  "requisicao": {
+    "params": {
+      "taskId": "tarefa-001"
+    }
+  },
+  "resposta": {
+    "status": 401,
+    "corpo": {
+      "error": {
+        "code": "CREDENCIAL_INVALIDA",
+        "message": "Credencial de serviço ausente ou inválida.",
+        "requestId": "corr-getTask-401",
+        "retryable": false
+      }
+    }
+  }
+}

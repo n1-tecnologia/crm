@@ -1,0 +1,23 @@
+{
+  "descricao": "Banco temporariamente indisponível.",
+  "requisicao": {
+    "params": {
+      "taskId": "tarefa-001",
+      "tagId": "tag-conta-tria"
+    },
+    "headers": {
+      "idempotency-key": "tag:tarefa-001:tag-conta-tria"
+    }
+  },
+  "resposta": {
+    "status": 503,
+    "corpo": {
+      "error": {
+        "code": "INDISPONIVEL",
+        "message": "Serviço temporariamente indisponível.",
+        "requestId": "corr-addTaskTag-503",
+        "retryable": true
+      }
+    }
+  }
+}

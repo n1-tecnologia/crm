@@ -1,0 +1,19 @@
+{
+  "descricao": "Credencial de serviço ausente.",
+  "requisicao": {
+    "params": {
+      "commentId": "comentario-001"
+    }
+  },
+  "resposta": {
+    "status": 401,
+    "corpo": {
+      "error": {
+        "code": "CREDENCIAL_INVALIDA",
+        "message": "Credencial de serviço ausente ou inválida.",
+        "requestId": "corr-getCommentReplies-401",
+        "retryable": false
+      }
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "descricao": "Resposta sem items (obrigatório) deve ser rejeitada pelo schema.",
+  "requisicao": {
+    "params": {
+      "commentId": "comentario-001"
+    },
+    "query": {
+      "limit": 50
+    }
+  },
+  "resposta": {
+    "status": 200,
+    "corpo": {}
+  }
+}

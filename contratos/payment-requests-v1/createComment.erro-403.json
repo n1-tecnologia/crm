@@ -1,0 +1,25 @@
+{
+  "descricao": "Credencial sem escopo payment-requests:write.",
+  "requisicao": {
+    "params": {
+      "taskId": "tarefa-001"
+    },
+    "headers": {
+      "idempotency-key": "comment:tarefa-001:routing-0001"
+    },
+    "body": {
+      "text": "x"
+    }
+  },
+  "resposta": {
+    "status": 403,
+    "corpo": {
+      "error": {
+        "code": "ESCOPO_INSUFICIENTE",
+        "message": "Credencial sem escopo para esta operação.",
+        "requestId": "corr-createComment-403",
+        "retryable": false
+      }
+    }
+  }
+}

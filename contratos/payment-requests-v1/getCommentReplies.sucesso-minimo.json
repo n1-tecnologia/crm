@@ -1,0 +1,31 @@
+{
+  "descricao": "Uma única resposta curta no tópico, sem próxima página.",
+  "requisicao": {
+    "params": {
+      "commentId": "comentario-001"
+    },
+    "query": {
+      "limit": 50
+    }
+  },
+  "resposta": {
+    "status": 200,
+    "corpo": {
+      "items": [
+        {
+          "id": "comentario-002",
+          "taskId": "tarefa-002",
+          "parentCommentId": null,
+          "author": {
+            "kind": "member",
+            "id": "membro-financeiro",
+            "displayName": "Financeiro"
+          },
+          "text": "ok",
+          "mentionMemberIds": [],
+          "createdAt": "2026-09-21T08:05:00.000Z"
+        }
+      ]
+    }
+  }
+}

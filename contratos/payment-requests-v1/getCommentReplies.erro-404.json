@@ -1,0 +1,19 @@
+{
+  "descricao": "commentId inexistente.",
+  "requisicao": {
+    "params": {
+      "commentId": "comentario-inexistente"
+    }
+  },
+  "resposta": {
+    "status": 404,
+    "corpo": {
+      "error": {
+        "code": "ENTIDADE_NAO_ENCONTRADA",
+        "message": "Recurso não encontrado.",
+        "requestId": "corr-getCommentReplies-404",
+        "retryable": false
+      }
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "descricao": "Mesma Idempotency-Key e mesmo corpo devolvem a resposta já gravada, sem duplicar o Comentário.",
+  "requisicao": {
+    "params": {
+      "taskId": "tarefa-002"
+    },
+    "headers": {
+      "idempotency-key": "comment:tarefa-002:routing-0001"
+    },
+    "body": {
+      "text": "ok"
+    }
+  },
+  "resposta": {
+    "status": 200,
+    "corpo": {
+      "id": "comentario-002",
+      "taskId": "tarefa-002",
+      "parentCommentId": null,
+      "author": {
+        "kind": "member",
+        "id": "membro-financeiro",
+        "displayName": "Financeiro"
+      },
+      "text": "ok",
+      "mentionMemberIds": [],
+      "createdAt": "2026-09-21T08:05:00.000Z"
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "descricao": "taskId inexistente.",
+  "requisicao": {
+    "params": {
+      "taskId": "tarefa-inexistente"
+    },
+    "headers": {
+      "idempotency-key": "duedate:tarefa-001:2026-10-05"
+    },
+    "body": {
+      "dueDate": "2026-10-05"
+    }
+  },
+  "resposta": {
+    "status": 404,
+    "corpo": {
+      "error": {
+        "code": "ENTIDADE_NAO_ENCONTRADA",
+        "message": "Recurso não encontrado.",
+        "requestId": "corr-updateTaskDueDate-404",
+        "retryable": false
+      }
+    }
+  }
+}

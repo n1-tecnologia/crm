@@ -1,0 +1,19 @@
+{
+  "descricao": "Banco temporariamente indisponível.",
+  "requisicao": {
+    "params": {
+      "commentId": "comentario-001"
+    }
+  },
+  "resposta": {
+    "status": 503,
+    "corpo": {
+      "error": {
+        "code": "INDISPONIVEL",
+        "message": "Serviço temporariamente indisponível.",
+        "requestId": "corr-getCommentReplies-503",
+        "retryable": true
+      }
+    }
+  }
+}

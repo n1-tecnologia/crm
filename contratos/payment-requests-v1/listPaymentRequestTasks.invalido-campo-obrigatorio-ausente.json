@@ -1,0 +1,14 @@
+{
+  "descricao": "Resposta sem items (obrigatório) deve ser rejeitada pelo schema.",
+  "requisicao": {
+    "query": {
+      "limit": 50
+    }
+  },
+  "resposta": {
+    "status": 200,
+    "corpo": {
+      "nextCursor": "cursor-opaco-2"
+    }
+  }
+}

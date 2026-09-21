@@ -1,0 +1,25 @@
+{
+  "descricao": "Banco temporariamente indisponível.",
+  "requisicao": {
+    "params": {
+      "taskId": "tarefa-001"
+    },
+    "headers": {
+      "idempotency-key": "status:tarefa-001:aprovado"
+    },
+    "body": {
+      "status": "aprovado"
+    }
+  },
+  "resposta": {
+    "status": 503,
+    "corpo": {
+      "error": {
+        "code": "INDISPONIVEL",
+        "message": "Serviço temporariamente indisponível.",
+        "requestId": "corr-updateTaskStatus-503",
+        "retryable": true
+      }
+    }
+  }
+}

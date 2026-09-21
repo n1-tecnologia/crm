@@ -1,0 +1,25 @@
+{
+  "descricao": "Aprovação sem Comentário de decisão do Aprovador designado (INV-SP-01).",
+  "requisicao": {
+    "params": {
+      "taskId": "tarefa-001"
+    },
+    "headers": {
+      "idempotency-key": "status:tarefa-001:aprovado"
+    },
+    "body": {
+      "status": "aprovado"
+    }
+  },
+  "resposta": {
+    "status": 422,
+    "corpo": {
+      "error": {
+        "code": "REGRA_DE_DOMINIO",
+        "message": "Recusado por regra de negócio.",
+        "requestId": "corr-updateTaskStatus-422",
+        "retryable": false
+      }
+    }
+  }
+}

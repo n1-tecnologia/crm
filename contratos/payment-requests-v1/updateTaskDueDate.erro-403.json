@@ -1,0 +1,25 @@
+{
+  "descricao": "Credencial sem escopo payment-requests:write.",
+  "requisicao": {
+    "params": {
+      "taskId": "tarefa-001"
+    },
+    "headers": {
+      "idempotency-key": "duedate:tarefa-001:2026-10-05"
+    },
+    "body": {
+      "dueDate": "2026-10-05"
+    }
+  },
+  "resposta": {
+    "status": 403,
+    "corpo": {
+      "error": {
+        "code": "ESCOPO_INSUFICIENTE",
+        "message": "Credencial sem escopo para esta operação.",
+        "requestId": "corr-updateTaskDueDate-403",
+        "retryable": false
+      }
+    }
+  }
+}
