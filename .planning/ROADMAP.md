@@ -167,8 +167,8 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4)*
 
-- [ ] 02-20-PLAN.md — `apps/web`: transporte público + formulário `/f/[segredo]` com seções, campos condicionais e validação (SOL-02)
-- [ ] 02-21-PLAN.md — `financeiro-tria`: os 3 webhooks `/webhooks/plataforma/*` com receipt idempotente + seleção do mapper (SOL-07)
+- [x] 02-20-PLAN.md — `apps/web`: transporte público + formulário `/f/[segredo]` com seções, campos condicionais e validação (SOL-02)
+- [x] 02-21-PLAN.md — `financeiro-tria`: os 3 webhooks `/webhooks/plataforma/*` com receipt idempotente + seleção do mapper (SOL-07)
 - [x] 02-22-PLAN.md — Importação histórica: operação de domínio, leitura sanitizada por allowlist e fixture hostil (SOL-09, D-24/D-25)
 
 **Wave 6** *(blocked on Wave 5)*
@@ -266,7 +266,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 |-------|----------------|--------|-----------|
 | 0. Preparação | 7/7 | Complete   | 2026-09-17 |
 | 1. O CRM N1 ganha persistência e login | 16/16 | Complete   | 2026-09-17 |
-| 2. Solicitação de pagamento — o front substitui o ClickUp | 19/28 | In Progress|  |
+| 2. Solicitação de pagamento — o front substitui o ClickUp | 21/28 | In Progress|  |
 | 3. Contas a pagar | 0/TBD | Not started | - |
 | 4. As outras telas do financeiro-tria | 0/TBD | Not started | - |
 | 5. Contas a receber e os outros tenants | 0/TBD | Not started | - |
