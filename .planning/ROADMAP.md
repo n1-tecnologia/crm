@@ -160,8 +160,8 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3)*
 
-- [ ] 02-16-PLAN.md — `apps/api`: as 3 rotas públicas do Formulário com submissão atômica + outbox (SOL-02/SOL-07, D-02/D-19)
-- [ ] 02-17-PLAN.md — `financeiro-tria`: `adapters/plataforma.ts` + fila persistente `platform_adapter_commands` + migração (SOL-05, D-19/D-20)
+- [x] 02-16-PLAN.md — `apps/api`: as 3 rotas públicas do Formulário com submissão atômica + outbox (SOL-02/SOL-07, D-02/D-19)
+- [x] 02-17-PLAN.md — `financeiro-tria`: `adapters/plataforma.ts` + fila persistente `platform_adapter_commands` + migração (SOL-05, D-19/D-20)
 - [x] 02-18-PLAN.md — `financeiro-tria`: `plataforma-payment-mapper.ts` tipado + `unique (origem, TaskID)` na tabela legada (SOL-06)
 - [x] 02-19-PLAN.md — `apps/web`: painel `Timeline` único (Comentários + Atividades) e anexos com download assinado (SOL-04)
 
@@ -266,7 +266,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 |-------|----------------|--------|-----------|
 | 0. Preparação | 7/7 | Complete   | 2026-09-17 |
 | 1. O CRM N1 ganha persistência e login | 16/16 | Complete   | 2026-09-17 |
-| 2. Solicitação de pagamento — o front substitui o ClickUp | 17/28 | In Progress|  |
+| 2. Solicitação de pagamento — o front substitui o ClickUp | 19/28 | In Progress|  |
 | 3. Contas a pagar | 0/TBD | Not started | - |
 | 4. As outras telas do financeiro-tria | 0/TBD | Not started | - |
 | 5. Contas a receber e os outros tenants | 0/TBD | Not started | - |
