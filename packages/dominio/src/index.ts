@@ -17,6 +17,17 @@ export * from "./rotulos";
 export * from "./colecoes";
 export * from "./diferenca";
 export * from "./usuarios-do-seed";
+export {
+  CATALOGO_SOLICITACAO_DE_PAGAMENTO,
+  resolverAprovador,
+  SOL,
+} from "./solicitacao-de-pagamento";
+export type {
+  CampoDaSolicitacao,
+  PapelDaSolicitacao,
+  RegraDeRoteamento,
+  TagDaSolicitacao,
+} from "./solicitacao-de-pagamento";
 
 export * as operations from "./operations";
 export * as derive from "./derive";
