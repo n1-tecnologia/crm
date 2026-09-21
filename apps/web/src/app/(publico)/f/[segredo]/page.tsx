@@ -85,7 +85,7 @@ export default function FormularioPublicoPage({ params }: { params: Promise<{ se
               className="grid gap-3"
               onSubmit={(event) => {
                 event.preventDefault();
-                const result = run((data) => submitForm(data, segredo, answers));
+                const result = run((data) => submitForm(data, segredo, { answers }));
                 if (result.ok) {
                   setErro(null);
                   setEnviado(result.value.title);

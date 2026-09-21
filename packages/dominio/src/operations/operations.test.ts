@@ -3493,10 +3493,10 @@ describe("Fase 4 — escala", () => {
     expect(createForm(state, "mem_julia", "lst_prospeccao", { name: "Outro", questions: form.value.questions }).ok).toBe(false);
     const [q1, q2, q3] = form.value.questions;
     if (!q1 || !q2 || !q3) throw new Error("sem perguntas");
-    expect(submitForm(state, form.value.secret, { [q1.id]: "Orçamento", [q3.id]: "" }).ok).toBe(false);
-    expect(submitForm(state, form.value.secret, { [q1.id]: "Orçamento", [q3.id]: "Telefone" }).ok).toBe(false);
+    expect(submitForm(state, form.value.secret, { answers: { [q1.id]: "Orçamento", [q3.id]: "" } }).ok).toBe(false);
+    expect(submitForm(state, form.value.secret, { answers: { [q1.id]: "Orçamento", [q3.id]: "Telefone" } }).ok).toBe(false);
     const antes = state.tasks.length;
-    const envio = submitForm(state, form.value.secret, { [q1.id]: "Orçamento full face", [q2.id]: "Quer saber valores", [q3.id]: "Site" });
+    const envio = submitForm(state, form.value.secret, { answers: { [q1.id]: "Orçamento full face", [q2.id]: "Quer saber valores", [q3.id]: "Site" } });
     expect(envio.ok, envio.ok ? "" : envio.error).toBe(true);
     if (!envio.ok) return;
     expect(state.tasks.length).toBe(antes + 1);
@@ -3505,11 +3505,11 @@ describe("Fase 4 — escala", () => {
     expect(envio.value.fieldValues.find((v) => v.definitionId === def.id)?.value).toBe("Site");
     expect(state.forms.find((f) => f.id === form.value.id)?.submissions).toBe(1);
     expect(updateForm(state, "mem_thiago", form.value.id, { enabled: false }).ok).toBe(true);
-    expect(submitForm(state, form.value.secret, { [q1.id]: "X", [q3.id]: "Site" }).ok).toBe(false);
+    expect(submitForm(state, form.value.secret, { answers: { [q1.id]: "X", [q3.id]: "Site" } }).ok).toBe(false);
     expect(updateForm(state, "mem_thiago", form.value.id, { enabled: true }).ok).toBe(true);
     const antigo = form.value.secret;
     expect(rotateFormSecret(state, "mem_thiago", form.value.id).ok).toBe(true);
-    expect(submitForm(state, antigo, { [q1.id]: "X", [q3.id]: "Site" }).ok).toBe(false);
+    expect(submitForm(state, antigo, { answers: { [q1.id]: "X", [q3.id]: "Site" } }).ok).toBe(false);
   });
 
   it("Compartilhamento público: exige a funcionalidade e escrita; o link abre só enquanto ativo; revogar invalida", () => {
@@ -3551,14 +3551,14 @@ describe("Fase 4 — escala", () => {
     const q2 = form.questions[1];
     if (!q2) throw new Error("sem pergunta 2");
     const antes = { tasks: state.tasks.length, activity: state.activity.length, readable: state.workspace.taskReadableId.next };
-    expect(submitForm(state, "demo-formulario", { [q1.id]: "Pedido", [q2.id]: "abc" }).ok).toBe(false);
+    expect(submitForm(state, "demo-formulario", { answers: { [q1.id]: "Pedido", [q2.id]: "abc" } }).ok).toBe(false);
     expect(state.tasks.length).toBe(antes.tasks);
     expect(state.activity.length).toBe(antes.activity);
     expect(state.workspace.taskReadableId.next).toBe(antes.readable);
-    expect(submitForm(state, "demo-formulario", { [q1.id]: "Pedido", [q2.id]: "1,5" }).ok).toBe(true);
+    expect(submitForm(state, "demo-formulario", { answers: { [q1.id]: "Pedido", [q2.id]: "1,5" } }).ok).toBe(true);
     // Campo obrigatório criado depois: o link recusa até o Formulário ser revisto.
     expect(createFieldDefinition(state, "mem_thiago", { name: "Origem X", type: "text", required: true, definedAtType: "list", definedAtId: "lst_prospeccao" }).ok).toBe(true);
-    expect(submitForm(state, "demo-formulario", { [q1.id]: "Pedido" }).ok).toBe(false);
+    expect(submitForm(state, "demo-formulario", { answers: { [q1.id]: "Pedido" } }).ok).toBe(false);
     expect(archiveForm(state, "mem_julia", form.id).ok).toBe(false);
     expect(archiveForm(state, "mem_thiago", form.id).ok).toBe(true);
     expect(formBySecret(state, "demo-formulario")).toBeUndefined();
