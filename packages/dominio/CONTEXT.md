@@ -55,3 +55,19 @@ Campo novo, regra nova, status novo, caso de uso novo. Toda mudança aqui é
 sentida pelos dois consumidores — é o preço de ser o contrato, e a razão de os
 testes (`npm run test -w @n1/dominio`) serem a rede de segurança mais importante
 do repositório.
+
+## Aprovação: duas origens, uma decisão por origem (D-06/D-09/D-11)
+
+`ApprovalRequest.origin` (`types/ai.ts`) é uma união discriminada por `kind`,
+o mesmo padrão de `ExecutionStep.kind`: `agentExecution` (o passo de uma
+`AgentExecution`, com `deadline`) ou `processTask` (uma decisão de processo
+ligada a uma Tarefa, sem `AgentExecution`). Cada origem tem a sua operação de
+decisão — `decideApproval` só aceita `agentExecution`, `decideProcessApproval`
+só aceita `processTask` — porque as regras não se misturam: uma expira, a
+outra **não expira**; uma mexe numa `AgentExecution`, a outra publica
+Comentário e muda o Status de uma Tarefa.
+
+A aprovação de processo não tem `deadline` porque o campo não existe no ramo
+`processTask` de `ApprovalOrigin` — não é uma checagem em tempo de execução,
+é o tipo impedindo o estado inválido. O timeout de Execução de Agente nunca
+alcança uma aprovação financeira.
