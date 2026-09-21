@@ -18,6 +18,7 @@ import { useEffect, useState } from "react";
 import { useData, useLastResult, useRun, useSession } from "@/dados/store";
 import { decideProcessApproval } from "@n1/dominio/operations";
 import { CATALOGO_SOLICITACAO_DE_PAGAMENTO } from "@n1/dominio";
+import { fluxoManualDe } from "./fluxo-manual-dialog";
 import type { DataState, OperationResult } from "@n1/dominio/state";
 import type { ApprovalRequest, Id, Task } from "@n1/dominio/types";
 import type { Formatters } from "@/features/shell/format";
@@ -45,8 +46,6 @@ const CAMPO_NOME_DO_FORNECEDOR = campoPorRotulo("Nome do fornecedor");
 const CAMPO_NOME_DO_SOLICITANTE = campoPorRotulo("Nome do solicitante");
 const CAMPO_DATA_VENCIMENTO = campoPorRotulo("Data Vencimento");
 const CAMPO_VALOR = campoPorRotulo("Valor");
-/** Consumido por `fluxo-manual-dialog.tsx` — exportado para não duplicar a busca por rótulo. */
-export const CAMPO_INTEGRACAO_MANUAL = campoPorRotulo("Integração manual");
 
 function valorDoCampo(task: Task, definitionId: Id | undefined) {
   if (!definitionId) return undefined;
@@ -319,6 +318,7 @@ export function PainelAprovacao({
   const aprovador = state.members.find((m) => m.id === approval.approverMemberId);
   const autorizado = approval.approverMemberId === memberId || adminLevel;
   const naoAutorizadoMotivo = `Somente ${aprovador?.displayName ?? "o aprovador designado"} ou um Administrador pode decidir esta Solicitação.`;
+  const fluxoManual = fluxoManualDe(state, task);
 
   if (approval.decision) {
     const decisor = state.members.find((m) => m.id === approval.decidedByMemberId)?.displayName ?? "—";
@@ -342,6 +342,11 @@ export function PainelAprovacao({
           {approval.decisionReason ? (
             <p className="app-base" style={{ color: "var(--texto)" }}>
               {approval.decisionReason}
+            </p>
+          ) : null}
+          {fluxoManual ? (
+            <p className="app-base" style={{ color: "var(--texto-2)" }}>
+              Fluxo manual por {fluxoManual.nome}: {fluxoManual.motivo}
             </p>
           ) : null}
         </div>
@@ -372,6 +377,12 @@ export function PainelAprovacao({
         <a href={`#comentario-${origin.threadCommentId}`} className="app-sm underline" style={{ color: "var(--texto)" }}>
           Ver tópico de aprovação
         </a>
+
+        {fluxoManual ? (
+          <p className="app-base" style={{ color: "var(--texto-2)" }}>
+            Fluxo manual por {fluxoManual.nome}: {fluxoManual.motivo}
+          </p>
+        ) : null}
 
         {controlador.erro ? (
           <p role="alert" className="app-base" style={{ color: "var(--erro)" }}>
