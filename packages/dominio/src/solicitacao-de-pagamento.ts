@@ -19,7 +19,7 @@
  * são Fase 3.
  */
 
-import type { Id, PermissionAction, StatusSet } from "./types";
+import type { FieldType, Id, PermissionAction, StatusSet } from "./types";
 
 /* ── Ids literais e estáveis (nunca `nextId`) ─────────────────────────── */
 
@@ -151,10 +151,117 @@ export const PAPEIS_SOLICITACAO_DE_PAGAMENTO: readonly PapelDaSolicitacao[] = [
   },
 ];
 
-/* ── O catálogo (parcial — Campos entram no Plan 02-06 Task 2, Roteamento na Task 3) */
+/* ── Campos (§4), 25 Definições na ordem A..Z ─────────────────────────── */
+//
+// O prefixo de letra é ordem de exibição, nunca parte do rótulo (a spec diz
+// isso explicitamente em §4). `ordem` é a posição sequencial entre os 25
+// Campos existentes (a letra V não é usada por nenhum Campo da Lista real —
+// a sequência A..Z-menos-V fica 1..25, crescente e sem buraco).
+//
+// Nenhum Campo além destes 25; nenhuma obrigatoriedade além de `Centro de
+// Custo` (RN-SP-01) — documento/anexo/pagamento continuam sendo validação do
+// pipeline (§11, RN-SP-02/RN-SP-06), não obrigatoriedade de UI.
+
+export interface CampoDaSolicitacao {
+  readonly id: Id;
+  readonly ordem: number;
+  readonly rotulo: string;
+  readonly tipo: FieldType;
+  readonly obrigatorio: boolean;
+  readonly opcoes?: readonly string[];
+  readonly descricao?: string;
+  /** Marca uma lacuna real da spec (opções não enumeradas) — nunca preencher com dado inventado. */
+  readonly lacuna?: string;
+}
+
+// §4.1 — mesmas 16 opções literais da Lista real (`fields.json`).
+const OPCOES_CENTRO_DE_CUSTO = [
+  "Marcos Paulo", "Renato Cariani", "Igor Alves", "Kaka Diniz", "PLX Apoio", "TRIA",
+  "Anthony Miranda", "Tria Tech", "IVL", "Roberth Resende", "Presidência", "USI",
+  "Konq", "Auton Health", "Kops", "Inevitaveis",
+] as const;
+
+// §4.1 — 13 opções.
+const OPCOES_BU = [
+  "Roberth Resende", "Igor Alves", "CLAIRIS", "Marcos Paulo", "Instituto Visão Livre",
+  "Renato Cariani", "TRIA - Apoio Funcional", "Kaka Diniz", "Iallas Oliveira", "Tria Tech",
+  "Expert Lucrativo", "KONQ", "Auton Heath",
+] as const;
+
+// §4.1 — 11 opções.
+const OPCOES_EMPRESA = [
+  "Tria Company", "Oliveira Participações", "EXO Loteamento", "EXO Participações", "Loovi",
+  "PLX digital", "IVL", "USI", "Konq Intermediações", "O2", "Inevitaveis",
+] as const;
+
+// §4.1 — 24 opções.
+const OPCOES_CATEGORIA_DE_PAGAMENTO = [
+  "Distribuição de Lucro", "Impostos", "Prestação de Serviços", "Móveis e Utensílios",
+  "Administrativo", "Evento", "Contas de consumo", "A identificar", "Cursos e treinamentos",
+  "Comissão", "Tráfego Pago", "Ferramentas", "Insumos", "Viagens e Hospedagens", "Aporte",
+  "Aluguel", "Tarifas", "Ação Gente e Cultura", "Devolução/Estorno de venda", "Editora",
+  "Correios e Transportadora", "Doação", "Publicidade de Marca / Patrocínio", "Salário",
+] as const;
+
+// §4.2 — Fornecedor: 2 opções.
+const OPCOES_FORNECEDOR = ["CPF", "CNPJ"] as const;
+
+// §4.4 — Forma de pagamento: as 3 observadas + `Cartão` como quarta opção
+// (D-08 — o código do `automation/` já reconhece Cartão como método real;
+// só está ausente desta amostra de 19 Tarefas por raridade, não por não
+// existir).
+const OPCOES_FORMA_DE_PAGAMENTO = ["Chave Pix", "Boleto", "QRCode Pix", "Cartão"] as const;
+
+// §4.5 — Integração manual: 1 opção.
+const OPCOES_INTEGRACAO_MANUAL = ["Manual"] as const;
+
+export const CAMPOS_SOLICITACAO_DE_PAGAMENTO: readonly CampoDaSolicitacao[] = [
+  // §4.1 — Classificação (quem paga, para quê).
+  { id: "fld_sp_a_centro_de_custo", ordem: 1, rotulo: "Centro de Custo", tipo: "singleSelect", obrigatorio: true, opcoes: OPCOES_CENTRO_DE_CUSTO, descricao: "Quem paga (RN-SP-01: único obrigatório)." },
+  { id: "fld_sp_b_bu", ordem: 2, rotulo: "BU", tipo: "singleSelect", obrigatorio: false, opcoes: OPCOES_BU },
+  { id: "fld_sp_c_empresa", ordem: 3, rotulo: "Empresa", tipo: "singleSelect", obrigatorio: false, opcoes: OPCOES_EMPRESA },
+  { id: "fld_sp_d_categoria_de_pagamento", ordem: 4, rotulo: "Categoria de pagamento", tipo: "singleSelect", obrigatorio: false, opcoes: OPCOES_CATEGORIA_DE_PAGAMENTO },
+
+  // §4.2 — Fornecedor (a quem se paga).
+  { id: "fld_sp_e_pessoa", ordem: 5, rotulo: "Pessoa", tipo: "person", obrigatorio: false, descricao: "Membro ou Convidado, único — quando o fornecedor é interno." },
+  { id: "fld_sp_f_fornecedor", ordem: 6, rotulo: "Fornecedor", tipo: "singleSelect", obrigatorio: false, opcoes: OPCOES_FORNECEDOR },
+  { id: "fld_sp_g_cnpj", ordem: 7, rotulo: "CNPJ", tipo: "text", obrigatorio: false },
+  { id: "fld_sp_h_cpf", ordem: 8, rotulo: "CPF", tipo: "text", obrigatorio: false },
+  { id: "fld_sp_i_nome_do_fornecedor", ordem: 9, rotulo: "Nome do fornecedor", tipo: "text", obrigatorio: false, descricao: "Quando a Pessoa não está no Espaço de Trabalho." },
+
+  // §4.3 — Documento e datas.
+  { id: "fld_sp_j_anexo", ordem: 10, rotulo: "Anexo", tipo: "file", obrigatorio: false, descricao: "Nota fiscal ou comprovante — o Agente do pipeline audita por IA (§6.2)." },
+  { id: "fld_sp_k_data_de_emissao", ordem: 11, rotulo: "Data de Emissão", tipo: "date", obrigatorio: false },
+  { id: "fld_sp_l_data_vencimento", ordem: 12, rotulo: "Data Vencimento", tipo: "date", obrigatorio: false },
+
+  // §4.4 — Pagamento (como se paga).
+  { id: "fld_sp_m_forma_de_pagamento", ordem: 13, rotulo: "Forma de pagamento", tipo: "singleSelect", obrigatorio: false, opcoes: OPCOES_FORMA_DE_PAGAMENTO },
+  { id: "fld_sp_n_chave_pix", ordem: 14, rotulo: "Chave pix", tipo: "text", obrigatorio: false },
+  { id: "fld_sp_o_codigo_de_barras", ordem: 15, rotulo: "Código de barras", tipo: "text", obrigatorio: false },
+  { id: "fld_sp_p_pix_copia_e_cola", ordem: 16, rotulo: "Pix copia e cola", tipo: "text", obrigatorio: false },
+  { id: "fld_sp_q_link_de_pagamento", ordem: 17, rotulo: "Link de pagamento", tipo: "url", obrigatorio: false },
+  { id: "fld_sp_r_boleto", ordem: 18, rotulo: "Boleto", tipo: "file", obrigatorio: false },
+  { id: "fld_sp_s_qr_code", ordem: 19, rotulo: "QR Code", tipo: "file", obrigatorio: false },
+  { id: "fld_sp_t_valor", ordem: 20, rotulo: "Valor", tipo: "currency", obrigatorio: false, descricao: "Moeda BRL, 2 casas." },
+
+  // §4.5 — Controle.
+  { id: "fld_sp_u_integracao_manual", ordem: 21, rotulo: "Integração manual", tipo: "singleSelect", obrigatorio: false, opcoes: OPCOES_INTEGRACAO_MANUAL, descricao: "Marcado quando o lançamento deve pular a automação (Fluxo Manual, §6.5)." },
+  // W-Equipe: Campo órfão preservado como está hoje (D-08) — mesmo padrão
+  // observado em `contas-a-pagar.md` §12, sem uso registrado nas 19 Tarefas.
+  { id: "fld_sp_w_equipe", ordem: 22, rotulo: "Equipe", tipo: "currency", obrigatorio: false },
+  { id: "fld_sp_x_nome_do_solicitante", ordem: 23, rotulo: "Nome do solicitante", tipo: "text", obrigatorio: false, descricao: "Quem pediu o pagamento." },
+  // LACUNA-SP-Y — a spec (§4.1) cita 63 opções de Produto sem enumerá-las.
+  // Não inventar os 63 nomes: as opções reais vêm de `fields.json` exportado
+  // (`apps/api/exportacoes/`) e são carregadas pelo evolver do Plan 02-08.
+  { id: "fld_sp_y_produto", ordem: 24, rotulo: "Produto", tipo: "multiSelect", obrigatorio: false, opcoes: [], lacuna: "LACUNA-SP-Y" },
+  { id: "fld_sp_z_whatsapp", ordem: 25, rotulo: "WhatsApp", tipo: "phone", obrigatorio: false, descricao: "Contato do solicitante." },
+];
+
+/* ── O catálogo (parcial — Roteamento entra na Task 3) ────────────────── */
 
 export const CATALOGO_SOLICITACAO_DE_PAGAMENTO = {
   statusSet: STATUS_SET_SOLICITACAO_DE_PAGAMENTO,
   tags: TAGS_SOLICITACAO_DE_PAGAMENTO,
   papeis: PAPEIS_SOLICITACAO_DE_PAGAMENTO,
+  campos: CAMPOS_SOLICITACAO_DE_PAGAMENTO,
 };
