@@ -14,7 +14,7 @@ suficiente para o domínio nunca saber que existe um banco.
 | `repositorio.ts` | `hidratar()` (banco → `DataState`), `gravar()` (diff por comparação canônica de JSON), `reordenar()` (posição fracionária), `semear()` (escreve um `DataState` inteiro num Espaço vazio — base do bootstrap e da importação). |
 | `unidade-de-trabalho.ts` | `executar()`: hidratar → operação pura → revisão otimista (3 tentativas) → `gravar()`. A rota HTTP é uma casca em volta disto. |
 | `migrar.ts` + `migrar.cli.ts` | Aplica `apps/api/migracoes/NNN-*.sql` em ordem, uma vez cada, dentro de transação, registrado em `plataforma.migracoes`. |
-| `persistencia.test.ts`, `colunas-geradas.test.ts` | Testes de integração contra Postgres real; pulam sem `DATABASE_URL` (`temBanco ? describe : describe.skip`, D-DEC-09). |
+| `persistencia.test.ts`, `colunas-geradas.test.ts`, `integracao.test.ts` | Testes de integração contra Postgres real; pulam sem `DATABASE_URL` (`temBanco ? describe : describe.skip`, D-DEC-09). |
 
 ## A regra das migrações
 
@@ -34,3 +34,28 @@ mais a resolução de sessão por `dados->>'userId'` que o hook de autenticaçã
 roda em toda requisição. **Nada em `repositorio.ts` sabe delas: são para
 consultas de tela e para o hook de sessão**, nunca para o INSERT/UPDATE que
 `gravar()` já faz sobre `dados`.
+
+## Tabelas de transporte (Fase 2)
+
+`003-integracao-e-importacao.sql` cria seis tabelas no schema `plataforma`:
+`integration_outbox`, `http_idempotency`, `service_credentials`,
+`upload_sessions`, `upload_objects` e `importacao_ledger`. `registros`
+continua sendo o único armazenamento canônico das entidades da ontologia —
+estas seis são transporte e auditoria (evento, replay, credencial de
+serviço, sessão de upload, reconciliação de importação), não conceito de
+domínio. Nenhuma delas entra em `hidratar()`/`gravar()`, nenhuma é lida pelo
+`repositorio.ts`: quem grava e lê é o código de integração/importação da
+Fase 2 (Planos 02-10, 02-11, 02-13, 02-25), direto contra o `pg.Client` da
+sua própria transação.
+
+Quem mexer aqui precisa manter a regra que motivou a existência dessas
+tabelas separadas de `registros`: nenhuma coluna guarda CPF/CNPJ, chave
+Pix, código de barras, conteúdo de anexo ou segredo em texto puro
+(`integration_outbox.payload`, `importacao_ledger.motivo`,
+`http_idempotency.response_body`, `service_credentials.secret_hash` são os
+pontos onde isso poderia vazar — ver os comentários de cada tabela na
+migração e o registro STRIDE T-02-21/T-02-12 no Plan 02-03). Os invariantes
+de unicidade e lease dessas tabelas (evento único por agregado, lease
+exclusiva por `for update skip locked`, idempotência HTTP, `object_key`
+único, ledger idempotente por `(origem, legacy_task_id)`) estão provados
+contra o Postgres real em `integracao.test.ts`, não só descritos aqui.
