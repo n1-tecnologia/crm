@@ -32,6 +32,7 @@ export * from "./automations";
 export * from "./financeiro";
 export * from "./members";
 export * from "./structure";
+export * from "./importacao";
 
 export { OPERACOES, ehNomeDeOperacao, gravarChamadas, instrumentar, serializarArgumentos, reviverArgumentos } from "./registro";
 export type { NomeDeOperacao, ChamadaDeOperacao } from "./registro";
