@@ -164,3 +164,9 @@ Depois de aplicadas, confirmar:
 ---
 *Phase: 02-solicita-o-de-pagamento-o-front-substitui-o-clickup*
 *Completed: 2026-09-21*
+
+## Self-Check: PASSED
+
+- Todos os 5 arquivos declarados em `../financeiro-tria` existem no disco.
+- Este SUMMARY.md existe em `crm-n1`.
+- Commits verificados via `git log --oneline --all`: `7efd347`, `afd36c7`, `8d6bd70` (financeiro-tria); `e874fa0` (crm-n1, este arquivo).
