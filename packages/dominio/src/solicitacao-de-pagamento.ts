@@ -257,11 +257,82 @@ export const CAMPOS_SOLICITACAO_DE_PAGAMENTO: readonly CampoDaSolicitacao[] = [
   { id: "fld_sp_z_whatsapp", ordem: 25, rotulo: "WhatsApp", tipo: "phone", obrigatorio: false, descricao: "Contato do solicitante." },
 ];
 
-/* ── O catálogo (parcial — Roteamento entra na Task 3) ────────────────── */
+/* ── Roteamento do aprovador (§6.3, §11 RN-SP-03) ─────────────────────── */
+//
+// D-07 — o aprovador é dado versionado da Automação da Lista, não `if` de
+// tela nem tabela hardcoded no `automation/`: o Financeiro altera esta
+// configuração sem deploy. Os alvos são sempre o Papel `rol_sp_aprovador`
+// (D-13 proíbe id de Membro hardcoded) — quem ocupa o Papel para cada
+// Solicitação roteada é atribuição/convite, fora deste catálogo.
+//
+// RN-SP-03: Centro de Custo "Presidência" ou "TRIA" também depende do Valor
+// — corte em R$ 5.000 (500000 centavos): >= roteia para a faixa alta (hoje
+// Elifas/Thiago), < roteia para a faixa baixa (hoje Fabíola). Os demais
+// Centros de Custo citados na spec (§1) têm regra própria sem faixa de
+// Valor (hoje Auton Health/Tria Tech → Thiago; Igor Alves/Roberth Resende →
+// Iallas). A última regra, sem `costCenters` restrito, é o fallback
+// explícito — nunca `undefined` silencioso.
+
+export interface RegraDeRoteamento {
+  readonly ordem: number;
+  readonly costCenters: readonly string[] | "qualquer";
+  readonly minAmountCents?: number;
+  readonly maxAmountCents?: number;
+  readonly alvo: { readonly kind: "papel"; readonly roleId: Id };
+  readonly descricao?: string;
+}
+
+const ALVO_APROVADOR = { kind: "papel", roleId: SOL.papeis.aprovador } as const;
+
+export const ROTEAMENTO_SOLICITACAO_DE_PAGAMENTO: readonly RegraDeRoteamento[] = [
+  { ordem: 1, costCenters: ["Presidência"], minAmountCents: 500_000, alvo: ALVO_APROVADOR, descricao: "Presidência, Valor >= R$ 5.000 (hoje: Elifas)." },
+  { ordem: 2, costCenters: ["Presidência"], alvo: ALVO_APROVADOR, descricao: "Presidência, Valor < R$ 5.000 (hoje: Fabíola)." },
+  { ordem: 3, costCenters: ["TRIA"], minAmountCents: 500_000, alvo: ALVO_APROVADOR, descricao: "TRIA, Valor >= R$ 5.000 (hoje: Thiago)." },
+  { ordem: 4, costCenters: ["TRIA"], alvo: ALVO_APROVADOR, descricao: "TRIA, Valor < R$ 5.000 (hoje: Fabíola)." },
+  { ordem: 5, costCenters: ["Auton Health", "Tria Tech"], alvo: ALVO_APROVADOR, descricao: "Sem faixa de Valor (hoje: Thiago)." },
+  { ordem: 6, costCenters: ["Igor Alves", "Roberth Resende"], alvo: ALVO_APROVADOR, descricao: "Sem faixa de Valor (hoje: Iallas)." },
+  { ordem: 7, costCenters: "qualquer", alvo: ALVO_APROVADOR, descricao: "Fallback explícito — todo Centro de Custo sem regra própria." },
+];
+
+/**
+ * Leitura derivada e pura: não muta estado, não registra Atividade. Devolve
+ * a primeira regra de `regras` (ordenada por `ordem`) cujo Centro de Custo e
+ * Valor casam com `entrada`. É o que o Plan 02-13/02-21 consulta antes de
+ * chamar `solicitarAprovacao`.
+ *
+ * Nunca devolve `undefined`: se nenhuma regra casar — configuração sem o
+ * fallback `costCenters: "qualquer"` — lança um erro explícito, porque um
+ * roteamento silenciosamente vazio é o tipo de bug que esconde pagamento sem
+ * aprovador.
+ */
+export function resolverAprovador(
+  entrada: { readonly costCenter: string; readonly amountCents: number },
+  regras: readonly RegraDeRoteamento[] = ROTEAMENTO_SOLICITACAO_DE_PAGAMENTO,
+): RegraDeRoteamento {
+  const casada = [...regras]
+    .sort((a, b) => a.ordem - b.ordem)
+    .find((regra) => {
+      const centroCasa = regra.costCenters === "qualquer" || regra.costCenters.includes(entrada.costCenter);
+      if (!centroCasa) return false;
+      if (regra.minAmountCents !== undefined && entrada.amountCents < regra.minAmountCents) return false;
+      if (regra.maxAmountCents !== undefined && entrada.amountCents > regra.maxAmountCents) return false;
+      return true;
+    });
+
+  if (!casada) {
+    throw new Error(
+      `resolverAprovador: nenhuma regra casou Centro de Custo "${entrada.costCenter}" e Valor ${entrada.amountCents} — a configuração de roteamento precisa de uma regra de fallback explícita (costCenters: "qualquer").`,
+    );
+  }
+  return casada;
+}
+
+/* ── O catálogo completo ───────────────────────────────────────────────── */
 
 export const CATALOGO_SOLICITACAO_DE_PAGAMENTO = {
   statusSet: STATUS_SET_SOLICITACAO_DE_PAGAMENTO,
   tags: TAGS_SOLICITACAO_DE_PAGAMENTO,
   papeis: PAPEIS_SOLICITACAO_DE_PAGAMENTO,
   campos: CAMPOS_SOLICITACAO_DE_PAGAMENTO,
+  roteamento: ROTEAMENTO_SOLICITACAO_DE_PAGAMENTO,
 };
