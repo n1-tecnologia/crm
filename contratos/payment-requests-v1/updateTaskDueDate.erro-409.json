@@ -1,0 +1,25 @@
+{
+  "descricao": "Mesma Idempotency-Key com data diferente no corpo.",
+  "requisicao": {
+    "params": {
+      "taskId": "tarefa-001"
+    },
+    "headers": {
+      "idempotency-key": "duedate:tarefa-001:2026-10-05"
+    },
+    "body": {
+      "dueDate": "2026-11-05"
+    }
+  },
+  "resposta": {
+    "status": 409,
+    "corpo": {
+      "error": {
+        "code": "IDEMPOTENCY_KEY_REUSED",
+        "message": "Chave de idempotência já usada com um corpo diferente.",
+        "requestId": "corr-updateTaskDueDate-409",
+        "retryable": false
+      }
+    }
+  }
+}

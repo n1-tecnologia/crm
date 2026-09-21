@@ -1,0 +1,52 @@
+{
+  "descricao": "Listagem com uma única Tarefa e sem próxima página.",
+  "requisicao": {
+    "query": {
+      "limit": 50
+    }
+  },
+  "resposta": {
+    "status": 200,
+    "corpo": {
+      "items": [
+        {
+          "id": "tarefa-002",
+          "readableId": "SOL-0002",
+          "origin": "plataforma",
+          "title": "Solicitação recém-criada",
+          "description": null,
+          "status": "para fazer",
+          "dueDate": null,
+          "assigneeIds": [],
+          "tagIds": [],
+          "fields": {
+            "costCenter": "TRIA",
+            "businessUnit": null,
+            "company": null,
+            "paymentCategory": null,
+            "personId": null,
+            "supplierType": null,
+            "supplierDocument": null,
+            "supplierName": null,
+            "requesterName": null,
+            "requesterWhatsApp": null,
+            "issueDate": null,
+            "dueDate": null,
+            "amountCents": null,
+            "paymentMethod": null,
+            "pixKey": null,
+            "barcode": null,
+            "pixCopyPaste": null,
+            "paymentLink": null,
+            "manual": false,
+            "manualReason": null,
+            "productIds": []
+          },
+          "attachments": [],
+          "createdAt": "2026-09-21T08:00:00.000Z",
+          "updatedAt": "2026-09-21T08:00:00.000Z"
+        }
+      ]
+    }
+  }
+}

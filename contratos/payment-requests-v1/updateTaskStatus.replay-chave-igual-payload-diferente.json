@@ -1,0 +1,25 @@
+{
+  "descricao": "Mesma Idempotency-Key com Status-alvo diferente (decisão oposta) é conflito, nunca sobrescrita — D-09.",
+  "requisicao": {
+    "params": {
+      "taskId": "tarefa-002"
+    },
+    "headers": {
+      "idempotency-key": "status:tarefa-002:em aprovação"
+    },
+    "body": {
+      "status": "não aprovado"
+    }
+  },
+  "resposta": {
+    "status": 409,
+    "corpo": {
+      "error": {
+        "code": "IDEMPOTENCY_KEY_REUSED",
+        "message": "Chave de idempotência já usada com um corpo diferente.",
+        "requestId": "corr-updateTaskStatus-replay",
+        "retryable": false
+      }
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "descricao": "Data de vencimento anterior à Data de emissão.",
+  "requisicao": {
+    "params": {
+      "taskId": "tarefa-001"
+    },
+    "headers": {
+      "idempotency-key": "duedate:tarefa-001:2026-10-05"
+    },
+    "body": {
+      "dueDate": "2020-01-01"
+    }
+  },
+  "resposta": {
+    "status": 422,
+    "corpo": {
+      "error": {
+        "code": "REGRA_DE_DOMINIO",
+        "message": "Recusado por regra de negócio.",
+        "requestId": "corr-updateTaskDueDate-422",
+        "retryable": false
+      }
+    }
+  }
+}

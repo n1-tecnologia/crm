@@ -1,0 +1,25 @@
+{
+  "descricao": "Mesma Idempotency-Key com corpo diferente é conflito, nunca um segundo Comentário.",
+  "requisicao": {
+    "params": {
+      "taskId": "tarefa-002"
+    },
+    "headers": {
+      "idempotency-key": "comment:tarefa-002:routing-0001"
+    },
+    "body": {
+      "text": "outro texto"
+    }
+  },
+  "resposta": {
+    "status": 409,
+    "corpo": {
+      "error": {
+        "code": "IDEMPOTENCY_KEY_REUSED",
+        "message": "Chave de idempotência já usada com um corpo diferente.",
+        "requestId": "corr-createComment-replay",
+        "retryable": false
+      }
+    }
+  }
+}

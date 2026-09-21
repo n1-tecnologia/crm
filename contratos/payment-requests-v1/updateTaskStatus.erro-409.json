@@ -1,0 +1,25 @@
+{
+  "descricao": "Transição inválida — de aprovado direto para para fazer.",
+  "requisicao": {
+    "params": {
+      "taskId": "tarefa-001"
+    },
+    "headers": {
+      "idempotency-key": "status:tarefa-001:aprovado"
+    },
+    "body": {
+      "status": "para fazer"
+    }
+  },
+  "resposta": {
+    "status": 409,
+    "corpo": {
+      "error": {
+        "code": "CONFLITO_DE_ORDEM",
+        "message": "Transição de Status inválida para o estado atual.",
+        "requestId": "corr-updateTaskStatus-409",
+        "retryable": false
+      }
+    }
+  }
+}

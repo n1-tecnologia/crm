@@ -1,0 +1,25 @@
+{
+  "descricao": "Banco temporariamente indisponível.",
+  "requisicao": {
+    "params": {
+      "taskId": "tarefa-001"
+    },
+    "headers": {
+      "idempotency-key": "comment:tarefa-001:routing-0001"
+    },
+    "body": {
+      "text": "x"
+    }
+  },
+  "resposta": {
+    "status": 503,
+    "corpo": {
+      "error": {
+        "code": "INDISPONIVEL",
+        "message": "Serviço temporariamente indisponível.",
+        "requestId": "corr-createComment-503",
+        "retryable": true
+      }
+    }
+  }
+}

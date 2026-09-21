@@ -1,0 +1,25 @@
+{
+  "descricao": "Credencial de serviço ausente.",
+  "requisicao": {
+    "params": {
+      "taskId": "tarefa-001"
+    },
+    "headers": {
+      "idempotency-key": "comment:tarefa-001:routing-0001"
+    },
+    "body": {
+      "text": "x"
+    }
+  },
+  "resposta": {
+    "status": 401,
+    "corpo": {
+      "error": {
+        "code": "CREDENCIAL_INVALIDA",
+        "message": "Credencial de serviço ausente ou inválida.",
+        "requestId": "corr-createComment-401",
+        "retryable": false
+      }
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "descricao": "Limite de chamadas por credencial excedido.",
+  "requisicao": {
+    "params": {
+      "taskId": "tarefa-001"
+    },
+    "headers": {
+      "idempotency-key": "comment:tarefa-001:routing-0001"
+    },
+    "body": {
+      "text": "x"
+    }
+  },
+  "resposta": {
+    "status": 429,
+    "corpo": {
+      "error": {
+        "code": "LIMITE_EXCEDIDO",
+        "message": "Limite de chamadas excedido.",
+        "requestId": "corr-createComment-429",
+        "retryable": true
+      }
+    }
+  }
+}

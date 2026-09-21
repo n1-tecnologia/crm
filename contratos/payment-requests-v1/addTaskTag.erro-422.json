@@ -1,0 +1,23 @@
+{
+  "descricao": "Tag não aplicável ao tipo Tarefa.",
+  "requisicao": {
+    "params": {
+      "taskId": "tarefa-001",
+      "tagId": "tag-de-negocio"
+    },
+    "headers": {
+      "idempotency-key": "tag:tarefa-001:tag-conta-tria"
+    }
+  },
+  "resposta": {
+    "status": 422,
+    "corpo": {
+      "error": {
+        "code": "REGRA_DE_DOMINIO",
+        "message": "Recusado por regra de negócio.",
+        "requestId": "corr-addTaskTag-422",
+        "retryable": false
+      }
+    }
+  }
+}

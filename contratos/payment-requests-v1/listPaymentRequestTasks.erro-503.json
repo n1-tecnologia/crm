@@ -1,0 +1,19 @@
+{
+  "descricao": "Banco temporariamente indisponível.",
+  "requisicao": {
+    "query": {
+      "limit": 50
+    }
+  },
+  "resposta": {
+    "status": 503,
+    "corpo": {
+      "error": {
+        "code": "INDISPONIVEL",
+        "message": "Serviço temporariamente indisponível.",
+        "requestId": "corr-listPaymentRequestTasks-503",
+        "retryable": true
+      }
+    }
+  }
+}

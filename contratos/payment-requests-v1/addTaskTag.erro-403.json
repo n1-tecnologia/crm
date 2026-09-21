@@ -1,0 +1,23 @@
+{
+  "descricao": "Credencial sem escopo payment-requests:write.",
+  "requisicao": {
+    "params": {
+      "taskId": "tarefa-001",
+      "tagId": "tag-conta-tria"
+    },
+    "headers": {
+      "idempotency-key": "tag:tarefa-001:tag-conta-tria"
+    }
+  },
+  "resposta": {
+    "status": 403,
+    "corpo": {
+      "error": {
+        "code": "ESCOPO_INSUFICIENTE",
+        "message": "Credencial sem escopo para esta operação.",
+        "requestId": "corr-addTaskTag-403",
+        "retryable": false
+      }
+    }
+  }
+}

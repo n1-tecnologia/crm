@@ -1,0 +1,25 @@
+{
+  "descricao": "Credencial sem escopo payment-requests:write.",
+  "requisicao": {
+    "params": {
+      "taskId": "tarefa-001"
+    },
+    "headers": {
+      "idempotency-key": "status:tarefa-001:aprovado"
+    },
+    "body": {
+      "status": "aprovado"
+    }
+  },
+  "resposta": {
+    "status": 403,
+    "corpo": {
+      "error": {
+        "code": "ESCOPO_INSUFICIENTE",
+        "message": "Credencial sem escopo para esta operação.",
+        "requestId": "corr-updateTaskStatus-403",
+        "retryable": false
+      }
+    }
+  }
+}

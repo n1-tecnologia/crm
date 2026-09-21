@@ -1,0 +1,32 @@
+{
+  "descricao": "author.kind fora de ActorKind do domínio deve ser rejeitado.",
+  "requisicao": {
+    "params": {
+      "taskId": "tarefa-001"
+    },
+    "headers": {
+      "idempotency-key": "comment:tarefa-001:routing-0001"
+    },
+    "body": {
+      "text": "Fulano, para aprovação"
+    }
+  },
+  "resposta": {
+    "status": 200,
+    "corpo": {
+      "id": "comentario-001",
+      "taskId": "tarefa-001",
+      "parentCommentId": null,
+      "author": {
+        "kind": "cliente",
+        "id": "agente-pipeline",
+        "displayName": "Agente do pipeline"
+      },
+      "text": "Fulano, para aprovação",
+      "mentionMemberIds": [
+        "membro-aprovador"
+      ],
+      "createdAt": "2026-09-10T09:30:00.000Z"
+    }
+  }
+}
