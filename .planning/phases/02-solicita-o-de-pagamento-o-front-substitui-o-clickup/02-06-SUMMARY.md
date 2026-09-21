@@ -94,3 +94,15 @@ None - no external service configuration required.
 ---
 *Phase: 02-solicita-o-de-pagamento-o-front-substitui-o-clickup*
 *Completed: 2026-09-21*
+
+## Self-Check: PASSED
+
+- FOUND: packages/dominio/src/solicitacao-de-pagamento.ts
+- FOUND: packages/dominio/src/solicitacao-de-pagamento.test.ts
+- FOUND: packages/dominio/src/index.ts
+- FOUND: .planning/phases/02-solicita-o-de-pagamento-o-front-substitui-o-clickup/02-06-SUMMARY.md
+- FOUND commit: 183f58e (Task 1)
+- FOUND commit: c0e45ef (Task 2)
+- FOUND commit: be7a086 (Task 3 RED)
+- FOUND commit: a9f0b45 (Task 3 GREEN)
+- FOUND commit: 737e6f2 (docs: SUMMARY)
