@@ -146,16 +146,16 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1)*
 
-- [ ] 02-09-PLAN.md — Credencial de serviço com hash + Membro `Agente do pipeline` (D-15); `.env.example` completo da fase
-- [ ] 02-10-PLAN.md — Outbox transacional na UoW + worker de entrega com lease e backoff (D-18/D-19/SOL-07)
-- [ ] 02-11-PLAN.md — Storage privado: tickets de upload assinados, verificação server-side e download por URL curta (D-04)
-- [ ] 02-12-PLAN.md — `financeiro-tria`: porta `PaymentRequestAdapter`, injeção no serviço e seletor `PAYMENT_REQUEST_SOURCE` (D-17/D-21)
+- [x] 02-09-PLAN.md — Credencial de serviço com hash + Membro `Agente do pipeline` (D-15); `.env.example` completo da fase
+- [x] 02-10-PLAN.md — Outbox transacional na UoW + worker de entrega com lease e backoff (D-18/D-19/SOL-07)
+- [x] 02-11-PLAN.md — Storage privado: tickets de upload assinados, verificação server-side e download por URL curta (D-04)
+- [x] 02-12-PLAN.md — `financeiro-tria`: porta `PaymentRequestAdapter`, injeção no serviço e seletor `PAYMENT_REQUEST_SOURCE` (D-17/D-21)
 
 **Wave 3** *(blocked on Wave 2)*
 
-- [ ] 02-08-PLAN.md — Evolver idempotente da Lista + elevação de `tasksPerList` + CLI `solicitacoes:configurar` (SOL-01)
+- [x] 02-08-PLAN.md — Evolver idempotente da Lista + elevação de `tasksPerList` + CLI `solicitacoes:configurar` (SOL-01)
 - [ ] 02-13-PLAN.md — `apps/api`: as 7 rotas `/v1/integrations/payment-requests/*` + idempotência HTTP + projeção `PaymentRequestDtoV1` (SOL-05, D-20/D-22)
-- [ ] 02-14-PLAN.md — `apps/web`: fila `/ia/aprovacoes` discriminando origem + card de Aprovação na Tarefa + Fluxo manual (SOL-03, D-08/D-12)
+- [x] 02-14-PLAN.md — `apps/web`: fila `/ia/aprovacoes` discriminando origem + card de Aprovação na Tarefa + Fluxo manual (SOL-03, D-08/D-12)
 - [ ] 02-15-PLAN.md — Topologia e região: decisão de `sa-east-1` (D-23), nginx/TLS na VPS (D-15/D11), CA do Postgres fixada e latência medida
 
 **Wave 4** *(blocked on Wave 3)*
@@ -266,7 +266,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 |-------|----------------|--------|-----------|
 | 0. Preparação | 7/7 | Complete   | 2026-09-17 |
 | 1. O CRM N1 ganha persistência e login | 16/16 | Complete   | 2026-09-17 |
-| 2. Solicitação de pagamento — o front substitui o ClickUp | 7/28 | In Progress|  |
+| 2. Solicitação de pagamento — o front substitui o ClickUp | 13/28 | In Progress|  |
 | 3. Contas a pagar | 0/TBD | Not started | - |
 | 4. As outras telas do financeiro-tria | 0/TBD | Not started | - |
 | 5. Contas a receber e os outros tenants | 0/TBD | Not started | - |
