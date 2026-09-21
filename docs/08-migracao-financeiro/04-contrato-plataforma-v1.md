@@ -66,6 +66,7 @@ Envelope único de erro, o mesmo nos dois sentidos (plataforma → `automation/`
 | 403 | `ESCOPO_INSUFICIENTE` | credencial válida, sem o escopo do método | `false` |
 | 404 | `ENTIDADE_NAO_ENCONTRADA` | `taskId`/`commentId` inexistente no Espaço configurado | `false` |
 | 409 | `CONFLITO_DE_ORDEM` | transição de Status inválida para o estado atual | `false` |
+| 409 | `CONFLITO_DE_REVISAO` | a revisão otimista do Espaço de Trabalho mudou entre a leitura e a gravação (`apps/api/src/persistencia/unidade-de-trabalho.ts`), mesmo depois das tentativas automáticas — quem chama repete a mesma requisição | `true` |
 | 409 | `IDEMPOTENCY_KEY_REUSED` | mesma chave, hash de corpo diferente (§7) | `false` |
 | 409 | `REQUEST_IN_PROGRESS` | mesma chave, chamada anterior ainda em voo — vem com `Retry-After` | `true` |
 | 422 | `REGRA_DE_DOMINIO` | recusa do domínio (ex.: Status de destino não existe no Conjunto da Lista) | `false` |
