@@ -10,6 +10,7 @@
     "migrar": "vite-node src/persistencia/migrar.cli.ts",
     "usuarios:seed": "vite-node src/autenticacao/criar-usuarios-do-seed.ts",
     "bootstrap:gestao": "vite-node src/bootstrap/gestao.cli.ts",
+    "solicitacoes:configurar": "vite-node src/bootstrap/solicitacoes.cli.ts",
     "exportar:clickup": "vite-node src/importacao/clickup/exportar.cli.ts",
     "clickup:usuarios": "vite-node src/importacao/clickup/usuarios.cli.ts"
   },

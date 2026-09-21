@@ -140,7 +140,16 @@ export interface ImposedLimits {
   readonly spaces: number;
   readonly contacts: number;
   readonly agents: number;
-  readonly tasksPerList: number;
+  /**
+   * B34 — ao contrário dos demais campos desta interface, este NÃO é
+   * `readonly`: elevar o teto de Tarefas por Lista antes de uma importação em
+   * massa (V02-01B, `02-RESEARCH.md`) é decisão consciente do evolver de
+   * configuração (`solicitacao-de-pagamento-evolver.ts`, Plan 02-08),
+   * registrada em Atividade — nunca um `update` direto por SQL, que pularia
+   * a validação de `createTask`. O valor só sobe, nunca desce (a função que
+   * eleva faz `max(atual, mínimo)`).
+   */
+  tasksPerList: number;
   readonly subtaskDepthCeiling: number;
   readonly executionChainDepth: number;
   readonly agentToAgentDepth: number;
