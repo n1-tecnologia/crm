@@ -131,10 +131,65 @@ Estado em 2026-09-15: **metade feita**. PERS-01 (persistência + Unidade de Trab
   4. Por duas semanas, o Omie recebe o mesmo `IncluirContaPagar` pelos dois caminhos — conferido por `ConsultarContaPagar` com `codigo_lancamento_integracao` idêntico; ao fim, os webhooks Tria do ClickUp são desligados e a Lista de Solicitação é arquivada.
   5. As 1.110 solicitações históricas aparecem como Tarefas fechadas, com `comentario` como Comentário do RESUMO, `TaskID` apontando para a Tarefa da plataforma, `origem` preenchida e nenhuma credencial copiada.
 
-**Plans**: TBD
+**Plans**: 28 plans
 **UI hint**: yes
+Plans:
+**Wave 1** *(fundações independentes)*
 
-Antes de planejar: revisar a divisão ontologia × telas portadas (OQ-PLAN-01 / DEC-16); fechar D6 (SOL-01) e D8 (SOL-08) — a spec PREP-03 deve respondê-las; decidir D9 (status `aprovado`); decidir se o evento de saída de SOL-07 é a semente do motor de Automações da Phase 3 (OQ-SYN-02) — recomendação: um mecanismo mínimo de evento de saída aqui, generalizado na Phase 3, sem antecipar o motor inteiro. O contrato request/response dos 7 métodos precisa estar escrito antes de SOL-05 (CON-13; CONCERNS.md), e o caminho autenticado para leituras do `automation/` (OQ-SYN-01) convém desenhar junto do adapter, mesmo sendo usado só na Phase 4. SOL-05 e SOL-06 vivem no repositório `financeiro-tria`. D12 (mover o `automation/`) reavalia-se ao fim desta fase.
+- [ ] 02-01-PLAN.md — Wave 0 do `crm-n1`: Playwright contra build de produção, servidor HTTP falso e relógio injetável (portão de legitimidade de `@playwright/test`, T-02-SC)
+- [ ] 02-02-PLAN.md — Contrato HTTP v1 dos 7 métodos (D-16/CON-13): `docs/08-migracao-financeiro/04-contrato-plataforma-v1.md`, schemas zod em `apps/api/src/contratos/`, fixtures canônicas em `contratos/payment-requests-v1/`
+- [ ] 02-03-PLAN.md — Migração `003`: outbox, idempotência HTTP, credenciais de serviço, sessões de upload e ledger de importação + `[BLOCKING] npm run migrar`
+- [ ] 02-04-PLAN.md — Domínio: `ApprovalRequest` vira união discriminada (D-06), `solicitarAprovacao` e `decideProcessApproval` (D-09/D-11)
+- [ ] 02-05-PLAN.md — Domínio: `submitForm` com Ator `sistema/Formulário` (D-03), envio atômico com anexos e `WorkspaceFile` com referência de Storage
+- [ ] 02-06-PLAN.md — Domínio: catálogo da Lista `Solicitações de pagamento` — 4 Status, 25 Campos, Tag, 5 Papéis e roteamento por Centro de Custo/Valor (D-01/D-07/D-13/D-14)
+- [ ] 02-07-PLAN.md — Wave 0 do `financeiro-tria`: fábrica do router Express, servidor falso, Omie falso e relógio (runner `tsx --test` confirmado)
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 02-09-PLAN.md — Credencial de serviço com hash + Membro `Agente do pipeline` (D-15); `.env.example` completo da fase
+- [ ] 02-10-PLAN.md — Outbox transacional na UoW + worker de entrega com lease e backoff (D-18/D-19/SOL-07)
+- [ ] 02-11-PLAN.md — Storage privado: tickets de upload assinados, verificação server-side e download por URL curta (D-04)
+- [ ] 02-12-PLAN.md — `financeiro-tria`: porta `PaymentRequestAdapter`, injeção no serviço e seletor `PAYMENT_REQUEST_SOURCE` (D-17/D-21)
+
+**Wave 3** *(blocked on Wave 2)*
+
+- [ ] 02-08-PLAN.md — Evolver idempotente da Lista + elevação de `tasksPerList` + CLI `solicitacoes:configurar` (SOL-01)
+- [ ] 02-13-PLAN.md — `apps/api`: as 7 rotas `/v1/integrations/payment-requests/*` + idempotência HTTP + projeção `PaymentRequestDtoV1` (SOL-05, D-20/D-22)
+- [ ] 02-14-PLAN.md — `apps/web`: fila `/ia/aprovacoes` discriminando origem + card de Aprovação na Tarefa + Fluxo manual (SOL-03, D-08/D-12)
+- [ ] 02-15-PLAN.md — Topologia e região: decisão de `sa-east-1` (D-23), nginx/TLS na VPS (D-15/D11), CA do Postgres fixada e latência medida
+
+**Wave 4** *(blocked on Wave 3)*
+
+- [ ] 02-16-PLAN.md — `apps/api`: as 3 rotas públicas do Formulário com submissão atômica + outbox (SOL-02/SOL-07, D-02/D-19)
+- [ ] 02-17-PLAN.md — `financeiro-tria`: `adapters/plataforma.ts` + fila persistente `platform_adapter_commands` + migração (SOL-05, D-19/D-20)
+- [ ] 02-18-PLAN.md — `financeiro-tria`: `plataforma-payment-mapper.ts` tipado + `unique (origem, TaskID)` na tabela legada (SOL-06)
+- [ ] 02-19-PLAN.md — `apps/web`: painel `Timeline` único (Comentários + Atividades) e anexos com download assinado (SOL-04)
+
+**Wave 5** *(blocked on Wave 4)*
+
+- [ ] 02-20-PLAN.md — `apps/web`: transporte público + formulário `/f/[segredo]` com seções, campos condicionais e validação (SOL-02)
+- [ ] 02-21-PLAN.md — `financeiro-tria`: os 3 webhooks `/webhooks/plataforma/*` com receipt idempotente + seleção do mapper (SOL-07)
+- [ ] 02-22-PLAN.md — Importação histórica: operação de domínio, leitura sanitizada por allowlist e fixture hostil (SOL-09, D-24/D-25)
+
+**Wave 6** *(blocked on Wave 5)*
+
+- [ ] 02-23-PLAN.md — `apps/web`: upload direto ao bucket privado, confirmação pública e jornada Playwright (SOL-02, D-04/D-05)
+- [ ] 02-24-PLAN.md — Fallback por comentário: janela de 90 dias, `POST /v1/integrations/payment-approvals/classifications` e classificador (SOL-08, D-08/D-10)
+- [ ] 02-25-PLAN.md — Importação: CLI dry-run/apply/resume, anexos históricos, manifesto sanitizado e execução real (SOL-09, D-25/D-26)
+
+**Wave 7** *(blocked on Wave 6)*
+
+- [ ] 02-26-PLAN.md — Contract tests nos dois repositórios + E2E entre processos + matriz de falhas injetadas
+
+**Wave 8** *(blocked on Wave 7)*
+
+- [ ] 02-27-PLAN.md — Ensaio de duas semanas por coortes, código Omie determinístico, métricas e reconciliação diária (D-27)
+
+**Wave 9** *(blocked on Wave 8)*
+
+- [ ] 02-28-PLAN.md — Corte final: runbook, desligar webhooks ClickUp, arquivar a Lista, reavaliar D12 e fechar SOL-01..09 (D-28)
+
+Planejada em 2026-09-21 a partir de `02-CONTEXT.md` (D-01..D-28), `02-RESEARCH.md`, `02-PATTERNS.md`, `02-UI-SPEC.md` e `02-VALIDATION.md`. As decisões que o ROADMAP listava como pendentes foram fechadas no CONTEXT e estão distribuídas pelos planos: OQ-PLAN-01/DEC-16 → D-22 (Plan 02-13); D6 → D-01 (02-06); D8 → D-08/D-10 (02-14/02-24); D9 → D-01/D-14 (02-06); OQ-PF-01 → D-03 (02-05); OQ-SYN-02 → D-18, outbox mínimo sem motor genérico (02-10); CON-13 → D-16, contrato escrito antes de SOL-05 (02-02); OQ-SYN-01 → D-15/D-22, credencial de serviço desenhada junto do adapter (02-09/02-13); D11 → D-15 (02-15); D12 reavaliada no fechamento (02-28).
 
 ### Phase 3: Contas a pagar
 
@@ -211,7 +266,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 |-------|----------------|--------|-----------|
 | 0. Preparação | 7/7 | Complete   | 2026-09-17 |
 | 1. O CRM N1 ganha persistência e login | 16/16 | Complete   | 2026-09-17 |
-| 2. Solicitação de pagamento — o front substitui o ClickUp | 0/TBD | Not started | - |
+| 2. Solicitação de pagamento — o front substitui o ClickUp | 0/28 | Planned | - |
 | 3. Contas a pagar | 0/TBD | Not started | - |
 | 4. As outras telas do financeiro-tria | 0/TBD | Not started | - |
 | 5. Contas a receber e os outros tenants | 0/TBD | Not started | - |
