@@ -8,23 +8,23 @@
  * Next (a arquitetura já decidida) e sem o antigo `PublicoProvider`/
  * `buildProductSeed()` (D-02 — esse caminho deixou de existir aqui).
  *
- * O controle de upload de verdade (arrastar/soltar, progresso por arquivo) e
- * a tela de confirmação completa (copiar número, live region) são o Plan
- * 02-23: este componente reserva o ponto onde cada pergunta de arquivo
- * entra e considera `uploadEmAndamento` para travar o CTA, mas ainda não
- * envia bytes — só monta o envio de `answers`.
+ * O controle de upload (Plan 02-23, `./upload-de-arquivos.tsx`) sobe bytes
+ * direto ao bucket privado; este componente só COORDENA a sessão de upload
+ * compartilhada entre as perguntas de arquivo (`executarPedidoDeTicket`) e
+ * agrega o estado delas para travar o CTA e montar `attachments`. A
+ * confirmação (`./confirmacao.tsx`) é o recibo público — só o número.
  */
 
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { CheckCircle2, Paperclip } from "lucide-react";
 import { transportePublico } from "@/dados/transporte-publico";
-import type { FormularioPublicoDto, PerguntaPublica } from "@/dados/transporte-publico";
+import type { FormularioPublicoDto, PerguntaPublica, ResultadoDeTicket } from "@/dados/transporte-publico";
 import { camposInvalidadosPor, camposVisiveis, type RespostasPorRotulo } from "./campos-condicionais";
-import { Button, ConfirmDialog, Field, Icone, MultiSelect, Painel, RecordRow, Select, TextArea, TextInput } from "@/features/shell/ui";
+import { Confirmacao } from "./confirmacao";
+import { COPY_AGUARDE_UPLOAD, UploadDeArquivos, type ArquivoDeUpload } from "./upload-de-arquivos";
+import { Button, ConfirmDialog, Field, MultiSelect, Painel, RecordRow, Select, TextArea, TextInput } from "@/features/shell/ui";
 
 const COPY_ERRO_GENERICO = "Não foi possível enviar a solicitação. Seus dados continuam aqui; tente novamente.";
 const COPY_AJUDA_NAO_OBRIGATORIO = "Necessário para seguir à aprovação.";
-const COPY_AGUARDE_UPLOAD = "Aguarde o envio dos arquivos ou remova os que falharam.";
 
 /** `Integração manual` e `Equipe` não aparecem no Formulário público (UI-SPEC) — mesmo que o DTO um dia os inclua por engano. */
 const EXCLUIDOS = new Set(["Integração manual", "Equipe"]);
@@ -143,12 +143,9 @@ interface TrocaPendente {
 export function FormularioPublico({
   secret,
   formulario,
-  uploadEmAndamento = false,
 }: {
   readonly secret: string;
   readonly formulario: FormularioPublicoDto;
-  /** Lido pelo Plan 02-23 — enquanto um anexo sobe, o CTA principal aguarda em vez de enviar cedo demais. */
-  readonly uploadEmAndamento?: boolean;
 }) {
   const [respostas, setRespostas] = useState<Record<string, string>>({});
   const [erros, setErros] = useState<Record<string, string>>({});
@@ -156,10 +153,22 @@ export function FormularioPublico({
   const [enviando, setEnviando] = useState(false);
   const [enviado, setEnviado] = useState<string | null>(null);
   const [trocaPendente, setTrocaPendente] = useState<TrocaPendente | null>(null);
-  // A MESMA chave em todo o ciclo de vida deste formulário — um retry depois de erro reusa esta, nunca gera outra.
-  const [submissionId] = useState(() => crypto.randomUUID());
+  const [uploadsPorPergunta, setUploadsPorPergunta] = useState<Record<string, readonly ArquivoDeUpload[]>>({});
+  // A MESMA chave local em todo o ciclo de vida deste formulário — um retry depois de erro reusa esta,
+  // nunca gera outra. Só é o valor FINAL de `submissionId` se nenhuma pergunta de arquivo jamais pediu
+  // ticket; assim que a primeira sessão de upload nasce no servidor, `submissionIdDoServidorRef` assume.
+  const [submissionIdLocal, setSubmissionIdLocal] = useState(() => crypto.randomUUID());
+  const submissionIdDoServidorRef = useRef<string | undefined>(undefined);
+  // Serializa os pedidos de ticket entre perguntas de arquivo diferentes (`Anexo` + `Boleto`/`QR Code`
+  // podem estar visíveis ao mesmo tempo): sem isso, duas escolhas de arquivo quase simultâneas
+  // poderiam cada uma pedir um ticket SEM `submissionId` e abrir DUAS sessões para o mesmo envio.
+  const filaDeTicketsRef = useRef<Promise<unknown>>(Promise.resolve());
   const resumoRef = useRef<HTMLDivElement>(null);
   const idDoResumo = useId();
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  // Marcado por `reiniciar()` — o foco só vai para o heading do formulário depois de um "Enviar
+  // outra solicitação", nunca na primeira renderização (quando `enviado` também começa `null`).
+  const reiniciarPendenteRef = useRef(false);
 
   // O resumo de erros recebe foco depois de QUALQUER tentativa inválida —
   // tanto a validação local (campo obrigatório vazio) quanto uma recusa do
@@ -168,6 +177,15 @@ export function FormularioPublico({
   useEffect(() => {
     if (erroGeral) resumoRef.current?.focus();
   }, [erroGeral]);
+
+  // "Enviar outra solicitação" devolve o foco ao heading do FORMULÁRIO (não ao da confirmação) —
+  // só depois que `enviado` volta a `null` o heading volta a existir na árvore.
+  useEffect(() => {
+    if (!enviado && reiniciarPendenteRef.current) {
+      reiniciarPendenteRef.current = false;
+      headingRef.current?.focus();
+    }
+  }, [enviado]);
 
   const perguntas = useMemo(() => formulario.questions.filter((q) => !EXCLUIDOS.has(q.label.trim())), [formulario.questions]);
 
@@ -186,6 +204,65 @@ export function FormularioPublico({
 
   const rotulosConhecidos = useMemo(() => new Set(SECOES.flatMap((s) => s.rotulos)), []);
   const outras = useMemo(() => perguntas.filter((p) => !rotulosConhecidos.has(p.label)), [perguntas, rotulosConhecidos]);
+
+  const totalDeArquivosNoEnvio = useMemo(
+    () => Object.values(uploadsPorPergunta).reduce((soma, lista) => soma + lista.length, 0),
+    [uploadsPorPergunta],
+  );
+  // Bloqueia o CTA enquanto QUALQUER arquivo não estiver "enviado" — inclusive "aguardando" (na
+  // fila) e "falhou" (precisa ser removido ou reenviado com sucesso primeiro).
+  const algumUploadPendente = useMemo(
+    () => Object.values(uploadsPorPergunta).some((lista) => lista.some((a) => a.status !== "enviado")),
+    [uploadsPorPergunta],
+  );
+  const attachmentsDoEnvio = useMemo(
+    () =>
+      Object.entries(uploadsPorPergunta).flatMap(([perguntaId, lista]) =>
+        lista.filter((a) => a.status === "enviado" && a.objectId).map((a) => ({ questionId: perguntaId, objectId: a.objectId! })),
+      ),
+    [uploadsPorPergunta],
+  );
+
+  function executarPedidoDeTicket(
+    tarefa: (submissionIdAtual: string | undefined) => Promise<ResultadoDeTicket>,
+  ): Promise<ResultadoDeTicket> {
+    const execucao = filaDeTicketsRef.current.then(() => tarefa(submissionIdDoServidorRef.current));
+    filaDeTicketsRef.current = execucao.then(
+      (resultado) => {
+        if (resultado.tipo === "ok") submissionIdDoServidorRef.current = resultado.submissionId;
+      },
+      () => undefined,
+    );
+    return execucao;
+  }
+
+  function adicionarArquivosDaPergunta(perguntaId: string, novos: readonly ArquivoDeUpload[]): void {
+    setUploadsPorPergunta((atual) => ({ ...atual, [perguntaId]: [...(atual[perguntaId] ?? []), ...novos] }));
+  }
+
+  function atualizarArquivoDaPergunta(perguntaId: string, clientId: string, parcial: Partial<ArquivoDeUpload>): void {
+    setUploadsPorPergunta((atual) => {
+      const lista = atual[perguntaId] ?? [];
+      if (!lista.some((a) => a.clientId === clientId)) return atual;
+      return { ...atual, [perguntaId]: lista.map((a) => (a.clientId === clientId ? { ...a, ...parcial } : a)) };
+    });
+  }
+
+  function removerArquivoDaPergunta(perguntaId: string, clientId: string): void {
+    setUploadsPorPergunta((atual) => ({ ...atual, [perguntaId]: (atual[perguntaId] ?? []).filter((a) => a.clientId !== clientId) }));
+  }
+
+  /** `Enviar outra solicitação` (UI-SPEC): nova sessão de submissão, respostas limpas, foco no heading. */
+  function reiniciar(): void {
+    reiniciarPendenteRef.current = true;
+    setRespostas({});
+    setErros({});
+    setErroGeral(null);
+    setUploadsPorPergunta({});
+    submissionIdDoServidorRef.current = undefined;
+    setSubmissionIdLocal(crypto.randomUUID());
+    setEnviado(null);
+  }
 
   function atualizarResposta(id: string, valor: string): void {
     setRespostas((atual) => ({ ...atual, [id]: valor }));
@@ -221,13 +298,15 @@ export function FormularioPublico({
   }
 
   function ajudaDe(pergunta: PerguntaPublica): string | undefined {
+    // O upload desenha sua própria ajuda de formato (`UploadDeArquivos`) — não duplicar aqui.
+    if (pergunta.kind === "file") return undefined;
     if (!pergunta.required && ROTULOS_DOCUMENTO_E_PAGAMENTO.has(pergunta.label)) return COPY_AJUDA_NAO_OBRIGATORIO;
     return pergunta.help;
   }
 
   async function aoSubmeter(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    if (enviando || uploadEmAndamento) return;
+    if (enviando || algumUploadPendente) return;
 
     const invalidos = perguntasRenderizadas.filter((p) => p.required && p.kind !== "file" && !(respostas[p.id] ?? "").trim());
     if (invalidos.length > 0) {
@@ -250,7 +329,13 @@ export function FormularioPublico({
       answers[p.id] = valorCanonico(p, bruto);
     }
 
-    const resultado = await transportePublico.enviarSubmissao({ secret, submissionId, answers });
+    const submissionId = submissionIdDoServidorRef.current ?? submissionIdLocal;
+    const resultado = await transportePublico.enviarSubmissao({
+      secret,
+      submissionId,
+      answers,
+      ...(attachmentsDoEnvio.length > 0 ? { attachments: attachmentsDoEnvio } : {}),
+    });
     setEnviando(false);
 
     if (resultado.tipo === "ok") {
@@ -273,11 +358,18 @@ export function FormularioPublico({
 
     if (pergunta.kind === "file") {
       return (
-        <div className="grid gap-1">
-          <Button icon={<Icone de={Paperclip} tamanho="sm" />} disabled disabledReason="Envio de arquivo chega no próximo plano (02-23).">
-            Adicionar arquivos
-          </Button>
-        </div>
+        <UploadDeArquivos
+          id={id}
+          papel={pergunta.label}
+          accept={pergunta.accept}
+          secret={secret}
+          arquivos={uploadsPorPergunta[pergunta.id] ?? []}
+          totalArquivosNoEnvio={totalDeArquivosNoEnvio}
+          executarPedidoDeTicket={executarPedidoDeTicket}
+          aoAdicionarArquivos={(novos) => adicionarArquivosDaPergunta(pergunta.id, novos)}
+          aoAtualizarArquivo={(clientId, parcial) => atualizarArquivoDaPergunta(pergunta.id, clientId, parcial)}
+          aoRemoverArquivo={(clientId) => removerArquivoDaPergunta(pergunta.id, clientId)}
+        />
       );
     }
     if (pergunta.kind === "singleSelect" || pergunta.label === "Fornecedor" || pergunta.label === "Forma de pagamento") {
@@ -354,26 +446,16 @@ export function FormularioPublico({
   }
 
   if (enviado) {
-    return (
-      <Painel solido role="status" className="grid gap-2 p-6">
-        <Icone de={CheckCircle2} tamanho="lg" style={{ color: "var(--sucesso)" }} />
-        <h2 className="ed-subtitulo">Solicitação enviada</h2>
-        <p className="app-base" style={{ color: "var(--texto-2)" }}>
-          Recebemos sua solicitação. Guarde o número abaixo para falar com o Financeiro.
-        </p>
-        <p className="app-sm mt-2" style={{ color: "var(--texto-3)" }}>
-          Número da solicitação
-        </p>
-        <p className="identificador app-numero">{enviado}</p>
-      </Painel>
-    );
+    return <Confirmacao numero={enviado} aoEnviarOutra={reiniciar} />;
   }
 
   return (
     <>
       <header className="grid gap-1">
         <p className="ed-eyebrow">CRM N1</p>
-        <h1 className="ed-titulo">Solicitação de pagamento</h1>
+        <h1 ref={headingRef} tabIndex={-1} className="ed-titulo">
+          Solicitação de pagamento
+        </h1>
         <p className="app-base" style={{ color: "var(--texto-3)" }}>
           Preencha os dados do pagamento. O Financeiro acompanhará a solicitação por este número.
         </p>
@@ -463,7 +545,7 @@ export function FormularioPublico({
             <Button
               type="submit"
               variant="primary"
-              disabled={enviando || uploadEmAndamento}
+              disabled={enviando || algumUploadPendente}
               disabledReason={enviando ? "Enviando…" : COPY_AGUARDE_UPLOAD}
             >
               {enviando ? "Enviando solicitação…" : "Enviar solicitação"}
