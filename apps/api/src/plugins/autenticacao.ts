@@ -6,7 +6,10 @@
  * Registrado direto na instância raiz — sem o wrapper de encapsulamento que
  * outros plugins usam — para alcançar toda rota registrada depois, sem
  * precisar declarar dependência por plugin. Uma rota se isenta marcando
- * `config: { publica: true }` — hoje só `GET /saude`.
+ * `config: { publica: true }` — hoje só `GET /saude` — e todo o prefixo
+ * `PREFIXO_ROTAS_DE_SERVICO` (`/v1/integrations`, D-15) se isenta por URL,
+ * porque autentica por credencial de serviço (`autenticacao-servico.ts`),
+ * nunca por JWT humano.
  *
  * A regra de acesso replica `apps/web/src/dados/sessao-provider.tsx`
  * (`state === "ativo" || state === "suspenso"`), mas aqui ela é controle de
@@ -17,6 +20,7 @@
 import type { FastifyInstance } from "fastify";
 import type { Member } from "@n1/dominio";
 import type { VerificarToken } from "../autenticacao/verificar-token";
+import { PREFIXO_ROTAS_DE_SERVICO } from "./autenticacao-servico";
 
 export interface MembroDaSessao {
   readonly id: string;
@@ -44,6 +48,16 @@ export function registrarAutenticacao(app: FastifyInstance, opcoes: OpcoesDeAute
 
   app.addHook("onRequest", async (request, reply) => {
     if (request.routeOptions.config.publica === true) return;
+    // `/v1/integrations/*` autentica por credencial de serviço
+    // (`plugins/autenticacao-servico.ts`), nunca por JWT humano — D-15,
+    // T-02-03. Este hook está na raiz do Fastify, e um hook na raiz
+    // cascateia para TODO filho, inclusive o plugin encapsulado dessas
+    // rotas; sem este corte explícito, ele chegaria lá primeiro e
+    // rejeitaria uma credencial de serviço válida (que não é um JWT) antes
+    // do hook de serviço ter a chance de rodar. Nenhuma rota humana usa
+    // este prefixo, então o corte nunca esconde uma checagem que devesse
+    // valer.
+    if (request.url === PREFIXO_ROTAS_DE_SERVICO || request.url.startsWith(`${PREFIXO_ROTAS_DE_SERVICO}/`)) return;
 
     const cabecalho = request.headers.authorization;
     const token = cabecalho?.startsWith("Bearer ") ? cabecalho.slice(7) : undefined;

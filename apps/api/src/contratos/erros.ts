@@ -12,6 +12,7 @@
 
 export const CODIGOS_DE_ERRO = {
   SCHEMA_INVALIDO: { status: 400, retryable: false, mensagem: "Entrada inválida para esta chamada." },
+  CREDENCIAL_AUSENTE: { status: 401, retryable: false, mensagem: "Credencial de serviço ausente." },
   CREDENCIAL_INVALIDA: { status: 401, retryable: false, mensagem: "Credencial de serviço ausente ou inválida." },
   ESCOPO_INSUFICIENTE: { status: 403, retryable: false, mensagem: "Credencial sem escopo para esta operação." },
   ENTIDADE_NAO_ENCONTRADA: { status: 404, retryable: false, mensagem: "Recurso não encontrado." },

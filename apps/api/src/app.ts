@@ -14,11 +14,16 @@ import {
   serializerCompiler,
   validatorCompiler,
 } from "@fastify/type-provider-zod";
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { verificarTokenDoSupabase, type VerificarToken } from "./autenticacao/verificar-token";
 import { carregarEnv } from "./persistencia/conexao";
 import { membroPorUsuario } from "./persistencia/membros";
 import { registrarAutenticacao, type OpcoesDeAutenticacao } from "./plugins/autenticacao";
+import {
+  PREFIXO_ROTAS_DE_SERVICO,
+  registrarAutenticacaoDeServico,
+  type OpcoesDeAutenticacaoDeServico,
+} from "./plugins/autenticacao-servico";
 import { rotasDeEstado } from "./rotas/estado";
 import { rotasDeOperacoes } from "./rotas/operacoes";
 
@@ -31,8 +36,21 @@ export interface OpcoesDoApp {
   readonly verificarToken?: VerificarToken;
   /** Padrão: `membroPorUsuario`. Testes injetam um stub, sem banco. */
   readonly resolverMembro?: OpcoesDeAutenticacao["resolverMembro"];
+  /** Padrão: `resolverCredencial` de `persistencia/credenciais-de-servico.ts`. Testes injetam um stub, sem banco. */
+  readonly resolverCredencial?: OpcoesDeAutenticacaoDeServico["resolverCredencial"];
   /** Padrão: `false` em teste, `true` no boot (`index.ts`). */
   readonly logger?: boolean;
+  /**
+   * SÓ PARA TESTE. Nenhuma rota `/v1/integrations/*` nasce nesta Fase — este
+   * plano só entrega a identidade (D-15). Testes usam este gancho para
+   * registrar uma rota de prova DENTRO do plugin encapsulado do prefixo, o
+   * único jeito de uma rota herdar `registrarAutenticacaoDeServico` (uma
+   * rota adicionada em `app` depois de `buildApp()` devolver seria irmã
+   * desse plugin, não filha — não herdaria o hook). Planos futuros que
+   * criarem rotas reais devem registrá-las direto aqui dentro, em `app.ts`,
+   * não através deste parâmetro.
+   */
+  readonly rotasDeIntegracaoParaTeste?: (integracao: FastifyInstance) => void;
 }
 
 export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
@@ -47,16 +65,6 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
   const app = Fastify({ logger: opcoes.logger ?? false });
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
-
-  // Allowlist explícita: nunca `*`. O `Authorization: Bearer` viaja com a
-  // origem do navegador, então um CORS aberto deixaria qualquer site chamar
-  // `apps/api` usando a sessão de quem estiver com outra aba logada (T-1-03).
-  app.register(cors, {
-    origin: [webOrigin],
-    credentials: false,
-    methods: ["GET", "POST"],
-    allowedHeaders: ["authorization", "content-type"],
-  });
 
   app.setNotFoundHandler((_request, reply) => {
     reply.status(404).send({ ok: false, error: "Rota não encontrada." });
@@ -76,8 +84,49 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
     reply.status(500).send({ ok: false, error: "Erro interno." });
   });
 
-  // Registrado antes de qualquer rota protegida: toda rota que nascer depois
-  // daqui exige token, a menos que se marque `config: { publica: true }`.
+  // Allowlist explícita: nunca `*`. O `Authorization: Bearer` viaja com a
+  // origem do navegador, então um CORS aberto deixaria qualquer site chamar
+  // `apps/api` usando a sessão de quem estiver com outra aba logada
+  // (T-1-03). `delegator` decide por requisição — `/v1/integrations/*`
+  // nunca recebe cabeçalho `Access-Control-*` (`origin: false`): o
+  // `automation/` é servidor-a-servidor e nenhuma origem de navegador deve
+  // alcançá-lo (D-15). Registrado direto na raiz, na mesma posição de
+  // antes deste plano: mover `cors` para dentro de um filho encapsulado
+  // quebra o preflight de rotas registradas de forma síncrona nesse
+  // mesmo filho (como `/saude`) — o `onRoute` que `@fastify/cors` usa
+  // para gerar a rota `OPTIONS` automática só é instalado quando o avvio
+  // carrega o plugin `cors`, o que acontece DEPOIS de qualquer `.get()`
+  // síncrono chamado logo em seguida no mesmo corpo de função.
+  //
+  // O `delegator` PRECISA vir dentro de um objeto (`{ delegator: fn }`),
+  // nunca como o segundo argumento direto de `register()`: o `avvio` (por
+  // baixo do `register()` do Fastify) trata qualquer FUNÇÃO passada ali
+  // como fábrica de opções — chamada uma única vez no boot, recebendo a
+  // instância do Fastify, não a requisição — antes mesmo dessa função
+  // chegar ao `@fastify/cors`. Passar a função direto faz `request` virar
+  // a instância do servidor, não a requisição, e o hook nunca dispara de
+  // verdade por requisição.
+  const opcoesDeCors = {
+    credentials: false,
+    methods: ["GET", "POST"],
+    allowedHeaders: ["authorization", "content-type"],
+  };
+  app.register(cors, {
+    delegator: (
+      request: FastifyRequest,
+      callback: (erro: Error | null, opcoes?: Record<string, unknown>) => void,
+    ) => {
+      const ehRotaDeServico =
+        request.url === PREFIXO_ROTAS_DE_SERVICO || request.url.startsWith(`${PREFIXO_ROTAS_DE_SERVICO}/`);
+      callback(null, { ...opcoesDeCors, origin: ehRotaDeServico ? false : [webOrigin] });
+    },
+  });
+
+  // Registrado direto na raiz: toda rota que nascer depois daqui — em
+  // QUALQUER filho, inclusive o de `/v1/integrations` abaixo — exige
+  // token, a menos que se marque `config: { publica: true }` ou viva sob
+  // `PREFIXO_ROTAS_DE_SERVICO` (o próprio hook trata essa exceção — ver
+  // `plugins/autenticacao.ts`).
   registrarAutenticacao(app, {
     workspaceId,
     verificarToken: opcoes.verificarToken ?? verificarTokenDoSupabase,
@@ -92,11 +141,27 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
   // Depois do hook de autenticação: toda rota registrada aqui exige
   // `Authorization: Bearer`, salvo `config: { publica: true }`. `buildApp`
   // continua síncrono — `app.register` sem `await` enfileira o plugin, e o
-  // Fastify resolve a fila sozinho no primeiro `ready()`/`listen()`/`inject()`
-  // (é o mesmo motivo por que `app.register(cors, ...)` acima também não é
-  // aguardado).
+  // Fastify resolve a fila sozinho no primeiro `ready()`/`listen()`/`inject()`.
   app.register(rotasDeOperacoes);
   app.register(rotasDeEstado);
+
+  // Rotas serviço-a-serviço: credencial própria
+  // (`plugins/autenticacao-servico.ts`), nunca JWT humano. Rotas
+  // `/v1/integrations/*` nascem DENTRO deste mesmo plugin em planos
+  // futuros (D-22, OQ-SYN-01) — precisam ser filhas desta instância
+  // `integracao`, não registradas soltas na raiz, para herdar o hook de
+  // serviço (um hook de filho encapsulado só roda para rotas que são
+  // filhas do MESMO plugin — diferente do hook humano acima, que está na
+  // raiz e por isso cascateia para todo mundo).
+  app.register(
+    async (integracao) => {
+      registrarAutenticacaoDeServico(integracao, {
+        resolverCredencial: opcoes.resolverCredencial,
+      });
+      opcoes.rotasDeIntegracaoParaTeste?.(integracao);
+    },
+    { prefix: PREFIXO_ROTAS_DE_SERVICO },
+  );
 
   return app;
 }
