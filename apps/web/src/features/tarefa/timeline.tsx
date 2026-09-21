@@ -248,27 +248,25 @@ function LinhaDeAtividade({ state, fmt, record }: { readonly state: DataState; r
  * verdade em `task.comments` (o diff voltou), nunca antes. Uma recusa
  * síncrona (conteúdo vazio, sem permissão) aparece na hora; uma falha do
  * servidor aparece quando `lastResult` marcar depois da nossa tentativa —
- * mesmo padrão de `useDecisaoDeAprovacao` em `painel-aprovacao.tsx`.
+ * mesmo padrão de `useDecisaoDeAprovacao` em `painel-aprovacao.tsx`. `texto`/
+ * `mencoes` moram em `Compositor` (quem os exibe), não aqui: o efeito de
+ * confirmação chama `onEnviado` — nunca `setTexto` direto — pela mesma razão
+ * de `useDecisaoDeAprovacao` chamar `onSucesso` em vez de mexer no estado do
+ * card por dentro do próprio efeito.
  */
-function useCompositorDeTimeline(task: Task) {
+function useCompositorDeTimeline(task: Task, texto: string, mencoes: readonly string[], onEnviado: () => void) {
   const run = useRun();
   const lastResult = useLastResult();
-  const [texto, setTexto] = useState("");
-  const [mencoes, setMencoes] = useState<readonly string[]>([]);
   const [erroImediato, setErroImediato] = useState<string | null>(null);
   const [tentativa, setTentativa] = useState<{ readonly id: string; readonly marca: number } | null>(null);
 
   const confirmado = tentativa !== null && task.comments.some((c) => c.id === tentativa.id);
 
   // Efeito de NOTIFICAÇÃO, não de cálculo (mesmo padrão de `useDecisaoDeAprovacao`):
-  // limpa o rascunho só quando o Comentário aceito já está em `data`.
+  // avisa só quando o Comentário aceito já está em `data`.
   useEffect(() => {
-    if (confirmado) {
-      setTexto("");
-      setMencoes([]);
-      setTentativa(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- só o par (task.comments, tentativa) decide, como no controlador de decisão
+    if (confirmado) onEnviado();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onEnviado é recriada a cada render do chamador de propósito; só `confirmado` decide se dispara
   }, [confirmado]);
 
   const erroDoServidor =
@@ -293,12 +291,17 @@ function useCompositorDeTimeline(task: Task) {
     setTentativa({ id: resultado.value.id, marca });
   };
 
-  return { texto, setTexto, mencoes, setMencoes, erro, enviando, enviar };
+  return { erro, enviando, enviar };
 }
 
 function Compositor({ task }: { readonly task: Task }) {
   const members = useData((data) => data.members);
-  const controlador = useCompositorDeTimeline(task);
+  const [texto, setTexto] = useState("");
+  const [mencoes, setMencoes] = useState<readonly string[]>([]);
+  const controlador = useCompositorDeTimeline(task, texto, mencoes, () => {
+    setTexto("");
+    setMencoes([]);
+  });
   const id = useId();
 
   return (
@@ -315,8 +318,8 @@ function Compositor({ task }: { readonly task: Task }) {
       </label>
       <textarea
         id={id}
-        value={controlador.texto}
-        onChange={(event) => controlador.setTexto(event.target.value)}
+        value={texto}
+        onChange={(event) => setTexto(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
             event.preventDefault();
@@ -341,8 +344,8 @@ function Compositor({ task }: { readonly task: Task }) {
           </label>
           <MultiSelect
             id={`${id}-mencoes`}
-            values={controlador.mencoes}
-            onChange={controlador.setMencoes}
+            values={mencoes}
+            onChange={setMencoes}
             placeholder="Mencionar alguém"
             options={members.filter((m) => m.state === "ativo").map((m) => ({ value: m.id, label: m.displayName }))}
           />
@@ -350,7 +353,7 @@ function Compositor({ task }: { readonly task: Task }) {
         <Button
           type="submit"
           variant="primary"
-          disabled={controlador.texto.trim() === "" || controlador.enviando}
+          disabled={texto.trim() === "" || controlador.enviando}
           disabledReason={controlador.enviando ? "Enviando…" : "Escreva o comentário antes de enviar."}
           icon={<Icone de={Send} tamanho="xs" />}
         >
