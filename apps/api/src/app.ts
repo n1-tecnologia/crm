@@ -25,6 +25,7 @@ import {
   type OpcoesDeAutenticacaoDeServico,
 } from "./plugins/autenticacao-servico";
 import { rotasDeEstado } from "./rotas/estado";
+import { rotasDeIntegracaoDeSolicitacoes } from "./rotas/integracao-solicitacoes";
 import { rotasDeOperacoes } from "./rotas/operacoes";
 
 export interface OpcoesDoApp {
@@ -41,14 +42,14 @@ export interface OpcoesDoApp {
   /** Padrão: `false` em teste, `true` no boot (`index.ts`). */
   readonly logger?: boolean;
   /**
-   * SÓ PARA TESTE. Nenhuma rota `/v1/integrations/*` nasce nesta Fase — este
-   * plano só entrega a identidade (D-15). Testes usam este gancho para
-   * registrar uma rota de prova DENTRO do plugin encapsulado do prefixo, o
-   * único jeito de uma rota herdar `registrarAutenticacaoDeServico` (uma
-   * rota adicionada em `app` depois de `buildApp()` devolver seria irmã
-   * desse plugin, não filha — não herdaria o hook). Planos futuros que
-   * criarem rotas reais devem registrá-las direto aqui dentro, em `app.ts`,
-   * não através deste parâmetro.
+   * SÓ PARA TESTE. As sete rotas reais de `/v1/integrations/payment-requests/*`
+   * (Plan 02-13, `rotasDeIntegracaoDeSolicitacoes`) já nascem direto aqui
+   * dentro, em `app.ts` — este gancho continua existindo só para
+   * `autenticacao-servico.test.ts` registrar rotas de prova adicionais
+   * DENTRO do mesmo plugin encapsulado do prefixo, o único jeito de uma rota
+   * herdar `registrarAutenticacaoDeServico` (uma rota adicionada em `app`
+   * depois de `buildApp()` devolver seria irmã desse plugin, não filha — não
+   * herdaria o hook).
    */
   readonly rotasDeIntegracaoParaTeste?: (integracao: FastifyInstance) => void;
 }
@@ -158,6 +159,10 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
       registrarAutenticacaoDeServico(integracao, {
         resolverCredencial: opcoes.resolverCredencial,
       });
+      // As sete rotas `/v1/integrations/payment-requests/*` (Plan 02-13) —
+      // registradas AQUI DENTRO, filhas da mesma instância `integracao`, para
+      // herdar o hook de serviço acima (ver o comentário deste bloco).
+      await rotasDeIntegracaoDeSolicitacoes(integracao);
       opcoes.rotasDeIntegracaoParaTeste?.(integracao);
     },
     { prefix: PREFIXO_ROTAS_DE_SERVICO },

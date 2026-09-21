@@ -15,8 +15,8 @@
     "status": 401,
     "corpo": {
       "error": {
-        "code": "CREDENCIAL_INVALIDA",
-        "message": "Credencial de serviço ausente ou inválida.",
+        "code": "CREDENCIAL_AUSENTE",
+        "message": "Credencial de serviço ausente.",
         "requestId": "corr-updateTaskDueDate-401",
         "retryable": false
       }

@@ -31,8 +31,12 @@ import { CommentDtoV1 as CommentDtoV1Schema, PaymentRequestDtoV1 as PaymentReque
 export type PaymentRequestDtoV1 = z.infer<typeof PaymentRequestDtoV1Schema>;
 export type CommentDtoV1 = z.infer<typeof CommentDtoV1Schema>;
 
-/** Mesmo literal de `solicitacao-de-pagamento-evolver.ts::LISTA_ID` — ver cabeçalho do arquivo. */
-const LISTA_SOLICITACOES_DE_PAGAMENTO_ID: Id = "lst_solicitacoes_de_pagamento";
+/**
+ * Mesmo literal de `solicitacao-de-pagamento-evolver.ts::LISTA_ID` — ver
+ * cabeçalho do arquivo. Exportado para `../rotas/integracao-solicitacoes.ts`
+ * filtrar Tarefas da Lista certa sem duplicar o literal uma terceira vez.
+ */
+export const LISTA_SOLICITACOES_DE_PAGAMENTO_ID: Id = "lst_solicitacoes_de_pagamento";
 
 const CAMPOS_POR_ORDEM = new Map(CATALOGO_SOLICITACAO_DE_PAGAMENTO.campos.map((campo) => [campo.ordem, campo.id]));
 
@@ -99,6 +103,14 @@ const STATUS_POR_ID: Readonly<Record<string, PaymentRequestDtoV1["status"]>> = {
   [SOL.status.emAprovacao]: "em aprovação",
   [SOL.status.naoAprovado]: "não aprovado",
   [SOL.status.aprovado]: "aprovado",
+};
+
+/** O inverso de `STATUS_POR_ID` — `PUT /:taskId/status` traduz o `status` do contrato para o id que `changeTaskStatus` espera. */
+export const ID_DO_STATUS: Readonly<Record<PaymentRequestDtoV1["status"], Id>> = {
+  "para fazer": SOL.status.paraFazer,
+  "em aprovação": SOL.status.emAprovacao,
+  "não aprovado": SOL.status.naoAprovado,
+  aprovado: SOL.status.aprovado,
 };
 
 function dueDateNativo(task: Task): string | null {

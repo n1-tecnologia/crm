@@ -17,6 +17,11 @@ export const CODIGOS_DE_ERRO = {
   ESCOPO_INSUFICIENTE: { status: 403, retryable: false, mensagem: "Credencial sem escopo para esta operação." },
   ENTIDADE_NAO_ENCONTRADA: { status: 404, retryable: false, mensagem: "Recurso não encontrado." },
   CONFLITO_DE_ORDEM: { status: 409, retryable: false, mensagem: "Transição de Status inválida para o estado atual." },
+  CONFLITO_DE_REVISAO: {
+    status: 409,
+    retryable: true,
+    mensagem: "Outra alteração entrou antes desta. Tente de novo.",
+  },
   IDEMPOTENCY_KEY_REUSED: {
     status: 409,
     retryable: false,
