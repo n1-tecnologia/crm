@@ -33,6 +33,13 @@ describe("GET /estado — sem banco", () => {
   });
 });
 
+describe("GET /anexos/:fileId/url — sem banco", () => {
+  it("sem token responde 401 (o hook de autenticação cobre toda rota deste módulo, Plan 02-19)", async () => {
+    const resposta = await appDeTeste("ws_estado_teste").inject({ method: "GET", url: "/anexos/wf_qualquer/url" });
+    expect(resposta.statusCode).toBe(401);
+  });
+});
+
 carregarEnv();
 const temBanco = Boolean(process.env.DATABASE_URL);
 const d = temBanco ? describe : describe.skip;
@@ -83,5 +90,14 @@ d("GET /estado — contra o banco real", () => {
 
     expect(typeof corpo.ordens.tasks[tarefa!.id]).toBe("number");
     expect(corpo.data.tasks.length).toBe(semente.tasks.length);
+  });
+
+  it("GET /anexos/:fileId/url — Arquivo inexistente no Espaço responde 404 (Plan 02-19)", async () => {
+    const resposta = await appDeTeste(WS).inject({
+      method: "GET",
+      url: "/anexos/wf_nao_existe/url",
+      headers: { authorization: "Bearer token-maryane" },
+    });
+    expect(resposta.statusCode).toBe(404);
   });
 });
