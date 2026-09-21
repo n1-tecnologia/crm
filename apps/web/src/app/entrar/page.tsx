@@ -15,7 +15,7 @@
  * Fora da casca: um cartão sólido centrado sobre a grade de pontos.
  */
 
-import { useActionState } from "react";
+import { Suspense, useActionState } from "react";
 import { useSearchParams } from "next/navigation";
 import { entrar, type EstadoDoLogin } from "./actions";
 import { Button, Field } from "@/design/components";
@@ -23,7 +23,22 @@ import { Painel } from "@/features/shell/ui";
 
 const inicial: EstadoDoLogin = {};
 
+/**
+ * `useSearchParams()` exige uma fronteira `<Suspense>` acima dela em
+ * produção — sem isso o `next build` recusa a página inteira (mesma regra
+ * que `(shell)/layout.tsx` já documenta para as telas internas). `/entrar`
+ * é a primeira rota a rodar contra o build real (Wave 0, Plan 02-01) e foi
+ * quem descobriu que faltava aqui.
+ */
 export default function EntrarPage() {
+  return (
+    <Suspense>
+      <FormularioDeEntrada />
+    </Suspense>
+  );
+}
+
+function FormularioDeEntrada() {
   const params = useSearchParams();
   const para = params.get("para") ?? "";
   const [estado, acao, pendente] = useActionState(entrar, inicial);
