@@ -30,6 +30,7 @@ import { evoluirConfiguracaoDeSolicitacoes } from "../solicitacao-de-pagamento-e
 import type { DataState } from "../state";
 import type { Grant, Id, Member } from "../types";
 import { changeTaskStatus, createTask, guestStatusWriter, setTaskTags, updateTask } from "./tasks";
+import { CP } from "./financeiro";
 
 const AGORA = "2026-09-21T12:00:00.000Z";
 const NOME_DA_LISTA = "Solicitações de pagamento";
@@ -176,5 +177,90 @@ describe("Agente do pipeline (§9) — Convidado com editar restrito a Status", 
 
     const r3 = updateTask(state, "mem_maryane", taskId, { title: "Pagamento revisado" });
     expect(r3.ok, r3.ok ? "" : r3.error).toBe(true);
+  });
+
+  /**
+   * A segunda metade do buraco. A regra do §9 sozinha não basta: um Convidado
+   * nunca alcança contêiner por Papel (B70), e nada criava a concessão que o
+   * faz enxergar as Solicitações. O evolver passou a provisionar isso — sem
+   * nomear ocupante (D-13), concedendo a quem JÁ ocupa o Papel.
+   */
+  describe("provisionamento do alcance pelo evolver (item 5)", () => {
+    it("concede `ver` na Lista a quem já ocupa o Papel, e aí o Agente muda Status SEM concessão por Tarefa", () => {
+      criarMembro(state, "mem_agente_provisionado", SOL.papeis.agentePipeline);
+
+      const r = evoluirConfiguracaoDeSolicitacoes(state, "mem_maryane");
+      expect(r.ok, r.ok ? "" : r.error).toBe(true);
+      if (!r.ok) throw new Error("unreachable");
+      expect(r.value.concedidos).toContain("mem_agente_provisionado");
+
+      const lista = acharLista(state);
+      expect(
+        state.grants.some(
+          (g) =>
+            g.subjectKind === "member" &&
+            g.subjectId === "mem_agente_provisionado" &&
+            g.resourceType === "list" &&
+            g.resourceId === lista.id &&
+            g.action === "ver",
+        ),
+      ).toBe(true);
+
+      // Nenhuma concessão por Tarefa foi criada — o alcance vem da Lista.
+      expect(guestStatusWriter(state, "mem_agente_provisionado", taskId)).toBe(true);
+      const mudou = changeTaskStatus(state, "mem_agente_provisionado", taskId, SOL.status.emAprovacao);
+      expect(mudou.ok, mudou.ok ? "" : mudou.error).toBe(true);
+    });
+
+    it("reaplicar é no-op: a segunda execução não concede de novo nem duplica o Grant", () => {
+      criarMembro(state, "mem_agente_provisionado", SOL.papeis.agentePipeline);
+      const primeira = evoluirConfiguracaoDeSolicitacoes(state, "mem_maryane");
+      expect(primeira.ok).toBe(true);
+
+      const segunda = evoluirConfiguracaoDeSolicitacoes(state, "mem_maryane");
+      expect(segunda.ok, segunda.ok ? "" : segunda.error).toBe(true);
+      if (!segunda.ok) throw new Error("unreachable");
+      expect(segunda.value.concedidos).toBeUndefined();
+
+      const lista = acharLista(state);
+      const quantos = state.grants.filter(
+        (g) => g.subjectId === "mem_agente_provisionado" && g.resourceId === lista.id && g.action === "ver",
+      ).length;
+      expect(quantos).toBe(1);
+    });
+
+    it("a concessão na Lista não abre Tags nem Vencimento — `taskWriteRefusal` segue recusando", () => {
+      criarMembro(state, "mem_agente_provisionado", SOL.papeis.agentePipeline);
+      expect(evoluirConfiguracaoDeSolicitacoes(state, "mem_maryane").ok).toBe(true);
+
+      const tags = setTaskTags(state, "mem_agente_provisionado", taskId, [SOL.tags.contaTria]);
+      expect(tags.ok).toBe(false);
+
+      const campo = updateTask(state, "mem_agente_provisionado", taskId, { title: "Renomeado pelo agente" });
+      expect(campo.ok).toBe(false);
+    });
+
+    it("o alcance não vaza para outra Lista: uma Tarefa de Contas a pagar continua fora", () => {
+      criarMembro(state, "mem_agente_provisionado", SOL.papeis.agentePipeline);
+      expect(evoluirConfiguracaoDeSolicitacoes(state, "mem_maryane").ok).toBe(true);
+
+      const outra = createTask(state, "mem_maryane", {
+        listId: CP.listId,
+        title: "Conta de outra Lista",
+      });
+      expect(outra.ok, outra.ok ? "" : outra.error).toBe(true);
+      if (!outra.ok) throw new Error("unreachable");
+
+      expect(guestStatusWriter(state, "mem_agente_provisionado", outra.value.id)).toBe(false);
+    });
+
+    it("quem NÃO ocupa o Papel não ganha nada: um Convidado comum segue sem alcance", () => {
+      criarMembro(state, "mem_convidado_comum", "role_conv");
+      const r = evoluirConfiguracaoDeSolicitacoes(state, "mem_maryane");
+      expect(r.ok).toBe(true);
+      if (!r.ok) throw new Error("unreachable");
+      expect(r.value.concedidos ?? []).not.toContain("mem_convidado_comum");
+      expect(guestStatusWriter(state, "mem_convidado_comum", taskId)).toBe(false);
+    });
   });
 });

@@ -26,7 +26,7 @@
  */
 
 import { CP } from "./operations/financeiro";
-import { memberActor, recordActivity } from "./operations/activity";
+import { memberActor, nextId, recordActivity } from "./operations/activity";
 import {
   CATALOGO_SOLICITACAO_DE_PAGAMENTO,
   SOL,
@@ -63,6 +63,12 @@ export interface DiffDeConfiguracao {
   readonly divergentes: DivergenciaDeConfiguracao[];
   /** Presente só quando a elevação de fato acontece (item 4 da ordem abaixo). */
   readonly tasksPerList?: { readonly antes: number; readonly depois: number };
+  /**
+   * Ids dos Membros que ocupam o "Agente do pipeline" e ganharam `ver` na
+   * Lista nesta execução (item 5). Ausente quando ninguém ocupa o Papel ou
+   * todos já tinham a concessão — reaplicar é no-op.
+   */
+  readonly concedidos?: string[];
 }
 
 /** V02-01B — teto mínimo antes de qualquer importação (`02-RESEARCH.md`, ~1.110 Tarefas históricas). */
@@ -280,9 +286,13 @@ export function evoluirConfiguracaoDeSolicitacoes(
     }
   }
 
-  /* ── Papéis → Role (D-13: sem ocupante hardcoded; Grant que liga um
-   * Membro real a este Papel nasce por convite/atribuição, fora deste
-   * evolver) ───────────────────────────────────────────────────────────── */
+  /* ── Papéis → Role (D-13: sem ocupante hardcoded; quem ocupa um Papel é
+   * decidido por convite/atribuição, fora deste evolver) ─────────────────
+   *
+   * O alcance, porém, nasce aqui: ver a seção 5 abaixo. Um Convidado não
+   * chega a contêiner nenhum por Papel (B70) — sem concessão na Lista, o
+   * "Agente do pipeline" enxerga zero Solicitações e `guestStatusWriter`
+   * recusa por `memberSeesTask`, não pela regra do §9. */
   for (const papelCatalogo of CATALOGO_SOLICITACAO_DE_PAGAMENTO.papeis) {
     const existente = state.roles.find((r) => r.id === papelCatalogo.id);
     const esperadas = permissoesEsperadas(papelCatalogo);
@@ -324,5 +334,62 @@ export function evoluirConfiguracaoDeSolicitacoes(
     tasksPerList = { antes, depois };
   }
 
-  return ok({ criados, conferidos, divergentes, ...(tasksPerList ? { tasksPerList } : {}) });
+  /* ── 5. Alcance do "Agente do pipeline" sobre a Lista ──────────────────
+   *
+   * `guestStatusWriter` (operations/tasks.ts) deixa este Convidado mudar
+   * Status, mas ainda exige `memberSeesTask` — e um Convidado nunca alcança
+   * contêiner por Papel (B70, `memberReachesContainer`). Sem uma concessão,
+   * as rotas de integração recusam por falta de acesso, não pela regra.
+   *
+   * D-13 continua valendo: nada aqui nomeia um ocupante. Concede-se a quem
+   * JÁ ocupa o Papel, e só isso — atribuir o Papel a alguém e rodar o
+   * configurador de novo é o fluxo. `ver` na Lista basta: a linha 915 de
+   * `derive.ts` abre o alvo por concessão em qualquer nó do caminho, e Tags
+   * e Vencimento seguem na recusa categórica de `taskWriteRefusal`. */
+  const ocupantes = state.members.filter(
+    (m) => m.roleId === SOL.papeis.agentePipeline && m.state !== "removido",
+  );
+  const concedidos: string[] = [];
+  for (const ocupante of ocupantes) {
+    const jaTem = state.grants.some(
+      (g) =>
+        g.subjectKind === "member" &&
+        g.subjectId === ocupante.id &&
+        g.resourceType === "list" &&
+        g.resourceId === LISTA_ID &&
+        g.action === "ver",
+    );
+    if (jaTem) continue;
+    state.grants.push({
+      id: nextId("grn"),
+      workspaceId,
+      subjectKind: "member",
+      subjectId: ocupante.id,
+      action: "ver",
+      resourceType: "list",
+      resourceId: LISTA_ID,
+      scope: "subarvore",
+      origin: "concessaoDireta",
+      grantedBy: actingMemberId,
+      grantedAt: agora,
+    });
+    concedidos.push(ocupante.id);
+    recordActivity(state, {
+      actor: ator,
+      action: "conceder",
+      objectType: "list",
+      objectId: LISTA_ID,
+      objectName: LISTA_NOME,
+      after: ocupante.displayName,
+      at: agora,
+    });
+  }
+
+  return ok({
+    criados,
+    conferidos,
+    divergentes,
+    ...(concedidos.length ? { concedidos } : {}),
+    ...(tasksPerList ? { tasksPerList } : {}),
+  });
 }
