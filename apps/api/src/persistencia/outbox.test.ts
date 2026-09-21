@@ -36,6 +36,25 @@ const STATUS_SET: StatusSet = {
 
 let listId: string;
 
+// Cada `WS` já nasce único por execução (RUN carrega timestamp + random), mas
+// isso só evita COLISÃO entre execuções — não evita LEAK: sem limpar as
+// linhas que esta suíte insere, elas se acumulam para sempre em
+// `integration_outbox`/`registros`/`workspaces`, que são tabelas
+// compartilhadas com o banco real (mesmo padrão de `integracao.test.ts` e
+// `outbox-worker.test.ts`, commit d65c12a). `limparWorkspace()` roda no
+// `beforeAll` (defensivo, caso uma execução anterior tenha abortado antes do
+// seu próprio `afterAll`) E no `afterAll` (a limpeza que de fato importa).
+async function limparWorkspace(): Promise<void> {
+  const cliente = await pool().connect();
+  try {
+    await cliente.query("delete from plataforma.integration_outbox where workspace_id = $1", [WS]);
+    await cliente.query("delete from plataforma.registros where workspace_id = $1", [WS]);
+    await cliente.query("delete from plataforma.workspaces where workspace_id = $1", [WS]);
+  } finally {
+    cliente.release();
+  }
+}
+
 async function limparOutboxDoAgregado(aggregateId: string): Promise<void> {
   const cliente = await pool().connect();
   try {
@@ -100,11 +119,9 @@ d("gravação transacional do outbox (V02-07A)", () => {
     if (!lista.ok) throw new Error(`seed de teste: ${lista.error}`);
     listId = lista.value.id;
 
+    await limparWorkspace();
     const cliente = await pool().connect();
     try {
-      await cliente.query("delete from plataforma.integration_outbox where workspace_id = $1", [WS]);
-      await cliente.query("delete from plataforma.registros where workspace_id = $1", [WS]);
-      await cliente.query("delete from plataforma.workspaces where workspace_id = $1", [WS]);
       await semear(cliente, WS, state);
     } finally {
       cliente.release();
@@ -112,6 +129,11 @@ d("gravação transacional do outbox (V02-07A)", () => {
   });
 
   afterAll(async () => {
+    // A limpeza que de fato impede o leak: sem ela, as linhas desta execução
+    // (outbox, registros e o próprio workspace) sobrevivem indefinidamente,
+    // porque `WS` é novo a cada execução e o `beforeAll` da PRÓXIMA execução
+    // só limpa o SEU PRÓPRIO `WS`, nunca o desta.
+    await limparWorkspace();
     await encerrar();
   });
 
