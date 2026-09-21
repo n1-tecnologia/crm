@@ -142,8 +142,17 @@ function escopoParaPermissao(escopo: PapelDaSolicitacao["escopo"]): PermissionSc
   return "subarvore";
 }
 
+/**
+ * §9 — `editarRestritoA` só se aplica à permissão de `editar`; as demais
+ * ações do Papel (ver, comentar, ...) nascem sem restrição, como sempre.
+ */
 function permissoesEsperadas(papel: PapelDaSolicitacao): Role["permissions"] {
-  return papel.capacidades.map((acao) => ({ action: acao, resourceType: "task", scope: escopoParaPermissao(papel.escopo) }));
+  return papel.capacidades.map((acao) => ({
+    action: acao,
+    resourceType: "task",
+    scope: escopoParaPermissao(papel.escopo),
+    ...(acao === "editar" && papel.editarRestritoA ? { restrictedTo: papel.editarRestritoA } : {}),
+  }));
 }
 
 /**
