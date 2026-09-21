@@ -24,6 +24,7 @@ import {
   registrarAutenticacaoDeServico,
   type OpcoesDeAutenticacaoDeServico,
 } from "./plugins/autenticacao-servico";
+import { rotasDeClassificacoes, type OpcoesDeClassificacoes } from "./rotas/classificacoes";
 import { rotasDeEstado } from "./rotas/estado";
 import { rotasDeFormulariosPublicos, type OpcoesDeFormulariosPublicos } from "./rotas/formularios-publicos";
 import { rotasDeIntegracaoDeSolicitacoes } from "./rotas/integracao-solicitacoes";
@@ -60,6 +61,13 @@ export interface OpcoesDoApp {
    * janelas curtas, sem precisar de `DATABASE_URL` (D-DEC-09).
    */
   readonly formulariosPublicos?: Omit<OpcoesDeFormulariosPublicos, "workspaceId">;
+  /**
+   * Plan 02-24 — `POST /v1/integrations/payment-approvals/classifications`
+   * (`./rotas/classificacoes.ts`) aceita o mesmo padrão de injeção: testes
+   * trocam o `Relogio` por `relogioFixo`, sem esperar tempo real para provar
+   * a janela de 90 dias do fallback de comentário (D-10, V02-08B).
+   */
+  readonly classificacoes?: OpcoesDeClassificacoes;
 }
 
 export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
@@ -177,6 +185,10 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
       // registradas AQUI DENTRO, filhas da mesma instância `integracao`, para
       // herdar o hook de serviço acima (ver o comentário deste bloco).
       await rotasDeIntegracaoDeSolicitacoes(integracao);
+      // Plan 02-24 — o callback do classificador de comentário, mesma
+      // instância `integracao`, mesmo motivo do comentário acima: herdar
+      // `registrarAutenticacaoDeServico`.
+      rotasDeClassificacoes(integracao, opcoes.classificacoes);
       opcoes.rotasDeIntegracaoParaTeste?.(integracao);
     },
     { prefix: PREFIXO_ROTAS_DE_SERVICO },
