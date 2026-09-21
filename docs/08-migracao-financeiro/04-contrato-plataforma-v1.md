@@ -61,7 +61,8 @@ Envelope único de erro, o mesmo nos dois sentidos (plataforma → `automation/`
 | HTTP | `code` | Motivo | `retryable` |
 |---|---|---|---|
 | 400 | `SCHEMA_INVALIDO` | corpo/params não batem com o schema v1 | `false` |
-| 401 | `CREDENCIAL_INVALIDA` | `Authorization` ausente, malformado ou revogado | `false` |
+| 401 | `CREDENCIAL_AUSENTE` | sem `Authorization: Bearer` | `false` |
+| 401 | `CREDENCIAL_INVALIDA` | credencial malformada, inexistente, com segredo errado ou revogada — mesma resposta para os três, para não permitir enumeração | `false` |
 | 403 | `ESCOPO_INSUFICIENTE` | credencial válida, sem o escopo do método | `false` |
 | 404 | `ENTIDADE_NAO_ENCONTRADA` | `taskId`/`commentId` inexistente no Espaço configurado | `false` |
 | 409 | `CONFLITO_DE_ORDEM` | transição de Status inválida para o estado atual | `false` |

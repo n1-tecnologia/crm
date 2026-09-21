@@ -19,6 +19,11 @@ import { verificarTokenDoSupabase, type VerificarToken } from "./autenticacao/ve
 import { carregarEnv } from "./persistencia/conexao";
 import { membroPorUsuario } from "./persistencia/membros";
 import { registrarAutenticacao, type OpcoesDeAutenticacao } from "./plugins/autenticacao";
+import {
+  PREFIXO_ROTAS_DE_SERVICO,
+  registrarAutenticacaoDeServico,
+  type OpcoesDeAutenticacaoDeServico,
+} from "./plugins/autenticacao-servico";
 import { rotasDeEstado } from "./rotas/estado";
 import { rotasDeOperacoes } from "./rotas/operacoes";
 
@@ -31,6 +36,8 @@ export interface OpcoesDoApp {
   readonly verificarToken?: VerificarToken;
   /** Padrão: `membroPorUsuario`. Testes injetam um stub, sem banco. */
   readonly resolverMembro?: OpcoesDeAutenticacao["resolverMembro"];
+  /** Padrão: `resolverCredencial` de `persistencia/credenciais-de-servico.ts`. Testes injetam um stub, sem banco. */
+  readonly resolverCredencial?: OpcoesDeAutenticacaoDeServico["resolverCredencial"];
   /** Padrão: `false` em teste, `true` no boot (`index.ts`). */
   readonly logger?: boolean;
 }
@@ -47,16 +54,6 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
   const app = Fastify({ logger: opcoes.logger ?? false });
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
-
-  // Allowlist explícita: nunca `*`. O `Authorization: Bearer` viaja com a
-  // origem do navegador, então um CORS aberto deixaria qualquer site chamar
-  // `apps/api` usando a sessão de quem estiver com outra aba logada (T-1-03).
-  app.register(cors, {
-    origin: [webOrigin],
-    credentials: false,
-    methods: ["GET", "POST"],
-    allowedHeaders: ["authorization", "content-type"],
-  });
 
   app.setNotFoundHandler((_request, reply) => {
     reply.status(404).send({ ok: false, error: "Rota não encontrada." });
@@ -76,8 +73,10 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
     reply.status(500).send({ ok: false, error: "Erro interno." });
   });
 
-  // Registrado antes de qualquer rota protegida: toda rota que nascer depois
-  // daqui exige token, a menos que se marque `config: { publica: true }`.
+  // Registrado direto na raiz: toda rota que nascer depois daqui — em
+  // QUALQUER filho, inclusive os dois abaixo — exige token, a menos que se
+  // marque `config: { publica: true }` ou viva sob `PREFIXO_ROTAS_DE_SERVICO`
+  // (o próprio hook trata essa exceção — ver `plugins/autenticacao.ts`).
   registrarAutenticacao(app, {
     workspaceId,
     verificarToken: opcoes.verificarToken ?? verificarTokenDoSupabase,
@@ -89,14 +88,42 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
     servico: "apps/api",
   }));
 
-  // Depois do hook de autenticação: toda rota registrada aqui exige
-  // `Authorization: Bearer`, salvo `config: { publica: true }`. `buildApp`
-  // continua síncrono — `app.register` sem `await` enfileira o plugin, e o
-  // Fastify resolve a fila sozinho no primeiro `ready()`/`listen()`/`inject()`
-  // (é o mesmo motivo por que `app.register(cors, ...)` acima também não é
-  // aguardado).
-  app.register(rotasDeOperacoes);
-  app.register(rotasDeEstado);
+  // Rotas de sessão humana: CORS com allowlist do navegador, hook humano
+  // (herdado da raiz). Um filho encapsulado próprio confina o CORS aqui —
+  // `PREFIXO_ROTAS_DE_SERVICO`, registrado como filho IRMÃO logo abaixo,
+  // nunca recebe cabeçalho `Access-Control-*`: o `automation/` é
+  // servidor-a-servidor e nenhuma origem de navegador deve alcançá-lo
+  // (D-15). Allowlist explícita: nunca `*` — o `Authorization: Bearer`
+  // viaja com a origem do navegador, então um CORS aberto deixaria
+  // qualquer site chamar `apps/api` usando a sessão de quem estiver com
+  // outra aba logada (T-1-03). `buildApp` continua síncrono — `register`
+  // sem `await` enfileira o plugin, e o Fastify resolve a fila sozinho no
+  // primeiro `ready()`/`listen()`/`inject()`.
+  app.register(async (publico) => {
+    publico.register(cors, {
+      origin: [webOrigin],
+      credentials: false,
+      methods: ["GET", "POST"],
+      allowedHeaders: ["authorization", "content-type"],
+    });
+    publico.register(rotasDeOperacoes);
+    publico.register(rotasDeEstado);
+  });
+
+  // Rotas serviço-a-serviço: credencial própria
+  // (`plugins/autenticacao-servico.ts`), nunca JWT humano, nunca CORS de
+  // navegador. Rotas `/v1/integrations/*` nascem DENTRO deste mesmo plugin
+  // em planos futuros (D-22, OQ-SYN-01) — precisam ser filhas desta
+  // instância `integracao`, não registradas soltas na raiz, para herdar o
+  // hook de serviço.
+  app.register(
+    async (integracao) => {
+      registrarAutenticacaoDeServico(integracao, {
+        resolverCredencial: opcoes.resolverCredencial,
+      });
+    },
+    { prefix: PREFIXO_ROTAS_DE_SERVICO },
+  );
 
   return app;
 }
