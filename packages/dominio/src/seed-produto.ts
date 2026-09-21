@@ -74,7 +74,12 @@ export function pruneDemo(state: DataState): void {
   for (const p of state.panels) if (p.anchor && removed.has(p.anchor.id)) removed.add(p.id);
   for (const e of state.agentExecutions) if (e.anchor && removed.has(e.anchor.id)) removed.add(e.id);
   for (const e of state.automationExecutions) if (removed.has(e.automationId) || (e.objectId !== undefined && removed.has(e.objectId))) removed.add(e.id);
-  for (const a of state.approvals) if (removed.has(a.executionId) || removed.has(a.object.targetResourceId)) removed.add(a.id);
+  for (const a of state.approvals) {
+    // D-06 — só o ramo `agentExecution` tem `executionId`; `processTask` não referencia Execução.
+    if ((a.origin.kind === "agentExecution" && removed.has(a.origin.executionId)) || removed.has(a.object.targetResourceId)) {
+      removed.add(a.id);
+    }
+  }
   for (const g of state.grants) if (removed.has(g.resourceId)) removed.add(g.id);
   for (const l of state.links) if (removed.has(l.fromId) || removed.has(l.toId)) removed.add(l.id);
   for (const a of state.activity) if (removed.has(a.objectId)) removed.add(a.id);

@@ -2713,8 +2713,8 @@ function buildApprovals(): ApprovalRequest[] {
   return [
     {
       id: "apr_1",
-      executionId: "exe_2",
-      stepIndex: 1,
+      // D-06 — origem em Execução de Agente: união discriminada por `kind`.
+      origin: { kind: "agentExecution", executionId: "exe_2", stepIndex: 1, deadline: at(-3, 11) },
       requestedBy: agentRef("agt_redator"),
       reason: "autonomia",
       object: {
@@ -2726,8 +2726,7 @@ function buildApprovals(): ApprovalRequest[] {
       },
       approverMemberId: "mem_thiago",
       createdAt: at(0, 11),
-      // B80 — the platform default of 72 hours, still open.
-      deadline: at(-3, 11),
+      // B80 — the platform default of 72 hours, still open (comment kept next to `deadline` above).
     },
   ];
 }

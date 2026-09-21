@@ -35,10 +35,17 @@ import {
 import type { DataState } from "@n1/dominio/state";
 import type { ApprovalRequest } from "@n1/dominio/types";
 
+/** D-06 — só o ramo `agentExecution` de `ApprovalOrigin` tem `executionId`/`deadline`. */
+const approvalExecutionId = (approval: ApprovalRequest): string | undefined =>
+  approval.origin.kind === "agentExecution" ? approval.origin.executionId : undefined;
+const approvalDeadline = (approval: ApprovalRequest): string | undefined =>
+  approval.origin.kind === "agentExecution" ? approval.origin.deadline : undefined;
+
 /** A rejection is recorded on the Execution it stopped, not on the request. */
 function terminationReasonOf(state: DataState, approval: ApprovalRequest): string {
   if (approval.decision !== "rejeitada") return "";
-  const execution = state.agentExecutions.find((e) => e.id === approval.executionId);
+  const executionId = approvalExecutionId(approval);
+  const execution = executionId ? state.agentExecutions.find((e) => e.id === executionId) : undefined;
   return execution?.terminationReason ? ` · ${execution.terminationReason}` : "";
 }
 
@@ -81,7 +88,8 @@ export default function AprovacoesPage() {
   const mayDecide = (approval: ApprovalRequest): boolean => {
     if (approval.approverMemberId === memberId) return true;
     if (isAdminLevel) return true;
-    const execution = state.agentExecutions.find((e) => e.id === approval.executionId);
+    const executionId = approvalExecutionId(approval);
+    const execution = executionId ? state.agentExecutions.find((e) => e.id === executionId) : undefined;
     const agent = execution ? state.agents.find((a) => a.id === execution.agentId) : undefined;
     return agent?.ownerMemberId === memberId;
   };
@@ -112,8 +120,10 @@ export default function AprovacoesPage() {
    */
   const renderCard = (approval: ApprovalRequest) => {
     const actionable = mayDecide(approval);
-    const expired = Date.parse(approval.deadline) < now;
-    const execution = state.agentExecutions.find((e) => e.id === approval.executionId);
+    const deadline = approvalDeadline(approval);
+    const expired = deadline !== undefined && Date.parse(deadline) < now;
+    const executionId = approvalExecutionId(approval);
+    const execution = executionId ? state.agentExecutions.find((e) => e.id === executionId) : undefined;
     const approver = state.members.find((m) => m.id === approval.approverMemberId);
     const chain = execution ? executionChainOf(state, execution.id) : [];
 
@@ -131,8 +141,10 @@ export default function AprovacoesPage() {
           </div>
           <span className="app-sm app-numero shrink-0" style={{ color: expired ? "var(--erro)" : "var(--texto-3)" }}>
             {expired
-              ? `prazo vencido em ${fmt.instant(approval.deadline)}`
-              : `vence ${fmt.relative(approval.deadline, now)}`}
+              ? `prazo vencido em ${fmt.instant(deadline!)}`
+              : deadline
+                ? `vence ${fmt.relative(deadline, now)}`
+                : "sem prazo"}
           </span>
         </div>
 
@@ -185,7 +197,8 @@ export default function AprovacoesPage() {
   };
 
   const deciding = decidingId ? state.approvals.find((a) => a.id === decidingId) : undefined;
-  const decidingExpired = deciding ? Date.parse(deciding.deadline) < now : false;
+  const decidingDeadline = deciding ? approvalDeadline(deciding) : undefined;
+  const decidingExpired = decidingDeadline !== undefined ? Date.parse(decidingDeadline) < now : false;
   const decidingTool = deciding
     ? (state.tools.find((t) => t.id === deciding.object.toolId)?.name ?? deciding.object.toolId)
     : "";
@@ -243,8 +256,8 @@ export default function AprovacoesPage() {
               <p className="app-meta mt-1">
                 Alvo: {RESOURCE_TYPE_LABEL[deciding.object.targetResourceType] ??
                   deciding.object.targetResourceType}{" "}
-                · motivo: {APPROVAL_REASON_LABEL[deciding.reason] ?? deciding.reason} · vence{" "}
-                {fmt.relative(deciding.deadline, now)}
+                · motivo: {APPROVAL_REASON_LABEL[deciding.reason] ?? deciding.reason}
+                {decidingDeadline ? <> · vence {fmt.relative(decidingDeadline, now)}</> : null}
               </p>
             </div>
 

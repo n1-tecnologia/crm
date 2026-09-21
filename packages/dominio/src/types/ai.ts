@@ -91,14 +91,40 @@ export interface SkillGrant {
   readonly grantedAt: Instant;
 }
 
-/** B80 — internal entity of the Execution, WITH identity. */
+/**
+ * D-06 — de onde nasce uma `ApprovalRequest`: um passo de `AgentExecution`
+ * (com prazo, B80) ou uma decisão de processo ligada a uma Tarefa (sem
+ * prazo — D-11, o timeout de Execução nunca cancela uma aprovação
+ * financeira). União discriminada por `kind`, o mesmo padrão de
+ * `ExecutionStep.kind`: o ramo `processTask` não tem campo `deadline`
+ * nenhum código consegue ler prazo de uma aprovação de processo porque o
+ * campo não existe nesse ramo.
+ */
+export type ApprovalOrigin =
+  | { readonly kind: "agentExecution"; readonly executionId: Id; readonly stepIndex: number; readonly deadline: Instant }
+  | { readonly kind: "processTask"; readonly taskId: Id; readonly processStep: "pagamento"; readonly threadCommentId: Id };
+
+/**
+ * B80 — internal entity of the Execution, WITH identity — exceto quando
+ * `origin.kind === "processTask"` (D-06), em que a Solicitação de Aprovação
+ * é interna da Tarefa, não da Execução.
+ */
 export interface ApprovalRequest {
   readonly id: Id;
-  readonly executionId: Id;
-  readonly stepIndex: number;
+  /**
+   * Não `readonly`: registros gravados antes desta fase chegam da
+   * hidratação com `executionId`/`stepIndex`/`deadline` soltos, sem
+   * `origin` — `normalizeApprovalOrigin` (`operations/ai.ts`) escreve aqui
+   * na primeira leitura.
+   */
+  origin: ApprovalOrigin;
   readonly requestedBy: ActorRef;
-  readonly reason: "autonomia" | "permissao" | "limite" | "acaoExplicita";
-  /** Immutable: approving is approving exactly this. */
+  readonly reason: "autonomia" | "permissao" | "limite" | "acaoExplicita" | "processo";
+  /**
+   * Immutable: approving is approving exactly this. Numa aprovação de
+   * processo (`origin.kind === "processTask"`) não há Ferramenta:
+   * `toolId: ""`, `targetResourceType: "task"`.
+   */
   readonly object: {
     readonly toolId: string;
     readonly input: string;
@@ -110,8 +136,11 @@ export interface ApprovalRequest {
   decision?: "aprovada" | "rejeitada" | "expirada" | "cancelada";
   decidedByMemberId?: Id;
   decidedAt?: Instant;
+  /** D-09 — de onde veio a decisão: a fila/card (clique) ou o tópico (comentário). */
+  decisionSource?: "click" | "comment";
+  /** D-09 — o motivo, obrigatório em `rejeitada` de processo. */
+  decisionReason?: string;
   readonly createdAt: Instant;
-  readonly deadline: Instant;
 }
 
 /** B18 — ordered value object of the Execution, without identity. */

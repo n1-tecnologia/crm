@@ -109,7 +109,9 @@ export default function ExecucaoPage({ params }: { params: Promise<{ execucao: s
 
   const agent = state.agents.find((a) => a.id === record.agentId);
   const chain = executionChainOf(state, record.id);
-  const approvals = state.approvals.filter((approval) => approval.executionId === record.id);
+  const approvals = state.approvals.filter(
+    (approval) => approval.origin.kind === "agentExecution" && approval.origin.executionId === record.id,
+  );
   const isTerminal = ["concluida", "falhou", "cancelada"].includes(record.state);
 
   return (

@@ -106,6 +106,8 @@ export const setContactCatalogValue = instrumentar("setContactCatalogValue");
 
 // ai.ts
 export const decideApproval = instrumentar("decideApproval");
+export const decideProcessApproval = instrumentar("decideProcessApproval");
+export const solicitarAprovacao = instrumentar("solicitarAprovacao");
 export const publishAutomation = instrumentar("publishAutomation");
 export const restoreAgent = instrumentar("restoreAgent");
 export const restoreAutomation = instrumentar("restoreAutomation");

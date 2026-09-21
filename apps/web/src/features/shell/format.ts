@@ -165,6 +165,7 @@ export const APPROVAL_REASON_LABEL: Record<string, string> = {
   permissao: "o Agente não tem a permissão sozinho",
   limite: "o Limite de operações da Execução",
   acaoExplicita: "a Ação exige aprovação explícita",
+  processo: "aprovação de processo",
 };
 
 export const IDENTIFIER_TYPE_LABEL: Record<string, string> = {

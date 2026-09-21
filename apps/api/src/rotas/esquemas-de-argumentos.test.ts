@@ -88,7 +88,7 @@ describe("esquemas-de-argumentos — a forma dos args, não a regra", () => {
     expect(ESQUEMAS.runScheduledAutomations.safeParse(["l1", "2026-01-01"]).success).toBe(false);
   });
 
-  it("(h) nenhuma operação cai em fallback — esquemaDeArgumentos(nome) é o próprio ESQUEMAS[nome] para todas as 132", () => {
+  it("(h) nenhuma operação cai em fallback — esquemaDeArgumentos(nome) é o próprio ESQUEMAS[nome] para todas as 134", () => {
     const esquemasPorNome = ESQUEMAS as Record<string, unknown>;
     for (const nome of Object.keys(OPERACOES)) {
       expect(esquemaDeArgumentos(nome as NomeDeOperacao)).toBe(esquemasPorNome[nome]);
@@ -100,10 +100,11 @@ describe("esquemas-de-argumentos — a forma dos args, não a regra", () => {
     expect(esquemaDeArgumentos("updateTask")).toBe(ESQUEMAS.updateTask as unknown);
   });
 
-  it("(j) ESQUEMAS cobre exatamente OPERACOES — mesmas chaves, 132, todas nomes de operação válidos", () => {
+  it("(j) ESQUEMAS cobre exatamente OPERACOES — mesmas chaves, 134, todas nomes de operação válidos", () => {
     const chaves = Object.keys(ESQUEMAS);
     expect(chaves.sort()).toEqual(Object.keys(OPERACOES).sort());
-    expect(chaves.length).toBe(132);
+    // 132 + solicitarAprovacao + decideProcessApproval (Plan 02-04, D-06/D-09).
+    expect(chaves.length).toBe(134);
     for (const chave of chaves) expect(ehNomeDeOperacao(chave)).toBe(true);
   });
 

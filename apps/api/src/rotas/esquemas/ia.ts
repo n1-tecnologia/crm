@@ -1,6 +1,6 @@
 /**
  * A FORMA dos `args` das operações de `packages/dominio/src/operations/ai.ts`
- * — 7 operações. Ver `../esquemas/CONTEXT.md` para a regra da pasta e
+ * — 9 operações. Ver `../esquemas/CONTEXT.md` para a regra da pasta e
  * `./fragmentos.ts` para o porquê da validação ser de transporte, não de
  * regra de negócio.
  */
@@ -54,8 +54,26 @@ const CONFIGURE_CHAT_SESSION_INPUT = z
  * compila. Se uma entrada não compilar, o erro está na entrada — não relaxar
  * para `z.ZodTypeAny`.
  */
+const SOLICITAR_APROVACAO_INPUT = z
+  .object({
+    taskId: ID,
+    approverMemberId: ID,
+    threadCommentId: ID,
+    reason: opcional(z.string()),
+  })
+  .strict();
+
+const DECIDE_PROCESS_APPROVAL_OPTIONS = z
+  .object({
+    source: z.enum(["click", "comment"]),
+    reason: opcional(z.string()),
+  })
+  .strict();
+
 export const IA = {
   decideApproval: z.tuple([ID, z.enum(["aprovada", "rejeitada"]), opcional(z.string())]),
+  decideProcessApproval: z.tuple([ID, z.enum(["aprovada", "rejeitada"]), DECIDE_PROCESS_APPROVAL_OPTIONS]),
+  solicitarAprovacao: z.tuple([SOLICITAR_APROVACAO_INPUT]),
   publishAutomation: z.tuple([ID]),
   restoreAgent: z.tuple([ID]),
   restoreAutomation: z.tuple([ID]),
