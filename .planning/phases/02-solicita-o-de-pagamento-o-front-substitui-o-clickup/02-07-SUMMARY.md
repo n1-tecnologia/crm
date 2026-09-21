@@ -148,6 +148,19 @@ None - no external service configuration required.
 - O worktree do `financeiro-tria` permanece com exatamente os mesmos 89 arquivos de frontend modificados de antes deste plano — nada foi formatado, limpo ou revertido (verificado por `git status --short | wc -l` antes/depois).
 - Pendência não-bloqueante: o teste pré-existente `resolve responsavel por centro de custo com fallback` continua vermelho (ver `deferred-items.md`) — não impede nenhum plano futuro, mas quem tocar `payment-rules.ts`/`payment-rules.test.ts` deve resolver antes de assumir `npm test` verde por completo no pacote.
 
+## Self-Check: PASSED
+
+- FOUND: `../financeiro-tria/automation/src/testing/criar-app.ts`
+- FOUND: `../financeiro-tria/automation/src/testing/servidor-falso.ts`
+- FOUND: `../financeiro-tria/automation/src/testing/servidor-falso.test.ts`
+- FOUND: `../financeiro-tria/automation/src/testing/omie-falso.ts`
+- FOUND: `../financeiro-tria/automation/src/testing/relogio.ts`
+- FOUND: `../financeiro-tria/automation/src/testing/CONTEXT.md`
+- FOUND: `.planning/phases/02-solicita-o-de-pagamento-o-front-substitui-o-clickup/deferred-items.md`
+- FOUND commit `adac887` (financeiro-tria)
+- FOUND commit `dc53ae5` (financeiro-tria)
+- FOUND commit `3461f13` (financeiro-tria)
+
 ---
 *Phase: 02-solicita-o-de-pagamento-o-front-substitui-o-clickup*
 *Completed: 2026-09-21*
