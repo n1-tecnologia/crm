@@ -3,25 +3,39 @@
 /**
  * T36 — Solicitações de Aprovação.
  *
- * B77 — the request has a deadline, and an expired one cancels the Execution.
- * The screen shows the remaining time and disables deciding once the deadline
- * passed, so nobody discovers it by being refused on click (PADROES §10).
+ * D-08 — este é UM dos dois pontos de decisão (o outro é o card de Aprovação
+ * na página cheia da Tarefa, `@/features/tarefa/painel-aprovacao`); os dois
+ * chamam exatamente a mesma operação para cada origem.
  *
- * B78 — the designated approver decides; the Agent owner and an administrator
- * may also decide. A request nobody here can decide is visible but inert, and
- * the screen says why.
+ * Duas origens coexistem na mesma fila, discriminadas por `origin.kind`
+ * (D-06, união discriminada — Plan 02-04):
+ *
+ * B77 — `agentExecution` tem prazo, e um prazo vencido cancela a Execução. A
+ * tela mostra o tempo restante e desliga a decisão quando o prazo passou, sem
+ * o clique descobrir isso (PADROES §10). Comportamento inalterado desta fase.
+ *
+ * D-11 — `processTask` (Solicitação de pagamento) NUNCA mostra prazo,
+ * contagem regressiva ou expiração: o tipo não tem o campo `deadline`, então
+ * nenhum código aqui pode lê-lo por engano.
  */
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useData, useRun, useSession } from "@/dados/store";
-import { executionChainOf } from "@n1/dominio/derive";
+import { executionChainOf, statusDefinition } from "@n1/dominio/derive";
 import { decideApproval } from "@n1/dominio/operations";
 import { APPROVAL_REASON_LABEL, EFFECT_CLASS_LABEL, RESOURCE_TYPE_LABEL } from "@/features/shell/format";
 import { useFormat } from "@/features/shell/use-format";
 import {
+  DialogoAprovar,
+  DialogoRejeitar,
+  resumoDaSolicitacao,
+  useDecisaoDeAprovacao,
+} from "@/features/tarefa/painel-aprovacao";
+import {
   Button,
+  CategoryDot,
   ConfirmDialog,
   CorpoDeTela,
   EmptyState,
@@ -49,6 +63,9 @@ function terminationReasonOf(state: DataState, approval: ApprovalRequest): strin
   return execution?.terminationReason ? ` · ${execution.terminationReason}` : "";
 }
 
+/** §15 — the imported historical backlog (Plan 02-25) cannot render unbounded. */
+const DECIDED_PAGE_SIZE = 20;
+
 export default function AprovacoesPage() {
   const state = useData((data) => data);
   const fmt = useFormat();
@@ -56,12 +73,14 @@ export default function AprovacoesPage() {
   const run = useRun();
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [decidedShown, setDecidedShown] = useState(DECIDED_PAGE_SIZE);
   const router = useRouter();
   const query = useSearchParams();
   /**
    * D09 — a decisão vive no endereço (`?aprovar=<solicitação>`): decidir uma
    * Aprovação é um passo que se compartilha ("olha isso antes de eu aprovar") e
-   * que precisa sobreviver a um recarregamento.
+   * que precisa sobreviver a um recarregamento. O mesmo endereço serve as duas
+   * origens — só o conteúdo do diálogo muda.
    */
   const decidingRaw = query.get("aprovar");
   const [decidingId, decidingKind] = (() => {
@@ -94,8 +113,14 @@ export default function AprovacoesPage() {
     return agent?.ownerMemberId === memberId;
   };
 
+  // Mirrors decideProcessApproval: the designated approver, or an admin — sem dono de Agente (RN-SP-05).
+  const mayDecideProcesso = (approval: ApprovalRequest): boolean =>
+    approval.approverMemberId === memberId || isAdminLevel;
+
   const pending = state.approvals.filter((approval) => approval.decision === undefined);
-  const decided = state.approvals.filter((approval) => approval.decision !== undefined);
+  const decided = [...state.approvals]
+    .filter((approval) => approval.decision !== undefined)
+    .sort((a, b) => (b.decidedAt ?? "").localeCompare(a.decidedAt ?? ""));
   const mine = pending.filter((approval) => approval.approverMemberId === memberId);
   const others = pending.filter((approval) => approval.approverMemberId !== memberId);
 
@@ -118,7 +143,7 @@ export default function AprovacoesPage() {
    * A Solicitação é uma peça de bloco que NÃO clica: quem clica são os botões
    * dentro dela. Subir no hover prometeria um clique que não existe.
    */
-  const renderCard = (approval: ApprovalRequest) => {
+  const renderAgentCard = (approval: ApprovalRequest) => {
     const actionable = mayDecide(approval);
     const deadline = approvalDeadline(approval);
     const expired = deadline !== undefined && Date.parse(deadline) < now;
@@ -131,6 +156,11 @@ export default function AprovacoesPage() {
       <li key={approval.id} className="item-solto" data-bloco="true" data-estatico="true">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
+            <p className="app-meta mb-1">
+              <Pilula tom="acento" comPonto>
+                Execução de Agente
+              </Pilula>
+            </p>
             <p className="app-md" style={{ color: "var(--texto)" }}>
               {state.tools.find((t) => t.id === approval.object.toolId)?.name ?? approval.object.toolId}
             </p>
@@ -196,10 +226,116 @@ export default function AprovacoesPage() {
     );
   };
 
+  /**
+   * UI-SPEC "Fila de aprovações · Card de Solicitação de pagamento": nunca
+   * CPF/CNPJ completo, chave Pix, código de barras ou RESUMO — esses dados
+   * ficam restritos à Tarefa autorizada. D-11 — nenhuma contagem regressiva
+   * nem data-limite: o tipo `origin` deste ramo não carrega esse campo.
+   */
+  const renderProcessCard = (approval: ApprovalRequest) => {
+    if (approval.origin.kind !== "processTask") return null;
+    const origin = approval.origin;
+    const task = state.tasks.find((t) => t.id === origin.taskId);
+    if (!task) return null;
+    const actionable = mayDecideProcesso(approval);
+    const definition = statusDefinition(state, task.listId, task.statusId);
+    const resumo = resumoDaSolicitacao(task, state, fmt);
+    const aprovador = state.members.find((m) => m.id === approval.approverMemberId);
+    const disabledReason = `Somente ${aprovador?.displayName ?? "o aprovador designado"} ou um Administrador pode decidir esta Solicitação.`;
+
+    return (
+      <li key={approval.id} className="item-solto" data-bloco="true" data-estatico="true">
+        <div className="grid w-full gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Pilula tom="info" comPonto>
+              Solicitação de pagamento
+            </Pilula>
+            <span className="identificador app-sm" style={{ color: "var(--texto-3)" }}>
+              {task.readableId ?? task.id}
+            </span>
+            {definition ? <CategoryDot color={definition.color} label={definition.name} /> : null}
+            <span className="app-numero app-sm ml-auto shrink-0" style={{ color: "var(--texto)" }}>
+              {resumo.valorTexto}
+            </span>
+          </div>
+
+          <p className="app-base" style={{ color: "var(--texto)" }}>
+            {task.title}
+          </p>
+
+          <div className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
+            <span className="app-sm" style={{ color: "var(--texto-2)" }}>
+              Centro de Custo: {resumo.centroDeCusto}
+            </span>
+            <span className="app-sm" style={{ color: "var(--texto-2)" }}>
+              Fornecedor: {resumo.fornecedor}
+            </span>
+            <span className="app-sm" style={{ color: "var(--texto-2)" }}>
+              Solicitante: {resumo.solicitante}
+            </span>
+            {resumo.vencimento !== "—" ? (
+              <span className="app-sm" style={{ color: "var(--texto-2)" }}>
+                Vencimento: {resumo.vencimento}
+              </span>
+            ) : null}
+          </div>
+
+          <p className="app-meta">
+            {resumo.anexos} anexo(s) ·{" "}
+            <Link href={`/estrutura/tarefas/${task.id}`} className="underline">
+              Ver anexos
+            </Link>
+          </p>
+
+          <p className="app-meta">
+            Encaminhada para {aprovador?.displayName ?? "—"} · {fmt.relative(approval.createdAt, now)}
+          </p>
+
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <Button
+              variant="primary"
+              onClick={() => openDecision(approval.id, "aprovada")}
+              disabled={!actionable}
+              disabledReason={disabledReason}
+            >
+              Aprovar solicitação
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => openDecision(approval.id, "rejeitada")}
+              disabled={!actionable}
+              disabledReason={disabledReason}
+            >
+              Rejeitar solicitação
+            </Button>
+            <Link href={`/estrutura/tarefas/${task.id}`} className="btn btn-sutil btn-sm">
+              Abrir tarefa
+            </Link>
+          </div>
+        </div>
+      </li>
+    );
+  };
+
+  const renderPendingCard = (approval: ApprovalRequest) =>
+    approval.origin.kind === "processTask" ? renderProcessCard(approval) : renderAgentCard(approval);
+
   const deciding = decidingId ? state.approvals.find((a) => a.id === decidingId) : undefined;
-  const decidingDeadline = deciding ? approvalDeadline(deciding) : undefined;
+  const decidingOrigin = deciding?.origin;
+  const decidingIsProcess = decidingOrigin?.kind === "processTask";
+  const decidingProcessTaskId = decidingOrigin?.kind === "processTask" ? decidingOrigin.taskId : undefined;
+  const decidingTask = decidingProcessTaskId ? state.tasks.find((t) => t.id === decidingProcessTaskId) : undefined;
+  const decidingResumo = decidingTask ? resumoDaSolicitacao(decidingTask, state, fmt) : undefined;
+
+  const controladorProcesso = useDecisaoDeAprovacao(decidingIsProcess ? (deciding?.id ?? undefined) : undefined, (decisao) => {
+    closeDecision();
+    setError(null);
+    setNotice(decisao === "aprovada" ? "Solicitação aprovada." : "Solicitação rejeitada.");
+  });
+
+  const decidingDeadline = deciding && !decidingIsProcess ? approvalDeadline(deciding) : undefined;
   const decidingExpired = decidingDeadline !== undefined ? Date.parse(decidingDeadline) < now : false;
-  const decidingTool = deciding
+  const decidingTool = deciding && !decidingIsProcess
     ? (state.tools.find((t) => t.id === deciding.object.toolId)?.name ?? deciding.object.toolId)
     : "";
 
@@ -207,7 +343,28 @@ export default function AprovacoesPage() {
     <div className="flex h-full flex-col">
       <PageHeader title="Aprovações" meta={`${mine.length} para você · ${pending.length} pendentes`} />
 
-      {deciding ? (
+      {deciding && decidingIsProcess && decidingResumo ? (
+        <>
+          <DialogoAprovar
+            open={decidingKind === "aprovada"}
+            resumo={decidingResumo}
+            processando={controladorProcesso.processando === "aprovada"}
+            onConfirm={() => controladorProcesso.decidir("aprovada")}
+            onCancel={closeDecision}
+          />
+          <DialogoRejeitar
+            open={decidingKind === "rejeitada"}
+            resumo={decidingResumo}
+            processando={controladorProcesso.processando === "rejeitada"}
+            motivo={reason}
+            onMotivoChange={setReason}
+            onConfirm={() => controladorProcesso.decidir("rejeitada", reason)}
+            onCancel={closeDecision}
+          />
+        </>
+      ) : null}
+
+      {deciding && !decidingIsProcess ? (
         <ConfirmDialog
           open
           title={
@@ -281,46 +438,85 @@ export default function AprovacoesPage() {
             {error}
           </Toast>
         ) : null}
+        {controladorProcesso.erro ? (
+          <Toast tone="error" onDismiss={controladorProcesso.limparErro}>
+            {controladorProcesso.erro}
+          </Toast>
+        ) : null}
 
         <Section title="Aguardando a sua decisão" count={mine.length}>
           {mine.length === 0 ? (
             <EmptyState
-              title="Nenhuma Solicitação aguarda você."
-              hint="Uma Solicitação chega quando uma Execução pede uma Ferramenta que a Concessão exige aprovar."
+              title="Nenhuma solicitação aguarda sua decisão."
+              hint="Quando uma solicitação for encaminhada para você, ela aparecerá aqui."
             />
           ) : (
-            <ul className="pilha-solta">{mine.map((approval) => renderCard(approval))}</ul>
+            <ul className="pilha-solta">{mine.map((approval) => renderPendingCard(approval))}</ul>
           )}
         </Section>
 
         <Section title="Aguardando outros aprovadores" count={others.length}>
           {others.length === 0 ? (
-            <EmptyState title="Nenhuma Solicitação pendente com outro aprovador." />
+            <EmptyState
+              title="Nenhuma solicitação aguarda outros aprovadores."
+              hint="Quando outra pessoa precisar decidir, acompanhe a solicitação aqui ou abra a tarefa para consultar a timeline."
+            />
           ) : (
-            <ul className="pilha-solta">{others.map((approval) => renderCard(approval))}</ul>
+            <ul className="pilha-solta">{others.map((approval) => renderPendingCard(approval))}</ul>
           )}
         </Section>
 
         <Section title="Decididas" count={decided.length}>
           {decided.length === 0 ? (
-            <EmptyState title="Nenhuma Solicitação decidida ainda." />
+            <EmptyState
+              title="Nenhuma solicitação foi decidida."
+              hint="Depois de aprovar ou rejeitar uma solicitação, consulte aqui a decisão ou abra a tarefa para ver a timeline."
+            />
           ) : (
-            <ul className="pilha-solta">
-              {decided.map((approval) => (
-                <li key={approval.id} className="item-solto" data-estatico="true" data-atenuado="true">
-                  <span className="app-base min-w-0 flex-1 truncate" style={{ color: "var(--texto)" }}>
-                    {state.tools.find((t) => t.id === approval.object.toolId)?.name ?? approval.object.toolId}
-                  </span>
-                  <Pilula tom={approval.decision === "aprovada" ? "sucesso" : "neutro"} comPonto className="shrink-0">
-                    {approval.decision}
-                  </Pilula>
-                  <span className="app-meta app-numero shrink-0">
-                    {approval.decidedAt ? fmt.instant(approval.decidedAt) : ""}
-                    {terminationReasonOf(state, approval)}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul className="pilha-solta">
+                {decided.slice(0, decidedShown).map((approval) => {
+                  const origin = approval.origin;
+                  const isProcess = origin.kind === "processTask";
+                  const task = origin.kind === "processTask" ? state.tasks.find((t) => t.id === origin.taskId) : undefined;
+                  return (
+                    <li key={approval.id} className="item-solto" data-estatico="true" data-atenuado="true">
+                      <span className="app-base min-w-0 flex-1 truncate" style={{ color: "var(--texto)" }}>
+                        {isProcess
+                          ? (task?.title ?? "Tarefa removida")
+                          : (state.tools.find((t) => t.id === approval.object.toolId)?.name ?? approval.object.toolId)}
+                      </span>
+                      <Pilula tom={approval.decision === "aprovada" ? "sucesso" : "neutro"} comPonto className="shrink-0">
+                        {approval.decision}
+                      </Pilula>
+                      <span className="app-meta app-numero shrink-0">
+                        {approval.decidedAt ? fmt.instant(approval.decidedAt) : ""}
+                        {isProcess
+                          ? ` · ${approval.decisionSource === "comment" ? "por comentário" : "por clique"}`
+                          : terminationReasonOf(state, approval)}
+                      </span>
+                      {isProcess && task ? (
+                        <Link href={`/estrutura/tarefas/${task.id}`} className="app-sm underline shrink-0">
+                          Abrir tarefa
+                        </Link>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+              {decided.length > decidedShown ? (
+                <p className="app-meta app-numero mt-2">
+                  Mostrando {decidedShown} de {decided.length}.{" "}
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => setDecidedShown((atual) => atual + DECIDED_PAGE_SIZE)}
+                  >
+                    Mostrar mais decididas
+                  </button>
+                </p>
+              ) : null}
+            </>
           )}
         </Section>
       </CorpoDeTela>

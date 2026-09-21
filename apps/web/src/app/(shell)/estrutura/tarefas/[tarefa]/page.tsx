@@ -36,6 +36,8 @@ import {
 } from "@/features/estrutura/collaboration-editors";
 import { SaveTemplateDialog } from "@/features/estrutura/template-dialogs";
 import { ShareTaskDialog } from "@/features/estrutura/share-task-dialog";
+import { DialogoFluxoManual, fluxoManualRecusado } from "@/features/tarefa/fluxo-manual-dialog";
+import { PainelAprovacao } from "@/features/tarefa/painel-aprovacao";
 import { use, useState, type ReactNode } from "react";
 import { useData, useRun, useSession } from "@/dados/store";
 import {
@@ -154,6 +156,7 @@ export default function TarefaPage({
   const [editing, setEditing] = useState(false);
   const [salvandoModelo, setSalvandoModelo] = useState(false);
   const [compartilhando, setCompartilhando] = useState(false);
+  const [fluxoManualAberto, setFluxoManualAberto] = useState(false);
   const [newChecklist, setNewChecklist] = useState("");
   const [newItem, setNewItem] = useState<Record<string, string>>({});
   const [newSubtask, setNewSubtask] = useState("");
@@ -431,6 +434,13 @@ export default function TarefaPage({
                     : {}),
               },
               {
+                label: "Usar fluxo manual",
+                onSelect: () => setFluxoManualAberto(true),
+                ...(fluxoManualRecusado(state, memberId, task)
+                  ? { disabledReason: fluxoManualRecusado(state, memberId, task) }
+                  : {}),
+              },
+              {
                 label: "Enviar à lixeira",
                 onSelect: () => setConfirmingTrash(true),
                 destructive: true,
@@ -532,6 +542,12 @@ export default function TarefaPage({
         report={report}
         permitido={compartilharRecusado}
         revogarRecusado={revogarRecusado}
+      />
+      <DialogoFluxoManual
+        task={task}
+        open={fluxoManualAberto}
+        onClose={() => setFluxoManualAberto(false)}
+        report={report}
       />
       <ConfirmDialog
         open={confirmingTrash}
@@ -708,6 +724,8 @@ export default function TarefaPage({
                 ) : null}
               </div>
             </Painel>
+
+            <PainelAprovacao task={task} fmt={fmt} report={report} />
 
             {config.features.checklists ? (
               <Painel>
