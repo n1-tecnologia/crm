@@ -150,3 +150,14 @@ None - nenhuma configuração de serviço externo necessária. `PAYMENT_REQUEST_
 ---
 *Phase: 02-solicita-o-de-pagamento-o-front-substitui-o-clickup*
 *Completed: 2026-09-21*
+
+## Self-Check: PASSED
+
+- FOUND: `../financeiro-tria/automation/src/adapters/payment-request-adapter.ts`
+- FOUND: `../financeiro-tria/automation/src/adapters/clickup-payment-request-adapter.ts`
+- FOUND: `../financeiro-tria/automation/src/adapters/payment-request-adapter.test.ts`
+- FOUND: `../financeiro-tria/automation/src/adapters/CONTEXT.md`
+- FOUND: commit `0ec2469` (financeiro-tria)
+- FOUND: commit `d7d30c1` (financeiro-tria)
+- FOUND: commit `a621199` (financeiro-tria)
+- FOUND: `.planning/phases/02-solicita-o-de-pagamento-o-front-substitui-o-clickup/02-12-SUMMARY.md` (crm-n1)
