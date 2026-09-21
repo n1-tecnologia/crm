@@ -106,6 +106,15 @@ None - a migração já foi aplicada pelo orquestrador contra o Supabase da plat
 
 As seis tabelas de transporte existem no banco real com as constraints que os Planos 02-10 (outbox/evento), 02-11 (upload), 02-13 (idempotência HTTP/credenciais) e 02-25 (importação) vão assumir — provadas, não só descritas. Nenhum bloqueio identificado para esses planos consumirem esta migração.
 
+## Self-Check: PASSED
+
+- FOUND: `apps/api/src/persistencia/integracao.test.ts`
+- FOUND: `apps/api/migracoes/003-integracao-e-importacao.sql`
+- FOUND: seção "Tabelas de transporte (Fase 2)" em `apps/api/src/persistencia/CONTEXT.md`
+- FOUND: commit `93d2e40` (Task 3)
+- FOUND: commit `e5b8682` (Task 1, execução anterior)
+- FOUND: commit `af627eb` (este SUMMARY.md)
+
 ---
 *Phase: 02-solicita-o-de-pagamento-o-front-substitui-o-clickup*
 *Completed: 2026-09-21*
