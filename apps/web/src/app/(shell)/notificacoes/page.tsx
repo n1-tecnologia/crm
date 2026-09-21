@@ -84,7 +84,10 @@ export default function NotificacoesPage() {
                         approval.object.toolId}
                     </p>
                     <p className="app-sm text-[var(--texto-3)]">
-                      motivo {approval.reason} · vence {fmt.relative(approval.deadline, now.getTime())}
+                      motivo {approval.reason}
+                      {approval.origin.kind === "agentExecution"
+                        ? ` · vence ${fmt.relative(approval.origin.deadline, now.getTime())}`
+                        : ""}
                     </p>
                   </Link>
                 </li>

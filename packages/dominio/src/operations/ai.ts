@@ -6,6 +6,7 @@
 import { fail, ok, type DataState, type OperationResult } from "../state";
 import type {
   Agent,
+  ApprovalOrigin,
   ApprovalRequest,
   Automation,
   AutomationVersion,
@@ -14,10 +15,66 @@ import type {
   ChatSession,
   Id,
 } from "../types";
-import { contactDisplayName } from "../derive";
+import { contactDisplayName, effectiveListConfig } from "../derive";
 import { memberActor, nextId, recordActivity, systemActor } from "./activity";
+import { addTaskComment, changeTaskStatus } from "./tasks";
 
 const now = (): string => new Date().toISOString();
+
+/**
+ * D-06 — normaliza a ORIGEM de um registro de `ApprovalRequest`, hidratado ou
+ * não. `apps/api/src/persistencia/repositorio.ts::hidratar` é um `JSON.parse`
+ * genérico por coleção — sem conhecimento do domínio, ele não pode fazer esta
+ * tradução. Por isso a normalização mora aqui, e é aplicada pelas operações
+ * que leem `state.approvals` (`ensureApprovalsNormalized`, abaixo), na
+ * primeira leitura de cada registro: uma `ApprovalRequest` gravada antes desta
+ * fase chega da hidratação com `executionId`/`stepIndex`/`deadline` soltos,
+ * sem `origin` — perder isso silenciosamente corromperia o histórico de
+ * Aprovações de Agente (V02-03A).
+ */
+export function normalizeApprovalOrigin(bruto: unknown): ApprovalOrigin {
+  const registro = (bruto ?? {}) as Record<string, unknown>;
+  const origin = registro.origin as Record<string, unknown> | undefined;
+  if (origin && typeof origin === "object" && typeof origin.kind === "string") {
+    return origin as unknown as ApprovalOrigin;
+  }
+  return {
+    kind: "agentExecution",
+    executionId: registro.executionId as Id,
+    stepIndex: registro.stepIndex as number,
+    deadline: registro.deadline as string,
+  };
+}
+
+/** Garante `origin` em todo registro de `state.approvals` antes de qualquer leitura. */
+function ensureApprovalsNormalized(state: DataState): void {
+  for (const approval of state.approvals) {
+    if (!approval.origin) approval.origin = normalizeApprovalOrigin(approval);
+  }
+}
+
+/**
+ * D-09 — a mesma resolução de autorização que `decideApproval` e
+ * `decideProcessApproval` compartilham: o aprovador designado, ou um Membro
+ * com papel base administrador/proprietário. `extraOwnerId` é o dono do
+ * Agente — só existe no ramo `agentExecution` (RN-SP-05 não tem esse dono).
+ */
+function mayDecideApproval(state: DataState, actingMemberId: Id, approverMemberId: Id, extraOwnerId?: Id): boolean {
+  const member = state.members.find((m) => m.id === actingMemberId);
+  if (!member || member.state !== "ativo") return false;
+  const role = state.roles.find((r) => r.id === member.roleId);
+  return (
+    approverMemberId === actingMemberId ||
+    (extraOwnerId !== undefined && extraOwnerId === actingMemberId) ||
+    role?.base === "administrador" ||
+    role?.base === "proprietario"
+  );
+}
+
+/** O status do Conjunto de Status efetivo da Lista cujo nome bate exatamente. */
+function resolveProcessStatusId(state: DataState, listId: Id, name: string): Id | undefined {
+  return effectiveListConfig(state, listId)?.statusSet.definitions.find((d) => d.name === name)?.id;
+}
 
 /**
  * B80 / RN-AGE-17 — approving is approving EXACTLY the fixed object, and it
@@ -32,8 +89,13 @@ export function decideApproval(
   decision: "aprovada" | "rejeitada",
   reason?: string,
 ): OperationResult<ApprovalRequest> {
+  ensureApprovalsNormalized(state);
   const approval = state.approvals.find((a) => a.id === approvalId);
   if (!approval) return fail("Solicitação de Aprovação não encontrada.");
+  if (approval.origin.kind !== "agentExecution") {
+    return fail("Esta Solicitação de Aprovação pertence a um processo; use a decisão de processo.");
+  }
+  const origin = approval.origin;
   if (approval.decision) {
     return fail(`Esta Solicitação já foi ${approval.decision}.`);
   }
@@ -42,16 +104,10 @@ export function decideApproval(
     return fail("Só um Membro ativo decide uma Solicitação de Aprovação.");
   }
 
-  const execution = state.agentExecutions.find((e) => e.id === approval.executionId);
+  const execution = state.agentExecutions.find((e) => e.id === origin.executionId);
   const agent = execution ? state.agents.find((a) => a.id === execution.agentId) : undefined;
 
-  const role = state.roles.find((r) => r.id === member.roleId);
-  const mayDecide =
-    approval.approverMemberId === actingMemberId ||
-    agent?.ownerMemberId === actingMemberId ||
-    role?.base === "administrador" ||
-    role?.base === "proprietario";
-  if (!mayDecide) {
+  if (!mayDecideApproval(state, actingMemberId, approval.approverMemberId, agent?.ownerMemberId)) {
     return fail("Você não é o aprovador designado desta Solicitação.");
   }
 
@@ -61,7 +117,7 @@ export function decideApproval(
    * effect by asking. The expiry is an act of the System, and it carries its
    * own Registro de Atividade because it produces an effect (B80).
    */
-  if (Date.parse(approval.deadline) < Date.now()) {
+  if (Date.parse(origin.deadline) < Date.now()) {
     approval.decision = "expirada";
     approval.decidedAt = now();
     if (execution) {
@@ -118,6 +174,163 @@ export function decideApproval(
     after: decision,
     ...(reason ? { detail: reason } : {}),
   });
+  return ok(approval);
+}
+
+export interface SolicitarAprovacaoInput {
+  readonly taskId: Id;
+  readonly approverMemberId: Id;
+  readonly threadCommentId: Id;
+  readonly reason?: string;
+}
+
+/**
+ * D-06/D-07 — a aprovação de processo nasce ligada diretamente à Tarefa e ao
+ * passo `pagamento`, sem `AgentExecution`. Quem é o Aprovador certo (Centro de
+ * Custo e Valor, RN-SP-03) é resolvido ANTES de chamar esta operação — ela
+ * recebe o aprovador já decidido (o catálogo da Lista é o Plan 02-06).
+ */
+export function solicitarAprovacao(
+  state: DataState,
+  actingMemberId: Id,
+  input: SolicitarAprovacaoInput,
+): OperationResult<ApprovalRequest> {
+  ensureApprovalsNormalized(state);
+  const task = state.tasks.find((t) => t.id === input.taskId);
+  if (!task) return fail("Tarefa não encontrada.");
+  const approver = state.members.find((m) => m.id === input.approverMemberId);
+  if (!approver || approver.state !== "ativo") {
+    return fail("O Aprovador precisa ser um Membro ativo.");
+  }
+  const threadComment = task.comments.find((c) => c.id === input.threadCommentId && !c.deletedAt);
+  if (!threadComment) {
+    return fail("O Comentário de roteamento não existe nesta Tarefa.");
+  }
+
+  // Idempotência do roteamento — repetir para a mesma Tarefa não cria uma segunda pendência.
+  const existing = state.approvals.find(
+    (a) => a.origin.kind === "processTask" && a.origin.taskId === input.taskId && a.decision === undefined,
+  );
+  if (existing) return ok(existing);
+
+  const statusId = resolveProcessStatusId(state, task.listId, "em aprovação");
+  if (!statusId) {
+    return fail("Esta Lista não tem o status “em aprovação” configurado.");
+  }
+  const moved = changeTaskStatus(state, actingMemberId, task.id, statusId);
+  if (!moved.ok) return fail(moved.error, moved.field);
+
+  const approval: ApprovalRequest = {
+    id: nextId("apr"),
+    origin: { kind: "processTask", taskId: task.id, processStep: "pagamento", threadCommentId: threadComment.id },
+    requestedBy: memberActor(actingMemberId),
+    reason: "processo",
+    object: {
+      // D-06 — uma aprovação de processo não é uma Ferramenta.
+      toolId: "",
+      input: "",
+      targetResourceType: "task",
+      targetResourceId: task.id,
+      effectClass: "escritaIrreversivel",
+    },
+    approverMemberId: input.approverMemberId,
+    createdAt: now(),
+  };
+  state.approvals.push(approval);
+
+  recordActivity(state, {
+    actor: memberActor(actingMemberId),
+    action: "Aprovação solicitada",
+    objectType: "task",
+    objectId: task.id,
+    objectName: task.title,
+    ...(input.reason ? { detail: input.reason } : {}),
+  });
+  return ok(approval);
+}
+
+export interface DecideProcessApprovalOptions {
+  readonly source: "click" | "comment";
+  readonly reason?: string;
+}
+
+/**
+ * D-09 — a decisão canônica que clique e comentário compartilham: publica a
+ * resposta no tópico, grava a decisão, registra a Atividade com a fonte e só
+ * então muda o Status. Repetir a MESMA decisão é sucesso idempotente; a
+ * decisão oposta é conflito e nunca sobrescreve. D-11 — sem prazo: o ramo
+ * `processTask` de `ApprovalOrigin` não tem `deadline`, então não há o que
+ * expirar aqui — o timeout de Execução de Agente nunca alcança esta operação.
+ */
+export function decideProcessApproval(
+  state: DataState,
+  actingMemberId: Id,
+  approvalId: Id,
+  decision: "aprovada" | "rejeitada",
+  options: DecideProcessApprovalOptions,
+): OperationResult<ApprovalRequest> {
+  ensureApprovalsNormalized(state);
+  const approval = state.approvals.find((a) => a.id === approvalId);
+  if (!approval) return fail("Solicitação de Aprovação não encontrada.");
+  if (approval.origin.kind !== "processTask") {
+    return fail("Esta Solicitação de Aprovação pertence a uma Execução de Agente; use a decisão de Agente.");
+  }
+  const origin = approval.origin;
+
+  // Replay da MESMA decisão é sucesso idempotente, sem efeito nenhum (D-09).
+  if (approval.decision === decision) return ok(approval);
+  if (approval.decision) {
+    const decisor = state.members.find((m) => m.id === approval.decidedByMemberId)?.displayName ?? "outro Membro";
+    return fail(`Esta Solicitação já foi ${approval.decision} por ${decisor}.`);
+  }
+
+  const member = state.members.find((m) => m.id === actingMemberId);
+  if (!member || member.state !== "ativo") {
+    return fail("Só um Membro ativo decide uma Solicitação de Aprovação.");
+  }
+  if (!mayDecideApproval(state, actingMemberId, approval.approverMemberId)) {
+    return fail("Você não é o aprovador designado desta Solicitação.");
+  }
+
+  if (decision === "rejeitada" && !options.reason?.trim()) {
+    return fail("Rejeitar exige um motivo.", "reason");
+  }
+
+  const task = state.tasks.find((t) => t.id === origin.taskId);
+  if (!task) return fail("A Tarefa desta Solicitação não existe mais.");
+
+  // D-09 — a resposta canônica é publicada como resposta ao tópico de roteamento, texto fixo.
+  const texto = decision === "aprovada" ? `✅ Aprovado por ${member.displayName}` : `❌ Reprovado por ${member.displayName}`;
+  const comentario = addTaskComment(state, actingMemberId, task.id, {
+    content: texto,
+    parentCommentId: origin.threadCommentId,
+  });
+  if (!comentario.ok) return fail(comentario.error, comentario.field);
+
+  approval.decision = decision;
+  approval.decidedByMemberId = actingMemberId;
+  approval.decidedAt = now();
+  approval.decisionSource = options.source;
+  if (options.reason) approval.decisionReason = options.reason;
+
+  recordActivity(state, {
+    actor: memberActor(actingMemberId),
+    action: "Aprovação decidida",
+    objectType: "approvalRequest",
+    objectId: approval.id,
+    objectName: task.title,
+    after: decision,
+    detail: `${options.source === "click" ? "por clique" : "por comentário"}${options.reason ? ` — ${options.reason}` : ""}`,
+  });
+
+  const statusName = decision === "aprovada" ? "aprovado" : "não aprovado";
+  const statusId = resolveProcessStatusId(state, task.listId, statusName);
+  if (!statusId) {
+    return fail(`Esta Lista não tem o status “${statusName}” configurado.`);
+  }
+  const moved = changeTaskStatus(state, actingMemberId, task.id, statusId);
+  if (!moved.ok) return fail(moved.error, moved.field);
+
   return ok(approval);
 }
 

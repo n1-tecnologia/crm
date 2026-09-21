@@ -895,7 +895,7 @@ describe("Aprovação (B80, RN-AGE-17)", () => {
 
   it("expira e cancela a Execução quando o prazo venceu, com Registro de Atividade", () => {
     const approval = state.approvals.find((a) => a.id === "apr_1");
-    if (approval) Object.assign(approval, { deadline: new Date(Date.now() - 1000).toISOString() });
+    if (approval && approval.origin.kind === "agentExecution") Object.assign(approval.origin, { deadline: new Date(Date.now() - 1000).toISOString() });
     const before = state.activity.length;
 
     const result = decideApproval(state, THIAGO, "apr_1", "aprovada");
@@ -911,7 +911,7 @@ describe("Aprovação (B80, RN-AGE-17)", () => {
 
   it("não deixa quem não pode decidir cancelar a Execução pelo vencimento", () => {
     const approval = state.approvals.find((a) => a.id === "apr_1");
-    if (approval) Object.assign(approval, { deadline: new Date(Date.now() - 1000).toISOString() });
+    if (approval && approval.origin.kind === "agentExecution") Object.assign(approval.origin, { deadline: new Date(Date.now() - 1000).toISOString() });
     const executionBefore = state.agentExecutions.find((e) => e.id === "exe_2")?.state;
 
     // Beatriz é Convidada: não é a aprovadora, não é dona do Agente, não é Administradora.
