@@ -163,3 +163,7 @@ None - no external service configuration required.
 ---
 *Phase: 02-solicita-o-de-pagamento-o-front-substitui-o-clickup*
 *Completed: 2026-09-21*
+
+## Self-Check: PASSED
+
+All key files found on disk (types/ai.ts, operations/ai.ts, registro.ts, index.ts, aprovacao-de-processo.test.ts, CONTEXT.md, esquemas/ia.ts, this SUMMARY.md). All 4 commits (fd94d88, b0ec637, 08eedf2, 542329c) found in `git log`.
