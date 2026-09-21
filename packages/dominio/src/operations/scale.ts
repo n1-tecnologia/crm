@@ -552,7 +552,9 @@ export function submitForm(state: DataState, secretValue: string, entrada: Submi
   };
   const desfazer = (motivo: string, field?: Id): OperationResult<Task> => {
     state.tasks.splice(antes.tasks);
-    state.activity.splice(antes.activity);
+    // `recordActivity` insere no INÍCIO (`unshift`): os Registros novos ficam nos primeiros
+    // índices, empurrando os antigos para trás — por isso remove pela frente, não pelo fim.
+    state.activity.splice(0, state.activity.length - antes.activity);
     state.files.splice(antes.files);
     state.workspace.taskReadableId.next = antes.readable;
     return fail(motivo, field);
@@ -610,9 +612,10 @@ export function submitForm(state: DataState, secretValue: string, entrada: Submi
   form.submissions += 1;
 
   // Consolida num único Registro de Atividade, do Ator do Formulário — nunca do Membro dono (D-03):
-  // remove os Registros transitórios de `createTask`/`setTaskFieldValue` (do contexto de autorização)
-  // e registra o fato de negócio uma vez só, depois que a Tarefa já está completa.
-  state.activity.splice(antes.activity);
+  // remove os Registros transitórios de `createTask`/`setTaskFieldValue` (do contexto de autorização;
+  // `recordActivity` insere no início, então eles ainda estão nos primeiros índices) e registra o
+  // fato de negócio uma vez só, depois que a Tarefa já está completa.
+  state.activity.splice(0, state.activity.length - antes.activity);
   recordActivity(state, { actor: formActor(form.id), action: "Tarefa criada por Formulário", objectType: "task", objectId: task.id, objectName: task.title, detail: form.name });
 
   // Só agora a automação enxerga a Tarefa: Campos e anexos já estão completos.
