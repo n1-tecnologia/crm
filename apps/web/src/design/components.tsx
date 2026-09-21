@@ -176,6 +176,7 @@ export function TextInput({
   disabled = false,
   disabledReason,
   size = "md",
+  required = false,
 }: {
   readonly id?: string;
   readonly value: string;
@@ -188,6 +189,8 @@ export function TextInput({
   readonly disabledReason?: string;
   /** Numa barra de filtros todo controle tem a altura pequena; fora dela, a cheia. */
   readonly size?: "sm" | "md";
+  /** Marca `aria-required` no próprio controle — `Field` só desenha o asterisco. */
+  readonly required?: boolean;
 }) {
   return (
     <input
@@ -197,6 +200,7 @@ export function TextInput({
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder}
       aria-invalid={invalid}
+      aria-required={required}
       readOnly={disabled}
       aria-disabled={disabled}
       title={disabled ? disabledReason : undefined}
@@ -216,6 +220,7 @@ export function TextArea({
   disabledReason,
   autoGrow = false,
   maxHeight = 240,
+  required = false,
 }: {
   readonly id?: string;
   readonly value: string;
@@ -229,6 +234,8 @@ export function TextArea({
   readonly autoGrow?: boolean;
   /** Teto em pixels: passado dele o campo rola por dentro. */
   readonly maxHeight?: number;
+  /** Marca `aria-required` no próprio controle — `Field` só desenha o asterisco. */
+  readonly required?: boolean;
 }) {
   const campo = useRef<HTMLTextAreaElement>(null);
 
@@ -255,6 +262,7 @@ export function TextArea({
       placeholder={placeholder}
       readOnly={disabled}
       aria-disabled={disabled}
+      aria-required={required}
       title={disabled ? disabledReason : undefined}
       style={autoGrow ? ({ fieldSizing: "content", maxHeight } as CSSProperties) : undefined}
       className="campo"
@@ -300,6 +308,7 @@ export function Select({
   disabled = false,
   disabledReason,
   size = "md",
+  required = false,
 }: {
   readonly id?: string;
   readonly value: string;
@@ -311,6 +320,8 @@ export function Select({
   readonly disabledReason?: string;
   /** Numa barra de filtros todo controle tem a altura pequena; fora dela, a cheia. */
   readonly size?: "sm" | "md";
+  /** Marca `aria-required` no próprio controle — `Field` só desenha o asterisco. */
+  readonly required?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -338,6 +349,7 @@ export function Select({
         disabled={disabled}
         title={disabled ? disabledReason : undefined}
         aria-disabled={disabled}
+        aria-required={required}
         role="combobox"
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -402,6 +414,7 @@ export function MultiSelect({
   options,
   onChange,
   placeholder = "Escolher",
+  required = false,
 }: {
   /** Required whenever a `Field` wraps it, or its `htmlFor` points at nothing. */
   readonly id?: string;
@@ -409,6 +422,8 @@ export function MultiSelect({
   readonly options: readonly Option[];
   readonly onChange: (values: readonly string[]) => void;
   readonly placeholder?: string;
+  /** Marca `aria-required` no próprio controle — `Field` só desenha o asterisco. */
+  readonly required?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -452,6 +467,7 @@ export function MultiSelect({
           aria-haspopup="listbox"
           aria-controls={open ? listId : undefined}
           aria-activedescendant={open ? `${listId}-${activeIndex}` : undefined}
+          aria-required={required}
           onKeyDown={onKeyDown}
           aria-label="Abrir opções"
           className="ml-auto shrink-0 px-1"
