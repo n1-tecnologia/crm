@@ -162,6 +162,21 @@ _Nenhuma task usou TDD (`tdd="true"` não está no frontmatter deste plano)._
 - **Para o Plan 02-26:** as 2 fixtures copiadas manualmente (Deviation 1) precisam ser tratadas como já presentes — o plano deve confirmar que a cópia OFICIAL (diretório inteiro + hash agregado) bate byte a byte com o que já está aqui, não pular a verificação por já encontrá-las no lugar.
 - **Para o Plan 02-21:** ao decidir COMO selecionar o mapper por origem no composition root, os ~10 call sites de `payment-automation-service.ts` que chamam `getSolicitacaoPagamentoByTaskId`/`upsertSolicitacaoPagamento` sem `origem` explícito vão precisar passar a origem correta explicitamente (hoje usam o default `'clickup'` deste plano, que deixa de ser seguro assumir assim que a coorte `plataforma` existir de verdade).
 
+## Self-Check: PASSED
+
+Arquivos criados (verificados com `[ -f ... ]`):
+- FOUND: `../financeiro-tria/automation/src/tenants/tria/payment-request-mapper.ts`
+- FOUND: `../financeiro-tria/automation/src/tenants/tria/plataforma-payment-mapper.ts`
+- FOUND: `../financeiro-tria/automation/src/tenants/tria/plataforma-payment-mapper.test.ts`
+- FOUND: `../financeiro-tria/supabase/migrations/20260922130000_solicitacoes_origem_unique.sql`
+- FOUND: `../financeiro-tria/automation/contratos/payment-requests-v1/getTask.sucesso-completo.json`
+- FOUND: `../financeiro-tria/automation/contratos/payment-requests-v1/getTask.sucesso-minimo.json`
+- FOUND: `.planning/phases/02-solicita-o-de-pagamento-o-front-substitui-o-clickup/02-18-SUMMARY.md`
+
+Commits verificados (`git log --oneline --all | grep`):
+- FOUND (financeiro-tria): `c913f6d`, `d3e9b66`, `f5f0cfd`, `7cf37ef`
+- FOUND (crm-n1): `e146f86`
+
 ---
 *Phase: 02-solicita-o-de-pagamento-o-front-substitui-o-clickup*
 *Completed: 2026-09-21 (parcial — Task 3 bloqueada em checkpoint humano)*
