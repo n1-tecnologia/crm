@@ -18,6 +18,7 @@ import type { DataState, Diferenca, OperationResult } from "@n1/dominio";
 import { DIFERENCA_VAZIA } from "@n1/dominio";
 import { syncIdSequence } from "@n1/dominio/operations";
 import { pool } from "./conexao";
+import { gravarEventos, type EventoDeSaida } from "./outbox";
 import { gravar, hidratar } from "./repositorio";
 
 export type Conflito = { readonly ok: false; readonly conflito: true; readonly error: string };
@@ -26,15 +27,23 @@ export type ResultadoTransacao<T> =
   | (OperationResult<T> & { readonly diferenca: Diferenca; readonly revisao: number; readonly revisaoAnterior: number })
   | Conflito;
 
-export interface OpcoesExecucao {
+export interface OpcoesExecucao<T = unknown> {
   /** Quantas vezes repetir em caso de conflito antes de desistir. */
   readonly tentativas?: number;
+  /**
+   * Função pura que A ROTA fornece, derivando os eventos de saída do
+   * resultado da operação — nunca do `diferenca` (D-18, T-02-16). A operação
+   * de domínio continua sem saber que outbox existe: é o mesmo princípio do
+   * cabeçalho deste arquivo, "nada aqui reescreve regra de negócio", agora
+   * aplicado ao lado de fora dele.
+   */
+  readonly eventos?: (valor: T, state: DataState) => readonly EventoDeSaida[];
 }
 
 export async function executar<T>(
   workspaceId: string,
   operacao: (state: DataState) => OperationResult<T>,
-  opcoes: OpcoesExecucao = {},
+  opcoes: OpcoesExecucao<T> = {},
 ): Promise<ResultadoTransacao<T>> {
   const tentativas = opcoes.tentativas ?? 3;
   let ultimo: Conflito | undefined;
@@ -71,6 +80,11 @@ export async function executar<T>(
       }
 
       const diferenca = await gravar(cliente, workspaceId, antes.state, antes);
+      // D-18 — o evento nasce no MESMO `cliente`, ANTES do commit: Tarefa e
+      // evento são a mesma transação, sem que a operação de domínio saiba
+      // que outbox existe. Nunca chamar `fetch`/HTTP neste bloco — a entrega
+      // é responsabilidade exclusiva de `outbox-worker.ts`, fora da UoW.
+      await gravarEventos(cliente, workspaceId, opcoes.eventos?.(resultado.value, antes.state) ?? []);
       await cliente.query("commit");
       // A nova revisão é a que o `update ... returning revisao` devolveu —
       // usar o valor lido em vez de `antes.revisao + 1` evita depender de
