@@ -81,6 +81,38 @@ function paraObjeto(linha: LinhaObjeto): ObjetoDeUpload {
   };
 }
 
+/**
+ * Busca a sessão por id, sem os objetos. `servicos/storage-uploads.ts` usa
+ * isto para validar existência/expiração/consumo ANTES de reservar um
+ * objeto novo — `emitirTicket` precisa do `workspaceId`/`formId` da sessão
+ * para montar o caminho aleatório do objeto (D-04).
+ */
+export async function obterSessao(sessionId: string, cliente?: PoolClient): Promise<SessaoDeUpload | undefined> {
+  const resultado = await executor(cliente).query<{
+    id: string;
+    workspace_id: string;
+    form_id: string;
+    created_at: Date;
+    expires_at: Date;
+    consumed_at: Date | null;
+  }>(
+    `select id, workspace_id, form_id, created_at, expires_at, consumed_at
+       from plataforma.upload_sessions
+      where id = $1`,
+    [sessionId],
+  );
+  const linha = resultado.rows[0];
+  if (!linha) return undefined;
+  return {
+    id: linha.id,
+    workspaceId: linha.workspace_id,
+    formId: linha.form_id,
+    createdAt: linha.created_at,
+    expiresAt: linha.expires_at,
+    consumedAt: linha.consumed_at,
+  };
+}
+
 /** Cria a sessão; `expiresAt` é calculado pelo próprio banco a partir do TTL pedido. */
 export async function criarSessao(
   args: { readonly workspaceId: string; readonly formId: string; readonly ttlSegundos: number },
