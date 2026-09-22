@@ -86,7 +86,7 @@ export default function TagsPage() {
                   return (
                     <tr key={tag.id}>
                       <td>
-                        <Pilula cor={tag.color} comPonto>
+                        <Pilula cor={tag.color}>
                           {tag.name}
                         </Pilula>
                       </td>

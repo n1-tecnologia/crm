@@ -144,7 +144,7 @@ export default function CanalPage({ params }: { params: Promise<{ canal: string 
                         <td className="py-2 align-top">{template.category}</td>
                         <td className="py-2 align-top">{template.language}</td>
                         <td className="py-2 align-top">
-                          <Pilula tom={APPROVAL_TONE[template.approval] ?? "neutro"} comPonto>
+                          <Pilula tom={APPROVAL_TONE[template.approval] ?? "neutro"}>
                             {APPROVAL_LABEL[template.approval]}
                           </Pilula>
                         </td>
