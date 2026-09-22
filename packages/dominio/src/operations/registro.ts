@@ -238,6 +238,39 @@ import {
   zerarCliques,
 } from "./ferramentas/grupos";
 
+// ── ferramentas/flows.ts ────────────────────────────────────────────────
+// validarVersaoDoFlow fica de fora — o 2º parâmetro é `flowId`, não
+// `actingMemberId` (é leitura: valida sem exigir Membro). receberRespostaDeFlow
+// fica de fora — Evento do provedor, sem actingMemberId.
+import {
+  adicionarComponente,
+  adicionarTela,
+  arquivarFlow,
+  copiarFlow,
+  criarFlow,
+  criarRascunhoAPartirDe,
+  definirPontoDeTrocaDeDados,
+  descartarRascunho,
+  despublicarFlow,
+  duplicarComponente,
+  duplicarTela,
+  editarComponente,
+  editarFlow,
+  editarTela,
+  enviarFlow,
+  enviarFlowALixeira,
+  moverComponente,
+  publicarVersao,
+  regenerarChavesDoPonto,
+  removerComponente,
+  removerPontoDeTrocaDeDados,
+  removerTela,
+  reordenarTela,
+  restaurarFlow,
+  restaurarFlowDaLixeira,
+  sincronizarFlow,
+} from "./ferramentas/flows";
+
 // ── ferramentas/comunidades.ts ──────────────────────────────────────────
 // recusaDeVinculo (recusa pré-calculada) e resumoDaComunidade (leitura) ficam
 // de fora — mesmo critério do cabeçalho.
@@ -449,6 +482,33 @@ export const OPERACOES = {
   aprovarPedidoDeEntrada,
   recusarPedidoDeEntrada,
   enviarMensagemAoGrupo,
+  // ferramentas/flows.ts
+  criarFlow,
+  editarFlow,
+  definirPontoDeTrocaDeDados,
+  regenerarChavesDoPonto,
+  removerPontoDeTrocaDeDados,
+  adicionarTela,
+  editarTela,
+  reordenarTela,
+  duplicarTela,
+  removerTela,
+  adicionarComponente,
+  editarComponente,
+  moverComponente,
+  duplicarComponente,
+  removerComponente,
+  publicarVersao,
+  despublicarFlow,
+  descartarRascunho,
+  criarRascunhoAPartirDe,
+  copiarFlow,
+  arquivarFlow,
+  restaurarFlow,
+  enviarFlowALixeira,
+  restaurarFlowDaLixeira,
+  sincronizarFlow,
+  enviarFlow,
   // ferramentas/comunidades.ts
   criarComunidade,
   sincronizarComunidade,

@@ -239,6 +239,34 @@ export const aprovarPedidoDeEntrada = instrumentar("aprovarPedidoDeEntrada");
 export const recusarPedidoDeEntrada = instrumentar("recusarPedidoDeEntrada");
 export const enviarMensagemAoGrupo = instrumentar("enviarMensagemAoGrupo");
 
+// ferramentas/flows.ts
+export const criarFlow = instrumentar("criarFlow");
+export const editarFlow = instrumentar("editarFlow");
+export const definirPontoDeTrocaDeDados = instrumentar("definirPontoDeTrocaDeDados");
+export const regenerarChavesDoPonto = instrumentar("regenerarChavesDoPonto");
+export const removerPontoDeTrocaDeDados = instrumentar("removerPontoDeTrocaDeDados");
+export const adicionarTela = instrumentar("adicionarTela");
+export const editarTela = instrumentar("editarTela");
+export const reordenarTela = instrumentar("reordenarTela");
+export const duplicarTela = instrumentar("duplicarTela");
+export const removerTela = instrumentar("removerTela");
+export const adicionarComponente = instrumentar("adicionarComponente");
+export const editarComponente = instrumentar("editarComponente");
+export const moverComponente = instrumentar("moverComponente");
+export const duplicarComponente = instrumentar("duplicarComponente");
+export const removerComponente = instrumentar("removerComponente");
+export const publicarVersao = instrumentar("publicarVersao");
+export const despublicarFlow = instrumentar("despublicarFlow");
+export const descartarRascunho = instrumentar("descartarRascunho");
+export const criarRascunhoAPartirDe = instrumentar("criarRascunhoAPartirDe");
+export const copiarFlow = instrumentar("copiarFlow");
+export const arquivarFlow = instrumentar("arquivarFlow");
+export const restaurarFlow = instrumentar("restaurarFlow");
+export const enviarFlowALixeira = instrumentar("enviarFlowALixeira");
+export const restaurarFlowDaLixeira = instrumentar("restaurarFlowDaLixeira");
+export const sincronizarFlow = instrumentar("sincronizarFlow");
+export const enviarFlow = instrumentar("enviarFlow");
+
 // ferramentas/comunidades.ts
 export const criarComunidade = instrumentar("criarComunidade");
 export const sincronizarComunidade = instrumentar("sincronizarComunidade");
