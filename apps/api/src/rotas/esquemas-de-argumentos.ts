@@ -62,6 +62,7 @@ import { FINANCEIRO } from "./esquemas/financeiro";
 import { IA } from "./esquemas/ia";
 import { MEMBROS } from "./esquemas/membros";
 import { NEGOCIOS } from "./esquemas/negocios";
+import { NOTAS } from "./esquemas/notas";
 import { PASTAS_DE_CHAT } from "./esquemas/pastas-de-chat";
 import { PLANEJAMENTO } from "./esquemas/planejamento";
 import { TAREFAS } from "./esquemas/tarefas";
@@ -89,6 +90,7 @@ export const ESQUEMAS = {
   ...ESCALA,
   ...MEMBROS,
   ...ESTRUTURA,
+  ...NOTAS,
 } satisfies EsquemasCompletos;
 
 /**

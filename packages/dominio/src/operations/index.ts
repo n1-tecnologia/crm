@@ -202,3 +202,6 @@ export const grantGovernanceAccess = instrumentar("grantGovernanceAccess");
 export const createSpace = instrumentar("createSpace");
 export const createFolder = instrumentar("createFolder");
 export const createList = instrumentar("createList");
+
+// ferramentas/notas.ts
+export const adicionarNotaNoAtivo = instrumentar("adicionarNotaNoAtivo");

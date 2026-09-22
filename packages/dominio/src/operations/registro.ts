@@ -195,6 +195,9 @@ import { deleteRole, grantGovernanceAccess, inviteMember, removeMember, transfer
 // ── structure.ts ────────────────────────────────────────────────────────
 import { createFolder, createList, createSpace } from "./structure";
 
+// ── ferramentas/notas.ts ───────────────────────────────────────────────
+import { adicionarNotaNoAtivo } from "./ferramentas/notas";
+
 /**
  * Toda operação alcançável por HTTP. Assinatura comum:
  * `(state, actingMemberId, ...args) => OperationResult`.
@@ -356,6 +359,8 @@ export const OPERACOES = {
   createSpace,
   createFolder,
   createList,
+  // ferramentas/notas.ts
+  adicionarNotaNoAtivo,
 } as const satisfies Record<string, (state: DataState, actingMemberId: Id, ...args: any[]) => OperationResult<unknown>>;
 
 export type NomeDeOperacao = keyof typeof OPERACOES;
