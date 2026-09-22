@@ -104,6 +104,59 @@ Respondido pelo modelo:
 
 Não inventar default silencioso. Se a pesquisa não achar a resposta nos dados
 reais, isto volta como checkpoint ao usuário.
+
+**Estado em 2026-09-22: as duas voltaram como checkpoint e foram respondidas** —
+ver D3-06 (feriado: ignorar) e D3-07 (dia inexistente: saturar no último dia do
+mês). A pesquisa confirmou que os dados reais não respondiam nenhuma das duas.
+
+### D3-06 — Feriado na recorrência: ignorar (checkpoint D3-05 lacuna 1, respondido)
+
+A regra de recorrência trata **fim de semana e nada mais**. `businessDays:
+"anterior"` continua como está; nenhuma tabela de feriados, nenhuma dependência
+de datas nova.
+
+Fundamento: o export real do ClickUp mostra 4 Tarefas vencendo em 2025-02-17
+(segunda-feira de Carnaval, não é fim de semana) **sem nenhum deslocamento** —
+é o que o processo faz hoje. Não há série mensal cruzando feriado nos dados,
+então não há evidência contrária.
+
+Consequência aceita: uma conta que vencer numa terça de Carnaval será tratada
+como dia útil. Se isso se revelar errado na operação, a correção é barata (uma
+tabela estática de ~12 datas/ano em `packages/dominio`) — não exige redesenhar
+A1.
+
+### D3-07 — Dia inexistente no mês: saturar no último dia (checkpoint D3-05 lacuna 2, respondido)
+
+O comportamento que `addMonths` (`packages/dominio/src/operations/collaboration.ts:325-331`)
+já implementa é a **intenção do produto**, não um acidente: `Math.min(dia,
+últimoDiaDoMêsDestino)`. Conta do dia 31 em janeiro vence em 28/02 (ou 29/02),
+nunca transborda para 1º ou 3 de março.
+
+Nenhum código novo. O que muda é o estado: isto deixa de ser uma implementação
+não confirmada e passa a ser regra travada, com teste que a prove.
+
+Motivo de não transbordar: transbordo gera duas cobranças perto da virada do
+mês — é o que a maioria dos sistemas financeiros evita.
+
+### D3-08 — A conversão Solicitação aprovada → Conta a pagar entra nesta fase
+
+A pesquisa achou um buraco que nenhum requisito nomeado cobre (nem PAG-01…06,
+nem SOL-01…09): **nada converte uma Solicitação aprovada numa Conta a pagar
+dentro da plataforma**. O status `convertida` existe no catálogo da Lista de
+Solicitações mas o código o marca explicitamente como erro (D-14), e quem cria
+a Conta hoje é o `payment-automation-service.ts` do `automation/`, escrevendo
+na **Lista do ClickUp** via `legacyClickUpRaw().updateTaskStatus`.
+
+Esse caminho morre no critério 1. Arquivada a Lista `901107637383`, uma
+Solicitação aprovada no dia seguinte não vira conta nenhuma — e o Financeiro
+volta ao ClickUp na mesma semana em que deveria ter parado de abri-lo.
+
+Por isso a operação de conversão é escopo da Fase 3, mesmo fora dos IDs
+nomeados: PAG-01 resolve o **histórico**, D3-08 resolve o **fluxo dali para
+frente**. Sem as duas, o critério 1 não fecha.
+
+Nasce em `packages/dominio` (é "o que a coisa é": uma Solicitação aprovada
+passa a ter uma Conta correspondente), com `convertida` deixando de ser erro.
 </decisions>
 
 <canonical_refs>
