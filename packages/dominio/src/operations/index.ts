@@ -215,6 +215,30 @@ export const editarLinkDeCaptacao = instrumentar("editarLinkDeCaptacao");
 export const enviarLinkALixeira = instrumentar("enviarLinkALixeira");
 export const restaurarLinkDaLixeira = instrumentar("restaurarLinkDaLixeira");
 
+// ferramentas/grupos.ts
+export const criarGrupo = instrumentar("criarGrupo");
+export const importarGruposDoCanal = instrumentar("importarGruposDoCanal");
+export const sincronizarGrupo = instrumentar("sincronizarGrupo");
+export const editarGrupo = instrumentar("editarGrupo");
+export const definirCanalDoGrupo = instrumentar("definirCanalDoGrupo");
+export const editarCaptacaoDoGrupo = instrumentar("editarCaptacaoDoGrupo");
+export const ativarCaptacao = instrumentar("ativarCaptacao");
+export const inativarCaptacao = instrumentar("inativarCaptacao");
+export const zerarCliques = instrumentar("zerarCliques");
+export const regenerarLinkDeConvite = instrumentar("regenerarLinkDeConvite");
+export const adicionarParticipantes = instrumentar("adicionarParticipantes");
+export const removerParticipante = instrumentar("removerParticipante");
+export const promoverParticipante = instrumentar("promoverParticipante");
+export const rebaixarParticipante = instrumentar("rebaixarParticipante");
+export const sairDoGrupo = instrumentar("sairDoGrupo");
+export const arquivarGrupo = instrumentar("arquivarGrupo");
+export const restaurarGrupo = instrumentar("restaurarGrupo");
+export const enviarGrupoALixeira = instrumentar("enviarGrupoALixeira");
+export const restaurarGrupoDaLixeira = instrumentar("restaurarGrupoDaLixeira");
+export const aprovarPedidoDeEntrada = instrumentar("aprovarPedidoDeEntrada");
+export const recusarPedidoDeEntrada = instrumentar("recusarPedidoDeEntrada");
+export const enviarMensagemAoGrupo = instrumentar("enviarMensagemAoGrupo");
+
 // ferramentas/comunidades.ts
 export const criarComunidade = instrumentar("criarComunidade");
 export const sincronizarComunidade = instrumentar("sincronizarComunidade");

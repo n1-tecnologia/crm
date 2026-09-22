@@ -207,6 +207,37 @@ import { adicionarNotaNoAtivo } from "./ferramentas/notas";
 // receberPedidoDeEntrada e registrarEntradaNoGrupo, ver ferramentas/grupos.ts).
 import { criarLinkDeCaptacao, editarLinkDeCaptacao, enviarLinkALixeira, restaurarLinkDaLixeira } from "./ferramentas/captacao";
 
+// ── ferramentas/grupos.ts ───────────────────────────────────────────────
+// receberPedidoDeEntrada, registrarEntradaNoGrupo e registrarSaidaDoGrupo
+// ficam de fora — Eventos do provedor, sem actingMemberId.
+// conversaDoGrupoOuCriar fica de fora — o 2º parâmetro é ActorRef, não
+// Id (não é um caso de uso de Membro: é chamada por outras operações com
+// o Ator já resolvido, inclusive `systemActor`).
+import {
+  adicionarParticipantes,
+  aprovarPedidoDeEntrada,
+  arquivarGrupo,
+  ativarCaptacao,
+  criarGrupo,
+  definirCanalDoGrupo,
+  editarCaptacaoDoGrupo,
+  editarGrupo,
+  enviarGrupoALixeira,
+  enviarMensagemAoGrupo,
+  importarGruposDoCanal,
+  inativarCaptacao,
+  promoverParticipante,
+  rebaixarParticipante,
+  recusarPedidoDeEntrada,
+  regenerarLinkDeConvite,
+  removerParticipante,
+  restaurarGrupo,
+  restaurarGrupoDaLixeira,
+  sairDoGrupo,
+  sincronizarGrupo,
+  zerarCliques,
+} from "./ferramentas/grupos";
+
 // ── ferramentas/comunidades.ts ──────────────────────────────────────────
 // recusaDeVinculo (recusa pré-calculada) e resumoDaComunidade (leitura) ficam
 // de fora — mesmo critério do cabeçalho.
@@ -395,6 +426,29 @@ export const OPERACOES = {
   editarLinkDeCaptacao,
   enviarLinkALixeira,
   restaurarLinkDaLixeira,
+  // ferramentas/grupos.ts
+  criarGrupo,
+  importarGruposDoCanal,
+  sincronizarGrupo,
+  editarGrupo,
+  definirCanalDoGrupo,
+  editarCaptacaoDoGrupo,
+  ativarCaptacao,
+  inativarCaptacao,
+  zerarCliques,
+  regenerarLinkDeConvite,
+  adicionarParticipantes,
+  removerParticipante,
+  promoverParticipante,
+  rebaixarParticipante,
+  sairDoGrupo,
+  arquivarGrupo,
+  restaurarGrupo,
+  enviarGrupoALixeira,
+  restaurarGrupoDaLixeira,
+  aprovarPedidoDeEntrada,
+  recusarPedidoDeEntrada,
+  enviarMensagemAoGrupo,
   // ferramentas/comunidades.ts
   criarComunidade,
   sincronizarComunidade,

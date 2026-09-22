@@ -61,6 +61,7 @@ import { ESCALA } from "./esquemas/escala";
 import { ESTRUTURA } from "./esquemas/estrutura";
 import { type EsquemasCompletos } from "./esquemas/fragmentos";
 import { FINANCEIRO } from "./esquemas/financeiro";
+import { GRUPOS } from "./esquemas/grupos";
 import { IA } from "./esquemas/ia";
 import { INICIAR_CONVERSA } from "./esquemas/iniciar-conversa";
 import { MEMBROS } from "./esquemas/membros";
@@ -97,6 +98,7 @@ export const ESQUEMAS = {
   ...CAPTACAO,
   ...COMUNIDADES,
   ...INICIAR_CONVERSA,
+  ...GRUPOS,
 } satisfies EsquemasCompletos;
 
 /**
