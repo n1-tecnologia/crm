@@ -7,6 +7,7 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../seed";
+import type { DataState } from "../state";
 import { resetIdSequence } from "./activity";
 import { createTask as createTaskCrua, watchTask as watchTaskCrua } from "./tasks";
 import * as idx from "./index";
@@ -57,6 +58,40 @@ describe("gravarChamadas", () => {
     expect(resultado.ok).toBe(true);
     expect(chamadas).toHaveLength(1);
     expect(chamadas[0]).toEqual({ nome: "addTaskComment", args: [taskId, { content: "x" }] });
+  });
+
+  it("uma operação de Ferramentas (Grupo) segue o mesmo caminho store → gravarChamadas → despacho", () => {
+    // Reproduz o que `apps/web/src/dados/store.ts` faz: chama a operação
+    // instrumentada numa cópia do estado com o gravador ligado (`run()`),
+    // descobre nome + argumentos por observação, e manda essa chamada a
+    // `POST /operacoes/:nome` — que despacha por `OPERACOES[nome](state,
+    // actingMemberId, ...args)` (`apps/api/src/rotas/operacoes.ts`). Antes da
+    // reconciliação que trouxe `ferramentas/*` ao barril, este teste teria
+    // falhado: `adicionarNotaNoAtivo` não estava em `OPERACOES`, então a
+    // Nota nunca teria chegado ao servidor.
+    const state = buildSeed();
+    const { resultado, chamadas } = gravarChamadas(() =>
+      idx.adicionarNotaNoAtivo(state, "mem_julia", "grupo", "grp_turma_01", "Combinar horário com a Turma."),
+    );
+    expect(resultado.ok).toBe(true);
+    expect(chamadas).toHaveLength(1);
+    expect(chamadas[0]).toEqual({
+      nome: "adicionarNotaNoAtivo",
+      args: ["grupo", "grp_turma_01", "Combinar horário com a Turma."],
+    });
+    // O despacho: o mesmo nome+args gravados, aplicados via OPERACOES (a
+    // allowlist que a rota usa) numa cópia fresca do estado — nunca em
+    // memória local nem via `in`/reflexão. O cast é o mesmo de `REGISTRO`
+    // em `apps/api/src/rotas/operacoes.ts`: só relaxa o que o compilador
+    // não expressa sem um genérico por chamada; a ASSINATURA já está
+    // garantida pela regra de inclusão de `registro.ts`.
+    const primeira = chamadas[0];
+    if (!primeira) throw new Error("gravador não registrou a chamada");
+    expect(ehNomeDeOperacao(primeira.nome)).toBe(true);
+    const registro = OPERACOES as Record<string, (state: DataState, actingMemberId: string, ...args: unknown[]) => { readonly ok: boolean }>;
+    const estadoNoServidor = buildSeed();
+    const despachado = registro[primeira.nome]?.(estadoNoServidor, "mem_julia", ...primeira.args);
+    expect(despachado?.ok).toBe(true);
   });
 
   it("fora de gravarChamadas, a versão instrumentada devolve o mesmo resultado que a crua", () => {
