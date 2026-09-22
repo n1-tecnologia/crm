@@ -445,7 +445,11 @@ export type AutomationScopeType =
   | "list"
   | "funnel"
   | "inbox"
-  | "queue";
+  | "queue"
+  /** 24/25/23 — Ativos de Canal; a Comunidade alcança os Grupos vinculados no momento do Evento (RN-COM-09). */
+  | "grupo"
+  | "comunidade"
+  | "flow";
 
 export interface AutomationExecution {
   readonly id: Id;

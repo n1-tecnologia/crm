@@ -109,7 +109,10 @@ export type LinkTargetType =
   | "company"
   | "deal"
   | "conversation"
-  | "knowledgeDocument";
+  | "knowledgeDocument"
+  | "grupo"
+  | "comunidade"
+  | "flow";
 
 export interface Link {
   readonly id: Id;
@@ -220,7 +223,7 @@ export interface FieldDefinition {
   readonly options?: readonly string[];
   readonly required: boolean;
   /** A5.2 — Task definitions live in a container; CRM definitions in the workspace. */
-  readonly target: "task" | "contact" | "company" | "deal" | "conversation";
+  readonly target: "task" | "contact" | "company" | "deal" | "conversation" | "grupo" | "comunidade" | "flow";
   /** Present for `task`: the container that is the point of definition (B25). */
   readonly definedAtType?: "space" | "folder" | "list";
   readonly definedAtId?: Id;

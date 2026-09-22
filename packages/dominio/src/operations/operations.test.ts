@@ -1425,10 +1425,10 @@ describe("Volumes do seed (PRD II.7)", () => {
     expect(state.funnels).toHaveLength(4); // SDR, Closer, Validação Full Face Avançado e Venda direta
     expect(state.channels).toHaveLength(5); // + LinkedIn
     expect(state.queues).toHaveLength(2);
-    expect(state.conversations).toHaveLength(21); // + a conversa de WhatsApp do Negócio de referência
+    expect(state.conversations).toHaveLength(23); // + as duas Conversas de grupo (Ferramentas) + a conversa de WhatsApp do Negócio de referência
     expect(state.agents).toHaveLength(6); // + Enriquecedor, Classificador de conexão e Agente de lançamento
     expect(state.skills).toHaveLength(9); // + as três do processo SDR
-    expect(state.automations).toHaveLength(26); // 3 herdadas + 7 do SDR + 3 do Closer + 7 de Contas a pagar (A2–A7, A9) + 6 de Contas a receber (R2, R2b, R3–R6)
+    expect(state.automations).toHaveLength(27); // + Boas-vindas nos Grupos (Ferramentas) · 3 herdadas + 7 do SDR + 3 do Closer + 7 de Contas a pagar (A2–A7, A9) + 6 de Contas a receber (R2, R2b, R3–R6)
     expect(state.collections).toHaveLength(4); // + De-para Omie
     expect(state.documents).toHaveLength(16); // + De-para ClickUp → Omie
     expect(state.chatSessions).toHaveLength(6); // + a Sessão solta do Thiago, fora de pasta

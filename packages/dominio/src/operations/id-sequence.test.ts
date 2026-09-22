@@ -90,6 +90,10 @@ describe("syncIdSequence", () => {
     const minimo: DataState = {
       models: [],
       tools: [],
+      grupos: [],
+      comunidades: [],
+      linksDeCaptacao: [],
+      flows: [],
       workspace: { id: "ws_x" } as DataState["workspace"],
       members: [],
       teams: [],

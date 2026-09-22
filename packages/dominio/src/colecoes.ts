@@ -66,6 +66,11 @@ const TODAS: Record<ChaveDeColecao, true> = {
   panels: true,
   links: true,
   activity: true,
+  // Ativos de Canal (docs 23–25), vindos do `main` na reconciliação.
+  grupos: true,
+  comunidades: true,
+  linksDeCaptacao: true,
+  flows: true,
 };
 
 export const COLECOES = Object.keys(TODAS) as ChaveDeColecao[];

@@ -28,6 +28,8 @@ export * from "./configuration";
 export * from "./collaboration";
 export * from "./planning";
 export * from "./scale";
+export * from "./iniciar-conversa";
+export * from "./ferramentas";
 export * from "./automations";
 export * from "./financeiro";
 export * from "./members";
