@@ -1,9 +1,9 @@
 /**
- * `POST /operacoes/:nome` — a rota genérica que serve as 132 operações do
+ * `POST /operacoes/:nome` — a rota genérica que serve as 200 operações do
  * registro (`OPERACOES`, `@n1/dominio/operations/registro`). CON-02 ("uma
  * rota por operação") é satisfeito pelo path param mapeado 1:1 a uma função
  * exportada: o contrato HTTP é idêntico ao de uma rota por operação, sem
- * repetir a mesma casca 132 vezes.
+ * repetir a mesma casca 200 vezes.
  *
  * A rota não reimplementa regra de negócio nem toca banco diretamente
  * (`apps/api/src/rotas/CONTEXT.md`). Uma recusa do domínio
@@ -12,7 +12,7 @@
  * transporte:
  *   - 401/403 do hook de autenticação;
  *   - 404 nome fora do registro (`OPERACOES`);
- *   - 400 entrada inválida — schema da operação (todas as 132 têm o seu,
+ *   - 400 entrada inválida — schema da operação (todas as 200 têm o seu,
  *     `esquemas-de-argumentos.ts`, CR-02) ou aninhamento de `args` além do
  *     que `reviverArgumentos` suporta (WR-10);
  *   - 409 conflito de revisão;
@@ -56,7 +56,7 @@ const BODY = z.object({
 /**
  * `OPERACOES` é `as const satisfies Record<...>`: indexar por um
  * `NomeDeOperacao` genérico (não um literal específico) devolve a união das
- * assinaturas das 132 funções, que TypeScript não deixa chamar diretamente.
+ * assinaturas das 200 funções, que TypeScript não deixa chamar diretamente.
  * A ASSINATURA é garantida pela regra de inclusão de `registro.ts` — toda
  * entrada tem a forma `(state, actingMemberId, ...args) => OperationResult`
  * —; a FORMA dos `args` é garantida por `esquemaDeArgumentos()`
@@ -150,7 +150,7 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
       }
 
       // CR-02 — a FORMA dos args, validada ANTES do despacho: schema
-      // próprio para TODAS as 132 operações (`ESQUEMAS satisfies
+      // próprio para TODAS as 200 operações (`ESQUEMAS satisfies
       // EsquemasCompletos`, Plan 01-16), sem fallback. O dado que segue é
       // `validacao.data`, re-criado pelo zod só com o que o schema conhece
       // (`.strict()`; `null` de posicional opcional já virado `undefined`)

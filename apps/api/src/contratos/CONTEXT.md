@@ -38,7 +38,7 @@ pasta exige, no mesmo commit:
   de `02-CONTEXT.md`): a duplicação por cópia de fixtures é deliberada, não
   dívida a pagar depois.
 - Não substitui `../rotas/esquemas/` — aquela pasta valida os `args` de
-  `POST /operacoes/:nome` (as 132 operações internas do domínio); esta
+  `POST /operacoes/:nome` (as 200 operações internas do domínio); esta
   pasta valida as rotas `/v1/integrations/payment-requests/*` que o
   `automation/` chama de fora, com credencial de serviço, não JWT humano.
 

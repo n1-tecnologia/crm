@@ -5,7 +5,7 @@
  * (`../../contratos/v1.ts`), sem redefinir forma: mudar a forma de um método
  * aqui seria divergir do contrato, não uma opção deste arquivo.
  *
- * Diferente de `./fragmentos.ts` (a forma dos `args` das 132 operações
+ * Diferente de `./fragmentos.ts` (a forma dos `args` das 200 operações
  * internas, validada por `POST /operacoes/:nome`), este módulo valida a
  * borda que o `automation/` chama de FORA, com credencial de serviço — ver
  * `../../contratos/CONTEXT.md`, "O que este contrato NÃO é".

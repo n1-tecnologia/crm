@@ -17,10 +17,10 @@
  * os schemas usam `z.date()`, não a forma serializada `{ $tipo: "Date", iso }`
  * que só existe no corpo HTTP.
  *
- * Cobertura: TODAS as operações de `OPERACOES` (132) — um arquivo por módulo
+ * Cobertura: TODAS as operações de `OPERACOES` (200) — um arquivo por módulo
  * do domínio em `esquemas/`, ver `esquemas/CONTEXT.md`, composto aqui sob o
  * portão de completude abaixo: registrar uma operação nova em `OPERACOES`
- * sem acrescentar o schema correspondente a algum dos 15 arquivos de
+ * sem acrescentar o schema correspondente a algum dos 21 arquivos de
  * `esquemas/` é erro de COMPILAÇÃO, apontando o nome que falta — não existe
  * mais fallback estrutural, nem operação alcançável por HTTP sem schema
  * próprio.
@@ -44,7 +44,12 @@
  * Segunda rodada de CR-02 (Plans 01-12..01-16): 01-12 fechou WR-10 e criou a
  * fundação (`esquemas/fragmentos.ts` + o molde `tarefas`/`automacoes`/
  * `financeiro`); 01-13/14/15 escreveram os outros 12 módulos em paralelo;
- * este arquivo (01-16) fecha a composição.
+ * 01-16 fechou a composição original em 132. Uma reconciliação posterior
+ * trouxe `solicitarAprovacao`/`decideProcessApproval` (134) e depois as
+ * Ferramentas do Canal — Grupos, Comunidades, Flows, Links de Captação,
+ * Notas — e `iniciarConversa` (200): a mesma disciplina, seis arquivos
+ * novos em `esquemas/` (`notas`, `captacao`, `comunidades`, `grupos`,
+ * `flows`, `iniciar-conversa`).
  */
 
 import type { NomeDeOperacao } from "@n1/dominio/operations/registro";
@@ -77,7 +82,7 @@ export type { ArgumentosDe } from "./esquemas/fragmentos";
 /**
  * Composição por spread — preserva o tipo literal de cada chave. O
  * `satisfies` abaixo é o portão de completude: faltar UMA operação de
- * `OPERACOES` (132) não compila, apontando o nome dela.
+ * `OPERACOES` (200) não compila, apontando o nome dela.
  */
 export const ESQUEMAS = {
   ...TAREFAS,
@@ -106,7 +111,7 @@ export const ESQUEMAS = {
 /**
  * `ESQUEMAS[nome]` — nunca fallback: toda operação do registro tem schema
  * próprio (portão `EsquemasCompletos` acima). O cast relaxa só a união das
- * 132 assinaturas específicas que a rota — genérica sobre `NomeDeOperacao`
+ * 200 assinaturas específicas que a rota — genérica sobre `NomeDeOperacao`
  * — não consegue indexar sem um genérico por chamada; a FORMA de cada valor
  * já foi garantida pelo portão de completude e pelo `satisfies` de cada
  * arquivo de `esquemas/`.

@@ -29,13 +29,18 @@ ser válido", limites numéricos) continua exclusivamente no domínio.
    }`); ninguém dentro desta pasta importa dele. Sem ciclo:
    `fragmentos.ts` → `<modulo>.ts` → `esquemas-de-argumentos.ts` →
    `operacoes.ts`.
-7. `esquemas-de-argumentos.ts` compõe os 15 sob `satisfies
+7. `esquemas-de-argumentos.ts` compõe os 21 sob `satisfies
    EsquemasCompletos` — um módulo novo no domínio exige um arquivo novo
    aqui, senão não compila.
 
 ## Arquivos
 
-Todos presentes desde o Plan 01-16, que fechou a composição:
+Os 15 originais são do Plan 01-16, que fechou a composição; `notas.ts`,
+`captacao.ts`, `comunidades.ts`, `grupos.ts`, `flows.ts` e
+`iniciar-conversa.ts` vieram depois, fechando a reconciliação que trouxe
+Ferramentas do Canal (Grupos, Comunidades, Flows, Links de Captação, Notas)
+e `iniciarConversa` para `OPERACOES` sem schema — ver
+`esquemas-de-argumentos.ts` para a linha do tempo completa.
 
 | Arquivo | Módulo do domínio |
 |---|---|
@@ -55,7 +60,13 @@ Todos presentes desde o Plan 01-16, que fechou a composição:
 | `escala.ts` | `scale.ts` |
 | `membros.ts` | `members.ts` |
 | `estrutura.ts` | `structure.ts` |
+| `notas.ts` | `ferramentas/notas.ts` |
+| `captacao.ts` | `ferramentas/captacao.ts` |
+| `comunidades.ts` | `ferramentas/comunidades.ts` |
+| `grupos.ts` | `ferramentas/grupos.ts` |
+| `flows.ts` | `ferramentas/flows.ts` |
+| `iniciar-conversa.ts` | `iniciar-conversa.ts` |
 
-`esquemas-de-argumentos.ts` compõe os 15 sob `satisfies EsquemasCompletos`
-— toda operação de `OPERACOES` (132) tem schema; não existe mais fallback
+`esquemas-de-argumentos.ts` compõe os 21 sob `satisfies EsquemasCompletos`
+— toda operação de `OPERACOES` (200) tem schema; não existe mais fallback
 estrutural nem operação alcançável por HTTP sem schema próprio.

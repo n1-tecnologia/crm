@@ -88,7 +88,7 @@ describe("esquemas-de-argumentos — a forma dos args, não a regra", () => {
     expect(ESQUEMAS.runScheduledAutomations.safeParse(["l1", "2026-01-01"]).success).toBe(false);
   });
 
-  it("(h) nenhuma operação cai em fallback — esquemaDeArgumentos(nome) é o próprio ESQUEMAS[nome] para todas as 134", () => {
+  it("(h) nenhuma operação cai em fallback — esquemaDeArgumentos(nome) é o próprio ESQUEMAS[nome] para todas as 200", () => {
     const esquemasPorNome = ESQUEMAS as Record<string, unknown>;
     for (const nome of Object.keys(OPERACOES)) {
       expect(esquemaDeArgumentos(nome as NomeDeOperacao)).toBe(esquemasPorNome[nome]);
