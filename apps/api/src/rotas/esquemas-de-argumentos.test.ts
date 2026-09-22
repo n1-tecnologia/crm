@@ -100,11 +100,11 @@ describe("esquemas-de-argumentos — a forma dos args, não a regra", () => {
     expect(esquemaDeArgumentos("updateTask")).toBe(ESQUEMAS.updateTask as unknown);
   });
 
-  it("(j) ESQUEMAS cobre exatamente OPERACOES — mesmas chaves, 151, todas nomes de operação válidos", () => {
+  it("(j) ESQUEMAS cobre exatamente OPERACOES — mesmas chaves, 152, todas nomes de operação válidos", () => {
     const chaves = Object.keys(ESQUEMAS);
     expect(chaves.sort()).toEqual(Object.keys(OPERACOES).sort());
-    // 132 + solicitarAprovacao + decideProcessApproval (Plan 02-04, D-06/D-09) + 17 de Ferramentas (notas, captacao, comunidades).
-    expect(chaves.length).toBe(151);
+    // 132 + solicitarAprovacao + decideProcessApproval (Plan 02-04, D-06/D-09) + 17 de Ferramentas (notas, captacao, comunidades) + iniciarConversa.
+    expect(chaves.length).toBe(152);
     for (const chave of chaves) expect(ehNomeDeOperacao(chave)).toBe(true);
   });
 

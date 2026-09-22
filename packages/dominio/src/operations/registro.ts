@@ -195,6 +195,9 @@ import { deleteRole, grantGovernanceAccess, inviteMember, removeMember, transfer
 // ── structure.ts ────────────────────────────────────────────────────────
 import { createFolder, createList, createSpace } from "./structure";
 
+// ── iniciar-conversa.ts ─────────────────────────────────────────────────
+import { iniciarConversa } from "./iniciar-conversa";
+
 // ── ferramentas/notas.ts ───────────────────────────────────────────────
 import { adicionarNotaNoAtivo } from "./ferramentas/notas";
 
@@ -383,6 +386,8 @@ export const OPERACOES = {
   createSpace,
   createFolder,
   createList,
+  // iniciar-conversa.ts
+  iniciarConversa,
   // ferramentas/notas.ts
   adicionarNotaNoAtivo,
   // ferramentas/captacao.ts

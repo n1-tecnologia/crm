@@ -62,6 +62,7 @@ import { ESTRUTURA } from "./esquemas/estrutura";
 import { type EsquemasCompletos } from "./esquemas/fragmentos";
 import { FINANCEIRO } from "./esquemas/financeiro";
 import { IA } from "./esquemas/ia";
+import { INICIAR_CONVERSA } from "./esquemas/iniciar-conversa";
 import { MEMBROS } from "./esquemas/membros";
 import { NEGOCIOS } from "./esquemas/negocios";
 import { NOTAS } from "./esquemas/notas";
@@ -95,6 +96,7 @@ export const ESQUEMAS = {
   ...NOTAS,
   ...CAPTACAO,
   ...COMUNIDADES,
+  ...INICIAR_CONVERSA,
 } satisfies EsquemasCompletos;
 
 /**

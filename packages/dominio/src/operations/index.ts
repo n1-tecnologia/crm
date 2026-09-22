@@ -203,6 +203,9 @@ export const createSpace = instrumentar("createSpace");
 export const createFolder = instrumentar("createFolder");
 export const createList = instrumentar("createList");
 
+// iniciar-conversa.ts
+export const iniciarConversa = instrumentar("iniciarConversa");
+
 // ferramentas/notas.ts
 export const adicionarNotaNoAtivo = instrumentar("adicionarNotaNoAtivo");
 
