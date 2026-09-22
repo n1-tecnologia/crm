@@ -7,10 +7,12 @@
  * é uma consulta filtrada sobre entidade que já existe; nada aqui é conceito
  * novo (PRD I.1).
  *
- * A composição segue o Início do CRM-COMPLETO: a saudação é o título da barra
- * de 44px, a pergunta ao Assistente vive na barra logo abaixo, os quatro
- * números vêm em seguida como peças, e o corpo é uma grade de painéis — cada um
- * uma pilha de peças soltas, com a régua de seção onde há grupo.
+ * A composição: a CAPA (a atmosfera, a saudação, a pergunta ao Assistente, o
+ * globo de pontos que reage ao cursor), e abaixo UMA LISTA
+ * do dia em ordem de urgência —
+ * Agora, Hoje, Esta semana, Depois — com Conversas, Negócios e as Ações
+ * rápidas ao lado. Nenhuma caixa dentro de caixa: cada item é uma linha com o
+ * ícone do seu tipo, o título, o que importa dele e para onde leva.
  *
  * "Meus Negócios" usa Proprietário, não Responsável: o Negócio não tem
  * Responsável (RN-NEG-02). A agenda do dia são Tarefas de Tipo Reunião com data
@@ -18,18 +20,16 @@
  */
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import {
   ArrowRight,
-  CalendarDays,
   CheckSquare,
   FileCheck,
   MessageSquare,
-  Plus,
   Search,
   Sparkles,
   TrendingUp,
+  type LucideIcon,
 } from "lucide-react";
 import { useData, useRun, useSession } from "@/dados/store";
 import { createChatSession, sendChatMessage } from "@n1/dominio/operations";
@@ -43,14 +43,12 @@ import {
 } from "@n1/dominio/derive";
 import { APPROVAL_REASON_LABEL, EFFECT_CLASS_LABEL } from "@/features/shell/format";
 import { useFormat } from "@/features/shell/use-format";
+import { useNavegar } from "@/features/shell/navegacao";
+import { Selo, SeloDaTarefa } from "@/features/estrutura/icone-de-tipo";
 import {
-  Button,
-  CabecalhoDePainel,
-  ConditionMarker,
   CorpoDeTela,
-  EmptyState,
+  GloboDePontos,
   Icone,
-  Painel,
   Pilula,
   ReguaDeSecao,
   Toast,
@@ -59,14 +57,15 @@ import type { DataState } from "@n1/dominio/state";
 import type { Task } from "@n1/dominio/types";
 
 /** §15 — um corte que esconde linhas sempre diz o corte e oferece o resto. */
-const HOME_PAGE_SIZE = 4;
+const HOME_PAGE_SIZE = 5;
 
 export default function InicioPage() {
   const { memberId } = useSession();
   const state = useData((data) => data);
   const run = useRun();
   const fmt = useFormat();
-  const router = useRouter();
+  // `pendente` é a espera entre o push e a chegada da rota: o globo "pensa" nela.
+  const [navegar, pendente] = useNavegar();
   const [pergunta, setPergunta] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [now] = useState(() => new Date());
@@ -117,11 +116,14 @@ export default function InicioPage() {
     if (resultado.ok) {
       setErro(null);
       setPergunta("");
-      router.push(`/ia/chat/${resultado.value.id}`);
+      navegar(`/ia/chat/${resultado.value.id}`);
     } else {
       setErro(resultado.error);
     }
   };
+
+  // "Agora" é o que não pode esperar: o vencido e o que espera a sua decisão.
+  const agora = vencidas.length + aprovacoes.length;
 
   return (
     <div className="flex h-full flex-col">
@@ -137,7 +139,8 @@ export default function InicioPage() {
           pergunta={pergunta}
           aoEscrever={setPergunta}
           aoPerguntar={perguntar}
-          aoFalar={() => router.push("/ia/chat")}
+          aoFalar={() => navegar("/ia/chat")}
+          pendente={pendente}
         />
 
         {erro ? (
@@ -148,172 +151,205 @@ export default function InicioPage() {
           </div>
         ) : null}
 
-        {/* ------------------------------------------------------- números
-            Cada número é botão, não enfeite: diz quanto e leva até quais. */}
-        <div className="grade-solta mt-3 grid-cols-2 xl:grid-cols-4">
-          <Numero
-            href="/estrutura/tarefas"
-            icone={CheckSquare}
-            rotulo="Tarefas abertas"
-            valor={abertas.length}
-            detalhe={vencidas.length > 0 ? `${vencidas.length} vencida(s)` : undefined}
-            alarme={vencidas.length > 0}
-          />
-          <Numero href="/ia/aprovacoes" icone={FileCheck} rotulo="Aprovações pendentes" valor={aprovacoes.length} />
-          <Numero href="/crm/caixa-de-entrada" icone={MessageSquare} rotulo="Minhas Conversas" valor={conversas.length} />
-          <Numero href="/crm/negocios" icone={TrendingUp} rotulo="Meus Negócios abertos" valor={negocios.length} />
-        </div>
 
-        <div className="mt-3 grid gap-3 xl:grid-cols-3 xl:items-start">
-          {/* -------------------------------------------------- minhas tarefas */}
-          <Bloco titulo="Minhas Tarefas" contagem={semHora.length} href="/estrutura/tarefas">
-            {semHora.length === 0 ? (
-              <EmptyState compact title="Nada atribuído a você." hint="Uma Tarefa aparece aqui quando alguém a atribui a você." />
-            ) : (
-              <>
-                <Grupo label="Vencidas" cor="var(--erro)" tasks={vencidas} state={state} vencida />
-                <Grupo label="Esta semana" cor="var(--acento)" tasks={semana} state={state} />
-                <Grupo label="Depois" tasks={depois} state={state} />
-                {concluidas.length > 0 ? <Grupo label="Concluídas" tasks={concluidas.slice(0, 2)} state={state} concluida /> : null}
-              </>
-            )}
-          </Bloco>
-
-          {/* -------------------------------------------------- agenda de hoje */}
-          <Bloco titulo="Agenda de hoje" contagem={agenda.length} href="/estrutura/tarefas">
-            {agenda.length === 0 ? (
-              <EmptyState
-                compact
-                title="Nenhum horário marcado."
-                hint="Uma reunião é uma Tarefa de Tipo Reunião com data e hora — Evento de calendário é decisão futura da ontologia (D8)."
-              />
-            ) : (
-              <div className="pilha-solta">
-                {agenda.slice(0, HOME_PAGE_SIZE).map((task) => {
-                  const lista = state.lists.find((l) => l.id === task.listId);
-                  const tipo = state.taskTypes.find((t) => t.id === task.taskTypeId);
-                  return (
-                    <Link key={task.id} href={`/estrutura/tarefas/${task.id}`} className="item-solto" data-alinhamento="topo" style={{ paddingBlock: "var(--e-2)" }}>
-                      <span className="w-14 shrink-0 text-right">
-                        <span className="app-md app-numero block" style={{ color: "var(--texto)" }}>
-                          {fmt.taskDate(task.dueDate!).split(" ").at(-1)}
-                        </span>
-                        {task.estimate ? <span className="app-meta app-numero block">{task.estimate} min</span> : null}
-                      </span>
-                      <span className="w-px self-stretch shrink-0" style={{ background: "var(--acento)" }} aria-hidden="true" />
-                      <span className="min-w-0 flex-1">
-                        <span className="app-base block truncate" style={{ color: "var(--texto)" }}>
-                          {task.title}
-                        </span>
-                        <span className="app-meta block truncate">
-                          {tipo?.name} · {lista?.name}
-                        </span>
-                      </span>
-                    </Link>
-                  );
-                })}
-                {agenda.length > HOME_PAGE_SIZE ? <Corte mostradas={HOME_PAGE_SIZE} total={agenda.length} /> : null}
-              </div>
-            )}
-          </Bloco>
-
-          {/* A coluna inteira rola junto com a página: três cartões rolando cada
-              um por si dariam três barras concorrendo no mesmo palmo de tela. */}
-          <div className="grid content-start gap-3">
-            <Bloco titulo="Aprovações pendentes" contagem={aprovacoes.length} href="/ia/aprovacoes">
-              {aprovacoes.length === 0 ? (
-                <EmptyState compact title="Nenhuma Solicitação esperando por você." />
+        {/* As seis listas em cascata só começam depois da capa assentar: a
+            capa é a porta, as seções chegam pela porta. */}
+        <div
+          className="mt-6 grid gap-x-8 gap-y-6 xl:grid-cols-[minmax(0,1fr)_24rem] xl:items-start"
+          style={{ "--cascata-inicio": "var(--dur-2)" } as CSSProperties}
+        >
+          {/* ---------------------------------------------------- o seu dia
+              Uma lista só, em ordem de urgência. Cada linha diz o tipo pelo
+              ícone, o que é, o que importa e para onde leva. */}
+          <div className="flex min-w-0 flex-col gap-6">
+            <section className="min-w-0">
+              <ReguaDeSecao rotulo="Agora" contagem={agora} cor={agora > 0 ? "var(--erro)" : undefined} />
+              {agora === 0 ? (
+                <p className="app-meta px-1">Nada vencido e nada esperando a sua decisão.</p>
               ) : (
-                <div className="pilha-solta">
-                  {aprovacoes.slice(0, 2).map((approval) => (
-                    <Link key={approval.id} href={`/ia/aprovacoes?aprovar=${approval.id}:aprovada`} className="item-solto" data-bloco="true">
-                      <p className="app-md" style={{ color: "var(--texto)" }}>
-                        {state.tools.find((t) => t.id === approval.object.toolId)?.name ?? approval.object.toolId}
-                      </p>
-                      <p className="app-base mt-1 line-clamp-2" style={{ color: "var(--texto-2)" }}>
-                        {approval.object.input}
-                      </p>
-                      <p className="app-meta mt-1">
-                        motivo: {APPROVAL_REASON_LABEL[approval.reason] ?? approval.reason} · classe de efeito{" "}
-                        {EFFECT_CLASS_LABEL[approval.object.effectClass] ?? approval.object.effectClass}
-                      </p>
-                    </Link>
+                <ul className="cascata pilha-solta">
+                  {vencidas.slice(0, HOME_PAGE_SIZE).map((task) => (
+                    <LinhaDeTarefa key={task.id} task={task} state={state} tom="erro" nota="Vencida" />
                   ))}
-                </div>
+                  {aprovacoes.slice(0, 3).map((approval) => (
+                    <li key={approval.id}>
+                      <Link href={`/ia/aprovacoes?aprovar=${approval.id}:aprovada`} className="item-solto" data-alinhamento="topo" style={{ paddingBlock: "var(--e-2)" }}>
+                        <Selo icone={FileCheck} cor="var(--aviso)" lavado="var(--aviso-lavado)" />
+                        <span className="min-w-0 flex-1">
+                          <span className="app-md block truncate" style={{ color: "var(--texto)" }}>
+                            Aprovar: {state.tools.find((t) => t.id === approval.object.toolId)?.name ?? approval.object.toolId}
+                          </span>
+                          <span className="app-base mt-0.5 line-clamp-1" style={{ color: "var(--texto-2)" }}>
+                            {approval.object.input}
+                          </span>
+                          <span className="app-meta block truncate">
+                            {APPROVAL_REASON_LABEL[approval.reason] ?? approval.reason} · efeito{" "}
+                            {EFFECT_CLASS_LABEL[approval.object.effectClass] ?? approval.object.effectClass}
+                          </span>
+                        </span>
+                        <Pilula tom="aviso" className="shrink-0">
+                          decidir
+                        </Pilula>
+                      </Link>
+                    </li>
+                  ))}
+                  {vencidas.length > HOME_PAGE_SIZE || aprovacoes.length > 3 ? (
+                    <Corte mostradas={Math.min(vencidas.length, HOME_PAGE_SIZE) + Math.min(aprovacoes.length, 3)} total={agora} href="/estrutura/tarefas" />
+                  ) : null}
+                </ul>
               )}
-            </Bloco>
+            </section>
 
-            <Bloco titulo="Conversas atribuídas a mim" contagem={conversas.length} href="/crm/caixa-de-entrada">
-              {conversas.length === 0 ? (
-                <EmptyState compact title="Nenhuma Conversa atribuída a você." />
+            <section>
+              <ReguaDeSecao rotulo="Hoje" contagem={agenda.length} cor={agenda.length > 0 ? "var(--info)" : undefined} />
+              {agenda.length === 0 ? (
+                <p className="app-meta px-1">
+                  Nenhum horário marcado. Uma reunião é uma Tarefa de Tipo Reunião com data e hora.
+                </p>
               ) : (
-                <div className="pilha-solta">
-                  {conversas.slice(0, 2).map((conversation) => {
+                <ul className="cascata pilha-solta">
+                  {agenda.slice(0, HOME_PAGE_SIZE).map((task) => {
+                    const lista = state.lists.find((l) => l.id === task.listId);
+                    const tipo = state.taskTypes.find((t) => t.id === task.taskTypeId);
+                    return (
+                      <li key={task.id}>
+                        <Link href={`/estrutura/tarefas/${task.id}`} className="item-solto" style={{ paddingBlock: "var(--e-2)" }}>
+                          <span className="w-14 shrink-0 text-right">
+                            <span className="app-md app-numero block" style={{ color: "var(--texto)" }}>
+                              {fmt.taskDate(task.dueDate!).split(" ").at(-1)}
+                            </span>
+                            {task.estimate ? <span className="app-meta app-numero block">{task.estimate} min</span> : null}
+                          </span>
+                          <span className="w-px self-stretch shrink-0" style={{ background: "var(--info)" }} aria-hidden="true" />
+                          <SeloDaTarefa state={state} task={task} />
+                          <span className="min-w-0 flex-1">
+                            <span className="app-md block truncate" style={{ color: "var(--texto)" }}>
+                              {task.title}
+                            </span>
+                            <span className="app-meta block truncate">
+                              {tipo?.name} · {lista?.name}
+                            </span>
+                          </span>
+                          <Icone de={ArrowRight} tamanho="xs" style={{ color: "var(--texto-4)" }} />
+                        </Link>
+                      </li>
+                    );
+                  })}
+                  {agenda.length > HOME_PAGE_SIZE ? <Corte mostradas={HOME_PAGE_SIZE} total={agenda.length} href="/estrutura/tarefas" /> : null}
+                </ul>
+              )}
+            </section>
+
+            <section>
+              <ReguaDeSecao rotulo="Esta semana" contagem={semana.length} />
+              {semana.length === 0 ? (
+                <p className="app-meta px-1">Nada vence nos próximos 7 dias.</p>
+              ) : (
+                <ul className="cascata pilha-solta">
+                  {semana.slice(0, HOME_PAGE_SIZE).map((task) => (
+                    <LinhaDeTarefa key={task.id} task={task} state={state} tom="acento" />
+                  ))}
+                  {semana.length > HOME_PAGE_SIZE ? <Corte mostradas={HOME_PAGE_SIZE} total={semana.length} href="/estrutura/tarefas" /> : null}
+                </ul>
+              )}
+            </section>
+
+            {depois.length > 0 || concluidas.length > 0 ? (
+              <section>
+                <ReguaDeSecao rotulo="Depois" contagem={depois.length} />
+                <ul className="cascata pilha-solta">
+                  {depois.slice(0, HOME_PAGE_SIZE).map((task) => (
+                    <LinhaDeTarefa key={task.id} task={task} state={state} tom="neutro" />
+                  ))}
+                  {depois.length > HOME_PAGE_SIZE ? <Corte mostradas={HOME_PAGE_SIZE} total={depois.length} href="/estrutura/tarefas" /> : null}
+                  {concluidas.slice(0, 2).map((task) => (
+                    <LinhaDeTarefa key={task.id} task={task} state={state} tom="neutro" concluida />
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+          </div>
+
+          {/* ------------------------------------------------------ ao lado */}
+          <div className="flex min-w-0 flex-col gap-6">
+            <section>
+              <ReguaDeSecao
+                rotulo="Conversas"
+                contagem={conversas.length}
+                acao={
+                  <Link href="/crm/caixa-de-entrada" className="app-sm flex items-center gap-1" style={{ color: "var(--texto-3)" }}>
+                    Caixa de Entrada
+                    <Icone de={ArrowRight} tamanho="xs" />
+                  </Link>
+                }
+              />
+              {conversas.length === 0 ? (
+                <p className="app-meta px-1">Nenhuma Conversa atribuída a você.</p>
+              ) : (
+                <ul className="cascata pilha-solta">
+                  {conversas.slice(0, 3).map((conversation) => {
                     const contato = state.contacts.find((c) => c.id === conversation.contactId);
                     const ultima = conversation.messages.at(-1);
                     return (
-                      <Link key={conversation.id} href={`/crm/caixa-de-entrada/${conversation.id}`} className="item-solto" data-bloco="true">
-                        <p className="flex items-center justify-between gap-2">
-                          <span className="app-md truncate" style={{ color: "var(--texto)" }}>
-                            {contato ? contactDisplayName(contato) : conversation.title}
+                      <li key={conversation.id}>
+                        <Link href={`/crm/caixa-de-entrada/${conversation.id}`} className="item-solto" data-alinhamento="topo" style={{ paddingBlock: "var(--e-2)" }}>
+                          <Selo icone={MessageSquare} cor="var(--info)" lavado="var(--info-lavado)" />
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-baseline justify-between gap-2">
+                              <span className="app-md min-w-0 truncate" style={{ color: "var(--texto)" }}>
+                                {contato ? contactDisplayName(contato) : conversation.title}
+                              </span>
+                              {ultima ? <span className="app-meta app-numero shrink-0">{fmt.relative(ultima.createdAt)}</span> : null}
+                            </span>
+                            <span className="app-base mt-0.5 line-clamp-2" style={{ color: "var(--texto-2)" }}>
+                              {ultima?.content}
+                            </span>
                           </span>
-                          {ultima ? <span className="app-meta app-numero shrink-0">{fmt.instant(ultima.createdAt)}</span> : null}
-                        </p>
-                        <p className="app-base mt-1 line-clamp-2" style={{ color: "var(--texto-2)" }}>
-                          {ultima?.content}
-                        </p>
-                      </Link>
+                        </Link>
+                      </li>
                     );
                   })}
-                </div>
+                  {conversas.length > 3 ? <Corte mostradas={3} total={conversas.length} href="/crm/caixa-de-entrada" /> : null}
+                </ul>
               )}
-            </Bloco>
+            </section>
 
-            <Bloco titulo="Meus Negócios abertos" contagem={negocios.length} href="/crm/negocios">
+            <section>
+              <ReguaDeSecao
+                rotulo="Meus Negócios"
+                contagem={negocios.length}
+                acao={
+                  <Link href="/crm/negocios" className="app-sm flex items-center gap-1" style={{ color: "var(--texto-3)" }}>
+                    Funil
+                    <Icone de={ArrowRight} tamanho="xs" />
+                  </Link>
+                }
+              />
               {negocios.length === 0 ? (
-                <EmptyState
-                  compact
-                  title="Você não é Proprietário de nenhum Negócio aberto."
-                  hint="O Negócio não tem Responsável: quem responde por ele é o Proprietário."
-                />
+                <p className="app-meta px-1">Você não é Proprietário de nenhum Negócio aberto.</p>
               ) : (
-                <div className="pilha-solta">
-                  {negocios.slice(0, 3).map((deal) => (
-                    <Link key={deal.id} href={`/crm/negocios/${deal.id}`} className="item-solto">
-                      <span className="app-base min-w-0 flex-1 truncate" style={{ color: "var(--texto)" }}>
-                        {deal.title}
-                      </span>
-                      {deal.value ? (
-                        <span className="app-md app-numero shrink-0" style={{ color: "var(--texto)" }}>
-                          {fmt.money(deal.value)}
+                <ul className="cascata pilha-solta">
+                  {negocios.slice(0, 4).map((deal) => (
+                    <li key={deal.id}>
+                      <Link href={`/crm/negocios/${deal.id}`} className="item-solto">
+                        <Selo icone={TrendingUp} cor="var(--sucesso)" lavado="var(--sucesso-lavado)" />
+                        <span className="app-base min-w-0 flex-1 truncate" style={{ color: "var(--texto)" }}>
+                          {deal.title}
                         </span>
-                      ) : null}
-                    </Link>
+                        {deal.value ? (
+                          <span className="app-md app-numero shrink-0" style={{ color: "var(--texto)" }}>
+                            {fmt.money(deal.value)}
+                          </span>
+                        ) : null}
+                      </Link>
+                    </li>
                   ))}
-                </div>
+                  {negocios.length > 4 ? <Corte mostradas={4} total={negocios.length} href="/crm/negocios" /> : null}
+                </ul>
               )}
-            </Bloco>
+            </section>
           </div>
         </div>
-
-        {/* -------------------------------------------------- ações rápidas */}
-        <section className="mt-2">
-          <ReguaDeSecao rotulo="Ações rápidas" />
-          <div className="grade-solta grid-cols-2 xl:grid-cols-4">
-            <AcaoRapida href="/estrutura" icone={Plus}>
-              Criar na Estrutura
-            </AcaoRapida>
-            <AcaoRapida href="/ia/chat" icone={Sparkles}>
-              Nova Sessão de Chat
-            </AcaoRapida>
-            <AcaoRapida href="/crm/contatos" icone={MessageSquare}>
-              Importar Contatos
-            </AcaoRapida>
-            <AcaoRapida href="/paineis" icone={CalendarDays}>
-              Ver Painéis
-            </AcaoRapida>
-          </div>
-        </section>
       </CorpoDeTela>
     </div>
   );
@@ -340,24 +376,29 @@ function dueWithinDays(task: Task, now: Date, days: number): boolean {
   return due <= limit;
 }
 
-/** Os quatro pilares do manifesto da marca — no manual, quatro círculos que se
- *  entrelaçam. Aqui viram a régua da base da capa, na mesma ordem. */
-const PILARES = ["Propósito", "Criatividade", "Tecnologia", "Transformação"];
+/** Seis estrelas fixas da atmosfera: posição em %, tamanho e cor por token. */
+const ESTRELAS = [
+  { top: "14%", left: "58%", tam: "3px", cor: "var(--estrela-forte)" },
+  { top: "26%", left: "84%", tam: "2px", cor: "var(--estrela-media)" },
+  { top: "62%", left: "66%", tam: "2px", cor: "var(--estrela-acento)" },
+  { top: "78%", left: "90%", tam: "3px", cor: "var(--estrela-fraca)" },
+  { top: "40%", left: "95%", tam: "2px", cor: "var(--estrela-info)" },
+  { top: "8%", left: "72%", tam: "2px", cor: "var(--estrela-fraca)" },
+];
 
 /**
  * A CAPA — a primeira coisa que a pessoa vê no produto.
  *
- * O laço de vídeo é o motivo da capa do manual (riscos de neon roxo) e a orbe é
- * o Assistente. Nada aqui é enfeite sem função: o título dá o contexto, o campo
- * abre uma Sessão de Chat, os atalhos levam às quatro telas mais usadas e a
- * orbe é o mesmo caminho do Assistente para quem prefere um alvo grande.
+ * O fundo é a atmosfera do sistema (orbes desfocados, grade de pontos e
+ * estrelas) e o globo de pontos é o Assistente: gira, inclina para o cursor,
+ * acende perto dele — e abre uma Sessão de Chat no clique. Nada aqui é enfeite
+ * sem função: o título dá o contexto, o campo abre uma Sessão de Chat, os
+ * atalhos levam às quatro telas mais usadas. A barra de Ações rápidas que
+ * fechava a base saiu a pedido — a capa termina na atmosfera.
  *
- * ONDE O TEXTO PODE FICAR — não é gosto, é medida. Amostrando 12 quadros do
- * laço: a luminância máxima é 1.00 (branco puro) no terço da esquerda e no da
- * direita, e 0.0096 no meio. Com a cor do cartão por cortina, texto branco só
- * atinge AA a partir de 82% de opacidade. Por isso o texto vive na coluna
- * fechada à esquerda e na régua OPACA da base, e a janela do vídeo abre onde só
- * há decoração: em volta da orbe.
+ * Já foi um laço de vídeo com riscos de neon; saiu porque os riscos chegavam a
+ * branco puro e exigiam uma cortina pesada para o texto ler. A atmosfera nunca
+ * passa de roxo a 28% sobre o cartão — o texto lê em qualquer ponto.
  */
 function Capa({
   saudacao: comoVai,
@@ -366,6 +407,7 @@ function Capa({
   aoEscrever,
   aoPerguntar,
   aoFalar,
+  pendente,
 }: {
   readonly saudacao: string;
   readonly nome: string;
@@ -373,46 +415,45 @@ function Capa({
   readonly aoEscrever: (valor: string) => void;
   readonly aoPerguntar: () => void;
   readonly aoFalar: () => void;
+  /** Uma navegação a caminho: o globo pensa e o envio diz que está ocupado. */
+  readonly pendente: boolean;
 }) {
   return (
     <section className="capa revelar flex flex-col" style={{ minHeight: "var(--capa-h)" }}>
       {/*
-        O laço. `muted` e `playsInline` porque autoplay com som é bloqueado e,
-        num painel de trabalho, seria hostil de qualquer forma. O `poster` cobre
-        o intervalo até o vídeo carregar — sem ele a capa pisca vazia na
-        primeira visita. Some por completo em `prefers-reduced-motion` e abaixo
-        de 768px (ver componentes.css).
+        A atmosfera: três orbes desfocados, a grade de pontos (no ::after da
+        capa) e seis estrelas. Tudo CSS, nada de vídeo — e nada aqui passa de
+        roxo a 28% sobre o cartão, então o texto lê em qualquer ponto.
       */}
-      <video
-        className="capa-video"
-        src="/marca/fundo-heroi.mp4"
-        poster="/marca/fundo-heroi.jpg"
-        autoPlay
-        muted
-        loop
-        playsInline
-        aria-hidden="true"
-        tabIndex={-1}
-      />
-      <span className="capa-cortina" aria-hidden="true" />
+      <span className="capa-orbe" aria-hidden="true" style={{ top: "-30%", right: "-6%", width: "34rem", height: "34rem", background: "var(--orbe-1)" }} />
+      <span className="capa-orbe" aria-hidden="true" style={{ top: "20%", right: "26%", width: "26rem", height: "26rem", background: "var(--orbe-2)" }} />
+      <span className="capa-orbe" aria-hidden="true" style={{ bottom: "-40%", left: "30%", width: "30rem", height: "30rem", background: "var(--orbe-3)" }} />
+      {ESTRELAS.map((e, i) => (
+        <span key={i} className="capa-estrela" aria-hidden="true" style={{ top: e.top, left: e.left, width: e.tam, height: e.tam, background: e.cor }} />
+      ))}
 
-      <div className="flex min-h-0 flex-1 items-center gap-6 p-6 xl:p-8">
-        <div className="min-w-0 flex-1" style={{ maxWidth: "38rem" }}>
-          <p className="ed-secao">Seu copiloto de gestão</p>
-          <h1 className="ed-display mt-2">
+      <div className="flex min-h-0 flex-1 items-center justify-between gap-6 p-6 xl:p-8">
+        {/*
+          O texto chega em degraus de dois passos (saudação, pergunta, atalhos)
+          enquanto a capa ainda revela: `surgir` sem blur, porque a capa inteira
+          já está sob o filter do `revelar` — dois desfoques somados borram
+          demais. Os `--i` são inline para o degrau ser de DOIS passos.
+        */}
+        <div className="cascata min-w-0 flex-1" style={{ maxWidth: "38rem" }}>
+          <h1 className="ed-display" style={{ "--i": 0 } as CSSProperties}>
             {comoVai}, <span style={{ color: "var(--acento)" }}>{nome}</span>.
           </h1>
-          <p className="ed-corpo mt-1">O que é seu hoje, a gente resolve junto.</p>
 
           {/* A pergunta abre uma Sessão de Chat com ela dentro. É o controle
               principal da tela — daí o aro no acento e a altura maior. */}
           <div
             className="mt-5 flex items-center gap-2 rounded-[var(--r-controle)] px-3"
             style={{
+              "--i": 2,
               height: "var(--controle-h-lg)",
               background: "var(--page)",
               border: "1px solid var(--linha-acento)",
-            }}
+            } as CSSProperties}
           >
             <Icone de={Sparkles} tamanho="sm" style={{ color: "var(--acento)" }} />
             <label className="sr-only" htmlFor="pergunta">
@@ -433,6 +474,7 @@ function Capa({
               type="button"
               onClick={aoPerguntar}
               disabled={pergunta.trim() === ""}
+              aria-busy={pendente || undefined}
               aria-label="Abrir uma Sessão de Chat com esta pergunta"
               title={pergunta.trim() === "" ? "Escreva a pergunta primeiro." : "Abre uma Sessão de Chat com esta pergunta."}
               className="btn-icone shrink-0 disabled:opacity-40"
@@ -448,7 +490,7 @@ function Capa({
             </button>
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-2">
+          <div className="mt-4 flex flex-wrap items-center gap-2" style={{ "--i": 4 } as CSSProperties}>
             <Atalho href="/ia/chat" icone={Sparkles}>
               Falar com o Assistente
             </Atalho>
@@ -465,53 +507,29 @@ function Capa({
         </div>
 
         {/*
-          A orbe é o Assistente. Ela abre uma Sessão de Chat — não capta voz, e
+          O globo é o Assistente. Ele abre uma Sessão de Chat — não capta voz, e
           um alvo deste tamanho com cara de microfone prometeria o que o produto
           não faz. Some abaixo de 1024px: ali a coluna de texto ocupa a capa
-          inteira e a orbe viraria enfeite espremido.
+          inteira e o globo viraria enfeite espremido.
         */}
         <button
           type="button"
           onClick={aoFalar}
-          className="orbe-assistente hidden shrink-0 lg:grid"
+          className="aparecer relative hidden shrink-0 lg:block xl:mr-6"
+          // Esmaece no tempo da capa; o globo mesmo só nasce quando ela termina.
+          style={{ width: "var(--globo-tam)", height: "var(--globo-tam)", animationDuration: "var(--dur-3)" }}
           aria-label="Falar com o Assistente"
           title="Abre uma Sessão de Chat com o Assistente."
         >
-          <span className="orbe-anel" style={{ width: "100%", height: "100%" }} aria-hidden="true" />
-          <span className="orbe-anel" style={{ width: "78%", height: "78%" }} aria-hidden="true" />
-          <span className="orbe-anel" style={{ width: "56%", height: "56%" }} aria-hidden="true" />
-          <span className="orbe-varredura" style={{ width: "92%", height: "92%" }} aria-hidden="true" />
-          <span className="orbe-nucleo" style={{ width: "42%", height: "42%" }}>
-            <Icone de={Sparkles} tamanho="md" style={{ color: "var(--sobre-degrade)" }} />
-          </span>
+          <GloboDePontos className="absolute inset-0" ativo={pendente} />
         </button>
       </div>
 
-      {/*
-        A régua da base: OPACA de propósito. É o único lugar da capa onde texto
-        pode encostar no terço direito do vídeo, e resolver isso com uma barra
-        sólida é mais honesto que confiar num degradê para segurar o contraste.
-      */}
-      <div
-        className="flex shrink-0 flex-wrap items-center gap-x-6 gap-y-2 px-6 py-3 xl:px-8"
-        style={{ background: "var(--card)", borderTop: "1px solid var(--linha)" }}
-      >
-        <ul className="flex flex-wrap items-center gap-x-6 gap-y-1">
-          {PILARES.map((pilar) => (
-            <li key={pilar} className="ed-secao flex items-center gap-2">
-              <span aria-hidden="true" className="pilula-ponto" style={{ background: "var(--acento)" }} />
-              {pilar}
-            </li>
-          ))}
-        </ul>
-        <span className="flex-1" />
-        <p className="app-meta">Mais produtividade para o que realmente importa. Juntos, vamos mais longe.</p>
-      </div>
     </section>
   );
 }
 
-function Atalho({ href, icone, children }: { readonly href: string; readonly icone: typeof Sparkles; readonly children: React.ReactNode }) {
+function Atalho({ href, icone, children }: { readonly href: string; readonly icone: LucideIcon; readonly children: React.ReactNode }) {
   return (
     <Link href={href} className="btn btn-sutil btn-sm">
       <Icone de={icone} tamanho="xs" />
@@ -520,158 +538,69 @@ function Atalho({ href, icone, children }: { readonly href: string; readonly ico
   );
 }
 
-/**
- * O número do resumo é uma PEÇA que leva à tela: o rótulo em caixa-alta, o
- * valor grande em tabular e, quando há alarme, o detalhe na cor do erro.
- */
-function Numero({
-  href,
-  icone,
-  rotulo,
-  valor,
-  detalhe,
-  alarme,
-}: {
-  readonly href: string;
-  readonly icone: typeof Sparkles;
-  readonly rotulo: string;
-  readonly valor: number;
-  readonly detalhe?: string;
-  readonly alarme?: boolean;
-}) {
-  return (
-    <Link href={href} className="item-solto" data-bloco="true" data-atenuado={valor === 0 ? "true" : undefined}>
-      <span className="flex items-center justify-between gap-2">
-        <span className="app-coluna">{rotulo}</span>
-        <Icone de={icone} tamanho="xs" style={{ color: "var(--texto-4)" }} />
-      </span>
-      <span className="mt-1 flex items-baseline gap-2">
-        <span className="ed-titulo app-numero" style={{ color: valor === 0 ? "var(--texto-4)" : "var(--texto)" }}>
-          {valor}
-        </span>
-        {detalhe ? (
-          <span className="app-meta" style={{ color: alarme ? "var(--erro)" : "var(--texto-4)" }}>
-            {detalhe}
-          </span>
-        ) : null}
-      </span>
-    </Link>
-  );
-}
-
-function Bloco({
-  titulo,
-  contagem,
-  href,
-  children,
-}: {
-  readonly titulo: string;
-  readonly contagem: number;
-  readonly href: string;
-  readonly children: React.ReactNode;
-}) {
-  return (
-    <Painel className="flex min-w-0 flex-col">
-      <CabecalhoDePainel
-        titulo={titulo}
-        contagem={contagem}
-        acao={
-          <Link href={href} className="app-sm flex shrink-0 items-center gap-1 transition-colors hover:text-[var(--acento)]" style={{ color: "var(--texto-3)" }}>
-            Ver todas
-            <Icone de={ArrowRight} tamanho="xs" />
-          </Link>
-        }
-      />
-      <div className="p-3">{children}</div>
-    </Painel>
-  );
-}
-
-function Grupo({
-  label,
-  cor,
-  tasks,
+/** O ladrilho de ícone na cor do tipo: é ele que se reconhece antes de ler. */
+/** Uma Tarefa como linha da lista do dia: ícone do tipo, título, meta, Status. */
+function LinhaDeTarefa({
+  task,
   state,
-  vencida,
+  tom,
+  nota,
   concluida,
 }: {
-  readonly label: string;
-  readonly cor?: string;
-  readonly tasks: readonly Task[];
+  readonly task: Task;
   readonly state: DataState;
-  readonly vencida?: boolean;
+  readonly tom: "erro" | "acento" | "neutro";
+  readonly nota?: string;
   readonly concluida?: boolean;
 }) {
   const fmt = useFormat();
-  if (tasks.length === 0) return null;
-  const mostradas = tasks.slice(0, HOME_PAGE_SIZE);
-
+  const definition = statusDefinition(state, task.listId, task.statusId);
+  const lista = state.lists.find((l) => l.id === task.listId);
   return (
-    <section>
-      <ReguaDeSecao rotulo={label} contagem={tasks.length} cor={cor} />
-      <div className="pilha-solta">
-        {mostradas.map((task) => {
-          const definition = statusDefinition(state, task.listId, task.statusId);
-          const lista = state.lists.find((l) => l.id === task.listId);
-          return (
-            <Link key={task.id} href={`/estrutura/tarefas/${task.id}`} className="item-solto" data-atenuado={concluida ? "true" : undefined}>
-              <span
-                className="shrink-0 rounded-full"
-                style={{
-                  width: "0.75rem",
-                  height: "0.75rem",
-                  border: `2px solid ${definition?.color ?? "var(--texto-4)"}`,
-                  background: concluida ? (definition?.color ?? "var(--texto-4)") : "transparent",
-                }}
-                title={definition?.name}
-              />
-              <span className="min-w-0 flex-1">
-                <span
-                  className="app-base block truncate"
-                  style={{ color: concluida ? "var(--texto-4)" : "var(--texto-1)", textDecoration: concluida ? "line-through" : undefined }}
-                >
-                  {task.title}
-                </span>
-                <span className="app-meta flex flex-wrap items-center gap-2">
-                  {task.readableId ? <span className="identificador">{task.readableId}</span> : null}
-                  {lista ? <span className="truncate">{lista.name}</span> : null}
-                  {task.dueDate ? (
-                    <span className="app-numero" style={{ color: vencida ? "var(--erro)" : undefined }}>
-                      {fmt.taskDate(task.dueDate)}
-                    </span>
-                  ) : null}
-                  {vencida ? <ConditionMarker tone="danger">Vencida</ConditionMarker> : null}
-                </span>
+    <li>
+      <Link href={`/estrutura/tarefas/${task.id}`} className="item-solto" data-atenuado={concluida ? "true" : undefined}>
+        {/* O ícone é o do Tipo da Tarefa; vencida, ele fica vermelho. */}
+        <SeloDaTarefa state={state} task={task} {...(tom === "erro" ? { tom: "erro" } : {})} />
+        <span className="min-w-0 flex-1">
+          <span
+            className="app-md block truncate"
+            style={{ color: concluida ? "var(--texto-4)" : "var(--texto)", textDecoration: concluida ? "line-through" : undefined }}
+          >
+            {task.title}
+          </span>
+          <span className="app-meta flex flex-wrap items-center gap-x-2">
+            {task.readableId ? <span className="identificador">{task.readableId}</span> : null}
+            {lista ? <span className="truncate">{lista.name}</span> : null}
+            {task.dueDate ? (
+              <span className="app-numero" style={{ color: tom === "erro" ? "var(--erro)" : undefined }}>
+                {nota ? `${nota} · ` : ""}
+                {fmt.taskDate(task.dueDate)}
               </span>
-              {definition ? (
-                <Pilula cor={definition.color} comPonto className="hidden shrink-0 sm:inline-flex">
-                  {definition.name}
-                </Pilula>
-              ) : null}
-            </Link>
-          );
-        })}
-        {tasks.length > mostradas.length ? <Corte mostradas={mostradas.length} total={tasks.length} /> : null}
-      </div>
-    </section>
+            ) : null}
+          </span>
+        </span>
+        {definition ? (
+          <Pilula cor={definition.color} className="hidden shrink-0 sm:inline-flex">
+            {definition.name}
+          </Pilula>
+        ) : null}
+        <Icone de={ArrowRight} tamanho="xs" style={{ color: "var(--texto-4)" }} />
+      </Link>
+    </li>
   );
 }
 
-/** §15 — o corte é dito, nunca escondido. */
-function Corte({ mostradas, total }: { readonly mostradas: number; readonly total: number }) {
+/** §15 — o corte é dito, nunca escondido, e oferece o resto. */
+function Corte({ mostradas, total, href }: { readonly mostradas: number; readonly total: number; readonly href: string }) {
   return (
-    <p className="app-meta app-numero px-1 pt-1">
-      Mostrando {mostradas} de {total}.
-    </p>
-  );
-}
-
-function AcaoRapida({ href, icone, children }: { readonly href: string; readonly icone: typeof Sparkles; readonly children: React.ReactNode }) {
-  return (
-    <Link href={href} className="contents">
-      <Button variant="secondary" full icon={<Icone de={icone} tamanho="xs" />}>
-        {children}
-      </Button>
-    </Link>
+    <li className="app-meta app-numero flex items-center justify-between px-1 pt-1">
+      <span>
+        Mostrando {mostradas} de {total}.
+      </span>
+      <Link href={href} className="flex items-center gap-1 hover:underline" style={{ color: "var(--texto-3)" }}>
+        Ver todas
+        <Icone de={ArrowRight} tamanho="xs" />
+      </Link>
+    </li>
   );
 }
