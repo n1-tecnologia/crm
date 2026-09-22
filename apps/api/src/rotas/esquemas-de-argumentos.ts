@@ -50,6 +50,7 @@
 import type { NomeDeOperacao } from "@n1/dominio/operations/registro";
 import { z } from "zod";
 import { AUTOMACOES } from "./esquemas/automacoes";
+import { CAPTACAO } from "./esquemas/captacao";
 import { COLABORACAO } from "./esquemas/colaboracao";
 import { CONFIGURACAO } from "./esquemas/configuracao";
 import { CONSTRUTOR_DE_AGENTES } from "./esquemas/construtor-de-agentes";
@@ -91,6 +92,7 @@ export const ESQUEMAS = {
   ...MEMBROS,
   ...ESTRUTURA,
   ...NOTAS,
+  ...CAPTACAO,
 } satisfies EsquemasCompletos;
 
 /**

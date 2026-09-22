@@ -198,6 +198,12 @@ import { createFolder, createList, createSpace } from "./structure";
 // ── ferramentas/notas.ts ───────────────────────────────────────────────
 import { adicionarNotaNoAtivo } from "./ferramentas/notas";
 
+// ── ferramentas/captacao.ts ─────────────────────────────────────────────
+// registrarClique e simularEntradaPorClique ficam de fora: são Eventos do
+// provedor/do clique público, sem actingMemberId (mesmo critério que exclui
+// receberPedidoDeEntrada e registrarEntradaNoGrupo, ver ferramentas/grupos.ts).
+import { criarLinkDeCaptacao, editarLinkDeCaptacao, enviarLinkALixeira, restaurarLinkDaLixeira } from "./ferramentas/captacao";
+
 /**
  * Toda operação alcançável por HTTP. Assinatura comum:
  * `(state, actingMemberId, ...args) => OperationResult`.
@@ -361,6 +367,11 @@ export const OPERACOES = {
   createList,
   // ferramentas/notas.ts
   adicionarNotaNoAtivo,
+  // ferramentas/captacao.ts
+  criarLinkDeCaptacao,
+  editarLinkDeCaptacao,
+  enviarLinkALixeira,
+  restaurarLinkDaLixeira,
 } as const satisfies Record<string, (state: DataState, actingMemberId: Id, ...args: any[]) => OperationResult<unknown>>;
 
 export type NomeDeOperacao = keyof typeof OPERACOES;

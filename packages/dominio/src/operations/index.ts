@@ -205,3 +205,9 @@ export const createList = instrumentar("createList");
 
 // ferramentas/notas.ts
 export const adicionarNotaNoAtivo = instrumentar("adicionarNotaNoAtivo");
+
+// ferramentas/captacao.ts
+export const criarLinkDeCaptacao = instrumentar("criarLinkDeCaptacao");
+export const editarLinkDeCaptacao = instrumentar("editarLinkDeCaptacao");
+export const enviarLinkALixeira = instrumentar("enviarLinkALixeira");
+export const restaurarLinkDaLixeira = instrumentar("restaurarLinkDaLixeira");
