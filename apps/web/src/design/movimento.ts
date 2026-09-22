@@ -22,10 +22,10 @@ const PADRAO_EASING: readonly [number, number, number, number] = [0.4, 0, 0.2, 1
 /** Movimento reduzido: preferência do sistema ou o freio da pessoa (`<html data-movimento="minimo">`). */
 export function reduzido(): boolean {
   if (typeof window === "undefined" || typeof document === "undefined") return false;
-  return (
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches ||
-    document.documentElement.dataset.movimento === "minimo"
-  );
+  // jsdom (ambiente de teste) não implementa `matchMedia` por padrão — sem o
+  // freio, o efeito de saída de um popup quebra qualquer teste que o exercite.
+  const preferenciaDoSistema = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  return preferenciaDoSistema || document.documentElement.dataset.movimento === "minimo";
 }
 
 /** `"300ms"` → 300, `"1.5s"` → 1500; qualquer outra coisa → 0. */

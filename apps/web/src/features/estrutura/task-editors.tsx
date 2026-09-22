@@ -7,8 +7,9 @@
  */
 
 import { Check, MessageSquareReply, RotateCcw, Send } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useData, useRun, useSession } from "@/dados/store";
+import { useRecente } from "@/features/shell/recente";
 import {
   addTaskComment,
   resolveTaskComment,
@@ -18,7 +19,7 @@ import {
   watchTask,
 } from "@n1/dominio/operations";
 import { useFormat } from "@/features/shell/use-format";
-import { Button, EmptyState, Field, Icone, MultiSelect, Select, TextArea, TextInput } from "@/features/shell/ui";
+import { ActorAvatar, Button, EmptyState, Field, Icone, MultiSelect, Select, TextArea, TextInput, Toast } from "@/features/shell/ui";
 import type { OperationResult } from "@n1/dominio/state";
 import type { ActorRef, FieldDefinition, FieldValue, Task, TaskDate } from "@n1/dominio/types";
 
@@ -95,14 +96,19 @@ const localDateTime = (iso: string): string => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
+export type AtributoEditavel = "prioridade" | "inicio" | "vencimento" | "estimativa";
+
 export function TaskAttributeEditors({
   task,
   report,
   features,
+  apenas,
 }: {
   readonly task: Task;
   readonly report: Report;
   readonly features: { readonly prioridade: boolean; readonly estimativa: boolean };
+  /** Um controle só, sem rótulo — para a linha compacta da ficha, que já tem o seu. */
+  readonly apenas?: AtributoEditavel;
 }) {
   const run = useRun();
   const ids = useId();
@@ -144,14 +150,7 @@ export function TaskAttributeEditors({
       />
     );
 
-  return (
-    <>
-      {features.prioridade ? (
-      <div className={LINHA}>
-        <dt className={ROTULO}>
-          <label htmlFor={`${ids}-prioridade`}>Prioridade</label>
-        </dt>
-        <dd className="w-44">
+  const controlePrioridade = (
           <Select
             id={`${ids}-prioridade`}
             value={task.priority}
@@ -164,31 +163,10 @@ export function TaskAttributeEditors({
               { value: "semPrioridade", label: "Sem prioridade" },
             ]}
           />
-        </dd>
-      </div>
-      ) : null}
-      <div className={LINHA}>
-        <dt className={ROTULO}>
-          <label htmlFor={`${ids}-inicio`}>Data de início</label>
-        </dt>
-        <dd className="w-52">
-          {controleDeData(`${ids}-inicio`, task.startDate, (date) => gravar({ startDate: date }, "Início alterado."))}
-        </dd>
-      </div>
-      <div className={LINHA}>
-        <dt className={ROTULO}>
-          <label htmlFor={`${ids}-vencimento`}>Data de vencimento</label>
-        </dt>
-        <dd className="w-52">
-          {controleDeData(`${ids}-vencimento`, task.dueDate, (date) => gravar({ dueDate: date }, "Vencimento alterado."))}
-        </dd>
-      </div>
-      {features.estimativa ? (
-      <div className={LINHA}>
-        <dt className={ROTULO}>
-          <label htmlFor={`${ids}-estimativa`}>Estimativa (min)</label>
-        </dt>
-        <dd className="w-44">
+  );
+  const controleInicio = controleDeData(`${ids}-inicio`, task.startDate, (date) => gravar({ startDate: date }, "Início alterado."));
+  const controleVencimento = controleDeData(`${ids}-vencimento`, task.dueDate, (date) => gravar({ dueDate: date }, "Vencimento alterado."));
+  const controleEstimativa = (
           <input
             id={`${ids}-estimativa`}
             type="number"
@@ -210,8 +188,42 @@ export function TaskAttributeEditors({
             placeholder="—"
             className="campo app-numero"
           />
-        </dd>
+  );
+
+  if (apenas === "prioridade") return controlePrioridade;
+  if (apenas === "inicio") return controleInicio;
+  if (apenas === "vencimento") return controleVencimento;
+  if (apenas === "estimativa") return controleEstimativa;
+
+  return (
+    <>
+      {features.prioridade ? (
+        <div className={LINHA}>
+          <dt className={ROTULO}>
+            <label htmlFor={`${ids}-prioridade`}>Prioridade</label>
+          </dt>
+          <dd className="w-44">{controlePrioridade}</dd>
+        </div>
+      ) : null}
+      <div className={LINHA}>
+        <dt className={ROTULO}>
+          <label htmlFor={`${ids}-inicio`}>Data de início</label>
+        </dt>
+        <dd className="w-52">{controleInicio}</dd>
       </div>
+      <div className={LINHA}>
+        <dt className={ROTULO}>
+          <label htmlFor={`${ids}-vencimento`}>Data de vencimento</label>
+        </dt>
+        <dd className="w-52">{controleVencimento}</dd>
+      </div>
+      {features.estimativa ? (
+        <div className={LINHA}>
+          <dt className={ROTULO}>
+            <label htmlFor={`${ids}-estimativa`}>Estimativa (min)</label>
+          </dt>
+          <dd className="w-44">{controleEstimativa}</dd>
+        </div>
       ) : null}
     </>
   );
@@ -222,10 +234,13 @@ export function TaskFieldValueEditor({
   task,
   definition,
   report,
+  soControle = false,
 }: {
   readonly task: Task;
   readonly definition: FieldDefinition;
   readonly report: Report;
+  /** Só o controle, sem rótulo — para a linha compacta da ficha. */
+  readonly soControle?: boolean;
 }) {
   const run = useRun();
   const state = useData((data) => data);
@@ -404,6 +419,8 @@ export function TaskFieldValueEditor({
       );
   }
 
+  if (soControle) return <>{controle}</>;
+
   return (
     <div className={LINHA}>
       {/* O nome do Campo é livre e pode ser longo: aqui o rótulo quebra linha em vez de empurrar o controle para fora do painel. */}
@@ -474,31 +491,74 @@ function CommentComposer({
   parentCommentId,
   onDone,
   autoFocus,
+  presoNaBase,
 }: {
   readonly task: Task;
   readonly report: Report;
   readonly parentCommentId?: string;
   readonly onDone?: () => void;
   readonly autoFocus?: boolean;
+  /** Preso à base da coluna: o menu de menções abre para cima. */
+  readonly presoNaBase?: boolean;
 }) {
   const run = useRun();
   const members = useData((data) => data.members);
   const [texto, setTexto] = useState("");
-  const [mencoes, setMencoes] = useState<readonly string[]>([]);
+  /** Quem foi escolhido pelo "@" — só conta na hora de enviar se o "@Nome" ainda estiver no texto. */
+  const [mencoes, setMencoes] = useState<ReadonlyArray<{ readonly id: string; readonly nome: string }>>([]);
+  const [caret, setCaret] = useState(0);
+  const [sugestaoAtiva, setSugestaoAtiva] = useState(0);
+  const [sugestoesFechadas, setSugestoesFechadas] = useState(false);
+  const campo = useRef<HTMLTextAreaElement>(null);
   const id = useId();
+
+  // O "@" em curso: o que vem depois do último "@" antes do cursor (até dois
+  // espaços — nomes têm sobrenome). Sem "@" em curso, não há menu.
+  const arroba = (() => {
+    const antes = texto.slice(0, caret);
+    const m = /(^|\s)@([^\s@]*(?:\s[^\s@]*){0,2})$/.exec(antes);
+    const consulta = m?.[2];
+    return consulta !== undefined ? { inicio: antes.length - consulta.length - 1, consulta } : null;
+  })();
+  const sugestoes = arroba && !sugestoesFechadas
+    ? members
+        .filter((m) => m.state === "ativo")
+        .filter((m) => normalizar(m.displayName).includes(normalizar(arroba.consulta)))
+        .slice(0, 6)
+    : [];
+
+  const mencionar = (membro: { readonly id: string; readonly displayName: string }) => {
+    if (!arroba) return;
+    const antes = texto.slice(0, arroba.inicio);
+    const depois = texto.slice(caret);
+    const novo = `${antes}@${membro.displayName} ${depois}`;
+    const novoCaret = antes.length + membro.displayName.length + 2;
+    setTexto(novo);
+    setMencoes((atual) => (atual.some((m) => m.id === membro.id) ? atual : [...atual, { id: membro.id, nome: membro.displayName }]));
+    setCaret(novoCaret);
+    setSugestaoAtiva(0);
+    // O cursor volta para depois do nome, e o foco continua no campo.
+    requestAnimationFrame(() => {
+      const el = campo.current;
+      if (!el) return;
+      el.focus({ preventScroll: true });
+      el.setSelectionRange(novoCaret, novoCaret);
+    });
+  };
 
   const enviar = () => {
     const result = run((data, memberId) =>
       addTaskComment(data, memberId, task.id, {
         content: texto,
         ...(parentCommentId ? { parentCommentId } : {}),
-        mentions: mencoes.map((m) => ({ type: "member", id: m })),
+        mentions: mencoes.filter((m) => texto.includes(`@${m.nome}`)).map((m) => ({ type: "member", id: m.id })),
       }),
     );
     report(result, parentCommentId ? "Resposta enviada." : "Comentário enviado.");
     if (result.ok) {
       setTexto("");
       setMencoes([]);
+      setCaret(0);
       onDone?.();
     }
   };
@@ -514,167 +574,305 @@ function CommentComposer({
       <label htmlFor={id} className="sr-only">
         {parentCommentId ? "Responder" : "Novo comentário"}
       </label>
-      <textarea
-        id={id}
-        value={texto}
-        onChange={(event) => setTexto(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && texto.trim()) {
-            event.preventDefault();
-            enviar();
-          }
-        }}
-        rows={parentCommentId ? 2 : 3}
-        autoFocus={autoFocus}
-        placeholder={parentCommentId ? "Responder…" : "Escreva um comentário. Ctrl+Enter envia."}
-        className="campo"
-      />
-      <div className="flex flex-wrap items-end gap-2">
-        <span className="min-w-56 flex-1">
-          <label htmlFor={`${id}-mencoes`} className="sr-only">
-            Mencionar alguém
-          </label>
-          <MultiSelect
-            id={`${id}-mencoes`}
-            values={mencoes}
-            onChange={setMencoes}
-            placeholder="Mencionar alguém"
-            options={members.filter((m) => m.state === "ativo").map((m) => ({ value: m.id, label: m.displayName }))}
-          />
-        </span>
-        {onDone ? <Button onClick={onDone}>Cancelar</Button> : null}
-        <Button
+      <div className="relative">
+        <textarea
+          ref={campo}
+          id={id}
+          value={texto}
+          onChange={(event) => {
+            setTexto(event.target.value);
+            setCaret(event.target.selectionStart ?? event.target.value.length);
+            setSugestaoAtiva(0);
+            setSugestoesFechadas(false);
+          }}
+          onSelect={(event) => setCaret((event.target as HTMLTextAreaElement).selectionStart ?? 0)}
+          onKeyDown={(event) => {
+            // Com o menu de "@" aberto, as setas e o Enter escolhem; Esc fecha só o menu.
+            if (sugestoes.length > 0) {
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setSugestaoAtiva((i) => (i + 1) % sugestoes.length);
+                return;
+              }
+              if (event.key === "ArrowUp") {
+                event.preventDefault();
+                setSugestaoAtiva((i) => (i - 1 + sugestoes.length) % sugestoes.length);
+                return;
+              }
+              if ((event.key === "Enter" && !event.ctrlKey && !event.metaKey) || event.key === "Tab") {
+                event.preventDefault();
+                const escolhido = sugestoes[sugestaoAtiva];
+                if (escolhido) mencionar(escolhido);
+                return;
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                setSugestoesFechadas(true);
+                return;
+              }
+            }
+            if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && texto.trim()) {
+              event.preventDefault();
+              enviar();
+            }
+          }}
+          rows={2}
+          autoFocus={autoFocus}
+          aria-autocomplete="list"
+          aria-controls={sugestoes.length > 0 ? `${id}-sugestoes` : undefined}
+          placeholder={parentCommentId ? "Responder…" : "Escreva um comentário. @ menciona alguém. Ctrl+Enter envia."}
+          // `block`: como inline, a textarea deixa um vão de linha embaixo e o
+          // botão ancorado no pé do invólucro escorrega para fora dela.
+          className="campo block"
+          // O canto inferior direito é do botão de enviar: o texto não passa por baixo dele.
+          style={{ height: "auto", paddingBlock: "var(--e-2)", paddingRight: "var(--controle-h)", resize: "none" }}
+        />
+        <button
           type="submit"
-          variant="primary"
+          aria-label={parentCommentId ? "Responder" : "Enviar"}
+          title={texto.trim() === "" ? "Escreva o comentário antes de enviar." : `${parentCommentId ? "Responder" : "Enviar"} (Ctrl+Enter)`}
           disabled={texto.trim() === ""}
-          disabledReason="Escreva o comentário antes de enviar."
-          icon={<Icone de={Send} tamanho="xs" />}
+          className="btn-icone btn-icone-enviar absolute"
+          style={{ right: "var(--e-1)", bottom: "var(--e-1)" }}
         >
-          {parentCommentId ? "Responder" : "Comentar"}
-        </Button>
+          <Icone de={Send} tamanho="xs" />
+        </button>
+        {sugestoes.length > 0 ? (
+          <ul
+            id={`${id}-sugestoes`}
+            role="listbox"
+            aria-label="Pessoas para mencionar"
+            className={`flutuante surgir-rapido absolute left-0 z-20 w-full max-w-xs overflow-hidden p-1 ${presoNaBase ? "bottom-full mb-1" : "top-full mt-1"}`}
+          >
+            {sugestoes.map((membro, index) => (
+              <li key={membro.id} role="none">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={index === sugestaoAtiva}
+                  data-highlighted={index === sugestaoAtiva ? "" : undefined}
+                  onMouseEnter={() => setSugestaoAtiva(index)}
+                  // pointerdown, não click: o click tiraria o foco do campo antes de escolher.
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    mencionar(membro);
+                  }}
+                  className="item-menu w-full"
+                >
+                  <ActorAvatar kind="member" name={membro.displayName} />
+                  <span className="min-w-0 flex-1 truncate">{membro.displayName}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </div>
+      {onDone ? (
+        <div className="flex justify-end">
+          <Button size="sm" variant="ghost" onClick={onDone}>
+            Cancelar
+          </Button>
+        </div>
+      ) : null}
     </form>
   );
 }
 
-/** Os Comentários em fios: raiz, respostas, resolver. Resolvido recolhe. */
+/**
+ * Os Comentários como CONVERSA: uma coluna de altura fixa em que as mensagens
+ * rolam e o compositor fica preso na base — o mesmo desenho da Caixa de
+ * Entrada. O que é seu vem à direita no lavado do acento; o dos outros vem à
+ * esquerda. Os fios continuam: a resposta recua sob a raiz, "Responder" e
+ * "Resolver" ficam sob o último balão do fio, e o fio resolvido recolhe numa
+ * linha só.
+ */
 export function TaskComments({
   task,
   report,
   authorLabel,
   readOnly,
+  antes,
 }: {
   readonly task: Task;
   readonly report: Report;
   readonly authorLabel: (actor: ActorRef) => string;
   readonly readOnly: boolean;
+  /** O que vem antes das mensagens na mesma rolagem — a Atividade recolhida. */
+  readonly antes?: React.ReactNode;
 }) {
   const run = useRun();
+  // O Comentário recém-enviado surge; os outros já estão.
+  const recente = useRecente();
   const fmt = useFormat();
+  const { memberId } = useSession();
   const members = useData((data) => data.members);
   const agentes = useData((data) => data.agents);
   const [respondendo, setRespondendo] = useState<string | null>(null);
+  const rolagem = useRef<HTMLDivElement>(null);
+  // O feedback das ações da conversa fica NA conversa, acima do compositor —
+  // um Toast lá no centro da tela ficaria longe de onde a pessoa está.
+  const [aviso, setAviso] = useState<{ tone: "success" | "error"; text: string } | null>(null);
+  const reportar: Report = (result, message) => {
+    setAviso(result.ok ? { tone: "success", text: message } : { tone: "error", text: result.error ?? "Não foi possível concluir a operação." });
+  };
+  void report;
 
   const vivos = task.comments.filter((c) => !c.deletedAt);
   const raizes = vivos.filter((c) => !c.parentCommentId).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const respostasDe = (id: string) => vivos.filter((c) => c.parentCommentId === id).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const nomeDaMencao = (m: { readonly type: string; readonly id: string }) =>
     m.type === "member" ? (members.find((x) => x.id === m.id)?.displayName ?? m.id) : m.id;
+  const minha = (c: (typeof vivos)[number]) => c.author.kind === "member" && c.author.id === memberId;
+
+  // A rolagem tem três casos, e a ordem importa:
+  //  · na MONTAGEM com #comentario-<id> na URL (link de Notificações), rola até
+  //    o comentário — o Next faz isso no layout, e um scrollTop=scrollHeight
+  //    passivo depois desfaria;
+  //  · chegou comentário RAIZ novo: desce ao fim, como um chat;
+  //  · chegou RESPOSTA: rola até ela, sem pular para o fim de um fio alheio.
+  //  Remoções não mexem na rolagem.
+  const contagemAnterior = useRef<number | null>(null);
+  useEffect(() => {
+    const el = rolagem.current;
+    if (!el) return;
+    const anterior = contagemAnterior.current;
+    contagemAnterior.current = vivos.length;
+    if (anterior === null) {
+      const alvo = window.location.hash.startsWith("#comentario-") ? document.getElementById(window.location.hash.slice(1)) : null;
+      if (alvo && el.contains(alvo)) alvo.scrollIntoView({ block: "center" });
+      else el.scrollTop = el.scrollHeight;
+      return;
+    }
+    if (vivos.length <= anterior) return;
+    const novo = [...vivos].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+    if (novo && novo.parentCommentId) document.getElementById(`comentario-${novo.id}`)?.scrollIntoView({ block: "nearest" });
+    else el.scrollTop = el.scrollHeight;
+  }, [vivos]);
 
   const resolver = (id: string, resolved: boolean) =>
-    report(
-      run((data, memberId) => resolveTaskComment(data, memberId, task.id, id, resolved)),
+    reportar(
+      run((data, actor) => resolveTaskComment(data, actor, task.id, id, resolved)),
       resolved ? "Fio resolvido." : "Fio reaberto.",
     );
 
-  // Cada Comentário é uma peça de bloco que não clica; a resposta recua à direita.
-  const Bolha = ({ comment, resposta }: { readonly comment: (typeof vivos)[number]; readonly resposta?: boolean }) => (
-    <div
-      id={`comentario-${comment.id}`}
-      className={`item-solto scroll-mt-4 ${resposta ? "ml-6" : ""}`}
-      data-bloco="true"
-      data-estatico="true"
-    >
-      <p className="app-meta">
-        {authorLabel(comment.author)}
-        {comment.authorDelegate ? ` · em nome de ${authorLabel(comment.authorDelegate)}` : ""} · {fmt.relative(comment.createdAt)}
-        {comment.mentions.length > 0 ? ` · mencionou ${comment.mentions.map(nomeDaMencao).join(", ")}` : ""}
-      </p>
-      <p className="app-base mt-1 whitespace-pre-wrap" style={{ color: "var(--texto)" }}>
-        {comment.content}
-      </p>
-    </div>
-  );
+  // O balão: o seu à direita no acento, o dos outros à esquerda na superfície.
+  const Balao = ({ comment, resposta }: { readonly comment: (typeof vivos)[number]; readonly resposta?: boolean }) => {
+    const meu = minha(comment);
+    return (
+      <div id={`comentario-${comment.id}`} className={`flex scroll-mt-4 ${meu ? "justify-end" : "justify-start"} ${resposta ? (meu ? "mr-5" : "ml-5") : ""}${comment.id === recente ? " surgir" : ""}`}>
+        <div
+          className={`min-w-0 max-w-[88%] rounded-[var(--r-painel)] px-3 py-2 ${meu ? "rounded-br-md" : "rounded-bl-md"}`}
+          style={{
+            background: meu ? "var(--acento-lavado)" : "var(--superficie-2)",
+            border: `1px solid ${meu ? "var(--linha-acento)" : "var(--linha)"}`,
+          }}
+        >
+          <p className="app-base whitespace-pre-wrap break-words" style={{ color: "var(--texto)" }}>
+            {comment.content}
+          </p>
+          <p className="app-meta mt-1">
+            {meu ? "Você" : authorLabel(comment.author)}
+            {comment.authorDelegate ? ` · em nome de ${authorLabel(comment.authorDelegate)}` : ""} · {fmt.relative(comment.createdAt)}
+            {comment.mentions.length > 0 ? ` · mencionou ${comment.mentions.map(nomeDaMencao).join(", ")}` : ""}
+          </p>
+        </div>
+      </div>
+    );
+  };
 
   return (
-    <div className="grid gap-4">
-      {raizes.length === 0 ? (
-        <EmptyState compact title="Nenhum Comentário ainda." />
-      ) : (
-        <ul className="pilha-solta">
-          {raizes.map((raiz) => {
-            const respostas = respostasDe(raiz.id);
-            const resolvido = raiz.resolved !== undefined;
-            return (
-              <li key={raiz.id} className="grid gap-2">
-                {resolvido ? (
-                  <details className="painel px-3 py-2">
-                    <summary className="app-meta flex cursor-pointer flex-wrap items-center gap-2">
-                      <Icone de={Check} tamanho="xs" style={{ color: "var(--sucesso)" }} />
-                      Fio resolvido por {members.find((m) => m.id === raiz.resolved?.by)?.displayName ?? agentes.find((a) => a.id === raiz.resolved?.by)?.name ?? "—"} · {raiz.content.slice(0, 60)}
-                      {raiz.content.length > 60 ? "…" : ""}
-                      {respostas.length > 0 ? ` · ${respostas.length} resposta(s)` : ""}
-                    </summary>
-                    <div className="mt-2 grid gap-2">
-                      <Bolha comment={raiz} />
-                      {respostas.map((r) => <Bolha key={r.id} comment={r} resposta />)}
-                      {readOnly ? null : (
-                        <span>
-                          <Button onClick={() => resolver(raiz.id, false)} icon={<Icone de={RotateCcw} tamanho="xs" />}>
-                            Reabrir fio
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div ref={rolagem} className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-3">
+        {antes}
+        {raizes.length === 0 ? (
+          <EmptyState compact title="Nenhum Comentário ainda." hint={readOnly ? undefined : "O que você escrever aqui fica na Tarefa, com autor e hora."} />
+        ) : (
+          <ol className="grid gap-4">
+            {raizes.map((raiz) => {
+              const respostas = respostasDe(raiz.id);
+              const resolvido = raiz.resolved !== undefined;
+              return (
+                <li key={raiz.id} className="grid gap-2">
+                  {resolvido ? (
+                    <details className="painel px-3 py-2">
+                      <summary className="app-meta flex cursor-pointer flex-wrap items-center gap-2">
+                        <Icone de={Check} tamanho="xs" style={{ color: "var(--sucesso)" }} />
+                        Fio resolvido por {members.find((m) => m.id === raiz.resolved?.by)?.displayName ?? agentes.find((a) => a.id === raiz.resolved?.by)?.name ?? "—"} · {raiz.content.slice(0, 48)}
+                        {raiz.content.length > 48 ? "…" : ""}
+                        {respostas.length > 0 ? ` · ${respostas.length} resposta(s)` : ""}
+                      </summary>
+                      <div className="mt-2 grid gap-2">
+                        <Balao comment={raiz} />
+                        {respostas.map((r) => <Balao key={r.id} comment={r} resposta />)}
+                        {readOnly ? null : (
+                          <span>
+                            <Button size="sm" variant="ghost" onClick={() => resolver(raiz.id, false)} icon={<Icone de={RotateCcw} tamanho="xs" />}>
+                              Reabrir fio
+                            </Button>
+                          </span>
+                        )}
+                      </div>
+                    </details>
+                  ) : (
+                    <>
+                      <Balao comment={raiz} />
+                      {respostas.map((r) => <Balao key={r.id} comment={r} resposta />)}
+                      {readOnly ? null : respondendo === raiz.id ? (
+                        <div className="ml-5">
+                          <CommentComposer
+                            task={task}
+                            report={reportar}
+                            parentCommentId={raiz.id}
+                            onDone={() => {
+                              setRespondendo(null);
+                              // O foco volta ao botão que abriu o compositor, não para o body.
+                              window.setTimeout(() => document.getElementById(`responder-${raiz.id}`)?.querySelector("button")?.focus({ preventScroll: true }), 0);
+                            }}
+                            autoFocus
+                          />
+                        </div>
+                      ) : (
+                        <span className={`flex gap-1 ${minha(respostas.at(-1) ?? raiz) ? "justify-end" : "ml-5"}`}>
+                          <span id={`responder-${raiz.id}`} className="contents">
+                            <Button size="sm" variant="ghost" onClick={() => setRespondendo(raiz.id)} icon={<Icone de={MessageSquareReply} tamanho="xs" />}>
+                              Responder
+                            </Button>
+                          </span>
+                          <Button size="sm" variant="ghost" onClick={() => resolver(raiz.id, true)} icon={<Icone de={Check} tamanho="xs" />}>
+                            Resolver
                           </Button>
                         </span>
                       )}
-                    </div>
-                  </details>
-                ) : (
-                  <>
-                    <Bolha comment={raiz} />
-                    {respostas.map((r) => <Bolha key={r.id} comment={r} resposta />)}
-                    {readOnly ? null : respondendo === raiz.id ? (
-                      <div className="ml-6">
-                        <CommentComposer
-                          task={task}
-                          report={report}
-                          parentCommentId={raiz.id}
-                          onDone={() => {
-                            setRespondendo(null);
-                            // O foco volta ao botão que abriu o compositor, não para o body.
-                            window.setTimeout(() => document.getElementById(`responder-${raiz.id}`)?.querySelector("button")?.focus(), 0);
-                          }}
-                          autoFocus
-                        />
-                      </div>
-                    ) : (
-                      <span className="ml-6 flex gap-2">
-                        <span id={`responder-${raiz.id}`} className="contents">
-                          <Button onClick={() => setRespondendo(raiz.id)} icon={<Icone de={MessageSquareReply} tamanho="xs" />}>
-                            Responder
-                          </Button>
-                        </span>
-                        <Button onClick={() => resolver(raiz.id, true)} icon={<Icone de={Check} tamanho="xs" />}>
-                          Resolver
-                        </Button>
-                      </span>
-                    )}
-                  </>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+                    </>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </div>
+      {readOnly ? (
+        <p className="app-meta shrink-0 px-3 py-2" style={{ borderTop: "1px solid var(--linha)" }}>
+          Você não comenta nesta Tarefa.
+        </p>
+      ) : (
+        <div className="shrink-0 p-3" style={{ borderTop: "1px solid var(--linha)" }}>
+          {aviso ? (
+            <div className="mb-2">
+              <Toast tone={aviso.tone} onDismiss={() => setAviso(null)}>
+                {aviso.text}
+              </Toast>
+            </div>
+          ) : null}
+          <CommentComposer task={task} report={reportar} presoNaBase />
+        </div>
       )}
-      {readOnly ? null : <CommentComposer task={task} report={report} />}
     </div>
   );
+}
+
+/** Sem acento e em minúsculas, para o "@" achar "Galvão" por "galvao". */
+function normalizar(texto: string): string {
+  return texto.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase("pt-BR");
 }
