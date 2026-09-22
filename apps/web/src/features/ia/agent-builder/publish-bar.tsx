@@ -86,7 +86,7 @@ export function PublishBar({
             disabled ? "cursor-not-allowed opacity-60" : "hover:bg-[#6d31d6]"
           }`}
         >
-          {publishing ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
+          {publishing ? <Loader2 className="girando size-4" aria-hidden="true" /> : null}
           {publishing ? "Publicando…" : "Publicar agente"}
         </button>
       </div>

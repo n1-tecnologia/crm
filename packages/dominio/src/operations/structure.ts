@@ -97,6 +97,16 @@ export function createSpace(
     statusSet,
   };
   state.spaces.push(space);
+  // Todo Espaço nasce com o Tipo padrão da plataforma, como os do seed. Sem
+  // ele, nenhuma Lista abaixo aceita Tarefa: a criação recusa "sem Tipo".
+  state.taskTypes.push({
+    id: nextId("tt"),
+    name: "Tarefa",
+    icon: "circle-check",
+    isPlatformDefault: true,
+    definedAtType: "space",
+    definedAtId: space.id,
+  });
 
   // O Template cria as Pastas que declara, cada uma com a mesma Proveniência.
   for (const name of template?.creates?.folders ?? []) {

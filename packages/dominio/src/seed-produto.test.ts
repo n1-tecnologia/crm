@@ -45,6 +45,11 @@ describe("seed do produto", () => {
     expect(dangling).toEqual([]);
     // O CRM inteiro fica: o Comercial se apoia nele.
     expect(state.deals.length).toBeGreaterThan(0);
+    // As Ferramentas do CRM também: Comunidade + 3 Turmas + avisos + importado, o Link e o Flow.
+    expect(state.grupos.length).toBe(5);
+    expect(state.comunidades.length).toBe(1);
+    expect(state.linksDeCaptacao.length).toBe(1);
+    expect(state.flows.length).toBe(1);
     expect(state.conversations.length).toBeGreaterThan(0);
     // As Automações de Funil que criam Tarefas apontam para as Listas do espelho.
     for (const a of state.automations.filter((x) => x.scopeType === "funnel")) {

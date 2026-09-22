@@ -465,5 +465,5 @@ export function createReceivableSeries(state: DataState, actingMemberId: Id, inp
     objectName: "Contas a receber",
     detail: `${nome}: ${input.valorEntrada !== undefined ? "entrada + " : ""}${input.parcelas} parcela(s) de ${brl.format(input.valorParcela)}`,
   });
-  return ok(criadas);
+  return ok(criadas, criadas[0]?.id);
 }

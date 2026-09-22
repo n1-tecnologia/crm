@@ -42,14 +42,16 @@
     color: var(--texto);
   }
 
-  /* Rótulo de grupo da barra lateral e cabeçalho de seção. */
+  /* Rótulo de grupo da barra lateral e cabeçalho de seção. Como se escreve:
+     nada de caixa alta nem espaçamento largo — o usuário achou os títulos
+     "feios", e um rótulo em caixa alta grita mais do que informa. */
   .ed-secao {
-    font-size: var(--ed-secao);
-    line-height: 1rem;
+    font-size: var(--app-sm);
+    line-height: var(--app-sm-lh);
     font-weight: 600;
-    letter-spacing: var(--tr-rotulo);
-    text-transform: uppercase;
-    color: var(--texto-4);
+    letter-spacing: normal;
+    text-transform: none;
+    color: var(--texto-3);
   }
 
   /* Sobre-título de seção — com ícone à esquerda */
@@ -57,11 +59,11 @@
     display: inline-flex;
     align-items: center;
     gap: var(--e-3);
-    font-size: var(--ed-eyebrow);
-    line-height: 1rem;
+    font-size: var(--app-sm);
+    line-height: var(--app-sm-lh);
     font-weight: 500;
-    letter-spacing: var(--tr-secao);
-    text-transform: uppercase;
+    letter-spacing: normal;
+    text-transform: none;
     color: var(--texto-3);
   }
 
@@ -95,15 +97,15 @@
     font-weight: 500;
   }
 
-  /* Cabeçalho de coluna de tabela — o único lugar denso que mantém tracking,
-     porque é rótulo, não dado. */
+  /* Rótulo pequeno (régua de seção, categoria, cabeçalho de coluna): texto
+     como se escreve, peso firme, cor de rótulo. */
   .app-coluna {
     font-size: var(--app-xs);
     line-height: var(--app-xs-lh);
     font-weight: 600;
-    letter-spacing: var(--tr-meta);
-    text-transform: uppercase;
-    color: var(--texto-4);
+    letter-spacing: normal;
+    text-transform: none;
+    color: var(--texto-3);
   }
 
   /* Meta: autor, data, contador — sempre em texto-4 */

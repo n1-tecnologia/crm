@@ -162,7 +162,8 @@ describe("os componentes leem token, nunca cor nem geometria literal", () => {
   });
 
   it("todo diálogo modal gerencia o foco", () => {
-    const modals = source.match(/^\s+aria-modal="true"$/gm) ?? [];
+    // Durante a saída (`usePresenca`) o diálogo deixa de ser modal: `aria-modal={saindo ? undefined : "true"}`.
+    const modals = source.match(/^\s+aria-modal=(?:"true"|\{saindo \? undefined : "true"\})$/gm) ?? [];
     const calls = source.match(/^\s+useModal\(/gm) ?? [];
     expect(modals.length).toBeGreaterThan(0);
     expect(calls.length).toBe(modals.length);

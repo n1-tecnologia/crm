@@ -10,19 +10,22 @@
 @layer components {
   /* ── Botão ─────────────────────────────────────────────────────────────── */
 
+  /* Botão PADRÃO, sem agressividade: texto como se escreve (nada de caixa
+     alta nem espaçamento largo), peso médio, respiro lateral curto. O que
+     diferencia as variantes é a cor, não a tipografia. */
   .btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: var(--e-2);
     height: var(--controle-h);
-    padding-inline: var(--e-5);
+    padding-inline: var(--e-4);
     border-radius: var(--r-controle);
     border: 1px solid transparent;
     font-size: var(--app-sm);
     font-weight: 500;
-    letter-spacing: var(--tr-rotulo);
-    text-transform: uppercase;
+    letter-spacing: normal;
+    text-transform: none;
     white-space: nowrap;
     cursor: pointer;
     transition:
@@ -41,7 +44,12 @@
   .btn-sm {
     height: var(--controle-h-sm);
     padding-inline: var(--e-3);
-    letter-spacing: var(--tr-meta);
+  }
+  /* Na barra de 44px todo botão é pequeno, seja qual for o `size` que a tela
+     pediu: um botão cheio ali parece a ação da página inteira. */
+  .acoes-de-tela .btn {
+    height: var(--controle-h-sm);
+    padding-inline: var(--e-3);
   }
 
   /* Contorno — a variante primária do sistema */
@@ -64,7 +72,6 @@
   .btn-solido {
     background: var(--degrade-acento);
     color: var(--sobre-degrade);
-    font-weight: 600;
     box-shadow: var(--sombra-repouso);
   }
   .btn-solido:hover:not(:disabled):not([aria-disabled="true"]) {
@@ -93,9 +100,6 @@
   /* Sutil — barra de ferramentas densa */
   .btn-sutil {
     color: var(--texto-3);
-    text-transform: none;
-    letter-spacing: normal;
-    font-size: var(--app-base);
     padding-inline: var(--e-3);
   }
   .btn-sutil:hover:not(:disabled):not([aria-disabled="true"]) {
@@ -141,6 +145,24 @@
   }
 
   /* Sem borda, sem lift — para barra de ferramentas densa */
+  /* O botão de enviar dentro do campo: pequeno, sólido no acento, apagado sem texto. */
+  .btn-icone-enviar {
+    width: var(--controle-h-sm);
+    height: var(--controle-h-sm);
+    border-color: transparent;
+    background: var(--degrade-acento);
+    color: var(--sobre-degrade);
+  }
+  .btn-icone-enviar:hover:not(:disabled) {
+    background: var(--degrade-acento-hover);
+    color: var(--sobre-degrade);
+    border-color: transparent;
+  }
+  .btn-icone-enviar:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    transform: none;
+  }
   .btn-icone-nu {
     border-color: transparent;
     border-radius: var(--r-controle);
@@ -342,7 +364,7 @@
     gap: var(--e-1);
     height: var(--pilula-h);
     padding-inline: var(--e-3);
-    border-radius: var(--r-pilula);
+    border-radius: var(--r-etiqueta);
     font-size: var(--app-xs);
     line-height: 1;
     font-weight: 500;
@@ -378,6 +400,8 @@
     background: var(--veu-cor);
     backdrop-filter: blur(2px);
     -webkit-backdrop-filter: blur(2px);
+    /* entrada do véu: 300ms (o backdrop-filter não é animado) */
+    animation: aparecer var(--dur-2) var(--easing);
   }
 
   .flutuante {
@@ -385,6 +409,98 @@
     border: 1px solid var(--linha);
     border-radius: var(--r-painel);
     box-shadow: var(--sombra-suspensa);
+  }
+
+  /* Saída de SidePanel/ConfirmDialog: 150ms, só opacidade, véu e superfície
+     juntos. A raiz recebe `data-estado="saindo"` (`usePresenca`) e desmonta
+     em seguida — por isso este `forwards` é permitido. */
+  [data-estado="saindo"] > :is(.veu, .flutuante) {
+    animation: sumir var(--dur-1) var(--easing) forwards;
+    pointer-events: none;
+  }
+
+  /* ── Toast ─────────────────────────────────────────────────────────────── */
+
+  /* A régua de tempo é folha real, não pseudo: precisa de `animationend`.
+     Medidor: linear. Parar o ponteiro em cima congela o prazo. */
+  .regua-tempo {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: var(--fio);
+    background: var(--linha-acento);
+    border-radius: 0 0 var(--r-painel) var(--r-painel);
+    transform-origin: left;
+    animation: regua-tempo var(--duracao-aviso) linear forwards;
+  }
+  @keyframes regua-tempo {
+    from {
+      transform: scaleX(1);
+    }
+    to {
+      transform: scaleX(0);
+    }
+  }
+  .aviso:is(:hover, :focus-within) > .regua-tempo {
+    animation-play-state: paused;
+  }
+  .aviso[data-estado="saindo"] {
+    animation: sumir var(--dur-1) var(--easing) forwards;
+    pointer-events: none;
+  }
+
+  .btn[aria-busy="true"] {
+    cursor: progress;
+  }
+
+  /* ── Barra de rota e luz do trilho ─────────────────────────────────────── */
+
+  /* Folha sem descendentes: transform em repouso permitido (como .seta-recolhe).
+     Irmã de <main>, nunca dentro dele (rolaria com o conteúdo). */
+  .barra-progresso {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--fio);
+    background: var(--acento);
+    box-shadow: var(--brilho-fio);
+    transform-origin: left;
+    transform: scaleX(0);
+    opacity: 0;
+    z-index: var(--z-progresso);
+    pointer-events: none;
+  }
+  /* Os 150ms de delay são a CARÊNCIA: navegação que termina antes nunca mostra a barra. */
+  .barra-progresso[data-estado="pendente"] {
+    opacity: 1;
+    transform: scaleX(0.8);
+    transition:
+      transform var(--dur-progresso) var(--easing-saida) var(--dur-1),
+      opacity var(--dur-1) var(--easing) var(--dur-1);
+  }
+  .barra-progresso[data-estado="concluindo"] {
+    opacity: 0;
+    transform: scaleX(1);
+    transition:
+      transform var(--dur-1) var(--easing),
+      opacity var(--dur-2) var(--easing) var(--dur-1);
+  }
+
+  /* A luz que desliza entre os assuntos do trilho (folha; anima `top`, não transform). */
+  .trilho-luz {
+    position: absolute;
+    left: 0;
+    width: var(--fio);
+    height: var(--trilho-luz-h);
+    border-radius: var(--r-pilula);
+    background: var(--acento);
+    box-shadow: var(--brilho-fio);
+    transition:
+      top var(--dur-2) var(--easing),
+      opacity var(--dur-1) var(--easing);
+    pointer-events: none;
   }
 
   .item-menu {
@@ -452,8 +568,26 @@
     height: var(--linha-altura);
     padding-inline: var(--celula-x);
     background: var(--page);
-    border-bottom: 1px solid var(--linha);
+    border-bottom: 1px solid var(--linha-forte);
     white-space: nowrap;
+    /* Título de coluna como se escreve — sem caixa alta nem espaçamento largo
+       (vence o .app-coluna que as telas põem no <th>). */
+    font-size: var(--app-sm);
+    line-height: var(--app-sm-lh);
+    font-weight: 500;
+    letter-spacing: normal;
+    text-transform: none;
+    color: var(--texto-2);
+  }
+  /* As divisões entre colunas: um traço curto entre um título e o próximo. */
+  .tabela thead th:not(:first-child):not([data-vazia]):not([data-vazia] + th)::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 25%;
+    height: 50%;
+    width: 1px;
+    background: var(--linha-forte);
   }
   .tabela tbody tr {
     background: var(--superficie-1);
@@ -572,4 +706,20 @@
     padding: var(--gap-solto) var(--celula-x) var(--celula-x);
     --corpo-pad-topo: var(--gap-solto);
   }
+}
+
+/* ── Rolagem lateral com a barra em cima ─────────────────────────────────── */
+/* A faixa de cima é a barra visível; o corpo rola junto, sem barra própria.
+   A faixa só existe (hidden) quando o conteúdo transborda. */
+.rolagem-no-topo-barra {
+  overflow-x: auto;
+  overflow-y: hidden;
+  height: calc(var(--barra-rolagem-w) + 4px);
+  margin-bottom: var(--e-2);
+  scrollbar-width: thin;
+}
+.rolagem-no-topo-corpo {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: var(--e-2);
 }

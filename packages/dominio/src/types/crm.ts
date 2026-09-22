@@ -3,6 +3,7 @@
  * Ontology: documentos 09–14, A4.4, A4.5, B8–B14, B50–B70.
  */
 
+import type { EnvioDeFlow, RespostaDeFlow } from "./ferramentas";
 import type {
   ActorRef,
   Attachment,
@@ -119,7 +120,9 @@ export type ContactCreationMode =
   | "importacao"
   | "automaticoPorMensagem"
   | "automaticoPorAutomacaoOuAgente"
-  | "desdobradoDeMesclagem";
+  | "desdobradoDeMesclagem"
+  /** RN-GRP-10 — nasceu de uma Participação ou de um Pedido de Entrada em Grupo. */
+  | "automaticoPorGrupo";
 
 export interface Contact extends Omit<RecordBase, "lifecycle"> {
   lifecycle: CrmLifecycle;
@@ -450,6 +453,10 @@ export interface Message {
   readonly createdAt: Instant;
   anonymized?: boolean;
   provenance?: Provenance;
+  /** 23, 7.6 — a Mensagem `enviada` leva um Flow (e um Anexo `flow`). */
+  flow?: EnvioDeFlow;
+  /** 23, 7.6 — a Mensagem `recebida` traz a Resposta de Flow como conteúdo estruturado. */
+  respostaDeFlow?: RespostaDeFlow;
 }
 
 /** Documento 14, 7.7 — identity is the pair (conversation, subject). */
