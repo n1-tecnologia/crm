@@ -68,6 +68,11 @@ function criarTarefaDeTeste(titulo: string, centroDeCusto = "TRIA") {
 const TAREFA_PRINCIPAL = criarTarefaDeTeste("Solicitação de teste — principal");
 // Tarefa dedicada à idempotência de comentário — (h)/(i), nunca tocada por outro caso.
 const TAREFA_COMENTARIOS = criarTarefaDeTeste("Solicitação de teste — comentários");
+// Tarefa dedicada às escritas de (d). Precisa nascer AQUI, em escopo de módulo:
+// `beforeAll` chama `semear()` uma vez, e só o que já está na semente naquele
+// instante chega ao banco. Criada dentro do `it()`, ela existiria apenas em
+// memória e a rota — que lê o Postgres — responderia 404.
+const TAREFA_ESCRITAS = criarTarefaDeTeste("Solicitação de teste — caso (d) escritas");
 // Tarefa dedicada ao erro interno — (l): seu Status é corrompido via SQL direto, nunca lida por outro caso.
 const TAREFA_ERRO_INTERNO = criarTarefaDeTeste("Solicitação de teste — erro interno");
 const VALOR_HOSTIL_CENTAVOS = "987654"; // 9876.54 em reais — string de busca no corpo do erro (caso l).
@@ -314,7 +319,7 @@ d("rotasDeIntegracaoDeSolicitacoes — com banco real", () => {
     });
 
     it("createComment / addTaskTag / updateTaskDueDate / updateTaskStatus", async () => {
-      const tarefa = criarTarefaDeTeste("Solicitação de teste — caso (d) escritas");
+      const tarefa = TAREFA_ESCRITAS;
 
       const comentario = await appDeTeste().inject({
         method: "POST",
