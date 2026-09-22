@@ -39,10 +39,10 @@ import { formBySecret, submitForm, type SubmitFormAttachment } from "@n1/dominio
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { pool } from "../persistencia/conexao";
 import { hidratar } from "../persistencia/repositorio";
-import { consumirSessao, objetosDaSessao } from "../persistencia/sessoes-de-upload";
+import { consumirSessao, garantirSessao, objetosDaSessao } from "../persistencia/sessoes-de-upload";
 import { executar, type ResultadoTransacao } from "../persistencia/unidade-de-trabalho";
 import { criarLimiteDeTaxa, type LimiteDeTaxa } from "../servicos/limite-de-taxa";
-import { abrirSessaoDeUpload, confirmarObjeto, emitirTicket, TIPOS_ACEITOS } from "../servicos/storage-uploads";
+import { abrirSessaoDeUpload, confirmarObjeto, emitirTicket, TIPOS_ACEITOS, TTL_UPLOAD } from "../servicos/storage-uploads";
 import { CORPO_SUBMISSAO, CORPO_TICKET, PARAMS_SEGREDO } from "./esquemas/formularios-publicos";
 
 const ROTA = {
@@ -269,6 +269,13 @@ export async function rotasDeFormulariosPublicos(app: FastifyInstance, opcoes: O
     // `../persistencia/unidade-de-trabalho.ts`) — uma recusa de domínio deixa a sessão livre para retry (caso h).
     let transacao: ResultadoTransacao<Task>;
     try {
+      // A sessão pode ainda não existir: sem anexo, `pedirTicket` nunca é chamado e nada a criou. O
+      // `submissionId` vem do cliente e é estável em todo retry — é ele que dá idempotência ao envio, e
+      // por isso não se pode simplesmente pular `consumirSessao` quando não há arquivo (dois cliques
+      // criariam duas Solicitações). `garantirSessao` fecha a lacuna verificando o escopo: uma sessão de
+      // outro Espaço ou outro Formulário é recusada, não reaproveitada.
+      await garantirSessao({ id: submissionId, workspaceId, formId: form.id, ttlSegundos: TTL_UPLOAD });
+
       transacao = await executar(
         workspaceId,
         (estadoDaTransacao) => submitForm(estadoDaTransacao, params.data.secret, { answers: body.data.answers, attachments: anexosConfirmados }),

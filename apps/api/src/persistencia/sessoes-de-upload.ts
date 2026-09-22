@@ -129,6 +129,52 @@ export async function criarSessao(
 }
 
 /**
+ * Garante que existe uma sessão com ESTE id, para este Formulário.
+ *
+ * Por que existe: o Formulário público gera um `submissionId` estável no
+ * cliente (`crypto.randomUUID()`) e o manda em todo retry — é ele que dá
+ * idempotência ao envio. Quando a Solicitação não tem anexo, `pedirTicket`
+ * nunca é chamado e nenhuma sessão nasce; sem esta função, `consumirSessao`
+ * não acharia nada e todo envio sem arquivo receberia 409 (o caminho mais
+ * comum do Formulário).
+ *
+ * O id vir do cliente é o custo de manter a idempotência, e por isso o
+ * escopo é verificado: uma sessão que já existe para OUTRO Espaço ou OUTRO
+ * Formulário é recusada em vez de reaproveitada — senão quem descobrisse o
+ * `submissionId` alheio poderia consumir a sessão de outra pessoa. O
+ * `on conflict do nothing` mantém a operação atômica sob corrida: dois
+ * envios simultâneos do mesmo id não criam duas linhas, e o segundo cai em
+ * `sessao_ja_consumida` na hora de consumir, como sempre.
+ */
+export async function garantirSessao(
+  args: {
+    readonly id: string;
+    readonly workspaceId: string;
+    readonly formId: string;
+    readonly ttlSegundos: number;
+  },
+  cliente?: PoolClient,
+): Promise<{ readonly id: string; readonly expiresAt: Date }> {
+  const exec = executor(cliente);
+  await exec.query(
+    `insert into plataforma.upload_sessions (id, workspace_id, form_id, expires_at)
+     values ($1, $2, $3, now() + make_interval(secs => $4))
+     on conflict (id) do nothing`,
+    [args.id, args.workspaceId, args.formId, args.ttlSegundos],
+  );
+  const resultado = await exec.query<{ workspace_id: string; form_id: string; expires_at: Date }>(
+    `select workspace_id, form_id, expires_at from plataforma.upload_sessions where id = $1`,
+    [args.id],
+  );
+  const linha = resultado.rows[0];
+  if (!linha) throw new Error(`sessao_inexistente: ${args.id}`);
+  if (linha.workspace_id !== args.workspaceId || linha.form_id !== args.formId) {
+    throw new Error(`sessao_de_outro_formulario: ${args.id}`);
+  }
+  return { id: args.id, expiresAt: linha.expires_at };
+}
+
+/**
  * Reserva um objeto para a sessão, `state='reservado'`. O `unique
  * (object_key)` da migração `003` recusa — erro de constraint, não valor de
  * retorno — reusar o mesmo caminho entre sessões: é a defesa de T-02-06
