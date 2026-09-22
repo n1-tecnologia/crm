@@ -211,3 +211,17 @@ export const criarLinkDeCaptacao = instrumentar("criarLinkDeCaptacao");
 export const editarLinkDeCaptacao = instrumentar("editarLinkDeCaptacao");
 export const enviarLinkALixeira = instrumentar("enviarLinkALixeira");
 export const restaurarLinkDaLixeira = instrumentar("restaurarLinkDaLixeira");
+
+// ferramentas/comunidades.ts
+export const criarComunidade = instrumentar("criarComunidade");
+export const sincronizarComunidade = instrumentar("sincronizarComunidade");
+export const editarComunidade = instrumentar("editarComunidade");
+export const alterarConfiguracoesDaComunidade = instrumentar("alterarConfiguracoesDaComunidade");
+export const vincularGrupoAComunidade = instrumentar("vincularGrupoAComunidade");
+export const desvincularGrupoDaComunidade = instrumentar("desvincularGrupoDaComunidade");
+export const enviarMensagemAComunidade = instrumentar("enviarMensagemAComunidade");
+export const sairDaComunidade = instrumentar("sairDaComunidade");
+export const arquivarComunidade = instrumentar("arquivarComunidade");
+export const restaurarComunidade = instrumentar("restaurarComunidade");
+export const enviarComunidadeALixeira = instrumentar("enviarComunidadeALixeira");
+export const restaurarComunidadeDaLixeira = instrumentar("restaurarComunidadeDaLixeira");

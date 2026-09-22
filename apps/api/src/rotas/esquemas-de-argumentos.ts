@@ -52,6 +52,7 @@ import { z } from "zod";
 import { AUTOMACOES } from "./esquemas/automacoes";
 import { CAPTACAO } from "./esquemas/captacao";
 import { COLABORACAO } from "./esquemas/colaboracao";
+import { COMUNIDADES } from "./esquemas/comunidades";
 import { CONFIGURACAO } from "./esquemas/configuracao";
 import { CONSTRUTOR_DE_AGENTES } from "./esquemas/construtor-de-agentes";
 import { CONTATOS } from "./esquemas/contatos";
@@ -93,6 +94,7 @@ export const ESQUEMAS = {
   ...ESTRUTURA,
   ...NOTAS,
   ...CAPTACAO,
+  ...COMUNIDADES,
 } satisfies EsquemasCompletos;
 
 /**

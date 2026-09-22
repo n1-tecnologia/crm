@@ -204,6 +204,24 @@ import { adicionarNotaNoAtivo } from "./ferramentas/notas";
 // receberPedidoDeEntrada e registrarEntradaNoGrupo, ver ferramentas/grupos.ts).
 import { criarLinkDeCaptacao, editarLinkDeCaptacao, enviarLinkALixeira, restaurarLinkDaLixeira } from "./ferramentas/captacao";
 
+// ── ferramentas/comunidades.ts ──────────────────────────────────────────
+// recusaDeVinculo (recusa pré-calculada) e resumoDaComunidade (leitura) ficam
+// de fora — mesmo critério do cabeçalho.
+import {
+  alterarConfiguracoesDaComunidade,
+  arquivarComunidade,
+  criarComunidade,
+  desvincularGrupoDaComunidade,
+  enviarComunidadeALixeira,
+  enviarMensagemAComunidade,
+  editarComunidade,
+  restaurarComunidade,
+  restaurarComunidadeDaLixeira,
+  sairDaComunidade,
+  sincronizarComunidade,
+  vincularGrupoAComunidade,
+} from "./ferramentas/comunidades";
+
 /**
  * Toda operação alcançável por HTTP. Assinatura comum:
  * `(state, actingMemberId, ...args) => OperationResult`.
@@ -372,6 +390,19 @@ export const OPERACOES = {
   editarLinkDeCaptacao,
   enviarLinkALixeira,
   restaurarLinkDaLixeira,
+  // ferramentas/comunidades.ts
+  criarComunidade,
+  sincronizarComunidade,
+  editarComunidade,
+  alterarConfiguracoesDaComunidade,
+  vincularGrupoAComunidade,
+  desvincularGrupoDaComunidade,
+  enviarMensagemAComunidade,
+  sairDaComunidade,
+  arquivarComunidade,
+  restaurarComunidade,
+  enviarComunidadeALixeira,
+  restaurarComunidadeDaLixeira,
 } as const satisfies Record<string, (state: DataState, actingMemberId: Id, ...args: any[]) => OperationResult<unknown>>;
 
 export type NomeDeOperacao = keyof typeof OPERACOES;
