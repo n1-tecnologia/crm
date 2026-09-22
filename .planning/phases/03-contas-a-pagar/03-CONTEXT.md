@@ -115,10 +115,23 @@ A regra de recorrência trata **fim de semana e nada mais**. `businessDays:
 "anterior"` continua como está; nenhuma tabela de feriados, nenhuma dependência
 de datas nova.
 
-Fundamento: o export real do ClickUp mostra 4 Tarefas vencendo em 2025-02-17
-(segunda-feira de Carnaval, não é fim de semana) **sem nenhum deslocamento** —
-é o que o processo faz hoje. Não há série mensal cruzando feriado nos dados,
-então não há evidência contrária.
+Fundamento (**corrigido em 2026-09-22 — a evidência original estava errada**):
+a pesquisa afirmou que 4 Tarefas venciam em 2025-02-17, "segunda-feira de
+Carnaval", sem deslocamento. Conferido contra o export real
+(`apps/api/exportacoes/clickup/901107637383/`, 2.859 Tarefas, 2.830 com
+vencimento, janela 2025-01-17 → 2026-10-15):
+
+- **2025-02-17 foi uma segunda-feira comum.** O Carnaval de 2025 caiu em 3 e 4
+  de março (Páscoa em 20/04). É o Carnaval de **2026** que cai em 16 e 17 de
+  fevereiro.
+- São **11** Tarefas nessa data, não 4.
+- **Nenhum** dos 2.830 vencimentos do export cai em feriado nacional, em 2025
+  ou 2026.
+
+Ou seja: o dado real **não decide a questão em direção nenhuma** — só mostra que
+o caso nunca ocorreu em 21 meses. A decisão de ignorar feriados continua válida
+pelo seu próprio custo-benefício (zero código, reversível barato), não pela
+evidência que a justificava.
 
 Consequência aceita: uma conta que vencer numa terça de Carnaval será tratada
 como dia útil. Se isso se revelar errado na operação, a correção é barata (uma
@@ -137,6 +150,22 @@ não confirmada e passa a ser regra travada, com teste que a prove.
 
 Motivo de não transbordar: transbordo gera duas cobranças perto da virada do
 mês — é o que a maioria dos sistemas financeiros evita.
+
+**Consequência que nenhum documento enunciava (achada no planejamento de 03-03):
+a saturação é absorvente.** O vencimento seguinte é calculado a partir do
+vencimento da ocorrência anterior (`spawnNextOccurrence` grava
+`dueDate: proximaData`), então a saturação se acumula — a série nunca volta ao
+dia 31. Com `businessDays: "anterior"`, a regra real do seed:
+
+```
+2026-01-31 → 2026-02-27 → 2026-03-27 → 2026-04-27 → 2026-05-27 → 2026-06-26
+```
+
+Uma conta "todo dia 31" vira conta do dia 26 em cinco meses. Isto **não**
+contradiz D3-07 — a saturação de um passo é exatamente o que foi travado — e não
+gera código novo. Corrigir exigiria guardar o dia âncora da série, o que é
+trabalho de outro plano. Fica registrado como candidato a decisão futura do
+dono; 03-03 pina o comportamento por teste com esse nome.
 
 ### D3-08 — A conversão Solicitação aprovada → Conta a pagar entra nesta fase
 
