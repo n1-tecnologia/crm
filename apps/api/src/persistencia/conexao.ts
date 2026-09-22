@@ -39,6 +39,24 @@ export function pool(): Pool {
       config.ssl = { rejectUnauthorized: false };
     }
     instancia = new Pool(config);
+
+    // O pooler do Supabase encerra conexão ociosa por desenho. Quando isso
+    // acontece com um cliente parado NO POOL, o `pg` emite `error` no próprio
+    // Pool — e um `error` sem ouvinte, em Node, é exceção não capturada: o
+    // processo inteiro cai. Sem este handler, o `apps/api` morreria sozinho
+    // depois de um período de baixo tráfego, sem nenhuma requisição envolvida.
+    //
+    // Não é hipótese: medido nesta base ao migrar `DATABASE_URL` para
+    // `aws-0-us-west-2.pooler.supabase.com`, uma execução da suíte produziu
+    // sete "Connection terminated unexpectedly". Com a conexão direta o
+    // sintoma era raro; pelo pooler é rotina — e a VPS (D-15) vai pelo pooler,
+    // porque `db.<ref>.supabase.co` só publica AAAA e não há garantia de IPv6.
+    //
+    // O Pool se recupera sozinho: descarta o cliente quebrado e abre outro na
+    // próxima aquisição. O que faltava era não morrer no caminho.
+    instancia.on("error", (erro) => {
+      console.error("[conexao] cliente ocioso do pool caiu (o pool se recompõe na próxima aquisição):", erro.message);
+    });
   }
   return instancia;
 }
