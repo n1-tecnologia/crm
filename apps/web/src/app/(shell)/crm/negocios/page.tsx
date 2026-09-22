@@ -15,6 +15,7 @@ import { useState } from "react";
 import { useData, useRun } from "@/dados/store";
 import { weightedValue } from "@n1/dominio/derive";
 import { DealCard, dealCardData } from "@/features/crm/deal-card";
+import { useRecente } from "@/features/shell/recente";
 import { moveDealToStage } from "@n1/dominio/operations";
 import { DEAL_SITUATION_LABEL } from "@/features/shell/format";
 import { useFormat } from "@/features/shell/use-format";
@@ -26,6 +27,7 @@ import {
   Icone,
   PageHeader,
   Pilula,
+  RolagemNoTopo,
   Section,
   Select,
   Toast,
@@ -42,6 +44,7 @@ const SITUACAO_COR: Record<string, string> = {
 };
 
 export default function NegociosPage() {
+  const recente = useRecente();
   const state = useData((data) => data);
   const fmt = useFormat();
   const run = useRun();
@@ -169,7 +172,8 @@ export default function NegociosPage() {
             hint="Um Negócio só existe dentro de uma Etapa: configure o Funil antes de criar."
           />
         ) : (
-          <div className="palco-quadro flex gap-4 overflow-x-auto pb-2">
+          <RolagemNoTopo>
+          <div className="flex gap-4">
             {stages.map((stage) => {
               const column = open.filter((deal) => deal.stageId === stage.id);
               const columnValue = column.reduce(
@@ -203,14 +207,7 @@ export default function NegociosPage() {
                         className="app-md flex items-center gap-1.5 truncate"
                         style={{ color: "var(--texto)" }}
                       >
-                        {stage.color ? (
-                          <span
-                            aria-hidden="true"
-                            className="pilula-ponto"
-                            style={{ backgroundColor: stage.color }}
-                          />
-                        ) : null}
-                        {stage.name}
+                        <Pilula {...(stage.color ? { cor: stage.color } : {})}>{stage.name}</Pilula>
                       </h2>
                       <span className="app-meta app-numero block truncate">
                         {stage.defaultProbability}% padrão ·{" "}
@@ -219,7 +216,7 @@ export default function NegociosPage() {
                     </span>
                   </div>
 
-                  <div className="pilha-solta">
+                  <div className="cascata pilha-solta">
                     {column.length === 0 ? (
                       <button
                         type="button"
@@ -242,6 +239,7 @@ export default function NegociosPage() {
                       column.map((deal) => (
                         <DealCard
                           key={deal.id}
+                          recente={deal.id === recente}
                           data={dealCardData(state, deal)}
                           href={`/crm/negocios/${deal.id}`}
                           onDragStart={() => setDragging(deal.id)}
@@ -261,6 +259,7 @@ export default function NegociosPage() {
               );
             })}
           </div>
+          </RolagemNoTopo>
         )}
 
         <div className="mt-6">
@@ -305,7 +304,6 @@ export default function NegociosPage() {
                           </span>
                           <Pilula
                             cor={SITUACAO_COR[deal.situation] ?? "var(--texto-3)"}
-                            comPonto
                             className="shrink-0"
                           >
                             {DEAL_SITUATION_LABEL[deal.situation]}

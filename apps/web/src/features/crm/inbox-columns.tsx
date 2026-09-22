@@ -18,8 +18,9 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { ArrowUpDown, Check, SlidersHorizontal, Star } from "lucide-react";
+import { ArrowUpDown, Check, SlidersHorizontal, Star, Users } from "lucide-react";
 import { useData, useRun, useSession } from "@/dados/store";
+import { useRecente } from "@/features/shell/recente";
 import { contactDisplayName } from "@n1/dominio/derive";
 import { CHANNEL_CAPABILITIES, toggleConversationStar } from "@n1/dominio/operations";
 import { CHANNEL_ICON } from "@/features/crm/conversation-thread";
@@ -79,6 +80,7 @@ export function InboxColumns({ children }: { readonly children: ReactNode }) {
   const state = useData((data) => data);
   const { memberId } = useSession();
   const run = useRun();
+  const recente = useRecente();
   const fmt = useFormat();
   const router = useRouter();
   const pathname = usePathname();
@@ -188,7 +190,7 @@ export function InboxColumns({ children }: { readonly children: ReactNode }) {
                 <span className="sr-only">Ordenar</span>
               </button>
               {ordenando ? (
-                <ul className="flutuante surgir absolute right-0 top-full z-20 mt-1 w-60 p-1">
+                <ul className="flutuante surgir-rapido absolute right-0 top-full z-20 mt-1 w-60 p-1">
                   {ORDENS.map((opcao) => (
                     <li key={opcao.value}>
                       <button
@@ -265,7 +267,7 @@ export function InboxColumns({ children }: { readonly children: ReactNode }) {
             />
           </div>
         ) : (
-          <ul className="pilha-solta relative min-h-0 flex-1 overflow-y-auto p-2">
+          <ul key={aba} className="cascata aparecer pilha-solta relative min-h-0 flex-1 overflow-y-auto p-2">
             {filtered.map((conversation) => {
               const contact = conversation.contactId
                 ? state.contacts.find((c) => c.id === conversation.contactId)
@@ -291,6 +293,7 @@ export function InboxColumns({ children }: { readonly children: ReactNode }) {
                   className="item-solto"
                   data-alinhamento="topo"
                   data-destacado={aberta || porLer > 0 ? "true" : undefined}
+                  data-recente={conversation.id === recente ? "true" : undefined}
                   style={{ paddingBlock: "var(--e-2)" }}
                 >
                   <input
@@ -320,6 +323,15 @@ export function InboxColumns({ children }: { readonly children: ReactNode }) {
                     <span className="relative shrink-0">
                       {contact ? (
                         <ContactAvatar contact={contact} />
+                      ) : conversation.groupIdentifier ? (
+                        // Conversa de grupo (INV-GRP-05): quem fala é o Grupo, não um Contato por resolver.
+                        <span
+                          className="grid size-7 place-items-center rounded-full"
+                          style={{ background: "var(--info-lavado)", color: "var(--info)" }}
+                          title="Conversa de grupo"
+                        >
+                          <Users className="size-3.5" />
+                        </span>
                       ) : (
                         <span
                           className="app-xs grid size-7 place-items-center rounded-full"
@@ -349,7 +361,7 @@ export function InboxColumns({ children }: { readonly children: ReactNode }) {
                         >
                           {contact
                             ? contactDisplayName(contact)
-                            : (conversation.unresolvedIdentifier?.value ?? "Contato não resolvido")}
+                            : (conversation.groupIdentifier?.name ?? conversation.unresolvedIdentifier?.value ?? "Contato não resolvido")}
                         </span>
                         <span className="app-meta app-numero shrink-0">
                           {fmt.relative(lastActivity(conversation))}

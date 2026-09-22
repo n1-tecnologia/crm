@@ -3,6 +3,7 @@ import { Suspense, type ReactNode } from "react";
 import { usuarioAtual } from "@/autenticacao/sessao";
 import { carregarEstadoInicial } from "@/dados/estado-inicial";
 import { SessaoProvider } from "@/dados/sessao-provider";
+import { EsqueletoDaCasca } from "@/design/esqueletos";
 import { AppShell } from "@/features/shell/app-shell";
 import { Painel } from "@/features/shell/ui";
 
@@ -60,19 +61,15 @@ export default async function ShellLayout({ children }: { readonly children: Rea
    */
   return (
     <SessaoProvider userId={usuario.id} inicial={inicial}>
-      <Suspense fallback={<ShellFallback />}>
+      <Suspense fallback={<EsqueletoDaCasca />}>
         <AppShell>{children}</AppShell>
       </Suspense>
     </SessaoProvider>
   );
 }
 
-function ShellFallback() {
-  return (
-    <div className="p-6">
-      <p role="status" className="text-[length:var(--texto-base)] text-[var(--cor-tinta-fraca)]">
-        Carregando a tela…
-      </p>
-    </div>
-  );
-}
+/*
+  O fallback é a casca inteira em silhueta (`EsqueletoDaCasca`): trilho, painel
+  e um miolo na forma de tabela. É o único HTML que o servidor entrega para as
+  rotas da casca — a casca lê `useSearchParams` e por isso não pré-renderiza.
+*/
