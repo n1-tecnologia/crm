@@ -39,6 +39,10 @@ import {
 } from "@/features/estrutura/collaboration-editors";
 import { SaveTemplateDialog } from "@/features/estrutura/template-dialogs";
 import { ShareTaskDialog } from "@/features/estrutura/share-task-dialog";
+import { DialogoFluxoManual, fluxoManualRecusado } from "@/features/tarefa/fluxo-manual-dialog";
+import { PainelAprovacao } from "@/features/tarefa/painel-aprovacao";
+import { Timeline } from "@/features/tarefa/timeline";
+import { PainelDeAnexos } from "@/features/tarefa/anexos";
 import { useState, type ReactNode } from "react";
 import {
   ArrowRight,
@@ -99,6 +103,7 @@ import {
   guestFieldWriter,
   parcelaDuplicada,
   statusOptionRefusal,
+  CP,
 } from "@n1/dominio/operations";
 import {
   ACTOR_KIND_LABEL,
@@ -187,6 +192,7 @@ export function TarefaCompleta({
   const [editing, setEditing] = useState(false);
   const [salvandoModelo, setSalvandoModelo] = useState(false);
   const [compartilhando, setCompartilhando] = useState(false);
+  const [fluxoManualAberto, setFluxoManualAberto] = useState(false);
   const [newChecklist, setNewChecklist] = useState("");
   const [newItem, setNewItem] = useState<Record<string, string>>({});
   const [newSubtask, setNewSubtask] = useState("");
@@ -252,6 +258,10 @@ export function TarefaCompleta({
   const definition = statusDefinition(state, task.listId, task.statusId);
   const tipoDaTarefa = state.taskTypes.find((t) => t.id === task.taskTypeId);
   const lenteFinanceira = financeProfileOf(task.listId);
+  // SOL-04 — a Timeline única e o download assinado do anexo só substituem os
+  // painéis desta Lista; outras Listas continuam com os dois painéis atuais
+  // (02-UI-SPEC.md proíbe redesenho geral da página da Tarefa).
+  const ehSolicitacaoDePagamento = task.listId === CP.listId;
   const checklist = checklistProgress(task);
   const subtasks = subtaskProgress(state, task.id);
   const level = taskLevel(state, task);
@@ -453,6 +463,13 @@ export function TarefaCompleta({
               : {}),
         },
         {
+          label: "Usar fluxo manual",
+          onSelect: () => setFluxoManualAberto(true),
+          ...(fluxoManualRecusado(state, memberId, task)
+            ? { disabledReason: fluxoManualRecusado(state, memberId, task) }
+            : {}),
+        },
+        {
           label: "Enviar à lixeira",
           onSelect: () => setConfirmingTrash(true),
           destructive: true,
@@ -565,6 +582,12 @@ export function TarefaCompleta({
         report={report}
         permitido={compartilharRecusado}
         revogarRecusado={revogarRecusado}
+      />
+      <DialogoFluxoManual
+        task={task}
+        open={fluxoManualAberto}
+        onClose={() => setFluxoManualAberto(false)}
+        report={report}
       />
       {lenteFinanceira ? (
         <ConfirmDialog
@@ -1013,6 +1036,8 @@ export function TarefaCompleta({
                   </p>
                 ) : null}
           </div>
+
+          <PainelAprovacao task={task} fmt={fmt} report={report} />
 
           <hr className="my-6 border-0" style={{ borderTop: "1px solid var(--linha)" }} />
 
@@ -1523,11 +1548,15 @@ export function TarefaCompleta({
 
             <section>
               <ReguaDeSecao rotulo="Anexos" contagem={task.attachments.length} />
-              <TaskAttachments
-                task={task}
-                report={report}
-                readOnly={!editavel}
-              />
+              {ehSolicitacaoDePagamento ? (
+                <PainelDeAnexos task={task} report={report} readOnly={!editavel} />
+              ) : (
+                <TaskAttachments
+                  task={task}
+                  report={report}
+                  readOnly={!editavel}
+                />
+              )}
             </section>
 
             <section>
@@ -1557,6 +1586,10 @@ export function TarefaCompleta({
           className="flex min-h-0 w-full shrink-0 flex-col max-h-[var(--conversa-empilhada-h)] @4xl:w-[26rem] @4xl:max-h-none"
           style={{ borderLeft: "1px solid var(--linha)", background: "var(--superficie-rebaixada)" }}
         >
+          {ehSolicitacaoDePagamento ? (
+            <Timeline task={task} fmt={fmt} readOnly={!comenta} />
+          ) : (
+          <>
           <CabecalhoDePainel
             titulo="Atividade"
             contagem={task.comments.filter((c) => !c.deletedAt).length + activity.length}
@@ -1618,6 +1651,8 @@ export function TarefaCompleta({
               </details>
             }
           />
+          </>
+          )}
         </aside>
       </div>
       </div>
