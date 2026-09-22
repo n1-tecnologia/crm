@@ -134,7 +134,7 @@ export default function ExecucaoPage({ params }: { params: Promise<{ execucao: s
         }
         title="Execução"
         seal={
-          <Pilula cor={STATE_COLOR[record.state]} comPonto>
+          <Pilula cor={STATE_COLOR[record.state]}>
             {STATE_LABEL[record.state] ?? record.state}
           </Pilula>
         }
@@ -411,7 +411,7 @@ function StepResult({ result }: { readonly result: ExecutionStep["result"] }) {
           ? "var(--cor-exe-aguardando)"
           : "var(--texto-3)";
   return (
-    <Pilula cor={color} comPonto>
+    <Pilula cor={color}>
       {result}
     </Pilula>
   );

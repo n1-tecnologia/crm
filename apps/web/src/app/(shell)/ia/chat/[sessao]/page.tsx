@@ -17,6 +17,7 @@ import Link from "next/link";
 import { use, useState } from "react";
 import { Anchor, Bot, Plus } from "lucide-react";
 import { useData, useRun, useSession } from "@/dados/store";
+import { useRecente } from "@/features/shell/recente";
 import { configureChatSession, sendChatMessage } from "@n1/dominio/operations";
 import { ChatSetupBar, MicButton, SendCircle } from "@/features/ia/chat-setup";
 import { ACTOR_KIND_LABEL } from "@/features/shell/format";
@@ -53,6 +54,8 @@ export default function SessaoPage({ params }: { params: Promise<{ sessao: strin
   const state = useData((data) => data);
   const { memberId } = useSession();
   const run = useRun();
+  // A mensagem recém-registrada surge; o fio não tem cascata.
+  const recente = useRecente();
   const fmt = useFormat();
   const [draft, setDraft] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
@@ -319,7 +322,7 @@ export default function SessaoPage({ params }: { params: Promise<{ sessao: strin
                 return (
                   <li
                     key={message.id}
-                    className={`flex ${minha ? "justify-end" : "justify-start"} ${message.replaced ? "opacity-60" : ""}`}
+                    className={`flex ${minha ? "justify-end" : "justify-start"} ${message.replaced ? "opacity-60" : ""}${message.id === recente ? " surgir" : ""}`}
                   >
                     {/*
                       Como o ChatGPT: o que eu disse é um balão à direita — o

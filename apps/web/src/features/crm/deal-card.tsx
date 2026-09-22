@@ -52,6 +52,7 @@ export function DealCard({
   onOpen,
   onDragStart,
   onDragEnd,
+  recente = false,
 }: {
   readonly data: DealCardData;
   readonly href: string;
@@ -59,6 +60,8 @@ export function DealCard({
   readonly onOpen?: () => void;
   readonly onDragStart: () => void;
   readonly onDragEnd: () => void;
+  /** O cartão que acabou de nascer ou mudar de coluna: acende em `--acento-lavado` e apaga (`useRecente`). */
+  readonly recente?: boolean;
 }) {
   const fmt = useFormat();
   const { deal, probability, ownerName, ownerPhotoFileId, companyName, contact, temperature, originName } = data;
@@ -79,6 +82,7 @@ export function DealCard({
           }
         : {})}
       className="card-negocio block cursor-grab p-3 active:cursor-grabbing"
+      data-recente={recente ? "true" : undefined}
     >
       {/*
         O rosto primeiro, depois o que a pessoa é para o Negócio, depois o

@@ -486,7 +486,7 @@ export default function AprovacoesPage() {
                           ? (task?.title ?? "Tarefa removida")
                           : (state.tools.find((t) => t.id === approval.object.toolId)?.name ?? approval.object.toolId)}
                       </span>
-                      <Pilula tom={approval.decision === "aprovada" ? "sucesso" : "neutro"} comPonto className="shrink-0">
+                      <Pilula tom={approval.decision === "aprovada" ? "sucesso" : "neutro"} className="shrink-0">
                         {approval.decision}
                       </Pilula>
                       <span className="app-meta app-numero shrink-0">
