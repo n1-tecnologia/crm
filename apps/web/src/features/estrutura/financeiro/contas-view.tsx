@@ -32,6 +32,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useData, useRun, useSession } from "@/dados/store";
+import { useRecente } from "@/features/shell/recente";
 import {
   changeTaskStatus,
   CP,
@@ -52,11 +53,13 @@ import {
   type FinanceQuickAction,
   FILTROS_INICIAIS,
   GROUP_LABEL,
+  nascimentoNoGrupo,
   pagoEm,
   textoDoCampo as textoDe,
   valorDaConta as valorDe,
 } from "./lens";
 import { PRIORITY_LABEL } from "@/features/shell/format";
+import { BotaoDeMais, CompositorNoGrupo } from "@/features/estrutura/novo-no-grupo";
 import { useFormat } from "@/features/shell/use-format";
 import {
   ActionMenu,
@@ -445,7 +448,7 @@ export function StatusBadge({
   readonly grupo: FinanceGroup;
 }) {
   return (
-    <Pilula cor={GROUP_TOKEN[grupo]} comPonto className="whitespace-nowrap">
+    <Pilula cor={GROUP_TOKEN[grupo]} className="whitespace-nowrap">
       {definition?.name ?? "—"}
     </Pilula>
   );
@@ -493,9 +496,11 @@ export function FinanceTable({
   onToggle,
   onToggleMany,
   selecionando,
-  filtrado,
+  grupoFiltrado,
   openTask,
   report,
+  onCreateInGroup,
+  criacaoRecusada,
 }: {
   readonly state: DataState;
   readonly profile: FinanceProfile;
@@ -505,13 +510,19 @@ export function FinanceTable({
   readonly onToggle: (taskId: string) => void;
   readonly onToggleMany: (ids: readonly string[], on: boolean) => void;
   readonly selecionando: boolean;
-  /** Com filtro ativo, um grupo vazio não é "nenhuma conta": é "nenhuma passa" — some. */
-  readonly filtrado: boolean;
+  /** O grupo escolhido no filtro aparece mesmo vazio: é a resposta à pergunta. */
+  readonly grupoFiltrado: FinanceGroup | "";
   readonly openTask: (taskId: string) => void;
   readonly report: Report;
+  /** O "+" do grupo: a conta nasce no Status daquele grupo. */
+  readonly onCreateInGroup?: (title: string, statusId?: string) => boolean;
+  readonly criacaoRecusada?: string;
 }) {
   const fmt = useFormat();
   const run = useRun();
+  // A conta que acabou de nascer ou mudar acende (`data-recente`); a criada
+  // pelo compositor inline já entra acesa, sem cascata.
+  const recente = useRecente();
   const router = useRouter();
   const [acao1, acao2] = profile.quickActions;
   const { memberId } = useSession();
@@ -532,17 +543,27 @@ export function FinanceTable({
       else n.add(grupo);
       return n;
     });
+  const [criandoEm, setCriandoEm] = useState<FinanceGroup | null>(null);
+  // Um grupo sem conta não aparece — a não ser que o filtro tenha escolhido
+  // exatamente esse grupo (aí o vazio, e o "+" dele, são a resposta), ou que
+  // o compositor esteja aberto nele.
   const grupos = profile.groups
     .map((g) => ({
       grupo: g,
       itens: tasks.filter((t) => profile.groupOf(state, t, now) === g),
     }))
-    .filter((g) =>
-      filtrado
-        ? g.itens.length > 0
-        : g.itens.length > 0 ||
-          (g.grupo !== "negadas" && g.grupo !== "descartadas"),
-    );
+    .filter((g) => g.itens.length > 0 || g.grupo === grupoFiltrado || g.grupo === criandoEm);
+  // O "+" de um grupo que não recebe conta nova (vencidas, pagas…) não fica
+  // mudo: diz o motivo e abre o compositor no grupo onde a conta nasce.
+  const berco = profile.groups.find((g) => nascimentoNoGrupo(profile, g).recusa === undefined);
+  const redirecionarCriacao = (motivo: string) => {
+    if (berco && onCreateInGroup && criacaoRecusada === undefined) {
+      setCriandoEm(berco);
+      report({ ok: true }, `${motivo} O campo de criação abriu em ${GROUP_LABEL[berco]}.`);
+    } else {
+      report({ ok: false, error: motivo }, "");
+    }
+  };
   const statusDe = (id: string) => definitions.find((d) => d.id === id);
   const mover = (task: Task, statusId: string, label: string) => {
     const r = run((data, me) => changeTaskStatus(data, me, task.id, statusId));
@@ -578,6 +599,7 @@ export function FinanceTable({
           <tr>
             <th
               className="app-coluna"
+              data-vazia="true"
               style={{ width: "2rem", paddingInline: "var(--e-2)" }}
             >
               {selecionando ? (
@@ -594,7 +616,7 @@ export function FinanceTable({
             <th className="app-coluna hidden @7xl:table-cell">Prioridade</th>
             <th className="app-coluna hidden @5xl:table-cell">Responsável</th>
             <th className="app-coluna">Status</th>
-            <th className="app-coluna" style={{ width: "1%" }}>
+            <th className="app-coluna" data-vazia="true" style={{ width: "1%" }}>
               <span className="sr-only">Ações</span>
             </th>
           </tr>
@@ -622,14 +644,24 @@ export function FinanceTable({
                         tamanho="xs"
                         style={{ color: "var(--texto-3)" }}
                       />
-                      <span
-                        aria-hidden="true"
-                        className="pilula-ponto"
-                        style={{ background: cor }}
-                      />
-                      {GROUP_LABEL[grupo]}
+                      <Pilula cor={cor}>{GROUP_LABEL[grupo]}</Pilula>
                     </button>
                     <span className="app-meta app-numero">{itens.length}</span>
+                    {(() => {
+                      const berco = nascimentoNoGrupo(profile, grupo);
+                      const motivo = !onCreateInGroup
+                        ? (criacaoRecusada ?? "Esta Lista não recebe contas novas.")
+                        : (criacaoRecusada ?? berco.recusa);
+                      return (
+                        <BotaoDeMais
+                          rotulo={GROUP_LABEL[grupo]}
+                          aberto={criandoEm === grupo}
+                          onClick={() => setCriandoEm((atual) => (atual === grupo ? null : grupo))}
+                          onBloqueado={redirecionarCriacao}
+                          {...(motivo ? { motivo } : {})}
+                        />
+                      );
+                    })()}
                     <span
                       className="app-sm app-numero"
                       style={{ color: "var(--texto-1)" }}
@@ -683,6 +715,17 @@ export function FinanceTable({
                   </div>
                 </td>
               </tr>
+              {criandoEm === grupo && onCreateInGroup ? (
+                <tr data-faixa="true">
+                  <td colSpan={10}>
+                    <CompositorNoGrupo
+                      placeholder={`${profile.labels.novaPlaceholder} — em ${GROUP_LABEL[grupo].toLocaleLowerCase("pt-BR")}`}
+                      onCreate={(title) => onCreateInGroup(title, nascimentoNoGrupo(profile, grupo).statusId)}
+                      onCancel={() => setCriandoEm(null)}
+                    />
+                  </td>
+                </tr>
+              ) : null}
               {fechado ? null : itens.length === 0 ? (
                 <tr data-faixa="true">
                   <td colSpan={10} className="app-meta">
@@ -730,8 +773,17 @@ export function FinanceTable({
                   return (
                     <tr
                       key={task.id}
-                      className="group"
+                      data-recente={task.id === recente ? "true" : undefined}
+                      className="group cursor-pointer"
                       data-selecionada={selecionada ? "true" : undefined}
+                      // A linha inteira abre a conta — não só o nome. Um clique
+                      // que nasce num controle (caixa, ação rápida, menu, link)
+                      // é dele, e não abre nada.
+                      onClick={(event) => {
+                        const alvo = event.target as HTMLElement;
+                        if (alvo.closest("button, a, input, select, textarea, [role=menu], [role=listbox]")) return;
+                        openTask(task.id);
+                      }}
                     >
                       <td style={{ paddingInline: "var(--e-2)" }}>
                         {selecionando ? (
@@ -764,17 +816,16 @@ export function FinanceTable({
                         className="max-w-[22ch]"
                         style={{ paddingBlock: "var(--e-1)" }}
                       >
+                        {/* Só o nome: o identificador mora na ficha. */}
                         <button
                           type="button"
                           onClick={() => openTask(task.id)}
                           className="app-md block max-w-full truncate text-left hover:underline"
                           style={{ color: "var(--texto)" }}
+                          title={task.readableId ? `${task.readableId} · ${task.title}` : task.title}
                         >
                           {task.title}
                         </button>
-                        <span className="identificador block">
-                          {task.readableId ?? task.id}
-                        </span>
                       </td>
                       <td className="hidden max-w-[18ch] truncate @3xl:table-cell">
                         {profile.counterpart(state, task)}
@@ -843,12 +894,11 @@ export function FinanceTable({
                         <StatusBadge definition={definition} grupo={grupo} />
                       </td>
                       <td style={{ paddingInline: "var(--e-1)" }}>
-                        <span className="relative flex items-center justify-end">
-                          {/* As ações rápidas aparecem SOBRE a linha no hover: reservar a largura delas em cada linha custaria uma coluna inteira. */}
-                          <span
-                            className="pointer-events-none absolute right-full top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded-[var(--r-controle)] px-1 opacity-0 transition-opacity group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 md:flex"
-                            style={{ background: "var(--superficie-3)" }}
-                          >
+                        <span className="flex items-center justify-end gap-0.5">
+                          {/* As ações rápidas têm o seu lugar na linha (à esquerda do "…") e só se
+                              mostram no hover/foco — nunca por cima do Status. Onde a largura não
+                              cabe (abaixo de @5xl), ficam só no menu. */}
+                          <span className="invisible hidden items-center gap-0.5 group-focus-within:visible group-hover:visible @5xl:flex">
                             <QuickAction
                               label="Abrir detalhes"
                               onClick={() => openTask(task.id)}
@@ -985,12 +1035,13 @@ export function FinanceCards({
   readonly openTask: (taskId: string) => void;
 }) {
   const fmt = useFormat();
+  const recente = useRecente();
   const now = new Date();
   const config = tasks[0] ? effectiveListConfig(state, tasks[0].listId) : null;
   if (tasks.length === 0)
     return <EmptyState compact title="Nenhuma conta passa pelos filtros." />;
   return (
-    <ul className="pilha-solta">
+    <ul className="cascata pilha-solta">
       {tasks.map((task) => {
         const grupo = profile.groupOf(state, task, now);
         return (
@@ -999,6 +1050,7 @@ export function FinanceCards({
               type="button"
               onClick={() => openTask(task.id)}
               className="item-solto w-full text-left"
+              data-recente={task.id === recente ? "true" : undefined}
               data-bloco="true"
             >
               <span className="flex items-baseline justify-between gap-2">

@@ -16,8 +16,10 @@ import { useRun } from "@/dados/store";
 import type { Deal, StatusDefinition, Task } from "@n1/dominio/types";
 import { DealCard, dealCardData } from "@/features/crm/deal-card";
 import { STATUS_CATEGORY_LABEL } from "@/features/shell/format";
-import { ActorAvatar, Icone } from "@/features/shell/ui";
+import { ActorAvatar, Icone, Pilula, RolagemNoTopo } from "@/features/shell/ui";
+import { BotaoDeMais, CompositorNoGrupo } from "@/features/estrutura/novo-no-grupo";
 import { useFormat } from "@/features/shell/use-format";
+import { useRecente } from "@/features/shell/recente";
 
 export function dealOfTask(state: DataState, task: Task): Deal | undefined {
   const link = state.links.find((l) => l.fromType === "task" && l.fromId === task.id && l.toType === "deal");
@@ -30,18 +32,28 @@ export function QuadroNegocios({
   definitions,
   onError,
   openTask,
-  onCreate,
+  onCreateInGroup,
+  criacaoRecusada,
+  onMais,
 }: {
   readonly state: DataState;
   readonly tasks: readonly Task[];
   readonly definitions: readonly StatusDefinition[];
   readonly onError: (message: string | null) => void;
   readonly openTask: (taskId: string) => void;
-  readonly onCreate?: () => void;
+  /** O "+" da coluna (e a coluna vazia): a Tarefa nasce naquele Status. */
+  readonly onCreateInGroup?: (title: string, statusId: string) => boolean;
+  readonly criacaoRecusada?: string;
+  /** O "+" da coluna faz OUTRA coisa (iniciar uma conversa naquela Etapa) em vez de abrir o compositor. */
+  readonly onMais?: (statusId: string) => void;
 }) {
+  // O cartão que acabou de nascer ou mudar de coluna (o drop já devolve o id).
+  const recente = useRecente();
   const run = useRun();
   const fmt = useFormat();
   const [dragging, setDragging] = useState<string | null>(null);
+  const [criandoEm, setCriandoEm] = useState<string | null>(null);
+  const motivoDoMais = onMais ? undefined : onCreateInGroup ? criacaoRecusada : (criacaoRecusada ?? "Esta Lista não recebe Tarefas novas.");
   const drop = (statusId: string) => {
     if (!dragging) return;
     const result = run((data, memberId) => changeTaskStatus(data, memberId, dragging, statusId));
@@ -50,7 +62,8 @@ export function QuadroNegocios({
   };
 
   return (
-    <div className="palco-quadro flex gap-4 overflow-x-auto pb-2">
+    <RolagemNoTopo>
+    <div className="flex gap-4">
       {definitions.map((definition) => {
         const column = tasks.filter((task) => task.statusId === definition.id);
         // Só a Tarefa-espelho conta o valor: uma Reunião ligada ao mesmo Negócio não o soma duas vezes.
@@ -78,9 +91,14 @@ export function QuadroNegocios({
                 {column.length}
               </span>
               <span className="min-w-0 flex-1">
-                <h2 className="app-md flex items-center gap-1.5 truncate" style={{ color: "var(--texto)" }}>
-                  <span aria-hidden="true" className="pilula-ponto" style={{ backgroundColor: definition.color }} />
-                  {definition.name}
+                <h2 className="flex items-center gap-2 truncate">
+                  <Pilula cor={definition.color}>{definition.name}</Pilula>
+                  <BotaoDeMais
+                    rotulo={definition.name}
+                    aberto={criandoEm === definition.id}
+                    onClick={() => (onMais ? onMais(definition.id) : setCriandoEm((atual) => (atual === definition.id ? null : definition.id)))}
+                    {...(motivoDoMais ? { motivo: motivoDoMais } : {})}
+                  />
                 </h2>
                 <span className="app-meta app-numero block truncate">
                   {STATUS_CATEGORY_LABEL[definition.category] ?? definition.category} · {fmt.money({ amount: columnValue, currency: "BRL" })}
@@ -89,11 +107,18 @@ export function QuadroNegocios({
             </div>
 
             <div className="pilha-solta">
+              {criandoEm === definition.id && onCreateInGroup ? (
+                <CompositorNoGrupo
+                  placeholder={`Nova em ${definition.name}`}
+                  onCreate={(title) => onCreateInGroup(title, definition.id)}
+                  onCancel={() => setCriandoEm(null)}
+                />
+              ) : null}
               {column.length === 0 ? (
-                onCreate ? (
+                (onMais || onCreateInGroup) && !motivoDoMais ? (
                   <button
                     type="button"
-                    onClick={onCreate}
+                    onClick={() => (onMais ? onMais(definition.id) : setCriandoEm(definition.id))}
                     className="app-sm grid place-items-center gap-2 rounded-[var(--r-painel)] border border-dashed border-[var(--linha-forte)] px-2 py-6 text-[var(--texto-3)] transition-colors hover:border-[var(--acento)] hover:text-[var(--texto)]"
                   >
                     <span
@@ -117,6 +142,7 @@ export function QuadroNegocios({
                   return deal ? (
                     <DealCard
                       key={task.id}
+                      recente={task.id === recente || deal.id === recente}
                       data={dealCardData(state, deal)}
                       href={`/estrutura/tarefas/${task.id}`}
                       onOpen={() => openTask(task.id)}
@@ -126,6 +152,7 @@ export function QuadroNegocios({
                   ) : (
                     <TaskOnlyCard
                       key={task.id}
+                      recente={task.id === recente}
                       state={state}
                       task={task}
                       onOpen={() => openTask(task.id)}
@@ -140,6 +167,7 @@ export function QuadroNegocios({
         );
       })}
     </div>
+    </RolagemNoTopo>
   );
 }
 
@@ -150,12 +178,14 @@ function TaskOnlyCard({
   onOpen,
   onDragStart,
   onDragEnd,
+  recente = false,
 }: {
   readonly state: DataState;
   readonly task: Task;
   readonly onOpen: () => void;
   readonly onDragStart: () => void;
   readonly onDragEnd: () => void;
+  readonly recente?: boolean;
 }) {
   const fmt = useFormat();
   const responsavel = task.assignees.find((a) => a.kind === "member");
@@ -171,6 +201,7 @@ function TaskOnlyCard({
       onDragEnd={onDragEnd}
       onClick={onOpen}
       className="card-negocio block w-full cursor-grab p-3 text-left active:cursor-grabbing"
+      data-recente={recente ? "true" : undefined}
     >
       <p className="ed-subtitulo flex items-center gap-1.5 truncate">
         {reuniao ? <Icone de={Video} tamanho="sm" style={{ color: "var(--acento)" }} /> : null}
