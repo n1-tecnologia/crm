@@ -23,6 +23,7 @@ import {
 } from "@n1/dominio/derive";
 import { useFormat } from "@/features/shell/use-format";
 import { ConditionMarker, CorpoDeTela, EmptyState, PageHeader, Section } from "@/features/shell/ui";
+import { ICONE_DE_OBJETO, Selo, SeloDaTarefa } from "@/features/estrutura/icone-de-tipo";
 
 export default function NotificacoesPage() {
   const state = useData((data) => data);
@@ -75,20 +76,23 @@ export default function NotificacoesPage() {
 
         {approvals.length > 0 ? (
           <Section title="Aprovações para decidir" count={approvals.length}>
-            <ul className="pilha-solta">
+            <ul className="cascata pilha-solta" data-chegada="foco">
               {approvals.map((approval) => (
                 <li key={approval.id}>
-                  <Link href="/ia/aprovacoes" className="item-solto" data-bloco="true">
-                    <p className="app-base text-[var(--texto)]">
-                      {state.tools.find((t) => t.id === approval.object.toolId)?.name ??
-                        approval.object.toolId}
-                    </p>
-                    <p className="app-sm text-[var(--texto-3)]">
-                      motivo {approval.reason}
-                      {approval.origin.kind === "agentExecution"
-                        ? ` · vence ${fmt.relative(approval.origin.deadline, now.getTime())}`
-                        : ""}
-                    </p>
+                  <Link href="/ia/aprovacoes" className="item-solto py-3">
+                    <Selo icone={ICONE_DE_OBJETO.aprovacao} cor="var(--aviso)" lavado="var(--aviso-lavado)" />
+                    <span className="min-w-0 flex-1">
+                      <span className="app-base block truncate text-[var(--texto)]">
+                        {state.tools.find((t) => t.id === approval.object.toolId)?.name ??
+                          approval.object.toolId}
+                      </span>
+                      <span className="app-sm block truncate text-[var(--texto-3)]">
+                        motivo {approval.reason}
+                        {approval.origin.kind === "agentExecution"
+                          ? ` · vence ${fmt.relative(approval.origin.deadline, now.getTime())}`
+                          : ""}
+                      </span>
+                    </span>
                   </Link>
                 </li>
               ))}
@@ -98,7 +102,7 @@ export default function NotificacoesPage() {
 
         {mentions.length > 0 ? (
           <Section title="Menções a você" count={mentions.length}>
-            <ul className="pilha-solta">
+            <ul className="cascata pilha-solta" data-chegada="foco">
               {mentions.map(({ task, comment }) => {
                 const author =
                   comment.author.kind === "member"
@@ -106,13 +110,17 @@ export default function NotificacoesPage() {
                     : state.agents.find((a) => a.id === comment.author.id)?.name;
                 return (
                   <li key={comment.id}>
-                    <Link href={`/estrutura/tarefas/${task.id}#comentario-${comment.id}`} className="item-solto" data-bloco="true">
-                      <p className="app-base text-[var(--texto)]">
-                        {author ?? "Alguém"} mencionou você em “{task.title}”
-                      </p>
-                      <p className="app-sm truncate text-[var(--texto-3)]">
-                        {fmt.relative(comment.createdAt)} · {comment.content}
-                      </p>
+                    <Link href={`/estrutura/tarefas/${task.id}#comentario-${comment.id}`} className="item-solto py-3">
+                      {/* A menção é sobre uma Tarefa: o selo é o do Tipo dela. */}
+                      <SeloDaTarefa state={state} task={task} />
+                      <span className="min-w-0 flex-1">
+                        <span className="app-base block truncate text-[var(--texto)]">
+                          {author ?? "Alguém"} mencionou você em “{task.title}”
+                        </span>
+                        <span className="app-sm block truncate text-[var(--texto-3)]">
+                          {fmt.relative(comment.createdAt)} · {comment.content}
+                        </span>
+                      </span>
                     </Link>
                   </li>
                 );
@@ -126,20 +134,23 @@ export default function NotificacoesPage() {
 
         {conversations.length > 0 ? (
           <Section title="Conversas atribuídas a você" count={conversations.length}>
-            <ul className="pilha-solta">
+            <ul className="cascata pilha-solta" data-chegada="foco">
               {conversations.map((conversation) => {
                 const contact = conversation.contactId
                   ? state.contacts.find((c) => c.id === conversation.contactId)
                   : undefined;
                 return (
                   <li key={conversation.id}>
-                    <Link href={`/crm/caixa-de-entrada/${conversation.id}`} className="item-solto" data-bloco="true">
-                      <p className="app-base text-[var(--texto)]">
-                        {contact ? contactDisplayName(contact) : "Contato não resolvido"}
-                      </p>
-                      <p className="app-sm truncate text-[var(--texto-3)]">
-                        {conversation.state} · {conversation.title}
-                      </p>
+                    <Link href={`/crm/caixa-de-entrada/${conversation.id}`} className="item-solto py-3">
+                      <Selo icone={ICONE_DE_OBJETO.conversa} cor="var(--info)" lavado="var(--info-lavado)" />
+                      <span className="min-w-0 flex-1">
+                        <span className="app-base block truncate text-[var(--texto)]">
+                          {contact ? contactDisplayName(contact) : "Contato não resolvido"}
+                        </span>
+                        <span className="app-sm block truncate text-[var(--texto-3)]">
+                          {conversation.state} · {conversation.title}
+                        </span>
+                      </span>
                     </Link>
                   </li>
                 );
@@ -150,11 +161,19 @@ export default function NotificacoesPage() {
 
         {overdue.length > 0 ? (
           <Section title="Tarefas vencidas" count={overdue.length}>
-            <ul className="pilha-solta">
+            <ul className="cascata pilha-solta" data-chegada="foco">
               {overdue.map((task) => (
                 <li key={task.id}>
-                  <Link href={`/estrutura/tarefas/${task.id}`} className="item-solto">
-                    <span className="app-base min-w-0 flex-1 truncate text-[var(--texto)]">{task.title}</span>
+                  <Link href={`/estrutura/tarefas/${task.id}`} className="item-solto py-3">
+                    <SeloDaTarefa state={state} task={task} tom="erro" />
+                    <span className="min-w-0 flex-1">
+                      <span className="app-base block truncate text-[var(--texto)]">{task.title}</span>
+                      <span className="app-sm block truncate text-[var(--texto-3)]">
+                        {state.taskTypes.find((t) => t.id === task.taskTypeId)?.name ?? "Tarefa"}
+                        {task.readableId ? ` · ${task.readableId}` : ""}
+                        {task.dueDate ? ` · vence ${fmt.taskDate(task.dueDate)}` : ""}
+                      </span>
+                    </span>
                     <ConditionMarker tone="danger">Vencida</ConditionMarker>
                   </Link>
                 </li>
@@ -165,11 +184,18 @@ export default function NotificacoesPage() {
 
         {blocked.length > 0 ? (
           <Section title="Tarefas bloqueadas" count={blocked.length}>
-            <ul className="pilha-solta">
+            <ul className="cascata pilha-solta" data-chegada="foco">
               {blocked.map((task) => (
                 <li key={task.id}>
-                  <Link href={`/estrutura/tarefas/${task.id}`} className="item-solto">
-                    <span className="app-base min-w-0 flex-1 truncate text-[var(--texto)]">{task.title}</span>
+                  <Link href={`/estrutura/tarefas/${task.id}`} className="item-solto py-3">
+                    <SeloDaTarefa state={state} task={task} tom="aviso" />
+                    <span className="min-w-0 flex-1">
+                      <span className="app-base block truncate text-[var(--texto)]">{task.title}</span>
+                      <span className="app-sm block truncate text-[var(--texto-3)]">
+                        {state.taskTypes.find((t) => t.id === task.taskTypeId)?.name ?? "Tarefa"}
+                        {task.readableId ? ` · ${task.readableId}` : ""}
+                      </span>
+                    </span>
                     <ConditionMarker tone="warning">Bloqueada por Dependência</ConditionMarker>
                   </Link>
                 </li>
@@ -180,17 +206,20 @@ export default function NotificacoesPage() {
 
         {failedExecutions.length > 0 ? (
           <Section title="Execuções que falharam" count={failedExecutions.length}>
-            <ul className="pilha-solta">
+            <ul className="cascata pilha-solta" data-chegada="foco">
               {failedExecutions.map((execution) => (
                 <li key={execution.id}>
-                  <Link href={`/ia/execucoes/${execution.id}`} className="item-solto" data-bloco="true">
-                    <p className="app-base text-[var(--texto)]">
-                      {state.agents.find((a) => a.id === execution.agentId)?.name ?? "Agente"}
-                    </p>
-                    <p className="app-sm text-[var(--texto-3)]">
-                      {execution.terminationReason ?? "sem motivo registrado"} ·{" "}
-                      {fmt.relative(execution.startedAt, now.getTime())}
-                    </p>
+                  <Link href={`/ia/execucoes/${execution.id}`} className="item-solto py-3">
+                    <Selo icone={ICONE_DE_OBJETO.execucao} cor="var(--erro)" lavado="var(--erro-lavado)" />
+                    <span className="min-w-0 flex-1">
+                      <span className="app-base block truncate text-[var(--texto)]">
+                        {state.agents.find((a) => a.id === execution.agentId)?.name ?? "Agente"}
+                      </span>
+                      <span className="app-sm block truncate text-[var(--texto-3)]">
+                        {execution.terminationReason ?? "sem motivo registrado"} ·{" "}
+                        {fmt.relative(execution.startedAt, now.getTime())}
+                      </span>
+                    </span>
                   </Link>
                 </li>
               ))}
