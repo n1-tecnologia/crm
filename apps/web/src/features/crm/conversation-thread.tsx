@@ -36,6 +36,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useData, useRun } from "@/dados/store";
+import { useRecente } from "@/features/shell/recente";
 import {
   CHANNEL_CAPABILITIES,
   addContactNote,
@@ -190,6 +191,8 @@ export function ConversationThread({
 }) {
   const state = useData((data) => data);
   const run = useRun();
+  // A Mensagem recém-enviada surge; as outras já estão (o fio não tem cascata).
+  const recente = useRecente();
   const fmt = useFormat();
   const [canalAtivo, setCanalAtivo] = useState<ChannelType | null>(null);
   const [draft, setDraft] = useState("");
@@ -905,7 +908,7 @@ export function ConversationThread({
                   return (
                     <div
                       key={mensagem.id}
-                      className={`flex items-end gap-2 ${saiu ? "justify-end" : "justify-start"}`}
+                      className={`flex items-end gap-2 ${saiu ? "justify-end" : "justify-start"}${mensagem.id === recente ? " surgir" : ""}`}
                     >
                       {!saiu ? avatar : null}
                       <div
@@ -1178,7 +1181,7 @@ export function ConversationThread({
                   <Icone
                     de={Plus}
                     tamanho="md"
-                    className={cn("transition-transform", anexando && "rotate-45")}
+                    className={cn("rotacao", anexando && "rotate-45")}
                   />
                 </button>
               ) : null}

@@ -303,6 +303,11 @@ export const OBJECT_TYPE_LABEL: Record<string, string> = {
   contactIdentifier: "Identificador de Contato",
   stage: "Etapa",
   status: "Status",
+  grupo: "Grupo",
+  comunidade: "Comunidade",
+  flow: "Flow",
+  linkDeCaptacao: "Link de Captação",
+  participacao: "Participação",
 };
 
 /** B97 — how far a Document Version got through processing. */
