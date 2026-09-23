@@ -10,11 +10,12 @@
  * Regra do arquivo, vinculante (`03-VALIDATION.md` § Sampling Risk — como o
  * tempo é injetado): **nada aqui lê o relógio da máquina**. Toda data de
  * agenda é injetada, construída pelo construtor numérico de `Date`
- * (`dia(2026, 7, 31)`) e nunca por string ISO — `runScheduledAutomations`
- * compara dia civil LOCAL, e `new Date("2026-08-31")` é meia-noite UTC, que em
- * América/São_Paulo cai no dia 30. Onde o comportamento depende do relógio
- * real (o caminho de evento), a asserção é contra o carimbo que a própria
- * Execução gravou, nunca contra um `new Date()` do teste.
+ * (`dia(2026, 7, 31)`) e nunca a partir de uma string ISO de dia civil —
+ * `runScheduledAutomations` compara dia civil LOCAL, e uma string de dia
+ * civil é lida como meia-noite UTC, que em América/São_Paulo cai no dia
+ * anterior. Onde o comportamento depende do relógio real (o caminho de
+ * evento), a asserção é contra o carimbo que a própria Execução gravou —
+ * nunca contra um relógio lido pelo teste.
  */
 
 import { beforeEach, describe, expect, it } from "vitest";

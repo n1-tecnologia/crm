@@ -12,13 +12,30 @@
 
 import { containerAdminRefusal, effectiveLifecycleOfTask, effectiveListConfig, memberSeesTask, statusDefinition } from "../derive";
 import { fail, ok, type DataState, type OperationResult } from "../state";
-import type { Automation, AutomationAction, AutomationExecution, AutomationVersion, Id, Task } from "../types";
+import type { Automation, AutomationAction, AutomationExecution, AutomationTrigger, AutomationVersion, Id, Task } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
 import { CNPJ_POR_EMPRESA, CP, clienteDe, runLancamentoAgent } from "./financeiro";
 import { contactDisplayName } from "../derive";
 import { addTaskComment, assignTask, changeTaskStatus, setTaskFieldValue, unassignTask, watchTask } from "./tasks";
 
-const now = (): string => new Date().toISOString();
+/**
+ * O ÚNICO relógio do módulo. Sem argumento é o instante real — o que um
+ * evento merece, porque ele acontece agora. Com argumento é o instante
+ * injetado: `runScheduledAutomations` recebe `today` e a Execução que ele
+ * produz é carimbada com ele, não com o relógio da máquina. Sem isto,
+ * `jaRodou` comparava duas bases de tempo diferentes e "rodar duas vezes no
+ * mesmo dia" deixava de ser verificável.
+ */
+const instante = (quando?: Date): string => (quando ?? new Date()).toISOString();
+
+/** Mesmo ano, mês e dia em horário LOCAL — o dia civil é o do usuário, não o do UTC. */
+function mesmoDiaCivil(a: string | Date, b: Date): boolean {
+  const x = typeof a === "string" ? new Date(a) : a;
+  return x.getFullYear() === b.getFullYear() && x.getMonth() === b.getMonth() && x.getDate() === b.getDate();
+}
+
+/** `YYYY-MM-DD` em horário local — a forma em que um dia civil é gravado e lido. */
+const diaCivil = (d: Date): string => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 export type ListEvent =
   | { readonly kind: "tarefaCriada"; readonly taskId: Id }
@@ -124,11 +141,27 @@ function fillTemplate(state: DataState, task: Task, template: string): string {
 
 /* ───────────────────────────── Execução ───────────────────────────── */
 
+/**
+ * O que uma Ação sabe da rodada em que está — montado por `execute` e passado
+ * a `runAction`. Interno ao módulo de propósito: nenhuma assinatura exportada
+ * muda por causa dele.
+ *
+ * `quando` é a base de tempo ÚNICA da Execução (relógio real pelo evento, o
+ * `today` injetado pela agenda); `trigger` e `indice` são o que `aguardar`
+ * precisa para recusar o que não pode retomar.
+ */
+interface ContextoDeExecucao {
+  readonly quando: Date;
+  readonly trigger: AutomationTrigger | undefined;
+  readonly indice: number;
+}
+
 function runAction(
   state: DataState,
   automation: Automation,
   task: Task,
   action: AutomationAction,
+  contexto: ContextoDeExecucao,
 ): { readonly ok: boolean; readonly output: string } {
   const owner = automation.ownerMemberId;
   const spec = parseJson<ActionSpec>(action.params) ?? {};
@@ -206,8 +239,8 @@ function runAction(
       if (!spec.definitionId) return { ok: false, output: "Sem definitionId." };
       const nome = state.fieldDefinitions.find((d) => d.id === spec.definitionId)?.name ?? spec.definitionId;
       if (spec.onlyIfEmpty && !isEmpty(fieldValueOf(task, spec.definitionId))) return { ok: true, output: `${nome} já preenchido` };
-      const hoje = new Date();
-      const valor = spec.today ? `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}` : spec.value;
+      // O dia civil de `today` é o da EXECUÇÃO — relógio real pelo evento, dia injetado pela agenda.
+      const valor = spec.today ? diaCivil(contexto.quando) : spec.value;
       if (valor === undefined) return { ok: false, output: "Sem valor." };
       const r = setTaskFieldValue(state, owner, task.id, spec.definitionId, valor);
       return r.ok ? { ok: true, output: `${nome}: ${String(valor)}` } : { ok: false, output: r.error };
@@ -217,7 +250,8 @@ function runAction(
   }
 }
 
-function execute(state: DataState, automation: Automation, version: AutomationVersion, task: Task): AutomationExecution {
+function execute(state: DataState, automation: Automation, version: AutomationVersion, task: Task, quando?: Date): AutomationExecution {
+  const base = new Date(instante(quando));
   const execution: AutomationExecution = {
     id: nextId("aex"),
     workspaceId: state.workspace.id,
@@ -234,12 +268,17 @@ function execute(state: DataState, automation: Automation, version: AutomationVe
     steps: [],
     childAgentExecutionIds: [],
     cost: { modelUnits: 0, toolCalls: 0, childExecutions: 0, durationMs: 0 },
-    startedAt: now(),
+    startedAt: instante(quando),
   };
   state.automationExecutions.push(execution);
+  // `durationMs` é DURAÇÃO, não data civil: nenhum comportamento se ramifica
+  // nela e nenhum teste pode ler o dia através dela. É a única leitura de
+  // relógio que sobrevive neste arquivo fora de `instante`, e é deliberada.
   const inicio = Date.now();
-  for (const action of [...version.actions].sort((a, b) => a.order - b.order)) {
-    const result = runAction(state, automation, task, action);
+  const acoes = [...version.actions].sort((a, b) => a.order - b.order);
+  for (const [indice, action] of acoes.entries()) {
+    const contexto: ContextoDeExecucao = { quando: base, trigger: version.trigger, indice };
+    const result = runAction(state, automation, task, action, contexto);
     execution.steps.push({
       index: execution.steps.length,
       kind: action.kind === "controle" ? "raciocinio" : "ferramenta",
@@ -249,7 +288,7 @@ function execute(state: DataState, automation: Automation, version: AutomationVe
       toolAllowed: true,
       resourcePermitted: result.ok,
       result: result.ok ? "concluido" : "falhou",
-      at: now(),
+      at: instante(quando),
     });
     if (action.kind === "controle" && action.agentId) execution.childAgentExecutionIds.push(...state.agentExecutions.filter((e) => e.invokedBy.kind === "automation" && e.invokedBy.id === automation.id && e.anchor?.id === task.id).map((e) => e.id).slice(-1));
     if (!result.ok) {
@@ -259,7 +298,7 @@ function execute(state: DataState, automation: Automation, version: AutomationVe
     }
   }
   if (execution.state === "executando") execution.state = "concluida";
-  execution.endedAt = now();
+  execution.endedAt = instante(quando);
   execution.cost = { ...execution.cost, toolCalls: execution.steps.length, durationMs: Date.now() - inicio };
   recordActivity(state, {
     actor: { kind: "automation", id: automation.id },
@@ -347,7 +386,7 @@ export function runScheduledAutomations(
         (e) =>
           e.automationId === automation.id &&
           e.objectId === task.id &&
-          (e.state === "concluida" || (e.state === "falhou" && new Date(e.startedAt).toDateString() === today.toDateString())),
+          (e.state === "concluida" || (e.state === "falhou" && mesmoDiaCivil(e.startedAt, today))),
       );
       if (jaRodou) {
         skipped += 1;
@@ -357,7 +396,8 @@ export function runScheduledAutomations(
         skipped += 1;
         continue;
       }
-      const execution = execute(state, automation, version, task);
+      // A linha que amarra o relógio injetado à Execução que ele produz.
+      const execution = execute(state, automation, version, task, today);
       if (execution.state === "concluida") executed += 1;
       else {
         failed += 1;
