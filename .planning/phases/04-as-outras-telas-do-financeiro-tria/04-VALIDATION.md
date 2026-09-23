@@ -59,7 +59,18 @@ mesmo com as suítes verdes.
 | TBD | TBD | 2 | TELA-01 (D4-06) | — | `buildDashboardStats`/`buildProblemRows` re-homed produzem resultado **idêntico** ao das funções originais do front do Vercel, sobre a mesma fixture | unit | `cd ../financeiro-tria/automation && npx tsx --test src/tenants/tria/financeiro-derivacoes.test.ts` | ❌ W0 | ⬜ pending |
 | TBD | TBD | 3 | TELA-01 (D4-13) | T-4-FILE | Proxy de upload recusa MIME e tamanho fora do esperado **antes** de repassar ao `automation/` | unit | `npm run test -w @n1/api -- extratos` | ❌ W0 | ⬜ pending |
 | TBD | TBD | 3 | TELA-01 (D4-10) | T-4-ACL | Import do Plano de contas só aceita `empresa`/`tipo` da allowlist fixa (6 × {pagar,receber}); valor livre é 400 | unit | `cd ../financeiro-tria/automation && npx tsx --test src/http/leituras-plataforma-routes.test.ts` | ❌ W0 | ⬜ pending |
-| TBD | TBD | 4 | TELA-01 | — | Um Membro com alcance vê as 8 leituras carregadas via `apps/api`; um Membro sem alcance não vê `/financeiro` na navegação | e2e (Playwright, precedente 02-01) | `npm run test -w @n1/web -- --grep financeiro` | ❌ W0 | ⬜ pending |
+| TBD | TBD | 4 | TELA-01 | T-4-ACL | Um Membro com alcance vê as 8 leituras carregadas via `apps/api`; um Membro sem alcance não vê `/financeiro` na navegação | unit + integração (ver nota) | `npm run test -w @n1/web -- vePastaFinanceiro` e `npm run test -w @n1/api -- financeiro` | ❌ W0 | ⬜ pending |
+
+> **Correção de 2026-09-23 (achado do planejador).** A versão anterior desta
+> linha mandava `npm run test -w @n1/web -- --grep financeiro` como e2e de
+> Playwright. O comando estava errado por duas razões: `test` em `apps/web` é
+> `vitest run`, e o Playwright é `test:e2e`; e o harness de e2e
+> (`apps/web/e2e/`, dois specs) **não tem fixture de sessão autenticada**, então
+> nenhuma jornada logada roda hoje. A cobertura foi redistribuída em testes
+> unitários e de integração (alcance nos dois sentidos sobre o seed; 401/403
+> contra o Postgres real) mais as conferências manuais abaixo. Um e2e de verdade
+> exige criar a fixture de sessão primeiro — é plano próprio, com custo próprio,
+> não uma linha desta tabela.
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
