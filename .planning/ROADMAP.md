@@ -212,7 +212,7 @@ Plans:
 - [x] 03-01-PLAN.md — Migração `005-agenda-de-automacoes.sql`: `plataforma.automacao_agenda` por (Espaço, Lista, dia civil), exclusão mútua entre instâncias e auditoria de "o dia foi processado", com o apply `[BLOCKING]` (AUTO-01)
 - [x] 03-02-PLAN.md — Vocabulário do executor: `runAction` passa a tratar `aguardar`/`notificar`/`solicitarAprovacao`/`encerrar` (o tipo já os contém); base de tempo única `instante()`/`mesmoDiaCivil`; A2–A9 cobertas em arquivo próprio (PAG-02, AUTO-01)
 - [x] 03-03-PLAN.md — A regra de A1 travada por teste: saturação de `addMonths` (D3-07), feriado tratado como dia útil (D3-06), uma ocorrência por fechamento mesmo reabrindo (PAG-02)
-- [ ] 03-04-PLAN.md — O de-para vira parâmetro: `buildResumoDePagamento` para de ler tabelas fictícias, o RESUMO de CON-CP-08 fica byte a byte, e `rehearsal` deixa de ser `false` fixo (PAG-03, PAG-04)
+- [x] 03-04-PLAN.md — O de-para vira parâmetro: `buildResumoDePagamento` para de ler tabelas fictícias, o RESUMO de CON-CP-08 fica byte a byte, e `rehearsal` deixa de ser `false` fixo (PAG-03, PAG-04)
 - [ ] 03-09-PLAN.md — `importarContaAPagarHistorica`: Tarefa já no status final, um `recordActivity` por transição com o `at` original, **sem nunca chamar `changeTaskStatus`** — nenhuma Automação dispara no replay (PAG-01)
 
 **Wave 2** *(blocked on Wave 1 completion)*
@@ -299,7 +299,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | 0. Preparação | 7/7 | Complete   | 2026-09-17 |
 | 1. O CRM N1 ganha persistência e login | 16/16 | Complete   | 2026-09-17 |
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 23/28 | In Progress|  |
-| 3. Contas a pagar | 3/15 | In Progress|  |
+| 3. Contas a pagar | 4/15 | In Progress|  |
 | 4. As outras telas do financeiro-tria | 0/TBD | Not started | - |
 | 5. Contas a receber e os outros tenants | 0/TBD | Not started | - |
 
