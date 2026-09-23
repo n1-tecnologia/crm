@@ -14,7 +14,7 @@ suficiente para o domínio nunca saber que existe um banco.
 | `repositorio.ts` | `hidratar()` (banco → `DataState`), `gravar()` (diff por comparação canônica de JSON), `reordenar()` (posição fracionária), `semear()` (escreve um `DataState` inteiro num Espaço vazio — base do bootstrap e da importação). |
 | `unidade-de-trabalho.ts` | `executar()`: hidratar → operação pura → revisão otimista (3 tentativas) → `gravar()`. A rota HTTP é uma casca em volta disto. |
 | `migrar.ts` + `migrar.cli.ts` | Aplica `apps/api/migracoes/NNN-*.sql` em ordem, uma vez cada, dentro de transação, registrado em `plataforma.migracoes`. |
-| `persistencia.test.ts`, `colunas-geradas.test.ts`, `integracao.test.ts` | Testes de integração contra Postgres real; pulam sem `DATABASE_URL` (`temBanco ? describe : describe.skip`, D-DEC-09). |
+| `persistencia.test.ts`, `colunas-geradas.test.ts`, `integracao.test.ts`, `agenda-de-automacoes.test.ts` | Testes de integração contra Postgres real; pulam sem `DATABASE_URL` (`temBanco ? describe : describe.skip`, D-DEC-09). |
 
 ## A regra das migrações
 
@@ -59,3 +59,39 @@ de unicidade e lease dessas tabelas (evento único por agregado, lease
 exclusiva por `for update skip locked`, idempotência HTTP, `object_key`
 único, ledger idempotente por `(origem, legacy_task_id)`) estão provados
 contra o Postgres real em `integracao.test.ts`, não só descritos aqui.
+
+## Agenda do motor de Automações (Fase 3)
+
+`005-agenda-de-automacoes.sql` cria **uma** tabela, `plataforma.automacao_agenda`
+(PK `(workspace_id, list_id, dia_civil)`), para o motor de Automações
+(AUTO-01). Ela é exclusão mútua e auditoria — **nunca idempotência**. A
+idempotência de Automação agendada mora em `AutomationExecution` e na
+checagem `jaRodou` de `runScheduledAutomations`
+(`packages/dominio/src/operations/automations.ts`), que é pura e já decide
+sozinha se um par (Automação, Tarefa) rodou hoje; repetir esse controle aqui
+criaria uma segunda fonte de verdade a manter sincronizada com a primeira.
+
+O que só o banco dá, e é por isso que a tabela existe: (1) duas instâncias do
+`apps/api` não processam o mesmo dia, porque a reivindicação é
+`for update skip locked` sobre `estado in ('pendente','falhou')` com
+`locked_by`/`locked_at` — o mesmo padrão de lease de
+`outbox-worker.ts::reivindicar()` — e DEC-06 serializa escrita por Espaço, de
+modo que duas hidratações simultâneas do mesmo Espaço só dariam conflito de
+revisão; (2) o dia processado fica observável: uma linha `falhou`, ou uma
+`processando` com `locked_at` vencido, é o sinal de que o processo caiu antes
+de fechar o dia, e a varredura devolve a linha para `falhou` em vez de o dia
+sumir. As quatro garantias (um dia por Lista, reivindicação exclusiva,
+`estado` fora do check recusado, dia retomável) estão provadas contra o
+Postgres real em `agenda-de-automacoes.test.ts`.
+
+Como as seis tabelas de `003`, esta **não entra em `hidratar()`/`gravar()`** e
+`repositorio.ts` não a conhece: quem escreve nela é o scheduler-worker da
+Fase 3, direto contra o `pg.Client` da sua própria transação.
+`last_error_code`/`last_error_summary` só recebem a saída de
+`sanitizarErro()`; nenhuma coluna guarda CPF, CNPJ, chave Pix, código de
+barras, valor ou nome de fornecedor (T-3-04).
+
+A importação histórica de Contas a pagar (Planos 03-09/03-10) **reusa**
+`plataforma.importacao_ledger` de `003` com `origem = 'clickup:901107637383'` —
+nenhum ledger novo nasce para este domínio, porque dois ledgers para a mesma
+reconciliação seriam duas contagens a manter iguais.
