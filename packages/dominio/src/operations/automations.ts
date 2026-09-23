@@ -31,7 +31,7 @@ import { containerAdminRefusal, effectiveLifecycleOfTask, effectiveListConfig, m
 import { fail, ok, type DataState, type OperationResult } from "../state";
 import type { Automation, AutomationAction, AutomationExecution, AutomationTrigger, AutomationVersion, Id, Task } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
-import { CNPJ_POR_EMPRESA, CP, clienteDe, runLancamentoAgent } from "./financeiro";
+import { CP, clienteDe, runLancamentoAgent, type DeParaDeLancamento } from "./financeiro";
 import { contactDisplayName } from "../derive";
 import { addTaskComment, assignTask, changeTaskStatus, setTaskFieldValue, unassignTask, watchTask } from "./tasks";
 // Sem ciclo: `operations/ai.ts` importa `./tasks` e `../derive`, nunca `./automations`.
@@ -147,8 +147,13 @@ function conditionsHold(state: DataState, task: Task, version: AutomationVersion
  * Substitui `{{campo:<id>}}` (um Campo de pessoa vira o nome), `{{cnpjEmpresa}}`,
  * `{{titulo}}`, `{{vencimento}}`, `{{cliente}}` e `{{donoDoCliente}}` no
  * texto de um Comentário.
+ *
+ * `cnpjPorEmpresa` (PAG-04) é o mapa real injetado pela ponte do `apps/api`
+ * (03-11) — o domínio não busca CNPJ nenhum, só recebe. Sem mapa, ou com a
+ * Empresa da Tarefa ausente dele, o fallback textual (`da Empresa <nome>`)
+ * é o mesmo de antes: nenhum número inventado sobrevive à falta de configuração.
  */
-function fillTemplate(state: DataState, task: Task, template: string): string {
+function fillTemplate(state: DataState, task: Task, template: string, cnpjPorEmpresa?: Readonly<Record<string, string>>): string {
   const cliente = clienteDe(state, task);
   return template
     .replace(/\{\{cliente\}\}/g, () => (cliente ? contactDisplayName(cliente) : "o cliente"))
@@ -163,7 +168,7 @@ function fillTemplate(state: DataState, task: Task, template: string): string {
     })
     .replace(/\{\{cnpjEmpresa\}\}/g, () => {
       const empresa = fieldValueOf(task, CP.fields.empresa);
-      const cnpj = typeof empresa === "string" ? CNPJ_POR_EMPRESA[empresa] : undefined;
+      const cnpj = typeof empresa === "string" ? cnpjPorEmpresa?.[empresa] : undefined;
       return cnpj ? `${cnpj} (${String(empresa)})` : `da Empresa ${String(empresa ?? "—")}`;
     })
     .replace(/\{\{titulo\}\}/g, task.title)
@@ -171,6 +176,26 @@ function fillTemplate(state: DataState, task: Task, template: string): string {
 }
 
 /* ───────────────────────────── Execução ───────────────────────────── */
+
+/**
+ * A costura entre a ponte HTTP do `apps/api` (03-11) e o motor: o que uma
+ * rodada da agenda recebe de fora, quando recebe algo. `cnpjPorEmpresa` é
+ * independente do lançamento (PAG-04 usa mesmo sem A7 estar em jogo);
+ * `lancamento` é a união discriminada que decide se A7 ensaia ou lança.
+ *
+ * É união, não `rehearsal?: boolean`, de propósito: **lançar de verdade sem
+ * dizer quais Tarefas o Omie confirmou não pode compilar.** `/lancar`
+ * acontece FORA da transação (é rede); se uma conta falhasse lá e o domínio
+ * publicasse o RESUMO e deixasse A8 mover o Status, a Tarefa diria "lançado
+ * omie" sem nada lançado. `tarefasLancadas` é obrigatória exatamente no ramo
+ * em que a caneta está na mão — o mesmo princípio do portão
+ * `Confere<Igual<…>>` de 03-04: o erro dói na compilação, não em produção.
+ */
+export type OpcoesDaAgenda = { readonly cnpjPorEmpresa?: Readonly<Record<string, string>> } & (
+  | { readonly lancamento?: undefined }
+  | { readonly lancamento: { readonly dePara: DeParaDeLancamento; readonly rehearsal: true } }
+  | { readonly lancamento: { readonly dePara: DeParaDeLancamento; readonly rehearsal: false; readonly tarefasLancadas: readonly Id[] } }
+);
 
 /**
  * O que uma Ação sabe da rodada em que está — montado por `execute` e passado
@@ -253,6 +278,7 @@ function runAction(
   task: Task,
   action: AutomationAction,
   contexto: ContextoDeExecucao,
+  opcoes?: OpcoesDaAgenda,
 ): ResultadoDeAcao {
   const owner = automation.ownerMemberId;
   const spec = parseJson<ActionSpec>(action.params) ?? {};
@@ -260,8 +286,23 @@ function runAction(
     switch (action.controlKind) {
       case "invocarAgente": {
         if (!action.agentId) break;
-        const r = runLancamentoAgent(state, owner, action.agentId, task.id, automation.id);
-        return r.ok ? { ok: true, output: r.value } : { ok: false, output: r.error };
+        // D3-03 — o Ensaio não encadeia A8: quem decide "ensaiar ou lançar" é
+        // `opcoes.lancamento`, nunca um default. Ausente, o comportamento é
+        // idêntico ao de antes desta task (5 argumentos, sem de-para injetado).
+        if (opcoes?.lancamento?.rehearsal === false && !opcoes.lancamento.tarefasLancadas.includes(task.id)) {
+          return { ok: false, output: "Lançamento não confirmado pelo Omie para esta conta." };
+        }
+        const opcoesDeLancamento = opcoes?.lancamento
+          ? { dePara: opcoes.lancamento.dePara, rehearsal: opcoes.lancamento.rehearsal }
+          : undefined;
+        const r = runLancamentoAgent(state, owner, action.agentId, task.id, automation.id, opcoesDeLancamento);
+        if (!r.ok) return { ok: false, output: r.error };
+        // Ensaio: a Execução fecha "concluida" com UM passo (a Automação fez
+        // exatamente o que lhe foi pedido — ensaiar) e o laço não alcança A8.
+        // `ok: false` mentiria na direção oposta (falhou) e acionaria `jaRodou`
+        // de dia falhado — por isso o canal é `halt`, não a recusa.
+        if (opcoes?.lancamento?.rehearsal === true) return { ok: true, output: r.value, halt: "encerrar" };
+        return { ok: true, output: r.value };
       }
       case "notificar": {
         if (!spec.template) return { ok: false, output: "“notificar” sem texto: declare `template` nos parâmetros da Ação." };
@@ -270,7 +311,7 @@ function runAction(
         // O aviso é in-app nesta fase: um Comentário com Menção, que `pendingMentions`
         // entrega a quem ENXERGA a Tarefa. Por Canal é Phase 5.
         const r = addTaskComment(state, owner, task.id, {
-          content: fillTemplate(state, task, spec.template),
+          content: fillTemplate(state, task, spec.template, opcoes?.cnpjPorEmpresa),
           mentions: alvos.map((id) => ({ type: "member", id })),
           actor: { kind: "automation", id: automation.id },
         });
@@ -285,7 +326,7 @@ function runAction(
         if (!aprovador) return { ok: false, output: "“solicitarAprovacao” sem Aprovador: declare approverMemberId na versão ou approverFieldDefinitionId nos parâmetros." };
         if (!spec.template) return { ok: false, output: "“solicitarAprovacao” sem texto de roteamento: declare `template` nos parâmetros da Ação." };
         const comentario = addTaskComment(state, owner, task.id, {
-          content: fillTemplate(state, task, spec.template),
+          content: fillTemplate(state, task, spec.template, opcoes?.cnpjPorEmpresa),
           mentions: [{ type: "member", id: aprovador }],
           actor: { kind: "automation", id: automation.id },
         });
@@ -369,7 +410,7 @@ function runAction(
         if (cliente) mentions.push({ type: "member", id: cliente.ownerMemberId });
       }
       // O autor é a Automação (em nome do dono): uma Menção ao próprio dono é lida como aviso, não como monólogo.
-      const r = addTaskComment(state, owner, task.id, { content: fillTemplate(state, task, spec.template), mentions, actor: { kind: "automation", id: automation.id } });
+      const r = addTaskComment(state, owner, task.id, { content: fillTemplate(state, task, spec.template, opcoes?.cnpjPorEmpresa), mentions, actor: { kind: "automation", id: automation.id } });
       return r.ok ? { ok: true, output: "Comentário publicado" } : { ok: false, output: r.error };
     }
     case "tarefa.definirCampo": {
@@ -387,7 +428,7 @@ function runAction(
   }
 }
 
-function execute(state: DataState, automation: Automation, version: AutomationVersion, task: Task, quando?: Date): AutomationExecution {
+function execute(state: DataState, automation: Automation, version: AutomationVersion, task: Task, quando?: Date, opcoes?: OpcoesDaAgenda): AutomationExecution {
   const base = new Date(instante(quando));
   const execution: AutomationExecution = {
     id: nextId("aex"),
@@ -415,7 +456,7 @@ function execute(state: DataState, automation: Automation, version: AutomationVe
   const acoes = [...version.actions].sort((a, b) => a.order - b.order);
   for (const [indice, action] of acoes.entries()) {
     const contexto: ContextoDeExecucao = { quando: base, trigger: version.trigger, indice };
-    const result = runAction(state, automation, task, action, contexto);
+    const result = runAction(state, automation, task, action, contexto, opcoes);
     execution.steps.push({
       index: execution.steps.length,
       kind: action.kind === "controle" ? "raciocinio" : "ferramenta",
@@ -514,6 +555,7 @@ export function runScheduledAutomations(
   actingMemberId: Id,
   listId: Id,
   today: Date,
+  opcoes?: OpcoesDaAgenda,
 ): OperationResult<{ readonly executed: number; readonly failed: number; readonly skipped: number; readonly failures: ReadonlyArray<{ readonly taskId: Id; readonly title: string; readonly reason: string }> }> {
   const member = state.members.find((m) => m.id === actingMemberId);
   if (!member || member.state !== "ativo") return fail("Só um Membro ativo roda as Automações.");
@@ -555,7 +597,7 @@ export function runScheduledAutomations(
         continue;
       }
       // A linha que amarra o relógio injetado à Execução que ele produz.
-      const execution = execute(state, automation, version, task, today);
+      const execution = execute(state, automation, version, task, today, opcoes);
       if (execution.state === "concluida") executed += 1;
       else {
         failed += 1;

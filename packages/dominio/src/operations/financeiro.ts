@@ -64,13 +64,6 @@ export const CP = {
   },
 } as const;
 
-/** CNPJ de cada Empresa pagadora — o que a cobrança da nota pede (seção 6.2). */
-export const CNPJ_POR_EMPRESA: Readonly<Record<string, string>> = {
-  // Números fictícios: o protótipo não carrega o CNPJ real de ninguém.
-  "Tria Company": "11.222.333/0001-81",
-  "Konq Intermediações": "44.555.666/0001-72",
-};
-
 /** Tag `conta *` → Conta de pagamento no ERP. */
 export const CONTA_POR_TAG: Readonly<Record<string, string>> = {
   "conta tria": "TRIA",

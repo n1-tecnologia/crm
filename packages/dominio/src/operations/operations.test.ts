@@ -3690,9 +3690,11 @@ describe("Processo Contas a pagar (docs/07-processos/contas-a-pagar.md)", () => 
     expect(updateTask(state, CP.financeiroId, incompleta.id, { dueDate: { form: "civilDay", value: em(1) } }).ok).toBe(true);
     const r = runScheduledAutomations(state, CP.financeiroId, CP.listId, hoje);
     expect(r.ok, r.ok ? "" : r.error).toBe(true);
-    // A5 cobrou a Pessoa pelo nome, com o CNPJ da Empresa.
+    // A5 cobra a Pessoa pelo nome; sem `cnpjPorEmpresa` injetado (03-11,
+    // PAG-04: a tabela fictícia de CNPJ por Empresa foi apagada), o texto cai
+    // no fallback "da Empresa <nome>" — nunca um número inventado.
     const cobranca = comPessoa.comments.find((c) => c.content.includes("emitir sua nota"));
-    expect(cobranca?.content.startsWith("Pedro Alencar por favor emitir sua nota para o CNPJ 11.222.333/0001-81")).toBe(true);
+    expect(cobranca?.content.startsWith("Pedro Alencar por favor emitir sua nota para o CNPJ da Empresa Tria Company")).toBe(true);
     expect(cobranca?.mentions.some((m) => m.id === "mem_thiago_pereira")).toBe(true);
     // Só quem administra a Lista roda o relógio.
     expect(runScheduledAutomations(state, "mem_thiago_pereira", CP.listId, hoje).ok).toBe(false);
