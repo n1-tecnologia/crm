@@ -100,6 +100,16 @@ mesmo com as suítes verdes.
 
 ## Validation Sign-Off
 
+> **Por que tudo abaixo está desmarcado, e isso é a leitura certa.** Os arquivos
+> de teste da Wave 0 **ainda não existem** — eles são trabalho das Tasks 3 dos
+> planos da onda 1. `nyquist_compliant` e `wave_0_complete` só passam a `true`
+> quando a execução os tiver criado e verdes, não quando o planejamento os
+> tiver previsto. Marcá-los agora seria afirmar cobertura que não existe.
+> Quem fecha estas caixas é `/gsd-verify-work`, ao fim da fase.
+>
+> *(Nota acrescentada em 2026-09-23 a pedido do `gsd-plan-checker`, que leu o
+> estado desmarcado como possível esquecimento. É decisão, não esquecimento.)*
+
 - [ ] All tasks have `<automated>` verify or Wave 0 dependencies
 - [ ] Sampling continuity: no 3 consecutive tasks without automated verify
 - [ ] Wave 0 covers all MISSING references
@@ -107,4 +117,4 @@ mesmo com as suítes verdes.
 - [ ] Feedback latency < 120 s
 - [ ] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** pending — liberado por `/gsd-verify-work` ao fim da Phase 4

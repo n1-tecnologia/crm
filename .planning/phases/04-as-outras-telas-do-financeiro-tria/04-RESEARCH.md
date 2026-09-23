@@ -485,7 +485,18 @@ export async function emitirNotas(triggerSource: string = "cron") {
 | TELA-01 (cliente HTTP) | Timeout, classificação transitório/permanente, log saneado (mesma forma de `invocar-agente.test.ts`, casos (f)-(m)) | unit | `npm run test -w @n1/api -- cliente-leituras-financeiro` | ❌ Wave 0 |
 | TELA-01 (Dashboard/Problemas) | `buildDashboardStats`/`buildProblemRows` re-homed produzem o MESMO resultado que as funções originais do financeiro-tria (fixture idêntica) | unit | `cd financeiro-tria/automation && npx tsx --test src/tenants/tria/financeiro-derivacoes.test.ts` | ❌ Wave 0 |
 | TELA-01 (upload de Extratos) | Proxy do `apps/api` recusa MIME/tamanho fora do esperado ANTES de repassar ao `automation/` | unit | `npm run test -w @n1/api -- extratos` | ❌ Wave 0 |
-| TELA-01 (E2E crítico) | Um Membro com alcance vê as 8 leituras carregadas via `apps/api`; um Membro sem alcance não vê `/financeiro` na navegação | e2e (Playwright, precedente de 02-01) | `npm run test -w @n1/web -- --grep financeiro` (Playwright) | ❌ Wave 0 |
+| TELA-01 (E2E crítico) | Um Membro com alcance vê as 8 leituras carregadas via `apps/api`; um Membro sem alcance não vê `/financeiro` na navegação | ~~e2e (Playwright)~~ → unit + integração | ~~`npm run test -w @n1/web -- --grep financeiro`~~ — **linha corrigida, ver nota abaixo** | ❌ Wave 0 |
+
+> **Correção de 2026-09-23 — não re-derive comando de teste desta tabela.** A
+> linha acima estava errada em duas frentes: `npm run test` em `apps/web` é
+> `vitest run` (o Playwright é `npm run test:e2e`), e o harness de e2e
+> (`apps/web/e2e/`, dois specs) **não tem fixture de sessão autenticada**, então
+> nenhuma jornada logada roda hoje. A cobertura equivalente foi redistribuída em
+> `04-VALIDATION.md`, que é a fonte canônica dos comandos desta fase:
+> `npm run test -w @n1/web -- vePastaFinanceiro` (alcance nos dois sentidos) e
+> `npm run test -w @n1/api -- financeiro` (401/403 contra o Postgres real), mais
+> as conferências manuais. Um e2e de verdade exige criar a fixture de sessão
+> primeiro — plano próprio, custo próprio.
 
 ### Sampling Rate
 - **Per task commit:** rodar o teste do arquivo tocado (`npm run test -w @n1/api -- <arquivo>` ou `npx tsx --test <arquivo>` no `automation/`).
