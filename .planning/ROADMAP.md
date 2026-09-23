@@ -224,7 +224,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 03-10-PLAN.md — CLI de importação da Lista `901107637383` em lotes de 250, ledger `003` reusado, `MARCO_ZERO` gravado ao fim, e a corrida real `[BLOCKING]` provando que a segunda execução é no-op (PAG-01)
+- [x] 03-10-PLAN.md — CLI de importação da Lista `901107637383` em lotes de 250, ledger `003` reusado, `MARCO_ZERO` gravado ao fim, e a corrida real `[BLOCKING]` provando que a segunda execução é no-op (PAG-01)
 - [ ] 03-11-PLAN.md — A ponte HTTP de A7/A8: de-para resolvido **antes** da transação, Ensaio que falha para o lado seguro em três camadas, e a metade `CNPJ_POR_EMPRESA` de PAG-04 (PAG-03, PAG-04)
 - [ ] 03-12-PLAN.md — `alterarStatusEmLote` numa transação só (61 < 250), com `RelatorioDeLote` de quatro resultados por item e o tempo de lock medido contra DEC-06 (PAG-05)
 
@@ -299,7 +299,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | 0. Preparação | 7/7 | Complete   | 2026-09-17 |
 | 1. O CRM N1 ganha persistência e login | 16/16 | Complete   | 2026-09-17 |
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 23/28 | In Progress|  |
-| 3. Contas a pagar | 9/15 | In Progress|  |
+| 3. Contas a pagar | 10/15 | In Progress|  |
 | 4. As outras telas do financeiro-tria | 0/TBD | Not started | - |
 | 5. Contas a receber e os outros tenants | 0/TBD | Not started | - |
 
