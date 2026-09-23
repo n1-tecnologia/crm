@@ -40,6 +40,7 @@ import {
 import { SaveTemplateDialog } from "@/features/estrutura/template-dialogs";
 import { ShareTaskDialog } from "@/features/estrutura/share-task-dialog";
 import { DialogoFluxoManual, fluxoManualRecusado } from "@/features/tarefa/fluxo-manual-dialog";
+import { DialogoLancamentoNoOmie, lancamentoNoOmieRecusado } from "@/features/tarefa/lancamento-no-omie-dialog";
 import { PainelAprovacao } from "@/features/tarefa/painel-aprovacao";
 import { Timeline } from "@/features/tarefa/timeline";
 import { PainelDeAnexos } from "@/features/tarefa/anexos";
@@ -101,6 +102,7 @@ import {
   contaSemCliente,
   contaSemResumo,
   guestFieldWriter,
+  lancamentoHumanoDe,
   parcelaDuplicada,
   statusOptionRefusal,
   CP,
@@ -193,6 +195,7 @@ export function TarefaCompleta({
   const [salvandoModelo, setSalvandoModelo] = useState(false);
   const [compartilhando, setCompartilhando] = useState(false);
   const [fluxoManualAberto, setFluxoManualAberto] = useState(false);
+  const [lancamentoNoOmieAberto, setLancamentoNoOmieAberto] = useState(false);
   const [newChecklist, setNewChecklist] = useState("");
   const [newItem, setNewItem] = useState<Record<string, string>>({});
   const [newSubtask, setNewSubtask] = useState("");
@@ -589,6 +592,14 @@ export function TarefaCompleta({
         onClose={() => setFluxoManualAberto(false)}
         report={report}
       />
+      {task.listId === CP.listId ? (
+        <DialogoLancamentoNoOmie
+          task={task}
+          open={lancamentoNoOmieAberto}
+          onClose={() => setLancamentoNoOmieAberto(false)}
+          report={report}
+        />
+      ) : null}
       {lenteFinanceira ? (
         <ConfirmDialog
           open={confirmandoStatus !== null}
@@ -992,8 +1003,26 @@ export function TarefaCompleta({
                     style={AVISO_EM_CAIXA}
                   >
                     Conta lançada sem “Resumo de pagamento” e sem Integração manual
-                    (INV-CP-01): peça ao Agente de lançamento ou marque a Integração
-                    manual.
+                    (INV-CP-01): peça ao Agente de lançamento, registre o lançamento
+                    que você fez no Omie, ou marque a Integração manual.
+                    {task.listId === CP.listId && lancamentoHumanoDe(state, task) === undefined
+                      ? (() => {
+                          const recusado = lancamentoNoOmieRecusado(state, memberId, task);
+                          return (
+                            <>
+                              {" "}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setLancamentoNoOmieAberto(true)}
+                                {...(recusado ? { disabled: true, disabledReason: recusado } : {})}
+                              >
+                                Registrar o lançamento que você fez no Omie
+                              </Button>
+                            </>
+                          );
+                        })()
+                      : null}
                   </p>
                 ) : null}
                 {contaSemCliente(state, task) ? (
