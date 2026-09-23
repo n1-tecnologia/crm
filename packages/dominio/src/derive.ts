@@ -919,12 +919,36 @@ export function memberReachesContainer(state: DataState, memberId: Id, type: Pat
   return base !== "convidado";
 }
 
+/**
+ * Este Membro é o VALOR de algum Campo que a Lista declarou como quem enxerga
+ * (`List.sharedWithDefinitionIds`). É a Pessoa da conta vendo a própria conta:
+ * a visibilidade é derivada do dado, não de uma concessão gravada — não há o
+ * que criar quando o Campo é preenchido nem o que revogar quando ele muda.
+ *
+ * Só Campo do tipo `person` abre Tarefa. A guarda não é zelo: sem ela, um Campo
+ * de texto cujo conteúdo digitado coincidisse com um id de Membro viraria porta
+ * de entrada, e quem preenche texto não está concedendo acesso a ninguém.
+ */
+export function memberNamedOnTask(state: DataState, memberId: Id, task: Task): boolean {
+  const declarados = state.lists.find((l) => l.id === task.listId)?.sharedWithDefinitionIds;
+  if (!declarados?.length) return false;
+  for (const definitionId of declarados) {
+    if (state.fieldDefinitions.find((d) => d.id === definitionId)?.type !== "person") continue;
+    const value = task.fieldValues.find((v) => v.definitionId === definitionId && v.state === "ativo")?.value;
+    if (value === memberId) return true;
+    if (Array.isArray(value) && value.includes(memberId)) return true;
+  }
+  return false;
+}
+
 /** 17.2 — a permissão da Tarefa vem da Lista; um compartilhamento da própria Tarefa também a abre. */
 export function memberSeesTask(state: DataState, memberId: Id, taskId: Id): boolean {
   const task = state.tasks.find((t) => t.id === taskId);
   if (!task) return false;
   if (grantsOn(state, memberId, task.id).length > 0) return true;
   if (task.rootTaskId && grantsOn(state, memberId, task.rootTaskId).length > 0) return true;
+  // Nomeado num Campo que a Lista declarou: enxerga, e só enxerga.
+  if (memberNamedOnTask(state, memberId, task)) return true;
   return memberReachesContainer(state, memberId, "list", task.listId);
 }
 

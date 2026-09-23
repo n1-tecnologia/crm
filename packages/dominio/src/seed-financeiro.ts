@@ -164,6 +164,8 @@ export function applyContasAPagar(state: DataState, clock: Clock, opcoes: Opcoes
     parentId: CP.folderId,
     // Seção 10 — a Pessoa da conta preenche só Anexo e Data de Emissão.
     guestEditableDefinitionIds: [F.anexo, F.dataEmissao],
+    // Seção 10 — quem é a Pessoa da conta enxerga a própria conta.
+    sharedWithDefinitionIds: [F.pessoa],
   });
   // O Tipo "Conta" é da Pasta: Contas a pagar e Contas a receber usam o mesmo (B25).
   state.taskTypes.push({ id: CP.taskTypeId, name: "Conta", icon: "receipt", isPlatformDefault: true, definedAtType: "folder", definedAtId: CP.folderId });
@@ -552,6 +554,9 @@ export function applyContasAPagar(state: DataState, clock: Clock, opcoes: Opcoes
     ...base("Konq", "KONQ", "Konq Intermediações", "Prestação de Serviços"),
     ...cnpj("44.555.666/0001-72"),
     val(F.nomeFornecedor, "Nimbus Sistemas Ltda."),
+    // O Comentário cmt_cp_5 já cobra a nota do Lucas com Menção a ele: o que
+    // era implícito na prosa passa a ser dado.
+    val(F.pessoa, "mem_joao_konq"),
     ...pix("44.555.666/0001-72"),
     val(F.valor, 20000),
     val(F.solicitante, "Walter Galvão Neto"),
@@ -640,11 +645,10 @@ export function applyContasAPagar(state: DataState, clock: Clock, opcoes: Opcoes
 
   state.tasks.push(thiagoAgo, thiagoSet, thiagoOut, aluguelSet, aluguelOut, konq, recarga, negada, condominio, energia, impostos, comissao, incompleta, caucao, trafego);
 
-  // A Pessoa da conta vê só as próprias contas (seção 10): concessão por Tarefa.
-  for (const [i, t] of [thiagoAgo, thiagoSet, thiagoOut].entries()) {
-    state.grants.push(grant(`gr_cp_pessoa_${i + 1}`, "member", "mem_thiago_pereira", "ver", "task", t.id));
-  }
-  state.grants.push(grant("gr_cp_pessoa_joao", "member", "mem_joao_konq", "ver", "task", konq.id));
+  // A Pessoa da conta vê só as próprias contas (seção 10) — sem concessão
+  // escrita à mão: a Lista declara o Campo Pessoa lá em cima e `memberSeesTask`
+  // deriva a visibilidade dele. Duas fontes de verdade já tinham divergido
+  // aqui, e a Grant estática não acompanhava a ocorrência que A1 cria.
 
   /* ── Histórico de Status do fio condutor (seção 6) ────────────────────── */
   const hist = (taskId: Id, title: string, actor: ActorRef, before: string, after: string, when: string, delegate?: ActorRef) => {

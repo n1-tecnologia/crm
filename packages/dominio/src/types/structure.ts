@@ -235,6 +235,18 @@ export interface List extends StructuralContainerBase {
    * SÓ estes Campos — a Pessoa da conta anexa a nota sem ver o resto.
    */
   guestEditableDefinitionIds?: readonly Id[];
+  /**
+   * Os Campos do tipo `person` cujo VALOR nomeia quem enxerga a Tarefa: a
+   * Pessoa da conta vê a própria conta sem que ninguém escreva uma concessão à
+   * mão. `guestEditableDefinitionIds` diz O QUE o Convidado edita; esta diz
+   * QUEM ele é. A visibilidade é calculada do dado, nunca guardada — trocar o
+   * valor do Campo tira a de quem saiu e dá a de quem entrou na mesma operação.
+   *
+   * É visibilidade e só: quem chega aqui e não tem mais nada continua recusado
+   * por `taskWriteRefusal`. Declarar um Campo que não seja `person` não abre
+   * Tarefa nenhuma.
+   */
+  sharedWithDefinitionIds?: readonly Id[];
 }
 
 type CivilDateLike = string;
