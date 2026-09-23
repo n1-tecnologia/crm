@@ -44,6 +44,30 @@ resposta anônima age.
 Componente nenhum fala com o domínio por fora de `store.ts`; manter isso
 verdadeiro é o que tornou a migração um arquivo em vez de cem.
 
+## Quem vê o quê na tela
+
+`GET /estado` hidrata o Espaço de Trabalho **inteiro**, sem filtro de
+visibilidade — o navegador de um Convidado recebe tudo, inclusive o que a
+tela não deve mostrar. Não é otimização: **toda tela que enumere uma coleção
+do estado tem que perguntar antes de desenhar**, porque o dado já está no
+cliente de qualquer forma.
+
+| Superfície | Pergunta a `@n1/dominio/derive` |
+|---|---|
+| Página da Lista (`estrutura/listas/[lista]`) | `memberReachesContainer` — alcance do contêiner |
+| Página e popup da Tarefa | `memberSeesTask` |
+| "Compartilhadas comigo" (trilho, `shell/compartilhadas-comigo.tsx`) | `memberSeesTask && !memberReachesContainer` — só o que a árvore não dá |
+| Busca global (`/buscar`) | `memberSeesTask` nas Tarefas, `memberReachesContainer` nas Listas |
+| "Minhas Tarefas" / "Todas que eu vejo" (`estrutura/tarefas`) | `memberSeesTask` |
+
+A visibilidade da Tarefa é **derivada**, nunca lida de `state.grants` à mão
+por um componente: `List.sharedWithDefinitionIds` declara, como dado na
+Lista, quais Campos do tipo `person` nomeiam quem enxerga (03-05) — é assim
+que a Pessoa de uma conta a pagar vê a própria conta sem que ninguém tenha
+escrito uma Grant. Um componente que filtra `state.grants` diretamente
+reintroduz o bug que 03-15 fechou: a regra muda no domínio e a tela para de
+saber, em silêncio.
+
 ## Regras de estilo
 
 Cor só sai de `src/estilos/tokens.css`. `npm run verificar:tokens` falha se

@@ -68,8 +68,9 @@ import { useData, useRun, useSession } from "@/dados/store";
 import { MEUS_NEGOCIOS_ID } from "@n1/dominio/seed-comercial";
 import { moveChatSessionToFolder } from "@n1/dominio/operations";
 import { useChatFolderDialogs } from "@/features/ia/chat-folder-dialogs";
-import { memberReachesContainer, memberSeesResource } from "@n1/dominio/derive";
+import { memberSeesResource } from "@n1/dominio/derive";
 import { useSidebarCollapsed } from "./use-sidebar";
+import { TarefasCompartilhadas } from "./compartilhadas-comigo";
 import {
   CreateContainerDialog,
   useCreateContainerDialog,
@@ -564,7 +565,7 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
               >
                 {showArchived ? "Ocultar arquivados" : "Mostrar arquivados"}
               </button>
-              <SharedTasks />
+              <TarefasCompartilhadas />
             </div>
           ) : null}
 
@@ -1115,41 +1116,3 @@ function TreeRow({
 }
 
 /** Reserva para quando o navegador não guarda nada: a escolha vale nesta visita. */
-
-
-
-/**
- * Tarefas compartilhadas diretamente com este Membro (concessão na própria
- * Tarefa) cuja Lista ele não alcança pela árvore — a Pessoa da conta a pagar,
- * por exemplo. Sem isto, o único caminho até elas seria a URL.
- */
-function SharedTasks() {
-  const { memberId } = useSession();
-  const tasks = useData((data) =>
-    data.grants
-      .filter((g) => g.resourceType === "task" && g.subjectKind === "member" && g.subjectId === memberId)
-      .map((g) => data.tasks.find((t) => t.id === g.resourceId))
-      .filter((t): t is NonNullable<typeof t> => t !== undefined && t.lifecycle === "ativo")
-      .filter((t) => !memberReachesContainer(data, memberId, "list", t.listId)),
-  );
-  const pathname = usePathname();
-  if (tasks.length === 0) return null;
-  return (
-    <div className="mt-2">
-      <p className="app-meta px-3 py-1">Compartilhadas comigo</p>
-      <ul>
-        {tasks.map((t) => (
-          <li key={t.id}>
-            <Link
-              href={`/estrutura/tarefas/${t.id}`}
-              className={`app-base block truncate rounded-[var(--r-controle)] px-3 py-1 transition-colors hover:bg-[var(--superficie-hover)] ${pathname === `/estrutura/tarefas/${t.id}` ? "bg-[var(--acento-lavado)] text-[var(--texto)]" : "text-[var(--texto-2)]"}`}
-            >
-              {t.title}
-              {t.dueDate ? <span className="text-[var(--texto-4)]"> · vence {t.dueDate.value.slice(0, 10).split("-").reverse().slice(0, 2).join("/")}</span> : null}
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
