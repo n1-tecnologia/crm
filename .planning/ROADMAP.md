@@ -253,7 +253,24 @@ Plans:
   3. `financeiro-tria.vercel.app` pode sair do ar sem ninguém sentir falta; `AuthContext` e a policy `anon_read` morrem com ele.
   4. A emissão manual de NF segue o que D10 decidir (ação na Tarefa, recomendação do plano — ou Google Sheets continua).
 
-**Plans**: TBD
+**Plans**: 14 plans em 6 ondas
+
+Plans:
+- [ ] 04-01-PLAN.md — Onda 1 · `automation/`: a fixture compartilhada e os DTOs com allowlist positiva de campos (D4-05)
+- [ ] 04-02-PLAN.md — Onda 1 · `apps/api`: o cliente HTTP de leituras com `PLATAFORMA_LEITURA_TOKEN`, timeout e erro saneado (D4-01/D4-02)
+- [ ] 04-03-PLAN.md — Onda 1 · `apps/web`: o assunto Financeiro na casca, visível por alcance à Pasta, e as formas de esqueleto das oito rotas (D4-08/D4-14)
+- [ ] 04-04-PLAN.md — Onda 2 · `automation/`: `buildDashboardStats`/`buildProblemRows` re-homed como funções puras, com o RESUMO sanitizado (D4-06/D4-11)
+- [ ] 04-05-PLAN.md — Onda 2 · `apps/api`: as sete rotas `GET /financeiro/*` com guarda de alcance e registro na raiz de `app.ts` (D4-14/D4-04)
+- [ ] 04-06-PLAN.md — Onda 2 · `apps/web`: a fundação das telas (os três estados de D4-15, botão Atualizar, revalidar ao focar) e o Dashboard
+- [ ] 04-07-PLAN.md — Onda 3 · `automation/`: a superfície `/v1/leituras/*` autenticada em tempo constante e as quatro leituras derivadas (D4-03/D4-02)
+- [ ] 04-08-PLAN.md — Onda 3 · `apps/web`: Problemas, Aprovações pendentes (vista legada, sem porta de decisão) e Workflows (D4-11)
+- [ ] 04-09-PLAN.md — Onda 4 · `automation/`: Notas fiscais e Produtos — a única consulta desenhada do zero, com colunas nomeadas (D4-05/D4-07)
+- [ ] 04-10-PLAN.md — Onda 4 · `apps/api`: as escritas de D4-07 e o proxy de upload de Extratos com validação de MIME e tamanho (D4-13/D4-12)
+- [ ] 04-11-PLAN.md — Onda 4 · `apps/web`: Notas fiscais (com os dois gatilhos de lote) e Produtos (alíquota inline) (D4-12/D4-07)
+- [ ] 04-12-PLAN.md — Onda 5 · `automation/`: Plano de contas sobre `conciliador_contas`, gatilhos de NF e ações de execução (D4-10/D4-10b/D4-12)
+- [ ] 04-13-PLAN.md — Onda 5 · `apps/web`: Plano de contas (import CSV com confirmação que afirma a consequência) e Extratos (D4-10/D4-10b/D4-09/D4-13)
+- [ ] 04-14-PLAN.md — Onda 6 · o corte: runbook, verificação de RLS no Postgres, Vercel pausado e a remoção do `anon_read` por último (D4-16)
+
 **UI hint**: yes
 
 Antes de planejar: decidir os 89 arquivos não commitados do frontend do financeiro-tria (regeneração shadcn/Lovable) só como referência de leitura — nada dali é portado como código. `planos_de_contas` está vazia hoje; o de-para real é o RAG em `conciliador_contas` (Phase 3).
