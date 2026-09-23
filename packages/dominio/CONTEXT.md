@@ -115,6 +115,34 @@ Daí a linha que 03-11 precisa obedecer: **o Ensaio não deve encadear A8**. Uma
 Tarefa em Ensaio não muda de Status, e INV-CP-01 não é violado porque nenhum
 RESUMO foi publicado.
 
+## Importação histórica de Contas a pagar (Fase 3)
+
+`importarContaAPagarHistorica` (`src/operations/importacao-contas-a-pagar.ts`)
+**não está em `OPERACOES`** e sai crua do barril, como
+`importarSolicitacaoHistorica`: quem importa não é um Membro usando a
+interface, é o CLI do `apps/api` (Plan 03-10), que a chama direto.
+
+Importação histórica de uma Lista **com** Automações nunca pode passar por
+`changeTaskStatus`. A Lista de Contas a pagar tem sete Automações ativas e a
+própria Tarefa carrega a Regra de Recorrência A1: replayar o histórico por
+mudança de Status faria A1 parir uma ocorrência fantasma por conta paga,
+A5/A6 cobrarem nota fiscal em conta fechada há um ano e A2/A3/A4
+reescreverem Responsável — em silêncio. Por isso a Tarefa nasce **já no
+Status final**, dado a `createTask` com `runAutomations: false`. O precedente
+de Solicitações pode usar `changeTaskStatus` porque aquela Lista não tem
+Automação nenhuma; a autorização está escrita lá e não se estende a esta.
+
+A costura que preserva a data original (D3-04) é `recordActivity`, que aceita
+`at` (`src/operations/activity.ts`). Cada transição do `status_history` vira
+um Registro "Status alterado" com o instante daquela transição — é dessa
+trilha, e só dela, que "tempo em 'para pagar'" é calculável depois.
+`changeTaskStatus` não aceita `at` nem `runAutomations`, então não serviria
+nem com as Automações desligadas.
+
+`ORIGEM_CONTAS_A_PAGAR` (`clickup:901107637383`) é o mesmo valor gravado em
+`plataforma.importacao_ledger.origem` pelo Plan 03-10 — não há ledger novo, e
+não há campo `origem` na entrada, para que os dois lados não possam divergir.
+
 ## Recorrência de Contas a pagar: o que está travado (D3-05/D3-06/D3-07)
 
 A regra é **por Tarefa** (`RecurrenceRule`, em `types/structure.ts`), não por
