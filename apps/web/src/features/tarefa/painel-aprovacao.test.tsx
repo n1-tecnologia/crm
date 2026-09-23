@@ -11,11 +11,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { buildSeed } from "@n1/dominio/seed";
-import { CATALOGO_SOLICITACAO_DE_PAGAMENTO } from "@n1/dominio";
+import { CATALOGO_SOLICITACAO_DE_PAGAMENTO, SOL } from "@n1/dominio";
 import { effectiveListConfig } from "@n1/dominio/derive";
+import { CP, createTask } from "@n1/dominio/operations";
+import { evoluirConfiguracaoDeSolicitacoes, LISTA_ID as LISTA_SOLICITACOES } from "@n1/dominio/solicitacao-de-pagamento-evolver";
 import type { Ordens } from "@n1/dominio";
-import type { DataState } from "@n1/dominio/state";
-import type { ApprovalRequest, StatusDefinition, Task } from "@n1/dominio/types";
+import type { DataState, OperationResult } from "@n1/dominio/state";
+import type { ApprovalRequest, Id, StatusDefinition, Task } from "@n1/dominio/types";
 import { StoreProvider } from "@/dados/store";
 import type { RespostaDeGravacao, Transporte } from "@/dados/transporte";
 import { makeFormatters } from "@/features/shell/format";
@@ -345,5 +347,152 @@ describe("PainelAprovacao — acessibilidade (i)", () => {
 
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(document.activeElement).toBe(gatilho);
+  });
+});
+
+/* ── Conversão em Conta a pagar (D3-08, Plan 03-13) ────────────────────────
+ * Ao contrário de `montarCenario` (que empresta a Lista de uma Tarefa
+ * qualquer do seed só para testar `decideProcessApproval`), estes casos
+ * precisam de uma Solicitação DE VERDADE — `converterSolicitacaoEmContaAPagar`
+ * recusa qualquer Tarefa fora de `lst_solicitacoes_de_pagamento`. O evolver
+ * (02-08) materializa essa Lista sobre o mesmo bootstrap que `buildSeed()`
+ * já aplica (`applyContasAPagar` cria o Espaço "Gestão" e a Pasta
+ * "Financeiro" que o evolver exige).
+ */
+
+/** Mesmo molde de `renderizar`, mas com `report` capturável — só para os casos novos (Task 3). */
+function renderizarComReport(
+  estadoDoTeste: DataState,
+  ordensDoEstado: Ordens,
+  transporteDoTeste: Transporte,
+  memberId: string,
+  task: Task,
+  report: (result: OperationResult<unknown>, message: string) => void,
+) {
+  const fmt = makeFormatters(estadoDoTeste.workspace.locale);
+  return render(
+    <StoreProvider
+      sessao={{ memberId }}
+      estadoInicial={{ data: estadoDoTeste, revisao: 1, ordens: ordensDoEstado }}
+      transporte={transporteDoTeste}
+    >
+      <PainelAprovacao task={task} fmt={fmt} report={report} />
+    </StoreProvider>,
+  );
+}
+
+/**
+ * Uma Solicitação real (Lista materializada pelo evolver), com uma Aprovação
+ * de processo já decidida "aprovada". O evolver só cria a CONFIGURAÇÃO da
+ * Lista (Status, Campos, Papéis, Grant do Agente do pipeline) — nenhuma
+ * Tarefa fictícia; a Tarefa nasce aqui, por `createTask`, no mesmo molde que
+ * `conversao-de-solicitacao.test.ts` (domínio) já usa.
+ */
+function montarSolicitacaoAprovada(estadoDoTeste: DataState, statusId: Id = SOL.status.aprovado) {
+  const evoluida = evoluirConfiguracaoDeSolicitacoes(estadoDoTeste, CP.financeiroId);
+  if (!evoluida.ok) throw new Error(evoluida.error);
+
+  const criada = createTask(estadoDoTeste, CP.financeiroId, {
+    listId: LISTA_SOLICITACOES,
+    title: "Papelaria Aurora ME — material de escritório",
+    statusId,
+  });
+  if (!criada.ok) throw new Error(criada.error);
+  const solicitacao = criada.value;
+
+  const approval: ApprovalRequest = {
+    id: "apr_teste_conversao",
+    origin: { kind: "processTask", taskId: solicitacao.id, processStep: "pagamento", threadCommentId: "cmt_teste_conversao" },
+    requestedBy: { kind: "system", id: "sistema" },
+    reason: "processo",
+    object: { toolId: "", input: "", targetResourceType: "task", targetResourceId: solicitacao.id, effectClass: "escritaIrreversivel" },
+    approverMemberId: CP.aprovadorId,
+    decision: "aprovada",
+    decidedByMemberId: CP.aprovadorId,
+    decidedAt: solicitacao.createdAt,
+    decisionSource: "click",
+    createdAt: solicitacao.createdAt,
+  };
+  estadoDoTeste.approvals.push(approval);
+  return { task: solicitacao, approval };
+}
+
+describe("PainelAprovacao — Conversão em Conta a pagar (D3-08, Plan 03-13)", () => {
+  describe("Solicitação aprovada e ainda não convertida (l)", () => {
+    it("o bloco de conversão aparece com o botão habilitado", () => {
+      const { task } = montarSolicitacaoAprovada(state);
+      renderizar(state, ordens, transporte, CP.financeiroId, task);
+
+      const converter = screen.getByRole("button", { name: "Converter em Conta a pagar" });
+      expect(converter.getAttribute("aria-disabled")).toBe("false");
+    });
+  });
+
+  describe("Converter é uma chamada (m)", () => {
+    it("gravarMock chamado 1 vez, com o nome e os args certos", () => {
+      const { task } = montarSolicitacaoAprovada(state);
+      renderizar(state, ordens, transporte, CP.financeiroId, task);
+
+      fireEvent.click(screen.getByRole("button", { name: "Converter em Conta a pagar" }));
+      const dialogo = screen.getByRole("alertdialog");
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Converter" }));
+
+      expect(transporte.gravarMock).toHaveBeenCalledTimes(1);
+      const pedido = transporte.gravarMock.mock.calls[0]![0];
+      expect(pedido.chamadas.length).toBe(1);
+      expect(pedido.chamadas[0]!.nome).toBe("converterSolicitacaoEmContaAPagar");
+      expect(pedido.chamadas[0]!.args).toEqual([task.id]);
+    });
+  });
+
+  describe("Já convertida não oferece converter de novo (n)", () => {
+    it("mostra o readableId da Conta existente e não renderiza o botão", () => {
+      const { task } = montarSolicitacaoAprovada(state);
+      const contaExistente: Task = {
+        ...structuredClone(task),
+        id: "tsk_conta_ja_existente",
+        readableId: "CP-777",
+        listId: CP.listId,
+        provenance: { kind: "task", sourceId: task.id, sourceName: task.title, at: task.createdAt },
+      };
+      state.tasks.push(contaExistente);
+
+      renderizar(state, ordens, transporte, CP.financeiroId, task);
+
+      expect(screen.getByText("CP-777")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Converter em Conta a pagar" })).toBeNull();
+    });
+  });
+
+  describe("Aprovada mas ainda não no Status aprovado (o)", () => {
+    it("o botão aparece desabilitado, nomeando o Status atual", () => {
+      const { task } = montarSolicitacaoAprovada(state, SOL.status.emAprovacao);
+      renderizar(state, ordens, transporte, CP.financeiroId, task);
+
+      const converter = screen.getByRole("button", { name: "Converter em Conta a pagar" });
+      expect(converter.getAttribute("aria-disabled")).toBe("true");
+      expect(converter.getAttribute("title") ?? "").toContain("em aprovação");
+    });
+  });
+
+  describe("Recusa do domínio aparece (p)", () => {
+    it("a mensagem literal do domínio chega ao report do componente", () => {
+      const { task } = montarSolicitacaoAprovada(state);
+      const reportMock = vi.fn<(result: OperationResult<unknown>, message: string) => void>();
+      // Sessão sem acesso à Solicitação: `memberSeesTask` recusa antes de
+      // qualquer rede (D-05) — a mesma via que uma recusa do servidor usaria.
+      renderizarComReport(state, ordens, transporte, "mem_thiago_pereira", task, reportMock);
+
+      fireEvent.click(screen.getByRole("button", { name: "Converter em Conta a pagar" }));
+      const dialogo = screen.getByRole("alertdialog");
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Converter" }));
+
+      expect(reportMock).toHaveBeenCalledTimes(1);
+      const [resultado] = reportMock.mock.calls[0]!;
+      expect(resultado.ok).toBe(false);
+      expect((resultado as { readonly ok: false; readonly error: string }).error).toBe(
+        "Você não tem acesso a esta Solicitação.",
+      );
+    });
   });
 });

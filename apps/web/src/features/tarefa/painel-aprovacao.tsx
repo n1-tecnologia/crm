@@ -11,13 +11,27 @@
  * D-11 — aprovação de processo nunca mostra prazo, contagem regressiva ou
  * expiração: nenhum destes componentes lê `deadline` porque o ramo
  * `processTask` de `ApprovalOrigin` não tem esse campo.
+ *
+ * D3-08 (Plan 03-13) — o gatilho da conversão Solicitação → Conta a pagar
+ * vive AQUI, dentro do card decidido, e não em `contas-view.tsx`. 03-06
+ * entregou `converterSolicitacaoEmContaAPagar` registrada e alcançável, mas
+ * fechou o próprio plano dizendo que nada a dispara sozinha — ligar o
+ * gatilho ao `aprovado` automaticamente exigiria `tasks.ts` (03-05) ou um
+ * tipo de ação novo de Automação (03-02), e nenhum dos dois é deste plano. O
+ * critério 1 da Fase 3 ("o Financeiro passa uma semana sem abrir o
+ * ClickUp") não exige automação: um botão que o Financeiro aperta na própria
+ * plataforma cumpre o critério, e cumpre com um ganho — a conversão pode
+ * nascer com "Lacuna de conversão" (Forma de pagamento vazia quando a
+ * origem dizia "Cartão"), e um humano que confirma é um humano que vê a
+ * lacuna no instante em que ela nasce, não no dia do pagamento.
  */
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useData, useLastResult, useRun, useSession } from "@/dados/store";
-import { decideProcessApproval } from "@n1/dominio/operations";
-import { CATALOGO_SOLICITACAO_DE_PAGAMENTO } from "@n1/dominio";
+import { contaAPagarDeSolicitacao, converterSolicitacaoEmContaAPagar, decideProcessApproval } from "@n1/dominio/operations";
+import { CATALOGO_SOLICITACAO_DE_PAGAMENTO, SOL } from "@n1/dominio";
+import { statusDefinition } from "@n1/dominio/derive";
 import { fluxoManualDe } from "./fluxo-manual-dialog";
 import type { DataState, OperationResult } from "@n1/dominio/state";
 import type { ApprovalRequest, Id, Task } from "@n1/dominio/types";
@@ -283,8 +297,12 @@ export function PainelAprovacao({
 }) {
   const state = useData((data) => data);
   const { memberId } = useSession();
+  const run = useRun();
   const [dialogoAberto, setDialogoAberto] = useState<"aprovada" | "rejeitada" | null>(null);
   const [motivo, setMotivo] = useState("");
+  // D3-08 — o diálogo do gatilho de conversão é próprio, distinto do de
+  // aprovar/rejeitar (`dialogoAberto`), porque só aparece depois de decidida.
+  const [confirmandoConversao, setConfirmandoConversao] = useState(false);
 
   const approval = encontrarAprovacaoDeProcesso(state, task.id);
 
@@ -323,6 +341,17 @@ export function PainelAprovacao({
 
   if (approval.decision) {
     const decisor = state.members.find((m) => m.id === approval.decidedByMemberId)?.displayName ?? "—";
+    // D3-08 — só faz sentido oferecer a conversão quando a decisão foi
+    // aprovar; `contaAPagarDeSolicitacao` é leitura derivada (não muta nada,
+    // T-3-11 de 03-06): a barreira de dupla conversão real mora no domínio,
+    // esta consulta só evita mostrar o botão a quem já converteu.
+    const contaExistente = contaAPagarDeSolicitacao(state, task.id);
+    // A decisão da aprovação (`ApprovalRequest.decision`) e o Status da
+    // Solicitação são fatos distintos — quem decide é a ApprovalRequest, quem
+    // habilita a conversão é o Status (`converterSolicitacaoEmContaAPagar`
+    // exige `SOL.status.aprovado`). A tela diz qual dos dois falta, em vez de
+    // deixar o Financeiro clicar num botão que só recusa.
+    const noStatusAprovado = task.statusId === SOL.status.aprovado;
     return (
       <Painel>
         <CabecalhoDePainel titulo="Aprovação" />
@@ -354,6 +383,46 @@ export function PainelAprovacao({
             <p className="app-base" style={{ color: "var(--texto-2)" }}>
               Fluxo manual por {fluxoManual.nome}: {fluxoManual.motivo}
             </p>
+          ) : null}
+          {approval.decision === "aprovada" ? (
+            <div className="grid gap-2" style={{ borderTop: "1px solid var(--linha-sutil)", paddingTop: "0.5rem" }}>
+              {contaExistente ? (
+                <p className="app-base" style={{ color: "var(--texto-2)" }}>
+                  Esta Solicitação já virou a Conta a pagar{" "}
+                  <Link href={`/estrutura/tarefas/${contaExistente.id}`} className="underline" style={{ color: "var(--texto)" }}>
+                    {contaExistente.readableId ?? contaExistente.id}
+                  </Link>
+                  .
+                </p>
+              ) : (
+                <>
+                  <Button
+                    variant="primary"
+                    onClick={() => setConfirmandoConversao(true)}
+                    disabled={!noStatusAprovado}
+                    disabledReason={
+                      noStatusAprovado
+                        ? ""
+                        : `Só uma Solicitação em “aprovado” vira Conta a pagar; esta está em “${statusDefinition(state, task.listId, task.statusId)?.name ?? task.statusId}”.`
+                    }
+                  >
+                    Converter em Conta a pagar
+                  </Button>
+                  <ConfirmDialog
+                    open={confirmandoConversao}
+                    title="Converter esta Solicitação em Conta a pagar?"
+                    description='Nasce uma Conta a pagar em "para pagar", com os Campos equivalentes copiados, o Responsável Financeiro e o vínculo com esta Solicitação. O que não tiver equivalente fica registrado como lacuna na trilha da Conta.'
+                    confirmLabel="Converter"
+                    onConfirm={() => {
+                      setConfirmandoConversao(false);
+                      const r = run((data, me) => converterSolicitacaoEmContaAPagar(data, me, task.id));
+                      report(r, r.ok ? `Conta a pagar ${r.value.readableId ?? r.value.id} criada em “para pagar”.` : "");
+                    }}
+                    onCancel={() => setConfirmandoConversao(false)}
+                  />
+                </>
+              )}
+            </div>
           ) : null}
         </div>
       </Painel>
