@@ -41,6 +41,11 @@ yarn-error.log*
 # O manifesto (apps/api/exportacoes/MANIFESTO.*) fica fora deste padrão de propósito e é versionado.
 apps/api/exportacoes/clickup/
 
+# relatório do Ensaio do Agente (Plan 03-14, D3-03): o agregado (RELATORIO.md/.json)
+# entra no git — só contagens e vocabulário de veredito (T-3-65). O detalhe por
+# conta (taskId + as duas triplas) fica fora, no mesmo padrão de LGPD acima.
+apps/api/exportacoes/ensaio-do-agente/*/conferencia-detalhada.csv
+
 # vercel
 .vercel
 
