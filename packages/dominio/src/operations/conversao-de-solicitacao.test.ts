@@ -36,7 +36,8 @@ import {
   PAPEL_DO_VINCULO,
 } from "./conversao-de-solicitacao";
 import { CP } from "./financeiro";
-import { createTask, setTaskFieldValue, setTaskTags } from "./tasks";
+import { changeTaskStatus, createTask, listWriteRefusal, setTaskFieldValue, setTaskTags, trashTask } from "./tasks";
+import { memberSeesTask } from "../derive";
 
 const AGORA = "2026-09-23T12:00:00.000Z";
 const OPERADOR: Id = "mem_maryane";
@@ -400,5 +401,218 @@ describe("converterSolicitacaoEmContaAPagar", () => {
     );
     expect(transitorios).toHaveLength(0);
     expect(s.activity.some((a) => a.objectId === conta.id && a.action.endsWith(" alterado"))).toBe(false);
+  });
+
+  /* ── As bordas onde a conversão custa dinheiro ─────────────────────────── */
+
+  it("(i) converter duas vezes dá UMA conta só, e a segunda não queima um número de conta (T-3-11)", () => {
+    const solicitacao = solicitacaoAprovada();
+    const primeira = converterSolicitacaoEmContaAPagar(s, OPERADOR, solicitacao.id);
+    expect(primeira.ok, primeira.ok ? "" : primeira.error).toBe(true);
+    if (!primeira.ok) throw new Error("unreachable");
+
+    const antes = {
+      tasks: s.tasks.length,
+      links: s.links.length,
+      activity: s.activity.length,
+      readable: s.workspace.taskReadableId.next,
+    };
+
+    const segunda = converterSolicitacaoEmContaAPagar(s, OPERADOR, solicitacao.id);
+    expect(segunda.ok).toBe(false);
+    if (segunda.ok) throw new Error("unreachable");
+    expect(segunda.error).toContain(primeira.value.readableId ?? primeira.value.id);
+
+    expect(s.tasks.length).toBe(antes.tasks);
+    expect(s.links.length).toBe(antes.links);
+    expect(s.activity.length).toBe(antes.activity);
+    // A guarda roda ANTES de `createTask`: nenhum identificador legível é
+    // consumido por uma operação que falhou.
+    expect(s.workspace.taskReadableId.next).toBe(antes.readable);
+
+    const geradas = s.tasks.filter((t) => t.listId === CP.listId && t.provenance?.sourceId === solicitacao.id);
+    expect(geradas).toHaveLength(1);
+  });
+
+  it("(j) a barreira sobrevive à lixeira: a Conta apagada continua barrando a reconversão", () => {
+    const solicitacao = solicitacaoAprovada();
+    const primeira = converterSolicitacaoEmContaAPagar(s, OPERADOR, solicitacao.id);
+    expect(primeira.ok, primeira.ok ? "" : primeira.error).toBe(true);
+    if (!primeira.ok) throw new Error("unreachable");
+
+    const lixo = trashTask(s, OPERADOR, primeira.value.id);
+    expect(lixo.ok, lixo.ok ? "" : lixo.error).toBe(true);
+    expect(s.tasks.find((t) => t.id === primeira.value.id)?.lifecycle).toBe("naLixeira");
+
+    const segunda = converterSolicitacaoEmContaAPagar(s, OPERADOR, solicitacao.id);
+    // Dinheiro em dobro é pior que uma conta apagada por engano.
+    expect(segunda.ok).toBe(false);
+    expect(contaAPagarDeSolicitacao(s, solicitacao.id)?.id).toBe(primeira.value.id);
+  });
+
+  it("(k) a Forma de pagamento que o destino não enumera vira LACUNA, não rollback", () => {
+    const solicitacao = solicitacaoAprovada({ campos: { [SP.forma]: "Cartão" } });
+    const antesDaConversao = s.activity.length;
+
+    const r = converterSolicitacaoEmContaAPagar(s, OPERADOR, solicitacao.id);
+    expect(r.ok, r.ok ? "" : r.error).toBe(true);
+    if (!r.ok) throw new Error("unreachable");
+
+    // A conta nasce; o Campo que não cabe fica vazio, e RN-CP-02 a segura em
+    // "para pagar" até alguém decidir.
+    expect(valorDe(r.value, CP.fields.forma)).toBeUndefined();
+    const lacunas = s.activity.filter((a) => a.objectId === r.value.id && a.action === "Lacuna de conversão");
+    expect(lacunas).toHaveLength(1);
+    expect(lacunas[0]?.detail).toContain("opcao_sem_equivalente");
+    expect(lacunas[0]?.detail).toContain("Forma de pagamento");
+
+    // Uma opção irrepresentável não derruba a conversão inteira: as outras 20
+    // correspondências continuam preenchidas.
+    const preenchidos = DE_PARA_DE_CAMPOS.filter((p) => valorDe(r.value, p.para) !== undefined);
+    expect(preenchidos).toHaveLength(20);
+
+    // Nenhum Registro produzido PELA CONVERSÃO carrega o valor — só o nome do
+    // Campo (D-25). A trilha da própria Solicitação, onde o valor de fato
+    // mora, é anterior e não é conversão.
+    const daConversao = s.activity.slice(0, s.activity.length - antesDaConversao);
+    expect(daConversao.length).toBeGreaterThan(0);
+    expect(JSON.stringify(daConversao)).not.toContain("Cartão");
+  });
+
+  it("(l) Link de pagamento, Equipe e Produto viram três lacunas, cada uma com o NOME do Campo", () => {
+    const solicitacao = solicitacaoAprovada({
+      campos: {
+        [SP.linkDePagamento]: "https://pagamento.exemplo.test/fatura/1",
+        [SP.equipe]: 3,
+        [SP.produto]: ["Mentoria Exemplo"],
+      },
+    });
+    const antesDaConversao = s.activity.length;
+
+    const r = converterSolicitacaoEmContaAPagar(s, OPERADOR, solicitacao.id);
+    expect(r.ok, r.ok ? "" : r.error).toBe(true);
+    if (!r.ok) throw new Error("unreachable");
+
+    const lacunas = s.activity.filter((a) => a.objectId === r.value.id && a.action === "Lacuna de conversão");
+    expect(lacunas).toHaveLength(3);
+    const detalhes = lacunas.map((a) => a.detail ?? "").sort();
+    expect(detalhes.every((d) => d.startsWith("campo_sem_equivalente: "))).toBe(true);
+    for (const nome of ["Link de pagamento", "Equipe", "Produto"]) {
+      expect(detalhes.some((d) => d.endsWith(nome))).toBe(true);
+    }
+
+    // O NOME do Campo, nunca o valor.
+    const daConversao = JSON.stringify(s.activity.slice(0, s.activity.length - antesDaConversao));
+    expect(daConversao).not.toContain("pagamento.exemplo.test");
+    expect(daConversao).not.toContain("Mentoria Exemplo");
+  });
+
+  it("(m) o que NÃO é lacuna desfaz tudo: nenhuma Conta meio montada fica no estado", () => {
+    const solicitacao = solicitacaoAprovada();
+    // Campo arquivado não é "a Lista não representa o valor": é recusa de
+    // verdade, do outro lado da fronteira.
+    const definicao = s.fieldDefinitions.find((d) => d.id === CP.fields.cnpj);
+    expect(definicao).toBeDefined();
+    definicao!.lifecycle = "arquivado";
+
+    const antes = {
+      tasks: s.tasks.length,
+      links: s.links.length,
+      activity: s.activity.length,
+      readable: s.workspace.taskReadableId.next,
+    };
+
+    const r = converterSolicitacaoEmContaAPagar(s, OPERADOR, solicitacao.id);
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error("unreachable");
+    // A recusa cita o `definitionId`, nunca o valor (T-3-12b).
+    expect(r.error).toContain(CP.fields.cnpj);
+    expect(r.error).not.toContain("cnpj-ficticio-0001");
+
+    expect(s.tasks.length).toBe(antes.tasks);
+    expect(s.links.length).toBe(antes.links);
+    expect(s.activity.length).toBe(antes.activity);
+    expect(s.workspace.taskReadableId.next).toBe(antes.readable);
+    expect(contaAPagarDeSolicitacao(s, solicitacao.id)).toBeUndefined();
+  });
+
+  it("(n) guardas de origem: Status errado, Lista errada e Tarefa inexistente não criam nada", () => {
+    const emAprovacao = solicitacaoAprovada();
+    const mudanca = changeTaskStatus(s, OPERADOR, emAprovacao.id, SOL.status.emAprovacao);
+    expect(mudanca.ok, mudanca.ok ? "" : mudanca.error).toBe(true);
+
+    let antes = s.tasks.length;
+    const porStatus = converterSolicitacaoEmContaAPagar(s, OPERADOR, emAprovacao.id);
+    expect(porStatus.ok).toBe(false);
+    if (porStatus.ok) throw new Error("unreachable");
+    expect(porStatus.error).toContain("em aprovação");
+    expect(s.tasks.length).toBe(antes);
+
+    // Uma Conta a pagar qualquer não é uma Solicitação.
+    const outraLista = createTask(s, OPERADOR, { listId: CP.listId, title: "Conta avulsa" });
+    expect(outraLista.ok, outraLista.ok ? "" : outraLista.error).toBe(true);
+    if (!outraLista.ok) throw new Error("unreachable");
+    antes = s.tasks.length;
+    const porLista = converterSolicitacaoEmContaAPagar(s, OPERADOR, outraLista.value.id);
+    expect(porLista.ok).toBe(false);
+    expect(s.tasks.length).toBe(antes);
+
+    const inexistente = converterSolicitacaoEmContaAPagar(s, OPERADOR, "tsk_que_nao_existe");
+    expect(inexistente.ok).toBe(false);
+    expect(s.tasks.length).toBe(antes);
+  });
+
+  it("(o) quem não enxerga a Solicitação não a converte, mesmo podendo criar em Contas a pagar (T-3-12)", () => {
+    const solicitacao = solicitacaoAprovada();
+    // O Aprovador alcança a Lista de Contas a pagar e SÓ ela: `listWriteRefusal`
+    // o deixaria criar a Tarefa de destino.
+    expect(listWriteRefusal(s, APROVADOR, CP.listId)).toBeUndefined();
+    expect(memberSeesTask(s, APROVADOR, solicitacao.id)).toBe(false);
+
+    const antes = s.tasks.length;
+    const r = converterSolicitacaoEmContaAPagar(s, APROVADOR, solicitacao.id);
+    expect(r.ok).toBe(false);
+    expect(s.tasks.length).toBe(antes);
+    // Nenhuma Grant nova: a conversão não amplia alcance de ninguém.
+    expect(s.grants.filter((g) => g.subjectId === APROVADOR)).toHaveLength(1);
+  });
+
+  it("(p) sem vencimento em lugar nenhum, a Conta nasce sem `dueDate` e com a lacuna escrita", () => {
+    const solicitacao = solicitacaoAprovada({ semVencimento: true });
+    expect(solicitacao.dueDate).toBeUndefined();
+    expect(valorDe(solicitacao, SP.dataVencimento)).toBeUndefined();
+
+    const r = converterSolicitacaoEmContaAPagar(s, OPERADOR, solicitacao.id);
+    expect(r.ok, r.ok ? "" : r.error).toBe(true);
+    if (!r.ok) throw new Error("unreachable");
+
+    expect(r.value.dueDate).toBeUndefined();
+    const lacunas = s.activity.filter((a) => a.objectId === r.value.id && a.action === "Lacuna de conversão");
+    expect(lacunas).toHaveLength(1);
+    expect(lacunas[0]?.detail).toContain("vencimento_ausente");
+    expect(lacunas[0]?.detail).toContain("Data Vencimento");
+
+    // Nenhum Valor de Campo da Conta carrega data de vencimento (D3-04).
+    expect(JSON.stringify(r.value.fieldValues)).not.toContain(VENCIMENTO);
+  });
+
+  it("(q) o Vínculo responde nos dois sentidos com um `Link` só", () => {
+    const solicitacao = solicitacaoAprovada();
+    const r = converterSolicitacaoEmContaAPagar(s, OPERADOR, solicitacao.id);
+    expect(r.ok, r.ok ? "" : r.error).toBe(true);
+    if (!r.ok) throw new Error("unreachable");
+    const conta = r.value;
+
+    // "Qual conta veio desta solicitação?"
+    const daSolicitacao = s.links.find((l) => l.fromType === "task" && l.fromId === solicitacao.id);
+    expect(daSolicitacao?.toId).toBe(conta.id);
+
+    // "De qual solicitação veio esta conta?" — o mesmo array, o mesmo Link.
+    const daConta = s.links.find((l) => l.toType === "task" && l.toId === conta.id);
+    expect(daConta?.fromId).toBe(solicitacao.id);
+    expect(daConta?.id).toBe(daSolicitacao?.id);
+
+    // E a inversa também está na `provenance`, para quando o Vínculo for removido.
+    expect(conta.provenance?.sourceId).toBe(solicitacao.id);
   });
 });
