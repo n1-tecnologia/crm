@@ -88,7 +88,7 @@ describe("esquemas-de-argumentos — a forma dos args, não a regra", () => {
     expect(ESQUEMAS.runScheduledAutomations.safeParse(["l1", "2026-01-01"]).success).toBe(false);
   });
 
-  it("(h) nenhuma operação cai em fallback — esquemaDeArgumentos(nome) é o próprio ESQUEMAS[nome] para todas as 201", () => {
+  it("(h) nenhuma operação cai em fallback — esquemaDeArgumentos(nome) é o próprio ESQUEMAS[nome] para todas as 202", () => {
     const esquemasPorNome = ESQUEMAS as Record<string, unknown>;
     for (const nome of Object.keys(OPERACOES)) {
       expect(esquemaDeArgumentos(nome as NomeDeOperacao)).toBe(esquemasPorNome[nome]);
@@ -100,11 +100,11 @@ describe("esquemas-de-argumentos — a forma dos args, não a regra", () => {
     expect(esquemaDeArgumentos("updateTask")).toBe(ESQUEMAS.updateTask as unknown);
   });
 
-  it("(j) ESQUEMAS cobre exatamente OPERACOES — mesmas chaves, 201, todas nomes de operação válidos", () => {
+  it("(j) ESQUEMAS cobre exatamente OPERACOES — mesmas chaves, 202, todas nomes de operação válidos", () => {
     const chaves = Object.keys(ESQUEMAS);
     expect(chaves.sort()).toEqual(Object.keys(OPERACOES).sort());
-    // 132 + solicitarAprovacao + decideProcessApproval (Plan 02-04, D-06/D-09) + 65 de Ferramentas (notas, captacao, comunidades, grupos, flows) + iniciarConversa + converterSolicitacaoEmContaAPagar (Plan 03-06, D3-08).
-    expect(chaves.length).toBe(201);
+    // 132 + solicitarAprovacao + decideProcessApproval (Plan 02-04, D-06/D-09) + 65 de Ferramentas (notas, captacao, comunidades, grupos, flows) + iniciarConversa + converterSolicitacaoEmContaAPagar (Plan 03-06, D3-08) + alterarStatusEmLote (Plan 03-12, PAG-05).
+    expect(chaves.length).toBe(202);
     for (const chave of chaves) expect(ehNomeDeOperacao(chave)).toBe(true);
   });
 

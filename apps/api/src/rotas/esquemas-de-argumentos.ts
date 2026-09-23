@@ -17,10 +17,10 @@
  * os schemas usam `z.date()`, não a forma serializada `{ $tipo: "Date", iso }`
  * que só existe no corpo HTTP.
  *
- * Cobertura: TODAS as operações de `OPERACOES` (200) — um arquivo por módulo
+ * Cobertura: TODAS as operações de `OPERACOES` (202) — um arquivo por módulo
  * do domínio em `esquemas/`, ver `esquemas/CONTEXT.md`, composto aqui sob o
  * portão de completude abaixo: registrar uma operação nova em `OPERACOES`
- * sem acrescentar o schema correspondente a algum dos 21 arquivos de
+ * sem acrescentar o schema correspondente a algum dos 22 arquivos de
  * `esquemas/` é erro de COMPILAÇÃO, apontando o nome que falta — não existe
  * mais fallback estrutural, nem operação alcançável por HTTP sem schema
  * próprio.
@@ -70,6 +70,7 @@ import { FLOWS } from "./esquemas/flows";
 import { GRUPOS } from "./esquemas/grupos";
 import { IA } from "./esquemas/ia";
 import { INICIAR_CONVERSA } from "./esquemas/iniciar-conversa";
+import { LOTE } from "./esquemas/lote";
 import { MEMBROS } from "./esquemas/membros";
 import { NEGOCIOS } from "./esquemas/negocios";
 import { NOTAS } from "./esquemas/notas";
@@ -82,7 +83,7 @@ export type { ArgumentosDe } from "./esquemas/fragmentos";
 /**
  * Composição por spread — preserva o tipo literal de cada chave. O
  * `satisfies` abaixo é o portão de completude: faltar UMA operação de
- * `OPERACOES` (200) não compila, apontando o nome dela.
+ * `OPERACOES` (202) não compila, apontando o nome dela.
  */
 export const ESQUEMAS = {
   ...TAREFAS,
@@ -106,12 +107,13 @@ export const ESQUEMAS = {
   ...INICIAR_CONVERSA,
   ...GRUPOS,
   ...FLOWS,
+  ...LOTE,
 } satisfies EsquemasCompletos;
 
 /**
  * `ESQUEMAS[nome]` — nunca fallback: toda operação do registro tem schema
  * próprio (portão `EsquemasCompletos` acima). O cast relaxa só a união das
- * 200 assinaturas específicas que a rota — genérica sobre `NomeDeOperacao`
+ * 202 assinaturas específicas que a rota — genérica sobre `NomeDeOperacao`
  * — não consegue indexar sem um genérico por chamada; a FORMA de cada valor
  * já foi garantida pelo portão de completude e pelo `satisfies` de cada
  * arquivo de `esquemas/`.

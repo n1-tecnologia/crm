@@ -33,6 +33,7 @@ export * from "./ferramentas";
 export * from "./automations";
 export * from "./financeiro";
 export * from "./conversao-de-solicitacao";
+export * from "./lote";
 export * from "./members";
 export * from "./structure";
 export * from "./importacao";
@@ -199,6 +200,12 @@ export const createReceivableSeries = instrumentar("createReceivableSeries");
 // `apps/web` chamaria a versão crua, `gravarChamadas` não observaria a chamada
 // e a operação rodaria no cliente sem nunca chegar ao servidor.
 export const converterSolicitacaoEmContaAPagar = instrumentar("converterSolicitacaoEmContaAPagar");
+
+// lote.ts
+// Sem esta linha, `apps/web` chamaria a versão crua de `alterarStatusEmLote`,
+// `gravarChamadas` não observaria a chamada e o lote de 03-13 rodaria só no
+// navegador — 61 contas fechadas na tela e nenhuma no banco.
+export const alterarStatusEmLote = instrumentar("alterarStatusEmLote");
 
 // members.ts
 export const removeMember = instrumentar("removeMember");

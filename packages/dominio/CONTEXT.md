@@ -222,3 +222,50 @@ A operação está registrada em `OPERACOES` e alcançável por
 sozinha**. Ligar o gatilho ao `aprovado` mora em `operations/tasks.ts` ou num
 tipo de ação novo de Automação, e é trabalho de quem for dono daqueles
 arquivos.
+
+## Mudança de Status em lote: uma transação por gesto, recusa por item (PAG-05)
+
+`alterarStatusEmLote` (`src/operations/lote.ts`) existe porque CON-CP-11 é um
+fato datado — em 2026-09-08 11:58:06, 61 Tarefas com vencimento 2026-09-04
+foram fechadas no mesmo segundo — e não uma conveniência de tela. A origem
+real desse "lote de 61" é uma recorrência mensal fechando junto, não uma
+varredura arbitrária; por isso a operação recebe **ids**, nunca um filtro, e
+o recorte (dia de vencimento, Tag, Status) é trabalho da tela, que já sabe
+fazê-lo.
+
+**Não reimplementa permissão nem regra de Status.** A operação chama
+`changeTaskStatus` item a item, e é de lá que vêm RN-CP-02 (requisitos de
+saída), RN-CP-04 (`entryAllowedMemberIds`), a visibilidade (`memberSeesTask`)
+e A1 (`spawnNextOccurrence`, a Regra de Recorrência da própria Tarefa — não
+um dos nove `Automation` da Lista). Quem "otimizar" isso para uma checagem
+única por conjunto abre exatamente o furo de permissão que um endpoint de
+lote costuma abrir (T-3-45): uma checagem feita uma vez para o conjunto deixa
+passar o que uma checagem por item pega.
+
+**A forma da transação, em duas linhas.** Uma hidratação (~19 mil linhas no
+Espaço depois da importação de 03-10) atende 61 fechamentos em memória, contra
+61 hidratações se cada fechamento abrisse sua própria transação — 61 < 250, a
+constante que 03-10 justificou para a importação histórica, não é uma segunda
+decisão, é a mesma regra aplicada a um N menor. `LIMITE_DO_LOTE = 200` é o que
+mantém "uma transação" uma decisão e não um acidente: acima dele, o argumento
+de 03-10 (picotar) volta a valer, e quem pica é quem chama, não esta função.
+
+**Falha parcial é valor, não exceção.** Cada item volta um de quatro
+resultados (`alterada`, `jaEstava`, `recusada`, `parcial`), com a aritmética
+`solicitadas === alteradas + jaEstavam + recusadas + parciais` sempre
+verificável — porque os 61 fatos são independentes (ao contrário da Tarefa e
+da sua linha de ledger em 03-10, onde a atomicidade é entre duas metades do
+MESMO fato). Uma conta que se recusa a fechar não derruba as outras 60.
+
+**`jaEstava` é curto-circuitado ANTES de `changeTaskStatus` (T-3-46).** Uma
+Tarefa já no Status alvo não é reprocessada: com `before.id === target.id`,
+`changeTaskStatus` pula as guardas de saída/entrada mas ainda regrava
+`statusId`, escreve um Registro com `before === after` e **redispara**
+`runListAutomations` — sem o curto-circuito, reexecutar o mesmo lote
+(duplo clique, F5, retry de rede) rodaria as Automações de entrada em Status
+de novo a cada tentativa.
+
+A operação está registrada em `OPERACOES` e alcançável por
+`POST /operacoes/alterarStatusEmLote`, devolvendo `RelatorioDeLote` dentro do
+envelope de sempre — **nenhuma rota nova foi criada e `app.ts` não foi
+tocado**.

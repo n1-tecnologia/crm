@@ -194,6 +194,11 @@ import { createReceivableSeries, runLancamentoAgent } from "./financeiro";
 // inclusão do cabeçalho é explícita sobre isso.
 import { converterSolicitacaoEmContaAPagar } from "./conversao-de-solicitacao";
 
+// ── lote.ts ──────────────────────────────────────────────────────────────
+// `LIMITE_DO_LOTE`, `ItemDeLote` e `RelatorioDeLote` NÃO entram: constante e
+// tipos, não operações.
+import { alterarStatusEmLote } from "./lote";
+
 // ── members.ts ──────────────────────────────────────────────────────────
 import { deleteRole, grantGovernanceAccess, inviteMember, removeMember, transferWorkspaceOwnership } from "./members";
 
@@ -447,6 +452,8 @@ export const OPERACOES = {
   createReceivableSeries,
   // conversao-de-solicitacao.ts
   converterSolicitacaoEmContaAPagar,
+  // lote.ts
+  alterarStatusEmLote,
   // members.ts
   removeMember,
   transferWorkspaceOwnership,
