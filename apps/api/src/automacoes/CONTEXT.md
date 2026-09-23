@@ -14,6 +14,8 @@ que a chamada acontece.
 | `scheduler-worker.ts` | `criarSchedulerWorker()` — o poller: lease por `for update skip locked` sobre `plataforma.automacao_agenda`, catch-up do dia perdido, Ator de sistema, e o gate da primeira volta em ensaio. |
 | `scheduler-worker.test.ts` | Os 19 casos (item Wave 0 de `03-VALIDATION.md`) — puros (a)-(e) e (s), os demais contra Postgres real. |
 | `liberar.cli.ts` | CLI fino de liberação da primeira volta em ensaio — só compõe `liberarLista()`. |
+| `invocar-agente.ts` (Plan 03-11) | `criarPonteDoAgente()` — a ponte HTTP do Agente de lançamento: resolve o de-para contra `automation/` (03-07) antes da Unidade de Trabalho e injeta o resultado no motor pela opção `rodarAgenda` do scheduler acima. |
+| `invocar-agente.test.ts` | Os quinze casos: puros (a)-(e), HTTP contra `servidorFalso` (f)-(m) — sempre, sem `DATABASE_URL` —, e (n)-(o) contra Postgres real. |
 
 ## Por que não é fila, e por que a tabela existe
 
@@ -95,3 +97,55 @@ por um caminho só: a opção `rodarAgenda`, cuja assinatura é a de
 contabilidade da linha, saneamento e o gate da primeira volta continuam
 intocados. Em `../index.ts`, 03-11 acrescenta o seu próprio bloco `if` **ao
 lado** de `AUTOMACOES_WORKER_ATIVO`, sem reescrevê-lo.
+
+## A ponte do Agente (`invocar-agente.ts`)
+
+**(1) Por que o de-para é um MAPA e não uma pergunta por Tarefa.**
+`RodarAgenda` é síncrona — a mesma assinatura de `runScheduledAutomations`,
+chamada dentro da MESMA transação de `executar()`. No instante em que o
+domínio precisa do de-para já não há mais oportunidade de `await`: todo
+`fetch` acontece ANTES, num pré-passo (`aquecer()`) que hidrata o Espaço só
+para LER — nunca dentro de uma Unidade de Trabalho (precedente:
+`../bootstrap/solicitacoes.ts`, o dry-run que hidrata e dá `rollback`) — e
+monta o de-para de todas as candidatas de uma vez.
+
+**(2) O cache por (Espaço, Lista, dia civil) e o relógio próprio.** A ponte
+aquece um cache em memória com relógio mais curto que o do agendador
+(`AGENTE_CONTAS_A_PAGAR_INTERVALO_MS`, padrão 15min, contra 1h de
+`AUTOMACOES_INTERVALO_MS`) — de propósito, para o cache estar quente quando o
+agendador reivindicar a linha do dia. Cache FRIO para o par configurado é
+recusa (`fail`), NUNCA um lançamento com o de-para do protótipo: o agendador
+fecha a linha `falhou`/`RECUSA_DO_DOMINIO` e a reivindica de novo na volta
+seguinte, já quente. Cada aquecimento descarta as entradas de dias
+anteriores — o cache não cresce sem fim.
+
+**(3) Os dois modos (D3-03).**
+
+| `AGENTE_CONTAS_A_PAGAR_MODO` | Resolve para | O que a ponte alcança |
+|---|---|---|
+| ausente, vazio, ou qualquer valor que não seja o literal `lancar` | `"ensaio"` (padrão) | só `/v1/integrations/contas-a-pagar/resolver` — o endereço que 03-07 construiu sem porta de escrita. Rehearsar e escrever por acidente é impossível por construção. |
+| `"lancar"` (literal, exato) | `"lancar"` | `/resolver` e, para candidata com `veredito: "resolvida"`, `/lancar` — exige `PLATAFORMA_LANCAMENTO_TOKEN` e `AGENTE_CONTAS_A_PAGAR_URL` presentes; sem eles, recusa permanente `CONFIGURACAO_AUSENTE`, nunca uma queda silenciosa para ensaio. |
+
+Um valor definido e desconhecido (erro de digitação, `"true"`, `"0"`) cai em
+`"ensaio"` COM aviso, nomeando só a variável — nunca o seu conteúdo.
+
+**(4) A ponte só age sobre o par configurado.** `rodarAgenda` compara
+`(workspaceId, listId)` recebidos contra os configurados; qualquer outro par
+(mesmo Espaço, outra Lista) delega direto a `runScheduledAutomations`, sem
+cache e sem recusa — a ponte não pode quebrar a agenda das outras Listas.
+
+**(5) PAG-04, a metade CNPJ, mora aqui.** `CNPJ_POR_EMPRESA` foi apagada de
+`packages/dominio` (03-11, Task 1); o token `{{cnpjEmpresa}}` de A5 passa a
+ler `AGENTE_CONTAS_A_PAGAR_CNPJ_POR_EMPRESA` (`lerCnpjPorEmpresa()`, que
+derruba o mapa INTEIRO ao primeiro valor fora do formato de CNPJ — meia
+tabela é pior que nenhuma). Sem a variável, ou com a Empresa da Tarefa
+ausente do mapa, o texto de A5 diz `da Empresa <nome>` — nunca um número
+inventado.
+
+**(6) O que o relatório de Ensaio (Plan 03-14) lê daqui:** nada de novo —
+`invocar-agente.ts` não grava tabela nenhuma. O que ele PRODUZ é o
+`OpcoesDaAgenda` que `runScheduledAutomations` recebe, e o que sobra no
+`DataState` depois disso (`AgentExecution` com `rehearsal: true`, a
+`AutomationExecution` de A7 fechando `concluida` com um passo) é a mesma
+superfície que `03-08-SUMMARY.md`/`03-04-SUMMARY.md` já documentaram — 03-14
+lê `plataforma.registros`, não este arquivo.
