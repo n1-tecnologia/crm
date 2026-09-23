@@ -390,19 +390,30 @@ async function catalogoDeListasComAgenda(workspaceId?: string): Promise<ParDoCat
 | A3 | `ws_n1` de produção já reflete exatamente o `seed-contas-a-receber.ts` atual (nenhum drift desde o bootstrap) — inferido de `git log` mostrando um único commit tocando o arquivo (0a63c4b, mesma onda do bootstrap) e de `STATE.md` confirmando que o bootstrap rodou contra Supabase real | REC-01 / Pitfall 1 | Se houver drift (ex.: o bootstrap rodou ANTES do commit final do arquivo, ou uma migração manual divergiu), o evolver de reconciliação vai reportar divergências — o plano já deveria incluir essa verificação como Wave 0, não assumir |
 | A4 | Omie expõe `ListarContasReceber`/`ConsultarContaReceber`/`IncluirContaReceber`/`LancarRecebimento` em `https://app.omie.com.br/api/v1/financas/contareceber/` — via busca na documentação pública da Omie (ajuda.omie.com.br), não verificado contra uma chamada real | REC-01 ramo espelho | Se a API divergir (nomes de método, parâmetros), só afeta o ramo espelho — que é o ramo NÃO-default de D5-02; risco de planejamento baixo dado que o ramo processo é o default declarado |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> **As três foram decididas no planejamento de 2026-09-23.** A resolução de cada
+> uma está logo abaixo do enunciado, citando o plano que decide. Nenhuma segue
+> aberta; o texto original fica para quem quiser ver o raciocínio.
 
 1. **O Campo `Z WhatsApp` de D5-10 é o mesmo dado que os números fixos (Mari/Marcos/grupo financeiro) de `marcos-paulo/config.ts`, ou são coisas diferentes que a fase precisa conciliar?**
+   - **(RESOLVED — Plan 05-06):** são **dois mecanismos com uma doutrina de
+     recusa**. `canalCampoDestinoId` é o Campo da Tarefa (D5-10 literal);
+     `canalDestinatariosDaEmpresa` são os **rótulos** `mari`/`marcos`/`grupo-financeiro`
+     declarados em `Integration.avisosPorCanal.whatsapp` (D5-03). Os dois modos
+     juntos, ou nenhum, é recusa. Os números continuam só em `MP_WHATSAPP_*` no
+     ambiente do `automation/` — a plataforma guarda rótulo, como faz com a conta
+     Omie.
    - O que sabemos: nenhum Campo hoje na plataforma tem esse papel; os dois Campos "WhatsApp" existentes (`fd_cp_whatsapp`, `fld_sp_z_whatsapp`) são sobre o contato do fornecedor/solicitante, não sobre os destinatários fixos da automação de aviso.
    - O que é incerto: se o planner deve criar um Campo novo por Empresa (ex. "WhatsApp de aviso"), ou se o alvo continua sendo config estática da Automação/Empresa (D5-03), com o "Campo da Tarefa" reservado para usos futuros/genéricos.
    - Recomendação: tratar como decisão de plano (Claude's Discretion já cobre "forma da rota e do payload") — documentar explicitamente qual caminho foi escolhido e por quê, já que D5-10 e o comportamento observado de MP (D5-11) não são obviamente o mesmo mecanismo.
 
-2. **`ws_n1` de produção já tem a config atual de Contas a receber, ou há drift desde o bootstrap de Fase 1?**
+2. **`ws_n1` de produção já tem a config atual de Contas a receber, ou há drift desde o bootstrap de Fase 1?** *(RESOLVED como plano — Plan 05-09: a conferência somente-leitura de `ws_n1` é a primeira tarefa de REC-01, com saída em `05-CONFERENCIA-WS-N1.md`; o que ela achar É o escopo restante. A incerteza não foi eliminada por pesquisa — foi convertida em passo executável, que é o desfecho correto.)*
    - O que sabemos: `bootstrap-gestao.ts` chama `applyContasAReceber(..., { fixtures: false })`; `git log` mostra o arquivo estável desde o commit do bootstrap; `STATE.md` confirma execução real contra Supabase.
    - O que é incerto: nenhuma verificação direta contra o banco foi feita nesta pesquisa (sem acesso a `DATABASE_URL` de produção nesta sessão).
    - Recomendação: primeiro passo do plano de REC-01 deve ser uma leitura read-only de `ws_n1` (contagem/comparação de Status, Campos, Automações da Lista `lst_contas_a_receber`) — barato, resolve a incerteza antes de qualquer escrita.
 
-3. **O evento `solicitacao.criada.v1` (e os outros dois do contrato v1) pode ganhar um campo novo (`empresa`), ou isso conta como quebra do contrato "congelado"?**
+3. **O evento `solicitacao.criada.v1` (e os outros dois do contrato v1) pode ganhar um campo novo (`empresa`), ou isso conta como quebra do contrato "congelado"?** *(RESOLVED — Plan 05-07: **evento novo**, `automacao.notificar-canal.v1`, nunca um campo a mais num evento existente. A ambiguidade sobre o alcance de "congelado" deixa de importar, e a escolha é consistente com o precedente de 03-07, "superfície nova, não um 8º método". Não reabrir.)*
    - O que sabemos: o comentário de Plan 03-07 chama o contrato v1 de "congelado por §9"; `EVENTOS` usa `.strict()`.
    - O que é incerto: se "congelado" se refere só aos 7 métodos de `adapters/plataforma.ts` (a direção `automation/` → plataforma) ou também aos 3 eventos de outbox (a direção oposta, plataforma → `automation/`, adicionados por SOL-07/Plan 02-10).
    - Recomendação: tratar como pergunta de design a decidir no plano — a opção mais segura (evento NOVO em vez de campo novo num evento existente) evita a ambiguidade por completo e é consistente com o precedente de 03-07 ("superfície nova, não um 8º método").

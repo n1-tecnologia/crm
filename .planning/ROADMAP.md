@@ -254,21 +254,37 @@ Plans:
   4. A emissão manual de NF segue o que D10 decidir (ação na Tarefa, recomendação do plano — ou Google Sheets continua).
 
 **Plans**: 14 plans em 6 ondas
-
 Plans:
+**Wave 1**
+
 - [ ] 04-01-PLAN.md — Onda 1 · `automation/`: a fixture compartilhada e os DTOs com allowlist positiva de campos (D4-05)
 - [ ] 04-02-PLAN.md — Onda 1 · `apps/api`: o cliente HTTP de leituras com `PLATAFORMA_LEITURA_TOKEN`, timeout e erro saneado (D4-01/D4-02)
 - [ ] 04-03-PLAN.md — Onda 1 · `apps/web`: o assunto Financeiro na casca, visível por alcance à Pasta, e as formas de esqueleto das oito rotas (D4-08/D4-14)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 04-04-PLAN.md — Onda 2 · `automation/`: `buildDashboardStats`/`buildProblemRows` re-homed como funções puras, com o RESUMO sanitizado (D4-06/D4-11)
 - [ ] 04-05-PLAN.md — Onda 2 · `apps/api`: as sete rotas `GET /financeiro/*` com guarda de alcance e registro na raiz de `app.ts` (D4-14/D4-04)
 - [ ] 04-06-PLAN.md — Onda 2 · `apps/web`: a fundação das telas (os três estados de D4-15, botão Atualizar, revalidar ao focar) e o Dashboard
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 04-07-PLAN.md — Onda 3 · `automation/`: a superfície `/v1/leituras/*` autenticada em tempo constante e as quatro leituras derivadas (D4-03/D4-02)
 - [ ] 04-08-PLAN.md — Onda 3 · `apps/web`: Problemas, Aprovações pendentes (vista legada, sem porta de decisão) e Workflows (D4-11)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 04-09-PLAN.md — Onda 4 · `automation/`: Notas fiscais e Produtos — a única consulta desenhada do zero, com colunas nomeadas (D4-05/D4-07)
 - [ ] 04-10-PLAN.md — Onda 4 · `apps/api`: as escritas de D4-07 e o proxy de upload de Extratos com validação de MIME e tamanho (D4-13/D4-12)
 - [ ] 04-11-PLAN.md — Onda 4 · `apps/web`: Notas fiscais (com os dois gatilhos de lote) e Produtos (alíquota inline) (D4-12/D4-07)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 04-12-PLAN.md — Onda 5 · `automation/`: Plano de contas sobre `conciliador_contas`, gatilhos de NF e ações de execução (D4-10/D4-10b/D4-12)
 - [ ] 04-13-PLAN.md — Onda 5 · `apps/web`: Plano de contas (import CSV com confirmação que afirma a consequência) e Extratos (D4-10/D4-10b/D4-09/D4-13)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
 - [ ] 04-14-PLAN.md — Onda 6 · o corte: runbook, verificação de RLS no Postgres, Vercel pausado e a remoção do `anon_read` por último (D4-16)
 
 **UI hint**: yes
@@ -288,18 +304,37 @@ Antes de planejar: decidir os 89 arquivos não commitados do frontend do finance
   4. Uma Automação consegue notificar por Canal (WhatsApp via Evolution API) usando o campo `WhatsApp` da Tarefa — prioridade a confirmar.
 
 **Plans**: 12 plans
-
 Plans:
+**Wave 1**
+
 - [ ] 05-01-PLAN.md — Configuração por Empresa no domínio: `Integration` guarda rótulo da conta Omie, nunca segredo; evolver idempotente e CLI (TEN-01)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 05-02-PLAN.md — A tela: Integrações por Empresa e o 5º Status `em revisão` bloqueado por Empresa (TEN-01)
 - [ ] 05-03-PLAN.md — O 5º Status atravessa o contrato v1 nos dois repositórios, com fixture e documento (TEN-01)
-- [ ] 05-04-PLAN.md — Roteamento por Empresa no `automation/`: o fim do `tenantId: "tria"`, Empresa desconhecida é recusa (TEN-01)
-- [ ] 05-05-PLAN.md — O corte único de Marcos Paulo e Family Office: inventário, webhooks desligados, Listas arquivadas (TEN-01)
 - [ ] 05-06-PLAN.md — `notificar` por Canal no domínio: destino declarado, vazio é recusa, nenhum I/O (AUTO-02)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 05-04-PLAN.md — Roteamento por Empresa no `automation/`: o fim do `tenantId: "tria"`, Empresa desconhecida é recusa (TEN-01)
 - [ ] 05-07-PLAN.md — O evento `automacao.notificar-canal.v1` no outbox e as duas costuras que o produzem (AUTO-02)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 05-05-PLAN.md — O corte único de Marcos Paulo e Family Office: inventário, webhooks desligados, Listas arquivadas (TEN-01)
 - [ ] 05-08-PLAN.md — A rota `notificar-canal` no `automation/`: Bearer, idempotência, Evolution (AUTO-02)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 05-09-PLAN.md — D7: a conferência somente-leitura de `ws_n1` e a única pergunta ao Financeiro (REC-01)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
 - [ ] 05-10-PLAN.md — Contas a receber: fechar o que a conferência achou, prazos ajustáveis, ligar o relógio (REC-01)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
 - [ ] 05-11-PLAN.md — A importação das 240 contas a receber, sem acordar Automação nenhuma (REC-01)
 - [ ] 05-12-PLAN.md — As telas: preview da série de parcelas e a régua de Empresa (REC-01)
 
@@ -333,8 +368,8 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | 1. O CRM N1 ganha persistência e login | 16/16 | Complete   | 2026-09-17 |
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 23/28 | In Progress|  |
 | 3. Contas a pagar | 11/15 | In Progress|  |
-| 4. As outras telas do financeiro-tria | 0/TBD | Not started | - |
-| 5. Contas a receber e os outros tenants | 0/12 | Not started | - |
+| 4. As outras telas do financeiro-tria | 0/14 | Planned    |  |
+| 5. Contas a receber e os outros tenants | 0/12 | Planned    |  |
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*
