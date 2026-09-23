@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Plan 03-10 Tasks 1-3 completas e commitadas (classificador, orquestracao por lotes, MARCO_ZERO, CLI); Task 4 parada no checkpoint bloqueante aguardando o operador rodar a importacao real contra ws_n1 -- ver 03-10-SUMMARY.md.
-last_updated: "2026-09-23T17:31:09.994Z"
-last_activity: 2026-09-23 -- Plan 03-08 (Tasks 1-3) executado e commitado; 03-07 Task 4 permanece parada no checkpoint bloqueante
+stopped_at: Plan 03-11 Tasks 1-3 completas e commitadas (7d19af0, a385fec, f506788) -- OpcoesDaAgenda no dominio, invocar-agente.ts (a ponte HTTP), o bloco AGENTE_CONTAS_A_PAGAR_ATIVO em index.ts. Task 3 verificada por boot local real (Postgres real, automation/ substituido por servidor HTTP local); o checkpoint bloqueante (VPS/automation real + Postgres ws_n1 de producao + PLATAFORMA_LANCAMENTO_TOKEN real) fica parado -- ver 03-11-SUMMARY.md.
+last_updated: "2026-09-23T18:25:28.974Z"
+last_activity: 2026-09-23 -- Plan 03-11 (Tasks 1-3) executado e commitado; Task 3 código completo e verificado localmente, checkpoint bloqueante de produção parado
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 66
-  completed_plans: 56
+  completed_plans: 57
   percent: 33
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 03 (contas-a-pagar) — EXECUTING
-Plan: 10 of 15 — 03-09 COMPLETO (PAG-01 no domínio: `importarContaAPagarHistorica`). 03-10 Tasks 1-3 COMPLETAS e commitadas: classificador (`contas-a-pagar.ts`) provado contra as 2.861 Tarefas reais do export (números exatos do plano); orquestração por lotes com ledger transacional (`importar-contas-a-pagar.ts`); `MARCO_ZERO` (`marco-zero.ts`, corrigido para idempotência por par (workspaceId,listId), não por dia civil); CLI `contas-a-pagar:importar`. `npm run check` verde nos três workspaces. 03-10 Task 4 (checkpoint bloqueante — `--apply` real contra `ws_n1`) PARADA aguardando o operador — ver 03-10-SUMMARY.md.
-Status: Executing — 03-10 parada na Task 4 (checkpoint bloqueante, importação real); 03-08 completo com prova end-to-end de produção pendente (ver Blockers/Concerns); 03-07 Task 4 segue bloqueada à parte (aguardando VPS/produção)
-Last activity: 2026-09-23 -- Plan 03-10 (Tasks 1-3) executado e commitado; Task 4 parada no checkpoint bloqueante aguardando o operador
+Plan: 11 of 15 — 03-10 Tasks 1-3 COMPLETAS (importação histórica), Task 4 (`--apply` real contra `ws_n1`) parada no checkpoint bloqueante — ver 03-10-SUMMARY.md. 03-11 Tasks 1-2 COMPLETAS e commitadas (`7d19af0`, `a385fec`): `OpcoesDaAgenda` (união discriminada) no motor, `criarPonteDoAgente()` (`apps/api/src/automacoes/invocar-agente.ts`) chamando de verdade `/resolver`/`/lancar` de 03-07, Ensaio de D3-03 provado por 47 testes novos (7 domínio + 40 api, com e sem `DATABASE_URL`), CNPJ real de PAG-04 fechado. 03-11 Task 3 (`f506788`) — bloco `AGENTE_CONTAS_A_PAGAR_ATIVO` em `index.ts`, `.env.example`, `CONTEXT.md` — código completo e verificado por boot local real (Postgres real, `automation/` substituído por servidor HTTP local); o checkpoint bloqueante (ligar contra a VPS/`automation/` real e `ws_n1` de produção) fica PARADO — ver 03-11-SUMMARY.md.
+Status: Executing — 03-11 Task 3 parada no checkpoint bloqueante (produção real); 03-10 Task 4 parada à parte (importação real); 03-08 completo com prova end-to-end de produção pendente (ver Blockers/Concerns); 03-07 Task 4 segue bloqueada à parte (aguardando VPS/produção) — as três pendências de produção (03-07/03-08/03-11) convergem no mesmo acesso à VPS e ao `PLATAFORMA_LANCAMENTO_TOKEN`
+Last activity: 2026-09-23 -- Plan 03-11 (Tasks 1-3) executado e commitado; Task 3 código completo e verificado localmente, checkpoint bloqueante de produção parado
 
 Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PERS-04 fechado sem ressalva — CR-02 fechado por inteiro no Plan 01-16)
 
@@ -86,6 +86,7 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 | Phase 03 P06 | 27min | 3 tasks | 8 files |
 | Phase 03 P08 | 64min | 3 tasks | 8 files |
 | Phase 03 P10 | 180min | 3 tasks | 10 files |
+| Phase 03 P11 | 300min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -140,6 +141,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 03]: Plan 03-07 (Tasks 1-3): superficie HTTP nova (POST /v1/integrations/contas-a-pagar/resolver e /lancar em ../financeiro-tria/automation) confirmada como irma do contrato v1 de Solicitacao de pagamento, nao um 8o metodo -- direcao oposta dos 7 metodos existentes, contrato v1 congelado por §9, §1 ja fora de escopo, credencial PLATAFORMA_LANCAMENTO_TOKEN de escopo minimo (D-15). resolverDeParaDeLancamento nao tem porta de escrita (D3-03, estrutural); lancarContaAPagar consulta antes de incluir (T-3-11), codigo tria:contas-a-pagar:<taskId> determinístico. payment-automation-service.ts e payment-rules.ts intocados (CON-05). Task 4 (provisionar credencial + verificar contra Omie real) PARADA por falta de acesso a producao -- ver blocker e 03-07-SUMMARY.md.
 - [Phase 03]: Plan 03-08: criarSchedulerWorker() (apps/api/src/automacoes/scheduler-worker.ts) da o relogio ao motor de Automacoes -- lease for update skip locked sobre plataforma.automacao_agenda (03-01), catch-up do dia perdido provado contra Postgres real (o dia falta e reivindicado com a SUA data civil, nao a de hoje), Ator de sistema por resolverMembroAgenteDoPipeline (D-15, nunca sessao humana). A primeira volta REAL de cada (Espaco, Lista) roda em ensaio (D3-03): rodarAgenda e chamada dentro da transacao e o resultado e forcado a ok:false para a Unidade de Trabalho desfazer -- MARCO_ZERO (escrito por 03-10) e ENSAIO_PRIMEIRA_VOLTA compartilham a coluna last_error_code sem migracao nova; liberar e ato explicito (npm run automacoes:liberar). 19 casos verdes contra o Postgres real (19/19 com DATABASE_URL, 6 passam/13 pulam sem -- DEC-09). index.ts liga por AUTOMACOES_WORKER_ATIVO, bloco irmao do outbox. Prova end-to-end contra ws_n1 de producao (grant real ao Agente do pipeline) NAO foi feita -- nao existe ainda Membro com esse Papel em producao; registrado como pendencia de decisao humana, nao bloqueio de codigo.
 - [Phase 03]: Plan 03-10 (Tasks 1-3): classificador (contas-a-pagar.ts) provado contra as 2.861 Tarefas reais do export com os numeros exatos do plano (2861 validas, 0 rejeitadas, 12490 transicoes, 2830 com vencimento, 630 com reentrada, 82/83 divergencia de vencimento); orquestracao por lotes (250) com ledger na mesma transacao, atomicidade provada por injecao de falha; MARCO_ZERO corrigido para idempotencia por (workspaceId,listId) em vez de por dia civil (Rule 1 -- o texto do plano so protegia o mesmo dia). npm run check verde nos tres workspaces (dominio 447, web 107, api 430+12 skipped). Task 4 (apply real contra ws_n1) e checkpoint bloqueante, aguardando o operador.
+- [Phase 03]: Plan 03-11 (Tasks 1-3): OpcoesDaAgenda (uniao discriminada em automations.ts) faz rehearsal:false sem tarefasLancadas nao compilar (T-3-36); invocar-agente.ts resolve o de-para via POST /resolver de 03-07 num pre-passo fora da transacao (aquecer(), cache por workspaceId/listId/diaCivil) e injeta no scheduler de 03-08 pela opcao rodarAgenda; resolverModo() so aceita o literal exato lancar, qualquer outro valor cai em ensaio com aviso; payableId mock- e recusado antes de tarefasLancadas (T-3-37, achado de 03-07). CNPJ_POR_EMPRESA apagada de financeiro.ts (PAG-04) -- fillTemplate le AGENTE_CONTAS_A_PAGAR_CNPJ_POR_EMPRESA injetado, fallback "da Empresa <nome>" sem mapa. index.ts liga por AGENTE_CONTAS_A_PAGAR_ATIVO, irmao do outbox e do scheduler. Boot local real confirma modo=ensaio, POST real a /resolver e ZERO a /lancar (Postgres real, automation/ substituido por servidor HTTP local). Task 3 (ligar contra o automation/ e o Postgres de PRODUCAO) fica no checkpoint bloqueante -- mesma familia de pendencia que 03-07 (PLATAFORMA_LANCAMENTO_TOKEN) e parcialmente 03-08 (identidade de producao). 47 testes novos (7 dominio + 40 api); npm run check verde nos tres workspaces com e sem DATABASE_URL.
 
 ### Pending Todos
 
@@ -161,6 +163,7 @@ Nenhum em `.planning/todos/` ainda. Decisões com prazo (ver ROADMAP.md "Decisõ
 - Plan 03-07 (rota de calculo/lancamento de Conta a pagar no Omie): Tasks 1-3 completas e commitadas em ../financeiro-tria (372a64f, 20f38a0, a0ae13c) + a06803d em crm-n1 (contrato escrito). Task 4 (checkpoint bloqueante) parada: falta gerar PLATAFORMA_LANCAMENTO_TOKEN e escreve-lo nos .env de producao do automation/ e do apps/api (D-15), confirmar se OMIE_TRIA_APP_KEY/OMIE_TRIA_APP_SECRET existem em producao, e chamar /resolver de verdade contra uma Tarefa real -- nenhuma dessas acoes e alcancavel sem acesso a VPS/producao. Ver 03-07-SUMMARY.md.
 - Plan 03-08 (scheduler de Automacoes): codigo, testes (19/19 contra Postgres real) e wiring em index.ts completos e commitados. A prova end-to-end contra producao (ws_n1) fica pendente: nao existe ainda nenhum Membro com roleId rol_sp_agente_pipeline em nenhum Espaco de producao, entao grantGovernanceAccess real e um ciclo ao vivo do worker nao foram executados (decisao deliberada de nao escalar producao sem essa identidade -- ver 03-08-SUMMARY.md Known Gaps). Falta: (1) convidar/confirmar o Membro Agente do pipeline em ws_n1, (2) grantGovernanceAccess administrar sobre lst_contas_a_pagar/lst_contas_a_receber, (3) subir apps/api com AUTOMACOES_WORKER_ATIVO=true e decidir quando liberar a primeira volta em ensaio. Nao bloqueia 03-09/03-10/03-11 (o worker funciona; falta so a identidade de producao).
 - Plan 03-10 (importacao real de Contas a pagar): Tasks 1-3 completas e commitadas (classificador provado contra as 2861 Tarefas reais, orquestracao por lotes com ledger transacional, MARCO_ZERO). Task 4 (checkpoint bloqueante) parada aguardando o operador rodar 'npm run contas-a-pagar:importar -w @n1/api -- --apply' contra ws_n1 de producao, ler o relatorio de lacunas (em particular vencimento_l_diverge_do_nativo, decisao do Financeiro) antes de gravar, confirmar a prova de no-op na segunda execucao, e liberar a agenda com automacoes:liberar. Nenhuma dessas acoes e alcancavel sem DATABASE_URL de producao e o export em disco -- ver 03-10-SUMMARY.md.
+- Plan 03-11 (ponte HTTP do Agente de lancamento): Tasks 1-2 completas e commitadas (7d19af0, a385fec) -- OpcoesDaAgenda no dominio, invocar-agente.ts com os 15 casos de teste, 47 testes novos verdes. Task 3 (index.ts/.env.example/CONTEXT.md) codigo completo e commitado (f506788), verificado por boot local real (Postgres real, automation/ substituido por servidor HTTP local -- log confirma modo=ensaio, POST real a /resolver, ZERO a /lancar). O checkpoint bloqueante da Task 3 (ligar contra o automation/ real na VPS e o Postgres de producao ws_n1, com o PLATAFORMA_LANCAMENTO_TOKEN que 03-07 escreveu no .env de producao) fica parado -- nenhuma dessas acoes e alcancavel sem acesso a VPS/producao. Mesma familia de pendencia que 03-07 (Task 4, mesma credencial) e parcialmente 03-08 (identidade de producao). Ver 03-11-SUMMARY.md.
 
 ## Deferred Items
 
@@ -175,7 +178,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-23T17:31:09.986Z
-Stopped at: Plan 03-10 Tasks 1-3 completas e commitadas (classificador, orquestracao por lotes, MARCO_ZERO, CLI); Task 4 parada no checkpoint bloqueante aguardando o operador rodar a importacao real contra ws_n1 -- ver 03-10-SUMMARY.md.
+Last session: 2026-09-23T18:24:39.710Z
+Stopped at: Plan 03-11 Tasks 1-3 completas e commitadas (7d19af0, a385fec, f506788) -- OpcoesDaAgenda no dominio, invocar-agente.ts (a ponte HTTP), o bloco AGENTE_CONTAS_A_PAGAR_ATIVO em index.ts. Task 3 verificada por boot local real (Postgres real, automation/ substituido por servidor HTTP local); o checkpoint bloqueante (VPS/automation real + Postgres ws_n1 de producao + PLATAFORMA_LANCAMENTO_TOKEN real) fica parado -- ver 03-11-SUMMARY.md.
 Resume file: 
 None
