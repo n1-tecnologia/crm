@@ -72,6 +72,49 @@ A aprovação de processo não tem `deadline` porque o campo não existe no ramo
 é o tipo impedindo o estado inválido. O timeout de Execução de Agente nunca
 alcança uma aprovação financeira.
 
+## O de-para do lançamento: o domínio recebe, nunca busca (D3-02/D3-03)
+
+O banco de categorias do Omie não precisa ser construído: ele já existe e está
+em produção (`conciliador_contas_pagar_tria`, D3-02). Vive em outro projeto
+Supabase (DEC-08/OQ-SYN-03), então é alcançado por HTTP e nunca por JOIN —
+gerar um segundo de-para aqui criaria uma cópia que diverge no dia em que
+alguém mexer no plano de contas do Omie.
+
+Por isso `buildResumoDePagamento` e `runLancamentoAgent`
+(`src/operations/financeiro.ts`) **recebem** um `DeParaDeLancamento` e jamais o
+buscam: esta camada continua sem `fetch`, sem cliente de banco e sem variável
+de ambiente. Essa é exatamente a forma que a rota nova do `automation/` (03-07)
+devolve e que a ponte do `apps/api` (03-11) injeta. Um dicionário de uma
+entrada é um dicionário válido — o caso normal é resolver só a Categoria da
+Tarefa em questão, em vez de despejar o plano de contas inteiro a cada
+lançamento.
+
+`origem` é obrigatório porque `DE_PARA_DO_PROTOTIPO` existe e é o padrão de
+quem não passa nada. As tabelas fictícias do protótipo continuam ali para o
+seed funcionar; o que não pode acontecer é um lançamento real feito com elas
+passar despercebido. Por isso a origem é gravada no passo de raciocínio da
+`AgentExecution`: fica legível, não silenciosa.
+
+`veredito: "revisar"` é como o de-para diz "não tenho confiança suficiente"
+(abaixo de `CATEGORY_MIN_SIMILARITY`, no `automation/`). Quem formata tolera e
+renderiza o melhor palpite — o RESUMO é documento para o humano ler; quem
+executa recusa: `runLancamentoAgent` devolve `fail`, o laço de ações da
+Automação para e a conta vai para revisão humana em vez de entrar no Omie com
+a categoria errada. Uma chave que o de-para nem trouxe (`"ausente"`) recusa
+pelo mesmo caminho: não é licença para lançar "A classificar".
+
+`rehearsal` não é invenção desta fase — é campo antigo de `AgentExecution`
+(B82), até aqui escrito como `false` fixo. Com ele ligado, nenhuma escrita
+acontece na Tarefa: nenhum Comentário, nenhum Status, nenhum Registro de
+Atividade, só a Execução de sombra. E o que ela guarda é a tripla
+conta/categoria/código — nunca o texto do RESUMO, que carrega chave Pix e
+código de barras, e é a tripla que o relatório compara com o que o humano
+lançou.
+
+Daí a linha que 03-11 precisa obedecer: **o Ensaio não deve encadear A8**. Uma
+Tarefa em Ensaio não muda de Status, e INV-CP-01 não é violado porque nenhum
+RESUMO foi publicado.
+
 ## Recorrência de Contas a pagar: o que está travado (D3-05/D3-06/D3-07)
 
 A regra é **por Tarefa** (`RecurrenceRule`, em `types/structure.ts`), não por
