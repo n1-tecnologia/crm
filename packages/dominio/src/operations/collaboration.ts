@@ -321,7 +321,18 @@ export function setRecurrence(
   return ok(task);
 }
 
-/** Soma meses sem estourar: 31/01 + 1 mês é 28/02, não 03/03. */
+/**
+ * Soma meses sem estourar: 31/01 + 1 mês é 28/02, não 03/03.
+ *
+ * Isto é decisão travada (D3-07), não detalhe de implementação: satura no
+ * último dia do mês de destino porque transbordar geraria uma segunda cobrança
+ * perto da virada do mês — a conta de janeiro e a de fevereiro caindo ambas em
+ * março. A consequência aceita é que a saturação é absorvente: a série é
+ * calculada a partir do vencimento anterior, então 31/01 → 28/02 → 28/03, e o
+ * dia 31 não volta. Os pares exatos que provam as duas coisas estão em
+ * `recorrencia-contas-a-pagar.test.ts` — mudar esta função quebra um caso cujo
+ * título diz qual decisão foi violada.
+ */
 export function addMonths(d: Date, months: number): void {
   const dia = d.getDate();
   d.setDate(1);
@@ -355,7 +366,18 @@ function shift(date: TaskDate, rule: RecurrenceRule): TaskDate {
 
 const localCivil = (date: TaskDate): string => (date.form === "civilDay" ? date.value : civilOf(new Date(date.value)));
 
-/** Sábado e domingo andam para o dia útil pedido; feriados ficam fora deste protótipo. */
+/**
+ * Sábado e domingo andam para o dia útil pedido, e mais nada desloca.
+ *
+ * Feriado é dia útil comum aqui **por decisão** (D3-06), não por omissão: a
+ * Recorrência trata fim de semana e só. `packages/dominio` não ganha tabela de
+ * feriados nem dependência de datas — a camada continua com `zod` como única
+ * dependência, e o teste verifica isso. Se a operação provar que o desvio de
+ * feriado é necessário, a correção é uma tabela estática de datas em dado, não
+ * um algoritmo de feriado móvel dentro desta função. Os pares exatos — Carnaval
+ * e Natal vencendo no dia, domingo recuando dois — estão em
+ * `recorrencia-contas-a-pagar.test.ts`.
+ */
 function toBusinessDay(date: TaskDate, rule: RecurrenceRule["businessDays"]): TaskDate {
   if (!rule) return date;
   const shiftBy = (d: Date): number => {

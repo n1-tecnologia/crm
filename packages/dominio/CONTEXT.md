@@ -71,3 +71,30 @@ A aprovação de processo não tem `deadline` porque o campo não existe no ramo
 `processTask` de `ApprovalOrigin` — não é uma checagem em tempo de execução,
 é o tipo impedindo o estado inválido. O timeout de Execução de Agente nunca
 alcança uma aprovação financeira.
+
+## Recorrência de Contas a pagar: o que está travado (D3-05/D3-06/D3-07)
+
+A regra é **por Tarefa** (`RecurrenceRule`, em `types/structure.ts`), não por
+Lista: o Aluguel e uma assinatura podem divergir de frequência, de dia útil e
+de Responsável padrão sem que ninguém precise abrir exceção no código.
+
+O vencimento **satura no último dia do mês de destino** (D3-07): 31/01 + 1 mês
+é 28/02, nunca 03/03. A consequência aceita, que vale saber antes de estranhar,
+é que a série não volta ao dia original — ela é calculada a partir do vencimento
+anterior, então 31 → 28 → 28. Com o dia útil anterior, que é a regra real do
+Financeiro, o recuo acumula e uma conta "todo dia 31" chega ao dia 26 em cinco
+meses. Reverter isso exigiria guardar o dia âncora da série; é mudança de
+comportamento, não conserto de bug.
+
+**Feriado é dia útil comum** (D3-06). A Recorrência desloca por sábado e
+domingo e por mais nada. Nenhuma tabela de feriados e nenhuma dependência de
+datas entra nesta camada — `dependencies` é `zod` e só.
+
+A ocorrência nasce **uma vez por fechamento** (D3-05/RN-CP-06) porque a regra é
+transferida à Tarefa nova e apagada da concluída: reabrir e fechar de novo não
+tem o que gerar, e a série continua a partir da ocorrência, não da origem.
+
+As quatro afirmações são provadas por
+`src/operations/recorrencia-contas-a-pagar.test.ts`, em pares de data exatos —
+quem mudar qualquer uma delas quebra aquele arquivo, e é ali que a decisão está
+escrita por extenso.
