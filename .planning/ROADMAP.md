@@ -257,9 +257,9 @@ Plans:
 Plans:
 **Wave 1**
 
-- [ ] 04-01-PLAN.md — Onda 1 · `automation/`: a fixture compartilhada e os DTOs com allowlist positiva de campos (D4-05)
-- [ ] 04-02-PLAN.md — Onda 1 · `apps/api`: o cliente HTTP de leituras com `PLATAFORMA_LEITURA_TOKEN`, timeout e erro saneado (D4-01/D4-02)
-- [ ] 04-03-PLAN.md — Onda 1 · `apps/web`: o assunto Financeiro na casca, visível por alcance à Pasta, e as formas de esqueleto das oito rotas (D4-08/D4-14)
+- [x] 04-01-PLAN.md — Onda 1 · `automation/`: a fixture compartilhada e os DTOs com allowlist positiva de campos (D4-05)
+- [x] 04-02-PLAN.md — Onda 1 · `apps/api`: o cliente HTTP de leituras com `PLATAFORMA_LEITURA_TOKEN`, timeout e erro saneado (D4-01/D4-02)
+- [x] 04-03-PLAN.md — Onda 1 · `apps/web`: o assunto Financeiro na casca, visível por alcance à Pasta, e as formas de esqueleto das oito rotas (D4-08/D4-14)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -368,7 +368,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | 1. O CRM N1 ganha persistência e login | 16/16 | Complete   | 2026-09-17 |
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 23/28 | In Progress|  |
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
-| 4. As outras telas do financeiro-tria | 0/14 | Planned    |  |
+| 4. As outras telas do financeiro-tria | 3/14 | In Progress|  |
 | 5. Contas a receber e os outros tenants | 0/12 | Planned    |  |
 
 ---
