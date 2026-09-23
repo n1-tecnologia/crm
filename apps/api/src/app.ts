@@ -26,6 +26,7 @@ import {
 } from "./plugins/autenticacao-servico";
 import { rotasDeClassificacoes, type OpcoesDeClassificacoes } from "./rotas/classificacoes";
 import { rotasDeEstado } from "./rotas/estado";
+import { rotasDeFinanceiro, type OpcoesDeFinanceiro } from "./rotas/financeiro";
 import { rotasDeFormulariosPublicos, type OpcoesDeFormulariosPublicos } from "./rotas/formularios-publicos";
 import { rotasDeIntegracaoDeSolicitacoes } from "./rotas/integracao-solicitacoes";
 import { rotasDeOperacoes } from "./rotas/operacoes";
@@ -68,6 +69,8 @@ export interface OpcoesDoApp {
    * a janela de 90 dias do fallback de comentário (D-10, V02-08B).
    */
   readonly classificacoes?: OpcoesDeClassificacoes;
+  /** Fase 4 (04-05) — troca o cliente de leituras do Financeiro por um falso, sem rede. */
+  readonly financeiro?: OpcoesDeFinanceiro;
 }
 
 export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
@@ -123,6 +126,7 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
   // chegar ao `@fastify/cors`. Passar a função direto faz `request` virar
   // a instância do servidor, não a requisição, e o hook nunca dispara de
   // verdade por requisição.
+  // Fase 4: as leituras usam só GET, já coberto; por isso as escritas de 04-10 nascem como POST, não PATCH/DELETE.
   const opcoesDeCors = {
     credentials: false,
     methods: ["GET", "POST"],
@@ -161,6 +165,9 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
   // Fastify resolve a fila sozinho no primeiro `ready()`/`listen()`/`inject()`.
   app.register(rotasDeOperacoes);
   app.register(rotasDeEstado);
+  // Fase 4 (04-05) — na RAIZ herda o JWT de Membro; dentro do bloco de rotas
+  // serviço-a-serviço abaixo exigiria credencial de serviço, invertendo quem chama quem (Pitfall 4).
+  app.register(rotasDeFinanceiro, opcoes.financeiro ?? {});
   // D-02 — as únicas rotas SEM `Authorization: Bearer` desta instância: cada
   // uma se isenta explicitamente com `config: { publica: true }`, o mesmo
   // gancho de `/saude` acima (`plugins/autenticacao.ts`). CORS continua pela
