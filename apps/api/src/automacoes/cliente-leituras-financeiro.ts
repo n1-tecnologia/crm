@@ -55,8 +55,8 @@ export function classificarLeitura(
   const code = codigoDoEnvelope(corpo) ?? `HTTP_${status}`;
   if (retryable === true) return { permanente: false, code };
   if (retryable === false) return { permanente: true, code };
-  if (status === 429 || (status >= 500 && status < 600)) return { permanente: false, code };
   if (STATUS_PERMANENTES.includes(status)) return { permanente: true, code };
+  if (status === 429 || (status >= 500 && status < 600)) return { permanente: false, code };
   return { permanente: true, code }; // status desconhecido — por segurança, permanente.
 }
 
