@@ -23,6 +23,8 @@ export function formaDe(pathname: string): Forma {
   if (/^\/estrutura\/tarefas\/[^/]+/.test(pathname)) return "registro";
   if (pathname === "/minha-conta") return "registro";
   if (pathname.startsWith("/f/") || pathname.startsWith("/p/")) return "formulario";
+  if (pathname === "/financeiro/extratos") return "formulario";
+  if (pathname === "/financeiro") return "painel";
   return "tabela";
 }
 

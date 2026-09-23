@@ -18,6 +18,11 @@ describe("rotas — a família da tela", () => {
     expect(formaDe("/f/segredo")).toBe("formulario");
     expect(formaDe("/crm/contatos")).toBe("tabela");
     expect(formaDe("/ferramentas/grupos")).toBe("tabela");
+    expect(formaDe("/financeiro")).toBe("painel");
+    expect(formaDe("/financeiro/extratos")).toBe("formulario");
+    expect(formaDe("/financeiro/notas-fiscais")).toBe("tabela");
+    expect(formaDe("/financeiro/plano-contas")).toBe("tabela");
+    expect(formaDe("/financeiro/aprovacoes-pendentes")).toBe("tabela");
   });
 });
 
@@ -32,5 +37,7 @@ describe("rotas — a chave de chegada", () => {
     expect(chaveDeChegada("/crm/caixa-de-entrada/configuracoes/filas")).toBe("/crm/caixa-de-entrada/configuracoes/filas");
     expect(chaveDeChegada("/crm/contatos/cnt_1")).toBe("/crm/contatos/cnt_1");
     expect(chaveDeChegada("/")).toBe("/");
+    // Prova de que nada colapsa: /financeiro/* não é mestre-detalhe.
+    expect(chaveDeChegada("/financeiro/notas-fiscais")).toBe("/financeiro/notas-fiscais");
   });
 });
