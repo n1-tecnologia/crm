@@ -111,6 +111,78 @@ export const CATEGORIA_OMIE: Readonly<Record<string, { readonly nome: string; re
   Salário: { nome: "Folha de pagamento", codigo: "2.01.01" },
 };
 
+/* ═══════════════ O de-para chega por parâmetro (D3-02/D3-03) ═══════════════
+ *
+ * As três tabelas acima foram inventadas para o protótipo. O de-para de
+ * verdade já existe e está em produção (`conciliador_contas_pagar_tria`,
+ * D3-02), num outro projeto Supabase (DEC-08/OQ-SYN-03) — alcançado por HTTP,
+ * nunca por JOIN. Gerar um segundo de-para aqui criaria uma cópia que diverge
+ * no dia em que alguém mexer no plano de contas do Omie.
+ *
+ * Por isso o domínio **recebe** o de-para e nunca o busca: quem lê a fonte é
+ * a rota nova do `automation/` (03-07) e a ponte do `apps/api` (03-11). Os
+ * tipos abaixo são a FORMA desse recebimento — o contrato entre os três.
+ */
+
+/** Como o de-para diz "não tenho confiança suficiente" (corte: `CATEGORY_MIN_SIMILARITY`). */
+export type VereditoDeCategoria = "resolvida" | "revisar";
+
+/** O que o RESUMO conclui — `"ausente"` é a chave que não veio no de-para recebido. */
+export type VereditoDoResumo = VereditoDeCategoria | "ausente";
+
+/**
+ * Obrigatório, nunca opcional (T-3-07): um lançamento real feito com a tabela
+ * fictícia do protótipo tem que ser visível na Execução, não silencioso.
+ */
+export type OrigemDoDePara = "prototipo" | "omie";
+
+/**
+ * A classificação de UMA Categoria, discriminada por `veredito` — o mesmo
+ * padrão de `ApprovalRequest.origin`/`ExecutionStep.kind`. No ramo `"revisar"`
+ * a `similaridade` e o `motivo` são obrigatórios: não se manda uma conta para
+ * revisão humana sem dizer por quê e sem o número que motivou.
+ */
+export type ResolucaoDeCategoria =
+  | { readonly veredito: "resolvida"; readonly nome: string; readonly codigo: string; readonly similaridade?: number }
+  | { readonly veredito: "revisar"; readonly nome: string; readonly codigo: string; readonly similaridade: number; readonly motivo: string };
+
+/**
+ * O de-para resolvido que `buildResumoDePagamento` e `runLancamentoAgent`
+ * recebem. Um dicionário de UMA entrada é um dicionário válido, e é o caso
+ * normal: 03-07 resolve só a Categoria da Tarefa em questão, em vez de
+ * despejar o plano de contas inteiro a cada lançamento.
+ */
+export interface DeParaDeLancamento {
+  /** Chave = nome da Tag `conta *`, em minúsculas (as mesmas de `CONTA_POR_TAG`). */
+  readonly contaPorTag: Readonly<Record<string, string>>;
+  /** Chave = valor do Campo "Categoria de pagamento" (`CP.fields.categoria`). */
+  readonly categoriaPorCampo: Readonly<Record<string, ResolucaoDeCategoria>>;
+  readonly origem: OrigemDoDePara;
+}
+
+/**
+ * O de-para do protótipo, montado das duas tabelas acima — é o padrão do
+ * parâmetro, o que mantém o comportamento de hoje idêntico para quem não
+ * passa nada. A origem "protótipo" é o que o torna legível na `AgentExecution`.
+ */
+export const DE_PARA_DO_PROTOTIPO: DeParaDeLancamento = {
+  contaPorTag: CONTA_POR_TAG,
+  categoriaPorCampo: Object.fromEntries(
+    Object.entries(CATEGORIA_OMIE).map(([campo, { nome, codigo }]): [string, ResolucaoDeCategoria] => [campo, { veredito: "resolvida", nome, codigo }]),
+  ),
+  origem: "prototipo",
+};
+
+/** O que a metade que DECIDE devolve à metade que EXECUTA. */
+export interface ResumoDePagamento {
+  readonly texto: string;
+  readonly conta: string;
+  readonly categoria: string;
+  readonly codigo: string;
+  readonly veredito: VereditoDoResumo;
+  readonly origem: OrigemDoDePara;
+}
+
 const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const dataBr = (iso: string | undefined): string => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "—");
 
@@ -142,13 +214,24 @@ export function erpMissingFields(state: DataState, task: Task): string[] {
   return faltando;
 }
 
-/** O "Resumo de pagamento" no formato exato que o processo já usa. */
-export function buildResumoDePagamento(state: DataState, task: Task): { readonly texto: string; readonly conta: string; readonly categoria: string; readonly codigo: string } {
+/**
+ * O "Resumo de pagamento" no formato exato que o processo já usa (CON-CP-08),
+ * travado byte a byte por `agente-de-lancamento.test.ts`.
+ *
+ * O de-para é o terceiro parâmetro, opcional no fim: quem não passa nada
+ * continua com o do protótipo, e nenhum chamador existente muda de aridade.
+ * Os dois fallbacks são regra de RENDERIZAÇÃO, não de-para — por isso ficam
+ * aqui mesmo quando a resolução é fraca: quem formata tolera, quem executa
+ * (`runLancamentoAgent`) recusa.
+ */
+export function buildResumoDePagamento(state: DataState, task: Task, dePara: DeParaDeLancamento = DE_PARA_DO_PROTOTIPO): ResumoDePagamento {
   const centro = fieldValue(task, CP.fields.centroDeCusto);
   const tag = task.tagIds.map((id) => state.tags.find((t) => t.id === id)?.name ?? "").find((n) => n.startsWith("conta ")) ?? "";
-  const conta = CONTA_POR_TAG[tag] ?? (centro ? centro.toUpperCase() : "A DEFINIR");
+  const conta = dePara.contaPorTag[tag] ?? (centro ? centro.toUpperCase() : "A DEFINIR");
   const categoriaCampo = fieldValue(task, CP.fields.categoria);
-  const cat = CATEGORIA_OMIE[categoriaCampo] ?? { nome: categoriaCampo || "A classificar", codigo: "9.99.99" };
+  const resolucao = dePara.categoriaPorCampo[categoriaCampo];
+  const cat = resolucao ?? { nome: categoriaCampo || "A classificar", codigo: "9.99.99" };
+  const veredito: VereditoDoResumo = resolucao ? resolucao.veredito : "ausente";
   const valor = Number(fieldValue(task, CP.fields.valor));
   const forma = fieldValue(task, CP.fields.forma);
   const dado =
@@ -178,7 +261,7 @@ export function buildResumoDePagamento(state: DataState, task: Task): { readonly
     "O que é e como será utilizado. Caso hajam parcelas, especifique aqui:",
     task.description || "—",
   ].join("\n");
-  return { texto, conta, categoria: cat.nome, codigo: cat.codigo };
+  return { texto, conta, categoria: cat.nome, codigo: cat.codigo, veredito, origem: dePara.origem };
 }
 
 /**

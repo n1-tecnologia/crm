@@ -27,7 +27,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../seed";
 import type { DataState } from "../state";
 import type { Task } from "../types";
-import { buildResumoDePagamento } from "./financeiro";
+import { DE_PARA_DO_PROTOTIPO, buildResumoDePagamento, type DeParaDeLancamento, type ResolucaoDeCategoria } from "./financeiro";
 
 const VENCIMENTO = "2026-03-10";
 
@@ -90,6 +90,11 @@ function das(): Task {
   return t;
 }
 
+/** Um de-para de UMA entrada — que é o que a rota de 03-07 devolve por Tarefa. */
+function deParaDe(categoria: string, resolucao: ResolucaoDeCategoria, origem: DeParaDeLancamento["origem"] = "omie"): DeParaDeLancamento {
+  return { contaPorTag: { "conta tria": "TRIA" }, categoriaPorCampo: { [categoria]: resolucao }, origem };
+}
+
 beforeEach(() => {
   state = buildSeed();
 });
@@ -107,5 +112,53 @@ describe("buildResumoDePagamento: o texto de CON-CP-08 é o que não pode mudar"
     const resumo = buildResumoDePagamento(state, { ...das(), tagIds: [] });
     expect(resumo.texto).toBe(GOLDEN_SEM_TAG);
     expect(resumo.conta).toBe("TRIA"); // do Centro de Custo, em caixa alta
+  });
+
+  it("passar DE_PARA_DO_PROTOTIPO à mão é idêntico a não passar nada", () => {
+    const tarefa = das();
+    const semArgumento = buildResumoDePagamento(state, tarefa);
+    expect(buildResumoDePagamento(state, tarefa, DE_PARA_DO_PROTOTIPO)).toEqual(semArgumento);
+    expect(semArgumento.veredito).toBe("resolvida");
+    expect(semArgumento.origem).toBe("prototipo");
+  });
+});
+
+describe("buildResumoDePagamento: a decisão chega por parâmetro (D3-02/D3-03)", () => {
+  it("de-para injetado manda no nome, no código e na origem", () => {
+    const resumo = buildResumoDePagamento(
+      state,
+      das(),
+      deParaDe("Impostos", { veredito: "resolvida", nome: "Tributos federais", codigo: "2.06.99", similaridade: 0.97 }),
+    );
+    expect(resumo.categoria).toBe("Tributos federais");
+    expect(resumo.codigo).toBe("2.06.99");
+    expect(resumo.origem).toBe("omie");
+    expect(resumo.veredito).toBe("resolvida");
+    expect(resumo.texto).toContain("Categoria:      Tributos federais");
+    expect(resumo.texto).toContain("Código:         2.06.99");
+    expect(resumo.conta).toBe("TRIA"); // a conta também sai do de-para recebido
+  });
+
+  it("“revisar” não muda o texto: o RESUMO é documento para o humano ler, com o melhor palpite", () => {
+    const resumo = buildResumoDePagamento(
+      state,
+      das(),
+      deParaDe("Impostos", { veredito: "revisar", nome: "Impostos e taxas", codigo: "2.06.01", similaridade: 0.41, motivo: "abaixo do corte de confiança" }),
+    );
+    expect(resumo.veredito).toBe("revisar");
+    expect(resumo.texto).toBe(GOLDEN_COM_TAG); // quem formata tolera; quem executa recusa
+  });
+
+  it("chave ausente no de-para recebido: veredito “ausente” e o mesmo fallback de hoje", () => {
+    const resumo = buildResumoDePagamento(state, das(), { contaPorTag: { "conta tria": "TRIA" }, categoriaPorCampo: {}, origem: "omie" });
+    expect(resumo.veredito).toBe("ausente");
+    expect(resumo.categoria).toBe("Impostos"); // o valor do Campo, como sempre foi
+    expect(resumo.codigo).toBe("9.99.99");
+  });
+
+  it("DE_PARA_DO_PROTOTIPO espelha as tabelas do módulo e se declara fictício", () => {
+    expect(DE_PARA_DO_PROTOTIPO.origem).toBe("prototipo");
+    expect(DE_PARA_DO_PROTOTIPO.contaPorTag["conta konq"]).toBe("KONQ");
+    expect(DE_PARA_DO_PROTOTIPO.categoriaPorCampo["Impostos"]).toEqual({ veredito: "resolvida", nome: "Impostos e taxas", codigo: "2.06.01" });
   });
 });
