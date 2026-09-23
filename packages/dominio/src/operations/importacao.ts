@@ -94,7 +94,7 @@ export interface EntradaDeImportacaoHistorica {
   readonly lacunas: readonly string[];
 }
 
-function jaImportada(state: DataState, origem: string, legacyTaskId: string): boolean {
+export function jaImportada(state: DataState, origem: string, legacyTaskId: string): boolean {
   return state.tasks.some(
     (t) => t.provenance?.kind === "import" && t.provenance.sourceId === legacyTaskId && t.provenance.sourceName === origem,
   );
