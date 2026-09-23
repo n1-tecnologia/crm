@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 02 UI-SPEC approved
-last_updated: "2026-09-23T01:19:56.409Z"
-last_activity: 2026-09-21 -- Phase 02 execution started
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-09-23T02:35:17.572Z"
+last_activity: 2026-09-23 -- Phase 03 execution started
 progress:
   total_phases: 6
   completed_phases: 2
-  total_plans: 51
-  completed_plans: 23
+  total_plans: 66
+  completed_plans: 47
   percent: 33
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-15)
 
 **Core value:** Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de ponta a ponta sem abrir o ClickUp — dados no Postgres próprio, regras de `@n1/dominio` intactas.
-**Current focus:** Phase 02 — solicita-o-de-pagamento-o-front-substitui-o-clickup
+**Current focus:** Phase 03 — contas-a-pagar
 
 ## Current Position
 
-Phase: 02 (solicita-o-de-pagamento-o-front-substitui-o-clickup) — EXECUTING
-Plan: 1 of 28
+Phase: 03 (contas-a-pagar) — EXECUTING
+Plan: 2 of 15
 Status: Ready to execute
-Last activity: 2026-09-21 -- Phase 02 execution started
+Last activity: 2026-09-23 -- Phase 03 execution started
 
 Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PERS-04 fechado sem ressalva — CR-02 fechado por inteiro no Plan 01-16)
 
@@ -78,6 +78,7 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 | Phase 01 P14 | 40min | 2 tasks | 10 files |
 | Phase 01 P15 | 35min | 2 tasks | 8 files |
 | Phase 01 P16 | 40min | 2 tasks | 7 files |
+| Phase 03 P01 | 52min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -119,6 +120,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 01]: Plan 01-14 fechou esquemas/ia.ts (7), esquemas/pastas-de-chat.ts (4), esquemas/construtor-de-agentes.ts (2), esquemas/configuracao.ts (14) e esquemas/colaboracao.ts (9) — 36/36 operações de IA/Chat/configuração/colaboração com schema próprio satisfies Esquemas, CHAT_ANCHOR_TYPE/FIELD_TYPE/FEATURE/DEPENDENCY_KIND/MEDIA_TYPE fechados por Igual/Confere; provado contra os call sites reais de apps/web, inclusive AgentDraft (4 níveis) e RecurrenceRule (copies aninhado). createChatFolder ganha { name: z.string() }.strict() — o caso (q) de operacoes.test.ts passa a cair no schema, não mais em TypeError; o reapontamento é do Plan 01-16. Roda em paralelo com 01-13/01-15; ESQUEMAS e a rota só mudam no Plan 01-16 (composição final). PERS-04 continua com a ressalva de 01-VERIFICATION.md.
 - [Phase 01]: Plan 01-15 fechou esquemas/planejamento.ts (11), esquemas/escala.ts (14), esquemas/membros.ts (5) e esquemas/estrutura.ts (3) — 33/33 operações de planejamento/escala/Membros/estrutura com schema próprio satisfies Esquemas. As duas formas hostis que o verificador reproduziu contra ARGUMENTOS_GENERICOS (createGoal kind:42+anchor.lixo, saveView filters arbitrário) caem em teste puro. inviteMember ganha entrada em ESQUEMAS com o único .strip() da pasta — segunda barreira de T-1-08, SERVICOS.inviteMember em operacoes.ts intocado. Roda em paralelo com 01-13/01-14; ESQUEMAS e a rota só mudam no Plan 01-16 (composição final). PERS-04 continua com a ressalva de 01-VERIFICATION.md.
 - [Phase 01]: Plan 01-16 fechou CR-02 por inteiro: ESQUEMAS = spread dos 15 arquivos de esquemas/ satisfies EsquemasCompletos (portão de completude — operação de OPERACOES sem schema não compila), ARGUMENTOS_GENERICOS/fallback estrutural removidos, mapeamento TypeError->400 removido da rota (WR-11, por remoção — não existe mais operação sem schema). createGoal (kind:42+anchor.lixo) e saveView (filters arbitrário) provados 400 por HTTP com nada persistido (casos (t)/(u)/(v)); (q) reapontado para cair pelo schema de createChatFolder. npm run check verde (dominio 253, web 53, api 163); packages/dominio, apps/web e apps/api/src/app.ts sem diff em toda a rodada 01-12..01-16. PERS-04 marcado como requisito concluido — a ressalva de 01-VERIFICATION.md se dissolve. Fase 1: 16/16 planos GSD executados — instrução explícita do orquestrador para este plano de fechamento (onda 3 de 3 da segunda rodada de CR-02)
+- [Phase 03]: Plan 03-01: plataforma.automacao_agenda (005) aplicada no Supabase da plataforma — PK (workspace_id, list_id, dia_civil) é o invariante 'um dia civil por Lista', índice parcial + for update skip locked dão exclusão mútua entre instâncias do apps/api, e 'processando' com locked_at vencido volta a 'falhou' (critério 3 do ROADMAP verificável). A tabela NÃO é fonte de idempotência: essa continua em AutomationExecution/jaRodou (runScheduledAutomations). — Duplicar a idempotência no banco criaria duas fontes de verdade a manter sincronizadas; o que só o banco dá é lease entre processos e auditoria do dia processado. As quatro garantias estão provadas contra o Postgres real em agenda-de-automacoes.test.ts; nenhum ledger novo — a importação de Contas a pagar reusa importacao_ledger com origem = 'clickup:901107637383'.
 
 ### Pending Todos
 
@@ -151,7 +153,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-18T18:47:11.725Z
-Stopped at: Phase 02 UI-SPEC approved
+Last session: 2026-09-23T02:35:09.561Z
+Stopped at: Completed 03-01-PLAN.md
 Resume file: 
-.planning/phases/02-solicita-o-de-pagamento-o-front-substitui-o-clickup/02-UI-SPEC.md
+None

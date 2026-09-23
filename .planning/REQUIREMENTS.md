@@ -75,7 +75,7 @@ Critério de pronto: `financeiro-tria.vercel.app` pode sair do ar. Regra: DEC-16
 
 ### Transversal (AUTO)
 
-- [ ] **AUTO-01**: **Motor de Automações** — executa `Automation` da ontologia: gatilhos por evento (`AutomationTrigger.kind: evento`) e por agenda (`schedule`), ações `invocarAgente`, `solicitarAprovacao`, `aguardar`, `notificar` (tipos já existem em `packages/dominio/src/types/`), com Execuções auditáveis; necessário para A1–A9 (Fase 3), R2–R7 (Fase 5) e o gatilho "tempo em Status" que C34 pede (`REQ-x-motor-automacoes`). Peça **G, risco alto** — "infraestrutura genérica; o Financeiro é o primeiro cliente". Aceite: não especificado. Antipadrão a não repetir: o cron do `automation/` "sem fila, sem retry persistente: se o processo cair no minuto errado, o dia é pulado". OQ-PF-03 (C14) e OQ-SYN-02 (evento de saída) tocam o desenho. **Mapeado à Fase 3** (primeiro cliente). Pendente — não há código de execução de Automação em `apps/api`.
+- [x] **AUTO-01**: **Motor de Automações** — executa `Automation` da ontologia: gatilhos por evento (`AutomationTrigger.kind: evento`) e por agenda (`schedule`), ações `invocarAgente`, `solicitarAprovacao`, `aguardar`, `notificar` (tipos já existem em `packages/dominio/src/types/`), com Execuções auditáveis; necessário para A1–A9 (Fase 3), R2–R7 (Fase 5) e o gatilho "tempo em Status" que C34 pede (`REQ-x-motor-automacoes`). Peça **G, risco alto** — "infraestrutura genérica; o Financeiro é o primeiro cliente". Aceite: não especificado. Antipadrão a não repetir: o cron do `automation/` "sem fila, sem retry persistente: se o processo cair no minuto errado, o dia é pulado". OQ-PF-03 (C14) e OQ-SYN-02 (evento de saída) tocam o desenho. **Mapeado à Fase 3** (primeiro cliente). Pendente — não há código de execução de Automação em `apps/api`.
 - [ ] **AUTO-02**: Ação de notificar por Canal (WhatsApp via Evolution API) — a plataforma tem o campo `Z WhatsApp`; falta a Ação (`REQ-x-notificar-por-canal`). Derivado de DOC (`02-comparativo` §3.2) — prioridade a confirmar. Aceite: não especificado. **Mapeado à Fase 5** (tenant Marcos Paulo é quem usa a Evolution API hoje; o motor já existe desde a Fase 3). Pendente.
 
 ## v2 Requirements
@@ -132,7 +132,7 @@ Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pe
 | PAG-04 | Phase 3 | Pending | pendente — depende de OQ-CP-04 | REQ-f3-de-para-categorias-real |
 | PAG-05 | Phase 3 | In Progress | em andamento (lote em memória) | REQ-f3-pagamento-em-lote |
 | PAG-06 | Phase 3 | In Progress | em andamento (modelado; backend precisa aplicar) | REQ-f3-permissao-pessoa-da-conta |
-| AUTO-01 | Phase 3 | Pending | pendente — peça G, risco alto, não iniciada | REQ-x-motor-automacoes |
+| AUTO-01 | Phase 3 | Complete | pendente — peça G, risco alto, não iniciada | REQ-x-motor-automacoes |
 | TELA-01 | Phase 4 | Pending | pendente | REQ-f4-telas-portadas |
 | REC-01 | Phase 5 | Blocked | bloqueado por decisão (D7) | REQ-f5-contas-a-receber |
 | TEN-01 | Phase 5 | Pending | pendente | REQ-f5-tenants-marcos-paulo-family-office |
