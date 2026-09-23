@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-06-PLAN.md
-last_updated: "2026-09-23T14:01:43.950Z"
+stopped_at: Parado no checkpoint bloqueante da Task 4 de 03-07-PLAN.md (provisionamento de credencial em producao + verificacao real contra Omie) -- Tasks 1-3 completas e commitadas em ../financeiro-tria
+last_updated: "2026-09-23T14:42:06.323Z"
 last_activity: 2026-09-23 -- Phase 03 execution started
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 66
   completed_plans: 53
-  percent: 33
+  percent: 32
 ---
 
 # Project State
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 03 (contas-a-pagar) — EXECUTING
-Plan: 8 of 15
-Status: Ready to execute
-Last activity: 2026-09-23 -- Phase 03 execution started
+Plan: 07 of 15 — Tasks 1-3 completas (código, testes e contrato escrito); Task 4 (checkpoint bloqueante: provisionar `PLATAFORMA_LANCAMENTO_TOKEN` em produção e confirmar contra o Omie real) PARADA por falta de acesso a infraestrutura de produção
+Status: Blocked — aguardando ação humana/infra na Task 4 de 03-07-PLAN.md (ver 03-07-SUMMARY.md e Blockers/Concerns)
+Last activity: 2026-09-23 -- Plan 03-07 (Tasks 1-3) executado em ../financeiro-tria; Task 4 parada no checkpoint bloqueante
 
 Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PERS-04 fechado sem ressalva — CR-02 fechado por inteiro no Plan 01-16)
 
@@ -135,6 +135,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 03]: Plan 03-05, dois registros de fronteira para quem vier depois: (1) T-3-12 fica ACCEPT com endereço em 03-14 — apagar as Grants gr_cp_pessoa_* do seed NÃO apaga as já persistidas no Postgres da plataforma por um bootstrap anterior; enquanto existirem, o comportamento é idêntico ao desejado (o Pedro É a Pessoa das três contas), e nenhuma migração foi criada por isto. (2) A9 só roda em tarefaCriada, então a Pessoa preenchida DEPOIS da criação (o caminho real, porque createTask não aceita Valores de Campo) não vira Observadora — a VISIBILIDADE deixou de depender disso, o OBSERVADOR ainda depende; é trabalho de PAG-02 (03-02), não de 03-05. Efeito de interface para 03-15: a tela configuracoes/membros/[membro] mostra 'Concessões diretas' e o Pedro/Lucas passam a aparecer com MENOS linhas — a visibilidade deles saiu da Grant e foi para a configuração da Lista. E correção de comando: 03-VALIDATION.md mapeia PAG-06 a 'npm run test --workspace=@n1/dominio -- tasks'; o real é '-- pessoa-da-conta'.
 - [Phase 03]: Plan 03-06: D3-08 fechado — `converterSolicitacaoEmContaAPagar` (`operations/conversao-de-solicitacao.ts`, arquivo próprio para não criar o ciclo `financeiro ⇄ automations`) cria a Conta a pagar a partir da Solicitação aprovada dentro da plataforma, registrada em `OPERACOES` e alcançável por `POST /operacoes/converterSolicitacaoEmContaAPagar`. É a metade do critério 1 que PAG-01 não cobre: 03-09 resolveu o histórico, esta resolve o fluxo dali para frente. `convertida` NÃO virou quinto Status: a premissa da pesquisa (Open Question #1) estava errada e o caso (a) a confere em código — o catálogo sempre teve quatro Status, e o que D-14 prometeu à Fase 3 foi *a Conta a pagar e o Vínculo estruturado*, que é o que nasceu (`Link` `task→task` com `role: "conta a pagar gerada"` + `provenance.kind = "task"`). Os três custos verificados de um quinto Status (os dois testes do domínio e a união `PaymentRequestDtoV1["status"]` do contrato v1) ficaram escritos em `packages/dominio/CONTEXT.md` para quem quiser revisitar. O de-para dos 25 Campos é travado por aritmética (21 pares + 3 órfãos + 1 vencimento nativo), e o gatilho `tarefaCriada` é ADIADO, não desligado — espelho invertido de 03-09. 447 testes no domínio (17 novos), web 107, api 380+12 skipped.
 - [Phase 03]: Plan 03-06, a fronteira que decide e o buraco que a mutação achou: (1) valor que a Lista destino não REPRESENTA (a Forma de pagamento tem 4 opções na origem e 3 no destino) vira Registro `Lacuna de conversão` com o NOME do Campo, nunca o valor (D-25), e a conta NASCE — RN-CP-02 a segura em "para pagar" até alguém decidir; qualquer outra recusa (Campo arquivado, Campo fora da Lista) é rollback das quatro contagens. Sem a pré-conferência de `options`, o caso do Cartão viraria rollback e o Financeiro voltaria ao ClickUp exatamente pelo caso que o critério 1 quer eliminar. (2) A barreira de dupla conversão NÃO filtra `lifecycle` (a Conta na lixeira continua barrando — dinheiro em dobro é pior que conta apagada) e roda ANTES de `createTask`, para que a recusa não queime um identificador legível. (3) A verificação por mutação achou prova vazia: com `runAutomations: true` na criação A9 roda DUAS vezes e a segunda volta adiciona a Pessoa assim mesmo — a asserção "a Pessoa está entre os Observadores" não distinguia desenho de acidente. Corrigida para afirmar UMA Execução de `aut_cp_a9`. (4) Desvio Rule 3: `apps/api/src/rotas/esquemas-de-argumentos.test.ts` fixa o total de operações registradas em literal (200 → 201); 03-09 não tocou nisso porque registrou a operação FORA de `OPERACOES`. (5) Fora de escopo e agora única peça faltando: o gatilho automático ao entrar em `aprovado`, que mora em `tasks.ts` ou `automations.ts` — posse de arquivo da onda, não dificuldade.
+- [Phase 03]: Plan 03-07 (Tasks 1-3): superficie HTTP nova (POST /v1/integrations/contas-a-pagar/resolver e /lancar em ../financeiro-tria/automation) confirmada como irma do contrato v1 de Solicitacao de pagamento, nao um 8o metodo -- direcao oposta dos 7 metodos existentes, contrato v1 congelado por §9, §1 ja fora de escopo, credencial PLATAFORMA_LANCAMENTO_TOKEN de escopo minimo (D-15). resolverDeParaDeLancamento nao tem porta de escrita (D3-03, estrutural); lancarContaAPagar consulta antes de incluir (T-3-11), codigo tria:contas-a-pagar:<taskId> determinístico. payment-automation-service.ts e payment-rules.ts intocados (CON-05). Task 4 (provisionar credencial + verificar contra Omie real) PARADA por falta de acesso a producao -- ver blocker e 03-07-SUMMARY.md.
 
 ### Pending Todos
 
@@ -153,6 +154,7 @@ Nenhum em `.planning/todos/` ainda. Decisões com prazo (ver ROADMAP.md "Decisõ
 - Plan 00-06 (PREP-03): 5 decisoes abertas em docs/07-processos/solicitacao-de-pagamento.md §12 (L-01, L-03, L-07, L-09, L-11) que so o dono/Financeiro pode responder antes/durante o planejamento da Fase 2 -- nao bloqueiam PREP-03 em si (spec ja fecha D6/D8), mas devem ser revisitadas ao planejar SOL-01..09.
 - Credenciais Omie no histórico do git do financeiro-tria e por linha em `solicitacoes_pagamentos`/`transacoes` — risco aceito pelo dono (D-13, 2026-09-16); nunca copiar na importação.
 - PREP-04 fechado (Plan 00-07), mas o revisor FO (ClickUp id 81581802) segue sem e-mail real em de-para-usuarios.ts — dono precisa informar o e-mail corporativo ou confirmar acesso ao Team Family Office/Marcos Paulo (9011658148) para nova tentativa de usuarios.cli.ts antes de a Fase 2/3 convidar esta entrada.
+- Plan 03-07 (rota de calculo/lancamento de Conta a pagar no Omie): Tasks 1-3 completas e commitadas em ../financeiro-tria (372a64f, 20f38a0, a0ae13c) + a06803d em crm-n1 (contrato escrito). Task 4 (checkpoint bloqueante) parada: falta gerar PLATAFORMA_LANCAMENTO_TOKEN e escreve-lo nos .env de producao do automation/ e do apps/api (D-15), confirmar se OMIE_TRIA_APP_KEY/OMIE_TRIA_APP_SECRET existem em producao, e chamar /resolver de verdade contra uma Tarefa real -- nenhuma dessas acoes e alcancavel sem acesso a VPS/producao. Ver 03-07-SUMMARY.md.
 
 ## Deferred Items
 
@@ -167,7 +169,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-23T14:01:43.943Z
-Stopped at: Completed 03-06-PLAN.md
+Last session: 2026-09-23T14:41:46.838Z
+Stopped at: Parado no checkpoint bloqueante da Task 4 de 03-07-PLAN.md (provisionamento de credencial em producao + verificacao real contra Omie) -- Tasks 1-3 completas e commitadas em ../financeiro-tria
 Resume file: 
 None
