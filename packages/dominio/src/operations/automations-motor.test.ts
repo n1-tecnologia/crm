@@ -27,7 +27,7 @@ import { runScheduledAutomations } from "./automations";
 import { CP, CR } from "./financeiro";
 import { createTaskType } from "./configuration";
 import { createList, createSpace } from "./structure";
-import { changeTaskStatus, createTask, updateTask } from "./tasks";
+import { assignTask, changeTaskStatus, createTask, updateTask } from "./tasks";
 
 let state: DataState;
 beforeEach(() => {
@@ -417,5 +417,117 @@ describe("Motor de Automações — as cinco Ações de controle", () => {
     expect(execucao?.state).toBe("falhou");
     expect(execucao?.terminationReason).toMatch(/primeira Ação/);
     expect(execucao?.steps.map((s) => s.result)).toEqual(["concluido", "falhou"]);
+  });
+});
+
+/* ───────── A2/A3/A4/A9 por evento — o efeito E a Execução que o explica ───────── */
+
+/**
+ * `operations.test.ts` (linhas ~3627-3680) já prova o EFEITO de A2/A3/A4/A9
+ * sobre a conta. O que falta — e é o que o critério 3 do ROADMAP cobra — é a
+ * outra metade: a `AutomationExecution` auditável que explica o efeito. É ela
+ * que Contas a receber (Phase 5) e o gatilho "tempo em Status" (C34) vão
+ * precisar. Aqui o efeito é assertado em uma linha, só para ancorar o caso, e
+ * a Execução em detalhe.
+ *
+ * "Mesma transação" é provado de forma ESTRUTURAL e sem banco: a contagem é
+ * lida antes, a operação é chamada, e a asserção vem na linha seguinte — sem
+ * promessa, sem timer, sem segunda chamada. Isso prova que o DOMÍNIO não tem
+ * fila no meio. NÃO prova nada sobre a fronteira de processo do `apps/api`,
+ * que é do Plan 03-08.
+ */
+describe("Motor de Automações — o caminho de evento, na mesma pilha do fato", () => {
+  it("A2: pagar tira o Financeiro de Responsável e deixa quem pagou — Execução de evento concluída, um passo por Ação", () => {
+    const t = conta("tsk_cp_konq"); // “em autorização bancária”, Responsável Walter
+    expect(assignTask(state, CP.financeiroId, t.id, { kind: "member", id: CP.financeiroId }).ok).toBe(true);
+    expect(t.assignees.map((a) => a.id)).toEqual(expect.arrayContaining([CP.financeiroId, CP.aprovadorKonqId]));
+
+    const antes = state.automationExecutions.length;
+    expect(changeTaskStatus(state, CP.aprovadorKonqId, t.id, CP.status.pago).ok).toBe(true);
+    // Mesma pilha: nenhuma espera entre a operação e esta linha.
+    expect(state.automationExecutions.length).toBeGreaterThan(antes);
+    expect(t.assignees.map((a) => a.id)).toEqual([CP.aprovadorKonqId]);
+
+    const execucao = execucoesDe("aut_cp_a2", t.id).at(-1);
+    expect(execucao?.triggerKind).toBe("evento");
+    expect(execucao?.state).toBe("concluida");
+    expect(execucao?.steps.map((s) => s.toolId)).toEqual(["tarefa.removerResponsavel"]);
+    expect(execucao?.steps.map((s) => s.result)).toEqual(["concluido"]);
+    expect(execucao?.invokedBy).toEqual({ kind: "automation", id: "aut_cp_a2" });
+    // DO-AUT — a Automação age em nome do dono, e a Execução diz de quem.
+    expect(execucao?.delegate?.id).toBe(CP.financeiroId);
+    expect(execucao?.objectId).toBe(t.id);
+  });
+
+  it("A3: entrar em autorização troca o Responsável para o Aprovador — com Execução de evento concluída", () => {
+    const t = conta("tsk_cp_aluguel_out");
+    expect(changeTaskStatus(state, CP.financeiroId, t.id, CP.status.emRemessa).ok).toBe(true);
+
+    const antes = state.automationExecutions.length;
+    expect(changeTaskStatus(state, CP.financeiroId, t.id, CP.status.emAutorizacao).ok).toBe(true);
+    expect(state.automationExecutions.length).toBeGreaterThan(antes);
+    expect(t.assignees.map((a) => a.id)).toEqual([CP.aprovadorId]);
+
+    const execucao = execucoesDe("aut_cp_a3", t.id).at(-1);
+    expect(execucao?.triggerKind).toBe("evento");
+    expect(execucao?.state).toBe("concluida");
+    expect(execucao?.steps.map((s) => s.toolId)).toEqual(["tarefa.definirResponsavel"]);
+    expect(execucao?.steps.map((s) => s.result)).toEqual(["concluido"]);
+    expect(execucao?.automationVersion).toBe(1);
+  });
+
+  it("A4: negado devolve ao Financeiro e avisa — dois passos concluídos, na ordem das Ações", () => {
+    const t = conta("tsk_cp_konq");
+    expect(changeTaskStatus(state, CP.aprovadorKonqId, t.id, CP.status.negado).ok).toBe(true);
+    expect(t.assignees.map((a) => a.id)).toEqual([CP.financeiroId]);
+
+    const execucao = execucoesDe("aut_cp_a4", t.id).at(-1);
+    expect(execucao?.triggerKind).toBe("evento");
+    expect(execucao?.state).toBe("concluida");
+    // A ordem é a das Ações da versão publicada, não a de chegada.
+    expect(execucao?.steps.map((s) => s.toolId)).toEqual(["tarefa.definirResponsavel", "tarefa.comentar"]);
+    expect(execucao?.steps.map((s) => s.result)).toEqual(["concluido", "concluido"]);
+    expect(execucao?.steps.map((s) => s.index)).toEqual([0, 1]);
+    expect(t.comments.at(-1)?.author).toEqual({ kind: "automation", id: "aut_cp_a4" });
+  });
+
+  it("A9: a conta que nasce com a Pessoa preenchida ganha os três Observadores — Execução por tarefaCriada, na mesma pilha", () => {
+    const t = conta("tsk_cp_thiago_out"); // recorrente, com a Pessoa preenchida
+    expect(changeTaskStatus(state, CP.financeiroId, t.id, CP.status.emAutorizacao).ok).toBe(true);
+
+    const tarefasAntes = state.tasks.length;
+    const execucoesAntes = state.automationExecutions.length;
+    expect(changeTaskStatus(state, CP.aprovadorId, t.id, CP.status.pago).ok).toBe(true);
+    // A Recorrência criou a próxima conta e A9 já rodou nela — tudo na mesma pilha.
+    expect(state.tasks.length).toBe(tarefasAntes + 1);
+    expect(state.automationExecutions.length).toBeGreaterThan(execucoesAntes);
+
+    const proxima = state.tasks[state.tasks.length - 1];
+    if (!proxima) throw new Error("sem próxima conta");
+    expect(proxima.observerMemberIds).toEqual(expect.arrayContaining([CP.financeiroId, CP.aprovadorId, "mem_thiago_pereira"]));
+
+    const execucao = execucoesDe("aut_cp_a9", proxima.id).at(-1);
+    expect(execucao?.triggerKind).toBe("evento");
+    expect(execucao?.state).toBe("concluida");
+    expect(execucao?.objectName).toBe(proxima.title);
+    expect(execucao?.steps.map((s) => s.toolId)).toEqual(["tarefa.adicionarObservadores"]);
+    expect(execucao?.steps.map((s) => s.result)).toEqual(["concluido"]);
+  });
+
+  it("Auditoria: o Status movido por uma Ação fica no nome da Automação, em nome do dono, e a rodada tem Registro próprio", () => {
+    const t = conta("tsk_cp_aluguel_out");
+    publicar("aut_teste_auditoria", "Remessa segue para autorização", porEntrarEm("em remessa bancária"), [], [
+      acao(1, "tarefa.alterarStatus", { statusName: "em autorização bancária" }),
+    ]);
+
+    expect(changeTaskStatus(state, CP.financeiroId, t.id, CP.status.emRemessa).ok).toBe(true);
+    expect(t.statusId).toBe(CP.status.emAutorizacao); // quem moveu daqui em diante foi a Automação
+
+    const movimento = state.activity.find((a) => a.objectId === t.id && a.action === "Status alterado");
+    expect(movimento?.actor).toEqual({ kind: "automation", id: "aut_teste_auditoria" });
+    expect(movimento?.delegate?.id).toBe(CP.financeiroId);
+
+    const registro = state.activity.find((a) => a.objectId === t.id && a.action === "Automação executada" && a.detail === "Remessa segue para autorização");
+    expect(registro?.actor).toEqual({ kind: "automation", id: "aut_teste_auditoria" });
   });
 });
