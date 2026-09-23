@@ -115,6 +115,57 @@ Daí a linha que 03-11 precisa obedecer: **o Ensaio não deve encadear A8**. Uma
 Tarefa em Ensaio não muda de Status, e INV-CP-01 não é violado porque nenhum
 RESUMO foi publicado.
 
+## A conferência do Ensaio: o humano responde antes de ver a resposta do Agente (D3-03)
+
+O que conta como acerto é regra de negócio, e por isso mora aqui
+(`compararEnsaio`, `src/operations/financeiro.ts`) e não em `apps/api`: os
+dois lados da comparação — o Ensaio do Agente e o lançamento do Financeiro —
+passam pela MESMA função, nunca por duas que possam divergir na primeira
+mudança.
+
+1. **Onde o lado humano mora, e por que não em outro lugar.** O Agente, em
+   Ensaio, deixa rastro estruturado (a `AgentExecution` de sombra, acima). O
+   humano lança à mão dentro do Omie e não deixa rastro nenhum — a menos que
+   diga. Dois lugares óbvios foram recusados: os Campos da própria Tarefa são
+   circulares (são a ENTRADA do Agente, não o resultado do de-para real); e
+   ler o Omie de volta exigiria junção por (fornecedor, vencimento, valor),
+   porque um lançamento manual não carrega `codigo_lancamento_integracao` — e
+   um relatório que decide sobre dinheiro não se apoia numa junção
+   aproximada. O que sobra, e o que foi escolhido, é o próprio Financeiro
+   registrando no instante em que lança: um Comentário de prefixo fixo
+   (`PREFIXO_LANCAMENTO_HUMANO`), no molde exato de
+   `PREFIXO_MOTIVO_FLUXO_MANUAL` (`fluxo-manual-dialog.tsx`), lido de volta
+   por `lancamentoHumanoDe` e escrito por `textoDoLancamentoHumano` — um
+   escritor, um leitor, nenhuma string duplicada entre `apps/web` (escreve) e
+   `apps/api` (lê). A junção com a Tarefa é sempre pelo id dela.
+2. **A captura é no ato, por causa do viés de assentimento.** Se a pergunta
+   viesse depois, mostrando o que o Agente teria lançado, a resposta do
+   Financeiro viria contaminada — e o erro entraria na direção otimista,
+   exatamente a direção em que esta medição não pode errar. É por isso que o
+   diálogo que captura o registro (`apps/web`) não tem lista de categorias
+   nem sugestão nenhuma: mostrar a resposta do Agente antes da do humano
+   destruiria a independência da medição.
+3. **`REVISAR` é recusa correta, nunca erro.** Um Ensaio que terminou
+   `falhou` (o de-para abaixo do corte de confiança) vira
+   `veredito: "recusa_correta"` em `compararEnsaio` — mesmo havendo registro
+   humano, e antes de qualquer comparação. Sai do denominador das taxas de
+   acerto e tem taxa própria: dobrá-la em "erros" subestimaria o Agente
+   exatamente onde ele acertou ao se calar.
+4. **`semTagDeConta` marca o palpite sem evidência.** Quando `buildResumoDePagamento`
+   não encontra Tag `conta *`, ele resolve a conta de pagamento por palpite
+   (o Centro de Custo, ou `"A DEFINIR"`) e segue adiante — é o modo de falha
+   mais caro do processo, porque conta errada é dinheiro saindo do banco
+   errado. `compararEnsaio` marca esses casos (`semTagDeConta: true`) em vez
+   de escondê-los ou de inventar um veredito próprio: o palpite acertado é
+   `confere`, o errado é `diverge_conta`, e o relatório de `apps/api` tem um
+   portão duro só para eles.
+5. **`LIMIAR_DA_CANETA` é anterior aos dados por desenho.** A constante — com
+   os cinco números e o motivo de cada um comentado ao lado da declaração —
+   existe para que o limiar da decisão seja declarado ANTES de a semana de
+   Ensaio existir. Medir primeiro e decidir depois o que conta como bom é
+   racionalizar; o `git blame` desta constante é o que torna um afrouxamento
+   posterior visível.
+
 ## Importação histórica de Contas a pagar (Fase 3)
 
 `importarContaAPagarHistorica` (`src/operations/importacao-contas-a-pagar.ts`)

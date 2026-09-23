@@ -12,7 +12,7 @@
 
 import { agentSeesTask, contactDisplayName, effectiveLifecycleOfTask, memberSeesTask, statusDefinition } from "../derive";
 import { fail, ok, type DataState, type OperationResult } from "../state";
-import type { Contact, Id, Task } from "../types";
+import type { AgentExecution, Contact, Id, Task } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
 import { addMonths } from "./collaboration";
 import { addTaskComment, createTask, setTaskFieldValue, trashTask, unmetRequirements } from "./tasks";
@@ -257,6 +257,47 @@ export function buildResumoDePagamento(state: DataState, task: Task, dePara: DeP
   return { texto, conta, categoria: cat.nome, codigo: cat.codigo, veredito, origem: dePara.origem };
 }
 
+/* ═══════ A conferência do Ensaio: o par escritor/leitor do de-para (D3-03) ═══════
+ *
+ * `runLancamentoAgent` grava o passo de raciocínio do de-para como DUAS
+ * strings soltas em `ExecutionStep` (`input`/`output`) — não há campo
+ * estruturado para a tripla conta/categoria/código em `AgentExecution`
+ * (B18/`types/ai.ts`). `descreverPassoDeDePara` e `lerPassoDeDePara` vivem
+ * lado a lado de propósito: o formato é de 03-04, e a garantia contra deriva
+ * entre quem escreve e quem lê é o caso (a) de `ensaio-do-agente.test.ts`
+ * (que chama `runLancamentoAgent` de verdade e lê o resultado de volta) —
+ * não a disciplina de quem editar este arquivo depois.
+ */
+
+/** As duas strings exatas que `runLancamentoAgent` grava em `steps[0]`. */
+export function descreverPassoDeDePara(resumo: ResumoDePagamento, origem: OrigemDoDePara): { readonly input: string; readonly output: string } {
+  return { input: `de-para ERP (${origem})`, output: `Conta ${resumo.conta} · ${resumo.categoria} · ${resumo.codigo}` };
+}
+
+const ORIGENS_DO_DEPARA: readonly OrigemDoDePara[] = ["prototipo", "omie"];
+
+/**
+ * O inverso de `descreverPassoDeDePara`. Qualquer desvio de forma — segmentos
+ * a mais ou a menos, prefixo `"Conta "` ausente, origem fora do vocabulário —
+ * devolve `undefined`, nunca um palpite: um relatório que decide sobre
+ * dinheiro não adivinha o formato de quem escreveu.
+ */
+export function lerPassoDeDePara(
+  passo: { readonly input?: string; readonly output?: string } | undefined,
+): { readonly conta: string; readonly categoria: string; readonly codigo: string; readonly origem: OrigemDoDePara } | undefined {
+  if (!passo?.input || !passo.output) return undefined;
+  const partes = passo.output.split(" · ");
+  if (partes.length !== 3) return undefined;
+  const [contaBruta, categoria, codigo] = partes;
+  if (contaBruta === undefined || categoria === undefined || codigo === undefined) return undefined;
+  if (!contaBruta.startsWith("Conta ")) return undefined;
+  const conta = contaBruta.slice("Conta ".length);
+  if (!conta || !categoria || !codigo) return undefined;
+  const origem = /\(([^)]+)\)/.exec(passo.input)?.[1];
+  if (!origem || !ORIGENS_DO_DEPARA.includes(origem as OrigemDoDePara)) return undefined;
+  return { conta, categoria, codigo, origem: origem as OrigemDoDePara };
+}
+
 /**
  * Como se invoca o Agente com o de-para de verdade e/ou em Ensaio. `dePara` é
  * obrigatório de propósito (T-3-07): não se liga o Ensaio sem dizer contra
@@ -371,7 +412,7 @@ export function runLancamentoAgent(
   }
 
   const resumo = buildResumoDePagamento(state, task, dePara);
-  execution.steps.push({ index: 0, kind: "raciocinio", input: `de-para ERP (${dePara.origem})`, output: `Conta ${resumo.conta} · ${resumo.categoria} · ${resumo.codigo}`, result: "concluido", at: now() });
+  execution.steps.push({ index: 0, kind: "raciocinio", ...descreverPassoDeDePara(resumo, dePara.origem), result: "concluido", at: now() });
 
   // T-3-10 — quem formata tolera, quem executa recusa: uma classificação que
   // não passou do corte de confiança (ou que o de-para nem trouxe) vai para
@@ -422,16 +463,202 @@ export function runLancamentoAgent(
   return ok(`Resumo publicado: ${resumo.conta} · ${resumo.categoria} (${resumo.codigo})`);
 }
 
+/* ═══════ A conferência do Ensaio: onde o humano responde (D3-03) ═══════
+ *
+ * O Agente, em Ensaio, deixa rastro estruturado (`AgentExecution` acima). O
+ * humano lança à mão dentro do Omie e não deixa rastro nenhum — a menos que
+ * diga. Este bloco decide onde ele diz: um Comentário de prefixo fixo, no
+ * molde exato de `PREFIXO_MOTIVO_FLUXO_MANUAL` (`fluxo-manual-dialog.tsx`).
+ *
+ * A junção com a Tarefa é pelo id dela — nunca por (fornecedor, vencimento,
+ * valor): um lançamento manual no Omie não carrega
+ * `codigo_lancamento_integracao`, e um relatório que decide sobre dinheiro
+ * não se apoia numa junção aproximada.
+ */
+
+/**
+ * O registro do lançamento feito à mão pelo Financeiro durante o Ensaio de
+ * D3-03 — o lado humano da comparação que 03-14 mede contra o Ensaio do
+ * Agente. O prefixo é contrato entre `apps/web` (escreve, por
+ * `textoDoLancamentoHumano`) e `apps/api` (lê, por `lancamentoHumanoDe`),
+ * sem que nenhum dos dois conheça o outro.
+ */
+export const PREFIXO_LANCAMENTO_HUMANO = "Lançado no Omie: ";
+
+export interface LancamentoHumano {
+  readonly conta: string;
+  readonly categoria: string;
+  readonly codigo: string;
+  readonly por: Id;
+  readonly em: string;
+}
+
+/**
+ * A MESMA forma do `output` de `descreverPassoDeDePara` — os dois lados são
+ * lidos pelo mesmo separador (`lerPassoDeDePara`). Nada além dos três campos
+ * entra no texto: sem valor, sem fornecedor, sem chave Pix, sem código de
+ * barras (T-3-66) — nem como opcional.
+ */
+export function textoDoLancamentoHumano(l: { readonly conta: string; readonly categoria: string; readonly codigo: string }): string {
+  return `${PREFIXO_LANCAMENTO_HUMANO}Conta ${l.conta} · ${l.categoria} · ${l.codigo}`;
+}
+
+/**
+ * O Comentário de registro mais recente publicado por um MEMBRO — nunca por
+ * um Agente ou automação (T-3-70): um Comentário com o mesmo prefixo
+ * publicado com `actor: { kind: "agent" }` é ignorado por construção, não
+ * por convenção.
+ */
+export function lancamentoHumanoDe(state: DataState, task: Task): LancamentoHumano | undefined {
+  const comentario = [...task.comments]
+    .filter((c) => !c.deletedAt && c.content.startsWith(PREFIXO_LANCAMENTO_HUMANO) && c.author.kind === "member")
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  if (!comentario) return undefined;
+  const lido = lerPassoDeDePara({ input: "de-para ERP (omie)", output: comentario.content.slice(PREFIXO_LANCAMENTO_HUMANO.length) });
+  if (!lido) return undefined;
+  return { conta: lido.conta, categoria: lido.categoria, codigo: lido.codigo, por: comentario.author.id, em: comentario.createdAt };
+}
+
+/** O vocabulário fechado da conferência — oito vereditos, quatro deles nem acerto nem erro. */
+export type VereditoDaConferencia =
+  | "confere"
+  | "diverge_categoria"
+  | "diverge_conta"
+  | "diverge_ambos"
+  | "recusa_correta"
+  | "sem_ensaio"
+  | "sem_lancamento_humano"
+  | "nao_medivel";
+
+/**
+ * As triplas viajam no resultado porque o relatório detalhado (fora do git,
+ * `conferencia-detalhada.csv`) as usa; o relatório versionado NÃO as imprime
+ * individualmente (T-3-65).
+ */
+export interface ResultadoDaConferencia {
+  readonly taskId: Id;
+  readonly veredito: VereditoDaConferencia;
+  readonly semTagDeConta: boolean;
+  readonly nomeDaCategoriaDiverge: boolean;
+  readonly origem?: OrigemDoDePara;
+  readonly agente?: { readonly conta: string; readonly categoria: string; readonly codigo: string };
+  readonly humano?: { readonly conta: string; readonly categoria: string; readonly codigo: string };
+}
+
+/** A `AgentExecution` de sombra da conta — a mais recente por `startedAt` (uma por Tarefa, por desenho de 03-04). */
+export function ensaioDaConta(state: DataState, taskId: Id): AgentExecution | undefined {
+  return [...state.agentExecutions].filter((e) => e.rehearsal === true && e.anchor?.id === taskId).sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+}
+
+/** Verdadeiro quando nenhuma Tag da Tarefa nomeia a conta — a mesma condição que `buildResumoDePagamento` usa para a segunda frase do `observacao`. */
+function semTagDeContaEm(state: DataState, task: Task): boolean {
+  return !task.tagIds.some((id) => (state.tags.find((t) => t.id === id)?.name ?? "").startsWith("conta "));
+}
+
+/**
+ * A regra de acerto — mora no domínio (`./CONTEXT.md` na raiz) porque o que
+ * conta como acerto é regra de negócio, não regra de relatório. `apps/api`
+ * só agrega e imprime; quem decide é esta função.
+ *
+ * Ordem de precedência (ela própria a regra): (1) sem Ensaio e sem registro
+ * humano ⇒ `undefined` — a Tarefa não entra na amostra; (2) Ensaio que
+ * terminou `falhou` ⇒ `recusa_correta`, mesmo havendo registro humano — o
+ * Agente se calou, e calar-se é o resultado correto; (3) Ensaio ilegível por
+ * `lerPassoDeDePara` ou com `origem: "prototipo"` ⇒ `nao_medivel` — medir a
+ * tabela fictícia contra o Omie real não prova nada; (4) falta um dos lados
+ * ⇒ `sem_ensaio` / `sem_lancamento_humano`; (5) comparar.
+ */
+export function compararEnsaio(state: DataState, task: Task): ResultadoDaConferencia | undefined {
+  const ensaio = ensaioDaConta(state, task.id);
+  const humano = lancamentoHumanoDe(state, task);
+  const semTag = semTagDeContaEm(state, task);
+  const humanoResultado = humano ? { conta: humano.conta, categoria: humano.categoria, codigo: humano.codigo } : undefined;
+
+  if (!ensaio && !humano) return undefined;
+
+  if (ensaio?.state === "falhou") {
+    return { taskId: task.id, veredito: "recusa_correta", semTagDeConta: semTag, nomeDaCategoriaDiverge: false, humano: humanoResultado };
+  }
+
+  const passo = ensaio ? lerPassoDeDePara(ensaio.steps[0]) : undefined;
+  if (ensaio && (!passo || passo.origem === "prototipo")) {
+    return {
+      taskId: task.id,
+      veredito: "nao_medivel",
+      semTagDeConta: semTag,
+      nomeDaCategoriaDiverge: false,
+      origem: passo?.origem,
+      agente: passo ? { conta: passo.conta, categoria: passo.categoria, codigo: passo.codigo } : undefined,
+      humano: humanoResultado,
+    };
+  }
+
+  if (!ensaio || !passo) {
+    return { taskId: task.id, veredito: "sem_ensaio", semTagDeConta: semTag, nomeDaCategoriaDiverge: false, humano: humanoResultado };
+  }
+
+  if (!humano) {
+    return {
+      taskId: task.id,
+      veredito: "sem_lancamento_humano",
+      semTagDeConta: semTag,
+      nomeDaCategoriaDiverge: false,
+      origem: passo.origem,
+      agente: { conta: passo.conta, categoria: passo.categoria, codigo: passo.codigo },
+    };
+  }
+
+  const contaIgual = passo.conta.trim().toLowerCase() === humano.conta.trim().toLowerCase();
+  const codigoIgual = passo.codigo.trim() === humano.codigo.trim();
+  const nomeDaCategoriaDiverge = passo.categoria.trim().toLowerCase() !== humano.categoria.trim().toLowerCase();
+  const veredito: VereditoDaConferencia = codigoIgual && contaIgual ? "confere" : !codigoIgual && !contaIgual ? "diverge_ambos" : !codigoIgual ? "diverge_categoria" : "diverge_conta";
+
+  return {
+    taskId: task.id,
+    veredito,
+    semTagDeConta: semTag,
+    nomeDaCategoriaDiverge,
+    origem: passo.origem,
+    agente: { conta: passo.conta, categoria: passo.categoria, codigo: passo.codigo },
+    humano: humanoResultado,
+  };
+}
+
+/**
+ * O limiar da caneta — declarado ANTES de a semana de dados existir (D3-03).
+ * Medir primeiro e decidir depois o que conta como bom é racionalizar; esta
+ * constante fecha esse modo de falha por construção. Mudá-la depois de rodar
+ * o relatório é mudar a régua depois da medida — e o `git blame` desta linha
+ * é o que torna isso visível.
+ */
+export const LIMIAR_DA_CANETA = {
+  /** G1 — com menos de 20 pares, uma única divergência move a taxa em mais de 5 pontos: não dá para distinguir acerto de ruído do limiar de G2. */
+  paresMinimos: 20,
+  /** G2 — categoria errada é erro contábil, corrigível por reclassificação no Omie depois do fato. */
+  acertoDeCodigo: 0.95,
+  /** G3 — conta errada é dinheiro saindo da conta bancária errada; não é corrigível por tecla, a barra é mais alta de propósito. */
+  acertoDeConta: 0.98,
+  /** G6 — acima de 20% dos Ensaios sem registro humano, a taxa deixa de ser confiável: é o vetor de viés de seleção (o Financeiro pode registrar só as contas fáceis). */
+  tetoDeSemRegistroHumano: 0.2,
+  /** Reportado, não bloqueante — acima de 40% de recusa o Agente está cauteloso demais para poupar trabalho. */
+  tetoDeRecusaParaUtilidade: 0.4,
+} as const;
+
 /**
  * INV-CP-01 — uma conta no caminho do ERP (`lançado omie`, `em remessa`) tem
- * Resumo ou Integração manual. Quem pulou o ERP (seção 6.4: para pagar →
- * autorização → pago) não deve nada ao Omie e não é apontada.
+ * Resumo, Integração manual, OU um registro de lançamento humano (D3-03):
+ * este último responde "por onde esta conta foi ao ERP" com mais precisão do
+ * que `Integração manual`, que só diz "não foi o Agente". Sem esta terceira
+ * forma, toda conta lançada na semana de Ensaio acenderia o aviso — e um
+ * aviso sempre aceso é um aviso que ninguém lê. Quem pulou o ERP (seção 6.4:
+ * para pagar → autorização → pago) não deve nada ao Omie e não é apontada.
  */
 export function contaSemResumo(state: DataState, task: Task): boolean {
   if (task.listId !== CP.listId) return false;
   const ordem: readonly string[] = [CP.status.lancado, CP.status.emRemessa];
   if (!ordem.includes(task.statusId)) return false;
   if (fieldValue(task, CP.fields.integracaoManual) === "Manual") return false;
+  if (lancamentoHumanoDe(state, task) !== undefined) return false;
   return !task.comments.some((c) => !c.deletedAt && c.content.startsWith("📋 RESUMO DE PAGAMENTO"));
 }
 
