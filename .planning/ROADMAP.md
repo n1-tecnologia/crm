@@ -18,7 +18,7 @@ Fase 0 e Fase 1 correm em paralelo: o que resta da Fase 0 não bloqueia terminar
 - [x] **Phase 0: Preparação** - Insumos e decisões que a Fase 2 precisa: spec da Solicitação lida da Lista real, exportação do ClickUp, de-para de usuários, rotação Omie retirada (D-13) (6/6 feitos) (completed 2026-09-17)
 - [x] **Phase 1: O CRM N1 ganha persistência e login** - Um Membro real entra, cria uma Conta pela tela e ela está no Postgres; rotas por operação, store falando `POST`, bootstrap do Espaço "Gestão", colunas geradas (persistência e autenticação já entregues) (completed 2026-09-16)
 - [ ] **Phase 2: Solicitação de pagamento — o front substitui o ClickUp** - Toda solicitação nova nasce no CRM N1, o aprovador decide com um clique e o pipeline do `automation/` roda sem webhook do ClickUp
-- [ ] **Phase 3: Contas a pagar** - O Financeiro opera uma semana sem abrir o ClickUp: importação com histórico, motor de Automações executando A1–A9, Agente lançando no Omie de verdade, lote e permissões
+- [x] **Phase 3: Contas a pagar** - O Financeiro opera uma semana sem abrir o ClickUp: importação com histórico, motor de Automações executando A1–A9, Agente lançando no Omie de verdade, lote e permissões (completed 2026-09-23)
 - [ ] **Phase 4: As outras telas do financeiro-tria** - As leituras que nunca viveram no ClickUp portadas como tela; `financeiro-tria.vercel.app` sai do ar
 - [ ] **Phase 5: Contas a receber e os outros tenants** - Marcos Paulo e Family Office como Empresas do Campo `Empresa`; Contas a receber na forma que D7 determinar; notificar por Canal
 
@@ -235,7 +235,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 03-14-PLAN.md — Relatório do Ensaio × lançamento humano com `LIMIAR_DA_CANETA` declarado antes dos dados, e o runbook de corte em 11 passos terminando no arquivamento da Lista (PAG-03)
+- [x] 03-14-PLAN.md — Relatório do Ensaio × lançamento humano com `LIMIAR_DA_CANETA` declarado antes dos dados, e o runbook de corte em 11 passos terminando no arquivamento da Lista (PAG-03)
 
 **Cross-cutting constraints:** o domínio nasce primeiro (a onda 1 é inteira `packages/dominio` fora a migração); nenhuma chamada de rede entra em `packages/dominio`; `sanitizarErro()` e `pool()` são reusados por import, nunca duplicados; o tempo é injetado (`today: Date`, `Relogio`) em todo o caminho de agenda; e o portão CON-05 vale em cada onda.
 
@@ -367,7 +367,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | 0. Preparação | 7/7 | Complete   | 2026-09-17 |
 | 1. O CRM N1 ganha persistência e login | 16/16 | Complete   | 2026-09-17 |
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 23/28 | In Progress|  |
-| 3. Contas a pagar | 14/15 | In Progress|  |
+| 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 0/14 | Planned    |  |
 | 5. Contas a receber e os outros tenants | 0/12 | Planned    |  |
 
