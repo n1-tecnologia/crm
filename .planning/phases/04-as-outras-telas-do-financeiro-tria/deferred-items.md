@@ -1,67 +1,82 @@
 # Deferred Items — Phase 04 (as-outras-telas-do-financeiro-tria)
 
-Out-of-scope discoveries logged during execution, per the executor's scope
-boundary rule. None of these are fixed by the plan that discovered them.
+Achados fora de escopo registrados durante a execução, pela regra de SCOPE BOUNDARY
+do executor. Nenhum foi corrigido pelo plano que o descobriu.
 
-## 04-01 — Task 3 (`npm test` no `automation/`)
+Os três itens abaixo vieram de agentes diferentes na Onda 1 e foram **reconciliados
+pelo orquestrador**, que verificou cada um no checkout principal antes de aceitá-lo.
+O veredito do orquestrador está marcado em cada item — dois dos três achados originais
+não sobreviveram à verificação na forma em que foram relatados.
 
-**Found during:** `cd ../financeiro-tria/automation && npm test` (full suite run, required
-by 04-01's `<verification>`).
+---
 
-**Issue:** `src/tenants/tria/payment-rules.test.ts` — case "resolve responsavel por
-centro de custo com fallback" fails:
+## 1. `payment-rules.test.ts` no `financeiro-tria` — CONFIRMADO, real
+
+**Descoberto por:** Plano 04-01, rodando a suíte de `../financeiro-tria/automation`.
+
+**O que falha:** `src/tenants/tria/payment-rules.test.ts:37` — caso "resolve responsavel
+por centro de custo com fallback":
 
 ```
 AssertionError [ERR_ASSERTION]: The input did not match the regular expression /FINQ/i.
 Input: 'Elifas'
 ```
 
-**Scope check:** `git diff --stat -- automation/src/tenants/tria/payment-rules.test.ts
-automation/src/tenants/tria/payment-rules.ts` returns empty — neither file is part of
-the 89 pre-existing dirty files, nor touched by any commit of this plan (`git log
---oneline -3` on `payment-rules.ts` shows only pre-Phase-4 commits). The failure is
-pre-existing in the `financeiro-tria` repository at `main` HEAD, unrelated to
-`fixture-financeiro.ts`/`leituras-plataforma-dtos.ts`/`leituras-plataforma-dtos.test.ts`
-(this plan's three files).
+**Verificação do orquestrador:** reproduzido de forma independente com o runner do próprio
+repositório (`npx tsx --test --test-concurrency=1 src/tenants/tria/payment-rules.test.ts`,
+e não com vitest, que aquele pacote não usa): **7 testes, 6 passam, 1 falha**. Confirmado
+pré-existente — `payment-rules.ts` e `payment-rules.test.ts` foram tocados por último em
+`fc57b2d` e `9dc9680`, ambos anteriores à Fase 4, e os três commits do 04-01 só
+acrescentam `fixture-financeiro.ts`, `leituras-plataforma-dtos.ts` e o teste de allowlist.
 
-**Why not fixed:** Out of scope per the executor's scope boundary — "only auto-fix
-issues directly caused by the current task's changes." `resolveResponsible`'s fallback
-logic belongs to a different subsystem (Solicitação de pagamento, Phase 0/2), not to
-this plan's DTO/allowlist surface.
+**Por que não foi corrigido:** `resolveResponsible` pertence ao subsistema de Solicitação
+de pagamento (Fases 0/2), não à superfície de DTO/allowlist deste plano.
 
-**Net effect on `npm test`:** 95/96 passing (1 pre-existing failure, unrelated). The
-three new files added by 04-01 (`fixture-financeiro.ts`, `leituras-plataforma-dtos.ts`,
-`leituras-plataforma-dtos.test.ts`) do not regress this number — it was already 95/96
-before this plan's commits landed (verified: neither file this test depends on has any
-diff from `main` HEAD).
+**Dono sugerido:** quem for mexer em `resolveResponsible` / `payment-rules.ts`.
 
-**Suggested owner:** whoever next touches `payment-rules.ts`/`resolveResponsible` — most
-likely a plan revisiting Solicitação de pagamento fallback rules, not a Phase 4 plan.
+---
 
-## 04-01 — `npm run check` in `crm-n1` (diligence run, not required by Task 1-3 acceptance)
+## 2. `scheduler-worker.test.ts` no `apps/api` — REFUTADO, não é defeito
 
-**Found during:** running `npm run check` from the `crm-n1` root, per the plan's
-`<verification>` instruction to prove the phase "didn't bleed" into `crm-n1`.
+**Relatado por:** Plano 04-03, rodando `npm run check` de dentro do seu worktree.
 
-**Result:** `typecheck` (3 workspaces), `lint`, `verificar:tokens`, `@n1/dominio` tests
-(480 passing) and `@n1/web` tests (144 passing) all green. `@n1/api` tests had 2
-failures:
+**Relato original:** `liberar.cli.ts — validação de argumentos (sem banco)` falhando com
+`expect(saida).toContain("uso:")` recebendo `''`, atribuído a uma regressão pré-existente
+do Plano 03-08.
 
-- `src/e2e/lote-contas-a-pagar.test.ts` — case "(d) o piso e o teto do lock (DEC-06)"
-  timed out at 180024ms (matches `testTimeout: 180_000` in `apps/api/vitest.config.mts`)
-- `src/rotas/classificacoes.test.ts` — case "(f)/(g)/(h)/(k) resposta do aprovador
-  designado..." timed out at 180014ms
+**Verificação do orquestrador: não existe defeito.** No checkout principal o mesmo arquivo
+passa **19/19 em 54s**. A falha é artefato do worktree: `.gitignore:35` casa `.env*`, então
+`apps/api/.env` não é rastreado e `git worktree add` nunca o leva. Sem `DATABASE_URL` o
+processo filho que `rodarCli([])` spawna não sobe, e a captura de stdout vem vazia. É a
+mesma causa dos `138 skipped` que o próprio relato registra.
 
-**Scope check:** `git status --porcelain` in `crm-n1` shows zero source-file changes
-from this plan (only `.planning/` docs). Neither failing test file is part of
-`files_modified` for plan 04-01, which touches only `../financeiro-tria`.
+O relato do 04-03 chegou perto da causa correta ("provavelmente um efeito de ambiente deste
+worktree/sandbox") mas arquivou o achado como defeito pré-existente de um plano antigo.
+**Não há nada a corrigir e nada a investigar no código do Plano 03-08.**
 
-**Why not fixed:** Out of scope. Both failures are consistent with the many
-production/database-access blockers already tracked in `STATE.md` for Phase 3 plans
-(03-07, 03-08, 03-10, 03-11, 03-13, 03-15) — tests that require a live Postgres
-connection via the Supabase pooler timing out or behaving differently depending on
-environment/network conditions, not a regression introduced by this plan.
+**Lição operacional:** nenhuma falha de teste relatada por agente em worktree deve ser
+aceita sem reprodução no checkout principal. Custa um comando.
 
-**Suggested owner:** whoever picks up the Phase 3 production-access blockers, or
-whoever runs `/gsd-verify-phase` next with real `DATABASE_URL`/production access
-available.
+---
+
+## 3. Dois timeouts em testes de banco do `apps/api` — INCONCLUSIVO, medição inválida
+
+**Relatado por:** Plano 04-01, como diligência (não exigido pelos critérios de aceite das
+suas três tasks): `e2e/lote-contas-a-pagar.test.ts` e `rotas/classificacoes.test.ts`
+estourando o `testTimeout` de 180s.
+
+**Por que é inconclusivo, e a culpa é do orquestrador:** aquele `npm run check` foi
+**abortado por mim** no meio, para liberar o agente de um portão que não provava nada sobre
+este plano (todos os arquivos do 04-01 vivem no repositório irmão; ele não tocou nenhum
+arquivo do `crm-n1`). O comando rodava como `npm run check 2>&1 | tail -120`; ao matar a
+cadeia do `npm`, o `tail` fechou e devolveu **exit 0**, então o agente leu um verde falso e
+tirou conclusões de uma execução truncada.
+
+Os dois timeouts podem ser reais — o `vitest.config.mts` do `apps/api` fala com o Postgres
+da plataforma de verdade, e uma sondagem separada do orquestrador viu um arquivo de 4 testes
+levar 55s. Mas nada aqui foi medido até o fim. **Trate como não medido, não como achado.**
+
+**Para medir de verdade:** rodar `npm run test -w @n1/api` no checkout principal, sem pipe
+que engula o código de saída, fora de qualquer watchdog de agente — a suíte inteira leva
+40–50 min nesta base (`fileParallelism: false`, `testTimeout: 180_000`, por decisão
+documentada no próprio config).
