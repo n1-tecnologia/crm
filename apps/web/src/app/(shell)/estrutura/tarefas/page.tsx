@@ -15,6 +15,7 @@ import { useData, useSession } from "@/dados/store";
 import {
   effectiveLifecycleOfTask,
   isOverdue,
+  memberSeesTask,
   statusCategory,
   statusDefinition,
 } from "@n1/dominio/derive";
@@ -29,7 +30,7 @@ type Recorte = "minhas" | "vencidas" | "todas";
 const RECORTES: ReadonlyArray<{ readonly value: Recorte; readonly label: string }> = [
   { value: "minhas", label: "Atribuídas a mim" },
   { value: "vencidas", label: "Vencidas" },
-  { value: "todas", label: "Todas do Espaço de Trabalho" },
+  { value: "todas", label: "Todas que eu vejo" },
 ];
 
 export default function TarefasPage() {
@@ -39,9 +40,17 @@ export default function TarefasPage() {
   const [recorte, setRecorte] = useState<Recorte>("minhas");
   const [now] = useState(() => new Date());
 
-  const ativas = state.tasks.filter(
-    (task) => effectiveLifecycleOfTask(state, task.id) === "ativo",
-  );
+  // memberSeesTask entra aqui, uma vez, e não em cada recorte: minhas e
+  // vencidas derivam de ativas e herdam a regra de graça. GET /estado
+  // hidrata o Espaço inteiro sem filtro de visibilidade — quem desenha a
+  // coleção decide, e essa é a única linha que decide para as três abas.
+  const ativas = state.tasks
+    .filter((task) => effectiveLifecycleOfTask(state, task.id) === "ativo")
+    .filter((task) => memberSeesTask(state, memberId, task.id));
+  // Ser Responsável não é, neste domínio, uma forma de enxergar —
+  // memberSeesTask não olha `assignees` —, então uma Tarefa atribuída a
+  // alguém numa Lista que ele não alcança some daqui. É a mesma resposta do
+  // domínio, e a tela agora a dá.
   const minhas = ativas.filter((task) =>
     task.assignees.some((a) => a.kind === "member" && a.id === memberId),
   );
@@ -86,7 +95,7 @@ export default function TarefasPage() {
           }
           emptyHint={
             recorte === "todas"
-              ? "Uma Tarefa nasce dentro de uma Lista: abra uma Lista na Estrutura para criar."
+              ? "Mostra o que você alcança — uma Tarefa nasce dentro de uma Lista: abra uma Lista na Estrutura para criar."
               : "Uma Tarefa aparece aqui quando alguém a atribui a você."
           }
           columns={[

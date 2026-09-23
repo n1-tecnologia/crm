@@ -7,18 +7,33 @@
  * back on reload and lands in the browser history — three things a term kept in
  * component state loses.
  *
- * B103 — the search never reveals what a permission hides, and it never
- * confuses "nothing found" with "no access": a container the Member cannot see
- * simply does not enter the result set, and the screen says how many families
- * were searched so the absence is legible.
+ * B103 — o que a busca hoje garante, e nomeadamente, o que ainda não. Até
+ * 2026-09-22 este parágrafo prometia que a busca nunca revelava o que uma
+ * permissão esconde; era falso — o arquivo não importava `useSession` e
+ * devolvia `state.tasks` e `state.lists` inteiros a qualquer Membro (03-15,
+ * T-3-75). Passa a ser verdade só para essas duas famílias:
+ * `memberSeesTask` filtra Tarefas, `memberReachesContainer` filtra Listas,
+ * de `@n1/dominio/derive`. A hidratação por `GET /estado` **não** é
+ * filtrada por visibilidade — o cliente já tem o dado inteiro —, então o
+ * filtro é obrigação de cada tela que enumere uma coleção, não uma
+ * otimização (T-3-79, achado para o orquestrador, correção durável é
+ * `apps/api`).
+ *
+ * As outras sete famílias — **Contatos, Empresas, Negócios, Conversas,
+ * Documentos, Agentes, Automações** — continuam sem filtro nesta rodada.
+ * Não por serem difíceis: o predicado correto de cada uma (alcance do
+ * contêiner de origem? dono do registro? `memberSeesResource`?) não está
+ * decidido em nenhum artefato deste projeto, e o requisito que abriu este
+ * plano (PAG-06) nomeia só Tarefa e Lista. Dívida conhecida, não descuido —
+ * T-3-80, achado para o orquestrador.
  */
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { Search } from "lucide-react";
-import { useData } from "@/dados/store";
-import { contactDisplayName } from "@n1/dominio/derive";
+import { useData, useSession } from "@/dados/store";
+import { contactDisplayName, memberReachesContainer, memberSeesTask } from "@n1/dominio/derive";
 import { BarraDeFiltros, CorpoDeTela, EmptyState, Icone, PageHeader, Section, StateSeal } from "@/features/shell/ui";
 
 interface Hit {
@@ -33,6 +48,7 @@ const MIN_QUERY = 2;
 
 export default function BuscarPage() {
   const state = useData((data) => data);
+  const { memberId } = useSession();
   const router = useRouter();
   const params = useSearchParams();
   const query = params.get("q") ?? "";
@@ -58,6 +74,7 @@ export default function BuscarPage() {
         {
           label: "Tarefas",
           hits: state.tasks
+            .filter((task) => memberSeesTask(state, memberId, task.id))
             .filter((task) => keep(task.lifecycle) && matches(task.title, task.readableId, task.description))
             .map((task) => ({
               id: task.id,
@@ -70,6 +87,7 @@ export default function BuscarPage() {
         {
           label: "Listas",
           hits: state.lists
+            .filter((list) => memberReachesContainer(state, memberId, "list", list.id))
             .filter((list) => keep(list.lifecycle) && matches(list.name, list.description))
             .map((list) => ({
               id: list.id,
