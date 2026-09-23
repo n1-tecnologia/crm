@@ -218,7 +218,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 03-05-PLAN.md — A Pessoa da conta enxerga a própria Tarefa por visibilidade **derivada** do Campo Pessoa (`sharedWithDefinitionIds` + `memberNamedOnTask`), não por Grant escrita à mão; caso negativo provado nos dois sentidos (PAG-06)
-- [ ] 03-06-PLAN.md — D3-08: a Solicitação aprovada vira Conta a pagar por `converterSolicitacaoEmContaAPagar`, com Vínculo `task→task` e `provenance` — sem Status `convertida` novo (PAG-01)
+- [x] 03-06-PLAN.md — D3-08: a Solicitação aprovada vira Conta a pagar por `converterSolicitacaoEmContaAPagar`, com Vínculo `task→task` e `provenance` — sem Status `convertida` novo (PAG-01)
 - [ ] 03-07-PLAN.md — `financeiro-tria/automation`: superfície nova `/v1/integrations/contas-a-pagar/{resolver,lancar}` que só calcula e lança, **nunca escreve status em Lista nenhuma** (PAG-03, PAG-04)
 - [ ] 03-08-PLAN.md — `scheduler-worker.ts`: o relógio que faltava ao motor, com catch-up provado (a agenda não pula o dia se o processo cair) e a primeira volta em ensaio até liberação explícita (AUTO-01, PAG-02)
 
@@ -299,7 +299,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | 0. Preparação | 7/7 | Complete   | 2026-09-17 |
 | 1. O CRM N1 ganha persistência e login | 16/16 | Complete   | 2026-09-17 |
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 23/28 | In Progress|  |
-| 3. Contas a pagar | 6/15 | In Progress|  |
+| 3. Contas a pagar | 7/15 | In Progress|  |
 | 4. As outras telas do financeiro-tria | 0/TBD | Not started | - |
 | 5. Contas a receber e os outros tenants | 0/TBD | Not started | - |
 

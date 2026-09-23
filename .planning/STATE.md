@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-09-PLAN.md
-last_updated: "2026-09-23T13:26:23.660Z"
+stopped_at: Completed 03-06-PLAN.md
+last_updated: "2026-09-23T14:01:43.950Z"
 last_activity: 2026-09-23 -- Phase 03 execution started
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 66
-  completed_plans: 52
+  completed_plans: 53
   percent: 33
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 03 (contas-a-pagar) — EXECUTING
-Plan: 7 of 15
+Plan: 8 of 15
 Status: Ready to execute
 Last activity: 2026-09-23 -- Phase 03 execution started
 
@@ -83,6 +83,7 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 | Phase 03 P04 | 30min | 3 tasks | 4 files |
 | Phase 03 P09 | 15min | 2 tasks | 5 files |
 | Phase 03 P05 | 38min | 3 tasks | 4 files |
+| Phase 03 P06 | 27min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -132,6 +133,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 03]: Plan 03-09: PAG-01 fechado no domínio — `importarContaAPagarHistorica` cria a Tarefa JÁ no Status final via `createTask(..., { runAutomations: false })` e escreve a trilha com `recordActivity({ at })`, sem tocar `changeTaskStatus` (o código fora de comentário tem 0 ocorrências). É a divergência consciente do precedente `importarSolicitacaoHistorica`, cuja autorização (`importacao.ts:34-41`) vale só porque aquela Lista não tem Automação; esta tem sete + a Recorrência A1, e o replay ingênuo pariria recorrência fantasma por conta paga, cobrança de nota em conta fechada e Responsável reescrito. Prova não-vazia em `importacao-contas-a-pagar.test.ts` (9 casos): afirma `>=7` Automações ativas na Lista ANTES de afirmar `automationExecutions === 0`; `diasEmStatus` lê só `state.activity` e devolve 30 dias para um ciclo real. `completedAt` = `fechadaEm ?? instante da última transição` e só em categoria terminal; Status final que `statusDefinition` não resolve é recusa (T-3-08, porque `createTask` cai no primeiro `naoIniciado` em silêncio); divergência entre Status final e histórico vira lacuna `status_final_diverge_do_historico`, não recusa. `jaImportada` passou a ser exportada de `importacao.ts` (1 palavra) em vez de duplicada (T-3-02); `ORIGEM_CONTAS_A_PAGAR = 'clickup:901107637383'` é fonte única com `importacao_ledger.origem` de 03-10 — nenhum ledger novo. Verificação por mutação antes de confiar no verde: ligar `runAutomations` faz o caso (a) falhar com 3 Execuções. 418 testes no domínio; `npm run check` decomposto verde nos três workspaces sem DATABASE_URL (api 380 passed/12 skipped).
 - [Phase 03]: Plan 03-05: PAG-06 fechado por DERIVAÇÃO, não por concessão — o checkpoint bloqueante da Task 1 foi auto-resolvido como option-a sob o modo autônomo da fase (não é aprovação humana; o ponto de reversão é um único ramo em memberSeesTask). List.sharedWithDefinitionIds declara, como dado na Lista, quais Campos 'person' nomeiam quem enxerga a Tarefa; memberNamedOnTask (derive.ts) lê o Valor ativo com guarda obrigatória de type === 'person' (T-3-11: texto igual a um id de Membro não abre nada) e entra em memberSeesTask ENTRE a Grant da Tarefa-raiz e memberReachesContainer — nenhuma resposta já verdadeira muda. As quatro Grants gr_cp_pessoa_* saíram do seed e tsk_cp_konq ganhou val(F.pessoa) — as duas fontes de verdade que já tinham divergido viraram uma. Não há Grant a criar nem a revogar, então o caminho de 'revoke perdido' de T-3-01 deixa de existir. pessoa-da-conta.test.ts (12 casos) prova o negativo nos dois sentidos, a guarda de tipo, Administrador/Membro ainda sem a Lista, e os três momentos que a Grant estática nunca cobriu — inclusive que a ocorrência de A1 nasce visível (antes a Pessoa era Observadora de uma Tarefa que não enxergava). 430 testes no domínio, web 107, api 380+12 skipped; tasks.ts/automations.ts e os três testes de CON-05 sem diff.
 - [Phase 03]: Plan 03-05, dois registros de fronteira para quem vier depois: (1) T-3-12 fica ACCEPT com endereço em 03-14 — apagar as Grants gr_cp_pessoa_* do seed NÃO apaga as já persistidas no Postgres da plataforma por um bootstrap anterior; enquanto existirem, o comportamento é idêntico ao desejado (o Pedro É a Pessoa das três contas), e nenhuma migração foi criada por isto. (2) A9 só roda em tarefaCriada, então a Pessoa preenchida DEPOIS da criação (o caminho real, porque createTask não aceita Valores de Campo) não vira Observadora — a VISIBILIDADE deixou de depender disso, o OBSERVADOR ainda depende; é trabalho de PAG-02 (03-02), não de 03-05. Efeito de interface para 03-15: a tela configuracoes/membros/[membro] mostra 'Concessões diretas' e o Pedro/Lucas passam a aparecer com MENOS linhas — a visibilidade deles saiu da Grant e foi para a configuração da Lista. E correção de comando: 03-VALIDATION.md mapeia PAG-06 a 'npm run test --workspace=@n1/dominio -- tasks'; o real é '-- pessoa-da-conta'.
+- [Phase 03]: Plan 03-06: D3-08 fechado — `converterSolicitacaoEmContaAPagar` (`operations/conversao-de-solicitacao.ts`, arquivo próprio para não criar o ciclo `financeiro ⇄ automations`) cria a Conta a pagar a partir da Solicitação aprovada dentro da plataforma, registrada em `OPERACOES` e alcançável por `POST /operacoes/converterSolicitacaoEmContaAPagar`. É a metade do critério 1 que PAG-01 não cobre: 03-09 resolveu o histórico, esta resolve o fluxo dali para frente. `convertida` NÃO virou quinto Status: a premissa da pesquisa (Open Question #1) estava errada e o caso (a) a confere em código — o catálogo sempre teve quatro Status, e o que D-14 prometeu à Fase 3 foi *a Conta a pagar e o Vínculo estruturado*, que é o que nasceu (`Link` `task→task` com `role: "conta a pagar gerada"` + `provenance.kind = "task"`). Os três custos verificados de um quinto Status (os dois testes do domínio e a união `PaymentRequestDtoV1["status"]` do contrato v1) ficaram escritos em `packages/dominio/CONTEXT.md` para quem quiser revisitar. O de-para dos 25 Campos é travado por aritmética (21 pares + 3 órfãos + 1 vencimento nativo), e o gatilho `tarefaCriada` é ADIADO, não desligado — espelho invertido de 03-09. 447 testes no domínio (17 novos), web 107, api 380+12 skipped.
+- [Phase 03]: Plan 03-06, a fronteira que decide e o buraco que a mutação achou: (1) valor que a Lista destino não REPRESENTA (a Forma de pagamento tem 4 opções na origem e 3 no destino) vira Registro `Lacuna de conversão` com o NOME do Campo, nunca o valor (D-25), e a conta NASCE — RN-CP-02 a segura em "para pagar" até alguém decidir; qualquer outra recusa (Campo arquivado, Campo fora da Lista) é rollback das quatro contagens. Sem a pré-conferência de `options`, o caso do Cartão viraria rollback e o Financeiro voltaria ao ClickUp exatamente pelo caso que o critério 1 quer eliminar. (2) A barreira de dupla conversão NÃO filtra `lifecycle` (a Conta na lixeira continua barrando — dinheiro em dobro é pior que conta apagada) e roda ANTES de `createTask`, para que a recusa não queime um identificador legível. (3) A verificação por mutação achou prova vazia: com `runAutomations: true` na criação A9 roda DUAS vezes e a segunda volta adiciona a Pessoa assim mesmo — a asserção "a Pessoa está entre os Observadores" não distinguia desenho de acidente. Corrigida para afirmar UMA Execução de `aut_cp_a9`. (4) Desvio Rule 3: `apps/api/src/rotas/esquemas-de-argumentos.test.ts` fixa o total de operações registradas em literal (200 → 201); 03-09 não tocou nisso porque registrou a operação FORA de `OPERACOES`. (5) Fora de escopo e agora única peça faltando: o gatilho automático ao entrar em `aprovado`, que mora em `tasks.ts` ou `automations.ts` — posse de arquivo da onda, não dificuldade.
 
 ### Pending Todos
 
@@ -164,7 +167,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-23T13:26:23.632Z
-Stopped at: Completed 03-09-PLAN.md
+Last session: 2026-09-23T14:01:43.943Z
+Stopped at: Completed 03-06-PLAN.md
 Resume file: 
 None
