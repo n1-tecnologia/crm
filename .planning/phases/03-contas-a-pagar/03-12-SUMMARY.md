@@ -146,12 +146,12 @@ Ver `key-decisions` no frontmatter — resumo: uma transação para o lote intei
 | `test` `@n1/dominio` | **465 passed** (454 antes + 11 novos) |
 | `test` `@n1/web` | 107 passed |
 | `test` `@n1/api` sem `DATABASE_URL` | 470 passed, 12 skipped |
-| `test` `@n1/api` com `DATABASE_URL` (real, projeto `epomplsskqpluxuujpxl`) | ver nota¹ |
+| `test` `@n1/api` com `DATABASE_URL` (real, projeto `epomplsskqpluxuujpxl`) | **56 arquivos, 476 passed, 12 skipped, 0 falhas** (974s — latência do pooler acima do normal nesta rodada, consistente com o `t1` medido na Observação 1) |
 | `test -w @n1/api -- lote-contas-a-pagar` (isolado, com `DATABASE_URL`) | **6/6 passed** — medido duas vezes, resultados consistentes |
 | `test -w @n1/api -- lote-contas-a-pagar` (isolado, `DATABASE_URL=""`) | suíte inteira pulada (0 rodados) |
 | `test -w @n1/api -- esquemas-de-argumentos` | 11/11 passed (após o desvio 1) |
 
-¹ A suíte completa de `@n1/api` com `DATABASE_URL` real foi disparada em segundo plano (decomposição exigida pelo teto de 600s da ferramenta); o resultado, quando concluído, está registrado nesta mesma rodada — ver a nota de encerramento abaixo, atualizada com o número exato de testes.
+`npm run check` decomposto por workspace (o monolítico estoura o teto de 600s da ferramenta, mesmo padrão de 03-03/03-04/03-06/03-09): verde nos três workspaces, com e sem `DATABASE_URL`.
 
 Critérios de `grep` do plano, todos conferidos:
 
