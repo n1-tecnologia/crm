@@ -32,6 +32,7 @@ export * from "./iniciar-conversa";
 export * from "./ferramentas";
 export * from "./automations";
 export * from "./financeiro";
+export * from "./conversao-de-solicitacao";
 export * from "./members";
 export * from "./structure";
 export * from "./importacao";
@@ -191,6 +192,13 @@ export const runScheduledAutomations = instrumentar("runScheduledAutomations");
 // financeiro.ts
 export const runLancamentoAgent = instrumentar("runLancamentoAgent");
 export const createReceivableSeries = instrumentar("createReceivableSeries");
+
+// conversao-de-solicitacao.ts
+// Ao contrário de `importacao-contas-a-pagar`, que sai cru porque não está em
+// `OPERACOES`: quem converte é um Membro na interface. Sem esta linha,
+// `apps/web` chamaria a versão crua, `gravarChamadas` não observaria a chamada
+// e a operação rodaria no cliente sem nunca chegar ao servidor.
+export const converterSolicitacaoEmContaAPagar = instrumentar("converterSolicitacaoEmContaAPagar");
 
 // members.ts
 export const removeMember = instrumentar("removeMember");

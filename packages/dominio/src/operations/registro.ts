@@ -189,6 +189,11 @@ import { runScheduledAutomations } from "./automations";
 // ── financeiro.ts ───────────────────────────────────────────────────────
 import { createReceivableSeries, runLancamentoAgent } from "./financeiro";
 
+// ── conversao-de-solicitacao.ts ─────────────────────────────────────────
+// `contaAPagarDeSolicitacao` NÃO entra: é leitura derivada, e a regra de
+// inclusão do cabeçalho é explícita sobre isso.
+import { converterSolicitacaoEmContaAPagar } from "./conversao-de-solicitacao";
+
 // ── members.ts ──────────────────────────────────────────────────────────
 import { deleteRole, grantGovernanceAccess, inviteMember, removeMember, transferWorkspaceOwnership } from "./members";
 
@@ -440,6 +445,8 @@ export const OPERACOES = {
   // financeiro.ts
   runLancamentoAgent,
   createReceivableSeries,
+  // conversao-de-solicitacao.ts
+  converterSolicitacaoEmContaAPagar,
   // members.ts
   removeMember,
   transferWorkspaceOwnership,

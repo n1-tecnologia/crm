@@ -1,6 +1,9 @@
 /**
- * A FORMA dos `args` das operações de
- * `packages/dominio/src/operations/financeiro.ts` — 2 operações. Ver
+ * A FORMA dos `args` das operações do processo Financeiro — 3 operações: as 2
+ * de `packages/dominio/src/operations/financeiro.ts` mais a conversão de
+ * Solicitação aprovada em Conta a pagar (D3-08), que no domínio mora em
+ * `operations/conversao-de-solicitacao.ts` — arquivo próprio lá para não criar
+ * o ciclo `financeiro ⇄ automations`, mesmo processo aqui. Ver
  * `../esquemas/CONTEXT.md` para a regra da pasta.
  */
 
@@ -52,6 +55,9 @@ export const FINANCEIRO = {
   createReceivableSeries: z.tuple([RECEIVABLE_SERIES_INPUT]),
   // `opcoes?: OpcoesDeLancamento` — parâmetro posicional opcional no fim.
   runLancamentoAgent: z.tuple([ID, ID, ID, opcional(OPCOES_DE_LANCAMENTO)]),
+  // D3-08 — um id e nada mais: quem decide o Status de destino, o de-para dos
+  // Campos, o vencimento e as lacunas é o domínio, não o corpo da requisição.
+  converterSolicitacaoEmContaAPagar: z.tuple([ID]),
 } satisfies Esquemas;
 
 // ── Portão de enum bidirecional — falta ou sobra de membro não compila ──

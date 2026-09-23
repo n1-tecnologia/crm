@@ -169,3 +169,56 @@ As quatro afirmações são provadas por
 `src/operations/recorrencia-contas-a-pagar.test.ts`, em pares de data exatos —
 quem mudar qualquer uma delas quebra aquele arquivo, e é ali que a decisão está
 escrita por extenso.
+
+## Solicitação aprovada → Conta a pagar: conversão, não quinto Status (D3-08)
+
+Hoje quem cria a Conta quando uma Solicitação é aprovada é o `automation/`,
+escrevendo uma Tarefa nova na Lista ClickUp `901107637383`. O critério 1 da
+Fase 3 arquiva aquela Lista. Sem um caminho próprio, a primeira Solicitação
+aprovada depois do corte não viraria conta nenhuma, e o Financeiro reabriria o
+ClickUp na mesma semana em que deveria ter parado. `importarContaAPagarHistorica`
+resolve o **histórico** (PAG-01, as 2.861 Tarefas que já existiam);
+`converterSolicitacaoEmContaAPagar` (`src/operations/conversao-de-solicitacao.ts`)
+resolve o **fluxo dali para frente**. São as duas metades do mesmo critério.
+
+**`convertida` nunca esteve no catálogo.** D-01 sobrepôs a enumeração
+preliminar de CON-04 depois que PREP-03 leu a Lista real `901109104938`: os
+quatro Status de `solicitacao-de-pagamento.ts` são os únicos que o processo
+tem, e `convertida` aparece ali só em comentário. O que D-14 prometeu à Fase 3
+foi, literalmente, *a Conta a pagar **e o Vínculo estruturado*** — e é
+exatamente isso que nasce aqui: um `Link` `task→task` com
+`role: "conta a pagar gerada"` mais `provenance.kind = "task"` na Conta. A
+pergunta do Financeiro — "qual conta veio desta solicitação?" — é respondida
+pelo Vínculo nos dois sentidos, e a inversa pela procedência. Um Status não
+responderia nem uma nem outra.
+
+O preço de um quinto Status, conferido e não estimado, para quem um dia quiser
+revisitar a decisão: `solicitacao-de-pagamento.test.ts` asserta os quatro nomes
+**e** varre a lista de proibidos, `convertida` incluído;
+`solicitacao-de-pagamento-evolver.test.ts` asserta `definitions.length === 4` e
+soma o total do catálogo; e `apps/api/src/servicos/dto-solicitacao.ts` é
+exaustivo sobre a união `PaymentRequestDtoV1["status"]` — um Status novo é
+mudança de **contrato versionado**, do outro lado da fronteira.
+
+**A conversão é o espelho invertido da importação histórica.**
+`importarContaAPagarHistorica` não pode acordar Automação nenhuma; esta
+**precisa** acordar A9. Por isso a Conta nasce com `runAutomations: false` e o
+evento `tarefaCriada` é disparado à mão no fim, depois dos Campos e das Tags:
+A9 só alcança a Pessoa da conta por `fromFieldDefinitionId`, e disparar antes a
+deixaria de fora dos Observadores da própria conta.
+
+**O que a Lista destino não representa vira lacuna, não rollback.** Os 25
+Campos da Solicitação são 21 pares + 3 sem equivalente + 1 vencimento nativo, e
+a soma é travada por teste — um Campo novo na origem quebra o teste em vez de
+sumir na conversão. Quando o valor não cabe no catálogo de destino (a Forma de
+pagamento tem quatro opções na origem e três no destino), a Conta nasce com o
+Campo vazio e um Registro `Lacuna de conversão` nomeando o **Campo**, nunca o
+valor (D-25); RN-CP-02 então segura a conta em `para pagar` até alguém decidir.
+Qualquer outra recusa — Campo arquivado, Campo fora da Lista — é rollback: não
+fica meia Conta no estado.
+
+A operação está registrada em `OPERACOES` e alcançável por
+`POST /operacoes/converterSolicitacaoEmContaAPagar`, mas **nada a dispara
+sozinha**. Ligar o gatilho ao `aprovado` mora em `operations/tasks.ts` ou num
+tipo de ação novo de Automação, e é trabalho de quem for dono daqueles
+arquivos.
