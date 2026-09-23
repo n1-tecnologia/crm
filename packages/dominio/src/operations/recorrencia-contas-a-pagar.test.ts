@@ -25,7 +25,7 @@ import type { DataState } from "../state";
 import type { Task } from "../types";
 import { nextOccurrenceRefusal, setRecurrence } from "./collaboration";
 import { CP } from "./financeiro";
-import { updateTask } from "./tasks";
+import { changeTaskStatus, updateTask } from "./tasks";
 
 let state: DataState;
 beforeEach(() => {
@@ -186,5 +186,99 @@ describe("D3-06 — fim de semana desloca nos dois sentidos", () => {
       readonly dependencies: Record<string, string>;
     };
     expect(Object.keys(pacote.dependencies)).toEqual(["zod"]);
+  });
+});
+
+/* ── D3-05/RN-CP-06 — o fechamento real, não só o cálculo ───────────────── */
+
+/** Só muda o vencimento: a regra que vale é a do seed (`recorrente()`, dia útil anterior). */
+const vencendoEm = (taskId: string, vencimento: string): void => {
+  expect(updateTask(state, CP.financeiroId, taskId, { dueDate: { form: "civilDay", value: vencimento } }).ok).toBe(true);
+};
+
+/** O roteiro de Status que uma conta percorre até `pago` (RN-CP-04). */
+const pagar = (taskId: string): void => {
+  expect(changeTaskStatus(state, CP.financeiroId, taskId, CP.status.emRemessa).ok).toBe(true);
+  expect(changeTaskStatus(state, CP.financeiroId, taskId, CP.status.emAutorizacao).ok).toBe(true);
+  expect(changeTaskStatus(state, CP.aprovadorId, taskId, CP.status.pago).ok).toBe(true);
+};
+
+const nascidasDe = (sourceId: string): Task[] =>
+  state.tasks.filter((t) => t.provenance?.kind === "recurrence" && t.provenance.sourceId === sourceId);
+
+const registrosDeOcorrencia = (objectId: string): number =>
+  state.activity.filter((a) => a.action === "Próxima ocorrência criada" && a.objectId === objectId).length;
+
+const contasDaLista = (): number => state.tasks.filter((t) => t.listId === CP.listId).length;
+
+describe("D3-05/RN-CP-06 — uma ocorrência por fechamento, e a cadeia continua na ocorrência nova", () => {
+  // O caso simples — fecha, nasce uma, reabre, fecha, não nasce a segunda — já
+  // está provado em `operations.test.ts` ("seção 7 + A1/A9"). Nada aqui o
+  // duplica: este bloco cobre o que lá não é olhado — a data exata da
+  // ocorrência nova, a transferência da regra, a contagem de Registro de
+  // Atividade e a continuidade da cadeia a partir da ocorrência, não da origem.
+
+  it("(a) a regra migra para a ocorrência nova, e o vencimento dela é o par exato de D3-06/D3-07", () => {
+    const origem = conta(CONTA);
+    expect(origem.recurrence?.businessDays).toBe("anterior");
+    vencendoEm(CONTA, "2026-01-31");
+    pagar(CONTA);
+
+    const nascidas = nascidasDe(origem.id);
+    expect(nascidas).toHaveLength(1);
+    const nova = nascidas[0];
+    if (!nova) throw new Error("sem ocorrência nova");
+
+    expect(nova.provenance?.kind).toBe("recurrence");
+    expect(nova.provenance?.sourceId).toBe(origem.id);
+    // 28/02/2026 é sábado: satura (D3-07) e depois recua (D3-06).
+    expect(nova.dueDate?.value).toBe("2026-02-27");
+    // A regra é transferida, não copiada: a concluída deixa de gerar.
+    expect(nova.recurrence).toBeDefined();
+    expect(origem.recurrence).toBeUndefined();
+    expect(registrosDeOcorrencia(nova.id)).toBe(1);
+  });
+
+  it("(b) reabrir e fechar de novo não duplica — nem a Tarefa, nem o Registro de Atividade", () => {
+    const origem = conta(CONTA);
+    vencendoEm(CONTA, "2026-01-31");
+    pagar(CONTA);
+
+    const nova = nascidasDe(origem.id)[0];
+    if (!nova) throw new Error("sem ocorrência nova");
+    const contasAntes = contasDaLista();
+
+    expect(changeTaskStatus(state, CP.aprovadorId, origem.id, CP.status.lancado).ok).toBe(true);
+    expect(changeTaskStatus(state, CP.aprovadorId, origem.id, CP.status.pago).ok).toBe(true);
+
+    expect(contasDaLista()).toBe(contasAntes);
+    expect(nascidasDe(origem.id)).toHaveLength(1);
+    // A barreira que o teste antigo não tem: uma regressão que criasse a
+    // Atividade sem a Tarefa deixaria a trilha mentindo sobre quantas vezes a
+    // série andou, e `state.tasks.length` não veria nada.
+    expect(registrosDeOcorrencia(nova.id)).toBe(1);
+  });
+
+  it("(c) a cadeia continua na ocorrência nova, não na origem", () => {
+    const origem = conta(CONTA);
+    vencendoEm(CONTA, "2026-01-31");
+    pagar(CONTA);
+    const segunda = nascidasDe(origem.id)[0];
+    if (!segunda) throw new Error("sem segunda ocorrência");
+
+    pagar(segunda.id);
+    const terceiras = nascidasDe(segunda.id);
+    expect(terceiras).toHaveLength(1);
+    const terceira = terceiras[0];
+    if (!terceira) throw new Error("sem terceira ocorrência");
+
+    // `occurrenceOrdinal`/`endsAfter` andam por `provenance`, e a proveniência
+    // aponta para a ocorrência anterior — nunca de volta para a origem.
+    expect(terceira.provenance?.sourceId).toBe(segunda.id);
+    expect(terceira.provenance?.sourceId).not.toBe(origem.id);
+    // O passo seguinte exato da cadeia: 27/02 → 27/03 (sexta, não desloca).
+    expect(terceira.dueDate?.value).toBe("2026-03-27");
+    expect(segunda.recurrence).toBeUndefined();
+    expect(terceira.recurrence).toBeDefined();
   });
 });
