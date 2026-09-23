@@ -11,6 +11,13 @@
  * Composição no sistema do CRM-COMPLETO: os indicadores são peças de bloco que
  * filtram ao clicar; a barra vive na `BarraDeFiltros` da tela; a tabela é a
  * `.tabela` do sistema, com cada conta como peça e cada grupo como faixa.
+ *
+ * Correção de rota (Plan 03-13): o gesto de SELEÇÃO mora neste arquivo
+ * (checkbox por linha e por grupo, `onToggleMany`) — mas a AÇÃO de mudar
+ * Status em lote não. Ela mora em `../bulk-status-bar.tsx`, e o relato dos
+ * quatro resultados que ela produz mora em `../relatorio-de-lote.tsx`. Um
+ * esboço anterior desta fase apontou a ação de lote para este arquivo; não é
+ * aqui.
  */
 
 import {

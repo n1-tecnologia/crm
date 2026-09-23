@@ -57,6 +57,7 @@ import {
   BulkStatusBar,
   RunScheduledButton,
 } from "@/features/estrutura/bulk-status-bar";
+import { RelatorioDeLotePainel } from "@/features/estrutura/relatorio-de-lote";
 import {
   applyFinanceFilters,
   FILTROS_INICIAIS,
@@ -91,6 +92,7 @@ import {
 } from "@/features/shell/ui";
 import type { DataState } from "@n1/dominio/state";
 import type { Task, View, ViewFilters } from "@n1/dominio/types";
+import type { RelatorioDeLote } from "@n1/dominio/operations/lote";
 
 type ViewKind =
   "lista" | "quadro" | "calendario" | "tabela" | "linha" | "carga";
@@ -154,6 +156,22 @@ export default function ListaPage({
   const [notice, setNotice] = useState<{
     text: string;
     taskId?: string;
+  } | null>(null);
+  /*
+   * O relatório de um lote (Plan 03-13) NÃO pode morar dentro de
+   * `BulkStatusBar`: na lente financeira aquela barra só é montada enquanto
+   * `selecionando && selecionadas.size > 0` — um lote 100% bem-sucedido
+   * esvazia a seleção, desmonta a barra, e o relatório sumiria no mesmo
+   * instante em que passa a ser a única prova do que aconteceu. Pior no caso
+   * `parcial`: as contas parciais mudaram de Status e podem sair do filtro
+   * corrente, saindo também de `selecionadas` (a seleção só vale para o que
+   * está na tela) — o relato mais importante seria o mais fácil de perder.
+   * Por isso a página guarda o relatório à parte, fora de qualquer
+   * condicional de seleção.
+   */
+  const [relatorioDeLote, setRelatorioDeLote] = useState<{
+    readonly relatorio: RelatorioDeLote;
+    readonly nomeDoStatus: string;
   } | null>(null);
   const { openTaskId, openTask, closeTask } = useTaskPanel();
   const query = useSearchParams();
@@ -266,6 +284,13 @@ export default function ListaPage({
   const definitions = [...config.statusSet.definitions].sort(
     (a, b) => a.order - b.order,
   );
+  // O relatório carrega só o `statusId`; o nome é resolvido aqui, uma vez,
+  // para `RelatorioDeLotePainel` (que não recebe Tarefa nem Status — T-3-55).
+  const aoReceberRelatorio = (relatorio: RelatorioDeLote) => {
+    const nomeDoStatus =
+      definitions.find((d) => d.id === relatorio.statusId)?.name ?? relatorio.statusId;
+    setRelatorioDeLote({ relatorio, nomeDoStatus });
+  };
 
   const create = () => {
     if (!newTitle.trim()) return;
@@ -605,6 +630,7 @@ export default function ListaPage({
                   selected={selecionadas}
                   onSelect={setSelecionadas}
                   onClear={() => setSelecionadas(new Set())}
+                  onRelatorio={aoReceberRelatorio}
                   report={reportar}
                 />
               </span>
@@ -639,6 +665,17 @@ export default function ListaPage({
       ) : null}
 
       <CorpoDeTela semRespiro={tabelaColada}>
+        {relatorioDeLote ? (
+          <div className={`${respiroAntes}mb-4`}>
+            <RelatorioDeLotePainel
+              relatorio={relatorioDeLote.relatorio}
+              nomeDoStatus={relatorioDeLote.nomeDoStatus}
+              onFechar={() => setRelatorioDeLote(null)}
+              onAbrirConta={openTask}
+            />
+          </div>
+        ) : null}
+
         {selecionando && !financeira ? (
           <div className={`${respiroAntes}mb-4`}>
             <BulkStatusBar
@@ -647,6 +684,7 @@ export default function ListaPage({
               selected={selecionadas}
               onSelect={setSelecionadas}
               onClear={() => setSelecionadas(new Set())}
+              onRelatorio={aoReceberRelatorio}
               report={reportar}
             />
           </div>
