@@ -2,7 +2,7 @@
 phase: 03-contas-a-pagar
 tipo: outline
 criado: 2026-09-22
-planos: 14
+planos: 15
 waves: 5
 ---
 
@@ -29,6 +29,7 @@ waves: 5
 | 03-12 | `apps/api` + domínio: fechamento em lote das 61 contas — decidir o tamanho da transação contra DEC-06 (uma transação, N transações ou operação de lote registrada em `OPERACOES`), expor a rota, e provar por teste de integração contra o Postgres real que cada fechamento dispara A1 exatamente uma vez, medindo o tempo de lock por Espaço e definindo o que a resposta reporta em falha parcial. | 3 | 03-03, 03-06 | PAG-05 | — |
 | 03-13 | `apps/web`: ligar o gesto de lote que **já existe** em `features/estrutura/financeiro/contas-view.tsx` (`selecionando`, `onToggleMany`, checkbox por linha e por grupo) à rota de lote, exibindo o relato de falha parcial que 03-12 definir — wiring, não construção de UI — com checkpoint humano de verificação visual do lote de 61. | 4 | 03-12 | PAG-05 | — |
 | 03-14 | Corte e Ensaio: relatório que compara o que o Agente teria lançado (`AgentExecution` com `rehearsal: true`) com o que o humano lançou de fato na primeira semana, mais o checkpoint bloqueante da semana sem ClickUp e do arquivamento da Lista `901107637383` (critério 1) — é aqui que se decide se o Agente ganha a caneta. | 5 | 03-10, 03-11, 03-13 | PAG-03 | D3-03 |
+| 03-15 *(acrescentado em 2026-09-22)* | `apps/web`: a metade de interface de PAG-06 — o 03-13 achou que, depois do 03-05, a Pessoa enxerga a Tarefa no domínio mas não tem por onde chegar nela na tela. O 03-15 verificou e corrigiu o diagnóstico: a porta existe (`SharedTasks` em `app-shell.tsx`), mas é chaveada nas Grants `gr_cp_pessoa_*` que o 03-05 apaga — a seção some sem nenhum teste falhar. Re-chaveia em `memberSeesTask && !memberReachesContainer` e fecha duas telas que hoje listam Tarefas sem filtro de visibilidade nenhum (`buscar/page.tsx`, `estrutura/tarefas/page.tsx`). | 4 | 03-05 | PAG-06 | — |
 
 ## Waves
 
@@ -79,7 +80,7 @@ tela (03-13).
 - [x] **PAG-03** — Agente lança de verdade: 03-04 (cálculo separável + Ensaio), 03-07 (rota que lança no Omie), 03-11 (ponte + RESUMO + A8), 03-14 (medição do Ensaio).
 - [x] **PAG-04** — de-para real do Omie: 03-04 (parametrização de `CATEGORIA_OMIE`/`CONTA_POR_TAG`), 03-07 (resolução contra `ListarCategorias`/RAG com `REVISAR`), 03-11 (injeção do de-para resolvido **e `CNPJ_POR_EMPRESA`, a metade que o esboço original deixou sem dono — corrigido em 2026-09-22**).
 - [x] **PAG-05** — lote de 61: 03-12 (backend + medição contra DEC-06), 03-13 (gesto na tela).
-- [x] **PAG-06** — permissão da Pessoa da conta: 03-05 (concessão dinâmica + caso negativo).
+- [x] **PAG-06** — permissão da Pessoa da conta: 03-05 (visibilidade derivada do Campo Pessoa + caso negativo no domínio) e **03-15 (a metade de tela — acrescentado em 2026-09-22, ver nota 4)**.
 - [x] **AUTO-01** — motor de Automações: 03-01 (agenda no banco), 03-02 (vocabulário do executor), 03-08 (poller in-process).
 
 ### Decisões
@@ -141,6 +142,25 @@ scheduler as ignora é 03-08 (o relógio) e 03-10 (a corrida real)**. Ambos os
 planos devem tratar isso explicitamente — não estava nas suas linhas do esboço
 original.
 
+## Convenção de ids de ameaça
+
+Os planos foram escritos em contextos separados e cada um reivindicou ids a
+partir de `T-3-07` para ameaças **diferentes**. Em vez de renumerar 15 arquivos
+— mexendo em prosa, tabelas e referências cruzadas, com risco alto e ganho
+nenhum —, a convenção fica declarada:
+
+- **`T-3-01` a `T-3-06` e `T-3-SC` são da fase inteira** e não colidem: vieram
+  de `03-01-PLAN.md` e da distribuição deste manifesto (T-3-01→03-05,
+  T-3-02→03-09/03-10, T-3-03→03-07/03-11, T-3-04→03-08/03-11).
+- **De `T-3-07` para cima, o id é local ao plano.** Ao citar um desses fora do
+  plano que o registrou, escreva `03-06/T-3-11`, não `T-3-11`.
+
+Faixas reivindicadas: 03-04 `T-3-07..10` · 03-05 `T-3-11..12` · 03-06
+`T-3-11..14` · 03-07 `T-3-11..15` · 03-08 `T-3-20..23` · 03-10 `T-3-25..30` ·
+03-11 `T-3-35..41` · 03-12 `T-3-45..50` · 03-13 `T-3-55..61` · 03-14
+`T-3-65..71` · 03-15 `T-3-75..81`. As três primeiras se sobrepõem; as demais
+já nasceram disjuntas porque o orquestrador passou a atribuir a faixa inicial.
+
 ## Notas para o orquestrador
 
 1. **As duas referências cruzadas de `03-01-PLAN.md` foram honradas parcialmente.**
@@ -166,3 +186,25 @@ original.
    simetria: cada linha existe porque tem arquivo próprio e verificação própria.
    Nada foi cortado nem reduzido a "v1" — o escopo integral de PAG-01..06,
    AUTO-01 e D3-08 está distribuído.
+
+4. **Plano 03-15, acrescentado depois do esboço.** Ao planejar o 03-13, o
+   planner leu o código real e viu que PAG-06 ficava pela metade: o 03-05
+   resolve o domínio, e nenhuma tela levava a Pessoa até a Tarefa. O 03-15
+   verificou o achado antes de construir sobre ele e corrigiu o diagnóstico —
+   a porta já existia (`SharedTasks`), e o 03-05 a fecharia sem quebrar teste
+   nenhum ao apagar as Grants em que ela se apoia. De quebra, achou duas telas
+   (`buscar/page.tsx` e `estrutura/tarefas/page.tsx`) que listam Tarefas **sem
+   filtro de visibilidade nenhum** hoje — com `GET /estado` hidratando o Espaço
+   inteiro sem recorte, a primeira frase do critério 5 seria falsa na tela por
+   mais correto que o domínio estivesse.
+
+5. **Três achados que ficaram sem dono e sobem ao usuário**, registrados pelos
+   planners e não absorvidos em silêncio: (a) `GET /estado` não é filtrado por
+   visibilidade (`apps/api/src/rotas/estado.ts`) — a correção durável é no
+   servidor e muda a forma da hidratação, logo é plano próprio de `apps/api`;
+   (b) sete famílias de busca (Contatos, Empresas, Negócios, Conversas,
+   Documentos, Agentes, Automações) seguem sem filtro, e o predicado certo de
+   cada uma não está decidido em documento algum; (c) a automação do gatilho de
+   D3-08 (converter sozinho quando a Solicitação entra em `aprovado`) — o 03-13
+   entregou o botão, que já fecha o critério 1, mas o disparo automático exige
+   `tasks.ts` ou uma Ação nova de Automação.
