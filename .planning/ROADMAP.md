@@ -287,7 +287,23 @@ Antes de planejar: decidir os 89 arquivos não commitados do frontend do finance
   3. Contas a receber conforme D7: se o recebimento está no Omie, a Lista da plataforma espelha a Integração em leitura; se não, `createReceivableSeries` cria a série (Entrada + N parcelas) e R2–R7 rodam no motor com os prazos que o Financeiro confirmar (OQ-CR-05); a importação leva Data de pagamento sobre `date_closed` (CON-CR-10).
   4. Uma Automação consegue notificar por Canal (WhatsApp via Evolution API) usando o campo `WhatsApp` da Tarefa — prioridade a confirmar.
 
-**Plans**: TBD
+**Plans**: 12 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — Configuração por Empresa no domínio: `Integration` guarda rótulo da conta Omie, nunca segredo; evolver idempotente e CLI (TEN-01)
+- [ ] 05-02-PLAN.md — A tela: Integrações por Empresa e o 5º Status `em revisão` bloqueado por Empresa (TEN-01)
+- [ ] 05-03-PLAN.md — O 5º Status atravessa o contrato v1 nos dois repositórios, com fixture e documento (TEN-01)
+- [ ] 05-04-PLAN.md — Roteamento por Empresa no `automation/`: o fim do `tenantId: "tria"`, Empresa desconhecida é recusa (TEN-01)
+- [ ] 05-05-PLAN.md — O corte único de Marcos Paulo e Family Office: inventário, webhooks desligados, Listas arquivadas (TEN-01)
+- [ ] 05-06-PLAN.md — `notificar` por Canal no domínio: destino declarado, vazio é recusa, nenhum I/O (AUTO-02)
+- [ ] 05-07-PLAN.md — O evento `automacao.notificar-canal.v1` no outbox e as duas costuras que o produzem (AUTO-02)
+- [ ] 05-08-PLAN.md — A rota `notificar-canal` no `automation/`: Bearer, idempotência, Evolution (AUTO-02)
+- [ ] 05-09-PLAN.md — D7: a conferência somente-leitura de `ws_n1` e a única pergunta ao Financeiro (REC-01)
+- [ ] 05-10-PLAN.md — Contas a receber: fechar o que a conferência achou, prazos ajustáveis, ligar o relógio (REC-01)
+- [ ] 05-11-PLAN.md — A importação das 240 contas a receber, sem acordar Automação nenhuma (REC-01)
+- [ ] 05-12-PLAN.md — As telas: preview da série de parcelas e a régua de Empresa (REC-01)
+
+**Ondas de execução:** 1 → [05-01] · 2 → [05-02, 05-03, 05-06] · 3 → [05-04, 05-07] · 4 → [05-05, 05-08] · 5 → [05-09] · 6 → [05-10] · 7 → [05-11, 05-12]
 
 Antes de planejar: D7/OQ-CR-01 (perguntar ao Financeiro onde o recebimento é controlado hoje) decide o formato de REC-01; CAND-01 (uma Integração por Empresa) e CAND-05 (leituras conservadoras de C34) precisam ser confirmadas ou revistas; OQ-CR-02..06 e OQ-CMP-02 têm dono aqui.
 
@@ -318,7 +334,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 23/28 | In Progress|  |
 | 3. Contas a pagar | 11/15 | In Progress|  |
 | 4. As outras telas do financeiro-tria | 0/TBD | Not started | - |
-| 5. Contas a receber e os outros tenants | 0/TBD | Not started | - |
+| 5. Contas a receber e os outros tenants | 0/12 | Not started | - |
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*
