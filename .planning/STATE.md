@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-03-PLAN.md
-last_updated: "2026-09-23T12:38:44.088Z"
+stopped_at: Completed 03-09-PLAN.md
+last_updated: "2026-09-23T12:53:29.825Z"
 last_activity: 2026-09-23 -- Phase 03 execution started
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 66
-  completed_plans: 50
+  completed_plans: 51
   percent: 33
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 03 (contas-a-pagar) — EXECUTING
-Plan: 5 of 15
+Plan: 6 of 15
 Status: Ready to execute
 Last activity: 2026-09-23 -- Phase 03 execution started
 
@@ -81,6 +81,7 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 | Phase 03 P01 | 52min | 3 tasks | 3 files |
 | Phase 03 P03 | 20min | 3 tasks | 3 files |
 | Phase 03 P04 | 30min | 3 tasks | 4 files |
+| Phase 03 P09 | 15min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -127,6 +128,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 03]: Plan 03-03, achado registrado sem reabrir decisão: a saturação de D3-07 é absorvente — com businessDays 'anterior' (regra real do seed) uma conta de dia 31 percorre 2026-01-31 → 02-27 → 03-27 → 04-27 → 05-27 → 06-26, isto é, o dia recua e não volta. Corrigir exigiria guardar o dia âncora da série (código novo, fora do plano); o comportamento foi PINADO por teste para que mudá-lo seja deliberado. Também: a evidência de D3-06 em 03-RESEARCH.md está mal atribuída (2025-02-17 é segunda comum com 11 Tarefas, não Carnaval com 4; nenhuma das 2.830 Tarefas com vencimento do export cai em feriado nacional) — D3-06 segue valendo como decisão do usuário.
 - [Phase 03]: Plan 03-04: a decisão do lançamento foi separada da execução — `buildResumoDePagamento` e `runLancamentoAgent` RECEBEM um `DeParaDeLancamento` (`contaPorTag` + `categoriaPorCampo` + `origem` obrigatória) por parâmetro opcional no fim, com `DE_PARA_DO_PROTOTIPO` como padrão, e o domínio segue sem `fetch`/env (D3-02: recebe, nunca busca). `veredito` `"revisar"`/`"ausente"` faz `runLancamentoAgent` devolver `fail` — `execute` interrompe o laço e A8 não move para "lançado omie": quem formata tolera, quem executa recusa (T-3-10). `rehearsal: true` (campo antigo de B82, até aqui `false` fixo) vira Ensaio estrito: zero Comentário/Status/Atividade, só a `AgentExecution` de sombra, uma por conta, guardando a TRIPLA conta/categoria/código e nunca o texto do RESUMO, que carrega chave Pix e código de barras (T-3-09). O texto de CON-CP-08 está travado por dois literais golden capturados ANTES do refactor (commit be88ef9, verde contra o código antigo) — vencimento fixado à mão porque o seed usa data relativa a hoje, e o NBSP que o `Intl` pt-BR emite depois de `R$` escapado como ` `. Transporte endurecido no `apps/api`: `opcional(OPCOES_DE_LANCAMENTO)` com `.strict()` e o portão `Confere<[Igual<…>]>` (IN-10). 409 testes no domínio, `npm run check` verde nos três workspaces (decomposto por workspace — o monolítico estoura o teto de 600s por causa dos ~11min do `apps/api` contra o Supabase remoto).
 - [Phase 03]: Plan 03-04, desvio Rule 2 e pendência a realocar: a recusa do Agente também NÃO escreve na Tarefa durante o Ensaio — um helper `recusar()` transforma o pedido ao Financeiro em passo de raciocínio. O plano bifurcava o Ensaio só depois de `buildResumoDePagamento`, deixando o caminho de `erpMissingFields` publicar Comentário em sombra: furo direto na invariante T-3-08, e justamente no caminho mais provável na primeira semana. Fora do Ensaio o comportamento é byte a byte o de antes. E a metade CNPJ de PAG-04 (`CNPJ_POR_EMPRESA`) segue ABERTA por conflito de arquivo dentro da onda 1 — quem a lê é `automations.ts:118` (`fillTemplate`, `{{cnpjEmpresa}}` de A5/A6), arquivo de 03-02; candidatos a receber o item são 03-02 (dono do arquivo) ou 03-11 (que já injeta o de-para resolvido).
+- [Phase 03]: Plan 03-09: PAG-01 fechado no domínio — `importarContaAPagarHistorica` cria a Tarefa JÁ no Status final via `createTask(..., { runAutomations: false })` e escreve a trilha com `recordActivity({ at })`, sem tocar `changeTaskStatus` (o código fora de comentário tem 0 ocorrências). É a divergência consciente do precedente `importarSolicitacaoHistorica`, cuja autorização (`importacao.ts:34-41`) vale só porque aquela Lista não tem Automação; esta tem sete + a Recorrência A1, e o replay ingênuo pariria recorrência fantasma por conta paga, cobrança de nota em conta fechada e Responsável reescrito. Prova não-vazia em `importacao-contas-a-pagar.test.ts` (9 casos): afirma `>=7` Automações ativas na Lista ANTES de afirmar `automationExecutions === 0`; `diasEmStatus` lê só `state.activity` e devolve 30 dias para um ciclo real. `completedAt` = `fechadaEm ?? instante da última transição` e só em categoria terminal; Status final que `statusDefinition` não resolve é recusa (T-3-08, porque `createTask` cai no primeiro `naoIniciado` em silêncio); divergência entre Status final e histórico vira lacuna `status_final_diverge_do_historico`, não recusa. `jaImportada` passou a ser exportada de `importacao.ts` (1 palavra) em vez de duplicada (T-3-02); `ORIGEM_CONTAS_A_PAGAR = 'clickup:901107637383'` é fonte única com `importacao_ledger.origem` de 03-10 — nenhum ledger novo. Verificação por mutação antes de confiar no verde: ligar `runAutomations` faz o caso (a) falhar com 3 Execuções. 418 testes no domínio; `npm run check` decomposto verde nos três workspaces sem DATABASE_URL (api 380 passed/12 skipped).
 
 ### Pending Todos
 
@@ -159,7 +161,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-23T12:38:05.914Z
-Stopped at: Completed 03-03-PLAN.md
+Last session: 2026-09-23T12:53:29.813Z
+Stopped at: Completed 03-09-PLAN.md
 Resume file: 
 None
