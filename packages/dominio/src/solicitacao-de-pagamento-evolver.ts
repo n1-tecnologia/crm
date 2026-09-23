@@ -47,7 +47,7 @@ import type {
 /* ── Ids literais e estáveis da Lista (nunca gerados por sequência) ───────
  * O catálogo do Plan 02-06 não inclui a Lista em si (é dado pré-workspace,
  * sem `parentId`/estrutura) — este arquivo é quem a materializa. */
-const LISTA_ID: Id = "lst_solicitacoes_de_pagamento";
+export const LISTA_ID: Id = "lst_solicitacoes_de_pagamento";
 const LISTA_NOME = "Solicitações de pagamento";
 
 export interface DivergenciaDeConfiguracao {

@@ -344,9 +344,17 @@ describe("converterSolicitacaoEmContaAPagar", () => {
     expect(s.automationExecutions.length).toBeGreaterThanOrEqual(execucoesAntes + 1);
     expect(r.value.observerMemberIds).toContain(CP.financeiroId);
     expect(r.value.observerMemberIds).toContain(APROVADOR);
-    // A prova de que o `tarefaCriada` é adiado: A9 só alcança a Pessoa por
-    // `fromFieldDefinitionId`, e o Campo só existe depois do laço do de-para.
+    // A9 só alcança a Pessoa por `fromFieldDefinitionId`, e o Campo só existe
+    // depois do laço do de-para.
     expect(r.value.observerMemberIds).toContain(PESSOA);
+
+    // A prova de que o gatilho foi ADIADO, não duplicado: A9 rodou UMA vez, e
+    // sobre a Tarefa já completa. Com `runAutomations` ligado na criação, a
+    // primeira volta correria antes do Campo Pessoa existir e esta contagem
+    // seria 2 — a Pessoa entraria como Observadora, mas por acidente da
+    // segunda volta, não por desenho.
+    const deA9 = s.automationExecutions.filter((e) => e.automationId === "aut_cp_a9" && e.objectId === r.value.id);
+    expect(deA9).toHaveLength(1);
   });
 
   it("(g) a Tag `conta *` é resolvida pelo NOME na Lista de destino, nunca por id literal", () => {
