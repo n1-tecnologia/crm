@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Completed 03-09-PLAN.md
-last_updated: "2026-09-23T12:53:29.825Z"
+last_updated: "2026-09-23T13:26:23.660Z"
 last_activity: 2026-09-23 -- Phase 03 execution started
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 66
-  completed_plans: 51
+  completed_plans: 52
   percent: 33
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 03 (contas-a-pagar) — EXECUTING
-Plan: 6 of 15
+Plan: 7 of 15
 Status: Ready to execute
 Last activity: 2026-09-23 -- Phase 03 execution started
 
@@ -82,6 +82,7 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 | Phase 03 P03 | 20min | 3 tasks | 3 files |
 | Phase 03 P04 | 30min | 3 tasks | 4 files |
 | Phase 03 P09 | 15min | 2 tasks | 5 files |
+| Phase 03 P05 | 38min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -129,6 +130,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 03]: Plan 03-04: a decisão do lançamento foi separada da execução — `buildResumoDePagamento` e `runLancamentoAgent` RECEBEM um `DeParaDeLancamento` (`contaPorTag` + `categoriaPorCampo` + `origem` obrigatória) por parâmetro opcional no fim, com `DE_PARA_DO_PROTOTIPO` como padrão, e o domínio segue sem `fetch`/env (D3-02: recebe, nunca busca). `veredito` `"revisar"`/`"ausente"` faz `runLancamentoAgent` devolver `fail` — `execute` interrompe o laço e A8 não move para "lançado omie": quem formata tolera, quem executa recusa (T-3-10). `rehearsal: true` (campo antigo de B82, até aqui `false` fixo) vira Ensaio estrito: zero Comentário/Status/Atividade, só a `AgentExecution` de sombra, uma por conta, guardando a TRIPLA conta/categoria/código e nunca o texto do RESUMO, que carrega chave Pix e código de barras (T-3-09). O texto de CON-CP-08 está travado por dois literais golden capturados ANTES do refactor (commit be88ef9, verde contra o código antigo) — vencimento fixado à mão porque o seed usa data relativa a hoje, e o NBSP que o `Intl` pt-BR emite depois de `R$` escapado como ` `. Transporte endurecido no `apps/api`: `opcional(OPCOES_DE_LANCAMENTO)` com `.strict()` e o portão `Confere<[Igual<…>]>` (IN-10). 409 testes no domínio, `npm run check` verde nos três workspaces (decomposto por workspace — o monolítico estoura o teto de 600s por causa dos ~11min do `apps/api` contra o Supabase remoto).
 - [Phase 03]: Plan 03-04, desvio Rule 2 e pendência a realocar: a recusa do Agente também NÃO escreve na Tarefa durante o Ensaio — um helper `recusar()` transforma o pedido ao Financeiro em passo de raciocínio. O plano bifurcava o Ensaio só depois de `buildResumoDePagamento`, deixando o caminho de `erpMissingFields` publicar Comentário em sombra: furo direto na invariante T-3-08, e justamente no caminho mais provável na primeira semana. Fora do Ensaio o comportamento é byte a byte o de antes. E a metade CNPJ de PAG-04 (`CNPJ_POR_EMPRESA`) segue ABERTA por conflito de arquivo dentro da onda 1 — quem a lê é `automations.ts:118` (`fillTemplate`, `{{cnpjEmpresa}}` de A5/A6), arquivo de 03-02; candidatos a receber o item são 03-02 (dono do arquivo) ou 03-11 (que já injeta o de-para resolvido).
 - [Phase 03]: Plan 03-09: PAG-01 fechado no domínio — `importarContaAPagarHistorica` cria a Tarefa JÁ no Status final via `createTask(..., { runAutomations: false })` e escreve a trilha com `recordActivity({ at })`, sem tocar `changeTaskStatus` (o código fora de comentário tem 0 ocorrências). É a divergência consciente do precedente `importarSolicitacaoHistorica`, cuja autorização (`importacao.ts:34-41`) vale só porque aquela Lista não tem Automação; esta tem sete + a Recorrência A1, e o replay ingênuo pariria recorrência fantasma por conta paga, cobrança de nota em conta fechada e Responsável reescrito. Prova não-vazia em `importacao-contas-a-pagar.test.ts` (9 casos): afirma `>=7` Automações ativas na Lista ANTES de afirmar `automationExecutions === 0`; `diasEmStatus` lê só `state.activity` e devolve 30 dias para um ciclo real. `completedAt` = `fechadaEm ?? instante da última transição` e só em categoria terminal; Status final que `statusDefinition` não resolve é recusa (T-3-08, porque `createTask` cai no primeiro `naoIniciado` em silêncio); divergência entre Status final e histórico vira lacuna `status_final_diverge_do_historico`, não recusa. `jaImportada` passou a ser exportada de `importacao.ts` (1 palavra) em vez de duplicada (T-3-02); `ORIGEM_CONTAS_A_PAGAR = 'clickup:901107637383'` é fonte única com `importacao_ledger.origem` de 03-10 — nenhum ledger novo. Verificação por mutação antes de confiar no verde: ligar `runAutomations` faz o caso (a) falhar com 3 Execuções. 418 testes no domínio; `npm run check` decomposto verde nos três workspaces sem DATABASE_URL (api 380 passed/12 skipped).
+- [Phase 03]: Plan 03-05: PAG-06 fechado por DERIVAÇÃO, não por concessão — o checkpoint bloqueante da Task 1 foi auto-resolvido como option-a sob o modo autônomo da fase (não é aprovação humana; o ponto de reversão é um único ramo em memberSeesTask). List.sharedWithDefinitionIds declara, como dado na Lista, quais Campos 'person' nomeiam quem enxerga a Tarefa; memberNamedOnTask (derive.ts) lê o Valor ativo com guarda obrigatória de type === 'person' (T-3-11: texto igual a um id de Membro não abre nada) e entra em memberSeesTask ENTRE a Grant da Tarefa-raiz e memberReachesContainer — nenhuma resposta já verdadeira muda. As quatro Grants gr_cp_pessoa_* saíram do seed e tsk_cp_konq ganhou val(F.pessoa) — as duas fontes de verdade que já tinham divergido viraram uma. Não há Grant a criar nem a revogar, então o caminho de 'revoke perdido' de T-3-01 deixa de existir. pessoa-da-conta.test.ts (12 casos) prova o negativo nos dois sentidos, a guarda de tipo, Administrador/Membro ainda sem a Lista, e os três momentos que a Grant estática nunca cobriu — inclusive que a ocorrência de A1 nasce visível (antes a Pessoa era Observadora de uma Tarefa que não enxergava). 430 testes no domínio, web 107, api 380+12 skipped; tasks.ts/automations.ts e os três testes de CON-05 sem diff.
+- [Phase 03]: Plan 03-05, dois registros de fronteira para quem vier depois: (1) T-3-12 fica ACCEPT com endereço em 03-14 — apagar as Grants gr_cp_pessoa_* do seed NÃO apaga as já persistidas no Postgres da plataforma por um bootstrap anterior; enquanto existirem, o comportamento é idêntico ao desejado (o Pedro É a Pessoa das três contas), e nenhuma migração foi criada por isto. (2) A9 só roda em tarefaCriada, então a Pessoa preenchida DEPOIS da criação (o caminho real, porque createTask não aceita Valores de Campo) não vira Observadora — a VISIBILIDADE deixou de depender disso, o OBSERVADOR ainda depende; é trabalho de PAG-02 (03-02), não de 03-05. Efeito de interface para 03-15: a tela configuracoes/membros/[membro] mostra 'Concessões diretas' e o Pedro/Lucas passam a aparecer com MENOS linhas — a visibilidade deles saiu da Grant e foi para a configuração da Lista. E correção de comando: 03-VALIDATION.md mapeia PAG-06 a 'npm run test --workspace=@n1/dominio -- tasks'; o real é '-- pessoa-da-conta'.
 
 ### Pending Todos
 
@@ -161,7 +164,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-23T12:53:29.813Z
+Last session: 2026-09-23T13:26:23.632Z
 Stopped at: Completed 03-09-PLAN.md
 Resume file: 
 None
