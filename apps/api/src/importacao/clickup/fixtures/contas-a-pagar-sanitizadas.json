@@ -1,0 +1,189 @@
+{
+  "_aviso": "Fixture inteiramente FICTÍCIA (Plan 03-10). Nenhum id de Tarefa, nome, e-mail, CPF, CNPJ, chave Pix, código de barras ou valor real do export do ClickUp aparece aqui. Documentos usam os padrões reconhecidamente falsos 000.000.000-00 (CPF) e 00.000.000/0001-91 (CNPJ). Construída à mão a partir do formato bruto documentado em ./CONTEXT.md e nos arquivos de amostra de apps/api/exportacoes/clickup/901107637383/ (ignorada pelo git por LGPD) — cobre os casos (a)-(j) de contas-a-pagar.test.ts, um por Tarefa fictícia.",
+  "instanteDaExportacao": "2026-04-01T15:00:00.000Z",
+  "tarefas": [
+    {
+      "_caso": "(a) Vencimento nativo, nunca duplicado",
+      "tarefa": {
+        "id": "fic_001",
+        "name": "Conta fictícia 001 — assinatura de software",
+        "archived": false,
+        "status": { "status": "para pagar" },
+        "date_created": "1767625200000",
+        "due_date": "1768921200000",
+        "creator": { "id": 81581816 },
+        "assignees": [{ "id": 81581816 }],
+        "watchers": [],
+        "tags": [{ "name": "conta tria" }],
+        "custom_fields": [
+          {
+            "id": "8489b2e2-e5fe-47bf-bfbc-5ea900ab5f93",
+            "type": "drop_down",
+            "type_config": { "options": [{ "name": "Marcos Paulo" }, { "name": "TRIA" }] },
+            "value": 1
+          },
+          {
+            "id": "a3b55d09-8c93-4686-9040-9dbe3ad28c1e",
+            "type": "drop_down",
+            "type_config": { "options": [{ "name": "Distribuição de Lucro" }, { "name": "Ferramentas" }] },
+            "value": 1
+          },
+          { "id": "ad484dcb-4a13-478d-9191-b1fe71658e50", "type": "currency", "value": "1500.00" }
+        ]
+      },
+      "historico": {
+        "status_history": [{ "status": "para pagar", "total_time": { "since": "1767625200000", "by_minute": 100 } }]
+      }
+    },
+    {
+      "_caso": "(b) Precedência do vencimento — L diverge do nativo",
+      "tarefa": {
+        "id": "fic_002",
+        "name": "Conta fictícia 002 — divergência de vencimento",
+        "archived": false,
+        "status": { "status": "aprovado" },
+        "date_created": "1767711600000",
+        "due_date": "1770735600000",
+        "custom_fields": [
+          { "id": "21d726f9-ddc0-4d90-b482-3ed3fe5d78d4", "type": "date", "value": "1768489200000" }
+        ]
+      },
+      "historico": {
+        "status_history": [{ "status": "aprovado", "total_time": { "since": "1767711600000", "by_minute": 50 } }]
+      }
+    },
+    {
+      "_caso": "(b) Precedência do vencimento — sem nativo e sem L: vencimento_ausente",
+      "tarefa": {
+        "id": "fic_003",
+        "name": "Conta fictícia 003 — sem vencimento",
+        "archived": false,
+        "status": { "status": "pago" },
+        "date_created": "1767798000000",
+        "date_closed": "1768057200000"
+      },
+      "historico": {
+        "status_history": [{ "status": "pago", "total_time": { "since": "1768057200000", "by_minute": 30 } }]
+      }
+    },
+    {
+      "_caso": "(c) Transições reordenáveis, vocabulário preservado",
+      "tarefa": {
+        "id": "fic_004",
+        "name": "Conta fictícia 004 — histórico fora de ordem",
+        "archived": false,
+        "status": { "status": "lançado omie" },
+        "date_created": "1767884400000",
+        "due_date": "1772377200000"
+      },
+      "historico": {
+        "status_history": [
+          { "status": "lançado omie", "total_time": { "since": "1768046400000", "by_minute": 10 } },
+          { "status": "to do", "total_time": { "since": "1767873600000", "by_minute": 5 } },
+          { "status": "em lançamento omie", "total_time": { "since": "1767960000000", "by_minute": 20 } }
+        ]
+      }
+    },
+    {
+      "_caso": "(d) Status final sem equivalente — recusa",
+      "tarefa": {
+        "id": "fic_005",
+        "name": "Conta fictícia 005 — status desconhecido",
+        "archived": false,
+        "status": { "status": "status fictício desconhecido" },
+        "date_created": "1767970800000"
+      },
+      "historico": {
+        "status_history": [{ "status": "status fictício desconhecido", "total_time": { "since": "1767960000000", "by_minute": 5 } }]
+      }
+    },
+    {
+      "_caso": "(e) Opção com espaço em branco ao final",
+      "tarefa": {
+        "id": "fic_006",
+        "name": "Conta fictícia 006 — opção com espaço",
+        "archived": false,
+        "status": { "status": "para pagar" },
+        "date_created": "1768057200000",
+        "due_date": "1769353200000",
+        "custom_fields": [
+          {
+            "id": "a3b55d09-8c93-4686-9040-9dbe3ad28c1e",
+            "type": "drop_down",
+            "type_config": { "options": [{ "name": "Distribuição de Lucro" }, { "name": "Ferramentas " }] },
+            "value": 1
+          }
+        ]
+      },
+      "historico": {
+        "status_history": [{ "status": "para pagar", "total_time": { "since": "1768046400000", "by_minute": 5 } }]
+      }
+    },
+    {
+      "_caso": "(f) Tag sem equivalente",
+      "tarefa": {
+        "id": "fic_007",
+        "name": "Conta fictícia 007 — tag sem equivalente",
+        "archived": false,
+        "status": { "status": "para pagar" },
+        "date_created": "1768143600000",
+        "due_date": "1769612400000",
+        "tags": [{ "name": "conta tria" }, { "name": "conta plx - apoio" }]
+      },
+      "historico": {
+        "status_history": [{ "status": "para pagar", "total_time": { "since": "1768132800000", "by_minute": 5 } }]
+      }
+    },
+    {
+      "_caso": "(g) PREP-04 — autoria conhecida, responsável e observador não resolvidos",
+      "tarefa": {
+        "id": "fic_008",
+        "name": "Conta fictícia 008 — de-para de usuários",
+        "archived": false,
+        "status": { "status": "para pagar" },
+        "date_created": "1768230000000",
+        "due_date": "1769958000000",
+        "creator": { "id": 81581816 },
+        "assignees": [{ "id": 81581816 }, { "id": 999999 }],
+        "watchers": [{ "id": 888888 }]
+      },
+      "historico": {
+        "status_history": [{ "status": "para pagar", "total_time": { "since": "1768219200000", "by_minute": 5 } }]
+      }
+    },
+    {
+      "_caso": "(h)+(i) Anexo nunca importado; Centro de Custo ausente é lacuna, não recusa",
+      "tarefa": {
+        "id": "fic_009",
+        "name": "Conta fictícia 009 — anexo e centro ausente",
+        "archived": false,
+        "status": { "status": "para pagar" },
+        "date_created": "1768316400000",
+        "due_date": "1770303600000",
+        "custom_fields": [
+          { "id": "5b82307c-90c8-4590-831c-36d5bd50f3f2", "type": "attachment", "value": [{ "id": "anexo_ficticio_01" }] }
+        ]
+      },
+      "historico": {
+        "status_history": [{ "status": "para pagar", "total_time": { "since": "1768305600000", "by_minute": 5 } }]
+      }
+    },
+    {
+      "_caso": "(j) Reentrada de Status detectada",
+      "tarefa": {
+        "id": "fic_010",
+        "name": "Conta fictícia 010 — reentrada de status",
+        "archived": false,
+        "status": { "status": "para pagar" },
+        "date_created": "1768402800000",
+        "due_date": "1771167600000"
+      },
+      "historico": {
+        "status_history": [
+          { "status": "para pagar", "total_time": { "since": "1768392000000", "by_minute": 100000 } },
+          { "status": "em lançamento omie", "total_time": { "since": "1768392300000", "by_minute": 50 } }
+        ]
+      }
+    }
+  ]
+}
