@@ -62,8 +62,8 @@ export function RelatorioDeLotePainel({
       <div className="p-3 grid gap-3">
         {erroDoServidor ? (
           <p role="alert" className="app-base" style={{ color: "var(--erro)" }}>
-            O servidor recusou depois: {erroDoServidor} — o relatório abaixo é o que o domínio calculado localmente
-            mostrou no momento do clique.
+            O servidor recusou depois: {erroDoServidor} — o relatório abaixo é o valor calculado localmente pelo
+            domínio no momento do clique.
           </p>
         ) : null}
 
