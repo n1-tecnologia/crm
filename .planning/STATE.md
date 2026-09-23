@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-09-23T02:35:17.572Z"
+stopped_at: Completed 03-03-PLAN.md
+last_updated: "2026-09-23T12:13:18.913Z"
 last_activity: 2026-09-23 -- Phase 03 execution started
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 66
-  completed_plans: 47
+  completed_plans: 49
   percent: 33
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 03 (contas-a-pagar) — EXECUTING
-Plan: 2 of 15
+Plan: 4 of 15
 Status: Ready to execute
 Last activity: 2026-09-23 -- Phase 03 execution started
 
@@ -79,6 +79,7 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 | Phase 01 P15 | 35min | 2 tasks | 8 files |
 | Phase 01 P16 | 40min | 2 tasks | 7 files |
 | Phase 03 P01 | 52min | 3 tasks | 3 files |
+| Phase 03 P03 | 20min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -121,6 +122,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 01]: Plan 01-15 fechou esquemas/planejamento.ts (11), esquemas/escala.ts (14), esquemas/membros.ts (5) e esquemas/estrutura.ts (3) — 33/33 operações de planejamento/escala/Membros/estrutura com schema próprio satisfies Esquemas. As duas formas hostis que o verificador reproduziu contra ARGUMENTOS_GENERICOS (createGoal kind:42+anchor.lixo, saveView filters arbitrário) caem em teste puro. inviteMember ganha entrada em ESQUEMAS com o único .strip() da pasta — segunda barreira de T-1-08, SERVICOS.inviteMember em operacoes.ts intocado. Roda em paralelo com 01-13/01-14; ESQUEMAS e a rota só mudam no Plan 01-16 (composição final). PERS-04 continua com a ressalva de 01-VERIFICATION.md.
 - [Phase 01]: Plan 01-16 fechou CR-02 por inteiro: ESQUEMAS = spread dos 15 arquivos de esquemas/ satisfies EsquemasCompletos (portão de completude — operação de OPERACOES sem schema não compila), ARGUMENTOS_GENERICOS/fallback estrutural removidos, mapeamento TypeError->400 removido da rota (WR-11, por remoção — não existe mais operação sem schema). createGoal (kind:42+anchor.lixo) e saveView (filters arbitrário) provados 400 por HTTP com nada persistido (casos (t)/(u)/(v)); (q) reapontado para cair pelo schema de createChatFolder. npm run check verde (dominio 253, web 53, api 163); packages/dominio, apps/web e apps/api/src/app.ts sem diff em toda a rodada 01-12..01-16. PERS-04 marcado como requisito concluido — a ressalva de 01-VERIFICATION.md se dissolve. Fase 1: 16/16 planos GSD executados — instrução explícita do orquestrador para este plano de fechamento (onda 3 de 3 da segunda rodada de CR-02)
 - [Phase 03]: Plan 03-01: plataforma.automacao_agenda (005) aplicada no Supabase da plataforma — PK (workspace_id, list_id, dia_civil) é o invariante 'um dia civil por Lista', índice parcial + for update skip locked dão exclusão mútua entre instâncias do apps/api, e 'processando' com locked_at vencido volta a 'falhou' (critério 3 do ROADMAP verificável). A tabela NÃO é fonte de idempotência: essa continua em AutomationExecution/jaRodou (runScheduledAutomations). — Duplicar a idempotência no banco criaria duas fontes de verdade a manter sincronizadas; o que só o banco dá é lease entre processos e auditoria do dia processado. As quatro garantias estão provadas contra o Postgres real em agenda-de-automacoes.test.ts; nenhum ledger novo — a importação de Contas a pagar reusa importacao_ledger com origem = 'clickup:901107637383'.
+- [Phase 03]: Plan 03-03: as regras de vencimento de A1 (D3-05/D3-06/D3-07) passam a ser provadas por par de datas exato em recorrencia-contas-a-pagar.test.ts (19 casos) — 2026-01-31 satura em 28/02 e, com dia útil anterior, vence em 27/02; Carnaval e Natal não deslocam; domingo recua dois dias. Nenhuma linha de lógica nova: o diff de collaboration.ts é só de comentário e operations.test.ts ficou intocado (CON-05). O teste lê o package.json da camada e exige dependencies == [zod], tornando a proibição de dependência de datas de D3-06 executável.
+- [Phase 03]: Plan 03-03, achado registrado sem reabrir decisão: a saturação de D3-07 é absorvente — com businessDays 'anterior' (regra real do seed) uma conta de dia 31 percorre 2026-01-31 → 02-27 → 03-27 → 04-27 → 05-27 → 06-26, isto é, o dia recua e não volta. Corrigir exigiria guardar o dia âncora da série (código novo, fora do plano); o comportamento foi PINADO por teste para que mudá-lo seja deliberado. Também: a evidência de D3-06 em 03-RESEARCH.md está mal atribuída (2025-02-17 é segunda comum com 11 Tarefas, não Carnaval com 4; nenhuma das 2.830 Tarefas com vencimento do export cai em feriado nacional) — D3-06 segue valendo como decisão do usuário.
 
 ### Pending Todos
 
@@ -153,7 +156,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-23T02:35:09.561Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-09-23T12:13:08.500Z
+Stopped at: Completed 03-03-PLAN.md
 Resume file: 
 None
