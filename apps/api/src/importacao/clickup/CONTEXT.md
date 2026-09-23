@@ -78,6 +78,122 @@ importação (Fases 2/3, D-09).
 exportação (Tarefas, Comentários, histórico) com contagem, cruzando com
 `DE_PARA_USUARIOS` para apontar quem ainda não tem entrada.
 
+## `contas-a-pagar.ts` (Plan 03-10 — PAG-01)
+
+A metade "ler e entender" da importação histórica da Lista de Contas a pagar
+(`901107637383`). `classificarTarefaLegada` é pura (sem I/O) e traduz UMA
+Tarefa+histórico do export para `EntradaDeContaAPagarHistorica`
+(`@n1/dominio/operations/importacao-contas-a-pagar`) — a regra de
+importação inteira é do domínio; aqui só se traduz vocabulário. `de-para`
+fechados e exportados: `DE_PARA_DE_STATUS` (8 nomes), `DE_PARA_DE_CAMPOS`
+(21 dos 24 Campos — `L-Data Vencimento` vai para o vencimento nativo,
+`Y-Produto`/`W-Equipe` sem destino), `DE_PARA_DE_TAGS` (as 8 Tags do seed).
+
+**Decisão de precedência do vencimento (D3-04, obrigação 3), com a
+evidência que a sustenta:** o vencimento sai SEMPRE de `due_date` (o campo
+nativo do ClickUp), nunca do Campo `L-Data Vencimento`. Das 117 contas
+ainda em `para pagar` no export, 83 têm os dois preenchidos e **82
+divergem** — `L` está, em média, 26,3 dias mais cedo (uma volta de
+recorrência atrás). Todo `L` é subconjunto do nativo (1.007 Tarefas contra
+2.830), então usar `L` não acrescentaria uma única Tarefa nova e poria 82
+contas vivas com vencimento no passado — o gatilho de A5/A6/A7. A
+divergência vira a lacuna `vencimento_l_diverge_do_nativo`, nunca uma
+escolha silenciosa; quem reverter esta decisão precisa ver este número
+primeiro.
+
+**Vocabulário de lacunas** (nunca o valor problemático — D-25, T-3-25):
+`vencimento_l_diverge_do_nativo`, `vencimento_ausente`, `tag_sem_equivalente`,
+`campo_sem_destino`, `opcao_fora_do_dominio`, `anexo_nao_importado`,
+`centro_de_custo_ausente`, `pessoa_nao_resolvida`, `autoria_nao_resolvida`,
+`responsavel_nao_resolvido`, `observador_nao_resolvido`,
+`transicao_sem_instante`, `tempo_acumulado_maior_que_o_intervalo`,
+`tarefa_arquivada_na_origem`.
+
+**Exclusões declaradas, não omissões:** os 4.266 Comentários do export não
+entram (D3-04 nomeia `date_created`/`date_closed`/histórico de status, não
+Comentário). Os três Campos de anexo (`J-Anexo`, `R-Boleto`, `S-QR Code`,
+1.505 anexos baixados) têm destino em `DE_PARA_DE_CAMPOS` mas nunca
+produzem valor — cada Tarefa afetada ganha `anexo_nao_importado`; o molde
+para preenchê-los depois (sem reimportar) já existe em
+`../financeiro/anexos.ts` (Plan 02-25).
+
+`lerTarefasDoExport`/`verificarIntegridadeDoExport` fazem a leitura e a
+conferência de `sha256` contra `MANIFESTO.json` (T-3-27), usando
+`hashDoArquivo` de `./manifesto.ts`.
+
+## `importar-contas-a-pagar.ts` (Plan 03-10)
+
+A orquestração: `importarLote` roda um lote sob `executar()` e grava a linha
+de `plataforma.importacao_ledger` (origem `clickup:901107637383`, a mesma
+constante `ORIGEM_CONTAS_A_PAGAR` de `@n1/dominio`) em `aoConfirmar` — MESMA
+transação da Tarefa; ledger de `003`, nenhuma tabela nova. `importarTudo`
+compõe: confere integridade do export, lê e classifica em fluxo, agrupa em
+lotes (padrão 250) e agrega contagens.
+
+**Decisão de tamanho de transação: lote de 250, não uma `executar()` por
+conta nem uma só para tudo.** Uma chamada por conta (2.861×) é quadrática —
+cada hidratação carrega o Espaço inteiro, que cresce a cada conta. Uma
+chamada para tudo segura `plataforma.workspaces` durante a importação
+inteira e não é retomável (a falha da conta 1.500 desfaz as 1.499
+anteriores). O lote de 250 é o meio-termo: 12 hidratações para as 2.861
+Tarefas, lock por lote em segundos, e uma falha que desfaz no máximo 250 —
+as anteriores já estão no ledger e a retomada parte dali (`contaAPagarJaImportada`
+antes de cada conta torna o lote idempotente contra reexecução por conflito
+de revisão).
+
+**O que acontece quando uma conta falha no meio do lote:** recusa do
+domínio (`ok: false`) vira ledger `rejeitada`, o lote segue; exceção/erro do
+Postgres desfaz o lote inteiro (nem Tarefa, nem ledger) — os lotes
+anteriores continuam commitados. Nenhum caminho deixa Tarefa sem ledger ou
+ledger sem Tarefa.
+
+`reconciliar` compara o ledger de um `run_id` com a contagem de Tarefas do
+Espaço — a prova de que reaplicar não duplica. `relatorioSanitizado` grava
+o agregado versionado (`apps/api/exportacoes/importacao-contas-a-pagar/<runId>/`);
+o detalhe por linha (`legacyTaskId` + categoria, nunca valor de Campo) fica
+em `apps/api/exportacoes/clickup/901107637383/importacao/<runId>/rejeicoes.log`,
+dentro da árvore já ignorada pelo git por LGPD.
+
+## `marco-zero.ts` (Plan 03-10)
+
+A primeira das duas barreiras contra o agendador de Automações (Plan 03-08)
+alcançar o passado importado. `marcarMarcoZero` grava uma linha
+`concluido`/`last_error_code = MARCO_ZERO` (o código de
+`../automacoes/scheduler-worker.ts::CODIGOS_DA_AGENDA`) em
+`plataforma.automacao_agenda` para `(workspaceId, listId)` — idempotente em
+dois graus: no MESMO dia civil (`on conflict`) e entre dias civis
+DIFERENTES (pré-checagem por `last_error_code`), então só existe UMA marca
+por Lista, nunca uma por dia em que o CLI rodou.
+
+**Por que a marca nasce DEPOIS da importação, fora da transação do
+lote:** a importação não tem uma transação só (decisão de lote acima), e a
+marca significa "terminou" — escrevê-la antes abriria a agenda com contas
+ainda entrando. O risco do processo morrer entre o último commit e a marca
+é coberto por três coisas: escrita idempotente, o CLI sai com código 1
+quando `MARCO_ZERO` não foi gravada e também não existia, e `--so-marco-zero`
+grava só ela.
+
+**As duas barreiras, e por que nenhuma é confiada sozinha:** `MARCO_ZERO`
+limita QUAIS dias civis nascem na agenda (via `diasCiveisPendentes`, 03-08,
+que passa a contar de `max(dia_civil)`); o ensaio da primeira volta
+(`ENSAIO_PRIMEIRA_VOLTA`, também 03-08) limita SE algo dispara — mede dentro
+da transação e desfaz até `npm run automacoes:liberar` ser rodado. As 51
+contas em `para pagar` com vencimento no passado (de 117 nesse Status) só
+alcançam A5/A6/A7 depois de as duas barreiras serem passadas por um ato
+humano.
+
+## `importar-contas-a-pagar.cli.ts` (Plan 03-10)
+
+`npm run contas-a-pagar:importar -w @n1/api [-- flags]` — sem flag roda em
+`--dry-run` (nunca grava); `--apply` importa de verdade e grava
+`MARCO_ZERO` ao final, imprimindo o próximo passo
+(`npm run automacoes:liberar -w @n1/api -- <workspaceId> lst_contas_a_pagar`).
+`--lote=<n>`, `--pasta=<dir>`, `--resume`, `--run=<uuid>`,
+`--reconciliar --run=<uuid>` (só relata), `--so-marco-zero` (grava só a
+marca), `--sem-verificacao-de-hash` (recusado junto com `--apply`, T-3-27).
+Nunca expõe uma flag de origem — a origem do ledger é sempre
+`clickup:901107637383`, e só o teste a substitui, por dentro.
+
 ## O que este módulo não faz
 
 - Não transforma o JSON da API — grava exatamente como a API devolve, um
@@ -113,3 +229,13 @@ por status (se o ClickApp "Total time in Status" estiver ligado), não uma
 lista de eventos com timestamp exato — uma aproximação, tratada como
 best-effort na exportação (Plan 00-03), nunca como trilha de auditoria
 completa na spec (PREP-03).
+
+**O número medido (Plan 03-10):** o proxy guarda um `since` por Status
+DISTINTO, não um por transição — uma Tarefa que voltou ao mesmo Status
+(reentrada) aparece nele uma vez só, com o tempo das duas passagens somado.
+**630 das 2.861 Tarefas da Lista de Contas a pagar** (22%) dão esse sinal:
+o intervalo entre o `since` de uma entrada e o `since` da entrada seguinte
+(ou o instante da exportação, para a última) é menor que o `by_minute`
+acumulado. `classificarTarefaLegada` (`./contas-a-pagar.ts`) mede isso e
+marca cada uma com a lacuna `tempo_acumulado_maior_que_o_intervalo` — nunca
+uma métrica de "tempo em Status" silenciosamente errada.
