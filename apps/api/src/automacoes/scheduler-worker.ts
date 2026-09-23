@@ -29,9 +29,14 @@
  * (catch-up, item Wave 0 de `03-VALIDATION.md`) testável sem esperar dois
  * dias de verdade.
  *
- * A Task 2 deste plano acrescenta aqui a primeira volta em ensaio (a Lista
- * recém-chegada mede e não grava antes de alguém liberar) e o vocabulário
- * `CODIGOS_DA_AGENDA` — nenhuma das duas muda o que esta Task escreve.
+ * A primeira volta REAL de cada (Espaço, Lista) roda em ENSAIO (Task 2,
+ * D3-03): calcula dentro da transação, captura as contagens e desfaz —
+ * nenhum Comentário, Status ou invocação de Agente sai da primeira volta
+ * sozinha. As contas importadas por 03-09/03-10 que ficam vencidas no
+ * passado disparariam A5/A6/A7 em lote no dia seguinte à importação sem
+ * esse gate; `MARCO_ZERO` (escrito por 03-10 ao terminar a importação) fixa
+ * o início da agenda de uma Lista, e o ensaio fica parado até liberação
+ * explícita (`npm run automacoes:liberar -w @n1/api -- <workspaceId> <listId>`).
  */
 
 import type { DataState, Id, OperationResult } from "@n1/dominio";
@@ -124,6 +129,29 @@ export interface LinhaAgenda {
 }
 
 /**
+ * O vocabulário fechado de `last_error_code` desta tabela — 03-10 e
+ * `liberar.cli.ts` importam os valores em vez de repetir literais. A coluna
+ * se chama `last_error_code` porque é a que 03-01 criou; aqui ela carrega o
+ * "motivo do último evento não rotineiro daquele dia" — uma coluna `motivo`
+ * dedicada seria o refinamento óbvio numa migração futura (as migrações são
+ * numeradas e imutáveis, DEC-10, e `005` já está aplicada).
+ */
+export const CODIGOS_DA_AGENDA = {
+  /** Escrito por 03-10 ao terminar a importação: fixa o dia em que a agenda de uma Lista começa a contar. */
+  MARCO_ZERO: "MARCO_ZERO",
+  /** A primeira volta real de uma (Espaço, Lista) mediu e não gravou (Task 2, D3-03). */
+  ENSAIO_PRIMEIRA_VOLTA: "ENSAIO_PRIMEIRA_VOLTA",
+  /** `processando` com `locked_at` mais velho que `leaseMs`: o processo caiu antes de fechar o dia. */
+  LEASE_EXPIRADO: "LEASE_EXPIRADO",
+  /** `runScheduledAutomations`/`executar()` devolveram `ok: false` sem conflito de revisão. */
+  RECUSA_DO_DOMINIO: "RECUSA_DO_DOMINIO",
+  /** `executar()` devolveu `{ conflito: true }` — transitório, a próxima volta tenta de novo. */
+  CONFLITO_DE_REVISAO: "CONFLITO_DE_REVISAO",
+  /** Exceção não classificada durante o processamento da linha. */
+  ERRO_INESPERADO: "ERRO_INESPERADO",
+} as const;
+
+/**
  * O tipo de `runScheduledAutomations` — a MESMA assinatura, para que o
  * worker nunca precise saber se está chamando a função real do domínio ou
  * uma variante. Ponto de extensão do Plan 03-11: a ponte HTTP do Agente
@@ -166,6 +194,12 @@ export interface OpcoesSchedulerWorker {
   /** Padrão: `runScheduledAutomations` real. Ponto de extensão do Plan 03-11. */
   readonly rodarAgenda?: RodarAgenda;
   readonly registrar?: (nivel: "info" | "warn", mensagem: string, dados?: Record<string, string | number>) => void;
+  /**
+   * A primeira volta REAL de cada (Espaço, Lista) roda em ensaio — mede e
+   * não grava (Task 2, D3-03). Padrão `true`; `false` é a porta para uma
+   * Lista que nasce vazia, sem backlog, e não precisa do ritual.
+   */
+  readonly ensaioNaPrimeiraVolta?: boolean;
 }
 
 export interface SchedulerWorker {
@@ -238,12 +272,31 @@ async function catalogoDeListasComAgenda(workspaceId?: string): Promise<ParDoCat
   return [...pares.values()];
 }
 
+/**
+ * Libera uma Lista bloqueada pelo ensaio da primeira volta: apaga o
+ * `last_error_code = 'ENSAIO_PRIMEIRA_VOLTA'` das linhas daquele par —
+ * nunca toca `MARCO_ZERO` e nunca toca outro par. Devolve quantas linhas
+ * foram liberadas (`0` quando não havia ensaio a liberar). Exportada
+ * separadamente do worker porque é um ato humano único, não parte do laço —
+ * `liberar.cli.ts` é o único chamador em produção.
+ */
+export async function liberarLista(workspaceId: string, listId: string): Promise<number> {
+  const resultado = await pool().query(
+    `update plataforma.automacao_agenda
+        set last_error_code = null, last_error_summary = null
+      where workspace_id = $1 and list_id = $2 and last_error_code = $3`,
+    [workspaceId, listId, CODIGOS_DA_AGENDA.ENSAIO_PRIMEIRA_VOLTA],
+  );
+  return resultado.rowCount ?? 0;
+}
+
 export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWorker {
   const relogio = opcoes.relogio ?? relogioDoSistema;
   const janelaDias = opcoes.janelaDias ?? 7;
   const maxTentativas = opcoes.maxTentativas ?? 3;
   const leaseMs = opcoes.leaseMs ?? 900_000;
   const intervaloMs = opcoes.intervaloMs ?? 3_600_000;
+  const ensaioNaPrimeiraVolta = opcoes.ensaioNaPrimeiraVolta ?? true;
   const registrar = opcoes.registrar ?? (() => undefined);
   const rodarAgenda: RodarAgenda = opcoes.rodarAgenda ?? runScheduledAutomations;
   // `resolverMembroAgenteDoPipeline` devolve `{ id }`, não o `Id` puro que
@@ -258,6 +311,37 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
   // Semear é necessário no máximo uma vez por dia civil por processo.
   let ultimaSemeaduraEm: string | undefined;
 
+  function mensagemDeEnsaio(workspaceId: string, listId: string): string {
+    return `Ensaio da primeira volta: nada foi gravado. Libere com "npm run automacoes:liberar -w @n1/api -- ${workspaceId} ${listId}" quando o relato for aceitável.`;
+  }
+
+  /**
+   * Zero dias `concluido` de verdade para este par — `MARCO_ZERO` (03-10) e
+   * `ENSAIO_PRIMEIRA_VOLTA` (este arquivo) não contam como "processado de
+   * verdade": o primeiro só fixa o começo da agenda, o segundo só mediu.
+   */
+  async function primeiraVoltaPendente(workspaceId: string, listId: string): Promise<boolean> {
+    const resultado = await pool().query<{ n: string }>(
+      `select count(*)::text as n
+         from plataforma.automacao_agenda
+        where workspace_id = $1 and list_id = $2 and estado = 'concluido'
+          and coalesce(last_error_code, '') not in ($3, $4)`,
+      [workspaceId, listId, CODIGOS_DA_AGENDA.MARCO_ZERO, CODIGOS_DA_AGENDA.ENSAIO_PRIMEIRA_VOLTA],
+    );
+    return Number(resultado.rows[0]?.n ?? "0") === 0;
+  }
+
+  /** Existe alguma linha de ensaio ainda não liberada para este par — `semear()` não cria dia novo enquanto ela existir. */
+  async function listaBloqueadaPorEnsaio(workspaceId: string, listId: string): Promise<boolean> {
+    const resultado = await pool().query<{ n: string }>(
+      `select count(*)::text as n
+         from plataforma.automacao_agenda
+        where workspace_id = $1 and list_id = $2 and last_error_code = $3`,
+      [workspaceId, listId, CODIGOS_DA_AGENDA.ENSAIO_PRIMEIRA_VOLTA],
+    );
+    return Number(resultado.rows[0]?.n ?? "0") > 0;
+  }
+
   /**
    * `update ... set estado = 'falhou' where estado = 'processando' and
    * locked_at < agora - leaseMs` — o dia não some quando o processo cai: a
@@ -268,7 +352,10 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
    */
   async function recuperarTravadas(): Promise<void> {
     const limite = new Date(relogio.agora().getTime() - leaseMs).toISOString();
-    const erro = sanitizarErro(new Error("Lease vencida: o processo caiu antes de fechar este dia."), "LEASE_EXPIRADO");
+    const erro = sanitizarErro(
+      new Error("Lease vencida: o processo caiu antes de fechar este dia."),
+      CODIGOS_DA_AGENDA.LEASE_EXPIRADO,
+    );
     const parametros: unknown[] = [limite, erro.code, erro.summary];
     let filtroWorkspace = "";
     if (opcoes.workspaceId !== undefined) {
@@ -286,8 +373,10 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
 
   /**
    * Semeia os dias civis pendentes de cada (Espaço, Lista) do catálogo.
-   * Quando a janela cortar dias de um par com histórico, avisa a
-   * QUANTIDADE cortada — nunca nada da Tarefa.
+   * Pares bloqueados por ensaio não recebem dia novo (Task 2) — a Lista
+   * fica parada, visível, até `liberarLista()`. Quando a janela cortar dias
+   * de um par com histórico, avisa a QUANTIDADE cortada — nunca nada da
+   * Tarefa.
    */
   async function semear(): Promise<number> {
     const hoje = relogio.agora();
@@ -297,6 +386,15 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
     let linhasCriadas = 0;
 
     for (const par of pares) {
+      if (await listaBloqueadaPorEnsaio(par.workspaceId, par.listId)) {
+        registrar(
+          "warn",
+          `Lista bloqueada pelo ensaio da primeira volta — libere com "npm run automacoes:liberar -w @n1/api -- ${par.workspaceId} ${par.listId}"`,
+          { workspaceId: par.workspaceId, listId: par.listId },
+        );
+        continue;
+      }
+
       const ultimo = await pool().query<{ ultimo: string | null }>(
         `select to_char(max(dia_civil), 'YYYY-MM-DD') as ultimo
            from plataforma.automacao_agenda
@@ -407,26 +505,50 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
     const { workspace_id: workspaceId, list_id: listId, dia_civil: diaCivilTexto } = linha;
     const diaCivilData = dataCivil(diaCivilTexto);
 
+    // Capturados pelo fechamento de `executar()` abaixo quando a linha está
+    // em ensaio (Task 2): o cálculo acontece, mas o resultado é forçado a
+    // `ok: false` para que a Unidade de Trabalho desfaça a transação — o
+    // mesmo caminho de rollback que uma recusa legítima do domínio já usa
+    // (`unidade-de-trabalho.ts`, `if (!resultado.ok)`).
+    let ensaioContagem: { readonly executed: number; readonly failed: number; readonly skipped: number } | undefined;
+    let foiForcadoAoEnsaio = false;
+
     try {
+      const emEnsaio = ensaioNaPrimeiraVolta && (await primeiraVoltaPendente(workspaceId, listId));
       const atorId = await resolverAtor(workspaceId);
-      const resultadoDaTransacao = await executar(workspaceId, (state) => rodarAgenda(state, atorId, listId, diaCivilData));
+
+      const resultadoDaTransacao = await executar(workspaceId, (state) => {
+        const resultado = rodarAgenda(state, atorId, listId, diaCivilData);
+        if (emEnsaio && resultado.ok) {
+          ensaioContagem = { executed: resultado.value.executed, failed: resultado.value.failed, skipped: resultado.value.skipped };
+          foiForcadoAoEnsaio = true;
+          return { ok: false, error: mensagemDeEnsaio(workspaceId, listId) };
+        }
+        return resultado;
+      });
 
       if ("conflito" in resultadoDaTransacao && resultadoDaTransacao.conflito) {
-        const erro = sanitizarErro(resultadoDaTransacao.error, "CONFLITO_DE_REVISAO");
+        const erro = sanitizarErro(resultadoDaTransacao.error, CODIGOS_DA_AGENDA.CONFLITO_DE_REVISAO);
         await fecharLinha(linha, "falhou", erro.code, erro.summary);
       } else if (!resultadoDaTransacao.ok) {
-        // A saída do domínio nunca cita Tarefa (nome de fornecedor) ou
-        // Comentário — só o texto de recusa da própria operação, que fala
-        // de permissão/estrutura (T-3-04). `failures[].title`/`.reason` do
-        // resultado bem-sucedido nunca chegam aqui nem a lugar nenhum: são
-        // ignorados por construção, não por filtro.
-        const erro = sanitizarErro(resultadoDaTransacao.error, "RECUSA_DO_DOMINIO");
-        await fecharLinha(linha, "falhou", erro.code, erro.summary);
+        if (foiForcadoAoEnsaio && ensaioContagem) {
+          const erro = sanitizarErro(mensagemDeEnsaio(workspaceId, listId), CODIGOS_DA_AGENDA.ENSAIO_PRIMEIRA_VOLTA);
+          await fecharLinha(linha, "concluido", erro.code, erro.summary, ensaioContagem);
+          registrar("info", "Primeira volta em ensaio: nada foi gravado.", { workspaceId, listId, diaCivil: diaCivilTexto });
+        } else {
+          // A saída do domínio nunca cita Tarefa (nome de fornecedor) ou
+          // Comentário — só o texto de recusa da própria operação, que fala
+          // de permissão/estrutura (T-3-04). `failures[].title`/`.reason` do
+          // resultado bem-sucedido nunca chegam aqui nem a lugar nenhum: são
+          // ignorados por construção, não por filtro.
+          const erro = sanitizarErro(resultadoDaTransacao.error, CODIGOS_DA_AGENDA.RECUSA_DO_DOMINIO);
+          await fecharLinha(linha, "falhou", erro.code, erro.summary);
+        }
       } else {
         await fecharLinha(linha, "concluido", null, null, resultadoDaTransacao.value);
       }
     } catch (erroInesperado) {
-      const erro = sanitizarErro(erroInesperado, "ERRO_INESPERADO");
+      const erro = sanitizarErro(erroInesperado, CODIGOS_DA_AGENDA.ERRO_INESPERADO);
       await fecharLinha(linha, "falhou", erro.code, erro.summary);
     }
 

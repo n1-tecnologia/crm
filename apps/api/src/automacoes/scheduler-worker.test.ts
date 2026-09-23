@@ -5,15 +5,20 @@
  * instante vem de `relogioFixo` (`../testes/relogio.ts`), no molde de
  * `../persistencia/outbox-worker.test.ts`.
  *
- * Casos (a)-(e) são puros — não tocam banco, rodam sempre. Os demais
- * precisam de Postgres real com a migração `005` aplicada e pulam sem
- * `DATABASE_URL` (D-DEC-09). (f)-(l) usam uma espiã de `rodarAgenda` (nunca
- * o domínio de verdade) para controlar exatamente o que cada chamada
+ * Casos (a)-(e) são puros — não tocam banco, rodam sempre. (s) também roda
+ * sempre — só valida argumentos de `liberar.cli.ts`, antes de qualquer I/O.
+ * Os demais precisam de Postgres real com a migração `005` aplicada e pulam
+ * sem `DATABASE_URL` (D-DEC-09). (f)-(l) usam uma espiã de `rodarAgenda`
+ * (nunca o domínio de verdade) para controlar exatamente o que cada chamada
  * devolve; (m) usa `runScheduledAutomations` real para provar que a
- * idempotência de negócio é do domínio, não deste worker.
+ * idempotência de negócio é do domínio, não deste worker. (n)-(r) provam o
+ * gate da primeira volta em ensaio (Task 2, D3-03): `MARCO_ZERO`, o ensaio em
+ * si e a liberação explícita.
  */
 
 import { randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { buildGestaoBootstrap } from "@n1/dominio/bootstrap-gestao";
 import { CP } from "@n1/dominio/operations/financeiro";
@@ -22,7 +27,7 @@ import type { DataState, Id, OperationResult } from "@n1/dominio";
 import { carregarEnv, encerrar, pool } from "../persistencia/conexao";
 import { semear as semearEstadoInteiro } from "../persistencia/repositorio";
 import { relogioFixo } from "../testes/relogio";
-import { criarSchedulerWorker, dataCivil, diasCiveisPendentes, type RodarAgenda } from "./scheduler-worker";
+import { CODIGOS_DA_AGENDA, criarSchedulerWorker, dataCivil, diasCiveisPendentes, liberarLista, type RodarAgenda } from "./scheduler-worker";
 
 carregarEnv();
 const temBanco = Boolean(process.env.DATABASE_URL);
@@ -61,6 +66,28 @@ describe("dataCivil / diasCiveisPendentes — puras (03-VALIDATION.md § Samplin
     // anterior — por isso `dataCivil()` nunca recebe o dia por esse caminho,
     // e converte sempre pelo construtor numérico de `Date` (achado de 03-02).
   });
+});
+
+describe("liberar.cli.ts — validação de argumentos (sem banco)", () => {
+  const viteNode = fileURLToPath(new URL("../../../../node_modules/.bin/vite-node", import.meta.url));
+  const cli = fileURLToPath(new URL("./liberar.cli.ts", import.meta.url));
+
+  function rodarCli(argumentos: readonly string[]): { readonly codigo: number; readonly saida: string } {
+    try {
+      const saida = execFileSync(viteNode, [cli, ...argumentos], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+      return { codigo: 0, saida };
+    } catch (erro) {
+      const falha = erro as { readonly status?: number; readonly stderr?: string; readonly stdout?: string };
+      return { codigo: falha.status ?? 1, saida: `${falha.stdout ?? ""}${falha.stderr ?? ""}` };
+    }
+  }
+
+  it("(s) sem argumentos, termina com código diferente de zero e uma mensagem que diz o que falta", () => {
+    const { codigo, saida } = rodarCli([]);
+    expect(codigo).not.toBe(0);
+    expect(saida).toContain("uso:");
+    expect(saida).toContain("automacoes:liberar");
+  }, 20_000);
 });
 
 /* ── (f)-(m) — precisam de Postgres real com a migração 005 aplicada ────── */
@@ -269,7 +296,9 @@ d("scheduler-worker (Postgres real) — (f)-(l) com espiã, (m) com o domínio d
     await inserirLinhaDeAgenda(WORKSPACE, listId, "2026-08-31", "pendente");
     const relogio = relogioFixo(new Date(2026, 7, 31, 12));
     const { rodarAgenda, chamadas } = criarEspiaDeAgenda(() => ({ ok: true, value: { executed: 2, failed: 0, skipped: 1, failures: [] } }));
-    const worker = criarSchedulerWorker({ workerId: "w_g", workspaceId: WORKSPACE, relogio, resolverAtor: atorDeTeste, rodarAgenda });
+    // ensaioNaPrimeiraVolta: false — este caso prova o fechamento normal da
+    // linha, não o gate de ensaio (Task 2 cobre o ensaio nos casos (n)-(s)).
+    const worker = criarSchedulerWorker({ workerId: "w_g", workspaceId: WORKSPACE, relogio, resolverAtor: atorDeTeste, rodarAgenda, ensaioNaPrimeiraVolta: false });
 
     expect(await worker.processarUm()).toBe(true);
     expect(chamadas).toEqual([{ listId, diaCivil: "2026-08-31" }]);
@@ -291,7 +320,9 @@ d("scheduler-worker (Postgres real) — (f)-(l) com espiã, (m) com o domínio d
     const dia = (ano: number, mes: number, diaDoMes: number, hora = 0): Date => new Date(ano, mes, diaDoMes, hora);
     const relogio = relogioFixo(dia(2026, 7, 31, 12));
     const { rodarAgenda, chamadas } = criarEspiaDeAgenda(() => ({ ok: true, value: { executed: 1, failed: 0, skipped: 0, failures: [] } }));
-    const worker = criarSchedulerWorker({ workerId: "w_h", workspaceId: WORKSPACE, relogio, resolverAtor: atorDeTeste, rodarAgenda });
+    // ensaioNaPrimeiraVolta: false — este caso prova o catch-up do critério 3,
+    // não o gate de ensaio (Task 2 cobre o ensaio nos casos (n)-(s)).
+    const worker = criarSchedulerWorker({ workerId: "w_h", workspaceId: WORKSPACE, relogio, resolverAtor: atorDeTeste, rodarAgenda, ensaioNaPrimeiraVolta: false });
 
     await worker.semear();
     expect(await worker.processarUm()).toBe(true); // fecha 31/08
@@ -457,11 +488,14 @@ d("scheduler-worker (Postgres real) — (f)-(l) com espiã, (m) com o domínio d
     // O Membro Proprietário que o bootstrap cria (`CP.financeiroId`) já tem
     // `administrar` concedido sobre o Espaço "Gestão" — sem depender de
     // existir um Agente do pipeline neste Espaço de teste isolado.
+    // ensaioNaPrimeiraVolta: false — este caso prova a idempotência do
+    // DOMÍNIO ponta a ponta; o gate de ensaio em si é o dos casos (n)-(s).
     const worker = criarSchedulerWorker({
       workerId: "w_m",
       workspaceId: WORKSPACE_M,
       relogio,
       resolverAtor: async () => CP.financeiroId,
+      ensaioNaPrimeiraVolta: false,
     });
 
     expect(await worker.semear()).toBeGreaterThan(0);
@@ -489,5 +523,164 @@ d("scheduler-worker (Postgres real) — (f)-(l) com espiã, (m) com o domínio d
     const segunda = await lerLinhaDaAgenda(WORKSPACE_M, CP.listId, vencimentoCivil);
     expect(segunda.executadas).toBe(0);
     expect(segunda.puladas).toBeGreaterThan(0);
+  });
+});
+
+/* ── (n)-(r) — o gate da primeira volta em ensaio (Task 2, D3-03) ────────── */
+
+const WORKSPACE_ENSAIO = `ws_${RUN}_ensaio`;
+
+async function lerRevisao(workspaceId: string): Promise<number> {
+  const cliente = await pool().connect();
+  try {
+    const r = await cliente.query<{ revisao: string }>(
+      "select revisao from plataforma.workspaces where workspace_id = $1",
+      [workspaceId],
+    );
+    if (!r.rows[0]) throw new Error(`sem Espaço ${workspaceId}`);
+    return Number(r.rows[0].revisao);
+  } finally {
+    cliente.release();
+  }
+}
+
+d("primeira volta sobre o backlog importado — MARCO_ZERO, ensaio e liberação (Task 2)", () => {
+  beforeAll(async () => {
+    await prepararWorkspaceVazio(WORKSPACE_ENSAIO);
+  });
+
+  afterEach(async () => {
+    const cliente = await pool().connect();
+    try {
+      await cliente.query("delete from plataforma.automacao_agenda where workspace_id = $1", [WORKSPACE_ENSAIO]);
+      await cliente.query("delete from plataforma.registros where workspace_id = $1", [WORKSPACE_ENSAIO]);
+    } finally {
+      cliente.release();
+    }
+  });
+
+  afterAll(async () => {
+    await limparWorkspace(WORKSPACE_ENSAIO);
+    await encerrar();
+  });
+
+  it("(n) primeira volta em ensaio: o cálculo acontece, fecha 'concluido' com ENSAIO_PRIMEIRA_VOLTA e as contagens do que TERIA acontecido — nada é gravado", async () => {
+    const listId = `lst_ensaio_${randomUUID()}`;
+    await inserirLinhaDeAgenda(WORKSPACE_ENSAIO, listId, "2026-08-31", "pendente");
+    const revisaoAntes = await lerRevisao(WORKSPACE_ENSAIO);
+
+    const relogio = relogioFixo(new Date(2026, 7, 31, 12));
+    const { rodarAgenda, chamadas } = criarEspiaDeAgenda(() => ({ ok: true, value: { executed: 3, failed: 1, skipped: 2, failures: [] } }));
+    const worker = criarSchedulerWorker({ workerId: "w_n", workspaceId: WORKSPACE_ENSAIO, relogio, resolverAtor: atorDeTeste, rodarAgenda });
+
+    expect(await worker.processarUm()).toBe(true);
+    expect(chamadas).toHaveLength(1); // o cálculo aconteceu — a espiã foi chamada
+
+    const linha = await lerLinhaDaAgenda(WORKSPACE_ENSAIO, listId, "2026-08-31");
+    expect(linha.estado).toBe("concluido");
+    expect(linha.last_error_code).toBe(CODIGOS_DA_AGENDA.ENSAIO_PRIMEIRA_VOLTA);
+    expect(linha.executadas).toBe(3);
+    expect(linha.falhadas).toBe(1);
+    expect(linha.puladas).toBe(2);
+
+    // A prova de que nada foi gravado: a revisão do Espaço é a MESMA de antes.
+    expect(await lerRevisao(WORKSPACE_ENSAIO)).toBe(revisaoAntes);
+  });
+
+  it("(o) enquanto a linha de ensaio não for liberada, semear() não cria dia novo e processarUm() não tem o que reivindicar", async () => {
+    const listId = `lst_ensaio_${randomUUID()}`;
+    const automationId = `aut_ensaio_${randomUUID()}`;
+    await inserirAutomacaoDeAgenda(WORKSPACE_ENSAIO, listId, automationId);
+
+    const relogio = relogioFixo(new Date(2026, 7, 31, 12));
+    const { rodarAgenda } = criarEspiaDeAgenda(() => ({ ok: true, value: { executed: 0, failed: 0, skipped: 0, failures: [] } }));
+    const worker = criarSchedulerWorker({ workerId: "w_o", workspaceId: WORKSPACE_ENSAIO, relogio, resolverAtor: atorDeTeste, rodarAgenda });
+
+    await worker.semear();
+    expect(await worker.processarUm()).toBe(true); // fecha o dia 31 em ensaio
+
+    relogio.definir(new Date(2026, 8, 2, 9)); // dois dias depois — sem liberação, a Lista fica parada
+    expect(await worker.semear()).toBe(0); // bloqueada pelo ensaio: nenhum dia novo
+    expect(await worker.processarUm()).toBe(false); // nada a reivindicar
+  });
+
+  it("(p) depois de liberarLista(), semear() volta a criar dias e processarUm() processa de verdade", async () => {
+    const listId = `lst_ensaio_${randomUUID()}`;
+    const automationId = `aut_ensaio_${randomUUID()}`;
+    await inserirAutomacaoDeAgenda(WORKSPACE_ENSAIO, listId, automationId);
+
+    const relogio = relogioFixo(new Date(2026, 7, 31, 12));
+    const { rodarAgenda } = criarEspiaDeAgenda(() => ({ ok: true, value: { executed: 5, failed: 0, skipped: 0, failures: [] } }));
+    const worker = criarSchedulerWorker({ workerId: "w_p", workspaceId: WORKSPACE_ENSAIO, relogio, resolverAtor: atorDeTeste, rodarAgenda });
+
+    await worker.semear();
+    expect(await worker.processarUm()).toBe(true); // fecha em ensaio
+
+    const liberadas = await liberarLista(WORKSPACE_ENSAIO, listId);
+    expect(liberadas).toBe(1);
+
+    relogio.definir(new Date(2026, 8, 1, 9));
+    expect(await worker.semear()).toBeGreaterThan(0);
+    expect(await worker.processarUm()).toBe(true);
+
+    const linha = await lerLinhaDaAgenda(WORKSPACE_ENSAIO, listId, "2026-09-01");
+    expect(linha.estado).toBe("concluido");
+    expect(linha.last_error_code).toBeNull(); // liberada: gravou de verdade
+    expect(linha.executadas).toBe(5);
+  });
+
+  it("(q) uma linha MARCO_ZERO fixa o início da agenda e NÃO conta como volta real: a primeira volta seguinte ainda é ensaio", async () => {
+    const listId = `lst_ensaio_${randomUUID()}`;
+    const automationId = `aut_ensaio_${randomUUID()}`;
+    await inserirAutomacaoDeAgenda(WORKSPACE_ENSAIO, listId, automationId);
+
+    // O que 03-10 escreve ao terminar a importação: fixa o início da agenda.
+    const cliente = await pool().connect();
+    try {
+      await cliente.query(
+        `insert into plataforma.automacao_agenda (workspace_id, list_id, dia_civil, estado, last_error_code)
+         values ($1, $2, '2026-08-20', 'concluido', $3)`,
+        [WORKSPACE_ENSAIO, listId, CODIGOS_DA_AGENDA.MARCO_ZERO],
+      );
+    } finally {
+      cliente.release();
+    }
+
+    const relogio = relogioFixo(new Date(2026, 7, 31, 12));
+    const { rodarAgenda } = criarEspiaDeAgenda(() => ({ ok: true, value: { executed: 1, failed: 0, skipped: 0, failures: [] } }));
+    const worker = criarSchedulerWorker({ workerId: "w_q", workspaceId: WORKSPACE_ENSAIO, relogio, resolverAtor: atorDeTeste, rodarAgenda });
+
+    // Catch-up desde 2026-08-20 (exclusive), truncado à janela padrão de 7:
+    // nenhum dia anterior à importação nasce.
+    expect(await worker.semear()).toBe(7);
+    const dias = await listarDiasDaAgenda(WORKSPACE_ENSAIO, listId);
+    const novos = dias.filter((linha) => linha.dia_civil !== "2026-08-20");
+    expect(novos).toHaveLength(7);
+    expect(novos[0]!.dia_civil).toBe("2026-08-25"); // não desde o início dos tempos — desde MARCO_ZERO, truncado pela janela
+
+    expect(await worker.processarUm()).toBe(true);
+    const primeira = await lerLinhaDaAgenda(WORKSPACE_ENSAIO, listId, novos[0]!.dia_civil);
+    expect(primeira.last_error_code).toBe(CODIGOS_DA_AGENDA.ENSAIO_PRIMEIRA_VOLTA); // MARCO_ZERO não é volta real
+  });
+
+  it("(r) com ensaioNaPrimeiraVolta: false, a primeira volta já é real — a porta para uma Lista sem backlog", async () => {
+    const listId = `lst_ensaio_${randomUUID()}`;
+    await inserirLinhaDeAgenda(WORKSPACE_ENSAIO, listId, "2026-08-31", "pendente");
+    const relogio = relogioFixo(new Date(2026, 7, 31, 12));
+    const { rodarAgenda } = criarEspiaDeAgenda(() => ({ ok: true, value: { executed: 4, failed: 0, skipped: 0, failures: [] } }));
+    const worker = criarSchedulerWorker({
+      workerId: "w_r",
+      workspaceId: WORKSPACE_ENSAIO,
+      relogio,
+      resolverAtor: atorDeTeste,
+      rodarAgenda,
+      ensaioNaPrimeiraVolta: false,
+    });
+
+    expect(await worker.processarUm()).toBe(true);
+    const linha = await lerLinhaDaAgenda(WORKSPACE_ENSAIO, listId, "2026-08-31");
+    expect(linha.estado).toBe("concluido");
+    expect(linha.last_error_code).toBeNull();
+    expect(linha.executadas).toBe(4);
   });
 });
