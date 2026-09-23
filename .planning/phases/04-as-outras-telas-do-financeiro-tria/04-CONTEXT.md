@@ -115,13 +115,39 @@ Office — Phase 5.
   design do CRM N1. Modelar Empresa como Integração (CAND-01) é TEN-01, Phase 5:
   antecipar aqui transformaria um port de leitura numa mudança de modelo.
 
-- **D4-10 — Plano de contas é portado com a verdade escrita na tela.**
-  `planos_de_contas` tem **0 linhas**, e o de-para que funciona de verdade é o
-  RAG em `conciliador_contas` que 03-07 consulta (D3-02). A tela é a UI de
-  manutenção daquela tabela — CRUD, import CSV, embeddings pela Edge Function —
-  e diz, visivelmente, que não é ela que o Agente consulta. Uma tela vazia sem
-  explicação é pior que nenhuma tela. Nada de virar editor de RAG: isso é
-  capacidade nova, não port.
+- **D4-10 — Plano de contas é a tela mais importante das oito, e não é CRUD.**
+  *(Corrigido em 2026-09-23 depois da pesquisa: a versão anterior desta decisão
+  dizia que a tela lê `planos_de_contas`, a tabela vazia. Está errado, e o erro
+  vinha do texto de TELA-01, que herdou uma leitura velha do inventário §5.4.)*
+
+  `plano-contas-routes.ts` lê e escreve `conciliador_contas` — a tabela
+  **unificada**, 276 linhas — filtrando por `metadata @> {empresa, tipo}`.
+  `planos_de_contas` (0 linhas) é tabela morta e esta tela não a toca.
+
+  E é a **mesma** tabela que o Agente consulta: `matchCategory`
+  (`automation/src/adapters/supabase.ts:307-332`) recebe o nome legado
+  (`conciliador_contas_pagar_tria`), traduz para o filtro `{empresa, tipo}` e
+  chama `match_conciliador_contas` sobre `conciliador_contas`. Ou seja: **um
+  import feito nesta tela muda o que o Agente classifica no próximo
+  lançamento.** Isso é o oposto de uma tela decorativa, e sobe o custo de errar
+  a permissão. Nada de aviso na tela dizendo "não é isto que o Agente lê" — era
+  o que a versão anterior mandava escrever, e seria mentira.
+
+  A superfície é **lista + import em lote + apagar por id**, não CRUD: o código
+  diz, em comentário, "sem edição nem criação avulsa (decisão do produto)".
+  Portar como CRUD seria inventar regra, que DEC-16 proíbe. O `empresa`/`tipo`
+  chega por allowlist fixa (6 empresas × `pagar`/`receber`); a tela nunca manda
+  valor livre.
+
+- **D4-10b — O import aceita CSV; `.xlsx` só passa por portão de legitimidade.**
+  A rota recebe `rows: PlanoInput[]` em JSON — quem interpreta a planilha é o
+  cliente. Fazer isso com `.xlsx` exigiria o pacote `xlsx` (SheetJS), que tem
+  **CVE-2023-30533** (prototype pollution) sem correção publicada no registro do
+  npm; a orientação do próprio projeto é instalar de fora do npm. Nesta fase o
+  import é CSV, que não custa dependência nenhuma. Se o Financeiro precisar de
+  `.xlsx`, entra como tarefa `[BLOCKING] checkpoint:human-verify` antes de
+  qualquer `npm install`, no mesmo molde dos portões T-1-SC (fastify) e T-02-SC
+  (playwright) — não como decisão silenciosa do executor.
 
 - **D4-11 — Aprovações pendentes nasce como vista legada, e é assim que é
   rotulada.** Ela deriva de `solicitacoes_pagamentos.Aprovado`, que depois do

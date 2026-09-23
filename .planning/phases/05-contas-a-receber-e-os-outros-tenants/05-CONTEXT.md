@@ -46,14 +46,34 @@ escopo, nem o GHL (comparativo §6: precisa de inventário próprio).
 
   **Default declarado, se a resposta não vier dentro da fase: o ramo processo**
   (Lista completa), não o ramo espelho. Três razões, todas verificáveis:
-  (a) `createReceivableSeries` já existe, testada, em
-  `packages/dominio/src/operations/financeiro.ts:537`, com
-  `seed-contas-a-receber.ts` e `contas-a-receber.test.ts` — o ramo processo é
-  quase só ligar o que existe; (b) `adapters/omie.ts` **não tem nenhuma chamada
-  de contas a receber** — `grep -n "Receber"` dá zero — então o ramo espelho
-  exige superfície Omie nova, que é trabalho de verdade, não port; (c) uma Lista
-  com o processo absorve depois um espelho do Omie como leitura de Integração, e
-  o contrário não é verdade. O default é o caminho que não fecha porta.
+  (a) o ramo processo **já está construído e já foi aplicado em produção** —
+  ver D5-02b; (b) `adapters/omie.ts` **não tem nenhuma chamada de contas a
+  receber** — `grep -c "Receber"` dá zero — então o ramo espelho exige
+  superfície Omie nova, que é trabalho de verdade, não port; (c) uma Lista com
+  o processo absorve depois um espelho do Omie como leitura de Integração, e o
+  contrário não é verdade. O default é o caminho que não fecha porta.
+
+- **D5-02b — Contas a receber não é para construir: é para conferir e
+  terminar.** *(Acrescentado em 2026-09-23 depois da pesquisa. A versão anterior
+  de D5-02 dizia só que `createReceivableSeries` existia; o quadro real é bem
+  maior e muda o tamanho de REC-01.)*
+
+  `packages/dominio/src/bootstrap-gestao.ts:191` chama
+  `applyContasAReceber(state, clock, { fixtures: false })` — o bootstrap **de
+  produção**, sem fixtures. E o `bootstrapGestao()` rodou contra o Supabase real
+  (`ws_n1`) na Fase 1, Plan 01-05. Logo, a Lista "Contas a receber", os 6 Status
+  com `entryRequirements`/`entryFromStatusIds` já espelhando RN-CR-03/04, as
+  Definições de Campo, as Concessões, as Visões e as Automações R2–R6
+  provavelmente **já estão no banco**.
+
+  Portanto o primeiro passo de REC-01 não é modelar nada: é uma **conferência
+  somente-leitura contra `ws_n1`**, comparando o que está lá com
+  `seed-contas-a-receber.ts` e com `docs/07-processos/contas-a-receber.md`. O
+  que sobrar dessa conferência é o escopo real: ligar o agendador da Fase 3 para
+  `CR.listId` (MARCO_ZERO + liberação do Ensaio, o mesmo gesto de 03-08), fechar
+  R1 e R7, e os Campos de §9 que faltarem. Planejar como se fosse do zero
+  reescreveria código que já está em produção — o pior resultado possível desta
+  fase.
 
 ### TEN-01 — as Empresas
 
@@ -142,10 +162,18 @@ Estas decisões valem nos dois ramos e não esperam ninguém:
   clientes".** Empresa quando há CNPJ, Contato quando é pessoa física; o Vínculo
   da conta aponta para a entidade nativa. A Lista `901109161381` não é recriada
   (spec §12, decisão de produto).
-- **D5-13 — Dos dois Status nunca usados: `disponível para saque` fica,
-  `estornado` vira Motivo dentro de `descartado`.** O primeiro é o que dá sentido
-  ao Saque de plataforma (R7); o segundo é um desfecho, não um estado, e a
-  própria spec §12 sugere isso.
+- **D5-13 — Os dois Status nunca usados ficam os dois, como já estão no
+  código.** *(Corrigido em 2026-09-23: a versão anterior mandava dobrar
+  `estornado` em `descartado`, seguindo a sugestão da spec §12. O seed já
+  decidiu melhor, e desfazer isso seria regressão.)*
+
+  `seed-contas-a-receber.ts` define `disponível para saque`
+  (`emAndamento`) e `estornado` (`concluido`) com
+  `entryFromStatusIds: [S.recebido]` — ou seja, `estornado` só é alcançável a
+  partir de `recebido`, que é exatamente o que um estorno é: reversão de um
+  recebimento. `descartado` tem outro significado (não será mais cobrado) e
+  outra entrada (qualquer status não fechado). Fundir os dois perderia essa
+  distinção e mentiria no relatório. Mantidos os seis Status como estão.
 - **D5-14 — Saque passa a exigir Valor > 0 (RN-CR-03 sem exceção).** Os 240
   históricos com valor `0` entram como lacuna de importação registrada (padrão
   D-25), não como zero legítimo: uma Lista de recebimento que não fecha com o
