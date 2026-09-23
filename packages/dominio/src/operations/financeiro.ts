@@ -265,10 +265,32 @@ export function buildResumoDePagamento(state: DataState, task: Task, dePara: DeP
 }
 
 /**
+ * Como se invoca o Agente com o de-para de verdade e/ou em Ensaio. `dePara` é
+ * obrigatório de propósito (T-3-07): não se liga o Ensaio sem dizer contra
+ * qual de-para se ensaiou — meia especificação é a porta do default silencioso.
+ */
+export interface OpcoesDeLancamento {
+  readonly dePara: DeParaDeLancamento;
+  /** B82 — `true`: o Agente calcula e registra o que lançaria, sem escrever na Tarefa. */
+  readonly rehearsal?: boolean;
+}
+
+/**
  * O Agente de lançamento, invocado pela Automação A7 em nome do Financeiro:
  * lê a Tarefa, publica o Resumo (resolvido) e devolve o que fez. Se faltar
  * dado, comenta o que falta — aberto, com Menção ao Financeiro — e falha, o
  * que impede a Automação de mover o Status. Tudo vira Execução de Agente.
+ *
+ * Duas coisas acontecem quando `opcoes` chega:
+ *
+ * - **Ensaio** (`rehearsal: true`, D3-03): o Agente passa a primeira semana
+ *   calculando em voz alta. Nenhum Comentário nasce, nenhum Status muda,
+ *   nenhum Registro de Atividade é gravado — a única linha nova no estado é a
+ *   `AgentExecution` de sombra, que 03-14 compara com o que o humano lançou.
+ * - **Recusa por confiança** (T-3-10): um `veredito` que não seja `"resolvida"`
+ *   devolve `fail`, e `execute` (`automations.ts`) interrompe o laço de ações
+ *   — é assim que A8 não move a conta para "lançado omie". A conta vai para
+ *   revisão humana em vez de ser lançada com a categoria errada.
  */
 export function runLancamentoAgent(
   state: DataState,
@@ -276,7 +298,10 @@ export function runLancamentoAgent(
   agentId: Id,
   taskId: Id,
   automationId: Id,
+  opcoes?: OpcoesDeLancamento,
 ): OperationResult<string> {
+  const dePara = opcoes?.dePara ?? DE_PARA_DO_PROTOTIPO;
+  const ensaio = opcoes?.rehearsal === true;
   const agent = state.agents.find((a) => a.id === agentId);
   if (!agent || agent.lifecycle !== "ativo") return fail("Agente de lançamento não está ativo.");
   const task = state.tasks.find((t) => t.id === taskId);
@@ -289,6 +314,12 @@ export function runLancamentoAgent(
   // Idempotente: um Resumo já publicado não se repete nem relança no ERP.
   if (task.comments.some((c) => !c.deletedAt && c.content.startsWith("📋 RESUMO DE PAGAMENTO"))) {
     return ok("Resumo de pagamento já publicado; nada a lançar.");
+  }
+  // Uma Tarefa tem UM registro de sombra — é o que o relatório de 03-14
+  // compara. A guarda só vale no Ensaio: um lançamento real depois da semana
+  // de sombra não pode ser bloqueado pelo próprio ensaio.
+  if (ensaio && state.agentExecutions.some((e) => e.agentId === agentId && e.anchor?.id === taskId && e.rehearsal && e.state === "concluida")) {
+    return ok("Ensaio já registrado para esta conta; nada a recalcular.");
   }
 
   const execution = {
@@ -304,7 +335,7 @@ export function runLancamentoAgent(
     anchor: { type: "task", id: taskId },
     modelId: version.modelId,
     effectiveAutonomy: version.autonomy,
-    rehearsal: false,
+    rehearsal: ensaio,
     input: `Lançar no ERP: ${task.title}`,
     steps: [] as Array<{ index: number; kind: "ferramenta" | "raciocinio"; toolId?: string; input?: string; output?: string; result: "concluido" | "falhou"; at: string }>,
     contextComposition: { anchor: { type: "task", id: taskId, name: task.title }, readRecordIds: [taskId], fragmentRefs: [], memoryItemIds: [], chatMessageIds: [] },
@@ -324,17 +355,58 @@ export function runLancamentoAgent(
     });
   };
 
-  const faltando = erpMissingFields(state, task);
-  if (faltando.length > 0) {
-    const texto = `Não consegui lançar no Omie: falta ${faltando.join(", ")}. Preencha e a próxima rodada tenta de novo.`;
-    const r = addTaskComment(state, actingMemberId, taskId, { content: texto, mentions: [{ type: "member", id: actingMemberId }], actor: { kind: "agent", id: agentId } });
-    execution.steps.push({ index: 0, kind: "ferramenta", toolId: "criar_comentario", input: "faltantes", output: r.ok ? "Comentário aberto ao Financeiro" : r.error, result: r.ok ? "concluido" : "falhou", at: now() });
+  /**
+   * Toda recusa do Agente é a mesma coisa: um pedido ABERTO ao Financeiro,
+   * com Menção, e uma Execução que falhou — o que faz `execute` interromper
+   * o laço de ações e A8 não mover o Status. No Ensaio o pedido não vira
+   * Comentário (o Agente não encosta na Tarefa): vira passo de raciocínio.
+   */
+  const recusar = (index: number, rotulo: string, texto: string): OperationResult<string> => {
+    if (ensaio) {
+      execution.steps.push({ index, kind: "raciocinio", input: rotulo, output: `Ensaio — pediria ao Financeiro: ${texto}`, result: "falhou", at: now() });
+    } else {
+      const r = addTaskComment(state, actingMemberId, taskId, { content: texto, mentions: [{ type: "member", id: actingMemberId }], actor: { kind: "agent", id: agentId } });
+      execution.steps.push({ index, kind: "ferramenta", toolId: "criar_comentario", input: rotulo, output: r.ok ? "Comentário aberto ao Financeiro" : r.error, result: r.ok ? "concluido" : "falhou", at: now() });
+    }
     finish(false, texto);
     return fail(texto);
+  };
+
+  const faltando = erpMissingFields(state, task);
+  if (faltando.length > 0) {
+    return recusar(0, "faltantes", `Não consegui lançar no Omie: falta ${faltando.join(", ")}. Preencha e a próxima rodada tenta de novo.`);
   }
 
-  const resumo = buildResumoDePagamento(state, task);
-  execution.steps.push({ index: 0, kind: "raciocinio", input: "de-para ERP", output: `Conta ${resumo.conta} · ${resumo.categoria} · ${resumo.codigo}`, result: "concluido", at: now() });
+  const resumo = buildResumoDePagamento(state, task, dePara);
+  execution.steps.push({ index: 0, kind: "raciocinio", input: `de-para ERP (${dePara.origem})`, output: `Conta ${resumo.conta} · ${resumo.categoria} · ${resumo.codigo}`, result: "concluido", at: now() });
+
+  // T-3-10 — quem formata tolera, quem executa recusa: uma classificação que
+  // não passou do corte de confiança (ou que o de-para nem trouxe) vai para
+  // revisão humana. Lançar "A classificar" no Omie real é pior que não lançar.
+  if (resumo.veredito !== "resolvida") {
+    const categoriaCampo = fieldValue(task, CP.fields.categoria);
+    const resolucao = dePara.categoriaPorCampo[categoriaCampo];
+    const texto =
+      resolucao && resolucao.veredito === "revisar"
+        ? `Não lancei no Omie: a Categoria "${categoriaCampo}" resolveu para "${resolucao.nome}" (${resolucao.codigo}) com similaridade ${resolucao.similaridade.toFixed(2).replace(".", ",")}, abaixo do corte de confiança — ${resolucao.motivo}. Confirme a categoria e a próxima rodada tenta de novo.`
+        : `Não lancei no Omie: o de-para não trouxe a Categoria "${categoriaCampo}". A conta fica parada até alguém classificá-la.`;
+    return recusar(1, "categoria sem confiança", texto);
+  }
+
+  if (ensaio) {
+    // D3-03 é mais estrito que o Ensaio da Fase 2 (02-27, onde os dois
+    // caminhos escreviam): aqui a única linha nova no estado é esta Execução.
+    //
+    // T-3-09 — o que fica gravado é a TRIPLA (conta/categoria/código), nunca
+    // `resumo.texto`: o RESUMO carrega chave Pix, código de barras e valor, e
+    // a página de Execução tem alcance diferente do da Lista de Contas a
+    // pagar. A tripla é o que 03-14 mede, e é determinística a partir da
+    // Tarefa — guardar só ela basta e é estritamente mais seguro. Não
+    // "corrigir" isto gravando o texto completo depois.
+    const dito = `Ensaio — lançaria: ${resumo.conta} · ${resumo.categoria} (${resumo.codigo})`;
+    finish(true, dito);
+    return ok(dito);
+  }
   const comentario = addTaskComment(state, actingMemberId, taskId, { content: resumo.texto, actor: { kind: "agent", id: agentId } });
   if (!comentario.ok) {
     execution.steps.push({ index: 1, kind: "ferramenta", toolId: "criar_comentario", output: comentario.error, result: "falhou", at: now() });

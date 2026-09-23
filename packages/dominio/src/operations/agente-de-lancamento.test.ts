@@ -27,7 +27,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../seed";
 import type { DataState } from "../state";
 import type { Task } from "../types";
-import { DE_PARA_DO_PROTOTIPO, buildResumoDePagamento, type DeParaDeLancamento, type ResolucaoDeCategoria } from "./financeiro";
+import { CP, DE_PARA_DO_PROTOTIPO, buildResumoDePagamento, runLancamentoAgent, type DeParaDeLancamento, type ResolucaoDeCategoria } from "./financeiro";
+
+const A7 = "aut_cp_a7";
 
 const VENCIMENTO = "2026-03-10";
 
@@ -160,5 +162,130 @@ describe("buildResumoDePagamento: a decisão chega por parâmetro (D3-02/D3-03)"
     expect(DE_PARA_DO_PROTOTIPO.origem).toBe("prototipo");
     expect(DE_PARA_DO_PROTOTIPO.contaPorTag["conta konq"]).toBe("KONQ");
     expect(DE_PARA_DO_PROTOTIPO.categoriaPorCampo["Impostos"]).toEqual({ veredito: "resolvida", nome: "Impostos e taxas", codigo: "2.06.01" });
+  });
+});
+
+/** A Execução que o Agente acabou de gravar para esta conta. */
+function execucaoDe(tarefa: Task) {
+  const e = state.agentExecutions.filter((x) => x.agentId === CP.agentId && x.anchor?.id === tarefa.id).at(-1);
+  if (!e) throw new Error("sem AgentExecution");
+  return e;
+}
+
+const lancar = (tarefa: Task, opcoes?: Parameters<typeof runLancamentoAgent>[5]) => runLancamentoAgent(state, CP.financeiroId, CP.agentId, tarefa.id, A7, opcoes);
+
+describe("runLancamentoAgent: o Ensaio de D3-03 pensa em voz alta e não encosta na Tarefa", () => {
+  it("compatibilidade: a chamada de cinco argumentos de `runAction` continua lançando como hoje", () => {
+    const tarefa = das();
+    const r = lancar(tarefa);
+    expect(r.ok, r.ok ? "" : r.error).toBe(true);
+    const resumo = tarefa.comments.find((c) => c.content.startsWith("📋 RESUMO DE PAGAMENTO"));
+    expect(resumo?.author).toEqual({ kind: "agent", id: CP.agentId });
+    expect(resumo?.resolved).toBeDefined();
+    expect(execucaoDe(tarefa).rehearsal).toBe(false);
+    expect(execucaoDe(tarefa).state).toBe("concluida");
+  });
+
+  it("T-3-08: com `rehearsal: true` nada muda na Tarefa — só nasce a Execução de sombra", () => {
+    const tarefa = das();
+    const comentarios = tarefa.comments.length;
+    const status = tarefa.statusId;
+    const atividade = state.activity.length;
+    const execucoes = state.agentExecutions.length;
+
+    const r = lancar(tarefa, { dePara: DE_PARA_DO_PROTOTIPO, rehearsal: true });
+
+    expect(r.ok, r.ok ? "" : r.error).toBe(true);
+    expect(tarefa.comments.length).toBe(comentarios);
+    expect(tarefa.statusId).toBe(status);
+    expect(state.activity.length).toBe(atividade);
+    expect(state.agentExecutions.length).toBe(execucoes + 1);
+    const execucao = execucaoDe(tarefa);
+    expect(execucao.rehearsal).toBe(true);
+    expect(execucao.state).toBe("concluida");
+    expect(execucao.output).toContain("TRIA");
+    expect(execucao.output).toContain("Impostos e taxas");
+    expect(execucao.output).toContain("2.06.01");
+    if (r.ok) expect(r.value.startsWith("Ensaio —")).toBe(true);
+  });
+
+  it("T-3-09: a Execução de sombra guarda a tripla, nunca o texto do RESUMO", () => {
+    const tarefa = das();
+    lancar(tarefa, { dePara: DE_PARA_DO_PROTOTIPO, rehearsal: true });
+    const execucao = execucaoDe(tarefa);
+    const gravado = JSON.stringify({ output: execucao.output, steps: execucao.steps, input: execucao.input });
+    expect(gravado).not.toContain("RESUMO DE PAGAMENTO");
+    expect(gravado).not.toContain("85810000005-6"); // código de barras
+    expect(gravado).not.toContain("66.267,50"); // valor
+  });
+
+  it("o Ensaio é idempotente: uma Tarefa tem UM registro de sombra", () => {
+    const tarefa = das();
+    const antes = state.agentExecutions.length;
+    expect(lancar(tarefa, { dePara: DE_PARA_DO_PROTOTIPO, rehearsal: true }).ok).toBe(true);
+    const segundo = lancar(tarefa, { dePara: DE_PARA_DO_PROTOTIPO, rehearsal: true });
+    expect(segundo.ok).toBe(true);
+    expect(state.agentExecutions.length).toBe(antes + 1);
+  });
+
+  it("a guarda de sombra não é guarda de lançamento: depois do Ensaio, o lançamento real acontece", () => {
+    const tarefa = das();
+    expect(lancar(tarefa, { dePara: DE_PARA_DO_PROTOTIPO, rehearsal: true }).ok).toBe(true);
+    expect(tarefa.comments.some((c) => c.content.startsWith("📋 RESUMO DE PAGAMENTO"))).toBe(false);
+    expect(lancar(tarefa).ok).toBe(true);
+    expect(tarefa.comments.some((c) => c.content.startsWith("📋 RESUMO DE PAGAMENTO"))).toBe(true);
+    expect(state.agentExecutions.filter((e) => e.anchor?.id === tarefa.id).map((e) => e.rehearsal)).toEqual([true, false]);
+  });
+
+  it("T-3-07: o passo de raciocínio nomeia a origem do de-para usado, nos dois caminhos", () => {
+    const real = das();
+    lancar(real);
+    expect(execucaoDe(real).steps[0]?.input).toBe("de-para ERP (prototipo)");
+
+    const ensaiada = conta("tsk_cp_trafego");
+    lancar(ensaiada, { dePara: deParaDe("Tráfego Pago", { veredito: "resolvida", nome: "Mídia paga", codigo: "2.07.01" }), rehearsal: true });
+    expect(execucaoDe(ensaiada).steps[0]?.input).toBe("de-para ERP (omie)");
+  });
+});
+
+describe("runLancamentoAgent: classificação fraca para a conta e chama o humano (T-3-10)", () => {
+  it("“revisar”: recusa, comenta ABERTO com Menção ao Financeiro citando o motivo, e não publica RESUMO", () => {
+    const tarefa = das();
+    const r = lancar(tarefa, {
+      dePara: deParaDe("Impostos", { veredito: "revisar", nome: "Impostos e taxas", codigo: "2.06.01", similaridade: 0.41, motivo: "duas categorias empatadas no Omie" }),
+    });
+    expect(r.ok).toBe(false);
+    expect(tarefa.comments.some((c) => c.content.startsWith("📋 RESUMO DE PAGAMENTO"))).toBe(false);
+    expect(tarefa.statusId).toBe(CP.status.paraPagar);
+    const pedido = tarefa.comments.at(-1);
+    expect(pedido?.resolved).toBeUndefined(); // aberto: é pergunta, não registro
+    expect(pedido?.mentions.some((m) => m.id === CP.financeiroId)).toBe(true);
+    expect(pedido?.content).toContain("Impostos");
+    expect(pedido?.content).toContain("2.06.01");
+    expect(pedido?.content).toContain("duas categorias empatadas no Omie");
+    expect(pedido?.content).toContain("0,41");
+    expect(execucaoDe(tarefa).state).toBe("falhou");
+  });
+
+  it("“ausente”: um de-para que não traz a Categoria pedida é falha de resolução, não licença para lançar “A classificar”", () => {
+    const tarefa = das();
+    const r = lancar(tarefa, { dePara: { contaPorTag: { "conta tria": "TRIA" }, categoriaPorCampo: {}, origem: "omie" } });
+    expect(r.ok).toBe(false);
+    expect(tarefa.comments.some((c) => c.content.startsWith("📋 RESUMO DE PAGAMENTO"))).toBe(false);
+    expect(tarefa.comments.at(-1)?.content).toContain("Impostos");
+    expect(execucaoDe(tarefa).state).toBe("falhou");
+  });
+
+  it("no Ensaio, nem a recusa escreve na Tarefa — ela vira passo da Execução", () => {
+    const tarefa = das();
+    const comentarios = tarefa.comments.length;
+    const r = lancar(tarefa, {
+      dePara: deParaDe("Impostos", { veredito: "revisar", nome: "Impostos e taxas", codigo: "2.06.01", similaridade: 0.4, motivo: "confiança baixa" }),
+      rehearsal: true,
+    });
+    expect(r.ok).toBe(false);
+    expect(tarefa.comments.length).toBe(comentarios);
+    expect(execucaoDe(tarefa).state).toBe("falhou");
+    expect(execucaoDe(tarefa).rehearsal).toBe(true);
   });
 });
