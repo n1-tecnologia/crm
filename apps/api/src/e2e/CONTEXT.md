@@ -36,3 +36,16 @@ próprio (`ws_e2e_teste`) que nasce por `bootstrapGestao()` e morre no
 (`temBanco ? describe : describe.skip`, D-DEC-09) — não precisa de
 `SUPABASE_*`, porque `bootstrapGestao()` só grava no Postgres, nunca fala
 com o Auth.
+
+## O segundo cenário — PAG-05, critério 5 (lote de 61)
+
+`lote-contas-a-pagar.test.ts` é o segundo cenário desta pasta, num Espaço
+próprio (`ws_lote_teste`). É o único teste do repositório que mede **tempo
+de lock por Espaço** contra DEC-06: uma transação de lote não é "uma
+transação grande", é uma hidratação mais o diff do fechamento, e o teste
+prova isso comparando o custo do lote (`tLote`) contra o piso de uma escrita
+mínima no mesmo Espaço (`t1`) e contra o teto de 61 transações individuais
+(`tN`). A medida só significa alguma coisa contra um Espaço do tamanho do
+real — por isso o número de referência que fecha DEC-06 de fato vem do
+checkpoint da Task 4 de `03-12-PLAN.md`, contra `ws_n1` com o volume que
+03-10 importou, não daqui.
