@@ -55,6 +55,7 @@ import { ActionMenu, ActorAvatar, Toast } from "@/design/components";
 import { Icone } from "@/design/icone";
 import { CarregadorDeIcones } from "@/design/carregador";
 import { EsqueletoDeTela } from "@/design/esqueletos";
+import { ASSUNTO_FINANCEIRO, vePastaFinanceiro } from "@/features/financeiro/navegacao-financeiro";
 import { BarraDeRota } from "./barra-de-rota";
 import { CascataDeNavegacao, Chegada } from "./chegada";
 import { limpar, marcarSeMuda, useAlvo, useNavegando, useNavegar } from "./navegacao";
@@ -101,7 +102,7 @@ type Tela = {
 };
 
 type Assunto = {
-  readonly chave: "trabalho" | "crm" | "ia" | "ferramentas" | "paineis";
+  readonly chave: "trabalho" | "crm" | "ia" | "ferramentas" | "paineis" | "financeiro";
   readonly rotulo: string;
   readonly icone: LucideIcon;
   /** O assunto "Trabalho" desenha a árvore de Espaços abaixo das telas. */
@@ -172,6 +173,7 @@ const ASSUNTOS: ReadonlyArray<Assunto> = [
     icone: LayoutDashboard,
     telas: [{ href: "/paineis", rotulo: "Painéis", icone: LayoutDashboard, prefixo: true }],
   },
+  ASSUNTO_FINANCEIRO,
 ];
 
 /** O quadrado do trilho que uma rota acende: um assunto, ou o de Configurações. */
@@ -185,6 +187,7 @@ function assuntoDe(pathname: string): Assunto {
   if (pathname.startsWith("/ia")) return ASSUNTOS[2]!;
   if (pathname.startsWith("/ferramentas")) return ASSUNTOS[3]!;
   if (pathname.startsWith("/paineis")) return ASSUNTOS[4]!;
+  if (pathname.startsWith("/financeiro")) return ASSUNTOS[5]!;
   return ASSUNTOS[0]!;
 }
 
@@ -346,6 +349,10 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
   const session = useSession();
   const member = useData((data) => data.members.find((m) => m.id === session.memberId));
   const workspace = useData((data) => data.workspace.name);
+  const data = useData((current) => current);
+  // A única condicional do trilho (D4-14): o item some, nunca aparece
+  // desativado. Quem decide o alcance de verdade é o 403 do `apps/api`.
+  const assuntosVisiveis = ASSUNTOS.filter((a) => a.chave !== "financeiro" || vePastaFinanceiro(data, session.memberId));
 
   const assunto = assuntoDe(pathname);
 
@@ -386,7 +393,7 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
 
         <span className="mb-1 h-px w-7" style={{ background: "var(--linha)" }} aria-hidden />
 
-        {ASSUNTOS.map((a) => {
+        {assuntosVisiveis.map((a) => {
           const ativo = a.chave === assunto.chave;
           const contador = a.chave === "ia" ? pendingApprovals : 0;
           // O botão clicado pulsa (com a carência de 150ms) até a rota chegar.
