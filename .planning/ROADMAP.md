@@ -231,7 +231,7 @@ Plans:
 **Wave 4** *(blocked on Wave 3 completion)*
 
 - [ ] 03-13-PLAN.md — A tela do lote: liga o gesto que já existe a uma chamada só (hoje é um laço de 61 `POST` concorrentes), renderiza a falha parcial, e põe o botão da conversão D3-08 no card de Aprovação (PAG-05)
-- [ ] 03-15-PLAN.md — A metade de tela de PAG-06: re-chaveia `SharedTasks` em `memberSeesTask` (o 03-05 apaga as Grants em que ela se apoia hoje) e fecha duas telas que listam Tarefa sem filtro de visibilidade nenhum (PAG-06)
+- [x] 03-15-PLAN.md — A metade de tela de PAG-06: re-chaveia `SharedTasks` em `memberSeesTask` (o 03-05 apaga as Grants em que ela se apoia hoje) e fecha duas telas que listam Tarefa sem filtro de visibilidade nenhum (PAG-06)
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
@@ -367,7 +367,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | 0. Preparação | 7/7 | Complete   | 2026-09-17 |
 | 1. O CRM N1 ganha persistência e login | 16/16 | Complete   | 2026-09-17 |
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 23/28 | In Progress|  |
-| 3. Contas a pagar | 12/15 | In Progress|  |
+| 3. Contas a pagar | 13/15 | In Progress|  |
 | 4. As outras telas do financeiro-tria | 0/14 | Planned    |  |
 | 5. Contas a receber e os outros tenants | 0/12 | Planned    |  |
 
