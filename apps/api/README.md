@@ -114,7 +114,28 @@ Para re-exportar do zero, apague a pasta (ou aponte `--pasta` para uma nova)
 e rode `exportar:clickup` de novo — o manifesto regenerado substitui o
 anterior no próximo commit.
 
-## 5. Contrato HTTP
+## 5. O scheduler de Automações (AUTO-01, Plan 03-08)
+
+`AUTOMACOES_WORKER_ATIVO=true` liga o poller que garante ao menos uma
+chamada de `runScheduledAutomations` por (Espaço de Trabalho, Lista, dia
+civil) — o relógio do motor de Automações (ver
+`apps/api/src/automacoes/CONTEXT.md`). "false" no ambiente local, no molde
+do `OUTBOX_WORKER_ATIVO`.
+
+A primeira volta REAL de cada (Espaço, Lista) roda em **ensaio**: mede o que
+a agenda faria (as contagens ficam em `plataforma.automacao_agenda`,
+`last_error_code = 'ENSAIO_PRIMEIRA_VOLTA'`) e não grava nada — nenhum
+Comentário de cobrança, nenhuma invocação do Agente, nenhuma mudança de
+Status. Depois de conferir que o relato é aceitável, libere com:
+
+```
+npm run automacoes:liberar -w @n1/api -- <workspaceId> <listId>
+```
+
+A volta seguinte processa de verdade. `AUTOMACOES_ENSAIO_PRIMEIRA_VOLTA=false`
+desliga o gate inteiro — só para uma Lista que nasce sem backlog.
+
+## 6. Contrato HTTP
 
 - `GET /saude` — pública, sem token; confirma que o processo está no ar.
 - `GET /estado` — carga inicial do Espaço de Trabalho: `DataState` inteiro,
@@ -124,7 +145,7 @@ anterior no próximo commit.
   `OperationResult` (mesmo quando `ok:false`, sempre 200) mais o diff e a
   revisão nova (`Authorization: Bearer <token>`).
 
-## 6. PERS-08 — onde o `apps/api` roda: bloqueado por D11
+## 7. PERS-08 — onde o `apps/api` roda: bloqueado por D11
 
 **Ainda não decidido.** A recomendação do plano de migração é a mesma VPS
 que já roda o `automation/` (financeiro-tria), atrás da nginx existente —

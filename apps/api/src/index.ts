@@ -17,11 +17,20 @@
  * processo `apps/api` podem rodar o worker ao mesmo tempo sem duplicar
  * entrega — a exclusão é do banco (`for update skip locked`), não deste
  * arquivo.
+ *
+ * O scheduler de Automações (Plan 03-08, AUTO-01) segue a MESMA separação:
+ * `criarSchedulerWorker()` também não conhece `buildApp()`/Fastify, também
+ * só é ativado aqui por env (`AUTOMACOES_WORKER_ATIVO === "true"`), e duas
+ * instâncias podem rodá-lo ao mesmo tempo sem processar o mesmo dia duas
+ * vezes — a exclusão é do banco (`for update skip locked` sobre
+ * `plataforma.automacao_agenda`), não deste arquivo. O Plan 03-11 acrescenta
+ * o seu próprio bloco `if`, ao lado deste, sem reescrevê-lo.
  */
 
 import { buildApp } from "./app";
 import { carregarEnv } from "./persistencia/conexao";
 import { criarOutboxWorker } from "./persistencia/outbox-worker";
+import { criarSchedulerWorker } from "./automacoes/scheduler-worker";
 
 carregarEnv();
 
@@ -47,6 +56,31 @@ if (process.env.OUTBOX_WORKER_ATIVO === "true") {
   app.log.info("outbox worker ativo");
   process.on("SIGTERM", () => {
     worker.parar();
+  });
+}
+
+if (process.env.AUTOMACOES_WORKER_ATIVO === "true") {
+  const intervaloMs = process.env.AUTOMACOES_INTERVALO_MS ? Number(process.env.AUTOMACOES_INTERVALO_MS) : undefined;
+  const janelaDias = process.env.AUTOMACOES_JANELA_DIAS ? Number(process.env.AUTOMACOES_JANELA_DIAS) : undefined;
+  const atorMemberId = process.env.AUTOMACOES_ATOR_MEMBER_ID;
+  const schedulerWorker = criarSchedulerWorker({
+    workerId: process.env.AUTOMACOES_WORKER_ID || `apps-api-agenda-${process.pid}`,
+    ...(intervaloMs !== undefined ? { intervaloMs } : {}),
+    ...(janelaDias !== undefined ? { janelaDias } : {}),
+    // Padrão ligado (Task 2, D3-03): a primeira volta REAL de cada
+    // (Espaço, Lista) mede e não grava, até liberação explícita.
+    ensaioNaPrimeiraVolta: process.env.AUTOMACOES_ENSAIO_PRIMEIRA_VOLTA !== "false",
+    // Vazio (padrão): o Membro do Papel "Agente do pipeline" (D-15) —
+    // nunca uma sessão humana. Só sobrescrito por operação/teste manual.
+    ...(atorMemberId ? { resolverAtor: async () => atorMemberId } : {}),
+    registrar: (nivel, mensagem, dados) => {
+      app.log[nivel](dados ?? {}, mensagem);
+    },
+  });
+  schedulerWorker.iniciar();
+  app.log.info("scheduler de Automações ativo");
+  process.on("SIGTERM", () => {
+    schedulerWorker.parar();
   });
 }
 
