@@ -20,11 +20,14 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../seed";
+import { pendingMentions } from "../derive";
 import type { DataState } from "../state";
-import type { Automation, AutomationAction, AutomationCondition, AutomationExecution, AutomationTrigger, Id, Task } from "../types";
+import type { Automation, AutomationAction, AutomationCondition, AutomationExecution, AutomationTrigger, Id, StatusSet, Task } from "../types";
 import { runScheduledAutomations } from "./automations";
 import { CP, CR } from "./financeiro";
-import { changeTaskStatus, updateTask } from "./tasks";
+import { createTaskType } from "./configuration";
+import { createList, createSpace } from "./structure";
+import { changeTaskStatus, createTask, updateTask } from "./tasks";
 
 let state: DataState;
 beforeEach(() => {
@@ -63,19 +66,20 @@ const publicar = (
   conditions: AutomationCondition[],
   actions: AutomationAction[],
   listId: Id = CP.listId,
+  ownerMemberId: Id = CP.financeiroId,
 ): Automation => {
   const carimbo = "2026-01-01T12:00:00.000Z";
   const automation: Automation = {
     id,
     workspaceId: state.workspace.id,
-    createdBy: { kind: "member", id: CP.financeiroId },
+    createdBy: { kind: "member", id: ownerMemberId },
     createdAt: carimbo,
     lifecycle: "ativo",
     name,
     description: name,
     scopeType: "list",
     scopeId: listId,
-    ownerMemberId: CP.financeiroId,
+    ownerMemberId,
     reactsToAutomationEvents: false,
     versions: [
       {
@@ -85,7 +89,7 @@ const publicar = (
         conditions,
         actions,
         errorPolicy: { onActionFailure: "interromper", retries: 0 },
-        publishedBy: CP.financeiroId,
+        publishedBy: ownerMemberId,
         publishedAt: carimbo,
         createdAt: carimbo,
       },
@@ -96,21 +100,71 @@ const publicar = (
 };
 
 const porVencimento = (dias: number): AutomationTrigger => ({ kind: "condicaoTemporal", temporalPredicate: JSON.stringify({ dueDateOffsetDays: dias }) });
+const porEntrarEm = (status: string): AutomationTrigger => ({ kind: "evento", eventType: "tarefaEntrouEmStatus", eventSubtype: status });
 const acao = (order: number, toolId: string, params: object): AutomationAction => ({ order, kind: "escrita", toolId, params: JSON.stringify(params) });
+const controle = (
+  order: number,
+  controlKind: NonNullable<AutomationAction["controlKind"]>,
+  params: object,
+  extra: Partial<AutomationAction> = {},
+): AutomationAction => ({ order, kind: "controle", controlKind, params: JSON.stringify(params), ...extra });
+
+/** D-5 de 05/09/2026 é 31/08/2026: o dia em que a agenda alcança esta conta. */
+const VENCIMENTO = "2026-09-05";
+
+/** `tsk_cp_thiago_out` — “para pagar”, sem Anexo, com Pessoa preenchida — vencendo em 05/09/2026. */
+const contaVencendoEmSetembro = (): Task => {
+  const t = conta("tsk_cp_thiago_out");
+  const r = updateTask(state, CP.financeiroId, t.id, { dueDate: { form: "civilDay", value: VENCIMENTO } });
+  expect(r.ok, r.ok ? "" : r.error).toBe(true);
+  return t;
+};
+
+/**
+ * `solicitarAprovacao` (`operations/ai.ts`) exige o status `em aprovação`, que
+ * Contas a pagar não tem — a Lista de Solicitações de pagamento nasce de
+ * verdade só na Fase 2/3. Aqui basta uma Lista com os quatro Status de D-01.
+ */
+const STATUS_SET_APROVACAO: StatusSet = {
+  id: "sts_sol_motor",
+  definitions: [
+    { id: "st_sol_motor_para_fazer", name: "para fazer", color: "#94a3b8", category: "naoIniciado", order: 0 },
+    { id: "st_sol_motor_em_aprovacao", name: "em aprovação", color: "#f59e0b", category: "emAndamento", order: 1 },
+    { id: "st_sol_motor_nao_aprovado", name: "não aprovado", color: "#ef4444", category: "concluido", order: 2 },
+    { id: "st_sol_motor_aprovado", name: "aprovado", color: "#22c55e", category: "fechado", order: 3 },
+  ],
+};
+
+interface AutomacaoDeTeste {
+  readonly id: Id;
+  readonly name: string;
+  readonly trigger: AutomationTrigger;
+  readonly actions: AutomationAction[];
+}
+const publicarEm = (id: Id, name: string, trigger: AutomationTrigger, actions: AutomationAction[]): AutomacaoDeTeste => ({ id, name, trigger, actions });
+
+/** Proprietário do Espaço público de teste — o Financeiro do seed do Financeiro não administra um Espaço novo do CRM. */
+const DONO = "mem_thiago";
+/** O Aprovador nomeado na versão publicada da Automação (T-3-07: nomeado, nunca o dono por omissão). */
+const APROVADOR = "mem_julia";
+
+/** Espaço + Lista com `em aprovação`, Automações publicadas ANTES da Tarefa (o gatilho é `tarefaCriada`). */
+const listaComAprovacao = (automacoes: AutomacaoDeTeste[]): { readonly listId: Id; readonly taskId: Id } => {
+  const espaco = createSpace(state, DONO, { name: "Solicitações (motor 03-02)", statusSet: STATUS_SET_APROVACAO });
+  if (!espaco.ok) throw new Error(`fixture: ${espaco.error}`);
+  const tipo = createTaskType(state, DONO, { name: "Solicitação (motor 03-02)", icon: "circle", definedAtType: "space", definedAtId: espaco.value.id });
+  if (!tipo.ok) throw new Error(`fixture: ${tipo.error}`);
+  const lista = createList(state, DONO, { name: "Solicitações de pagamento (motor 03-02)", parentType: "space", parentId: espaco.value.id });
+  if (!lista.ok) throw new Error(`fixture: ${lista.error}`);
+  for (const a of automacoes) publicar(a.id, a.name, a.trigger, [], a.actions, lista.value.id, DONO);
+  const task = createTask(state, DONO, { listId: lista.value.id, title: "Pagamento de teste (03-02)" });
+  if (!task.ok) throw new Error(`fixture: ${task.error}`);
+  return { listId: lista.value.id, taskId: task.value.id };
+};
 
 /* ─────────────────────── Uma base de tempo só ─────────────────────── */
 
 describe("Motor de Automações — o `today` injetado é o relógio da Execução agendada", () => {
-  /** D-5 de 05/09/2026 é 31/08/2026: o dia em que A5 dispara para esta conta. */
-  const VENCIMENTO = "2026-09-05";
-
-  const contaVencendoEmSetembro = (): Task => {
-    const t = conta("tsk_cp_thiago_out"); // “para pagar”, sem Anexo, com Pessoa preenchida
-    const r = updateTask(state, CP.financeiroId, t.id, { dueDate: { form: "civilDay", value: VENCIMENTO } });
-    expect(r.ok, r.ok ? "" : r.error).toBe(true);
-    return t;
-  };
-
   const cobrancas = (t: Task): number => t.comments.filter((c) => c.content.includes("emitir sua nota")).length;
 
   it("A5 dispara uma vez no dia injetado; a segunda chamada com o MESMO `today` não repete", () => {
@@ -183,5 +237,185 @@ describe("Motor de Automações — o `today` injetado é o relógio da Execuç�
     expect(execucao?.triggerKind).toBe("evento");
     // R3 gravou o dia civil do instante em que a Execução começou: um relógio só.
     expect(campo(t, CR.fields.dataPagamento)).toBe(diaCivilDe(execucao?.startedAt ?? ""));
+  });
+});
+
+/* ──────────────── O vocabulário de controle de AUTO-01 ──────────────── */
+
+describe("Motor de Automações — as cinco Ações de controle", () => {
+  const terminou = (automationId: Id, objectId: Id): AutomationExecution | undefined => execucoesDe(automationId, objectId).at(-1);
+
+  it("`notificar` publica UM Comentário com autoria da Automação e vira notificação in-app por pendingMentions", () => {
+    const t = contaVencendoEmSetembro();
+    publicar("aut_teste_notificar", "Avisar quem precisa saber", porVencimento(-5), [], [
+      controle(1, "notificar", {
+        template: "Nota fiscal pendente em {{titulo}} (vence {{vencimento}}).",
+        mentionMemberIds: [CP.aprovadorId],
+        fromFieldDefinitionId: F.pessoa,
+      }),
+    ]);
+
+    expect(rodar(dia(2026, 7, 31)).ok).toBe(true);
+
+    const avisos = t.comments.filter((c) => c.content.startsWith("Nota fiscal pendente"));
+    expect(avisos).toHaveLength(1);
+    const aviso = avisos[0];
+    expect(aviso?.author).toEqual({ kind: "automation", id: "aut_teste_notificar" });
+    expect(aviso?.content).toContain("Pedro Alencar Consultoria em Dados");
+    expect([...(aviso?.mentions ?? [])].map((m) => m.id).sort()).toEqual([CP.aprovadorId, "mem_thiago_pereira"].sort());
+
+    // A metade que importa: o Membro alvo PASSA A ENXERGAR o aviso.
+    expect(pendingMentions(state, CP.aprovadorId).some((p) => p.comment.id === aviso?.id)).toBe(true);
+    expect(pendingMentions(state, "mem_thiago_pereira").some((p) => p.comment.id === aviso?.id)).toBe(true);
+
+    expect(terminou("aut_teste_notificar", t.id)?.state).toBe("concluida");
+  });
+
+  it("`notificar` sem texto falha dizendo o que falta — nunca com “Controle não suportado”", () => {
+    const t = contaVencendoEmSetembro();
+    publicar("aut_teste_notificar_vazio", "Notificar sem texto", porVencimento(-5), [], [
+      controle(1, "notificar", { mentionMemberIds: [CP.aprovadorId] }),
+    ]);
+
+    expect(rodar(dia(2026, 7, 31)).ok).toBe(true);
+
+    const execucao = terminou("aut_teste_notificar_vazio", t.id);
+    expect(execucao?.state).toBe("falhou");
+    expect(execucao?.terminationReason).not.toMatch(/não suportado/);
+    expect(execucao?.terminationReason).toMatch(/template/);
+  });
+
+  it("`solicitarAprovacao` roteia a decisão ao Aprovador nomeado e repetir não cria uma segunda pendência", () => {
+    const { taskId } = listaComAprovacao([
+      publicarEm(
+        "aut_teste_aprovacao",
+        "Rotear ao Aprovador",
+        { kind: "evento", eventType: "tarefaCriada" },
+        [controle(1, "solicitarAprovacao", { template: "Para sua aprovação: {{titulo}}." }, { approverMemberId: APROVADOR })],
+      ),
+      publicarEm(
+        "aut_teste_aprovacao_repetida",
+        "Rotear de novo ao mesmo Aprovador",
+        { kind: "evento", eventType: "tarefaCriada" },
+        [controle(1, "solicitarAprovacao", { template: "Para sua aprovação (de novo): {{titulo}}." }, { approverMemberId: APROVADOR })],
+      ),
+    ]);
+
+    const pendencias = state.approvals.filter((a) => a.origin.kind === "processTask" && a.origin.taskId === taskId);
+    expect(pendencias).toHaveLength(1);
+    expect(pendencias[0]?.approverMemberId).toBe(APROVADOR);
+    expect(pendencias[0]?.reason).toBe("processo");
+
+    const tarefa = conta(taskId);
+    // O Comentário de roteamento existe, é o âncora da pendência e menciona o Aprovador.
+    const roteamento = tarefa.comments.find((c) => c.id === (pendencias[0]?.origin.kind === "processTask" ? pendencias[0].origin.threadCommentId : ""));
+    expect(roteamento?.content).toBe("Para sua aprovação: Pagamento de teste (03-02).");
+    expect(roteamento?.mentions.map((m) => m.id)).toContain(APROVADOR);
+    expect(roteamento?.author).toEqual({ kind: "automation", id: "aut_teste_aprovacao" });
+
+    expect(terminou("aut_teste_aprovacao", taskId)?.state).toBe("concluida");
+    expect(terminou("aut_teste_aprovacao_repetida", taskId)?.state).toBe("concluida");
+  });
+
+  it("`solicitarAprovacao` numa Lista sem o status “em aprovação” falha com a recusa da própria operação de domínio", () => {
+    const t = contaVencendoEmSetembro(); // Contas a pagar NÃO tem “em aprovação”
+    publicar("aut_teste_aprovacao_sem_status", "Rotear onde não dá", porVencimento(-5), [], [
+      controle(1, "solicitarAprovacao", { template: "Para sua aprovação: {{titulo}}." }, { approverMemberId: CP.aprovadorId }),
+    ]);
+
+    expect(rodar(dia(2026, 7, 31)).ok).toBe(true);
+
+    const execucao = terminou("aut_teste_aprovacao_sem_status", t.id);
+    expect(execucao?.state).toBe("falhou");
+    expect(execucao?.terminationReason).toMatch(/em aprovação/);
+  });
+
+  it("`solicitarAprovacao` sem Aprovador nomeado falha — nunca cai no dono da Automação por omissão (T-3-07)", () => {
+    const t = contaVencendoEmSetembro();
+    publicar("aut_teste_aprovacao_sem_aprovador", "Rotear a ninguém", porVencimento(-5), [], [
+      controle(1, "solicitarAprovacao", { template: "Para sua aprovação: {{titulo}}." }),
+    ]);
+
+    expect(rodar(dia(2026, 7, 31)).ok).toBe(true);
+
+    const execucao = terminou("aut_teste_aprovacao_sem_aprovador", t.id);
+    expect(execucao?.state).toBe("falhou");
+    expect(execucao?.terminationReason).toMatch(/Aprovador/);
+    expect(state.approvals.some((a) => a.origin.kind === "processTask" && a.origin.taskId === t.id)).toBe(false);
+  });
+
+  it("`encerrar` conclui a Execução ali: as Ações seguintes ficam “pulado” e o motivo fica registrado", () => {
+    const t = contaVencendoEmSetembro();
+    publicar("aut_teste_encerrar", "Parar no meio", porVencimento(-5), [], [
+      controle(1, "encerrar", { motivo: "Nada a fazer por hoje." }),
+      acao(2, "tarefa.comentar", { template: "Este Comentário nunca deveria existir." }),
+    ]);
+
+    expect(rodar(dia(2026, 7, 31)).ok).toBe(true);
+
+    const execucao = terminou("aut_teste_encerrar", t.id);
+    expect(execucao?.state).toBe("concluida");
+    expect(execucao?.terminationReason).toBe("Nada a fazer por hoje.");
+    expect(execucao?.steps.map((s) => s.result)).toEqual(["concluido", "pulado"]);
+    expect(t.comments.some((c) => c.content.startsWith("Este Comentário nunca"))).toBe(false);
+  });
+
+  it("`aguardar` sob agenda: antes do prazo nada depois acontece e a Execução fica pendente; no dia do prazo segue e conclui", () => {
+    const t = contaVencendoEmSetembro();
+    const statusAntes = t.statusId;
+    publicar("aut_teste_aguardar", "Esperar três dias após o vencimento", porVencimento(-5), [], [
+      controle(1, "aguardar", { aguardarDias: 3, aguardarDesde: "vencimento" }),
+      acao(2, "tarefa.comentar", { template: "Três dias vencida e ninguém pagou." }),
+    ]);
+
+    expect(rodar(dia(2026, 7, 31)).ok).toBe(true);
+    const espera = execucoesDe("aut_teste_aguardar", t.id);
+    expect(espera).toHaveLength(1);
+    expect(espera[0]?.state).toBe("pendente");
+    expect(espera[0]?.steps.map((s) => s.result)).toEqual(["aguardando", "pulado"]);
+    expect(espera[0]?.terminationReason).toMatch(/2026-09-08/);
+    expect(t.comments.some((c) => c.content.startsWith("Três dias vencida"))).toBe(false);
+    expect(t.statusId).toBe(statusAntes);
+
+    // Duas chamadas no mesmo `today` não empilham duas Execuções “pendente”.
+    expect(rodar(dia(2026, 7, 31)).ok).toBe(true);
+    expect(execucoesDe("aut_teste_aguardar", t.id)).toHaveLength(1);
+
+    // No dia do prazo (08/09/2026) a mesma Automação segue e conclui.
+    expect(rodar(dia(2026, 8, 8)).ok).toBe(true);
+    const todas = execucoesDe("aut_teste_aguardar", t.id);
+    expect(todas).toHaveLength(2);
+    expect(todas[1]?.state).toBe("concluida");
+    expect(todas[1]?.steps.map((s) => s.result)).toEqual(["concluido", "concluido"]);
+    expect(t.comments.some((c) => c.content.startsWith("Três dias vencida"))).toBe(true);
+  });
+
+  it("`aguardar` sob gatilho de EVENTO falha com texto explícito: não há quem retome uma Execução de evento", () => {
+    const t = conta("tsk_cp_condominio"); // “em lançamento omie”
+    publicar("aut_teste_aguardar_evento", "Esperar num evento", porEntrarEm("lançado omie"), [], [
+      controle(1, "aguardar", { aguardarDias: 3 }),
+    ]);
+
+    expect(changeTaskStatus(state, CP.financeiroId, t.id, CP.status.lancado).ok).toBe(true);
+
+    const execucao = terminou("aut_teste_aguardar_evento", t.id);
+    expect(execucao?.state).toBe("falhou");
+    expect(execucao?.terminationReason).toMatch(/agenda/);
+    expect(execucao?.terminationReason).not.toMatch(/não suportado/);
+  });
+
+  it("`aguardar` que não é a primeira Ação falha: a retomada roda a Execução do começo", () => {
+    const t = contaVencendoEmSetembro();
+    publicar("aut_teste_aguardar_tarde", "Esperar depois de agir", porVencimento(-5), [], [
+      acao(1, "tarefa.comentar", { template: "Já aconteceu antes da espera." }),
+      controle(2, "aguardar", { aguardarDias: 3 }),
+    ]);
+
+    expect(rodar(dia(2026, 7, 31)).ok).toBe(true);
+
+    const execucao = terminou("aut_teste_aguardar_tarde", t.id);
+    expect(execucao?.state).toBe("falhou");
+    expect(execucao?.terminationReason).toMatch(/primeira Ação/);
+    expect(execucao?.steps.map((s) => s.result)).toEqual(["concluido", "falhou"]);
   });
 });

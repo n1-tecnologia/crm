@@ -8,6 +8,23 @@
  * Toda execução vira `AutomationExecution`, com um passo por ação — é o que a
  * tela de Automações e a Auditoria leem. A Automação age em nome do seu dono
  * (DO-AUT: o delegante é o Proprietário da Automação).
+ *
+ * AUTO-01 — o vocabulário de controle é fechado: `invocarAgente`,
+ * `notificar`, `solicitarAprovacao`, `aguardar` e `encerrar`. Só `ramificar`
+ * segue fora de escopo, e é o único que ainda cai em "Controle não
+ * suportado". Nenhuma Ação aqui nomeia Lista, Status, Campo ou Membro do
+ * Financeiro: o alvo vem sempre de `params` e dos campos tipados de
+ * `AutomationAction` — as únicas referências ao Financeiro no arquivo são as
+ * do Agente de lançamento e do `{{cnpjEmpresa}}` do template, que já existiam.
+ *
+ * Achado registrado em prosa, sem mudar tipo nenhum: `ApprovalOrigin`
+ * (`types/ai.ts`) tem dois ramos — `agentExecution` e `processTask` — e
+ * nenhum deles é "Automação". O ramo `solicitarAprovacao` reusa `processTask`,
+ * o que é honesto (é uma decisão de processo ancorada numa Tarefa, D-06) mas
+ * herda duas consequências: o passo de processo fica sempre `"pagamento"` e a
+ * Lista precisa ter o status `em aprovação`. Fechar isso direito pede um
+ * terceiro ramo em `ApprovalOrigin`, o que arrasta `types/ai.ts` e os
+ * consumidores de `apps/web` — fora da posse de arquivos deste plano.
  */
 
 import { containerAdminRefusal, effectiveLifecycleOfTask, effectiveListConfig, memberSeesTask, statusDefinition } from "../derive";
@@ -17,6 +34,8 @@ import { memberActor, nextId, recordActivity } from "./activity";
 import { CNPJ_POR_EMPRESA, CP, clienteDe, runLancamentoAgent } from "./financeiro";
 import { contactDisplayName } from "../derive";
 import { addTaskComment, assignTask, changeTaskStatus, setTaskFieldValue, unassignTask, watchTask } from "./tasks";
+// Sem ciclo: `operations/ai.ts` importa `./tasks` e `../derive`, nunca `./automations`.
+import { solicitarAprovacao as solicitarAprovacaoDeProcesso } from "./ai";
 
 /**
  * O ÚNICO relógio do módulo. Sem argumento é o instante real — o que um
@@ -66,6 +85,18 @@ interface ActionSpec {
   readonly today?: boolean;
   /** Só grava se o Campo estiver vazio (R3: o Financeiro pode ter preenchido antes). */
   readonly onlyIfEmpty?: boolean;
+  /* ── Vocabulário de controle (AUTO-01) ── */
+  /** `notificar`: Membros mencionados no aviso, somados a `memberId` e a `fromFieldDefinitionId`. */
+  readonly mentionMemberIds?: readonly Id[];
+  /** `encerrar` (e o motivo do roteamento em `solicitarAprovacao`). */
+  readonly motivo?: string;
+  /** `aguardar`: o prazo declarado. `action.timeoutHours` (campo tipado) vale como alternativa. */
+  readonly aguardarDias?: number;
+  readonly aguardarHoras?: number;
+  /** `aguardar`: de onde o prazo conta — o vencimento da Tarefa (padrão) ou a criação dela. */
+  readonly aguardarDesde?: "vencimento" | "criacaoDaTarefa";
+  /** `solicitarAprovacao`: Campo do tipo pessoa que nomeia o Aprovador, quando não vem tipado na versão. */
+  readonly approverFieldDefinitionId?: Id;
 }
 
 interface TemporalSpec {
@@ -156,20 +187,126 @@ interface ContextoDeExecucao {
   readonly indice: number;
 }
 
+/** O que uma Ação devolve. `halt` é interno ao módulo: nenhuma assinatura exportada o conhece. */
+interface ResultadoDeAcao {
+  readonly ok: boolean;
+  readonly output: string;
+  readonly halt?: "encerrar" | "aguardar";
+}
+
+/**
+ * Os alvos de uma Ação de controle, sem repetição e sem inventar Membro: de
+ * `memberId`, de `mentionMemberIds` e de um Campo do tipo pessoa da Tarefa —
+ * a mesma forma de resolução de `tarefa.adicionarObservadores`, mas em helper
+ * próprio, para que nenhum caminho antigo mude de resultado.
+ */
+function membrosMencionados(state: DataState, task: Task, spec: ActionSpec): Id[] {
+  const ids = new Set<Id>();
+  if (spec.memberId) ids.add(spec.memberId);
+  for (const id of spec.mentionMemberIds ?? []) ids.add(id);
+  if (spec.fromFieldDefinitionId) {
+    const pessoa = fieldValueOf(task, spec.fromFieldDefinitionId);
+    if (typeof pessoa === "string" && pessoa) ids.add(pessoa);
+  }
+  return [...ids].filter((id) => state.members.some((m) => m.id === id));
+}
+
+/**
+ * `aguardar` — três recusas antes de qualquer cálculo, porque a retomada de
+ * uma Execução pendente roda a Execução do COMEÇO:
+ *
+ * 1. sob gatilho de evento não há quem retome;
+ * 2. depois da primeira Ação, retomar repetiria o que já aconteceu;
+ * 3. sem prazo declarado não há o que esperar.
+ *
+ * Cumprido o prazo, a Execução segue; não cumprido, ela para em `pendente` e
+ * o dia seguinte reavalia.
+ */
+function esperaCumprida(task: Task, spec: ActionSpec, action: AutomationAction, contexto: ContextoDeExecucao): ResultadoDeAcao {
+  if (contexto.trigger?.kind !== "condicaoTemporal") {
+    return { ok: false, output: "“aguardar” exige gatilho de agenda: uma Execução de evento não tem quem a retome." };
+  }
+  if (contexto.indice > 0) {
+    return { ok: false, output: "“aguardar” precisa ser a primeira Ação: a retomada roda a Execução do começo, então nada pode ter acontecido antes dela." };
+  }
+  const dias = spec.aguardarDias;
+  const horas = spec.aguardarHoras ?? action.timeoutHours;
+  if (dias === undefined && horas === undefined) {
+    return { ok: false, output: "“aguardar” sem prazo: declare aguardarDias, aguardarHoras ou timeoutHours." };
+  }
+  const desde = spec.aguardarDesde ?? "vencimento";
+  let base: Date | undefined;
+  if (desde === "criacaoDaTarefa") base = new Date(task.createdAt);
+  else if (task.dueDate) {
+    const [y, m, d] = task.dueDate.value.slice(0, 10).split("-").map(Number);
+    base = new Date(y ?? 1970, (m ?? 1) - 1, d ?? 1);
+  }
+  if (!base) return { ok: false, output: `“aguardar” conta a partir do ${desde === "vencimento" ? "vencimento" : "início"}, e esta Tarefa não o tem.` };
+  const prazo = new Date(base.getTime() + (dias ?? 0) * 86_400_000 + (horas ?? 0) * 3_600_000);
+  if (contexto.quando.getTime() >= prazo.getTime()) return { ok: true, output: `Espera cumprida em ${diaCivil(prazo)}` };
+  return { ok: true, halt: "aguardar", output: `Aguardando até ${diaCivil(prazo)}` };
+}
+
 function runAction(
   state: DataState,
   automation: Automation,
   task: Task,
   action: AutomationAction,
   contexto: ContextoDeExecucao,
-): { readonly ok: boolean; readonly output: string } {
+): ResultadoDeAcao {
   const owner = automation.ownerMemberId;
   const spec = parseJson<ActionSpec>(action.params) ?? {};
   if (action.kind === "controle") {
-    if (action.controlKind === "invocarAgente" && action.agentId) {
-      const r = runLancamentoAgent(state, owner, action.agentId, task.id, automation.id);
-      return r.ok ? { ok: true, output: r.value } : { ok: false, output: r.error };
+    switch (action.controlKind) {
+      case "invocarAgente": {
+        if (!action.agentId) break;
+        const r = runLancamentoAgent(state, owner, action.agentId, task.id, automation.id);
+        return r.ok ? { ok: true, output: r.value } : { ok: false, output: r.error };
+      }
+      case "notificar": {
+        if (!spec.template) return { ok: false, output: "“notificar” sem texto: declare `template` nos parâmetros da Ação." };
+        const alvos = membrosMencionados(state, task, spec);
+        if (!alvos.length) return { ok: false, output: "“notificar” sem alvo: declare memberId, mentionMemberIds ou fromFieldDefinitionId." };
+        // O aviso é in-app nesta fase: um Comentário com Menção, que `pendingMentions`
+        // entrega a quem ENXERGA a Tarefa. Por Canal é Phase 5.
+        const r = addTaskComment(state, owner, task.id, {
+          content: fillTemplate(state, task, spec.template),
+          mentions: alvos.map((id) => ({ type: "member", id })),
+          actor: { kind: "automation", id: automation.id },
+        });
+        if (!r.ok) return { ok: false, output: r.error };
+        return { ok: true, output: `Notificados: ${alvos.map((id) => state.members.find((m) => m.id === id)?.displayName ?? id).join(", ")}` };
+      }
+      case "solicitarAprovacao": {
+        // T-3-07 — o Aprovador é NOMEADO: campo tipado da versão publicada ou
+        // Campo do tipo pessoa da Tarefa. Nunca o dono da Automação por omissão.
+        const doCampo = spec.approverFieldDefinitionId ? fieldValueOf(task, spec.approverFieldDefinitionId) : undefined;
+        const aprovador = action.approverMemberId ?? (typeof doCampo === "string" && doCampo ? doCampo : undefined);
+        if (!aprovador) return { ok: false, output: "“solicitarAprovacao” sem Aprovador: declare approverMemberId na versão ou approverFieldDefinitionId nos parâmetros." };
+        if (!spec.template) return { ok: false, output: "“solicitarAprovacao” sem texto de roteamento: declare `template` nos parâmetros da Ação." };
+        const comentario = addTaskComment(state, owner, task.id, {
+          content: fillTemplate(state, task, spec.template),
+          mentions: [{ type: "member", id: aprovador }],
+          actor: { kind: "automation", id: automation.id },
+        });
+        if (!comentario.ok) return { ok: false, output: comentario.error };
+        const r = solicitarAprovacaoDeProcesso(state, owner, {
+          taskId: task.id,
+          approverMemberId: aprovador,
+          threadCommentId: comentario.value.id,
+          ...(spec.motivo ? { reason: spec.motivo } : {}),
+        });
+        if (!r.ok) return { ok: false, output: r.error };
+        return { ok: true, output: `Aprovação roteada a ${state.members.find((m) => m.id === r.value.approverMemberId)?.displayName ?? aprovador}` };
+      }
+      case "aguardar":
+        return esperaCumprida(task, spec, action, contexto);
+      case "encerrar":
+        return { ok: true, halt: "encerrar", output: spec.motivo ?? "Encerrada pela própria Automação" };
+      default:
+        break;
     }
+    // `ramificar` segue fora de escopo — e `invocarAgente` sem Agente cai aqui, como sempre caiu.
     return { ok: false, output: `Controle não suportado: ${action.controlKind ?? "?"}` };
   }
   switch (action.toolId) {
@@ -287,10 +424,30 @@ function execute(state: DataState, automation: Automation, version: AutomationVe
       output: result.output,
       toolAllowed: true,
       resourcePermitted: result.ok,
-      result: result.ok ? "concluido" : "falhou",
+      result: result.halt === "aguardar" ? "aguardando" : result.ok ? "concluido" : "falhou",
       at: instante(quando),
     });
     if (action.kind === "controle" && action.agentId) execution.childAgentExecutionIds.push(...state.agentExecutions.filter((e) => e.invokedBy.kind === "automation" && e.invokedBy.id === automation.id && e.anchor?.id === task.id).map((e) => e.id).slice(-1));
+    if (result.halt) {
+      // Parou por desenho da própria Automação: o que vinha depois não
+      // aconteceu, e a Execução diz isso passo a passo em vez de sumir com eles.
+      for (const restante of acoes.slice(indice + 1)) {
+        execution.steps.push({
+          index: execution.steps.length,
+          kind: restante.kind === "controle" ? "raciocinio" : "ferramenta",
+          ...(restante.toolId ? { toolId: restante.toolId } : {}),
+          input: restante.params,
+          output: result.halt === "encerrar" ? "Pulado: a Automação encerrou antes." : "Pulado: a Automação está aguardando.",
+          toolAllowed: true,
+          resourcePermitted: true,
+          result: "pulado",
+          at: instante(quando),
+        });
+      }
+      execution.state = result.halt === "encerrar" ? "concluida" : "pendente";
+      execution.terminationReason = result.output;
+      break;
+    }
     if (!result.ok) {
       execution.state = "falhou";
       execution.terminationReason = result.output;
@@ -302,7 +459,7 @@ function execute(state: DataState, automation: Automation, version: AutomationVe
   execution.cost = { ...execution.cost, toolCalls: execution.steps.length, durationMs: Date.now() - inicio };
   recordActivity(state, {
     actor: { kind: "automation", id: automation.id },
-    action: execution.state === "concluida" ? "Automação executada" : "Automação falhou",
+    action: execution.state === "falhou" ? "Automação falhou" : execution.state === "pendente" ? "Automação aguardando" : "Automação executada",
     objectType: "task",
     objectId: task.id,
     objectName: task.title,
@@ -380,13 +537,14 @@ export function runScheduledAutomations(
       const [y, m, d] = task.dueDate.value.slice(0, 10).split("-").map(Number);
       const disparo = new Date(y ?? 1970, (m ?? 1) - 1, (d ?? 1) + spec.dueDateOffsetDays).getTime();
       if (hoje < disparo) continue;
-      // Concluída: nunca repete. Falhou: tenta de novo só em outro dia — senão
-      // cada clique em "rodar" gera outro Comentário de "falta X".
+      // Concluída: nunca repete. Falhou ou ficou pendente: reavalia só em
+      // outro dia — senão cada clique em "rodar" gera outro Comentário de
+      // "falta X", ou empilha uma segunda espera que ainda não venceu.
       const jaRodou = state.automationExecutions.some(
         (e) =>
           e.automationId === automation.id &&
           e.objectId === task.id &&
-          (e.state === "concluida" || (e.state === "falhou" && mesmoDiaCivil(e.startedAt, today))),
+          (e.state === "concluida" || ((e.state === "falhou" || e.state === "pendente") && mesmoDiaCivil(e.startedAt, today))),
       );
       if (jaRodou) {
         skipped += 1;
