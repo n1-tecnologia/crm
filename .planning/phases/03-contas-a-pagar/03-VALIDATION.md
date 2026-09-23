@@ -1,8 +1,8 @@
 ---
 phase: 3
 slug: contas-a-pagar
-status: draft
-nyquist_compliant: false
+status: approved
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-09-22
 ---
@@ -41,21 +41,25 @@ created: 2026-09-22
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| TBD | TBD | TBD | PAG-01 | T-3-02 (replay duplicado) | Tarefa importada preserva `date_created`/`date_closed`/histórico de status com a data original; replay do CLI não duplica (padrão `jaImportada()`/`importacao_ledger` de 02-22/02-25) | unit (domínio, puro) | `npm run test --workspace=@n1/dominio -- importacao-contas-a-pagar` | ❌ W0 — arquivo novo | ⬜ pending |
-| TBD | TBD | TBD | PAG-01 | — | "Tempo em `para pagar`" continua mensurável a partir dos Registros de Atividade importados (29–31 dias é o ciclo normal) | unit (domínio) | `npm run test --workspace=@n1/dominio -- importacao-contas-a-pagar` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | PAG-01 | T-3-02 | A importação **não** chama `changeTaskStatus` para replay — nenhuma das 9 Automações dispara durante a importação histórica | unit (domínio) — asserção de que nenhuma `AutomationExecution` nasce no replay | `npm run test --workspace=@n1/dominio -- importacao-contas-a-pagar` | ❌ W0 | ⬜ pending |
-| TBD | TBD | TBD | PAG-02 / A1 | — | Recorrência: uma ocorrência por fechamento, mesmo reabrindo (RN-CP-06) | unit (domínio) | `npm run test --workspace=@n1/dominio -- -t "RN-CP-06"` | ✅ já existe (`operations.test.ts` ~3665) | ⬜ pending |
-| TBD | TBD | TBD | PAG-02 / A2–A4, A9 | — | Automações de evento disparam dentro da mesma transação, cada uma com Execução auditável | unit (domínio) | `npm run test --workspace=@n1/dominio -- automations` | ⚠️ W0 — confirmar se estende `operations.test.ts` ou nasce dedicado | ⬜ pending |
-| TBD | TBD | TBD | PAG-02 / A5–A7 | — | Automações de agenda disparam no dia certo e **não repetem** ao rodar duas vezes com o mesmo `today` | unit (domínio, `today: Date` injetado) | `npm run test --workspace=@n1/dominio -- automations` | ⚠️ W0 — cobrir "processo caiu e retomou" | ⬜ pending |
-| TBD | TBD | TBD | AUTO-01 | T-3-04 (log vazando dado financeiro) | Poller chama `runScheduledAutomations` ≥ 1×/dia por Lista, **mesmo após reinício**; erro passa por `sanitizarErro()` antes de ir ao log | integration (Postgres real, `Relogio` injetável — padrão `outbox-worker.test.ts`) | `npm run test -w @n1/api -- automacoes/scheduler-worker` | ❌ W0 — arquivo novo | ⬜ pending |
-| TBD | TBD | TBD | PAG-03 | T-3-03 (endpoint sem auth/idempotência) | Cálculo do lançamento separado da execução; Ensaio (D3-03) grava o que lançaria **sem nenhuma escrita no Omie**; idempotente por `codigo_lancamento_integracao` | unit (domínio, `buildResumoDePagamento` parametrizada) | `npm run test --workspace=@n1/dominio -- financeiro` | ⚠️ W0 — função existe, parametrização não | ⬜ pending |
-| TBD | TBD | TBD | PAG-03 | T-3-03 | Novo endpoint de lançamento em `automation/` exige credencial de serviço (D-15) e `Idempotency-Key`; **não escreve status em lugar nenhum** | integration (Omie falso) | `cd ../financeiro-tria/automation && npm test` | ⚠️ W0 — `src/testing/omie-falso.ts` existe e é reusável; o endpoint não | ⬜ pending |
-| TBD | TBD | TBD | PAG-04 | — | Categorias e contas vêm do plano real do Omie (`ListarCategorias`/`ListarDepartamentos`/RAG), não de `CATEGORIA_OMIE`/`CONTA_POR_TAG`/`CNPJ_POR_EMPRESA` fictícios; `REVISAR` abaixo de `CATEGORY_MIN_SIMILARITY` | unit + integration (Omie falso) | `npm run test --workspace=@n1/dominio -- financeiro` + `cd ../financeiro-tria/automation && npm test` | ⚠️ W0 | ⬜ pending |
-| TBD | TBD | TBD | PAG-04 | — | RESUMO no formato exato de CON-CP-08, atribuído ao Financeiro (não ao Agente) | unit (domínio, asserção de string) | `npm run test --workspace=@n1/dominio -- financeiro` | ⚠️ W0 | ⬜ pending |
-| TBD | TBD | TBD | PAG-05 | — | 61 fechamentos em lote, cada um dispara A1 uma vez; tempo de lock medido contra DEC-06 | integration (Postgres real) | `npm run test -w @n1/api -- lote-contas-a-pagar` | ❌ W0 — arquivo novo | ⬜ pending |
-| TBD | TBD | TBD | PAG-06 | T-3-01 (Information Disclosure) | Pessoa A **não vê** Tarefa da Pessoa B (não só "Pessoa A vê a própria"); edita só Anexo e Data de Emissão | unit (domínio) | `npm run test --workspace=@n1/dominio -- tasks` | ⚠️ W0 — a checagem existe; o teste do caso negativo não | ⬜ pending |
-| TBD | TBD | TBD | PAG-06 | T-3-01 | Grant da Pessoa da conta é concedida **dinamicamente** quando o campo Pessoa é preenchido, não só estática no seed | unit (domínio) | `npm run test --workspace=@n1/dominio -- tasks` | ❌ W0 — o mecanismo dinâmico não existe hoje | ⬜ pending |
-| TBD | TBD | TBD | todos (portão CON-05) | — | `npm run check` verde nos três workspaces; os testes do domínio anteriores seguem idênticos; `automation/` com o mesmo `git log` fora o adapter/endpoint novo | full suite | `npm run check` | ✅ | ⬜ pending |
+| TBD | 03-09/03-10 | 1/3 | PAG-01 | T-3-02 (replay duplicado) | Tarefa importada preserva `date_created`/`date_closed`/histórico de status com a data original; replay do CLI não duplica (padrão `jaImportada()`/`importacao_ledger` de 02-22/02-25) | unit (domínio, puro) | `npm run test --workspace=@n1/dominio -- importacao-contas-a-pagar` | ❌ W0 — arquivo novo | ⬜ pending |
+| TBD | 03-09 | 1 | PAG-01 | — | "Tempo em `para pagar`" continua mensurável a partir dos Registros de Atividade importados (29–31 dias é o ciclo normal) | unit (domínio) | `npm run test --workspace=@n1/dominio -- importacao-contas-a-pagar` | ❌ W0 | ⬜ pending |
+| TBD | 03-09 | 1 | PAG-01 | T-3-02 | A importação **não** chama `changeTaskStatus` para replay — nenhuma das 9 Automações dispara durante a importação histórica | unit (domínio) — asserção de que nenhuma `AutomationExecution` nasce no replay | `npm run test --workspace=@n1/dominio -- importacao-contas-a-pagar` | ❌ W0 | ⬜ pending |
+| TBD | 03-03 | 1 | PAG-02 / A1 | — | Recorrência: uma ocorrência por fechamento, mesmo reabrindo (RN-CP-06) | unit (domínio) | `npm run test --workspace=@n1/dominio -- -t "RN-CP-06"` | ✅ já existe (`operations.test.ts` ~3665) | ⬜ pending |
+| TBD | 03-02 | 1 | PAG-02 / A2–A4, A9 | — | Automações de evento disparam dentro da mesma transação, cada uma com Execução auditável | unit (domínio) | `npm run test --workspace=@n1/dominio -- automations` | ⚠️ W0 — confirmar se estende `operations.test.ts` ou nasce dedicado | ⬜ pending |
+| TBD | 03-02 | 1 | PAG-02 / A5–A7 | — | Automações de agenda disparam no dia certo e **não repetem** ao rodar duas vezes com o mesmo `today` | unit (domínio, `today: Date` injetado) | `npm run test --workspace=@n1/dominio -- automations` | ⚠️ W0 — cobrir "processo caiu e retomou" | ⬜ pending |
+| TBD | 03-08 | 2 | AUTO-01 | T-3-04 (log vazando dado financeiro) | Poller chama `runScheduledAutomations` ≥ 1×/dia por Lista, **mesmo após reinício**; erro passa por `sanitizarErro()` antes de ir ao log | integration (Postgres real, `Relogio` injetável — padrão `outbox-worker.test.ts`) | `npm run test -w @n1/api -- automacoes/scheduler-worker` | ❌ W0 — arquivo novo | ⬜ pending |
+| TBD | 03-04 | 1 | PAG-03 | T-3-03 (endpoint sem auth/idempotência) | Cálculo do lançamento separado da execução; Ensaio (D3-03) grava o que lançaria **sem nenhuma escrita no Omie**; idempotente por `codigo_lancamento_integracao` | unit (domínio, `buildResumoDePagamento` parametrizada) | `npm run test --workspace=@n1/dominio -- financeiro` | ⚠️ W0 — função existe, parametrização não | ⬜ pending |
+| TBD | 03-07 | 2 | PAG-03 | T-3-03 | Novo endpoint de lançamento em `automation/` exige credencial de serviço (D-15) e `Idempotency-Key`; **não escreve status em lugar nenhum** | integration (Omie falso) | `cd ../financeiro-tria/automation && npm test` | ⚠️ W0 — `src/testing/omie-falso.ts` existe e é reusável; o endpoint não | ⬜ pending |
+| TBD | 03-04/03-07/03-11 | 1/2/3 | PAG-04 | — | Categorias e contas vêm do plano real do Omie (`ListarCategorias`/`ListarDepartamentos`/RAG), não de `CATEGORIA_OMIE`/`CONTA_POR_TAG` (03-04) nem de `CNPJ_POR_EMPRESA` (03-11) fictícios; `REVISAR` abaixo de `CATEGORY_MIN_SIMILARITY` | unit + integration (Omie falso) | `npm run test --workspace=@n1/dominio -- financeiro` + `cd ../financeiro-tria/automation && npm test` | ⚠️ W0 | ⬜ pending |
+| TBD | 03-04 | 1 | PAG-04 | — | RESUMO no formato exato de CON-CP-08, atribuído ao Financeiro (não ao Agente) | unit (domínio, asserção de string) | `npm run test --workspace=@n1/dominio -- financeiro` | ⚠️ W0 | ⬜ pending |
+| TBD | 03-12 | 3 | PAG-05 | — | 61 fechamentos em lote, cada um dispara A1 uma vez; tempo de lock medido contra DEC-06 | integration (Postgres real) | `npm run test -w @n1/api -- lote-contas-a-pagar` | ❌ W0 — arquivo novo | ⬜ pending |
+| TBD | 03-05 | 2 | PAG-06 | T-3-01 (Information Disclosure) | Pessoa A **não vê** Tarefa da Pessoa B (não só "Pessoa A vê a própria"); edita só Anexo e Data de Emissão | unit (domínio) | `npm run test --workspace=@n1/dominio -- pessoa-da-conta` | ❌ W0 — arquivo novo | ⬜ pending |
+| TBD | 03-05 | 2 | PAG-06 | 03-05/T-3-11 | **A visibilidade é derivada do valor do Campo Pessoa** (`List.sharedWithDefinitionIds` + `memberNamedOnTask`), não concedida por Grant — 03-05 escolheu a Opção A e apaga as `gr_cp_pessoa_*` estáticas do seed; guarda de tipo `person` obrigatória | unit (domínio) | `npm run test --workspace=@n1/dominio -- pessoa-da-conta` | ❌ W0 — arquivo novo | ⬜ pending |
+| TBD | 03-14 | 5 | PAG-03 (Ensaio) | 03-14/T-3-65, T-3-67 | Comparação Ensaio × lançamento humano: `REVISAR` conta como recusa correta e fica **fora** do denominador; dia sem medição ⇒ `INCONCLUSIVO` e nenhuma taxa impressa; o relatório versionado não imprime fornecedor, valor, chave Pix nem código de barras | unit (domínio) | `npm run test --workspace=@n1/dominio -- ensaio-do-agente` | ❌ W0 — arquivo novo | ⬜ pending |
+| TBD | 03-14 | 5 | PAG-03 (Ensaio) | 03-14/T-3-65 | O agregado publicado passa por varredura de padrão de documento; zero CPF/CNPJ/Pix na saída | integration | `npm run test -w @n1/api -- relatorios/ensaio-do-agente` | ❌ W0 — arquivo novo | ⬜ pending |
+| TBD | 03-14 | 5 | PAG-03 (Ensaio) | 03-14/T-3-70 | O diálogo de registro do lançamento humano é texto livre, sem lista de categorias (não contamina a medição por viés de assentimento) e não coleta Pix/valor/fornecedor | unit (web) | `npm run test -w @n1/web -- lancamento-no-omie-dialog` | ❌ W0 — arquivo novo | ⬜ pending |
+| TBD | 03-15 | 4 | PAG-06 (tela) | T-3-01 | A Pessoa alcança a própria Tarefa pela tela e **não** vê a de outro fornecedor; a busca e "Todas do Espaço" deixam de listar Tarefa sem filtro de visibilidade | unit (web) | `npm run test -w @n1/web -- compartilhadas-comigo` | ❌ W0 — arquivo novo | ⬜ pending |
+| TBD | todos | — | todos (portão CON-05) | — | `npm run check` verde nos três workspaces; os testes do domínio anteriores seguem idênticos; `automation/` com o mesmo `git log` fora o adapter/endpoint novo | full suite | `npm run check` | ✅ | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -71,6 +75,17 @@ Cada teste nasce no mesmo plano/task que cria o código que ele prova.
 - [ ] Teste de concessão dinâmica da Grant da Pessoa da conta — PAG-06; não existe hoje porque o mecanismo também não existe
 - [ ] `apps/api/src/.../lote-contas-a-pagar.test.ts` — PAG-05, medindo o tempo de lock das 61 escritas contra DEC-06
 - [ ] Ampliar a cobertura de `automations` para A2–A9 (decidir: arquivo dedicado ou `describe` novo em `operations.test.ts`)
+
+Acrescentados em 2026-09-22, depois que os planos existiram (não estavam nesta
+lista quando ela foi escrita — o portão do plan-checker apontou a lacuna):
+
+- [ ] `packages/dominio/src/operations/ensaio-do-agente.test.ts` — PAG-03/D3-03, a comparação Ensaio × humano — Plan 03-14
+- [ ] `apps/api/src/relatorios/ensaio-do-agente.test.ts` — PAG-03, cobertura da janela e sanitização do agregado — Plan 03-14
+- [ ] `apps/web/src/features/tarefa/lancamento-no-omie-dialog.test.tsx` — PAG-03, o registro do lançamento humano — Plan 03-14
+- [ ] `apps/web/src/features/shell/compartilhadas-comigo.test.tsx` — PAG-06, o caminho da Pessoa até a Tarefa e o caso negativo **na tela** — Plan 03-15
+
+Donos dos seis itens originais, confirmados pelo plan-checker: 03-09, 03-08,
+03-07, 03-05, 03-12 e 03-02+03-03.
 
 ---
 
@@ -110,11 +125,16 @@ provar que nada dispara duas vezes é o teste que fecha esse critério.
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 45s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies — conferido pelo plan-checker nos 15 planos
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references — os 6 itens originais mais os 4 acrescentados têm dono
+- [x] No watch-mode flags
+- [x] Feedback latency < 45s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**`wave_0_complete` segue `false` de propósito:** os arquivos de teste da Wave 0
+ainda não existem — nascem durante a execução, cada um no plano que cria o
+código que ele prova. O campo vira `true` quando `/gsd-execute-phase 3` os
+tiver criado.
+
+**Approval:** approved 2026-09-22 (pré-execução, após o portão do plan-checker)

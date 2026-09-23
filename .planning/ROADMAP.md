@@ -204,8 +204,40 @@ Planejada em 2026-09-21 a partir de `02-CONTEXT.md` (D-01..D-28), `02-RESEARCH.m
   4. O Agente lança a conta no Omie de verdade via `automation/` (idempotente por `codigo_lancamento_integracao`), publica o RESUMO no formato exato de CON-CP-08 atribuído ao Financeiro e move para `lançado omie`; categorias e contas vêm do plano real do Omie (não de códigos inventados), com `REVISAR` abaixo do threshold; na primeira semana roda em Ensaio.
   5. O Financeiro fecha 61 contas em lote num só gesto e cada uma dispara A1; a Pessoa da conta vê só as Tarefas em que é o campo Pessoa (e edita só Anexo e Data de Emissão); demais Membros não veem a Lista.
 
-**Plans**: TBD
+**Plans**: 15 plans
 **UI hint**: yes
+Plans:
+**Wave 1** — o domínio, tudo em paralelo
+
+- [ ] 03-01-PLAN.md — Migração `005-agenda-de-automacoes.sql`: `plataforma.automacao_agenda` por (Espaço, Lista, dia civil), exclusão mútua entre instâncias e auditoria de "o dia foi processado", com o apply `[BLOCKING]` (AUTO-01)
+- [ ] 03-02-PLAN.md — Vocabulário do executor: `runAction` passa a tratar `aguardar`/`notificar`/`solicitarAprovacao`/`encerrar` (o tipo já os contém); base de tempo única `instante()`/`mesmoDiaCivil`; A2–A9 cobertas em arquivo próprio (PAG-02, AUTO-01)
+- [ ] 03-03-PLAN.md — A regra de A1 travada por teste: saturação de `addMonths` (D3-07), feriado tratado como dia útil (D3-06), uma ocorrência por fechamento mesmo reabrindo (PAG-02)
+- [ ] 03-04-PLAN.md — O de-para vira parâmetro: `buildResumoDePagamento` para de ler tabelas fictícias, o RESUMO de CON-CP-08 fica byte a byte, e `rehearsal` deixa de ser `false` fixo (PAG-03, PAG-04)
+- [ ] 03-09-PLAN.md — `importarContaAPagarHistorica`: Tarefa já no status final, um `recordActivity` por transição com o `at` original, **sem nunca chamar `changeTaskStatus`** — nenhuma Automação dispara no replay (PAG-01)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 03-05-PLAN.md — A Pessoa da conta enxerga a própria Tarefa por visibilidade **derivada** do Campo Pessoa (`sharedWithDefinitionIds` + `memberNamedOnTask`), não por Grant escrita à mão; caso negativo provado nos dois sentidos (PAG-06)
+- [ ] 03-06-PLAN.md — D3-08: a Solicitação aprovada vira Conta a pagar por `converterSolicitacaoEmContaAPagar`, com Vínculo `task→task` e `provenance` — sem Status `convertida` novo (PAG-01)
+- [ ] 03-07-PLAN.md — `financeiro-tria/automation`: superfície nova `/v1/integrations/contas-a-pagar/{resolver,lancar}` que só calcula e lança, **nunca escreve status em Lista nenhuma** (PAG-03, PAG-04)
+- [ ] 03-08-PLAN.md — `scheduler-worker.ts`: o relógio que faltava ao motor, com catch-up provado (a agenda não pula o dia se o processo cair) e a primeira volta em ensaio até liberação explícita (AUTO-01, PAG-02)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 03-10-PLAN.md — CLI de importação da Lista `901107637383` em lotes de 250, ledger `003` reusado, `MARCO_ZERO` gravado ao fim, e a corrida real `[BLOCKING]` provando que a segunda execução é no-op (PAG-01)
+- [ ] 03-11-PLAN.md — A ponte HTTP de A7/A8: de-para resolvido **antes** da transação, Ensaio que falha para o lado seguro em três camadas, e a metade `CNPJ_POR_EMPRESA` de PAG-04 (PAG-03, PAG-04)
+- [ ] 03-12-PLAN.md — `alterarStatusEmLote` numa transação só (61 < 250), com `RelatorioDeLote` de quatro resultados por item e o tempo de lock medido contra DEC-06 (PAG-05)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 03-13-PLAN.md — A tela do lote: liga o gesto que já existe a uma chamada só (hoje é um laço de 61 `POST` concorrentes), renderiza a falha parcial, e põe o botão da conversão D3-08 no card de Aprovação (PAG-05)
+- [ ] 03-15-PLAN.md — A metade de tela de PAG-06: re-chaveia `SharedTasks` em `memberSeesTask` (o 03-05 apaga as Grants em que ela se apoia hoje) e fecha duas telas que listam Tarefa sem filtro de visibilidade nenhum (PAG-06)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 03-14-PLAN.md — Relatório do Ensaio × lançamento humano com `LIMIAR_DA_CANETA` declarado antes dos dados, e o runbook de corte em 11 passos terminando no arquivamento da Lista (PAG-03)
+
+**Cross-cutting constraints:** o domínio nasce primeiro (a onda 1 é inteira `packages/dominio` fora a migração); nenhuma chamada de rede entra em `packages/dominio`; `sanitizarErro()` e `pool()` são reusados por import, nunca duplicados; o tempo é injetado (`today: Date`, `Relogio`) em todo o caminho de agenda; e o portão CON-05 vale em cada onda.
 
 **Motor de Automações (AUTO-01) mora aqui.** É a única peça G de risco alto ainda não iniciada e é transversal: o Financeiro (A1–A9) é o primeiro cliente, Contas a receber (R2–R7, Phase 5) o segundo, e o gatilho "tempo em Status" (C34) o terceiro. Planejar como infraestrutura genérica de `apps/api` — gatilho por evento (sobre o mesmo evento de saída de SOL-07, OQ-SYN-02) e por agenda com fila e retry persistente (o cron do `automation/` "sem fila, sem retry persistente" é o antipadrão) — executando `Automation` da ontologia com as quatro ações (`invocarAgente`, `solicitarAprovacao`, `aguardar`, `notificar` — `notificar` in-app aqui; por Canal na Phase 5) e registrando Execuções. OQ-PF-03 (C14) toca o escopo das Automações de Espaço de Trabalho. Merece pesquisa própria em `/gsd-plan-phase 3`. Antes de codificar A1, confirmar a regra da recorrência com o Financeiro (OQ-CP-06); antes do Agente real, resolver OQ-CP-04 (de-para ERP alcançável pela API) e OQ-CMP-03/05; com DEC-08, `conciliador_contas` e `omie_clientes` são lidos por HTTP (OQ-SYN-03). Medir o lote de 61 contra a serialização de escritas por Espaço (DEC-06).
 
