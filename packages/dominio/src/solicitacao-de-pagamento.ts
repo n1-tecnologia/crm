@@ -200,10 +200,15 @@ const OPCOES_BU = [
   "Expert Lucrativo", "KONQ", "Auton Heath",
 ] as const;
 
-// §4.1 — 11 opções.
+// §4.1 — 12 opções: as 11 originais + "Marcos Paulo" (D5-19/TEN-01,
+// 2026-09-24), acrescentada AO FINAL sem reordenar as anteriores. Editar
+// este catálogo não corrige produção (Pitfall 1 de 05-RESEARCH) — a opção só
+// chega a `ws_n1` pelo evolver por Empresa (`empresas:configurar --apply`,
+// plano 05-20), que acrescenta a mesma opção ao Campo `Empresa` real.
 const OPCOES_EMPRESA = [
   "Tria Company", "Oliveira Participações", "EXO Loteamento", "EXO Participações", "Loovi",
   "PLX digital", "IVL", "USI", "Konq Intermediações", "O2", "Inevitaveis",
+  "Marcos Paulo",
 ] as const;
 
 // §4.1 — 24 opções.
