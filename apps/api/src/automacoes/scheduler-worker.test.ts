@@ -21,7 +21,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { buildGestaoBootstrap } from "@n1/dominio/bootstrap-gestao";
-import { CP } from "@n1/dominio/operations/financeiro";
+import { CP, CR } from "@n1/dominio/operations/financeiro";
 import { createTask, setTaskFieldValue } from "@n1/dominio/operations/tasks";
 import type { DataState, Id, OperationResult } from "@n1/dominio";
 import { carregarEnv, encerrar, pool } from "../persistencia/conexao";
@@ -289,6 +289,33 @@ d("scheduler-worker (Postgres real) — (f)-(l) com espiã, (m) com o domínio d
 
     const linha = await lerLinhaDaAgenda(WORKSPACE, listId, "2026-08-31");
     expect(linha.estado).toBe("pendente");
+  });
+
+  it("(f2) Plan 05-10 Task 4 — CR.listId é descoberto por catalogoDeListasComAgenda sem nenhuma linha nova no motor, ao lado de CP.listId", async () => {
+    // Nenhum código novo: `catalogoDeListasComAgenda` (scheduler-worker.ts)
+    // varre `colecao = 'automations'` por SQL, sem lista hardcoded — este
+    // caso só PROVA isso para `CR.listId`, com o molde exato de
+    // `inserirAutomacaoDeAgenda` que (f) já usa para uma Lista qualquer.
+    // aut_cr_r2/aut_cr_r4/aut_cr_r5 publicadas (o mesmo trigger
+    // `condicaoTemporal` que `seed-contas-a-receber.ts` grava) fazem
+    // `CR.listId` aparecer no catálogo — junto de `CP.listId`, que já está
+    // em produção desde a Fase 1 e usa o MESMO caminho de descoberta.
+    await inserirAutomacaoDeAgenda(WORKSPACE, CP.listId, "aut_cp_teste_05_10");
+    await inserirAutomacaoDeAgenda(WORKSPACE, CR.listId, "aut_cr_r2");
+    await inserirAutomacaoDeAgenda(WORKSPACE, CR.listId, "aut_cr_r4");
+    await inserirAutomacaoDeAgenda(WORKSPACE, CR.listId, "aut_cr_r5");
+
+    const relogio = relogioFixo(new Date(2026, 7, 31, 12));
+    const worker = criarSchedulerWorker({ workerId: "w_f2", workspaceId: WORKSPACE, relogio });
+
+    // Uma linha por (Espaço, Lista) do catálogo — não uma por Automação:
+    // as três Automações de CR.listId contam como UMA Lista candidata.
+    expect(await worker.semear()).toBe(2);
+    expect(await contarLinhasDaAgenda(WORKSPACE, CP.listId)).toBe(1);
+    expect(await contarLinhasDaAgenda(WORKSPACE, CR.listId)).toBe(1);
+
+    const linhaCR = await lerLinhaDaAgenda(WORKSPACE, CR.listId, "2026-08-31");
+    expect(linhaCR.estado).toBe("pendente");
   });
 
   it("(g) processarUm() reivindica UMA linha, chama a agenda com o dia civil DAQUELA linha e fecha 'concluido' com as contagens", async () => {
