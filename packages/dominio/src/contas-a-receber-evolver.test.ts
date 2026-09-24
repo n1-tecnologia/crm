@@ -11,7 +11,9 @@
 import { describe, expect, it } from "vitest";
 import { buildGestaoBootstrap } from "./bootstrap-gestao";
 import { evoluirConfiguracaoDeContasAReceber } from "./contas-a-receber-evolver";
+import { setRecurrence } from "./operations/collaboration";
 import { CP, CR } from "./operations/financeiro";
+import { changeTaskStatus, createTask, setTaskFieldValue } from "./operations/tasks";
 import type { DataState } from "./state";
 
 function estadoBase(): DataState {
@@ -136,5 +138,70 @@ describe("evoluirConfiguracaoDeContasAReceber", () => {
     expect(r.ok).toBe(false);
     if (r.ok) throw new Error("devia recusar");
     expect(r.error).toContain(CR.listId);
+  });
+});
+
+/**
+ * R7 (Plan 05-10, Task 3) — teste de DOMÍNIO puro (sem `apps/api`, sem
+ * banco): prova que o MECANISMO que `garantirSaqueRecorrente`
+ * (`apps/api/src/bootstrap/contas-a-receber.ts`) depende — B6, a Recorrência
+ * nativa da Tarefa em `aoConcluir` — já funciona para um Saque de plataforma
+ * com a MESMA Regra do seed, sem nenhuma linha nova no motor de Automações
+ * (R7 nunca foi uma Automação `aut_cr_*`).
+ */
+describe("R7 — Saque de plataforma: a Recorrência nativa (B6) pare a próxima ocorrência ao concluir", () => {
+  it("mover o Saque para 'recebido' faz nascer a ocorrência do mês seguinte, sem herdar a Data de pagamento", () => {
+    const state = estadoBase();
+    const criacao = createTask(state, CP.financeiroId, {
+      listId: CR.listId,
+      title: "Saque da plataforma de cursos",
+      statusId: CR.status.disponivelSaque,
+      priority: "alta",
+      assignees: [{ kind: "member", id: CP.financeiroId }],
+      dueDate: { form: "civilDay", value: "2026-09-01" },
+    });
+    expect(criacao.ok, criacao.ok ? "" : criacao.error).toBe(true);
+    if (!criacao.ok) throw new Error("unreachable");
+    const task = criacao.value;
+
+    for (const [definitionId, value] of [
+      [CR.fields.tipo, CR.tipos.saque],
+      [CR.fields.forma, "Plataforma"],
+      [CR.fields.contaRecebimento, "TRIA"],
+      [CR.fields.situacao, CR.situacoes.emDia],
+      [CP.fields.valor, 9200],
+    ] as const) {
+      const r = setTaskFieldValue(state, CP.financeiroId, task.id, definitionId, value);
+      expect(r.ok, r.ok ? "" : r.error).toBe(true);
+    }
+    const dataPagamentoAntes = setTaskFieldValue(state, CP.financeiroId, task.id, CR.fields.dataPagamento, "2026-08-19");
+    expect(dataPagamentoAntes.ok).toBe(true);
+
+    const regra = setRecurrence(state, CP.financeiroId, task.id, {
+      frequency: "mensal",
+      interval: 1,
+      triggerMode: "aoConcluir",
+      businessDays: "posterior",
+      defaultAssigneeMemberId: CP.financeiroId,
+      copies: { checklists: false, subtasks: false, assignees: false, fieldValues: true, fieldValuesExcept: [CR.fields.dataPagamento] },
+    });
+    expect(regra.ok, regra.ok ? "" : regra.error).toBe(true);
+
+    const tarefasAntes = state.tasks.filter((t) => t.listId === CR.listId).length;
+
+    const conclusao = changeTaskStatus(state, CP.financeiroId, task.id, CR.status.recebido);
+    expect(conclusao.ok, conclusao.ok ? "" : conclusao.error).toBe(true);
+
+    const tarefasDepois = state.tasks.filter((t) => t.listId === CR.listId);
+    expect(tarefasDepois).toHaveLength(tarefasAntes + 1);
+
+    const proxima = tarefasDepois.find((t) => t.provenance?.kind === "recurrence" && t.provenance.sourceId === task.id);
+    expect(proxima).toBeDefined();
+    // fieldValuesExcept: [dataPagamento] — a próxima NÃO herda a Data de pagamento da anterior.
+    const dataPagamentoDepois = proxima!.fieldValues.find((v) => v.definitionId === CR.fields.dataPagamento);
+    expect(dataPagamentoDepois).toBeUndefined();
+    // fieldValues: true (menos a exceção) — o Tipo continua "Saque de plataforma".
+    const tipoDepois = proxima!.fieldValues.find((v) => v.definitionId === CR.fields.tipo);
+    expect(tipoDepois?.value).toBe(CR.tipos.saque);
   });
 });

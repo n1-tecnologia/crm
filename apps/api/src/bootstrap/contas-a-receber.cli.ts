@@ -9,11 +9,13 @@
  * Sem flag, roda em `--dry-run`: hidrata, calcula o diff, mostra e faz
  * rollback — aplicar exige intenção explícita (`--apply`).
  *
- * DOIS MODOS, um por invocação — nunca dois gestos no mesmo comando:
- *   1. Sem `--prazo-r4`/`--prazo-r5`: evolução da Task 1 (Lista, Status,
- *      Campos, Automações, Concessões, Visões).
+ * TRÊS MODOS, um por invocação — nunca dois gestos no mesmo comando:
+ *   1. Sem `--prazo-r4`/`--prazo-r5`/`--saque-recorrente`: evolução da Task 1
+ *      (Lista, Status, Campos, Automações, Concessões, Visões).
  *   2. Com `--prazo-r4=<n>`/`--prazo-r5=<n>`: SÓ o ajuste de prazo (Task 2,
  *      D5-15).
+ *   3. Com `--saque-recorrente`: SÓ garante o Saque de plataforma recorrente
+ *      (Task 3, R7) — exige `--valor=<n>` maior que zero (D5-14).
  *
  * Flags (`--chave=valor` ou booleanas, sem biblioteca de parsing):
  *   --dry-run           padrão; não grava
@@ -22,14 +24,17 @@
  *   --membro=<id>       Membro atuante (ActivityRecord.actor); padrão "mem_maryane"
  *   --prazo-r4=<n>      novo `dueDateOffsetDays` de R4 (inteiro > 0)
  *   --prazo-r5=<n>      novo `dueDateOffsetDays` de R5 (inteiro > prazo-r4)
+ *   --saque-recorrente  garante a Tarefa "Saque da plataforma de cursos" com Recorrência mensal
+ *   --valor=<n>         Valor do Saque (> 0) — obrigatório com `--saque-recorrente`
  *
  * Disciplina de saída (T-02-21): só ids, contagens e o antes/depois —
- * nunca conteúdo de Campo, nome de cliente ou valor monetário. Código de
- * saída 1 quando a operação recusa.
+ * nunca conteúdo de Campo, nome de cliente ou valor monetário (o `--valor`
+ * do Saque ecoado na saída é o que o próprio operador acabou de digitar).
+ * Código de saída 1 quando a operação recusa.
  */
 
 import { carregarEnv, encerrar } from "../persistencia/conexao";
-import { ajustarPrazosDeCobranca, configurarContasAReceber } from "./contas-a-receber";
+import { ajustarPrazosDeCobranca, configurarContasAReceber, garantirSaqueRecorrente } from "./contas-a-receber";
 
 carregarEnv();
 
@@ -51,10 +56,25 @@ const dryRun = !temFlag("apply");
 
 const prazoR4Texto = valorDe("prazo-r4");
 const prazoR5Texto = valorDe("prazo-r5");
+const saqueRecorrente = temFlag("saque-recorrente");
+const valorTexto = valorDe("valor");
 
 console.log(`modo         ${dryRun ? "dry-run (nada gravado)" : "apply"}`);
 
-if (prazoR4Texto !== undefined || prazoR5Texto !== undefined) {
+if (saqueRecorrente) {
+  const resultado = await garantirSaqueRecorrente({
+    workspaceId,
+    actingMemberId,
+    dryRun,
+    valor: valorTexto !== undefined ? Number(valorTexto) : NaN,
+  });
+  if (!resultado.ok) {
+    console.error(`recusado     ${resultado.error}`);
+    await encerrar();
+    process.exit(1);
+  }
+  console.log(`saque        ${resultado.diff.criado ? "criado" : "já existia — Regra conferida, sem divergência"} — ${resultado.diff.taskId}`);
+} else if (prazoR4Texto !== undefined || prazoR5Texto !== undefined) {
   const resultado = await ajustarPrazosDeCobranca({
     workspaceId,
     actingMemberId,

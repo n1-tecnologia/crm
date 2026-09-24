@@ -16,7 +16,7 @@ import { createTask } from "@n1/dominio/operations/tasks";
 import { carregarEnv, encerrar, pool } from "../persistencia/conexao";
 import { hidratar } from "../persistencia/repositorio";
 import { bootstrapGestao } from "./gestao";
-import { ajustarPrazosDeCobranca, configurarContasAReceber } from "./contas-a-receber";
+import { ajustarPrazosDeCobranca, configurarContasAReceber, garantirSaqueRecorrente } from "./contas-a-receber";
 
 carregarEnv();
 const temBanco = Boolean(process.env.DATABASE_URL);
@@ -293,5 +293,130 @@ d("ajustarPrazosDeCobranca — o prazo de R4/R5 vira parâmetro (D5-15) contra o
     } finally {
       cliente.release();
     }
+  });
+});
+
+d("garantirSaqueRecorrente — R7, o Saque de plataforma recorrente (Task 3, D5-14) contra o Postgres real", () => {
+  const WS3 = `${WS}_saque`;
+
+  beforeAll(async () => {
+    const limpeza = await pool().connect();
+    try {
+      await limpeza.query("delete from plataforma.registros where workspace_id = $1", [WS3]);
+      await limpeza.query("delete from plataforma.workspaces where workspace_id = $1", [WS3]);
+    } finally {
+      limpeza.release();
+    }
+    const bootstrap = await pool().connect();
+    try {
+      const resultado = await bootstrapGestao(bootstrap, { workspaceId: WS3, agora: AGORA });
+      expect(resultado.criado).toBe(true);
+    } finally {
+      bootstrap.release();
+    }
+  });
+
+  afterAll(async () => {
+    const limpeza = await pool().connect();
+    try {
+      await limpeza.query("delete from plataforma.registros where workspace_id = $1", [WS3]);
+      await limpeza.query("delete from plataforma.workspaces where workspace_id = $1", [WS3]);
+    } finally {
+      limpeza.release();
+    }
+    await encerrar();
+  });
+
+  async function tarefasDeSaque(): Promise<Array<{ id: string; recurrence: unknown }>> {
+    const cliente = await pool().connect();
+    try {
+      const { state } = await hidratar(cliente, WS3);
+      return state.tasks
+        .filter((t) => t.listId === CR.listId && t.recurrence !== undefined)
+        .map((t) => ({ id: t.id, recurrence: t.recurrence }));
+    } finally {
+      cliente.release();
+    }
+  }
+
+  it("(viii) --valor ausente recusa — nenhuma Tarefa é criada", async () => {
+    const resultado = await garantirSaqueRecorrente({ workspaceId: WS3, actingMemberId: CP.financeiroId, dryRun: false, valor: NaN });
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error("devia recusar");
+    expect(resultado.error).toContain("Valor > 0");
+    expect(await tarefasDeSaque()).toHaveLength(0);
+  });
+
+  it("(ix) --valor=0 recusa — nenhuma Tarefa é criada", async () => {
+    const resultado = await garantirSaqueRecorrente({ workspaceId: WS3, actingMemberId: CP.financeiroId, dryRun: false, valor: 0 });
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error("devia recusar");
+    expect(resultado.error).toContain("Valor > 0");
+    expect(await tarefasDeSaque()).toHaveLength(0);
+  });
+
+  it("(x) --apply cria a Tarefa com a Regra completa; rodar duas vezes deixa exatamente UMA Tarefa de Saque com recurrence definida", async () => {
+    const primeiro = await garantirSaqueRecorrente({ workspaceId: WS3, actingMemberId: CP.financeiroId, dryRun: false, valor: 9200 });
+    expect(primeiro.ok, primeiro.ok ? "" : primeiro.error).toBe(true);
+    if (!primeiro.ok) throw new Error("unreachable");
+    expect(primeiro.diff.criado).toBe(true);
+
+    const segundo = await garantirSaqueRecorrente({ workspaceId: WS3, actingMemberId: CP.financeiroId, dryRun: false, valor: 9200 });
+    expect(segundo.ok, segundo.ok ? "" : segundo.error).toBe(true);
+    if (!segundo.ok) throw new Error("unreachable");
+    expect(segundo.diff.criado).toBe(false);
+    expect(segundo.diff.taskId).toBe(primeiro.diff.taskId);
+
+    const tarefas = await tarefasDeSaque();
+    expect(tarefas).toHaveLength(1);
+    expect(tarefas[0]!.recurrence).toEqual({
+      frequency: "mensal",
+      interval: 1,
+      triggerMode: "aoConcluir",
+      businessDays: "posterior",
+      defaultAssigneeMemberId: CP.financeiroId,
+      copies: { checklists: false, subtasks: false, assignees: false, fieldValues: true, fieldValuesExcept: [CR.fields.dataPagamento] },
+    });
+
+    const cliente = await pool().connect();
+    try {
+      const { state } = await hidratar(cliente, WS3);
+      const task = state.tasks.find((t) => t.id === primeiro.diff.taskId)!;
+      expect(task.statusId).toBe(CR.status.disponivelSaque);
+      expect(task.assignees).toEqual([{ kind: "member", id: CP.financeiroId }]);
+      const campo = (id: string) => task.fieldValues.find((v) => v.definitionId === id)?.value;
+      expect(campo(CR.fields.tipo)).toBe(CR.tipos.saque);
+      expect(campo(CR.fields.forma)).toBe("Plataforma");
+      expect(campo(CR.fields.contaRecebimento)).toBe("TRIA");
+      expect(campo(CR.fields.situacao)).toBe(CR.situacoes.emDia);
+      expect(campo(CP.fields.valor)).toBe(9200);
+    } finally {
+      cliente.release();
+    }
+  });
+
+  it("(xi) uma Regra divergente no banco é relatada e não sobrescrita", async () => {
+    const cliente = await pool().connect();
+    try {
+      await cliente.query(
+        `update plataforma.registros
+            set dados = jsonb_set(dados, '{recurrence,interval}', '2'::jsonb)
+          where workspace_id = $1 and colecao = 'tasks'
+            and dados->>'listId' = $2 and dados ? 'recurrence'`,
+        [WS3, CR.listId],
+      );
+    } finally {
+      cliente.release();
+    }
+
+    const resultado = await garantirSaqueRecorrente({ workspaceId: WS3, actingMemberId: CP.financeiroId, dryRun: false, valor: 9200 });
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error("devia recusar por divergência");
+    expect(resultado.error).toContain("diverge do catálogo");
+
+    // Nada foi sobrescrito — a adulteração continua no banco.
+    const tarefas = await tarefasDeSaque();
+    expect(tarefas).toHaveLength(1);
+    expect((tarefas[0]!.recurrence as { interval: number }).interval).toBe(2);
   });
 });

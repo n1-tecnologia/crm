@@ -14,12 +14,16 @@
  * (Plan 02-08).
  */
 
-import { fail, ok, type DataState, type Id, type OperationResult } from "@n1/dominio";
+import { fail, ok, type DataState, type Id, type OperationResult, type RecurrenceRule, type TaskDate } from "@n1/dominio";
 import { evoluirConfiguracaoDeContasAReceber, type DiffDeConfiguracao } from "@n1/dominio/contas-a-receber-evolver";
+import { civilOf, effectiveLifecycleOfTask } from "@n1/dominio/derive";
+import { CP, CR } from "@n1/dominio/operations/financeiro";
 import { syncIdSequence } from "@n1/dominio/operations";
 import { memberActor, recordActivity } from "@n1/dominio/operations/activity";
+import { setRecurrence } from "@n1/dominio/operations/collaboration";
+import { createTask, setTaskFieldValue } from "@n1/dominio/operations/tasks";
 import { pool } from "../persistencia/conexao";
-import { hidratar } from "../persistencia/repositorio";
+import { canonico, hidratar } from "../persistencia/repositorio";
 import { executar } from "../persistencia/unidade-de-trabalho";
 
 export interface OpcoesDeConfiguracao {
@@ -167,6 +171,146 @@ export async function ajustarPrazosDeCobranca(opcoes: OpcoesDeAjusteDePrazo): Pr
   }
 
   const resultado = await executar(workspaceId, (state) => aplicarAjusteDePrazo(state, actingMemberId, prazoR4, prazoR5));
+  if ("conflito" in resultado) {
+    return { ok: false, dryRun: false, error: resultado.error };
+  }
+  return resultado.ok
+    ? { ok: true, dryRun: false, diff: resultado.value }
+    : { ok: false, dryRun: false, error: resultado.error };
+}
+
+/* ═══════════════ Task 3 — R7: o Saque de plataforma volta a nascer sozinho ═══════════════
+ *
+ * R7 não é uma Automação `aut_cr_*` — é Regra de Recorrência NATIVA da
+ * Tarefa (o mesmo mecanismo de A1 na Fase 3: `changeTaskStatus`,
+ * `packages/dominio/src/operations/tasks.ts:247-280`, pare a próxima
+ * ocorrência dentro de `aoConcluir`). O que falta em produção é a Tarefa que
+ * carrega a Regra — a única que o seed tem está atrás de `fixtures: true`
+ * (`applyContasAReceber(..., { fixtures: false })` nunca a cria).
+ *
+ * D5-14 — Saque exige Valor > 0 sem exceção: o comando RECUSA sem `--valor`
+ * maior que zero, e a Tarefa nunca nasce com Valor `0` (o que os 240
+ * históricos fizeram e D5-14 mandou parar de fazer).
+ */
+
+const REGRA_DE_RECORRENCIA_DO_SAQUE: RecurrenceRule = {
+  frequency: "mensal",
+  interval: 1,
+  triggerMode: "aoConcluir",
+  businessDays: "posterior",
+  defaultAssigneeMemberId: CP.financeiroId,
+  copies: { checklists: false, subtasks: false, assignees: false, fieldValues: true, fieldValuesExcept: [CR.fields.dataPagamento] },
+};
+
+/** Sábado e domingo andam para o dia útil POSTERIOR — a mesma regra de `businessDays: "posterior"` que a própria Recorrência aplica às ocorrências seguintes (`operations/collaboration.ts::toBusinessDay`). */
+function primeiroDiaUtilDoMes(hoje: Date): TaskDate {
+  const d = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+  const diaDaSemana = d.getDay();
+  if (diaDaSemana === 6) d.setDate(d.getDate() + 2); // sábado → segunda
+  else if (diaDaSemana === 0) d.setDate(d.getDate() + 1); // domingo → segunda
+  return { form: "civilDay", value: civilOf(d) };
+}
+
+function valorDoCampo(task: { readonly fieldValues: ReadonlyArray<{ readonly definitionId: Id; readonly value: unknown; readonly state: string }> }, definitionId: Id): unknown {
+  return task.fieldValues.find((v) => v.definitionId === definitionId && v.state === "ativo")?.value;
+}
+
+function localizarSaqueRecorrente(state: DataState): DataState["tasks"][number] | undefined {
+  return state.tasks.find(
+    (t) =>
+      t.listId === CR.listId &&
+      t.recurrence !== undefined &&
+      effectiveLifecycleOfTask(state, t.id) === "ativo" &&
+      valorDoCampo(t, CR.fields.tipo) === CR.tipos.saque,
+  );
+}
+
+export interface DiffDeSaqueRecorrente {
+  readonly criado: boolean;
+  readonly taskId: Id;
+}
+
+function aplicarGarantiaDeSaqueRecorrente(state: DataState, actingMemberId: Id, valor: number): OperationResult<DiffDeSaqueRecorrente> {
+  if (!Number.isFinite(valor) || valor <= 0) {
+    return fail("O Saque de plataforma exige Valor > 0 (D5-14, RN-CR-03) — informe --valor maior que zero.");
+  }
+
+  const existente = localizarSaqueRecorrente(state);
+  if (existente) {
+    const esperado = canonico(REGRA_DE_RECORRENCIA_DO_SAQUE);
+    const encontrado = canonico(existente.recurrence);
+    if (esperado !== encontrado) {
+      return fail(
+        `Regra de Recorrência do Saque "${existente.id}" diverge do catálogo — nada foi sobrescrito: esperado ${esperado}, encontrado ${encontrado}`,
+      );
+    }
+    return ok({ criado: false, taskId: existente.id });
+  }
+
+  const hoje = new Date();
+  const criacao = createTask(state, actingMemberId, {
+    listId: CR.listId,
+    title: "Saque da plataforma de cursos",
+    statusId: CR.status.disponivelSaque,
+    priority: "alta",
+    assignees: [memberActor(CP.financeiroId)],
+    dueDate: primeiroDiaUtilDoMes(hoje),
+  });
+  if (!criacao.ok) return fail(criacao.error);
+  const task = criacao.value;
+
+  const campos: ReadonlyArray<readonly [Id, string]> = [
+    [CR.fields.tipo, CR.tipos.saque],
+    [CR.fields.forma, "Plataforma"],
+    [CR.fields.contaRecebimento, "TRIA"],
+    [CR.fields.situacao, CR.situacoes.emDia],
+  ];
+  for (const [definitionId, value] of campos) {
+    const resultado = setTaskFieldValue(state, actingMemberId, task.id, definitionId, value);
+    if (!resultado.ok) return fail(resultado.error);
+  }
+  // D5-14 — o Valor de verdade, nunca `0`: recusado acima quando ausente ou <= 0.
+  const valorResultado = setTaskFieldValue(state, actingMemberId, task.id, CP.fields.valor, valor);
+  if (!valorResultado.ok) return fail(valorResultado.error);
+
+  const recorrenciaResultado = setRecurrence(state, actingMemberId, task.id, REGRA_DE_RECORRENCIA_DO_SAQUE);
+  if (!recorrenciaResultado.ok) return fail(recorrenciaResultado.error);
+
+  return ok({ criado: true, taskId: task.id });
+}
+
+export interface OpcoesDeSaqueRecorrente {
+  readonly workspaceId: string;
+  readonly actingMemberId: string;
+  /** Padrão `true` no CLI — aplicar exige intenção explícita (`--apply`). */
+  readonly dryRun: boolean;
+  readonly valor: number;
+}
+
+export type ResultadoDeSaqueRecorrente =
+  | { readonly ok: true; readonly dryRun: boolean; readonly diff: DiffDeSaqueRecorrente }
+  | { readonly ok: false; readonly dryRun: boolean; readonly error: string };
+
+export async function garantirSaqueRecorrente(opcoes: OpcoesDeSaqueRecorrente): Promise<ResultadoDeSaqueRecorrente> {
+  const { workspaceId, actingMemberId, dryRun, valor } = opcoes;
+
+  if (dryRun) {
+    const cliente = await pool().connect();
+    try {
+      await cliente.query("begin");
+      const { state } = await hidratar(cliente, workspaceId);
+      syncIdSequence(state);
+      const resultado = aplicarGarantiaDeSaqueRecorrente(state, actingMemberId, valor);
+      return resultado.ok
+        ? { ok: true, dryRun: true, diff: resultado.value }
+        : { ok: false, dryRun: true, error: resultado.error };
+    } finally {
+      await cliente.query("rollback").catch(() => undefined);
+      cliente.release();
+    }
+  }
+
+  const resultado = await executar(workspaceId, (state) => aplicarGarantiaDeSaqueRecorrente(state, actingMemberId, valor));
   if ("conflito" in resultado) {
     return { ok: false, dryRun: false, error: resultado.error };
   }
