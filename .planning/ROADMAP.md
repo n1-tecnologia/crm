@@ -360,7 +360,7 @@ Plans:
 **Gap wave 3** *(blocked on gap wave 2)*
 
 - [ ] 05-21-PLAN.md — Índice único de eventos de Canal (migração 006), aplicado sob checkpoint (WR-04) (AUTO-02)
-- [ ] 05-22-PLAN.md — Correção auditada das Datas de pagamento já importadas em `ws_n1` (CR-06, dados) (REC-01)
+- [x] 05-22-PLAN.md — Correção auditada das Datas de pagamento já importadas em `ws_n1` (CR-06, dados) (REC-01)
 - [x] 05-24-PLAN.md — Contrato ponta a ponta do Canal entre crm-n1 e `automation/` (Critério 4, `missing` do verificador) (AUTO-02)
 
 **Gap wave 4** *(blocked on gap wave 3)*
@@ -399,7 +399,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 23/28 | In Progress|  |
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
-| 5. Contas a receber e os outros tenants | 21/25 | In Progress|  |
+| 5. Contas a receber e os outros tenants | 22/25 | In Progress|  |
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*
