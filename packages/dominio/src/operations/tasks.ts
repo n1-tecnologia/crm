@@ -977,6 +977,42 @@ const valorPreenchido = (value: FieldValue["value"] | undefined): boolean =>
   value !== undefined && value !== null && value !== "" && !(Array.isArray(value) && value.length === 0) && value !== false;
 
 /**
+ * Ids literais dos dois Campos "Empresa" do processo financeiro — cada Lista
+ * tem o seu próprio (`fld_sp_c_empresa` na Solicitação, `fd_cp_empresa` em
+ * Contas a pagar — `../solicitacao-de-pagamento.ts:234` e
+ * `../operations/financeiro.ts:35`, e a conversão de um para o outro em
+ * `conversao-de-solicitacao.ts:78`, `DE_PARA_DE_CAMPOS`). Literal aqui, e não
+ * `CP.fields.empresa` importado de `./financeiro`, pelo mesmo motivo mecânico
+ * já documentado em `conversao-de-solicitacao.ts`: `./financeiro.ts` já
+ * importa deste arquivo (`addTaskComment`, `createTask`, `setTaskFieldValue`,
+ * `trashTask`, `unmetRequirements`) — importar `CP` daqui criaria o ciclo
+ * `tasks ⇄ financeiro`.
+ */
+const CAMPOS_EMPRESA: readonly Id[] = ["fld_sp_c_empresa", "fd_cp_empresa"];
+
+/**
+ * D5-06 — o 5º Status "em revisão" (e qualquer Status futuro que alguma
+ * Empresa declare) só é alcançável pela Empresa que o declara em
+ * `Integration.statusDeclarados` (05-01, `configuracao-por-empresa.ts`). Vale
+ * só quando ALGUMA Integração do estado declara o Status alvo — um Status que
+ * ninguém declara (os quatro de D-01) nunca é bloqueado por esta regra: sem
+ * essa guarda, ela bloquearia tudo em qualquer Espaço sem Integração
+ * configurada.
+ */
+function statusNaoDeclaradoPelaEmpresa(state: DataState, task: Task, alvo: StatusDefinition): string | undefined {
+  const declaravelPorAlguem = state.integrations.some((i) => i.statusDeclarados?.includes(alvo.name));
+  if (!declaravelPorAlguem) return undefined;
+  const empresa = task.fieldValues.find((v) => CAMPOS_EMPRESA.includes(v.definitionId) && v.state === "ativo")?.value;
+  if (!empresa) return undefined;
+  const integracao = state.integrations.find((i) => i.empresa === empresa);
+  if (integracao?.statusDeclarados?.includes(alvo.name)) return undefined;
+  // O texto fixo "fluxo do Family Office" fica como está porque hoje ele é o
+  // único declarante — generalizar o texto é trabalho de quando existir um
+  // segundo declarante (D5-11 aplicado por analogia).
+  return `Este Status pertence ao fluxo do Family Office — a Automação desta Empresa não usa “${alvo.name}”.`;
+}
+
+/**
  * Por que ESTA opção de Status não pode ser escolhida agora — a mesma frase
  * que `changeTaskStatus` devolveria, dita antes do clique, em qualquer tela.
  */
@@ -987,6 +1023,10 @@ export function statusOptionRefusal(state: DataState, actingMemberId: Id, task: 
   const faltando = unmetRequirements(state, task, atual?.exitRequirements ?? []);
   if (atual && faltando.length > 0) return `Para sair de “${atual.name}” falta: ${faltando.join(", ")}.`;
   const alvo = config?.statusSet.definitions.find((d) => d.id === optionId);
+  if (alvo) {
+    const naoDeclarado = statusNaoDeclaradoPelaEmpresa(state, task, alvo);
+    if (naoDeclarado) return naoDeclarado;
+  }
   if (alvo?.entryAllowedMemberIds?.length && !alvo.entryAllowedMemberIds.includes(actingMemberId)) {
     return `Só ${alvo.entryAllowedMemberIds.map((id) => state.members.find((m) => m.id === id)?.displayName ?? id).join(", ")} move para “${alvo.name}”.`;
   }
