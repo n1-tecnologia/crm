@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 05 (contas-a-receber-e-os-outros-tenants) — EXECUTING
-Plan: 2 of 12
-Status: Ready to execute
-Last activity: 2026-09-24 -- Phase 05 execution started
+Plan: 4 of 12 (05-01, 05-02, 05-03, 05-06 completos — Ondas 1 e 2)
+Status: Executing — Onda 3 (05-04, 05-07) a seguir
+Last activity: 2026-09-24 -- Onda 2 da Phase 05: tela de Integrações por Empresa, 5º Status no contrato v1 (dois repos, sibling `6db51b8`), `notificar` por Canal no domínio. Portão verde: typecheck 3 workspaces, lint, tokens, dominio 503, web 167, api escopado 110, next build
 
 **Onda 5 — 04-12** (sibling, `f06da55`/`d4cca79`/`49d71af`): módulo de acesso ao
 `conciliador_contas` e as seis rotas de plano de contas/workflows/execuções, autenticadas pelo

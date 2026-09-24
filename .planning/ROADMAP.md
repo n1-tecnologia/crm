@@ -312,9 +312,9 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 05-02-PLAN.md — A tela: Integrações por Empresa e o 5º Status `em revisão` bloqueado por Empresa (TEN-01)
-- [ ] 05-03-PLAN.md — O 5º Status atravessa o contrato v1 nos dois repositórios, com fixture e documento (TEN-01)
-- [ ] 05-06-PLAN.md — `notificar` por Canal no domínio: destino declarado, vazio é recusa, nenhum I/O (AUTO-02)
+- [x] 05-02-PLAN.md — A tela: Integrações por Empresa e o 5º Status `em revisão` bloqueado por Empresa (TEN-01)
+- [x] 05-03-PLAN.md — O 5º Status atravessa o contrato v1 nos dois repositórios, com fixture e documento (TEN-01)
+- [x] 05-06-PLAN.md — `notificar` por Canal no domínio: destino declarado, vazio é recusa, nenhum I/O (AUTO-02)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -370,7 +370,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 23/28 | In Progress|  |
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
-| 5. Contas a receber e os outros tenants | 1/12 | In Progress|  |
+| 5. Contas a receber e os outros tenants | 4/12 | In Progress|  |
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*
