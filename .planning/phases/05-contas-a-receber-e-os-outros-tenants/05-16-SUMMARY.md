@@ -201,3 +201,7 @@ Itens do `05-REVIEW.md` e achados deste planejamento que o dono NÃO incluiu no 
 ---
 *Phase: 05-contas-a-receber-e-os-outros-tenants*
 *Completed: 2026-09-24*
+
+## Self-Check: PASSED
+
+Todos os arquivos citados (criados/modificados) confirmados em disco com `[ -f ... ]`; os três hashes de commit (`5864ca8`, `885d754`, `6a47243`) confirmados em `git log --oneline --all`. Nenhum item faltando.
