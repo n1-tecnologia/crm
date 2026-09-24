@@ -336,6 +336,16 @@ export const FILTROS_INICIAIS: FinanceFilters = {
   grupo: "",
 };
 
+/**
+ * As opções do filtro por Empresa nas Listas financeiras (D5-04) — lidas do
+ * Campo `Empresa` (`CP.fields.empresa`), nunca de uma lista literal: quando o
+ * Campo ganha uma opção nova ("Marcos Paulo", 05-01), o filtro, o chip e a
+ * coluna crescem sozinhos porque leem esta função, não uma constante.
+ */
+export function opcoesDeEmpresa(state: DataState): readonly string[] {
+  return state.fieldDefinitions.find((d) => d.id === CP.fields.empresa)?.options ?? [];
+}
+
 /** Vencimento como instante local (dia civil ao meio-dia, como o seed). */
 export const vencimentoDe = (t: Task): number =>
   t.dueDate

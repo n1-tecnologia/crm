@@ -61,6 +61,7 @@ import {
   FILTROS_INICIAIS,
   GROUP_LABEL,
   nascimentoNoGrupo,
+  opcoesDeEmpresa,
   pagoEm,
   textoDoCampo as textoDe,
   valorDaConta as valorDe,
@@ -248,9 +249,7 @@ export function FinanceToolbar({
   const run = useRun();
   const router = useRouter();
   const { memberId } = useSession();
-  const empresas =
-    state.fieldDefinitions.find((d) => d.id === CP.fields.empresa)?.options ??
-    [];
+  const empresas = opcoesDeEmpresa(state);
   const admin = containerAdminRefusal(state, memberId, "list", listId);
   const agendadas = state.automations.filter(
     (a) =>
@@ -333,7 +332,7 @@ export function FinanceToolbar({
           size="sm"
           value={filters.empresa}
           onChange={(empresa) => onFilters({ ...filters, empresa })}
-          placeholder="Todas as empresas"
+          placeholder="Todas as Empresas"
           options={empresas.map((e) => ({ value: e, label: e }))}
         />
       </span>
