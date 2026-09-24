@@ -13,7 +13,7 @@ import { buildSeed } from "@n1/dominio/seed";
 import { buildApp } from "../app";
 import { carregarEnv, encerrar, pool } from "../persistencia/conexao";
 import { semear } from "../persistencia/repositorio";
-import type { ClienteDeLeituras, RespostaDeLeitura } from "../automacoes/cliente-leituras-financeiro";
+import type { ArquivoParaEnviar, ClienteDeLeituras, RespostaDeLeitura } from "../automacoes/cliente-leituras-financeiro";
 import { EMPRESAS_PERMITIDAS } from "./financeiro";
 
 const MARYANE = usuarioDoSeed("mem_maryane"); // CP.financeiroId — tem Concessão em "Gestão" (o Espaço privado que contém a Pasta Financeiro).
@@ -39,6 +39,38 @@ function clienteFalso(resultado: RespostaDeLeitura<unknown>): { readonly cliente
     },
     async enviarArquivo<T>(): Promise<RespostaDeLeitura<T>> {
       throw new Error("não usado neste teste");
+    },
+  };
+  return { cliente, chamadas };
+}
+
+interface ChamadaDeEscrita {
+  readonly metodo: "enviar" | "enviarArquivo";
+  readonly caminho: string;
+  readonly corpo?: unknown;
+  readonly arquivo?: ArquivoParaEnviar;
+}
+
+/**
+ * Cliente de escrita falso (Task 3, 04-10): captura `enviar`/`enviarArquivo` —
+ * `ler` lança, porque nenhuma rota de escrita lê. Nenhuma rede.
+ */
+function clienteFalsoDeEscrita(resultado: RespostaDeLeitura<unknown>): {
+  readonly cliente: ClienteDeLeituras;
+  readonly chamadas: ChamadaDeEscrita[];
+} {
+  const chamadas: ChamadaDeEscrita[] = [];
+  const cliente: ClienteDeLeituras = {
+    async ler<T>(): Promise<RespostaDeLeitura<T>> {
+      throw new Error("não usado neste teste");
+    },
+    async enviar<T>(caminho: string, corpo: unknown): Promise<RespostaDeLeitura<T>> {
+      chamadas.push({ metodo: "enviar", caminho, corpo });
+      return resultado as unknown as RespostaDeLeitura<T>;
+    },
+    async enviarArquivo<T>(caminho: string, arquivo: ArquivoParaEnviar): Promise<RespostaDeLeitura<T>> {
+      chamadas.push({ metodo: "enviarArquivo", caminho, arquivo });
+      return resultado as unknown as RespostaDeLeitura<T>;
     },
   };
   return { cliente, chamadas };
@@ -92,12 +124,134 @@ describe("GET /financeiro/* — sem banco", () => {
   });
 });
 
+describe("POST /financeiro/* — sem banco (as escritas de D4-07 e a ausência da rota de aprovar)", () => {
+  it("(a) sem token responde 401 em POST /financeiro/extratos/nubank", async () => {
+    const resposta = await appDeTeste("ws_financeiro_teste").inject({
+      method: "POST",
+      url: "/financeiro/extratos/nubank",
+      headers: { "x-file-name": "extrato.csv", "content-type": "text/csv" },
+      payload: Buffer.from("0123456789"),
+    });
+    expect(resposta.statusCode).toBe(401);
+  });
+
+  it("(b) sem token responde 401 em POST /financeiro/produtos/p1/aliquotas", async () => {
+    const resposta = await appDeTeste("ws_financeiro_teste").inject({
+      method: "POST",
+      url: "/financeiro/produtos/p1/aliquotas",
+      payload: { porcentagemProduto: "10" },
+    });
+    expect(resposta.statusCode).toBe(401);
+  });
+
+  it("(c) origem fora da allowlist é 400 antes de tocar o cliente falso", async () => {
+    const { cliente, chamadas } = clienteFalsoDeEscrita({ ok: true, status: 200, corpo: {} });
+    const resposta = await appDeTeste("ws_financeiro_teste", cliente).inject({
+      method: "POST",
+      url: "/financeiro/extratos/banco-inventado",
+      headers: { authorization: "Bearer token-maryane", "x-file-name": "extrato.csv", "content-type": "text/csv" },
+      payload: Buffer.from("0123456789"),
+    });
+    expect(resposta.statusCode).toBe(400);
+    expect(resposta.json()).toEqual({ error: "Origem de extrato desconhecida." });
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("(d) extensão fora da lista real de parseRecebimento é 400 com a frase das extensões", async () => {
+    const { cliente, chamadas } = clienteFalsoDeEscrita({ ok: true, status: 200, corpo: {} });
+    const resposta = await appDeTeste("ws_financeiro_teste", cliente).inject({
+      method: "POST",
+      url: "/financeiro/extratos/nubank",
+      headers: { authorization: "Bearer token-maryane", "x-file-name": "extrato.exe", "content-type": "application/octet-stream" },
+      payload: Buffer.from("0123456789"),
+    });
+    expect(resposta.statusCode).toBe(400);
+    expect(resposta.json()).toEqual({ error: "Envie um arquivo .pdf, .csv, .xlsx, .xls ou .ofx." });
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("(e) content-type sem parser registrado é 415 — a primeira barreira é não ter parser (afirma só o status)", async () => {
+    const resposta = await appDeTeste("ws_financeiro_teste").inject({
+      method: "POST",
+      url: "/financeiro/extratos/nubank",
+      headers: { authorization: "Bearer token-maryane", "x-file-name": "extrato.csv", "content-type": "text/html" },
+      payload: "<html></html>",
+    });
+    expect(resposta.statusCode).toBe(415);
+  });
+
+  it("(f) empresa fora da allowlist no import do Plano de contas é 400", async () => {
+    const { cliente, chamadas } = clienteFalsoDeEscrita({ ok: true, status: 200, corpo: {} });
+    const resposta = await appDeTeste("ws_financeiro_teste", cliente).inject({
+      method: "POST",
+      url: "/financeiro/plano-contas/importar",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: { empresa: "outra", tipo: "pagar", linhas: [{ cod: "1" }] },
+    });
+    expect(resposta.statusCode).toBe(400);
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("(g) linhas: [] é 400 — mínimo de 1 linha", async () => {
+    const { cliente, chamadas } = clienteFalsoDeEscrita({ ok: true, status: 200, corpo: {} });
+    const resposta = await appDeTeste("ws_financeiro_teste", cliente).inject({
+      method: "POST",
+      url: "/financeiro/plano-contas/importar",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: { empresa: "tria", tipo: "pagar", linhas: [] },
+    });
+    expect(resposta.statusCode).toBe(400);
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("(g) 2001 linhas é 400 — teto de 2000 (T-4-29)", async () => {
+    const { cliente, chamadas } = clienteFalsoDeEscrita({ ok: true, status: 200, corpo: {} });
+    const linhas = Array.from({ length: 2001 }, (_, i) => ({ cod: String(i) }));
+    const resposta = await appDeTeste("ws_financeiro_teste", cliente).inject({
+      method: "POST",
+      url: "/financeiro/plano-contas/importar",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: { empresa: "tria", tipo: "pagar", linhas },
+    });
+    expect(resposta.statusCode).toBe(400);
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("(h) key de workflow fora da allowlist é 400 e o cliente falso não é chamado (T-4-27)", async () => {
+    const { cliente, chamadas } = clienteFalsoDeEscrita({ ok: true, status: 202, corpo: { accepted: true } });
+    const resposta = await appDeTeste("ws_financeiro_teste", cliente).inject({
+      method: "POST",
+      url: "/financeiro/workflows/qualquer-coisa/executar",
+      headers: { authorization: "Bearer token-maryane" },
+    });
+    expect(resposta.statusCode).toBe(400);
+    expect(resposta.json()).toEqual({ error: "Workflow não disponível para execução manual." });
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("(i) a rota de aprovar não existe — 404 em dois caminhos plausíveis (T-4-09)", async () => {
+    const resposta1 = await appDeTeste("ws_financeiro_teste").inject({
+      method: "POST",
+      url: "/financeiro/solicitacoes/1/aprovado",
+      headers: { authorization: "Bearer token-maryane" },
+    });
+    expect(resposta1.statusCode).toBe(404);
+
+    const resposta2 = await appDeTeste("ws_financeiro_teste").inject({
+      method: "POST",
+      url: "/financeiro/execucoes/1/aprovar",
+      headers: { authorization: "Bearer token-maryane" },
+    });
+    expect(resposta2.statusCode).toBe(404);
+  });
+});
+
 carregarEnv();
 const temBanco = Boolean(process.env.DATABASE_URL);
 const d = temBanco ? describe : describe.skip;
 const WS = "ws_financeiro_teste_banco";
 
-d("GET /financeiro/* — contra o banco real", () => {
+d("GET e POST /financeiro/* — contra o banco real", () => {
   beforeAll(async () => {
     const cliente = await pool().connect();
     try {
@@ -182,5 +336,89 @@ d("GET /financeiro/* — contra o banco real", () => {
     });
     expect(resposta.statusCode).toBe(200);
     expect(chamadas[0]?.query).toEqual({ empresa });
+  });
+
+  it("(j) Membro sem alcance recebe 403 em POST /financeiro/extratos/nubank, cliente falso não chamado", async () => {
+    const { cliente, chamadas } = clienteFalsoDeEscrita({ ok: true, status: 200, corpo: { ok: true } });
+    const resposta = await appDeTeste(WS, cliente).inject({
+      method: "POST",
+      url: "/financeiro/extratos/nubank",
+      headers: { authorization: "Bearer token-rafael", "x-file-name": "extrato.csv", "content-type": "text/csv" },
+      payload: Buffer.from("0123456789"),
+    });
+    expect(resposta.statusCode).toBe(403);
+    expect(resposta.json()).toEqual({ error: "Sem acesso ao Financeiro." });
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("(j) Membro sem alcance recebe 403 em POST /financeiro/plano-contas/importar, cliente falso não chamado", async () => {
+    const { cliente, chamadas } = clienteFalsoDeEscrita({ ok: true, status: 200, corpo: { imported: 1 } });
+    const resposta = await appDeTeste(WS, cliente).inject({
+      method: "POST",
+      url: "/financeiro/plano-contas/importar",
+      headers: { authorization: "Bearer token-rafael" },
+      payload: { empresa: "tria", tipo: "pagar", linhas: [{ cod: "1" }] },
+    });
+    expect(resposta.statusCode).toBe(403);
+    expect(resposta.json()).toEqual({ error: "Sem acesso ao Financeiro." });
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("(k) Membro com alcance: upload de 10 bytes com x-file-name extrato.csv vira 200 e o cliente recebeu o caminho, o Buffer, o nome e a origem exatos", async () => {
+    const { cliente, chamadas } = clienteFalsoDeEscrita({ ok: true, status: 200, corpo: { ok: true, parsed: 1, inserted: 1 } });
+    const conteudo = Buffer.from("0123456789");
+    const resposta = await appDeTeste(WS, cliente).inject({
+      method: "POST",
+      url: "/financeiro/extratos/nubank",
+      headers: { authorization: "Bearer token-maryane", "x-file-name": "extrato.csv", "content-type": "text/csv" },
+      payload: conteudo,
+    });
+    expect(resposta.statusCode).toBe(200);
+    expect(chamadas).toHaveLength(1);
+    expect(chamadas[0]?.metodo).toBe("enviarArquivo");
+    expect(chamadas[0]?.caminho).toBe("/webhook/receber-whatsapp-doc/nubank");
+    expect(chamadas[0]?.arquivo?.conteudo).toEqual(conteudo);
+    expect(chamadas[0]?.arquivo?.nome).toBe("extrato.csv");
+    expect(chamadas[0]?.arquivo?.origem).toBe("nubank");
+  });
+
+  it("(l) Upload com x-file-name '../../etc/passwd.csv': o cliente recebeu só 'passwd.csv' — o saneamento acontece", async () => {
+    const { cliente, chamadas } = clienteFalsoDeEscrita({ ok: true, status: 200, corpo: { ok: true, parsed: 0, inserted: 0 } });
+    const resposta = await appDeTeste(WS, cliente).inject({
+      method: "POST",
+      url: "/financeiro/extratos/nubank",
+      headers: { authorization: "Bearer token-maryane", "x-file-name": "../../etc/passwd.csv", "content-type": "text/csv" },
+      payload: Buffer.from("0123456789"),
+    });
+    expect(resposta.statusCode).toBe(200);
+    expect(chamadas[0]?.arquivo?.nome).toBe("passwd.csv");
+  });
+
+  it("(m) Corpo vazio no upload é 400 e o cliente falso não é chamado", async () => {
+    const { cliente, chamadas } = clienteFalsoDeEscrita({ ok: true, status: 200, corpo: { ok: true } });
+    const resposta = await appDeTeste(WS, cliente).inject({
+      method: "POST",
+      url: "/financeiro/extratos/nubank",
+      headers: { authorization: "Bearer token-maryane", "x-file-name": "extrato.csv", "content-type": "text/csv" },
+      payload: Buffer.alloc(0),
+    });
+    expect(resposta.statusCode).toBe(400);
+    expect(resposta.json()).toEqual({ error: "Arquivo vazio." });
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("(n) Importar com categoriaClickup no corpo: o cliente recebeu categoria_clickup — a tradução acontece só na borda", async () => {
+    const { cliente, chamadas } = clienteFalsoDeEscrita({ ok: true, status: 200, corpo: { imported: 1 } });
+    const resposta = await appDeTeste(WS, cliente).inject({
+      method: "POST",
+      url: "/financeiro/plano-contas/importar",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: { empresa: "tria", tipo: "pagar", linhas: [{ cod: "1", categoria: "Cat", categoriaClickup: "CU1", descricao: "Desc" }] },
+    });
+    expect(resposta.statusCode).toBe(200);
+    expect(chamadas).toHaveLength(1);
+    const corpoEnviado = chamadas[0]?.corpo as { linhas: Array<Record<string, unknown>> };
+    expect(corpoEnviado.linhas[0]).toEqual({ cod: "1", categoria: "Cat", categoria_clickup: "CU1", descricao: "Desc" });
+    expect(corpoEnviado.linhas[0]).not.toHaveProperty("categoriaClickup");
   });
 });

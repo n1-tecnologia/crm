@@ -97,6 +97,17 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
       reply.status(400).send({ ok: false, error: `Entrada inválida: ${primeira}` });
       return;
     }
+    // Erro do próprio Fastify com um status 4xx já definido (413 de
+    // `bodyLimit`, 415 de content-type sem `addContentTypeParser` — Fase 4,
+    // T-4-05) — a mensagem já é segura (do framework, sem stack nem detalhe
+    // interno) e o código já é exatamente o que a rota espera; repassar em
+    // vez de mascarar como 500 genérico, que esconderia a recusa por trás de
+    // "Erro interno." e quebraria a mitigação que o `bodyLimit`/parser
+    // restrito documentam.
+    if (erro instanceof Error && "statusCode" in erro && typeof erro.statusCode === "number" && erro.statusCode >= 400 && erro.statusCode < 500) {
+      reply.status(erro.statusCode).send({ ok: false, error: erro.message });
+      return;
+    }
     // Qualquer outro erro é inesperado: vai ao log do processo, nunca ao
     // corpo da resposta — o cliente não tem por que ver mensagem nem stack
     // de um bug interno (T-1-06).
