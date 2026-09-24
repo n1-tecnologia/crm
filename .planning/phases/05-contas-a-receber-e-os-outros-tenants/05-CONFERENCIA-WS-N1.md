@@ -147,8 +147,55 @@ de Automações na seção 1.
 
 ## 4. A pergunta a D7 e a resposta do Financeiro
 
-_(preenchido pela Task 3 — pendente)_
+A pergunta foi apresentada em 2026-09-24, no checkpoint bloqueante da Task 3
+deste plano, com a evidência da seção 1 (zero divergências nas cinco seções;
+0 Tarefas em `CR.listId`) e os três fatos do `how-to-verify`: a Lista do
+ClickUp com 240 Tarefas, a última criada em 2025-09-16, nenhuma com
+vencimento em 2026; a plataforma já com Lista, Status, Campos e Automações
+R2–R6 aplicados em produção desde a Fase 1; e `adapters/omie.ts` sem nenhuma
+chamada de contas a receber.
+
+**Nenhuma resposta verbatim do Financeiro foi obtida dentro da fase.** A
+resposta registrada abaixo veio do dono do produto, pelo diálogo do
+checkpoint deste plano, em 2026-09-24 — não é uma declaração do Financeiro:
+
+> "D7 — qual ramo vale para Contas a receber?" → **"Processo — acionar
+> default D5-02 (Recomendado)"**
+
+> "O Financeiro sabe o prazo real de R4/R5 (hoje 30/60 dias, vindo de um
+> único caso)?" → **"Mantém 30/60"**
+
+Registradas exatamente como recebidas, com a data de 2026-09-24.
 
 ## 5. O ramo escolhido
 
-_(preenchido pela Task 3 — pendente)_
+**Ramo processo, por acionamento explícito do default de D5-02.**
+
+- Pergunta feita em: 2026-09-24 (Task 3 deste plano).
+- Default acionado em: 2026-09-24, pelo dono do produto — a resposta não
+  veio do Financeiro dentro da fase (seção 4).
+- As três razões de D5-02, reafirmadas por esta conferência:
+  (a) o ramo processo já está construído e já foi aplicado em produção —
+  esta conferência (seção 1) provou zero divergências entre `ws_n1` e o
+  catálogo de `seed-contas-a-receber.ts`;
+  (b) o ramo espelho exigiria superfície Omie nova — `adapters/omie.ts` não
+  tem nenhuma chamada de contas a receber;
+  (c) uma Lista com o processo absorve depois um espelho do Omie como
+  leitura de Integração, e o contrário não é verdade.
+
+**Acionar o default é uma decisão registrada, não um silêncio que passa** —
+está documentada aqui, com as duas datas, exatamente como D5-02/T-5-30
+exigem.
+
+**Consequência: o plano 05-10 segue.** REC-01 não precisa de
+replanejamento; o escopo restante é o que a seção 3 já listou (importação
+das 240 Tarefas históricas, R1 já exposto no formulário
+`SerieDeParcelasDialog`, R7 pendente do mesmo tratamento que A1 recebeu na
+Fase 3, e os prazos de R4/R5 confirmados abaixo).
+
+**Prazo de R4/R5 (D5-15):** 30/60 mantido — resposta do dono do produto no
+checkpoint de 2026-09-24 ("Mantém 30/60"). Fonte explícita: é a resposta do
+dono do produto, não uma declaração verbatim do Financeiro. Os valores
+iniciais permanecem exatamente onde estão hoje, na configuração das
+Automações `aut_cr_r4`/`aut_cr_r5` — nenhuma mudança de código ou de
+configuração foi feita por este plano.
