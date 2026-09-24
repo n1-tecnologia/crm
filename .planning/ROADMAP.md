@@ -366,7 +366,7 @@ Plans:
 **Gap wave 4** *(blocked on gap wave 3)*
 
 - [ ] 05-23-PLAN.md — Migração de receipts no Supabase do `automation/` (o dono aplica) e deploy do `automation/` (o dono pode recusar) (TEN-01, AUTO-02)
-- [ ] 05-25-PLAN.md — O relógio de Contas a receber: pré-voo, R7 com o Valor do dono, Ensaio × simulação, liberação (05-10 Task 4) (REC-01)
+- [x] 05-25-PLAN.md — O relógio de Contas a receber: pré-voo, R7 com o Valor do dono, Ensaio × simulação, liberação (05-10 Task 4) (REC-01)
 
 **Ondas do fechamento de lacunas:** 1 → [05-13, 05-14, 05-15, 05-16] · 2 → [05-17, 05-18, 05-19, 05-20] · 3 → [05-21, 05-22, 05-24] · 4 → [05-23, 05-25]
 
@@ -399,7 +399,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 23/28 | In Progress|  |
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
-| 5. Contas a receber e os outros tenants | 22/25 | In Progress|  |
+| 5. Contas a receber e os outros tenants | 23/25 | In Progress|  |
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*
