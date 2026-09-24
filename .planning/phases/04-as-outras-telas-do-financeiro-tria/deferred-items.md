@@ -150,3 +150,31 @@ não tem folga para isso.
 é demais para esta máquina — a verificação deixa de ser sinal. Ondas seguintes desta fase têm
 no máximo dois planos, então o problema não reaparece aqui; em fases futuras, limitar a dois
 executores paralelos ou subir o `testTimeout` de `@n1/web`.
+
+---
+
+## 7. `servidor-falso.test.ts` no `financeiro-tria/automation` — flake de porta em `npm test` completo, não reproduz isolado
+
+**Descoberto por:** Plano 04-09, rodando `npm test` completo do `automation/` como parte da
+verificação da Task 3.
+
+**O que falhou:** `src/testing/servidor-falso.test.ts` — caso "kind ok devolve o programado" —
+com `[TypeError: fetch failed]` cuja causa era um `HTTPParserError` porque a resposta recebida
+começava com `SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.16` em vez de um cabeçalho HTTP: o teste
+conectou por acidente a um serviço SSH na máquina, não ao servidor HTTP falso que o próprio
+teste sobe (`servidor.listen(0, ...)`, porta efêmera do SO).
+
+**Verificação:** `npx tsx --test --test-concurrency=1 src/testing/servidor-falso.test.ts`
+isolado — **6/6 verde**, sem nenhuma falha. `git diff --stat` confirma que nem
+`servidor-falso.test.ts` nem qualquer arquivo do subsistema que ele testa foram tocados por
+este plano (04-09 só criou/modificou `leituras-notas-fiscais.ts`,
+`leituras-notas-fiscais-routes.ts`, seu teste, e duas linhas em `server.ts`).
+
+**Por que não foi investigado a fundo:** o padrão já é conhecido nesta fase (ver item 6 acima —
+artefato de carga/contenção da máquina compartilhada por múltiplos agentes). Uma porta efêmera
+de SO ocasionalmente colidir com outro processo de rede da máquina (aqui, aparentemente um
+servidor SSH) durante execução sob carga é consistente com esse padrão, não com um defeito de
+código deste plano.
+
+**Dono sugerido:** quem for endurecer `servidor-falso.test.ts` — considerar amarrar a um host/
+porta mais isolados, ou não pertence a esta fase.
