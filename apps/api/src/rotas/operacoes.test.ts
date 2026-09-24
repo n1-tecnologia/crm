@@ -16,16 +16,23 @@
  * `saveView` — antes só cobertas pelo fallback estrutural — agora têm
  * schema próprio; nada muda no contrato HTTP em si, só a superfície
  * coberta.
- * (w)–(x) provam a costura de AUTO-02 (05-07, Task 2): a Automação de Canal
- * publicada em `CP.listId` dispara por evento (`tarefaEntrouEmStatus`, ao
- * entrar em "para pagar") e grava exatamente um evento de outbox por
- * Execução — nunca por operação comum sem Automação de Canal envolvida.
+ * (w)–(x) provam a costura de AUTO-02 (05-07, Task 2; migrado para a
+ * Solicitação em 05-17/CR-05): a Automação de Canal publicada em
+ * `CANAL_LISTA_ID` (Solicitações de pagamento) dispara por evento
+ * (`tarefaEntrouEmStatus`, ao entrar em "em aprovação") e grava exatamente
+ * um evento de outbox por Execução — nunca por operação comum sem Automação
+ * de Canal envolvida. A derivação em si não é mais opt-in da rota: mora em
+ * `persistencia/unidade-de-trabalho.ts::executar()` (05-17 Task 1).
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { usuarioDoSeed } from "@n1/dominio";
-import { buildSeed } from "@n1/dominio/seed";
+import { evoluirConfiguracaoPorEmpresa } from "@n1/dominio/configuracao-por-empresa-evolver";
 import { CP } from "@n1/dominio/operations";
+import { CANAL_CAMPO_EMPRESA_ID, CANAL_CAMPO_WHATSAPP_ID, CANAL_LISTA_ID } from "@n1/dominio/operations/automations";
+import { buildSeed } from "@n1/dominio/seed";
+import { SOL } from "@n1/dominio/solicitacao-de-pagamento";
+import { evoluirConfiguracaoDeSolicitacoes } from "@n1/dominio/solicitacao-de-pagamento-evolver";
 import { buildApp } from "../app";
 import { carregarEnv, encerrar, pool } from "../persistencia/conexao";
 import { hidratar, semear } from "../persistencia/repositorio";
@@ -34,6 +41,17 @@ const MARYANE = usuarioDoSeed("mem_maryane"); // ativo, no seed do Financeiro
 const TIAGO = usuarioDoSeed("mem_tiago"); // removido, no seed do CRM
 
 const semente = buildSeed();
+// CR-05/D5-19 (05-17) — o caso (w)/(x) migra para a Solicitação (colateral de
+// 05-13): a Lista e as Integrações por Empresa precisam existir no MESMO
+// `semente` que `semear()` grava em `ws_rotas_teste`, senão `destinoDeCanal`
+// recusa por "Lista errada"/"Empresa sem Integração" antes de chegar ao que
+// este caso prova.
+{
+  const solicitacoes = evoluirConfiguracaoDeSolicitacoes(semente, CP.financeiroId);
+  if (!solicitacoes.ok) throw new Error(`fixture: ${solicitacoes.error}`);
+  const empresas = evoluirConfiguracaoPorEmpresa(semente, CP.financeiroId);
+  if (!empresas.ok) throw new Error(`fixture: ${empresas.error}`);
+}
 const membros = semente.members;
 
 function appDeTeste(workspaceId = "ws_rotas_teste") {
@@ -214,7 +232,7 @@ const temBanco = Boolean(process.env.DATABASE_URL);
 const d = temBanco ? describe : describe.skip;
 const WS = "ws_rotas_teste";
 
-/** A Automação de Canal do caso (w)/(x): publicada em `CP.listId`, gatilho por evento — ao ENTRAR em "para pagar". */
+/** A Automação de Canal do caso (w)/(x): publicada em `CANAL_LISTA_ID` (Solicitações de pagamento, D5-19/05-13), gatilho por evento — ao ENTRAR em "em aprovação". */
 const AUTOMACAO_CANAL_ID = "aut_canal_operacoes_teste";
 
 async function inserirAutomacaoDeCanal(workspaceId: string): Promise<void> {
@@ -222,8 +240,8 @@ async function inserirAutomacaoDeCanal(workspaceId: string): Promise<void> {
     id: AUTOMACAO_CANAL_ID,
     lifecycle: "ativo",
     scopeType: "list",
-    scopeId: CP.listId,
-    name: "Canal de teste (05-07, Task 2)",
+    scopeId: CANAL_LISTA_ID,
+    name: "Canal de teste (05-17, migrado de 05-07 Task 2)",
     description: "",
     ownerMemberId: CP.financeiroId,
     reactsToAutomationEvents: false,
@@ -231,14 +249,14 @@ async function inserirAutomacaoDeCanal(workspaceId: string): Promise<void> {
       {
         number: 1,
         state: "publicada",
-        trigger: { kind: "evento", eventType: "tarefaEntrouEmStatus", eventSubtype: "para pagar" },
+        trigger: { kind: "evento", eventType: "tarefaEntrouEmStatus", eventSubtype: "em aprovação" },
         conditions: [],
         actions: [
           {
             order: 1,
             kind: "controle",
             controlKind: "notificar",
-            params: JSON.stringify({ canal: "whatsapp", canalCampoDestinoId: CP.fields.whatsapp, canalMensagemId: "gasto-novo" }),
+            params: JSON.stringify({ canal: "whatsapp", canalCampoDestinoId: CANAL_CAMPO_WHATSAPP_ID, canalMensagemId: "gasto-novo" }),
           },
         ],
         errorPolicy: { onActionFailure: "interromper", retries: 0 },
@@ -529,51 +547,61 @@ d("POST /operacoes/:nome — contra o banco real", () => {
     expect(respostaLegitima.json().ok).toBe(true);
   });
 
-  it("(w) cria, preenche o WhatsApp e entra em 'para pagar' com a Automação de Canal publicada: grava 1 linha por rodada — duas rodadas não colidem", async () => {
+  it("(w) cria Solicitação, preenche Empresa/WhatsApp e entra em 'em aprovação' com a Automação de Canal publicada: grava 1 linha por rodada — duas rodadas não colidem", async () => {
     const app = appDeTeste();
 
     async function rodarFluxoDeCanal(titulo: string): Promise<string> {
-      // 1) Nasce em "em lançamento omie" — a Automação de Canal reage a ENTRAR em
-      // "para pagar", nunca a `tarefaCriada`, então este passo não a dispara.
+      // 1) Nasce em "para fazer" — a Automação de Canal reage a ENTRAR em
+      // "em aprovação", nunca a `tarefaCriada`, então este passo não a dispara.
       const criacao = await app.inject({
         method: "POST",
         url: "/operacoes/createTask",
         headers: { authorization: "Bearer token-maryane" },
-        payload: { args: [{ listId: CP.listId, title: titulo, statusId: CP.status.emLancamento }] },
+        payload: { args: [{ listId: CANAL_LISTA_ID, title: titulo, statusId: SOL.status.paraFazer }] },
       });
       expect(criacao.statusCode).toBe(200);
       const taskId: string = criacao.json().value.id;
 
-      // 2) Preenche o Campo ANTES da Automação rodar — `setTaskFieldValue` não
-      // dispara nenhum gatilho por si.
+      // 2) Preenche os Campos ANTES da Automação rodar — `setTaskFieldValue` não
+      // dispara nenhum gatilho por si. `destinoDeCanal` (D5-19) lê Empresa E,
+      // no modo campo, o WhatsApp — os dois precisam estar preenchidos.
+      const empresa = await app.inject({
+        method: "POST",
+        url: "/operacoes/setTaskFieldValue",
+        headers: { authorization: "Bearer token-maryane" },
+        payload: { args: [taskId, CANAL_CAMPO_EMPRESA_ID, "Marcos Paulo"] },
+      });
+      expect(empresa.statusCode).toBe(200);
+      expect(empresa.json().ok).toBe(true);
+
       const campo = await app.inject({
         method: "POST",
         url: "/operacoes/setTaskFieldValue",
         headers: { authorization: "Bearer token-maryane" },
-        payload: { args: [taskId, CP.fields.whatsapp, "whatsapp-do-fornecedor-teste"] },
+        payload: { args: [taskId, CANAL_CAMPO_WHATSAPP_ID, "whatsapp-do-solicitante-teste"] },
       });
       expect(campo.statusCode).toBe(200);
       expect(campo.json().ok).toBe(true);
 
-      // 3) Entrar em "para pagar" dispara `tarefaEntrouEmStatus` — a Automação de
-      // Canal roda dentro da MESMA transação e o evento nasce no mesmo commit.
+      // 3) Entrar em "em aprovação" dispara `tarefaEntrouEmStatus` — a Automação
+      // de Canal roda dentro da MESMA transação e o evento nasce no mesmo commit.
       const mudanca = await app.inject({
         method: "POST",
         url: "/operacoes/changeTaskStatus",
         headers: { authorization: "Bearer token-maryane" },
-        payload: { args: [taskId, CP.status.paraPagar] },
+        payload: { args: [taskId, SOL.status.emAprovacao] },
       });
       expect(mudanca.statusCode).toBe(200);
       expect(mudanca.json().ok).toBe(true);
       return taskId;
     }
 
-    const primeiraTarefa = await rodarFluxoDeCanal("Conta de teste — Canal (05-07 w, 1ª rodada)");
+    const primeiraTarefa = await rodarFluxoDeCanal("Solicitação de teste — Canal (05-17 w, 1ª rodada)");
     expect(await contarOutboxCanalDaTarefa(primeiraTarefa)).toBe(1);
 
     // Segunda rodada, TAREFA DIFERENTE: outra Execução, outro `executionId`, outro
-    // `aggregate_id` — nenhum conflito no índice único parcial da migração 003.
-    const segundaTarefa = await rodarFluxoDeCanal("Conta de teste — Canal (05-07 w, 2ª rodada)");
+    // `aggregate_id` (WR-04, `<executionId>:<indicePasso>`) — nenhum conflito.
+    const segundaTarefa = await rodarFluxoDeCanal("Solicitação de teste — Canal (05-17 w, 2ª rodada)");
     expect(await contarOutboxCanalDaTarefa(segundaTarefa)).toBe(1);
     expect(segundaTarefa).not.toBe(primeiraTarefa);
 
@@ -587,6 +615,14 @@ d("POST /operacoes/:nome — contra o banco real", () => {
         [WS, AUTOMACAO_CANAL_ID, primeiraTarefa, segundaTarefa],
       );
       expect(execucoes.rowCount).toBe(2); // uma Execução por rodada, cada uma com o seu id
+
+      const aggregateIds = await cliente.query<{ aggregate_id: string }>(
+        `select aggregate_id from plataforma.integration_outbox
+          where workspace_id = $1 and event_type = 'automacao.notificar-canal.v1' and payload->>'taskId' in ($2, $3)`,
+        [WS, primeiraTarefa, segundaTarefa],
+      );
+      // WR-04 — `<executionId>:<indicePasso>`, nunca só o executionId.
+      for (const linha of aggregateIds.rows) expect(linha.aggregate_id).toMatch(/^.+:0$/);
     } finally {
       cliente.release();
     }
@@ -597,14 +633,14 @@ d("POST /operacoes/:nome — contra o banco real", () => {
       method: "POST",
       url: "/operacoes/createTask",
       headers: { authorization: "Bearer token-maryane" },
-      payload: { args: [{ listId: CP.listId, title: "Conta de teste — sem Canal (05-07 x)" }] },
+      // Nasce DIRETO em "em aprovação" (o status que a Automação vigia) — a
+      // criação não é uma ENTRADA por `changeTaskStatus`, então
+      // `tarefaEntrouEmStatus` nunca dispara e a Automação de Canal nunca roda.
+      payload: { args: [{ listId: CANAL_LISTA_ID, title: "Solicitação de teste — sem Canal (05-17 x)", statusId: SOL.status.emAprovacao }] },
     });
     expect(resposta.statusCode).toBe(200);
     const taskId: string = resposta.json().value.id;
 
-    // Criação sem `statusId`: nasce em "para pagar" (o status inicial da Lista) —
-    // não é uma ENTRADA por `changeTaskStatus`, então `tarefaEntrouEmStatus` nunca
-    // dispara e a Automação de Canal nunca roda para esta Tarefa.
     expect(await contarOutboxCanalDaTarefa(taskId)).toBe(0);
   });
 });

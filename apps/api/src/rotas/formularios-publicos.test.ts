@@ -25,10 +25,13 @@
 
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { DataState, Form } from "@n1/dominio";
-import { buildSeed } from "@n1/dominio/seed";
+import type { Automation, DataState, Form } from "@n1/dominio";
+import { evoluirConfiguracaoPorEmpresa } from "@n1/dominio/configuracao-por-empresa-evolver";
+import { CANAL_CAMPO_EMPRESA_ID, CANAL_CAMPO_WHATSAPP_ID } from "@n1/dominio/operations/automations";
 import { createFieldDefinition } from "@n1/dominio/operations/configuration";
 import { createForm, updateForm } from "@n1/dominio/operations/scale";
+import { buildSeed } from "@n1/dominio/seed";
+import { evoluirConfiguracaoDeSolicitacoes, LISTA_ID as SOLICITACAO_LISTA_ID } from "@n1/dominio/solicitacao-de-pagamento-evolver";
 import { buildApp } from "../app";
 import { clienteAdmin } from "../autenticacao/verificar-token";
 import { carregarEnv, encerrar, pool } from "../persistencia/conexao";
@@ -459,5 +462,241 @@ d("rotasDeFormulariosPublicos — atomicidade contra o banco e o bucket de teste
     });
     expect(resposta.statusCode).toBe(400);
     expect(await contarTarefas()).toBe(tarefasAntes);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CR-05 (05-17) — a Solicitação que nasce pelo formulário público, na Lista
+// "Solicitações de pagamento", com uma Automação de Canal publicada: prova
+// que `executar()` deriva o evento de Canal SOZINHO (Task 1), sem que a rota
+// precise saber. Só depende de `DATABASE_URL` (D-DEC-09) — nenhum anexo
+// aqui, então não depende do bucket de Storage. Espaço PRÓPRIO
+// (`ws_${RUN}_canal`) para não interferir no caso (g): a Automação de Canal
+// deste cenário está publicada só em `lst_solicitacoes_de_pagamento`, que o
+// Formulário do caso (g) (`lst_prospeccao`) nunca alcança.
+// ---------------------------------------------------------------------------
+
+const WS_CANAL = `${WS}_canal`;
+
+async function limparWorkspaceCanal(): Promise<void> {
+  const cliente = await pool().connect();
+  try {
+    await cliente.query("delete from plataforma.integration_outbox where workspace_id = $1", [WS_CANAL]);
+    await cliente.query("delete from plataforma.upload_sessions where workspace_id = $1", [WS_CANAL]);
+    await cliente.query("delete from plataforma.registros where workspace_id = $1", [WS_CANAL]);
+    await cliente.query("delete from plataforma.workspaces where workspace_id = $1", [WS_CANAL]);
+  } finally {
+    cliente.release();
+  }
+}
+
+/**
+ * Publica a Automação de Canal no MODO RÓTULOS — `canalDestinatariosDaEmpresa: true`,
+ * o mesmo que o Marcos Paulo usa hoje (05-13 (b)) — em `SOLICITACAO_LISTA_ID`,
+ * gatilho `tarefaCriada`: exatamente o gatilho que `submitForm` dispara
+ * (`scale.ts:622`), depois que Campos e anexos já estão completos.
+ */
+function publicarAutomacaoDeCanal(state: DataState): void {
+  const carimbo = "2026-01-01T00:00:00.000Z";
+  const automation: Automation = {
+    id: "aut_canal_formulario_publico_05_17",
+    workspaceId: state.workspace.id,
+    createdBy: { kind: "member", id: DONO },
+    createdAt: carimbo,
+    lifecycle: "ativo",
+    name: "Aviso de gasto novo (teste 05-17)",
+    description: "",
+    scopeType: "list",
+    scopeId: SOLICITACAO_LISTA_ID,
+    ownerMemberId: DONO,
+    reactsToAutomationEvents: false,
+    versions: [
+      {
+        number: 1,
+        state: "publicada",
+        trigger: { kind: "evento", eventType: "tarefaCriada" },
+        conditions: [],
+        actions: [
+          {
+            order: 1,
+            kind: "controle",
+            controlKind: "notificar",
+            params: JSON.stringify({ canal: "whatsapp", canalDestinatariosDaEmpresa: true, canalMensagemId: "gasto-novo" }),
+          },
+        ],
+        errorPolicy: { onActionFailure: "interromper", retries: 0 },
+        publishedBy: DONO,
+        publishedAt: carimbo,
+        createdAt: carimbo,
+      },
+    ],
+  };
+  state.automations.push(automation);
+}
+
+function montarFormularioDeSolicitacao(state: DataState): Form {
+  const form = createForm(state, DONO, SOLICITACAO_LISTA_ID, {
+    name: "Solicitação de pagamento (teste 05-17 — Canal)",
+    questions: [
+      { label: "Assunto", required: true, target: { kind: "title" } },
+      { label: "Centro de Custo (Solicitação)", required: true, target: { kind: "field", definitionId: "fld_sp_a_centro_de_custo" } },
+      // `fd_cp_centro` (RN-CP-01) é escopo "space" (`seed-financeiro.ts`): herdado por TODA Lista do
+      // Espaço "Gestão", inclusive a de Solicitações — os dois "Centro de Custo" são obrigatórios aqui.
+      { label: "Centro de Custo (Financeiro)", required: true, target: { kind: "field", definitionId: "fd_cp_centro" } },
+      { label: "Empresa", required: false, target: { kind: "field", definitionId: CANAL_CAMPO_EMPRESA_ID } },
+      { label: "WhatsApp", required: false, target: { kind: "field", definitionId: CANAL_CAMPO_WHATSAPP_ID } },
+    ],
+  });
+  if (!form.ok) throw new Error(`seed de teste: ${form.error}`);
+  return form.value;
+}
+
+const dCanal = temBanco ? describe : describe.skip;
+
+dCanal("rotasDeFormulariosPublicos — Automação de Canal publicada na Lista de Solicitações (CR-05/05-17)", () => {
+  let FORM_CANAL: Form;
+
+  beforeAll(async () => {
+    await limparWorkspaceCanal(); // defensivo — mesma disciplina do bloco (g)-(k).
+    const state = buildSeed();
+    const solicitacoes = evoluirConfiguracaoDeSolicitacoes(state, DONO);
+    if (!solicitacoes.ok) throw new Error(`fixture (Solicitações): ${solicitacoes.error}`);
+    const empresas = evoluirConfiguracaoPorEmpresa(state, DONO);
+    if (!empresas.ok) throw new Error(`fixture (Empresas): ${empresas.error}`);
+    publicarAutomacaoDeCanal(state);
+    FORM_CANAL = montarFormularioDeSolicitacao(state);
+    const cliente = await pool().connect();
+    try {
+      await semear(cliente, WS_CANAL, state);
+    } finally {
+      cliente.release();
+    }
+  });
+
+  afterAll(async () => {
+    await limparWorkspaceCanal(); // a limpeza que de fato importa.
+    await encerrar();
+  });
+
+  function appCanal() {
+    return buildApp({
+      logger: false,
+      workspaceId: WS_CANAL,
+      formulariosPublicos: {
+        limitePorIp: criarLimiteDeTaxa({ janelaMs: 60_000, maximo: 1000 }),
+        limitePorSegredo: criarLimiteDeTaxa({ janelaMs: 60_000, maximo: 1000 }),
+      },
+    });
+  }
+
+  function perguntasDaSolicitacao(): {
+    readonly titulo: Form["questions"][number];
+    readonly centroSolicitacao: Form["questions"][number];
+    readonly centroFinanceiro: Form["questions"][number];
+    readonly empresa: Form["questions"][number];
+    readonly whatsapp: Form["questions"][number];
+  } {
+    const titulo = FORM_CANAL.questions[0]!;
+    const centroSolicitacao = FORM_CANAL.questions.find((q) => q.target.kind === "field" && q.target.definitionId === "fld_sp_a_centro_de_custo")!;
+    const centroFinanceiro = FORM_CANAL.questions.find((q) => q.target.kind === "field" && q.target.definitionId === "fd_cp_centro")!;
+    const empresa = FORM_CANAL.questions.find((q) => q.target.kind === "field" && q.target.definitionId === CANAL_CAMPO_EMPRESA_ID)!;
+    const whatsapp = FORM_CANAL.questions.find((q) => q.target.kind === "field" && q.target.definitionId === CANAL_CAMPO_WHATSAPP_ID)!;
+    return { titulo, centroSolicitacao, centroFinanceiro, empresa, whatsapp };
+  }
+
+  /** Conta por `event_type` e `payload->>'taskId'` — nunca um count global (o mesmo cuidado do bloco (g)-(k)). */
+  async function contarOutboxDaTarefa(eventType: string, taskId: string): Promise<number> {
+    const cliente = await pool().connect();
+    try {
+      const r = await cliente.query<{ n: string }>(
+        `select count(*)::text as n from plataforma.integration_outbox
+          where workspace_id = $1 and event_type = $2 and payload->>'taskId' = $3`,
+        [WS_CANAL, eventType, taskId],
+      );
+      return Number(r.rows[0]?.n ?? "0");
+    } finally {
+      cliente.release();
+    }
+  }
+
+  async function aggregateIdDoEventoDeCanal(taskId: string): Promise<string | undefined> {
+    const cliente = await pool().connect();
+    try {
+      const r = await cliente.query<{ aggregate_id: string }>(
+        `select aggregate_id from plataforma.integration_outbox
+          where workspace_id = $1 and event_type = 'automacao.notificar-canal.v1' and payload->>'taskId' = $2`,
+        [WS_CANAL, taskId],
+      );
+      return r.rows[0]?.aggregate_id;
+    } finally {
+      cliente.release();
+    }
+  }
+
+  async function taskIdPorTitulo(titulo: string): Promise<string> {
+    const cliente = await pool().connect();
+    try {
+      const { state } = await hidratar(cliente, WS_CANAL);
+      const tarefa = state.tasks.find((t) => t.title === titulo);
+      if (!tarefa) throw new Error(`Tarefa "${titulo}" não encontrada — bug no setup do teste`);
+      return tarefa.id;
+    } finally {
+      cliente.release();
+    }
+  }
+
+  it("Solicitação de 'Marcos Paulo' (canal declarado): 1 linha automacao.notificar-canal.v1, 1 solicitacao.criada.v1, aggregate_id <executionId>:<indicePasso>", async () => {
+    const app = appCanal();
+    const { titulo, centroSolicitacao, centroFinanceiro, empresa, whatsapp } = perguntasDaSolicitacao();
+    const nomeDaTarefa = "Pedido de teste 05-17 (Marcos Paulo)";
+
+    const resposta = await app.inject({
+      method: "POST",
+      url: `/v1/public/forms/${FORM_CANAL.secret}/submissions`,
+      payload: {
+        submissionId: randomUUID(),
+        answers: {
+          [titulo.id]: nomeDaTarefa,
+          [centroSolicitacao.id]: "Marcos Paulo",
+          [centroFinanceiro.id]: "Marcos Paulo",
+          [empresa.id]: "Marcos Paulo",
+          [whatsapp.id]: "whatsapp-mp-de-teste", // sem 9+ dígitos seguidos (convenção 05-07)
+        },
+      },
+    });
+    expect(resposta.statusCode, resposta.body).toBe(201);
+
+    const taskId = await taskIdPorTitulo(nomeDaTarefa);
+    expect(await contarOutboxDaTarefa("automacao.notificar-canal.v1", taskId)).toBe(1);
+    expect(await contarOutboxDaTarefa("solicitacao.criada.v1", taskId)).toBe(1);
+
+    const aggregateId = await aggregateIdDoEventoDeCanal(taskId);
+    expect(aggregateId).toMatch(/^.+:0$/); // `<executionId>:<indicePasso>` — WR-04, primeiro (e único) passo de Canal.
+  });
+
+  it("Solicitação de 'Tria Company' (sem avisosPorCanal declarado): 0 linhas de Canal, 1 solicitacao.criada.v1", async () => {
+    const app = appCanal();
+    const { titulo, centroSolicitacao, centroFinanceiro, empresa, whatsapp } = perguntasDaSolicitacao();
+    const nomeDaTarefa = "Pedido de teste 05-17 (Tria Company)";
+
+    const resposta = await app.inject({
+      method: "POST",
+      url: `/v1/public/forms/${FORM_CANAL.secret}/submissions`,
+      payload: {
+        submissionId: randomUUID(),
+        answers: {
+          [titulo.id]: nomeDaTarefa,
+          [centroSolicitacao.id]: "TRIA",
+          [centroFinanceiro.id]: "TRIA",
+          [empresa.id]: "Tria Company",
+          [whatsapp.id]: "whatsapp-tria-de-teste",
+        },
+      },
+    });
+    expect(resposta.statusCode, resposta.body).toBe(201);
+
+    const taskId = await taskIdPorTitulo(nomeDaTarefa);
+    expect(await contarOutboxDaTarefa("automacao.notificar-canal.v1", taskId)).toBe(0);
+    expect(await contarOutboxDaTarefa("solicitacao.criada.v1", taskId)).toBe(1);
   });
 });
