@@ -21,13 +21,17 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { buildGestaoBootstrap } from "@n1/dominio/bootstrap-gestao";
+import { evoluirConfiguracaoPorEmpresa } from "@n1/dominio/configuracao-por-empresa-evolver";
 import { CP, CR } from "@n1/dominio/operations/financeiro";
+import { CANAL_CAMPO_EMPRESA_ID, CANAL_CAMPO_WHATSAPP_ID, CANAL_LISTA_ID } from "@n1/dominio/operations/automations";
 import { createTask, setTaskFieldValue } from "@n1/dominio/operations/tasks";
 import type { DataState, Id, OperationResult } from "@n1/dominio";
+import { SOL } from "@n1/dominio/solicitacao-de-pagamento";
+import { evoluirConfiguracaoDeSolicitacoes } from "@n1/dominio/solicitacao-de-pagamento-evolver";
 import { carregarEnv, encerrar, pool } from "../persistencia/conexao";
 import { semear as semearEstadoInteiro } from "../persistencia/repositorio";
 import { relogioFixo } from "../testes/relogio";
-import { CODIGOS_DA_AGENDA, criarSchedulerWorker, dataCivil, diasCiveisPendentes, liberarLista, type RodarAgenda } from "./scheduler-worker";
+import { CODIGOS_DA_AGENDA, criarSchedulerWorker, dataCivil, diasCiveisPendentes, liberarLista, type RodarAgenda, type SchedulerWorker } from "./scheduler-worker";
 
 carregarEnv();
 const temBanco = Boolean(process.env.DATABASE_URL);
@@ -105,9 +109,20 @@ async function prepararWorkspaceVazio(workspaceId: string): Promise<void> {
   }
 }
 
+/**
+ * CR-07 (05-19, 2026-09-24): o caso Canal A ("Canal por agenda") grava de
+ * propósito uma linha `automacao.notificar-canal.v1` `pending` em
+ * `plataforma.integration_outbox` — sem este `delete`, ela sobrevivia a cada
+ * execução da suíte (não há FK que barre o `delete` do Espaço) e o outbox
+ * worker de produção (`apps/api/src/index.ts:98`, sem filtro de Espaço)
+ * entregava contra `/webhooks/plataforma/notificar-canal` com `taskId` de
+ * teste. Em 2026-09-24 havia 9 linhas assim acumuladas. Mesma classe do
+ * defeito já corrigido em `operacoes.test.ts` (commit `1923892`).
+ */
 async function limparWorkspace(workspaceId: string): Promise<void> {
   const cliente = await pool().connect();
   try {
+    await cliente.query("delete from plataforma.integration_outbox where workspace_id = $1", [workspaceId]);
     await cliente.query("delete from plataforma.automacao_agenda where workspace_id = $1", [workspaceId]);
     await cliente.query("delete from plataforma.registros where workspace_id = $1", [workspaceId]);
     await cliente.query("delete from plataforma.workspaces where workspace_id = $1", [workspaceId]);
@@ -256,6 +271,11 @@ const atorDeTeste = async (): Promise<Id> => "mem_teste";
 
 d("scheduler-worker (Postgres real) — (f)-(l) com espiã, (m) com o domínio de verdade", () => {
   beforeAll(async () => {
+    // Defensivo (CR-07): uma execução anterior morta pelo watchdog de 600s
+    // não chega ao `afterAll` — limpa os dois Espaços deste bloco antes de
+    // semear de novo, para nada órfão sobreviver entre execuções.
+    await limparWorkspace(WORKSPACE);
+    await limparWorkspace(WORKSPACE_M);
     await prepararWorkspaceVazio(WORKSPACE);
   });
 
@@ -573,6 +593,8 @@ async function lerRevisao(workspaceId: string): Promise<number> {
 
 d("primeira volta sobre o backlog importado — MARCO_ZERO, ensaio e liberação (Task 2)", () => {
   beforeAll(async () => {
+    // Defensivo (CR-07): ver o comentário equivalente no bloco (f)-(m).
+    await limparWorkspace(WORKSPACE_ENSAIO);
     await prepararWorkspaceVazio(WORKSPACE_ENSAIO);
   });
 
@@ -712,7 +734,9 @@ d("primeira volta sobre o backlog importado — MARCO_ZERO, ensaio e liberação
   });
 });
 
-/* ── Canal por agenda (AUTO-02, Task 3): o evento nasce na mesma transação, e o Ensaio não grava nada ────────── */
+/* ── Canal por agenda (AUTO-02, Task 3): o evento nasce na mesma transação, e o Ensaio não grava nada.
+ * Migrado de Contas a pagar para a Solicitação de pagamento em 05-19 (CR-07/colateral de D5-19/05-13):
+ * `destinoDeCanal` só resolve destino em `CANAL_LISTA_ID` desde então. ────────── */
 
 /** Quantas linhas de `automacao.notificar-canal.v1` o payload aponta para `taskId` neste Espaço de Trabalho. */
 async function contarOutboxCanalDaTarefa(workspaceId: string, taskId: string): Promise<number> {
@@ -735,26 +759,60 @@ interface CenarioCanal {
 }
 
 /**
- * Monta, num `DataState` real (`buildGestaoBootstrap`), uma Automação de
- * Canal por AGENDA (`condicaoTemporal`, `dueDateOffsetDays: 0`) sobre
- * `CP.listId`, e uma conta cujo vencimento é `hoje` — o gatilho dispara na
- * primeira rodada. `comWhatsapp: false` deixa o Campo vazio de propósito,
- * para o caso (c) (a Ação recusa). Semeia o `workspaceId` inteiro e devolve
- * o `taskId` para a asserção contra `plataforma.integration_outbox`.
+ * `buildGestaoBootstrap` já publica automações reais de `condicaoTemporal`
+ * em `CP.listId` (A2 etc.) e `CR.listId` (R2/R4/R5) — `catalogoDeListasComAgenda`
+ * as descobre junto de `CANAL_LISTA_ID`, então `semear()` cria uma linha de
+ * agenda por Lista (três, não uma) para o mesmo dia civil. `processarUm()`
+ * reivindica UMA linha por chamada, pela ordem `dia_civil, criado_em` — como
+ * as automações de CP/CR nascem no seed ANTES da Automação de Canal (que só
+ * é empurrada depois dos dois evolvers), a linha de `CANAL_LISTA_ID` não é
+ * necessariamente a primeira. Drena a fila inteira (como o worker de
+ * produção faz em regime) para não depender dessa ordem — as outras duas
+ * Listas não têm Tarefa nenhuma neste Espaço de teste, então processá-las é
+ * inofensivo (zero Tarefas elegíveis).
+ */
+async function drenarAgenda(worker: SchedulerWorker): Promise<void> {
+  let sobrouAlgo = true;
+  while (sobrouAlgo) {
+    sobrouAlgo = await worker.processarUm();
+  }
+}
+
+/**
+ * Monta, num `DataState` real (`buildGestaoBootstrap` + os dois evolvers de
+ * configuração), uma Automação de Canal por AGENDA (`condicaoTemporal`,
+ * `dueDateOffsetDays: 0`) sobre `CANAL_LISTA_ID` ("Solicitações de
+ * pagamento", D5-19/05-13 — `destinoDeCanal` só resolve destino nesta Lista
+ * desde então), e uma Solicitação cujo vencimento é `hoje` — o gatilho
+ * dispara na primeira rodada. `comWhatsapp: false` deixa o Campo vazio de
+ * propósito, para o caso (c) (a Ação recusa). O valor de WhatsApp nunca tem
+ * dígito de telefone (05-07/eventos-de-canal.test.ts): o Campo é tipo
+ * `phone` mas aceita qualquer texto não vazio, e o critério de aceite deste
+ * arquivo proíbe sequência de 9+ dígitos. Semeia o `workspaceId` inteiro e
+ * devolve o `taskId` para a asserção contra `plataforma.integration_outbox`.
  */
 async function prepararCenarioCanalPorAgenda(workspaceId: string, hoje: Date, comWhatsapp: boolean): Promise<CenarioCanal> {
   const vencimentoCivil = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
   const estado = buildGestaoBootstrap({ workspaceId });
+  // A Lista de Solicitações e as Integrações por Empresa (Marcos Paulo, com
+  // `avisosPorCanal.whatsapp` declarado) não nascem em `buildGestaoBootstrap`
+  // — precisam dos dois evolvers, no mesmo molde de `operacoes.test.ts`
+  // (w)/(x), 05-17.
+  const solicitacoes = evoluirConfiguracaoDeSolicitacoes(estado, CP.financeiroId);
+  if (!solicitacoes.ok) throw new Error(`fixture: ${solicitacoes.error}`);
+  const empresas = evoluirConfiguracaoPorEmpresa(estado, CP.financeiroId);
+  if (!empresas.ok) throw new Error(`fixture: ${empresas.error}`);
+
   estado.automations.push({
     id: `aut_canal_agenda_${randomUUID()}`,
     workspaceId: estado.workspace.id,
     createdBy: { kind: "member", id: CP.financeiroId },
     createdAt: "2026-01-01T00:00:00.000Z",
     lifecycle: "ativo",
-    name: "Canal por agenda (teste 05-07, Task 3)",
+    name: "Canal por agenda (teste 05-19, Task 1 — migrado de Contas a pagar)",
     description: "",
     scopeType: "list",
-    scopeId: CP.listId,
+    scopeId: CANAL_LISTA_ID,
     ownerMemberId: CP.financeiroId,
     reactsToAutomationEvents: false,
     versions: [
@@ -768,7 +826,7 @@ async function prepararCenarioCanalPorAgenda(workspaceId: string, hoje: Date, co
             order: 1,
             kind: "controle",
             controlKind: "notificar",
-            params: JSON.stringify({ canal: "whatsapp", canalCampoDestinoId: CP.fields.whatsapp, canalMensagemId: "gasto-novo" }),
+            params: JSON.stringify({ canal: "whatsapp", canalCampoDestinoId: CANAL_CAMPO_WHATSAPP_ID, canalMensagemId: "gasto-novo" }),
           },
         ],
         errorPolicy: { onActionFailure: "interromper", retries: 0 },
@@ -777,17 +835,19 @@ async function prepararCenarioCanalPorAgenda(workspaceId: string, hoje: Date, co
     ],
   });
 
-  // Sem Pessoa nem Valor preenchidos: as condições de A5/A6/A7 (já no seed de
-  // `CP.listId`) não se satisfazem, então só a NOSSA Automação de agenda roda.
   const criacao = createTask(estado, CP.financeiroId, {
-    listId: CP.listId,
-    title: "Conta de teste — Canal por agenda (05-07)",
-    statusId: CP.status.paraPagar,
+    listId: CANAL_LISTA_ID,
+    title: "Solicitação de teste — Canal por agenda (05-19)",
+    statusId: SOL.status.paraFazer,
     dueDate: { form: "civilDay", value: vencimentoCivil },
   });
   if (!criacao.ok) throw new Error(`fixture: ${criacao.error}`);
+  // `destinoDeCanal` (D5-19) exige Empresa nos DOIS modos — sempre preenchida,
+  // mesmo quando o caso é o de recusa por WhatsApp vazio.
+  const empresa = setTaskFieldValue(estado, CP.financeiroId, criacao.value.id, CANAL_CAMPO_EMPRESA_ID, "Marcos Paulo");
+  if (!empresa.ok) throw new Error(`fixture: ${empresa.error}`);
   if (comWhatsapp) {
-    const campo = setTaskFieldValue(estado, CP.financeiroId, criacao.value.id, CP.fields.whatsapp, "whatsapp-teste-agenda-05-07");
+    const campo = setTaskFieldValue(estado, CP.financeiroId, criacao.value.id, CANAL_CAMPO_WHATSAPP_ID, "whatsapp-teste-agenda-canal");
     if (!campo.ok) throw new Error(`fixture: ${campo.error}`);
   }
 
@@ -802,10 +862,18 @@ async function prepararCenarioCanalPorAgenda(workspaceId: string, hoje: Date, co
   return { taskId: criacao.value.id, vencimentoCivil };
 }
 
-d("scheduler-worker (Postgres real) — Canal por agenda (AUTO-02, Task 3)", () => {
+d("scheduler-worker (Postgres real) — Canal por agenda (AUTO-02, Task 3; migrado para a Solicitação em 05-19/CR-07)", () => {
   const WORKSPACE_CANAL_A = `ws_${RUN}_canal_a`;
   const WORKSPACE_CANAL_B = `ws_${RUN}_canal_b`;
   const WORKSPACE_CANAL_C = `ws_${RUN}_canal_c`;
+
+  beforeAll(async () => {
+    // Defensivo (CR-07): ver o comentário do bloco (f)-(m) — este é o bloco
+    // que originou o incidente (9 linhas órfãs de outbox em 2026-09-24).
+    await limparWorkspace(WORKSPACE_CANAL_A);
+    await limparWorkspace(WORKSPACE_CANAL_B);
+    await limparWorkspace(WORKSPACE_CANAL_C);
+  });
 
   afterAll(async () => {
     await limparWorkspace(WORKSPACE_CANAL_A);
@@ -829,7 +897,7 @@ d("scheduler-worker (Postgres real) — Canal por agenda (AUTO-02, Task 3)", () 
     });
 
     expect(await worker.semear()).toBeGreaterThan(0);
-    expect(await worker.processarUm()).toBe(true);
+    await drenarAgenda(worker);
 
     expect(await contarOutboxCanalDaTarefa(WORKSPACE_CANAL_A, taskId)).toBe(1);
   });
@@ -848,9 +916,9 @@ d("scheduler-worker (Postgres real) — Canal por agenda (AUTO-02, Task 3)", () 
     });
 
     expect(await worker.semear()).toBeGreaterThan(0);
-    expect(await worker.processarUm()).toBe(true);
+    await drenarAgenda(worker);
 
-    const linha = await lerLinhaDaAgenda(WORKSPACE_CANAL_B, CP.listId, vencimentoCivil);
+    const linha = await lerLinhaDaAgenda(WORKSPACE_CANAL_B, CANAL_LISTA_ID, vencimentoCivil);
     expect(linha.estado).toBe("concluido");
     expect(linha.last_error_code).toBe(CODIGOS_DA_AGENDA.ENSAIO_PRIMEIRA_VOLTA);
     expect(linha.executadas).toBeGreaterThan(0); // o cálculo aconteceu — a Automação de Canal rodou de verdade
@@ -872,7 +940,7 @@ d("scheduler-worker (Postgres real) — Canal por agenda (AUTO-02, Task 3)", () 
     });
 
     expect(await worker.semear()).toBeGreaterThan(0);
-    expect(await worker.processarUm()).toBe(true);
+    await drenarAgenda(worker);
 
     expect(await contarOutboxCanalDaTarefa(WORKSPACE_CANAL_C, taskId)).toBe(0);
   });
