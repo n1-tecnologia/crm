@@ -26,11 +26,17 @@ const d = temBanco ? describe : describe.skip;
 // `afterAll` varre por este prefixo para não depender de listar cada id.
 const RUN = `teste_integracao_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 const WORKSPACE = `ws_${RUN}`;
+// Segundo Espaço só para o caso (a2) — prova que o índice de Canal inclui
+// `workspace_id` na chave (mesmo `aggregate_id` em Espaços diferentes não colide).
+const WORKSPACE_OUTRO = `ws_${RUN}_outro`;
 
 async function limparTudo(): Promise<void> {
   const cliente = await pool().connect();
   try {
-    await cliente.query("delete from plataforma.integration_outbox where workspace_id = $1", [WORKSPACE]);
+    await cliente.query("delete from plataforma.integration_outbox where workspace_id = $1 or workspace_id = $2", [
+      WORKSPACE,
+      WORKSPACE_OUTRO,
+    ]);
     await cliente.query("delete from plataforma.http_idempotency where service_id = $1", [RUN]);
     await cliente.query("delete from plataforma.upload_objects where session_id in (select id from plataforma.upload_sessions where workspace_id = $1)", [WORKSPACE]);
     await cliente.query("delete from plataforma.upload_sessions where workspace_id = $1", [WORKSPACE]);
@@ -84,6 +90,61 @@ d("constraints das tabelas de transporte (003)", () => {
         [WORKSPACE, aggregateId],
       );
       expect(r.rows[0]!.n).toBe("2");
+    } finally {
+      cliente.release();
+    }
+  });
+
+  // (a2) — WR-04/migração 006. Este caso SÓ passa depois de `npm run migrar -w @n1/api`
+  // aplicar `006-outbox-indice-unico-canal.sql` (05-21, Task 2): antes disso nenhum índice
+  // cobre `automacao.notificar-canal.v1` e os dois inserts do mesmo passo seriam aceitos.
+  it("(a2) integration_outbox: Canal é único por (workspace, agregado, passo); outro passo ou outro Espaço é aceito", async () => {
+    const cliente = await pool().connect();
+    try {
+      const executionId = `exe_${randomUUID()}`;
+      const aggregateIdPasso0 = `${executionId}:0`;
+      const aggregateIdPasso1 = `${executionId}:1`;
+
+      await cliente.query(
+        `insert into plataforma.integration_outbox
+           (workspace_id, aggregate_type, aggregate_id, event_type, payload)
+         values ($1, 'automationExecution', $2, 'automacao.notificar-canal.v1', $3::jsonb)`,
+        [WORKSPACE, aggregateIdPasso0, JSON.stringify({ executionId })],
+      );
+
+      // Mesmo (workspace, agregado, passo, event_type): o segundo insert viola a constraint.
+      await expect(
+        cliente.query(
+          `insert into plataforma.integration_outbox
+             (workspace_id, aggregate_type, aggregate_id, event_type, payload)
+           values ($1, 'automationExecution', $2, 'automacao.notificar-canal.v1', $3::jsonb)`,
+          [WORKSPACE, aggregateIdPasso0, JSON.stringify({ executionId })],
+        ),
+      ).rejects.toThrow(/duplicate key|unique constraint/i);
+
+      // Passo diferente da MESMA Execução: aceito (dois passos de Canal são dois eventos legítimos).
+      await cliente.query(
+        `insert into plataforma.integration_outbox
+           (workspace_id, aggregate_type, aggregate_id, event_type, payload)
+         values ($1, 'automationExecution', $2, 'automacao.notificar-canal.v1', $3::jsonb)`,
+        [WORKSPACE, aggregateIdPasso1, JSON.stringify({ executionId })],
+      );
+
+      // Mesmo aggregate_id (mesmo passo), Espaço de Trabalho diferente: aceito (workspace_id na chave).
+      await cliente.query(
+        `insert into plataforma.integration_outbox
+           (workspace_id, aggregate_type, aggregate_id, event_type, payload)
+         values ($1, 'automationExecution', $2, 'automacao.notificar-canal.v1', $3::jsonb)`,
+        [WORKSPACE_OUTRO, aggregateIdPasso0, JSON.stringify({ executionId })],
+      );
+
+      const r = await cliente.query<{ n: string }>(
+        `select count(*)::text as n from plataforma.integration_outbox
+          where event_type = 'automacao.notificar-canal.v1'
+            and (workspace_id = $1 or workspace_id = $2)`,
+        [WORKSPACE, WORKSPACE_OUTRO],
+      );
+      expect(r.rows[0]!.n).toBe("3");
     } finally {
       cliente.release();
     }

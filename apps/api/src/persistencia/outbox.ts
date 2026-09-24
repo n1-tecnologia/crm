@@ -78,7 +78,13 @@ export type NomeDeEvento = keyof typeof EVENTOS;
 export type EventoDeSaida = {
   readonly [N in NomeDeEvento]: {
     readonly type: N;
-    /** `aggregate_type`/`aggregate_id` — o que o índice único parcial da migração 003 usa para "um evento por agregado". */
+    /**
+     * `aggregate_type`/`aggregate_id` — o que os índices únicos parciais usam para "um
+     * evento por agregado": o de `solicitacao.criada.v1` é o da migração 004; o de
+     * `automacao.notificar-canal.v1` é o da migração 006 (WR-04) — nenhum dos dois é o 003
+     * original (esse cobria só `(aggregate_type, aggregate_id, event_type)`, sem
+     * `workspace_id`, e foi substituído pela 004).
+     */
     readonly aggregateType: string;
     readonly aggregateId: string;
     readonly payload: z.infer<(typeof EVENTOS)[N]>;

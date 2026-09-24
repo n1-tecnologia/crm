@@ -1,0 +1,31 @@
+-- WR-04 — `apps/api/src/persistencia/eventos-de-canal.ts` (e o doc de
+-- `outbox.ts`) diziam que "o índice único parcial da migração 003"
+-- garantia que uma Execução gera no máximo um evento de Canal. Isso nunca
+-- foi verdade: o índice parcial que existe (recriado em 004) só cobre
+-- `event_type = 'solicitacao.criada.v1'` — nenhum índice cobria
+-- `automacao.notificar-canal.v1`. O comentário prometia uma barreira que o
+-- banco não tinha.
+--
+-- `aggregate_id` do evento de Canal é `<executionId>:<indicePasso>` (05-13,
+-- WR-04 lado da ponte) — não só `executionId` — porque uma Execução pode ter
+-- mais de um passo de Canal (duas Ações `notificar` por canal na mesma
+-- Automação): dois passos da MESMA Execução são dois eventos legítimos, e um
+-- índice chaveado só por `executionId` os trataria como duplicata e
+-- derrubaria uma transação válida. O passo entra na chave para que "duas
+-- vezes o MESMO passo" seja a única coisa que colide.
+--
+-- A chave inclui `workspace_id` pela mesma razão de 004:
+-- `resetIdSequence`/`syncIdSequence` (packages/dominio/src/operations/activity.ts)
+-- reposicionam o contador de ids a partir do estado HIDRATADO de cada Espaço
+-- — dois Espaços podem produzir o mesmo `executionId` baixo para Execuções
+-- diferentes. Sem `workspace_id` na chave, um segundo Espaço de Trabalho
+-- colidiria na constraint do primeiro.
+--
+-- Efeito: um segundo insert do mesmo `(workspace_id, aggregate_type,
+-- aggregate_id, event_type)` de Canal viola a constraint e desfaz a
+-- transação inteira (`unidade-de-trabalho.ts::executar()`) — um bug de
+-- derivação em dobro vira erro de transação, nunca um aviso de WhatsApp
+-- mandado duas vezes.
+create unique index if not exists integration_outbox_notificar_canal_uniq
+  on plataforma.integration_outbox (workspace_id, aggregate_type, aggregate_id, event_type)
+  where event_type = 'automacao.notificar-canal.v1';
