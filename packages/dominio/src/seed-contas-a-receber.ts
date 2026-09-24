@@ -148,6 +148,15 @@ export function applyContasAReceber(state: DataState, clock: Clock, opcoes: Opco
     versions: [{ number: 1, state: "publicada", trigger, conditions, actions, errorPolicy: { onActionFailure: "interromper", retries: 0 }, publishedBy: CP.financeiroId, publishedAt: at(99), createdAt: at(100) }],
   });
   const entrou = (status: string): AutomationTrigger => ({ kind: "evento", eventType: "tarefaEntrouEmStatus", eventSubtype: status });
+  // D5-15 — o número que `vencimento(dias)` recebe NÃO é constante de código:
+  // é o `dueDateOffsetDays` do `temporalPredicate` da versão PUBLICADA da
+  // Automação, que é registro no banco (mesmo mecanismo de D-07). Os 30/60 de
+  // R4/R5 abaixo são o valor INICIAL, proposto a partir de UM ÚNICO CASO
+  // OBSERVADO (Kennedy — `docs/07-processos/contas-a-receber.md` §12) — não
+  // uma medição do Financeiro. Mudar o prazo real, quando o Financeiro disser
+  // qual é, não é mudar este arquivo: é `ajustarPrazosDeCobranca`
+  // (`apps/api/src/bootstrap/contas-a-receber.ts`, Plan 05-10 Task 2), que
+  // reescreve o `temporalPredicate` já gravado, sem deploy.
   const vencimento = (dias: number): AutomationTrigger => ({ kind: "condicaoTemporal", temporalPredicate: JSON.stringify({ dueDateOffsetDays: dias }) });
   const cond = (spec: object): AutomationCondition => ({ kind: "valorDeCampo", expression: JSON.stringify(spec) });
   const acao = (order: number, toolId: string, params: object): AutomationAction => ({ order, kind: "escrita", toolId, params: JSON.stringify(params) });
@@ -164,10 +173,16 @@ export function applyContasAReceber(state: DataState, clock: Clock, opcoes: Opco
       acao(1, "tarefa.definirCampo", { definitionId: F.dataPagamento, today: true, onlyIfEmpty: true }),
       acao(2, "tarefa.definirCampo", { definitionId: F.situacao, value: CR.situacoes.emDia }),
     ]),
-    automation("aut_cr_r4", "R4 · 30 dias em cobrança: Comercial", "Trinta dias após o vencimento, ainda “pendente”: Comentário com Menção ao dono do cliente no CRM — o “para conhecimento” de hoje.", vencimento(30), [cond({ status: "pendente" })], [
+    // D5-15 — 30 dias: valor INICIAL a partir de um único caso observado
+    // (Kennedy, §12), não uma medição do Financeiro; ajustável sem deploy por
+    // `ajustarPrazosDeCobranca`.
+    automation("aut_cr_r4", "R4 · 30 dias em cobrança: Comercial", "Trinta dias após o vencimento, ainda “pendente”: Comentário com Menção ao dono do cliente no CRM — o “para conhecimento” de hoje. Os 30 dias são valor INICIAL (D5-15), propostos a partir de um único caso observado (Kennedy, §12) — ajuste em “Prazos de cobrança” quando o Financeiro souber o prazo real.", vencimento(30), [cond({ status: "pendente" })], [
       acao(1, "tarefa.comentar", { template: "{{donoDoCliente}}, {{cliente}} está há 30 dias em cobrança ({{titulo}}, venceu {{vencimento}}). Para conhecimento.", mentionClientOwner: true }),
     ]),
-    automation("aut_cr_r5", "R5 · 60 dias em cobrança: Diretoria", "Sessenta dias após o vencimento, ainda “pendente”: escalona à Diretoria.", vencimento(60), [cond({ status: "pendente" })], [
+    // D5-15 — 60 dias: mesma procedência de R4 (caso Kennedy, §12); o
+    // escalonamento exige prazoR5 > prazoR4 (`ajustarPrazosDeCobranca` recusa
+    // o inverso).
+    automation("aut_cr_r5", "R5 · 60 dias em cobrança: Diretoria", "Sessenta dias após o vencimento, ainda “pendente”: escalona à Diretoria. Mesma procedência de R4 (D5-15, caso Kennedy, §12): valor INICIAL, ajustável sem deploy.", vencimento(60), [cond({ status: "pendente" })], [
       acao(1, "tarefa.comentar", { template: "{{cliente}} está há 60 dias em cobrança ({{titulo}}). Escalonado à Diretoria para ligar ao cliente.", mentionMemberId: CP.aprovadorId }),
     ]),
     automation("aut_cr_r6", "R6 · Descartado em cobrança: inadimplente", "Ao entrar em “descartado” com Situação “em cobrança”, a Situação vira “inadimplente”. Um cancelamento (sem cobrança) segue “em dia”.", entrou("descartado"), [cond({ definitionId: F.situacao, equals: CR.situacoes.emCobranca })], [

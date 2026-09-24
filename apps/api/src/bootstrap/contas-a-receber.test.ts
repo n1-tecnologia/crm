@@ -11,10 +11,12 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { CP, CR } from "@n1/dominio/operations/financeiro";
+import { runScheduledAutomations } from "@n1/dominio/operations/automations";
+import { createTask } from "@n1/dominio/operations/tasks";
 import { carregarEnv, encerrar, pool } from "../persistencia/conexao";
 import { hidratar } from "../persistencia/repositorio";
 import { bootstrapGestao } from "./gestao";
-import { configurarContasAReceber } from "./contas-a-receber";
+import { ajustarPrazosDeCobranca, configurarContasAReceber } from "./contas-a-receber";
 
 carregarEnv();
 const temBanco = Boolean(process.env.DATABASE_URL);
@@ -175,6 +177,121 @@ d("configurarContasAReceber — o evolver de 'Contas a receber' contra o Postgre
       );
     } finally {
       limpeza.release();
+    }
+  });
+});
+
+const civil = (d: Date): string => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+d("ajustarPrazosDeCobranca — o prazo de R4/R5 vira parâmetro (D5-15) contra o Postgres real", () => {
+  const WS2 = `${WS}_prazo`;
+
+  beforeAll(async () => {
+    const limpeza = await pool().connect();
+    try {
+      await limpeza.query("delete from plataforma.registros where workspace_id = $1", [WS2]);
+      await limpeza.query("delete from plataforma.workspaces where workspace_id = $1", [WS2]);
+    } finally {
+      limpeza.release();
+    }
+    const bootstrap = await pool().connect();
+    try {
+      const resultado = await bootstrapGestao(bootstrap, { workspaceId: WS2, agora: AGORA });
+      expect(resultado.criado).toBe(true);
+    } finally {
+      bootstrap.release();
+    }
+  });
+
+  afterAll(async () => {
+    const limpeza = await pool().connect();
+    try {
+      await limpeza.query("delete from plataforma.registros where workspace_id = $1", [WS2]);
+      await limpeza.query("delete from plataforma.workspaces where workspace_id = $1", [WS2]);
+    } finally {
+      limpeza.release();
+    }
+    await encerrar();
+  });
+
+  async function temporalPredicateGravado(automationId: string): Promise<string | undefined> {
+    const cliente = await pool().connect();
+    try {
+      const { state } = await hidratar(cliente, WS2);
+      const automacao = state.automations.find((a) => a.id === automationId);
+      return automacao?.versions[0]?.trigger?.temporalPredicate;
+    } finally {
+      cliente.release();
+    }
+  }
+
+  it("(iv) --dry-run não grava — o temporalPredicate no banco continua 30/60", async () => {
+    const resultado = await ajustarPrazosDeCobranca({ workspaceId: WS2, actingMemberId: CP.financeiroId, dryRun: true, prazoR4: 45, prazoR5: 90 });
+    expect(resultado.ok, resultado.ok ? "" : resultado.error).toBe(true);
+    if (!resultado.ok) throw new Error("unreachable");
+    expect(resultado.diff.r4).toEqual({ antes: 30, depois: 45 });
+    expect(resultado.diff.r5).toEqual({ antes: 60, depois: 90 });
+
+    expect(await temporalPredicateGravado("aut_cr_r4")).toBe(JSON.stringify({ dueDateOffsetDays: 30 }));
+    expect(await temporalPredicateGravado("aut_cr_r5")).toBe(JSON.stringify({ dueDateOffsetDays: 60 }));
+  });
+
+  it("(v) prazoR5 <= prazoR4 recusa e não grava — nenhum temporalPredicate muda", async () => {
+    const resultado = await ajustarPrazosDeCobranca({ workspaceId: WS2, actingMemberId: CP.financeiroId, dryRun: false, prazoR4: 60, prazoR5: 60 });
+    expect(resultado.ok).toBe(false);
+    if (resultado.ok) throw new Error("devia recusar");
+    expect(resultado.error).toContain("escalonar");
+
+    expect(await temporalPredicateGravado("aut_cr_r4")).toBe(JSON.stringify({ dueDateOffsetDays: 30 }));
+    expect(await temporalPredicateGravado("aut_cr_r5")).toBe(JSON.stringify({ dueDateOffsetDays: 60 }));
+  });
+
+  it("(vi) --apply muda o temporalPredicate das duas Automações e grava Registro de Atividade com antes/depois", async () => {
+    const resultado = await ajustarPrazosDeCobranca({ workspaceId: WS2, actingMemberId: CP.financeiroId, dryRun: false, prazoR4: 45, prazoR5: 90 });
+    expect(resultado.ok, resultado.ok ? "" : resultado.error).toBe(true);
+    if (!resultado.ok) throw new Error("unreachable");
+    expect(resultado.diff.r4).toEqual({ antes: 30, depois: 45 });
+    expect(resultado.diff.r5).toEqual({ antes: 60, depois: 90 });
+
+    expect(await temporalPredicateGravado("aut_cr_r4")).toBe(JSON.stringify({ dueDateOffsetDays: 45 }));
+    expect(await temporalPredicateGravado("aut_cr_r5")).toBe(JSON.stringify({ dueDateOffsetDays: 90 }));
+
+    const cliente = await pool().connect();
+    try {
+      const { state } = await hidratar(cliente, WS2);
+      const registro = [...state.activity].reverse().find((a) => a.objectId === "aut_cr_r4" && a.action === "Prazo de cobrança ajustado");
+      expect(registro).toBeDefined();
+      expect(registro!.before).toBe("30");
+      expect(registro!.after).toBe("45");
+    } finally {
+      cliente.release();
+    }
+  });
+
+  it("(vii) com o novo prazo aplicado, runScheduledAutomations dispara R4 no dia certo (teste de domínio puro, sem nova escrita)", async () => {
+    const cliente = await pool().connect();
+    try {
+      const { state } = await hidratar(cliente, WS2);
+      // Depois de (vi), R4 = 45 dias. Uma Tarefa "pendente" vencida há
+      // exatamente 45 dias dispara R4 hoje — a prova de que o prazo novo (não
+      // o 30 do seed) é quem decide o dia do disparo.
+      const hoje = new Date();
+      const vencidaHa45 = new Date(hoje);
+      vencidaHa45.setDate(vencidaHa45.getDate() - 45);
+      const criacao = createTask(state, CP.financeiroId, {
+        listId: CR.listId,
+        title: "Conta de teste — R4 com novo prazo (05-10, Task 2)",
+        statusId: CR.status.pendente,
+        dueDate: { form: "civilDay", value: civil(vencidaHa45) },
+      });
+      expect(criacao.ok, criacao.ok ? "" : criacao.error).toBe(true);
+
+      const execucao = runScheduledAutomations(state, CP.financeiroId, CR.listId, hoje);
+      expect(execucao.ok, execucao.ok ? "" : execucao.error).toBe(true);
+      if (!execucao.ok) throw new Error("unreachable");
+      expect(execucao.value.executed).toBeGreaterThanOrEqual(1);
+    } finally {
+      cliente.release();
     }
   });
 });
