@@ -13,7 +13,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { CODIGOS_DE_ERRO, type CodigoDeErroV1 } from "./erros";
-import { EsquemasV1, type NomeDeEndpointV1 } from "./v1";
+import { EsquemasV1, StatusSolicitacaoV1, type NomeDeEndpointV1 } from "./v1";
 
 const FIXTURES_DIR = fileURLToPath(new URL("../../../../contratos/payment-requests-v1/", import.meta.url));
 
@@ -43,10 +43,19 @@ const CATEGORIAS_COMUNS = [
 const CATEGORIAS_DE_ESCRITA = [...CATEGORIAS_COMUNS, "erro-409", "erro-422"] as const;
 const CATEGORIAS_DE_REPLAY = ["replay-mesma-chave", "replay-chave-igual-payload-diferente"] as const;
 
+/**
+ * Categorias extras que só um método tem, além da matriz comum acima — hoje só
+ * `getTask.sucesso-em-revisao` (D5-06, o 5º Status do contrato v1, Phase 5 Plan
+ * 05-03). Sem esta lista, "contagem de arquivos bate com a matriz esperada"
+ * abaixo falharia para `getTask` ao ganhar esta fixture a mais.
+ */
+const CATEGORIAS_EXTRAS_POR_METODO: Readonly<Partial<Record<NomeDeEndpointV1, readonly string[]>>> = {
+  getTask: ["sucesso-em-revisao"],
+};
+
 function categoriasEsperadas(metodo: NomeDeEndpointV1): readonly string[] {
-  return METODOS_ESCRITA.includes(metodo)
-    ? [...CATEGORIAS_DE_ESCRITA, ...CATEGORIAS_DE_REPLAY]
-    : CATEGORIAS_COMUNS;
+  const base = METODOS_ESCRITA.includes(metodo) ? [...CATEGORIAS_DE_ESCRITA, ...CATEGORIAS_DE_REPLAY] : CATEGORIAS_COMUNS;
+  return [...base, ...(CATEGORIAS_EXTRAS_POR_METODO[metodo] ?? [])];
 }
 
 interface Fixture {
@@ -70,6 +79,20 @@ function verificarEnvelopeDeErro(fixture: Fixture): void {
   expect(fixture.resposta.status).toBe(catalogo.status);
   expect(corpo.error!.retryable).toBe(catalogo.retryable);
 }
+
+describe("StatusSolicitacaoV1 — 5º Status (D5-06)", () => {
+  it("tem exatamente cinco valores, nesta ordem — os quatro de D-01 mais 'em revisão' por último", () => {
+    expect(StatusSolicitacaoV1.options).toEqual(["para fazer", "em aprovação", "não aprovado", "aprovado", "em revisão"]);
+  });
+
+  it("rejeita 'em revisao' sem acento — o enum é literal, não normalizado", () => {
+    expect(StatusSolicitacaoV1.safeParse("em revisao").success).toBe(false);
+  });
+
+  it("aceita 'em revisão' com acento", () => {
+    expect(StatusSolicitacaoV1.safeParse("em revisão").success).toBe(true);
+  });
+});
 
 describe("contrato v1 — matriz de fixtures por método", () => {
   for (const metodo of TODOS_OS_METODOS) {
@@ -104,6 +127,14 @@ describe("contrato v1 — matriz de fixtures por método", () => {
         const fixture = lerFixture(metodo, "invalido-enum-desconhecido");
         expect(esquema.resposta.safeParse(fixture.resposta.corpo).success).toBe(false);
       });
+
+      for (const categoriaExtra of CATEGORIAS_EXTRAS_POR_METODO[metodo] ?? []) {
+        it(`${categoriaExtra} é aceita pelo schema de resposta`, () => {
+          const fixture = lerFixture(metodo, categoriaExtra);
+          const resultado = esquema.resposta.safeParse(fixture.resposta.corpo);
+          expect(resultado.success, JSON.stringify(!resultado.success && resultado.error.issues)).toBe(true);
+        });
+      }
 
       for (const codigoHttp of [401, 403, 404, 429, 503] as const) {
         it(`erro-${codigoHttp} casa com o envelope de erro e com retryable de CODIGOS_DE_ERRO`, () => {

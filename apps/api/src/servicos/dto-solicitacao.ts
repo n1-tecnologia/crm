@@ -103,6 +103,7 @@ const STATUS_POR_ID: Readonly<Record<string, PaymentRequestDtoV1["status"]>> = {
   [SOL.status.emAprovacao]: "em aprovação",
   [SOL.status.naoAprovado]: "não aprovado",
   [SOL.status.aprovado]: "aprovado",
+  [SOL.status.emRevisao]: "em revisão",
 };
 
 /** O inverso de `STATUS_POR_ID` — `PUT /:taskId/status` traduz o `status` do contrato para o id que `changeTaskStatus` espera. */
@@ -111,6 +112,7 @@ export const ID_DO_STATUS: Readonly<Record<PaymentRequestDtoV1["status"], Id>> =
   "em aprovação": SOL.status.emAprovacao,
   "não aprovado": SOL.status.naoAprovado,
   aprovado: SOL.status.aprovado,
+  "em revisão": SOL.status.emRevisao,
 };
 
 function dueDateNativo(task: Task): string | null {

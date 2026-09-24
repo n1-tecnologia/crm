@@ -1,0 +1,62 @@
+{
+  "descricao": "GET de uma Tarefa do Family Office no 5º Status \"em revisão\" (D5-06, 05-CONTEXT.md) — o alargamento do enum canônico, não um campo novo.",
+  "requisicao": {
+    "params": {
+      "taskId": "tarefa-002"
+    }
+  },
+  "resposta": {
+    "status": 200,
+    "corpo": {
+      "id": "tarefa-002",
+      "readableId": "SOL-0002",
+      "origin": "plataforma",
+      "title": "Pagamento fornecedor fictício (Family Office)",
+      "description": "Pagamento em revisão, aguardando confirmação da Empresa.",
+      "status": "em revisão",
+      "dueDate": "2026-10-05",
+      "assigneeIds": [
+        "membro-financeiro"
+      ],
+      "tagIds": [
+        "tag-conta-family-office"
+      ],
+      "fields": {
+        "costCenter": "FO",
+        "businessUnit": "EXO Loteamento",
+        "company": "EXO Loteamento",
+        "paymentCategory": "Prestação de Serviços",
+        "personId": null,
+        "supplierType": "CNPJ",
+        "supplierDocument": "00.000.000/0001-91",
+        "supplierName": "Fornecedor Fictício LTDA",
+        "requesterName": "Solicitante Fictício",
+        "requesterWhatsApp": "+5511999990000",
+        "issueDate": "2026-09-20",
+        "dueDate": "2026-10-05",
+        "amountCents": 654321,
+        "paymentMethod": "Chave Pix",
+        "pixKey": "financeiro@fornecedor-ficticio.com.br",
+        "barcode": null,
+        "pixCopyPaste": null,
+        "paymentLink": null,
+        "manual": false,
+        "manualReason": null,
+        "productIds": []
+      },
+      "attachments": [
+        {
+          "id": "anexo-002",
+          "role": "invoice",
+          "name": "nota-fiscal-fo.pdf",
+          "mediaType": "application/pdf",
+          "size": 18432,
+          "downloadUrl": "https://storage.exemplo.com.br/anexo-002?token=def456",
+          "expiresAt": "2026-09-21T12:05:00.000Z"
+        }
+      ],
+      "createdAt": "2026-09-20T12:00:00.000Z",
+      "updatedAt": "2026-09-24T09:30:00.000Z"
+    }
+  }
+}

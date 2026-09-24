@@ -80,7 +80,7 @@ Rede, timeout e `408` seguem a mesma regra de `429`/`5xx`: `retryable: true`. To
 
 ## §4 `PaymentRequestDtoV1`
 
-Forma da **plataforma**, não do ClickUp: nenhuma forma nativa do ClickUp cruza esta fronteira — a lista exata do que fica para trás está em "Formas do ClickUp que não cruzam a fronteira" (§5). Valor monetário viaja como `amountCents: number` inteiro — nunca float. `status` é exatamente o Conjunto de Status oficial de `solicitacao-de-pagamento.md` §3 — os quatro Status hoje configurados na Lista, nenhum a mais.
+Forma da **plataforma**, não do ClickUp: nenhuma forma nativa do ClickUp cruza esta fronteira — a lista exata do que fica para trás está em "Formas do ClickUp que não cruzam a fronteira" (§5). Valor monetário viaja como `amountCents: number` inteiro — nunca float. `status` é exatamente o Conjunto de Status oficial de `solicitacao-de-pagamento.md` §3, alargado pela Fase 5: o 5º valor, `"em revisão"`, entra com o Family Office (D5-06, `.planning/phases/05-contas-a-receber-e-os-outros-tenants/05-CONTEXT.md`) — os quatro Status anteriores seguem travados por D-01 (`02-CONTEXT.md`), mesmo texto e mesma posição.
 
 ```ts
 interface PaymentRequestDtoV1 {
@@ -89,7 +89,7 @@ interface PaymentRequestDtoV1 {
   origin: "plataforma" | "clickup";
   title: string;
   description: string | null;
-  status: "para fazer" | "em aprovação" | "não aprovado" | "aprovado";
+  status: "para fazer" | "em aprovação" | "não aprovado" | "aprovado" | "em revisão";
   dueDate: string | null; // YYYY-MM-DD — Data de vencimento nativa da Tarefa
   assigneeIds: string[];
   tagIds: string[];

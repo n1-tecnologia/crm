@@ -27,6 +27,7 @@ em qualquer um dos dois repositórios.
 |---|---|
 | `sucesso-minimo` | resposta válida com o mínimo de campos preenchidos (nuláveis em `null`, listas vazias) |
 | `sucesso-completo` | resposta válida com todos os campos preenchidos, inclusive anexo/menção quando aplicável |
+| `sucesso-em-revisao` | só em `getTask` — resposta válida com `status: "em revisão"`, o 5º valor do enum (D5-06, Family Office, Phase 5 Plan 05-03); prova que o alargamento do enum não quebra o resto do DTO |
 | `invalido-campo-obrigatorio-ausente` | resposta com um campo obrigatório removido — o schema correspondente de `EsquemasV1` deve rejeitar |
 | `invalido-enum-desconhecido` | resposta com um valor fora do enum canônico (Status, Forma de pagamento ou `ActorKind`) — o schema deve rejeitar |
 | `erro-401`, `erro-403`, `erro-404`, `erro-409`, `erro-422`, `erro-429`, `erro-503` | envelope de erro do §3 do contrato, presente quando aplicável ao método (GETs não têm `409` de idempotência, só os quatro métodos de escrita) |
@@ -43,7 +44,7 @@ Os três métodos de leitura (`getTask`, `listPaymentRequestTasks`,
 
 | Método | Categorias | Total |
 |---|---|---|
-| `getTask` | sucesso × 2, invalido × 2, erro-401/403/404/429/503 | 9 |
+| `getTask` | sucesso × 2, invalido × 2, erro-401/403/404/429/503, `sucesso-em-revisao` | 10 |
 | `listPaymentRequestTasks` | idem | 9 |
 | `getCommentReplies` | idem | 9 |
 | `createComment` | sucesso × 2, invalido × 2, erro-401/403/404/409/422/429/503, replay × 2 | 13 |

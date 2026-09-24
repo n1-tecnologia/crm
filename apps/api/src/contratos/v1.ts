@@ -34,7 +34,9 @@ type Confere<T extends readonly true[]> = T;
 
 // ── Enums canônicos do contrato ──────────────────────────────────────────
 
-export const StatusSolicitacaoV1 = z.enum(["para fazer", "em aprovação", "não aprovado", "aprovado"]);
+// 5º valor "em revisão" por último: chega com o Family Office (D5-06, 05-CONTEXT.md);
+// os quatro anteriores continuam travados por D-01 (02-CONTEXT.md).
+export const StatusSolicitacaoV1 = z.enum(["para fazer", "em aprovação", "não aprovado", "aprovado", "em revisão"]);
 
 export const FormaDePagamentoV1 = z.enum(["Chave Pix", "Boleto", "QRCode Pix", "Cartão"]);
 
