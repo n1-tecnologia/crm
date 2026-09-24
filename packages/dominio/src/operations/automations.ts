@@ -380,12 +380,36 @@ function runAction(
             return { ok: false, output: '“notificar” por Canal sem mensagem: declare canalMensagemId ("gasto-novo" ou "relatorio").' };
           }
           const destino = destinoDeCanal(state, task, spec);
-          if ("recusa" in destino) return { ok: false, output: destino.recusa };
-          if (destino.tipo === "campo") {
-            const nome = state.fieldDefinitions.find((d) => d.id === destino.campoDestinoId)?.name ?? destino.campoDestinoId;
-            return { ok: true, output: `Notificação por WhatsApp enfileirada · Campo “${nome}”: ${mascararDestino(destino.valor)}` };
+          if ("recusa" in destino) {
+            // A recusa vira Registro de Atividade, nunca Comentário fantasma
+            // (UI-SPEC §5): quem enxerga a Tarefa vê que a tentativa aconteceu
+            // e por que ela não saiu.
+            recordActivity(state, {
+              actor: { kind: "automation", id: automation.id },
+              action: "tentou notificar por WhatsApp e recusou",
+              objectType: "task",
+              objectId: task.id,
+              objectName: task.title,
+              detail: destino.recusa,
+            });
+            return { ok: false, output: destino.recusa };
           }
-          return { ok: true, output: `Notificação por WhatsApp enfileirada · destinatários: ${destino.rotulos.join(", ")}` };
+          // O número completo nunca vai para `detail` — a Timeline é vista
+          // por todo Membro que enxerga a Tarefa (T-5-18); só os quatro
+          // últimos caracteres, com `••••` fixo.
+          const detail =
+            destino.tipo === "campo"
+              ? `Campo “${state.fieldDefinitions.find((d) => d.id === destino.campoDestinoId)?.name ?? destino.campoDestinoId}”: ${mascararDestino(destino.valor)}`
+              : `destinatários: ${destino.rotulos.join(", ")}`;
+          recordActivity(state, {
+            actor: { kind: "automation", id: automation.id },
+            action: "notificou por WhatsApp",
+            objectType: "task",
+            objectId: task.id,
+            objectName: task.title,
+            detail,
+          });
+          return { ok: true, output: `Notificação por WhatsApp enfileirada · ${detail}` };
         }
         if (!spec.template) return { ok: false, output: "“notificar” sem texto: declare `template` nos parâmetros da Ação." };
         const alvos = membrosMencionados(state, task, spec);
@@ -688,5 +712,58 @@ export function runScheduledAutomations(
     }
   }
   return ok({ executed, failed, skipped, failures });
+}
+
+/* ───────────────────────── Pedido de Canal (AUTO-02) ───────────────────────── */
+
+/**
+ * O pedido pobre que o `apps/api` (05-07) lê para gravar no outbox — nunca o
+ * VALOR do Campo nem o número que um rótulo representa: a mesma doutrina de
+ * payload pobre de `apps/api/src/persistencia/outbox.ts`, quem precisa do
+ * número de verdade busca a Tarefa de volta com a credencial de serviço.
+ */
+export interface PedidoDeNotificacaoPorCanal {
+  readonly taskId: Id;
+  readonly automationId: Id;
+  readonly executionId: Id;
+  readonly canal: "whatsapp";
+  readonly destinoTipo: "campo" | "rotulos";
+  readonly campoDestinoId?: Id;
+  readonly rotulos?: readonly string[];
+  readonly mensagemId: "gasto-novo" | "relatorio";
+}
+
+/**
+ * PURA e determinística: para cada Execução da lista, para cada passo de
+ * Canal `concluido`, re-resolve o destino chamando a MESMA `destinoDeCanal`
+ * usada em `runAction` — nunca lendo o texto de `step.output`, que é para
+ * humano, não contrato.
+ */
+export function pedidosDeNotificacaoPorCanal(state: DataState, execucoes: readonly AutomationExecution[]): readonly PedidoDeNotificacaoPorCanal[] {
+  const pedidos: PedidoDeNotificacaoPorCanal[] = [];
+  for (const execucao of execucoes) {
+    const task = state.tasks.find((t) => t.id === execucao.objectId);
+    if (!task) continue;
+    for (const step of execucao.steps) {
+      if (step.result !== "concluido") continue;
+      const spec = parseJson<ActionSpec>(step.input);
+      if (!spec || spec.canal !== "whatsapp" || !spec.canalMensagemId) continue;
+      // A resolução falhar aqui não deveria acontecer (o passo só chega a
+      // `concluido` quando `destinoDeCanal` já devolveu um destino) — a
+      // guarda é barata e evita depender de invariante silenciosa.
+      const destino = destinoDeCanal(state, task, spec);
+      if ("recusa" in destino) continue;
+      pedidos.push({
+        taskId: task.id,
+        automationId: execucao.automationId,
+        executionId: execucao.id,
+        canal: "whatsapp",
+        destinoTipo: destino.tipo,
+        ...(destino.tipo === "campo" ? { campoDestinoId: destino.campoDestinoId } : { rotulos: destino.rotulos }),
+        mensagemId: spec.canalMensagemId,
+      });
+    }
+  }
+  return pedidos;
 }
 
