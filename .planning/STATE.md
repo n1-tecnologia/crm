@@ -26,9 +26,56 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 04 (as-outras-telas-do-financeiro-tria) — EXECUTING
-Plan: 6 of 14 completos (Ondas 1 e 2 fechadas; ondas 3-6 pendentes)
-Status: Executing Phase 04 — Ondas 1 e 2 completas, merjadas e com portão de pós-merge verde
-Last activity: 2026-09-23 -- Onda 2 da Phase 04 completa: as três derivações puras no `automation/` (04-04), as sete rotas `GET /financeiro/*` no `apps/api` (04-05), a fundação das telas + o Dashboard (04-06)
+Plan: 10 of 14 completos (Ondas 1, 2 e 3 fechadas; ondas 4-6 pendentes)
+Status: Executing Phase 04 — Ondas 1-3 completas e merjadas; portão da Onda 3 pegou UM defeito real, corrigido em `1d69a90`
+Last activity: 2026-09-23 -- Onda 3 da Phase 04 completa: `/v1/leituras/*` autenticado no `automation/` (04-07), três telas (04-08), as seis escritas + proxy de Extratos no `apps/api` (04-10), Notas fiscais e Produtos fora da chave `anon` (04-11)
+
+**Onda 3 — o que entrou.** 04-07 (sibling, `6924703`/`c3dea4a`/`39dcc35`): `/v1/leituras/*`
+autenticado desde o nascimento, montado ANTES do `express.json()` (linha 53 < 54, verificado),
+projetando pelos DTOs de 04-01 e computando pelas derivações de 04-04; rotas legadas
+byte-a-byte intactas. 04-08: as telas Problemas, Aprovações pendentes (vista legada rotulada,
+D4-11) e Workflows, com o botão "Executar agora" permanentemente desabilitado e com
+`disabledReason` até 04-13 existir (T-4-24). 04-10: SEIS rotas de escrita (não cinco — a
+aritmética do plano era inconsistente; D4-07 autoriza seis) mais o proxy de upload de Extratos
+com `addContentTypeParser` restrito a 8 MIME e `bodyLimit` de 25MB; nenhuma rota de aprovação
+existe, e isso é provado por 404 em teste, não por comentário. 04-11: Notas fiscais e Produtos
+saem da leitura direta ao Supabase com chave `anon` (D4-04) e passam pelo `apps/api`, mais
+`acoes.ts` com as Server Actions.
+
+**04-10 achou e corrigiu um BUG REAL fora do seu escopo declarado (`apps/api/src/app.ts`).**
+O `setErrorHandler` convertia em 500 genérico qualquer erro nativo do Fastify que já trouxesse
+o próprio `statusCode` — o 413 do `bodyLimit` e o 415 do content-type parser inclusive. Veio
+com 04-05. Efeito prático: a mitigação T-4-05 do próprio 04-10 ("413 do Fastify") pareceria
+implementada e não funcionaria em produção. Correção estreita: preserva o 4xx atribuído pelo
+Fastify quando `erro.statusCode` existe, mantém o 500 opaco para bug interno de verdade
+(T-1-06 intacto). Verificado sem regressão: `operacoes.test.ts` 22/22 no checkout principal.
+
+**Portão de pós-merge da Onda 3 — pegou um defeito que nenhum executor podia ver.**
+`painel-de-workflows.tsx:38` reprovava `tsc` com TS2322: com `noUncheckedIndexedAccess`, o
+fallback `?? COR_DE_EXECUCAO.pendente` também é `string | undefined`, então não estreitava
+nada. Causa: 04-08 reescreveu `corDeExecucao` de template string para tabela literal DEPOIS do
+seu último typecheck (era a correção do "token fantasma"), e não re-verificou. typecheck E
+`next build` falhavam; corrigido em `1d69a90` com constante nomeada, ambos verdes.
+
+Resto do portão, tudo verde e com três perguntas respondidas de propósito:
+- `@n1/web` **157/157 em 10,6s** com carga baixa → as 14 falhas que 04-08 relatou eram
+  artefato de carga (load 141-244 com quatro agentes), não defeito. Item 6 do `deferred-items.md`.
+- `rotas/financeiro.test.ts` **25/25** no checkout principal (era 14 passed / 11 skipped no
+  worktree) → o caso (l) de sanitização de nome de arquivo, que 04-10 não pôde exercitar, passa.
+- `operacoes.test.ts` **22/22 em 196s** → o raio de alcance da mudança no `app.ts` está limpo.
+- `next build` verde: seis das oito rotas `/financeiro` emitidas (faltam `plano-contas` e
+  `extratos`, que são 04-13, Onda 4). typecheck nos três workspaces, lint, tokens 392/245.
+
+**Duas pendências abertas registradas em `deferred-items.md` (itens 4 e 5), nenhuma bloqueia a Onda 4:**
+1. `timingSafeEqual` está no código mas NENHUM teste o protege — 04-07 provou por mutação que
+   trocar por `===` deixa os 11 casos verdes. Correção honesta é teste estrutural, não de relógio.
+2. O filtro "Plataforma" de Notas fiscais que o UI-SPEC pede NÃO é construível: o `NotaFiscalDto`
+   não projeta esse campo. Fechar exige ACRESCENTAR `plataforma` à allowlist positiva de D4-05 —
+   decisão humana de exposição de dado, não detalhe de implementação.
+
+**Lição de orquestração:** quatro executores paralelos levaram o load a 141-244 num host de 8
+núcleos e a verificação deixou de ser sinal (falsos timeouts, worker-spawn falhando). As ondas
+4, 5 e 6 têm no máximo dois planos, então o problema não reaparece nesta fase.
 
 **CONTRATO CRUZADO — o nome do hook mudou (04-06 → 04-08, 04-11, 04-13).** O hook de
 revalidação exporta-se como **`useRevalidarAoFocar`**, NÃO `usarRevalidarAoFocar` como o
