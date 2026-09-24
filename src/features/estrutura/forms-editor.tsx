@@ -9,8 +9,9 @@
 import { Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useData, useRun } from "@/data/store";
-import { archiveForm, createForm, formOutdatedReason, rotateFormSecret, updateForm } from "@/data/operations";
+import { FORMULARIO_EM_LISTA_CONVERSACIONAL, archiveForm, createForm, formOutdatedReason, rotateFormSecret, updateForm } from "@/data/operations";
 import { effectiveListConfig } from "@/data/derive";
+import { listaConversacional } from "@/data/derive-conversacional";
 import { FIELD_TYPE_LABEL } from "@/features/shell/format";
 import { ActionMenu, Button, ConfirmDialog, EmptyState, Field, Icone, Select, TextInput, Toggle } from "@/features/shell/ui";
 import type { Form, FormQuestion } from "@/data/types";
@@ -35,6 +36,11 @@ export function FormsEditor({ listId, bloqueio, report }: { readonly listId: str
   const [erro, setErro] = useState<string | null>(null);
 
   const forms = state.forms.filter((f) => f.listId === listId && f.lifecycle === "ativo");
+  // C35 — na Lista conversacional o Formulário não cria Tarefa (o envio não
+  // traz Contato): criar e editar ficam desligados com a frase do domínio;
+  // arquivar segue aberto, porque é a saída.
+  const conversacional = listaConversacional(state, listId);
+  const bloqueioDeEdicao = bloqueio ?? (conversacional ? FORMULARIO_EM_LISTA_CONVERSACIONAL : undefined);
   const config = effectiveListConfig(state, listId);
   const campos = (config?.fieldDefinitionIds ?? [])
     .map((id) => state.fieldDefinitions.find((d) => d.id === id))
@@ -157,7 +163,7 @@ export function FormsEditor({ listId, bloqueio, report }: { readonly listId: str
         onCancel={() => setArquivando(null)}
       />
       {forms.length === 0 ? (
-        <EmptyState compact title="Nenhum Formulário." hint="Um Formulário deixa quem não é Membro criar Tarefas aqui por um link." />
+        <EmptyState compact title="Nenhum Formulário." hint={conversacional ? FORMULARIO_EM_LISTA_CONVERSACIONAL : "Um Formulário deixa quem não é Membro criar Tarefas aqui por um link."} />
       ) : (
         <ul className="pilha-solta">
           {forms.map((form) => (
@@ -168,14 +174,25 @@ export function FormsEditor({ listId, bloqueio, report }: { readonly listId: str
                 <span className="app-meta app-numero">
                   {form.questions.length} pergunta(s) · {form.submissions} envio(s) · {form.enabled ? "ativo" : "pausado"}
                 </span>
-                <span title={bloqueio ?? (form.enabled ? "Pausar" : "Ativar")} className="inline-flex items-center gap-1">
-                  <Toggle checked={form.enabled} onChange={(enabled) => report(run((data, me) => updateForm(data, me, form.id, { enabled })), enabled ? "Formulário ativado." : "Formulário pausado.")} labelledBy={`form-ativo-${form.id}`} disabled={bloqueio !== undefined} />
+                <span title={bloqueioDeEdicao ?? (form.enabled ? "Pausar" : "Ativar")} className="inline-flex items-center gap-1">
+                  {bloqueioDeEdicao ? (
+                    <span className="sr-only" id={`form-motivo-${form.id}`}>
+                      {bloqueioDeEdicao}
+                    </span>
+                  ) : null}
+                  <Toggle
+                    checked={form.enabled}
+                    onChange={(enabled) => report(run((data, me) => updateForm(data, me, form.id, { enabled })), enabled ? "Formulário ativado." : "Formulário pausado.")}
+                    labelledBy={`form-ativo-${form.id}`}
+                    disabled={bloqueioDeEdicao !== undefined}
+                    {...(bloqueioDeEdicao ? { describedBy: `form-motivo-${form.id}` } : {})}
+                  />
                   <span id={`form-ativo-${form.id}`} className="app-meta">ativo</span>
                 </span>
                 <ActionMenu
                   label={`Ações de ${form.name}`}
                   items={[
-                    { label: "Editar", onSelect: () => abrir(form), ...(bloqueio ? { disabledReason: bloqueio } : {}) },
+                    { label: "Editar", onSelect: () => abrir(form), ...(bloqueioDeEdicao ? { disabledReason: bloqueioDeEdicao } : {}) },
                     { label: "Renovar link", destructive: true, onSelect: () => setRenovando(form.id), ...(bloqueio ? { disabledReason: bloqueio } : {}) },
                     { label: "Arquivar", destructive: true, onSelect: () => setArquivando(form.id), ...(bloqueio ? { disabledReason: bloqueio } : {}) },
                   ]}
@@ -183,7 +200,7 @@ export function FormsEditor({ listId, bloqueio, report }: { readonly listId: str
               </div>
               {formOutdatedReason(state, form) ? (
                 <p role="alert" className="app-sm rounded-[var(--r-controle)] px-2 py-1" style={{ background: "var(--aviso-lavado)", color: "var(--aviso)" }}>
-                  Desatualizado — o link recusa envios: {formOutdatedReason(state, form)} Edite o Formulário e acrescente a pergunta.
+                  Desatualizado — o link recusa envios: {formOutdatedReason(state, form)} {conversacional ? "Arquive o Formulário." : "Edite o Formulário e acrescente a pergunta."}
                 </p>
               ) : null}
               <div className="flex flex-wrap items-center gap-2">
@@ -197,7 +214,7 @@ export function FormsEditor({ listId, bloqueio, report }: { readonly listId: str
         </ul>
       )}
       <span>
-        <Button onClick={() => abrir("novo")} icon={<Icone de={Plus} tamanho="sm" />} disabled={bloqueio !== undefined} disabledReason={bloqueio ?? ""}>
+        <Button onClick={() => abrir("novo")} icon={<Icone de={Plus} tamanho="sm" />} disabled={bloqueioDeEdicao !== undefined} disabledReason={bloqueioDeEdicao ?? ""}>
           Novo Formulário
         </Button>
       </span>

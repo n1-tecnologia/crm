@@ -17,6 +17,8 @@ import Link from "next/link";
 import { use, useState } from "react";
 import { useData, useRun } from "@/data/store";
 import { ConversationThread, channelsOf } from "@/features/crm/conversation-thread";
+import { TarefasDoContato } from "@/features/crm/tarefas-do-contato";
+import { NovaTarefaConversacionalDialog } from "@/features/estrutura/nova-tarefa-conversacional-dialog";
 import {
   ContactDataPanel,
   ContactIdentity,
@@ -98,6 +100,8 @@ export default function ContatoPage({
   const [canalDaConversa, setCanalDaConversa] = useState<ChannelType | null>(
     null,
   );
+  // C35 — a Tarefa nasce deste Contato: Lista e Canal são escolha do diálogo.
+  const [criandoTarefa, setCriandoTarefa] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const record = state.contacts.find((c) => c.id === contato);
@@ -177,6 +181,18 @@ export default function ContatoPage({
         onClose={closeRestore}
         onDone={setNotice}
       />
+      {/* Chaveado pelo Contato: o Contato inicial do diálogo é o desta ficha. */}
+      <NovaTarefaConversacionalDialog
+        key={record.id}
+        open={criandoTarefa}
+        contactId={record.id}
+        onClose={() => setCriandoTarefa(false)}
+        onDone={(mensagem) => {
+          setCriandoTarefa(false);
+          setError(null);
+          setNotice(mensagem);
+        }}
+      />
 
       <PageHeader
         title={contactDisplayName(record)}
@@ -238,7 +254,7 @@ export default function ContatoPage({
               />
             </Painel>
 
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-3">
               <Painel className="min-w-0">
                 <CabecalhoDePainel titulo="Empresas" contagem={empresas.length} />
                 <div className="p-3">
@@ -253,14 +269,17 @@ export default function ContatoPage({
                             className="item-solto"
                             data-atenuado={vinculo.end ? "true" : undefined}
                           >
-                            <span className="app-base min-w-0 flex-1 truncate" style={{ color: "var(--texto)" }}>
-                              {state.companies.find((c) => c.id === vinculo.companyId)
-                                ?.tradeName ?? "—"}
-                            </span>
-                            <span className="app-meta shrink-0">
-                              {vinculo.role}
-                              {vinculo.principalForContact ? " · principal" : ""}
-                              {vinculo.end ? " · encerrado" : ""}
+                            {/* Duas linhas: em três colunas, nome e papel lado a lado truncariam os dois. */}
+                            <span className="min-w-0 flex-1">
+                              <span className="app-base block truncate" style={{ color: "var(--texto)" }}>
+                                {state.companies.find((c) => c.id === vinculo.companyId)
+                                  ?.tradeName ?? "—"}
+                              </span>
+                              <span className="app-meta block truncate">
+                                {vinculo.role}
+                                {vinculo.principalForContact ? " · principal" : ""}
+                                {vinculo.end ? " · encerrado" : ""}
+                              </span>
                             </span>
                           </Link>
                         </li>
@@ -282,11 +301,13 @@ export default function ContatoPage({
                         return (
                           <li key={negocio.id}>
                             <Link href={`/crm/negocios/${negocio.id}`} className="item-solto">
-                              <span className="app-base min-w-0 flex-1 truncate" style={{ color: "var(--texto)" }}>
-                                {negocio.title}
-                              </span>
-                              <span className="app-meta shrink-0">
-                                {funil?.name} · {funil?.stages.find((e) => e.id === negocio.stageId)?.name}
+                              <span className="min-w-0 flex-1">
+                                <span className="app-base block truncate" style={{ color: "var(--texto)" }}>
+                                  {negocio.title}
+                                </span>
+                                <span className="app-meta block truncate">
+                                  {funil?.name} › {funil?.stages.find((e) => e.id === negocio.stageId)?.name}
+                                </span>
                               </span>
                             </Link>
                           </li>
@@ -296,6 +317,13 @@ export default function ContatoPage({
                   )}
                 </div>
               </Painel>
+
+              {/* C35 — as Tarefas conversacionais que nasceram deste Contato. */}
+              <TarefasDoContato
+                contactId={record.id}
+                onCriar={() => setCriandoTarefa(true)}
+                rotuloDoBotao="Nova Tarefa conversacional"
+              />
             </div>
           </div>
 

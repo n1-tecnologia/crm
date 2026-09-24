@@ -7,9 +7,13 @@
  * O assunto segue a rota: entrar em /crm/contatos acende "CRM" sozinho, e por
  * isso navegar por link ou por busca nunca deixa o trilho mentindo.
  *
- * NÃO HÁ BARRA DE TOPO. Ela carregava marca, busca e conta e gastava uma faixa
- * inteira da altura para isso, com um vão enorme no meio. As três desceram para
- * o trilho e para o painel, onde já há coluna. O que sobra em cima é a tela.
+ * HÁ UMA BARRA GLOBAL de 40px no topo da coluna da tela (`barra-global.tsx`).
+ * A barra de topo saiu em 2026-09-14 por carregar marca, busca e conta com um
+ * vão enorme no meio; voltou em 2026-09-17 mais baixa e com outro conteúdo —
+ * não a marca (que é do trilho) nem o Espaço de Trabalho (do painel), mas o
+ * que é da PESSOA: busca, minhas Tarefas, Notificações, conta. Esses itens são
+ * "o que espera por mim" e ficam à vista em qualquer assunto; e o painel do
+ * Trabalho deixa de misturar "minhas coisas" com a estrutura.
  *
  * O ÚNICO ELEMENTO QUE ROLA é o `<main>`. O cabeçalho de cada tela é `sticky`
  * no topo dele, com o fundo da página: o título fica parado enquanto a lista
@@ -23,7 +27,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Bell,
   Building2,
@@ -41,21 +45,21 @@ import {
   Lock,
   MessageSquare,
   Plus,
-  Search,
   Settings,
   SlidersHorizontal,
   Split,
-  Target,
   Users,
   Workflow,
   Wrench,
   type LucideIcon,
 } from "lucide-react";
-import { ActionMenu, ActorAvatar, Toast } from "@/design/components";
+import { ActionMenu, Toast } from "@/design/components";
 import { Icone } from "@/design/icone";
 import { CarregadorDeIcones } from "@/design/carregador";
 import { EsqueletoDeTela } from "@/design/esqueletos";
 import { BarraDeRota } from "./barra-de-rota";
+import { BarraGlobal } from "./barra-global";
+import { useHidratado } from "./hidratado";
 import { CascataDeNavegacao, Chegada } from "./chegada";
 import { limpar, marcarSeMuda, useAlvo, useNavegando, useNavegar } from "./navegacao";
 import { PendenciaDoLink } from "./pendencia-do-link";
@@ -68,7 +72,7 @@ import { useData, useRun, useSession } from "@/data/store";
 import { MEUS_NEGOCIOS_ID } from "@/data/seed-comercial";
 import { moveChatSessionToFolder } from "@/data/operations";
 import { useChatFolderDialogs } from "@/features/ia/chat-folder-dialogs";
-import { memberReachesContainer, memberSeesResource } from "@/data/derive";
+import { memberReachesContainer, memberSeesResource, notificacoesDoMembro } from "@/data/derive";
 import { useSidebarCollapsed } from "./use-sidebar";
 import {
   CreateContainerDialog,
@@ -76,18 +80,8 @@ import {
 } from "@/features/estrutura/create-container-dialog";
 import type { Folder, Id, List, Space, SpaceShortcut } from "@/data/types";
 
-/**
- * `true` só depois de o React assumir a página no navegador. No servidor e na
- * primeira renderização do cliente devolve `false`, sempre — é esse "sempre"
- * que faz o HTML dos dois lados bater.
- */
-export function useHidratado(): boolean {
-  return useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false,
-  );
-}
+// Mantido aqui pelos chamadores antigos (app/f, app/p); vive em ./hidratado.
+export { useHidratado } from "./hidratado";
 
 /* ─────────────────────────────────────────────────────── os assuntos */
 
@@ -109,6 +103,8 @@ type Assunto = {
   readonly comChat?: boolean;
   /** O assunto "CRM" desenha as Listas de "Meus negócios" (uma por Funil) abaixo das telas. */
   readonly comMeusNegocios?: boolean;
+  /** Para onde o botão do trilho leva quando não é a primeira tela do painel. */
+  readonly raiz?: string;
   readonly telas: ReadonlyArray<Tela>;
 };
 
@@ -118,12 +114,18 @@ const ASSUNTOS: ReadonlyArray<Assunto> = [
     rotulo: "Trabalho",
     icone: Home,
     comArvore: true,
+    /*
+      O menu do Trabalho lista as telas da pessoa — Início, Notificações, Visão
+      geral e Minhas Tarefas — e os Espaços abaixo. A barra global repete as
+      duas pendências para quem está noutro assunto; aqui elas seguem onde
+      sempre estiveram (Metas saiu do produto em 2026-09-17).
+    */
+    raiz: "/",
     telas: [
       { href: "/", rotulo: "Início", icone: Home },
       { href: "/notificacoes", rotulo: "Notificações", icone: Bell },
       { href: "/estrutura", rotulo: "Visão geral", icone: LayoutGrid },
       { href: "/estrutura/tarefas", rotulo: "Minhas Tarefas", icone: ListTodo, prefixo: true },
-      { href: "/estrutura/metas", rotulo: "Metas", icone: Target, prefixo: true },
     ],
   },
   {
@@ -148,8 +150,8 @@ const ASSUNTOS: ReadonlyArray<Assunto> = [
       { href: "/ia/chat", rotulo: "Chat", icone: MessageSquare },
       /*
         Tudo que configura a IA mora em Personalizar, com o próprio submenu:
-        Agente, Habilidades, Automação, Conhecimento, Conectores, Plugins.
-        Aprovações continua alcançável pela Início e pelas Notificações.
+        Agentes, Habilidades, Automação, Conhecimento, Integrações, Plugins.
+        Aprovações continua alcançável pelas Notificações, na barra global.
       */
       { href: "/ia/personalizar/agente", rotulo: "Personalizar", icone: SlidersHorizontal, prefixo: true },
     ],
@@ -221,6 +223,7 @@ export function AppShell({ children }: { readonly children: React.ReactNode }) {
       <div className="relative flex min-w-0 flex-1 flex-col">
         {/* Irmã de <main>, nunca dentro dele: dentro, rolaria com o conteúdo. */}
         <BarraDeRota />
+        <BarraGlobal />
         {/*
           O conteúdo só entra depois da hidratação. O seed é construído em cada
           processo a partir de "hoje", e o servidor de desenvolvimento fica de
@@ -330,11 +333,19 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
   const trilho = useRef<HTMLElement>(null);
   const luz = useRef<HTMLSpanElement>(null);
   const pendingApprovals = useData((data) => data.approvals.filter((a) => a.decision === undefined).length);
+  /*
+    A contagem do sino no painel é a MESMA da barra global e da tela: o derivado
+    filtrado por Membro. Só entra depois da hidratação, porque depende de "hoje"
+    (o que venceu) e o HTML do servidor não pode trazer número nenhum.
+  */
+  const estado = useData((data) => data);
+  const { memberId } = useSession();
+  const hidratado = useHidratado();
+  const [agora] = useState(() => new Date());
+  const notificacoes = hidratado ? notificacoesDoMembro(estado, memberId, agora).total : 0;
   const [showArchived, setShowArchived] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const { creating, openCreate, closeCreate } = useCreateContainerDialog();
-  const session = useSession();
-  const member = useData((data) => data.members.find((m) => m.id === session.memberId));
   const workspace = useData((data) => data.workspace.name);
 
   const assunto = assuntoDe(pathname);
@@ -386,7 +397,7 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
               key={a.chave}
               type="button"
               data-trilho={a.chave}
-              onClick={() => navegar(a.telas[0]!.href)}
+              onClick={() => navegar(a.raiz ?? a.telas[0]!.href)}
               aria-label={a.rotulo}
               aria-current={ativo ? "page" : undefined}
               aria-busy={pendenteAqui || undefined}
@@ -432,31 +443,6 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
         >
           <Icone de={Settings} />
         </Link>
-
-        {/*
-          Avatar e nome, e nada mais. O Papel e a Disponibilidade são do Membro
-          e vivem em `/minha-conta`. O menu continua ancorado aqui — sem ele,
-          "Trocar de Membro" não teria como ser alcançado de tela nenhuma.
-        */}
-        <ActionMenu
-          label={member?.displayName ?? "Escolher Membro"}
-          trigger={
-            <span className="mt-1 grid place-items-center" style={{ width: "var(--item-trilha)", height: "var(--item-trilha)" }}>
-              <ActorAvatar
-                kind="member"
-                name={member?.displayName ?? "?"}
-                size="grande"
-                {...(member?.photoFileId ? { photoFileId: member.photoFileId } : {})}
-              />
-            </span>
-          }
-          items={[
-            { label: "Minha conta", onSelect: () => navegar("/minha-conta") },
-            { label: "Notificações", onSelect: () => navegar("/notificacoes") },
-            { label: "Trocar de Membro", onSelect: () => navegar("/entrar") },
-            { label: "Sair", onSelect: () => navegar("/login") },
-          ]}
-        />
       </nav>
 
       {/* ── Etapa 2: o painel do assunto — some quando recolhido ── */}
@@ -481,36 +467,19 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
           </button>
         </div>
 
-        <div className="px-2 pb-2">
-          <Link
-            href="/buscar"
-            className="flutua flex w-full items-center gap-2 px-3 text-left"
-            style={{
-              height: "var(--controle-h-sm)",
-              borderRadius: "var(--r-pilula)",
-              background: "var(--superficie-2)",
-              border: "1px solid var(--linha)",
-              color: "var(--texto-4)",
-            }}
-          >
-            <Icone de={Search} tamanho="xs" />
-            <span className="app-sm flex-1">Buscar</span>
-            <span className="app-xs">/</span>
-          </Link>
-        </div>
-
         {/* Chaveado pelo assunto: o painel esmaece e as telas caem em cascata na troca. */}
         <CascataDeNavegacao key={assunto.chave} className="sem-barra min-h-0 flex-1 overflow-y-auto px-2 pb-3">
           <RotuloDeGrupo>{assunto.rotulo}</RotuloDeGrupo>
           {assunto.telas.map((t) => {
             const ativo = telaAtiva(pathname, t);
-            const contador = t.href === "/notificacoes" ? pendingApprovals : 0;
+            const contador = t.href === "/notificacoes" ? notificacoes : 0;
             return (
               <Link
                 key={t.href}
                 href={t.href}
                 onNavigate={() => marcarSeMuda(t.href)}
                 aria-current={ativo ? "page" : undefined}
+                {...(contador > 0 ? { title: `${t.rotulo} — ${contador} item(ns)` } : {})}
                 className="app-base flex items-center gap-2 rounded-[var(--r-controle)] px-3 transition-colors hover:bg-[var(--superficie-hover)]"
                 style={{
                   height: "var(--item-nav-h)",
@@ -522,9 +491,12 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
                 <Icone de={t.icone} tamanho="xs" style={{ color: ativo ? "var(--acento)" : "var(--texto-3)" }} />
                 <PendenciaDoLink className="min-w-0 flex-1 truncate">{t.rotulo}</PendenciaDoLink>
                 {contador > 0 ? (
-                  <span className="app-xs app-numero rounded-full px-1.5" style={{ background: "var(--acento)", color: "var(--sobre-acento)" }}>
-                    {contador}
-                  </span>
+                  <>
+                    <span key={contador} className="app-xs app-numero surgir-rapido rounded-full px-1.5" style={{ background: "var(--acento)", color: "var(--sobre-acento)" }}>
+                      {contador}
+                    </span>
+                    <span className="sr-only"> — {contador} item(ns)</span>
+                  </>
                 ) : null}
               </Link>
             );
@@ -867,7 +839,14 @@ function TreeList({
         hasChildren={false}
         href={href}
         label={list.name}
-        icon={<ListTodo className="size-3.5 text-[var(--cor-tinta-fraca)]" aria-hidden="true" />}
+        // C35 — a Lista conversacional se lê na árvore: o balão no lugar da lista de tarefas.
+        icon={
+          list.modeloDeTarefa === "conversacional" ? (
+            <MessageSquare className="size-3.5 text-[var(--cor-tinta-fraca)]" aria-hidden="true" />
+          ) : (
+            <ListTodo className="size-3.5 text-[var(--cor-tinta-fraca)]" aria-hidden="true" />
+          )
+        }
         privateContainer={list.isPrivate}
         archived={list.lifecycle === "arquivado"}
         active={pathname === href}

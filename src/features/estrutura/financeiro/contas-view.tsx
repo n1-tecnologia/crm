@@ -30,7 +30,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useData, useRun, useSession } from "@/data/store";
 import { useRecente } from "@/features/shell/recente";
 import {
@@ -402,7 +402,7 @@ export function FinanceToolbar({
           },
           {
             label: "Ver Automações desta Lista",
-            onSelect: () => router.push("/ia/automacoes"),
+            onSelect: () => router.push("/ia/personalizar/automacao"),
           },
         ]}
       />
@@ -501,6 +501,7 @@ export function FinanceTable({
   report,
   onCreateInGroup,
   criacaoRecusada,
+  seletorDeTipo,
 }: {
   readonly state: DataState;
   readonly profile: FinanceProfile;
@@ -515,8 +516,10 @@ export function FinanceTable({
   readonly openTask: (taskId: string) => void;
   readonly report: Report;
   /** O "+" do grupo: a conta nasce no Status daquele grupo. */
-  readonly onCreateInGroup?: (title: string, statusId?: string) => boolean;
+  readonly onCreateInGroup?: (title: string, statusId?: string, taskTypeId?: string) => boolean;
   readonly criacaoRecusada?: string;
+  /** O seletor de Tipo do compositor; `null` quando a Lista enxerga um Tipo só. */
+  readonly seletorDeTipo?: (valor: string | undefined, aoEscolher: (taskTypeId: string) => void) => ReactNode;
 }) {
   const fmt = useFormat();
   const run = useRun();
@@ -720,8 +723,9 @@ export function FinanceTable({
                   <td colSpan={10}>
                     <CompositorNoGrupo
                       placeholder={`${profile.labels.novaPlaceholder} — em ${GROUP_LABEL[grupo].toLocaleLowerCase("pt-BR")}`}
-                      onCreate={(title) => onCreateInGroup(title, nascimentoNoGrupo(profile, grupo).statusId)}
+                      onCreate={(title, taskTypeId) => onCreateInGroup(title, nascimentoNoGrupo(profile, grupo).statusId, taskTypeId)}
                       onCancel={() => setCriandoEm(null)}
+                      seletor={seletorDeTipo}
                     />
                   </td>
                 </tr>

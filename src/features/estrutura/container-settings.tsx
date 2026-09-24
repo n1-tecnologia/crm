@@ -18,10 +18,17 @@
  */
 
 import Link from "next/link";
+import { MessageSquare } from "lucide-react";
 import { useState } from "react";
-import { useData } from "@/data/store";
+import { useData, useRun } from "@/data/store";
+import { FORMULARIOS_ANTES_DO_MODELO, LISTA_SEM_CANAIS, alterarModeloDaLista, definirCanaisDaLista, temFormularioAtivo } from "@/data/operations";
+import type { TipoDeAtendimento } from "@/data/operations/canais";
+import { AdicionarCanalDialog } from "@/features/crm/adicionar-canal-dialog";
+import { CanaisDeAtendimento } from "@/features/estrutura/canais-de-atendimento";
+import { useRecente } from "@/features/shell/recente";
 import { FeaturesEditor, FieldDefinitionsEditor, StatusSetEditor, TaskTypesEditor, useMayConfigure } from "@/features/estrutura/configuration-editors";
 import { FormsEditor } from "@/features/estrutura/forms-editor";
+import { CaixaDeConfiguracoes } from "@/features/ferramentas/caixa-de-configuracoes";
 import { effectiveContainerConfig } from "@/data/derive";
 import { FIELD_TYPE_LABEL } from "@/features/shell/format";
 import { CabecalhoDePainel, CorpoDeTela, EmptyState, PageHeader, Painel, Pilula, Section, StateSeal, Toast } from "@/features/shell/ui";
@@ -88,8 +95,12 @@ export function ContainerSettings({
   readonly id: string;
 }) {
   const state = useData((data) => data);
+  const run = useRun();
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // C36 — o tipo cujo popup de "adicionar conta" está no ar.
+  const [adicionando, setAdicionando] = useState<TipoDeAtendimento | null>(null);
+  const recente = useRecente();
   const report = (result: { ok: boolean; error?: string }, message: string) => {
     if (result.ok) {
       setError(null);
@@ -136,6 +147,17 @@ export function ContainerSettings({
         : `/estrutura/listas/${node.id}`;
 
   const backHref = hrefOf({ type: kind, id });
+
+  // C35 — o modelo de Tarefa é atributo nativo da Lista (irmão de `isPrivate`),
+  // não aspecto herdável: muda só enquanto ela está vazia, contando a lixeira.
+  const lista = kind === "list" && "modeloDeTarefa" in container ? container : undefined;
+  const temTarefas = lista ? state.tasks.some((t) => t.listId === lista.id) : false;
+  // Virar conversacional com Formulário ativo é recusado pelo domínio: a
+  // mesma frase desliga o Toggle antes do clique.
+  const formularioSegura = lista !== undefined && lista.modeloDeTarefa !== "conversacional" && temFormularioAtivo(state, lista.id);
+  const motivoDoModelo = temTarefas
+    ? "O modelo de Tarefa não muda numa Lista que já tem Tarefas."
+    : (useMayConfigureReason ?? (formularioSegura ? FORMULARIOS_ANTES_DO_MODELO : undefined));
 
   const definedHere = (aspect: ConfigurableAspect): boolean =>
     (container.modes[aspect] ?? "herdado") !== "herdado";
@@ -339,6 +361,66 @@ export function ContainerSettings({
             </Painel>
           </div>
         )}
+
+        {lista ? (
+          <div className="mb-3">
+            <CaixaDeConfiguracoes
+              rotulo="Modelo de Tarefa"
+              linhas={[
+                {
+                  chave: "conversacional",
+                  titulo: "Tarefas conversacionais",
+                  dica: "Cada Tarefa nasce de um Contato e traz a conversa dele; a Lista tem acesso ao CRM. Desligado: Tarefa operacional, a padrão.",
+                  icone: MessageSquare,
+                  ligado: lista.modeloDeTarefa === "conversacional",
+                  onChange: (ligado) =>
+                    report(
+                      run((data, me) => alterarModeloDaLista(data, me, lista.id, ligado ? "conversacional" : "operacional")),
+                      ligado ? "Agora cada Tarefa desta Lista nasce de um Contato." : "As Tarefas desta Lista voltam ao modelo operacional.",
+                    ),
+                  ...(motivoDoModelo ? { motivo: motivoDoModelo } : {}),
+                },
+              ]}
+              ajuda="O modelo é da Lista e não herda: uma Pasta pode ter Listas dos dois modelos."
+            />
+          </div>
+        ) : null}
+
+        {lista && lista.modeloDeTarefa === "conversacional" ? (
+          <div className="mb-3 grid gap-2">
+            {/* C36 — por onde a Lista atende, gravado na hora; a última conta não sai. */}
+            {(lista.canaisDeAtendimento ?? []).length === 0 ? (
+              <p role="status" className="app-sm rounded-[var(--r-controle)] px-3 py-2" style={{ background: "var(--aviso-lavado)", color: "var(--aviso)" }}>
+                {LISTA_SEM_CANAIS} Até lá, nenhuma Tarefa nasce nela.
+              </p>
+            ) : null}
+            <CanaisDeAtendimento
+              valor={lista.canaisDeAtendimento ?? []}
+              onChange={(ids) =>
+                report(
+                  run((data, me) => definirCanaisDaLista(data, me, lista.id, ids)),
+                  "Canais de atendimento atualizados.",
+                )
+              }
+              onAdicionar={setAdicionando}
+              {...(useMayConfigureReason ? { motivo: useMayConfigureReason } : {})}
+              podeFicarVazio={(lista.canaisDeAtendimento ?? []).length === 0}
+              recente={recente}
+            />
+            <AdicionarCanalDialog
+              {...(adicionando ? { tipo: adicionando } : {})}
+              open={adicionando !== null}
+              onClose={() => setAdicionando(null)}
+              onDone={(canal) => {
+                setAdicionando(null);
+                report(
+                  run((data, me) => definirCanaisDaLista(data, me, lista.id, [...(lista.canaisDeAtendimento ?? []), canal.id])),
+                  `${canal.name} conectado e marcado nesta Lista.`,
+                );
+              }}
+            />
+          </div>
+        ) : null}
 
         <Painel>
           <CabecalhoDePainel titulo="Privacidade" />

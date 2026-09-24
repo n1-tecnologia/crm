@@ -9,8 +9,9 @@
 
 import { effectiveListConfig, memberReachesContainer } from "../derive";
 import { fail, ok, type DataState, type OperationResult } from "../state";
-import type { Folder, Id, List, Provenance, Space, StatusSet, Template } from "../types";
+import type { Folder, Id, List, ModeloDeTarefa, Provenance, Space, StatusSet, Template } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
+import { CANAIS_SO_NA_CONVERSACIONAL, validarCanaisDeAtendimento } from "./canais";
 
 const now = (): string => new Date().toISOString();
 
@@ -262,6 +263,8 @@ export function createFolder(
       name,
       order: state.lists.filter((l) => l.parentId === folder.id).length,
       isPrivate: false,
+      // C35 — o Template de Pasta só nomeia as Listas: nascem no modelo padrão.
+      modeloDeTarefa: "operacional",
       modes: {},
       blocks: {},
       provenance: provenanceOf(template as Template),
@@ -296,6 +299,10 @@ export function createList(
     readonly description?: string;
     readonly isPrivate?: boolean;
     readonly templateId?: Id;
+    /** C35 — o que a Tarefa é ao nascer aqui; ausente, `operacional`. */
+    readonly modeloDeTarefa?: ModeloDeTarefa;
+    /** C36 — por onde a Lista conversacional atende; ela exige ao menos um. */
+    readonly canaisDeAtendimento?: readonly Id[];
   },
 ): OperationResult<List> {
   const refusal = mayBuild(state, actingMemberId, { type: input.parentType, id: input.parentId });
@@ -322,6 +329,17 @@ export function createList(
   const { template, error: templateError } = resolveTemplate(state, input.templateId, "lista");
   if (templateError) return fail(templateError, "template");
 
+  // C36 — a conversacional nasce dizendo por onde atende; a operacional não
+  // tem o que dizer.
+  const modelo = input.modeloDeTarefa ?? "operacional";
+  let canais: readonly Id[] | undefined;
+  if (modelo === "conversacional") {
+    const validos = validarCanaisDeAtendimento(state, input.canaisDeAtendimento);
+    if (typeof validos === "string") return fail(validos, "canais");
+    canais = validos.ids;
+  } else if (input.canaisDeAtendimento && input.canaisDeAtendimento.length > 0) {
+    return fail(CANAIS_SO_NA_CONVERSACIONAL, "canais");
+  }
 
   const list: List = {
     id: nextId("lst"),
@@ -333,6 +351,8 @@ export function createList(
     ...(input.description?.trim() ? { description: input.description.trim() } : {}),
     order: siblings.length,
     isPrivate: input.isPrivate ?? false,
+    modeloDeTarefa: modelo,
+    ...(canais ? { canaisDeAtendimento: canais } : {}),
     // Nasce herdando: o ajuste é ato posterior, nas configurações do contêiner.
     modes: {},
     blocks: {},
@@ -373,9 +393,17 @@ export function createList(
     objectType: "list",
     objectId: list.id,
     objectName: list.name,
-    detail: parentName(state, input.parentType, input.parentId),
+    detail:
+      parentName(state, input.parentType, input.parentId) +
+      (list.modeloDeTarefa === "conversacional" ? " · Modelo conversacional: cada Tarefa nasce de um Contato" : "") +
+      (canais ? ` · Atende por ${nomesDosCanais(state, canais)}` : ""),
   });
   return ok(list);
+}
+
+/** Os nomes dos Canais, na ordem dada, para o Registro de Atividade. */
+export function nomesDosCanais(state: DataState, ids: readonly Id[]): string {
+  return ids.map((id) => state.channels.find((c) => c.id === id)?.name ?? id).join(", ");
 }
 
 /**

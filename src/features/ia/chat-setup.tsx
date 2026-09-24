@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * Os quatro dropdowns embaixo da caixa do Chat — projeto (pasta), plugin
- * (Habilidade), base de conhecimento (Documento como Âncora) e Modelo. Um
+ * Os dropdowns embaixo da caixa do Chat — projeto (pasta), Habilidade, base
+ * de conhecimento (Documento como Âncora), Modelo e Agente. Um
  * componente só para a home e para a Sessão vazia: as duas telas são o mesmo
  * momento, "antes da primeira mensagem", e não podem divergir.
  */
@@ -49,13 +49,14 @@ export function ChatSetupBar({
       onChange: (folderId: string) => onChange({ folderId }),
       options: [{ value: "", label: "Sem pasta" }, ...pastas.map((f) => ({ value: f.id, label: f.name }))],
     },
+    // D3 — o chip é a Habilidade que a Sessão exerce; "Plugin" ficou só como rótulo do Catálogo de Ferramentas.
     {
-      id: "plugin-do-chat",
-      rotulo: "Plugin",
+      id: "habilidade-do-chat",
+      rotulo: "Habilidade",
       icone: Puzzle,
       value: value.skillId,
       onChange: (skillId: string) => onChange({ skillId }),
-      options: [{ value: "", label: "Sem plugin" }, ...habilidades.map((k) => ({ value: k.id, label: k.name }))],
+      options: [{ value: "", label: "Sem Habilidade" }, ...habilidades.map((k) => ({ value: k.id, label: k.name }))],
     },
     {
       id: "conhecimento-do-chat",

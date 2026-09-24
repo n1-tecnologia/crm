@@ -46,6 +46,9 @@ export function AgentConfigPanel({
   publishing,
   published,
   onPublish,
+  onSaveDraft,
+  modo,
+  proximaVersao,
   publishDisabledReason,
   error,
   publishedAgentId,
@@ -56,6 +59,10 @@ export function AgentConfigPanel({
   readonly publishing: boolean;
   readonly published: string | null;
   readonly onPublish: () => void;
+  /** Modo novo: grava o Agente em rascunho, para ativar na ficha (D1). */
+  readonly onSaveDraft: () => void;
+  readonly modo: "novo" | "existente";
+  readonly proximaVersao: number;
   readonly publishDisabledReason?: string;
   readonly error: string | null;
   readonly publishedAgentId: string | null;
@@ -422,6 +429,9 @@ export function AgentConfigPanel({
           published={published}
           publishedAgentId={publishedAgentId}
           onPublish={onPublish}
+          onSaveDraft={onSaveDraft}
+          modo={modo}
+          proximaVersao={proximaVersao}
           error={error}
           {...(publishDisabledReason ? { disabledReason: publishDisabledReason } : {})}
         />

@@ -11,9 +11,11 @@
 
 import Link from "next/link";
 import { useData } from "@/data/store";
+import { useIntegracoesMenu } from "@/features/ia/integracoes/integracao-menu";
 import { EFFECT_CLASS_LABEL } from "@/features/shell/format";
+import { useRecente } from "@/features/shell/recente";
 import { useFormat } from "@/features/shell/use-format";
-import { ConditionMarker, CorpoDeTela, EmptyState, PageHeader, Pilula, Section } from "@/features/shell/ui";
+import { ActionMenu, ConditionMarker, CorpoDeTela, EmptyState, PageHeader, Pilula, Section } from "@/features/shell/ui";
 
 const STATE_LABEL: Record<string, string> = {
   conectada: "conectada",
@@ -24,6 +26,9 @@ const STATE_LABEL: Record<string, string> = {
 export default function IntegracoesPage() {
   const state = useData((data) => data);
   const fmt = useFormat();
+  const recente = useRecente();
+  // O mesmo menu da seção Integrações de Personalizar: conectar e desconectar dizem o mesmo nos dois lugares.
+  const { itensDe, dialogo } = useIntegracoesMenu();
   const integrations = state.integrations;
   const broken = integrations.filter((integration) => integration.state !== "conectada");
 
@@ -57,7 +62,7 @@ export default function IntegracoesPage() {
           />
         ) : (
           <Section title="Integrações" count={integrations.length}>
-            <ul className="grade-solta lg:grid-cols-2">
+            <ul className="grade-solta cascata lg:grid-cols-2">
               {integrations.map((integration) => {
                 const configuredBy = state.members.find((m) => m.id === integration.configuredBy);
                 const tools = state.tools.filter((tool) =>
@@ -71,7 +76,13 @@ export default function IntegracoesPage() {
                   ),
                 );
                 return (
-                  <li key={integration.id} className="item-solto" data-bloco="true" data-estatico="true">
+                  <li
+                    key={integration.id}
+                    className="item-solto"
+                    data-bloco="true"
+                    data-estatico="true"
+                    data-recente={integration.id === recente ? "true" : undefined}
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="app-md" style={{ color: "var(--texto)" }}>
@@ -79,15 +90,18 @@ export default function IntegracoesPage() {
                         </p>
                         <p className="app-meta mt-0.5">{integration.systemType}</p>
                       </div>
-                      {integration.state === "conectada" ? (
-                        <Pilula tom="sucesso" className="shrink-0">
-                          conectada
-                        </Pilula>
-                      ) : (
-                        <ConditionMarker tone={integration.state === "comErro" ? "danger" : "warning"}>
-                          {STATE_LABEL[integration.state]}
-                        </ConditionMarker>
-                      )}
+                      <div className="flex shrink-0 items-center gap-1">
+                        {integration.state === "conectada" ? (
+                          <Pilula tom="sucesso" className="shrink-0">
+                            conectada
+                          </Pilula>
+                        ) : (
+                          <ConditionMarker tone={integration.state === "comErro" ? "danger" : "warning"}>
+                            {STATE_LABEL[integration.state]}
+                          </ConditionMarker>
+                        )}
+                        <ActionMenu label={`Ações de ${integration.name}`} items={itensDe(integration)} />
+                      </div>
                     </div>
 
                     <div className="mt-3">
@@ -136,6 +150,7 @@ export default function IntegracoesPage() {
           </Section>
         )}
       </CorpoDeTela>
+      {dialogo}
     </div>
   );
 }

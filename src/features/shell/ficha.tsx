@@ -11,11 +11,12 @@
  * precisou das mesmas peças: três cópias derivariam em três comportamentos.
  */
 
+import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { History, Send } from "lucide-react";
 import type { DataState, OperationResult } from "@/data/state";
 import { useData, useRun, useSession } from "@/data/store";
-import { useRecente } from "@/features/shell/recente";
+import { consumirChegada, lerChegada, useRecente } from "@/features/shell/recente";
 import { actorLabel, newestFirst } from "@/data/derive";
 import type { ActivityRecord, ActorRef, Comment, Id } from "@/data/types";
 import { useFormat } from "@/features/shell/use-format";
@@ -23,10 +24,19 @@ import { CabecalhoDePainel, EmptyState, Icone, TextInput, Toast } from "@/featur
 
 export type Report = (result: { ok: boolean; error?: string }, message: string) => void;
 
-/** Os dois avisos da ficha e o `report` que decide qual acende. */
+/**
+ * Os dois avisos da ficha e o `report` que decide qual acende. A tela que
+ * abre no endereço de uma chegada marcada ("Criar e abrir", `recente.ts`)
+ * nasce com o Toast de sucesso dessa mensagem: a leitura é pura, no estado
+ * inicial; o consumo é efeito.
+ */
 export function useAvisos(): { readonly avisos: ReactNode; readonly report: Report } {
-  const [notice, setNotice] = useState<string | null>(null);
+  const pathname = usePathname();
+  const [notice, setNotice] = useState<string | null>(() => lerChegada(pathname));
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    consumirChegada(pathname);
+  }, [pathname]);
   // Cada `report` é um aviso novo, mesmo com o texto igual: a chave remonta o Toast (entra e conta de novo).
   const [serie, setSerie] = useState(0);
   const report: Report = (result, message) => {

@@ -142,6 +142,7 @@ export function applyContasAPagar(state: DataState, clock: Clock): void {
     description: "Uma Tarefa por conta; nasce ~30 dias antes do vencimento e morre em “pago”.",
     order: 0,
     isPrivate: false,
+    modeloDeTarefa: "operacional",
     modes: { statusSet: "sobrescrito", features: "sobrescrito" },
     blocks: {},
     statusSet,
@@ -270,7 +271,7 @@ export function applyContasAPagar(state: DataState, clock: Clock): void {
       },
     ],
     metadata: { language: "pt-BR", labels: ["financeiro", "erp"] },
-    provenance: { kind: "template", sourceId: "src_col_financeiro_erp_manual", sourceName: "Envio manual", at: at(120), sourceKind: "envioManual", specificOrigin: "texto digitado" },
+    provenance: { kind: "fonte", sourceId: "src_col_financeiro_erp_manual", sourceName: "Envio manual", at: at(120), sourceKind: "envioManual", specificOrigin: "texto digitado" },
     comments: [],
     attachments: [],
   });
@@ -661,19 +662,4 @@ export function applyContasAPagar(state: DataState, clock: Clock): void {
     { id: "viw_cp_autorizacao", name: "Aguardando autorização", kind: "lista", ownerKind: "container", ownerId: CP.listId, listId: CP.listId, filters: { statusId: S.emAutorizacao }, sortBy: { by: "dueDate", direction: "asc" }, isDefault: false, createdBy: CP.financeiroId, createdAt: at(90) },
     { id: "viw_cp_tria", name: "Conta Tria", kind: "lista", ownerKind: "container", ownerId: CP.listId, listId: CP.listId, filters: { tagId: tagIds["conta tria"] ?? "" }, isDefault: false, createdBy: CP.financeiroId, createdAt: at(90) },
   );
-
-  // Meta do Financeiro: contas em dia.
-  state.goals.push({
-    id: "gol_cp_em_dia",
-    workspaceId,
-    createdBy: member(CP.financeiroId),
-    createdAt: at(30),
-    lifecycle: "ativo",
-    name: "Zero contas vencidas em aberto",
-    ownerMemberId: CP.financeiroId,
-    anchor: { type: "list", id: CP.listId },
-    kind: "tarefasConcluidas",
-    target: 3,
-    taskIds: [thiagoSet.id, aluguelSet.id, recarga.id],
-  });
 }

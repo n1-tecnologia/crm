@@ -95,7 +95,9 @@ export interface Provenance {
     | "copy"
     | "import"
     | "merge"
-    | "form";
+    | "form"
+    /** Documento criado por uma Fonte de Coleção (INV-CNH-05). */
+    | "fonte";
   readonly sourceId: Id;
   /** Name at the time — the reference is a value, not a live pointer. */
   readonly sourceName: string;

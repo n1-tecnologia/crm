@@ -37,7 +37,8 @@
  *   A folha é reinjetada em 30/150/400/900 ms depois de cada navegação, antes
  *   de o JS guardar o primeiro valor lido de cada token (cache de `lerDuracao`).
  *   Não escalam: `--dur-aviso`/`--dur-aviso-longo` (prazo de leitura, não
- *   movimento) e as derivas da atmosfera.
+ *   movimento), `--dur-cena-assenta` (o prazo para a cena 3D montar) e as
+ *   derivas da atmosfera.
  *
  * Env:
  *   CDP_PORT=9457        porta do devtools — cada agente/sessão usa a SUA.
@@ -51,7 +52,8 @@
  *   SEM_SCRIPT=1         desliga o JS antes de navegar: fotografa o HTML do
  *                        servidor (o esqueleto da casca). Sem gatilho nem sonda.
  *   REPOUSO=1            ao final, conta os elementos sob `.chegada` com
- *                        transform/filter/will-change residual (fora da
+ *                        transform (inclusive rotate/translate/scale
+ *                        individuais)/filter/will-change residual (fora da
  *                        allowlist) e diz se a janela `[data-entrando]` fechou.
  *   CONSOLE=1            imprime os últimos erros/avisos do console da página.
  *   CHROME=<exe>         caminho do Chrome (padrão: Program Files).
@@ -98,11 +100,13 @@ const TOKENS_DE_TEMPO = {
   "--dur-realce": 1500,
   "--dur-pulso": 1500,
   "--dur-giro": 1000,
+  "--dur-cena-espera": 500,
+  "--dur-cena-entrada": 2500,
 };
 
 /* A allowlist do repouso: folhas em que transform em repouso é permitido
    (CHECKLIST-MOVIMENTO, item 5). */
-const REPOUSO_PERMITIDO = [".seta-recolhe", ".chave-polegar", ".capa-orbe", ".girando", ".trilho-luz", ".barra-progresso", ".regua-tempo"];
+const REPOUSO_PERMITIDO = [".seta-recolhe", ".chave-polegar", ".capa-orbe", ".girando", ".trilho-luz", ".barra-progresso", ".regua-tempo", ".login-marca", ".carregador-icone", ".carregador-aro", ".cena-spline-selo", ".cena-spline-boca", ".holofote"];
 
 function getJSON(rota) {
   return new Promise((resolve, reject) => {
@@ -328,8 +332,11 @@ async function principal() {
         for (const el of raiz.querySelectorAll('*')) {
           if (ignorar.some((s) => el.matches(s))) continue;
           const cs = getComputedStyle(el);
-          if (cs.transform !== 'none' || cs.filter !== 'none' || cs.willChange !== 'auto') {
-            sobras.push(el.tagName.toLowerCase() + '.' + [...el.classList].slice(0, 3).join('.') + ' t=' + cs.transform + ' f=' + cs.filter);
+          // As propriedades individuais (rotate/translate/scale — o que os
+          // utilitários do Tailwind v4 escrevem) contam como transform.
+          const individual = [cs.rotate, cs.translate, cs.scale].some((v) => v && v !== 'none');
+          if (cs.transform !== 'none' || individual || cs.filter !== 'none' || cs.willChange !== 'auto') {
+            sobras.push(el.tagName.toLowerCase() + '.' + [...el.classList].slice(0, 3).join('.') + ' t=' + cs.transform + (individual ? ' r/t/s=' + [cs.rotate, cs.translate, cs.scale].join('|') : '') + ' f=' + cs.filter);
           }
         }
         return { sobras: sobras.slice(0, 20), total: sobras.length, entrando: !!document.querySelector('.chegada[data-entrando]'), pathname: location.pathname };

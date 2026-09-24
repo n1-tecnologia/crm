@@ -11,6 +11,8 @@
  * that only shows up in someone else's afternoon.
  */
 
+import { ROTULO_DO_TIPO_DE_CANAL } from "@/data/operations/canais";
+import { EVENTOS } from "@/data/operations/ia/automacoes-catalogo";
 import type { Locale, Money, TaskDate } from "@/data/types";
 
 export interface Formatters {
@@ -159,6 +161,11 @@ export const RESOURCE_TYPE_LABEL: Record<string, string> = {
   automation: "Automação",
   team: "Equipe",
   member: "Membro",
+  // O Catálogo tem Ferramenta sobre Grupo (`grupo.removerParticipante`): sem
+  // o rótulo, o cartão de Plugins mostrava o identificador cru.
+  grupo: "Grupo",
+  comunidade: "Comunidade",
+  flow: "Flow",
 };
 
 /** B77 — why the Execution stopped to ask. */
@@ -179,13 +186,8 @@ export const IDENTIFIER_TYPE_LABEL: Record<string, string> = {
   perfilDeTikTok: "Perfil de TikTok",
 };
 
-export const CHANNEL_TYPE_LABEL: Record<string, string> = {
-  whatsapp: "WhatsApp",
-  linkedin: "LinkedIn",
-  instagram: "Instagram",
-  email: "E-mail",
-  chatDoSite: "Chat do site",
-};
+/** Alias do rótulo que o domínio define (C36): uma fonte só para a tela e para as recusas. */
+export const CHANNEL_TYPE_LABEL: Record<string, string> = ROTULO_DO_TIPO_DE_CANAL;
 
 /** RN-CON-16 — consent is a decision with a date, never a silent default. */
 export const CONSENT_DECISION_LABEL: Record<string, string> = {
@@ -273,17 +275,18 @@ export const COMPANY_IDENTIFIER_LABEL: Record<string, string> = {
   telefone: "Telefone",
 };
 
-/** B44 — the Events an Automation Trigger listens to. */
-export const TRIGGER_EVENT_LABEL: Record<string, string> = {
-  tarefaCriada: "Tarefa criada",
-  tarefaAtualizada: "Tarefa atualizada",
-  negocioEntrouEmEtapa: "Negócio entrou em Etapa",
-  negocioEncerrado: "Negócio encerrado",
-  conversaCriada: "Conversa criada",
-  conversaResolvida: "Conversa resolvida",
-  mensagemRecebida: "Mensagem recebida",
-  mensagemEnviada: "Mensagem enviada",
-  contatoCriado: "Contato criado",
+/**
+ * B44 — the Events an Automation Trigger listens to. Uma só verdade: o
+ * catálogo do editor (`EVENTOS`) diz o id, a família e o rótulo; aqui só a
+ * projeção id → rótulo que as telas leem.
+ */
+export const TRIGGER_EVENT_LABEL: Record<string, string> = Object.fromEntries(EVENTOS.map((e) => [e.id, e.rotulo]));
+
+/** B22 — the three autonomy levels of an Agent; the effective one is the minimum (B77). */
+export const AUTONOMY_LABEL: Record<string, string> = {
+  assistido: "assistido",
+  supervisionado: "supervisionado",
+  autonomo: "autônomo",
 };
 
 /** B44 — como o Gatilho dispara, antes de qual Evento ele escuta. */

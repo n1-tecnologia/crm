@@ -10,7 +10,7 @@
 
 import Link from "next/link";
 import { Briefcase, MessageSquare } from "lucide-react";
-import { use, useState } from "react";
+import { use, useState, type ReactNode } from "react";
 import { useData, useRun, useSession } from "@/data/store";
 import {
   checklistProgress,
@@ -31,11 +31,16 @@ import {
   changeTaskStatus,
   createTask,
   listWriteRefusal,
+  TAREFA_SEM_CONTATO,
 } from "@/data/operations";
-import { PRIORITY_LABEL, STATUS_CATEGORY_LABEL } from "@/features/shell/format";
+import { canaisDaLista, contatoDaTarefa, listaSemCanais } from "@/data/derive-conversacional";
+import { LISTA_SEM_CANAIS } from "@/data/operations/canais";
+import { CHANNEL_ICON } from "@/features/crm/conversation-thread";
+import { PRIORITY_LABEL, STATUS_CATEGORY_LABEL, CHANNEL_TYPE_LABEL } from "@/features/shell/format";
 import { useFormat } from "@/features/shell/use-format";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { TaskPanel, useTaskPanel } from "@/features/estrutura/task-panel";
+import { TASK_PANEL_PARAM, TaskPanel, useTaskPanel } from "@/features/estrutura/task-panel";
+import { NovaTarefaConversacionalDialog } from "@/features/estrutura/nova-tarefa-conversacional-dialog";
 import {
   MoveTaskDialog,
   useMoveTaskDialog,
@@ -50,6 +55,7 @@ import {
 } from "@/features/estrutura/template-dialogs";
 import { FILTRO_VAZIO, ViewBar } from "@/features/estrutura/view-bar";
 import { BotaoDeMais, CompositorNoGrupo } from "@/features/estrutura/novo-no-grupo";
+import { SeletorDeTipoDeTarefa } from "@/features/estrutura/seletor-de-tipo";
 import { useRecente } from "@/features/shell/recente";
 import { TabelaDeTarefas } from "@/features/estrutura/tabela-de-tarefas";
 import { IniciarConversaDialog } from "@/features/crm/iniciar-conversa-dialog";
@@ -69,6 +75,9 @@ import {
 } from "@/features/estrutura/financeiro/contas-view";
 import { SerieDeParcelasDialog } from "@/features/estrutura/financeiro/serie-dialog";
 import { dealOfTask, QuadroNegocios } from "@/features/estrutura/quadro-negocios";
+import { CartaoDeTarefa } from "@/features/estrutura/cartao-de-tarefa";
+import { valorDaConta, type FinanceProfile } from "@/features/estrutura/financeiro/lens";
+import { ColunaDeQuadro, VazioDaColuna } from "@/features/shell/quadro";
 import { DealScreen } from "@/features/crm/deal-screen";
 import { ContaDrawer } from "@/features/estrutura/financeiro/conta-drawer";
 import { MEUS_NEGOCIOS_ID } from "@/data/seed-comercial";
@@ -127,9 +136,16 @@ export default function ListaPage({
         : "lista",
   );
   const [newTitle, setNewTitle] = useState("");
+  /* O Tipo da Tarefa que a BARRA DO TOPO vai criar. Nasce indefinido e o
+     seletor o reconduz ao padrão da Lista — o mesmo que o domínio usaria se
+     ninguém escolhesse. Cada compositor de grupo guarda o dele: uma escolha
+     feita aqui não governa o "+" de um grupo, nem o contrário. */
+  const [novoTipo, setNovoTipo] = useState<string | undefined>(undefined);
   const [criandoConta, setCriandoConta] = useState(false);
   // "Iniciar conversa" (lado do CRM de Meus negócios): a Etapa vem do "+" do grupo.
   const [iniciandoConversa, setIniciandoConversa] = useState<{ readonly stageId?: string } | null>(null);
+  // "Nova Tarefa" da Lista conversacional (C35): o Status vem do "+" do grupo.
+  const [novaConversacional, setNovaConversacional] = useState<{ readonly statusId?: string } | null>(null);
   const [criandoSerie, setCriandoSerie] = useState(false);
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   const [financeFilters, setFinanceFilters] =
@@ -192,7 +208,9 @@ export default function ListaPage({
   const criacaoRecusada =
     pathname.startsWith("/crm/") && config.path.some((node) => node.type === "folder" && node.id === MEUS_NEGOCIOS_ID)
       ? "Um Negócio nasce em Negócios; esta é a cópia do Funil."
-      : listWriteRefusal(state, memberId, list.id);
+      : listaSemCanais(state, list.id)
+        ? LISTA_SEM_CANAIS
+        : listWriteRefusal(state, memberId, list.id);
   const reportar = (
     result: { ok: boolean; error?: string },
     message: string,
@@ -225,6 +243,14 @@ export default function ListaPage({
     return etapa === "ganho" || etapa === "perdido" ? undefined : etapa;
   };
   const espelhoComercial = pastaDeNegocios && noCrm;
+  // C35 — a Lista conversacional: cada Tarefa nasce de um Contato. A
+  // precedência das lentes é financeira > espelhoComercial > conversacional:
+  // o espelho é o caso particular (conversacional COM Negócio obrigatório) e
+  // guarda a barra "Iniciar conversa"; o que segue vale para a conversacional
+  // pura (Pós-venda) e para o lado da Estrutura das Listas de "Meus negócios".
+  const conversacional = list.modeloDeTarefa === "conversacional";
+  const conversacionalPura = conversacional && !espelhoComercial;
+  const pedidaPelaUrl = query.get("nova-tarefa") !== null;
   const todas = state.tasks
     .filter(
       (task) => task.listId === list.id && task.parentTaskId === undefined,
@@ -267,10 +293,19 @@ export default function ListaPage({
     (a, b) => a.order - b.order,
   );
 
+  /* O aviso nomeia o que NASCEU, não a lente da tela: numa Lista do Financeiro
+     quem escolhe "Tarefa" no seletor não criou uma "Conta". */
+  const nomeDoTipo = (taskTypeId: string) =>
+    state.taskTypes.find((t) => t.id === taskTypeId)?.name ?? (financeira ? "Conta" : "Tarefa");
+
   const create = () => {
     if (!newTitle.trim()) return;
     const result = run((data, memberId) =>
-      createTask(data, memberId, { listId: list.id, title: newTitle.trim() }),
+      createTask(data, memberId, {
+        listId: list.id,
+        title: newTitle.trim(),
+        ...(novoTipo ? { taskTypeId: novoTipo } : {}),
+      }),
     );
     if (result.ok) {
       setNewTitle("");
@@ -279,7 +314,7 @@ export default function ListaPage({
       // A Tarefa nova pode nascer fora da Visualização em uso (o Calendário só
       // desenha Tarefas com data): o aviso nomeia e dá o caminho para abri-la.
       setNotice({
-        text: `${financeira ? "Conta" : "Tarefa"} criada: ${result.value.title}.`,
+        text: `${nomeDoTipo(result.value.taskTypeId)} criada: ${result.value.title}.`,
         taskId: result.value.id,
       });
       // Uma conta nasce só com o nome; Valor, Vencimento e Forma se editam no
@@ -297,27 +332,47 @@ export default function ListaPage({
   const fecharCriacao = () => {
     setCriandoConta(false);
     setNewTitle("");
-    if (query.get("nova-tarefa") !== null) {
+    // Desistir apaga a escolha junto com o título: uma escolha viva e sem
+    // campo à vista voltaria a valer na próxima criação, sem ninguém pedir.
+    setNovoTipo(undefined);
+    if (pedidaPelaUrl) {
       const next = new URLSearchParams(query.toString());
       next.delete("nova-tarefa");
       router.replace(next.size > 0 ? `${pathname}?${next}` : pathname, { scroll: false });
     }
   };
 
+  // Na Lista conversacional o "+" da árvore (`?nova-tarefa=1`) abre o diálogo,
+  // não um campo de título: o pedido da URL vale como o clique no botão.
+  const dialogoConversacional = conversacionalPura && effective === "ativo" && (novaConversacional !== null || pedidaPelaUrl);
+  const fecharNovaConversacional = () => {
+    setNovaConversacional(null);
+    if (pedidaPelaUrl) fecharCriacao();
+  };
+  // A Tarefa nasceu: o popup dela abre no lugar do diálogo. Uma só troca de
+  // URL, porque `openTask` preservaria o `nova-tarefa` e o diálogo voltaria.
+  const abrirTarefaCriada = (taskId: string) => {
+    const next = new URLSearchParams(query.toString());
+    next.delete("nova-tarefa");
+    next.set(TASK_PANEL_PARAM, taskId);
+    router.replace(`${pathname}?${next}`, { scroll: false });
+  };
+
   // O "+" de um grupo: a Tarefa nasce já naquele Status. A conta do Financeiro
   // nasce só com o nome e abre no popup, onde Valor, Vencimento e Forma se editam.
-  const criarNoGrupo = (title: string, statusId?: string): boolean => {
+  const criarNoGrupo = (title: string, statusId?: string, taskTypeId?: string): boolean => {
     const result = run((data, memberId) =>
       createTask(data, memberId, {
         listId: list.id,
         title,
         ...(statusId ? { statusId } : {}),
+        ...(taskTypeId ? { taskTypeId } : {}),
       }),
     );
     if (result.ok) {
       setError(null);
       setNotice({
-        text: `${financeira ? "Conta" : "Tarefa"} criada: ${result.value.title}.`,
+        text: `${nomeDoTipo(result.value.taskTypeId)} criada: ${result.value.title}.`,
         taskId: result.value.id,
       });
       if (financeira) openTask(result.value.id);
@@ -327,7 +382,18 @@ export default function ListaPage({
     setError(result.error);
     return false;
   };
-  const criaNoGrupo = effective === "ativo" ? criarNoGrupo : undefined;
+  /* O seletor do Tipo, quando a Lista enxerga mais de um: a mesma peça na
+     barra do topo e no compositor de cada grupo. Ele se apaga sozinho (devolve
+     `null`) onde não há escolha — numa Lista com um Tipo só, a barra fica como
+     sempre foi. */
+  const seletorDeTipo = (valor: string | undefined, aoEscolher: (taskTypeId: string) => void) => (
+    <SeletorDeTipoDeTarefa state={state} listId={list.id} value={valor} onChange={aoEscolher} />
+  );
+  // Numa Lista conversacional NUNCA há compositor por título: o "+" abre o
+  // diálogo com o Status daquele grupo (`onMais`), e a Tarefa nasce do Contato.
+  const criaNoGrupo = effective === "ativo" && !conversacional ? criarNoGrupo : undefined;
+  const maisConversacional =
+    conversacionalPura && effective === "ativo" ? { onMais: (statusId: string) => setNovaConversacional({ statusId }) } : {};
 
   return (
     <div className="flex h-full flex-col">
@@ -368,15 +434,16 @@ export default function ListaPage({
           )
         }
         title={list.name}
-        {...(espelhoComercial
+        {...(espelhoComercial || conversacionalPura
           ? {
+              // O espelho leva a maleta do Negócio; a conversacional, o balão da conversa.
               icon: (
                 <span
                   aria-hidden="true"
                   className="grid place-items-center rounded-[var(--r-controle)]"
                   style={{ width: "var(--controle-h-sm)", height: "var(--controle-h-sm)", background: "var(--acento-lavado)", color: "var(--acento)" }}
                 >
-                  <Icone de={Briefcase} tamanho="sm" />
+                  <Icone de={espelhoComercial ? Briefcase : MessageSquare} tamanho="sm" />
                 </span>
               ),
             }
@@ -394,12 +461,43 @@ export default function ListaPage({
                   });
                   return `${abertas.length} ${abertas.length === 1 ? "aberto" : "abertos"} · ${valor} em valor declarado`;
                 })()
-              : `${todas.length} ${todas.length === 1 ? "Tarefa" : "Tarefas"}`
+              : conversacionalPura
+                ? (() => {
+                    // Quantas pessoas, não quantos Vínculos: duas Tarefas do mesmo Contato contam um.
+                    const contatos = new Set(todas.map((t) => contatoDaTarefa(state, t)?.id).filter(Boolean)).size;
+                    return `${todas.length} ${todas.length === 1 ? "Tarefa" : "Tarefas"} · ${contatos} ${contatos === 1 ? "Contato" : "Contatos"}`;
+                  })()
+                : `${todas.length} ${todas.length === 1 ? "Tarefa" : "Tarefas"}`
         }
-        {...(espelhoComercial || list.plannedPeriod?.start
+        {...(espelhoComercial || conversacional || list.plannedPeriod?.start
           ? {
               details: (
                 <span className="app-meta flex flex-wrap items-center gap-3">
+                  {conversacional ? (
+                    // C36 — por onde esta Lista atende: o tipo e a conta, na ordem marcada.
+                    canaisDaLista(state, list.id).length > 0 ? (
+                      <span className="flex flex-wrap items-center gap-1.5">
+                        <span>Atende por</span>
+                        {canaisDaLista(state, list.id).map((ch) => {
+                          const IconeDoCanal = CHANNEL_ICON[ch.channelType];
+                          return (
+                            <Pilula key={ch.id} tom="neutro" className="gap-1.5" title={`${CHANNEL_TYPE_LABEL[ch.channelType]} · ${ch.externalId}`}>
+                              <IconeDoCanal className="size-[var(--icone-xs)] shrink-0" aria-hidden="true" />
+                              {ch.name}
+                            </Pilula>
+                          );
+                        })}
+                      </span>
+                    ) : (
+                      <span role="status" style={{ color: "var(--aviso)" }}>
+                        {LISTA_SEM_CANAIS.replace(" configure-os nas Configurações da Lista.", "")}{" "}
+                        <Link href={`/estrutura/listas/${list.id}/configuracoes`} className="underline">
+                          Configurar os canais
+                        </Link>
+                        .
+                      </span>
+                    )
+                  ) : null}
                   {espelhoComercial ? (
                     <span>
                       Cópia do Funil “{list.name}”: mover aqui não move o Negócio em{" "}
@@ -512,6 +610,8 @@ export default function ListaPage({
         abas={(["lista", "quadro", "calendario", "tabela", "linha", "carga"] as const)
           // A Carga é da gestão de projetos; a Lista financeira mostra as cinco do mockup.
           .filter((kind) => !financeira || kind !== "carga")
+          // Carga e Linha do tempo são da gestão de projetos: a Lista conversacional não planeja esforço.
+          .filter((kind) => !conversacional || (kind !== "carga" && kind !== "linha"))
           .map((kind) => ({ chave: kind, rotulo: VIEW_LABEL[kind] }))}
         ativa={view}
         aoTrocar={(chave) => setView(chave as ViewKind)}
@@ -519,20 +619,65 @@ export default function ListaPage({
 
       {effective === "ativo" && espelhoComercial ? (
         <BarraDeFiltros>
-          <Button size="sm" variant="primary" onClick={() => setIniciandoConversa({})} icon={<Icone de={MessageSquare} tamanho="xs" />}>
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={() => setIniciandoConversa({})}
+            icon={<Icone de={MessageSquare} tamanho="xs" />}
+            disabled={criacaoRecusada !== undefined}
+            disabledReason={criacaoRecusada ?? ""}
+          >
             Iniciar conversa
           </Button>
           <span className="app-meta">Escolha o Contato, a Etapa em que o lead está e o Canal — e o chat abre.</span>
         </BarraDeFiltros>
       ) : null}
 
+      {effective === "ativo" && conversacionalPura ? (
+        // C35 — sem campo de título: a Tarefa nasce do Contato, no diálogo.
+        <BarraDeFiltros>
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={() => setNovaConversacional({})}
+            icon={<Icone de={MessageSquare} tamanho="xs" />}
+            disabled={criacaoRecusada !== undefined}
+            disabledReason={criacaoRecusada ?? ""}
+          >
+            Nova Tarefa
+          </Button>
+          <span className="app-meta">Escolha o Contato e o Canal — a Tarefa nasce com a conversa dele.</span>
+          <Button size="sm" disabled disabledReason={TAREFA_SEM_CONTATO}>
+            De modelo
+          </Button>
+          <span className="flex-1" />
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setSelecionando((v) => !v);
+              setSelecionadas(new Set());
+              if (view !== "lista") setView("lista");
+            }}
+            aria-pressed={selecionando}
+            disabled={criacaoRecusada !== undefined}
+            disabledReason={criacaoRecusada ?? ""}
+          >
+            {selecionando ? "Sair da seleção" : "Selecionar várias"}
+          </Button>
+          <RunScheduledButton listId={list.id} report={reportar} />
+        </BarraDeFiltros>
+      ) : null}
+
       {effective === "ativo" &&
       !espelhoComercial &&
-      (!financeira || criandoConta || query.get("nova-tarefa") !== null) ? (
+      !conversacional &&
+      (!financeira || criandoConta || pedidaPelaUrl) ? (
         <BarraDeFiltros>
           <label className="sr-only" htmlFor="nova-tarefa">
             {financeira ? "Nome da nova conta" : "Título da nova Tarefa"}
           </label>
+          <SeletorDeTipoDeTarefa state={state} listId={list.id} value={novoTipo} onChange={setNovoTipo} />
           <input
             id="nova-tarefa"
             value={newTitle}
@@ -734,26 +879,29 @@ export default function ListaPage({
           ) : (
             <EmptyState title="Nenhuma Tarefa nesta Lista ainda." />
           )
-        ) : view === "quadro" && espelhoComercial ? (
+        ) : view === "quadro" && conversacional ? (
+          // O quadro de cartões com rosto: o de Negócio no espelho, o
+          // conversacional na Lista pura. Só o espelho soma dinheiro na coluna.
           <QuadroNegocios
             state={state}
             tasks={tasks}
             definitions={definitions}
             onError={setError}
             openTask={abrirNoQuadro}
-            {...(criaNoGrupo ? { onCreateInGroup: criaNoGrupo } : {})}
+            comValor={espelhoComercial}
             {...(criacaoRecusada ? { criacaoRecusada } : {})}
             {...(espelhoComercial && effective === "ativo" ? { onMais: (statusId: string) => setIniciandoConversa({ stageId: etapaDoStatus(statusId) }) } : {})}
+            {...maisConversacional}
           />
         ) : view === "quadro" ? (
           <Quadro
             state={state}
             tasks={tasks}
             definitions={definitions}
-            listId={list.id}
             onError={setError}
             openTask={openTask}
-            {...(criaNoGrupo ? { onCreateInGroup: criaNoGrupo } : {})}
+            {...(lente ? { financeiro: lente } : {})}
+            {...(criaNoGrupo ? { onCreateInGroup: criaNoGrupo, seletorDeTipo } : {})}
             {...(criacaoRecusada ? { criacaoRecusada } : {})}
           />
         ) : view === "calendario" ? (
@@ -788,7 +936,7 @@ export default function ListaPage({
                 profile={lente}
                 tasks={tasks}
                 grupoFiltrado={financeFilters.grupo}
-                {...(criaNoGrupo ? { onCreateInGroup: criaNoGrupo } : {})}
+                {...(criaNoGrupo ? { onCreateInGroup: criaNoGrupo, seletorDeTipo } : {})}
                 {...(criacaoRecusada ? { criacaoRecusada } : {})}
                 definitions={definitions}
                 selected={selecionadas}
@@ -830,8 +978,10 @@ export default function ListaPage({
             report={reportar}
             selecionando={selecionando}
             rotulo={espelhoComercial ? "Negócio" : "Tarefa"}
+            conversacional={conversacional}
             {...(espelhoComercial && effective === "ativo" ? { onMais: (statusId: string) => setIniciandoConversa({ stageId: etapaDoStatus(statusId) }) } : {})}
-            {...(criaNoGrupo ? { onCreateInGroup: criaNoGrupo } : {})}
+            {...maisConversacional}
+            {...(criaNoGrupo ? { onCreateInGroup: criaNoGrupo, seletorDeTipo } : {})}
             {...(criacaoRecusada ? { criacaoRecusada } : {})}
             {...(selecionando
               ? {
@@ -880,6 +1030,26 @@ export default function ListaPage({
           onDone={(text) => {
             setIniciandoConversa(null);
             setNotice({ text });
+          }}
+        />
+      ) : null}
+      {/* Renderizado sempre e controlado por `open`, como na Caixa de Entrada e
+          na ficha do Contato: a saída de `--dur-1` anima (COMPONENTES.md). A
+          `key` é a Lista — o diálogo parte dos props a cada abertura, então o
+          Status do "+" do grupo vale sem remontar (remontar ao fechar perderia a saída). */}
+      {conversacionalPura ? (
+        <NovaTarefaConversacionalDialog
+          key={list.id}
+          listId={list.id}
+          open={dialogoConversacional}
+          {...(novaConversacional?.statusId ? { statusId: novaConversacional.statusId } : {})}
+          onClose={fecharNovaConversacional}
+          onDone={(text, taskId) => {
+            // A Tarefa nasceu com a conversa: o popup dela abre no lugar do diálogo.
+            setNovaConversacional(null);
+            setError(null);
+            setNotice({ text, taskId });
+            abrirTarefaCriada(taskId);
           }}
         />
       ) : null}
@@ -935,14 +1105,11 @@ function TaskRow({
   state,
   task,
   onOpen,
-  arrastavel = false,
   recente = false,
 }: {
   readonly state: DataState;
   readonly task: Task;
   readonly onOpen: (taskId: string) => void;
-  /** No Quadro a peça é arrastada: lift e arraste brigam, então ela não sobe. */
-  readonly arrastavel?: boolean;
   /** É a peça do último resultado: acende por --dur-realce (`data-recente`). */
   readonly recente?: boolean;
 }) {
@@ -959,11 +1126,7 @@ function TaskRow({
     <button
       type="button"
       onClick={() => onOpen(task.id)}
-      className={
-        arrastavel
-          ? "card-negocio flex w-full items-start justify-between gap-3 px-3 py-2 text-left"
-          : "item-solto w-full text-left"
-      }
+      className="item-solto w-full text-left"
       data-alinhamento="topo"
       data-recente={recente ? "true" : undefined}
       style={{ paddingBlock: "var(--e-2)" }}
@@ -1020,27 +1183,38 @@ function TaskRow({
   );
 }
 
+/**
+ * O Quadro das Listas operacionais — e das Contas (Financeiro) — no quadro
+ * padrão (`features/shell/quadro.tsx`): a mesma coluna e a mesma anatomia de
+ * cartão do quadro de Negócios (fim de 2026-09-23: "tudo que for quadro, a
+ * visualização deve ser igual à da segunda imagem"). Numa Lista financeira a
+ * coluna soma o valor das Contas e o cartão destaca o valor.
+ */
 function Quadro({
   state,
   tasks,
   definitions,
-  listId,
   onError,
   openTask,
+  financeiro,
   onCreateInGroup,
+  seletorDeTipo,
   criacaoRecusada,
 }: {
   readonly state: DataState;
   readonly tasks: readonly Task[];
   readonly definitions: readonly Definition[];
-  readonly listId: string;
   readonly onError: (message: string | null) => void;
   readonly openTask: (taskId: string) => void;
+  /** A lente financeira da Lista: a coluna soma e o cartão destaca o valor. */
+  readonly financeiro?: FinanceProfile;
   /** O "+" da coluna: a Tarefa nasce naquele Status. */
-  readonly onCreateInGroup?: (title: string, statusId: string) => boolean;
+  readonly onCreateInGroup?: (title: string, statusId: string, taskTypeId?: string) => boolean;
+  readonly seletorDeTipo?: (valor: string | undefined, aoEscolher: (taskTypeId: string) => void) => ReactNode;
   readonly criacaoRecusada?: string;
 }) {
   const run = useRun();
+  const fmt = useFormat();
   const [dragging, setDragging] = useState<string | null>(null);
   const recente = useRecente();
   const [criandoEm, setCriandoEm] = useState<string | null>(null);
@@ -1057,66 +1231,62 @@ function Quadro({
 
   return (
     <RolagemNoTopo>
-      <div className="flex items-start gap-3">
+      <div className="flex gap-4">
         {definitions.map((definition) => {
           const group = tasks.filter((task) => task.statusId === definition.id);
+          const soma = financeiro ? group.reduce((total, task) => total + valorDaConta(task), 0) : 0;
           return (
-            <div
+            <ColunaDeQuadro
               key={definition.id}
-              onDragOver={(event) => event.preventDefault()}
+              contagem={group.length}
+              nome={definition.name}
+              cor={definition.color}
               onDrop={() => drop(definition.id)}
-              className="trilho flex w-72 shrink-0 flex-col p-2"
-            >
-              <h2 className="mb-1 flex items-center gap-2 px-1 pt-1">
-                <CategoryDot color={definition.color} label={definition.name} />
-                <span className="app-meta app-numero flex-1">{group.length}</span>
+              mais={
                 <BotaoDeMais
                   rotulo={definition.name}
                   aberto={criandoEm === definition.id}
                   onClick={() => setCriandoEm((atual) => (atual === definition.id ? null : definition.id))}
                   {...(motivoDoMais ? { motivo: motivoDoMais } : {})}
                 />
-              </h2>
-              <p className="app-coluna mb-2 px-1">
-                {STATUS_CATEGORY_LABEL[definition.category]}
-              </p>
+              }
+              subtitulo={`${STATUS_CATEGORY_LABEL[definition.category] ?? definition.category}${financeiro ? ` · ${fmt.money({ amount: soma, currency: "BRL" })}` : ""}`}
+            >
               {criandoEm === definition.id && onCreateInGroup ? (
                 <CompositorNoGrupo
-                  className="mb-2"
                   placeholder={`Nova em ${definition.name}`}
-                  onCreate={(title) => onCreateInGroup(title, definition.id)}
+                  onCreate={(title, taskTypeId) => onCreateInGroup(title, definition.id, taskTypeId)}
+                  seletor={seletorDeTipo}
                   onCancel={() => setCriandoEm(null)}
                 />
               ) : null}
               {group.length === 0 ? (
-                <p
-                  className="app-meta rounded-[var(--r-painel)] border border-dashed px-2 py-4 text-center"
-                  style={{ borderColor: "var(--linha-forte)" }}
-                >
-                  Nenhuma Tarefa em <em>{definition.name}</em>
-                </p>
+                <VazioDaColuna
+                  texto={`Nenhuma Tarefa em “${definition.name}”.`}
+                  {...(onCreateInGroup && !motivoDoMais ? { onCriar: () => setCriandoEm(definition.id) } : {})}
+                />
               ) : (
-                <ul className="cascata pilha-solta">
-                  {group.map((task) => (
-                    <li
-                      key={task.id}
-                      draggable
-                      onDragStart={() => setDragging(task.id)}
-                      onDragEnd={() => setDragging(null)}
-                    >
-                      <TaskRow state={state} task={task} onOpen={openTask} arrastavel recente={task.id === recente} />
-                    </li>
-                  ))}
-                </ul>
+                group.map((task) => (
+                  <CartaoDeTarefa
+                    key={task.id}
+                    state={state}
+                    task={task}
+                    {...(financeiro ? { financeiro } : {})}
+                    onOpen={() => openTask(task.id)}
+                    onDragStart={() => setDragging(task.id)}
+                    onDragEnd={() => setDragging(null)}
+                    recente={task.id === recente}
+                  />
+                ))
               )}
-            </div>
+            </ColunaDeQuadro>
           );
         })}
       </div>
       <p className="app-meta mt-3">
         Arrastar altera o Status. As validações da Lista continuam valendo: a
         coluna recusa a Tarefa quando a Funcionalidade exige Subtarefas ou
-        Checklists concluídos. Lista {listId}.
+        Checklists concluídos.
       </p>
     </RolagemNoTopo>
   );

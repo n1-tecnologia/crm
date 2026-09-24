@@ -39,11 +39,16 @@ import {
 } from "@/features/estrutura/collaboration-editors";
 import { SaveTemplateDialog } from "@/features/estrutura/template-dialogs";
 import { ShareTaskDialog } from "@/features/estrutura/share-task-dialog";
-import { useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import {
   ArrowRight,
+  Briefcase,
+  Building2,
   CalendarDays,
+  Check,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   CircleDot,
   Flag,
   Hash,
@@ -52,8 +57,10 @@ import {
   Link2,
   ListChecks,
   Mail,
+  MessageSquare,
   Paperclip,
   Phone,
+  Radio,
   SquareCheck,
   Tag,
   Timer,
@@ -64,10 +71,16 @@ import {
 } from "lucide-react";
 import { LinhaDeProp } from "@/features/estrutura/linha-de-propriedade";
 import { corDeTipo, iconeDeTipo } from "@/features/estrutura/icone-de-tipo";
+import { SeletorDeTipoDeTarefa } from "@/features/estrutura/seletor-de-tipo";
 import { financeProfileOf, valorDaConta } from "@/features/estrutura/financeiro/lens";
+import { CHANNEL_ICON, ConversationThread } from "@/features/crm/conversation-thread";
+import { ContactAvatar } from "@/features/crm/contact-card";
+import { marcarSeMuda, useNavegar } from "@/features/shell/navegacao";
 import { useData, useRun, useSession } from "@/data/store";
 import {
+  actorLabel,
   checklistProgress,
+  contactDisplayName,
   containerAdminRefusal,
   effectiveListConfig,
   effectiveLifecycleOfTask,
@@ -75,6 +88,7 @@ import {
   isOverdue,
   memberReachesContainer,
   memberSeesTask,
+  principalCompanyId,
   spawnedOccurrenceOf,
   statusDefinition,
   subtaskProgress,
@@ -84,16 +98,28 @@ import {
   taskWriteRefusal,
 } from "@/data/derive";
 import {
+  canalDaTarefa,
+  contatoDaTarefa,
+  conversaDaTarefa,
+  listaConversacional,
+  negocioDaTarefa,
+  canaisDaListaQueAlcancam,
+} from "@/data/derive-conversacional";
+import {
+  CHANNEL_CAPABILITIES,
   addChecklist,
   addChecklistItem,
   assignTask,
   changeTaskStatus,
   convertChecklistItem,
   createTask,
+  criarNegocioDaTarefa,
   setChecklistItemDone,
   trashTask,
+  trocarCanalDaTarefa,
   unassignTask,
   updateTask,
+  vincularNegocioATarefa,
   contaSemCliente,
   contaSemResumo,
   guestFieldWriter,
@@ -102,6 +128,8 @@ import {
 } from "@/data/operations";
 import {
   ACTOR_KIND_LABEL,
+  CHANNEL_TYPE_LABEL,
+  CONVERSATION_STATE_LABEL,
   OBJECT_TYPE_LABEL,
   PRIORITY_LABEL,
 } from "@/features/shell/format";
@@ -128,9 +156,10 @@ import {
   StatusPicker,
   TextInput,
   Toast,
+  cn,
 } from "@/features/shell/ui";
 import type { DataState } from "@/data/state";
-import type { ActorRef } from "@/data/types";
+import type { ActorRef, ChannelType } from "@/data/types";
 
 /** §15 — a slice that hides rows always states the cut and offers the rest. */
 const ACTIVITY_PAGE_SIZE = 12;
@@ -190,7 +219,32 @@ export function TarefaCompleta({
   const [newChecklist, setNewChecklist] = useState("");
   const [newItem, setNewItem] = useState<Record<string, string>>({});
   const [newSubtask, setNewSubtask] = useState("");
+  /* O Tipo da próxima Subtarefa. Vazio até o seletor recondu­zi-lo ao padrão da
+     Lista — o mesmo com que a Subtarefa nascia quando não havia escolha. */
+  const [tipoDaSubtarefa, setTipoDaSubtarefa] = useState<string | undefined>(undefined);
   const { movingTaskId, openMove, closeMove } = useMoveTaskDialog();
+  /*
+   * C35 — a ficha conversacional. A aba do fio é livre depois de abrir no
+   * Canal da Tarefa (`null` = segue a Tarefa); a Atividade nasce recolhida
+   * abaixo do fio e só se abre por inteiro na terceira coluna; o Negócio
+   * troca por um editor que a própria linha abre e fecha.
+   */
+  const [canalDoFio, setCanalDoFio] = useState<ChannelType | null>(null);
+  const [atividadeAberta, setAtividadeAberta] = useState(false);
+  // O toggle "Atividade N" do cabeçalho da Conversa: empilhada, recolher a
+  // Atividade pelo chevron do aside esconde o aside inteiro (e o chevron com
+  // ele) — o foco de teclado volta para este botão, que continua no DOM.
+  // Nas colunas ele é display:none e o focus() é inócuo.
+  const botaoAtividade = useRef<HTMLButtonElement>(null);
+  // O aside da Atividade, para o botão que a abre (no cabeçalho da Conversa, empilhada) apontar para ele.
+  const idDaAtividade = useId();
+  const [editandoNegocio, setEditandoNegocio] = useState(false);
+  const [criandoNegocio, setCriandoNegocio] = useState(false);
+  const [funilDoNegocio, setFunilDoNegocio] = useState("");
+  const [tituloDoNegocio, setTituloDoNegocio] = useState("");
+  const [valorDoNegocio, setValorDoNegocio] = useState("");
+  const [erroDoNegocio, setErroDoNegocio] = useState<string | null>(null);
+  const [navegar] = useNavegar();
   // Os outros parâmetros ficam: no popup, `?tarefa=` é o que o mantém aberto.
   const openConversion = (checklistId: string, itemId: string) => {
     setTypedItem("");
@@ -255,6 +309,19 @@ export function TarefaCompleta({
   const checklist = checklistProgress(task);
   const subtasks = subtaskProgress(state, task.id);
   const level = taskLevel(state, task);
+
+  /*
+   * C35 — o que a Tarefa conversacional lê do CRM, tudo por Vínculo: o
+   * Contato, a Conversa (e por ela o Canal) e o Negócio, se houver. Uma
+   * Tarefa conversacional SEM Contato cai no layout de sempre com um aviso —
+   * o fio não tem com quem ser.
+   */
+  const conversacional = listaConversacional(state, task.listId);
+  const contato = conversacional ? contatoDaTarefa(state, task) : undefined;
+  const conversa = contato ? conversaDaTarefa(state, task) : undefined;
+  const canal = contato ? canalDaTarefa(state, task) : undefined;
+  const negocio = contato ? negocioDaTarefa(state, task) : undefined;
+  const fichaConversacional = contato !== undefined;
 
   const blockReason = terminalStatusBlockReason(state, task);
   // O que impede sair do Status atual, dito na tela e não só no hover dos chips.
@@ -340,6 +407,8 @@ export function TarefaCompleta({
   const activity = state.activity.filter(
     (record) => record.objectId === task.id,
   );
+  // A contagem do cabeçalho "Atividade" — e do botão que a abre na ficha empilhada.
+  const contagemDaAtividade = task.comments.filter((c) => !c.deletedAt).length + activity.length;
 
   const convertingChecklist = converting
     ? task.checklists.find((group) => group.id === converting.checklistId)
@@ -452,6 +521,35 @@ export function TarefaCompleta({
               ? { disabledReason: compartilharRecusado }
               : {}),
         },
+        // C35 — os atos do CRM só existem numa Lista conversacional.
+        ...(conversacional
+          ? [
+              {
+                label: "Abrir na Caixa de Entrada",
+                onSelect: () => {
+                  if (conversa) navegar(`/crm/caixa-de-entrada/${conversa.id}`);
+                },
+                ...(conversa ? {} : { disabledReason: "Esta Tarefa ainda não tem Conversa." }),
+              },
+              {
+                label: "Criar Negócio a partir desta Tarefa",
+                onSelect: () => {
+                  setFunilDoNegocio("");
+                  setTituloDoNegocio(task.title);
+                  setValorDoNegocio("");
+                  setErroDoNegocio(null);
+                  setCriandoNegocio(true);
+                },
+                ...(somenteLeitura
+                  ? { disabledReason: somenteLeitura }
+                  : !contato
+                    ? { disabledReason: "Esta Tarefa não tem Contato vinculado." }
+                    : negocio
+                      ? { disabledReason: "Esta Tarefa já tem Negócio vinculado." }
+                      : {}),
+              },
+            ]
+          : []),
         {
           label: "Enviar à lixeira",
           onSelect: () => setConfirmingTrash(true),
@@ -579,6 +677,71 @@ export function TarefaCompleta({
           onCancel={() => setConfirmandoStatus(null)}
         />
       ) : null}
+      {/* C35 — o Negócio nasce do Contato da Tarefa, na 1ª Etapa do Funil, já vinculado a ela. */}
+      {contato ? (
+        <ConfirmDialog
+          open={criandoNegocio}
+          title="Criar Negócio a partir desta Tarefa"
+          description={`O Negócio nasce com ${contactDisplayName(contato)} na primeira Etapa do Funil escolhido e fica vinculado a esta Tarefa.`}
+          confirmLabel="Criar Negócio"
+          wide
+          {...(funilDoNegocio === "" ? { confirmDisabledReason: "Escolha o Funil." } : {})}
+          onConfirm={() => {
+            const result = run((data, me) =>
+              criarNegocioDaTarefa(data, me, task.id, {
+                funnelId: funilDoNegocio,
+                ...(tituloDoNegocio.trim() ? { title: tituloDoNegocio.trim() } : {}),
+                ...(valorDoNegocio.trim() ? { value: { amount: Number(valorDoNegocio), currency: "BRL" } } : {}),
+              }),
+            );
+            if (!result.ok) {
+              setErroDoNegocio(result.error);
+              return;
+            }
+            setCriandoNegocio(false);
+            report(result, `Negócio criado: ${result.value.deal.title}.`);
+          }}
+          onCancel={() => setCriandoNegocio(false)}
+        >
+          <div className="grid gap-4">
+            {(() => {
+              const funis = state.funnels.filter((f) => f.lifecycle === "ativo");
+              const funil = funis.find((f) => f.id === funilDoNegocio);
+              const primeiraEtapa = funil ? [...funil.stages].sort((a, b) => a.order - b.order)[0] : undefined;
+              return (
+                <Field
+                  label="Funil"
+                  required
+                  {...(primeiraEtapa ? { hint: `O Negócio nasce na Etapa ${primeiraEtapa.name}.` } : {})}
+                >
+                  {(id) => (
+                    <Select
+                      id={id}
+                      value={funilDoNegocio}
+                      onChange={setFunilDoNegocio}
+                      placeholder="Escolha o Funil"
+                      options={funis.map((f) => ({ value: f.id, label: f.name }))}
+                    />
+                  )}
+                </Field>
+              );
+            })()}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Título" hint="Vazio, fica o título da Tarefa.">
+                {(id) => <TextInput id={id} value={tituloDoNegocio} onChange={setTituloDoNegocio} placeholder={task.title} />}
+              </Field>
+              <Field label="Valor em reais" hint="Opcional.">
+                {(id) => <TextInput id={id} value={valorDoNegocio} onChange={setValorDoNegocio} type="number" />}
+              </Field>
+            </div>
+            {erroDoNegocio ? (
+              <p role="alert" className="app-base" style={{ color: "var(--erro)" }}>
+                {erroDoNegocio}
+              </p>
+            ) : null}
+          </div>
+        </ConfirmDialog>
+      ) : null}
       <ConfirmDialog
         open={confirmingTrash}
         title={`Enviar “${task.title}” à lixeira?`}
@@ -627,10 +790,33 @@ export function TarefaCompleta({
       ) : null}
 
       {/* A ficha no centro, a Atividade à direita — como no ClickUp. Abaixo de xl
-          a Atividade fica embaixo, com altura própria. */}
-      <div className="@container flex min-h-0 flex-1">
-      <div className="flex min-h-0 flex-1 flex-col @4xl:flex-row">
-      <CorpoDeTela>
+          a Atividade fica embaixo, com altura própria. O contêiner tem nome
+          (`ficha`) porque o ConversationThread lê a largura dele para saber
+          que está empilhado sob a ficha. */}
+      <div className="@container/ficha flex min-h-0 flex-1">
+      {/*
+        Na ficha conversacional empilhada a coluna é quem rola COMO UM TODO
+        quando ficha e Conversa não cabem juntas (a Conversa exige o seu
+        mínimo; a ficha, o dela): melhor a coluna rolar do que a ficha virar
+        uma fresta ou o compositor sumir atrás da Atividade. Nas colunas
+        (@4xl) a coluna não rola: cada região rola por si, como sempre.
+      */}
+      <div
+        className={cn(
+          "flex min-h-0 flex-1 flex-col @4xl:flex-row",
+          fichaConversacional && "overflow-y-auto @4xl:overflow-visible",
+        )}
+      >
+      {/*
+        Empilhada, a ficha fica com o que sobra do trilho — mas nunca menos
+        que três quartos do mínimo do fio (o Tipo, o título e a descrição):
+        abaixo disso é a coluna inteira que rola, não a ficha que some.
+      */}
+      <CorpoDeTela
+        {...(fichaConversacional
+          ? { className: "@max-4xl:min-h-[calc(var(--conversa-empilhada-min)*0.75)]" }
+          : {})}
+      >
         {notice ? (
           <Toast
             tone="success"
@@ -955,8 +1141,268 @@ export function TarefaCompleta({
             </div>
           </div>
 
+          {/* ───────────────────────── o CRM: com quem, por onde, sobre o quê ── */}
+          {contato ? (
+            <section className="mt-5">
+              <ReguaDeSecao rotulo="CRM" />
+              <div className="grid gap-x-8 gap-y-0.5 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                <div className="grid min-w-0 content-start gap-0.5">
+                  <LinhaDeProp
+                    icone={UserRound}
+                    rotulo="Contato"
+                    controle={(() => {
+                      // O Identificador que o Canal da Tarefa resolve; sem Canal, o principal.
+                      const tipos = canal ? CHANNEL_CAPABILITIES[canal.channelType].resolvesIdentifierTypes : undefined;
+                      const candidatos = tipos ? contato.identifiers.filter((i) => tipos.includes(i.type)) : contato.identifiers;
+                      const identificador = (candidatos.find((i) => i.principal) ?? candidatos[0])?.displayValue;
+                      const qualificacao = state.catalog.find((c) => c.id === contato.qualificationId);
+                      const temperatura = state.catalog.find((c) => c.id === contato.temperatureId);
+                      const href = `/crm/contatos/${contato.id}`;
+                      return (
+                        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                          <Link
+                            href={href}
+                            onNavigate={() => marcarSeMuda(href)}
+                            className="app-base flex min-w-0 items-center gap-2 hover:underline"
+                            style={{ color: "var(--texto)" }}
+                          >
+                            <ContactAvatar contact={contato} />
+                            <span className="truncate">{contactDisplayName(contato)}</span>
+                            {identificador ? <span className="app-meta truncate">{identificador}</span> : null}
+                          </Link>
+                          {qualificacao ? <Pilula tom="neutro">{qualificacao.name}</Pilula> : null}
+                          {temperatura ? (
+                            <Pilula {...(temperatura.color ? { cor: temperatura.color } : { tom: "neutro" })}>
+                              {temperatura.name}
+                            </Pilula>
+                          ) : null}
+                        </span>
+                      );
+                    })()}
+                  />
+                  <LinhaDeProp
+                    icone={Radio}
+                    rotulo="Canal"
+                    valor={
+                      canal
+                        ? (() => {
+                            const IconeDoCanal = CHANNEL_ICON[canal.channelType];
+                            return (
+                              <span className="flex items-center gap-2">
+                                <Pilula tom="neutro" className="shrink-0 gap-1.5">
+                                  <IconeDoCanal className="size-[var(--icone-xs)] shrink-0" aria-hidden="true" />
+                                  {CHANNEL_TYPE_LABEL[canal.channelType]}
+                                </Pilula>
+                                <span className="truncate">{canal.name}</span>
+                              </span>
+                            );
+                          })()
+                        : "Vazio"
+                    }
+                    editavel={editavel}
+                    motivo={somenteLeitura}
+                    editor={
+                      <span className="block w-64">
+                        <Select
+                          id="canal-da-tarefa"
+                          value={canal?.id ?? ""}
+                          onChange={(channelId) => {
+                            const result = run((data, me) => trocarCanalDaTarefa(data, me, task.id, channelId));
+                            report(result, "Canal alterado.");
+                            // O fio segue o novo Canal em vez de ficar na aba anterior.
+                            if (result.ok) setCanalDoFio(null);
+                          }}
+                          placeholder="Escolher o Canal"
+                          options={(() => {
+                            // C36 — os canais de atendimento da Lista; o atual, se a Lista
+                            // deixou de atender por ele, fica à vista mas não se escolhe.
+                            const daLista = canaisDaListaQueAlcancam(state, task.listId, contato);
+                            const atualFora = canal && !daLista.some((ch) => ch.id === canal.id) ? [canal] : [];
+                            return [...atualFora, ...daLista].map((ch) => ({
+                              value: ch.id,
+                              label: ch.name,
+                              detail: CHANNEL_TYPE_LABEL[ch.channelType] ?? ch.channelType,
+                              ...(atualFora.includes(ch)
+                                ? { disabledReason: "Esta Lista não atende mais por este Canal." }
+                                : ch.connection === "desconectada"
+                                  ? { disabledReason: `O Canal ${ch.name} está desconectado: escolha outro Canal ou reconecte-o.` }
+                                  : {}),
+                            }));
+                          })()}
+                        />
+                      </span>
+                    }
+                  />
+                  <LinhaDeProp
+                    icone={MessageSquare}
+                    rotulo="Conversa"
+                    {...(conversa
+                      ? {
+                          controle: (() => {
+                            const href = `/crm/caixa-de-entrada/${conversa.id}`;
+                            return (
+                              <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                                <Pilula
+                                  tom={conversa.state === "aberta" ? "sucesso" : conversa.state === "pendente" ? "aviso" : "neutro"}
+                                  comPonto={conversa.state === "aberta"}
+                                >
+                                  {CONVERSATION_STATE_LABEL[conversa.state] ?? conversa.state}
+                                </Pilula>
+                                <span className="app-base truncate" style={{ color: "var(--texto)" }}>
+                                  {conversa.assignee ? `atribuída a ${actorLabel(state, conversa.assignee)}` : "sem Atribuído"}
+                                </span>
+                                <Link
+                                  href={href}
+                                  onNavigate={() => marcarSeMuda(href)}
+                                  className="app-sm shrink-0 underline"
+                                  style={{ color: "var(--texto-1)" }}
+                                >
+                                  Abrir na Caixa de Entrada
+                                </Link>
+                              </span>
+                            );
+                          })(),
+                        }
+                      : { valor: "sem Conversa" })}
+                  />
+                </div>
+
+                <div className="grid min-w-0 content-start gap-0.5">
+                  {(() => {
+                    const empresaId = principalCompanyId(state, contato.id);
+                    const empresa = state.companies.find((c) => c.id === empresaId);
+                    const href = `/crm/empresas/${empresa?.id ?? ""}`;
+                    return (
+                      <LinhaDeProp
+                        icone={Building2}
+                        rotulo="Empresa"
+                        {...(empresa
+                          ? {
+                              controle: (
+                                <Link
+                                  href={href}
+                                  onNavigate={() => marcarSeMuda(href)}
+                                  className="app-base min-w-0 truncate hover:underline"
+                                  style={{ color: "var(--texto)" }}
+                                >
+                                  {empresa.tradeName}
+                                </Link>
+                              ),
+                            }
+                          : { valor: "—" })}
+                      />
+                    );
+                  })()}
+                  {(() => {
+                    const funilDe = (funnelId: string, stageId: string) => {
+                      const funil = state.funnels.find((f) => f.id === funnelId);
+                      const etapa = funil?.stages.find((s) => s.id === stageId);
+                      return `${funil?.name ?? "—"} › ${etapa?.name ?? "—"}`;
+                    };
+                    // Os Negócios abertos do Contato — e o vinculado, mesmo já fechado, para a opção não sumir.
+                    const abertos = state.deals.filter(
+                      (d) => d.lifecycle === "ativo" && d.situation === "aberto" && d.contactLinks.some((l) => l.contactId === contato.id),
+                    );
+                    const opcoes = [
+                      { value: "", label: "Sem Negócio" },
+                      ...(negocio && !abertos.some((d) => d.id === negocio.id) ? [negocio] : []).concat(abertos).map((d) => ({
+                        value: d.id,
+                        label: d.title,
+                        detail: funilDe(d.funnelId, d.stageId),
+                      })),
+                    ];
+                    const seletor = (
+                      <Select
+                        id="negocio-da-tarefa"
+                        value={negocio?.id ?? ""}
+                        onChange={(dealId) => {
+                          report(
+                            run((data, me) => vincularNegocioATarefa(data, me, task.id, dealId || null)),
+                            dealId ? "Negócio vinculado." : "Negócio desvinculado.",
+                          );
+                          setEditandoNegocio(false);
+                        }}
+                        placeholder="Sem Negócio"
+                        options={opcoes}
+                      />
+                    );
+                    if (!negocio) {
+                      return (
+                        <LinhaDeProp
+                          icone={Briefcase}
+                          rotulo="Negócio"
+                          valor="Vazio"
+                          editavel={editavel}
+                          motivo={somenteLeitura}
+                          editor={<span className="block w-72">{seletor}</span>}
+                        />
+                      );
+                    }
+                    const href = `/crm/negocios/${negocio.id}`;
+                    return (
+                      <LinhaDeProp
+                        icone={Briefcase}
+                        rotulo="Negócio"
+                        {...(somenteLeitura ? { motivo: somenteLeitura } : {})}
+                        controle={
+                          editandoNegocio ? (
+                            <>
+                              <span className="min-w-0 flex-1">{seletor}</span>
+                              <button
+                                type="button"
+                                onClick={() => setEditandoNegocio(false)}
+                                className="btn-icone btn-icone-nu shrink-0"
+                                aria-label="Pronto"
+                                title="Pronto"
+                              >
+                                <Icone de={Check} tamanho="xs" style={{ color: "var(--sucesso)" }} />
+                              </button>
+                            </>
+                          ) : (
+                            <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                              <Link
+                                href={href}
+                                onNavigate={() => marcarSeMuda(href)}
+                                className="app-base min-w-0 truncate hover:underline"
+                                style={{ color: "var(--texto)" }}
+                              >
+                                {negocio.title}
+                              </Link>
+                              <span className="app-meta truncate">{funilDe(negocio.funnelId, negocio.stageId)}</span>
+                              <span className="ml-auto shrink-0">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setEditandoNegocio(true)}
+                                  disabled={!editavel}
+                                  disabledReason={somenteLeitura ?? "Esta Tarefa não está ativa."}
+                                >
+                                  Trocar
+                                </Button>
+                              </span>
+                            </span>
+                          )
+                        }
+                      />
+                    );
+                  })()}
+                </div>
+              </div>
+            </section>
+          ) : null}
+
           {/* Os avisos de regra que acompanham o Status. */}
           <div className="mt-2 grid gap-2">
+                {conversacional && !contato ? (
+                  <p
+                    role="status"
+                    className="app-base mt-2 rounded-[var(--r-controle)] px-3 py-2"
+                    style={AVISO_EM_CAIXA}
+                  >
+                    Tarefa conversacional sem Contato: vincule um Contato ou mova
+                    para uma Lista operacional.
+                  </p>
+                ) : null}
                 {motivoDeSaida ? (
                   <p className="app-base mt-2" style={{ color: "var(--texto-3)" }}>
                     {motivoDeSaida}
@@ -1375,7 +1821,7 @@ export function TarefaCompleta({
                     </p>
                   ) : (
                     <form
-                      className="mt-3 flex gap-2"
+                      className="mt-3 flex flex-wrap items-center gap-2"
                       onSubmit={(event) => {
                         event.preventDefault();
                         const result = run((data, memberId) =>
@@ -1383,6 +1829,7 @@ export function TarefaCompleta({
                             listId: task.listId,
                             title: newSubtask,
                             parentTaskId: task.id,
+                            ...(tipoDaSubtarefa ? { taskTypeId: tipoDaSubtarefa } : {}),
                           }),
                         );
                         if (result.ok) {
@@ -1398,6 +1845,14 @@ export function TarefaCompleta({
                       <label className="sr-only" htmlFor="nova-subtarefa">
                         Nova Subtarefa
                       </label>
+                      {/* O Tipo da Subtarefa, quando a Lista enxerga mais de um. */}
+                      <SeletorDeTipoDeTarefa
+                        id="tipo-da-nova-subtarefa"
+                        state={state}
+                        listId={task.listId}
+                        value={tipoDaSubtarefa}
+                        onChange={setTipoDaSubtarefa}
+                      />
                       <input
                         id="nova-subtarefa"
                         value={newSubtask}
@@ -1552,16 +2007,105 @@ export function TarefaCompleta({
         </div>
       </CorpoDeTela>
 
-        {/* ───────────────────────── à direita: a Atividade ───────────────── */}
+        {/* ───────────────────────── à direita: a conversa e a Atividade ──── */}
+        {/*
+          Na ficha conversacional o trilho leva as DUAS regiões: abaixo de @4xl
+          elas empilham sob a ficha — o trilho tem a altura do seu conteúdo
+          (o fio de Mensagens com `--conversa-empilhada-min`, o Rascunho da IA
+          recolhido numa linha, o compositor inteiro) e a ficha fica com o
+          resto; a Atividade nasce recolhida e, recolhida, nem ocupa faixa: o
+          botão que a abre mora no cabeçalho da Conversa. De @4xl o trilho é a
+          segunda coluna, conversa em cima e Atividade recolhida embaixo; de
+          @6xl (ou o popup em tela cheia) o trilho se dissolve (`contents`) e
+          cada região é uma coluna. Na ficha operacional o trilho não existe:
+          a Atividade continua sendo o aside de sempre.
+        */}
+        <div
+          className={cn(
+            fichaConversacional
+              ? "flex w-full shrink-0 flex-col @4xl:min-h-0 @4xl:w-[28rem] @6xl:contents"
+              : "contents",
+          )}
+        >
+        {fichaConversacional && contato ? (
+          <section
+            aria-label="Conversa"
+            className="flex min-h-0 w-full flex-1 flex-col border-[var(--linha)] border-t @4xl:border-t-0 @4xl:border-l @6xl:w-[24rem] @6xl:flex-none"
+            style={{ background: "var(--superficie-1)" }}
+          >
+            <CabecalhoDePainel
+              titulo="Conversa"
+              className="shrink-0"
+              acao={
+                // Empilhada, a Atividade recolhida é só este botão; aberta, ela
+                // aparece abaixo da Conversa com o cabeçalho e o botão dela.
+                <button
+                  ref={botaoAtividade}
+                  type="button"
+                  onClick={() => setAtividadeAberta((aberta) => !aberta)}
+                  aria-expanded={atividadeAberta}
+                  aria-controls={idDaAtividade}
+                  className="app-sm inline-flex items-center gap-1.5 rounded-[var(--r-controle)] px-1.5 py-0.5 transition-colors hover:bg-[var(--superficie-hover)] @4xl:hidden"
+                  style={{ color: "var(--texto-2)" }}
+                >
+                  Atividade
+                  <span className="app-meta app-numero">{contagemDaAtividade}</span>
+                  <Icone de={atividadeAberta ? ChevronUp : ChevronDown} tamanho="xs" />
+                </button>
+              }
+            />
+            {/* Nas colunas, rola só se as partes fixas do fio (abas, Rascunho, compositor) não couberem; empilhada, nada aqui rola — só o fio. */}
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto @max-4xl:overflow-visible">
+              <ConversationThread
+                contact={contato}
+                canalSelecionado={canalDoFio ?? canal?.channelType ?? null}
+                onCanalChange={setCanalDoFio}
+                flush
+              />
+            </div>
+          </section>
+        ) : null}
         <aside
-          className="flex min-h-0 w-full shrink-0 flex-col max-h-[var(--conversa-empilhada-h)] @4xl:w-[26rem] @4xl:max-h-none"
-          style={{ borderLeft: "1px solid var(--linha)", background: "var(--superficie-rebaixada)" }}
+          id={idDaAtividade}
+          className={cn(
+            "min-h-0 w-full shrink-0 flex-col border-[var(--linha)]",
+            fichaConversacional
+              ? cn(
+                  "border-t max-h-[var(--conversa-empilhada-h)] @4xl:max-h-[50%] @4xl:border-l @6xl:w-[20rem] @6xl:max-h-none @6xl:border-t-0",
+                  // Empilhada e recolhida, some por inteiro (o botão está no cabeçalho da Conversa).
+                  atividadeAberta ? "flex" : "hidden @4xl:flex",
+                )
+              : "flex border-l max-h-[var(--conversa-empilhada-h)] @4xl:w-[26rem] @4xl:max-h-none",
+          )}
+          style={{ background: "var(--superficie-rebaixada)" }}
         >
           <CabecalhoDePainel
             titulo="Atividade"
-            contagem={task.comments.filter((c) => !c.deletedAt).length + activity.length}
+            contagem={contagemDaAtividade}
             className="shrink-0"
+            {...(fichaConversacional
+              ? {
+                  acao: (
+                    // Recolhida por padrão sob a conversa; na terceira coluna ela é inteira e o botão some.
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAtividadeAberta((aberta) => !aberta);
+                        // Empilhada, este botão some com o aside: o foco vai ao toggle do cabeçalho.
+                        botaoAtividade.current?.focus();
+                      }}
+                      aria-expanded={atividadeAberta}
+                      aria-label={atividadeAberta ? "Recolher a Atividade" : "Abrir a Atividade"}
+                      title={atividadeAberta ? "Recolher a Atividade" : "Abrir a Atividade"}
+                      className="btn-icone btn-icone-nu @6xl:hidden"
+                    >
+                      <Icone de={atividadeAberta ? ChevronUp : ChevronDown} tamanho="xs" />
+                    </button>
+                  ),
+                }
+              : {})}
           />
+          <div className={cn("flex min-h-0 flex-1 flex-col", fichaConversacional && !atividadeAberta && "hidden @6xl:flex")}>
           <TaskComments
             task={task}
             report={report}
@@ -1618,7 +2162,9 @@ export function TarefaCompleta({
               </details>
             }
           />
+          </div>
         </aside>
+        </div>
       </div>
       </div>
     </div>

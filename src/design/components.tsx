@@ -1382,7 +1382,7 @@ function useModal(
     const first =
       focoInicial === "raiz"
         ? undefined
-        : (itens.find((el) => el.matches("input, textarea, select, [contenteditable]")) ??
+        : (itens.find((el) => el.matches("input, textarea, select, [contenteditable], [role=combobox]")) ??
           itens.find((el) => el.getAttribute("aria-label") !== "Fechar") ??
           itens[0]);
     if (first) first.focus({ preventScroll: true });

@@ -17,7 +17,9 @@
  */
 
 import type { ReactNode } from "react";
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { Painel, Pilula, ReguaDeSecao } from "@/design/basicos";
+import { Icone } from "@/design/icone";
 import { CabecalhoDeTela } from "@/design/tela";
 
 export {
@@ -74,7 +76,6 @@ export {
 } from "@/design/basicos";
 export { BarraDeFiltros, CabecalhoDeTela, CorpoDeTela, RolagemNoTopo } from "@/design/tela";
 export { CampoDeLanterna } from "@/design/lanterna";
-export { GloboDePontos } from "@/design/globo";
 export { cn } from "@/design/cn";
 
 /**
@@ -179,4 +180,26 @@ export function Card({ children, className }: { readonly children: ReactNode; re
 /** O nome de um Status na cor dele — uma caixa colorida, não um ponto. */
 export function CategoryDot({ color, label }: { readonly color: string; readonly label: string }) {
   return <Pilula cor={color}>{label}</Pilula>;
+}
+
+/**
+ * Uma seta de reordenação que, desligada, diz por quê — sem `disabled`
+ * nativo, que não recebe foco nem anuncia. Nasceu no construtor de Flow e
+ * subiu para cá quando o editor de Automação precisou da mesma peça.
+ */
+export function SetaDeOrdem({ direcao, motivo, onClick }: { readonly direcao: "subir" | "descer"; readonly motivo: string | undefined; readonly onClick: () => void }) {
+  const rotulo = direcao === "subir" ? "Subir" : "Descer";
+  return (
+    <button
+      type="button"
+      className="btn-icone"
+      aria-label={rotulo}
+      aria-disabled={motivo !== undefined}
+      title={motivo ?? rotulo}
+      style={motivo ? { opacity: 0.4 } : undefined}
+      onClick={motivo ? undefined : onClick}
+    >
+      <Icone de={direcao === "subir" ? ArrowUp : ArrowDown} tamanho="xs" />
+    </button>
+  );
 }

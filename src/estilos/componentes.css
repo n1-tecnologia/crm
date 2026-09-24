@@ -388,7 +388,11 @@
   /* Uma folha que gira por estado (chevron, o "+" que vira "×"): a curva do
      sistema, não a do utilitário `transition-transform`. */
   .rotacao {
-    transition: transform var(--dur-2) var(--easing);
+    /* O Tailwind v4 escreve `rotate-*` na propriedade individual `rotate`,
+       não em `transform`: a transição casa as duas. */
+    transition:
+      transform var(--dur-2) var(--easing),
+      rotate var(--dur-2) var(--easing);
   }
 
   /* O que acabou de mudar: acende em `--acento-lavado` e apaga no próprio
@@ -413,6 +417,24 @@
   [data-destacado="true"][data-recente="true"],
   [data-selecionada="true"][data-recente="true"] {
     animation-name: destacar-forte;
+  }
+  /* A peça recém-criada chega com as duas marcas — `surgir` E `data-recente`:
+     as duas animações rodam juntas (o atalho de uma sozinha apagaria a outra). */
+  .surgir[data-recente="true"] {
+    animation:
+      surgir var(--dur-2) var(--easing),
+      destacar var(--dur-realce) var(--easing);
+  }
+  .surgir-rapido[data-recente="true"] {
+    animation:
+      surgir var(--dur-1) var(--easing),
+      destacar var(--dur-realce) var(--easing);
+  }
+  .surgir[data-destacado="true"][data-recente="true"],
+  .surgir[data-selecionada="true"][data-recente="true"],
+  .surgir-rapido[data-destacado="true"][data-recente="true"],
+  .surgir-rapido[data-selecionada="true"][data-recente="true"] {
+    animation-name: surgir, destacar-forte;
   }
 
   /* ── Chegada de tela ────────────────────────────────────────────────────
@@ -458,7 +480,7 @@
      vive fora dela — o painel de navegação).
      Contrato: `.surgir` DIRETO na peça = anima sempre que é inserida;
                `.cascata` no CONTÊINER = as peças animam só na chegada.
-     `--cascata-inicio` é o único ajuste por contêiner (o Início espera a capa). */
+     `--cascata-inicio` é o único ajuste por contêiner (o Entrar espera a capa). */
   :where(.chegada[data-entrando] .cascata, .cascata[data-entrando]) > * {
     animation: surgir var(--dur-2) var(--easing) backwards;
     animation-delay: calc(var(--cascata-inicio) + var(--i, 0) * var(--dur-passo));
@@ -622,23 +644,26 @@
     animation: none;
   }
 
-  /* ── Login ────────────────────────────────────────────────────────────────
-     A metade da marca (app/login). A marca-d'água é o monograma em
-     `currentColor` (acento) a 6%, maior que o painel, recortada pelo overflow
-     do painel; a logo completa flutua devagar sobre um halo que respira — os
-     dois são laços (exceção nomeada: ease-in-out) em folhas sem descendente
-     fixed, e param em movimento reduzido.                                     */
-  .login-marca-dagua {
+  /* ── Marca-d'água e a marca do Login ─────────────────────────────────────
+     A marca-d'água é o monograma em `currentColor` (acento), maior que o
+     painel, recortada pelo overflow de quem a hospeda. A opacidade é o token
+     `--marca-dagua-opacidade` (6%) e a posição é sempre por `inset`/margin,
+     nunca transform. Hoje só o Login a usa: no Início a marca é outra peça,
+     a Marca3D (design/marca-3d.tsx), não uma marca-d'água.
+     No Login, a logo completa flutua devagar sobre um halo que respira —
+     laços (exceção nomeada: ease-in-out) em folhas sem descendente fixed, que
+     param em movimento reduzido.                                           */
+  .marca-dagua {
     position: absolute;
     inset: 0;
     display: grid;
     place-items: center;
     color: var(--acento);
-    opacity: 0.06;
+    opacity: var(--marca-dagua-opacidade);
     pointer-events: none;
     z-index: var(--z-fundo);
   }
-  .login-marca-dagua svg {
+  .marca-dagua svg {
     width: 130%;
     height: 130%;
     max-width: none;
@@ -831,73 +856,559 @@
     }
   }
 
-  /* ── A orbe do Assistente ─────────────────────────────────────────────────
-     Ela ABRE UMA SESSÃO DE CHAT. Não capta voz: um alvo deste tamanho com cara
-     de microfone prometeria o que o produto não faz. */
-
-  .orbe-assistente {
-    position: relative;
-    display: grid;
-    place-items: center;
-    width: var(--orbe-tam);
-    height: var(--orbe-tam);
-    border-radius: var(--r-pilula);
+  /* ── O palco do Início ────────────────────────────────────────────────────
+     Desde 2026-09-23: PRETO de borda a borda e só o ROBÔ, de perto
+     (`design/cena-spline.tsx`), que acompanha o cursor com a cabeça. Sem card,
+     orbes, estrelas, marca 3D, campo vivo, saudação ou campo de pergunta —
+     tudo a pedido. Desde o fim do dia, um HOLOFOTE segue o mouse ATRÁS do
+     robô (`design/holofote.tsx`, a pedido: "a luz deve passar sempre atrás
+     do robô") — nunca por cima de nada. */
+  /* O corpo do Início não tem respiro: o palco vai de borda a borda. */
+  .corpo-de-tela.inicio-corpo {
+    padding: 0;
+    --corpo-pad-topo: 0px;
   }
-
-  /* Cada anel respira no seu tempo: iguais, viram um piscar só, que incomoda. */
-  .orbe-anel {
+  .inicio {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+  }
+  /* A capa aqui não é card: toma a tela inteira, sem cantos, sem borda, sem
+     sombra — o preto, com um PONTILHADO por cima (abaixo). O que a `.capa` dá
+     de resto (isolamento, recorte) continua valendo; o recorte é o que corta
+     o robô ampliado na borda do palco. */
+  .inicio-capa {
+    flex: 1;
+    min-height: var(--capa-h);
+    border-radius: 0;
+    border: 0;
+    box-shadow: none;
+    background: var(--palco-inicio);
+  }
+  /* O PONTILHADO do palco (fim de 2026-09-23: "o background onde é preto,
+     atrás do robô, atrás da luz, deve ter um background com pontilhados em
+     pattern"): a textura da `.capa` (o `::after` em `z-index: -3` do palco
+     isolado — atrás do holofote e do robô), mais densa e mais visível que a
+     grade do sistema: um ponto de `--palco-ponto-raio` no centro de cada
+     ladrilho de `--palco-grade`. O canvas é transparente fora do robô: os
+     pontos aparecem no preto, a luz passa por cima deles, e o robô os cobre. */
+  .inicio-capa::after {
+    background-image: radial-gradient(
+      circle,
+      var(--palco-ponto) var(--palco-ponto-raio),
+      transparent calc(var(--palco-ponto-raio) + 0.5px)
+    );
+    background-size: var(--palco-grade) var(--palco-grade);
+    background-position: center;
+  }
+  /* O holofote: um disco de luz suave, sem borda, que o JS posiciona com
+     `transform` na própria peça — transform em repouso É o desenho aqui, por
+     isso a classe está na allowlist do harness. Acende e apaga por
+     `opacity`, no tempo do sistema. Primeiro no palco e sem z-index: a cena
+     (o robô) pinta por cima dele. */
+  .holofote {
     position: absolute;
+    top: 0;
+    left: 0;
+    width: var(--holofote-tam);
+    height: var(--holofote-tam);
     border-radius: var(--r-pilula);
-    border: 1px solid var(--linha-acento);
-    animation: orbe-respira var(--dur-respira) ease-in-out infinite;
+    background: radial-gradient(circle at center, var(--holofote-centro), var(--holofote-meio) 40%, transparent 70%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-2) var(--easing);
   }
-  .orbe-anel:nth-of-type(2) {
-    animation-delay: var(--respira-defasagem-2);
+  .holofote[data-aceso="true"] {
+    opacity: 1;
   }
-  .orbe-anel:nth-of-type(3) {
-    animation-delay: var(--respira-defasagem-3);
+  /* O CURSOR do palco (`--cursor-inicio`): só dentro da capa — as barras
+     laterais e a barra global ficam com o cursor do sistema. Sobre o que se
+     toca (a logo do peito, o botão de voz, os botões da caixa), a variante de
+     ação; num campo de texto, o cursor de texto. O canvas leva `!important`
+     porque o runtime do Spline escreve `cursor` inline nele ao passar por um
+     objeto com evento. Um desabilitado segue com o `not-allowed` dele. */
+  .inicio-capa {
+    cursor: var(--cursor-inicio);
   }
-
-  /* O anel tracejado gira devagar: é o que dá a leitura de “ouvindo”. */
-  .orbe-varredura {
+  .inicio-capa canvas {
+    cursor: var(--cursor-inicio) !important;
+  }
+  .inicio-capa :is(button, a, [role="button"]):not(:disabled):not([aria-disabled="true"]) {
+    cursor: var(--cursor-inicio-acao);
+  }
+  .inicio-capa :is(input, textarea, [contenteditable="true"]) {
+    cursor: text;
+  }
+  /* O robô ocupa o palco inteiro; a cena mede o próprio retângulo. */
+  .inicio-robo {
     position: absolute;
-    border-radius: var(--r-pilula);
-    border: 1px dashed var(--linha-acento-forte);
-    animation: orbe-gira var(--dur-varredura) linear infinite;
+    inset: 0;
+  }
+  .inicio-cena {
+    width: 100%;
+    height: 100%;
   }
 
-  .orbe-nucleo {
+  /* A cena (`design/cena-spline.tsx`): o canvas fica SEMPRE montado e do
+     tamanho do contêiner — o runtime mede `clientWidth`/`clientHeight` dele —,
+     mas invisível até a cena carregar e, com reflexos a retingir, até a tinta
+     pegar; então esmaece para dentro. O rosto do robô nunca pisca branco. */
+  .cena-spline {
     position: relative;
-    display: grid;
-    place-items: center;
-    border-radius: var(--r-pilula);
-    background: var(--degrade-marca);
-    box-shadow: var(--brilho-orbe);
-    transition: box-shadow var(--dur-3) var(--easing);
-    animation: orbe-respira var(--dur-respira) ease-in-out infinite;
+    /* As posições do selo e da boca, escritas pelo JS a cada quadro
+       (`projetorDoSelo`). */
+    --selo-matriz: none;
+    --boca-matriz: none;
+    /* O ponto do balão de chat (px do canvas) e o lado, pelo JS a cada quadro. */
+    --balao-x: 0px;
+    --balao-y: 0px;
   }
-
-  .orbe-assistente:hover .orbe-nucleo,
-  .orbe-assistente:focus-visible .orbe-nucleo {
-    box-shadow: var(--brilho-orbe-forte);
+  .cena-spline canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    transition: opacity var(--dur-2) var(--easing);
   }
-
-  @keyframes orbe-respira {
-    0%,
-    100% {
-      transform: scale(1);
-      opacity: 0.9;
+  .cena-spline:not([data-carregada]) canvas,
+  .cena-spline[data-tingindo] canvas {
+    opacity: 0;
+  }
+  /* O SELO sobre uma malha da cena (a logo da N1 no peito do robô, "com efeito
+     de sobrepor"): modo SOBREPOR sobre o desenho da cena, em duas camadas
+     irmãs do canvas. A posição é a matriz que o JS projeta da malha a cada
+     quadro desenhado (`--selo-matriz`); até a primeira, ele não aparece. O
+     transform em repouso É o desenho (allowlist do harness). */
+  .cena-spline-selo {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100px;
+    height: 100px;
+    transform-origin: 0 0;
+    transform: var(--selo-matriz);
+    fill: var(--selo-robo);
+    mix-blend-mode: overlay;
+    pointer-events: none;
+    visibility: hidden;
+    transition: opacity var(--dur-2) var(--easing);
+  }
+  .cena-spline[data-selo] .cena-spline-selo {
+    visibility: visible;
+  }
+  .cena-spline:not([data-carregada]) .cena-spline-selo,
+  .cena-spline[data-tingindo] .cena-spline-selo {
+    opacity: 0;
+  }
+  /* A LUZ DO SELO (2026-09-23: "ao passar o mouse sobre o logo no peito do
+     robô, o logo deve ser destacado com luz"): uma terceira camada da logo, em
+     modo Tela, num lilás claro e com um halo roxo, que acende com o ponteiro EM
+     CIMA DELA. É a logo que acende no lugar (a luz que segue o mouse é o
+     holofote, e ela fica atrás do robô). Só com mouse; a caixa da logo
+     inteira conta. */
+  .cena-spline-selo-luz {
+    fill: var(--selo-robo-luz);
+    mix-blend-mode: screen;
+    filter: drop-shadow(0 0 var(--selo-luz-raio) var(--lanterna-halo));
+    opacity: 0;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .cena-spline[data-selo] .cena-spline-selo-luz {
+      pointer-events: auto;
     }
-    50% {
-      transform: scale(1.04);
+    .cena-spline[data-carregada]:not([data-tingindo]) .cena-spline-selo-luz:hover {
       opacity: 1;
     }
   }
+  /* A LOGO QUE LIGA A VOZ (2026-09-23: "quando pressionar o logo em destaque
+     no peito, abra a opção de pesquisa com voz"): a camada de luz vira um
+     botão. Recebe o toque em qualquer aparelho; acende com o foco do teclado
+     (é o indicador de foco dela) e fica acesa enquanto a voz está ligada. */
+  button.cena-spline-selo-luz {
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    outline: none;
+  }
+  button.cena-spline-selo-luz > svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .cena-spline[data-selo] button.cena-spline-selo-luz {
+    pointer-events: auto;
+  }
+  .cena-spline[data-carregada]:not([data-tingindo]) button.cena-spline-selo-luz:is(:focus-visible, [aria-pressed="true"]) {
+    opacity: 1;
+  }
 
-  @keyframes orbe-gira {
-    to {
-      transform: rotate(360deg);
+  /* A BOCA do robô (`CenaSpline`, prop `boca`): pontos brancos no padrão dos
+     olhos, projetados sobre o rosto como o selo. Só os pontos da elipse da
+     abertura acendem; fechada, é uma linha. */
+  .cena-spline-boca {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100px;
+    height: 100px;
+    transform-origin: 0 0;
+    transform: var(--boca-matriz);
+    fill: var(--boca-robo);
+    pointer-events: none;
+    visibility: hidden;
+    transition: opacity var(--dur-2) var(--easing);
+  }
+  .cena-spline[data-boca] .cena-spline-boca {
+    visibility: visible;
+  }
+  .cena-spline:not([data-carregada]) .cena-spline-boca,
+  .cena-spline[data-tingindo] .cena-spline-boca {
+    opacity: 0;
+  }
+  .cena-spline-boca circle {
+    opacity: 0;
+  }
+  .cena-spline-boca circle[data-aceso=""] {
+    opacity: 1;
+  }
+
+  /* ── A caixa do assistente do Início (`features/inicio/caixa-do-assistente.tsx`)
+     Pequena, no centro, no pé do palco, em transparência sobre o robô: não é
+     `.flutuante` — sem a superfície de cartão e sem sombra, só um véu escuro e
+     a hairline. Ancorada pelo ALTO, a `--caixa-robo-pe` da borda de baixo
+     (achado da revisão: ancorada embaixo, ela crescia para cima quando um
+     estado aparecia — a linha do campo saltava e chegava a cobrir a logo do
+     peito). Em cima, as opções do robô; a linha — o campo, o medidor com o
+     microfone aberto, o microfone, enviar e fechar —; embaixo, o estado em
+     palavras, que rola passando de duas linhas. Centrada por margem, não por
+     transform: o `surgir` da chegada anima o transform. */
+  .caixa-do-assistente {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% - var(--caixa-robo-pe));
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: var(--e-1);
+    width: min(var(--caixa-robo-w), calc(100% - 2 * var(--e-4)));
+    margin-inline: auto;
+    padding: var(--e-1) var(--e-1) var(--e-1) var(--e-3);
+    background: var(--caixa-robo-fundo);
+    border: 1px solid var(--linha);
+    border-radius: var(--r-painel);
+  }
+  /* Com o foco dentro, a hairline só firma — nada de roxo: a caixa abre com o
+     cursor no campo e não pode abrir "selecionada" (o campo é `.campo-sem-anel`).
+     Os botões seguem com o anel de foco global. */
+  .caixa-do-assistente:focus-within {
+    border-color: var(--linha-forte);
+  }
+  /* As opções do robô (Silenciar, Legenda): botões de alternar pequenos, na
+     tipografia de meta; pressionado acende no acento. */
+  .caixa-do-assistente-opcoes {
+    display: flex;
+    align-items: center;
+    gap: var(--e-1);
+  }
+  .caixa-do-assistente-opcao {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--e-1);
+    height: var(--pilula-h);
+    padding-inline: var(--e-2);
+    border-radius: var(--r-etiqueta);
+    border: 1px solid transparent;
+    font-size: var(--app-xs);
+    line-height: 1;
+    font-weight: 500;
+    color: var(--texto-3);
+    cursor: pointer;
+    transition:
+      color var(--dur-2) var(--easing),
+      background-color var(--dur-2) var(--easing);
+  }
+  .caixa-do-assistente-opcao:hover:not([aria-disabled="true"]) {
+    color: var(--texto);
+    background: var(--superficie-hover);
+  }
+  .caixa-do-assistente-opcao[aria-pressed="true"] {
+    color: var(--acento);
+    background: var(--acento-lavado);
+  }
+  .caixa-do-assistente-opcao[aria-disabled="true"] {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .caixa-do-assistente-linha {
+    display: flex;
+    align-items: center;
+    gap: var(--e-1);
+  }
+  .caixa-do-assistente-campo {
+    flex: 1;
+    min-width: 0;
+    height: var(--controle-h);
+    background: transparent;
+    color: var(--texto);
+    outline: none;
+  }
+  .caixa-do-assistente-campo::placeholder {
+    color: var(--texto-4);
+  }
+  /* O microfone ligado: aceso no acento, como um botão pressionado. */
+  .caixa-do-assistente-microfone[aria-pressed="true"] {
+    color: var(--acento);
+    background: var(--acento-lavado);
+  }
+  .caixa-do-assistente-microfone[aria-disabled="true"] {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .caixa-do-assistente-enviar[aria-disabled="true"] {
+    opacity: 0.35;
+    cursor: not-allowed;
+    transform: none;
+  }
+  .caixa-do-assistente-status {
+    padding-right: var(--e-2);
+    color: var(--texto-3);
+    max-height: calc(2 * var(--app-xs-lh));
+    overflow-y: auto;
+  }
+  /* Vazia, a região viva é RECOLHIDA, não removida (`display: none` a tirava
+     da árvore de acessibilidade, e um leitor de tela nunca ouvia o estado —
+     achado da revisão): fora do fluxo, sem tamanho, ainda lá. */
+  .caixa-do-assistente-status[data-vazio] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    max-height: none;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  /* O ponto da conversa simulada: só à vista, na cor do texto principal. */
+  .caixa-do-assistente-agora {
+    color: var(--texto-2);
+  }
+  .caixa-do-assistente-nota {
+    color: var(--texto-4);
+  }
+  /* O atalho para a privacidade do microfone no Windows: o link do sistema. */
+  .caixa-do-assistente-atalho {
+    color: var(--acento);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  /* O medidor: cinco barras que sobem com o nível do microfone
+     (`--nivel-voz`, 0–1, escrito pelo JS; o meio sobe mais). Parado com
+     movimento reduzido — o texto diz o estado. */
+  .caixa-do-assistente-medidor {
+    --nivel-voz: 0;
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--e-1);
+    height: var(--controle-h);
+    padding-inline: var(--e-1);
+  }
+  .caixa-do-assistente-medidor > span {
+    --peso: 1;
+    display: block;
+    width: calc(var(--fio) * 1.5);
+    height: calc(var(--e-2) + var(--nivel-voz) * var(--peso) * var(--e-5));
+    border-radius: var(--fio);
+    background: var(--acento);
+  }
+
+  /* ── O balão do robô (`features/inicio/balao-do-robo.tsx`) ───────────────
+     As respostas em texto, num balão de chat AO LADO DA CABEÇA: pendurado no
+     ponto que a cena escreve na raiz (`--balao-x`/`--balao-y`, px do canvas),
+     à direita da cabeça — ou à esquerda (`data-balao-lado`) quando não cabe. O
+     alto do balão fica no ponto e ele cresce para baixo, até `--balao-robo-h`
+     do palco; passou, a lista rola. A mesma transparência da caixa, com um
+     bico apontando para a cabeça. Só existe com a cena ancorada. */
+  .balao-do-robo {
+    position: absolute;
+    left: var(--balao-x);
+    top: var(--balao-y);
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    width: min(var(--balao-robo-w), calc(100% - var(--balao-x) - var(--e-3)));
+    max-height: var(--balao-robo-h);
+    padding: var(--e-2) var(--e-3);
+    background: var(--caixa-robo-fundo);
+    border: 1px solid var(--linha);
+    border-radius: var(--r-painel);
+    /* O movimento reduzido tira o ponteiro da cena inteira; a lista rola. */
+    pointer-events: auto;
+  }
+  .balao-do-robo::before {
+    content: "";
+    position: absolute;
+    top: var(--e-4);
+    right: 100%;
+    width: var(--e-2);
+    height: var(--e-3);
+    background: var(--linha-forte);
+    clip-path: polygon(100% 0, 0 50%, 100% 100%);
+  }
+  .cena-spline[data-balao-lado="esquerda"] .balao-do-robo {
+    left: auto;
+    right: calc(100% - var(--balao-x));
+    width: min(var(--balao-robo-w), calc(var(--balao-x) - var(--e-3)));
+  }
+  .cena-spline[data-balao-lado="esquerda"] .balao-do-robo::before {
+    right: auto;
+    left: 100%;
+    clip-path: polygon(0 0, 100% 50%, 0 100%);
+  }
+  .cena-spline:not([data-balao]) .balao-do-robo {
+    visibility: hidden;
+  }
+  .balao-do-robo-lista {
+    display: flex;
+    flex-direction: column;
+    gap: var(--e-2);
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+  /* A pergunta em `--texto-3`, não `--texto-4`: o holofote pode passar
+     atrás do balão, e o meta em `--texto-4` caía a 2,9:1 ali. */
+  .balao-do-robo-pergunta {
+    color: var(--texto-3);
+  }
+  .balao-do-robo-resposta {
+    color: var(--texto-1);
+    overflow-wrap: anywhere;
+  }
+
+  /* ── O botão de voz (`features/inicio/botao-de-voz.tsx`) ────────────────
+     No centro à esquerda do palco, um microfone grande e redondo, na mesma
+     transparência da caixa; centrado por margem (sem transform em repouso).
+     Ligado, acende no acento e três ONDAS em volta do ícone crescem com o
+     nível do som captado (`--nivel-voz`, 0–1, escrito pelo JS a cada quadro;
+     cada onda tem o seu alcance). Só existem com o microfone aberto: em
+     repouso não há transform nenhum. Embaixo, o estado em palavras. */
+  /* A área cobre o palco sem capturar o ponteiro (a logo e o robô por baixo
+     seguem clicáveis): o botão e a legenda se posicionam em frações do PALCO,
+     e a legenda pode ter um piso à esquerda — a 1024 px, centrada no botão,
+     ela passava 3 px da borda e o menu a cortava (achado ao medir). */
+  .botao-de-voz-area {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+  }
+  .botao-de-voz {
+    --nivel-voz: 0;
+    position: absolute;
+    left: calc(var(--botao-voz-x) - var(--botao-voz-tam) / 2);
+    top: calc(var(--botao-voz-y) - var(--botao-voz-tam) / 2);
+    pointer-events: auto;
+    display: grid;
+    place-items: center;
+    width: var(--botao-voz-tam);
+    height: var(--botao-voz-tam);
+    border-radius: var(--r-pilula);
+    border: 1px solid var(--linha-forte);
+    background: var(--caixa-robo-fundo);
+    color: var(--texto-2);
+    cursor: pointer;
+    transition:
+      color var(--dur-2) var(--easing),
+      border-color var(--dur-2) var(--easing),
+      background-color var(--dur-2) var(--easing);
+  }
+  .botao-de-voz:hover:not([aria-disabled="true"]) {
+    color: var(--texto);
+    border-color: var(--linha-acento);
+  }
+  .botao-de-voz[aria-pressed="true"] {
+    color: var(--acento);
+    border-color: var(--linha-acento-forte);
+    background: var(--acento-lavado);
+  }
+  .botao-de-voz[aria-disabled="true"] {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .botao-de-voz-icone {
+    position: relative;
+    z-index: 1;
+    width: var(--botao-voz-icone);
+    height: var(--botao-voz-icone);
+  }
+  .botao-de-voz-onda {
+    --alcance: 1;
+    position: absolute;
+    inset: 0;
+    border-radius: var(--r-pilula);
+    border: 1px solid var(--acento);
+    pointer-events: none;
+    transform: scale(calc(1 + var(--nivel-voz) * var(--alcance)));
+    opacity: calc(0.12 + var(--nivel-voz) * 0.6);
+  }
+  /* O estado fica fora do alcance das ondas (a maior chega a ~2× o botão):
+     na conversa simulada, o motivo curto em cima (`-aviso`, mais apagado) e
+     o ponto da conversa embaixo (`-agora`: a fala simulada entre aspas,
+     "Respondendo…"). */
+  .botao-de-voz-estado {
+    position: absolute;
+    top: calc(var(--botao-voz-y) + var(--botao-voz-tam) / 2 + var(--e-10));
+    left: max(var(--e-2), calc(var(--botao-voz-x) - var(--botao-voz-texto-w) / 2));
+    width: var(--botao-voz-texto-w);
+    display: flex;
+    justify-content: center;
+    text-align: center;
+  }
+  /* A legenda: da largura do texto (até `--botao-voz-texto-w`), num véu
+     escuro próprio — o texto lê mesmo sobre o ombro iluminado do robô. */
+  .botao-de-voz-legenda {
+    max-width: 100%;
+    padding: var(--e-1) var(--e-2);
+    border-radius: var(--r-controle);
+    background: var(--botao-voz-estado-fundo);
+  }
+  /* Vazia, a legenda some sem tirar a região viva da árvore. */
+  .botao-de-voz-legenda[data-vazio] {
+    padding: 0;
+    background: none;
+  }
+  .botao-de-voz-aviso {
+    color: var(--texto-3);
+  }
+  .botao-de-voz-agora {
+    color: var(--texto-2);
+  }
+  /* Movimento reduzido: a cena não recebe o ponteiro — a cabeça do robô não
+     segue o cursor (o JS também não liga os eventos globais). */
+  @media (prefers-reduced-motion: reduce) {
+    .cena-spline {
+      pointer-events: none;
     }
+  }
+  :root[data-movimento="minimo"] .cena-spline {
+    pointer-events: none;
+  }
+
+  /* A cena do Spline carregando: o indicador no meio do palco, por cima do
+     canvas ainda invisível. */
+  .cena-spline-carregando {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: var(--texto-4);
+  }
+
+  /* A chegada: o robô só esmaece — a cena mede o próprio retângulo, e um
+     deslocamento a faria medir errado. */
+  :where(.chegada[data-entrando]) .inicio-robo {
+    animation: aparecer var(--dur-3) var(--easing) backwards;
   }
 
 }

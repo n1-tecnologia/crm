@@ -14,13 +14,16 @@ import { CheckCircle2, FileX } from "lucide-react";
 import { useData, useRun } from "@/data/store";
 import { useHidratado } from "@/features/shell/app-shell";
 import { EsqueletoDeTela } from "@/design/esqueletos";
-import { formBySecret, submitForm } from "@/data/operations";
+import { formBySecret, formOutdatedReason, submitForm } from "@/data/operations";
 import { Button, EmptyState, Field, Icone, Painel, Select, TextArea, TextInput } from "@/features/shell/ui";
 
 export default function FormularioPublicoPage({ params }: { params: Promise<{ segredo: string }> }) {
   const { segredo } = use(params);
   const run = useRun();
   const form = useData((data) => formBySecret(data, segredo));
+  // Desatualizado (Campo obrigatório novo, Lista que virou conversacional): quem
+  // responde não tem o que fazer com o motivo — só com "peça a quem enviou".
+  const desatualizado = useData((data) => (form ? formOutdatedReason(data, form) !== undefined : false));
   const definitions = useData((data) => data.fieldDefinitions);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [enviado, setEnviado] = useState<string | null>(null);
@@ -29,7 +32,7 @@ export default function FormularioPublicoPage({ params }: { params: Promise<{ se
 
   if (!pronto) return <EsqueletoDeTela forma="formulario" />;
 
-  if (!form || !form.enabled) {
+  if (!form || !form.enabled || desatualizado) {
     return (
       <main className="grade-pontos flex min-h-screen items-center justify-center p-6">
         <div className="w-full max-w-lg">
@@ -37,7 +40,13 @@ export default function FormularioPublicoPage({ params }: { params: Promise<{ se
             <EmptyState
               icon={<Icone de={FileX} tamanho="lg" />}
               title="Formulário indisponível"
-              hint={form ? "Este Formulário está pausado. Peça a quem o enviou para reativá-lo." : "Este link não existe mais ou foi renovado. Peça um novo a quem o enviou."}
+              hint={
+                !form
+                  ? "Este link não existe mais ou foi renovado. Peça um novo a quem o enviou."
+                  : desatualizado
+                    ? "Este Formulário está desatualizado. Peça a quem o enviou para revisá-lo."
+                    : "Este Formulário está pausado. Peça a quem o enviou para reativá-lo."
+              }
             />
           </Painel>
         </div>

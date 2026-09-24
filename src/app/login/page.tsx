@@ -50,7 +50,7 @@ export default function LoginPage() {
             aria-label="N1 Digital"
           >
             <Atmosfera />
-            <div className="login-marca-dagua" aria-hidden="true">
+            <div className="marca-dagua" aria-hidden="true">
               <BrandMark size={800} tone="atual" title="" />
             </div>
             <div className="login-marca">

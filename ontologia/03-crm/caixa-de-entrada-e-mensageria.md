@@ -180,6 +180,8 @@ Conta conectada de um Tipo de Canal. **Especialização de Integração** (B35; 
 | Grupos habilitados | nativo (booleano) | condicional | Só para Tipos com capacidade "grupos". Quando falso, Mensagens de grupo são persistidas mas a Conversa de grupo nasce `resolvida` e sem distribuição (20.18). Padrão: falso. |
 | Momento da última Mensagem recebida / enviada; Conversas não resolvidas | derivados | — | Nunca gravados. |
 
+**Nota do protótipo (C36, 2026-09-22):** criar e configurar Canal existe no protótipo (`criarCanal`, `configurarCanal`), e a Lista conversacional referencia Canais como **canais de atendimento** (0..N; ver `DECISOES-E-PENDENCIAS.md`, C36). O Canal criado ali nasce já `conectada` — o protótipo simula o provedor, divergindo da conexão em dois atos de 12.2.
+
 **Canal não tem Proprietário** (DO-CXE-02): é infraestrutura organizacional; a Fila é o nível operacional de responsabilidade, e o Atribuído é quem responde por cada Conversa. Confirma a recomendação de B35 e do documento 01 (20.11).
 
 ### 7.3 Configuração de mensagens de modelo (objeto de valor do Canal)

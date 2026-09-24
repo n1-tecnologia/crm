@@ -11,8 +11,9 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useData, useRun } from "@/data/store";
-import { CHANNEL_CAPABILITIES, funilDaLista, iniciarConversa } from "@/data/operations";
+import { LISTA_SEM_CANAIS, funilDaLista, iniciarConversa } from "@/data/operations";
 import { contactDisplayName } from "@/data/derive";
+import { canaisDaListaQueAlcancam, listaSemCanais } from "@/data/derive-conversacional";
 import { ConfirmDialog, Field, Select, TextInput } from "@/features/shell/ui";
 
 export function IniciarConversaDialog({
@@ -46,15 +47,9 @@ export function IniciarConversaDialog({
   const [erro, setErro] = useState<string | null>(null);
 
   const contato = state.contacts.find((c) => c.id === contactId);
-  // Só os Canais que alcançam algum Identificador do Contato.
-  const canaisDe = (c: typeof contato) =>
-    state.channels
-      .filter((ch) => ch.lifecycle === "ativo")
-      .filter((ch) => {
-        if (!c) return true;
-        const alcanca = CHANNEL_CAPABILITIES[ch.channelType].resolvesIdentifierTypes;
-        return c.identifiers.some((i) => alcanca.includes(i.type));
-      });
+  // C36 — só os canais de atendimento desta Lista que alcançam algum Identificador do Contato.
+  const canaisDe = (c: typeof contato) => canaisDaListaQueAlcancam(state, listId, c);
+  const semCanais = listaSemCanais(state, listId);
   const canais = canaisDe(contato);
   // Escolher o Contato traz o que ele já tem: a Qualificação, a Temperatura, e o
   // Canal quando só um o alcança. O Membro muda se souber melhor.
@@ -74,6 +69,8 @@ export function IniciarConversaDialog({
 
   const motivo = !funnel
     ? "Esta Lista não espelha um Funil."
+    : semCanais
+      ? LISTA_SEM_CANAIS
     : !contactId
       ? "Escolha o Contato."
       : !stageId

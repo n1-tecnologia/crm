@@ -24,6 +24,8 @@ import {
   ContactSummary,
 } from "@/features/crm/contact-card";
 import { ConversationThread } from "@/features/crm/conversation-thread";
+import { TarefasDoContato } from "@/features/crm/tarefas-do-contato";
+import { NovaTarefaConversacionalDialog } from "@/features/estrutura/nova-tarefa-conversacional-dialog";
 import { ConversaDoGrupo } from "@/features/ferramentas/conversa-do-grupo";
 import { membrosDoGrupo } from "@/data/derive-ferramentas";
 import {
@@ -72,6 +74,8 @@ export default function ConversaPage({ params }: { params: Promise<{ conversa: s
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmingTrash, setConfirmingTrash] = useState(false);
   const [showingContact, setShowingContact] = useState(false);
+  // C35 — a Tarefa nasce desta Conversa: Contato e Canal já dados, só a Lista é escolha.
+  const [criandoTarefa, setCriandoTarefa] = useState(false);
   /*
     A aba de Canal começa na Conversa aberta e depois é livre: passar o Canal
     como prop controlada SEM o `onCanalChange` deixava a aba presa — o clique
@@ -360,6 +364,22 @@ export default function ConversaPage({ params }: { params: Promise<{ conversa: s
         onDone={setNotice}
       />
 
+      {/* Chaveado pela Conversa: o Contato e o Canal iniciais do diálogo são os dela. */}
+      {contact ? (
+        <NovaTarefaConversacionalDialog
+          key={conversation.id}
+          open={criandoTarefa}
+          contactId={contact.id}
+          channelId={conversation.channelId}
+          onClose={() => setCriandoTarefa(false)}
+          onDone={(mensagem) => {
+            setCriandoTarefa(false);
+            setError(null);
+            setNotice(mensagem);
+          }}
+        />
+      ) : null}
+
       <ConfirmDialog
         open={confirmingTrash}
         title="Enviar esta Conversa à lixeira?"
@@ -447,6 +467,11 @@ export default function ConversaPage({ params }: { params: Promise<{ conversa: s
                 <ContactQuickActions contact={contact} onCanal={setCanal} />
                 <ContactDataPanel contact={contact} />
                 <ContactSummary contact={contact} />
+                <TarefasDoContato
+                  contactId={contact.id}
+                  onCriar={() => setCriandoTarefa(true)}
+                  rotuloDoBotao="Criar Tarefa a partir da Conversa"
+                />
               </>
             ) : (
               <>

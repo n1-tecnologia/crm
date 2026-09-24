@@ -12,15 +12,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useData, useSession } from "@/data/store";
-import {
-  contactDisplayName,
-  effectiveLifecycleOfTask,
-  isBlocked,
-  isOverdue,
-  isTerminalCategory,
-  pendingMentions,
-  statusCategory,
-} from "@/data/derive";
+import { contactDisplayName, notificacoesDoMembro } from "@/data/derive";
 import { useFormat } from "@/features/shell/use-format";
 import { ConditionMarker, CorpoDeTela, EmptyState, PageHeader, Section } from "@/features/shell/ui";
 import { ICONE_DE_OBJETO, Selo, SeloDaTarefa } from "@/features/estrutura/icone-de-tipo";
@@ -31,36 +23,16 @@ export default function NotificacoesPage() {
   const { memberId } = useSession();
   const [now] = useState(() => new Date());
 
-  const approvals = state.approvals.filter(
-    (approval) => approval.decision === undefined && approval.approverMemberId === memberId,
-  );
-
-  const myTasks = state.tasks
-    .filter((task) => task.assignees.some((a) => a.kind === "member" && a.id === memberId))
-    .filter((task) => effectiveLifecycleOfTask(state, task.id) === "ativo")
-    .filter((task) => !isTerminalCategory(statusCategory(state, task)));
-
-  const overdue = myTasks.filter((task) => isOverdue(state, task, now));
-  const blocked = myTasks.filter((task) => isBlocked(state, task));
-
-  const conversations = state.conversations.filter(
-    (conversation) =>
-      conversation.lifecycle === "ativo" &&
-      conversation.state !== "resolvida" &&
-      conversation.assignee?.kind === "member" &&
-      conversation.assignee.id === memberId,
-  );
-
-  const failedExecutions = state.agentExecutions.filter((execution) => {
-    if (execution.state !== "falhou") return false;
-    const agent = state.agents.find((a) => a.id === execution.agentId);
-    return agent?.ownerMemberId === memberId;
-  });
-
-  const mentions = pendingMentions(state, memberId);
-
-  const total =
-    approvals.length + mentions.length + overdue.length + blocked.length + conversations.length + failedExecutions.length;
+  // O mesmo derive que alimenta o sino da barra global: os números nunca discordam.
+  const {
+    aprovacoes: approvals,
+    mencoes: mentions,
+    conversas: conversations,
+    vencidas: overdue,
+    bloqueadas: blocked,
+    execucoesFalhas: failedExecutions,
+    total,
+  } = notificacoesDoMembro(state, memberId, now);
 
   return (
     <div className="flex h-full flex-col">

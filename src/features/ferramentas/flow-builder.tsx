@@ -15,7 +15,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ArrowDown, ArrowUp, Box, MousePointerClick, Plus, TextCursorInput, Type, Workflow, type LucideIcon } from "lucide-react";
+import { Box, MousePointerClick, Plus, TextCursorInput, Type, Workflow, type LucideIcon } from "lucide-react";
 import { useData, useRun, useSession } from "@/data/store";
 import {
   CATALOGO_DE_COMPONENTES,
@@ -44,7 +44,7 @@ import { LinhaDeProp } from "@/features/estrutura/linha-de-propriedade";
 import { Selo } from "@/features/estrutura/icone-de-tipo";
 import { EditorDeTexto, useAvisos, type Report } from "@/features/shell/ficha";
 import { useFormat } from "@/features/shell/use-format";
-import { ActionMenu, Button, ConditionMarker, ConfirmDialog, CorpoDeTela, EmptyState, Field, Icone, PageHeader, Painel, Pilula, RecordPanel, ReguaDeSecao, Select, TextInput, Toggle, cn } from "@/features/shell/ui";
+import { ActionMenu, Button, ConditionMarker, ConfirmDialog, CorpoDeTela, EmptyState, Field, Icone, PageHeader, Painel, Pilula, RecordPanel, ReguaDeSecao, Select, SetaDeOrdem, TextInput, Toggle, cn } from "@/features/shell/ui";
 import { EnviarFlowDialog } from "./flow-popup";
 import { PreviaDoFlow } from "./flow-previa";
 import { FormularioDeComponente } from "./flow-componente-form";
@@ -488,24 +488,6 @@ function TrilhaDeFlows() {
         Flows
       </Link>
     </span>
-  );
-}
-
-/** Uma seta de reordenação que, desligada, diz por quê — sem `disabled` nativo, que não recebe foco nem anuncia. */
-function SetaDeOrdem({ direcao, motivo, onClick }: { readonly direcao: "subir" | "descer"; readonly motivo: string | undefined; readonly onClick: () => void }) {
-  const rotulo = direcao === "subir" ? "Subir" : "Descer";
-  return (
-    <button
-      type="button"
-      className="btn-icone"
-      aria-label={rotulo}
-      aria-disabled={motivo !== undefined}
-      title={motivo ?? rotulo}
-      style={motivo ? { opacity: 0.4 } : undefined}
-      onClick={motivo ? undefined : onClick}
-    >
-      <Icone de={direcao === "subir" ? ArrowUp : ArrowDown} tamanho="xs" />
-    </button>
   );
 }
 

@@ -14,8 +14,9 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useId, useState } from "react";
 import { useData, useRun } from "@/data/store";
+import { useRecente } from "@/features/shell/recente";
 import { createFolder, createList, createSpace, instantiateListTemplate } from "@/data/operations";
-import { Check, CircleDot, Lock } from "lucide-react";
+import { Check, CircleDot, Lock, MessageSquare, SquareCheck, type LucideIcon } from "lucide-react";
 import {
   ConfirmDialog,
   Field,
@@ -26,8 +27,11 @@ import {
   Toggle,
 } from "@/features/shell/ui";
 import { Selo } from "@/features/estrutura/icone-de-tipo";
+import { CanaisDeAtendimento } from "@/features/estrutura/canais-de-atendimento";
+import { AdicionarCanalDialog } from "@/features/crm/adicionar-canal-dialog";
+import type { TipoDeAtendimento } from "@/data/operations/canais";
 import type { DataState, OperationResult } from "@/data/state";
-import type { Folder, List, Space } from "@/data/types";
+import type { Folder, List, ModeloDeTarefa, Space } from "@/data/types";
 
 export const CREATE_CONTAINER_PARAM = "criar";
 
@@ -86,8 +90,33 @@ const KIND_LABEL: Record<ContainerKind, string> = {
 const KIND_HINT: Record<ContainerKind, string> = {
   espaco: "O ponto mais alto da Estrutura. Define o Conjunto de Status que tudo abaixo dele herda.",
   pasta: "Agrupa Listas e Subpastas. Herda a configuração do Espaço, e pode sobrescrevê-la depois.",
-  lista: "Onde as Tarefas moram. Herda a configuração do contêiner acima dela.",
+  lista: "Onde as Tarefas moram. Herda a configuração do contêiner acima; o modelo de Tarefa é dela e se decide agora.",
 };
+
+/**
+ * C35 — o que a Tarefa É ao nascer na Lista. Não é aspecto herdável (B25):
+ * um Espaço mistura Listas dos dois modelos, e o modelo não muda depois que
+ * a Lista tem Tarefas — por isso se decide aqui, na criação.
+ */
+const MODELOS: ReadonlyArray<{
+  readonly valor: ModeloDeTarefa;
+  readonly titulo: string;
+  readonly descricao: string;
+  readonly icone: LucideIcon;
+}> = [
+  {
+    valor: "operacional",
+    titulo: "Operacional",
+    descricao: "A Tarefa de gestão: título, Status, Responsável e datas — sem Contato nem conversa.",
+    icone: SquareCheck,
+  },
+  {
+    valor: "conversacional",
+    titulo: "Conversacional",
+    descricao: "Cada Tarefa nasce de um Contato e traz a conversa dele; a Lista tem acesso ao CRM.",
+    icone: MessageSquare,
+  },
+];
 
 /** Cores para marcar um Espaço na árvore, tiradas da paleta do produto. */
 const SPACE_COLORS = [
@@ -113,10 +142,18 @@ export function CreateContainerDialog({
   const privacyLabelId = useId();
   const privacyHintId = useId();
 
+  const recente = useRecente();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [color, setColor] = useState("#9601c5");
   const [isPrivate, setIsPrivate] = useState(false);
+  const [modeloDeTarefa, setModeloDeTarefa] = useState<ModeloDeTarefa>("operacional");
+  /* C36 — os canais de atendimento da Lista conversacional, escolhidos antes
+     de ela nascer; e o tipo cujo popup de "adicionar" está no ar. Enquanto o
+     popup está aberto, este diálogo se apaga (os diálogos não empilham) e
+     volta quando ele fecha, com a conta nova já marcada. */
+  const [canais, setCanais] = useState<readonly string[]>([]);
+  const [adicionando, setAdicionando] = useState<TipoDeAtendimento | null>(null);
   const [templateId, setTemplateId] = useState("");
   const [location, setLocation] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -145,17 +182,29 @@ export function CreateContainerDialog({
     (template) => template.kind === kind && template.lifecycle === "ativo",
   );
 
+  const conversacional = kind === "lista" && modeloDeTarefa === "conversacional";
   const blockedReason =
     name.trim() === ""
       ? `Dê um nome à ${label}.`
       : kind !== "espaco" && !parent
         ? "Escolha onde ela vai ficar."
-        : undefined;
+        : conversacional && canais.length === 0
+          ? "Ative ao menos um canal de atendimento."
+          : undefined;
+
+  // Voltar a operacional apaga a escolha: a operacional não tem canais.
+  const escolherModelo = (modelo: ModeloDeTarefa) => {
+    setModeloDeTarefa(modelo);
+    if (modelo === "operacional") setCanais([]);
+  };
 
   const reset = () => {
     setName("");
     setDescription("");
     setIsPrivate(false);
+    setModeloDeTarefa("operacional");
+    setCanais([]);
+    setAdicionando(null);
     setTemplateId("");
     setLocation(null);
     setError(null);
@@ -183,10 +232,13 @@ export function CreateContainerDialog({
           ...(templateId ? { templateId } : {}),
         };
         if (kind === "pasta") return createFolder(data, memberId, input);
+        // Só a Lista tem modelo de Tarefa (C35): a Pasta não conhece o campo.
+        // E só a conversacional tem canais de atendimento (C36).
+        const listInput = { ...input, modeloDeTarefa, ...(conversacional ? { canaisDeAtendimento: canais } : {}) };
         // Um Template de Lista com configuração (Status, Campos, Tipos) instancia a estrutura junto.
         return templateId && data.templates.find((t) => t.id === templateId)?.creates?.listConfig
-          ? instantiateListTemplate(data, memberId, templateId, input)
-          : createList(data, memberId, input);
+          ? instantiateListTemplate(data, memberId, templateId, listInput)
+          : createList(data, memberId, listInput);
       },
     );
 
@@ -208,8 +260,9 @@ export function CreateContainerDialog({
   };
 
   return (
+    <>
     <ConfirmDialog
-      open
+      open={adicionando === null}
       title={`Criar ${label}`}
       description={KIND_HINT[kind]}
       confirmLabel="Criar"
@@ -305,6 +358,14 @@ export function CreateContainerDialog({
           )}
         </Field>
 
+        {kind === "lista" ? (
+          <SeletorDeModelo value={modeloDeTarefa} onChange={escolherModelo} />
+        ) : null}
+
+        {conversacional ? (
+          <CanaisDeAtendimento valor={canais} onChange={setCanais} onAdicionar={setAdicionando} recente={recente} />
+        ) : null}
+
         {kind === "espaco" ? null : (
           <Field
             label="Localização"
@@ -380,6 +441,69 @@ export function CreateContainerDialog({
         ) : null}
       </div>
     </ConfirmDialog>
+    {/* C36 — o popup de conectar uma conta nova. Irmão, não filho: um diálogo
+        de cada vez. Ao criar, a conta entra marcada e este diálogo volta. */}
+    <AdicionarCanalDialog
+      {...(adicionando ? { tipo: adicionando } : {})}
+      open={adicionando !== null}
+      onClose={() => setAdicionando(null)}
+      onDone={(canal) => {
+        setCanais((atuais) => (atuais.includes(canal.id) ? atuais : [...atuais, canal.id]));
+        setAdicionando(null);
+      }}
+    />
+    </>
+  );
+}
+
+/**
+ * O modelo de Tarefa da Lista, em duas peças de rádio: a escolhida acende
+ * como item destacado. É `role="radio"` e não `<input>`: a peça inteira
+ * (selo, título, frase) é o alvo, como o catálogo de componentes do Flow.
+ */
+function SeletorDeModelo({
+  value,
+  onChange,
+}: {
+  readonly value: ModeloDeTarefa;
+  readonly onChange: (modelo: ModeloDeTarefa) => void;
+}) {
+  return (
+    <Field label="Modelo de Tarefa" required hint="Depois que a Lista tiver Tarefas, o modelo não muda.">
+      {(id) => (
+        <div id={id} role="radiogroup" aria-label="Modelo de Tarefa" className="grid gap-1.5 sm:grid-cols-2">
+          {MODELOS.map((modelo) => {
+            const escolhido = value === modelo.valor;
+            return (
+              <button
+                key={modelo.valor}
+                type="button"
+                role="radio"
+                aria-checked={escolhido}
+                onClick={() => onChange(modelo.valor)}
+                className="item-solto w-full text-left"
+                data-alinhamento="topo"
+                data-destacado={escolhido ? "true" : undefined}
+              >
+                <Selo
+                  icone={modelo.icone}
+                  cor={escolhido ? "var(--acento)" : "var(--texto-2)"}
+                  lavado={escolhido ? "var(--acento-lavado)" : "var(--superficie-2)"}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="app-base block" style={{ color: "var(--texto)" }}>
+                    {modelo.titulo}
+                  </span>
+                  <span className="app-sm block" style={{ color: "var(--texto-3)" }}>
+                    {modelo.descricao}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </Field>
   );
 }
 

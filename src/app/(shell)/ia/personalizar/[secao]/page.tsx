@@ -1,17 +1,18 @@
 "use client";
 
 /**
- * Personalizar: o submenu à esquerda e, à direita, a tela da seção — as
- * mesmas páginas que já existem em `/ia/*` e `/configuracoes/integracoes`,
- * reunidas sob um só lugar. As rotas antigas continuam valendo.
+ * Personalizar: a barra de seções no topo e, embaixo, o inventário da
+ * entidade (D2) — cada seção é A lista de Agentes, Habilidades, Automações,
+ * Coleções, Integrações e Ferramentas. As listas antigas em `/ia/*`
+ * redirecionam para cá; o Construtor de Agentes continua em `/ia/agentes`.
  */
 
 import { notFound } from "next/navigation";
 import { use } from "react";
 import { PersonalizarShell } from "@/features/ia/personalizar/personalizar-shell";
 import { isSecao } from "@/features/ia/personalizar/secoes";
-import AgentesPage from "@/app/(shell)/ia/agentes/page";
 import {
+  AgentesCatalogo,
   AutomacoesCatalogo,
   ConectoresCatalogo,
   ConhecimentoCatalogo,
@@ -25,7 +26,7 @@ export default function PersonalizarPage({ params }: { params: Promise<{ secao: 
 
   const conteudo =
     secao === "agente" ? (
-      <AgentesPage />
+      <AgentesCatalogo />
     ) : secao === "habilidades" ? (
       <HabilidadesCatalogo />
     ) : secao === "automacao" ? (

@@ -72,6 +72,14 @@ export interface TaskType {
 /** B25 — how a level relates to a configurable aspect defined above. */
 export type InheritanceMode = "herdado" | "sobrescrito" | "bloqueado";
 
+/**
+ * Extensão do produto (C35) — o que a Tarefa é ao nascer nesta Lista.
+ * `operacional` é a Tarefa de gestão (título, Status, Responsável, datas);
+ * `conversacional` é a Tarefa comercial: nasce de um Contato e carrega a
+ * conversa dele por Vínculos (Contato, Conversa, Negócio opcional).
+ */
+export type ModeloDeTarefa = "operacional" | "conversacional";
+
 export type ConfigurableAspect =
   | "statusSet"
   | "fieldDefinitions"
@@ -123,32 +131,6 @@ export interface ViewFilters {
   readonly tagId?: Id;
   readonly overdue?: boolean;
   readonly text?: string;
-}
-
-/**
- * Fase 4 — Meta: alvo numérico lido de registros (como um Widget) ou por
- * conclusão de Tarefas ligadas. O progresso é derivado, nunca gravado.
- */
-export interface Goal extends RecordBase {
-  name: string;
-  description?: string;
-  ownerMemberId: Id;
-  /** Onde a Meta se lê: o Painel deste contêiner a mostra. */
-  anchor: { readonly type: "space" | "folder" | "list"; readonly id: Id };
-  kind: "tarefasConcluidas" | "metrica";
-  target: number;
-  unit?: string;
-  /** Só em `metrica`: a mesma leitura que um Widget faz. */
-  measure?: {
-    readonly target: "task" | "deal";
-    readonly scopeType: "workspace" | "space" | "folder" | "list" | "funnel";
-    readonly scopeIds: readonly Id[];
-    readonly aggregation: "contagem" | "soma";
-    readonly attribute: string;
-  };
-  /** Só em `tarefasConcluidas`. */
-  taskIds: Id[];
-  dueDate?: string;
 }
 
 /**
@@ -228,6 +210,20 @@ export interface Folder extends StructuralContainerBase {
 export interface List extends StructuralContainerBase {
   readonly parentType: "space" | "folder";
   readonly parentId: Id;
+  /**
+   * C35 — atributo nativo da Lista (irmão de `isPrivate`), não um aspecto
+   * herdável: um Espaço mistura os dois modelos. Muda só por
+   * `alterarModeloDaLista`, e só enquanto a Lista não tem Tarefa nenhuma.
+   */
+  modeloDeTarefa: ModeloDeTarefa;
+  /**
+   * C36 — os Canais (ids) por onde nascem as conversas das Tarefas desta
+   * Lista: só faz sentido na conversacional, que exige ao menos um ao nascer.
+   * Governa onde a conversa NASCE (criar Tarefa, trocar Canal, iniciar
+   * conversa), não o histórico. Muda a qualquer momento por
+   * `definirCanaisDaLista`; virar operacional o apaga.
+   */
+  canaisDeAtendimento?: readonly Id[];
   /** Descriptive; does not restrict nor derive from the Task dates. */
   plannedPeriod?: { start?: CivilDateLike; end?: CivilDateLike };
   /**

@@ -16,10 +16,11 @@ import { useData, useRun } from "@/data/store";
 import { weightedValue } from "@/data/derive";
 import { DealCard, dealCardData } from "@/features/crm/deal-card";
 import { useRecente } from "@/features/shell/recente";
+import { ColunaDeQuadro, VazioDaColuna } from "@/features/shell/quadro";
 import { moveDealToStage } from "@/data/operations";
 import { DEAL_SITUATION_LABEL } from "@/features/shell/format";
 import { useFormat } from "@/features/shell/use-format";
-import { Briefcase, Plus } from "lucide-react";
+import { Briefcase } from "lucide-react";
 import {
   Button,
   CorpoDeTela,
@@ -181,60 +182,19 @@ export default function NegociosPage() {
                 0,
               );
               return (
-                <div
+                <ColunaDeQuadro
                   key={stage.id}
-                  onDragOver={(event) => event.preventDefault()}
+                  contagem={column.length}
+                  nome={stage.name}
+                  {...(stage.color ? { cor: stage.color } : {})}
                   onDrop={() => drop(stage.id)}
-                  className="trilho flex w-[19.2rem] shrink-0 flex-col p-3"
+                  subtitulo={`${stage.defaultProbability}% padrão · ${fmt.money({ amount: columnValue, currency: "BRL" })}`}
+                  {...(stage.requirements.length > 0
+                    ? { rodape: `${stage.requirements.length} exigência(s) para entrar ou sair desta Etapa.` }
+                    : {})}
                 >
-                  <div className="mb-3 flex items-start gap-2.5">
-                    {/* A contagem em selo: é o que se lê primeiro ao varrer o quadro. */}
-                    <span
-                      aria-hidden="true"
-                      className="app-base app-numero grid shrink-0 place-items-center rounded-[var(--r-controle)]"
-                      style={{
-                        width: "var(--controle-h-sm)",
-                        height: "var(--controle-h-sm)",
-                        background: "var(--acento-lavado)",
-                        color: "var(--acento)",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {column.length}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <h2
-                        className="app-md flex items-center gap-1.5 truncate"
-                        style={{ color: "var(--texto)" }}
-                      >
-                        <Pilula {...(stage.color ? { cor: stage.color } : {})}>{stage.name}</Pilula>
-                      </h2>
-                      <span className="app-meta app-numero block truncate">
-                        {stage.defaultProbability}% padrão ·{" "}
-                        {fmt.money({ amount: columnValue, currency: "BRL" })}
-                      </span>
-                    </span>
-                  </div>
-
-                  <div className="cascata pilha-solta">
                     {column.length === 0 ? (
-                      <button
-                        type="button"
-                        onClick={openCreate}
-                        className="app-sm grid place-items-center gap-2 rounded-[var(--r-painel)] border border-dashed border-[var(--linha-forte)] px-2 py-6 text-[var(--texto-3)] transition-colors hover:border-[var(--acento)] hover:text-[var(--texto)]"
-                      >
-                        <span
-                          aria-hidden="true"
-                          className="grid place-items-center rounded-full border border-[var(--linha-forte)]"
-                          style={{
-                            width: "var(--controle-h-sm)",
-                            height: "var(--controle-h-sm)",
-                          }}
-                        >
-                          <Icone de={Plus} tamanho="sm" />
-                        </span>
-                        Nenhum Negócio nesta Etapa.
-                      </button>
+                      <VazioDaColuna texto="Nenhum Negócio nesta Etapa." onCriar={openCreate} />
                     ) : (
                       column.map((deal) => (
                         <DealCard
@@ -247,15 +207,7 @@ export default function NegociosPage() {
                         />
                       ))
                     )}
-                  </div>
-
-                  {stage.requirements.length > 0 ? (
-                    <p className="app-meta mt-2 px-1">
-                      {stage.requirements.length} exigência(s) para entrar ou
-                      sair desta Etapa.
-                    </p>
-                  ) : null}
-                </div>
+                </ColunaDeQuadro>
               );
             })}
           </div>

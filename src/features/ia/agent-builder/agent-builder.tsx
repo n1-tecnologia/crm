@@ -5,7 +5,8 @@
  * própria rolagem. Abaixo de 900px viram abas — a configuração nunca some.
  *
  * O rascunho vive aqui; publicar grava um Agente de verdade no Espaço de
- * Trabalho (Versão 1) e, nas vezes seguintes, uma Versão nova do mesmo.
+ * Trabalho (Versão 1, em rascunho ou já ativo — D1) e, nas vezes seguintes,
+ * uma Versão nova do mesmo. O estado do Agente existente muda na ficha.
  */
 
 import { useSearchParams } from "next/navigation";
@@ -102,7 +103,11 @@ export function AgentBuilder() {
             ? "Nada alterado desde a última publicação."
             : undefined;
 
-  const publicar = () => {
+  // A Versão que a próxima publicação recebe: o rótulo do botão no modo existente.
+  const proximaVersao = (agents.find((a) => a.id === agentId)?.versions.at(-1)?.number ?? 0) + 1;
+
+  /** Agente novo: `ativar` decide entre rascunho e ativo (D1). Existente: só a Versão seguinte. */
+  const publicar = (ativar: boolean) => {
     if (publishing || motivoDeBloqueio) return;
     setPublishing(true);
     setError(null);
@@ -121,13 +126,20 @@ export function AgentBuilder() {
         accessPoints: draft.accessPoints,
       };
       const result = run((data, id) =>
-        agentId ? publishAgentVersion(data, id, agentId, entrada) : createAgent(data, id, entrada),
+        agentId ? publishAgentVersion(data, id, agentId, entrada) : createAgent(data, id, entrada, { ativar }),
       );
       setPublishing(false);
       if (result.ok) {
+        const numero = result.value.versions.at(-1)?.number ?? 1;
         setAgentId(result.value.id);
         setPublicado(publishable(draft));
-        setPublished(`${result.value.name} · versão ${result.value.versions.at(-1)?.number ?? 1}`);
+        setPublished(
+          agentId
+            ? `Publicado: ${result.value.name} · versão ${numero}`
+            : result.value.lifecycle === "ativo"
+              ? `Agente ativado · versão ${numero}`
+              : "Agente criado em rascunho · abra a ficha para ativar",
+        );
       } else {
         setError(result.error);
       }
@@ -197,7 +209,10 @@ export function AgentBuilder() {
             dirty={dirty}
             publishing={publishing}
             published={published}
-            onPublish={publicar}
+            onPublish={() => publicar(true)}
+            onSaveDraft={() => publicar(false)}
+            modo={agentId ? "existente" : "novo"}
+            proximaVersao={proximaVersao}
             {...(motivoDeBloqueio ? { publishDisabledReason: motivoDeBloqueio } : {})}
             error={error}
             publishedAgentId={agentId}
