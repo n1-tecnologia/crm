@@ -1,0 +1,57 @@
+{
+  "versao": 1,
+  "caso": "campo.gasto-novo",
+  "evento": {
+    "eventId": "evt-fixture-canal-campo",
+    "occurredAt": "2026-01-01T00:00:00.000Z",
+    "taskId": "tsk-fixture-canal-marcos-paulo",
+    "automationId": "aut_contrato_canal_campo",
+    "executionId": "aex-fixture-canal-campo",
+    "canal": "whatsapp",
+    "destinoTipo": "campo",
+    "campoDestinoId": "fld_sp_z_whatsapp",
+    "mensagemId": "gasto-novo"
+  },
+  "tarefa": {
+    "id": "tsk-fixture-canal-marcos-paulo",
+    "readableId": "SP-FIXTURE-CANAL-MP",
+    "origin": "plataforma",
+    "title": "Solicitação de teste (05-24, contrato notificar-canal)",
+    "description": null,
+    "status": "para fazer",
+    "dueDate": null,
+    "assigneeIds": [],
+    "tagIds": [],
+    "fields": {
+      "costCenter": "",
+      "businessUnit": null,
+      "company": "Marcos Paulo",
+      "paymentCategory": null,
+      "personId": null,
+      "supplierType": null,
+      "supplierDocument": null,
+      "supplierName": "Fornecedor Fictício LTDA",
+      "requesterName": null,
+      "requesterWhatsApp": "whatsapp-fixture-canal-mp-01",
+      "issueDate": null,
+      "dueDate": "2026-12-31",
+      "amountCents": 123456,
+      "paymentMethod": null,
+      "pixKey": null,
+      "barcode": null,
+      "pixCopyPaste": null,
+      "paymentLink": null,
+      "manual": false,
+      "manualReason": null,
+      "productIds": []
+    },
+    "attachments": [],
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
+  },
+  "esperado": {
+    "destinos": [
+      "whatsapp-fixture-canal-mp-01"
+    ]
+  }
+}

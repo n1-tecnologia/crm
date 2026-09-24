@@ -1,0 +1,57 @@
+{
+  "versao": 1,
+  "caso": "sem-canal.tria",
+  "evento": {
+    "eventId": "evt-fixture-canal-sem-canal",
+    "occurredAt": "2026-01-01T00:00:00.000Z",
+    "taskId": "tsk-fixture-canal-tria",
+    "automationId": "aut_contrato_canal_campo",
+    "executionId": "aex-fixture-canal-sem-canal-sintetico",
+    "canal": "whatsapp",
+    "destinoTipo": "campo",
+    "campoDestinoId": "fld_sp_z_whatsapp",
+    "mensagemId": "gasto-novo",
+    "sintetico": true
+  },
+  "tarefa": {
+    "id": "tsk-fixture-canal-tria",
+    "readableId": "SP-FIXTURE-CANAL-TRIA",
+    "origin": "plataforma",
+    "title": "Solicitação de teste (05-24, contrato notificar-canal, sem canal)",
+    "description": null,
+    "status": "para fazer",
+    "dueDate": null,
+    "assigneeIds": [],
+    "tagIds": [],
+    "fields": {
+      "costCenter": "",
+      "businessUnit": null,
+      "company": "Tria Company",
+      "paymentCategory": null,
+      "personId": null,
+      "supplierType": null,
+      "supplierDocument": null,
+      "supplierName": "Fornecedor Fictício Dois LTDA",
+      "requesterName": null,
+      "requesterWhatsApp": "whatsapp-fixture-canal-tria-01",
+      "issueDate": null,
+      "dueDate": "2026-11-30",
+      "amountCents": 98765,
+      "paymentMethod": null,
+      "pixKey": null,
+      "barcode": null,
+      "pixCopyPaste": null,
+      "paymentLink": null,
+      "manual": false,
+      "manualReason": null,
+      "productIds": []
+    },
+    "attachments": [],
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
+  },
+  "esperado": {
+    "http": 422,
+    "code": "EMPRESA_SEM_CANAL"
+  }
+}
