@@ -26,9 +26,36 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 04 (as-outras-telas-do-financeiro-tria) — EXECUTING
-Plan: 3 of 14 completos (Onda 1 fechada; ondas 2-6 pendentes)
-Status: Executing Phase 04 — Onda 1 (04-01, 04-02, 04-03) completa, merjada e com portão de pós-merge verde
-Last activity: 2026-09-23 -- Onda 1 da Phase 04 completa: fixture+DTOs de allowlist no `automation/` (04-01), cliente HTTP de leituras no `apps/api` (04-02), assunto Financeiro na casca do CRM N1 (04-03)
+Plan: 6 of 14 completos (Ondas 1 e 2 fechadas; ondas 3-6 pendentes)
+Status: Executing Phase 04 — Ondas 1 e 2 completas, merjadas e com portão de pós-merge verde
+Last activity: 2026-09-23 -- Onda 2 da Phase 04 completa: as três derivações puras no `automation/` (04-04), as sete rotas `GET /financeiro/*` no `apps/api` (04-05), a fundação das telas + o Dashboard (04-06)
+
+**CONTRATO CRUZADO — o nome do hook mudou (04-06 → 04-08, 04-11, 04-13).** O hook de
+revalidação exporta-se como **`useRevalidarAoFocar`**, NÃO `usarRevalidarAoFocar` como o
+plano e o UI-SPEC escreviam. Motivo: `eslint-plugin-react-hooks` (`rules-of-hooks`) exige o
+prefixo literal em inglês `use`, e todo hook desta base já segue isso apesar de corpo em
+português (`useFormat`, `useAgir`, `useNomeDoAtor`, `useAlvo`). O CAMINHO do arquivo não
+mudou: continua `apps/web/src/features/financeiro/dados/usar-revalidar-ao-focar.ts`. Quem
+consumir nas ondas 3 e 4 importa `useRevalidarAoFocar` desse caminho.
+
+**Onda 2 — o que entrou.** 04-04 (sibling repo, `29587f1`/`ef926ec`/`fbe95f9`):
+`financeiro-derivacoes.ts`, 444 linhas puras e SEM imports, com `ROTULOS_PERMITIDOS` como
+allowlist positiva de rótulos; os 7 exports do plano existem, nenhum escreve (D4-11), e o
+`key_link` para a fixture de 04-01 verifica. 04-05 (`4564fa9`): `rotas/financeiro.ts` + as
+sete leituras registradas na raiz de `app.ts`, com a matriz 401/403/400/200/503/502. 04-06
+(`798c5d5`): `leitura.ts` (quatro desfechos), `useRevalidarAoFocar`, os três estados de
+D4-15 (`estado-de-falha`, `botao-atualizar`, `moldura-de-leitura`) e o Dashboard em
+`/financeiro`.
+
+**Portão de pós-merge da Onda 2 — verde, e com duas lacunas de worktree FECHADAS de propósito
+no checkout principal:**
+- `rotas/financeiro.test.ts` rodou **9/9 em 128s** no checkout principal (com `.env`), contra
+  4 passed / 5 skipped dentro do worktree. Os cinco casos de banco foram de verdade contra o
+  Postgres real — verificação que worktree nenhum consegue dar.
+- `npm run build -w @n1/web` (Next.js 16) rodou pela primeira vez sobre as páginas novas:
+  exit 0, zero avisos, `/financeiro` aparece como rota dinâmica. As outras sete rotas só
+  ganham arquivo de página nas ondas 3 e 4; 04-03 declarou só as FORMAS em `rotas.ts`.
+- typecheck nos três workspaces, lint, tokens (392/224 arquivos), 480 de domínio, 157 de web.
 
 **Onda 1 — o que entrou.** 04-01 (no repositório irmão `../financeiro-tria`, commits `3f5303c`/`6477baa`/`a45fd87`): `fixture-financeiro.ts` com os campos proibidos de propósito e `leituras-plataforma-dtos.ts` com allowlist POSITIVA por DTO (D4-05), provada por nome de campo e com mutação de controle. 04-02 (`cbaa8ab`): `cliente-leituras-financeiro.ts` + 19 testes sem rede e sem banco, e `FINANCEIRO_LEITURAS_URL`/`PLATAFORMA_LEITURA_TOKEN` documentados no `.env.example` (D4-01/D4-02, token de leitura deliberadamente distinto do de lançamento). 04-03 (`80ce9c1`): `navegacao-financeiro.ts` como módulo puro + o sexto assunto no trilho e as formas de esqueleto das oito rotas (D4-08/D4-14). Portão de pós-merge verde: typecheck nos três workspaces, lint, tokens (392/215 arquivos), 480 testes de domínio, 149 de web, 19 do cliente novo.
 

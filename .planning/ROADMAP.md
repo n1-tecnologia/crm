@@ -263,9 +263,9 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 04-04-PLAN.md — Onda 2 · `automation/`: `buildDashboardStats`/`buildProblemRows` re-homed como funções puras, com o RESUMO sanitizado (D4-06/D4-11)
-- [ ] 04-05-PLAN.md — Onda 2 · `apps/api`: as sete rotas `GET /financeiro/*` com guarda de alcance e registro na raiz de `app.ts` (D4-14/D4-04)
-- [ ] 04-06-PLAN.md — Onda 2 · `apps/web`: a fundação das telas (os três estados de D4-15, botão Atualizar, revalidar ao focar) e o Dashboard
+- [x] 04-04-PLAN.md — Onda 2 · `automation/`: `buildDashboardStats`/`buildProblemRows` re-homed como funções puras, com o RESUMO sanitizado (D4-06/D4-11)
+- [x] 04-05-PLAN.md — Onda 2 · `apps/api`: as sete rotas `GET /financeiro/*` com guarda de alcance e registro na raiz de `app.ts` (D4-14/D4-04)
+- [x] 04-06-PLAN.md — Onda 2 · `apps/web`: a fundação das telas (os três estados de D4-15, botão Atualizar, revalidar ao focar) e o Dashboard
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -368,7 +368,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | 1. O CRM N1 ganha persistência e login | 16/16 | Complete   | 2026-09-17 |
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 23/28 | In Progress|  |
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
-| 4. As outras telas do financeiro-tria | 3/14 | In Progress|  |
+| 4. As outras telas do financeiro-tria | 6/14 | In Progress|  |
 | 5. Contas a receber e os outros tenants | 0/12 | Planned    |  |
 
 ---
