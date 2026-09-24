@@ -1,0 +1,202 @@
+{
+  "_aviso": "100% fictício — nenhum dado real da Lista 901107648977. Os ids fic_* não existem no ClickUp. Os quatro ids reais citados no _caso (duplicatas RN-CR-07 e subtarefa RN-CR-06) são reproduzidos aqui como legacyTaskId de propósito, porque a regra do mapeador é ligada a esses ids literais — nenhum outro dado da linha real (nome de cliente, valor) foi copiado.",
+  "tarefas": [
+    {
+      "_caso": "(a) Parcela normal, cliente resolvido no catálogo, Data de pagamento pelo Campo (precedência sobre date_closed)",
+      "tarefa": {
+        "id": "fic_cr_001",
+        "name": "3ª Parcela – Cliente Fictício Um",
+        "status": { "status": "recebido" },
+        "date_created": "1739955300000",
+        "date_closed": "1742547300000",
+        "due_date": "1742374500000",
+        "tags": [],
+        "custom_fields": [
+          { "id": "8489b2e2-e5fe-47bf-bfbc-5ea900ab5f93", "type": "drop_down", "type_config": { "options": [{ "name": "Marcos Paulo" }, { "name": "TRIA" }] }, "value": 1 },
+          { "id": "cc3ddcec-de22-42ce-9f44-5421b6cbb5e4", "type": "drop_down", "type_config": { "options": [{ "name": "Tria Company" }] }, "value": 0 },
+          { "id": "ad484dcb-4a13-478d-9191-b1fe71658e50", "type": "currency", "value": "20000.00" },
+          { "id": "c41d9418-824c-4beb-9264-e5b03e815c9d", "type": "date", "value": "1742288100000" },
+          { "id": "96bfbe25-cd92-4efe-9cb3-5d939c746764", "type": "list_relationship", "value": [{ "name": "Cliente Fictício Um" }] }
+        ]
+      },
+      "historico": {
+        "status_history": [
+          { "status": "recebido", "total_time": { "since": "1742288100000" } },
+          { "status": "para receber", "total_time": { "since": "1739955300000" } }
+        ]
+      }
+    },
+    {
+      "_caso": "(b) Sem Campo Data de pagamento: usa date_closed como fallback e GERA a lacuna",
+      "tarefa": {
+        "id": "fic_cr_002",
+        "name": "1ª Parcela – Cliente Fictício Dois",
+        "status": { "status": "recebido" },
+        "date_created": "1706918100000",
+        "date_closed": "1709596500000",
+        "tags": [],
+        "custom_fields": [
+          { "id": "ad484dcb-4a13-478d-9191-b1fe71658e50", "type": "currency", "value": "3500.00" }
+        ]
+      },
+      "historico": {
+        "status_history": [
+          { "status": "recebido", "total_time": { "since": "1709596500000" } },
+          { "status": "para receber", "total_time": { "since": "1706918100000" } }
+        ]
+      }
+    },
+    {
+      "_caso": "(c) Saque de plataforma com Valor 0: Campo Valor fica VAZIO e a lacuna saque-sem-valor nasce (D5-14)",
+      "tarefa": {
+        "id": "fic_cr_003",
+        "name": "Saque Fictício",
+        "status": { "status": "recebido" },
+        "date_created": "1706918100000",
+        "date_closed": "1707004500000",
+        "tags": [],
+        "custom_fields": [
+          { "id": "ad484dcb-4a13-478d-9191-b1fe71658e50", "type": "currency", "value": "0" }
+        ]
+      },
+      "historico": {
+        "status_history": [{ "status": "recebido", "total_time": { "since": "1707004500000" } }]
+      }
+    },
+    {
+      "_caso": "(d) Saque sem NENHUM Valor informado: mesma lacuna saque-sem-valor",
+      "tarefa": {
+        "id": "fic_cr_004",
+        "name": "Saque Fictício Sem Campo",
+        "status": { "status": "disponível para saque" },
+        "date_created": "1706918100000",
+        "tags": [],
+        "custom_fields": []
+      },
+      "historico": {
+        "status_history": [{ "status": "disponível para saque", "total_time": { "since": "1706918100000" } }]
+      }
+    },
+    {
+      "_caso": "(e) RN-CR-07, primeira metade do par — cita o id legado da outra (868ffg91u)",
+      "tarefa": {
+        "id": "868cpd8zg",
+        "name": "7ª Parcela – Cliente Duplicado",
+        "status": { "status": "recebido" },
+        "date_created": "1708300500000",
+        "date_closed": "1710979200000",
+        "tags": [],
+        "custom_fields": [
+          { "id": "ad484dcb-4a13-478d-9191-b1fe71658e50", "type": "currency", "value": "20000.00" }
+        ]
+      },
+      "historico": {
+        "status_history": [{ "status": "recebido", "total_time": { "since": "1710979200000" } }]
+      }
+    },
+    {
+      "_caso": "(e) RN-CR-07, segunda metade do par — cita o id legado da outra (868cpd8zg)",
+      "tarefa": {
+        "id": "868ffg91u",
+        "name": "7ª Parcela – Cliente Duplicado",
+        "status": { "status": "recebido" },
+        "date_created": "1708300500000",
+        "date_closed": "1711065600000",
+        "tags": [],
+        "custom_fields": [
+          { "id": "ad484dcb-4a13-478d-9191-b1fe71658e50", "type": "currency", "value": "20000.00" }
+        ]
+      },
+      "historico": {
+        "status_history": [{ "status": "recebido", "total_time": { "since": "1711065600000" } }]
+      }
+    },
+    {
+      "_caso": "(f) RN-CR-06 — a subtarefa indevida real (868cpdawp): sem parentTaskId, lacuna subtarefa-desamarrada citando o pai (868c7qreq)",
+      "tarefa": {
+        "id": "868cpdawp",
+        "name": "1ª Parcela – Cliente Fictício da Subtarefa",
+        "status": { "status": "pendente" },
+        "date_created": "1708300500000",
+        "parent": "868c7qreq",
+        "tags": [],
+        "custom_fields": []
+      },
+      "historico": {
+        "status_history": [{ "status": "pendente", "total_time": { "since": "1708300500000" } }]
+      }
+    },
+    {
+      "_caso": "(g) Cliente com nome que não bate com o catálogo: lacuna cliente-nao-encontrado, clienteRef ausente",
+      "tarefa": {
+        "id": "fic_cr_007",
+        "name": "Entrada – Cliente Sem Correspondência",
+        "status": { "status": "para receber" },
+        "date_created": "1708300500000",
+        "tags": [],
+        "custom_fields": [
+          { "id": "96bfbe25-cd92-4efe-9cb3-5d939c746764", "type": "list_relationship", "value": [{ "name": "Nome Que Não Existe No CRM" }] }
+        ]
+      },
+      "historico": {
+        "status_history": [{ "status": "para receber", "total_time": { "since": "1708300500000" } }]
+      }
+    },
+    {
+      "_caso": "(h) RN-CR-02 — sem Vínculo nenhum no ClickUp (Campo Gestão de Clientes ausente): nenhuma lacuna cliente-nao-encontrado no mapeador",
+      "tarefa": {
+        "id": "fic_cr_008",
+        "name": "Entrada – Sem Vínculo",
+        "status": { "status": "para receber" },
+        "date_created": "1708300500000",
+        "tags": [],
+        "custom_fields": []
+      },
+      "historico": {
+        "status_history": [{ "status": "para receber", "total_time": { "since": "1708300500000" } }]
+      }
+    },
+    {
+      "_caso": "(i) Status final sem equivalente: rejeitada, Tarefa NÃO é importada",
+      "tarefa": {
+        "id": "fic_cr_009",
+        "name": "Tarefa Com Status Legado",
+        "status": { "status": "a pagar" },
+        "date_created": "1708300500000",
+        "tags": [],
+        "custom_fields": []
+      },
+      "historico": {
+        "status_history": [{ "status": "a pagar", "total_time": { "since": "1708300500000" } }]
+      }
+    },
+    {
+      "_caso": "(j) Tags em cobrança / inadimplência viram Campo Situação, e conta tria vira Campo Conta de recebimento — nenhuma das três é Tag",
+      "tarefa": {
+        "id": "fic_cr_010",
+        "name": "2ª Parcela – Cliente Em Cobrança",
+        "status": { "status": "pendente" },
+        "date_created": "1708300500000",
+        "tags": [{ "name": "em cobrança" }, { "name": "conta tria" }],
+        "custom_fields": []
+      },
+      "historico": {
+        "status_history": [{ "status": "pendente", "total_time": { "since": "1708300500000" } }]
+      }
+    },
+    {
+      "_caso": "(k) Tipo inferido — nome fora do vocabulário de §5 vira Avulso + lacuna tipo-inferido",
+      "tarefa": {
+        "id": "fic_cr_011",
+        "name": "Ajuste avulso de conciliação",
+        "status": { "status": "descartado" },
+        "date_created": "1708300500000",
+        "tags": [],
+        "custom_fields": []
+      },
+      "historico": {
+        "status_history": [{ "status": "descartado", "total_time": { "since": "1708300500000" } }]
+      }
+    }
+  ]
+}
