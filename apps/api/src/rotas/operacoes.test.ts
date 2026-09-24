@@ -281,6 +281,9 @@ d("POST /operacoes/:nome — contra o banco real", () => {
     expect(tarefaDeContasAPagar, "o seed precisa ter uma conta em 'para pagar'").toBeDefined();
     const cliente = await pool().connect();
     try {
+      // Os ids de Tarefa do seed se repetem entre execuções: sem limpar o outbox, as linhas
+      // de Canal de uma rodada anterior entram na contagem de (w) e (x) da seguinte.
+      await cliente.query("delete from plataforma.integration_outbox where workspace_id = $1", [WS]);
       await cliente.query("delete from plataforma.registros where workspace_id = $1", [WS]);
       await cliente.query("delete from plataforma.workspaces where workspace_id = $1", [WS]);
       await semear(cliente, WS, semente);
@@ -293,6 +296,7 @@ d("POST /operacoes/:nome — contra o banco real", () => {
   afterAll(async () => {
     const cliente = await pool().connect();
     try {
+      await cliente.query("delete from plataforma.integration_outbox where workspace_id = $1", [WS]);
       await cliente.query("delete from plataforma.registros where workspace_id = $1", [WS]);
       await cliente.query("delete from plataforma.workspaces where workspace_id = $1", [WS]);
     } finally {
