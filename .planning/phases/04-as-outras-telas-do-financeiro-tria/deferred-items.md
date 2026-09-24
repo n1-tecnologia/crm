@@ -3,15 +3,27 @@
 Achados fora de escopo registrados durante a execução, pela regra de SCOPE BOUNDARY
 do executor. Nenhum foi corrigido pelo plano que o descobriu.
 
-Os itens abaixo vieram de agentes diferentes ao longo das Ondas 1 a 3 e foram
+Os itens abaixo vieram de agentes diferentes ao longo das Ondas 1 a 4 e foram
 **reconciliados pelo orquestrador**, que reproduziu cada um no checkout principal antes de
-aceitá-lo. O veredito está marcado em cada item, e vale ler os rótulos: de seis achados
-relatados, apenas **dois** são defeitos reais e pendentes (1 e 4); um foi **refutado** (2),
-um é **inconclusivo por erro meu** (3), um foi **resolvido como artefato de carga** (6), e um
-não é defeito nenhum mas uma **decisão humana** de exposição de dado (5).
+aceitá-lo. O veredito está marcado em cada item, e vale ler os rótulos antes de agir:
 
-Isso é deliberado: relatório de agente não é achado até ser reproduzido fora do worktree.
-Dois dos relatos originais acusavam planos antigos de bugs que não existem.
+| # | Veredito | O que é |
+|---|---|---|
+| 1 | **CONFIRMADO, aberto** | `payment-rules.test.ts` falha de verdade, pré-existente à fase |
+| 2 | REFUTADO | `scheduler-worker.test.ts` passa 19/19 — era worktree sem `.env` |
+| 3 | INCONCLUSIVO (erro meu) | medição abortada por mim; não é medida |
+| 4 | **CONFIRMADO, aberto** | `timingSafeEqual` sem teste que o proteja |
+| 5 | DECISÃO HUMANA | filtro Plataforma exige alargar a allowlist de D4-05 |
+| 6 | RESOLVIDO | 14 falhas de 04-08 eram carga (load 141-244) |
+| 7 | RESOLVIDO | colisão de porta em `servidor-falso.test.ts`, não reproduz |
+| 8 | RESOLVIDO | queda de conexão no portão da Onda 4; 25/25 na re-execução |
+
+**Só os itens 1 e 4 são defeitos reais e pendentes.** O 5 é decisão, não defeito. Os itens 2,
+6, 7 e 8 são ruído de ambiente — metade dos achados relatados. Dois dos relatos originais
+acusavam planos ANTIGOS de bugs que não existem.
+
+Isso é deliberado: relatório de agente não é achado até ser reproduzido fora do worktree, e
+vermelho de teste de banco nesta base precisa de segunda execução antes de virar achado.
 
 ---
 
@@ -178,3 +190,32 @@ código deste plano.
 
 **Dono sugerido:** quem for endurecer `servidor-falso.test.ts` — considerar amarrar a um host/
 porta mais isolados, ou não pertence a esta fase.
+
+---
+
+## 8. RESOLVIDO — falha de `rotas/financeiro.test.ts` no portão da Onda 4 era queda de conexão, não regressão
+
+**Onde apareceu:** portão de pós-merge da Onda 4, no checkout principal:
+`(d) Membro com alcance recebe 200 e o corpo repassado igual, sem reprojeção` reprovou com
+`expected 500 to be 200` depois de **55,8s**, acompanhada de
+`Unhandled Error: Connection terminated unexpectedly`.
+
+**Verificação do orquestrador: flake de conectividade, nada a corrigir.** Três medições do
+MESMO código, sem nenhum commit tocando `apps/api` entre elas (`git log 10d82d3..HEAD -- apps/api/`
+vazio):
+- portão da Onda 3: **25/25 em 14s**
+- portão da Onda 4: **1 failed / 24 passed em 68,9s** (conexão derrubada)
+- re-execução imediata: **25/25 em 7,78s**
+
+O 500 é a rota fazendo a coisa certa — ela superficializa a falha do banco em vez de mentir 200.
+A causa é o pooler do Supabase: teto de conexões, sessão longa, `npm run dev` do usuário aberto há
+17 dias segurando conexões, e uma sessão inteira martelando o mesmo banco.
+
+**Lição:** um vermelho de teste de banco nesta base precisa de segunda execução antes de virar
+achado — mesma disciplina do item 6 (carga) e do item 7 (colisão de porta). Três dos oito itens
+deste arquivo são flake de ambiente, não defeito.
+
+**Erro meu que vale registrar:** o script do portão da Onda 4 imprimiu "GATE: all checks passed"
+APESAR desse `exit=1`, porque o bloco do teste de api rodava em subshell e o código de saída nunca
+chegou ao acumulador `FAILED`. Um portão que engole o vermelho é pior que não ter portão. Corrigido
+para o portão final: cada bloco passa o `exit` para o acumulador, sem subshell no caminho.

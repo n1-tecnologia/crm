@@ -274,14 +274,14 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 04-09-PLAN.md — Onda 4 · `automation/`: Notas fiscais e Produtos — a única consulta desenhada do zero, com colunas nomeadas (D4-05/D4-07)
+- [x] 04-09-PLAN.md — Onda 4 · `automation/`: Notas fiscais e Produtos — a única consulta desenhada do zero, com colunas nomeadas (D4-05/D4-07)
 - [x] 04-10-PLAN.md — Onda 4 · `apps/api`: as escritas de D4-07 e o proxy de upload de Extratos com validação de MIME e tamanho (D4-13/D4-12)
 - [x] 04-11-PLAN.md — Onda 4 · `apps/web`: Notas fiscais (com os dois gatilhos de lote) e Produtos (alíquota inline) (D4-12/D4-07)
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
 - [ ] 04-12-PLAN.md — Onda 5 · `automation/`: Plano de contas sobre `conciliador_contas`, gatilhos de NF e ações de execução (D4-10/D4-10b/D4-12)
-- [ ] 04-13-PLAN.md — Onda 5 · `apps/web`: Plano de contas (import CSV com confirmação que afirma a consequência) e Extratos (D4-10/D4-10b/D4-09/D4-13)
+- [x] 04-13-PLAN.md — Onda 5 · `apps/web`: Plano de contas (import CSV com confirmação que afirma a consequência) e Extratos (D4-10/D4-10b/D4-09/D4-13)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -368,7 +368,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | 1. O CRM N1 ganha persistência e login | 16/16 | Complete   | 2026-09-17 |
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 23/28 | In Progress|  |
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
-| 4. As outras telas do financeiro-tria | 10/14 | In Progress|  |
+| 4. As outras telas do financeiro-tria | 12/14 | In Progress|  |
 | 5. Contas a receber e os outros tenants | 0/12 | Planned    |  |
 
 ---

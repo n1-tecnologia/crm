@@ -26,9 +26,38 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 04 (as-outras-telas-do-financeiro-tria) — EXECUTING
-Plan: 10 of 14 completos (Ondas 1, 2 e 3 fechadas; ondas 4-6 pendentes)
-Status: Executing Phase 04 — Ondas 1-3 completas e merjadas; portão da Onda 3 pegou UM defeito real, corrigido em `1d69a90`
-Last activity: 2026-09-23 -- Onda 3 da Phase 04 completa: `/v1/leituras/*` autenticado no `automation/` (04-07), três telas (04-08), as seis escritas + proxy de Extratos no `apps/api` (04-10), Notas fiscais e Produtos fora da chave `anon` (04-11)
+Plan: 12 of 14 completos (Ondas 1-4 fechadas; falta 04-12 na Onda 5 e o CORTE 04-14 na Onda 6)
+Status: Executing Phase 04 — Ondas 1-4 completas e merjadas. **AS OITO TELAS DE `/financeiro` COMPILAM** (`next build` verde, 8/8 rotas emitidas)
+Last activity: 2026-09-23 -- Onda 4 da Phase 04 completa: as leituras de Notas fiscais e Produtos no `automation/` (04-09), Plano de contas + Extratos + o botão de Workflows ligado (04-13)
+
+**Onda 4 — o que entrou.** 04-09 (sibling, `cd0ed5a`/`02259dd`/`5f90410`): módulo de consulta com
+TODAS as colunas nomeadas (nenhum `select("*")`), paginação por `.range()` em lotes de 1000 com
+teto de 20 lotes, e três rotas sob `/v1/leituras` autenticadas pelo `exigirCredencial` de 04-07,
+projetando pelos DTOs de 04-01 — **a allowlist de D4-05 NÃO foi alargada** (verificado: a única
+ocorrência de `plataforma` no arquivo de DTOs é o nome de um arquivo dentro de um comentário).
+Mount em `server.ts` na linha 60, ainda antes do `express.json()` na 61 — a ordem é load-bearing
+(upload de extrato chega como body BRUTO) e foi preservada. 04-13 (`464b4fe`): leitor de CSV
+escrito à mão (zero dependência nova, evita CVE-2023-30533), Plano de contas com remoção e import,
+Extratos com progresso, e o botão "Executar agora" de Workflows finalmente LIGADO com a cópia de
+`ConfirmDialog` que 04-08 deixou reservada — resultado por `Toast` neutro com "Atualizar agora",
+porque o `apps/api` responde 202 e a tela não finge saber o desfecho na hora.
+
+**Portão de pós-merge da Onda 4 — verde, com uma ressalva minha.** typecheck nos três workspaces,
+lint, tokens (392/254), 480 de domínio, **167 de web** (17 arquivos), e `next build` emitindo
+**todas as oito rotas** `/financeiro`: raiz, aprovacoes-pendentes, extratos, notas-fiscais,
+plano-contas, problemas, produtos, workflows.
+
+A ressalva: `rotas/financeiro.test.ts` reprovou 1 de 25 nesse portão, com
+`Connection terminated unexpectedly` depois de 55,8s — e o script do portão IMPRIMIU
+"all checks passed" por cima disso, porque o bloco rodava em subshell e o `exit` nunca chegou ao
+acumulador. Erro meu, corrigido para o portão final. O teste em si é flake de conexão, não
+regressão: nenhum commit tocou `apps/api` desde o 25/25 da Onda 3, e a re-execução imediata deu
+**25/25 em 7,78s**. Registrado como item 8 do `deferred-items.md`.
+
+**`deferred-items.md` agora abre com uma TABELA DE VEREDITOS** — de oito achados relatados por
+agentes, só **dois** (itens 1 e 4) são defeitos reais e pendentes; um é decisão humana (5) e
+**quatro são ruído de ambiente** (2, 6, 7, 8). Metade dos "achados" era o ambiente, não o código.
+Ler a tabela antes de agir sobre qualquer item.
 
 **Onda 3 — o que entrou.** 04-07 (sibling, `6924703`/`c3dea4a`/`39dcc35`): `/v1/leituras/*`
 autenticado desde o nascimento, montado ANTES do `express.json()` (linha 53 < 54, verificado),
