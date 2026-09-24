@@ -703,6 +703,32 @@ export function runListAutomations(state: DataState, event: ListEvent): Automati
 /**
  * Gatilhos por proximidade do vencimento — o relógio do protótipo é a
  * chamada explícita com "hoje". Cada par (Automação, Tarefa) dispara uma vez.
+ *
+ * WR-11 — barreira do histórico importado. `MARCO_ZERO` (o instante que a
+ * agenda usa para decidir A PARTIR DE QUE DIA semear `automacao_agenda`)
+ * limita quais DIAS a agenda alcança, não quais TAREFAS o motor processa:
+ * sem regra própria aqui, a primeira volta real depois de
+ * `automacoes:liberar` trataria as ~240 contas importadas por
+ * `importarContaAReceberHistorica` como se tivessem acabado de vencer — R2
+ * moveria histórico "para receber" já resolvido para "pendente" (e R2b
+ * marcaria Situação "em cobrança" atrás dele), e R4/R5 comentariam cobrança
+ * sobre parcelas fechadas em 2025. A barreira: uma Tarefa com
+ * `provenance.kind === "import"` nunca dispara um gatilho temporal cujo
+ * `disparo` (vencimento + offset) seja anterior ao início do dia civil em
+ * que ela foi importada (`provenance.at`) — estrita, então um disparo NO
+ * PRÓPRIO dia da importação ainda executa.
+ *
+ * Por que `provenance.at` e não "passar o `MARCO_ZERO` para esta função":
+ * as duas regras coincidem para as importações reais (as três importações —
+ * Contas a pagar, Contas a receber, Solicitações — gravam `provenance.at`
+ * com o instante real da importação, e `MARCO_ZERO` de
+ * `(ws_n1, lst_contas_a_receber)` é o mesmo dia). Mas esta função tem TRÊS
+ * chamadores — a agenda (`scheduler-worker.ts`), a operação
+ * `POST /operacoes/runScheduledAutomations` e o botão da tela
+ * (`bulk-status-bar.tsx`/`contas-view.tsx`) — e só o primeiro conhece
+ * `automacao_agenda`. Uma regra por proveniência (dado da própria Tarefa) é
+ * pura, não muda a assinatura desta função, e fecha os três caminhos de uma
+ * vez só.
  */
 export function runScheduledAutomations(
   state: DataState,
@@ -733,6 +759,18 @@ export function runScheduledAutomations(
       const [y, m, d] = task.dueDate.value.slice(0, 10).split("-").map(Number);
       const disparo = new Date(y ?? 1970, (m ?? 1) - 1, (d ?? 1) + spec.dueDateOffsetDays).getTime();
       if (hoje < disparo) continue;
+      // WR-11 — barreira do histórico importado (ver o doc-comment da
+      // função): o disparo é estritamente ANTERIOR ao início do dia civil
+      // da importação, nunca "anterior ou igual" — no próprio dia da
+      // importação, o gatilho ainda executa normalmente.
+      if (task.provenance?.kind === "import") {
+        const importado = new Date(task.provenance.at);
+        const inicioDoDiaDaImportacao = new Date(importado.getFullYear(), importado.getMonth(), importado.getDate()).getTime();
+        if (disparo < inicioDoDiaDaImportacao) {
+          skipped += 1;
+          continue;
+        }
+      }
       // Concluída: nunca repete. Falhou ou ficou pendente: reavalia só em
       // outro dia — senão cada clique em "rodar" gera outro Comentário de
       // "falta X", ou empilha uma segunda espera que ainda não venceu.
