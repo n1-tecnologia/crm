@@ -323,8 +323,8 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 05-05-PLAN.md — O corte único de Marcos Paulo e Family Office: inventário, webhooks desligados, Listas arquivadas (TEN-01)
-- [ ] 05-08-PLAN.md — A rota `notificar-canal` no `automation/`: Bearer, idempotência, Evolution (AUTO-02)
+- [ ] 05-05-PLAN.md — O corte único de Marcos Paulo e Family Office: inventário, webhooks desligados, Listas arquivadas (TEN-01) — **ABERTO por decisão do dono (2026-09-24):** inventário pronto (`05-CORTE-MP-FO.md`), deploy/webhooks/48h/arquivamento pendentes
+- [x] 05-08-PLAN.md — A rota `notificar-canal` no `automation/`: Bearer, idempotência, Evolution (AUTO-02)
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
@@ -370,7 +370,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 23/28 | In Progress|  |
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
-| 5. Contas a receber e os outros tenants | 6/12 | In Progress|  |
+| 5. Contas a receber e os outros tenants | 8/12 | In Progress|  |
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*

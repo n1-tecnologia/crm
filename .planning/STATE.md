@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 05 (contas-a-receber-e-os-outros-tenants) — EXECUTING
-Plan: 6 of 12 (05-01, 05-02, 05-03, 05-04, 05-06, 05-07 completos — Ondas 1 a 3)
-Status: Executing — Onda 4 (05-05 corte MP/FO, 05-08 rota notificar-canal) a seguir
-Last activity: 2026-09-24 -- Onda 3 da Phase 05: tabela Empresa→tenant no automation/ (sibling `9a7e723`/`25716c1`, CONFIRMADA pelo dono no checkpoint: Konq→tria, Marcos Paulo→marcos-paulo, demais certas — ainda NÃO em produção); evento automacao.notificar-canal.v1 no outbox (05-07). Portão achou defeito de isolamento em operacoes.test.ts (outbox não limpo entre execuções) — corrigido em `1923892`, 24/24 duas vezes seguidas
+Plan: 7 of 12 (05-01..05-04, 05-06, 05-07, 05-08 completos — Ondas 1 a 4). **05-05 (O CORTE MP/FO) fica ABERTO de propósito** — execução parcial escopada, decidida pelo dono num checkpoint explícito
+Status: Executing — Onda 5 (05-09 conferência somente-leitura de ws_n1 + pergunta D7) a seguir
+Last activity: 2026-09-24 -- Onda 4 da Phase 05: rota POST /webhooks/plataforma/notificar-canal no automation/ (sibling `6abe57d`/`d3216f2`, Evolution stubada nos testes, 187/188 — a falha é o payment-rules pré-existente); 05-05 preparado sem executar (`05-CORTE-MP-FO.md`, 10 webhooks, 48h de silêncio, arquivamento é o ponto sem volta). O dono escolheu "Deixar aberto, seguir fase"
 
 **Onda 5 — 04-12** (sibling, `f06da55`/`d4cca79`/`49d71af`): módulo de acesso ao
 `conciliador_contas` e as seis rotas de plano de contas/workflows/execuções, autenticadas pelo
