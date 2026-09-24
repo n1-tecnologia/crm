@@ -25,8 +25,10 @@ import type { ExecucaoDeWorkflow, WorkflowDoCatalogo } from "../dados/workflows"
  * resolve interpolação). Status desconhecido nunca fica sem cor — cai no
  * neutro da própria escala de Execução.
  */
+const COR_NEUTRA_DE_EXECUCAO = "var(--cor-exe-pendente)";
+
 const COR_DE_EXECUCAO: Readonly<Record<string, string>> = {
-  pendente: "var(--cor-exe-pendente)",
+  pendente: COR_NEUTRA_DE_EXECUCAO,
   executando: "var(--cor-exe-executando)",
   aguardando: "var(--cor-exe-aguardando)",
   concluida: "var(--cor-exe-concluida)",
@@ -34,8 +36,15 @@ const COR_DE_EXECUCAO: Readonly<Record<string, string>> = {
   cancelada: "var(--cor-exe-cancelada)",
 };
 
+/**
+ * O neutro sai de uma constante, não de `COR_DE_EXECUCAO.pendente`: com
+ * `noUncheckedIndexedAccess` (tsconfig.base.json) todo acesso indexado a um
+ * `Record<string, string>` devolve `string | undefined`, inclusive o do próprio
+ * fallback — então `?? COR_DE_EXECUCAO.pendente` não estreita nada e o retorno
+ * continua opcional. A constante é `string` de verdade.
+ */
 function corDeExecucao(status: string): string {
-  return COR_DE_EXECUCAO[status] ?? COR_DE_EXECUCAO.pendente;
+  return COR_DE_EXECUCAO[status] ?? COR_NEUTRA_DE_EXECUCAO;
 }
 
 export function PainelDeWorkflows({
