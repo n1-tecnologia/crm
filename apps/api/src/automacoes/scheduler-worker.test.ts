@@ -684,3 +684,169 @@ d("primeira volta sobre o backlog importado — MARCO_ZERO, ensaio e liberação
     expect(linha.executadas).toBe(4);
   });
 });
+
+/* ── Canal por agenda (AUTO-02, Task 3): o evento nasce na mesma transação, e o Ensaio não grava nada ────────── */
+
+/** Quantas linhas de `automacao.notificar-canal.v1` o payload aponta para `taskId` neste Espaço de Trabalho. */
+async function contarOutboxCanalDaTarefa(workspaceId: string, taskId: string): Promise<number> {
+  const cliente = await pool().connect();
+  try {
+    const r = await cliente.query<{ n: string }>(
+      `select count(*)::text as n from plataforma.integration_outbox
+        where workspace_id = $1 and event_type = 'automacao.notificar-canal.v1' and payload->>'taskId' = $2`,
+      [workspaceId, taskId],
+    );
+    return Number(r.rows[0]?.n ?? "0");
+  } finally {
+    cliente.release();
+  }
+}
+
+interface CenarioCanal {
+  readonly taskId: Id;
+  readonly vencimentoCivil: string;
+}
+
+/**
+ * Monta, num `DataState` real (`buildGestaoBootstrap`), uma Automação de
+ * Canal por AGENDA (`condicaoTemporal`, `dueDateOffsetDays: 0`) sobre
+ * `CP.listId`, e uma conta cujo vencimento é `hoje` — o gatilho dispara na
+ * primeira rodada. `comWhatsapp: false` deixa o Campo vazio de propósito,
+ * para o caso (c) (a Ação recusa). Semeia o `workspaceId` inteiro e devolve
+ * o `taskId` para a asserção contra `plataforma.integration_outbox`.
+ */
+async function prepararCenarioCanalPorAgenda(workspaceId: string, hoje: Date, comWhatsapp: boolean): Promise<CenarioCanal> {
+  const vencimentoCivil = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
+  const estado = buildGestaoBootstrap({ workspaceId });
+  estado.automations.push({
+    id: `aut_canal_agenda_${randomUUID()}`,
+    workspaceId: estado.workspace.id,
+    createdBy: { kind: "member", id: CP.financeiroId },
+    createdAt: "2026-01-01T00:00:00.000Z",
+    lifecycle: "ativo",
+    name: "Canal por agenda (teste 05-07, Task 3)",
+    description: "",
+    scopeType: "list",
+    scopeId: CP.listId,
+    ownerMemberId: CP.financeiroId,
+    reactsToAutomationEvents: false,
+    versions: [
+      {
+        number: 1,
+        state: "publicada",
+        trigger: { kind: "condicaoTemporal", temporalPredicate: JSON.stringify({ dueDateOffsetDays: 0 }) },
+        conditions: [],
+        actions: [
+          {
+            order: 1,
+            kind: "controle",
+            controlKind: "notificar",
+            params: JSON.stringify({ canal: "whatsapp", canalCampoDestinoId: CP.fields.whatsapp, canalMensagemId: "gasto-novo" }),
+          },
+        ],
+        errorPolicy: { onActionFailure: "interromper", retries: 0 },
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+    ],
+  });
+
+  // Sem Pessoa nem Valor preenchidos: as condições de A5/A6/A7 (já no seed de
+  // `CP.listId`) não se satisfazem, então só a NOSSA Automação de agenda roda.
+  const criacao = createTask(estado, CP.financeiroId, {
+    listId: CP.listId,
+    title: "Conta de teste — Canal por agenda (05-07)",
+    statusId: CP.status.paraPagar,
+    dueDate: { form: "civilDay", value: vencimentoCivil },
+  });
+  if (!criacao.ok) throw new Error(`fixture: ${criacao.error}`);
+  if (comWhatsapp) {
+    const campo = setTaskFieldValue(estado, CP.financeiroId, criacao.value.id, CP.fields.whatsapp, "whatsapp-teste-agenda-05-07");
+    if (!campo.ok) throw new Error(`fixture: ${campo.error}`);
+  }
+
+  const cliente = await pool().connect();
+  try {
+    await cliente.query("insert into plataforma.workspaces (workspace_id) values ($1) on conflict do nothing", [workspaceId]);
+    await semearEstadoInteiro(cliente, workspaceId, estado);
+  } finally {
+    cliente.release();
+  }
+
+  return { taskId: criacao.value.id, vencimentoCivil };
+}
+
+d("scheduler-worker (Postgres real) — Canal por agenda (AUTO-02, Task 3)", () => {
+  const WORKSPACE_CANAL_A = `ws_${RUN}_canal_a`;
+  const WORKSPACE_CANAL_B = `ws_${RUN}_canal_b`;
+  const WORKSPACE_CANAL_C = `ws_${RUN}_canal_c`;
+
+  afterAll(async () => {
+    await limparWorkspace(WORKSPACE_CANAL_A);
+    await limparWorkspace(WORKSPACE_CANAL_B);
+    await limparWorkspace(WORKSPACE_CANAL_C);
+    await encerrar();
+  });
+
+  it("(a) rodada normal: uma Automação de Canal por agenda grava uma linha de automacao.notificar-canal.v1", async () => {
+    const hoje = new Date(2026, 7, 31, 12);
+    const { taskId } = await prepararCenarioCanalPorAgenda(WORKSPACE_CANAL_A, hoje, true);
+    const relogio = relogioFixo(hoje);
+    const worker = criarSchedulerWorker({
+      workerId: "w_canal_a",
+      workspaceId: WORKSPACE_CANAL_A,
+      relogio,
+      resolverAtor: async () => CP.financeiroId,
+      // ensaioNaPrimeiraVolta: false — este caso prova a rodada NORMAL; o
+      // Ensaio da primeira volta é o caso (b), a seguir.
+      ensaioNaPrimeiraVolta: false,
+    });
+
+    expect(await worker.semear()).toBeGreaterThan(0);
+    expect(await worker.processarUm()).toBe(true);
+
+    expect(await contarOutboxCanalDaTarefa(WORKSPACE_CANAL_A, taskId)).toBe(1);
+  });
+
+  it("(b) a MESMA rodada em Ensaio da primeira volta: ZERO linhas no outbox — o Ensaio não manda WhatsApp (D3-03)", async () => {
+    const hoje = new Date(2026, 7, 31, 12);
+    const { taskId, vencimentoCivil } = await prepararCenarioCanalPorAgenda(WORKSPACE_CANAL_B, hoje, true);
+    const relogio = relogioFixo(hoje);
+    const worker = criarSchedulerWorker({
+      workerId: "w_canal_b",
+      workspaceId: WORKSPACE_CANAL_B,
+      relogio,
+      resolverAtor: async () => CP.financeiroId,
+      // ensaioNaPrimeiraVolta: true (padrão) — esta é a primeira volta REAL
+      // desta (Espaço, Lista): o gate de Ensaio entra.
+    });
+
+    expect(await worker.semear()).toBeGreaterThan(0);
+    expect(await worker.processarUm()).toBe(true);
+
+    const linha = await lerLinhaDaAgenda(WORKSPACE_CANAL_B, CP.listId, vencimentoCivil);
+    expect(linha.estado).toBe("concluido");
+    expect(linha.last_error_code).toBe(CODIGOS_DA_AGENDA.ENSAIO_PRIMEIRA_VOLTA);
+    expect(linha.executadas).toBeGreaterThan(0); // o cálculo aconteceu — a Automação de Canal rodou de verdade
+
+    // A garantia mais importante deste plano: o Ensaio mede, mas não manda WhatsApp.
+    expect(await contarOutboxCanalDaTarefa(WORKSPACE_CANAL_B, taskId)).toBe(0);
+  });
+
+  it("(c) a Automação de Canal RECUSA (destino vazio): ZERO linhas no outbox", async () => {
+    const hoje = new Date(2026, 7, 31, 12);
+    const { taskId } = await prepararCenarioCanalPorAgenda(WORKSPACE_CANAL_C, hoje, false); // Campo WhatsApp NUNCA preenchido
+    const relogio = relogioFixo(hoje);
+    const worker = criarSchedulerWorker({
+      workerId: "w_canal_c",
+      workspaceId: WORKSPACE_CANAL_C,
+      relogio,
+      resolverAtor: async () => CP.financeiroId,
+      ensaioNaPrimeiraVolta: false, // isola a recusa — o Ensaio já é o caso (b)
+    });
+
+    expect(await worker.semear()).toBeGreaterThan(0);
+    expect(await worker.processarUm()).toBe(true);
+
+    expect(await contarOutboxCanalDaTarefa(WORKSPACE_CANAL_C, taskId)).toBe(0);
+  });
+});
