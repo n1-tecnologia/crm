@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Plan 03-14 Tasks 1-3 completas e commitadas (contrato do dominio ja existia; dialogo e relatorio executavel verificados e commitados nesta sessao, incluindo rodada real contra ws_n1). Task 4 (runbook do corte) documento escrito, execucao PARADA no checkpoint bloqueante de producao e de calendario. Ver 03-14-SUMMARY.md.
-last_updated: "2026-09-23T22:02:26.131Z"
-last_activity: 2026-09-23 -- Phase 04 execution started
+last_updated: "2026-09-24T12:11:36.626Z"
+last_activity: 2026-09-24 -- Phase 05 execution started
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 92
-  completed_plans: 61
-  percent: 50
+  completed_plans: 75
+  percent: 67
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-15)
 
 **Core value:** Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de ponta a ponta sem abrir o ClickUp — dados no Postgres próprio, regras de `@n1/dominio` intactas.
-**Current focus:** Phase 04 — as-outras-telas-do-financeiro-tria
+**Current focus:** Phase 05 — contas-a-receber-e-os-outros-tenants
 
 ## Current Position
 
-Phase: 04 (as-outras-telas-do-financeiro-tria) — EXECUTING
-Plan: 13 of 14 completos. **04-14 (O CORTE) fica ABERTO de propósito** — execução parcial escopada, decidida pelo usuário num checkpoint explícito
-Status: Phase 04 — TODO O CÓDIGO ENTREGUE. As oito telas de `/financeiro` compilam e passam. O CORTE não foi executado e não pode ser: depende de uma semana de uso real, de confirmação do Financeiro, e de acesso a Vercel/Supabase que esta sessão não tem
-Last activity: 2026-09-23 -- Ondas 5 e 6 da Phase 04: Plano de contas/workflows/execuções no `automation/` (04-12); 04-14 preparado sem executar (runbook + migração escritos, NADA aplicado)
+Phase: 05 (contas-a-receber-e-os-outros-tenants) — EXECUTING
+Plan: 1 of 12
+Status: Executing Phase 05
+Last activity: 2026-09-24 -- Phase 05 execution started
 
 **Onda 5 — 04-12** (sibling, `f06da55`/`d4cca79`/`49d71af`): módulo de acesso ao
 `conciliador_contas` e as seis rotas de plano de contas/workflows/execuções, autenticadas pelo
@@ -45,14 +45,17 @@ também é porta de saída de dado; o envelope mínimo é a escolha certa sob D4
 **Onda 6 — 04-14 O CORTE: PREPARADO, NÃO EXECUTADO.** O usuário foi apresentado ao que o plano faz
 e escolheu "preparar só, parar antes do irreversível". Dos SETE `files_modified` do plano, dois
 foram criados e cinco ficaram byte-idênticos (verificado com `git diff --stat`):
+
 - CRIADO `docs/08-migracao-financeiro/06-runbook-corte-painel-financeiro.md` (278 linhas, `8b1d414`)
   — arquivo NOVO, não confundir com `06-runbook-de-corte.md` do Plano 03-14, que é outro corte e
   ficou intocado. Traz o inventário completo das 11 policies lido das migrations, as duas consultas
   de RLS prontas para colar no Supabase Studio com bloco EM BRANCO para o resultado (nada inventado),
   e as provas de `grep` de que ninguém mais chama cada rota legada.
+
 - CRIADO `../financeiro-tria/supabase/migrations/20261001120000_remove_anon_read_painel.sql`
   (101 linhas, `3860ed4`) — **NUNCA APLICADO**, com banner `NOT YET APPLIED` no topo. Idempotente,
   tolerante a tabela ausente, e trata AMBOS os nomes de policy.
+
 - INTOCADOS: `automation/src/http/{routes,plano-contas-routes,workflow-routes}.ts`,
   `automation/src/server.ts`, `src/contexts/AuthContext.tsx` (este último tem diff, mas é
   pré-existente — mtime de 13/mai/2026, um dos 89 sujos originais; a sessão não escreveu nele).
@@ -64,21 +67,26 @@ mesmo. E `transacoes` e `produtos_cadastrados_emissao_notas` não aparecem em NE
 estado de RLS delas é desconhecido e `grep` não responde, só a consulta no Studio.
 
 **O que falta para o corte, com dono (nenhum item é de código):**
+
 1. Uma semana de uso real das oito telas — dono: Financeiro. Tempo de calendário, não tarefa.
 2. Confirmação nominal de quem opera — dono: dono do produto.
 3. Rodar as duas consultas de RLS no Supabase Studio e colar o resultado no runbook — dono: dono do
    produto (só ele tem acesso).
+
 4. Pausar (NUNCA deletar) `financeiro-tria.vercel.app` por 30 dias, domínio respondendo — dono:
    dono do produto.
+
 5. Só depois: remover as rotas legadas e o `AuthContext`, e aplicar a migração — o PONTO DE NÃO
    RETORNO. Até ele, o rollback é despausar o Vercel.
 
 **MEDIÇÃO FINAL DA FASE — a suíte inteira de `apps/api`, a única que faltava, rodada sem pipe, sem
 watchdog e com carga normal (20,2 min):**
+
 ```
 Test Files  1 failed | 58 passed (59)
 Tests       1 failed | 529 passed | 12 skipped (542)     exit 1
 ```
+
 A única falha é `src/e2e/lote-contas-a-pagar.test.ts > (d) o piso e o teto do lock (DEC-06)`,
 estourando o `testTimeout` em 180014ms. **Não é da Fase 4**: é medição de tempo de PAG-05/DEC-06,
 escrita na Fase 3, e 04-01 já a viu estourar na ONDA 1, antes de qualquer código desta fase entrar
@@ -151,17 +159,22 @@ seu último typecheck (era a correção do "token fantasma"), e não re-verifico
 `next build` falhavam; corrigido em `1d69a90` com constante nomeada, ambos verdes.
 
 Resto do portão, tudo verde e com três perguntas respondidas de propósito:
+
 - `@n1/web` **157/157 em 10,6s** com carga baixa → as 14 falhas que 04-08 relatou eram
   artefato de carga (load 141-244 com quatro agentes), não defeito. Item 6 do `deferred-items.md`.
+
 - `rotas/financeiro.test.ts` **25/25** no checkout principal (era 14 passed / 11 skipped no
   worktree) → o caso (l) de sanitização de nome de arquivo, que 04-10 não pôde exercitar, passa.
+
 - `operacoes.test.ts` **22/22 em 196s** → o raio de alcance da mudança no `app.ts` está limpo.
 - `next build` verde: seis das oito rotas `/financeiro` emitidas (faltam `plano-contas` e
   `extratos`, que são 04-13, Onda 4). typecheck nos três workspaces, lint, tokens 392/245.
 
 **Duas pendências abertas registradas em `deferred-items.md` (itens 4 e 5), nenhuma bloqueia a Onda 4:**
+
 1. `timingSafeEqual` está no código mas NENHUM teste o protege — 04-07 provou por mutação que
    trocar por `===` deixa os 11 casos verdes. Correção honesta é teste estrutural, não de relógio.
+
 2. O filtro "Plataforma" de Notas fiscais que o UI-SPEC pede NÃO é construível: o `NotaFiscalDto`
    não projeta esse campo. Fechar exige ACRESCENTAR `plataforma` à allowlist positiva de D4-05 —
    decisão humana de exposição de dado, não detalhe de implementação.
@@ -189,17 +202,21 @@ D4-15 (`estado-de-falha`, `botao-atualizar`, `moldura-de-leitura`) e o Dashboard
 
 **Portão de pós-merge da Onda 2 — verde, e com duas lacunas de worktree FECHADAS de propósito
 no checkout principal:**
+
 - `rotas/financeiro.test.ts` rodou **9/9 em 128s** no checkout principal (com `.env`), contra
   4 passed / 5 skipped dentro do worktree. Os cinco casos de banco foram de verdade contra o
   Postgres real — verificação que worktree nenhum consegue dar.
+
 - `npm run build -w @n1/web` (Next.js 16) rodou pela primeira vez sobre as páginas novas:
   exit 0, zero avisos, `/financeiro` aparece como rota dinâmica. As outras sete rotas só
   ganham arquivo de página nas ondas 3 e 4; 04-03 declarou só as FORMAS em `rotas.ts`.
+
 - typecheck nos três workspaces, lint, tokens (392/224 arquivos), 480 de domínio, 157 de web.
 
 **Onda 1 — o que entrou.** 04-01 (no repositório irmão `../financeiro-tria`, commits `3f5303c`/`6477baa`/`a45fd87`): `fixture-financeiro.ts` com os campos proibidos de propósito e `leituras-plataforma-dtos.ts` com allowlist POSITIVA por DTO (D4-05), provada por nome de campo e com mutação de controle. 04-02 (`cbaa8ab`): `cliente-leituras-financeiro.ts` + 19 testes sem rede e sem banco, e `FINANCEIRO_LEITURAS_URL`/`PLATAFORMA_LEITURA_TOKEN` documentados no `.env.example` (D4-01/D4-02, token de leitura deliberadamente distinto do de lançamento). 04-03 (`80ce9c1`): `navegacao-financeiro.ts` como módulo puro + o sexto assunto no trilho e as formas de esqueleto das oito rotas (D4-08/D4-14). Portão de pós-merge verde: typecheck nos três workspaces, lint, tokens (392/215 arquivos), 480 testes de domínio, 149 de web, 19 do cliente novo.
 
 **Três achados operacionais desta onda (não são código da fase, mas custaram agentes).**
+
 1. Seis dos catorze planos escrevem no repositório irmão `../financeiro-tria`, que é OUTRO repositório git. Em `isolation="worktree"` esse caminho relativo não existe — esses planos têm de rodar sem worktree, no checkout principal. Vale para 04-04, 04-07, 04-09, 04-12 e 04-14, que ainda não rodaram.
 2. A suíte de `apps/api` (57 arquivos, `fileParallelism: false`, `testTimeout: 180_000`, Postgres real) leva 40-50 min no checkout principal e estoura o watchdog de 600s do subagente. Três agentes morreram por isso. Planos que tocam `apps/api` (faltam 04-05 e 04-10) precisam de verificação ESCOPADA: typecheck do workspace + só os arquivos de teste do próprio plano, com transporte stubado.
 3. Worktree não carrega `.env` (gitignored), então sem `DATABASE_URL` os testes de banco pulam — e pelo menos um FALHA em falso. Isso gerou um "defeito pré-existente" inventado contra o Plano 03-08 que não existe (`scheduler-worker.test.ts` passa 19/19 no checkout principal). Toda falha relatada por agente em worktree precisa de reprodução no checkout principal antes de virar registro. Ver `deferred-items.md` da fase.
