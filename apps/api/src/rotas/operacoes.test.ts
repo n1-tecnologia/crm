@@ -16,6 +16,10 @@
  * `saveView` — antes só cobertas pelo fallback estrutural — agora têm
  * schema próprio; nada muda no contrato HTTP em si, só a superfície
  * coberta.
+ * (w)–(x) provam a costura de AUTO-02 (05-07, Task 2): a Automação de Canal
+ * publicada em `CP.listId` dispara por evento (`tarefaEntrouEmStatus`, ao
+ * entrar em "para pagar") e grava exatamente um evento de outbox por
+ * Execução — nunca por operação comum sem Automação de Canal envolvida.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -210,6 +214,64 @@ const temBanco = Boolean(process.env.DATABASE_URL);
 const d = temBanco ? describe : describe.skip;
 const WS = "ws_rotas_teste";
 
+/** A Automação de Canal do caso (w)/(x): publicada em `CP.listId`, gatilho por evento — ao ENTRAR em "para pagar". */
+const AUTOMACAO_CANAL_ID = "aut_canal_operacoes_teste";
+
+async function inserirAutomacaoDeCanal(workspaceId: string): Promise<void> {
+  const dados = {
+    id: AUTOMACAO_CANAL_ID,
+    lifecycle: "ativo",
+    scopeType: "list",
+    scopeId: CP.listId,
+    name: "Canal de teste (05-07, Task 2)",
+    description: "",
+    ownerMemberId: CP.financeiroId,
+    reactsToAutomationEvents: false,
+    versions: [
+      {
+        number: 1,
+        state: "publicada",
+        trigger: { kind: "evento", eventType: "tarefaEntrouEmStatus", eventSubtype: "para pagar" },
+        conditions: [],
+        actions: [
+          {
+            order: 1,
+            kind: "controle",
+            controlKind: "notificar",
+            params: JSON.stringify({ canal: "whatsapp", canalCampoDestinoId: CP.fields.whatsapp, canalMensagemId: "gasto-novo" }),
+          },
+        ],
+        errorPolicy: { onActionFailure: "interromper", retries: 0 },
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+    ],
+  };
+  const cliente = await pool().connect();
+  try {
+    await cliente.query(
+      `insert into plataforma.registros (workspace_id, colecao, id, dados) values ($1, 'automations', $2, $3::jsonb)`,
+      [workspaceId, AUTOMACAO_CANAL_ID, JSON.stringify(dados)],
+    );
+  } finally {
+    cliente.release();
+  }
+}
+
+/** Quantas linhas de `automacao.notificar-canal.v1` o payload aponta para `taskId` — a leitura que sobrevive a duas rodadas com aggregate_id distintos. */
+async function contarOutboxCanalDaTarefa(taskId: string): Promise<number> {
+  const cliente = await pool().connect();
+  try {
+    const r = await cliente.query<{ n: string }>(
+      `select count(*)::text as n from plataforma.integration_outbox
+        where workspace_id = $1 and event_type = 'automacao.notificar-canal.v1' and payload->>'taskId' = $2`,
+      [WS, taskId],
+    );
+    return Number(r.rows[0]?.n ?? "0");
+  } finally {
+    cliente.release();
+  }
+}
+
 d("POST /operacoes/:nome — contra o banco real", () => {
   const tarefaDeContasAPagar = semente.tasks.find(
     (t) => t.listId === CP.listId && t.statusId === CP.status.paraPagar,
@@ -225,6 +287,7 @@ d("POST /operacoes/:nome — contra o banco real", () => {
     } finally {
       cliente.release();
     }
+    await inserirAutomacaoDeCanal(WS);
   });
 
   afterAll(async () => {
@@ -460,5 +523,84 @@ d("POST /operacoes/:nome — contra o banco real", () => {
     });
     expect(respostaLegitima.statusCode).toBe(200);
     expect(respostaLegitima.json().ok).toBe(true);
+  });
+
+  it("(w) cria, preenche o WhatsApp e entra em 'para pagar' com a Automação de Canal publicada: grava 1 linha por rodada — duas rodadas não colidem", async () => {
+    const app = appDeTeste();
+
+    async function rodarFluxoDeCanal(titulo: string): Promise<string> {
+      // 1) Nasce em "em lançamento omie" — a Automação de Canal reage a ENTRAR em
+      // "para pagar", nunca a `tarefaCriada`, então este passo não a dispara.
+      const criacao = await app.inject({
+        method: "POST",
+        url: "/operacoes/createTask",
+        headers: { authorization: "Bearer token-maryane" },
+        payload: { args: [{ listId: CP.listId, title: titulo, statusId: CP.status.emLancamento }] },
+      });
+      expect(criacao.statusCode).toBe(200);
+      const taskId: string = criacao.json().value.id;
+
+      // 2) Preenche o Campo ANTES da Automação rodar — `setTaskFieldValue` não
+      // dispara nenhum gatilho por si.
+      const campo = await app.inject({
+        method: "POST",
+        url: "/operacoes/setTaskFieldValue",
+        headers: { authorization: "Bearer token-maryane" },
+        payload: { args: [taskId, CP.fields.whatsapp, "whatsapp-do-fornecedor-teste"] },
+      });
+      expect(campo.statusCode).toBe(200);
+      expect(campo.json().ok).toBe(true);
+
+      // 3) Entrar em "para pagar" dispara `tarefaEntrouEmStatus` — a Automação de
+      // Canal roda dentro da MESMA transação e o evento nasce no mesmo commit.
+      const mudanca = await app.inject({
+        method: "POST",
+        url: "/operacoes/changeTaskStatus",
+        headers: { authorization: "Bearer token-maryane" },
+        payload: { args: [taskId, CP.status.paraPagar] },
+      });
+      expect(mudanca.statusCode).toBe(200);
+      expect(mudanca.json().ok).toBe(true);
+      return taskId;
+    }
+
+    const primeiraTarefa = await rodarFluxoDeCanal("Conta de teste — Canal (05-07 w, 1ª rodada)");
+    expect(await contarOutboxCanalDaTarefa(primeiraTarefa)).toBe(1);
+
+    // Segunda rodada, TAREFA DIFERENTE: outra Execução, outro `executionId`, outro
+    // `aggregate_id` — nenhum conflito no índice único parcial da migração 003.
+    const segundaTarefa = await rodarFluxoDeCanal("Conta de teste — Canal (05-07 w, 2ª rodada)");
+    expect(await contarOutboxCanalDaTarefa(segundaTarefa)).toBe(1);
+    expect(segundaTarefa).not.toBe(primeiraTarefa);
+
+    const cliente = await pool().connect();
+    try {
+      const execucoes = await cliente.query<{ objectid: string }>(
+        `select r.dados->>'objectId' as objectid
+           from plataforma.registros r
+          where r.workspace_id = $1 and r.colecao = 'automationExecutions'
+            and r.dados->>'automationId' = $2 and r.dados->>'objectId' in ($3, $4)`,
+        [WS, AUTOMACAO_CANAL_ID, primeiraTarefa, segundaTarefa],
+      );
+      expect(execucoes.rowCount).toBe(2); // uma Execução por rodada, cada uma com o seu id
+    } finally {
+      cliente.release();
+    }
+  });
+
+  it("(x) uma operação comum, sem a Automação de Canal envolvida, não grava evento de Canal nenhum", async () => {
+    const resposta = await appDeTeste().inject({
+      method: "POST",
+      url: "/operacoes/createTask",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: { args: [{ listId: CP.listId, title: "Conta de teste — sem Canal (05-07 x)" }] },
+    });
+    expect(resposta.statusCode).toBe(200);
+    const taskId: string = resposta.json().value.id;
+
+    // Criação sem `statusId`: nasce em "para pagar" (o status inicial da Lista) —
+    // não é uma ENTRADA por `changeTaskStatus`, então `tarefaEntrouEmStatus` nunca
+    // dispara e a Automação de Canal nunca roda para esta Tarefa.
+    expect(await contarOutboxCanalDaTarefa(taskId)).toBe(0);
   });
 });

@@ -27,11 +27,12 @@
  */
 
 import type { ZodTypeProvider } from "@fastify/type-provider-zod";
-import type { DataState, Id, OperationResult } from "@n1/dominio";
+import type { AutomationExecution, DataState, Id, OperationResult } from "@n1/dominio";
 import { ehNomeDeOperacao, OPERACOES, reviverArgumentos, type NomeDeOperacao } from "@n1/dominio/operations/registro";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { MembroDaSessao } from "../plugins/autenticacao";
+import { eventosDeNotificacaoPorCanal, execucoesNovas } from "../persistencia/eventos-de-canal";
 import { executar, type ResultadoTransacao } from "../persistencia/unidade-de-trabalho";
 import { convidarMembro } from "../servicos/convidar-membro";
 import { esquemaDeArgumentos } from "./esquemas-de-argumentos";
@@ -168,19 +169,37 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
 
       let resultado: ResultadoTransacao<unknown>;
       try {
+        // AUTO-02/D5-09 — capturada por fechamento a cada tentativa de
+        // `executar()` (nunca fora dela): uma repetição por conflito de
+        // revisão recomeça do `hidratar`, e esta variável precisa recomeçar
+        // junto, ou um retry acumularia as Execuções da tentativa anterior
+        // que já foi desfeita.
+        let execucoesDaOperacao: readonly AutomationExecution[] = [];
         resultado = servico
           ? await servico(request.membro, args)
-          : await executar(request.membro.workspaceId, (state) => {
-              // WR-11 — `args` já tem exatamente a forma da assinatura
-              // (schema próprio, `satisfies EsquemasCompletos`); um erro
-              // aqui dentro (inclusive `TypeError`) só pode ser estado
-              // hidratado inconsistente ou bug do domínio, nunca entrada —
-              // sobe sem mapeamento, `executar()` já faz rollback antes de
-              // relançar, e o `setErrorHandler` de `app.ts` devolve 500 com
-              // log `error`, de propósito, para não ficar escondido atrás
-              // de um 400 ao cliente.
-              return REGISTRO[nome]!(state, request.membro.id, ...args);
-            });
+          : await executar(
+              request.membro.workspaceId,
+              (state) => {
+                // WR-11 — `args` já tem exatamente a forma da assinatura
+                // (schema próprio, `satisfies EsquemasCompletos`); um erro
+                // aqui dentro (inclusive `TypeError`) só pode ser estado
+                // hidratado inconsistente ou bug do domínio, nunca entrada —
+                // sobe sem mapeamento, `executar()` já faz rollback antes de
+                // relançar, e o `setErrorHandler` de `app.ts` devolve 500 com
+                // log `error`, de propósito, para não ficar escondido atrás
+                // de um 400 ao cliente.
+                const idsAntes = new Set(state.automationExecutions.map((e) => e.id));
+                const resultadoDaOperacao = REGISTRO[nome]!(state, request.membro.id, ...args);
+                // D-18/T-02-16 — a derivação é do RESULTADO da operação (as
+                // Execuções que ela produziu ao rodar Automações por
+                // gatilho de evento dentro de `REGISTRO[nome]`), NUNCA do
+                // `diferenca`: um diff não distingue importação, replay e
+                // criação operacional.
+                execucoesDaOperacao = execucoesNovas(state, idsAntes);
+                return resultadoDaOperacao;
+              },
+              { eventos: (_valor, state) => eventosDeNotificacaoPorCanal(state, execucoesDaOperacao) },
+            );
       } catch (erro) {
         if (erro instanceof ErroDeEntrada) {
           return reply.code(400).send({ ok: false, error: erro.message });
