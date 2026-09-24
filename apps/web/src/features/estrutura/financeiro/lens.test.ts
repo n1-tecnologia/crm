@@ -6,14 +6,18 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "@n1/dominio/seed";
-import { CP, changeTaskStatus, statusOptionRefusal } from "@n1/dominio/operations";
+import { CP, CR, changeTaskStatus, statusOptionRefusal } from "@n1/dominio/operations";
 import type { DataState } from "@n1/dominio/state";
 import type { Task } from "@n1/dominio/types";
 import {
   applyFinanceFilters,
   FILTROS_INICIAIS,
   financeGroupOf,
+  financeProfileOf,
+  opcoesDeEmpresa,
+  PAGAR_PROFILE,
   pagoEm,
+  RECEBER_PROFILE,
 } from "./lens";
 
 let state: DataState;
@@ -104,6 +108,23 @@ describe("applyFinanceFilters", () => {
     expect(applyFinanceFilters(state, [t], { ...FILTROS_INICIAIS, periodo: "mes" }, now)).toHaveLength(1);
     t.dueDate = { form: "civilDay", value: "2026-10-01" };
     expect(applyFinanceFilters(state, [t], { ...FILTROS_INICIAIS, periodo: "mes" }, now)).toHaveLength(0);
+  });
+});
+
+describe("financeProfileOf", () => {
+  it("CR.listId aponta para RECEBER_PROFILE e CP.listId para PAGAR_PROFILE — Contas a receber usa o MESMO componente de Contas a pagar, nunca uma tela paralela (D5-04)", () => {
+    expect(financeProfileOf(CR.listId)).toBe(RECEBER_PROFILE);
+    expect(financeProfileOf(CP.listId)).toBe(PAGAR_PROFILE);
+  });
+});
+
+describe("opcoesDeEmpresa", () => {
+  it("lê as opções do Campo Empresa dinamicamente — uma opção nova aparece sem mudar código; falha se a leitura virar lista literal", () => {
+    const definicao = state.fieldDefinitions.find((d) => d.id === CP.fields.empresa);
+    if (!definicao) throw new Error("sem definição de Empresa no seed");
+    const indice = state.fieldDefinitions.indexOf(definicao);
+    state.fieldDefinitions[indice] = { ...definicao, options: [...(definicao.options ?? []), "Empresa de Teste"] };
+    expect(opcoesDeEmpresa(state)).toContain("Empresa de Teste");
   });
 });
 
