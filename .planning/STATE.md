@@ -4,8 +4,8 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: "Plan 05-01 completo (Tasks 1-3): Integration cresce, evolver por Empresa e CLI dry-run existem e passam; ver 05-01-SUMMARY.md"
-last_updated: "2026-09-24T17:50:53.130Z"
-last_activity: "2026-09-24 -- Onda 1 do fechamento de lacunas da Phase 05: 05-13 (Canal na Solicitação, aggregateId por passo, barreira do histórico), 05-14 (D5-06 fail-closed), 05-15 (receipts retentáveis e recusa visível MP/FO, sibling f245337/986f7e7/8049586), 05-16 (Data de pagamento em dia civil SP, MARCO_ZERO só com --apply). Portão: typecheck/lint/tokens, dominio 536, web 169, api escopado (DB 2x), next build verdes; integracao-solicitacoes teve 1 timeout por latência (150s) e passou 19/19 em duas re-execuções de 30s"
+last_updated: "2026-09-24T18:59:03.009Z"
+last_activity: "2026-09-24 -- Onda 2 do fechamento de lacunas da Phase 05: 05-17 (evento de Canal derivado em executar(), CR-05) e 05-18 (rota de Canal do automation/ na Solicitação, só Marcos Paulo, receipts retentáveis; sibling 20ac4e2/5f9241b) completos. 05-19 (916ea59, e147d65) e 05-20 (6353dab) com código commitado e checkpoint AUTORIZADO pelo dono, mas o --apply de cada um foi recusado pelo classificador de permissão do Claude Code: outbox:limpar-testes --apply (9 linhas de teste) e empresas:configurar --apply em ws_n1 NÃO rodaram; aguardam execução manual do dono. Portão da Onda 2 verde: typecheck/lint/tokens, dominio 541, web 169, api escopado (DB 2x) e next build"
 progress:
   total_phases: 6
   completed_phases: 4
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 Phase: 05 (contas-a-receber-e-os-outros-tenants) — EXECUTING
 Plan: 1 of 25
 Status: Executing Phase 05
-Last activity: 2026-09-24 -- Onda 1 do fechamento de lacunas da Phase 05: 05-13 (Canal na Solicitação, aggregateId por passo, barreira do histórico), 05-14 (D5-06 fail-closed), 05-15 (receipts retentáveis e recusa visível MP/FO, sibling f245337/986f7e7/8049586), 05-16 (Data de pagamento em dia civil SP, MARCO_ZERO só com --apply). Portão: typecheck/lint/tokens, dominio 536, web 169, api escopado (DB 2x), next build verdes; integracao-solicitacoes teve 1 timeout por latência (150s) e passou 19/19 em duas re-execuções de 30s
+Last activity: 2026-09-24 -- Onda 2 do fechamento de lacunas da Phase 05: 05-17 (evento de Canal derivado em executar(), CR-05) e 05-18 (rota de Canal do automation/ na Solicitação, só Marcos Paulo, receipts retentáveis; sibling 20ac4e2/5f9241b) completos. 05-19 (916ea59, e147d65) e 05-20 (6353dab) com código commitado e checkpoint AUTORIZADO pelo dono, mas o --apply de cada um foi recusado pelo classificador de permissão do Claude Code: outbox:limpar-testes --apply (9 linhas de teste) e empresas:configurar --apply em ws_n1 NÃO rodaram; aguardam execução manual do dono. Portão da Onda 2 verde: typecheck/lint/tokens, dominio 541, web 169, api escopado (DB 2x) e next build
 
 **Onda 5 — 04-12** (sibling, `f06da55`/`d4cca79`/`49d71af`): módulo de acesso ao
 `conciliador_contas` e as seis rotas de plano de contas/workflows/execuções, autenticadas pelo

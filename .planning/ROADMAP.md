@@ -352,8 +352,8 @@ Plans:
 
 **Gap wave 2** *(blocked on gap wave 1)*
 
-- [ ] 05-17-PLAN.md — O evento de Canal nasce na Unidade de Trabalho; importação trava por construção (CR-05) (AUTO-02)
-- [ ] 05-18-PLAN.md — `automation/`: rota de Canal alinhada à Solicitação, gate de Empresa, retentativa e log sem número (CR-02, WR-02, CR-03, WR-03) (AUTO-02)
+- [x] 05-17-PLAN.md — O evento de Canal nasce na Unidade de Trabalho; importação trava por construção (CR-05) (AUTO-02)
+- [x] 05-18-PLAN.md — `automation/`: rota de Canal alinhada à Solicitação, gate de Empresa, retentativa e log sem número (CR-02, WR-02, CR-03, WR-03) (AUTO-02)
 - [ ] 05-19-PLAN.md — Testes não vazam para o outbox real e as órfãs saem, sob checkpoint (CR-07) (AUTO-02)
 - [ ] 05-20-PLAN.md — Configuração por Empresa aplicada em `ws_n1`, com “Marcos Paulo” nos dois Campos Empresa e conferência de `avisosPorCanal`/`statusDeclarados` (Critério 1, WR-05) (TEN-01)
 
@@ -399,7 +399,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 23/28 | In Progress|  |
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
-| 5. Contas a receber e os outros tenants | 16/25 | In Progress|  |
+| 5. Contas a receber e os outros tenants | 18/25 | In Progress|  |
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*
