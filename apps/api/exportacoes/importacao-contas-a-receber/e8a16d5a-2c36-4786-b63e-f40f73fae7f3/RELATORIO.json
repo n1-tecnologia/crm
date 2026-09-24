@@ -1,0 +1,19 @@
+{
+  "runId": "e8a16d5a-2c36-4786-b63e-f40f73fae7f3",
+  "modo": "apply",
+  "lidas": 240,
+  "importadas": 2,
+  "rejeitadas": 0,
+  "avisadas": 238,
+  "puladas": 0,
+  "lacunasPorCategoria": {
+    "data-de-pagamento-por-date-closed": 16,
+    "cliente-nao-encontrado": 205,
+    "total-de-parcelas-ausente": 192,
+    "parcela-duplicada": 4,
+    "subtarefa-desamarrada": 1,
+    "tipo-inferido": 2,
+    "saque-sem-valor": 4
+  },
+  "rejeicoesPorCategoria": {}
+}
