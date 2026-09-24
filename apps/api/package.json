@@ -19,6 +19,7 @@
     "credencial": "vite-node src/servicos/credencial.cli.ts",
     "automacoes:liberar": "vite-node src/automacoes/liberar.cli.ts",
     "contas-a-pagar:importar": "vite-node src/importacao/clickup/importar-contas-a-pagar.cli.ts",
+    "contas-a-receber:importar": "vite-node src/importacao/clickup/importar-contas-a-receber.cli.ts",
     "ensaio:relatorio": "vite-node src/relatorios/ensaio-do-agente.cli.ts"
   },
   "dependencies": {
