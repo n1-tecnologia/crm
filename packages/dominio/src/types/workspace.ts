@@ -191,6 +191,24 @@ export interface Integration {
   readonly createdAt: Instant;
   /** Derived catalogue: identifiers of the tools it exposes. */
   readonly exposedTools: readonly string[];
+  /** D5-03 — o rótulo EXATO da opção do Campo `Empresa` que esta Integração serve. */
+  readonly empresa?: string;
+  /**
+   * D5-03 — identidade da conta Omie, nunca o segredo: a plataforma nunca
+   * chama o Omie (03-07/03-11 — quem chama é o `automation/`), e um segredo
+   * que ela não usa é um segredo que ela não deve guardar. `app_key`/
+   * `app_secret` continuam só no ambiente do `automation/`, resolvidos lá
+   * pelo `contaRotulo`.
+   */
+  readonly omie?: {
+    readonly contaRotulo: string;
+    readonly bancoDeCategorias?: string;
+    readonly ultimaRotacaoEm?: Instant;
+  };
+  /** D5-10 — rótulos estáveis de destinatário (`mari`, `marcos`, ...), nunca número de telefone. */
+  readonly avisosPorCanal?: { readonly whatsapp?: readonly string[] };
+  /** D5-06 — nomes de Status do Conjunto da Lista de Solicitações que esta Empresa usa. */
+  readonly statusDeclarados?: readonly string[];
 }
 
 export interface Workspace {
