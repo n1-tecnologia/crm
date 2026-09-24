@@ -6,16 +6,20 @@
  * de Execução (`--cor-exe-*`), nunca `tom="acento"` — severidade/execução é
  * vocabulário semântico, não decoração.
  *
- * T-4-24: o botão "Executar agora" existe (`executavelManualmente` já chega
- * do catálogo), mas fica sempre desabilitado nesta fase — a rota que dispara
- * a execução ainda não existe (entra em 04-13). Um botão que parece
- * funcionar e não dispara nada é pior que um botão desligado que diz por
- * quê (regra §11 do sistema).
+ * T-4-24 fecha aqui: o botão "Executar agora" (só quando
+ * `executavelManualmente`) chama `executarWorkflow(key)` atrás do
+ * `ConfirmDialog` cuja cópia ficou reservada no SUMMARY do plano anterior —
+ * nunca um diálogo morto atrás de um botão que nunca abria. A corrida é
+ * assíncrona (o `apps/api` responde 202): o resultado é o `Toast` neutro com
+ * "Atualizar agora", nunca um relatório fingindo saber o desfecho na hora.
  */
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { type Column, RecordList } from "@/features/shell/record-list";
-import { Button, Painel, Pilula, Section } from "@/features/shell/ui";
+import { Button, ConfirmDialog, Painel, Pilula, Section, Toast } from "@/features/shell/ui";
 import { useFormat } from "@/features/shell/use-format";
+import { executarWorkflow } from "../dados/acoes";
 import type { ExecucaoDeWorkflow, WorkflowDoCatalogo } from "../dados/workflows";
 
 /**
@@ -55,6 +59,23 @@ export function PainelDeWorkflows({
   readonly historico: ReadonlyArray<ExecucaoDeWorkflow>;
 }) {
   const fmt = useFormat();
+  const router = useRouter();
+  const [executando, setExecutando] = useState<WorkflowDoCatalogo | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  const [toast, setToast] = useState<{ readonly tone: "neutral" | "error"; readonly texto: string } | null>(null);
+
+  async function confirmarExecucao(): Promise<void> {
+    if (!executando) return;
+    setEnviando(true);
+    const resultado = await executarWorkflow(executando.key);
+    setEnviando(false);
+    setExecutando(null);
+    if (resultado.ok) {
+      setToast({ tone: "neutral", texto: "Execução iniciada. Isto pode levar alguns instantes." });
+    } else {
+      setToast({ tone: "error", texto: resultado.erro });
+    }
+  }
 
   const columns: ReadonlyArray<Column<ExecucaoDeWorkflow>> = [
     { key: "workflow", label: "Workflow", render: (item) => item.workflowNome },
@@ -69,6 +90,24 @@ export function PainelDeWorkflows({
 
   return (
     <div>
+      {toast ? (
+        <Toast
+          tone={toast.tone}
+          onDismiss={() => setToast(null)}
+          {...(toast.tone === "neutral"
+            ? {
+                acao: (
+                  <Button variant="ghost" size="sm" onClick={() => router.refresh()}>
+                    Atualizar agora
+                  </Button>
+                ),
+              }
+            : {})}
+        >
+          {toast.texto}
+        </Toast>
+      ) : null}
+
       <Section title="Catálogo">
         <div className="pilha-solta">
           {catalogo.map((workflow) => {
@@ -89,7 +128,7 @@ export function PainelDeWorkflows({
                 </div>
                 {workflow.executavelManualmente ? (
                   <div className="mt-3">
-                    <Button variant="primary" size="sm" disabled disabledReason="A execução manual entra no plano 04-13.">
+                    <Button variant="primary" size="sm" onClick={() => setExecutando(workflow)}>
                       Executar agora
                     </Button>
                   </div>
@@ -108,6 +147,17 @@ export function PainelDeWorkflows({
           emptyHint="Execuções aparecem aqui quando a agenda roda ou alguém executa manualmente."
         />
       </Section>
+
+      <ConfirmDialog
+        open={executando !== null}
+        title={`Executar ${executando?.nome ?? ""} agora`}
+        description="Roda a mesma rotina que executa sozinha na agenda. Não interrompe nem duplica uma execução já em andamento."
+        confirmLabel="Executar"
+        destructive={false}
+        {...(enviando ? { confirmDisabledReason: "Executando…" } : {})}
+        onConfirm={() => void confirmarExecucao()}
+        onCancel={() => setExecutando(null)}
+      />
     </div>
   );
 }
