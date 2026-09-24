@@ -14,8 +14,13 @@
  * segue fora de escopo, e é o único que ainda cai em "Controle não
  * suportado". Nenhuma Ação aqui nomeia Lista, Status, Campo ou Membro do
  * Financeiro: o alvo vem sempre de `params` e dos campos tipados de
- * `AutomationAction` — as únicas referências ao Financeiro no arquivo são as
- * do Agente de lançamento e do `{{cnpjEmpresa}}` do template, que já existiam.
+ * `AutomationAction` — as referências ao Financeiro no arquivo são as do
+ * Agente de lançamento, do `{{cnpjEmpresa}}` do template (as duas já
+ * existiam), e, desde D5-19 (2026-09-24), o alvo do Canal (`CANAL_LISTA_ID`/
+ * `CANAL_CAMPO_EMPRESA_ID`/`CANAL_CAMPO_WHATSAPP_ID`): decisão do dono do
+ * produto de que a Lista-alvo de AUTO-02 é "Solicitações de pagamento", não
+ * uma Lista genérica — `destinoDeCanal` nomeia essa Lista e esses dois Campos
+ * de propósito, derivados do catálogo real da Solicitação.
  *
  * Achado registrado em prosa, sem mudar tipo nenhum: `ApprovalOrigin`
  * (`types/ai.ts`) tem dois ramos — `agentExecution` e `processTask` — e
@@ -36,6 +41,11 @@ import { contactDisplayName } from "../derive";
 import { addTaskComment, assignTask, changeTaskStatus, setTaskFieldValue, unassignTask, watchTask } from "./tasks";
 // Sem ciclo: `operations/ai.ts` importa `./tasks` e `../derive`, nunca `./automations`.
 import { solicitarAprovacao as solicitarAprovacaoDeProcesso } from "./ai";
+// Sem ciclo (D5-19): `./financeiro.ts` não importa nem `../solicitacao-de-pagamento` nem
+// `../solicitacao-de-pagamento-evolver`, e nenhum dos dois importa `./automations` — confirmado
+// por `npm run typecheck -w @n1/dominio` antes do commit desta Task.
+import { LISTA_ID as SOLICITACAO_LISTA_ID } from "../solicitacao-de-pagamento-evolver";
+import { CATALOGO_SOLICITACAO_DE_PAGAMENTO } from "../solicitacao-de-pagamento";
 
 /**
  * O ÚNICO relógio do módulo. Sem argumento é o instante real — o que um
@@ -286,6 +296,31 @@ function esperaCumprida(task: Task, spec: ActionSpec, action: AutomationAction, 
 }
 
 /**
+ * O alvo do Canal (D5-19, 2026-09-24, fechamento de lacunas de CR-02): a
+ * Lista-alvo de AUTO-02 é "Solicitações de pagamento", nunca Contas a pagar
+ * — o `automation/` só consegue ler Solicitações pelo contrato v1
+ * (`apps/api/src/servicos/dto-solicitacao.ts`), e nenhuma combinação antiga
+ * entregava uma mensagem. Derivadas do catálogo real (nunca literais soltos)
+ * para que uma mudança no catálogo sem espelhar aqui quebre em
+ * typecheck/import, não em produção — `campoDoCatalogo` também confere que o
+ * id aponta para o Campo do rótulo esperado, não só que ele existe.
+ */
+export const CANAL_LISTA_ID: Id = SOLICITACAO_LISTA_ID;
+
+function campoDoCatalogo(id: Id, rotuloEsperado: string): Id {
+  const campo = CATALOGO_SOLICITACAO_DE_PAGAMENTO.campos.find((c) => c.id === id);
+  if (!campo || campo.rotulo !== rotuloEsperado) {
+    throw new Error(`Catálogo da Solicitação sem o Campo "${rotuloEsperado}" (${id}) — CANAL_* de automations.ts desalinhado do catálogo real.`);
+  }
+  return campo.id;
+}
+
+/** `fld_sp_c_empresa` — a Empresa da Solicitação (nunca mais o Campo homônimo de Contas a pagar). */
+export const CANAL_CAMPO_EMPRESA_ID: Id = campoDoCatalogo("fld_sp_c_empresa", "Empresa");
+/** `fld_sp_z_whatsapp` — "Contato do solicitante" (D5-19): o único Campo aceito no modo `campo`. */
+export const CANAL_CAMPO_WHATSAPP_ID: Id = campoDoCatalogo("fld_sp_z_whatsapp", "WhatsApp");
+
+/**
  * O destino resolvido de uma notificação por Canal — nunca um número de
  * telefone (D5-03/D5-10): no modo `campo`, o que fica é o VALOR do Campo que
  * o Financeiro preencheu (o domínio só o lê para mascarar); no modo
@@ -302,6 +337,13 @@ type DestinoDeCanal =
  * PURA — nenhuma leitura de relógio, nenhum I/O. Em NENHUM caminho devolve
  * um destino padrão: destino vazio é sempre recusa (D5-10), nunca um
  * número/rótulo inventado.
+ *
+ * Ordem (D5-19): XOR dos dois modos → só Lista de Solicitações → Empresa
+ * (lida de `fld_sp_c_empresa`) → Integração da Empresa com canal declarado
+ * (vale para os DOIS modos — o par, no domínio, de `EMPRESA_SEM_CANAL` do
+ * `automation/`, WR-02/plano 05-18: a instância Evolution é a do Marcos
+ * Paulo, só Empresa com canal declarado pode ser notificada) → só então o
+ * modo escolhido resolve o próprio destino.
  */
 function destinoDeCanal(state: DataState, task: Task, spec: ActionSpec): DestinoDeCanal | { readonly recusa: string } {
   const porCampo = spec.canalCampoDestinoId !== undefined;
@@ -309,17 +351,10 @@ function destinoDeCanal(state: DataState, task: Task, spec: ActionSpec): Destino
   if (porCampo === porEmpresa) {
     return { recusa: "“notificar” por Canal sem destino declarado: escolha canalCampoDestinoId ou canalDestinatariosDaEmpresa, nunca os dois." };
   }
-  if (porCampo) {
-    const campoDestinoId = spec.canalCampoDestinoId as Id;
-    const valor = fieldValueOf(task, campoDestinoId);
-    const texto = typeof valor === "string" ? valor.trim() : "";
-    if (!texto) {
-      const nome = state.fieldDefinitions.find((d) => d.id === campoDestinoId)?.name ?? campoDestinoId;
-      return { recusa: `“notificar” por WhatsApp recusado: Campo “${nome}” vazio — nada foi enviado.` };
-    }
-    return { tipo: "campo", campoDestinoId, valor: texto };
+  if (task.listId !== CANAL_LISTA_ID) {
+    return { recusa: "“notificar” por WhatsApp recusado: o Canal só notifica Solicitações de pagamento — nada foi enviado." };
   }
-  const empresaValor = fieldValueOf(task, CP.fields.empresa);
+  const empresaValor = fieldValueOf(task, CANAL_CAMPO_EMPRESA_ID);
   const empresa = typeof empresaValor === "string" ? empresaValor.trim() : "";
   if (!empresa) {
     return { recusa: "“notificar” por WhatsApp recusado: a Tarefa não tem Empresa — nada foi enviado." };
@@ -328,11 +363,24 @@ function destinoDeCanal(state: DataState, task: Task, spec: ActionSpec): Destino
   if (!integracao) {
     return { recusa: `“notificar” por WhatsApp recusado: a Empresa “${empresa}” não tem Integração configurada — nada foi enviado.` };
   }
-  const rotulos = integracao.avisosPorCanal?.whatsapp;
-  if (!rotulos || rotulos.length === 0) {
+  const rotulosDaEmpresa = integracao.avisosPorCanal?.whatsapp;
+  if (!rotulosDaEmpresa || rotulosDaEmpresa.length === 0) {
     return { recusa: `“notificar” por WhatsApp recusado: a Empresa “${empresa}” não declara destinatário de WhatsApp — nada foi enviado.` };
   }
-  return { tipo: "rotulos", rotulos };
+  if (porCampo) {
+    const campoDestinoId = spec.canalCampoDestinoId as Id;
+    if (campoDestinoId !== CANAL_CAMPO_WHATSAPP_ID) {
+      return { recusa: "“notificar” por WhatsApp recusado: o destino por Campo é o WhatsApp do solicitante — nada foi enviado." };
+    }
+    const valor = fieldValueOf(task, campoDestinoId);
+    const texto = typeof valor === "string" ? valor.trim() : "";
+    if (!texto) {
+      const nome = state.fieldDefinitions.find((d) => d.id === campoDestinoId)?.name ?? campoDestinoId;
+      return { recusa: `“notificar” por WhatsApp recusado: Campo “${nome}” vazio — nada foi enviado.` };
+    }
+    return { tipo: "campo", campoDestinoId, valor: texto };
+  }
+  return { tipo: "rotulos", rotulos: rotulosDaEmpresa };
 }
 
 /** Os quatro últimos caracteres, com `••••` fixo — nunca o valor por inteiro (T-5-18). */
@@ -655,6 +703,32 @@ export function runListAutomations(state: DataState, event: ListEvent): Automati
 /**
  * Gatilhos por proximidade do vencimento — o relógio do protótipo é a
  * chamada explícita com "hoje". Cada par (Automação, Tarefa) dispara uma vez.
+ *
+ * WR-11 — barreira do histórico importado. `MARCO_ZERO` (o instante que a
+ * agenda usa para decidir A PARTIR DE QUE DIA semear `automacao_agenda`)
+ * limita quais DIAS a agenda alcança, não quais TAREFAS o motor processa:
+ * sem regra própria aqui, a primeira volta real depois de
+ * `automacoes:liberar` trataria as ~240 contas importadas por
+ * `importarContaAReceberHistorica` como se tivessem acabado de vencer — R2
+ * moveria histórico "para receber" já resolvido para "pendente" (e R2b
+ * marcaria Situação "em cobrança" atrás dele), e R4/R5 comentariam cobrança
+ * sobre parcelas fechadas em 2025. A barreira: uma Tarefa com
+ * `provenance.kind === "import"` nunca dispara um gatilho temporal cujo
+ * `disparo` (vencimento + offset) seja anterior ao início do dia civil em
+ * que ela foi importada (`provenance.at`) — estrita, então um disparo NO
+ * PRÓPRIO dia da importação ainda executa.
+ *
+ * Por que `provenance.at` e não "passar o `MARCO_ZERO` para esta função":
+ * as duas regras coincidem para as importações reais (as três importações —
+ * Contas a pagar, Contas a receber, Solicitações — gravam `provenance.at`
+ * com o instante real da importação, e `MARCO_ZERO` de
+ * `(ws_n1, lst_contas_a_receber)` é o mesmo dia). Mas esta função tem TRÊS
+ * chamadores — a agenda (`scheduler-worker.ts`), a operação
+ * `POST /operacoes/runScheduledAutomations` e o botão da tela
+ * (`bulk-status-bar.tsx`/`contas-view.tsx`) — e só o primeiro conhece
+ * `automacao_agenda`. Uma regra por proveniência (dado da própria Tarefa) é
+ * pura, não muda a assinatura desta função, e fecha os três caminhos de uma
+ * vez só.
  */
 export function runScheduledAutomations(
   state: DataState,
@@ -685,6 +759,18 @@ export function runScheduledAutomations(
       const [y, m, d] = task.dueDate.value.slice(0, 10).split("-").map(Number);
       const disparo = new Date(y ?? 1970, (m ?? 1) - 1, (d ?? 1) + spec.dueDateOffsetDays).getTime();
       if (hoje < disparo) continue;
+      // WR-11 — barreira do histórico importado (ver o doc-comment da
+      // função): o disparo é estritamente ANTERIOR ao início do dia civil
+      // da importação, nunca "anterior ou igual" — no próprio dia da
+      // importação, o gatilho ainda executa normalmente.
+      if (task.provenance?.kind === "import") {
+        const importado = new Date(task.provenance.at);
+        const inicioDoDiaDaImportacao = new Date(importado.getFullYear(), importado.getMonth(), importado.getDate()).getTime();
+        if (disparo < inicioDoDiaDaImportacao) {
+          skipped += 1;
+          continue;
+        }
+      }
       // Concluída: nunca repete. Falhou ou ficou pendente: reavalia só em
       // outro dia — senão cada clique em "rodar" gera outro Comentário de
       // "falta X", ou empilha uma segunda espera que ainda não venceu.
@@ -726,6 +812,15 @@ export interface PedidoDeNotificacaoPorCanal {
   readonly taskId: Id;
   readonly automationId: Id;
   readonly executionId: Id;
+  /**
+   * WR-04 — a posição deste passo em `execucao.steps` (o mesmo `step.index`
+   * que `execute()` grava). Uma Execução com dois passos de Canal produz dois
+   * pedidos com o MESMO `executionId` e `indicePasso` 0/1 — é só o que
+   * alimenta `aggregateId = <executionId>:<indicePasso>` no `apps/api`
+   * (05-13 Task 2); nada disso atravessa o payload de
+   * `automacao.notificar-canal.v1`, que não muda.
+   */
+  readonly indicePasso: number;
   readonly canal: "whatsapp";
   readonly destinoTipo: "campo" | "rotulos";
   readonly campoDestinoId?: Id;
@@ -757,6 +852,7 @@ export function pedidosDeNotificacaoPorCanal(state: DataState, execucoes: readon
         taskId: task.id,
         automationId: execucao.automationId,
         executionId: execucao.id,
+        indicePasso: step.index,
         canal: "whatsapp",
         destinoTipo: destino.tipo,
         ...(destino.tipo === "campo" ? { campoDestinoId: destino.campoDestinoId } : { rotulos: destino.rotulos }),

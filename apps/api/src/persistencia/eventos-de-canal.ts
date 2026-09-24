@@ -13,12 +13,20 @@
  *
  * `eventosDeNotificacaoPorCanal` chama `pedidosDeNotificacaoPorCanal` do
  * domínio sobre essas Execuções novas e traduz cada pedido pobre num
- * `EventoDeSaida` do tipo `automacao.notificar-canal.v1`. `aggregateId` é o
- * `executionId` — nunca o `taskId` — porque é essa a escolha que faz o
- * índice único parcial da migração `003` virar a barreira de duplicidade:
- * uma Execução gera no máximo um evento de Canal, mesmo que a mesma Tarefa
- * dispare a Automação várias vezes (cada disparo é uma Execução nova, com o
- * seu próprio `id`).
+ * `EventoDeSaida` do tipo `automacao.notificar-canal.v1`.
+ *
+ * `aggregateId` (WR-04, 05-13 Task 2) é `<executionId>:<indicePasso>` —
+ * NUNCA só o `executionId`. Verdade corrigida: hoje NENHUM índice único do
+ * banco cobre `automacao.notificar-canal.v1` — o índice parcial da migração
+ * `004-outbox-indice-unico-por-workspace.sql` tem
+ * `where event_type = 'solicitacao.criada.v1'`, e o comentário anterior
+ * deste arquivo, que atribuía essa barreira à migração `003`, estava errado
+ * (o índice de duplicidade do evento de Canal nasce só na migração `006`,
+ * plano 05-21). O índice DO PASSO no `aggregateId` existe para que uma
+ * Execução com dois passos de Canal produza dois eventos distintos — nunca
+ * colidam entre si — quando esse índice único chegar: sem o índice do
+ * passo, `<executionId>` sozinho colidiria consigo mesmo no segundo passo da
+ * MESMA Execução.
  */
 
 import type { AutomationExecution, DataState } from "@n1/dominio";
@@ -45,9 +53,11 @@ export function eventosDeNotificacaoPorCanal(
   return pedidosDeNotificacaoPorCanal(state, execucoes).map((pedido) => ({
     type: "automacao.notificar-canal.v1",
     aggregateType: "automationExecution",
-    // aggregateId = executionId (nunca taskId): o índice único parcial da
-    // migração 003 vira "uma Execução gera no máximo um evento de Canal".
-    aggregateId: pedido.executionId,
+    // aggregateId = `${executionId}:${indicePasso}` (WR-04) — nunca só o
+    // executionId: uma Execução com dois passos de Canal precisa de dois
+    // aggregateId distintos para não colidir quando o índice único da
+    // migração 006 (plano 05-21) existir.
+    aggregateId: `${pedido.executionId}:${pedido.indicePasso}`,
     payload: {
       taskId: pedido.taskId,
       automationId: pedido.automationId,

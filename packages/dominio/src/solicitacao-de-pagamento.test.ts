@@ -4,6 +4,12 @@
  * acrescentou "em revisão" à Fase 5), 25 Campos, as opções exatas da spec, e
  * o roteamento do aprovador (RN-SP-03) como configuração — nunca `if` de
  * tela nem `undefined` silencioso (D-07).
+ *
+ * A contagem de "Empresa" é a segunda exceção deliberada à spec original:
+ * D5-19/TEN-01 (2026-09-24, fechamento de lacunas de CR-02) acrescentou
+ * "Marcos Paulo" como 12ª opção, ao final, sem reordenar as 11 da spec — é
+ * o alvo do Canal (`packages/dominio/src/operations/automations.ts`,
+ * `CANAL_CAMPO_EMPRESA_ID`), provado à parte em `automations-canal.test.ts`.
  */
 
 import { describe, expect, it } from "vitest";
@@ -51,11 +57,12 @@ describe("CATALOGO_SOLICITACAO_DE_PAGAMENTO — Campos (§4)", () => {
     expect(forma?.opcoes).toEqual(["Chave Pix", "Boleto", "QRCode Pix", "Cartão"]);
   });
 
-  it("(e) as contagens de opções batem com a spec (A=16, B=13, C=11, D=24, F=2, U=1)", () => {
+  it("(e) as contagens de opções batem com a spec (A=16, B=13, C=12 com D5-19, D=24, F=2, U=1)", () => {
     const contagem = (rotulo: string) => campos.find((c) => c.rotulo === rotulo)?.opcoes?.length;
     expect(contagem("Centro de Custo")).toBe(16);
     expect(contagem("BU")).toBe(13);
-    expect(contagem("Empresa")).toBe(11);
+    // C-Empresa: 11 na spec original + "Marcos Paulo" (D5-19/TEN-01, 12ª opção, ao final).
+    expect(contagem("Empresa")).toBe(12);
     expect(contagem("Categoria de pagamento")).toBe(24);
     expect(contagem("Fornecedor")).toBe(2);
     expect(contagem("Integração manual")).toBe(1);
