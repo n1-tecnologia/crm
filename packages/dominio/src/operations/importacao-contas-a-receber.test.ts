@@ -19,10 +19,12 @@ import type { Contact, Id } from "../types";
 import { CP, CR } from "./financeiro";
 import {
   contaAReceberJaImportada,
+  corrigirDataDePagamentoImportada,
   importarContaAReceberHistorica,
   ORIGEM_CONTAS_A_RECEBER,
   type EntradaDeContaAReceberHistorica,
 } from "./importacao-contas-a-receber";
+import { createTask, setTaskFieldValue } from "./tasks";
 
 const AGORA = "2026-09-24T12:00:00.000Z";
 const OPERADOR: Id = "mem_maryane";
@@ -192,5 +194,79 @@ describe("importarContaAReceberHistorica", () => {
     if (r.ok) throw new Error("unreachable");
     expect(r.field).toBe(CR.fields.dataPagamento);
     expect(s.tasks.length).toBe(tarefasAntes);
+  });
+});
+
+describe("corrigirDataDePagamentoImportada (CR-06, Plan 05-22)", () => {
+  let s: DataState;
+
+  beforeEach(() => {
+    s = buildGestaoBootstrap({ agora: AGORA });
+  });
+
+  function importarComDataDePagamento(dataPagamento = "2025-03-15"): Id {
+    const r = importarContaAReceberHistorica(s, OPERADOR, entradaBase({ dataPagamento }));
+    expect(r.ok, r.ok ? "" : r.error).toBe(true);
+    if (!r.ok) throw new Error("unreachable");
+    return r.value.id;
+  }
+
+  it("1. Campo no valor esperado (dia UTC errado) → corrige, grava Registro com before/after/CR-06, zero Execuções novas", () => {
+    const taskId = importarComDataDePagamento("2025-03-15");
+    const execucoesAntes = s.automationExecutions.length;
+
+    const r = corrigirDataDePagamentoImportada(s, OPERADOR, { taskId, esperadoAtual: "2025-03-15", corrigido: "2025-03-14" });
+    expect(r.ok, r.ok ? "" : r.error).toBe(true);
+    if (!r.ok) throw new Error("unreachable");
+
+    const campo = r.value.fieldValues.find((f) => f.definitionId === CR.fields.dataPagamento);
+    expect(campo?.value).toBe("2025-03-14");
+    expect(s.automationExecutions.length).toBe(execucoesAntes);
+
+    const registro = s.activity.find(
+      (a) => a.objectId === taskId && a.action === "corrigiu a Data de pagamento importada (fuso America/Sao_Paulo)",
+    );
+    expect(registro).toBeDefined();
+    expect(registro?.before).toBe("2025-03-15");
+    expect(registro?.after).toBe("2025-03-14");
+    expect(registro?.detail).toBe("CR-06");
+  });
+
+  it("2. Campo já divergente (alterado à mão) → recusa 'divergente', Campo inalterado", () => {
+    const taskId = importarComDataDePagamento("2025-03-15");
+    const mudou = setTaskFieldValue(s, OPERADOR, taskId, CR.fields.dataPagamento, "2025-03-20");
+    expect(mudou.ok, mudou.ok ? "" : mudou.error).toBe(true);
+
+    const r = corrigirDataDePagamentoImportada(s, OPERADOR, { taskId, esperadoAtual: "2025-03-15", corrigido: "2025-03-14" });
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error("unreachable");
+    expect(r.error).toMatch(/divergente/i);
+
+    const task = s.tasks.find((t) => t.id === taskId);
+    const campo = task?.fieldValues.find((f) => f.definitionId === CR.fields.dataPagamento);
+    expect(campo?.value).toBe("2025-03-20");
+  });
+
+  it("3. Tarefa sem proveniência de importação de Contas a receber → recusa", () => {
+    const criada = createTask(s, OPERADOR, { listId: CR.listId, title: "Não é uma importação", taskTypeId: CP.taskTypeId });
+    expect(criada.ok, criada.ok ? "" : criada.error).toBe(true);
+    if (!criada.ok) throw new Error("unreachable");
+
+    const r = corrigirDataDePagamentoImportada(s, OPERADOR, {
+      taskId: criada.value.id,
+      esperadoAtual: "2025-03-15",
+      corrigido: "2025-03-14",
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  it("4. esperadoAtual === corrigido → recusa (nada a corrigir não é correção)", () => {
+    const taskId = importarComDataDePagamento("2025-03-15");
+    const r = corrigirDataDePagamentoImportada(s, OPERADOR, { taskId, esperadoAtual: "2025-03-15", corrigido: "2025-03-15" });
+    expect(r.ok).toBe(false);
+
+    const task = s.tasks.find((t) => t.id === taskId);
+    const campo = task?.fieldValues.find((f) => f.definitionId === CR.fields.dataPagamento);
+    expect(campo?.value).toBe("2025-03-15");
   });
 });

@@ -347,3 +347,78 @@ export function importarContaAReceberHistorica(
 
   return ok(task);
 }
+
+/**
+ * CR-06, a metade "dados" (Plan 05-22): corrige o Campo "Data de pagamento"
+ * de UMA Conta a receber que `importarContaAReceberHistorica` já criou —
+ * nunca uma Tarefa qualquer, nunca um valor que alguém já mudou à mão.
+ *
+ * A correção não reinterpreta nada: `esperadoAtual`/`corrigido` chegam
+ * PRONTOS do chamador (`apps/api/.../corrigir-data-de-pagamento-cr.ts`, que
+ * usa a MESMA precedência `instanteDaDataDePagamento` + o MESMO fuso
+ * `comoDiaCivil` da importação, 05-16) — esta operação só valida e grava,
+ * com a mesma disciplina de Criar-ou-conferir do resto da fase: se o valor
+ * ativo não for EXATAMENTE `esperadoAtual`, a Tarefa é `divergente` e NADA
+ * é sobrescrito (T-5-73).
+ *
+ * Usa `setTaskFieldValue` (não escreve `fieldValues` direto): os limites,
+ * validações e a Lista continuam valendo para esta correção como para
+ * qualquer outra escrita de Campo (T-02-02). `setTaskFieldValue` nunca roda
+ * Automação — a mesma razão de `importarContaAReceberHistorica` (R2/R3/R4/R5
+ * continuam mudas) — e o Registro transitório que ele grava (atribuído a
+ * `actingMemberId`, ação genérica "Data de pagamento alterado") é
+ * substituído por um Registro explícito com `detail: "CR-06"` (T-5-74),
+ * mesma técnica de `state.activity.splice` usada acima na importação.
+ */
+export interface CorrecaoDeDataDePagamentoImportada {
+  readonly taskId: Id;
+  /** O dia civil que a importação gravou (certo ou errado) — só corrige se o valor ativo for EXATAMENTE este. */
+  readonly esperadoAtual: CivilDate;
+  readonly corrigido: CivilDate;
+}
+
+export function corrigirDataDePagamentoImportada(
+  state: DataState,
+  actingMemberId: Id,
+  entrada: CorrecaoDeDataDePagamentoImportada,
+): OperationResult<Task> {
+  if (entrada.esperadoAtual === entrada.corrigido) {
+    return fail("O valor corrigido é igual ao esperado atual — nada a corrigir.");
+  }
+
+  const task = state.tasks.find((t) => t.id === entrada.taskId);
+  if (!task) return fail(`Tarefa "${entrada.taskId}" não encontrada.`);
+
+  if (task.provenance?.kind !== "import" || task.provenance.sourceName !== ORIGEM_CONTAS_A_RECEBER) {
+    return fail(`Tarefa "${entrada.taskId}" não é uma Conta a receber importada de ${ORIGEM_CONTAS_A_RECEBER}.`);
+  }
+
+  const valorAtual = task.fieldValues.find((v) => v.definitionId === CR.fields.dataPagamento)?.value;
+  if (valorAtual !== entrada.esperadoAtual) {
+    return fail(
+      `Divergente — nada sobrescrito: o Campo "${CR.fields.dataPagamento}" não vale "${entrada.esperadoAtual}".`,
+      CR.fields.dataPagamento,
+    );
+  }
+
+  const antesActivity = state.activity.length;
+  const gravado = setTaskFieldValue(state, actingMemberId, task.id, CR.fields.dataPagamento, entrada.corrigido);
+  if (!gravado.ok) return gravado;
+
+  // Descarta o Registro transitório de `setTaskFieldValue` (genérico,
+  // atribuído ao operador) — o Registro auditável abaixo o substitui.
+  state.activity.splice(0, state.activity.length - antesActivity);
+
+  recordActivity(state, {
+    actor: memberActor(actingMemberId),
+    action: "corrigiu a Data de pagamento importada (fuso America/Sao_Paulo)",
+    objectType: "task",
+    objectId: task.id,
+    objectName: task.title,
+    before: entrada.esperadoAtual,
+    after: entrada.corrigido,
+    detail: "CR-06",
+  });
+
+  return ok(gravado.value);
+}
