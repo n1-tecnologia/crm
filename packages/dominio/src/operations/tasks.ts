@@ -209,6 +209,11 @@ export function changeTaskStatus(
     const faltando = unmetRequirements(state, task, before.exitRequirements ?? []);
     if (faltando.length > 0) return fail(`Para sair de “${before.name}” falta: ${faltando.join(", ")}.`);
   }
+  if (before && before.id !== target.id) {
+    // CR-04 (05-14) — D5-06 aplicada pelo backend, não só pela dica da tela.
+    const naoDeclarado = statusNaoDeclaradoPelaEmpresa(state, task, target);
+    if (naoDeclarado) return fail(naoDeclarado);
+  }
   if (target.entryAllowedMemberIds?.length && !target.entryAllowedMemberIds.includes(actingMemberId)) {
     const nomes = target.entryAllowedMemberIds.map((id) => state.members.find((m) => m.id === id)?.displayName ?? id).join(", ");
     return fail(`Só ${nomes} move uma Tarefa para “${target.name}”.`);
@@ -998,12 +1003,22 @@ const CAMPOS_EMPRESA: readonly Id[] = ["fld_sp_c_empresa", "fd_cp_empresa"];
  * ninguém declara (os quatro de D-01) nunca é bloqueado por esta regra: sem
  * essa guarda, ela bloquearia tudo em qualquer Espaço sem Integração
  * configurada.
+ *
+ * CR-04 (05-14, fechamento de lacunas) — chamada dentro de `changeTaskStatus`,
+ * não só de `statusOptionRefusal` (a dica da tela): o backend aplica a regra
+ * de acesso, não só a tela (CONTEXT.md, regra de arquitetura). `alterarStatusEmLote`
+ * (`./lote.ts`) herda a regra sem código próprio, porque chama `changeTaskStatus`
+ * por item. Fail-closed: Status declarável por alguém + Tarefa sem Empresa é
+ * recusa, não passagem livre — antes desta mudança, uma Tarefa sem Empresa
+ * alcançava qualquer Status restrito.
  */
 function statusNaoDeclaradoPelaEmpresa(state: DataState, task: Task, alvo: StatusDefinition): string | undefined {
   const declaravelPorAlguem = state.integrations.some((i) => i.statusDeclarados?.includes(alvo.name));
   if (!declaravelPorAlguem) return undefined;
   const empresa = task.fieldValues.find((v) => CAMPOS_EMPRESA.includes(v.definitionId) && v.state === "ativo")?.value;
-  if (!empresa) return undefined;
+  if (!empresa) {
+    return `Este Status só vale para a Empresa que o declara — defina a Empresa da Tarefa antes de movê-la para “${alvo.name}”.`;
+  }
   const integracao = state.integrations.find((i) => i.empresa === empresa);
   if (integracao?.statusDeclarados?.includes(alvo.name)) return undefined;
   // O texto fixo "fluxo do Family Office" fica como está porque hoje ele é o
