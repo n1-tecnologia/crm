@@ -308,7 +308,7 @@ Antes de planejar: decidir os 89 arquivos não commitados do frontend do finance
 Plans:
 **Wave 1**
 
-- [ ] 05-01-PLAN.md — Configuração por Empresa no domínio: `Integration` guarda rótulo da conta Omie, nunca segredo; evolver idempotente e CLI (TEN-01)
+- [x] 05-01-PLAN.md — Configuração por Empresa no domínio: `Integration` guarda rótulo da conta Omie, nunca segredo; evolver idempotente e CLI (TEN-01)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -370,7 +370,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 23/28 | In Progress|  |
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
-| 5. Contas a receber e os outros tenants | 0/12 | Planned    |  |
+| 5. Contas a receber e os outros tenants | 1/12 | In Progress|  |
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*

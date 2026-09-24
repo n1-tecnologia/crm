@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Plan 03-14 Tasks 1-3 completas e commitadas (contrato do dominio ja existia; dialogo e relatorio executavel verificados e commitados nesta sessao, incluindo rodada real contra ws_n1). Task 4 (runbook do corte) documento escrito, execucao PARADA no checkpoint bloqueante de producao e de calendario. Ver 03-14-SUMMARY.md.
-last_updated: "2026-09-24T12:11:36.626Z"
+stopped_at: "Plan 05-01 completo (Tasks 1-3): Integration cresce, evolver por Empresa e CLI dry-run existem e passam; ver 05-01-SUMMARY.md"
+last_updated: "2026-09-24T12:27:20.962Z"
 last_activity: 2026-09-24 -- Phase 05 execution started
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 92
-  completed_plans: 75
+  completed_plans: 76
   percent: 67
 ---
 
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 05 (contas-a-receber-e-os-outros-tenants) — EXECUTING
-Plan: 1 of 12
-Status: Executing Phase 05
+Plan: 2 of 12
+Status: Ready to execute
 Last activity: 2026-09-24 -- Phase 05 execution started
 
 **Onda 5 — 04-12** (sibling, `f06da55`/`d4cca79`/`49d71af`): módulo de acesso ao
@@ -284,6 +284,7 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 | Phase 03 P15 | 60min | 2 tasks | 7 files |
 | Phase 03 P13 | 110min | 4 tasks | 7 files |
 | Phase 3 P14 | 120min | 3 tasks | 10 files |
+| Phase 05 P01 | 45min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -343,6 +344,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 03]: Plan 03-15: compartilhadas-comigo.tsx re-keyed em memberSeesTask && !memberReachesContainer (T-3-77) reabre o caminho da Pessoa da conta ate a propria Tarefa que 03-05 sem querer fechou ao apagar as Grants gr_cp_pessoa_*; buscar/page.tsx (useSession + memberSeesTask/memberReachesContainer, T-3-75) e estrutura/tarefas/page.tsx (memberSeesTask em ativas, aba renomeada para 'Todas que eu vejo', T-3-76) param de listar o Espaco inteiro. Task 3 (checkpoint bloqueante de producao) PARADA -- mesma familia de pendencia que 03-07/03-08/03-10/03-11 (sem VPS, sem credenciais reais de Auth, apps/api/.env bloqueado pelo sandbox desta sessao).
 - [Phase 03]: Plan 03-13: BulkStatusBar chama alterarStatusEmLote (03-12) uma vez em vez de um laco de changeTaskStatus (gravarMock chamado 1x para um lote de 61, args=[ids, statusId] sem actingMemberId); RelatorioDeLotePainel (arquivo proprio, sem tasks/useData -- T-3-55 estrutural) renderiza os quatro resultados com parcial em bloco proprio, sem botao de repetir; teto do lote (LIMITE_DO_LOTE) recusado antes do clique; o gatilho de D3-08 entra como botao no card de Aprovacao da Solicitacao (converterSolicitacaoEmContaAPagar). 12+16 testes novos/estendidos verdes em @n1/web (140 no total). Task 4 (checkpoint bloqueante de producao: lote de 61 contra o banco real, login como Financeiro/Aprovador) PARADA -- mesma familia de bloqueio de 03-07/03-08/03-10/03-11/03-15 (sem VPS, sem credenciais reais, apps/api/.env bloqueado pelo sandbox desta sessao).
 - [Phase 3]: Plan 03-14: Tasks 1-3 (contrato do domínio, o diálogo do lançamento humano, o relatório executável ensaio:relatorio) code-complete e verificadas, incluindo rodada real contra ws_n1 de produção (INCONCLUSIVO — zero linhas em automacao_agenda, correto dado que 03-10 Task 4/03-11 Task 3 seguem parados). Task 4 (o runbook de corte, checkpoint bloqueante) tem o documento escrito (06-runbook-de-corte.md) mas NAO executado — os 11 passos exigem importação real, ponte HTTP em produção, uma semana de calendário de Ensaio e uma decisão irreversível (arquivar a Lista 901107637383), nenhuma alcançável neste ambiente. Mesma família de bloqueio de 03-07/03-08/03-10/03-11/03-13/03-15.
+- [Phase 05]: 05-01: config por Empresa modelada na Integration (empresa/omie/avisosPorCanal/statusDeclarados), nunca em Campos da Lista — nenhum campo para app_key/app_secret (D5-03)
+- [Phase 05]: 05-01: em revisão entra como 5º Status (sts_sp_em_revisao, order 4) da Lista de Solicitações — os 4 Status de D-01 mantêm o mesmo order
 
 ### Pending Todos
 
@@ -384,7 +387,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-23T21:48:35.696Z
-Stopped at: Plan 03-14 Tasks 1-3 completas e commitadas (contrato do dominio ja existia; dialogo e relatorio executavel verificados e commitados nesta sessao, incluindo rodada real contra ws_n1). Task 4 (runbook do corte) documento escrito, execucao PARADA no checkpoint bloqueante de producao e de calendario. Ver 03-14-SUMMARY.md.
+Last session: 2026-09-24T12:27:20.954Z
+Stopped at: Plan 05-01 completo (Tasks 1-3): Integration cresce, evolver por Empresa e CLI dry-run existem e passam; ver 05-01-SUMMARY.md
 Resume file: 
 None
