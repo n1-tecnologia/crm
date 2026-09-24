@@ -4,8 +4,8 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: "Plan 05-01 completo (Tasks 1-3): Integration cresce, evolver por Empresa e CLI dry-run existem e passam; ver 05-01-SUMMARY.md"
-last_updated: "2026-09-24T20:27:37.165Z"
-last_activity: "2026-09-24 -- Fechamento de lacunas da Phase 05: 12/13. 05-21 (migração 006 aplicada pelo dono, índice confirmado, integracao.test.ts 7/7 2x), 05-22 (CR-06 não atingiu nenhuma das 240), 05-24 (contrato ponta a ponta), 05-25 (pré-voo: 717/717 barrados por WR-11; R7 e relógio ADIADOS pelo dono — sem processo de scheduler em produção nem Agente do pipeline; achado: 14 Espaços de teste com Automações temporais ativas no banco de produção). Aberto: 05-23 (migração de receipts no Supabase do automation/ e deploy — ação do dono no Supabase Studio)"
+last_updated: "2026-09-24T20:51:57.001Z"
+last_activity: "2026-09-24 -- Phase 05 re-verificada: human_needed. Fechamento de lacunas 12/13 (05-23 aberto, ação do dono no Supabase Studio). Revisão: 0 bloqueadores, CR-01..07 fechados. Critério 1 verdadeiro em produção; 2/3/4 code-complete, dependem do dono (05-23 migração+deploy, corte MP/FO D5-20 sem fase no ROADMAP, relógio/R7 adiados, limpeza de ~14 Espaços de teste antes de ligar o worker). 6 itens em 05-UAT.md"
 progress:
   total_phases: 6
   completed_phases: 4
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 Phase: 05 (contas-a-receber-e-os-outros-tenants) — EXECUTING
 Plan: 1 of 25
 Status: Executing Phase 05
-Last activity: 2026-09-24 -- Fechamento de lacunas da Phase 05: 12/13. 05-21 (migração 006 aplicada pelo dono, índice confirmado, integracao.test.ts 7/7 2x), 05-22 (CR-06 não atingiu nenhuma das 240), 05-24 (contrato ponta a ponta), 05-25 (pré-voo: 717/717 barrados por WR-11; R7 e relógio ADIADOS pelo dono — sem processo de scheduler em produção nem Agente do pipeline; achado: 14 Espaços de teste com Automações temporais ativas no banco de produção). Aberto: 05-23 (migração de receipts no Supabase do automation/ e deploy — ação do dono no Supabase Studio)
+Last activity: 2026-09-24 -- Phase 05 re-verificada: human_needed. Fechamento de lacunas 12/13 (05-23 aberto, ação do dono no Supabase Studio). Revisão: 0 bloqueadores, CR-01..07 fechados. Critério 1 verdadeiro em produção; 2/3/4 code-complete, dependem do dono (05-23 migração+deploy, corte MP/FO D5-20 sem fase no ROADMAP, relógio/R7 adiados, limpeza de ~14 Espaços de teste antes de ligar o worker). 6 itens em 05-UAT.md
 
 **Onda 5 — 04-12** (sibling, `f06da55`/`d4cca79`/`49d71af`): módulo de acesso ao
 `conciliador_contas` e as seis rotas de plano de contas/workflows/execuções, autenticadas pelo
