@@ -328,7 +328,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 05-09-PLAN.md — D7: a conferência somente-leitura de `ws_n1` e a única pergunta ao Financeiro (REC-01)
+- [x] 05-09-PLAN.md — D7: a conferência somente-leitura de `ws_n1` e a única pergunta ao Financeiro (REC-01)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -370,7 +370,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 23/28 | In Progress|  |
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
-| 5. Contas a receber e os outros tenants | 8/12 | In Progress|  |
+| 5. Contas a receber e os outros tenants | 9/12 | In Progress|  |
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*

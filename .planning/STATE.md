@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 05 (contas-a-receber-e-os-outros-tenants) — EXECUTING
-Plan: 7 of 12 (05-01..05-04, 05-06, 05-07, 05-08 completos — Ondas 1 a 4). **05-05 (O CORTE MP/FO) fica ABERTO de propósito** — execução parcial escopada, decidida pelo dono num checkpoint explícito
-Status: Executing — Onda 5 (05-09 conferência somente-leitura de ws_n1 + pergunta D7) a seguir
-Last activity: 2026-09-24 -- Onda 4 da Phase 05: rota POST /webhooks/plataforma/notificar-canal no automation/ (sibling `6abe57d`/`d3216f2`, Evolution stubada nos testes, 187/188 — a falha é o payment-rules pré-existente); 05-05 preparado sem executar (`05-CORTE-MP-FO.md`, 10 webhooks, 48h de silêncio, arquivamento é o ponto sem volta). O dono escolheu "Deixar aberto, seguir fase"
+Plan: 8 of 12 (05-01..05-04, 05-06..05-09 completos — Ondas 1 a 5). **05-05 (O CORTE MP/FO) fica ABERTO de propósito** — execução parcial escopada, decidida pelo dono
+Status: Executing — Onda 6 (05-10: evolver, prazos R4/R5, R7, e o relógio sob checkpoint) a seguir
+Last activity: 2026-09-24 -- Onda 5 da Phase 05: conferência somente-leitura de ws_n1 — ZERO divergências de configuração (Lista, 6 Status, 8 Campos, 6 Automações, 2 Visões), 0 Tarefas em CR.listId. D7: ramo processo pelo default de D5-02, acionado pelo dono; prazo R4/R5 30/60 mantido (resposta do dono, não do Financeiro)
 
 **Onda 5 — 04-12** (sibling, `f06da55`/`d4cca79`/`49d71af`): módulo de acesso ao
 `conciliador_contas` e as seis rotas de plano de contas/workflows/execuções, autenticadas pelo
