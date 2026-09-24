@@ -59,7 +59,7 @@ import {
   type EntradaDeContaAReceberHistorica,
   type TransicaoHistoricaDeStatusCR,
 } from "@n1/dominio/operations/importacao-contas-a-receber";
-import type { FieldValue, Id, Instant, TaskDate } from "@n1/dominio/types/primitives";
+import type { CivilDate, FieldValue, Id, Instant, TaskDate } from "@n1/dominio/types/primitives";
 
 import {
   comoDiaCivil,
@@ -295,6 +295,39 @@ function adicionarLacuna(lacunas: string[], categoria: string): void {
   if (!lacunas.includes(categoria)) lacunas.push(categoria);
 }
 
+/* ─────────────────── Data de pagamento — a precedência de D5-16 (CR-06) ─────────────────── */
+
+/** O que `instanteDaDataDePagamento` resolveu: o instante bruto e de onde ele veio. */
+export interface ResolucaoDeDataDePagamento {
+  readonly instante: Instant;
+  readonly origem: "campo" | "date_closed";
+}
+
+/**
+ * A precedência de D5-16 (Campo "Data de pagamento" sobre `date_closed`),
+ * extraída para uma função exportada — mora AQUI e só aqui, para que a
+ * correção auditada dos dados já importados (05-22) use exatamente a MESMA
+ * regra, em vez de reimplementá-la contra o export cru. `mapearContaAReceber`
+ * chama esta função; nada externo bisbilhota `custom_fields`/`date_closed`
+ * por conta própria.
+ *
+ * O dia civil (CR-06) é resolvido pelo CHAMADOR (`comoDiaCivil` em
+ * `America/Sao_Paulo`, o mesmo formatador do vencimento) — esta função só
+ * devolve o instante bruto e a origem; ela não escolhe fuso.
+ */
+export function instanteDaDataDePagamento(tarefa: TarefaClickUpBruta): ResolucaoDeDataDePagamento | undefined {
+  const campoDataDePagamento = (tarefa.custom_fields ?? []).find(
+    (c): c is CampoBrutoDeClickUp => (c as CampoBrutoDeClickUp).id === ID_CAMPO_DATA_DE_PAGAMENTO && possuiValor(c as CampoBrutoDeClickUp),
+  );
+  if (campoDataDePagamento) {
+    const instante = comoInstanteDeEpoch(campoDataDePagamento.value);
+    if (instante) return { instante, origem: "campo" };
+  }
+  const fechadaEm = comoInstanteDeEpoch(tarefa.date_closed);
+  if (fechadaEm) return { instante: fechadaEm, origem: "date_closed" };
+  return undefined;
+}
+
 /**
  * Classifica UMA Tarefa de Contas a receber. Pura quanto ao disco (não lê
  * nada); depende só do `contexto` já pronto (catálogo de clientes) — ver o
@@ -381,17 +414,16 @@ export function mapearContaAReceber(
     campos[CP.fields.valor] = valorClickUp;
   }
 
-  /* ── Data de pagamento — D5-16: a precedência mora AQUI e só aqui ───── */
-  const campoDataDePagamento = (tarefa.custom_fields ?? []).find(
-    (c): c is CampoBrutoDeClickUp => (c as CampoBrutoDeClickUp).id === ID_CAMPO_DATA_DE_PAGAMENTO && possuiValor(c as CampoBrutoDeClickUp),
-  );
-  let dataPagamento: Instant | undefined;
-  if (campoDataDePagamento) {
-    dataPagamento = comoInstanteDeEpoch(campoDataDePagamento.value);
-  }
-  if (dataPagamento === undefined && fechadaEm !== undefined) {
-    dataPagamento = fechadaEm;
-    adicionarLacuna(lacunas, "data-de-pagamento-por-date-closed");
+  /* ── Data de pagamento — D5-16/CR-06: a precedência mora em `instanteDaDataDePagamento`, o dia civil é resolvido AQUI, em São Paulo ── */
+  const resolucaoDataDePagamento = instanteDaDataDePagamento(tarefa);
+  let dataPagamento: CivilDate | undefined;
+  if (resolucaoDataDePagamento) {
+    // `comoDiaCivil` espera epoch (número/string numérica), não um `Instant`
+    // ISO — `Date.parse` do instante já resolvido devolve o mesmo epoch que
+    // gerou aquele instante (round-trip exato, mesmo formatador de São Paulo
+    // do vencimento). O corte em UTC (`instante.slice(0, 10)`) morreu com CR-06.
+    dataPagamento = comoDiaCivil(Date.parse(resolucaoDataDePagamento.instante));
+    if (resolucaoDataDePagamento.origem === "date_closed") adicionarLacuna(lacunas, "data-de-pagamento-por-date-closed");
   }
 
   /* ── Tags → Campo (D5-17) — nunca viram Tag ──────────────────────────── */

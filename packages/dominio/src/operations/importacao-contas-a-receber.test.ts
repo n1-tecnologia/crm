@@ -177,11 +177,20 @@ describe("importarContaAReceberHistorica", () => {
     expect(s.links.length).toBe(0);
   });
 
-  it("D5-16: dataPagamento (Instant) grava o dia civil no Campo “Data de pagamento”", () => {
-    const r = importarContaAReceberHistorica(s, OPERADOR, entradaBase({ dataPagamento: "2025-03-15T09:12:00.000Z" }));
+  it("D5-16/CR-06: dataPagamento (CivilDate, já resolvido pelo mapeador) grava exatamente o dia recebido no Campo “Data de pagamento”", () => {
+    const r = importarContaAReceberHistorica(s, OPERADOR, entradaBase({ dataPagamento: "2025-03-14" }));
     expect(r.ok, r.ok ? "" : r.error).toBe(true);
     if (!r.ok) throw new Error("unreachable");
     const campo = r.value.fieldValues.find((f) => f.definitionId === CR.fields.dataPagamento);
-    expect(campo?.value).toBe("2025-03-15");
+    expect(campo?.value).toBe("2025-03-14");
+  });
+
+  it("CR-06: dataPagamento fora do formato AAAA-MM-DD desfaz a importação, com a categoria do Campo (nunca grava lixo)", () => {
+    const tarefasAntes = s.tasks.length;
+    const r = importarContaAReceberHistorica(s, OPERADOR, entradaBase({ dataPagamento: "2025-03-15T09:12:00.000Z" }));
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error("unreachable");
+    expect(r.field).toBe(CR.fields.dataPagamento);
+    expect(s.tasks.length).toBe(tarefasAntes);
   });
 });

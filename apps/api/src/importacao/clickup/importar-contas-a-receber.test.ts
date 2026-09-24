@@ -285,7 +285,7 @@ d("importarLote / reconciliar de Contas a receber (Postgres real)", () => {
         workspaceId: WORKSPACE,
         actingMemberId: ATOR,
         runId,
-        entradas: [entrada(legacyTaskId, { statusFinalId: CR.status.recebido, campos: { fd_cp_valor: 1000 }, dataPagamento: "2026-01-01T12:00:00.000Z" })],
+        entradas: [entrada(legacyTaskId, { statusFinalId: CR.status.recebido, campos: { fd_cp_valor: 1000 }, dataPagamento: "2026-01-01" })],
         dryRun: false,
         origem: ORIGEM_DE_TESTE,
       });

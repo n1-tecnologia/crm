@@ -32,14 +32,19 @@
  *    `./financeiro.ts`). Quando `clienteRef` não vier — RN-CR-02 diz que duas
  *    das 240 não têm cliente (Romero Albuquerque) — NADA é inventado: a
  *    lacuna `"sem-cliente"` entra na trilha e a importação segue.
- * 2. **Data de pagamento (D5-16).** A precedência (Campo "Data de pagamento"
- *    do ClickUp sobre `date_closed`) é decisão do MAPEADOR — esta operação só
- *    grava o que recebeu em `entrada.dataPagamento`, sem fallback próprio,
- *    para que a regra more num lugar só. O Campo da plataforma
- *    (`CR.fields.dataPagamento`) é do tipo `date` (dia civil); o valor que
- *    chega aqui é um `Instant` UTC — a operação usa os primeiros 10
- *    caracteres (`AAAA-MM-DD`) como o dia civil, e não faz nenhuma outra
- *    conversão de fuso: o mapeador é quem decide a hora exata do instante.
+ * 2. **Data de pagamento (D5-16/CR-06).** A precedência (Campo "Data de
+ *    pagamento" do ClickUp sobre `date_closed`) é decisão do MAPEADOR — esta
+ *    operação só grava o que recebeu em `entrada.dataPagamento`, sem
+ *    fallback próprio, para que a regra more num lugar só. O Campo da
+ *    plataforma (`CR.fields.dataPagamento`) é do tipo `date` (dia civil); o
+ *    mapeador já entrega o dia civil RESOLVIDO em `America/Sao_Paulo`
+ *    (`instanteDaDataDePagamento` + `comoDiaCivil`, `apps/api/.../contas-a-receber.ts`)
+ *    — esta operação só valida o formato `AAAA-MM-DD` e grava sem cortar.
+ *    Antes desta correção (CR-06), o valor chegava como `Instant` UTC e esta
+ *    operação cortava só os dez primeiros caracteres do texto — um
+ *    fechamento entre 21:00 e 23:59 de Brasília cai no dia seguinte em UTC, e
+ *    o Campo recebia D+1. Cortar em UTC nunca é o dia civil certo para um
+ *    Espaço de Trabalho em São Paulo — por isso o corte não mora mais aqui.
  *
  * NÃO é registrada em `OPERACOES` (`./registro.ts`) — mesmo motivo do
  * precedente: quem importa é o CLI do `apps/api` (Plan 05-11 Task 3), nunca
@@ -52,7 +57,7 @@
 
 import { isTerminalCategory, statusDefinition } from "../derive";
 import { fail, ok, type DataState, type OperationResult } from "../state";
-import type { ActorRef, FieldValue, Id, Instant, Task, TaskDate } from "../types";
+import type { ActorRef, CivilDate, FieldValue, Id, Instant, Task, TaskDate } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
 import { CP, CR } from "./financeiro";
 import { importActor, jaImportada } from "./importacao";
@@ -97,8 +102,13 @@ export interface EntradaDeContaAReceberHistorica {
   readonly lacunas: readonly string[];
   /** D5-12 — o cliente já resolvido contra o CRM (Contato ou Empresa); ausente vira lacuna "sem-cliente", nunca dado inventado. */
   readonly clienteRef?: { readonly tipo: "contact" | "company"; readonly id: Id };
-  /** D5-16 — a precedência (Campo "Data de pagamento" sobre `date_closed`) é decisão do mapeador; ver o cabeçalho do arquivo. */
-  readonly dataPagamento?: Instant;
+  /**
+   * D5-16/CR-06 — a precedência (Campo "Data de pagamento" sobre
+   * `date_closed`) é decisão do mapeador; ver o cabeçalho do arquivo. Já
+   * chega como `CivilDate` (`AAAA-MM-DD`), resolvido em `America/Sao_Paulo`
+   * pelo mapeador — esta operação nunca corta um `Instant`.
+   */
+  readonly dataPagamento?: CivilDate;
 }
 
 /**
@@ -109,10 +119,8 @@ export function contaAReceberJaImportada(state: DataState, legacyTaskId: string)
   return jaImportada(state, ORIGEM_CONTAS_A_RECEBER, legacyTaskId);
 }
 
-/** `AAAA-MM-DD` a partir dos 10 primeiros caracteres de um `Instant` UTC — ver item 2 do cabeçalho. */
-function comoDiaCivilDoInstante(instante: Instant): string {
-  return instante.slice(0, 10);
-}
+/** `AAAA-MM-DD` — ver item 2 do cabeçalho: o dia civil chega resolvido pelo mapeador, nunca cortado aqui. */
+const FORMATO_DE_DIA_CIVIL = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * Importa uma Conta a receber histórica: a Tarefa nasce já no Status final e
@@ -230,9 +238,18 @@ export function importarContaAReceberHistorica(
     if (!r.ok) return desfazer(`Campo "${definitionId}": ${r.error}`, definitionId);
   }
 
-  // D5-16 — grava o que o mapeador decidiu; sem fallback próprio (ver cabeçalho).
+  // D5-16/CR-06 — grava o que o mapeador decidiu; sem fallback próprio (ver
+  // cabeçalho). Fora do formato AAAA-MM-DD é lixo, não um dia civil válido —
+  // desfaz a importação daquela conta em vez de gravar algo que não é uma
+  // data (mesmo caminho de recusa das outras rejeições de Campo).
   if (entrada.dataPagamento !== undefined) {
-    const r = setTaskFieldValue(state, actingMemberId, task.id, CR.fields.dataPagamento, comoDiaCivilDoInstante(entrada.dataPagamento));
+    if (!FORMATO_DE_DIA_CIVIL.test(entrada.dataPagamento)) {
+      return desfazer(
+        `Campo "${CR.fields.dataPagamento}": "${entrada.dataPagamento}" não é um dia civil no formato AAAA-MM-DD.`,
+        CR.fields.dataPagamento,
+      );
+    }
+    const r = setTaskFieldValue(state, actingMemberId, task.id, CR.fields.dataPagamento, entrada.dataPagamento);
     if (!r.ok) return desfazer(`Campo "${CR.fields.dataPagamento}": ${r.error}`, CR.fields.dataPagamento);
   }
 

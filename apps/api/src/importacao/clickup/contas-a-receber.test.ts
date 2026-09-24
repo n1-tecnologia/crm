@@ -21,6 +21,7 @@ import fixture from "./fixtures/contas-a-receber-sanitizadas.json";
 import {
   comoDiaCivil,
   comoInstanteDeEpoch,
+  instanteDaDataDePagamento,
   lerContasAReceberDoExport,
   mapearContaAReceber,
   resolverClienteNoCatalogo,
@@ -59,7 +60,7 @@ describe("mapearContaAReceber", () => {
   it("(a) Data de pagamento pelo Campo tem precedência sobre date_closed — sem a lacuna de fallback; cliente resolvido vira clienteRef", () => {
     const r = classificar("fic_cr_001");
     expect(r.resultado).toBe("valida");
-    expect(r.entrada?.dataPagamento).toBe(comoInstanteDeEpoch("1742288100000"));
+    expect(r.entrada?.dataPagamento).toBe(comoDiaCivil("1742288100000"));
     expect(r.entrada?.lacunas).not.toContain("data-de-pagamento-por-date-closed");
     expect(r.entrada?.clienteRef).toEqual({ tipo: "contact", id: "cnt_teste_um" });
   });
@@ -67,7 +68,7 @@ describe("mapearContaAReceber", () => {
   it("(b) sem Campo Data de pagamento: cai para date_closed e GERA a lacuna de fallback (D5-16)", () => {
     const r = classificar("fic_cr_002");
     expect(r.resultado).toBe("valida");
-    expect(r.entrada?.dataPagamento).toBe(comoInstanteDeEpoch("1709596500000"));
+    expect(r.entrada?.dataPagamento).toBe(comoDiaCivil("1709596500000"));
     expect(r.entrada?.lacunas).toContain("data-de-pagamento-por-date-closed");
   });
 
@@ -152,6 +153,83 @@ describe("mapearContaAReceber", () => {
     expect(r.entrada?.campos[CR.fields.numeroParcela]).toBe(3);
     expect(r.entrada?.lacunas).toContain("total-de-parcelas-ausente");
     expect(Object.keys(r.entrada?.campos ?? {})).not.toContain(CR.fields.totalParcelas);
+  });
+
+  it("CR-06: Campo “Data de pagamento” às 22:30 de Brasília (01:30Z do dia seguinte) grava o dia civil de São Paulo, não o UTC", () => {
+    // `c41d9418-…` é `ID_CAMPO_DATA_DE_PAGAMENTO` (mesmo id literal da
+    // fixture `fic_cr_001`); "1742002200000" = 2025-03-15T01:30:00.000Z =
+    // 2025-03-14T22:30 em America/Sao_Paulo (UTC-3).
+    const tarefa: TarefaClickUpBruta = {
+      id: "fic_cr_cr06_a",
+      name: "Entrada – Fronteira de fuso",
+      status: { status: "recebido" },
+      date_created: "1706918100000",
+      custom_fields: [{ id: "c41d9418-824c-4beb-9264-e5b03e815c9d", type: "date", value: "1742002200000" }],
+    };
+    const historico: HistoricoClickUpBruto = { status_history: [{ status: "recebido", total_time: { since: "1706918100000" } }] };
+    const r = mapearContaAReceber(tarefa, historico, CATALOGO);
+    expect(r.resultado).toBe("valida");
+    expect(r.entrada?.dataPagamento).toBe("2025-03-14");
+    expect(r.entrada?.lacunas).not.toContain("data-de-pagamento-por-date-closed");
+  });
+
+  it("CR-06: date_closed às 02:59:59Z (23:59:59 de Brasília) cai no fallback e grava o dia anterior", () => {
+    const tarefa: TarefaClickUpBruta = {
+      id: "fic_cr_cr06_b",
+      name: "Entrada – Fronteira de fuso (date_closed antes das 03h UTC)",
+      status: { status: "recebido" },
+      date_created: "1706918100000",
+      date_closed: "1742007599000", // 2025-03-15T02:59:59.000Z = 2025-03-14T23:59:59 em São Paulo
+    };
+    const historico: HistoricoClickUpBruto = { status_history: [{ status: "recebido", total_time: { since: "1706918100000" } }] };
+    const r = mapearContaAReceber(tarefa, historico, CATALOGO);
+    expect(r.resultado).toBe("valida");
+    expect(r.entrada?.dataPagamento).toBe("2025-03-14");
+    expect(r.entrada?.lacunas).toContain("data-de-pagamento-por-date-closed");
+  });
+
+  it("CR-06: date_closed às 03:00:00Z (00:00:00 de Brasília) já é o próximo dia civil", () => {
+    const tarefa: TarefaClickUpBruta = {
+      id: "fic_cr_cr06_c",
+      name: "Entrada – Fronteira de fuso (date_closed a partir das 03h UTC)",
+      status: { status: "recebido" },
+      date_created: "1706918100000",
+      date_closed: "1742007600000", // 2025-03-15T03:00:00.000Z = 2025-03-15T00:00:00 em São Paulo
+    };
+    const historico: HistoricoClickUpBruto = { status_history: [{ status: "recebido", total_time: { since: "1706918100000" } }] };
+    const r = mapearContaAReceber(tarefa, historico, CATALOGO);
+    expect(r.resultado).toBe("valida");
+    expect(r.entrada?.dataPagamento).toBe("2025-03-15");
+    expect(r.entrada?.lacunas).toContain("data-de-pagamento-por-date-closed");
+  });
+
+  it("CR-06: Campo e date_closed presentes — o Campo vence (D5-16), sem a lacuna de fallback", () => {
+    const tarefa: TarefaClickUpBruta = {
+      id: "fic_cr_cr06_d",
+      name: "Entrada – Campo e date_closed juntos",
+      status: { status: "recebido" },
+      date_created: "1706918100000",
+      date_closed: "1742007600000",
+      custom_fields: [{ id: "c41d9418-824c-4beb-9264-e5b03e815c9d", type: "date", value: "1742002200000" }],
+    };
+    const historico: HistoricoClickUpBruto = { status_history: [{ status: "recebido", total_time: { since: "1706918100000" } }] };
+    const r = mapearContaAReceber(tarefa, historico, CATALOGO);
+    expect(r.resultado).toBe("valida");
+    expect(r.entrada?.dataPagamento).toBe("2025-03-14");
+    expect(r.entrada?.lacunas).not.toContain("data-de-pagamento-por-date-closed");
+  });
+
+  it("instanteDaDataDePagamento devolve { instante, origem } com a MESMA precedência que mapearContaAReceber usa", () => {
+    const { tarefa: tarefaComCampo } = porId("fic_cr_001");
+    const comCampo = instanteDaDataDePagamento(tarefaComCampo);
+    expect(comCampo).toEqual({ instante: comoInstanteDeEpoch("1742288100000"), origem: "campo" });
+
+    const { tarefa: tarefaSemCampo } = porId("fic_cr_002");
+    const semCampo = instanteDaDataDePagamento(tarefaSemCampo);
+    expect(semCampo).toEqual({ instante: comoInstanteDeEpoch("1709596500000"), origem: "date_closed" });
+
+    const { tarefa: tarefaSemNenhum } = porId("868cpdawp");
+    expect(instanteDaDataDePagamento(tarefaSemNenhum)).toBeUndefined();
   });
 
   it("resolverClienteNoCatalogo compara por nome normalizado (acento/caixa) e devolve undefined sem candidato", () => {
