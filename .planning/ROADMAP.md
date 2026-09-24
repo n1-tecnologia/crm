@@ -323,7 +323,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 05-05-PLAN.md — O corte único de Marcos Paulo e Family Office: inventário, webhooks desligados, Listas arquivadas (TEN-01) — **ABERTO por decisão do dono (2026-09-24):** inventário pronto (`05-CORTE-MP-FO.md`), deploy/webhooks/48h/arquivamento pendentes
+- [x] 05-05-PLAN.md — O corte único de Marcos Paulo e Family Office: inventário, webhooks desligados, Listas arquivadas (TEN-01) — **ABERTO por decisão do dono (2026-09-24):** inventário pronto (`05-CORTE-MP-FO.md`), deploy/webhooks/48h/arquivamento pendentes
 - [x] 05-08-PLAN.md — A rota `notificar-canal` no `automation/`: Bearer, idempotência, Evolution (AUTO-02)
 
 **Wave 5** *(blocked on Wave 4 completion)*
@@ -332,7 +332,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 05-10-PLAN.md — Contas a receber: fechar o que a conferência achou, prazos ajustáveis, ligar o relógio (REC-01) — **ABERTO (Task 4, o relógio):** evolver/prazos/R7 entregues; Ensaio → ler relato → `automacoes:liberar` é o próximo passo de operador, agora que as 240 foram importadas e o MARCO_ZERO gravado
+- [x] 05-10-PLAN.md — Contas a receber: fechar o que a conferência achou, prazos ajustáveis, ligar o relógio (REC-01) — **ABERTO (Task 4, o relógio):** evolver/prazos/R7 entregues; Ensaio → ler relato → `automacoes:liberar` é o próximo passo de operador, agora que as 240 foram importadas e o MARCO_ZERO gravado
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
@@ -345,10 +345,10 @@ Plans:
 
 **Gap wave 1**
 
-- [ ] 05-13-PLAN.md — O Canal fala de Solicitação (D5-19/CR-02, domínio), um evento por passo (WR-04) e a barreira do histórico importado (WR-11) (AUTO-02, REC-01)
-- [ ] 05-14-PLAN.md — D5-06 vira regra de domínio: `changeTaskStatus` recusa “em revisão” fora da Empresa que o declara, fechado por padrão (CR-04) (TEN-01)
-- [ ] 05-15-PLAN.md — `automation/`: MP/FO recusam visivelmente (CR-01 por D5-20), receipts com retentativa num módulo neutro (CR-03) e a migração de receipts NOT YET APPLIED (TEN-01, AUTO-02)
-- [ ] 05-16-PLAN.md — Importação de Contas a receber: Data de pagamento no dia de Brasília (CR-06, código) e `MARCO_ZERO` só com `--apply` e sem rejeição (WR-07); tabela “Deferred to follow-up” (REC-01)
+- [x] 05-13-PLAN.md — O Canal fala de Solicitação (D5-19/CR-02, domínio), um evento por passo (WR-04) e a barreira do histórico importado (WR-11) (AUTO-02, REC-01)
+- [x] 05-14-PLAN.md — D5-06 vira regra de domínio: `changeTaskStatus` recusa “em revisão” fora da Empresa que o declara, fechado por padrão (CR-04) (TEN-01)
+- [x] 05-15-PLAN.md — `automation/`: MP/FO recusam visivelmente (CR-01 por D5-20), receipts com retentativa num módulo neutro (CR-03) e a migração de receipts NOT YET APPLIED (TEN-01, AUTO-02)
+- [x] 05-16-PLAN.md — Importação de Contas a receber: Data de pagamento no dia de Brasília (CR-06, código) e `MARCO_ZERO` só com `--apply` e sem rejeição (WR-07); tabela “Deferred to follow-up” (REC-01)
 
 **Gap wave 2** *(blocked on gap wave 1)*
 
@@ -399,7 +399,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 23/28 | In Progress|  |
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
-| 5. Contas a receber e os outros tenants | 10/25 | In Progress|  |
+| 5. Contas a receber e os outros tenants | 16/25 | In Progress|  |
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*
