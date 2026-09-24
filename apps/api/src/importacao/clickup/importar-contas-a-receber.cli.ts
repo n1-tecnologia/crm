@@ -10,15 +10,18 @@
  *
  * Modos e flags:
  * - sem flag → `--dry-run` (o padrão nunca grava)
- * - `--apply` → importa de verdade e grava `MARCO_ZERO` ao final
+ * - `--apply` → importa de verdade e grava `MARCO_ZERO` ao final, e só se a
+ *   importação terminou sem rejeição (WR-07 — ver `./politica-do-marco-zero.ts`)
  * - `--lote=<n>` (padrão `250`), `--pasta=<dir>` (padrão
  *   `apps/api/exportacoes/clickup/901107648977`), `--resume` (retoma pelo
  *   ledger — reusar o mesmo `--run`), `--run=<uuid>` (para `--resume` e
  *   para `--reconciliar`)
  * - `--reconciliar --run=<uuid>` → só relata, não importa nada
- * - `--so-marco-zero` → grava só a marca (o processo morreu entre o último
- *   lote e ela) — IDEMPOTENTE por `(workspaceId, listId)`: se o Plan 05-10
- *   já a gravou para `CR.listId`, esta chamada não cria uma segunda linha
+ * - `--so-marco-zero` → **exige `--apply` para escrever** (WR-07). Sem
+ *   `--apply`, só CONSULTA se a marca existe e relata — nunca grava. Com
+ *   `--apply`, grava a marca (o processo morreu entre o último lote e ela)
+ *   — IDEMPOTENTE por `(workspaceId, listId)`: se o Plan 05-10 já a gravou
+ *   para `CR.listId`, esta chamada não cria uma segunda linha
  *   (`marcarMarcoZero` devolve `false`, o CLI relata "já existia").
  * - `--sem-verificacao-de-hash` — pula a conferência de `sha256` contra
  *   `MANIFESTO.json`; recusada junto com `--apply` (T-3-27)
@@ -38,6 +41,7 @@ import { CODIGOS_DA_AGENDA } from "../../automacoes/scheduler-worker";
 import { carregarEnv, encerrar, pool } from "../../persistencia/conexao";
 import { importarTudo, reconciliar, relatorioDetalhadoPorLinha, relatorioSanitizado } from "./importar-contas-a-receber";
 import { diaCivilDeHoje, marcarMarcoZero } from "./marco-zero";
+import { decidirMarcoZero } from "./politica-do-marco-zero";
 
 /** Sinaliza saída não-zero sem chamar `process.exit` direto — `encerrar()` sempre roda antes (molde de `liberar.cli.ts`). */
 class SairComCodigo extends Error {
@@ -87,8 +91,24 @@ async function rodar(): Promise<void> {
   }
 
   if (soMarcoZero) {
+    // WR-07 — decisão pura primeiro: sem --apply, o ramo só relata; nunca
+    // grava. `decidirMarcoZero` não sabe SQL, só decide `acao`.
+    const decisao = decidirMarcoZero({ soMarcoZero: true, apply });
     const cliente = await pool().connect();
     try {
+      if (decisao.acao === "relatar") {
+        const existente = await cliente.query(
+          "select 1 from plataforma.automacao_agenda where workspace_id = $1 and list_id = $2 and last_error_code = $3 limit 1",
+          [workspaceId, CR.listId, CODIGOS_DA_AGENDA.MARCO_ZERO],
+        );
+        console.log(
+          (existente.rowCount ?? 0) > 0
+            ? `MARCO_ZERO existe para ${workspaceId}/${CR.listId}.`
+            : "MARCO_ZERO não existe — rode com --apply para gravar.",
+        );
+        return;
+      }
+      // decisao.acao === "gravar" (soMarcoZero + apply é o único caminho aqui)
       const diaCivil = diaCivilDeHoje();
       const gravou = await marcarMarcoZero(cliente, { workspaceId, listId: CR.listId, diaCivil });
       console.log(gravou ? `MARCO_ZERO gravado em ${diaCivil}.` : "MARCO_ZERO já existia — nada a fazer.");
@@ -124,7 +144,18 @@ async function rodar(): Promise<void> {
   const { caminho } = await relatorioDetalhadoPorLinha(pastaDaLista, runId, resultado.detalhesPorLinha);
   console.log(`relatório detalhado por linha (fora do git): ${caminho}`);
 
-  if (!dryRun) {
+  // WR-07 — a decisão pura primeiro, ANTES de qualquer chamada a
+  // `marcarMarcoZero`: `rejeitadas > 0` recusa a marca (a checagem que hoje
+  // corria depois de já ter gravado); dry-run (`!apply`) nunca toca a marca
+  // nem recusa nada — não há o que "terminar pela metade" sem `--apply`.
+  const decisao = decidirMarcoZero({ soMarcoZero: false, apply, rejeitadas: resultado.rejeitadas });
+
+  if (decisao.acao === "recusar") {
+    console.error(`${decisao.motivo} Código de saída 1.`);
+    throw new SairComCodigo(1);
+  }
+
+  if (decisao.acao === "gravar") {
     const cliente = await pool().connect();
     try {
       const diaCivil = diaCivilDeHoje();
@@ -147,11 +178,6 @@ async function rodar(): Promise<void> {
       cliente.release();
     }
     console.log(`Próximo passo, quando o relato estiver aceitável: npm run automacoes:liberar -w @n1/api -- ${workspaceId} ${CR.listId}`);
-  }
-
-  if (resultado.rejeitadas > 0) {
-    console.error(`${resultado.rejeitadas} linha(s) recusada(s) — código de saída 1 (importar pela metade é pior que não importar).`);
-    throw new SairComCodigo(1);
   }
 }
 
