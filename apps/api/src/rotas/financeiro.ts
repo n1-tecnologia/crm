@@ -318,4 +318,101 @@ export async function rotasDeFinanceiro(app: FastifyInstance, opcoes: OpcoesDeFi
       return responder(request, reply, resultado);
     });
   });
+
+  /**
+   * O upload de Extratos (D4-13) — o único lugar desta fase onde o `apps/api`
+   * recebe arquivo binário, e o único que pode recusar ANTES de gastar banda
+   * com a VPS. `enviarArquivo` (04-02) chega até
+   * `/webhook/receber-whatsapp-doc/:origem` do `automation/` — o path
+   * ORIGINAL do n8n, que não morre no corte, é a rota que D4-13 nomeia, e não
+   * uma rota de painel — com a credencial de serviço; o navegador nunca fala
+   * com o `automation/` (D4-01).
+   *
+   * O alarme de D4-13 sobre `MP_RECEBIMENTO_SOURCE` não se materializa no
+   * código atual: `sourceUrl` aparece uma única vez em todo o `automation/`
+   * (a própria declaração em `tenants/marcos-paulo/config.ts`), sem nenhum
+   * consumidor que recuse origem — conferido nesta sessão com
+   * `grep -rn "sourceUrl" ../financeiro-tria/automation/src | wc -l` (== 1).
+   * Se esse número deixar de ser 1, a allowlist voltou a existir e o
+   * `x-source` que este proxy manda precisa ser negociado com quem a criou.
+   */
+
+  // Parser de corpo bruto restrito aos MIME aceitos — NÃO um "*" genérico.
+  // Qualquer outro content-type cai no 415 padrão do Fastify: a primeira
+  // barreira é simplesmente não ter parser registrado para ele (T-4-05).
+  // `application/octet-stream` entra porque navegadores mandam isso para
+  // `.ofx`; é por isso que a segunda barreira (extensão do `x-file-name`)
+  // existe logo abaixo. Registrado DENTRO deste plugin encapsulado
+  // (`app.register(rotasDeFinanceiro)`, sem `fastify-plugin`): vale só para
+  // as rotas deste módulo, nunca vaza para `POST /operacoes/:nome` (T-4-30) —
+  // a suíte de `operacoes` roda verde como prova.
+  const MIME_DE_EXTRATO_ACEITOS = [
+    "application/pdf",
+    "text/csv",
+    "application/csv",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/x-ofx",
+    "application/ofx",
+    "application/octet-stream",
+  ] as const;
+  for (const tipo of MIME_DE_EXTRATO_ACEITOS) {
+    app.addContentTypeParser(tipo, { parseAs: "buffer" }, (_req, corpo, feito) => feito(null, corpo));
+  }
+
+  // As sete origens conhecidas (o banco/cartão) — allowlist literal, nunca
+  // valor livre repassado ao `automation/`.
+  const ORIGENS_DE_EXTRATO = new Set([
+    "nubank",
+    "itau_unibanco",
+    "btg_pactual",
+    "btg_cartao",
+    "nubank_violeta",
+    "personallite_black",
+    "azul_infinity",
+  ]);
+
+  // A extensão REAL que `parseRecebimento` despacha (CSV, XLSX/XLS, OFX, PDF)
+  // — imagem não é suportada do outro lado, então não entra aqui.
+  const EXTENSAO_DE_EXTRATO_ACEITA = /\.(pdf|csv|xlsx|xls|ofx)$/i;
+
+  /** Só o basename, sem `/`, `\` ou `..` — um nome de arquivo é entrada não confiável (T-4-28). */
+  function nomeDeArquivoSaneado(nome: string): string {
+    const semCaminho = nome.split(/[/\\]/).pop() ?? nome;
+    return semCaminho.replaceAll("..", "");
+  }
+
+  app.post("/financeiro/extratos/:origem", { bodyLimit: 25 * 1024 * 1024 }, async (request, reply) => {
+    const { origem } = request.params as { readonly origem: string };
+    if (!ORIGENS_DE_EXTRATO.has(origem)) {
+      reply.code(400);
+      return { error: "Origem de extrato desconhecida." };
+    }
+
+    const cabecalhoDeNome = request.headers["x-file-name"];
+    const nomeOriginal = Array.isArray(cabecalhoDeNome) ? cabecalhoDeNome[0] : cabecalhoDeNome;
+    if (!nomeOriginal || nomeOriginal.length > 200 || !EXTENSAO_DE_EXTRATO_ACEITA.test(nomeOriginal)) {
+      reply.code(400);
+      return { error: "Envie um arquivo .pdf, .csv, .xlsx, .xls ou .ofx." };
+    }
+
+    const conteudo = request.body;
+    if (!Buffer.isBuffer(conteudo) || conteudo.byteLength === 0) {
+      reply.code(400);
+      return { error: "Arquivo vazio." };
+    }
+
+    const cabecalhoDeTipo = request.headers["content-type"];
+    const contentType = (Array.isArray(cabecalhoDeTipo) ? cabecalhoDeTipo[0] : cabecalhoDeTipo) ?? "application/octet-stream";
+
+    return comAlcance(request, reply, async () => {
+      const resultado = await cliente.enviarArquivo<unknown>(`/webhook/receber-whatsapp-doc/${origem}`, {
+        conteudo,
+        contentType,
+        nome: nomeDeArquivoSaneado(nomeOriginal),
+        origem,
+      });
+      return responder(request, reply, resultado);
+    });
+  });
 }
