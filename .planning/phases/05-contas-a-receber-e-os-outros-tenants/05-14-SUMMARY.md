@@ -109,3 +109,13 @@ CR-04 (`05-REVIEW.md`) está fechado: D5-06 agora é regra de domínio aplicada 
 ---
 *Phase: 05-contas-a-receber-e-os-outros-tenants*
 *Completed: 2026-09-24*
+
+## Self-Check: PASSED
+
+- FOUND: packages/dominio/src/operations/tasks.ts
+- FOUND: packages/dominio/src/operations/status-por-empresa.test.ts
+- FOUND: apps/api/src/rotas/integracao-solicitacoes.test.ts
+- FOUND: .planning/phases/05-contas-a-receber-e-os-outros-tenants/05-14-SUMMARY.md
+- FOUND commit: dc99515 (Task 1)
+- FOUND commit: d5de22d (Task 2)
+- FOUND commit: 2e0777d (this SUMMARY.md)
