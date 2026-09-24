@@ -304,7 +304,7 @@ Antes de planejar: decidir os 89 arquivos não commitados do frontend do finance
   3. Contas a receber conforme D7: se o recebimento está no Omie, a Lista da plataforma espelha a Integração em leitura; se não, `createReceivableSeries` cria a série (Entrada + N parcelas) e R2–R7 rodam no motor com os prazos que o Financeiro confirmar (OQ-CR-05); a importação leva Data de pagamento sobre `date_closed` (CON-CR-10).
   4. Uma Automação consegue notificar por Canal (WhatsApp via Evolution API) usando o campo `WhatsApp` da Tarefa — prioridade a confirmar.
 
-**Plans**: 12 plans
+**Plans**: 25 plans (12 originais + 13 de fechamento de lacunas)
 Plans:
 **Wave 1**
 
@@ -341,6 +341,35 @@ Plans:
 
 **Ondas de execução:** 1 → [05-01] · 2 → [05-02, 05-03, 05-06] · 3 → [05-04, 05-07] · 4 → [05-05, 05-08] · 5 → [05-09] · 6 → [05-10] · 7 → [05-11, 05-12]
 
+**Fechamento de lacunas (2026-09-24, `/gsd-plan-phase 5 --gaps`, a partir de `05-VERIFICATION.md` e `05-REVIEW.md`; decisões D5-19..D5-21).** Ondas próprias, numeradas de novo a partir de 1. O corte 05-05 continua bloqueado (D5-20) e não faz parte deste conjunto.
+
+**Gap wave 1**
+
+- [ ] 05-13-PLAN.md — O Canal fala de Solicitação (D5-19/CR-02, domínio), um evento por passo (WR-04) e a barreira do histórico importado (WR-11) (AUTO-02, REC-01)
+- [ ] 05-14-PLAN.md — D5-06 vira regra de domínio: `changeTaskStatus` recusa “em revisão” fora da Empresa que o declara, fechado por padrão (CR-04) (TEN-01)
+- [ ] 05-15-PLAN.md — `automation/`: MP/FO recusam visivelmente (CR-01 por D5-20), receipts com retentativa num módulo neutro (CR-03) e a migração de receipts NOT YET APPLIED (TEN-01, AUTO-02)
+- [ ] 05-16-PLAN.md — Importação de Contas a receber: Data de pagamento no dia de Brasília (CR-06, código) e `MARCO_ZERO` só com `--apply` e sem rejeição (WR-07); tabela “Deferred to follow-up” (REC-01)
+
+**Gap wave 2** *(blocked on gap wave 1)*
+
+- [ ] 05-17-PLAN.md — O evento de Canal nasce na Unidade de Trabalho; importação trava por construção (CR-05) (AUTO-02)
+- [ ] 05-18-PLAN.md — `automation/`: rota de Canal alinhada à Solicitação, gate de Empresa, retentativa e log sem número (CR-02, WR-02, CR-03, WR-03) (AUTO-02)
+- [ ] 05-19-PLAN.md — Testes não vazam para o outbox real e as órfãs saem, sob checkpoint (CR-07) (AUTO-02)
+- [ ] 05-20-PLAN.md — Configuração por Empresa aplicada em `ws_n1`, com “Marcos Paulo” nos dois Campos Empresa e conferência de `avisosPorCanal`/`statusDeclarados` (Critério 1, WR-05) (TEN-01)
+
+**Gap wave 3** *(blocked on gap wave 2)*
+
+- [ ] 05-21-PLAN.md — Índice único de eventos de Canal (migração 006), aplicado sob checkpoint (WR-04) (AUTO-02)
+- [ ] 05-22-PLAN.md — Correção auditada das Datas de pagamento já importadas em `ws_n1` (CR-06, dados) (REC-01)
+- [ ] 05-24-PLAN.md — Contrato ponta a ponta do Canal entre crm-n1 e `automation/` (Critério 4, `missing` do verificador) (AUTO-02)
+
+**Gap wave 4** *(blocked on gap wave 3)*
+
+- [ ] 05-23-PLAN.md — Migração de receipts no Supabase do `automation/` (o dono aplica) e deploy do `automation/` (o dono pode recusar) (TEN-01, AUTO-02)
+- [ ] 05-25-PLAN.md — O relógio de Contas a receber: pré-voo, R7 com o Valor do dono, Ensaio × simulação, liberação (05-10 Task 4) (REC-01)
+
+**Ondas do fechamento de lacunas:** 1 → [05-13, 05-14, 05-15, 05-16] · 2 → [05-17, 05-18, 05-19, 05-20] · 3 → [05-21, 05-22, 05-24] · 4 → [05-23, 05-25]
+
 Antes de planejar: D7/OQ-CR-01 (perguntar ao Financeiro onde o recebimento é controlado hoje) decide o formato de REC-01; CAND-01 (uma Integração por Empresa) e CAND-05 (leituras conservadoras de C34) precisam ser confirmadas ou revistas; OQ-CR-02..06 e OQ-CMP-02 têm dono aqui.
 
 ## Decisões a tomar antes de cada fase
@@ -370,7 +399,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 23/28 | In Progress|  |
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
-| 5. Contas a receber e os outros tenants | 10/12 | In Progress|  |
+| 5. Contas a receber e os outros tenants | 10/25 | In Progress|  |
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*
