@@ -26,9 +26,73 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 04 (as-outras-telas-do-financeiro-tria) — EXECUTING
-Plan: 12 of 14 completos (Ondas 1-4 fechadas; falta 04-12 na Onda 5 e o CORTE 04-14 na Onda 6)
-Status: Executing Phase 04 — Ondas 1-4 completas e merjadas. **AS OITO TELAS DE `/financeiro` COMPILAM** (`next build` verde, 8/8 rotas emitidas)
-Last activity: 2026-09-23 -- Onda 4 da Phase 04 completa: as leituras de Notas fiscais e Produtos no `automation/` (04-09), Plano de contas + Extratos + o botão de Workflows ligado (04-13)
+Plan: 13 of 14 completos. **04-14 (O CORTE) fica ABERTO de propósito** — execução parcial escopada, decidida pelo usuário num checkpoint explícito
+Status: Phase 04 — TODO O CÓDIGO ENTREGUE. As oito telas de `/financeiro` compilam e passam. O CORTE não foi executado e não pode ser: depende de uma semana de uso real, de confirmação do Financeiro, e de acesso a Vercel/Supabase que esta sessão não tem
+Last activity: 2026-09-23 -- Ondas 5 e 6 da Phase 04: Plano de contas/workflows/execuções no `automation/` (04-12); 04-14 preparado sem executar (runbook + migração escritos, NADA aplicado)
+
+**Onda 5 — 04-12** (sibling, `f06da55`/`d4cca79`/`49d71af`): módulo de acesso ao
+`conciliador_contas` e as seis rotas de plano de contas/workflows/execuções, autenticadas pelo
+`exigirCredencial` de 04-07, projetando por `dtoDeLinhaDoPlanoDeContas`. Três mounts de
+`/v1/leituras` agora coexistem em `server.ts` (linhas 55, 61, 66), todos ANTES do `express.json()`
+na 67 — ordem preservada. Rotas legadas com diff vazio. 146/147 na suíte do `automation`.
+
+**Decisão de segurança que 04-12 tomou e o plano não especificava:** `repetir-passo` e `cancelar`
+respondem `{ ok: true }` e nada mais, em vez de repassar o retorno de
+`PaymentAutomationService#retryRun`/`#cancelRun` — que podem carregar a Task inteira do ClickUp e a
+linha inteira de `solicitacoes_pagamentos`, com `app_key`/`app_secret`. Resposta de ação de escrita
+também é porta de saída de dado; o envelope mínimo é a escolha certa sob D4-05.
+
+**Onda 6 — 04-14 O CORTE: PREPARADO, NÃO EXECUTADO.** O usuário foi apresentado ao que o plano faz
+e escolheu "preparar só, parar antes do irreversível". Dos SETE `files_modified` do plano, dois
+foram criados e cinco ficaram byte-idênticos (verificado com `git diff --stat`):
+- CRIADO `docs/08-migracao-financeiro/06-runbook-corte-painel-financeiro.md` (278 linhas, `8b1d414`)
+  — arquivo NOVO, não confundir com `06-runbook-de-corte.md` do Plano 03-14, que é outro corte e
+  ficou intocado. Traz o inventário completo das 11 policies lido das migrations, as duas consultas
+  de RLS prontas para colar no Supabase Studio com bloco EM BRANCO para o resultado (nada inventado),
+  e as provas de `grep` de que ninguém mais chama cada rota legada.
+- CRIADO `../financeiro-tria/supabase/migrations/20261001120000_remove_anon_read_painel.sql`
+  (101 linhas, `3860ed4`) — **NUNCA APLICADO**, com banner `NOT YET APPLIED` no topo. Idempotente,
+  tolerante a tabela ausente, e trata AMBOS os nomes de policy.
+- INTOCADOS: `automation/src/http/{routes,plano-contas-routes,workflow-routes}.ts`,
+  `automation/src/server.ts`, `src/contexts/AuthContext.tsx` (este último tem diff, mas é
+  pré-existente — mtime de 13/mai/2026, um dos 89 sujos originais; a sessão não escreveu nele).
+
+**A armadilha que o runbook existe para evitar:** `conciliador_contas` tem a policy chamada
+`anon read conciliador_contas`, COM ESPAÇOS. Um `drop policy anon_read` literal não a removeria — a
+porta ficaria aberta e o corte pareceria completo. As outras dez policies se chamam `anon_read`
+mesmo. E `transacoes` e `produtos_cadastrados_emissao_notas` não aparecem em NENHUMA migration: o
+estado de RLS delas é desconhecido e `grep` não responde, só a consulta no Studio.
+
+**O que falta para o corte, com dono (nenhum item é de código):**
+1. Uma semana de uso real das oito telas — dono: Financeiro. Tempo de calendário, não tarefa.
+2. Confirmação nominal de quem opera — dono: dono do produto.
+3. Rodar as duas consultas de RLS no Supabase Studio e colar o resultado no runbook — dono: dono do
+   produto (só ele tem acesso).
+4. Pausar (NUNCA deletar) `financeiro-tria.vercel.app` por 30 dias, domínio respondendo — dono:
+   dono do produto.
+5. Só depois: remover as rotas legadas e o `AuthContext`, e aplicar a migração — o PONTO DE NÃO
+   RETORNO. Até ele, o rollback é despausar o Vercel.
+
+**MEDIÇÃO FINAL DA FASE — a suíte inteira de `apps/api`, a única que faltava, rodada sem pipe, sem
+watchdog e com carga normal (20,2 min):**
+```
+Test Files  1 failed | 58 passed (59)
+Tests       1 failed | 529 passed | 12 skipped (542)     exit 1
+```
+A única falha é `src/e2e/lote-contas-a-pagar.test.ts > (d) o piso e o teto do lock (DEC-06)`,
+estourando o `testTimeout` em 180014ms. **Não é da Fase 4**: é medição de tempo de PAG-05/DEC-06,
+escrita na Fase 3, e 04-01 já a viu estourar na ONDA 1, antes de qualquer código desta fase entrar
+no `app.ts`. Resolve o item 3 do `deferred-items.md`: dos dois arquivos relatados, esse é real e
+`rotas/classificacoes.test.ts` era ruído.
+
+**Números finais das outras camadas:** `@n1/web` 167 testes (17 arquivos), `@n1/dominio` 480,
+`automation` 146/147 (a falha é o item 1, pré-existente), `next build` verde com as OITO rotas
+`/financeiro` emitidas, typecheck nos três workspaces + lint + tokens (392/254) verdes.
+
+**Dois itens abertos que pedem decisão humana, nenhum bloqueia nada agora:** o filtro Plataforma
+(exige ALARGAR a allowlist positiva de D4-05 — escolha de exposição de dado, item 5) e o
+`timingSafeEqual` sem teste que o proteja (item 4, correção honesta é teste estrutural, não de
+relógio).
 
 **Onda 4 — o que entrou.** 04-09 (sibling, `cd0ed5a`/`02259dd`/`5f90410`): módulo de consulta com
 TODAS as colunas nomeadas (nenhum `select("*")`), paginação por `.range()` em lotes de 1000 com

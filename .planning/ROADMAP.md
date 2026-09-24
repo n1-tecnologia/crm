@@ -280,12 +280,13 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 04-12-PLAN.md — Onda 5 · `automation/`: Plano de contas sobre `conciliador_contas`, gatilhos de NF e ações de execução (D4-10/D4-10b/D4-12)
+- [x] 04-12-PLAN.md — Onda 5 · `automation/`: Plano de contas sobre `conciliador_contas`, gatilhos de NF e ações de execução (D4-10/D4-10b/D4-12)
 - [x] 04-13-PLAN.md — Onda 5 · `apps/web`: Plano de contas (import CSV com confirmação que afirma a consequência) e Extratos (D4-10/D4-10b/D4-09/D4-13)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
 - [ ] 04-14-PLAN.md — Onda 6 · o corte: runbook, verificação de RLS no Postgres, Vercel pausado e a remoção do `anon_read` por último (D4-16)
+  - **PREPARADO, NÃO EXECUTADO** (2026-09-23, escopo decidido pelo usuário em checkpoint). Runbook e migração `20261001120000` escritos; NADA aplicado, Vercel intocado, rotas legadas e `AuthContext` byte-idênticos. Falta: uma semana de uso real, confirmação do Financeiro, as duas consultas de RLS no Supabase Studio, pausar o Vercel 30 dias — e só então o ponto de não retorno. Ver `04-14-SUMMARY.md` e `docs/08-migracao-financeiro/06-runbook-corte-painel-financeiro.md`.
 
 **UI hint**: yes
 
@@ -368,7 +369,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | 1. O CRM N1 ganha persistência e login | 16/16 | Complete   | 2026-09-17 |
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 23/28 | In Progress|  |
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
-| 4. As outras telas do financeiro-tria | 12/14 | In Progress|  |
+| 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
 | 5. Contas a receber e os outros tenants | 0/12 | Planned    |  |
 
 ---

@@ -11,16 +11,16 @@ aceitá-lo. O veredito está marcado em cada item, e vale ler os rótulos antes 
 |---|---|---|
 | 1 | **CONFIRMADO, aberto** | `payment-rules.test.ts` falha de verdade, pré-existente à fase |
 | 2 | REFUTADO | `scheduler-worker.test.ts` passa 19/19 — era worktree sem `.env` |
-| 3 | INCONCLUSIVO (erro meu) | medição abortada por mim; não é medida |
+| 3 | **PARCIALMENTE CONFIRMADO** | dos dois timeouts relatados, UM é real (`lote-contas-a-pagar`), o outro era ruído |
 | 4 | **CONFIRMADO, aberto** | `timingSafeEqual` sem teste que o proteja |
 | 5 | DECISÃO HUMANA | filtro Plataforma exige alargar a allowlist de D4-05 |
 | 6 | RESOLVIDO | 14 falhas de 04-08 eram carga (load 141-244) |
 | 7 | RESOLVIDO | colisão de porta em `servidor-falso.test.ts`, não reproduz |
 | 8 | RESOLVIDO | queda de conexão no portão da Onda 4; 25/25 na re-execução |
 
-**Só os itens 1 e 4 são defeitos reais e pendentes.** O 5 é decisão, não defeito. Os itens 2,
-6, 7 e 8 são ruído de ambiente — metade dos achados relatados. Dois dos relatos originais
-acusavam planos ANTIGOS de bugs que não existem.
+**Os itens 1, 3 e 4 são defeitos reais e pendentes** — todos os três pré-existentes à Fase 4,
+nenhum introduzido por ela. O 5 é decisão, não defeito. Os itens 2, 6, 7 e 8 são ruído de
+ambiente. Dois dos relatos originais acusavam planos ANTIGOS de bugs que não existem.
 
 Isso é deliberado: relatório de agente não é achado até ser reproduzido fora do worktree, e
 vermelho de teste de banco nesta base precisa de segunda execução antes de virar achado.
@@ -76,27 +76,45 @@ aceita sem reprodução no checkout principal. Custa um comando.
 
 ---
 
-## 3. Dois timeouts em testes de banco do `apps/api` — INCONCLUSIVO, medição inválida
+## 3. Dois timeouts em testes de banco do `apps/api` — MEDIDO: um é real, o outro era ruído
 
 **Relatado por:** Plano 04-01, como diligência (não exigido pelos critérios de aceite das
 suas três tasks): `e2e/lote-contas-a-pagar.test.ts` e `rotas/classificacoes.test.ts`
 estourando o `testTimeout` de 180s.
 
-**Por que é inconclusivo, e a culpa é do orquestrador:** aquele `npm run check` foi
-**abortado por mim** no meio, para liberar o agente de um portão que não provava nada sobre
-este plano (todos os arquivos do 04-01 vivem no repositório irmão; ele não tocou nenhum
-arquivo do `crm-n1`). O comando rodava como `npm run check 2>&1 | tail -120`; ao matar a
-cadeia do `npm`, o `tail` fechou e devolveu **exit 0**, então o agente leu um verde falso e
-tirou conclusões de uma execução truncada.
+**Por que o relato original não valia nada, e a culpa é do orquestrador:** aquele
+`npm run check` foi **abortado por mim** no meio, para liberar o agente de um portão que não
+provava nada sobre o plano dele (todos os arquivos do 04-01 vivem no repositório irmão). O
+comando rodava como `npm run check 2>&1 | tail -120`; ao matar a cadeia do `npm`, o `tail`
+fechou e devolveu **exit 0**, então o agente leu um verde falso e tirou conclusões de uma
+execução truncada. Ficou como INCONCLUSIVO até haver medição de verdade — que veio no fim da
+fase e está abaixo.
 
-Os dois timeouts podem ser reais — o `vitest.config.mts` do `apps/api` fala com o Postgres
-da plataforma de verdade, e uma sondagem separada do orquestrador viu um arquivo de 4 testes
-levar 55s. Mas nada aqui foi medido até o fim. **Trate como não medido, não como achado.**
+**MEDIDO NO FIM DA FASE (2026-09-23), suíte inteira, sem pipe, sem watchdog, carga normal:**
 
-**Para medir de verdade:** rodar `npm run test -w @n1/api` no checkout principal, sem pipe
-que engula o código de saída, fora de qualquer watchdog de agente — a suíte inteira leva
-40–50 min nesta base (`fileParallelism: false`, `testTimeout: 180_000`, por decisão
-documentada no próprio config).
+```
+Test Files  1 failed | 58 passed (59)
+Tests       1 failed | 529 passed | 12 skipped (542)
+Duration    1210.80s  (20,2 min)     exit 1
+```
+
+Dos DOIS arquivos que 04-01 relatou, só **um** falha de verdade:
+
+- **`src/e2e/lote-contas-a-pagar.test.ts` — REAL.** Caso `(d) o piso e o teto do lock (DEC-06) —
+  tLote custa uma hidratação, tN custa 61` estoura o `testTimeout` em **180014ms**; o arquivo
+  inteiro leva 346s. É uma medição de TEMPO (lote contra 61 operações individuais) contra o
+  Postgres real, escrita na Fase 3 (PAG-05/DEC-06).
+- **`src/rotas/classificacoes.test.ts` — RUÍDO.** Passou limpo nesta execução. O relato de 04-01
+  sobre ele saiu da mesma execução truncada e não se sustenta.
+
+**Não foi introduzido pela Fase 4.** A prova mais forte é cronológica: 04-01 já viu esse arquivo
+estourando na ONDA 1, antes de qualquer código de `apps/api` desta fase entrar no `app.ts`. Além
+disso a fase não tocou nada que esse teste exercita, e a única mudança global que ela fez no
+`apps/api` (o error handler de 04-10) foi verificada sem regressão por `operacoes.test.ts` 22/22.
+
+**Dono sugerido:** quem for revisitar DEC-06. A pergunta não é "por que falha" e sim "esse teto de
+180s é medida de desempenho ou é limite de ambiente?" — um teste que mede relógio contra um pooler
+compartilhado vai oscilar por natureza.
 
 ---
 
