@@ -97,6 +97,16 @@ export function applyContasAReceber(state: DataState, clock: Clock, opcoes: Opco
   });
 
   /* ── Definições de Campo (seções 4 e 9) ───────────────────────────────── */
+  //
+  // LACUNA REGISTRADA (D5-17, padrão D-25) — o Campo "Contrato" de §9
+  // (Vínculo → Gestão contratual) NÃO é criado aqui, de propósito. Gestão
+  // contratual não existe na plataforma — é Deferred Idea desta fase
+  // (`05-CONTEXT.md` § deferred) — e um Vínculo estrutural apontando para uma
+  // Lista que não existe seria pior que a ausência: um destino inventado. Os
+  // outros quatro Campos de §9 (Número/Total de parcelas, Tipo, Forma,
+  // Situação de cobrança) estão abaixo; "conta tria" virou o Campo "Conta de
+  // recebimento" (`contaRecebimento`, §12), não Tag. Quando Gestão contratual
+  // existir, o Campo "Contrato" nasce aqui, não antes.
   const fd = (id: Id, name: string, type: FieldDefinition["type"], at_: "space" | "list", options?: readonly string[], description?: string): FieldDefinition => ({
     id,
     workspaceId,

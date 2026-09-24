@@ -13,6 +13,7 @@
     "solicitacoes:configurar": "vite-node src/bootstrap/solicitacoes.cli.ts",
     "empresas:configurar": "vite-node src/bootstrap/configuracao-por-empresa.cli.ts",
     "contas-a-receber:conferir": "vite-node src/bootstrap/conferir-contas-a-receber.cli.ts",
+    "contas-a-receber:configurar": "vite-node src/bootstrap/contas-a-receber.cli.ts",
     "exportar:clickup": "vite-node src/importacao/clickup/exportar.cli.ts",
     "clickup:usuarios": "vite-node src/importacao/clickup/usuarios.cli.ts",
     "credencial": "vite-node src/servicos/credencial.cli.ts",
