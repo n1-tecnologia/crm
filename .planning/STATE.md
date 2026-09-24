@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 
 Phase: 05 (contas-a-receber-e-os-outros-tenants) — EXECUTING
 Plan: 10 of 12 (05-01..05-04, 05-06..05-09, 05-11, 05-12 completos). **ABERTOS de propósito:** 05-05 (O CORTE MP/FO — inventário pronto, deploy/webhooks/48h/arquivamento pendentes) e 05-10 Task 4 (o relógio — Ensaio → ler → liberar)
-Status: Phase 05 — TODO O CÓDIGO ENTREGUE; verificação da fase a seguir
+Status: Phase 05 — código entregue, VERIFICAÇÃO gaps_found (05-VERIFICATION.md): CR-01 (serviços MP/FO não processam Solicitação da plataforma; aprovação vira {ignored:true}) e CR-02 (Canal não funciona ponta a ponta) bloqueiam os critérios 2 e 4; 05-REVIEW.md tem 7 bloqueadores. CR-07 CONFIRMADO: 9 linhas pendentes de espaços de teste no outbox real (0 tentativas, nada entregue). Próximo: /gsd-plan-phase 5 --gaps
 Last activity: 2026-09-24 -- Onda 7 da Phase 05: importador de Contas a receber (05-11) APLICADO em ws_n1 com autorização do dono ("Aplicar agora, sem clientes") — 240 Tarefas, 0 Execuções, 0 outbox, MARCO_ZERO 2026-09-24, 2ª rodada 240 puladas; conferido de forma independente (191 recebido / 47 descartado / 1 para receber / 1 pendente). Telas da série (05-12). Portão verde: typecheck, lint, tokens, dominio 520, web 169, api escopado 42, next build
 
 **Onda 5 — 04-12** (sibling, `f06da55`/`d4cca79`/`49d71af`): módulo de acesso ao
