@@ -97,6 +97,19 @@ interface ActionSpec {
   readonly aguardarDesde?: "vencimento" | "criacaoDaTarefa";
   /** `solicitarAprovacao`: Campo do tipo pessoa que nomeia o Aprovador, quando não vem tipado na versão. */
   readonly approverFieldDefinitionId?: Id;
+  /* ── Vocabulário de Canal (AUTO-02) ── */
+  /** `notificar` por Canal: o único canal desta fase. Sem ele, `notificar` continua in-app. */
+  readonly canal?: "whatsapp";
+  /** Modo 1 — o destino é o valor de um Campo DA TAREFA (D5-10: vazio é recusa, nunca um padrão). */
+  readonly canalCampoDestinoId?: Id;
+  /** Modo 2 — o destino são os rótulos declarados em `Integration.avisosPorCanal.whatsapp` da Empresa da Tarefa (D5-10). */
+  readonly canalDestinatariosDaEmpresa?: boolean;
+  /**
+   * Enum de dois valores, deliberado: D5-11 limita AUTO-02 ao que o Marcos
+   * Paulo já faz — aviso de gasto novo e relatório. Canal genérico para
+   * qualquer Automação é capacidade adiada, não um campo de texto livre.
+   */
+  readonly canalMensagemId?: "gasto-novo" | "relatorio";
 }
 
 interface TemporalSpec {
@@ -272,6 +285,59 @@ function esperaCumprida(task: Task, spec: ActionSpec, action: AutomationAction, 
   return { ok: true, halt: "aguardar", output: `Aguardando até ${diaCivil(prazo)}` };
 }
 
+/**
+ * O destino resolvido de uma notificação por Canal — nunca um número de
+ * telefone (D5-03/D5-10): no modo `campo`, o que fica é o VALOR do Campo que
+ * o Financeiro preencheu (o domínio só o lê para mascarar); no modo
+ * `rotulos`, o que fica são os rótulos estáveis da Empresa (`mari`,
+ * `marcos`, `grupo-financeiro`), nunca o número que eles representam no
+ * ambiente do `automation/`.
+ */
+type DestinoDeCanal =
+  | { readonly tipo: "campo"; readonly campoDestinoId: Id; readonly valor: string }
+  | { readonly tipo: "rotulos"; readonly rotulos: readonly string[] };
+
+/**
+ * Resolve o destino de uma Ação de Canal, ou devolve o motivo da recusa.
+ * PURA — nenhuma leitura de relógio, nenhum I/O. Em NENHUM caminho devolve
+ * um destino padrão: destino vazio é sempre recusa (D5-10), nunca um
+ * número/rótulo inventado.
+ */
+function destinoDeCanal(state: DataState, task: Task, spec: ActionSpec): DestinoDeCanal | { readonly recusa: string } {
+  const porCampo = spec.canalCampoDestinoId !== undefined;
+  const porEmpresa = spec.canalDestinatariosDaEmpresa === true;
+  if (porCampo === porEmpresa) {
+    return { recusa: "“notificar” por Canal sem destino declarado: escolha canalCampoDestinoId ou canalDestinatariosDaEmpresa, nunca os dois." };
+  }
+  if (porCampo) {
+    const campoDestinoId = spec.canalCampoDestinoId as Id;
+    const valor = fieldValueOf(task, campoDestinoId);
+    const texto = typeof valor === "string" ? valor.trim() : "";
+    if (!texto) {
+      const nome = state.fieldDefinitions.find((d) => d.id === campoDestinoId)?.name ?? campoDestinoId;
+      return { recusa: `“notificar” por WhatsApp recusado: Campo “${nome}” vazio — nada foi enviado.` };
+    }
+    return { tipo: "campo", campoDestinoId, valor: texto };
+  }
+  const empresaValor = fieldValueOf(task, CP.fields.empresa);
+  const empresa = typeof empresaValor === "string" ? empresaValor.trim() : "";
+  if (!empresa) {
+    return { recusa: "“notificar” por WhatsApp recusado: a Tarefa não tem Empresa — nada foi enviado." };
+  }
+  const integracao = state.integrations.find((i) => i.empresa === empresa);
+  if (!integracao) {
+    return { recusa: `“notificar” por WhatsApp recusado: a Empresa “${empresa}” não tem Integração configurada — nada foi enviado.` };
+  }
+  const rotulos = integracao.avisosPorCanal?.whatsapp;
+  if (!rotulos || rotulos.length === 0) {
+    return { recusa: `“notificar” por WhatsApp recusado: a Empresa “${empresa}” não declara destinatário de WhatsApp — nada foi enviado.` };
+  }
+  return { tipo: "rotulos", rotulos };
+}
+
+/** Os quatro últimos caracteres, com `••••` fixo — nunca o valor por inteiro (T-5-18). */
+const mascararDestino = (valor: string): string => (valor.length >= 4 ? `•••• ${valor.slice(-4)}` : "••••");
+
 function runAction(
   state: DataState,
   automation: Automation,
@@ -305,11 +371,27 @@ function runAction(
         return { ok: true, output: r.value };
       }
       case "notificar": {
+        // Canal (AUTO-02, D5-09/D3-02): a entrega por WhatsApp acontece FORA
+        // do domínio — outbox → apps/api → automation/ → Evolution. Este
+        // ramo só resolve o destino e produz texto/estado; nenhuma chamada
+        // de rede, nenhum `await`, nenhum import novo de transporte aqui.
+        if (spec.canal === "whatsapp") {
+          if (!spec.canalMensagemId) {
+            return { ok: false, output: '“notificar” por Canal sem mensagem: declare canalMensagemId ("gasto-novo" ou "relatorio").' };
+          }
+          const destino = destinoDeCanal(state, task, spec);
+          if ("recusa" in destino) return { ok: false, output: destino.recusa };
+          if (destino.tipo === "campo") {
+            const nome = state.fieldDefinitions.find((d) => d.id === destino.campoDestinoId)?.name ?? destino.campoDestinoId;
+            return { ok: true, output: `Notificação por WhatsApp enfileirada · Campo “${nome}”: ${mascararDestino(destino.valor)}` };
+          }
+          return { ok: true, output: `Notificação por WhatsApp enfileirada · destinatários: ${destino.rotulos.join(", ")}` };
+        }
         if (!spec.template) return { ok: false, output: "“notificar” sem texto: declare `template` nos parâmetros da Ação." };
         const alvos = membrosMencionados(state, task, spec);
         if (!alvos.length) return { ok: false, output: "“notificar” sem alvo: declare memberId, mentionMemberIds ou fromFieldDefinitionId." };
         // O aviso é in-app nesta fase: um Comentário com Menção, que `pendingMentions`
-        // entrega a quem ENXERGA a Tarefa. Por Canal é Phase 5.
+        // entrega a quem ENXERGA a Tarefa. O canal WhatsApp está acima, neste mesmo `case`.
         const r = addTaskComment(state, owner, task.id, {
           content: fillTemplate(state, task, spec.template, opcoes?.cnpjPorEmpresa),
           mentions: alvos.map((id) => ({ type: "member", id })),
