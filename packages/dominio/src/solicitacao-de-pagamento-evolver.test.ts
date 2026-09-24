@@ -16,7 +16,7 @@ import type { DataState } from "./state";
 const AGORA = "2026-09-21T12:00:00.000Z";
 const NOME_DA_LISTA = "Solicitações de pagamento";
 
-/** Soma dos elementos que o catálogo do Plan 02-06 define: 1 Lista + 4 Status + 1 Tag + 25 Campos + 5 Papéis. */
+/** Soma dos elementos do catálogo: 1 Lista + 5 Status (D5-06 acrescentou "em revisão") + 1 Tag + 25 Campos + 5 Papéis. */
 const TOTAL_DE_ELEMENTOS =
   1 +
   CATALOGO_SOLICITACAO_DE_PAGAMENTO.statusSet.definitions.length +
@@ -47,7 +47,7 @@ describe("evoluirConfiguracaoDeSolicitacoes", () => {
     const lista = acharLista(s);
     expect(lista.parentType).toBe("folder");
     expect(lista.parentId).toBe(CP.folderId);
-    expect(lista.statusSet!.definitions.length).toBe(4);
+    expect(lista.statusSet!.definitions.length).toBe(5);
     expect(lista.statusSet!.definitions.map((d) => d.id).sort()).toEqual(
       CATALOGO_SOLICITACAO_DE_PAGAMENTO.statusSet.definitions.map((d) => d.id).sort(),
     );

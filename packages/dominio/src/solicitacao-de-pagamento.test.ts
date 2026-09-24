@@ -1,8 +1,9 @@
 /**
  * Prova de paridade entre `CATALOGO_SOLICITACAO_DE_PAGAMENTO` e
- * `docs/07-processos/solicitacao-de-pagamento.md`: 4 Status, 25 Campos, as
- * opções exatas da spec, e o roteamento do aprovador (RN-SP-03) como
- * configuração — nunca `if` de tela nem `undefined` silencioso (D-07).
+ * `docs/07-processos/solicitacao-de-pagamento.md`: 5 Status (D5-06
+ * acrescentou "em revisão" à Fase 5), 25 Campos, as opções exatas da spec, e
+ * o roteamento do aprovador (RN-SP-03) como configuração — nunca `if` de
+ * tela nem `undefined` silencioso (D-07).
  */
 
 import { describe, expect, it } from "vitest";
@@ -15,14 +16,15 @@ import {
 const { statusSet, campos, roteamento, papeis } = CATALOGO_SOLICITACAO_DE_PAGAMENTO;
 
 describe("CATALOGO_SOLICITACAO_DE_PAGAMENTO — Status (§3)", () => {
-  it("(a) exatamente 4 Status, nesta ordem, nenhum `em revisão`/`convertida`", () => {
+  it("(a) exatamente 5 Status, nesta ordem — D5-06 destrava `em revisão`, `convertida` continua proibido", () => {
     expect(statusSet.definitions.map((d) => d.name)).toEqual([
       "para fazer",
       "em aprovação",
       "não aprovado",
       "aprovado",
+      "em revisão",
     ]);
-    for (const nomeProibido of ["em revisão", "convertida", "recebida", "em validação"]) {
+    for (const nomeProibido of ["convertida", "recebida", "em validação"]) {
       expect(statusSet.definitions.some((d) => d.name === nomeProibido)).toBe(false);
     }
   });

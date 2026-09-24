@@ -187,7 +187,12 @@ export function applyContasAPagar(state: DataState, clock: Clock, opcoes: Opcoes
   state.fieldDefinitions.push(
     fd(F.centroDeCusto, "Centro de Custo", "singleSelect", "space", true, ["Marcos Paulo", "Renato Cariani", "Igor Alves", "Kaka Diniz", "PLX Apoio", "TRIA", "Anthony Miranda", "Tria Tech", "IVL", "Roberth Resende", "Presidência", "USI", "Konq", "Auton Health", "Kops", "Inevitaveis"], "Quem paga (RN-CP-01: único obrigatório)."),
     fd(F.bu, "BU", "singleSelect", "space", false, ["Roberth Resende", "Igor Alves", "CLAIRIS", "Marcos Paulo", "Instituto Visão Livre", "Renato Cariani", "TRIA - Apoio Funcional", "Kaka Diniz", "Iallas Oliveira", "Tria Tech", "Expert Lucrativo", "KONQ", "Auton Heath"]),
-    fd(F.empresa, "Empresa", "singleSelect", "space", false, ["Tria Company", "Oliveira Participações", "EXO Loteamento", "EXO Participações", "Loovi", "PLX digital", "IVL", "USI", "Konq Intermediações", "O2", "Inevitaveis"]),
+    // "Marcos Paulo" acrescentado ao final por TEN-01 (D5-03/D5-05) — as 11
+    // opções originais não são reordenadas; em `ws_n1` já bootstrapado, quem
+    // grava a opção nova é o evolver (`configuracao-por-empresa-evolver.ts`),
+    // nunca a edição direta deste seed (`bootstrapGestao()` só grava em
+    // Espaço vazio).
+    fd(F.empresa, "Empresa", "singleSelect", "space", false, ["Tria Company", "Oliveira Participações", "EXO Loteamento", "EXO Participações", "Loovi", "PLX digital", "IVL", "USI", "Konq Intermediações", "O2", "Inevitaveis", "Marcos Paulo"]),
     fd(F.categoria, "Categoria de pagamento", "singleSelect", "list", false, ["Distribuição de Lucro", "Impostos", "Prestação de Serviços", "Móveis e Utensílios", "Administrativo", "Evento", "Contas de consumo", "A identificar", "Cursos e treinamentos", "Comissão", "Tráfego Pago", "Ferramentas", "Insumos", "Viagens e Hospedagens", "Aporte", "Aluguel", "Tarifas", "Ação Gente e Cultura", "Devolução/Estorno de venda", "Editora", "Correios e Transportadora", "Doação", "Publicidade de Marca / Patrocínio", "Salário"]),
     fd(F.pessoa, "Pessoa", "person", "list", false, undefined, "Quem emite a nota e recebe a cobrança, quando está no Espaço de Trabalho."),
     fd(F.fornecedor, "Fornecedor", "singleSelect", "list", false, ["CPF", "CNPJ"]),

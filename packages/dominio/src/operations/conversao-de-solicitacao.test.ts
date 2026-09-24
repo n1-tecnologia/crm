@@ -220,16 +220,16 @@ describe("converterSolicitacaoEmContaAPagar", () => {
     }
   });
 
-  it("(a) o catálogo da Solicitação continua com quatro Status, e nenhum se chama convertida", () => {
+  it("(a) o catálogo da Solicitação continua sem `convertida` — D5-06 acrescentou o 5º Status `em revisão`", () => {
     const definicoes = CATALOGO_SOLICITACAO_DE_PAGAMENTO.statusSet.definitions;
-    expect(definicoes).toHaveLength(4);
-    expect(definicoes.map((d) => d.name)).toEqual(["para fazer", "em aprovação", "não aprovado", "aprovado"]);
-    for (const proibido of ["convertida", "em revisão", "recebida", "em validação"]) {
+    expect(definicoes).toHaveLength(5);
+    expect(definicoes.map((d) => d.name)).toEqual(["para fazer", "em aprovação", "não aprovado", "aprovado", "em revisão"]);
+    for (const proibido of ["convertida", "recebida", "em validação"]) {
       expect(definicoes.some((d) => d.name === proibido)).toBe(false);
     }
     // A mesma proibição do lado do estado materializado, não só do catálogo.
     const lista = s.lists.find((l) => l.id === LISTA_SOLICITACOES);
-    expect(lista?.statusSet?.definitions).toHaveLength(4);
+    expect(lista?.statusSet?.definitions).toHaveLength(5);
   });
 
   it("(b) o de-para fecha os 25 Campos: 21 pares + 3 sem equivalente + 1 vencimento nativo", () => {

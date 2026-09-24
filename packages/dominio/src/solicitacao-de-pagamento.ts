@@ -2,7 +2,7 @@
  * Catálogo de configuração da Lista "Solicitações de pagamento"
  * (`docs/07-processos/solicitacao-de-pagamento.md`), ao lado de "Contas a
  * pagar" na mesma Pasta "Financeiro" (D-01, D-06 da spec). Este arquivo é a
- * tradução literal daquele documento para dado tipado: quatro Status, os 25
+ * tradução literal daquele documento para dado tipado: cinco Status, os 25
  * Campos na ordem A..Z, a Tag única, os cinco Papéis e a configuração de
  * roteamento do aprovador por Centro de Custo e Valor.
  *
@@ -12,11 +12,13 @@
  * `DataState` (Plan 02-08) e por `resolverAprovador`, a única leitura
  * derivada exportada daqui.
  *
- * D-01 sobrepõe a enumeração preliminar de CON-04 em REQUIREMENTS.md: os
- * quatro Status abaixo são os únicos oficiais. Criar `em revisão`,
- * `convertida`, `recebida` ou `em validação` nesta fase é erro (D-14) — a
- * Solicitação termina em `aprovado`; a Conta a pagar e o Vínculo estruturado
- * são Fase 3.
+ * D-01 sobrepôs a enumeração preliminar de CON-04 em REQUIREMENTS.md: os
+ * quatro primeiros Status abaixo eram os únicos oficiais "nesta fase" (Fase
+ * 2) — criar `em revisão`, `convertida`, `recebida` ou `em validação` ali era
+ * erro (D-14). A Fase 5 (D5-06) destrava especificamente `em revisão`, para
+ * quando o Family Office chega: `convertida`/`recebida`/`em validação`
+ * continuam fora. A Solicitação termina em `aprovado`; a Conta a pagar e o
+ * Vínculo estruturado são Fase 3.
  */
 
 import type { FieldType, Id, PermissionAction, StatusSet } from "./types";
@@ -29,6 +31,10 @@ export const SOL = {
     emAprovacao: "sts_sp_em_aprovacao",
     naoAprovado: "sts_sp_nao_aprovado",
     aprovado: "sts_sp_aprovado",
+    // D5-06 — o quinto Status, proibido em D-01/D-14 "nesta fase" (Fase 2) e
+    // liberado aqui: o Family Office o declara na própria Integração
+    // (`configuracao-por-empresa.ts`), TRIA nunca o alcança.
+    emRevisao: "sts_sp_em_revisao",
   },
   tags: {
     contaTria: "tag_sp_conta_tria",
@@ -44,17 +50,19 @@ export const SOL = {
 
 /* ── Status (§3) ───────────────────────────────────────────────────────── */
 //
-// Quatro Definições, nesta ordem exata: `para fazer` → `em aprovação` →
-// `não aprovado` → `aprovado`. `para fazer` é o inicial (categoria
-// `naoIniciado`); `não aprovado` e `aprovado` são terminais (categorias
-// `concluido` e `fechado` — a ontologia não tem um campo "terminal" à parte,
-// a categoria já carrega esse significado, A4.3). Cores do mesmo vocabulário
-// de tokens que `seed-financeiro.ts` usa para a Lista irmã "Contas a pagar" —
-// nada de hex novo.
+// Cinco Definições, nesta ordem exata: `para fazer` → `em aprovação` →
+// `não aprovado` → `aprovado` → `em revisão`. `para fazer` é o inicial
+// (categoria `naoIniciado`); `não aprovado` e `aprovado` são terminais
+// (categorias `concluido` e `fechado` — a ontologia não tem um campo
+// "terminal" à parte, a categoria já carrega esse significado, A4.3). Cores
+// do mesmo vocabulário de tokens que `seed-financeiro.ts` usa para a Lista
+// irmã "Contas a pagar" — nada de hex novo.
 //
-// `em revisão` — específico da Lista MP/FO (OQ-CMP-02 da spec) — e
-// `convertida`/`recebida`/`em validação` — enumeração preliminar de CON-04 —
-// NÃO entram aqui: é a proibição de D-01/D-14, não um esquecimento.
+// `em revisão` — específico do Family Office (D5-06, OQ-CMP-02 da spec
+// respondida) — entra como 5º Status nesta fase; só a Empresa que o declara
+// (`configuracao-por-empresa.ts`, `statusDeclarados`) o alcança, TRIA nunca
+// chega lá. `convertida`/`recebida`/`em validação` — enumeração preliminar de
+// CON-04 — continuam fora: é a proibição de D-01/D-14, não um esquecimento.
 
 export const STATUS_SET_SOLICITACAO_DE_PAGAMENTO: StatusSet = {
   id: "sts_solicitacao_de_pagamento",
@@ -63,6 +71,10 @@ export const STATUS_SET_SOLICITACAO_DE_PAGAMENTO: StatusSet = {
     { id: SOL.status.emAprovacao, name: "em aprovação", color: "#3b82f6", category: "emAndamento", order: 1 },
     { id: SOL.status.naoAprovado, name: "não aprovado", color: "#ef4444", category: "concluido", order: 2 },
     { id: SOL.status.aprovado, name: "aprovado", color: "#166534", category: "fechado", order: 3 },
+    // D-01 travou os quatro acima; D5-06 destrava o quinto quando o Family
+    // Office chega. `order: 4` é obrigatório — mexer no `order` dos quatro
+    // já gravados em produção faria o evolver de 02-08 reportar divergência.
+    { id: SOL.status.emRevisao, name: "em revisão", color: "#fbbf24", category: "emAndamento", order: 4 },
   ],
 };
 
