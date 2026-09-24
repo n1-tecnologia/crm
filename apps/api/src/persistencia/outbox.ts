@@ -56,6 +56,20 @@ export const EVENTOS = {
       decidedByMemberId: z.string(),
     })
     .strict(),
+  // AUTO-02/D5-09/D5-10 — nem o número de telefone nem o texto da mensagem entram aqui: quem entrega busca a
+  // Tarefa de volta com a credencial de serviço, como os outros três eventos já fazem.
+  "automacao.notificar-canal.v1": z
+    .object({
+      taskId: z.string(),
+      automationId: z.string(),
+      executionId: z.string(),
+      canal: z.literal("whatsapp"),
+      destinoTipo: z.enum(["campo", "rotulos"]),
+      campoDestinoId: z.string().optional(),
+      rotulos: z.array(z.string()).optional(),
+      mensagemId: z.enum(["gasto-novo", "relatorio"]),
+    })
+    .strict(),
 } as const;
 
 export type NomeDeEvento = keyof typeof EVENTOS;

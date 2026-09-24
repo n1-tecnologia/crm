@@ -64,6 +64,7 @@ const CAMINHO_POR_EVENTO: Record<NomeDeEvento, string> = {
   "solicitacao.criada.v1": "/webhooks/plataforma/solicitacao-criada",
   "solicitacao.comentario-criado.v1": "/webhooks/plataforma/comentario-criado",
   "solicitacao.aprovacao-decidida.v1": "/webhooks/plataforma/aprovacao-decidida",
+  "automacao.notificar-canal.v1": "/webhooks/plataforma/notificar-canal",
 };
 
 /**

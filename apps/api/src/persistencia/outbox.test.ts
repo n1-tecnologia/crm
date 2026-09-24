@@ -271,4 +271,41 @@ d("gravação transacional do outbox (V02-07A)", () => {
     }
   });
 
+  it("(g) grava um evento 'automacao.notificar-canal.v1' dentro de executar() e a linha existe com event_type correto — mesmo molde de (a)", async () => {
+    const aggregateId = `aex_canal_${RUN}`;
+    const r = await executar(WS, (state) => createTask(state, THIAGO, { listId, title: "Solicitação (g) — evento de Canal" }), {
+      eventos: (valor) => [
+        {
+          type: "automacao.notificar-canal.v1",
+          aggregateType: "automationExecution",
+          aggregateId,
+          payload: {
+            taskId: valor.id,
+            automationId: "aut_teste_outbox",
+            executionId: aggregateId,
+            canal: "whatsapp",
+            destinoTipo: "campo",
+            campoDestinoId: "fd_teste_whatsapp",
+            mensagemId: "gasto-novo",
+          },
+        },
+      ],
+    });
+    expect(r.ok, "ok" in r ? String((r as { error?: string }).error) : "").toBe(true);
+    if (!r.ok) return;
+
+    expect(await contarOutbox(aggregateId)).toBe(1);
+
+    const cliente = await pool().connect();
+    try {
+      const linha = await cliente.query<{ event_type: string }>(
+        "select event_type from plataforma.integration_outbox where workspace_id = $1 and aggregate_id = $2",
+        [WS, aggregateId],
+      );
+      expect(linha.rows[0]?.event_type).toBe("automacao.notificar-canal.v1");
+    } finally {
+      cliente.release();
+    }
+  });
+
 });
