@@ -20,7 +20,7 @@ Fase 0 e Fase 1 correm em paralelo: o que resta da Fase 0 não bloqueia terminar
 - [ ] **Phase 2: Solicitação de pagamento — o front substitui o ClickUp** - Toda solicitação nova nasce no CRM N1, o aprovador decide com um clique e o pipeline do `automation/` roda sem webhook do ClickUp
 - [x] **Phase 3: Contas a pagar** - O Financeiro opera uma semana sem abrir o ClickUp: importação com histórico, motor de Automações executando A1–A9, Agente lançando no Omie de verdade, lote e permissões (completed 2026-09-23)
 - [ ] **Phase 4: As outras telas do financeiro-tria** - As leituras que nunca viveram no ClickUp portadas como tela; `financeiro-tria.vercel.app` sai do ar
-- [ ] **Phase 5: Contas a receber e os outros tenants** - Marcos Paulo e Family Office como Empresas do Campo `Empresa`; Contas a receber na forma que D7 determinar; notificar por Canal
+- [x] **Phase 5: Contas a receber e os outros tenants** - Marcos Paulo e Family Office como Empresas do Campo `Empresa`; Contas a receber na forma que D7 determinar; notificar por Canal (completed 2026-09-24)
 
 ## Phase Details
 
@@ -332,12 +332,12 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 05-10-PLAN.md — Contas a receber: fechar o que a conferência achou, prazos ajustáveis, ligar o relógio (REC-01)
+- [ ] 05-10-PLAN.md — Contas a receber: fechar o que a conferência achou, prazos ajustáveis, ligar o relógio (REC-01) — **ABERTO (Task 4, o relógio):** evolver/prazos/R7 entregues; Ensaio → ler relato → `automacoes:liberar` é o próximo passo de operador, agora que as 240 foram importadas e o MARCO_ZERO gravado
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
-- [ ] 05-11-PLAN.md — A importação das 240 contas a receber, sem acordar Automação nenhuma (REC-01)
-- [ ] 05-12-PLAN.md — As telas: preview da série de parcelas e a régua de Empresa (REC-01)
+- [x] 05-11-PLAN.md — A importação das 240 contas a receber, sem acordar Automação nenhuma (REC-01)
+- [x] 05-12-PLAN.md — As telas: preview da série de parcelas e a régua de Empresa (REC-01)
 
 **Ondas de execução:** 1 → [05-01] · 2 → [05-02, 05-03, 05-06] · 3 → [05-04, 05-07] · 4 → [05-05, 05-08] · 5 → [05-09] · 6 → [05-10] · 7 → [05-11, 05-12]
 
@@ -370,7 +370,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 23/28 | In Progress|  |
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
-| 5. Contas a receber e os outros tenants | 9/12 | In Progress|  |
+| 5. Contas a receber e os outros tenants | 10/12 | In Progress|  |
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*

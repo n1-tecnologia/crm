@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Plan 05-01 completo (Tasks 1-3): Integration cresce, evolver por Empresa e CLI dry-run existem e passam; ver 05-01-SUMMARY.md"
+stopped_at: "Phase 05 — código das 7 ondas entregue; 10 de 12 planos completos. 05-05 (corte MP/FO) e 05-10 Task 4 (relógio de Contas a receber) ABERTOS por decisão do dono. As 240 Contas a receber importadas em ws_n1 (MARCO_ZERO 2026-09-24), relógio desligado."
 last_updated: "2026-09-24T12:27:20.962Z"
 last_activity: 2026-09-24 -- Phase 05 execution started
 progress:
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 05 (contas-a-receber-e-os-outros-tenants) — EXECUTING
-Plan: 8 of 12 (05-01..05-04, 05-06..05-09 completos — Ondas 1 a 5). **05-05 (O CORTE MP/FO) fica ABERTO de propósito** — execução parcial escopada, decidida pelo dono
-Status: Executing — Onda 6 (05-10: evolver, prazos R4/R5, R7, e o relógio sob checkpoint) a seguir
-Last activity: 2026-09-24 -- Onda 5 da Phase 05: conferência somente-leitura de ws_n1 — ZERO divergências de configuração (Lista, 6 Status, 8 Campos, 6 Automações, 2 Visões), 0 Tarefas em CR.listId. D7: ramo processo pelo default de D5-02, acionado pelo dono; prazo R4/R5 30/60 mantido (resposta do dono, não do Financeiro)
+Plan: 10 of 12 (05-01..05-04, 05-06..05-09, 05-11, 05-12 completos). **ABERTOS de propósito:** 05-05 (O CORTE MP/FO — inventário pronto, deploy/webhooks/48h/arquivamento pendentes) e 05-10 Task 4 (o relógio — Ensaio → ler → liberar)
+Status: Phase 05 — TODO O CÓDIGO ENTREGUE; verificação da fase a seguir
+Last activity: 2026-09-24 -- Onda 7 da Phase 05: importador de Contas a receber (05-11) APLICADO em ws_n1 com autorização do dono ("Aplicar agora, sem clientes") — 240 Tarefas, 0 Execuções, 0 outbox, MARCO_ZERO 2026-09-24, 2ª rodada 240 puladas; conferido de forma independente (191 recebido / 47 descartado / 1 para receber / 1 pendente). Telas da série (05-12). Portão verde: typecheck, lint, tokens, dominio 520, web 169, api escopado 42, next build
 
 **Onda 5 — 04-12** (sibling, `f06da55`/`d4cca79`/`49d71af`): módulo de acesso ao
 `conciliador_contas` e as seis rotas de plano de contas/workflows/execuções, autenticadas pelo
