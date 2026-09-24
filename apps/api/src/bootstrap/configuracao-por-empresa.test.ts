@@ -1,7 +1,13 @@
 /**
  * `configurarEmpresas()` contra o Postgres real: `--dry-run` não grava nada,
- * `--apply` cria a opção "Marcos Paulo" + as 6 Integrações, e a segunda
- * execução é no-op — a prova de TEN-01/D5-03 contra o banco de verdade.
+ * `--apply` cria a opção "Marcos Paulo" nos DOIS Campos `Empresa` (D5-19,
+ * fechamento de lacunas 05-20) + as 6 Integrações, e a segunda execução é
+ * no-op — a prova de TEN-01/D5-03 contra o banco de verdade.
+ *
+ * `evoluirConfiguracaoPorEmpresa` agora exige que a Lista de Solicitações
+ * (com `fld_sp_c_empresa`) já exista — `bootstrapGestao` sozinho não a
+ * configura, então o setup deste arquivo roda `configurarSolicitacoes`
+ * logo depois, no mesmo Espaço.
  *
  * Precisa de `DATABASE_URL` (`apps/api/.env` ou variável de ambiente); sem
  * ele, pula em vez de falhar (D-DEC-09, mesmo padrão de `gestao.test.ts` e
@@ -13,6 +19,7 @@ import { carregarEnv, encerrar, pool } from "../persistencia/conexao";
 import { hidratar } from "../persistencia/repositorio";
 import { bootstrapGestao } from "./gestao";
 import { configurarEmpresas } from "./configuracao-por-empresa";
+import { configurarSolicitacoes } from "./solicitacoes";
 
 carregarEnv();
 const temBanco = Boolean(process.env.DATABASE_URL);
@@ -69,6 +76,13 @@ d("configurarEmpresas — o evolver de configuração por Empresa contra o Postg
     } finally {
       bootstrap.release();
     }
+
+    // D5-19: o evolver por Empresa agora também exige `fld_sp_c_empresa`
+    // (Campo "Empresa" da Lista de Solicitações) — sem ele, recusaria
+    // apontando para `solicitacoes:configurar`, que é exatamente o que este
+    // setup roda aqui, no mesmo Espaço, antes de qualquer teste (i)-(iii).
+    const solicitacoes = await configurarSolicitacoes({ workspaceId: WS, actingMemberId: "mem_maryane", dryRun: false });
+    expect(solicitacoes.ok, solicitacoes.ok ? "" : solicitacoes.error).toBe(true);
   });
 
   afterAll(async () => {
