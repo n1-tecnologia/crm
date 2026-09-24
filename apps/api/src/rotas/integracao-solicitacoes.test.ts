@@ -40,6 +40,7 @@ import { addTaskComment, createTask, setTaskFieldValue } from "@n1/dominio/opera
 import { CP } from "@n1/dominio/operations";
 import { buildSeed } from "@n1/dominio/seed";
 import { evoluirConfiguracaoDeSolicitacoes } from "@n1/dominio/solicitacao-de-pagamento-evolver";
+import { evoluirConfiguracaoPorEmpresa } from "@n1/dominio/configuracao-por-empresa-evolver";
 import { buildApp } from "../app";
 import { EsquemasV1 } from "../contratos/v1";
 import { carregarEnv, encerrar, pool } from "../persistencia/conexao";
@@ -53,6 +54,12 @@ if (!MEMBRO_SERVICO) throw new Error("seed sem mem_maryane — fixture do teste 
 
 const evolucao = evoluirConfiguracaoDeSolicitacoes(semente, MEMBRO_SERVICO.id);
 if (!evolucao.ok) throw new Error(`evoluirConfiguracaoDeSolicitacoes falhou no setup do teste: ${evolucao.error}`);
+
+// CR-04 (05-14) — as Integrações por Empresa (D5-06, "em revisão" declarado
+// por EXO Loteamento) precisam existir no estado ANTES de `semear`, no mesmo
+// estilo em que `evoluirConfiguracaoDeSolicitacoes` já monta a Lista.
+const evolucaoDeEmpresas = evoluirConfiguracaoPorEmpresa(semente, MEMBRO_SERVICO.id);
+if (!evolucaoDeEmpresas.ok) throw new Error(`evoluirConfiguracaoPorEmpresa falhou no setup do teste: ${evolucaoDeEmpresas.error}`);
 
 const LISTA_ID = "lst_solicitacoes_de_pagamento";
 
@@ -83,6 +90,20 @@ const VALOR_HOSTIL_CENTAVOS = "987654"; // 9876.54 em reais — string de busca 
   if (!valor.ok || !cnpj.ok || !fornecedor.ok) {
     throw new Error("setup da Tarefa hostil (caso l) falhou");
   }
+}
+
+// Tarefas dedicadas ao caso CR-04 (05-14) — D5-06 herdada pelo contrato v1.
+// Precisam nascer AQUI, em escopo de módulo (mesmo motivo de TAREFA_ESCRITAS):
+// `semear()` só grava o que já está na semente quando `beforeAll` roda.
+const TAREFA_TRIA_EM_REVISAO = criarTarefaDeTeste("Solicitação de teste — CR-04 (Tria)");
+{
+  const empresa = setTaskFieldValue(semente, MEMBRO_SERVICO.id, TAREFA_TRIA_EM_REVISAO.id, "fld_sp_c_empresa", "Tria Company");
+  if (!empresa.ok) throw new Error(`setup da Tarefa CR-04 (Tria) falhou: ${empresa.error}`);
+}
+const TAREFA_EXO_EM_REVISAO = criarTarefaDeTeste("Solicitação de teste — CR-04 (EXO Loteamento)");
+{
+  const empresa = setTaskFieldValue(semente, MEMBRO_SERVICO.id, TAREFA_EXO_EM_REVISAO.id, "fld_sp_c_empresa", "EXO Loteamento");
+  if (!empresa.ok) throw new Error(`setup da Tarefa CR-04 (EXO Loteamento) falhou: ${empresa.error}`);
 }
 
 // Comentário raiz + resposta, para `getCommentReplies` — criados no domínio (não pela rota, fora de teste).
@@ -448,6 +469,54 @@ d("rotasDeIntegracaoDeSolicitacoes — com banco real", () => {
     });
     expect(resposta.statusCode).toBe(200);
     expect(resposta.json().status).toBe("para fazer");
+  });
+
+  // ── CR-04 (05-14) — o contrato v1 herda D5-06 sem código novo na rota ─────
+
+  describe("CR-04 — PUT /:taskId/status herda D5-06 (só a Empresa que declara “em revisão” chega lá)", () => {
+    it("Solicitação da Tria Company: 409 CONFLITO_DE_ORDEM, e o GET confirma que o Status não mudou", async () => {
+      const resposta = await appDeTeste().inject({
+        method: "PUT",
+        url: `/v1/integrations/payment-requests/${TAREFA_TRIA_EM_REVISAO.id}/status`,
+        headers: {
+          authorization: `Bearer ${tokenDe(CREDENCIAL_ESCRITA)}`,
+          "idempotency-key": `status:${TAREFA_TRIA_EM_REVISAO.id}:cr-04-tria`,
+        },
+        payload: { status: "em revisão" },
+      });
+      expect(resposta.statusCode).toBe(409);
+      expect(resposta.json().error.code).toBe("CONFLITO_DE_ORDEM");
+
+      const leitura = await appDeTeste().inject({
+        method: "GET",
+        url: `/v1/integrations/payment-requests/${TAREFA_TRIA_EM_REVISAO.id}`,
+        headers: { authorization: `Bearer ${tokenDe(CREDENCIAL_ESCRITA)}` },
+      });
+      expect(leitura.statusCode).toBe(200);
+      expect(leitura.json().status).toBe("para fazer");
+    });
+
+    it("Solicitação da EXO Loteamento (que declara “em revisão”): 200, e o GET mostra “em revisão”", async () => {
+      const resposta = await appDeTeste().inject({
+        method: "PUT",
+        url: `/v1/integrations/payment-requests/${TAREFA_EXO_EM_REVISAO.id}/status`,
+        headers: {
+          authorization: `Bearer ${tokenDe(CREDENCIAL_ESCRITA)}`,
+          "idempotency-key": `status:${TAREFA_EXO_EM_REVISAO.id}:cr-04-exo`,
+        },
+        payload: { status: "em revisão" },
+      });
+      expect(resposta.statusCode).toBe(200);
+      expect(resposta.json().status).toBe("em revisão");
+
+      const leitura = await appDeTeste().inject({
+        method: "GET",
+        url: `/v1/integrations/payment-requests/${TAREFA_EXO_EM_REVISAO.id}`,
+        headers: { authorization: `Bearer ${tokenDe(CREDENCIAL_ESCRITA)}` },
+      });
+      expect(leitura.statusCode).toBe(200);
+      expect(leitura.json().status).toBe("em revisão");
+    });
   });
 
   // ── (k) PUT /:taskId/tags/:tagId duas vezes → 200 nas duas, uma única Tag ─
