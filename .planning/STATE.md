@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Phase 05 — código das 7 ondas entregue; 10 de 12 planos completos. 05-05 (corte MP/FO) e 05-10 Task 4 (relógio de Contas a receber) ABERTOS por decisão do dono. As 240 Contas a receber importadas em ws_n1 (MARCO_ZERO 2026-09-24), relógio desligado."
-last_updated: "2026-09-24T12:27:20.962Z"
-last_activity: 2026-09-24 -- Phase 05 execution started
+stopped_at: "Phase 05 — 13 planos de fechamento de lacunas (05-13..05-25) planejados e verificados; D5-19 (Canal na Solicitação), D5-20 (MP/FO recusam, corte 05-05 segue bloqueado), D5-21 (escopo). Próximo: /gsd-execute-phase 5 --gaps-only"
+last_updated: "2026-09-24T17:03:47.733Z"
+last_activity: '2026-09-24 -- Phase 05 gap closure planejado: 13 planos em 4 ondas (05-13..05-25), plan-checker aprovado'
 progress:
   total_phases: 6
   completed_phases: 4
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 05 (contas-a-receber-e-os-outros-tenants) — EXECUTING
-Plan: 10 of 12 (05-01..05-04, 05-06..05-09, 05-11, 05-12 completos). **ABERTOS de propósito:** 05-05 (O CORTE MP/FO — inventário pronto, deploy/webhooks/48h/arquivamento pendentes) e 05-10 Task 4 (o relógio — Ensaio → ler → liberar)
-Status: Phase 05 — código entregue, VERIFICAÇÃO gaps_found (05-VERIFICATION.md): CR-01 (serviços MP/FO não processam Solicitação da plataforma; aprovação vira {ignored:true}) e CR-02 (Canal não funciona ponta a ponta) bloqueiam os critérios 2 e 4; 05-REVIEW.md tem 7 bloqueadores. CR-07 CONFIRMADO: 9 linhas pendentes de espaços de teste no outbox real (0 tentativas, nada entregue). Próximo: /gsd-plan-phase 5 --gaps
+Plan: 10 of 25 — 05-01..05-12 executados (05-05 e 05-10 Task 4 abertos de propósito); 05-13..05-25 são o fechamento de lacunas, planejado e verificado, ainda não executado
+Status: Ready to execute — fechamento de lacunas da Phase 05: 13 planos (05-13..05-25) em 4 ondas, plan-checker aprovado. Decisões do dono: D5-19 (AUTO-02 mira a Lista de Solicitações), D5-20 (CR-01 fecha por recusa explícita; o corte 05-05 segue bloqueado), D5-21 (escopo: CR-01..07, WR-02/03/04/07/11 e os checkpoints `empresas:configurar --apply` e relógio de Contas a receber). Próximo: /gsd-execute-phase 5 --gaps-only
 Last activity: 2026-09-24 -- Onda 7 da Phase 05: importador de Contas a receber (05-11) APLICADO em ws_n1 com autorização do dono ("Aplicar agora, sem clientes") — 240 Tarefas, 0 Execuções, 0 outbox, MARCO_ZERO 2026-09-24, 2ª rodada 240 puladas; conferido de forma independente (191 recebido / 47 descartado / 1 para receber / 1 pendente). Telas da série (05-12). Portão verde: typecheck, lint, tokens, dominio 520, web 169, api escopado 42, next build
 
 **Onda 5 — 04-12** (sibling, `f06da55`/`d4cca79`/`49d71af`): módulo de acesso ao

@@ -195,6 +195,34 @@ Estas decisões valem nos dois ramos e não esperam ninguém:
   é aplicada desabilitando Subtarefas na Lista, e `868cpdawp` é desamarrada na
   importação com Registro de Atividade dizendo o quê e por quê.
 
+### Fechamento de lacunas (2026-09-24, depois de `05-VERIFICATION.md`)
+
+Decisões do dono do produto tomadas em `/gsd-plan-phase 5 --gaps`, respondendo
+o que CR-01 e CR-02 de `05-REVIEW.md` deixaram em aberto.
+
+- **D5-19 — A Lista-alvo de AUTO-02 é "Solicitações de pagamento".** O
+  `Z WhatsApp` de D5-10 é `fld_sp_z_whatsapp` ("Contato do solicitante"), o
+  mesmo dado que o Marcos Paulo lê hoje como "Whatsapp do Solicitante"; o "aviso
+  de gasto novo" de D5-11 é uma Solicitação nova. Consequências: `destinoDeCanal`
+  lê a Empresa por `fld_sp_c_empresa` e o destino por `fld_sp_z_whatsapp`; o
+  `automation/` mapeia esse id (não `fd_cp_whatsapp`) e continua lendo a Tarefa
+  pelo contrato v1, que já expõe `requesterWhatsApp` — nenhuma superfície de
+  leitura nova de Contas a pagar. CR-05 entra no caminho crítico: o formulário
+  público e o contrato v1 são onde a Solicitação nasce, e hoje não derivam o
+  evento de Canal.
+- **D5-20 — CR-01 fecha por recusa explícita, não por porte.** Até os serviços
+  de Marcos Paulo e Family Office terem fonte "plataforma", o `automation/` recusa
+  com erro permanente e visível qualquer Solicitação ou decisão de aprovação da
+  plataforma roteada para eles — nunca `{ ignored: true }` com receipt
+  `concluido`. Portar a fonte "plataforma" para os dois serviços fica para uma
+  fase própria; **o corte de 05-05 continua bloqueado até lá** e não entra neste
+  fechamento de lacunas.
+- **D5-21 — O escopo do fechamento é o dos bloqueadores e dos avisos que tocam os
+  critérios.** Entram: CR-01..CR-07, WR-11 (barreira estrutural antes do
+  relógio), WR-02, WR-03, WR-04, WR-07, e os dois checkpoints de operador que não
+  dependem do corte — `empresas:configurar --apply` (Critério 1) e o relógio de
+  Contas a receber (05-10 Task 4), este só depois de WR-11.
+
 ### Claude's Discretion
 
 - Como a configuração por Empresa é modelada (registro na Integração, catálogo

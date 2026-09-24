@@ -20,7 +20,7 @@ Fase 0 e Fase 1 correm em paralelo: o que resta da Fase 0 não bloqueia terminar
 - [ ] **Phase 2: Solicitação de pagamento — o front substitui o ClickUp** - Toda solicitação nova nasce no CRM N1, o aprovador decide com um clique e o pipeline do `automation/` roda sem webhook do ClickUp
 - [x] **Phase 3: Contas a pagar** - O Financeiro opera uma semana sem abrir o ClickUp: importação com histórico, motor de Automações executando A1–A9, Agente lançando no Omie de verdade, lote e permissões (completed 2026-09-23)
 - [ ] **Phase 4: As outras telas do financeiro-tria** - As leituras que nunca viveram no ClickUp portadas como tela; `financeiro-tria.vercel.app` sai do ar
-- [x] **Phase 5: Contas a receber e os outros tenants** - Marcos Paulo e Family Office como Empresas do Campo `Empresa`; Contas a receber na forma que D7 determinar; notificar por Canal (completed 2026-09-24)
+- [ ] **Phase 5: Contas a receber e os outros tenants** - Marcos Paulo e Family Office como Empresas do Campo `Empresa`; Contas a receber na forma que D7 determinar; notificar por Canal (gaps_found 2026-09-24 — fechamento de lacunas 05-13..05-25 planejado)
 
 ## Phase Details
 
