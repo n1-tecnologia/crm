@@ -38,6 +38,7 @@ export * from "./members";
 export * from "./structure";
 export * from "./importacao";
 export * from "./importacao-contas-a-pagar";
+export * from "./importacao-contas-a-receber";
 
 export { OPERACOES, ehNomeDeOperacao, gravarChamadas, instrumentar, serializarArgumentos, reviverArgumentos } from "./registro";
 export type { NomeDeOperacao, ChamadaDeOperacao } from "./registro";
