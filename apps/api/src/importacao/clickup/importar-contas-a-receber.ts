@@ -192,8 +192,13 @@ export async function importarLote(opcoes: OpcoesDeLote): Promise<ResultadoDoLot
   };
 
   // Mesma barreira de execução que o irmão: nenhuma chamada de `executar()`
-  // desta importação pode carregar um evento de saída.
-  const opcoesDeExecucao: OpcoesExecucao<readonly ResultadoPorConta[]> = { aoConfirmar };
+  // desta importação pode carregar um evento de saída. Duas travas agora
+  // (CR-05/T-5-57): a opção abaixo faz a Unidade de Trabalho lançar sozinha
+  // se a derivação obrigatória de Canal não estiver vazia (nunca deveria
+  // estar — `runAutomations: false` não roda Automação), e a guarda logo em
+  // seguida continua cobrindo o chamador que acrescentasse `eventos` aqui
+  // por engano.
+  const opcoesDeExecucao: OpcoesExecucao<readonly ResultadoPorConta[]> = { aoConfirmar, semEventosDeSaida: true };
   if ("eventos" in opcoesDeExecucao) throw new Error("importarLote nunca pode carregar isto — plataforma.integration_outbox não pode crescer.");
 
   const resultadoDaTransacao = await executar(opcoes.workspaceId, operacaoDoLote, opcoesDeExecucao);

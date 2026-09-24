@@ -19,6 +19,7 @@ import type { DataState, Diferenca, OperationResult } from "@n1/dominio";
 import { DIFERENCA_VAZIA } from "@n1/dominio";
 import { syncIdSequence } from "@n1/dominio/operations";
 import { pool } from "./conexao";
+import { execucoesNovas, eventosDeNotificacaoPorCanal } from "./eventos-de-canal";
 import { gravarEventos, type EventoDeSaida } from "./outbox";
 import { gravar, hidratar } from "./repositorio";
 
@@ -32,13 +33,30 @@ export interface OpcoesExecucao<T = unknown> {
   /** Quantas vezes repetir em caso de conflito antes de desistir. */
   readonly tentativas?: number;
   /**
-   * Função pura que A ROTA fornece, derivando os eventos de saída do
-   * resultado da operação — nunca do `diferenca` (D-18, T-02-16). A operação
-   * de domínio continua sem saber que outbox existe: é o mesmo princípio do
-   * cabeçalho deste arquivo, "nada aqui reescreve regra de negócio", agora
-   * aplicado ao lado de fora dele.
+   * Função pura que A ROTA fornece, derivando SEUS PRÓPRIOS eventos de saída
+   * do resultado da operação — nunca do `diferenca` (D-18, T-02-16). A
+   * operação de domínio continua sem saber que outbox existe: é o mesmo
+   * princípio do cabeçalho deste arquivo, "nada aqui reescreve regra de
+   * negócio", agora aplicado ao lado de fora dele.
+   *
+   * O evento de Canal (`automacao.notificar-canal.v1`) NÃO entra por aqui:
+   * `executar()` o deriva sozinho, obrigatoriamente (CR-05), a partir das
+   * `AutomationExecution` que nasceram na transação — nunca opt-in por rota.
+   * Os eventos que a rota fornecer aqui são somados aos de Canal, nunca os
+   * substituem.
    */
   readonly eventos?: (valor: T, state: DataState) => readonly EventoDeSaida[];
+  /**
+   * Quem passa `true` declara que esta transação NÃO PODE gravar evento de
+   * saída de nenhum tipo — nem os que `eventos` acima devolveria, nem o de
+   * Canal derivado obrigatoriamente. Se, ainda assim, a lista de eventos não
+   * estiver vazia, `executar()` lança ANTES de `gravarEventos` e a exceção
+   * desfaz a transação inteira (mesmo caminho de qualquer outra exceção
+   * dentro deste bloco). Uso: as importações históricas (CR-05/T-5-57), que
+   * rodam com `runAutomations: false` e não podem, por construção, acordar
+   * Automação nenhuma — muito menos gravar o aviso dela.
+   */
+  readonly semEventosDeSaida?: true;
   /**
    * Plan 02-16 — roda DEPOIS de gravar Tarefa/anexos e o(s) evento(s) de
    * outbox, ANTES do `commit`: o MESMO `cliente`, a MESMA transação. Único
@@ -75,6 +93,11 @@ export async function executar<T>(
       // do event loop — duas requisições concorrentes não se misturam (a
       // revisão otimista cuida do resto).
       syncIdSequence(antes.state);
+      // CR-05 — capturado AQUI, dentro do laço de tentativas, para que um
+      // retry por conflito de revisão recomece do zero: o mesmo cuidado que
+      // `rotas/operacoes.ts` e `automacoes/scheduler-worker.ts` já
+      // documentavam quando a captura ainda morava em cada chamador.
+      const idsAntes = new Set(antes.state.automationExecutions.map((e) => e.id));
       const resultado = operacao(antes.state);
 
       if (!resultado.ok) {
@@ -99,7 +122,19 @@ export async function executar<T>(
       // evento são a mesma transação, sem que a operação de domínio saiba
       // que outbox existe. Nunca chamar `fetch`/HTTP neste bloco — a entrega
       // é responsabilidade exclusiva de `outbox-worker.ts`, fora da UoW.
-      await gravarEventos(cliente, workspaceId, opcoes.eventos?.(resultado.value, antes.state) ?? []);
+      //
+      // CR-05 — o evento de Canal é derivado AQUI, obrigatoriamente, a
+      // partir das Execuções que nasceram NESTA transação (nunca do
+      // `diferenca`, D-18) — soma-se ao que a rota fornecer em `opcoes.eventos`,
+      // para que nenhuma rota que rode Automação consiga esquecê-lo.
+      const eventos = [
+        ...(opcoes.eventos?.(resultado.value, antes.state) ?? []),
+        ...eventosDeNotificacaoPorCanal(antes.state, execucoesNovas(antes.state, idsAntes)),
+      ];
+      if (opcoes.semEventosDeSaida && eventos.length > 0) {
+        throw new Error("Esta operação não pode gravar evento de saída — plataforma.integration_outbox não pode crescer.");
+      }
+      await gravarEventos(cliente, workspaceId, eventos);
       if (opcoes.aoConfirmar) await opcoes.aoConfirmar(cliente, resultado.value, antes.state);
       await cliente.query("commit");
       // A nova revisão é a que o `update ... returning revisao` devolveu —

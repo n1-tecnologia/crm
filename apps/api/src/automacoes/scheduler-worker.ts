@@ -39,10 +39,9 @@
  * explícita (`npm run automacoes:liberar -w @n1/api -- <workspaceId> <listId>`).
  */
 
-import type { AutomationExecution, DataState, Id, OperationResult } from "@n1/dominio";
+import type { DataState, Id, OperationResult } from "@n1/dominio";
 import { runScheduledAutomations } from "@n1/dominio/operations/automations";
 import { resolverMembroAgenteDoPipeline } from "../persistencia/credenciais-de-servico";
-import { eventosDeNotificacaoPorCanal, execucoesNovas } from "../persistencia/eventos-de-canal";
 import { sanitizarErro } from "../persistencia/outbox-worker";
 import { pool } from "../persistencia/conexao";
 import { executar } from "../persistencia/unidade-de-trabalho";
@@ -513,35 +512,29 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
     // (`unidade-de-trabalho.ts`, `if (!resultado.ok)`).
     let ensaioContagem: { readonly executed: number; readonly failed: number; readonly skipped: number } | undefined;
     let foiForcadoAoEnsaio = false;
-    // AUTO-02/D5-09 (Task 3) — a MESMA costura de `../rotas/operacoes.ts`:
-    // capturada dentro do callback, reatribuída a cada tentativa de
-    // `executar()`, nunca acumulada entre retries de conflito de revisão.
-    let execucoesDaRodada: readonly AutomationExecution[] = [];
 
     try {
       const emEnsaio = ensaioNaPrimeiraVolta && (await primeiraVoltaPendente(workspaceId, listId));
       const atorId = await resolverAtor(workspaceId);
 
-      const resultadoDaTransacao = await executar(
-        workspaceId,
-        (state) => {
-          const idsAntes = new Set(state.automationExecutions.map((e) => e.id));
-          const resultado = rodarAgenda(state, atorId, listId, diaCivilData);
-          execucoesDaRodada = execucoesNovas(state, idsAntes);
-          if (emEnsaio && resultado.ok) {
-            ensaioContagem = { executed: resultado.value.executed, failed: resultado.value.failed, skipped: resultado.value.skipped };
-            foiForcadoAoEnsaio = true;
-            // D3-03 — o Ensaio não gasta dinheiro nem manda WhatsApp; ele mede.
-            // `ok: false` aqui faz `unidade-de-trabalho.ts` retornar ANTES de
-            // `gravarEventos` (o mesmo `if (!resultado.ok)` que já desfaz a
-            // Execução inteira) — o Ensaio não grava evento de Canal nenhum,
-            // e isso é AUTOMÁTICO: não precisa de guarda extra aqui.
-            return { ok: false, error: mensagemDeEnsaio(workspaceId, listId) };
-          }
-          return resultado;
-        },
-        { eventos: (_valor, state) => eventosDeNotificacaoPorCanal(state, execucoesDaRodada) },
-      );
+      // CR-05 — o evento de Canal não é mais derivado aqui: a Unidade de
+      // Trabalho deriva sozinha, obrigatoriamente, a partir das
+      // `AutomationExecution` que nasceram na transação. O Ensaio continua
+      // sem gravar evento nenhum, e isso continua AUTOMÁTICO: o `ok: false`
+      // forçado abaixo faz `unidade-de-trabalho.ts` retornar ANTES de
+      // `gravarEventos` (o mesmo `if (!resultado.ok)` que já desfaz a
+      // Execução inteira) — a derivação obrigatória que agora mora em
+      // `executar()` nunca chega a rodar nesse caminho.
+      const resultadoDaTransacao = await executar(workspaceId, (state) => {
+        const resultado = rodarAgenda(state, atorId, listId, diaCivilData);
+        if (emEnsaio && resultado.ok) {
+          ensaioContagem = { executed: resultado.value.executed, failed: resultado.value.failed, skipped: resultado.value.skipped };
+          foiForcadoAoEnsaio = true;
+          // D3-03 — o Ensaio não gasta dinheiro nem manda WhatsApp; ele mede.
+          return { ok: false, error: mensagemDeEnsaio(workspaceId, listId) };
+        }
+        return resultado;
+      });
 
       if ("conflito" in resultadoDaTransacao && resultadoDaTransacao.conflito) {
         const erro = sanitizarErro(resultadoDaTransacao.error, CODIGOS_DA_AGENDA.CONFLITO_DE_REVISAO);
