@@ -160,4 +160,162 @@ export async function rotasDeFinanceiro(app: FastifyInstance, opcoes: OpcoesDeFi
   app.get("/financeiro/notas-fiscais", (request, reply) => lidarComLeitura(request, reply, QUERY_SEM_FILTRO, "/v1/leituras/notas-fiscais"));
   app.get("/financeiro/produtos", (request, reply) => lidarComLeitura(request, reply, QUERY_SEM_FILTRO, "/v1/leituras/produtos"));
   app.get("/financeiro/plano-contas", (request, reply) => lidarComLeitura(request, reply, QUERY_PLANO_CONTAS, "/v1/leituras/plano-contas"));
+
+  /**
+   * As poucas escritas que D4-07 autoriza: a alíquota de Produto, o CRUD/import
+   * do Plano de contas, os dois gatilhos de emissão de NF (D4-12) e, das ações
+   * de execução, só `retry-step` e `cancel` — recuperação operacional sem
+   * equivalente na ontologia.
+   *
+   * `PATCH /financeiro/solicitacoes/:id/aprovado` e as ações `approve`/`review`
+   * de execução NÃO ganham equivalente aqui e não são chamadas por nada deste
+   * repositório: aprovar é decisão da plataforma desde a Fase 2 (D-06/D-09), e
+   * um segundo botão de aprovar sobre outra tabela é a divergência que esta
+   * migração existe para eliminar. O caso (i) do teste prova a ausência por
+   * 404, não por comentário.
+   *
+   * Toda rota abaixo passa por `comAlcance` (D4-14) e valida o corpo com um
+   * schema zod `.strict()` ANTES de chamar `cliente.enviar` — o mesmo molde
+   * das sete leituras acima, com `POST` em vez de `GET` (o CORS deste app já
+   * só declara `GET`/`POST`; ver o comentário em `app.ts`).
+   */
+
+  const PORCENTAGEM = /^\d{1,3}([.,]\d{1,4})?$/;
+  const CORPO_ALIQUOTAS = z
+    .object({
+      porcentagemProduto: z.string().regex(PORCENTAGEM).optional(),
+      porcentagemServico: z.string().regex(PORCENTAGEM).optional(),
+    })
+    .strict()
+    .refine((corpo) => corpo.porcentagemProduto !== undefined || corpo.porcentagemServico !== undefined);
+
+  app.post("/financeiro/produtos/:id/aliquotas", async (request, reply) => {
+    const corpo = CORPO_ALIQUOTAS.safeParse(request.body);
+    if (!corpo.success) {
+      reply.code(400);
+      return { error: "Informe ao menos uma alíquota válida." };
+    }
+    const { id } = request.params as { readonly id: string };
+    return comAlcance(request, reply, async () => {
+      const resultado = await cliente.enviar<unknown>(`/v1/leituras/produtos/${id}/aliquotas`, corpo.data);
+      return responder(request, reply, resultado);
+    });
+  });
+
+  const LINHA_PLANO_CONTAS = z
+    .object({
+      cod: z.string().optional(),
+      categoria: z.string().optional(),
+      categoriaClickup: z.string().optional(),
+      descricao: z.string().optional(),
+    })
+    .strict();
+
+  // Entre 1 e 2000 linhas: sem teto, um corpo grande vira uma sequência de
+  // embeddings do tamanho que o cliente mandar (T-4-29).
+  const CORPO_IMPORTAR_PLANO_CONTAS = z
+    .object({
+      empresa: EMPRESA,
+      tipo: TIPO,
+      linhas: z.array(LINHA_PLANO_CONTAS).min(1).max(2000),
+    })
+    .strict();
+
+  app.post("/financeiro/plano-contas/importar", async (request, reply) => {
+    const corpo = CORPO_IMPORTAR_PLANO_CONTAS.safeParse(request.body);
+    if (!corpo.success) {
+      reply.code(400);
+      return { error: "Corpo inválido para importação do Plano de contas." };
+    }
+    return comAlcance(request, reply, async () => {
+      // Tradução na borda: o `automation/` fala `categoria_clickup`
+      // (snake_case); a tela fala `categoriaClickup`. Só aqui a tradução
+      // acontece — nenhum outro ponto do módulo conhece o nome legado.
+      const linhas = corpo.data.linhas.map((linha) => ({
+        cod: linha.cod,
+        categoria: linha.categoria,
+        categoria_clickup: linha.categoriaClickup,
+        descricao: linha.descricao,
+      }));
+      const resultado = await cliente.enviar<unknown>("/v1/leituras/plano-contas/importar", {
+        empresa: corpo.data.empresa,
+        tipo: corpo.data.tipo,
+        linhas,
+      });
+      return responder(request, reply, resultado);
+    });
+  });
+
+  const PARAMS_ID_NUMERICO = z.object({ id: z.coerce.number().int().positive() }).strict();
+  const CORPO_VAZIO = z.object({}).strict();
+
+  app.post("/financeiro/plano-contas/:id/remover", async (request, reply) => {
+    const params = PARAMS_ID_NUMERICO.safeParse(request.params);
+    const corpo = CORPO_VAZIO.safeParse(request.body ?? {});
+    if (!params.success || !corpo.success) {
+      reply.code(400);
+      return { error: "Identificador inválido." };
+    }
+    return comAlcance(request, reply, async () => {
+      const resultado = await cliente.enviar<unknown>(`/v1/leituras/plano-contas/${params.data.id}/remover`, {});
+      return responder(request, reply, resultado);
+    });
+  });
+
+  /**
+   * D4-12: os dois gatilhos de emissão de NF são em LOTE, nomeados abaixo por
+   * `key` — nenhuma emissão por linha é alcançável por este caminho. A
+   * allowlist literal abaixo é a TERCEIRA barreira contra emissão por linha (a
+   * primeira é o union `manualRunKey` em `catalog.ts`, a segunda é a própria
+   * rota do `automation/`) e é o que garante isso por construção (T-4-27):
+   * mesmo que as duas primeiras um dia aceitem outra `key`, esta borda
+   * continua recusando. As duas strings abaixo nascem só aqui — nenhum outro
+   * lugar deste arquivo as redigita.
+   */
+  const WORKFLOWS_EXECUTAVEIS = ["tria-invoice-mark-7days", "tria-invoice-emit"] as const;
+  const PARAMS_WORKFLOW = z.object({ key: z.enum(WORKFLOWS_EXECUTAVEIS) }).strict();
+
+  app.post("/financeiro/workflows/:key/executar", async (request, reply) => {
+    const params = PARAMS_WORKFLOW.safeParse(request.params);
+    if (!params.success) {
+      reply.code(400);
+      return { error: "Workflow não disponível para execução manual." };
+    }
+    return comAlcance(request, reply, async () => {
+      const resultado = await cliente.enviar<unknown>(`/v1/leituras/workflows/${params.data.key}/executar`, {});
+      const corpoDeResposta = responder(request, reply, resultado);
+      if (resultado.ok) reply.code(202);
+      return corpoDeResposta;
+    });
+  });
+
+  const PARAMS_ID_EXECUCAO = z.object({ id: z.string().min(1) }).strict();
+  const CORPO_REPETIR_PASSO = z.object({ passo: z.string().optional() }).strict();
+  const CORPO_CANCELAR = z.object({ motivo: z.string().max(500).optional() }).strict();
+
+  app.post("/financeiro/execucoes/:id/repetir-passo", async (request, reply) => {
+    const params = PARAMS_ID_EXECUCAO.safeParse(request.params);
+    const corpo = CORPO_REPETIR_PASSO.safeParse(request.body ?? {});
+    if (!params.success || !corpo.success) {
+      reply.code(400);
+      return { error: "Corpo inválido." };
+    }
+    return comAlcance(request, reply, async () => {
+      const resultado = await cliente.enviar<unknown>(`/v1/leituras/execucoes/${params.data.id}/repetir-passo`, corpo.data);
+      return responder(request, reply, resultado);
+    });
+  });
+
+  app.post("/financeiro/execucoes/:id/cancelar", async (request, reply) => {
+    const params = PARAMS_ID_EXECUCAO.safeParse(request.params);
+    const corpo = CORPO_CANCELAR.safeParse(request.body ?? {});
+    if (!params.success || !corpo.success) {
+      reply.code(400);
+      return { error: "Corpo inválido." };
+    }
+    return comAlcance(request, reply, async () => {
+      const resultado = await cliente.enviar<unknown>(`/v1/leituras/execucoes/${params.data.id}/cancelar`, corpo.data);
+      return responder(request, reply, resultado);
+    });
+  });
 }
