@@ -11,8 +11,44 @@ import { useState } from "react";
 import { contactDisplayName } from "@n1/dominio/derive";
 import { CP, CR, createReceivableSeries } from "@n1/dominio/operations";
 import { useData, useRun } from "@/dados/store";
-import { ConfirmDialog, Field, Select, TextInput } from "@/features/shell/ui";
+import { ConfirmDialog, Field, RecordRow, Select, TextInput } from "@/features/shell/ui";
 import type { Task } from "@n1/dominio/types";
+
+const fmtMoeda = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+const fmtDataCurta = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit" });
+
+/**
+ * A MESMA checagem de `parseCivil` em
+ * `packages/dominio/src/operations/financeiro.ts`: rejeita um `AAAA-MM-DD`
+ * que o calendário não tem (ex.: 2026-02-30), porque o construtor nativo de
+ * `Date`/`Date.parse` "resolveria" isso rolando para o mês seguinte — e o
+ * preview não pode mostrar uma parcela que `createReceivableSeries` recusaria.
+ */
+function parseCivilLocal(value: string): Date | undefined {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+  const [y, m, d] = value.split("-").map(Number);
+  if (!y || !m || !d) return undefined;
+  const date = new Date(y, m - 1, d);
+  return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d ? date : undefined;
+}
+
+/**
+ * O MESMO algoritmo de `addMonths` em
+ * `packages/dominio/src/operations/collaboration.ts`, aplicado do jeito que
+ * `createReceivableSeries` de fato chama: a partir de uma cópia FRESCA do
+ * vencimento da 1ª parcela a cada iteração (`new Date(primeiro.getTime())`
+ * seguido de `addMonths(due, n - 1)`), nunca encadeado a partir da parcela
+ * anterior. É por isso que o dia 31 VOLTA em março (31/01 → 28/02 → 31/03) —
+ * ver 05-12-SUMMARY.md para a leitura completa das duas implementações.
+ */
+function vencimentoDaParcelaLocal(primeiro: Date, mesesAFrente: number): Date {
+  const dia = primeiro.getDate();
+  const d = new Date(primeiro.getFullYear(), primeiro.getMonth(), 1);
+  d.setMonth(d.getMonth() + mesesAFrente);
+  const ultimo = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(dia, ultimo));
+  return d;
+}
 
 const INICIAL = {
   contactId: "",
@@ -65,6 +101,16 @@ export function SerieDeParcelasDialog({
   const parcelas = Number(form.parcelas);
   const valorParcela = Number(form.valorParcela.replace(",", "."));
   const valorEntrada = form.valorEntrada.trim() === "" ? undefined : Number(form.valorEntrada.replace(",", "."));
+  const hoje = (() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  })();
+  const primeiroVencimentoData = form.primeiroVencimento ? parseCivilLocal(form.primeiroVencimento) : undefined;
+  const vencimentoEntradaData = form.vencimentoEntrada ? parseCivilLocal(form.vencimentoEntrada) : undefined;
+  const primeiroVencimentoInvalido = !!form.primeiroVencimento && (!primeiroVencimentoData || primeiroVencimentoData < hoje);
+  const vencimentoEntradaInvalido = valorEntrada !== undefined && !!form.vencimentoEntrada && (!vencimentoEntradaData || vencimentoEntradaData < hoje);
+  const vencimentoInvalido = primeiroVencimentoInvalido || vencimentoEntradaInvalido;
   const faltando = !form.contactId
     ? "Escolha o cliente."
     : !form.centroDeCusto
@@ -79,8 +125,23 @@ export function SerieDeParcelasDialog({
               ? "O valor da entrada precisa ser maior que zero, ou fique em branco."
               : valorEntrada !== undefined && !form.vencimentoEntrada
                 ? "Informe o vencimento da entrada."
-                : undefined;
+                : vencimentoInvalido
+                  ? "Vencimento inválido: a 1ª parcela precisa vencer numa data real."
+                  : undefined;
   const total = (valorEntrada ?? 0) + (valorParcela > 0 && parcelas > 0 ? valorParcela * parcelas : 0);
+  const podeMostrarPreview = valorParcela > 0 && Number.isInteger(parcelas) && parcelas >= 1 && !!primeiroVencimentoData;
+  const parcelasPreview =
+    podeMostrarPreview && primeiroVencimentoData
+      ? Array.from({ length: parcelas }, (_, indice) => ({
+          numero: indice + 1,
+          data: vencimentoDaParcelaLocal(primeiroVencimentoData, indice),
+          valor: valorParcela,
+        }))
+      : [];
+  const entradaPreview =
+    podeMostrarPreview && valorEntrada !== undefined && valorEntrada > 0 && vencimentoEntradaData
+      ? { data: vencimentoEntradaData, valor: valorEntrada }
+      : undefined;
 
   return (
     <ConfirmDialog
@@ -157,10 +218,26 @@ export function SerieDeParcelasDialog({
             {(id) => <input id={id} type="date" value={form.primeiroVencimento} onChange={(event) => set({ primeiroVencimento: event.target.value })} className="campo" />}
           </Field>
         </div>
+        {podeMostrarPreview ? (
+          <div className="max-h-48 overflow-y-auto rounded-[var(--r-controle)] px-3" style={{ background: "var(--superficie-1)" }}>
+            <dl>
+              {entradaPreview ? (
+                <RecordRow label={`Entrada · ${fmtDataCurta.format(entradaPreview.data)}`}>
+                  <span className="app-numero">{fmtMoeda.format(entradaPreview.valor)}</span>
+                </RecordRow>
+              ) : null}
+              {parcelasPreview.map((parcela) => (
+                <RecordRow key={parcela.numero} label={`${parcela.numero}ª parcela · ${fmtDataCurta.format(parcela.data)}`}>
+                  <span className="app-numero">{fmtMoeda.format(parcela.valor)}</span>
+                </RecordRow>
+              ))}
+            </dl>
+          </div>
+        ) : null}
         <p className="app-sm" style={{ color: "var(--texto-3)" }}>
           As parcelas seguintes vencem no mesmo dia dos meses seguintes. Total da série:{" "}
           <strong className="app-numero" style={{ color: "var(--texto)", fontWeight: 600 }}>
-            {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(total)}
+            {fmtMoeda.format(total)}
           </strong>
           .
         </p>
