@@ -222,3 +222,21 @@ quatro Critérios do ROADMAP valerem em produção.
 
 _Verified: 2026-09-25T16:20:00Z_
 _Verifier: Claude (gsd-verifier)_
+
+## Acknowledged Gaps
+
+Registrado em 2026-09-25, ao fim da UAT (`05-UAT.md`, status `partial`: 6 pass, 1 bloqueado, 1
+adiado). O dono respondeu "marca concluida" à checagem de artefatos em aberto — a fase é fechada com
+estas lacunas conhecidas e aceitas, não resolvidas:
+
+| Item | Estado | Por que não bloqueia o fechamento |
+|---|---|---|
+| Deploy do `automation/` (05-23 Task 2, UAT 2) | adiado pelo dono | Passo próprio: 49 commits (48 fora do GitHub), `PLATAFORMA_*` ausentes no `.env` de produção, `package*.json` sujo na VPS — checklist em 05-23-SUMMARY.md |
+| Primeiro WhatsApp real por Canal (UAT 6) | bloqueado | Depende do deploy acima, do outbox worker do `apps/api` em produção (PERS-08) e de publicar uma Automação de Canal |
+| Corte MP/FO (UAT 3) | aceito como estado | Recusa visível (`TENANT_SEM_FONTE_PLATAFORMA`) é o estado desta fase; o corte espera fase própria (D5-20) |
+| R7 e relógio de Contas a receber (UAT 4) | aceito como estado | Pré-condições PERS-08/D-15 ausentes |
+| Espaços de teste no Postgres real (UAT 5) | aceito como estado | Pré-condição para ligar `AUTOMACOES_WORKER_ATIVO`, que segue desligado |
+| Índice único `(origem, "TaskID")` (UAT 7) | aceito como estado | 180 duplicados sem destino; o código não depende do índice |
+| Rotação de credenciais (UAT 8) | declarada pelo dono | Não verificada pelo agente |
+
+Critério 1 do ROADMAP é verdadeiro em produção; 2, 3 e 4 são code-complete e dependem dos itens acima.

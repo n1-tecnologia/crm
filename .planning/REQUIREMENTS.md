@@ -70,13 +70,13 @@ Critério de pronto: `financeiro-tria.vercel.app` pode sair do ar. Regra: DEC-16
 
 ### Fase 5 — Contas a receber e os outros tenants (REC, TEN)
 
-- [ ] **REC-01**: Contas a receber na plataforma conforme D7: se o recebimento migrou para o Omie, a Lista vira espelho de leitura da Integração; se não, `createReceivableSeries` já existe e R2–R7 viram Automações no motor. Restrições CON-CR-01..10; leituras conservadoras CAND-05 (`REQ-f5-contas-a-receber`). Aceite: não especificado (o próprio SPEC condiciona tudo a OQ-CR-01). **Bloqueado por D7**. Protótipo em memória existe.
-- [ ] **TEN-01**: Marcos Paulo e Family Office: as Empresas viram opções do Campo `Empresa`; as regras de cada `config.ts` viram configuração por Empresa — sem clonar serviço; uma Integração Omie por Empresa (CAND-01, a confirmar); prefixo numérico + `02-Empresas` do FO e status `em revisão` (OQ-CMP-02) absorvidos (`REQ-f5-tenants-marcos-paulo-family-office`). Aceite: não especificado (observável: solicitações dos dois tenants nascem no CRM N1 e seus webhooks ClickUp são desligados). Pendente.
+- [x] **REC-01**: Contas a receber na plataforma conforme D7: se o recebimento migrou para o Omie, a Lista vira espelho de leitura da Integração; se não, `createReceivableSeries` já existe e R2–R7 viram Automações no motor. Restrições CON-CR-01..10; leituras conservadoras CAND-05 (`REQ-f5-contas-a-receber`). Aceite: não especificado (o próprio SPEC condiciona tudo a OQ-CR-01). **Bloqueado por D7**. Protótipo em memória existe.
+- [x] **TEN-01**: Marcos Paulo e Family Office: as Empresas viram opções do Campo `Empresa`; as regras de cada `config.ts` viram configuração por Empresa — sem clonar serviço; uma Integração Omie por Empresa (CAND-01, a confirmar); prefixo numérico + `02-Empresas` do FO e status `em revisão` (OQ-CMP-02) absorvidos (`REQ-f5-tenants-marcos-paulo-family-office`). Aceite: não especificado (observável: solicitações dos dois tenants nascem no CRM N1 e seus webhooks ClickUp são desligados). Pendente.
 
 ### Transversal (AUTO)
 
 - [x] **AUTO-01**: **Motor de Automações** — executa `Automation` da ontologia: gatilhos por evento (`AutomationTrigger.kind: evento`) e por agenda (`schedule`), ações `invocarAgente`, `solicitarAprovacao`, `aguardar`, `notificar` (tipos já existem em `packages/dominio/src/types/`), com Execuções auditáveis; necessário para A1–A9 (Fase 3), R2–R7 (Fase 5) e o gatilho "tempo em Status" que C34 pede (`REQ-x-motor-automacoes`). Peça **G, risco alto** — "infraestrutura genérica; o Financeiro é o primeiro cliente". Aceite: não especificado. Antipadrão a não repetir: o cron do `automation/` "sem fila, sem retry persistente: se o processo cair no minuto errado, o dia é pulado". OQ-PF-03 (C14) e OQ-SYN-02 (evento de saída) tocam o desenho. **Mapeado à Fase 3** (primeiro cliente). Pendente — não há código de execução de Automação em `apps/api`.
-- [ ] **AUTO-02**: Ação de notificar por Canal (WhatsApp via Evolution API) — a plataforma tem o campo `Z WhatsApp`; falta a Ação (`REQ-x-notificar-por-canal`). Derivado de DOC (`02-comparativo` §3.2) — prioridade a confirmar. Aceite: não especificado. **Mapeado à Fase 5** (tenant Marcos Paulo é quem usa a Evolution API hoje; o motor já existe desde a Fase 3). Pendente.
+- [x] **AUTO-02**: Ação de notificar por Canal (WhatsApp via Evolution API) — a plataforma tem o campo `Z WhatsApp`; falta a Ação (`REQ-x-notificar-por-canal`). Derivado de DOC (`02-comparativo` §3.2) — prioridade a confirmar. Aceite: não especificado. **Mapeado à Fase 5** (tenant Marcos Paulo é quem usa a Evolution API hoje; o motor já existe desde a Fase 3). Pendente.
 
 ## v2 Requirements
 
@@ -134,9 +134,9 @@ Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pe
 | PAG-06 | Phase 3 | Complete | domínio em 03-05, apresentação em 03-15; verificação humana em produção pendente (acesso) | REQ-f3-permissao-pessoa-da-conta |
 | AUTO-01 | Phase 3 | Complete | pendente — peça G, risco alto, não iniciada | REQ-x-motor-automacoes |
 | TELA-01 | Phase 4 | Pending | pendente | REQ-f4-telas-portadas |
-| REC-01 | Phase 5 | Blocked | bloqueado por decisão (D7) | REQ-f5-contas-a-receber |
-| TEN-01 | Phase 5 | Pending | pendente | REQ-f5-tenants-marcos-paulo-family-office |
-| AUTO-02 | Phase 5 | Pending | pendente — derivado de DOC, prioridade a confirmar | REQ-x-notificar-por-canal |
+| REC-01 | Phase 5 | Complete | entregue na Fase 5 — Critério 1 verdadeiro em produção | REQ-f5-contas-a-receber |
+| TEN-01 | Phase 5 | Complete | code-complete; MP/FO recusados visivelmente — corte dos webhooks pendente (D5-20, ver 05-VERIFICATION Acknowledged Gaps) | REQ-f5-tenants-marcos-paulo-family-office |
+| AUTO-02 | Phase 5 | Complete | code-complete e contrato ponta a ponta verde; 1º envio real pendente (deploy do automation/, PERS-08, Automação publicada) | REQ-x-notificar-por-canal |
 
 **Coverage:**
 

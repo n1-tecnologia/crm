@@ -399,7 +399,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 23/28 | In Progress|  |
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
-| 5. Contas a receber e os outros tenants | 25/25 | Complete   | 2026-09-25 |
+| 5. Contas a receber e os outros tenants | 25/25 | Complete    | 2026-09-25 |
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*

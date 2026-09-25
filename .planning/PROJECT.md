@@ -18,6 +18,7 @@ Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de po
 - ✓ Autenticação Supabase (e-mail e senha) em `/entrar`; Membro resolvido pelo Usuário (`Member.userId`), nunca escolhido; `/sair`; "Sem acesso" para Membro removido ou pendente; `StoreProvider` por árvore (bug de singleton no SSR corrigido) — Fase 1 (`d713253`)
 - ✓ Schema `plataforma` (`registros` + `workspaces` + `migracoes`) no projeto Supabase próprio `epomplsskqpluxuujpxl`, aplicado por `npm run migrar` com migrações numeradas e imutáveis — Fase 0 (`b20597d`)
 - ✓ Volume do banco legado medido: maior tabela 9.510 linhas, `solicitacoes_pagamentos` 1.110 — risco "volume desconhecido" fechado — Fase 0 (2026-09-15)
+- ✓ Contas a receber na plataforma (Critério 1 verdadeiro em produção); Marcos Paulo e Family Office como Empresas do Campo `Empresa`, recusados visivelmente pelo `automation/` até a fonte "plataforma" chegar aos serviços deles; Ação de notificar por Canal code-complete com contrato ponta a ponta verde — Fase 5 (2026-09-25, com lacunas aceitas: deploy do `automation/` adiado, corte MP/FO e 1º WhatsApp real pendentes — `05-VERIFICATION.md` § Acknowledged Gaps)
 
 ### Active
 
@@ -28,7 +29,6 @@ Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de po
 - [ ] Fase 2: toda solicitação nova nasce no CRM N1 (formulário, tela de aprovação por clique, timeline); `automation/` fala com o `apps/api` pelo `adapters/plataforma.ts`; pipeline entra por `POST /webhooks/plataforma/solicitacao-criada`; 1.110 solicitações históricas importadas
 - [ ] Fase 3: Contas a pagar importadas com histórico; A1–A9 rodando no motor de Automações; Agente lançando no Omie de verdade; de-para de categorias real; pagamento em lote; permissão da Pessoa da conta
 - [ ] Fase 4: as outras leituras do financeiro-tria (Notas fiscais, Produtos, Plano de contas, Extratos, Workflows, Dashboard, Problemas, Aprovações pendentes) portadas como tela no CRM N1 — o painel sai do ar
-- [ ] Fase 5: Contas a receber na forma que D7 determinar; Marcos Paulo e Family Office como Empresas do Campo `Empresa`, uma Integração Omie por Empresa; notificar por Canal
 - [ ] Transversal: **motor de Automações** (gatilho por evento e por agenda; ações `invocarAgente`, `solicitarAprovacao`, `aguardar`, `notificar`) — peça G, risco alto, a única ainda não iniciada; o Financeiro (Fase 3) é o primeiro cliente, Contas a receber (Fase 5) o segundo
 
 ### Out of Scope
@@ -142,4 +142,4 @@ Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de po
 Depois de cada transição de fase: requisitos invalidados → Out of Scope com motivo; validados → Validated com a fase; novos → Active; decisões novas → tabela acima (candidatas que forem confirmadas sobem para o bloco `<decisions>`); "What This Is" ainda vale? Depois de cada marco: revisão completa, Core Value ainda é a prioridade certa?
 
 ---
-*Last updated: 2026-09-15 after ingest de docs (0 blockers) + mapa do código — criação inicial*
+*Last updated: 2026-09-25 after Phase 5 (Contas a receber e os outros tenants)*

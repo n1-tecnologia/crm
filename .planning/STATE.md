@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Plan 05-01 completo (Tasks 1-3): Integration cresce, evolver por Empresa e CLI dry-run existem e passam; ver 05-01-SUMMARY.md"
-last_updated: "2026-09-25T12:22:00.482Z"
-last_activity: 2026-09-25 -- Phase 05 execution started
+stopped_at: "Phase 05 concluída em 2026-09-25 com lacunas aceitas (deploy do automation/ adiado); Phases 02 e 04 seguem abertas"
+last_updated: "2026-09-25T14:38:49.557Z"
+last_activity: "2026-09-25 -- Phase 05 concluída: 25/25 planos, UAT 6 pass/1 bloqueado/1 adiado, lacunas aceitas no 05-VERIFICATION.md"
 progress:
   total_phases: 6
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 105
-  completed_plans: 99
-  percent: 67
+  completed_plans: 100
+  percent: 83
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 
 ## Current Position
 
-Phase: 05 (contas-a-receber-e-os-outros-tenants) — EXECUTING
-Plan: 1 of 25
-Status: Executing Phase 05
-Last activity: 2026-09-25 -- Phase 05 execution started
+Phase: 05 — COMPLETE (2026-09-25, com lacunas aceitas)
+Plan: 25 of 25
+Status: Phase 05 concluída. Abertas no milestone: Phase 02 (23/28) e Phase 04 (13/14)
+Last activity: 2026-09-25 -- Phase 05 concluída; deploy do automation/ adiado (ver 05-23-SUMMARY.md)
 
 **Onda 5 — 04-12** (sibling, `f06da55`/`d4cca79`/`49d71af`): módulo de acesso ao
 `conciliador_contas` e as seis rotas de plano de contas/workflows/execuções, autenticadas pelo
@@ -233,7 +233,7 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 
 **Velocity:**
 
-- Total plans completed: 0
+- Total plans completed: 25
 - Average duration: —
 - Total execution time: 0 hours
 
@@ -241,7 +241,7 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 05 | 25 | - | - |
 
 **Recent Trend:**
 
@@ -388,10 +388,14 @@ Items acknowledged and carried forward:
 | Requisito | PERS-03 — uma tabela por entidade | Sobreposto por DEC-02; parte viva é PERS-07 | Ingest 2026-09-15 |
 | Escopo | Cache local/offline; troca de Espaço na sessão; recorte de hidratação por Lista | Depois da Phase 5, se doer | CONCERNS.md |
 | Escopo | Go High Level | Inventário próprio, fora deste plano | 00-LEIA-PRIMEIRO |
+| Deploy | `automation/` na VPS (49 commits, `PLATAFORMA_*` no `.env`, `package*.json` sujo) | Adiado pelo dono — checklist em 05-23-SUMMARY.md | Phase 05 (2026-09-25) |
+| Dados | Índice único `(origem, "TaskID")` — 180 TaskID duplicados sem destino | Decisão do dono | Phase 05 (2026-09-25) |
+| Corte | MP/FO: 10 webhooks ClickUp + 2 Listas (D5-20) | Sem fase no ROADMAP | Phase 05 (2026-09-25) |
+| Infra | Backend do CRM N1 na VPS (`/opt/n1/crm-n1`, porta 3102) e reorganização das pastas N1 | Dono pediu para depois | Phase 05 (2026-09-25) |
 
 ## Session Continuity
 
-Last session: 2026-09-24T12:27:20.954Z
-Stopped at: Plan 05-01 completo (Tasks 1-3): Integration cresce, evolver por Empresa e CLI dry-run existem e passam; ver 05-01-SUMMARY.md
-Resume file: 
+Last session: 2026-09-25T18:30:00Z
+Stopped at: Phase 05 concluída (lacunas aceitas); próximas frentes abertas: Phase 02 (23/28) e Phase 04 (13/14)
+Resume file: None
 None
