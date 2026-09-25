@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-26-PLAN.md
-last_updated: "2026-09-25T17:38:27.186Z"
-last_activity: 2026-09-25 -- Phase 02 execution started
+stopped_at: "Phase 02 Plan 26 concluído (gate pré-paralelo); escopo desta rodada foi só 02-26 por decisão do dono — 02-15, 02-25, 02-27, 02-28 seguem abertos"
+last_updated: "2026-09-25T17:52:00.000Z"
+last_activity: 2026-09-25 -- Phase 02 Plan 26 concluído: contrato v1 provado nos dois repositórios (88 casos), E2E entre processos e Fault-Injection Matrix (a)-(h); 3 gaps reais de produção encontrados e documentados (ver 02-26-SUMMARY.md)
 progress:
   total_phases: 6
   completed_phases: 5
@@ -26,9 +26,17 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 02 (solicita-o-de-pagamento-o-front-substitui-o-clickup) — EXECUTING
-Plan: 2 of 28
-Status: Ready to execute
-Last activity: 2026-09-25 -- Phase 02 execution started
+Plan: 26 of 28 (24/28 planos completos; abertos: 02-15, 02-25, 02-27, 02-28)
+Status: 02-26 concluído por decisão explícita do dono de rodar só este plano nesta chamada de /gsd-execute-phase
+Last activity: 2026-09-25 -- Plan 02-26 (gate pré-paralelo: contrato entre repositórios + E2E entre processos + Fault-Injection Matrix) concluído
+
+**Plan 02-26 — três achados reais de produção, não corrigidos (fora do escopo do plano), que bloqueiam o ensaio de duas semanas:**
+1. O caminho de CLIQUE de aprovação (D-09, o principal) não emite evento de outbox — `apps/api/src/rotas/operacoes.ts` nunca passa `opcoes.eventos` a `executar()`. Só o callback de classificação por comentário emite hoje.
+2. `eventIdDoComentario` em `../financeiro-tria/automation/src/tenants/tria/classificador-de-aprovacao.ts` gera "uuid" que `z.uuid()` (mesma versão em produção) rejeita na maioria dos casos — o fallback por comentário está efetivamente quebrado.
+3. O Convidado "Agente do pipeline" não tem `comentar` em nenhuma Tarefa por padrão (só `ver` a nível de Lista) — a automação real vai falhar ao publicar o comentário de roteamento em Tarefa nova até existir uma concessão automática.
+Caso (i) da Fault-Injection Matrix (retomada de importação por `--resume`) ficou `it.todo`: depende do Plan 02-25, não executado. Ver `.planning/phases/02-solicita-o-de-pagamento-o-front-substitui-o-clickup/02-26-SUMMARY.md` para detalhes e reprodução de cada achado.
+
+**Pendência de git (não afeta código, só atribuição de commit):** o commit do lado `crm-n1` da Task 1 de 02-26 (`scripts/verificar-contratos.mjs` + `package.json`) foi absorvido dentro de `91d1ae7 "test(03): complete UAT"`, de outro processo concorrente rodando nesta mesma sessão multi-agente. Conteúdo correto e no lugar certo, confirmado por `git show --stat 91d1ae7`; não reescrito por não estar pushado e por essa reescrita arriscar outros processos concorrentes ainda ativos no branch.
 
 **Onda 5 — 04-12** (sibling, `f06da55`/`d4cca79`/`49d71af`): módulo de acesso ao
 `conciliador_contas` e as seis rotas de plano de contas/workflows/execuções, autenticadas pelo
