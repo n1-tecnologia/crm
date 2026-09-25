@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Phase 02 Plan 25 concluído: 245 Solicitações históricas importadas (run 957a5fdf), idempotente, outbox intocado; abertos 02-27 (ensaio de duas semanas) e 02-28 (corte)"
-last_updated: "2026-09-25T23:00:00.000Z"
-last_activity: 2026-09-25 -- Phase 02 Plan 25 concluído: importação histórica real (245 de 843 Solicitações distintas; 1.114 linhas na origem). Cinco defeitos do leitor/importador achados contra o dado real e corrigidos antes do apply
+stopped_at: "Phase 02: 02-25 concluído; achados do 02-26 corrigidos; 02-27 Tasks 1-2 concluídas, Task 3 (ensaio de duas semanas) aberta; 02-28 (corte) aberto"
+last_updated: "2026-09-25T23:59:00.000Z"
+last_activity: 2026-09-25 -- três achados do 02-26 corrigidos (evento do clique/comentário, Agente comenta pelo Papel, eventId do classificador); 02-27 Tasks 1-2 (código Omie determinístico + consulta antes de incluir, métricas e reconciliação)
 progress:
   total_phases: 6
   completed_phases: 5
@@ -26,9 +26,20 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 02 (solicita-o-de-pagamento-o-front-substitui-o-clickup) — EXECUTING
-Plan: 25 of 28 (26/28 planos completos; abertos: 02-27, 02-28)
-Status: 02-25 concluído com o dono, que rodou dry-run/apply contra o financeiro-tria (o agente não lê produção)
-Last activity: 2026-09-25 -- Plan 02-25 (importação histórica) concluído: 245 Tarefas fechadas em ws_n1, reaplicação criou 0, reconciliar bateComOLedger true, outbox 0 → 0
+Plan: 27 of 28 (26/28 planos completos; abertos: 02-27 Task 3, 02-28)
+Status: 02-27 Tasks 1-2 concluídas; Task 3 é o ensaio de duas semanas com dado real — depende da publicação do apps/api na VPS (pendência do 02-15)
+Last activity: 2026-09-25 -- achados do 02-26 corrigidos e provados pelo E2E entre processos sem contornos (dois-servicos 9/9, falhas-injetadas 8/8 +1 todo)
+
+**Achados do 02-26 — corrigidos em 2026-09-25:**
+1. `rotas/operacoes.ts` grava `aprovacao-decidida` (clique) e `comentario-criado` (resposta pela tela numa Solicitação) — `48f48f0`.
+2. O Agente do pipeline comenta pelo Papel em toda Tarefa que vê (`guestCommentsByRole`, `derive.ts`) — `dae2a91`.
+3. `eventIdDoComentario` gera UUID v5 válido — `financeiro-tria@7dfc441`.
+
+**Plan 02-27 — Tasks 1-2 (código) prontas, Task 3 (ensaio) aberta:**
+- `financeiro-tria@7c74681` + `@549ceb5`: consulta `ConsultarContaPagar` antes de `IncluirContaPagar` (e de novo após erro); coorte plataforma com código determinístico `tria:payment-request:plataforma:<taskId>` que nunca cede ao código extraído do resumo da IA; coorte clickup intocada.
+- `crm-n1@973aa8f`: `apps/api/src/observabilidade/` (métricas + `npm run reconciliar`). Lacuna: as contagens do lado do `automation/` (comandos, runs, códigos Omie) entram por `--resumo=<json>`, não por leitura automática — o `automation/` não tem tabela de runs persistida. Antes do ensaio, decidir quem gera esse resumo diário.
+- Pré-requisitos do ensaio (Task 3): publicar `apps/api` na VPS atrás do nginx, emitir a credencial do `automation/`, ligar `PAYMENT_REQUEST_SOURCE=plataforma` para a coorte nova, `FALLBACK_COMENTARIO_ATE` no deploy. Tudo com o dono.
+- Fora de escopo, anotado: `payment-rules.test.ts` (financeiro-tria) falha antes de hoje — roteamento de aprovador com fallback devolve "Elifas" onde o teste espera FINQ.
 
 **Plan 02-25 — o que ficou decidido e o que resta:**
 1. A origem tem 1.114 linhas mas só **843 Solicitações distintas** (até 20 linhas por TaskID); só **245** têm Centro de Custo e decisão — essas entraram. Critério 5 do ROADMAP reescrito (decisão do dono).
