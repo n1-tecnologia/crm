@@ -62,6 +62,7 @@ const CATEGORIAS_CONHECIDAS = new Set([
   "centro_custo_invalido",
   "empresa_fora_do_dominio",
   "data_vencimento_formato_inesperado",
+  "data_vencimento_so_previsao",
   "valor_ausente",
   "valor_nao_numerico",
   "documento_ausente",

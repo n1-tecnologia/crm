@@ -1,5 +1,5 @@
 {
-  "_aviso": "Fixture inteiramente FICTÍCIA (Plan 02-22, V02-09B). Nenhum CPF, CNPJ, chave Pix, dado bancário, e-mail pessoal, telefone ou nome de pessoa real do financeiro-tria aparece aqui. Documentos usam os padrões reconhecidamente falsos 000.000.000-00 (CPF) e 00.000.000/0001-91 (CNPJ); nomes em `comentario`/`comentario_aprovacao` são inventados. Construída à mão a partir do schema documentado em docs/08-migracao-financeiro/01-inventario-financeiro-tria.md — ver a ressalva sobre `valor`/`documento`/`created_at` em apps/api/src/importacao/financeiro/CONTEXT.md.",
+  "_aviso": "Fixture inteiramente FICTÍCIA (Plan 02-22, V02-09B). Nenhum CPF, CNPJ, chave Pix, dado bancário, e-mail pessoal, telefone ou nome de pessoa real do financeiro-tria aparece aqui. Documentos usam os padrões reconhecidamente falsos 000.000.000-00 (CPF) e 00.000.000/0001-91 (CNPJ); nomes em `comentario`/`comentario_aprovacao` são inventados. Construída à mão a partir do schema documentado em docs/08-migracao-financeiro/01-inventario-financeiro-tria.md Formato alinhado ao schema real em 2026-09-25 (information_schema.columns): sem valor/documento/created_at; `empresa` com os identificadores que o automation/ grava (tria, exo_loteamentos, …); `Data_previsao` em DD/MM/AAAA (vencimento do ClickUp), com as linhas 3 e 21 em AAAA-MM-DD (previsão de pagamento calculada) e a 20 com data inexistente.",
   "linhas": [
     {
       "id": 1,
@@ -8,13 +8,10 @@
       "comentario": "RESUMO: pagamento de serviço de consultoria referente a setembro.",
       "comentario_aprovacao": "Aprovado pelo Financeiro em revisão de rotina.",
       "centro_custo": "TRIA",
-      "empresa": "Tria Company",
+      "empresa": "tria",
       "tipo": "servico",
       "id_responsavel": "81591229",
-      "Data_previsao": "2026-09-05",
-      "valor": "1500.00",
-      "documento": "000.000.000-00",
-      "created_at": "2026-08-01T10:00:00.000Z"
+      "Data_previsao": "05/09/2026"
     },
     {
       "id": 2,
@@ -23,13 +20,10 @@
       "comentario": "RESUMO: solicitação reprovada — nota fiscal divergente do valor pedido.",
       "comentario_aprovacao": "Reprovado: divergência entre NF e valor.",
       "centro_custo": "Auton Health",
-      "empresa": "Loovi",
+      "empresa": "exo_loteamentos",
       "tipo": "insumo",
       "id_responsavel": "81581826",
-      "Data_previsao": "2026-08-20",
-      "valor": "980.50",
-      "documento": "00.000.000/0001-91",
-      "created_at": "2026-08-02T09:30:00.000Z"
+      "Data_previsao": "20/08/2026"
     },
     {
       "id": 3,
@@ -38,13 +32,10 @@
       "comentario": "RESUMO: aluguel de sala comercial, mês de referência agosto.",
       "comentario_aprovacao": null,
       "centro_custo": "Presidência",
-      "empresa": "EXO Participações",
+      "empresa": "exo_participacoes",
       "tipo": "aluguel",
       "id_responsavel": "81581798",
-      "Data_previsao": "2026-08-10",
-      "valor": "5200.00",
-      "documento": "00.000.000/0001-91",
-      "created_at": "2026-08-03T11:15:00.000Z"
+      "Data_previsao": "2026-08-10"
     },
     {
       "id": 4,
@@ -53,13 +44,10 @@
       "comentario": "RESUMO: compra de material de escritório para a equipe.",
       "comentario_aprovacao": "Aprovado.",
       "centro_custo": "Roberth Resende",
-      "empresa": "IVL",
+      "empresa": "oliveira_participacoes",
       "tipo": "administrativo",
       "id_responsavel": "81582295",
-      "Data_previsao": "2026-08-15",
-      "valor": "312.90",
-      "documento": "000.000.000-00",
-      "created_at": "2026-08-04T08:45:00.000Z"
+      "Data_previsao": "15/08/2026"
     },
     {
       "id": 5,
@@ -68,13 +56,10 @@
       "comentario": "RESUMO: pedido de reembolso de viagem sem comprovante anexado.",
       "comentario_aprovacao": "Reprovado por falta de anexo.",
       "centro_custo": "Igor Alves",
-      "empresa": "Konq Intermediações",
+      "empresa": "finq",
       "tipo": "viagem",
       "id_responsavel": "81582295",
-      "Data_previsao": "2026-08-25",
-      "valor": "740.00",
-      "documento": "000.000.000-00",
-      "created_at": "2026-08-05T14:20:00.000Z"
+      "Data_previsao": "25/08/2026"
     },
     {
       "id": 6,
@@ -83,13 +68,10 @@
       "comentario": "RESUMO: pagamento de ferramenta de software (assinatura mensal).",
       "comentario_aprovacao": "Aprovado — recorrente.",
       "centro_custo": "Tria Tech",
-      "empresa": "Tria Company",
+      "empresa": "tria",
       "tipo": "ferramenta",
       "id_responsavel": "81581826",
-      "Data_previsao": "2026-09-01",
-      "valor": "199.90",
-      "documento": "00.000.000/0001-91",
-      "created_at": "2026-08-06T16:00:00.000Z"
+      "Data_previsao": "01/09/2026"
     },
     {
       "id": 7,
@@ -98,13 +80,10 @@
       "comentario": "RESUMO: comissão de vendas do mês de julho.",
       "comentario_aprovacao": "Aprovado.",
       "centro_custo": "Kaka Diniz",
-      "empresa": "O2",
+      "empresa": "pf",
       "tipo": "comissao",
       "id_responsavel": "81581798",
-      "Data_previsao": "2026-08-12",
-      "valor": "2200.00",
-      "documento": "000.000.000-00",
-      "created_at": "2026-08-07T09:00:00.000Z"
+      "Data_previsao": "12/08/2026"
     },
     {
       "id": 8,
@@ -113,13 +92,10 @@
       "comentario": "RESUMO: doação recusada por não constar no orçamento aprovado.",
       "comentario_aprovacao": "Reprovado — fora do orçamento.",
       "centro_custo": "PLX Apoio",
-      "empresa": "PLX digital",
+      "empresa": "tria",
       "tipo": "doacao",
       "id_responsavel": "81591229",
-      "Data_previsao": "2026-08-18",
-      "valor": "500.00",
-      "documento": "00.000.000/0001-91",
-      "created_at": "2026-08-08T13:10:00.000Z"
+      "Data_previsao": "18/08/2026"
     },
     {
       "id": 9,
@@ -128,13 +104,10 @@
       "comentario": "RESUMO: correios — envio de material para evento.",
       "comentario_aprovacao": "Aprovado.",
       "centro_custo": "Anthony Miranda",
-      "empresa": "Inevitaveis",
+      "empresa": "tria",
       "tipo": "correios",
       "id_responsavel": "81582295",
-      "Data_previsao": "2026-08-22",
-      "valor": "89.00",
-      "documento": "000.000.000-00",
-      "created_at": "2026-08-09T10:40:00.000Z"
+      "Data_previsao": "22/08/2026"
     },
     {
       "id": 10,
@@ -143,13 +116,10 @@
       "comentario": "RESUMO: publicidade de marca — patrocínio de evento parceiro.",
       "comentario_aprovacao": "Aprovado — dentro da verba de marketing.",
       "centro_custo": "USI",
-      "empresa": "USI",
+      "empresa": "tria",
       "tipo": "publicidade",
       "id_responsavel": "81581826",
-      "Data_previsao": "2026-08-28",
-      "valor": "3300.00",
-      "documento": "00.000.000/0001-91",
-      "created_at": "2026-08-10T15:25:00.000Z"
+      "Data_previsao": "28/08/2026"
     },
     {
       "id": 11,
@@ -158,13 +128,10 @@
       "comentario": "RESUMO: linha sem TaskID — caso hostil (a) taskid_ausente.",
       "comentario_aprovacao": null,
       "centro_custo": "TRIA",
-      "empresa": "Tria Company",
+      "empresa": "tria",
       "tipo": "servico",
       "id_responsavel": "81591229",
-      "Data_previsao": "2026-08-11",
-      "valor": "100.00",
-      "documento": "000.000.000-00",
-      "created_at": "2026-08-11T10:00:00.000Z"
+      "Data_previsao": "11/08/2026"
     },
     {
       "id": 12,
@@ -173,13 +140,10 @@
       "comentario": "RESUMO: TaskID repetido do registro 1 — caso hostil (b) taskid_duplicado.",
       "comentario_aprovacao": null,
       "centro_custo": "TRIA",
-      "empresa": "Tria Company",
+      "empresa": "tria",
       "tipo": "servico",
       "id_responsavel": "81591229",
-      "Data_previsao": "2026-08-11",
-      "valor": "150.00",
-      "documento": "000.000.000-00",
-      "created_at": "2026-08-11T10:05:00.000Z"
+      "Data_previsao": "11/08/2026"
     },
     {
       "id": 13,
@@ -188,13 +152,10 @@
       "comentario": "RESUMO: Aprovado nulo — caso hostil (c) aprovado_ambiguo.",
       "comentario_aprovacao": null,
       "centro_custo": "TRIA",
-      "empresa": "Tria Company",
+      "empresa": "tria",
       "tipo": "servico",
       "id_responsavel": "81581798",
-      "Data_previsao": "2026-08-13",
-      "valor": "220.00",
-      "documento": "000.000.000-00",
-      "created_at": "2026-08-13T10:00:00.000Z"
+      "Data_previsao": "13/08/2026"
     },
     {
       "id": 14,
@@ -203,13 +164,10 @@
       "comentario": "RESUMO: Aprovado fora do domínio (string \"talvez\") — caso hostil (d) aprovado_ambiguo.",
       "comentario_aprovacao": null,
       "centro_custo": "TRIA",
-      "empresa": "Tria Company",
+      "empresa": "tria",
       "tipo": "servico",
       "id_responsavel": "81581798",
-      "Data_previsao": "2026-08-14",
-      "valor": "300.00",
-      "documento": "000.000.000-00",
-      "created_at": "2026-08-14T10:00:00.000Z"
+      "Data_previsao": "14/08/2026"
     },
     {
       "id": 15,
@@ -218,13 +176,10 @@
       "comentario": "",
       "comentario_aprovacao": null,
       "centro_custo": "TRIA",
-      "empresa": "Tria Company",
+      "empresa": "tria",
       "tipo": "servico",
       "id_responsavel": "81581826",
-      "Data_previsao": "2026-08-15",
-      "valor": "410.00",
-      "documento": "000.000.000-00",
-      "created_at": "2026-08-15T10:00:00.000Z"
+      "Data_previsao": "15/08/2026"
     },
     {
       "id": 16,
@@ -233,13 +188,10 @@
       "comentario": "RESUMO:\n- Fornecedor: Exemplo Serviços Fictícios\n- Valor: R$ 1.234,56\n- **Observação**: pagamento _parcelado_ em 2x\n\n> Revisado pelo Financeiro.",
       "comentario_aprovacao": "Aprovado com ressalva de parcelamento.",
       "centro_custo": "TRIA",
-      "empresa": "Tria Company",
+      "empresa": "tria",
       "tipo": "servico",
       "id_responsavel": "81581826",
-      "Data_previsao": "2026-08-16",
-      "valor": "1234.56",
-      "documento": "00.000.000/0001-91",
-      "created_at": "2026-08-16T10:00:00.000Z"
+      "Data_previsao": "16/08/2026"
     },
     {
       "id": 17,
@@ -248,13 +200,10 @@
       "comentario": "RESUMO: valor ausente na origem — caso hostil (e) valor_ausente.",
       "comentario_aprovacao": null,
       "centro_custo": "TRIA",
-      "empresa": "Tria Company",
+      "empresa": "tria",
       "tipo": "servico",
       "id_responsavel": "81582295",
-      "Data_previsao": "2026-08-17",
-      "valor": null,
-      "documento": "000.000.000-00",
-      "created_at": "2026-08-17T10:00:00.000Z"
+      "Data_previsao": "17/08/2026"
     },
     {
       "id": 18,
@@ -263,13 +212,10 @@
       "comentario": "RESUMO: valor como texto não numérico — caso hostil (f) valor_nao_numerico.",
       "comentario_aprovacao": null,
       "centro_custo": "TRIA",
-      "empresa": "Tria Company",
+      "empresa": "tria",
       "tipo": "servico",
       "id_responsavel": "81582295",
-      "Data_previsao": "2026-08-18",
-      "valor": "a combinar",
-      "documento": "000.000.000-00",
-      "created_at": "2026-08-18T10:00:00.000Z"
+      "Data_previsao": "18/08/2026"
     },
     {
       "id": 19,
@@ -278,13 +224,10 @@
       "comentario": "RESUMO: created_at ausente na origem — caso hostil (g) data_de_criacao_ausente.",
       "comentario_aprovacao": null,
       "centro_custo": "TRIA",
-      "empresa": "Tria Company",
+      "empresa": "tria",
       "tipo": "servico",
       "id_responsavel": "81591229",
-      "Data_previsao": "2026-08-19",
-      "valor": "175.00",
-      "documento": "000.000.000-00",
-      "created_at": null
+      "Data_previsao": "19/08/2026"
     },
     {
       "id": 20,
@@ -293,13 +236,10 @@
       "comentario": "RESUMO: Data Vencimento em formato inesperado — caso hostil (h) data_vencimento_formato_inesperado.",
       "comentario_aprovacao": null,
       "centro_custo": "TRIA",
-      "empresa": "Tria Company",
+      "empresa": "tria",
       "tipo": "servico",
       "id_responsavel": "81591229",
-      "Data_previsao": "20/08/2026",
-      "valor": "260.00",
-      "documento": "000.000.000-00",
-      "created_at": "2026-08-20T10:00:00.000Z"
+      "Data_previsao": "31/02/2026"
     },
     {
       "id": 21,
@@ -308,13 +248,10 @@
       "comentario": "RESUMO: documento ausente na origem — caso hostil (i) documento_ausente.",
       "comentario_aprovacao": null,
       "centro_custo": "TRIA",
-      "empresa": "Tria Company",
+      "empresa": "tria",
       "tipo": "servico",
       "id_responsavel": "81581798",
-      "Data_previsao": "2026-08-21",
-      "valor": "88.00",
-      "documento": null,
-      "created_at": "2026-08-21T10:00:00.000Z"
+      "Data_previsao": "2026-08-21"
     },
     {
       "id": 22,
@@ -323,13 +260,10 @@
       "comentario": "RESUMO: caso hostil de credencial por linha que a allowlist descarta.",
       "comentario_aprovacao": null,
       "centro_custo": "TRIA",
-      "empresa": "Tria Company",
+      "empresa": "tria",
       "tipo": "servico",
       "id_responsavel": "81581798",
-      "Data_previsao": "2026-08-22",
-      "valor": "310.00",
-      "documento": "000.000.000-00",
-      "created_at": "2026-08-22T10:00:00.000Z",
+      "Data_previsao": "22/08/2026",
       "app_key": "chave-omie-ficticia-nao-real-0001"
     },
     {
@@ -339,13 +273,10 @@
       "comentario": "RESUMO: segundo caso hostil de credencial por linha que a allowlist descarta.",
       "comentario_aprovacao": null,
       "centro_custo": "TRIA",
-      "empresa": "Tria Company",
+      "empresa": "tria",
       "tipo": "servico",
       "id_responsavel": "81581798",
-      "Data_previsao": "2026-08-23",
-      "valor": "410.00",
-      "documento": "000.000.000-00",
-      "created_at": "2026-08-23T10:00:00.000Z",
+      "Data_previsao": "23/08/2026",
       "app_secret": "segredo-omie-ficticio-nao-real-0002"
     },
     {
@@ -355,13 +286,10 @@
       "comentario": "RESUMO: Centro de Custo ausente — cobertura extra, RN-SP-01.",
       "comentario_aprovacao": null,
       "centro_custo": null,
-      "empresa": "Tria Company",
+      "empresa": "tria",
       "tipo": "servico",
       "id_responsavel": "81581798",
-      "Data_previsao": "2026-08-24",
-      "valor": "120.00",
-      "documento": "000.000.000-00",
-      "created_at": "2026-08-24T10:00:00.000Z"
+      "Data_previsao": "24/08/2026"
     },
     {
       "id": 25,
@@ -370,13 +298,10 @@
       "comentario": "RESUMO: Centro de Custo fora do catálogo — cobertura extra, RN-SP-01.",
       "comentario_aprovacao": null,
       "centro_custo": "Centro Que Não Existe",
-      "empresa": "Tria Company",
+      "empresa": "tria",
       "tipo": "servico",
       "id_responsavel": "81581798",
-      "Data_previsao": "2026-08-25",
-      "valor": "130.00",
-      "documento": "000.000.000-00",
-      "created_at": "2026-08-25T10:00:00.000Z"
+      "Data_previsao": "25/08/2026"
     },
     {
       "id": 26,
@@ -385,13 +310,10 @@
       "comentario": "RESUMO: Empresa fora do catálogo — vira lacuna, não recusa a linha.",
       "comentario_aprovacao": null,
       "centro_custo": "TRIA",
-      "empresa": "Empresa Que Não Existe",
+      "empresa": "empresa_desconhecida",
       "tipo": "servico",
       "id_responsavel": "81581798",
-      "Data_previsao": "2026-08-26",
-      "valor": "140.00",
-      "documento": "000.000.000-00",
-      "created_at": "2026-08-26T10:00:00.000Z"
+      "Data_previsao": "26/08/2026"
     },
     {
       "id": 27,
@@ -400,13 +322,10 @@
       "comentario": "RESUMO: documento CNPJ de 14 dígitos, cobertura de tipo de Fornecedor.",
       "comentario_aprovacao": "Reprovado.",
       "centro_custo": "TRIA",
-      "empresa": "Tria Company",
+      "empresa": "tria",
       "tipo": "servico",
       "id_responsavel": "81581798",
-      "Data_previsao": "2026-08-27",
-      "valor": "150.00",
-      "documento": "00.000.000/0001-91",
-      "created_at": "2026-08-27T10:00:00.000Z"
+      "Data_previsao": "27/08/2026"
     },
     {
       "id": 28,
@@ -415,13 +334,10 @@
       "comentario": "RESUMO: documento CPF de 11 dígitos, cobertura de tipo de Fornecedor.",
       "comentario_aprovacao": null,
       "centro_custo": "TRIA",
-      "empresa": "Tria Company",
+      "empresa": "tria",
       "tipo": "servico",
       "id_responsavel": "81581798",
-      "Data_previsao": "2026-08-28",
-      "valor": "160.00",
-      "documento": "000.000.000-00",
-      "created_at": "2026-08-28T10:00:00.000Z"
+      "Data_previsao": "28/08/2026"
     },
     {
       "id": 29,
@@ -430,13 +346,10 @@
       "comentario": "RESUMO: responsável é o revisor FO ainda não resolvido (81581802) — autoria não demonstrável.",
       "comentario_aprovacao": null,
       "centro_custo": "TRIA",
-      "empresa": "Tria Company",
+      "empresa": "tria",
       "tipo": "servico",
       "id_responsavel": "81581802",
-      "Data_previsao": "2026-08-29",
-      "valor": "170.00",
-      "documento": "000.000.000-00",
-      "created_at": "2026-08-29T10:00:00.000Z"
+      "Data_previsao": "29/08/2026"
     },
     {
       "id": 30,
@@ -445,13 +358,10 @@
       "comentario": "RESUMO: responsável com Membro já conhecido (Maryane, mem_maryane) — autoria demonstrável.",
       "comentario_aprovacao": null,
       "centro_custo": "TRIA",
-      "empresa": "Tria Company",
+      "empresa": "tria",
       "tipo": "servico",
       "id_responsavel": "81581816",
-      "Data_previsao": "2026-08-30",
-      "valor": "180.00",
-      "documento": "000.000.000-00",
-      "created_at": "2026-08-30T10:00:00.000Z"
+      "Data_previsao": "30/08/2026"
     },
     {
       "id": 31,
@@ -460,13 +370,10 @@
       "comentario": "RESUMO: reprovação com comentário longo, para provar preservação byte a byte de espaços   duplos  e tabulação.\t(fim)",
       "comentario_aprovacao": "Reprovado.",
       "centro_custo": "TRIA",
-      "empresa": "Tria Company",
+      "empresa": "tria",
       "tipo": "servico",
       "id_responsavel": "81581798",
-      "Data_previsao": "2026-08-31",
-      "valor": "190.00",
-      "documento": "000.000.000-00",
-      "created_at": "2026-08-31T10:00:00.000Z"
+      "Data_previsao": "31/08/2026"
     },
     {
       "id": 32,
@@ -475,13 +382,10 @@
       "comentario": "RESUMO: linha final, completa e válida, sem nenhuma lacuna.",
       "comentario_aprovacao": "Aprovado.",
       "centro_custo": "TRIA",
-      "empresa": "Tria Company",
+      "empresa": "tria",
       "tipo": "servico",
       "id_responsavel": "81581816",
-      "Data_previsao": "2026-09-01",
-      "valor": "210.00",
-      "documento": "00.000.000/0001-91",
-      "created_at": "2026-09-01T10:00:00.000Z"
+      "Data_previsao": "01/09/2026"
     }
   ]
 }

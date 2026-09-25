@@ -67,6 +67,23 @@ function campoPorRotulo(rotulo: string): (typeof CAMPOS_SOLICITACAO_DE_PAGAMENTO
 
 const CAMPO_CENTRO_DE_CUSTO = campoPorRotulo("Centro de Custo");
 const CAMPO_EMPRESA = campoPorRotulo("Empresa");
+
+/**
+ * `empresa` no legado é o identificador que `automation/src/adapters/supabase.ts#matchEmpresa`
+ * grava, não o nome do catálogo. `tria` também é o padrão de lá quando nada casa — parte das
+ * "Tria Company" importadas herda esse padrão (aceito pelo dono, 2026-09-25).
+ */
+const EMPRESA_DO_LEGADO: Readonly<Record<string, string>> = {
+  tria: "Tria Company",
+  exo_loteamentos: "EXO Loteamento",
+  exo_participacoes: "EXO Participações",
+  oliveira_participacoes: "Oliveira Participações",
+  finq: "Konq Intermediações",
+  pf: "Marcos Paulo",
+};
+for (const nome of Object.values(EMPRESA_DO_LEGADO)) {
+  if (!(CAMPO_EMPRESA.opcoes ?? []).includes(nome)) throw new Error(`Empresa "${nome}" não existe mais no catálogo de Solicitação de pagamento.`);
+}
 const CAMPO_DATA_VENCIMENTO = campoPorRotulo("Data Vencimento");
 
 /* ────────────────────────── Leitura (Plan 02-25 chama isto) ────────────────────────── */
@@ -174,12 +191,14 @@ function textoOuAusente(valor: unknown): string | undefined {
 }
 
 /** `YYYY-MM-DD` — a mesma forma que `setTaskFieldValue` exige para um Campo `date` (@n1/dominio/operations/tasks). */
-function comoDataCivil(valor: unknown): string | undefined {
-  const texto = textoOuAusente(valor);
-  if (!texto) return undefined;
-  const normalizado = texto.length >= 10 ? texto.slice(0, 10) : texto;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizado) || Number.isNaN(Date.parse(`${normalizado}T00:00:00Z`))) return undefined;
-  return normalizado;
+/** DD/MM/AAAA estrito → AAAA-MM-DD; data que não existe no calendário (31/02) devolve `undefined`. */
+function comoDataBrasileira(texto: string): string | undefined {
+  const partes = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(texto);
+  if (!partes) return undefined;
+  const [, dia, mes, ano] = partes;
+  const data = new Date(Date.UTC(Number(ano), Number(mes) - 1, Number(dia)));
+  if (data.getUTCFullYear() !== Number(ano) || data.getUTCMonth() !== Number(mes) - 1 || data.getUTCDate() !== Number(dia)) return undefined;
+  return `${ano}-${mes}-${dia}`;
 }
 
 /**
@@ -215,14 +234,22 @@ export function classificarLinha(linha: LinhaLegadaBruta, vistos: ReadonlySet<st
   campos[CAMPO_CENTRO_DE_CUSTO.id] = centroDeCusto;
 
   // C — Empresa: não obrigatório; fora do domínio vira lacuna, não recusa a linha.
-  const empresa = textoOuAusente(linha.empresa);
+  const empresaBruta = textoOuAusente(linha.empresa);
+  const empresa = empresaBruta ? (EMPRESA_DO_LEGADO[empresaBruta.toLowerCase()] ?? empresaBruta) : undefined;
   if (empresa && (CAMPO_EMPRESA.opcoes ?? []).includes(empresa)) campos[CAMPO_EMPRESA.id] = empresa;
   else if (empresa) lacunas.push("empresa_fora_do_dominio");
 
   // L — Data Vencimento, de `Data_previsao`. Nunca fonte de `criadaEm` (vencimento não é criação).
-  const dataVencimento = comoDataCivil(linha.Data_previsao);
-  if (dataVencimento) campos[CAMPO_DATA_VENCIMENTO.id] = dataVencimento;
-  else if (linha.Data_previsao !== null && linha.Data_previsao !== undefined) lacunas.push("data_vencimento_formato_inesperado");
+  // A coluna guarda duas coisas: o vencimento que o mapper do ClickUp grava em DD/MM/AAAA
+  // (`toLocaleDateString("pt-BR")`) e a previsão de pagamento que `registerPrediction`
+  // sobrescreve em AAAA-MM-DD. Só a primeira é vencimento (decisão do dono, 2026-09-25).
+  const dataPrevisao = textoOuAusente(linha.Data_previsao);
+  if (dataPrevisao) {
+    const dataVencimento = comoDataBrasileira(dataPrevisao);
+    if (dataVencimento) campos[CAMPO_DATA_VENCIMENTO.id] = dataVencimento;
+    else if (/^\d{4}-\d{2}-\d{2}/.test(dataPrevisao)) lacunas.push("data_vencimento_so_previsao");
+    else lacunas.push("data_vencimento_formato_inesperado");
+  }
 
   // T — Valor e G/H — Documento: a tabela legada não tem coluna para nenhum dos dois; eles só
   // existem dentro do texto livre que a IA gravou em `comentario`. D-25 proíbe reconstruir de

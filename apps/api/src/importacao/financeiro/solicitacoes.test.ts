@@ -86,12 +86,35 @@ describe("classificarLinha", () => {
     }
   });
 
-  it("(f) Data Vencimento em formato inesperado vira lacuna, sem parse otimista", () => {
-    const formatoInesperado = classificarLinha(linha(20));
-    expect(formatoInesperado.resultado).toBe("valida");
-    expect(formatoInesperado.entrada?.lacunas).toContain("data_vencimento_formato_inesperado");
-    expect(Object.values(formatoInesperado.entrada?.campos ?? {})).not.toContain("2026-08-20");
-    expect(Object.values(formatoInesperado.entrada?.campos ?? {})).not.toContain("20/08/2026");
+  it("(f) Data Vencimento: DD/MM/AAAA vira data; AAAA-MM-DD é previsão de pagamento (lacuna); data inexistente é lacuna", () => {
+    const campoData = (id: number): unknown =>
+      classificarLinha(linha(id)).entrada?.campos[CAMPOS_SOLICITACAO_DE_PAGAMENTO.find((c) => c.rotulo === "Data Vencimento")!.id];
+
+    expect(linha(1).Data_previsao).toBe("05/09/2026");
+    expect(campoData(1)).toBe("2026-09-05");
+
+    const previsao = classificarLinha(linha(3));
+    expect(previsao.entrada?.lacunas).toContain("data_vencimento_so_previsao");
+    expect(campoData(3)).toBeUndefined();
+
+    const inexistente = classificarLinha(linha(20));
+    expect(linha(20).Data_previsao).toBe("31/02/2026");
+    expect(inexistente.entrada?.lacunas).toContain("data_vencimento_formato_inesperado");
+    expect(campoData(20)).toBeUndefined();
+  });
+
+  it("(f2) Empresa: identificador do legado vira o nome do catálogo; identificador desconhecido vira lacuna", () => {
+    const campoEmpresa = (id: number): unknown =>
+      classificarLinha(linha(id)).entrada?.campos[CAMPOS_SOLICITACAO_DE_PAGAMENTO.find((c) => c.rotulo === "Empresa")!.id];
+
+    expect(campoEmpresa(1)).toBe("Tria Company");
+    expect(campoEmpresa(5)).toBe("Konq Intermediações");
+    expect(campoEmpresa(7)).toBe("Marcos Paulo");
+
+    const desconhecida = classificarLinha(linha(26));
+    expect(desconhecida.resultado).toBe("valida");
+    expect(desconhecida.entrada?.lacunas).toContain("empresa_fora_do_dominio");
+    expect(campoEmpresa(26)).toBeUndefined();
   });
 
   it("(g) linhas com app_key/app_secret: o objeto devolvido não contém essas chaves em nenhum nível", () => {
