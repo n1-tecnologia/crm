@@ -357,6 +357,10 @@ Nenhum em `.planning/todos/` ainda. Decisões com prazo (ver ROADMAP.md "Decisõ
 
 ### Blockers/Concerns
 
+- **SEC-01 (Phase 05, `05-SECURITY.md`, aceito pelo dono em 2026-09-25 com condição):** nenhuma fase ou mudança pode liberar a fonte "plataforma" para `marcos-paulo`/`family-office` sem executar ANTES o corte 05-05 (Tasks 2/3, ordem D-28: desligar webhooks ClickUp → 48h de silêncio → conferir gêmeas → arquivar 901109642259/901111928443). Sem isso, T-5-15 (double-write no Omie, HIGH) volta a ser possível. **SEC-02:** nenhuma Automação de Canal real é publicada em `ws_n1` antes do 05-23 (migração de receipts sozinha no Supabase do `automation/`, depois o deploy).
+- **Antes de ligar qualquer worker de scheduler em produção:** remover ou excluir do catálogo os ~14 Espaços de teste com Automações temporais ativas no Postgres de produção (WR-A, 05-25).
+- **Agentes não conseguem escrever em produção:** o classificador de permissão do Claude Code recusa `--apply`/`migrar` contra o banco real (05-19/05-20/05-21) — o dono roda o comando e cola a saída; o agente faz o dry-run antes e a confirmação somente-leitura depois.
+
 - **ROADMAP.md agora mostra "Phase 3: Contas a pagar" como `[x]` Complete (15/15, 2026-09-23)** — isso é `roadmap update-plan-progress` contando EXISTÊNCIA de SUMMARY.md por plano, não fechamento verificado. Sete dos quinze planos da fase (03-07, 03-08, 03-10, 03-11, 03-13, 03-14, 03-15) têm, dentro do próprio SUMMARY, um checkpoint bloqueante de produção ainda ABERTO — e o critério 1 da própria fase (uma semana sem ClickUp + o corte) é exatamente o que 03-14 Task 4 não executou. Uma rodada de `/gsd-verify-phase 3` deve pegar isso e não assinar a fase como pronta para a Phase 4 só porque a tabela diz "Complete". Não revertido aqui de propósito — é o comportamento padrão da ferramenta, e mascarar isso escondendo o "Complete" seria pior do que registrar a ressalva.
 - PERS-08 bloqueado por D11 (deploy do `apps/api`); não trava o código da Phase 1.
 - SOL-01 (D6), SOL-08 (D8) e REC-01 (D7) bloqueados por decisão aberta.
