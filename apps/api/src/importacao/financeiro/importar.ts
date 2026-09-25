@@ -253,7 +253,20 @@ export async function importarLote(opcoes: OpcoesDeImportarLote): Promise<Result
         rejeitadas += 1;
         const motivo = classificacao.motivo ?? "desconhecido";
         motivosPorCategoria[motivo] = (motivosPorCategoria[motivo] ?? 0) + 1;
-        if (classificacao.taskId) {
+        // "taskid_duplicado" é a SEGUNDA ocorrência do mesmo TaskID DENTRO
+        // deste lote (`vistos`, não `jaNoLedger`) — a primeira ocorrência já
+        // vai gravar sua própria linha no ledger (válida → `aoConfirmar`
+        // dentro da transação; rejeitada/ambígua → aqui mesmo, antes dela na
+        // ordem de iteração). Gravar TAMBÉM uma linha "rejeitada" aqui correria
+        // NA FRENTE da gravação real da primeira ocorrência (este bloco roda
+        // fora da transação, antes de `executar()`) e o `on conflict do
+        // nothing` faria a linha "rejeitada" da duplicata vencer a chave —
+        // apagando silenciosamente o resultado verdadeiro (`importada`) da
+        // primeira ocorrência sem apagar a Tarefa que ela criou. Achado real:
+        // fixture de teste tem `clk_100001` duas vezes (id=1 válida, id=12
+        // duplicata) — sem este `if`, `reconciliar()` mostrava 25 onde
+        // `importarLote` contava 26.
+        if (classificacao.taskId && motivo !== "taskid_duplicado") {
           ledgerParaGravarForaDaTransacao.push({ legacyTaskId: classificacao.taskId, resultado: "rejeitada", motivo, sourceHash });
         }
         continue;

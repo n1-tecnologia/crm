@@ -405,11 +405,17 @@ d("importarLote / reconciliar (Postgres real)", () => {
     });
 
     const duplicado = await ledgerPorLegacyId("clk_100001");
-    // id=1 é a primeira ocorrência (válida); id=12 repete o mesmo TaskID —
-    // `on conflict do nothing` preserva a linha da PRIMEIRA (válida). A
-    // prova de que a SEGUNDA nunca virou Tarefa é `contarTarefas()` bater
-    // com `classificacaoEsperada().validas`, já coberto no caso (b).
+    // id=1 é a primeira ocorrência (válida) e vira Tarefa; id=12 repete o
+    // mesmo TaskID e é descartada em memória por `vistos` — nunca chega a
+    // gravar linha própria no ledger (ver o comentário em `importar.ts`
+    // sobre por que gravá-la apagaria a linha "importada" da primeira via
+    // `on conflict do nothing`). A linha que sobra é a da primeira ocorrência,
+    // com `resultado` "importada" ou "avisada" (se a linha tiver alguma
+    // lacuna) — nunca "rejeitada". A prova de que a SEGUNDA nunca virou
+    // Tarefa é `contarTarefas()` bater com `classificacaoEsperada().validas`,
+    // já coberto no caso (b).
     expect(duplicado).toBeDefined();
+    expect(["importada", "avisada"]).toContain(duplicado?.resultado);
     expect(await tarefaPorLegacyId("clk_100013")).toBeUndefined(); // Aprovado ambíguo — nunca Tarefa.
     const ambigua = await ledgerPorLegacyId("clk_100013");
     expect(ambigua?.resultado).toBe("rejeitada");
