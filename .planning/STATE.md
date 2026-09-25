@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Phase 05 concluída em 2026-09-25 com lacunas aceitas (deploy do automation/ adiado); Phases 02 e 04 seguem abertas"
-last_updated: "2026-09-25T14:38:49.557Z"
-last_activity: "2026-09-25 -- Phase 05 concluída: 25/25 planos, UAT 6 pass/1 bloqueado/1 adiado, lacunas aceitas no 05-VERIFICATION.md"
+stopped_at: Completed 02-26-PLAN.md
+last_updated: "2026-09-25T17:38:27.186Z"
+last_activity: 2026-09-25 -- Phase 02 execution started
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 105
-  completed_plans: 100
+  completed_plans: 101
   percent: 83
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-15)
 
 **Core value:** Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de ponta a ponta sem abrir o ClickUp — dados no Postgres próprio, regras de `@n1/dominio` intactas.
-**Current focus:** Phase 05 — contas-a-receber-e-os-outros-tenants
+**Current focus:** Phase 02 — solicita-o-de-pagamento-o-front-substitui-o-clickup
 
 ## Current Position
 
-Phase: 05 — COMPLETE (2026-09-25, com lacunas aceitas)
-Plan: 25 of 25
-Status: Phase 05 concluída. Abertas no milestone: Phase 02 (23/28) e Phase 04 (13/14)
-Last activity: 2026-09-25 -- Phase 05 concluída; deploy do automation/ adiado (ver 05-23-SUMMARY.md)
+Phase: 02 (solicita-o-de-pagamento-o-front-substitui-o-clickup) — EXECUTING
+Plan: 2 of 28
+Status: Ready to execute
+Last activity: 2026-09-25 -- Phase 02 execution started
 
 **Onda 5 — 04-12** (sibling, `f06da55`/`d4cca79`/`49d71af`): módulo de acesso ao
 `conciliador_contas` e as seis rotas de plano de contas/workflows/execuções, autenticadas pelo
@@ -285,6 +285,7 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 | Phase 03 P13 | 110min | 4 tasks | 7 files |
 | Phase 3 P14 | 120min | 3 tasks | 10 files |
 | Phase 05 P01 | 45min | 3 tasks | 13 files |
+| Phase 02 P26 | ~5h | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -346,6 +347,10 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 3]: Plan 03-14: Tasks 1-3 (contrato do domínio, o diálogo do lançamento humano, o relatório executável ensaio:relatorio) code-complete e verificadas, incluindo rodada real contra ws_n1 de produção (INCONCLUSIVO — zero linhas em automacao_agenda, correto dado que 03-10 Task 4/03-11 Task 3 seguem parados). Task 4 (o runbook de corte, checkpoint bloqueante) tem o documento escrito (06-runbook-de-corte.md) mas NAO executado — os 11 passos exigem importação real, ponte HTTP em produção, uma semana de calendário de Ensaio e uma decisão irreversível (arquivar a Lista 901107637383), nenhuma alcançável neste ambiente. Mesma família de bloqueio de 03-07/03-08/03-10/03-11/03-13/03-15.
 - [Phase 05]: 05-01: config por Empresa modelada na Integration (empresa/omie/avisosPorCanal/statusDeclarados), nunca em Campos da Lista — nenhum campo para app_key/app_secret (D5-03)
 - [Phase 05]: 05-01: em revisão entra como 5º Status (sts_sp_em_revisao, order 4) da Lista de Solicitações — os 4 Status de D-01 mantêm o mesmo order
+- [Phase 02]: D-16 fechado por hash: contrato v1 copiado verbatim para financeiro-tria e comparado por sha256 agregado (scripts/verificar-contratos.mjs), nunca pacote npm compartilhado
+- [Phase 02]: Achado real: caminho de aprovação por CLIQUE (rotas/operacoes.ts) não emite evento de outbox hoje — só o callback de classificação por comentário notifica o automation/. Bloqueia o ensaio de duas semanas até corrigido
+- [Phase 02]: Achado real: eventIdDoComentario (financeiro-tria/automation/classificador-de-aprovacao.ts) gera uuid que z.uuid() rejeita na maioria dos casos — fallback por comentário quebrado em produção até corrigido no repositório irmão
+- [Phase 02]: Achado real: Convidado Agente do pipeline não tem grant de comentar por padrão em nenhuma Tarefa — createComment via service credential falha 422 até o evolver ou uma exceção tipo guestStatusWriter resolver isso
 
 ### Pending Todos
 
@@ -395,7 +400,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-25T18:30:00Z
-Stopped at: Phase 05 concluída (lacunas aceitas); próximas frentes abertas: Phase 02 (23/28) e Phase 04 (13/14)
+Last session: 2026-09-25T17:38:27.177Z
+Stopped at: Completed 02-26-PLAN.md
 Resume file: None
 None

@@ -179,7 +179,7 @@ Plans:
 
 **Wave 7** *(blocked on Wave 6)*
 
-- [ ] 02-26-PLAN.md — Contract tests nos dois repositórios + E2E entre processos + matriz de falhas injetadas
+- [x] 02-26-PLAN.md — Contract tests nos dois repositórios + E2E entre processos + matriz de falhas injetadas
 
 **Wave 8** *(blocked on Wave 7)*
 
@@ -396,7 +396,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 |-------|----------------|--------|-----------|
 | 0. Preparação | 7/7 | Complete   | 2026-09-17 |
 | 1. O CRM N1 ganha persistência e login | 16/16 | Complete   | 2026-09-17 |
-| 2. Solicitação de pagamento — o front substitui o ClickUp | 23/28 | In Progress|  |
+| 2. Solicitação de pagamento — o front substitui o ClickUp | 24/28 | In Progress|  |
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
 | 5. Contas a receber e os outros tenants | 25/25 | Complete    | 2026-09-25 |
