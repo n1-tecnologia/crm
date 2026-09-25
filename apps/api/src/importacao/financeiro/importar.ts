@@ -161,6 +161,19 @@ export interface OpcoesDeImportarLote {
    * de `importar-contas-a-pagar.ts`). Padrão: `ORIGEM_SOLICITACOES_HISTORICAS`.
    */
   readonly origem?: string;
+  /**
+   * `TaskID`s já vistos em páginas ANTERIORES desta mesma execução (o CLI
+   * acumula `taskIdsVistos` de cada página). Sem isto, uma repetição do mesmo
+   * `TaskID` em outra página só seria pega pelo ledger — ou seja, no
+   * `--apply` sim, no dry-run nunca, e o dry-run deixaria de prever o apply.
+   */
+  readonly vistosAntes?: ReadonlySet<string>;
+  /**
+   * `TaskID`s cujas linhas na origem trazem `Aprovado` true E false
+   * (`lerTaskIdsComDecisaoConflitante`). Escolher uma das duas seria inferir
+   * a decisão (D-25): a primeira ocorrência vira `ambigua`/`decisao_conflitante`.
+   */
+  readonly decisaoConflitante?: ReadonlySet<string>;
 }
 
 export interface ResultadoDeImportarLote {
@@ -173,8 +186,14 @@ export interface ResultadoDeImportarLote {
   readonly anexosLigados: number;
   readonly anexosAusentes: number;
   readonly proximoCursor?: string;
-  /** Categoria de rejeição/aviso → contagem — nunca `legacyTaskId` nem valor de Campo (T-02-21). */
+  /** Rejeitadas + ambíguas por categoria — nunca `legacyTaskId` nem valor de Campo (T-02-21). */
+  readonly motivosDeRejeicao: Readonly<Record<string, number>>;
+  /** Tarefas criadas com ressalva: TODA lacuna de cada uma, por categoria — igual em dry-run e apply. */
+  readonly lacunas: Readonly<Record<string, number>>;
+  /** União de `motivosDeRejeicao` e `lacunas` — o que o CLI imprime e confere contra as categorias conhecidas. */
   readonly motivosPorCategoria: Readonly<Record<string, number>>;
+  /** Todo `TaskID` classificado nesta página — o CLI passa a soma de volta em `vistosAntes`. */
+  readonly taskIdsVistos: readonly string[];
 }
 
 /**
@@ -192,13 +211,21 @@ export async function importarLote(opcoes: OpcoesDeImportarLote): Promise<Result
   });
   const lidas = pagina.linhas.length;
 
-  // 2 — classificar cada linha; `vistos` acumula só DENTRO desta página
-  // (contrato de `classificarLinha`: quem itera decide quando acrescentar).
-  const vistos = new Set<string>();
+  // 2 — classificar cada linha; `vistos` começa com o que páginas anteriores
+  // desta execução já viram e acumula nesta (contrato de `classificarLinha`:
+  // quem itera decide quando acrescentar).
+  const vistos = new Set<string>(opcoes.vistosAntes ?? []);
+  const taskIdsVistos: string[] = [];
   const classificadas: readonly { readonly linha: LinhaLegadaBruta; readonly classificacao: ClassificacaoDeLinha }[] = pagina.linhas.map(
     (linha) => {
-      const classificacao = classificarLinha(linha, vistos);
-      if (classificacao.taskId) vistos.add(classificacao.taskId);
+      let classificacao = classificarLinha(linha, vistos);
+      if (classificacao.taskId) {
+        vistos.add(classificacao.taskId);
+        taskIdsVistos.push(classificacao.taskId);
+        if (classificacao.resultado === "valida" && opcoes.decisaoConflitante?.has(classificacao.taskId)) {
+          classificacao = { resultado: "ambigua", motivo: "decisao_conflitante", taskId: classificacao.taskId };
+        }
+      }
       return { linha, classificacao };
     },
   );
@@ -228,13 +255,21 @@ export async function importarLote(opcoes: OpcoesDeImportarLote): Promise<Result
     let duplicadas = 0;
     let anexosLigados = 0;
     let anexosAusentes = 0;
-    const motivosPorCategoria: Record<string, number> = {};
+    const motivosDeRejeicao: Record<string, number> = {};
+    const lacunasPorCategoria: Record<string, number> = {};
+    const somar = (mapa: Record<string, number>, categoria: string): void => {
+      mapa[categoria] = (mapa[categoria] ?? 0) + 1;
+    };
     const ledgerParaGravarForaDaTransacao: { readonly legacyTaskId: string; readonly resultado: "rejeitada"; readonly motivo: string; readonly sourceHash: string }[] = [];
     const pendentes: EntradaPendente[] = [];
 
     for (const { linha, classificacao } of classificadas) {
       const sourceHash = hashCanonico(linha);
-      if (classificacao.taskId && jaNoLedger.has(classificacao.taskId)) {
+      // Repetição dentro desta execução é `taskid_duplicado` mesmo que a 1ª
+      // ocorrência já esteja no ledger (gravada por uma página anterior): só
+      // assim o dry-run — que não grava ledger — conta igual ao `--apply`.
+      // `duplicadas` fica para o que uma execução ANTERIOR já importou.
+      if (classificacao.taskId && jaNoLedger.has(classificacao.taskId) && classificacao.motivo !== "taskid_duplicado") {
         duplicadas += 1;
         continue;
       }
@@ -242,7 +277,7 @@ export async function importarLote(opcoes: OpcoesDeImportarLote): Promise<Result
       if (classificacao.resultado === "ambigua") {
         ambiguas += 1;
         const motivo = classificacao.motivo ?? "aprovado_ambiguo";
-        motivosPorCategoria[motivo] = (motivosPorCategoria[motivo] ?? 0) + 1;
+        somar(motivosDeRejeicao, motivo);
         if (classificacao.taskId) {
           ledgerParaGravarForaDaTransacao.push({ legacyTaskId: classificacao.taskId, resultado: "rejeitada", motivo, sourceHash });
         }
@@ -252,7 +287,7 @@ export async function importarLote(opcoes: OpcoesDeImportarLote): Promise<Result
       if (classificacao.resultado === "rejeitada") {
         rejeitadas += 1;
         const motivo = classificacao.motivo ?? "desconhecido";
-        motivosPorCategoria[motivo] = (motivosPorCategoria[motivo] ?? 0) + 1;
+        somar(motivosDeRejeicao, motivo);
         // "taskid_duplicado" é a SEGUNDA ocorrência do mesmo TaskID DENTRO
         // deste lote (`vistos`, não `jaNoLedger`) — a primeira ocorrência já
         // vai gravar sua própria linha no ledger (válida → `aoConfirmar`
@@ -301,7 +336,6 @@ export async function importarLote(opcoes: OpcoesDeImportarLote): Promise<Result
       } else {
         anexosAusentes += 1;
         lacunas = [...lacunas, resultadoDoAnexo.aviso];
-        motivosPorCategoria[resultadoDoAnexo.aviso] = (motivosPorCategoria[resultadoDoAnexo.aviso] ?? 0) + 1;
       }
 
       const entrada: EntradaDeImportacaoHistorica = {
@@ -343,6 +377,7 @@ export async function importarLote(opcoes: OpcoesDeImportarLote): Promise<Result
         for (const { entrada } of pendentes) {
           if (entrada.lacunas.length > 0) avisadas += 1;
           else importadas += 1;
+          for (const lacuna of entrada.lacunas) somar(lacunasPorCategoria, lacuna);
         }
       } else {
         let resultadosDoLote: ResultadoPorLinha[] = [];
@@ -446,19 +481,22 @@ export async function importarLote(opcoes: OpcoesDeImportarLote): Promise<Result
         if ("conflito" in resultadoDaTransacao && resultadoDaTransacao.conflito) throw new Error(resultadoDaTransacao.error);
         if (!resultadoDaTransacao.ok) throw new Error(resultadoDaTransacao.error);
 
+        const lacunasPorLegacyId = new Map(pendentes.map(({ entrada }) => [entrada.legacyTaskId, entrada.lacunas]));
         for (const resultado of resultadosDoLote) {
-          if (resultado.resultado === "importada") importadas += 1;
-          else if (resultado.resultado === "avisada") {
-            avisadas += 1;
-            if (resultado.motivo) motivosPorCategoria[resultado.motivo] = (motivosPorCategoria[resultado.motivo] ?? 0) + 1;
-          } else {
+          if (resultado.resultado === "rejeitada") {
             rejeitadas += 1;
-            const motivo = resultado.motivo ?? "desconhecido";
-            motivosPorCategoria[motivo] = (motivosPorCategoria[motivo] ?? 0) + 1;
+            somar(motivosDeRejeicao, resultado.motivo ?? "desconhecido");
+            continue;
           }
+          if (resultado.resultado === "importada") importadas += 1;
+          else avisadas += 1;
+          for (const lacuna of lacunasPorLegacyId.get(resultado.legacyTaskId) ?? []) somar(lacunasPorCategoria, lacuna);
         }
       }
     }
+
+    const motivosPorCategoria: Record<string, number> = { ...lacunasPorCategoria };
+    for (const [categoria, n] of Object.entries(motivosDeRejeicao)) motivosPorCategoria[categoria] = (motivosPorCategoria[categoria] ?? 0) + n;
 
     return {
       lidas,
@@ -470,7 +508,10 @@ export async function importarLote(opcoes: OpcoesDeImportarLote): Promise<Result
       anexosLigados,
       anexosAusentes,
       ...(pagina.proximoCursor !== undefined ? { proximoCursor: pagina.proximoCursor } : {}),
+      motivosDeRejeicao,
+      lacunas: lacunasPorCategoria,
       motivosPorCategoria,
+      taskIdsVistos,
     };
   } finally {
     cliente.release();

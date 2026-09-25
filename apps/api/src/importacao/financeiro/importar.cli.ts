@@ -44,6 +44,7 @@ import { fileURLToPath } from "node:url";
 import { carregarEnv, encerrar } from "../../persistencia/conexao";
 import { importarLote, reconciliar, type ResultadoDeImportarLote } from "./importar";
 import { escreverManifestoDeImportacao, gerarManifestoDeImportacao } from "./manifesto";
+import { lerTaskIdsComDecisaoConflitante } from "./solicitacoes";
 
 /** Sinaliza saída não-zero sem chamar `process.exit` direto — `encerrar()` sempre roda antes (molde de `liberar.cli.ts`). */
 class SairComCodigo extends Error {
@@ -56,6 +57,7 @@ const CATEGORIAS_CONHECIDAS = new Set([
   "taskid_ausente",
   "taskid_duplicado",
   "aprovado_ambiguo",
+  "decisao_conflitante",
   "centro_custo_ausente",
   "centro_custo_invalido",
   "empresa_fora_do_dominio",
@@ -113,8 +115,12 @@ async function rodar(): Promise<void> {
   const iniciadoEm = new Date().toISOString();
   console.log(`run ${runId} · modo ${dryRun ? "dry-run" : "apply"} · batch-size ${tamanho} · workspace ${workspaceId}`);
 
+  const decisaoConflitante = await lerTaskIdsComDecisaoConflitante({ connectionString });
+  console.log(`TaskIDs com decisão conflitante na origem (vão para ambíguas): ${decisaoConflitante.size}`);
+
   let cursor: string | undefined;
   let numeroDaPagina = 0;
+  const vistosNaExecucao = new Set<string>();
   const acumulado: {
     lidas: number;
     validas: number;
@@ -124,8 +130,25 @@ async function rodar(): Promise<void> {
     duplicadas: number;
     anexosLigados: number;
     anexosAusentes: number;
+    motivosDeRejeicao: Record<string, number>;
+    lacunas: Record<string, number>;
     motivosPorCategoria: Record<string, number>;
-  } = { lidas: 0, validas: 0, importadas: 0, rejeitadas: 0, ambiguas: 0, duplicadas: 0, anexosLigados: 0, anexosAusentes: 0, motivosPorCategoria: {} };
+  } = {
+    lidas: 0,
+    validas: 0,
+    importadas: 0,
+    rejeitadas: 0,
+    ambiguas: 0,
+    duplicadas: 0,
+    anexosLigados: 0,
+    anexosAusentes: 0,
+    motivosDeRejeicao: {},
+    lacunas: {},
+    motivosPorCategoria: {},
+  };
+  const somarMapa = (destino: Record<string, number>, origem: Readonly<Record<string, number>>): void => {
+    for (const [categoria, n] of Object.entries(origem)) destino[categoria] = (destino[categoria] ?? 0) + n;
+  };
 
   for (;;) {
     numeroDaPagina += 1;
@@ -137,8 +160,11 @@ async function rodar(): Promise<void> {
       tamanho,
       dryRun,
       pastaDeExportacoes,
+      vistosAntes: vistosNaExecucao,
+      decisaoConflitante,
       ...(cursor !== undefined ? { cursor } : {}),
     });
+    for (const taskId of resultado.taskIdsVistos) vistosNaExecucao.add(taskId);
 
     acumulado.lidas += resultado.lidas;
     acumulado.validas += resultado.validas;
@@ -148,9 +174,9 @@ async function rodar(): Promise<void> {
     acumulado.duplicadas += resultado.duplicadas;
     acumulado.anexosLigados += resultado.anexosLigados;
     acumulado.anexosAusentes += resultado.anexosAusentes;
-    for (const [categoria, n] of Object.entries(resultado.motivosPorCategoria)) {
-      acumulado.motivosPorCategoria[categoria] = (acumulado.motivosPorCategoria[categoria] ?? 0) + n;
-    }
+    somarMapa(acumulado.motivosDeRejeicao, resultado.motivosDeRejeicao);
+    somarMapa(acumulado.lacunas, resultado.lacunas);
+    somarMapa(acumulado.motivosPorCategoria, resultado.motivosPorCategoria);
 
     console.log(
       `página ${numeroDaPagina} · lidas ${resultado.lidas} · importadas ${resultado.importadas} · rejeitadas ${resultado.rejeitadas} · ambíguas ${resultado.ambiguas} · duplicadas ${resultado.duplicadas} · anexos ${resultado.anexosLigados}/${resultado.anexosLigados + resultado.anexosAusentes}`,
@@ -164,7 +190,8 @@ async function rodar(): Promise<void> {
   console.log(
     `total · lidas ${acumulado.lidas} · válidas ${acumulado.validas} · importadas ${acumulado.importadas} · rejeitadas ${acumulado.rejeitadas} · ambíguas ${acumulado.ambiguas} · duplicadas ${acumulado.duplicadas} · anexos ligados ${acumulado.anexosLigados} · anexos ausentes ${acumulado.anexosAusentes}`,
   );
-  console.log(`categorias: ${JSON.stringify(acumulado.motivosPorCategoria)}`);
+  console.log(`motivos de rejeição: ${JSON.stringify(acumulado.motivosDeRejeicao)}`);
+  console.log(`lacunas nas Tarefas: ${JSON.stringify(acumulado.lacunas)}`);
 
   const manifesto = await gerarManifestoDeImportacao({
     runId,
@@ -177,6 +204,14 @@ async function rodar(): Promise<void> {
       duplicadas: acumulado.duplicadas,
       anexosLigados: acumulado.anexosLigados,
       anexosAusentes: acumulado.anexosAusentes,
+      contagens: {
+        validas: acumulado.validas,
+        importadas: acumulado.importadas,
+        rejeitadas: acumulado.rejeitadas,
+        ambiguas: acumulado.ambiguas,
+        motivos: acumulado.motivosDeRejeicao,
+        lacunas: acumulado.lacunas,
+      },
     },
   });
   const { md, json } = await escreverManifestoDeImportacao(manifesto, pastaDeExportacoes);

@@ -46,6 +46,20 @@ export interface ResumoDaExecucao {
   readonly duplicadas: number;
   readonly anexosLigados: number;
   readonly anexosAusentes: number;
+  /**
+   * O que a execução contou em memória. Quando presente, vence o ledger: o
+   * dry-run não grava ledger nenhum, e o `--apply` não grava linha para a
+   * repetição de um `TaskID` (`taskid_duplicado`) — ler só o ledger zeraria o
+   * primeiro e esconderia a segunda. Ausente só em `--reconciliar`.
+   */
+  readonly contagens?: {
+    readonly validas: number;
+    readonly importadas: number;
+    readonly rejeitadas: number;
+    readonly ambiguas: number;
+    readonly motivos: Readonly<Record<string, number>>;
+    readonly lacunas: Readonly<Record<string, number>>;
+  };
 }
 
 export interface OpcoesDoManifesto {
@@ -77,7 +91,7 @@ export interface ManifestoDeImportacao {
   readonly hashAgregado: string;
 }
 
-const MOTIVO_AMBIGUO = "aprovado_ambiguo";
+const MOTIVOS_AMBIGUOS = ["aprovado_ambiguo", "decisao_conflitante"] as const;
 
 /**
  * Categorias que só `classificarLinha` (`./solicitacoes.ts`) produz para
@@ -121,15 +135,19 @@ async function contarPorResultadoEMotivo(
 
 /** Gera o manifesto agregado — nunca lança por ledger vazio (run recém-criado, ainda em dry-run). */
 export async function gerarManifestoDeImportacao(opcoes: OpcoesDoManifesto): Promise<ManifestoDeImportacao> {
-  const { porResultado, motivosDeRejeicao, lacunas } = await contarPorResultadoEMotivo(opcoes.runId);
-
-  const importadas = porResultado.importada! + porResultado.avisada!;
-  const ambiguas = motivosDeRejeicao[MOTIVO_AMBIGUO] ?? 0;
-  const rejeitadas = porResultado.rejeitada! - ambiguas;
-
   const resumo = opcoes.resumoDaExecucao;
+  const doLedger = await contarPorResultadoEMotivo(opcoes.runId);
+  const contagens = resumo?.contagens;
+
+  const importadas = contagens?.importadas ?? doLedger.porResultado.importada! + doLedger.porResultado.avisada!;
+  const ambiguas =
+    contagens?.ambiguas ?? MOTIVOS_AMBIGUOS.reduce((soma, motivo) => soma + (doLedger.motivosDeRejeicao[motivo] ?? 0), 0);
+  const rejeitadas = contagens?.rejeitadas ?? doLedger.porResultado.rejeitada! - ambiguas;
+  const motivosDeRejeicao = contagens?.motivos ?? doLedger.motivosDeRejeicao;
+  const lacunas = contagens?.lacunas ?? doLedger.lacunas;
+
   const lidas = resumo?.lidas ?? 0;
-  const validas = importadas + rejeitadas + ambiguas;
+  const validas = contagens?.validas ?? importadas + rejeitadas + ambiguas;
   const duplicadas = resumo?.duplicadas ?? 0;
   const anexosLigados = resumo?.anexosLigados ?? 0;
   const anexosAusentes = resumo?.anexosAusentes ?? 0;

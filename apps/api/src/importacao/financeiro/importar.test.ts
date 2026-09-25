@@ -73,7 +73,13 @@ function leitorDaFixture(todas: readonly LinhaLegadaBruta[]) {
 }
 
 /** Classificação independente da mesma fixture — a régua contra a qual `importarLote` é medido. */
-function classificacaoEsperada(): { readonly validas: number; readonly rejeitadas: number; readonly ambiguas: number; readonly comTaskId: number } {
+function classificacaoEsperada(): {
+  readonly validas: number;
+  readonly rejeitadas: number;
+  readonly ambiguas: number;
+  readonly comTaskId: number;
+  readonly taskIdsDistintos: number;
+} {
   const vistos = new Set<string>();
   let validas = 0;
   let rejeitadas = 0;
@@ -89,7 +95,42 @@ function classificacaoEsperada(): { readonly validas: number; readonly rejeitada
     else if (c.resultado === "ambigua") ambiguas += 1;
     else rejeitadas += 1;
   }
-  return { validas, rejeitadas, ambiguas, comTaskId };
+  return { validas, rejeitadas, ambiguas, comTaskId, taskIdsDistintos: vistos.size };
+}
+
+/** O laço de páginas do CLI (`importar.cli.ts`): acumula `taskIdsVistos` e devolve a soma das contagens. */
+async function dryRunPaginado(opcoes: {
+  readonly tamanho: number;
+  readonly decisaoConflitante?: ReadonlySet<string>;
+}): Promise<{ readonly validas: number; readonly importadas: number; readonly rejeitadas: number; readonly ambiguas: number; readonly motivos: Record<string, number> }> {
+  const vistos = new Set<string>();
+  const soma = { validas: 0, importadas: 0, rejeitadas: 0, ambiguas: 0, motivos: {} as Record<string, number> };
+  let cursor: string | undefined;
+  for (;;) {
+    const r = await importarLote({
+      workspaceId: WORKSPACE,
+      actingMemberId: ATOR,
+      runId: randomUUID(),
+      connectionString: "postgres://nunca-usado",
+      tamanho: opcoes.tamanho,
+      dryRun: true,
+      pastaDeExportacoes: pastaSemAnexo,
+      leitor: leitorDaFixture(LINHAS_DA_FIXTURE),
+      origem: ORIGEM_DE_TESTE,
+      vistosAntes: vistos,
+      ...(opcoes.decisaoConflitante ? { decisaoConflitante: opcoes.decisaoConflitante } : {}),
+      ...(cursor !== undefined ? { cursor } : {}),
+    });
+    for (const id of r.taskIdsVistos) vistos.add(id);
+    soma.validas += r.validas;
+    soma.importadas += r.importadas;
+    soma.rejeitadas += r.rejeitadas;
+    soma.ambiguas += r.ambiguas;
+    for (const [k, n] of Object.entries(r.motivosDeRejeicao)) soma.motivos[k] = (soma.motivos[k] ?? 0) + n;
+    if (!r.proximoCursor) break;
+    cursor = r.proximoCursor;
+  }
+  return soma;
 }
 
 async function contarLedger(runId: string): Promise<number> {
@@ -284,9 +325,12 @@ d("importarLote / reconciliar (Postgres real)", () => {
 
     expect(segunda.importadas).toBe(0);
     expect(await contarTarefas()).toBe(tarefasApos1a);
-    // Toda linha com TaskID (válida, rejeitada-com-taskid ou ambígua) já está no ledger do primeiro run.
+    // Cada TaskID distinto já está no ledger do primeiro run → `duplicadas`. A
+    // repetição de um TaskID dentro da mesma execução (clk_100001, id=12)
+    // continua `taskid_duplicado`, não `duplicadas` — igual ao dry-run.
     const esperado = classificacaoEsperada();
-    expect(segunda.duplicadas).toBe(esperado.comTaskId);
+    expect(segunda.duplicadas).toBe(esperado.taskIdsDistintos);
+    expect(segunda.motivosDeRejeicao.taskid_duplicado).toBe(esperado.comTaskId - esperado.taskIdsDistintos);
   });
 
   it("(d) interromper e retomar do ledger: o total final bate com a execução ininterrupta", async () => {
@@ -566,5 +610,34 @@ d("importarLote / reconciliar (Postgres real)", () => {
     expect(reconciliacao.porResultado.importada + reconciliacao.porResultado.avisada).toBe(resultado.importadas);
     expect(reconciliacao.tarefasNoEspaco).toBe(resultado.importadas);
     expect(reconciliacao.bateComOLedger).toBe(true);
+  });
+
+  it("(k) dry-run paginado conta igual ao de uma página só — repetição de TaskID entre páginas é taskid_duplicado", async () => {
+    const umaPagina = await dryRunPaginado({ tamanho: LINHAS_DA_FIXTURE.length });
+    const emLotesDe5 = await dryRunPaginado({ tamanho: 5 });
+    const esperado = classificacaoEsperada();
+
+    expect(emLotesDe5).toEqual(umaPagina);
+    expect(emLotesDe5.validas).toBe(esperado.validas);
+    expect(emLotesDe5.motivos.taskid_duplicado).toBe(esperado.comTaskId - esperado.taskIdsDistintos);
+  });
+
+  it("(l) TaskID com decisão conflitante na origem vira ambígua (decisao_conflitante), nunca Tarefa", async () => {
+    const vistos = new Set<string>();
+    const taskIdValido = [...LINHAS_DA_FIXTURE]
+      .sort((a, b) => Number(a.id) - Number(b.id))
+      .map((linha) => {
+        const c = classificarLinha(linha, vistos);
+        if (c.taskId) vistos.add(c.taskId);
+        return c;
+      })
+      .find((c) => c.resultado === "valida")!.taskId!;
+
+    const semConflito = await dryRunPaginado({ tamanho: LINHAS_DA_FIXTURE.length });
+    const comConflito = await dryRunPaginado({ tamanho: LINHAS_DA_FIXTURE.length, decisaoConflitante: new Set([taskIdValido]) });
+
+    expect(comConflito.validas).toBe(semConflito.validas - 1);
+    expect(comConflito.ambiguas).toBe(semConflito.ambiguas + 1);
+    expect(comConflito.motivos.decisao_conflitante).toBe(1);
   });
 });

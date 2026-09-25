@@ -115,6 +115,28 @@ export async function lerSolicitacoesLegadas(opcoes: OpcoesDeLeitura): Promise<P
   }
 }
 
+/**
+ * `TaskID`s com linhas que dizem `Aprovado = true` E `Aprovado = false` — a
+ * origem grava várias linhas por Solicitação (até 20). Lido uma vez, antes
+ * da paginação: a linha que contradiz a primeira pode estar numa página
+ * posterior. Só `TaskID`, nunca outra coluna.
+ */
+export async function lerTaskIdsComDecisaoConflitante(opcoes: { readonly connectionString: string }): Promise<ReadonlySet<string>> {
+  const cliente = new Client({ connectionString: opcoes.connectionString, ssl: { rejectUnauthorized: false } });
+  await cliente.connect();
+  try {
+    await cliente.query(SOMENTE_LEITURA);
+    const resultado = await cliente.query<{ TaskID: string }>(
+      `select "TaskID" from public.solicitacoes_pagamentos
+        where "origem" = 'clickup' and "Aprovado" is not null and nullif(trim("TaskID"), '') is not null
+        group by "TaskID" having count(distinct "Aprovado") > 1`,
+    );
+    return new Set(resultado.rows.map((linha) => linha.TaskID.trim()));
+  } finally {
+    await cliente.end();
+  }
+}
+
 /* ────────────────────────── Classificação (pura, sem I/O) ────────────────────────── */
 
 export type ResultadoDeClassificacao = "valida" | "rejeitada" | "ambigua";
