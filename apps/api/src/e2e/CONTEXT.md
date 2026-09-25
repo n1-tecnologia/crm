@@ -37,6 +37,62 @@ próprio (`ws_e2e_teste`) que nasce por `bootstrapGestao()` e morre no
 `SUPABASE_*`, porque `bootstrapGestao()` só grava no Postgres, nunca fala
 com o Auth.
 
+## E2E entre serviços — `dois-servicos.test.ts` (Plan 02-26)
+
+O gate pré-paralelo de `02-VALIDATION.md` ("E2E entre processos"): o
+único teste desta pasta que sobe DOIS processos — Fastify da plataforma
+(`buildApp().listen()`, servidor HTTP real, não só `.inject()`) e Express
+do `automation/` (repositório irmão `../financeiro-tria`, importado por
+caminho relativo dinâmico, nunca estático — ver `importarAutomation` no
+próprio arquivo) — e prova a jornada completa: `POST
+/v1/public/forms/:secret/submissions` → outbox real → webhook
+`/webhooks/plataforma/*` → `PaymentRequestAdapter` real (HTTP de verdade)
+→ `solicitarAprovacao`/`decideProcessApproval` → outbox de novo → webhook
+de decisão → o `automation/` retoma.
+
+**Como pula.** Dois gates independentes, cada um `describe.skip` a
+suíte inteira:
+
+- `DATABASE_URL` ausente (D-DEC-09, mesmo padrão do resto da pasta).
+- `FINANCEIRO_TRIA_DIR` (padrão `../financeiro-tria`, resolvido a partir
+  da raiz deste monorepo) sem `automation/src/` dentro — sem o
+  repositório irmão clonado ao lado, não há como montar o lado
+  `automation/`. Nunca falha "módulo não encontrado": o import é sempre
+  dinâmico, por especificador NÃO LITERAL, para o TypeScript nunca tentar
+  resolver o módulo em `npm run typecheck` num ambiente sem o repositório
+  irmão.
+
+**Nenhum dado ou credencial de produção entra aqui.** `PaymentService` é
+FALSO (nunca `PaymentAutomationService` real — esse fala com o Supabase
+de PRODUÇÃO do `financeiro-tria` e com o Omie real); o receipt idempotente
+(`platform_event_receipts`) é um cliente FALSO em memória; nenhuma
+migração é aplicada; nenhuma credencial do `.env` do `automation/` é lida.
+O classificador do fallback por comentário usa a fiação real só até a IA
+(stub, nunca a OpenAI real).
+
+**Três achados reais, confirmados por execução, não corrigidos aqui**
+(fora de `packages/dominio`/`rotas/operacoes.ts`/`financeiro-tria`, fora
+de `files_modified` deste plano — ver `02-26-SUMMARY.md`):
+
+1. O Convidado "Agente do pipeline" (§9) só tem `editar restrito a Status`
+   por Papel — comentar numa Tarefa específica exige uma concessão DIRETA
+   nela, que o evolver não cria. O teste concede isso via SQL de fixture
+   (`concederComentarNaTarefa`), nunca em produção.
+2. `POST /operacoes/decideProcessApproval` e `POST /operacoes/addTaskComment`
+   (a rota GENÉRICA, `rotas/operacoes.ts`) não passam `opcoes.eventos` —
+   diferente de `classificacoes.ts`/`formularios-publicos.ts`/
+   `integracao-solicitacoes.ts`, que constroem o evento explicitamente. Uma
+   decisão por CLIQUE, ou uma resposta de aprovador pela própria tela do
+   CRM N1, hoje NÃO notifica o `automation/` por outbox. O teste grava o
+   evento manualmente com a função de produção `gravarEventos` para provar
+   a metade RECEPTORA do webhook mesmo com esse gap na emissão.
+3. `eventIdDoComentario` (`financeiro-tria/automation/src/tenants/tria/classificador-de-aprovacao.ts`)
+   deriva um "uuid" de um sha256 fatiado 8-4-4-4-12 sem fixar os nibbles de
+   versão/variante do RFC 4122 — `z.uuid()` do contrato v1 rejeita a
+   maioria dos hashes resultantes. O teste usa um classificador de
+   substituição (mesma fiação HTTP real, `randomUUID()` no lugar do hash
+   quebrado) para não depender do bug.
+
 ## O segundo cenário — PAG-05, critério 5 (lote de 61)
 
 `lote-contas-a-pagar.test.ts` é o segundo cenário desta pasta, num Espaço
