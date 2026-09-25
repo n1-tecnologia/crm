@@ -156,7 +156,7 @@ Plans:
 - [x] 02-08-PLAN.md — Evolver idempotente da Lista + elevação de `tasksPerList` + CLI `solicitacoes:configurar` (SOL-01)
 - [x] 02-13-PLAN.md — `apps/api`: as 7 rotas `/v1/integrations/payment-requests/*` + idempotência HTTP + projeção `PaymentRequestDtoV1` (SOL-05, D-20/D-22)
 - [x] 02-14-PLAN.md — `apps/web`: fila `/ia/aprovacoes` discriminando origem + card de Aprovação na Tarefa + Fluxo manual (SOL-03, D-08/D-12)
-- [ ] 02-15-PLAN.md — Topologia e região: decisão de `sa-east-1` (D-23), nginx/TLS na VPS (D-15/D11), CA do Postgres fixada e latência medida
+- [x] 02-15-PLAN.md — Topologia e região: decisão de `sa-east-1` (D-23), nginx/TLS na VPS (D-15/D11), CA do Postgres fixada e latência medida
 
 **Wave 4** *(blocked on Wave 3)*
 
@@ -396,7 +396,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 |-------|----------------|--------|-----------|
 | 0. Preparação | 7/7 | Complete   | 2026-09-17 |
 | 1. O CRM N1 ganha persistência e login | 16/16 | Complete   | 2026-09-17 |
-| 2. Solicitação de pagamento — o front substitui o ClickUp | 24/28 | In Progress|  |
+| 2. Solicitação de pagamento — o front substitui o ClickUp | 25/28 | In Progress|  |
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
 | 5. Contas a receber e os outros tenants | 25/25 | Complete    | 2026-09-25 |
