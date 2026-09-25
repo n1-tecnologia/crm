@@ -16,7 +16,7 @@ Convenção: → passo bem-sucedido · ⊘ passo impedido por regra.
 | # | Onde | Ação | Dados | Interface |
 | --- | --- | --- | --- | --- |
 | 1 | **T01** `/entrar` | Escolher **Camila Duarte** (Proprietária do Espaço de Trabalho) | Sessão simulada = Membro Camila | Lista de Membros com Papel e Estado; Tiago Reis aparece `removido` e não é selecionável |
-| 2 | **T02** `/` | — | — | Rolando o palco, o resumo; o bloco "Suas Tarefas" agrupado em **Vencidas / Em andamento / Próximos 7 dias / Depois** (desde 2026-09-24; entre 2026-09-21 e 2026-09-24 o Início não listava nada). "Revisar protocolo de exame admissional" traz o marcador **Vencida** (Data de vencimento decorrida e categoria não terminal) |
+| 2 | **T02** `/` | — | — | Rolando o palco, o resumo; o bloco "Suas Tarefas" numa lista só, na ordem **Vencidas → Em andamento → Próximos 7 dias → Depois** (desde 2026-09-25; de 2026-09-24 a 2026-09-25, em grupos com régua; entre 2026-09-21 e 2026-09-24 o Início não listava nada). "Revisar protocolo de exame admissional" traz o marcador **Vencida** (Data de vencimento decorrida e categoria não terminal) |
 | 3 | **T02** | Abrir a Tarefa | — | Painel lateral (**T12**) com caminho efetivo `Operações clínicas › Protocolos › Revisões`, Status atual, Responsáveis, Progresso de Checklists |
 | 4 | **T12** | Abrir o seletor de **Status** | — | Definições agrupadas por **categoria**: `não iniciado` · `em andamento` · `concluído` · `fechado`. A cor vem da categoria; o rótulo, da Definição |
 | 5 | **T12** | Escolher "Concluído" | `Status atual` → Definição "Concluído" (categoria `concluído`); **Momento de conclusão** [D] preenchido; **Vencida** [D] passa a falso | Selo de Status muda; o marcador Vencida desaparece; aviso "Tarefa concluída." |

@@ -1599,14 +1599,131 @@
     padding: var(--e-10);
     background: var(--page);
   }
+  /* O título à esquerda e a data à direita, na mesma linha de base: as duas
+     pontas da grade de baixo. */
   .inicio-resumo-cabeca {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
+    justify-content: space-between;
     gap: var(--e-2) var(--e-4);
   }
   .inicio-resumo-cabeca h2:focus {
     outline: none;
+  }
+
+  /* A GRADE DO RESUMO (2026-09-25: "gostaria de mais alinhamento nos itens").
+     Um molde de colunas iguais e um vão só para as três faixas — os atalhos,
+     os blocos e as estatísticas —, cada faixa uma grade com o MESMO molde:
+     toda borda de peça cai na borda de uma coluna, e cada bloco fica embaixo
+     dos atalhos dele.
+       Larga (80rem — abaixo disso a coluna de um quinto corta nome e meta):
+     cinco colunas. Um atalho por coluna; embaixo, Suas
+     Tarefas nas três primeiras (sob Tarefas abertas, Vencidas e Para hoje), os
+     Leads na quarta e as Mensagens na quinta; nas estatísticas, o gráfico sob
+     as Tarefas e as quatro métricas, 2×2, sob Leads e Mensagens (a grade de
+     duas colunas dentro de duas colunas, com o mesmo vão, cai nas mesmas
+     bordas).
+       Média (36rem): seis colunas nos atalhos — os três de Tarefa em terços,
+     Leads e Mensagens em metades — e duas nos blocos e nas métricas: Suas
+     Tarefas na largura toda, Leads e Mensagens nas metades, embaixo dos
+     atalhos deles; o gráfico, na largura toda.
+       Estreita: uma coluna (as métricas, pequenas, ficam em duas).
+     O contêiner é esta grade (`container-type`): as consultas medem a
+     largura do resumo, não a da janela. */
+  .inicio-resumo-grade {
+    container-type: inline-size;
+    display: flex;
+    flex-direction: column;
+    gap: var(--e-10);
+  }
+  .inicio-resumo-atalhos,
+  .inicio-resumo-blocos,
+  .inicio-estatisticas-corpo,
+  .inicio-metricas {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--e-4);
+  }
+  .inicio-metricas {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* Entre um bloco e o de baixo (Suas Tarefas e, embaixo, Leads e Mensagens),
+     o respiro das faixas; o vão estreito é só entre colunas. */
+  .inicio-resumo-blocos {
+    row-gap: var(--e-10);
+  }
+  @container (min-width: 36rem) {
+    .inicio-resumo-atalhos {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+    .inicio-resumo-atalhos > li {
+      grid-column: span 3;
+    }
+    .inicio-resumo-atalhos > li:nth-child(-n + 3) {
+      grid-column: span 2;
+    }
+    .inicio-resumo-blocos {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .inicio-bloco-tarefas {
+      grid-column: 1 / -1;
+    }
+  }
+  @container (min-width: 80rem) {
+    .inicio-resumo-atalhos,
+    .inicio-resumo-blocos,
+    .inicio-estatisticas-corpo {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+    .inicio-resumo-atalhos > li,
+    .inicio-resumo-atalhos > li:nth-child(-n + 3) {
+      grid-column: auto;
+    }
+    .inicio-bloco-tarefas {
+      grid-column: span 3;
+    }
+    /* O gráfico à esquerda, as métricas à direita, na mesma altura (a linha
+       da grade estica os dois). A ordem no DOM continua métricas → gráfico. */
+    .inicio-estatisticas-corpo > .inicio-grafico {
+      grid-row: 1;
+      grid-column: 1 / span 3;
+    }
+    .inicio-estatisticas-corpo > .inicio-metricas {
+      grid-row: 1;
+      grid-column: 4 / span 2;
+    }
+  }
+  /* Cada bloco mede a própria largura: numa coluna estreita (a de um quinto,
+     na grade larga), o link do cabeçalho fica só com a seta — o nome segue no
+     leitor de tela e na dica —, para o cabeçalho caber numa linha e a lista
+     começar na mesma altura das vizinhas. */
+  .inicio-resumo-blocos > section {
+    container-type: inline-size;
+  }
+  @container (max-width: 20rem) {
+    .inicio-bloco-cabeca .inicio-bloco-acao {
+      margin: calc(var(--e-1) * -1);
+      padding: var(--e-1);
+    }
+    .inicio-bloco-cabeca .inicio-bloco-acao-rotulo {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+  }
+  /* A marca de uma linha de lista num quadrado do tamanho do Selo: o avatar do
+     Contato é menor, e sem isto o texto dos Leads começaria antes do texto
+     das Tarefas e das Mensagens. */
+  .inicio-linha-marca {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+    width: var(--controle-h-sm);
+    height: var(--controle-h-sm);
   }
   /* O atalho: o ícone e a seta no alto, o número grande, o que ele conta e
      uma linha de contexto — uma peça vertical, que cabe em cinco colunas. */
@@ -1636,8 +1753,14 @@
     align-items: center;
     gap: var(--e-3);
     padding-bottom: var(--e-3);
+    white-space: nowrap;
   }
+  /* Nunca quebra: sem espaço, o título encurta com reticências — um
+     cabeçalho de duas linhas desalinharia a lista com as vizinhas. */
   .inicio-bloco-cabeca h3 {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     color: var(--texto-2);
   }
   .inicio-bloco-cabeca h3:focus {
@@ -1657,10 +1780,6 @@
   }
   .inicio-bloco-acao:hover {
     color: var(--texto);
-  }
-  /* Os grupos de Tarefas (Vencidas, Em andamento…): um respiro entre eles. */
-  .inicio-grupo + .inicio-grupo {
-    margin-top: var(--e-4);
   }
   .inicio-corte {
     display: flex;
@@ -1691,8 +1810,23 @@
   /* O gráfico: a peça de bloco do sistema (`.item-solto[data-bloco]`, que não
      clica — `data-estatico`), como o Widget de gráfico dos Painéis. */
   .item-solto.inicio-grafico {
-    margin-top: var(--e-4);
+    display: flex;
+    flex-direction: column;
+    /* `.item-solto` centra na cruz; aqui o título e as colunas vão de borda a borda. */
+    align-items: stretch;
     padding: var(--e-4);
+  }
+  /* Esticada pela linha da grade (ao lado das métricas), a peça cresce e as
+     colunas crescem junto — nunca abaixo da altura delas. */
+  .inicio-grafico .colunas {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+  }
+  .inicio-grafico .colunas-grade {
+    flex: 1;
+    height: auto;
+    min-height: var(--colunas-h);
   }
   .inicio-grafico-titulo {
     margin-bottom: var(--e-3);

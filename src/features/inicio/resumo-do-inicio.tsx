@@ -65,7 +65,7 @@ import { diaDoVencimento, gruposDeTarefas, recortesDeTarefas, type GruposDeTaref
 import { Colunas } from "@/features/paineis/graficos";
 import { marcarSeMuda } from "@/features/shell/navegacao";
 import { relogio } from "@/features/shell/relogio";
-import { ConditionMarker, EmptyState, Icone, Pilula, ReguaDeSecao, Segmentos, type Segmento } from "@/features/shell/ui";
+import { ConditionMarker, EmptyState, Icone, Pilula, Segmentos, type Segmento } from "@/features/shell/ui";
 import { useFormat } from "@/features/shell/use-format";
 
 /** O título do resumo: o atalho do palco (e o robô flutuante que some) levam o foco a ele. */
@@ -156,7 +156,7 @@ export function ResumoDoInicio() {
       lavado: "var(--acento-lavado)",
       rotulo: abertas.length === 1 ? "Tarefa aberta" : "Tarefas abertas",
       valor: abertas.length,
-      // O grupo "Em andamento" do bloco abaixo (as vencidas ficam em Vencidas).
+      // As de categoria "em andamento" que não venceram (as vencidas ficam em Vencidas).
       detalhe: grupos.emAndamento.length > 0 ? `${fmt.number(grupos.emAndamento.length)} em andamento` : "nenhuma em andamento",
     },
     {
@@ -229,19 +229,19 @@ export function ResumoDoInicio() {
         </p>
       </header>
 
-      <div className="@container flex flex-col gap-10">
-        <ul className="grade-solta grid-cols-1 @xl:grid-cols-2 @4xl:grid-cols-3 @6xl:grid-cols-5" aria-label="Acesso rápido">
+      {/* A GRADE DO RESUMO: três faixas no mesmo molde de colunas (o CSS de
+          `.inicio-resumo-grade`) — cada bloco embaixo dos atalhos dele. */}
+      <div className="inicio-resumo-grade">
+        <ul className="inicio-resumo-atalhos" aria-label="Acesso rápido">
           {atalhos.map((atalho) => (
             <Atalho key={atalho.chave} dados={atalho} fmtNumero={fmt.number} />
           ))}
         </ul>
 
-        <div className="grid gap-x-8 gap-y-10 @4xl:grid-cols-[minmax(0,1fr)_24rem]">
+        <div className="inicio-resumo-blocos">
           <BlocoDeTarefas state={state} abertas={abertas} grupos={grupos} />
-          <div className="flex min-w-0 flex-col gap-10">
-            <BlocoDeLeads leads={leads} agora={agora} />
-            <BlocoDeMensagens conversas={conversas} naoLidas={naoLidas} agora={agora} />
-          </div>
+          <BlocoDeLeads leads={leads} agora={agora} />
+          <BlocoDeMensagens conversas={conversas} naoLidas={naoLidas} agora={agora} />
         </div>
 
         <Estatisticas state={state} memberId={memberId} agora={agora} />
@@ -355,11 +355,14 @@ function CabecaDoBloco({
   );
 }
 
-/** "Ver tudo" de um bloco: o destino, com a seta. */
-function AcaoDoBloco({ href, children }: { readonly href: string; readonly children: ReactNode }) {
+/**
+ * "Ver tudo" de um bloco: o destino, com a seta. Numa coluna estreita o CSS
+ * deixa só a seta à vista (o nome continua no leitor de tela e na dica).
+ */
+function AcaoDoBloco({ href, rotulo }: { readonly href: string; readonly rotulo: string }) {
   return (
-    <Link href={href} onNavigate={() => marcarSeMuda(href)} className="app-sm inicio-bloco-acao">
-      {children}
+    <Link href={href} onNavigate={() => marcarSeMuda(href)} className="app-sm inicio-bloco-acao" title={rotulo}>
+      <span className="inicio-bloco-acao-rotulo">{rotulo}</span>
       <Icone de={ArrowRight} tamanho="xs" />
     </Link>
   );
@@ -394,46 +397,41 @@ function Corte({
 const ABERTAS = "/estrutura/tarefas?recorte=abertas";
 
 /**
- * As TAREFAS abertas da pessoa em quatro grupos (`gruposDeTarefas`), do mais
- * urgente ao mais folgado — cada uma num grupo só: Vencidas; Em andamento
- * (as "tasks atuais" do pedido: categoria `em andamento`); Próximos 7 dias
- * (o recorte "Esta semana" de Minhas Tarefas, fora as já em andamento); e
- * Depois (o resto). Um grupo vazio não aparece. O "Ver todas" de cada grupo
- * leva ao recorte mais próximo — Vencidas e Esta semana ao recorte deles
- * (Esta semana conta também as em andamento), os outros a Abertas.
+ * As TAREFAS abertas da pessoa numa lista só, da mais urgente à mais folgada
+ * — a ordem de `gruposDeTarefas` (cada uma num grupo só): as Vencidas (com o
+ * marcador), as Em andamento (as "tasks atuais" do pedido: categoria
+ * `em andamento`), as dos próximos 7 dias e o resto, cada grupo pelo
+ * vencimento. Sem réguas de grupo desde 2026-09-25 ("gostaria de mais
+ * alinhamento nos itens"): um subtítulo empurrava a primeira linha para baixo
+ * das linhas dos Leads e das Mensagens ao lado; agora as três listas começam
+ * na mesma altura e as linhas batem. Quem diz o grupo é a própria linha — o
+ * marcador Vencida ou a Pílula do Status — e os atalhos de cima contam.
  */
 function BlocoDeTarefas({ state, abertas, grupos: { vencidas, emAndamento, proximas, depois } }: { readonly state: DataState; readonly abertas: readonly Task[]; readonly grupos: GruposDeTarefas }) {
-  const grupos = [
-    { chave: "vencidas", rotulo: "Vencidas", cor: "var(--erro)", tarefas: vencidas, href: "/estrutura/tarefas?recorte=vencidas", vencida: true },
-    { chave: "andamento", rotulo: "Em andamento", cor: undefined, tarefas: emAndamento, href: ABERTAS, vencida: false },
-    { chave: "proximas", rotulo: "Próximos 7 dias", cor: undefined, tarefas: proximas, href: "/estrutura/tarefas?recorte=semana", vencida: false },
-    { chave: "depois", rotulo: "Depois", cor: undefined, tarefas: depois, href: ABERTAS, vencida: false },
-  ] as const;
+  const fila = [
+    ...vencidas.map((task) => ({ task, vencida: true })),
+    ...[...emAndamento, ...proximas, ...depois].map((task) => ({ task, vencida: false })),
+  ];
 
   return (
-    <section aria-labelledby="inicio-tarefas-titulo" className="min-w-0">
+    <section aria-labelledby="inicio-tarefas-titulo" className="inicio-bloco-tarefas min-w-0">
       <CabecaDoBloco
         id="inicio-tarefas-titulo"
         titulo="Suas Tarefas"
         contagem={abertas.length}
-        acao={<AcaoDoBloco href={ABERTAS}>Minhas Tarefas</AcaoDoBloco>}
+        acao={<AcaoDoBloco href={ABERTAS} rotulo="Minhas Tarefas" />}
       />
-      {abertas.length === 0 ? (
+      {fila.length === 0 ? (
         <EmptyState compact title="Nenhuma Tarefa aberta com você." hint="As Tarefas atribuídas a você aparecem aqui." />
       ) : (
-        grupos
-          .filter((grupo) => grupo.tarefas.length > 0)
-          .map((grupo) => (
-            <div key={grupo.chave} className="inicio-grupo">
-              <ReguaDeSecao rotulo={grupo.rotulo} contagem={grupo.tarefas.length} cor={grupo.cor} />
-              <ul className="pilha-solta" aria-label={grupo.rotulo}>
-                {grupo.tarefas.slice(0, POR_BLOCO).map((task) => (
-                  <LinhaDeTarefa key={task.id} state={state} task={task} vencida={grupo.vencida} />
-                ))}
-              </ul>
-              <Corte mostrando={Math.min(POR_BLOCO, grupo.tarefas.length)} total={grupo.tarefas.length} href={grupo.href} />
-            </div>
-          ))
+        <>
+          <ul className="pilha-solta">
+            {fila.slice(0, POR_BLOCO).map(({ task, vencida }) => (
+              <LinhaDeTarefa key={task.id} state={state} task={task} vencida={vencida} />
+            ))}
+          </ul>
+          <Corte mostrando={Math.min(POR_BLOCO, fila.length)} total={fila.length} href={ABERTAS} />
+        </>
       )}
     </section>
   );
@@ -469,7 +467,12 @@ function LinhaDeTarefa({ state, task, vencida }: { readonly state: DataState; re
 
 /**
  * Os LEADS A ATENDER: sem contato ainda leva à ficha do Contato (para abrir a
- * conversa); esperando resposta leva direto à Conversa.
+ * conversa); esperando resposta leva direto à Conversa. A linha tem a mesma
+ * anatomia das outras duas listas — a marca num quadrado do tamanho do Selo
+ * (`.inicio-linha-marca`: o avatar é menor que o Selo, e o texto começaria em
+ * outro lugar), o nome e uma linha de meta — e a espera é dita na meta, em
+ * aviso ("Esperando resposta há 2 horas"), sem marcador à direita: numa coluna
+ * de um quinto, ele espremia o nome.
  */
 function BlocoDeLeads({ leads, agora }: { readonly leads: readonly LeadAAtender[]; readonly agora: Date }) {
   const fmt = useFormat();
@@ -479,7 +482,7 @@ function BlocoDeLeads({ leads, agora }: { readonly leads: readonly LeadAAtender[
         id="inicio-leads-titulo"
         titulo="Leads a atender"
         contagem={leads.length}
-        acao={<AcaoDoBloco href="/crm/contatos">Contatos</AcaoDoBloco>}
+        acao={<AcaoDoBloco href="/crm/contatos" rotulo="Contatos" />}
       />
       {leads.length === 0 ? (
         <EmptyState compact title="Nenhum Lead esperando por você." hint="Os Contatos seus com a Qualificação Lead aparecem aqui até serem atendidos." />
@@ -492,16 +495,17 @@ function BlocoDeLeads({ leads, agora }: { readonly leads: readonly LeadAAtender[
               return (
                 <li key={lead.contato.id}>
                   <Link href={href} onNavigate={() => marcarSeMuda(href)} className="item-solto py-3">
-                    <ContactAvatar contact={lead.contato} />
+                    <span className="inicio-linha-marca">
+                      <ContactAvatar contact={lead.contato} />
+                    </span>
                     <span className="min-w-0 flex-1">
                       <span className="app-base block truncate text-[var(--texto)]">{contactDisplayName(lead.contato)}</span>
-                      <span className="app-sm block truncate text-[var(--texto-3)]">
+                      <span className="app-sm block truncate" style={{ color: aguardando ? "var(--aviso)" : "var(--texto-3)" }}>
                         {aguardando
-                          ? `Esperando resposta · ${fmt.relative(lead.desde, agora.getTime())}`
-                          : `Sem contato · Contato criado ${fmt.relative(lead.desde, agora.getTime())}`}
+                          ? `Esperando resposta ${fmt.relative(lead.desde, agora.getTime())}`
+                          : `Sem contato ${fmt.relative(lead.desde, agora.getTime())}`}
                       </span>
                     </span>
-                    {aguardando ? <ConditionMarker tone="warning">Aguardando você</ConditionMarker> : null}
                   </Link>
                 </li>
               );
@@ -514,7 +518,13 @@ function BlocoDeLeads({ leads, agora }: { readonly leads: readonly LeadAAtender[
   );
 }
 
-/** As MENSAGENS NOVAS: as Conversas atribuídas a mim com Mensagem não lida, a mais recente primeiro. */
+/**
+ * As MENSAGENS NOVAS: as Conversas atribuídas a mim com Mensagem não lida, a
+ * mais recente primeiro. Duas linhas, como as Tarefas e os Leads ao lado — o
+ * nome com o "há 4 horas"; embaixo, quantas não lidas e o começo da última
+ * Mensagem, numa linha só (eram três, e a peça ficava mais alta que as
+ * vizinhas).
+ */
 function BlocoDeMensagens({
   conversas,
   naoLidas,
@@ -532,7 +542,7 @@ function BlocoDeMensagens({
         id="inicio-mensagens-titulo"
         titulo="Mensagens novas"
         contagem={naoLidas}
-        acao={<AcaoDoBloco href={caixa}>Caixa de Entrada</AcaoDoBloco>}
+        acao={<AcaoDoBloco href={caixa} rotulo="Caixa de Entrada" />}
       />
       {conversas.length === 0 ? (
         <EmptyState compact title="Nenhuma Mensagem nova." hint="As Conversas atribuídas a você com Mensagem não lida aparecem aqui." />
@@ -543,7 +553,7 @@ function BlocoDeMensagens({
               const href = `/crm/caixa-de-entrada/${conversa.id}`;
               return (
                 <li key={conversa.id}>
-                  <Link href={href} onNavigate={() => marcarSeMuda(href)} className="item-solto py-3" data-destacado="true" data-alinhamento="topo">
+                  <Link href={href} onNavigate={() => marcarSeMuda(href)} className="item-solto py-3" data-destacado="true">
                     <Selo icone={ICONE_DE_OBJETO.conversa} cor="var(--info)" lavado="var(--info-lavado)" />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline gap-2">
@@ -552,10 +562,10 @@ function BlocoDeMensagens({
                         </span>
                         <span className="app-meta shrink-0">{fmt.relative(ultimaAtividade, agora.getTime())}</span>
                       </span>
-                      <span className="app-sm app-numero block text-[var(--info)]">
-                        {n === 1 ? "1 não lida" : `${fmt.number(n)} não lidas`}
+                      <span className="app-sm block truncate text-[var(--texto-3)]">
+                        <span className="app-numero text-[var(--info)]">{n === 1 ? "1 não lida" : `${fmt.number(n)} não lidas`}</span>
+                        {ultima ? ` · ${ultima.content}` : null}
                       </span>
-                      {ultima ? <span className="app-sm line-clamp-2 text-[var(--texto-3)]">{ultima.content}</span> : null}
                     </span>
                   </Link>
                 </li>
@@ -627,63 +637,68 @@ function Estatisticas({ state, memberId, agora }: { readonly state: DataState; r
       <p className="app-meta inicio-estatisticas-janela">
         {janela.descricao}, {janela.comparacao}.
       </p>
-      <ul className="grade-solta grid-cols-2 @4xl:grid-cols-4" aria-label="Métricas">
-        {METRICAS_DO_RESUMO.map((chave) => {
-          const leituraDaMetrica = leitura.metricas[chave];
-          const diferenca = leituraDaMetrica.valor - leituraDaMetrica.anterior;
-          const escolhidaAgora = chave === metrica;
-          const IconeDaVariacao = diferenca > 0 ? TrendingUp : diferenca < 0 ? TrendingDown : Minus;
-          const variacao = diferenca > 0 ? `+${fmt.number(diferenca)}` : diferenca < 0 ? `−${fmt.number(-diferenca)}` : "igual";
-          const frase =
-            diferenca === 0
-              ? `o mesmo que ${janela.anterior}`
-              : `${fmt.number(Math.abs(diferenca))} a ${diferenca > 0 ? "mais" : "menos"} que ${janela.anterior} (${fmt.number(leituraDaMetrica.anterior)})`;
-          return (
-            <li key={chave}>
-              <button
-                type="button"
-                className="item-solto inicio-metrica"
-                aria-pressed={escolhidaAgora}
-                data-destacado={escolhidaAgora ? "true" : undefined}
-                data-atenuado={leituraDaMetrica.valor === 0 && !escolhidaAgora ? "true" : undefined}
-                onClick={() => setMetrica(chave)}
-              >
-                <span className="app-coluna flex items-center gap-2">
-                  <span aria-hidden="true" className="inicio-metrica-ponto" style={{ background: METRICA[chave].cor }} />
-                  {METRICA[chave].rotulo}
-                </span>
-                <span className="ed-subtitulo app-numero" style={{ color: leituraDaMetrica.valor === 0 ? "var(--texto-4)" : "var(--texto)" }}>
-                  {fmt.number(leituraDaMetrica.valor)}
-                </span>
-                {leituraDaMetrica.valorMonetario ? (
-                  <span className="app-sm app-numero text-[var(--texto-2)]">{fmt.money(leituraDaMetrica.valorMonetario)}</span>
-                ) : null}
-                <span className="app-meta flex items-center gap-1" title={frase}>
-                  <Icone de={IconeDaVariacao} tamanho="xs" />
-                  <span aria-hidden="true">{variacao} vs. antes</span>
-                  <span className="sr-only">{frase}</span>
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-      <div className="item-solto inicio-grafico" data-bloco="true" data-estatico="true">
-        <p className="app-sm inicio-grafico-titulo">
-          {METRICA[metrica].rotulo} {janela.unidade}
-          <span className="app-meta"> · {fmt.number(escolhida.valor)} no período</span>
-        </p>
-        <Colunas
-          colunas={leitura.janela.baldes.map((balde, i) => ({
-            rotulo: balde.rotulo,
-            rotuloLongo: balde.rotuloLongo,
-            valor: escolhida.porBalde[i] ?? 0,
-          }))}
-          formata={fmt.number}
-          legenda={`${METRICA[metrica].rotulo} ${janela.unidade}, ${janela.descricao.toLocaleLowerCase("pt-BR")}`}
-          cor={METRICA[metrica].cor}
-          rotulosACada={janela.rotulosACada}
-        />
+      {/* O corpo no molde da grade: largo, o gráfico sob as Tarefas e as
+          métricas 2×2 sob Leads e Mensagens; médio, as métricas nas metades
+          e o gráfico embaixo, na largura toda. */}
+      <div className="inicio-estatisticas-corpo">
+        <ul className="inicio-metricas" aria-label="Métricas">
+          {METRICAS_DO_RESUMO.map((chave) => {
+            const leituraDaMetrica = leitura.metricas[chave];
+            const diferenca = leituraDaMetrica.valor - leituraDaMetrica.anterior;
+            const escolhidaAgora = chave === metrica;
+            const IconeDaVariacao = diferenca > 0 ? TrendingUp : diferenca < 0 ? TrendingDown : Minus;
+            const variacao = diferenca > 0 ? `+${fmt.number(diferenca)}` : diferenca < 0 ? `−${fmt.number(-diferenca)}` : "igual";
+            const frase =
+              diferenca === 0
+                ? `o mesmo que ${janela.anterior}`
+                : `${fmt.number(Math.abs(diferenca))} a ${diferenca > 0 ? "mais" : "menos"} que ${janela.anterior} (${fmt.number(leituraDaMetrica.anterior)})`;
+            return (
+              <li key={chave}>
+                <button
+                  type="button"
+                  className="item-solto inicio-metrica"
+                  aria-pressed={escolhidaAgora}
+                  data-destacado={escolhidaAgora ? "true" : undefined}
+                  data-atenuado={leituraDaMetrica.valor === 0 && !escolhidaAgora ? "true" : undefined}
+                  onClick={() => setMetrica(chave)}
+                >
+                  <span className="app-coluna flex items-center gap-2">
+                    <span aria-hidden="true" className="inicio-metrica-ponto" style={{ background: METRICA[chave].cor }} />
+                    {METRICA[chave].rotulo}
+                  </span>
+                  <span className="ed-subtitulo app-numero" style={{ color: leituraDaMetrica.valor === 0 ? "var(--texto-4)" : "var(--texto)" }}>
+                    {fmt.number(leituraDaMetrica.valor)}
+                  </span>
+                  {leituraDaMetrica.valorMonetario ? (
+                    <span className="app-sm app-numero text-[var(--texto-2)]">{fmt.money(leituraDaMetrica.valorMonetario)}</span>
+                  ) : null}
+                  <span className="app-meta flex items-center gap-1" title={frase}>
+                    <Icone de={IconeDaVariacao} tamanho="xs" />
+                    <span aria-hidden="true">{variacao} vs. antes</span>
+                    <span className="sr-only">{frase}</span>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="item-solto inicio-grafico" data-bloco="true" data-estatico="true">
+          <p className="app-sm inicio-grafico-titulo">
+            {METRICA[metrica].rotulo} {janela.unidade}
+            <span className="app-meta"> · {fmt.number(escolhida.valor)} no período</span>
+          </p>
+          <Colunas
+            colunas={leitura.janela.baldes.map((balde, i) => ({
+              rotulo: balde.rotulo,
+              rotuloLongo: balde.rotuloLongo,
+              valor: escolhida.porBalde[i] ?? 0,
+            }))}
+            formata={fmt.number}
+            legenda={`${METRICA[metrica].rotulo} ${janela.unidade}, ${janela.descricao.toLocaleLowerCase("pt-BR")}`}
+            cor={METRICA[metrica].cor}
+            rotulosACada={janela.rotulosACada}
+          />
+        </div>
       </div>
     </section>
   );
