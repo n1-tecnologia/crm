@@ -27,14 +27,75 @@
  */
 
 import type { ZodTypeProvider } from "@fastify/type-provider-zod";
-import type { DataState, Id, OperationResult } from "@n1/dominio";
+import type { ApprovalRequest, Comment, DataState, Id, OperationResult } from "@n1/dominio";
 import { ehNomeDeOperacao, OPERACOES, reviverArgumentos, type NomeDeOperacao } from "@n1/dominio/operations/registro";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { MembroDaSessao } from "../plugins/autenticacao";
+import type { EventoDeSaida } from "../persistencia/outbox";
 import { executar, type ResultadoTransacao } from "../persistencia/unidade-de-trabalho";
 import { convidarMembro } from "../servicos/convidar-membro";
+import { LISTA_SOLICITACOES_DE_PAGAMENTO_ID } from "../servicos/dto-solicitacao";
 import { esquemaDeArgumentos } from "./esquemas-de-argumentos";
+
+/**
+ * As duas operações desta rota que o pipeline de pagamento precisa ouvir (D-09, contrato v1 §8):
+ * a decisão de aprovação por clique e o comentário humano numa Solicitação — o que o
+ * classificador do fallback por comentário lê. Mesmos eventos que `classificacoes.ts` e
+ * `integracao-solicitacoes.ts` já gravam; as outras ~200 operações seguem sem evento.
+ * `eraReplay`: repetir a mesma decisão é sucesso sem efeito no domínio, e não pode reenviar.
+ */
+export function eventosDeSaidaDaOperacao(
+  nome: string,
+  entrada: {
+    readonly args: readonly unknown[];
+    readonly valor: unknown;
+    readonly state: DataState;
+    readonly membroId: Id;
+    readonly eraReplay: boolean;
+  },
+): EventoDeSaida[] {
+  if (nome === "decideProcessApproval") {
+    const aprovacao = entrada.valor as ApprovalRequest;
+    const decisao = aprovacao.decision;
+    if (entrada.eraReplay || aprovacao.origin.kind !== "processTask") return [];
+    if (decisao !== "aprovada" && decisao !== "rejeitada") return [];
+    return [
+      {
+        type: "solicitacao.aprovacao-decidida.v1",
+        aggregateType: "task",
+        aggregateId: aprovacao.origin.taskId,
+        payload: {
+          taskId: aprovacao.origin.taskId,
+          approvalId: aprovacao.id,
+          decision: decisao,
+          source: aprovacao.decisionSource ?? "click",
+          decidedByMemberId: entrada.membroId,
+        },
+      },
+    ];
+  }
+  if (nome === "addTaskComment") {
+    const taskId = entrada.args[0] as Id;
+    const tarefa = entrada.state.tasks.find((t) => t.id === taskId);
+    if (tarefa?.listId !== LISTA_SOLICITACOES_DE_PAGAMENTO_ID) return [];
+    const comentario = entrada.valor as Comment;
+    return [
+      {
+        type: "solicitacao.comentario-criado.v1",
+        aggregateType: "task",
+        aggregateId: taskId,
+        payload: {
+          taskId,
+          commentId: comentario.id,
+          ...(comentario.parentCommentId ? { parentCommentId: comentario.parentCommentId } : {}),
+          authorMemberId: entrada.membroId,
+        },
+      },
+    ];
+  }
+  return [];
+}
 
 const PARAMS = z.object({
   nome: z
@@ -167,25 +228,36 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
       const servico = SERVICOS[nome];
 
       let resultado: ResultadoTransacao<unknown>;
+      let eraReplay = false;
       try {
         resultado = servico
           ? await servico(request.membro, args)
-          : await executar(request.membro.workspaceId, (state) => {
-              // WR-11 — `args` já tem exatamente a forma da assinatura
-              // (schema próprio, `satisfies EsquemasCompletos`); um erro
-              // aqui dentro (inclusive `TypeError`) só pode ser estado
-              // hidratado inconsistente ou bug do domínio, nunca entrada —
-              // sobe sem mapeamento, `executar()` já faz rollback antes de
-              // relançar, e o `setErrorHandler` de `app.ts` devolve 500 com
-              // log `error`, de propósito, para não ficar escondido atrás
-              // de um 400 ao cliente.
-              //
-              // CR-05 — o evento de Canal não é mais derivado aqui: a
-              // Unidade de Trabalho (`persistencia/unidade-de-trabalho.ts`)
-              // deriva sozinha, obrigatoriamente, a partir das
-              // `AutomationExecution` que nasceram na transação.
-              return REGISTRO[nome]!(state, request.membro.id, ...args);
-            });
+          : await executar(
+              request.membro.workspaceId,
+              (state) => {
+                if (nome === "decideProcessApproval") {
+                  eraReplay = state.approvals.find((a) => a.id === args[0])?.decision === args[1];
+                }
+                // WR-11 — `args` já tem exatamente a forma da assinatura
+                // (schema próprio, `satisfies EsquemasCompletos`); um erro
+                // aqui dentro (inclusive `TypeError`) só pode ser estado
+                // hidratado inconsistente ou bug do domínio, nunca entrada —
+                // sobe sem mapeamento, `executar()` já faz rollback antes de
+                // relançar, e o `setErrorHandler` de `app.ts` devolve 500 com
+                // log `error`, de propósito, para não ficar escondido atrás
+                // de um 400 ao cliente.
+                //
+                // CR-05 — o evento de Canal não é mais derivado aqui: a
+                // Unidade de Trabalho (`persistencia/unidade-de-trabalho.ts`)
+                // deriva sozinha, obrigatoriamente, a partir das
+                // `AutomationExecution` que nasceram na transação.
+                return REGISTRO[nome]!(state, request.membro.id, ...args);
+              },
+              {
+                eventos: (valor, state) =>
+                  eventosDeSaidaDaOperacao(nome, { args, valor, state, membroId: request.membro.id, eraReplay }),
+              },
+            );
       } catch (erro) {
         if (erro instanceof ErroDeEntrada) {
           return reply.code(400).send({ ok: false, error: erro.message });
