@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: "Plan 05-01 completo (Tasks 1-3): Integration cresce, evolver por Empresa e CLI dry-run existem e passam; ver 05-01-SUMMARY.md"
-last_updated: "2026-09-24T20:51:57.001Z"
-last_activity: "2026-09-24 -- Phase 05 re-verificada: human_needed. Fechamento de lacunas 12/13 (05-23 aberto, ação do dono no Supabase Studio). Revisão: 0 bloqueadores, CR-01..07 fechados. Critério 1 verdadeiro em produção; 2/3/4 code-complete, dependem do dono (05-23 migração+deploy, corte MP/FO D5-20 sem fase no ROADMAP, relógio/R7 adiados, limpeza de ~14 Espaços de teste antes de ligar o worker). 6 itens em 05-UAT.md"
+last_updated: "2026-09-25T12:22:00.482Z"
+last_activity: 2026-09-25 -- Phase 05 execution started
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 105
-  completed_plans: 87
+  completed_plans: 99
   percent: 67
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 Phase: 05 (contas-a-receber-e-os-outros-tenants) — EXECUTING
 Plan: 1 of 25
 Status: Executing Phase 05
-Last activity: 2026-09-24 -- Phase 05 re-verificada: human_needed. Fechamento de lacunas 12/13 (05-23 aberto, ação do dono no Supabase Studio). Revisão: 0 bloqueadores, CR-01..07 fechados. Critério 1 verdadeiro em produção; 2/3/4 code-complete, dependem do dono (05-23 migração+deploy, corte MP/FO D5-20 sem fase no ROADMAP, relógio/R7 adiados, limpeza de ~14 Espaços de teste antes de ligar o worker). 6 itens em 05-UAT.md
+Last activity: 2026-09-25 -- Phase 05 execution started
 
 **Onda 5 — 04-12** (sibling, `f06da55`/`d4cca79`/`49d71af`): módulo de acesso ao
 `conciliador_contas` e as seis rotas de plano de contas/workflows/execuções, autenticadas pelo

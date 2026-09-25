@@ -20,7 +20,7 @@ Fase 0 e Fase 1 correm em paralelo: o que resta da Fase 0 não bloqueia terminar
 - [ ] **Phase 2: Solicitação de pagamento — o front substitui o ClickUp** - Toda solicitação nova nasce no CRM N1, o aprovador decide com um clique e o pipeline do `automation/` roda sem webhook do ClickUp
 - [x] **Phase 3: Contas a pagar** - O Financeiro opera uma semana sem abrir o ClickUp: importação com histórico, motor de Automações executando A1–A9, Agente lançando no Omie de verdade, lote e permissões (completed 2026-09-23)
 - [ ] **Phase 4: As outras telas do financeiro-tria** - As leituras que nunca viveram no ClickUp portadas como tela; `financeiro-tria.vercel.app` sai do ar
-- [ ] **Phase 5: Contas a receber e os outros tenants** - Marcos Paulo e Family Office como Empresas do Campo `Empresa`; Contas a receber na forma que D7 determinar; notificar por Canal (gaps_found 2026-09-24 — fechamento de lacunas 05-13..05-25 planejado)
+- [x] **Phase 5: Contas a receber e os outros tenants** - Marcos Paulo e Family Office como Empresas do Campo `Empresa`; Contas a receber na forma que D7 determinar; notificar por Canal (gaps_found 2026-09-24 — fechamento de lacunas 05-13..05-25 planejado) (completed 2026-09-25)
 
 ## Phase Details
 
@@ -365,7 +365,7 @@ Plans:
 
 **Gap wave 4** *(blocked on gap wave 3)*
 
-- [ ] 05-23-PLAN.md — Migração de receipts no Supabase do `automation/` (o dono aplica) e deploy do `automation/` (o dono pode recusar) (TEN-01, AUTO-02)
+- [x] 05-23-PLAN.md — Migração de receipts no Supabase do `automation/` (o dono aplica) e deploy do `automation/` (o dono pode recusar) (TEN-01, AUTO-02)
 - [x] 05-25-PLAN.md — O relógio de Contas a receber: pré-voo, R7 com o Valor do dono, Ensaio × simulação, liberação (05-10 Task 4) (REC-01)
 
 **Ondas do fechamento de lacunas:** 1 → [05-13, 05-14, 05-15, 05-16] · 2 → [05-17, 05-18, 05-19, 05-20] · 3 → [05-21, 05-22, 05-24] · 4 → [05-23, 05-25]
@@ -399,7 +399,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | 2. Solicitação de pagamento — o front substitui o ClickUp | 23/28 | In Progress|  |
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
-| 5. Contas a receber e os outros tenants | 24/25 | In Progress|  |
+| 5. Contas a receber e os outros tenants | 25/25 | Complete   | 2026-09-25 |
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*
