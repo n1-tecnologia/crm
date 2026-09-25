@@ -17,17 +17,14 @@
  * `banco_de_categorias` (o banco vetorial citado em D-25), nenhuma das três
  * entra em `COLUNAS`.
  *
- * `valor`, `documento` e `created_at` — candidatas a existir para dar
- * suporte a Valor (T-Valor) e Documento (G-CNPJ/H-CPF) da Solicitação —
- * NÃO estão nas duas migrações do inventário disponíveis neste ambiente
- * (`../financeiro-tria/supabase/migrations/2026051113…`/`2026052613…`, que
- * este agente não conseguiu ler: o repositório `financeiro-tria` não está
- * clonado ao lado deste, e não há `DATABASE_URL`/credencial de leitura no
- * `.env` deste worktree). Ficam na allowlist como HIPÓTESE, documentada
- * aqui e no `CONTEXT.md` desta pasta — quem roda o `--apply` do Plan 02-25
- * confirma os três nomes contra o schema real antes da primeira execução;
- * se um deles não existir, a consulta falha alto e explícito (coluna
- * inexistente), nunca silenciosamente.
+ * `valor` e `documento` NÃO existem (confirmado em 2026-09-25: o primeiro
+ * dry-run real falhou com `column "valor" does not exist`, e
+ * `automation/src/testing/fixture-financeiro.ts` documenta as 14 colunas da
+ * tabela). Valor e documento só existem dentro do texto livre que a IA
+ * grava em `comentario` — e D-25 proíbe reconstruir de texto livre, então
+ * a importação não tem Valor nem CPF/CNPJ estruturados (decisão do dono).
+ * `created_at` segue como HIPÓTESE até ser conferida contra
+ * `information_schema.columns`: se não existir, a consulta falha alto.
  */
 
 import { Client } from "pg";
@@ -56,8 +53,6 @@ const COLUNAS = [
   "id_responsavel",
   "Data_previsao",
   // Hipótese não confirmada contra o schema real — ver cabeçalho do arquivo.
-  "valor",
-  "documento",
   "created_at",
 ] as const;
 
@@ -73,10 +68,6 @@ function campoPorRotulo(rotulo: string): (typeof CAMPOS_SOLICITACAO_DE_PAGAMENTO
 const CAMPO_CENTRO_DE_CUSTO = campoPorRotulo("Centro de Custo");
 const CAMPO_EMPRESA = campoPorRotulo("Empresa");
 const CAMPO_DATA_VENCIMENTO = campoPorRotulo("Data Vencimento");
-const CAMPO_VALOR = campoPorRotulo("Valor");
-const CAMPO_FORNECEDOR = campoPorRotulo("Fornecedor");
-const CAMPO_CPF = campoPorRotulo("CPF");
-const CAMPO_CNPJ = campoPorRotulo("CNPJ");
 
 /* ────────────────────────── Leitura (Plan 02-25 chama isto) ────────────────────────── */
 
@@ -110,7 +101,9 @@ export async function lerSolicitacoesLegadas(opcoes: OpcoesDeLeitura): Promise<P
     const colunas = COLUNAS.map((c) => `"${c}"`).join(", ");
     const cursorId = opcoes.cursor ? Number(opcoes.cursor) : 0;
     const resultado = await cliente.query(
-      `select ${colunas} from public.solicitacoes_pagamentos where "id" > $1 order by "id" asc limit $2`,
+      // `origem = 'clickup'`: linhas da coorte `plataforma` (Plan 02-18/02-21) já nasceram como
+      // Tarefa nativa — reimportá-las criaria uma Tarefa duplicada para a mesma Solicitação.
+      `select ${colunas} from public.solicitacoes_pagamentos where "id" > $1 and "origem" = 'clickup' order by "id" asc limit $2`,
       [cursorId, opcoes.lote],
     );
     const linhas = resultado.rows as LinhaLegadaBruta[];
@@ -176,16 +169,6 @@ function comoInstante(valor: unknown): string | undefined {
   return Number.isNaN(ms) ? undefined : new Date(ms).toISOString();
 }
 
-function comoNumero(valor: unknown): number | undefined {
-  if (typeof valor === "number") return Number.isFinite(valor) ? valor : undefined;
-  const texto = textoOuAusente(valor);
-  if (!texto) return undefined;
-  const numero = Number(texto.replace(",", "."));
-  return Number.isFinite(numero) ? numero : undefined;
-}
-
-const SOMENTE_DIGITOS = /\D/g;
-
 /**
  * Classifica UMA linha. `vistos` é o conjunto de `TaskID` já processados —
  * do próprio lote e, quando o chamador cruzar com `plataforma.importacao_ledger`
@@ -228,31 +211,11 @@ export function classificarLinha(linha: LinhaLegadaBruta, vistos: ReadonlySet<st
   if (dataVencimento) campos[CAMPO_DATA_VENCIMENTO.id] = dataVencimento;
   else if (linha.Data_previsao !== null && linha.Data_previsao !== undefined) lacunas.push("data_vencimento_formato_inesperado");
 
-  // T — Valor. D-25: nunca reconstruído de texto livre — só o valor já estruturado da coluna.
-  if (linha.valor === null || linha.valor === undefined || textoOuAusente(linha.valor) === undefined) {
-    lacunas.push("valor_ausente");
-  } else {
-    const numero = comoNumero(linha.valor);
-    if (numero === undefined) lacunas.push("valor_nao_numerico");
-    else campos[CAMPO_VALOR.id] = numero.toFixed(2);
-  }
-
-  // G/H — Documento (CPF ou CNPJ), inferido só pela contagem de dígitos do valor já presente — nunca inventado.
-  const documento = textoOuAusente(linha.documento);
-  if (!documento) {
-    lacunas.push("documento_ausente");
-  } else {
-    const digitos = documento.replace(SOMENTE_DIGITOS, "");
-    if (digitos.length === 11) {
-      campos[CAMPO_FORNECEDOR.id] = "CPF";
-      campos[CAMPO_CPF.id] = documento;
-    } else if (digitos.length === 14) {
-      campos[CAMPO_FORNECEDOR.id] = "CNPJ";
-      campos[CAMPO_CNPJ.id] = documento;
-    } else {
-      lacunas.push("documento_formato_inesperado");
-    }
-  }
+  // T — Valor e G/H — Documento: a tabela legada não tem coluna para nenhum dos dois; eles só
+  // existem dentro do texto livre que a IA gravou em `comentario`. D-25 proíbe reconstruir de
+  // texto livre, e o dono confirmou (2026-09-25) importar sem eles — o texto inteiro segue
+  // legível no Comentário do RESUMO. Toda linha válida carrega as duas lacunas.
+  lacunas.push("valor_ausente", "documento_ausente");
 
   const criadaEm = comoInstante(linha.created_at);
   if (!criadaEm) lacunas.push("data_de_criacao_ausente");

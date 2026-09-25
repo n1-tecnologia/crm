@@ -8,6 +8,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { CAMPOS_SOLICITACAO_DE_PAGAMENTO } from "@n1/dominio/solicitacao-de-pagamento";
 import fixture from "./fixtures/solicitacoes-sanitizadas.json";
 import { resolverAutoriaLegada } from "./de-para";
 import { classificarLinha, type LinhaLegadaBruta } from "./solicitacoes";
@@ -70,16 +71,16 @@ describe("classificarLinha", () => {
     expect(foraDoDominio.motivo).toBe("aprovado_ambiguo");
   });
 
-  it("(e) valor ausente e valor não numérico viram lacuna; o Campo Valor fica ausente, não zero", () => {
-    const ausente = classificarLinha(linha(17));
-    expect(ausente.resultado).toBe("valida");
-    expect(ausente.entrada?.lacunas).toContain("valor_ausente");
-    expect(Object.values(ausente.entrada?.campos ?? {})).not.toContain(0);
-    expect(Object.values(ausente.entrada?.campos ?? {})).not.toContain("0.00");
-
-    const naoNumerico = classificarLinha(linha(18));
-    expect(naoNumerico.resultado).toBe("valida");
-    expect(naoNumerico.entrada?.lacunas).toContain("valor_nao_numerico");
+  it("(e) toda linha válida leva as lacunas valor_ausente e documento_ausente, e nenhum Campo Valor/CPF/CNPJ — a origem não tem essas colunas", () => {
+    for (const id of [1, 2, 16, 17, 18]) {
+      const r = classificarLinha(linha(id));
+      expect(r.resultado).toBe("valida");
+      expect(r.entrada?.lacunas).toEqual(expect.arrayContaining(["valor_ausente", "documento_ausente"]));
+      const rotulosPreenchidos = Object.keys(r.entrada?.campos ?? {}).map(
+        (id) => CAMPOS_SOLICITACAO_DE_PAGAMENTO.find((c) => c.id === id)?.rotulo,
+      );
+      for (const rotulo of ["Valor", "Fornecedor", "CPF", "CNPJ"]) expect(rotulosPreenchidos).not.toContain(rotulo);
+    }
   });
 
   it("(f) created_at ausente: criadaEm indefinido e lacuna data_de_criacao_ausente; Data Vencimento em formato inesperado vira lacuna, sem parse otimista", () => {
