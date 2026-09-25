@@ -24,7 +24,8 @@
     "solicitacoes:importar": "vite-node src/importacao/financeiro/importar.cli.ts",
     "solicitacoes:reconciliar": "vite-node src/importacao/financeiro/importar.cli.ts reconciliar",
     "ensaio:relatorio": "vite-node src/relatorios/ensaio-do-agente.cli.ts",
-    "outbox:limpar-testes": "vite-node src/persistencia/limpar-outbox-de-teste.cli.ts"
+    "outbox:limpar-testes": "vite-node src/persistencia/limpar-outbox-de-teste.cli.ts",
+    "reconciliar": "vite-node src/observabilidade/reconciliacao.cli.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
