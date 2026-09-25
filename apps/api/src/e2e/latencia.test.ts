@@ -190,7 +190,7 @@ d("latência real VPS ↔ Postgres / VPS ↔ Storage (D-23)", () => {
       const { p95 } = resumo("banco (begin → hidratar → update revisão → rollback)", amostras);
       afirmarDentroDoLimiteQuandoConfigurado(p95);
     },
-    120_000,
+    300_000,
   );
 
   it.skipIf(!temBucket)(
