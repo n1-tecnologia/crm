@@ -70,28 +70,21 @@ migração é aplicada; nenhuma credencial do `.env` do `automation/` é lida.
 O classificador do fallback por comentário usa a fiação real só até a IA
 (stub, nunca a OpenAI real).
 
-**Três achados reais, confirmados por execução, não corrigidos aqui**
-(fora de `packages/dominio`/`rotas/operacoes.ts`/`financeiro-tria`, fora
-de `files_modified` deste plano — ver `02-26-SUMMARY.md`):
+**Três achados reais do Plan 02-26 — corrigidos em 2026-09-25.** Até lá
+este teste os contornava; hoje exercita o caminho de produção:
 
-1. O Convidado "Agente do pipeline" (§9) só tem `editar restrito a Status`
-   por Papel — comentar numa Tarefa específica exige uma concessão DIRETA
-   nela, que o evolver não cria. O teste concede isso via SQL de fixture
-   (`concederComentarNaTarefa`), nunca em produção.
-2. `POST /operacoes/decideProcessApproval` e `POST /operacoes/addTaskComment`
-   (a rota GENÉRICA, `rotas/operacoes.ts`) não passam `opcoes.eventos` —
-   diferente de `classificacoes.ts`/`formularios-publicos.ts`/
-   `integracao-solicitacoes.ts`, que constroem o evento explicitamente. Uma
-   decisão por CLIQUE, ou uma resposta de aprovador pela própria tela do
-   CRM N1, hoje NÃO notifica o `automation/` por outbox. O teste grava o
-   evento manualmente com a função de produção `gravarEventos` para provar
-   a metade RECEPTORA do webhook mesmo com esse gap na emissão.
-3. `eventIdDoComentario` (`financeiro-tria/automation/src/tenants/tria/classificador-de-aprovacao.ts`)
-   deriva um "uuid" de um sha256 fatiado 8-4-4-4-12 sem fixar os nibbles de
-   versão/variante do RFC 4122 — `z.uuid()` do contrato v1 rejeita a
-   maioria dos hashes resultantes. O teste usa um classificador de
-   substituição (mesma fiação HTTP real, `randomUUID()` no lugar do hash
-   quebrado) para não depender do bug.
+1. O Agente do pipeline comenta pelo Papel (§9 concede `comentar`) em toda
+   Tarefa que já vê — `guestCommentsByRole` em `packages/dominio/src/derive.ts`.
+   Não existe mais concessão de comentário por Tarefa no teste.
+2. `POST /operacoes/decideProcessApproval` grava
+   `solicitacao.aprovacao-decidida.v1` e `POST /operacoes/addTaskComment`
+   numa Solicitação grava `solicitacao.comentario-criado.v1`
+   (`eventosDeSaidaDaOperacao`, `rotas/operacoes.ts`). O teste confere o
+   evento real no outbox em vez de gravá-lo à mão.
+3. `eventIdDoComentario` (`financeiro-tria`, commit `7dfc441`) gera UUID
+   versão 5 que `z.uuid()` aceita. O teste ainda usa o classificador de
+   substituição (mesma fiação HTTP, `randomUUID()` no lugar do id), que
+   agora difere da produção só nessa geração de id.
 
 ## Fault-Injection Matrix — `falhas-injetadas.test.ts` (Plan 02-26)
 

@@ -56,7 +56,6 @@ import { SOL } from "@n1/dominio/solicitacao-de-pagamento";
 import { buildApp } from "../app";
 import { carregarEnv, encerrar, pool } from "../persistencia/conexao";
 import { emitirCredencial } from "../persistencia/credenciais-de-servico";
-import { gravarEventos } from "../persistencia/outbox";
 import { criarOutboxWorker, type OutboxWorker } from "../persistencia/outbox-worker";
 import { semear } from "../persistencia/repositorio";
 import {
@@ -155,34 +154,6 @@ async function limparTudo(): Promise<void> {
     await cliente.query("delete from plataforma.integration_outbox where workspace_id = $1", [WORKSPACE]);
     await cliente.query("delete from plataforma.http_idempotency where service_id like $1", [`${RUN}%`]);
     await cliente.query("delete from plataforma.service_credentials where workspace_id = $1", [WORKSPACE]);
-  } finally {
-    cliente.release();
-  }
-}
-
-/** Concede `comentar` na Tarefa específica ao Convidado "Agente do pipeline" — ver cabeçalho da seção mais abaixo (Deviations, gap de domínio). */
-async function concederComentarNaTarefa(taskId: Id): Promise<void> {
-  const grant: Grant = {
-    id: `grn_e2e_comentar_${taskId}`,
-    workspaceId: semente.workspace.id,
-    subjectKind: "member",
-    subjectId: AGENTE_PIPELINE.id,
-    action: "comentar",
-    resourceType: "task",
-    resourceId: taskId,
-    scope: "subarvore",
-    origin: "concessaoDireta",
-    grantedBy: MEMBRO_ADMIN!.id,
-    grantedAt: new Date().toISOString(),
-  };
-  const cliente = await pool().connect();
-  try {
-    await cliente.query(
-      `insert into plataforma.registros (workspace_id, colecao, id, dados, ordem)
-       values ($1, 'grants', $2, $3::jsonb, extract(epoch from now()))
-       on conflict (workspace_id, colecao, id) do nothing`,
-      [WORKSPACE, grant.id, JSON.stringify(grant)],
-    );
   } finally {
     cliente.release();
   }
@@ -392,10 +363,9 @@ d("E2E entre processos — Fastify (plataforma) + Express (automation/), submiss
   });
 
   it("(2) o worker de outbox entrega solicitacao.criada.v1 — o serviço chama getTask/createComment/updateTaskStatus via o adapter real", async () => {
-    // O Agente do pipeline ainda não pode comentar NESTA Tarefa (gap de domínio
-    // documentado no SUMMARY — taskWriteRefusal recusa Convidado sem concessão
-    // direta de "comentar"). O grant abaixo é fixture de teste, nunca produção.
-    await concederComentarNaTarefa(taskIdClique);
+    // O Agente do pipeline comenta pelo Papel (§9) sobre o `ver` na Lista que o evolver
+    // concede — sem concessão por Tarefa. Até 2026-09-25 este teste precisava de uma
+    // (achado do Plan 02-26).
 
     await drenarOutbox();
 
@@ -495,45 +465,40 @@ d("E2E entre processos — Fastify (plataforma) + Express (automation/), submiss
     expect(task.statusId).toBe(SOL.status.aprovado);
     expect(task.comments.some((c) => c.content.startsWith("✅ Aprovado por"))).toBe(true);
 
-    // ACHADO REAL (Deviation, ver SUMMARY): `POST /operacoes/decideProcessApproval`
-    // (a rota GENÉRICA `rotas/operacoes.ts`, caminho do CLIQUE) não passa
-    // `opcoes.eventos` para `executar()` — diferente de
-    // `rotas/classificacoes.ts` (caminho do COMENTÁRIO), que constrói o
-    // evento explicitamente. Nenhum `solicitacao.aprovacao-decidida.v1` nasce
-    // para uma decisão por clique hoje: o `automation/` nunca é notificado
-    // por outbox quando o aprovador decide pela tela. Confirmado por query,
-    // não assumido:
+    // O clique grava `solicitacao.aprovacao-decidida.v1` na mesma transação da decisão
+    // (`rotas/operacoes.ts#eventosDeSaidaDaOperacao`). Até 2026-09-25 não gravava — achado do
+    // Plan 02-26 —, e este teste gravava o evento à mão para provar só a metade receptora.
     const cliente = await pool().connect();
     try {
       const { rows } = await cliente.query(
-        `select count(*)::int as n from plataforma.integration_outbox where workspace_id = $1 and event_type = 'solicitacao.aprovacao-decidida.v1'`,
-        [WORKSPACE],
+        `select payload from plataforma.integration_outbox
+          where workspace_id = $1 and event_type = 'solicitacao.aprovacao-decidida.v1' and payload->>'approvalId' = $2`,
+        [WORKSPACE, approvalIdClique],
       );
-      expect(rows[0]!.n).toBe(0);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.payload).toMatchObject({ taskId: taskIdClique, approvalId: approvalIdClique, decision: "aprovada", source: "click" });
     } finally {
       cliente.release();
     }
 
-    // O gap fica registrado (fora de `files_modified` — `rotas/operacoes.ts`
-    // é a rota genérica de ~200 operações, corrigi-la é decisão de fase
-    // própria). Para o Task 2 ainda provar a METADE RECEPTORA do webhook
-    // (SOL-07: o `automation/` recebendo `aprovacao-decidida` e retomando o
-    // run) mesmo com esse gap na emissão, este teste grava o evento
-    // manualmente com a MESMA função de produção (`gravarEventos`,
-    // `persistencia/outbox.ts`) que `classificacoes.ts` já usa — nunca SQL
-    // inventado, e nunca fingindo que a rota genérica o fez.
-    const clienteEvento = await pool().connect();
+    // Repetir a mesma decisão é sucesso sem efeito no domínio — e não pode reenviar o evento.
+    const repeticao = await appDeTeste().inject({
+      method: "POST",
+      url: "/operacoes/decideProcessApproval",
+      headers: { authorization: "Bearer token-admin" },
+      payload: { args: [approvalIdClique, "aprovada", { source: "click" }] },
+    });
+    expect(repeticao.json().ok).toBe(true);
+    const clienteRepeticao = await pool().connect();
     try {
-      await gravarEventos(clienteEvento, WORKSPACE, [
-        {
-          type: "solicitacao.aprovacao-decidida.v1",
-          aggregateType: "task",
-          aggregateId: taskIdClique,
-          payload: { taskId: taskIdClique, approvalId: approvalIdClique, decision: "aprovada", source: "click", decidedByMemberId: APROVADOR!.id },
-        },
-      ]);
+      const { rows } = await clienteRepeticao.query(
+        `select count(*)::int as n from plataforma.integration_outbox
+          where workspace_id = $1 and event_type = 'solicitacao.aprovacao-decidida.v1' and payload->>'approvalId' = $2`,
+        [WORKSPACE, approvalIdClique],
+      );
+      expect(rows[0]!.n).toBe(1);
     } finally {
-      clienteEvento.release();
+      clienteRepeticao.release();
     }
   });
 
@@ -566,7 +531,6 @@ d("E2E entre processos — Fastify (plataforma) + Express (automation/), submiss
     const { data: d1 } = await estadoAtual();
     taskIdComentario = acharTaskIdPorReadableId(d1, readableId);
 
-    await concederComentarNaTarefa(taskIdComentario);
     await drenarOutbox();
 
     const { data: d2 } = await estadoAtual();
@@ -599,48 +563,20 @@ d("E2E entre processos — Fastify (plataforma) + Express (automation/), submiss
     expect(corpoComentario.ok, corpoComentario.error).toBe(true);
     comentarioDeRespostaId = corpoComentario.value.id;
 
-    // SEGUNDO ACHADO REAL (Deviation, ver SUMMARY, mesma família do achado de
-    // (5)): `POST /operacoes/addTaskComment` (a rota GENÉRICA — o caminho de
-    // um Membro humano respondendo pela própria tela do CRM N1, D-08) também
-    // não passa `opcoes.eventos`. Só a rota DEDICADA de integração
-    // (`integracao-solicitacoes.ts`, usada pelo `automation/` via adapter)
-    // emite `solicitacao.comentario-criado.v1` hoje — confirmado por
-    // contagem 0, não assumido:
+    // A resposta humana pela tela do CRM grava `solicitacao.comentario-criado.v1` — é o que o
+    // classificador do fallback lê. Até 2026-09-25 só a rota de integração gravava (achado do 02-26).
     const cliente = await pool().connect();
     try {
       const { rows } = await cliente.query(
-        `select count(*)::int as n from plataforma.integration_outbox
+        `select payload from plataforma.integration_outbox
           where workspace_id = $1 and event_type = 'solicitacao.comentario-criado.v1'
-            and aggregate_id = $2 and status = 'pending'`,
-        [WORKSPACE, taskIdComentario],
+            and aggregate_id = $2 and payload->>'commentId' = $3`,
+        [WORKSPACE, taskIdComentario, comentarioDeRespostaId],
       );
-      expect(rows[0]!.n).toBe(0);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.payload).toMatchObject({ taskId: taskIdComentario, commentId: comentarioDeRespostaId, parentCommentId: comentarioDeRoteamento.id });
     } finally {
       cliente.release();
-    }
-
-    // Mesmo tratamento do achado de (5): grava o evento manualmente com a
-    // função de PRODUÇÃO (`gravarEventos`) para o teste ainda provar a
-    // metade RECEPTORA (classificador → callback → decideProcessApproval)
-    // — o gap de emissão em `rotas/operacoes.ts` fica registrado, não
-    // corrigido aqui (fora de `files_modified`).
-    const clienteEvento = await pool().connect();
-    try {
-      await gravarEventos(clienteEvento, WORKSPACE, [
-        {
-          type: "solicitacao.comentario-criado.v1",
-          aggregateType: "task",
-          aggregateId: taskIdComentario,
-          payload: {
-            taskId: taskIdComentario,
-            commentId: comentarioDeRespostaId,
-            parentCommentId: comentarioDeRoteamento.id,
-            authorMemberId: APROVADOR!.id,
-          },
-        },
-      ]);
-    } finally {
-      clienteEvento.release();
     }
 
     await drenarOutbox();

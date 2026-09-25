@@ -268,34 +268,6 @@ d("Fault-Injection Matrix (02-VALIDATION.md) — no contexto entre processos", (
     return entregas;
   }
 
-  /** Mesmo gap de domínio documentado em `dois-servicos.test.ts` — concessão de fixture, nunca produção. */
-  async function concederComentarNaTarefa(taskId: Id): Promise<void> {
-    const grant: Grant = {
-      id: `grn_falhas_comentar_${taskId}`,
-      workspaceId: semente.workspace.id,
-      subjectKind: "member",
-      subjectId: AGENTE_PIPELINE.id,
-      action: "comentar",
-      resourceType: "task",
-      resourceId: taskId,
-      scope: "subarvore",
-      origin: "concessaoDireta",
-      grantedBy: MEMBRO_ADMIN!.id,
-      grantedAt: new Date().toISOString(),
-    };
-    const cliente = await pool().connect();
-    try {
-      await cliente.query(
-        `insert into plataforma.registros (workspace_id, colecao, id, dados, ordem)
-         values ($1, 'grants', $2, $3::jsonb, extract(epoch from now()))
-         on conflict (workspace_id, colecao, id) do nothing`,
-        [WORKSPACE, grant.id, JSON.stringify(grant)],
-      );
-    } finally {
-      cliente.release();
-    }
-  }
-
   it("(a) crash entre o INSERT da Tarefa e o commit — nem Tarefa nem outbox ficam visíveis, automation nunca recebe evento", async () => {
     // `consumirSessao` (dentro da MESMA transação de `submitForm`, via
     // `opcoes.aoConfirmar`) lança quando a `submissionId` já foi consumida —
@@ -343,7 +315,6 @@ d("Fault-Injection Matrix (02-VALIDATION.md) — no contexto entre processos", (
     // a PRÓPRIA Tarefa.
     const { data } = await estadoAtual();
     const taskId = acharTaskIdPorReadableId(data, primeiro);
-    await concederComentarNaTarefa(taskId);
     await drenarTudo(criarNovoOutboxWorker(`${RUN}_worker_a_cleanup`));
   });
 
@@ -351,7 +322,6 @@ d("Fault-Injection Matrix (02-VALIDATION.md) — no contexto entre processos", (
     const { readableId } = await submeterSolicitacao("Falha injetada (b) — outbox pending");
     const { data } = await estadoAtual();
     const taskId = acharTaskIdPorReadableId(data, readableId);
-    await concederComentarNaTarefa(taskId);
 
     // "automation/ estava fora do ar" = ninguém drenou o outbox ainda.
     const cliente = await pool().connect();
@@ -379,7 +349,6 @@ d("Fault-Injection Matrix (02-VALIDATION.md) — no contexto entre processos", (
     const { readableId } = await submeterSolicitacao("Falha injetada (c) — replay de eventId");
     const { data } = await estadoAtual();
     const taskId = acharTaskIdPorReadableId(data, readableId);
-    await concederComentarNaTarefa(taskId);
 
     const cliente = await pool().connect();
     let eventId: string;
@@ -419,7 +388,6 @@ d("Fault-Injection Matrix (02-VALIDATION.md) — no contexto entre processos", (
     const { readableId } = await submeterSolicitacao("Falha injetada (d) — idempotência HTTP");
     const { data } = await estadoAtual();
     const taskId = acharTaskIdPorReadableId(data, readableId);
-    await concederComentarNaTarefa(taskId);
 
     const idempotencyKey = `teste-d:${taskId}`;
     const corpoRequisicao = { text: "Comentário repetido por resposta perdida" };
@@ -462,7 +430,6 @@ d("Fault-Injection Matrix (02-VALIDATION.md) — no contexto entre processos", (
     const { readableId } = await submeterSolicitacao("Falha injetada (e) — duas workers");
     const { data } = await estadoAtual();
     const taskId = acharTaskIdPorReadableId(data, readableId);
-    await concederComentarNaTarefa(taskId);
     expect(await contarOutboxPendente()).toBe(1);
 
     const antesChamadas = chamadas.filter((c) => c.metodo === "syncAndAssignResponsible" && c.args[0] === taskId).length;
