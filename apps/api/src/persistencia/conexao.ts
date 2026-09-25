@@ -21,6 +21,55 @@ export function carregarEnv(caminho = new URL("../../.env", import.meta.url)): v
   }
 }
 
+const HOST_LOCAL = /localhost|127\.0\.0\.1/;
+
+/** A mesma forma que `pg` aceita em `PoolConfig.ssl`. */
+export type OpcoesSsl = PoolConfig["ssl"];
+
+/**
+ * Decide a configuração de TLS a partir das variáveis de ambiente, sem abrir
+ * socket — separado de `pool()` para poder ser testado puro (Plan 02-15,
+ * T-02-TLS). `localhost`/`127.0.0.1` nunca usa TLS: é o Postgres do dev, sem
+ * CA nenhuma para verificar.
+ *
+ * Precedência: `DATABASE_SSL_INSECURE=true` sempre vence — e sempre avisa
+ * alto no log — como válvula de escape explícita para desenvolvimento sem a
+ * CA à mão; depois `DATABASE_CA_CERT` (conteúdo PEM em env) e
+ * `DATABASE_CA_PATH` (caminho de um arquivo PEM). Sem nenhuma das três, a
+ * função lança: conectar sem verificar a identidade do servidor nunca é o
+ * comportamento padrão. É o blocker de STATE.md ("fixar a CA do Supabase
+ * antes de o apps/api ir para a VPS") fechado por recusa em vez de silêncio.
+ */
+export function construirSsl(args: {
+  readonly connectionString: string;
+  readonly env?: NodeJS.ProcessEnv;
+  readonly lerArquivo?: (caminho: string) => string;
+}): OpcoesSsl {
+  const env = args.env ?? process.env;
+  if (HOST_LOCAL.test(args.connectionString)) return undefined;
+
+  if (env.DATABASE_SSL_INSECURE === "true") {
+    console.warn(
+      "[conexao] DATABASE_SSL_INSECURE=true: a verificação da cadeia TLS do Postgres está DESLIGADA. " +
+        "Isto é proibido fora de desenvolvimento local — nesse modo um MITM na rota poderia ler e alterar " +
+        "dado financeiro sem detecção (T-02-TLS). Fixe DATABASE_CA_CERT ou DATABASE_CA_PATH antes de " +
+        "qualquer ambiente que não seja o notebook do desenvolvedor.",
+    );
+    return { rejectUnauthorized: false };
+  }
+
+  const lerArquivo = args.lerArquivo ?? ((caminho: string) => readFileSync(caminho, "utf8"));
+  const ca = env.DATABASE_CA_CERT ?? (env.DATABASE_CA_PATH ? lerArquivo(env.DATABASE_CA_PATH) : undefined);
+  if (!ca) {
+    throw new Error(
+      "Conexão remota ao Postgres sem verificação de TLS definida. Defina DATABASE_CA_CERT (conteúdo PEM) " +
+        "ou DATABASE_CA_PATH (caminho de um arquivo PEM) com a CA do Supabase, ou DATABASE_SSL_INSECURE=true " +
+        "só em desenvolvimento local (ver apps/api/README.md).",
+    );
+  }
+  return { ca, rejectUnauthorized: true };
+}
+
 let instancia: Pool | undefined;
 
 export function pool(): Pool {
@@ -30,14 +79,8 @@ export function pool(): Pool {
     if (!connectionString) throw new Error("DATABASE_URL não definida (ver apps/api/.env.example).");
 
     const config: PoolConfig = { connectionString, max: 10 };
-    // Postgres local roda sem TLS; qualquer host remoto exige. O Supabase
-    // assina o certificado da conexão direta com uma CA própria, que o Node
-    // não conhece — por isso a verificação da cadeia fica desligada aqui. O
-    // tráfego segue cifrado; o que não se verifica é a identidade do servidor.
-    // Quando a CA da Supabase for fixada no repositório, isto vira `true`.
-    if (!/localhost|127\.0\.0\.1/.test(connectionString)) {
-      config.ssl = { rejectUnauthorized: false };
-    }
+    const ssl = construirSsl({ connectionString });
+    if (ssl) config.ssl = ssl;
     instancia = new Pool(config);
 
     // O pooler do Supabase encerra conexão ociosa por desenho. Quando isso
