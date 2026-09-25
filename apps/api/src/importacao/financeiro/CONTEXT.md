@@ -27,20 +27,27 @@ legado: uma coluna nova na origem nunca aparece por omissão. Nunca entram
 `banco_de_categorias` (o banco vetorial citado em D-25) — as três ficam de
 fora da allowlist, documentadas só em comentário.
 
-**Hipótese não confirmada:** `valor`, `documento` e `created_at` estão na
-allowlist como candidatas — nenhuma das duas migrações do inventário
-(`../financeiro-tria/supabase/migrations/20260511130000_rls_solicitacoes_pagamentos.sql`
-e `20260526130000_add_empresa_solicitacoes.sql`) pôde ser lida neste
-ambiente: o repositório `financeiro-tria` não está clonado ao lado deste
-worktree, e não há `DATABASE_URL`/credencial de leitura no `.env`. Quem
-rodar o `--apply` do Plan 02-25 confirma os três nomes contra o schema real
-antes da primeira execução contra dado de produção — se um nome estiver
-errado, a consulta falha com "coluna inexistente", nunca silenciosamente.
+**Schema real (conferido em 2026-09-25, `information_schema.columns`):** 16
+colunas, sem `valor`, `documento` nem `created_at` — Valor e CPF/CNPJ só
+existem no texto livre da IA em `comentario`, e D-25 proíbe reconstruir de
+texto livre. O que isso obriga no formato de cada coluna lida:
+
+- **Várias linhas por Solicitação** (até 20 por `TaskID`). Vale a 1ª pelo
+  `id`; as seguintes são `taskid_duplicado`. Se as linhas de um `TaskID`
+  discordam em `Aprovado`, a 1ª vira ambígua (`decisao_conflitante`) —
+  `lerTaskIdsComDecisaoConflitante` lê isso antes da paginação.
+- **`empresa`** guarda o identificador que o `automation/` grava (`tria`,
+  `finq`, `pf`…), não o nome do catálogo — ver `EMPRESA_DO_LEGADO`.
+- **`Data_previsao`** mistura o vencimento do ClickUp (DD/MM/AAAA) com a
+  previsão de pagamento calculada (AAAA-MM-DD). Só o primeiro vira Data
+  Vencimento.
+- **`origem`**: só `clickup` é lido; linhas da coorte `plataforma` já
+  nasceram como Tarefa.
 
 ## Nunca abrir este banco fora do CLI de importação
 
-`lerSolicitacoesLegadas` é a única função deste repositório que abre uma
-conexão com o banco do `financeiro-tria` — e só é chamada pelo CLI da
+`lerSolicitacoesLegadas` e `lerTaskIdsComDecisaoConflitante` são as únicas
+funções deste repositório que abrem conexão com o banco do `financeiro-tria` — e só são chamadas pelo CLI da
 importação (Plan 02-25), nunca por uma rota HTTP nem por qualquer caminho
 do runtime normal do `apps/api`. Abrir esse banco fora do CLI é erro de
 arquitetura: os dois bancos nunca devem se tocar no runtime (ver

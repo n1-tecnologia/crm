@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Phase 02 Plan 15 concluído (código+docs); VPS/nginx e medição real de latência seguem pendentes com o dono — escopo desta rodada foi só 02-15 por decisão explícita; 02-25, 02-27, 02-28 seguem abertos"
-last_updated: "2026-09-25T19:47:00.000Z"
-last_activity: 2026-09-25 -- Phase 02 Plan 15 concluído: TLS do Postgres fixado (rejectUnauthorized:true + DATABASE_CA_CERT/PATH/DATABASE_SSL_INSECURE), região decidida (permanecer-medindo, us-west-2), doc de topologia criado. Medição real de latência (p95) segue pendente — precisa rodar a partir da VPS, não do laptop (ver nota abaixo)
+stopped_at: "Phase 02 Plan 25 concluído: 245 Solicitações históricas importadas (run 957a5fdf), idempotente, outbox intocado; abertos 02-27 (ensaio de duas semanas) e 02-28 (corte)"
+last_updated: "2026-09-25T23:00:00.000Z"
+last_activity: 2026-09-25 -- Phase 02 Plan 25 concluído: importação histórica real (245 de 843 Solicitações distintas; 1.114 linhas na origem). Cinco defeitos do leitor/importador achados contra o dado real e corrigidos antes do apply
 progress:
   total_phases: 6
   completed_phases: 5
@@ -26,9 +26,17 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 02 (solicita-o-de-pagamento-o-front-substitui-o-clickup) — EXECUTING
-Plan: 15 of 28 (25/28 planos completos; abertos: 02-25, 02-27, 02-28)
-Status: 02-15 concluído por decisão explícita do dono de rodar só este plano nesta chamada de /gsd-execute-phase
-Last activity: 2026-09-25 -- Plan 02-15 (topologia: região do Supabase, TLS do Postgres, medição de latência) concluído — parte de código/doc fechada, parte de infraestrutura real (VPS/nginx, bucket privado, credencial de serviço, medição de latência a partir da VPS) segue como pendência do dono
+Plan: 25 of 28 (26/28 planos completos; abertos: 02-27, 02-28)
+Status: 02-25 concluído com o dono, que rodou dry-run/apply contra o financeiro-tria (o agente não lê produção)
+Last activity: 2026-09-25 -- Plan 02-25 (importação histórica) concluído: 245 Tarefas fechadas em ws_n1, reaplicação criou 0, reconciliar bateComOLedger true, outbox 0 → 0
+
+**Plan 02-25 — o que ficou decidido e o que resta:**
+1. A origem tem 1.114 linhas mas só **843 Solicitações distintas** (até 20 linhas por TaskID); só **245** têm Centro de Custo e decisão — essas entraram. Critério 5 do ROADMAP reescrito (decisão do dono).
+2. Sem Valor, CPF/CNPJ e data de criação: não existem como coluna na origem (D-25). Empresa por de-para do identificador do legado; Data Vencimento só do vencimento real (DD/MM/AAAA).
+3. Bucket privado `anexos-solicitacoes` criado no CRM N1 (também é o do Formulário público). Migração dos anexos para servidor próprio: fase futura (pedido do dono).
+4. Pendente com o dono: inspecionar 3 Tarefas importadas na interface; trocar a senha do servidor próprio que apareceu no chat.
+5. Credencial de leitura do legado: role `leitura_importacao` (bypassrls, só SELECT em solicitacoes_pagamentos). As duas linhas `FINANCEIRO_TRIA_DATABASE_URL_LEITURA` com o superusuário `postgres` ainda estão no `apps/api/.env` — o dono precisa apagá-las (o agente só consegue acrescentar linhas nesse arquivo).
+6. Para o 02-28: rodar mais um `--apply` (idempotente) logo antes do corte, para pegar solicitações novas gravadas pelo pipeline antigo depois de hoje.
 
 **Plan 02-15 — decisão e pendências:**
 1. Decisão de região registrada: **permanecer em `us-west-2`** (não migrar para `sa-east-1` agora) — zero downtime, latência transcontinental aceita e medida quando possível.

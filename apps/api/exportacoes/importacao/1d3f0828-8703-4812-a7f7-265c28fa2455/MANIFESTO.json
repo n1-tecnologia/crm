@@ -1,0 +1,20 @@
+{
+  "versao": 1,
+  "runId": "1d3f0828-8703-4812-a7f7-265c28fa2455",
+  "modo": "apply",
+  "iniciadoEm": "2026-09-25T22:50:47.308Z",
+  "concluidoEm": "2026-09-25T22:51:04.369Z",
+  "lidas": 1114,
+  "validas": 0,
+  "importadas": 0,
+  "rejeitadas": 271,
+  "ambiguas": 0,
+  "duplicadas": 843,
+  "anexosLigados": 0,
+  "anexosAusentes": 0,
+  "motivos": {
+    "taskid_duplicado": 271
+  },
+  "lacunas": {},
+  "hashAgregado": "33f15b49c5523ec3a262656035df27db3ff271604abf32dac158e32efe81e55f"
+}

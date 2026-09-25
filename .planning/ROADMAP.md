@@ -129,7 +129,7 @@ Estado em 2026-09-15: **metade feita**. PERS-01 (persistência + Unidade de Trab
   2. O aprovador certo (roteado por centro de custo e valor) vê a solicitação no CRM N1 e decide com um clique — Solicitação de Aprovação, não texto classificado por IA — sem abrir o ClickUp; a decisão, o RESUMO e o progresso aparecem na timeline (Comentários + Registros de Atividade).
   3. O pipeline do `automation/` roda de ponta a ponta sem webhook do ClickUp: começa em `POST /webhooks/plataforma/solicitacao-criada` disparado pelo `apps/api` e fala com ele só pelos 7 métodos de `adapters/plataforma.ts`; com o `apps/api` fora do ar, o adapter enfileira e repete em vez de falhar o run; `clickup.ts` continua no repositório, desligado por env.
   4. Por duas semanas, o Omie recebe o mesmo `IncluirContaPagar` pelos dois caminhos — conferido por `ConsultarContaPagar` com `codigo_lancamento_integracao` idêntico; ao fim, os webhooks Tria do ClickUp são desligados e a Lista de Solicitação é arquivada.
-  5. As 1.110 solicitações históricas aparecem como Tarefas fechadas, com `comentario` como Comentário do RESUMO, `TaskID` apontando para a Tarefa da plataforma, `origem` preenchida e nenhuma credencial copiada.
+  5. As solicitações históricas completas aparecem como Tarefas fechadas, com `comentario` como Comentário do RESUMO, `TaskID` apontando para a Tarefa da plataforma, `origem` preenchida e nenhuma credencial copiada. *(Reescrito em 2026-09-25, decisão do dono: a origem tem 1.114 linhas mas só 843 Solicitações distintas, e só 245 com Centro de Custo e decisão — essas foram importadas; as demais ficam na tabela antiga, contadas por motivo no manifesto. Ver `02-25-SUMMARY.md`.)*
 
 **Plans**: 28 plans
 **UI hint**: yes
@@ -175,7 +175,7 @@ Plans:
 
 - [x] 02-23-PLAN.md — `apps/web`: upload direto ao bucket privado, confirmação pública e jornada Playwright (SOL-02, D-04/D-05)
 - [x] 02-24-PLAN.md — Fallback por comentário: janela de 90 dias, `POST /v1/integrations/payment-approvals/classifications` e classificador (SOL-08, D-08/D-10)
-- [ ] 02-25-PLAN.md — Importação: CLI dry-run/apply/resume, anexos históricos, manifesto sanitizado e execução real (SOL-09, D-25/D-26)
+- [x] 02-25-PLAN.md — Importação: CLI dry-run/apply/resume, anexos históricos, manifesto sanitizado e execução real (SOL-09, D-25/D-26)
 
 **Wave 7** *(blocked on Wave 6)*
 
@@ -396,7 +396,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 |-------|----------------|--------|-----------|
 | 0. Preparação | 7/7 | Complete   | 2026-09-17 |
 | 1. O CRM N1 ganha persistência e login | 16/16 | Complete   | 2026-09-17 |
-| 2. Solicitação de pagamento — o front substitui o ClickUp | 25/28 | In Progress|  |
+| 2. Solicitação de pagamento — o front substitui o ClickUp | 26/28 | In Progress|  |
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
 | 5. Contas a receber e os outros tenants | 25/25 | Complete    | 2026-09-25 |

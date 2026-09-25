@@ -54,13 +54,13 @@ duration: ~90min (Tasks 1-2 apenas — Task 3 não executada)
 completed: 2026-09-25
 ---
 
-# Phase 02 Plan 25: Orquestração, anexos, manifesto e CLI da importação histórica (Tasks 1-2) Summary
+# Phase 02 Plan 25: Importação histórica das Solicitações de pagamento Summary
 
-**Lote transacional com ledger idempotente por `(origem, legacy_task_id)`, anexo histórico ligado ao bucket privado quando inequívoco, manifesto sanitizado lido só do ledger, e CLI `solicitacoes:importar`/`solicitacoes:reconciliar` — tudo provado por typecheck e por um teste de 10 casos que ainda não rodou contra Postgres real.**
+**245 Solicitações históricas importadas como Tarefas fechadas em `ws_n1`, idempotente (reaplicação criou 0), ledger reconciliado (`bateComOLedger: true`) e `plataforma.integration_outbox` intocado (0 → 0). A origem tinha 1.114 linhas mas só 843 Solicitações distintas, e só 245 com Centro de Custo e decisão — o resto fica fora, contado por motivo no manifesto.**
 
 ## Status
 
-**Tasks 1 e 2: concluídas e commitadas.** Task 3 (checkpoint:human-action, `gate="blocking"`) **não foi executada** — está fora do escopo deste despacho por instrução explícita: ela roda o `--dry-run` e o `--apply` reais contra as 1.110 linhas de produção do `financeiro-tria` e exige decisão do dono do projeto sobre linhas ambíguas antes do `--apply`. Ver "Task 3 — checkpoint aberto" abaixo.
+**Concluído — as três Tasks.** Tasks 1-2 (código) foram executadas por executor em worktree; a Task 3 (dry-run e apply reais) foi conduzida com o dono em 2026-09-25, que rodou os comandos contra o `financeiro-tria` (o agente não lê produção). O primeiro dry-run real expôs cinco defeitos do leitor/importador, todos corrigidos e testados antes do `--apply` — ver "Task 3" abaixo.
 
 ## Performance
 
@@ -80,8 +80,12 @@ completed: 2026-09-25
 
 1. **Task 1: Orquestração por lotes, ledger e anexos históricos** — `f8cba87` (feat)
 2. **Task 2: CLI, manifesto sanitizado e testes de idempotência** — `9b099ce` (feat, inclui um retrofit pontual de `importar.ts` para testabilidade — ver Deviations)
-
-**Plan metadata:** commit deste SUMMARY (a seguir)
+3. **Task 3 — correções achadas contra o dado real, antes do `--apply`:**
+   - `6b860a6` — `taskid_duplicado` gravado no ledger antes da transação apagava, via `on conflict do nothing`, o "importada" da 1ª ocorrência (achado rodando `importar.test.ts` contra Postgres real: `reconciliar` 25 vs `importarLote` 26)
+   - `aaa13ab` — `valor`/`documento` não existem na origem; leitor filtra `origem = 'clickup'`
+   - `9898bdc` — `created_at` não existe na origem
+   - `c4d0a85` — dry-run passa a prever o apply (repetição de TaskID entre páginas), decisão conflitante vira ambígua, manifesto do dry-run deixa de sair zerado
+   - `d6e644c` — Empresa por de-para do legado; Data Vencimento só do vencimento real (DD/MM/AAAA)
 
 ## Files Created/Modified
 
@@ -138,17 +142,56 @@ Nenhuma variável de ambiente nova é obrigatória para as Tasks 1-2 (typecheck 
 - `SUPABASE_STORAGE_BUCKET`/`SUPABASE_URL`/`SUPABASE_SECRET_KEY` — já devem existir do Plan 02-11 (upload de anexo).
 - Confirmar `tasksPerList >= 5000` na Lista "Solicitações de pagamento" (Plan 02-08) antes do primeiro `--apply` real.
 
+## Task 3 — execução real (2026-09-25)
+
+**Importado: run `957a5fdf-9ccb-4892-97b3-63cf5dece9d6`.** Manifestos em `apps/api/exportacoes/importacao/` (ver o `README.md` de lá para ler os três runs).
+
+### O que a origem realmente é
+
+`public.solicitacoes_pagamentos` tem 16 colunas (conferido em `information_schema.columns`) e grava **várias linhas por Solicitação** (até 20 por `TaskID`). 1.114 linhas = **843 Solicitações distintas** + 271 repetições.
+
+| Destino | Linhas |
+|---|---|
+| Importadas (Tarefa fechada, todas "avisada") | **245** |
+| Sem Centro de Custo | 435 |
+| Repetição do mesmo TaskID | 271 |
+| Sem decisão (`Aprovado` nulo) | 148 |
+| Centro de Custo fora do catálogo | 13 |
+| Decisão trocada entre linhas (`decisao_conflitante`) | 2 |
+
+Lacunas nas 245: sem Valor, sem CPF/CNPJ, sem data de criação (todas — a origem não tem essas colunas); 35 sem Data Vencimento (só havia previsão de pagamento); 244 sem anexo (a exportação do ClickUp só tinha 1).
+
+### Decisões do dono
+
+1. **Valor e CPF/CNPJ não são importados.** Só existem no texto livre da IA em `comentario`; D-25 proíbe reconstruir de texto livre. O texto inteiro entra como Comentário do RESUMO.
+2. **Só entram as Solicitações completas** (Centro de Custo + decisão). As ~580 sem esses dados ficam na tabela antiga, que vira arquivo somente-leitura. Não existe Status fechado para "sem decisão", e o Centro de Custo é o único campo obrigatório da Lista.
+3. **Empresa por de-para** do identificador do legado (`tria` → Tria Company, `finq` → Konq Intermediações, `pf` → Marcos Paulo…). Aceito que `tria` também é o padrão do legado quando nada casa.
+4. **Data Vencimento só do vencimento real.** `Data_previsao` mistura o vencimento do ClickUp (DD/MM/AAAA) com a previsão de pagamento calculada (AAAA-MM-DD); só o primeiro é vencimento.
+5. **Decisão conflitante nunca é resolvida pelo importador** — a 1ª ocorrência vira ambígua (`decisao_conflitante`) em vez de a mais antiga vencer.
+6. **Anexos no Supabase Storage agora** (bucket privado `anexos-solicitacoes`, criado pelo dono), migração para servidor próprio vira fase futura.
+
+### Verificação
+
+| Critério | Resultado |
+|---|---|
+| Dry-run quantifica ausentes/duplicados/ambíguos | `taskid_ausente` 0, `taskid_duplicado` 271, `aprovado_ambiguo` 148, `decisao_conflitante` 2 |
+| Ambíguas decididas com o dono antes do apply | Sim — ficam fora (decisão 2) |
+| Lista tem o número declarado como importadas | 245 Tarefas `provenance.kind = "import"` na Lista |
+| Reaplicação completa cria 0 | Run `1d3f0828`: importadas 0, duplicadas 843 |
+| `reconciliar` | `bateComOLedger: true` (245 avisadas + 598 rejeitadas = 843) |
+| Outbox não cresceu | 0 antes, 0 depois |
+| Manifesto sem dado individual | Nenhum TaskID, CPF, CNPJ, e-mail ou credencial nos três |
+
+**Interrupção no meio do apply:** a 1ª execução parou na página 13 (a do único anexo real) por `SUPABASE_STORAGE_BUCKET` ausente — o dry-run não sobe anexos e não pegou isso. As 28 Tarefas das páginas 1-12 ficaram íntegras (a página 13 falhou antes da transação), e `--resume` completou as 217 restantes sem duplicar.
+
+**Inspeção de 3 Tarefas na interface:** pendente com o dono.
+
 ## Next Phase Readiness
 
-**Pronto para a Task 3, mas a Task 3 não foi tentada nesta execução.** Tudo que ela precisa já existe e typechecka: `importar.cli.ts` com os três modos, `manifesto.ts` para o relatório sanitizado, `importar.test.ts` provando a mecânica contra Postgres real (a rodar com `DATABASE_URL` de verdade, fora deste worktree).
-
-### Task 3 — checkpoint aberto
-
-**Task 3: Executar o dry-run e o apply reais das 1.110 linhas** (`type="checkpoint:human-action" gate="blocking"`) não foi executada — está fora do escopo deste despacho por instrução explícita do orquestrador. Ela precisa, nesta ordem: confirmar região/TLS (Plan 02-15, já feito) e `tasksPerList >= 5000` (Plan 02-08); rodar `npm run solicitacoes:importar -w @n1/api -- --dry-run --batch-size=50` com a credencial somente-leitura real; ler o manifesto do dry-run e, se houver linhas `aprovado_ambiguo`, **decidir com o dono antes do apply** (D-25 proíbe inferir); rodar `--apply`; repetir o `--apply` inteiro e confirmar contagens idênticas e zero Tarefas novas; rodar `solicitacoes:reconciliar`; conferir `plataforma.integration_outbox` não cresceu; inspecionar 3 Tarefas na interface; commitar o manifesto sanitizado.
-
-**Resume-signal exato do plano:** `Digite "importado <runId>" ou descreva o que precisou de decisão`
-
-Nenhuma parte da Task 3 foi tentada: nenhum dry-run real, nenhum `--apply`, nenhuma decisão sobre linha ambígua foi fabricada.
+- O critério 5 do ROADMAP ("as 1.110 Solicitações históricas") precisa ser reescrito para o que a origem de fato tem: 843 Solicitações, 245 importáveis — decisão 2.
+- `DATABASE_SSL_INSECURE=true` segue no `.env` do notebook do dono; o apply rodou sem verificação de TLS. Antes de qualquer execução fora do notebook, fixar `DATABASE_CA_PATH`.
+- O bucket `anexos-solicitacoes` foi criado sem limite de tamanho nem restrição de tipo no próprio bucket (o código aplica os limites no envio). É o mesmo bucket que o Formulário público usa.
+- Pendência para o 02-28 (corte): linhas novas gravadas pelo pipeline antigo depois deste apply entram numa rodada extra de `--apply` (idempotente) antes de desligar o ClickUp.
 
 ## Self-Check: PASSED
 
@@ -162,5 +205,5 @@ Nenhuma parte da Task 3 foi tentada: nenhum dry-run real, nenhum `--apply`, nenh
 
 ---
 *Phase: 02-solicita-o-de-pagamento-o-front-substitui-o-clickup*
-*Plan: 25 (Tasks 1-2 de 3 — Task 3 aberta como checkpoint humano)*
+*Plan: 25 (3 de 3)*
 *Completed: 2026-09-25*

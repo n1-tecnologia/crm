@@ -1,0 +1,30 @@
+{
+  "versao": 1,
+  "runId": "957a5fdf-9ccb-4892-97b3-63cf5dece9d6",
+  "modo": "apply",
+  "iniciadoEm": "2026-09-25T22:46:58.593Z",
+  "concluidoEm": "2026-09-25T22:49:11.888Z",
+  "lidas": 1114,
+  "validas": 217,
+  "importadas": 217,
+  "rejeitadas": 297,
+  "ambiguas": 149,
+  "duplicadas": 451,
+  "anexosLigados": 1,
+  "anexosAusentes": 216,
+  "motivos": {
+    "taskid_duplicado": 271,
+    "centro_custo_ausente": 13,
+    "aprovado_ambiguo": 148,
+    "decisao_conflitante": 1,
+    "centro_custo_invalido": 13
+  },
+  "lacunas": {
+    "valor_ausente": 217,
+    "documento_ausente": 217,
+    "data_de_criacao_ausente": 217,
+    "anexo_ausente": 216,
+    "data_vencimento_so_previsao": 8
+  },
+  "hashAgregado": "26acae022a840b49656e5a091f624b1d86d754a70d4374831a3e9dce7ab39298"
+}
