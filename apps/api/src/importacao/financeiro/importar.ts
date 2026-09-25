@@ -311,7 +311,6 @@ export async function importarLote(opcoes: OpcoesDeImportarLote): Promise<Result
         titulo: entradaClassificada.titulo,
         campos: entradaClassificada.campos,
         ...(entradaClassificada.resumo !== undefined ? { resumo: entradaClassificada.resumo } : {}),
-        ...(entradaClassificada.criadaEm !== undefined ? { criadaEm: entradaClassificada.criadaEm } : {}),
         ...(autoria ? { autoriaConhecida: { memberId: autoria.memberId } } : {}),
         lacunas,
       };

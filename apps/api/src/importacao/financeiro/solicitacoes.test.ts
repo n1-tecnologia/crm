@@ -71,11 +71,14 @@ describe("classificarLinha", () => {
     expect(foraDoDominio.motivo).toBe("aprovado_ambiguo");
   });
 
-  it("(e) toda linha válida leva as lacunas valor_ausente e documento_ausente, e nenhum Campo Valor/CPF/CNPJ — a origem não tem essas colunas", () => {
-    for (const id of [1, 2, 16, 17, 18]) {
+  it("(e) toda linha válida leva as lacunas de Valor, Documento e data de criação, e nenhum Campo Valor/CPF/CNPJ — a origem não tem essas colunas", () => {
+    for (const id of [1, 2, 16, 17, 18, 19]) {
       const r = classificarLinha(linha(id));
       expect(r.resultado).toBe("valida");
-      expect(r.entrada?.lacunas).toEqual(expect.arrayContaining(["valor_ausente", "documento_ausente"]));
+      expect(r.entrada?.lacunas).toEqual(
+        expect.arrayContaining(["valor_ausente", "documento_ausente", "data_de_criacao_ausente"]),
+      );
+      expect(r.entrada).not.toHaveProperty("criadaEm");
       const rotulosPreenchidos = Object.keys(r.entrada?.campos ?? {}).map(
         (id) => CAMPOS_SOLICITACAO_DE_PAGAMENTO.find((c) => c.id === id)?.rotulo,
       );
@@ -83,12 +86,7 @@ describe("classificarLinha", () => {
     }
   });
 
-  it("(f) created_at ausente: criadaEm indefinido e lacuna data_de_criacao_ausente; Data Vencimento em formato inesperado vira lacuna, sem parse otimista", () => {
-    const semData = classificarLinha(linha(19));
-    expect(semData.resultado).toBe("valida");
-    expect(semData.entrada?.criadaEm).toBeUndefined();
-    expect(semData.entrada?.lacunas).toContain("data_de_criacao_ausente");
-
+  it("(f) Data Vencimento em formato inesperado vira lacuna, sem parse otimista", () => {
     const formatoInesperado = classificarLinha(linha(20));
     expect(formatoInesperado.resultado).toBe("valida");
     expect(formatoInesperado.entrada?.lacunas).toContain("data_vencimento_formato_inesperado");

@@ -23,8 +23,10 @@
  * tabela). Valor e documento só existem dentro do texto livre que a IA
  * grava em `comentario` — e D-25 proíbe reconstruir de texto livre, então
  * a importação não tem Valor nem CPF/CNPJ estruturados (decisão do dono).
- * `created_at` segue como HIPÓTESE até ser conferida contra
- * `information_schema.columns`: se não existir, a consulta falha alto.
+ * `created_at` também NÃO existe (conferido em `information_schema.columns`,
+ * 16 colunas): a origem não tem data de criação, então toda Tarefa nasce com
+ * a data da importação e a lacuna `data_de_criacao_ausente`. `Data_previsao`
+ * não substitui — é previsão de pagamento, vai para Data Vencimento.
  */
 
 import { Client } from "pg";
@@ -52,8 +54,6 @@ const COLUNAS = [
   "tipo",
   "id_responsavel",
   "Data_previsao",
-  // Hipótese não confirmada contra o schema real — ver cabeçalho do arquivo.
-  "created_at",
 ] as const;
 
 /** Uma linha bruta, só com as colunas de `COLUNAS` — nunca `app_key`, `app_secret` ou `banco_de_categorias`. */
@@ -132,7 +132,6 @@ export interface EntradaClassificada {
   readonly titulo: string;
   readonly campos: Readonly<Record<Id, string | boolean | readonly string[]>>;
   readonly resumo?: string;
-  readonly criadaEm?: string;
   readonly lacunas: readonly string[];
 }
 
@@ -159,14 +158,6 @@ function comoDataCivil(valor: unknown): string | undefined {
   const normalizado = texto.length >= 10 ? texto.slice(0, 10) : texto;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizado) || Number.isNaN(Date.parse(`${normalizado}T00:00:00Z`))) return undefined;
   return normalizado;
-}
-
-/** ISO 8601 completo — o que `Instant` exige. */
-function comoInstante(valor: unknown): string | undefined {
-  const texto = textoOuAusente(valor);
-  if (!texto) return undefined;
-  const ms = Date.parse(texto);
-  return Number.isNaN(ms) ? undefined : new Date(ms).toISOString();
 }
 
 /**
@@ -215,10 +206,7 @@ export function classificarLinha(linha: LinhaLegadaBruta, vistos: ReadonlySet<st
   // existem dentro do texto livre que a IA gravou em `comentario`. D-25 proíbe reconstruir de
   // texto livre, e o dono confirmou (2026-09-25) importar sem eles — o texto inteiro segue
   // legível no Comentário do RESUMO. Toda linha válida carrega as duas lacunas.
-  lacunas.push("valor_ausente", "documento_ausente");
-
-  const criadaEm = comoInstante(linha.created_at);
-  if (!criadaEm) lacunas.push("data_de_criacao_ausente");
+  lacunas.push("valor_ausente", "documento_ausente", "data_de_criacao_ausente");
 
   const resumo = textoOuAusente(linha.comentario);
 
@@ -232,7 +220,6 @@ export function classificarLinha(linha: LinhaLegadaBruta, vistos: ReadonlySet<st
       titulo: `Solicitação importada — ClickUp ${taskId}`,
       campos,
       ...(resumo !== undefined ? { resumo: String(linha.comentario) } : {}),
-      ...(criadaEm !== undefined ? { criadaEm } : {}),
       lacunas,
     },
   };
