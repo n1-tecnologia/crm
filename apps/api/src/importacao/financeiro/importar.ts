@@ -142,6 +142,25 @@ export interface OpcoesDeImportarLote {
   readonly dryRun: boolean;
   /** Raiz de `apps/api/exportacoes/` — repassada a `ligarAnexoHistorico`. */
   readonly pastaDeExportacoes: string;
+  /**
+   * Só o teste (`importar.test.ts`) injeta isto — substitui
+   * `lerSolicitacoesLegadas` por uma fonte em memória (a fixture do Plan
+   * 02-22), no mesmo espírito do `origem` que `importar-contas-a-pagar.ts`
+   * só o teste passa. O CLI (`./importar.cli.ts`) nunca informa este campo:
+   * a leitura real do `financeiro-tria` é sempre `lerSolicitacoesLegadas`.
+   */
+  readonly leitor?: typeof lerSolicitacoesLegadas;
+  /**
+   * Só o teste informa isto — o valor gravado na coluna `origem` do LEDGER
+   * (`plataforma.importacao_ledger`, chave `(origem, legacy_task_id)`,
+   * SEM `workspace_id`: é uma tabela global). Nunca afeta
+   * `entrada.origem`/`Task.provenance.sourceName`, que o domínio
+   * (`importarSolicitacaoHistorica`) recusa se não for literalmente
+   * `"clickup"` — só isola a LINHA DO LEDGER de um `TaskID` de teste que,
+   * por coincidência, colidisse com um `TaskID` real (T-3-... mesmo padrão
+   * de `importar-contas-a-pagar.ts`). Padrão: `ORIGEM_SOLICITACOES_HISTORICAS`.
+   */
+  readonly origem?: string;
 }
 
 export interface ResultadoDeImportarLote {
@@ -164,7 +183,9 @@ export interface ResultadoDeImportarLote {
  * dry-run).
  */
 export async function importarLote(opcoes: OpcoesDeImportarLote): Promise<ResultadoDeImportarLote> {
-  const pagina = await lerSolicitacoesLegadas({
+  const origemDoLedger = opcoes.origem ?? ORIGEM_SOLICITACOES_HISTORICAS;
+  const ler = opcoes.leitor ?? lerSolicitacoesLegadas;
+  const pagina = await ler({
     connectionString: opcoes.connectionString,
     lote: opcoes.tamanho,
     ...(opcoes.cursor !== undefined ? { cursor: opcoes.cursor } : {}),
@@ -196,7 +217,7 @@ export async function importarLote(opcoes: OpcoesDeImportarLote): Promise<Result
             (
               await cliente.query<{ legacy_task_id: string }>(
                 `select legacy_task_id from plataforma.importacao_ledger where origem = $1 and legacy_task_id = any($2::text[])`,
-                [ORIGEM_SOLICITACOES_HISTORICAS, legacyIdsComTaskId],
+                [origemDoLedger, legacyIdsComTaskId],
               )
             ).rows.map((linha) => linha.legacy_task_id),
           );
@@ -296,7 +317,7 @@ export async function importarLote(opcoes: OpcoesDeImportarLote): Promise<Result
           `insert into plataforma.importacao_ledger (origem, legacy_task_id, run_id, task_id, resultado, motivo, source_hash)
            values ($1, $2, $3, null, $4, $5, $6)
            on conflict (origem, legacy_task_id) do nothing`,
-          [ORIGEM_SOLICITACOES_HISTORICAS, linha.legacyTaskId, opcoes.runId, linha.resultado, linha.motivo, linha.sourceHash],
+          [origemDoLedger, linha.legacyTaskId, opcoes.runId, linha.resultado, linha.motivo, linha.sourceHash],
         );
       }
     }
@@ -366,10 +387,16 @@ export async function importarLote(opcoes: OpcoesDeImportarLote): Promise<Result
               });
             }
 
+            // `motivo` numa linha `avisada` guarda só a PRIMEIRA lacuna — o
+            // `manifesto.ts` (Task 2) usa isto para um recorte aproximado de
+            // "lacunas por categoria"; a Tarefa em si já tem TODAS as
+            // lacunas como Registro de Atividade (`packages/dominio`), esta
+            // coluna nunca é a fonte completa, só um resumo reconciliável.
             resultadosDoLote.push({
               legacyTaskId: entrada.legacyTaskId,
               taskId: task.id,
               resultado: entrada.lacunas.length > 0 ? "avisada" : "importada",
+              ...(entrada.lacunas.length > 0 ? { motivo: entrada.lacunas[0] } : {}),
               sourceHash,
             });
           }
@@ -383,7 +410,7 @@ export async function importarLote(opcoes: OpcoesDeImportarLote): Promise<Result
                values ($1, $2, $3, $4, $5, $6, $7)
                on conflict (origem, legacy_task_id) do nothing`,
               [
-                ORIGEM_SOLICITACOES_HISTORICAS,
+                origemDoLedger,
                 resultado.legacyTaskId,
                 opcoes.runId,
                 resultado.taskId ?? null,
@@ -409,8 +436,10 @@ export async function importarLote(opcoes: OpcoesDeImportarLote): Promise<Result
 
         for (const resultado of resultadosDoLote) {
           if (resultado.resultado === "importada") importadas += 1;
-          else if (resultado.resultado === "avisada") avisadas += 1;
-          else {
+          else if (resultado.resultado === "avisada") {
+            avisadas += 1;
+            if (resultado.motivo) motivosPorCategoria[resultado.motivo] = (motivosPorCategoria[resultado.motivo] ?? 0) + 1;
+          } else {
             rejeitadas += 1;
             const motivo = resultado.motivo ?? "desconhecido";
             motivosPorCategoria[motivo] = (motivosPorCategoria[motivo] ?? 0) + 1;
@@ -454,12 +483,17 @@ export interface ResultadoDeReconciliacao {
  * proveniência só tem `"import"` em inglês, não `"importacao"`). É o que
  * prova que reaplicar não duplicou (V02-09A).
  */
-export async function reconciliar(opcoes: { readonly runId: string; readonly workspaceId: string }): Promise<ResultadoDeReconciliacao> {
+export async function reconciliar(opcoes: {
+  readonly runId: string;
+  readonly workspaceId: string;
+  /** Só o teste informa isto — mesmo campo de `OpcoesDeImportarLote.origem`, nunca afeta `provenance.sourceName` (ver ali). */
+  readonly origem?: string;
+}): Promise<ResultadoDeReconciliacao> {
   const cliente = await pool().connect();
   try {
     const porResultadoLinhas = await cliente.query<{ resultado: string; n: string }>(
       `select resultado, count(*)::text as n from plataforma.importacao_ledger where run_id = $1 and origem = $2 group by resultado`,
-      [opcoes.runId, ORIGEM_SOLICITACOES_HISTORICAS],
+      [opcoes.runId, opcoes.origem ?? ORIGEM_SOLICITACOES_HISTORICAS],
     );
     const porResultado: Record<ResultadoDaLinha, number> = { importada: 0, rejeitada: 0, avisada: 0 };
     for (const linha of porResultadoLinhas.rows) {

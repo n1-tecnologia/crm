@@ -2,12 +2,14 @@
 
 Ler primeiro: [`../../CONTEXT.md`](../../CONTEXT.md) e [`../CONTEXT.md`](../CONTEXT.md)
 
-A metade "ler e entender" de SOL-09 (Plan 02-22): leitura somente-leitura de
-`public.solicitacoes_pagamentos` (Supabase do `financeiro-tria`), a
-classificação de cada linha e o de-para de autoria. O `--apply` que de fato
-grava Tarefas — chamando `importarSolicitacaoHistorica`
-(`@n1/dominio/operations/importacao`) —, os anexos e o manifesto são o
-Plan 02-25, em cima do que esta pasta produz.
+SOL-09 inteira mora aqui, em duas metades. Plan 02-22: leitura
+somente-leitura de `public.solicitacoes_pagamentos` (Supabase do
+`financeiro-tria`), a classificação de cada linha (`solicitacoes.ts`) e o
+de-para de autoria (`de-para.ts`). Plan 02-25, em cima disso: a orquestração
+por lotes com ledger transacional (`importar.ts`), os anexos históricos
+(`anexos.ts`), o manifesto sanitizado (`manifesto.ts`) e o CLI
+(`importar.cli.ts`) que de fato chama `importarSolicitacaoHistorica`
+(`@n1/dominio/operations/importacao`) e grava Tarefa.
 
 ## D-24 — a fonte
 
@@ -82,11 +84,55 @@ inventado.
 pipeline de aprovação. Ver o cabeçalho de
 `packages/dominio/src/operations/importacao.ts` para o desenho completo.
 
+## Os três comandos (Plan 02-25)
+
+Todos rodam da raiz, sempre com `-w @n1/api` — e sempre `--`  antes de uma
+flag (`npm run <script> -w @n1/api -- --flag=valor`), senão o npm engole a
+flag:
+
+| Comando | O que faz |
+|---|---|
+| `solicitacoes:importar` (sem flag de modo) | `--dry-run` — classifica, resolve anexo, roda a criação da Tarefa em memória; **nunca grava** (D-25) |
+| `solicitacoes:importar -- --apply [--batch-size=50] [--resume=<run-id>]` | Grava Tarefa+ledger por lote, na mesma transação; `--resume` reusa o `run_id` e recomeça da primeira página — a idempotência que evita duplicar é o próprio ledger `(origem, legacy_task_id)`, não um cursor persistido |
+| `solicitacoes:reconciliar -- --run=<run-id>` | Só lê (ledger + contagem de Tarefas com a proveniência certa); nunca importa |
+
+Nenhum dos três aceita uma flag de origem: `origem` do ledger é sempre a
+constante `ORIGEM_SOLICITACOES_HISTORICAS` (`"clickup"`) — só
+`importar.test.ts` passa um valor diferente, por dentro, nunca por flag.
+
+## A regra do manifesto sanitizado (V02-09B)
+
+`gerarManifestoDeImportacao` (`manifesto.ts`) lê **o ledger**, nunca as
+linhas de origem nem `plataforma.registros`: `MANIFESTO.md`/`.json`
+(`apps/api/exportacoes/importacao/<runId>/`, versionados) só têm contagens e
+categorias — nenhum `TaskID`, nome, documento, valor, banco, chave Pix ou
+comentário. `lidas`/`duplicadas`/`anexosLigados`/`anexosAusentes` só saem
+corretos quando o CLI gera o manifesto na hora (`resumoDaExecucao`, a soma em
+memória de todas as chamadas de `importarLote`); rodando só
+`--reconciliar`/regerando depois, esses quatro números saem `0` — o ledger
+sozinho não os reconstrói (ver o cabeçalho de `manifesto.ts`).
+
+## Anexo histórico (D-26, `anexos.ts`)
+
+`ligarAnexoHistorico` localiza o anexo pelo `MANIFESTO.json` da exportação
+(Plan 00-04/00-05) — que trunca o nome do arquivo, então achar o real em
+disco exige listar a pasta e casar por prefixo `<attId>-`, não montar o
+caminho direto — confere o sha256 contra o arquivo de verdade, e só sobe ao
+bucket privado quando o vínculo é inequívoco. Ambiguidade/ausência nunca
+aborta o lote: vira lacuna (`anexo_ausente`, `anexo_hash_divergente`,
+`anexo_multiplos_candidatos`), a mesma categoria que `classificarLinha` usa
+para dado ausente. O `WorkspaceFile`/`Attachment` são construídos em
+`importar.ts`, não em `packages/dominio` — decisão de execução documentada
+no cabeçalho daquele arquivo (o contrato de `importarSolicitacaoHistorica`
+não aceita anexo, e estendê-lo é mudança de domínio fora do `files_modified`
+do Plan 02-25).
+
 ## O que esta pasta não faz
 
-- Não grava no Postgres da plataforma — só lê o legado e classifica em
-  memória. Quem grava é o `--apply` do Plan 02-25.
 - Não chama `inviteMember` nem cria Membro.
 - Não transforma texto livre (`comentario`, `comentario_aprovacao`) em
   Campo estruturado — `comentario` vira o Comentário do RESUMO, preservado
   byte a byte; `comentario_aprovacao` fica fora do escopo desta leitura.
+- Não emite evento de outbox — `importar.ts` chama `executar()` sempre com
+  `semEventosDeSaida: true`, e uma asserção em runtime falha alto se algum
+  dia alguém acrescentar `opcoes.eventos` à chamada.
