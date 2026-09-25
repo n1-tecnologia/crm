@@ -60,7 +60,7 @@ audited: 2026-09-25
 | TBD | 03-14 | 5 | PAG-03 (Ensaio) | 03-14/T-3-65 | O agregado publicado passa por varredura de padrão de documento; zero CPF/CNPJ/Pix na saída | integration | `npm run test -w @n1/api -- relatorios/ensaio-do-agente` | ✅ | ✅ green |
 | TBD | 03-14 | 5 | PAG-03 (Ensaio) | 03-14/T-3-70 | O diálogo de registro do lançamento humano é texto livre, sem lista de categorias (não contamina a medição por viés de assentimento) e não coleta Pix/valor/fornecedor | unit (web) | `npm run test -w @n1/web -- lancamento-no-omie-dialog` | ✅ | ✅ green |
 | TBD | 03-15 | 4 | PAG-06 (tela) | T-3-01 | A Pessoa alcança a própria Tarefa pela tela e **não** vê a de outro fornecedor; a busca e "Todas do Espaço" deixam de listar Tarefa sem filtro de visibilidade | unit (web) | `npm run test -w @n1/web -- compartilhadas-comigo` | ✅ | ✅ green |
-| TBD | todos | — | todos (portão CON-05) | — | `npm run check` verde nos três workspaces; os testes do domínio anteriores seguem idênticos; `automation/` com o mesmo `git log` fora o adapter/endpoint novo | full suite | `npm run check` | ✅ | ✅ green |
+| TBD | todos | — | todos (portão CON-05) | — | `npm run check` verde nos três workspaces; os testes do domínio anteriores seguem idênticos; `automation/` com o mesmo `git log` fora o adapter/endpoint novo | full suite | `npm run check` | ✅ | ⬜ pending — ver Validation Audit |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -161,8 +161,14 @@ Rodadas desta auditoria:
 | `financeiro-tria/automation` (3 arquivos da fase) | `npx tsx --test` em `contas-a-pagar-routes`, `contas-a-pagar-lancamento`, `contas-a-pagar-resolucao` | 24/24 |
 
 Observações:
-- A suíte inteira de `@n1/api` não foi rodada (passa de 9 min contra o banco real);
-  só os arquivos desta fase. O caso `(d)` de `lote-contas-a-pagar` — o que estourou
+- A suíte inteira de `@n1/api` não foi rodada pelo agente (passa de 9 min contra o
+  banco real); só os arquivos desta fase. O dono rodou `npm run check` em seguida:
+  tokens e contratos OK, mas `src/e2e/dois-servicos.test.ts` falhou em (8)/(9)
+  (ECONNREFUSED no callback do classificador). Esse arquivo NÃO é da Fase 3: está
+  fora do git (untracked, ligado a 02-26) e estava sendo editado por outra sessão
+  no momento da rodada (mtime 12:59, com instrumentação `_debug`). A saída colada
+  terminou com `lote-contas-a-pagar` em 2/6, então a rodada não chegou ao fim.
+  A linha do portão CON-05 fica `pending` até um `npm run check` completo e verde. O caso `(d)` de `lote-contas-a-pagar` — o que estourou
   180 s em `deferred-items.md` — passou nesta rodada.
 - O mapa cita `npm test` para o `automation/`, mas o runner lá é `node:test` via
   `tsx`, não vitest; o comando da linha foi corrigido.
