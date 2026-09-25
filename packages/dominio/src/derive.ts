@@ -888,7 +888,23 @@ export function taskCommentRefusal(state: DataState, memberId: Id, taskId: Id): 
   const escrita = taskWriteRefusal(state, memberId, taskId);
   if (!escrita) return undefined;
   if (memberSeesTask(state, memberId, taskId) && grantsOn(state, memberId, taskId).some((g) => g.action === "comentar" || WRITE_ACTIONS.has(g.action))) return undefined;
+  if (guestCommentsByRole(state, memberId, taskId)) return undefined;
   return escrita;
+}
+
+/**
+ * Convidado cujo Papel concede `comentar` em Tarefa comenta em toda Tarefa que já VÊ — o
+ * par de `guestStatusWriter` (operations/tasks.ts). Hoje só o "Agente do pipeline" (§9 do
+ * catálogo Solicitação de pagamento) tem esse Papel; o Convidado do sistema não concede
+ * nada. O alcance continua vindo só da concessão (B70): o Papel não abre Tarefa nenhuma.
+ */
+function guestCommentsByRole(state: DataState, memberId: Id, taskId: Id): boolean {
+  const member = state.members.find((m) => m.id === memberId);
+  if (!member || member.state !== "ativo") return false;
+  const role = state.roles.find((r) => r.id === member.roleId);
+  if (!role || role.base !== "convidado") return false;
+  if (!role.permissions.some((p) => p.action === "comentar" && p.resourceType === "task")) return false;
+  return memberSeesTask(state, memberId, taskId);
 }
 
 /** Concessão direta a este Membro (ou a uma Equipe dele) neste recurso. */

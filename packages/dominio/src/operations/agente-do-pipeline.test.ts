@@ -29,7 +29,7 @@ import { CATALOGO_SOLICITACAO_DE_PAGAMENTO, SOL } from "../solicitacao-de-pagame
 import { evoluirConfiguracaoDeSolicitacoes } from "../solicitacao-de-pagamento-evolver";
 import type { DataState } from "../state";
 import type { Grant, Id, Member } from "../types";
-import { changeTaskStatus, createTask, guestStatusWriter, setTaskTags, updateTask } from "./tasks";
+import { addTaskComment, changeTaskStatus, createTask, guestStatusWriter, setTaskTags, updateTask } from "./tasks";
 import { CP } from "./financeiro";
 
 const AGORA = "2026-09-21T12:00:00.000Z";
@@ -177,6 +177,38 @@ describe("Agente do pipeline (§9) — Convidado com editar restrito a Status", 
 
     const r3 = updateTask(state, "mem_maryane", taskId, { title: "Pagamento revisado" });
     expect(r3.ok, r3.ok ? "" : r3.error).toBe(true);
+  });
+
+  /**
+   * O Papel concede `comentar` (§9), mas até 2026-09-25 isso nunca valia: a regra de comentário
+   * só olhava concessão NA Tarefa, e o evolver concede `ver` na LISTA — o comentário de
+   * roteamento do pipeline recusava em toda Tarefa nova (achado do Plan 02-26).
+   */
+  describe("comentário (§9: o Papel concede comentar)", () => {
+    it("com o alcance provisionado pelo evolver (ver na Lista), o Agente comenta SEM concessão por Tarefa", () => {
+      criarMembro(state, "mem_agente_comenta", SOL.papeis.agentePipeline);
+      const reaplicado = evoluirConfiguracaoDeSolicitacoes(state, "mem_maryane");
+      expect(reaplicado.ok, reaplicado.ok ? "" : reaplicado.error).toBe(true);
+
+      const r = addTaskComment(state, "mem_agente_comenta", taskId, { content: "Roteado para aprovação." });
+      expect(r.ok, r.ok ? "" : r.error).toBe(true);
+    });
+
+    it("o Convidado do sistema, mesmo vendo a Tarefa, continua sem comentar — o Papel dele não concede comentar", () => {
+      const roleConv = state.roles.find((r) => r.base === "convidado" && r.id !== SOL.papeis.agentePipeline)!;
+      criarMembro(state, "mem_convidado_nao_comenta", roleConv.id);
+      concederVer(state, "mem_convidado_nao_comenta", taskId);
+
+      const r = addTaskComment(state, "mem_convidado_nao_comenta", taskId, { content: "oi" });
+      expect(r.ok).toBe(false);
+    });
+
+    it("sem alcance nenhum, o Agente não comenta — o Papel não abre Tarefa (B70)", () => {
+      criarMembro(state, "mem_agente_sem_alcance", SOL.papeis.agentePipeline);
+
+      const r = addTaskComment(state, "mem_agente_sem_alcance", taskId, { content: "oi" });
+      expect(r.ok).toBe(false);
+    });
   });
 
   /**
