@@ -93,6 +93,34 @@ de `files_modified` deste plano — ver `02-26-SUMMARY.md`):
    substituição (mesma fiação HTTP real, `randomUUID()` no lugar do hash
    quebrado) para não depender do bug.
 
+## Fault-Injection Matrix — `falhas-injetadas.test.ts` (Plan 02-26)
+
+As nove linhas da Fault-Injection Matrix (`02-VALIDATION.md`), NO CONTEXTO
+ENTRE PROCESSOS — os Planos 02-10 (`outbox.test.ts`/`outbox-worker.test.ts`)
+e 02-17 (`platform-adapter-queue.test.ts`) já provaram cada peça ISOLADA;
+aqui o valor é a composição, reaproveitando os helpers exportados de
+`dois-servicos.test.ts` (`importarAutomation`, `criarClienteDeReceiptsFalso`,
+`criarServicoFalso`, `subirAutomationDeTeste`, `temBanco`,
+`temFinanceiroTria`, `ChamadaRegistrada`) — nunca duplicados, cada arquivo
+com seu próprio Espaço de Trabalho e `beforeAll`/`afterAll` independentes.
+
+Casos (a)–(h) são reais; (i) é `it.todo` nomeado — depende de
+`apps/api/src/importacao/financeiro/importar.ts` (Plan 02-25), que não
+existe nesta branch.
+
+**Dois casos usam substituição documentada, nunca fabricação:**
+
+- **(f)** usa um fake genérico em memória do client `postgrest`-like que
+  `platform-adapter-queue.ts` consome (`ClienteSupabaseDeComandos`) — a
+  MESMA `criarFilaDeComandos` de produção roda por cima dele, só a
+  persistência é falsa.
+- **(g)** chama `paraDtoV1` (`servicos/dto-solicitacao.ts`) direto, com
+  `urlDeDownload` injetado — este ambiente não tem
+  `SUPABASE_STORAGE_BUCKET`/`SUPABASE_URL`/`SUPABASE_SECRET_KEY`
+  configurados (mesmo gate de `storage-uploads.test.ts`), então não há como
+  subir um objeto real; a injeção de dependência já existe em produção
+  (D-04), então isto não é um stub inventado para o teste.
+
 ## O segundo cenário — PAG-05, critério 5 (lote de 61)
 
 `lote-contas-a-pagar.test.ts` é o segundo cenário desta pasta, num Espaço
