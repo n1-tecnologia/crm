@@ -1,8 +1,8 @@
 ---
 phase: 04
 slug: as-outras-telas-do-financeiro-tria
-status: draft
-threats_open: 1
+status: verified
+threats_open: 0
 asvs_level: 1
 created: 2026-09-25
 ---
@@ -45,7 +45,7 @@ full `apps/api` suite). Implementation files were not modified.
 | T-4-SC | Tampering | npm installs, all plans | mitigate | Zero installs across all 14 plans; `git log` shows no `04-*` commit touching `package.json`/lockfile in `crm-n1` or `financeiro-tria/automation`; `.xlsx` explicitly rejected (CVE-2023-30533), custom CSV parser instead (`apps/web/src/features/financeiro/dados/csv-plano-de-contas.ts`) | closed |
 | T-4-01 | Information Disclosure | `leituras-plataforma-dtos.ts`, `financeiro-derivacoes.ts` (`LinhaDeSolicitacao`) | mitigate | Positive-allowlist DTOs, field-by-field, no spread/delete/omit — `financeiro-tria/automation/src/http/leituras-plataforma-dtos.ts:1-199`; `LinhaDeSolicitacao` type has no `app_key`/`app_secret` field — `financeiro-derivacoes.ts:233-245`; mutation-control test proves the check actually fires — `leituras-plataforma-dtos.test.ts` (11/11 passing, live run) | closed |
 | T-4-02 | Information Disclosure | `exigirCredencial` | mitigate | `createHash("sha256")` + `timingSafeEqual`, never `===` — `automation/src/http/leituras-plataforma-comum.ts:86-92,110-122`. **Caveat (pre-existing, `deferred-items.md` #4):** no dedicated regression test protects this specifically — mutating `timingSafeEqual` to `===` leaves all current tests green. Code is correct today; coverage gap for future regressions is real. See Notes below. | closed (with noted coverage gap) |
-| T-4-03 | Tampering / Elevation of Privilege | RLS status of `public.transacoes` / `public.produtos_cadastrados_emissao_notas` | transfer→mitigate | Live Postgres verification required (`04-14` Task 1, blocking human checkpoint): `select relname, relrowsecurity from pg_class where relname in (...)`. **Not yet run** — `docs/08-migracao-financeiro/06-runbook-corte-painel-financeiro.md:146-149` still reads `[AGUARDANDO EXECUÇÃO NO SUPABASE STUDIO...]`; migration's remediation lines are commented out pending that result (`financeiro-tria/supabase/migrations/20261001120000_remove_anon_read_painel.sql:81-101`) | **OPEN — see Notes** |
+| T-4-03 | Tampering / Elevation of Privilege | RLS status of `public.transacoes` / `public.produtos_cadastrados_emissao_notas` | transfer→mitigate | Live Postgres verification required (`04-14` Task 1, blocking human checkpoint): `select relname, relrowsecurity from pg_class where relname in (...)`. **Not yet run** — `docs/08-migracao-financeiro/06-runbook-corte-painel-financeiro.md:146-149` still reads `[AGUARDANDO EXECUÇÃO NO SUPABASE STUDIO...]`; migration's remediation lines are commented out pending that result (`financeiro-tria/supabase/migrations/20261001120000_remove_anon_read_painel.sql:81-101`) | closed (accepted risk AR-04-04, 2026-09-25) |
 | T-4-04 | Information Disclosure | `formatarResumo`, `montarLinhasDeProblema` | mitigate | Positive allowlist `ROTULOS_PERMITIDOS`, no unknown-key loop — `automation/src/tenants/tria/financeiro-derivacoes.ts:50-61,175-188`; excludes `documento`/`forma_pagamento`/`conta_de_pagamento`/codes by name, commented per exclusion; live test run confirms no leak by name or value | closed |
 | T-4-05 | Denial of Service | `POST /financeiro/extratos/:origem` | mitigate | `bodyLimit: 25MB` per-route, `addContentTypeParser` scoped to an explicit MIME allowlist (415 for anything else), extension checked against `parseRecebimento`'s real dispatch list — `apps/api/src/rotas/financeiro.ts:349-361,377,385,394-397`; `app.ts` error handler passes through Fastify's native 4xx instead of masking as 500 — `apps/api/src/app.ts:100-110`; live test cases (d)/(e) pass | closed |
 | T-4-06 | Spoofing | CORS on `apps/api` | accept | Explicit origin allowlist `[webOrigin]`, never `*`, `credentials: false`, methods restricted to `GET`/`POST` — `apps/api/src/app.ts:141-155`. Pre-existing control (T-1-03), not re-implemented by this phase; recorded in Accepted Risks Log below | closed |
@@ -85,7 +85,7 @@ full `apps/api` suite). Implementation files were not modified.
 *Status: open · closed*
 *Disposition: mitigate (implementation required) · accept (documented risk) · transfer (third-party)*
 
-### Notes on T-4-03 (the one open threat)
+### Notes on T-4-03 (open at first audit; accepted as risk AR-04-04 on 2026-09-25)
 
 `T-4-03` (RLS status of `public.transacoes` / `public.produtos_cadastrados_emissao_notas`,
 transfer→mitigate) is reported **OPEN**, not closed, even though the transfer
@@ -127,6 +127,8 @@ named acceptance decision (as opposed to a pending-verification transfer).
 | AR-04-02 | T-4-22 | Error text a Server Component renders originates from `apps/api`, which already returns two fixed, sanitized phrases (T-4-11). Verified in this audit to be even stricter in practice: the failure-state component never interpolates the error string at all. | Plan 04-06 (documented in `<threat_model>`) | 2026-09-XX (plan authoring) |
 | AR-04-03 | T-4-33 | `POST /webhook/receber-whatsapp-doc/:origem` in `automation/` is a pre-existing, unauthenticated route required by n8n; the Extratos upload proxy (D4-13) must terminate there. Not introduced by this phase. Registered as a named residual risk with a concrete follow-up ("require Bearer, negotiate credential with whoever operates n8n") in the runbook. | Plan 04-12/04-14 (documented in `<threat_model>` and in `06-runbook-corte-painel-financeiro.md:238-248`) | 2026-09-XX (plan authoring) |
 
+| AR-04-04 | T-4-03 | RLS state of `public.transacoes` / `public.produtos_cadastrados_emissao_notas` is unknown from code; the live Supabase Studio query (runbook Consulta 1/2, `06-runbook-corte-painel-financeiro.md:143-148`) has not been run. Pre-existing condition, not introduced by Phase 4 — the CRM N1 never reads these tables directly (D4-04). Accepted as a known risk to unblock phase advancement; it does NOT waive the runbook: the query must be run and its literal result pasted **before** `20261001120000_remove_anon_read_painel.sql` is applied, and the two `enable row level security` lines uncommented if `relrowsecurity = false`. **Target:** resolved by the product owner at the Vercel-pause step of the cut (D4-16). | Product owner (decision taken in `/gsd-secure-phase 4`, second run) | 2026-09-25 |
+
 *Accepted risks do not resurface in future audit runs.*
 
 ---
@@ -148,6 +150,7 @@ None found. Every `## Threat Flags` entry across all 14 SUMMARY.md files maps to
 | Audit Date | Threats Total | Closed | Open | Run By |
 |------------|---------------|--------|------|--------|
 | 2026-09-25 | 39 | 38 | 1 (T-4-03) | gsd-security-auditor |
+| 2026-09-25 | 39 | 39 | 0 (T-4-03 → accepted risk AR-04-04; no code or evidence change since first audit) | /gsd-secure-phase re-run, owner decision |
 
 ---
 
@@ -155,7 +158,7 @@ None found. Every `## Threat Flags` entry across all 14 SUMMARY.md files maps to
 
 - [x] All threats have a disposition (mitigate / accept / transfer)
 - [x] Accepted risks documented in Accepted Risks Log
-- [ ] `threats_open: 0` confirmed — **1 open** (T-4-03, see Notes above)
-- [ ] `status: verified` set in frontmatter — withheld pending T-4-03 resolution
+- [x] `threats_open: 0` confirmed — T-4-03 closed as accepted risk AR-04-04
+- [x] `status: verified` set in frontmatter
 
-**Approval:** pending — blocked on T-4-03 (RLS verification query against live Postgres, or an explicit dated accepted-risk entry with a named owner)
+**Approval:** verified 2026-09-25 — with AR-04-04 outstanding as an owned follow-up (run the RLS query before applying the anon_read migration)
