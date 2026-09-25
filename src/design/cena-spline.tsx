@@ -47,6 +47,13 @@
  *    (`--balao-x`, `--balao-y`, `data-balao-lado`) — e o que vier em
  *    `children` é montado dentro da raiz, para se pendurar nele. No Início,
  *    o balão de chat ao lado da cabeça do robô.
+ * 10. UM CONTROLE PARA QUEM A HOSPEDA (`ref`, `ControleDaCena`): a SAÍDA — a
+ *    entrada da câmera tocada AO CONTRÁRIO, de 0 (a pose final) a 1 (de volta
+ *    à partida), pelo mesmo caminho e na mesma curva; no Início, a rolagem
+ *    (2026-09-24: "o robô deve ir desaparecendo conforme o scroll, fazendo o
+ *    efeito reverso de entrada") — e o PAUSAR/RETOMAR do desenho, para a cena
+ *    fora da vista não gastar a GPU. Movimento reduzido: nenhum dos dois (a
+ *    câmera não se move e a cena já fica parada).
  *
  * Enquanto o runtime e a cena descem, um indicador de carregamento.
  *
@@ -54,7 +61,7 @@
  * entra na ordem de foco (o canvas nasce sem `tabindex`).
  */
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
 import type { Application, MatcapLayer } from "@splinetool/runtime";
 import { Loader2 } from "lucide-react";
 import { cn } from "./cn";
@@ -228,6 +235,23 @@ export type PoseDaCamera = Ponto & {
    * Omitida — ou com movimento reduzido — a câmera já nasce na final.
    */
   readonly partida?: Ponto;
+};
+
+/**
+ * O CONTROLE que a cena dá a quem a hospeda (`ref`). Chamável antes de a cena
+ * carregar: o pedido fica guardado e vale quando ela chega.
+ */
+export type ControleDaCena = {
+  /**
+   * A SAÍDA da câmera, 0–1: a entrada tocada ao contrário — 0 é a pose final,
+   * 1 é a partida (no robô, o rosto). Sem `camera.partida`, ou com movimento
+   * reduzido, não move nada.
+   */
+  readonly definirSaida: (p: number) => void;
+  /** Para de desenhar (a cena fora da vista). Movimento reduzido: nada — ela já fica parada. */
+  readonly pausar: () => void;
+  /** Volta a desenhar, sem deixar a abertura da cena rodar outra vez. */
+  readonly retomar: () => void;
 };
 
 /**
@@ -569,14 +593,34 @@ function redesenharAoRedimensionar(app: Application): () => void {
   return () => observador.disconnect();
 }
 
+/** 0–1, sem sair da faixa (e um número inválido vira 0). */
+function faixa(p: number): number {
+  return Number.isFinite(p) ? Math.min(1, Math.max(0, p)) : 0;
+}
+
+/** A câmera sob controle: a entrada (se houver) e a saída. */
+type CameraNaCena = {
+  /** A saída, 0–1 (ver `ControleDaCena.definirSaida`). */
+  readonly sair: (p: number) => void;
+  /** Reescreve a pose de agora — depois de a cena voltar a tocar. */
+  readonly reafirmar: () => void;
+  /** Cancela a entrada em curso. */
+  readonly cancelar: () => void;
+};
+
 /**
  * A câmera na pose pedida, sem a abertura da cena por cima — e, com
  * `partida`, a NOSSA entrada no lugar da dela: o mesmo zoom out, só que bem
  * mais curto, terminando na pose final. A abertura da cena para NA HORA (ela
  * recuaria sozinha); a nossa entrada só começa quando `quando` resolve — o
- * robô à mostra. Devolve como cancelar a entrada.
+ * robô à mostra.
+ *
+ * E a SAÍDA: a entrada AO CONTRÁRIO — o mesmo caminho e a mesma curva com o
+ * tempo invertido, de volta da pose final à partida. As duas se compõem numa
+ * conta só (a saída puxa, para a partida, a pose que a entrada deu), então
+ * rolar no meio da entrada não briga com ela.
  */
-function fixarCamera(app: Application, pose: PoseDaCamera, quando: Promise<void>): (() => void) | undefined {
+function fixarCamera(app: Application, pose: PoseDaCamera, quando: Promise<void>): CameraNaCena | undefined {
   const camera = app.findObjectByName(pose.nome);
   // Sem a câmera: a cena mudou de nome — segue como veio.
   if (!camera) return undefined;
@@ -586,39 +630,59 @@ function fixarCamera(app: Application, pose: PoseDaCamera, quando: Promise<void>
   }
   const { x, y, z } = camera.position;
   const ate = { x: pose.x ?? x, y: pose.y ?? y, z: pose.z ?? z };
-  // `lerDuracao` devolve 0 com movimento reduzido: a câmera nasce na final.
+  const de = pose.partida ? { x: pose.partida.x ?? x, y: pose.partida.y ?? y, z: pose.partida.z ?? z } : ate;
+  // `lerDuracao` devolve 0 com movimento reduzido: sem entrada e sem saída —
+  // a câmera nasce na final e fica nela.
   const duracao = pose.partida ? lerDuracao("--dur-cena-entrada") : 0;
-  if (!pose.partida || duracao <= 0) {
-    Object.assign(camera.position, ate);
-    app.requestRender();
-    return undefined;
-  }
-  const de = { x: pose.partida.x ?? x, y: pose.partida.y ?? y, z: pose.partida.z ?? z };
+  const move = pose.partida !== undefined && duracao > 0;
   const curva = bezierDe("--easing-cena-entrada");
-  Object.assign(camera.position, de);
-  app.requestRender();
+  // A entrada (0 = partida, 1 = final) e a saída (0 = nada, 1 = de volta à partida).
+  let entrada = move ? 0 : 1;
+  let saida = 0;
+  const aplicar = () => {
+    const bx = de.x + (ate.x - de.x) * entrada;
+    const by = de.y + (ate.y - de.y) * entrada;
+    const bz = de.z + (ate.z - de.z) * entrada;
+    camera.position.x = bx + (de.x - bx) * saida;
+    camera.position.y = by + (de.y - by) * saida;
+    camera.position.z = bz + (de.z - bz) * saida;
+    app.requestRender();
+  };
+  aplicar();
   let cancelada = false;
   let quadro = 0;
-  void quando.then(() => {
-    if (cancelada) return;
-    const inicio = performance.now() + lerDuracao("--dur-cena-espera");
-    quadro = requestAnimationFrame(function passo(agora: number) {
-      const t = Math.min(1, Math.max(0, (agora - inicio) / duracao));
-      const k = curva(t);
-      camera.position.x = de.x + (ate.x - de.x) * k;
-      camera.position.y = de.y + (ate.y - de.y) * k;
-      camera.position.z = de.z + (ate.z - de.z) * k;
-      app.requestRender();
-      if (t < 1) quadro = requestAnimationFrame(passo);
+  if (move) {
+    void quando.then(() => {
+      if (cancelada) return;
+      const inicio = performance.now() + lerDuracao("--dur-cena-espera");
+      quadro = requestAnimationFrame(function passo(agora: number) {
+        const t = faixa((agora - inicio) / duracao);
+        entrada = curva(t);
+        aplicar();
+        if (t < 1) quadro = requestAnimationFrame(passo);
+      });
     });
-  });
-  return () => {
-    cancelada = true;
-    cancelAnimationFrame(quadro);
+  }
+  return {
+    sair: (p) => {
+      if (!move) return;
+      // A entrada ao contrário: o tempo dela invertido (1 − p) na mesma
+      // curva — a câmera sai devagar da pose final e acelera até o rosto.
+      const alvo = 1 - curva(1 - faixa(p));
+      if (alvo === saida) return;
+      saida = alvo;
+      aplicar();
+    },
+    reafirmar: aplicar,
+    cancelar: () => {
+      cancelada = true;
+      cancelAnimationFrame(quadro);
+    },
   };
 }
 
 export function CenaSpline({
+  ref,
   cena,
   className,
   eventosGlobais = false,
@@ -630,6 +694,8 @@ export function CenaSpline({
   balao,
   children,
 }: {
+  /** O controle da saída e do pausar/retomar (`ControleDaCena`). */
+  readonly ref?: Ref<ControleDaCena>;
   /** O endereço `.splinecode` da cena publicada no Spline. */
   readonly cena: string;
   readonly className?: string;
@@ -653,10 +719,48 @@ export function CenaSpline({
   /** Montado dentro da raiz da cena: lê `--balao-x`/`--balao-y` e `data-balao-lado`. */
   readonly children?: ReactNode;
 }) {
-  // A entrada da câmera em curso e o redesenho da cena parada: sair da tela
-  // cancela os dois.
-  const cancelarEntrada = useRef<(() => void) | undefined>(undefined);
+  // A câmera sob controle (a entrada em curso e a saída) e o redesenho da cena
+  // parada: sair da tela cancela os dois.
+  const cameraNaCena = useRef<CameraNaCena | undefined>(undefined);
   const soltarRedesenho = useRef<(() => void) | undefined>(undefined);
+  // O que o controle precisa: a instância, se ela é a parada do movimento
+  // reduzido, a saída pedida (guardada até a cena chegar) e a pausa.
+  const aplicacao = useRef<Application | undefined>(undefined);
+  const quietaNaCarga = useRef(false);
+  const saidaPedida = useRef(0);
+  const pausaPedida = useRef(false);
+  const pausada = useRef(false);
+  const nomeDaCamera = camera?.nome;
+  useImperativeHandle(
+    ref,
+    () => ({
+      definirSaida(p) {
+        saidaPedida.current = faixa(p);
+        cameraNaCena.current?.sair(saidaPedida.current);
+      },
+      pausar() {
+        pausaPedida.current = true;
+        const app = aplicacao.current;
+        if (!app || quietaNaCarga.current || pausada.current) return;
+        app.stop();
+        pausada.current = true;
+      },
+      retomar() {
+        pausaPedida.current = false;
+        const app = aplicacao.current;
+        if (!app || quietaNaCarga.current || !pausada.current) return;
+        pausada.current = false;
+        app.play();
+        // `play()` religa o gerenciador de eventos do runtime, e religado ele
+        // DISPARA DE NOVO o "Start" da cena: a abertura da câmera recomeçaria o
+        // recuo até o corpo inteiro. Parada outra vez, na hora, e a pose de
+        // agora (a saída em curso) reescrita por cima.
+        if (nomeDaCamera) pararAberturaDe(app, nomeDaCamera);
+        cameraNaCena.current?.reafirmar();
+      },
+    }),
+    [nomeDaCamera],
+  );
   // Desenha a boca com a abertura de agora (montado no `aoCarregar`).
   const redesenharBoca = useRef<(() => void) | undefined>(undefined);
   // O laço próprio da boca: roda com ela ativa (a voz ligada) — INCLUSIVE com
@@ -682,8 +786,9 @@ export function CenaSpline({
   }, [bocaAtiva]);
   useEffect(
     () => () => {
-      cancelarEntrada.current?.();
+      cameraNaCena.current?.cancelar();
       soltarRedesenho.current?.();
+      aplicacao.current = undefined;
     },
     [],
   );
@@ -699,6 +804,9 @@ export function CenaSpline({
 
   const aoCarregar = (app: Application, raiz: HTMLDivElement) => {
     const quieta = reduzido();
+    aplicacao.current = app;
+    quietaNaCarga.current = quieta;
+    pausada.current = false;
     // O selo acompanha a malha a cada quadro DESENHADO — inclusive o que a
     // cena parada desenha ao redimensionar —, então anda com o tronco e com a
     // entrada da câmera, sem laço próprio.
@@ -756,8 +864,20 @@ export function CenaSpline({
     void pronta.then(() => setTingindo(false));
 
     if (camera) {
-      cancelarEntrada.current?.();
-      cancelarEntrada.current = fixarCamera(app, camera, pronta);
+      cameraNaCena.current?.cancelar();
+      cameraNaCena.current = fixarCamera(app, camera, pronta);
+      // Uma saída pedida antes de a cena chegar (rolou durante a carga) vale já.
+      cameraNaCena.current?.sair(saidaPedida.current);
+    }
+    // Uma pausa pedida antes de a cena chegar (o robô já fora da vista) vale
+    // depois de pronta: parar antes congelaria o canvas ainda sem o robô —
+    // e, fora da vista, ninguém vê a espera.
+    if (!quieta) {
+      void pronta.then(() => {
+        if (!pausaPedida.current || pausada.current || aplicacao.current !== app) return;
+        app.stop();
+        pausada.current = true;
+      });
     }
     // Movimento reduzido: a cena fica, sem laço — o robô parado. Mas só depois
     // de MONTAR: parar no `onLoad` congelava um canvas preto, e parar no

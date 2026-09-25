@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * A CAIXA DO ASSISTENTE — abre ao pressionar a logo do peito, pequena, no
- * centro, no pé do palco (2026-09-23: "quero que abra uma caixa de texto
- * pequena no centro logo abaixo… para o user digitar o que ele quer saber e o
- * robô responde; quero um microfone também… ao invés do mic já abrir assim
- * que apertar no logo do peito").
+ * A CAIXA DO ASSISTENTE — pequena, no centro, no pé do palco (2026-09-23:
+ * "quero que abra uma caixa de texto pequena no centro logo abaixo… para o
+ * user digitar o que ele quer saber e o robô responde; quero um microfone
+ * também…"). Desde 2026-09-24, FIXA ("quero que a opção de chat seja fixa na
+ * tela, ao invés de depender da interação na logo do peito"): sempre à vista,
+ * sem X e sem Esc; a logo do peito voltou a ser só decoração.
  *
  * (O microfone também liga pelo botão de voz grande do palco,
  * `botao-de-voz.tsx` — é o mesmo interruptor; sem microfone, a conversa segue
@@ -14,17 +15,16 @@
  * as respostas viram texto, num balão ao lado da cabeça dele (`balao-do-robo.tsx`)
  * — e Legenda — a voz sai e o texto aparece junto. Depois, um campo para
  * digitar a pergunta (Enter ou o botão envia; o robô responde com a voz dele e
- * a boca mexendo), o botão do MICROFONE (só ele abre o microfone), e fechar (o
- * X ou Esc). Embaixo, o estado em palavras — anunciado a leitor de tela — e,
+ * a boca mexendo) e o botão do MICROFONE (só ele abre o microfone). Embaixo, o estado em palavras — anunciado a leitor de tela — e,
  * com o microfone aberto, um medidor que reage à fala e o lembrete de que nada
  * é gravado. O ciclo de vida está em `useAssistenteDoRobo`.
  */
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
-import { ArrowUp, AudioLines, Captions, Loader2, Mic, Volume2, VolumeX, X } from "lucide-react";
-import { dentroDaModalDoTopo } from "@/design/components";
+import { ArrowUp, AudioLines, Captions, Loader2, Mic, Volume2, VolumeX } from "lucide-react";
 import { Icone } from "@/design/icone";
 import { reduzido } from "@/design/movimento";
+import { useHidratado } from "@/features/shell/hidratado";
 import { ATALHO_DO_WINDOWS, PELO_SISTEMA, comoResolver, estadoEmPalavras } from "./frases-do-microfone";
 import { sistemaAtual } from "./microfone";
 import { MICROFONE_ABERTO, type AssistenteDoRobo } from "./use-assistente-do-robo";
@@ -32,17 +32,8 @@ import { MICROFONE_ABERTO, type AssistenteDoRobo } from "./use-assistente-do-rob
 /** As barras do medidor e o peso de cada uma (o meio sobe mais). */
 const BARRAS = [0.55, 0.8, 1, 0.8, 0.55] as const;
 
-export function CaixaDoAssistente({
-  assistente,
-  focoAoFechar,
-}: {
-  readonly assistente: AssistenteDoRobo;
-  /** Para onde o foco volta quando a caixa fecha com o foco dentro dela (a logo). */
-  readonly focoAoFechar?: () => HTMLElement | null;
-}) {
+export function CaixaDoAssistente({ assistente }: { readonly assistente: AssistenteDoRobo }) {
   const {
-    aberto,
-    fechar,
     microfone,
     simulacao,
     conversando,
@@ -68,50 +59,24 @@ export function CaixaDoAssistente({
   const idComoResolver = useId();
   const idMotivoLegenda = useId();
   const idOpcoes = useId();
+  // O modo (Silenciar/Legenda) vem do armazenamento do navegador: a caixa só
+  // desenha depois da hidratação, para o HTML do servidor bater.
+  const hidratado = useHidratado();
   const ouvindo = MICROFONE_ABERTO.has(microfone);
   // O medidor: com o microfone aberto, ou com a fala simulada no lugar dele.
   const comMedidor = ouvindo || simulacao !== null;
 
-  // Aberta, o cursor já está no campo.
-  useEffect(() => {
-    if (aberto) campo.current?.focus();
-  }, [aberto]);
-
+  // Fixa, a caixa não rouba o foco ao chegar na tela (o foco fica onde a
+  // navegação o deixou; um clique ou Tab chega ao campo).
   useLayoutEffect(() => {
-    if (!aberto || !focoDentro.current) return;
+    if (!focoDentro.current) return;
     const dentro = raiz.current;
     if (dentro && !dentro.contains(document.activeElement)) campo.current?.focus();
   });
 
-  // A caixa desmonta ao fechar: com o foco dentro dela, ele iria parar no
-  // <body>. Vai para a logo, que abre a caixa de novo.
-  const fecharDevolvendoFoco = () => {
-    if (raiz.current?.contains(document.activeElement)) focoAoFechar?.()?.focus();
-    fechar();
-  };
-  const fecharRef = useRef(fecharDevolvendoFoco);
-  useEffect(() => {
-    fecharRef.current = fecharDevolvendoFoco;
-  });
-
-  // Esc fecha — menos quando um diálogo está aberto por cima ou outro já
-  // tratou o Esc: aí o Esc é dele.
-  useEffect(() => {
-    if (!aberto) return undefined;
-    const aoTeclar = (evento: KeyboardEvent) => {
-      if (evento.key !== "Escape" || evento.defaultPrevented) return;
-      if (!dentroDaModalDoTopo(raiz.current)) return;
-      fecharRef.current();
-    };
-    window.addEventListener("keydown", aoTeclar);
-    return () => window.removeEventListener("keydown", aoTeclar);
-  }, [aberto]);
-
   // O medidor lê o nível a cada quadro, só à mostra e sem movimento
   // reduzido (aí as barras ficam paradas e o texto diz o estado). Depende de
-  // `aberto`: a conversa pode começar pelo botão do palco com a caixa
-  // fechada, e o medidor só existe quando ela abre (achado da revisão: as
-  // barras ficavam paradas a conversa inteira).
+  // `hidratado`: antes dele a caixa não desenha, e o medidor não existe.
   useEffect(() => {
     const alvo = medidor.current;
     if (!alvo || !comMedidor || reduzido()) return undefined;
@@ -125,9 +90,9 @@ export function CaixaDoAssistente({
       cancelAnimationFrame(quadro);
       alvo.style.removeProperty("--nivel-voz");
     };
-  }, [aberto, comMedidor, lerEntrada]);
+  }, [hidratado, comMedidor, lerEntrada]);
 
-  if (!aberto) return null;
+  if (!hidratado) return null;
 
   const vazio = texto.trim() === "";
   const pedindo = microfone === "pedindo";
@@ -201,7 +166,7 @@ export function CaixaDoAssistente({
           onChange={(evento) => setTexto(evento.target.value)}
           placeholder="Pergunte ao robô…"
           autoComplete="off"
-          className="app-sm caixa-do-assistente-campo campo-sem-anel"
+          className="app-base caixa-do-assistente-campo campo-sem-anel"
         />
         {comMedidor ? (
           <span ref={medidor} className="caixa-do-assistente-medidor" aria-hidden="true">
@@ -233,9 +198,6 @@ export function CaixaDoAssistente({
           title={vazio ? "Escreva a pergunta primeiro." : undefined}
         >
           <Icone de={ArrowUp} tamanho="xs" />
-        </button>
-        <button type="button" className="btn-icone btn-icone-nu" aria-label="Fechar o assistente" onClick={fecharDevolvendoFoco}>
-          <Icone de={X} tamanho="xs" />
         </button>
         {/* `hidden`, não `sr-only`: um nó display:none continua lido pelo aria-describedby. */}
         <span id={idMotivoEnviar} hidden>

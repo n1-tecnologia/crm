@@ -63,6 +63,7 @@ import { useHidratado } from "./hidratado";
 import { CascataDeNavegacao, Chegada } from "./chegada";
 import { limpar, marcarSeMuda, useAlvo, useNavegando, useNavegar } from "./navegacao";
 import { PendenciaDoLink } from "./pendencia-do-link";
+import { RoboFlutuante } from "./robo-flutuante";
 import { chaveDeChegada, formaDe } from "./rotas";
 import type { ContainerKind } from "@/features/estrutura/create-container-dialog";
 import { shortcutHref } from "@/features/estrutura/shortcuts";
@@ -245,6 +246,9 @@ export function AppShell({ children }: { readonly children: React.ReactNode }) {
         {/* Navegação que passa da carência: os ícones no centro, sobre a tela velha (que continua inteira e responsiva). Irmã de <main>: não rola. */}
         {navegando ? <CarregadorDeIcones tardio /> : null}
       </div>
+      {/* Fora do Início, o robô vira um círculo no canto inferior direito que
+          volta ao Início. Irmão da coluna: fica montado entre as telas. */}
+      <RoboFlutuante />
     </div>
   );
 }

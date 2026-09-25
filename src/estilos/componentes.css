@@ -863,22 +863,41 @@
      tudo a pedido. Desde o fim do dia, um HOLOFOTE segue o mouse ATRÁS do
      robô (`design/holofote.tsx`, a pedido: "a luz deve passar sempre atrás
      do robô") — nunca por cima de nada. */
-  /* O corpo do Início não tem respiro: o palco vai de borda a borda. */
+  /* O corpo do Início não tem respiro: o palco vai de borda a borda. Desde
+     2026-09-24 ele ROLA — o palco preso no topo e o resumo depois. O fundo
+     dele acompanha o que está à vista: o preto do palco enquanto o robô
+     está lá (a faixa da barra de rolagem não mostra o cinza ao lado do
+     preto) e o fundo do sistema quando o resumo cobre mais da metade do
+     palco (`data-no-resumo`, escrito por `saida-do-palco.ts`) — a faixa e a
+     reserva do robô flutuante no fim ficam da cor do resumo. */
   .corpo-de-tela.inicio-corpo {
     padding: 0;
     --corpo-pad-topo: 0px;
+    background: var(--palco-inicio);
   }
-  .inicio {
-    display: flex;
-    flex-direction: column;
-    min-height: 100%;
+  .corpo-de-tela.inicio-corpo[data-no-resumo] {
+    background: var(--page);
+  }
+  /* A reserva do robô flutuante no fim do Início (`[data-reserva-do-robo]::after`):
+     posicionada e na cor do resumo — transparente, ela deixava o palco preso
+     no topo aparecer por baixo do fim do resumo, preto e pontilhado. */
+  .corpo-de-tela.inicio-corpo[data-reserva-do-robo]::after {
+    position: relative;
+    background: var(--page);
   }
   /* A capa aqui não é card: toma a tela inteira, sem cantos, sem borda, sem
      sombra — o preto, com um PONTILHADO por cima (abaixo). O que a `.capa` dá
      de resto (isolamento, recorte) continua valendo; o recorte é o que corta
      o robô ampliado na borda do palco. */
+  /* PRESO NO TOPO do corpo que rola (`sticky`), da altura dele: o resumo
+     sobe por cima (ele vem depois e também é posicionado). `sticky` não é
+     bloco de contenção de `fixed` — a regra da casca vale. Como o palco não
+     sai do lugar na tela, a cabeça do robô segue o cursor certo durante a
+     rolagem (o runtime guarda o retângulo do canvas). */
   .inicio-capa {
-    flex: 1;
+    position: sticky;
+    top: 0;
+    height: 100%;
     min-height: var(--capa-h);
     border-radius: 0;
     border: 0;
@@ -930,8 +949,13 @@
   .inicio-capa {
     cursor: var(--cursor-inicio);
   }
+  /* O canvas não recebe o ponteiro: a cena ouve a JANELA (`eventosGlobais`),
+     então a cabeça segue o cursor igual — e a roda e o arrasto do toque
+     sobre o robô rolam a tela (o runtime cancela o toque que começa no
+     canvas quando o documento não rola, e aqui quem rola é o corpo). */
   .inicio-capa canvas {
     cursor: var(--cursor-inicio) !important;
+    pointer-events: none;
   }
   .inicio-capa :is(button, a, [role="button"]):not(:disabled):not([aria-disabled="true"]) {
     cursor: var(--cursor-inicio-acao);
@@ -939,10 +963,29 @@
   .inicio-capa :is(input, textarea, [contenteditable="true"]) {
     cursor: text;
   }
-  /* O robô ocupa o palco inteiro; a cena mede o próprio retângulo. */
+  /* A SAUDAÇÃO (`features/inicio/saudacao-do-inicio.tsx`): no alto, à
+     esquerda do palco — o vazio ao lado da cabeça —, "Boa tarde," e o primeiro
+     nome no acento. Sobre o robô na pilha, mas longe dele; não recebe o
+     ponteiro (é texto, e o robô ouve o mouse na janela). */
+  .inicio-saudacao {
+    position: absolute;
+    top: var(--e-10);
+    left: var(--e-10);
+    z-index: 2;
+    max-width: var(--saudacao-inicio-w);
+    color: var(--texto);
+    pointer-events: none;
+  }
+  .inicio-saudacao-nome {
+    color: var(--acento);
+  }
+  /* O robô ocupa o palco inteiro; a cena mede o próprio retângulo. Na saída
+     pela rolagem, só esmaece e desfoca — nada de transform: a cena mede o
+     retângulo dela e o runtime o guarda para mirar a cabeça. */
   .inicio-robo {
     position: absolute;
     inset: 0;
+    opacity: var(--inicio-saida-robo);
   }
   .inicio-cena {
     width: 100%;
@@ -1093,7 +1136,7 @@
     gap: var(--e-1);
     width: min(var(--caixa-robo-w), calc(100% - 2 * var(--e-4)));
     margin-inline: auto;
-    padding: var(--e-1) var(--e-1) var(--e-1) var(--e-3);
+    padding: var(--e-2) var(--e-2) var(--e-2) var(--e-4);
     background: var(--caixa-robo-fundo);
     border: 1px solid var(--linha);
     border-radius: var(--r-painel);
@@ -1148,7 +1191,7 @@
   .caixa-do-assistente-campo {
     flex: 1;
     min-width: 0;
-    height: var(--controle-h);
+    height: var(--controle-h-lg);
     background: transparent;
     color: var(--texto);
     outline: none;
@@ -1175,6 +1218,7 @@
     color: var(--texto-3);
     max-height: calc(2 * var(--app-xs-lh));
     overflow-y: auto;
+    overscroll-behavior: contain;
   }
   /* Vazia, a região viva é RECOLHIDA, não removida (`display: none` a tirava
      da árvore de acessibilidade, e um leitor de tela nunca ouvia o estado —
@@ -1268,6 +1312,66 @@
   .cena-spline:not([data-balao]) .balao-do-robo {
     visibility: hidden;
   }
+  /* O botão que abre e recolhe o balão — o MESMO nó nos dois estados.
+     Aberto: o "Recolher" discreto no alto do balão. Recolhido (o padrão): o
+     balão inteiro vira SÓ este botão, redondo, com o ícone de mensagem e a
+     contagem num selo no canto — ao lado da cabeça, no mesmo ponto. */
+  .balao-do-robo-alternar {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    gap: var(--e-1);
+    margin-bottom: var(--e-2);
+    color: var(--texto-3);
+    transition:
+      color var(--dur-2) var(--easing),
+      border-color var(--dur-2) var(--easing);
+  }
+  .balao-do-robo-alternar:hover {
+    color: var(--texto);
+  }
+  .cena-spline .balao-do-robo:not([data-expandido]) {
+    width: auto;
+    max-height: none;
+    padding: 0;
+    background: none;
+    border: 0;
+  }
+  .balao-do-robo:not([data-expandido])::before {
+    display: none;
+  }
+  .balao-do-robo:not([data-expandido]) .balao-do-robo-alternar {
+    justify-content: center;
+    width: var(--controle-h-lg);
+    height: var(--controle-h-lg);
+    margin: 0;
+    border-radius: var(--r-pilula);
+    border: 1px solid var(--linha-forte);
+    background: var(--caixa-robo-fundo);
+    color: var(--texto-2);
+  }
+  .balao-do-robo:not([data-expandido]) .balao-do-robo-alternar:hover {
+    color: var(--texto);
+    border-color: var(--linha-acento);
+  }
+  .balao-do-robo-contagem {
+    position: absolute;
+    top: calc(-1 * var(--e-1));
+    right: calc(-1 * var(--e-1));
+    min-width: var(--e-5);
+    height: var(--e-5);
+    padding-inline: var(--e-1);
+    display: grid;
+    place-items: center;
+    border-radius: var(--r-pilula);
+    background: var(--acento);
+    color: var(--sobre-acento);
+    font-weight: 600;
+  }
+  .balao-do-robo-lista[hidden] {
+    display: none;
+  }
   .balao-do-robo-lista {
     display: flex;
     flex-direction: column;
@@ -1275,6 +1379,8 @@
     min-height: 0;
     overflow-y: auto;
     scrollbar-gutter: stable;
+    /* O fim da lista não passa a rolagem ao Início (que desde 2026-09-24 rola). */
+    overscroll-behavior: contain;
   }
   /* A pergunta em `--texto-3`, não `--texto-4`: o holofote pode passar
      atrás do balão, e o meta em `--texto-4` caía a 2,9:1 ali. */
@@ -1409,6 +1515,339 @@
      deslocamento a faria medir errado. */
   :where(.chegada[data-entrando]) .inicio-robo {
     animation: aparecer var(--dur-3) var(--easing) backwards;
+  }
+
+  /* ── A SAÍDA DO PALCO pela rolagem (`features/inicio/saida-do-palco.ts`) ──
+     2026-09-24: "o robô deve ir desaparecendo conforme o scroll, fazendo o
+     efeito reverso de entrada". O JS escreve no palco `data-saindo` (rolou
+     alguma coisa), `data-controles-fora` (os controles já quase sumiram),
+     `data-saiu` (o resumo cobre o palco) e as três `--inicio-saida-*`. No
+     topo, nada disso: o palco em repouso é o de sempre (sem filtro nem
+     transform). É POSIÇÃO de rolagem, não animação: nada anima sozinho, e
+     parar no meio deixa o robô a meio caminho, como a própria rolagem. */
+  .inicio-capa[data-saindo] .inicio-robo {
+    /* O `revelar` ao contrário: o mesmo desfoque, pela fração da rolagem. */
+    filter: blur(calc(var(--chegada-desfoque) * var(--inicio-saida-desfoque)));
+  }
+  .inicio-capa[data-saiu] .inicio-robo {
+    visibility: hidden;
+    filter: none;
+  }
+  /* Os controles do palco esmaecem primeiro e, quase sumidos, deixam de
+     receber o ponteiro. Continuam focáveis: um foco que volta ao palco o
+     rola de volta ao topo. */
+  .inicio-capa :is(.inicio-saudacao, .botao-de-voz-area, .caixa-do-assistente, .balao-do-robo, .inicio-atalho-resumo) {
+    opacity: var(--inicio-saida-controles);
+  }
+  .inicio-capa[data-controles-fora] :is(.botao-de-voz, .caixa-do-assistente, .balao-do-robo, .inicio-atalho-resumo) {
+    pointer-events: none;
+  }
+  /* A luz é do palco: rolou, apaga (no tempo dela, `--dur-2`). */
+  .inicio-capa[data-saindo] .holofote {
+    opacity: 0;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .inicio-capa[data-saindo] .inicio-robo {
+      filter: none;
+    }
+  }
+  :root[data-movimento="minimo"] .inicio-capa[data-saindo] .inicio-robo {
+    filter: none;
+  }
+
+  /* O ATALHO DO PALCO para o resumo: no alto à direita, espelhando a
+     saudação; a pílula na transparência da caixa. Some com os controles. */
+  .inicio-atalho-resumo {
+    position: absolute;
+    top: var(--e-10);
+    right: var(--e-10);
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--e-1);
+    height: var(--controle-h-sm);
+    padding-inline: var(--e-3);
+    border-radius: var(--r-pilula);
+    border: 1px solid var(--linha-forte);
+    background: var(--caixa-robo-fundo);
+    color: var(--texto-2);
+    transition:
+      color var(--dur-2) var(--easing),
+      border-color var(--dur-2) var(--easing);
+  }
+  .inicio-atalho-resumo:hover {
+    color: var(--texto);
+    border-color: var(--linha-acento);
+  }
+
+  /* ── O RESUMO do Início (`features/inicio/resumo-do-inicio.tsx`) ─────────
+     Depois do palco, e POSICIONADO: pinta por cima do palco preso no topo
+     (os dois sem z-index — a ordem do DOM decide), sem virar contexto de
+     empilhamento. É uma FOLHA opaca no FUNDO DO SISTEMA (`--page`, o das
+     outras telas), sem pontilhado — o preto e os pontos são só do palco
+     (2026-09-25: "quando o user rolar para baixo, essa segunda visão não deve ter bg de pontilhados, e a cor não deve ser preta: deve voltar a respeitar o sistema e manter a cor de bg que está em outras telas"). Rolando com o conteúdo, ela
+     sobe e encobre o robô que sai, em vez de os cartões translúcidos
+     deixarem o robô aparecer por trás deles no meio do caminho. No mínimo da
+     altura do corpo: rolar até o fim sempre cobre o palco inteiro (a saída
+     chega a 1). */
+  .inicio-resumo {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--e-10);
+    min-height: 100%;
+    padding: var(--e-10);
+    background: var(--page);
+  }
+  .inicio-resumo-cabeca {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--e-2) var(--e-4);
+  }
+  .inicio-resumo-cabeca h2:focus {
+    outline: none;
+  }
+  /* O atalho: o ícone e a seta no alto, o número grande, o que ele conta e
+     uma linha de contexto — uma peça vertical, que cabe em cinco colunas. */
+  .inicio-atalho {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--e-1);
+    height: 100%;
+    padding: var(--e-4);
+  }
+  .inicio-atalho-topo {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--e-2);
+  }
+  .inicio-atalho-icone {
+    display: grid;
+    place-items: center;
+    width: var(--controle-h-lg);
+    height: var(--controle-h-lg);
+    border-radius: var(--r-painel);
+  }
+  /* O cabeçalho de um bloco: a régua de seção com um título de verdade. */
+  .inicio-bloco-cabeca {
+    display: flex;
+    align-items: center;
+    gap: var(--e-3);
+    padding-bottom: var(--e-3);
+  }
+  .inicio-bloco-cabeca h3 {
+    color: var(--texto-2);
+  }
+  .inicio-bloco-cabeca h3:focus {
+    outline: none;
+  }
+  .inicio-bloco-linha {
+    flex: 1;
+    height: 1px;
+    background: var(--linha-sutil);
+  }
+  .inicio-bloco-acao {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--e-1);
+    color: var(--texto-3);
+    transition: color var(--dur-2) var(--easing);
+  }
+  .inicio-bloco-acao:hover {
+    color: var(--texto);
+  }
+  /* Os grupos de Tarefas (Vencidas, Em andamento…): um respiro entre eles. */
+  .inicio-grupo + .inicio-grupo {
+    margin-top: var(--e-4);
+  }
+  .inicio-corte {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--e-2);
+    margin-top: var(--e-2);
+    padding-inline: var(--e-1);
+  }
+  /* Uma métrica das estatísticas: um botão que escolhe o gráfico. */
+  .inicio-metrica {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--e-1);
+    width: 100%;
+    height: 100%;
+    padding: var(--e-3) var(--e-4);
+    text-align: left;
+  }
+  .inicio-metrica-ponto {
+    width: var(--e-2);
+    height: var(--e-2);
+    border-radius: var(--r-pilula);
+  }
+  .inicio-estatisticas-janela {
+    margin-bottom: var(--e-3);
+  }
+  /* O gráfico: a peça de bloco do sistema (`.item-solto[data-bloco]`, que não
+     clica — `data-estatico`), como o Widget de gráfico dos Painéis. */
+  .item-solto.inicio-grafico {
+    margin-top: var(--e-4);
+    padding: var(--e-4);
+  }
+  .inicio-grafico-titulo {
+    margin-bottom: var(--e-3);
+    color: var(--texto-1);
+  }
+
+  /* ── SEGMENTOS (`design/segmentos.tsx`): uma escolha entre poucas. ───── */
+  .segmentos {
+    display: inline-flex;
+    gap: var(--e-1);
+    padding: var(--e-1);
+    border: 1px solid var(--linha);
+    border-radius: var(--r-pilula);
+  }
+  .segmento {
+    height: var(--controle-h-sm);
+    padding-inline: var(--e-3);
+    border: 1px solid transparent;
+    border-radius: var(--r-pilula);
+    color: var(--texto-3);
+    transition:
+      color var(--dur-1) var(--easing),
+      background-color var(--dur-1) var(--easing),
+      border-color var(--dur-1) var(--easing);
+  }
+  .segmento:hover {
+    color: var(--texto);
+    background: var(--superficie-hover);
+  }
+  .segmento[aria-pressed="true"] {
+    color: var(--acento);
+    background: var(--acento-lavado);
+    border-color: var(--linha-acento);
+  }
+
+  /* ── COLUNAS (`Colunas`, `features/paineis/graficos.tsx`) ─────────────
+     Uma coluna por balde de tempo, todas da mesma largura, alinhadas no pé:
+     o trilho em `--superficie-2`, a folha cresce por altura (o movimento dos
+     gráficos: `.barra-v > .preenchimento`). O rótulo que não cabe no eixo
+     fica invisível, mas guarda o lugar. */
+  .colunas-grade {
+    /* Quantas colunas: escrito inline pelo componente (uma por balde). */
+    --colunas: 1;
+    display: grid;
+    grid-template-columns: repeat(var(--colunas), minmax(0, 1fr));
+    gap: var(--e-1);
+    height: var(--colunas-h);
+  }
+  .colunas-coluna {
+    display: flex;
+    flex-direction: column;
+    gap: var(--e-1);
+    min-width: 0;
+  }
+  .colunas-trilho {
+    flex: 1;
+    display: flex;
+    align-items: flex-end;
+    overflow: hidden;
+    border-radius: var(--r-caixa);
+    background: var(--superficie-2);
+  }
+  .colunas-folha {
+    width: 100%;
+    border-radius: var(--r-caixa);
+  }
+  .colunas-rotulo,
+  .colunas-valor {
+    overflow: hidden;
+    text-align: center;
+    white-space: nowrap;
+  }
+  .colunas-rotulo {
+    color: var(--texto-3);
+  }
+  .colunas-valor {
+    color: var(--texto-2);
+  }
+  .colunas-rotulo[data-oculto],
+  .colunas-valor[data-oculto] {
+    visibility: hidden;
+  }
+
+  /* ── O ROBÔ FLUTUANTE (`features/shell/robo-flutuante.tsx`) ────────────
+     Fora do Início, o robô vira um círculo pequeno no canto inferior direito
+     que volta ao Início (2026-09-24). O rosto é uma imagem da própria cena,
+     preto sobre preto: o círculo é o palco do Início em miniatura. Fica
+     sobre o conteúdo e o cabeçalho sticky e SOB a gaveta e o modal — que são
+     `fixed` sem portal, na mesma pilha da casca —, então o véu de um diálogo
+     o cobre. Chega com um "pop" (escala + esmaecer) só quando monta: entre
+     telas que não são o Início ele continua montado e não repete. Transform
+     só na chegada e no hover (é uma folha, sem descendente `fixed`). */
+  .robo-flutuante {
+    position: fixed;
+    right: var(--robo-flutuante-margem);
+    bottom: calc(var(--robo-flutuante-margem) + var(--robo-flutuante-elevacao));
+    z-index: var(--z-flutuante);
+    display: block;
+    width: var(--robo-flutuante-tam);
+    height: var(--robo-flutuante-tam);
+    overflow: hidden;
+    border-radius: var(--r-pilula);
+    border: 1px solid var(--linha-forte);
+    background: var(--palco-inicio);
+    box-shadow: var(--sombra-suspensa);
+    animation: robo-flutuante-chegar var(--dur-3) var(--easing-saida) backwards;
+    transition:
+      bottom var(--dur-2) var(--easing),
+      transform var(--dur-2) var(--easing),
+      box-shadow var(--dur-2) var(--easing),
+      border-color var(--dur-2) var(--easing);
+  }
+  .robo-flutuante:hover {
+    transform: translateY(var(--lift));
+    border-color: var(--linha-acento);
+    box-shadow: var(--sombra-flutuante);
+  }
+  .robo-flutuante:active {
+    transform: none;
+  }
+  .robo-flutuante-rosto {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  /* Uma DOCA — a barra de escrever colada no pé da tela — declara
+     `.doca-do-robo` num invólucro SEM padding próprio (um utilitário de
+     padding, na camada de cima, venceria este). Quando ela chega ao canto do
+     robô, ele escreve `--robo-flutuante-recuo` nela e o conteúdo termina
+     antes dele: o robô fica AO LADO do enviar. Uma doca estreita declara
+     `data-robo="acima"`: não encolhe (aí o padding dela pode ser qualquer um)
+     — o robô sobe acima dela (`--robo-flutuante-elevacao`). */
+  .doca-do-robo {
+    padding-inline-end: var(--robo-flutuante-recuo);
+    transition: padding-inline-end var(--dur-2) var(--easing);
+  }
+  /* O que rola sob o robô (o `.corpo-de-tela`, ou o <main>) ganha, no fim,
+     a reserva dele: o robô liga `data-reserva-do-robo` só quando aquilo rola
+     sem ela. Um rolador em grade de várias colunas não serve (o ::after
+     viraria uma célula) — os de hoje são blocos. */
+  [data-reserva-do-robo]::after {
+    content: "";
+    display: block;
+    height: var(--robo-flutuante-reserva);
+  }
+  @keyframes robo-flutuante-chegar {
+    from {
+      opacity: 0;
+      transform: scale(0.6);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
   }
 
 }

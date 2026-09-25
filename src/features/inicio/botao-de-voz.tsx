@@ -39,7 +39,7 @@ const ONDAS = [0.35, 0.7, 1.05] as const;
 const DECAIMENTO = 0.88;
 
 export function BotaoDeVoz({ assistente }: { readonly assistente: AssistenteDoRobo }) {
-  const { aberto, microfone, simulacao, conversando, alternarMicrofone, respondendo, lerEntrada } = assistente;
+  const { microfone, simulacao, conversando, alternarMicrofone, respondendo, lerEntrada } = assistente;
   const sistema = sistemaAtual();
   const botao = useRef<HTMLButtonElement>(null);
   const idComoResolver = useId();
@@ -101,16 +101,11 @@ export function BotaoDeVoz({ assistente }: { readonly assistente: AssistenteDoRo
         />
       </button>
       {/* O estado em palavras, num véu próprio (legível sobre o ombro
-          iluminado do robô). A região viva existe sempre; com a caixa aberta
-          é ela quem anuncia (a mesma frase) e esta fica muda. Na conversa
-          simulada, o ponto da conversa fica só à vista. */}
+          iluminado do robô). Só à vista: quem ANUNCIA é a caixa do chat, fixa
+          no palco (a mesma frase) — duas regiões vivas diriam tudo duas vezes. */}
       <div className="botao-de-voz-estado">
         <div className="botao-de-voz-legenda" data-vazio={anunciado || soAVista ? undefined : ""}>
-          <p
-            className={simulacao ? "app-xs botao-de-voz-aviso" : "app-xs botao-de-voz-agora"}
-            role="status"
-            aria-live={aberto ? "off" : "polite"}
-          >
+          <p className={simulacao ? "app-xs botao-de-voz-aviso" : "app-xs botao-de-voz-agora"}>
             {anunciado}
           </p>
           {soAVista ? <p className="app-xs botao-de-voz-agora">{soAVista}</p> : null}

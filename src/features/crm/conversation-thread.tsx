@@ -1066,7 +1066,8 @@ export function ConversationThread({
 
           {/* ── Rascunho de IA à espera de decisão humana (B66) ── */}
           {rascunho ? (
-            <>
+            // A doca do robô flutuante: o cartão acaba antes dele, alinhado ao compositor.
+            <div className="doca-do-robo shrink-0">
               {/*
                 Na ficha empilhada o cartão inteiro engoliria o fio: nasce
                 recolhido numa linha — quem é, em que estado, "Ver" — e só
@@ -1145,7 +1146,7 @@ export function ConversationThread({
                   ) : null}
                 </div>
               </Painel>
-            </>
+            </div>
           ) : null}
 
           {/* ── compositor ── */}
@@ -1319,69 +1320,74 @@ export function ConversationThread({
               à direita fica o enviar — ou o microfone, enquanto não há texto,
               nos Canais que aceitam áudio. Enter envia, Shift+Enter quebra.
             */}
-            <div className="flex items-end gap-2 px-3 py-2" style={{ background: "var(--superficie-2)" }}>
-              {capacidades && capacidades.sendableMediaTypes.length > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => setAnexando((aberto) => !aberto)}
-                  aria-expanded={anexando}
-                  aria-label={anexando ? "Fechar anexos" : "Anexar"}
-                  title={anexando ? "Fechar anexos" : "Anexar"}
-                  disabled={!conversa}
-                  className="btn-icone btn-icone-nu shrink-0 rounded-full"
-                  style={MEDIDA_DO_BOTAO_DO_COMPOSITOR}
-                >
-                  {/* A rotação fica no SVG folha: transform num elemento com descendente prenderia um `fixed`. */}
-                  <Icone
-                    de={Plus}
-                    tamanho="md"
-                    className={cn("rotacao", anexando && "rotate-45")}
-                  />
-                </button>
-              ) : null}
+            {/* A doca do robô flutuante: o fundo fica no invólucro, que vai
+                até o canto; a linha encolhe dentro dele quando o robô está
+                ali (features/shell/robo-flutuante.tsx). */}
+            <div className="doca-do-robo" style={{ background: "var(--superficie-2)" }}>
+              <div className="flex items-end gap-2 px-3 py-2">
+                {capacidades && capacidades.sendableMediaTypes.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setAnexando((aberto) => !aberto)}
+                    aria-expanded={anexando}
+                    aria-label={anexando ? "Fechar anexos" : "Anexar"}
+                    title={anexando ? "Fechar anexos" : "Anexar"}
+                    disabled={!conversa}
+                    className="btn-icone btn-icone-nu shrink-0 rounded-full"
+                    style={MEDIDA_DO_BOTAO_DO_COMPOSITOR}
+                  >
+                    {/* A rotação fica no SVG folha: transform num elemento com descendente prenderia um `fixed`. */}
+                    <Icone
+                      de={Plus}
+                      tamanho="md"
+                      className={cn("rotacao", anexando && "rotate-45")}
+                    />
+                  </button>
+                ) : null}
 
-              <label className="sr-only" htmlFor="compositor-ficha">
-                Escrever para {contactDisplayName(contact)}
-              </label>
-              <textarea
-                id="compositor-ficha"
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey && bloqueio === undefined) {
-                    event.preventDefault();
-                    setConfirmandoEnvio(true);
-                  }
-                }}
-                rows={1}
-                disabled={!conversa}
-                placeholder={conversa ? "Digite uma mensagem" : "Abra o atendimento para escrever"}
-                className="app-base max-h-40 min-h-10 min-w-0 flex-1 resize-none border-0 bg-[var(--page)] px-4 py-2.5 outline-none [field-sizing:content] placeholder:text-[var(--texto-3)] disabled:opacity-50"
-                style={{ borderRadius: "calc(var(--controle-h) / 2)" }}
-              />
-
-              {draft.trim() === "" && capacidades?.voiceNote && !anexo ? (
-                <button
-                  type="button"
-                  title="Gravar áudio"
-                  aria-label="Gravar áudio"
+                <label className="sr-only" htmlFor="compositor-ficha">
+                  Escrever para {contactDisplayName(contact)}
+                </label>
+                <textarea
+                  id="compositor-ficha"
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey && bloqueio === undefined) {
+                      event.preventDefault();
+                      setConfirmandoEnvio(true);
+                    }
+                  }}
+                  rows={1}
                   disabled={!conversa}
-                  className="btn-icone btn-icone-nu shrink-0 rounded-full"
-                  style={MEDIDA_DO_BOTAO_DO_COMPOSITOR}
-                >
-                  <Icone de={Mic} tamanho="md" />
-                </button>
-              ) : (
-                <Button
-                  variant="primary"
-                  onClick={() => setConfirmandoEnvio(true)}
-                  disabled={bloqueio !== undefined}
-                  disabledReason={bloqueio ?? ""}
-                  icon={<Icone de={Send} />}
-                >
-                  <span className="sr-only">Enviar</span>
-                </Button>
-              )}
+                  placeholder={conversa ? "Digite uma mensagem" : "Abra o atendimento para escrever"}
+                  className="app-base max-h-40 min-h-10 min-w-0 flex-1 resize-none border-0 bg-[var(--page)] px-4 py-2.5 outline-none [field-sizing:content] placeholder:text-[var(--texto-3)] disabled:opacity-50"
+                  style={{ borderRadius: "calc(var(--controle-h) / 2)" }}
+                />
+
+                {draft.trim() === "" && capacidades?.voiceNote && !anexo ? (
+                  <button
+                    type="button"
+                    title="Gravar áudio"
+                    aria-label="Gravar áudio"
+                    disabled={!conversa}
+                    className="btn-icone btn-icone-nu shrink-0 rounded-full"
+                    style={MEDIDA_DO_BOTAO_DO_COMPOSITOR}
+                  >
+                    <Icone de={Mic} tamanho="md" />
+                  </button>
+                ) : (
+                  <Button
+                    variant="primary"
+                    onClick={() => setConfirmandoEnvio(true)}
+                    disabled={bloqueio !== undefined}
+                    disabledReason={bloqueio ?? ""}
+                    icon={<Icone de={Send} />}
+                  >
+                    <span className="sr-only">Enviar</span>
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </>

@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * T02 — Início: a APRESENTAÇÃO do produto, não a quinquagésima lista.
+ * T02 — Início: a APRESENTAÇÃO do produto — e, rolando, o RESUMO da pessoa.
  *
- * Um palco só, sem rolagem, PRETO de borda a borda, e nele só o ROBÔ: uma cena
+ * No topo, um palco PRETO de borda a borda, da altura da tela, e nele o ROBÔ: uma cena
  * 3D do Spline (a do componente `splite` do 21st.dev, `design/cena-spline.tsx`),
  * de perto, da cintura para cima, acompanhando o cursor com a cabeça.
  *
@@ -26,16 +26,30 @@
  * ondas em volta do ícone reagem ao som captado e o robô responde
  * (`botao-de-voz.tsx`). Nada é gravado nem enviado.
  *
- * Nenhum número, nenhuma lista, nenhum atalho: quem navega usa o menu lateral.
- * Nada aqui é conceito novo (PRD I.1): a tela não inventa dado nenhum.
+ * DESDE 2026-09-24 A TELA ROLA ("quando o user rolar para baixo ele deve
+ * conseguir fazer o scroll normal e o robô deve ir desaparecendo conforme o
+ * scroll, fazendo o efeito reverso de entrada; conforme for rolando, a tela
+ * muda e vira uma tela de informações e acesso rápido"): o palco fica preso
+ * no topo (`sticky`) e o RESUMO sobe por cima dele (`resumo-do-inicio.tsx`)
+ * — as Tarefas, os Leads a atender, as Mensagens novas e as estatísticas da
+ * pessoa —, enquanto a entrada do robô toca ao contrário
+ * (`saida-do-palco.ts`): a câmera volta ao rosto e ele esmaece. Com ele
+ * fora da vista, o robô flutuante aparece no canto; tocá-lo volta ao palco.
+ *
+ * Nada aqui é conceito novo (PRD I.1): o resumo só lê e leva às telas de
+ * destino — não inventa dado nem altera nada.
  */
 
-import { CenaSpline } from "@/design/cena-spline";
+import { useEffect, useRef } from "react";
+import { CenaSpline, type ControleDaCena } from "@/design/cena-spline";
 import { Holofote } from "@/design/holofote";
 import { BalaoDoRobo } from "@/features/inicio/balao-do-robo";
 import { BotaoDeVoz } from "@/features/inicio/botao-de-voz";
 import { CaixaDoAssistente } from "@/features/inicio/caixa-do-assistente";
 import { useRespostaDoRobo } from "@/features/inicio/panorama-do-robo";
+import { AtalhoDoResumo, ResumoDoInicio } from "@/features/inicio/resumo-do-inicio";
+import { useSaidaDoPalco } from "@/features/inicio/saida-do-palco";
+import { SaudacaoDoInicio } from "@/features/inicio/saudacao-do-inicio";
 import { useAssistenteDoRobo } from "@/features/inicio/use-assistente-do-robo";
 import { MONOGRAMA } from "@/features/shell/brand";
 import { CorpoDeTela } from "@/features/shell/ui";
@@ -113,72 +127,87 @@ const BOCA_DO_ROBO = { objeto: "Head 2", ponto: [0, -18, 39.4], largura: 29 } as
  */
 const BALAO_DO_ROBO = { objeto: "Head 2", ponto: [34, 58, 0], espelho: [-34, 58, 0], minimo: 224 } as const;
 
-/** A logo do peito, para o foco voltar a ela quando a caixa do assistente fecha. */
-const focoNaLogo = () => document.querySelector<HTMLButtonElement>(".inicio-robo button.cena-spline-selo-luz");
+/** O campo do chat, para o foco ir a ele quando o balão some com o foco dentro. */
+const focoNoCampo = () => document.querySelector<HTMLInputElement>(".caixa-do-assistente-campo");
 
 export default function InicioPage() {
   const responder = useRespostaDoRobo();
   const assistente = useAssistenteDoRobo(responder);
+  const palco = useRef<HTMLElement>(null);
+  const cena = useRef<ControleDaCena>(null);
+  const titulo = useRef<HTMLHeadingElement>(null);
+  // O robô sumiu pela rolagem: a conversa por voz acaba — o microfone não
+  // fica ouvindo com o robô fora da vista, e a simulada não fala sozinha.
+  const aoSumir = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    aoSumir.current = () => {
+      if (assistente.simulacao) assistente.alternarMicrofone();
+      else if (assistente.microfoneLigado) assistente.desligarMicrofone();
+    };
+  });
+  useSaidaDoPalco({ palco, cena, titulo, aoSumir });
   return (
     <div className="flex h-full flex-col">
       {/*
         O Início não tem cabeçalho de tela nem HUD: a capa É a tela — sem
         card, sem cantos, sem respiro, de borda a borda do que a casca deixa
         (trilho, painel e barra global ficam). A pedido: "quero que tome todo o
-        espaço da tela inicial, porém sem as bordas arredondadas".
+        espaço da tela inicial, porém sem as bordas arredondadas". O palco é
+        filho DIRETO do corpo que rola: a altura dele é a do corpo, e ele fica
+        preso no topo enquanto o resumo sobe.
       */}
       <CorpoDeTela className="inicio-corpo">
-        <div className="inicio">
-          <section className="capa inicio-capa revelar" aria-labelledby="inicio-titulo">
-            {/* O título existe para quem navega por leitor de tela e pelos
-                cabeçalhos; na vista, o palco é só o robô. */}
-            <h1 id="inicio-titulo" className="sr-only">
-              Início
-            </h1>
+        <section ref={palco} className="capa inicio-capa revelar" aria-labelledby="inicio-titulo">
+          {/* O título existe para quem navega por leitor de tela e pelos
+              cabeçalhos; na vista, o palco é só o robô. Focável por código:
+              o robô flutuante, no Início, volta a ele. */}
+          <h1 ref={titulo} id="inicio-titulo" className="sr-only" tabIndex={-1}>
+            Início
+          </h1>
 
-            {/* A luz que segue o mouse, ATRÁS do robô: antes da cena no DOM,
-                ela pinta no preto e o corpo do robô a encobre. */}
-            <Holofote />
+          {/* A luz que segue o mouse, ATRÁS do robô: antes da cena no DOM,
+              ela pinta no preto e o corpo do robô a encobre. */}
+          <Holofote />
 
-            {/* O robô ocupa o palco inteiro e acompanha o cursor em qualquer
-                ponto da janela. É decoração (o canvas, a boca e as camadas da
-                logo são `aria-hidden`), com UMA exceção: a logo do peito é um
-                botão — abre e fecha a caixa do assistente. */}
-            <div className="inicio-robo">
-              <CenaSpline
-                cena={CENA_DO_ROBO}
-                camera={CAMERA_DO_ROBO}
-                luzes={LUZES_DO_ROBO}
-                reflexos={REFLEXOS_DO_ROBO}
-                selo={{
-                  ...SELO_DO_ROBO,
-                  // A logo abre e fecha a CAIXA do assistente (o microfone
-                  // só abre pelo botão dele, na caixa); acesa com ela aberta.
-                  acao: {
-                    rotulo: assistente.aberto ? "Fechar o assistente" : "Falar com o assistente",
-                    ativo: assistente.aberto,
-                    aoAcionar: assistente.alternarCaixa,
-                  },
-                }}
-                // A boca mexe a cada quadro com a caixa aberta OU com o robô
-                // respondendo — pelo botão de voz do palco ele fala com a
-                // caixa fechada, e a cena parada (movimento reduzido) não
-                // desenharia a boca sozinha.
-                boca={{ ...BOCA_DO_ROBO, abertura: assistente.lerBoca, ativa: assistente.aberto || assistente.respondendo }}
-                balao={BALAO_DO_ROBO}
-                className="inicio-cena"
-                eventosGlobais
-              >
-                {/* O balão de chat: as respostas em texto, ao lado da cabeça. */}
-                <BalaoDoRobo assistente={assistente} focoAoFechar={focoNaLogo} />
-              </CenaSpline>
-            </div>
-            {/* O botão de voz, no centro à esquerda: inicia a conversa por voz
-                sem a caixa — o mesmo microfone que o botão dela liga. */}
-            <BotaoDeVoz assistente={assistente} />
-            <CaixaDoAssistente assistente={assistente} focoAoFechar={focoNaLogo} />
-          </section>
-        </div>
+          {/* O robô ocupa o palco inteiro e acompanha o cursor em qualquer
+              ponto da janela. É decoração (o canvas, a boca e as camadas da
+              logo são `aria-hidden`), com UMA exceção: a logo do peito é um
+              botão — abre e fecha a caixa do assistente. */}
+          <div className="inicio-robo">
+            <CenaSpline
+              ref={cena}
+              cena={CENA_DO_ROBO}
+              camera={CAMERA_DO_ROBO}
+              luzes={LUZES_DO_ROBO}
+              reflexos={REFLEXOS_DO_ROBO}
+              // A logo do peito é só decoração (acende no hover): desde
+              // 2026-09-24 o chat é FIXO no palco ("ao invés de depender
+              // da interação na logo do peito").
+              selo={SELO_DO_ROBO}
+              // A boca mexe a cada quadro com a caixa aberta OU com o robô
+              // respondendo — pelo botão de voz do palco ele fala com a
+              // caixa fechada, e a cena parada (movimento reduzido) não
+              // desenharia a boca sozinha.
+              boca={{ ...BOCA_DO_ROBO, abertura: assistente.lerBoca, ativa: assistente.respondendo }}
+              balao={BALAO_DO_ROBO}
+              className="inicio-cena"
+              eventosGlobais
+            >
+              {/* O balão de chat: as respostas em texto, ao lado da cabeça. */}
+              <BalaoDoRobo assistente={assistente} focoAoFechar={focoNoCampo} />
+            </CenaSpline>
+          </div>
+          {/* A saudação com o primeiro nome, no alto à esquerda (2026-09-24). */}
+          <SaudacaoDoInicio />
+          {/* O botão de voz, no centro à esquerda: inicia a conversa por voz
+              sem a caixa — o mesmo microfone que o botão dela liga. */}
+          <BotaoDeVoz assistente={assistente} />
+          <CaixaDoAssistente assistente={assistente} />
+          {/* O atalho para o resumo, no alto à direita (espelhando a saudação): rolar também leva. */}
+          <AtalhoDoResumo />
+        </section>
+        {/* O RESUMO da pessoa: sobe por cima do palco preso no topo. */}
+        <ResumoDoInicio />
       </CorpoDeTela>
     </div>
   );

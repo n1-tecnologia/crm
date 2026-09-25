@@ -76,6 +76,7 @@ export {
 } from "@/design/basicos";
 export { BarraDeFiltros, CabecalhoDeTela, CorpoDeTela, RolagemNoTopo } from "@/design/tela";
 export { CampoDeLanterna } from "@/design/lanterna";
+export { Segmentos, type Segmento } from "@/design/segmentos";
 export { cn } from "@/design/cn";
 
 /**

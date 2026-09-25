@@ -276,6 +276,7 @@
   --icone-tile: 1.375rem;       /* o ladrilho do ícone de espaço              */
   --icone-lg: 3rem;             /* 48px — cartão de destaque                  */
   --barra-viz-h: 0.5rem;        /* 8px — espessura de barra de gráfico        */
+  --colunas-h: 9rem;            /* 144px — a altura do gráfico em colunas (as estatísticas do Início) */
   /* Séries de gráfico (Painéis): a ordem em que fatias e barras recebem cor.
      Começa no acento e segue pelas semânticas — aqui nenhuma significa nada,
      só distingue uma série da outra; quem diz o que é cada uma é o rótulo. */
@@ -408,6 +409,9 @@
   /* O palco do Início é PRETO de verdade (2026-09-23, "quero tudo preto"): a
      única superfície do app que dispensa o #0f0f10 da base. */
   --palco-inicio: #000000;
+  /* A largura máxima da saudação do Início: o vazio à esquerda da cabeça do
+     robô (a cabeça começa em ~37 % do palco). */
+  --saudacao-inicio-w: 30%;
   /* O pontilhado do palco do Início, sobre o preto e atrás da luz e do robô
      (fim de 2026-09-23: "background com pontilhados em pattern"): mais denso e
      mais visível que a grade do sistema (--grade-ponto a 4 %, a cada 48 px);
@@ -462,8 +466,10 @@
      acompanhar os breakpoints —, a largura máxima e o fundo,
      em transparência sobre o robô (2026-09-23: "um campo com caixa em
      transparência", mais para baixo). */
-  --caixa-robo-pe: calc(5 * var(--e-1) + 2px + var(--pilula-h) + var(--controle-h) + 3 * var(--app-xs-lh) + var(--e-4));
-  --caixa-robo-w: 30rem;
+  --caixa-robo-pe: calc(2 * var(--e-2) + 3 * var(--e-1) + 2px + var(--pilula-h) + var(--controle-h-lg) + 3 * var(--app-xs-lh) + var(--e-4));
+  /* Maior desde 2026-09-24 ("aumente a caixa de texto"): 40 rem (eram 30), o
+     campo na altura do alvo de toque (--controle-h-lg) e o respiro em --e-2. */
+  --caixa-robo-w: 40rem;
   --caixa-robo-fundo: rgb(0 0 0 / 0.3);
   /* O balão de chat ao lado da cabeça do robô: a largura máxima e a altura
      máxima (fração da altura do palco; passou, a lista rola). Desde "mais
@@ -484,6 +490,28 @@
      (≥ 4,5:1) mesmo sobre o ombro iluminado do robô, que fica atrás dela em
      janelas menores (achado da revisão: 2,2–3,8:1 sem ele). */
   --botao-voz-estado-fundo: rgb(0 0 0 / 0.72);
+  /* O ROBÔ FLUTUANTE fora do Início (2026-09-24): o diâmetro do círculo — o
+     alvo de toque com folga, acompanhando o `--controle-h-lg` das telas
+     grandes (56 px na base) — e a distância dele aos cantos da janela. */
+  --robo-flutuante-tam: calc(var(--controle-h-lg) + var(--e-3));
+  --robo-flutuante-margem: var(--e-6);
+  /* O que o robô escreve numa DOCA (`.doca-do-robo`) que chega ao canto
+     dele: o recuo à direita, para o conteúdo dela acabar antes dele. Fora do
+     canto, 0. E a reserva no fim do que rola sob ele: o robô, a margem dele e
+     uma folga — o último controle da tela sobe acima dele. */
+  --robo-flutuante-recuo: 0px;
+  /* Quanto o robô sobe acima de uma doca "acima" (a barra de uma coluna
+     estreita, que o recuo espremeria). Escrito pelo robô nele mesmo. */
+  --robo-flutuante-elevacao: 0px;
+  /* A SAÍDA DO PALCO pela rolagem (2026-09-24, `features/inicio/saida-do-palco.ts`):
+     o JS escreve no palco, a cada quadro de rolagem, a opacidade dos
+     controles e a do robô (1 no topo) e a fração do desfoque do robô (0 no
+     topo; o desfoque cheio é `--chegada-desfoque`, o do `revelar`). No topo
+     nada fica inline — valem estes. */
+  --inicio-saida-controles: 1;
+  --inicio-saida-robo: 1;
+  --inicio-saida-desfoque: 0;
+  --robo-flutuante-reserva: calc(var(--robo-flutuante-tam) + var(--robo-flutuante-margem) + var(--e-3));
   --aura-capa-fraca: rgb(192 132 252 / 0.08);
   --orbe-1: rgb(150 1 197 / 0.22);
   --orbe-2: rgb(44 2 99 / 0.28);
@@ -503,6 +531,7 @@
   --z-cabecalho: 30;
   --z-barra-global: 32;         /* o menu da conta sobre o cabeçalho sticky (30), sob o fio de rota (35) */
   --z-progresso: 35;            /* barra de rota: sobre o cabeçalho sticky    */
+  --z-flutuante: 38;            /* o robô flutuante: sobre o cabeçalho sticky e a barra de rota, SOB a gaveta e o modal (o véu deles o cobre) */
   --z-gaveta: 40;
   --z-modal: 50;
   --z-menu: 60;
@@ -649,6 +678,7 @@
     --icone-tile: 1.625rem;
     --icone-lg: 3.25rem;
     --barra-viz-h: 0.625rem;
+    --colunas-h: 10rem;
     --gantt-dia: 2.5rem;
     --gantt-nome: 16.5rem;
     --modal-sm: 27rem;
@@ -721,6 +751,7 @@
     --icone-tile: 1.875rem;
     --icone-lg: 3.5rem;
     --barra-viz-h: 0.75rem;
+    --colunas-h: 11rem;
     --gantt-dia: 2.875rem;
     --gantt-nome: 18rem;
     --modal-sm: 30rem;
@@ -793,6 +824,7 @@
     --icone-tile: 2.125rem;
     --icone-lg: 4rem;
     --barra-viz-h: 0.875rem;
+    --colunas-h: 12rem;
     --gantt-dia: 3.25rem;
     --gantt-nome: 19.5rem;
     --modal-sm: 33rem;

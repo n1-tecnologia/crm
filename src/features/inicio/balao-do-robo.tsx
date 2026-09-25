@@ -6,20 +6,32 @@
  * aparecer ao lado da cabeça dele em um balão de chat; as respostas dele devem
  * ficar salvas permitindo o user rolar e ver todas elas da sessão atual").
  *
- * Aparece em modo silenciado ou com legenda, quando há resposta — com a
- * caixa aberta, com o microfone ligado pelo botão de voz do palco, na
- * conversa simulada (sem microfone) e enquanto o robô responde. Cada troca traz a pergunta (ou "pelo microfone") e o texto do robô;
+ * Aparece em modo silenciado ou com legenda, quando há resposta (desde
+ * 2026-09-24 a caixa do chat é fixa: não depende mais de ela estar aberta).
+ * Cada troca traz a pergunta (ou "pelo microfone") e o texto do robô;
  * a resposta em curso aparece LETRA A LETRA no ritmo da fala dele (a fração
  * vem de `lerFala`: com voz, pelo relógio do som; silenciado, pelo da página),
  * e o leitor de tela recebe o texto inteiro de uma vez (`role=log`). A lista
  * rola: a nova troca leva ao fim; durante a fala, só se a pessoa já estava lá.
+ *
+ * RECOLHIDO por padrão (2026-09-24: "este chat deve vir por padrão
+ * recolhido… quando recolhido deve ser apenas um ícone de balão de mensagem
+ * ao lado da cabeça do robô"): recolhido, é só um botão redondo com o ícone
+ * de mensagem e a contagem; tocado, abre o balão com todas as respostas, e o
+ * "Recolher" do alto volta ao ícone. Cada visita à tela começa recolhida (com
+ * as respostas que já havia); uma resposta NOVA abre o balão sozinha — no
+ * Silenciar ele é o único lugar da resposta. O botão é o MESMO nó nos dois
+ * estados (muda a cara e o rótulo), então o foco fica nele ao alternar.
  *
  * O lugar vem da cena (`--balao-x`, `--balao-y` e `data-balao-lado` na raiz
  * da cena, `CenaSpline` com `balao`): a projeção de um ponto ao lado da cabeça,
  * a cada quadro desenhado — o balão anda com ela.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { ChevronUp, MessageSquare } from "lucide-react";
+import { Icone } from "@/design/icone";
+import { useHidratado } from "@/features/shell/hidratado";
 import type { AssistenteDoRobo } from "./use-assistente-do-robo";
 
 /** Quão perto do fim a lista tem de estar para seguir a fala sozinha (px). */
@@ -30,19 +42,28 @@ export function BalaoDoRobo({
   focoAoFechar,
 }: {
   readonly assistente: AssistenteDoRobo;
-  /** Para onde o foco vai quando o balão some com o foco dentro dele (a logo). */
+  /** Para onde o foco vai quando o balão some com o foco dentro dele (o campo do chat). */
   readonly focoAoFechar?: () => HTMLElement | null;
 }) {
-  const { aberto, microfone, simulacao, mostrarTexto, respostas, respondendo, lerFala } = assistente;
+  const { mostrarTexto, respostas, respondendo, lerFala } = assistente;
+  // As respostas guardadas vêm do armazenamento do navegador: o balão só
+  // desenha depois da hidratação, para o HTML do servidor bater.
+  const hidratado = useHidratado();
   const lista = useRef<HTMLOListElement>(null);
   const focoDentro = useRef(false);
   const focoAoFecharRef = useRef(focoAoFechar);
   useEffect(() => {
     focoAoFecharRef.current = focoAoFechar;
   });
+  // Recolhido (só o ícone) ou aberto: nasce recolhido COM as respostas que já
+  // havia; passar de `recolhidoEm` (uma resposta nova) abre sozinho — sem
+  // efeito, derivado.
+  const [recolhidoEm, setRecolhidoEm] = useState<number | null>(() => respostas.length);
+  const expandido = recolhidoEm === null || respostas.length > recolhidoEm;
+  const idDaLista = useId();
   // A resposta em curso e quantas letras dela já foram ditas.
   const [revelacao, setRevelacao] = useState<{ readonly id: number; readonly letras: number } | null>(null);
-  const visivel = mostrarTexto && respostas.length > 0 && (aberto || microfone !== "desligado" || simulacao !== null || respondendo);
+  const visivel = hidratado && mostrarTexto && respostas.length > 0;
 
   // O laço da legenda: a cada quadro, quantas letras da resposta em curso já
   // saíram — também com movimento reduzido: é a fala, não decoração.
@@ -68,7 +89,7 @@ export function BalaoDoRobo({
   useEffect(() => {
     const alvo = lista.current;
     if (alvo) alvo.scrollTop = alvo.scrollHeight;
-  }, [quantas, visivel]);
+  }, [quantas, visivel, expandido]);
   // A fala em curso segue no fim — só se a pessoa já estava lá (rolou para
   // reler uma resposta antiga? fica onde está).
   const letras = revelacao?.letras ?? 0;
@@ -79,7 +100,7 @@ export function BalaoDoRobo({
     if (distancia <= PERTO_DO_FIM) alvo.scrollTop = alvo.scrollHeight;
   }, [letras]);
 
-  // Sumiu com o foco dentro (a lista rolável tem foco): vai para a logo.
+  // Sumiu com o foco dentro (a lista rolável tem foco): vai para o campo do chat.
   useEffect(() => {
     if (!visivel) return undefined;
     return () => {
@@ -91,12 +112,39 @@ export function BalaoDoRobo({
   if (!visivel) return null;
 
   return (
-    <section className="balao-do-robo surgir" aria-label="Respostas do robô">
+    <section className="balao-do-robo surgir" aria-label="Respostas do robô" data-expandido={expandido ? "" : undefined}>
+      {/* O MESMO botão nos dois estados: recolhido, o ícone de mensagem com a
+          contagem; aberto, o "Recolher" do alto do balão. */}
+      <button
+        type="button"
+        className="balao-do-robo-alternar"
+        aria-expanded={expandido}
+        aria-controls={idDaLista}
+        aria-label={expandido ? "Recolher as respostas do robô" : `Mostrar as respostas do robô (${respostas.length})`}
+        title={expandido ? undefined : `Respostas do robô (${respostas.length})`}
+        onClick={() => setRecolhidoEm(expandido ? respostas.length : null)}
+      >
+        {expandido ? (
+          <>
+            <Icone de={ChevronUp} tamanho="xs" />
+            <span className="app-xs">Recolher</span>
+          </>
+        ) : (
+          <>
+            <Icone de={MessageSquare} tamanho="sm" />
+            <span className="app-xs app-numero balao-do-robo-contagem" aria-hidden="true">
+              {respostas.length}
+            </span>
+          </>
+        )}
+      </button>
       {/* A lista é rolável, então recebe foco (teclado) e é um `log`: cada
           troca nova é anunciada inteira — o texto revelado letra a letra fica
           fora da leitura. */}
       <ol
         ref={lista}
+        id={idDaLista}
+        hidden={!expandido}
         className="balao-do-robo-lista"
         role="log"
         aria-live="polite"

@@ -9,8 +9,10 @@
  *
  * Desde 2026-09-23 ("ao pressionar o N1 no peito, quero que abra uma caixa de
  * texto pequena no centro logo abaixo… e um microfone também, ao invés do mic
- * já abrir assim que apertar no logo"):
- * - a logo abre e fecha a CAIXA — e nada mais: o microfone NÃO abre sozinho;
+ * já abrir assim que apertar no logo") — e, desde 2026-09-24, a CAIXA FIXA no
+ * palco ("quero que a opção de chat seja fixa na tela, ao invés de depender da
+ * interação na logo do peito"): não há mais abrir nem fechar;
+ * - a caixa está sempre à vista, e o microfone NÃO abre sozinho;
  * - na caixa, a pessoa DIGITA a pergunta e o robô responde, ou toca no
  *   MICROFONE e fala — o microfone só abre por um botão (o da caixa ou o botão
  *   de voz do palco, `botao-de-voz.tsx`: o mesmo interruptor, que não depende
@@ -40,9 +42,9 @@
  * NÍVEL do instante (para perceber começo e fim de fala). O texto digitado é
  * lido aqui, no navegador, para reconhecer a pergunta — e não sai dele.
  *
- * Tudo fecha ao fechar a caixa e ao sair da tela; esconder a aba desliga o
- * microfone e encerra a conversa simulada (a caixa fica). Uma pergunta nova no
- * meio da resposta corta a anterior: uma voz só.
+ * Tudo fecha ao sair da tela; esconder a aba desliga o microfone e encerra a
+ * conversa simulada. Uma pergunta nova no meio da resposta corta a anterior:
+ * uma voz só.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -257,14 +259,13 @@ function visivel(): boolean {
  * uma fala pelo microfone) — `useRespostaDoRobo()`, o que o app já sabe.
  */
 export function useAssistenteDoRobo(responderTexto: (pergunta: string | null) => string) {
-  const [aberto, setAberto] = useState(false);
   const [microfone, setMicrofone] = useState<EstadoDoMicrofone>("desligado");
   const [respondendo, setRespondendo] = useState(false);
   const [simulacao, setSimulacao] = useState<Simulacao | null>(null);
   // O guardado — o modo (entre recargas) e as respostas desta aba — entra no
-  // estado inicial: no servidor não há armazenamento e vem o padrão, e nada
-  // disto aparece antes de a caixa abrir, então a tela nasce igual nos dois
-  // lados.
+  // estado inicial: no servidor não há armazenamento e vem o padrão. A caixa e
+  // o balão só desenham depois da hidratação (`useHidratado`), então a tela
+  // nasce igual nos dois lados.
   const [modo, setModo] = useState<ModoDoRobo>(lerModoGuardado);
   const [respostas, setRespostas] = useState<readonly RespostaDoRobo[]>(lerRespostasGuardadas);
 
@@ -275,7 +276,6 @@ export function useAssistenteDoRobo(responderTexto: (pergunta: string | null) =>
   const contadorDeRespostas = useRef(respostas.reduce((maior, r) => Math.max(maior, r.id), 0));
   const nivelDeEntrada = useRef(0);
   const microfoneAtual = useRef<EstadoDoMicrofone>("desligado");
-  const abertoAtual = useRef(false);
   const respondendoAtual = useRef(false);
   const modoAtual = useRef<ModoDoRobo>(modo);
   const fimDaResposta = useRef(0);
@@ -611,31 +611,6 @@ export function useAssistenteDoRobo(responderTexto: (pergunta: string | null) =>
     mudarModo({ ...modoAtual.current, legenda: !modoAtual.current.legenda });
   }, [mudarModo]);
 
-  const abrir = useCallback(() => {
-    abertoAtual.current = true;
-    setAberto(true);
-  }, []);
-
-  /** Fecha a caixa: o microfone, a conversa simulada, a voz e a resposta em curso (as respostas guardadas ficam). */
-  const fechar = useCallback(() => {
-    abertoAtual.current = false;
-    setAberto(false);
-    encerrarSimulacao();
-    encerrarMicrofone(sessao.current);
-    sessao.current = null;
-    nivelDeEntrada.current = 0;
-    mudarMicrofone("desligado");
-    calar();
-    void voz.current?.contexto.close().catch(() => {});
-    voz.current = null;
-  }, [calar, encerrarSimulacao, mudarMicrofone]);
-
-  /** A logo do peito: abre e fecha a caixa. */
-  const alternarCaixa = useCallback(() => {
-    if (abertoAtual.current) fechar();
-    else abrir();
-  }, [abrir, fechar]);
-
   // Sair da tela fecha tudo — e marca que saiu, para o que ainda está a caminho.
   useEffect(() => {
     montado.current = true;
@@ -695,10 +670,6 @@ export function useAssistenteDoRobo(responderTexto: (pergunta: string | null) =>
   }, []);
 
   return {
-    aberto,
-    abrir,
-    fechar,
-    alternarCaixa,
     microfone,
     /** O microfone pedido ou aberto. */
     microfoneLigado: microfoneEmUso,

@@ -857,7 +857,10 @@ export function TaskComments({
           Você não comenta nesta Tarefa.
         </p>
       ) : (
-        <div className="shrink-0 p-3" style={{ borderTop: "1px solid var(--linha)" }}>
+        // A doca do robô flutuante, no modo "acima": a coluna é estreita (~300 px)
+        // e o recuo do robô a espremeria; ele sobe acima da barra, e a lista de
+        // comentários, que passa a ficar sob ele, ganha a reserva no fim.
+        <div className="doca-do-robo shrink-0 p-3" data-robo="acima" style={{ borderTop: "1px solid var(--linha)" }}>
           {aviso ? (
             <div className="mb-2">
               <Toast tone={aviso.tone} onDismiss={() => setAviso(null)}>
