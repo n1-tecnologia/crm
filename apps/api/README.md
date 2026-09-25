@@ -145,26 +145,34 @@ desliga o gate inteiro — só para uma Lista que nasce sem backlog.
   `OperationResult` (mesmo quando `ok:false`, sempre 200) mais o diff e a
   revisão nova (`Authorization: Bearer <token>`).
 
-## 7. PERS-08 — onde o `apps/api` roda: bloqueado por D11
+## 7. PERS-08 — onde o `apps/api` roda: região decidida, VPS pendente
 
-**Ainda não decidido.** A recomendação do plano de migração é a mesma VPS
-que já roda o `automation/` (financeiro-tria), atrás da nginx existente —
-mas essa decisão (D11) precisa ser tomada em conjunto com OQ-ADR-01 (a
-região do projeto Supabase: a latência medida hoje é de um notebook no
-Brasil até `us-west-2`, ~234 ms por ida e volta, e o `apps/api` não vai
-rodar num notebook). Até D11 e OQ-ADR-01 serem resolvidas, o processo roda
-localmente em `127.0.0.1:3002` — é o que este README documenta, nada além
-disso. PERS-08 não bloqueia o código desta fase; bloqueia o adapter da Fase
-2 apontar de verdade para o `apps/api`.
+Ver [`docs/08-migracao-financeiro/05-topologia-e-regiao.md`](../../docs/08-migracao-financeiro/05-topologia-e-regiao.md)
+(Plan 02-15) para a topologia completa, a decisão de região com data e
+justificativa, o runbook de publicação e a tabela de medições.
 
-Pré-requisitos já conhecidos para quando o deploy acontecer — a resolver
-**junto com D11**, não neste README:
+**O que já está resolvido:** OQ-ADR-01 (a região do projeto Supabase) —
+a decisão foi `permanecer-medindo`: o projeto continua em `us-west-2`
+(Oregon), registrada em 2026-09-25. A CA do Supabase está fixada em
+`src/persistencia/conexao.ts` (`construirSsl()`, `rejectUnauthorized: true`
+no caminho padrão) — o blocker de TLS que este README documentava está
+fechado no código.
 
-- Fixar a CA do Supabase e trocar `rejectUnauthorized: false` por `true` em
-  `src/persistencia/conexao.ts` (hoje a verificação da cadeia TLS está
-  desligada porque o Node não conhece a CA da conexão direta do Supabase —
-  ver o comentário no próprio arquivo; o tráfego já é cifrado, só a
-  identidade do servidor não é verificada).
+**O que continua pendente (D11 — publicar o `apps/api` na VPS):** a
+recomendação do plano de migração é a mesma VPS que já roda o `automation/`
+(financeiro-tria), atrás da nginx existente. Até D11 ser executada, o
+processo roda localmente em `127.0.0.1:3002` — é o que este README
+documenta, nada além disso. PERS-08 não bloqueia o código desta fase;
+bloqueia o adapter da Fase 2 apontar de verdade para o `apps/api` em
+produção.
+
+Pré-requisitos conhecidos para quando o deploy acontecer — o runbook exato
+está no documento de topologia, não aqui:
+
+- `DATABASE_CA_CERT` (ou `DATABASE_CA_PATH`) precisa estar definida no
+  ambiente da VPS com a CA real do Supabase — sem isso a conexão remota
+  falha por desenho (é o comportamento novo de `construirSsl()`, não um
+  bug).
 - `HOST=0.0.0.0` só faz sentido atrás de um proxy reverso — nunca exposto
   direto.
 - `WEB_ORIGIN` precisa ser a origem pública de `apps/web` (o CORS é por
@@ -172,5 +180,5 @@ Pré-requisitos já conhecidos para quando o deploy acontecer — a resolver
 - `apps/web` precisa de `NEXT_PUBLIC_API_URL`/`API_URL` apontando para o
   endereço público do `apps/api`, não mais `localhost:3002`.
 
-Nenhum comando de deploy vive neste arquivo — quando D11 for decidida, o
-roteiro de deploy nasce onde a decisão nascer.
+Nenhum comando de deploy vive neste arquivo — o roteiro de deploy vive no
+documento de topologia linkado acima.
