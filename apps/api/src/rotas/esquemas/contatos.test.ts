@@ -13,7 +13,7 @@ import { CONTATOS } from "./contatos";
 const viaJson = (args: unknown[]): unknown[] => JSON.parse(JSON.stringify(args)) as unknown[];
 
 describe("esquemas/contatos — a forma dos args de contacts.ts", () => {
-  it("(a) cobertura — as 17 chaves de contacts.ts em registro.ts", () => {
+  it("(a) cobertura — as 19 chaves de contacts.ts em registro.ts", () => {
     const esperadas = [
       "addContactIdentifier",
       "transferContactIdentifier",
@@ -32,6 +32,8 @@ describe("esquemas/contatos — a forma dos args de contacts.ts", () => {
       "linkContactToCompany",
       "addCompanyIdentifier",
       "setContactCatalogValue",
+      "updateCompany",
+      "addCompanyNote",
     ].sort();
     expect(Object.keys(CONTATOS).sort()).toEqual(esperadas);
   });
@@ -117,5 +119,16 @@ describe("esquemas/contatos — a forma dos args de contacts.ts", () => {
     expect(
       CONTATOS.linkContactToCompany.safeParse(viaJson([{ contactId: "c1", companyId: "cmp1" }])).success,
     ).toBe(false);
+  });
+
+  it("(d) updateCompany e addCompanyNote — formas de empresa-popup.tsx (frontend do main, 2026-09-25)", () => {
+    expect(CONTATOS.updateCompany.safeParse(viaJson(["co1", { description: "d" }])).success).toBe(true);
+    expect(CONTATOS.updateCompany.safeParse(viaJson(["co1", { tradeName: "T" }])).success).toBe(true);
+    expect(CONTATOS.updateCompany.safeParse(viaJson(["co1", { ownerMemberId: "m1" }])).success).toBe(true);
+    expect(CONTATOS.updateCompany.safeParse(viaJson(["co1", { parentCompanyId: null }])).success).toBe(true);
+    expect(CONTATOS.updateCompany.safeParse(viaJson(["co1", { parentCompanyId: "co2" }])).success).toBe(true);
+    expect(CONTATOS.addCompanyNote.safeParse(viaJson(["co1", "nota"])).success).toBe(true);
+    expect(CONTATOS.updateCompany.safeParse(viaJson(["co1", { nome: "x" }])).success).toBe(false);
+    expect(CONTATOS.updateCompany.safeParse(viaJson(["co1", { tradeName: 1 }])).success).toBe(false);
   });
 });

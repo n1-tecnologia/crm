@@ -83,6 +83,7 @@ import {
 import {
   addCompanyIdentifier,
   addContactIdentifier,
+  addCompanyNote,
   addContactNote,
   createCompany,
   createContact,
@@ -98,6 +99,7 @@ import {
   trashCompany,
   trashContact,
   transferContactIdentifier,
+  updateCompany,
 } from "./contacts";
 
 // ── ai.ts ───────────────────────────────────────────────────────────────
@@ -294,6 +296,101 @@ import {
   vincularGrupoAComunidade,
 } from "./ferramentas/comunidades";
 
+// ── canais.ts ────────────────────────────────────────────────────────────
+// `recusaDeGerirCanais`, `validarCanaisDeAtendimento` e `identificadorCanonico` NÃO
+// entram: recusa pré-calculada, validação e helper.
+import {
+  configurarCanal,
+  criarCanal,
+} from "./canais";
+
+// ── tarefas-conversacionais.ts ───────────────────────────────────────────
+import {
+  alterarModeloDaLista,
+  criarNegocioDaTarefa,
+  criarTarefaConversacional,
+  definirCanaisDaLista,
+  trocarCanalDaTarefa,
+  vincularNegocioATarefa,
+} from "./tarefas-conversacionais";
+
+// ── ia/agentes.ts ────────────────────────────────────────────────────────
+import {
+  apagarItemDeMemoria,
+  arquivarAgente,
+  ativarAgente,
+  cancelarExecucao,
+  ensaiarAgente,
+  enviarAgenteALixeira,
+  pausarAgente,
+  transferirAgente,
+} from "./ia/agentes";
+
+// ── ia/automacoes-editor.ts ──────────────────────────────────────────────
+import {
+  adicionarAcao,
+  adicionarCondicao,
+  arquivarAutomacao,
+  criarAutomacao,
+  criarRascunhoDaAutomacao,
+  definirGatilho,
+  definirPoliticaDeErro,
+  descartarRascunhoDaAutomacao,
+  duplicarAutomacao,
+  editarAcao,
+  editarAutomacao,
+  editarCondicao,
+  enviarAutomacaoALixeira,
+  moverAcao,
+  pausarAutomacao,
+  removerAcao,
+  removerCondicao,
+  retomarAutomacao,
+} from "./ia/automacoes-editor";
+
+// ── ia/conhecimento.ts ───────────────────────────────────────────────────
+import {
+  adicionarDocumento,
+  adicionarFonte,
+  arquivarColecao,
+  arquivarDocumento,
+  comentarDocumento,
+  concederColecao,
+  criarColecao,
+  editarColecao,
+  editarDocumento,
+  enviarDocumentoALixeira,
+  moverDocumento,
+  novaVersaoDoDocumento,
+  restaurarColecao,
+  restaurarDocumento,
+  restaurarVersaoDoDocumento,
+  revogarColecao,
+} from "./ia/conhecimento";
+
+// ── ia/habilidades.ts ────────────────────────────────────────────────────
+import {
+  arquivarHabilidade,
+  concederHabilidade,
+  copiarHabilidadeDaPlataforma,
+  criarHabilidade,
+  criarRascunhoDaHabilidade,
+  descartarRascunhoDaHabilidade,
+  editarHabilidade,
+  editarRascunhoDaHabilidade,
+  fixarVersaoDaConcessao,
+  obsoletarVersaoDaHabilidade,
+  publicarVersaoDaHabilidade,
+  restaurarHabilidade,
+  revogarHabilidade,
+} from "./ia/habilidades";
+
+// ── ia/integracoes.ts ────────────────────────────────────────────────────
+import {
+  conectarIntegracao,
+  desconectarIntegracao,
+} from "./ia/integracoes";
+
 /**
  * Toda operação alcançável por HTTP. Assinatura comum:
  * `(state, actingMemberId, ...args) => OperationResult`.
@@ -370,6 +467,8 @@ export const OPERACOES = {
   linkContactToCompany,
   addCompanyIdentifier,
   setContactCatalogValue,
+  updateCompany,
+  addCompanyNote,
   // ai.ts
   decideApproval,
   decideProcessApproval,
@@ -526,6 +625,78 @@ export const OPERACOES = {
   restaurarComunidade,
   enviarComunidadeALixeira,
   restaurarComunidadeDaLixeira,
+  // canais.ts
+  criarCanal,
+  configurarCanal,
+  // tarefas-conversacionais.ts
+  alterarModeloDaLista,
+  definirCanaisDaLista,
+  criarTarefaConversacional,
+  trocarCanalDaTarefa,
+  vincularNegocioATarefa,
+  criarNegocioDaTarefa,
+  // ia/agentes.ts
+  ativarAgente,
+  pausarAgente,
+  arquivarAgente,
+  enviarAgenteALixeira,
+  transferirAgente,
+  ensaiarAgente,
+  cancelarExecucao,
+  apagarItemDeMemoria,
+  // ia/automacoes-editor.ts
+  criarAutomacao,
+  editarAutomacao,
+  duplicarAutomacao,
+  criarRascunhoDaAutomacao,
+  descartarRascunhoDaAutomacao,
+  definirGatilho,
+  adicionarCondicao,
+  editarCondicao,
+  removerCondicao,
+  adicionarAcao,
+  editarAcao,
+  moverAcao,
+  removerAcao,
+  definirPoliticaDeErro,
+  pausarAutomacao,
+  retomarAutomacao,
+  arquivarAutomacao,
+  enviarAutomacaoALixeira,
+  // ia/conhecimento.ts
+  criarColecao,
+  editarColecao,
+  adicionarFonte,
+  arquivarColecao,
+  restaurarColecao,
+  adicionarDocumento,
+  novaVersaoDoDocumento,
+  restaurarVersaoDoDocumento,
+  editarDocumento,
+  moverDocumento,
+  comentarDocumento,
+  arquivarDocumento,
+  enviarDocumentoALixeira,
+  restaurarDocumento,
+  concederColecao,
+  revogarColecao,
+  // ia/habilidades.ts
+  criarHabilidade,
+  copiarHabilidadeDaPlataforma,
+  editarHabilidade,
+  criarRascunhoDaHabilidade,
+  editarRascunhoDaHabilidade,
+  descartarRascunhoDaHabilidade,
+  publicarVersaoDaHabilidade,
+  obsoletarVersaoDaHabilidade,
+  arquivarHabilidade,
+  restaurarHabilidade,
+  concederHabilidade,
+  fixarVersaoDaConcessao,
+  revogarHabilidade,
+  // ia/integracoes.ts
+  conectarIntegracao,
+  desconectarIntegracao,
 } as const satisfies Record<string, (state: DataState, actingMemberId: Id, ...args: any[]) => OperationResult<unknown>>;
 
 export type NomeDeOperacao = keyof typeof OPERACOES;

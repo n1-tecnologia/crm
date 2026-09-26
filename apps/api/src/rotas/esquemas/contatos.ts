@@ -59,6 +59,17 @@ const CREATE_COMPANY_INPUT = z
   })
   .strict();
 
+/** `parentCompanyId?: Id | null` — `null` desfaz a matriz (`empresa-popup.tsx`). */
+const UPDATE_COMPANY_PATCH = z
+  .object({
+    tradeName: z.string().optional(),
+    legalName: z.string().optional(),
+    description: z.string().optional(),
+    ownerMemberId: ID.optional(),
+    parentCompanyId: ID.nullable().optional(),
+  })
+  .strict();
+
 const LINK_CONTACT_TO_COMPANY_INPUT = z
   .object({
     contactId: ID,
@@ -94,6 +105,8 @@ export const CONTATOS = {
   // Posição obrigatória tipada `Id | undefined`: `contact-card.tsx` manda
   // `undefined` para limpar — vira `null` no JSON, por isso `opcional()`.
   setContactCatalogValue: z.tuple([ID, z.enum(["qualificacao", "temperatura"]), opcional(ID)]),
+  updateCompany: z.tuple([ID, UPDATE_COMPANY_PATCH]),
+  addCompanyNote: z.tuple([ID, z.string()]),
 } satisfies Esquemas;
 
 // ── Portão de enum bidirecional — falta ou sobra de membro não compila ──

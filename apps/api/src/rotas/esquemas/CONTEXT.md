@@ -29,7 +29,7 @@ ser válido", limites numéricos) continua exclusivamente no domínio.
    }`); ninguém dentro desta pasta importa dele. Sem ciclo:
    `fragmentos.ts` → `<modulo>.ts` → `esquemas-de-argumentos.ts` →
    `operacoes.ts`.
-7. `esquemas-de-argumentos.ts` compõe os 22 sob `satisfies
+7. `esquemas-de-argumentos.ts` compõe os 29 sob `satisfies
    EsquemasCompletos` — um módulo novo no domínio exige um arquivo novo
    aqui, senão não compila.
 
@@ -67,7 +67,14 @@ e `iniciarConversa` para `OPERACOES` sem schema — ver
 | `flows.ts` | `ferramentas/flows.ts` |
 | `iniciar-conversa.ts` | `iniciar-conversa.ts` |
 | `lote.ts` | `lote.ts` |
+| `canais.ts` | `canais.ts` |
+| `tarefas-conversacionais.ts` | `tarefas-conversacionais.ts` |
+| `ia-agentes.ts` | `ia/agentes.ts` |
+| `ia-automacoes-editor.ts` | `ia/automacoes-editor.ts` |
+| `ia-conhecimento.ts` | `ia/conhecimento.ts` |
+| `ia-habilidades.ts` | `ia/habilidades.ts` |
+| `ia-integracoes.ts` | `ia/integracoes.ts` |
 
-`esquemas-de-argumentos.ts` compõe os 22 sob `satisfies EsquemasCompletos`
-— toda operação de `OPERACOES` (202) tem schema; não existe mais fallback
+`esquemas-de-argumentos.ts` compõe os 29 sob `satisfies EsquemasCompletos`
+— toda operação de `OPERACOES` (264) tem schema; não existe mais fallback
 estrutural nem operação alcançável por HTTP sem schema próprio.

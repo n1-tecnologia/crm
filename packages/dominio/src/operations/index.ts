@@ -119,6 +119,8 @@ export const createCompany = instrumentar("createCompany");
 export const linkContactToCompany = instrumentar("linkContactToCompany");
 export const addCompanyIdentifier = instrumentar("addCompanyIdentifier");
 export const setContactCatalogValue = instrumentar("setContactCatalogValue");
+export const updateCompany = instrumentar("updateCompany");
+export const addCompanyNote = instrumentar("addCompanyNote");
 
 // ai.ts
 export const decideApproval = instrumentar("decideApproval");
@@ -301,3 +303,87 @@ export const arquivarComunidade = instrumentar("arquivarComunidade");
 export const restaurarComunidade = instrumentar("restaurarComunidade");
 export const enviarComunidadeALixeira = instrumentar("enviarComunidadeALixeira");
 export const restaurarComunidadeDaLixeira = instrumentar("restaurarComunidadeDaLixeira");
+
+// ── Frontend do main (2026-09-25) ──────────────────────────────────────
+// As 67 operações que o drop do frontend trouxe. Sem estas linhas, `apps/web`
+// chamaria as versões cruas, `gravarChamadas` não observaria nada e o clique
+// rodaria só no navegador — nunca chegaria a `POST /operacoes/:nome`.
+
+// canais.ts
+export const criarCanal = instrumentar("criarCanal");
+export const configurarCanal = instrumentar("configurarCanal");
+
+// tarefas-conversacionais.ts
+export const alterarModeloDaLista = instrumentar("alterarModeloDaLista");
+export const definirCanaisDaLista = instrumentar("definirCanaisDaLista");
+export const criarTarefaConversacional = instrumentar("criarTarefaConversacional");
+export const trocarCanalDaTarefa = instrumentar("trocarCanalDaTarefa");
+export const vincularNegocioATarefa = instrumentar("vincularNegocioATarefa");
+export const criarNegocioDaTarefa = instrumentar("criarNegocioDaTarefa");
+
+// ia/agentes.ts
+export const ativarAgente = instrumentar("ativarAgente");
+export const pausarAgente = instrumentar("pausarAgente");
+export const arquivarAgente = instrumentar("arquivarAgente");
+export const enviarAgenteALixeira = instrumentar("enviarAgenteALixeira");
+export const transferirAgente = instrumentar("transferirAgente");
+export const ensaiarAgente = instrumentar("ensaiarAgente");
+export const cancelarExecucao = instrumentar("cancelarExecucao");
+export const apagarItemDeMemoria = instrumentar("apagarItemDeMemoria");
+
+// ia/automacoes-editor.ts
+export const criarAutomacao = instrumentar("criarAutomacao");
+export const editarAutomacao = instrumentar("editarAutomacao");
+export const duplicarAutomacao = instrumentar("duplicarAutomacao");
+export const criarRascunhoDaAutomacao = instrumentar("criarRascunhoDaAutomacao");
+export const descartarRascunhoDaAutomacao = instrumentar("descartarRascunhoDaAutomacao");
+export const definirGatilho = instrumentar("definirGatilho");
+export const adicionarCondicao = instrumentar("adicionarCondicao");
+export const editarCondicao = instrumentar("editarCondicao");
+export const removerCondicao = instrumentar("removerCondicao");
+export const adicionarAcao = instrumentar("adicionarAcao");
+export const editarAcao = instrumentar("editarAcao");
+export const moverAcao = instrumentar("moverAcao");
+export const removerAcao = instrumentar("removerAcao");
+export const definirPoliticaDeErro = instrumentar("definirPoliticaDeErro");
+export const pausarAutomacao = instrumentar("pausarAutomacao");
+export const retomarAutomacao = instrumentar("retomarAutomacao");
+export const arquivarAutomacao = instrumentar("arquivarAutomacao");
+export const enviarAutomacaoALixeira = instrumentar("enviarAutomacaoALixeira");
+
+// ia/conhecimento.ts
+export const criarColecao = instrumentar("criarColecao");
+export const editarColecao = instrumentar("editarColecao");
+export const adicionarFonte = instrumentar("adicionarFonte");
+export const arquivarColecao = instrumentar("arquivarColecao");
+export const restaurarColecao = instrumentar("restaurarColecao");
+export const adicionarDocumento = instrumentar("adicionarDocumento");
+export const novaVersaoDoDocumento = instrumentar("novaVersaoDoDocumento");
+export const restaurarVersaoDoDocumento = instrumentar("restaurarVersaoDoDocumento");
+export const editarDocumento = instrumentar("editarDocumento");
+export const moverDocumento = instrumentar("moverDocumento");
+export const comentarDocumento = instrumentar("comentarDocumento");
+export const arquivarDocumento = instrumentar("arquivarDocumento");
+export const enviarDocumentoALixeira = instrumentar("enviarDocumentoALixeira");
+export const restaurarDocumento = instrumentar("restaurarDocumento");
+export const concederColecao = instrumentar("concederColecao");
+export const revogarColecao = instrumentar("revogarColecao");
+
+// ia/habilidades.ts
+export const criarHabilidade = instrumentar("criarHabilidade");
+export const copiarHabilidadeDaPlataforma = instrumentar("copiarHabilidadeDaPlataforma");
+export const editarHabilidade = instrumentar("editarHabilidade");
+export const criarRascunhoDaHabilidade = instrumentar("criarRascunhoDaHabilidade");
+export const editarRascunhoDaHabilidade = instrumentar("editarRascunhoDaHabilidade");
+export const descartarRascunhoDaHabilidade = instrumentar("descartarRascunhoDaHabilidade");
+export const publicarVersaoDaHabilidade = instrumentar("publicarVersaoDaHabilidade");
+export const obsoletarVersaoDaHabilidade = instrumentar("obsoletarVersaoDaHabilidade");
+export const arquivarHabilidade = instrumentar("arquivarHabilidade");
+export const restaurarHabilidade = instrumentar("restaurarHabilidade");
+export const concederHabilidade = instrumentar("concederHabilidade");
+export const fixarVersaoDaConcessao = instrumentar("fixarVersaoDaConcessao");
+export const revogarHabilidade = instrumentar("revogarHabilidade");
+
+// ia/integracoes.ts
+export const conectarIntegracao = instrumentar("conectarIntegracao");
+export const desconectarIntegracao = instrumentar("desconectarIntegracao");
