@@ -18,6 +18,10 @@ import type {
 import { contactDisplayName, effectiveListConfig } from "../derive";
 import { memberActor, nextId, recordActivity, systemActor } from "./activity";
 import { addTaskComment, changeTaskStatus } from "./tasks";
+import { nomeDeAgenteEmUso } from "./ia/agentes";
+import { nomeDeAutomacaoColide } from "./ia/automacoes-editor";
+import { validarAutomacao } from "./ia/automacoes-validacao";
+import { recusaDeAdministrarAutomacao, recusaDeGovernarAgente } from "./ia/permissoes-ia";
 
 const now = (): string => new Date().toISOString();
 
@@ -174,7 +178,7 @@ export function decideApproval(
     after: decision,
     ...(reason ? { detail: reason } : {}),
   });
-  return ok(approval);
+  return ok(approval, approval.id);
 }
 
 export interface SolicitarAprovacaoInput {
@@ -338,8 +342,10 @@ export function decideProcessApproval(
  * RN-AUT-07 — publishing validates, WITHOUT effect on failure: trigger
  * compatible with the scope, at least one action, existing tools, `ativo`
  * agents the automation may execute, skills granted to the agent, and the
- * permission ceiling of the owner (RN-AUT-04). DO-AUT-19 — publishing makes the
- * previous version `obsoleta` in the same act.
+ * permission ceiling of the owner (RN-AUT-04). The rules live in
+ * `validarAutomacao`, shared with the editor; the first problem is answered
+ * with its block as `field`. DO-AUT-19 — publishing makes the previous
+ * version `obsoleta` in the same act.
  */
 export function publishAutomation(
   state: DataState,
@@ -351,90 +357,18 @@ export function publishAutomation(
 
   /**
    * Publicar exige `administrar` sobre a Automação (documento 12, 12.2 e a
-   * tabela de 17.1): o Proprietário do Espaço de Trabalho e os Administradores
-   * por Papel, o Proprietário e o Criador da Automação por `próprios`. Um
-   * Convidado não tem nada sobre Automação por Papel.
-   *
-   * A verificação vem antes de qualquer validação do rascunho para que quem não
-   * pode publicar não descubra, pela mensagem de erro, o que falta nele.
+   * tabela de 17.1). A verificação vem antes de qualquer validação do
+   * rascunho para que quem não pode publicar não descubra, pela mensagem de
+   * erro, o que falta nele.
    */
-  const acting = state.members.find((m) => m.id === actingMemberId);
-  if (!acting || acting.state !== "ativo") {
-    return fail("Só um Membro ativo publica uma Versão de Automação.");
-  }
-  const actingBase = state.roles.find((r) => r.id === acting.roleId)?.base;
-  const mayPublish =
-    actingBase === "proprietario" ||
-    actingBase === "administrador" ||
-    (actingBase !== "convidado" &&
-      (automation.ownerMemberId === actingMemberId ||
-        (automation.createdBy.kind === "member" && automation.createdBy.id === actingMemberId)));
-  if (!mayPublish) {
-    return fail("Publicar uma Versão exige administrar esta Automação.");
-  }
+  const recusa = recusaDeAdministrarAutomacao(state, actingMemberId, automation, "publicar");
+  if (recusa) return fail(recusa);
 
   const draft = automation.versions.find((v) => v.state === "rascunho");
   if (!draft) return fail("Não há rascunho para publicar.");
 
-  if (!draft.trigger) {
-    return fail("Escolha um Gatilho para publicar.", "gatilho");
-  }
-  if (draft.actions.length === 0) {
-    return fail("Adicione ao menos uma Ação.", "acoes");
-  }
-
-  // RN-AUT-07 — the trigger must be compatible with the scope.
-  const scopeFamily = automationScopeFamily(automation);
-  const triggerFamily = triggerObjectFamily(draft.trigger.eventType);
-  if (draft.trigger.kind === "evento" && triggerFamily && !scopeFamily.includes(triggerFamily)) {
-    return fail(
-      `O Evento “${draft.trigger.eventType}” não ocorre no escopo desta Automação.`,
-      "gatilho",
-    );
-  }
-
-  for (const action of draft.actions) {
-    if (action.kind === "escrita") {
-      if (!action.toolId || !state.tools.some((t) => t.id === action.toolId)) {
-        return fail(`A Ferramenta “${action.toolId ?? "—"}” não existe no Catálogo.`, "acoes");
-      }
-    }
-    if (action.controlKind === "invocarAgente") {
-      const agent = state.agents.find((a) => a.id === action.agentId);
-      if (!agent) return fail("O Agente indicado na Ação não existe.", "acoes");
-      if (agent.lifecycle !== "ativo") {
-        return fail(`O Agente “${agent.name}” não está ativo.`, "acoes");
-      }
-      if (action.skillId) {
-        const granted = state.skillGrants.some(
-          (g) => g.agentId === agent.id && g.skillId === action.skillId,
-        );
-        if (!granted) {
-          const skill = state.skills.find((s) => s.id === action.skillId);
-          return fail(
-            `A Habilidade “${skill?.name ?? action.skillId}” não está concedida ao Agente “${agent.name}”.`,
-            "acoes",
-          );
-        }
-      }
-    }
-  }
-
-  // RN-AUT-04 — the effective permission is own ∩ owner; publishing is rejected
-  // when the automation's own grants exceed the owner's.
-  const owner = state.members.find((m) => m.id === automation.ownerMemberId);
-  if (!owner || (owner.state !== "ativo" && owner.state !== "suspenso")) {
-    return fail("A Automação precisa de um Proprietário ativo.");
-  }
-  const ownerRole = state.roles.find((r) => r.id === owner.roleId);
-  const automationRole = automation.roleId
-    ? state.roles.find((r) => r.id === automation.roleId)
-    : undefined;
-  if (automationRole && ownerRole && exceeds(automationRole.base, ownerRole.base)) {
-    return fail(
-      "A Automação não pode ter mais permissões que o seu Proprietário. Revise as concessões ou transfira a propriedade.",
-    );
-  }
+  const primeiro = validarAutomacao(state, automation, draft)[0];
+  if (primeiro) return fail(primeiro.mensagem, primeiro.bloco);
 
   for (const version of automation.versions) {
     if (version.state === "publicada") version.state = "obsoleta";
@@ -455,49 +389,45 @@ export function publishAutomation(
   return ok(draft);
 }
 
-const BASE_RANK: Record<string, number> = { convidado: 0, membro: 1, administrador: 2, proprietario: 3 };
-
-const exceeds = (a: string, b: string): boolean => (BASE_RANK[a] ?? 0) > (BASE_RANK[b] ?? 0);
-
-function automationScopeFamily(automation: Automation): string[] {
-  switch (automation.scopeType) {
-    case "workspace":
-      return ["task", "deal", "contact", "company", "conversation", "message", "execution", "document"];
-    case "space":
-    case "folder":
-    case "list":
-      return ["task"];
-    case "funnel":
-      return ["deal"];
-    case "inbox":
-    case "queue":
-      return ["conversation", "message"];
-    default:
-      return [];
-  }
+/**
+ * 17.1 — desarquivar é `administrar`; restaurar da lixeira é `excluir`, que
+ * no protótipo é administrar. RN-AGE-02 — a lixeira não reservou o nome:
+ * restaurar com colisão é rejeitado até renomear. É a frase que a ficha e o
+ * catálogo mostram como `disabledReason` de Desarquivar/Restaurar.
+ */
+export function recusaDeRestaurarAgente(state: DataState, memberId: Id, agent: Agent): string | undefined {
+  const recusa = recusaDeGovernarAgente(state, memberId, agent, "administrar");
+  if (recusa) return recusa;
+  const homonimo = nomeDeAgenteEmUso(state, agent.name, agent.id);
+  if (homonimo) return `Já existe um Agente chamado “${homonimo.name}”: renomeie antes de restaurar (RN-AGE-02).`;
+  return undefined;
 }
 
-function triggerObjectFamily(eventType: string | undefined): string | null {
-  if (!eventType) return null;
-  if (eventType.startsWith("tarefa")) return "task";
-  if (eventType.startsWith("negocio")) return "deal";
-  if (eventType.startsWith("contato")) return "contact";
-  if (eventType.startsWith("empresa")) return "company";
-  if (eventType.startsWith("conversa")) return "conversation";
-  if (eventType.startsWith("mensagem")) return "message";
-  if (eventType.startsWith("execucao")) return "execution";
-  if (eventType.startsWith("documento")) return "document";
-  return null;
+/**
+ * 17.1 e RN-AUT-03, a mesma pergunta para a Automação: `administrar`, e o
+ * nome livre no escopo (a lixeira não reserva).
+ */
+export function recusaDeRestaurarAutomacao(state: DataState, memberId: Id, automation: Automation): string | undefined {
+  const recusa = recusaDeAdministrarAutomacao(state, memberId, automation, "restaurar");
+  if (recusa) return recusa;
+  if (nomeDeAutomacaoColide(state, automation.scopeType, automation.scopeId, automation.name, automation.id)) {
+    return `Já existe uma Automação chamada “${automation.name}” neste escopo: renomeie antes de restaurar (RN-AUT-03).`;
+  }
+  return undefined;
 }
 
 /**
  * B94 — restoring or unarchiving an Agent or an Automation NEVER returns it
  * directly to `ativo`: it returns to `pausado` when the previous state was
  * `ativo` or `pausado`; `rascunho` and `arquivado` come back as they were.
+ * Permission and name collision (`recusaDeRestaurarAgente`) come first, so a
+ * refusal has no effect.
  */
 export function restoreAgent(state: DataState, actingMemberId: Id, agentId: Id): OperationResult<Agent> {
   const agent = state.agents.find((a) => a.id === agentId);
   if (!agent) return fail("Agente não encontrado.");
+  const recusa = recusaDeRestaurarAgente(state, actingMemberId, agent);
+  if (recusa) return fail(recusa);
   if (agent.lifecycle !== "naLixeira" && agent.lifecycle !== "arquivado") return ok(agent);
   const previous = agent.lifecycleBeforeTrashAi ?? "ativo";
   agent.lifecycle = previous === "ativo" || previous === "pausado" ? "pausado" : previous;
@@ -521,6 +451,8 @@ export function restoreAutomation(
 ): OperationResult<Automation> {
   const automation = state.automations.find((a) => a.id === automationId);
   if (!automation) return fail("Automação não encontrada.");
+  const recusa = recusaDeRestaurarAutomacao(state, actingMemberId, automation);
+  if (recusa) return fail(recusa);
   if (automation.lifecycle !== "naLixeira" && automation.lifecycle !== "arquivado") return ok(automation);
   const previous = automation.lifecycleBeforeTrashAi ?? "ativo";
   automation.lifecycle = previous === "ativo" || previous === "pausado" ? "pausado" : previous;
@@ -619,7 +551,7 @@ export function createChatSession(
     objectName: session.title,
     ...(anchor ? { detail: `Ancorada em ${anchor.nameAtTheTime}` } : {}),
   });
-  return ok(session);
+  return ok(session, session.id);
 }
 
 /**
@@ -680,10 +612,10 @@ export function configureChatSession(
       if (!skill) return fail("Habilidade não encontrada.", "habilidade");
       if (skill.lifecycle !== "ativo") return fail(`A Habilidade “${skill.name}” não está ativa.`, "habilidade");
       session.skillId = skill.id;
-      mudancas.push(`plugin ${skill.name}`);
+      mudancas.push(`Habilidade ${skill.name}`);
     } else {
       delete session.skillId;
-      mudancas.push("sem plugin");
+      mudancas.push("sem Habilidade");
     }
   }
   if (input.chosenModelId !== undefined) {
@@ -722,7 +654,7 @@ export function configureChatSession(
     objectName: session.title,
     detail: mudancas.join(" · "),
   });
-  return ok(session);
+  return ok(session, session.id);
 }
 
 /**
@@ -759,7 +691,7 @@ export function sendChatMessage(
     at: now(),
   };
   session.messages.push(message);
-  return ok(message);
+  return ok(message, message.id);
 }
 
 function anchorName(state: DataState, type: ChatAnchor["type"], id: Id): string | undefined {

@@ -12,6 +12,7 @@ import {
   Receipt,
   TriangleAlert,
   Users,
+  Video,
   Workflow,
   type LucideIcon,
 } from "lucide-react";
@@ -75,6 +76,21 @@ export function corLavadaDeTipo(nome: string | undefined): string {
     default:
       return "var(--acento-lavado)";
   }
+}
+
+/**
+ * O ícone do Tipo NO QUADRO, com a cor e o fundo lavado: igual ao do resto do
+ * app, salvo a Reunião, que no quadro é a CALL — a câmera, no acento (o sinal
+ * que os cartões do quadro já usavam; achado da revisão do quadro padrão: ela
+ * tinha virado as "pessoas" em `--info`).
+ */
+export function iconeDoTipoNoQuadro(tipo: { readonly name: string; readonly icon: string } | undefined): {
+  readonly icone: LucideIcon;
+  readonly cor: string;
+  readonly lavado: string;
+} {
+  if (tipo?.name === "Reunião") return { icone: Video, cor: "var(--acento)", lavado: "var(--acento-lavado)" };
+  return { icone: iconeDeTipo(tipo?.icon), cor: corDeTipo(tipo?.icon), lavado: corLavadaDeTipo(tipo?.icon) };
 }
 
 /** Os outros objetos que aparecem em listas mistas (Notificações, Início). */

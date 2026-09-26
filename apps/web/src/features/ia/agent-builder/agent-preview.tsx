@@ -141,7 +141,8 @@ export function AgentPreview({
         </div>
       )}
 
-      <div className="absolute inset-x-0 bottom-[38px] flex justify-center">
+      {/* A doca do robô flutuante (features/shell/robo-flutuante.tsx). */}
+      <div className="doca-do-robo absolute inset-x-0 bottom-[38px] flex justify-center">
         <ChatComposer
           onSend={onSend}
           disabled={loading}

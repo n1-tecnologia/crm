@@ -11,13 +11,29 @@ import Link from "next/link";
 import { useState } from "react";
 import { ChevronRight, Fingerprint, Hash, KeyRound, Radio, RefreshCw, Send, Tag, Type, Workflow } from "lucide-react";
 import { useData, useRun, useSession } from "@/dados/store";
-import { CHANNEL_CAPABILITIES } from "@n1/dominio/operations";
-import { adicionarNotaNoAtivo } from "@n1/dominio/operations/ferramentas/notas";
-import { arquivarFlow, copiarFlow, criarRascunhoAPartirDe, definirPontoDeTrocaDeDados, descartarRascunho, despublicarFlow, editarFlow, enviarFlow, enviarFlowALixeira, regenerarChavesDoPonto, removerPontoDeTrocaDeDados, restaurarFlow, restaurarFlowDaLixeira, sincronizarFlow } from "@n1/dominio/operations/ferramentas/flows";
-import { recusaDeAdministracao, recusaDeEnvioDeFlow } from "@n1/dominio/operations/ferramentas/permissoes";
+import {
+  CHANNEL_CAPABILITIES,
+  adicionarNotaNoAtivo,
+  arquivarFlow,
+  copiarFlow,
+  criarRascunhoAPartirDe,
+  definirPontoDeTrocaDeDados,
+  descartarRascunho,
+  despublicarFlow,
+  editarFlow,
+  enviarFlow,
+  enviarFlowALixeira,
+  recusaDeAdministracao,
+  recusaDeEnvioDeFlow,
+  regenerarChavesDoPonto,
+  removerPontoDeTrocaDeDados,
+  restaurarFlow,
+  restaurarFlowDaLixeira,
+  sincronizarFlow,
+} from "@n1/dominio/operations";
 import { contactDisplayName, responseWindowOpenUntil } from "@n1/dominio/derive";
 import { enviosDoFlow, metricasDoFlow, telasOrdenadas, versaoCorrente, versaoPublicada } from "@n1/dominio/derive-ferramentas";
-import type { CategoriaDeFlow, Flow } from "@n1/dominio/types/ferramentas";
+import type { CategoriaDeFlow, Flow } from "@n1/dominio/types";
 import { LinhaDeProp } from "@/features/estrutura/linha-de-propriedade";
 import { AsideDeAtividade, EditorDeTexto, useAvisos, useNomeDoAtor, type Report } from "@/features/shell/ficha";
 import { useFormat } from "@/features/shell/use-format";

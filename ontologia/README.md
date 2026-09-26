@@ -30,7 +30,11 @@ ontologia/
 │   ├── empresas.md                11
 │   ├── negocios.md                12
 │   ├── funis.md                   13
-│   └── caixa-de-entrada-e-mensageria.md   14
+│   ├── caixa-de-entrada-e-mensageria.md   14
+│   └── ativos-de-canal/           RASCUNHOS "Ativos de Canal" (23–25); o 22 (base) não existe
+│       ├── flow.md                23
+│       ├── grupo.md               24
+│       └── comunidade.md          25
 ├── 04-ia/
 │   ├── ia-visao-geral.md          15
 │   ├── chat.md                    16
@@ -51,6 +55,7 @@ CRM .............................. 6
 IA ............................... 6
 PAINÉIS .......................... 1
 TOTAL ........................... 21
++ RASCUNHOS Ativos de Canal ...... 3   (23 Flow, 24 Grupo, 25 Comunidade — fora da contagem até revisão)
 ```
 
 README, GLOSSARIO, MATRIZ-DE-RELACOES e DECISOES-E-PENDENCIAS são documentos auxiliares de governança e não entram na contagem.
@@ -95,6 +100,10 @@ Escala: `RASCUNHO` → `REVISADO` (revisão individual e transversal do domínio
 | 19 | Automações | IA | APROVADO CONCEITUALMENTE | 17, 18 |
 | 20 | Conhecimento | IA | APROVADO CONCEITUALMENTE | 01 |
 | 21 | Painéis | Painéis | APROVADO CONCEITUALMENTE | todos |
+| 22 | Ativos de Canal (base) | CRM | **AUSENTE** — referenciado por 23–25, nunca escrito; o vocabulário de Sincronização, Ferramentas do Canal e Link de Captação vive provisoriamente no código (C33-A) | 14 |
+| 23 | Flow | CRM | RASCUNHO | 22, 14, 10, 19, 17 |
+| 24 | Grupo | CRM | RASCUNHO | 22, 14, 10, 19, 25 |
+| 25 | Comunidade | CRM | RASCUNHO | 22, 24, 14 |
 
 Documentos auxiliares: GLOSSARIO (1.0), MATRIZ-DE-RELACOES (1.0), DECISOES-E-PENDENCIAS (1.0). Nenhum documento está em `PENDENTE`; as questões que dependem de decisão de produto estão na seção C da constituição e referenciadas nas seções 25 dos documentos.
 

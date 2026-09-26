@@ -87,6 +87,7 @@ export function applyContasAReceber(state: DataState, clock: Clock, opcoes: Opco
     description: "Uma Tarefa por valor a receber: a entrada e cada parcela de um contrato, e os saques de plataforma.",
     order: 1,
     isPrivate: false,
+    modeloDeTarefa: "operacional",
     modes: { statusSet: "sobrescrito", features: "sobrescrito" },
     blocks: {},
     statusSet,

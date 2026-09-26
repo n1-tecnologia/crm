@@ -228,7 +228,7 @@ export function importarContaAReceberHistorica(
       ...(entrada.vencimento ? { dueDate: entrada.vencimento } : {}),
       ...(responsaveis.length > 0 ? { assignees: responsaveis.map(memberActor) } : {}),
     },
-    { runAutomations: false },
+    { runAutomations: false, nasceNoStatusPedido: true },
   );
   if (!criada.ok) return criada;
   let task = criada.value;

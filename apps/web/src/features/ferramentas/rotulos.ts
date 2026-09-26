@@ -4,8 +4,23 @@
  * mesmo código.
  */
 
-import type { VersionState } from "@n1/dominio/types";
-import type { CategoriaDeFlow, CausaDaSaida, CriterioDeCaptacao, EstadoDeSincronizacao, EstadoDoPedido, EstadoNoProvedor, OrigemDaParticipacao, OrigemDeCriacao, PapelDoCanal, PapelNaComunidade, PapelNaParticipacao, TipoDeAcao, TipoDeDadoDeTela, TipoDeEntradaDeTexto } from "@n1/dominio/types/ferramentas";
+import type {
+  CategoriaDeFlow,
+  CausaDaSaida,
+  CriterioDeCaptacao,
+  EstadoDeSincronizacao,
+  EstadoDoPedido,
+  EstadoNoProvedor,
+  OrigemDaParticipacao,
+  OrigemDeCriacao,
+  PapelDoCanal,
+  PapelNaComunidade,
+  PapelNaParticipacao,
+  TipoDeAcao,
+  TipoDeDadoDeTela,
+  TipoDeEntradaDeTexto,
+  VersionState,
+} from "@n1/dominio/types";
 import type { FaixaDeOcupacao, MarcadorDaComunidade, MarcadorDoGrupo } from "@n1/dominio/derive-ferramentas";
 import type { TomPilula } from "@/features/shell/ui";
 

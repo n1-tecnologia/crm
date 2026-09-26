@@ -13,11 +13,9 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 import { useData, useRun } from "@/dados/store";
-import { CATALOGO_DE_COMPONENTES } from "@n1/dominio/operations/ferramentas/flows-catalogo";
-import { editarComponente } from "@n1/dominio/operations/ferramentas/flows";
-import { type ProblemaDeValidacao } from "@n1/dominio/operations/ferramentas/flows-validacao";
+import { CATALOGO_DE_COMPONENTES, editarComponente, type ProblemaDeValidacao } from "@n1/dominio/operations";
 import { camposDaTela, camposDeFlow, telasOrdenadas } from "@n1/dominio/derive-ferramentas";
-import type { AcaoDeComponente, ComponenteDeFlow, CondicaoDeComponente, OpcaoDeComponente, OperadorDeCondicao, PropriedadesDeComponente, TelaDeFlow, TipoDeAcao, VersaoDeFlow } from "@n1/dominio/types/ferramentas";
+import type { AcaoDeComponente, ComponenteDeFlow, CondicaoDeComponente, OpcaoDeComponente, OperadorDeCondicao, PropriedadesDeComponente, TelaDeFlow, TipoDeAcao, VersaoDeFlow } from "@n1/dominio/types";
 import type { Report } from "@/features/shell/ficha";
 import { Button, ConditionMarker, Field, Icone, MultiSelect, Select, TextArea, TextInput, Toggle } from "@/features/shell/ui";
 import { SPEC_POR_TIPO, type PropSpec } from "./flow-spec";

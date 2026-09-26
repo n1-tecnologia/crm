@@ -245,15 +245,15 @@
   --controle-h-lg: 2.75rem;     /* 44px — alvo de toque mínimo no mobile      */
   --celula-x: 0.75rem;          /* 12px — padding horizontal de célula        */
   --celula-y: 0.5rem;           /* 8px                                        */
-  --barra-lateral-w: 16.25rem;  /* 260px                                      */
-  --cabecalho-h: 3.5rem;        /* 56px                                       */
 
   /* Casca e navegação. */
   --cabecalho-tela-h: 2.75rem;  /* 44px — a barra de título de cada tela      */
-  --capa-h: 22rem;              /* 352px — a capa do Início                   */
-  --orbe-tam: 12rem;            /* 192px — o disco externo da orbe            */
-  --globo-tam: 17rem;           /* 272px — o globo de pontos da capa          */
+  --barra-global-h: 2.5rem;     /* 40px — a faixa da pessoa: busca, pendências, conta */
+  --busca-global-w: 30rem;      /* largura máxima da pílula de busca da barra */
+  --capa-h: 22rem;              /* 352px — a altura mínima do palco do Início */
+  --marca-dagua-opacidade: 0.06;       /* a marca-d'água do Login, encostada à borda */
   --conversa-empilhada-h: 40vh; /* a conversa da Tarefa quando fica em cima   */
+  --conversa-empilhada-min: 10rem; /* 160px — o fio de Mensagens quando a Conversa empilha sob a ficha da Tarefa: dois balões, nunca menos */
   --barra-filtros-h: 2.5rem;    /* 40px — a faixa de busca e chips            */
   --trilha-w: 3.5rem;           /* 56px — etapa 1 da navegação (assuntos)     */
   --painel-nav-w: 14.5rem;      /* 232px — etapa 2 (telas do assunto)         */
@@ -276,6 +276,7 @@
   --icone-tile: 1.375rem;       /* o ladrilho do ícone de espaço              */
   --icone-lg: 3rem;             /* 48px — cartão de destaque                  */
   --barra-viz-h: 0.5rem;        /* 8px — espessura de barra de gráfico        */
+  --colunas-h: 9rem;            /* 144px — a altura do gráfico em colunas (as estatísticas do Início) */
   /* Séries de gráfico (Painéis): a ordem em que fatias e barras recebem cor.
      Começa no acento e segue pelas semânticas — aqui nenhuma significa nada,
      só distingue uma série da outra; quem diz o que é cada uma é o rótulo. */
@@ -339,15 +340,6 @@
 
   /* O brilho do núcleo da orbe do Assistente: é a única fonte de luz do app,
      e por isso pode ser generosa — 120px de halo sobre o preto da marca.   */
-  --brilho-orbe:
-    0 0 40px rgb(192 132 252 / 0.55),
-    0 0 120px rgb(192 132 252 / 0.28),
-    inset 0 1px 0 rgb(255 255 255 / 0.35);
-  --brilho-orbe-forte:
-    0 0 56px rgb(192 132 252 / 0.75),
-    0 0 160px rgb(192 132 252 / 0.4),
-    inset 0 1px 0 rgb(255 255 255 / 0.45);
-
   /* ── Movimento — as durações e curvas do sistema ─────────────────────── */
   --dur-1: 150ms;               /* chip, alternador                           */
   --dur-2: 300ms;               /* cor, borda, deslize de ícone               */
@@ -355,6 +347,9 @@
   --dur-4: 700ms;               /* escala de imagem                           */
   --easing: cubic-bezier(0.4, 0, 0.2, 1);
   --easing-saida: cubic-bezier(0, 0, 0.2, 1);
+  /* O recuo da câmera do robô na chegada: a curva da própria cena do Spline,
+     lenta na partida e macia no fim. */
+  --easing-cena-entrada: cubic-bezier(1, -0.04, 0.58, 1);
 
   /* O passo e as janelas do sistema de movimento (DIRECAO-VISUAL §5).
      Nenhum `ms`/`s` literal vive fora deste arquivo — a sentinela reprova. */
@@ -368,6 +363,9 @@
   --dur-aviso-longo: 8000ms;    /* Toast com ação: ler, decidir e clicar      */
   --dur-realce: 1500ms;         /* peça recém-alterada esmaece ao fundo       */
   --dur-navegacao-max: 30s;     /* navegação que passa disto é dada por morta */
+  --dur-cena-assenta: 2s;       /* a cena 3D termina de montar antes de parar  */
+  --dur-cena-espera: 500ms;     /* a câmera do robô segura no rosto na chegada */
+  --dur-cena-entrada: 2500ms;   /* e recua até a pose final (zoom out)         */
   --dur-pulso: 1.5s;            /* laço do esqueleto e do ícone pendente      */
   --dur-giro: 1s;               /* laço do spinner                            */
   --fio: 2px;                   /* barra de rota, luz do trilho, régua        */
@@ -376,7 +374,7 @@
   --esqueleto: rgb(255 255 255 / 0.07);   /* superfície do esqueleto          */
   /* Ajustes por elemento, escritos inline por quem os usa (herdam daqui):
      `--cascata-inicio` num contêiner .cascata espera algo antes da onda (a
-     capa do Início); `--duracao-aviso` na régua do Toast estende o prazo. */
+     capa do Entrar); `--duracao-aviso` na régua do Toast estende o prazo. */
   --cascata-inicio: 0ms;
   --duracao-aviso: var(--dur-aviso);
   /* O carregador de ícones: cada ícone fica --dur-icone; o ciclo tem
@@ -395,9 +393,6 @@
   --dur-cintila-2: 6s;
   --cintila-defasagem: -2s;
   --dur-respira: 6s;
-  --respira-defasagem-2: -2s;
-  --respira-defasagem-3: -4s;
-  --dur-varredura: 24s;
 
   /* ── Sobreposição ────────────────────────────────────────────────────── */
   --veu-cor: rgb(0 0 0 / 0.72);
@@ -408,8 +403,115 @@
   --casca-gradiente: #2a2a2e;
 
   /* ── Atmosfera — só no login e em marketing ──────────────────────────── */
-  /* A aura da capa do Início: o roxo da marca vazando por trás do conteúdo. */
+  /* A aura da marca no Login: o roxo vazando por trás da peça. (Até 2026-09-23
+     também o halo do campo da pergunta do Início, que saiu.) */
   --aura-capa: rgb(192 132 252 / 0.3);
+  /* O palco do Início é PRETO de verdade (2026-09-23, "quero tudo preto"): a
+     única superfície do app que dispensa o #0f0f10 da base. */
+  --palco-inicio: #000000;
+  /* A largura máxima da saudação do Início: o vazio à esquerda da cabeça do
+     robô (a cabeça começa em ~37 % do palco). */
+  --saudacao-inicio-w: 30%;
+  /* O pontilhado do palco do Início, sobre o preto e atrás da luz e do robô
+     (fim de 2026-09-23: "background com pontilhados em pattern"): mais denso e
+     mais visível que a grade do sistema (--grade-ponto a 4 %, a cada 48 px);
+     MAIS transparente a pedido ("quero que o pontilhado fique mais
+     transparente"): de 14 % para 8 % — um 24 % intermediário foi o
+     contrário do pedido. */
+  --palco-ponto: rgb(255 255 255 / 0.08);
+  --palco-ponto-raio: 1px;
+  --palco-grade: 22px;
+  /* O holofote do Início (fim de 2026-09-23): branco e suave, como o do
+     componente do robô, passando ATRÁS dele — grande o bastante para contornar
+     a silhueta quando o mouse está sobre o corpo. Atrás de tudo, ele não
+     precisa ser tênue; o teto é o texto que ele pode atravessar por trás (o
+     balão: `--texto-3` sobre o véu dele fica em 5,4:1 no centro da luz). */
+  --holofote-tam: 28rem;
+  /* O CURSOR do palco do Início (fim de 2026-09-23: "quando o cursor estiver
+     na área da tela de início — que ignora as barras laterais e o header —,
+     deve mudar para uma bolinha pequena com círculo fino em volta"): um SVG
+     nativo de 32 px com o ponto no centro (o ponto quente em 16 16) — sem
+     atraso nem laço, igual com movimento reduzido. O anel é branco com um
+     contorno escuro tênue (lê sobre o rosto iluminado do robô); sobre o que
+     se toca, o anel cresce e fica no lilás da marca (--roxo-300), com um
+     contorno escuro mais firme e o ponto branco — sobre a logo acesa (lilás)
+     o anel lilás sumia. */
+  --cursor-inicio: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%23000000' stroke-opacity='0.35' stroke-width='2.5'/%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%23ffffff' stroke-opacity='0.85' stroke-width='1.25'/%3E%3Ccircle cx='16' cy='16' r='2.75' fill='%23ffffff' stroke='%23000000' stroke-opacity='0.45' stroke-width='1'/%3E%3C/svg%3E") 16 16, auto;
+  --cursor-inicio-acao: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='12.5' fill='none' stroke='%23000000' stroke-opacity='0.6' stroke-width='3.5'/%3E%3Ccircle cx='16' cy='16' r='12.5' fill='none' stroke='%23c084fc' stroke-width='1.5'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%23ffffff' stroke='%23000000' stroke-opacity='0.6' stroke-width='1'/%3E%3C/svg%3E") 16 16, pointer;
+  --holofote-centro: rgb(255 255 255 / 0.2);
+  --holofote-meio: rgb(255 255 255 / 0.08);
+  /* Os reflexos roxos do robô do Início, no tom da marca (2026-09-23), lidos
+     pelo JS (`CenaSpline`): a cor do contraluz da cena (prop `luzes`) e do
+     reflexo de cromo do rosto (prop `reflexos`, que vai do preto a esta cor e,
+     no brilho mais forte, ao `--reflexo-robo-brilho`). */
+  --reflexo-robo: var(--roxo-500);
+  --reflexo-robo-brilho: var(--roxo-300);
+  /* A logo da N1 no peito do robô, em modo Sobrepor (duas camadas): o lilás
+     da marca, que sobre o carbono escuro lê como um roxo impresso no tecido. */
+  --selo-robo: var(--roxo-300);
+  /* A logo do peito ACESA no hover: o lilás mais claro da marca, em modo Tela,
+     com o halo da lanterna em volta (raio na caixa 0–100 do SVG, que a matriz
+     do selo amplia ~2×). */
+  --selo-robo-luz: var(--roxo-200);
+  --selo-luz-raio: 4px;
+  /* A boca do robô: os pontos brancos dos olhos (2026-09-23). */
+  --boca-robo: var(--texto);
+  /* A caixa do assistente do Início: o PÉ que ela reserva no palco — do alto
+     dela à borda de baixo: as opções, a linha do campo, até duas linhas de
+     estado (ancorada pelo alto, a linha do campo não salta quando um estado
+     aparece; o que passar de duas linhas rola) e a linha do atalho do
+     Windows, quando a conversa é simulada por um bloqueio do sistema — somados
+     dos próprios tokens (o respiro e os três vãos da caixa, a borda, a
+     etiqueta das opções, o controle, três linhas de texto e uma folga), para
+     acompanhar os breakpoints —, a largura máxima e o fundo,
+     em transparência sobre o robô (2026-09-23: "um campo com caixa em
+     transparência", mais para baixo). */
+  --caixa-robo-pe: calc(2 * var(--e-2) + 3 * var(--e-1) + 2px + var(--pilula-h) + var(--controle-h-lg) + 3 * var(--app-xs-lh) + var(--e-4));
+  /* Maior desde 2026-09-24 ("aumente a caixa de texto"): 40 rem (eram 30), o
+     campo na altura do alvo de toque (--controle-h-lg) e o respiro em --e-2. */
+  --caixa-robo-w: 40rem;
+  --caixa-robo-fundo: rgb(0 0 0 / 0.3);
+  /* O balão de chat ao lado da cabeça do robô: a largura máxima e a altura
+     máxima (fração da altura do palco; passou, a lista rola). Desde "mais
+     para cima e pode crescer mais para a esquerda": 23 rem (era 20 — com a
+     âncora 3 unidades para dentro da cabeça, a borda direita fica) e 52 %
+     (era 46 — o espaço ganho em cima). */
+  --balao-robo-w: 23rem;
+  --balao-robo-h: 52%;
+  /* O botão de voz do palco: o centro dele (frações da largura e da altura
+     do palco — o vazio à esquerda do robô), o diâmetro, o ícone e a largura
+     do texto de estado embaixo. */
+  --botao-voz-x: 17%;
+  --botao-voz-y: 48%;
+  --botao-voz-tam: 4.5rem;
+  --botao-voz-icone: 1.75rem;
+  --botao-voz-texto-w: 16rem;
+  /* O véu da legenda do botão de voz: escuro o bastante para o texto ler
+     (≥ 4,5:1) mesmo sobre o ombro iluminado do robô, que fica atrás dela em
+     janelas menores (achado da revisão: 2,2–3,8:1 sem ele). */
+  --botao-voz-estado-fundo: rgb(0 0 0 / 0.72);
+  /* O ROBÔ FLUTUANTE fora do Início (2026-09-24): o diâmetro do círculo — o
+     alvo de toque com folga, acompanhando o `--controle-h-lg` das telas
+     grandes (56 px na base) — e a distância dele aos cantos da janela. */
+  --robo-flutuante-tam: calc(var(--controle-h-lg) + var(--e-3));
+  --robo-flutuante-margem: var(--e-6);
+  /* O que o robô escreve numa DOCA (`.doca-do-robo`) que chega ao canto
+     dele: o recuo à direita, para o conteúdo dela acabar antes dele. Fora do
+     canto, 0. E a reserva no fim do que rola sob ele: o robô, a margem dele e
+     uma folga — o último controle da tela sobe acima dele. */
+  --robo-flutuante-recuo: 0px;
+  /* Quanto o robô sobe acima de uma doca "acima" (a barra de uma coluna
+     estreita, que o recuo espremeria). Escrito pelo robô nele mesmo. */
+  --robo-flutuante-elevacao: 0px;
+  /* A SAÍDA DO PALCO pela rolagem (2026-09-24, `features/inicio/saida-do-palco.ts`):
+     o JS escreve no palco, a cada quadro de rolagem, a opacidade dos
+     controles e a do robô (1 no topo) e a fração do desfoque do robô (0 no
+     topo; o desfoque cheio é `--chegada-desfoque`, o do `revelar`). No topo
+     nada fica inline — valem estes. */
+  --inicio-saida-controles: 1;
+  --inicio-saida-robo: 1;
+  --inicio-saida-desfoque: 0;
+  --robo-flutuante-reserva: calc(var(--robo-flutuante-tam) + var(--robo-flutuante-margem) + var(--e-3));
   --aura-capa-fraca: rgb(192 132 252 / 0.08);
   --orbe-1: rgb(150 1 197 / 0.22);
   --orbe-2: rgb(44 2 99 / 0.28);
@@ -427,7 +529,9 @@
   --z-fundo: 0;
   --z-conteudo: 10;
   --z-cabecalho: 30;
+  --z-barra-global: 32;         /* o menu da conta sobre o cabeçalho sticky (30), sob o fio de rota (35) */
   --z-progresso: 35;            /* barra de rota: sobre o cabeçalho sticky    */
+  --z-flutuante: 38;            /* o robô flutuante: sobre o cabeçalho sticky e a barra de rota, SOB a gaveta e o modal (o véu deles o cobre) */
   --z-gaveta: 40;
   --z-modal: 50;
   --z-menu: 60;
@@ -550,9 +654,10 @@
 
     --cabecalho-tela-h: 3.25rem;
     --capa-h: 24rem;
-    --orbe-tam: 13rem;
-    --globo-tam: 19rem;
+    --conversa-empilhada-min: 11rem;
     --barra-filtros-h: 3rem;
+    --barra-global-h: 3rem;
+    --busca-global-w: 32rem;
     --trilha-w: 4rem;
     --painel-nav-w: 16rem;
     --item-trilha: 2.5rem;
@@ -573,6 +678,7 @@
     --icone-tile: 1.625rem;
     --icone-lg: 3.25rem;
     --barra-viz-h: 0.625rem;
+    --colunas-h: 10rem;
     --gantt-dia: 2.5rem;
     --gantt-nome: 16.5rem;
     --modal-sm: 27rem;
@@ -621,9 +727,10 @@
 
     --cabecalho-tela-h: 3.5rem;
     --capa-h: 26rem;
-    --orbe-tam: 14rem;
-    --globo-tam: 21rem;
+    --conversa-empilhada-min: 12rem;
     --barra-filtros-h: 3.25rem;
+    --barra-global-h: 3.25rem;
+    --busca-global-w: 36rem;
     --trilha-w: 4.5rem;
     --painel-nav-w: 17.5rem;
     --item-trilha: 2.75rem;
@@ -644,6 +751,7 @@
     --icone-tile: 1.875rem;
     --icone-lg: 3.5rem;
     --barra-viz-h: 0.75rem;
+    --colunas-h: 11rem;
     --gantt-dia: 2.875rem;
     --gantt-nome: 18rem;
     --modal-sm: 30rem;
@@ -692,9 +800,10 @@
 
     --cabecalho-tela-h: 3.875rem;
     --capa-h: 28rem;
-    --orbe-tam: 15rem;
-    --globo-tam: 23rem;
+    --conversa-empilhada-min: 13rem;
     --barra-filtros-h: 3.5rem;
+    --barra-global-h: 3.5rem;
+    --busca-global-w: 40rem;
     --trilha-w: 5rem;
     --painel-nav-w: 19rem;
     --item-trilha: 3rem;
@@ -715,6 +824,7 @@
     --icone-tile: 2.125rem;
     --icone-lg: 4rem;
     --barra-viz-h: 0.875rem;
+    --colunas-h: 12rem;
     --gantt-dia: 3.25rem;
     --gantt-nome: 19.5rem;
     --modal-sm: 33rem;
@@ -768,6 +878,12 @@ svg {
 :focus-visible {
   outline: 2px solid var(--linha-acento-forte);
   outline-offset: 2px;
+}
+/* Um campo cuja moldura é o CONTÊINER (a caixa do assistente do Início): o
+   foco acende a borda do contêiner por :focus-within, e o campo dispensa o
+   anel — que, sem camada, venceria o `outline: none` de dentro da camada. */
+.campo-sem-anel:focus-visible {
+  outline: none;
 }
 
 /* ── Barra de rolagem, fina e escura ─────────────────────────────────────── */

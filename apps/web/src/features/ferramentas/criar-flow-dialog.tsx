@@ -8,8 +8,8 @@
 
 import { useState } from "react";
 import { useData, useRun } from "@/dados/store";
-import { criarFlow } from "@n1/dominio/operations/ferramentas/flows";
-import type { CategoriaDeFlow } from "@n1/dominio/types/ferramentas";
+import { criarFlow } from "@n1/dominio/operations";
+import type { CategoriaDeFlow } from "@n1/dominio/types";
 import { ConfirmDialog, Field, Select, TextArea, TextInput } from "@/features/shell/ui";
 import { CATEGORIA_DE_FLOW_LABEL } from "./rotulos";
 

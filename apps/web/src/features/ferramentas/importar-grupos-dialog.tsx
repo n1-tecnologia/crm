@@ -9,9 +9,7 @@
 
 import { useState } from "react";
 import { useData, useRun } from "@/dados/store";
-import { GRUPOS_NO_PROVEDOR } from "@n1/dominio/operations/ferramentas/provedor-simulado";
-import { importarGruposDoCanal } from "@n1/dominio/operations/ferramentas/grupos";
-import { recusaDoCanal } from "@n1/dominio/operations/ferramentas/permissoes";
+import { GRUPOS_NO_PROVEDOR, importarGruposDoCanal, recusaDoCanal } from "@n1/dominio/operations";
 import type { Report } from "@/features/shell/ficha";
 import { ConfirmDialog, Field, Select } from "@/features/shell/ui";
 

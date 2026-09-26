@@ -95,7 +95,9 @@ export interface Provenance {
     | "copy"
     | "import"
     | "merge"
-    | "form";
+    | "form"
+    /** Documento criado por uma Fonte de Coleção (INV-CNH-05). */
+    | "fonte";
   readonly sourceId: Id;
   /** Name at the time — the reference is a value, not a live pointer. */
   readonly sourceName: string;
@@ -248,7 +250,7 @@ export interface Tag {
   readonly name: string;
   readonly color: string;
   /** Optional restriction of the entity types it applies to. */
-  readonly appliesTo?: ReadonlyArray<"task" | "contact" | "company" | "deal" | "conversation">;
+  readonly appliesTo?: ReadonlyArray<"task" | "contact" | "company" | "deal" | "conversation" | "grupo" | "comunidade" | "flow">;
   lifecycle: Lifecycle;
 }
 

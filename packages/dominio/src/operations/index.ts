@@ -9,9 +9,9 @@
  * de `<nome>` por operação SOMBREIA a exportação crua do módulo
  * de origem — ESM e o TypeScript resolvem a favor da declaração local, sem
  * erro de exportação duplicada. É por isso que `import * as operations from
- * "@n1/dominio/operations"` (o que `apps/web` e `apps/api` usam) devolve a
+ * "."` (o que `apps/web` e `apps/api` usam) devolve a
  * versão instrumentada, e `import { createTask } from
- * "@n1/dominio/operations/tasks"` (o que os testes usam) devolve a crua.
+ * "./tasks"` (o que os testes usam) devolve a crua.
  */
 
 import { instrumentar } from "./registro";
@@ -30,6 +30,9 @@ export * from "./planning";
 export * from "./scale";
 export * from "./iniciar-conversa";
 export * from "./ferramentas";
+export * from "./tarefas-conversacionais";
+export * from "./canais";
+export * from "./ia";
 export * from "./automations";
 export * from "./financeiro";
 export * from "./conversao-de-solicitacao";
@@ -42,6 +45,12 @@ export * from "./importacao-contas-a-receber";
 
 export { OPERACOES, ehNomeDeOperacao, gravarChamadas, instrumentar, serializarArgumentos, reviverArgumentos } from "./registro";
 export type { NomeDeOperacao, ChamadaDeOperacao } from "./registro";
+
+// `recusaDeMembroAtivo` existe nas duas vozes (Ferramentas do Canal e IA): o
+// barril mantém a do Canal, que a tela de Ferramentas já importa, e expõe a da
+// IA com sufixo. Dentro de `operations/ia/`, os módulos importam a própria.
+export { recusaDeMembroAtivo } from "./ferramentas";
+export { recusaDeMembroAtivo as recusaDeMembroAtivoNaIa } from "./ia/permissoes-ia";
 
 // tasks.ts
 export const createTask = instrumentar("createTask");
@@ -176,11 +185,6 @@ export const setTemplateArchived = instrumentar("setTemplateArchived");
 export const saveView = instrumentar("saveView");
 export const deleteView = instrumentar("deleteView");
 export const setDefaultView = instrumentar("setDefaultView");
-export const createGoal = instrumentar("createGoal");
-export const updateGoal = instrumentar("updateGoal");
-export const archiveGoal = instrumentar("archiveGoal");
-export const setGoalArchived = instrumentar("setGoalArchived");
-export const linkTaskToGoal = instrumentar("linkTaskToGoal");
 export const createForm = instrumentar("createForm");
 export const updateForm = instrumentar("updateForm");
 export const archiveForm = instrumentar("archiveForm");

@@ -26,11 +26,16 @@
  * decidido em nenhum artefato deste projeto, e o requisito que abriu este
  * plano (PAG-06) nomeia só Tarefa e Lista. Dívida conhecida, não descuido —
  * T-3-80, achado para o orquestrador.
+ *
+ * O atalho "/" e a pílula da barra global prometem "tecle e busque": chegando
+ * sem termo, o campo recebe o foco sozinho (as letras tecladas em seguida caem
+ * nele). Chegando com `?q=` (recarga, link compartilhado) o foco fica onde o
+ * navegador o pôs — nada rouba a leitura de um resultado.
  */
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { useData, useSession } from "@/dados/store";
 import { contactDisplayName, memberReachesContainer, memberSeesTask } from "@n1/dominio/derive";
@@ -53,6 +58,11 @@ export default function BuscarPage() {
   const params = useSearchParams();
   const query = params.get("q") ?? "";
   const [includeInactive, setIncludeInactive] = useState(false);
+  const campo = useRef<HTMLInputElement>(null);
+  // Só no navegador (efeito), e só sem termo: quem já está no campo não sente nada.
+  useEffect(() => {
+    if (query === "") campo.current?.focus();
+  }, [query]);
 
   const setQuery = (value: string) => {
     const next = new URLSearchParams(params.toString());
@@ -218,6 +228,7 @@ export default function BuscarPage() {
             style={{ color: "var(--texto-4)" }}
           />
           <input
+            ref={campo}
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}

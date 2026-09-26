@@ -85,6 +85,92 @@ export const corDaSerie: CorDe = (_label, i) => SERIES[i % SERIES.length] ?? SER
 
 const TEMPLATE_LINHA = "grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)_auto] items-center gap-x-3";
 
+/** Com até tantas colunas, o valor vai escrito em todas; acima disso, só nas rotuladas e na mais alta. */
+const VALORES_EM_TODAS = 13;
+
+/** Um balde de tempo das colunas: o rótulo do eixo, o nome inteiro (leitor de tela e dica) e o valor. */
+export interface Coluna {
+  readonly rotulo: string;
+  readonly rotuloLongo: string;
+  readonly valor: number;
+}
+
+/**
+ * COLUNAS — uma por balde de tempo (dia, semana, mês), da mais antiga à mais
+ * nova, todas da mesma largura e alinhadas no pé; a altura é a fração da
+ * maior. Nasceu para as estatísticas do Início (2026-09-24). A cor nunca é o
+ * único sinal — e nem a dica do mouse: o VALOR fica escrito acima da coluna
+ * (fora da folha, como a regra dos gráficos pede), a dica (`title`) o repete
+ * com o período inteiro, e a leitura inteira vai numa tabela só para leitor
+ * de tela — a grade desenhada é `aria-hidden`. Com muitas colunas (o mês), o
+ * eixo rotula uma a cada `rotulosACada`, a contar da mais nova (hoje sempre
+ * rotulado), e o valor escrito segue o rótulo — mais a coluna mais alta, que
+ * é a pergunta que se faz ao gráfico; com até `VALORES_EM_TODAS` colunas, o
+ * valor vai em todas. Zero não se escreve: a coluna vazia já diz. A folha usa o
+ * movimento dos gráficos (`.barra-v > .preenchimento`: cresce na chegada,
+ * muda por altura).
+ */
+export function Colunas({
+  colunas,
+  formata,
+  legenda,
+  cor = "var(--serie-1)",
+  rotulosACada = 1,
+}: {
+  readonly colunas: readonly Coluna[];
+  readonly formata: Formata;
+  /** O que as colunas medem — a legenda da tabela do leitor de tela. */
+  readonly legenda: string;
+  /** Um token de cor (a série); sem ele, a primeira série. */
+  readonly cor?: string;
+  readonly rotulosACada?: number;
+}) {
+  const maior = Math.max(...colunas.map((coluna) => coluna.valor), 1);
+  const ultima = colunas.length - 1;
+  const indiceDaMaior = colunas.reduce((melhor, coluna, i) => (coluna.valor > (colunas[melhor]?.valor ?? 0) ? i : melhor), 0);
+  const rotulada = (i: number) => (ultima - i) % rotulosACada === 0;
+  const comValor = (i: number) => colunas.length <= VALORES_EM_TODAS || rotulada(i) || i === indiceDaMaior;
+  return (
+    <figure className="colunas">
+      <table className="sr-only">
+        <caption>{legenda}</caption>
+        <thead>
+          <tr>
+            <th scope="col">Período</th>
+            <th scope="col">Valor</th>
+          </tr>
+        </thead>
+        <tbody>
+          {colunas.map((coluna) => (
+            <tr key={coluna.rotuloLongo}>
+              <th scope="row">{coluna.rotuloLongo}</th>
+              <td>{formata(coluna.valor)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <ol className="colunas-grade" aria-hidden="true" style={{ "--colunas": colunas.length } as CSSProperties}>
+        {colunas.map((coluna, i) => (
+          <li key={coluna.rotuloLongo} className="colunas-coluna" title={`${coluna.rotuloLongo}: ${formata(coluna.valor)}`}>
+            <span className="app-xs app-numero colunas-valor" data-oculto={comValor(i) && coluna.valor > 0 ? undefined : ""}>
+              {coluna.valor > 0 ? formata(coluna.valor) : "0"}
+            </span>
+            <span className="barra-v colunas-trilho" style={{ "--i": i } as CSSProperties}>
+              <span
+                className="preenchimento colunas-folha"
+                style={{ height: coluna.valor > 0 ? `${Math.max(3, (coluna.valor / maior) * 100)}%` : "0%", background: cor }}
+              />
+            </span>
+            <span className="app-xs app-numero colunas-rotulo" data-oculto={rotulada(i) ? undefined : ""}>
+              {coluna.rotulo}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </figure>
+  );
+}
+
 /** Barras horizontais: rótulo, barra e valor em três colunas que se alinham entre as linhas. */
 export function Barras({
   rows,

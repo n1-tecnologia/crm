@@ -1,5 +1,7 @@
 /**
- * Fictional data for the workspace "Instituto Transformando Faces" (PRD, I.3 and II.7).
+ * Fictional data for the workspace "Instituto Igor Alves" — o instituto do cliente,
+ * que vende o curso Full Face a cirurgiões-dentistas. A estrutura segue o PRD
+ * (I.3 e II.7); o nome do Espaço de Trabalho é o do cliente, não o do PRD.
  *
  * Deterministic: ids and instants come from counters and from a fixed base
  * date, so two loads produce the same graph. Nothing here invents a concept —
@@ -54,6 +56,7 @@ import type {
   TaskType,
   Team,
   Template,
+  Tool,
   Workspace,
 } from "./types";
 
@@ -69,6 +72,7 @@ import type {
  */
 import { applyContasAPagar } from "./seed-financeiro";
 import { applyEspelhoComercial } from "./seed-comercial";
+import { POS_VENDA_LIST_ID, applyPosVenda } from "./seed-pos-venda";
 import { applyContasAReceber } from "./seed-contas-a-receber";
 import { applyFerramentas } from "./seed-ferramentas";
 
@@ -274,7 +278,7 @@ export function buildSeed(): DataState {
 
   // ── Estrutura: 3 Espaços, 4 Pastas + 2 Subpastas, 7 Listas ────────────────
   const spaces: Space[] = [
-    space("spc_com", "Comercial", "Vendas de programas corporativos", "#2563eb", 0, statusComercial, false),
+    space("spc_com", "Comercial", "Vendas do curso Full Face a cirurgiões-dentistas", "#2563eb", 0, statusComercial, false),
     space("spc_ops", "Entrega", "Turmas, mentorias e suporte aos alunos", "#0891b2", 1, statusOps, false),
     space("spc_mkt", "Marketing", "Conteúdo e campanhas", "#c026d3", 2, statusMkt, true),
   ];
@@ -1506,10 +1510,10 @@ export function buildSeed(): DataState {
   // ── Caixa de Entrada: 4 Canais (1 desconectado), 2 Filas, 20 Conversas ───
   const channels: Channel[] = [
     channel("chn_wpp", "Comercial SP", "whatsapp", "+5511987654321", "conectada", "fila_com"),
-    channel("chn_insta", "@transformandofaces", "instagram", "transformandofaces", "desconectada", "fila_com"),
-    channel("chn_mail", "contato@transformandofacesonline.com.br", "email", "contato@transformandofacesonline.com.br", "conectada", "fila_sup"),
-    channel("chn_site", "Chat do site", "chatDoSite", "transformandofacesonline.com.br", "conectada", "fila_sup"),
-    channel("chn_linkedin", "Transformando Faces no LinkedIn", "linkedin", "company/transformandofaces", "conectada", "fila_com"),
+    channel("chn_insta", "@institutoigoralves", "instagram", "institutoigoralves", "desconectada", "fila_com"),
+    channel("chn_mail", "contato@institutoigoralves.com.br", "email", "contato@institutoigoralves.com.br", "conectada", "fila_sup"),
+    channel("chn_site", "Chat do site", "chatDoSite", "institutoigoralves.com.br", "conectada", "fila_sup"),
+    channel("chn_linkedin", "Instituto Igor Alves no LinkedIn", "linkedin", "company/institutoigoralves", "conectada", "fila_com"),
   ];
   const whatsapp = channels[0];
   if (whatsapp) {
@@ -1622,7 +1626,7 @@ export function buildSeed(): DataState {
        * gravado abaixo: dá para conferir de onde veio cada coisa.
        */
       messages: [
-        msg("cnv_sdr_1", "enviada", member("mem_thiago"), "Oi Iallas, tudo bem? Aqui é o Thiago, do Instituto Transformando Faces. Vi que você comentou no post do Full Face. Você já faz harmonização na clínica hoje?", at(12, 9), "lida"),
+        msg("cnv_sdr_1", "enviada", member("mem_thiago"), "Oi Iallas, tudo bem? Aqui é o Thiago, do Instituto Igor Alves. Vi que você comentou no post do Full Face. Você já faz harmonização na clínica hoje?", at(12, 9), "lida"),
         msg("cnv_sdr_1", "recebida", { kind: "integration", id: wpp.id }, "Oi Thiago, tudo bem! Faço toxina e um pouco de preenchimento labial, mas sempre no básico. Queria fazer o full face completo e trava.", at(12, 11)),
         msg("cnv_sdr_1", "enviada", member("mem_thiago"), "É onde a maioria trava mesmo. Posso te fazer algumas perguntas rápidas para entender se o curso faz sentido para o seu momento? Cinco minutos, e se não fizer sentido eu mesmo te digo.", at(12, 14), "lida"),
         msg("cnv_sdr_1", "recebida", { kind: "integration", id: wpp.id }, "Pode sim, fica à vontade.", at(12, 15)),
@@ -1726,28 +1730,63 @@ export function buildSeed(): DataState {
      */
     agent("agt_enriquecedor", "Enriquecedor de leads", "mem_julia", "ativo", "autonomo", false),
     agent("agt_classificador", "Classificador de conexão", "mem_julia", "ativo", "assistido", false),
+    /**
+     * Um Agente em `rascunho` que NÃO pode ser ativado: o Modelo é o legado,
+     * descontinuado. É o caso que a ficha mostra como indisponível e que
+     * `ativarAgente` recusa por RN-AGE-07 — objetivo e instruções estão
+     * preenchidos de propósito, para o único motivo ser o Modelo.
+     */
+    {
+      id: "agt_onboarding",
+      workspaceId: WORKSPACE_ID,
+      createdBy: member("mem_julia"),
+      createdAt: at(3),
+      lifecycle: "rascunho",
+      name: "Assistente de onboarding",
+      description: "Acompanha o aluno novo nas primeiras semanas e responde dúvidas sobre a turma.",
+      ownerMemberId: "mem_julia",
+      roleId: "role_conv",
+      versions: [
+        {
+          number: 1,
+          objective: "Guiar cada aluno novo pelas etapas do onboarding e apontar o que ainda falta.",
+          instructions: "Leia a Tarefa de onboarding do aluno e responda em português do Brasil, com passos curtos. Nunca prometa prazo que não esteja na Tarefa.",
+          modelId: "mdl_legado",
+          allowsModelOverride: false,
+          allowedToolIds: ["ler_tarefa"],
+          grantedSkillIds: [],
+          autonomy: "assistido",
+          approvalPolicy: { approverMemberIds: ["mem_julia"], approverTeamIds: [], timeoutHours: 72 },
+          memoryEnabled: true,
+          by: member("mem_julia"),
+          at: at(3),
+        },
+      ],
+      memory: [],
+      memoryRetention: { maxItems: 200, maxDays: 180, keepDelegated: true },
+    },
   ];
 
   const skills: Skill[] = [
-    skill("skl_qualificar", "Qualificar lead", "workspace", "publicada"),
-    skill("skl_resumir", "Resumir contexto do Negócio", "workspace", "publicada"),
-    skill("skl_proposta", "Redigir proposta comercial", "workspace", "publicada"),
-    skill("skl_triagem", "Triagem de mensagem recebida", "plataforma", "publicada"),
-    skill("skl_agenda", "Sugerir plano de estudo", "workspace", "rascunho"),
-    skill("skl_followup", "Redigir follow-up", "workspace", "publicada"),
-    skill("skl_analisar_perfil", "Analisar perfil público", "workspace", "publicada"),
+    skill("skl_qualificar", "Qualificar lead", "workspace", "publicada", "Percorre com o lead as perguntas de qualificação e resume necessidade, orçamento, prazo e quem decide."),
+    skill("skl_resumir", "Resumir contexto do Negócio", "workspace", "publicada", "Condensa Conversas, Comentários e Valores de Campo de um Negócio num resumo curto para quem o assume."),
+    skill("skl_proposta", "Redigir proposta comercial", "workspace", "publicada", "Escreve a proposta a partir do Negócio e do material aprovado, no modelo de precificação vigente."),
+    skill("skl_triagem", "Triagem de mensagem recebida", "plataforma", "publicada", "Classifica uma Mensagem recebida por assunto e urgência e indica a Fila ou o Atendente que deve responder."),
+    skill("skl_agenda", "Sugerir plano de estudo", "workspace", "rascunho", "Monta um plano de estudo semanal para o aluno a partir da turma e do tempo que ele tem disponível."),
+    skill("skl_followup", "Redigir follow-up", "workspace", "publicada", "Redige a mensagem de retomada de um Negócio parado, no tom da última Conversa com o Contato."),
+    skill("skl_analisar_perfil", "Analisar perfil público", "workspace", "publicada", "Lê Instagram, site e redes informadas do lead e devolve o resumo do perfil e os sinais de fit."),
     // A pergunta de permissão vive NAS INSTRUÇÕES desta Habilidade, não no
     // roteiro de quem usa: é ela que produz o evento que a Automação detecta.
     // Sem a pergunta, não há resposta, e sem resposta não há conexão para
     // confirmar.
-    skill("skl_abordar_lead", "Abordar lead", "workspace", "publicada"),
-    skill("skl_classificar_conexao", "Classificar conexão", "workspace", "publicada"),
+    skill("skl_abordar_lead", "Abordar lead", "workspace", "publicada", "Escreve a primeira abordagem ao lead, com a pergunta de permissão que abre a qualificação."),
+    skill("skl_classificar_conexao", "Classificar conexão", "workspace", "publicada", "Lê a resposta do lead e diz se ele aceitou responder às perguntas de qualificação, apontando a Mensagem de evidência."),
   ];
   // Uma Habilidade com duas versões `publicada` coexistentes (B71).
   skills[2]?.versions.push({
     number: 2,
     state: "publicada",
-    instructions: "Redigir proposta com o modelo de precificação por faixa de colaboradores.",
+    instructions: "Redigir proposta com o modelo de precificação por turma do Full Face e forma de pagamento.",
     inputContract: [{ name: "negocio", type: "referencia:deal", required: true, description: "Negócio de origem" }],
     outputContract: { structured: [], text: true },
     toolRequirements: [{ toolId: "ler_negocio", mandatory: true }],
@@ -1757,6 +1796,10 @@ export function buildSeed(): DataState {
     createdAt: at(40),
     publishedAt: at(38),
   });
+  // O rascunho de "Sugerir plano de estudo" está sem Instruções: é o caso em
+  // que a validação diz "As Instruções estão vazias." e publicar é recusado (RN-HAB-06).
+  const rascunhoDaAgenda = skills.find((s) => s.id === "skl_agenda")?.versions[0];
+  if (rascunhoDaAgenda) rascunhoDaAgenda.instructions = "";
 
   const skillGrants: SkillGrant[] = [
     { id: "sgr_1", agentId: "agt_sdr", skillId: "skl_qualificar", grantedBy: "mem_rafael", grantedAt: at(90) },
@@ -1768,11 +1811,47 @@ export function buildSeed(): DataState {
     { id: "sgr_7", agentId: "agt_sdr", skillId: "skl_abordar_lead", grantedBy: "mem_julia", grantedAt: at(200) },
     { id: "sgr_8", agentId: "agt_classificador", skillId: "skl_classificar_conexao", grantedBy: "mem_julia", grantedAt: at(200) },
   ];
+  // DO-AGE-02 — cada Versão é a foto completa da configuração, inclusive as
+  // Habilidades concedidas por identidade. A Versão 1 de cada Agente grava as
+  // Concessões seedadas acima; sem isso, a primeira Versão criada por
+  // `permitirFerramenta` (que copia a corrente) fotografava zero Habilidades
+  // num Agente com quatro Concessões, e o histórico contava concessões que
+  // nunca aconteceram.
+  for (const agente of agents) {
+    const concedidas = skillGrants.filter((g) => g.agentId === agente.id).map((g) => g.skillId);
+    for (const versao of agente.versions) versao.grantedSkillIds = [...concedidas];
+  }
+
+  // Um rascunho de Lista com Gatilho e SEM Ação: o editor abre nele com a
+  // validação dizendo "Adicione ao menos uma Ação." e, publicado, o motor
+  // dispara de verdade em `createTask`. Na Lista de Pós-venda porque ela
+  // sobrevive à poda do seed do produto — Prospecção e Ativação não.
+  const avisarAoCriarTarefa: Automation = {
+    ...automation("aut_lista_rascunho", "Avisar ao criar Tarefa", "list", POS_VENDA_LIST_ID, "mem_julia", "rascunho", false),
+    createdAt: at(2),
+    description: "Comenta na Tarefa nova para o Comercial saber que o pós-venda começou.",
+  };
+  const rascunhoDeLista = avisarAoCriarTarefa.versions[0];
+  if (rascunhoDeLista) {
+    rascunhoDeLista.conditions = [];
+    rascunhoDeLista.actions = [];
+  }
 
   const automations: Automation[] = [
-    automation("aut_boasvindas", "Boas-vindas na Fila Comercial", "queue", "fila_com", "mem_julia", "ativo", false),
-    automation("aut_revisao", "Revisão mensal de playbooks", "list", "lst_revisoes", "mem_marcos", "pausado", false),
-    automation("aut_rascunho", "Alerta de Automação com erro", "space", "spc_ops", "mem_marcos", "rascunho", false),
+    // Cada uma com a sua frase: o catálogo de Personalizar mostrava "Sem descrição." nas três.
+    {
+      ...automation("aut_boasvindas", "Boas-vindas na Fila Comercial", "queue", "fila_com", "mem_julia", "ativo", false),
+      description: "Abre uma Tarefa de acompanhamento no SDR para cada Conversa nova que entra na Fila Comercial.",
+    },
+    {
+      ...automation("aut_revisao", "Revisão mensal de playbooks", "list", "lst_revisoes", "mem_marcos", "pausado", false),
+      description: "Abre uma Tarefa de acompanhamento a cada Tarefa nova da Lista de revisões dos playbooks.",
+    },
+    {
+      ...automation("aut_rascunho", "Alerta de Automação com erro", "space", "spc_com", "mem_marcos", "rascunho", false),
+      description: "Abre uma Tarefa de acompanhamento no Comercial a cada Tarefa nova do Espaço — rascunho a completar com o Gatilho de falha de Automação.",
+    },
+    avisarAoCriarTarefa,
     ...processoComercial(),
   ];
 
@@ -1780,6 +1859,8 @@ export function buildSeed(): DataState {
     collection("col_comercial", "Material comercial", "mem_rafael", false),
     collection("col_clinico", "Playbooks do comercial", "mem_thiago", false),
     collection("col_interno", "Interno, jurídico", "mem_thiago", true),
+    // Vazia de propósito: é onde "Adicionar Documento" começa do zero.
+    { ...collection("col_onboarding", "Onboarding de alunos", "mem_julia", false), description: "Roteiro das primeiras semanas do aluno e respostas às dúvidas mais comuns.", createdAt: at(4) },
   ];
 
   const docSpecs: ReadonlyArray<readonly [Id, string, KnowledgeDocument["contentType"]]> = [
@@ -1843,8 +1924,8 @@ export function buildSeed(): DataState {
     metadata: { labels: index < 6 ? ["comercial"] : index < 12 ? ["entrega"] : ["jurídico"], language: "pt-BR" },
     provenance:
       index === URL_SOURCED_DOC_INDEX
-        ? { kind: "template" as const, sourceId: "src_col_clinico_url", sourceName: "Documentação da API de Mensagens", at: at(150 - index * 8), sourceKind: "url", specificOrigin: "https://exemplo.com/api-de-mensagens" }
-        : { kind: "template" as const, sourceId: `src_${collectionId}_manual`, sourceName: "Envio manual", at: at(150 - index * 8), sourceKind: "envioManual", specificOrigin: "texto digitado" },
+        ? { kind: "fonte" as const, sourceId: "src_col_clinico_url", sourceName: "Documentação da API de Mensagens", at: at(150 - index * 8), sourceKind: "url", specificOrigin: "https://exemplo.com/api-de-mensagens" }
+        : { kind: "fonte" as const, sourceId: `src_${collectionId}_manual`, sourceName: "Envio manual", at: at(150 - index * 8), sourceKind: "envioManual", specificOrigin: "texto digitado" },
     comments: [],
     attachments: [],
   }));
@@ -1904,6 +1985,8 @@ export function buildSeed(): DataState {
     roles,
     integrations: [
       { id: "int_erp", workspaceId: WORKSPACE_ID, name: "ERP financeiro", systemType: "erp", state: "conectada", configuredBy: "mem_rafael", createdBy: member("mem_rafael"), createdAt: at(200), exposedTools: ["erp_consultar_fatura"] },
+      // Desconectada de propósito: é o caso "Ferramenta permitida e inoperante" e "Fonte com erro" (20.6).
+      { id: "int_agenda", workspaceId: WORKSPACE_ID, name: "Agenda (Google)", systemType: "agenda", state: "desconectada", configuredBy: "mem_thiago", createdBy: member("mem_thiago"), createdAt: at(45), exposedTools: ["agenda_criar_evento"] },
     ],
     grants: [
       { id: "gr_beatriz", workspaceId: WORKSPACE_ID, subjectKind: "member", subjectId: "mem_beatriz", action: "ver", resourceType: "list", resourceId: "lst_conteudo", scope: "subarvore", origin: "compartilhamento", grantedBy: "mem_thiago", grantedAt: at(30) },
@@ -1916,7 +1999,6 @@ export function buildSeed(): DataState {
     fieldDefinitions,
     taskTypes,
     views: [],
-    goals: [],
     // Fase 4 — um Formulário de demonstração: /f/demo-formulario
     forms: [
       {
@@ -1990,6 +2072,8 @@ export function buildSeed(): DataState {
   applyContasAReceber(state, { at, workspaceId: WORKSPACE_ID });
   // Processo comercial na Estrutura: Comercial › Caixa de entrada › um Kanban por Funil.
   applyEspelhoComercial(state, { at, workspaceId: WORKSPACE_ID });
+  // Lista conversacional sem Funil (C35): Comercial › Pós-venda, uma Tarefa por Contato com conversa.
+  applyPosVenda(state, { at, day, workspaceId: WORKSPACE_ID });
   // Ferramentas do CRM (docs 23–25): Comunidade, Grupos, Link de Captação e Flow no Canal de WhatsApp.
   applyFerramentas(state, { at, workspaceId: WORKSPACE_ID });
   return state;
@@ -2000,7 +2084,7 @@ export function buildSeed(): DataState {
 function buildWorkspace(): Workspace {
   return {
     id: WORKSPACE_ID,
-    name: "Instituto Transformando Faces",
+    name: "Instituto Igor Alves",
     state: "ativo",
     ownerMemberId: "mem_thiago",
     createdBy: "mem_thiago",
@@ -2095,6 +2179,7 @@ const list = (id: Id, name: string, parentType: "space" | "folder", parentId: Id
   name,
   order,
   isPrivate: false,
+  modeloDeTarefa: "operacional",
   modes: {},
   blocks: {},
   parentType,
@@ -2181,6 +2266,41 @@ function msg(
   };
 }
 
+/**
+ * O que cada Agente do seed é — descrição do cartão, objetivo da Versão 1 e
+ * as Ferramentas permitidas —, por nome, para o catálogo de Personalizar não
+ * parecer gerado por modelo (dois Agentes repetiam o texto do Redator). As
+ * Ferramentas seguem o estrago que cada um pode causar: o Enriquecedor só lê
+ * fonte pública e grava Valor de Campo; o Classificador só lê e responde.
+ */
+const PERFIL_DO_AGENTE: Record<string, { readonly description: string; readonly objective: string; readonly tools: readonly string[] }> = {
+  "Assistente padrão": {
+    description: "Agente instanciado com o Espaço de Trabalho; responde quando nenhum outro é escolhido.",
+    objective: "Ajudar Membros do Espaço de Trabalho.",
+    tools: ["ler_tarefa", "ler_negocio", "ler_contato", "consultar_conhecimento", "lembrar"],
+  },
+  "Qualificador SDR": {
+    description: "Aborda e qualifica os leads que chegam pela Caixa de Entrada; toda Mensagem ao lead sai como Rascunho para um humano aprovar.",
+    objective: "Qualificar cada lead novo e propor ao SDR o próximo passo.",
+    tools: ["ler_contato", "ler_conversa", "sugerir_resposta", "atualizar_qualificacao", "consultar_conhecimento"],
+  },
+  "Redator de propostas": {
+    description: "Redige propostas comerciais a partir do Negócio e do material de referência aprovado.",
+    objective: "Redigir propostas comerciais fiéis ao material aprovado.",
+    tools: ["ler_negocio", "ler_contato", "consultar_conhecimento", "enviar_mensagem"],
+  },
+  "Enriquecedor de leads": {
+    description: "Levanta o perfil público do lead — Instagram, site e redes informadas — e grava no Contato o resumo e os sinais de fit.",
+    objective: "Entregar ao SDR um resumo do perfil do lead antes da primeira abordagem.",
+    tools: ["ler_contato", "consultar_conhecimento", "atualizar_campos_contato"],
+  },
+  "Classificador de conexão": {
+    description: "Lê a resposta do lead e diz se houve conexão; não escreve nada, devolve o veredito que a Condição híbrida consome.",
+    objective: "Classificar se o lead aceitou responder às perguntas de qualificação, apontando a Mensagem de evidência.",
+    tools: ["ler_conversa", "ler_negocio", "ler_contato"],
+  },
+};
+
 function agent(
   id: Id,
   name: string,
@@ -2189,11 +2309,8 @@ function agent(
   autonomy: "assistido" | "supervisionado" | "autonomo",
   isDefault: boolean,
 ): Agent {
-  const tools = isDefault
-    ? ["ler_tarefa", "ler_negocio", "ler_contato", "consultar_conhecimento", "lembrar"]
-    : name === "Qualificador SDR"
-      ? ["ler_contato", "ler_conversa", "sugerir_resposta", "atualizar_qualificacao", "consultar_conhecimento"]
-      : ["ler_negocio", "ler_contato", "consultar_conhecimento", "enviar_mensagem"];
+  const perfil = PERFIL_DO_AGENTE[name];
+  if (!perfil) throw new Error(`seed: Agente “${name}” sem perfil em PERFIL_DO_AGENTE`);
   return {
     id,
     workspaceId: WORKSPACE_ID,
@@ -2201,25 +2318,19 @@ function agent(
     createdAt: at(380),
     lifecycle,
     name,
-    description: isDefault
-      ? "Agente instanciado com o Espaço de Trabalho; responde quando nenhum outro é escolhido."
-      : name === "Qualificador SDR"
-        ? "Qualifica leads da Fila Comercial e propõe o próximo passo."
-        : "Redige propostas comerciais a partir do Negócio e do material de referência.",
+    description: perfil.description,
     ownerMemberId,
     roleId: isDefault ? "role_conv" : "role_agente_crm",
     versions: [
       {
         number: 1,
-        objective: isDefault
-          ? "Ajudar Membros do Espaço de Trabalho."
-          : name === "Qualificador SDR"
-            ? "Qualificar leads e propor o próximo passo."
-            : "Redigir propostas comerciais fiéis ao material aprovado.",
+        objective: perfil.objective,
         instructions: "Responda em português do Brasil, de forma direta. Nunca invente dados de Contato, Empresa ou Negócio.",
         modelId: isDefault ? "padraoDaPlataforma" : "mdl_base",
         allowsModelOverride: isDefault,
-        allowedToolIds: tools,
+        allowedToolIds: [...perfil.tools],
+        // As Concessões seedadas (`skillGrants`) são gravadas aqui logo
+        // depois, em `buildSeed`: a foto da Versão 1 precisa ser verdadeira.
         grantedSkillIds: [],
         autonomy,
         approvalPolicy: { approverMemberIds: [ownerMemberId], approverTeamIds: [], timeoutHours: 72 },
@@ -2233,7 +2344,14 @@ function agent(
   };
 }
 
-function skill(id: Id, name: string, ownership: "workspace" | "plataforma", state: "publicada" | "rascunho"): Skill {
+function skill(
+  id: Id,
+  name: string,
+  ownership: "workspace" | "plataforma",
+  state: "publicada" | "rascunho",
+  /** O que a Habilidade faz, em uma frase própria — o texto do cartão de Habilidades, nunca o nome repetido. */
+  description: string,
+): Skill {
   return {
     id,
     workspaceId: WORKSPACE_ID,
@@ -2241,7 +2359,7 @@ function skill(id: Id, name: string, ownership: "workspace" | "plataforma", stat
     createdAt: at(120),
     lifecycle: "ativo",
     name,
-    description: `Competência reutilizável: ${name.toLowerCase()}.`,
+    description,
     ownership,
     versions: [
       {
@@ -2397,26 +2515,56 @@ function widget(
 // A1.3 — entidades globais, referenciadas nunca possuídas; o bootstrap de produção também precisa delas.
 export const MODELOS_DA_PLATAFORMA: Model[] = [{ id: "mdl_base", name: "Modelo base", capabilities: { inputs: ["texto", "imagem", "documento"], outputs: ["texto"] }, discontinued: false }, { id: "mdl_rapido", name: "Modelo rápido", capabilities: { inputs: ["texto"], outputs: ["texto"] }, discontinued: false }, { id: "mdl_legado", name: "Modelo legado", capabilities: { inputs: ["texto"], outputs: ["texto"] }, discontinued: true }];
 export const TOOLS = [
-  tool("ler_tarefa", "Ler Tarefa", "task", "ver", "leitura"),
-  tool("criar_tarefa", "Criar Tarefa", "list", "criar", "escritaReversivel"),
-  tool("ler_contato", "Ler Contato", "contact", "ver", "leitura"),
-  tool("ler_negocio", "Ler Negócio", "deal", "ver", "leitura"),
-  tool("ler_conversa", "Ler Conversa", "conversation", "ver", "leitura"),
-  tool("enviar_mensagem", "Enviar Mensagem", "conversation", "editar", "externa"),
-  tool("sugerir_resposta", "Sugerir resposta", "conversation", "ver", "leitura"),
-  tool("consultar_conhecimento", "Consultar Conhecimento", "collection", "ver", "leitura"),
-  tool("adicionar_ao_conhecimento", "Adicionar ao Conhecimento", "collection", "criar", "escritaReversivel"),
-  tool("atualizar_qualificacao", "Atualizar Qualificação de Contato", "contact", "editar", "escritaReversivel"),
-  tool("mesclar_contatos", "Mesclar Contatos", "contact", "administrar", "escritaIrreversivel"),
-  tool("marcar_negocio_ganho", "Marcar Negócio como ganho", "deal", "editar", "escritaIrreversivel"),
-  tool("invocar_agente", "Invocar Agente", "agent", "executar", "escritaReversivel"),
-  tool("acionar_automacao", "Acionar Automação", "automation", "executar", "escritaReversivel"),
-  tool("erp_consultar_fatura", "Consultar fatura no ERP", "company", "ver", "leitura"),
-  tool("lembrar", "Lembrar", "member", "editar", "escritaReversivel"),
-  tool("ler_painel", "Ler Painel", "panel", "ver", "leitura"),
-  tool("criar_comentario", "Criar Comentário", "task", "comentar", "escritaReversivel"),
-  tool("alterar_status", "Alterar Status de Tarefa", "task", "editar", "escritaReversivel"),
-  tool("omie_lancar_conta_a_pagar", "Lançar conta a pagar no Omie", "task", "editar", "externa"),
+  tool("ler_tarefa", "Ler Tarefa", "task", "ver", "leitura", "Lê título, Status, datas e Responsáveis de uma Tarefa que o Agente pode ver."),
+  tool("criar_tarefa", "Criar Tarefa", "list", "criar", "escritaReversivel", "Abre uma Tarefa nova numa Lista, com título, Responsável e vencimento informados."),
+  tool("ler_contato", "Ler Contato", "contact", "ver", "leitura", "Lê nome, Identificadores, Origem, Qualificação e Tags de um Contato."),
+  tool("ler_negocio", "Ler Negócio", "deal", "ver", "leitura", "Lê Funil, Etapa, valor, Proprietário e Contatos vinculados de um Negócio."),
+  tool("ler_conversa", "Ler Conversa", "conversation", "ver", "leitura", "Lê as Mensagens trocadas numa Conversa e quem está atribuído a ela."),
+  tool("enviar_mensagem", "Enviar Mensagem", "conversation", "editar", "externa", "Envia uma Mensagem ao Contato pelo Canal da Conversa; o texto sai da plataforma e não volta."),
+  tool("sugerir_resposta", "Sugerir resposta", "conversation", "ver", "leitura", "Propõe um Rascunho de resposta na Conversa para um Atendente revisar antes de enviar."),
+  tool("consultar_conhecimento", "Consultar Conhecimento", "collection", "ver", "leitura", "Busca nas Coleções que o Agente acessa e devolve as passagens relevantes, com a fonte de cada uma."),
+  tool("adicionar_ao_conhecimento", "Adicionar ao Conhecimento", "collection", "criar", "escritaReversivel", "Grava um Documento novo numa Coleção, pronto para o processamento em Fragmentos."),
+  tool("atualizar_qualificacao", "Atualizar Qualificação de Contato", "contact", "editar", "escritaReversivel", "Troca a Qualificação de um Contato por outra do catálogo do Espaço de Trabalho, com Registro."),
+  tool("mesclar_contatos", "Mesclar Contatos", "contact", "administrar", "escritaIrreversivel", "Funde dois Contatos duplicados num só, reapontando Vínculos e Conversas; não há como desfazer."),
+  tool("marcar_negocio_ganho", "Marcar Negócio como ganho", "deal", "editar", "escritaIrreversivel", "Encerra um Negócio como ganho, sob as Regras de encerramento do Funil; reabrir exige um Administrador."),
+  tool("invocar_agente", "Invocar Agente", "agent", "executar", "escritaReversivel", "Chama outro Agente com um pedido e recebe a resposta dele dentro da mesma Execução."),
+  tool("acionar_automacao", "Acionar Automação", "automation", "executar", "escritaReversivel", "Dispara uma Automação de Gatilho manual sobre um registro do escopo dela."),
+  tool("erp_consultar_fatura", "Consultar fatura no ERP", "company", "ver", "leitura", "Busca no ERP as faturas emitidas para uma Empresa e devolve valores, vencimentos e situação.", "int_erp"),
+  tool("lembrar", "Lembrar", "member", "editar", "escritaReversivel", "Guarda na Memória do Agente um fato sobre quem conversa com ele, para reaproveitar depois."),
+  tool("ler_painel", "Ler Painel", "panel", "ver", "leitura", "Lê os valores correntes dos Widgets de um Painel que o Agente pode ver."),
+  tool("criar_comentario", "Criar Comentário", "task", "comentar", "escritaReversivel", "Publica um Comentário numa Tarefa, assinado pelo Agente."),
+  tool("alterar_status", "Alterar Status de Tarefa", "task", "editar", "escritaReversivel", "Move uma Tarefa para outro Status do Conjunto da sua Lista."),
+  tool("omie_lancar_conta_a_pagar", "Lançar conta a pagar no Omie", "task", "editar", "externa", "Cria no Omie a conta a pagar correspondente à Tarefa do Financeiro, com fornecedor, valor e vencimento.", "int_omie"),
+  // As Ferramentas que os dois motores de Automação executam de verdade
+  // (`automations.ts` e `ferramentas/automacoes.ts`). Sem elas no Catálogo, um
+  // rascunho criado a partir das Automações do Financeiro ou dos Grupos era
+  // recusado ao publicar: o editor exige que o Catálogo diga a verdade (D5).
+  tool("tarefa.definirResponsavel", "Definir Responsável da Tarefa", "task", "editar", "escritaReversivel", "Atribui um Membro como Responsável da Tarefa que disparou a Automação."),
+  tool("tarefa.removerResponsavel", "Remover Responsável da Tarefa", "task", "editar", "escritaReversivel", "Tira um Membro da lista de Responsáveis da Tarefa que disparou a Automação."),
+  tool("tarefa.adicionarObservadores", "Adicionar Observadores à Tarefa", "task", "editar", "escritaReversivel", "Inclui Membros como Observadores da Tarefa, para receberem as notificações dela."),
+  tool("tarefa.alterarStatus", "Alterar Status da Tarefa", "task", "editar", "escritaReversivel", "Leva a Tarefa ao Status indicado; é o motor de Automações da Lista que executa."),
+  tool("tarefa.comentar", "Comentar na Tarefa", "task", "comentar", "escritaReversivel", "Registra na Tarefa um Comentário em nome da Automação que disparou."),
+  tool("tarefa.definirCampo", "Definir Valor de Campo da Tarefa", "task", "editar", "escritaReversivel", "Grava um valor num Campo Personalizado da Tarefa que disparou a Automação."),
+  tool("contato.adicionarTag", "Adicionar Tag ao Contato", "contact", "editar", "escritaReversivel", "Aplica uma Tag do Espaço de Trabalho ao Contato do Grupo ou da Conversa."),
+  tool("contato.definirCampo", "Definir Valor de Campo do Contato", "contact", "editar", "escritaReversivel", "Grava um valor num Campo Personalizado do Contato do Grupo ou da Conversa."),
+  tool("grupo.removerParticipante", "Remover Participante do Grupo", "grupo", "administrar", "escritaIrreversivel", "Retira um Contato do Grupo e encerra a Participação dele; não há como desfazer."),
+  tool("mensagem.enviarAoContato", "Enviar Mensagem ao Contato", "conversation", "editar", "externa", "Envia ao Contato, pelo Canal do Grupo ou da Conversa, o texto que a Automação montou."),
+  // As Ferramentas de CRM que o processo comercial (SDR → Closer) usa nas
+  // Ações. Sem elas no Catálogo, as nove Automações do processo nasciam
+  // "inoperante: referência inválida" (RN-AUT-21) e a Versão 1 publicada não
+  // passava na validação. Permissão e classe de efeito seguem negocios.md 17:
+  // mudar de Etapa e de Funil é `editar`; perder é `editar` de classe
+  // irreversível (RN-NEG-21); transferir o Proprietário é `administrar`.
+  tool("criar_negocio", "Criar Negócio", "funnel", "criar", "escritaReversivel", "Abre um Negócio novo num Funil, na Etapa indicada, com o Contato e o Proprietário já resolvidos."),
+  tool("vincular_conversa_negocio", "Vincular Conversa ao Negócio", "deal", "editar", "escritaReversivel", "Liga a Conversa de origem ao Negócio, para o histórico de Mensagens aparecer no registro dele."),
+  tool("mover_negocio_etapa", "Mover Negócio de Etapa", "deal", "editar", "escritaReversivel", "Avança ou recua um Negócio para outra Etapa do mesmo Funil, sob as Transições e os Requisitos dela."),
+  tool("mover_negocio_funil", "Mover Negócio de Funil", "deal", "editar", "escritaReversivel", "Transfere um Negócio para outro Funil, numa Etapa de destino explícita; identidade, Proprietário, Vínculos e histórico seguem com ele (RN-NEG-13)."),
+  tool("marcar_negocio_perdido", "Marcar Negócio como perdido", "deal", "editar", "escritaIrreversivel", "Encerra um Negócio como perdido, com o Motivo de Perda que o Funil exige; reabrir é outro ato, com Registro."),
+  tool("atualizar_campos_contato", "Atualizar Campos do Contato", "contact", "editar", "escritaReversivel", "Grava de uma vez vários Valores de Campo Personalizado num Contato, como o resumo do perfil e os sinais de fit."),
+  tool("atualizar_campos_negocio", "Atualizar Campos do Negócio", "deal", "editar", "escritaReversivel", "Grava de uma vez vários Valores de Campo Personalizado num Negócio, como a data e a evidência da conexão."),
+  tool("alterar_proprietario_negocio", "Transferir Proprietário do Negócio", "deal", "administrar", "escritaReversivel", "Passa a propriedade do Negócio a outro Membro ativo, que responde por ele dali em diante."),
+  // Uma Ferramenta de Integração desconectada: fica permitida e inoperante (7.7).
+  tool("agenda_criar_evento", "Criar evento na agenda", "contact", "editar", "externa", "Marca um compromisso na agenda conectada, com o Contato como convidado e o link da sala.", "int_agenda"),
 ];
 
 function tool(
@@ -2425,8 +2573,20 @@ function tool(
   targetResourceType: string,
   requiredAction: "ver" | "criar" | "editar" | "excluir" | "administrar" | "executar" | "comentar",
   effectClass: "leitura" | "escritaReversivel" | "escritaIrreversivel" | "externa",
-) {
-  return { id, name, origin: "plataforma" as const, targetResourceType, requiredAction, effectClass, description: name };
+  /** O que a Ferramenta faz, em uma frase — nunca o nome repetido: é o texto do cartão de Plugins. */
+  description: string,
+  /** Com uma Integração, a Ferramenta é dela (DO-HAB-13); sem, é da plataforma. */
+  integrationId?: Id,
+): Tool {
+  return {
+    id,
+    name,
+    ...(integrationId ? { origin: "integracao" as const, integrationId } : { origin: "plataforma" as const }),
+    targetResourceType,
+    requiredAction,
+    effectClass,
+    description,
+  };
 }
 
 const TEMPLATES: Template[] = [
@@ -2713,6 +2873,58 @@ function buildExecutions(): AgentExecution[] {
       startedAt: at(3, 9),
       endedAt: at(3, 9),
     },
+    {
+      // B82 — um Ensaio: Execução real gravada com `rehearsal`, escritas
+      // `simulado` e sem Memória (D10). É o que a ficha do Agente lista.
+      id: "exe_ensaio_1",
+      workspaceId: WORKSPACE_ID,
+      agentId: "agt_sdr",
+      agentVersion: 1,
+      state: "concluida",
+      origin: "acaoDireta",
+      invokedBy: member("mem_rafael"),
+      delegate: member("mem_rafael"),
+      chain,
+      modelId: "mdl_base",
+      effectiveAutonomy: "supervisionado",
+      rehearsal: true,
+      input: "Qualifique a Marina Alves e proponha o próximo passo",
+      steps: [
+        { index: 0, kind: "raciocinio", output: "Ensaio: responder a “Qualifique a Marina Alves e proponha o próximo passo” com as instruções da Versão 1.", result: "concluido", at: at(1, 15) },
+        { index: 1, kind: "ferramenta", toolId: "ler_contato", output: "Leitura simulada de Contato", toolAllowed: true, resourcePermitted: true, effectClass: "leitura", result: "concluido", at: at(1, 15) },
+        { index: 2, kind: "ferramenta", toolId: "atualizar_qualificacao", output: "Escrita não aplicada: ensaio (B82)", toolAllowed: true, resourcePermitted: true, effectClass: "escritaReversivel", result: "simulado", at: at(1, 15) },
+      ],
+      output: "Ensaio concluído: 3 passo(s), 1 escrita(s) simulada(s).",
+      contextComposition: emptyContext,
+      knowledgeReferences: [],
+      cost: { modelUnits: 1, toolCalls: 2, childExecutions: 0, durationMs: 0 },
+      startedAt: at(1, 15),
+      endedAt: at(1, 15),
+    },
+    {
+      // Uma Execução em curso, com delegante: é a que "Cancelar" alcança (RN-AGE-21).
+      id: "exe_em_curso",
+      workspaceId: WORKSPACE_ID,
+      agentId: "agt_sdr",
+      agentVersion: 1,
+      state: "executando",
+      origin: "acaoDireta",
+      invokedBy: member("mem_rafael"),
+      delegate: member("mem_rafael"),
+      chain,
+      anchor: { type: "conversation", id: "cnv_1" },
+      modelId: "mdl_base",
+      effectiveAutonomy: "supervisionado",
+      rehearsal: false,
+      input: "Resumir a Conversa com a Ana e sugerir o próximo passo",
+      steps: [
+        { index: 0, kind: "ferramenta", toolId: "ler_conversa", toolAllowed: true, resourcePermitted: true, effectClass: "leitura", result: "concluido", at: at(0, 8) },
+      ],
+      contextComposition: emptyContext,
+      knowledgeReferences: [],
+      cost: { modelUnits: 310, toolCalls: 1, childExecutions: 0, durationMs: 0 },
+      startedAt: at(0, 8),
+    },
   ];
 }
 
@@ -2820,7 +3032,7 @@ function seedActivity(state: DataState): void {
     if (execution.endedAt) add(agentRef(execution.agentId), `Execução ${execution.state}`, "agentExecution", execution.id, agentName, execution.endedAt, execution.delegate);
   }
   add(member("mem_thiago"), "Membro removido", "member", "mem_tiago", "Tiago Reis", at(60));
-  add(member("mem_thiago"), "Espaço de Trabalho criado", "workspace", WORKSPACE_ID, "Instituto Transformando Faces", at(400));
+  add(member("mem_thiago"), "Espaço de Trabalho criado", "workspace", WORKSPACE_ID, "Instituto Igor Alves", at(400));
 
   records.sort((a, b) => b.at.localeCompare(a.at));
   state.activity = records;
@@ -2880,6 +3092,10 @@ function processoComercial(): Automation[] {
 
   return [
     // 6.1 — a porta de entrada: Mensagem recebida de quem ainda não é Contato.
+    // O Evento é o que a Caixa de Entrada emite ao criar o Contato no mesmo ato
+    // da Mensagem (RN-CXE-06; caixa-de-entrada 18) — não o "Contato criado"
+    // genérico, que é Evento de Contato e só ocorre no Espaço de Trabalho
+    // (RN-AUT-07).
     base(
       "aut_sdr_entrada",
       "Entrada no SDR",
@@ -2887,7 +3103,7 @@ function processoComercial(): Automation[] {
       "inbox",
       "inbox_n1",
       "mem_julia",
-      { kind: "evento", eventType: "contatoCriado", eventSubtype: "porMensagemRecebida" },
+      { kind: "evento", eventType: "contatoCriadoPorMensagem" },
       [{ kind: "atributo", expression: "Origem do Contato está entre as origens de aquisição" }],
       [
         { order: 0, kind: "escrita", toolId: "criar_negocio", params: "Funil SDR, Etapa Novo Lead, Proprietário resolvido pela Fila", targetExpression: "fnl_sdr:sdr_novo" },
@@ -2936,13 +3152,17 @@ function processoComercial(): Automation[] {
       ],
     ),
 
-    // 6.3 — as quatro progressões automáticas.
+    // 6.3 — as quatro progressões automáticas. As três que escutam Mensagem
+    // têm escopo na Caixa de Entrada: Evento de Mensagem ocorre na Caixa ou na
+    // Fila, nunca no Funil (RN-AUT-07) — o escopo delimita o Gatilho, e a
+    // Condição "Negócio vinculado está em…" é o que as prende ao Funil SDR.
+    // As Ações alcançam o Negócio de qualquer escopo (B41).
     base(
       "aut_sdr_abordagem",
       "Abordagem realizada",
       "Mensagem enviada ao lead move o Negócio para Contato Inicial.",
-      "funnel",
-      "fnl_sdr",
+      "inbox",
+      "inbox_n1",
       "mem_julia",
       { kind: "evento", eventType: "mensagemEnviada" },
       [{ kind: "atributo", expression: "Negócio vinculado está em Novo Lead" }],
@@ -2952,8 +3172,8 @@ function processoComercial(): Automation[] {
       "aut_sdr_resposta",
       "Abordagem respondida",
       "Primeira resposta do lead move o Negócio para Conexão.",
-      "funnel",
-      "fnl_sdr",
+      "inbox",
+      "inbox_n1",
       "mem_julia",
       { kind: "evento", eventType: "mensagemRecebida" },
       [{ kind: "atributo", expression: "Negócio vinculado está em Contato Inicial" }],
@@ -2963,8 +3183,8 @@ function processoComercial(): Automation[] {
       "aut_sdr_conexao",
       "Conexão confirmada",
       "Classifica a resposta do lead e grava o fato da conexão.",
-      "funnel",
-      "fnl_sdr",
+      "inbox",
+      "inbox_n1",
       "mem_julia",
       { kind: "evento", eventType: "mensagemRecebida" },
       [
@@ -3052,12 +3272,14 @@ function processoComercial(): Automation[] {
       ],
     ),
 
+    // A call é uma Tarefa, e Evento de Tarefa exige escopo da Estrutura
+    // (RN-AUT-07): a Lista espelho do Closer, onde "Realizar call" é criada.
     base(
       "aut_clo_proposta",
       "Proposta enviada",
       "Call concluída move para Proposta e abre a Tarefa de enviar o plano recomendado.",
-      "funnel",
-      "fnl_closer",
+      "list",
+      "lst_funil_closer",
       "mem_rafael",
       { kind: "evento", eventType: "tarefaAtualizada", eventSubtype: "concluida" },
       [{ kind: "atributo", expression: "Tarefa é do Tipo Reunião e o Negócio está na Etapa Call" }],

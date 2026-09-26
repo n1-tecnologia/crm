@@ -11,11 +11,10 @@
 import { useState } from "react";
 import { Lock, Megaphone, ShieldCheck, UserPlus, Link2 } from "lucide-react";
 import { useData, useRun } from "@/dados/store";
-import { CONFIGURACOES_PADRAO_DO_GRUPO, criarGrupo } from "@n1/dominio/operations/ferramentas/grupos";
-import { recusaDoCanal, recusaExternaNaComunidade } from "@n1/dominio/operations/ferramentas/permissoes";
+import { CONFIGURACOES_PADRAO_DO_GRUPO, criarGrupo, recusaDoCanal, recusaExternaNaComunidade } from "@n1/dominio/operations";
 import { contactDisplayName } from "@n1/dominio/derive";
 import { contatosComWhatsApp, noLimiteDeGrupos } from "@n1/dominio/derive-ferramentas";
-import type { ConfiguracoesDoGrupo } from "@n1/dominio/types/ferramentas";
+import type { ConfiguracoesDoGrupo } from "@n1/dominio/types";
 import { ConfirmDialog, Field, MultiSelect, Select, TextArea, TextInput } from "@/features/shell/ui";
 import { CaixaDeConfiguracoes } from "./caixa-de-configuracoes";
 import { CONFIGURACAO_DO_GRUPO_LABEL } from "./rotulos";

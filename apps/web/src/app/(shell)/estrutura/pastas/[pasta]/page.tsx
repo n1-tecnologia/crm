@@ -27,6 +27,7 @@ import {
   EmptyState,
   Icone,
   PageHeader,
+  Pilula,
   ReguaDeSecao,
   StateSeal,
 } from "@/features/shell/ui";
@@ -138,8 +139,12 @@ export default function PastaPage({ params }: { params: Promise<{ pasta: string 
                         >
                           <Icone de={List} tamanho="sm" style={{ color: "var(--texto-4)" }} />
                           <span className="min-w-0 flex-1">
-                            <span className="app-md block truncate" style={{ color: "var(--texto)" }}>
-                              {list.name}
+                            <span className="flex min-w-0 items-center gap-2">
+                              <span className="app-md min-w-0 truncate" style={{ color: "var(--texto)" }}>
+                                {list.name}
+                              </span>
+                              {/* C35 — o modelo é da Lista: a Pasta mistura os dois. */}
+                              {list.modeloDeTarefa === "conversacional" ? <Pilula tom="acento">Conversacional</Pilula> : null}
                             </span>
                             {periodo ? <span className="app-meta app-numero block">{periodo}</span> : null}
                           </span>

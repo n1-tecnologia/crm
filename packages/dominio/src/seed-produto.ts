@@ -68,7 +68,6 @@ export function pruneDemo(state: DataState): void {
   for (const d of state.fieldDefinitions) if (d.definedAtId !== undefined && removed.has(d.definedAtId)) removed.add(d.id);
   for (const tt of state.taskTypes) if (removed.has(tt.definedAtId)) removed.add(tt.id);
   for (const v of state.views) if ((v.listId !== undefined && removed.has(v.listId)) || removed.has(v.ownerId)) removed.add(v.id);
-  for (const g of state.goals) if (removed.has(g.anchor.id)) removed.add(g.id);
   for (const f of state.forms) if (removed.has(f.listId)) removed.add(f.id);
   for (const a of state.automations) if (removed.has(a.scopeId)) removed.add(a.id);
   for (const p of state.panels) if (p.anchor && removed.has(p.anchor.id)) removed.add(p.id);
@@ -97,7 +96,6 @@ export function pruneDemo(state: DataState): void {
   keep(state.fieldDefinitions);
   keep(state.taskTypes);
   keep(state.views);
-  keep(state.goals);
   keep(state.forms);
   keep(state.automations);
   keep(state.panels);

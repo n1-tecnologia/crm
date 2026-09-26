@@ -35,7 +35,6 @@ describe("buildGestaoBootstrap", () => {
     expect(s.approvals.length).toBe(0);
     expect(s.agentExecutions.length).toBe(0);
     expect(s.automationExecutions.length).toBe(0);
-    expect(s.goals.length).toBe(0);
     expect(s.links.length).toBe(0);
     expect(s.teams.length).toBe(0);
     expect(s.queues.length).toBe(0);

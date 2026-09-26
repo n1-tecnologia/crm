@@ -106,6 +106,7 @@ function montarLista(workspaceId: Id, agora: string, ator: ActorRef): List {
     features: { subtarefas: false, checklists: false, dependencias: false, compartilhamentoPublico: false },
     parentType: "folder",
     parentId: CP.folderId,
+    modeloDeTarefa: "operacional",
   };
 }
 

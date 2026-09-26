@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus, X } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { Button, Icone } from "@/features/shell/ui";
 
 /**
@@ -49,31 +49,42 @@ export function BotaoDeMais({
   );
 }
 
-/** A linha de composição: título, Criar, e Esc/✕ para desistir. */
+/** A linha de composição: Tipo (quando há o que escolher), título, Criar, e Esc/✕ para desistir. */
 export function CompositorNoGrupo({
   placeholder,
   onCreate,
   onCancel,
   className,
+  seletor,
 }: {
   readonly placeholder: string;
   /** Devolve `true` quando criou — a linha se limpa e fecha. */
-  readonly onCreate: (title: string) => boolean;
+  readonly onCreate: (title: string, taskTypeId?: string) => boolean;
   readonly onCancel: () => void;
   readonly className?: string;
+  /**
+   * O seletor de Tipo da Tarefa: quem lista os grupos sabe a Lista e desenha a
+   * peça, mas o ESTADO é daqui — como esta linha desmonta ao fechar, desistir
+   * apaga a escolha junto com o título, e o que se escolhe num grupo não
+   * governa a barra do topo nem o "+" do grupo vizinho. Vem `undefined`
+   * quando a Lista enxerga um Tipo só.
+   */
+  readonly seletor?: (valor: string | undefined, aoEscolher: (taskTypeId: string) => void) => ReactNode;
 }) {
   const [titulo, setTitulo] = useState("");
+  const [tipo, setTipo] = useState<string | undefined>(undefined);
   const enviar = (event?: FormEvent) => {
     event?.preventDefault();
     const texto = titulo.trim();
     if (!texto) return;
-    if (onCreate(texto)) {
+    if (onCreate(texto, tipo)) {
       setTitulo("");
       onCancel();
     }
   };
   return (
-    <form onSubmit={enviar} className={`flex items-center gap-2 ${className ?? ""}`}>
+    <form onSubmit={enviar} className={`flex flex-wrap items-center gap-2 ${className ?? ""}`}>
+      {seletor?.(tipo, setTipo)}
       <input
         value={titulo}
         onChange={(event) => setTitulo(event.target.value)}

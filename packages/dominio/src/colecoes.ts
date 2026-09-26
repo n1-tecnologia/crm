@@ -35,7 +35,6 @@ const TODAS: Record<ChaveDeColecao, true> = {
   fieldDefinitions: true,
   taskTypes: true,
   views: true,
-  goals: true,
   forms: true,
   spaces: true,
   folders: true,

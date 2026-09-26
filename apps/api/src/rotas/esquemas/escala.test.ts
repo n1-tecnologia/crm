@@ -2,8 +2,8 @@
  * `esquemas/escala.ts` — testes puros, sem banco, sem `buildApp`: só a FORMA
  * dos argumentos, nunca regra de negócio. Provam três coisas: (1) as DUAS
  * formas que o verificador reproduziu contra o antigo fallback estrutural
- * (`01-VERIFICATION.md`, removido no Plan 01-16) caem — `createGoal` com
- * `kind: 42` e `saveView` com `filters` arbitrário; (2) outras formas
+ * (`01-VERIFICATION.md`, removido no Plan 01-16) caem — `saveView` com
+ * `filters` arbitrário (a outra, de Metas, saiu com elas); (2) outras formas
  * hostis caem; (3) as formas LITERAIS que `apps/web` manda hoje continuam
  * passando — a rede de regressão contra falso positivo de drift.
  */
@@ -14,16 +14,11 @@ import { ESCALA } from "./escala";
 const viaJson = (args: unknown[]): unknown[] => JSON.parse(JSON.stringify(args)) as unknown[];
 
 describe("esquemas/escala — a forma dos args de scale.ts", () => {
-  it("(a) cobertura — as 14 chaves de scale.ts em registro.ts", () => {
+  it("(a) cobertura — as 9 chaves de scale.ts em registro.ts", () => {
     const esperadas = [
       "saveView",
       "deleteView",
       "setDefaultView",
-      "createGoal",
-      "updateGoal",
-      "archiveGoal",
-      "setGoalArchived",
-      "linkTaskToGoal",
       "createForm",
       "updateForm",
       "archiveForm",
@@ -71,39 +66,6 @@ describe("esquemas/escala — a forma dos args de scale.ts", () => {
     expect(ESCALA.deleteView.safeParse(viaJson(["viw_1"])).success).toBe(true);
     expect(ESCALA.setDefaultView.safeParse(viaJson(["viw_1", true])).success).toBe(true);
 
-    // metas/page.tsx
-    expect(
-      ESCALA.createGoal.safeParse(
-        viaJson([{ name: "M", anchor: { type: "list", id: "lst_1" }, kind: "tarefasConcluidas", target: 10 }]),
-      ).success,
-    ).toBe(true);
-    expect(
-      ESCALA.createGoal.safeParse(
-        viaJson([
-          {
-            name: "M",
-            description: "d",
-            anchor: { type: "space", id: "spc_1" },
-            kind: "metrica",
-            target: 5,
-            unit: "un",
-            measure: {
-              target: "task",
-              scopeType: "list",
-              scopeIds: ["lst_1"],
-              aggregation: "contagem",
-              attribute: "id",
-            },
-            dueDate: "2026-12-31",
-          },
-        ]),
-      ).success,
-    ).toBe(true);
-    expect(ESCALA.updateGoal.safeParse(viaJson(["gol_1", {}])).success).toBe(true);
-    expect(ESCALA.updateGoal.safeParse(viaJson(["gol_1", { target: 20 }])).success).toBe(true);
-    expect(ESCALA.archiveGoal.safeParse(viaJson(["gol_1"])).success).toBe(true);
-    expect(ESCALA.setGoalArchived.safeParse(viaJson(["gol_1", false])).success).toBe(true);
-    expect(ESCALA.linkTaskToGoal.safeParse(viaJson(["gol_1", "tsk_1", true])).success).toBe(true);
 
     // forms-editor.tsx
     expect(
@@ -155,34 +117,7 @@ describe("esquemas/escala — a forma dos args de scale.ts", () => {
     expect(ESCALA.revokePublicShare.safeParse(viaJson(["tsk_1"])).success).toBe(true);
   });
 
-  it("(c) as duas formas que o verificador reproduziu caem: createGoal kind:42 + anchor.lixo, saveView filters arbitrário", () => {
-    // A forma exata que passava no antigo fallback estrutural (01-VERIFICATION.md).
-    expect(
-      ESCALA.createGoal.safeParse(
-        viaJson([
-          { name: "Meta", anchor: { type: "list", id: "lst_ativacao", lixo: { a: [1, 2] } }, kind: 42, target: 10 },
-        ]),
-      ).success,
-    ).toBe(false);
-    // Só o kind fora do enum, sem a chave a mais no anchor.
-    expect(
-      ESCALA.createGoal.safeParse(
-        viaJson([{ name: "Meta", anchor: { type: "list", id: "lst_ativacao" }, kind: 42, target: 10 }]),
-      ).success,
-    ).toBe(false);
-    // Só a chave a mais no anchor, com kind válido.
-    expect(
-      ESCALA.createGoal.safeParse(
-        viaJson([
-          {
-            name: "Meta",
-            anchor: { type: "list", id: "lst_ativacao", lixo: { a: [1, 2] } },
-            kind: "tarefasConcluidas",
-            target: 10,
-          },
-        ]),
-      ).success,
-    ).toBe(false);
+  it("(c) as formas que o verificador reproduziu caem: saveView com kind fora do enum e filters arbitrário", () => {
     // saveView — kind fora do enum.
     expect(
       ESCALA.saveView.safeParse(
@@ -200,8 +135,6 @@ describe("esquemas/escala — a forma dos args de scale.ts", () => {
   });
 
   it("(c) outras formas hostis caem", () => {
-    expect(ESCALA.updateGoal.safeParse(viaJson(["gol_1", { kind: 42 }])).success).toBe(false);
-    expect(ESCALA.updateGoal.safeParse(viaJson(["gol_1", { lixo: 1 }])).success).toBe(false);
     expect(
       ESCALA.createForm.safeParse(
         viaJson([

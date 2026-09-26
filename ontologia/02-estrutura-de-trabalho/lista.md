@@ -105,6 +105,8 @@ Consequências:
 
 Não são atributos, embora sejam configurados na Lista: Conjunto de Status próprio, Definições de Campo próprias, Visualizações da Lista. São componentes com identidade (seção 7). Automações com escopo Lista não são nem atributos nem componentes: pertencem ao Espaço de Trabalho (documento 01, seção 8).
 
+**Extensão do produto, pendente de formalização (C35):** a plataforma acrescenta à Lista o atributo nativo **Modelo de Tarefa** (`operacional` | `conversacional`), não herdado e imutável depois da primeira Tarefa, que decide se cada Tarefa raiz nasce de um Contato com a sua Conversa — ver `DECISOES-E-PENDENCIAS.md`, C35. A Lista conversacional ainda declara os seus **Canais de atendimento** (atributo nativo, não herdado, ≥1 ao nascer, mutável a qualquer momento), que decidem por onde a conversa de cada Tarefa nasce — C36.
+
 ## 7. Entidades internas ou componentes
 
 Componentes são configurações com identidade cuja existência depende da Lista. Tarefas **não** são componentes: são raízes do próprio agregado, contidas estruturalmente pela Lista (seção 8).

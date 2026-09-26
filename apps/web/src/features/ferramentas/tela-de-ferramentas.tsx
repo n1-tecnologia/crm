@@ -14,9 +14,7 @@
 import { useRouter } from "next/navigation";
 import { Layers, Users, Workflow } from "lucide-react";
 import { useData, useRun, useSession } from "@/dados/store";
-import { recusaDeMembroAtivo } from "@n1/dominio/operations/ferramentas/permissoes";
-import { sincronizarComunidade } from "@n1/dominio/operations/ferramentas/comunidades";
-import { sincronizarGrupo } from "@n1/dominio/operations/ferramentas/grupos";
+import { recusaDeMembroAtivo, sincronizarComunidade, sincronizarGrupo } from "@n1/dominio/operations";
 import { useAvisos } from "@/features/shell/ficha";
 import { ActionMenu, Button, Icone, PageHeader } from "@/features/shell/ui";
 import { AbaComunidades } from "./aba-comunidades";

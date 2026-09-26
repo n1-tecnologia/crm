@@ -155,6 +155,7 @@ export function applyContasAPagar(state: DataState, clock: Clock, opcoes: Opcoes
     description: "Uma Tarefa por conta; nasce ~30 dias antes do vencimento e morre em “pago”.",
     order: 0,
     isPrivate: false,
+    modeloDeTarefa: "operacional",
     modes: { statusSet: "sobrescrito", features: "sobrescrito" },
     blocks: {},
     statusSet,
@@ -167,6 +168,8 @@ export function applyContasAPagar(state: DataState, clock: Clock, opcoes: Opcoes
     // Seção 10 — quem é a Pessoa da conta enxerga a própria conta.
     sharedWithDefinitionIds: [F.pessoa],
   });
+  // O Tipo padrão da plataforma é do Espaço: uma Lista nova direto em Gestão aceita Tarefa.
+  state.taskTypes.push({ id: "tt_tarefa_gestao", name: "Tarefa", icon: "circle-check", isPlatformDefault: true, definedAtType: "space", definedAtId: CP.spaceId });
   // O Tipo "Conta" é da Pasta: Contas a pagar e Contas a receber usam o mesmo (B25).
   state.taskTypes.push({ id: CP.taskTypeId, name: "Conta", icon: "receipt", isPlatformDefault: true, definedAtType: "folder", definedAtId: CP.folderId });
 
@@ -302,7 +305,7 @@ export function applyContasAPagar(state: DataState, clock: Clock, opcoes: Opcoes
       },
     ],
     metadata: { language: "pt-BR", labels: ["financeiro", "erp"] },
-    provenance: { kind: "template", sourceId: "src_col_financeiro_erp_manual", sourceName: "Envio manual", at: at(120), sourceKind: "envioManual", specificOrigin: "texto digitado" },
+    provenance: { kind: "fonte", sourceId: "src_col_financeiro_erp_manual", sourceName: "Envio manual", at: at(120), sourceKind: "envioManual", specificOrigin: "texto digitado" },
     comments: [],
     attachments: [],
   });
@@ -699,19 +702,5 @@ export function applyContasAPagar(state: DataState, clock: Clock, opcoes: Opcoes
   hist(recarga.id, recarga.title, member(CP.financeiroId), "para pagar", "em autorização bancária", at(3, 17));
   hist(recarga.id, recarga.title, member(CP.aprovadorId), "em autorização bancária", "pago", at(2, 9));
 
-  // Meta do Financeiro: contas em dia.
-  state.goals.push({
-    id: "gol_cp_em_dia",
-    workspaceId,
-    createdBy: member(CP.financeiroId),
-    createdAt: at(30),
-    lifecycle: "ativo",
-    name: "Zero contas vencidas em aberto",
-    ownerMemberId: CP.financeiroId,
-    anchor: { type: "list", id: CP.listId },
-    kind: "tarefasConcluidas",
-    target: 3,
-    taskIds: [thiagoSet.id, aluguelSet.id, recarga.id],
-  });
   }
 }

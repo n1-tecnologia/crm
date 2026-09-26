@@ -102,15 +102,6 @@ function Faixa({ i }: { readonly i: number }) {
   );
 }
 
-function Regua({ i }: { readonly i: number }) {
-  return (
-    <div className="flex items-center gap-3 pb-2 pt-5 first:pt-0">
-      <Peca w="6rem" h="0.75rem" i={i} />
-      <span className="h-px flex-1" style={{ background: "var(--linha-sutil)" }} />
-    </div>
-  );
-}
-
 function Linhas({ de, quantidade, altura }: { readonly de: number; readonly quantidade: number; readonly altura?: string }) {
   return (
     <>
@@ -219,25 +210,10 @@ const FORMAS: Record<Forma, ReactNode> = {
       </div>
     </div>
   ),
+  // O Início: só o palco preto de borda a borda — o robô chega com a cena.
   inicio: (
-    <div className="p-4 xl:p-6">
-      <Peca w="100%" h="var(--capa-h)" i={0} className="rounded-[var(--r-destaque)]" />
-      <div className="mt-6 grid gap-x-8 gap-y-6 xl:grid-cols-[minmax(0,1fr)_24rem] xl:items-start">
-        <div className="flex flex-col" style={{ gap: "var(--gap-solto)" }}>
-          <Regua i={1} />
-          <Linhas de={2} quantidade={2} />
-          <Regua i={4} />
-          <Linhas de={5} quantidade={2} />
-          <Regua i={7} />
-          <Linhas de={8} quantidade={1} />
-        </div>
-        <div className="flex flex-col" style={{ gap: "var(--gap-solto)" }}>
-          <Regua i={2} />
-          <Linhas de={3} quantidade={2} />
-          <Regua i={6} />
-          <Linhas de={7} quantidade={1} />
-        </div>
-      </div>
+    <div className="corpo-de-tela inicio-corpo flex flex-col">
+      <div className="flex-1" style={{ minHeight: "var(--capa-h)", background: "var(--palco-inicio)" }} />
     </div>
   ),
   formulario: (
@@ -266,6 +242,23 @@ export function EsqueletoDeTela({ forma = "tabela" }: { readonly forma?: Forma }
         {FORMAS[forma]}
       </div>
       <CarregadorDeIcones rotulo="Carregando a tela…" />
+    </div>
+  );
+}
+
+/** A barra global em silhueta: a mesma classe garante a mesma geometria quando a casca hidrata. */
+function BarraGlobalEmSilhueta() {
+  return (
+    <div className="barra-global" aria-hidden="true">
+      <span />
+      <div className="barra-global-busca">
+        <Peca w="100%" h="var(--controle-h-sm)" i={0} redondo />
+      </div>
+      <div className="barra-global-pessoa">
+        <Peca w="7rem" h="var(--controle-h-sm)" i={1} />
+        <Peca w="var(--controle-h-sm)" h="var(--controle-h-sm)" i={1} />
+        <Peca w="var(--avatar-md)" h="var(--avatar-md)" i={2} redondo />
+      </div>
     </div>
   );
 }
@@ -299,9 +292,6 @@ export function EsqueletoDaCasca() {
             <span className="flex-1" />
             <Peca w="var(--controle-h-sm)" h="var(--controle-h-sm)" i={0} />
           </div>
-          <div className="px-2 pb-2">
-            <Peca w="100%" h="var(--controle-h-sm)" i={1} redondo />
-          </div>
           <div className="flex flex-col gap-1 px-2 pb-3">
             <div className="flex items-center px-2 py-2">
               <Peca w="40%" h="0.625rem" i={2} />
@@ -315,6 +305,7 @@ export function EsqueletoDaCasca() {
         </div>
       </div>
       <div className="flex min-w-0 flex-1 flex-col">
+        <BarraGlobalEmSilhueta />
         <div className="relative min-h-0 min-w-0 flex-1 overflow-y-auto" style={{ background: "var(--page)" }}>
           <div aria-hidden="true" className="flex h-full flex-col">
             {FORMAS.tabela}

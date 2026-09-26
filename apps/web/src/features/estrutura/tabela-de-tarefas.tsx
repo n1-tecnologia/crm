@@ -5,8 +5,9 @@
  * porque é o mesmo sistema: só mudam as palavras. Grupos por Status com a
  * régua (chevron, a caixa do Status, a contagem, o "+"), as linhas com as
  * colunas que importam (Tarefa, Responsável, Vencimento, Prioridade, Tipo,
- * Status), as ações rápidas que aparecem no hover à esquerda do "…", e o
- * menu com "Mover para…" cada Status — com a mesma confirmação.
+ * Status — e, na Lista conversacional, Contato e Canal), as ações rápidas que
+ * aparecem no hover à esquerda do "…", e o menu com "Mover para…" cada
+ * Status — com a mesma confirmação.
  *
  * Um grupo sem Tarefa não aparece, a não ser que o filtro o escolha ou que o
  * compositor esteja aberto nele. A linha inteira abre a Tarefa; um clique que
@@ -19,7 +20,7 @@
  */
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowDown,
@@ -35,15 +36,18 @@ import { useRun, useSession } from "@/dados/store";
 import { useRecente } from "@/features/shell/recente";
 import { changeTaskStatus, statusOptionRefusal } from "@n1/dominio/operations";
 import {
+  contactDisplayName,
   isBlocked,
   isOverdue,
   isTerminalCategory,
   statusCategory,
   taskWriteRefusal,
 } from "@n1/dominio/derive";
+import { canalDaTarefa, contatoDaTarefa } from "@n1/dominio/derive-conversacional";
 import type { DataState } from "@n1/dominio/state";
 import type { Priority, StatusDefinition, Task, ViewFilters } from "@n1/dominio/types";
-import { PRIORITY_LABEL, STATUS_CATEGORY_LABEL } from "@/features/shell/format";
+import { ContactAvatar } from "@/features/crm/contact-card";
+import { CHANNEL_TYPE_LABEL, PRIORITY_LABEL, STATUS_CATEGORY_LABEL } from "@/features/shell/format";
 import { useFormat } from "@/features/shell/use-format";
 import {
   ActionMenu,
@@ -76,6 +80,7 @@ export function TabelaDeTarefas({
   openTask,
   report,
   onCreateInGroup,
+  seletorDeTipo,
   criacaoRecusada,
   selected,
   onToggle,
@@ -83,6 +88,7 @@ export function TabelaDeTarefas({
   selecionando = false,
   rotulo = "Tarefa",
   onMais,
+  conversacional = false,
 }: {
   readonly state: DataState;
   readonly tasks: readonly Task[];
@@ -92,7 +98,9 @@ export function TabelaDeTarefas({
   readonly openTask: (taskId: string) => void;
   readonly report: Report;
   /** O "+" do grupo: a Tarefa nasce naquele Status. Ausente = a Lista não recebe Tarefa. */
-  readonly onCreateInGroup?: (title: string, statusId: string) => boolean;
+  readonly onCreateInGroup?: (title: string, statusId: string, taskTypeId?: string) => boolean;
+  /** O seletor de Tipo do compositor de grupo; `undefined` quando não há escolha. */
+  readonly seletorDeTipo?: (valor: string | undefined, aoEscolher: (taskTypeId: string) => void) => ReactNode;
   readonly criacaoRecusada?: string;
   /** Modo de seleção em lote: presente, cada linha ganha uma caixa. */
   readonly selected?: ReadonlySet<string>;
@@ -103,6 +111,8 @@ export function TabelaDeTarefas({
   readonly rotulo?: string;
   /** O "+" do grupo faz OUTRA coisa (iniciar uma conversa naquela Etapa) em vez de abrir o compositor. */
   readonly onMais?: (statusId: string) => void;
+  /** C35 — a Lista conversacional ganha as colunas Contato e Canal, lidas dos Vínculos da Tarefa. */
+  readonly conversacional?: boolean;
 }) {
   const fmt = useFormat();
   const run = useRun();
@@ -153,6 +163,8 @@ export function TabelaDeTarefas({
   };
   const aConfirmar = confirmando ? tasks.find((t) => t.id === confirmando.taskId) : undefined;
   const escondeControle = "button, a, input, select, textarea, [role=menu], [role=listbox]";
+  // As faixas (régua do grupo, compositor, vazio) atravessam todas as colunas.
+  const colunas = conversacional ? 10 : 8;
 
   return (
     <div className="@container">
@@ -174,6 +186,12 @@ export function TabelaDeTarefas({
               {selecionando ? <span className="sr-only">Selecionar</span> : null}
             </th>
             <th className="app-coluna">{rotulo}</th>
+            {conversacional ? (
+              <>
+                <th className="app-coluna">Contato</th>
+                <th className="app-coluna hidden @4xl:table-cell">Canal</th>
+              </>
+            ) : null}
             <th className="app-coluna hidden @3xl:table-cell">Responsável</th>
             <th className="app-coluna">Vencimento</th>
             <th className="app-coluna hidden @5xl:table-cell">Prioridade</th>
@@ -190,7 +208,7 @@ export function TabelaDeTarefas({
           return (
             <tbody key={definition.id} className="cascata">
               <tr data-faixa="true">
-                <td colSpan={8}>
+                <td colSpan={colunas}>
                   <div className="flex flex-wrap items-center gap-3">
                     <button
                       type="button"
@@ -239,10 +257,11 @@ export function TabelaDeTarefas({
               </tr>
               {criandoEm === definition.id && onCreateInGroup ? (
                 <tr data-faixa="true">
-                  <td colSpan={8}>
+                  <td colSpan={colunas}>
                     <CompositorNoGrupo
                       placeholder={`Nova em ${definition.name}`}
-                      onCreate={(title) => onCreateInGroup(title, definition.id)}
+                      onCreate={(title, taskTypeId) => onCreateInGroup(title, definition.id, taskTypeId)}
+                      seletor={seletorDeTipo}
                       onCancel={() => setCriandoEm(null)}
                     />
                   </td>
@@ -250,7 +269,7 @@ export function TabelaDeTarefas({
               ) : null}
               {fechado ? null : itens.length === 0 ? (
                 <tr data-faixa="true">
-                  <td colSpan={8} className="app-meta">
+                  <td colSpan={colunas} className="app-meta">
                     {rotulo === "Tarefa" ? "Nenhuma Tarefa" : `Nenhum ${rotulo}`} em {definition.name}.
                   </td>
                 </tr>
@@ -267,6 +286,9 @@ export function TabelaDeTarefas({
                   const membro = responsavel ? state.members.find((m) => m.id === responsavel.id) : undefined;
                   const agente = !membro && task.assignees[0]?.kind === "agent" ? state.agents.find((a) => a.id === task.assignees[0]?.id) : undefined;
                   const tipo = state.taskTypes.find((t) => t.id === task.taskTypeId);
+                  // C35 — o Contato e o Canal vêm dos Vínculos; a Tarefa não os guarda.
+                  const contato = conversacional ? contatoDaTarefa(state, task) : undefined;
+                  const canal = conversacional ? canalDaTarefa(state, task) : undefined;
                   const escreve = taskWriteRefusal(state, memberId, task.id) === undefined;
                   const motivoDe = (statusId: string | undefined) =>
                     statusId === undefined
@@ -325,6 +347,29 @@ export function TabelaDeTarefas({
                           {isBlocked(state, task) ? <ConditionMarker tone="warning">Bloqueada</ConditionMarker> : null}
                         </span>
                       </td>
+                      {conversacional ? (
+                        <>
+                          <td>
+                            {contato ? (
+                              <span className="inline-flex items-center gap-1.5" style={{ color: "var(--texto)" }}>
+                                <ContactAvatar contact={contato} />
+                                <span className="max-w-[14ch] truncate">{contactDisplayName(contato)}</span>
+                              </span>
+                            ) : (
+                              <span style={{ color: "var(--texto-4)" }}>—</span>
+                            )}
+                          </td>
+                          <td className="hidden @4xl:table-cell">
+                            {canal ? (
+                              <Pilula tom="neutro" className="whitespace-nowrap">
+                                {CHANNEL_TYPE_LABEL[canal.channelType] ?? canal.name}
+                              </Pilula>
+                            ) : (
+                              <span style={{ color: "var(--texto-4)" }}>—</span>
+                            )}
+                          </td>
+                        </>
+                      ) : null}
                       <td className="hidden @3xl:table-cell">
                         {membro ? (
                           <span className="inline-flex items-center gap-1.5" style={{ color: "var(--texto)" }}>

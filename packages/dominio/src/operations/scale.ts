@@ -1,11 +1,12 @@
 /**
  * Fase 4 da Gestão de Projetos: o que faz o sistema servir a vários times —
- * Visualizações salvas, Metas, Formulários e Compartilhamento público.
+ * Visualizações salvas, Formulários e Compartilhamento público. (Metas viveu
+ * aqui até 2026-09-17 e saiu a pedido.)
  *
  * Uma Visualização é configuração (A8): quem a abre lê pelas próprias
- * permissões, nunca pelas de quem salvou. A Meta nunca grava progresso. O
- * Formulário cria Tarefa em nome do dono, com Proveniência. O link público
- * abre a Tarefa só leitura por um segredo que a revogação invalida.
+ * permissões, nunca pelas de quem salvou. O Formulário cria Tarefa em nome do
+ * dono, com Proveniência. O link público abre a Tarefa só leitura por um
+ * segredo que a revogação invalida.
  */
 
 import {
@@ -17,23 +18,27 @@ import {
   memberReachesContainer,
   memberSeesTask,
 } from "../derive";
+import { listaConversacional } from "../derive-conversacional";
 import { fail, ok, type DataState, type OperationResult } from "../state";
-import type { ActorRef, Attachment, Form, FormQuestion, Goal, Id, PublicShare, Task, View, ViewFilters, WorkspaceFile } from "../types";
+import type { ActorRef, Attachment, Form, FormQuestion, Id, PublicShare, Task, View, ViewFilters, WorkspaceFile } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
 import { runListAutomations } from "./automations";
 import { createTask, setTaskFieldValue } from "./tasks";
 
 const now = (): string => new Date().toISOString();
 
+/**
+ * C35 — na Lista conversacional a Tarefa nasce de um Contato (TAREFA_SEM_CONTATO
+ * em createTask), e um envio anônimo não traz Contato nenhum: o Formulário não
+ * cabe nela. A mesma frase recusa criar/editar, marca o existente como
+ * desatualizado, recusa o envio e desliga o [Novo Formulário] da tela.
+ */
+export const FORMULARIO_EM_LISTA_CONVERSACIONAL = "Nesta Lista toda Tarefa nasce de um Contato: um Formulário público não cria Tarefa aqui.";
+
 function activeMember(state: DataState, memberId: Id): string | undefined {
   const member = state.members.find((m) => m.id === memberId);
   if (!member || member.state !== "ativo") return "Só um Membro ativo faz isto.";
   return undefined;
-}
-
-function isAdmin(state: DataState, memberId: Id): boolean {
-  const base = state.roles.find((r) => r.id === state.members.find((m) => m.id === memberId)?.roleId)?.base;
-  return base === "proprietario" || base === "administrador";
 }
 
 /** Um segredo legível o bastante para uma URL e imprevisível o bastante para um protótipo. */
@@ -219,145 +224,6 @@ export function applyView(state: DataState, tasks: readonly Task[], view: Pick<V
   return out;
 }
 
-/* ───────────────────────────── Metas ───────────────────────────── */
-
-export interface GoalInput {
-  readonly name: string;
-  readonly description?: string;
-  readonly anchor: Goal["anchor"];
-  readonly kind: Goal["kind"];
-  readonly target: number;
-  readonly unit?: string;
-  readonly measure?: Goal["measure"];
-  readonly dueDate?: string;
-}
-
-function validateGoal(input: GoalInput): string | undefined {
-  if (!input.name.trim()) return "Dê um nome à Meta.";
-  if (!Number.isFinite(input.target) || input.target <= 0) return "O alvo é um número maior que zero.";
-  if (input.kind === "metrica" && !input.measure) return "Uma Meta por métrica precisa da leitura: o que contar ou somar, e onde.";
-  // RN-PAI-13 — dinheiro não se soma entre moedas num número só; a Meta lê contagem ou estimativa.
-  if (input.kind === "metrica" && input.measure?.attribute === "value") return "Uma Meta não soma valores em dinheiro: use contagem ou estimativa.";
-  if (input.dueDate && Number.isNaN(Date.parse(input.dueDate))) return "Data-limite inválida.";
-  return undefined;
-}
-
-export function createGoal(state: DataState, actingMemberId: Id, input: GoalInput): OperationResult<Goal> {
-  const refusal = activeMember(state, actingMemberId);
-  if (refusal) return fail(refusal);
-  const base = state.roles.find((r) => r.id === state.members.find((m) => m.id === actingMemberId)?.roleId)?.base;
-  if (base === "convidado") return fail("Um Convidado não cria Meta.");
-  if (!memberReachesContainer(state, actingMemberId, input.anchor.type, input.anchor.id)) return fail("Você não alcança o contêiner desta Meta.");
-  const problema = validateGoal(input);
-  if (problema) return fail(problema);
-  const goal: Goal = {
-    id: nextId("gol"),
-    workspaceId: state.workspace.id,
-    createdBy: memberActor(actingMemberId),
-    createdAt: now(),
-    lifecycle: "ativo",
-    name: input.name.trim(),
-    ...(input.description?.trim() ? { description: input.description.trim() } : {}),
-    ownerMemberId: actingMemberId,
-    anchor: input.anchor,
-    kind: input.kind,
-    target: input.target,
-    ...(input.unit?.trim() ? { unit: input.unit.trim() } : {}),
-    ...(input.kind === "metrica" && input.measure ? { measure: input.measure } : {}),
-    taskIds: [],
-    ...(input.dueDate ? { dueDate: input.dueDate } : {}),
-  };
-  state.goals.push(goal);
-  recordActivity(state, { actor: memberActor(actingMemberId), action: "Meta criada", objectType: "goal", objectId: goal.id, objectName: goal.name });
-  return ok(goal);
-}
-
-function mayEditGoal(state: DataState, actingMemberId: Id, goal: Goal): string | undefined {
-  const refusal = activeMember(state, actingMemberId);
-  if (refusal) return refusal;
-  if (goal.ownerMemberId !== actingMemberId && !isAdmin(state, actingMemberId)) return "Só o dono da Meta ou um Administrador a altera.";
-  if (goal.lifecycle !== "ativo") return "Esta Meta está arquivada.";
-  return undefined;
-}
-
-export function updateGoal(state: DataState, actingMemberId: Id, goalId: Id, input: Partial<GoalInput>): OperationResult<Goal> {
-  const goal = state.goals.find((g) => g.id === goalId);
-  if (!goal) return fail("Meta não encontrada.");
-  const refusal = mayEditGoal(state, actingMemberId, goal);
-  if (refusal) return fail(refusal);
-  const merged: GoalInput = {
-    name: input.name ?? goal.name,
-    description: input.description ?? goal.description,
-    anchor: input.anchor ?? goal.anchor,
-    kind: input.kind ?? goal.kind,
-    target: input.target ?? goal.target,
-    unit: input.unit ?? goal.unit,
-    measure: input.measure ?? goal.measure,
-    dueDate: input.dueDate ?? goal.dueDate,
-  };
-  const problema = validateGoal(merged);
-  if (problema) return fail(problema);
-  goal.name = merged.name.trim();
-  if (merged.description?.trim()) goal.description = merged.description.trim();
-  else delete goal.description;
-  goal.anchor = merged.anchor;
-  goal.kind = merged.kind;
-  goal.target = merged.target;
-  if (merged.unit?.trim()) goal.unit = merged.unit.trim();
-  else delete goal.unit;
-  if (merged.kind === "metrica" && merged.measure) goal.measure = merged.measure;
-  else delete goal.measure;
-  if (merged.dueDate) goal.dueDate = merged.dueDate;
-  else delete goal.dueDate;
-  recordActivity(state, { actor: memberActor(actingMemberId), action: "Meta alterada", objectType: "goal", objectId: goal.id, objectName: goal.name });
-  return ok(goal);
-}
-
-export function archiveGoal(state: DataState, actingMemberId: Id, goalId: Id): OperationResult<Goal> {
-  return setGoalArchived(state, actingMemberId, goalId, true);
-}
-
-/** Arquivar tira a Meta da lista e do Painel; restaurar a traz de volta com o progresso lido de novo. */
-export function setGoalArchived(state: DataState, actingMemberId: Id, goalId: Id, archived: boolean): OperationResult<Goal> {
-  const goal = state.goals.find((g) => g.id === goalId);
-  if (!goal) return fail("Meta não encontrada.");
-  const refusal = activeMember(state, actingMemberId);
-  if (refusal) return fail(refusal);
-  if (goal.ownerMemberId !== actingMemberId && !isAdmin(state, actingMemberId)) return fail("Só o dono da Meta ou um Administrador a altera.");
-  if (archived && goal.lifecycle !== "ativo") return fail("Esta Meta já está arquivada.");
-  if (!archived && goal.lifecycle === "ativo") return fail("Esta Meta já está ativa.");
-  goal.lifecycle = archived ? "arquivado" : "ativo";
-  recordActivity(state, { actor: memberActor(actingMemberId), action: archived ? "Meta arquivada" : "Meta restaurada", objectType: "goal", objectId: goal.id, objectName: goal.name });
-  return ok(goal);
-}
-
-/** Liga uma Tarefa que o Membro vê; a Meta por métrica não liga Tarefas. */
-export function linkTaskToGoal(state: DataState, actingMemberId: Id, goalId: Id, taskId: Id, linked: boolean): OperationResult<Goal> {
-  const goal = state.goals.find((g) => g.id === goalId);
-  if (!goal) return fail("Meta não encontrada.");
-  const refusal = mayEditGoal(state, actingMemberId, goal);
-  if (refusal) return fail(refusal);
-  if (goal.kind !== "tarefasConcluidas") return fail("Esta Meta é por métrica: não liga Tarefas.");
-  const task = state.tasks.find((t) => t.id === taskId);
-  if (!task || !memberSeesTask(state, actingMemberId, taskId)) return fail("Tarefa não encontrada.");
-  if (linked) {
-    if (goal.taskIds.includes(taskId)) return ok(goal);
-    if (effectiveLifecycleOfTask(state, taskId) !== "ativo") return fail("Só uma Tarefa ativa entra na Meta.");
-    goal.taskIds.push(taskId);
-  } else {
-    goal.taskIds = goal.taskIds.filter((id) => id !== taskId);
-  }
-  recordActivity(state, {
-    actor: memberActor(actingMemberId),
-    action: linked ? "Tarefa ligada à Meta" : "Tarefa desligada da Meta",
-    objectType: "goal",
-    objectId: goal.id,
-    objectName: goal.name,
-    detail: task.title,
-  });
-  return ok(goal);
-}
-
 /* ───────────────────────────── Formulários ───────────────────────────── */
 
 export interface FormInput {
@@ -398,6 +264,7 @@ export function createForm(state: DataState, actingMemberId: Id, listId: Id, inp
   if (refusal) return fail(refusal);
   const list = state.lists.find((l) => l.id === listId);
   if (!list || list.lifecycle !== "ativo") return fail("Lista não encontrada ou inativa.");
+  if (listaConversacional(state, listId)) return fail(FORMULARIO_EM_LISTA_CONVERSACIONAL);
   const name = input.name.trim();
   if (!name) return fail("Dê um nome ao Formulário.", "nome");
   if (state.forms.some((f) => f.listId === listId && f.lifecycle === "ativo" && f.name.trim().toLocaleLowerCase("pt-BR") === name.toLocaleLowerCase("pt-BR"))) {
@@ -430,6 +297,8 @@ export function updateForm(state: DataState, actingMemberId: Id, formId: Id, inp
   if (!form) return fail("Formulário não encontrado.");
   const refusal = containerAdminRefusal(state, actingMemberId, "list", form.listId);
   if (refusal) return fail(refusal);
+  // Editar não o faria caber: a saída é arquivar (archiveForm segue aberto).
+  if (listaConversacional(state, form.listId)) return fail(FORMULARIO_EM_LISTA_CONVERSACIONAL);
   if (input.name !== undefined) {
     const name = input.name.trim();
     if (!name) return fail("Dê um nome ao Formulário.", "nome");
@@ -487,8 +356,13 @@ export function formBySecret(state: DataState, secretValue: string): Form | unde
   return form;
 }
 
-/** Um Campo obrigatório criado depois do Formulário deixa-o desatualizado: ninguém o responderia. */
+/**
+ * O que deixa um Formulário desatualizado — o link recusa envios até resolver:
+ * a Lista que virou conversacional (a Tarefa nasce de um Contato, não de um
+ * envio anônimo) ou um Campo obrigatório criado depois dele, que ninguém responderia.
+ */
 export function formOutdatedReason(state: DataState, form: Form): string | undefined {
+  if (listaConversacional(state, form.listId)) return FORMULARIO_EM_LISTA_CONVERSACIONAL;
   const config = effectiveListConfig(state, form.listId);
   for (const id of config?.fieldDefinitionIds ?? []) {
     const def = state.fieldDefinitions.find((d) => d.id === id);
@@ -511,6 +385,9 @@ export function submitForm(state: DataState, secretValue: string, entrada: Submi
   const form = formBySecret(state, secretValue);
   if (!form) return fail("Este Formulário não existe mais ou o link foi renovado.");
   if (!form.enabled) return fail("Este Formulário está pausado.");
+  // A Lista conversacional recusa com a frase do domínio — é ela que o dono lê
+  // na tela; o Campo obrigatório novo pede a revisão.
+  if (listaConversacional(state, form.listId)) return fail(FORMULARIO_EM_LISTA_CONVERSACIONAL);
   if (formOutdatedReason(state, form)) return fail("Este Formulário está desatualizado: peça a quem o enviou para revisá-lo.");
 
   const arquivoDefinitionId = (q: FormQuestion): Id | undefined => {

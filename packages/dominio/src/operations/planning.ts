@@ -10,7 +10,7 @@
 
 import { containerAdminRefusal, effectiveContainerConfig, effectiveListConfig, isTerminalCategory, memberReachesContainer, statusCategory } from "../derive";
 import { fail, ok, type DataState, type OperationResult } from "../state";
-import type { Folder, Id, List, StatusDefinition, StatusSet, Task, Template } from "../types";
+import type { Folder, Id, List, ModeloDeTarefa, StatusDefinition, StatusSet, Task, Template } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
 import { blockedAbove, createFieldDefinition, createTaskType } from "./configuration";
 import { createList } from "./structure";
@@ -373,7 +373,7 @@ export function instantiateListTemplate(
   state: DataState,
   actingMemberId: Id,
   templateId: Id,
-  input: { readonly name: string; readonly parentType: "space" | "folder"; readonly parentId: Id; readonly description?: string; readonly isPrivate?: boolean },
+  input: { readonly name: string; readonly parentType: "space" | "folder"; readonly parentId: Id; readonly description?: string; readonly isPrivate?: boolean; readonly modeloDeTarefa?: ModeloDeTarefa; readonly canaisDeAtendimento?: readonly Id[] },
 ): OperationResult<List> {
   const template = state.templates.find((t) => t.id === templateId);
   if (!template || template.lifecycle !== "ativo" || template.kind !== "lista") return fail("Template de Lista não encontrado.");

@@ -12,10 +12,17 @@
 import { useState } from "react";
 import { Link2 } from "lucide-react";
 import { useData, useRun } from "@/dados/store";
-import { criarLinkDeCaptacao, editarLinkDeCaptacao, enviarLinkALixeira, recusaDeElegibilidade, registrarClique, simularEntradaPorClique } from "@n1/dominio/operations/ferramentas/captacao";
-import { zerarCliques } from "@n1/dominio/operations/ferramentas/grupos";
+import {
+  criarLinkDeCaptacao,
+  editarLinkDeCaptacao,
+  enviarLinkALixeira,
+  recusaDeElegibilidade,
+  registrarClique,
+  simularEntradaPorClique,
+  zerarCliques,
+} from "@n1/dominio/operations";
 import { gruposElegiveisDoLink, motivoDeInelegibilidade, proximoGrupoDoLink } from "@n1/dominio/derive-ferramentas";
-import type { CriterioDeCaptacao, LinkDeCaptacao } from "@n1/dominio/types/ferramentas";
+import type { CriterioDeCaptacao, LinkDeCaptacao } from "@n1/dominio/types";
 import { Selo } from "@/features/estrutura/icone-de-tipo";
 import type { Report } from "@/features/shell/ficha";
 import { useFormat } from "@/features/shell/use-format";

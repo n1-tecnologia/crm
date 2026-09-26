@@ -71,7 +71,7 @@ function semearRecorrentes(n: number, statusId: string = CP.status.emAutorizacao
         taskTypeId: CP.taskTypeId,
         dueDate: { form: "civilDay", value: vencimentoPorIndice(i) },
       },
-      { runAutomations: false },
+      { runAutomations: false, nasceNoStatusPedido: true },
     );
     if (!criado.ok) throw new Error(`falha ao semear conta ${i}: ${criado.error}`);
     const r = setRecurrence(state, CP.financeiroId, criado.value.id, REGRA_MENSAL);

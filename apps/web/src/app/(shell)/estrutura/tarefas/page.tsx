@@ -1,78 +1,83 @@
 "use client";
 
 /**
- * Minhas Tarefas — o destino dos atalhos da Início.
+ * Minhas Tarefas — o destino dos atalhos da Início e da barra global.
  *
- * A Início mostra o recorte de hoje; aqui está a lista inteira, com o filtro
- * explícito. Por padrão abre no que está atribuído a quem olha, porque foi daí
- * que o usuário veio — mas o Espaço de Trabalho inteiro está a um clique, e o
- * total de cada recorte fica sempre à vista para ninguém achar que a lista é
- * menor do que é.
+ * A lista inteira, com o recorte explícito em abas: o que está atribuído a
+ * quem olha (a aba inicial, porque foi daí que a pessoa veio), o vencido, a
+ * agenda de HOJE (Tarefa com data E HORA no dia, no fuso do Espaço de
+ * Trabalho, em ordem de relógio), o que vence nesta SEMANA (7 dias) e o
+ * Espaço de Trabalho inteiro. O total de cada recorte fica sempre à vista,
+ * para ninguém achar que a lista é menor do que é. A aba inicial também vem
+ * da URL — `?recorte=minhas|abertas|vencidas|hoje|semana|todas` — para a porta da
+ * Início cair direto no recorte que a fez existir. "Abertas" (2026-09-24) é
+ * o recorte do atalho "Tarefas abertas" do Início: as atribuídas a mim fora de
+ * categoria terminal — a mesma conta da barra global (`tarefasAbertasDoMembro`).
  */
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useData, useSession } from "@/dados/store";
-import {
-  effectiveLifecycleOfTask,
-  isOverdue,
-  memberSeesTask,
-  statusCategory,
-  statusDefinition,
-} from "@n1/dominio/derive";
+import { effectiveLifecycleOfTask, isOverdue, statusCategory, statusDefinition } from "@n1/dominio/derive";
+import { recortesDeTarefas } from "@n1/dominio/recortes-de-tarefas";
 import { PRIORITY_LABEL, STATUS_CATEGORY_LABEL } from "@/features/shell/format";
 import { useFormat } from "@/features/shell/use-format";
 import { RecordList } from "@/features/shell/record-list";
 import { Abas, CorpoDeTela, PageHeader, StateSeal } from "@/features/shell/ui";
-import type { Task } from "@n1/dominio/types";
 
-type Recorte = "minhas" | "vencidas" | "todas";
+type Recorte = "minhas" | "abertas" | "vencidas" | "hoje" | "semana" | "todas";
 
 const RECORTES: ReadonlyArray<{ readonly value: Recorte; readonly label: string }> = [
   { value: "minhas", label: "Atribuídas a mim" },
+  { value: "abertas", label: "Abertas" },
   { value: "vencidas", label: "Vencidas" },
+  { value: "hoje", label: "Hoje" },
+  { value: "semana", label: "Esta semana" },
   { value: "todas", label: "Todas que eu vejo" },
 ];
+
+/** O nome do parâmetro que a Início e a barra global usam para abrir num recorte. */
+const PARAMETRO_DO_RECORTE = "recorte";
 
 export default function TarefasPage() {
   const state = useData((data) => data);
   const { memberId } = useSession();
   const fmt = useFormat();
-  const [recorte, setRecorte] = useState<Recorte>("minhas");
+  const query = useSearchParams();
+  const [recorte, setRecorte] = useState<Recorte>(() => {
+    const pedido = query.get(PARAMETRO_DO_RECORTE);
+    return RECORTES.find((r) => r.value === pedido)?.value ?? "minhas";
+  });
   const [now] = useState(() => new Date());
 
-  // memberSeesTask entra aqui, uma vez, e não em cada recorte: minhas e
-  // vencidas derivam de ativas e herdam a regra de graça. GET /estado
-  // hidrata o Espaço inteiro sem filtro de visibilidade — quem desenha a
-  // coleção decide, e essa é a única linha que decide para as três abas.
-  const ativas = state.tasks
-    .filter((task) => effectiveLifecycleOfTask(state, task.id) === "ativo")
-    .filter((task) => memberSeesTask(state, memberId, task.id));
-  // Ser Responsável não é, neste domínio, uma forma de enxergar —
-  // memberSeesTask não olha `assignees` —, então uma Tarefa atribuída a
-  // alguém numa Lista que ele não alcança some daqui. É a mesma resposta do
-  // domínio, e a tela agora a dá.
-  const minhas = ativas.filter((task) =>
-    task.assignees.some((a) => a.kind === "member" && a.id === memberId),
-  );
-  const vencidas = minhas.filter((task) => isOverdue(state, task, now));
+  // A conta dos recortes (e a ordem de cada um) mora em `recortesDeTarefas`,
+  // para o Início ler os mesmos números que estas abas mostram.
+  const recortes = recortesDeTarefas(state, memberId, now);
 
   const contagem: Record<Recorte, number> = {
-    minhas: minhas.length,
-    vencidas: vencidas.length,
-    todas: ativas.length,
+    minhas: recortes.minhas.length,
+    abertas: recortes.abertas.length,
+    vencidas: recortes.vencidas.length,
+    hoje: recortes.hoje.length,
+    semana: recortes.semana.length,
+    todas: recortes.todas.length,
   };
-  const items =
-    recorte === "minhas" ? minhas : recorte === "vencidas" ? vencidas : ativas;
+  // Cada recorte já vem na ordem da tela: vencida primeiro, depois pelo
+  // vencimento mais próximo, sem data ao fim; na agenda de hoje, a do relógio.
+  const ordenadas = recortes[recorte];
 
-  // Vencida primeiro, depois pelo vencimento mais próximo; sem data vai ao fim.
-  const ordenadas = [...items].sort((a, b) => {
-    const chave = (task: Task) => String(task.dueDate?.value ?? "9999");
-    return chave(a).localeCompare(chave(b));
-  });
+  const vazio: Record<Recorte, { readonly titulo: string; readonly dica: string }> = {
+    minhas: { titulo: "Nada atribuído a você.", dica: "Uma Tarefa aparece aqui quando alguém a atribui a você." },
+    abertas: { titulo: "Nenhuma Tarefa aberta com você.", dica: "Uma Tarefa fica aqui enquanto está atribuída a você e não foi concluída nem fechada." },
+    vencidas: { titulo: "Nenhuma Tarefa sua está vencida.", dica: "Uma Tarefa aparece aqui quando alguém a atribui a você." },
+    hoje: { titulo: "Nenhum horário marcado para hoje.", dica: "Uma reunião é uma Tarefa de Tipo Reunião com data e hora, atribuída a você." },
+    semana: { titulo: "Nada seu vence nos próximos 7 dias.", dica: "Uma Tarefa aparece aqui quando alguém a atribui a você com data de vencimento." },
+    todas: { titulo: "Nenhuma Tarefa ativa.", dica: "Uma Tarefa nasce dentro de uma Lista: abra uma Lista na Estrutura para criar." },
+  };
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader title="Tarefas" meta={`${ordenadas.length} de ${ativas.length} Tarefas ativas`} />
+      <PageHeader title="Tarefas" meta={`${ordenadas.length} de ${recortes.todas.length} Tarefas ativas`} />
 
       {/* O recorte é aba, não botão de cabeçalho: o total de cada um fica no contador. */}
       <Abas
@@ -86,18 +91,8 @@ export default function TarefasPage() {
         <RecordList
           items={ordenadas}
           hrefOf={(task) => `/estrutura/tarefas/${task.id}`}
-          emptyTitle={
-            recorte === "minhas"
-              ? "Nada atribuído a você."
-              : recorte === "vencidas"
-                ? "Nenhuma Tarefa sua está vencida."
-                : "Nenhuma Tarefa ativa."
-          }
-          emptyHint={
-            recorte === "todas"
-              ? "Mostra o que você alcança — uma Tarefa nasce dentro de uma Lista: abra uma Lista na Estrutura para criar."
-              : "Uma Tarefa aparece aqui quando alguém a atribui a você."
-          }
+          emptyTitle={vazio[recorte].titulo}
+          emptyHint={vazio[recorte].dica}
           columns={[
             { key: "titulo", label: "Título", render: (task) => task.title },
             {

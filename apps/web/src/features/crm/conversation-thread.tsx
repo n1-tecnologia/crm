@@ -12,7 +12,7 @@
  */
 
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import {
   AudioLines,
   Eye,
@@ -41,6 +41,7 @@ import {
   CHANNEL_CAPABILITIES,
   addContactNote,
   createTask,
+  criarTarefaConversacional,
   discardDraft,
   sendMessage,
   startConversation,
@@ -51,6 +52,9 @@ import {
   responseWindowOpenUntil,
   statusCategory,
 } from "@n1/dominio/derive";
+import { canaisDaLista, listaConversacional, listaSemCanais } from "@n1/dominio/derive-conversacional";
+import { LISTA_SEM_CANAIS } from "@n1/dominio/operations/canais";
+import { SeletorDeTipoDeTarefa } from "@/features/estrutura/seletor-de-tipo";
 import {
   CHANNEL_TYPE_LABEL,
   IDENTIFIER_TYPE_LABEL,
@@ -159,6 +163,23 @@ function classeDoAlternador(ligado: boolean): string {
   );
 }
 
+/*
+  A região que rola (o fio de Mensagens, ou a aba de Nota/Tarefa/Meet) na FICHA
+  EMPILHADA: dentro de um `@container/ficha` mais estreito que @4xl o fio não é
+  `flex-1` de uma fatia disputada — tem altura própria, `--conversa-empilhada-min`,
+  e é a ficha em cima que reparte o resto. A altura é DEFINIDA (não mínima) de
+  propósito: numa coluna que se dimensiona pelo conteúdo, um `flex-basis: 0`
+  contribuiria com todas as Mensagens e o fio nunca rolaria. `shrink-0` para o
+  fio não ceder; `basis-auto` para a altura ser a base de flex.
+*/
+const CLASSE_DO_FIO_EMPILHADO =
+  "@max-4xl/ficha:h-[var(--conversa-empilhada-min)] @max-4xl/ficha:shrink-0 @max-4xl/ficha:basis-auto";
+/* Com o Rascunho da IA aberto sob demanda, o fio cede metade: é o Rascunho
+   que se está lendo, e assim o cartão e o compositor continuam à vista em
+   vez de a coluna inteira rolar. "Recolher" devolve o fio ao mínimo. */
+const CLASSE_DO_FIO_EMPILHADO_COM_RASCUNHO_ABERTO =
+  "@max-4xl/ficha:h-[calc(var(--conversa-empilhada-min)*0.5)] @max-4xl/ficha:shrink-0 @max-4xl/ficha:basis-auto";
+
 /* Os botões redondos da barra do compositor têm a altura do controle, e não a
    do botão nu (menor), para alinharem com a pílula de texto ao lado. */
 const MEDIDA_DO_BOTAO_DO_COMPOSITOR = {
@@ -194,6 +215,17 @@ export function ConversationThread({
   // A Mensagem recém-enviada surge; as outras já estão (o fio não tem cascata).
   const recente = useRecente();
   const fmt = useFormat();
+  /*
+    A FICHA EMPILHADA. Quando o fio vive num contêiner chamado `ficha` mais
+    estreito que @4xl (a Tarefa conversacional com a Conversa embaixo da
+    ficha), a altura é disputada: o fio ganha uma altura própria
+    (`--conversa-empilhada-min`, que a ficha reparte) em vez de se espremer, e
+    o Rascunho da IA nasce recolhido numa linha ("Ver" o abre). Fora desse
+    contêiner — Caixa de Entrada, Contato, Negócio, a Tarefa em colunas — as
+    classes `@max-4xl/ficha:` não casam com nada e nada muda.
+  */
+  const idDoRascunho = useId();
+  const [rascunhoAberto, setRascunhoAberto] = useState(false);
   const [canalAtivo, setCanalAtivo] = useState<ChannelType | null>(null);
   const [draft, setDraft] = useState("");
   const [modeloId, setModeloId] = useState("");
@@ -208,6 +240,8 @@ export function ConversationThread({
   );
   const [textoDoRegistro, setTextoDoRegistro] = useState("");
   const [listaDaTarefa, setListaDaTarefa] = useState("");
+  /** O Tipo da Tarefa que nasce daqui; vazio até o seletor pôr o padrão da Lista. */
+  const [tipoDaTarefa, setTipoDaTarefa] = useState<string | undefined>(undefined);
   const [adotado, setAdotado] = useState<ActorRef | null>(null);
   const [confirmandoEnvio, setConfirmandoEnvio] = useState(false);
   const [descartando, setDescartando] = useState<ActorRef | null>(null);
@@ -354,12 +388,17 @@ export function ConversationThread({
 
   const rascunho = conversa?.drafts.find((item) => item.origin !== "membro");
 
-  const abrirAtendimento = () => {
-    const channelId = canal
+  // O Canal ATIVO da aba: é nele que o atendimento abre e que a Tarefa
+  // conversacional nasce — uma resolução só, para os dois gestos concordarem.
+  const canalAtivoId = (): Id | undefined =>
+    canal
       ? state.channels.find(
           (ch) => ch.channelType === canal && ch.lifecycle === "ativo",
         )?.id
       : undefined;
+
+  const abrirAtendimento = () => {
+    const channelId = canalAtivoId();
     if (!channelId) {
       setAviso(null);
       setErro(
@@ -636,7 +675,7 @@ export function ConversationThread({
       ) : null}
 
       {registro !== null ? (
-        <div className="relative min-h-0 flex-1 overflow-y-auto p-3">
+        <div className={cn("relative min-h-0 flex-1 overflow-y-auto p-3", CLASSE_DO_FIO_EMPILHADO)}>
           {registro === "meet" ? (
             /*
               A aba não pula direto para a call: uma reunião custa a hora do
@@ -779,16 +818,54 @@ export function ConversationThread({
               className="grid gap-2"
               onSubmit={(evento) => {
                 evento.preventDefault();
-                const resultado = run((data, memberId) =>
-                  createTask(data, memberId, {
-                    listId: listaDaTarefa,
-                    title: textoDoRegistro,
-                    assignees: [{ kind: "member", id: memberId }],
-                  }),
-                );
+                /*
+                  C35 — numa Lista conversacional a Tarefa nasce COM este
+                  Contato e a conversa do Canal ativo (criarTarefaConversacional);
+                  numa operacional, pelo título, como sempre. O `createTask`
+                  recusaria a conversacional sem Contato — aqui ele já está.
+                */
+                const conversacional = listaConversacional(state, listaDaTarefa);
+                // C36 — a Tarefa nasce por um canal de atendimento da Lista: o
+                // canal DELA do tipo desta aba, não qualquer Canal do tipo.
+                const channelId = conversacional
+                  ? canaisDaLista(state, listaDaTarefa).find((ch) => ch.channelType === canal)?.id
+                  : undefined;
+                if (conversacional && !channelId) {
+                  setAviso(null);
+                  setErro(
+                    listaSemCanais(state, listaDaTarefa)
+                      ? LISTA_SEM_CANAIS
+                      : `Esta Lista não atende por ${canal ? CHANNEL_TYPE_LABEL[canal] : "este Canal"}.`,
+                  );
+                  return;
+                }
+                const resultado =
+                  conversacional && channelId
+                    ? run((data, memberId) =>
+                        criarTarefaConversacional(data, memberId, {
+                          listId: listaDaTarefa,
+                          contactId: contact.id,
+                          channelId,
+                          title: textoDoRegistro,
+                          assignees: [{ kind: "member", id: memberId }],
+                          ...(tipoDaTarefa ? { taskTypeId: tipoDaTarefa } : {}),
+                        }),
+                      )
+                    : run((data, memberId) =>
+                        createTask(data, memberId, {
+                          listId: listaDaTarefa,
+                          title: textoDoRegistro,
+                          assignees: [{ kind: "member", id: memberId }],
+                          ...(tipoDaTarefa ? { taskTypeId: tipoDaTarefa } : {}),
+                        }),
+                      );
                 if (resultado.ok) {
                   setErro(null);
-                  setAviso("Tarefa criada e atribuída a você.");
+                  setAviso(
+                    conversacional
+                      ? "Tarefa criada com o Contato e atribuída a você."
+                      : "Tarefa criada e atribuída a você.",
+                  );
                   setTextoDoRegistro("");
                 } else {
                   setAviso(null);
@@ -799,6 +876,9 @@ export function ConversationThread({
               <p className="app-sm" style={{ color: "var(--texto-3)" }}>
                 A Tarefa nasce dentro de uma Lista, e é ela que define o Status
                 inicial.
+                {listaDaTarefa && listaConversacional(state, listaDaTarefa)
+                  ? ` Nesta Lista ela nasce com ${contact.firstName} e a conversa de ${canal ? CHANNEL_TYPE_LABEL[canal] : "este Canal"}.`
+                  : ""}
               </p>
               <label className="sr-only" htmlFor="titulo-da-tarefa">
                 Título da Tarefa
@@ -821,8 +901,36 @@ export function ConversationThread({
                 placeholder="Escolha a Lista"
                 options={state.lists
                   .filter((lista) => lista.lifecycle === "ativo")
-                  .map((lista) => ({ value: lista.id, label: lista.name }))}
+                  .map((lista) => {
+                    // O modelo da Lista decide o que nasce: dito antes de escolher.
+                    // E a conversacional só recebe a Tarefa se atende pelo canal desta aba (C36).
+                    const conversacional = lista.modeloDeTarefa === "conversacional";
+                    const motivo = !conversacional
+                      ? undefined
+                      : listaSemCanais(state, lista.id)
+                        ? LISTA_SEM_CANAIS
+                        : canal && !canaisDaLista(state, lista.id).some((ch) => ch.channelType === canal)
+                          ? `Esta Lista não atende por ${CHANNEL_TYPE_LABEL[canal]}.`
+                          : undefined;
+                    return {
+                      value: lista.id,
+                      label: lista.name,
+                      detail: conversacional ? "Conversacional" : "Operacional",
+                      ...(motivo ? { disabledReason: motivo } : {}),
+                    };
+                  })}
               />
+              {/* O Tipo, depois da Lista: é ela que diz quais existem. */}
+              {listaDaTarefa ? (
+                <SeletorDeTipoDeTarefa
+                  id="tipo-da-tarefa-da-conversa"
+                  state={state}
+                  listId={listaDaTarefa}
+                  value={tipoDaTarefa}
+                  onChange={setTipoDaTarefa}
+                  largura="100%"
+                />
+              ) : null}
               <span>
                 <Button
                   type="submit"
@@ -855,7 +963,13 @@ export function ConversationThread({
       ) : (
         <>
           {/* ── a conversa ── */}
-          <div className="relative min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+          <div
+            data-fio="mensagens"
+            className={cn(
+              "relative min-h-0 flex-1 space-y-3 overflow-y-auto p-3",
+              rascunho && rascunhoAberto ? CLASSE_DO_FIO_EMPILHADO_COM_RASCUNHO_ABERTO : CLASSE_DO_FIO_EMPILHADO,
+            )}
+          >
             {!conversa ? (
               <EmptyState
                 title={`Nenhuma Conversa em ${canal ? CHANNEL_TYPE_LABEL[canal] : ""}.`}
@@ -952,46 +1066,87 @@ export function ConversationThread({
 
           {/* ── Rascunho de IA à espera de decisão humana (B66) ── */}
           {rascunho ? (
-            <Painel
-              className="mx-3 mb-3 shrink-0 p-3"
-              style={{ borderColor: "color-mix(in srgb, var(--cor-dom-ia) 40%, transparent)" }}
-            >
-              <p className="app-sm flex items-center gap-2 font-medium" style={{ color: "var(--texto)" }}>
-                <Icone de={Sparkles} tamanho="xs" style={{ color: "var(--cor-dom-ia)" }} />
-                Rascunho de{" "}
-                {state.agents.find((a) => a.id === rascunho.actor.id)?.name ??
-                  "Agente"}{" "}
-                · {adotado ? "carregado no compositor" : "não enviado"}
-              </p>
-              <p className="app-base mt-1" style={{ color: "var(--texto)" }}>
-                {rascunho.content}
-              </p>
-              <div className="mt-2 flex items-center gap-2">
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    setDraft(rascunho.content);
-                    setAdotado(rascunho.actor);
+            // A doca do robô flutuante: o cartão acaba antes dele, alinhado ao compositor.
+            <div className="doca-do-robo shrink-0">
+              {/*
+                Na ficha empilhada o cartão inteiro engoliria o fio: nasce
+                recolhido numa linha — quem é, em que estado, "Ver" — e só
+                abre sob demanda. Fora dela a linha não existe (`hidden`).
+                A linha fica SEMPRE no DOM do empilhado: o mesmo botão abre e
+                recolhe (aria-expanded), e o foco de teclado não se perde.
+              */}
+              {
+                <p
+                  className="mx-3 mb-2 hidden shrink-0 items-center gap-2 rounded-[var(--r-controle)] px-2 py-1.5 @max-4xl/ficha:flex"
+                  style={{
+                    background: "var(--superficie-2)",
+                    border: "1px solid color-mix(in srgb, var(--cor-dom-ia) 40%, transparent)",
                   }}
                 >
-                  Usar
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => setDescartando(rascunho.actor)}
-                >
-                  Descartar
-                </Button>
-                {rascunho.executionId ? (
-                  <Link
-                    href={`/ia/execucoes/${rascunho.executionId}`}
-                    className="app-sm text-[var(--texto-3)] hover:underline"
+                  <Icone de={Sparkles} tamanho="xs" style={{ color: "var(--cor-dom-ia)" }} />
+                  <span className="app-sm min-w-0 flex-1 truncate font-medium" style={{ color: "var(--texto)" }}>
+                    Rascunho de{" "}
+                    {state.agents.find((a) => a.id === rascunho.actor.id)?.name ?? "Agente"}{" "}
+                    · {adotado ? "carregado no compositor" : "não enviado"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setRascunhoAberto((aberto) => !aberto)}
+                    aria-expanded={rascunhoAberto}
+                    aria-controls={idDoRascunho}
+                    className="app-sm shrink-0 rounded-[var(--r-controle)] px-1.5 py-0.5 font-medium transition-colors hover:bg-[var(--superficie-hover)]"
+                    style={{ color: "var(--acento-suave)" }}
                   >
-                    Ver a Execução
-                  </Link>
-                ) : null}
-              </div>
-            </Painel>
+                    {rascunhoAberto ? "Recolher" : "Ver"}
+                  </button>
+                </p>
+              }
+              <Painel
+                id={idDoRascunho}
+                className={cn("mx-3 mb-3 shrink-0 p-3", !rascunhoAberto && "@max-4xl/ficha:hidden")}
+                style={{ borderColor: "color-mix(in srgb, var(--cor-dom-ia) 40%, transparent)" }}
+              >
+                <p className="app-sm flex items-center gap-2 font-medium" style={{ color: "var(--texto)" }}>
+                  <Icone de={Sparkles} tamanho="xs" style={{ color: "var(--cor-dom-ia)" }} />
+                  Rascunho de{" "}
+                  {state.agents.find((a) => a.id === rascunho.actor.id)?.name ??
+                    "Agente"}{" "}
+                  · {adotado ? "carregado no compositor" : "não enviado"}
+                </p>
+                <p className="app-base mt-1" style={{ color: "var(--texto)" }}>
+                  {rascunho.content}
+                </p>
+                <div className="mt-2 flex items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setDraft(rascunho.content);
+                      setAdotado(rascunho.actor);
+                      setRascunhoAberto(false);
+                    }}
+                  >
+                    Usar
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setDescartando(rascunho.actor);
+                      setRascunhoAberto(false);
+                    }}
+                  >
+                    Descartar
+                  </Button>
+                  {rascunho.executionId ? (
+                    <Link
+                      href={`/ia/execucoes/${rascunho.executionId}`}
+                      className="app-sm text-[var(--texto-3)] hover:underline"
+                    >
+                      Ver a Execução
+                    </Link>
+                  ) : null}
+                </div>
+              </Painel>
+            </div>
           ) : null}
 
           {/* ── compositor ── */}
@@ -1165,69 +1320,74 @@ export function ConversationThread({
               à direita fica o enviar — ou o microfone, enquanto não há texto,
               nos Canais que aceitam áudio. Enter envia, Shift+Enter quebra.
             */}
-            <div className="flex items-end gap-2 px-3 py-2" style={{ background: "var(--superficie-2)" }}>
-              {capacidades && capacidades.sendableMediaTypes.length > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => setAnexando((aberto) => !aberto)}
-                  aria-expanded={anexando}
-                  aria-label={anexando ? "Fechar anexos" : "Anexar"}
-                  title={anexando ? "Fechar anexos" : "Anexar"}
-                  disabled={!conversa}
-                  className="btn-icone btn-icone-nu shrink-0 rounded-full"
-                  style={MEDIDA_DO_BOTAO_DO_COMPOSITOR}
-                >
-                  {/* A rotação fica no SVG folha: transform num elemento com descendente prenderia um `fixed`. */}
-                  <Icone
-                    de={Plus}
-                    tamanho="md"
-                    className={cn("rotacao", anexando && "rotate-45")}
-                  />
-                </button>
-              ) : null}
+            {/* A doca do robô flutuante: o fundo fica no invólucro, que vai
+                até o canto; a linha encolhe dentro dele quando o robô está
+                ali (features/shell/robo-flutuante.tsx). */}
+            <div className="doca-do-robo" style={{ background: "var(--superficie-2)" }}>
+              <div className="flex items-end gap-2 px-3 py-2">
+                {capacidades && capacidades.sendableMediaTypes.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setAnexando((aberto) => !aberto)}
+                    aria-expanded={anexando}
+                    aria-label={anexando ? "Fechar anexos" : "Anexar"}
+                    title={anexando ? "Fechar anexos" : "Anexar"}
+                    disabled={!conversa}
+                    className="btn-icone btn-icone-nu shrink-0 rounded-full"
+                    style={MEDIDA_DO_BOTAO_DO_COMPOSITOR}
+                  >
+                    {/* A rotação fica no SVG folha: transform num elemento com descendente prenderia um `fixed`. */}
+                    <Icone
+                      de={Plus}
+                      tamanho="md"
+                      className={cn("rotacao", anexando && "rotate-45")}
+                    />
+                  </button>
+                ) : null}
 
-              <label className="sr-only" htmlFor="compositor-ficha">
-                Escrever para {contactDisplayName(contact)}
-              </label>
-              <textarea
-                id="compositor-ficha"
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey && bloqueio === undefined) {
-                    event.preventDefault();
-                    setConfirmandoEnvio(true);
-                  }
-                }}
-                rows={1}
-                disabled={!conversa}
-                placeholder={conversa ? "Digite uma mensagem" : "Abra o atendimento para escrever"}
-                className="app-base max-h-40 min-h-10 min-w-0 flex-1 resize-none border-0 bg-[var(--page)] px-4 py-2.5 outline-none [field-sizing:content] placeholder:text-[var(--texto-3)] disabled:opacity-50"
-                style={{ borderRadius: "calc(var(--controle-h) / 2)" }}
-              />
-
-              {draft.trim() === "" && capacidades?.voiceNote && !anexo ? (
-                <button
-                  type="button"
-                  title="Gravar áudio"
-                  aria-label="Gravar áudio"
+                <label className="sr-only" htmlFor="compositor-ficha">
+                  Escrever para {contactDisplayName(contact)}
+                </label>
+                <textarea
+                  id="compositor-ficha"
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey && bloqueio === undefined) {
+                      event.preventDefault();
+                      setConfirmandoEnvio(true);
+                    }
+                  }}
+                  rows={1}
                   disabled={!conversa}
-                  className="btn-icone btn-icone-nu shrink-0 rounded-full"
-                  style={MEDIDA_DO_BOTAO_DO_COMPOSITOR}
-                >
-                  <Icone de={Mic} tamanho="md" />
-                </button>
-              ) : (
-                <Button
-                  variant="primary"
-                  onClick={() => setConfirmandoEnvio(true)}
-                  disabled={bloqueio !== undefined}
-                  disabledReason={bloqueio ?? ""}
-                  icon={<Icone de={Send} />}
-                >
-                  <span className="sr-only">Enviar</span>
-                </Button>
-              )}
+                  placeholder={conversa ? "Digite uma mensagem" : "Abra o atendimento para escrever"}
+                  className="app-base max-h-40 min-h-10 min-w-0 flex-1 resize-none border-0 bg-[var(--page)] px-4 py-2.5 outline-none [field-sizing:content] placeholder:text-[var(--texto-3)] disabled:opacity-50"
+                  style={{ borderRadius: "calc(var(--controle-h) / 2)" }}
+                />
+
+                {draft.trim() === "" && capacidades?.voiceNote && !anexo ? (
+                  <button
+                    type="button"
+                    title="Gravar áudio"
+                    aria-label="Gravar áudio"
+                    disabled={!conversa}
+                    className="btn-icone btn-icone-nu shrink-0 rounded-full"
+                    style={MEDIDA_DO_BOTAO_DO_COMPOSITOR}
+                  >
+                    <Icone de={Mic} tamanho="md" />
+                  </button>
+                ) : (
+                  <Button
+                    variant="primary"
+                    onClick={() => setConfirmandoEnvio(true)}
+                    disabled={bloqueio !== undefined}
+                    disabledReason={bloqueio ?? ""}
+                    icon={<Icone de={Send} />}
+                  >
+                    <span className="sr-only">Enviar</span>
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </>

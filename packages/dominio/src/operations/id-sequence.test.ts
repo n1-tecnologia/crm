@@ -107,7 +107,6 @@ describe("syncIdSequence", () => {
       fieldDefinitions: [],
       taskTypes: [],
       views: [],
-      goals: [],
       forms: [],
       spaces: [],
       folders: [],

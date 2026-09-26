@@ -17,11 +17,10 @@
  * cada tipo com o seu desenho (`features/paineis/graficos.tsx`).
  */
 
-import { use, useState, type CSSProperties } from "react";
+import { use, useState } from "react";
 import { Coins, Hash, Lock } from "lucide-react";
-import Link from "next/link";
 import { useData, useSession } from "@/dados/store";
-import { goalProgress, widgetReading, type WidgetReading } from "@n1/dominio/derive";
+import { widgetReading, type WidgetReading } from "@n1/dominio/derive";
 import type { Widget } from "@n1/dominio/types";
 import { CampoDeLanterna } from "@/design/lanterna";
 import { useContagem } from "@/design/movimento";
@@ -64,11 +63,7 @@ export default function PainelPage({ params }: { params: Promise<{ painel: strin
     );
   }
 
-  // Fase 4 — as Metas ancoradas no mesmo contêiner do Painel, lidas pelas permissões de quem olha.
   const anchor = record.anchor;
-  const metas = anchor && (anchor.type === "space" || anchor.type === "folder" || anchor.type === "list")
-    ? state.goals.filter((g) => g.lifecycle === "ativo" && g.anchor.type === anchor.type && g.anchor.id === anchor.id)
-    : [];
 
   // Cada Widget lido uma vez; a leitura decide a peça (ladrilho ou gráfico).
   const leituras = record.widgets.map((widget) => ({ widget, reading: widgetReading(state, widget, memberId, now) }));
@@ -122,48 +117,6 @@ export default function PainelPage({ params }: { params: Promise<{ painel: strin
               ))}
             </ul>
           </CampoDeLanterna>
-        ) : null}
-
-        {metas.length > 0 ? (
-          <Section title="Metas deste contêiner" count={metas.length}>
-            <div className="@container">
-              <ul className="cascata grade-solta @3xl:grid-cols-2">
-                {metas.map((goal, i) => {
-                  const progresso = goalProgress(state, goal, memberId, now);
-                  return (
-                    <li key={goal.id} className="item-solto" data-bloco="true" data-estatico="true">
-                      <Link href="/estrutura/metas" className="app-md text-[var(--texto)] hover:underline">
-                        {goal.name}
-                      </Link>
-                      {"kind" in progresso ? (
-                        <p className="app-sm text-[var(--texto-3)]">sem acesso ao recorte</p>
-                      ) : (
-                        <>
-                          <div
-                            className="barra-h mt-2 overflow-hidden rounded-full"
-                            style={{ height: "var(--barra-viz-h)", background: "var(--superficie-3)", "--i": i } as CSSProperties}
-                            role="progressbar"
-                            aria-valuemin={0}
-                            aria-valuemax={100}
-                            aria-valuenow={Math.round(progresso.ratio * 100)}
-                            aria-label={`Progresso de ${goal.name}`}
-                          >
-                            <span
-                              className="preenchimento block h-full rounded-full"
-                              style={{ width: `${Math.round(progresso.ratio * 100)}%`, background: "var(--acento)" }}
-                            />
-                          </div>
-                          <p className="app-sm app-numero mt-1 text-[var(--texto)]">
-                            {progresso.label} · {Math.round(progresso.ratio * 100)}%
-                          </p>
-                        </>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          </Section>
         ) : null}
 
         {graficos.length > 0 ? (

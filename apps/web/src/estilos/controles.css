@@ -133,7 +133,7 @@
       background-color var(--dur-2) var(--easing),
       transform var(--dur-2) var(--easing);
   }
-  .btn-icone:hover:not(:disabled) {
+  .btn-icone:hover:not(:disabled):not([aria-disabled="true"]) {
     color: var(--texto);
     border-color: var(--linha-acento-forte);
     transform: translateY(var(--lift));
@@ -153,7 +153,7 @@
     background: var(--degrade-acento);
     color: var(--sobre-degrade);
   }
-  .btn-icone-enviar:hover:not(:disabled) {
+  .btn-icone-enviar:hover:not(:disabled):not([aria-disabled="true"]) {
     background: var(--degrade-acento-hover);
     color: var(--sobre-degrade);
     border-color: transparent;
@@ -501,6 +501,130 @@
       top var(--dur-2) var(--easing),
       opacity var(--dur-1) var(--easing);
     pointer-events: none;
+  }
+
+  /* ── Barra global ──────────────────────────────────────────────────────
+     A faixa da pessoa no topo da coluna da tela (features/shell/barra-global.tsx).
+     40px: é faixa de utilidade, não cabeçalho — a linha dominante continua a
+     do título da tela, logo abaixo. Grade de três colunas para a busca ficar
+     no centro da coluna, e não do que sobra à direita.                      */
+  .barra-global {
+    position: relative;
+    z-index: var(--z-barra-global);
+    display: grid;
+    grid-template-columns: 1fr minmax(0, var(--busca-global-w)) 1fr;
+    align-items: center;
+    gap: var(--e-3);
+    min-height: var(--barra-global-h);
+    padding-inline: var(--celula-x);
+    flex-shrink: 0;
+    background: var(--page);
+    border-bottom: 1px solid var(--linha-sutil);
+  }
+  .barra-global-busca {
+    grid-column: 2;
+  }
+  .barra-global-pessoa {
+    grid-column: 3;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--e-1);
+  }
+  .barra-global-pilula {
+    display: flex;
+    align-items: center;
+    gap: var(--e-2);
+    width: 100%;
+    height: var(--controle-h-sm);
+    padding-inline: var(--e-3);
+    border-radius: var(--r-pilula);
+    background: var(--superficie-2);
+    border: 1px solid var(--linha);
+    color: var(--texto-4);
+  }
+  .barra-global-pilula[aria-current="page"] {
+    border-color: var(--linha-acento);
+    color: var(--texto-2);
+  }
+  .barra-global-tecla {
+    padding-inline: var(--e-1);
+    border: 1px solid var(--linha);
+    border-radius: var(--r-caixa);
+    color: var(--texto-4);
+    line-height: var(--app-xs-lh);
+  }
+  .barra-global-item {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--e-2);
+    height: var(--controle-h-sm);
+    padding-inline: var(--e-3);
+    border-radius: var(--r-controle);
+    border: 1px solid transparent;
+    color: var(--texto-3);
+    transition:
+      background-color var(--dur-2) var(--easing),
+      color var(--dur-2) var(--easing),
+      border-color var(--dur-2) var(--easing);
+  }
+  .barra-global-item:hover {
+    background: var(--superficie-hover);
+    color: var(--texto);
+  }
+  /* o vocabulário do trilho: ativo = lavado no acento */
+  .barra-global-item[aria-current="page"] {
+    background: var(--acento-lavado);
+    color: var(--texto);
+    border-color: var(--linha-acento);
+  }
+  .barra-global-item[data-so-icone="true"] {
+    width: var(--controle-h-sm);
+    padding: 0;
+    justify-content: center;
+  }
+  .barra-global-contagem {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--e-4);
+    height: var(--e-4);
+    padding-inline: var(--e-1);
+    border-radius: var(--r-pilula);
+    background: var(--acento);
+    color: var(--sobre-acento);
+  }
+  .barra-global-contagem[data-tom="erro"] {
+    background: var(--erro);
+    color: var(--cor-perigo-texto-contraste);
+  }
+  .barra-global-item[data-so-icone="true"] .barra-global-contagem {
+    position: absolute;
+    top: calc(-1 * var(--e-1) / 2);
+    right: calc(-1 * var(--e-1) / 2);
+  }
+  @media (max-width: 1023px) {
+    .barra-global {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+    }
+    /* Abaixo de `lg` o rótulo de Minhas Tarefas se esconde (fica no sr-only):
+       a peça vira só-ícone também na geometria, o mesmo ajuste de "true". */
+    .barra-global-item[data-so-icone="abaixo-lg"] {
+      width: var(--controle-h-sm);
+      padding: 0;
+      justify-content: center;
+    }
+    .barra-global-item[data-so-icone="abaixo-lg"] .barra-global-contagem {
+      position: absolute;
+      top: calc(-1 * var(--e-1) / 2);
+      right: calc(-1 * var(--e-1) / 2);
+    }
+  }
+  @media (max-width: 767px) {
+    .barra-global {
+      min-height: var(--controle-h-lg);
+    }
   }
 
   .item-menu {

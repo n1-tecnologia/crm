@@ -17,6 +17,13 @@ const nextConfig: NextConfig = {
    * máquina ou de outro aparelho na mesma rede.
    */
   allowedDevOrigins: ["127.0.0.1", "172.16.0.127"],
+  /** Ferramentas saiu do CRM e virou assunto próprio: a rota antiga redireciona, com as subrotas. */
+  async redirects() {
+    return [
+      { source: "/crm/ferramentas", destination: "/ferramentas/grupos", permanent: true },
+      { source: "/crm/ferramentas/:caminho*", destination: "/ferramentas/:caminho*", permanent: true },
+    ];
+  },
 };
 
 export default nextConfig;

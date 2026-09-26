@@ -16,6 +16,7 @@ import type {
   Conversation,
   FieldValue,
   Id,
+  Link,
 } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
 
@@ -156,6 +157,10 @@ export function mergeContacts(
     }
   }
 
+  // Os Vínculos que tocam o absorvido (Tarefa→Contato, RN-TAR-15) vão para o
+  // sobrevivente logo abaixo; o Estado pré-mesclagem guarda como estavam.
+  const tocaOAbsorvido = (link: Link): boolean =>
+    (link.toType === "contact" && link.toId === absorbedId) || (link.fromType === "contact" && link.fromId === absorbedId);
   absorbed.preMergeState = {
     at: now(),
     snapshot: JSON.stringify({
@@ -166,6 +171,7 @@ export function mergeContacts(
       addresses: absorbed.addresses,
       tagIds: absorbed.tagIds,
       fieldValues: absorbed.fieldValues,
+      links: state.links.filter(tocaOAbsorvido),
     }),
   };
 
@@ -209,6 +215,29 @@ export function mergeContacts(
       session.anchor = { ...session.anchor, id: survivorId };
     }
   }
+  // contatos.md 12.4 §7 / INV-CON-07 — os Vínculos passam a referenciar o
+  // sobrevivente, e dois que fiquem iguais (mesma origem, destino e papel) se
+  // fundem: a Tarefa que apontava para os dois Contatos fica com um só Vínculo.
+  const reapontados = state.links.map((link) =>
+    tocaOAbsorvido(link)
+      ? {
+          ...link,
+          ...(link.toType === "contact" && link.toId === absorbedId ? { toId: survivorId } : {}),
+          ...(link.fromType === "contact" && link.fromId === absorbedId ? { fromId: survivorId } : {}),
+        }
+      : link,
+  );
+  // Fica o MAIS ANTIGO (12.4 §3): `state.links` só cresce por append, então a
+  // ordem do array é a ordem de criação e o primeiro visto é o mais antigo.
+  const vistos = new Set<string>();
+  state.links = reapontados.filter((link) => {
+    const tocaOSobrevivente = (link.toType === "contact" && link.toId === survivorId) || (link.fromType === "contact" && link.fromId === survivorId);
+    if (!tocaOSobrevivente) return true;
+    const chave = `${link.fromType}|${link.fromId}|${link.toType}|${link.toId}|${link.role ?? ""}`;
+    if (vistos.has(chave)) return false;
+    vistos.add(chave);
+    return true;
+  });
   // B14 — previous `mesclado` records repoint to the new survivor; no chains.
   for (const contact of state.contacts) {
     if (contact.mergedIntoId === absorbedId) contact.mergedIntoId = survivorId;

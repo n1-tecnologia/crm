@@ -14,13 +14,15 @@
  * que já nasceu é desfeito — o Membro não fica com meio Negócio.
  */
 
+import { PAPEL_DO_VINCULO } from "../derive-conversacional";
 import { fail, ok, type DataState, type OperationResult } from "../state";
 import type { Conversation, Deal, Funnel, Id, Money, Task } from "../types";
 import { createTask } from "./tasks";
 import { createDeal, moveDealToStage } from "./deals";
 import { startConversation } from "./conversations";
 import { setContactCatalogValue } from "./contacts";
-import { memberActor, nextId } from "./activity";
+import { memberActor } from "./activity";
+import { canalForaDaLista } from "./canais";
 
 const now = (): string => new Date().toISOString();
 
@@ -60,9 +62,11 @@ export function iniciarConversa(
   if (!contact) return fail("Escolha um Contato ativo.", "contato");
   const stage = funnel.stages.find((s) => s.id === input.stageId);
   if (!stage) return fail("Escolha a Etapa em que o lead está.", "etapa");
-  if (!state.channels.some((c) => c.id === input.channelId && c.lifecycle === "ativo")) {
-    return fail("Escolha o Canal em que a conversa acontece.", "canal");
-  }
+  const channel = state.channels.find((c) => c.id === input.channelId && c.lifecycle === "ativo");
+  if (!channel) return fail("Escolha o Canal em que a conversa acontece.", "canal");
+  // C36 — o espelho do Funil também atende só pelos canais da Lista.
+  const fora = canalForaDaLista(state, list, channel);
+  if (fora) return fail(fora, "canal");
 
   const nomeDoContato = `${contact.firstName} ${contact.lastName}`.trim();
   const title = input.title?.trim() || `${funnel.name} — ${nomeDoContato}`;
@@ -115,12 +119,18 @@ export function iniciarConversa(
     }
   }
 
-  // O espelho na Lista: a Tarefa do Negócio, no Status da Etapa.
+  // O espelho na Lista: a Tarefa do Negócio, no Status da Etapa, nascida com
+  // os Vínculos ao Negócio e ao Contato principal (a Lista é conversacional).
+  // Sem Vínculo à Conversa: ela nasce depois da Tarefa.
   const espelho = createTask(state, actingMemberId, {
     listId: list.id,
     title: deal.title,
     statusId: statusDaEtapa(list.id, deal.stageId),
     assignees: [memberActor(deal.ownerMemberId)],
+    vinculos: [
+      { toType: "deal", toId: deal.id, role: "espelho do Negócio" },
+      { toType: "contact", toId: contact.id, role: PAPEL_DO_VINCULO.contato },
+    ],
   });
   if (!espelho.ok) {
     desfazer();
@@ -129,16 +139,6 @@ export function iniciarConversa(
   const task = espelho.value;
   task.description = deal.object ?? "";
   task.provenance = { kind: "deal", sourceId: deal.id, sourceName: deal.title, at: now() };
-  state.links.push({
-    id: nextId("lnk"),
-    fromType: "task",
-    fromId: task.id,
-    toType: "deal",
-    toId: deal.id,
-    role: "espelho do Negócio",
-    createdBy: memberActor(actingMemberId),
-    createdAt: now(),
-  });
 
   // 4) a Conversa — a que já está aberta neste Canal, ou uma nova
   const conversa = startConversation(state, actingMemberId, input.channelId, contact.id);

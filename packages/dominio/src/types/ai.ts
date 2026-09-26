@@ -302,6 +302,10 @@ export interface Agent extends Omit<RecordBase, "lifecycle"> {
   memoryRetention: { readonly maxItems: number; readonly maxDays: number; readonly keepDelegated: boolean };
   costLimit?: { readonly units: number; readonly periodDays: number };
   provenance?: Provenance;
+  /** Quando entrou em `ativo` pela última vez (12.1); ausente enquanto rascunho. */
+  activatedAt?: Instant;
+  /** Quando foi pausado pela última vez (RN-AGE-19). */
+  pausedAt?: Instant;
 }
 
 /** B83 — value object fixed at creation, immutable, never a Link. */
@@ -370,7 +374,7 @@ export interface ChatSession extends RecordBase {
   anchor?: ChatAnchor;
   mainAgentId?: Id;
   chosenModelId?: Id;
-  /** A Habilidade que a pessoa escolheu para esta Sessão — o "plugin". */
+  /** A Habilidade que a pessoa escolheu para esta Sessão — o chip "Habilidade" do Chat. */
   skillId?: Id;
   /** DO-CHT-14 — only restricts, never widens (INV-CHT-06). */
   toolRestriction: { readonly toolIds: readonly string[]; readonly effectClasses: readonly EffectClass[] };

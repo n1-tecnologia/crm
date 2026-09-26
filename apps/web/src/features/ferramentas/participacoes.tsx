@@ -11,11 +11,10 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useData, useRun } from "@/dados/store";
-import { adicionarParticipantes, promoverParticipante, rebaixarParticipante, removerParticipante } from "@n1/dominio/operations/ferramentas/grupos";
-import { recusaExternaNoGrupo } from "@n1/dominio/operations/ferramentas/permissoes";
+import { adicionarParticipantes, promoverParticipante, rebaixarParticipante, recusaExternaNoGrupo, removerParticipante } from "@n1/dominio/operations";
 import { contactDisplayName } from "@n1/dominio/derive";
 import { contatosComWhatsApp, participacoesVigentes } from "@n1/dominio/derive-ferramentas";
-import type { Grupo, ParticipacaoDeGrupo } from "@n1/dominio/types/ferramentas";
+import type { Grupo, ParticipacaoDeGrupo } from "@n1/dominio/types";
 import type { Report } from "@/features/shell/ficha";
 import { useFormat } from "@/features/shell/use-format";
 import { ActionMenu, ActorAvatar, Button, ConfirmDialog, EmptyState, Field, MultiSelect, Pilula, ReguaDeSecao, Toggle } from "@/features/shell/ui";

@@ -19,7 +19,9 @@ import {
   statusDefinition,
   subtasksOf,
   taskLevel,
+  tipoPadraoDaLista,
 } from "../derive";
+import { contatoDaTarefa } from "../derive-conversacional";
 import { fail, ok, type DataState, type OperationResult } from "../state";
 import type { ActorRef, Comment, FieldRequirement, FieldValue, Id, List, Minutes, Priority, StatusDefinition, Task, TaskDate } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
@@ -42,6 +44,35 @@ export interface CreateTaskInput {
   readonly dueDate?: TaskDate;
   /** Um dos Tipos que a Lista enxerga; sem ele, o primeiro do caminho. */
   readonly taskTypeId?: Id;
+  /** Vínculos com que a Tarefa nasce (RN-TAR-15). Numa Lista conversacional, um deles é o Contato. */
+  readonly vinculos?: readonly VinculoDeNascimento[];
+}
+
+export interface VinculoDeNascimento {
+  readonly toType: "contact" | "conversation" | "deal";
+  readonly toId: Id;
+  readonly role?: string;
+}
+
+/** C35 — a recusa da Lista conversacional para a Tarefa raiz que chega sem Contato. */
+export const TAREFA_SEM_CONTATO = "Nesta Lista toda Tarefa nasce de um Contato.";
+
+/** O alvo de cada Vínculo de nascimento existe e está ativo — conferido antes de a Tarefa nascer. */
+function vinculoRefusal(state: DataState, vinculo: VinculoDeNascimento): string | undefined {
+  if (vinculo.toType === "contact") {
+    const contact = state.contacts.find((c) => c.id === vinculo.toId);
+    if (!contact) return "Contato não encontrado.";
+    if (contact.lifecycle !== "ativo") return "Este Contato não está ativo.";
+    return undefined;
+  }
+  if (vinculo.toType === "conversation") {
+    const conversation = state.conversations.find((c) => c.id === vinculo.toId);
+    if (!conversation || conversation.lifecycle !== "ativo") return "Conversa não encontrada.";
+    return undefined;
+  }
+  const deal = state.deals.find((d) => d.id === vinculo.toId);
+  if (!deal || deal.lifecycle !== "ativo") return "Negócio não encontrado.";
+  return undefined;
 }
 
 /**
@@ -58,13 +89,29 @@ export function createTask(
    * precisa terminar de montar a Tarefa (Campos, anexos) antes de qualquer
    * automação enxergá-la (Plan 02-05: `submitForm`), disparando o mesmo
    * evento manualmente depois. Todo outro chamador mantém o padrão atual.
+   *
+   * `nasceNoStatusPedido: true` faz a Tarefa nascer direto em `input.statusId`,
+   * sem passar pelas regras de mover (requisitos de saída/entrada, Automações de
+   * "entrou em Status"). Só para reprodução de histórico — as importações —,
+   * onde a Tarefa já esteve naquele Status e nada ao vivo pode reagir a isso.
    */
-  options?: { readonly runAutomations?: boolean },
+  options?: { readonly runAutomations?: boolean; readonly nasceNoStatusPedido?: boolean },
 ): OperationResult<Task> {
   const list = state.lists.find((l) => l.id === input.listId);
   if (!list) return fail("Lista não encontrada.");
   const criacao = listWriteRefusal(state, actingMemberId, input.listId);
   if (criacao) return fail(criacao);
+
+  // C35 — na Lista conversacional a Tarefa raiz nasce de um Contato; a
+  // Subtarefa herda o da raiz. O compositor rápido, o Formulário e o Template
+  // batem nesta parede com a mesma frase que a tela mostra.
+  if (list.modeloDeTarefa === "conversacional" && input.parentTaskId === undefined && !input.vinculos?.some((v) => v.toType === "contact")) {
+    return fail(TAREFA_SEM_CONTATO);
+  }
+  for (const vinculo of input.vinculos ?? []) {
+    const recusa = vinculoRefusal(state, vinculo);
+    if (recusa) return fail(recusa);
+  }
 
   const config = effectiveListConfig(state, input.listId);
   if (!config) return fail("Esta Lista não tem Conjunto de Status efetivo.");
@@ -119,16 +166,22 @@ export function createTask(
   }
 
   // Glossário — the default initial status is the first `naoIniciado` in order.
-  const initial =
-    (input.statusId
-      ? config.statusSet.definitions.find((d) => d.id === input.statusId)
-      : undefined) ??
-    [...config.statusSet.definitions]
-      .sort((a, b) => a.order - b.order)
-      .find((d) => d.category === "naoIniciado");
+  // Toda Tarefa NASCE nele; um `statusId` diferente (o "+" de um grupo) é uma
+  // mudança de Status logo depois de nascer, com as mesmas regras de quem move.
+  const initial = [...config.statusSet.definitions]
+    .sort((a, b) => a.order - b.order)
+    .find((d) => d.category === "naoIniciado");
   if (!initial) return fail("O Conjunto de Status efetivo não tem status inicial.");
+  const alvo = input.statusId && input.statusId !== initial.id ? config.statusSet.definitions.find((d) => d.id === input.statusId) : undefined;
+  if (input.statusId && input.statusId !== initial.id && !alvo) {
+    return fail("Este status não pertence ao Conjunto de Status efetivo desta Lista.");
+  }
 
-  const platformType = input.taskTypeId ?? config.taskTypeIds[0];
+  // Sem Tipo pedido, vale o Tipo padrão do nível mais próximo da Lista: numa
+  // Lista do Financeiro é "Conta" (da Pasta), não o "Tarefa" do Espaço. A
+  // regra mora em `tipoPadraoDaLista` porque a tela de criação pré-escolhe
+  // com ela — uma cópia aqui divergiria no primeiro ajuste.
+  const platformType = input.taskTypeId ?? tipoPadraoDaLista(state, input.listId);
   if (!platformType) return fail("A Lista não tem Tipo de Tarefa disponível.");
   if (!config.taskTypeIds.includes(platformType)) return fail("Este Tipo de Tarefa não alcança esta Lista.", "tipo");
 
@@ -150,7 +203,7 @@ export function createTask(
     ...(readable ? { readableId: readable } : {}),
     title: input.title,
     description: "",
-    statusId: initial.id,
+    statusId: options?.nasceNoStatusPedido && alvo ? alvo.id : initial.id,
     taskTypeId: platformType,
     priority: input.priority ?? "semPrioridade",
     ...(input.dueDate ? { dueDate: input.dueDate } : {}),
@@ -166,6 +219,21 @@ export function createTask(
     updatedAt: now(),
   };
   state.tasks.push(task);
+  // RN-TAR-15 — os Vínculos de nascimento saem do mesmo escritor da Tarefa:
+  // um só lugar cria a Tarefa e o que a liga ao CRM.
+  const linksAntes = state.links.length;
+  for (const vinculo of input.vinculos ?? []) {
+    state.links.push({
+      id: nextId("lnk"),
+      fromType: "task",
+      fromId: task.id,
+      toType: vinculo.toType,
+      toId: vinculo.toId,
+      ...(vinculo.role ? { role: vinculo.role } : {}),
+      createdBy: memberActor(actingMemberId),
+      createdAt: now(),
+    });
+  }
   recordActivity(state, {
     actor: memberActor(actingMemberId),
     action: "Tarefa criada",
@@ -173,10 +241,23 @@ export function createTask(
     objectId: task.id,
     objectName: task.title,
   });
+  if (alvo && !options?.nasceNoStatusPedido) {
+    // Requisitos de saída do inicial, entrada no alvo, quem pode entrar,
+    // Automações de "entrou em Status": tudo o que mover exige. Recusado, a
+    // Tarefa não nasce — e o motivo é o mesmo que o de mover.
+    const movida = changeTaskStatus(state, actingMemberId, task.id, alvo.id);
+    if (!movida.ok) {
+      state.tasks.splice(state.tasks.indexOf(task), 1);
+      state.links.splice(linksAntes);
+      state.activity = state.activity.filter((record) => record.objectId !== task.id);
+      if (state.workspace.taskReadableId.enabled) state.workspace.taskReadableId.next -= 1;
+      return fail(`Não nasce em “${alvo.name}”: ${movida.error}`);
+    }
+  }
   if (options?.runAutomations !== false) {
     runListAutomations(state, { kind: "tarefaCriada", taskId: task.id });
   }
-  return ok(task);
+  return ok(task, task.id);
 }
 
 /**
@@ -290,7 +371,7 @@ export function changeTaskStatus(
       });
     }
   }
-  return ok(task);
+  return ok(task, task.id);
 }
 
 /**
@@ -339,7 +420,7 @@ export function assignTask(
     objectName: task.title,
     after: assignee.id,
   });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 export interface StatusMapping {
@@ -375,6 +456,11 @@ export function moveTask(
   const destino = listWriteRefusal(state, actingMemberId, targetListId);
   if (destino) return fail(`Lista de destino: ${destino}`);
   if (targetListId === task.listId) return ok(task);
+  // C35 — o modelo é da Lista, não da Tarefa: sair para uma operacional é
+  // livre; entrar numa conversacional exige o Contato que a ficha vai mostrar.
+  if (target.modeloDeTarefa === "conversacional" && !contatoDaTarefa(state, task)) {
+    return fail("Uma Lista conversacional só recebe Tarefa com Contato vinculado.");
+  }
 
   const from = effectiveListConfig(state, task.listId);
   const to = effectiveListConfig(state, targetListId);
@@ -453,7 +539,7 @@ export function moveTask(
     before: previousPath,
     after: to.path.map((p) => p.name).join(" › "),
   });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 function descendants(state: DataState, taskId: Id): Task[] {
@@ -610,7 +696,7 @@ export function restoreTask(state: DataState, actingMemberId: Id, taskId: Id): O
     objectName: task.title,
     after: task.lifecycle,
   });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 /**
@@ -661,7 +747,7 @@ export function restoreList(state: DataState, actingMemberId: Id, listId: Id): O
       ? { detail: `${trashedWithList.length} Tarefa(s) voltaram com ela.` }
       : {}),
   });
-  return ok(list);
+  return ok(list, list.id);
 }
 
 /** B2 — o Checklist é componente interno da Tarefa; não tem identidade externa. */
@@ -695,7 +781,7 @@ export function addChecklist(
     objectName: task.title,
     after: name.trim(),
   });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 export function addChecklistItem(
@@ -729,7 +815,7 @@ export function addChecklistItem(
     detail: checklist.name,
     after: text.trim(),
   });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 /**
@@ -776,7 +862,7 @@ export function setChecklistItemDone(
     objectName: task.title,
     detail: `${checklist.name} · ${item.text}`,
   });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 /**
@@ -838,7 +924,7 @@ export function startMeeting(
     objectId: task.id,
     objectName: task.title,
   });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 /**
@@ -884,7 +970,7 @@ export function endMeeting(
     objectName: task.title,
     ...(aberta?.durationMinutes ? { detail: `${aberta.durationMinutes} min` } : {}),
   });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -921,7 +1007,7 @@ export function unassignTask(
     objectName: task.title,
     before: nome,
   });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 /**
@@ -1258,7 +1344,7 @@ export function updateTask(
       ...(mudanca.after !== undefined ? { after: mudanca.after } : {}),
     });
   }
-  return ok(task);
+  return ok(task, task.id);
 }
 
 /**
@@ -1379,7 +1465,7 @@ export function setTaskFieldValue(
     ...(antes !== undefined && antes !== null && antes !== "" ? { before: String(antes) } : {}),
     ...(vazio ? {} : { after: String(gravar) }),
   });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 /**
@@ -1454,7 +1540,7 @@ export function addTaskComment(
     objectName: task.title,
     detail: content.length > 80 ? `${content.slice(0, 77)}…` : content,
   });
-  return ok(comment);
+  return ok(comment, comment.id);
 }
 
 /** Resolver marca o fio como tratado; reabrir tira a marca. Nunca apaga. */
@@ -1487,7 +1573,7 @@ export function resolveTaskComment(
     objectId: task.id,
     objectName: task.title,
   });
-  return ok(comment);
+  return ok(comment, comment.id);
 }
 
 /** As Tags da Tarefa, do Catálogo do Espaço de Trabalho; nunca uma solta. */
@@ -1522,7 +1608,7 @@ export function setTaskTags(
     before: antes || "—",
     after: depois || "—",
   });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 /**
@@ -1563,5 +1649,5 @@ export function watchTask(
     objectName: task.title,
     detail: alvo.displayName,
   });
-  return ok(task);
+  return ok(task, task.id);
 }

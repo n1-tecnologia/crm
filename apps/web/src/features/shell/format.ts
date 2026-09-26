@@ -11,7 +11,11 @@
  * that only shows up in someone else's afternoon.
  */
 
+import { ROTULO_DO_TIPO_DE_CANAL } from "@n1/dominio/operations/canais";
 import type { Locale, Money, TaskDate } from "@n1/dominio/types";
+import { OBJECT_TYPE_LABEL, RESOURCE_TYPE_LABEL, TRIGGER_EVENT_LABEL } from "@n1/dominio/rotulos";
+
+export { OBJECT_TYPE_LABEL, RESOURCE_TYPE_LABEL, TRIGGER_EVENT_LABEL };
 
 export interface Formatters {
   readonly money: (value: Money) => string;
@@ -132,32 +136,6 @@ export const EFFECT_CLASS_LABEL: Record<string, string> = {
  */
 export { ACTOR_KIND_LABEL } from "@n1/dominio/rotulos";
 
-/** B41 — the eight Automation scopes, and the Resource types a screen names. */
-export const RESOURCE_TYPE_LABEL: Record<string, string> = {
-  workspace: "Espaço de Trabalho",
-  space: "Espaço",
-  folder: "Pasta",
-  subfolder: "Subpasta",
-  list: "Lista",
-  funnel: "Funil",
-  queue: "Fila",
-  inbox: "Caixa de Entrada",
-  channel: "Canal",
-  task: "Tarefa",
-  deal: "Negócio",
-  contact: "Contato",
-  company: "Empresa",
-  conversation: "Conversa",
-  message: "Mensagem",
-  collection: "Coleção",
-  document: "Documento",
-  panel: "Painel",
-  agent: "Agente",
-  skill: "Habilidade",
-  automation: "Automação",
-  team: "Equipe",
-  member: "Membro",
-};
 
 /** B77 — why the Execution stopped to ask. */
 export const APPROVAL_REASON_LABEL: Record<string, string> = {
@@ -178,13 +156,8 @@ export const IDENTIFIER_TYPE_LABEL: Record<string, string> = {
   perfilDeTikTok: "Perfil de TikTok",
 };
 
-export const CHANNEL_TYPE_LABEL: Record<string, string> = {
-  whatsapp: "WhatsApp",
-  linkedin: "LinkedIn",
-  instagram: "Instagram",
-  email: "E-mail",
-  chatDoSite: "Chat do site",
-};
+/** Alias do rótulo que o domínio define (C36): uma fonte só para a tela e para as recusas. */
+export const CHANNEL_TYPE_LABEL: Record<string, string> = ROTULO_DO_TIPO_DE_CANAL;
 
 /** RN-CON-16 — consent is a decision with a date, never a silent default. */
 export const CONSENT_DECISION_LABEL: Record<string, string> = {
@@ -272,17 +245,12 @@ export const COMPANY_IDENTIFIER_LABEL: Record<string, string> = {
   telefone: "Telefone",
 };
 
-/** B44 — the Events an Automation Trigger listens to. */
-export const TRIGGER_EVENT_LABEL: Record<string, string> = {
-  tarefaCriada: "Tarefa criada",
-  tarefaAtualizada: "Tarefa atualizada",
-  negocioEntrouEmEtapa: "Negócio entrou em Etapa",
-  negocioEncerrado: "Negócio encerrado",
-  conversaCriada: "Conversa criada",
-  conversaResolvida: "Conversa resolvida",
-  mensagemRecebida: "Mensagem recebida",
-  mensagemEnviada: "Mensagem enviada",
-  contatoCriado: "Contato criado",
+
+/** B22 — the three autonomy levels of an Agent; the effective one is the minimum (B77). */
+export const AUTONOMY_LABEL: Record<string, string> = {
+  assistido: "assistido",
+  supervisionado: "supervisionado",
+  autonomo: "autônomo",
 };
 
 /** B44 — como o Gatilho dispara, antes de qual Evento ele escuta. */
@@ -293,22 +261,6 @@ export const TRIGGER_KIND_LABEL: Record<string, string> = {
   condicaoTemporal: "por condição de tempo",
 };
 
-/** The object families the Activity Log and the Audit name. */
-export const OBJECT_TYPE_LABEL: Record<string, string> = {
-  ...RESOURCE_TYPE_LABEL,
-  agentExecution: "Execução de Agente",
-  automationExecution: "Execução de Automação",
-  approval: "Solicitação de Aprovação",
-  role: "Papel",
-  contactIdentifier: "Identificador de Contato",
-  stage: "Etapa",
-  status: "Status",
-  grupo: "Grupo",
-  comunidade: "Comunidade",
-  flow: "Flow",
-  linkDeCaptacao: "Link de Captação",
-  participacao: "Participação",
-};
 
 /** B97 — how far a Document Version got through processing. */
 export const PROCESSING_LABEL: Record<string, string> = {

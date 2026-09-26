@@ -168,19 +168,14 @@ import {
 // ── scale.ts ────────────────────────────────────────────────────────────
 import {
   archiveForm,
-  archiveGoal,
   createForm,
-  createGoal,
   deleteView,
-  linkTaskToGoal,
   revokePublicShare,
   rotateFormSecret,
   saveView,
   setDefaultView,
-  setGoalArchived,
   shareTaskPublicly,
   updateForm,
-  updateGoal,
 } from "./scale";
 
 // ── automations.ts ──────────────────────────────────────────────────────
@@ -434,11 +429,6 @@ export const OPERACOES = {
   saveView,
   deleteView,
   setDefaultView,
-  createGoal,
-  updateGoal,
-  archiveGoal,
-  setGoalArchived,
-  linkTaskToGoal,
   createForm,
   updateForm,
   archiveForm,

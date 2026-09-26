@@ -18,6 +18,14 @@ import { cn } from "./cn";
  *
  * Só em superfícies de destaque — cartão de indicador, de módulo, de Painel.
  * Nunca em linha de tabela nem em lista densa.
+ *
+ * DUAS MEDIDAS DE PROXIMIDADE. A padrão é a distância à BORDA do alvo (um
+ * círculo pelo canto): num cartão quase quadrado é o que faz a luz correr pela
+ * moldura. Numa peça muito mais larga que alta — como foi a pílula da pergunta
+ * do Início, 672×60, até sair em 2026-09-23 — esse círculo tem raio maior que a própria queda, e o aro
+ * acenderia ao longe e apagaria com o cursor em cima. Quem é assim marca
+ * `data-lanterna="dentro"` e passa a medir a distância ao RETÂNGULO: 1 com o
+ * cursor sobre a peça, caindo em `QUEDA` px para fora.
  */
 
 /** Distância, em px, em que o brilho já sumiu por completo. */
@@ -61,11 +69,12 @@ export function CampoDeLanterna({
         // `atan2` (à direita).
         const angulo = (Math.atan2(dy, dx) * 180) / Math.PI + 90;
 
-        // A proximidade é medida contra a BORDA, não contra o centro: o brilho
-        // acende quando o cursor encosta na quina, não quando chega ao meio.
-        const distancia = Math.hypot(dx, dy);
-        const borda = Math.hypot(r.width / 2, r.height / 2);
-        const proximidade = Math.max(0, 1 - Math.abs(distancia - borda) / QUEDA);
+        // Peça larga e baixa mede a distância ao retângulo (1 em cima dela);
+        // as demais medem à borda, que é o que faz a luz correr pela moldura.
+        const dentro = alvo.dataset.lanterna === "dentro";
+        const proximidade = dentro
+          ? Math.max(0, 1 - Math.hypot(Math.max(0, Math.abs(dx) - r.width / 2), Math.max(0, Math.abs(dy) - r.height / 2)) / QUEDA)
+          : Math.max(0, 1 - Math.abs(Math.hypot(dx, dy) - Math.hypot(r.width / 2, r.height / 2)) / QUEDA);
 
         alvo.style.setProperty("--angulo", `${angulo}deg`);
         alvo.style.setProperty("--proximidade", proximidade.toFixed(3));

@@ -26,6 +26,14 @@ const STAGE_COLORS = ["#94a3b8", "#60a5fa", "#a78bfa", "#f59e0b", "#f97316", "#2
 /** A Pasta espelho; a tela da Lista avisa que é uma cópia do Funil. */
 export const MEUS_NEGOCIOS_ID = "fld_meus_negocios";
 
+/** C36 — os canais de atendimento de cada cópia de Funil: SDR prospecta também pelo LinkedIn; Closer e Venda direta fecham por e-mail. */
+const CANAIS_DO_FUNIL: Record<string, readonly Id[]> = {
+  fnl_sdr: ["chn_wpp", "chn_linkedin"],
+  fnl_closer: ["chn_wpp", "chn_mail"],
+  fnl_validacao: ["chn_wpp"],
+  fnl_venda_direta: ["chn_wpp", "chn_mail"],
+};
+
 export function applyEspelhoComercial(state: DataState, clock: Clock): void {
   const { at, workspaceId } = clock;
   const spaceId = "spc_com";
@@ -81,6 +89,10 @@ export function applyEspelhoComercial(state: DataState, clock: Clock): void {
       description: `Espelho do Funil ${funnel.name}: Etapas como Status, Negócios como Tarefas.`,
       order: ordem,
       isPrivate: false,
+      // C35 — o espelho é o caso particular da Lista conversacional: com Negócio obrigatório.
+      modeloDeTarefa: "conversacional",
+      // C36 — por onde cada Funil atende (o WhatsApp em todos; o resto conforme a etapa do comercial).
+      canaisDeAtendimento: CANAIS_DO_FUNIL[funnel.id] ?? ["chn_wpp"],
       modes: { statusSet: "sobrescrito" },
       blocks: {},
       statusSet: { id: `sts_${listId}`, definitions },
@@ -137,6 +149,11 @@ export function applyEspelhoComercial(state: DataState, clock: Clock): void {
       readable += 1;
       state.tasks.push(task);
       state.links.push({ id: `lnk_${task.id}`, fromType: "task", fromId: task.id, toType: "deal", toId: deal.id, role: "espelho do Negócio", createdBy: deal.createdBy, createdAt: deal.createdAt });
+      // A Lista é conversacional: o cartão mostra o Contato principal do Negócio.
+      const principal = deal.contactLinks.find((l) => l.principal) ?? deal.contactLinks[0];
+      if (principal) {
+        state.links.push({ id: `lnk_${task.id}_contato`, fromType: "task", fromId: task.id, toType: "contact", toId: principal.contactId, role: "contato da Tarefa", createdBy: deal.createdBy, createdAt: deal.createdAt });
+      }
     }
   }
 }

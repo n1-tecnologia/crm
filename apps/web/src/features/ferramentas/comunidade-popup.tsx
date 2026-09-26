@@ -13,11 +13,27 @@ import Link from "next/link";
 import { useId, useState } from "react";
 import { ChevronRight, Fingerprint, Hash, Layers, Megaphone, Radio, RefreshCw, ShieldCheck, Type, UserPlus, Users, type LucideIcon } from "lucide-react";
 import { useData, useRun } from "@/dados/store";
-import { MOTIVO_SEM_ENVIO_A_TODOS, enviarMensagemAComunidade, alterarConfiguracoesDaComunidade, arquivarComunidade, desvincularGrupoDaComunidade, editarComunidade, enviarComunidadeALixeira, recusaDeVinculo, restaurarComunidade, restaurarComunidadeDaLixeira, sairDaComunidade, sincronizarComunidade, vincularGrupoAComunidade } from "@n1/dominio/operations/ferramentas/comunidades";
-import { adicionarNotaNoAtivo } from "@n1/dominio/operations/ferramentas/notas";
-import { recusaDeAdministracao, recusaExternaNaComunidade, recusaExternaNoGrupo } from "@n1/dominio/operations/ferramentas/permissoes";
+import {
+  MOTIVO_SEM_ENVIO_A_TODOS,
+  adicionarNotaNoAtivo,
+  enviarMensagemAComunidade,
+  alterarConfiguracoesDaComunidade,
+  arquivarComunidade,
+  desvincularGrupoDaComunidade,
+  editarComunidade,
+  enviarComunidadeALixeira,
+  recusaDeAdministracao,
+  recusaDeVinculo,
+  recusaExternaNaComunidade,
+  recusaExternaNoGrupo,
+  restaurarComunidade,
+  restaurarComunidadeDaLixeira,
+  sairDaComunidade,
+  sincronizarComunidade,
+  vincularGrupoAComunidade,
+} from "@n1/dominio/operations";
 import { grupoDeAvisos, gruposDaComunidade, marcadoresDaComunidade, membrosDaComunidade, ocupacao, ocupacaoAgregada } from "@n1/dominio/derive-ferramentas";
-import type { Comunidade, ConfiguracoesDaComunidade } from "@n1/dominio/types/ferramentas";
+import type { Comunidade, ConfiguracoesDaComunidade } from "@n1/dominio/types";
 import { LinhaDeProp } from "@/features/estrutura/linha-de-propriedade";
 import { AsideDeAtividade, EditorDeTexto, useAvisos, useNomeDoAtor, type Report } from "@/features/shell/ficha";
 import { useFormat } from "@/features/shell/use-format";

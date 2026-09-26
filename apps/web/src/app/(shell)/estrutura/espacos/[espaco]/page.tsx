@@ -11,6 +11,7 @@ import {
   Icone,
   PageHeader,
   Painel,
+  Pilula,
   RecordPanel,
   RecordRow,
   StateSeal,
@@ -68,6 +69,8 @@ export default function EspacoPage({ params }: { params: Promise<{ espaco: strin
                           <span className="app-base min-w-0 flex-1 truncate" style={{ color: "var(--texto)" }}>
                             {list.name}
                           </span>
+                          {/* C35 — o modelo é da Lista, não do Espaço. */}
+                          {list.modeloDeTarefa === "conversacional" ? <Pilula tom="acento">Conversacional</Pilula> : null}
                         </Link>
                       </li>
                     ))}

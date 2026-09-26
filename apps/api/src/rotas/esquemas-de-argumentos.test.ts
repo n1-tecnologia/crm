@@ -107,12 +107,4 @@ describe("esquemas-de-argumentos — a forma dos args, não a regra", () => {
     expect(chaves.length).toBe(202);
     for (const chave of chaves) expect(ehNomeDeOperacao(chave)).toBe(true);
   });
-
-  it("(k) a forma de createGoal que o verificador reproduziu cai pela composição", () => {
-    expect(
-      ESQUEMAS.createGoal.safeParse([
-        { name: "Meta", anchor: { type: "list", id: "lst_ativacao", lixo: { a: [1, 2] } }, kind: 42, target: 10 },
-      ]).success,
-    ).toBe(false);
-  });
 });

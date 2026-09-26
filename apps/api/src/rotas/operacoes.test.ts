@@ -12,8 +12,8 @@
  * para TODA operação (sem banco, (k)–(o); com banco, (p)/(q)) — nada chega
  * ao `jsonb`; (r) prova que o caminho feliz continua inteiro.
  * (s) prova WR-10 — o reviver protegido antes de qualquer schema.
- * (t)–(v) fecham a segunda rodada de CR-02 (Plan 01-16): `createGoal` e
- * `saveView` — antes só cobertas pelo fallback estrutural — agora têm
+ * (t)–(v) fecham a segunda rodada de CR-02 (Plan 01-16): `saveView` e as
+ * demais — antes só cobertas pelo fallback estrutural — agora têm
  * schema próprio; nada muda no contrato HTTP em si, só a superfície
  * coberta.
  * (w)–(x) provam a costura de AUTO-02 (05-07, Task 2; migrado para a
@@ -209,21 +209,21 @@ describe("POST /operacoes/:nome — sem banco", () => {
     expect(respostaCorpo.error).toBe('Entrada inválida para "updateTask".');
   });
 
-  it("(t) createGoal com kind:42 e anchor.lixo responde 400 antes de executar() — a forma que o verificador reproduziu", async () => {
+  it("(t) saveView com kind:42 e um campo a mais responde 400 antes de executar()", async () => {
     const resposta = await appDeTeste().inject({
       method: "POST",
-      url: "/operacoes/createGoal",
+      url: "/operacoes/saveView",
       headers: { authorization: "Bearer token-maryane" },
       payload: {
         args: [
-          { name: "Meta", anchor: { type: "list", id: "lst_ativacao", lixo: { a: [1, 2] } }, kind: 42, target: 10 },
+          { listId: "lst_ativacao", name: "Visão", kind: 42, filters: {}, shared: false, lixo: { a: [1, 2] } },
         ],
       },
     });
     expect(resposta.statusCode).toBe(400);
     const corpo = resposta.json();
     expect(corpo.ok).toBe(false);
-    expect(corpo.error.startsWith('Entrada inválida para "createGoal"')).toBe(true);
+    expect(corpo.error.startsWith('Entrada inválida para "saveView"')).toBe(true);
   });
 });
 
@@ -462,37 +462,6 @@ d("POST /operacoes/:nome — contra o banco real", () => {
       expect(tarefa?.description).toBe("Descrição pela rota.");
     } finally {
       cliente.release();
-    }
-  });
-
-  it("(u) createGoal com kind:42 nunca persistido — state.goals inalterado", async () => {
-    const clienteAntes = await pool().connect();
-    let quantidadeAntes: number;
-    try {
-      const { state } = await hidratar(clienteAntes, WS);
-      quantidadeAntes = state.goals.length;
-    } finally {
-      clienteAntes.release();
-    }
-
-    const resposta = await appDeTeste().inject({
-      method: "POST",
-      url: "/operacoes/createGoal",
-      headers: { authorization: "Bearer token-maryane" },
-      payload: {
-        args: [
-          { name: "Meta", anchor: { type: "list", id: "lst_ativacao", lixo: { a: [1, 2] } }, kind: 42, target: 10 },
-        ],
-      },
-    });
-    expect(resposta.statusCode).toBe(400);
-
-    const clienteDepois = await pool().connect();
-    try {
-      const { state } = await hidratar(clienteDepois, WS);
-      expect(state.goals.length).toBe(quantidadeAntes);
-    } finally {
-      clienteDepois.release();
     }
   });
 

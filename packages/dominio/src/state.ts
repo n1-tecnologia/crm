@@ -52,7 +52,6 @@ import type {
   Template,
   Tool,
   View,
-  Goal,
   Form,
   Workspace,
   WorkspaceFile,
@@ -76,7 +75,6 @@ export interface DataState {
   fieldDefinitions: FieldDefinition[];
   taskTypes: TaskType[];
   views: View[];
-  goals: Goal[];
   forms: Form[];
 
   spaces: Space[];

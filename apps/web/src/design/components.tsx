@@ -705,9 +705,7 @@ export function SidePanel({
             </span>
           </header>
         )}
-        <div className={cn("relative min-h-0 flex-1", semRespiro ? "flex flex-col" : "overflow-y-auto", !bare && !semRespiro && "px-6 py-5")}>
-          {children}
-        </div>
+        <div className={cn("relative min-h-0 flex-1", semRespiro ? "flex flex-col" : "overflow-y-auto", !bare && !semRespiro && "px-6 py-5")}>{children}</div>
         {footer ? (
           <footer className="flex shrink-0 items-center gap-2 px-6 py-4" style={{ borderTop: "1px solid var(--linha)" }}>
             {footer}
@@ -1285,10 +1283,7 @@ export function StatusPicker({
         title={readOnly ? readOnlyReason || undefined : "Mudar o Status"}
         onKeyDown={readOnly ? undefined : onKeyDown}
         onClick={readOnly ? undefined : () => setOpen((atual) => !atual)}
-        className={cn(
-          "flex items-center gap-1.5 rounded-[var(--r-controle)] py-0.5 pl-0.5 pr-1 transition-colors",
-          !readOnly && "hover:bg-[var(--superficie-hover)]",
-        )}
+        className={cn("flex items-center gap-1.5 rounded-[var(--r-controle)] py-0.5 pl-0.5 pr-1 transition-colors", !readOnly && "hover:bg-[var(--superficie-hover)]")}
       >
         {current ? (
           <Pilula cor={current.color}>{current.name}</Pilula>
@@ -1403,7 +1398,7 @@ function useModal(
     const first =
       focoInicial === "raiz"
         ? undefined
-        : (itens.find((el) => el.matches("input, textarea, select, [contenteditable]")) ??
+        : (itens.find((el) => el.matches("input, textarea, select, [contenteditable], [role=combobox]")) ??
           itens.find((el) => el.getAttribute("aria-label") !== "Fechar") ??
           itens[0]);
     if (first) first.focus({ preventScroll: true });

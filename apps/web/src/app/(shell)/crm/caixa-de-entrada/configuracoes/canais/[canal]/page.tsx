@@ -5,13 +5,18 @@
  *
  * Documento 14, 7.1 — the capabilities come from the CHANNEL TYPE and are shown
  * as read-only: neither this Channel nor a Conversation may redefine them
- * (RN-CXE-05). Everything editable below the fold is Channel configuration.
+ * (RN-CXE-05).
+ *
+ * C36 — da configuração, o SETOR (a Fila padrão) e a ORIGEM padrão se editam
+ * aqui (`configurarCanal`), por quem administra o Espaço de Trabalho (B35); o
+ * resto do painel continua só leitura. São os mesmos dois campos que o popup
+ * de adicionar conta pergunta.
  */
 
 import Link from "next/link";
-import { use } from "react";
-import { useData } from "@/dados/store";
-import { CHANNEL_CAPABILITIES } from "@n1/dominio/operations";
+import { use, useState } from "react";
+import { useData, useRun, useSession } from "@/dados/store";
+import { CHANNEL_CAPABILITIES, configurarCanal, recusaDeGerirCanais } from "@n1/dominio/operations";
 import { CHANNEL_TYPE_LABEL, IDENTIFIER_TYPE_LABEL } from "@/features/shell/format";
 import { useFormat } from "@/features/shell/use-format";
 import {
@@ -23,7 +28,9 @@ import {
   RecordPanel,
   RecordRow,
   Section,
+  Select,
   StateSeal,
+  Toast,
   type TomPilula,
 } from "@/features/shell/ui";
 
@@ -43,7 +50,10 @@ const APPROVAL_TONE: Record<string, TomPilula> = {
 export default function CanalPage({ params }: { params: Promise<{ canal: string }> }) {
   const { canal } = use(params);
   const state = useData((data) => data);
+  const run = useRun();
+  const session = useSession();
   const fmt = useFormat();
+  const [aviso, setAviso] = useState<{ readonly texto: string; readonly erro: boolean } | null>(null);
   const channel = state.channels.find((c) => c.id === canal);
 
   if (!channel) {
@@ -62,6 +72,11 @@ export default function CanalPage({ params }: { params: Promise<{ canal: string 
   const configuredBy = state.members.find((m) => m.id === channel.configuredByMemberId);
   const contactOwner = state.members.find((m) => m.id === channel.defaultContactOwnerMemberId);
   const origin = state.catalog.find((item) => item.id === channel.defaultOriginId);
+  const recusaDeConfigurar = recusaDeGerirCanais(state, session.memberId);
+  const configurar = (patch: { readonly defaultQueueId?: string | null; readonly defaultOriginId?: string | null }, mensagem: string) => {
+    const r = run((data, me) => configurarCanal(data, me, channel.id, patch));
+    setAviso(r.ok ? { texto: mensagem, erro: false } : { texto: r.error, erro: true });
+  };
   const conversations = state.conversations.filter((c) => c.channelId === channel.id);
 
   const channelType = CHANNEL_TYPE_LABEL[channel.channelType] ?? channel.channelType;
@@ -164,22 +179,54 @@ export default function CanalPage({ params }: { params: Promise<{ canal: string 
                   <span className="identificador">{channel.externalId}</span>
                 </RecordRow>
                 <RecordRow label="Configurado por">{configuredBy?.displayName ?? "não encontrado"}</RecordRow>
-                <RecordRow label="Fila padrão">
-                  {queue ? (
-                    <Link href={`/crm/caixa-de-entrada/configuracoes/filas/${queue.id}`} className="hover:underline">
-                      {queue.name}
-                    </Link>
-                  ) : (
-                    "nenhuma"
-                  )}
+                <RecordRow label="Setor (Fila padrão)">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="block w-44">
+                      <Select
+                        size="sm"
+                        value={channel.defaultQueueId ?? ""}
+                        onChange={(v) => configurar({ defaultQueueId: v || null }, v ? "Setor do Canal alterado." : "O Canal ficou sem setor.")}
+                        placeholder="Nenhum"
+                        {...(recusaDeConfigurar ? { disabled: true, disabledReason: recusaDeConfigurar } : {})}
+                        options={[
+                          { value: "", label: "Nenhum — a Conversa nasce sem Fila" },
+                          ...state.queues.filter((q) => q.lifecycle === "ativo").map((q) => ({ value: q.id, label: q.name })),
+                        ]}
+                      />
+                    </span>
+                    {queue ? (
+                      <Link href={`/crm/caixa-de-entrada/configuracoes/filas/${queue.id}`} className="app-meta hover:underline">
+                        ver a Fila
+                      </Link>
+                    ) : null}
+                  </span>
                 </RecordRow>
                 <RecordRow label="Proprietário padrão de Contato">{contactOwner?.displayName ?? "não definido"}</RecordRow>
-                <RecordRow label="Origem padrão">{origin?.name ?? "não definida"}</RecordRow>
+                <RecordRow label="Origem padrão">
+                  <span className="block w-44">
+                    <Select
+                      size="sm"
+                      value={channel.defaultOriginId ?? ""}
+                      onChange={(v) => configurar({ defaultOriginId: v || null }, v ? "Origem do Canal alterada." : "O Canal ficou sem origem.")}
+                      placeholder={origin?.name ?? "Nenhuma"}
+                      {...(recusaDeConfigurar ? { disabled: true, disabledReason: recusaDeConfigurar } : {})}
+                      options={[
+                        { value: "", label: "Nenhuma" },
+                        ...state.catalog.filter((i) => i.kind === "origem" && i.lifecycle === "ativo").map((i) => ({ value: i.id, label: i.name })),
+                      ]}
+                    />
+                  </span>
+                </RecordRow>
                 <RecordRow label="Grupos">{channel.groupsEnabled ? "habilitados" : "desabilitados"}</RecordRow>
               </dl>
               <p className="app-meta mt-2">
                 Configurar o Canal é rastreabilidade, não governança: o Canal não tem Proprietário.
               </p>
+              {aviso ? (
+                <div className="mt-2">
+                  <Toast tone={aviso.erro ? "error" : "success"} onDismiss={() => setAviso(null)}>{aviso.texto}</Toast>
+                </div>
+              ) : null}
             </RecordPanel>
 
             <RecordPanel title="Capacidades do tipo de Canal">

@@ -10,10 +10,9 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useData, useRun } from "@/dados/store";
-import { aprovarPedidoDeEntrada, receberPedidoDeEntrada, recusarPedidoDeEntrada } from "@n1/dominio/operations/ferramentas/grupos";
-import { recusaExternaNoGrupo } from "@n1/dominio/operations/ferramentas/permissoes";
+import { aprovarPedidoDeEntrada, receberPedidoDeEntrada, recusaExternaNoGrupo, recusarPedidoDeEntrada } from "@n1/dominio/operations";
 import { contactDisplayName } from "@n1/dominio/derive";
-import type { Grupo, PedidoDeEntrada } from "@n1/dominio/types/ferramentas";
+import type { Grupo, PedidoDeEntrada } from "@n1/dominio/types";
 import type { Report } from "@/features/shell/ficha";
 import { useFormat } from "@/features/shell/use-format";
 import { ActorAvatar, Button, ConfirmDialog, EmptyState, Field, Pilula, ReguaDeSecao, Select, TextInput } from "@/features/shell/ui";

@@ -11,7 +11,7 @@
 
 import { useData } from "@/dados/store";
 import { cliquesContabilizados, marcadoresDoGrupo, ocupacao } from "@n1/dominio/derive-ferramentas";
-import type { Grupo } from "@n1/dominio/types/ferramentas";
+import type { Grupo } from "@n1/dominio/types";
 import type { Report } from "@/features/shell/ficha";
 import { useFormat } from "@/features/shell/use-format";
 import { RecordList } from "@/features/shell/record-list";

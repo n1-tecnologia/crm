@@ -9,9 +9,8 @@
 import { useState } from "react";
 import { Layers, UserPlus } from "lucide-react";
 import { useData, useRun } from "@/dados/store";
-import { CONFIGURACOES_PADRAO_DA_COMUNIDADE, criarComunidade } from "@n1/dominio/operations/ferramentas/comunidades";
-import { recusaDoCanal } from "@n1/dominio/operations/ferramentas/permissoes";
-import type { ConfiguracoesDaComunidade } from "@n1/dominio/types/ferramentas";
+import { CONFIGURACOES_PADRAO_DA_COMUNIDADE, criarComunidade, recusaDoCanal } from "@n1/dominio/operations";
+import type { ConfiguracoesDaComunidade } from "@n1/dominio/types";
 import { ConfirmDialog, Field, Select, TextArea, TextInput } from "@/features/shell/ui";
 import { CaixaDeConfiguracoes } from "./caixa-de-configuracoes";
 import { CONFIGURACAO_DA_COMUNIDADE_LABEL } from "./rotulos";

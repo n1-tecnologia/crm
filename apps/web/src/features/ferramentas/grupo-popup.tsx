@@ -30,11 +30,23 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useData, useRun } from "@/dados/store";
-import { adicionarNotaNoAtivo } from "@n1/dominio/operations/ferramentas/notas";
-import { arquivarGrupo, definirCanalDoGrupo, editarCaptacaoDoGrupo, editarGrupo, enviarGrupoALixeira, regenerarLinkDeConvite, restaurarGrupo, restaurarGrupoDaLixeira, sairDoGrupo, sincronizarGrupo, zerarCliques } from "@n1/dominio/operations/ferramentas/grupos";
-import { recusaExternaNoGrupo } from "@n1/dominio/operations/ferramentas/permissoes";
+import {
+  adicionarNotaNoAtivo,
+  arquivarGrupo,
+  definirCanalDoGrupo,
+  editarCaptacaoDoGrupo,
+  editarGrupo,
+  enviarGrupoALixeira,
+  recusaExternaNoGrupo,
+  regenerarLinkDeConvite,
+  restaurarGrupo,
+  restaurarGrupoDaLixeira,
+  sairDoGrupo,
+  sincronizarGrupo,
+  zerarCliques,
+} from "@n1/dominio/operations";
 import { cliquesContabilizados, linksDoGrupo, marcadoresDoGrupo, motivoDeInelegibilidade, ocupacao, participacoesVigentes } from "@n1/dominio/derive-ferramentas";
-import type { ConfiguracoesDoGrupo } from "@n1/dominio/types/ferramentas";
+import type { ConfiguracoesDoGrupo } from "@n1/dominio/types";
 import { LinhaDeProp } from "@/features/estrutura/linha-de-propriedade";
 import { AsideDeAtividade, EditorDeNumero, EditorDeTexto, useAvisos, useNomeDoAtor } from "@/features/shell/ficha";
 import { useFormat } from "@/features/shell/use-format";

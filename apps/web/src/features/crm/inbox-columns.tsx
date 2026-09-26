@@ -22,6 +22,8 @@ import { ArrowUpDown, Check, SlidersHorizontal, Star, Users } from "lucide-react
 import { useData, useRun, useSession } from "@/dados/store";
 import { useRecente } from "@/features/shell/recente";
 import { contactDisplayName } from "@n1/dominio/derive";
+// "Não lida" e a última atividade moram no domínio: o resumo do Início conta as mesmas mensagens novas.
+import { naoLidas, ultimaAtividade as lastActivity } from "@n1/dominio/derive-resumo";
 import { CHANNEL_CAPABILITIES, toggleConversationStar } from "@n1/dominio/operations";
 import { CHANNEL_ICON } from "@/features/crm/conversation-thread";
 import { ContactAvatar } from "@/features/crm/contact-card";
@@ -516,24 +518,6 @@ export function matchesScope(conversation: Conversation, scope: string, memberId
   if (scope === "semFila") return conversation.queueId === undefined;
   if (scope === "adiadas") return conversation.snooze !== undefined;
   return true;
-}
-
-/**
- * "Não lida" é DERIVADA das Mensagens: quantas recebidas ainda não têm leitura
- * registrada deste Membro. Um campo `lida` na Conversa poderia divergir das
- * Mensagens, e aí a Caixa mentiria para quem atende.
- */
-function naoLidas(conversation: Conversation, memberId: string): number {
-  return conversation.messages.filter(
-    (message) =>
-      message.direction === "recebida" &&
-      !message.internalReads.some((r) => r.actor.kind === "member" && r.actor.id === memberId),
-  ).length;
-}
-
-function lastActivity(conversation: Conversation): string {
-  const last = [...conversation.messages].sort((a, b) => a.createdAt.localeCompare(b.createdAt)).at(-1);
-  return last?.createdAt ?? conversation.createdAt;
 }
 
 /** RN-CXE-19 — the marker that says a free reply is no longer possible. */

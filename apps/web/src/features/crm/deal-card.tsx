@@ -4,14 +4,18 @@
  * O card de Negócio do quadro de `/crm/negocios`, e o que ele lê do Negócio
  * (rosto, empresa, temperatura, origem, dono). É o mesmo card nas Listas de
  * "Meus negócios": lá a Tarefa espelha um Negócio, e o card abre a Tarefa.
+ *
+ * É o MODELO do quadro padrão (`features/shell/quadro.tsx`): desde o fim de
+ * 2026-09-23 todo quadro do app usa a anatomia dele ("tudo que for quadro, a
+ * visualização deve ser igual à da segunda imagem").
  */
 
-import Link from "next/link";
 import { Briefcase, Flame, Link2, User as UserIcon, Wallet } from "lucide-react";
 import { contactDisplayName, effectiveProbability } from "@n1/dominio/derive";
 import type { DataState } from "@n1/dominio/state";
 import type { Contact, Deal } from "@n1/dominio/types";
 import { ContactAvatar } from "@/features/crm/contact-card";
+import { CartaoDeQuadro } from "@/features/shell/quadro";
 import { ActorAvatar, Icone, Pilula, StateSeal } from "@/features/shell/ui";
 import { useFormat } from "@/features/shell/use-format";
 
@@ -65,46 +69,9 @@ export function DealCard({
 }) {
   const fmt = useFormat();
   const { deal, probability, ownerName, ownerPhotoFileId, companyName, contact, temperature, originName } = data;
-  return (
-    // `card-negocio`, não `item-solto`: o arraste briga com o lift do hover.
-    <Link
-      href={href}
-      draggable
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      {...(onOpen
-        ? {
-            onClick: (event: React.MouseEvent) => {
-              if (event.metaKey || event.ctrlKey || event.button !== 0) return;
-              event.preventDefault();
-              onOpen();
-            },
-          }
-        : {})}
-      className="card-negocio block cursor-grab p-3 active:cursor-grabbing"
-      data-recente={recente ? "true" : undefined}
-    >
-      {/*
-        O rosto primeiro, depois o que a pessoa é para o Negócio, depois o
-        dinheiro, depois quem responde. Cada bloco é separado por linha porque
-        são perguntas diferentes: quem é, o quê, quanto, com quem.
-      */}
-      <div className="flex items-start gap-2.5">
-        {contact ? <ContactAvatar contact={contact} size="grande" /> : null}
-        <div className="min-w-0 flex-1">
-          <p className="ed-subtitulo truncate">
-            {contact ? contactDisplayName(contact) : deal.title}
-          </p>
-          {companyName ? (
-            <p className="app-base truncate" style={{ color: "var(--texto-3)" }}>
-              {companyName}
-            </p>
-          ) : null}
-        </div>
-        <StateSeal state={deal.lifecycle} />
-      </div>
-
-      <p className="mt-3 flex flex-wrap items-center gap-2">
+  const pilulas =
+    deal.object || temperature ? (
+      <>
         {deal.object ? (
           <Pilula tom="neutro" contorno>
             <Icone de={Briefcase} tamanho="xs" style={{ color: "var(--acento)" }} />
@@ -117,59 +84,36 @@ export function DealCard({
             {temperature.name}
           </Pilula>
         ) : null}
-      </p>
-
-      <div className="mt-3 flex items-center gap-2.5 pt-3" style={{ borderTop: "1px solid var(--linha)" }}>
-        <span
-          aria-hidden="true"
-          className="grid shrink-0 place-items-center rounded-[var(--r-controle)]"
-          style={{
-            width: "var(--controle-h-sm)",
-            height: "var(--controle-h-sm)",
-            background: "var(--superficie-2)",
-            color: "var(--acento)",
-          }}
-        >
-          <Icone de={Wallet} tamanho="sm" />
-        </span>
-        <span className="min-w-0">
-          <span className="app-meta block">Valor do negócio</span>
-          <span className="app-md app-numero block truncate" style={{ color: "var(--texto)" }}>
-            {deal.value ? fmt.money(deal.value) : "sem valor declarado"}
-            <span className="ml-1.5" style={{ fontWeight: 400, color: "var(--texto-3)" }}>
-              {probability}%
-            </span>
-          </span>
-        </span>
-      </div>
-
-      <div className="mt-3 grid grid-cols-2 gap-2 pt-3" style={{ borderTop: "1px solid var(--linha)" }}>
-        <span className="min-w-0">
-          <span className="app-meta flex items-center gap-1.5">
-            <Icone de={UserIcon} tamanho="xs" />
-            Proprietário
-          </span>
-          <span className="mt-1 flex items-center gap-1.5">
-            <ActorAvatar
-              kind="member"
-              name={ownerName}
-              {...(ownerPhotoFileId ? { photoFileId: ownerPhotoFileId } : {})}
-            />
-            <span className="app-base min-w-0 truncate" style={{ color: "var(--texto)" }}>
-              {ownerName}
-            </span>
-          </span>
-        </span>
-        <span className="min-w-0 pl-2" style={{ borderLeft: "1px solid var(--linha)" }}>
-          <span className="app-meta flex items-center gap-1.5">
-            <Icone de={Link2} tamanho="xs" />
-            Origem
-          </span>
-          <span className="app-base mt-1 block truncate" style={{ color: "var(--texto)" }}>
-            {originName ?? "—"}
-          </span>
-        </span>
-      </div>
-    </Link>
+      </>
+    ) : null;
+  return (
+    <CartaoDeQuadro
+      href={href}
+      {...(onOpen ? { onOpen } : {})}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      recente={recente}
+      rosto={contact ? <ContactAvatar contact={contact} size="grande" /> : undefined}
+      titulo={contact ? contactDisplayName(contact) : deal.title}
+      subtitulo={companyName}
+      selo={<StateSeal state={deal.lifecycle} />}
+      pilulas={pilulas}
+      destaque={{
+        icone: Wallet,
+        rotulo: "Valor do negócio",
+        valor: deal.value ? fmt.money(deal.value) : "sem valor declarado",
+        complemento: `${probability}%`,
+        vazio: !deal.value,
+      }}
+      rodape={[
+        {
+          icone: UserIcon,
+          rotulo: "Proprietário",
+          avatar: <ActorAvatar kind="member" name={ownerName} {...(ownerPhotoFileId ? { photoFileId: ownerPhotoFileId } : {})} />,
+          valor: ownerName,
+        },
+        { icone: Link2, rotulo: "Origem", valor: originName ?? "—", vazio: !originName },
+      ]}
+    />
   );
 }

@@ -8,8 +8,8 @@
  * olho achar o que a Validação apontou.
  */
 
-import type { ComponenteDeFlow, TelaDeFlow, VersaoDeFlow } from "@n1/dominio/types/ferramentas";
-import type { ProblemaDeValidacao } from "@n1/dominio/operations/ferramentas/flows-validacao";
+import type { ComponenteDeFlow, TelaDeFlow, VersaoDeFlow } from "@n1/dominio/types";
+import type { ProblemaDeValidacao } from "@n1/dominio/operations";
 import { telasOrdenadas } from "@n1/dominio/derive-ferramentas";
 import { cn } from "@/features/shell/ui";
 

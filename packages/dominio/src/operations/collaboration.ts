@@ -143,7 +143,7 @@ export function removeDependency(
     objectName: task.title,
     detail: `${KIND_LABEL[dependency.kind]} “${other?.title ?? dependency.taskId}”`,
   });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 /* ───────────────────────────── Tempo ───────────────────────────── */
@@ -287,7 +287,7 @@ export function removeAttachment(state: DataState, actingMemberId: Id, taskId: I
   task.attachments = task.attachments.filter((a) => a.fileId !== fileId);
   task.updatedAt = now();
   recordActivity(state, { actor: memberActor(actingMemberId), action: "Anexo removido", objectType: "task", objectId: task.id, objectName: task.title, before: attachment.displayName });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 /* ───────────────────────────── Recorrência ───────────────────────────── */
@@ -318,7 +318,7 @@ export function setRecurrence(
     objectName: task.title,
     ...(rule ? { after: `a cada ${rule.interval} ${rule.frequency}` } : {}),
   });
-  return ok(task);
+  return ok(task, task.id);
 }
 
 /**
@@ -527,5 +527,5 @@ export function spawnNextOccurrence(state: DataState, actingMemberId: Id, taskId
     detail: `Gerada de “${task.title}”`,
   });
   runListAutomations(state, { kind: "tarefaCriada", taskId: next.id });
-  return ok(next);
+  return ok(next, next.id);
 }

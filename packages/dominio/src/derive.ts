@@ -8,6 +8,8 @@ import type { DataState } from "./state";
 import type {
   ActivityRecord,
   ActorRef,
+  AgentExecution,
+  ApprovalRequest,
   Comment,
   Contact,
   Conversation,
@@ -15,7 +17,6 @@ import type {
   EffectiveListConfig,
   EnabledFeatures,
   Folder,
-  Goal,
   Grant,
   Id,
   Lifecycle,
@@ -25,6 +26,7 @@ import type {
   StatusDefinition,
   StatusSet,
   Task,
+  TaskType,
   TaskDate,
 } from "./types";
 
@@ -174,6 +176,30 @@ export function effectiveContainerConfig(state: DataState, type: PathNode["type"
   }
 
   return { statusSet, statusSetDefinedAt: definedAt, fieldDefinitionIds, taskTypeIds, features, path };
+}
+
+/**
+ * Os Tipos de Tarefa que a Lista enxerga, na ordem em que a tela deve
+ * oferecê-los: primeiro o do nível MAIS PRÓXIMO da Lista (numa Lista do
+ * Financeiro, a "Conta" da Pasta vem antes da "Tarefa" do Espaço) e, no mesmo
+ * nível, o Tipo da plataforma antes dos criados aqui. A cabeça da lista é o
+ * Tipo padrão — o mesmo com que `createTask` faz a Tarefa nascer quando
+ * ninguém escolhe, e é por isso que a regra mora aqui e não lá: a tela precisa
+ * pré-escolher exatamente o que o domínio escolheria.
+ */
+export function tiposDaLista(state: DataState, listId: Id): readonly TaskType[] {
+  const config = effectiveListConfig(state, listId);
+  if (!config) return [];
+  const profundidade = (definedAtId: Id) => config.path.findIndex((node) => node.id === definedAtId);
+  return config.taskTypeIds
+    .map((id) => state.taskTypes.find((t) => t.id === id))
+    .filter((t): t is TaskType => t !== undefined)
+    .sort((x, y) => profundidade(y.definedAtId) - profundidade(x.definedAtId) || Number(y.isPlatformDefault) - Number(x.isPlatformDefault));
+}
+
+/** O Tipo com que uma Tarefa nasce nesta Lista quando ninguém escolhe. */
+export function tipoPadraoDaLista(state: DataState, listId: Id): Id | undefined {
+  return tiposDaLista(state, listId)[0]?.id;
 }
 
 function containerOf(state: DataState, node: PathNode): Space | Folder | List | undefined {
@@ -1024,6 +1050,57 @@ export function pendingMentions(
   return found.sort((a, b) => b.comment.createdAt.localeCompare(a.comment.createdAt));
 }
 
+/**
+ * As Tarefas que esperam por mim: atribuídas a mim, ativas e fora de categoria
+ * terminal. A mesma tripla que o Início, Minhas Tarefas e Notificações liam
+ * cada um por si — agora um lugar só, para os três números baterem.
+ */
+export function tarefasAbertasDoMembro(state: DataState, memberId: Id): Task[] {
+  return state.tasks
+    .filter((task) => task.assignees.some((a) => a.kind === "member" && a.id === memberId))
+    .filter((task) => effectiveLifecycleOfTask(state, task.id) === "ativo")
+    .filter((task) => !isTerminalCategory(statusCategory(state, task)));
+}
+
+export interface NotificacoesDoMembro {
+  readonly aprovacoes: ApprovalRequest[];
+  readonly mencoes: Array<{ readonly task: Task; readonly comment: Comment }>;
+  readonly conversas: Conversation[];
+  readonly vencidas: Task[];
+  readonly bloqueadas: Task[];
+  readonly execucoesFalhas: AgentExecution[];
+  readonly total: number;
+}
+
+/**
+ * O que a pessoa tem de responder (T51). Não há Notificação na ontologia: é
+ * tudo derivado de registros que já existem, filtrado pelo Membro. O sino da
+ * barra global e a tela de Notificações leem daqui — nunca discordam.
+ */
+export function notificacoesDoMembro(state: DataState, memberId: Id, now: Date): NotificacoesDoMembro {
+  const aprovacoes = state.approvals.filter((a) => a.decision === undefined && a.approverMemberId === memberId);
+  const minhas = tarefasAbertasDoMembro(state, memberId);
+  const vencidas = minhas.filter((task) => isOverdue(state, task, now));
+  const bloqueadas = minhas.filter((task) => isBlocked(state, task));
+  const conversas = state.conversations.filter(
+    (c) => c.lifecycle === "ativo" && c.state !== "resolvida" && c.assignee?.kind === "member" && c.assignee.id === memberId,
+  );
+  const execucoesFalhas = state.agentExecutions.filter((execution) => {
+    if (execution.state !== "falhou") return false;
+    return state.agents.find((a) => a.id === execution.agentId)?.ownerMemberId === memberId;
+  });
+  const mencoes = pendingMentions(state, memberId);
+  return {
+    aprovacoes,
+    mencoes,
+    conversas,
+    vencidas,
+    bloqueadas,
+    execucoesFalhas,
+    total: aprovacoes.length + mencoes.length + conversas.length + vencidas.length + bloqueadas.length + execucoesFalhas.length,
+  };
+}
+
 /* ───────────────────────────── Fase 3 — planejamento ───────────────────────────── */
 
 /** Segunda-feira (dia civil local) da semana que contém a data. */
@@ -1086,39 +1163,4 @@ export function workload(state: DataState, tasks: readonly Task[]): WorkloadCell
 /** A ocorrência que nasceu desta Tarefa ao concluí-la (B6) — para a tela apontar para ela. */
 export function spawnedOccurrenceOf(state: DataState, taskId: Id): Task | undefined {
   return [...state.tasks].reverse().find((t) => t.provenance?.kind === "recurrence" && t.provenance.sourceId === taskId);
-}
-
-/* ───────────────────────────── Fase 4 — Metas ───────────────────────────── */
-
-export interface GoalProgress {
-  readonly current: number;
-  readonly target: number;
-  /** 0..1, limitado a 1 — a Meta batida não passa de 100%. */
-  readonly ratio: number;
-  readonly label: string;
-}
-
-/**
- * Progresso derivado, nunca gravado: por Tarefas ligadas concluídas, ou pela
- * mesma leitura que um Widget faz (o visualizador precisa alcançar o recorte;
- * senão a leitura é "sem acesso" e o progresso não se inventa).
- */
-export function goalProgress(state: DataState, goal: Goal, memberId: Id, now: Date): GoalProgress | { readonly kind: "semAcesso" } {
-  if (goal.kind === "tarefasConcluidas") {
-    const ligadas = goal.taskIds.map((id) => state.tasks.find((t) => t.id === id)).filter((t): t is Task => t !== undefined && effectiveLifecycleOfTask(state, t.id) !== "naLixeira");
-    const concluidas = ligadas.filter((t) => isTerminalCategory(statusCategory(state, t))).length;
-    const target = goal.target;
-    return { current: concluidas, target, ratio: target > 0 ? Math.min(1, concluidas / target) : 0, label: `${concluidas} de ${target} Tarefa(s)` };
-  }
-  const measure = goal.measure;
-  if (!measure) return { current: 0, target: goal.target, ratio: 0, label: "sem leitura" };
-  const reading = widgetReading(
-    state,
-    { viewType: "numero", dataSource: measure, metrics: [{ aggregation: measure.aggregation, attribute: measure.attribute, label: goal.name }], dimensions: [] },
-    memberId,
-    now,
-  );
-  if (reading.kind === "semAcesso") return { kind: "semAcesso" };
-  const current = reading.kind === "numero" ? reading.value : reading.kind === "moeda" ? reading.byCurrency.reduce((s, c) => s + c.amount, 0) : 0;
-  return { current, target: goal.target, ratio: goal.target > 0 ? Math.min(1, current / goal.target) : 0, label: `${current}${goal.unit ? ` ${goal.unit}` : ""} de ${goal.target}${goal.unit ? ` ${goal.unit}` : ""}` };
 }

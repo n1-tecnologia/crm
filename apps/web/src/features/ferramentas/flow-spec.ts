@@ -6,8 +6,8 @@
  * os limites vêm do catálogo do domínio, não são repetidos aqui.
  */
 
-import type { PropriedadesDeComponente, TipoDeComponente } from "@n1/dominio/types/ferramentas";
-import { CATALOGO_DE_COMPONENTES } from "@n1/dominio/operations/ferramentas/flows-catalogo";
+import type { PropriedadesDeComponente, TipoDeComponente } from "@n1/dominio/types";
+import { CATALOGO_DE_COMPONENTES } from "@n1/dominio/operations";
 import { TIPO_DE_ENTRADA_LABEL } from "./rotulos";
 
 export type ControleDeProp = "texto" | "textoLongo" | "numero" | "booleano" | "escolha" | "opcoes" | "expressaoOuBooleano" | "imagem" | "imagens" | "legendas";
