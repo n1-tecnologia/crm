@@ -465,6 +465,27 @@ d("POST /operacoes/:nome — contra o banco real", () => {
     }
   });
 
+  it("(y) uma operação nova do frontend do main (criarColecao) grava e volta na hidratação — não fica só na cópia do cliente", async () => {
+    const nome = `Coleção pela rota ${Date.now()}`;
+    const resposta = await appDeTeste().inject({
+      method: "POST",
+      url: "/operacoes/criarColecao",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: { args: [{ name: nome, description: "Criada pela integração do main.", isPrivate: false }] },
+    });
+    expect(resposta.statusCode, resposta.body).toBe(200);
+    const corpo = resposta.json();
+    expect(corpo.ok, corpo.error).toBe(true);
+
+    const cliente = await pool().connect();
+    try {
+      const { state } = await hidratar(cliente, WS);
+      expect(state.collections.some((c) => c.name === nome)).toBe(true);
+    } finally {
+      cliente.release();
+    }
+  });
+
   it("(v) saveView com filters arbitrário responde 400 e state.views inalterado; com filters:{} responde 200", async () => {
     const clienteAntes = await pool().connect();
     let quantidadeAntes: number;
