@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "verificar:tokens": "node scripts/verificar-tokens.mjs",
-    "capturar:movimento": "node scripts/capturar-movimento.mjs"
+    "capturar:movimento": "node scripts/capturar-movimento.mjs",
+    "jornada:financeiro": "node scripts/jornada-financeiro.mjs"
   },
   "dependencies": {
     "@n1/dominio": "*",
