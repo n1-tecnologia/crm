@@ -35,6 +35,7 @@
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
+import type { DataState } from "@n1/dominio";
 import { memberReachesContainer } from "@n1/dominio/derive";
 import { CP } from "@n1/dominio/operations";
 import { pool } from "../persistencia/conexao";
@@ -42,6 +43,7 @@ import { hidratar } from "../persistencia/repositorio";
 import {
   criarClienteDeLeituras,
   type ClienteDeLeituras,
+  type OpcoesDoClienteDeLeituras,
   type RespostaDeLeitura,
 } from "../automacoes/cliente-leituras-financeiro";
 
@@ -67,8 +69,39 @@ const QUERY_SEM_FILTRO = z.object({}).strict();
 const QUERY_PLANO_CONTAS = z.object({ empresa: EMPRESA.optional(), tipo: TIPO.optional() }).strict();
 
 export interface OpcoesDeFinanceiro {
-  /** O teste injeta um cliente falso; sem opção, o módulo constrói o real. */
+  /** O cliente das LEITURAS (GET). O teste injeta um falso; sem opção, o módulo constrói o real. */
   readonly cliente?: ClienteDeLeituras;
+  /** O cliente das ESCRITAS (POST em `/v1/leituras/*`). Idem. */
+  readonly clienteDeEscrita?: ClienteDeLeituras;
+  /**
+   * Padrão: hidrata do Postgres real para decidir alcance (D4-14).
+   * Injetável só para o teste — o mesmo molde de `invocar-agente.ts` —, para
+   * provar sem `DATABASE_URL` que cada rota usa o cliente certo.
+   */
+  readonly hidratarEstado?: (workspaceId: string) => Promise<DataState>;
+}
+
+/**
+ * Os dois clientes que o módulo constrói do ambiente, puros para o teste
+ * (plano pós-auditoria, lado CRM N1 da 4.3e). A mesma origem
+ * (`FINANCEIRO_LEITURAS_URL`), credenciais diferentes: as LEITURAS usam
+ * `PLATAFORMA_LEITURA_TOKEN`; as ESCRITAS — alíquota, Plano de contas,
+ * gatilhos de NF, repetir passo e cancelar execução — usam
+ * `PLATAFORMA_LANCAMENTO_TOKEN`, que o `automation/` passa a exigir em todo
+ * `POST` de `/v1/leituras`. D4-02 separou as duas para que um vazamento do
+ * token de leitura não gaste dinheiro; mandar escrita com ele desfazia isso.
+ * Token ausente é `CREDENCIAL_AUSENTE` no próprio cliente — nenhuma
+ * requisição sai.
+ */
+export function opcoesDosClientesDoFinanceiro(env: NodeJS.ProcessEnv): {
+  readonly leitura: OpcoesDoClienteDeLeituras;
+  readonly escrita: OpcoesDoClienteDeLeituras;
+} {
+  const destinoUrl = env.FINANCEIRO_LEITURAS_URL ?? "";
+  return {
+    leitura: { destinoUrl, token: env.PLATAFORMA_LEITURA_TOKEN ?? "" },
+    escrita: { destinoUrl, token: env.PLATAFORMA_LANCAMENTO_TOKEN ?? "" },
+  };
 }
 
 /** Remove as chaves com valor `undefined` — um filtro ausente nunca vira `"undefined"` na querystring do `automation/`. */
@@ -81,13 +114,19 @@ function queryLimpa(dados: Record<string, string | undefined>): Record<string, s
 }
 
 export async function rotasDeFinanceiro(app: FastifyInstance, opcoes: OpcoesDeFinanceiro = {}): Promise<void> {
-  // Único ponto do módulo que lê variável de ambiente — as duas que D4-02
-  // introduziu (04-02 já as documenta, vazias, em `apps/api/.env.example`).
-  const cliente =
-    opcoes.cliente ??
-    criarClienteDeLeituras({
-      destinoUrl: process.env.FINANCEIRO_LEITURAS_URL ?? "",
-      token: process.env.PLATAFORMA_LEITURA_TOKEN ?? "",
+  // Único ponto do módulo que lê variável de ambiente.
+  const doAmbiente = opcoesDosClientesDoFinanceiro(process.env);
+  const cliente = opcoes.cliente ?? criarClienteDeLeituras(doAmbiente.leitura);
+  const clienteDeEscrita = opcoes.clienteDeEscrita ?? criarClienteDeLeituras(doAmbiente.escrita);
+  const hidratarEstado =
+    opcoes.hidratarEstado ??
+    (async (workspaceId: string) => {
+      const conexao = await pool().connect();
+      try {
+        return (await hidratar(conexao, workspaceId)).state;
+      } finally {
+        conexao.release();
+      }
     });
 
   /**
@@ -97,17 +136,14 @@ export async function rotasDeFinanceiro(app: FastifyInstance, opcoes: OpcoesDeFi
    * não a tem.
    */
   async function comAlcance(request: FastifyRequest, reply: FastifyReply, seguir: () => Promise<unknown>): Promise<unknown> {
-    const conexao = await pool().connect();
-    try {
-      const { state } = await hidratar(conexao, request.membro.workspaceId);
-      if (!memberReachesContainer(state, request.membro.id, "folder", CP.folderId)) {
-        reply.code(403);
-        return { error: "Sem acesso ao Financeiro." };
-      }
-      return await seguir();
-    } finally {
-      conexao.release();
+    // A conexão é devolvida logo depois de hidratar — antes da chamada ao
+    // `automation/`, que pode levar segundos e não precisa do banco.
+    const state = await hidratarEstado(request.membro.workspaceId);
+    if (!memberReachesContainer(state, request.membro.id, "folder", CP.folderId)) {
+      reply.code(403);
+      return { error: "Sem acesso ao Financeiro." };
     }
+    return seguir();
   }
 
   /**
@@ -116,12 +152,17 @@ export async function rotasDeFinanceiro(app: FastifyInstance, opcoes: OpcoesDeFi
    * fixas, em pt-BR, sem detalhe de origem. `code`/`summary` vão só para o
    * log (T-4-11): nunca para o corpo da resposta.
    */
-  function responder(request: FastifyRequest, reply: FastifyReply, resultado: RespostaDeLeitura<unknown>): unknown {
+  function responder(
+    request: FastifyRequest,
+    reply: FastifyReply,
+    resultado: RespostaDeLeitura<unknown>,
+    sentido: "leitura" | "escrita" = "leitura",
+  ): unknown {
     if (resultado.ok) return resultado.corpo;
-    request.log.warn({ code: resultado.code, summary: resultado.summary }, "financeiro: leitura ao automation/ falhou");
+    request.log.warn({ code: resultado.code, summary: resultado.summary }, `financeiro: ${sentido} ao automation/ falhou`);
     if (resultado.code === "CREDENCIAL_AUSENTE") {
       reply.code(503);
-      return { error: "A leitura do Financeiro não está configurada." };
+      return { error: `A ${sentido} do Financeiro não está configurada.` };
     }
     reply.code(502);
     return { error: "O backend financeiro não respondeu." };
@@ -175,9 +216,11 @@ export async function rotasDeFinanceiro(app: FastifyInstance, opcoes: OpcoesDeFi
    * 404, não por comentário.
    *
    * Toda rota abaixo passa por `comAlcance` (D4-14) e valida o corpo com um
-   * schema zod `.strict()` ANTES de chamar `cliente.enviar` — o mesmo molde
-   * das sete leituras acima, com `POST` em vez de `GET` (o CORS deste app já
-   * só declara `GET`/`POST`; ver o comentário em `app.ts`).
+   * schema zod `.strict()` ANTES de chamar `clienteDeEscrita.enviar` — o
+   * mesmo molde das sete leituras acima, com `POST` em vez de `GET` (o CORS
+   * deste app já só declara `GET`/`POST`; ver o comentário em `app.ts`). O
+   * cliente de escrita carrega `PLATAFORMA_LANCAMENTO_TOKEN`, não o de
+   * leitura (plano pós-auditoria, 4.3e — ver `opcoesDosClientesDoFinanceiro`).
    */
 
   const PORCENTAGEM = /^\d{1,3}([.,]\d{1,4})?$/;
@@ -197,8 +240,8 @@ export async function rotasDeFinanceiro(app: FastifyInstance, opcoes: OpcoesDeFi
     }
     const { id } = request.params as { readonly id: string };
     return comAlcance(request, reply, async () => {
-      const resultado = await cliente.enviar<unknown>(`/v1/leituras/produtos/${id}/aliquotas`, corpo.data);
-      return responder(request, reply, resultado);
+      const resultado = await clienteDeEscrita.enviar<unknown>(`/v1/leituras/produtos/${id}/aliquotas`, corpo.data);
+      return responder(request, reply, resultado, "escrita");
     });
   });
 
@@ -237,12 +280,12 @@ export async function rotasDeFinanceiro(app: FastifyInstance, opcoes: OpcoesDeFi
         categoria_clickup: linha.categoriaClickup,
         descricao: linha.descricao,
       }));
-      const resultado = await cliente.enviar<unknown>("/v1/leituras/plano-contas/importar", {
+      const resultado = await clienteDeEscrita.enviar<unknown>("/v1/leituras/plano-contas/importar", {
         empresa: corpo.data.empresa,
         tipo: corpo.data.tipo,
         linhas,
       });
-      return responder(request, reply, resultado);
+      return responder(request, reply, resultado, "escrita");
     });
   });
 
@@ -257,8 +300,8 @@ export async function rotasDeFinanceiro(app: FastifyInstance, opcoes: OpcoesDeFi
       return { error: "Identificador inválido." };
     }
     return comAlcance(request, reply, async () => {
-      const resultado = await cliente.enviar<unknown>(`/v1/leituras/plano-contas/${params.data.id}/remover`, {});
-      return responder(request, reply, resultado);
+      const resultado = await clienteDeEscrita.enviar<unknown>(`/v1/leituras/plano-contas/${params.data.id}/remover`, {});
+      return responder(request, reply, resultado, "escrita");
     });
   });
 
@@ -282,8 +325,8 @@ export async function rotasDeFinanceiro(app: FastifyInstance, opcoes: OpcoesDeFi
       return { error: "Workflow não disponível para execução manual." };
     }
     return comAlcance(request, reply, async () => {
-      const resultado = await cliente.enviar<unknown>(`/v1/leituras/workflows/${params.data.key}/executar`, {});
-      const corpoDeResposta = responder(request, reply, resultado);
+      const resultado = await clienteDeEscrita.enviar<unknown>(`/v1/leituras/workflows/${params.data.key}/executar`, {});
+      const corpoDeResposta = responder(request, reply, resultado, "escrita");
       if (resultado.ok) reply.code(202);
       return corpoDeResposta;
     });
@@ -301,8 +344,8 @@ export async function rotasDeFinanceiro(app: FastifyInstance, opcoes: OpcoesDeFi
       return { error: "Corpo inválido." };
     }
     return comAlcance(request, reply, async () => {
-      const resultado = await cliente.enviar<unknown>(`/v1/leituras/execucoes/${params.data.id}/repetir-passo`, corpo.data);
-      return responder(request, reply, resultado);
+      const resultado = await clienteDeEscrita.enviar<unknown>(`/v1/leituras/execucoes/${params.data.id}/repetir-passo`, corpo.data);
+      return responder(request, reply, resultado, "escrita");
     });
   });
 
@@ -314,8 +357,8 @@ export async function rotasDeFinanceiro(app: FastifyInstance, opcoes: OpcoesDeFi
       return { error: "Corpo inválido." };
     }
     return comAlcance(request, reply, async () => {
-      const resultado = await cliente.enviar<unknown>(`/v1/leituras/execucoes/${params.data.id}/cancelar`, corpo.data);
-      return responder(request, reply, resultado);
+      const resultado = await clienteDeEscrita.enviar<unknown>(`/v1/leituras/execucoes/${params.data.id}/cancelar`, corpo.data);
+      return responder(request, reply, resultado, "escrita");
     });
   });
 
@@ -406,6 +449,10 @@ export async function rotasDeFinanceiro(app: FastifyInstance, opcoes: OpcoesDeFi
     const contentType = (Array.isArray(cabecalhoDeTipo) ? cabecalhoDeTipo[0] : cabecalhoDeTipo) ?? "application/octet-stream";
 
     return comAlcance(request, reply, async () => {
+      // Continua no cliente de LEITURA de propósito: a rota é o webhook do
+      // n8n, não um `POST` de `/v1/leituras` — fora do que o `automation/`
+      // passa a exigir com o token de lançamento (4.3e). Se ela ganhar
+      // autenticação própria, a credencial é decidida lá.
       const resultado = await cliente.enviarArquivo<unknown>(`/webhook/receber-whatsapp-doc/${origem}`, {
         conteudo,
         contentType,
