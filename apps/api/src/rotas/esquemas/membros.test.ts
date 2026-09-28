@@ -13,8 +13,10 @@ import { MEMBROS } from "./membros";
 const viaJson = (args: unknown[]): unknown[] => JSON.parse(JSON.stringify(args)) as unknown[];
 
 describe("esquemas/membros — a forma dos args de members.ts", () => {
-  it("(a) cobertura — as 5 chaves de members.ts em registro.ts", () => {
+  it("(a) cobertura — as 7 chaves de members.ts em registro.ts", () => {
     const esperadas = [
+      "alterarEmailDoConvite",
+      "alterarPapelDoMembro",
       "removeMember",
       "transferWorkspaceOwnership",
       "inviteMember",
@@ -73,6 +75,16 @@ describe("esquemas/membros — a forma dos args de members.ts", () => {
 
     expect(MEMBROS.inviteMember.safeParse(viaJson([{ email: "a@b.c" }])).success).toBe(false);
     expect(MEMBROS.inviteMember.safeParse(viaJson([{ email: 1, roleId: "r" }])).success).toBe(false);
+  });
+
+  it("(d) e-mail do convite e troca de Papel: a forma da página do Membro passa; campo a mais cai", () => {
+    // configuracoes/membros/[membro]/page.tsx
+    expect(MEMBROS.alterarEmailDoConvite.safeParse(viaJson([{ memberId: "mem_marcos_paulo", email: "a@b.c" }])).success).toBe(true);
+    expect(MEMBROS.alterarPapelDoMembro.safeParse(viaJson([{ memberId: "mem_marcos_paulo", roleId: "role_adm" }])).success).toBe(true);
+    // .strict(): nada de userId/estado escondidos no corpo
+    expect(MEMBROS.alterarEmailDoConvite.safeParse(viaJson([{ memberId: "mem_1", email: "a@b.c", userId: "u" }])).success).toBe(false);
+    expect(MEMBROS.alterarPapelDoMembro.safeParse(viaJson([{ memberId: "mem_1", roleId: "role_adm", state: "ativo" }])).success).toBe(false);
+    expect(MEMBROS.alterarEmailDoConvite.safeParse(viaJson([{ memberId: "mem_1", email: "x".repeat(300) }])).success).toBe(false);
   });
 
   it("(c) formas hostis caem", () => {
