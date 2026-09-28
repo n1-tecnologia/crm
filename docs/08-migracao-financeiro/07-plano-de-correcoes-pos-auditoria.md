@@ -41,7 +41,14 @@ erro); Family Office com `FO_EMPRESA_*_APP_KEY` vazia cai na conta Omie
 padrão; o seletor de conta grava `app_key`/`app_secret` nas linhas de
 solicitação; retomada do pipeline reexecuta tudo (reenvia WhatsApp se
 `NOTIFY_NEW_REQUEST_WHATSAPP` estiver ligado); depois da aprovação na
-plataforma não sai RESUMO (spec S5).
+plataforma não sai RESUMO (spec S5). **Jornada real no navegador
+(`npm run jornada:financeiro -w @n1/web`, 2026-09-28, contas N1-488..N1-491):**
+o `ws_n1` só tem 2 Membros (Maryane e o usuário de teste), e a configuração
+aponta para `mem_marcos_paulo`/`mem_walter`, que não existem — ninguém move
+conta para "pago" (regra de entrada do Status) e a A3 falha ("Membro não
+encontrado"), deixando a conta sem Aprovador; A9 e R5 também citam
+`mem_marcos_paulo`. Corrigir é convidar os dois com esses ids ou remapear a
+regra e as Automações (decisão do dono).
 
 ## Como ler este plano
 
