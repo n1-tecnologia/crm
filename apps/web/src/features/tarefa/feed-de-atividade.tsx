@@ -134,7 +134,7 @@ export function CabecalhoDaAtividade({
               <div
                 role="menu"
                 className="absolute right-0 top-full z-20 mt-1 grid min-w-44 gap-0.5 rounded-[var(--r-painel)] p-1"
-                style={{ background: "var(--superficie-1)", border: "1px solid var(--linha)", boxShadow: "var(--sombra-2, 0 8px 24px rgb(0 0 0 / 0.12))" }}
+                style={{ background: "var(--superficie-1)", border: "1px solid var(--linha)", boxShadow: "var(--sombra-suspensa)" }}
               >
                 {(Object.keys(ROTULO_DO_FILTRO) as FiltroDaAtividade[]).map((opcao) => (
                   <button
