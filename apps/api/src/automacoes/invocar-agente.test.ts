@@ -229,14 +229,39 @@ describe("criarPonteDoAgente — HTTP contra servidorFalso (sem DATABASE_URL)", 
     expect(servidor.recebidas.filter((r) => r.caminho.endsWith("/lancar")).length).toBe(0);
   });
 
-  it("(h) modo lancar — 'resolvida' chama /lancar com idempotency-key e Bearer; 'revisar' chama só /resolver", async () => {
-    // Candidata resolvida: das (Categoria "Impostos").
+  /** Só `id` fica em "em lançamento omie", com tudo o que o Omie exige preenchido. */
+  function prepararEmLancamento(estado: DataState, id: string, categoria: string): void {
+    for (const t of estado.tasks) {
+      if (t.listId !== CP.listId) continue;
+      if (t.id === id) t.statusId = S.emLancamento;
+      else if (t.statusId === S.emLancamento) t.statusId = S.lancado;
+    }
+    const t = conta(estado, id);
+    const definir = (definitionId: string, value: string) => {
+      const atual = t.fieldValues.find((v) => v.definitionId === definitionId);
+      if (atual) Object.assign(atual, { value, state: "ativo" });
+      else t.fieldValues.push({ definitionId, value, state: "ativo" } as (typeof t.fieldValues)[number]);
+    };
+    definir(CP.fields.categoria, categoria);
+    definir(CP.fields.fornecedor, "CNPJ");
+    definir(CP.fields.cnpj, "11.222.333/0001-81");
+    definir(CP.fields.nomeFornecedor, "Fornecedor Teste");
+  }
+
+  /** A Unidade de Trabalho em memória: aplica a operação no estado do teste. */
+  function executarEmMemoria(estado: DataState) {
+    return async (operacao: (s: DataState) => { readonly ok: boolean; readonly error?: string }) => {
+      const r = operacao(estado);
+      return r.ok ? ({ ok: true } as const) : ({ ok: false, error: r.error ?? "recusado" } as const);
+    };
+  }
+
+  it("(h) modo lancar — \"para pagar\" nunca lança; \"em lançamento omie\" resolvida chama /lancar (idempotency-key, Bearer) e vai para \"lançado omie\"; \"revisar\" não lança", async () => {
+    // "para pagar": o aquecimento só resolve — nenhum /lancar.
     servidor = await criarServidorFalso();
     let estado = buildSeed();
     isolarCandidatas(estado, ["tsk_cp_das"]);
     servidor.enfileirar({ kind: "ok", status: 200, corpo: dePara200("Impostos", { veredito: "resolvida" }) });
-    servidor.enfileirar({ kind: "ok", status: 200, corpo: { payableId: "pay_das_1", codigoLancamentoIntegracao: chaveDeIdempotencia("tsk_cp_das"), reaproveitado: false, dePara: dePara200("Impostos", { veredito: "resolvida" }).dePara } });
-
     let ponte = criarPonteDoAgente({
       destinoUrl: servidor.url,
       token: "tok-lancar",
@@ -247,19 +272,15 @@ describe("criarPonteDoAgente — HTTP contra servidorFalso (sem DATABASE_URL)", 
       hidratarEstado: async () => estado,
     });
     await ponte.aquecer();
+    expect(servidor.recebidas.filter((r) => r.caminho.endsWith("/lancar"))).toHaveLength(0);
 
-    const lancamentos = servidor.recebidas.filter((r) => r.caminho.endsWith("/lancar"));
-    expect(lancamentos).toHaveLength(1);
-    expect(lancamentos[0]?.cabecalhos["idempotency-key"]).toBe(chaveDeIdempotencia("tsk_cp_das"));
-    expect(lancamentos[0]?.cabecalhos.authorization?.startsWith("Bearer ")).toBe(true);
-
-    // Candidata em revisão: trafego (Categoria "Tráfego Pago") — ciclo independente.
+    // "em lançamento omie", categoria resolvida: lança e move.
     await servidor.fechar();
     servidor = await criarServidorFalso();
     estado = buildSeed();
-    isolarCandidatas(estado, ["tsk_cp_trafego"]);
-    servidor.enfileirar({ kind: "ok", status: 200, corpo: dePara200("Tráfego Pago", { veredito: "revisar" }) });
-
+    prepararEmLancamento(estado, "tsk_cp_das", "Impostos");
+    servidor.enfileirar({ kind: "ok", status: 200, corpo: dePara200("Impostos", { veredito: "resolvida" }) });
+    servidor.enfileirar({ kind: "ok", status: 200, corpo: { payableId: "pay_das_1", codigoLancamentoIntegracao: chaveDeIdempotencia("tsk_cp_das"), reaproveitado: false } });
     ponte = criarPonteDoAgente({
       destinoUrl: servidor.url,
       token: "tok-lancar",
@@ -268,24 +289,49 @@ describe("criarPonteDoAgente — HTTP contra servidorFalso (sem DATABASE_URL)", 
       modo: "lancar",
       relogio: relogioFixo(HOJE),
       hidratarEstado: async () => estado,
+      resolverAtor: async () => CP.financeiroId,
+      executarOperacao: executarEmMemoria(estado),
     });
-    await ponte.aquecer();
+    await ponte.lancarContasEmLancamento();
 
+    const lancamentos = servidor.recebidas.filter((r) => r.caminho.endsWith("/lancar"));
+    expect(lancamentos).toHaveLength(1);
+    expect(lancamentos[0]?.cabecalhos["idempotency-key"]).toBe(chaveDeIdempotencia("tsk_cp_das"));
+    expect(lancamentos[0]?.cabecalhos.authorization?.startsWith("Bearer ")).toBe(true);
+    const das = conta(estado, "tsk_cp_das");
+    expect(das.statusId).toBe(S.lancado);
+    expect(das.comments.some((c) => c.content.startsWith("📋 RESUMO DE PAGAMENTO"))).toBe(true);
+
+    // "em lançamento omie", categoria em revisão: só /resolver, a conta fica.
+    await servidor.fechar();
+    servidor = await criarServidorFalso();
+    estado = buildSeed();
+    prepararEmLancamento(estado, "tsk_cp_trafego", "Tráfego Pago");
+    servidor.enfileirar({ kind: "ok", status: 200, corpo: dePara200("Tráfego Pago", { veredito: "revisar" }) });
+    ponte = criarPonteDoAgente({
+      destinoUrl: servidor.url,
+      token: "tok-lancar",
+      workspaceId: estado.workspace.id,
+      listId: CP.listId,
+      modo: "lancar",
+      relogio: relogioFixo(HOJE),
+      hidratarEstado: async () => estado,
+      resolverAtor: async () => CP.financeiroId,
+      executarOperacao: executarEmMemoria(estado),
+    });
+    await ponte.lancarContasEmLancamento();
     expect(servidor.recebidas.every((r) => r.caminho.endsWith("/resolver"))).toBe(true);
-    expect(servidor.recebidas.filter((r) => r.caminho.endsWith("/lancar"))).toHaveLength(0);
+    expect(conta(estado, "tsk_cp_trafego").statusId).toBe(S.emLancamento);
   });
 
-  it("(i) payableId 'mock-payable-…' é recusado — a Tarefa não entra em tarefasLancadas, sem segunda tentativa no ciclo", async () => {
+  it("(i) payableId 'mock-payable-…' não é lançamento — a conta fica em \"em lançamento omie\" e o Agente avisa uma vez só", async () => {
     servidor = await criarServidorFalso();
     const estado = buildSeed();
-    isolarCandidatas(estado, ["tsk_cp_das"]);
-    // A7 dispara em vencimento(-1): HOJE precisa estar a um dia do vencimento
-    // para o domínio de fato rodar a Automação nesta rodada de `rodarAgenda`.
-    conta(estado, "tsk_cp_das").dueDate = { form: "civilDay", value: "2026-09-01" };
-    servidor.enfileirar({ kind: "ok", status: 200, corpo: dePara200("Impostos", { veredito: "resolvida" }) });
-    servidor.enfileirar({ kind: "ok", status: 200, corpo: { payableId: "mock-payable-1730000000000", reaproveitado: false, dePara: dePara200("Impostos", { veredito: "resolvida" }).dePara } });
-
-    const ator = CP.financeiroId;
+    prepararEmLancamento(estado, "tsk_cp_das", "Impostos");
+    for (let n = 0; n < 2; n += 1) {
+      servidor.enfileirar({ kind: "ok", status: 200, corpo: dePara200("Impostos", { veredito: "resolvida" }) });
+      servidor.enfileirar({ kind: "ok", status: 200, corpo: { payableId: "mock-payable-1730000000000", reaproveitado: false } });
+    }
     const ponte = criarPonteDoAgente({
       destinoUrl: servidor.url,
       token: "tok-lancar",
@@ -294,19 +340,39 @@ describe("criarPonteDoAgente — HTTP contra servidorFalso (sem DATABASE_URL)", 
       modo: "lancar",
       relogio: relogioFixo(HOJE),
       hidratarEstado: async () => estado,
+      resolverAtor: async () => CP.financeiroId,
+      executarOperacao: executarEmMemoria(estado),
     });
-    await ponte.aquecer();
+    await ponte.lancarContasEmLancamento();
+    await ponte.lancarContasEmLancamento();
 
-    expect(servidor.recebidas.filter((r) => r.caminho.endsWith("/lancar"))).toHaveLength(1); // uma tentativa, não repetida no mesmo ciclo
+    const das = conta(estado, "tsk_cp_das");
+    expect(das.statusId).toBe(S.emLancamento);
+    expect(das.comments.filter((c) => c.content.includes("não confirmou o lançamento"))).toHaveLength(1);
+  });
 
-    // A ponte não confirmou a Tarefa: rodarAgenda em "lancar" a recusa por falta de confirmação.
-    const t = conta(estado, "tsk_cp_das");
-    const statusAntes = t.statusId;
-    const r = ponte.rodarAgenda(estado, ator, CP.listId, HOJE);
-    expect(r.ok, r.ok ? "" : r.error).toBe(true);
-    expect(t.statusId).toBe(statusAntes); // A8 não moveu — mock- nunca vira "lançado omie"
-    const execucoes = estado.automationExecutions.filter((e) => e.automationId === A7 && e.objectId === t.id);
-    expect(execucoes.map((e) => e.state)).toEqual(["falhou"]);
+  it("(i2) falta Categoria ou fornecedor: nenhuma requisição, e o Agente diz o que falta", async () => {
+    servidor = await criarServidorFalso();
+    const estado = buildSeed();
+    prepararEmLancamento(estado, "tsk_cp_das", "Impostos");
+    const das = conta(estado, "tsk_cp_das");
+    das.fieldValues = das.fieldValues.filter((v) => v.definitionId !== CP.fields.nomeFornecedor);
+    const ponte = criarPonteDoAgente({
+      destinoUrl: servidor.url,
+      token: "tok-lancar",
+      workspaceId: estado.workspace.id,
+      listId: CP.listId,
+      modo: "lancar",
+      relogio: relogioFixo(HOJE),
+      hidratarEstado: async () => estado,
+      resolverAtor: async () => CP.financeiroId,
+      executarOperacao: executarEmMemoria(estado),
+    });
+    await ponte.lancarContasEmLancamento();
+
+    expect(servidor.recebidas).toHaveLength(0);
+    expect(das.statusId).toBe(S.emLancamento);
+    expect(das.comments.some((c) => c.content.startsWith("Não consegui lançar no Omie: falta") && c.content.includes("Nome do fornecedor"))).toBe(true);
   });
 
   it("(j) timeout: aborta, classifica transitório e o erro registrado passa por sanitizarErro", async () => {

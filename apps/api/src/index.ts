@@ -68,7 +68,9 @@ if (process.env.AGENTE_CONTAS_A_PAGAR_ATIVO === "true") {
   const { mapa: cnpjPorEmpresa, aviso: avisoDoCnpj } = lerCnpjPorEmpresa(process.env.AGENTE_CONTAS_A_PAGAR_CNPJ_POR_EMPRESA);
   if (avisoDoCnpj) app.log.warn(avisoDoCnpj);
   const intervaloMs = process.env.AGENTE_CONTAS_A_PAGAR_INTERVALO_MS ? Number(process.env.AGENTE_CONTAS_A_PAGAR_INTERVALO_MS) : undefined;
+  const atorDoAgente = process.env.AUTOMACOES_ATOR_MEMBER_ID;
   ponte = criarPonteDoAgente({
+    ...(atorDoAgente ? { resolverAtor: async () => atorDoAgente } : {}),
     destinoUrl,
     token,
     workspaceId,
