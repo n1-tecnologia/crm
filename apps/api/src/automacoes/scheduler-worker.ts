@@ -180,6 +180,8 @@ export interface OpcoesSchedulerWorker {
    * ausente e o worker cobre todos os Espaços, como o outbox.
    */
   readonly workspaceId?: string;
+  /** Quando definido, só reivindica linhas desta Lista — para ligar um fluxo isolado (ex.: só Contas a pagar) sem rodar as Automações das outras Listas. */
+  readonly listId?: string;
   readonly relogio?: Relogio;
   /** Intervalo entre ciclos de `iniciar()`, em ms. Padrão 1h. */
   readonly intervaloMs?: number;
@@ -442,6 +444,10 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
     if (opcoes.workspaceId !== undefined) {
       parametros.push(opcoes.workspaceId);
       filtroWorkspace = `and s.workspace_id = $${parametros.length}`;
+    }
+    if (opcoes.listId !== undefined) {
+      parametros.push(opcoes.listId);
+      filtroWorkspace += ` and s.list_id = $${parametros.length}`;
     }
     const resultado = await pool().query<LinhaAgenda>(
       `update plataforma.automacao_agenda a

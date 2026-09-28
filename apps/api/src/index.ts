@@ -113,6 +113,8 @@ if (process.env.AUTOMACOES_WORKER_ATIVO === "true") {
   const atorMemberId = process.env.AUTOMACOES_ATOR_MEMBER_ID;
   const schedulerWorker = criarSchedulerWorker({
     workerId: process.env.AUTOMACOES_WORKER_ID || `apps-api-agenda-${process.pid}`,
+    ...(process.env.AUTOMACOES_ESPACO_ID ? { workspaceId: process.env.AUTOMACOES_ESPACO_ID } : {}),
+    ...(process.env.AUTOMACOES_LISTA_ID ? { listId: process.env.AUTOMACOES_LISTA_ID } : {}),
     ...(intervaloMs !== undefined ? { intervaloMs } : {}),
     ...(janelaDias !== undefined ? { janelaDias } : {}),
     // Padrão ligado (Task 2, D3-03): a primeira volta REAL de cada
