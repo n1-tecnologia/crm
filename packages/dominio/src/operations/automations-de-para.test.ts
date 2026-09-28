@@ -13,18 +13,65 @@
  * de string ISO — `HOJE` e todo vencimento vêm do construtor numérico de
  * `Date`, para não cair na armadilha de fuso (meia-noite UTC de uma string
  * `"YYYY-MM-DD"` cai no dia anterior em América/São_Paulo).
+ *
+ * A A7 saiu do seed no plano pós-auditoria (1.5): quem lança é a ponte,
+ * quando a conta entra em "em lançamento omie". Mas ela continua gravada
+ * (pausada) em `ws_n1`, e o motor ainda sabe rodar uma A7 que exista — é esse
+ * comportamento que este arquivo prende, com a A7 instalada como FIXTURE
+ * (`instalarA7Legada`), não lida do seed. O caso (h) é a rodada que a ponte
+ * passa hoje, sem cache: nenhuma A7 lança, e as outras Automações por data
+ * rodam como sempre.
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../seed";
 import type { DataState } from "../state";
-import type { Task } from "../types";
+import type { Automation, Task } from "../types";
 import { runScheduledAutomations, type OpcoesDaAgenda } from "./automations";
-import { CP, DE_PARA_DO_PROTOTIPO, type DeParaDeLancamento, type ResolucaoDeCategoria } from "./financeiro";
+import { CP, DE_PARA_DO_PROTOTIPO, INVOCADOR_DO_LANCAMENTO, type DeParaDeLancamento, type ResolucaoDeCategoria } from "./financeiro";
 import { changeTaskStatus, updateTask } from "./tasks";
 
-const A7 = "aut_cp_a7";
+const A7 = INVOCADOR_DO_LANCAMENTO;
 const S = CP.status;
+
+/**
+ * A A7 exatamente como o seed a montava até 1.5 (`seed-financeiro.ts`, seção
+ * 8): véspera do vencimento, em "para pagar", sem Integração manual e com
+ * Valor — invoca o Agente e move para "lançado omie" (a "A8").
+ */
+function instalarA7Legada(s: DataState): void {
+  const cond = (spec: object) => ({ kind: "valorDeCampo" as const, expression: JSON.stringify(spec) });
+  const a7: Automation = {
+    id: A7,
+    workspaceId: s.workspace.id,
+    createdBy: { kind: "member", id: CP.financeiroId },
+    createdAt: "2026-06-01T12:00:00.000Z",
+    lifecycle: "ativo",
+    name: "A7 · D-1: lançar no Omie pelo Agente",
+    description: "Na véspera, em “para pagar”, sem Integração manual e com Valor: o Agente publica o Resumo e a conta vai para “lançado omie” (A8).",
+    scopeType: "list",
+    scopeId: CP.listId,
+    ownerMemberId: CP.financeiroId,
+    reactsToAutomationEvents: false,
+    versions: [
+      {
+        number: 1,
+        state: "publicada",
+        trigger: { kind: "condicaoTemporal", temporalPredicate: JSON.stringify({ dueDateOffsetDays: -1 }) },
+        conditions: [cond({ status: "para pagar" }), cond({ definitionId: CP.fields.integracaoManual, empty: true }), cond({ definitionId: CP.fields.valor, empty: false })],
+        actions: [
+          { order: 1, kind: "controle", controlKind: "invocarAgente", agentId: CP.agentId, params: "{}", maxAutonomy: "supervisionado" },
+          { order: 2, kind: "escrita", toolId: "tarefa.alterarStatus", params: JSON.stringify({ statusName: "lançado omie" }) },
+        ],
+        errorPolicy: { onActionFailure: "interromper", retries: 0 },
+        publishedBy: CP.financeiroId,
+        publishedAt: "2026-06-01T12:00:00.000Z",
+        createdAt: "2026-06-01T12:00:00.000Z",
+      },
+    ],
+  };
+  s.automations.push(a7);
+}
 
 /** 31/08/2026, meio-dia — nunca uma string ISO (a armadilha de fuso). */
 const HOJE = new Date(2026, 7, 31, 12);
@@ -38,6 +85,9 @@ function diaCivilEm(dias: number): string {
 let state: DataState;
 beforeEach(() => {
   state = buildSeed();
+  // O seed não tem mais a A7 (1.5) — sem ela, este arquivo não teria o que provar.
+  expect(state.automations.some((a) => a.id === A7)).toBe(false);
+  instalarA7Legada(state);
 });
 
 function conta(id: string): Task {
@@ -46,14 +96,14 @@ function conta(id: string): Task {
   return t;
 }
 
-/** `tsk_cp_das`, vencendo amanhã — a candidata a A7 (vencimento(-1)) de sempre. */
+/** `tsk_cp_das`, vencendo amanhã — a candidata à A7 legada (véspera do vencimento). */
 function vespera(): Task {
   const t = conta("tsk_cp_das");
   expect(updateTask(state, CP.financeiroId, t.id, { dueDate: { form: "civilDay", value: diaCivilEm(1) } }).ok).toBe(true);
   return t;
 }
 
-/** `tsk_cp_trafego`, vencendo amanhã — a segunda candidata completa a A7 que `operations.test.ts` já usa. */
+/** `tsk_cp_trafego`, vencendo amanhã — a segunda candidata completa à A7 legada. */
 function trafegoNaVespera(): Task {
   const t = conta("tsk_cp_trafego");
   expect(updateTask(state, CP.financeiroId, t.id, { dueDate: { form: "civilDay", value: diaCivilEm(1) } }).ok).toBe(true);
@@ -167,6 +217,39 @@ describe("O de-para injetado chega mesmo ao domínio (não é ignorado)", () => 
     expect(t.statusId).toBe(S.paraPagar);
     expect(t.comments.some((c) => c.content.startsWith("📋 RESUMO DE PAGAMENTO"))).toBe(false);
     expect(execucoesDeA7(t.id).map((e) => e.state)).toEqual(["falhou"]);
+  });
+});
+
+describe("(h) a rodada que a ponte passa desde 1.5 — sem cache, sem de-para, sem caneta", () => {
+  // `apps/api/src/automacoes/invocar-agente.ts::rodarAgenda` passa exatamente
+  // isto para a Lista configurada: nenhuma conta confirmada pelo Omie e um
+  // de-para VAZIO (origem "omie", nunca o do protótipo).
+  const RODADA_DA_PONTE: OpcoesDaAgenda = {
+    lancamento: { rehearsal: false, tarefasLancadas: [], dePara: { contaPorTag: {}, categoriaPorCampo: {}, origem: "omie" } },
+  };
+
+  it("uma A7 legada ainda ativa falha “Lançamento não confirmado” antes de invocar o Agente: nada é lançado nem publicado", () => {
+    const t = vespera();
+    const execucoesDeAgenteAntes = state.agentExecutions.length;
+
+    const r = rodar(RODADA_DA_PONTE);
+
+    expect(r.ok, r.ok ? "" : r.error).toBe(true);
+    expect(t.statusId).toBe(S.paraPagar);
+    expect(t.comments.some((c) => c.content.startsWith("📋 RESUMO DE PAGAMENTO"))).toBe(false);
+    const execucoes = execucoesDeA7(t.id);
+    expect(execucoes.map((e) => e.state)).toEqual(["falhou"]);
+    expect(execucoes[0]?.terminationReason).toBe("Lançamento não confirmado pelo Omie para esta conta.");
+    // O Agente nem chegou a ser chamado — logo, nenhum de-para (muito menos o
+    // do protótipo) foi usado para nada.
+    expect(state.agentExecutions.length).toBe(execucoesDeAgenteAntes);
+  });
+
+  it("as outras Automações por data rodam normalmente na mesma rodada (A5 cobra a nota)", () => {
+    const t = comPessoaEmD5();
+    const r = rodar(RODADA_DA_PONTE);
+    expect(r.ok, r.ok ? "" : r.error).toBe(true);
+    expect(t.comments.some((c) => c.content.includes("emitir sua nota"))).toBe(true);
   });
 });
 

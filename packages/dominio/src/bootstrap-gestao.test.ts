@@ -69,7 +69,7 @@ describe("buildGestaoBootstrap", () => {
     expect(s.collections.some((c) => c.id === "col_financeiro_erp")).toBe(true);
   });
 
-  it("as Automações A2–A9 e R2–R6 são exatamente as que buildSeed() já monta (config, não fixture)", () => {
+  it("as Automações A2–A6, A9 e R2–R6 são exatamente as que buildSeed() já monta (config, não fixture)", () => {
     const semente = buildSeed();
     const porPrefixo = (state: typeof s, prefixo: string) => state.automations.filter((a) => a.id.startsWith(prefixo)).map((a) => a.id).sort();
     expect(porPrefixo(s, "aut_cp_")).toEqual(porPrefixo(semente, "aut_cp_"));

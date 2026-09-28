@@ -27,6 +27,7 @@ import {
   contaSemResumo,
   DE_PARA_DO_PROTOTIPO,
   descreverPassoDeDePara,
+  INVOCADOR_DO_LANCAMENTO,
   lancamentoHumanoDe,
   lerPassoDeDePara,
   LIMIAR_DA_CANETA,
@@ -37,7 +38,8 @@ import {
   type ResolucaoDeCategoria,
 } from "./financeiro";
 
-const A7 = "aut_cp_a7";
+/** Quem invoca o Agente desde que a A7 saiu do seed (1.5) — a ponte do `apps/api`. */
+const INVOCADOR = INVOCADOR_DO_LANCAMENTO;
 
 let state: DataState;
 
@@ -57,7 +59,7 @@ function deParaDe(categoria: string, resolucao: ResolucaoDeCategoria, origem: De
   return { contaPorTag: { "conta tria": "TRIA" }, categoriaPorCampo: { [categoria]: resolucao }, origem };
 }
 
-const lancar = (tarefa: Task, opcoes?: Parameters<typeof runLancamentoAgent>[5]) => runLancamentoAgent(state, CP.financeiroId, CP.agentId, tarefa.id, A7, opcoes);
+const lancar = (tarefa: Task, opcoes?: Parameters<typeof runLancamentoAgent>[5]) => runLancamentoAgent(state, CP.financeiroId, CP.agentId, tarefa.id, INVOCADOR, opcoes);
 
 const registrarHumano = (tarefa: Task, l: { readonly conta: string; readonly categoria: string; readonly codigo: string }) =>
   addTaskComment(state, CP.financeiroId, tarefa.id, { content: textoDoLancamentoHumano(l) });

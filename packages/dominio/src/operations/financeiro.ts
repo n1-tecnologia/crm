@@ -64,6 +64,18 @@ export const CP = {
   },
 } as const;
 
+/**
+ * Quem a `AgentExecution` do lançamento nomeia como invocador (`invokedBy`)
+ * desde que a A7 saiu do seed (plano pós-auditoria, 1.5, opção simples): a
+ * ponte do `apps/api` (`automacoes/invocar-agente.ts`), quando a conta ENTRA
+ * em "em lançamento omie". O id é o da antiga A7 de propósito — em `ws_n1` ela
+ * continua gravada (pausada por `contas-a-pagar:configurar`), e as Execuções
+ * de antes e de depois da troca ficam sob o mesmo invocador. Nenhuma
+ * Automação com este id nasce do seed, e `runLancamentoAgent` não exige que
+ * ela exista: o id só identifica quem pediu, não autoriza nada.
+ */
+export const INVOCADOR_DO_LANCAMENTO: Id = "aut_cp_a7";
+
 /** Tag `conta *` → Conta de pagamento no ERP. */
 export const CONTA_POR_TAG: Readonly<Record<string, string>> = {
   "conta tria": "TRIA",
@@ -326,10 +338,16 @@ export interface OpcoesDeLancamento {
 }
 
 /**
- * O Agente de lançamento, invocado pela Automação A7 em nome do Financeiro:
- * lê a Tarefa, publica o Resumo (resolvido) e devolve o que fez. Se faltar
- * dado, comenta o que falta — aberto, com Menção ao Financeiro — e falha, o
- * que impede a Automação de mover o Status. Tudo vira Execução de Agente.
+ * O Agente de lançamento, invocado em nome de quem age: lê a Tarefa, publica o
+ * Resumo (resolvido) e devolve o que fez. Se faltar dado, comenta o que falta
+ * — aberto, com Menção a quem age — e falha, o que impede quem invocou de
+ * mover o Status. Tudo vira Execução de Agente.
+ *
+ * Quem invoca, desde o plano pós-auditoria (1.5): a ponte do `apps/api`,
+ * depois de o Omie confirmar o lançamento de uma conta que entrou em "em
+ * lançamento omie" (`automationId` = `INVOCADOR_DO_LANCAMENTO`). Uma Automação
+ * com a ação `invocarAgente` (a A7 legada, ainda gravada em `ws_n1`) continua
+ * chegando aqui pelo motor (`automations.ts::runAction`).
  *
  * Duas coisas acontecem quando `opcoes` chega:
  *

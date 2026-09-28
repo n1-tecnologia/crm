@@ -92,7 +92,7 @@ describe("importarContaAPagarHistorica", () => {
     // A prova não pode ser vazia: as Automações precisam estar lá para que
     // "nenhuma rodou" signifique alguma coisa.
     const ativas = s.automations.filter((a) => a.scopeId === CP.listId && a.lifecycle === "ativo");
-    expect(ativas.length).toBeGreaterThanOrEqual(7);
+    expect(ativas.length).toBeGreaterThanOrEqual(6); // A2–A6 e A9 (A7 saiu no plano pós-auditoria, 1.5)
 
     const tarefasAntes = s.tasks.length;
     const r = importarContaAPagarHistorica(s, OPERADOR, entradaBase({ responsaveis: [OPERADOR] }));

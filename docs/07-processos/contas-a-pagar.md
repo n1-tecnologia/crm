@@ -242,8 +242,8 @@ Todas com escopo na Lista "Contas a pagar".
 | A4 | Tarefa sai de `em autorização bancária` para `negado` | — | Notificar Financeiro; Responsável volta ao Financeiro |
 | A5 | Data de vencimento − 5 dias | status = `para pagar` **e** Anexo vazio **e** Pessoa preenchida | Comentar com Menção à Pessoa pedindo a nota (texto da seção 6.2, com o CNPJ da Empresa) |
 | A6 | Data de vencimento − 2 dias | status = `para pagar` **e** Anexo vazio | Repetir cobrança |
-| A7 | Data de vencimento − 1 dia (noite) | status = `para pagar` **e** Integração manual vazio **e** Valor preenchido | Invocar o Agente de lançamento (seção 9) |
-| A8 | Agente concluiu com sucesso | — | Mover para `lançado omie` |
+| A7 | ~~Data de vencimento − 1 dia (noite)~~ — **removida** (plano pós-auditoria, 1.5) | — | Substituída pela ponte do `apps/api`: quando a conta **entra** em `em lançamento omie` (por movimento, nunca por importação) e o Omie confirma o lançamento, o Agente publica o Resumo e a conta vai para `lançado omie`. Em `ws_n1` a A7 fica pausada (`npm run contas-a-pagar:configurar -w @n1/api`). |
+| A8 | Agente concluiu com sucesso | — | Mover para `lançado omie` (hoje feito pela própria ponte, na mesma transação do Resumo) |
 | A9 | Tarefa criada | — | Adicionar Observadores: Financeiro, Aprovador, Pessoa (se preenchida) |
 
 A5 e A6 são hoje feitas à mão pelo Financeiro (Comentários de Maryane). Automatizá-las é a única mudança de comportamento proposta neste documento; o texto e os momentos são os observados.
@@ -255,7 +255,7 @@ A5 e A6 são hoje feitas à mão pelo Financeiro (Comentários de Maryane). Auto
 Substitui o usuário "ADM Tria Company". Configuração mínima:
 
 - **Papel:** Convidado com `ver`, `comentar` e `editar` (só status) na Lista "Contas a pagar". Nada fora dela.
-- **Invocado por:** Automação A7. Sem Gatilho próprio (Agente nunca tem Gatilho — Glossário).
+- **Invocado por:** a ponte do `apps/api` (`apps/api/src/automacoes/invocar-agente.ts`), quando a conta entra em `em lançamento omie`; até o plano pós-auditoria (1.5), pela Automação A7. Sem Gatilho próprio (Agente nunca tem Gatilho — Glossário).
 - **Entrada:** Nome, Descrição, Tag, Centro de Custo, Empresa, Categoria de pagamento, Fornecedor (CPF/CNPJ), Forma de pagamento e o campo de pagamento correspondente, Valor, Data de vencimento.
 - **Conhecimento:** o de-para para o ERP — (Centro de Custo, Tag) → Conta de pagamento; Categoria de pagamento → Categoria Omie + Código do plano de contas (ex.: Prestação de Serviços + Centro de Custo Tria Tech → "Prestação serviços - ADM", `2.04.08`). Esse mapeamento **não está no ClickUp**; está na cabeça do Agente atual e precisa ser extraído para uma Coleção de Conhecimento antes da migração (ver 12).
 - **Ferramentas:** `criar comentário`, `alterar status`, e a Integração com o Omie (lançar conta a pagar). A Integração é do Espaço de Trabalho (Glossário: Integração), com Membro configurador.

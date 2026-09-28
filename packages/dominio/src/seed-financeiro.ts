@@ -4,8 +4,9 @@
  * pagar"; Tipo "Conta"; oito Status com requisitos de saída e entrada
  * restrita; 21 Definições de Campo (4 no Espaço, herdadas); oito Tags
  * `conta *`; quatro papéis; o Agente de lançamento com sua Coleção de
- * Conhecimento; as Automações A2–A9 (A1 é a Recorrência da Tarefa) — é isto
- * que o bootstrap de produção (`bootstrap-gestao.ts`, D-07) grava, com
+ * Conhecimento; as Automações A2–A6 e A9 (A1 é a Recorrência da Tarefa; A7
+ * saiu no plano pós-auditoria, 1.5 — ver a seção 8 abaixo) — é isto que o
+ * bootstrap de produção (`bootstrap-gestao.ts`, D-07) grava, com
  * `{ fixtures: false }`.
  *
  * Com `fixtures: true` (o padrão, usado por `buildSeed()`), a mesma função
@@ -395,10 +396,11 @@ export function applyContasAPagar(state: DataState, clock: Clock, opcoes: Opcoes
     automation("aut_cp_a6", "A6 · D-2: repetir a cobrança", "Dois dias antes do vencimento, ainda sem Anexo: cobra de novo.", vencimento(-2), [cond({ status: "para pagar" }), cond({ definitionId: F.anexo, empty: true }), cond({ definitionId: F.pessoa, empty: false })], [
       acao(1, "tarefa.comentar", { template: "{{campo:" + F.pessoa + "}} anexar sua nota ainda hoje — vence em {{vencimento}}.", mentionFieldDefinitionId: F.pessoa }),
     ]),
-    automation("aut_cp_a7", "A7 · D-1: lançar no Omie pelo Agente", "Na véspera, em “para pagar”, sem Integração manual e com Valor: o Agente publica o Resumo e a conta vai para “lançado omie” (A8).", vencimento(-1), [cond({ status: "para pagar" }), cond({ definitionId: F.integracaoManual, empty: true }), cond({ definitionId: F.valor, empty: false })], [
-      { order: 1, kind: "controle", controlKind: "invocarAgente", agentId: CP.agentId, params: "{}", maxAutonomy: "supervisionado" },
-      acao(2, "tarefa.alterarStatus", { statusName: "lançado omie" }),
-    ]),
+    // A7 (véspera do vencimento: o Agente lança no Omie) saiu no plano
+    // pós-auditoria, 1.5 (opção simples): quem lança é a ponte do `apps/api`
+    // (`automacoes/invocar-agente.ts`), quando a conta ENTRA em "em lançamento
+    // omie" — e a `AgentExecution` nasce só no lançamento ou na recusa. Em
+    // `ws_n1` ela continua gravada, pausada por `contas-a-pagar:configurar`.
     automation("aut_cp_a9", "A9 · Nova conta: Observadores", "Toda conta nova ganha como Observadores o Financeiro, o Aprovador e a Pessoa (se preenchida).", { kind: "evento", eventType: "tarefaCriada" }, [], [
       acao(1, "tarefa.adicionarObservadores", { memberIds: [CP.financeiroId, CP.aprovadorId], fromFieldDefinitionId: F.pessoa }),
     ]),
@@ -655,7 +657,8 @@ export function applyContasAPagar(state: DataState, clock: Clock, opcoes: Opcoes
     val(F.solicitante, "Marcos Paulo"),
   ]);
 
-  // Completa e na véspera: é a que o Agente lança ao rodar as Automações por vencimento.
+  // Completa e na véspera: era a que a A7 lançava ao rodar as Automações por
+  // vencimento; hoje é só uma conta pronta para sair de "para pagar".
   const trafego = conta("tsk_cp_trafego", "Tráfego pago — mídia social", "Campanhas do mês", S.paraPagar, d(1), 20, CP.financeiroId, "conta tria", [
     ...base("Tria Tech", "Tria Tech", "Tria Company", "Tráfego Pago"),
     ...cnpj("88.999.000/0001-46"),

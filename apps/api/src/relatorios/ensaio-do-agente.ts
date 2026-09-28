@@ -95,6 +95,13 @@ function vencimentoCivil(task: Task): string | undefined {
  * `DataState` já hidratado — aproximação deliberada (estado atual, não
  * histórico): o mesmo grau de precisão que `catalogoDeListasComAgenda`
  * (`scheduler-worker.ts`) já assume ao ler catálogo em vez de replay.
+ *
+ * Plano pós-auditoria (1.5): a A7 saiu do seed e a ponte deixou de rodá-la —
+ * quem lança agora é a ponte, quando a conta ENTRA em "em lançamento omie", e
+ * o modo ensaio da ponte só registra em log o que lançaria (nenhuma Execução
+ * de sombra nasce). Este relatório continua medindo a janela em que a A7
+ * ensaiava; para o gatilho novo, "candidata do dia" não corresponde mais a
+ * lançamento nenhum, e um dia depois de 1.5 sai INCONCLUSIVO por construção.
  */
 function candidatasNoDia(state: DataState, listId: Id, dia: string): number {
   const alvo = diaSeguinte(dia);

@@ -27,9 +27,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../seed";
 import type { DataState } from "../state";
 import type { Task } from "../types";
-import { CP, DE_PARA_DO_PROTOTIPO, buildResumoDePagamento, runLancamentoAgent, type DeParaDeLancamento, type ResolucaoDeCategoria } from "./financeiro";
+import { CP, DE_PARA_DO_PROTOTIPO, INVOCADOR_DO_LANCAMENTO, buildResumoDePagamento, runLancamentoAgent, type DeParaDeLancamento, type ResolucaoDeCategoria } from "./financeiro";
 
-const A7 = "aut_cp_a7";
+/** Quem invoca o Agente desde que a A7 saiu do seed (1.5) — a ponte do `apps/api`. */
+const INVOCADOR = INVOCADOR_DO_LANCAMENTO;
 
 const VENCIMENTO = "2026-03-10";
 
@@ -85,7 +86,7 @@ function conta(id: string): Task {
   return t;
 }
 
-/** `tsk_cp_das` com vencimento fixo — a conta que A7 lança no processo real. */
+/** `tsk_cp_das` com vencimento fixo — uma conta completa, pronta para o Agente lançar. */
 function das(): Task {
   const t = conta("tsk_cp_das");
   t.dueDate = { form: "civilDay", value: VENCIMENTO };
@@ -172,7 +173,25 @@ function execucaoDe(tarefa: Task) {
   return e;
 }
 
-const lancar = (tarefa: Task, opcoes?: Parameters<typeof runLancamentoAgent>[5]) => runLancamentoAgent(state, CP.financeiroId, CP.agentId, tarefa.id, A7, opcoes);
+const lancar = (tarefa: Task, opcoes?: Parameters<typeof runLancamentoAgent>[5]) => runLancamentoAgent(state, CP.financeiroId, CP.agentId, tarefa.id, INVOCADOR, opcoes);
+
+describe("runLancamentoAgent: sem o que o Omie exige, o Agente pede e não lança", () => {
+  // Coberto antes pela A7 em `operations.test.ts`; a A7 saiu do seed (1.5) e
+  // o comportamento é do Agente, não da Automação — por isso mora aqui.
+  it("sem Forma de pagamento: comenta o que falta, ABERTO e com Menção, não publica RESUMO e a Execução falha", () => {
+    const tarefa = conta("tsk_cp_ferramenta");
+    const r = lancar(tarefa);
+    expect(r.ok).toBe(false);
+    const pedido = tarefa.comments.find((c) => c.content.startsWith("Não consegui lançar no Omie: falta"));
+    expect(pedido?.content).toMatch(/Forma de pagamento/);
+    expect(pedido?.resolved).toBeUndefined();
+    expect(pedido?.mentions).toEqual([{ type: "member", id: CP.financeiroId }]);
+    expect(tarefa.comments.some((c) => c.content.startsWith("📋 RESUMO DE PAGAMENTO"))).toBe(false);
+    expect(tarefa.statusId).toBe(CP.status.paraPagar);
+    expect(execucaoDe(tarefa).state).toBe("falhou");
+    expect(execucaoDe(tarefa).invokedBy).toEqual({ kind: "automation", id: INVOCADOR });
+  });
+});
 
 describe("runLancamentoAgent: o Ensaio de D3-03 pensa em voz alta e não encosta na Tarefa", () => {
   it("compatibilidade: a chamada de cinco argumentos de `runAction` continua lançando como hoje", () => {

@@ -1435,7 +1435,7 @@ describe("Volumes do seed (PRD II.7)", () => {
     expect(state.conversations).toHaveLength(23); // + as duas Conversas de grupo (Ferramentas) + a conversa de WhatsApp do Negócio de referência
     expect(state.agents).toHaveLength(7); // + Enriquecedor, Classificador de conexão, Agente de lançamento e o Assistente de onboarding em rascunho
     expect(state.skills).toHaveLength(9); // + as três do processo SDR
-    expect(state.automations).toHaveLength(28); // + Boas-vindas nos Grupos (Ferramentas) · 3 herdadas + o rascunho de Lista (Avisar ao criar Tarefa) + 7 do SDR + 3 do Closer + 7 de Contas a pagar (A2–A7, A9) + 6 de Contas a receber (R2, R2b, R3–R6)
+    expect(state.automations).toHaveLength(27); // + Boas-vindas nos Grupos (Ferramentas) · 3 herdadas + o rascunho de Lista (Avisar ao criar Tarefa) + 7 do SDR + 3 do Closer + 6 de Contas a pagar (A2–A6, A9; A7 saiu no 1.5) + 6 de Contas a receber (R2, R2b, R3–R6)
     expect(state.collections).toHaveLength(5); // + De-para Omie + Onboarding de alunos (vazia)
     expect(state.documents).toHaveLength(16); // + De-para ClickUp → Omie
     expect(state.chatSessions).toHaveLength(6); // + a Sessão solta do Thiago, fora de pasta
@@ -3567,7 +3567,7 @@ describe("Processo Contas a pagar (docs/07-processos/contas-a-pagar.md)", () => 
     expect(cfg?.taskTypeIds).toContain(CP.taskTypeId);
     expect(cfg?.features.subtarefas).toBe(false);
     expect(state.tags.filter((t) => t.name.startsWith("conta ")).map((t) => t.name)).toHaveLength(8);
-    expect(state.automations.filter((a) => a.scopeId === CP.listId)).toHaveLength(7); // A2–A7 e A9; A1 é a Recorrência
+    expect(state.automations.filter((a) => a.scopeId === CP.listId)).toHaveLength(6); // A2–A6 e A9; A1 é a Recorrência; A7 saiu (plano pós-auditoria, 1.5)
     // Privacidade (seção 10): Membros comuns não alcançam; Financeiro administra; Convidada não vê.
     expect(memberReachesContainer(state, "mem_julia", "list", CP.listId)).toBe(false);
     expect(memberReachesContainer(state, "mem_beatriz", "list", CP.listId)).toBe(false);
@@ -3641,7 +3641,7 @@ describe("Processo Contas a pagar (docs/07-processos/contas-a-pagar.md)", () => 
     expect(changeTaskStatus(state, CP.financeiroId, t.id, S.lancado).ok).toBe(true);
   });
 
-  it("A5/A6/A7: gatilhos por vencimento — cobrança à Pessoa, e o Agente publica o Resumo e move para lançado omie; sem dado, comenta o que falta e não move", () => {
+  it("A5/A6: gatilhos por vencimento cobram a Pessoa; nenhuma Automação lança no Omie (A7 saiu, plano pós-auditoria 1.5)", () => {
     const hoje = new Date();
     const em = (dias: number) => {
       const d = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + dias);
@@ -3651,8 +3651,6 @@ describe("Processo Contas a pagar (docs/07-processos/contas-a-pagar.md)", () => 
     expect(updateTask(state, CP.financeiroId, comPessoa.id, { dueDate: { form: "civilDay", value: em(4) } }).ok).toBe(true);
     const vespera = conta("tsk_cp_das");
     expect(updateTask(state, CP.financeiroId, vespera.id, { dueDate: { form: "civilDay", value: em(1) } }).ok).toBe(true);
-    const incompleta = conta("tsk_cp_ferramenta");
-    expect(updateTask(state, CP.financeiroId, incompleta.id, { dueDate: { form: "civilDay", value: em(1) } }).ok).toBe(true);
     const r = runScheduledAutomations(state, CP.financeiroId, CP.listId, hoje);
     expect(r.ok, r.ok ? "" : r.error).toBe(true);
     // A5 cobra a Pessoa pelo nome; sem `cnpjPorEmpresa` injetado (03-11,
@@ -3663,44 +3661,12 @@ describe("Processo Contas a pagar (docs/07-processos/contas-a-pagar.md)", () => 
     expect(cobranca?.mentions.some((m) => m.id === "mem_thiago_pereira")).toBe(true);
     // Só quem administra a Lista roda o relógio.
     expect(runScheduledAutomations(state, "mem_thiago_pereira", CP.listId, hoje).ok).toBe(false);
-    // A7: DAS completo → Resumo resolvido + lançado omie.
-    expect(vespera.statusId).toBe(S.lancado);
-    const resumo = vespera.comments.find((c) => c.content.startsWith("📋 RESUMO DE PAGAMENTO"));
-    expect(resumo?.author).toEqual({ kind: "agent", id: CP.agentId });
-    expect(resumo?.resolved).toBeDefined();
-    expect(resumo?.content).toContain("Conta pagamento: TRIA");
-    expect(resumo?.content).toContain("Código:         2.06.01");
-    expect(contaSemResumo(state, vespera)).toBe(false);
-    // A7: ferramenta sem forma → comentário do que falta, aberto, e continua em para pagar.
-    expect(incompleta.statusId).toBe(S.paraPagar);
-    const falta = incompleta.comments.find((c) => c.content.startsWith("Não consegui lançar"));
-    expect(falta?.resolved).toBeUndefined();
-    expect(falta?.content).toMatch(/Forma de pagamento/);
-    // DAS e Tráfego pago (véspera, completos) lançados; Ferramenta (sem forma) falhou.
-    expect(state.agentExecutions.filter((e) => e.agentId === CP.agentId).map((e) => e.state).sort()).toEqual(["concluida", "concluida", "falhou"]);
-    // Rodar de novo não repete o que já rodou.
-    const r2 = runScheduledAutomations(state, CP.financeiroId, CP.listId, hoje);
-    expect(r2.ok && r2.value.executed).toBe(0);
-    expect(vespera.comments.filter((c) => c.content.startsWith("📋 RESUMO")).length).toBe(1);
-    // Sem o Boleto (requisito de saída), o Agente NEM lança: pede o que falta, dia após dia sem duplicar Resumo.
-    const trafego = conta("tsk_cp_trafego");
-    trafego.fieldValues = trafego.fieldValues.filter((v) => v.definitionId !== F.boleto);
-    trafego.comments = [];
-    trafego.statusId = S.paraPagar;
-    state.agentExecutions = state.agentExecutions.filter((e) => e.anchor?.id !== trafego.id);
-    state.automationExecutions = state.automationExecutions.filter((e) => e.objectId !== trafego.id);
-    for (const dias of [0, 1, 2]) {
-      const quando = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + dias);
-      expect(runScheduledAutomations(state, CP.financeiroId, CP.listId, quando).ok).toBe(true);
-    }
-    expect(trafego.statusId).toBe(S.paraPagar);
-    expect(trafego.comments.filter((c) => c.content.startsWith("📋 RESUMO")).length).toBe(0);
-    expect(trafego.comments.every((c) => c.content.includes("Boleto"))).toBe(true);
-    expect(state.agentExecutions.filter((e) => e.anchor?.id === trafego.id).every((e) => !e.steps.some((st) => st.toolId === "omie_lancar_conta_a_pagar"))).toBe(true);
-    // A Auditoria atribui a mudança de Status à Automação, em nome do Financeiro.
-    const movimento = state.activity.find((a) => a.objectId === vespera.id && a.action === "Status alterado");
-    expect(movimento?.actor.kind).toBe("automation");
-    expect(movimento?.delegate?.id).toBe(CP.financeiroId);
+    // Na véspera, completa, a conta NÃO é lançada pela agenda: quem lança é a
+    // ponte do `apps/api`, quando a conta entra em "em lançamento omie". Nenhum
+    // Resumo, nenhuma Execução do Agente, nenhuma mudança de Status.
+    expect(vespera.statusId).toBe(S.paraPagar);
+    expect(vespera.comments.some((c) => c.content.startsWith("📋 RESUMO DE PAGAMENTO"))).toBe(false);
+    expect(state.agentExecutions.filter((e) => e.agentId === CP.agentId && e.anchor?.id === vespera.id)).toHaveLength(0);
   });
 
   it("seção 10: a Pessoa da conta vê só as próprias contas, anexa a nota e a data de emissão, e nada mais", () => {

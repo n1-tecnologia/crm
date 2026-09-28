@@ -15,7 +15,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "@n1/dominio/seed";
 import { addTaskComment, createTask, setTaskFieldValue } from "@n1/dominio/operations/tasks";
-import { CP, DE_PARA_DO_PROTOTIPO, LIMIAR_DA_CANETA, compararEnsaio, runLancamentoAgent, textoDoLancamentoHumano, type ResultadoDaConferencia, type VereditoDaConferencia } from "@n1/dominio/operations/financeiro";
+import { CP, DE_PARA_DO_PROTOTIPO, INVOCADOR_DO_LANCAMENTO, LIMIAR_DA_CANETA, compararEnsaio, runLancamentoAgent, textoDoLancamentoHumano, type ResultadoDaConferencia, type VereditoDaConferencia } from "@n1/dominio/operations/financeiro";
 import type { DataState } from "@n1/dominio";
 import { CODIGOS_DA_AGENDA } from "../automacoes/scheduler-worker";
 import { carregarEnv, encerrar, pool } from "../persistencia/conexao";
@@ -183,7 +183,7 @@ describe("T-3-65 — o relatório versionado não vaza (h)", () => {
     const comPix = setTaskFieldValue(state, CP.financeiroId, tarefa.id, CP.fields.chavePix, "pix-secreta-99999-teste-h");
     expect(comPix.ok, comPix.ok ? "" : comPix.error).toBe(true);
 
-    const ensaio = runLancamentoAgent(state, CP.financeiroId, CP.agentId, tarefa.id, "aut_cp_a7", {
+    const ensaio = runLancamentoAgent(state, CP.financeiroId, CP.agentId, tarefa.id, INVOCADOR_DO_LANCAMENTO, {
       dePara: { contaPorTag: { "conta tria": "TRIA" }, categoriaPorCampo: { Impostos: { veredito: "resolvida", nome: "Impostos e taxas", codigo: "2.06.01" } }, origem: "omie" },
       rehearsal: true,
     });
@@ -278,7 +278,7 @@ d("coberturaDaJanela — Postgres real (i)", () => {
         // Tarefa recém-criada não tem Centro de Custo/Forma de pagamento, então
         // a recusa (`ok: false`) é o caminho esperado; `rehearsal`/`anchor` são
         // gravados de qualquer forma (ver `runLancamentoAgent`, `finish()`).
-        runLancamentoAgent(state, CP.financeiroId, CP.agentId, candidataMedida.value.id, "aut_cp_a7", { dePara: DE_PARA_DO_PROTOTIPO, rehearsal: true });
+        runLancamentoAgent(state, CP.financeiroId, CP.agentId, candidataMedida.value.id, INVOCADOR_DO_LANCAMENTO, { dePara: DE_PARA_DO_PROTOTIPO, rehearsal: true });
         const execucao = state.agentExecutions.filter((e) => e.anchor?.id === candidataMedida.value.id).at(-1);
         if (!execucao) throw new Error("sem AgentExecution para a candidata medida");
         // Força o dia civil do Ensaio para DIA_MEDIDO (`startedAt` nasce como `now()` real) — meio da tarde UTC cai no mesmo dia civil em America/Sao_Paulo.

@@ -213,6 +213,14 @@ function fillTemplate(state: DataState, task: Task, template: string, cnpjPorEmp
  * omie" sem nada lançado. `tarefasLancadas` é obrigatória exatamente no ramo
  * em que a caneta está na mão — o mesmo princípio do portão
  * `Confere<Igual<…>>` de 03-04: o erro dói na compilação, não em produção.
+ *
+ * Desde o plano pós-auditoria (1.5), a A7 não nasce mais do seed e a ponte
+ * lança fora da agenda (quando a conta entra em "em lançamento omie"). A
+ * ponte passa `{ rehearsal: false, tarefasLancadas: [] }` com um de-para
+ * vazio: uma A7 legada que ainda esteja ativa em algum Espaço falha
+ * "Lançamento não confirmado" antes de o Agente ser invocado — nunca lança,
+ * e nunca com o de-para do protótipo (T-3-39) — enquanto as outras
+ * Automações por data (A5/A6, R2…) rodam normalmente.
  */
 export type OpcoesDaAgenda = { readonly cnpjPorEmpresa?: Readonly<Record<string, string>> } & (
   | { readonly lancamento?: undefined }
