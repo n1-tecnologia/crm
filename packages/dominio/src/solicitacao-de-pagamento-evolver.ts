@@ -25,8 +25,9 @@
  *      regra do cabeçalho de `bootstrap-gestao.ts`).
  */
 
-import { CP } from "./operations/financeiro";
+import { CP, CR } from "./operations/financeiro";
 import { memberActor, nextId, recordActivity } from "./operations/activity";
+import { grantGovernanceAccess, inviteMember } from "./operations/members";
 import {
   CATALOGO_SOLICITACAO_DE_PAGAMENTO,
   SOL,
@@ -69,10 +70,56 @@ export interface DiffDeConfiguracao {
    * todos já tinham a concessão — reaplicar é no-op.
    */
   readonly concedidos?: string[];
+  /** Id do Membro de serviço do "Agente do pipeline" criado nesta execução (item 4b). Ausente quando já existia. */
+  readonly membroDeServicoCriado?: string;
+  /**
+   * As concessões de governança dadas nesta execução (item 6), no formato
+   * `<memberId>→<listId>:administrar`. Ausente quando já existiam todas.
+   */
+  readonly concessoesDeGovernanca?: string[];
 }
 
 /** V02-01B — teto mínimo antes de qualquer importação (`02-RESEARCH.md`, ~1.110 Tarefas históricas). */
 const TASKS_PER_LIST_PADRAO = 5000;
+
+/**
+ * O e-mail do Membro de serviço que ocupa o "Agente do pipeline" (plano
+ * pós-auditoria, 2.2). Domínio `.invalid` de propósito (RFC 2606): o endereço
+ * nunca entrega mensagem nem colide com um Usuário de verdade — este Membro
+ * não faz login, e o que o identifica é o Papel e a credencial de serviço.
+ */
+export const EMAIL_DO_AGENTE_DO_PIPELINE = "agente-do-pipeline@servico.n1.invalid";
+const NOME_DO_AGENTE_DO_PIPELINE = "Agente do pipeline";
+
+/**
+ * As Listas em que o "Agente do pipeline" age fora das Solicitações (item 6):
+ * o agendador (`apps/api/src/automacoes/scheduler-worker.ts`) roda a agenda
+ * de Automações de Contas a pagar e de Contas a receber em nome dele, e a
+ * ponte do lançamento (`invocar-agente.ts`) comenta, publica o Resumo e move
+ * o Status das contas a pagar. `runScheduledAutomations` exige `administrar`
+ * na Lista — "rodar o relógio da Lista é administrá-la" —, e as duas moram
+ * no Espaço privado "Gestão", onde um Convidado só entra por concessão.
+ */
+// Função, não constante de módulo: `operations/automations.ts` importa este
+// arquivo, e no ciclo de imports `CR` ainda não existe quando o módulo é
+// avaliado — lido só na chamada, já existe.
+const listasDoAgenteDoPipeline = (): readonly Id[] => [CP.listId, CR.listId];
+const MOTIVO_DA_CONCESSAO =
+  'Plano pós-auditoria 2.2: o "Agente do pipeline" roda a agenda de Automações desta Lista (exige administrar) ' +
+  'e, em Contas a pagar, publica o Resumo e move o Status depois do lançamento no Omie.';
+
+export interface OpcoesDaEvolucaoDeSolicitacoes {
+  readonly tasksPerListMinimo?: number | undefined;
+  /**
+   * Plano pós-auditoria, 2.2 — cria o Membro de serviço que ocupa o Papel
+   * "Agente do pipeline" quando ninguém o ocupa (item 4b) e dá a quem o
+   * ocupa o alcance que o agendador e a ponte usam (item 6). É opcional de
+   * propósito: D-13 manda este evolver não nomear ocupante por conta própria;
+   * quem pede é o CLI `solicitacoes:configurar` (sempre), nunca os testes
+   * que usam o evolver como construtor de fixture.
+   */
+  readonly membroDeServico?: { readonly email: string } | undefined;
+}
 
 function conferirCampos(
   divergentes: DivergenciaDeConfiguracao[],
@@ -177,11 +224,19 @@ function permissoesEsperadas(papel: PapelDaSolicitacao): Role["permissions"] {
  *   4. elevar `tasksPerList` para `max(atual, mínimo)`;
  *   5. uma Atividade por elemento criado + uma pela elevação do limite;
  *   6. `ok(diff)`.
+ *
+ * Com `opcoes.membroDeServico` (plano pós-auditoria, 2.2 — o CLI sempre
+ * pede), mais dois passos, em blocos próprios abaixo: 4b cria e ativa o
+ * Membro de serviço do "Agente do pipeline" quando ninguém ativo ocupa o
+ * Papel (um convite pendente no Papel é divergência do passo 3), e 6 dá a
+ * quem o ocupa `administrar` nas Listas de Contas a pagar e a receber, por
+ * ato de governança. As Atividades desses passos são as das próprias
+ * operações (`inviteMember`, `grantGovernanceAccess`) mais a da ativação.
  */
 export function evoluirConfiguracaoDeSolicitacoes(
   state: DataState,
   actingMemberId: Id,
-  opcoes: { readonly tasksPerListMinimo?: number } = {},
+  opcoes: OpcoesDaEvolucaoDeSolicitacoes = {},
 ): OperationResult<DiffDeConfiguracao> {
   if (!state.spaces.some((e) => e.id === CP.spaceId)) {
     return fail(`Espaço "Gestão" (${CP.spaceId}) não existe — rode o bootstrap da Fase 1 (bootstrapGestao) antes de evoluir esta configuração.`);
@@ -310,6 +365,18 @@ export function evoluirConfiguracaoDeSolicitacoes(
     }
   }
 
+  /* ── Membro de serviço: um convite pendente no Papel é ambiguidade ─────
+   * Um Membro de serviço não aceita convite (não há Usuário), e o que o
+   * agendador resolve pelo Papel precisa ser um Membro ativo. Um `pendente`
+   * no Papel é convite de alguém a uma pessoa: criar outro ao lado deixaria
+   * dois ocupantes, e decidir entre eles não é deste evolver. */
+  if (opcoes.membroDeServico) {
+    const pendente = state.members.find((m) => m.roleId === SOL.papeis.agentePipeline && m.state === "pendente");
+    if (pendente) {
+      divergentes.push({ id: pendente.id, campo: "state", esperado: "ativo (Membro de serviço)", encontrado: "pendente (convite não aceito no Papel \"Agente do pipeline\")" });
+    }
+  }
+
   /* ── 3. Qualquer divergência recusa — nada mais muda a partir daqui ──── */
   if (divergentes.length > 0) {
     return fail(formatarDivergencias(divergentes));
@@ -333,6 +400,44 @@ export function evoluirConfiguracaoDeSolicitacoes(
       at: agora,
     });
     tasksPerList = { antes, depois };
+  }
+
+  /* ── 4b. O Membro de serviço do "Agente do pipeline" (plano pós-auditoria, 2.2)
+   *
+   * Sem ele, tudo o que o agendador e a ponte gravam em nome do Papel falha
+   * (`apps/api/src/persistencia/credenciais-de-servico.ts`,
+   * `resolverMembroAgenteDoPipeline`). Nasce pela operação de sempre —
+   * `inviteMember`, com a regra de quem convida, o limite de Membros e o
+   * Registro de Atividade — e é "aceito" aqui mesmo: um Membro de serviço não
+   * tem Usuário no Auth, então o aceite do convite (que ainda não é operação)
+   * nunca chegaria. Fica SEM `userId` de propósito: nenhum JWT resolve para
+   * ele (o hook humano casa Membro por `userId`), e quem age por ele é só o
+   * próprio processo e a credencial de serviço (`member_id`). O
+   * `invitedIdentity` fica: é o e-mail de serviço que impede um segundo
+   * convite para o mesmo endereço. */
+  let membroDeServicoCriado: Id | undefined;
+  if (opcoes.membroDeServico) {
+    const jaOcupado = state.members.some((m) => m.roleId === SOL.papeis.agentePipeline && m.state === "ativo");
+    if (!jaOcupado) {
+      const convite = inviteMember(state, actingMemberId, { email: opcoes.membroDeServico.email, roleId: SOL.papeis.agentePipeline });
+      if (!convite.ok) return fail(`Não consegui criar o Membro "${NOME_DO_AGENTE_DO_PIPELINE}": ${convite.error}`);
+      const membro = convite.value;
+      membro.state = "ativo";
+      membro.joinedAt = agora;
+      membro.displayName = NOME_DO_AGENTE_DO_PIPELINE;
+      recordActivity(state, {
+        actor: ator,
+        action: "Membro de serviço ativado",
+        objectType: "member",
+        objectId: membro.id,
+        objectName: membro.displayName,
+        before: "pendente",
+        after: "ativo",
+        detail: "Sem Usuário no Auth: age só pelo processo e pela credencial de serviço.",
+        at: agora,
+      });
+      membroDeServicoCriado = membro.id;
+    }
   }
 
   /* ── 5. Alcance do "Agente do pipeline" sobre a Lista ──────────────────
@@ -386,11 +491,54 @@ export function evoluirConfiguracaoDeSolicitacoes(
     });
   }
 
+  /* ── 6. Alcance do "Agente do pipeline" em Contas a pagar e a receber ──
+   *
+   * Só com `membroDeServico` (o pedido explícito do CLI). O Espaço "Gestão" é
+   * privado e o Papel é Convidado: sem concessão, o Membro não vê conta
+   * nenhuma. `administrar` é o que `runScheduledAutomations` exige para rodar
+   * a agenda da Lista, e basta também para a ponte: ver a conta
+   * (`memberSeesTask`), comentar e publicar o Resumo (a Lista libera Campos a
+   * Convidado, e o Papel concede `comentar`) e mover o Status
+   * (`guestStatusWriter`, `editar` restrito a Status). O Papel continua
+   * Convidado: `taskWriteRefusal` segue recusando título, Vencimento, Tags e
+   * os demais Campos. Pela operação de governança, com motivo e Registro —
+   * nunca uma concessão silenciosa num Espaço privado (B38b). */
+  const concessoesDeGovernanca: string[] = [];
+  if (opcoes.membroDeServico) {
+    const ocupantesAtivos = state.members.filter((m) => m.roleId === SOL.papeis.agentePipeline && m.state === "ativo");
+    for (const listaId of listasDoAgenteDoPipeline()) {
+      if (!state.lists.some((l) => l.id === listaId)) continue;
+      for (const ocupante of ocupantesAtivos) {
+        const jaTem = state.grants.some(
+          (g) =>
+            g.subjectKind === "member" &&
+            g.subjectId === ocupante.id &&
+            g.resourceType === "list" &&
+            g.resourceId === listaId &&
+            g.action === "administrar",
+        );
+        if (jaTem) continue;
+        const concessao = grantGovernanceAccess(state, actingMemberId, {
+          subjectKind: "member",
+          subjectId: ocupante.id,
+          resourceType: "list",
+          resourceId: listaId,
+          actions: ["administrar"],
+          reason: MOTIVO_DA_CONCESSAO,
+        });
+        if (!concessao.ok) return fail(`Não consegui dar ao "${NOME_DO_AGENTE_DO_PIPELINE}" o alcance da Lista ${listaId}: ${concessao.error}`);
+        concessoesDeGovernanca.push(`${ocupante.id}→${listaId}:administrar`);
+      }
+    }
+  }
+
   return ok({
     criados,
     conferidos,
     divergentes,
     ...(concedidos.length ? { concedidos } : {}),
     ...(tasksPerList ? { tasksPerList } : {}),
+    ...(membroDeServicoCriado ? { membroDeServicoCriado } : {}),
+    ...(concessoesDeGovernanca.length ? { concessoesDeGovernanca } : {}),
   });
 }

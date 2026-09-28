@@ -327,6 +327,19 @@ export function lerPassoDeDePara(
 }
 
 /**
+ * Quem a recusa do Agente menciona: o Financeiro (`CP.financeiroId`, seção 9
+ * do processo — "Comentário aberto atribuído ao Financeiro"), quando é Membro
+ * ativo do Espaço; senão, quem invocou. Enquanto quem invocava era a A7 em
+ * nome do Financeiro, as duas coisas coincidiam; desde o plano pós-auditoria
+ * (2.2) quem invoca é o Membro de serviço do "Agente do pipeline", que
+ * ninguém lê — mencioná-lo seria pedir a ninguém. A ponte do `apps/api` usa a
+ * mesma função nos Comentários que ela mesma escreve.
+ */
+export function avisadoDoLancamento(state: DataState, actingMemberId: Id): Id {
+  return state.members.some((m) => m.id === CP.financeiroId && m.state === "ativo") ? CP.financeiroId : actingMemberId;
+}
+
+/**
  * Como se invoca o Agente com o de-para de verdade e/ou em Ensaio. `dePara` é
  * obrigatório de propósito (T-3-07): não se liga o Ensaio sem dizer contra
  * qual de-para se ensaiou — meia especificação é a porta do default silencioso.
@@ -433,7 +446,7 @@ export function runLancamentoAgent(
     if (ensaio) {
       execution.steps.push({ index, kind: "raciocinio", input: rotulo, output: `Ensaio — pediria ao Financeiro: ${texto}`, result: "falhou", at: now() });
     } else {
-      const r = addTaskComment(state, actingMemberId, taskId, { content: texto, mentions: [{ type: "member", id: actingMemberId }], actor: { kind: "agent", id: agentId } });
+      const r = addTaskComment(state, actingMemberId, taskId, { content: texto, mentions: [{ type: "member", id: avisadoDoLancamento(state, actingMemberId) }], actor: { kind: "agent", id: agentId } });
       execution.steps.push({ index, kind: "ferramenta", toolId: "criar_comentario", input: rotulo, output: r.ok ? "Comentário aberto ao Financeiro" : r.error, result: r.ok ? "concluido" : "falhou", at: now() });
     }
     finish(false, texto);
