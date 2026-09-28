@@ -1129,7 +1129,19 @@ export function statusOptionRefusal(state: DataState, actingMemberId: Id, task: 
     if (naoDeclarado) return naoDeclarado;
   }
   if (alvo?.entryAllowedMemberIds?.length && !alvo.entryAllowedMemberIds.includes(actingMemberId)) {
-    return `Só ${alvo.entryAllowedMemberIds.map((id) => state.members.find((m) => m.id === id)?.displayName ?? id).join(", ")} move para “${alvo.name}”.`;
+    const permitidos = alvo.entryAllowedMemberIds;
+    const nomes = permitidos.map((id) => state.members.find((m) => m.id === id)?.displayName ?? id);
+    // Uma regra que aponta para quem não é Membro do Espaço (ex.: configuração
+    // copiada de outro Espaço, ou a pessoa ainda não entrou) trava o Status para
+    // todo mundo — a frase diz isso, em vez de só listar ids que ninguém reconhece.
+    const ausentes = permitidos.filter((id) => !state.members.some((m) => m.id === id && m.state !== "removido"));
+    const aviso =
+      ausentes.length === permitidos.length
+        ? " Nenhum deles é Membro deste Espaço de Trabalho — ajuste a regra do Status nas configurações da Lista."
+        : ausentes.length > 0
+          ? ` (${ausentes.join(", ")} não ${ausentes.length === 1 ? "é Membro" : "são Membros"} deste Espaço de Trabalho.)`
+          : "";
+    return `Só ${nomes.join(", ")} move para “${alvo.name}”.${aviso}`;
   }
   if (config && atual && alvo) return entryRefusal(state, task, config.statusSet.definitions, atual, alvo);
   return undefined;
