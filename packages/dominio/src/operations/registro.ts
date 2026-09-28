@@ -197,7 +197,7 @@ import { converterSolicitacaoEmContaAPagar } from "./conversao-de-solicitacao";
 import { alterarStatusEmLote } from "./lote";
 
 // ── members.ts ──────────────────────────────────────────────────────────
-import { deleteRole, grantGovernanceAccess, inviteMember, removeMember, transferWorkspaceOwnership } from "./members";
+import { alterarEmailDoConvite, alterarPapelDoMembro, deleteRole, grantGovernanceAccess, inviteMember, removeMember, transferWorkspaceOwnership } from "./members";
 
 // ── structure.ts ────────────────────────────────────────────────────────
 import { createFolder, createList, createSpace } from "./structure";
@@ -544,6 +544,8 @@ export const OPERACOES = {
   // lote.ts
   alterarStatusEmLote,
   // members.ts
+  alterarEmailDoConvite,
+  alterarPapelDoMembro,
   removeMember,
   transferWorkspaceOwnership,
   inviteMember,

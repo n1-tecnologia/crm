@@ -140,11 +140,10 @@ export function transporteHttp(opcoes: { readonly apiUrl: string; readonly obter
   return {
     async gravar(pedido) {
       if (pedido.chamadas.length === 0) {
-        // O caso de `configuracoes/membros/[membro]/page.tsx`, que muta
-        // `roleId` direto na cópia sem passar por uma operação do registro:
-        // gravar em silêncio seria mentir para a tela sobre o que persistiu.
-        // Essa tela precisa de uma operação de domínio própria — fora desta
-        // fase (ver SUMMARY).
+        // Uma tela que muta a cópia sem passar por uma operação do registro
+        // (foi o caso da troca de Papel em `configuracoes/membros/[membro]`,
+        // hoje `alterarPapelDoMembro`): gravar em silêncio seria mentir para
+        // a tela sobre o que persistiu.
         return { tipo: "falha", erro: "Esta ação não passa por uma operação do domínio e não foi gravada." };
       }
 

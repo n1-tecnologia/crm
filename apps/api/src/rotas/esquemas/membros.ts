@@ -43,6 +43,8 @@ const GRANT_GOVERNANCE_ACCESS_INPUT = z
  * para `z.ZodTypeAny`.
  */
 export const MEMBROS = {
+  alterarEmailDoConvite: z.tuple([z.object({ memberId: ID, email: z.string().max(254) }).strict()]),
+  alterarPapelDoMembro: z.tuple([z.object({ memberId: ID, roleId: ID }).strict()]),
   removeMember: z.tuple([ID, ID]),
   // `keepRoleId || undefined` em `transfer-ownership-dialog.tsx` — é a
   // origem do helper `opcional()` (`fragmentos.ts`).

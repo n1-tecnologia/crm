@@ -215,6 +215,8 @@ export const converterSolicitacaoEmContaAPagar = instrumentar("converterSolicita
 export const alterarStatusEmLote = instrumentar("alterarStatusEmLote");
 
 // members.ts
+export const alterarEmailDoConvite = instrumentar("alterarEmailDoConvite");
+export const alterarPapelDoMembro = instrumentar("alterarPapelDoMembro");
 export const removeMember = instrumentar("removeMember");
 export const transferWorkspaceOwnership = instrumentar("transferWorkspaceOwnership");
 export const inviteMember = instrumentar("inviteMember");

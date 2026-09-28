@@ -14,10 +14,11 @@
 import Link from "next/link";
 import { use, useState } from "react";
 import { useData, useRun, useSession } from "@/dados/store";
-import { previewSuccession } from "@n1/dominio/operations";
+import { alterarEmailDoConvite, alterarPapelDoMembro, previewSuccession } from "@n1/dominio/operations";
 import { useFormat } from "@/features/shell/use-format";
 import { AVAILABILITY_LABEL, PERMISSION_ORIGIN_LABEL, RESOURCE_TYPE_LABEL } from "@/features/shell/format";
 import {
+  Button,
   CabecalhoDePainel,
   CorpoDeTela,
   EmptyState,
@@ -28,6 +29,7 @@ import {
   RecordRow,
   Select,
   StateSeal,
+  TextInput,
   Toast,
 } from "@/features/shell/ui";
 
@@ -50,6 +52,8 @@ export default function MembroPage({ params }: { params: Promise<{ membro: strin
   const run = useRun();
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  /** O e-mail do convite em edição — só para Membro sem login (ver `alterarEmailDoConvite`). */
+  const [novoEmail, setNovoEmail] = useState<string | null>(null);
 
   const member = state.members.find((m) => m.id === membro);
 
@@ -104,14 +108,32 @@ export default function MembroPage({ params }: { params: Promise<{ membro: strin
       );
       return;
     }
-    run((data) => {
-      const stored = data.members.find((m) => m.id === member.id);
-      if (stored) stored.roleId = roleId;
-      return { ok: true as const, value: undefined };
-    });
+    // Uma operação do domínio de verdade: o servidor grava (antes, a troca
+    // mudava só a cópia do store e se perdia — `transporte.ts` recusava).
+    const r = run((data, me) => alterarPapelDoMembro(data, me, { memberId: member.id, roleId }));
+    if (!r.ok) {
+      setNotice(null);
+      setError(r.error);
+      return;
+    }
     setError(null);
     setNotice(`Papel alterado para ${nextRole.name}.`);
   };
+
+  const salvarEmail = () => {
+    if (novoEmail === null) return;
+    const r = run((data, me) => alterarEmailDoConvite(data, me, { memberId: member.id, email: novoEmail }));
+    if (r.ok) {
+      setError(null);
+      setNotice(`E-mail do convite alterado para ${r.value.invitedIdentity?.value}. Nenhum convite foi enviado.`);
+      setNovoEmail(null);
+    } else {
+      setNotice(null);
+      setError(r.error);
+    }
+  };
+  // O e-mail só se altera aqui enquanto o Membro não tem login: depois disso ele é o da conta.
+  const podeAlterarEmail = mayGovern && !removed && !member.userId;
 
   /** A mesma frase serve de ajuda do campo e de motivo do controle desligado (§11). */
   const roleNote = isOwner
@@ -268,7 +290,40 @@ export default function MembroPage({ params }: { params: Promise<{ membro: strin
                 <RecordRow label="Convidado por">
                   {state.members.find((m) => m.id === member.invitedBy)?.displayName ?? "—"}
                 </RecordRow>
-                <RecordRow label="Identidade do convite">{member.invitedIdentity?.value ?? "—"}</RecordRow>
+                <RecordRow label="Identidade do convite">
+                  {novoEmail !== null ? (
+                    <form
+                      className="grid gap-2"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        salvarEmail();
+                      }}
+                    >
+                      <label htmlFor="email-do-convite" className="sr-only">
+                        Novo e-mail do convite
+                      </label>
+                      <TextInput id="email-do-convite" type="email" value={novoEmail} onChange={setNovoEmail} placeholder="nome@empresa.com.br" />
+                      <span className="flex gap-2">
+                        <Button size="sm" variant="primary" type="submit" disabled={!novoEmail.trim()} disabledReason="Informe o e-mail.">
+                          Salvar e-mail
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setNovoEmail(null)}>
+                          Cancelar
+                        </Button>
+                      </span>
+                      <span className="app-meta">Só altera o e-mail guardado — nenhum convite é enviado.</span>
+                    </form>
+                  ) : (
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span>{member.invitedIdentity?.value ?? "—"}</span>
+                      {podeAlterarEmail ? (
+                        <Button size="sm" variant="ghost" onClick={() => setNovoEmail(member.invitedIdentity?.value ?? "")}>
+                          Alterar e-mail
+                        </Button>
+                      ) : null}
+                    </span>
+                  )}
+                </RecordRow>
                 <RecordRow label="Removido em">{member.removedAt ? fmt.instant(member.removedAt) : "—"}</RecordRow>
                 <RecordRow label="Sucessor">{successor?.displayName ?? "—"}</RecordRow>
               </dl>

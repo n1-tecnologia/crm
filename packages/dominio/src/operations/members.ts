@@ -110,6 +110,105 @@ function isPrivateContainer(state: DataState, resourceType: string, resourceId: 
  *
  * RN-ET-05 — the workspace owner cannot be removed without transferring first.
  */
+/**
+ * Troca o e-mail do convite de um Membro que ainda NÃO tem login (`userId`).
+ * Existe para o Membro criado antes de se saber o e-mail certo — ex.: o
+ * Aprovador que a configuração do Financeiro já cita (`mem_marcos_paulo`),
+ * criado com e-mail provisório e sem convite enviado, para as Automações e a
+ * regra do Status "pago" funcionarem já. Com login ligado, o e-mail é o do
+ * Usuário (Supabase Auth), não do Espaço de Trabalho — aqui recusa.
+ * Mesmas regras de e-mail do convite (`inviteMember`): minúsculas, formato,
+ * um Membro por e-mail.
+ */
+export function alterarEmailDoConvite(
+  state: DataState,
+  actingMemberId: Id,
+  input: { readonly memberId: Id; readonly email: string },
+): OperationResult<Member> {
+  const acting = state.members.find((m) => m.id === actingMemberId);
+  const actingRole = state.roles.find((r) => r.id === acting?.roleId);
+  if (actingRole?.base !== "administrador" && actingRole?.base !== "proprietario") {
+    return fail("Só um Administrador ou o Proprietário altera o e-mail do convite de um Membro.");
+  }
+  const membro = state.members.find((m) => m.id === input.memberId);
+  if (!membro || membro.state === "removido") return fail("Membro não encontrado.");
+  if (membro.userId) {
+    return fail("Este Membro já tem login: o e-mail é o da conta dele e não se altera por aqui.", "email");
+  }
+  const email = input.email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return fail("Informe um e-mail válido.", "email");
+  }
+  const outro = state.members.find(
+    (m) => m.id !== membro.id && m.state !== "removido" && m.invitedIdentity?.value.toLowerCase() === email,
+  );
+  if (outro) return fail("Este e-mail já está no convite de outro Membro deste Espaço de Trabalho.", "email");
+  const antes = membro.invitedIdentity?.value;
+  if (antes?.toLowerCase() === email) return ok(membro);
+  membro.invitedIdentity = { type: "email", value: email };
+  recordActivity(state, {
+    actor: memberActor(actingMemberId),
+    action: "E-mail do convite alterado",
+    objectType: "member",
+    objectId: membro.id,
+    objectName: membro.displayName,
+    before: antes ?? "—",
+    after: email,
+  });
+  return ok(membro);
+}
+
+/**
+ * Troca o Papel de um Membro. A tela de Membro mudava `roleId` direto na
+ * cópia do store, sem operação do domínio — o servidor não tinha o que
+ * gravar e a troca se perdia (achado de 2026-09-28; ver `transporte.ts`).
+ * As regras são as que a tela já aplicava, agora no lugar que vale para a
+ * tela E para o servidor.
+ */
+export function alterarPapelDoMembro(
+  state: DataState,
+  actingMemberId: Id,
+  input: { readonly memberId: Id; readonly roleId: Id },
+): OperationResult<Member> {
+  const acting = state.members.find((m) => m.id === actingMemberId);
+  const actingRole = state.roles.find((r) => r.id === acting?.roleId);
+  if (actingRole?.base !== "administrador" && actingRole?.base !== "proprietario") {
+    return fail("Só um Administrador ou o Proprietário muda o Papel de um Membro.");
+  }
+  const membro = state.members.find((m) => m.id === input.memberId);
+  if (!membro || membro.state === "removido") return fail("Membro não encontrado.");
+  if (state.workspace.ownerMemberId === membro.id) {
+    return fail("O Papel do Proprietário muda pela transferência de propriedade, não por aqui.");
+  }
+  const papel = state.roles.find((r) => r.id === input.roleId);
+  if (!papel) return fail("Escolha um Papel.", "papel");
+  if (papel.base === "proprietario") {
+    return fail("O Papel de Proprietário não se concede por aqui: ele muda por transferência de propriedade.", "papel");
+  }
+  if (membro.roleId === papel.id) return ok(membro);
+  if (papel.base === "convidado") {
+    const transferencias = previewSuccession(state, membro.id).transfers.length;
+    if (transferencias > 0) {
+      return fail(
+        `Rebaixar para um Papel de base Convidado exige transferir ${transferencias} registro(s) de propriedade no mesmo ato. Encerre a participação com Sucessor ou transfira a propriedade antes.`,
+        "papel",
+      );
+    }
+  }
+  const antes = state.roles.find((r) => r.id === membro.roleId)?.name ?? membro.roleId;
+  membro.roleId = papel.id;
+  recordActivity(state, {
+    actor: memberActor(actingMemberId),
+    action: "Papel alterado",
+    objectType: "member",
+    objectId: membro.id,
+    objectName: membro.displayName,
+    before: antes,
+    after: papel.name,
+  });
+  return ok(membro);
+}
+
 export function removeMember(
   state: DataState,
   actingMemberId: Id,
