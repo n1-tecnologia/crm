@@ -1,0 +1,44 @@
+{
+  "descricao": "O Omie recusou o IncluirContaPagar por regra de negócio: permanente, com o motivo do Omie (sem chave Pix, código de barras ou valor).",
+  "requisicao": {
+    "metodo": "POST",
+    "caminho": "/v1/integrations/contas-a-pagar/lancar",
+    "headers": {
+      "authorization": "Bearer token-de-exemplo-nunca-real",
+      "x-request-id": "req-exemplo-lancar-omie",
+      "idempotency-key": "tria:contas-a-pagar:tsk_00001a"
+    },
+    "body": {
+      "taskId": "tsk_00001a",
+      "centroDeCusto": "tria",
+      "categoriaDePagamento": "Impostos",
+      "titulo": "DAS — Simples Nacional",
+      "descricao": "Imposto mensal",
+      "tagDaConta": "conta tria",
+      "valorCentavos": 123456,
+      "vencimento": "2026-10-15",
+      "formaDePagamento": "Chave Pix",
+      "chavePix": "11.222.333/0001-81",
+      "fornecedor": {
+        "tipo": "CNPJ",
+        "documento": "11.222.333/0001-81",
+        "nome": "Fornecedor Fictício LTDA"
+      },
+      "observacao": "Guia mensal"
+    }
+  },
+  "resposta": {
+    "status": 422,
+    "corpo": {
+      "error": {
+        "code": "OMIE_RECUSOU",
+        "message": "O Omie recusou a operação.",
+        "requestId": "req-exemplo-lancar-omie",
+        "retryable": false,
+        "details": {
+          "motivo": "O Omie recusou o lançamento (IncluirContaPagar): Não existe a categoria [2.06.01] cadastrada para a empresa!"
+        }
+      }
+    }
+  }
+}

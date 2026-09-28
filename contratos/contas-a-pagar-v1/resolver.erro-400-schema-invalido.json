@@ -1,0 +1,31 @@
+{
+  "descricao": "Campo desconhecido no corpo (.strict()): 400, permanente, sem details.",
+  "requisicao": {
+    "metodo": "POST",
+    "caminho": "/v1/integrations/contas-a-pagar/resolver",
+    "headers": {
+      "authorization": "Bearer token-de-exemplo-nunca-real",
+      "x-request-id": "req-exemplo-resolver-400"
+    },
+    "body": {
+      "taskId": "tsk_00001a",
+      "centroDeCusto": "tria",
+      "categoriaDePagamento": "Impostos",
+      "titulo": "DAS — Simples Nacional",
+      "descricao": "Imposto mensal",
+      "tagDaConta": "conta tria",
+      "campoQueNaoExiste": true
+    }
+  },
+  "resposta": {
+    "status": 400,
+    "corpo": {
+      "error": {
+        "code": "SCHEMA_INVALIDO",
+        "message": "Corpo da requisição não corresponde ao esperado.",
+        "requestId": "req-exemplo-resolver-400",
+        "retryable": false
+      }
+    }
+  }
+}

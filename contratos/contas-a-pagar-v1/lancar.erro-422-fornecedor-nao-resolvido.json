@@ -1,0 +1,44 @@
+{
+  "descricao": "O cadastro do fornecedor devolveu o próprio documento no lugar do código do Omie: nada é lançado.",
+  "requisicao": {
+    "metodo": "POST",
+    "caminho": "/v1/integrations/contas-a-pagar/lancar",
+    "headers": {
+      "authorization": "Bearer token-de-exemplo-nunca-real",
+      "x-request-id": "req-exemplo-lancar-fornecedor",
+      "idempotency-key": "tria:contas-a-pagar:tsk_00001a"
+    },
+    "body": {
+      "taskId": "tsk_00001a",
+      "centroDeCusto": "tria",
+      "categoriaDePagamento": "Impostos",
+      "titulo": "DAS — Simples Nacional",
+      "descricao": "Imposto mensal",
+      "tagDaConta": "conta tria",
+      "valorCentavos": 123456,
+      "vencimento": "2026-10-15",
+      "formaDePagamento": "Chave Pix",
+      "chavePix": "11.222.333/0001-81",
+      "fornecedor": {
+        "tipo": "CNPJ",
+        "documento": "11.222.333/0001-81",
+        "nome": "Fornecedor Fictício LTDA"
+      },
+      "observacao": "Guia mensal"
+    }
+  },
+  "resposta": {
+    "status": 422,
+    "corpo": {
+      "error": {
+        "code": "FORNECEDOR_NAO_RESOLVIDO",
+        "message": "O fornecedor não foi resolvido no cadastro do Omie.",
+        "requestId": "req-exemplo-lancar-fornecedor",
+        "retryable": false,
+        "details": {
+          "motivo": "O código devolvido para o fornecedor é o próprio documento, não um código do cadastro do Omie — confira o cadastro do fornecedor no Omie."
+        }
+      }
+    }
+  }
+}

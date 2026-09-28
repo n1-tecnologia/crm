@@ -1,0 +1,44 @@
+{
+  "descricao": "O Omie não respondeu ao IncluirContaPagar e a reconsulta não achou o título: transitório — a repetição consulta antes de incluir.",
+  "requisicao": {
+    "metodo": "POST",
+    "caminho": "/v1/integrations/contas-a-pagar/lancar",
+    "headers": {
+      "authorization": "Bearer token-de-exemplo-nunca-real",
+      "x-request-id": "req-exemplo-lancar-500",
+      "idempotency-key": "tria:contas-a-pagar:tsk_00001a"
+    },
+    "body": {
+      "taskId": "tsk_00001a",
+      "centroDeCusto": "tria",
+      "categoriaDePagamento": "Impostos",
+      "titulo": "DAS — Simples Nacional",
+      "descricao": "Imposto mensal",
+      "tagDaConta": "conta tria",
+      "valorCentavos": 123456,
+      "vencimento": "2026-10-15",
+      "formaDePagamento": "Chave Pix",
+      "chavePix": "11.222.333/0001-81",
+      "fornecedor": {
+        "tipo": "CNPJ",
+        "documento": "11.222.333/0001-81",
+        "nome": "Fornecedor Fictício LTDA"
+      },
+      "observacao": "Guia mensal"
+    }
+  },
+  "resposta": {
+    "status": 500,
+    "corpo": {
+      "error": {
+        "code": "OMIE_INDISPONIVEL",
+        "message": "O Omie não concluiu a operação; nova tentativa é segura.",
+        "requestId": "req-exemplo-lancar-500",
+        "retryable": true,
+        "details": {
+          "motivo": "O Omie não concluiu o lançamento (IncluirContaPagar): o Omie não respondeu (UND_ERR_SOCKET). Nova tentativa em seguida."
+        }
+      }
+    }
+  }
+}

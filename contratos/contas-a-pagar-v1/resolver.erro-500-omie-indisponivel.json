@@ -1,0 +1,33 @@
+{
+  "descricao": "O Omie não respondeu a uma LEITURA (ListarCategorias): transitório — a ponte repete mais tarde.",
+  "requisicao": {
+    "metodo": "POST",
+    "caminho": "/v1/integrations/contas-a-pagar/resolver",
+    "headers": {
+      "authorization": "Bearer token-de-exemplo-nunca-real",
+      "x-request-id": "req-exemplo-resolver-500"
+    },
+    "body": {
+      "taskId": "tsk_00001a",
+      "centroDeCusto": "tria",
+      "categoriaDePagamento": "Impostos",
+      "titulo": "DAS — Simples Nacional",
+      "descricao": "Imposto mensal",
+      "tagDaConta": "conta tria"
+    }
+  },
+  "resposta": {
+    "status": 500,
+    "corpo": {
+      "error": {
+        "code": "OMIE_INDISPONIVEL",
+        "message": "O Omie não concluiu a operação; nova tentativa é segura.",
+        "requestId": "req-exemplo-resolver-500",
+        "retryable": true,
+        "details": {
+          "motivo": "O Omie não concluiu a leitura do plano de contas (ListarCategorias): o Omie não respondeu (UND_ERR_SOCKET). Nova tentativa em seguida."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "descricao": "O título já existia no Omie com este código de integração (repetição): 200 com reaproveitado:true — também é sucesso.",
+  "requisicao": {
+    "metodo": "POST",
+    "caminho": "/v1/integrations/contas-a-pagar/lancar",
+    "headers": {
+      "authorization": "Bearer token-de-exemplo-nunca-real",
+      "x-request-id": "req-exemplo-lancar-reaproveitado",
+      "idempotency-key": "tria:contas-a-pagar:tsk_00001a"
+    },
+    "body": {
+      "taskId": "tsk_00001a",
+      "centroDeCusto": "tria",
+      "categoriaDePagamento": "Impostos",
+      "titulo": "DAS — Simples Nacional",
+      "descricao": "Imposto mensal",
+      "tagDaConta": "conta tria",
+      "valorCentavos": 123456,
+      "vencimento": "2026-10-15",
+      "formaDePagamento": "Chave Pix",
+      "chavePix": "11.222.333/0001-81",
+      "fornecedor": {
+        "tipo": "CNPJ",
+        "documento": "11.222.333/0001-81",
+        "nome": "Fornecedor Fictício LTDA"
+      },
+      "observacao": "Guia mensal"
+    }
+  },
+  "resposta": {
+    "status": 200,
+    "corpo": {
+      "payableId": "4100000001",
+      "codigoLancamentoIntegracao": "tria:contas-a-pagar:tsk_00001a",
+      "reaproveitado": true,
+      "dePara": {
+        "contaPorTag": {
+          "conta tria": "TRIA COMPANY - ITAU"
+        },
+        "categoriaPorCampo": {
+          "Impostos": {
+            "veredito": "resolvida",
+            "nome": "Impostos e taxas",
+            "codigo": "2.06.01",
+            "similaridade": 0.91
+          }
+        },
+        "origem": "omie"
+      },
+      "anexos": []
+    }
+  }
+}

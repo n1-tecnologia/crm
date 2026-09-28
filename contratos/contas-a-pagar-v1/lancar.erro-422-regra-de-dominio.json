@@ -1,0 +1,44 @@
+{
+  "descricao": "Categoria sem confiança (veredito \"revisar\"): nada é lançado; o motivo é o da resolução.",
+  "requisicao": {
+    "metodo": "POST",
+    "caminho": "/v1/integrations/contas-a-pagar/lancar",
+    "headers": {
+      "authorization": "Bearer token-de-exemplo-nunca-real",
+      "x-request-id": "req-exemplo-lancar-categoria",
+      "idempotency-key": "tria:contas-a-pagar:tsk_00001a"
+    },
+    "body": {
+      "taskId": "tsk_00001a",
+      "centroDeCusto": "tria",
+      "categoriaDePagamento": "Impostos",
+      "titulo": "DAS — Simples Nacional",
+      "descricao": "Imposto mensal",
+      "tagDaConta": "conta tria",
+      "valorCentavos": 123456,
+      "vencimento": "2026-10-15",
+      "formaDePagamento": "Chave Pix",
+      "chavePix": "11.222.333/0001-81",
+      "fornecedor": {
+        "tipo": "CNPJ",
+        "documento": "11.222.333/0001-81",
+        "nome": "Fornecedor Fictício LTDA"
+      },
+      "observacao": "Guia mensal"
+    }
+  },
+  "resposta": {
+    "status": 422,
+    "corpo": {
+      "error": {
+        "code": "REGRA_DE_DOMINIO",
+        "message": "A regra de negócio recusou o lançamento.",
+        "requestId": "req-exemplo-lancar-categoria",
+        "retryable": false,
+        "details": {
+          "motivo": "Similaridade 0.12 abaixo do corte mínimo 0.3."
+        }
+      }
+    }
+  }
+}

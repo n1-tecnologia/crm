@@ -1,0 +1,44 @@
+{
+  "descricao": "Nenhuma conta corrente do Omie corresponde à Conta de Pagamento: nada é lançado (nunca a primeira da lista).",
+  "requisicao": {
+    "metodo": "POST",
+    "caminho": "/v1/integrations/contas-a-pagar/lancar",
+    "headers": {
+      "authorization": "Bearer token-de-exemplo-nunca-real",
+      "x-request-id": "req-exemplo-lancar-conta",
+      "idempotency-key": "tria:contas-a-pagar:tsk_00001a"
+    },
+    "body": {
+      "taskId": "tsk_00001a",
+      "centroDeCusto": "tria",
+      "categoriaDePagamento": "Impostos",
+      "titulo": "DAS — Simples Nacional",
+      "descricao": "Imposto mensal",
+      "tagDaConta": "conta tria",
+      "valorCentavos": 123456,
+      "vencimento": "2026-10-15",
+      "formaDePagamento": "Chave Pix",
+      "chavePix": "11.222.333/0001-81",
+      "fornecedor": {
+        "tipo": "CNPJ",
+        "documento": "11.222.333/0001-81",
+        "nome": "Fornecedor Fictício LTDA"
+      },
+      "observacao": "Guia mensal"
+    }
+  },
+  "resposta": {
+    "status": 422,
+    "corpo": {
+      "error": {
+        "code": "CONTA_CORRENTE_NAO_RESOLVIDA",
+        "message": "A conta corrente de pagamento não foi resolvida no Omie.",
+        "requestId": "req-exemplo-lancar-conta",
+        "retryable": false,
+        "details": {
+          "motivo": "Nenhuma conta corrente do Omie corresponde à Conta de Pagamento \"TRIA\" (Centro de Custo \"tria\"), e nenhuma foi escolhida por palpite."
+        }
+      }
+    }
+  }
+}

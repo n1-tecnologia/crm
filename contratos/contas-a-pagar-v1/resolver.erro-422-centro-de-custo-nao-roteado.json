@@ -1,0 +1,33 @@
+{
+  "descricao": "Centro de Custo sem conta Omie configurada: recusa permanente com motivo.",
+  "requisicao": {
+    "metodo": "POST",
+    "caminho": "/v1/integrations/contas-a-pagar/resolver",
+    "headers": {
+      "authorization": "Bearer token-de-exemplo-nunca-real",
+      "x-request-id": "req-exemplo-resolver-422"
+    },
+    "body": {
+      "taskId": "tsk_00001a",
+      "centroDeCusto": "sei lá",
+      "categoriaDePagamento": "Impostos",
+      "titulo": "DAS — Simples Nacional",
+      "descricao": "Imposto mensal",
+      "tagDaConta": "conta tria"
+    }
+  },
+  "resposta": {
+    "status": 422,
+    "corpo": {
+      "error": {
+        "code": "CENTRO_DE_CUSTO_NAO_ROTEADO",
+        "message": "O Centro de Custo não roteia para nenhuma conta Omie configurada.",
+        "requestId": "req-exemplo-resolver-422",
+        "retryable": false,
+        "details": {
+          "motivo": "Centro de Custo \"sei lá\" não roteia para nenhuma conta Omie configurada."
+        }
+      }
+    }
+  }
+}

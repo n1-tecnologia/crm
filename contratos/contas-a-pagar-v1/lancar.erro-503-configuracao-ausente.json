@@ -1,0 +1,44 @@
+{
+  "descricao": "Credencial do Omie ausente para o Centro de Custo: 503 com retryable:false — permanente, repetir não resolve.",
+  "requisicao": {
+    "metodo": "POST",
+    "caminho": "/v1/integrations/contas-a-pagar/lancar",
+    "headers": {
+      "authorization": "Bearer token-de-exemplo-nunca-real",
+      "x-request-id": "req-exemplo-lancar-503",
+      "idempotency-key": "tria:contas-a-pagar:tsk_00001a"
+    },
+    "body": {
+      "taskId": "tsk_00001a",
+      "centroDeCusto": "tria",
+      "categoriaDePagamento": "Impostos",
+      "titulo": "DAS — Simples Nacional",
+      "descricao": "Imposto mensal",
+      "tagDaConta": "conta tria",
+      "valorCentavos": 123456,
+      "vencimento": "2026-10-15",
+      "formaDePagamento": "Chave Pix",
+      "chavePix": "11.222.333/0001-81",
+      "fornecedor": {
+        "tipo": "CNPJ",
+        "documento": "11.222.333/0001-81",
+        "nome": "Fornecedor Fictício LTDA"
+      },
+      "observacao": "Guia mensal"
+    }
+  },
+  "resposta": {
+    "status": 503,
+    "corpo": {
+      "error": {
+        "code": "CONFIGURACAO_AUSENTE",
+        "message": "Dependência necessária para o lançamento não está configurada.",
+        "requestId": "req-exemplo-lancar-503",
+        "retryable": false,
+        "details": {
+          "motivo": "Credencial do Omie ausente para este Centro de Custo — lançamento recusado."
+        }
+      }
+    }
+  }
+}

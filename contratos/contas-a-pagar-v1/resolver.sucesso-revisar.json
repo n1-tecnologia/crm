@@ -1,0 +1,39 @@
+{
+  "descricao": "Categoria abaixo do corte de similaridade: 200 com veredito \"revisar\" — quem decide não lançar é a ponte/o domínio, a rota só informa.",
+  "requisicao": {
+    "metodo": "POST",
+    "caminho": "/v1/integrations/contas-a-pagar/resolver",
+    "headers": {
+      "authorization": "Bearer token-de-exemplo-nunca-real",
+      "x-request-id": "req-exemplo-resolver-revisar"
+    },
+    "body": {
+      "taskId": "tsk_00001a",
+      "centroDeCusto": "tria",
+      "categoriaDePagamento": "Impostos",
+      "titulo": "DAS — Simples Nacional",
+      "descricao": "Imposto mensal",
+      "tagDaConta": "conta tria"
+    }
+  },
+  "resposta": {
+    "status": 200,
+    "corpo": {
+      "dePara": {
+        "contaPorTag": {
+          "conta tria": "TRIA COMPANY - ITAU"
+        },
+        "categoriaPorCampo": {
+          "Impostos": {
+            "veredito": "revisar",
+            "nome": "A classificar",
+            "codigo": "9.99.99",
+            "similaridade": 0.12,
+            "motivo": "Similaridade 0.12 abaixo do corte mínimo 0.3."
+          }
+        },
+        "origem": "omie"
+      }
+    }
+  }
+}

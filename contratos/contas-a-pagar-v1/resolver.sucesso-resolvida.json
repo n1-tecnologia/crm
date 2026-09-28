@@ -1,0 +1,38 @@
+{
+  "descricao": "Categoria resolvida contra o plano de contas do Omie e conta corrente casada com a Conta de Pagamento do Centro de Custo.",
+  "requisicao": {
+    "metodo": "POST",
+    "caminho": "/v1/integrations/contas-a-pagar/resolver",
+    "headers": {
+      "authorization": "Bearer token-de-exemplo-nunca-real",
+      "x-request-id": "req-exemplo-resolver-resolvida"
+    },
+    "body": {
+      "taskId": "tsk_00001a",
+      "centroDeCusto": "tria",
+      "categoriaDePagamento": "Impostos",
+      "titulo": "DAS — Simples Nacional",
+      "descricao": "Imposto mensal",
+      "tagDaConta": "conta tria"
+    }
+  },
+  "resposta": {
+    "status": 200,
+    "corpo": {
+      "dePara": {
+        "contaPorTag": {
+          "conta tria": "TRIA COMPANY - ITAU"
+        },
+        "categoriaPorCampo": {
+          "Impostos": {
+            "veredito": "resolvida",
+            "nome": "Impostos e taxas",
+            "codigo": "2.06.01",
+            "similaridade": 0.91
+          }
+        },
+        "origem": "omie"
+      }
+    }
+  }
+}

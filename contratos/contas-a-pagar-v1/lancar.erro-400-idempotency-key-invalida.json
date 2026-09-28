@@ -1,0 +1,41 @@
+{
+  "descricao": "Idempotency-Key de outra Tarefa: 400, nunca um lançamento.",
+  "requisicao": {
+    "metodo": "POST",
+    "caminho": "/v1/integrations/contas-a-pagar/lancar",
+    "headers": {
+      "authorization": "Bearer token-de-exemplo-nunca-real",
+      "x-request-id": "req-exemplo-lancar-400",
+      "idempotency-key": "tria:contas-a-pagar:outra-tarefa"
+    },
+    "body": {
+      "taskId": "tsk_00001a",
+      "centroDeCusto": "tria",
+      "categoriaDePagamento": "Impostos",
+      "titulo": "DAS — Simples Nacional",
+      "descricao": "Imposto mensal",
+      "tagDaConta": "conta tria",
+      "valorCentavos": 123456,
+      "vencimento": "2026-10-15",
+      "formaDePagamento": "Chave Pix",
+      "chavePix": "11.222.333/0001-81",
+      "fornecedor": {
+        "tipo": "CNPJ",
+        "documento": "11.222.333/0001-81",
+        "nome": "Fornecedor Fictício LTDA"
+      },
+      "observacao": "Guia mensal"
+    }
+  },
+  "resposta": {
+    "status": 400,
+    "corpo": {
+      "error": {
+        "code": "IDEMPOTENCY_KEY_INVALIDA",
+        "message": "Idempotency-Key não corresponde à Tarefa informada no corpo.",
+        "requestId": "req-exemplo-lancar-400",
+        "retryable": false
+      }
+    }
+  }
+}
