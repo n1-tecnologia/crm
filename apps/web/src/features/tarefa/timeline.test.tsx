@@ -269,7 +269,7 @@ describe("Timeline — Ctrl+Enter envia, Enter sozinho não (g)", () => {
     const task = montarTarefa(state);
     renderizar(state, ordens, transporte, "mem_maryane", task);
 
-    const campo = screen.getByPlaceholderText("Escreva um comentário. Ctrl+Enter envia.");
+    const campo = screen.getByPlaceholderText("Escreva um comentário. @ menciona alguém. Ctrl+Enter envia.");
     fireEvent.change(campo, { target: { value: "Olá" } });
 
     fireEvent.keyDown(campo, { key: "Enter" });
@@ -289,7 +289,7 @@ describe("Timeline — rascunho preservado durante o envio e no erro (h)", () =>
     );
     renderizar(state, ordens, transporte, "mem_maryane", task);
 
-    const campo = screen.getByPlaceholderText("Escreva um comentário. Ctrl+Enter envia.") as HTMLTextAreaElement;
+    const campo = screen.getByPlaceholderText("Escreva um comentário. @ menciona alguém. Ctrl+Enter envia.") as HTMLTextAreaElement;
     fireEvent.change(campo, { target: { value: "Rascunho importante" } });
     fireEvent.keyDown(campo, { key: "Enter", ctrlKey: true });
 

@@ -30,8 +30,9 @@
  * Comentário sempre vira texto literal.
  */
 
-import { Send } from "lucide-react";
-import { useEffect, useId, useMemo, useState } from "react";
+import { ChevronRight, Send } from "lucide-react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
+import { CabecalhoDaAtividade, formatarQuando, normalizarBusca, type FiltroDaAtividade } from "@/features/tarefa/feed-de-atividade";
 import { addTaskComment } from "@n1/dominio/operations";
 import { useData, useLastResult, useRun } from "@/dados/store";
 import type { Formatters } from "@/features/shell/format";
@@ -43,7 +44,6 @@ import {
   EmptyState,
   Esqueleto,
   Icone,
-  MultiSelect,
   Painel,
   Pilula,
 } from "@/features/shell/ui";
@@ -161,42 +161,47 @@ function LinhaDeComentario({
   comment,
   pai,
   ehRoteamento,
+  timeZone,
 }: {
   readonly state: DataState;
   readonly fmt: Formatters;
   readonly comment: Comment;
   readonly pai: Comment | undefined;
   readonly ehRoteamento: boolean;
+  readonly timeZone: string;
 }) {
   const nome = resolverNomeDoAtor(state, comment.author);
   const tipo = rotuloDoTipo(comment.author);
+  void fmt;
 
+  // O cartão do ClickUp: avatar, nome e hora no topo; o texto embaixo. Resposta recua.
   return (
-    <li id={`comentario-${comment.id}`} className="item-solto scroll-mt-4" data-bloco="true" data-estatico="true">
-      <div className="flex items-start gap-3">
-        <ActorAvatar kind={comment.author.kind} name={nome} />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="app-base" style={{ fontWeight: 500, color: "var(--texto)" }}>
-              {nome}
-            </span>
-            {tipo ? <Pilula tom="neutro">{tipo}</Pilula> : null}
-            {ehRoteamento ? <Pilula tom="aviso">Pedido de aprovação</Pilula> : null}
-            <time dateTime={comment.createdAt} className="app-meta">
-              {fmt.relative(comment.createdAt)}
-            </time>
-            {comment.resolved ? <Pilula tom="sucesso">Resolvido</Pilula> : null}
-          </div>
-          {comment.parentCommentId ? (
-            <a href={`#comentario-${comment.parentCommentId}`} className="app-sm underline" style={{ color: "var(--texto-3)" }}>
-              Em resposta a {pai ? resolverNomeDoAtor(state, pai.author) : "comentário anterior"}
-            </a>
-          ) : null}
-          <Rico texto={comment.content} />
-          {comment.mentions.length > 0 ? (
-            <p className="app-meta">mencionou {comment.mentions.map((m) => nomeDaMencao(state, m)).join(", ")}</p>
-          ) : null}
+    <li id={`comentario-${comment.id}`} className={`scroll-mt-4 py-1.5${comment.parentCommentId ? " pl-6" : ""}`}>
+      <div
+        className="rounded-[var(--r-painel)] px-3 py-2.5"
+        style={{ background: "var(--superficie-1)", border: "1px solid var(--linha)" }}
+      >
+        <div className="flex items-center gap-2">
+          <ActorAvatar kind={comment.author.kind} name={nome} />
+          <span className="app-base min-w-0 truncate" style={{ fontWeight: 600, color: "var(--texto)" }}>
+            {nome}
+          </span>
+          {tipo ? <Pilula tom="neutro">{tipo}</Pilula> : null}
+          {ehRoteamento ? <Pilula tom="aviso">Pedido de aprovação</Pilula> : null}
+          {comment.resolved ? <Pilula tom="sucesso">Resolvido</Pilula> : null}
+          <time dateTime={comment.createdAt} className="app-sm ml-auto shrink-0 whitespace-nowrap" style={{ color: "var(--texto-3)" }}>
+            {formatarQuando(comment.createdAt, timeZone)}
+          </time>
         </div>
+        {comment.parentCommentId ? (
+          <a href={`#comentario-${comment.parentCommentId}`} className="app-sm mt-1 inline-block underline" style={{ color: "var(--texto-3)" }}>
+            Em resposta a {pai ? resolverNomeDoAtor(state, pai.author) : "comentário anterior"}
+          </a>
+        ) : null}
+        <Rico texto={comment.content} />
+        {comment.mentions.length > 0 ? (
+          <p className="app-meta mt-1">mencionou {comment.mentions.map((m) => nomeDaMencao(state, m)).join(", ")}</p>
+        ) : null}
       </div>
     </li>
   );
@@ -204,38 +209,35 @@ function LinhaDeComentario({
 
 /* ───────────────────────────── Entrada de Atividade ──────────────────────── */
 
-function LinhaDeAtividade({ state, fmt, record }: { readonly state: DataState; readonly fmt: Formatters; readonly record: ActivityRecord }) {
+function LinhaDeAtividade({
+  state,
+  record,
+  timeZone,
+}: {
+  readonly state: DataState;
+  readonly record: ActivityRecord;
+  readonly timeZone: string;
+}) {
   const nome = resolverNomeDoAtor(state, record.actor);
   // T-02-10 — Ator de integração: só o rótulo da ação. `before`/`after`/`detail`
   // podem carregar payload, CPF/CNPJ ou signed URL, então nunca renderizam aqui.
   const ehIntegracao = record.actor.kind === "integration";
 
+  // A linha discreta do ClickUp: bolinha · quem fez o quê · quando, à direita.
   return (
-    <li className="item-solto" data-bloco="true" data-estatico="true">
-      <div className="flex items-start gap-3">
-        <span
-          aria-hidden="true"
-          className="mt-1.5 shrink-0 rounded-full"
-          style={{ width: "0.5rem", height: "0.5rem", background: "var(--texto-3)" }}
-        />
-        <div className="min-w-0 flex-1">
-          <p className="app-base" style={{ color: "var(--texto-1)" }}>
-            <span style={{ fontWeight: 500, color: "var(--texto)" }}>{nome}</span>
-            {record.delegate ? <span style={{ color: "var(--texto-3)" }}> em nome de {resolverNomeDoAtor(state, record.delegate)}</span> : null}{" "}
-            {record.action}
-            {!ehIntegracao && (record.before || record.after) ? (
-              <span style={{ color: "var(--texto-3)" }}>
-                {" "}
-                ({record.before ?? "—"} → {record.after ?? "—"})
-              </span>
-            ) : null}
-          </p>
-          <p className="app-meta">
-            <time dateTime={record.at}>{fmt.relative(record.at)}</time>
-            {!ehIntegracao && record.detail ? ` · ${record.detail}` : ""}
-          </p>
-        </div>
-      </div>
+    <li className="flex items-start gap-3 py-1.5">
+      <span aria-hidden="true" className="app-sm shrink-0 leading-5" style={{ color: "var(--texto-4)" }}>
+        •
+      </span>
+      <span className="app-sm min-w-0 flex-1 break-words leading-5" style={{ color: "var(--texto-3)" }}>
+        <span>{nome}</span>
+        {record.delegate ? ` em nome de ${resolverNomeDoAtor(state, record.delegate)}` : ""} {record.action}
+        {!ehIntegracao && (record.before || record.after) ? ` (${record.before ?? "—"} → ${record.after ?? "—"})` : ""}
+        {!ehIntegracao && record.detail ? ` · ${record.detail}` : ""}
+      </span>
+      <time dateTime={record.at} className="app-sm shrink-0 whitespace-nowrap leading-5" style={{ color: "var(--texto-3)" }}>
+        {formatarQuando(record.at, timeZone)}
+      </time>
     </li>
   );
 }
@@ -294,20 +296,63 @@ function useCompositorDeTimeline(task: Task, texto: string, mencoes: readonly st
   return { erro, enviando, enviar };
 }
 
+/** O "@" em curso: o que vem depois do último "@" antes do cursor (até dois espaços — nomes têm sobrenome). */
+function arrobaEmCurso(texto: string, caret: number): { readonly inicio: number; readonly consulta: string } | null {
+  const antes = texto.slice(0, caret);
+  const m = /(^|\s)@([^\s@]*(?:\s[^\s@]*){0,2})$/.exec(antes);
+  const consulta = m?.[2];
+  return consulta !== undefined ? { inicio: antes.length - consulta.length - 1, consulta } : null;
+}
+
 function Compositor({ task }: { readonly task: Task }) {
   const members = useData((data) => data.members);
   const [texto, setTexto] = useState("");
-  const [mencoes, setMencoes] = useState<readonly string[]>([]);
+  /** Quem foi escolhido pelo "@" — só conta na hora de enviar se o "@Nome" ainda estiver no texto. */
+  const [escolhidos, setEscolhidos] = useState<ReadonlyArray<{ readonly id: string; readonly nome: string }>>([]);
+  const [caret, setCaret] = useState(0);
+  const [sugestaoAtiva, setSugestaoAtiva] = useState(0);
+  const [sugestoesFechadas, setSugestoesFechadas] = useState(false);
+  const campo = useRef<HTMLTextAreaElement>(null);
+  const mencoes = escolhidos.filter((m) => texto.includes(`@${m.nome}`)).map((m) => m.id);
   const controlador = useCompositorDeTimeline(task, texto, mencoes, () => {
     setTexto("");
-    setMencoes([]);
+    setEscolhidos([]);
+    setCaret(0);
   });
   const id = useId();
 
+  const arroba = arrobaEmCurso(texto, caret);
+  const sugestoes =
+    arroba && !sugestoesFechadas
+      ? members
+          .filter((m) => m.state === "ativo")
+          .filter((m) => normalizarBusca(m.displayName).includes(normalizarBusca(arroba.consulta)))
+          .slice(0, 6)
+      : [];
+
+  const mencionar = (membro: { readonly id: string; readonly displayName: string }) => {
+    if (!arroba) return;
+    const antes = texto.slice(0, arroba.inicio);
+    const depois = texto.slice(caret);
+    const novoCaret = antes.length + membro.displayName.length + 2;
+    setTexto(`${antes}@${membro.displayName} ${depois}`);
+    setEscolhidos((atual) => (atual.some((m) => m.id === membro.id) ? atual : [...atual, { id: membro.id, nome: membro.displayName }]));
+    setCaret(novoCaret);
+    setSugestaoAtiva(0);
+    // O cursor volta para depois do nome, e o foco continua no campo.
+    requestAnimationFrame(() => {
+      const el = campo.current;
+      if (!el) return;
+      el.focus({ preventScroll: true });
+      el.setSelectionRange(novoCaret, novoCaret);
+    });
+  };
+
+  const rotuloDoEnvio = controlador.enviando ? "Enviando…" : "Comentar";
+
   return (
     <form
-      className="grid gap-2 pt-2"
-      style={{ borderTop: "1px solid var(--linha-sutil)" }}
+      className="grid gap-2"
       onSubmit={(event) => {
         event.preventDefault();
         controlador.enviar();
@@ -316,104 +361,225 @@ function Compositor({ task }: { readonly task: Task }) {
       <label htmlFor={id} className="sr-only">
         Novo comentário
       </label>
-      <textarea
-        id={id}
-        value={texto}
-        onChange={(event) => setTexto(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-            event.preventDefault();
-            controlador.enviar();
-          }
-          // Enter sozinho: comportamento padrão do textarea — nova linha.
-        }}
-        rows={3}
-        disabled={controlador.enviando}
-        placeholder="Escreva um comentário. Ctrl+Enter envia."
-        className="campo"
-      />
+      <div className="relative">
+        <textarea
+          ref={campo}
+          id={id}
+          value={texto}
+          onChange={(event) => {
+            setTexto(event.target.value);
+            setCaret(event.target.selectionStart ?? event.target.value.length);
+            setSugestaoAtiva(0);
+            setSugestoesFechadas(false);
+          }}
+          onSelect={(event) => setCaret((event.target as HTMLTextAreaElement).selectionStart ?? 0)}
+          onKeyDown={(event) => {
+            // Com o menu de "@" aberto, as setas e o Enter escolhem; Esc fecha só o menu.
+            if (sugestoes.length > 0) {
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setSugestaoAtiva((i) => (i + 1) % sugestoes.length);
+                return;
+              }
+              if (event.key === "ArrowUp") {
+                event.preventDefault();
+                setSugestaoAtiva((i) => (i - 1 + sugestoes.length) % sugestoes.length);
+                return;
+              }
+              if ((event.key === "Enter" && !event.ctrlKey && !event.metaKey) || event.key === "Tab") {
+                event.preventDefault();
+                const escolhido = sugestoes[sugestaoAtiva];
+                if (escolhido) mencionar(escolhido);
+                return;
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                setSugestoesFechadas(true);
+                return;
+              }
+            }
+            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault();
+              controlador.enviar();
+            }
+            // Enter sozinho: comportamento padrão do textarea — nova linha.
+          }}
+          rows={2}
+          disabled={controlador.enviando}
+          aria-autocomplete="list"
+          aria-controls={sugestoes.length > 0 ? `${id}-sugestoes` : undefined}
+          placeholder="Escreva um comentário. @ menciona alguém. Ctrl+Enter envia."
+          className="campo block"
+          // O canto inferior direito é do botão de enviar: o texto não passa por baixo dele.
+          style={{ height: "auto", paddingBlock: "var(--e-2)", paddingRight: "var(--controle-h)", resize: "none" }}
+        />
+        <button
+          type="submit"
+          aria-label={rotuloDoEnvio}
+          title={texto.trim() === "" ? "Escreva o comentário antes de enviar." : `${rotuloDoEnvio} (Ctrl+Enter)`}
+          disabled={texto.trim() === "" || controlador.enviando}
+          className="btn-icone btn-icone-enviar absolute"
+          style={{ right: "var(--e-1)", bottom: "var(--e-1)" }}
+        >
+          <Icone de={Send} tamanho="xs" />
+        </button>
+        {sugestoes.length > 0 ? (
+          <ul
+            id={`${id}-sugestoes`}
+            role="listbox"
+            aria-label="Pessoas para mencionar"
+            className="flutuante surgir-rapido absolute bottom-full left-0 z-20 mb-1 w-full max-w-xs overflow-hidden p-1"
+          >
+            {sugestoes.map((membro, index) => (
+              <li key={membro.id} role="none">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={index === sugestaoAtiva}
+                  data-highlighted={index === sugestaoAtiva ? "" : undefined}
+                  onMouseEnter={() => setSugestaoAtiva(index)}
+                  // pointerdown, não click: o click tiraria o foco do campo antes de escolher.
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    mencionar(membro);
+                  }}
+                  className="item-menu w-full"
+                >
+                  <ActorAvatar kind="member" name={membro.displayName} />
+                  <span className="min-w-0 flex-1 truncate">{membro.displayName}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
       {controlador.erro ? (
         <p role="alert" className="app-base" style={{ color: "var(--erro)" }}>
           {controlador.erro}
         </p>
       ) : null}
-      <div className="flex flex-wrap items-end gap-2">
-        <span className="min-w-56 flex-1">
-          <label htmlFor={`${id}-mencoes`} className="sr-only">
-            Mencionar alguém
-          </label>
-          <MultiSelect
-            id={`${id}-mencoes`}
-            values={mencoes}
-            onChange={setMencoes}
-            placeholder="Mencionar alguém"
-            options={members.filter((m) => m.state === "ativo").map((m) => ({ value: m.id, label: m.displayName }))}
-          />
-        </span>
-        <Button
-          type="submit"
-          variant="primary"
-          disabled={texto.trim() === "" || controlador.enviando}
-          disabledReason={controlador.enviando ? "Enviando…" : "Escreva o comentário antes de enviar."}
-          icon={<Icone de={Send} tamanho="xs" />}
-        >
-          {controlador.enviando ? "Enviando…" : "Comentar"}
-        </Button>
-      </div>
     </form>
   );
 }
 
 /* ───────────────────────────── Painel ─────────────────────────────────────── */
 
+/** Uma sequência de Atividade maior que isto recolhe o miolo em "Mostrar mais". */
+const ATIVIDADES_SEM_RECOLHER = 4;
+
 export function Timeline({ task, fmt, readOnly }: { readonly task: Task; readonly fmt: Formatters; readonly readOnly: boolean }) {
   const state = useData((data) => data);
   const [janela, setJanela] = useState(TIMELINE_PAGE_SIZE);
+  const [busca, setBusca] = useState("");
+  const [filtro, setFiltro] = useState<FiltroDaAtividade>("tudo");
+  const [abertas, setAbertas] = useState<ReadonlySet<string>>(new Set());
+  const timeZone = state.workspace.locale.timezone;
 
-  const entradas = useMemo(() => entradasDaTarefa(state, task), [state, task]);
+  const todas = useMemo(() => entradasDaTarefa(state, task), [state, task]);
   const roteamento = useMemo(() => comentariosDeRoteamento(state, task), [state, task]);
+
+  const termo = normalizarBusca(busca.trim());
+  const entradas = todas.filter((entrada) => {
+    if (filtro === "comentarios" && entrada.tipo !== "comentario") return false;
+    if (filtro === "atividade" && entrada.tipo !== "atividade") return false;
+    if (termo === "") return true;
+    const texto =
+      entrada.tipo === "comentario"
+        ? `${resolverNomeDoAtor(state, entrada.comment.author)} ${entrada.comment.content}`
+        : `${resolverNomeDoAtor(state, entrada.record.actor)} ${entrada.record.action}`;
+    return normalizarBusca(texto).includes(termo);
+  });
   const temMais = entradas.length > janela;
   const visiveis = entradas.slice(Math.max(0, entradas.length - janela));
-  const contagemVisivel = task.comments.filter((c) => !c.deletedAt).length + entradas.filter((e) => e.tipo === "atividade").length;
+
+  // Sequências de Atividade: o ClickUp mostra a primeira e as duas últimas, e recolhe o miolo.
+  const blocos: Array<{ readonly tipo: "comentario"; readonly entrada: EntradaDeComentario } | { readonly tipo: "atividades"; readonly itens: EntradaDeAtividade[] }> = [];
+  for (const entrada of visiveis) {
+    const ultimo = blocos.at(-1);
+    if (entrada.tipo === "comentario") blocos.push({ tipo: "comentario", entrada });
+    else if (ultimo && ultimo.tipo === "atividades") ultimo.itens.push(entrada);
+    else blocos.push({ tipo: "atividades", itens: [entrada] });
+  }
+
+  const linhaDeAtividade = (entrada: EntradaDeAtividade) => (
+    <LinhaDeAtividade key={`a-${entrada.record.id}`} state={state} record={entrada.record} timeZone={timeZone} />
+  );
 
   return (
-    <Painel>
-      <CabecalhoDePainel titulo="Timeline" contagem={contagemVisivel} />
-      <div className="p-3 grid gap-3">
-        {entradas.length === 0 ? (
-          <EmptyState compact title="Nenhum comentário ou atividade nesta Solicitação." />
-        ) : (
-          <>
-            {temMais ? (
-              <div className="flex justify-center">
-                <Button onClick={() => setJanela((atual) => atual + TIMELINE_PAGE_SIZE)}>Carregar atividades anteriores</Button>
-              </div>
-            ) : null}
-            <ol className="pilha-solta">
-              {visiveis.map((entrada) =>
-                entrada.tipo === "comentario" ? (
-                  <LinhaDeComentario
-                    key={`c-${entrada.comment.id}`}
-                    state={state}
-                    fmt={fmt}
-                    comment={entrada.comment}
-                    pai={
-                      entrada.comment.parentCommentId
-                        ? task.comments.find((c) => c.id === entrada.comment.parentCommentId)
-                        : undefined
-                    }
-                    ehRoteamento={roteamento.has(entrada.comment.id)}
-                  />
-                ) : (
-                  <LinhaDeAtividade key={`a-${entrada.record.id}`} state={state} fmt={fmt} record={entrada.record} />
-                ),
-              )}
-            </ol>
-          </>
-        )}
-        {readOnly ? null : <Compositor task={task} />}
+    <div className="flex min-h-0 flex-1 flex-col">
+      <CabecalhoDaAtividade
+        observadores={task.observerMemberIds?.length ?? 0}
+        busca={busca}
+        onBusca={setBusca}
+        filtro={filtro}
+        onFiltro={setFiltro}
+      />
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-3">
+        {/* Encostado embaixo, como um chat: o espaço vazio fica em cima. */}
+        <div className="flex min-h-full flex-col justify-end">
+          {todas.length === 0 ? (
+            <EmptyState compact title="Nenhum comentário ou atividade nesta Solicitação." />
+          ) : entradas.length === 0 ? (
+            <EmptyState compact title="Nada encontrado com esse filtro." />
+          ) : (
+            <>
+              {temMais ? (
+                <div className="flex justify-center pb-2">
+                  <Button size="sm" variant="ghost" onClick={() => setJanela((atual) => atual + TIMELINE_PAGE_SIZE)}>
+                    Carregar atividades anteriores
+                  </Button>
+                </div>
+              ) : null}
+              <ol className="grid">
+                {blocos.map((bloco) => {
+                  if (bloco.tipo === "comentario") {
+                    const comment = bloco.entrada.comment;
+                    return (
+                      <LinhaDeComentario
+                        key={`c-${comment.id}`}
+                        state={state}
+                        fmt={fmt}
+                        comment={comment}
+                        pai={comment.parentCommentId ? task.comments.find((c) => c.id === comment.parentCommentId) : undefined}
+                        ehRoteamento={roteamento.has(comment.id)}
+                        timeZone={timeZone}
+                      />
+                    );
+                  }
+                  const chave = bloco.itens[0]!.record.id;
+                  const recolhe = termo === "" && !abertas.has(chave) && bloco.itens.length > ATIVIDADES_SEM_RECOLHER;
+                  if (!recolhe) return <Fragment key={`b-${chave}`}>{bloco.itens.map(linhaDeAtividade)}</Fragment>;
+                  const escondidas = bloco.itens.length - 3;
+                  return (
+                    <Fragment key={`b-${chave}`}>
+                      {linhaDeAtividade(bloco.itens[0]!)}
+                      <li>
+                        <button
+                          type="button"
+                          onClick={() => setAbertas((atual) => new Set(atual).add(chave))}
+                          className="app-sm flex items-center gap-3 py-1.5 hover:underline"
+                          style={{ color: "var(--texto-3)" }}
+                        >
+                          <Icone de={ChevronRight} tamanho="xs" />
+                          Mostrar mais <span className="app-numero">({escondidas})</span>
+                        </button>
+                      </li>
+                      {bloco.itens.slice(-2).map(linhaDeAtividade)}
+                    </Fragment>
+                  );
+                })}
+              </ol>
+            </>
+          )}
+        </div>
       </div>
-    </Painel>
+      {readOnly ? null : (
+        <div className="doca-do-robo shrink-0 px-4 py-3" data-robo="acima" style={{ borderTop: "1px solid var(--linha)" }}>
+          <Compositor task={task} />
+        </div>
+      )}
+    </div>
   );
 }
 

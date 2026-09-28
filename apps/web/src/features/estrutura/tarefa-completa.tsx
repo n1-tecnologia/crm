@@ -43,6 +43,7 @@ import { DialogoFluxoManual, fluxoManualRecusado } from "@/features/tarefa/fluxo
 import { DialogoLancamentoNoOmie, lancamentoNoOmieRecusado } from "@/features/tarefa/lancamento-no-omie-dialog";
 import { PainelAprovacao } from "@/features/tarefa/painel-aprovacao";
 import { Timeline } from "@/features/tarefa/timeline";
+import { CabecalhoDaAtividade, FeedDeAtividade, type FiltroDaAtividade } from "@/features/tarefa/feed-de-atividade";
 import { PainelDeAnexos } from "@/features/tarefa/anexos";
 import { useId, useRef, useState, type ReactNode } from "react";
 import {
@@ -57,7 +58,6 @@ import {
   CircleDot,
   Flag,
   Hash,
-  History,
   Hourglass,
   Link2,
   ListChecks,
@@ -168,8 +168,6 @@ import {
 import type { DataState } from "@n1/dominio/state";
 import type { ActorRef, ChannelType } from "@n1/dominio/types";
 
-/** §15 — a slice that hides rows always states the cut and offers the rest. */
-const ACTIVITY_PAGE_SIZE = 12;
 
 /** A faixa de aviso entre o cabeçalho e o corpo: arquivada, na lixeira, somente leitura. */
 const FAIXA_DE_AVISO = {
@@ -225,6 +223,8 @@ export function TarefaCompleta({
   const [compartilhando, setCompartilhando] = useState(false);
   const [fluxoManualAberto, setFluxoManualAberto] = useState(false);
   const [lancamentoNoOmieAberto, setLancamentoNoOmieAberto] = useState(false);
+  const [buscaDaAtividade, setBuscaDaAtividade] = useState("");
+  const [filtroDaAtividade, setFiltroDaAtividade] = useState<FiltroDaAtividade>("tudo");
   const [newChecklist, setNewChecklist] = useState("");
   const [newItem, setNewItem] = useState<Record<string, string>>({});
   const [newSubtask, setNewSubtask] = useState("");
@@ -2141,10 +2141,12 @@ export function TarefaCompleta({
             <Timeline task={task} fmt={fmt} readOnly={!comenta} />
           ) : (
           <>
-          <CabecalhoDePainel
-            titulo="Atividade"
-            contagem={contagemDaAtividade}
-            className="shrink-0"
+          <CabecalhoDaAtividade
+            observadores={task.observerMemberIds?.length ?? 0}
+            busca={buscaDaAtividade}
+            onBusca={setBuscaDaAtividade}
+            filtro={filtroDaAtividade}
+            onFiltro={setFiltroDaAtividade}
             {...(fichaConversacional
               ? {
                   acao: (
@@ -2173,55 +2175,17 @@ export function TarefaCompleta({
             report={report}
             authorLabel={(actor) => authorLabel(state, actor)}
             readOnly={!comenta}
+            busca={buscaDaAtividade}
+            ocultarComentarios={filtroDaAtividade === "atividade"}
             antes={
-              <details className="mb-3 rounded-[var(--r-painel)] px-3 py-2" style={{ background: "var(--superficie-1)", border: "1px solid var(--linha)" }}>
-                <summary className="app-meta flex cursor-pointer items-center gap-2">
-                  <Icone de={History} tamanho="xs" />
-                  Registro de Atividade
-                  <span className="app-numero">{activity.length}</span>
-                </summary>
-                <div className="mt-2">
-                {activity.length === 0 ? (
-                  <EmptyState compact title="Nenhum Registro de Atividade nesta Tarefa." />
-                ) : (
-                  <ul className="pilha-solta">
-                    {activity.slice(0, ACTIVITY_PAGE_SIZE).map((record) => (
-                      <li
-                        key={record.id}
-                        className="item-solto app-base"
-                        data-bloco="true"
-                        data-estatico="true"
-                        style={{ color: "var(--texto)" }}
-                      >
-                        <span style={{ color: "var(--texto-3)" }}>
-                          {fmt.relative(record.at)}
-                        </span>{" "}
-                        · {authorLabel(state, record.actor)}
-                        {record.delegate
-                          ? ` em nome de ${authorLabel(state, record.delegate)}`
-                          : ""}{" "}
-                        · {record.action}
-                        {record.before || record.after ? (
-                          <span style={{ color: "var(--texto-3)" }}>
-                            {" "}
-                            ({record.before ?? "—"} → {record.after ?? "—"})
-                          </span>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {activity.length > ACTIVITY_PAGE_SIZE ? (
-                  <p className="app-meta app-numero mt-2">
-                    Mostrando {ACTIVITY_PAGE_SIZE} de {activity.length}.{" "}
-                    <Link href="/configuracoes/auditoria" className="underline">
-                      Ver tudo na Auditoria
-                    </Link>
-                    .
-                  </p>
-                ) : null}
-                </div>
-              </details>
+              filtroDaAtividade === "comentarios" ? undefined : (
+                <FeedDeAtividade
+                  registros={activity}
+                  authorLabel={(actor) => authorLabel(state, actor)}
+                  timeZone={state.workspace.locale.timezone}
+                  busca={buscaDaAtividade}
+                />
+              )
             }
           />
           </div>

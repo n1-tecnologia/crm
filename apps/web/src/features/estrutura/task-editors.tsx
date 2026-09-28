@@ -693,6 +693,8 @@ export function TaskComments({
   authorLabel,
   readOnly,
   antes,
+  busca = "",
+  ocultarComentarios = false,
 }: {
   readonly task: Task;
   readonly report: Report;
@@ -700,6 +702,10 @@ export function TaskComments({
   readonly readOnly: boolean;
   /** O que vem antes das mensagens na mesma rolagem — a Atividade recolhida. */
   readonly antes?: React.ReactNode;
+  /** A busca do cabeçalho da Atividade: só os fios com o termo ficam à mostra. */
+  readonly busca?: string;
+  /** O filtro "Só atividade" do cabeçalho esconde os Comentários. */
+  readonly ocultarComentarios?: boolean;
 }) {
   const run = useRun();
   // O Comentário recém-enviado surge; os outros já estão.
@@ -719,7 +725,14 @@ export function TaskComments({
   void report;
 
   const vivos = task.comments.filter((c) => !c.deletedAt);
-  const raizes = vivos.filter((c) => !c.parentCommentId).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const termo = normalizar(busca.trim());
+  const casa = (c: (typeof vivos)[number]) => termo === "" || normalizar(c.content).includes(termo);
+  const raizes = ocultarComentarios
+    ? []
+    : vivos
+        .filter((c) => !c.parentCommentId)
+        .filter((c) => casa(c) || vivos.some((r) => r.parentCommentId === c.id && casa(r)))
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const respostasDe = (id: string) => vivos.filter((c) => c.parentCommentId === id).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const nomeDaMencao = (m: { readonly type: string; readonly id: string }) =>
     m.type === "member" ? (members.find((x) => x.id === m.id)?.displayName ?? m.id) : m.id;
@@ -784,9 +797,11 @@ export function TaskComments({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div ref={rolagem} className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-3">
+        {/* Encostado embaixo, como um chat: o espaço vazio fica em cima. */}
+        <div className="flex min-h-full flex-col justify-end gap-4">
         {antes}
         {raizes.length === 0 ? (
-          <EmptyState compact title="Nenhum Comentário ainda." hint={readOnly ? undefined : "O que você escrever aqui fica na Tarefa, com autor e hora."} />
+          antes ? null : <EmptyState compact title="Nenhum Comentário ainda." hint={readOnly ? undefined : "O que você escrever aqui fica na Tarefa, com autor e hora."} />
         ) : (
           <ol className="grid gap-4">
             {raizes.map((raiz) => {
@@ -851,6 +866,7 @@ export function TaskComments({
             })}
           </ol>
         )}
+        </div>
       </div>
       {readOnly ? (
         <p className="app-meta shrink-0 px-3 py-2" style={{ borderTop: "1px solid var(--linha)" }}>
