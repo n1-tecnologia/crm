@@ -1,0 +1,55 @@
+# CI mínima do crm-n1 (plano pós-auditoria, Etapa 7 —
+# docs/08-migracao-financeiro/07-plano-de-correcoes-pos-auditoria.md).
+#
+# Roda o mesmo `npm run check` do desenvolvedor — tipos, lint, tokens,
+# contratos e testes dos três workspaces — SEM banco e SEM segredo:
+#   - `DATABASE_URL` vazia: os testes que falam com o Postgres pulam
+#     (`describe.skip`, DEC-09) em vez de falhar, e nenhum teste alcança o
+#     Postgres de produção;
+#   - `apps/api/.env` não existe no checkout (gitignored): `carregarEnv()` não
+#     carrega nada;
+#   - `verificar:contratos` só avisa quando o `financeiro-tria` não está ao
+#     lado — aqui ele nunca está.
+# Conferido antes do primeiro commit num export limpo do HEAD, sem `.env` e
+# com o ambiente vazio (`env -i`): verde, nos dois fusos abaixo.
+name: check
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # vitest 5 exige Node ^22.12 || ^24 || >=26.
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: npm run check (fuso do produto)
+        run: npm run check
+        env:
+          TZ: America/Sao_Paulo
+
+      # O domínio calcula "dia civil" no fuso local; um servidor em UTC é o
+      # caso em que a armadilha da meia-noite aparece. Só os testes, de novo.
+      - name: testes em UTC
+        run: npm run test
+        env:
+          TZ: UTC
