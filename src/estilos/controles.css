@@ -649,6 +649,24 @@
   .item-menu[data-destrutivo="true"] {
     color: var(--erro);
   }
+  /* O ícone do item acompanha o texto: apagado em repouso, aceso no realce. */
+  .item-menu > svg:first-child {
+    color: var(--texto-3);
+  }
+  .item-menu:hover > svg:first-child,
+  .item-menu:focus-visible > svg:first-child {
+    color: var(--texto);
+  }
+  /* As seções de um menu (`ItemDeMenu.secao`): o hairline e o título miúdo. */
+  .item-menu-separador {
+    height: 1px;
+    margin: var(--e-1) var(--e-2);
+    background: var(--linha-sutil);
+  }
+  .item-menu-secao {
+    padding: var(--e-1) var(--e-3) 0;
+    color: var(--texto-4);
+  }
   .item-menu[data-disabled],
   .item-menu:disabled,
   .item-menu[aria-disabled="true"] {

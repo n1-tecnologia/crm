@@ -1910,6 +1910,419 @@
     visibility: hidden;
   }
 
+  /* ── O COMPOSITOR DO CHAT (`features/ia/compositor-do-chat.tsx`) ─────────
+     2026-09-25: "o componente de chat deve seguir este prompt de exemplo" (o
+     PromptBar). Uma caixa GRAFITE nos cantos de destaque: o campo no alto e,
+     embaixo, uma fileira de botões redondos — à esquerda o que entra no
+     contexto (Âncora e Arquivos, Habilidade, pasta), à direita a largura da
+     conversa, o Agente, o Modelo em pílula, o microfone e o enviar.
+       A LUZ DA BORDA: o anel é um estêncil de 1px (padding + mask, como o aro
+     do carregador) e, dentro dele, um quadrado com o gradiente cônico GIRA
+     por transform, devagar (--dur-aro-compositor) — composto, sem repintar a
+     tela a cada quadro. O quadrado é uma FOLHA (nada fixed dentro dele): o
+     transform em repouso não prende popup nenhum, e ele está na allowlist do
+     repouso por exceção nomeada (DIRECAO-VISUAL §5). O contêiner não tem
+     transform nem overflow; quem RECORTA a luz é o próprio anel
+     (`overflow: clip`: sem isso o quadrado girando, só escondido pela
+     máscara, contava como área rolável e o corpo ganhava barras e rolagem
+     fantasma). Os menus são irmãos do anel e nada os corta. Em movimento reduzido a luz para onde está. Em repouso o
+     anel tem a cor da caixa (a borda não aparece, só a luz passando); com o
+     foco no campo, acende em hairline forte — nunca roxo. */
+  .compositor {
+    position: relative;
+    padding: 1px;
+    border-radius: var(--r-destaque);
+    background: var(--compositor-fundo);
+    box-shadow: var(--sombra-repouso);
+    transition: background-color var(--dur-2) var(--easing);
+  }
+  .compositor:focus-within {
+    background: var(--linha-forte);
+  }
+  .compositor-aro {
+    position: absolute;
+    inset: 0;
+    padding: 1px;
+    border-radius: inherit;
+    overflow: clip;
+    pointer-events: none;
+    /* O anel mede a si mesmo: a luz lê a largura e a altura dele (cqw/cqh). */
+    container-type: size;
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+  }
+  /* Um quadrado de lado largura + altura do anel, centrado: maior que a
+     diagonal em qualquer proporção (o campo pode crescer até
+     --compositor-campo-max), então cobre o anel inteiro em qualquer ângulo. */
+  .compositor-luz {
+    position: absolute;
+    top: calc(-50cqw);
+    left: calc(-50cqh);
+    width: calc(100cqw + 100cqh);
+    height: calc(100cqw + 100cqh);
+    background: conic-gradient(
+      from 0deg,
+      transparent 0deg 295deg,
+      var(--cinza-700) 308deg,
+      var(--texto) 325deg,
+      var(--cinza-700) 342deg,
+      transparent 355deg
+    );
+    animation: girar var(--dur-aro-compositor) linear infinite;
+  }
+  .compositor-caixa {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    border-radius: calc(var(--r-destaque) - 1px);
+    background: var(--compositor-fundo);
+    padding: var(--e-5) var(--e-5) var(--e-4);
+  }
+  .compositor[data-tamanho="rodape"] .compositor-caixa {
+    padding: var(--e-3) var(--e-4);
+  }
+  .compositor-campo {
+    width: 100%;
+    max-height: var(--compositor-campo-max);
+    margin-bottom: var(--e-6);
+    padding: 0;
+    resize: none;
+    border: 0;
+    background: transparent;
+    color: var(--texto);
+    font-size: var(--app-md);
+    line-height: var(--app-md-lh);
+    field-sizing: content;
+    overflow-y: auto;
+  }
+  .compositor[data-tamanho="rodape"] .compositor-campo {
+    margin-bottom: var(--e-3);
+  }
+  .compositor-campo::placeholder {
+    color: var(--texto-3);
+  }
+  .compositor-campo:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+  /* O que está no contexto da Sessão, à vista (a escolha não fica só na dica). */
+  .compositor-fichas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--e-1) var(--e-2);
+    margin-bottom: var(--e-3);
+  }
+  .compositor-ficha {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--e-1);
+    max-width: 100%;
+    min-height: var(--controle-h-sm);
+    padding-inline: var(--e-3);
+    border-radius: var(--r-pilula);
+    background: var(--superficie-ativa);
+    color: var(--texto-1);
+  }
+  .compositor-ficha > svg {
+    flex-shrink: 0;
+    color: var(--texto-3);
+  }
+  .compositor-ficha-rotulo {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  button.compositor-ficha-rotulo {
+    transition: color var(--dur-2) var(--easing);
+  }
+  button.compositor-ficha-rotulo:hover {
+    color: var(--texto);
+  }
+  .compositor-ficha-tirar {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+    width: var(--pilula-h);
+    height: var(--pilula-h);
+    margin-inline-end: calc(var(--e-2) * -1);
+    border-radius: var(--r-pilula);
+    color: var(--texto-3);
+    transition:
+      color var(--dur-2) var(--easing),
+      background-color var(--dur-2) var(--easing);
+  }
+  .compositor-ficha-tirar:hover {
+    color: var(--texto);
+    background: var(--superficie-hover);
+  }
+  /* Numa caixa estreita, a fileira quebra em duas antes de os botões se
+     sobreporem; sozinho numa linha, o grupo da direita cede só a pílula. */
+  .compositor-fileira {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--e-2);
+  }
+  .compositor-grupo {
+    display: flex;
+    align-items: center;
+    gap: var(--e-1);
+    min-width: 0;
+  }
+  .compositor-grupo:last-child {
+    margin-inline-start: auto;
+  }
+  .compositor-grupo > * {
+    flex-shrink: 0;
+  }
+  .compositor-grupo > :has(> .compositor-modo) {
+    flex-shrink: 1;
+    min-width: 0;
+  }
+  .compositor-botao {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+    width: var(--controle-h);
+    height: var(--controle-h);
+    border-radius: var(--r-pilula);
+    color: var(--texto-1);
+    transition:
+      color var(--dur-2) var(--easing),
+      background-color var(--dur-2) var(--easing);
+  }
+  .compositor-botao:hover,
+  .compositor-botao[aria-expanded="true"] {
+    background: var(--superficie-hover);
+    color: var(--texto);
+  }
+  .compositor-botao[aria-disabled="true"] {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background: transparent;
+  }
+  /* A pílula do Modelo (o "modo" do exemplo): o Modelo que vai responder. */
+  .compositor-modo {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--e-1);
+    max-width: min(14rem, 100%);
+    height: var(--controle-h-sm);
+    margin-inline: var(--e-1);
+    padding-inline: var(--e-3) var(--e-2);
+    border-radius: var(--r-pilula);
+    background: var(--superficie-ativa);
+    color: var(--texto-1);
+    white-space: nowrap;
+    transition:
+      color var(--dur-2) var(--easing),
+      background-color var(--dur-2) var(--easing);
+  }
+  .compositor-modo:hover,
+  .compositor-modo[aria-expanded="true"] {
+    background: var(--superficie-hover);
+    color: var(--texto);
+  }
+  .compositor-modo[aria-disabled="true"] {
+    cursor: not-allowed;
+    color: var(--texto-3);
+    background: var(--superficie-3);
+  }
+  /* O enviar: a única ação sólida da caixa, no degradê da marca. Sem o que
+     enviar, é o círculo neutro do exemplo — não um roxo apagado que parece
+     ativo. Encolhe só enquanto é pressionado (transform em :active). */
+  .compositor-enviar {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+    width: var(--controle-h);
+    height: var(--controle-h);
+    border-radius: var(--r-pilula);
+    background: var(--degrade-acento);
+    color: var(--sobre-degrade);
+    transition: transform var(--dur-1) var(--easing);
+  }
+  .compositor-enviar:active {
+    transform: scale(0.9);
+  }
+  .compositor-enviar[aria-disabled="true"] {
+    background: var(--superficie-ativa);
+    color: var(--texto-4);
+    cursor: not-allowed;
+  }
+  .compositor-enviar[aria-disabled="true"]:active {
+    transform: none;
+  }
+
+  /* ── A TELA DO CHAT (home e Sessão) ─────────────────────────────────────
+     A coluna da conversa tem duas larguras, escolhidas no compositor
+     ("Largura da conversa"); trocar não anima. */
+  .chat-tela {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+  .chat-coluna {
+    width: 100%;
+    max-width: var(--chat-coluna);
+    margin-inline: auto;
+  }
+  .chat-tela[data-largura="larga"] .chat-coluna {
+    max-width: var(--chat-coluna-larga);
+  }
+  /* A home: o bloco começa numa altura FIXA (--chat-home-topo, uma fração
+     da janela) — centrado, ele subiria a cada linha que o campo ganha e a
+     tela respiraria enquanto se escreve. O corpo da tela não vira contêiner
+     (lei 2: nada de container-type em ancestral de popup); quem mede a
+     largura, para as sugestões, é o miolo. */
+  .chat-home-miolo {
+    container-type: inline-size;
+    padding-block: max(var(--e-8), var(--chat-home-topo)) var(--e-10);
+  }
+  .chat-home-titulo {
+    margin-bottom: var(--e-6);
+    text-align: center;
+  }
+  /* As sugestões: três começos, mais leves que a caixa (sem fundo, hairline
+     sutil) — não disputam com o compositor. */
+  .chat-sugestoes {
+    display: grid;
+    gap: var(--e-2);
+    margin-top: var(--e-8);
+  }
+  @container (min-width: 36rem) {
+    .chat-sugestoes {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+  .chat-sugestao {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--e-2);
+    width: 100%;
+    height: 100%;
+    padding: var(--e-3) var(--e-4);
+    border: 1px solid var(--linha-sutil);
+    border-radius: var(--r-painel);
+    color: var(--texto-2);
+    text-align: left;
+    transition:
+      color var(--dur-2) var(--easing),
+      background-color var(--dur-2) var(--easing),
+      border-color var(--dur-2) var(--easing);
+  }
+  .chat-sugestao > svg {
+    color: var(--texto-3);
+    transition: color var(--dur-2) var(--easing);
+  }
+  .chat-sugestao:hover {
+    color: var(--texto);
+    background: var(--superficie-hover);
+    border-color: var(--linha);
+  }
+  .chat-sugestao:hover > svg {
+    color: var(--acento);
+  }
+  .chat-nota {
+    margin-top: var(--e-6);
+    text-align: center;
+    color: var(--texto-3);
+  }
+  /* A Sessão: o fio assenta EMBAIXO, junto da caixa (poucas Mensagens não
+     ficam presas no topo com um vão até o compositor). */
+  .chat-fio {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    min-height: 100%;
+  }
+  .chat-fio-lista {
+    display: grid;
+    gap: var(--e-6);
+    padding-block: var(--e-4);
+  }
+  .chat-balao {
+    max-width: 85%;
+    padding: var(--e-2) var(--e-4);
+    border-radius: var(--r-painel) var(--r-painel) var(--r-caixa) var(--r-painel);
+    background: var(--superficie-ativa);
+    color: var(--texto);
+  }
+  .chat-hora {
+    margin-top: var(--e-1);
+    color: var(--texto-3);
+  }
+  /* A Mensagem 'sistema' (trocou o Agente, trocou o Modelo): uma nota no meio
+     do fio entre dois hairlines, não um balão — ninguém a disse. */
+  .chat-aviso {
+    display: flex;
+    align-items: center;
+    gap: var(--e-3);
+    color: var(--texto-3);
+  }
+  .chat-aviso::before,
+  .chat-aviso::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--linha-sutil);
+  }
+  .chat-rodape {
+    padding: var(--e-2) var(--celula-x) var(--e-4);
+  }
+  .chat-rodape-nota {
+    margin-top: var(--e-2);
+    text-align: center;
+    color: var(--texto-3);
+  }
+
+  /* ── AS SESSÕES DE CHAT NO MENU (`ChatTree`, features/shell/app-shell.tsx)
+     2026-09-28: "preciso que haja uma separação entre as pastas e os chats
+     sem pastas". Dois grupos com título miúdo, alinhado ao ícone das linhas
+     (o recuo delas: 12px de nível + a seta de 24px + o respiro do link), e um
+     hairline antes das Sessões soltas — o grupo "Chats", com o "+" de novo
+     chat na ponta do título, sempre à vista (não só no hover). */
+  .chat-arvore-grupo {
+    padding: var(--e-2) var(--e-2) var(--e-1) calc(var(--e-3) + var(--e-6) + var(--e-2));
+  }
+  .chat-arvore-soltas {
+    margin-top: var(--e-2);
+    border-top: 1px solid var(--linha-sutil);
+  }
+  .chat-arvore-grupo-com-acao {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--e-2);
+    padding-block: var(--e-1);
+    padding-inline-end: 0;
+  }
+  .chat-arvore-novo {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+    width: var(--controle-h-sm);
+    height: var(--controle-h-sm);
+    border-radius: var(--r-controle);
+    color: var(--texto-3);
+    transition:
+      color var(--dur-2) var(--easing),
+      background-color var(--dur-2) var(--easing);
+  }
+  .chat-arvore-novo:hover {
+    color: var(--texto);
+    background: var(--superficie-hover);
+  }
+
   /* ── O ROBÔ FLUTUANTE (`features/shell/robo-flutuante.tsx`) ────────────
      Fora do Início, o robô vira um círculo pequeno no canto inferior direito
      que volta ao Início (2026-09-24). O rosto é uma imagem da própria cena,

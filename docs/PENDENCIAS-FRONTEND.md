@@ -593,6 +593,18 @@ do produto continua 1024×768, onde o palco está correto: é pendência, não d
 o único consumidor do ajuste, e `.orbe-varredura` saiu da allowlist de repouso do harness junto
 com o anel. Nada do palco anterior ficou sem consumidor.
 
+### P36. A Habilidade da Sessão: a tela filtra pela Concessão, a operação não
+
+Aberta em 2026-09-25, com o compositor do Chat. O menu "/" mostra escolhíveis só as Habilidades CONCEDIDAS ao Agente que responde (`motivoDeHabilidadeForaDoAgente`) — as outras numa linha, "n Habilidades sem Concessão para …". Mas `createChatSession` e `configureChatSession` ainda aceitam qualquer Habilidade ativa (o `skillId` da Sessão é extensão de produto, D3), e o Assistente padrão do seed não tem Concessão nenhuma. Decidir se a operação passa a recusar (e se o Assistente padrão ganha Concessões no seed), ou se a Habilidade da Sessão continua sendo só um pedido.
+
+### P35. Ditado no Chat — decisão do usuário
+
+Aberta em 2026-09-25. O PromptBar pedido tem um microfone que grava (pulso vermelho). O Chat NÃO recebe voz: o microfone do compositor está desligado com o porquê ("O Chat ainda não recebe voz: nada é gravado nem transcrito."). Ditado de verdade exige reconhecimento de fala — no Chrome, a Web Speech API manda o áudio aos servidores do Google, o que contraria o pedido de 2026-09-23 ("não armazene o áudio em lugar algum", P30) — ou um modelo local. Se o usuário aceitar a Web Speech API: um `useDitado` que reaproveita `falhaAntesDePedir`/`motivoDaFalha`/`comoResolver` do Início, escreve no campo em pt-BR e acende o microfone (no acento, com `aria-pressed` e o estado em texto) só enquanto transcreve.
+
+### P34. Anexar Arquivo e imagem no Chat
+
+Aberta em 2026-09-25. O "+" do compositor mostra "Anexar arquivo" e "Anexar imagem" desligados ("O Chat ainda não recebe Arquivos: a Mensagem leva só texto."). A Mensagem de Chat prevê Arquivos (`ChatMessage.fileIds`, A8; RN-CHT-14/18/19), mas `sendChatMessage` grava sempre `fileIds: []` e recusa texto vazio. Para existir: aceitar Arquivos na operação (como o `attachFile` da Tarefa: nome, tipo e tamanho), mostrá-los como fichas no compositor e no balão, e a Mensagem `sistema` quando o Modelo efetivo não lê o tipo (RN-CHT-19: o "Modelo rápido" só lê texto).
+
 ### P33. A rolagem suave e a cena num computador sem GPU
 
 Aberta em 2026-09-24, com o Início rolando. Com a cena do robô a desenhar por software (o Chrome sem GPU, ou com a aceleração desligada), a página cai a ~2,5 quadros por segundo e a rolagem SUAVE programática (o atalho "Seu resumo", a volta pelo robô flutuante) demora mais de um segundo para começar a andar — medido em headless com swiftshader; com a cena pausada (o resumo cobrindo o palco) são 42 quadros. Numa GPU de verdade não acontece, e o movimento reduzido rola instantâneo. Se aparecer no mundo real, o corte é pausar a cena durante a rolagem suave (ou trocá-la por uma imagem abaixo de um orçamento de hardware, P29).

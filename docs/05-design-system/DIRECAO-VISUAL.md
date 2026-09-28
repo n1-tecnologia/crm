@@ -111,7 +111,7 @@ Onde mora: os tokens no bloco **Movimento** de `tokens.css` (`--dur-1` 150 ms ·
 
 ### A exceção nomeada: laços e medidores
 
-`--easing` é a curva de **interação**. Um laço (o pulso do esqueleto e do ícone pendente, o giro do spinner, a deriva das orbes, o cintilar das estrelas) usa `ease-in-out`; um medidor (a régua de tempo do Toast, a barra de rota rumo a 80 %) usa `linear` ou `--easing-saida`. Um laço não é interação — não começa nem termina numa ação da pessoa — e um medidor que acelera mente. São as únicas curvas além de `--easing`, e estão nomeadas aqui para que a lista não cresça.
+`--easing` é a curva de **interação**. Um laço (o pulso do esqueleto e do ícone pendente, o giro do spinner, a deriva das orbes, o cintilar das estrelas) usa `ease-in-out`; um medidor (a régua de tempo do Toast, a barra de rota rumo a 80 %) usa `linear` ou `--easing-saida`. Um laço não é interação — não começa nem termina numa ação da pessoa — e um medidor que acelera mente. São as únicas curvas além de `--easing`, e estão nomeadas aqui para que a lista não cresça. A luz da borda do compositor do Chat (2026-09-25) gira em `linear`, como o spinner: um giro que acelerasse e freasse a cada volta pulsaria.
 
 ### O orçamento por tela
 
@@ -123,7 +123,7 @@ Onde mora: os tokens no bloco **Movimento** de `tokens.css` (`--dur-1` 150 ms ·
 | Popup (`SidePanel`, `ConfirmDialog`) | entra em 300 ms, sai em 150 ms; sem escala, sem altura animada. |
 | Menu, seletor, subárvore | entra em 150 ms, sai em 0 — fecha no quadro da escolha. |
 | Toast | entra em 300 ms, sai em 150 ms; vive 6 s (8 s com ação); erro não expira. |
-| Laços infinitos | só no esqueleto (visível < 1 s), no spinner, no carregador de ícones (aro e ciclo), no Início (o robô é uma cena WebGL do Spline com o laço dele; a entrada da câmera é um `requestAnimationFrame` que termina em ~3 s), na atmosfera do Entrar e na marca do Login (flutua e respira). |
+| Laços infinitos | só no esqueleto (visível < 1 s), no spinner, no carregador de ícones (aro e ciclo), no Início (o robô é uma cena WebGL do Spline com o laço dele; a entrada da câmera é um `requestAnimationFrame` que termina em ~3 s), na atmosfera do Entrar, na marca do Login (flutua e respira) e, desde 2026-09-25, na **borda do compositor do Chat** — a luz que percorre o anel (`--dur-aro-compositor`, 7 s, `linear`), pedida com o PromptBar ("o componente de chat deve seguir este prompt de exemplo"); é um quadrado com gradiente cônico girando por `transform` DENTRO de um anel-estêncil de 1 px (composto, sem repintar a tela), folha sem nada `fixed` dentro, e para no movimento reduzido. |
 | Blur | só em `revelar` e no véu (2 px) — e no robô do Início saindo pela rolagem (`--chegada-desfoque` × a fração rolada: o `revelar` ao contrário, por posição, não animação; some com movimento reduzido). Halo só no fio (`--brilho-fio`). |
 | Camadas | sem `will-change` em lugar nenhum; nenhuma camada de composição permanente depois de 1 s. `transition: width/height` só nas folhas de gráfico (poucas e pequenas). |
 | Por tela | count-up ≤ 8 nós · lanterna ≤ 12 por grade · esqueleto ≤ 24 linhas com `--i`. |
@@ -157,7 +157,7 @@ Toda PR que toque movimento roda o checklist de `CHECKLIST-MOVIMENTO.md` com o h
 - **`transform` em estado de repouso.** O painel lateral e o diálogo são `fixed` sem portal; um `transform` permanente num ancestral os prende. Lift só em `:hover`/`:active`, e toda entrada termina em `transform: none` (§5, lei 3).
 - **Duração literal e utilitário de movimento.** Nenhum `300ms`/`1.5s` fora de `tokens.css`; nenhum `animate-*`, `duration-*`, `ease-*` ou `transition-transform` em `className`; nenhum `will-change`; `forwards` só em `sumir` e na régua do Toast. É a regra 4 da mesma sentinela: a curva e o tempo são do sistema, não da peça.
 - **`overflow: hidden` em volta de peça solta** — corta a sombra e o lift. E wrapper `overflow-x: auto` em volta de `.tabela` — vira contêiner de rolagem nos dois eixos e o `thead` deixa de grudar. Quem rola é o corpo da tela; colunas menos úteis somem por **largura do contêiner** (`@container` + `@3xl:table-cell`…), não por largura da janela, porque a casca come 320 px.
-- **Gradiente fora do botão sólido e da marca.** Os 10 % do manual são exatamente isso.
+- **Gradiente fora do botão sólido e da marca.** Os 10 % do manual são exatamente isso. Exceção nomeada (2026-09-25, pedida com o PromptBar): a luz da borda do compositor do Chat — um arco BRANCO num anel de 1 px, sem cor da marca; o degradê do botão de enviar continua sendo o único gradiente de cor da caixa.
 - **Emoji como ícone; ícone fora de `<Icone>`** (Lucide, traço 1.5, quatro tamanhos por token).
 - **Cor como único sinal.** Toda categoria colorida carrega rótulo.
 

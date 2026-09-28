@@ -3,9 +3,16 @@
 /**
  * T25 — Chat: a home.
  *
- * A pergunta no centro e o compositor logo abaixo, como o ChatGPT: a Sessão
- * nasce da primeira mensagem, não de um formulário. O título é a primeira
- * linha do que a pessoa escreveu — depois dá para renomear na Sessão.
+ * A pergunta e o compositor, como o ChatGPT: a Sessão nasce da primeira
+ * mensagem, não de um formulário. O título é a primeira linha do que a pessoa
+ * escreveu.
+ *
+ * 2026-09-25 — refatoração visual ("o componente de chat deve seguir este
+ * prompt de exemplo"): o compositor virou o PromptBar do sistema
+ * (`CompositorDoChat`), com todos os ajustes DENTRO da caixa — a barra de
+ * chips encaixada por trás dela saiu (quase invisível, e a escolha ficava só
+ * na dica). O bloco começa numa altura fixa da tela (não centrado: o campo
+ * cresce sem a tela respirar), e as sugestões são mais leves que a caixa.
  *
  * As Sessões e as pastas moram no menu lateral, não aqui: esta tela é para
  * começar, e a lista já está a um olhar de distância à esquerda.
@@ -15,182 +22,122 @@
  */
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { Anchor, Bot, Plus, Sparkles } from "lucide-react";
+import { useRef, useState } from "react";
+import { FileText, KanbanSquare, MessagesSquare, type LucideIcon } from "lucide-react";
 import { useData, useRun, useSession } from "@/data/store";
 import { createChatSession, sendChatMessage } from "@/data/operations";
+import { recusaDeTrocarModelo } from "@/data/derive-ia";
+import { nomeDaEscolha, useDialogoDeAncora, type EscolhaDeAncora } from "@/features/ia/ancora-do-chat";
 import { useChatFolderDialogs } from "@/features/ia/chat-folder-dialogs";
-import { ChatSetupBar, MicButton, SendCircle } from "@/features/ia/chat-setup";
-import {
-  ActionMenu,
-  ConfirmDialog,
-  CorpoDeTela,
-  Field,
-  Icone,
-  Painel,
-  Pilula,
-  Select,
-  Toast,
-} from "@/features/shell/ui";
-
-/** B83 — as famílias que podem ancorar uma Sessão. */
-const ANCHOR_KINDS = [
-  { value: "deal", label: "Negócio" },
-  { value: "task", label: "Tarefa" },
-  { value: "contact", label: "Contato" },
-  { value: "conversation", label: "Conversa" },
-  { value: "knowledgeDocument", label: "Documento de Conhecimento" },
-] as const;
+import { CompositorDoChat, type AjustesDoChat } from "@/features/ia/compositor-do-chat";
+import { useLarguraDoChat } from "@/features/ia/largura-do-chat";
+import { CorpoDeTela, Icone, Toast } from "@/features/shell/ui";
 
 /** Começos que fazem sentido neste Espaço, não frases genéricas. */
-const SUGESTOES = [
+const SUGESTOES: ReadonlyArray<{ readonly titulo: string; readonly texto: string; readonly icone: LucideIcon }> = [
   {
     titulo: "Resuma a conversa com o Iallas e liste as objeções abertas",
     texto: "Resuma a conversa de WhatsApp com o Iallas e liste as objeções que ainda estão abertas antes da call.",
+    icone: MessagesSquare,
   },
   {
     titulo: "Monte a proposta do Full Face Avançado no plano Elite",
     texto: "Monte a proposta do Full Face Avançado no plano Elite para um cirurgião-dentista com clínica própria: 10 casos, 4 mentorias, 90 dias de suporte.",
+    icone: FileText,
   },
   {
     titulo: "O que está parado no Funil Closer esta semana?",
     texto: "Liste os Negócios do Funil Closer sem movimento há mais de 5 dias e sugira o próximo passo de cada um.",
+    icone: KanbanSquare,
   },
-] as const;
+];
+
+const CAMPO = "comeco-do-chat";
 
 const tituloDe = (texto: string): string => {
   const primeira = texto.trim().split("\n")[0] ?? "";
   return primeira.length > 72 ? `${primeira.slice(0, 69).trimEnd()}…` : primeira;
 };
 
+const SEM_AJUSTES: AjustesDoChat = { folderId: "", skillId: "", modelId: "", agentId: "" };
+
 export default function ChatPage() {
   const { memberId } = useSession();
   const state = useData((data) => data);
   const run = useRun();
   const router = useRouter();
+  const [largura, setLargura] = useLarguraDoChat();
   const [texto, setTexto] = useState("");
-  const [agentId, setAgentId] = useState("");
-  const [anchorKind, setAnchorKind] = useState<string>("");
-  const [anchorId, setAnchorId] = useState("");
-  const [ancorando, setAncorando] = useState(false);
-  const [folderId, setFolderId] = useState("");
-  const [modelId, setModelId] = useState("");
-  const [skillId, setSkillId] = useState("");
+  const [ajustes, setAjustes] = useState<AjustesDoChat>(SEM_AJUSTES);
+  const [ancora, setAncora] = useState<EscolhaDeAncora | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { dialogs, openCreate } = useChatFolderDialogs(setNotice);
+  // "Nova pasta…" pelo compositor: a pasta nasce e já fica escolhida.
+  const { dialogs, openCreate } = useChatFolderDialogs((mensagem, criadaId) => {
+    setNotice(mensagem);
+    if (criadaId) setAjustes((atual) => ({ ...atual, folderId: criadaId }));
+  });
+  const { dialogo: dialogoDaAncora, abrir: abrirAncora } = useDialogoDeAncora(setAncora);
 
   const eu = state.members.find((m) => m.id === memberId);
+  // Uma pasta escolhida e depois excluída (no menu lateral) deixa de valer:
+  // a caixa mostra "Sem pasta" e Começar não tropeça num id apagado.
+  const pastaValida = state.chatFolders.some((f) => f.id === ajustes.folderId && f.ownerMemberId === memberId);
+  const ajustesEfetivos: AjustesDoChat = ajustes.folderId && !pastaValida ? { ...ajustes, folderId: "" } : ajustes;
+  // Enter repetido ou clique duplo: a navegação é assíncrona e a segunda
+  // chamada criaria outra Sessão igual. A trava cai se algo for recusado.
+  const comecando = useRef(false);
 
-  const documentos = state.documents.filter((doc) => doc.lifecycle === "ativo");
-
-  const anchorOptions =
-    anchorKind === "deal"
-      ? state.deals.filter((d) => d.lifecycle === "ativo").map((d) => ({ value: d.id, label: d.title }))
-      : anchorKind === "task"
-        ? state.tasks.filter((t) => t.lifecycle === "ativo").map((t) => ({ value: t.id, label: t.title }))
-        : anchorKind === "contact"
-          ? state.contacts
-              .filter((c) => c.lifecycle === "ativo")
-              .map((c) => ({ value: c.id, label: `${c.firstName} ${c.lastName ?? ""}`.trim() }))
-          : anchorKind === "conversation"
-            ? state.conversations
-                .filter((c) => c.lifecycle === "ativo")
-                .map((c) => ({ value: c.id, label: c.title }))
-            : anchorKind === "knowledgeDocument"
-              ? documentos.map((doc) => ({ value: doc.id, label: doc.title }))
-              : [];
-  const ancora = anchorKind && anchorId ? anchorOptions.find((o) => o.value === anchorId) : undefined;
+  const ajustar = (patch: Partial<AjustesDoChat>) =>
+    setAjustes((atual) => {
+      const novo = { ...atual, ...patch };
+      // B75 — um Agente que não admite sobrescrita volta ao Modelo dele (a
+      // criação recusaria o par); a pílula mostra a troca.
+      if (patch.agentId !== undefined && novo.modelId && recusaDeTrocarModelo(state, novo.agentId || undefined)) {
+        return { ...novo, modelId: "" };
+      }
+      return novo;
+    });
 
   /*
-    Uma ação só: cria a Sessão e envia a primeira Mensagem. Se a Sessão nasce e
-    a Mensagem é recusada, a pessoa cai na Sessão vazia com o erro na tela —
-    o texto dela não some.
+    Uma ação só: cria a Sessão e envia a primeira Mensagem. Se a Mensagem for
+    recusada, a pessoa continua aqui com o texto e o erro — nada some.
   */
   const comecar = () => {
+    if (comecando.current) return;
+    comecando.current = true;
     const criada = run((data, id) =>
       createChatSession(data, id, {
         title: tituloDe(texto),
-        ...(agentId ? { mainAgentId: agentId } : {}),
-        ...(modelId ? { chosenModelId: modelId } : {}),
-        ...(folderId ? { folderId } : {}),
-        ...(skillId ? { skillId } : {}),
-        ...(anchorKind && anchorId
-          ? {
-              anchor: {
-                type: anchorKind as "deal" | "task" | "contact" | "conversation" | "knowledgeDocument",
-                id: anchorId,
-              },
-            }
-          : {}),
+        ...(ajustesEfetivos.agentId ? { mainAgentId: ajustesEfetivos.agentId } : {}),
+        ...(ajustesEfetivos.modelId ? { chosenModelId: ajustesEfetivos.modelId } : {}),
+        ...(ajustesEfetivos.folderId ? { folderId: ajustesEfetivos.folderId } : {}),
+        ...(ajustesEfetivos.skillId ? { skillId: ajustesEfetivos.skillId } : {}),
+        ...(ancora ? { anchor: ancora } : {}),
       }),
     );
     if (!criada.ok) {
+      comecando.current = false;
       setError(criada.error);
       return;
     }
     const enviada = run((data, id) => sendChatMessage(data, id, criada.value.id, texto));
-    if (!enviada.ok) setError(enviada.error);
+    if (!enviada.ok) {
+      comecando.current = false;
+      setError(enviada.error);
+      return;
+    }
     router.push(`/ia/chat/${criada.value.id}`);
   };
 
-  const bloqueio =
-    texto.trim() === ""
-      ? "Escreva o que você quer trabalhar."
-      : anchorKind !== "" && anchorId === ""
-        ? "Escolha o registro da Âncora, ou tire a Âncora."
-        : undefined;
+  const bloqueio = texto.trim() === "" ? "Escreva o que você quer trabalhar." : undefined;
 
   return (
     <>
       {dialogs}
+      {dialogoDaAncora}
 
-      <ConfirmDialog
-        open={ancorando}
-        title="Ancorar a Sessão"
-        description="A Âncora dá contexto e é fixada na criação: ela guarda o nome que o registro tem agora."
-        confirmLabel="Usar esta Âncora"
-        {...(anchorKind !== "" && anchorId === ""
-          ? { confirmDisabledReason: "Escolha o registro." }
-          : {})}
-        onConfirm={() => setAncorando(false)}
-        onCancel={() => {
-          setAnchorKind("");
-          setAnchorId("");
-          setAncorando(false);
-        }}
-      >
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Ancorar em">
-            {(id) => (
-              <Select
-                id={id}
-                value={anchorKind}
-                onChange={(value) => {
-                  setAnchorKind(value);
-                  setAnchorId("");
-                }}
-                placeholder="Sem Âncora"
-                options={ANCHOR_KINDS.map((kind) => ({ value: kind.value, label: kind.label }))}
-              />
-            )}
-          </Field>
-          {anchorKind ? (
-            <Field label="Registro">
-              {(id) => (
-                <Select id={id} value={anchorId} onChange={setAnchorId} searchable placeholder="Escolher" options={anchorOptions} />
-              )}
-            </Field>
-          ) : null}
-        </div>
-      </ConfirmDialog>
-
-      {/*
-        Estética pedida: página preta, caixa grafite, tudo em cinza claro sobre
-        escuro. A página é o `--page` do sistema; a caixa é o painel sólido.
-        Sem cabeçalho de 44px: esta tela é o compositor, e o título é a pergunta.
-      */}
-      <div className="flex h-full flex-col">
+      <div className="chat-tela" data-largura={largura}>
         {notice ? (
           <div className="px-4 pt-3">
             <Toast tone="success" onDismiss={() => setNotice(null)}>
@@ -199,86 +146,33 @@ export default function ChatPage() {
           </div>
         ) : null}
 
-        <CorpoDeTela className="flex flex-col items-center">
-          {/* `my-auto` centra quando sobra espaço e não corta o topo quando falta —
-              `justify-center` num bloco que rola esconderia a pergunta. */}
-          <div className="my-auto w-full max-w-[46rem] py-8">
-            <h1 className="ed-titulo text-center">
+        <CorpoDeTela className="chat-home">
+          <div className="chat-coluna chat-home-miolo">
+            <h1 className="ed-titulo chat-home-titulo">
               {eu ? `No que vamos trabalhar, ${eu.displayName.split(" ")[0]}?` : "No que vamos trabalhar?"}
             </h1>
 
-            {/* ── o compositor ── */}
-            {/* A caixa do ChatGPT: o painel sólido do sistema no raio de destaque,
-                opaco de propósito — é ele que esconde o topo da barra de ajustes. */}
-            <Painel solido className="relative z-10 mt-6 flex min-h-[7.5rem] flex-col rounded-[var(--r-destaque)] p-3">
-              <label className="sr-only" htmlFor="comeco-do-chat">
-                O que você quer trabalhar
-              </label>
-              <textarea
-                id="comeco-do-chat"
-                value={texto}
-                onChange={(event) => setTexto(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey && bloqueio === undefined) {
-                    event.preventDefault();
-                    comecar();
-                  }
-                }}
-                rows={1}
-                placeholder="Trabalhe no que quiser"
-                className="max-h-64 min-h-9 w-full resize-none border-0 bg-transparent px-1 py-1 text-[length:var(--ed-subtitulo)] leading-snug text-[var(--texto)] outline-none [field-sizing:content] placeholder:text-[var(--texto-3)]"
-              />
-              <div className="mt-auto flex items-center gap-2 pt-2">
-                <ActionMenu
-                  label="Anexar contexto"
-                  trigger={
-                    <span className="btn-icone border-transparent">
-                      <Icone de={Plus} tamanho="md" />
-                    </span>
-                  }
-                  items={[
-                    { label: ancora ? "Trocar a Âncora…" : "Ancorar em registro…", onSelect: () => setAncorando(true) },
-                    { label: "Nova pasta…", onSelect: openCreate },
-                  ]}
-                />
-                {ancora && anchorKind !== "knowledgeDocument" ? (
-                  <button type="button" onClick={() => setAncorando(true)} className="flex min-w-0" title="Trocar a Âncora">
-                    <Pilula tom="acento" className="min-w-0 max-w-full">
-                      <Icone de={Anchor} tamanho="xs" />
-                      <span className="truncate">{ancora.label}</span>
-                    </Pilula>
-                  </button>
-                ) : null}
-                <span className="ml-auto flex items-center gap-1">
-                  <MicButton />
-                  <SendCircle onClick={comecar} label="Começar" {...(bloqueio ? { disabledReason: bloqueio } : {})} />
-                </span>
-              </div>
-            </Painel>
-
-            <ChatSetupBar
-              value={{
-                folderId,
-                skillId,
-                documentId: anchorKind === "knowledgeDocument" ? anchorId : "",
-                modelId,
-                agentId,
+            <CompositorDoChat
+              id={CAMPO}
+              rotulo="O que você quer trabalhar"
+              tamanho="palco"
+              valor={texto}
+              aoMudar={(valor) => {
+                setTexto(valor);
+                if (error) setError(null);
               }}
-              onChange={(patch) => {
-                if (patch.agentId !== undefined) setAgentId(patch.agentId);
-                if (patch.folderId !== undefined) setFolderId(patch.folderId);
-                if (patch.skillId !== undefined) setSkillId(patch.skillId);
-                if (patch.modelId !== undefined) setModelId(patch.modelId);
-                if (patch.documentId !== undefined) {
-                  if (patch.documentId) {
-                    setAnchorKind("knowledgeDocument");
-                    setAnchorId(patch.documentId);
-                  } else if (anchorKind === "knowledgeDocument") {
-                    setAnchorKind("");
-                    setAnchorId("");
-                  }
-                }
-              }}
+              placeholder="O que você quer criar ou resolver?"
+              aoEnviar={comecar}
+              rotuloDoEnvio="Começar"
+              {...(bloqueio ? { bloqueio } : {})}
+              ajustes={ajustesEfetivos}
+              aoAjustar={ajustar}
+              {...(ancora ? { ancora: nomeDaEscolha(state, memberId, ancora) ?? "Registro" } : {})}
+              aoAncorar={() => abrirAncora(ancora ?? undefined)}
+              aoTirarAncora={() => setAncora(null)}
+              aoNovaPasta={openCreate}
+              largura={largura}
+              aoLargura={setLargura}
             />
 
             {error ? (
@@ -287,32 +181,26 @@ export default function ChatPage() {
               </p>
             ) : null}
 
-            {/* ── as sugestões: cada uma é uma peça solta ── */}
-            <ul className="pilha-solta mt-8">
+            {/* ── as sugestões: mais leves que a caixa, em três colunas ── */}
+            <ul className="chat-sugestoes" aria-label="Sugestões para começar">
               {SUGESTOES.map((sugestao) => (
                 <li key={sugestao.titulo}>
                   <button
                     type="button"
-                    onClick={() => setTexto(sugestao.texto)}
-                    className="item-solto w-full py-2 text-left"
+                    className="chat-sugestao app-sm"
+                    onClick={() => {
+                      setTexto(sugestao.texto);
+                      document.getElementById(CAMPO)?.focus();
+                    }}
                   >
-                    <span
-                      className="grid size-8 shrink-0 place-items-center rounded-[var(--r-controle)]"
-                      style={{ background: "var(--superficie-3)", color: "var(--acento)" }}
-                    >
-                      {sugestao.titulo.startsWith("O que") ? <Icone de={Bot} tamanho="sm" /> : <Icone de={Sparkles} tamanho="sm" />}
-                    </span>
-                    <span className="app-base min-w-0 flex-1 truncate" style={{ color: "var(--texto)" }}>
-                      {sugestao.titulo}
-                    </span>
+                    <Icone de={sugestao.icone} tamanho="sm" />
+                    <span>{sugestao.titulo}</span>
                   </button>
                 </li>
               ))}
             </ul>
 
-            <p className="app-sm mt-6 text-center" style={{ color: "var(--texto-3)" }}>
-              Suas Sessões e pastas ficam no menu, em Chat. Nenhum Papel dá acesso a Sessão alheia.
-            </p>
+            <p className="app-sm chat-nota">Suas Sessões e pastas ficam no menu, em Chat. Nenhum Papel dá acesso a Sessão alheia.</p>
           </div>
         </CorpoDeTela>
       </div>

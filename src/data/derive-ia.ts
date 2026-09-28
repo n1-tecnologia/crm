@@ -105,6 +105,42 @@ export function versaoCorrenteDoAgente(agent: Agent): AgentVersion | undefined {
   return corrente;
 }
 
+// ── Sessão de Chat ─────────────────────────────────────────────────────────
+
+/** O Agente que responde numa Sessão: o principal dela, senão o Assistente padrão (B33). */
+export function agenteEfetivoDaSessao(state: DataState, mainAgentId: Id | undefined): Agent | undefined {
+  return state.agents.find((a) => a.id === (mainAgentId || state.workspace.defaultAgentId));
+}
+
+/**
+ * B75 / DO-CHT-12 — o Modelo escolhido na Sessão só vale se o Agente efetivo
+ * ADMITE SOBRESCRITA ("Admite sobrescrita de Modelo", na Versão corrente).
+ * Devolve o motivo da recusa, ou nada. A operação recusa com a mesma frase
+ * que o seletor de Modelo mostra desligado.
+ */
+export function recusaDeTrocarModelo(state: DataState, mainAgentId: Id | undefined): string | undefined {
+  const agente = agenteEfetivoDaSessao(state, mainAgentId);
+  if (!agente) return undefined;
+  const versao = versaoCorrenteDoAgente(agente);
+  if (versao && !versao.allowsModelOverride) return `O Agente “${agente.name}” não admite trocar o Modelo.`;
+  return undefined;
+}
+
+/**
+ * Habilidade na Sessão: quem a exerce é o Agente, por Concessão (18, 7.2).
+ * Devolve por que o Agente efetivo NÃO a exerceria agora — sem Concessão, ou
+ * a Concessão indisponível —, ou nada. É leitura para o seletor do Chat: a
+ * escolha continua sendo extensão de produto (D3), e a operação não recusa.
+ */
+export function motivoDeHabilidadeForaDoAgente(state: DataState, mainAgentId: Id | undefined, skillId: Id): string | undefined {
+  const agente = agenteEfetivoDaSessao(state, mainAgentId);
+  if (!agente) return undefined;
+  const concessao = state.skillGrants.find((g) => g.agentId === agente.id && g.skillId === skillId);
+  if (!concessao) return `Não concedida a “${agente.name}”.`;
+  const disponibilidade = disponibilidadeDaConcessao(state, concessao);
+  return disponibilidade.disponivel ? undefined : `Indisponível para “${agente.name}”: ${disponibilidade.motivos.join(", ")}.`;
+}
+
 function motivosDaConcessao(
   state: DataState,
   grant: Pick<SkillGrant, "agentId" | "skillId" | "pinnedVersion">,
