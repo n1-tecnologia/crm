@@ -13,6 +13,7 @@ import type {
   ConfigurableAspect,
   EnabledFeatures,
   FieldDefinition,
+  FieldRequirement,
   FieldType,
   Folder,
   Id,
@@ -365,13 +366,66 @@ export function addStatus(
   return ok(definition);
 }
 
+/**
+ * Um requisito na forma em que fica gravado: chaves sempre na mesma ordem e
+ * sem `undefined` — duas listas com o mesmo conteúdo viram o mesmo JSON, e
+ * reaplicar a mesma lista não conta como mudança.
+ */
+function requisitoNormalizado(req: FieldRequirement): FieldRequirement {
+  return {
+    ...(req.definitionId !== undefined ? { definitionId: req.definitionId } : {}),
+    ...(req.attribute !== undefined ? { attribute: req.attribute } : {}),
+    ...(req.whenDefinitionId !== undefined ? { whenDefinitionId: req.whenDefinitionId } : {}),
+    ...(req.whenValue !== undefined ? { whenValue: req.whenValue } : {}),
+    ...(req.positive !== undefined ? { positive: req.positive } : {}),
+    ...(req.label !== undefined ? { label: req.label } : {}),
+  };
+}
+
+/**
+ * Os requisitos de um Status, validados inteiros antes de qualquer gravação:
+ * um requisito que aponta para Campo inexistente ou arquivado travaria a
+ * saída do Status para sempre, sem que ninguém conseguisse preenchê-lo.
+ */
+function requisitosValidados(state: DataState, requisitos: readonly FieldRequirement[]): FieldRequirement[] | string {
+  const campoAtivo = (id: Id) => state.fieldDefinitions.some((d) => d.id === id && d.lifecycle === "ativo");
+  const validados: FieldRequirement[] = [];
+  for (const req of requisitos) {
+    if ((req.definitionId === undefined) === (req.attribute === undefined)) {
+      return "Cada requisito exige um Campo ou um atributo nativo da Tarefa — um, e só um.";
+    }
+    if (req.definitionId !== undefined && !campoAtivo(req.definitionId)) {
+      return `Um requisito aponta para um Campo que não existe ou está arquivado (${req.definitionId}).`;
+    }
+    if ((req.whenDefinitionId === undefined) !== (req.whenValue === undefined)) {
+      return "Um requisito condicional precisa do Campo e do valor da condição.";
+    }
+    if (req.whenDefinitionId !== undefined && !campoAtivo(req.whenDefinitionId)) {
+      return `A condição de um requisito aponta para um Campo que não existe ou está arquivado (${req.whenDefinitionId}).`;
+    }
+    validados.push(requisitoNormalizado(req));
+  }
+  return validados;
+}
+
 export function updateStatus(
   state: DataState,
   actingMemberId: Id,
   containerType: ContainerType,
   containerId: Id,
   statusId: Id,
-  input: { readonly name?: string; readonly color?: string },
+  input: {
+    readonly name?: string;
+    readonly color?: string;
+    /**
+     * Substitui os requisitos de SAÍDA do Status (a lista inteira; `[]`
+     * apaga). Plano pós-auditoria, 2.1: é por aqui que o evolver
+     * `contas-a-pagar-evolver.ts` leva a `ws_n1` o que o Omie exige para a
+     * conta sair de "para pagar" — a mesma operação que a tela usaria,
+     * com a mesma permissão e o mesmo Registro de Atividade.
+     */
+    readonly exitRequirements?: readonly FieldRequirement[];
+  },
 ): OperationResult<StatusDefinition> {
   const refusal = mayConfigure(state, actingMemberId, containerType, containerId);
   if (refusal) return fail(refusal);
@@ -379,6 +433,12 @@ export function updateStatus(
   if (typeof own === "string") return fail(own);
   const definition = own.set.definitions.find((d) => d.id === statusId);
   if (!definition) return fail("Status não encontrado neste Conjunto.");
+  let requisitos: FieldRequirement[] | undefined;
+  if (input.exitRequirements !== undefined) {
+    const validados = requisitosValidados(state, input.exitRequirements);
+    if (typeof validados === "string") return fail(validados, "requisitos");
+    requisitos = validados;
+  }
 
   const mudancas: string[] = [];
   if (input.name !== undefined) {
@@ -396,6 +456,14 @@ export function updateStatus(
     if (!/^#[0-9a-fA-F]{6}$/.test(input.color)) return fail("A cor do Status é um hexadecimal de seis dígitos.", "cor");
     definition.color = input.color;
     mudancas.push("cor");
+  }
+  if (requisitos !== undefined) {
+    const antes = JSON.stringify((definition.exitRequirements ?? []).map(requisitoNormalizado));
+    if (JSON.stringify(requisitos) !== antes) {
+      if (requisitos.length > 0) definition.exitRequirements = requisitos;
+      else delete definition.exitRequirements;
+      mudancas.push("requisitos de saída");
+    }
   }
   if (mudancas.length === 0) return ok(definition);
   recordActivity(state, {
