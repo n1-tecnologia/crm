@@ -14,8 +14,8 @@ que a chamada acontece.
 | `scheduler-worker.ts` | `criarSchedulerWorker()` — o poller: lease por `for update skip locked` sobre `plataforma.automacao_agenda`, catch-up do dia perdido, Ator de sistema, e o gate da primeira volta em ensaio. |
 | `scheduler-worker.test.ts` | Os 19 casos (item Wave 0 de `03-VALIDATION.md`) — puros (a)-(e) e (s), os demais contra Postgres real. |
 | `liberar.cli.ts` | CLI fino de liberação da primeira volta em ensaio — só compõe `liberarLista()`. |
-| `invocar-agente.ts` (Plan 03-11) | `criarPonteDoAgente()` — a ponte HTTP do Agente de lançamento: resolve o de-para contra `automation/` (03-07) antes da Unidade de Trabalho e injeta o resultado no motor pela opção `rodarAgenda` do scheduler acima. |
-| `invocar-agente.test.ts` | Os quinze casos: puros (a)-(e), HTTP contra `servidorFalso` (f)-(m) — sempre, sem `DATABASE_URL` —, e (n)-(o) contra Postgres real. |
+| `invocar-agente.ts` (Plan 03-11; plano pós-auditoria 1.4) | `criarPonteDoAgente()` — a ponte HTTP do Agente de lançamento: lança no Omie a conta que ENTRA em "em lançamento omie" (`/resolver` + `/lancar` do `automation/`, 03-07), publica o Resumo e move para "lançado omie"; e entrega ao scheduler acima uma `rodarAgenda` que nunca lança. |
+| `invocar-agente.test.ts` | Puros e HTTP contra `servidorFalso` — todos sem `DATABASE_URL`; o cabeçalho do arquivo diz onde cada item de 1.4 é provado. |
 
 ## Por que não é fila, e por que a tabela existe
 
@@ -87,54 +87,70 @@ liberada, a volta seguinte processa de verdade. `ensaioNaPrimeiraVolta: false`
 (opção do worker) desativa o gate inteiro — a porta para uma Lista que nasce
 sem backlog e não precisa do ritual.
 
-## Onde o Plan 03-11 pluga
+## Onde a ponte pluga no agendador
 
-A ponte HTTP do Agente (`invocar-agente.ts`, que nasce nesta mesma pasta)
-resolve o de-para por HTTP **antes** da Unidade de Trabalho — chamada de rede
-não entra em transação e não entra em `packages/dominio` — e entra no worker
-por um caminho só: a opção `rodarAgenda`, cuja assinatura é a de
-`runScheduledAutomations` (tipo `RodarAgenda`, exportado). Lease, catch-up,
-contabilidade da linha, saneamento e o gate da primeira volta continuam
-intocados. Em `../index.ts`, 03-11 acrescenta o seu próprio bloco `if` **ao
-lado** de `AUTOMACOES_WORKER_ATIVO`, sem reescrevê-lo.
+A ponte do Agente (`invocar-agente.ts`) entra no worker por um caminho só: a
+opção `rodarAgenda`, cuja assinatura é a de `runScheduledAutomations` (tipo
+`RodarAgenda`, exportado). Lease, catch-up, contabilidade da linha,
+saneamento e o gate da primeira volta continuam intocados. Em `../index.ts`,
+o bloco da ponte vem ANTES do bloco do agendador, porque este usa a
+`rodarAgenda` daquela.
 
 ## A ponte do Agente (`invocar-agente.ts`)
 
-**(1) Por que o de-para é um MAPA e não uma pergunta por Tarefa.**
-`RodarAgenda` é síncrona — a mesma assinatura de `runScheduledAutomations`,
-chamada dentro da MESMA transação de `executar()`. No instante em que o
-domínio precisa do de-para já não há mais oportunidade de `await`: todo
-`fetch` acontece ANTES, num pré-passo (`aquecer()`) que hidrata o Espaço só
-para LER — nunca dentro de uma Unidade de Trabalho (precedente:
-`../bootstrap/solicitacoes.ts`, o dry-run que hidrata e dá `rollback`) — e
-monta o de-para de todas as candidatas de uma vez.
+**(1) O gatilho é o Status, não o calendário** (plano pós-auditoria,
+`docs/08-migracao-financeiro/07-plano-de-correcoes-pos-auditoria.md`, 1.4 e
+1.5). A cada ciclo (`AGENTE_CONTAS_A_PAGAR_INTERVALO_MS`, padrão 15 min), a
+ponte hidrata o Espaço só para LER e olha as contas ativas da Lista
+configurada em "em lançamento omie". Para cada uma: confere o que o Omie
+exige (`erpMissingFields`, a mesma regra da saída de "para pagar"), chama
+`/resolver` (prazo 10 s) e `/lancar` (prazo 60 s, `Idempotency-Key`
+determinística) e, com o lançamento confirmado, publica o Resumo e move a
+conta para "lançado omie" numa Unidade de Trabalho só. Nenhuma chamada nasce
+para conta em "para pagar": o antigo `aquecer()`, que chamava `/resolver`
+para todas elas a cada ciclo por causa da A7, saiu junto com a A7.
 
-**(2) O cache por (Espaço, Lista, dia civil) e o relógio próprio.** A ponte
-aquece um cache em memória com relógio mais curto que o do agendador
-(`AGENTE_CONTAS_A_PAGAR_INTERVALO_MS`, padrão 15min, contra 1h de
-`AUTOMACOES_INTERVALO_MS`) — de propósito, para o cache estar quente quando o
-agendador reivindicar a linha do dia. Cache FRIO para o par configurado é
-recusa (`fail`), NUNCA um lançamento com o de-para do protótipo: o agendador
-fecha a linha `falhou`/`RECUSA_DO_DOMINIO` e a reivindica de novo na volta
-seguinte, já quente. Cada aquecimento descarta as entradas de dias
-anteriores — o cache não cresce sem fim.
+**(2) Só o que entrou por movimento.** `entrouPorMovimento` exige que o
+último Registro "Status alterado" da conta seja a entrada em "em lançamento
+omie" feita na plataforma. A importação do ClickUp também escreve esses
+Registros (a trilha do `status_history`), mas sempre com instante anterior
+ao da importação (`provenance.at`) — é assim que a conta que NASCEU no Status
+é reconhecida. Ela pode já ter sido lançada no Omie pelo processo antigo,
+com outro código de integração; a ponte não a lança e pede, uma vez, que
+alguém confira e a mova para "para pagar" e de volta. Conta com "Integração
+manual" = Manual não é do Agente: nenhuma chamada, nenhum Comentário.
 
-**(3) Os dois modos (D3-03).**
+**(3) Uma vez só.** A ponte guarda em memória, por conta, a impressão digital
+do que decide o lançamento (Campos, vencimento, Tags, Status e o id do
+Registro da entrada). Depois de uma recusa comentada — dado faltando, erro
+permanente do `automation/` (`Não consegui lançar no Omie: <details.motivo>
+(<code>).`), categoria sem confiança, lançamento não confirmado, ou a
+terceira falha transitória seguida (`O Omie não respondeu depois de 3
+tentativas…`) — a conta não é mais processada até a impressão mudar: alguém
+corrigir um Campo, ou a conta sair e voltar (a volta é um Registro novo).
+Conta que sai do Status é esquecida. O `details.motivo` vai para o
+Comentário, nunca para o log (T-3-04). A recusa menciona o Financeiro
+(`avisadoDoLancamento`), não o Membro de serviço que assina.
 
-| `AGENTE_CONTAS_A_PAGAR_MODO` | Resolve para | O que a ponte alcança |
+**(4) Os dois modos (D3-03).**
+
+| `AGENTE_CONTAS_A_PAGAR_MODO` | Resolve para | O que a ponte faz |
 |---|---|---|
-| ausente, vazio, ou qualquer valor que não seja o literal `lancar` | `"ensaio"` (padrão) | só `/v1/integrations/contas-a-pagar/resolver` — o endereço que 03-07 construiu sem porta de escrita. Rehearsar e escrever por acidente é impossível por construção. |
-| `"lancar"` (literal, exato) | `"lancar"` | `/resolver` e, para candidata com `veredito: "resolvida"`, `/lancar` — exige `PLATAFORMA_LANCAMENTO_TOKEN` e `AGENTE_CONTAS_A_PAGAR_URL` presentes; sem eles, recusa permanente `CONFIGURACAO_AUSENTE`, nunca uma queda silenciosa para ensaio. |
+| ausente, vazio, ou qualquer valor que não seja o literal `lancar` | `"ensaio"` (padrão) | só `/v1/integrations/contas-a-pagar/resolver` e o registro, em log, do que lançaria — nenhum Comentário, nenhum Status, nada gravado. |
+| `"lancar"` (literal, exato) | `"lancar"` | `/resolver`, `/lancar`, Comentários e a troca de Status — exige `PLATAFORMA_LANCAMENTO_TOKEN` e `AGENTE_CONTAS_A_PAGAR_URL`; sem eles, nenhuma requisição, nunca uma queda silenciosa para ensaio. |
 
 Um valor definido e desconhecido (erro de digitação, `"true"`, `"0"`) cai em
 `"ensaio"` COM aviso, nomeando só a variável — nunca o seu conteúdo.
 
-**(4) A ponte só age sobre o par configurado.** `rodarAgenda` compara
-`(workspaceId, listId)` recebidos contra os configurados; qualquer outro par
-(mesmo Espaço, outra Lista) delega direto a `runScheduledAutomations`, sem
-cache e sem recusa — a ponte não pode quebrar a agenda das outras Listas.
+**(5) `rodarAgenda` nunca lança.** Para o par configurado, passa ao motor
+`lancamento: { rehearsal: false, tarefasLancadas: [], dePara: <vazio, origem
+omie> }`: uma A7 legada que ainda esteja ativa falha "Lançamento não
+confirmado" antes de invocar o Agente — nunca com o de-para do protótipo
+(T-3-39) —, e as outras Automações por data (A5/A6) rodam normalmente, com
+o CNPJ da Empresa injetado. Qualquer outro par (mesmo Espaço, outra Lista)
+delega direto a `runScheduledAutomations`, sem opções.
 
-**(5) PAG-04, a metade CNPJ, mora aqui.** `CNPJ_POR_EMPRESA` foi apagada de
+**(6) PAG-04, a metade CNPJ, mora aqui.** `CNPJ_POR_EMPRESA` foi apagada de
 `packages/dominio` (03-11, Task 1); o token `{{cnpjEmpresa}}` de A5 passa a
 ler `AGENTE_CONTAS_A_PAGAR_CNPJ_POR_EMPRESA` (`lerCnpjPorEmpresa()`, que
 derruba o mapa INTEIRO ao primeiro valor fora do formato de CNPJ — meia
@@ -142,10 +158,7 @@ tabela é pior que nenhuma). Sem a variável, ou com a Empresa da Tarefa
 ausente do mapa, o texto de A5 diz `da Empresa <nome>` — nunca um número
 inventado.
 
-**(6) O que o relatório de Ensaio (Plan 03-14) lê daqui:** nada de novo —
-`invocar-agente.ts` não grava tabela nenhuma. O que ele PRODUZ é o
-`OpcoesDaAgenda` que `runScheduledAutomations` recebe, e o que sobra no
-`DataState` depois disso (`AgentExecution` com `rehearsal: true`, a
-`AutomationExecution` de A7 fechando `concluida` com um passo) é a mesma
-superfície que `03-08-SUMMARY.md`/`03-04-SUMMARY.md` já documentaram — 03-14
-lê `plataforma.registros`, não este arquivo.
+**(7) Quem assina.** O Membro de serviço do Papel "Agente do pipeline"
+(`resolverMembroAgenteDoPipeline`, só Membro ativo), criado por
+`npm run solicitacoes:configurar -w @n1/api -- --apply` (plano pós-auditoria,
+2.2). `AUTOMACOES_ATOR_MEMBER_ID` ainda sobrescreve, para teste manual.

@@ -133,6 +133,8 @@ Reusados sem alteração: `401 CREDENCIAL_AUSENTE`, `401 CREDENCIAL_INVALIDA`, `
 
 `retryable` é o campo que 03-11 usa para decidir: `false` → A7 falha permanentemente e A8 não move o Status; `true` → a fila de reagendamento tenta de novo.
 
+**Plano pós-auditoria (1.2 e 1.4).** Os erros permanentes passam a vir como `422` com `retryable: false` e um motivo legível em `error.details.motivo` (≤ 300 caracteres) — códigos novos `FORNECEDOR_NAO_RESOLVIDO`, `OMIE_RECUSOU` e `CONTA_CORRENTE_NAO_RESOLVIDA`, além dos de cima; os transitórios, `500`/`503` com `retryable: true`. A A7 saiu (1.5): quem consome é a ponte do `apps/api` (`apps/api/src/automacoes/invocar-agente.ts`), quando a conta entra em "em lançamento omie". Erro permanente → um Comentário do Agente na conta, `Não consegui lançar no Omie: <details.motivo> (<code>).` (sem `details.motivo`, a `message` do envelope), uma vez; a conta não é mais processada até um Campo mudar ou ela sair e voltar para o Status. Transitório → conta como falha seguida; na terceira, um aviso e a mesma parada. O `details.motivo` vai para a conta, nunca para o log da ponte. Prazos da ponte: `/resolver` 10 s, `/lancar` 60 s.
+
 ---
 
 ## §5 Idempotência
