@@ -34,14 +34,47 @@
  * liga a caneta, e mesmo ele exige credencial e URL presentes — durante a
  * primeira semana o erro barato é não lançar, o erro caro é lançar. O bloco
  * da ponte entra ANTES do bloco do agendador porque este último precisa da
- * sua `rodarAgenda`, se ela existir.
+ * sua `rodarAgenda`, se ela existir. Ao contrário do outbox e do agendador,
+ * a ponte NÃO tem exclusão pelo banco: duas pontes vivas processariam a
+ * mesma conta — o que torna a recarga abaixo uma questão de dinheiro, não
+ * de conforto.
+ *
+ * **A recarga do `vite-node --watch`** (`npm run dev`; plano pós-auditoria,
+ * 1.4). A cada edição, o vite-node esvazia o cache de módulos e REEXECUTA
+ * este arquivo no MESMO processo — não sobe um processo novo, e não chama
+ * `import.meta.hot.dispose` numa recarga completa. Sem cuidado, a instância
+ * anterior continuava viva: a ponte, o outbox e o agendador antigos seguiam
+ * com os seus `setInterval` (a auditoria achou pontes empilhadas, cada uma
+ * chamando o Omie), o servidor antigo segurava a porta, e o pool antigo de
+ * Postgres ficava aberto. Por isso cada execução registra em `globalThis` —
+ * o único objeto que sobrevive à reexecução — a função que a desmonta
+ * (para os workers esperando a volta em voo, fecha o servidor, fecha o SEU
+ * pool), e a execução seguinte a chama e ESPERA, antes de subir qualquer
+ * coisa. Em produção o processo é único e o módulo roda uma vez só: não há
+ * instância anterior, e o registro nunca é lido.
  */
 
 import { buildApp } from "./app";
-import { carregarEnv } from "./persistencia/conexao";
+import { carregarEnv, encerrar } from "./persistencia/conexao";
 import { criarOutboxWorker } from "./persistencia/outbox-worker";
 import { criarSchedulerWorker } from "./automacoes/scheduler-worker";
 import { criarPonteDoAgente, lerCnpjPorEmpresa, resolverModo, type PonteDoAgente } from "./automacoes/invocar-agente";
+
+/** A chave em `globalThis` da função que desmonta a instância em execução — ver o cabeçalho. */
+const CHAVE_DA_DESMONTAGEM = "__n1ApiDesmontarInstanciaAnterior";
+const registroGlobal = globalThis as unknown as Record<string, (() => Promise<void>) | undefined>;
+
+const desmontarAnterior = registroGlobal[CHAVE_DA_DESMONTAGEM];
+if (desmontarAnterior) {
+  delete registroGlobal[CHAVE_DA_DESMONTAGEM];
+  try {
+    await desmontarAnterior();
+  } catch (erro) {
+    // Segue mesmo assim: se o servidor antigo não fechou, o `listen` abaixo
+    // falha com EADDRINUSE e diz o que houve.
+    console.warn("[apps/api] a instância anterior não desmontou por inteiro:", erro instanceof Error ? erro.message : erro);
+  }
+}
 
 carregarEnv();
 
@@ -49,6 +82,20 @@ const porta = Number(process.env.PORT ?? 3002);
 const host = process.env.HOST ?? "127.0.0.1";
 
 const app = buildApp({ logger: true });
+
+/** O que esta instância precisa parar ao ser desmontada, e os ouvintes de SIGTERM que ela pendurou no processo. */
+const paradas: Array<() => Promise<void>> = [];
+const ouvintesDeSigterm: Array<() => void> = [];
+
+/** Registra como parar um worker — na desmontagem da recarga e no SIGTERM. */
+function aoEncerrar(parar: () => Promise<void>): void {
+  paradas.push(parar);
+  const noSigterm = () => {
+    void parar();
+  };
+  process.on("SIGTERM", noSigterm);
+  ouvintesDeSigterm.push(noSigterm);
+}
 
 let ponte: PonteDoAgente | undefined;
 
@@ -69,7 +116,7 @@ if (process.env.AGENTE_CONTAS_A_PAGAR_ATIVO === "true") {
   if (avisoDoCnpj) app.log.warn(avisoDoCnpj);
   const intervaloMs = process.env.AGENTE_CONTAS_A_PAGAR_INTERVALO_MS ? Number(process.env.AGENTE_CONTAS_A_PAGAR_INTERVALO_MS) : undefined;
   const atorDoAgente = process.env.AUTOMACOES_ATOR_MEMBER_ID;
-  ponte = criarPonteDoAgente({
+  const ponteAtiva = criarPonteDoAgente({
     ...(atorDoAgente ? { resolverAtor: async () => atorDoAgente } : {}),
     destinoUrl,
     token,
@@ -82,11 +129,10 @@ if (process.env.AGENTE_CONTAS_A_PAGAR_ATIVO === "true") {
       app.log[nivel](dados ?? {}, mensagem);
     },
   });
-  ponte.iniciar();
+  ponte = ponteAtiva;
+  ponteAtiva.iniciar();
+  aoEncerrar(() => ponteAtiva.parar());
   app.log.info(`ponte do Agente de lançamento ativa (modo=${modo})`);
-  process.on("SIGTERM", () => {
-    ponte?.parar();
-  });
 }
 
 if (process.env.OUTBOX_WORKER_ATIVO === "true") {
@@ -103,10 +149,8 @@ if (process.env.OUTBOX_WORKER_ATIVO === "true") {
     workerId: process.env.OUTBOX_WORKER_ID ?? `apps-api-${process.pid}`,
   });
   worker.iniciar();
+  aoEncerrar(() => worker.parar());
   app.log.info("outbox worker ativo");
-  process.on("SIGTERM", () => {
-    worker.parar();
-  });
 }
 
 if (process.env.AUTOMACOES_WORKER_ATIVO === "true") {
@@ -133,11 +177,21 @@ if (process.env.AUTOMACOES_WORKER_ATIVO === "true") {
     },
   });
   schedulerWorker.iniciar();
+  aoEncerrar(() => schedulerWorker.parar());
   app.log.info("scheduler de Automações ativo");
-  process.on("SIGTERM", () => {
-    schedulerWorker.parar();
-  });
 }
+
+// Registrada ANTES do `listen`: se ele falhar (porta ocupada), a próxima
+// recarga ainda consegue parar os workers que esta instância já ligou.
+registroGlobal[CHAVE_DA_DESMONTAGEM] = async () => {
+  for (const ouvinte of ouvintesDeSigterm) process.off("SIGTERM", ouvinte);
+  // Primeiro os workers (nada novo sai para a rede), esperando a volta em
+  // voo; depois o servidor (espera as requisições em curso); por último o
+  // pool DESTA instância — a próxima abre o seu, num módulo novo.
+  await Promise.all(paradas.map((parar) => parar()));
+  await app.close();
+  await encerrar();
+};
 
 await app.listen({ port: porta, host });
 app.log.info(`apps/api ouvindo em http://${host}:${porta}`);

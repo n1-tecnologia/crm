@@ -139,8 +139,12 @@ export interface OpcoesOutboxWorker {
 export interface OutboxWorker {
   /** Começa o laço de `intervaloMs` em `intervaloMs`. Chamar duas vezes é no-op. */
   iniciar(): void;
-  /** Para o laço; entregas em voo terminam sozinhas. */
-  parar(): void;
+  /**
+   * Para o laço; a entrega em voo (se houver) termina sozinha, e a promessa
+   * resolve quando ela terminar — é o que a recarga do `vite-node --watch`
+   * (`../index.ts`) espera antes de fechar o pool.
+   */
+  parar(): Promise<void>;
   /**
    * Reivindica e entrega UMA linha, sem esperar o intervalo — o que o teste
    * usa para exercitar cada caso da Fault-Injection Matrix de forma
@@ -276,22 +280,30 @@ export function criarOutboxWorker(opcoes: OpcoesOutboxWorker): OutboxWorker {
   }
 
   let temporizador: ReturnType<typeof setInterval> | undefined;
-  let emAndamento = false;
+  // A volta em voo, só para `parar()` poder esperá-la: uma promessa À PARTE,
+  // resolvida no `finally`. A da volta segue como antes (`void`, sem
+  // `catch`), para uma rejeição continuar se comportando exatamente igual.
+  let emVoo: Promise<void> | undefined;
 
   return {
     iniciar() {
       if (temporizador) return;
       temporizador = setInterval(() => {
-        if (emAndamento) return;
-        emAndamento = true;
+        if (emVoo) return;
+        let terminou!: () => void;
+        emVoo = new Promise<void>((resolve) => {
+          terminou = resolve;
+        });
         void processarUm().finally(() => {
-          emAndamento = false;
+          emVoo = undefined;
+          terminou();
         });
       }, intervaloMs);
     },
-    parar() {
+    async parar() {
       if (temporizador) clearInterval(temporizador);
       temporizador = undefined;
+      await emVoo;
     },
     processarUm,
   };
