@@ -82,11 +82,16 @@ function hashDoSegredo(segredo: string): string {
 }
 
 /**
- * Localiza o Membro que ocupa o Papel "Agente do pipeline"
+ * Localiza o Membro ATIVO que ocupa o Papel "Agente do pipeline"
  * (`SOL.papeis.agentePipeline`, §9 da spec) dentro do Espaço de Trabalho.
  * Recusa se não existir — o Papel pode estar materializado pelo evolver
- * (Plan 02-08) sem que nenhum Membro real o ocupe ainda; um Membro nasce
- * nele por convite/atribuição, fora deste arquivo.
+ * (Plan 02-08) sem que nenhum Membro o ocupe ainda. Quem cria o Membro de
+ * serviço é `npm run solicitacoes:configurar -w @n1/api -- --apply` (plano
+ * pós-auditoria, 2.2).
+ *
+ * Só `ativo` conta: o domínio recusa tudo o que um Membro `pendente` ou
+ * `removido` tente fazer ("Só um Membro ativo…"), então devolver um deles
+ * só adiaria a mesma recusa para dentro da transação, com mensagem pior.
  */
 export async function resolverMembroAgenteDoPipeline(workspaceId: string): Promise<{ readonly id: string }> {
   const resultado = await pool().query<{ dados: { readonly id: string } }>(
@@ -95,14 +100,15 @@ export async function resolverMembroAgenteDoPipeline(workspaceId: string): Promi
       where workspace_id = $1
         and colecao = 'members'
         and dados->>'roleId' = $2
+        and dados->>'state' = 'ativo'
       limit 1`,
     [workspaceId, SOL.papeis.agentePipeline],
   );
   const membro = resultado.rows[0]?.dados;
   if (!membro) {
     throw new Error(
-      `Nenhum Membro ocupa o Papel "Agente do pipeline" (${SOL.papeis.agentePipeline}) no Espaço "${workspaceId}" — ` +
-        "crie-o (convite/atribuição) antes de emitir uma credencial de serviço; ver Plan 02-08.",
+      `Nenhum Membro ativo ocupa o Papel "Agente do pipeline" (${SOL.papeis.agentePipeline}) no Espaço "${workspaceId}" — ` +
+        'crie-o com "npm run solicitacoes:configurar -w @n1/api -- --apply" (plano pós-auditoria, 2.2).',
     );
   }
   return { id: membro.id };

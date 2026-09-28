@@ -68,6 +68,21 @@ verdade, dentro da mesma Unidade de Trabalho que qualquer operação usa).
 @n1/api`): aplicar de verdade exige a flag `--apply` explícita — um acidente
 de automação nunca grava sem essa intenção.
 
+## O Membro de serviço "Agente do pipeline" (plano pós-auditoria, 2.2)
+
+`solicitacoes:configurar` passa sempre `membroDeServico` ao evolver: quando
+nenhum Membro ativo ocupa o Papel `rol_sp_agente_pipeline`, ele nasce por
+`inviteMember` (e-mail de serviço `EMAIL_DO_AGENTE_DO_PIPELINE`, domínio
+`.invalid`) e é ativado ali mesmo — sem `userId`, nenhum JWT resolve para
+ele. Em seguida ganha, por `grantGovernanceAccess` (com motivo), `administrar`
+nas Listas de Contas a pagar e a receber: é o que `runScheduledAutomations`
+exige para o agendador rodar a agenda em nome dele, e o que a ponte do
+lançamento precisa para ver a conta, publicar o Resumo e mover o Status. O
+Papel continua Convidado. `--membro` precisa ser Administrador ou
+Proprietário. Depois do `--apply`, tire `AUTOMACOES_ATOR_MEMBER_ID` do comando
+da API: o agendador e a ponte passam a assinar pelo Membro de serviço
+(`resolverMembroAgenteDoPipeline`, que só aceita Membro `ativo`).
+
 ## `contas-a-pagar:configurar` (plano pós-auditoria, 2.1 e 1.5)
 
 `configurarContasAPagar()` (`contas-a-pagar.ts`) é o terceiro evolver do

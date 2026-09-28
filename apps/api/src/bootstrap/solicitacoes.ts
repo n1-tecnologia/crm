@@ -24,6 +24,13 @@ export interface OpcoesDeConfiguracao {
   /** Padrão `true` no CLI — aplicar exige intenção explícita (`--apply`). */
   readonly dryRun: boolean;
   readonly tasksPerListMinimo?: number;
+  /**
+   * Plano pós-auditoria, 2.2 — cria o Membro de serviço do "Agente do
+   * pipeline" quando ausente e lhe dá alcance em Contas a pagar e a receber
+   * (ver `evoluirConfiguracaoDeSolicitacoes`). O CLI sempre passa; ausente,
+   * o evolver não nomeia ocupante (D-13).
+   */
+  readonly membroDeServico?: { readonly email: string };
 }
 
 export type ResultadoDaConfiguracao =
@@ -31,7 +38,7 @@ export type ResultadoDaConfiguracao =
   | { readonly ok: false; readonly dryRun: boolean; readonly error: string };
 
 export async function configurarSolicitacoes(opcoes: OpcoesDeConfiguracao): Promise<ResultadoDaConfiguracao> {
-  const { workspaceId, actingMemberId, dryRun, tasksPerListMinimo } = opcoes;
+  const { workspaceId, actingMemberId, dryRun, tasksPerListMinimo, membroDeServico } = opcoes;
 
   if (dryRun) {
     const cliente = await pool().connect();
@@ -42,7 +49,7 @@ export async function configurarSolicitacoes(opcoes: OpcoesDeConfiguracao): Prom
       // evolver) gera ids por contador de módulo, que precisa começar acima
       // do maior id já hidratado para não colidir com Atividade já gravada.
       syncIdSequence(state);
-      const resultado = evoluirConfiguracaoDeSolicitacoes(state, actingMemberId, { tasksPerListMinimo });
+      const resultado = evoluirConfiguracaoDeSolicitacoes(state, actingMemberId, { tasksPerListMinimo, membroDeServico });
       return resultado.ok
         ? { ok: true, dryRun: true, diff: resultado.value }
         : { ok: false, dryRun: true, error: resultado.error };
@@ -53,7 +60,7 @@ export async function configurarSolicitacoes(opcoes: OpcoesDeConfiguracao): Prom
   }
 
   const resultado = await executar(workspaceId, (state) =>
-    evoluirConfiguracaoDeSolicitacoes(state, actingMemberId, { tasksPerListMinimo }),
+    evoluirConfiguracaoDeSolicitacoes(state, actingMemberId, { tasksPerListMinimo, membroDeServico }),
   );
   if ("conflito" in resultado) {
     return { ok: false, dryRun: false, error: resultado.error };
