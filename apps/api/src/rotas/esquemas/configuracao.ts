@@ -5,7 +5,7 @@
  * porquê da validação ser de transporte, não de regra de negócio.
  */
 
-import type { EnabledFeatures, FieldType } from "@n1/dominio";
+import type { EnabledFeatures, FieldRequirement, FieldType } from "@n1/dominio";
 import {
   CONTAINER_TYPE,
   ID,
@@ -82,7 +82,28 @@ const ADD_STATUS_INPUT = z
   .object({ name: z.string(), color: z.string(), category: STATUS_CATEGORY })
   .strict();
 
-const UPDATE_STATUS_INPUT = z.object({ name: z.string().optional(), color: z.string().optional() }).strict();
+const REQUIREMENT_ATTRIBUTE = z.enum(["dueDate", "estimate", "startDate"]);
+
+// A FORMA de um requisito de Status (`FieldRequirement`). "Um Campo ou um
+// atributo, e só um" e "o Campo existe e está ativo" são regra de
+// `updateStatus` — não repetir aqui.
+const FIELD_REQUIREMENT = z
+  .object({
+    definitionId: ID.optional(),
+    attribute: REQUIREMENT_ATTRIBUTE.optional(),
+    whenDefinitionId: ID.optional(),
+    whenValue: z.string().optional(),
+    positive: z.boolean().optional(),
+    label: z.string().optional(),
+  })
+  .strict();
+
+// `exitRequirements` (plano pós-auditoria, 2.1): sem ele no schema, uma tela
+// que um dia editar requisitos teria a chave recusada aqui (`.strict()`)
+// enquanto o domínio a aceita em memória — o cliente e o servidor divergiriam.
+const UPDATE_STATUS_INPUT = z
+  .object({ name: z.string().optional(), color: z.string().optional(), exitRequirements: z.array(FIELD_REQUIREMENT).optional() })
+  .strict();
 
 const CREATE_TASK_TYPE_INPUT = z
   .object({ name: z.string(), icon: z.string(), definedAtType: CONTAINER_TYPE, definedAtId: ID })
@@ -115,5 +136,9 @@ export const CONFIGURACAO = {
 // ── Portão de enum bidirecional — falta ou sobra de membro não compila ──
 
 type _EnumsCompletos = Confere<
-  [Igual<z.infer<typeof FIELD_TYPE>, FieldType>, Igual<z.infer<typeof FEATURE>, keyof EnabledFeatures>]
+  [
+    Igual<z.infer<typeof FIELD_TYPE>, FieldType>,
+    Igual<z.infer<typeof FEATURE>, keyof EnabledFeatures>,
+    Igual<z.infer<typeof REQUIREMENT_ATTRIBUTE>, NonNullable<FieldRequirement["attribute"]>>,
+  ]
 >;

@@ -56,6 +56,24 @@ describe("esquemas/configuracao — a forma dos args de configuration.ts", () =>
       ["restoreFieldDefinition", ["fd1"]],
       ["addStatus", ["list", "l1", { name: "Novo", color: "#000", category: "naoIniciado" }]],
       ["updateStatus", ["folder", "f1", "st1", { color: "#fff" }]],
+      // Plano pós-auditoria, 2.1 — a forma que `contas-a-pagar:configurar` usa.
+      [
+        "updateStatus",
+        [
+          "list",
+          "l1",
+          "st1",
+          {
+            exitRequirements: [
+              { definitionId: "fd1" },
+              { attribute: "dueDate" },
+              { definitionId: "fd2", whenDefinitionId: "fd3", whenValue: "CPF" },
+              { definitionId: "fd4", positive: true, label: "Valor" },
+            ],
+          },
+        ],
+      ],
+      ["updateStatus", ["list", "l1", "st1", { exitRequirements: [] }]],
       ["reorderStatuses", ["space", "s1", ["st1", "st2"]]],
       ["removeStatus", ["list", "l1", "st1"]],
       ["removeStatus", ["list", "l1", "st1", "st2"]],
@@ -107,5 +125,13 @@ describe("esquemas/configuracao — a forma dos args de configuration.ts", () =>
       CONFIGURACAO.setContainerFeature.safeParse(viaJson(["list", "l1", "prioridade", "sim"])).success,
     ).toBe(false);
     expect(CONFIGURACAO.reorderStatuses.safeParse(viaJson(["list", "l1", "a"])).success).toBe(false);
+    // Requisito de Status: atributo fora da lista e chave desconhecida caem.
+    expect(
+      CONFIGURACAO.updateStatus.safeParse(viaJson(["list", "l1", "st1", { exitRequirements: [{ attribute: "prazo" }] }])).success,
+    ).toBe(false);
+    expect(
+      CONFIGURACAO.updateStatus.safeParse(viaJson(["list", "l1", "st1", { exitRequirements: [{ definitionId: "fd1", lixo: 1 }] }])).success,
+    ).toBe(false);
+    expect(CONFIGURACAO.updateStatus.safeParse(viaJson(["list", "l1", "st1", { exitRequirements: "fd1" }])).success).toBe(false);
   });
 });

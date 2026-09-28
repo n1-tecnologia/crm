@@ -67,3 +67,18 @@ verdade, dentro da mesma Unidade de Trabalho que qualquer operação usa).
 **`--dry-run` é o padrão do CLI** (`npm run solicitacoes:configurar -w
 @n1/api`): aplicar de verdade exige a flag `--apply` explícita — um acidente
 de automação nunca grava sem essa intenção.
+
+## `contas-a-pagar:configurar` (plano pós-auditoria, 2.1 e 1.5)
+
+`configurarContasAPagar()` (`contas-a-pagar.ts`) é o terceiro evolver do
+mesmo molde, para a Lista "Contas a pagar" que já opera em `ws_n1`: aplica
+`evoluirConfiguracaoDeContasAPagar` (`@n1/dominio/contas-a-pagar-evolver`),
+que acrescenta à saída de "para pagar" o que o Omie exige (Categoria de
+pagamento, Fornecedor, Nome do fornecedor) por `updateStatus`, e pausa a A7
+legada por `pausarAutomacao` — as mesmas operações da tela. Só acrescenta:
+um requisito que o catálogo não prevê é divergência, e nada é gravado.
+
+```
+npm run contas-a-pagar:configurar -w @n1/api            # dry-run (padrão)
+npm run contas-a-pagar:configurar -w @n1/api -- --apply # grava
+```
