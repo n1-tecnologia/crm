@@ -178,9 +178,13 @@ function conditionsHold(state: DataState, task: Task, version: AutomationVersion
  */
 function fillTemplate(state: DataState, task: Task, template: string, cnpjPorEmpresa?: Readonly<Record<string, string>>): string {
   const cliente = clienteDe(state, task);
-  return template
+  const donoDoCliente = cliente ? state.members.find((m) => m.id === cliente.ownerMemberId)?.displayName : undefined;
+  // Sem dono conhecido, a saudação sai inteira ("{{donoDoCliente}}, …"), em vez
+  // de virar "—, o cliente está…" — achado da simulação no ws_n1 (2026-09-28).
+  const semSaudacaoVazia = donoDoCliente ? template : template.replace(/\{\{donoDoCliente\}\},?\s*/g, "");
+  const texto = semSaudacaoVazia
     .replace(/\{\{cliente\}\}/g, () => (cliente ? contactDisplayName(cliente) : "o cliente"))
-    .replace(/\{\{donoDoCliente\}\}/g, () => (cliente ? (state.members.find((m) => m.id === cliente.ownerMemberId)?.displayName ?? "—") : "—"))
+    .replace(/\{\{donoDoCliente\}\}/g, () => donoDoCliente ?? "")
     .replace(/\{\{campo:([a-zA-Z0-9_]+)\}\}/g, (_, id: string) => {
       const valor = fieldValueOf(task, id);
       if (Array.isArray(valor)) return valor.join(", ");
@@ -192,10 +196,14 @@ function fillTemplate(state: DataState, task: Task, template: string, cnpjPorEmp
     .replace(/\{\{cnpjEmpresa\}\}/g, () => {
       const empresa = fieldValueOf(task, CP.fields.empresa);
       const cnpj = typeof empresa === "string" ? cnpjPorEmpresa?.[empresa] : undefined;
-      return cnpj ? `${cnpj} (${String(empresa)})` : `da Empresa ${String(empresa ?? "—")}`;
+      if (cnpj) return `${cnpj} (${String(empresa)})`;
+      // Sem Empresa na conta, dizer isso — "da Empresa —" não diz nada a quem vai emitir a nota.
+      return typeof empresa === "string" && empresa.trim() ? `da Empresa ${empresa}` : "da empresa pagadora (Empresa não preenchida na conta)";
     })
     .replace(/\{\{titulo\}\}/g, task.title)
     .replace(/\{\{vencimento\}\}/g, task.dueDate ? task.dueDate.value.slice(0, 10).split("-").reverse().join("/") : "—");
+  // Um template que começa por um marcador ("{{cliente}} está…") não pode começar em minúscula.
+  return texto.charAt(0).toLocaleUpperCase("pt-BR") + texto.slice(1);
 }
 
 /* ───────────────────────────── Execução ───────────────────────────── */
