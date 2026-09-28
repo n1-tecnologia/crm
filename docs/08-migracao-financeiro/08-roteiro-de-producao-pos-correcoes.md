@@ -81,6 +81,16 @@ existe, confere no Omie, repete (não pode duplicar) e EXCLUI no fim:
 npm run teste:omie-real -- --lancar
 ```
 
+**Resultado real em 2026-09-28 (autorizado pelo dono):** título
+**5871703884** incluído no Omie da Tria (SAFE2PAY, R$ 1,00, vencimento
+08/10/2026, categoria 2.04.03, conta corrente 5468785966, Pix TRA/01.3 aceito
+sem o fallback Client-1166); os seis campos conferidos; o código de
+integração de 36 caracteres gravado inteiro; o segundo `/lancar` devolveu o
+mesmo id (`reaproveitado: true`, nada duplicado); excluído — confirmado
+depois pelas duas chaves ("não cadastrado"). A conferência final daquela
+execução acusou falso positivo (o Omie ainda devolvia o título segundos
+depois da exclusão); corrigido em `186147c` (confere pelo id, com espera).
+
 Esperado: todos os passos com ✔ e `RESULTADO: OK`. Se algum passo falhar
 depois de o título existir, ele é excluído assim mesmo; se a exclusão falhar,
 a saída diz o id para apagar à mão. Opções: `--manter` (não exclui),

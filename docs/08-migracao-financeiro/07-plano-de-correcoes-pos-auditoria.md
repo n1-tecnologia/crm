@@ -19,7 +19,7 @@ valor). Tudo local, sem push.
 | 2.1 | ✅ `5a4d4d5`, `d5913eb`, `dbe19d3` | Você: `contas-a-pagar:configurar --apply` |
 | 2.2 | ✅ `be8f557`, `08a6330` | Você: `solicitacoes:configurar --apply` |
 | 2.3, 2.4 | — (operação) | Você: SQL da agenda, `outbox:limpar-testes` |
-| 3 | — | Você, com o roteiro `08-roteiro-de-producao-pos-correcoes.md` |
+| 3 | ✅ `npm run teste:omie-real` (`5293dc3`, `91ac38c`, `186147c`); rodado no Omie real em 2026-09-28 — lançado, conferido, sem duplicata, excluído | A jornada pela tela (2B do roteiro), quando quiser |
 | 4.1 | ⏸ não feita (decisão: mesmas credenciais) | — |
 | 4.2–4.5, 4.7 | ✅ `financeiro-tria` `bb3cc14..ed9ef58` | Você: variáveis no `.env` da VPS |
 | 4.6 | ✅ roteiro e SQL em `financeiro-tria/supabase/manual/` | Você: SQL Editor, na ordem do README |
