@@ -63,6 +63,32 @@ npm run outbox:limpar-testes -w @n1/api -- --apply
 
 ## Passo 2 — Teste real no Omie (com R$ 1,00)
 
+### 2A. Automático (recomendado)
+
+Um terminal, de dentro de `financeiro-tria/automation` (o `.env` real é lido
+dali). Primeiro o ensaio — só leituras, nada gravado:
+
+```bash
+cd "/Users/TRIA2026/Projetos/Projetos Cursor/financeiro-tria/automation" && npm run teste:omie-real
+```
+
+Esperado: `RESULTADO: OK` (em 2026-09-28 o ensaio passou: fornecedor SAFE2PAY
+achado pelo CNPJ, "Contas de consumo" → 2.04.03, código de 36 caracteres
+livre). Depois o teste completo — lança R$ 1,00 para um fornecedor que já
+existe, confere no Omie, repete (não pode duplicar) e EXCLUI no fim:
+
+```bash
+npm run teste:omie-real -- --lancar
+```
+
+Esperado: todos os passos com ✔ e `RESULTADO: OK`. Se algum passo falhar
+depois de o título existir, ele é excluído assim mesmo; se a exclusão falhar,
+a saída diz o id para apagar à mão. Opções: `--manter` (não exclui),
+`--cnpj=… --nome=…` (outro fornecedor; se não existir, é cadastrado),
+`--categoria=…`, `--valor=…` (até 10,00), `--dias=…`.
+
+### 2B. Pela tela (a jornada inteira, com a ponte do CRM N1)
+
 Dois terminais, um para cada serviço. Use **o mesmo token** nos dois (o de
 teste que já usamos serve; é só local).
 
