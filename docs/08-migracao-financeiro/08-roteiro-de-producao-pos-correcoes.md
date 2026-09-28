@@ -1,0 +1,193 @@
+# Roteiro de produção depois das correções pós-auditoria
+
+Para: o dono, que roda cada passo que grava em produção. Ordem de cima para
+baixo; cada passo diz o que esperar. Plano e estado: `07-plano-de-correcoes-pos-auditoria.md`.
+
+**Regra de ouro:** todo CLI com `--apply` tem um dry-run antes. Rode o
+dry-run, compare com o "esperado", e só então o `--apply`. Se o dry-run
+mostrar algo diferente, pare e mande a saída.
+
+Onde está o código corrigido:
+- CRM N1: `/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao` (branch `integra-frontend-main`).
+- Financeiro: `/Users/TRIA2026/Projetos/Projetos Cursor/financeiro-tria` (branch `main`, local — 38 commits à frente do que existia hoje de manhã, sem push).
+
+---
+
+## Passo 1 — Configurar o `ws_n1` (Postgres do CRM N1)
+
+Terminal novo:
+
+```bash
+cd "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao"
+```
+
+**1a. Membro "Agente do pipeline"** (quem assina o que o agendador e a ponte gravam):
+
+```bash
+npm run solicitacoes:configurar -w @n1/api
+```
+
+Esperado no dry-run: `criados 1 — sts_sp_em_revisao` (o Status "em revisão"
+das Solicitações, pendente desde D5-06), `agente do pipeline criado`, 3
+concessões, 0 divergentes. Então:
+
+```bash
+npm run solicitacoes:configurar -w @n1/api -- --apply
+```
+
+**1b. Contas a pagar: o que o Omie exige + A7 pausada:**
+
+```bash
+npm run contas-a-pagar:configurar -w @n1/api
+```
+
+Esperado: 3 exigências novas na saída de "para pagar" (`fd_cp_categoria`,
+`fd_cp_fornecedor`, `fd_cp_nome_fornecedor`), `aut_cp_a7` pausada, 0
+divergentes. Então:
+
+```bash
+npm run contas-a-pagar:configurar -w @n1/api -- --apply
+```
+
+Efeito: conta em "para pagar" sem Categoria, Fornecedor, documento e Nome do
+fornecedor não sai de lá até ser completada.
+
+**1c. (Opcional agora) limpar lixo de teste no outbox:**
+
+```bash
+npm run outbox:limpar-testes -w @n1/api
+npm run outbox:limpar-testes -w @n1/api -- --apply
+```
+
+---
+
+## Passo 2 — Teste real no Omie (com R$ 1,00)
+
+Dois terminais, um para cada serviço. Use **o mesmo token** nos dois (o de
+teste que já usamos serve; é só local).
+
+**Terminal A — Financeiro** (código novo; escuta só em 127.0.0.1):
+
+```bash
+cd "/Users/TRIA2026/Projetos/Projetos Cursor/financeiro-tria/automation" && INVOICE_CRON_ENABLED=false INVOICE_EMIT_DRAIN_MINUTES=0 PLATAFORMA_LANCAMENTO_TOKEN=<token> npm run dev
+```
+
+Esperado: `escutando em http://127.0.0.1:4100` e as linhas `[seguranca]`
+(avisos de configuração — normais no local).
+
+**Terminal B — API do CRM N1 com a ponte em modo de lançamento real:**
+
+```bash
+cd "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao" && AGENTE_CONTAS_A_PAGAR_ATIVO=true AGENTE_CONTAS_A_PAGAR_MODO=lancar AGENTE_CONTAS_A_PAGAR_URL=http://127.0.0.1:4100 PLATAFORMA_LANCAMENTO_TOKEN=<token> AGENTE_CONTAS_A_PAGAR_ESPACO_ID=ws_n1 AGENTE_CONTAS_A_PAGAR_LISTA_ID=lst_contas_a_pagar AGENTE_CONTAS_A_PAGAR_INTERVALO_MS=20000 npm run dev -w @n1/api
+```
+
+Não precisa mais de `AUTOMACOES_WORKER_ATIVO` nem de `AUTOMACOES_ATOR_MEMBER_ID`
+para este teste: a ponte tem o próprio ciclo, e depois do passo 1a quem
+assina é o Agente do pipeline. Esperado: `ponte do Agente de lançamento ativa (modo=lancar)`.
+
+**Na tela** (http://localhost:3001 → Financeiro → Contas a pagar):
+
+1. **+ Nova conta** → "TESTE OMIE - R$ 1,00".
+2. Preencha: Centro de Custo **TRIA**; Valor **1**; Vencimento **daqui a 10
+   dias**; Forma **Chave Pix**; Chave pix (um e-mail de teste); Categoria
+   **Contas de consumo**; Fornecedor **CNPJ**; CNPJ de um **fornecedor real
+   que já existe no Omie**; Nome do fornecedor.
+3. Mude o Status para **"em lançamento omie"** e não mexa mais.
+4. Espere ~30 s e aperte F5.
+
+Esperado:
+- A conta em **"lançado omie"**, com o **📋 Resumo de pagamento** na Atividade.
+- Terminal B: `Conta lançada no Omie e movida para "lançado omie"`.
+- No Omie: a conta a pagar de R$ 1,00 com o fornecedor certo, a categoria, a
+  conta corrente TRIA, o vencimento e a forma Pix (TRA/01.3).
+
+Se não der: o Agente comenta na conta **o motivo** (ex.: "O Omie recusou o
+lançamento: …"). Copie o comentário e as últimas linhas dos dois terminais.
+
+Depois: exclua o título no Omie e descarte a conta na plataforma. Pare os dois
+terminais (`Ctrl+C`).
+
+Confirmar neste teste (o código não tem como provar sozinho): que o Omie
+aceita o `codigo_lancamento_integracao` de ~30 caracteres; qual forma do
+filtro de CNPJ acha o fornecedor (aparece no log do Terminal A); o texto real
+da recusa quando algo está errado.
+
+---
+
+## Passo 3 — Supabase do Financeiro (SQL à mão, nunca `db push`)
+
+Siga `financeiro-tria/supabase/manual/README.md`, na ordem:
+
+0. `supabase migration list --linked` (só lê).
+1. A consulta que prova quais objetos já existem.
+2. `supabase migration repair --status applied <versão>` das migrações
+   aplicadas à mão (registra no histórico, não executa).
+3. A migração nova `20260928120000_platform_event_receipts_payload.sql` no
+   SQL Editor, e o `repair` dela.
+4. `supabase/manual/2026-09-28-deduplicar-solicitacoes.sql`, parte por parte:
+   pré-visualização → transação com backup → índice único → conferência.
+   Fora do expediente, e **depois** do deploy do passo 4 (o código antigo
+   recria duplicatas).
+5. `20261001120000_remove_anon_read_painel.sql` por último, e só com o painel
+   Vercel pausado.
+
+---
+
+## Passo 4 — Deploy do Financeiro na VPS
+
+Depende de você decidir o push (`git push` do `financeiro-tria/main`).
+
+`.env` de produção (`/root/financeiro-tria/automation/.env`) — acrescentar
+**antes** de subir o código novo (só nomes aqui; valores nunca em arquivo do
+repo nem no chat):
+
+| Variável | De onde vem | Sem ela |
+|---|---|---|
+| `MP_OMIE_APP_KEY`, `MP_OMIE_APP_SECRET` | O valor que estava no código: `git show 4149032:automation/src/tenants/marcos-paulo/config.ts \| sed -n '34,35p'` (rode no seu terminal) | Todo passo do Marcos Paulo que resolve a conta Omie recusa |
+| `PLATAFORMA_LANCAMENTO_TOKEN` | O mesmo do `apps/api` do CRM N1 | `/v1/integrations/contas-a-pagar/*` e todo POST de `/v1/leituras` dão 401 |
+| `PLATAFORMA_LEITURA_TOKEN` | O mesmo do `apps/api` (diferente do de lançamento) | As leituras do CRM N1 dão 401 |
+| `PAINEL_LEGADO_ABERTO=true` **ou** `PAINEL_LEGADO_TOKEN` | Transição: `true` mantém o painel Vercel funcionando como hoje | Os botões e listas do painel Vercel dão 401 |
+| `CLICKUP_WEBHOOK_SECRETS` | `secret` de cada webhook do ClickUp que aponta para `financeiro.85.155.186.214.nip.io` (API do ClickUp: `GET /team/<time>/webhook`, times 9011731314 e 9011658148), separados por vírgula | Webhooks aceitos sem conferir assinatura (como hoje), com aviso |
+| `EXTRATO_WEBHOOK_TOKEN` | Deixe vazio (o upload do painel não manda o cabeçalho) | — |
+| `HOST` | Não defina (padrão 127.0.0.1, atrás do nginx) | — |
+
+Na VPS:
+
+```bash
+cd /root/financeiro-tria && git checkout -- automation/package.json automation/package-lock.json
+git pull --ff-only
+cd automation && npm ci
+pm2 restart financeiro-tria-automation && pm2 logs financeiro-tria-automation --lines 40
+```
+
+Esperado nos logs: `escutando em http://127.0.0.1:4100`, as linhas
+`[seguranca]` e, depois de um comentário de teste no ClickUp, `[webhook] …`
+sem "recusado".
+
+**Não** ligar `PAYMENT_REQUEST_SOURCE=plataforma` ainda: a entrada de
+Solicitações pela plataforma precisa do Formulário no `ws_n1`, do outbox
+ligado e das variáveis `PLATAFORMA_BASE_URL`, `PLATAFORMA_SERVICE_TOKEN`,
+`PLATAFORMA_WEBHOOK_TOKEN` e `PLATAFORMA_MEMBRO_POR_CLICKUP_ID` (próxima rodada).
+
+---
+
+## Decisões pendentes
+
+1. **FINQ:** não tem Conta de Pagamento mapeada (`CONTA_PAGAMENTO_POR_CENTRO_CUSTO`).
+   Antes o lançamento caía na primeira conta corrente da lista; agora é
+   recusado. Qual conta usar?
+2. **Legado do ClickUp não cria fornecedor novo:** `ensureSupplier` trata o
+   `Client-5113` ("não cadastrado") como erro, então o `IncluirCliente` nunca
+   roda. Corrigir faz o fluxo em produção passar a cadastrar fornecedores.
+3. **Family Office:** `FO_EMPRESA_*_APP_KEY` vazia cai na conta Omie padrão
+   (mesmo risco que foi fechado no Marcos Paulo).
+4. **Credenciais nas linhas de solicitação:** o seletor de conta grava
+   `app_key`/`app_secret` em `solicitacoes_pagamentos`. As respostas não as
+   devolvem mais, mas elas continuam no banco.
+5. **Painel Vercel:** pausar (recomendado) e depois aplicar a migração que
+   tira a leitura anônima.
+6. **Push e merge:** `financeiro-tria/main` para o GitHub; `integra-frontend-main`
+   na sua branch do CRM N1.
+7. **Próxima rodada (6.5 e itens de produto):** Formulário público no `ws_n1`,
+   outbox ligado, aceitar convite, Resumo depois da aprovação na plataforma
+   (S5), upload real no Conhecimento, credencial em `conectarIntegracao`.

@@ -5,6 +5,44 @@ subsistema, 31 afirmações críticas verificadas por 3 céticos cada, crítico 
 completude) feita antes do primeiro lançamento real no Omie pela plataforma.
 Os achados com evidência (`caminho:linha`) estão no **Anexo A**, no fim.
 
+## Execução (2026-09-28) — o código está feito; falta produção
+
+Decisão do dono: **fazer todas as correções sem trocar credenciais** (a 4.1
+não foi feita; segredo que estava no código mudou de lugar, com o mesmo
+valor). Tudo local, sem push.
+
+| Etapa | Código | O que falta (quem) |
+|---|---|---|
+| 0 | ✅ API e `automation/` locais parados (inclusive o `tsx watch` que sobrava); commits feitos | Você: A7 pausa pelo CLI (2.1); firewall do macOS |
+| 1.1–1.3, 1.6 | ✅ `financeiro-tria` `b31d8db..eaf3d77` | Etapa 3 (teste real) |
+| 1.4, 1.5 | ✅ `crm-n1` `9cfca56`, `e60fe50`, `8f959a1`, `2278048`; contrato dos dois lados `02ce704` | — |
+| 2.1 | ✅ `5a4d4d5`, `d5913eb`, `dbe19d3` | Você: `contas-a-pagar:configurar --apply` |
+| 2.2 | ✅ `be8f557`, `08a6330` | Você: `solicitacoes:configurar --apply` |
+| 2.3, 2.4 | — (operação) | Você: SQL da agenda, `outbox:limpar-testes` |
+| 3 | — | Você, com o roteiro `08-roteiro-de-producao-pos-correcoes.md` |
+| 4.1 | ⏸ não feita (decisão: mesmas credenciais) | — |
+| 4.2–4.5, 4.7 | ✅ `financeiro-tria` `bb3cc14..ed9ef58` | Você: variáveis no `.env` da VPS |
+| 4.6 | ✅ roteiro e SQL em `financeiro-tria/supabase/manual/` | Você: SQL Editor, na ordem do README |
+| 5 | — | Você: push, deploy, `.env` (roteiro) |
+| 6.1–6.4 | ✅ `financeiro-tria` `d21c726..8e241e5`, `ba11906` | Você: SQL de deduplicação; variáveis `PLATAFORMA_*` |
+| 6.5 | Parcial: Membro do pipeline ✅; Formulário público no `ws_n1`, aceitar convite e outbox ligado ❌ | Próxima rodada |
+| 7 | ✅ CI nos dois repos, testes frágeis, código morto, `scripts/` no typecheck, `npm test` isolado | Itens de produto do CRM N1 (Conhecimento, `conectarIntegracao`, "Formulário desatualizado") ❌ |
+
+Provas: `financeiro-tria` 489/489 testes (isolados, 0 acessos de rede) e
+typecheck de `src/` e `scripts/`; servidor integrado sobe sem `PLATAFORMA_*`
+(health 200, rotas protegidas 401). `crm-n1` `npm run check` verde sem banco
+(domínio 735, web 216, api 549 + 205 de banco pulados) e contrato
+`contas-a-pagar-v1` 21/21, com as duas cópias iguais por hash.
+
+Achados novos durante a execução (decisão sua, ver o roteiro): FINQ sem Conta
+de Pagamento mapeada (agora recusa em vez de usar a primeira conta);
+`ensureSupplier` do legado nunca cria fornecedor (trata `Client-5113` como
+erro); Family Office com `FO_EMPRESA_*_APP_KEY` vazia cai na conta Omie
+padrão; o seletor de conta grava `app_key`/`app_secret` nas linhas de
+solicitação; retomada do pipeline reexecuta tudo (reenvia WhatsApp se
+`NOTIFY_NEW_REQUEST_WHATSAPP` estiver ligado); depois da aprovação na
+plataforma não sai RESUMO (spec S5).
+
 ## Como ler este plano
 
 - **Etapas em ordem de dependência.** Cada uma tem objetivo, o que muda (com
