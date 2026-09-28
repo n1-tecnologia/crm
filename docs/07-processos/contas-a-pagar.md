@@ -282,7 +282,8 @@ Hoje no ClickUp a Pessoa da conta é Membro pleno e vê a Lista inteira — incl
 
 - **RN-CP-01** — Centro de Custo é obrigatório na criação (única obrigatoriedade configurada hoje).
 - **RN-CP-02** — Sair de `para pagar` exige Valor, Data de vencimento, Forma de pagamento e o dado de pagamento coerente com ela (Chave pix / Código de barras + Boleto / Pix copia e cola + QR Code). Hoje isso é conferido pelo Agente; deve ser Requisito de saída do status.
-- **RN-CP-03** — Fornecedor = CPF exige CPF preenchido; = CNPJ exige CNPJ preenchido.
+  Desde o plano pós-auditoria (`docs/08-migracao-financeiro/07-plano-de-correcoes-pos-auditoria.md`, 2.1), também **Categoria de pagamento**, **Fornecedor** e **Nome do fornecedor**: é o que o lançamento no Omie usa para achar ou cadastrar o fornecedor e classificar a conta. A lista é a mesma de `erpMissingFields` (`packages/dominio/src/operations/financeiro.ts`) — a tela que recusa mover e o Agente que recusa lançar dizem a mesma coisa.
+- **RN-CP-03** — Fornecedor = CPF exige CPF preenchido; = CNPJ exige CNPJ preenchido (Requisito de saída de `para pagar`, condicional ao tipo).
 - **RN-CP-04** — Entrar em `em autorização bancária` troca o Responsável para o Aprovador (A3). Entrar em `pago` só é permitido ao Aprovador.
 - **RN-CP-05** — `pago` é o único status `fechado`. `aprovado` e `negado` são `concluído` e não disparam recorrência.
 - **RN-CP-06** — Uma Tarefa recorrente gera **uma** ocorrência por fechamento; fechar duas vezes (reabrir e fechar) não duplica.

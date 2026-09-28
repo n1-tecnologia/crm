@@ -82,7 +82,8 @@ export function applyContasAPagar(state: DataState, clock: Clock, opcoes: Opcoes
 
   /* ── Conjunto de Status (seção 3) ─────────────────────────────────────── */
   const dadoDePagamento = [
-    // RN-CP-01 — Centro de Custo é o único obrigatório; conferido na saída de "para pagar".
+    // RN-CP-01 — Centro de Custo é o único obrigatório para CRIAR a conta; o
+    // resto é conferido na saída de "para pagar".
     { definitionId: F.centroDeCusto },
     { definitionId: F.valor },
     { attribute: "dueDate" as const },
@@ -92,8 +93,17 @@ export function applyContasAPagar(state: DataState, clock: Clock, opcoes: Opcoes
     { definitionId: F.boleto, whenDefinitionId: F.forma, whenValue: "Boleto" },
     { definitionId: F.pixCopiaECola, whenDefinitionId: F.forma, whenValue: "QRCode Pix" },
     { definitionId: F.qrCode, whenDefinitionId: F.forma, whenValue: "QRCode Pix" },
+    // Plano pós-auditoria, 2.1 — o que o Omie exige, o Status exige: o
+    // `/lancar` procura ou cadastra o fornecedor no Omie pelo documento e pelo
+    // nome, e classifica pela Categoria. É a mesma lista de `erpMissingFields`
+    // (`operations/financeiro.ts`); em `ws_n1`, quem grava as três exigências
+    // novas (Categoria, Fornecedor, Nome) é o evolver
+    // (`contas-a-pagar-evolver.ts`), nunca a edição deste seed.
+    { definitionId: F.categoria },
+    { definitionId: F.fornecedor },
     { definitionId: F.cpf, whenDefinitionId: F.fornecedor, whenValue: "CPF" },
     { definitionId: F.cnpj, whenDefinitionId: F.fornecedor, whenValue: "CNPJ" },
+    { definitionId: F.nomeFornecedor },
   ];
   const statusSet: StatusSet = {
     id: "sts_contas_a_pagar",
@@ -484,6 +494,7 @@ export function applyContasAPagar(state: DataState, clock: Clock, opcoes: Opcoes
     ...base("Tria Tech", "Tria Tech", "Tria Company", "Prestação de Serviços"),
     val(F.pessoa, "mem_thiago_pereira"),
     ...cnpj("41.208.771/0001-35"),
+    val(F.nomeFornecedor, "Pedro Alencar Consultoria em Dados"),
     ...pix("41.208.771/0001-35"),
     val(F.valor, 12000),
     val(F.anexo, "NFS-e_0021.pdf"),
@@ -525,6 +536,7 @@ export function applyContasAPagar(state: DataState, clock: Clock, opcoes: Opcoes
     ...base("Tria Tech", "Tria Tech", "Tria Company", "Prestação de Serviços"),
     val(F.pessoa, "mem_thiago_pereira"),
     ...cnpj("41.208.771/0001-35"),
+    val(F.nomeFornecedor, "Pedro Alencar Consultoria em Dados"),
     ...pix("41.208.771/0001-35"),
     val(F.valor, 12000),
     val(F.anexo, "NFS-e_0022.pdf"),
@@ -534,6 +546,7 @@ export function applyContasAPagar(state: DataState, clock: Clock, opcoes: Opcoes
     ...base("Tria Tech", "Tria Tech", "Tria Company", "Prestação de Serviços"),
     val(F.pessoa, "mem_thiago_pereira"),
     ...cnpj("41.208.771/0001-35"),
+    val(F.nomeFornecedor, "Pedro Alencar Consultoria em Dados"),
     ...pix("41.208.771/0001-35"),
     val(F.valor, 12000),
   ], { observerMemberIds: [CP.financeiroId, CP.aprovadorId, "mem_thiago_pereira"], recurrence: recorrente(), provenance: { kind: "recurrence", sourceId: "tsk_cp_thiago_set", sourceName: "Pedro Alencar Consultoria em Dados", at: at(5, 11) } });
@@ -612,6 +625,7 @@ export function applyContasAPagar(state: DataState, clock: Clock, opcoes: Opcoes
   const impostos = conta("tsk_cp_das", "DAS — Simples Nacional", "Imposto mensal", S.paraPagar, d(12), 18, CP.financeiroId, "conta tria", [
     ...base("TRIA", "TRIA - Apoio Funcional", "Tria Company", "Impostos"),
     ...cnpj("11.222.333/0001-81"),
+    val(F.nomeFornecedor, "Receita Federal do Brasil"),
     val(F.forma, "Boleto"),
     val(F.codigoBarras, "85810000005-6 86267500000-1 26092600000-2 00000000000-3"),
     val(F.boleto, "das-set.pdf"),
@@ -621,6 +635,7 @@ export function applyContasAPagar(state: DataState, clock: Clock, opcoes: Opcoes
     ...base("Kops", "Iallas Oliveira", "Tria Company", "Comissão"),
     val(F.pessoa, "mem_walter"),
     ...cpf("321.654.987-00"),
+    val(F.nomeFornecedor, "Walter Galvão Neto"),
     ...pix("+55 11 98888-0000"),
     val(F.valor, 5400),
   ], { observerMemberIds: [CP.financeiroId, CP.aprovadorId, "mem_walter"] });

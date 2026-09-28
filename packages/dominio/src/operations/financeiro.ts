@@ -185,7 +185,18 @@ function fieldValue(task: Task, definitionId: Id): string {
   return Array.isArray(v) ? v.join(", ") : String(v);
 }
 
-/** O que o ERP exige e, quando falta, o que o Agente pede ao Financeiro. */
+/**
+ * O que o ERP exige e, quando falta, o que o Agente pede ao Financeiro.
+ *
+ * É a MESMA lista que a saída de "para pagar" exige (`seed-financeiro.ts`,
+ * `dadoDePagamento`), e é a única que a ponte do `apps/api` consulta antes de
+ * chamar o Omie (plano pós-auditoria, 2.1): a tela que recusa mover a conta e
+ * o Agente que recusa lançá-la falam da mesma coisa, com as mesmas palavras.
+ * Categoria, Fornecedor (CPF/CNPJ), o documento e o Nome do fornecedor entram
+ * porque o `/lancar` do `automation/` procura ou cadastra o fornecedor no
+ * Omie antes de incluir o título — sem eles o Omie recusa, e a recusa chega
+ * tarde, depois de a conta já ter saído de "para pagar".
+ */
 export function erpMissingFields(state: DataState, task: Task): string[] {
   const nome = (id: Id) => state.fieldDefinitions.find((d) => d.id === id)?.name ?? id;
   const faltando: string[] = [];
@@ -197,9 +208,14 @@ export function erpMissingFields(state: DataState, task: Task): string[] {
   if (forma === "Chave Pix" && !fieldValue(task, CP.fields.chavePix)) faltando.push(nome(CP.fields.chavePix));
   if (forma === "Boleto" && !fieldValue(task, CP.fields.codigoBarras)) faltando.push(nome(CP.fields.codigoBarras));
   if (forma === "QRCode Pix" && !fieldValue(task, CP.fields.pixCopiaECola)) faltando.push(nome(CP.fields.pixCopiaECola));
+  if (!fieldValue(task, CP.fields.categoria)) faltando.push(nome(CP.fields.categoria));
+  // O tipo do fornecedor decide qual documento o Omie recebe: sem ele não há
+  // documento a conferir, e presumir CNPJ seria inventar dado.
   const fornecedor = fieldValue(task, CP.fields.fornecedor);
+  if (!fornecedor) faltando.push(nome(CP.fields.fornecedor));
   if (fornecedor === "CPF" && !fieldValue(task, CP.fields.cpf)) faltando.push(nome(CP.fields.cpf));
   if (fornecedor === "CNPJ" && !fieldValue(task, CP.fields.cnpj)) faltando.push(nome(CP.fields.cnpj));
+  if (!fieldValue(task, CP.fields.nomeFornecedor)) faltando.push(nome(CP.fields.nomeFornecedor));
   // O que o Status atual exige para sair (Boleto, QR Code…): lançar sem poder mover seria lançar duas vezes.
   for (const extra of unmetRequirements(state, task, statusDefinition(state, task.listId, task.statusId)?.exitRequirements ?? [])) {
     if (!faltando.includes(extra)) faltando.push(extra);
