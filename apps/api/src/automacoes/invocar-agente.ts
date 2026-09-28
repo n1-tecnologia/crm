@@ -634,15 +634,27 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
         // confiança num Comentário ABERTO ao Financeiro (a Execução falha) e a
         // conta fica onde está, sem chamar `/lancar`.
         const atorId = await atorDaEscrita();
+        let escreveu = false;
         const r = await executarOperacao((s) => {
+          const alvo = s.tasks.find((t) => t.id === task.id);
+          const antes = alvo?.comments.length ?? 0;
           runLancamentoAgent(s, atorId, CP.agentId, task.id, INVOCADOR_DO_LANCAMENTO, { dePara, rehearsal: false });
+          escreveu = (alvo?.comments.length ?? 0) > antes;
           return ok(undefined);
         });
-        if (r.ok) estado.parada = "recusa";
-        else if (r.conflito) await falhaTransitoria("CONFLITO_DE_REVISAO");
+        if (r.ok && escreveu) estado.parada = "recusa";
+        else if (r.ok) {
+          // O Agente nem chegou a decidir (inativo, sem alcance, Resumo antigo
+          // já publicado…): a conta não fica parada em silêncio.
+          await parar(
+            "recusa",
+            textoDaRecusaPermanente(`a Categoria da conta não passou do corte de confiança do de-para (${resumo.veredito}); confirme a Categoria e eu tento de novo`, "CATEGORIA_EM_REVISAO"),
+            `categoria sem confiança (${resumo.veredito}).`,
+          );
+        } else if (r.conflito) await falhaTransitoria("CONFLITO_DE_REVISAO");
         else {
-          // O domínio recusou até escrever a recusa (permissão, Agente inativo…):
-          // parar evita pedir o mesmo de-para a cada ciclo; o log diz o porquê.
+          // O domínio recusou até escrever a recusa: parar evita pedir o mesmo
+          // de-para a cada ciclo; o log diz o porquê.
           estado.parada = "recusa";
           registrar("warn", `Não consegui registrar a recusa por categoria: ${r.error.slice(0, 200)}`, daConta);
         }
@@ -670,15 +682,25 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
 
       // Lançado no Omie: o Agente publica o Resumo e a conta vai para "lançado omie", numa transação só.
       const atorId = await atorDaEscrita();
+      let saiuAntes = false;
       const r = await executarOperacao((s) => {
         const atual = s.tasks.find((t) => t.id === task.id);
-        if (!atual || atual.statusId !== CP.status.emLancamento) return ok("A conta saiu de “em lançamento omie” antes de o lançamento voltar.");
+        saiuAntes = !atual || atual.statusId !== CP.status.emLancamento;
+        if (saiuAntes) return ok(undefined);
         const publicado = runLancamentoAgent(s, atorId, CP.agentId, task.id, INVOCADOR_DO_LANCAMENTO, { dePara, rehearsal: false });
         if (!publicado.ok) return publicado;
         const movida = changeTaskStatus(s, atorId, task.id, CP.status.lancado);
         return movida.ok ? ok("Lançada no Omie.") : movida;
       });
-      if (r.ok) {
+      if (r.ok && saiuAntes) {
+        // Alguém moveu a conta durante o `/lancar`: o título existe no Omie,
+        // mas nada foi publicado nem movido aqui. Se ela voltar para "em
+        // lançamento omie", a mesma chave devolve o mesmo título
+        // (`reaproveitado`) e o Resumo sai — sem lançar de novo.
+        estadoPorConta.delete(task.id);
+        registrar("warn", 'Lançada no Omie, mas a conta saiu de "em lançamento omie" antes da gravação; nada foi publicado nem movido.', daConta);
+        await comentar('O Omie confirmou o lançamento desta conta, mas ela saiu de "em lançamento omie" antes de eu publicar o Resumo. Se ela voltar para "em lançamento omie", eu publico o Resumo sem lançar de novo.');
+      } else if (r.ok) {
         estadoPorConta.delete(task.id);
         registrar("info", 'Conta lançada no Omie e movida para "lançado omie".', daConta);
       } else if (r.conflito) {

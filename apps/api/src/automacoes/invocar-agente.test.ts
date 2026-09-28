@@ -442,6 +442,47 @@ describe("criarPonteDoAgente — contra servidorFalso (sem DATABASE_URL)", () =>
       expect(pedidos[0]?.mentions).toEqual([{ type: "member", id: CP.financeiroId }]);
     });
 
+    it("a conta sai de \"em lançamento omie\" durante o /lancar: nada é publicado nem movido, e o Agente avisa que o título existe", async () => {
+      servidor = await criarServidorFalso();
+      const estado = buildSeed();
+      const das = prepararEmLancamento(estado, "tsk_cp_das", "Impostos");
+      servidor.enfileirar({ kind: "ok", status: 200, corpo: dePara200("Impostos", { veredito: "resolvida" }) });
+      servidor.enfileirar({ kind: "atraso", ms: 300, status: 200, corpo: LANCADO_200.corpo });
+      const registrados: string[] = [];
+      const emVoo = ponteSobre(estado, { registrar: (_n, m) => registrados.push(m) }).lancarContasEmLancamento();
+
+      // Enquanto o /lancar está no ar, alguém move a conta de volta.
+      for (let espera = 0; servidor.recebidas.length < 2 && espera < 100; espera += 1) await new Promise((r) => setTimeout(r, 10));
+      expect(servidor.recebidas.map((r) => r.caminho)).toEqual([RESOLVER, LANCAR]);
+      expect(changeTaskStatus(estado, MARYANE, das.id, S.paraPagar).ok).toBe(true);
+      await emVoo;
+
+      expect(das.statusId).toBe(S.paraPagar);
+      expect(das.comments.some((c) => c.content.startsWith("📋 RESUMO DE PAGAMENTO"))).toBe(false);
+      expect(comentariosDoAgente(das).map((c) => c.content)).toEqual([
+        'O Omie confirmou o lançamento desta conta, mas ela saiu de "em lançamento omie" antes de eu publicar o Resumo. Se ela voltar para "em lançamento omie", eu publico o Resumo sem lançar de novo.',
+      ]);
+      expect(registrados.some((m) => m.startsWith("Conta lançada no Omie"))).toBe(false);
+    }, 10_000);
+
+    it("categoria em revisão sem nada escrito pelo Agente (Resumo antigo já publicado): a conta não para em silêncio", async () => {
+      servidor = await criarServidorFalso();
+      const estado = buildSeed();
+      const das = prepararEmLancamento(estado, "tsk_cp_das", "Impostos");
+      das.comments.push({ id: "cmt_resumo_antigo", author: { kind: "agent", id: CP.agentId }, content: "📋 RESUMO DE PAGAMENTO\n(antigo)", attachments: [], mentions: [], createdAt: "2026-08-01T12:00:00.000Z" });
+      servidor.enfileirar({ kind: "ok", status: 200, corpo: dePara200("Impostos", { veredito: "revisar" }) });
+      const ponte = ponteSobre(estado);
+
+      await ponte.lancarContasEmLancamento();
+      await ponte.lancarContasEmLancamento();
+
+      expect(servidor.recebidas.map((r) => r.caminho)).toEqual([RESOLVER]);
+      const avisos = comentariosDoAgente(das).filter((c) => c.content.startsWith("Não consegui lançar no Omie"));
+      expect(avisos).toHaveLength(1);
+      expect(avisos[0]?.content).toContain("CATEGORIA_EM_REVISAO");
+      expect(das.statusId).toBe(S.emLancamento);
+    });
+
     it("payableId 'mock-payable-…' não é lançamento: a conta fica, o Agente avisa uma vez e o Omie não é chamado de novo", async () => {
       servidor = await criarServidorFalso();
       const estado = buildSeed();
