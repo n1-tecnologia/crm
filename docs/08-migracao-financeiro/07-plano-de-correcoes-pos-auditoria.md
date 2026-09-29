@@ -29,17 +29,21 @@ valor). Tudo local, sem push (`financeiro-tria/main` 99 commits à frente do
 | 6.5 | Parcial: Membro do pipeline ✅; Formulário público no `ws_n1`, aceitar convite e outbox ligado ❌ | Próxima rodada |
 | 7 | ✅ CI nos dois repos, testes frágeis, código morto, `scripts/` no typecheck, `npm test` isolado | Itens de produto do CRM N1 (Conhecimento, `conectarIntegracao`, "Formulário desatualizado") ❌ |
 | Legado do ClickUp (achados da execução) | ✅ `financeiro-tria` `0014772` (`ensureSupplier` cadastra fornecedor novo), `a157f0a` + `cf29662` (Family Office sem credencial própria recusa em vez de lançar no Omie da Tria; aviso de boot), `0ec964b` + `bb1df69` (credenciais fora das linhas + SQL de limpeza), `c272dad` (RESUMO preservado; código da conta por task) | Você: `FO_EMPRESA_*` no `.env` **antes** do deploy; SQL 4b **depois**; FINQ (decisão) |
-| Membros e jornada (`ws_n1`) | ✅ `crm-n1` `4ae35f7` (trocar e-mail do convite; troca de Papel passa a gravar), `a3e2b29` (regra do Status aponta quem não é Membro), `ebdae92` (textos das Automações), `c66f822` (jornada); Marcos Paulo criado **sem login e sem convite** | Você: e-mail certo e login do Marcos; Walter (não criado, por decisão) |
+| Membros e jornada (`ws_n1`) | ✅ `crm-n1` `4ae35f7` (trocar e-mail do convite; troca de Papel passa a gravar), `a3e2b29` (regra do Status aponta quem não é Membro), `ebdae92` (textos das Automações), `c66f822` (jornada); Marcos Paulo criado **sem login e sem convite**; `208efbc` "Quem pode mover para cá" nas configurações da Lista e o "pago" aberto para qualquer pessoa (2026-09-29, decisão do dono); `bb1b9bf` Atividade de Responsável com o nome | Você: e-mail certo e login do Marcos; Walter (não criado, por decisão) |
+| Conexão com o Postgres (achado da jornada de 2026-09-29) | ✅ `crm-n1` `d65ef0a`: 30 s por consulta, a conexão que estoura sai do pool, o Postgres encerra a transação largada | — (vale para a VPS também) |
 
 Provas: `financeiro-tria` em `c272dad` (2026-09-29) 538/538 testes
 (isolados, 0 acessos de rede) e typecheck; teste real do Omie `--lancar` OK
-(acima). `crm-n1` em `e5eb213` (2026-09-28, último commit de código)
-`npm run check` verde sem banco (domínio 752, web 216, api 571 + 205 de
-banco pulados); jornada no navegador 4 de 4 (N1-492..N1-495); contrato
-`contas-a-pagar-v1` 21/21 em 2026-09-28, com as duas cópias iguais por hash —
-as fixtures do `financeiro-tria` não mudaram desde então (`eaf3d77`), mas a
-nova rodada do teste de contrato não pôde ser feita pelo agente (bloqueada
-pelo classificador; o comando está no roteiro, passo 0).
+(acima). `crm-n1` em `bb1b9bf` (2026-09-29): domínio 758, web 216 (lint e
+tokens OK), api 492 + 205 de banco pulados — sem os dois arquivos que o
+classificador bloqueou para o agente (contrato e ponte, passo 0 do roteiro);
+sonda só de leitura no pooler real aceitando o `begin` novo. Jornada no
+navegador, visível, 4 de 4 (N1-496 paga, N1-497 negada, N1-498 recebida,
+N1-499 descartada) — as duas contas a pagar pararam na 1ª execução pela queda
+de conexão acima e foram retomadas do passo em que pararam depois da correção.
+Contrato `contas-a-pagar-v1` 21/21 em 2026-09-28, com as duas cópias iguais
+por hash — as fixtures do `financeiro-tria` não mudaram desde então
+(`eaf3d77`).
 
 Achados novos durante a execução, e o que virou deles:
 - **Corrigidos:** `ensureSupplier` do legado nunca criava fornecedor (tratava
@@ -68,9 +72,29 @@ Achados novos durante a execução, e o que virou deles:
   sem login e sem convite, e-mail provisório `marcos.paulo@triacompany.com.br`
   (trocável em Configurações → Membros → Marcos Paulo → **Alterar e-mail**).
   Na 2ª rodada (N1-492..N1-495) a A3 põe o Marcos como Aprovador e as
-  Automações de Contas a receber rodam. Enquanto o Marcos não tiver login,
-  **ninguém move conta para "pago"** (a regra do Status só tem ele e o
-  Walter, que não existe — a mensagem da tela agora diz isso).
+  Automações de Contas a receber rodam; o "pago" continuava travado (a regra
+  do Status só tinha o Marcos, sem login, e o Walter, que não existe).
+- **"Pago" aberto para qualquer pessoa (2026-09-29, decisão do dono: "todo
+  mundo deve conseguir mudar os status"):** a regra de entrada do Status
+  (`entryAllowedMemberIds`) só era escrita pelo seed (RN-CP-04, "só o
+  Aprovador fecha como pago") e nenhuma tela a mudava — a frase da recusa
+  mandava ajustar uma configuração que não existia. Agora `updateStatus`
+  aceita a regra (só Membros do Espaço; `[]` = qualquer pessoa; Registro com
+  o antes e o depois) e as configurações da Lista têm **Status → Ações →
+  Quem pode mover para cá**. No `ws_n1` o "pago" foi aberto por essa tela; o
+  seed mantém a RN-CP-04 como padrão de Espaço novo. Para voltar: a mesma
+  tela, "Só estas pessoas". Os requisitos de SAÍDA de "para pagar" (o que o
+  Omie exige) continuam: eles não dizem quem move, e sim o que precisa estar
+  preenchido.
+- **Conexão com o Postgres travava o Espaço (achado da jornada de
+  2026-09-29):** duas escritas ficaram paradas 16 e 10 minutos até "Connection
+  terminated unexpectedly" — o pooler do Supabase derrubou a conexão no meio e
+  o `apps/api` não tinha limite de tempo nenhum: esperava o TCP desistir,
+  segurando a revisão do Espaço (nenhuma outra tela gravava nesse tempo). Agora:
+  30 s por consulta (`DATABASE_QUERY_TIMEOUT_MS`), 10 s para abrir conexão,
+  keepAlive, a conexão que estoura o tempo é encerrada e sai do pool, e o
+  `begin` de cada operação pede ao Postgres que encerre em 30 s a transação
+  largada pelo cliente. Vale também para a VPS, que vai pelo mesmo pooler.
 
 ## Como ler este plano
 

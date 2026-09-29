@@ -23,7 +23,8 @@ cd "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao/apps/api" && DATA
 ```
 
 Esperado: todos verdes (o contrato deu 21/21 em 2026-09-28; as fixtures do
-`financeiro-tria` não mudaram desde então).
+`financeiro-tria` não mudaram desde então). E, da raiz do CRM N1, a
+comparação da outra matriz de contrato (só lê): `npm run verificar:contratos`.
 
 ---
 
@@ -247,10 +248,12 @@ ligado e das variáveis `PLATAFORMA_BASE_URL`, `PLATAFORMA_SERVICE_TOKEN`,
 2. **Marcos Paulo:** criado no `ws_n1` (`mem_marcos_paulo`), **sem login e
    sem convite**, com o e-mail provisório `marcos.paulo@triacompany.com.br`.
    Troque o e-mail em Configurações → Membros → Marcos Paulo → **Alterar
-   e-mail** (só enquanto ele não tiver login). Até ele entrar, **ninguém move
-   conta para "pago"**: a regra do Status só tem ele e o Walter.
-3. **Walter:** não criado (decisão). Criar com o id `mem_walter` ou tirá-lo da
-   regra do "pago" nas configurações da Lista.
+   e-mail** (só enquanto ele não tiver login). O "pago" não depende mais dele:
+   desde 2026-09-29 **qualquer pessoa move para "pago"** (Configurações da
+   Lista → Status → Ações → **Quem pode mover para cá**; para restringir de
+   novo, "Só estas pessoas").
+3. **Walter:** não criado (decisão). No `ws_n1` ele só aparecia na regra do
+   "pago", que foi aberta; criar só se ele for usar a plataforma.
 4. **Contas do ClickUp lançadas desde 20/05:** o legado apagava o RESUMO antes
    de lançar (corrigido em `c272dad`), então o `IncluirContaPagar` ia sem
    categoria. Vale conferir essas contas no Omie.
