@@ -26,6 +26,45 @@
  * capturas; padrão a pasta temporária do sistema), JORNADA_VISIVEL=1 (abre o
  * navegador na tela, no ritmo de uma pessoa, com uma faixa no topo dizendo o
  * que o robô está fazendo — a faixa é só da tela, nada dela é gravado).
+ *
+ * ── Conferência do Resumo (Fase 6) — `cp-conferida` e `cp-ajuste` ──────────
+ *
+ * Dois cenários que SÓ rodam quando pedidos pelo nome
+ * (`JORNADA_SO=cp-conferida` ou `npm run jornada:financeiro -w @n1/web --
+ * --so=cp-conferida,cp-ajuste`): eles precisam da ponte do Agente LIGADA, e
+ * os quatro de cima pedem a API sem ela. Sem pedir, nada muda para quem já
+ * roda a jornada.
+ *
+ *   cp-conferida — conta completa SEM Integração manual; espera o
+ *     `📋 RESUMO DE PAGAMENTO` no tópico, confere pelo card ("Conferido, pode
+ *     lançar"), espera `✅ Resumo conferido`, move para "em lançamento omie" e
+ *     espera o desfecho do modo da ponte (JORNADA_MODO).
+ *   cp-ajuste — igual até o Resumo; "Pedir ajuste" com o motivo "é prestação
+ *     comercial, não ADM"; espera `Revisado a pedido de` e a Conferência nova
+ *     pendente no card. Não lança.
+ *
+ * O caminho de conferir é o CARD (o clique é o oficial, D6-02). O tópico da
+ * tela não tem o gesto "Responder" num Comentário (a ponte só lê RESPOSTAS ao
+ * Resumo, nunca Comentário raiz), então a jornada não responde "ok" no fio.
+ *
+ * Como subir a API para estes cenários (é o 06-06 quem roda):
+ *   AGENTE_CONTAS_A_PAGAR_MODO=conferencia (ou lancar, com autorização do dono)
+ *   AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM="TESTE AUTOMATIZADO" — a ponte não
+ *     encosta em nenhuma conta real;
+ *   AGENTE_CONTAS_A_PAGAR_AVISAR_ID=<Membro do usuário da jornada> — toda
+ *     Menção da ponte vai para ele, e ele é o aprovador da Conferência (é o
+ *     que libera os botões do card para ele).
+ * Com a ponte ligada, os cenários de cima também podem receber um Resumo
+ * entre o preenchimento e a "Integração manual" — inofensivo em
+ * `conferencia` (zero /lancar), mas é por isso que o normal é rodá-los à parte.
+ *
+ *   JORNADA_MODO = conferencia (padrão) | lancar — o modo em que a ponte
+ *     está. `conferencia`: depois de "em lançamento omie" espera o aviso
+ *     "Neste ambiente o lançamento no Omie está desligado" e confere que a
+ *     conta ficou em "em lançamento omie". `lancar`: espera `✅ Lançado no
+ *     Omie` e o Status "lançado omie". Qualquer outro valor encerra (código 2).
+ *   JORNADA_ESPERA_MS — quanto esperar por cada texto no tópico (padrão
+ *     90000); a tela é recarregada a cada 3 s enquanto espera.
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -39,6 +78,17 @@ const SENHA = process.env.JORNADA_SENHA;
 const SAIDA = process.env.JORNADA_SAIDA ?? path.join(tmpdir(), "jornada-financeiro");
 if (!EMAIL || !SENHA) {
   console.error("Defina JORNADA_EMAIL e JORNADA_SENHA (o usuário que faz a jornada).");
+  process.exit(2);
+}
+// Só os literais exatos, como a ponte (D6-11): um modo digitado errado não vira o outro.
+const MODO = process.env.JORNADA_MODO ?? "conferencia";
+if (MODO !== "conferencia" && MODO !== "lancar") {
+  console.error(`JORNADA_MODO deve ser "conferencia" ou "lancar" (veio "${MODO}").`);
+  process.exit(2);
+}
+const ESPERA_MS = Number(process.env.JORNADA_ESPERA_MS ?? 90_000);
+if (!Number.isFinite(ESPERA_MS) || ESPERA_MS <= 0) {
+  console.error("JORNADA_ESPERA_MS deve ser um número de milissegundos maior que zero.");
   process.exit(2);
 }
 mkdirSync(SAIDA, { recursive: true });
@@ -213,6 +263,75 @@ async function capturar(nome) {
   return arquivo;
 }
 
+/** Recarrega a página (o popup reabre pela `?tarefa=` da URL) — a tela só vê o que a ponte gravou depois de hidratar de novo. */
+async function recarregar() {
+  await pagina.reload({ timeout: 90_000 });
+  await painel().waitFor({ state: "visible", timeout: 60_000 });
+}
+
+/**
+ * Espera um Comentário do tópico cujo texto case com `padrao` — é assim que a
+ * jornada vê a ponte trabalhar (`📋 RESUMO DE PAGAMENTO`, `✅ Resumo conferido`,
+ * `Revisado a pedido de`, `✅ Lançado no Omie`, o aviso do modo conferência).
+ * Recarrega a cada 3 s até `timeoutMs`. `aPartirDe` ignora os que já casavam
+ * antes (ex.: o Resumo revisado vem depois do primeiro).
+ */
+async function esperarNoFio(padrao, timeoutMs = ESPERA_MS, { aPartirDe = 0 } = {}) {
+  const inicio = Date.now();
+  for (;;) {
+    const achados = await painel().locator('li[id^="comentario-"]').filter({ hasText: padrao }).count();
+    if (achados > aPartirDe) return `apareceu em ${Math.round((Date.now() - inicio) / 1000)} s`;
+    if (Date.now() - inicio > timeoutMs) {
+      throw new Error(`"${padrao.source}" não apareceu no tópico em ${Math.round(timeoutMs / 1000)} s — a ponte está ligada, no modo e no escopo certos?`);
+    }
+    await pagina.waitForTimeout(3_000);
+    await recarregar();
+  }
+}
+
+/** Quantos Comentários do tópico casam com `padrao` agora. */
+const contarNoFio = (padrao) => painel().locator('li[id^="comentario-"]').filter({ hasText: padrao }).count();
+
+/** O card "Conferência do Resumo" no estado esperado (o título leva o estado: "· Pendente", "· Conferido"…). */
+async function cardDaConferencia(estado) {
+  const titulo = `Conferência do Resumo · ${estado}`;
+  await painel().getByText(titulo, { exact: true }).waitFor({ state: "visible", timeout: 15_000 });
+}
+
+/** "Conferido, pode lançar" no card, e a confirmação — `decideProcessApproval` por clique. */
+async function conferirPeloCard() {
+  const botao = painel().getByRole("button", { name: "Conferido, pode lançar", exact: true });
+  if (await botao.isDisabled()) throw new Error(`o botão está indisponível: ${(await botao.getAttribute("title")) ?? "sem motivo"}`);
+  await botao.click();
+  const confirmacao = pagina.getByRole("alertdialog");
+  await gravando("decideProcessApproval", () =>
+    confirmacao.getByRole("button", { name: "Conferido, pode lançar", exact: true }).click(),
+  );
+}
+
+/** "Pedir ajuste" no card, com o motivo — o mesmo fato que uma resposta de ajuste no fio. */
+async function pedirAjustePeloCard(motivo) {
+  const botao = painel().getByRole("button", { name: "Pedir ajuste", exact: true });
+  if (await botao.isDisabled()) throw new Error(`o botão está indisponível: ${(await botao.getAttribute("title")) ?? "sem motivo"}`);
+  await botao.click();
+  const confirmacao = pagina.getByRole("alertdialog");
+  const caixa = confirmacao.getByRole("textbox").first();
+  await caixa.pressSequentially(motivo, { delay: VISIVEL ? 35 : 5 });
+  await gravando("decideProcessApproval", () => confirmacao.getByRole("button", { name: "Pedir ajuste", exact: true }).click());
+}
+
+/** O Status do popup contém `nome`. */
+async function statusDeveSer(nome) {
+  const agora = await painel().getByRole("combobox", { name: "Mudar o Status" }).innerText();
+  if (!agora.includes(nome)) throw new Error(`o Status está "${agora.trim()}", esperado "${nome}"`);
+}
+
+const RESUMO = /📋 RESUMO DE PAGAMENTO/;
+const CONFERIDO = /✅ Resumo conferido/;
+const REVISADO = /Revisado a pedido de/;
+const LANCADO = /✅ Lançado no Omie/;
+const MODO_CONFERENCIA = /Neste ambiente o lançamento no Omie está desligado/;
+
 
 
 
@@ -288,6 +407,56 @@ const CENARIOS = [
     ],
   },
   {
+    chave: "cp-conferida",
+    soQuandoPedido: true,
+    titulo: `Contas a pagar — Resumo conferido pelo card (ponte em ${MODO})`,
+    lista: "lst_contas_a_pagar",
+    botao: "+ Nova conta",
+    nome: `TESTE AUTOMATIZADO — CP conferida · ${CARIMBO}`,
+    passos: [
+      // Como cp-aprovada, sem "Integração manual": é o Agente quem publica o Resumo (D6-04).
+      ...passosDaContaAPagar(),
+      ["Esperar o 📋 RESUMO DE PAGAMENTO no tópico", () => esperarNoFio(RESUMO)],
+      ["Card: Conferência do Resumo · Pendente", () => cardDaConferencia("Pendente")],
+      ["Captura do Resumo", () => capturar("cp-conferida-resumo")],
+      // Sem gesto "Responder" no tópico da tela, o "ok" no fio não é possível: o caminho é o card.
+      ["Conferido, pode lançar (card)", () => conferirPeloCard()],
+      ["Esperar ✅ Resumo conferido no tópico", () => esperarNoFio(CONFERIDO)],
+      ["Card: Conferência do Resumo · Conferido", () => cardDaConferencia("Conferido")],
+      ["Status → em lançamento omie", () => mudarStatus("em lançamento omie")],
+      ...(MODO === "lancar"
+        ? [
+            ["Esperar ✅ Lançado no Omie no tópico", () => esperarNoFio(LANCADO)],
+            ["Status agora é lançado omie", () => statusDeveSer("lançado omie")],
+          ]
+        : [
+            ["Esperar o aviso do modo conferência no tópico", () => esperarNoFio(MODO_CONFERENCIA)],
+            ["Status continua em lançamento omie", () => statusDeveSer("em lançamento omie")],
+          ]),
+      ["Captura", () => capturar(`cp-conferida-${MODO}`)],
+    ],
+  },
+  {
+    chave: "cp-ajuste",
+    soQuandoPedido: true,
+    titulo: "Contas a pagar — ajuste pedido no Resumo",
+    lista: "lst_contas_a_pagar",
+    botao: "+ Nova conta",
+    nome: `TESTE AUTOMATIZADO — CP ajuste · ${CARIMBO}`,
+    passos: [
+      ...passosDaContaAPagar(),
+      ["Esperar o 📋 RESUMO DE PAGAMENTO no tópico", () => esperarNoFio(RESUMO)],
+      ["Card: Conferência do Resumo · Pendente", () => cardDaConferencia("Pendente")],
+      ["Pedir ajuste (card): \"é prestação comercial, não ADM\"", () => pedirAjustePeloCard("é prestação comercial, não ADM")],
+      [
+        "Esperar o Resumo revisado (Revisado a pedido de) no tópico",
+        async () => esperarNoFio(REVISADO, ESPERA_MS, { aPartirDe: await contarNoFio(REVISADO) }),
+      ],
+      ["Card: Conferência nova, Pendente", () => cardDaConferencia("Pendente")],
+      ["Captura do Resumo revisado", () => capturar("cp-ajuste-resumo-revisado")],
+    ],
+  },
+  {
     chave: "cr-recebida",
     titulo: "Contas a receber — cobrada e recebida",
     lista: "lst_contas_a_receber",
@@ -327,7 +496,15 @@ const CENARIOS = [
  * parou no meio e continua do passo indicado (o número que a falha imprimiu),
  * em vez de criar outra.
  */
-const so = new Set((process.env.JORNADA_SO ?? "").split(",").map((x) => x.trim()).filter(Boolean));
+// `--so=a,b` na linha de comando vale o mesmo que JORNADA_SO=a,b (e se soma a ela).
+const soDaLinha = process.argv.slice(2).filter((a) => a.startsWith("--so=")).map((a) => a.slice("--so=".length));
+const so = new Set(
+  [process.env.JORNADA_SO ?? "", ...soDaLinha]
+    .join(",")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean),
+);
 const retomar = new Map(
   (process.env.JORNADA_RETOMAR ?? "")
     .split(",")
@@ -340,11 +517,13 @@ const retomar = new Map(
     }),
 );
 
-console.log(`Jornada do Financeiro como um humano — ${URL_BASE} — ${CARIMBO}`);
+console.log(`Jornada do Financeiro como um humano — ${URL_BASE} — ${CARIMBO}${so.has("cp-conferida") || so.has("cp-ajuste") ? ` — ponte em ${MODO}` : ""}`);
 await entrar();
 
 for (const c of CENARIOS) {
   if (so.size > 0 && !so.has(c.chave)) continue;
+  // Os cenários da Conferência precisam da ponte ligada: só rodam quando pedidos pelo nome.
+  if (c.soQuandoPedido && !so.has(c.chave)) continue;
   console.log(`\n${c.titulo}`);
   let id;
   let inicio = 0;
