@@ -20,8 +20,8 @@ import { memberActor, nextId, recordActivity } from "./activity";
 // `./financeiro-textos`, que não importa ninguém.
 import { solicitarConferenciaDoResumo } from "./ai";
 import { addMonths } from "./collaboration";
-import { PREFIXOS_DO_PROCESSO, TEXTOS_DA_CONFERENCIA } from "./financeiro-textos";
-import { addTaskComment, createTask, setTaskFieldValue, trashTask, unmetRequirements } from "./tasks";
+import { PREFIXOS_DO_PROCESSO, TEXTOS_DA_CONFERENCIA, type AnexoDoLancamento } from "./financeiro-textos";
+import { addTaskComment, changeTaskStatus, createTask, setTaskFieldValue, trashTask, unmetRequirements } from "./tasks";
 
 export { PREFIXOS_DO_PROCESSO, TEXTOS_DA_CONFERENCIA, type AnexoDoLancamento, type DadosDoLancado } from "./financeiro-textos";
 
@@ -1020,7 +1020,8 @@ export interface OpcoesDaConferencia {
  * seguintes (ajuste pedido, dados mudaram) é resposta no mesmo fio, e a
  * Conferência pendente anterior é cancelada. O bloco do RESUMO sai exatamente
  * como `buildResumoDePagamento` o monta (CON-CP-08); a chamada ao Financeiro
- * vem DEPOIS dele.
+ * vem DEPOIS dele (`TEXTOS_DA_CONFERENCIA`, em `./financeiro-textos`):
+ * `{financeiro}, confira: responda "ok" para eu lançar, ou diga o que ajustar.`
  *
  * Idempotente: sem pedido de revisão, uma Conferência pendente ou conferida
  * para a mesma impressão é devolvida como está — nada novo no fio.
@@ -1130,6 +1131,160 @@ export function publicarResumoParaConferencia(
     detail: tripla,
   });
   return ok({ comentario: comentario.value, conferencia: aberta, resumo }, aberta.id);
+}
+
+/** O que a ponte recebe do `/lancar` e entrega ao domínio. */
+export interface ResultadoDoLancamento {
+  readonly payableId: string;
+  /** O Omie já tinha o título (consulta antes de incluir): nada novo foi criado. */
+  readonly reaproveitado: boolean;
+  readonly anexos: ReadonlyArray<AnexoDoLancamento>;
+}
+
+const RECUSA_POR_ESTADO: Readonly<Record<Exclude<EstadoDaConferencia, "conferida">, string>> = {
+  "sem-resumo": "a conta não tem Resumo publicado",
+  pendente: "o Resumo ainda não foi conferido",
+  "ajuste-pedido": "o Financeiro pediu ajuste no Resumo",
+  desatualizada: "os dados da conta mudaram depois da conferência",
+};
+
+/**
+ * Fluxo 7 — o Omie devolveu o título: o domínio registra o lançamento. Só
+ * com Conferência APROVADA para a impressão ATUAL (D6-10) e com a conta em
+ * "em lançamento omie". Publica no fio a confirmação
+ * (`✅ Lançado no Omie — título … · anexos …`), resolve o fio, grava a
+ * `AgentExecution` com o `payableId` real e move para "lançado omie" — tudo
+ * ou nada: se o Status recusar, o Comentário, a Execução e os Registros
+ * saem juntos.
+ */
+export function registrarLancamentoNoOmie(state: DataState, actingMemberId: Id, taskId: Id, resultado: ResultadoDoLancamento): OperationResult<Task> {
+  const guardas = guardasDoAgente(state, actingMemberId, taskId);
+  if (typeof guardas === "string") return fail(guardas);
+  const { agent, task } = guardas;
+  if (task.statusId !== CP.status.emLancamento) {
+    return fail("O lançamento só se registra com a conta em “em lançamento omie”.");
+  }
+  const { estado, conferencia } = conferenciaDoResumo(state, task);
+  if (estado !== "conferida" || !conferencia) {
+    return fail(`Sem Conferência aprovada para os dados atuais (${estado}): ${RECUSA_POR_ESTADO[estado === "conferida" ? "sem-resumo" : estado]}.`);
+  }
+  const payableId = resultado.payableId.trim();
+  // Defesa em profundidade — a ponte já recusa: um título simulado nunca vira "lançado omie".
+  if (!payableId || payableId.startsWith("mock-")) return fail("O Omie não devolveu um título válido.");
+
+  const { conta, categoria, codigo } = conferencia.origin.lancamento;
+  const texto = TEXTOS_DA_CONFERENCIA.lancado({ payableId, conta, categoria, codigo, reaproveitado: resultado.reaproveitado, anexos: resultado.anexos });
+  const raiz = task.comments.find((c) => c.id === conferencia.origin.threadCommentId && !c.deletedAt);
+  const antes = { activity: state.activity.length, comments: task.comments.length, executions: state.agentExecutions.length, resolvido: raiz?.resolved };
+  const desfazer = (motivo: string, field?: string): OperationResult<Task> => {
+    task.comments.splice(antes.comments);
+    state.agentExecutions.splice(antes.executions);
+    // `recordActivity` insere no INÍCIO: os Registros novos estão nos primeiros índices.
+    state.activity.splice(0, state.activity.length - antes.activity);
+    if (raiz) {
+      if (antes.resolvido) raiz.resolved = antes.resolvido;
+      else delete raiz.resolved;
+    }
+    return fail(motivo, field);
+  };
+
+  const comentario = addTaskComment(state, actingMemberId, task.id, {
+    content: texto,
+    actor: { kind: "agent", id: agent.id },
+    ...(raiz ? { parentCommentId: raiz.id } : {}),
+  });
+  if (!comentario.ok) return desfazer(comentario.error);
+  if (raiz && !raiz.resolved) {
+    // Como `runLancamentoAgent`: quem fecha o fio no lançamento é o próprio Agente.
+    raiz.resolved = { by: agent.id, at: now() };
+    recordActivity(state, {
+      actor: { kind: "agent", id: agent.id },
+      delegate: memberActor(actingMemberId),
+      action: "Comentário resolvido",
+      objectType: "task",
+      objectId: task.id,
+      objectName: task.title,
+    });
+  }
+
+  const tripla = `${conta} · ${categoria} · ${codigo}`;
+  gravarExecucaoDoLancamento(
+    state,
+    agent,
+    actingMemberId,
+    task,
+    `Lançar no ERP: ${task.title}`,
+    [
+      { index: 0, kind: "raciocinio", input: "Conferência do Resumo aprovada", output: `Conta ${tripla}`, result: "concluido", at: now() },
+      { index: 1, kind: "ferramenta", toolId: "omie_lancar_conta_a_pagar", input: tripla, output: `título ${payableId}`, result: "concluido", at: now() },
+    ],
+    `Lançado: ${conta} · ${categoria} (${codigo})`,
+  );
+  recordActivity(state, {
+    actor: { kind: "agent", id: agent.id },
+    delegate: memberActor(actingMemberId),
+    action: "Lançado no Omie",
+    objectType: "task",
+    objectId: task.id,
+    objectName: task.title,
+    detail: `título ${payableId}${resultado.reaproveitado ? " (já existia)" : ""} · ${tripla}`,
+  });
+
+  const movida = changeTaskStatus(state, actingMemberId, task.id, CP.status.lancado);
+  if (!movida.ok) return desfazer(movida.error, movida.field);
+  return ok(task, task.id);
+}
+
+/**
+ * Fluxo 7, falha permanente (D6-03, como o backend legado): o Agente comenta
+ * o motivo no fio (resposta, se há fio; raiz, se não), com Menção ao
+ * Financeiro, e a conta VOLTA para "para pagar" — texto canônico
+ * `Não consegui lançar no Omie: {motivo} ({code}). A conta voltou para "para pagar".`
+ * A volta só acontece a partir de "em lançamento omie"; se o Status recusar,
+ * o aviso fica mesmo assim (vale mais que a simetria), dizendo que a conta
+ * NÃO voltou, e o Registro guarda o porquê. O `motivo` fica só no Comentário
+ * (pode citar fornecedor); o Registro guarda o `code`.
+ *
+ * Alternativa de D6-03 (ficar em "em lançamento omie"): é tirar a chamada a
+ * `changeTaskStatus` abaixo.
+ */
+export function registrarFalhaDoLancamento(state: DataState, actingMemberId: Id, taskId: Id, falha: { readonly motivo: string; readonly code: string }): OperationResult<Task> {
+  const agent = state.agents.find((a) => a.id === CP.agentId);
+  if (!agent || agent.lifecycle !== "ativo") return fail("Agente de lançamento não está ativo.");
+  const task = state.tasks.find((t) => t.id === taskId);
+  if (!task || task.listId !== CP.listId || effectiveLifecycleOfTask(state, taskId) !== "ativo") return fail("Conta a pagar não encontrada ou inativa.");
+  const motivo = falha.motivo.trim() || "motivo não informado";
+  const code = falha.code.trim() || "SEM_CODIGO";
+
+  let recusaDoStatus: string | undefined;
+  let voltou = false;
+  if (task.statusId === CP.status.emLancamento) {
+    const volta = changeTaskStatus(state, actingMemberId, task.id, CP.status.paraPagar);
+    voltou = volta.ok;
+    if (!volta.ok) recusaDoStatus = volta.error;
+  }
+  const texto = voltou ? TEXTOS_DA_CONFERENCIA.falha(motivo, code) : TEXTOS_DA_CONFERENCIA.falhaSemVolta(motivo, code, recusaDoStatus);
+
+  const vigente = conferenciaVigente(state, task.id);
+  const raiz = vigente ? task.comments.find((c) => c.id === vigente.origin.threadCommentId && !c.deletedAt) : undefined;
+  const comentario = addTaskComment(state, actingMemberId, task.id, {
+    content: texto,
+    mentions: [{ type: "member", id: avisadoDoLancamento(state, actingMemberId) }],
+    actor: { kind: "agent", id: agent.id },
+    ...(raiz ? { parentCommentId: raiz.id } : {}),
+  });
+
+  recordActivity(state, {
+    actor: { kind: "agent", id: agent.id },
+    delegate: memberActor(actingMemberId),
+    action: "Lançamento no Omie falhou",
+    objectType: "task",
+    objectId: task.id,
+    objectName: task.title,
+    detail: recusaDoStatus ? `${code} — Status não voltou: ${recusaDoStatus}` : code,
+  });
+  if (!comentario.ok) return fail(comentario.error, comentario.field);
+  return ok(task, task.id);
 }
 
 /* ═══════════════════════════ Contas a receber ═══════════════════════════ */

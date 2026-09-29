@@ -320,3 +320,42 @@ A operação está registrada em `OPERACOES` e alcançável por
 `POST /operacoes/alterarStatusEmLote`, devolvendo `RelatorioDeLote` dentro do
 envelope de sempre — **nenhuma rota nova foi criada e `app.ts` não foi
 tocado**.
+
+## Conferência do Resumo (Fase 6): o Resumo antes do lançamento, conferido por dado
+
+Os Fluxos 5, 6 e 7 do módulo TRIA, como o `financeiro-tria/automation` faz no
+ClickUp (`.planning/phases/06-conferencia-do-resumo-e-anexos/06-CONTEXT.md`).
+Tudo em `operations/financeiro.ts` (e a decisão em `operations/ai.ts`), puro:
+
+| Símbolo | O que faz |
+|---|---|
+| `publicarResumoParaConferencia(state, ator, taskId, { dePara, pedidoDeRevisao?, pedidoPor?, motivo? })` | O Agente publica o `📋 RESUMO DE PAGAMENTO` (byte a byte, CON-CP-08) seguido da chamada ao Financeiro — raiz na primeira vez, resposta no MESMO fio nas seguintes —, SEM resolver o fio, e abre a Conferência (`solicitarConferenciaDoResumo`, que cancela a pendente anterior: "Conferência superada"). Idempotente para a mesma impressão; tudo ou nada. |
+| `decideProcessApproval` (ramo `processStep: "resumo"`) | Clique e resposta no fio convergem: resposta canônica no fio, decisão/fonte/motivo gravados, fio resolvido na aprovação; `rejeitada` exige motivo. **Nunca muda o Status.** |
+| `registrarLancamentoNoOmie(state, ator, taskId, { payableId, reaproveitado, anexos })` | Só com a conta em "em lançamento omie" e Conferência `conferida` para a impressão ATUAL: confirma no fio, resolve o fio, grava a `AgentExecution` com o título real e move para "lançado omie" — tudo ou nada. |
+| `registrarFalhaDoLancamento(state, ator, taskId, { motivo, code })` | Comenta o motivo no fio com Menção ao Financeiro e volta a conta para "para pagar" (a partir de "em lançamento omie"). O Registro guarda só o `code`. |
+| `conferenciaDoResumo(state, task)` | `sem-resumo` \| `pendente` \| `conferida` \| `ajuste-pedido` \| `desatualizada`, mais a Conferência vigente e a impressão atual. `desatualizada` vence qualquer decisão. |
+| `respostasDeConferenciaPendentes` / `classificarRespostaDeConferencia` | As respostas de revisores ainda não decididas, e o que cada uma quer dizer (`aprovacao` \| `ajuste` \| `ignorar`) — heurística do legado, sem IA; "nada casou" é `ajuste` (Fluxo 6). |
+| `impressaoDeLancamento(state, task)` | JSON canônico (chaves ordenadas) de tudo o que vai ao Omie: Centro, Empresa, Categoria, fornecedor (tipo, documento, nome), forma, dado de pagamento, Valor, vencimento, Data de Emissão, Tag `conta *`, título e descrição. Anexo, Boleto, QR Code e Comentários NÃO entram. |
+| `revisoresDoResumo(state)` | O Financeiro (quando Membro ativo) e os Membros ativos Administrador/Proprietário (D6-09). |
+| `TEXTOS_DA_CONFERENCIA` | Os textos canônicos, em `operations/financeiro-textos.ts` (fora de `financeiro.ts` para não criar o ciclo `ai` ↔ `financeiro`) e reexportados por `financeiro.ts`: domínio, ponte e tela usam as mesmas strings. |
+
+As três regras com dono (`06-CONTEXT.md`):
+
+- **D6-10 — a tripla é DADO.** Conta · categoria · código e a impressão ficam
+  em `ApprovalRequest.origin` (ramo `resumo`: `resumoCommentId`, `impressao`,
+  `lancamento`). Nenhuma função lê a tripla do TEXTO de um Comentário — o
+  texto do RESUMO é saída, e reparseá-lo é a fragilidade do legado. O
+  `/lancar` recebe o código confirmado da Conferência.
+- **D6-02 — "ok" no fio vale como conferência**, em nome de quem respondeu;
+  qualquer outra resposta de revisor é pedido de ajuste; pergunta,
+  "aguardando" e "vou verificar" são ignoradas. Quem transforma a resposta em
+  decisão é a ponte (06-03), com `classificarRespostaDeConferencia` e
+  `decideProcessApproval(..., { source: "comment" })`.
+- **D6-03 — falha permanente volta para "para pagar"**, com o motivo no fio.
+  A alternativa (ficar em "em lançamento omie") é tirar uma chamada a
+  `changeTaskStatus` em `registrarFalhaDoLancamento`.
+
+`runLancamentoAgent` não muda: continua sendo o caminho do Ensaio (D3-03) e da
+A7 legada. O fio do Resumo pode ser resolvido à mão por quem o confere
+(`resolveTaskComment` aceita o aprovador da Conferência além do autor e do
+Administrador).
