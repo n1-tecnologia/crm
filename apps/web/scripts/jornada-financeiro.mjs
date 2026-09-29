@@ -24,7 +24,8 @@
  * Variáveis: JORNADA_EMAIL, JORNADA_SENHA (obrigatórias — nunca no código),
  * JORNADA_URL (padrão http://localhost:3001), JORNADA_SAIDA (pasta das
  * capturas; padrão a pasta temporária do sistema), JORNADA_VISIVEL=1 (abre o
- * navegador na tela).
+ * navegador na tela, no ritmo de uma pessoa, com uma faixa no topo dizendo o
+ * que o robô está fazendo — a faixa é só da tela, nada dela é gravado).
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -61,7 +62,8 @@ function passo(conta, texto, ok = true) {
   console.log(`  ${ok ? "✔" : "✖"} ${texto}`);
 }
 
-const navegador = await chromium.launch({ headless: process.env.JORNADA_VISIVEL !== "1" });
+const VISIVEL = process.env.JORNADA_VISIVEL === "1";
+const navegador = await chromium.launch({ headless: !VISIVEL, slowMo: VISIVEL ? 120 : 0 });
 const pagina = await navegador.newPage({ viewport: { width: 1600, height: 1000 } });
 pagina.setDefaultTimeout(30_000);
 
@@ -121,13 +123,36 @@ async function vencimento(data) {
   await fecharEditor(linha);
 }
 
+/** No modo visível, a faixa no topo da página diz o passo — `aria-hidden` e sem clique: não atrapalha o robô. */
+async function legenda(texto) {
+  if (!VISIVEL) return;
+  await pagina
+    .evaluate((t) => {
+      let faixa = document.getElementById("legenda-da-jornada");
+      if (!faixa) {
+        faixa = document.createElement("div");
+        faixa.id = "legenda-da-jornada";
+        faixa.setAttribute("aria-hidden", "true");
+        Object.assign(faixa.style, {
+          position: "fixed", top: "8px", left: "50%", transform: "translateX(-50%)", zIndex: "2147483647",
+          background: "#111827", color: "#fff", padding: "8px 14px", borderRadius: "8px",
+          font: "600 14px system-ui, sans-serif", boxShadow: "0 4px 16px rgba(0,0,0,.3)", pointerEvents: "none", maxWidth: "80vw",
+        });
+        document.body.appendChild(faixa);
+      }
+      faixa.textContent = `🤖 ${t}`;
+    }, texto)
+    .catch(() => {});
+}
+
 async function comentar(texto, { mencionar = true } = {}) {
   const caixa = painel().getByRole("textbox", { name: "Novo comentário" });
   await caixa.click();
-  await caixa.pressSequentially(texto, { delay: 5 });
+  // Letra por letra, como quem digita (mais devagar no modo visível, para dar para ler).
+  await caixa.pressSequentially(texto, { delay: VISIVEL ? 35 : 5 });
   if (mencionar) {
     // A Menção como uma pessoa faz: "@", o começo do nome, e a escolha na lista.
-    await caixa.pressSequentially(" @" + EMAIL.slice(0, 5), { delay: 30 });
+    await caixa.pressSequentially(" @" + EMAIL.slice(0, 5), { delay: VISIVEL ? 120 : 30 });
     await pagina.getByRole("listbox", { name: "Pessoas para mencionar" }).getByRole("option").first().click();
   }
   await gravando("addTaskComment", () => caixa.press("Control+Enter"));
@@ -159,9 +184,9 @@ async function acaoDoRodape(rotulo) {
 }
 
 /**
- * Como `acaoDoRodape`, mas uma REGRA da Lista pode bloquear o gesto (ex.: só
- * certas pessoas movem para "pago"). Bloqueado, devolve o motivo que a tela
- * mostra no botão — é o resultado certo para quem não tem a permissão.
+ * Como `acaoDoRodape`, mas uma REGRA do Status ("Quem pode mover para cá", nas
+ * configurações da Lista) pode bloquear o gesto. Bloqueado, devolve o motivo
+ * que a tela mostra no botão, em vez de clicar.
  */
 async function tentarAcaoDoRodape(rotulo) {
   const botao = painel().getByRole("button", { name: rotulo, exact: true });
@@ -223,6 +248,7 @@ const CENARIOS = [
     passos: [
       ...passosDaContaAPagar(),
       ["Comentário com Menção", () => comentar("Conta de teste automatizado. Conferi a nota e os dados de pagamento.")],
+      ["Captura do comentário com Menção", () => capturar("cp-aprovada-comentario-com-mencao")],
       ["Integração manual = Manual", () => escolher("Integração manual", "Manual")],
       ["Status → lançado omie", () => mudarStatus("lançado omie")],
       ["Comentário: lançado à mão", () => comentar("Lancei manualmente no Omie. Segue para remessa.", { mencionar: false })],
@@ -231,18 +257,16 @@ const CENARIOS = [
       ["Comentário: enviado ao aprovador", () => comentar("Enviado para autorização do aprovador.", { mencionar: false })],
       ["Autorizar pagamento → aprovado", () => acaoDoRodape("Autorizar pagamento")],
       ["Comentário: autorizado", () => comentar("Pagamento autorizado. Pode pagar.", { mencionar: false })],
+      // Desde 2026-09-29 o dono abriu o "pago" para qualquer pessoa (antes só o
+      // Aprovador — RN-CP-04 do seed): bloqueado agora é falha, com o motivo da tela.
       [
-        "Marcar como paga → pago (A2: sai do Financeiro), se a regra da Lista deixar",
+        "Marcar como paga → pago (A2: sai do Financeiro)",
         async () => {
           const bloqueio = await tentarAcaoDoRodape("Marcar como paga");
-          if (bloqueio) {
-            await comentar(`Autorizado. Não consigo marcar como paga: ${bloqueio}`, { mencionar: false });
-            return `BLOQUEADO pela regra da Lista (resultado correto para este usuário): ${bloqueio}`;
-          }
-          await comentar("Pago. Comprovante arquivado.", { mencionar: false });
-          return "pago";
+          if (bloqueio) throw new Error(`"Marcar como paga" bloqueado: ${bloqueio}`);
         },
       ],
+      ["Comentário: pago", () => comentar("Pago. Comprovante arquivado.", { mencionar: false })],
       ["Captura", () => capturar("cp-aprovada-e-paga")],
     ],
   },
@@ -343,7 +367,9 @@ for (const c of CENARIOS) {
   for (let i = inicio; i < c.passos.length; i += 1) {
     const [nomeDoPasso, executar] = c.passos[i];
     try {
+      await legenda(`${c.titulo} — ${nomeDoPasso}`);
       const nota = await executar();
+      if (VISIVEL) await pagina.waitForTimeout(500);
       passo(c.chave, `${i}. ${nomeDoPasso}${typeof nota === "string" ? ` — ${nota}` : ""}`);
     } catch (erro) {
       passo(c.chave, `${i}. ${nomeDoPasso} — ${erro instanceof Error ? erro.message.split("\n")[0] : String(erro)}`, false);
