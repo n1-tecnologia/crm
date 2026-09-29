@@ -23,7 +23,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useData, useSession } from "@/dados/store";
-import { CP, conferenciaDoResumo, erpMissingFields, revisoresDoResumo } from "@n1/dominio/operations";
+import { CP, conferenciaDoResumo, erpMissingFields, movidaDepoisDaImportacao, revisoresDoResumo } from "@n1/dominio/operations";
 import type { ConferenciaDoResumo, EstadoDaConferencia } from "@n1/dominio/operations";
 import { memberSeesTask } from "@n1/dominio/derive";
 import type { DataState, OperationResult } from "@n1/dominio/state";
@@ -85,7 +85,10 @@ const STATUS_DA_CONFERENCIA: readonly string[] = [CP.status.paraPagar, CP.status
  * só se decide se há o que mostrar: nada fora de Contas a pagar, nada para
  * Integração manual (D6-04: o Agente não encosta), e `sem-resumo` só numa
  * conta completa em "para pagar"/"em lançamento omie" (o Agente ainda não
- * publicou; numa conta incompleta o que falta é dado, não Resumo).
+ * publicou; numa conta incompleta o que falta é dado, não Resumo) que a
+ * ponte varre — a conta importada do ClickUp e parada desde a importação
+ * não recebe Resumo (G1, `movidaDepoisDaImportacao`), então a tela não o
+ * promete.
  */
 export function conferenciaVisivel(
   state: DataState,
@@ -97,6 +100,7 @@ export function conferenciaVisivel(
   if (estado === "sem-resumo") {
     if (!STATUS_DA_CONFERENCIA.includes(task.statusId)) return undefined;
     if (erpMissingFields(state, task).length > 0) return undefined;
+    if (!movidaDepoisDaImportacao(state, task)) return undefined;
   }
   return conferencia ? { estado, conferencia } : { estado };
 }

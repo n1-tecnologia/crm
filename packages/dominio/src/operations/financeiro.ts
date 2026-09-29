@@ -10,7 +10,7 @@
  * conteúdo em texto, e este módulo o aplica.
  */
 
-import { agentSeesTask, contactDisplayName, effectiveLifecycleOfTask, memberSeesTask, statusDefinition } from "../derive";
+import { agentSeesTask, contactDisplayName, effectiveLifecycleOfTask, memberSeesTask, newestFirst, statusDefinition } from "../derive";
 import { fail, ok, type DataState, type OperationResult } from "../state";
 import type { Agent, AgentExecution, ApprovalOrigin, ApprovalRequest, Comment, Contact, Id, Task } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
@@ -837,6 +837,23 @@ export function revisoresDoResumo(state: DataState): Id[] {
     if (base === "administrador" || base === "proprietario") revisores.push(m.id);
   }
   return revisores;
+}
+
+/**
+ * G1 (Fase 6) — a conta pode entrar na ponte do Agente: não é importada, ou
+ * o seu último movimento de Status foi feito na plataforma, depois da
+ * importação. A reprodução do `status_history` do ClickUp
+ * (`importarContaAPagarHistorica`) grava Registros "Status alterado" sempre
+ * ANTERIORES a `provenance.at`; um movimento feito aqui é sempre posterior.
+ * Mora no domínio porque os dois lados precisam da mesma régua: a ponte
+ * (`apps/api`) não varre a conta importada parada, e a tela não promete um
+ * Resumo que não virá. `newestFirst` desempata instantes iguais pela
+ * sequência do id, como a Atividade da tela.
+ */
+export function movidaDepoisDaImportacao(state: DataState, task: Task): boolean {
+  if (task.provenance?.kind !== "import") return true;
+  const ultima = newestFirst(state.activity.filter((a) => a.objectType === "task" && a.objectId === task.id && a.action === "Status alterado"))[0];
+  return ultima !== undefined && Date.parse(ultima.at) > Date.parse(task.provenance.at);
 }
 
 export type EstadoDaConferencia = "sem-resumo" | "pendente" | "conferida" | "ajuste-pedido" | "desatualizada";

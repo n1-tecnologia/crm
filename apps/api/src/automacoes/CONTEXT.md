@@ -177,7 +177,9 @@ Maryane real:
 - **G1 — o legado importado nunca é varrido.** Conta com `provenance.kind ===
   "import"` só entra na ponte depois de um movimento de Status feito AQUI,
   posterior a `provenance.at` (a régua de `entrouPorMovimento`,
-  `movidaDepoisDaImportacao`). Sem isso, zero `/resolver` e zero Comentários
+  `movidaDepoisDaImportacao` — no domínio, `@n1/dominio/operations/financeiro`,
+  porque a tela usa a mesma para não mostrar "Aguardando Resumo" numa conta
+  que a ponte nunca varrerá). Sem isso, zero `/resolver` e zero Comentários
   (em qualquer modo); o ciclo só registra a CONTAGEM, quando ela muda. A
   única exceção é a de sempre: em `lancar`, a importada que está em "em
   lançamento omie" recebe, uma vez, o pedido de conferir no Omie

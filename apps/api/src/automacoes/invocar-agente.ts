@@ -79,6 +79,7 @@ import {
   conferenciaDoResumo,
   erpMissingFields,
   impressaoDeLancamento,
+  movidaDepoisDaImportacao,
   publicarResumoParaConferencia,
   registrarFalhaDoLancamento,
   registrarLancamentoNoOmie,
@@ -319,17 +320,13 @@ function ultimaMudancaDeStatus(state: DataState, task: Task): ActivityRecord | u
 
 /**
  * G1 — a conta pode entrar na ponte: não é importada, ou o seu último
- * movimento de Status foi feito AQUI, depois da importação. A reprodução do
- * `status_history` do ClickUp (`importarContaAPagarHistorica`) grava
- * Registros "Status alterado" sempre ANTERIORES a `provenance.at`; um
- * movimento feito na plataforma é sempre posterior. É a mesma régua de
- * `entrouPorMovimento`, aplicada a qualquer Status.
+ * movimento de Status foi feito AQUI, depois da importação. É a mesma régua
+ * de `entrouPorMovimento`, aplicada a qualquer Status. A função mora no
+ * domínio (`@n1/dominio/operations/financeiro`) porque a tela usa a mesma
+ * régua para não prometer um Resumo que a ponte nunca publicará; o
+ * reexport mantém o nome onde os testes da ponte o importam.
  */
-export function movidaDepoisDaImportacao(state: DataState, task: Task): boolean {
-  if (task.provenance?.kind !== "import") return true;
-  const ultima = ultimaMudancaDeStatus(state, task);
-  return ultima !== undefined && Date.parse(ultima.at) > Date.parse(task.provenance.at);
-}
+export { movidaDepoisDaImportacao };
 
 /**
  * A conta ENTROU em "em lançamento omie" por um movimento na plataforma
