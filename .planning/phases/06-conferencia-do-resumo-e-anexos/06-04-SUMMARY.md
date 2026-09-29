@@ -155,7 +155,19 @@ Todas foram restauradas a partir de cópia (`cmp` confirmado) e a suíte ficou v
 
 **Total:** 6 desvios (1 correção de regra, 3 interpretações, 2 detalhes). Nenhum toca `packages/dominio` ou `apps/api`.
 
-## Decisão pendente
+## Decisão pendente → resolvida pelo orquestrador (`a39d6d2`)
+
+A sugestão abaixo foi aplicada: `movidaDepoisDaImportacao` foi para
+`@n1/dominio/operations/financeiro` (o G1 é regra, e regra mora no domínio);
+`invocar-agente.ts` a importa e reexporta o nome (testes da ponte intactos,
+142/142 com os dois arquivos de contrato), e `conferenciaVisivel` a exige
+para `sem-resumo`. Testes novos: `conta-importada-e-resumo.test.ts`
+(domínio, 3) e `painel-conferencia-importada.test.ts` (web, 2); mutação — sem
+a guarda, o caso da importada parada falha. Suítes: domínio 831/831, web
+240/240; `tsc` nos três workspaces. Fica de fora, por ser escolha de
+ambiente que a tela não enxerga: com
+`AGENTE_CONTAS_A_PAGAR_RESUMO_A_PARTIR_DE=em-lancamento-omie`, a espera em
+"para pagar" continua dizendo "Aguardando Resumo" (o padrão é `para-pagar`).
 
 - **Pílula "Aguardando Resumo" no legado importado de `ws_n1`:** pelo G1 (06-03), a ponte nunca varre uma conta importada que não foi movida depois da importação. A tela não sabe disso, porque `movidaDepoisDaImportacao` mora em `apps/api/src/automacoes/invocar-agente.ts` e a web não importa a api. Resultado: as contas importadas completas em "para pagar" mostram "Aguardando Resumo" e "Aguardando o Resumo do Agente." sem que o Agente vá publicar. Também com `AGENTE_CONTAS_A_PAGAR_RESUMO_A_PARTIR_DE=em-lancamento-omie` o texto em "para pagar" fica impreciso. **Sugestão:** levar `movidaDepoisDaImportacao` para `@n1/dominio` (é pura) e usá-la em `conferenciaVisivel`. É uma mudança de duas camadas; fica para o orquestrador ou para o dono antes do 06-06 mostrar a Lista real.
 
