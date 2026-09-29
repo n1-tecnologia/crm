@@ -74,6 +74,9 @@ describe("esquemas/configuracao — a forma dos args de configuration.ts", () =>
         ],
       ],
       ["updateStatus", ["list", "l1", "st1", { exitRequirements: [] }]],
+      // "Quem pode mover para cá": `[]` abre para qualquer pessoa.
+      ["updateStatus", ["list", "l1", "st1", { entryAllowedMemberIds: [] }]],
+      ["updateStatus", ["list", "l1", "st1", { entryAllowedMemberIds: ["mem_1", "mem_2"] }]],
       ["reorderStatuses", ["space", "s1", ["st1", "st2"]]],
       ["removeStatus", ["list", "l1", "st1"]],
       ["removeStatus", ["list", "l1", "st1", "st2"]],
@@ -133,5 +136,7 @@ describe("esquemas/configuracao — a forma dos args de configuration.ts", () =>
       CONFIGURACAO.updateStatus.safeParse(viaJson(["list", "l1", "st1", { exitRequirements: [{ definitionId: "fd1", lixo: 1 }] }])).success,
     ).toBe(false);
     expect(CONFIGURACAO.updateStatus.safeParse(viaJson(["list", "l1", "st1", { exitRequirements: "fd1" }])).success).toBe(false);
+    expect(CONFIGURACAO.updateStatus.safeParse(viaJson(["list", "l1", "st1", { entryAllowedMemberIds: "mem_1" }])).success).toBe(false);
+    expect(CONFIGURACAO.updateStatus.safeParse(viaJson(["list", "l1", "st1", { entryAllowedMemberIds: [1] }])).success).toBe(false);
   });
 });

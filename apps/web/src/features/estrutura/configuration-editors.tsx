@@ -28,7 +28,7 @@ import {
 import { blockedAbove } from "@n1/dominio/operations/configuration";
 import { containerAdminRefusal, effectiveListConfig } from "@n1/dominio/derive";
 import { FIELD_TYPE_LABEL, STATUS_CATEGORY_LABEL } from "@/features/shell/format";
-import { ActionMenu, Button, ConfirmDialog, EmptyState, Field, Icone, Select, TextInput, Toggle } from "@/features/shell/ui";
+import { ActionMenu, Button, ConfirmDialog, EmptyState, Field, Icone, MultiSelect, Segmentos, Select, TextInput, Toggle } from "@/features/shell/ui";
 import type { OperationResult } from "@n1/dominio/state";
 import type { EnabledFeatures, FieldDefinition, FieldRequirement, FieldType, StatusCategory, StatusSet } from "@n1/dominio/types";
 
@@ -98,8 +98,20 @@ export function StatusSetEditor({
   const [editando, setEditando] = useState<string | null>(null);
   const [nomeEditado, setNomeEditado] = useState("");
   const [confirmando, setConfirmando] = useState<"sobrescrever" | "herdar" | null>(null);
+  // "Quem pode mover para cá" (`entryAllowedMemberIds`): o Status em edição, e o rascunho.
+  const [regraDe, setRegraDe] = useState<string | null>(null);
+  const [quemMove, setQuemMove] = useState<"qualquer" | "escolhidos">("qualquer");
+  const [escolhidos, setEscolhidos] = useState<readonly string[]>([]);
 
   const definicoes = [...set.definitions].sort((a, b) => a.order - b.order);
+  const membros = state.members.filter((m) => m.state !== "removido");
+  const abrirRegra = (statusId: string) => {
+    const atuais = definicoes.find((d) => d.id === statusId)?.entryAllowedMemberIds ?? [];
+    setQuemMove(atuais.length > 0 ? "escolhidos" : "qualquer");
+    // Quem não é Membro não volta ao rascunho: salvar tira da regra.
+    setEscolhidos(atuais.filter((id) => membros.some((m) => m.id === id)));
+    setRegraDe(statusId);
+  };
   // Só as Tarefas das Listas que consomem ESTE Conjunto: uma cópia sobrescrita
   // abaixo preserva os ids, e contá-la aqui inflaria o número.
   const listasDoConjunto = new Set(state.lists.filter((l) => effectiveListConfig(state, l.id)?.statusSet.id === set.id).map((l) => l.id));
@@ -179,6 +191,8 @@ export function StatusSetEditor({
 
   const aRemover = definicoes.find((d) => d.id === removendo);
   const emUso = aRemover ? (tarefasEm[aRemover.id] ?? 0) : 0;
+  const emRegra = definicoes.find((d) => d.id === regraDe);
+  const foraDoEspaco = (emRegra?.entryAllowedMemberIds ?? []).filter((id) => !membros.some((m) => m.id === id));
 
   return (
     <div className="grid gap-3">
@@ -223,6 +237,59 @@ export function StatusSetEditor({
             )}
           </Field>
         ) : null}
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={regraDe !== null}
+        title={`Quem pode mover para “${emRegra?.name ?? ""}”?`}
+        description="Qualquer pessoa que edita as Tarefas, ou só as pessoas escolhidas. Para quem não pode, a opção aparece desligada, com o motivo."
+        confirmLabel="Salvar"
+        {...(quemMove === "escolhidos" && escolhidos.length === 0
+          ? { confirmDisabledReason: "Escolha ao menos uma pessoa, ou deixe qualquer pessoa mover." }
+          : {})}
+        onConfirm={() => {
+          if (emRegra) {
+            report(
+              run((data, me) =>
+                updateStatus(data, me, containerType, containerId, emRegra.id, {
+                  entryAllowedMemberIds: quemMove === "qualquer" ? [] : escolhidos,
+                }),
+              ),
+              "Regra do Status alterada.",
+            );
+          }
+          setRegraDe(null);
+        }}
+        onCancel={() => setRegraDe(null)}
+      >
+        <div className="grid gap-3">
+          <Segmentos
+            rotulo="Quem pode mover"
+            opcoes={[
+              { valor: "qualquer", rotulo: "Qualquer pessoa" },
+              { valor: "escolhidos", rotulo: "Só estas pessoas" },
+            ]}
+            valor={quemMove}
+            aoTrocar={setQuemMove}
+          />
+          {quemMove === "escolhidos" ? (
+            <Field label="Pessoas">
+              {(id) => (
+                <MultiSelect
+                  id={id}
+                  values={escolhidos}
+                  onChange={setEscolhidos}
+                  options={membros.map((m) => ({ value: m.id, label: m.displayName }))}
+                />
+              )}
+            </Field>
+          ) : null}
+          {foraDoEspaco.length > 0 ? (
+            <p className="app-sm" style={{ color: "var(--texto-3)" }}>
+              {foraDoEspaco.join(", ")} {foraDoEspaco.length === 1 ? "não é Membro" : "não são Membros"} deste Espaço de Trabalho
+              e sai da regra ao salvar.
+            </p>
+          ) : null}
+        </div>
       </ConfirmDialog>
 
       <ul className="pilha-solta">
@@ -320,6 +387,11 @@ export function StatusSetEditor({
                           setNomeEditado(definition.name);
                           setEditando(definition.id);
                         },
+                        ...(bloqueio ? { disabledReason: bloqueio } : {}),
+                      },
+                      {
+                        label: "Quem pode mover para cá",
+                        onSelect: () => abrirRegra(definition.id),
                         ...(bloqueio ? { disabledReason: bloqueio } : {}),
                       },
                       {

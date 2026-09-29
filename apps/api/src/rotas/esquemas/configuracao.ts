@@ -101,8 +101,15 @@ const FIELD_REQUIREMENT = z
 // `exitRequirements` (plano pós-auditoria, 2.1): sem ele no schema, uma tela
 // que um dia editar requisitos teria a chave recusada aqui (`.strict()`)
 // enquanto o domínio a aceita em memória — o cliente e o servidor divergiriam.
+// `entryAllowedMemberIds` é o "Quem pode mover para cá" da tela (`[]` = qualquer
+// pessoa); "só Membros do Espaço" é regra de `updateStatus`.
 const UPDATE_STATUS_INPUT = z
-  .object({ name: z.string().optional(), color: z.string().optional(), exitRequirements: z.array(FIELD_REQUIREMENT).optional() })
+  .object({
+    name: z.string().optional(),
+    color: z.string().optional(),
+    exitRequirements: z.array(FIELD_REQUIREMENT).optional(),
+    entryAllowedMemberIds: z.array(ID).optional(),
+  })
   .strict();
 
 const CREATE_TASK_TYPE_INPUT = z

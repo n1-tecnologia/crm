@@ -425,6 +425,14 @@ export function updateStatus(
      * com a mesma permissão e o mesmo Registro de Atividade.
      */
     readonly exitRequirements?: readonly FieldRequirement[];
+    /**
+     * Quem pode MOVER uma Tarefa para este Status (a lista inteira; `[]`
+     * apaga a regra, e qualquer pessoa que edita a Tarefa move). É o que a
+     * tela edita em "Quem pode mover para cá". Antes só o seed escrevia a
+     * regra (RN-CP-04: "pago" só pelo Aprovador), e no `ws_n1` ela apontava
+     * para quem não era Membro — o Status travava e ninguém conseguia mudá-la.
+     */
+    readonly entryAllowedMemberIds?: readonly Id[];
   },
 ): OperationResult<StatusDefinition> {
   const refusal = mayConfigure(state, actingMemberId, containerType, containerId);
@@ -438,6 +446,13 @@ export function updateStatus(
     const validados = requisitosValidados(state, input.exitRequirements);
     if (typeof validados === "string") return fail(validados, "requisitos");
     requisitos = validados;
+  }
+  let quemMove: Id[] | undefined;
+  if (input.entryAllowedMemberIds !== undefined) {
+    // Uma regra que aponta para quem não é Membro trava o Status para todo mundo.
+    quemMove = [...new Set(input.entryAllowedMemberIds)];
+    const naoMembro = quemMove.find((id) => !state.members.some((m) => m.id === id && m.state !== "removido"));
+    if (naoMembro) return fail(`Só Membros deste Espaço de Trabalho entram na regra — ${naoMembro} não é.`, "quemMove");
   }
 
   const mudancas: string[] = [];
@@ -463,6 +478,16 @@ export function updateStatus(
       if (requisitos.length > 0) definition.exitRequirements = requisitos;
       else delete definition.exitRequirements;
       mudancas.push("requisitos de saída");
+    }
+  }
+  if (quemMove !== undefined) {
+    const antes = definition.entryAllowedMemberIds ?? [];
+    if (JSON.stringify(quemMove) !== JSON.stringify(antes)) {
+      const nomes = (ids: readonly Id[]) =>
+        ids.length > 0 ? ids.map((id) => state.members.find((m) => m.id === id)?.displayName ?? id).join(", ") : "qualquer pessoa";
+      mudancas.push(`quem move para “${definition.name}”: ${nomes(antes)} → ${nomes(quemMove)}`);
+      if (quemMove.length > 0) definition.entryAllowedMemberIds = quemMove;
+      else delete definition.entryAllowedMemberIds;
     }
   }
   if (mudancas.length === 0) return ok(definition);

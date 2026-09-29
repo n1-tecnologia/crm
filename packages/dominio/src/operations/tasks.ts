@@ -1137,7 +1137,7 @@ export function statusOptionRefusal(state: DataState, actingMemberId: Id, task: 
     const ausentes = permitidos.filter((id) => !state.members.some((m) => m.id === id && m.state !== "removido"));
     const aviso =
       ausentes.length === permitidos.length
-        ? " Nenhum deles é Membro deste Espaço de Trabalho — ajuste a regra do Status nas configurações da Lista."
+        ? " Nenhum deles é Membro deste Espaço de Trabalho — ajuste em Configurações da Lista → Status → “Quem pode mover para cá”."
         : ausentes.length > 0
           ? ` (${ausentes.join(", ")} não ${ausentes.length === 1 ? "é Membro" : "são Membros"} deste Espaço de Trabalho.)`
           : "";
