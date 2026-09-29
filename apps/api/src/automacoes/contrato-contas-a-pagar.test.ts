@@ -20,7 +20,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildSeed } from "@n1/dominio/seed";
-import { CP } from "@n1/dominio/operations/financeiro";
+import { decideProcessApproval } from "@n1/dominio/operations/ai";
+import { CP, TEXTOS_DA_CONFERENCIA, conferenciaDoResumo } from "@n1/dominio/operations/financeiro";
 import { changeTaskStatus } from "@n1/dominio/operations/tasks";
 import type { DataState, Task } from "@n1/dominio";
 import { criarServidorFalso, type ServidorFalso } from "../testes/servidor-falso";
@@ -148,50 +149,90 @@ describe("contrato — a ponte de ponta a ponta com as respostas canônicas", ()
     return { kind: "ok", status, corpo } as const;
   };
 
-  it("resolver.sucesso-resolvida + lancar.sucesso: Resumo publicado e a conta vai para \"lançado omie\"", async () => {
-    servidor = await criarServidorFalso();
-    const estado = buildSeed();
-    const das = dasEmLancamento(estado);
+  const RESOLVER = "/v1/integrations/contas-a-pagar/resolver";
+  const LANCAR = "/v1/integrations/contas-a-pagar/lancar";
+
+  /**
+   * Plan 06-03 (exceção a CON-05 estendida pelo orquestrador): o fluxo com
+   * Conferência. Só a DAS fica nos Status que a ponte olha — as outras contas
+   * de "para pagar" e "em lançamento omie" saem do jogo, senão o Momento 1
+   * publicaria um Resumo em cada conta completa do seed —, em "para pagar",
+   * com a Categoria dos exemplos.
+   */
+  function dasEmParaPagar(estado: DataState): Task {
+    for (const t of estado.tasks) {
+      if (t.listId === CP.listId && t.id !== "tsk_cp_das" && (t.statusId === S.emLancamento || t.statusId === S.paraPagar)) t.statusId = S.lancado;
+    }
+    const das = estado.tasks.find((t) => t.id === "tsk_cp_das");
+    if (!das) throw new Error("sem tsk_cp_das no seed");
+    das.fieldValues = das.fieldValues.filter((v) => v.definitionId !== CP.fields.categoria);
+    das.fieldValues.push({ definitionId: CP.fields.categoria, value: CATEGORIA, state: "ativo" });
+    return das;
+  }
+
+  /**
+   * 1º ciclo: `resolver.sucesso-resolvida` ⇒ Resumo publicado e Conferência
+   * pendente. A Maryane (revisora e aprovadora) confere por clique e move a
+   * conta para "em lançamento omie" — a entrada por movimento que o Momento 2
+   * exige. Devolve a ponte pronta para o 2º ciclo, o do `/lancar`.
+   */
+  async function conferidaEmLancamento(estado: DataState, das: Task) {
+    const p = ponte(estado);
     servidor.enfileirar(responder("resolver.sucesso-resolvida.json"));
-    servidor.enfileirar(responder("lancar.sucesso.json"));
+    await p.lancarContasEmLancamento();
+    const conferencia = conferenciaDoResumo(estado, das).conferencia;
+    if (!conferencia) throw new Error("o 1º ciclo não publicou o Resumo");
+    const decidida = decideProcessApproval(estado, MARYANE, conferencia.id, "aprovada", { source: "click" });
+    if (!decidida.ok) throw new Error(decidida.error);
+    const movida = changeTaskStatus(estado, MARYANE, das.id, S.emLancamento);
+    if (!movida.ok) throw new Error(movida.error);
+    expect(conferenciaDoResumo(estado, das).estado).toBe("conferida");
+    return { p, conferencia };
+  }
 
-    await ponte(estado).lancarContasEmLancamento();
+  it.each(["lancar.sucesso.json", "lancar.sucesso-reaproveitado.json"])(
+    "resolver.sucesso-resolvida + %s: Resumo conferido, depois lançado — a conta vai para \"lançado omie\" com a confirmação canônica",
+    async (arquivo) => {
+      servidor = await criarServidorFalso();
+      const estado = buildSeed();
+      const das = dasEmParaPagar(estado);
+      const { p, conferencia } = await conferidaEmLancamento(estado, das);
+      servidor.enfileirar(responder(arquivo));
 
-    expect(das.statusId).toBe(S.lancado);
-    expect(das.comments.some((c) => c.content.startsWith("📋 RESUMO DE PAGAMENTO"))).toBe(true);
-  });
+      await p.lancarContasEmLancamento();
 
-  it("resolver.sucesso-resolvida + lancar.sucesso-reaproveitado: título já existente também é sucesso", async () => {
-    servidor = await criarServidorFalso();
-    const estado = buildSeed();
-    const das = dasEmLancamento(estado);
-    servidor.enfileirar(responder("resolver.sucesso-resolvida.json"));
-    servidor.enfileirar(responder("lancar.sucesso-reaproveitado.json"));
-
-    await ponte(estado).lancarContasEmLancamento();
-
-    expect(das.statusId).toBe(S.lancado);
-  });
+      expect(servidor.recebidas.map((r) => r.caminho)).toEqual([RESOLVER, LANCAR]);
+      expect(das.statusId).toBe(S.lancado);
+      expect(das.comments.some((c) => c.content.startsWith("📋 RESUMO DE PAGAMENTO"))).toBe(true);
+      const corpo = exemplo(arquivo).resposta.corpo as { payableId: string; reaproveitado: boolean };
+      const { conta, categoria, codigo } = conferencia.origin.lancamento;
+      const esperado = TEXTOS_DA_CONFERENCIA.lancado({ payableId: corpo.payableId, conta, categoria, codigo, reaproveitado: corpo.reaproveitado, anexos: [] });
+      expect(das.comments.filter((c) => c.author.kind === "agent" && c.content === esperado)).toHaveLength(1);
+    },
+  );
 
   it.each([
     "lancar.erro-422-omie-recusou.json",
     "lancar.erro-422-fornecedor-nao-resolvido.json",
     "lancar.erro-422-conta-corrente-nao-resolvida.json",
-  ])("%s: a conta fica, o motivo do automation/ vira Comentário, e a ponte não chama de novo", async (arquivo) => {
+  ])("%s: com o Resumo conferido, o motivo do automation/ vira UM Comentário, a conta volta para \"para pagar\" (D6-03), e a ponte não chama de novo", async (arquivo) => {
     servidor = await criarServidorFalso();
     const estado = buildSeed();
-    const das = dasEmLancamento(estado);
-    servidor.enfileirar(responder("resolver.sucesso-resolvida.json"));
+    const das = dasEmParaPagar(estado);
+    const { p } = await conferidaEmLancamento(estado, das);
     servidor.enfileirar(responder(arquivo));
-    const p = ponte(estado);
 
-    await p.lancarContasEmLancamento();
-    await p.lancarContasEmLancamento();
+    await p.lancarContasEmLancamento(); // 2º ciclo: /lancar recusado
+    await p.lancarContasEmLancamento(); // 3º ciclo: nada
 
     const motivo = motivoEsperado(exemplo(arquivo).resposta.corpo as unknown as EnvelopeDeErro) ?? "";
-    expect(das.statusId).toBe(S.emLancamento);
+    expect(das.statusId).toBe(S.paraPagar);
     expect(das.comments.filter((c) => c.author.kind === "agent" && c.content.includes(motivo))).toHaveLength(1);
-    expect(servidor.recebidas).toHaveLength(2); // o segundo ciclo não chama o automation/
+    // Exatamente: o /resolver do 1º ciclo e o /lancar do 2º. No 3º, a conta
+    // está em "para pagar" com a Conferência ainda aprovada para os mesmos
+    // dados — a ponte espera o humano movê-la de novo (passo 7), e a parada
+    // por chave também a seguraria: nenhuma requisição nova.
+    expect(servidor.recebidas.map((r) => r.caminho)).toEqual([RESOLVER, LANCAR]);
   });
 
   it("lancar.erro-500-omie-indisponivel: transitório — sem Comentário na primeira falha, a conta fica", async () => {
