@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Phase 02: 02-25 concluído; achados do 02-26 corrigidos; 02-27 Tasks 1-2 concluídas, Task 3 (ensaio de duas semanas) aberta; 02-28 (corte) aberto"
-last_updated: "2026-09-25T23:59:00.000Z"
-last_activity: 2026-09-25 -- três achados do 02-26 corrigidos (evento do clique/comentário, Agente comenta pelo Papel, eventId do classificador); 02-27 Tasks 1-2 (código Omie determinístico + consulta antes de incluir, métricas e reconciliação)
+stopped_at: Completed 02-26-PLAN.md
+last_updated: "2026-09-29T19:36:58.270Z"
+last_activity: 2026-09-29 -- Phase 06 execution started
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 111
-  completed_plans: 101
-  percent: 83
+  completed_plans: 104
+  percent: 71
 ---
 
 # Project State
@@ -21,30 +21,33 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-15)
 
 **Core value:** Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de ponta a ponta sem abrir o ClickUp — dados no Postgres próprio, regras de `@n1/dominio` intactas.
-**Current focus:** Phase 02 — solicita-o-de-pagamento-o-front-substitui-o-clickup
+**Current focus:** Phase 06 — conferencia-do-resumo-e-anexos
 
 ## Current Position
 
-Phase: 02 (solicita-o-de-pagamento-o-front-substitui-o-clickup) — EXECUTING
-Plan: 27 of 28 (26/28 planos completos; abertos: 02-27 Task 3, 02-28)
-Status: 02-27 Tasks 1-2 concluídas; Task 3 é o ensaio de duas semanas com dado real — depende da publicação do apps/api na VPS (pendência do 02-15)
-Last activity: 2026-09-25 -- achados do 02-26 corrigidos e provados pelo E2E entre processos sem contornos (dois-servicos 9/9, falhas-injetadas 8/8 +1 todo)
+Phase: 06 (conferencia-do-resumo-e-anexos) — EXECUTING
+Plan: 1 of 6
+Status: Executing Phase 06
+Last activity: 2026-09-29 -- Phase 06 execution started
 
 **Fase 06 planejada à mão em 2026-09-29 (Conferência do Resumo e anexos), pronta para `/gsd-execute-phase 6`:**
 `.planning/phases/06-conferencia-do-resumo-e-anexos/` — `06-CONTEXT.md` (13 decisões com padrão e variável de troca) e seis planos em três ondas: 06-01 domínio · 06-02 contrato v1.1 no `financeiro-tria` · 06-03 ponte em dois momentos · 06-04 tela e jornada · 06-05 S5/S6 na Solicitação · 06-06 docs e provas `[BLOCKING]`. Origem: `docs/08-migracao-financeiro/09-…` (desenho) e `10-…` (levantamento etapa por etapa com `arquivo:linha`). Ponto de partida do código: `crm-n1-integracao@3d6f735` (branch `integra-frontend-main`, sem push) e `financeiro-tria@c272dad` (`main`, 99 commits sem push, 89 arquivos sujos só de EOL — `git add` sempre por caminho). O dono ainda não respondeu às quatro perguntas do doc 10; os padrões de D6-01..D6-04 seguem "como no ClickUp", exceto Integração manual (o seguro).
 
 **Achados do 02-26 — corrigidos em 2026-09-25:**
+
 1. `rotas/operacoes.ts` grava `aprovacao-decidida` (clique) e `comentario-criado` (resposta pela tela numa Solicitação) — `48f48f0`.
 2. O Agente do pipeline comenta pelo Papel em toda Tarefa que vê (`guestCommentsByRole`, `derive.ts`) — `dae2a91`.
 3. `eventIdDoComentario` gera UUID v5 válido — `financeiro-tria@7dfc441`.
 
 **Plan 02-27 — Tasks 1-2 (código) prontas, Task 3 (ensaio) aberta:**
+
 - `financeiro-tria@7c74681` + `@549ceb5`: consulta `ConsultarContaPagar` antes de `IncluirContaPagar` (e de novo após erro); coorte plataforma com código determinístico `tria:payment-request:plataforma:<taskId>` que nunca cede ao código extraído do resumo da IA; coorte clickup intocada.
 - `crm-n1@973aa8f`: `apps/api/src/observabilidade/` (métricas + `npm run reconciliar`). Lacuna: as contagens do lado do `automation/` (comandos, runs, códigos Omie) entram por `--resumo=<json>`, não por leitura automática — o `automation/` não tem tabela de runs persistida. Antes do ensaio, decidir quem gera esse resumo diário.
 - Pré-requisitos do ensaio (Task 3): publicar `apps/api` na VPS atrás do nginx, emitir a credencial do `automation/`, ligar `PAYMENT_REQUEST_SOURCE=plataforma` para a coorte nova, `FALLBACK_COMENTARIO_ATE` no deploy. Tudo com o dono.
 - Fora de escopo, anotado: `payment-rules.test.ts` (financeiro-tria) falha antes de hoje — roteamento de aprovador com fallback devolve "Elifas" onde o teste espera FINQ.
 
 **Plan 02-25 — o que ficou decidido e o que resta:**
+
 1. A origem tem 1.114 linhas mas só **843 Solicitações distintas** (até 20 linhas por TaskID); só **245** têm Centro de Custo e decisão — essas entraram. Critério 5 do ROADMAP reescrito (decisão do dono).
 2. Sem Valor, CPF/CNPJ e data de criação: não existem como coluna na origem (D-25). Empresa por de-para do identificador do legado; Data Vencimento só do vencimento real (DD/MM/AAAA).
 3. Bucket privado `anexos-solicitacoes` criado no CRM N1 (também é o do Formulário público). Migração dos anexos para servidor próprio: fase futura (pedido do dono).
@@ -53,6 +56,7 @@ Last activity: 2026-09-25 -- achados do 02-26 corrigidos e provados pelo E2E ent
 6. Para o 02-28: rodar mais um `--apply` (idempotente) logo antes do corte, para pegar solicitações novas gravadas pelo pipeline antigo depois de hoje.
 
 **Plan 02-15 — decisão e pendências:**
+
 1. Decisão de região registrada: **permanecer em `us-west-2`** (não migrar para `sa-east-1` agora) — zero downtime, latência transcontinental aceita e medida quando possível.
 2. `apps/api/src/persistencia/conexao.ts`: `rejectUnauthorized: false` foi substituído por verificação real de TLS (`DATABASE_CA_CERT`/`DATABASE_CA_PATH`/`DATABASE_SSL_INSECURE`). **Efeito colateral encontrado no post-merge**: qualquer ambiente com `DATABASE_URL` mas sem uma dessas três variáveis agora falha ao abrir conexão — os e2e locais (`criar-conta`, `lote-contas-a-pagar`, `dois-servicos`, `falhas-injetadas`, `latencia`) pararam de rodar até `DATABASE_SSL_INSECURE=true` ser adicionado ao `.env` local (dono aprovou; feito nesta sessão, arquivo não versionado).
 3. Medição real de latência (p50/p95/p99) **não foi obtida**: rodar 200 transações sequenciais contra `us-west-2` a partir deste laptop levou tempo suficiente para o processo sofrer uma queda de rede local (`ENOTFOUND`/`EADDRNOTAVAIL` após ~28min) antes de completar. Isso não é uma medição válida de VPS↔Postgres — precisa rodar a partir da VPS mesmo (que é o ponto real da cadeia), não do laptop do desenvolvedor. `apps/api/src/e2e/latencia.test.ts` timeout do teste ampliado de 120s→300s (`3d41285`) para dar folga em runs locais, mas a medição autoritativa continua pendente.
