@@ -395,7 +395,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 06-03-PLAN.md — A ponte em dois momentos: Resumo → conferência/revisão pelo fio → lançamento com anexos; modos `ensaio`/`conferencia`/`lancar`; cutucão em processo; variáveis de decisão (RES-01..RES-04, RES-06)
+- [x] 06-03-PLAN.md — A ponte em dois momentos: Resumo → conferência/revisão pelo fio → lançamento com anexos; modos `ensaio`/`conferencia`/`lancar`; cutucão em processo; variáveis de decisão (RES-01..RES-04, RES-06)
 - [ ] 06-04-PLAN.md — Tela: card "Conferência do Resumo" na conta e na fila, pílula de estado; jornada com `cp-conferida` e `cp-ajuste` (RES-02, RES-06)
 
 **Wave 3** *(blocked on Wave 2 completion)*
@@ -435,7 +435,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 → 6 (0 e 1 em
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
 | 5. Contas a receber e os outros tenants | 25/25 | Complete    | 2026-09-25 |
-| 6. Conferência do Resumo e anexos | 2/6 | In Progress|  |
+| 6. Conferência do Resumo e anexos | 3/6 | In Progress|  |
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*

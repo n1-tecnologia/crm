@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 06-02-PLAN.md
-last_updated: "2026-09-29T20:13:33.649Z"
+stopped_at: Completed 06-03-PLAN.md
+last_updated: "2026-09-29T20:48:04.603Z"
 last_activity: 2026-09-29 -- Phase 06 execution started
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 111
-  completed_plans: 106
+  completed_plans: 107
   percent: 71
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 06 (conferencia-do-resumo-e-anexos) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-09-29 -- Phase 06 execution started
 
@@ -330,6 +330,7 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 | Phase 02 P26 | ~5h | 3 tasks | 10 files |
 | Phase 06 P01 | 25min | 3 tasks | 9 files |
 | Phase 06 P02 | 25min | 3 tasks | 21 files |
+| Phase 06 P03 | 30min | 3 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -400,6 +401,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 06]: 06-01: registrarFalhaDoLancamento muda o Status antes de comentar — o aviso só diz que a conta voltou para para pagar quando voltou
 - [Phase 06]: 06-02: contrato contas-a-pagar v1.1 aditivo no mesmo endereço (D6-05) — codigoCategoriaConfirmado validado no plano de contas real sem chamar o RAG (plano inalcançável ⇒ revisar); pedidoDeRevisao no fim da consulta, nunca em log
 - [Phase 06]: 06-02: anexos string | { url, nome } no /lancar; o nome vai para dentro do zip e para cNomeArquivo; anexos[].nome só volta quando pedido com nome; anexo string vazio passou a 400
+- [Phase 06]: 06-03: a ponte em dois momentos; /lancar só com Conferência aprovada; zero /lancar em ensaio e conferencia; portas de teste G1 (legado importado nunca varrido), G2 (AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM), G3 (AGENTE_CONTAS_A_PAGAR_AVISAR_ID)
 
 ### Pending Todos
 
@@ -431,6 +433,7 @@ Nenhum em `.planning/todos/` ainda. Decisões com prazo (ver ROADMAP.md "Decisõ
 - Plan 03-15 (Compartilhadas comigo + busca/tarefas filtradas por visibilidade): Tasks 1-2 completas e commitadas (96efff0, 2d1636e, f84bc07, a5b0317) -- compartilhadas-comigo.tsx re-keyed em memberSeesTask, buscar/page.tsx e estrutura/tarefas/page.tsx filtrados, 16 testes novos verdes. Task 3 (checkpoint bloqueante de producao: login real como Pedro/Lucas/Rafael/Maryane contra apps/api + apps/web no ar e o Supabase da plataforma) PARADA -- sem VPS, sem credenciais de Auth reais, apps/api/.env bloqueado pelo sandbox de permissoes desta sessao. Mesma familia de pendencia que 03-07 (Task 4)/03-08 (identidade de producao)/03-10 (Task 4)/03-11 (Task 3). Ver 03-15-SUMMARY.md.
 - Plan 03-13 (o gesto de lote vira uma chamada + gatilho de D3-08): Tasks 1-3 completas e commitadas (c33a37f, 9814117, 58ea740) -- BulkStatusBar chama alterarStatusEmLote (03-12) uma vez, RelatorioDeLotePainel renderiza os quatro resultados (parcial em bloco proprio, T-3-55 estrutural), painel-aprovacao.tsx ganha o botao "Converter em Conta a pagar" (D3-08). 12+5 testes novos verdes (140 no total em @n1/web); npm run typecheck/lint/verificar:tokens verdes nos tres workspaces. Task 4 (checkpoint bloqueante: lote de 61 contra o banco real, login como mem_maryane/mem_marcos_paulo/mem_walter, aba de rede, conversao de Solicitacao real) PARADA -- mesma familia de pendencia que 03-07/03-08/03-10/03-11/03-15 (sem VPS, sem browser, sem credenciais reais, apps/api/.env bloqueado pelo sandbox desta sessao). Achado carregado do proprio plano (nao corrigido aqui, ja registrado em 03-05/03-15): a Pessoa da conta enxerga a Tarefa pelo dominio mas [lista]/page.tsx fecha a Lista para quem nao passa em memberReachesContainer -- e PAG-06, nao PAG-05. Ver 03-13-SUMMARY.md.
 - Plan 03-14 (a conferencia do Ensaio, o relatorio e o runbook do corte -- fecha a fase): Tasks 1-3 completas e commitadas (afbba99 de sessao anterior, 6bec6c4, d6b0946) -- compararEnsaio/PREFIXO_LANCAMENTO_HUMANO/LIMIAR_DA_CANETA no dominio; DialogoLancamentoNoOmie captura o lancamento humano em texto livre (T-3-67, sem mostrar a resposta do Agente); npm run ensaio:relatorio -w @n1/api (coberturaDaJanela/agregar/renderizar) computa os sete portoes G1-G7 e foi RODADO DE VERDADE contra ws_n1 de producao (janela 2026-09-01/23): saiu INCONCLUSIVO (exit 2) porque plataforma.automacao_agenda nao tem nenhuma linha ainda -- prova de que o relatorio nao inventa taxa sobre dado que nao existe (o artefato dessa corrida foi descartado antes do commit, precedente de 03-10). 10 testes novos em @n1/api (9 puros + 1 contra Postgres real), 4 em @n1/web; dominio 480, web 144; npm run typecheck/lint/verificar:tokens verdes nos tres workspaces. Task 4 (o runbook do corte, docs/08-migracao-financeiro/06-runbook-de-corte.md, 1167a83) tem o DOCUMENTO escrito com os onze passos, dono e condicao verificavel -- mas NAO EXECUTADO: exige a importacao historica real (03-10 Task 4), a ponte HTTP do Agente ligada em producao (03-11 Task 3, mesmo PLATAFORMA_LANCAMENTO_TOKEN de 03-07 Task 4), uma semana de calendario inteira de operacao real do Financeiro, e o arquivamento IRREVERSIVEL da Lista 901107637383 -- nenhuma dessas quatro condicoes e alcancavel neste ambiente, e a ultima nunca deveria ser executada autonomamente de qualquer forma. Deliberadamente NAO executado nem o passo 3 do runbook (inventario read-only de Grants gr_cp_pessoa_*), porque so faz sentido depois do passo 2 (importacao real), que tambem nao rodou -- executar um passo isolado de 11 sequenciais produziria um estado parcial sem decisao nenhuma tomada. Ver 03-14-SUMMARY.md.
+- 06-03: 5 casos de apps/api/src/automacoes/contrato-contas-a-pagar.test.ts provam o fluxo antigo (lançar sem Conferência) e falham por desenho; precisam da exceção a CON-05 (remover ou reescrever; cobertos por contrato-contas-a-pagar-ponte.test.ts)
 
 ## Deferred Items
 
@@ -449,7 +452,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-29T20:13:26.767Z
-Stopped at: Completed 06-02-PLAN.md
+Last session: 2026-09-29T20:47:58.797Z
+Stopped at: Completed 06-03-PLAN.md
 Resume file: None
 None

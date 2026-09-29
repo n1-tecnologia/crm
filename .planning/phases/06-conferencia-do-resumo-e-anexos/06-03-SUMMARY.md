@@ -246,3 +246,12 @@ Nenhum.
 
 - **06-04 (tela):** a ponte reage à decisão por clique em ≤ 2 s (cutucão em `decideProcessApproval`); o aviso do modo conferência é resposta no fio do Resumo.
 - **06-06 (prova):** subir a ponte com `AGENTE_CONTAS_A_PAGAR_MODO=conferencia`, `AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM="TESTE AUTOMATIZADO"` e `AGENTE_CONTAS_A_PAGAR_AVISAR_ID=<usuário de teste>`; conferir na linha de partida `modo=conferencia … escopo=titulos-com:"TESTE AUTOMATIZADO" avisar=membro-indicado`. O "ok" no fio decide se vier da Maryane (Proprietária) ou de outro Administrador; o usuário de teste decide por clique.
+
+## Self-Check: PASSED
+
+- FOUND: anexos-da-conta.ts, ponte-ativa.ts, contrato-contas-a-pagar-ponte.test.ts, conferencia-avisar.test.ts
+- FOUND: 618c7c3, 9bf7918, ed79fdd
+
+---
+*Phase: 06-conferencia-do-resumo-e-anexos*
+*Completed: 2026-09-29*
