@@ -390,7 +390,7 @@ Antes de planejar: D7/OQ-CR-01 (perguntar ao Financeiro onde o recebimento é co
 Plans:
 **Wave 1** — domínio e contrato, em paralelo (repositórios diferentes)
 
-- [ ] 06-01-PLAN.md — Domínio: a Conferência do Resumo (tipos, impressão de lançamento, `publicarResumoParaConferencia`, `decideProcessApproval` ramo `resumo`, `registrarLancamentoNoOmie`, `registrarFalhaDoLancamento`, heurística da resposta) (RES-01, RES-02, RES-03)
+- [x] 06-01-PLAN.md — Domínio: a Conferência do Resumo (tipos, impressão de lançamento, `publicarResumoParaConferencia`, `decideProcessApproval` ramo `resumo`, `registrarLancamentoNoOmie`, `registrarFalhaDoLancamento`, heurística da resposta) (RES-01, RES-02, RES-03)
 - [ ] 06-02-PLAN.md — `financeiro-tria`: contrato v1.1 aditivo (`pedidoDeRevisao`, `codigoCategoriaConfirmado`, `anexos` com nome), fixtures nos dois lados, `teste:omie-real --anexo` (RES-03, RES-04)
 
 **Wave 2** *(blocked on Wave 1 completion)*
@@ -435,7 +435,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 → 6 (0 e 1 em
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
 | 5. Contas a receber e os outros tenants | 25/25 | Complete    | 2026-09-25 |
-| 6. Conferência do Resumo e anexos | 0/6 | Planned     |  |
+| 6. Conferência do Resumo e anexos | 1/6 | In Progress|  |
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*

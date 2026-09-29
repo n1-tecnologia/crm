@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-26-PLAN.md
-last_updated: "2026-09-29T19:36:58.270Z"
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-09-29T19:56:24.147Z"
 last_activity: 2026-09-29 -- Phase 06 execution started
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 111
-  completed_plans: 104
+  completed_plans: 105
   percent: 71
 ---
 
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 06 (conferencia-do-resumo-e-anexos) — EXECUTING
-Plan: 1 of 6
-Status: Executing Phase 06
+Plan: 2 of 6
+Status: Ready to execute
 Last activity: 2026-09-29 -- Phase 06 execution started
 
 **Fase 06 planejada à mão em 2026-09-29 (Conferência do Resumo e anexos), pronta para `/gsd-execute-phase 6`:**
@@ -328,6 +328,7 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 | Phase 3 P14 | 120min | 3 tasks | 10 files |
 | Phase 05 P01 | 45min | 3 tasks | 13 files |
 | Phase 02 P26 | ~5h | 3 tasks | 10 files |
+| Phase 06 P01 | 25min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -393,6 +394,9 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 02]: Achado real: caminho de aprovação por CLIQUE (rotas/operacoes.ts) não emite evento de outbox hoje — só o callback de classificação por comentário notifica o automation/. Bloqueia o ensaio de duas semanas até corrigido
 - [Phase 02]: Achado real: eventIdDoComentario (financeiro-tria/automation/classificador-de-aprovacao.ts) gera uuid que z.uuid() rejeita na maioria dos casos — fallback por comentário quebrado em produção até corrigido no repositório irmão
 - [Phase 02]: Achado real: Convidado Agente do pipeline não tem grant de comentar por padrão em nenhuma Tarefa — createComment via service credential falha 422 até o evolver ou uma exceção tipo guestStatusWriter resolver isso
+- [Phase 06]: 06-01: textos canônicos da Conferência em operations/financeiro-textos.ts (evita o ciclo ai ↔ financeiro), reexportados por financeiro.ts
+- [Phase 06]: 06-01: a tripla conta · categoria · código e a impressão de lançamento vivem em ApprovalRequest.origin (ramo resumo); o lançamento só se registra com conferenciaDoResumo = conferida para a impressão atual (D6-10)
+- [Phase 06]: 06-01: registrarFalhaDoLancamento muda o Status antes de comentar — o aviso só diz que a conta voltou para para pagar quando voltou
 
 ### Pending Todos
 
@@ -442,7 +446,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-25T17:38:27.177Z
-Stopped at: Completed 02-26-PLAN.md
+Last session: 2026-09-29T19:56:24.139Z
+Stopped at: Completed 06-01-PLAN.md
 Resume file: None
 None
