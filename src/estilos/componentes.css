@@ -2178,59 +2178,25 @@
   .chat-tela[data-largura="larga"] .chat-coluna {
     max-width: var(--chat-coluna-larga);
   }
-  /* A home: o bloco começa numa altura FIXA (--chat-home-topo, uma fração
-     da janela) — centrado, ele subiria a cada linha que o campo ganha e a
-     tela respiraria enquanto se escreve. O corpo da tela não vira contêiner
-     (lei 2: nada de container-type em ancestral de popup); quem mede a
-     largura, para as sugestões, é o miolo. */
-  .chat-home-miolo {
-    container-type: inline-size;
-    padding-block: max(var(--e-8), var(--chat-home-topo)) var(--e-10);
+  /* A home (e a Sessão vazia): o bloco CENTRADO na altura do corpo
+     (2026-09-28: "centralize este conteúdo"; até então começava numa altura
+     fixa). O corpo vira coluna flex e o miolo leva margem automática em
+     cima e embaixo: centra quando sobra espaço e, quando falta, as margens
+     viram zero e o topo não é cortado (`justify-content: center` num bloco
+     que rola esconderia o título). O seletor é mais específico que o
+     `.corpo-de-tela > :first-child { margin-top: 0 }` da base. O corpo não
+     vira contêiner (lei 2: nada de container-type em ancestral de popup). */
+  .corpo-de-tela.chat-home {
+    display: flex;
+    flex-direction: column;
+  }
+  .corpo-de-tela.chat-home > .chat-home-miolo {
+    margin-block: auto;
+    padding-block: var(--e-8);
   }
   .chat-home-titulo {
     margin-bottom: var(--e-6);
     text-align: center;
-  }
-  /* As sugestões: três começos, mais leves que a caixa (sem fundo, hairline
-     sutil) — não disputam com o compositor. */
-  .chat-sugestoes {
-    display: grid;
-    gap: var(--e-2);
-    margin-top: var(--e-8);
-  }
-  @container (min-width: 36rem) {
-    .chat-sugestoes {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-  }
-  .chat-sugestao {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--e-2);
-    width: 100%;
-    height: 100%;
-    padding: var(--e-3) var(--e-4);
-    border: 1px solid var(--linha-sutil);
-    border-radius: var(--r-painel);
-    color: var(--texto-2);
-    text-align: left;
-    transition:
-      color var(--dur-2) var(--easing),
-      background-color var(--dur-2) var(--easing),
-      border-color var(--dur-2) var(--easing);
-  }
-  .chat-sugestao > svg {
-    color: var(--texto-3);
-    transition: color var(--dur-2) var(--easing);
-  }
-  .chat-sugestao:hover {
-    color: var(--texto);
-    background: var(--superficie-hover);
-    border-color: var(--linha);
-  }
-  .chat-sugestao:hover > svg {
-    color: var(--acento);
   }
   .chat-nota {
     margin-top: var(--e-6);
@@ -2275,6 +2241,23 @@
     flex: 1;
     height: 1px;
     background: var(--linha-sutil);
+  }
+  /* A Mensagem ferramenta (DO-CHT-07): registro compacto, não fala — uma
+     linha miúda à esquerda, com o nome da Ferramenta em destaque leve. */
+  .chat-ferramenta {
+    display: flex;
+    align-items: baseline;
+    gap: var(--e-2);
+    padding-inline: var(--e-1);
+    color: var(--texto-3);
+  }
+  .chat-ferramenta > svg {
+    flex-shrink: 0;
+    align-self: center;
+  }
+  .chat-ferramenta-nome {
+    color: var(--texto-2);
+    font-weight: 500;
   }
   .chat-rodape {
     padding: var(--e-2) var(--celula-x) var(--e-4);
@@ -2321,6 +2304,218 @@
   .chat-arvore-novo:hover {
     color: var(--texto);
     background: var(--superficie-hover);
+  }
+
+  /* ── O NOVO GRUPO COM PRÉVIA (`criar-grupo-dialog.tsx`, `aparencia-do-grupo.tsx`)
+     2026-09-29: "quero um preview de como vai ficar o grupo, mostrando nome,
+     foto e capa". O formulário à esquerda e a prévia à direita, presa no topo
+     do corpo do diálogo (é ele que rola). Sem largura, a prévia quebra para
+     baixo do formulário (flex-wrap, sem consulta de largura: o corpo do
+     diálogo é ancestral de popup e não vira contêiner — lei 2). */
+  .novo-grupo {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: var(--e-6);
+  }
+  .novo-grupo-formulario {
+    display: grid;
+    flex: 1 1 32rem;
+    gap: var(--e-5);
+    min-width: 0;
+  }
+  .novo-grupo-previa {
+    position: sticky;
+    top: 0;
+    flex: 0 1 var(--novo-grupo-previa-w);
+    min-width: 0;
+  }
+
+  /* O campo de imagem: a miniatura na proporção do formato e os botões. */
+  .campo-de-imagem {
+    display: grid;
+    gap: var(--e-2);
+  }
+  .campo-de-imagem-rotulo {
+    font-weight: 500;
+    color: var(--texto-1);
+  }
+  .campo-de-imagem-linha {
+    display: flex;
+    align-items: center;
+    gap: var(--e-3);
+  }
+  .campo-de-imagem-miniatura {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+    overflow: hidden;
+    height: var(--controle-h-lg);
+    aspect-ratio: 1;
+    border: 1px dashed var(--linha-forte);
+    border-radius: var(--r-pilula);
+    background: var(--superficie-2);
+    color: var(--texto-4);
+  }
+  .campo-de-imagem-miniatura[data-formato="capa"] {
+    aspect-ratio: 3;
+    border-radius: var(--r-controle);
+  }
+  .campo-de-imagem-miniatura img,
+  .grupo-foto img,
+  .previa-do-grupo-capa img,
+  .grupo-ficha-capa img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  /* A foto do grupo em círculo; sem foto, o ícone de grupo. */
+  .grupo-foto {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+    overflow: hidden;
+    border-radius: var(--r-pilula);
+    background: var(--superficie-3);
+    color: var(--texto-3);
+  }
+  .grupo-foto[data-tamanho="previa"] {
+    width: var(--grupo-foto-previa);
+    height: var(--grupo-foto-previa);
+  }
+  .grupo-foto[data-tamanho="ficha"] {
+    width: var(--grupo-foto-ficha);
+    height: var(--grupo-foto-ficha);
+  }
+
+  /* A prévia: a capa larga, a foto sobre a borda dela, e o grupo embaixo. */
+  .previa-do-grupo {
+    margin: 0;
+    overflow: hidden;
+    border: 1px solid var(--linha);
+    border-radius: var(--r-painel);
+    background: var(--superficie-1);
+  }
+  .previa-do-grupo-capa {
+    display: block;
+    aspect-ratio: 3;
+    background: var(--superficie-2);
+    cursor: pointer;
+  }
+  .previa-do-grupo-capa-vazia {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--e-1);
+    height: 100%;
+    color: var(--texto-4);
+    transition: color var(--dur-2) var(--easing);
+  }
+  .previa-do-grupo-capa:hover .previa-do-grupo-capa-vazia {
+    color: var(--texto-2);
+  }
+  .previa-do-grupo-foto {
+    position: relative;
+    display: block;
+    width: fit-content;
+    margin-top: calc(var(--grupo-foto-previa) / -2);
+    margin-inline-start: var(--e-4);
+    border-radius: var(--r-pilula);
+    /* O anel na cor do cartão separa a foto da capa. */
+    box-shadow: 0 0 0 var(--e-1) var(--superficie-1), 0 0 0 calc(var(--e-1) + 1px) var(--linha);
+    cursor: pointer;
+  }
+  .previa-do-grupo-corpo {
+    display: grid;
+    gap: var(--e-2);
+    padding: var(--e-3) var(--e-4) var(--e-4);
+  }
+  .previa-do-grupo-nome {
+    overflow-wrap: anywhere;
+    color: var(--texto);
+  }
+  .previa-do-grupo-nome[data-vazio],
+  .previa-do-grupo-descricao[data-vazio] {
+    color: var(--texto-4);
+  }
+  .previa-do-grupo-contagem {
+    margin-top: calc(var(--e-2) * -1);
+    color: var(--texto-3);
+  }
+  .previa-do-grupo-descricao {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    color: var(--texto-2);
+  }
+  .previa-do-grupo-marcas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--e-1);
+  }
+  .previa-do-grupo-secao {
+    margin-top: var(--e-2);
+  }
+  .previa-do-grupo-pessoas {
+    display: grid;
+    gap: var(--e-1);
+  }
+  .previa-do-grupo-pessoa {
+    display: flex;
+    align-items: center;
+    gap: var(--e-2);
+  }
+  .previa-do-grupo-iniciais {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+    width: var(--controle-h-sm);
+    height: var(--controle-h-sm);
+    border-radius: var(--r-pilula);
+    background: var(--superficie-3);
+    color: var(--texto-2);
+    font-size: var(--app-xs);
+    font-weight: 600;
+  }
+  .previa-do-grupo-convite {
+    display: flex;
+    align-items: center;
+    gap: var(--e-1);
+    color: var(--texto-3);
+  }
+  .previa-do-grupo-legenda {
+    padding: var(--e-3) var(--e-4);
+    border-top: 1px solid var(--linha-sutil);
+    color: var(--texto-4);
+  }
+
+  /* O topo da ficha do Grupo: a capa (quando há) e a foto ao lado do nome;
+     com capa, a foto sobe sobre a borda dela, como na prévia. */
+  .grupo-ficha-capa {
+    margin-top: var(--e-3);
+    overflow: hidden;
+    aspect-ratio: 3;
+    border-radius: var(--r-painel);
+    background: var(--superficie-2);
+  }
+  .grupo-ficha-identidade {
+    display: flex;
+    align-items: center;
+    gap: var(--e-3);
+    margin-top: var(--e-3);
+  }
+  /* Com capa, só a FOTO sobe sobre a borda dela; o nome vem embaixo, como na
+     prévia (ao lado, o nome grande invadia a capa). */
+  .grupo-ficha-identidade[data-sobre-capa] {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--e-2);
+    margin-top: calc(var(--grupo-foto-ficha) / -2);
+    padding-inline-start: var(--e-4);
+  }
+  .grupo-ficha-identidade[data-sobre-capa] .grupo-foto {
+    box-shadow: 0 0 0 var(--e-1) var(--card), 0 0 0 calc(var(--e-1) + 1px) var(--linha);
   }
 
   /* ── O ROBÔ FLUTUANTE (`features/shell/robo-flutuante.tsx`) ────────────

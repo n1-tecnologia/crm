@@ -24,7 +24,7 @@
 
 import Link from "next/link";
 import { use, useEffect, useRef, useState } from "react";
-import { Anchor, Bot, Info } from "lucide-react";
+import { Anchor, Bot, Info, Wrench } from "lucide-react";
 import { useData, useRun, useSession } from "@/data/store";
 import { useRecente } from "@/features/shell/recente";
 import { configureChatSession, sendChatMessage } from "@/data/operations";
@@ -295,6 +295,29 @@ export default function SessaoPage({ params }: { params: Promise<{ sessao: strin
                         <span className="flex items-center gap-1.5">
                           <Icone de={Info} tamanho="xs" />
                           {message.content} · {fmt.instant(message.at)}
+                        </span>
+                      </li>
+                    );
+                  }
+                  // DO-CHT-07 — a Mensagem ferramenta é REGISTRO compacto, nunca
+                  // fala: uma linha miúda com a Ferramenta, o resultado, o que ela
+                  // fez e o caminho para a Execução.
+                  if (message.role === "ferramenta") {
+                    const ferramenta = state.tools.find((t) => t.id === message.toolId)?.name ?? message.toolId ?? "Ferramenta";
+                    return (
+                      <li key={message.id} className={`chat-ferramenta app-xs${surgir}`}>
+                        <Icone de={Wrench} tamanho="xs" />
+                        <span className="min-w-0">
+                          <span className="chat-ferramenta-nome">{ferramenta}</span>
+                          {message.toolResult ? ` · ${TOOL_RESULT_LABEL[message.toolResult] ?? message.toolResult}` : ""} · {message.content}
+                          {message.executionId ? (
+                            <>
+                              {" · "}
+                              <Link href={`/ia/execucoes/${message.executionId}`} className="hover:underline">
+                                Execução
+                              </Link>
+                            </>
+                          ) : null}
                         </span>
                       </li>
                     );

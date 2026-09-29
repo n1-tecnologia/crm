@@ -389,9 +389,11 @@
   --chat-coluna: 46rem;
   --chat-coluna-larga: 64rem;
   --compositor-campo-max: 16rem;
-  /* Onde a home do Chat começa: uma fração da altura da janela (o bloco não é
-     centrado — o campo cresce para baixo sem a tela respirar). */
-  --chat-home-topo: 16vh;
+  /* O Grupo: a foto na prévia do Novo Grupo e no topo da ficha, e a largura
+     da coluna da prévia. A capa é sempre 3:1 (a proporção em que é recortada). */
+  --grupo-foto-previa: 5.5rem;
+  --grupo-foto-ficha: 4.5rem;
+  --novo-grupo-previa-w: 21rem;
 
   /* Laços ambientais (capa do Início, atmosfera do Entrar, orbe) */
   --dur-deriva-1: 22s;

@@ -14,6 +14,7 @@ import Link from "next/link";
 import { useId, useState } from "react";
 import {
   ChevronRight,
+  Crown,
   Fingerprint,
   Hash,
   Layers,
@@ -30,6 +31,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useData, useRun } from "@/data/store";
+import { contactDisplayName } from "@/data/derive";
 import {
   adicionarNotaNoAtivo,
   arquivarGrupo,
@@ -45,9 +47,10 @@ import {
   sincronizarGrupo,
   zerarCliques,
 } from "@/data/operations";
-import { cliquesContabilizados, linksDoGrupo, marcadoresDoGrupo, motivoDeInelegibilidade, ocupacao, participacoesVigentes } from "@/data/derive-ferramentas";
+import { cliquesContabilizados, linksDoGrupo, marcadoresDoGrupo, motivoDeInelegibilidade, ocupacao, participacoesVigentes, urlDoArquivo } from "@/data/derive-ferramentas";
 import type { ConfiguracoesDoGrupo } from "@/data/types";
 import { LinhaDeProp } from "@/features/estrutura/linha-de-propriedade";
+import { FotoDoGrupo } from "./aparencia-do-grupo";
 import { AsideDeAtividade, EditorDeNumero, EditorDeTexto, useAvisos, useNomeDoAtor } from "@/features/shell/ficha";
 import { useFormat } from "@/features/shell/use-format";
 import { ActionMenu, Button, ConditionMarker, ConfirmDialog, CorpoDeTela, EmptyState, Icone, Pilula, ReguaDeSecao, Select, SidePanel, StateSeal, TextInput, Toggle } from "@/features/shell/ui";
@@ -247,7 +250,18 @@ export function GrupoCompleto({ grupoId, modo, onClose }: { readonly grupoId: st
                 </span>
               </div>
 
-              <h1 className="ed-display mt-3 px-2 py-1">{grupo.nome}</h1>
+              {/* O topo: a capa (só da plataforma, C41) e a foto ao lado do nome. */}
+              {urlDoArquivo(state, grupo.capaFileId) ? (
+                <div className="grupo-ficha-capa">
+                  {/* Imagem local (data URL) do armazém da sessão. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={urlDoArquivo(state, grupo.capaFileId)} alt={`Capa do grupo ${grupo.nome}`} />
+                </div>
+              ) : null}
+              <div className="grupo-ficha-identidade" data-sobre-capa={urlDoArquivo(state, grupo.capaFileId) ? "" : undefined}>
+                <FotoDoGrupo url={urlDoArquivo(state, grupo.fotoFileId)} nome={grupo.nome} tamanho="ficha" />
+                <h1 className="ed-display min-w-0 px-2 py-1">{grupo.nome}</h1>
+              </div>
               <LinhaDeProp
                 icone={Type}
                 rotulo="Descrição"
@@ -284,6 +298,17 @@ export function GrupoCompleto({ grupoId, modo, onClose }: { readonly grupoId: st
                       </span>
                     }
                   />
+                  {grupo.contatoCriadorId ? (
+                    <LinhaDeProp
+                      icone={Crown}
+                      rotulo="Criador do grupo"
+                      valor={(() => {
+                        const criador = state.contacts.find((c) => c.id === grupo.contatoCriadorId);
+                        return criador ? contactDisplayName(criador) : "Contato removido";
+                      })()}
+                      motivo="Escolhido na criação (C40): entrou como administrador. No WhatsApp, quem criou o grupo foi o Canal administrador."
+                    />
+                  ) : null}
                   <LinhaDeProp icone={ShieldCheck} rotulo="Papel do Canal" valor={<Pilula tom={PAPEL_DO_CANAL_TOM[grupo.sincronizacao.papelDoCanal]}>{PAPEL_DO_CANAL_LABEL[grupo.sincronizacao.papelDoCanal]}</Pilula>} motivo="Vem da Sincronização: o provedor diz o que o Canal é no grupo." />
                   <LinhaDeProp
                     icone={Users}

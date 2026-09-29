@@ -25,6 +25,7 @@ import type {
   CatalogItem,
   Channel,
   ChatFolder,
+  ChatMessage,
   ChatSession,
   Collection,
   Company,
@@ -82,6 +83,9 @@ const BASE = Date.UTC(
 );
 const at = (daysAgo: number, hour = 9): string =>
   new Date(BASE - daysAgo * 86_400_000 + (hour - 9) * 3_600_000).toISOString();
+/** Um instante com minuto: `at` e mais `minuto` minutos (uma conversa acontece em minutos, não em horas). */
+const aos = (daysAgo: number, hour: number, minuto: number): string =>
+  new Date(Date.parse(at(daysAgo, hour)) + minuto * 60_000).toISOString();
 const day = (daysFromNow: number): string =>
   new Date(BASE + daysFromNow * 86_400_000).toISOString().slice(0, 10);
 
@@ -1936,7 +1940,8 @@ export function buildSeed(): DataState {
 
   const chatSessions: ChatSession[] = [
     { ...chat("cht_1", "mem_thiago", "Proposta Full Face Avançado", { type: "deal", id: "deal_fim_1", nameAtTheTime: "Full Face para Marina Alves" }, "agt_redator"), folderId: "cfd_propostas" },
-    { ...chat("cht_2", "mem_thiago", "Revisar playbook de qualificação", { type: "task", id: "tsk_seed_1", nameAtTheTime: "Revisar playbook de qualificação" }, undefined), folderId: "cfd_processo" },
+    // Uma Sessão já em andamento (2026-09-28: "simule um chat já iniciado e com mensagens e respostas").
+    { ...chat("cht_2", "mem_thiago", "Revisar playbook de qualificação", { type: "task", id: "tsk_seed_1", nameAtTheTime: "Revisar playbook de qualificação" }, undefined), folderId: "cfd_processo", messages: conversaDoPlaybook() },
     chat("cht_6", "mem_thiago", "Objeções do plano Elite", { type: "deal", id: "deal_sdr_1", nameAtTheTime: "Full Face Avançado para Iallas" }, "agt_redator"),
     chat("cht_3", "mem_rafael", "Resumo da semana comercial", undefined, "agt_sdr"),
     chat("cht_4", "mem_julia", "Dúvida sobre janela de resposta", { type: "knowledgeDocument", id: "doc_11", nameAtTheTime: "Janela de resposta, resumo comentado" }, undefined),
@@ -2466,6 +2471,80 @@ function chat(
   };
 }
 
+/*
+  A conversa da Sessão "Revisar playbook de qualificação" (cht_2), ontem à
+  tarde: três perguntas do Thiago e as respostas do Assistente padrão. Toda
+  Mensagem 'assistente' e 'ferramenta' sai de uma Execução (exe_chat_1..3,
+  em `buildExecutions`), e as Referências de Conhecimento apontam para
+  Documentos da Coleção "Playbooks do comercial", que o Assistente padrão
+  acessa (cgr_3). Nada aqui depende da Tarefa-âncora de cht_2 (tsk_seed_1):
+  ela é da árvore de demonstração, e o seed de produto (`pruneDemo`) apaga
+  as Execuções ancoradas nela e as Mensagens que as citam — a conversa
+  sumiria do produto, ficando só as perguntas.
+*/
+const PLAYBOOK_REF = { documentId: "doc_9", documentTitle: "Playbook de qualificação", version: 1, fragmentIds: ["frg_9"], collectionId: "col_clinico", collectionName: "Playbooks do comercial" };
+const JANELA_REF = { documentId: "doc_11", documentTitle: "Janela de resposta, resumo comentado", version: 1, fragmentIds: ["frg_11"], collectionId: "col_clinico", collectionName: "Playbooks do comercial" };
+
+function conversaDoPlaybook(): ChatMessage[] {
+  const eu = member("mem_thiago");
+  const assistente = { kind: "agent" as const, id: "agt_padrao" };
+  const mensagem = (order: number, minuto: number, parte: Pick<ChatMessage, "role" | "author" | "content"> & Partial<Pick<ChatMessage, "executionId" | "toolId" | "toolResult" | "knowledgeReferences">>): ChatMessage => ({
+    id: `cmg_pb_${order + 1}`,
+    order,
+    fileIds: [],
+    knowledgeReferences: [],
+    complete: true,
+    at: aos(1, 17, minuto),
+    ...parte,
+  });
+  return [
+    mensagem(0, 0, { role: "usuario", author: eu, content: "Preciso revisar o playbook de qualificação do SDR antes da reunião de sexta. Hoje a maioria dos leads chega pelo WhatsApp, e o Closer só aceita quem atende em clínica própria. O que no playbook ficou desatualizado?" }),
+    mensagem(1, 1, { role: "ferramenta", author: assistente, executionId: "exe_chat_1", toolId: "consultar_conhecimento", toolResult: "concluida", content: "Consultou o Playbook de qualificação." }),
+    mensagem(2, 2, {
+      role: "assistente",
+      author: assistente,
+      executionId: "exe_chat_1",
+      knowledgeReferences: [PLAYBOOK_REF],
+      content: [
+        "Li o Playbook de qualificação. Com o que você descreveu, três pontos ficaram desatualizados:",
+        "",
+        "1. O playbook manda qualificar por telefone, e os leads chegam pelo WhatsApp: a qualificação tem de acontecer por lá, na mesma Conversa.",
+        "2. As perguntas de orçamento vêm antes das de perfil, e o lead esfria antes de contar como atende hoje.",
+        "3. Não existe a pergunta sobre clínica própria, e é ela que decide se o lead vai para o Closer.",
+        "",
+        "Quer que eu monte a sequência revisada de perguntas?",
+      ].join("\n"),
+    }),
+    mensagem(3, 6, { role: "usuario", author: eu, content: "Sim. Monte as perguntas na ordem da conversa, com no máximo seis." }),
+    mensagem(4, 7, {
+      role: "assistente",
+      author: assistente,
+      executionId: "exe_chat_2",
+      knowledgeReferences: [PLAYBOOK_REF, JANELA_REF],
+      content: [
+        "Aqui vai a sequência revisada, na ordem da conversa:",
+        "",
+        "1. Você atende em clínica própria ou em clínica de terceiros?",
+        "2. Quantos procedimentos de harmonização facial você faz por mês hoje?",
+        "3. O que fez você procurar o Full Face agora?",
+        "4. Você quer começar pelo Full Face Avançado ou conhecer o plano Elite, com mentorias?",
+        "5. Qual o melhor dia para uma call de 20 minutos com o nosso Closer?",
+        "6. Posso mandar o material por aqui mesmo, pelo WhatsApp?",
+        "",
+        "Pela Janela de resposta, a primeira pergunta sai em até 15 minutos depois do primeiro contato do lead.",
+      ].join("\n"),
+    }),
+    mensagem(5, 11, { role: "usuario", author: eu, content: "Perfeito. A pergunta da clínica própria vira critério obrigatório para passar o lead ao Closer." }),
+    mensagem(6, 12, {
+      role: "assistente",
+      author: assistente,
+      executionId: "exe_chat_3",
+      content:
+        "Combinado: sem a resposta sobre clínica própria, o lead não passa ao Closer. Para valer para o time, o Playbook de qualificação precisa de uma nova versão publicada no Conhecimento, e eu não altero o documento por conta própria. Se quiser, escrevo o parágrafo do critério para você colar lá.",
+    }),
+  ];
+}
+
 function panel(id: Id, name: string, ownerMemberId: Id, anchor: Panel["anchor"], widgets: Panel["widgets"]): Panel {
   return {
     id,
@@ -2798,7 +2877,59 @@ function buildTasks(): Task[] {
 function buildExecutions(): AgentExecution[] {
   const chain = { depth: 0, visitedAgentIds: [], visitedAutomationObjects: [] };
   const emptyContext = { readRecordIds: [], fragmentRefs: [], memoryItemIds: [], chatMessageIds: [] };
+  // As três Execuções da conversa de cht_2 ("Revisar playbook de qualificação").
+  const doPlaybook = (id: Id, minuto: number, input: string, extra: Pick<AgentExecution, "steps" | "output" | "knowledgeReferences" | "cost" | "contextComposition">): AgentExecution => ({
+    id,
+    workspaceId: WORKSPACE_ID,
+    agentId: "agt_padrao",
+    agentVersion: 1,
+    state: "concluida",
+    origin: "sessaoDeChat",
+    invokedBy: member("mem_thiago"),
+    delegate: member("mem_thiago"),
+    chain,
+    chatSessionId: "cht_2",
+    // Sem âncora: a da Sessão (tsk_seed_1) é de demonstração e sai do produto.
+    modelId: "mdl_base",
+    effectiveAutonomy: "supervisionado",
+    rehearsal: false,
+    input,
+    startedAt: aos(1, 17, minuto),
+    endedAt: aos(1, 17, minuto + 1),
+    ...extra,
+  });
+  const execucoesDoPlaybook: AgentExecution[] = [
+    doPlaybook("exe_chat_1", 1, "Preciso revisar o playbook de qualificação do SDR antes da reunião de sexta. Hoje a maioria dos leads chega pelo WhatsApp, e o Closer só aceita quem atende em clínica própria. O que no playbook ficou desatualizado?", {
+      steps: [{ index: 0, kind: "ferramenta", toolId: "consultar_conhecimento", toolAllowed: true, resourcePermitted: true, effectClass: "leitura", result: "concluido", at: aos(1, 17, 1) }],
+      output: "Três pontos desatualizados no Playbook de qualificação.",
+      contextComposition: { ...emptyContext, fragmentRefs: [{ documentId: "doc_9", version: 1, fragmentId: "frg_9" }], chatMessageIds: ["cmg_pb_1"] },
+      knowledgeReferences: [PLAYBOOK_REF],
+      cost: { modelUnits: 1380, toolCalls: 1, childExecutions: 0, durationMs: 6200 },
+    }),
+    doPlaybook("exe_chat_2", 6, "Sim. Monte as perguntas na ordem da conversa, com no máximo seis.", {
+      steps: [{ index: 0, kind: "ferramenta", toolId: "consultar_conhecimento", toolAllowed: true, resourcePermitted: true, effectClass: "leitura", result: "concluido", at: aos(1, 17, 6) }],
+      output: "Sequência revisada de seis perguntas.",
+      contextComposition: {
+        ...emptyContext,
+        fragmentRefs: [
+          { documentId: "doc_9", version: 1, fragmentId: "frg_9" },
+          { documentId: "doc_11", version: 1, fragmentId: "frg_11" },
+        ],
+        chatMessageIds: ["cmg_pb_1", "cmg_pb_3", "cmg_pb_4"],
+      },
+      knowledgeReferences: [PLAYBOOK_REF, JANELA_REF],
+      cost: { modelUnits: 1720, toolCalls: 1, childExecutions: 0, durationMs: 7400 },
+    }),
+    doPlaybook("exe_chat_3", 11, "Perfeito. A pergunta da clínica própria vira critério obrigatório para passar o lead ao Closer.", {
+      steps: [],
+      output: "Critério da clínica própria combinado; o Documento não foi alterado.",
+      contextComposition: { ...emptyContext, chatMessageIds: ["cmg_pb_4", "cmg_pb_5", "cmg_pb_6"] },
+      knowledgeReferences: [],
+      cost: { modelUnits: 540, toolCalls: 0, childExecutions: 0, durationMs: 2100 },
+    }),
+  ];
   return [
+    ...execucoesDoPlaybook,
     {
       id: "exe_1",
       workspaceId: WORKSPACE_ID,

@@ -11,6 +11,7 @@ import type { Flow, Grupo, VersaoDeFlow } from "../types";
 import {
   camposDeFlow,
   cliquesContabilizados,
+  contatosComWhatsApp,
   conversaDoGrupo,
   grupoDeAvisos,
   membrosDaComunidade,
@@ -20,6 +21,7 @@ import {
   ocupacao,
   participacoesVigentes,
   proximoGrupoDoLink,
+  urlDoArquivo,
   versaoCorrente,
   versaoPublicada,
 } from "../derive-ferramentas";
@@ -38,6 +40,7 @@ import {
   criarFlow,
   criarGrupo,
   criarLinkDeCaptacao,
+  enviarLinkDeConvite,
   criarRascunhoAPartirDe,
   descartarRascunho,
   despublicarFlow,
@@ -288,6 +291,49 @@ describe("Grupos — Participações e Captação", () => {
     expect(criarGrupo(state, "mem_julia", { nome: "", canalId: "chn_wpp" }).ok).toBe(false);
     expect(criarGrupo(state, "mem_julia", { nome: "X", canalId: "chn_insta" }).ok).toBe(false);
     expect(criarGrupo(state, "mem_beatriz", { nome: "X", canalId: "chn_wpp" }).ok).toBe(false);
+  });
+
+  it("criar Grupo com Contato criador e enviar o Link de convite (C40) — o criador entra como administrador; o link sai numa Conversa com cada convidado", () => {
+    const g = unwrap(criarGrupo(state, "mem_julia", { nome: "Turma Full Face #05", canalId: "chn_wpp", contatoCriadorId: "cnt_22", administradoresContactIds: ["cnt_23"] }));
+    expect(g.contatoCriadorId).toBe("cnt_22");
+    // O JID é novo no Espaço: o seed tem JIDs fixos, e um repetido herdava a Conversa de grupo de outro.
+    const jidsIguais = [...state.grupos, ...state.comunidades].filter((x) => x.identificadorExterno === g.identificadorExterno);
+    expect(jidsIguais).toHaveLength(1);
+    expect(participacoesVigentes(g).find((p) => p.contactId === "cnt_22")?.papel).toBe("administrador");
+    expect(participacoesVigentes(g).find((p) => p.contactId === "cnt_23")?.papel).toBe("administrador");
+    // Dois convidados sem Conversa aberta no Canal (a janela de resposta não entra no caminho) e o criador, que já está no Grupo.
+    const semConversa = (id: string) => !state.conversations.some((c) => c.contactId === id && c.channelId === "chn_wpp" && c.lifecycle === "ativo" && c.state !== "resolvida");
+    const convidados = contatosComWhatsApp(state).map((c) => c.id).filter((id) => id !== "cnt_22" && id !== "cnt_23" && semConversa(id)).slice(0, 2);
+    expect(convidados).toHaveLength(2);
+    const envio = unwrap(enviarLinkDeConvite(state, "mem_julia", g.id, [...convidados, "cnt_22"]));
+    expect(envio.enviados).toEqual(convidados);
+    expect(envio.falhas.map((f) => f.contactId)).toEqual(["cnt_22"]);
+    for (const id of convidados) {
+      const conversa = state.conversations.find((c) => c.contactId === id && c.channelId === "chn_wpp" && c.lifecycle === "ativo" && c.state !== "resolvida");
+      expect(conversa?.messages.at(-1)?.content).toContain(g.linkDeConvite?.endereco ?? "sem link");
+    }
+    // O convite não é entrada: ninguém entrou ainda.
+    expect(participacoesVigentes(g).filter((p) => p.contactId && convidados.includes(p.contactId))).toHaveLength(0);
+    // Sem Contato escolhido, e com o Link de convite inválido, nada sai.
+    expect(enviarLinkDeConvite(state, "mem_julia", g.id, []).ok).toBe(false);
+    if (g.linkDeConvite) g.linkDeConvite.estado = "invalido";
+    expect(enviarLinkDeConvite(state, "mem_julia", g.id, convidados).ok).toBe(false);
+  });
+
+  it("criar Grupo com foto e capa (C41) — viram Arquivos do Espaço; o que não é imagem, ou passa do teto, é recusado sem deixar nada", () => {
+    const foto = { nome: "turma.jpg", url: "data:image/jpeg;base64,AAAA", tamanhoBytes: 3 };
+    const capa = { nome: "capa.jpg", url: "data:image/jpeg;base64,BBBB", tamanhoBytes: 3 };
+    const arquivosAntes = state.files.length;
+    const g = unwrap(criarGrupo(state, "mem_julia", { nome: "Turma com rosto", canalId: "chn_wpp", foto, capa }));
+    expect(urlDoArquivo(state, g.fotoFileId)).toBe(foto.url);
+    expect(urlDoArquivo(state, g.capaFileId)).toBe(capa.url);
+    expect(state.files.filter((f) => f.id === g.fotoFileId || f.id === g.capaFileId).every((f) => f.mediaType === "image")).toBe(true);
+    expect(state.files.length).toBe(arquivosAntes + 2);
+    const grupos = state.grupos.length;
+    expect(criarGrupo(state, "mem_julia", { nome: "Sem foto", canalId: "chn_wpp", foto: { nome: "a.pdf", url: "data:application/pdf;base64,AA", tamanhoBytes: 2 } }).ok).toBe(false);
+    expect(criarGrupo(state, "mem_julia", { nome: "Capa grande", canalId: "chn_wpp", capa: { ...capa, tamanhoBytes: 6 * 1024 * 1024 } }).ok).toBe(false);
+    expect(state.grupos.length).toBe(grupos);
+    expect(state.files.length).toBe(arquivosAntes + 2);
   });
 
   it("clique → entrada — a Participação nasce com origem linkDeCaptacao e o Contato desconhecido é criado", () => {

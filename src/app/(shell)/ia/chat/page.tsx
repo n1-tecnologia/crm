@@ -12,7 +12,8 @@
  * (`CompositorDoChat`), com todos os ajustes DENTRO da caixa — a barra de
  * chips encaixada por trás dela saiu (quase invisível, e a escolha ficava só
  * na dica). O bloco começa numa altura fixa da tela (não centrado: o campo
- * cresce sem a tela respirar), e as sugestões são mais leves que a caixa.
+ * cresce sem a tela respirar). As três sugestões de começo saíram em
+ * 2026-09-28 ("remova isso do chat ia"): a tela é a pergunta e a caixa.
  *
  * As Sessões e as pastas moram no menu lateral, não aqui: esta tela é para
  * começar, e a lista já está a um olhar de distância à esquerda.
@@ -23,7 +24,6 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
-import { FileText, KanbanSquare, MessagesSquare, type LucideIcon } from "lucide-react";
 import { useData, useRun, useSession } from "@/data/store";
 import { createChatSession, sendChatMessage } from "@/data/operations";
 import { recusaDeTrocarModelo } from "@/data/derive-ia";
@@ -31,26 +31,7 @@ import { nomeDaEscolha, useDialogoDeAncora, type EscolhaDeAncora } from "@/featu
 import { useChatFolderDialogs } from "@/features/ia/chat-folder-dialogs";
 import { CompositorDoChat, type AjustesDoChat } from "@/features/ia/compositor-do-chat";
 import { useLarguraDoChat } from "@/features/ia/largura-do-chat";
-import { CorpoDeTela, Icone, Toast } from "@/features/shell/ui";
-
-/** Começos que fazem sentido neste Espaço, não frases genéricas. */
-const SUGESTOES: ReadonlyArray<{ readonly titulo: string; readonly texto: string; readonly icone: LucideIcon }> = [
-  {
-    titulo: "Resuma a conversa com o Iallas e liste as objeções abertas",
-    texto: "Resuma a conversa de WhatsApp com o Iallas e liste as objeções que ainda estão abertas antes da call.",
-    icone: MessagesSquare,
-  },
-  {
-    titulo: "Monte a proposta do Full Face Avançado no plano Elite",
-    texto: "Monte a proposta do Full Face Avançado no plano Elite para um cirurgião-dentista com clínica própria: 10 casos, 4 mentorias, 90 dias de suporte.",
-    icone: FileText,
-  },
-  {
-    titulo: "O que está parado no Funil Closer esta semana?",
-    texto: "Liste os Negócios do Funil Closer sem movimento há mais de 5 dias e sugira o próximo passo de cada um.",
-    icone: KanbanSquare,
-  },
-];
+import { CorpoDeTela, Toast } from "@/features/shell/ui";
 
 const CAMPO = "comeco-do-chat";
 
@@ -180,25 +161,6 @@ export default function ChatPage() {
                 {error}
               </p>
             ) : null}
-
-            {/* ── as sugestões: mais leves que a caixa, em três colunas ── */}
-            <ul className="chat-sugestoes" aria-label="Sugestões para começar">
-              {SUGESTOES.map((sugestao) => (
-                <li key={sugestao.titulo}>
-                  <button
-                    type="button"
-                    className="chat-sugestao app-sm"
-                    onClick={() => {
-                      setTexto(sugestao.texto);
-                      document.getElementById(CAMPO)?.focus();
-                    }}
-                  >
-                    <Icone de={sugestao.icone} tamanho="sm" />
-                    <span>{sugestao.titulo}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
 
             <p className="app-sm chat-nota">Suas Sessões e pastas ficam no menu, em Chat. Nenhum Papel dá acesso a Sessão alheia.</p>
           </div>

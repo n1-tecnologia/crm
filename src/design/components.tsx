@@ -49,6 +49,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "./cn";
+import { opcaoCasaComBusca } from "./busca-de-opcoes";
 import { Icone } from "./icone";
 import { Pilula } from "./basicos";
 import { lerDuracao, reduzido, usePresenca } from "./movimento";
@@ -334,7 +335,7 @@ export function Select({
   useDismiss(root, () => setOpen(false), open);
 
   const chosen = options.find((option) => option.value === value);
-  const shown = query ? options.filter((option) => option.label.toLowerCase().includes(query.toLowerCase())) : options;
+  const shown = query.trim() ? options.filter((option) => opcaoCasaComBusca(option, query)) : options;
 
   const choose = (index: number) => {
     const option = shown[index];
@@ -434,7 +435,7 @@ export function MultiSelect({
   const listId = useId();
   useDismiss(root, () => setOpen(false), open);
 
-  const shown = query ? options.filter((option) => option.label.toLowerCase().includes(query.toLowerCase())) : options;
+  const shown = query.trim() ? options.filter((option) => opcaoCasaComBusca(option, query)) : options;
 
   const toggle = (value: string) => {
     onChange(values.includes(value) ? values.filter((v) => v !== value) : [...values, value]);
@@ -504,6 +505,7 @@ export function MultiSelect({
                         {marcada ? <Icone de={Check} tamanho="xs" /> : null}
                       </span>
                       <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                      {option.detail ? <span className="app-meta shrink-0">{option.detail}</span> : null}
                     </button>
                   </li>
                 );
@@ -719,6 +721,7 @@ export function ConfirmDialog({
   onCancel,
   footerStart,
   wide = false,
+  extraLargo = false,
   children,
 }: {
   readonly open: boolean;
@@ -735,6 +738,8 @@ export function ConfirmDialog({
   readonly footerStart?: ReactNode;
   /** Formulários com seções pedem mais largura que uma confirmação de uma frase. */
   readonly wide?: boolean;
+  /** Formulário com uma prévia ao lado (o Novo Grupo): a largura do `--modal-xl`. */
+  readonly extraLargo?: boolean;
   readonly children?: ReactNode;
 }) {
   const dialog = useRef<HTMLDivElement>(null);
@@ -761,7 +766,7 @@ export function ConfirmDialog({
         aria-describedby={descriptionId}
         tabIndex={-1}
         className="flutuante surgir relative flex max-h-[calc(100vh-2rem)] w-full flex-col"
-        style={{ maxWidth: wide ? "var(--modal-lg)" : "var(--modal-sm)" }}
+        style={{ maxWidth: extraLargo ? "var(--modal-xl)" : wide ? "var(--modal-lg)" : "var(--modal-sm)" }}
       >
         <div className="flex items-start justify-between gap-4 px-5 py-4" style={{ borderBottom: "1px solid var(--linha)" }}>
           <div className="min-w-0 flex-1">

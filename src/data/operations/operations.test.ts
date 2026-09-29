@@ -8,6 +8,7 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
+import { buildProductSeed } from "../seed-produto";
 import { buildSeed } from "../seed";
 import {
   checklistProgress,
@@ -2665,6 +2666,26 @@ describe("Pastas de Chat", () => {
 });
 
 describe("Ajustes da Sessão de Chat", () => {
+  it("o seed traz uma Sessão em andamento: cada resposta e cada Ferramenta saem de uma Execução concluída da mesma Sessão", () => {
+    const sessao = state.chatSessions.find((s) => s.id === "cht_2");
+    const mensagens = sessao?.messages ?? [];
+    expect(mensagens.filter((m) => m.role === "usuario").length).toBe(3);
+    expect(mensagens.filter((m) => m.role === "assistente").length).toBe(3);
+    expect(mensagens.map((m) => m.order)).toEqual(mensagens.map((_, i) => i));
+    for (const m of mensagens.filter((x) => x.role === "assistente" || x.role === "ferramenta")) {
+      const execucao = state.agentExecutions.find((e) => e.id === m.executionId);
+      expect(execucao?.chatSessionId).toBe("cht_2");
+      expect(execucao?.state).toBe("concluida");
+    }
+    // Só se cita o que o Agente acessa: a Coleção do Documento citado tem Concessão ao Assistente padrão.
+    const citadas = mensagens.flatMap((m) => m.knowledgeReferences.map((r) => r.collectionId));
+    expect(citadas.every((c) => state.collectionGrants.some((g) => g.collectionId === c && g.agentId === "agt_padrao"))).toBe(true);
+    // E a conversa sobrevive no seed de PRODUTO (o que a tela usa): o `pruneDemo`
+    // apaga o que cita a árvore de demonstração, e a Tarefa-âncora de cht_2 é dela.
+    const produto = buildProductSeed().chatSessions.find((s) => s.id === "cht_2");
+    expect(produto?.messages.length).toBe(mensagens.length);
+  });
+
   it("pasta, Habilidade e Modelo mudam a qualquer hora; a Âncora só antes da primeira Mensagem", () => {
     // O Modelo só se escolhe com um Agente que admite sobrescrita (B75): a
     // cht_6 é do Redator, que não admite — o mesmo ajuste volta ao Assistente
@@ -2713,16 +2734,19 @@ describe("Ajustes da Sessão de Chat", () => {
   });
 
   it("DO-CHT-12 — com a Sessão em curso, trocar o Agente ou o Modelo deixa uma Mensagem 'sistema'; antes da primeira, não", () => {
-    const sessao = state.chatSessions.find((s) => s.id === "cht_2");
+    const nova = createChatSession(state, "mem_thiago", { title: "Sessão nova" });
+    if (!nova.ok) throw new Error(nova.error);
+    const id = nova.value.id;
+    const sessao = state.chatSessions.find((s) => s.id === id);
     expect(sessao?.messages.length).toBe(0);
     // Antes da primeira Mensagem: ajuste sem Mensagem nenhuma.
-    expect(configureChatSession(state, "mem_thiago", "cht_2", { chosenModelId: "mdl_base" }).ok).toBe(true);
+    expect(configureChatSession(state, "mem_thiago", id, { chosenModelId: "mdl_base" }).ok).toBe(true);
     expect(sessao?.messages.length).toBe(0);
 
-    expect(sendChatMessage(state, "mem_thiago", "cht_2", "Começando").ok).toBe(true);
+    expect(sendChatMessage(state, "mem_thiago", id, "Começando").ok).toBe(true);
     // O Redator não admite sobrescrita: trocar para ele devolve a Sessão ao
     // Modelo do Agente — e as duas trocas ficam ditas no fio.
-    const troca = configureChatSession(state, "mem_thiago", "cht_2", { mainAgentId: "agt_redator" });
+    const troca = configureChatSession(state, "mem_thiago", id, { mainAgentId: "agt_redator" });
     expect(troca.ok, troca.ok ? "" : troca.error).toBe(true);
     expect(sessao?.chosenModelId).toBeUndefined();
     const sistema = (sessao?.messages ?? []).filter((m) => m.role === "sistema");
@@ -2734,7 +2758,7 @@ describe("Ajustes da Sessão de Chat", () => {
     // A ordem continua contínua depois da Mensagem do Membro.
     expect(sessao?.messages.map((m) => m.order)).toEqual([0, 1, 2]);
     // A pasta não é troca de quem responde: sem Mensagem 'sistema'.
-    expect(configureChatSession(state, "mem_thiago", "cht_2", { folderId: null }).ok).toBe(true);
+    expect(configureChatSession(state, "mem_thiago", id, { folderId: "cfd_processo" }).ok).toBe(true);
     expect(sessao?.messages.length).toBe(3);
   });
 

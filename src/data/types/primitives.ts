@@ -156,6 +156,12 @@ export interface WorkspaceFile {
   readonly sizeBytes: number;
   readonly createdBy: ActorRef;
   readonly createdAt: Instant;
+  /**
+   * No protótipo (sem servidor), o conteúdo de uma IMAGEM como data URL — é o
+   * que a tela mostra (a foto e a capa de um Grupo, C41). Vive no armazém da
+   * sessão, como o resto.
+   */
+  readonly url?: string;
 }
 
 /**

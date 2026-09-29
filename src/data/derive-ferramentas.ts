@@ -310,6 +310,10 @@ export const respostasDeFlowDoContato = (state: DataState, contactId: Id): Messa
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
 /** Contatos com Identificador que o WhatsApp resolve — os que podem entrar num Grupo ou receber um Flow. */
+/** O endereço de uma imagem do Espaço (a foto e a capa de um Grupo), quando ela tem conteúdo local. */
+export const urlDoArquivo = (state: DataState, fileId: string | undefined): string | undefined =>
+  fileId ? state.files.find((f) => f.id === fileId)?.url : undefined;
+
 export const contatosComWhatsApp = (state: DataState): Contact[] =>
   state.contacts.filter((c) => c.lifecycle === "ativo" && c.identifiers.some((i) => i.type === "identidadeDeWhatsApp"));
 

@@ -160,6 +160,20 @@ export interface Grupo extends AtivoDeCanal {
   papelNaComunidade?: PapelNaComunidade;
   vinculadoAComunidadeEm?: Instant;
   captacao: Captacao;
+  /**
+   * O Contato escolhido como CRIADOR do grupo quando a plataforma o cria
+   * (2026-09-28, extensão de produto — C40). Entra como administrador. Não é
+   * o Criador da ontologia (o Ator que criou o registro, aqui o Membro), e no
+   * provedor quem executa a criação continua sendo o Canal administrador.
+   */
+  contatoCriadorId?: Id;
+  /**
+   * A CAPA do grupo (2026-09-29, extensão de produto — C41): uma imagem larga
+   * (3:1) que só a plataforma mostra, na ficha e na prévia. O WhatsApp não
+   * tem capa de grupo: ela nunca vai ao provedor e não é espelhada (a Foto,
+   * `fotoFileId`, é).
+   */
+  capaFileId?: Id;
 }
 
 // ── Comunidade (25) ────────────────────────────────────────────────────────
