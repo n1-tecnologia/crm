@@ -1,6 +1,6 @@
 # Contrato HTTP v1 — `POST /v1/integrations/contas-a-pagar/*` (plataforma → `automation/`)
 
-**Versão:** v1 própria, nasce neste plano (03-07). **Decisão:** superfície NOVA, **não** um 8º método do contrato de Solicitação de pagamento (`04-contrato-plataforma-v1.md`). A pesquisa da Fase 3 (`03-RESEARCH.md`, Open Question #4) deixou isto em aberto — "decisão de planejamento, não travada por nenhum documento". Está travado aqui, por quatro razões, em ordem de peso:
+**Versão:** v1 própria, nasce neste plano (03-07); **v1.1** aditiva em 2026-09-29 (Plan 06-02 — ver §3 e §7). **Decisão:** superfície NOVA, **não** um 8º método do contrato de Solicitação de pagamento (`04-contrato-plataforma-v1.md`). A pesquisa da Fase 3 (`03-RESEARCH.md`, Open Question #4) deixou isto em aberto — "decisão de planejamento, não travada por nenhum documento". Está travado aqui, por quatro razões, em ordem de peso:
 
 1. **Direção.** Os sete métodos do contrato de Solicitação são `automation/` → plataforma: o cliente é `../financeiro-tria/automation/src/adapters/plataforma.ts`, o servidor é `apps/api`. As duas rotas deste documento são o sentido oposto — plataforma → `automation/`: o servidor é o Express de `automation/`. Um "8º método" seria, literalmente, um método do adapter que CHAMA a plataforma — a direção oposta da que 03-11 (a ponte em `apps/api`) precisa. As únicas rotas daquele contrato nesta direção são os três webhooks do §8, e eles são notificação de evento (202 + receipt, resposta que não carrega resultado); estas duas rotas são um comando com resposta usável pela Automação. Forçá-las a virar webhook trocaria a semântica que o chamador precisa.
 2. **§9 daquele contrato congela o v1 ao fim da Fase 2:** "qualquer mudança de forma depois disso exige uma nova versão de rota (`/v2/...`), nunca uma mutação retroativa do contrato v1". A Fase 2 acabou. Acrescentar um oitavo método é a mutação retroativa que o próprio documento proíbe.
@@ -61,9 +61,15 @@ Corpo (o mínimo que a resolução precisa — nenhum dado de pagamento trafega 
   "categoriaDePagamento": "Impostos",
   "titulo": "DAS — Simples Nacional",
   "descricao": "Imposto mensal",   // opcional
-  "tagDaConta": "conta tria"        // opcional
+  "tagDaConta": "conta tria",       // opcional
+  "pedidoDeRevisao": "é prestação comercial, não ADM",  // v1.1, opcional, máx. 500
+  "codigoCategoriaConfirmado": "2.02.98"                // v1.1, opcional, ex.: 2.06.01 ou 2.02.98.01
 }
 ```
+
+**v1.1, opcional — `pedidoDeRevisao`:** o pedido de ajuste do Financeiro na Conferência do Resumo (Fluxo 6 do legado). Entra no FIM da consulta do RAG (`título + categoria + descrição + pedido`), como o `reviseSummary` do legado faz com a resposta ao RESUMO — sem a IA de redação: o texto do Resumo revisado é montado na plataforma. É texto livre do Financeiro: nunca aparece em log nem em `details.motivo` (T-3-14).
+
+**v1.1, opcional — `codigoCategoriaConfirmado`:** o código que o Financeiro conferiu no Resumo (D6-10: vem da Conferência como DADO, nunca reparseado do texto). Com ele o RAG **não é chamado**; o código só é validado no plano de contas real do Omie (`ListarCategorias`): existe → `{ "veredito": "resolvida", "nome": <descrição do Omie>, "codigo", "similaridade": 1 }`; não existe → `{ "veredito": "revisar", "nome": <categoriaDePagamento>, "codigo", "similaridade": 0, "motivo": "Código <código> não existe no plano de contas do Omie." }`; plano de contas inalcançável → `revisar`, nunca aceito sem validar. Formato fora de `^\d(\.\d{2}){2,3}$` → `400 SCHEMA_INVALIDO`.
 
 Resposta `200`:
 
@@ -100,9 +106,16 @@ Corpo = o de `/resolver` mais:
   "fornecedor": { "tipo": "CNPJ", "documento": "...", "nome": "..." },
   "observacao": "...",                    // opcional, máx. 1000
   "numeroDocumentoFiscal": "...",         // opcional
-  "anexos": ["https://..."]               // opcional
+  "anexos": [                             // opcional
+    "https://...",                                    // v1: só a URL (o nome vem do fim da URL)
+    { "url": "https://...", "nome": "NFS-e 21.pdf" }  // v1.1: com o nome original (1 a 200 caracteres)
+  ]
 }
 ```
+
+`pedidoDeRevisao` e `codigoCategoriaConfirmado` (v1.1) valem aqui como em `/resolver` — o `/lancar` resolve a Categoria pela mesma peça: com `codigoCategoriaConfirmado`, o `IncluirContaPagar` leva ESSE código, mesmo que o RAG apontasse outro; fora do plano de contas, `422 REGRA_DE_DOMINIO` com o motivo e nada incluído.
+
+**v1.1, opcional — `anexos[]` como `{ url, nome }`:** o `nome` vira o nome do arquivo DENTRO do zip e o `cNomeArquivo` do `IncluirAnexo` (normalizado: sem acento, sem espaço, minúsculas). Sem ele, o nome é o último segmento da URL — numa URL assinada do Storage, um caminho opaco. Os dois formatos convivem na mesma lista; `{ url }` sem `nome`, `nome` vazio ou campo a mais → `400 SCHEMA_INVALIDO`.
 
 Resposta `200` (nunca `{ ok: true }` — um replay precisa confirmar o resultado sem uma segunda leitura):
 
@@ -112,9 +125,14 @@ Resposta `200` (nunca `{ ok: true }` — um replay precisa confirmar o resultado
   "codigoLancamentoIntegracao": "tria:contas-a-pagar:tsk_cp_das",
   "reaproveitado": false,
   "dePara": { "...": "mesma forma de /resolver" },
-  "anexos": [{ "url": "https://...", "ok": true }]
+  "anexos": [
+    { "url": "https://...", "ok": true },
+    { "url": "https://...", "nome": "NFS-e 21.pdf", "ok": false, "erro": "download anexo falhou: 403 Forbidden" }
+  ]
 }
 ```
+
+`anexos[].nome` (v1.1) volta só quando o anexo foi pedido com nome — um pedido v1 recebe a resposta de sempre. Um anexo que não sobe não derruba o lançamento: `ok: false` e o `erro`. Com `reaproveitado: true` (o título já existia), `anexos` é `[]`: os anexos subiram no primeiro envio, e o reenvio está adiado (Fase 6).
 
 `422 REGRA_DE_DOMINIO` quando a Categoria da Tarefa está com `veredito: "revisar"` — `details.motivo` traz o texto da recusa, nunca um dado financeiro.
 
@@ -163,5 +181,7 @@ Depois do corte para produção, 03-11 passa a chamar `POST /lancar` com a `Idem
 ## §7 Versionamento e deriva
 
 Esta superfície nasce v1 PRÓPRIA — o congelamento do contrato de Solicitação de pagamento (§9 de `04-contrato-plataforma-v1.md`) não é tocado por este documento, e este documento não é regido por aquele congelamento: são dois contratos irmãos, não um contrato e sua extensão. Uma mudança de forma aqui segue a mesma disciplina que lá — nova versão de rota (`/v2/...`), nunca mutação retroativa — mas é uma decisão independente, tomada quando (e se) esta superfície precisar mudar.
+
+**v1.1 (aditiva, 2026-09-29).** A Conferência do Resumo (Fase 6) precisou de quatro campos novos — `pedidoDeRevisao` e `codigoCategoriaConfirmado` nos pedidos de `/resolver` e `/lancar`, `anexos[]` como `{ url, nome }` no pedido de `/lancar` e `anexos[].nome` na resposta —, e eles entraram como v1.1 no MESMO endereço, não como `/v2` (D6-05). O motivo: nenhum deles muda a forma do que já existia. A regra que torna isso seguro, e que vale para qualquer v1.x futura: **campo novo é sempre opcional e nunca muda o significado de um campo existente** — um corpo v1 continua válido e recebe exatamente a resposta de antes (os 16 exemplos v1 seguem idênticos), e os schemas continuam `.strict()`, então um produtor v1 recusa com `400` um campo v1.1 em vez de ignorá-lo em silêncio. O `/v2` continua sendo o caminho para uma mudança que quebre isso (campo que vira obrigatório, campo que muda de sentido ou de tipo). A prova são os exemplos canônicos novos em `contratos/contas-a-pagar-v1/` — `resolver.sucesso-pedido-de-revisao`, `resolver.sucesso-codigo-confirmado`, `lancar.sucesso-anexos-nomeados` —, validados contra o handler real no `automation/` (`contas-a-pagar-contrato.test.ts`) e copiados byte a byte para o `crm-n1`, onde `apps/api/src/automacoes/contrato-contas-a-pagar.test.ts` confere o hash de cada arquivo contra a cópia do produtor. Um ajuste só de endurecimento acompanhou: um anexo `""` (string vazia) passou a ser `400`, porque antes virava um download que sempre falhava — nenhum chamador mandava anexos até a v1.1.
 
 Os tipos `DeParaDeLancamento`/`ResolucaoDeCategoria`/`OrigemDoDePara` são declarados em DOIS lugares — `packages/dominio/src/operations/financeiro.ts` (`crm-n1`) e `../financeiro-tria/automation/src/tenants/tria/contas-a-pagar-resolucao.ts` — como espelho literal, não como pacote compartilhado (mesmo princípio do §9 de `04-contrato-plataforma-v1.md`: artefatos compartilhados são COPIADOS entre os dois repositórios). Quem detecta deriva entre as duas cópias é o `.strict()` de `apps/api/src/rotas/esquemas/financeiro.ts` com o portão `Confere<Igual<…>>` (IN-10, Plan 03-04) — um campo a mais, a menos ou com outro nome quebra a compilação do lado de `apps/api`, não deste documento.

@@ -53,6 +53,8 @@ const exemplo = (arquivo: string): Exemplo => {
   return achado.exemplo;
 };
 const erros = exemplos.filter(({ exemplo }) => exemplo.resposta.status >= 400);
+/** A Categoria (`categoriaDePagamento`) de todos os exemplos canônicos. */
+const CATEGORIA_DOS_EXEMPLOS = "Impostos";
 
 /** A mesma normalização que a ponte aplica antes de pôr o motivo num Comentário. */
 function motivoEsperado(corpo: EnvelopeDeErro): string | undefined {
@@ -204,6 +206,68 @@ describe("contrato — a ponte de ponta a ponta com as respostas canônicas", ()
 
     expect(das.statusId).toBe(S.emLancamento);
     expect(das.comments.length).toBe(comentariosAntes);
+  });
+});
+
+describe("contrato v1.1 (aditiva, Plan 06-02) — os exemplos novos têm o que a ponte vai mandar e ler", () => {
+  interface CorpoDeLancar {
+    readonly codigoCategoriaConfirmado?: string;
+    readonly anexos?: ReadonlyArray<string | { readonly url: string; readonly nome: string }>;
+  }
+  interface AnexoRelatado {
+    readonly url: string;
+    readonly nome?: string;
+    readonly ok: boolean;
+    readonly erro?: string;
+  }
+  const categoriaDe = (arquivo: string) =>
+    (exemplo(arquivo).resposta.corpo as { dePara: { categoriaPorCampo: Record<string, Record<string, unknown>> } }).dePara.categoriaPorCampo;
+
+  it("os três exemplos v1.1 estão na pasta, e os v1 continuam lá", () => {
+    for (const arquivo of [
+      "resolver.sucesso-pedido-de-revisao.json",
+      "resolver.sucesso-codigo-confirmado.json",
+      "lancar.sucesso-anexos-nomeados.json",
+      "resolver.sucesso-resolvida.json",
+      "lancar.sucesso.json",
+    ]) {
+      expect(arquivos, arquivo).toContain(arquivo);
+    }
+  });
+
+  it("pedidoDeRevisao só no pedido: nunca ecoado na resposta", () => {
+    const { requisicao, resposta } = exemplo("resolver.sucesso-pedido-de-revisao.json");
+    const pedido = (requisicao.body as { pedidoDeRevisao?: string }).pedidoDeRevisao;
+    expect(typeof pedido).toBe("string");
+    expect(JSON.stringify(resposta.corpo)).not.toContain(pedido);
+  });
+
+  it("codigoCategoriaConfirmado volta resolvido com similaridade 1 — em /resolver e no dePara do /lancar", () => {
+    for (const arquivo of ["resolver.sucesso-codigo-confirmado.json", "lancar.sucesso-anexos-nomeados.json"]) {
+      const codigo = (exemplo(arquivo).requisicao.body as CorpoDeLancar).codigoCategoriaConfirmado;
+      expect(codigo, arquivo).toMatch(/^\d(\.\d{2}){2,3}$/);
+      expect(categoriaDe(arquivo)[CATEGORIA_DOS_EXEMPLOS], arquivo).toMatchObject({ veredito: "resolvida", codigo, similaridade: 1 });
+    }
+  });
+
+  it("anexos: string (v1) e { url, nome } (v1.1) na mesma lista; a resposta devolve o nome só de quem o mandou", () => {
+    const { requisicao, resposta } = exemplo("lancar.sucesso-anexos-nomeados.json");
+    const pedidos = (requisicao.body as CorpoDeLancar).anexos ?? [];
+    const relatados = (resposta.corpo as { anexos: AnexoRelatado[] }).anexos;
+    expect(pedidos.some((a) => typeof a === "string")).toBe(true);
+    expect(pedidos.some((a) => typeof a !== "string")).toBe(true);
+    expect(relatados).toHaveLength(pedidos.length);
+    pedidos.forEach((pedido, i) => {
+      const relatado = relatados[i];
+      if (!relatado) throw new Error(`anexo ${i} sem relato na resposta`);
+      if (typeof pedido === "string") {
+        expect(relatado.url).toBe(pedido);
+        expect(relatado).not.toHaveProperty("nome");
+      } else {
+        expect(relatado).toMatchObject({ url: pedido.url, nome: pedido.nome });
+      }
+      if (!relatado.ok) expect(typeof relatado.erro).toBe("string");
+    });
   });
 });
 

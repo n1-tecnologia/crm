@@ -1,0 +1,39 @@
+{
+  "descricao": "v1.1: o pedido de ajuste do Financeiro na Conferência do Resumo (Fluxo 6) entra no fim da consulta do RAG (título + categoria + descrição + pedido) — aqui ele muda a Categoria resolvida. Texto livre: nunca aparece em log nem em details.motivo.",
+  "requisicao": {
+    "metodo": "POST",
+    "caminho": "/v1/integrations/contas-a-pagar/resolver",
+    "headers": {
+      "authorization": "Bearer token-de-exemplo-nunca-real",
+      "x-request-id": "req-exemplo-resolver-pedido-de-revisao"
+    },
+    "body": {
+      "taskId": "tsk_00001a",
+      "centroDeCusto": "tria",
+      "categoriaDePagamento": "Impostos",
+      "titulo": "DAS — Simples Nacional",
+      "descricao": "Imposto mensal",
+      "tagDaConta": "conta tria",
+      "pedidoDeRevisao": "não é imposto: é a tarifa bancária da guia"
+    }
+  },
+  "resposta": {
+    "status": 200,
+    "corpo": {
+      "dePara": {
+        "contaPorTag": {
+          "conta tria": "TRIA COMPANY - ITAU"
+        },
+        "categoriaPorCampo": {
+          "Impostos": {
+            "veredito": "resolvida",
+            "nome": "Tarifas bancárias",
+            "codigo": "2.08.05",
+            "similaridade": 0.88
+          }
+        },
+        "origem": "omie"
+      }
+    }
+  }
+}

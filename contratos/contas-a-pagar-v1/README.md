@@ -46,8 +46,24 @@ Códigos permanentes: `REGRA_DE_DOMINIO` (Categoria sem confiança),
 `FORNECEDOR_NAO_RESOLVIDO`, `OMIE_RECUSOU`, `CONFIGURACAO_AUSENTE`.
 Transitórios: `OMIE_INDISPONIVEL`, `DEPENDENCIA_INDISPONIVEL`.
 
+## v1.1 (aditiva)
+
+Quatro campos OPCIONAIS, sem rota nova e sem mudar o significado de nenhum
+campo existente — um corpo v1 continua valendo e recebendo a mesma resposta:
+
+| Onde | Campo | O que faz |
+|---|---|---|
+| `/resolver` e `/lancar` | `pedidoDeRevisao` (até 500 caracteres) | Pedido de ajuste do Financeiro: entra no fim da consulta do RAG. Nunca aparece em log nem em `details.motivo`. |
+| `/resolver` e `/lancar` | `codigoCategoriaConfirmado` (`2.06.01`, `2.02.98.01`) | Código conferido pelo Financeiro: o RAG não é chamado; o código é validado no plano de contas do Omie (`resolvida` com similaridade 1, ou `revisar` com o motivo). |
+| `/lancar`, pedido | `anexos[]` como `{ url, nome }` | Além da `string` da v1: o anexo sobe com esse nome (dentro do zip e no `cNomeArquivo`). |
+| `/lancar`, resposta | `anexos[].nome` | Devolvido só quando o anexo veio nomeado. |
+
+Exemplos: `resolver.sucesso-pedido-de-revisao`,
+`resolver.sucesso-codigo-confirmado` e `lancar.sucesso-anexos-nomeados`.
+
 ## Dados
 
 Inventados: token `token-de-exemplo-nunca-real`, Tarefa `tsk_00001a`, CNPJ de
-exemplo `11.222.333/0001-81`, `Fornecedor Fictício LTDA`. Nenhum dado real entra
+exemplo `11.222.333/0001-81`, `Fornecedor Fictício LTDA`, URLs em
+`https://exemplo.invalid/`. Nenhum dado real entra
 aqui — esta pasta fica no git para sempre.

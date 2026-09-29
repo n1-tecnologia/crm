@@ -1,0 +1,39 @@
+{
+  "descricao": "v1.1: o código que o Financeiro conferiu no Resumo (D6-10) não é adivinhado de novo — o RAG não é chamado; o código só é validado no plano de contas real do Omie. Existe: \"resolvida\" com o nome do Omie e similaridade 1. Não existe: \"revisar\" com o motivo \"Código <código> não existe no plano de contas do Omie.\"",
+  "requisicao": {
+    "metodo": "POST",
+    "caminho": "/v1/integrations/contas-a-pagar/resolver",
+    "headers": {
+      "authorization": "Bearer token-de-exemplo-nunca-real",
+      "x-request-id": "req-exemplo-resolver-codigo-confirmado"
+    },
+    "body": {
+      "taskId": "tsk_00001a",
+      "centroDeCusto": "tria",
+      "categoriaDePagamento": "Impostos",
+      "titulo": "DAS — Simples Nacional",
+      "descricao": "Imposto mensal",
+      "tagDaConta": "conta tria",
+      "codigoCategoriaConfirmado": "2.08.05"
+    }
+  },
+  "resposta": {
+    "status": 200,
+    "corpo": {
+      "dePara": {
+        "contaPorTag": {
+          "conta tria": "TRIA COMPANY - ITAU"
+        },
+        "categoriaPorCampo": {
+          "Impostos": {
+            "veredito": "resolvida",
+            "nome": "Tarifas bancárias",
+            "codigo": "2.08.05",
+            "similaridade": 1
+          }
+        },
+        "origem": "omie"
+      }
+    }
+  }
+}
