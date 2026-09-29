@@ -21,6 +21,7 @@ Fase 0 e Fase 1 correm em paralelo: o que resta da Fase 0 não bloqueia terminar
 - [x] **Phase 3: Contas a pagar** - O Financeiro opera uma semana sem abrir o ClickUp: importação com histórico, motor de Automações executando A1–A9, Agente lançando no Omie de verdade, lote e permissões (completed 2026-09-23)
 - [ ] **Phase 4: As outras telas do financeiro-tria** - As leituras que nunca viveram no ClickUp portadas como tela; `financeiro-tria.vercel.app` sai do ar
 - [x] **Phase 5: Contas a receber e os outros tenants** - Marcos Paulo e Family Office como Empresas do Campo `Empresa`; Contas a receber na forma que D7 determinar; notificar por Canal (gaps_found 2026-09-24 — fechamento de lacunas 05-13..05-25 planejado) (completed 2026-09-25)
+- [ ] **Phase 6: Conferência do Resumo e anexos** - Os Fluxos 5, 6 e 7 da documentação v2 na plataforma: o Agente publica o Resumo ANTES do lançamento, aberto ao Financeiro; conferência por clique ou "ok" no fio, ajuste vira Resumo revisado; o lançamento só sai com conferência, com a categoria confirmada e os anexos no Omie; S5/S6 na Solicitação (planejado 2026-09-29, à mão, a partir dos docs 09 e 10)
 
 ## Phase Details
 
@@ -372,6 +373,40 @@ Plans:
 
 Antes de planejar: D7/OQ-CR-01 (perguntar ao Financeiro onde o recebimento é controlado hoje) decide o formato de REC-01; CAND-01 (uma Integração por Empresa) e CAND-05 (leituras conservadoras de C34) precisam ser confirmadas ou revistas; OQ-CR-02..06 e OQ-CMP-02 têm dono aqui.
 
+### Phase 6: Conferência do Resumo e anexos
+
+**Goal**: A plataforma reproduz os Fluxos 5, 6 e 7 do módulo TRIA (`Documentação - Projeto Financeiro Pagamentos.v2.docx`) do mesmo jeito que o `financeiro-tria/automation` faz no ClickUp: o Agente publica o `📋 RESUMO DE PAGAMENTO` no fio da conta ANTES do lançamento, mencionando o Financeiro, e abre uma Conferência; o Financeiro confere (clique ou "ok" no fio) ou pede ajuste (qualquer outra resposta), e o Agente republica o Resumo revisado; ao entrar em "em lançamento omie" a ponte só chama `/lancar` com Conferência aprovada para os dados atuais, com a categoria confirmada e os anexos; confirma no fio e move para "lançado omie"; na falha permanente a conta volta a "para pagar". A Solicitação (coorte plataforma) ganha o Resumo depois da aprovação (S5) e o aviso ao Solicitante na reprovação (S6).
+**Depends on**: Phase 3 (a ponte, o contrato `contas-a-pagar-v1`, `runLancamentoAgent` parametrizado) e a rodada pós-auditoria de 2026-09-28/29 (`docs/08-migracao-financeiro/07`, `08`, `09`, `10`)
+**Requirements**: RES-01, RES-02, RES-03, RES-04, RES-05, RES-06
+**Success Criteria** (what must be TRUE):
+
+  1. Uma conta completa em "para pagar" recebe, no fio, o Resumo do Agente aberto ao Financeiro (com Menção), e uma Conferência pendente aparece no card da conta e na fila `/ia/aprovacoes`; nenhum Resumo nasce resolvido pelo próprio Agente.
+  2. "Conferido, pode lançar" (clique) ou "ok" no fio produzem a resposta canônica `✅ Resumo conferido por …` e resolvem o fio, sem mudar o Status; qualquer outra resposta de um revisor gera `🔁 Ajuste pedido por …` e um Resumo revisado no mesmo fio, com nova Conferência.
+  3. Em modo `lancar`, a conta que entra em "em lançamento omie" com Conferência aprovada para os dados atuais é lançada com `codigoCategoriaConfirmado` e `anexos` (URLs assinadas com o nome original), recebe `✅ Lançado no Omie — título …` no fio e vai para "lançado omie"; sem Conferência aprovada, ZERO requisições a `/lancar`; na falha permanente, comentário com o motivo e a conta volta a "para pagar".
+  4. Nos modos `ensaio` e `conferencia` a contagem de requisições a `/lancar` é zero em qualquer ciclo (asserido com servidor falso); o contrato v1.1 é aditivo e igual nos dois repositórios (hash); `teste:omie-real --lancar --anexo` sobe um anexo de verdade no Omie da Tria e exclui o título no fim.
+  5. `handlePlatformApprovalDecision` publica o Resumo na Solicitação depois de `aprovada` e avisa o Solicitante em `rejeitada`, pela porta, nunca por `legacyClickUpRaw()`.
+
+**Plans**: 6 plans
+Plans:
+**Wave 1** — domínio e contrato, em paralelo (repositórios diferentes)
+
+- [ ] 06-01-PLAN.md — Domínio: a Conferência do Resumo (tipos, impressão de lançamento, `publicarResumoParaConferencia`, `decideProcessApproval` ramo `resumo`, `registrarLancamentoNoOmie`, `registrarFalhaDoLancamento`, heurística da resposta) (RES-01, RES-02, RES-03)
+- [ ] 06-02-PLAN.md — `financeiro-tria`: contrato v1.1 aditivo (`pedidoDeRevisao`, `codigoCategoriaConfirmado`, `anexos` com nome), fixtures nos dois lados, `teste:omie-real --anexo` (RES-03, RES-04)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 06-03-PLAN.md — A ponte em dois momentos: Resumo → conferência/revisão pelo fio → lançamento com anexos; modos `ensaio`/`conferencia`/`lancar`; cutucão em processo; variáveis de decisão (RES-01..RES-04, RES-06)
+- [ ] 06-04-PLAN.md — Tela: card "Conferência do Resumo" na conta e na fila, pílula de estado; jornada com `cp-conferida` e `cp-ajuste` (RES-02, RES-06)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 06-05-PLAN.md — `financeiro-tria`: S5/S6 na coorte plataforma, pela porta (RES-05)
+- [ ] 06-06-PLAN.md — Specs e planos atualizados; as provas (jornada em modo `conferencia`, Omie real com anexo) e o que fica com o dono `[BLOCKING]` (RES-06)
+
+**Ondas de execução:** 1 → [06-01, 06-02] · 2 → [06-03, 06-04] · 3 → [06-05, 06-06]
+
+Decisões desta fase, com padrão e variável de troca, em `06-CONTEXT.md` (D6-01 quando o Resumo aparece; D6-02 "ok" por comentário; D6-03 falha volta a "para pagar"; D6-04 Integração manual; D6-05 contrato aditivo; D6-06 S5/S6; D6-07 conversão continua botão; D6-08 2 dias úteis; D6-09 revisores; D6-10 códigos como dado; D6-11 três modos; D6-12 cutucão; D6-13 sem nº de NF por IA). O dono ainda não respondeu às quatro perguntas de `docs/08-migracao-financeiro/10-levantamento…`; os padrões seguem "do mesmo jeito que está no ClickUp", exceto D6-04 (o seguro).
+
 ## Decisões a tomar antes de cada fase
 
 | Antes de | Decisão | Fonte | Recomendação da fonte |
@@ -390,7 +425,7 @@ Antes de planejar: D7/OQ-CR-01 (perguntar ao Financeiro onde o recebimento é co
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paralelo; inserções decimais entre os inteiros)
+Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 → 6 (0 e 1 em paralelo; inserções decimais entre os inteiros; a 6 depende só da 3 e pode correr antes de 2/4 fecharem)
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -400,6 +435,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 (0 e 1 em paral
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
 | 5. Contas a receber e os outros tenants | 25/25 | Complete    | 2026-09-25 |
+| 6. Conferência do Resumo e anexos | 0/6 | Planned     |  |
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*

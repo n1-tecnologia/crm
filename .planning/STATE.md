@@ -7,9 +7,9 @@ stopped_at: "Phase 02: 02-25 concluído; achados do 02-26 corrigidos; 02-27 Task
 last_updated: "2026-09-25T23:59:00.000Z"
 last_activity: 2026-09-25 -- três achados do 02-26 corrigidos (evento do clique/comentário, Agente comenta pelo Papel, eventId do classificador); 02-27 Tasks 1-2 (código Omie determinístico + consulta antes de incluir, métricas e reconciliação)
 progress:
-  total_phases: 6
+  total_phases: 7
   completed_phases: 5
-  total_plans: 105
+  total_plans: 111
   completed_plans: 101
   percent: 83
 ---
@@ -29,6 +29,9 @@ Phase: 02 (solicita-o-de-pagamento-o-front-substitui-o-clickup) — EXECUTING
 Plan: 27 of 28 (26/28 planos completos; abertos: 02-27 Task 3, 02-28)
 Status: 02-27 Tasks 1-2 concluídas; Task 3 é o ensaio de duas semanas com dado real — depende da publicação do apps/api na VPS (pendência do 02-15)
 Last activity: 2026-09-25 -- achados do 02-26 corrigidos e provados pelo E2E entre processos sem contornos (dois-servicos 9/9, falhas-injetadas 8/8 +1 todo)
+
+**Fase 06 planejada à mão em 2026-09-29 (Conferência do Resumo e anexos), pronta para `/gsd-execute-phase 6`:**
+`.planning/phases/06-conferencia-do-resumo-e-anexos/` — `06-CONTEXT.md` (13 decisões com padrão e variável de troca) e seis planos em três ondas: 06-01 domínio · 06-02 contrato v1.1 no `financeiro-tria` · 06-03 ponte em dois momentos · 06-04 tela e jornada · 06-05 S5/S6 na Solicitação · 06-06 docs e provas `[BLOCKING]`. Origem: `docs/08-migracao-financeiro/09-…` (desenho) e `10-…` (levantamento etapa por etapa com `arquivo:linha`). Ponto de partida do código: `crm-n1-integracao@3d6f735` (branch `integra-frontend-main`, sem push) e `financeiro-tria@c272dad` (`main`, 99 commits sem push, 89 arquivos sujos só de EOL — `git add` sempre por caminho). O dono ainda não respondeu às quatro perguntas do doc 10; os padrões de D6-01..D6-04 seguem "como no ClickUp", exceto Integração manual (o seguro).
 
 **Achados do 02-26 — corrigidos em 2026-09-25:**
 1. `rotas/operacoes.ts` grava `aprovacao-decidida` (clique) e `comentario-criado` (resposta pela tela numa Solicitação) — `48f48f0`.
