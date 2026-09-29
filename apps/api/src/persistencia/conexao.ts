@@ -70,6 +70,63 @@ export function construirSsl(args: {
   return { ca, rejectUnauthorized: true };
 }
 
+/** O tempo máximo de UMA consulta, do lado do cliente, quando `DATABASE_QUERY_TIMEOUT_MS` não diz outro. */
+export const TEMPO_DE_CONSULTA_PADRAO_MS = 30_000;
+
+/**
+ * Os limites de tempo do pool, separados de `pool()` para serem testados
+ * puros. Sem eles, uma conexão que o pooler do Supabase derruba NO MEIO de uma
+ * requisição só é notada quando o TCP desiste: em 2026-09-29 duas escritas no
+ * `ws_n1` ficaram 16 e 10 minutos paradas ("Connection terminated
+ * unexpectedly" no fim), e o Espaço de Trabalho parou junto, porque a
+ * transação presa segurava a revisão dele.
+ *
+ *   - `query_timeout`: consulta sem resposta vira erro em 30 s — e quem pegou
+ *     a conexão a DESCARTA (`release(true)`, ver `executar`): depois de um
+ *     timeout o protocolo pode ter ficado no meio, e ela não serve a mais
+ *     ninguém. `DATABASE_QUERY_TIMEOUT_MS=0` desliga (migração longa, à mão).
+ *   - `connectionTimeoutMillis`: abrir conexão nova nunca espera para sempre.
+ *   - `keepAlive`: a conexão ociosa que morreu é percebida antes de ser usada.
+ */
+export function limitesDoPool(
+  env: NodeJS.ProcessEnv = process.env,
+): Pick<PoolConfig, "query_timeout" | "connectionTimeoutMillis" | "keepAlive" | "keepAliveInitialDelayMillis"> {
+  const bruto = env.DATABASE_QUERY_TIMEOUT_MS?.trim();
+  const lido = bruto ? Number(bruto) : TEMPO_DE_CONSULTA_PADRAO_MS;
+  const consulta = Number.isInteger(lido) && lido >= 0 ? lido : TEMPO_DE_CONSULTA_PADRAO_MS;
+  return {
+    ...(consulta > 0 ? { query_timeout: consulta } : {}),
+    connectionTimeoutMillis: 10_000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10_000,
+  };
+}
+
+/** O mínimo de um cliente do `pg` que `encerrarAoEstourarOTempo` toca (`query` tem muitas sobrecargas). */
+type ClienteConsultavel = { query: unknown; end: () => Promise<void> };
+
+/**
+ * Depois de um `query_timeout`, o `pg` devolve o erro mas deixa a conexão
+ * aberta — e a resposta atrasada pode chegar à PRÓXIMA consulta de quem a
+ * pegar do pool. A conexão cuja consulta estoura o tempo é encerrada na hora:
+ * `end()` a marca como encerrando, e o pool a descarta ao ser devolvida —
+ * em todos os pontos que usam `pool()`, sem cada um precisar lembrar. Quem
+ * chamou recebe o erro do mesmo jeito.
+ */
+export function encerrarAoEstourarOTempo(cliente: ClienteConsultavel): void {
+  const alvo = cliente as { query: (...args: unknown[]) => unknown; end: () => Promise<void> };
+  const consultar = alvo.query.bind(alvo);
+  alvo.query = (...args: unknown[]) => {
+    const resposta = consultar(...args);
+    if (resposta instanceof Promise) {
+      resposta.catch((erro: unknown) => {
+        if (erro instanceof Error && erro.message === "Query read timeout") cliente.end().catch(() => undefined);
+      });
+    }
+    return resposta;
+  };
+}
+
 let instancia: Pool | undefined;
 
 export function pool(): Pool {
@@ -78,7 +135,7 @@ export function pool(): Pool {
     const connectionString = process.env.DATABASE_URL;
     if (!connectionString) throw new Error("DATABASE_URL não definida (ver apps/api/.env.example).");
 
-    const config: PoolConfig = { connectionString, max: 10 };
+    const config: PoolConfig = { connectionString, max: 10, ...limitesDoPool() };
     const ssl = construirSsl({ connectionString });
     if (ssl) config.ssl = ssl;
     instancia = new Pool(config);
@@ -100,6 +157,8 @@ export function pool(): Pool {
     instancia.on("error", (erro) => {
       console.error("[conexao] cliente ocioso do pool caiu (o pool se recompõe na próxima aquisição):", erro.message);
     });
+    // Cada conexão nova: a consulta que estourar `query_timeout` a encerra.
+    instancia.on("connect", (cliente) => encerrarAoEstourarOTempo(cliente));
   }
   return instancia;
 }

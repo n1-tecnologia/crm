@@ -179,6 +179,11 @@ está no documento de topologia, não aqui:
   allowlist explícita, nunca `*`).
 - `apps/web` precisa de `NEXT_PUBLIC_API_URL`/`API_URL` apontando para o
   endereço público do `apps/api`, não mais `localhost:3002`.
+- `DATABASE_QUERY_TIMEOUT_MS` (opcional, padrão 30000): o tempo máximo de uma
+  consulta, e o mesmo prazo para o Postgres encerrar uma transação largada
+  (`limitesDoPool` e `inicioDaTransacao`). Sem ele, uma conexão que o pooler
+  derruba no meio só era notada quando o TCP desistia — em 2026-09-29, 16 e 10
+  minutos com o Espaço de Trabalho parado. `0` desliga (migração longa, à mão).
 
 Nenhum comando de deploy vive neste arquivo — o roteiro de deploy vive no
 documento de topologia linkado acima.

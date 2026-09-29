@@ -18,7 +18,7 @@ import type { PoolClient } from "pg";
 import type { DataState, Diferenca, OperationResult } from "@n1/dominio";
 import { DIFERENCA_VAZIA } from "@n1/dominio";
 import { syncIdSequence } from "@n1/dominio/operations";
-import { pool } from "./conexao";
+import { limitesDoPool, pool } from "./conexao";
 import { execucoesNovas, eventosDeNotificacaoPorCanal } from "./eventos-de-canal";
 import { gravarEventos, type EventoDeSaida } from "./outbox";
 import { gravar, hidratar } from "./repositorio";
@@ -73,6 +73,20 @@ export interface OpcoesExecucao<T = unknown> {
   readonly aoConfirmar?: (cliente: PoolClient, valor: T, state: DataState) => Promise<void>;
 }
 
+/**
+ * O `begin` e, no MESMO ida-e-volta, a rede do lado do servidor: se este
+ * cliente sumir no meio da transação (o pooler derrubou a conexão sem aviso),
+ * o Postgres encerra a sessão parada no mesmo prazo do `query_timeout` do pool
+ * e solta a revisão do Espaço de Trabalho — que o `update ... revisao` abaixo
+ * trava até o `commit`. Sem isto, em 2026-09-29, toda escrita no `ws_n1` ficou
+ * esperando o TCP desistir (16 e 10 minutos). `set local` vale só para esta
+ * transação; com o `query_timeout` desligado, fica o `begin` puro.
+ */
+export function inicioDaTransacao(env: NodeJS.ProcessEnv = process.env): string {
+  const prazo = limitesDoPool(env).query_timeout;
+  return prazo ? `begin; set local idle_in_transaction_session_timeout = ${prazo}` : "begin";
+}
+
 export async function executar<T>(
   workspaceId: string,
   operacao: (state: DataState) => OperationResult<T>,
@@ -83,8 +97,9 @@ export async function executar<T>(
 
   for (let n = 0; n < tentativas; n += 1) {
     const cliente = await pool().connect();
+    let falhou = false;
     try {
-      await cliente.query("begin");
+      await cliente.query(inicioDaTransacao());
       const antes = await hidratar(cliente, workspaceId);
       // O contador de `nextId` é de módulo: sem sincronizar com o maior id já
       // presente no estado hidratado, um processo recém-subido geraria
@@ -142,10 +157,13 @@ export async function executar<T>(
       // aritmética paralela com o que o banco de fato gravou.
       return { ...resultado, diferenca, revisao: Number(travada.rows[0]!.revisao), revisaoAnterior: antes.revisao };
     } catch (erro) {
+      falhou = true;
       await cliente.query("rollback").catch(() => undefined);
       throw erro;
     } finally {
-      cliente.release();
+      // Com falha, a conexão sai do pool (`release(true)` a destrói): a que ficou
+      // sem resposta no meio da transação não pode servir à próxima requisição.
+      cliente.release(falhou);
     }
   }
 
