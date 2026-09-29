@@ -31,6 +31,7 @@ valor). Tudo local, sem push (`financeiro-tria/main` 99 commits à frente do
 | Legado do ClickUp (achados da execução) | ✅ `financeiro-tria` `0014772` (`ensureSupplier` cadastra fornecedor novo), `a157f0a` + `cf29662` (Family Office sem credencial própria recusa em vez de lançar no Omie da Tria; aviso de boot), `0ec964b` + `bb1df69` (credenciais fora das linhas + SQL de limpeza), `c272dad` (RESUMO preservado; código da conta por task) | Você: `FO_EMPRESA_*` no `.env` **antes** do deploy; SQL 4b **depois**; FINQ (decisão) |
 | Membros e jornada (`ws_n1`) | ✅ `crm-n1` `4ae35f7` (trocar e-mail do convite; troca de Papel passa a gravar), `a3e2b29` (regra do Status aponta quem não é Membro), `ebdae92` (textos das Automações), `c66f822` (jornada); Marcos Paulo criado **sem login e sem convite**; `208efbc` "Quem pode mover para cá" nas configurações da Lista e o "pago" aberto para qualquer pessoa (2026-09-29, decisão do dono); `bb1b9bf` Atividade de Responsável com o nome | Você: e-mail certo e login do Marcos; Walter (não criado, por decisão) |
 | Conexão com o Postgres (achado da jornada de 2026-09-29) | ✅ `crm-n1` `d65ef0a`: 30 s por consulta, a conexão que estoura sai do pool, o Postgres encerra a transação largada | — (vale para a VPS também) |
+| Fase 6 — Conferência do Resumo e anexos (`09-plano-conferencia-do-resumo-e-anexos.md`, `.planning/phases/06-conferencia-do-resumo-e-anexos/`) | ✅ Domínio `59013d5..af6bf6a` (Conferência, decisão, lançamento registrado) e `a39d6d2` (guarda do legado importado no domínio). Contrato v1.1: `financeiro-tria` `d462f6e..5a65e5b` e `crm-n1` `14b9734`. Ponte em dois momentos, com modos `ensaio`/`conferencia`/`lancar` e anexos: `618c7c3..ed79fdd`, `fc1abdf`. Card, fila, pílula e jornada: `0f41d82`, `869dc20`. S5/S6 na Solicitação da plataforma: `financeiro-tria` `2cd13cd`. | Provas no `ws_n1` em modo `conferencia` e Omie real com anexo (`06-PROVAS.md`); você: deploy do `automation/` com o contrato v1.1, `PLATAFORMA_MEMBRO_POR_CLICKUP_ID` com Contas a Pagar, decisões D6-01..D6-04 e produção primeiro em `conferencia` (roteiro, passo 2B) |
 
 Provas: `financeiro-tria` em `c272dad` (2026-09-29) 538/538 testes
 (isolados, 0 acessos de rede) e typecheck; teste real do Omie `--lancar` OK
@@ -62,8 +63,14 @@ Achados novos durante a execução, e o que virou deles:
 - **Abertos:** FINQ sem Conta de Pagamento mapeada (recusa em vez de usar a
   primeira conta) e sem credencial própria (continua na `OMIE_APP_*` da Tria,
   agora com aviso de boot) — decisão do dono; retomada do pipeline reexecuta
-  tudo (reenvia WhatsApp se `NOTIFY_NEW_REQUEST_WHATSAPP` estiver ligado);
-  depois da aprovação na plataforma não sai RESUMO (spec S5).
+  tudo (reenvia WhatsApp se `NOTIFY_NEW_REQUEST_WHATSAPP` estiver ligado).
+  O "depois da aprovação na plataforma não sai RESUMO (spec S5)" foi
+  **fechado pela Fase 6** (`financeiro-tria` `2cd13cd`, S5/S6). Para o RESUMO
+  sair com Menção, falta o par `81581816=<Membro de Contas a Pagar>` em
+  `PLATAFORMA_MEMBRO_POR_CLICKUP_ID`. Continuam abertos também os itens que a
+  Fase 6 deixou de fora: Papel "Revisor do Resumo", lembrete de conferência
+  parada, Cartão e Link no `/lancar`, Departamento Omie no Resumo e o número
+  da NF.
 - **Jornada real no navegador** (`npm run jornada:financeiro -w @n1/web`): na
   1ª rodada (N1-488..N1-491) o `ws_n1` só tinha Maryane e o usuário de teste,
   e a configuração aponta para `mem_marcos_paulo`/`mem_walter` — a A3 falhava

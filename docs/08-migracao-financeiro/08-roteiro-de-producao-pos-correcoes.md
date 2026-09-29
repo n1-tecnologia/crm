@@ -26,6 +26,10 @@ Esperado: todos verdes (o contrato deu 21/21 em 2026-09-28; as fixtures do
 `financeiro-tria` não mudaram desde então). E, da raiz do CRM N1, a
 comparação da outra matriz de contrato (só lê): `npm run verificar:contratos`.
 
+Depois da Fase 6 (2026-09-29) o contrato é a **v1.1**, com três exemplos a
+mais nos dois repositórios, e o do consumidor dá 25/25. Os números da
+rodada estão em `.planning/phases/06-conferencia-do-resumo-e-anexos/06-PROVAS.md`.
+
 ---
 
 ## Passo 1 — Configurar o `ws_n1` (Postgres do CRM N1)
@@ -123,12 +127,24 @@ a saída diz o id para apagar à mão. Opções: `--manter` (não exclui),
 `--cnpj=… --nome=…` (outro fornecedor; se não existir, é cadastrado),
 `--categoria=…`, `--valor=…` (até 10,00), `--dias=…`.
 
-### 2B. Pela tela (a jornada inteira, com a ponte do CRM N1)
+### 2B. Pela tela, com a Conferência do Resumo (a ponte do CRM N1)
 
-Dois terminais, um para cada serviço. Use **o mesmo token** nos dois (o de
-teste que já usamos serve; é só local).
+Desde a Fase 6 (2026-09-29) a ponte trabalha em **dois momentos**, como o
+legado no ClickUp. Primeiro, assim que a conta fica completa, o Agente
+publica o **📋 RESUMO DE PAGAMENTO** no tópico da conta, mencionando o
+Financeiro, e abre uma **Conferência**. O Financeiro confere ou pede ajuste.
+Só com o Resumo conferido e a conta movida para "em lançamento omie" o Agente
+lança no Omie, com os **anexos**. A spec está em
+`docs/07-processos/contas-a-pagar.md` §6.3.
 
-**Terminal A — Financeiro** (código novo; escuta só em 127.0.0.1):
+A ordem é: **primeiro em modo `conferencia`** (Resumos, Conferências e
+revisões de verdade, e **nenhuma** requisição a `/lancar`), e só depois, com
+os Resumos certos, em `lancar`.
+
+Dois terminais, um para cada serviço. Use **o mesmo token** nos dois. O de
+teste desta migração serve; é só local e nunca vai para arquivo.
+
+**Terminal A — Financeiro** (código novo, com o contrato v1.1; escuta só em 127.0.0.1):
 
 ```bash
 cd "/Users/TRIA2026/Projetos/Projetos Cursor/financeiro-tria/automation" && INVOICE_CRON_ENABLED=false INVOICE_EMIT_DRAIN_MINUTES=0 PLATAFORMA_LANCAMENTO_TOKEN=<token> npm run dev
@@ -137,34 +153,92 @@ cd "/Users/TRIA2026/Projetos/Projetos Cursor/financeiro-tria/automation" && INVO
 Esperado: `escutando em http://127.0.0.1:4100` e as linhas `[seguranca]`
 (avisos de configuração — normais no local).
 
-**Terminal B — API do CRM N1 com a ponte em modo de lançamento real:**
+**Terminal B — API do CRM N1 com a ponte em modo `conferencia`, presa às contas de teste:**
 
 ```bash
-cd "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao" && AGENTE_CONTAS_A_PAGAR_ATIVO=true AGENTE_CONTAS_A_PAGAR_MODO=lancar AGENTE_CONTAS_A_PAGAR_URL=http://127.0.0.1:4100 PLATAFORMA_LANCAMENTO_TOKEN=<token> AGENTE_CONTAS_A_PAGAR_ESPACO_ID=ws_n1 AGENTE_CONTAS_A_PAGAR_LISTA_ID=lst_contas_a_pagar AGENTE_CONTAS_A_PAGAR_INTERVALO_MS=20000 npm run dev -w @n1/api
+cd "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao" && AGENTE_CONTAS_A_PAGAR_ATIVO=true AGENTE_CONTAS_A_PAGAR_MODO=conferencia AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM="TESTE AUTOMATIZADO" AGENTE_CONTAS_A_PAGAR_AVISAR_ID=<Membro do usuário de teste> AGENTE_CONTAS_A_PAGAR_URL=http://127.0.0.1:4100 PLATAFORMA_LANCAMENTO_TOKEN=<token> AGENTE_CONTAS_A_PAGAR_ESPACO_ID=ws_n1 AGENTE_CONTAS_A_PAGAR_LISTA_ID=lst_contas_a_pagar AGENTE_CONTAS_A_PAGAR_INTERVALO_MS=20000 npm run dev -w @n1/api
 ```
 
-Não precisa mais de `AUTOMACOES_WORKER_ATIVO` nem de `AUTOMACOES_ATOR_MEMBER_ID`
-para este teste: a ponte tem o próprio ciclo, e depois do passo 1a quem
-assina é o Agente do pipeline. Esperado: `ponte do Agente de lançamento ativa (modo=lancar)`.
+Esperado na linha de partida:
+`ponte do Agente de lançamento ativa (modo=conferencia resumoAPartirDe=para-pagar conferenciaPorComentario=true integracaoManual=nao-encosta escopo=titulos-com:"TESTE AUTOMATIZADO" avisar=membro-indicado)`.
+
+As duas variáveis do meio são **só para teste**. Elas existem porque o
+`ws_n1` tem as contas reais importadas do ClickUp e a Maryane de verdade:
+- `AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM` faz a ponte olhar só as contas com
+  "TESTE AUTOMATIZADO" no título. O texto é exato, e maiúsculas contam.
+- `AGENTE_CONTAS_A_PAGAR_AVISAR_ID` manda toda Menção da ponte para o
+  usuário de teste, no lugar do Financeiro, e faz dele o aprovador da
+  Conferência (é o que mostra os botões do card para ele). Use o **id do
+  Membro** (`mem_…`) do usuário de teste no `ws_n1`. Se o id não for de um
+  Membro ativo, o log avisa uma vez e a ponte volta a mencionar o Financeiro.
+
+Em produção as duas ficam **vazias**. Mesmo sem elas, a conta importada que
+ficou parada nunca é varrida: só entra na ponte depois de ser movida de
+Status na plataforma.
+
+Não precisa de `AUTOMACOES_WORKER_ATIVO` nem de `AUTOMACOES_ATOR_MEMBER_ID`:
+a ponte tem o próprio ciclo, e quem assina é o Agente do pipeline (passo 1a).
+Uma gravação na conta cutuca a ponte, que responde em até 2 s; o intervalo
+de 20 s é só o relógio de reserva.
 
 **Na tela** (http://localhost:3001 → Financeiro → Contas a pagar):
 
-1. **+ Nova conta** → "TESTE OMIE - R$ 1,00".
+1. **+ Nova conta** → "TESTE AUTOMATIZADO — OMIE R$ 1,00" (o título precisa
+   conter "TESTE AUTOMATIZADO").
 2. Preencha: Centro de Custo **TRIA**; Valor **1**; Vencimento **daqui a 10
    dias**; Forma **Chave Pix**; Chave pix (um e-mail de teste); Categoria
    **Contas de consumo**; Fornecedor **CNPJ**; CNPJ de um **fornecedor real
-   que já existe no Omie**; Nome do fornecedor.
-3. Mude o Status para **"em lançamento omie"** e não mexa mais.
-4. Espere ~30 s e aperte F5.
+   que já existe no Omie**; Nome do fornecedor. Opcional: um PDF pequeno no
+   Campo **Anexo**, para ver o anexo chegar ao Omie no modo `lancar`.
+3. Deixe em **"para pagar"**. Em poucos segundos o Agente publica o
+   **📋 RESUMO DE PAGAMENTO** no tópico, terminando em `…, confira: responda
+   "ok" para eu lançar, ou diga o que ajustar.` Ao lado do Status aparece a
+   pílula **"Resumo para conferir"**, e na conta aparece o card
+   **"Conferência do Resumo"** (também em IA → Aprovações).
+4. Para testar o ajuste: **"Pedir ajuste"** no card, com um motivo. Esperado:
+   `🔁 Ajuste pedido por …` e, no mesmo fio, o Resumo revisado com
+   `Revisado a pedido de …: "…"`, e o card de novo pendente.
+5. Confira: **"Conferido, pode lançar"** no card. Esperado:
+   `✅ Resumo conferido por …` no fio e a pílula **"Resumo conferido"**.
+6. Mude o Status para **"em lançamento omie"** e não mexa mais.
 
-Esperado:
-- A conta em **"lançado omie"**, com o **📋 Resumo de pagamento** na Atividade.
-- Terminal B: `Conta lançada no Omie e movida para "lançado omie"`.
-- No Omie: a conta a pagar de R$ 1,00 com o fornecedor certo, a categoria, a
-  conta corrente TRIA, o vencimento e a forma Pix (TRA/01.3).
+Esperado em `conferencia`:
+- No fio: `Resumo conferido. Neste ambiente o lançamento no Omie está
+  desligado (modo conferência): nada foi lançado, a conta fica aqui.`
+- A conta continua em **"em lançamento omie"**.
+- No Terminal A: requisições a `/resolver` e **nenhuma** a `/lancar`.
 
-Se não der: o Agente comenta na conta **o motivo** (ex.: "O Omie recusou o
-lançamento: …"). Copie o comentário e as últimas linhas dos dois terminais.
+Na tela de hoje, conferir é pelo botão. O tópico ainda não tem o gesto
+"Responder" num Comentário, e a ponte só lê **respostas** ao Resumo, nunca
+um Comentário raiz. O "ok" no fio passa a valer quando esse gesto existir;
+a ponte já sabe lê-lo. No `ws_n1`, com `AVISAR_ID`, o usuário de teste
+decide pelo clique. Uma resposta "ok" no fio só decidiria vinda da Maryane
+ou de outro Administrador ou Proprietário.
+
+Os passos 1–6 também rodam sozinhos, no navegador, pela jornada. Ela cria
+as contas com "TESTE AUTOMATIZADO" no título e deixa as capturas na pasta
+temporária:
+
+```bash
+cd "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao" && JORNADA_VISIVEL=1 JORNADA_MODO=conferencia JORNADA_SO=cp-conferida,cp-ajuste JORNADA_EMAIL=<e-mail do usuário de teste> JORNADA_SENHA=<senha> npm run jornada:financeiro -w @n1/web
+```
+
+Esperado: `RESULTADO: OK`. Não edite código enquanto ela roda: o `next dev`
+recarrega a tela no meio e o passo falha em falso.
+
+**Depois, em `lancar`** (lança de verdade no Omie; só com a sua decisão): o
+mesmo Terminal B com `AGENTE_CONTAS_A_PAGAR_MODO=lancar`, mantendo as duas
+variáveis de teste, e os passos 1, 2, 3, 5 e 6 numa conta nova. Esperado:
+- No fio: `✅ Lançado no Omie — título <id> · <conta> · <categoria> (<código>) · anexos 1 de 1`
+  (ou `· sem anexos`).
+- A conta em **"lançado omie"**.
+- No Omie: a conta a pagar de R$ 1,00 com o fornecedor certo, a categoria
+  conferida, a conta corrente TRIA, o vencimento, a forma Pix (TRA/01.3) e o
+  anexo com o nome original.
+
+Se o Omie recusar: `Não consegui lançar no Omie: <motivo> (<código>). A conta
+voltou para "para pagar".` — e a conta volta mesmo. Copie o comentário e as
+últimas linhas dos dois terminais.
 
 Depois: exclua o título no Omie e descarte a conta na plataforma. Pare os dois
 terminais (`Ctrl+C`).
@@ -172,7 +246,15 @@ terminais (`Ctrl+C`).
 Confirmar neste teste (o código não tem como provar sozinho): que o Omie
 aceita o `codigo_lancamento_integracao` de ~30 caracteres; qual forma do
 filtro de CNPJ acha o fornecedor (aparece no log do Terminal A); o texto real
-da recusa quando algo está errado.
+da recusa quando algo está errado; que o anexo aparece no título com o nome
+original e some quando o título é excluído.
+
+**Em produção**, a recomendação é a mesma ordem. Primeiro
+`AGENTE_CONTAS_A_PAGAR_MODO=conferencia` com as duas variáveis de teste
+**vazias**: a Maryane passa a receber os Resumos das contas completas e
+confere na plataforma, e nada vai ao Omie. Contas importadas paradas não
+recebem Resumo. Depois de alguns Resumos certos, reinicie a API com
+`AGENTE_CONTAS_A_PAGAR_MODO=lancar`. As variáveis estão no Passo 4.
 
 ---
 
@@ -218,6 +300,33 @@ repo nem no chat):
 | `CLICKUP_WEBHOOK_SECRETS` | `secret` de cada webhook do ClickUp que aponta para `financeiro.85.155.186.214.nip.io` (API do ClickUp: `GET /team/<time>/webhook`, times 9011731314 e 9011658148), separados por vírgula | Webhooks aceitos sem conferir assinatura (como hoje), com aviso |
 | `EXTRATO_WEBHOOK_TOKEN` | Deixe vazio (o upload do painel não manda o cabeçalho) | — |
 | `HOST` | Não defina (padrão 127.0.0.1, atrás do nginx) | — |
+| `PLATAFORMA_MEMBRO_POR_CLICKUP_ID` (quando ligar `PAYMENT_REQUEST_SOURCE=plataforma`) | Pares `<id do ClickUp>=<id do Membro no ws_n1>`, separados por vírgula. Da Fase 6 em diante precisa ter **`81581816=<Membro de Contas a Pagar>`**: é quem o RESUMO publicado na Solicitação depois da aprovação por clique (S5) menciona. Mais os pares dos Aprovadores, para o "para aprovação". | O RESUMO da Solicitação sai **sem Menção** (nunca com o id do ClickUp); o roteamento, também |
+
+**O código a subir inclui o contrato `contas-a-pagar-v1.1`** (`financeiro-tria`
+`d462f6e..5a65e5b`) e o S5/S6 da Solicitação (`2cd13cd`). O `apps/api` da
+Fase 6 manda campos da v1.1 (`pedidoDeRevisao` no ajuste,
+`codigoCategoriaConfirmado` e `anexos` com nome no lançamento), e os schemas
+da rota são `.strict()`: um `automation/` anterior à v1.1 recusaria o pedido.
+Por isso o deploy do `automation/` vem **antes** de ligar a ponte em
+`conferencia` ou `lancar` contra ele.
+
+Na **API do CRM N1** (`apps/api`, onde ela rodar em produção) — a ponte da
+Fase 6; a tabela completa está em `apps/api/README.md`:
+
+| Variável | Produção | O que faz |
+|---|---|---|
+| `AGENTE_CONTAS_A_PAGAR_ATIVO` | `true` | Liga a ponte (exige `AGENTE_CONTAS_A_PAGAR_URL`, `PLATAFORMA_LANCAMENTO_TOKEN`, `AGENTE_CONTAS_A_PAGAR_ESPACO_ID=ws_n1`, `AGENTE_CONTAS_A_PAGAR_LISTA_ID=lst_contas_a_pagar`) |
+| `AGENTE_CONTAS_A_PAGAR_MODO` | **`conferencia` primeiro**, `lancar` depois | `ensaio` (padrão; nada gravado) · `conferencia` (Resumos e Conferências, zero `/lancar`) · `lancar`. Outro valor cai em `ensaio`, com aviso |
+| `AGENTE_CONTAS_A_PAGAR_RESUMO_A_PARTIR_DE` | vazio (`para-pagar`) | D6-01: `em-lancamento-omie` adia o Resumo para quando a conta entra em "em lançamento omie" |
+| `AGENTE_CONTAS_A_PAGAR_CONFERENCIA_POR_COMENTARIO` | vazio (`true`) | D6-02: `false` faz só o clique conferir |
+| `AGENTE_CONTAS_A_PAGAR_INTEGRACAO_MANUAL` | vazio (`nao-encosta`) | D6-04: `sem-conferencia` faz a conta Manual receber o Resumo já conferido e ser lançada |
+| `AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM` | **vazio** | Só teste: restringe a ponte às contas com o texto no título |
+| `AGENTE_CONTAS_A_PAGAR_AVISAR_ID` | **vazio** | Só teste: toda Menção da ponte vai a esse Membro |
+| `AGENTE_CONTAS_A_PAGAR_INTERVALO_MS` | vazio (15 min) | O relógio entre ciclos; a gravação numa conta já cutuca a ponte em até 2 s |
+
+A linha de partida do log mostra tudo o que está valendo (`modo=…
+resumoAPartirDe=… conferenciaPorComentario=… integracaoManual=… escopo=todas
+avisar=financeiro`). Em produção, `escopo=todas avisar=financeiro`.
 
 Na VPS:
 
@@ -266,9 +375,26 @@ ligado e das variáveis `PLATAFORMA_BASE_URL`, `PLATAFORMA_SERVICE_TOKEN`,
 7. **Push e merge:** `financeiro-tria/main` para o GitHub; `integra-frontend-main`
    na sua branch do CRM N1.
 8. **Próxima rodada (6.5 e itens de produto):** Formulário público no `ws_n1`,
-   outbox ligado, aceitar convite, Resumo depois da aprovação na plataforma
-   (S5), retomada do pipeline sem reexecutar tudo, upload real no
-   Conhecimento, credencial em `conectarIntegracao`.
+   outbox ligado, aceitar convite, retomada do pipeline sem reexecutar tudo,
+   upload real no Conhecimento, credencial em `conectarIntegracao`. (O Resumo
+   depois da aprovação na plataforma, S5, foi feito na Fase 6.)
+9. **Conferência do Resumo (Fase 6) — as quatro perguntas de
+   `10-levantamento-fluxo-atual-x-documentacao-x-backend.md`.** O código
+   segue um padrão em cada uma; se quiser o outro lado, é só a variável (Passo
+   4), sem código:
+   - **D6-01**, quando o Resumo aparece: assim que a conta está completa
+     (padrão, como no ClickUp) ou só em "em lançamento omie".
+   - **D6-02**, "ok" no fio vale como conferência: sim (padrão) ou só o clique.
+   - **D6-03**, falha no lançamento: volta para "para pagar" (padrão, como
+     hoje no legado) ou fica em "em lançamento omie". Esta é a única que
+     pede uma linha de código, não uma variável.
+   - **D6-04**, "Integração manual = Manual": o Agente não encosta (padrão,
+     o seguro) ou Resumo sem conferência e lançamento (como o backend faz).
+   - E ainda: como a Tarefa passa hoje da Lista de Solicitação para a de
+     Contas a Pagar no ClickUp.
+10. **Ir a produção com a ponte:** primeiro em `conferencia`, depois em
+    `lancar` (passo 2B, "Em produção"). Antes disso: o deploy do
+    `automation/` com o contrato v1.1 (Passo 4).
 
 Resolvidas nesta rodada (2026-09-28/29, sem push): o legado do ClickUp
 passa a cadastrar fornecedor novo (`0014772`); o Family Office sem

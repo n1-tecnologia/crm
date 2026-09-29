@@ -162,7 +162,7 @@ A mesma cobrança ocorre para fornecedores externos por e-mail mencionado no Com
 
 ### 6.3 Lançamento no ERP (D-1)
 
-**2026-08-04 22:47** — o Agente publica o Comentário "Resumo de pagamento", **atribuído ao Financeiro** e já **resolvido**:
+**O que o histórico do ClickUp mostra.** **2026-08-04 22:47** — o Agente publica o Comentário "Resumo de pagamento", **atribuído ao Financeiro** e já **resolvido**:
 
 ```text
 📋 RESUMO DE PAGAMENTO
@@ -193,7 +193,38 @@ Prestação de serviços
 
 O Resumo contém três informações que **não existem nos Campos** e são derivadas pelo Agente: **Conta pagamento** (conta bancária do ERP, inferida do Centro de Custo e da Tag), **Categoria** no vocabulário do ERP ("Prestação serviços - ADM") e **Código** do plano de contas (`2.04.08`). O texto de "Observações" registra a regra usada para inferir. Ou seja: o Agente faz o de-para ClickUp → Omie e deixa a justificativa auditável no Comentário.
 
-Quando `Integração manual = Manual`, o Financeiro lança à mão e move para `em lançamento omie` → `lançado omie` sem Agente.
+Os 53 segundos entre o Resumo e o `lançado omie` enganam: a leitura do `financeiro-tria/automation` (`docs/08-migracao-financeiro/10-levantamento-fluxo-atual-x-documentacao-x-backend.md`, Fluxos 5–7) mostrou que o Resumo do legado nasce **antes** do lançamento, aberto ao Financeiro "para conferência final", e só é lançado depois de o Financeiro mover a conta para `em lançamento omie`. É esse o fluxo que a plataforma reproduz.
+
+**O que a plataforma faz (Fase 6, `docs/08-migracao-financeiro/09-plano-conferencia-do-resumo-e-anexos.md`).** A ponte do `apps/api` (`apps/api/src/automacoes/invocar-agente.ts`) trabalha em dois momentos, e entre eles fica a **Conferência** do Financeiro:
+
+1. **Resumo para conferência (Fluxo 5).** Assim que a conta está completa (`erpMissingFields` vazio) em `para pagar` ou em `em lançamento omie`, o Agente chama `/resolver` e publica o `📋 RESUMO DE PAGAMENTO` no tópico da conta. O bloco é o mesmo, byte a byte (CON-CP-08), e vai **aberto**, mencionando o Financeiro, seguido de `{Financeiro}, confira: responda "ok" para eu lançar, ou diga o que ajustar.` Junto, o Agente abre uma **Conferência**: uma Aprovação de processo (`origin.processStep = "resumo"`) que guarda como dado a conta, a categoria e o código do Resumo, e a impressão dos dados da conta que entram no lançamento (`impressaoDeLancamento`). A Conferência não muda o Status. Com `AGENTE_CONTAS_A_PAGAR_RESUMO_A_PARTIR_DE=em-lancamento-omie`, o Resumo só aparece quando a conta entra em `em lançamento omie`.
+2. **Conferência ou ajuste (Fluxo 6).** O Financeiro confere pelo botão **"Conferido, pode lançar"** do card "Conferência do Resumo", na conta ou na fila `/ia/aprovacoes` (o caminho oficial), ou respondendo **"ok"** no fio do Resumo. O "ok" é reconhecido pela heurística do legado, sem IA; `AGENTE_CONTAS_A_PAGAR_CONFERENCIA_POR_COMENTARIO=false` faz só o clique conferir. A resposta canônica `✅ Resumo conferido por {nome}` entra no fio, e o fio é resolvido.
+   Qualquer outra resposta de um revisor no fio é **pedido de ajuste**; pergunta ("?"), "aguardando" e "vou verificar" são ignoradas. Pelo card, "Pedir ajuste" exige o motivo. O Agente registra `🔁 Ajuste pedido por {nome}: {motivo}` e chama `/resolver` de novo com o pedido. Se o pedido cita um código do plano de contas ("use 2.02.98"), esse código é validado no plano de contas real, sem perguntar ao RAG. Depois o Agente publica o **Resumo revisado no mesmo fio**, com `Revisado a pedido de {nome}: "{pedido}".` e uma Conferência nova.
+   Se um Campo que entra no lançamento muda depois da conferência, a Conferência fica desatualizada. O Agente republica o Resumo no fio com `Os dados da conta mudaram depois da conferência.`
+   Quem confere: o Financeiro (quando Membro ativo) e Membros de Papel Administrador ou Proprietário que alcançam a conta (`revisoresDoResumo`).
+   A ponte só lê **respostas** ao Resumo, nunca um Comentário raiz. O tópico da tela ainda não tem o gesto "Responder"; por isso, na tela de hoje, conferir e pedir ajuste é pelo card.
+3. **Lançamento (Fluxo 7).** A ponte só chama `/lancar` quando duas condições valem. A conta tem de ter **entrado** em `em lançamento omie` por movimento, e a Conferência tem de estar aprovada **para os dados atuais**.
+   O `/lancar` leva o código de Categoria conferido (`codigoCategoriaConfirmado`), a Data de Emissão e os **anexos**. Os anexos são os Campos Anexo, Boleto e QR Code e os anexos da Tarefa, em URLs assinadas de 5 minutos com o nome original. O Omie recebe o título, e os anexos entram um a um (`IncluirAnexo`).
+   O Agente confirma no fio com `✅ Lançado no Omie — título {id} · {conta} · {categoria} ({código}) · anexos {ok} de {total}` e uma linha `• {nome}: não subiu ({erro})` por anexo que falhou. Depois move a conta para `lançado omie`.
+   Sem Conferência aprovada, nada vai ao Omie: o próprio Resumo pendente é o pedido.
+4. **Falha permanente** (o Omie recusa): o Agente comenta `Não consegui lançar no Omie: {motivo} ({código}). A conta voltou para "para pagar".` e a conta **volta** para `para pagar`, como no legado (D6-03). Mover de novo para `em lançamento omie` reprocessa. Uma falha transitória é tentada de novo nos ciclos seguintes.
+
+Três modos, por `AGENTE_CONTAS_A_PAGAR_MODO`, só com os literais exatos:
+- `ensaio` (padrão): nada é gravado; a ponte só registra no log o que publicaria.
+- `conferencia`: Resumos, Conferências e revisões de verdade, e **zero** requisições a `/lancar`. Com a conta conferida em `em lançamento omie`, o Agente avisa uma vez `Resumo conferido. Neste ambiente o lançamento no Omie está desligado (modo conferência): nada foi lançado, a conta fica aqui.`
+- `lancar`: tudo.
+
+Qualquer outro valor cai em `ensaio`, com aviso no log.
+
+Uma gravação na conta (Campo, Status, Comentário, decisão da Conferência) cutuca a ponte, que roda um ciclo em até 2 s; o ciclo por intervalo continua.
+
+A conta importada do ClickUp só entra na ponte depois de ser movida de Status na plataforma (`movidaDepoisDaImportacao`): o legado importado nunca é varrido.
+
+Na tela, o estado da Conferência aparece como pílula ao lado do Status, sem abrir o fio: "Aguardando Resumo", "Resumo para conferir", "Resumo conferido", "Ajuste pedido" e "Resumo desatualizado".
+
+Quando `Integração manual = Manual`, o padrão da plataforma é "o Agente não encosta": sem Resumo e sem `/lancar`. O Financeiro lança à mão e registra pelo diálogo "Lançado no Omie" (D6-04, `AGENTE_CONTAS_A_PAGAR_INTEGRACAO_MANUAL=nao-encosta`). A outra leitura, a do backend legado, é `sem-conferencia`: o Resumo sai com a Conferência dispensada e a conta é lançada ao entrar em `em lançamento omie`.
+
+Fora do `/lancar` por enquanto: Cartão e Link de pagamento, o Departamento Omie no Resumo e o número da NF (fica vazio; o Omie aceita).
 
 ### 6.4 Remessa e autorização (D0)
 
@@ -242,8 +273,20 @@ Todas com escopo na Lista "Contas a pagar".
 | A4 | Tarefa sai de `em autorização bancária` para `negado` | — | Notificar Financeiro; Responsável volta ao Financeiro |
 | A5 | Data de vencimento − 5 dias | status = `para pagar` **e** Anexo vazio **e** Pessoa preenchida | Comentar com Menção à Pessoa pedindo a nota (texto da seção 6.2, com o CNPJ da Empresa) |
 | A6 | Data de vencimento − 2 dias | status = `para pagar` **e** Anexo vazio | Repetir cobrança |
-| A7 | ~~Data de vencimento − 1 dia (noite)~~ — **removida** (plano pós-auditoria, 1.5) | — | Substituída pela ponte do `apps/api`: quando a conta **entra** em `em lançamento omie` (por movimento, nunca por importação) e o Omie confirma o lançamento, o Agente publica o Resumo e a conta vai para `lançado omie`. Em `ws_n1` a A7 fica pausada (`npm run contas-a-pagar:configurar -w @n1/api`). |
-| A8 | Agente concluiu com sucesso | — | Mover para `lançado omie` (hoje feito pela própria ponte, na mesma transação do Resumo) |
+| A7 | ~~Data de vencimento − 1 dia (noite)~~ — **removida** (plano pós-auditoria, 1.5). Hoje: **1º momento da ponte** — conta completa em `para pagar` ou `em lançamento omie` | `erpMissingFields` vazio; conta criada ou movida na plataforma (nunca o legado importado parado); `Integração manual` ≠ Manual | Publicar o Resumo aberto, mencionando o Financeiro, e abrir a Conferência (§6.3, passo 1). Um pedido de ajuste no fio ou no card republica o Resumo revisado no mesmo fio (passo 2). Em `ws_n1` a Automação A7 fica pausada (`npm run contas-a-pagar:configurar -w @n1/api`); quem faz o trabalho dela é a ponte do `apps/api`. |
+| A8 | **2º momento da ponte** — a conta **entra** em `em lançamento omie` por movimento | Conferência aprovada para os dados atuais; modo `lancar` | `/lancar` com o código conferido e os anexos; confirmação `✅ Lançado no Omie — …` no fio; mover para `lançado omie`. Na falha permanente, o motivo no fio e a volta para `para pagar` (§6.3, passos 3 e 4). |
+
+**Os dois momentos da ponte, e o que muda cada um sem código.** A7 e A8 não são Automações do Espaço: são a ponte do `apps/api` (`apps/api/src/automacoes/invocar-agente.ts`), ligada por `AGENTE_CONTAS_A_PAGAR_ATIVO=true`. As decisões D6-01..D6-04 da Fase 6 têm um padrão, que segue o ClickUp exceto onde isso seria inseguro. Trocar um padrão é mudar a variável:
+
+| Variável | Padrão | Alternativa |
+| --- | --- | --- |
+| `AGENTE_CONTAS_A_PAGAR_MODO` | `ensaio` (nada gravado) | `conferencia` (Resumos e Conferências, zero `/lancar`) · `lancar` |
+| `AGENTE_CONTAS_A_PAGAR_RESUMO_A_PARTIR_DE` (D6-01) | `para-pagar` — o Resumo sai assim que a conta fica completa | `em-lancamento-omie` — só ao entrar em `em lançamento omie` |
+| `AGENTE_CONTAS_A_PAGAR_CONFERENCIA_POR_COMENTARIO` (D6-02) | `true` — "ok" no fio confere | `false` — só o clique confere; o fio continua pedindo ajuste |
+| `AGENTE_CONTAS_A_PAGAR_INTEGRACAO_MANUAL` (D6-04) | `nao-encosta` — sem Resumo, sem `/lancar` | `sem-conferencia` — Resumo com a Conferência dispensada, e lançamento |
+| (D6-03, sem variável) | falha permanente devolve a conta a `para pagar` | ficar em `em lançamento omie` — uma chamada em `registrarFalhaDoLancamento` |
+
+`AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM` e `AGENTE_CONTAS_A_PAGAR_AVISAR_ID` são portas **só de ambiente de teste**. A primeira restringe a ponte às contas cujo título contém o texto; a segunda manda toda Menção da ponte a um Membro no lugar do Financeiro. Em produção ficam vazias. A linha de partida do log diz o que está valendo: `ponte do Agente de lançamento ativa (modo=… resumoAPartirDe=… conferenciaPorComentario=… integracaoManual=… escopo=… avisar=…)`.
 | A9 | Tarefa criada | — | Adicionar Observadores: Financeiro, Aprovador, Pessoa (se preenchida) |
 
 A5 e A6 são hoje feitas à mão pelo Financeiro (Comentários de Maryane). Automatizá-las é a única mudança de comportamento proposta neste documento; o texto e os momentos são os observados.
@@ -255,12 +298,12 @@ A5 e A6 são hoje feitas à mão pelo Financeiro (Comentários de Maryane). Auto
 Substitui o usuário "ADM Tria Company". Configuração mínima:
 
 - **Papel:** Convidado com `ver`, `comentar` e `editar` (só status) na Lista "Contas a pagar". Nada fora dela.
-- **Invocado por:** a ponte do `apps/api` (`apps/api/src/automacoes/invocar-agente.ts`), quando a conta entra em `em lançamento omie`; até o plano pós-auditoria (1.5), pela Automação A7. Sem Gatilho próprio (Agente nunca tem Gatilho — Glossário).
-- **Entrada:** Nome, Descrição, Tag, Centro de Custo, Empresa, Categoria de pagamento, Fornecedor (CPF/CNPJ), Forma de pagamento e o campo de pagamento correspondente, Valor, Data de vencimento.
+- **Invocado por:** a ponte do `apps/api` (`apps/api/src/automacoes/invocar-agente.ts`), em dois momentos (§8, A7/A8): quando a conta fica completa, para publicar o Resumo para conferência; e quando a conta entra em `em lançamento omie` com a Conferência aprovada, para lançar. A ponte roda por intervalo e é cutucada por toda gravação na conta. Até o plano pós-auditoria (1.5), a invocação era pela Automação A7. Sem Gatilho próprio (Agente nunca tem Gatilho — Glossário).
+- **Entrada:** Nome, Descrição, Tag, Centro de Custo, Empresa, Categoria de pagamento, Fornecedor (CPF/CNPJ), Forma de pagamento e o campo de pagamento correspondente, Valor, Data de vencimento, Data de Emissão. Mais: os anexos da conta (Campos Anexo, Boleto e QR Code e os anexos da Tarefa, em URLs assinadas com o nome original) e as respostas dos revisores no fio do Resumo. As respostas viram pedido de ajuste para o `/resolver` (`pedidoDeRevisao`, e o código citado como `codigoCategoriaConfirmado`). No lançamento, a entrada é a Conferência aprovada: a tripla conta · categoria · código sai dela, como dado, e nunca é relida do texto do Resumo.
 - **Conhecimento:** o de-para para o ERP — (Centro de Custo, Tag) → Conta de pagamento; Categoria de pagamento → Categoria Omie + Código do plano de contas (ex.: Prestação de Serviços + Centro de Custo Tria Tech → "Prestação serviços - ADM", `2.04.08`). Esse mapeamento **não está no ClickUp**; está na cabeça do Agente atual e precisa ser extraído para uma Coleção de Conhecimento antes da migração (ver 12).
 - **Ferramentas:** `criar comentário`, `alterar status`, e a Integração com o Omie (lançar conta a pagar). A Integração é do Espaço de Trabalho (Glossário: Integração), com Membro configurador.
-- **Saída:** o Comentário no formato exato da seção 6.3, atribuído ao Financeiro e resolvido; depois a mudança de status. Se qualquer campo obrigatório para o ERP faltar, o Agente comenta o que falta, **não** muda o status e deixa o Comentário aberto atribuído ao Financeiro.
-- **Nível de autonomia:** age sem aprovação para comentar e mover status; o lançamento no ERP em si deve exigir Ensaio na primeira semana e Política de aprovação depois, decisão de produto.
+- **Saída:** no 1º momento, o Resumo no formato exato da seção 6.3, **aberto**, mencionando o Financeiro, com a chamada para conferir, e uma Conferência pendente. A cada ajuste, o Resumo revisado no mesmo fio e uma Conferência nova. No 2º momento, o título no Omie com os anexos, a confirmação `✅ Lançado no Omie — …` no fio e o Status `lançado omie`. Na falha permanente, o motivo no fio e a volta para `para pagar`. Se qualquer campo obrigatório para o ERP faltar, o Agente comenta o que falta e **não** muda o Status.
+- **Nível de autonomia:** comenta, publica o Resumo e abre Conferências sem aprovação. O lançamento no Omie **só acontece sobre uma Conferência aprovada por um humano para os dados atuais** (RN-CP-08); essa é a Política de aprovação do lançamento. O Ensaio é o modo `ensaio` da ponte, e o modo `conferencia` roda o fluxo inteiro sem lançar. A recomendação para a entrada em produção é começar em `conferencia` e passar a `lancar` depois de ver os Resumos certos (roteiro, `08-roteiro-de-producao-pos-correcoes.md`).
 
 ---
 
@@ -289,6 +332,8 @@ Hoje no ClickUp a Pessoa da conta é Membro pleno e vê a Lista inteira — incl
 - **RN-CP-06** — Uma Tarefa recorrente gera **uma** ocorrência por fechamento; fechar duas vezes (reabrir e fechar) não duplica.
 - **RN-CP-07** — Exatamente uma Tag `conta *` por Tarefa.
 - **INV-CP-01** — Toda Tarefa em `lançado omie` ou posterior tem um Comentário "Resumo de pagamento" ou `Integração manual = Manual`.
+- **RN-CP-08** — Nenhuma conta é lançada pelo Agente sem Conferência aprovada para os dados atuais. "Dados atuais" é a impressão de lançamento (`impressaoDeLancamento`): Centro de Custo, Empresa, Categoria, fornecedor, forma e dado de pagamento, Valor, vencimento, Data de Emissão, Tag, título e descrição. Anexos não entram. Mudou um desses depois da conferência: a Conferência fica desatualizada e o Resumo é republicado para conferir de novo (Fase 6, `registrarLancamentoNoOmie` e a ponte).
+- **RN-CP-09** — Falha permanente no lançamento devolve a conta a `para pagar` com o motivo num Comentário do Agente (D6-03, `registrarFalhaDoLancamento`). Se a conta não pôde voltar, o Comentário diz o motivo sem afirmar a volta.
 
 ---
 

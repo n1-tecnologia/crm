@@ -243,6 +243,17 @@ Quem preenche o formulário de abertura: a exportação mostra `creator` de 6 da
 
 Quando o Aprovador não responde ao comentário de roteamento: nenhum lembrete, cobrança repetida ou timeout foi encontrado no código (`payment-automation-service.ts`, `payment-rules.ts`) nem observado nas 19 Tarefas lidas — diferente das cobranças A5/A6 de nota fiscal em `contas-a-pagar.md`, que também não estão automatizadas mas pelo menos têm o texto e o intervalo documentados a partir de Comentários reais do Financeiro. Aqui não há nem o mecanismo automatizado nem evidência de uma segunda cobrança manual equivalente na amostra — se ela existe hoje, e com que texto e prazo, é uma decisão que só o Financeiro pode confirmar — ver §12, L-07.
 
+### 6.7 Errata — Doc v2 × código (2026-09-29)
+
+A `Documentação - Projeto Financeiro Pagamentos.v2.docx` diverge do código do `financeiro-tria/automation` em quatro pontos. A comparação etapa por etapa está em `docs/08-migracao-financeiro/10-levantamento-fluxo-atual-x-documentacao-x-backend.md`. Como o inventário já decidiu, **o código vence**, e esta spec descreve o código:
+
+| Doc v2 diz | O código faz | Onde esta spec já diz |
+| --- | --- | --- |
+| Prazo de **3 dias úteis** antes dos dias 5/15/25, e o fora do prazo parece encerrar o fluxo | **2 dias úteis** (`PAYMENT_MIN_BUSINESS_DAYS`, `payment-rules.ts`). O fora do prazo **não bloqueia**: só comenta a realocação para o ciclo seguinte. Na plataforma nada muda (D6-08). | §6.1, S1, RN-SP-04 |
+| Aprovador só pelo Centro de Custo | Centro de Custo **e Valor**: corte de **R$ 5.000** em Presidência e TRIA (`APPROVAL_ROUTES`) | §1, RN-SP-03 |
+| "@Fulano, para aprovação", com Menção | No ClickUp, "@Fulano" é o **assignee do comentário** (com `notify_all`), não uma Menção no texto. Na plataforma, a Menção só existe se `PLATAFORMA_MEMBRO_POR_CLICKUP_ID` traduzir o id do Aprovador. | §6.3 |
+| Depois do lançamento, a Tarefa é "atualizada ou comentada" | O legado **só muda o Status** para "lançado omie" e atribui Contas a Pagar; não há comentário de sucesso. A plataforma escolheu comentar também: `✅ Lançado no Omie — …` no fio do Resumo (`contas-a-pagar.md` §6.3). | `contas-a-pagar.md` §6.3 |
+
 ---
 
 ## 7. Recorrência
@@ -261,12 +272,18 @@ Todas com escopo na Lista "Solicitações de pagamento", espelhando os passos j�
 | S2 | Tarefa criada | Integração manual vazio | Validar documento (CPF por dígito; CNPJ via `publica.cnpj.ws`) — reprovar (`não aprovado`) e comentar se inválido |
 | S3 | Documento validado | Anexo preenchido | Auditar o anexo por IA contra o Valor informado — reprovar e comentar se ausente/divergente/ilegível |
 | S4 | Documento e anexo validados | — | **Solicitar Aprovação** (Automação `solicitarAprovacao`) do Aprovador resolvido por Centro de Custo e Valor (RN-SP-03) — o caminho oficial da plataforma (D-07) |
-| S5 | Aprovador responde à Solicitação de Aprovação | Resposta = aprovar | Publicar o RESUMO DE PAGAMENTO (mesmo formato de `contas-a-pagar.md` §6.3); mudar Status para `aprovado` |
-| S6 | Aprovador responde à Solicitação de Aprovação | Resposta = reprovar | Mudar Status para `não aprovado`; notificar o Solicitante |
+| S5 | Aprovador responde à Solicitação de Aprovação | Resposta = aprovar | Publicar o RESUMO DE PAGAMENTO (mesmo formato de `contas-a-pagar.md` §6.3); mudar Status para `aprovado`. **✅ Feito na coorte plataforma (Fase 6, 06-05)** |
+| S6 | Aprovador responde à Solicitação de Aprovação | Resposta = reprovar | Mudar Status para `não aprovado`; notificar o Solicitante. **✅ Feito na coorte plataforma (Fase 6, 06-05)** |
 | S7 | Integração manual = Manual | — | Pular S1–S6; ir direto para S5 marcando `Aprovado` pelo Financeiro (Fluxo Manual, §6.5) |
 | S8 | Nenhuma resposta à Solicitação de Aprovação por 90 dias corridos, a contar do go-live da Fase 2 (D-07) | Classificador de comentário continua ativo como fallback | Registrar a métrica "aprovações por comentário / total de aprovações"; revisar se desligar o fallback na data de revisão (ver §12, L-09) |
 
 **D-07 (fecha D8 do plano):** a aprovação **por clique** — a Solicitação de Aprovação nativa da plataforma — é o caminho oficial a partir da Fase 2 (S4/S5/S6). O classificador de comentário por IA (o que existe hoje, §6.3) continua ativo como **fallback por 90 dias**, medido pela métrica acima; se ninguém usar o caminho por comentário nesse período, ele é desligado. A data exata de revisão depende de quando a Fase 2 entra no ar — ver §12, L-09.
+
+**S5/S6 na coorte plataforma (Fase 6, `financeiro-tria` `2cd13cd`).** Até a Fase 6, a aprovação por clique na plataforma gravava `Aprovado`, mudava o Status e parava ali: não publicava o RESUMO nem avisava o Solicitante. Agora `handlePlatformApprovalDecision` (`payment-automation-service.ts`) faz o mesmo encadeamento do caminho por comentário, pela porta da plataforma (`PaymentRequestAdapter`) e nunca pelo ClickUp:
+- **aprovada:** conta → fornecedor e categoria no Omie → `📋 RESUMO DE PAGAMENTO` publicado na própria Solicitação, mencionando o Membro de Contas a Pagar. O Membro vem da tradução do id do ClickUp em `PLATAFORMA_MEMBRO_POR_CLICKUP_ID`; sem tradução, o RESUMO sai sem Menção. Se o Omie ou o RAG falham, a aprovação fica e a Solicitação recebe `Não consegui montar o Resumo: <motivo>`. O passo de atribuir a Tarefa a Contas a Pagar só existe no ClickUp e é pulado, com log. Sem a linha da Solicitação no Supabase do Financeiro, só o Status muda, com aviso no log.
+- **rejeitada:** o Solicitante é avisado com `Sua solicitação foi reprovada, verifique o comentário do Especialista.`, sem Menção.
+
+A passagem da Solicitação aprovada para Contas a pagar continua sendo o botão "Converter em Conta a pagar" (D6-07). A Conta nasce completa e ganha o **próprio** Resumo e a própria Conferência (`contas-a-pagar.md` §6.3). O RESUMO da Solicitação não é copiado: são duas Tarefas e dois tópicos, ligados por um Vínculo.
 
 ---
 

@@ -1,5 +1,16 @@
 # Plano — o Resumo de pagamento conferido pelo Financeiro ANTES do lançamento (Fluxos 5, 6 e 7 na plataforma)
 
+> **Executado pela Fase 6** (`.planning/phases/06-conferencia-do-resumo-e-anexos/`,
+> planos 06-01..06-06, 2026-09-29). O que o código passou a fazer está nas
+> specs (`docs/07-processos/contas-a-pagar.md` §6.3, §8, §9, §11;
+> `solicitacao-de-pagamento.md` §6.7 e §8). As provas estão em `06-PROVAS.md`
+> da fase. Onde este plano e o código divergem, valem os SUMMARYs da fase e o
+> `06-CONTEXT.md`. Três exemplos: a ponte ganhou portas de ambiente de teste
+> (`AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM`, `AGENTE_CONTAS_A_PAGAR_AVISAR_ID`);
+> o legado importado nunca é varrido; a jornada confere pelo card, porque o
+> tópico da tela não tem o gesto "Responder". O "Nada aqui foi implementado
+> ainda" abaixo é da data em que o plano foi escrito.
+
 Data: 2026-09-29. Pedido do dono: "não está gerando a mensagem para o
 financeiro aprovar... ela revisa o comentário dentro da task, respondendo se
 tiver tudo ok; aí sim lança no Omie, com os anexos". Fonte: a documentação
