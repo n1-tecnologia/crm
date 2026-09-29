@@ -104,7 +104,8 @@ Testes escritos junto com cada implementação, no mesmo commit da Task (como 06
 | `packages/dominio/src/operations/conferencia-avisar.test.ts` (novo) | 6/6 |
 | `packages/dominio` inteiro | **828/828** (822 + 6) |
 | `apps/web` inteiro | 216/216 |
-| `cd apps/api && DATABASE_URL= npx vitest run src/automacoes/ src/rotas/` | 332 passados · 67 pulados (sem banco) · **5 falhos — ver "Decisão pendente"** |
+| `cd apps/api && DATABASE_URL= npx vitest run src/automacoes/ src/rotas/` | 332 passados · 67 pulados (sem banco) · 5 falhos na primeira rodada — os casos antigos de `contrato-contas-a-pagar.test.ts`, reescritos depois (ver "Decisão tomada pelo orquestrador") |
+| `apps/api/src/automacoes/contrato-contas-a-pagar.test.ts` (5 casos reescritos) | **25/25** |
 
 - `npm run typecheck` (três workspaces): verde. `npm run lint`: 0 erros (4 avisos pré-existentes em `apps/web`). `verificar:tokens`: 0 falhas. `verificar:contratos`: OK.
 - **`/lancar` = 0 asserido** em `ensaio` (d: conta em "para pagar"; e conta conferida em "em lançamento omie" com a variável apagada) e em `conferencia` (e, i — inclusive depois de sair e voltar —, G3, e "sem credencial"); e em `lancar` sem Conferência aprovada (k: `sem-resumo`, `pendente`, `desatualizada`).
@@ -217,11 +218,27 @@ Mantidos byte a byte: `resolverModo` (it.each original), `chaveDeIdempotencia`, 
 | lancar sem credencial | + `conferencia` | os dois modos gravam |
 | `parar()` espera o ciclo | mantido, log "Ensaio — publicaria" | — |
 
-## Decisão pendente (bloqueia `npm run check` verde)
+## Decisão tomada pelo orquestrador — exceção a CON-05 estendida
 
-**5 casos de `apps/api/src/automacoes/contrato-contas-a-pagar.test.ts` (arquivo de 06-02 e pós-auditoria 1.6) provam o fluxo de ANTES da Fase 6** — §"contrato — a ponte de ponta a ponta com as respostas canônicas": `resolver.sucesso-resolvida + lancar.sucesso` e `+ lancar.sucesso-reaproveitado` (lançar e ir a "lançado omie" sem Conferência) e os três `lancar.erro-422-*` ("a conta fica" em "em lançamento omie"). Com a regra deste plano ("sem Conferência aprovada, ZERO `/lancar`"; D6-03 volta a conta), eles falham por desenho. O plano só abriu a exceção a CON-05 para `invocar-agente.test.ts` e a regra da rodada proíbe editar outro teste existente — **não editei**. O mesmo papel está coberto, no fluxo novo, pelo arquivo novo `contrato-contas-a-pagar-ponte.test.ts` (11 verdes, com os mesmos exemplos canônicos e mais `lancar.erro-422-regra-de-dominio`, `resolver.sucesso-pedido-de-revisao` e `lancar.sucesso-anexos-nomeados`). O `erro-500` do arquivo antigo continua verde (por acaso: a resposta vai para outra conta do seed).
+**O que aconteceu.** 5 casos de `apps/api/src/automacoes/contrato-contas-a-pagar.test.ts` (o arquivo de 06-02 e do plano pós-auditoria 1.6), no describe "contrato — a ponte de ponta a ponta com as respostas canônicas", provavam a ponte de antes da Fase 6: lançar sem Conferência, e a conta ficar em "em lançamento omie" depois de um 422. Com este plano, sem Conferência aprovada não sai nenhum `/lancar`, e pela D6-03 a conta volta para "para pagar". Por isso os 5 falhavam por desenho. Não os editei na primeira passada, porque a regra da rodada só abria a exceção para `invocar-agente.test.ts`.
 
-**Pedido ao orquestrador/dono:** estender a exceção a CON-05 a esse `describe` — remover os 5 casos (cobertos pelo arquivo novo) ou reescrevê-los como no arquivo novo. Até lá, `npm run check` fica vermelho nesses 5.
+**Decisão.** O orquestrador, autor do plano, estendeu a exceção a CON-05 a esse describe. O motivo registrado: os 5 casos provam justamente o comportamento que o dono pediu para mudar (Resumo conferido antes do lançamento; falha da D6-03 volta para "para pagar"). É a mesma classe de mudança que o plano já tinha isentado em `invocar-agente.test.ts`. Não é aprovação do usuário para mais nada.
+
+**Os 5 casos reescritos no lugar** (nenhum apagado; os outros casos do arquivo e o helper `dasEmLancamento`, usado pelo caso `erro-500`, ficaram intocados). Commit `fc1abdf`. O fluxo novo de cada um:
+1. Isolar "para pagar", com o novo helper `dasEmParaPagar`.
+2. 1º ciclo: `resolver.sucesso-resolvida` publica o Resumo.
+3. A Maryane confere por clique e move a conta para "em lançamento omie".
+4. 2º ciclo: `/lancar` com o exemplo canônico.
+
+| Caso | Antes | Depois |
+|---|---|---|
+| `lancar.sucesso.json` | "Resumo publicado e a conta vai para lançado omie" (sem Conferência) | "Resumo conferido, depois lançado": `[RESOLVER, LANCAR]`, "lançado omie" e exatamente um Comentário `TEXTOS_DA_CONFERENCIA.lancado(...)` |
+| `lancar.sucesso-reaproveitado.json` | "título já existente também é sucesso" | o mesmo, com o sufixo "(título já existia)" do texto canônico |
+| `lancar.erro-422-omie-recusou.json` | "a conta fica", 2 requisições | D6-03: volta para "para pagar", o motivo em exatamente um Comentário do Agente, requisições exatamente `[RESOLVER, LANCAR]` depois de um 3º ciclo (comentário no código: conferida em "para pagar" espera o humano, e a parada por chave também seguraria) |
+| `lancar.erro-422-fornecedor-nao-resolvido.json` | idem | idem |
+| `lancar.erro-422-conta-corrente-nao-resolvida.json` | idem | idem |
+
+**Mutação.** A falha permanente do `/lancar` sem `registrarFalhaDoLancamento` (a mesma M15 da tabela acima) derruba os 3 casos 422 reescritos (3 falhas; 22 passam). Restaurada; 25/25.
 
 ## Verificação bloqueada
 
