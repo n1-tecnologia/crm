@@ -41,7 +41,7 @@ import { SaveTemplateDialog } from "@/features/estrutura/template-dialogs";
 import { ShareTaskDialog } from "@/features/estrutura/share-task-dialog";
 import { DialogoFluxoManual, fluxoManualRecusado } from "@/features/tarefa/fluxo-manual-dialog";
 import { DialogoLancamentoNoOmie, lancamentoNoOmieRecusado } from "@/features/tarefa/lancamento-no-omie-dialog";
-import { PainelAprovacao } from "@/features/tarefa/painel-aprovacao";
+import { PainelDeDecisaoDaTarefa, PilulaDaConferencia } from "@/features/tarefa/painel-conferencia-do-resumo";
 import { Timeline } from "@/features/tarefa/timeline";
 import { CabecalhoDaAtividade, FeedDeAtividade, type FiltroDaAtividade } from "@/features/tarefa/feed-de-atividade";
 import { PainelDeAnexos } from "@/features/tarefa/anexos";
@@ -961,6 +961,7 @@ export function TarefaCompleta({
                 rotulo="Status"
                 cor={definition?.color}
                 controle={
+                  <span className="inline-flex flex-wrap items-center gap-2">
                   <StatusPicker
                     options={[...config.statusSet.definitions]
                       .sort((a, b) => a.order - b.order)
@@ -987,6 +988,9 @@ export function TarefaCompleta({
                         : (escritaRecusada ?? "")
                     }
                   />
+                  {/* Fase 6 — o estado da Conferência do Resumo, lido do domínio (só em conta a pagar). */}
+                  <PilulaDaConferencia task={task} />
+                  </span>
                 }
               />
               <LinhaDeProp
@@ -1512,7 +1516,8 @@ export function TarefaCompleta({
                 ) : null}
           </div>
 
-          <PainelAprovacao task={task} fmt={fmt} report={report} />
+          {/* Conta a pagar: a Conferência do Resumo (Fase 6); qualquer outra Tarefa: a Aprovação de processo. */}
+          <PainelDeDecisaoDaTarefa task={task} fmt={fmt} report={report} />
 
           <hr className="my-6 border-0" style={{ borderTop: "1px solid var(--linha)" }} />
 

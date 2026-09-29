@@ -69,6 +69,7 @@ import {
 import { PRIORITY_LABEL } from "@/features/shell/format";
 import { BotaoDeMais, CompositorNoGrupo } from "@/features/estrutura/novo-no-grupo";
 import { useFormat } from "@/features/shell/use-format";
+import { PilulaDaConferencia } from "@/features/tarefa/painel-conferencia-do-resumo";
 import {
   ActionMenu,
   ActorAvatar,
@@ -901,7 +902,11 @@ export function FinanceTable({
                         )}
                       </td>
                       <td>
-                        <StatusBadge definition={definition} grupo={grupo} />
+                        <span className="inline-flex flex-wrap items-center gap-1.5">
+                          <StatusBadge definition={definition} grupo={grupo} />
+                          {/* Fase 6 — Conferência do Resumo; nada fora de Contas a pagar. */}
+                          <PilulaDaConferencia task={task} />
+                        </span>
                       </td>
                       <td style={{ paddingInline: "var(--e-1)" }}>
                         <span className="flex items-center justify-end gap-0.5">
@@ -1083,13 +1088,14 @@ export function FinanceCards({
                 </span>{" "}
                 · {profile.counterpart(state, task)}
               </span>
-              <span className="mt-2 block">
+              <span className="mt-2 flex flex-wrap items-center gap-1.5">
                 <StatusBadge
                   definition={config?.statusSet.definitions.find(
                     (d) => d.id === task.statusId,
                   )}
                   grupo={grupo}
                 />
+                <PilulaDaConferencia task={task} />
               </span>
             </button>
           </li>

@@ -17,14 +17,22 @@
  * D-11 — `processTask` (Solicitação de pagamento) NUNCA mostra prazo,
  * contagem regressiva ou expiração: o tipo não tem o campo `deadline`, então
  * nenhum código aqui pode lê-lo por engano.
+ *
+ * Fase 6 — dentro de `processTask`, `origin.processStep` separa a Aprovação
+ * da Solicitação (`"pagamento"`) da Conferência do Resumo de uma conta a
+ * pagar (`"resumo"`): o card, os botões e os diálogos da Conferência vêm de
+ * `@/features/tarefa/painel-conferencia-do-resumo`, e a decisão passa pelo
+ * MESMO controlador (`useDecisaoDeAprovacao`). Uma Conferência só aparece a
+ * quem alcança a conta (`memberSeesTask`): o estado hidratado é o Espaço
+ * inteiro, e a conta mora numa Lista privada.
  */
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useData, useRun, useSession } from "@/dados/store";
-import { executionChainOf, statusDefinition } from "@n1/dominio/derive";
-import { decideApproval } from "@n1/dominio/operations";
+import { executionChainOf, memberSeesTask, statusDefinition } from "@n1/dominio/derive";
+import { conferenciaDoResumo, decideApproval } from "@n1/dominio/operations";
 import { APPROVAL_REASON_LABEL, EFFECT_CLASS_LABEL, RESOURCE_TYPE_LABEL } from "@/features/shell/format";
 import { useFormat } from "@/features/shell/use-format";
 import {
@@ -33,6 +41,12 @@ import {
   resumoDaSolicitacao,
   useDecisaoDeAprovacao,
 } from "@/features/tarefa/painel-aprovacao";
+import {
+  DialogoConferir,
+  DialogoPedirAjuste,
+  podeConferirOResumo,
+  resumoDaConta,
+} from "@/features/tarefa/painel-conferencia-do-resumo";
 import {
   Button,
   CategoryDot,
@@ -54,6 +68,10 @@ const approvalExecutionId = (approval: ApprovalRequest): string | undefined =>
   approval.origin.kind === "agentExecution" ? approval.origin.executionId : undefined;
 const approvalDeadline = (approval: ApprovalRequest): string | undefined =>
   approval.origin.kind === "agentExecution" ? approval.origin.deadline : undefined;
+
+/** Fase 6 — a Conferência do Resumo de uma conta a pagar (`processStep: "resumo"`). */
+const ehConferenciaDoResumo = (approval: ApprovalRequest): boolean =>
+  approval.origin.kind === "processTask" && approval.origin.processStep === "resumo";
 
 /** A rejection is recorded on the Execution it stopped, not on the request. */
 function terminationReasonOf(state: DataState, approval: ApprovalRequest): string {
@@ -117,9 +135,14 @@ export default function AprovacoesPage() {
   const mayDecideProcesso = (approval: ApprovalRequest): boolean =>
     approval.approverMemberId === memberId || isAdminLevel;
 
-  const pending = state.approvals.filter((approval) => approval.decision === undefined);
+  // Uma Conferência do Resumo só existe na fila de quem alcança a conta.
+  const alcanca = (approval: ApprovalRequest): boolean =>
+    approval.origin.kind !== "processTask" ||
+    approval.origin.processStep !== "resumo" ||
+    memberSeesTask(state, memberId, approval.origin.taskId);
+  const pending = state.approvals.filter((approval) => approval.decision === undefined && alcanca(approval));
   const decided = [...state.approvals]
-    .filter((approval) => approval.decision !== undefined)
+    .filter((approval) => approval.decision !== undefined && alcanca(approval))
     .sort((a, b) => (b.decidedAt ?? "").localeCompare(a.decidedAt ?? ""));
   const mine = pending.filter((approval) => approval.approverMemberId === memberId);
   const others = pending.filter((approval) => approval.approverMemberId !== memberId);
@@ -232,8 +255,100 @@ export default function AprovacoesPage() {
    * ficam restritos à Tarefa autorizada. D-11 — nenhuma contagem regressiva
    * nem data-limite: o tipo `origin` deste ramo não carrega esse campo.
    */
+  const renderConferenciaCard = (approval: ApprovalRequest) => {
+    if (approval.origin.kind !== "processTask" || approval.origin.processStep !== "resumo") return null;
+    const origin = approval.origin;
+    const task = state.tasks.find((t) => t.id === origin.taskId);
+    if (!task) return null;
+    // O estado vem do domínio: só a Conferência VIGENTE e pendente para os
+    // dados atuais se decide; uma que a conta deixou para trás espera o Resumo novo.
+    const atual = conferenciaDoResumo(state, task);
+    const conferencia = atual.conferencia;
+    const vigentePendente = conferencia?.id === approval.id && atual.estado === "pendente";
+    const actionable = conferencia !== undefined && podeConferirOResumo(state, memberId, conferencia);
+    const definition = statusDefinition(state, task.listId, task.statusId);
+    const resumo = resumoDaConta(task, state, fmt);
+    const aprovador = state.members.find((m) => m.id === approval.approverMemberId);
+    const disabledReason = `Somente ${aprovador?.displayName ?? "o aprovador designado"} ou um Administrador confere este Resumo.`;
+
+    return (
+      <li key={approval.id} className="item-solto" data-bloco="true" data-estatico="true">
+        <div className="grid w-full gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Pilula tom="aviso" comPonto>
+              Conferência do Resumo
+            </Pilula>
+            <span className="identificador app-sm" style={{ color: "var(--texto-3)" }}>
+              {task.readableId ?? task.id}
+            </span>
+            {definition ? <CategoryDot color={definition.color} label={definition.name} /> : null}
+            <span className="app-numero app-sm ml-auto shrink-0" style={{ color: "var(--texto)" }}>
+              {resumo.valorTexto}
+            </span>
+          </div>
+
+          <p className="app-base" style={{ color: "var(--texto)" }}>
+            Conferir Resumo de pagamento — {resumo.numero}
+          </p>
+          <p className="app-sm" style={{ color: "var(--texto-2)" }}>
+            {task.title}
+          </p>
+
+          <div className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
+            <span className="app-sm" style={{ color: "var(--texto-2)" }}>
+              Lançamento: {origin.lancamento.conta} · {origin.lancamento.categoria} · {origin.lancamento.codigo}
+            </span>
+            <span className="app-sm" style={{ color: "var(--texto-2)" }}>
+              Fornecedor: {resumo.fornecedor}
+            </span>
+            {resumo.vencimento !== "—" ? (
+              <span className="app-sm" style={{ color: "var(--texto-2)" }}>
+                Vencimento: {resumo.vencimento}
+              </span>
+            ) : null}
+          </div>
+
+          <p className="app-meta">
+            Aguardando {aprovador?.displayName ?? "—"} · {fmt.relative(approval.createdAt, now)}
+          </p>
+
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            {vigentePendente ? (
+              <>
+                <Button
+                  variant="primary"
+                  onClick={() => openDecision(approval.id, "aprovada")}
+                  disabled={!actionable}
+                  disabledReason={disabledReason}
+                >
+                  Conferir
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => openDecision(approval.id, "rejeitada")}
+                  disabled={!actionable}
+                  disabledReason={disabledReason}
+                >
+                  Pedir ajuste
+                </Button>
+              </>
+            ) : (
+              <span className="app-sm" style={{ color: "var(--texto-3)" }}>
+                Os dados mudaram depois da conferência; um Resumo novo será publicado
+              </span>
+            )}
+            <Link href={`/estrutura/tarefas/${task.id}`} className="btn btn-sutil btn-sm">
+              Abrir tarefa
+            </Link>
+          </div>
+        </div>
+      </li>
+    );
+  };
+
   const renderProcessCard = (approval: ApprovalRequest) => {
     if (approval.origin.kind !== "processTask") return null;
+    if (approval.origin.processStep === "resumo") return renderConferenciaCard(approval);
     const origin = approval.origin;
     const task = state.tasks.find((t) => t.id === origin.taskId);
     if (!task) return null;
@@ -325,12 +440,24 @@ export default function AprovacoesPage() {
   const decidingIsProcess = decidingOrigin?.kind === "processTask";
   const decidingProcessTaskId = decidingOrigin?.kind === "processTask" ? decidingOrigin.taskId : undefined;
   const decidingTask = decidingProcessTaskId ? state.tasks.find((t) => t.id === decidingProcessTaskId) : undefined;
-  const decidingResumo = decidingTask ? resumoDaSolicitacao(decidingTask, state, fmt) : undefined;
+  const decidingIsConferencia = deciding !== undefined && ehConferenciaDoResumo(deciding);
+  const decidingConferencia =
+    decidingIsConferencia && decidingTask ? conferenciaDoResumo(state, decidingTask).conferencia : undefined;
+  const decidingResumo = decidingTask && !decidingIsConferencia ? resumoDaSolicitacao(decidingTask, state, fmt) : undefined;
+  const decidingResumoDaConta = decidingTask && decidingIsConferencia ? resumoDaConta(decidingTask, state, fmt) : undefined;
 
   const controladorProcesso = useDecisaoDeAprovacao(decidingIsProcess ? (deciding?.id ?? undefined) : undefined, (decisao) => {
     closeDecision();
     setError(null);
-    setNotice(decisao === "aprovada" ? "Solicitação aprovada." : "Solicitação rejeitada.");
+    setNotice(
+      decidingIsConferencia
+        ? decisao === "aprovada"
+          ? "Resumo conferido."
+          : "Ajuste pedido; o Agente vai republicar o Resumo."
+        : decisao === "aprovada"
+          ? "Solicitação aprovada."
+          : "Solicitação rejeitada.",
+    );
   });
 
   const decidingDeadline = deciding && !decidingIsProcess ? approvalDeadline(deciding) : undefined;
@@ -355,6 +482,29 @@ export default function AprovacoesPage() {
           <DialogoRejeitar
             open={decidingKind === "rejeitada"}
             resumo={decidingResumo}
+            processando={controladorProcesso.processando === "rejeitada"}
+            motivo={reason}
+            onMotivoChange={setReason}
+            onConfirm={() => controladorProcesso.decidir("rejeitada", reason)}
+            onCancel={closeDecision}
+          />
+        </>
+      ) : null}
+
+      {deciding && decidingIsConferencia && decidingResumoDaConta && decidingConferencia?.id === deciding.id ? (
+        <>
+          <DialogoConferir
+            open={decidingKind === "aprovada"}
+            resumo={decidingResumoDaConta}
+            conferencia={decidingConferencia}
+            processando={controladorProcesso.processando === "aprovada"}
+            onConfirm={() => controladorProcesso.decidir("aprovada")}
+            onCancel={closeDecision}
+          />
+          <DialogoPedirAjuste
+            open={decidingKind === "rejeitada"}
+            resumo={decidingResumoDaConta}
+            conferencia={decidingConferencia}
             processando={controladorProcesso.processando === "rejeitada"}
             motivo={reason}
             onMotivoChange={setReason}
