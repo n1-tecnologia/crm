@@ -9,11 +9,29 @@ mostrar algo diferente, pare e mande a saída.
 
 Onde está o código corrigido:
 - CRM N1: `/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao` (branch `integra-frontend-main`).
-- Financeiro: `/Users/TRIA2026/Projetos/Projetos Cursor/financeiro-tria` (branch `main`, local — 38 commits à frente do que existia hoje de manhã, sem push).
+- Financeiro: `/Users/TRIA2026/Projetos/Projetos Cursor/financeiro-tria` (branch `main`, local — 99 commits à frente do `origin/main` e 100 do que roda na VPS, sem push).
+
+---
+
+## Passo 0 — Conferência que ficou com você (só lê, nada grava)
+
+O contrato `contas-a-pagar-v1` e os testes da ponte, rodados de novo depois
+das correções do legado (o agente não pôde rodá-los nesta rodada):
+
+```bash
+cd "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao/apps/api" && DATABASE_URL= npx vitest run src/automacoes/contrato-contas-a-pagar.test.ts src/automacoes/invocar-agente.test.ts
+```
+
+Esperado: todos verdes (o contrato deu 21/21 em 2026-09-28; as fixtures do
+`financeiro-tria` não mudaram desde então).
 
 ---
 
 ## Passo 1 — Configurar o `ws_n1` (Postgres do CRM N1)
+
+**✅ Aplicado em 2026-09-28** (1a e 1b; a conferência depois deu 0 a fazer).
+Os comandos ficam aqui para referência: rodar o dry-run de novo tem de dizer
+que não há nada a criar.
 
 Terminal novo:
 
@@ -91,6 +109,13 @@ depois pelas duas chaves ("não cadastrado"). A conferência final daquela
 execução acusou falso positivo (o Omie ainda devolvia o título segundos
 depois da exclusão); corrigido em `186147c` (confere pelo id, com espera).
 
+**De novo em 2026-09-29**, depois das correções do legado (elas mexeram no
+adaptador do Omie): ensaio OK; `--lancar` com o título **5872219943** —
+código de integração, valor, vencimento, categoria, fornecedor e conta
+corrente 5468785966 conferidos; o segundo `/lancar` reaproveitou o mesmo id;
+excluído e confirmado pelo id ("não cadastrado"). Duas esperas de ~55 s por
+`REDUNDANT` do Omie no caminho são normais.
+
 Esperado: todos os passos com ✔ e `RESULTADO: OK`. Se algum passo falhar
 depois de o título existir, ele é excluído assim mesmo; se a exclusão falhar,
 a saída diz o id para apagar à mão. Opções: `--manter` (não exclui),
@@ -164,6 +189,10 @@ Siga `financeiro-tria/supabase/manual/README.md`, na ordem:
    pré-visualização → transação com backup → índice único → conferência.
    Fora do expediente, e **depois** do deploy do passo 4 (o código antigo
    recria duplicatas).
+4b. `supabase/manual/2026-09-28-limpar-credenciais-das-solicitacoes.sql`
+   (README, passo 4b): tira `app_key`/`app_secret` das linhas de solicitação.
+   **Depois** do deploy do passo 4 (o código antigo regrava as duas colunas a
+   cada passo) e sem esperar o 5. Repita a conferência (iii-b) um dia depois.
 5. `20261001120000_remove_anon_read_painel.sql` por último, e só com o painel
    Vercel pausado.
 
@@ -180,6 +209,8 @@ repo nem no chat):
 | Variável | De onde vem | Sem ela |
 |---|---|---|
 | `MP_OMIE_APP_KEY`, `MP_OMIE_APP_SECRET` | O valor que estava no código: `git show 4149032:automation/src/tenants/marcos-paulo/config.ts \| sed -n '34,35p'` (rode no seu terminal) | Todo passo do Marcos Paulo que resolve a conta Omie recusa |
+| `FO_EMPRESA_EXO_LOTEAMENTO_APP_KEY/_SECRET`, `FO_EMPRESA_EXO_PARTICIPACOES_APP_*`, `FO_EMPRESA_MARCOS_PAULO_APP_*`, `FO_EMPRESA_OLIVEIRA_PARTICIPACOES_APP_*`, `FO_EMPRESA_KONQ_APP_*` (a KONQ aceita também as `OMIE_FINQ_APP_*`) | A credencial do Omie de cada empresa do Family Office. Confira quais já existem no `.env` da VPS; a linha `[seguranca]` do boot lista as que faltam | Hoje o lançamento dessa empresa cai **no Omie da Tria**; com o código novo, ele **recusa** com "Configuração ausente" e o nome da variável |
+| `OMIE_FINQ_APP_KEY`, `OMIE_FINQ_APP_SECRET` | Só se a FINQ tiver Omie próprio (decisão 1) | A FINQ continua na `OMIE_APP_*` da Tria, como hoje, e o boot avisa |
 | `PLATAFORMA_LANCAMENTO_TOKEN` | O mesmo do `apps/api` do CRM N1 | `/v1/integrations/contas-a-pagar/*` e todo POST de `/v1/leituras` dão 401 |
 | `PLATAFORMA_LEITURA_TOKEN` | O mesmo do `apps/api` (diferente do de lançamento) | As leituras do CRM N1 dão 401 |
 | `PAINEL_LEGADO_ABERTO=true` **ou** `PAINEL_LEGADO_TOKEN` | Transição: `true` mantém o painel Vercel funcionando como hoje | Os botões e listas do painel Vercel dão 401 |
@@ -211,19 +242,33 @@ ligado e das variáveis `PLATAFORMA_BASE_URL`, `PLATAFORMA_SERVICE_TOKEN`,
 
 1. **FINQ:** não tem Conta de Pagamento mapeada (`CONTA_PAGAMENTO_POR_CENTRO_CUSTO`).
    Antes o lançamento caía na primeira conta corrente da lista; agora é
-   recusado. Qual conta usar?
-2. **Legado do ClickUp não cria fornecedor novo:** `ensureSupplier` trata o
-   `Client-5113` ("não cadastrado") como erro, então o `IncluirCliente` nunca
-   roda. Corrigir faz o fluxo em produção passar a cadastrar fornecedores.
-3. **Family Office:** `FO_EMPRESA_*_APP_KEY` vazia cai na conta Omie padrão
-   (mesmo risco que foi fechado no Marcos Paulo).
-4. **Credenciais nas linhas de solicitação:** o seletor de conta grava
-   `app_key`/`app_secret` em `solicitacoes_pagamentos`. As respostas não as
-   devolvem mais, mas elas continuam no banco.
-5. **Painel Vercel:** pausar (recomendado) e depois aplicar a migração que
+   recusado. Qual conta usar? E sem `OMIE_FINQ_APP_*` ela lança no Omie da
+   Tria (não mudou; o boot avisa): é de propósito?
+2. **Marcos Paulo:** criado no `ws_n1` (`mem_marcos_paulo`), **sem login e
+   sem convite**, com o e-mail provisório `marcos.paulo@triacompany.com.br`.
+   Troque o e-mail em Configurações → Membros → Marcos Paulo → **Alterar
+   e-mail** (só enquanto ele não tiver login). Até ele entrar, **ninguém move
+   conta para "pago"**: a regra do Status só tem ele e o Walter.
+3. **Walter:** não criado (decisão). Criar com o id `mem_walter` ou tirá-lo da
+   regra do "pago" nas configurações da Lista.
+4. **Contas do ClickUp lançadas desde 20/05:** o legado apagava o RESUMO antes
+   de lançar (corrigido em `c272dad`), então o `IncluirContaPagar` ia sem
+   categoria. Vale conferir essas contas no Omie.
+5. **Agenda do `ws_n1`:** as linhas de 25 a 28/09 das Automações de Contas a
+   receber estão em `falhou` (faltava o Agente do pipeline, que agora existe).
+   Reprocessar dispara as Automações de verdade nas contas importadas —
+   decidir se quer isso ou deixar como está (SQL da agenda, Etapa 2.3).
+6. **Painel Vercel:** pausar (recomendado) e depois aplicar a migração que
    tira a leitura anônima.
-6. **Push e merge:** `financeiro-tria/main` para o GitHub; `integra-frontend-main`
+7. **Push e merge:** `financeiro-tria/main` para o GitHub; `integra-frontend-main`
    na sua branch do CRM N1.
-7. **Próxima rodada (6.5 e itens de produto):** Formulário público no `ws_n1`,
+8. **Próxima rodada (6.5 e itens de produto):** Formulário público no `ws_n1`,
    outbox ligado, aceitar convite, Resumo depois da aprovação na plataforma
-   (S5), upload real no Conhecimento, credencial em `conectarIntegracao`.
+   (S5), retomada do pipeline sem reexecutar tudo, upload real no
+   Conhecimento, credencial em `conectarIntegracao`.
+
+Resolvidas nesta rodada (2026-09-28/29, sem push): o legado do ClickUp
+passa a cadastrar fornecedor novo (`0014772`); o Family Office sem
+credencial própria recusa em vez de lançar no Omie da Tria (`a157f0a`,
+`cf29662`); as credenciais deixam de ser gravadas nas linhas de solicitação
+(`0ec964b`; o que já está gravado sai pelo SQL 4b, `bb1df69`).

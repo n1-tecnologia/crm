@@ -5,21 +5,22 @@ subsistema, 31 afirmações críticas verificadas por 3 céticos cada, crítico 
 completude) feita antes do primeiro lançamento real no Omie pela plataforma.
 Os achados com evidência (`caminho:linha`) estão no **Anexo A**, no fim.
 
-## Execução (2026-09-28) — o código está feito; falta produção
+## Execução (2026-09-28 e 29) — o código está feito; falta produção
 
 Decisão do dono: **fazer todas as correções sem trocar credenciais** (a 4.1
 não foi feita; segredo que estava no código mudou de lugar, com o mesmo
-valor). Tudo local, sem push.
+valor). Tudo local, sem push (`financeiro-tria/main` 99 commits à frente do
+`origin/main`; `integra-frontend-main` só local).
 
 | Etapa | Código | O que falta (quem) |
 |---|---|---|
-| 0 | ✅ API e `automation/` locais parados (inclusive o `tsx watch` que sobrava); commits feitos | Você: A7 pausa pelo CLI (2.1); firewall do macOS |
-| 1.1–1.3, 1.6 | ✅ `financeiro-tria` `b31d8db..eaf3d77` | Etapa 3 (teste real) |
+| 0 | ✅ API e `automation/` locais parados (inclusive o `tsx watch` que sobrava); commits feitos | Você: firewall do macOS |
+| 1.1–1.3, 1.6 | ✅ `financeiro-tria` `b31d8db..eaf3d77` | — |
 | 1.4, 1.5 | ✅ `crm-n1` `9cfca56`, `e60fe50`, `8f959a1`, `2278048`; contrato dos dois lados `02ce704` | — |
-| 2.1 | ✅ `5a4d4d5`, `d5913eb`, `dbe19d3` | Você: `contas-a-pagar:configurar --apply` |
-| 2.2 | ✅ `be8f557`, `08a6330` | Você: `solicitacoes:configurar --apply` |
+| 2.1 | ✅ `5a4d4d5`, `d5913eb`, `dbe19d3`; **aplicado no `ws_n1`** em 2026-09-28 (exigências do Omie na saída de "para pagar", A7 pausada; nova conferência: 0 a fazer) | — |
+| 2.2 | ✅ `be8f557`, `08a6330`; **aplicado** (Agente do pipeline `mem_tarjw8`, `sts_sp_em_revisao`, 3 concessões) | — |
 | 2.3, 2.4 | — (operação) | Você: SQL da agenda, `outbox:limpar-testes` |
-| 3 | ✅ `npm run teste:omie-real` (`5293dc3`, `91ac38c`, `186147c`); rodado no Omie real em 2026-09-28 — lançado, conferido, sem duplicata, excluído | A jornada pela tela (2B do roteiro), quando quiser |
+| 3 | ✅ `npm run teste:omie-real` (`5293dc3`, `91ac38c`, `186147c`); rodado no Omie real em 2026-09-28 (título 5871703884) e **de novo em 2026-09-29** depois das correções do legado, que mexeram no adaptador do Omie (título 5872219943) — lançado, conferido, sem duplicata, excluído | A jornada pela tela com a ponte em `lancar` (2B do roteiro) |
 | 4.1 | ⏸ não feita (decisão: mesmas credenciais) | — |
 | 4.2–4.5, 4.7 | ✅ `financeiro-tria` `bb3cc14..ed9ef58` | Você: variáveis no `.env` da VPS |
 | 4.6 | ✅ roteiro e SQL em `financeiro-tria/supabase/manual/` | Você: SQL Editor, na ordem do README |
@@ -27,28 +28,49 @@ valor). Tudo local, sem push.
 | 6.1–6.4 | ✅ `financeiro-tria` `d21c726..8e241e5`, `ba11906` | Você: SQL de deduplicação; variáveis `PLATAFORMA_*` |
 | 6.5 | Parcial: Membro do pipeline ✅; Formulário público no `ws_n1`, aceitar convite e outbox ligado ❌ | Próxima rodada |
 | 7 | ✅ CI nos dois repos, testes frágeis, código morto, `scripts/` no typecheck, `npm test` isolado | Itens de produto do CRM N1 (Conhecimento, `conectarIntegracao`, "Formulário desatualizado") ❌ |
+| Legado do ClickUp (achados da execução) | ✅ `financeiro-tria` `0014772` (`ensureSupplier` cadastra fornecedor novo), `a157f0a` + `cf29662` (Family Office sem credencial própria recusa em vez de lançar no Omie da Tria; aviso de boot), `0ec964b` + `bb1df69` (credenciais fora das linhas + SQL de limpeza), `c272dad` (RESUMO preservado; código da conta por task) | Você: `FO_EMPRESA_*` no `.env` **antes** do deploy; SQL 4b **depois**; FINQ (decisão) |
+| Membros e jornada (`ws_n1`) | ✅ `crm-n1` `4ae35f7` (trocar e-mail do convite; troca de Papel passa a gravar), `a3e2b29` (regra do Status aponta quem não é Membro), `ebdae92` (textos das Automações), `c66f822` (jornada); Marcos Paulo criado **sem login e sem convite** | Você: e-mail certo e login do Marcos; Walter (não criado, por decisão) |
 
-Provas: `financeiro-tria` 489/489 testes (isolados, 0 acessos de rede) e
-typecheck de `src/` e `scripts/`; servidor integrado sobe sem `PLATAFORMA_*`
-(health 200, rotas protegidas 401). `crm-n1` `npm run check` verde sem banco
-(domínio 735, web 216, api 549 + 205 de banco pulados) e contrato
-`contas-a-pagar-v1` 21/21, com as duas cópias iguais por hash.
+Provas: `financeiro-tria` em `c272dad` (2026-09-29) 538/538 testes
+(isolados, 0 acessos de rede) e typecheck; teste real do Omie `--lancar` OK
+(acima). `crm-n1` em `e5eb213` (2026-09-28, último commit de código)
+`npm run check` verde sem banco (domínio 752, web 216, api 571 + 205 de
+banco pulados); jornada no navegador 4 de 4 (N1-492..N1-495); contrato
+`contas-a-pagar-v1` 21/21 em 2026-09-28, com as duas cópias iguais por hash —
+as fixtures do `financeiro-tria` não mudaram desde então (`eaf3d77`), mas a
+nova rodada do teste de contrato não pôde ser feita pelo agente (bloqueada
+pelo classificador; o comando está no roteiro, passo 0).
 
-Achados novos durante a execução (decisão sua, ver o roteiro): FINQ sem Conta
-de Pagamento mapeada (agora recusa em vez de usar a primeira conta);
-`ensureSupplier` do legado nunca cria fornecedor (trata `Client-5113` como
-erro); Family Office com `FO_EMPRESA_*_APP_KEY` vazia cai na conta Omie
-padrão; o seletor de conta grava `app_key`/`app_secret` nas linhas de
-solicitação; retomada do pipeline reexecuta tudo (reenvia WhatsApp se
-`NOTIFY_NEW_REQUEST_WHATSAPP` estiver ligado); depois da aprovação na
-plataforma não sai RESUMO (spec S5). **Jornada real no navegador
-(`npm run jornada:financeiro -w @n1/web`, 2026-09-28, contas N1-488..N1-491):**
-o `ws_n1` só tem 2 Membros (Maryane e o usuário de teste), e a configuração
-aponta para `mem_marcos_paulo`/`mem_walter`, que não existem — ninguém move
-conta para "pago" (regra de entrada do Status) e a A3 falha ("Membro não
-encontrado"), deixando a conta sem Aprovador; A9 e R5 também citam
-`mem_marcos_paulo`. Corrigir é convidar os dois com esses ids ou remapear a
-regra e as Automações (decisão do dono).
+Achados novos durante a execução, e o que virou deles:
+- **Corrigidos:** `ensureSupplier` do legado nunca criava fornecedor (tratava
+  `Client-5113` como erro); Family Office com `FO_EMPRESA_*_APP_KEY` vazia
+  caía na conta Omie da Tria; o seletor de conta gravava `app_key`/`app_secret`
+  nas linhas de solicitação (o que já está gravado sai pelo SQL 4b).
+- **RESUMO apagado no legado (achado de 2026-09-28, corrigido em `c272dad`):**
+  desde 2026-05-20 (`bbd52df`) a re-sincronização do `launchFromStatusChange`
+  regravava `solicitacoes_pagamentos.comentario` com o comentário cru da task e
+  apagava o RESUMO — o `IncluirContaPagar` do fluxo do ClickUp ia com
+  `codigo_categoria` vazio. Vale conferir no Omie as contas lançadas pelo
+  ClickUp desde 20/05 (categoria vazia ou padrão). Preservar o RESUMO reabria
+  uma colisão (o "código de integração" dele é o do fornecedor), então o
+  código da conta passou a ser sempre `clickup-<taskId>` — o que produção já
+  fazia, sem querer, desde maio.
+- **Abertos:** FINQ sem Conta de Pagamento mapeada (recusa em vez de usar a
+  primeira conta) e sem credencial própria (continua na `OMIE_APP_*` da Tria,
+  agora com aviso de boot) — decisão do dono; retomada do pipeline reexecuta
+  tudo (reenvia WhatsApp se `NOTIFY_NEW_REQUEST_WHATSAPP` estiver ligado);
+  depois da aprovação na plataforma não sai RESUMO (spec S5).
+- **Jornada real no navegador** (`npm run jornada:financeiro -w @n1/web`): na
+  1ª rodada (N1-488..N1-491) o `ws_n1` só tinha Maryane e o usuário de teste,
+  e a configuração aponta para `mem_marcos_paulo`/`mem_walter` — a A3 falhava
+  ("Membro não encontrado") e ninguém movia para "pago". Por decisão do dono,
+  **só o Marcos** foi criado, com o id `mem_marcos_paulo`, Papel `role_mem`,
+  sem login e sem convite, e-mail provisório `marcos.paulo@triacompany.com.br`
+  (trocável em Configurações → Membros → Marcos Paulo → **Alterar e-mail**).
+  Na 2ª rodada (N1-492..N1-495) a A3 põe o Marcos como Aprovador e as
+  Automações de Contas a receber rodam. Enquanto o Marcos não tiver login,
+  **ninguém move conta para "pago"** (a regra do Status só tem ele e o
+  Walter, que não existe — a mensagem da tela agora diz isso).
 
 ## Como ler este plano
 
