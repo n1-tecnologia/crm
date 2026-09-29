@@ -18,6 +18,8 @@ import type {
 import { contactDisplayName, effectiveListConfig } from "../derive";
 import { memberActor, nextId, recordActivity, systemActor } from "./activity";
 import { addTaskComment, changeTaskStatus } from "./tasks";
+// Os textos da Conferência moram fora de `./financeiro` porque `./financeiro` importa daqui.
+import { TEXTOS_DA_CONFERENCIA } from "./financeiro-textos";
 import { nomeDeAgenteEmUso } from "./ia/agentes";
 import { nomeDeAutomacaoColide } from "./ia/automacoes-editor";
 import { validarAutomacao } from "./ia/automacoes-validacao";
@@ -395,6 +397,56 @@ export function decideProcessApproval(
 
   const task = state.tasks.find((t) => t.id === origin.taskId);
   if (!task) return fail("A Tarefa desta Solicitação não existe mais.");
+
+  if (origin.processStep === "resumo") {
+    /**
+     * Fase 6 (Fluxo 6) — a Conferência do Resumo. Clique e resposta no fio
+     * convergem aqui e produzem o MESMO fato: a resposta canônica no fio, a
+     * decisão gravada com a fonte e, na aprovação, o fio resolvido — como no
+     * ClickUp. Nunca muda o Status: conferir o Resumo é a condição do
+     * lançamento, não um passo do fluxo de Status (quem move para "lançado
+     * omie" é `registrarLancamentoNoOmie`, depois do Omie).
+     * Textos (`TEXTOS_DA_CONFERENCIA`): `✅ Resumo conferido por <nome>` e
+     * `🔁 Ajuste pedido por <nome>: <motivo>`.
+     */
+    const motivo = options.reason?.trim() ?? "";
+    const texto = decision === "aprovada" ? TEXTOS_DA_CONFERENCIA.conferido(member.displayName) : TEXTOS_DA_CONFERENCIA.ajuste(member.displayName, motivo);
+    const resposta = addTaskComment(state, actingMemberId, task.id, { content: texto, parentCommentId: origin.threadCommentId });
+    if (!resposta.ok) return fail(resposta.error, resposta.field);
+
+    approval.decision = decision;
+    approval.decidedByMemberId = actingMemberId;
+    approval.decidedAt = now();
+    approval.decisionSource = options.source;
+    if (motivo) approval.decisionReason = motivo;
+
+    if (decision === "aprovada") {
+      // Direto, sem a guarda de autor de `resolveTaskComment`: o fio é do
+      // Agente, e quem o fecha é quem conferiu.
+      const raiz = task.comments.find((c) => c.id === origin.threadCommentId && !c.deletedAt);
+      if (raiz && !raiz.resolved) {
+        raiz.resolved = { by: actingMemberId, at: now() };
+        recordActivity(state, {
+          actor: memberActor(actingMemberId),
+          action: "Comentário resolvido",
+          objectType: "task",
+          objectId: task.id,
+          objectName: task.title,
+        });
+      }
+    }
+
+    recordActivity(state, {
+      actor: memberActor(actingMemberId),
+      action: "Aprovação decidida",
+      objectType: "approvalRequest",
+      objectId: approval.id,
+      objectName: task.title,
+      after: decision,
+      detail: `${options.source === "click" ? "por clique" : "por comentário"}${motivo ? ` — ${motivo}` : ""}`,
+    });
+    return ok(approval);
+  }
 
   // D-09 — a resposta canônica é publicada como resposta ao tópico de roteamento, texto fixo.
   const texto = decision === "aprovada" ? `✅ Aprovado por ${member.displayName}` : `❌ Reprovado por ${member.displayName}`;

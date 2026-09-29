@@ -1578,7 +1578,12 @@ export function resolveTaskComment(
   if (comment.parentCommentId) return fail("Resolva o fio pelo Comentário que o abriu.");
   // 17.1 — `comentar` resolve os próprios fios; os de terceiros são `administrar`.
   const autorId = comment.author.kind === "member" ? comment.author.id : comment.authorDelegate?.id;
-  if (autorId !== actingMemberId && !isWorkspaceAdmin(state, actingMemberId)) {
+  // Fase 6 — o fio do Resumo é aberto pelo Agente em nome do serviço; quem o
+  // confere precisa poder fechá-lo à mão também (no ClickUp, "Resolvido" pela Maryane).
+  const confereEsteFio = state.approvals.some(
+    (a) => a.origin?.kind === "processTask" && a.origin.processStep === "resumo" && a.origin.threadCommentId === commentId && a.approverMemberId === actingMemberId,
+  );
+  if (autorId !== actingMemberId && !confereEsteFio && !isWorkspaceAdmin(state, actingMemberId)) {
     return fail("Só quem abriu o fio, ou um Administrador, o resolve.");
   }
 
