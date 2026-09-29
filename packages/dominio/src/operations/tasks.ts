@@ -412,13 +412,19 @@ export function assignTask(
   }
   task.assignees.push(assignee);
   task.updatedAt = now();
+  // O nome, como em `unassignTask`: a Atividade é lida por gente — com o id, a
+  // linha dizia "Responsável atribuído (— → mem_marcos_paulo)" (jornada de 2026-09-29).
+  const nome =
+    assignee.kind === "member"
+      ? (state.members.find((m) => m.id === assignee.id)?.displayName ?? assignee.id)
+      : (state.agents.find((a) => a.id === assignee.id)?.name ?? assignee.id);
   recordActivity(state, {
     actor: memberActor(actingMemberId),
     action: "Responsável atribuído",
     objectType: "task",
     objectId: task.id,
     objectName: task.title,
-    after: assignee.id,
+    after: nome,
   });
   return ok(task, task.id);
 }
