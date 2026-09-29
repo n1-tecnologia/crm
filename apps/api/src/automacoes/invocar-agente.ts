@@ -4,89 +4,181 @@
  * `packages/dominio` não faz I/O (regra de `./CONTEXT.md`, D3-02): o domínio
  * RECEBE o de-para do lançamento, nunca o busca. Quem lê a fonte de verdade
  * (o plano de contas real do Omie e o RAG de categorias) é a rota do
- * `automation/` (03-07, `POST /v1/integrations/contas-a-pagar/{resolver,lancar}`).
+ * `automation/` (03-07, `POST /v1/integrations/contas-a-pagar/{resolver,lancar}`,
+ * contrato v1.1 de 06-02).
  *
- * **O gatilho é o Status, não o calendário** (plano pós-auditoria,
- * `docs/08-migracao-financeiro/07-plano-de-correcoes-pos-auditoria.md`, 1.4 e
- * 1.5). A cada ciclo, toda conta ativa da Lista configurada que ENTROU em "em
- * lançamento omie" por um movimento na plataforma é lançada: confere o que o
- * Omie exige (`erpMissingFields`, a mesma regra da saída de "para pagar"),
- * chama `/resolver` e `/lancar`, e com o lançamento confirmado publica o
- * Resumo e move a conta para "lançado omie" numa transação só. A A7 (véspera
- * do vencimento) saiu do seed; `rodarAgenda` só garante que uma A7 legada
- * ainda ativa nunca lance (ver lá). Nenhuma chamada ao Omie nasce para conta
- * em "para pagar" — o antigo pré-aquecimento do de-para, que chamava
- * `/resolver` para todas elas a cada ciclo, era custo puro no Omie e na
- * OpenAI.
+ * **Dois momentos (Fase 6, Fluxos 5, 6 e 7).** A cada ciclo — pelo relógio
+ * (`intervaloMs`) ou cutucada por uma gravação na conta (`cutucar()`, D6-12)
+ * —, a ponte olha as contas ativas da Lista em "para pagar" e "em lançamento
+ * omie" (ou só nesta, D6-01) e, para cada uma:
+ *
+ *   1. Momento 1 — o Resumo para conferência (Fluxo 5): conta completa
+ *      (`erpMissingFields` vazio) sem Resumo para os dados atuais ⇒ UM
+ *      `/resolver` e UM `publicarResumoParaConferencia` do domínio: o
+ *      `📋 RESUMO DE PAGAMENTO` no fio da conta, aberto ao Financeiro, e uma
+ *      Conferência pendente.
+ *   2. A conferência pelo fio (Fluxo 6): com a Conferência pendente, a última
+ *      resposta de um revisor decide em nome dele (`decideProcessApproval`,
+ *      `source: "comment"`, D6-02); um pedido de ajuste faz o ciclo seguinte
+ *      chamar `/resolver` com `pedidoDeRevisao` (e o código `d.dd.dd` que o
+ *      pedido citar) e republicar no mesmo fio.
+ *   3. Momento 2 — o lançamento (Fluxo 7): conta que ENTROU em "em lançamento
+ *      omie" por movimento, com a Conferência aprovada para os dados atuais ⇒
+ *      `/lancar` com o código conferido e os anexos, e o domínio registra o
+ *      título (`registrarLancamentoNoOmie`) ou a falha, que volta a conta
+ *      para "para pagar" (`registrarFalhaDoLancamento`, D6-03). **Sem
+ *      Conferência aprovada, nenhuma requisição a `/lancar`.**
+ *
+ * **Três modos (D6-11), só por literal exato.** `ensaio` (padrão) só chama
+ * `/resolver` e registra em log o que publicaria/lançaria — nada gravado na
+ * conta. `conferencia` publica Resumos, lê o fio e revisa, mas NUNCA chama
+ * `/lancar`: com a conta conferida em "em lançamento omie", comenta uma vez
+ * que o lançamento está desligado neste ambiente. `lancar` faz tudo. Qualquer
+ * outro valor cai em `ensaio` com aviso. Nos dois primeiros modos o
+ * `/lancar` é inalcançável — o erro barato é não lançar; o erro caro é lançar.
  *
  * **Ninguém fica repetindo chamadas ao Omie.** A ponte guarda, em memória e
- * por conta, a impressão digital do que decide o lançamento
- * (`impressaoDaConta`: Campos, vencimento, Tags, Status e o Registro da
- * entrada em "em lançamento omie"). Depois de uma recusa comentada — dado
- * faltando, erro permanente do `automation/`, categoria sem confiança,
- * lançamento não confirmado, três falhas transitórias seguidas —, a conta
- * não é mais processada (nenhum `/resolver`, nenhum `/lancar`) até a
- * impressão mudar: alguém corrigir um Campo, ou a conta sair e voltar para
- * "em lançamento omie" (a volta é um Registro novo, logo impressão nova).
- * Quando a conta sai do Status, o estado dela é apagado.
+ * por conta, uma chave do que decide o próximo passo — a impressão de
+ * lançamento do domínio (`impressaoDeLancamento`, D6-10), o Status, o
+ * Registro da última mudança de Status e a Conferência vigente com a sua
+ * decisão. Depois de uma recusa comentada — dado faltando, erro permanente
+ * do `automation/`, lançamento não confirmado, três falhas transitórias
+ * seguidas —, a conta não é mais processada até essa chave mudar: alguém
+ * corrigir um Campo, mover a conta, ou decidir a Conferência. Conta fora dos
+ * dois Status é esquecida.
  *
- * **Só lança o que entrou por movimento.** Uma conta que NASCEU em "em
- * lançamento omie" — a importação histórica do ClickUp
- * (`contas-a-pagar:importar`, `nasceNoStatusPedido`) — pode já ter sido
- * lançada no Omie pelo processo antigo, com outro código de integração que a
- * consulta-antes-de-incluir não enxerga: lançá-la seria duplicata. A ponte
- * pede, uma vez, que alguém confira e a mova para "para pagar" e de volta.
+ * **O legado importado nunca é varrido (G1).** Uma conta importada do ClickUp
+ * (`provenance.kind === "import"`) só entra na ponte depois de um movimento
+ * de Status feito AQUI, posterior à importação — a mesma regra de
+ * `entrouPorMovimento`. Sem isso, o primeiro ciclo em `conferencia` publicaria
+ * um Resumo e mencionaria o Financeiro em cada conta importada completa.
  *
- * D3-03 em uma frase, e a sua consequência mecânica: o padrão é ENSAIO — só
- * o literal `lancar` em `AGENTE_CONTAS_A_PAGAR_MODO` liga a caneta, e mesmo
- * ele exige credencial e URL presentes; qualquer outra coisa (ausente,
- * vazio, erro de digitação) cai em ensaio COM AVISO, nunca em silêncio. Em
- * ensaio a ponte só chama `/resolver` — o endereço que 03-07 construiu sem
- * porta de escrita — e só registra em log o que lançaria: nenhum Comentário,
- * nenhum Status, nada gravado na conta. Durante a primeira semana, o erro
- * barato é não lançar; o erro caro é lançar.
+ * **Portas de ambiente de teste (G2, G3).** `soTitulosCom` restringe os dois
+ * momentos às contas cujo título contém o texto (ex.: "TESTE
+ * AUTOMATIZADO"); `avisarId` troca QUEM toda Menção da ponte avisa (o
+ * Financeiro, por padrão). Produção deixa as duas vazias.
+ *
+ * T-3-04 — o que vai ao log é lista fechada: ids, `code`, contagens e a
+ * tripla conta · categoria · código. Nunca o texto do Resumo, chave Pix,
+ * código de barras, valor, documento ou nome do fornecedor, título, URL
+ * assinada, o pedido de revisão ou o `details.motivo`.
  */
 
 import { randomUUID } from "node:crypto";
 import type { ActivityRecord, DataState, Id, OperationResult, Task } from "@n1/dominio";
 import { ok } from "@n1/dominio";
 import { newestFirst, statusDefinition } from "@n1/dominio/derive";
+import { decideProcessApproval } from "@n1/dominio/operations/ai";
 import { runScheduledAutomations } from "@n1/dominio/operations/automations";
 import {
   CP,
-  INVOCADOR_DO_LANCAMENTO,
+  TEXTOS_DA_CONFERENCIA,
   avisadoDoLancamento,
   buildResumoDePagamento,
+  classificarRespostaDeConferencia,
+  conferenciaDoResumo,
   erpMissingFields,
-  runLancamentoAgent,
+  impressaoDeLancamento,
+  publicarResumoParaConferencia,
+  registrarFalhaDoLancamento,
+  registrarLancamentoNoOmie,
+  respostasDeConferenciaPendentes,
+  type AnexoDoLancamento,
+  type ConferenciaDoResumo,
   type DeParaDeLancamento,
 } from "@n1/dominio/operations/financeiro";
-import { addTaskComment, changeTaskStatus } from "@n1/dominio/operations/tasks";
+import { addTaskComment } from "@n1/dominio/operations/tasks";
 import { pool } from "../persistencia/conexao";
 import { resolverMembroAgenteDoPipeline } from "../persistencia/credenciais-de-servico";
 import { executar } from "../persistencia/unidade-de-trabalho";
 import { hidratar } from "../persistencia/repositorio";
 import { sanitizarErro } from "../persistencia/outbox-worker";
+import { anexosDaConta, type AssinarDownload } from "./anexos-da-conta";
 import type { RodarAgenda } from "./scheduler-worker";
 
 /* ─────────────────────────── Funções puras ─────────────────────────── */
 
+export type ModoDaPonte = "ensaio" | "conferencia" | "lancar";
+
 /**
- * Só o literal exato `"lancar"` liga a caneta. Qualquer outra coisa —
- * ausente, vazio, um erro de digitação — cai em `"ensaio"`, com aviso
- * apenas quando o valor não é um dos dois esperados (ausente ou `"ensaio"`
- * explícito não avisam; são o estado normal da primeira semana). A
- * assimetria é proposital: a lista de valores que ligam a caneta tem UM
- * elemento; a lista dos que a mantêm no bolso é tudo o mais, inclusive o
- * erro de digitação.
+ * D6-11 (e D3-03 antes dele) — só os literais exatos `"conferencia"` e
+ * `"lancar"` mudam o modo. Qualquer outra coisa — ausente, vazio, maiúscula,
+ * acento, espaço, erro de digitação — cai em `"ensaio"`, com aviso apenas
+ * quando o valor não é um dos esperados (ausente ou `"ensaio"` explícito não
+ * avisam). O aviso nomeia a variável, nunca o seu conteúdo.
  */
-export function resolverModo(bruto: string | undefined): { readonly modo: "ensaio" | "lancar"; readonly aviso?: string } {
+export function resolverModo(bruto: string | undefined): { readonly modo: ModoDaPonte; readonly aviso?: string } {
   if (bruto === "lancar") return { modo: "lancar" };
+  if (bruto === "conferencia") return { modo: "conferencia" };
   if (bruto === undefined || bruto === "ensaio") return { modo: "ensaio" };
   return {
     modo: "ensaio",
-    aviso: 'AGENTE_CONTAS_A_PAGAR_MODO tem um valor não reconhecido — caiu em "ensaio" (só o literal "lancar" liga a caneta).',
+    aviso: 'AGENTE_CONTAS_A_PAGAR_MODO tem um valor não reconhecido — caiu em "ensaio" (só os literais "conferencia" e "lancar" mudam o modo).',
   };
+}
+
+/** As três decisões de `06-CONTEXT.md` que o dono troca sem código (D6-01, D6-02, D6-04). */
+export interface OpcoesDeDecisao {
+  /** D6-01 — de onde o Resumo aparece. */
+  readonly resumoAPartirDe: "para-pagar" | "em-lancamento-omie";
+  /** D6-02 — uma resposta de aprovação no fio vale como conferência. */
+  readonly conferenciaPorComentario: boolean;
+  /** D6-04 — o que "Integração manual = Manual" quer dizer para a ponte. */
+  readonly integracaoManual: "nao-encosta" | "sem-conferencia";
+}
+
+export const DECISOES_PADRAO: OpcoesDeDecisao = {
+  resumoAPartirDe: "para-pagar",
+  conferenciaPorComentario: true,
+  integracaoManual: "nao-encosta",
+};
+
+function lerEnum<T extends string>(env: Readonly<Record<string, string | undefined>>, nome: string, aceitos: readonly T[], padrao: T, avisos: string[]): T {
+  const bruto = env[nome];
+  if (bruto === undefined || bruto === "") return padrao;
+  if ((aceitos as readonly string[]).includes(bruto)) return bruto as T;
+  avisos.push(`${nome} tem um valor não reconhecido — vale o padrão "${padrao}" (aceitos: ${aceitos.join(", ")}).`);
+  return padrao;
+}
+
+/**
+ * As três variáveis de decisão. Valor desconhecido ⇒ o padrão, com um aviso
+ * que nomeia a variável (nunca o valor lido).
+ */
+export function lerOpcoesDeDecisao(env: Readonly<Record<string, string | undefined>>): OpcoesDeDecisao & { readonly avisos: readonly string[] } {
+  const avisos: string[] = [];
+  const resumoAPartirDe = lerEnum(env, "AGENTE_CONTAS_A_PAGAR_RESUMO_A_PARTIR_DE", ["para-pagar", "em-lancamento-omie"] as const, DECISOES_PADRAO.resumoAPartirDe, avisos);
+  const porComentario = lerEnum(env, "AGENTE_CONTAS_A_PAGAR_CONFERENCIA_POR_COMENTARIO", ["true", "false"] as const, "true", avisos);
+  const integracaoManual = lerEnum(env, "AGENTE_CONTAS_A_PAGAR_INTEGRACAO_MANUAL", ["nao-encosta", "sem-conferencia"] as const, DECISOES_PADRAO.integracaoManual, avisos);
+  return { resumoAPartirDe, conferenciaPorComentario: porComentario === "true", integracaoManual, avisos };
+}
+
+/**
+ * G2/G3 — as duas portas de ambiente de teste. Vazias (o padrão de
+ * produção), nada muda. Espaços nas pontas são ignorados; `soTitulosCom` é
+ * comparado com o título exatamente como está (maiúsculas contam).
+ */
+export function lerOpcoesDeEscopo(env: Readonly<Record<string, string | undefined>>): { readonly soTitulosCom?: string; readonly avisarId?: Id } {
+  const soTitulosCom = env.AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM?.trim();
+  const avisarId = env.AGENTE_CONTAS_A_PAGAR_AVISAR_ID?.trim();
+  return { ...(soTitulosCom ? { soTitulosCom } : {}), ...(avisarId ? { avisarId } : {}) };
+}
+
+/** O resumo das portas de teste para a linha de partida do log (sem o id do Membro). */
+export function descreverEscopo(soTitulosCom: string | undefined): string {
+  return soTitulosCom ? `escopo=titulos-com:${JSON.stringify(soTitulosCom)}` : "escopo=todas";
+}
+
+/** A forma dos códigos do plano de contas do Omie — a mesma do contrato v1.1 (`2.06.01`, `2.02.98.01`). */
+const REGEX_CODIGO_DE_CATEGORIA = /^\d(\.\d{2}){2,3}$/;
+
+/**
+ * Fluxo 6 — o código de Categoria que um pedido de ajuste cita ("use 2.02.98
+ * por favor"), para o `/resolver` validar no plano de contas real sem
+ * perguntar ao RAG de novo. Sem código, `undefined`.
+ */
+export function codigoNoPedido(texto: string): string | undefined {
+  return /(?<![\d.])(\d(?:\.\d{2}){2,3})(?!\.?\d)/.exec(texto)?.[1];
 }
 
 /**
@@ -104,15 +196,22 @@ export function chaveDeIdempotencia(taskId: string): string {
 /**
  * Os prazos por chamada (plano pós-auditoria, 1.4). `/resolver` só lê (de-para
  * e plano de contas): 10 s bastam. `/lancar` procura ou cadastra o
- * fornecedor, consulta antes de incluir e inclui — de 6 a 8 chamadas em
- * série ao Omie, que o `automation/` limita a 4 por segundo: 10 s cortariam um
- * lançamento que estava dando certo, e o corte vira falha transitória.
+ * fornecedor, consulta antes de incluir, inclui e sobe os anexos — várias
+ * chamadas em série ao Omie, que o `automation/` limita a 4 por segundo: 10 s
+ * cortariam um lançamento que estava dando certo, e o corte vira falha
+ * transitória.
  */
 export const TIMEOUT_RESOLVER_MS = 10_000;
 export const TIMEOUT_LANCAR_MS = 60_000;
 
+/** D6-12 — quanto a ponte espera depois de uma cutucada antes de rodar o ciclo (coalesce as cutucadas desse intervalo). */
+export const ATRASO_DA_CUTUCADA_MS = 2_000;
+
 /** Quantas falhas transitórias seguidas uma conta aguenta antes de a ponte desistir dela e avisar (1.4). */
 export const TENTATIVAS_TRANSITORIAS = 3;
+
+/** O teto do contrato v1.1 para `pedidoDeRevisao`. */
+const TAMANHO_MAXIMO_DO_PEDIDO = 500;
 
 const STATUS_PERMANENTES: readonly number[] = [400, 401, 403, 404, 422];
 
@@ -219,6 +318,20 @@ function ultimaMudancaDeStatus(state: DataState, task: Task): ActivityRecord | u
 }
 
 /**
+ * G1 — a conta pode entrar na ponte: não é importada, ou o seu último
+ * movimento de Status foi feito AQUI, depois da importação. A reprodução do
+ * `status_history` do ClickUp (`importarContaAPagarHistorica`) grava
+ * Registros "Status alterado" sempre ANTERIORES a `provenance.at`; um
+ * movimento feito na plataforma é sempre posterior. É a mesma régua de
+ * `entrouPorMovimento`, aplicada a qualquer Status.
+ */
+export function movidaDepoisDaImportacao(state: DataState, task: Task): boolean {
+  if (task.provenance?.kind !== "import") return true;
+  const ultima = ultimaMudancaDeStatus(state, task);
+  return ultima !== undefined && Date.parse(ultima.at) > Date.parse(task.provenance.at);
+}
+
+/**
  * A conta ENTROU em "em lançamento omie" por um movimento na plataforma
  * (`changeTaskStatus`, `tasks.ts` — o Registro "Status alterado" com `after`
  * igual ao nome do Status), e não nasceu nele.
@@ -242,16 +355,6 @@ export function entrouPorMovimento(state: DataState, task: Task): boolean {
   return true;
 }
 
-/**
- * A impressão digital do que decide um lançamento — muda quando alguém
- * corrige um Campo, ou quando a conta sai e volta para "em lançamento omie"
- * (a volta é um Registro "Status alterado" novo); não muda quando o Agente
- * comenta. É a chave do "uma vez só" da ponte.
- */
-function impressaoDaConta(state: DataState, task: Task): string {
-  return JSON.stringify([task.fieldValues, task.dueDate, task.tagIds, task.statusId, ultimaMudancaDeStatus(state, task)?.id ?? null]);
-}
-
 /** O de-para que `rodarAgenda` passa: vazio e de origem Omie — nunca o do protótipo (T-3-39). */
 const DE_PARA_VAZIO: DeParaDeLancamento = { contaPorTag: {}, categoriaPorCampo: {}, origem: "omie" };
 
@@ -264,7 +367,13 @@ export interface OpcoesDaPonte {
   /** O par (Espaço, Lista) do Financeiro — a ponte é ESPECÍFICA por desenho, diferente do agendador (03-08), que é genérico. */
   readonly workspaceId: Id;
   readonly listId: Id;
-  readonly modo: "ensaio" | "lancar";
+  readonly modo: ModoDaPonte;
+  /** D6-01, D6-02, D6-04 — o que faltar vale o padrão (`DECISOES_PADRAO`). */
+  readonly decisoes?: Partial<OpcoesDeDecisao>;
+  /** G2 — só as contas cujo título contém este texto (exato, maiúsculas contam). Ausente: todas. */
+  readonly soTitulosCom?: string;
+  /** G3 — quem toda Menção da ponte avisa, no lugar do Financeiro, quando é Membro ativo. Ausente: a regra de sempre. */
+  readonly avisarId?: Id;
   readonly cnpjPorEmpresa?: Readonly<Record<string, string>>;
   readonly fetchImpl?: typeof fetch;
   /** Prazo de `/resolver`, em ms. Padrão `TIMEOUT_RESOLVER_MS` (10 s). */
@@ -273,6 +382,8 @@ export interface OpcoesDaPonte {
   readonly timeoutLancarMs?: number;
   /** Intervalo entre ciclos, em ms. Padrão 15 min. */
   readonly intervaloMs?: number;
+  /** Espera entre a cutucada e o ciclo, em ms. Padrão `ATRASO_DA_CUTUCADA_MS` (2 s). */
+  readonly atrasoDaCutucadaMs?: number;
   readonly registrar?: (nivel: "info" | "warn", mensagem: string, dados?: Record<string, string | number>) => void;
   /**
    * Padrão: hidrata `workspaceId` do Postgres real (`pool()`/`hidratar()`,
@@ -281,10 +392,10 @@ export interface OpcoesDaPonte {
    */
   readonly hidratarEstado?: () => Promise<DataState>;
   /**
-   * Quem assina o que o Agente grava (Comentários, Resumo, troca de Status).
-   * Padrão: o Membro de serviço do Papel "Agente do pipeline" (D-15; criado
-   * por `solicitacoes:configurar`, plano pós-auditoria 2.2). Só é resolvido
-   * no modo `lancar` — o ensaio não grava nada.
+   * Quem assina o que o Agente grava (Comentários, Resumo, decisões,
+   * lançamento). Padrão: o Membro de serviço do Papel "Agente do pipeline"
+   * (D-15; criado por `solicitacoes:configurar`, plano pós-auditoria 2.2).
+   * Só é resolvido nos modos que gravam — o ensaio não grava nada.
    */
   readonly resolverAtor?: (workspaceId: Id) => Promise<Id>;
   /**
@@ -294,32 +405,40 @@ export interface OpcoesDaPonte {
   readonly executarOperacao?: (
     operacao: (state: DataState) => OperationResult<unknown>,
   ) => Promise<{ readonly ok: true } | { readonly ok: false; readonly error: string; readonly conflito?: boolean }>;
+  /** Padrão: `urlDeDownload` (Storage, 5 min). Injetável só para o teste. */
+  readonly assinarAnexo?: AssinarDownload;
 }
 
 export interface PonteDoAgente {
   readonly rodarAgenda: RodarAgenda;
-  /**
-   * O gatilho por Status: toda conta que entrou em "em lançamento omie" é
-   * lançada no Omie e vai para "lançado omie". Fora de qualquer transação até
-   * o fim.
-   */
+  /** Um ciclo dos dois momentos. Fora de qualquer transação até cada gravação. */
+  processarContas(): Promise<void>;
+  /** O nome de antes da Fase 6 — o mesmo ciclo (`processarContas`). */
   lancarContasEmLancamento(): Promise<void>;
+  /**
+   * D6-12 — pede um ciclo: roda em `atrasoDaCutucadaMs` (2 s), e N cutucadas
+   * nesse intervalo viram UM ciclo; uma cutucada com um ciclo em voo vira
+   * exatamente um ciclo a mais, logo depois dele. Nunca lança exceção.
+   */
+  cutucar(): void;
   /** Roda um ciclo de imediato, depois a cada `intervaloMs`. Chamar duas vezes é no-op. */
   iniciar(): void;
-  /** Para o relógio; resolve quando o ciclo em voo (se houver) terminar. */
+  /** Para o relógio e a cutucada pendente; resolve quando o ciclo em voo (se houver) terminar. */
   parar(): Promise<void>;
 }
 
-/** Por que a ponte parou de processar uma conta, até a impressão dela mudar. */
-type MotivoDaParada = "recusa" | "transitorias" | "nasceu" | "manual" | "ensaio";
+/** Por que a ponte parou de processar uma conta, até a chave dela mudar. */
+type MotivoDaParada = "recusa" | "transitorias" | "nasceu" | "manual" | "ensaio" | "conferencia";
 
 interface EstadoDaConta {
-  readonly impressao: string;
-  /** Falhas transitórias SEGUIDAS nesta impressão. */
+  readonly chave: string;
+  /** Falhas transitórias SEGUIDAS com esta chave. */
   transitorias: number;
   parada?: MotivoDaParada;
   /** O Comentário que não chegou a ser gravado (conflito, por ex.) — tentado de novo sem chamar o Omie. */
   comentarioPendente?: string;
+  /** A última resposta do fio já lida e deixada de lado (ignorada, ou recusada pelo domínio) — não é relida. */
+  respostaLida?: Id;
 }
 
 function valorDoCampo(task: Task, definitionId: Id): string {
@@ -331,6 +450,13 @@ function valorDoCampo(task: Task, definitionId: Id): string {
 /** A Tag `conta *` da Tarefa, se houver — o mesmo critério de `financeiro.ts::buildResumoDePagamento`. */
 function tagDaContaDe(state: DataState, task: Task): string | undefined {
   return task.tagIds.map((id) => state.tags.find((t) => t.id === id)?.name ?? "").find((n) => n.startsWith("conta "));
+}
+
+/** G2 — a conta está no escopo da ponte. Por desestruturação, como `corpoResolverDe`. */
+function dentroDoEscopo(task: Task, soTitulosCom: string | undefined): boolean {
+  if (!soTitulosCom) return true;
+  const { title: titulo } = task;
+  return titulo.includes(soTitulosCom);
 }
 
 interface CorpoResolver {
@@ -345,9 +471,9 @@ interface CorpoResolver {
 /**
  * `undefined` quando falta Centro de Custo (D3-01) — nenhuma requisição
  * nasce sem ele. `titulo`/`descricao` saem de `task` por desestruturação
- * (nunca `task.title`/`task.description`) — o mesmo dado, mas fora do
- * padrão textual que o `grep` de T-3-04 varre: aqui é campo do CORPO da
- * requisição que o contrato de 03-07 exige, não um log.
+ * — o mesmo dado, mas fora do padrão textual que o `grep` de T-3-04 varre:
+ * aqui é campo do CORPO da requisição que o contrato de 03-07 exige, não um
+ * log.
  */
 function corpoResolverDe(state: DataState, task: Task): CorpoResolver | undefined {
   const centroDeCusto = valorDoCampo(task, CP.fields.centroDeCusto);
@@ -377,10 +503,13 @@ function corpoLancarDe(task: Task, base: CorpoResolver): Record<string, unknown>
   const forma = valorDoCampo(task, CP.fields.forma);
   const fornecedorTipo = valorDoCampo(task, CP.fields.fornecedor);
   const documento = fornecedorTipo === "CPF" ? valorDoCampo(task, CP.fields.cpf) : valorDoCampo(task, CP.fields.cnpj);
+  const dataDeEmissao = valorDoCampo(task, CP.fields.dataEmissao).slice(0, 10);
   return {
     ...base,
     valorCentavos,
     vencimento,
+    // v1.1 — a Data de Emissão vai ao Omie (e está na impressão de lançamento, D6-10).
+    ...(/^\d{4}-\d{2}-\d{2}$/.test(dataDeEmissao) ? { dataDeEmissao } : {}),
     formaDePagamento: forma,
     ...(forma === "Chave Pix" ? { chavePix: valorDoCampo(task, CP.fields.chavePix) } : {}),
     ...(forma === "Boleto" ? { codigoDeBarras: valorDoCampo(task, CP.fields.codigoBarras) } : {}),
@@ -389,10 +518,35 @@ function corpoLancarDe(task: Task, base: CorpoResolver): Record<string, unknown>
   };
 }
 
-/* Os textos que a ponte comenta na conta — os três fixos do plano (1.4) e os de apoio. */
+/** Uma URL no texto de erro de um anexo vira `[url]` — o Comentário nunca carrega um link assinado. */
+function semUrl(texto: string): string {
+  return texto.replace(/https?:\/\/\S+/g, "[url]").slice(0, 200);
+}
+
+/**
+ * Os anexos da resposta do `/lancar` como o domínio os conta
+ * (`TEXTOS_DA_CONFERENCIA.lancado`): nome (o devolvido, senão o enviado na
+ * mesma posição), ok e erro. A `url` da resposta é descartada aqui mesmo.
+ */
+function anexosDaResposta(corpo: unknown, enviados: ReadonlyArray<{ readonly nome: string }>): AnexoDoLancamento[] {
+  const lista = (corpo as { readonly anexos?: unknown } | undefined)?.anexos;
+  if (!Array.isArray(lista)) return [];
+  return lista.map((item: unknown, i) => {
+    const a = (typeof item === "object" && item !== null ? item : {}) as { readonly nome?: unknown; readonly ok?: unknown; readonly erro?: unknown };
+    const nome = typeof a.nome === "string" && a.nome ? a.nome : (enviados[i]?.nome ?? `anexo ${i + 1}`);
+    return { nome, ok: a.ok === true, ...(typeof a.erro === "string" && a.erro ? { erro: semUrl(a.erro) } : {}) };
+  });
+}
+
+/* Os textos que a ponte comenta na conta — os fixos do plano (1.4) e os de apoio. */
 
 export function textoDaRecusaPermanente(motivo: string | undefined, code: string): string {
   return `Não consegui lançar no Omie: ${motivo ?? "o Financeiro recusou a chamada"} (${code}).`;
+}
+
+/** Momento 1 — o `/resolver` recusou: não há Resumo a publicar. */
+export function textoDaRecusaDoResumo(motivo: string | undefined, code: string): string {
+  return `Não consegui preparar o Resumo desta conta: ${motivo ?? "o Financeiro recusou a chamada"} (${code}). Tento de novo quando algum Campo mudar.`;
 }
 
 export function textoDasTransitorias(code: string): string {
@@ -402,13 +556,29 @@ export function textoDasTransitorias(code: string): string {
 export const TEXTO_NASCEU_EM_LANCAMENTO =
   'Não lancei esta conta no Omie: ela chegou em "em lançamento omie" pela importação do ClickUp, não por um movimento aqui, e pode já ter sido lançada pelo processo antigo. Confira no Omie; se ainda não estiver lá, mova-a para "para pagar" e de volta para "em lançamento omie" que eu lanço.';
 
+export const TEXTO_SEM_CODIGO_CONFERIDO =
+  "Não consegui lançar no Omie: o Resumo conferido não tem um código de Categoria do Omie. Responda no fio do Resumo com o código (ex.: 2.02.98) e confira de novo.";
+
+export const TEXTO_SAIU_ANTES_DO_REGISTRO =
+  'O Omie confirmou o lançamento desta conta, mas ela saiu de "em lançamento omie" antes de eu registrar o lançamento. Se ela voltar para "em lançamento omie", eu registro sem lançar de novo.';
+
+/** D6-04 `sem-conferencia` — o motivo gravado na decisão (e no Registro "Aprovação decidida"). */
+export const MOTIVO_DA_DISPENSA = "Conferência dispensada (Integração manual)";
+
+const CAMINHO_RESOLVER = "/v1/integrations/contas-a-pagar/resolver";
+const CAMINHO_LANCAR = "/v1/integrations/contas-a-pagar/lancar";
+
 export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
   const fetchImpl = opcoes.fetchImpl ?? fetch;
   const timeoutResolverMs = opcoes.timeoutResolverMs ?? TIMEOUT_RESOLVER_MS;
   const timeoutLancarMs = opcoes.timeoutLancarMs ?? TIMEOUT_LANCAR_MS;
   const intervaloMs = opcoes.intervaloMs ?? 900_000;
+  const atrasoDaCutucadaMs = opcoes.atrasoDaCutucadaMs ?? ATRASO_DA_CUTUCADA_MS;
   const registrar = opcoes.registrar ?? (() => undefined);
-  const { destinoUrl, token, workspaceId, listId, modo, cnpjPorEmpresa } = opcoes;
+  const { destinoUrl, token, workspaceId, listId, modo, cnpjPorEmpresa, soTitulosCom } = opcoes;
+  const decisoes: OpcoesDeDecisao = { ...DECISOES_PADRAO, ...opcoes.decisoes };
+  /** Os modos que gravam na conta. O ensaio nunca grava (D3-03). */
+  const escreve = modo !== "ensaio";
   const hidratarEstado =
     opcoes.hidratarEstado ??
     (async () => {
@@ -435,7 +605,9 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
    * cabeçalhos, `AbortSignal.timeout` com o prazo DA CHAMADA (1.4).
    * `idempotencyKey` só existe em `/lancar` (`/resolver` não muta nada).
    * `randomUUID()` aqui é `x-request-id` — CORRELAÇÃO, nunca idempotência; a
-   * idempotência é sempre `chaveDeIdempotencia(taskId)`.
+   * idempotência é sempre `chaveDeIdempotencia(taskId)`. O corpo (com as URLs
+   * assinadas dos anexos e o pedido de revisão) NUNCA é registrado: a defesa
+   * é não coletar — `sanitizarErro` ainda redige URL com query string.
    */
   async function chamar(
     caminho: string,
@@ -474,8 +646,9 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
     const classificacao = classificar(resposta?.status, corpoResposta, erroDeRede);
     // T-3-04 — lista fechada: workspaceId/listId/code/summary. NUNCA o corpo
     // da requisição/resposta (chave Pix, código de barras, valor, título,
-    // fornecedor) nem o `details.motivo`, que pode citar o fornecedor.
-    // `sanitizarErro` é IMPORTADA de `outbox-worker.ts`, nunca reescrita.
+    // fornecedor, URLs dos anexos, pedido de revisão) nem o `details.motivo`,
+    // que pode citar o fornecedor. `sanitizarErro` é IMPORTADA de
+    // `outbox-worker.ts`, nunca reescrita.
     const erro = sanitizarErro(erroDeRede ?? new Error(`HTTP ${resposta?.status ?? "sem resposta"} de ${destinoUrl}${caminho}`), classificacao.code);
     registrar("warn", "Falha ao chamar o Agente de lançamento.", { workspaceId, listId, code: erro.code, summary: erro.summary });
     return {
@@ -494,7 +667,7 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
       return runScheduledAutomations(state, atorId, listIdRecebido, diaCivilData);
     }
     // Plano pós-auditoria, 1.4/1.5 — sem cache e sem rede: o lançamento não
-    // acontece mais pela agenda. `rehearsal: false` com `tarefasLancadas: []`
+    // acontece pela agenda. `rehearsal: false` com `tarefasLancadas: []`
     // faz qualquer A7 legada ainda ativa falhar "Lançamento não confirmado"
     // ANTES de invocar o Agente — nunca lança, e o de-para (vazio, origem
     // "omie") nunca é o do protótipo (T-3-39). As outras Automações por data
@@ -505,249 +678,430 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
     });
   };
 
-  /** O estado da ponte por conta — só das contas em "em lançamento omie"; as que saem são esquecidas. */
+  /** O estado da ponte por conta — só das contas nos Status que ela olha; as que saem são esquecidas. */
   const estadoPorConta = new Map<Id, EstadoDaConta>();
+  /** G1 — a última contagem registrada de contas importadas fora da ponte (o log só sai quando ela muda). */
+  let ultimaContagemDeImportadas = 0;
+  /** G3 — o aviso de `avisarId` inválido sai uma vez só por processo. */
+  let avisouAvisarInvalido = false;
 
-  async function lancarContasEmLancamento(): Promise<void> {
-    // T-3-35 — em modo `lancar`, credencial ou URL ausentes: nenhuma
+  /** G3 — `avisarId` quando é Membro ativo AGORA; senão, a regra de sempre (e um aviso, uma vez). */
+  function avisarDoCiclo(state: DataState): Id | undefined {
+    const pedido = opcoes.avisarId;
+    if (!pedido) return undefined;
+    if (state.members.some((m) => m.id === pedido && m.state === "ativo")) return pedido;
+    if (!avisouAvisarInvalido) {
+      avisouAvisarInvalido = true;
+      registrar("warn", "AGENTE_CONTAS_A_PAGAR_AVISAR_ID não é um Membro ativo do Espaço — as Menções da ponte seguem a regra de sempre (o Financeiro).", { workspaceId, listId });
+    }
+    return undefined;
+  }
+
+  async function processarContas(): Promise<void> {
+    // T-3-35 — num modo que grava, credencial ou URL ausentes: nenhuma
     // requisição, NUNCA queda silenciosa para ensaio.
-    if (modo === "lancar" && (!token || !destinoUrl)) return;
+    if (escreve && (!token || !destinoUrl)) return;
     const state = await hidratarEstado();
-    const contas = state.tasks.filter((t) => t.listId === listId && t.lifecycle === "ativo" && t.statusId === CP.status.emLancamento);
+    const statusOlhados: readonly Id[] =
+      decisoes.resumoAPartirDe === "para-pagar" ? [CP.status.paraPagar, CP.status.emLancamento] : [CP.status.emLancamento];
+    const contas = state.tasks.filter(
+      (t) => t.listId === listId && t.lifecycle === "ativo" && statusOlhados.includes(t.statusId) && dentroDoEscopo(t, soTitulosCom),
+    );
 
-    // Saiu de "em lançamento omie" (ou deixou de existir): esquece. Sair e
-    // voltar reprocessa — a volta é também impressão nova, então nem um
+    // Saiu dos Status olhados (ou do escopo, ou deixou de existir): esquece.
+    // Sair e voltar reprocessa — a volta é também chave nova, então nem um
     // ciclo perdido no meio do vaivém prende a conta.
     const presentes = new Set(contas.map((t) => t.id));
     for (const id of [...estadoPorConta.keys()]) if (!presentes.has(id)) estadoPorConta.delete(id);
-    if (contas.length === 0) return;
 
+    const avisar = avisarDoCiclo(state);
     let ator: Id | undefined;
     const atorDaEscrita = async (): Promise<Id> => (ator ??= await resolverAtor(workspaceId));
+    let importadasForaDaPonte = 0;
 
     for (const task of contas) {
-      const impressao = impressaoDaConta(state, task);
+      const emLancamento = task.statusId === CP.status.emLancamento;
+      // G1 — o legado importado nunca é varrido. Só a exceção de sempre: em
+      // `lancar`, a conta importada que está em "em lançamento omie" recebe,
+      // uma vez, o pedido de conferir no Omie (`TEXTO_NASCEU_EM_LANCAMENTO`).
+      const importadaParada = !movidaDepoisDaImportacao(state, task);
+      if (importadaParada && !(modo === "lancar" && emLancamento)) {
+        importadasForaDaPonte += 1;
+        estadoPorConta.delete(task.id);
+        continue;
+      }
+
+      const conf = conferenciaDoResumo(state, task);
+      const chave = JSON.stringify([
+        impressaoDeLancamento(state, task),
+        task.statusId,
+        ultimaMudancaDeStatus(state, task)?.id ?? null,
+        conf.conferencia?.id ?? null,
+        conf.conferencia?.decision ?? null,
+      ]);
       let estado = estadoPorConta.get(task.id);
-      if (!estado || estado.impressao !== impressao) {
-        estado = { impressao, transitorias: 0 };
+      if (!estado || estado.chave !== chave) {
+        estado = { chave, transitorias: 0 };
         estadoPorConta.set(task.id, estado);
       }
       const daConta = { workspaceId, listId, taskId: task.id };
+      const deste = estado;
 
-      /** Grava o Comentário do Agente (modo `lancar`); falhando, fica pendente para o próximo ciclo — sem chamar o Omie de novo. */
-      const comentar = async (texto: string): Promise<void> => {
+      /** Grava o Comentário do Agente (modos que gravam); falhando, fica pendente para o próximo ciclo — sem chamar o Omie de novo. */
+      const comentar = async (texto: string, parentCommentId?: Id): Promise<void> => {
         const atorId = await atorDaEscrita();
         const r = await executarOperacao((s) =>
           addTaskComment(s, atorId, task.id, {
             content: texto,
-            mentions: [{ type: "member", id: avisadoDoLancamento(s, atorId) }],
+            mentions: [{ type: "member", id: avisar ?? avisadoDoLancamento(s, atorId) }],
             actor: { kind: "agent", id: CP.agentId },
+            ...(parentCommentId ? { parentCommentId } : {}),
           }),
         );
-        if (r.ok) delete estado.comentarioPendente;
+        if (r.ok) delete deste.comentarioPendente;
         else {
-          estado.comentarioPendente = texto;
+          deste.comentarioPendente = texto;
           registrar("warn", "Não consegui gravar o Comentário do Agente; tento de novo no próximo ciclo.", daConta);
         }
       };
 
       /**
-       * Para de processar a conta até a impressão mudar. Em `lancar`, avisa
-       * na própria conta (uma vez, porque a parada impede a repetição); em
-       * `ensaio`, só registra — o ensaio não escreve na conta (D3-03).
+       * Para de processar a conta até a chave mudar. Nos modos que gravam,
+       * avisa na própria conta (uma vez, porque a parada impede a
+       * repetição); em `ensaio`, só registra — o ensaio não escreve (D3-03).
        */
-      const parar = async (motivo: MotivoDaParada, texto: string, log: string): Promise<void> => {
-        estado.parada = motivo;
-        if (modo === "lancar") await comentar(texto);
-        else registrar("info", `Ensaio — não lançaria: ${log}`, daConta);
+      const parar = async (motivo: MotivoDaParada, texto: string, log: string, momento: "publicaria" | "lançaria"): Promise<void> => {
+        deste.parada = motivo;
+        if (escreve) await comentar(texto);
+        else registrar("info", `Ensaio — não ${momento}: ${log}`, daConta);
+      };
+
+      /** Falha transitória: conta a seguida; na terceira, desiste da conta até a chave mudar e avisa. */
+      const falhaTransitoria = async (code: string, momento: "publicaria" | "lançaria", aviso = textoDasTransitorias(code)): Promise<void> => {
+        deste.transitorias += 1;
+        if (deste.transitorias >= TENTATIVAS_TRANSITORIAS) {
+          await parar("transitorias", aviso, `${TENTATIVAS_TRANSITORIAS} falhas transitórias seguidas (${code}).`, momento);
+        }
       };
 
       if (estado.parada) {
-        if (estado.comentarioPendente && modo === "lancar") await comentar(estado.comentarioPendente);
+        if (estado.comentarioPendente && escreve) await comentar(estado.comentarioPendente);
         continue;
       }
 
-      // "Integração manual" = o lançamento no ERP não é do Agente (seção 9).
-      // Sem Comentário: a conta é de quem a marcou; só não se chama o Omie.
-      if (valorDoCampo(task, CP.fields.integracaoManual) === "Manual") {
+      if (importadaParada) {
+        // Só chega aqui em `lancar`, com a conta em "em lançamento omie".
+        await parar("nasceu", TEXTO_NASCEU_EM_LANCAMENTO, 'a conta nasceu em "em lançamento omie" (importação), não entrou por movimento.', "lançaria");
+        continue;
+      }
+
+      // D6-04 — "Integração manual" = Manual. Padrão: o Agente não encosta
+      // (sem Resumo, sem `/lancar`, sem Comentário). `sem-conferencia`: segue,
+      // e a Conferência é dispensada em nome do Membro de serviço.
+      const manual = valorDoCampo(task, CP.fields.integracaoManual) === "Manual";
+      if (manual && decisoes.integracaoManual === "nao-encosta") {
         estado.parada = "manual";
-        registrar("info", "Conta com Integração manual: o Agente não lança.", daConta);
-        continue;
-      }
-
-      if (!entrouPorMovimento(state, task)) {
-        await parar("nasceu", TEXTO_NASCEU_EM_LANCAMENTO, "a conta nasceu em \"em lançamento omie\" (importação), não entrou por movimento.");
+        registrar("info", "Conta com Integração manual: o Agente não encosta.", daConta);
         continue;
       }
 
       const faltando = erpMissingFields(state, task);
       if (faltando.length > 0) {
-        await parar("recusa", `Não consegui lançar no Omie: falta ${faltando.join(", ")}. Preencha e eu tento de novo.`, `faltam ${faltando.length} Campo(s).`);
-        continue;
-      }
-
-      const corpoResolver = corpoResolverDe(state, task);
-      const corpoLancar = corpoResolver ? corpoLancarDe(task, corpoResolver) : undefined;
-      if (!corpoResolver || !corpoLancar) {
-        await parar("recusa", "Não consegui lançar no Omie: o Valor precisa ser um número maior que zero. Corrija e eu tento de novo.", "Valor inválido.");
-        continue;
-      }
-
-      /** Falha transitória: conta a seguida; na terceira, desiste da conta até a impressão mudar e avisa. */
-      const falhaTransitoria = async (code: string, aviso = textoDasTransitorias(code)): Promise<void> => {
-        estado.transitorias += 1;
-        if (estado.transitorias >= TENTATIVAS_TRANSITORIAS) {
-          await parar("transitorias", aviso, `${TENTATIVAS_TRANSITORIAS} falhas transitórias seguidas (${code}).`);
+        // Em "para pagar" a conta está sendo preenchida: silêncio. Em "em
+        // lançamento omie", o pedido de sempre, uma vez.
+        if (emLancamento) {
+          await parar("recusa", `Não consegui lançar no Omie: falta ${faltando.join(", ")}. Preencha e eu tento de novo.`, `faltam ${faltando.length} Campo(s).`, "lançaria");
         }
-      };
-
-      const respostaResolver = await chamar("/v1/integrations/contas-a-pagar/resolver", corpoResolver, { timeoutMs: timeoutResolverMs });
-      if (!respostaResolver.ok) {
-        if (respostaResolver.permanente) {
-          await parar("recusa", textoDaRecusaPermanente(respostaResolver.motivo, respostaResolver.code), `recusa permanente (${respostaResolver.code}).`);
-        } else await falhaTransitoria(respostaResolver.code);
         continue;
       }
-      const dePara = (respostaResolver.corpo as { readonly dePara?: DeParaDeLancamento } | undefined)?.dePara;
-      if (!dePara) {
-        await parar("recusa", textoDaRecusaPermanente("o Financeiro respondeu sem o de-para da conta", "RESPOSTA_INVALIDA"), "resposta sem de-para (RESPOSTA_INVALIDA).");
+
+      if (conf.estado === "pendente" && conf.conferencia) {
+        if (!escreve) continue; // o ensaio não decide nada
+        if (manual) await dispensar(conf.conferencia);
+        else await lerRespostas(conf.conferencia);
         continue;
       }
-      const resumo = buildResumoDePagamento(state, task, dePara);
 
-      if (modo !== "lancar") {
-        // D3-03 — em ensaio, só `/resolver` e o log do que lançaria. Nada é
-        // gravado; a parada evita pedir o mesmo de-para a cada ciclo.
+      if (conf.estado === "sem-resumo" || conf.estado === "desatualizada" || conf.estado === "ajuste-pedido") {
+        await momentoDoResumo();
+        continue;
+      }
+
+      // `conferida`: em "para pagar", espera o humano mover.
+      if (!conf.conferencia || !emLancamento) continue;
+      const conferencia = conf.conferencia;
+      const { conta, categoria, codigo } = conferencia.origin.lancamento;
+
+      if (!entrouPorMovimento(state, task)) {
+        if (modo === "lancar") {
+          await parar("nasceu", TEXTO_NASCEU_EM_LANCAMENTO, 'a conta está em "em lançamento omie" sem ter entrado por movimento.', "lançaria");
+        } else {
+          estado.parada = "nasceu";
+          registrar("info", `${modo === "ensaio" ? "Ensaio" : "Conferência"} — não lançaria: a conta não entrou em "em lançamento omie" por movimento.`, daConta);
+        }
+        continue;
+      }
+
+      if (modo === "ensaio") {
         estado.parada = "ensaio";
-        registrar(
-          "info",
-          resumo.veredito === "resolvida"
-            ? `Ensaio — lançaria: ${resumo.conta} · ${resumo.categoria} (${resumo.codigo}).`
-            : `Ensaio — não lançaria: categoria sem confiança (${resumo.veredito}).`,
-          daConta,
-        );
+        registrar("info", `Ensaio — lançaria: ${conta} · ${categoria} (${codigo}).`, daConta);
         continue;
       }
+      if (modo === "conferencia") {
+        // D6-11 — ZERO `/lancar`: diz no fio, uma vez por chave, que nada foi lançado.
+        estado.parada = "conferencia";
+        registrar("info", `Conferência — lançaria: ${conta} · ${categoria} (${codigo}).`, daConta);
+        await comentar(TEXTOS_DA_CONFERENCIA.modoConferencia, conferencia.origin.threadCommentId);
+        continue;
+      }
+      await momentoDoLancamento(conferencia);
 
-      if (resumo.veredito !== "resolvida") {
-        // T-3-10 — quem executa recusa: o Agente explica a categoria sem
-        // confiança num Comentário ABERTO ao Financeiro (a Execução falha) e a
-        // conta fica onde está, sem chamar `/lancar`.
+      /* ─── os passos, como funções da conta (fecham sobre `task`, `estado`, `conf`) ─── */
+
+      /** Fluxo 6 — a última resposta pendente de um revisor decide em nome dele (D6-02). */
+      async function lerRespostas(pendente: ConferenciaDoResumo): Promise<void> {
+        const ultima = respostasDeConferenciaPendentes(state, task).at(-1);
+        if (!ultima || ultima.id === deste.respostaLida) return;
+        const sentido = classificarRespostaDeConferencia(ultima.content);
+        // Com `CONFERENCIA_POR_COMENTARIO=false`, só o clique confere; o fio
+        // continua pedindo ajuste (D6-02).
+        if (sentido === "ignorar" || (sentido === "aprovacao" && !decisoes.conferenciaPorComentario)) {
+          deste.respostaLida = ultima.id;
+          return;
+        }
+        const autor = ultima.author.id;
+        const pedido = ultima.content.trim();
+        const r = await executarOperacao((s) =>
+          decideProcessApproval(s, autor, pendente.id, sentido === "aprovacao" ? "aprovada" : "rejeitada", {
+            source: "comment",
+            ...(sentido === "ajuste" ? { reason: pedido } : {}),
+          }),
+        );
+        if (r.ok) {
+          registrar("info", sentido === "aprovacao" ? "Resumo conferido por resposta no fio." : "Ajuste do Resumo pedido por resposta no fio.", daConta);
+        } else if (!("conflito" in r && r.conflito)) {
+          deste.respostaLida = ultima.id;
+          registrar("warn", `A resposta no fio não virou decisão: ${r.error.slice(0, 200)}`, daConta);
+        }
+      }
+
+      /** D6-04 `sem-conferencia` — a Conferência pendente de uma conta Manual é dispensada pelo Membro de serviço. */
+      async function dispensar(pendente: ConferenciaDoResumo): Promise<void> {
         const atorId = await atorDaEscrita();
-        let escreveu = false;
+        const r = await executarOperacao((s) => decideProcessApproval(s, atorId, pendente.id, "aprovada", { source: "click", reason: MOTIVO_DA_DISPENSA }));
+        if (!r.ok && !("conflito" in r && r.conflito)) {
+          deste.parada = "recusa";
+          registrar("warn", `Não consegui dispensar a Conferência: ${r.error.slice(0, 200)}`, daConta);
+        }
+      }
+
+      /** Momento 1 (Fluxo 5, e a revisão do Fluxo 6) — UM `/resolver` e UM Resumo publicado. */
+      async function momentoDoResumo(): Promise<void> {
+        const base = corpoResolverDe(state, task);
+        if (!base) {
+          await parar("recusa", "Não consegui preparar o Resumo desta conta: falta Centro de Custo.", "falta Centro de Custo.", "publicaria");
+          return;
+        }
+        const pedido = conf.estado === "ajuste-pedido" ? conf.conferencia?.decisionReason?.trim() || undefined : undefined;
+        const codigoConfirmado = pedido ? codigoNoPedido(pedido) : undefined;
+        const corpo = {
+          ...base,
+          ...(pedido ? { pedidoDeRevisao: pedido.slice(0, TAMANHO_MAXIMO_DO_PEDIDO) } : {}),
+          ...(codigoConfirmado ? { codigoCategoriaConfirmado: codigoConfirmado } : {}),
+        };
+        const resposta = await chamar(CAMINHO_RESOLVER, corpo, { timeoutMs: timeoutResolverMs });
+        if (!resposta.ok) {
+          if (resposta.permanente) {
+            await parar("recusa", textoDaRecusaDoResumo(resposta.motivo, resposta.code), `recusa permanente (${resposta.code}).`, "publicaria");
+          } else await falhaTransitoria(resposta.code, "publicaria");
+          return;
+        }
+        const dePara = (resposta.corpo as { readonly dePara?: DeParaDeLancamento } | undefined)?.dePara;
+        if (!dePara) {
+          await parar("recusa", textoDaRecusaDoResumo("o Financeiro respondeu sem o de-para da conta", "RESPOSTA_INVALIDA"), "resposta sem de-para (RESPOSTA_INVALIDA).", "publicaria");
+          return;
+        }
+        if (!escreve) {
+          // D3-03 — em ensaio, só `/resolver` e o log do que publicaria. A
+          // parada evita pedir o mesmo de-para a cada ciclo.
+          const previa = buildResumoDePagamento(state, task, dePara);
+          deste.parada = "ensaio";
+          registrar("info", `Ensaio — publicaria: ${previa.conta} · ${previa.categoria} (${previa.codigo}) — ${previa.veredito}.`, daConta);
+          return;
+        }
+        const atorId = await atorDaEscrita();
         const r = await executarOperacao((s) => {
-          const alvo = s.tasks.find((t) => t.id === task.id);
-          const antes = alvo?.comments.length ?? 0;
-          runLancamentoAgent(s, atorId, CP.agentId, task.id, INVOCADOR_DO_LANCAMENTO, { dePara, rehearsal: false });
-          escreveu = (alvo?.comments.length ?? 0) > antes;
-          return ok(undefined);
+          const publicado = publicarResumoParaConferencia(s, atorId, task.id, {
+            dePara,
+            ...(pedido ? { pedidoDeRevisao: pedido } : {}),
+            ...(conf.estado === "desatualizada" ? { motivo: "dados-mudaram" as const } : {}),
+            // Na dispensa (D6-04), o aprovador é o próprio Membro de serviço —
+            // é ele quem decide logo abaixo, e nenhuma pessoa é chamada a conferir.
+            ...(manual ? { avisarId: atorId } : avisar ? { avisarId: avisar } : {}),
+          });
+          if (!publicado.ok || !manual) return publicado;
+          return decideProcessApproval(s, atorId, publicado.value.conferencia.id, "aprovada", { source: "click", reason: MOTIVO_DA_DISPENSA });
         });
-        if (r.ok && escreveu) estado.parada = "recusa";
-        else if (r.ok) {
-          // O Agente nem chegou a decidir (inativo, sem alcance, Resumo antigo
-          // já publicado…): a conta não fica parada em silêncio.
+        if (r.ok) {
+          registrar("info", manual ? "Resumo publicado com a Conferência dispensada (Integração manual)." : "Resumo publicado para conferência.", daConta);
+        } else if ("conflito" in r && r.conflito) {
+          await falhaTransitoria("CONFLITO_DE_REVISAO", "publicaria");
+        } else {
+          deste.parada = "recusa";
+          registrar("warn", `Não consegui publicar o Resumo: ${r.error.slice(0, 200)}`, daConta);
+        }
+      }
+
+      /** Momento 2 (Fluxo 7) — só com Conferência aprovada para os dados atuais, só no modo `lancar`. */
+      async function momentoDoLancamento(conferida: ConferenciaDoResumo): Promise<void> {
+        const base = corpoResolverDe(state, task);
+        const corpoLancar = base ? corpoLancarDe(task, base) : undefined;
+        if (!corpoLancar) {
+          await parar("recusa", "Não consegui lançar no Omie: o Valor precisa ser um número maior que zero. Corrija e eu tento de novo.", "Valor inválido.", "lançaria");
+          return;
+        }
+        // `ausente` (a Categoria não casou no de-para) traz o código de
+        // preenchimento do Resumo (`9.99.99`), não um código do Omie: conferir
+        // esse Resumo não confirma Categoria nenhuma.
+        const { codigo: codigoConferido, veredito } = conferida.origin.lancamento;
+        if (veredito === "ausente" || !REGEX_CODIGO_DE_CATEGORIA.test(codigoConferido)) {
+          await parar("recusa", TEXTO_SEM_CODIGO_CONFERIDO, "Resumo conferido sem código de Categoria válido.", "lançaria");
+          return;
+        }
+        // As URLs valem 5 min: geradas agora, logo antes do `/lancar`. Só a contagem vai ao log.
+        const { anexos, avisos } = await anexosDaConta(state, task, opcoes.assinarAnexo);
+        if (avisos.length > 0) registrar("warn", "Anexos da conta que não vão ao Omie.", { ...daConta, anexos: anexos.length, avisos: avisos.length });
+        const corpo = { ...corpoLancar, codigoCategoriaConfirmado: codigoConferido, ...(anexos.length > 0 ? { anexos } : {}) };
+        const resposta = await chamar(CAMINHO_LANCAR, corpo, { timeoutMs: timeoutLancarMs, idempotencyKey: chaveDeIdempotencia(task.id) });
+        if (!resposta.ok) {
+          if (resposta.permanente) await falhaPermanente(resposta.motivo, resposta.code);
+          else await falhaTransitoria(resposta.code, "lançaria");
+          return;
+        }
+        const devolvido = resposta.corpo as { readonly payableId?: unknown; readonly reaproveitado?: unknown } | undefined;
+        const payableId = devolvido?.payableId;
+        // T-3-37 — `mock-payable-<timestamp>` (credencial Omie vazia) não é
+        // lançamento: registrar seria mentir. `reaproveitado: true`
+        // (consulta-antes-de-incluir) É sucesso.
+        if (typeof payableId !== "string" || payableId.length === 0 || payableId.startsWith("mock-")) {
+          await parar("recusa", "O Omie não confirmou o lançamento desta conta. Nada foi movido.", "lançamento não confirmado (payableId ausente ou mock).", "lançaria");
+          return;
+        }
+        const resultado = { payableId, reaproveitado: devolvido?.reaproveitado === true, anexos: anexosDaResposta(resposta.corpo, anexos) };
+        const atorId = await atorDaEscrita();
+        let saiuAntes = false;
+        const r = await executarOperacao((s) => {
+          const atual = s.tasks.find((t) => t.id === task.id);
+          saiuAntes = !atual || atual.statusId !== CP.status.emLancamento;
+          if (saiuAntes) return ok(undefined);
+          return registrarLancamentoNoOmie(s, atorId, task.id, resultado);
+        });
+        if (r.ok && saiuAntes) {
+          // Alguém moveu a conta durante o `/lancar`: o título existe no
+          // Omie, mas nada foi registrado aqui. Se ela voltar para "em
+          // lançamento omie", a mesma chave devolve o mesmo título
+          // (`reaproveitado`) e o registro sai — sem lançar de novo.
+          estadoPorConta.delete(task.id);
+          registrar("warn", 'Lançada no Omie, mas a conta saiu de "em lançamento omie" antes do registro; nada foi gravado.', daConta);
+          await comentar(TEXTO_SAIU_ANTES_DO_REGISTRO);
+        } else if (r.ok) {
+          estadoPorConta.delete(task.id);
+          registrar("info", 'Conta lançada no Omie e movida para "lançado omie".', { ...daConta, anexos: resultado.anexos.length });
+        } else if ("conflito" in r && r.conflito) {
+          // Outra escrita entrou no meio: o próximo ciclo repete com a MESMA
+          // chave, e o Omie devolve o mesmo título (`reaproveitado`).
+          registrar("warn", "Lançada no Omie, mas a gravação conflitou; tento de novo no próximo ciclo.", daConta);
+          await falhaTransitoria(
+            "CONFLITO_DE_REVISAO",
+            "lançaria",
+            `O Omie confirmou o lançamento desta conta, mas não consegui registrá-lo e movê-la para "lançado omie" depois de ${TENTATIVAS_TRANSITORIAS} tentativas (CONFLITO_DE_REVISAO). Confira e mova à mão.`,
+          );
+        } else {
+          registrar("warn", `Lançada no Omie, mas não consegui registrar o lançamento: ${r.error.slice(0, 200)}`, daConta);
           await parar(
             "recusa",
-            textoDaRecusaPermanente(`a Categoria da conta não passou do corte de confiança do de-para (${resumo.veredito}); confirme a Categoria e eu tento de novo`, "CATEGORIA_EM_REVISAO"),
-            `categoria sem confiança (${resumo.veredito}).`,
+            `O Omie confirmou o lançamento desta conta, mas não consegui registrá-lo nem movê-la para "lançado omie": ${r.error} Confira e mova à mão.`,
+            "lançada, mas sem registro.",
+            "lançaria",
           );
-        } else if (r.conflito) await falhaTransitoria("CONFLITO_DE_REVISAO");
-        else {
-          // O domínio recusou até escrever a recusa: parar evita pedir o mesmo
-          // de-para a cada ciclo; o log diz o porquê.
-          estado.parada = "recusa";
-          registrar("warn", `Não consegui registrar a recusa por categoria: ${r.error.slice(0, 200)}`, daConta);
         }
-        continue;
       }
 
-      const respostaLancar = await chamar("/v1/integrations/contas-a-pagar/lancar", corpoLancar, {
-        timeoutMs: timeoutLancarMs,
-        idempotencyKey: chaveDeIdempotencia(task.id),
-      });
-      if (!respostaLancar.ok) {
-        if (respostaLancar.permanente) {
-          await parar("recusa", textoDaRecusaPermanente(respostaLancar.motivo, respostaLancar.code), `recusa permanente (${respostaLancar.code}).`);
-        } else await falhaTransitoria(respostaLancar.code);
-        continue;
+      /** D6-03 — falha permanente do `/lancar`: o domínio comenta o motivo e volta a conta para "para pagar". */
+      async function falhaPermanente(motivo: string | undefined, code: string): Promise<void> {
+        deste.parada = "recusa";
+        const atorId = await atorDaEscrita();
+        const r = await executarOperacao((s) =>
+          registrarFalhaDoLancamento(s, atorId, task.id, { motivo: motivo ?? "o Financeiro recusou a chamada", code }, avisar ? { avisarId: avisar } : {}),
+        );
+        if (r.ok) registrar("info", 'Lançamento recusado; a conta voltou para "para pagar".', { ...daConta, code });
+        else {
+          registrar("warn", "Não consegui registrar a falha do lançamento; aviso por Comentário.", { ...daConta, code });
+          await comentar(textoDaRecusaPermanente(motivo, code));
+        }
       }
-      const payableId = (respostaLancar.corpo as { readonly payableId?: unknown } | undefined)?.payableId;
-      // T-3-37 — `mock-payable-<timestamp>` (credencial Omie vazia) não é
-      // lançamento: mover para "lançado omie" seria mentir. `reaproveitado:
-      // true` (consulta-antes-de-incluir) É sucesso.
-      if (typeof payableId !== "string" || payableId.length === 0 || payableId.startsWith("mock-")) {
-        await parar("recusa", "O Omie não confirmou o lançamento desta conta. Nada foi movido.", "lançamento não confirmado (payableId ausente ou mock).");
-        continue;
-      }
+    }
 
-      // Lançado no Omie: o Agente publica o Resumo e a conta vai para "lançado omie", numa transação só.
-      const atorId = await atorDaEscrita();
-      let saiuAntes = false;
-      const r = await executarOperacao((s) => {
-        const atual = s.tasks.find((t) => t.id === task.id);
-        saiuAntes = !atual || atual.statusId !== CP.status.emLancamento;
-        if (saiuAntes) return ok(undefined);
-        const publicado = runLancamentoAgent(s, atorId, CP.agentId, task.id, INVOCADOR_DO_LANCAMENTO, { dePara, rehearsal: false });
-        if (!publicado.ok) return publicado;
-        const movida = changeTaskStatus(s, atorId, task.id, CP.status.lancado);
-        return movida.ok ? ok("Lançada no Omie.") : movida;
-      });
-      if (r.ok && saiuAntes) {
-        // Alguém moveu a conta durante o `/lancar`: o título existe no Omie,
-        // mas nada foi publicado nem movido aqui. Se ela voltar para "em
-        // lançamento omie", a mesma chave devolve o mesmo título
-        // (`reaproveitado`) e o Resumo sai — sem lançar de novo.
-        estadoPorConta.delete(task.id);
-        registrar("warn", 'Lançada no Omie, mas a conta saiu de "em lançamento omie" antes da gravação; nada foi publicado nem movido.', daConta);
-        await comentar('O Omie confirmou o lançamento desta conta, mas ela saiu de "em lançamento omie" antes de eu publicar o Resumo. Se ela voltar para "em lançamento omie", eu publico o Resumo sem lançar de novo.');
-      } else if (r.ok) {
-        estadoPorConta.delete(task.id);
-        registrar("info", 'Conta lançada no Omie e movida para "lançado omie".', daConta);
-      } else if (r.conflito) {
-        // Outra escrita entrou no meio: o próximo ciclo repete com a MESMA
-        // chave, e o Omie devolve o mesmo título (`reaproveitado`).
-        registrar("warn", "Lançada no Omie, mas a gravação conflitou; tento de novo no próximo ciclo.", daConta);
-        await falhaTransitoria(
-          "CONFLITO_DE_REVISAO",
-          `O Omie confirmou o lançamento desta conta, mas não consegui publicar o Resumo e movê-la para "lançado omie" depois de ${TENTATIVAS_TRANSITORIAS} tentativas (CONFLITO_DE_REVISAO). Confira e mova à mão.`,
-        );
-      } else {
-        registrar("warn", `Lançada no Omie, mas não consegui publicar o Resumo e mover o Status: ${r.error.slice(0, 200)}`, daConta);
-        await parar(
-          "recusa",
-          `O Omie confirmou o lançamento desta conta, mas não consegui publicar o Resumo nem movê-la para "lançado omie": ${r.error} Confira e mova à mão.`,
-          "lançada, mas sem Resumo.",
-        );
-      }
+    if (importadasForaDaPonte !== ultimaContagemDeImportadas) {
+      ultimaContagemDeImportadas = importadasForaDaPonte;
+      registrar("info", "Contas importadas sem movimento depois da importação ficam fora da ponte.", { workspaceId, listId, contas: importadasForaDaPonte });
     }
   }
 
   let temporizador: ReturnType<typeof setInterval> | undefined;
   let emVoo: Promise<void> | undefined;
+  let cutucada: ReturnType<typeof setTimeout> | undefined;
+  let repetir = false;
+  let parado = false;
 
   function ciclo(): void {
-    if (emVoo) return;
-    emVoo = lancarContasEmLancamento()
+    if (parado || emVoo) return;
+    emVoo = processarContas()
       .catch((erro: unknown) => {
         registrar("warn", "Falha no ciclo do Agente de lançamento.", { workspaceId, listId, summary: erro instanceof Error ? erro.message.slice(0, 200) : "erro" });
       })
       .finally(() => {
         emVoo = undefined;
+        if (repetir && !parado) {
+          repetir = false;
+          ciclo();
+        }
       });
+  }
+
+  function cutucar(): void {
+    if (parado) return;
+    if (emVoo) {
+      repetir = true;
+      return;
+    }
+    if (cutucada) return;
+    cutucada = setTimeout(() => {
+      cutucada = undefined;
+      if (emVoo) repetir = true; // o relógio começou um ciclo durante a espera
+      else ciclo();
+    }, atrasoDaCutucadaMs);
   }
 
   return {
     rodarAgenda,
-    lancarContasEmLancamento,
+    processarContas,
+    lancarContasEmLancamento: processarContas,
+    cutucar,
     iniciar() {
       if (temporizador) return;
+      parado = false;
       ciclo();
       temporizador = setInterval(ciclo, intervaloMs);
     },
     async parar() {
+      parado = true;
       if (temporizador) clearInterval(temporizador);
       temporizador = undefined;
-      await emVoo;
+      if (cutucada) clearTimeout(cutucada);
+      cutucada = undefined;
+      repetir = false;
+      while (emVoo) await emVoo;
     },
   };
 }

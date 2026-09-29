@@ -348,6 +348,19 @@ export function avisadoDoLancamento(state: DataState, actingMemberId: Id): Id {
 }
 
 /**
+ * Quem os atos da Conferência do Resumo mencionam (Fase 6): `avisarId`
+ * quando é um Membro ATIVO do Espaço; senão, a regra de sempre
+ * (`avisadoDoLancamento`). É a porta que a ponte do `apps/api` usa em
+ * ambiente de teste (`AGENTE_CONTAS_A_PAGAR_AVISAR_ID`) para que nenhuma
+ * Menção chegue a uma pessoa real; sem `avisarId`, nada muda. Nunca devolve
+ * um id que não seja Membro ativo, ou quem age.
+ */
+export function avisadoDaConferencia(state: DataState, actingMemberId: Id, avisarId?: Id): Id {
+  if (avisarId && state.members.some((m) => m.id === avisarId && m.state === "ativo")) return avisarId;
+  return avisadoDoLancamento(state, actingMemberId);
+}
+
+/**
  * Como se invoca o Agente com o de-para de verdade e/ou em Ensaio. `dePara` é
  * obrigatório de propósito (T-3-07): não se liga o Ensaio sem dizer contra
  * qual de-para se ensaiou — meia especificação é a porta do default silencioso.
@@ -1012,6 +1025,12 @@ export interface OpcoesDaConferencia {
   readonly pedidoPor?: Id;
   /** A conta mudou depois da conferência — a ponte republica. */
   readonly motivo?: "dados-mudaram";
+  /**
+   * Quem o Resumo menciona, chama pelo nome e designa como aprovador da
+   * Conferência, no lugar do Financeiro (`avisadoDaConferencia`). Opcional e
+   * aditivo: sem ele, a regra de sempre. Não muda `revisoresDoResumo`.
+   */
+  readonly avisarId?: Id;
 }
 
 /**
@@ -1056,7 +1075,7 @@ export function publicarResumoParaConferencia(
   // Um ajuste pedido por clique (motivo na decisão) vira o pedido do Resumo revisado.
   const pedido = pedidoInformado ?? (atual.estado === "ajuste-pedido" ? anterior?.decisionReason?.trim() || undefined : undefined);
   const quemPediu = opcoes.pedidoPor ?? (anterior?.decision === "rejeitada" ? anterior.decidedByMemberId : undefined) ?? actingMemberId;
-  const financeiroId = avisadoDoLancamento(state, actingMemberId);
+  const financeiroId = avisadoDaConferencia(state, actingMemberId, opcoes.avisarId);
   const financeiro = nomeDoMembro(state, financeiroId);
   const sufixo = pedido
     ? TEXTOS_DA_CONFERENCIA.revisado(nomeDoMembro(state, quemPediu), pedido, financeiro)
@@ -1247,8 +1266,17 @@ export function registrarLancamentoNoOmie(state: DataState, actingMemberId: Id, 
  *
  * Alternativa de D6-03 (ficar em "em lançamento omie"): é tirar a chamada a
  * `changeTaskStatus` abaixo.
+ *
+ * `opcoes.avisarId` (aditivo): quem a Menção avisa, no lugar do Financeiro —
+ * ver `avisadoDaConferencia`.
  */
-export function registrarFalhaDoLancamento(state: DataState, actingMemberId: Id, taskId: Id, falha: { readonly motivo: string; readonly code: string }): OperationResult<Task> {
+export function registrarFalhaDoLancamento(
+  state: DataState,
+  actingMemberId: Id,
+  taskId: Id,
+  falha: { readonly motivo: string; readonly code: string },
+  opcoes: { readonly avisarId?: Id } = {},
+): OperationResult<Task> {
   const agent = state.agents.find((a) => a.id === CP.agentId);
   if (!agent || agent.lifecycle !== "ativo") return fail("Agente de lançamento não está ativo.");
   const task = state.tasks.find((t) => t.id === taskId);
@@ -1269,7 +1297,7 @@ export function registrarFalhaDoLancamento(state: DataState, actingMemberId: Id,
   const raiz = vigente ? task.comments.find((c) => c.id === vigente.origin.threadCommentId && !c.deletedAt) : undefined;
   const comentario = addTaskComment(state, actingMemberId, task.id, {
     content: texto,
-    mentions: [{ type: "member", id: avisadoDoLancamento(state, actingMemberId) }],
+    mentions: [{ type: "member", id: avisadoDaConferencia(state, actingMemberId, opcoes.avisarId) }],
     actor: { kind: "agent", id: agent.id },
     ...(raiz ? { parentCommentId: raiz.id } : {}),
   });
