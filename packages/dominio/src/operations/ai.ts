@@ -212,8 +212,9 @@ export function solicitarAprovacao(
   }
 
   // Idempotência do roteamento — repetir para a mesma Tarefa não cria uma segunda pendência.
+  // Uma Conferência do Resumo pendente (Fase 6) é outra coisa e não conta aqui.
   const existing = state.approvals.find(
-    (a) => a.origin.kind === "processTask" && a.origin.taskId === input.taskId && a.decision === undefined,
+    (a) => a.origin.kind === "processTask" && a.origin.processStep !== "resumo" && a.origin.taskId === input.taskId && a.decision === undefined,
   );
   if (existing) return ok(existing);
 
@@ -251,6 +252,98 @@ export function solicitarAprovacao(
     ...(input.reason ? { detail: input.reason } : {}),
   });
   return ok(approval);
+}
+
+export interface SolicitarConferenciaDoResumoInput {
+  readonly taskId: Id;
+  /** O raiz do fio do Resumo. */
+  readonly threadCommentId: Id;
+  /** O Comentário do Resumo que esta Conferência confere (o raiz, ou a resposta revisada). */
+  readonly resumoCommentId: Id;
+  readonly impressao: string;
+  readonly lancamento: { readonly conta: string; readonly categoria: string; readonly codigo: string; readonly veredito: "resolvida" | "revisar" | "ausente" };
+  readonly approverMemberId: Id;
+}
+
+/**
+ * Fase 6 (Fluxo 5/6) — abre a Conferência do Resumo de uma Conta a pagar: a
+ * `ApprovalRequest` de processo com `processStep: "resumo"`, que guarda a
+ * tripla conta · categoria · código e a impressão de lançamento como DADO
+ * (D6-10). Ao contrário de `solicitarAprovacao`, NÃO muda o Status: conferir o
+ * Resumo não é um passo do fluxo de Status, é a condição para o lançamento.
+ *
+ * Toda Conferência pendente anterior da mesma Tarefa é cancelada no mesmo ato
+ * ("Conferência superada"): vale sempre a do Resumo mais recente. Só o
+ * domínio chama esta operação (`publicarResumoParaConferencia`), por isso ela
+ * não está em `OPERACOES`.
+ */
+export function solicitarConferenciaDoResumo(
+  state: DataState,
+  actingMemberId: Id,
+  input: SolicitarConferenciaDoResumoInput,
+): OperationResult<ApprovalRequest> {
+  ensureApprovalsNormalized(state);
+  const task = state.tasks.find((t) => t.id === input.taskId);
+  if (!task) return fail("Tarefa não encontrada.");
+  const approver = state.members.find((m) => m.id === input.approverMemberId);
+  if (!approver || approver.state !== "ativo") return fail("Quem confere o Resumo precisa ser um Membro ativo.");
+  const existe = (id: Id) => task.comments.some((c) => c.id === id && !c.deletedAt);
+  if (!existe(input.threadCommentId) || !existe(input.resumoCommentId)) {
+    return fail("O Comentário do Resumo não existe nesta Tarefa.");
+  }
+
+  for (const anterior of state.approvals) {
+    if (anterior.origin.kind !== "processTask" || anterior.origin.processStep !== "resumo") continue;
+    if (anterior.origin.taskId !== task.id || anterior.decision !== undefined) continue;
+    anterior.decision = "cancelada";
+    anterior.decidedAt = now();
+    recordActivity(state, {
+      actor: memberActor(actingMemberId),
+      action: "Conferência superada",
+      objectType: "approvalRequest",
+      objectId: anterior.id,
+      objectName: task.title,
+      before: "pendente",
+      after: "cancelada",
+      detail: "Um Resumo mais recente foi publicado no mesmo fio",
+    });
+  }
+
+  const { conta, categoria, codigo } = input.lancamento;
+  const approval: ApprovalRequest = {
+    id: nextId("apr"),
+    origin: {
+      kind: "processTask",
+      taskId: task.id,
+      processStep: "resumo",
+      threadCommentId: input.threadCommentId,
+      resumoCommentId: input.resumoCommentId,
+      impressao: input.impressao,
+      lancamento: { ...input.lancamento },
+    },
+    requestedBy: memberActor(actingMemberId),
+    reason: "processo",
+    object: {
+      toolId: "omie_lancar_conta_a_pagar",
+      input: `${conta} · ${categoria} · ${codigo}`,
+      targetResourceType: "task",
+      targetResourceId: task.id,
+      effectClass: "escritaIrreversivel",
+    },
+    approverMemberId: input.approverMemberId,
+    createdAt: now(),
+  };
+  state.approvals.push(approval);
+
+  recordActivity(state, {
+    actor: memberActor(actingMemberId),
+    action: "Conferência do Resumo aberta",
+    objectType: "approvalRequest",
+    objectId: approval.id,
+    objectName: task.title,
+    detail: `${conta} · ${categoria} · ${codigo}`,
+  });
+  return ok(approval, approval.id);
 }
 
 export interface DecideProcessApprovalOptions {

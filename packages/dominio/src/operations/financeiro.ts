@@ -12,10 +12,18 @@
 
 import { agentSeesTask, contactDisplayName, effectiveLifecycleOfTask, memberSeesTask, statusDefinition } from "../derive";
 import { fail, ok, type DataState, type OperationResult } from "../state";
-import type { AgentExecution, Contact, Id, Task } from "../types";
+import type { Agent, AgentExecution, ApprovalOrigin, ApprovalRequest, Comment, Contact, Id, Task } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
+// Sem ciclo em tempo de carga: `./ai` importa `./tasks`, que importa
+// `./automations`, que importa este arquivo — mas nenhum deles usa o outro no
+// topo do módulo, só dentro de funções. Os textos que `./ai` precisa moram em
+// `./financeiro-textos`, que não importa ninguém.
+import { solicitarConferenciaDoResumo } from "./ai";
 import { addMonths } from "./collaboration";
+import { PREFIXOS_DO_PROCESSO, TEXTOS_DA_CONFERENCIA } from "./financeiro-textos";
 import { addTaskComment, createTask, setTaskFieldValue, trashTask, unmetRequirements } from "./tasks";
+
+export { PREFIXOS_DO_PROCESSO, TEXTOS_DA_CONFERENCIA, type AnexoDoLancamento, type DadosDoLancado } from "./financeiro-textos";
 
 const now = (): string => new Date().toISOString();
 
@@ -707,6 +715,421 @@ export function contaSemResumo(state: DataState, task: Task): boolean {
   if (fieldValue(task, CP.fields.integracaoManual) === "Manual") return false;
   if (lancamentoHumanoDe(state, task) !== undefined) return false;
   return !task.comments.some((c) => !c.deletedAt && c.content.startsWith("📋 RESUMO DE PAGAMENTO"));
+}
+
+/* ═══════════ A Conferência do Resumo (Fase 6 — Fluxos 5, 6 e 7) ═══════════
+ *
+ * O Agente publica o RESUMO ANTES do lançamento, aberto ao Financeiro, e
+ * abre uma Conferência (`ApprovalRequest` de processo, `processStep:
+ * "resumo"`). O Financeiro confere (clique ou "ok" no fio) ou pede ajuste
+ * (qualquer outra resposta); só uma Conferência aprovada para os dados ATUAIS
+ * da conta deixa o lançamento ser registrado.
+ *
+ * D6-10 — a tripla conta · categoria · código e a impressão de lançamento são
+ * DADO da Conferência (`origin.lancamento`, `origin.impressao`). Nenhuma
+ * função daqui lê a tripla do TEXTO de um Comentário: o texto do RESUMO é
+ * saída (CON-CP-08), e reparseá-lo é a fragilidade do legado.
+ */
+
+/** A `ApprovalRequest` de uma Conferência do Resumo — o ramo `resumo` de `ApprovalOrigin`. */
+export type ConferenciaDoResumo = ApprovalRequest & { origin: Extract<ApprovalOrigin, { readonly processStep: "resumo" }> };
+
+function ehConferenciaDoResumo(a: ApprovalRequest): a is ConferenciaDoResumo {
+  // Um registro hidratado de antes da Fase 2 pode chegar sem `origin` (`normalizeApprovalOrigin`).
+  const origin = a.origin as ApprovalOrigin | undefined;
+  return origin?.kind === "processTask" && origin.processStep === "resumo";
+}
+
+/** A Conferência que vale: a mais recente (por `createdAt`, empate pela ordem de gravação) que não foi cancelada. */
+function conferenciaVigente(state: DataState, taskId: Id): ConferenciaDoResumo | undefined {
+  let vigente: ConferenciaDoResumo | undefined;
+  for (const a of state.approvals) {
+    if (!ehConferenciaDoResumo(a) || a.origin.taskId !== taskId) continue;
+    if (a.decision === "cancelada" || a.decision === "expirada") continue;
+    if (!vigente || a.createdAt >= vigente.createdAt) vigente = a;
+  }
+  return vigente;
+}
+
+/** JSON com as chaves ordenadas em todos os níveis: a mesma conta dá sempre a mesma string, seja qual for a ordem de montagem. */
+function jsonCanonico(valor: unknown): string {
+  if (Array.isArray(valor)) return `[${valor.map(jsonCanonico).join(",")}]`;
+  if (valor !== null && typeof valor === "object") {
+    const registro = valor as Record<string, unknown>;
+    const chaves = Object.keys(registro)
+      .filter((k) => registro[k] !== undefined)
+      .sort();
+    return `{${chaves.map((k) => `${JSON.stringify(k)}:${jsonCanonico(registro[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(valor ?? null);
+}
+
+function tagDeContaDe(state: DataState, task: Task): string {
+  return task.tagIds.map((id) => state.tags.find((t) => t.id === id)?.name ?? "").find((n) => n.startsWith("conta ")) ?? "";
+}
+
+const nomeDoMembro = (state: DataState, id: Id): string => state.members.find((m) => m.id === id)?.displayName ?? id;
+
+/**
+ * A impressão de lançamento (D6-10): tudo o que vai ao Omie, e nada além.
+ * Se ela muda depois da Conferência, a Conferência fica `desatualizada` — o
+ * Financeiro conferiu OUTRA conta. Anexo, Boleto, QR Code e Comentários não
+ * entram (não mudam o título); a Data de Emissão entra (vai ao Omie).
+ * É a mesma função que a ponte usa para a parada por impressão.
+ */
+export function impressaoDeLancamento(state: DataState, task: Task): string {
+  const forma = fieldValue(task, CP.fields.forma);
+  const tipo = fieldValue(task, CP.fields.fornecedor);
+  const dado =
+    forma === "Chave Pix"
+      ? fieldValue(task, CP.fields.chavePix)
+      : forma === "Boleto"
+        ? fieldValue(task, CP.fields.codigoBarras)
+        : forma === "QRCode Pix"
+          ? fieldValue(task, CP.fields.pixCopiaECola)
+          : "";
+  return jsonCanonico({
+    centro: fieldValue(task, CP.fields.centroDeCusto),
+    empresa: fieldValue(task, CP.fields.empresa),
+    categoria: fieldValue(task, CP.fields.categoria),
+    fornecedor: {
+      tipo,
+      documento: tipo === "CPF" ? fieldValue(task, CP.fields.cpf) : tipo === "CNPJ" ? fieldValue(task, CP.fields.cnpj) : "",
+      nome: fieldValue(task, CP.fields.nomeFornecedor),
+    },
+    forma,
+    dado,
+    valor: fieldValue(task, CP.fields.valor),
+    vencimento: task.dueDate?.value ?? "",
+    dataEmissao: fieldValue(task, CP.fields.dataEmissao),
+    tag: tagDeContaDe(state, task),
+    titulo: task.title,
+    descricao: task.description ?? "",
+  });
+}
+
+/**
+ * D6-09 — quem confere o Resumo: o Financeiro (`CP.financeiroId`, quando
+ * Membro ativo) e todo Membro ativo de Papel base Administrador/Proprietário.
+ * Uma função só, para o Papel "Revisor do Resumo" (L-11) entrar depois sem
+ * tocar o resto.
+ */
+export function revisoresDoResumo(state: DataState): Id[] {
+  const revisores: Id[] = [];
+  const financeiro = state.members.find((m) => m.id === CP.financeiroId && m.state === "ativo");
+  if (financeiro) revisores.push(financeiro.id);
+  for (const m of state.members) {
+    if (m.state !== "ativo" || revisores.includes(m.id)) continue;
+    const base = state.roles.find((r) => r.id === m.roleId)?.base;
+    if (base === "administrador" || base === "proprietario") revisores.push(m.id);
+  }
+  return revisores;
+}
+
+export type EstadoDaConferencia = "sem-resumo" | "pendente" | "conferida" | "ajuste-pedido" | "desatualizada";
+
+/**
+ * Onde a conta está na Conferência. `desatualizada` vence qualquer decisão:
+ * uma aprovação para uma impressão que não é mais a da conta não vale.
+ * Conferências canceladas (superadas por um Resumo mais novo) não contam.
+ */
+export function conferenciaDoResumo(
+  state: DataState,
+  task: Task,
+): { readonly estado: EstadoDaConferencia; readonly conferencia?: ConferenciaDoResumo; readonly impressaoAtual: string } {
+  const impressaoAtual = impressaoDeLancamento(state, task);
+  const conferencia = conferenciaVigente(state, task.id);
+  if (!conferencia) return { estado: "sem-resumo", impressaoAtual };
+  const estado: EstadoDaConferencia =
+    conferencia.origin.impressao !== impressaoAtual
+      ? "desatualizada"
+      : conferencia.decision === "aprovada"
+        ? "conferida"
+        : conferencia.decision === "rejeitada"
+          ? "ajuste-pedido"
+          : "pendente";
+  return { estado, conferencia, impressaoAtual };
+}
+
+/**
+ * As respostas de revisores no fio do Resumo que ainda não viraram decisão:
+ * só enquanto a Conferência vigente está sem decisão; só respostas ao raiz do
+ * fio publicadas DEPOIS do Resumo vigente (na ordem do fio); só de Membros de
+ * `revisoresDoResumo` (nunca do Agente, nunca de Membro fora da lista); nunca
+ * as mensagens do próprio processo (`✅`, `🔁`, `📋`, `⚠️`). Ordenadas por
+ * `createdAt`. Quem as transforma em decisão é a ponte, pela
+ * `classificarRespostaDeConferencia`.
+ */
+export function respostasDeConferenciaPendentes(state: DataState, task: Task): Comment[] {
+  const conferencia = conferenciaVigente(state, task.id);
+  if (!conferencia || conferencia.decision !== undefined) return [];
+  const posicaoDoResumo = task.comments.findIndex((c) => c.id === conferencia.origin.resumoCommentId);
+  if (posicaoDoResumo < 0) return [];
+  const revisores = new Set(revisoresDoResumo(state));
+  return task.comments
+    .slice(posicaoDoResumo + 1)
+    .filter(
+      (c) =>
+        !c.deletedAt &&
+        c.parentCommentId === conferencia.origin.threadCommentId &&
+        c.author.kind === "member" &&
+        revisores.has(c.author.id) &&
+        !PREFIXOS_DO_PROCESSO.some((p) => c.content.trimStart().startsWith(p) || c.content.trimStart().startsWith(p.replace("️", ""))),
+    )
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+/* A heurística portada do classificador do legado
+ * (`financeiro-tria/automation/src/adapters/ai.ts`, `classificarAprovacaoPorHeuristica`),
+ * SEM IA — mesma normalização, mesmos radicais, mesma ordem. */
+const RADICAIS_DE_AJUSTE = ["reprov", "desaprov", "recus", "rejeit", "negad", "negativ", "errad", "cancel", "ajust", "corrig", "corrij", "mud", "troc", "alter"];
+// "ajustado"/"corrigido" descrevem o ajuste JÁ FEITO ("valor ajustado, ok"), não um pedido.
+const RADICAIS_DE_CONSERTO = ["ajust", "corrig"];
+const PARTICIPIO = /(ad|id)[oa]s?$/;
+const RADICAIS_DE_APROVACAO_NEGAVEL = ["aprov", "autoriz", "liber", "positiv", "confer"];
+const PALAVRAS_DE_APROVACAO_NEGAVEL = new Set(["pode", "podem", "posso", "segue", "seguir", "sigo", "ok", "okay", "sim", "certo", "certa", "correto", "correta", "lancar"]);
+const PALAVRAS_DE_APROVACAO = new Set([
+  "aprovado", "aprovada", "aprovados", "aprovadas", "aprovo", "aprovamos",
+  "ok", "okay", "sim", "positivo",
+  "conferido", "conferida", "confere",
+  "certo", "certa", "correto", "correta",
+  "liberado", "liberada", "liberados", "liberadas",
+  "autorizado", "autorizada", "autorizados", "autorizadas", "autorizo",
+]);
+const COMPLEMENTOS_DE_PODE = new Set(["seguir", "pagar", "lancar", "liberar", "prosseguir"]);
+const VERBOS_DE_ADIAMENTO = new Set(["verificar", "conferir", "analisar", "ver", "checar", "olhar"]);
+const PALAVRAS_DE_ESPERA = new Set(["espera", "esperar", "espere"]);
+const comecaCom = (palavra: string, radicais: readonly string[]): boolean => radicais.some((r) => palavra.startsWith(r));
+
+/**
+ * D6-02 — o que uma resposta de revisor no fio do Resumo quer dizer. Pura,
+ * sem IA. Ordem (a mesma do legado): (1) recusa/pedido de mudança por radical,
+ * "não" na mesma cláusula de um termo de aprovação, ou "Não" seco no começo ⇒
+ * `ajuste`; (2) pergunta, "aguardando", "vou verificar" ⇒ `ignorar`; (3)
+ * aprovação explícita por palavra inteira ⇒ `aprovacao`; (4) o resto ⇒
+ * `ajuste`.
+ *
+ * Diferença deliberada do legado: lá, "nada casou" é `irrelevant`; aqui, no
+ * fio do Resumo, é `ajuste` — o Fluxo 6 trata qualquer resposta de revisor ao
+ * RESUMO como pedido de revisão ("segunda-feira" vira um Resumo revisado com
+ * esse pedido, e é o Financeiro quem o lê).
+ */
+export function classificarRespostaDeConferencia(texto: string): "aprovacao" | "ajuste" | "ignorar" {
+  if (!texto.trim()) return "ignorar";
+  const normalizado = texto.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const clausulas = normalizado
+    .split(/[.,;:!?\n]+/)
+    .map((clausula) => clausula.split(/[^a-z0-9]+/).filter(Boolean))
+    .filter((palavras) => palavras.length > 0);
+  const palavras = clausulas.flat();
+
+  // 1) Ajuste — antes de qualquer sinal de aprovação.
+  if (palavras.some((p) => comecaCom(p, RADICAIS_DE_AJUSTE) && !(comecaCom(p, RADICAIS_DE_CONSERTO) && PARTICIPIO.test(p)))) return "ajuste";
+  const negaAprovacao = clausulas.some(
+    (clausula) => clausula.includes("nao") && clausula.some((p) => PALAVRAS_DE_APROVACAO_NEGAVEL.has(p) || comecaCom(p, RADICAIS_DE_APROVACAO_NEGAVEL)),
+  );
+  if (negaAprovacao) return "ajuste";
+  if (clausulas[0]?.length === 1 && clausulas[0][0] === "nao") return "ajuste";
+
+  // 2) Pergunta ou adiamento não é decisão.
+  if (normalizado.includes("?")) return "ignorar";
+  if (palavras.some((p) => p.startsWith("aguard") || PALAVRAS_DE_ESPERA.has(p))) return "ignorar";
+  if (clausulas.some((clausula) => clausula.some((p, i) => p === "vou" && VERBOS_DE_ADIAMENTO.has(clausula[i + 1] ?? "")))) return "ignorar";
+
+  // 3) Aprovação explícita, por palavra inteira (ou o polegar/visto).
+  const aprova =
+    texto.includes("👍") ||
+    texto.includes("✅") ||
+    clausulas.some(
+      (clausula) =>
+        clausula.some((p) => PALAVRAS_DE_APROVACAO.has(p)) ||
+        clausula.some((p, i) => p === "pode" && COMPLEMENTOS_DE_PODE.has(clausula[i + 1] ?? "")) ||
+        (clausula.length === 1 && clausula[0] === "segue"),
+    );
+  if (aprova) return "aprovacao";
+
+  // 4) Fluxo 6: toda resposta de revisor ao RESUMO é revisão.
+  return "ajuste";
+}
+
+type PassoDaExecucao = { index: number; kind: "ferramenta" | "raciocinio"; toolId?: string; input?: string; output?: string; result: "concluido" | "falhou"; at: string };
+
+/** A `AgentExecution` de um ato da Conferência — a mesma forma que `runLancamentoAgent` grava, nunca em Ensaio. */
+function gravarExecucaoDoLancamento(
+  state: DataState,
+  agent: Agent,
+  actingMemberId: Id,
+  task: Task,
+  input: string,
+  steps: PassoDaExecucao[],
+  output: string,
+): void {
+  const version = agent.versions.at(-1);
+  if (!version) return;
+  const inicio = now();
+  state.agentExecutions.push({
+    id: nextId("exe"),
+    workspaceId: state.workspace.id,
+    agentId: agent.id,
+    agentVersion: version.number,
+    state: "concluida",
+    origin: "automacao",
+    invokedBy: { kind: "automation", id: INVOCADOR_DO_LANCAMENTO },
+    delegate: { kind: "member", id: actingMemberId },
+    chain: { depth: 1, visitedAgentIds: [agent.id], visitedAutomationObjects: [{ automationId: INVOCADOR_DO_LANCAMENTO, objectId: task.id }] },
+    anchor: { type: "task", id: task.id },
+    modelId: version.modelId,
+    effectiveAutonomy: version.autonomy,
+    rehearsal: false,
+    input,
+    steps,
+    contextComposition: { anchor: { type: "task", id: task.id, name: task.title }, readRecordIds: [task.id], fragmentRefs: [], memoryItemIds: [], chatMessageIds: [] },
+    knowledgeReferences: [],
+    cost: { modelUnits: 1, toolCalls: steps.length, childExecutions: 0, durationMs: 0 },
+    output,
+    startedAt: inicio,
+    endedAt: now(),
+  });
+}
+
+/** As guardas comuns aos atos do Agente sobre uma Conta a pagar — na ordem de `runLancamentoAgent`. */
+function guardasDoAgente(state: DataState, actingMemberId: Id, taskId: Id): { readonly agent: Agent; readonly task: Task } | string {
+  const agent = state.agents.find((a) => a.id === CP.agentId);
+  if (!agent || agent.lifecycle !== "ativo") return "Agente de lançamento não está ativo.";
+  const task = state.tasks.find((t) => t.id === taskId);
+  if (!task || task.listId !== CP.listId || effectiveLifecycleOfTask(state, taskId) !== "ativo") return "Conta a pagar não encontrada ou inativa.";
+  if (!memberSeesTask(state, actingMemberId, taskId)) return "Quem invoca não alcança a Tarefa.";
+  if (!agentSeesTask(state, agent.id, taskId)) return "O Agente de lançamento não tem concessão nesta Lista.";
+  if (!agent.versions.at(-1)) return "Agente sem versão.";
+  return { agent, task };
+}
+
+export interface OpcoesDaConferencia {
+  readonly dePara: DeParaDeLancamento;
+  /** O que o revisor pediu (Fluxo 6) — o Resumo sai revisado, no mesmo fio. */
+  readonly pedidoDeRevisao?: string;
+  /** Quem pediu o ajuste; sem ele, quem rejeitou a Conferência anterior, ou quem age. */
+  readonly pedidoPor?: Id;
+  /** A conta mudou depois da conferência — a ponte republica. */
+  readonly motivo?: "dados-mudaram";
+}
+
+/**
+ * Fluxo 5/6 — o Agente publica o RESUMO no fio da conta, ABERTO ao
+ * Financeiro, e abre a Conferência. Na primeira vez o Comentário é raiz; nas
+ * seguintes (ajuste pedido, dados mudaram) é resposta no mesmo fio, e a
+ * Conferência pendente anterior é cancelada. O bloco do RESUMO sai exatamente
+ * como `buildResumoDePagamento` o monta (CON-CP-08); a chamada ao Financeiro
+ * vem DEPOIS dele.
+ *
+ * Idempotente: sem pedido de revisão, uma Conferência pendente ou conferida
+ * para a mesma impressão é devolvida como está — nada novo no fio.
+ * Uma categoria `revisar` NÃO recusa: o Resumo sai, e é o Financeiro quem
+ * decide no fio (é para isso que a Conferência existe).
+ *
+ * Tudo ou nada: uma recusa depois do Comentário desfaz o Comentário e os
+ * Registros.
+ */
+export function publicarResumoParaConferencia(
+  state: DataState,
+  actingMemberId: Id,
+  taskId: Id,
+  opcoes: OpcoesDaConferencia,
+): OperationResult<{ readonly comentario: Comment; readonly conferencia: ConferenciaDoResumo; readonly resumo: ResumoDePagamento }> {
+  const guardas = guardasDoAgente(state, actingMemberId, taskId);
+  if (typeof guardas === "string") return fail(guardas);
+  const { agent, task } = guardas;
+  const faltando = erpMissingFields(state, task);
+  if (faltando.length > 0) return fail(`Não publico o Resumo: falta ${faltando.join(", ")}.`);
+
+  const atual = conferenciaDoResumo(state, task);
+  const anterior = atual.conferencia;
+  const resumo = buildResumoDePagamento(state, task, opcoes.dePara);
+  const pedidoInformado = opcoes.pedidoDeRevisao?.trim() || undefined;
+
+  if (!pedidoInformado && anterior && (atual.estado === "pendente" || atual.estado === "conferida")) {
+    const comentario = task.comments.find((c) => c.id === anterior.origin.resumoCommentId && !c.deletedAt);
+    if (comentario) return ok({ comentario, conferencia: anterior, resumo }, anterior.id);
+  }
+
+  // Um ajuste pedido por clique (motivo na decisão) vira o pedido do Resumo revisado.
+  const pedido = pedidoInformado ?? (atual.estado === "ajuste-pedido" ? anterior?.decisionReason?.trim() || undefined : undefined);
+  const quemPediu = opcoes.pedidoPor ?? (anterior?.decision === "rejeitada" ? anterior.decidedByMemberId : undefined) ?? actingMemberId;
+  const financeiroId = avisadoDoLancamento(state, actingMemberId);
+  const financeiro = nomeDoMembro(state, financeiroId);
+  const sufixo = pedido
+    ? TEXTOS_DA_CONFERENCIA.revisado(nomeDoMembro(state, quemPediu), pedido, financeiro)
+    : opcoes.motivo === "dados-mudaram" || atual.estado === "desatualizada"
+      ? TEXTOS_DA_CONFERENCIA.dadosMudaram(financeiro)
+      : TEXTOS_DA_CONFERENCIA.chamada(financeiro);
+
+  const raiz = anterior ? task.comments.find((c) => c.id === anterior.origin.threadCommentId && !c.deletedAt) : undefined;
+  const antes = { activity: state.activity.length, comments: task.comments.length, approvals: state.approvals.length, resolvido: raiz?.resolved };
+  const desfazer = (motivo: string): OperationResult<never> => {
+    task.comments.splice(antes.comments);
+    state.approvals.splice(antes.approvals);
+    // `recordActivity` insere no INÍCIO: os Registros novos estão nos primeiros índices.
+    state.activity.splice(0, state.activity.length - antes.activity);
+    if (raiz && antes.resolvido) raiz.resolved = antes.resolvido;
+    return fail(motivo);
+  };
+
+  // Um fio resolvido (conferido antes de a conta mudar) reabre: há de novo o que conferir.
+  if (raiz?.resolved) {
+    delete raiz.resolved;
+    recordActivity(state, {
+      actor: { kind: "agent", id: agent.id },
+      delegate: memberActor(actingMemberId),
+      action: "Comentário reaberto",
+      objectType: "task",
+      objectId: task.id,
+      objectName: task.title,
+    });
+  }
+
+  const comentario = addTaskComment(state, actingMemberId, task.id, {
+    content: `${resumo.texto}${sufixo}`,
+    mentions: [{ type: "member", id: financeiroId }],
+    actor: { kind: "agent", id: agent.id },
+    ...(raiz ? { parentCommentId: raiz.id } : {}),
+  });
+  if (!comentario.ok) return desfazer(comentario.error);
+
+  const conferencia = solicitarConferenciaDoResumo(state, actingMemberId, {
+    taskId: task.id,
+    threadCommentId: raiz?.id ?? comentario.value.id,
+    resumoCommentId: comentario.value.id,
+    impressao: atual.impressaoAtual,
+    lancamento: { conta: resumo.conta, categoria: resumo.categoria, codigo: resumo.codigo, veredito: resumo.veredito },
+    approverMemberId: financeiroId,
+  });
+  if (!conferencia.ok) return desfazer(conferencia.error);
+  const aberta = conferencia.value;
+  if (!ehConferenciaDoResumo(aberta)) return desfazer("A Conferência aberta não é de Resumo.");
+
+  const tripla = `${resumo.conta} · ${resumo.categoria} · ${resumo.codigo}`;
+  gravarExecucaoDoLancamento(
+    state,
+    agent,
+    actingMemberId,
+    task,
+    `Publicar Resumo para conferência: ${task.title}`,
+    [
+      { index: 0, kind: "raciocinio", ...descreverPassoDeDePara(resumo, opcoes.dePara.origem), result: "concluido", at: now() },
+      { index: 1, kind: "ferramenta", toolId: "criar_comentario", input: raiz ? "resposta no fio do Resumo" : "Comentário raiz", output: "Resumo de pagamento publicado para conferência", result: "concluido", at: now() },
+    ],
+    `Resumo publicado para conferência: ${resumo.conta} · ${resumo.categoria} (${resumo.codigo})`,
+  );
+  recordActivity(state, {
+    actor: { kind: "agent", id: agent.id },
+    delegate: memberActor(actingMemberId),
+    action: "Resumo de pagamento publicado para conferência",
+    objectType: "task",
+    objectId: task.id,
+    objectName: task.title,
+    detail: tripla,
+  });
+  return ok({ comentario: comentario.value, conferencia: aberta, resumo }, aberta.id);
 }
 
 /* ═══════════════════════════ Contas a receber ═══════════════════════════ */

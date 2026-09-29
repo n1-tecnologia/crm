@@ -102,7 +102,27 @@ export interface SkillGrant {
  */
 export type ApprovalOrigin =
   | { readonly kind: "agentExecution"; readonly executionId: Id; readonly stepIndex: number; readonly deadline: Instant }
-  | { readonly kind: "processTask"; readonly taskId: Id; readonly processStep: "pagamento"; readonly threadCommentId: Id };
+  | { readonly kind: "processTask"; readonly taskId: Id; readonly processStep: "pagamento"; readonly threadCommentId: Id }
+  | {
+      readonly kind: "processTask";
+      readonly taskId: Id;
+      readonly processStep: "resumo";
+      /** O Comentário raiz do fio do Resumo — o primeiro Resumo publicado na conta. */
+      readonly threadCommentId: Id;
+      /** O Comentário do Resumo que ESTA Conferência confere (o raiz, ou uma resposta revisada no mesmo fio). */
+      readonly resumoCommentId: Id;
+      /** `impressaoDeLancamento` no instante da publicação: se a conta mudar, a Conferência fica desatualizada. */
+      readonly impressao: string;
+      // D6-10 — a tripla é DADO da Conferência: o `/lancar` recebe o código
+      // confirmado daqui e nunca reparseia o texto do Comentário, que é a
+      // fragilidade do legado (`docs/08-migracao-financeiro/10-levantamento…` §5-6).
+      readonly lancamento: {
+        readonly conta: string;
+        readonly categoria: string;
+        readonly codigo: string;
+        readonly veredito: "resolvida" | "revisar" | "ausente";
+      };
+    };
 
 /**
  * B80 — internal entity of the Execution, WITH identity — exceto quando
