@@ -30,9 +30,12 @@
  * `buildApp()`/Fastify, só é ativada aqui por env
  * (`AGENTE_CONTAS_A_PAGAR_ATIVO === "true"`), e é a ÚNICA peça do processo
  * que fala com o `automation/` a respeito de Contas a pagar. O seu padrão é
- * o Ensaio de D3-03: só o literal `lancar` em `AGENTE_CONTAS_A_PAGAR_MODO`
- * liga a caneta, e mesmo ele exige credencial e URL presentes — durante a
- * primeira semana o erro barato é não lançar, o erro caro é lançar. O bloco
+ * o Ensaio de D3-03: só os literais `conferencia` (Resumos e conferências,
+ * nunca `/lancar`) e `lancar` em `AGENTE_CONTAS_A_PAGAR_MODO` mudam o modo
+ * (D6-11), e os dois exigem credencial e URL presentes — o erro barato é não
+ * lançar, o erro caro é lançar. A ponte fica registrada em
+ * `automacoes/ponte-ativa.ts` para a rota de operações cutucá-la depois de
+ * uma gravação numa conta (D6-12). O bloco
  * da ponte entra ANTES do bloco do agendador porque este último precisa da
  * sua `rodarAgenda`, se ela existir. Ao contrário do outbox e do agendador,
  * a ponte NÃO tem exclusão pelo banco: duas pontes vivas processariam a
@@ -58,7 +61,16 @@ import { buildApp } from "./app";
 import { carregarEnv, encerrar } from "./persistencia/conexao";
 import { criarOutboxWorker } from "./persistencia/outbox-worker";
 import { criarSchedulerWorker } from "./automacoes/scheduler-worker";
-import { criarPonteDoAgente, lerCnpjPorEmpresa, resolverModo, type PonteDoAgente } from "./automacoes/invocar-agente";
+import {
+  criarPonteDoAgente,
+  descreverEscopo,
+  lerCnpjPorEmpresa,
+  lerOpcoesDeDecisao,
+  lerOpcoesDeEscopo,
+  resolverModo,
+  type PonteDoAgente,
+} from "./automacoes/invocar-agente";
+import { registrarPonte } from "./automacoes/ponte-ativa";
 
 /** A chave em `globalThis` da função que desmonta a instância em execução — ver o cabeçalho. */
 const CHAVE_DA_DESMONTAGEM = "__n1ApiDesmontarInstanciaAnterior";
@@ -114,6 +126,14 @@ if (process.env.AGENTE_CONTAS_A_PAGAR_ATIVO === "true") {
   if (avisoDoModo) app.log.warn(avisoDoModo);
   const { mapa: cnpjPorEmpresa, aviso: avisoDoCnpj } = lerCnpjPorEmpresa(process.env.AGENTE_CONTAS_A_PAGAR_CNPJ_POR_EMPRESA);
   if (avisoDoCnpj) app.log.warn(avisoDoCnpj);
+  // D6-01, D6-02, D6-04 — AGENTE_CONTAS_A_PAGAR_RESUMO_A_PARTIR_DE,
+  // AGENTE_CONTAS_A_PAGAR_CONFERENCIA_POR_COMENTARIO e
+  // AGENTE_CONTAS_A_PAGAR_INTEGRACAO_MANUAL; valor desconhecido vale o padrão, com aviso.
+  const { avisos: avisosDasDecisoes, ...decisoes } = lerOpcoesDeDecisao(process.env);
+  for (const aviso of avisosDasDecisoes) app.log.warn(aviso);
+  // G2/G3 — AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM e AGENTE_CONTAS_A_PAGAR_AVISAR_ID:
+  // portas de ambiente de teste; produção deixa as duas vazias.
+  const { soTitulosCom, avisarId } = lerOpcoesDeEscopo(process.env);
   const intervaloMs = process.env.AGENTE_CONTAS_A_PAGAR_INTERVALO_MS ? Number(process.env.AGENTE_CONTAS_A_PAGAR_INTERVALO_MS) : undefined;
   const atorDoAgente = process.env.AUTOMACOES_ATOR_MEMBER_ID;
   const ponteAtiva = criarPonteDoAgente({
@@ -123,6 +143,9 @@ if (process.env.AGENTE_CONTAS_A_PAGAR_ATIVO === "true") {
     workspaceId,
     listId,
     modo,
+    decisoes,
+    ...(soTitulosCom ? { soTitulosCom } : {}),
+    ...(avisarId ? { avisarId } : {}),
     cnpjPorEmpresa,
     ...(intervaloMs !== undefined ? { intervaloMs } : {}),
     registrar: (nivel, mensagem, dados) => {
@@ -130,9 +153,17 @@ if (process.env.AGENTE_CONTAS_A_PAGAR_ATIVO === "true") {
     },
   });
   ponte = ponteAtiva;
+  registrarPonte(ponteAtiva, { workspaceId, listId });
   ponteAtiva.iniciar();
-  aoEncerrar(() => ponteAtiva.parar());
-  app.log.info(`ponte do Agente de lançamento ativa (modo=${modo})`);
+  aoEncerrar(async () => {
+    registrarPonte(undefined);
+    await ponteAtiva.parar();
+  });
+  app.log.info(
+    `ponte do Agente de lançamento ativa (modo=${modo} resumoAPartirDe=${decisoes.resumoAPartirDe} ` +
+      `conferenciaPorComentario=${decisoes.conferenciaPorComentario} integracaoManual=${decisoes.integracaoManual} ` +
+      `${descreverEscopo(soTitulosCom)} avisar=${avisarId ? "membro-indicado" : "financeiro"})`,
+  );
 }
 
 if (process.env.OUTBOX_WORKER_ATIVO === "true") {

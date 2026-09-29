@@ -31,6 +31,7 @@ import type { ApprovalRequest, Comment, DataState, Id, OperationResult } from "@
 import { ehNomeDeOperacao, OPERACOES, reviverArgumentos, type NomeDeOperacao } from "@n1/dominio/operations/registro";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { cutucarPonte, type ParDaPonte } from "../automacoes/ponte-ativa";
 import type { MembroDaSessao } from "../plugins/autenticacao";
 import type { EventoDeSaida } from "../persistencia/outbox";
 import { executar, type ResultadoTransacao } from "../persistencia/unidade-de-trabalho";
@@ -95,6 +96,48 @@ export function eventosDeSaidaDaOperacao(
     ];
   }
   return [];
+}
+
+/**
+ * D6-12 — as gravações numa Tarefa que interessam à ponte do Agente de
+ * lançamento (Campo, dados, Status, Comentário, Tags, fio resolvido, decisão
+ * de Conferência, Status em lote). Depois de uma delas, a rota cutuca a
+ * ponte, que roda um ciclo em até 2 s em vez de esperar o relógio.
+ */
+const OPERACOES_QUE_CUTUCAM_A_PONTE: ReadonlySet<string> = new Set([
+  "setTaskFieldValue",
+  "updateTask",
+  "changeTaskStatus",
+  "addTaskComment",
+  "setTaskTags",
+  "resolveTaskComment",
+  "decideProcessApproval",
+  "alterarStatusEmLote",
+]);
+
+/**
+ * O par (Espaço, Lista) de cada Tarefa que a operação gravou — `args[0]` (um
+ * id, ou a lista de ids do lote), ou a origem da Aprovação decidida. Quem
+ * decide se o par é o da ponte é `cutucarPonte` (a Lista da ponte vem do
+ * ambiente, não do seed). Puro: lê o estado, não grava nada.
+ */
+export function tarefasAfetadasPelaOperacao(nome: string, args: readonly unknown[], valor: unknown, state: DataState): ParDaPonte[] {
+  if (!OPERACOES_QUE_CUTUCAM_A_PONTE.has(nome)) return [];
+  let ids: unknown[];
+  if (nome === "decideProcessApproval") {
+    const origem = (valor as { readonly origin?: { readonly kind?: unknown; readonly taskId?: unknown } } | undefined)?.origin;
+    ids = origem?.kind === "processTask" ? [origem.taskId] : [];
+  } else if (nome === "alterarStatusEmLote") {
+    ids = Array.isArray(args[0]) ? args[0] : [];
+  } else {
+    ids = [args[0]];
+  }
+  const pares = new Map<string, ParDaPonte>();
+  for (const id of ids) {
+    const tarefa = typeof id === "string" ? state.tasks.find((t) => t.id === id) : undefined;
+    if (tarefa) pares.set(tarefa.listId, { workspaceId: state.workspace.id, listId: tarefa.listId });
+  }
+  return [...pares.values()];
 }
 
 const PARAMS = z.object({
@@ -229,6 +272,7 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
 
       let resultado: ResultadoTransacao<unknown>;
       let eraReplay = false;
+      let afetadas: ParDaPonte[] = [];
       try {
         resultado = servico
           ? await servico(request.membro, args)
@@ -251,7 +295,11 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
                 // Unidade de Trabalho (`persistencia/unidade-de-trabalho.ts`)
                 // deriva sozinha, obrigatoriamente, a partir das
                 // `AutomationExecution` que nasceram na transação.
-                return REGISTRO[nome]!(state, request.membro.id, ...args);
+                const r = REGISTRO[nome]!(state, request.membro.id, ...args);
+                // D6-12 — só ANOTA quais Tarefas foram gravadas; a cutucada
+                // sai depois do commit, nunca dentro da transação.
+                if (r.ok) afetadas = tarefasAfetadasPelaOperacao(nome, args, r.value, state);
+                return r;
               },
               {
                 eventos: (valor, state) =>
@@ -267,6 +315,16 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
 
       if ("conflito" in resultado && resultado.conflito) {
         return reply.code(409).send(resultado);
+      }
+
+      if (resultado.ok) {
+        for (const par of afetadas) {
+          try {
+            cutucarPonte(par);
+          } catch (erro) {
+            request.log.warn({ operacao: nome, causa: erro instanceof Error ? erro.message.slice(0, 200) : "erro" }, "Não consegui cutucar a ponte do Agente");
+          }
+        }
       }
 
       // `OperationResult` é valor, mesmo quando `ok:false` — nunca lança, e

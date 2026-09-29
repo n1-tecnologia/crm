@@ -135,6 +135,28 @@ npm run automacoes:liberar -w @n1/api -- <workspaceId> <listId>
 A volta seguinte processa de verdade. `AUTOMACOES_ENSAIO_PRIMEIRA_VOLTA=false`
 desliga o gate inteiro — só para uma Lista que nasce sem backlog.
 
+## 5b. A ponte do Agente de lançamento (Contas a pagar, Plan 03-11 e 06-03)
+
+`AGENTE_CONTAS_A_PAGAR_ATIVO=true` liga a ponte que publica o Resumo para
+conferência e lança no Omie pelo `automation/` (ver
+`apps/api/src/automacoes/CONTEXT.md`, "Os dois momentos da ponte"). Exige
+`AGENTE_CONTAS_A_PAGAR_URL`, `PLATAFORMA_LANCAMENTO_TOKEN`,
+`AGENTE_CONTAS_A_PAGAR_ESPACO_ID` e `AGENTE_CONTAS_A_PAGAR_LISTA_ID`.
+
+| Variável | Valores (padrão primeiro) | O que decide |
+|---|---|---|
+| `AGENTE_CONTAS_A_PAGAR_MODO` | `ensaio` \| `conferencia` \| `lancar` | D6-11 — `ensaio`: só `/resolver` e log; `conferencia`: Resumos, conferências e revisões, **zero** `/lancar`; `lancar`: tudo. Só os literais exatos; outro valor cai em `ensaio` com aviso. |
+| `AGENTE_CONTAS_A_PAGAR_RESUMO_A_PARTIR_DE` | `para-pagar` \| `em-lancamento-omie` | D6-01 — o Resumo aparece assim que a conta fica completa, ou só ao entrar em "em lançamento omie". |
+| `AGENTE_CONTAS_A_PAGAR_CONFERENCIA_POR_COMENTARIO` | `true` \| `false` | D6-02 — "ok" de um revisor no fio vale como conferência; `false`: só o clique confere (o fio continua pedindo ajuste). |
+| `AGENTE_CONTAS_A_PAGAR_INTEGRACAO_MANUAL` | `nao-encosta` \| `sem-conferencia` | D6-04 — conta Manual: o Agente não encosta; ou Resumo com a Conferência dispensada e lançamento. |
+| `AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM` | vazio \| texto | G2, **só ambiente de teste** — os dois momentos só olham contas cujo título contém o texto (exato, maiúsculas contam). Produção: vazio. |
+| `AGENTE_CONTAS_A_PAGAR_AVISAR_ID` | vazio \| id de Membro | G3, **só ambiente de teste** — toda Menção da ponte vai a esse Membro no lugar do Financeiro (se for Membro ativo; senão, aviso e a regra de sempre). Produção: vazio. |
+| `AGENTE_CONTAS_A_PAGAR_INTERVALO_MS` | `900000` | O relógio entre ciclos; uma gravação numa conta cutuca a ponte em até 2 s (D6-12). |
+| `AGENTE_CONTAS_A_PAGAR_CNPJ_POR_EMPRESA` | vazio \| JSON | O CNPJ da Empresa no texto da A5. |
+
+Contas importadas do ClickUp só entram na ponte depois de um movimento de
+Status feito na plataforma (G1) — o backlog importado nunca é varrido.
+
 ## 6. Contrato HTTP
 
 - `GET /saude` — pública, sem token; confirma que o processo está no ar.

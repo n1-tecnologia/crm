@@ -337,6 +337,7 @@ Tudo em `operations/financeiro.ts` (e a decisão em `operations/ai.ts`), puro:
 | `respostasDeConferenciaPendentes` / `classificarRespostaDeConferencia` | As respostas de revisores ainda não decididas, e o que cada uma quer dizer (`aprovacao` \| `ajuste` \| `ignorar`) — heurística do legado, sem IA; "nada casou" é `ajuste` (Fluxo 6). |
 | `impressaoDeLancamento(state, task)` | JSON canônico (chaves ordenadas) de tudo o que vai ao Omie: Centro, Empresa, Categoria, fornecedor (tipo, documento, nome), forma, dado de pagamento, Valor, vencimento, Data de Emissão, Tag `conta *`, título e descrição. Anexo, Boleto, QR Code e Comentários NÃO entram. |
 | `revisoresDoResumo(state)` | O Financeiro (quando Membro ativo) e os Membros ativos Administrador/Proprietário (D6-09). |
+| `avisadoDaConferencia(state, ator, avisarId?)` | Quem os atos da Conferência mencionam: `avisarId` quando é Membro ativo, senão `avisadoDoLancamento`. É a opção aditiva `avisarId` de `publicarResumoParaConferencia` (Menção, chamada e aprovador) e de `registrarFalhaDoLancamento` (5º parâmetro) — a porta G3 da ponte para ambiente de teste (06-03). Não muda `revisoresDoResumo`. |
 | `TEXTOS_DA_CONFERENCIA` | Os textos canônicos, em `operations/financeiro-textos.ts` (fora de `financeiro.ts` para não criar o ciclo `ai` ↔ `financeiro`) e reexportados por `financeiro.ts`: domínio, ponte e tela usam as mesmas strings. |
 
 As três regras com dono (`06-CONTEXT.md`):
