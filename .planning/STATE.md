@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 06-01-PLAN.md
-last_updated: "2026-09-29T19:56:24.147Z"
+stopped_at: Completed 06-02-PLAN.md
+last_updated: "2026-09-29T20:13:33.649Z"
 last_activity: 2026-09-29 -- Phase 06 execution started
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 111
-  completed_plans: 105
+  completed_plans: 106
   percent: 71
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 06 (conferencia-do-resumo-e-anexos) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-09-29 -- Phase 06 execution started
 
@@ -329,6 +329,7 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 | Phase 05 P01 | 45min | 3 tasks | 13 files |
 | Phase 02 P26 | ~5h | 3 tasks | 10 files |
 | Phase 06 P01 | 25min | 3 tasks | 9 files |
+| Phase 06 P02 | 25min | 3 tasks | 21 files |
 
 ## Accumulated Context
 
@@ -397,6 +398,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 06]: 06-01: textos canônicos da Conferência em operations/financeiro-textos.ts (evita o ciclo ai ↔ financeiro), reexportados por financeiro.ts
 - [Phase 06]: 06-01: a tripla conta · categoria · código e a impressão de lançamento vivem em ApprovalRequest.origin (ramo resumo); o lançamento só se registra com conferenciaDoResumo = conferida para a impressão atual (D6-10)
 - [Phase 06]: 06-01: registrarFalhaDoLancamento muda o Status antes de comentar — o aviso só diz que a conta voltou para para pagar quando voltou
+- [Phase 06]: 06-02: contrato contas-a-pagar v1.1 aditivo no mesmo endereço (D6-05) — codigoCategoriaConfirmado validado no plano de contas real sem chamar o RAG (plano inalcançável ⇒ revisar); pedidoDeRevisao no fim da consulta, nunca em log
+- [Phase 06]: 06-02: anexos string | { url, nome } no /lancar; o nome vai para dentro do zip e para cNomeArquivo; anexos[].nome só volta quando pedido com nome; anexo string vazio passou a 400
 
 ### Pending Todos
 
@@ -446,7 +449,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-29T19:56:24.139Z
-Stopped at: Completed 06-01-PLAN.md
+Last session: 2026-09-29T20:13:26.767Z
+Stopped at: Completed 06-02-PLAN.md
 Resume file: None
 None
