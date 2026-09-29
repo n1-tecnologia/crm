@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 06-03-PLAN.md
-last_updated: "2026-09-29T20:48:04.603Z"
+stopped_at: Completed 06-04-PLAN.md
+last_updated: "2026-09-29T23:38:39.827Z"
 last_activity: 2026-09-29 -- Phase 06 execution started
 progress:
   total_phases: 7
   completed_phases: 5
   total_plans: 111
-  completed_plans: 107
+  completed_plans: 108
   percent: 71
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 06 (conferencia-do-resumo-e-anexos) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-09-29 -- Phase 06 execution started
 
@@ -331,6 +331,7 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 | Phase 06 P01 | 25min | 3 tasks | 9 files |
 | Phase 06 P02 | 25min | 3 tasks | 21 files |
 | Phase 06 P03 | 30min | 3 tasks | 15 files |
+| Phase 06 P04 | ~25min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -402,6 +403,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 06]: 06-02: contrato contas-a-pagar v1.1 aditivo no mesmo endereço (D6-05) — codigoCategoriaConfirmado validado no plano de contas real sem chamar o RAG (plano inalcançável ⇒ revisar); pedidoDeRevisao no fim da consulta, nunca em log
 - [Phase 06]: 06-02: anexos string | { url, nome } no /lancar; o nome vai para dentro do zip e para cNomeArquivo; anexos[].nome só volta quando pedido com nome; anexo string vazio passou a 400
 - [Phase 06]: 06-03: a ponte em dois momentos; /lancar só com Conferência aprovada; zero /lancar em ensaio e conferencia; portas de teste G1 (legado importado nunca varrido), G2 (AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM), G3 (AGENTE_CONTAS_A_PAGAR_AVISAR_ID)
+- [Phase 06]: 06-04: botões da Conferência só para quem alcança a conta (memberSeesTask) e pode decidir (aprovador ou revisor Administrador); cp-conferida/cp-ajuste só rodam pedidos pelo nome
 
 ### Pending Todos
 
@@ -451,7 +453,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-29T20:47:58.797Z
-Stopped at: Completed 06-03-PLAN.md
+Last session: 2026-09-29T23:38:26.818Z
+Stopped at: Completed 06-04-PLAN.md
 Resume file: None
 None
