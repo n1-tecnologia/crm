@@ -1363,7 +1363,7 @@ describe("criarPonteDoAgente — os dois momentos contra servidorFalso (sem DATA
       expect(comentariosDoAgente(das).at(-1)?.mentions).toEqual([{ type: "member", id: TESTE }]);
     });
 
-    it("avisarId que não é Membro ativo: aviso uma vez, e as Menções seguem a regra de sempre", async () => {
+    it("avisarId que não é Membro ativo: o ciclo não escreve nem chama nada, e avisa a cada ciclo (WR-01)", async () => {
       servidor = await criarServidorFalso();
       const estado = buildSeed();
       const das = isolar(estado, "tsk_cp_das");
@@ -1372,9 +1372,10 @@ describe("criarPonteDoAgente — os dois momentos contra servidorFalso (sem DATA
       const ponte = ponteSobre(estado, { modo: "conferencia", avisarId: "mem_nao_existe", registrar: (nivel, m) => nivel === "warn" && avisos.push(m) });
       await ponte.processarContas();
       await ponte.processarContas();
-      expect(avisos.filter((m) => m.startsWith("AGENTE_CONTAS_A_PAGAR_AVISAR_ID"))).toHaveLength(1);
+      expect(servidor.recebidas).toHaveLength(0);
+      expect(resumosDe(das)).toHaveLength(0);
+      expect(avisos.filter((m) => m.startsWith("AGENTE_CONTAS_A_PAGAR_AVISAR_ID"))).toHaveLength(2);
       expect(avisos.join(" ")).not.toContain("mem_nao_existe");
-      expect(resumosDe(das)[0]?.mentions).toEqual([{ type: "member", id: MARYANE }]);
     });
   });
 
