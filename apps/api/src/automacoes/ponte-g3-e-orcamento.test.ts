@@ -80,15 +80,21 @@ function montar(estado: DataState, extra: Partial<OpcoesDaPonte> = {}) {
 const portaFechada = (registros: readonly Registro[]) => registros.filter((r) => r.nivel === "warn" && r.dados?.code === "AVISAR_ID_INVALIDO");
 
 describe("crm2:WR-04 — G3 fechado no meio do ciclo", () => {
-  it("(a) mem_walter desativado depois da primeira gravação: a segunda conta não ganha Resumo; nada cai na Maryane; o ciclo para ali, e o seguinte para no começo", async () => {
+  it("(a) mem_walter desativado depois da primeira gravação: a segunda conta não ganha Resumo; nada cai na Maryane; o ciclo para ali (a terceira nem é lida), e o seguinte para no começo", async () => {
     servidor = await criarServidorFalso();
     const estado = buildSeed();
     const das = isolar(estado, "tsk_cp_das");
     const trafego = conta(estado, "tsk_cp_trafego");
     trafego.statusId = S.paraPagar;
     definir(trafego, F.categoria, "Impostos");
-    servidor.enfileirar(RESOLVIDA);
-    servidor.enfileirar(RESOLVIDA);
+    // Uma terceira conta completa: os mesmos Campos, vencimento e Tags da `das`.
+    const energia = conta(estado, "tsk_cp_energia");
+    energia.statusId = S.paraPagar;
+    energia.fieldValues = structuredClone(das.fieldValues);
+    energia.tagIds = [...das.tagIds];
+    if (das.dueDate) energia.dueDate = das.dueDate;
+    expect(erpMissingFields(estado, energia)).toEqual([]);
+    for (let n = 0; n < 3; n += 1) servidor.enfileirar(RESOLVIDA);
     let gravacoes = 0;
     const emMemoria = executarEmMemoria(estado);
     const { ponte, registros } = montar(estado, {
@@ -103,12 +109,16 @@ describe("crm2:WR-04 — G3 fechado no meio do ciclo", () => {
     });
 
     await ponte.processarContas();
-    expect(resumosDe(das).length + resumosDe(trafego).length).toBe(1);
-    for (const t of [das, trafego]) expect(mencionaAMaryane(t)).toBe(false);
-    const aprovadores = estado.approvals.filter((a) => a.origin?.kind === "processTask" && [das.id, trafego.id].includes((a.origin as { taskId: string }).taskId)).map((a) => a.approverMemberId);
+    const tres = [das, trafego, energia];
+    expect(tres.reduce((n, t) => n + resumosDe(t).length, 0)).toBe(1);
+    for (const t of tres) expect(mencionaAMaryane(t)).toBe(false);
+    const ids = tres.map((t) => t.id);
+    const aprovadores = estado.approvals.filter((a) => a.origin?.kind === "processTask" && ids.includes((a.origin as { taskId: string }).taskId)).map((a) => a.approverMemberId);
     expect(aprovadores).toEqual([WALTER]);
     expect(portaFechada(registros)).toHaveLength(1);
+    // A recusa foi a última gravação do ciclo, e a conta seguinte nem pediu o de-para.
     expect(gravacoes).toBe(2);
+    expect(servidor.recebidas).toHaveLength(2);
 
     const antes = registros.length;
     await ponte.processarContas();
