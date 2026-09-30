@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 
 Phase: 06 (conferencia-do-resumo-e-anexos) — EXECUTING
 Plan: 6 of 6
-Status: Phase complete — ready for verification
+Status: Verificação com gaps (06-VERIFICATION.md: "ok no fio" sem gesto na tela) e revisão com 7 críticos (06-REVIEW.md, 06-REVIEW-FINANCEIRO-TRIA.md) — aguardando fechamento
 Last activity: 2026-09-29 -- Phase 06 execution started
 
 **Fase 06 planejada à mão em 2026-09-29 (Conferência do Resumo e anexos), pronta para `/gsd-execute-phase 6`:**
