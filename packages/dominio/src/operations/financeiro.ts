@@ -1288,13 +1288,26 @@ export function registrarLancamentoNoOmie(state: DataState, actingMemberId: Id, 
  *
  * `opcoes.avisarId` (aditivo): quem a Menção avisa, no lugar do Financeiro —
  * ver `avisadoDaConferencia`.
+ *
+ * `opcoes.superarConferencia` (aditivo, 06-12): com a Conferência vigente
+ * `aprovada`, o passo 4 é precedido da superação dela — `decision =
+ * "cancelada"` e o Registro "Conferência superada", no molde de
+ * `solicitarConferenciaDoResumo`. É a saída depois de `CONTA_DIVERGENTE`
+ * (crm:WR-09): a Conferência afirmou uma conta corrente que o Omie não usaria
+ * mais, e só um Resumo NOVO, com a conta de agora, pode ser conferido — sem a
+ * superação, `publicarResumoParaConferencia` devolveria a aprovada para a
+ * mesma impressão, e a conta ficaria sem saída. No
+ * `TITULO_EXISTENTE_DIVERGENTE` a opção NÃO vai: a Conferência continua certa
+ * sobre a conta; o que está errado é o título antigo no Omie, e o caminho é
+ * corrigi-lo ou excluí-lo lá e mover a conta de novo (o texto de
+ * `tituloDivergente`). Nada da superação pode falhar: não há o que desfazer.
  */
 export function registrarFalhaDoLancamento(
   state: DataState,
   actingMemberId: Id,
   taskId: Id,
   falha: { readonly motivo: string; readonly code: string },
-  opcoes: { readonly avisarId?: Id } = {},
+  opcoes: { readonly avisarId?: Id; readonly superarConferencia?: true } = {},
 ): OperationResult<Task> {
   const guardas = guardasDoAgente(state, actingMemberId, taskId);
   if (typeof guardas === "string") return fail(guardas);
@@ -1330,6 +1343,22 @@ export function registrarFalhaDoLancamento(
       const semVolta = avisar(TEXTOS_DA_CONFERENCIA.falhaSemVolta(motivo, code, recusaDoStatus));
       if (!semVolta.ok) return fail(semVolta.error, semVolta.field);
     }
+  }
+
+  if (opcoes.superarConferencia && vigente && vigente.decision === "aprovada") {
+    vigente.decision = "cancelada";
+    vigente.decidedAt = now();
+    recordActivity(state, {
+      actor: { kind: "agent", id: agent.id },
+      delegate: memberActor(actingMemberId),
+      action: "Conferência superada",
+      objectType: "approvalRequest",
+      objectId: vigente.id,
+      objectName: task.title,
+      before: "aprovada",
+      after: "cancelada",
+      detail: `A conferência não serve mais ao lançamento (${code}): um Resumo novo será publicado`,
+    });
   }
 
   recordActivity(state, {

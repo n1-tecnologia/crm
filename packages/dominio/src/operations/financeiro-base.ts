@@ -76,15 +76,27 @@ export function ehConferenciaDoResumo(a: ApprovalRequest): a is ConferenciaDoRes
   return origin?.kind === "processTask" && origin.processStep === "resumo";
 }
 
-/** A Conferência que vale: a mais recente (por `createdAt`, empate pela ordem de gravação) que não foi cancelada. */
+/**
+ * A Conferência que vale: a MAIS RECENTE da Tarefa (por `createdAt`, empate
+ * pela ordem de gravação); se ela estiver `cancelada` ou `expirada`, nenhuma.
+ *
+ * 06-12 (crm:WR-09): até aqui a regra era "a mais recente que não foi
+ * cancelada". Todo fluxo existente dá o mesmo resultado, porque o único
+ * cancelamento era o das pendentes MAIS ANTIGAS quando sai um Resumo novo
+ * (`solicitarConferenciaDoResumo`). A superação de
+ * `registrarFalhaDoLancamento(…, { superarConferencia: true })` é o primeiro
+ * caso em que a mais recente é cancelada — e uma Conferência antiga
+ * (rejeitada ou aprovada) nunca pode voltar a ser a vigente: ela afirmou
+ * outra coisa, sobre outro momento da conta.
+ */
 export function conferenciaVigente(state: DataState, taskId: Id): ConferenciaDoResumo | undefined {
-  let vigente: ConferenciaDoResumo | undefined;
+  let maisRecente: ConferenciaDoResumo | undefined;
   for (const a of state.approvals) {
     if (!ehConferenciaDoResumo(a) || a.origin.taskId !== taskId) continue;
-    if (a.decision === "cancelada" || a.decision === "expirada") continue;
-    if (!vigente || a.createdAt >= vigente.createdAt) vigente = a;
+    if (!maisRecente || a.createdAt >= maisRecente.createdAt) maisRecente = a;
   }
-  return vigente;
+  if (!maisRecente || maisRecente.decision === "cancelada" || maisRecente.decision === "expirada") return undefined;
+  return maisRecente;
 }
 
 /** JSON com as chaves ordenadas em todos os níveis: a mesma conta dá sempre a mesma string, seja qual for a ordem de montagem. */
@@ -161,8 +173,8 @@ export function revisoresDoResumo(state: DataState): Id[] {
 }
 
 /**
- * A forma de um código do plano de contas do Omie — a mesma de
- * `REGEX_CODIGO_DE_CATEGORIA` da ponte (contrato `contas-a-pagar-v1` v1.1):
+ * A forma de um código do plano de contas do Omie — a do contrato
+ * `contas-a-pagar-v1` v1.1, e a régua que a ponte usa desde 06-12:
  * `2.06.01` e `2.02.98.01`. Não é `d.dd.dd` estrito de propósito: o plano de
  * contas real tem códigos de quatro níveis, e recusá-los seria regressão.
  */

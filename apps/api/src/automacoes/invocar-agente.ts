@@ -17,11 +17,15 @@
  *      `/resolver` e UM `publicarResumoParaConferencia` do domínio: o
  *      `📋 RESUMO DE PAGAMENTO` no fio da conta, aberto ao Financeiro, e uma
  *      Conferência pendente.
- *   2. A conferência pelo fio (Fluxo 6): com a Conferência pendente, a última
- *      resposta de um revisor decide em nome dele (`decideProcessApproval`,
- *      `source: "comment"`, D6-02); um pedido de ajuste faz o ciclo seguinte
- *      chamar `/resolver` com `pedidoDeRevisao` (e o código `d.dd.dd` que o
- *      pedido citar) e republicar no mesmo fio.
+ *   2. A conferência pelo fio (Fluxo 6): com a Conferência pendente, as
+ *      respostas pendentes dos revisores são lidas EM LOTE
+ *      (`decisaoDasRespostasPendentes`, 06-12, crm:WR-04) — o primeiro ajuste
+ *      vence a aprovação do mesmo lote — e a que decide vira decisão em nome
+ *      de quem a escreveu (`decideProcessApproval`, `source: "comment"`,
+ *      D6-02); um pedido de ajuste faz o ciclo seguinte chamar `/resolver`
+ *      com `pedidoDeRevisao` (e o código `d.dd.dd` que o pedido citar) e
+ *      republicar no mesmo fio — só se a conta ainda estiver como o ciclo a
+ *      leu (`impressaoEsperada`/`conferenciaRejeitadaId`, crm:WR-12).
  *   3. Momento 2 — o lançamento (Fluxo 7): conta que ENTROU em "em lançamento
  *      omie" por movimento, com a Conferência aprovada para os dados atuais ⇒
  *      `/lancar` com o código conferido e os anexos, e o domínio registra o
@@ -77,18 +81,19 @@ import { runScheduledAutomations } from "@n1/dominio/operations/automations";
 import {
   CP,
   TEXTOS_DA_CONFERENCIA,
+  avisadoDaConferencia,
   avisadoDoLancamento,
   buildResumoDePagamento,
-  classificarRespostaDeConferencia,
   conferenciaDoResumo,
+  decisaoDasRespostasPendentes,
   erpMissingFields,
   impressaoDeLancamento,
   lancamentoHumanoDe,
+  lancamentoSemCodigo,
   movidaDepoisDaImportacao,
   publicarResumoParaConferencia,
   registrarFalhaDoLancamento,
   registrarLancamentoNoOmie,
-  respostasDeConferenciaPendentes,
   type AnexoDoLancamento,
   type ConferenciaDoResumo,
   type DeParaDeLancamento,
@@ -174,9 +179,6 @@ export function lerOpcoesDeEscopo(env: Readonly<Record<string, string | undefine
 export function descreverEscopo(soTitulosCom: string | undefined): string {
   return soTitulosCom ? `escopo=titulos-com:${JSON.stringify(soTitulosCom)}` : "escopo=todas";
 }
-
-/** A forma dos códigos do plano de contas do Omie — a mesma do contrato v1.1 (`2.06.01`, `2.02.98.01`). */
-const REGEX_CODIGO_DE_CATEGORIA = /^\d(\.\d{2}){2,3}$/;
 
 /**
  * Fluxo 6 — o código de Categoria que um pedido de ajuste cita ("use 2.02.98
@@ -603,8 +605,15 @@ export function textoDasTransitorias(code: string): string {
 export const TEXTO_NASCEU_EM_LANCAMENTO =
   'Não lancei esta conta no Omie: ela chegou em "em lançamento omie" pela importação do ClickUp, não por um movimento aqui, e pode já ter sido lançada pelo processo antigo. Confira no Omie; se ainda não estiver lá, mova-a para "para pagar" e de volta para "em lançamento omie" que eu lanço.';
 
+/**
+ * Só alcançável por uma Conferência aprovada ANTES de 06-11 — hoje o domínio
+ * recusa aprovar um Resumo sem código (`recusaSemCodigo`). Ali a Conferência
+ * já está decidida, e "peça ajuste" também seria beco: o texto aponta a saída
+ * real — alterar a Categoria muda a impressão, a Conferência fica
+ * `desatualizada` e sai um Resumo novo, onde o ajuste está aberto.
+ */
 export const TEXTO_SEM_CODIGO_CONFERIDO =
-  "Não consegui lançar no Omie: o Resumo conferido não tem um código de Categoria do Omie. Responda no fio do Resumo com o código (ex.: 2.02.98) e confira de novo.";
+  "Não consegui lançar no Omie: o Resumo conferido não tem um código de Categoria do Omie, e esta conferência não pode mais ser ajustada. Altere a Categoria da conta para eu publicar um Resumo novo; se ele também vier sem código, peça ajuste nele citando o código (ex.: 2.02.98).";
 
 /**
  * A conta saiu de "em lançamento omie" durante o `/lancar`. Não promete
@@ -880,7 +889,10 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
 
       if (conf.estado === "pendente" && conf.conferencia) {
         if (!escreve) continue; // o ensaio não decide nada
-        if (manual) await dispensar(conf.conferencia);
+        // D6-04 com um Resumo sem código: o domínio recusaria a dispensa
+        // (crm:WR-03), então o Financeiro pede ajuste pelo fio, como numa
+        // conta qualquer; o Resumo revisado com código é dispensado.
+        if (manual && !lancamentoSemCodigo(conf.conferencia.origin.lancamento)) await dispensar(conf.conferencia);
         else await lerRespostas(conf.conferencia);
         continue;
       }
@@ -921,19 +933,25 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
 
       /* ─── os passos, como funções da conta (fecham sobre `task`, `estado`, `conf`) ─── */
 
-      /** Fluxo 6 — a última resposta pendente de um revisor decide em nome dele (D6-02). */
+      /**
+       * Fluxo 6 (D6-02, crm:WR-04) — TODAS as respostas pendentes do fio, em
+       * lote (`decisaoDasRespostasPendentes`): o primeiro ajuste vence a
+       * aprovação do mesmo lote, e a resposta que decide vira decisão em nome
+       * de quem a escreveu. Nada é relido enquanto não chega resposta nova.
+       */
       async function lerRespostas(pendente: ConferenciaDoResumo): Promise<void> {
-        const ultima = respostasDeConferenciaPendentes(state, task).at(-1);
-        if (!ultima || ultima.id === deste.respostaLida) return;
-        const sentido = classificarRespostaDeConferencia(ultima.content);
+        const lote = decisaoDasRespostasPendentes(state, task, { aprovacaoPorComentario: decisoes.conferenciaPorComentario });
+        const { ultimaLida } = lote;
+        if (!ultimaLida || ultimaLida === deste.respostaLida) return;
         // Com `CONFERENCIA_POR_COMENTARIO=false`, só o clique confere; o fio
         // continua pedindo ajuste (D6-02).
-        if (sentido === "ignorar" || (sentido === "aprovacao" && !decisoes.conferenciaPorComentario)) {
-          deste.respostaLida = ultima.id;
+        if (lote.sentido === "nenhum") {
+          deste.respostaLida = ultimaLida;
           return;
         }
-        const autor = ultima.author.id;
-        const pedido = ultima.content.trim();
+        const { resposta, sentido } = lote;
+        const autor = resposta.author.id;
+        const pedido = resposta.content.trim();
         const r = await executarOperacao((s) =>
           decideProcessApproval(s, autor, pendente.id, sentido === "aprovacao" ? "aprovada" : "rejeitada", {
             source: "comment",
@@ -943,8 +961,11 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
         if (r.ok) {
           registrar("info", sentido === "aprovacao" ? "Resumo conferido por resposta no fio." : "Ajuste do Resumo pedido por resposta no fio.", daConta);
         } else if (!("conflito" in r && r.conflito)) {
-          deste.respostaLida = ultima.id;
-          registrar("warn", `A resposta no fio não virou decisão: ${r.error.slice(0, 200)}`, daConta);
+          deste.respostaLida = ultimaLida;
+          // T-3-04: o código, nunca `r.error` (pode citar a conta).
+          registrar("warn", "A resposta no fio não virou decisão.", { ...daConta, code: "RESPOSTA_RECUSADA_PELO_DOMINIO" });
+          // Quem disse "ok" a um Resumo sem código fica sabendo por quê (crm:WR-03).
+          if (r.error === TEXTOS_DA_CONFERENCIA.recusaSemCodigo) await comentar(TEXTOS_DA_CONFERENCIA.recusaSemCodigo, pendente.origin.threadCommentId);
         }
       }
 
@@ -993,20 +1014,57 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
           return;
         }
         const atorId = await atorDaEscrita();
+        // crm:WR-12 — o de-para foi resolvido para a conta como o ciclo a
+        // leu. Se ela mudou até a gravação (ou, num ajuste, outro publicador
+        // já respondeu à Conferência rejeitada), nada é publicado: o ciclo
+        // seguinte refaz o `/resolver` sobre o estado novo. As guardas do
+        // domínio (`impressaoEsperada`, `conferenciaRejeitadaId`) são a defesa.
+        let adiado = false;
+        let dispensou = false;
         const r = await executarOperacao((s) => {
+          const fresca = s.tasks.find((t) => t.id === task.id);
+          const agora = fresca ? conferenciaDoResumo(s, fresca) : undefined;
+          adiado =
+            !fresca ||
+            !agora ||
+            agora.impressaoAtual !== conf.impressaoAtual ||
+            (conf.estado === "ajuste-pedido" && (agora.conferencia?.id !== conf.conferencia?.id || agora.conferencia?.decision !== "rejeitada"));
+          if (adiado || !fresca) return ok(undefined);
+          // crm:WR-03 — um Resumo sem código de Categoria não se aprova (o
+          // domínio recusa), então também não se dispensa (D6-04): sai como
+          // Conferência normal, e a resposta no fio diz como seguir.
+          const previa = buildResumoDePagamento(s, fresca, dePara);
+          const semCodigo = lancamentoSemCodigo({ codigo: previa.codigo, veredito: previa.veredito });
+          const dispensa = manual && !semCodigo;
           const publicado = publicarResumoParaConferencia(s, atorId, task.id, {
             dePara,
+            impressaoEsperada: conf.impressaoAtual,
+            ...(conf.estado === "ajuste-pedido" && conf.conferencia ? { conferenciaRejeitadaId: conf.conferencia.id } : {}),
             ...(pedido ? { pedidoDeRevisao: pedido } : {}),
             ...(conf.estado === "desatualizada" ? { motivo: "dados-mudaram" as const } : {}),
             // Na dispensa (D6-04), o aprovador é o próprio Membro de serviço —
             // é ele quem decide logo abaixo, e nenhuma pessoa é chamada a conferir.
-            ...(manual ? { avisarId: atorId } : avisar ? { avisarId: avisar } : {}),
+            ...(dispensa ? { avisarId: atorId } : avisar ? { avisarId: avisar } : {}),
           });
-          if (!publicado.ok || !manual) return publicado;
+          if (!publicado.ok) return publicado;
+          if (semCodigo) {
+            const resposta = addTaskComment(s, atorId, task.id, {
+              content: TEXTOS_DA_CONFERENCIA.recusaSemCodigo,
+              mentions: [{ type: "member", id: avisadoDaConferencia(s, atorId, avisar) }],
+              actor: { kind: "agent", id: CP.agentId },
+              parentCommentId: publicado.value.conferencia.origin.threadCommentId,
+            });
+            if (!resposta.ok) return resposta;
+          }
+          if (!dispensa) return publicado;
+          dispensou = true;
           return decideProcessApproval(s, atorId, publicado.value.conferencia.id, "aprovada", { source: "click", reason: MOTIVO_DA_DISPENSA });
         });
-        if (r.ok) {
-          registrar("info", manual ? "Resumo publicado com a Conferência dispensada (Integração manual)." : "Resumo publicado para conferência.", daConta);
+        if (r.ok && adiado) {
+          estadoPorConta.delete(task.id);
+          registrar("info", "Resumo adiado: a conta mudou depois da leitura do ciclo.", { ...daConta, code: "RESUMO_ADIADO" });
+        } else if (r.ok) {
+          registrar("info", dispensou ? "Resumo publicado com a Conferência dispensada (Integração manual)." : "Resumo publicado para conferência.", daConta);
         } else if ("conflito" in r && r.conflito) {
           await falhaTransitoria("CONFLITO_DE_REVISAO", "publicaria");
         } else {
@@ -1034,9 +1092,8 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
         }
         // `ausente` (a Categoria não casou no de-para) traz o código de
         // preenchimento do Resumo (`9.99.99`), não um código do Omie: conferir
-        // esse Resumo não confirma Categoria nenhuma.
-        const { codigo: codigoConferido, veredito } = conferida.origin.lancamento;
-        if (veredito === "ausente" || !REGEX_CODIGO_DE_CATEGORIA.test(codigoConferido)) {
+        // esse Resumo não confirma Categoria nenhuma. A régua é a do domínio.
+        if (lancamentoSemCodigo(conferida.origin.lancamento)) {
           await parar("recusa", TEXTO_SEM_CODIGO_CONFERIDO, "Resumo conferido sem código de Categoria válido.", "lançaria");
           return;
         }
