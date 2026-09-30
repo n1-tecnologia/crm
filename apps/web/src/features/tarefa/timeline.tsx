@@ -553,7 +553,10 @@ export function Timeline({ task, fmt, readOnly }: { readonly task: Task; readonl
   const todas = useMemo(() => entradasDaTarefa(state, task), [state, task]);
   const roteamento = useMemo(() => comentariosDeRoteamento(state, task), [state, task]);
   // O estado vem do domínio (`conferenciaDoResumo`, dentro de `conferenciaVisivel`); a tela não lê as Aprovações para isso.
-  const conferenciaPendente = conferenciaVisivel(state, task)?.estado === "pendente";
+  const visivel = conferenciaVisivel(state, task);
+  const conferenciaPendente = visivel?.estado === "pendente";
+  // 06-18 (crm2:WR-03) — a Conferência que não aceita o "ok" pelo fio (dado da Conferência): a doca não o promete.
+  const semOkPeloFio = visivel?.conferencia?.origin.aprovacaoPeloFio === false;
 
   const fecharResposta = (commentId: Id) => {
     setRespondendo(null);
@@ -666,7 +669,9 @@ export function Timeline({ task, fmt, readOnly }: { readonly task: Task; readonl
           {conferenciaPendente ? (
             // 06-14 — o efeito silencioso do gap: um "ok" aqui é Comentário raiz, e a ponte só lê respostas no fio do Resumo.
             <p className="app-meta mb-2">
-              Para conferir o Resumo pelo tópico, use &quot;Responder&quot; no Comentário do Resumo; um comentário novo aqui não confere.
+              {semOkPeloFio
+                ? 'Para pedir ajuste no Resumo pelo tópico, use "Responder" no Comentário do Resumo; conferir é pelo botão do card.'
+                : 'Para conferir o Resumo pelo tópico, use "Responder" no Comentário do Resumo; um comentário novo aqui não confere.'}
             </p>
           ) : null}
           <Compositor task={task} />

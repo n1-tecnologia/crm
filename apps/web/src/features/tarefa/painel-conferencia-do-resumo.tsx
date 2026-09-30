@@ -29,10 +29,9 @@ import {
   erpMissingFields,
   lancamentoSemCodigo,
   movidaDepoisDaImportacao,
-  revisoresDoResumo,
+  podeDecidirAConferencia,
 } from "@n1/dominio/operations";
 import type { ConferenciaDoResumo, EstadoDaConferencia } from "@n1/dominio/operations";
-import { memberSeesTask } from "@n1/dominio/derive";
 import type { DataState, OperationResult } from "@n1/dominio/state";
 import type { Id, Task } from "@n1/dominio/types";
 import type { Formatters } from "@/features/shell/format";
@@ -113,20 +112,16 @@ export function conferenciaVisivel(
 }
 
 /**
- * Quem vê os botões: quem ALCANÇA a conta (`memberSeesTask` — um
- * Administrador fora da Lista privada não comenta nela, e a resposta
- * canônica no fio seria recusada) e pode decidir a Conferência pela regra de
- * `decideProcessApproval`: o aprovador designado (o Financeiro, ou quem a
- * ponte indicou) ou um revisor de nível Administrador/Proprietário
- * (`revisoresDoResumo`, D6-09).
+ * Quem vê os botões: `podeDecidirAConferencia` do domínio — a MESMA régua com
+ * que a ponte lê as respostas do fio (06-18, crm2:WR-03): quem ALCANÇA a
+ * conta (um Administrador fora da Lista privada não comenta nela, e a
+ * resposta canônica no fio seria recusada) e é o aprovador designado (o
+ * Financeiro, ou quem a ponte indicou) ou um Membro ativo de Papel base
+ * Administrador/Proprietário. Quem confere pelo clique é quem confere pelo
+ * fio; a fila (`ia/aprovacoes`) usa esta mesma função.
  */
 export function podeConferirOResumo(state: DataState, memberId: Id, conferencia: ConferenciaDoResumo): boolean {
-  if (!memberSeesTask(state, memberId, conferencia.origin.taskId)) return false;
-  if (conferencia.approverMemberId === memberId) return true;
-  if (!revisoresDoResumo(state).includes(memberId)) return false;
-  const member = state.members.find((m) => m.id === memberId);
-  const base = state.roles.find((r) => r.id === member?.roleId)?.base;
-  return base === "administrador" || base === "proprietario";
+  return podeDecidirAConferencia(state, memberId, conferencia);
 }
 
 /**
@@ -398,9 +393,12 @@ export function PainelConferenciaDoResumo({
                 Pedir ajuste
               </Button>
             </div>
-            {/* crm:WR-05 — o "ok" no fio (D6-02) também confere; a ponte lê a resposta ao Resumo. */}
+            {/* crm:WR-05 — o "ok" no fio (D6-02) também confere; a ponte lê a resposta ao Resumo.
+                06-18 (crm2:WR-03) — só quando a Conferência aceita o "ok" pelo fio (`origin.aprovacaoPeloFio`, dado). */}
             <p className="app-sm" style={{ color: "var(--texto-3)" }}>
-              {'Confira pelo botão ou responda "ok" no fio do Resumo; qualquer outra resposta no fio pede ajuste.'}
+              {conferencia.origin.aprovacaoPeloFio === false
+                ? "Confira pelo botão; uma resposta no fio do Resumo pede ajuste."
+                : 'Confira pelo botão ou responda "ok" no fio do Resumo; qualquer outra resposta no fio pede ajuste.'}
             </p>
           </div>
         ) : (
