@@ -263,12 +263,15 @@ describe("crm2:WR-03 — quem confere pelo fio é quem confere pelo clique", () 
     const estado = buildSeed();
     const das = isolar(estado, "tsk_cp_das");
     srv.enfileirar(RESOLVIDA);
-    const { ponte } = montar(srv, estado, { avisarId: WALTER });
+    const { ponte, registros } = montar(srv, estado, { avisarId: WALTER });
     await ponte.processarContas();
     const c = vigente(estado, das);
 
     responder(estado, das, MARYANE, "ok");
     await ponte.processarContas();
+    // A resposta dela nem chega a ser tentada como decisão: não é de quem confere.
+    expect(codigos(registros)).not.toContain("RESPOSTA_RECUSADA_PELO_DOMINIO");
+    expect(codigos(registros)).toContain("RESPOSTA_SEM_EFEITO");
     const texto = TEXTOS_DA_CONFERENCIA.okDeQuemNaoConfere(NOME_DO_WALTER);
     const respostas = () => comentariosDoAgente(das).filter((x) => x.content === texto);
     expect(c.decision).toBeUndefined();
