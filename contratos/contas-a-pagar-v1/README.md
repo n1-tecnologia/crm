@@ -43,7 +43,8 @@ pode mudar; quem decide é `code` + `retryable`.
 
 Códigos permanentes: `REGRA_DE_DOMINIO` (Categoria sem confiança),
 `CENTRO_DE_CUSTO_NAO_ROTEADO`, `CONTA_CORRENTE_NAO_RESOLVIDA`,
-`FORNECEDOR_NAO_RESOLVIDO`, `OMIE_RECUSOU`, `CONFIGURACAO_AUSENTE`.
+`FORNECEDOR_NAO_RESOLVIDO`, `OMIE_RECUSOU`, `CONFIGURACAO_AUSENTE`;
+v1.2: `TITULO_EXISTENTE_DIVERGENTE`, `CONTA_DIVERGENTE`.
 Transitórios: `OMIE_INDISPONIVEL`, `DEPENDENCIA_INDISPONIVEL`.
 
 ## v1.1 (aditiva)
@@ -83,6 +84,31 @@ Exemplos novos: `lancar.sucesso-anexos-com-falhas` (os cinco códigos),
 `lancar.sucesso-reaproveitado-com-anexos` (`jaExistia`) e
 `lancar.erro-400-schema-invalido-anexos`. `lancar.sucesso-anexos-nomeados`
 passou à forma v1.2 da resposta (o pedido é o mesmo).
+
+### v1.2 — o que é conferido (plano 06-08)
+
+O `/lancar` só aceita o que a Conferência do Resumo conferiu. Tudo aditivo: um
+campo opcional no pedido, dois códigos novos e chaves opcionais novas em
+`error.details` (continua `.strict()` do lado do produtor; quem lê só `motivo`
+continua funcionando).
+
+| Onde | O que muda |
+|---|---|
+| `/lancar`, pedido | `contaConfirmada` (opcional, 1 a 200 caracteres depois de aparar): o `dePara.conta` que a Conferência guardou. Diferente da conta corrente que o lançamento usaria agora ⇒ `422 CONTA_DIVERGENTE`, antes de qualquer consulta ou escrita. Com o campo e a conta não resolvida ⇒ `422 CONTA_CORRENTE_NAO_RESOLVIDA`. Só o `/lancar` aceita o campo (no `/resolver` é 400). |
+| `/resolver` e `/lancar`, `codigoCategoriaConfirmado` | Só sai `resolvida` se a linha do `ListarCategorias` existe E tem `conta_despesa = S`, `totalizadora = N` e `conta_inativa = N`. Receita, totalizadora, inativa ou flag ausente saem `revisar` com o motivo — e o `/lancar` recusa com `422 REGRA_DE_DOMINIO`. O formato aceito continua `^\d(\.\d{2}){2,3}$`: um dígito trocado vira um motivo legível, não um 400. |
+| `/lancar`, `reaproveitado` | O título que já existe (achado pela consulta ou pela reconsulta da inclusão) é conferido em valor, vencimento, código da categoria, documento do fornecedor e conta corrente, antes de qualquer anexo. Diferente ⇒ `422 TITULO_EXISTENTE_DIVERGENTE`. Igual ⇒ `reaproveitado: true` com o `dePara` LIDO DO TÍTULO (a categoria e a conta que estão no Omie), não o recalculado do pedido. |
+
+| `error.code` | HTTP | `retryable` | `error.details` | O que fazer |
+|---|---|---|---|---|
+| `TITULO_EXISTENTE_DIVERGENTE` | 422 | `false` | `motivo`, `payableId`, `campos` — nomes entre `valor`, `vencimento`, `categoria`, `fornecedor`, `contaCorrente`; nunca valores | Permanente: a pessoa exclui ou ajusta o título no Omie antes de lançar de novo. |
+| `CONTA_DIVERGENTE` | 422 | `false` | `motivo`, `conferida`, `resolvida` — só rótulos de conta corrente | Permanente: conferir o Resumo de novo. |
+
+Exemplos novos: `lancar.erro-422-titulo-existente-divergente`,
+`lancar.erro-422-conta-divergente`, `lancar.sucesso-conta-confirmada` (a forma
+que a ponte manda depois da Conferência) e
+`resolver.sucesso-codigo-confirmado-nao-despesa`.
+`lancar.sucesso-reaproveitado` não mudou: o título do cenário tem os dados do
+pedido, e o `dePara` lido dele é o mesmo da resolução.
 
 ## Dados
 

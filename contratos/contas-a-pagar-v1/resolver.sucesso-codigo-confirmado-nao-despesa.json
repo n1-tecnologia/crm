@@ -1,0 +1,40 @@
+{
+  "descricao": "v1.2 (06-08): o código conferido existe no plano de contas, mas não é de despesa (aqui, uma receita). Só sai \"resolvida\" a linha do ListarCategorias com conta_despesa = S, totalizadora = N e conta_inativa = N; receita, totalizadora, inativa ou flag ausente saem \"revisar\" com o motivo — e o /lancar com o mesmo código recusa com 422 REGRA_DE_DOMINIO. O RAG não é chamado.",
+  "requisicao": {
+    "metodo": "POST",
+    "caminho": "/v1/integrations/contas-a-pagar/resolver",
+    "headers": {
+      "authorization": "Bearer token-de-exemplo-nunca-real",
+      "x-request-id": "req-exemplo-resolver-codigo-nao-despesa"
+    },
+    "body": {
+      "taskId": "tsk_00001a",
+      "centroDeCusto": "tria",
+      "categoriaDePagamento": "Impostos",
+      "titulo": "DAS — Simples Nacional",
+      "descricao": "Imposto mensal",
+      "tagDaConta": "conta tria",
+      "codigoCategoriaConfirmado": "1.01.01"
+    }
+  },
+  "resposta": {
+    "status": 200,
+    "corpo": {
+      "dePara": {
+        "contaPorTag": {
+          "conta tria": "TRIA COMPANY - ITAU"
+        },
+        "categoriaPorCampo": {
+          "Impostos": {
+            "veredito": "revisar",
+            "nome": "Impostos",
+            "codigo": "1.01.01",
+            "similaridade": 0,
+            "motivo": "Código 1.01.01 não é uma categoria de despesa — uma Conta a pagar só aceita categoria de despesa."
+          }
+        },
+        "origem": "omie"
+      }
+    }
+  }
+}

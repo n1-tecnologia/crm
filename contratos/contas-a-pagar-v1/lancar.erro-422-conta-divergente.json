@@ -1,0 +1,47 @@
+{
+  "descricao": "v1.2 (06-08): contaConfirmada é o dePara.conta que a Conferência do Resumo guardou. Se a conta corrente que o lançamento usaria agora é outra, nada é consultado nem escrito: 422 permanente com details.conferida e details.resolvida — só os rótulos das contas. Confira o Resumo de novo.",
+  "requisicao": {
+    "metodo": "POST",
+    "caminho": "/v1/integrations/contas-a-pagar/lancar",
+    "headers": {
+      "authorization": "Bearer token-de-exemplo-nunca-real",
+      "x-request-id": "req-exemplo-lancar-conta-divergente",
+      "idempotency-key": "tria:contas-a-pagar:tsk_00001a"
+    },
+    "body": {
+      "taskId": "tsk_00001a",
+      "centroDeCusto": "tria",
+      "categoriaDePagamento": "Impostos",
+      "titulo": "DAS — Simples Nacional",
+      "descricao": "Imposto mensal",
+      "tagDaConta": "conta tria",
+      "valorCentavos": 123456,
+      "vencimento": "2026-10-15",
+      "formaDePagamento": "Chave Pix",
+      "chavePix": "11.222.333/0001-81",
+      "fornecedor": {
+        "tipo": "CNPJ",
+        "documento": "11.222.333/0001-81",
+        "nome": "Fornecedor Fictício LTDA"
+      },
+      "observacao": "Guia mensal",
+      "contaConfirmada": "TRIA COMPANY - BRADESCO"
+    }
+  },
+  "resposta": {
+    "status": 422,
+    "corpo": {
+      "error": {
+        "code": "CONTA_DIVERGENTE",
+        "message": "A conta corrente conferida não é a resolvida para o lançamento.",
+        "requestId": "req-exemplo-lancar-conta-divergente",
+        "retryable": false,
+        "details": {
+          "motivo": "A conta corrente conferida no Resumo (\"TRIA COMPANY - BRADESCO\") não é a que o lançamento usaria agora (\"TRIA COMPANY - ITAU\") — confira o Resumo de novo.",
+          "conferida": "TRIA COMPANY - BRADESCO",
+          "resolvida": "TRIA COMPANY - ITAU"
+        }
+      }
+    }
+  }
+}

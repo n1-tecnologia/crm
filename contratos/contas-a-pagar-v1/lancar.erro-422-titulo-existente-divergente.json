@@ -1,0 +1,49 @@
+{
+  "descricao": "v1.2 (06-08): o título já existe no Omie com este código de integração, mas com outros dados (aqui, valor e vencimento). Nada é reaproveitado nem anexado: 422 permanente com details.payableId e details.campos — os NOMES dos campos que divergem (\"valor\", \"vencimento\", \"categoria\", \"fornecedor\", \"contaCorrente\"), nunca os valores. A pessoa exclui ou ajusta o título no Omie antes de lançar de novo.",
+  "requisicao": {
+    "metodo": "POST",
+    "caminho": "/v1/integrations/contas-a-pagar/lancar",
+    "headers": {
+      "authorization": "Bearer token-de-exemplo-nunca-real",
+      "x-request-id": "req-exemplo-lancar-titulo-divergente",
+      "idempotency-key": "tria:contas-a-pagar:tsk_00001a"
+    },
+    "body": {
+      "taskId": "tsk_00001a",
+      "centroDeCusto": "tria",
+      "categoriaDePagamento": "Impostos",
+      "titulo": "DAS — Simples Nacional",
+      "descricao": "Imposto mensal",
+      "tagDaConta": "conta tria",
+      "valorCentavos": 123456,
+      "vencimento": "2026-10-15",
+      "formaDePagamento": "Chave Pix",
+      "chavePix": "11.222.333/0001-81",
+      "fornecedor": {
+        "tipo": "CNPJ",
+        "documento": "11.222.333/0001-81",
+        "nome": "Fornecedor Fictício LTDA"
+      },
+      "observacao": "Guia mensal"
+    }
+  },
+  "resposta": {
+    "status": 422,
+    "corpo": {
+      "error": {
+        "code": "TITULO_EXISTENTE_DIVERGENTE",
+        "message": "O título já existe no Omie com dados diferentes dos do pedido.",
+        "requestId": "req-exemplo-lancar-titulo-divergente",
+        "retryable": false,
+        "details": {
+          "motivo": "O título 4100000001 já existe no Omie com outros dados (valor, vencimento) — exclua-o ou ajuste-o no Omie antes de lançar de novo.",
+          "payableId": "4100000001",
+          "campos": [
+            "valor",
+            "vencimento"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -414,3 +414,88 @@ describe("contrato v1.2 (06-07) — anexos", () => {
     expect(anexos.some((a) => typeof a === "string" && !/^https?:\/\//.test(a))).toBe(true);
   });
 });
+
+/* ── Contrato v1.2 (06-08): o /lancar só aceita o que a Conferência conferiu ── */
+
+describe("contrato v1.2 (06-08) — título e conta conferidos", () => {
+  const CAMPOS_DO_TITULO = ["valor", "vencimento", "categoria", "fornecedor", "contaCorrente"] as const;
+  interface DetalhesV12 {
+    readonly motivo?: unknown;
+    readonly payableId?: unknown;
+    readonly campos?: unknown;
+    readonly conferida?: unknown;
+    readonly resolvida?: unknown;
+  }
+  const erroDe = (arquivo: string) => {
+    const { resposta } = exemplo(arquivo);
+    const corpo = resposta.corpo as unknown as { error: { code: string; retryable: boolean; details: DetalhesV12 } };
+    return { status: resposta.status, error: corpo.error };
+  };
+
+  it("os exemplos v1.2 de 06-08 estão na pasta, e o reaproveitado v1 continua lá", () => {
+    for (const arquivo of [
+      "lancar.erro-422-titulo-existente-divergente.json",
+      "lancar.erro-422-conta-divergente.json",
+      "lancar.sucesso-conta-confirmada.json",
+      "resolver.sucesso-codigo-confirmado-nao-despesa.json",
+      "lancar.sucesso-reaproveitado.json",
+    ]) {
+      expect(arquivos, arquivo).toContain(arquivo);
+    }
+  });
+
+  it("TITULO_EXISTENTE_DIVERGENTE: 422 permanente; details só com motivo, payableId e campos (nomes dos cinco, nunca valores)", () => {
+    const { status, error } = erroDe("lancar.erro-422-titulo-existente-divergente.json");
+    expect(status).toBe(422);
+    expect(error.code).toBe("TITULO_EXISTENTE_DIVERGENTE");
+    expect(error.retryable).toBe(false);
+    expect(Object.keys(error.details).sort()).toEqual(["campos", "motivo", "payableId"]);
+    expect(typeof error.details.payableId).toBe("string");
+    expect(String(error.details.payableId)).toMatch(/^\d+$/);
+    const campos = error.details.campos as string[];
+    expect(Array.isArray(campos) && campos.length > 0).toBe(true);
+    for (const campo of campos) expect(CAMPOS_DO_TITULO as readonly string[]).toContain(campo);
+    // Nenhum valor do pedido nos details.
+    const { requisicao } = exemplo("lancar.erro-422-titulo-existente-divergente.json");
+    const corpo = requisicao.body as { valorCentavos: number; chavePix: string; fornecedor: { documento: string }; vencimento: string };
+    const texto = JSON.stringify(error.details);
+    for (const valor of [String(corpo.valorCentavos), (corpo.valorCentavos / 100).toFixed(2), corpo.chavePix, corpo.fornecedor.documento, corpo.vencimento]) {
+      expect(texto, valor).not.toContain(valor);
+    }
+  });
+
+  it("CONTA_DIVERGENTE: 422 permanente; details só com motivo, conferida e resolvida, e conferida ≠ resolvida", () => {
+    const { status, error } = erroDe("lancar.erro-422-conta-divergente.json");
+    expect(status).toBe(422);
+    expect(error.code).toBe("CONTA_DIVERGENTE");
+    expect(error.retryable).toBe(false);
+    expect(Object.keys(error.details).sort()).toEqual(["conferida", "motivo", "resolvida"]);
+    expect(typeof error.details.conferida).toBe("string");
+    expect(typeof error.details.resolvida).toBe("string");
+    expect(error.details.conferida).not.toBe(error.details.resolvida);
+    const pedido = exemplo("lancar.erro-422-conta-divergente.json").requisicao.body as { contaConfirmada?: string };
+    expect(error.details.conferida).toBe(pedido.contaConfirmada);
+  });
+
+  it("lancar.sucesso-conta-confirmada: contaConfirmada do pedido é o dePara.contaPorTag[tagDaConta] da resposta — o campo é o dePara.conta", () => {
+    const { requisicao, resposta } = exemplo("lancar.sucesso-conta-confirmada.json");
+    const pedido = requisicao.body as { contaConfirmada?: string; tagDaConta?: string; codigoCategoriaConfirmado?: string };
+    const corpo = resposta.corpo as { dePara: { contaPorTag: Record<string, string>; categoriaPorCampo: Record<string, Record<string, unknown>> } };
+    expect(resposta.status).toBe(200);
+    expect(typeof pedido.contaConfirmada).toBe("string");
+    expect(pedido.tagDaConta).toBeDefined();
+    expect(corpo.dePara.contaPorTag[pedido.tagDaConta ?? ""]).toBe(pedido.contaConfirmada);
+    expect(corpo.dePara.categoriaPorCampo[CATEGORIA_DOS_EXEMPLOS]).toMatchObject({ veredito: "resolvida", codigo: pedido.codigoCategoriaConfirmado });
+  });
+
+  it("resolver.sucesso-codigo-confirmado-nao-despesa: o código conferido de receita volta revisar, com o motivo de despesa", () => {
+    const { requisicao, resposta } = exemplo("resolver.sucesso-codigo-confirmado-nao-despesa.json");
+    const codigo = (requisicao.body as { codigoCategoriaConfirmado?: string }).codigoCategoriaConfirmado;
+    const categoria = (resposta.corpo as { dePara: { categoriaPorCampo: Record<string, { veredito: string; codigo: string; motivo?: string }> } })
+      .dePara.categoriaPorCampo[CATEGORIA_DOS_EXEMPLOS];
+    expect(resposta.status).toBe(200);
+    expect(categoria?.veredito).toBe("revisar");
+    expect(categoria?.codigo).toBe(codigo);
+    expect(categoria?.motivo).toMatch(/despesa/);
+  });
+});
