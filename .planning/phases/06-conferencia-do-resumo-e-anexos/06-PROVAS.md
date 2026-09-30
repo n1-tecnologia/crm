@@ -5,7 +5,11 @@ termina com as provas registradas, e não com a promessa delas.
 
 **Estado deste relato (2026-09-30):** a rodada nova, sobre os planos de
 fechamento 06-07..06-14, está no fim do arquivo, em **"Rodada de fechamento
-(06-07..06-14) — 2026-09-30"**. As seções abaixo dela, até lá, são a rodada de
+(06-07..06-14) — 2026-09-30"**, e **as três provas passaram**: testes (`npm
+run check` EXIT 0), a jornada respondendo "ok" e o ajuste NO FIO do Resumo
+(`RESULTADO: OK`, 3 `/resolver`, 0 `/lancar`, 0 falhas de ciclo) e o Omie real
+com anexo (incluído, reconhecido na repetição pelo `ListarAnexo`, excluído) —
+com a autorização do dono. As seções abaixo dela, até lá, são a rodada de
 2026-09-29, e não cobrem o código de 06-07..06-14.
 
 **Estado da rodada de 2026-09-29:** as três provas passaram. Os testes
@@ -327,7 +331,7 @@ nela).
 "TESTE AUTOMATIZADO" (3, com o cenário opcional do card), os Resumos, as
 Conferências e as respostas; as Menções só ao `mem_tarjrn`; nada no Omie.
 
-Autorização: _(a preencher na Task 2)_
+Autorização: dada pelo dono em 2026-09-30, nesta conversa ("Autorizo as duas": a jornada e o Omie real com anexo).
 
 Antes: `lsof -nP -iTCP:3002 -sTCP:LISTEN`, `…:4100…` e `…:4101…` vazios (a
 tela em 3001 pode ficar, se for deste checkout). Não editar `apps/web` nem
@@ -376,17 +380,17 @@ card de novo "Pendente". No contador: `/resolver` ≥ 3 e `/lancar` = **0**.
 
 | Item | Resultado |
 |---|---|
-| Linha de partida da ponte | _(a preencher na Task 2)_ |
-| `automation/` local | _(a preencher na Task 2)_ |
-| `RESULTADO` da jornada | _(a preencher na Task 2)_ |
-| `cp-conferida` (resposta "ok" no fio) | _(a preencher na Task 2)_ |
-| `cp-ajuste` (resposta com o pedido no fio) | _(a preencher na Task 2)_ |
-| `cp-conferida-pelo-card` (opcional) | _(a preencher na Task 2)_ |
-| Requisições da ponte (contador) | _(a preencher na Task 2)_ |
-| **`/resolver`** | _(a preencher na Task 2)_ |
-| **`/lancar`** | _(a preencher na Task 2)_ |
-| Falhas de ciclo no log da API (eram 4 em 2026-09-29) | _(a preencher na Task 2)_ |
-| Portas 3002, 4100 e 4101 no fim | _(a preencher na Task 2)_ |
+| Linha de partida da ponte | `ponte do Agente de lançamento ativa (modo=conferencia resumoAPartirDe=para-pagar conferenciaPorComentario=true integracaoManual=nao-encosta escopo=titulos-com:"TESTE AUTOMATIZADO" avisar=membro-indicado)` — a 1ª subida parou na própria checagem do lançador (o log grava as aspas escapadas `\"`; o padrão foi corrigido) e a API filha, que ignora SIGTERM, foi encerrada por SIGINT; nesse minuto ela só registrou "Conferência — lançaria" para a N1-500 de 29/09, sem gravar nada e sem `/lancar` (o `automation/` já estava fora) |
+| `automation/` local | `escutando em http://127.0.0.1:4100`; `[cron] desabilitado via INVOICE_CRON_ENABLED=false`; `[worker-plataforma] desligado (PAYMENT_REQUEST_SOURCE=clickup)`; `PLATAFORMA_WEBHOOK_TOKEN` vazio |
+| `RESULTADO` da jornada | `RESULTADO: OK — contas: tsk_tark4m, tsk_tark5h` (exit 0) |
+| `cp-conferida` (resposta "ok" no fio) | `tsk_tark4m` (N1-502, "TESTE AUTOMATIZADO — CP conferida · 30/09 12:00"): Resumo no fio em **20 s** → card "Pendente" → `Responder "ok" no fio do Resumo — respondido no fio (cmt_tark52)` → `✅ Resumo conferido` publicado pela ponte em **12 s** → card "Conferido por ferramentas@triacompany.com.br em 30/09/2026, 12:01 · por comentário" → "em lançamento omie" → aviso do modo conferência em **17 s** → Status continua "em lançamento omie"; a raiz do fio aparece como "Conferência do Resumo" |
+| `cp-ajuste` (resposta com o pedido no fio) | `tsk_tark5h`: Resumo no fio em **13 s** → card "Pendente" → `Responder no fio: "é prestação comercial, não ADM" — respondido no fio (cmt_tark5x)` → `🔁 Ajuste pedido por` em **8 s** → Resumo revisado (`Revisado a pedido de`) em **14 s** → Conferência nova, "Pendente" |
+| `cp-conferida-pelo-card` (opcional) | não rodado — o clique no card já foi provado na rodada de 2026-09-29 e segue coberto pelos testes de componente |
+| Requisições da ponte (contador) | `15:01:09Z POST …/resolver -> 200` (N1-502) · `15:03:02Z POST …/resolver -> 200` (a conta do ajuste) · `15:03:31Z POST …/resolver -> 200` (a revisão, com o pedido) |
+| **`/resolver`** | **3** |
+| **`/lancar`** | **0** |
+| Falhas de ciclo no log da API (eram 4 em 2026-09-29) | **0** — nenhuma linha de aviso (`level` 40/50) no log da API durante toda a jornada |
+| Portas 3002, 4100 e 4101 no fim | livres; nenhum processo da prova vivo (o `parar-…` passou a usar SIGINT, com SIGKILL só de reserva) |
 
 ### Omie real com anexo (de novo, opcional)
 
@@ -395,7 +399,7 @@ sobe um anexo, repete, confere e exclui o título. O caminho dos anexos mudou em
 06-07 (allowlist injetada pelo próprio teste, limites, `listarAnexos` no
 reaproveitado).
 
-Autorização: _(a preencher na Task 2)_
+Autorização: dada pelo dono em 2026-09-30, nesta conversa ("Autorizo as duas": a jornada e o Omie real com anexo).
 
 ```bash
 cd "/Users/TRIA2026/Projetos/Projetos Cursor/financeiro-tria/automation" && npm run teste:omie-real -- --lancar --anexo=<pasta temporária>/TESTE-AUTOMATIZADO-anexo.pdf
@@ -408,11 +412,11 @@ cadastrado" pelo id, com espera (~60 s por `REDUNDANT`).
 
 | Item | Resultado |
 |---|---|
-| `RESULTADO` | _(a preencher na Task 2)_ |
-| Anexo no primeiro `/lancar` | _(a preencher na Task 2)_ |
-| Repetição (`reaproveitado`, `jaExistia`) | _(a preencher na Task 2)_ |
-| Código de integração e id do título | _(a preencher na Task 2)_ |
-| Exclusão confirmada pelo id | _(a preencher na Task 2)_ |
+| `RESULTADO` | `RESULTADO: OK — todos os passos passaram.` na 2ª execução; a 1ª parou no `/resolver` com `OMIE_INDISPONIVEL` transitório do próprio Omie ("SOAP-ERROR: Failed to talk with application server (cError: 28)" no `ListarCategorias`), ANTES de qualquer gravação |
+| Anexo no primeiro `/lancar` | `TESTE-AUTOMATIZADO-anexo.pdf` subiu pelo `IncluirAnexo` no título 5872967002 (baixado 1× do servidor local efêmero) |
+| Repetição (`reaproveitado`, `jaExistia`) | segundo `/lancar` devolveu o mesmo id, `reaproveitado: true`, "anexo reconhecido no título pelo nome, sem baixar de novo" — o `ListarAnexo` provado no Omie real pela primeira vez |
+| Código de integração e id do título | `tria:contas-a-pagar:tst_260930120446` · `5872967002`; conferência: código de integração, valor, vencimento, categoria (2.04.03), fornecedor e conta corrente 5468785966 ✓ |
+| Exclusão confirmada pelo id | "Lançamento excluído com sucesso!"; a consulta pelo id confirma **não cadastrado** (na 2ª conferência); o Omie apaga os anexos com o título |
 
 ### Fica com o dono
 
@@ -448,10 +452,10 @@ O que só o dono faz (regra 8 de `06-CONTEXT.md`), com o comando e o esperado.
 
 | Item | Situação |
 |---|---|
-| 1. Passo 2B em `lancar` | _(a preencher na Task 2)_ |
-| 2. Deploy do `automation/` e `.env` | _(a preencher na Task 2)_ |
-| 3. S5/S6 ao vivo | _(a preencher na Task 2)_ |
-| 4. API de produção | _(a preencher na Task 2)_ |
-| 5. Push e merge | _(a preencher na Task 2)_ |
-| 6. D6-01..D6-04 | _(a preencher na Task 2)_ |
-| 7. Timeouts do ciclo | _(a preencher na Task 2)_ |
+| 1. Passo 2B em `lancar` | pendente — com o dono |
+| 2. Deploy do `automation/` e `.env` | pendente — com o dono; antes, a rodada de correção dos achados de `06-REVIEW-FINANCEIRO-TRIA-2.md` (1 crítico no S5 assíncrono) |
+| 3. S5/S6 ao vivo | pendente — depois do deploy |
+| 4. API de produção | pendente — com o dono; antes, a rodada de correção dos achados de `06-REVIEW-2.md` (1 crítico no modo `sem-conferencia`) |
+| 5. Push e merge | pendente — o agente nunca faz push |
+| 6. D6-01..D6-04 | pendente — os padrões seguem em vigor, trocáveis por variável |
+| 7. Timeouts do ciclo | **não voltaram** nesta jornada (0 falhas, eram 4); a causa provável (a trava de revisão sem limite no servidor) foi corrigida em 06-13 — acompanhar em produção pelos códigos `TRAVA_ESGOTADA`, `TEMPO_DE_CONSULTA_ESGOTADO` e `TEMPO_DE_CONEXAO_ESGOTADO` |

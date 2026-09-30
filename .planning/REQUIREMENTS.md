@@ -100,10 +100,10 @@ Nenhum definido — o plano fecha na Fase 5. Candidatos naturais que já aparece
 
 Critério de pronto (ROADMAP Phase 6): o Financeiro vê o Resumo no fio antes do lançamento, confere ou pede ajuste, e o Agente só lança — com anexos e com o código conferido — quando a conta entra em "em lançamento omie" com a conferência feita. Fonte: `docs/08-migracao-financeiro/09-plano-conferencia-do-resumo-e-anexos.md` e `10-levantamento-fluxo-atual-x-documentacao-x-backend.md`; decisões em `.planning/phases/06-…/06-CONTEXT.md`.
 
-- [ ] **RES-01**: Fluxo 5 — o Agente publica o `📋 RESUMO DE PAGAMENTO` (CON-CP-08) no fio da conta completa, ANTES do lançamento, mencionando o Financeiro, sem resolvê-lo, e abre uma Conferência (`ApprovalRequest` de processo, `processStep: "resumo"`) que guarda conta · categoria · código e a impressão de lançamento como dado (`REQ-f6-resumo-para-conferencia`). Aceite: critério 1 da fase; mutação: sem o cancelamento da Conferência anterior o teste falha. Pendente.
-- [ ] **RES-02**: Fluxo 6 — conferência por clique (card e fila) ou por "ok" no fio, resposta canônica no fio e fio resolvido, sem mudar Status; qualquer outra resposta de revisor é pedido de ajuste e gera Resumo revisado no mesmo fio com nova Conferência (`REQ-f6-conferencia-e-revisao`). Aceite: critério 2. Pendente.
+- [x] **RES-01**: Fluxo 5 — o Agente publica o `📋 RESUMO DE PAGAMENTO` (CON-CP-08) no fio da conta completa, ANTES do lançamento, mencionando o Financeiro, sem resolvê-lo, e abre uma Conferência (`ApprovalRequest` de processo, `processStep: "resumo"`) que guarda conta · categoria · código e a impressão de lançamento como dado (`REQ-f6-resumo-para-conferencia`). Aceite: critério 1 da fase; mutação: sem o cancelamento da Conferência anterior o teste falha. Feito — provas em `06-PROVAS.md` (rodada de fechamento, 2026-09-30).
+- [x] **RES-02**: Fluxo 6 — conferência por clique (card e fila) ou por "ok" no fio, resposta canônica no fio e fio resolvido, sem mudar Status; qualquer outra resposta de revisor é pedido de ajuste e gera Resumo revisado no mesmo fio com nova Conferência (`REQ-f6-conferencia-e-revisao`). Aceite: critério 2. Feito — provas em `06-PROVAS.md` (rodada de fechamento, 2026-09-30).
 - [ ] **RES-03**: Fluxo 7 — a ponte só chama `/lancar` com Conferência aprovada para os dados atuais, manda `codigoCategoriaConfirmado`, confirma no fio, move para "lançado omie"; falha permanente comenta o motivo e devolve a conta a "para pagar" (`REQ-f6-lancamento-com-conferencia`). Aceite: critério 3; zero `/lancar` sem conferência (teste). Pendente.
-- [ ] **RES-04**: Anexos no Omie — a ponte manda `anexos` (URLs assinadas de 5 min com o nome original) e o `/lancar` (v1.1) os sobe por `IncluirAnexo` com o nome certo; `teste:omie-real --anexo` prova no Omie real (`REQ-f6-anexos-no-omie`). Aceite: critério 4. Pendente.
+- [x] **RES-04**: Anexos no Omie — a ponte manda `anexos` (URLs assinadas de 5 min com o nome original) e o `/lancar` (v1.1) os sobe por `IncluirAnexo` com o nome certo; `teste:omie-real --anexo` prova no Omie real (`REQ-f6-anexos-no-omie`). Aceite: critério 4. Feito — provas em `06-PROVAS.md` (rodada de fechamento, 2026-09-30).
 - [x] **RES-05**: S5/S6 na Solicitação (coorte plataforma) — depois de `aprovada`, o pipeline publica o Resumo na Solicitação; em `rejeitada`, avisa o Solicitante; tudo pela porta (`REQ-f6-s5-s6-plataforma`). Aceite: critério 5. Feito em 06-05 (financeiro-tria `2cd13cd`).
 - [x] **RES-06**: Modo `conferencia` da ponte, jornada `cp-conferida`/`cp-ajuste`, specs e planos atualizados, provas registradas em `06-PROVAS.md` (`REQ-f6-provas-e-docs`). Aceite: critério 4 (zero `/lancar` nos modos sem caneta) e o relato. Feito em 06-06 (provas em `06-PROVAS.md`).
 
@@ -148,10 +148,10 @@ Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pe
 | REC-01 | Phase 5 | Complete | entregue na Fase 5 — Critério 1 verdadeiro em produção | REQ-f5-contas-a-receber |
 | TEN-01 | Phase 5 | Complete | code-complete; MP/FO recusados visivelmente — corte dos webhooks pendente (D5-20, ver 05-VERIFICATION Acknowledged Gaps) | REQ-f5-tenants-marcos-paulo-family-office |
 | AUTO-02 | Phase 5 | Complete | code-complete e contrato ponta a ponta verde; 1º envio real pendente (deploy do automation/, PERS-08, Automação publicada) | REQ-x-notificar-por-canal |
-| RES-01 | Phase 6 | Pending | planejado 2026-09-29 (06-01, 06-03) | REQ-f6-resumo-para-conferencia |
-| RES-02 | Phase 6 | Pending | planejado 2026-09-29 (06-01, 06-03, 06-04) | REQ-f6-conferencia-e-revisao |
+| RES-01 | Phase 6 | Complete | planejado 2026-09-29 (06-01, 06-03) | REQ-f6-resumo-para-conferencia |
+| RES-02 | Phase 6 | Complete | planejado 2026-09-29 (06-01, 06-03, 06-04) | REQ-f6-conferencia-e-revisao |
 | RES-03 | Phase 6 | Pending | planejado 2026-09-29 (06-01, 06-02, 06-03) | REQ-f6-lancamento-com-conferencia |
-| RES-04 | Phase 6 | Pending | planejado 2026-09-29 (06-02, 06-03) | REQ-f6-anexos-no-omie |
+| RES-04 | Phase 6 | Complete | planejado 2026-09-29 (06-02, 06-03) | REQ-f6-anexos-no-omie |
 | RES-05 | Phase 6 | Complete | planejado 2026-09-29 (06-05) | REQ-f6-s5-s6-plataforma |
 | RES-06 | Phase 6 | Complete | planejado 2026-09-29 (06-03, 06-04, 06-06) | REQ-f6-provas-e-docs |
 
