@@ -841,8 +841,8 @@ describe("criarPonteDoAgente — os dois momentos contra servidorFalso (sem DATA
           codigoLancamentoIntegracao: chaveDeIdempotencia("tsk_cp_das"),
           reaproveitado: false,
           anexos: [
-            { url: "https://storage.exemplo.invalid/obj/fil_nf?token=segredo-assinado", nome: "NFS-e 0021.pdf", ok: true },
-            { url: "https://storage.exemplo.invalid/obj/fil_boleto?token=segredo-assinado", nome: "boleto-outubro.pdf", ok: false, erro: "download 404 em https://storage.exemplo.invalid/obj/fil_boleto?token=segredo-assinado" },
+            { nome: "NFS-e 0021.pdf", ok: true },
+            { nome: "boleto-outubro.pdf", ok: false, erro: "ANEXO_DOWNLOAD_FALHOU" },
           ],
         },
       });
@@ -864,7 +864,18 @@ describe("criarPonteDoAgente — os dois momentos contra servidorFalso (sem DATA
       expect(das.statusId).toBe(S.lancado);
       const confirmacao = comentariosDoAgente(das).find((c) => c.content.startsWith("✅ Lançado no Omie"));
       expect(confirmacao?.content).toBe(
-        "✅ Lançado no Omie — título pay_das_1 · TRIA COMPANY - ITAU · Impostos e taxas (2.06.01) · anexos 1 de 2\n• boleto-outubro.pdf: não subiu (download 404 em [url])",
+        TEXTOS_DA_CONFERENCIA.lancado({
+          payableId: "pay_das_1",
+          conta: "TRIA COMPANY - ITAU",
+          categoria: "Impostos e taxas",
+          codigo: "2.06.01",
+          reaproveitado: false,
+          anexosPedidos: 2,
+          anexos: [
+            { nome: "NFS-e 0021.pdf", ok: true },
+            { nome: "boleto-outubro.pdf", ok: false, erro: "ANEXO_DOWNLOAD_FALHOU" },
+          ],
+        }),
       );
       expect(JSON.stringify(das.comments)).not.toContain("token=");
       const execucao = estado.agentExecutions.filter((e) => e.anchor?.id === das.id).at(-1);

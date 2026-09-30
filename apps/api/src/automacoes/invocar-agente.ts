@@ -95,6 +95,7 @@ import {
   registrarFalhaDoLancamento,
   registrarLancamentoNoOmie,
   type AnexoDoLancamento,
+  type CampoDivergente,
   type ConferenciaDoResumo,
   type DeParaDeLancamento,
 } from "@n1/dominio/operations/financeiro";
@@ -104,7 +105,7 @@ import { resolverMembroAgenteDoPipeline } from "../persistencia/credenciais-de-s
 import { executar } from "../persistencia/unidade-de-trabalho";
 import { hidratar } from "../persistencia/repositorio";
 import { sanitizarErro } from "../persistencia/outbox-worker";
-import { anexosDaConta, type AssinarDownload } from "./anexos-da-conta";
+import { LIMITE_DE_ANEXOS, anexosDaConta, type AssinarDownload } from "./anexos-da-conta";
 import type { RodarAgenda } from "./scheduler-worker";
 
 /* ─────────────────────────── Funções puras ─────────────────────────── */
@@ -265,6 +266,42 @@ export function motivoDoEnvelope(corpo: unknown): string | undefined {
     if (typeof candidato !== "string") continue;
     const limpo = candidato.replace(/\s+/g, " ").trim();
     if (limpo) return limpo.length > TAMANHO_MAXIMO_DO_MOTIVO ? `${limpo.slice(0, TAMANHO_MAXIMO_DO_MOTIVO - 1)}…` : limpo;
+  }
+  return undefined;
+}
+
+/** Os nomes de campo que o 422 `TITULO_EXISTENTE_DIVERGENTE` pode citar (`CampoDivergente`, contrato v1.2). */
+const CAMPOS_DIVERGENTES: ReadonlySet<string> = new Set<CampoDivergente>(["valor", "vencimento", "categoria", "fornecedor", "contaCorrente"]);
+
+function textoCurto(valor: unknown, teto: number): string | undefined {
+  if (typeof valor !== "string") return undefined;
+  const limpo = valor.replace(/\s+/g, " ").trim();
+  return limpo && limpo.length <= teto ? limpo : undefined;
+}
+
+/**
+ * crm:CR-02 e crm:WR-09 (06-12) — o motivo do Comentário para os dois 422 da
+ * v1.2, com os textos do domínio: `TITULO_EXISTENTE_DIVERGENTE` com
+ * `details.payableId` (≤ 40) e `details.campos` (só os cinco nomes do
+ * contrato; os outros são descartados) ⇒ `tituloDivergente`;
+ * `CONTA_DIVERGENTE` com `details.conferida` e `details.resolvida` (≤ 120)
+ * ⇒ `contaDivergente`. `details` que não servem ⇒ `undefined`, e quem chama
+ * usa o motivo de sempre (`motivoDoEnvelope`). O resultado vai só para o
+ * Comentário, nunca para o log (T-3-04).
+ */
+export function motivoDosDetalhes(code: string, detalhes: unknown): string | undefined {
+  if (typeof detalhes !== "object" || detalhes === null) return undefined;
+  const d = detalhes as Readonly<Record<string, unknown>>;
+  if (code === "TITULO_EXISTENTE_DIVERGENTE") {
+    const payableId = textoCurto(d.payableId, 40);
+    if (!payableId || !Array.isArray(d.campos)) return undefined;
+    const campos = d.campos.filter((c): c is CampoDivergente => typeof c === "string" && CAMPOS_DIVERGENTES.has(c));
+    return TEXTOS_DA_CONFERENCIA.tituloDivergente(payableId, campos);
+  }
+  if (code === "CONTA_DIVERGENTE") {
+    const conferida = textoCurto(d.conferida, 120);
+    const resolvida = textoCurto(d.resolvida, 120);
+    return conferida && resolvida ? TEXTOS_DA_CONFERENCIA.contaDivergente(conferida, resolvida) : undefined;
   }
   return undefined;
 }
@@ -567,24 +604,51 @@ function corpoLancarDe(task: Task, base: CorpoResolver): Record<string, unknown>
   };
 }
 
-/** Uma URL no texto de erro de um anexo vira `[url]` — o Comentário nunca carrega um link assinado. */
-function semUrl(texto: string): string {
-  return texto.replace(/https?:\/\/\S+/g, "[url]").slice(0, 200);
-}
+/**
+ * `CodigoDoAnexo` — a lista fechada do contrato v1.2 para `anexos[].erro`
+ * (`06-GAPS-OUTLINE.md` § v1.2; o domínio não a exporta como valor). Qualquer
+ * outro texto é descartado: nunca erro de rede cru no Comentário.
+ */
+const CODIGOS_DO_ANEXO: ReadonlySet<string> = new Set([
+  "ANEXO_HOST_NAO_PERMITIDO",
+  "ANEXO_DOWNLOAD_FALHOU",
+  "ANEXO_TEMPO_ESGOTADO",
+  "ANEXO_GRANDE_DEMAIS",
+  "ANEXO_OMIE_RECUSOU",
+]);
 
 /**
- * Os anexos da resposta do `/lancar` como o domínio os conta
- * (`TEXTOS_DA_CONFERENCIA.lancado`): nome (o devolvido, senão o enviado na
- * mesma posição), ok e erro. A `url` da resposta é descartada aqui mesmo.
+ * Os anexos da resposta do `/lancar` v1.2 como o domínio os conta
+ * (`TEXTOS_DA_CONFERENCIA.lancado`): para cada anexo ENVIADO, na ordem do
+ * envio, o primeiro item ainda não usado da resposta com o mesmo `nome`
+ * (aparado) vira `{ nome: <o enviado>, ok, jaExistia?, erro? }` — `erro` só
+ * quando o anexo não subiu E o código é da lista fechada. Enviado sem par não
+ * vira item (o domínio conta "sem resposta do Omie" pela diferença para
+ * `anexosPedidos`); item da resposta sem par vira só a contagem `semPar`. A
+ * `url` e qualquer texto livre da resposta morrem aqui.
  */
-function anexosDaResposta(corpo: unknown, enviados: ReadonlyArray<{ readonly nome: string }>): AnexoDoLancamento[] {
+function anexosDaResposta(corpo: unknown, enviados: ReadonlyArray<{ readonly nome: string }>): { readonly itens: AnexoDoLancamento[]; readonly semPar: number } {
   const lista = (corpo as { readonly anexos?: unknown } | undefined)?.anexos;
-  if (!Array.isArray(lista)) return [];
-  return lista.map((item: unknown, i) => {
-    const a = (typeof item === "object" && item !== null ? item : {}) as { readonly nome?: unknown; readonly ok?: unknown; readonly erro?: unknown };
-    const nome = typeof a.nome === "string" && a.nome ? a.nome : (enviados[i]?.nome ?? `anexo ${i + 1}`);
-    return { nome, ok: a.ok === true, ...(typeof a.erro === "string" && a.erro ? { erro: semUrl(a.erro) } : {}) };
-  });
+  const recebidos = (Array.isArray(lista) ? lista : []).map(
+    (item: unknown) => (typeof item === "object" && item !== null ? item : {}) as { readonly nome?: unknown; readonly ok?: unknown; readonly erro?: unknown; readonly jaExistia?: unknown },
+  );
+  const usados = new Set<number>();
+  const itens: AnexoDoLancamento[] = [];
+  for (const enviado of enviados) {
+    const alvo = enviado.nome.trim();
+    const i = recebidos.findIndex((r, posicao) => !usados.has(posicao) && typeof r.nome === "string" && r.nome.trim() === alvo);
+    if (i < 0) continue;
+    usados.add(i);
+    const r = recebidos[i]!;
+    const ok = r.ok === true;
+    itens.push({
+      nome: enviado.nome,
+      ok,
+      ...(r.jaExistia === true ? { jaExistia: true } : {}),
+      ...(!ok && typeof r.erro === "string" && CODIGOS_DO_ANEXO.has(r.erro) ? { erro: r.erro } : {}),
+    });
+  }
+  return { itens, semPar: recebidos.length - usados.size };
 }
 
 /* Os textos que a ponte comenta na conta — os fixos do plano (1.4) e os de apoio. */
@@ -632,6 +696,16 @@ export function textoDoRegistroRecusado(payableId: string, erro: string): string
 /** O título existe no Omie, mas o registro conflitou em todas as tentativas (06-12). */
 export function textoDoRegistroEmConflito(payableId: string): string {
   return `O Omie confirmou o lançamento desta conta (título ${payableId}), mas não consegui registrá-lo e movê-la para "lançado omie" depois de ${TENTATIVAS_TRANSITORIAS} tentativas (CONFLITO_DE_REVISAO). Confira e mova à mão.`;
+}
+
+/**
+ * O que ficou de fora do pedido pelo teto de anexos do `/lancar` v1.2
+ * (`LIMITE_DE_ANEXOS`): um Comentário à parte, depois do registro.
+ */
+export function textoDosAnexosAcimaDoLimite(n: number): string {
+  return n === 1
+    ? `1 anexo desta conta não foi enviado ao Omie: o limite é de ${LIMITE_DE_ANEXOS} por lançamento. Se for necessário, suba-o no Omie à mão.`
+    : `${n} anexos desta conta não foram enviados ao Omie: o limite é de ${LIMITE_DE_ANEXOS} por lançamento. Se forem necessários, suba-os no Omie à mão.`;
 }
 
 /** D6-04 `sem-conferencia` — o motivo gravado na decisão (e no Registro "Aprovação decidida"). */
@@ -687,7 +761,7 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
     prazo: { readonly timeoutMs: number; readonly idempotencyKey?: string },
   ): Promise<
     | { readonly ok: true; readonly corpo: unknown }
-    | { readonly ok: false; readonly permanente: boolean; readonly code: string; readonly motivo?: string | undefined }
+    | { readonly ok: false; readonly permanente: boolean; readonly code: string; readonly motivo?: string | undefined; readonly detalhes?: unknown }
   > {
     let resposta: Response | undefined;
     let erroDeRede: unknown;
@@ -727,7 +801,9 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
       ok: false,
       permanente: classificacao.permanente,
       code: classificacao.code,
-      ...(classificacao.permanente ? { motivo: motivoDoEnvelope(corpoResposta) } : {}),
+      // `detalhes` (o `error.details` do envelope) só alimenta o texto do
+      // Comentário dos 422 v1.2 (`motivoDosDetalhes`) — nunca o log acima.
+      ...(classificacao.permanente ? { motivo: motivoDoEnvelope(corpoResposta), detalhes: erroDoEnvelope(corpoResposta)?.details } : {}),
     };
   }
 
@@ -1129,13 +1205,23 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
         }
         const codigoAtual = confAtual.origin.lancamento.codigo;
         // As URLs valem 5 min: geradas agora, logo antes do `/lancar`. Só a contagem vai ao log.
-        const { anexos, avisos } = await anexosDaConta(fresco, atual, opcoes.assinarAnexo);
-        if (avisos.length > 0) registrar("warn", "Anexos da conta que não vão ao Omie.", { ...daConta, anexos: anexos.length, avisos: avisos.length });
-        const corpo = { ...corpoLancar, codigoCategoriaConfirmado: codigoAtual, ...(anexos.length > 0 ? { anexos } : {}) };
+        const { anexos, avisos, acimaDoLimite = 0 } = await anexosDaConta(fresco, atual, opcoes.assinarAnexo);
+        if (avisos.length > 0 || acimaDoLimite > 0) {
+          registrar("warn", "Anexos da conta que não vão ao Omie.", { ...daConta, anexos: anexos.length, avisos: avisos.length, anexosAcimaDoLimite: acimaDoLimite });
+        }
+        // v1.2 (crm:WR-09): `contaConfirmada` é a conta que o Financeiro
+        // conferiu; o `automation/` recusa (`CONTA_DIVERGENTE`) se a conta
+        // corrente que ele resolveria agora for outra.
+        const corpo = {
+          ...corpoLancar,
+          codigoCategoriaConfirmado: codigoAtual,
+          contaConfirmada: confAtual.origin.lancamento.conta,
+          ...(anexos.length > 0 ? { anexos } : {}),
+        };
         // (5)
         const resposta = await chamar(CAMINHO_LANCAR, corpo, { timeoutMs: timeoutLancarMs, idempotencyKey: chaveDeIdempotencia(task.id) });
         if (!resposta.ok) {
-          if (resposta.permanente) await falhaPermanente(resposta.motivo, resposta.code);
+          if (resposta.permanente) await falhaPermanente(resposta.motivo, resposta.code, resposta.detalhes);
           else await falhaTransitoria(resposta.code, "lançaria");
           return;
         }
@@ -1148,7 +1234,11 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
           await parar("recusa", "O Omie não confirmou o lançamento desta conta. Nada foi movido.", "lançamento não confirmado (payableId ausente ou mock).", "lançaria");
           return;
         }
-        const resultado = { payableId, reaproveitado: devolvido?.reaproveitado === true, anexos: anexosDaResposta(resposta.corpo, anexos) };
+        // v1.2 — os anexos pelo status real, casados pelo nome com o que foi
+        // ENVIADO; `anexosPedidos` é o número enviado (≤ 20), para que a
+        // confirmação nunca diga "sem anexos" quando havia anexos (crm:IN-03).
+        const lidos = anexosDaResposta(resposta.corpo, anexos);
+        const resultado = { payableId, reaproveitado: devolvido?.reaproveitado === true, anexos: lidos.itens, anexosPedidos: anexos.length };
         const atorId = await atorDaEscrita();
         let saiuAntes = false;
         const r = await executarOperacao((s) => {
@@ -1167,7 +1257,15 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
           await comentar(TEXTO_SAIU_ANTES_DO_REGISTRO);
         } else if (r.ok) {
           estadoPorConta.delete(task.id);
-          registrar("info", 'Conta lançada no Omie e movida para "lançado omie".', { ...daConta, anexos: resultado.anexos.length });
+          registrar("info", 'Conta lançada no Omie e movida para "lançado omie".', {
+            ...daConta,
+            anexos: resultado.anexos.length,
+            ...(lidos.semPar > 0 ? { anexosSemPar: lidos.semPar } : {}),
+            ...(acimaDoLimite > 0 ? { anexosAcimaDoLimite: acimaDoLimite } : {}),
+          });
+          // Um Comentário à parte, fora da operação do registro: se ele
+          // falhar, o lançamento registrado não volta atrás.
+          if (acimaDoLimite > 0) await comentar(textoDosAnexosAcimaDoLimite(acimaDoLimite), confAtual.origin.threadCommentId);
         } else if ("conflito" in r && r.conflito) {
           // Outra escrita entrou no meio: o próximo ciclo repete com a MESMA
           // chave, e o Omie devolve o mesmo título (`reaproveitado`).
@@ -1180,17 +1278,31 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
         }
       }
 
-      /** D6-03 — falha permanente do `/lancar`: o domínio comenta o motivo e volta a conta para "para pagar". */
-      async function falhaPermanente(motivo: string | undefined, code: string): Promise<void> {
+      /**
+       * D6-03 — falha permanente do `/lancar`: o domínio comenta o motivo e
+       * volta a conta para "para pagar". Os dois 422 v1.2 (06-12) levam o
+       * texto do domínio (`motivoDosDetalhes`); `CONTA_DIVERGENTE` também
+       * supera a Conferência aprovada — ela afirmou uma conta corrente que o
+       * Omie não usaria mais, e o ciclo seguinte publica um Resumo novo com a
+       * conta de agora. `TITULO_EXISTENTE_DIVERGENTE` não supera: o que está
+       * errado é o título no Omie, e o caminho é corrigi-lo ou excluí-lo lá e
+       * mover a conta de novo.
+       */
+      async function falhaPermanente(motivo: string | undefined, code: string, detalhes?: unknown): Promise<void> {
         deste.parada = "recusa";
         const atorId = await atorDaEscrita();
+        const texto = motivoDosDetalhes(code, detalhes) ?? motivo;
+        const opcoesDaFalha = {
+          ...(avisar ? { avisarId: avisar } : {}),
+          ...(code === "CONTA_DIVERGENTE" ? { superarConferencia: true as const } : {}),
+        };
         const r = await executarOperacao((s) =>
-          registrarFalhaDoLancamento(s, atorId, task.id, { motivo: motivo ?? "o Financeiro recusou a chamada", code }, avisar ? { avisarId: avisar } : {}),
+          registrarFalhaDoLancamento(s, atorId, task.id, { motivo: texto ?? "o Financeiro recusou a chamada", code }, opcoesDaFalha),
         );
         if (r.ok) registrar("info", 'Lançamento recusado; a conta voltou para "para pagar".', { ...daConta, code });
         else {
           registrar("warn", "Não consegui registrar a falha do lançamento; aviso por Comentário.", { ...daConta, code });
-          await comentar(textoDaRecusaPermanente(motivo, code));
+          await comentar(textoDaRecusaPermanente(texto, code));
         }
       }
     }

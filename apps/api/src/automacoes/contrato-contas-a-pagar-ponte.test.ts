@@ -207,8 +207,10 @@ describe("contrato — a ponte em dois momentos com as respostas canônicas", ()
     expect(enviado.codigoCategoriaConfirmado).toMatch(/^\d(\.\d{2}){2,3}$/);
     expect(t.statusId).toBe(S.lancado);
     const confirmacao = t.comments.find((c) => c.content.startsWith("✅ Lançado no Omie"))?.content ?? "";
-    // A resposta canônica relata três anexos (dois ok, um falhou).
-    expect(confirmacao).toContain("anexos 2 de 3");
+    // v1.2 (06-12): a resposta é casada pelo nome com os DOIS anexos enviados
+    // (um ok, um falhou); o terceiro item do exemplo (o anexo em string) não
+    // tem par no pedido da ponte e vira só a contagem no log.
+    expect(confirmacao).toContain("anexos 1 de 2");
     // v1.2 (06-07): o erro é um código da lista fechada; 06-12 traduz o código para texto.
     expect(confirmacao).toContain("• Boleto outubro.pdf: não subiu (ANEXO_DOWNLOAD_FALHOU)");
     expect(confirmacao).not.toContain("assinatura=");

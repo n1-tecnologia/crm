@@ -172,8 +172,13 @@ describe("contrato v1.2 visto pela ponte — servidorFalso, sem DATABASE_URL", (
       await outro.ponte.processarContas();
       expect(comentariosDoAgente(outro.das).at(-1)?.content, JSON.stringify(details)).toBe(TEXTOS_DA_CONFERENCIA.falha("Mensagem fixa do envelope.", code));
       expect(outro.das.statusId).toBe(S.paraPagar);
-      await outro.ponte.processarContas();
-      expect(servidor.recebidas).toHaveLength(1);
+      if (code === "TITULO_EXISTENTE_DIVERGENTE") {
+        await outro.ponte.processarContas();
+        expect(servidor.recebidas).toHaveLength(1);
+      } else {
+        // CONTA_DIVERGENTE supera a Conferência pelo code, mesmo com details malformado.
+        expect(conferenciaDoResumo(outro.estado, outro.das).estado).toBe("sem-resumo");
+      }
       await servidor.fechar();
     }
     servidor = await criarServidorFalso();

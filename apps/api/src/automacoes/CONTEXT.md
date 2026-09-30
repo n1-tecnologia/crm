@@ -114,24 +114,72 @@ pagar" e "em lançamento omie" (ou só nesta, D6-01). Para cada conta:
 2. **Faltando dado** (`erpMissingFields`): em "em lançamento omie", o pedido de
    sempre, uma vez; em "para pagar", silêncio (a conta está sendo preenchida).
 3. **`conferenciaDoResumo`** do domínio diz onde a conta está.
-4. **`pendente`** ⇒ a última resposta de um revisor no fio
-   (`respostasDeConferenciaPendentes` → `classificarRespostaDeConferencia`) vira
-   `decideProcessApproval(..., { source: "comment" })` em nome de quem
-   respondeu: aprovação ⇒ aprovada; ajuste ⇒ rejeitada com o texto; pergunta
-   ou "vou verificar" ⇒ nada. Com `CONFERENCIA_POR_COMENTARIO=false`, só o
-   clique aprova — o fio continua pedindo ajuste (D6-02).
+4. **`pendente`** ⇒ as respostas dos revisores no fio são lidas EM LOTE pelo
+   domínio (`decisaoDasRespostasPendentes`, 06-12, crm:WR-04): todas as
+   pendentes contam, o primeiro ajuste vence a aprovação do mesmo lote, e a
+   resposta que decide vira `decideProcessApproval(..., { source: "comment"
+   })` em nome de quem a escreveu: aprovação ⇒ aprovada; ajuste ⇒ rejeitada
+   com o texto; pergunta ou "vou verificar" ⇒ nada. Nada é relido enquanto não
+   chega resposta nova. Com `CONFERENCIA_POR_COMENTARIO=false`, só o clique
+   aprova — o fio continua pedindo ajuste (D6-02). Um "ok" que o domínio recusa
+   por falta de código (`recusaSemCodigo`) recebe essa resposta no fio (log:
+   `RESPOSTA_RECUSADA_PELO_DOMINIO`, nunca o texto da recusa). Numa conta
+   Manual com `sem-conferencia`, a pendente COM código é dispensada; a SEM
+   código segue o fio, como qualquer conta.
 5. **`sem-resumo` | `desatualizada` | `ajuste-pedido`** ⇒ Momento 1: UM
    `/resolver` (com `pedidoDeRevisao` e, se o pedido citar um `d.dd.dd`,
    `codigoCategoriaConfirmado`) e UM `publicarResumoParaConferencia` (`motivo:
-   "dados-mudaram"` quando desatualizada). Em `ensaio`, só o log.
-6. **`conferida`, em "em lançamento omie", entrou por movimento** ⇒ Momento 2:
-   em `lancar`, `/lancar` (prazo 60 s, `Idempotency-Key`
-   `tria:contas-a-pagar:<taskId>`) com `codigoCategoriaConfirmado` = o código
-   da Conferência, `dataDeEmissao` e `anexos` = `anexosDaConta()`; sucesso ⇒
-   `registrarLancamentoNoOmie` ("lançado omie"); falha permanente ⇒
-   `registrarFalhaDoLancamento` (volta a "para pagar", D6-03); transitória ⇒
-   contagem, e na terceira um aviso. Um Resumo conferido com a Categoria
-   `ausente` no de-para (o código `9.99.99` é preenchimento) não vai ao Omie.
+   "dados-mudaram"` quando desatualizada). Em `ensaio`, só o log. O Resumo só
+   sai sobre o snapshot certo (06-12, crm:WR-12): dentro da gravação, se a
+   impressão da conta mudou desde a leitura do ciclo — ou, num ajuste, a
+   vigente não é mais a mesma Conferência `rejeitada` —, nada é publicado, a
+   conta não é parada e o ciclo seguinte refaz o `/resolver`
+   (`RESUMO_ADIADO`); a publicação leva `impressaoEsperada` e, no ajuste,
+   `conferenciaRejeitadaId`, as guardas do domínio. Um Resumo sem código de
+   Categoria (`lancamentoSemCodigo`, crm:WR-03) recebe, na mesma gravação, a
+   resposta `TEXTOS_DA_CONFERENCIA.recusaSemCodigo` no fio, com Menção; numa
+   conta Manual (`sem-conferencia`) ele sai como Conferência normal do
+   Financeiro — a dispensa só vale para o Resumo com código.
+6. **`conferida`, em "em lançamento omie", entrou por movimento** ⇒ Momento 2,
+   só em `lancar`. **A releitura (06-12, crm:CR-01):** imediatamente antes de
+   cada `/lancar`, a ponte relê o Espaço (`hidratarEstado`, a segunda leitura
+   do ciclo) e pergunta de novo, sobre o estado de AGORA, tudo o que o laço
+   perguntou (`motivoParaNaoLancar`): a conta existe na Lista
+   (`CONTA_SUMIU`), está ativa (`INATIVA`), está em "em lançamento omie"
+   (`SAIU_DE_EM_LANCAMENTO`), entrou por movimento
+   (`NAO_ENTROU_POR_MOVIMENTO`), está no escopo (`FORA_DO_ESCOPO`), não é
+   Manual sob `nao-encosta` (`MANUAL`), não tem lançamento humano registrado
+   (`LANCAMENTO_HUMANO`), e a Conferência vigente é `conferida`
+   (`SEM_CONFERENCIA_APROVADA`) e é a mesma que o ciclo leu
+   (`CONFERENCIA_TROCADA`). Qualquer código ⇒ zero `/lancar`, nenhum
+   Comentário, a conta é esquecida e reavaliada no ciclo seguinte, e o log leva
+   só o código; releitura que falha ⇒ falha transitória `RELEITURA_FALHOU`
+   (sem a mensagem). O corpo sai do estado relido: `/lancar` (prazo 60 s,
+   `Idempotency-Key` `tria:contas-a-pagar:<taskId>`) com
+   `codigoCategoriaConfirmado` = o código da Conferência, **`contaConfirmada`
+   = a conta que ela guardou** (contrato v1.2, crm:WR-09), `dataDeEmissao` e
+   `anexos` = `anexosDaConta()` — no máximo `LIMITE_DE_ANEXOS` (20) por
+   lançamento, na ordem Campos Anexo, Boleto, QR Code e anexos da Tarefa, sem
+   URL acima de 2048 caracteres; o que passa do teto vira a contagem
+   `anexosAcimaDoLimite` no log e, depois do registro, um Comentário no fio
+   (`textoDosAnexosAcimaDoLimite`). Sucesso ⇒ `registrarLancamentoNoOmie`
+   ("lançado omie") com os anexos da resposta casados pelo `nome` com os
+   enviados (`ok`, `jaExistia`, e `erro` só da lista fechada `CodigoDoAnexo`;
+   `url` e texto livre descartados) e `anexosPedidos` = o número enviado; se o
+   domínio recusar o registro depois de o título existir, o aviso cita o id
+   do título e termina em `Confira e mova à mão.`. Falha permanente ⇒
+   `registrarFalhaDoLancamento` (volta a "para pagar", D6-03); os dois 422 da
+   v1.2 levam os textos do domínio: `TITULO_EXISTENTE_DIVERGENTE` ⇒
+   `tituloDivergente(payableId, campos)` e a Conferência FICA (corrige-se ou
+   exclui-se o título no Omie e move-se a conta de novo, crm:CR-02);
+   `CONTA_DIVERGENTE` ⇒ `contaDivergente(conferida, resolvida)` e a
+   Conferência é SUPERADA (`superarConferencia`), para que o ciclo seguinte
+   publique um Resumo novo com a conta corrente de agora; `details` que não
+   servem ⇒ o motivo de sempre. `details` nunca vai ao log. Transitória ⇒
+   contagem, e na terceira um aviso. Um Resumo conferido sem código de
+   Categoria (`lancamentoSemCodigo` do domínio — só uma Conferência aprovada
+   antes de 06-11) não vai ao Omie, e o aviso diz como sair: alterar a
+   Categoria para sair um Resumo novo. Contrato: `06-GAPS-OUTLINE.md` § v1.2.
 7. **`conferida` em "para pagar"** ⇒ nada: espera o humano mover.
 
 | `AGENTE_CONTAS_A_PAGAR_MODO` (D6-11) | O que a ponte faz |
