@@ -206,7 +206,13 @@ Esperado em `conferencia`:
 - No fio: `Resumo conferido. Neste ambiente o lançamento no Omie está
   desligado (modo conferência): nada foi lançado, a conta fica aqui.`
 - A conta continua em **"em lançamento omie"**.
-- No Terminal A: requisições a `/resolver` e **nenhuma** a `/lancar`.
+- Requisições a `/resolver` e **nenhuma** a `/lancar`. Atenção: o log do
+  `automation/` **não** serve para contar — as rotas
+  `/v1/integrations/contas-a-pagar/*` só registram falhas. Para a contagem,
+  ponha um contador entre a API e o `automation/` (um proxy local que anota
+  método, caminho e status; foi assim na prova de 2026-09-29, em
+  `.planning/phases/06-conferencia-do-resumo-e-anexos/06-PROVAS.md`: 3
+  `/resolver`, 0 `/lancar`).
 
 Na tela de hoje, conferir é pelo botão. O tópico ainda não tem o gesto
 "Responder" num Comentário, e a ponte só lê **respostas** ao Resumo, nunca

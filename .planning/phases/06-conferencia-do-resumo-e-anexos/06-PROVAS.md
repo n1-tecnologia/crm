@@ -3,10 +3,11 @@
 Plano 06-06, Task 2. A regra da migração: "provar é a mesma coisa". Cada rodada
 termina com as provas registradas, e não com a promessa delas.
 
-**Estado deste relato (2026-09-29):** os testes rodaram e estão registrados
-abaixo. A jornada em modo `conferencia` e o teste real do Omie com anexo
-**aguardam a autorização do dono**. Os comandos estão escritos aqui, prontos,
-com `<…>` no lugar de todo segredo ou id.
+**Estado deste relato (2026-09-29):** as três provas passaram. Os testes
+estão abaixo; a jornada em modo `conferencia` contra o `ws_n1` e o teste real
+do Omie com anexo rodaram na mesma noite, **com autorização explícita do
+dono** (também para a leitura só de leitura do id do Membro de teste). Nenhum
+segredo está neste arquivo.
 
 Pontos de partida: `crm-n1-integracao` em `d1b31ab` (branch
 `integra-frontend-main`) e `financeiro-tria` em `2cd13cd` (`main`, local, com
@@ -50,10 +51,12 @@ dono roda da raiz: `DATABASE_URL= npm run check`.
 
 ## Jornada (modo conferência)
 
-**Aguardando autorização do dono.** A ponte em `conferencia` grava Resumos,
-Conferências e Comentários de verdade no `ws_n1` (produção do CRM N1), só nas
-contas com "TESTE AUTOMATIZADO" no título, e menciona só o usuário de teste.
-Nada vai ao Omie.
+**Feita em 2026-09-29, com autorização do dono — `RESULTADO: OK`, zero
+`/lancar`.** A ponte em `conferencia` gravou Resumos, Conferências e
+Comentários de verdade no `ws_n1` (produção do CRM N1), só nas contas com
+"TESTE AUTOMATIZADO" no título, e mencionou só o usuário de teste. Nada foi ao
+Omie. Os comandos planejados estão logo abaixo; o que mudou na execução, e por
+quê, está em "Como rodou de verdade", depois deles.
 
 Antes: nenhum `apps/api` de pé (o `vite-node --watch` empilha pontes; um só
 `node` na 3002). Não editar código em `apps/web` nem em `packages/dominio`
@@ -108,26 +111,76 @@ grep -c '/resolver' "<pasta temporária>/automation-local.log"; grep -c '/lancar
 Esperado: `/resolver` **maior que zero** (prova que o log registra as
 requisições; sem isso, o zero de baixo não prova nada) e `/lancar` = **0**.
 
+### Como rodou de verdade (e por que diferente do planejado)
+
+1. **O `grep` no log do `automation/` não prova nada:** as rotas
+   `/v1/integrations/contas-a-pagar/*` só registram falhas
+   (`contas-a-pagar-routes.ts`, `console.warn` no erro), então `/resolver` e
+   `/lancar` bem-sucedidos nunca aparecem lá. No lugar, um **contador
+   independente** (proxy local em `127.0.0.1:4101`, repassando a `4100`) anotou
+   instante, método, caminho e status de cada requisição da ponte — nunca corpo
+   nem cabeçalhos. A ponte apontou para `4101`.
+2. **`automation/` sem `watch` e sem nada de fundo:** `npx tsx src/server.ts`
+   com `HOST=127.0.0.1 PORT=4100`, `INVOICE_CRON_ENABLED=false`,
+   `INVOICE_EMIT_DRAIN_MINUTES=0` e `PAYMENT_REQUEST_SOURCE=clickup` — este
+   último mantém o worker da plataforma DESLIGADO no processo local
+   (`[worker-plataforma] desligado (PAYMENT_REQUEST_SOURCE=clickup)`), para não
+   disputar a fila `platform_adapter_commands` com a produção.
+3. **API sem `watch`:** `npx vite-node src/index.ts` (um processo, uma ponte).
+4. **Token gerado na hora** (`openssl rand -hex 24`) num script do scratchpad,
+   só em memória, o mesmo para os dois processos; nunca em arquivo nem em log.
+5. **`AGENTE_CONTAS_A_PAGAR_AVISAR_ID=mem_tarjrn`:** leitura só de leitura
+   (`begin read only`) da coleção `members` do `ws_n1`, autorizada pelo dono —
+   o usuário de teste é o único Administrador com login (os outros: `mem_maryane`
+   Proprietária, `mem_marcos_paulo` sem login, `mem_tarjw8` o Agente do
+   pipeline).
+6. A tela (3001) já estava de pé, do mesmo checkout.
+
+### Resultado
+
 | Item | Resultado |
 |---|---|
-| Linha de partida da ponte | aguardando |
-| `RESULTADO` da jornada | aguardando |
-| Ids das contas de teste | aguardando |
-| Capturas | aguardando |
-| `/resolver` no log do Terminal A | aguardando |
-| `/lancar` no log do Terminal A | aguardando (tem de ser 0) |
+| Linha de partida da ponte | `ponte do Agente de lançamento ativa (modo=conferencia resumoAPartirDe=para-pagar conferenciaPorComentario=true integracaoManual=nao-encosta escopo=titulos-com:"TESTE AUTOMATIZADO" avisar=membro-indicado)` |
+| `automation/` local | `escutando em http://127.0.0.1:4100`; `[cron] desabilitado`; `[worker] emissão contínua desligada`; `[worker-plataforma] desligado` |
+| `RESULTADO` da jornada | `RESULTADO: OK — contas: tsk_tark2y, tsk_tark3r` (exit 0) |
+| `cp-conferida` — `tsk_tark2y` (N1-500, "TESTE AUTOMATIZADO — CP conferida · 29/09 21:17") | Resumo no fio em **14 s** → card "Pendente" (TRIA · Contas de Consumo · 2.04.03, R$ 123,45, 09/10/2026) → "Conferido, pode lançar" → `✅ Resumo conferido` em 0 s → "em lançamento omie" → aviso do modo conferência em **7 s** → Status continua "em lançamento omie"; card "Conferido por ferramentas@triacompany.com.br … · por clique" |
+| `cp-ajuste` — `tsk_tark3r` (N1-501, "TESTE AUTOMATIZADO — CP ajuste · 29/09 21:17") | Resumo no fio em **61 s** (atrasado pelas falhas de ciclo abaixo) → "Pedir ajuste": "é prestação comercial, não ADM" → Resumo revisado (`Revisado a pedido de`) em **13 s** → Conferência nova, Pendente |
+| Capturas (fora do git) | `/var/folders/r3/zfrghx8n7hxd5gnkc_jf5c500000gn/T/jornada-financeiro/cp-conferida-resumo.png`, `cp-conferida-conferencia.png`, `cp-ajuste-resumo-revisado.png` |
+| Requisições da ponte (contador) | `00:18:24Z POST …/resolver -> 200` (N1-500) · `00:20:17Z POST …/resolver -> 200` (N1-501) · `00:20:34Z POST …/resolver -> 200` (a revisão, com o pedido) |
+| **`/resolver`** | **3** |
+| **`/lancar`** | **0** |
 
-Depois: `Ctrl+C` nos quatro terminais. As contas de teste ficam no `ws_n1`,
-com "TESTE AUTOMATIZADO" no título, para consulta; descartar pela tela se o
-dono preferir.
+### O que a prova mostrou além do esperado
+
+- **Falhas transitórias no ciclo da ponte:** 4 ciclos falharam e a ponte se
+  recuperou sozinha no seguinte — 3 × `Query read timeout` (o limite de 30 s do
+  pool, `d65ef0a`) e 1 × `Connection terminated due to connection timeout`.
+  Todas enquanto a tela gravava (a jornada preenchendo Campos); o `GET /estado`
+  da tela respondeu em ~1,6 s o tempo todo, então não é o banco parado: é
+  alguma consulta do ciclo da ponte que passa de 30 s sob escrita concorrente,
+  ou uma conexão do pooler que morre. Custo visível: o Resumo da segunda conta
+  levou 61 s em vez de ~15 s. **Investigar antes de produção.**
+- **A revisão manteve a categoria:** com o pedido "é prestação comercial, não
+  ADM", o `/resolver` (com `pedidoDeRevisao`) devolveu de novo Contas de
+  Consumo (2.04.03). O caminho para forçar uma categoria é citar o código no
+  pedido (`d.dd.dd`), que a ponte manda como `codigoCategoriaConfirmado` e o
+  backend confere no plano de contas.
+- **"Marcar como paga" continua habilitado** com a conta em "para pagar" e em
+  "em lançamento omie" (visível nas capturas) — o item aberto de antes da
+  Fase 6 (pular o Omie pela tela); fora do escopo desta fase.
+
+As contas de teste ficam no `ws_n1`, com "TESTE AUTOMATIZADO" no título, para
+consulta; descartar pela tela se o dono preferir.
 
 ---
 
 ## Omie real com anexo
 
-**Aguardando autorização do dono.** Este teste lança um título de verdade no
-Omie da Tria (R$ 1,00, fornecedor que já existe), sobe um anexo por
-`IncluirAnexo`, confere e **exclui** o título no fim.
+**Feito em 2026-09-29, com autorização do dono — `RESULTADO: OK`.** Este
+teste lança um título de verdade no Omie da Tria (R$ 1,00, fornecedor que já
+existe), sobe um anexo por `IncluirAnexo`, confere e **exclui** o título no
+fim. Rodou com `--anexo=<scratchpad>/TESTE-AUTOMATIZADO-anexo.pdf` (o PDF de
+94 bytes do ensaio, com um nome que se identifica).
 
 O ensaio, só com leituras, já passou em 06-02: `npm run teste:omie-real --
 --anexo=<PDF de 94 bytes>` deu `RESULTADO: OK`, com "anexo ✔ anexo-teste.pdf
@@ -148,19 +201,26 @@ olhar que o anexo apareceu com o nome original e sumiu com o título.
 
 | Item | Resultado |
 |---|---|
-| `RESULTADO` | aguardando |
-| Id do título | aguardando |
-| Anexo (`anexos: n de 1`, nome) | aguardando |
-| Exclusão confirmada | aguardando |
+| `RESULTADO` | `RESULTADO: OK — todos os passos passaram.` |
+| Passos | credencial ✔ · fornecedor ✔ (SAFE2PAY, já cadastrado) · resolver ✔ (Contas de Consumo 2.04.03, similaridade 0.46) · consulta prévia ✔ · anexo ✔ (legível) · lançar ✔ · anexo no Omie ✔ · conferir ✔ (código de integração, valor, vencimento, categoria, fornecedor, conta corrente 5468785966) · repetir sem duplicar ✔ (`reaproveitado: true`) · excluir ✔ |
+| Código de integração | `tria:contas-a-pagar:tst_260929212130` |
+| Id do título | `5872791251` |
+| Anexo (`anexos: n de 1`, nome) | **1 de 1** — `TESTE-AUTOMATIZADO-anexo.pdf` subiu pelo `IncluirAnexo` no título 5872791251 (baixado 1× do servidor local efêmero) |
+| Exclusão confirmada | "Lançamento excluído com sucesso!"; a consulta pelo id do Omie confirma **não cadastrado**; o Omie apaga os anexos com o título |
+| Esperas | 3 `REDUNDANT` do Omie (0 s, 59 s, 60 s) — normais |
+
+Não conferido: o nome do anexo **na tela** do Omie — o título foi excluído no
+fim do próprio teste. O nome que foi ao `IncluirAnexo` (`cNomeArquivo`) é o
+do arquivo, provado pelo teste de 06-02 que abre o zip enviado.
 
 ---
 
 ## Fica com o dono
 
-1. **Autorizar as duas provas acima** (a jornada em `conferencia` contra o
-   `ws_n1` e o `teste:omie-real --lancar --anexo`). Informar ou conferir o id
-   do Membro do usuário de teste no `ws_n1` (Configurações → Membros), que vai
-   em `AGENTE_CONTAS_A_PAGAR_AVISAR_ID`.
+1. ~~Autorizar as duas provas acima~~ — **feito em 2026-09-29** (as duas
+   passaram). Resta: **investigar as falhas transitórias do ciclo da ponte**
+   (3 `Query read timeout` + 1 timeout de conexão durante a jornada) antes de
+   ligá-la em produção.
 2. **Subir a API em modo `lancar`** e rodar o passo 2B do roteiro
    (`docs/08-migracao-financeiro/08-roteiro-de-producao-pos-correcoes.md`),
    parte "Depois, em `lancar`", numa conta de teste com anexo. É o único
