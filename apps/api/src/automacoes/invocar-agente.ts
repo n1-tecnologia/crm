@@ -111,6 +111,8 @@ import {
   buildResumoDePagamento,
   conferenciaDoResumo,
   decisaoDasRespostasPendentes,
+  dispensaSemManual,
+  dispensarConferenciaDoResumo,
   erpMissingFields,
   impressaoDeLancamento,
   lancamentoHumanoDe,
@@ -119,6 +121,7 @@ import {
   publicarResumoParaConferencia,
   registrarFalhaDoLancamento,
   registrarLancamentoNoOmie,
+  respostaSemEfeitoNoFio,
   type AnexoDoLancamento,
   type CampoDivergente,
   type ConferenciaDoResumo,
@@ -391,6 +394,45 @@ export function motivoDosDetalhes(code: string, detalhes: unknown): string | und
   return undefined;
 }
 
+/** O que `conferenciaDoReaproveitado` acha de um título reaproveitado que não é o da Conferência. */
+export type DivergenciaDoReaproveitado =
+  | { readonly code: "TITULO_EXISTENTE_DIVERGENTE"; readonly campos: readonly CampoDivergente[] }
+  | { readonly code: "REAPROVEITADO_SEM_DE_PARA" };
+
+/**
+ * crm2:WR-02 (06-18) — o título REAPROVEITADO só vira o lançamento da
+ * Conferência se o Omie mostra a conta corrente e o código conferidos. O
+ * contrato v1.2 devolve, no reaproveitado, o `dePara` LIDO DO TÍTULO; a ponte
+ * o confere contra a tripla da Conferência relida (`buildResumoDePagamento`
+ * sobre a conta relida). Sem `dePara` com a forma do contrato (um
+ * `automation/` v1.1) ⇒ `REAPROVEITADO_SEM_DE_PARA`; código ou conta
+ * diferentes ⇒ `TITULO_EXISTENTE_DIVERGENTE` com os campos, nessa ordem
+ * (`categoria`, `contaCorrente`); igual ⇒ `undefined`. Pura, fail-closed.
+ */
+export function conferenciaDoReaproveitado(
+  fresco: DataState,
+  atual: Task,
+  conferencia: ConferenciaDoResumo,
+  corpo: unknown,
+): DivergenciaDoReaproveitado | undefined {
+  const dePara = typeof corpo === "object" && corpo !== null ? (corpo as { readonly dePara?: unknown }).dePara : undefined;
+  if (typeof dePara !== "object" || dePara === null) return { code: "REAPROVEITADO_SEM_DE_PARA" };
+  const { contaPorTag, categoriaPorCampo } = dePara as { readonly contaPorTag?: unknown; readonly categoriaPorCampo?: unknown };
+  if (typeof contaPorTag !== "object" || contaPorTag === null || typeof categoriaPorCampo !== "object" || categoriaPorCampo === null) {
+    return { code: "REAPROVEITADO_SEM_DE_PARA" };
+  }
+  const r = buildResumoDePagamento(fresco, atual, dePara as DeParaDeLancamento);
+  const campos: CampoDivergente[] = [];
+  if (r.codigo !== conferencia.origin.lancamento.codigo) campos.push("categoria");
+  if (r.conta !== conferencia.origin.lancamento.conta) campos.push("contaCorrente");
+  return campos.length === 0 ? undefined : { code: "TITULO_EXISTENTE_DIVERGENTE", campos };
+}
+
+/** O motivo do Comentário quando o reaproveitado chega sem o `dePara` do título (06-18, crm2:WR-02). Só o id do título. */
+export function motivoDoReaproveitadoSemDePara(payableId: string): string {
+  return `o Omie devolveu o título ${payableId}, que já existia, sem os dados para eu conferir se ele é o desta Conferência (o automation/ precisa estar na v1.2): confira o título no Omie antes de mover a conta de novo para "em lançamento omie"`;
+}
+
 /**
  * Permanente cobre `[400,401,403,404,422]` (a lista de `outbox-worker.ts::entregar`),
  * qualquer status com `retryable === false` no envelope de 03-07 (é assim
@@ -610,6 +652,13 @@ export type CodigoDeAdiamento =
   | "FORA_DO_ESCOPO"
   | "MANUAL"
   | "LANCAMENTO_HUMANO"
+  /**
+   * 06-18 (crm2:CR-01) — a Conferência vigente foi DISPENSADA (D6-04) e a
+   * conta não é mais "Manual": a dispensa só vale enquanto "Manual", em
+   * qualquer modo (inclusive depois de voltar para `nao-encosta`). Ninguém
+   * conferiu nada; o ciclo seguinte publica um Resumo para uma pessoa.
+   */
+  | "DISPENSA_SEM_MANUAL"
   | "SEM_CONFERENCIA_APROVADA"
   | "CONFERENCIA_TROCADA";
 
@@ -624,7 +673,9 @@ export type CodigoDeAdiamento =
  * `conferidaId` é a Conferência que o ciclo leu: a vigente de agora tem de
  * ser ELA, e `conferida` (o que já quer dizer "aprovada para a impressão
  * atual"). Manual só conta sob `nao-encosta` — em `sem-conferencia` a conta
- * Manual É lançada (D6-04). Pura.
+ * Manual É lançada (D6-04). Mas a DISPENSA só vale enquanto a conta é
+ * "Manual", em qualquer modo (06-18, crm2:CR-01): dispensada e desmarcada ⇒
+ * `DISPENSA_SEM_MANUAL`, antes de `SEM_CONFERENCIA_APROVADA`. Pura.
  */
 export function motivoParaNaoLancar(
   fresco: DataState,
@@ -648,6 +699,7 @@ export function motivoParaNaoLancar(
   if (criterio.integracaoManual === "nao-encosta" && valorDoCampo(atual, CP.fields.integracaoManual) === "Manual") return "MANUAL";
   if (lancamentoHumanoDe(fresco, atual) !== undefined) return "LANCAMENTO_HUMANO";
   const { estado, conferencia } = conferenciaDoResumo(fresco, atual);
+  if (conferencia && dispensaSemManual(atual, conferencia)) return "DISPENSA_SEM_MANUAL";
   if (estado !== "conferida" || !conferencia) return "SEM_CONFERENCIA_APROVADA";
   if (conferencia.id !== conferidaId) return "CONFERENCIA_TROCADA";
   return undefined;
@@ -829,8 +881,13 @@ export function textoDosAnexosAcimaDoLimite(n: number): string {
     : `${n} anexos desta conta não foram enviados ao Omie: o limite é de ${LIMITE_DE_ANEXOS} por lançamento. Se forem necessários, suba-os no Omie à mão.`;
 }
 
-/** D6-04 `sem-conferencia` — o motivo gravado na decisão (e no Registro "Aprovação decidida"). */
-export const MOTIVO_DA_DISPENSA = "Conferência dispensada (Integração manual)";
+/**
+ * D6-04 `sem-conferencia` — o motivo gravado na decisão (e no Registro
+ * "Aprovação decidida"). Mora no domínio desde 06-18 (a leitura de
+ * compatibilidade de `dispensaDaConferencia` depende dele); reexportado aqui
+ * com o mesmo nome para quem já o importava da ponte.
+ */
+export { MOTIVO_DA_DISPENSA } from "@n1/dominio/operations/financeiro";
 
 /* ───────────── A memória que sobrevive ao reinício (06-13, crm:WR-07) ───────────── */
 
@@ -853,6 +910,12 @@ function padraoDoTexto(molde: string): RegExp {
  * parada, um reinício chamaria o `/lancar` de novo). Um padrão por texto; um
  * texto de parada casa com exatamente um (o caso (k) de
  * `ponte-portas-e-paradas.test.ts` trava isso).
+ *
+ * O aviso de reserva `textoDaRecusaPermanente` (quando o registro da falha é
+ * recusado) é coberto pelo padrão de `falhaSemVolta` SEM recusa: as duas
+ * formas são a mesma, de propósito, e um padrão a mais faria o texto casar
+ * com dois. Mudar um texto sem o outro quebra o caso (n) de
+ * `ponte-reaproveitado-conferido.test.ts` (06-18, crm2:IN-03).
  *
  * Fora de propósito: `TEXTOS_DA_CONFERENCIA.falha` (a conta VOLTOU para "para
  * pagar" — ali não há parada a restaurar: a conta conferida espera o humano,
@@ -1365,8 +1428,22 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
          * lote (`decisaoDasRespostasPendentes`): o primeiro ajuste vence a
          * aprovação do mesmo lote, e a resposta que decide vira decisão em nome
          * de quem a escreveu. Nada é relido enquanto não chega resposta nova.
+         *
+         * 06-18 (crm2:WR-03): antes de tudo, o "ok" que não confere — de quem
+         * não pode decidir esta Conferência, ou com a decisão por comentário
+         * desligada — recebe a resposta do domínio no fio
+         * (`respostaSemEfeitoNoFio`), nunca silêncio. A memória é o fio: o
+         * domínio descarta a resposta já dada, e nada novo vai a `EstadoDaConta`.
          */
         async function lerRespostas(pendente: ConferenciaDoResumo): Promise<void> {
+          const semEfeito = respostaSemEfeitoNoFio(state, task, { aprovacaoPorComentario: decisoes.conferenciaPorComentario });
+          if (semEfeito) {
+            await comentar(semEfeito.texto, pendente.origin.threadCommentId);
+            // Falhando, não fica pendente em memória: o fio é a memória, e o
+            // ciclo seguinte pergunta de novo ao domínio.
+            if (deste.comentarioPendente === semEfeito.texto) delete deste.comentarioPendente;
+            registrar("info", "Resposta no fio sem efeito: a ponte respondeu por quê.", { ...daConta, code: "RESPOSTA_SEM_EFEITO" });
+          }
           const lote = decisaoDasRespostasPendentes(state, task, { aprovacaoPorComentario: decisoes.conferenciaPorComentario });
           const { ultimaLida } = lote;
           if (!ultimaLida || ultimaLida === deste.respostaLida) return;
@@ -1396,11 +1473,22 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
           }
         }
 
-        /** D6-04 `sem-conferencia` — a Conferência pendente de uma conta Manual é dispensada pelo Membro de serviço. */
+        /**
+         * D6-04 `sem-conferencia` — a Conferência pendente de uma conta Manual
+         * é dispensada pelo Membro de serviço, PELO DOMÍNIO
+         * (`dispensarConferenciaDoResumo`, 06-18, crm2:CR-01), que confere
+         * "Manual" no estado da gravação — nunca no `manual` do snapshot. Se a
+         * conta deixou de ser "Manual" entre a leitura e a gravação, a
+         * dispensa é adiada (`DISPENSA_ADIADA`), sem parada: o ciclo seguinte
+         * relê e cai na leitura do fio.
+         */
         async function dispensar(pendente: ConferenciaDoResumo): Promise<void> {
           const atorId = await atorDaEscrita();
-          const r = await executarOperacao((s) => decideProcessApproval(s, atorId, pendente.id, "aprovada", { source: "click", reason: MOTIVO_DA_DISPENSA }));
-          if (!r.ok && !("conflito" in r && r.conflito)) {
+          const r = await executarOperacao((s) => dispensarConferenciaDoResumo(s, atorId, pendente.id));
+          if (!r.ok && !("conflito" in r && r.conflito) && r.error === TEXTOS_DA_CONFERENCIA.recusaDispensaSemManual) {
+            estadoPorConta.delete(task.id);
+            registrar("info", "Dispensa adiada: a conta deixou de ser Manual.", { ...daConta, code: "DISPENSA_ADIADA" });
+          } else if (!r.ok && !("conflito" in r && r.conflito)) {
             deste.parada = "recusa";
             // crm:WR-11 — o código, nunca `r.error` (o domínio cita nomes).
             registrar("warn", "Não consegui dispensar a Conferência.", { ...daConta, code: "DISPENSA_RECUSADA_PELO_DOMINIO" });
@@ -1452,10 +1540,15 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
           const r = await executarOperacao((s) => {
             const fresca = s.tasks.find((t) => t.id === task.id);
             const agora = fresca ? conferenciaDoResumo(s, fresca) : undefined;
+            // 06-18 (crm2:CR-01): a Integração manual do estado da GRAVAÇÃO.
+            // Mudou desde a leitura do ciclo ⇒ adia, como a impressão (sem
+            // parada): a dispensa nunca sai sobre um "Manual" que já não é.
+            const manualAgora = fresca ? valorDoCampo(fresca, CP.fields.integracaoManual) === "Manual" : manual;
             adiado =
               !fresca ||
               !agora ||
               agora.impressaoAtual !== conf.impressaoAtual ||
+              manualAgora !== manual ||
               (conf.estado === "ajuste-pedido" && (agora.conferencia?.id !== conf.conferencia?.id || agora.conferencia?.decision !== "rejeitada"));
             if (adiado || !fresca) return ok(undefined);
             // crm:WR-03 — um Resumo sem código de Categoria não se aprova (o
@@ -1463,9 +1556,11 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
             // Conferência normal, e a resposta no fio diz como seguir.
             const previa = buildResumoDePagamento(s, fresca, dePara);
             const semCodigo = lancamentoSemCodigo({ codigo: previa.codigo, veredito: previa.veredito });
-            const dispensa = manual && !semCodigo;
+            const dispensa = manualAgora && !semCodigo;
             const publicado = publicarResumoParaConferencia(s, atorId, task.id, {
               dePara,
+              // crm2:WR-03 — sem decisão por comentário, nenhum texto pede "ok".
+              aprovacaoPorComentario: decisoes.conferenciaPorComentario,
               impressaoEsperada: conf.impressaoAtual,
               ...(conf.estado === "ajuste-pedido" && conf.conferencia ? { conferenciaRejeitadaId: conf.conferencia.id } : {}),
               ...(pedido ? { pedidoDeRevisao: pedido } : {}),
@@ -1486,7 +1581,7 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
             }
             if (!dispensa) return publicado;
             dispensou = true;
-            return decideProcessApproval(s, atorId, publicado.value.conferencia.id, "aprovada", { source: "click", reason: MOTIVO_DA_DISPENSA });
+            return dispensarConferenciaDoResumo(s, atorId, publicado.value.conferencia.id);
           });
           if (r.ok && adiado) {
             estadoPorConta.delete(task.id);
@@ -1595,6 +1690,24 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
           if (typeof payableId !== "string" || payableId.length === 0 || payableId.startsWith("mock-")) {
             await parar("recusa", TEXTO_LANCAMENTO_NAO_CONFIRMADO, "lançamento não confirmado (payableId ausente ou mock).", "lançaria");
             return;
+          }
+          // crm2:WR-02 (06-18) — o título reaproveitado só vira o lançamento
+          // desta Conferência se o Omie mostra a conta e o código conferidos
+          // (o `dePara` lido do título, contra a Conferência relida). Senão,
+          // falha permanente sem registro: a conta volta para "para pagar" e
+          // a Conferência fica (como no 422 do mesmo nome). O log leva o id e
+          // o código, nunca o `dePara` nem os valores (T-3-04).
+          if (devolvido?.reaproveitado === true) {
+            const divergencia = conferenciaDoReaproveitado(fresco, atual, confAtual, resposta.corpo);
+            if (divergencia) {
+              registrar("warn", "Título reaproveitado que não confere com a Conferência; nada registrado.", { ...daConta, payableId, code: divergencia.code });
+              if (divergencia.code === "TITULO_EXISTENTE_DIVERGENTE") {
+                await falhaPermanente(undefined, "TITULO_EXISTENTE_DIVERGENTE", { payableId, campos: divergencia.campos });
+              } else {
+                await falhaPermanente(motivoDoReaproveitadoSemDePara(payableId), "REAPROVEITADO_SEM_DE_PARA");
+              }
+              return;
+            }
           }
           // v1.2 — os anexos pelo status real, casados pelo nome com o que foi
           // ENVIADO; `anexosPedidos` é o número enviado (≤ 20), para que a

@@ -41,6 +41,7 @@ import {
   comentariosDoAgente,
   conferidaEmLancamento,
   conta,
+  dePara200,
   definir,
   mover,
   ponteSobre,
@@ -69,7 +70,7 @@ function erro422(code: string, details?: unknown, message = "A plataforma recuso
 }
 
 function lancado(anexos: unknown[], reaproveitado = false) {
-  return { kind: "ok", status: 200, corpo: { ...LANCADO_200.corpo, reaproveitado, anexos } } as const;
+  return { kind: "ok", status: 200, corpo: { ...LANCADO_200.corpo, reaproveitado, anexos, ...(reaproveitado ? { dePara: dePara200("Impostos", { veredito: "resolvida" }).dePara } : {}) } } as const;
 }
 
 describe("contrato v1.2 visto pela ponte — servidorFalso, sem DATABASE_URL", () => {

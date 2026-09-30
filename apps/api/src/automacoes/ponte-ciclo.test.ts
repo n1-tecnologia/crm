@@ -375,7 +375,7 @@ describe("(c)–(f) erro de banco no ciclo", () => {
       },
     });
     servidor.enfileirar(LANCADO_200);
-    servidor.enfileirar({ ...LANCADO_200, corpo: { ...LANCADO_200.corpo, reaproveitado: true } });
+    servidor.enfileirar({ ...LANCADO_200, corpo: { ...LANCADO_200.corpo, reaproveitado: true, dePara: dePara200("Impostos", { veredito: "resolvida" }).dePara } });
 
     await ponte.processarContas();
     expect(das.statusId).toBe(S.emLancamento);

@@ -760,7 +760,8 @@ describe("criarPonteDoAgente — os dois momentos contra servidorFalso (sem DATA
       const comentarios = das.comments.length;
       await ponte.processarContas();
       expect(caminhos()).toEqual([RESOLVER]);
-      expect(das.comments.length).toBe(comentarios);
+      expect(das.comments.length).toBe(comentarios + 1);
+      expect(das.comments.at(-1)).toMatchObject({ content: TEXTOS_DA_CONFERENCIA.okPeloFioDesligado, parentCommentId: vigente(estado, das).origin.threadCommentId });
       expect(vigente(estado, das).decision).toBeUndefined();
     });
 
