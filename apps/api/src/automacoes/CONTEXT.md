@@ -205,9 +205,12 @@ variável. A linha de partida do log diz `modo=…`, `resumoAPartirDe=…`,
 
 **A cutucada (D6-12).** Depois de `setTaskFieldValue`, `updateTask`,
 `changeTaskStatus`, `addTaskComment`, `setTaskTags`, `resolveTaskComment`,
-`decideProcessApproval` ou `alterarStatusEmLote` com sucesso numa Tarefa do
-par da ponte, `rotas/operacoes.ts` chama `cutucarPonte()` — DEPOIS do commit,
-nunca dentro da transação, e sem lançar. A ponte roda um ciclo em até 2 s; N
+`decideProcessApproval` ou `alterarStatusEmLote` — e, desde 06-13 (crm:IN-04),
+`createTask`, `moveTask`, `trashTask`, `restoreTask`, `attachFile` e
+`removeAttachment` (os anexos entraram na chave, crm:WR-02) — com sucesso
+numa Tarefa do par da ponte, `rotas/operacoes.ts` chama `cutucarPonte()` —
+DEPOIS do commit, nunca dentro da transação, e sem lançar. Em `createTask` o
+par vem da Tarefa criada (o valor da operação), não da entrada. A ponte roda um ciclo em até 2 s; N
 cutucadas nesse intervalo viram um ciclo, e uma cutucada durante um ciclo em
 voo vira exatamente um ciclo a mais, logo depois dele. `parar()` cancela a
 cutucada pendente.

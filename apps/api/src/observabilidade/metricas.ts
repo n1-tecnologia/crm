@@ -36,7 +36,7 @@
  */
 
 import type { PoolClient } from "pg";
-import type { ApprovalRequest } from "@n1/dominio";
+import type { ApprovalRequest, DataState } from "@n1/dominio";
 import { pool } from "../persistencia/conexao";
 import { hidratar } from "../persistencia/repositorio";
 import { metricaDeOrigem, type PeriodoDaMetrica as PeriodoDeAprovacao } from "../servicos/janela-de-fallback";
@@ -240,9 +240,7 @@ async function lerAmostraReal(
     const ledger: LinhaDeLedgerParaMetrica[] = ledgerLinhas.rows.map((r) => ({ resultado: r.resultado }));
 
     const { state } = await hidratar(cliente, workspaceId);
-    const aprovacoes = state.approvals
-      .filter((a) => a.origin.kind === "processTask")
-      .map((a) => ({ decidedAt: a.decidedAt, decisionSource: a.decisionSource }));
+    const aprovacoes = aprovacoesDaSolicitacao(state);
 
     const latenciaAmostraMs = await medirLatenciaLocal(cliente);
 
@@ -250,6 +248,19 @@ async function lerAmostraReal(
   } finally {
     if (devePoolLiberar) cliente.release();
   }
+}
+
+/**
+ * 06-13 (crm:WR-06) — as aprovações que a métrica D-10 conta: só as da
+ * Solicitação de pagamento (`processStep: "pagamento"`). A razão "por
+ * comentário / total" mede o fallback por comentário da Solicitação; as
+ * Conferências do Resumo (Fase 6) — inclusive as dispensas por clique do
+ * Membro de serviço (D6-04) — mediriam outro processo. Pura.
+ */
+export function aprovacoesDaSolicitacao(state: DataState): AmostraDeMetricas["aprovacoes"] {
+  return state.approvals
+    .filter((a) => a.origin.kind === "processTask" && a.origin.processStep === "pagamento")
+    .map((a) => ({ decidedAt: a.decidedAt, decisionSource: a.decisionSource }));
 }
 
 /** `select 1` repetido algumas vezes — a única medição de latência API↔DB que

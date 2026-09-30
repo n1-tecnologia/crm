@@ -60,6 +60,11 @@ export function eventosDeSaidaDaOperacao(
     const aprovacao = entrada.valor as ApprovalRequest;
     const decisao = aprovacao.decision;
     if (entrada.eraReplay || aprovacao.origin.kind !== "processTask") return [];
+    // Conferência do Resumo (`processStep: "resumo"`, Fase 6) não é Solicitação:
+    // o evento iria a `handlePlatformApprovalDecision` (06-REVIEW CR-04). Lista
+    // de permissão, não de exclusão: um `processStep` novo não herda o evento
+    // por acidente.
+    if (aprovacao.origin.processStep !== "pagamento") return [];
     if (decisao !== "aprovada" && decisao !== "rejeitada") return [];
     return [
       {
@@ -101,8 +106,11 @@ export function eventosDeSaidaDaOperacao(
 /**
  * D6-12 — as gravações numa Tarefa que interessam à ponte do Agente de
  * lançamento (Campo, dados, Status, Comentário, Tags, fio resolvido, decisão
- * de Conferência, Status em lote). Depois de uma delas, a rota cutuca a
- * ponte, que roda um ciclo em até 2 s em vez de esperar o relógio.
+ * de Conferência, Status em lote) e, desde 06-13 (crm:IN-04), a conta que
+ * nasce, muda de Lista, vai para a lixeira ou volta dela, e os anexos da
+ * Tarefa (que entraram na chave da ponte, crm:WR-02, e vão no `/lancar`).
+ * Depois de uma delas, a rota cutuca a ponte, que roda um ciclo em até 2 s em
+ * vez de esperar o relógio.
  */
 const OPERACOES_QUE_CUTUCAM_A_PONTE: ReadonlySet<string> = new Set([
   "setTaskFieldValue",
@@ -113,11 +121,19 @@ const OPERACOES_QUE_CUTUCAM_A_PONTE: ReadonlySet<string> = new Set([
   "resolveTaskComment",
   "decideProcessApproval",
   "alterarStatusEmLote",
+  "createTask",
+  "moveTask",
+  "trashTask",
+  "restoreTask",
+  "attachFile",
+  "removeAttachment",
 ]);
 
 /**
  * O par (Espaço, Lista) de cada Tarefa que a operação gravou — `args[0]` (um
- * id, ou a lista de ids do lote), ou a origem da Aprovação decidida. Quem
+ * id, ou a lista de ids do lote), a origem da Aprovação decidida, ou, em
+ * `createTask`, a Tarefa criada (o `valor`: `args[0]` ali é a entrada). O
+ * estado é o JÁ mutado: a Tarefa movida é achada na Lista de destino. Quem
  * decide se o par é o da ponte é `cutucarPonte` (a Lista da ponte vem do
  * ambiente, não do seed). Puro: lê o estado, não grava nada.
  */
@@ -129,6 +145,8 @@ export function tarefasAfetadasPelaOperacao(nome: string, args: readonly unknown
     ids = origem?.kind === "processTask" ? [origem.taskId] : [];
   } else if (nome === "alterarStatusEmLote") {
     ids = Array.isArray(args[0]) ? args[0] : [];
+  } else if (nome === "createTask") {
+    ids = [(valor as { readonly id?: unknown } | undefined)?.id];
   } else {
     ids = [args[0]];
   }

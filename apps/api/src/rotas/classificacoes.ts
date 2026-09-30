@@ -95,10 +95,20 @@ function resolverComentario(state: DataState, commentId: string): ComentarioReso
   return undefined;
 }
 
-/** A `ApprovalRequest` de processo cujo tópico de roteamento é exatamente o PAI do Comentário — nunca o próprio Comentário, nunca um tópico de outra Tarefa. */
-function resolverAprovacaoPeloTopico(state: DataState, parentCommentId: string | undefined): ApprovalRequest | undefined {
+/**
+ * A Solicitação de pagamento (`processStep: "pagamento"`) cujo tópico de
+ * roteamento é exatamente o PAI do Comentário — nunca o próprio Comentário,
+ * nunca um tópico de outra Tarefa. 06-13 (crm:CR-04): uma Conferência do
+ * Resumo (`processStep: "resumo"`) NUNCA é achada aqui — sem isso, a
+ * credencial de serviço do `automation/` conseguiria decidir uma Conferência
+ * (e abrir caminho ao `/lancar`) mandando a classificação de uma resposta no
+ * fio de uma Conta a pagar.
+ */
+export function resolverAprovacaoPeloTopico(state: DataState, parentCommentId: string | undefined): ApprovalRequest | undefined {
   if (!parentCommentId) return undefined;
-  return state.approvals.find((a) => a.origin.kind === "processTask" && a.origin.threadCommentId === parentCommentId);
+  return state.approvals.find(
+    (a) => a.origin.kind === "processTask" && a.origin.processStep === "pagamento" && a.origin.threadCommentId === parentCommentId,
+  );
 }
 
 /**
@@ -192,6 +202,8 @@ export function rotasDeClassificacoes(app: FastifyInstance, opcoes: OpcoesDeClas
           eventos: (valor) => {
             if (eraReplay) return [];
             if (valor.origin.kind !== "processTask") return [];
+            // A mesma guarda de `operacoes.ts` (crm:CR-04): só Solicitação emite.
+            if (valor.origin.processStep !== "pagamento") return [];
             return [
               {
                 type: "solicitacao.aprovacao-decidida.v1",
