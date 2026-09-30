@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: 06-21 concluído; rodando revisão final do diff antes de fechar a fase
-last_updated: "2026-09-30T20:33:26.852Z"
-last_activity: 2026-09-29 -- Phase 06 execution started
+status: executing
+stopped_at: "Phase 06 concluída em 2026-09-30 (22/22 planos; 06-REVIEW-5.md limpo, 5ª e última rodada de revisão); RES-03 pendente de verificação humana (passo 2B em lancar); Phases 02 e 04 seguem abertas"
+last_updated: "2026-09-30T23:48:58Z"
+last_activity: "2026-09-30 -- Phase 06 concluída: 06-REVIEW-5.md fechou a cadeia de revisão adversarial sem achado novo"
 progress:
   total_phases: 7
   completed_phases: 6
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 
 ## Current Position
 
-Phase: 06 (conferencia-do-resumo-e-anexos) — EXECUTING
-Plan: 6 of 6
-Status: Verificação com gaps (06-VERIFICATION.md: "ok no fio" sem gesto na tela) e revisão com 7 críticos (06-REVIEW.md, 06-REVIEW-FINANCEIRO-TRIA.md) — aguardando fechamento
-Last activity: 2026-09-29 -- Phase 06 execution started
+Phase: 06 (conferencia-do-resumo-e-anexos) — COMPLETE (2026-09-30)
+Plan: 22 of 22
+Status: Phase 06 concluída após cinco rodadas de revisão adversarial (06-REVIEW.md → 06-REVIEW-5.md); a última rodada, escopada só ao diff de 06-22, voltou limpa (0 críticos/0 avisos/0 informativos) e confirmou por teste que o starvation achado em 06-REVIEW-4 está mesmo fechado. Abertas no milestone: Phase 02 (26/28) e Phase 04 (13/14)
+Last activity: 2026-09-30 -- 06-REVIEW-5.md fechou a cadeia; RES-01/02/04/05/06 Complete, RES-03 Pending (verificação humana do dono)
 
 **Fase 06 planejada à mão em 2026-09-29 (Conferência do Resumo e anexos), pronta para `/gsd-execute-phase 6`:**
 `.planning/phases/06-conferencia-do-resumo-e-anexos/` — `06-CONTEXT.md` (13 decisões com padrão e variável de troca) e seis planos em três ondas: 06-01 domínio · 06-02 contrato v1.1 no `financeiro-tria` · 06-03 ponte em dois momentos · 06-04 tela e jornada · 06-05 S5/S6 na Solicitação · 06-06 docs e provas `[BLOCKING]`. Origem: `docs/08-migracao-financeiro/09-…` (desenho) e `10-…` (levantamento etapa por etapa com `arquivo:linha`). Ponto de partida do código: `crm-n1-integracao@3d6f735` (branch `integra-frontend-main`, sem push) e `financeiro-tria@c272dad` (`main`, 99 commits sem push, 89 arquivos sujos só de EOL — `git add` sempre por caminho). O dono ainda não respondeu às quatro perguntas do doc 10; os padrões de D6-01..D6-04 seguem "como no ClickUp", exceto Integração manual (o seguro).
@@ -406,6 +406,9 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 06]: 06-02: anexos string | { url, nome } no /lancar; o nome vai para dentro do zip e para cNomeArquivo; anexos[].nome só volta quando pedido com nome; anexo string vazio passou a 400
 - [Phase 06]: 06-03: a ponte em dois momentos; /lancar só com Conferência aprovada; zero /lancar em ensaio e conferencia; portas de teste G1 (legado importado nunca varrido), G2 (AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM), G3 (AGENTE_CONTAS_A_PAGAR_AVISAR_ID)
 - [Phase 06]: 06-04: botões da Conferência só para quem alcança a conta (memberSeesTask) e pode decidir (aprovador ou revisor Administrador); cp-conferida/cp-ajuste só rodam pedidos pelo nome
+- [Phase 06]: 06-21 (terceira rodada, achado de 06-REVIEW-3.md): remarcar "Integração manual" não engole mais uma resposta pendente no fio — defesa em duas camadas (precheck na ponte + re-checagem no domínio dentro da transação, `dispensarConferenciaDoResumo` recusa com `recusaDispensaComRespostaPendente`). O "give-up" de uma resposta sem efeito ficou local ao id do comentário (`semEfeitoDesistidoId`/`tentativasSemEfeito`), nunca em `estado.parada` — a primeira versão do design tocava `estado.parada`, mas `chaveDaPonte()` não reage a comentário e `PARADA_RESTAURADA` só dispara em reinício de processo; o gsd-plan-checker bloqueou esse desenho antes da execução.
+- [Phase 06]: 06-22 (quarta rodada, regressão achada por 06-REVIEW-4.md no próprio 06-21): as três checagens novas de 06-21 fixavam `aprovacaoPorComentario: true`, travando para sempre a dispensa por Integração manual em espaços com `conferenciaPorComentario: false` diante de um "ok" trivial e desatualizado. Corrigido roteando `decisoes.conferenciaPorComentario` de verdade pelos 3 call sites via um parâmetro opcional novo em `dispensarConferenciaDoResumo` (padrão `true`, preserva todo chamador antigo). Teste de mutação (reverter para `true` fixo) reproduz o próprio achado do revisor.
+- [Phase 06]: Fase 06 fechada em 2026-09-30 — 22/22 planos, cinco rodadas de revisão adversarial (crm-n1: 06-REVIEW..06-REVIEW-5; financeiro-tria: 06-REVIEW-FINANCEIRO-TRIA..3), a última (06-REVIEW-5.md) limpa e escopada só ao diff final. RES-01/02/04/05/06 Complete; RES-03 Pending — único item que falta é verificação humana (passo 2B em modo `lancar`, `06-VERIFICATION.md`), não código. Lista do que fica com o dono, fora do alcance deste agente: (1) RES-03 — rodar o modo `lancar` de verdade e confirmar o passo 2B; (2) deploy do `automation/` com o contrato v1.2 + `PLATAFORMA_MEMBRO_POR_CLICKUP_ID`; (3) S5/S6 ao vivo contra produção, só depois do deploy; (4) configuração do `apps/api` em produção para a ponte; (5) push e merge de `integra-frontend-main` (branch local, nunca enviada); (6) decidir se algum padrão D6-01..D6-04 deve deixar de espelhar o ClickUp; (7) o residual fin2:CR-01 (índice/migração de banco, se o dono quiser fechar por completo); (8) fin2:IN-07 — prova real de dois anexos no mesmo lançamento (o script `teste:omie-real` só aceita um `--anexo` hoje).
 
 ### Pending Todos
 
@@ -452,10 +455,14 @@ Items acknowledged and carried forward:
 | Dados | Índice único `(origem, "TaskID")` — 180 TaskID duplicados sem destino | Decisão do dono | Phase 05 (2026-09-25) |
 | Corte | MP/FO: 10 webhooks ClickUp + 2 Listas (D5-20) | Sem fase no ROADMAP | Phase 05 (2026-09-25) |
 | Infra | Backend do CRM N1 na VPS (`/opt/n1/crm-n1`, porta 3102) e reorganização das pastas N1 | Dono pediu para depois | Phase 05 (2026-09-25) |
+| Verificação | RES-03 — passo 2B em modo `lancar`, verificação humana (`06-VERIFICATION.md`) | Código e testes completos; falta o dono rodar | Phase 06 (2026-09-30) |
+| Deploy | `automation/` com contrato v1.2 + `PLATAFORMA_MEMBRO_POR_CLICKUP_ID`; S5/S6 ao vivo e `integra-frontend-main` (local, sem push) dependem disso | Adiado pelo dono, mesma família do deploy da Phase 05 | Phase 06 (2026-09-30) |
+| Prova | fin2:IN-07 — dois anexos no mesmo lançamento contra o Omie real | Script `teste:omie-real` só aceita um `--anexo`; opcional | Phase 06 (2026-09-30) |
+| Dados | Residual fin2:CR-01 (índice/migração de banco) | Aceito sem migração; decisão do dono se quiser fechar | Phase 06 (2026-09-30) |
 
 ## Session Continuity
 
-Last session: 2026-09-30T20:03:01.114Z
-Stopped at: 06-21 concluído; rodando revisão final do diff antes de fechar a fase
+Last session: 2026-09-30T23:48:58Z
+Stopped at: Phase 06 concluída (22/22 planos, 06-REVIEW-5.md limpo); próximas frentes abertas no milestone: Phase 02 (26/28) e Phase 04 (13/14)
 Resume file: None
 None
