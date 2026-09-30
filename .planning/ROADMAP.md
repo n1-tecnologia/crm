@@ -386,7 +386,7 @@ Antes de planejar: D7/OQ-CR-01 (perguntar ao Financeiro onde o recebimento é co
   4. Nos modos `ensaio` e `conferencia` a contagem de requisições a `/lancar` é zero em qualquer ciclo (asserido com servidor falso); o contrato v1.1 é aditivo e igual nos dois repositórios (hash); `teste:omie-real --lancar --anexo` sobe um anexo de verdade no Omie da Tria e exclui o título no fim.
   5. `handlePlatformApprovalDecision` publica o Resumo na Solicitação depois de `aprovada` e avisa o Solicitante em `rejeitada`, pela porta, nunca por `legacyClickUpRaw()`.
 
-**Plans**: 15 plans (6 + 9 de fechamento)
+**Plans**: 20 plans (6 + 9 + 5 de fechamento)
 Plans:
 **Wave 1** — domínio e contrato, em paralelo (repositórios diferentes)
 
@@ -416,6 +416,14 @@ Plans:
 - [x] 06-13-PLAN.md — Ponte: timeouts do ciclo, G3 fechado, chave e avisos persistentes, logs, evento/métrica/classificação por `processStep`, cutucadas (RES-01..RES-03)
 - [x] 06-14-PLAN.md — Tela: "Responder" no fio, card e fila sem ambiguidade, jornada respondendo no fio (RES-02, RES-06)
 - [x] 06-15-PLAN.md — Docs e as provas de novo (jornada respondendo no fio, 0 `/lancar`) `[BLOCKING]` (RES-06)
+
+**Segunda rodada de fechamento (2026-09-30)** — as revisões do código da primeira rodada (`06-REVIEW-2.md`, `06-REVIEW-FINANCEIRO-TRIA-2.md`: um crítico em cada repositório) abriram a rodada; esboço em `06-GAPS-OUTLINE-2.md`; duas trilhas em paralelo (F: financeiro-tria; C: crm-n1):
+
+- [ ] 06-16-PLAN.md — `financeiro-tria`: S5 assíncrono sem decisão velha, sem dedup que engole evento, sem varredura em série, sem receipt preso (RES-05)
+- [ ] 06-17-PLAN.md — `financeiro-tria`: `/lancar` com orçamento desde a entrada, Storage por prefixo, reaproveitado honesto (RES-04)
+- [ ] 06-18-PLAN.md — Dispensa só enquanto Manual; reaproveitado conferido na ponte; quem confere pelo fio = pelo clique (RES-02, RES-03)
+- [ ] 06-19-PLAN.md — Marca persistida de lançamento em curso; G3 no meio do ciclo; orçamento de gravações justo (RES-01, RES-03)
+- [ ] 06-20-PLAN.md — Testes completos e as provas de novo, com a autorização do dono `[BLOCKING]` (RES-03, RES-06)
 
 Decisões desta fase, com padrão e variável de troca, em `06-CONTEXT.md` (D6-01 quando o Resumo aparece; D6-02 "ok" por comentário; D6-03 falha volta a "para pagar"; D6-04 Integração manual; D6-05 contrato aditivo; D6-06 S5/S6; D6-07 conversão continua botão; D6-08 2 dias úteis; D6-09 revisores; D6-10 códigos como dado; D6-11 três modos; D6-12 cutucão; D6-13 sem nº de NF por IA). O dono ainda não respondeu às quatro perguntas de `docs/08-migracao-financeiro/10-levantamento…`; os padrões seguem "do mesmo jeito que está no ClickUp", exceto D6-04 (o seguro).
 
@@ -447,7 +455,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 → 6 (0 e 1 em
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
 | 5. Contas a receber e os outros tenants | 25/25 | Complete    | 2026-09-25 |
-| 6. Conferência do Resumo e anexos | 15/15 | Reverificação + correção da revisão 2 |  |
+| 6. Conferência do Resumo e anexos | 15/20 | Segunda rodada de fechamento |  |
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*
