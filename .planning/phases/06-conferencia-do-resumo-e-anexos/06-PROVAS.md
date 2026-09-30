@@ -264,9 +264,12 @@ classificador estrito, as respostas em lote, o Resumo sem código), a ponte
 porta de teste fechada) e a tela (o "Responder" no fio). A rodada de
 2026-09-29 acima não cobre esse código; esta cobre.
 
-Pontos de partida: `crm-n1-integracao` em `_(a preencher na Task 2)_`
-(branch `integra-frontend-main`) e `financeiro-tria` em `42ca9b5` (`main`,
-local, com os 89 arquivos sujos só de fim de linha, intocados).
+Pontos de partida: `crm-n1-integracao` em `9a79479` (branch
+`integra-frontend-main`; o código é o de `f5e2025`, e `9a79479` só acrescenta
+os documentos da Task 1 do 06-15) e `financeiro-tria` em `0ad567e` (`main`,
+local; o código é o de `42ca9b5`, e `0ad567e` só acrescenta o README; os 89
+arquivos sujos só de fim de linha, intocados). `git status --short` sem nada
+além disso nos dois.
 
 ### Testes
 
@@ -292,20 +295,31 @@ cd "/Users/TRIA2026/Projetos/Projetos Cursor/financeiro-tria/automation" && npx 
 
 | # | Onde | Comando | Resultado |
 |---|---|---|---|
-| 1 | raiz | `DATABASE_URL= npm run check` | _(a preencher na Task 2)_ |
-| 2 | `packages/dominio` | `vitest run` (dentro do `check`) | _(a preencher na Task 2)_ |
-| 3 | `apps/web` | `vitest run` (dentro do `check`) | _(a preencher na Task 2)_ |
-| 4 | `apps/api` | `vitest run`, a suíte INTEIRA sem banco (dentro do `check`) | _(a preencher na Task 2)_ |
-| 5 | os três workspaces | `tsc --noEmit` (dentro do `check`) | _(a preencher na Task 2)_ |
-| 6 | `apps/web` | `eslint .` (dentro do `check`) | _(a preencher na Task 2)_ |
-| 7 | `apps/web` | `verificar:tokens` (dentro do `check`) | _(a preencher na Task 2)_ |
-| 8 | raiz | `verificar:contratos` (`payment-requests-v1`, dentro do `check`) | _(a preencher na Task 2)_ |
-| 9 | `apps/api` | `src/automacoes/` · `src/rotas/` · `src/observabilidade/` · `src/persistencia/` | _(a preencher na Task 2)_ |
-| 10 | `apps/web` | `src/features/tarefa/` | _(a preencher na Task 2)_ |
-| 11 | contrato | `diff -r` das duas pastas `contas-a-pagar-v1` e o hash agregado dos dois lados | _(a preencher na Task 2)_ |
-| 12 | `apps/api` | `contrato-contas-a-pagar.test.ts` + `contrato-contas-a-pagar-ponte.test.ts` | _(a preencher na Task 2)_ |
-| 13 | `financeiro-tria/automation` | `npx tsc --noEmit -p .` | _(a preencher na Task 2)_ |
-| 14 | `financeiro-tria/automation` | `npm test` (isolado) | _(a preencher na Task 2)_ |
+| 1 | raiz | `DATABASE_URL= npm run check` | **EXIT 0**, em 70 s (11:52:29 → 11:53:39). Também rodou antes do commit da Task 1, em `492a2d8`: EXIT 0, os mesmos números |
+| 2 | `packages/dominio` | `vitest run` (dentro do `check`) | **957/957** (62 arquivos) |
+| 3 | `apps/web` | `vitest run` (dentro do `check`) | **267/267** (27 arquivos) |
+| 4 | `apps/api` | `vitest run`, a suíte INTEIRA sem banco (dentro do `check`) | **786 passados · 205 pulados · 1 todo · 0 falhas** (994; 98 arquivos: 82 passados, 16 pulados), 41 s |
+| 5 | os três workspaces | `tsc --noEmit` (dentro do `check`) | EXIT 0 (`@n1/api`, `@n1/web`, `@n1/dominio`) |
+| 6 | `apps/web` | `eslint .` (dentro do `check`) | EXIT 0 — 0 erros, os 4 avisos pré-existentes (`rotulos.ts` 1, `app-shell.tsx` 3) |
+| 7 | `apps/web` | `verificar:tokens` (dentro do `check`) | EXIT 0 — 437 tokens, 311 arquivos, 0 falhas |
+| 8 | raiz | `verificar:contratos` (`payment-requests-v1`, dentro do `check`) | OK — 81 arquivos idênticos, hash `b94087a3c1ef85ce…40bd` (o mesmo de 2026-09-29) |
+| 9 | `apps/api` | `src/automacoes/` · `src/rotas/` · `src/observabilidade/` · `src/persistencia/` (uma pasta por vez) | `automacoes/` **297 passados · 17 pulados** (13 arquivos) · `rotas/` **164 · 50 pulados** (34 arquivos) · `observabilidade/` **10/10** (2 arquivos) · `persistencia/` **46 · 36 pulados** (11 arquivos, 5 pulados inteiros) — 0 falhas |
+| 10 | `apps/web` | `src/features/tarefa/` | **82/82** (7 arquivos, com `timeline-responder` e `painel-conferencia-no-fio`) |
+| 11 | contrato | `diff -r` das duas pastas `contas-a-pagar-v1` e o hash agregado dos dois lados | `diff -r` vazio (EXIT 0); **27 arquivos** nos dois lados (16 exemplos v1 + 3 v1.1 + 7 v1.2 + README); hash agregado `0e5eff9a1a2f551e…ee57` igual nos dois lados — **contrato v1.2 igual nos dois repositórios** |
+| 12 | `apps/api` | `contrato-contas-a-pagar.test.ts` + `contrato-contas-a-pagar-ponte.test.ts` | **54/54**: o consumidor 43 (com o hash contra o produtor) e a ponte de ponta a ponta 11 |
+| 13 | `financeiro-tria/automation` | `npx tsc --noEmit -p .` | EXIT 0 |
+| 14 | `financeiro-tria/automation` | `npm test` (isolado) | **708/708**, 0 falhas, 0 pulados, 18 s (eram 571 antes de 06-07) |
+
+Desta vez o `npm run check` inteiro coube no tempo (a suíte de `apps/api`
+sem banco levou 41 s), então a suíte INTEIRA de `apps/api` está registrada, e
+não só as pastas tocadas. Nenhum teste falhou; os pulados são os de banco
+(DEC-09), e o `todo` é um `it.todo` declarado em
+`src/e2e/falhas-injetadas.test.ts` (commit `1fd5432`, anterior a esta fase),
+não uma falha. Nenhum servidor subiu para os testes: a porta 3002 estava
+ocupada, o tempo todo, pela API normal deste checkout (`vite-node
+src/index.ts`, sem `--watch`), que os testes não usam; 4100 e 4101 estavam
+livres. Para a jornada, a 3002 precisa ser liberada antes (a API da prova sobe
+nela).
 
 ### Jornada — respostas no fio (modo conferência)
 
