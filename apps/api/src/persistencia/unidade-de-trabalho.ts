@@ -74,17 +74,42 @@ export interface OpcoesExecucao<T = unknown> {
 }
 
 /**
- * O `begin` e, no MESMO ida-e-volta, a rede do lado do servidor: se este
- * cliente sumir no meio da transação (o pooler derrubou a conexão sem aviso),
- * o Postgres encerra a sessão parada no mesmo prazo do `query_timeout` do pool
- * e solta a revisão do Espaço de Trabalho — que o `update ... revisao` abaixo
- * trava até o `commit`. Sem isto, em 2026-09-29, toda escrita no `ws_n1` ficou
- * esperando o TCP desistir (16 e 10 minutos). `set local` vale só para esta
- * transação; com o `query_timeout` desligado, fica o `begin` puro.
+ * O `begin` e, no MESMO ida-e-volta, os três prazos do lado do servidor.
+ *
+ *   - `idle_in_transaction_session_timeout` = Q (o `query_timeout` do pool):
+ *     se este cliente sumir no meio da transação (o pooler derrubou a conexão
+ *     sem aviso), o Postgres encerra a sessão parada e solta a revisão do
+ *     Espaço de Trabalho — que o `update ... revisao` abaixo trava até o
+ *     `commit`. Sem isto, em 2026-09-29, toda escrita no `ws_n1` ficou
+ *     esperando o TCP desistir (16 e 10 minutos).
+ *   - `statement_timeout` = 80 % de Q e `lock_timeout` = Q / 3 (06-13, H4 do
+ *     diagnóstico em `06-13-SUMMARY.md`): o `query_timeout` é um temporizador
+ *     DO CLIENTE — ao estourar, o `pg` devolve `Query read timeout` e NÃO
+ *     cancela a instrução no servidor. Atrás do pooler, um `update ...
+ *     revisao` que esperava a trava podia seguir vivo, órfão, e pegar a
+ *     revisão depois que o cliente já tinha desistido; o próximo escritor
+ *     estourava também (06-PROVAS: 3 × `Query read timeout` enquanto a tela
+ *     gravava). Com os dois prazos ABAIXO de Q, o servidor desiste antes do
+ *     cliente, e a espera pela trava vira `55P03` em Q / 3 — conflito, não
+ *     exceção (ver `executar`).
+ *
+ * Mínimo 1 ms: `0` no Postgres DESLIGA o prazo, o contrário do que se quer.
+ * `set local` vale só para esta transação; com o `query_timeout` desligado
+ * (`DATABASE_QUERY_TIMEOUT_MS=0`, migração longa à mão), fica o `begin` puro.
  */
 export function inicioDaTransacao(env: NodeJS.ProcessEnv = process.env): string {
   const prazo = limitesDoPool(env).query_timeout;
-  return prazo ? `begin; set local idle_in_transaction_session_timeout = ${prazo}` : "begin";
+  if (!prazo) return "begin";
+  const instrucao = Math.max(1, Math.floor(prazo * 0.8));
+  const trava = Math.max(1, Math.floor(prazo / 3));
+  return `begin; set local idle_in_transaction_session_timeout = ${prazo}; set local statement_timeout = ${instrucao}; set local lock_timeout = ${trava}`;
+}
+
+/** SQLSTATE `lock_not_available`: o `lock_timeout` do `begin` esgotou esperando a trava. */
+const TRAVA_ESGOTADA = "55P03";
+
+function sqlstateDe(erro: unknown): unknown {
+  return typeof erro === "object" && erro !== null ? (erro as { readonly code?: unknown }).code : undefined;
 }
 
 export async function executar<T>(
@@ -122,10 +147,23 @@ export async function executar<T>(
         return { ...resultado, diferenca: DIFERENCA_VAZIA, revisao: antes.revisao, revisaoAnterior: antes.revisao };
       }
 
-      const travada = await cliente.query<{ revisao: string }>(
-        "update plataforma.workspaces set revisao = revisao + 1, atualizado_em = now() where workspace_id = $1 and revisao = $2 returning revisao",
-        [workspaceId, antes.revisao],
-      );
+      let travada;
+      try {
+        travada = await cliente.query<{ revisao: string }>(
+          "update plataforma.workspaces set revisao = revisao + 1, atualizado_em = now() where workspace_id = $1 and revisao = $2 returning revisao",
+          [workspaceId, antes.revisao],
+        );
+      } catch (erro) {
+        // 06-13 (H4) — a trava da revisão não saiu dentro do `lock_timeout`:
+        // outra escrita está segurando o Espaço. É conflito, como a revisão
+        // que mudou: desfaz, e a próxima tentativa (ou quem chamou) começa do
+        // zero sobre o estado novo. A conexão está sã — não sai do pool.
+        // Qualquer outro erro sobe como sempre (e a conexão é descartada).
+        if (sqlstateDe(erro) !== TRAVA_ESGOTADA) throw erro;
+        await cliente.query("rollback");
+        ultimo = { ok: false, conflito: true, error: "Outra alteração entrou antes desta. Tente de novo." };
+        continue;
+      }
       if (travada.rowCount === 0) {
         await cliente.query("rollback");
         ultimo = { ok: false, conflito: true, error: "Outra alteração entrou antes desta. Tente de novo." };

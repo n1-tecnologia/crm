@@ -16,6 +16,36 @@ suficiente para o domínio nunca saber que existe um banco.
 | `migrar.ts` + `migrar.cli.ts` | Aplica `apps/api/migracoes/NNN-*.sql` em ordem, uma vez cada, dentro de transação, registrado em `plataforma.migracoes`. |
 | `persistencia.test.ts`, `colunas-geradas.test.ts`, `integracao.test.ts`, `agenda-de-automacoes.test.ts` | Testes de integração contra Postgres real; pulam sem `DATABASE_URL` (`temBanco ? describe : describe.skip`, D-DEC-09). |
 
+## Os prazos do servidor e a trava esgotada (06-13)
+
+`inicioDaTransacao()` abre toda Unidade de Trabalho com três prazos do lado do
+servidor, derivados do `query_timeout` Q do pool (`DATABASE_QUERY_TIMEOUT_MS`,
+30 s por padrão):
+
+- `idle_in_transaction_session_timeout = Q`: a sessão cujo cliente sumiu
+  depois de travar a revisão é encerrada;
+- `statement_timeout = 80 % de Q`: o servidor cancela a instrução antes de o
+  cliente desistir dela;
+- `lock_timeout = Q / 3`: a espera pela trava da revisão do Espaço tem prazo.
+
+Os três ficam com no mínimo 1 ms, porque `0` desliga. Com Q = 0, a transação
+abre com o `begin` puro.
+
+O motivo é o diagnóstico H4 de `06-13-SUMMARY.md`. O `query_timeout` é um
+temporizador do CLIENTE: quando ele estoura, o `pg` devolve `Query read timeout`
+e não cancela nada no servidor. Um `update ... revisao` órfão podia continuar
+esperando a trava, e depois segurá-la, enquanto os escritores seguintes
+estouravam os seus 30 s.
+
+Em `executar()`, `55P03` (trava esgotada) no `update ... revisao` é tratado
+como **conflito**, igual a uma revisão que mudou:
+- desfaz a transação e tenta de novo, até `tentativas`;
+- devolve `{ conflito: true }` (409 na rota, transitório na ponte);
+- a conexão está sã e volta ao pool.
+
+Qualquer outro erro, inclusive `57014` (cancelado pelo `statement_timeout`) e
+um `55P03` fora da revisão, sobe como antes e descarta a conexão.
+
 ## A regra das migrações
 
 Numeradas (`apps/api/migracoes/NNN-*.sql`), aplicadas uma vez por
