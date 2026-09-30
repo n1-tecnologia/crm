@@ -12,7 +12,7 @@ const estado = {
 
 const aprovacaoDeProcesso = {
   id: "apr_1",
-  origin: { kind: "processTask", taskId: "tsk_sol", threadCommentId: "cmt_rot" },
+  origin: { kind: "processTask", taskId: "tsk_sol", processStep: "pagamento", threadCommentId: "cmt_rot" },
   decision: "aprovada",
   decisionSource: "click",
 };
