@@ -148,7 +148,16 @@ pagar" e "em lançamento omie" (ou só nesta, D6-01). Para cada conta:
    reinício a resposta sai duas vezes. Com `CONFERENCIA_POR_COMENTARIO=false`
    a publicação leva `aprovacaoPorComentario: false`: o Resumo pede a
    conferência pelo botão, e a Conferência guarda `aprovacaoPeloFio: false`,
-   que o card e a doca da tela leem.
+   que o card e a doca da tela leem. **06-21 (crm2:WR-05 residual, 06-REVIEW-3
+   WR-01):** `comentar()` devolve `Promise<boolean>` — verdadeiro só quando o
+   Comentário foi DE FATO gravado —, e `RESPOSTA_SEM_EFEITO` só sai quando
+   esse booleano é verdadeiro; falhando, nada é registrado (nem o log, nem a
+   "resposta já dada"), e o ciclo seguinte tenta de novo. Depois de
+   `TENTATIVAS_TRANSITORIAS` falhas SEGUIDAS para a MESMA resposta (pelo id do
+   Comentário), a ponte desiste de responder A ELA (log `SEM_EFEITO_DESISTIDO`,
+   nunca "respondeu por quê") — mas só dela: `estado.parada` nunca é tocado, e
+   uma resposta nova ou uma decisão de verdade no mesmo fio continuam sendo
+   lidas e processadas normalmente.
 5. **`sem-resumo` | `desatualizada` | `ajuste-pedido`** ⇒ Momento 1: UM
    `/resolver` (com `pedidoDeRevisao` e, se o pedido citar um `d.dd.dd`,
    `codigoCategoriaConfirmado`) e UM `publicarResumoParaConferencia` (`motivo:

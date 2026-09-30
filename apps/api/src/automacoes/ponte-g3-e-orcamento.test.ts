@@ -151,6 +151,10 @@ describe("crm2:WR-04 — G3 fechado no meio do ciclo", () => {
     expect(mencionaAMaryane(das)).toBe(false);
     expect(estado.activity.some((a) => a.objectId === das.id && a.action === "Lançamento no Omie falhou")).toBe(false);
     expect(portaFechada(registros).length).toBeGreaterThanOrEqual(1);
+    // 06-21 (crm2:IN-03, 06-REVIEW-3) — `falhaPermanente` também chama
+    // `encerrarLancamentoEmCurso` neste ramo (WR-01 x WR-04): a marca "em
+    // curso" tem de sair mesmo quando a falha é recusada pela porta G3.
+    expect(estado.activity.some((a) => a.objectId === das.id && a.action === "Lançamento no Omie interrompido")).toBe(true);
   }, 10_000);
 
   it("(c) Comentário com o Membro de G3 inativo: recusado na operação e guardado; com ele ativo de novo, o ciclo seguinte grava o aviso com Menção a ele", async () => {

@@ -626,6 +626,22 @@ interface EstadoDaConta {
   tentativasDoComentario?: number;
   /** A última resposta do fio já lida e deixada de lado (ignorada, ou recusada pelo domínio) — não é relida. */
   respostaLida?: Id;
+  /**
+   * 06-21 (crm2:WR-05 residual, 06-REVIEW-3 WR-01) — o id do Comentário
+   * (`semEfeito.resposta.id`) ao qual a ponte já desistiu de responder no
+   * fio. PRÓPRIO de `lerRespostas`: nunca reaproveita `comentarioPendente`/
+   * `tentativasDoComentario` de `comentar()`, que qualquer gravação de
+   * Comentário desta conta compartilha (uma parada por dado faltando e uma
+   * resposta sem efeito não podem disputar o mesmo contador). A desistência é
+   * LOCAL a esta resposta — nunca `estado.parada`: uma resposta nova (outro
+   * id) ou uma decisão de verdade no mesmo fio continuam sendo lidas e
+   * processadas normalmente.
+   */
+  semEfeitoDesistidoId?: Id;
+  /** Falhas SEGUIDAS de `comentar()` para a resposta de `semEfeitoTentativaId`. */
+  tentativasSemEfeito?: number;
+  /** A resposta (id) para a qual `tentativasSemEfeito` conta agora — muda (outra resposta sem efeito) ⇒ o contador zera. */
+  semEfeitoTentativaId?: Id;
 }
 
 function valorDoCampo(task: Task, definitionId: Id): string {
@@ -1324,7 +1340,14 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
     const naOrdem = inicio > 0 ? [...contas.slice(inicio), ...contas.slice(0, inicio)] : contas;
 
     for (const task of naOrdem) {
-      if (portaDoCicloFechada) return false;
+      if (portaDoCicloFechada) {
+        // 06-21 (crm2:IN-01) — o cursor rotativo também é gravado quando é a
+        // porta G3 que fecha o ciclo no meio do laço, não só quando o
+        // orçamento esgota: o ciclo seguinte recomeça exatamente por esta
+        // conta (ainda não processada), nos dois casos.
+        cursor = task.id;
+        return false;
+      }
       // 06-13 (H3) — o orçamento: cada gravação hidrata o Espaço inteiro e
       // disputa a revisão com a tela. Esgotado, o resto sai no ciclo
       // seguinte — que começa por esta conta (o cursor) e espera
@@ -1376,8 +1399,16 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
         }
         const deste = estado;
 
-        /** Grava o Comentário do Agente (modos que gravam); falhando, fica pendente para o próximo ciclo — sem chamar o Omie de novo. */
-        const comentar = async (texto: string, parentCommentId?: Id): Promise<void> => {
+        /**
+         * Grava o Comentário do Agente (modos que gravam); falhando, fica
+         * pendente para o próximo ciclo — sem chamar o Omie de novo.
+         *
+         * 06-21 (crm2:WR-05 residual, 06-REVIEW-3 WR-01) — devolve
+         * `Promise<boolean>` (verdadeiro só quando de fato gravou): antes
+         * devolvia `Promise<void>`, e `lerRespostas` não tinha como saber se
+         * `RESPOSTA_SEM_EFEITO` podia sair de verdade.
+         */
+        const comentar = async (texto: string, parentCommentId?: Id): Promise<boolean> => {
           const atorId = await atorDaEscrita();
           const r = await executarOperacao((s) => {
             // crm2:WR-04 (06-19) — a porta G3 conferida DENTRO da operação:
@@ -1394,10 +1425,12 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
           if (r.ok) {
             delete deste.comentarioPendente;
             deste.tentativasDoComentario = 0;
+            return true;
           } else if (ehRecusaDaPorta(r)) {
             // Fica pendente, sem contar tentativa: volta quando a porta for arrumada.
             deste.comentarioPendente = texto;
             portaFechada();
+            return false;
           } else {
             deste.comentarioPendente = texto;
             deste.tentativasDoComentario = (deste.tentativasDoComentario ?? 0) + 1;
@@ -1410,6 +1443,7 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
               delete deste.comentarioPendente;
               registrar("info", "Desisti de gravar o Comentário do Agente nesta conta.", { ...daConta, code: "COMENTARIO_PENDENTE_DESISTIDO" });
             }
+            return false;
           }
         };
 
@@ -1532,11 +1566,43 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
         async function lerRespostas(pendente: ConferenciaDoResumo): Promise<void> {
           const semEfeito = respostaSemEfeitoNoFio(state, task, { aprovacaoPorComentario: decisoes.conferenciaPorComentario });
           if (semEfeito) {
-            await comentar(semEfeito.texto, pendente.origin.threadCommentId);
-            // Falhando, não fica pendente em memória: o fio é a memória, e o
-            // ciclo seguinte pergunta de novo ao domínio.
-            if (deste.comentarioPendente === semEfeito.texto) delete deste.comentarioPendente;
-            registrar("info", "Resposta no fio sem efeito: a ponte respondeu por quê.", { ...daConta, code: "RESPOSTA_SEM_EFEITO" });
+            if (semEfeito.resposta.id === deste.semEfeitoDesistidoId) {
+              // 06-21 (crm2:WR-05 residual, 06-REVIEW-3 WR-01) — já desisti
+              // desta resposta: não tenta `comentar()` de novo, não gasta
+              // orçamento, não repete o log a cada ciclo. Local à resposta:
+              // `estado.parada` nunca é tocado aqui.
+            } else {
+              // É uma resposta nova (outro id) ou ainda não desistida: o
+              // contador é dela, não de `comentar()` em geral (que qualquer
+              // Comentário desta conta compartilha).
+              if (deste.semEfeitoTentativaId !== semEfeito.resposta.id) {
+                deste.semEfeitoTentativaId = semEfeito.resposta.id;
+                deste.tentativasSemEfeito = 0;
+              }
+              if ((deste.tentativasSemEfeito ?? 0) >= TENTATIVAS_TRANSITORIAS) {
+                // Já são `TENTATIVAS_TRANSITORIAS` falhas SEGUIDAS para esta
+                // resposta: desisto ANTES de tentar de novo — sem gravação
+                // nova, sem gastar orçamento. `estado.parada` nunca é tocado.
+                deste.semEfeitoDesistidoId = semEfeito.resposta.id;
+                registrar("info", "Não consegui responder ao Comentário sem efeito nesta resposta; parei de tentar só para ela.", {
+                  ...daConta,
+                  code: "SEM_EFEITO_DESISTIDO",
+                });
+              } else {
+                const gravou = await comentar(semEfeito.texto, pendente.origin.threadCommentId);
+                // Falhando, não fica pendente em memória: o fio é a memória, e o
+                // ciclo seguinte pergunta de novo ao domínio.
+                if (deste.comentarioPendente === semEfeito.texto) delete deste.comentarioPendente;
+                if (gravou) {
+                  delete deste.tentativasSemEfeito;
+                  delete deste.semEfeitoTentativaId;
+                  delete deste.semEfeitoDesistidoId;
+                  registrar("info", "Resposta no fio sem efeito: a ponte respondeu por quê.", { ...daConta, code: "RESPOSTA_SEM_EFEITO" });
+                } else {
+                  deste.tentativasSemEfeito = (deste.tentativasSemEfeito ?? 0) + 1;
+                }
+              }
+            }
           }
           const lote = decisaoDasRespostasPendentes(state, task, { aprovacaoPorComentario: decisoes.conferenciaPorComentario });
           const { ultimaLida } = lote;
@@ -1682,7 +1748,11 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
             });
             if (!publicado.ok) return publicado;
             if (semCodigo) {
-              if (avisar && !membroAtivo(s, avisar)) return fail(TEXTOS_DA_CONFERENCIA.recusaAvisarInativo);
+              // 06-21 (crm2:IN-02) — a checagem de `avisar`/`membroAtivo` saiu
+              // daqui: código morto. `publicarResumoParaConferencia` (acima)
+              // já recebeu `avisarEstrito: true` sempre que há `avisar`, e
+              // `publicado.ok` já seria `false` se ele estivesse inativo — a
+              // mesma `s`, síncrono, sem mudança de estado entre as duas.
               const resposta = addTaskComment(s, atorId, task.id, {
                 content: TEXTOS_DA_CONFERENCIA.recusaSemCodigo,
                 mentions: [{ type: "member", id: avisadoDaConferencia(s, atorId, avisar) }],
