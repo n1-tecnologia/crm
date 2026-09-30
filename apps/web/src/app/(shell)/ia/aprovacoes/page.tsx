@@ -44,6 +44,7 @@ import {
 import {
   DialogoConferir,
   DialogoPedirAjuste,
+  faltaCodigoDaCategoria,
   podeConferirOResumo,
   resumoDaConta,
 } from "@/features/tarefa/painel-conferencia-do-resumo";
@@ -315,14 +316,21 @@ export default function AprovacoesPage() {
           <div className="mt-1 flex flex-wrap items-center gap-2">
             {vigentePendente ? (
               <>
-                <Button
-                  variant="primary"
-                  onClick={() => openDecision(approval.id, "aprovada")}
-                  disabled={!actionable}
-                  disabledReason={disabledReason}
-                >
-                  Conferir
-                </Button>
+                {conferencia && faltaCodigoDaCategoria(conferencia) ? (
+                  // 06-14 (crm:WR-03) — sem código de Categoria não se confere: só o pedido de ajuste.
+                  <span className="app-sm" style={{ color: "var(--texto-2)" }}>
+                    Peça ajuste com o código da Categoria.
+                  </span>
+                ) : (
+                  <Button
+                    variant="primary"
+                    onClick={() => openDecision(approval.id, "aprovada")}
+                    disabled={!actionable}
+                    disabledReason={disabledReason}
+                  >
+                    Conferir
+                  </Button>
+                )}
                 <Button
                   variant="secondary"
                   onClick={() => openDecision(approval.id, "rejeitada")}
@@ -494,7 +502,8 @@ export default function AprovacoesPage() {
       {deciding && decidingIsConferencia && decidingResumoDaConta && decidingConferencia?.id === deciding.id ? (
         <>
           <DialogoConferir
-            open={decidingKind === "aprovada"}
+            // Nem pelo link `?aprovar=<id>:aprovada`: sem código de Categoria não se confere (06-14, crm:WR-03).
+            open={decidingKind === "aprovada" && !faltaCodigoDaCategoria(decidingConferencia)}
             resumo={decidingResumoDaConta}
             conferencia={decidingConferencia}
             processando={controladorProcesso.processando === "aprovada"}

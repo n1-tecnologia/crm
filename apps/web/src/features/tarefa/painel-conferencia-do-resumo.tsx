@@ -23,7 +23,14 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useData, useSession } from "@/dados/store";
-import { CP, conferenciaDoResumo, erpMissingFields, movidaDepoisDaImportacao, revisoresDoResumo } from "@n1/dominio/operations";
+import {
+  CP,
+  conferenciaDoResumo,
+  erpMissingFields,
+  lancamentoSemCodigo,
+  movidaDepoisDaImportacao,
+  revisoresDoResumo,
+} from "@n1/dominio/operations";
 import type { ConferenciaDoResumo, EstadoDaConferencia } from "@n1/dominio/operations";
 import { memberSeesTask } from "@n1/dominio/derive";
 import type { DataState, OperationResult } from "@n1/dominio/state";
@@ -120,6 +127,18 @@ export function podeConferirOResumo(state: DataState, memberId: Id, conferencia:
   const member = state.members.find((m) => m.id === memberId);
   const base = state.roles.find((r) => r.id === member?.roleId)?.base;
   return base === "administrador" || base === "proprietario";
+}
+
+/**
+ * 06-14 (crm:WR-03, a parte da tela) — o Resumo não tem código de Categoria
+ * que se confira: a tela não oferece "Conferido, pode lançar" (card) nem
+ * "Conferir" (fila), só o pedido de ajuste. Leitura do DADO da Conferência
+ * (`origin.lancamento`, D6-10), pela MESMA regra com que o domínio recusa a
+ * aprovação desde o 06-11 (`lancamentoSemCodigo`: veredito `ausente` ou
+ * código fora da forma do contrato). Uma regra de tela, dois lugares.
+ */
+export function faltaCodigoDaCategoria(conferencia: ConferenciaDoResumo): boolean {
+  return lancamentoSemCodigo(conferencia.origin.lancamento);
 }
 
 const ROTULO_DO_CARD: Record<EstadoDaConferencia, string> = {
@@ -294,6 +313,7 @@ export function PainelConferenciaDoResumo({
   const aprovador = nomeDe(conferencia.approverMemberId);
   const autorizado = podeConferirOResumo(state, memberId, conferencia);
   const { veredito } = conferencia.origin.lancamento;
+  const semCodigo = faltaCodigoDaCategoria(conferencia);
 
   return (
     <Painel>
@@ -341,24 +361,47 @@ export function PainelConferenciaDoResumo({
           <p className="app-base" style={{ color: "var(--texto-2)" }}>
             Os dados mudaram depois da conferência; um Resumo novo será publicado
           </p>
+        ) : autorizado && semCodigo ? (
+          // Sem código de Categoria não há o que conferir: só o pedido de ajuste (o domínio recusaria a aprovação).
+          <div className="grid gap-2">
+            <p className="app-base" style={{ color: "var(--texto-2)" }}>
+              {'Peça ajuste com o código da Categoria — pelo botão ou respondendo no fio do Resumo com o código (ex.: "use 2.04.03").'}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => setDialogoAberto("rejeitada")}
+                disabled={controlador.processando !== null}
+                disabledReason="Aguarde a decisão em andamento."
+              >
+                Pedir ajuste
+              </Button>
+            </div>
+          </div>
         ) : autorizado ? (
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="primary"
-              onClick={() => setDialogoAberto("aprovada")}
-              disabled={controlador.processando !== null}
-              disabledReason="Aguarde a decisão em andamento."
-            >
-              Conferido, pode lançar
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => setDialogoAberto("rejeitada")}
-              disabled={controlador.processando !== null}
-              disabledReason="Aguarde a decisão em andamento."
-            >
-              Pedir ajuste
-            </Button>
+          <div className="grid gap-2">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="primary"
+                onClick={() => setDialogoAberto("aprovada")}
+                disabled={controlador.processando !== null}
+                disabledReason="Aguarde a decisão em andamento."
+              >
+                Conferido, pode lançar
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setDialogoAberto("rejeitada")}
+                disabled={controlador.processando !== null}
+                disabledReason="Aguarde a decisão em andamento."
+              >
+                Pedir ajuste
+              </Button>
+            </div>
+            {/* crm:WR-05 — o "ok" no fio (D6-02) também confere; a ponte lê a resposta ao Resumo. */}
+            <p className="app-sm" style={{ color: "var(--texto-3)" }}>
+              {'Confira pelo botão ou responda "ok" no fio do Resumo; qualquer outra resposta no fio pede ajuste.'}
+            </p>
           </div>
         ) : (
           <div className="grid gap-2">
@@ -374,14 +417,16 @@ export function PainelConferenciaDoResumo({
 
       {estado === "pendente" && autorizado ? (
         <>
-          <DialogoConferir
-            open={dialogoAberto === "aprovada"}
-            resumo={resumo}
-            conferencia={conferencia}
-            processando={controlador.processando === "aprovada"}
-            onConfirm={() => controlador.decidir("aprovada")}
-            onCancel={() => setDialogoAberto(null)}
-          />
+          {semCodigo ? null : (
+            <DialogoConferir
+              open={dialogoAberto === "aprovada"}
+              resumo={resumo}
+              conferencia={conferencia}
+              processando={controlador.processando === "aprovada"}
+              onConfirm={() => controlador.decidir("aprovada")}
+              onCancel={() => setDialogoAberto(null)}
+            />
+          )}
           <DialogoPedirAjuste
             open={dialogoAberto === "rejeitada"}
             resumo={resumo}

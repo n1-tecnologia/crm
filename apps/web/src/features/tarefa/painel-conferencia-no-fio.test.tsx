@@ -248,3 +248,13 @@ describe("(f) veredito \"revisar\": os dois botões, como hoje", () => {
     expect(screen.queryByText(SEM_CODIGO_NO_CARD)).toBeNull();
   });
 });
+
+describe("(g) nem pelo link da fila: sem código, o diálogo de conferir não abre", () => {
+  it("?aprovar=<id>:aprovada numa Conferência sem código não mostra \"Conferir o Resumo de …?\"", () => {
+    const conferencia = publicarResumoSemCodigo();
+    navegacao.params = new URLSearchParams({ aprovar: `${conferencia.id}:aprovada` });
+    comStore(CP.financeiroId, <AprovacoesPage />);
+    expect(screen.queryByText("Conferir o Resumo de CP-111?")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Conferido, pode lançar" })).toBeNull();
+  });
+});
