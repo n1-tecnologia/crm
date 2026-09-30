@@ -386,7 +386,7 @@ Antes de planejar: D7/OQ-CR-01 (perguntar ao Financeiro onde o recebimento é co
   4. Nos modos `ensaio` e `conferencia` a contagem de requisições a `/lancar` é zero em qualquer ciclo (asserido com servidor falso); o contrato v1.1 é aditivo e igual nos dois repositórios (hash); `teste:omie-real --lancar --anexo` sobe um anexo de verdade no Omie da Tria e exclui o título no fim.
   5. `handlePlatformApprovalDecision` publica o Resumo na Solicitação depois de `aprovada` e avisa o Solicitante em `rejeitada`, pela porta, nunca por `legacyClickUpRaw()`.
 
-**Plans**: 21 plans (6 + 9 + 5 + 1 de fechamento)
+**Plans**: 22 plans (6 + 9 + 5 + 1 + 1 de fechamento)
 Plans:
 **Wave 1** — domínio e contrato, em paralelo (repositórios diferentes)
 
@@ -431,6 +431,14 @@ resposta humana pendente) e o resíduo do aviso crm2:WR-05 (log mentindo que
 respondeu). Financeiro-tria: 0 críticos nesta rodada (06-REVIEW-FINANCEIRO-TRIA-3.md).
 
 - [x] 06-21-PLAN.md — O crítico (dispensar não engole resposta pendente) e o resíduo do WR-05, mais 3 informativos (RES-02, RES-03)
+
+**Quarta rodada — regressão achada por 06-REVIEW-4.md (2026-09-30):** a
+revisão do diff do 06-21 confirmou o Crítico fechado, mas achou um Warning
+novo introduzido pelo próprio 06-21 (política de comentário fixa em `true`
+trava a dispensa para sempre quando o espaço desliga a conferência por
+comentário). 0 Críticos.
+
+- [ ] 06-22-PLAN.md — A checagem de resposta pendente respeita a política real de conferência por comentário (RES-02, RES-03)
 
 Decisões desta fase, com padrão e variável de troca, em `06-CONTEXT.md` (D6-01 quando o Resumo aparece; D6-02 "ok" por comentário; D6-03 falha volta a "para pagar"; D6-04 Integração manual; D6-05 contrato aditivo; D6-06 S5/S6; D6-07 conversão continua botão; D6-08 2 dias úteis; D6-09 revisores; D6-10 códigos como dado; D6-11 três modos; D6-12 cutucão; D6-13 sem nº de NF por IA). O dono ainda não respondeu às quatro perguntas de `docs/08-migracao-financeiro/10-levantamento…`; os padrões seguem "do mesmo jeito que está no ClickUp", exceto D6-04 (o seguro).
 
