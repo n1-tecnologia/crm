@@ -383,12 +383,13 @@ clique** (`06-REVIEW-2.md`):
   fail-closed, para registros de antes de 06-18: aprovada sem o campo, com o
   motivo exato `MOTIVO_DA_DISPENSA` e decisor = aprovador (a forma que só a
   ponte gravava) também é dispensa.
-- **`dispensarConferenciaDoResumo(state, ator, conferenciaId)`** — fora de
-  `OPERACOES` e da rota (só a ponte chama): decide sobre o estado RECEBIDO
+- **`dispensarConferenciaDoResumo(state, ator, conferenciaId, opcoes?)`** — fora
+  de `OPERACOES` e da rota (só a ponte chama): decide sobre o estado RECEBIDO
   (dentro da Unidade de Trabalho, o da gravação), recusa sem efeito com
   `recusaDispensaSemManual` se a conta não é mais "Manual", aplica
   `decideProcessApproval` (as guardas de impressão e de código valem) e só
-  então marca `decisionWaiver`.
+  então marca `decisionWaiver`. `opcoes?.aprovacaoPorComentario` (padrão
+  `true`) governa a checagem de resposta pendente no fio — ver 06-22 abaixo.
 - **`podeDecidirAConferencia(state, memberId, conferencia)` (em `ai.ts`,
   crm2:WR-03)** é a régua única de quem confere: alcança a conta e é o
   aprovador designado ou Administrador/Proprietário ativo. Filtra as
@@ -458,3 +459,19 @@ clique** (`06-REVIEW-2.md`):
   OU aprovação) → remarcar "Manual" antes do próximo ciclo — a Conferência com
   a resposta pendente não se dispensa nunca mais; ela é lida, e a decisão vira
   do Membro humano, não do de serviço.
+
+**06-22 — a checagem de resposta pendente respeita a política real de conferência por comentário** (`06-REVIEW-4.md`, Aviso, regressão do próprio 06-21):
+
+- **`dispensarConferenciaDoResumo` ganha um 4º parâmetro opcional**
+  `opcoes?: { aprovacaoPorComentario?: boolean }` (padrão `true`, preserva
+  06-21 sem edição em nenhum chamador existente). O `true` fixo de 06-21
+  travava a dispensa `sem-conferencia` (D6-04) para sempre quando o espaço de
+  trabalho desliga `conferenciaPorComentario` (D6-02): um "ok" trivial no fio
+  — que o próprio domínio já trata como sem peso
+  (`TEXTOS_DA_CONFERENCIA.okPeloFioDesligado`) — passava a bloquear a dispensa
+  do mesmo jeito que um ajuste de verdade, só que sem nunca se resolver
+  (`decisaoDasRespostasPendentes` não tem noção de "já respondido"). A ponte
+  agora passa `{ aprovacaoPorComentario: decisoes.conferenciaPorComentario }`
+  (a política real) nos dois pontos que chamam `dispensarConferenciaDoResumo`
+  e na pré-checagem `pendenteNoFio`; o ramo `ajuste` continua bloqueando em
+  qualquer política (a opção não o afeta).

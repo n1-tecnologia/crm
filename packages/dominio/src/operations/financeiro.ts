@@ -1290,7 +1290,12 @@ export function publicarResumoParaConferencia(
  * "integracaoManual"`, que faz a dispensa valer só enquanto a conta for
  * "Manual" (`dispensaSemManual`).
  */
-export function dispensarConferenciaDoResumo(state: DataState, actingMemberId: Id, conferenciaId: Id): OperationResult<ApprovalRequest> {
+export function dispensarConferenciaDoResumo(
+  state: DataState,
+  actingMemberId: Id,
+  conferenciaId: Id,
+  opcoes?: { readonly aprovacaoPorComentario?: boolean },
+): OperationResult<ApprovalRequest> {
   const conferencia = state.approvals.find((a) => a.id === conferenciaId);
   if (!conferencia || !ehConferenciaDoResumo(conferencia)) return fail("Conferência do Resumo não encontrada.");
   const guardas = guardasDoAgente(state, actingMemberId, conferencia.origin.taskId);
@@ -1302,10 +1307,15 @@ export function dispensarConferenciaDoResumo(state: DataState, actingMemberId: I
   if (fieldValue(task, CP.fields.integracaoManual) !== "Manual") return fail(TEXTOS_DA_CONFERENCIA.recusaDispensaSemManual);
   // 06-21 (crm2:CR-01 residual, 06-REVIEW-3 Crítico): uma resposta de Membro
   // ainda não processada no fio da Conferência vigente (ajuste OU aprovação)
-  // bloqueia a dispensa — mesmo com "Manual" marcado agora. `true` fixo: a
-  // leitura mais permissiva que ainda bloqueia todo `ajuste` (o ramo `ajuste`
-  // de `decisaoDasRespostasPendentes` ignora esta opção de qualquer forma).
-  if (decisaoDasRespostasPendentes(state, task, { aprovacaoPorComentario: true }).sentido !== "nenhum") {
+  // bloqueia a dispensa — mesmo com "Manual" marcado agora. 06-22
+  // (06-REVIEW-4 Aviso): o padrão é `true` (preserva o comportamento de
+  // 06-21, e sempre bloqueia `ajuste` — o ramo `ajuste` de
+  // `decisaoDasRespostasPendentes` ignora esta opção de qualquer forma), mas
+  // a ponte agora pode passar a política REAL do espaço de trabalho
+  // (`decisoes.conferenciaPorComentario`), para que um "ok" trivial sob a
+  // política desligada não trave a dispensa automática para sempre.
+  const aprovacaoPorComentario = opcoes?.aprovacaoPorComentario ?? true;
+  if (decisaoDasRespostasPendentes(state, task, { aprovacaoPorComentario }).sentido !== "nenhum") {
     return fail(TEXTOS_DA_CONFERENCIA.recusaDispensaComRespostaPendente);
   }
   const decidida = decideProcessApproval(state, actingMemberId, conferencia.id, "aprovada", { source: "click", reason: MOTIVO_DA_DISPENSA });

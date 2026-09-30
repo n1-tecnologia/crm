@@ -1507,8 +1507,12 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
           // aprovação) ainda não lida no fio da Conferência vigente — o mesmo
           // sinal que o domínio confere dentro de `dispensarConferenciaDoResumo`,
           // calculado aqui ANTES, para nem tentar a dispensa quando há resposta
-          // pendente: ela é lida, nunca engolida.
-          const pendenteNoFio = decisaoDasRespostasPendentes(state, task, { aprovacaoPorComentario: true }).sentido !== "nenhum";
+          // pendente: ela é lida, nunca engolida. 06-22 (06-REVIEW-4 Aviso): a
+          // política é a REAL do espaço de trabalho, não `true` fixo — um "ok"
+          // trivial sob `conferenciaPorComentario: false` não conta como
+          // pendente aqui também (o mesmo "ok" que o domínio já trata como sem
+          // peso em `okPeloFioDesligado`).
+          const pendenteNoFio = decisaoDasRespostasPendentes(state, task, { aprovacaoPorComentario: decisoes.conferenciaPorComentario }).sentido !== "nenhum";
           if (manual && !pendenteNoFio && !lancamentoSemCodigo(conf.conferencia.origin.lancamento)) await dispensar(conf.conferencia);
           else await lerRespostas(conf.conferencia);
           continue;
@@ -1644,7 +1648,7 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
          */
         async function dispensar(pendente: ConferenciaDoResumo): Promise<void> {
           const atorId = await atorDaEscrita();
-          const r = await executarOperacao((s) => dispensarConferenciaDoResumo(s, atorId, pendente.id));
+          const r = await executarOperacao((s) => dispensarConferenciaDoResumo(s, atorId, pendente.id, { aprovacaoPorComentario: decisoes.conferenciaPorComentario }));
           if (!r.ok && !("conflito" in r && r.conflito) && r.error === TEXTOS_DA_CONFERENCIA.recusaDispensaSemManual) {
             estadoPorConta.delete(task.id);
             registrar("info", "Dispensa adiada: a conta deixou de ser Manual.", { ...daConta, code: "DISPENSA_ADIADA" });
@@ -1763,7 +1767,7 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
             }
             if (!dispensa) return publicado;
             dispensou = true;
-            return dispensarConferenciaDoResumo(s, atorId, publicado.value.conferencia.id);
+            return dispensarConferenciaDoResumo(s, atorId, publicado.value.conferencia.id, { aprovacaoPorComentario: decisoes.conferenciaPorComentario });
           });
           if (foiSemEfeito(r) && adiado) {
             estadoPorConta.delete(task.id);
