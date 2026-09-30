@@ -195,6 +195,13 @@ Com `avisar=financeiro`, com o aviso `AVISAR_ID_INVALIDO`, ou se a API
 recusar subir: **pare**. `DATABASE_QUERY_TIMEOUT_MS` fica no padrão (não
 `0`: desligaria os prazos do servidor que o 06-13 pôs em cada transação).
 
+**A checagem da linha de partida e o encerramento (06-15).** As aspas do
+`escopo` saem ESCAPADAS no log (`escopo=titulos-com:\"TESTE AUTOMATIZADO\"`),
+não puras — compare pela forma exata, ou leia a linha como JSON; um `grep`
+pela forma sem escape não casa e engana quem está conferindo. No fim, os
+processos saem por **SIGINT** nos PIDs que você subiu: a API filha **ignora
+SIGTERM** e fica viva; SIGKILL só de reserva, e só nesses PIDs.
+
 As duas variáveis do meio são **só para teste**. Elas existem porque o
 `ws_n1` tem as contas reais importadas do ClickUp e a Maryane de verdade:
 - `AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM` faz a ponte olhar só as contas com
@@ -286,6 +293,30 @@ em "em lançamento omie"; em `cp-ajuste`, `respondido no fio (<id>)`, o
 enquanto ela roda: o `next dev` recarrega a tela no meio e o passo falha em
 falso. No fim, pare os três terminais e confirme 3002, 4100 e 4101 livres.
 
+**Execução B opcional — crm2:CR-01, a dispensa desmarcada (06-19/06-20).**
+Com o Terminal A e o contador de pé, derrube só o Terminal B (SIGINT) e
+suba-o de novo com o MESMO comando mais
+`AGENTE_CONTAS_A_PAGAR_INTEGRACAO_MANUAL=sem-conferencia`. A linha de
+partida tem de trazer `integracaoManual=sem-conferencia` e o resto igual (se
+não, **pare**). Então rode a jornada com `JORNADA_SO=cp-dispensa-manual`
+sozinho (mais `JORNADA_ESPERA_CICLOS_MS`, padrão 45000, para os dois ciclos
+da ponte caberem na espera do cenário):
+
+```bash
+cd "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao" && JORNADA_VISIVEL=1 JORNADA_MODO=conferencia JORNADA_SO=cp-dispensa-manual JORNADA_EMAIL=<e-mail do usuário de teste> JORNADA_SENHA=<senha> npm run jornada:financeiro -w @n1/web
+```
+
+Esperado: `RESULTADO: OK` com a nota `dispensa desmarcada: Resumo novo no
+fio (<id>), nenhum aviso de "lançaria" até a resposta humana`; no log da
+API, para a conta do cenário, "Resumo publicado com a Conferência
+dispensada (Integração manual)." e depois "Resumo publicado para
+conferência.", sem nenhum "Conferência — lançaria" antes da resposta "ok";
+o contador com `/lancar` = **0**. Prova o crm2:CR-01 (06-18): a dispensa
+D6-04 só vale enquanto a conta é "Manual". Se a dispensa falhar no `ws_n1`
+(por exemplo `DISPENSA_RECUSADA_PELO_DOMINIO`), a prova de B não vale: o
+código fica registrado em `06-PROVAS.md` como achado, e crm2:CR-01 fica
+provado só por teste (06-18: `ponte-dispensa-e-fio.test.ts`).
+
 **Depois, em `lancar`** (lança de verdade no Omie; só com a sua decisão): o
 mesmo Terminal B com `AGENTE_CONTAS_A_PAGAR_MODO=lancar`, mantendo as duas
 variáveis de teste, e os passos 1, 2, 3, 5 e 6 numa conta nova, com um PDF
@@ -294,7 +325,11 @@ pequeno no Campo Anexo. O **Terminal A precisa de
 (o hostname do `SUPABASE_URL` do `apps/api`, sem `https://` e sem caminho).
 Sem ela, o anexo volta `ANEXO_HOST_NAO_PERMITIDO` e o título lança sem
 anexo (`anexos 0 de 1` no fio, com `• <nome>: não subiu
-(ANEXO_HOST_NAO_PERMITIDO)`). Esperado:
+(ANEXO_HOST_NAO_PERMITIDO)`). Durante o `/lancar`, o card mostra "O Agente
+está lançando esta conta no Omie agora. Espere a confirmação neste fio." e o
+Status não muda até a confirmação — é a marca "Lançamento no Omie em curso"
+(06-19, crm2:WR-01); enquanto ela vale, mover o Status ou registrar "Lançado
+no Omie" à mão é recusado. Esperado:
 - No fio: `✅ Lançado no Omie — título <id> · <conta> · <categoria> (<código>) · anexos 1 de 1`
   (ou `· sem anexos`). O `/lancar` leva `codigoCategoriaConfirmado` e
   `contaConfirmada`; o contador mostra 1 `/lancar`.
@@ -394,11 +429,24 @@ Tarefa pela plataforma a cada ciclo: a plataforma precisa responder.
   (`afd2188..9e45d84`, 06-09), e o S5 que relê a Solicitação, recusa o
   Centro de Custo sem rota e avisa com texto fixo (`c889556..42ca9b5`, 06-10).
 
+Desde a segunda rodada (06-16/06-17): o S5 assíncrono sem decisão velha, sem
+dedup que engole evento e sem receipt preso (`0ad567e..c535dee`), e o
+`/lancar` com o prazo desde a entrada, anexos só do Storage e o `dePara` do
+reaproveitado conferido no plano de contas (`c535dee..6767be1`). Nenhuma
+variável de ambiente nova nos dois.
+
 O `apps/api` da Fase 6 manda campos da v1.1 e da v1.2 (`pedidoDeRevisao` no
 ajuste; `codigoCategoriaConfirmado`, `contaConfirmada` e `anexos` com nome no
 lançamento), e os schemas da rota são `.strict()`: um `automation/` anterior
-à v1.2 recusaria o `/lancar` com `400`. Por isso o deploy do `automation/`
-vem **antes** de ligar a ponte em `conferencia` ou `lancar` contra ele.
+à v1.2 recusaria o `/lancar` com `400`.
+
+**Ordem de implantação (crm2:WR-02).** Por isso o deploy do `automation/`
+(com o contrato v1.2 e o que 06-16/06-17 acrescentaram) vem **antes** de
+ligar a ponte em `conferencia` ou `lancar` contra ele — a mesma regra de
+`apps/api/README.md` §5b. Com um `automation/` v1.1, o `/lancar` com
+`contaConfirmada` volta `400 SCHEMA_INVALIDO` (falha permanente em toda
+conta) e o título reaproveitado sem `dePara` vira `REAPROVEITADO_SEM_DE_PARA`
+sem registro.
 
 Na **API do CRM N1** (`apps/api`, onde ela rodar em produção) — a ponte da
 Fase 6; a tabela completa está em `apps/api/README.md`:
@@ -408,10 +456,10 @@ Fase 6; a tabela completa está em `apps/api/README.md`:
 | `AGENTE_CONTAS_A_PAGAR_ATIVO` | `true` | Liga a ponte (exige `AGENTE_CONTAS_A_PAGAR_URL`, `PLATAFORMA_LANCAMENTO_TOKEN`, `AGENTE_CONTAS_A_PAGAR_ESPACO_ID=ws_n1`, `AGENTE_CONTAS_A_PAGAR_LISTA_ID=lst_contas_a_pagar`) |
 | `AGENTE_CONTAS_A_PAGAR_MODO` | **`conferencia` primeiro**, `lancar` depois | `ensaio` (padrão; nada gravado) · `conferencia` (Resumos e Conferências, zero `/lancar`) · `lancar`. Outro valor cai em `ensaio`, com aviso |
 | `AGENTE_CONTAS_A_PAGAR_RESUMO_A_PARTIR_DE` | vazio (`para-pagar`) | D6-01: `em-lancamento-omie` adia o Resumo para quando a conta entra em "em lançamento omie" |
-| `AGENTE_CONTAS_A_PAGAR_CONFERENCIA_POR_COMENTARIO` | vazio (`true`) | D6-02: `false` faz só o clique conferir |
-| `AGENTE_CONTAS_A_PAGAR_INTEGRACAO_MANUAL` | vazio (`nao-encosta`) | D6-04: `sem-conferencia` faz a conta Manual receber o Resumo já conferido e ser lançada |
+| `AGENTE_CONTAS_A_PAGAR_CONFERENCIA_POR_COMENTARIO` | vazio (`true`) | D6-02: `false` faz só o clique conferir; o fio pede ajuste, nunca "ok" (06-18) |
+| `AGENTE_CONTAS_A_PAGAR_INTEGRACAO_MANUAL` | vazio (`nao-encosta`) | D6-04: `sem-conferencia` faz a conta Manual receber o Resumo já conferido e ser lançada, só enquanto a conta é "Manual" (06-18) |
 | `AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM` | **vazio** | Só teste: restringe a ponte às contas com o texto no título |
-| `AGENTE_CONTAS_A_PAGAR_AVISAR_ID` | **vazio** | Só teste: toda Menção da ponte vai a esse Membro. Desde o 06-13 **exige** `AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM`: com a `AVISAR_ID` sozinha a API **recusa subir**. Um `AVISAR_ID` que não é Membro ativo deixa a ponte parada: ela **não escreve nada** nem chama o `automation/`, e o log avisa a cada ciclo com `AVISAR_ID_INVALIDO` |
+| `AGENTE_CONTAS_A_PAGAR_AVISAR_ID` | **vazio** | Só teste: toda Menção da ponte vai a esse Membro. Desde o 06-13 **exige** `AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM`: com a `AVISAR_ID` sozinha a API **recusa subir**. Um `AVISAR_ID` que não é Membro ativo deixa a ponte parada — desde o 06-19 essa porta fecha também **no meio do ciclo**, não só no começo: ela **não escreve nada** nem chama o `automation/` a partir dali, e o log avisa com `AVISAR_ID_INVALIDO` |
 | `AGENTE_CONTAS_A_PAGAR_INTERVALO_MS` | vazio (15 min) | O relógio entre ciclos; a gravação numa conta já cutuca a ponte em até 2 s (inclusive criar, mover, mandar à lixeira, restaurar e anexar, desde o 06-13) |
 | `DATABASE_QUERY_TIMEOUT_MS` | vazio (30000) | O prazo de cada consulta. Desde o 06-13 também deriva, em toda Unidade de Trabalho, o `statement_timeout` (80 %) e o `lock_timeout` (1/3) do servidor: a trava esgotada volta como conflito, e não como `Query read timeout`. **Não use `0`** em produção: desliga os três prazos do servidor |
 

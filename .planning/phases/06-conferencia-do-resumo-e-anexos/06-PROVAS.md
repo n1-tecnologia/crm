@@ -3,14 +3,23 @@
 Plano 06-06, Task 2. A regra da migração: "provar é a mesma coisa". Cada rodada
 termina com as provas registradas, e não com a promessa delas.
 
-**Estado deste relato (2026-09-30):** a rodada nova, sobre os planos de
-fechamento 06-07..06-14, está no fim do arquivo, em **"Rodada de fechamento
-(06-07..06-14) — 2026-09-30"**, e **as três provas passaram**: testes (`npm
-run check` EXIT 0), a jornada respondendo "ok" e o ajuste NO FIO do Resumo
-(`RESULTADO: OK`, 3 `/resolver`, 0 `/lancar`, 0 falhas de ciclo) e o Omie real
-com anexo (incluído, reconhecido na repetição pelo `ListarAnexo`, excluído) —
-com a autorização do dono. As seções abaixo dela, até lá, são a rodada de
-2026-09-29, e não cobrem o código de 06-07..06-14.
+**Estado deste relato (2026-09-30):** a rodada mais nova, sobre os planos
+06-16..06-19, está no fim do arquivo, em **"Segunda rodada de fechamento
+(06-16..06-19) — 2026-09-30"**. Ela cobre o que a rodada anterior (06-07..06-14)
+não cobre: o S5 assíncrono sem decisão velha (06-16), o `/lancar` com prazo
+desde a entrada e anexos só do Storage (06-17), a dispensa só enquanto Manual
+e o reaproveitado conferido (06-18), e a marca "Lançamento no Omie em curso"
+com o G3 estrito no meio do ciclo (06-19). Ver essa seção para o estado atual
+das provas (testes, jornada respondendo no fio, crm2:CR-01 no real e o Omie
+real com dois anexos).
+
+A rodada sobre os planos de fechamento 06-07..06-14 está logo acima dela, em
+**"Rodada de fechamento (06-07..06-14) — 2026-09-30"**, e **as três provas
+passaram**: testes (`npm run check` EXIT 0), a jornada respondendo "ok" e o
+ajuste NO FIO do Resumo (`RESULTADO: OK`, 3 `/resolver`, 0 `/lancar`, 0 falhas
+de ciclo) e o Omie real com anexo (incluído, reconhecido na repetição pelo
+`ListarAnexo`, excluído) — com a autorização do dono. As seções abaixo dela,
+até lá, são a rodada de 2026-09-29, e não cobrem o código de 06-07..06-14.
 
 **Estado da rodada de 2026-09-29:** as três provas passaram. Os testes
 estão abaixo; a jornada em modo `conferencia` contra o `ws_n1` e o teste real
@@ -459,3 +468,262 @@ O que só o dono faz (regra 8 de `06-CONTEXT.md`), com o comando e o esperado.
 | 5. Push e merge | pendente — o agente nunca faz push |
 | 6. D6-01..D6-04 | pendente — os padrões seguem em vigor, trocáveis por variável |
 | 7. Timeouts do ciclo | **não voltaram** nesta jornada (0 falhas, eram 4); a causa provável (a trava de revisão sem limite no servidor) foi corrigida em 06-13 — acompanhar em produção pelos códigos `TRAVA_ESGOTADA`, `TEMPO_DE_CONSULTA_ESGOTADO` e `TEMPO_DE_CONEXAO_ESGOTADO` |
+
+---
+
+## Segunda rodada de fechamento (06-16..06-19) — 2026-09-30
+
+Plano 06-20. Os planos 06-16..06-19 mudaram o S5 assíncrono (sem decisão
+velha, sem dedup que engole evento, sem receipt preso — `financeiro-tria`),
+o `/lancar` (prazo desde a entrada, anexos só do Storage, reaproveitado
+honesto — `financeiro-tria`), a dispensa D6-04 (só enquanto "Manual", quem
+confere pelo fio = pelo clique, o reaproveitado conferido — `crm-n1`) e o
+lançamento (a marca "Lançamento no Omie em curso", o G3 estrito no meio do
+ciclo, o orçamento justo, o cenário `cp-dispensa-manual` — `crm-n1`). Nenhuma
+rodada anterior cobre esse código; esta cobre.
+
+Pontos de partida: `crm-n1-integracao` em `996d337` (branch
+`integra-frontend-main`; o código é o de `2214a96` — 06-16..06-19 —, e
+`4547cfd`/`996d337` só acrescentam o SUMMARY e o ROADMAP/STATE do 06-19) e
+`financeiro-tria` em `6767be1` (`main`, local; o código de 06-16 é
+`0ad567e..c535dee` e o de 06-17 é `c535dee..6767be1`; os 89 arquivos sujos só
+de fim de linha, intocados). `git status --short` sem nada além dos
+documentos deste plano (06-20, Task 1) nos dois.
+
+### Testes
+
+Sem servidor nenhum de pé e sempre com `DATABASE_URL=` vazio: os testes de
+banco pulam (DEC-09), e pular não é falha nem verde.
+
+Comandos:
+
+```bash
+# a. Tudo, da raiz (typecheck ×3, lint, tokens, verificar:contratos, e as três suítes inteiras)
+cd "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao" && DATABASE_URL= npm run check > <pasta temporária>/check.log 2>&1; echo EXIT $?
+# b. As pastas que a rodada tocou, para o registro
+cd "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao/apps/api" && DATABASE_URL= npx vitest run src/automacoes/
+cd "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao/apps/api" && DATABASE_URL= npx vitest run src/rotas/
+cd "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao/apps/api" && DATABASE_URL= npx vitest run src/observabilidade/
+cd "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao/apps/api" && DATABASE_URL= npx vitest run src/persistencia/
+cd "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao/apps/web" && npx vitest run src/features/tarefa/
+# c. O contrato nos dois lados
+cd "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao" && diff -r contratos/contas-a-pagar-v1 "/Users/TRIA2026/Projetos/Projetos Cursor/financeiro-tria/automation/contratos/contas-a-pagar-v1"
+(cd contratos/contas-a-pagar-v1 && find . -type f -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256)
+(cd "/Users/TRIA2026/Projetos/Projetos Cursor/financeiro-tria/automation/contratos/contas-a-pagar-v1" && find . -type f -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256)
+cd "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao/apps/api" && DATABASE_URL= npx vitest run src/automacoes/contrato-contas-a-pagar.test.ts src/automacoes/contrato-contas-a-pagar-ponte.test.ts
+# d. O produtor
+cd "/Users/TRIA2026/Projetos/Projetos Cursor/financeiro-tria/automation" && npx tsc --noEmit -p . && npm test
+```
+
+| # | Onde | Comando | Resultado |
+|---|---|---|---|
+| 1 | raiz | `DATABASE_URL= npm run check` | _(a preencher na Task 2)_ |
+| 2 | `packages/dominio` | `vitest run` (dentro do `check`) | _(a preencher na Task 2)_ |
+| 3 | `apps/web` | `vitest run` (dentro do `check`) | _(a preencher na Task 2)_ |
+| 4 | `apps/api` | `vitest run`, a suíte INTEIRA sem banco (dentro do `check`) | _(a preencher na Task 2)_ |
+| 5 | os três workspaces | `tsc --noEmit` (dentro do `check`) | _(a preencher na Task 2)_ |
+| 6 | `apps/web` | `eslint .` (dentro do `check`) | _(a preencher na Task 2)_ |
+| 7 | raiz | `verificar:tokens` (dentro do `check`) | _(a preencher na Task 2)_ |
+| 8 | raiz | `verificar:contratos` (`payment-requests-v1`, dentro do `check`) | _(a preencher na Task 2)_ |
+| 9 | `apps/api` | `src/automacoes/` · `src/rotas/` · `src/observabilidade/` · `src/persistencia/` (uma pasta por vez) | _(a preencher na Task 2)_ |
+| 10 | `apps/web` | `src/features/tarefa/` | _(a preencher na Task 2)_ |
+| 11 | contrato | `diff -r` das duas pastas `contas-a-pagar-v1` e o hash agregado dos dois lados | _(a preencher na Task 2)_ |
+| 12 | `apps/api` | `contrato-contas-a-pagar.test.ts` + `contrato-contas-a-pagar-ponte.test.ts` | _(a preencher na Task 2)_ |
+| 13 | `financeiro-tria/automation` | `npx tsc --noEmit -p .` | _(a preencher na Task 2)_ |
+| 14 | `financeiro-tria/automation` | `npm test` (isolado) | _(a preencher na Task 2)_ |
+
+### Jornada — respostas no fio (modo conferência)
+
+**Só com a autorização explícita do dono, nesta conversa**, porque grava no
+`ws_n1`: 2 contas "TESTE AUTOMATIZADO" (`cp-conferida`, `cp-ajuste`), os
+Resumos, as Conferências e as respostas; Menções só ao `mem_tarjrn` (ou o
+Membro do usuário de teste); nada no Omie. Sem autorização, registrar "não
+autorizada nesta rodada" e deixar os comandos prontos para quando houver.
+
+Antes: `lsof -nP -iTCP:3002 -sTCP:LISTEN`, `…:4100…` e `…:4101…` vazios (a
+tela em 3001 pode ficar, se for deste checkout). Não editar `apps/web` nem
+`packages/dominio` enquanto a jornada roda.
+
+**O lançador** (script na pasta temporária, igual ao da rodada anterior, com
+as duas correções do 06-15 — checagem da linha de partida pela forma
+escapada do log e encerramento por SIGINT, a API ignora SIGTERM). Gera o
+token com `openssl rand -hex 24` numa variável do shell, que nunca é
+impressa nem gravada, e sobe três processos, com os logs na pasta temporária:
+
+```bash
+# 1. automation/ — sem watch, só em 127.0.0.1, sem nada em fundo
+cd "/Users/TRIA2026/Projetos/Projetos Cursor/financeiro-tria/automation" && HOST=127.0.0.1 PORT=4100 INVOICE_CRON_ENABLED=false INVOICE_EMIT_DRAIN_MINUTES=0 PAYMENT_REQUEST_SOURCE=clickup PLATAFORMA_WEBHOOK_TOKEN= PLATAFORMA_LANCAMENTO_TOKEN="$TOKEN" npx tsx src/server.ts
+# 2. o contador — proxy node em 127.0.0.1:4101 -> 4100; anota só instante, método, caminho e status
+node <pasta temporária>/proxy-contador.mjs <pasta temporária>/proxy-requisicoes.log
+# 3. a API — sem --watch, em conferencia, presa às contas de teste
+cd "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao/apps/api" && AGENTE_CONTAS_A_PAGAR_ATIVO=true AGENTE_CONTAS_A_PAGAR_MODO=conferencia AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM="TESTE AUTOMATIZADO" AGENTE_CONTAS_A_PAGAR_AVISAR_ID=mem_tarjrn AGENTE_CONTAS_A_PAGAR_URL=http://127.0.0.1:4101 PLATAFORMA_LANCAMENTO_TOKEN="$TOKEN" AGENTE_CONTAS_A_PAGAR_ESPACO_ID=ws_n1 AGENTE_CONTAS_A_PAGAR_LISTA_ID=lst_contas_a_pagar AGENTE_CONTAS_A_PAGAR_INTERVALO_MS=20000 npx vite-node src/index.ts
+```
+
+Esperado na partida: `escutando em http://127.0.0.1:4100`, `[cron]
+desabilitado`, `[worker-plataforma] desligado (PAYMENT_REQUEST_SOURCE=clickup)`,
+e a linha de partida da ponte (checada pela forma escapada:
+`escopo=titulos-com:\"TESTE AUTOMATIZADO\"`): `modo=conferencia`,
+`conferenciaPorComentario=true`, `integracaoManual=nao-encosta`,
+`escopo=titulos-com:"TESTE AUTOMATIZADO"`, `avisar=membro-indicado`. Com
+`avisar=financeiro`, `AVISAR_ID_INVALIDO`, ou recusa de subir: **parar**.
+
+**A jornada** (as credenciais vêm do dono, só no ambiente do lançador):
+
+```bash
+cd "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao" && JORNADA_VISIVEL=1 JORNADA_MODO=conferencia JORNADA_SO=cp-conferida,cp-ajuste JORNADA_EMAIL=<e-mail do usuário de teste> JORNADA_SENHA=<senha do usuário de teste> npm run jornada:financeiro -w @n1/web
+```
+
+Esperado: `RESULTADO: OK — contas: …`; em `cp-conferida`: `respondido no fio
+(<id>)`, `✅ Resumo conferido` a partir da resposta, `Card: conferido por
+comentário`, o aviso do modo conferência, o Status em "em lançamento omie";
+em `cp-ajuste`: `respondido no fio (<id>)`, `🔁 Ajuste pedido por`, `Revisado
+a pedido de`, o card "Pendente". No contador: `/resolver` ≥ 3 e `/lancar` =
+**0**. No log da API: as falhas de ciclo (`Falha no ciclo`, `Falha de banco
+no ciclo`, `timeout`) contadas (0 na rodada anterior), e os códigos novos que
+apareceram — esperado: nenhum `RESPOSTA_SEM_EFEITO`, `COMENTARIO_PENDENTE_DESISTIDO`
+ou `ORCAMENTO_DO_CICLO_ESGOTADO`. As capturas ficam na pasta temporária.
+
+Encerramento: SIGINT nos PIDs do lançador (a API ignora SIGTERM); SIGKILL só
+de reserva, e só nesses PIDs.
+
+**Autorização:** _(a preencher na Task 2 — data e texto exatos do dono, ou
+"não autorizada nesta rodada")_.
+
+| Item | Resultado |
+|---|---|
+| Linha de partida da ponte | _(a preencher na Task 2)_ |
+| `RESULTADO` da jornada | _(a preencher na Task 2)_ |
+| `cp-conferida` | _(a preencher na Task 2)_ |
+| `cp-ajuste` | _(a preencher na Task 2)_ |
+| Requisições da ponte (contador) | _(a preencher na Task 2)_ |
+| **`/resolver`** | _(a preencher na Task 2)_ |
+| **`/lancar`** | _(a preencher na Task 2)_ |
+| Falhas de ciclo no log da API | _(a preencher na Task 2)_ |
+| Portas 3002, 4100 e 4101 no fim | _(a preencher na Task 2)_ |
+
+### crm2:CR-01 no real — a dispensa desmarcada (modo conferência, sem-conferencia)
+
+**Só com a autorização explícita do dono para esta execução (à parte da
+anterior).** Com o `automation/` e o contador de pé (da execução A), derrubar
+só a API (SIGINT) e subi-la de novo com o MESMO comando mais
+`AGENTE_CONTAS_A_PAGAR_INTEGRACAO_MANUAL=sem-conferencia`:
+
+```bash
+cd "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao/apps/api" && AGENTE_CONTAS_A_PAGAR_ATIVO=true AGENTE_CONTAS_A_PAGAR_MODO=conferencia AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM="TESTE AUTOMATIZADO" AGENTE_CONTAS_A_PAGAR_AVISAR_ID=mem_tarjrn AGENTE_CONTAS_A_PAGAR_URL=http://127.0.0.1:4101 PLATAFORMA_LANCAMENTO_TOKEN="$TOKEN" AGENTE_CONTAS_A_PAGAR_ESPACO_ID=ws_n1 AGENTE_CONTAS_A_PAGAR_LISTA_ID=lst_contas_a_pagar AGENTE_CONTAS_A_PAGAR_INTERVALO_MS=20000 AGENTE_CONTAS_A_PAGAR_INTEGRACAO_MANUAL=sem-conferencia npx vite-node src/index.ts
+```
+
+A linha de partida tem de trazer `integracaoManual=sem-conferencia` e o resto
+igual (senão, **parar**). Então:
+
+```bash
+cd "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao" && JORNADA_VISIVEL=1 JORNADA_MODO=conferencia JORNADA_SO=cp-dispensa-manual JORNADA_ESPERA_CICLOS_MS=45000 JORNADA_EMAIL=<e-mail do usuário de teste> JORNADA_SENHA=<senha do usuário de teste> npm run jornada:financeiro -w @n1/web
+```
+
+Esperado: `RESULTADO: OK` com a nota `dispensa desmarcada: Resumo novo no
+fio (<id>), nenhum aviso de "lançaria" até a resposta humana`; no log da API,
+para a conta do cenário, "Resumo publicado com a Conferência dispensada
+(Integração manual)." e depois "Resumo publicado para conferência.", e
+NENHUM "Conferência — lançaria" antes da resposta "ok" (depois dela, é o
+esperado); o contador com `/lancar` = **0**.
+
+Se o passo da dispensa falhar no `ws_n1` (por exemplo
+`DISPENSA_RECUSADA_PELO_DOMINIO`, o Membro de serviço sem publicar a resposta
+canônica), a prova de B não vale: registrar o código e a mensagem do
+cenário, levar ao dono como achado, e registrar "crm2:CR-01 provado só por
+testes (06-18: `ponte-dispensa-e-fio.test.ts` (a)–(e) e as mutações M1, M2,
+M9, M10)". Idem se esta execução não for autorizada.
+
+**Autorização:** _(a preencher na Task 2 — data e texto exatos do dono, ou
+"não autorizada nesta rodada")_.
+
+| Item | Resultado |
+|---|---|
+| Linha de partida da ponte (com `sem-conferencia`) | _(a preencher na Task 2)_ |
+| `RESULTADO` da jornada | _(a preencher na Task 2)_ |
+| Nota do cenário | _(a preencher na Task 2)_ |
+| Log da API (as três frases, na ordem) | _(a preencher na Task 2)_ |
+| **`/lancar`** | _(a preencher na Task 2)_ |
+| Desfecho | _(a preencher na Task 2 — rodou OK / dispensa recusada no `ws_n1` / não autorizada)_ |
+
+### Omie real — dois anexos no mesmo título (fin2:IN-07, opcional)
+
+**Opcional, só com autorização explícita do dono (à parte das duas
+anteriores).** fin2:IN-07, deixado pelo 06-17: lança R$ 1,00 no Omie da
+Tria, sobe dois anexos no mesmo título, repete, confere e exclui. Antes,
+conferir no `06-17-SUMMARY.md` se o script aceita mais de um `--anexo` (na
+véspera, aceitava um só).
+
+Se aceitar dois:
+
+```bash
+cd "/Users/TRIA2026/Projetos/Projetos Cursor/financeiro-tria/automation" && npm run teste:omie-real -- --lancar --anexo=<pasta temporária>/TESTE-AUTOMATIZADO-anexo-1.pdf --anexo=<pasta temporária>/TESTE-AUTOMATIZADO-anexo-2.pdf
+```
+
+Esperado: todos os passos com ✔; `anexos: 2 de 2` no primeiro `/lancar`, os
+dois no MESMO título (`cCodIntAnexo` igual ao id do título, nomes
+desambiguados se iguais); na repetição, `reaproveitado: true` e os dois
+`{ ok: true, jaExistia: true }`; nenhum item de `anexos` com `url`; o título
+excluído e confirmado "não cadastrado" pelo id, com espera (~60 s; o Omie
+demora a refletir a exclusão). Uma falha transitória do próprio Omie antes de
+qualquer gravação pode ser repetida uma vez, dentro da mesma autorização.
+
+Se o script aceitar um anexo só, ou sem autorização: registrar "fin2:IN-07 —
+o que o legado já faz (o `cCodIntAnexo` igual ao id do título), sem prova
+real nesta rodada; fica com o dono", com o motivo.
+
+**Autorização:** _(a preencher na Task 2 — data e texto exatos do dono, ou
+"não autorizada nesta rodada"/"script aceita um anexo só")_.
+
+| Item | Resultado |
+|---|---|
+| `RESULTADO` | _(a preencher na Task 2)_ |
+| Id do título | _(a preencher na Task 2)_ |
+| Código de integração | _(a preencher na Task 2)_ |
+| Anexos no primeiro `/lancar` | _(a preencher na Task 2)_ |
+| Repetição (`reaproveitado`, `jaExistia` ×2) | _(a preencher na Task 2)_ |
+| Exclusão confirmada pelo id | _(a preencher na Task 2)_ |
+| Desfecho | _(a preencher na Task 2 — rodou / um anexo só / não autorizada)_ |
+
+### Fica com o dono
+
+O que só o dono faz (regra 8 de `06-CONTEXT.md`), com o comando e o
+esperado.
+
+1. **A ordem de implantação** (crm2:WR-02): o `automation/` com o contrato
+   v1.2 e o que 06-16/06-17 mudaram — push, deploy, `.env` de produção
+   (`CONTAS_A_PAGAR_ANEXOS_HOSTS` e as variáveis que os SUMMARYs listam,
+   sem variável nova em 06-16/06-17) — ANTES da API com a ponte.
+2. **Passo 2B em `lancar`** (verificação humana 1 de `06-VERIFICATION.md`): a
+   API em `lancar`, o `automation/` local com `CONTAS_A_PAGAR_ANEXOS_HOSTS`,
+   uma conta de teste com anexo conferida respondendo "ok" no fio. Esperado:
+   durante o `/lancar`, o card mostra "O Agente está lançando esta conta no
+   Omie agora"; depois, `✅ Lançado no Omie — título … · anexos 1 de 1` e
+   "lançado omie"; numa recusa, a conta volta a "para pagar". É o que falta
+   para RES-03.
+3. **S5/S6 ao vivo** depois do deploy (verificação humana 2), com o que
+   06-16 mudou (a varredura não publica sobre uma Solicitação que deixou de
+   estar aprovada).
+4. **A API de produção** com as variáveis de 06-13 e as desta rodada,
+   primeiro em `conferencia`, com `SO_TITULOS_COM` e `AVISAR_ID` vazias;
+   depois `lancar`.
+5. **Push e merge** de `integra-frontend-main` (o agente nunca faz push).
+6. **As decisões D6-01..D6-04**, se ainda abertas — se o dono escolher
+   `sem-conferencia`, a dispensa passa a valer só enquanto "Manual" (RN-CP-11).
+7. **Os timeouts do ciclo**, se voltaram (os códigos de 06-13).
+8. **O que 06-16/06-17 deixaram para o dono**, pelos SUMMARYs deles: o
+   resíduo de fin2:CR-01 (duas decisões da mesma Tarefa em paralelo antes de
+   qualquer uma gravar a marca — sem trava por Tarefa no banco, é migração,
+   só do dono, pelo SQL Editor) e, se o passo acima (Omie real com dois
+   anexos) não rodou, a conferência de dois anexos no mesmo título no Omie
+   real, quando o dono quiser.
+
+| Item | Situação |
+|---|---|
+| 1. Ordem de implantação | pendente — com o dono |
+| 2. Passo 2B em `lancar` | pendente — com o dono |
+| 3. S5/S6 ao vivo | pendente — depois do deploy |
+| 4. API de produção | pendente — com o dono |
+| 5. Push e merge | pendente — o agente nunca faz push |
+| 6. D6-01..D6-04 | pendente — os padrões seguem em vigor, trocáveis por variável |
+| 7. Timeouts do ciclo | _(a preencher na Task 2)_ |
+| 8. Resíduo fin2:CR-01 / Omie real com dois anexos | _(a preencher na Task 2, conforme o passo 3b)_ |
