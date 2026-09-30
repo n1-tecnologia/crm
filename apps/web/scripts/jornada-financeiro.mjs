@@ -73,6 +73,40 @@
  *     Omie` e o Status "lançado omie". Qualquer outro valor encerra (código 2).
  *   JORNADA_ESPERA_MS — quanto esperar por cada texto no tópico (padrão
  *     90000); a tela é recarregada a cada 3 s enquanto espera.
+ *
+ * ── `cp-dispensa-manual` (06-19, para a prova de crm2:CR-01 em 06-20) ─────
+ *
+ * Também só roda quando pedido pelo nome, e SOZINHO numa execução: exige a
+ * API com AGENTE_CONTAS_A_PAGAR_MODO=conferencia e
+ * AGENTE_CONTAS_A_PAGAR_INTEGRACAO_MANUAL=sem-conferencia (a dispensa D6-04),
+ * mais as portas G2/G3 de sempre (SO_TITULOS_COM e AVISAR_ID acima), e
+ * JORNADA_MODO=conferencia (o padrão). Nada vai ao Omie.
+ *
+ *   1. cria a conta completa, com "Integração manual" = Manual ANTES dos
+ *      outros Campos (a ponte nunca vê a conta completa sem Manual);
+ *   2. espera o `📋 RESUMO DE PAGAMENTO` e a resposta `✅ Resumo conferido
+ *      por` do Agente do pipeline (a dispensa; o card fica escondido enquanto
+ *      a conta é Manual);
+ *   3. desmarca "Integração manual";
+ *   4. espera um SEGUNDO Resumo, resposta no MESMO fio, com "Os dados da
+ *      conta mudaram depois da conferência.", e o card "Pendente";
+ *   5. move para "em lançamento omie", espera dois ciclos da ponte
+ *      (JORNADA_ESPERA_CICLOS_MS, padrão 45000 — a cutucada roda ~2 s depois
+ *      do movimento; o segundo ciclo cabe nesse prazo com
+ *      AGENTE_CONTAS_A_PAGAR_INTERVALO_MS=30000) e confere que NÃO saiu o
+ *      aviso do modo conferência nem um novo `✅ Resumo conferido`, e que o
+ *      card segue "Pendente" — sem a correção de crm2:CR-01, a ponte trataria
+ *      a conta como conferida e publicaria o aviso "nada foi lançado", isto
+ *      é, "lançaria";
+ *   6. responde "ok" no fio e espera `✅ Resumo conferido` e o aviso do modo
+ *      conferência (o caminho humano funciona).
+ *
+ * A tela não oferece como LIMPAR um Campo de escolha única (o seletor não tem
+ * opção vazia). Para desmarcar "Integração manual", a jornada faz o gesto de
+ * escolher "Manual" de novo e troca, só nessa gravação, o valor por `null`
+ * antes de ela sair (`pagina.route`): a mesma operação `setTaskFieldValue`,
+ * com a sessão do usuário e o mesmo transporte — só o valor que a tela não
+ * sabe pedir.
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -323,22 +357,6 @@ async function conferirPeloCard() {
 }
 
 /**
- * "Pedir ajuste" no card, com o motivo — o mesmo fato que uma resposta de
- * ajuste no fio. Desde o 06-14 o cp-ajuste pede o ajuste RESPONDENDO no fio;
- * este é o gesto do card, para quem quiser o ajuste pelo clique.
- */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- sem uso desde o 06-14 (o cp-ajuste responde no fio); fica como o gesto do card
-async function pedirAjustePeloCard(motivo) {
-  const botao = painel().getByRole("button", { name: "Pedir ajuste", exact: true });
-  if (await botao.isDisabled()) throw new Error(`o botão está indisponível: ${(await botao.getAttribute("title")) ?? "sem motivo"}`);
-  await botao.click();
-  const confirmacao = pagina.getByRole("alertdialog");
-  const caixa = confirmacao.getByRole("textbox").first();
-  await caixa.pressSequentially(motivo, { delay: VISIVEL ? 35 : 5 });
-  await gravando("decideProcessApproval", () => confirmacao.getByRole("button", { name: "Pedir ajuste", exact: true }).click());
-}
-
-/**
  * O gesto do ClickUp (06-14): "Responder" no Comentário do tópico que casa
  * com `padrao` (o ÚLTIMO — o Resumo vigente, se houver revisado), `texto`
  * digitado letra a letra na caixa "Resposta no fio", e Ctrl+Enter. Confere,
@@ -366,6 +384,39 @@ async function statusDeveSer(nome) {
   if (!agora.includes(nome)) throw new Error(`o Status está "${agora.trim()}", esperado "${nome}"`);
 }
 
+/**
+ * Desmarca um Campo de escolha única. A tela não tem opção vazia no seletor
+ * (ver o cabeçalho): o gesto é escolher `opcaoAtual` de novo, e a gravação
+ * sai com o valor `null` no lugar dela — a mesma operação e a mesma sessão.
+ * Confere depois de recarregar que a linha do Campo não mostra mais a opção.
+ */
+async function desmarcarEscolha(nomeDoCampo, opcaoAtual) {
+  const padrao = "**/operacoes/setTaskFieldValue";
+  let trocada = false;
+  await pagina.route(
+    padrao,
+    async (rota) => {
+      const corpo = rota.request().postDataJSON();
+      const args = Array.isArray(corpo?.args) ? [...corpo.args] : [];
+      if (args.length !== 3 || args[2] !== opcaoAtual) return rota.continue();
+      args[2] = null;
+      trocada = true;
+      return rota.continue({ postData: JSON.stringify({ ...corpo, args }) });
+    },
+    { times: 1 },
+  );
+  try {
+    await escolher(nomeDoCampo, opcaoAtual);
+  } finally {
+    await pagina.unroute(padrao);
+  }
+  if (!trocada) throw new Error(`a gravação de "${nomeDoCampo}" não saiu com o valor "${opcaoAtual}" para ser desmarcada`);
+  await recarregar();
+  const agora = await linhaDoCampo(nomeDoCampo).innerText();
+  if (agora.includes(opcaoAtual)) throw new Error(`"${nomeDoCampo}" continua "${opcaoAtual}" depois de recarregar`);
+  return `"${nomeDoCampo}" sem valor`;
+}
+
 const RESUMO = /📋 RESUMO DE PAGAMENTO/;
 const CONFERIDO = /✅ Resumo conferido/;
 const REVISADO = /Revisado a pedido de/;
@@ -379,6 +430,26 @@ const AJUSTE = /🔁 Ajuste pedido por/;
 let revisadosAntesDoAjuste = 0;
 const LANCADO = /✅ Lançado no Omie/;
 const MODO_CONFERENCIA = /Neste ambiente o lançamento no Omie está desligado/;
+const DADOS_MUDARAM = /Os dados da conta mudaram depois da conferência\./;
+
+/** `cp-dispensa-manual` — quanto esperar pelos dois ciclos da ponte depois do movimento (passo 5). */
+const ESPERA_CICLOS_MS = Number(process.env.JORNADA_ESPERA_CICLOS_MS ?? 45_000);
+if (!Number.isFinite(ESPERA_CICLOS_MS) || ESPERA_CICLOS_MS <= 0) {
+  console.error("JORNADA_ESPERA_CICLOS_MS deve ser um número de milissegundos maior que zero.");
+  process.exit(2);
+}
+
+/** O que o `cp-dispensa-manual` leva de um passo ao outro: o fio do Resumo e quantos "conferido" havia. */
+const dispensa = { raizId: "", resumoNovoId: "", conferidosAntes: 0 };
+
+/** O `id` do Comentário (sem o prefixo `comentario-`) do `li` do tópico. */
+const idDoComentario = async (li) => ((await li.getAttribute("id")) ?? "").replace(/^comentario-/, "");
+
+/** O card da Conferência não aparece (a conta é Manual: o Agente dispensou, ninguém confere). */
+async function semCardDaConferencia() {
+  const cards = await painel().getByText(/^Conferência do Resumo · /).count();
+  if (cards > 0) throw new Error("o card da Conferência aparece numa conta Manual");
+}
 
 
 
@@ -549,6 +620,79 @@ const CENARIOS = [
     ],
   },
   {
+    chave: "cp-dispensa-manual",
+    soQuandoPedido: true,
+    titulo: "Contas a pagar — dispensa (Integração manual) desmarcada: o Resumo volta para uma pessoa (crm2:CR-01)",
+    lista: "lst_contas_a_pagar",
+    botao: "+ Nova conta",
+    nome: `TESTE AUTOMATIZADO — CP dispensa manual · ${CARIMBO}`,
+    passos: [
+      [
+        "JORNADA_MODO = conferencia (este cenário nunca roda com a ponte lançando)",
+        async () => {
+          if (MODO !== "conferencia") throw new Error(`cp-dispensa-manual exige JORNADA_MODO=conferencia (veio "${MODO}")`);
+        },
+      ],
+      // Manual ANTES dos outros Campos: a ponte nunca vê esta conta completa sem Manual.
+      ["Integração manual = Manual", () => escolher("Integração manual", "Manual")],
+      ...passosDaContaAPagar(),
+      ["Esperar o 📋 RESUMO DE PAGAMENTO no tópico", () => esperarNoFio(RESUMO)],
+      [
+        "Esperar ✅ Resumo conferido (a dispensa pelo Agente do pipeline)",
+        async () => {
+          try {
+            return await esperarNoFio(CONFERIDO);
+          } catch {
+            throw new Error("a ponte não dispensou: ela está em sem-conferencia?");
+          }
+        },
+      ],
+      ["Card escondido enquanto a conta é Manual", () => semCardDaConferencia()],
+      [
+        "Guardar o fio do Resumo",
+        async () => {
+          dispensa.raizId = await idDoComentario(painel().locator('li[id^="comentario-"]').filter({ hasText: RESUMO }).first());
+          dispensa.conferidosAntes = await contarNoFio(CONFERIDO);
+          return `fio ${dispensa.raizId}`;
+        },
+      ],
+      ["Captura da dispensa", () => capturar("cp-dispensa-manual-dispensada")],
+      ["Desmarcar Integração manual", () => desmarcarEscolha("Integração manual", "Manual")],
+      ["Esperar um SEGUNDO 📋 RESUMO DE PAGAMENTO", () => esperarNoFio(RESUMO, ESPERA_MS, { aPartirDe: 1 })],
+      [
+        "O Resumo novo responde no MESMO fio, com \"Os dados da conta mudaram depois da conferência.\"",
+        async () => {
+          const novo = painel().locator('li[id^="comentario-"]').filter({ hasText: RESUMO }).last();
+          dispensa.resumoNovoId = await idDoComentario(novo);
+          if (!(await novo.innerText()).match(DADOS_MUDARAM)) throw new Error("o Resumo novo não diz que os dados da conta mudaram");
+          const noFio = await novo.locator(`a[href="#comentario-${dispensa.raizId}"]`).count();
+          if (noFio === 0) throw new Error(`o Resumo novo (${dispensa.resumoNovoId}) não responde no fio ${dispensa.raizId}`);
+          return `Resumo novo ${dispensa.resumoNovoId} no fio ${dispensa.raizId}`;
+        },
+      ],
+      ["Card: Conferência do Resumo · Pendente", () => cardDaConferencia("Pendente")],
+      ["Status → em lançamento omie", () => mudarStatus("em lançamento omie")],
+      [
+        "Dois ciclos da ponte: nenhum aviso de \"lançaria\", nenhum ✅ Resumo conferido novo, card Pendente",
+        async () => {
+          await pagina.waitForTimeout(ESPERA_CICLOS_MS);
+          await recarregar();
+          if ((await contarNoFio(MODO_CONFERENCIA)) > 0) throw new Error('a ponte publicou o aviso do modo conferência: ela trataria a dispensa desmarcada como conferida ("lançaria")');
+          const conferidos = await contarNoFio(CONFERIDO);
+          if (conferidos !== dispensa.conferidosAntes) throw new Error(`apareceu um ✅ Resumo conferido novo sem resposta humana (${conferidos}, antes ${dispensa.conferidosAntes})`);
+          await cardDaConferencia("Pendente");
+          return `dispensa desmarcada: Resumo novo no fio (${dispensa.resumoNovoId}), nenhum aviso de "lançaria" até a resposta humana`;
+        },
+      ],
+      ["Captura antes da resposta humana", () => capturar("cp-dispensa-manual-pendente")],
+      ['Responder "ok" no fio do Resumo', () => responderNoFio(RESUMO, "ok")],
+      ["Esperar ✅ Resumo conferido (a pessoa)", () => esperarNoFio(CONFERIDO, ESPERA_MS, { aPartirDe: dispensa.conferidosAntes })],
+      ["Esperar o aviso do modo conferência no tópico", () => esperarNoFio(MODO_CONFERENCIA)],
+      ["Status continua em lançamento omie", () => statusDeveSer("em lançamento omie")],
+      ["Captura", () => capturar("cp-dispensa-manual-conferida")],
+    ],
+  },
+  {
     chave: "cr-recebida",
     titulo: "Contas a receber — cobrada e recebida",
     lista: "lst_contas_a_receber",
@@ -609,7 +753,7 @@ const retomar = new Map(
     }),
 );
 
-const pedeAPonte = so.has("cp-conferida") || so.has("cp-ajuste") || so.has("cp-conferida-pelo-card");
+const pedeAPonte = so.has("cp-conferida") || so.has("cp-ajuste") || so.has("cp-conferida-pelo-card") || so.has("cp-dispensa-manual");
 console.log(`Jornada do Financeiro como um humano — ${URL_BASE} — ${CARIMBO}${pedeAPonte ? ` — ponte em ${MODO}` : ""}`);
 await entrar();
 
