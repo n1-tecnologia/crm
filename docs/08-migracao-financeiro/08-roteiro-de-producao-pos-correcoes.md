@@ -9,7 +9,7 @@ mostrar algo diferente, pare e mande a saída.
 
 Onde está o código corrigido:
 - CRM N1: `/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao` (branch `integra-frontend-main`).
-- Financeiro: `/Users/TRIA2026/Projetos/Projetos Cursor/financeiro-tria` (branch `main`, local — 99 commits à frente do `origin/main` e 100 do que roda na VPS, sem push).
+- Financeiro: `/Users/TRIA2026/Projetos/Projetos Cursor/financeiro-tria` (branch `main`, local — 116 commits à frente do `origin/main` e 117 do que roda na VPS em `4149032`, sem push; contados em 2026-09-30, em `42ca9b5`).
 
 ---
 
@@ -27,8 +27,11 @@ Esperado: todos verdes (o contrato deu 21/21 em 2026-09-28; as fixtures do
 comparação da outra matriz de contrato (só lê): `npm run verificar:contratos`.
 
 Depois da Fase 6 (2026-09-29) o contrato é a **v1.1**, com três exemplos a
-mais nos dois repositórios, e o do consumidor dá 25/25. Os números da
-rodada estão em `.planning/phases/06-conferencia-do-resumo-e-anexos/06-PROVAS.md`.
+mais nos dois repositórios, e desde o fechamento da fase (2026-09-30) é a
+**v1.2**, com mais sete: 26 exemplos e o README (16 da v1, 3 da v1.1, 7 da
+v1.2). O do consumidor dá 43/43, e o de ponta a ponta da ponte, 11/11. Os
+números de cada rodada estão em
+`.planning/phases/06-conferencia-do-resumo-e-anexos/06-PROVAS.md`.
 
 ---
 
@@ -141,26 +144,56 @@ A ordem é: **primeiro em modo `conferencia`** (Resumos, Conferências e
 revisões de verdade, e **nenhuma** requisição a `/lancar`), e só depois, com
 os Resumos certos, em `lancar`.
 
-Dois terminais, um para cada serviço. Use **o mesmo token** nos dois. O de
-teste desta migração serve; é só local e nunca vai para arquivo.
+Três terminais: o Financeiro, um contador de requisições e a API. Use **o
+mesmo token** no Financeiro e na API. Gere-o na hora
+(`TOKEN=$(openssl rand -hex 24)` numa variável do shell, exportada para os
+dois comandos); ele é só local e nunca vai para arquivo nem para o log.
+Nada deve estar escutando antes: `lsof -nP -iTCP:3002 -sTCP:LISTEN`,
+`lsof -nP -iTCP:4100 -sTCP:LISTEN` e `lsof -nP -iTCP:4101 -sTCP:LISTEN`
+vazios (a tela em 3001 pode estar de pé, se for deste checkout).
 
-**Terminal A — Financeiro** (código novo, com o contrato v1.1; escuta só em 127.0.0.1):
+**Terminal A — Financeiro** (código novo, com o contrato v1.2; escuta só em
+127.0.0.1; sem `watch` e sem nada rodando em fundo):
 
 ```bash
-cd "/Users/TRIA2026/Projetos/Projetos Cursor/financeiro-tria/automation" && INVOICE_CRON_ENABLED=false INVOICE_EMIT_DRAIN_MINUTES=0 PLATAFORMA_LANCAMENTO_TOKEN=<token> npm run dev
+cd "/Users/TRIA2026/Projetos/Projetos Cursor/financeiro-tria/automation" && HOST=127.0.0.1 PORT=4100 INVOICE_CRON_ENABLED=false INVOICE_EMIT_DRAIN_MINUTES=0 PAYMENT_REQUEST_SOURCE=clickup PLATAFORMA_WEBHOOK_TOKEN= PLATAFORMA_LANCAMENTO_TOKEN="$TOKEN" npx tsx src/server.ts
 ```
 
-Esperado: `escutando em http://127.0.0.1:4100` e as linhas `[seguranca]`
-(avisos de configuração — normais no local).
+Esperado: `escutando em http://127.0.0.1:4100`, `[cron] desabilitado`,
+`[worker-plataforma] desligado (PAYMENT_REQUEST_SOURCE=clickup)` e as linhas
+`[seguranca]` (avisos de configuração — normais no local). O que cada chave
+desliga neste processo, para ele não disputar trabalho com a produção:
+- `PAYMENT_REQUEST_SOURCE=clickup` desliga o worker da plataforma inteiro: a
+  fila `platform_adapter_commands`, a varredura de comentários e a
+  **varredura de aprovações** do S5 assíncrono (06-09);
+- `PLATAFORMA_WEBHOOK_TOKEN=` (vazio) fecha os webhooks
+  `/webhooks/plataforma/*` com 401 antes de ler o corpo: nenhuma decisão e
+  nenhum S5 depois de um 202. O 06-09 não criou variável nova para isso;
+- `INVOICE_CRON_ENABLED=false` e `INVOICE_EMIT_DRAIN_MINUTES=0` desligam as
+  notas fiscais.
 
-**Terminal B — API do CRM N1 com a ponte em modo `conferencia`, presa às contas de teste:**
+Sem `npm run dev` (é `watch`) e sem `CONTAS_A_PAGAR_ANEXOS_HOSTS` no modo
+`conferencia`, que não chama `/lancar`.
+
+**Terminal C — o contador** (entre a API e o Financeiro). O log do
+`automation/` **não** serve para contar: as rotas
+`/v1/integrations/contas-a-pagar/*` só registram falhas. Suba um proxy
+`node` em `127.0.0.1:4101` que repassa a `127.0.0.1:4100` e anota, por
+requisição, só o instante, o método, o caminho e o status — nunca o corpo nem
+os cabeçalhos (o token vai no cabeçalho). Foi assim nas provas de 2026-09-29 e
+da rodada de fechamento (`06-PROVAS.md`). A API aponta para `4101`.
+
+**Terminal B — API do CRM N1 com a ponte em modo `conferencia`, presa às contas de teste** (sem `watch`: o `vite-node --watch` empilha pontes no mesmo processo):
 
 ```bash
-cd "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao" && AGENTE_CONTAS_A_PAGAR_ATIVO=true AGENTE_CONTAS_A_PAGAR_MODO=conferencia AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM="TESTE AUTOMATIZADO" AGENTE_CONTAS_A_PAGAR_AVISAR_ID=<Membro do usuário de teste> AGENTE_CONTAS_A_PAGAR_URL=http://127.0.0.1:4100 PLATAFORMA_LANCAMENTO_TOKEN=<token> AGENTE_CONTAS_A_PAGAR_ESPACO_ID=ws_n1 AGENTE_CONTAS_A_PAGAR_LISTA_ID=lst_contas_a_pagar AGENTE_CONTAS_A_PAGAR_INTERVALO_MS=20000 npm run dev -w @n1/api
+cd "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao/apps/api" && AGENTE_CONTAS_A_PAGAR_ATIVO=true AGENTE_CONTAS_A_PAGAR_MODO=conferencia AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM="TESTE AUTOMATIZADO" AGENTE_CONTAS_A_PAGAR_AVISAR_ID=<Membro do usuário de teste> AGENTE_CONTAS_A_PAGAR_URL=http://127.0.0.1:4101 PLATAFORMA_LANCAMENTO_TOKEN="$TOKEN" AGENTE_CONTAS_A_PAGAR_ESPACO_ID=ws_n1 AGENTE_CONTAS_A_PAGAR_LISTA_ID=lst_contas_a_pagar AGENTE_CONTAS_A_PAGAR_INTERVALO_MS=20000 npx vite-node src/index.ts
 ```
 
 Esperado na linha de partida:
 `ponte do Agente de lançamento ativa (modo=conferencia resumoAPartirDe=para-pagar conferenciaPorComentario=true integracaoManual=nao-encosta escopo=titulos-com:"TESTE AUTOMATIZADO" avisar=membro-indicado)`.
+Com `avisar=financeiro`, com o aviso `AVISAR_ID_INVALIDO`, ou se a API
+recusar subir: **pare**. `DATABASE_QUERY_TIMEOUT_MS` fica no padrão (não
+`0`: desligaria os prazos do servidor que o 06-13 pôs em cada transação).
 
 As duas variáveis do meio são **só para teste**. Elas existem porque o
 `ws_n1` tem as contas reais importadas do ClickUp e a Maryane de verdade:
@@ -169,8 +202,12 @@ As duas variáveis do meio são **só para teste**. Elas existem porque o
 - `AGENTE_CONTAS_A_PAGAR_AVISAR_ID` manda toda Menção da ponte para o
   usuário de teste, no lugar do Financeiro, e faz dele o aprovador da
   Conferência (é o que mostra os botões do card para ele). Use o **id do
-  Membro** (`mem_…`) do usuário de teste no `ws_n1`. Se o id não for de um
-  Membro ativo, o log avisa uma vez e a ponte volta a mencionar o Financeiro.
+  Membro** (`mem_…`) do usuário de teste no `ws_n1` (na prova foi
+  `mem_tarjrn`). Desde o 06-13 ela **exige** a primeira: com
+  `AVISAR_ID` sozinha, a API não sobe. E se o id não for de um Membro ativo,
+  a ponte **não age** (nenhuma requisição, nenhuma gravação) e o log avisa a
+  cada ciclo com `AVISAR_ID_INVALIDO` — nunca volta a mencionar o
+  Financeiro.
 
 Em produção as duas ficam **vazias**. Mesmo sem elas, a conta importada que
 ficou parada nunca é varrida: só entra na ponte depois de ser movida de
@@ -195,48 +232,72 @@ de 20 s é só o relógio de reserva.
    "ok" para eu lançar, ou diga o que ajustar.` Ao lado do Status aparece a
    pílula **"Resumo para conferir"**, e na conta aparece o card
    **"Conferência do Resumo"** (também em IA → Aprovações).
-4. Para testar o ajuste: **"Pedir ajuste"** no card, com um motivo. Esperado:
-   `🔁 Ajuste pedido por …` e, no mesmo fio, o Resumo revisado com
+4. Para testar o ajuste: **"Pedir ajuste"** no card, com um motivo — **ou**,
+   pelo fio, **"Responder"** no Comentário do Resumo (o que tem a pílula
+   "Conferência do Resumo") com o pedido, por exemplo "é prestação comercial,
+   não ADM" (para forçar uma categoria, cite o código: "use 2.04.03").
+   Esperado: `🔁 Ajuste pedido por …` e, no mesmo fio, o Resumo revisado com
    `Revisado a pedido de …: "…"`, e o card de novo pendente.
-5. Confira: **"Conferido, pode lançar"** no card. Esperado:
-   `✅ Resumo conferido por …` no fio e a pílula **"Resumo conferido"**.
+5. Confira: **"Conferido, pode lançar"** no card — **ou "Responder"** no
+   Resumo com **"ok"** ("Enviar resposta"). Esperado: `✅ Resumo conferido
+   por …` no fio, a pílula **"Resumo conferido"** e o card "Conferido por … ·
+   por comentário" (ou "· por clique"). Um Comentário novo na raiz do tópico
+   não confere: enquanto a Conferência está pendente, o compositor raiz
+   avisa para usar "Responder". Só uma mensagem que é inteira aprovação
+   aprova ("ok", "certo, pode lançar"); "ok, mas o vencimento é dia 15" é
+   ajuste.
 6. Mude o Status para **"em lançamento omie"** e não mexa mais.
 
 Esperado em `conferencia`:
 - No fio: `Resumo conferido. Neste ambiente o lançamento no Omie está
   desligado (modo conferência): nada foi lançado, a conta fica aqui.`
 - A conta continua em **"em lançamento omie"**.
-- Requisições a `/resolver` e **nenhuma** a `/lancar`. Atenção: o log do
-  `automation/` **não** serve para contar — as rotas
-  `/v1/integrations/contas-a-pagar/*` só registram falhas. Para a contagem,
-  ponha um contador entre a API e o `automation/` (um proxy local que anota
-  método, caminho e status; foi assim na prova de 2026-09-29, em
+- Requisições a `/resolver` e **nenhuma** a `/lancar`, pelo contador do
+  Terminal C (na prova de 2026-09-29, em
   `.planning/phases/06-conferencia-do-resumo-e-anexos/06-PROVAS.md`: 3
-  `/resolver`, 0 `/lancar`).
+  `/resolver`, 0 `/lancar`). Olhe também o log do Terminal B: `Falha de
+  banco no ciclo…`, `Ciclo da ponte demorou.` e os códigos
+  `TEMPO_DE_CONSULTA_ESGOTADO`/`TEMPO_DE_CONEXAO_ESGOTADO` dizem se os
+  timeouts do ciclo de 2026-09-29 voltaram (06-13).
 
-Na tela de hoje, conferir é pelo botão. O tópico ainda não tem o gesto
-"Responder" num Comentário, e a ponte só lê **respostas** ao Resumo, nunca
-um Comentário raiz. O "ok" no fio passa a valer quando esse gesto existir;
-a ponte já sabe lê-lo. No `ws_n1`, com `AVISAR_ID`, o usuário de teste
-decide pelo clique. Uma resposta "ok" no fio só decidiria vinda da Maryane
-ou de outro Administrador ou Proprietário.
+A ponte só lê **respostas** ao Resumo, nunca um Comentário raiz — por isso
+o gesto "Responder" (06-14). Quem decide pelo fio é um revisor que alcança a
+conta: o Financeiro, ou um Administrador ou Proprietário. No `ws_n1`, com
+`AVISAR_ID`, o usuário de teste é o aprovador da Conferência e é
+Administrador, então decide pelo clique e pelo fio.
 
 Os passos 1–6 também rodam sozinhos, no navegador, pela jornada. Ela cria
-as contas com "TESTE AUTOMATIZADO" no título e deixa as capturas na pasta
-temporária:
+as contas com "TESTE AUTOMATIZADO" no título, confere e pede ajuste
+**respondendo no fio** do Resumo (`cp-conferida` responde "ok"; `cp-ajuste`
+responde com o pedido) e deixa as capturas na pasta temporária.
+`cp-conferida-pelo-card` é o cenário opcional que confere pelo botão do card;
+vai na mesma lista (`JORNADA_SO=cp-conferida,cp-ajuste,cp-conferida-pelo-card`):
 
 ```bash
 cd "/Users/TRIA2026/Projetos/Projetos Cursor/crm-n1-integracao" && JORNADA_VISIVEL=1 JORNADA_MODO=conferencia JORNADA_SO=cp-conferida,cp-ajuste JORNADA_EMAIL=<e-mail do usuário de teste> JORNADA_SENHA=<senha> npm run jornada:financeiro -w @n1/web
 ```
 
-Esperado: `RESULTADO: OK`. Não edite código enquanto ela roda: o `next dev`
-recarrega a tela no meio e o passo falha em falso.
+Esperado: `RESULTADO: OK — contas: …`; em `cp-conferida`, `Responder "ok"
+no fio do Resumo — respondido no fio (<id>)`, o `✅ Resumo conferido`, o
+card "Conferido … · por comentário", o aviso do modo conferência e a conta
+em "em lançamento omie"; em `cp-ajuste`, `respondido no fio (<id>)`, o
+`🔁 Ajuste pedido por`, o `Revisado a pedido de` e o card de novo
+"Pendente". No contador, `/resolver` ≥ 3 e `/lancar` = 0. Não edite código
+enquanto ela roda: o `next dev` recarrega a tela no meio e o passo falha em
+falso. No fim, pare os três terminais e confirme 3002, 4100 e 4101 livres.
 
 **Depois, em `lancar`** (lança de verdade no Omie; só com a sua decisão): o
 mesmo Terminal B com `AGENTE_CONTAS_A_PAGAR_MODO=lancar`, mantendo as duas
-variáveis de teste, e os passos 1, 2, 3, 5 e 6 numa conta nova. Esperado:
+variáveis de teste, e os passos 1, 2, 3, 5 e 6 numa conta nova, com um PDF
+pequeno no Campo Anexo. O **Terminal A precisa de
+`CONTAS_A_PAGAR_ANEXOS_HOSTS=<host do Storage do Supabase da plataforma>`**
+(o hostname do `SUPABASE_URL` do `apps/api`, sem `https://` e sem caminho).
+Sem ela, o anexo volta `ANEXO_HOST_NAO_PERMITIDO` e o título lança sem
+anexo (`anexos 0 de 1` no fio, com `• <nome>: não subiu
+(ANEXO_HOST_NAO_PERMITIDO)`). Esperado:
 - No fio: `✅ Lançado no Omie — título <id> · <conta> · <categoria> (<código>) · anexos 1 de 1`
-  (ou `· sem anexos`).
+  (ou `· sem anexos`). O `/lancar` leva `codigoCategoriaConfirmado` e
+  `contaConfirmada`; o contador mostra 1 `/lancar`.
 - A conta em **"lançado omie"**.
 - No Omie: a conta a pagar de R$ 1,00 com o fornecedor certo, a categoria
   conferida, a conta corrente TRIA, o vencimento, a forma Pix (TRA/01.3) e o
@@ -244,10 +305,15 @@ variáveis de teste, e os passos 1, 2, 3, 5 e 6 numa conta nova. Esperado:
 
 Se o Omie recusar: `Não consegui lançar no Omie: <motivo> (<código>). A conta
 voltou para "para pagar".` — e a conta volta mesmo. Copie o comentário e as
-últimas linhas dos dois terminais.
+últimas linhas dos terminais. Duas recusas novas da v1.2 seguem o mesmo
+caminho: um título que já existe no Omie com outros dados
+(`TITULO_EXISTENTE_DIVERGENTE`: `o título <id> já existe no Omie com outros
+dados (<campos>)…`) e a conta corrente diferente da conferida
+(`CONTA_DIVERGENTE`: `a conta corrente conferida no Resumo (…) não é a que o
+Omie usaria agora (…)…`, e o Resumo é republicado para conferir de novo).
 
-Depois: exclua o título no Omie e descarte a conta na plataforma. Pare os dois
-terminais (`Ctrl+C`).
+Depois: exclua o título no Omie e descarte a conta na plataforma. Pare os
+terminais (`Ctrl+C`) e confirme 3002, 4100 e 4101 livres.
 
 Confirmar neste teste (o código não tem como provar sozinho): que o Omie
 aceita o `codigo_lancamento_integracao` de ~30 caracteres; qual forma do
@@ -306,15 +372,33 @@ repo nem no chat):
 | `CLICKUP_WEBHOOK_SECRETS` | `secret` de cada webhook do ClickUp que aponta para `financeiro.85.155.186.214.nip.io` (API do ClickUp: `GET /team/<time>/webhook`, times 9011731314 e 9011658148), separados por vírgula | Webhooks aceitos sem conferir assinatura (como hoje), com aviso |
 | `EXTRATO_WEBHOOK_TOKEN` | Deixe vazio (o upload do painel não manda o cabeçalho) | — |
 | `HOST` | Não defina (padrão 127.0.0.1, atrás do nginx) | — |
-| `PLATAFORMA_MEMBRO_POR_CLICKUP_ID` (quando ligar `PAYMENT_REQUEST_SOURCE=plataforma`) | Pares `<id do ClickUp>=<id do Membro no ws_n1>`, separados por vírgula. Da Fase 6 em diante precisa ter **`81581816=<Membro de Contas a Pagar>`**: é quem o RESUMO publicado na Solicitação depois da aprovação por clique (S5) menciona. Mais os pares dos Aprovadores, para o "para aprovação". | O RESUMO da Solicitação sai **sem Menção** (nunca com o id do ClickUp); o roteamento, também |
+| `PLATAFORMA_MEMBRO_POR_CLICKUP_ID` (quando ligar `PAYMENT_REQUEST_SOURCE=plataforma`) | Pares `<id do ClickUp>=<id do Membro no ws_n1>`, separados por vírgula. Da Fase 6 em diante precisa ter **`81581816=<Membro de Contas a Pagar>`**: é quem o RESUMO publicado na Solicitação depois da aprovação por clique (S5) menciona. Mais os pares dos Aprovadores, para o "para aprovação". | O RESUMO da Solicitação sai **sem Menção** (nunca com o id do ClickUp), e o log avisa a cada RESUMO (`[summary] sem Membro da plataforma para Contas a Pagar`); o roteamento, também |
+| `CONTAS_A_PAGAR_ANEXOS_HOSTS` | Os hostnames de onde o `/lancar` pode baixar anexo, separados por vírgula. **Produção: o host do Storage do Supabase da plataforma**, isto é, o hostname do `SUPABASE_URL` do `apps/api` do CRM N1 — só o host, sem `https://`, sem porta e sem caminho (a comparação é exata, e só `https:` é aceito) | Todo anexo do `/lancar` volta `ANEXO_HOST_NAO_PERMITIDO`, nada é baixado, e o título **lança sem anexo** (`anexos 0 de n` no fio, uma linha `• <nome>: não subiu (ANEXO_HOST_NAO_PERMITIDO)` por anexo); o `/lancar` avisa na montagem |
 
-**O código a subir inclui o contrato `contas-a-pagar-v1.1`** (`financeiro-tria`
-`d462f6e..5a65e5b`) e o S5/S6 da Solicitação (`2cd13cd`). O `apps/api` da
-Fase 6 manda campos da v1.1 (`pedidoDeRevisao` no ajuste,
-`codigoCategoriaConfirmado` e `anexos` com nome no lançamento), e os schemas
-da rota são `.strict()`: um `automation/` anterior à v1.1 recusaria o pedido.
-Por isso o deploy do `automation/` vem **antes** de ligar a ponte em
-`conferencia` ou `lancar` contra ele.
+Os planos 06-09 e 06-10 (S5 assíncrono e S5 sobre o dado atual) **não
+criaram variável nova**. Em produção o S5 assíncrono só roda com
+`PAYMENT_REQUEST_SOURCE=plataforma` (a varredura de aprovações é o terceiro
+passo do worker da plataforma, a cada `PLATAFORMA_FILA_INTERVALO_MS`, padrão
+30 s) e com `PLATAFORMA_WEBHOOK_TOKEN` definido (sem ele, o
+`/webhooks/plataforma/aprovacao-decidida` é 401). O S5 agora faz um `GET` da
+Tarefa pela plataforma a cada ciclo: a plataforma precisa responder.
+
+**O código a subir** (`financeiro-tria/main`, até `42ca9b5`) inclui:
+- o contrato `contas-a-pagar-v1.1` (`d462f6e..5a65e5b`) e o S5/S6 da
+  Solicitação (`2cd13cd`);
+- o contrato **v1.2**: anexos seguros e honestos (`a65a862..364a7ef`, 06-07)
+  e o `/lancar` que só reaproveita o título igual e só lança na conta
+  conferida, com o código de categoria só de despesa, folha e ativa
+  (`317feac..5ceca48`, 06-08);
+- o **S5 assíncrono**, idempotente por evento e com repetição só do Resumo
+  (`afd2188..9e45d84`, 06-09), e o S5 que relê a Solicitação, recusa o
+  Centro de Custo sem rota e avisa com texto fixo (`c889556..42ca9b5`, 06-10).
+
+O `apps/api` da Fase 6 manda campos da v1.1 e da v1.2 (`pedidoDeRevisao` no
+ajuste; `codigoCategoriaConfirmado`, `contaConfirmada` e `anexos` com nome no
+lançamento), e os schemas da rota são `.strict()`: um `automation/` anterior
+à v1.2 recusaria o `/lancar` com `400`. Por isso o deploy do `automation/`
+vem **antes** de ligar a ponte em `conferencia` ou `lancar` contra ele.
 
 Na **API do CRM N1** (`apps/api`, onde ela rodar em produção) — a ponte da
 Fase 6; a tabela completa está em `apps/api/README.md`:
@@ -327,8 +411,17 @@ Fase 6; a tabela completa está em `apps/api/README.md`:
 | `AGENTE_CONTAS_A_PAGAR_CONFERENCIA_POR_COMENTARIO` | vazio (`true`) | D6-02: `false` faz só o clique conferir |
 | `AGENTE_CONTAS_A_PAGAR_INTEGRACAO_MANUAL` | vazio (`nao-encosta`) | D6-04: `sem-conferencia` faz a conta Manual receber o Resumo já conferido e ser lançada |
 | `AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM` | **vazio** | Só teste: restringe a ponte às contas com o texto no título |
-| `AGENTE_CONTAS_A_PAGAR_AVISAR_ID` | **vazio** | Só teste: toda Menção da ponte vai a esse Membro |
-| `AGENTE_CONTAS_A_PAGAR_INTERVALO_MS` | vazio (15 min) | O relógio entre ciclos; a gravação numa conta já cutuca a ponte em até 2 s |
+| `AGENTE_CONTAS_A_PAGAR_AVISAR_ID` | **vazio** | Só teste: toda Menção da ponte vai a esse Membro. Desde o 06-13 **exige** `AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM`: com a `AVISAR_ID` sozinha a API **recusa subir**. Um `AVISAR_ID` que não é Membro ativo deixa a ponte parada: ela **não escreve nada** nem chama o `automation/`, e o log avisa a cada ciclo com `AVISAR_ID_INVALIDO` |
+| `AGENTE_CONTAS_A_PAGAR_INTERVALO_MS` | vazio (15 min) | O relógio entre ciclos; a gravação numa conta já cutuca a ponte em até 2 s (inclusive criar, mover, mandar à lixeira, restaurar e anexar, desde o 06-13) |
+| `DATABASE_QUERY_TIMEOUT_MS` | vazio (30000) | O prazo de cada consulta. Desde o 06-13 também deriva, em toda Unidade de Trabalho, o `statement_timeout` (80 %) e o `lock_timeout` (1/3) do servidor: a trava esgotada volta como conflito, e não como `Query read timeout`. **Não use `0`** em produção: desliga os três prazos do servidor |
+
+O ciclo da ponte (06-13) roda um de cada vez, não segura o banco durante
+chamada HTTP, grava no máximo 20 vezes por ciclo e, num erro de banco, para
+e se recupera sozinho (10 s, dobrando até 60 s), sem contar como falha do
+Omie. No log: `Ciclo da ponte demorou.` (acima de 5 s), `Falha de banco no
+ciclo do Agente de lançamento.` com o código, `ORCAMENTO_DO_CICLO_ESGOTADO`
+e `PARADA_RESTAURADA` (depois de reiniciar, uma parada restaurada do fio, sem
+Comentário repetido).
 
 A linha de partida do log mostra tudo o que está valendo (`modo=…
 resumoAPartirDe=… conferenciaPorComentario=… integracaoManual=… escopo=todas
@@ -400,7 +493,8 @@ ligado e das variáveis `PLATAFORMA_BASE_URL`, `PLATAFORMA_SERVICE_TOKEN`,
      Contas a Pagar no ClickUp.
 10. **Ir a produção com a ponte:** primeiro em `conferencia`, depois em
     `lancar` (passo 2B, "Em produção"). Antes disso: o deploy do
-    `automation/` com o contrato v1.1 (Passo 4).
+    `automation/` com o contrato v1.2 e o S5 assíncrono, e
+    `CONTAS_A_PAGAR_ANEXOS_HOSTS` no `.env` dele (Passo 4).
 
 Resolvidas nesta rodada (2026-09-28/29, sem push): o legado do ClickUp
 passa a cadastrar fornecedor novo (`0014772`); o Family Office sem

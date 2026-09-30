@@ -205,7 +205,12 @@ está no documento de topologia, não aqui:
   consulta, e o mesmo prazo para o Postgres encerrar uma transação largada
   (`limitesDoPool` e `inicioDaTransacao`). Sem ele, uma conexão que o pooler
   derruba no meio só era notada quando o TCP desistia — em 2026-09-29, 16 e 10
-  minutos com o Espaço de Trabalho parado. `0` desliga (migração longa, à mão).
+  minutos com o Espaço de Trabalho parado. Desde o 06-13, o mesmo valor (Q)
+  também deriva os prazos do servidor em toda Unidade de Trabalho:
+  `statement_timeout` = 80 % de Q e `lock_timeout` = Q/3 (com 30000: 24 s e
+  10 s); a trava esgotada (`55P03`) na revisão do Espaço volta como conflito,
+  não como erro (`apps/api/src/persistencia/CONTEXT.md`). `0` desliga os três
+  prazos (migração longa, à mão) — nunca em produção.
 
 Nenhum comando de deploy vive neste arquivo — o roteiro de deploy vive no
 documento de topologia linkado acima.
