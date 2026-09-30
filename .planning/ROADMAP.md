@@ -411,7 +411,7 @@ Plans:
 - [ ] 06-08-PLAN.md — `financeiro-tria`: `/resolver` e `/lancar` só aceitam o que é certo (categoria de despesa/folha/ativa, `TITULO_EXISTENTE_DIVERGENTE`, `CONTA_DIVERGENTE`) (RES-03)
 - [ ] 06-09-PLAN.md — `financeiro-tria`: S5 fora do turno do webhook, idempotente por evento, repetição só do Resumo (RES-05)
 - [ ] 06-10-PLAN.md — `financeiro-tria`: S5 relê a Solicitação, recusa Centro de Custo sem rota, textos fixos, avisos (RES-05)
-- [ ] 06-11-PLAN.md — Domínio: Conferência mais estrita (classificador, todas as respostas, sem conferir desatualizada/sem código, tudo ou nada) (RES-02, RES-03)
+- [x] 06-11-PLAN.md — Domínio: Conferência mais estrita (classificador, todas as respostas, sem conferir desatualizada/sem código, tudo ou nada) (RES-02, RES-03)
 - [ ] 06-12-PLAN.md — Ponte: sem lançar de snapshot velho; os 422 v1.2; anexos v1.2; adota 06-11 (RES-01..RES-04)
 - [ ] 06-13-PLAN.md — Ponte: timeouts do ciclo, G3 fechado, chave e avisos persistentes, logs, evento/métrica/classificação por `processStep`, cutucadas (RES-01..RES-03)
 - [ ] 06-14-PLAN.md — Tela: "Responder" no fio, card e fila sem ambiguidade, jornada respondendo no fio (RES-02, RES-06)
@@ -447,7 +447,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 → 6 (0 e 1 em
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
 | 5. Contas a receber e os outros tenants | 25/25 | Complete    | 2026-09-25 |
-| 6. Conferência do Resumo e anexos | 6/15 | Gaps — fechamento planejado |  |
+| 6. Conferência do Resumo e anexos | 7/15 | In Progress|  |
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*
