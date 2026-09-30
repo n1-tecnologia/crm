@@ -419,7 +419,7 @@ Plans:
 
 **Segunda rodada de fechamento (2026-09-30)** — as revisões do código da primeira rodada (`06-REVIEW-2.md`, `06-REVIEW-FINANCEIRO-TRIA-2.md`: um crítico em cada repositório) abriram a rodada; esboço em `06-GAPS-OUTLINE-2.md`; duas trilhas em paralelo (F: financeiro-tria; C: crm-n1):
 
-- [ ] 06-16-PLAN.md — `financeiro-tria`: S5 assíncrono sem decisão velha, sem dedup que engole evento, sem varredura em série, sem receipt preso (RES-05)
+- [x] 06-16-PLAN.md — `financeiro-tria`: S5 assíncrono sem decisão velha, sem dedup que engole evento, sem varredura em série, sem receipt preso (RES-05)
 - [ ] 06-17-PLAN.md — `financeiro-tria`: `/lancar` com orçamento desde a entrada, Storage por prefixo, reaproveitado honesto (RES-04)
 - [ ] 06-18-PLAN.md — Dispensa só enquanto Manual; reaproveitado conferido na ponte; quem confere pelo fio = pelo clique (RES-02, RES-03)
 - [ ] 06-19-PLAN.md — Marca persistida de lançamento em curso; G3 no meio do ciclo; orçamento de gravações justo (RES-01, RES-03)
@@ -455,7 +455,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 → 6 (0 e 1 em
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
 | 5. Contas a receber e os outros tenants | 25/25 | Complete    | 2026-09-25 |
-| 6. Conferência do Resumo e anexos | 15/20 | Segunda rodada de fechamento |  |
+| 6. Conferência do Resumo e anexos | 16/20 | In Progress|  |
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*
