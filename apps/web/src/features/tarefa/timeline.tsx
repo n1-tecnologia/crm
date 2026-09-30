@@ -30,7 +30,7 @@
  * Comentário sempre vira texto literal.
  */
 
-import { ChevronRight, Send } from "lucide-react";
+import { ChevronRight, MessageSquareReply, Send } from "lucide-react";
 import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { CabecalhoDaAtividade, formatarQuando, normalizarBusca, type FiltroDaAtividade } from "@/features/tarefa/feed-de-atividade";
 import { addTaskComment } from "@n1/dominio/operations";
@@ -48,7 +48,8 @@ import {
   Pilula,
 } from "@/features/shell/ui";
 import type { DataState } from "@n1/dominio/state";
-import type { ActivityRecord, ActorRef, Comment, Task } from "@n1/dominio/types";
+import type { ActivityRecord, ActorRef, Comment, Id, Task } from "@n1/dominio/types";
+import { conferenciaVisivel } from "./painel-conferencia-do-resumo";
 
 /** Quantas entradas (das mais recentes) aparecem antes de "Carregar atividades anteriores". */
 const TIMELINE_PAGE_SIZE = 20;
@@ -139,14 +140,23 @@ function entradasDaTarefa(state: DataState, task: Task): readonly Entrada[] {
   return [...comentarios, ...atividades].sort((a, b) => a.at.localeCompare(b.at));
 }
 
-/** O comentário de roteamento de cada Aprovação de processo desta Tarefa — recebe a pill `Pedido de aprovação`. */
-function comentariosDeRoteamento(state: DataState, task: Task): ReadonlySet<string> {
-  return new Set(
-    state.approvals
-      .filter((a) => a.origin.kind === "processTask" && a.origin.taskId === task.id)
-      .map((a) => (a.origin.kind === "processTask" ? a.origin.threadCommentId : undefined))
-      .filter((id): id is string => id !== undefined),
-  );
+/** De que processo é o raiz de um fio: a Aprovação da Solicitação ou a Conferência do Resumo. */
+type Roteamento = "pagamento" | "resumo";
+
+/**
+ * O comentário de roteamento (o raiz do fio, `threadCommentId`) de cada
+ * Aprovação de processo desta Tarefa, com o passo do processo — o raiz de
+ * `"pagamento"` recebe a pill `Pedido de aprovação`; o de `"resumo"`,
+ * `Conferência do Resumo`, a mesma da fila (06-14, crm:IN-01).
+ */
+function comentariosDeRoteamento(state: DataState, task: Task): ReadonlyMap<Id, Roteamento> {
+  const mapa = new Map<Id, Roteamento>();
+  for (const a of state.approvals) {
+    if (a.origin.kind !== "processTask" || a.origin.taskId !== task.id) continue;
+    if (a.origin.threadCommentId === undefined) continue;
+    mapa.set(a.origin.threadCommentId, a.origin.processStep === "resumo" ? "resumo" : "pagamento");
+  }
+  return mapa;
 }
 
 /* ───────────────────────────── Entrada de Comentário ────────────────────── */
@@ -158,17 +168,27 @@ function nomeDaMencao(state: DataState, mencao: { readonly type: string; readonl
 function LinhaDeComentario({
   state,
   fmt,
+  task,
   comment,
   pai,
-  ehRoteamento,
+  roteamento,
   timeZone,
+  podeResponder,
+  respondendo,
+  onResponder,
+  onFecharResposta,
 }: {
   readonly state: DataState;
   readonly fmt: Formatters;
+  readonly task: Task;
   readonly comment: Comment;
   readonly pai: Comment | undefined;
-  readonly ehRoteamento: boolean;
+  readonly roteamento: Roteamento | undefined;
   readonly timeZone: string;
+  readonly podeResponder: boolean;
+  readonly respondendo: boolean;
+  readonly onResponder: () => void;
+  readonly onFecharResposta: () => void;
 }) {
   const nome = resolverNomeDoAtor(state, comment.author);
   const tipo = rotuloDoTipo(comment.author);
@@ -187,7 +207,8 @@ function LinhaDeComentario({
             {nome}
           </span>
           {tipo ? <Pilula tom="neutro">{tipo}</Pilula> : null}
-          {ehRoteamento ? <Pilula tom="aviso">Pedido de aprovação</Pilula> : null}
+          {roteamento === "pagamento" ? <Pilula tom="aviso">Pedido de aprovação</Pilula> : null}
+          {roteamento === "resumo" ? <Pilula tom="aviso">Conferência do Resumo</Pilula> : null}
           {comment.resolved ? <Pilula tom="sucesso">Resolvido</Pilula> : null}
           <time dateTime={comment.createdAt} className="app-sm ml-auto shrink-0 whitespace-nowrap" style={{ color: "var(--texto-3)" }}>
             {formatarQuando(comment.createdAt, timeZone)}
@@ -203,6 +224,23 @@ function LinhaDeComentario({
           <p className="app-meta mt-1">mencionou {comment.mentions.map((m) => nomeDaMencao(state, m)).join(", ")}</p>
         ) : null}
       </div>
+      {/*
+        06-14 (D6-02) — "Responder" em todo Comentário, como no ClickUp. A
+        resposta vai sempre para a RAIZ do fio (`parentCommentId ?? id`):
+        responder ao Resumo revisado, que já é resposta, cai no fio do Resumo,
+        que é onde a ponte lê o "ok" ou o pedido de ajuste.
+      */}
+      {!podeResponder ? null : respondendo ? (
+        <div className="mt-1.5">
+          <Compositor task={task} resposta={{ paraId: comment.parentCommentId ?? comment.id, aoFechar: onFecharResposta }} />
+        </div>
+      ) : (
+        <span id={`responder-${comment.id}`} className="contents">
+          <Button size="sm" variant="ghost" onClick={onResponder} icon={<Icone de={MessageSquareReply} tamanho="xs" />}>
+            Responder
+          </Button>
+        </span>
+      )}
     </li>
   );
 }
@@ -256,7 +294,14 @@ function LinhaDeAtividade({
  * de `useDecisaoDeAprovacao` chamar `onSucesso` em vez de mexer no estado do
  * card por dentro do próprio efeito.
  */
-function useCompositorDeTimeline(task: Task, texto: string, mencoes: readonly string[], onEnviado: () => void) {
+function useCompositorDeTimeline(
+  task: Task,
+  texto: string,
+  mencoes: readonly string[],
+  onEnviado: () => void,
+  /** 06-14 — com ele, o Comentário sai como resposta no fio (o domínio normaliza para a raiz). */
+  parentCommentId?: Id,
+) {
   const run = useRun();
   const lastResult = useLastResult();
   const [erroImediato, setErroImediato] = useState<string | null>(null);
@@ -284,6 +329,7 @@ function useCompositorDeTimeline(task: Task, texto: string, mencoes: readonly st
       addTaskComment(data, memberId, task.id, {
         content: texto,
         mentions: mencoes.map((m) => ({ type: "member" as const, id: m })),
+        ...(parentCommentId ? { parentCommentId } : {}),
       }),
     );
     if (!resultado.ok) {
@@ -304,7 +350,18 @@ function arrobaEmCurso(texto: string, caret: number): { readonly inicio: number;
   return consulta !== undefined ? { inicio: antes.length - consulta.length - 1, consulta } : null;
 }
 
-function Compositor({ task }: { readonly task: Task }) {
+/**
+ * O compositor da doca (raiz) e, com `resposta`, o compositor de resposta que
+ * abre dentro da linha do Comentário (06-14). Os textos do raiz não mudam:
+ * "Novo comentário", "Comentar" e o placeholder de sempre.
+ */
+function Compositor({
+  task,
+  resposta,
+}: {
+  readonly task: Task;
+  readonly resposta?: { readonly paraId: Id; readonly aoFechar: () => void };
+}) {
   const members = useData((data) => data.members);
   const [texto, setTexto] = useState("");
   /** Quem foi escolhido pelo "@" — só conta na hora de enviar se o "@Nome" ainda estiver no texto. */
@@ -314,11 +371,18 @@ function Compositor({ task }: { readonly task: Task }) {
   const [sugestoesFechadas, setSugestoesFechadas] = useState(false);
   const campo = useRef<HTMLTextAreaElement>(null);
   const mencoes = escolhidos.filter((m) => texto.includes(`@${m.nome}`)).map((m) => m.id);
-  const controlador = useCompositorDeTimeline(task, texto, mencoes, () => {
-    setTexto("");
-    setEscolhidos([]);
-    setCaret(0);
-  });
+  const controlador = useCompositorDeTimeline(
+    task,
+    texto,
+    mencoes,
+    () => {
+      setTexto("");
+      setEscolhidos([]);
+      setCaret(0);
+      resposta?.aoFechar();
+    },
+    resposta?.paraId,
+  );
   const id = useId();
 
   const arroba = arrobaEmCurso(texto, caret);
@@ -348,7 +412,7 @@ function Compositor({ task }: { readonly task: Task }) {
     });
   };
 
-  const rotuloDoEnvio = controlador.enviando ? "Enviando…" : "Comentar";
+  const rotuloDoEnvio = controlador.enviando ? "Enviando…" : resposta ? "Enviar resposta" : "Comentar";
 
   return (
     <form
@@ -359,7 +423,7 @@ function Compositor({ task }: { readonly task: Task }) {
       }}
     >
       <label htmlFor={id} className="sr-only">
-        Novo comentário
+        {resposta ? "Resposta no fio" : "Novo comentário"}
       </label>
       <div className="relative">
         <textarea
@@ -406,10 +470,11 @@ function Compositor({ task }: { readonly task: Task }) {
             // Enter sozinho: comportamento padrão do textarea — nova linha.
           }}
           rows={2}
+          autoFocus={resposta !== undefined}
           disabled={controlador.enviando}
           aria-autocomplete="list"
           aria-controls={sugestoes.length > 0 ? `${id}-sugestoes` : undefined}
-          placeholder="Escreva um comentário. @ menciona alguém. Ctrl+Enter envia."
+          placeholder={resposta ? "Responder…" : "Escreva um comentário. @ menciona alguém. Ctrl+Enter envia."}
           className="campo block"
           // O canto inferior direito é do botão de enviar: o texto não passa por baixo dele.
           style={{ height: "auto", paddingBlock: "var(--e-2)", paddingRight: "var(--controle-h)", resize: "none" }}
@@ -459,6 +524,13 @@ function Compositor({ task }: { readonly task: Task }) {
           {controlador.erro}
         </p>
       ) : null}
+      {resposta ? (
+        <span className="flex justify-end">
+          <Button size="sm" variant="ghost" onClick={resposta.aoFechar} disabled={controlador.enviando} disabledReason="Aguarde o envio.">
+            Cancelar
+          </Button>
+        </span>
+      ) : null}
     </form>
   );
 }
@@ -474,10 +546,20 @@ export function Timeline({ task, fmt, readOnly }: { readonly task: Task; readonl
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState<FiltroDaAtividade>("tudo");
   const [abertas, setAbertas] = useState<ReadonlySet<string>>(new Set());
+  /** O Comentário cuja resposta está aberta — uma por vez. */
+  const [respondendo, setRespondendo] = useState<Id | null>(null);
   const timeZone = state.workspace.locale.timezone;
 
   const todas = useMemo(() => entradasDaTarefa(state, task), [state, task]);
   const roteamento = useMemo(() => comentariosDeRoteamento(state, task), [state, task]);
+  // O estado vem do domínio (`conferenciaDoResumo`, dentro de `conferenciaVisivel`); a tela não lê as Aprovações para isso.
+  const conferenciaPendente = conferenciaVisivel(state, task)?.estado === "pendente";
+
+  const fecharResposta = (commentId: Id) => {
+    setRespondendo(null);
+    // O foco volta ao "Responder" que abriu o compositor, não para o body (o mesmo de `TaskComments`).
+    window.setTimeout(() => document.getElementById(`responder-${commentId}`)?.querySelector("button")?.focus({ preventScroll: true }), 0);
+  };
 
   const termo = normalizarBusca(busca.trim());
   const entradas = todas.filter((entrada) => {
@@ -540,10 +622,15 @@ export function Timeline({ task, fmt, readOnly }: { readonly task: Task; readonl
                         key={`c-${comment.id}`}
                         state={state}
                         fmt={fmt}
+                        task={task}
                         comment={comment}
                         pai={comment.parentCommentId ? task.comments.find((c) => c.id === comment.parentCommentId) : undefined}
-                        ehRoteamento={roteamento.has(comment.id)}
+                        roteamento={roteamento.get(comment.id)}
                         timeZone={timeZone}
+                        podeResponder={!readOnly}
+                        respondendo={respondendo === comment.id}
+                        onResponder={() => setRespondendo(comment.id)}
+                        onFecharResposta={() => fecharResposta(comment.id)}
                       />
                     );
                   }
@@ -576,6 +663,12 @@ export function Timeline({ task, fmt, readOnly }: { readonly task: Task; readonl
       </div>
       {readOnly ? null : (
         <div className="doca-do-robo shrink-0 px-4 py-3" data-robo="acima" style={{ borderTop: "1px solid var(--linha)" }}>
+          {conferenciaPendente ? (
+            // 06-14 — o efeito silencioso do gap: um "ok" aqui é Comentário raiz, e a ponte só lê respostas no fio do Resumo.
+            <p className="app-meta mb-2">
+              Para conferir o Resumo pelo tópico, use &quot;Responder&quot; no Comentário do Resumo; um comentário novo aqui não confere.
+            </p>
+          ) : null}
           <Compositor task={task} />
         </div>
       )}
