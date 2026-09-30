@@ -45,8 +45,8 @@ beforeEach(() => {
 
 describe("Unidade de Trabalho — conexão que cai no meio", () => {
   it("o begin leva o prazo do servidor igual ao query_timeout do pool (e some quando ele é desligado)", () => {
-    expect(inicioDaTransacao({})).toBe("begin; set local idle_in_transaction_session_timeout = 30000");
-    expect(inicioDaTransacao({ DATABASE_QUERY_TIMEOUT_MS: "5000" })).toBe("begin; set local idle_in_transaction_session_timeout = 5000");
+    expect(inicioDaTransacao({})).toBe("begin; set local idle_in_transaction_session_timeout = 30000; set local statement_timeout = 24000; set local lock_timeout = 10000");
+    expect(inicioDaTransacao({ DATABASE_QUERY_TIMEOUT_MS: "5000" })).toBe("begin; set local idle_in_transaction_session_timeout = 5000; set local statement_timeout = 4000; set local lock_timeout = 1666");
     expect(inicioDaTransacao({ DATABASE_QUERY_TIMEOUT_MS: "0" })).toBe("begin");
   });
 
