@@ -1300,6 +1300,14 @@ export function dispensarConferenciaDoResumo(state: DataState, actingMemberId: I
     return fail("Esta Conferência não é mais a vigente pendente: nada foi dispensado.");
   }
   if (fieldValue(task, CP.fields.integracaoManual) !== "Manual") return fail(TEXTOS_DA_CONFERENCIA.recusaDispensaSemManual);
+  // 06-21 (crm2:CR-01 residual, 06-REVIEW-3 Crítico): uma resposta de Membro
+  // ainda não processada no fio da Conferência vigente (ajuste OU aprovação)
+  // bloqueia a dispensa — mesmo com "Manual" marcado agora. `true` fixo: a
+  // leitura mais permissiva que ainda bloqueia todo `ajuste` (o ramo `ajuste`
+  // de `decisaoDasRespostasPendentes` ignora esta opção de qualquer forma).
+  if (decisaoDasRespostasPendentes(state, task, { aprovacaoPorComentario: true }).sentido !== "nenhum") {
+    return fail(TEXTOS_DA_CONFERENCIA.recusaDispensaComRespostaPendente);
+  }
   const decidida = decideProcessApproval(state, actingMemberId, conferencia.id, "aprovada", { source: "click", reason: MOTIVO_DA_DISPENSA });
   if (!decidida.ok) return decidida;
   decidida.value.decisionWaiver = "integracaoManual";

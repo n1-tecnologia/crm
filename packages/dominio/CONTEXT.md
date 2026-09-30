@@ -444,3 +444,17 @@ clique** (`06-REVIEW-2.md`):
   idempotência), em vez de cair em silêncio na Maryane. A ponte passa a opção
   sempre que tem `avisarId`; sem ela, `avisadoDaConferencia` segue a regra de
   sempre.
+
+**06-21 — a dispensa nunca engole uma resposta humana pendente** (`06-REVIEW-3.md`, Crítico, resíduo de crm2:CR-01):
+
+- **`dispensarConferenciaDoResumo`** recusa com
+  `TEXTOS_DA_CONFERENCIA.recusaDispensaComRespostaPendente` quando há, no fio
+  da Conferência vigente, uma resposta de Membro ainda não processada
+  (`decisaoDasRespostasPendentes(state, task, { aprovacaoPorComentario: true
+  }).sentido !== "nenhum"` — `true` fixo, a leitura mais permissiva que ainda
+  bloqueia todo `ajuste`, calculado logo depois da checagem de "Manual" e
+  ANTES de `decideProcessApproval`). O caminho que o review achou: dispensa →
+  desmarcar "Manual" → Resumo novo no mesmo fio → um humano responde (ajuste
+  OU aprovação) → remarcar "Manual" antes do próximo ciclo — a Conferência com
+  a resposta pendente não se dispensa nunca mais; ela é lida, e a decisão vira
+  do Membro humano, não do de serviço.

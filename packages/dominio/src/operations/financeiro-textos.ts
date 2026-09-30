@@ -120,6 +120,13 @@ export const TEXTOS_DA_CONFERENCIA = {
    */
   recusaDispensaSemManual: "A conta não é mais de Integração manual: esta Conferência não se dispensa, e o Resumo vai para conferência.",
   /**
+   * Recusa de `dispensarConferenciaDoResumo` (06-21, crm2:CR-01 residual —
+   * 06-REVIEW-3 Crítico): há, no fio da Conferência vigente, uma resposta de
+   * Membro ainda não processada (ajuste ou aprovação). Remarcar "Manual"
+   * NUNCA dispensa por cima dessa resposta — ela decide.
+   */
+  recusaDispensaComRespostaPendente: "Há uma resposta no fio ainda não lida: esta Conferência não se dispensa por Integração manual — a resposta decide.",
+  /**
    * 06-19 (crm2:WR-04) — a porta de teste G3 (`avisarId` com `avisarEstrito`)
    * aponta para quem não é Membro ativo: a operação recusa sem efeito, em vez
    * de avisar o Financeiro real.

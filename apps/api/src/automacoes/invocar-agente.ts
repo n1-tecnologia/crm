@@ -1468,7 +1468,14 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
           // D6-04 com um Resumo sem código: o domínio recusaria a dispensa
           // (crm:WR-03), então o Financeiro pede ajuste pelo fio, como numa
           // conta qualquer; o Resumo revisado com código é dispensado.
-          if (manual && !lancamentoSemCodigo(conf.conferencia.origin.lancamento)) await dispensar(conf.conferencia);
+          // 06-21 (crm2:CR-01 residual, 06-REVIEW-3 Crítico): remarcar "Manual"
+          // nunca dispensa por cima de uma resposta humana (ajuste ou
+          // aprovação) ainda não lida no fio da Conferência vigente — o mesmo
+          // sinal que o domínio confere dentro de `dispensarConferenciaDoResumo`,
+          // calculado aqui ANTES, para nem tentar a dispensa quando há resposta
+          // pendente: ela é lida, nunca engolida.
+          const pendenteNoFio = decisaoDasRespostasPendentes(state, task, { aprovacaoPorComentario: true }).sentido !== "nenhum";
+          if (manual && !pendenteNoFio && !lancamentoSemCodigo(conf.conferencia.origin.lancamento)) await dispensar(conf.conferencia);
           else await lerRespostas(conf.conferencia);
           continue;
         }
@@ -1575,6 +1582,18 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
           if (!r.ok && !("conflito" in r && r.conflito) && r.error === TEXTOS_DA_CONFERENCIA.recusaDispensaSemManual) {
             estadoPorConta.delete(task.id);
             registrar("info", "Dispensa adiada: a conta deixou de ser Manual.", { ...daConta, code: "DISPENSA_ADIADA" });
+          } else if (
+            !r.ok &&
+            !("conflito" in r && r.conflito) &&
+            r.error === TEXTOS_DA_CONFERENCIA.recusaDispensaComRespostaPendente
+          ) {
+            // 06-21 (crm2:CR-01 residual, 06-REVIEW-3 Crítico): a corrida entre
+            // a leitura do fio (sem resposta pendente no snapshot) e a
+            // gravação (uma resposta chegou antes da operação rodar) — o
+            // domínio recusou dentro da transação. Adiada, nunca recusa: o
+            // ciclo seguinte relê e cai em `lerRespostas`.
+            estadoPorConta.delete(task.id);
+            registrar("info", "Dispensa adiada: uma resposta chegou no fio antes da gravação.", { ...daConta, code: "DISPENSA_ADIADA_RESPOSTA_PENDENTE" });
           } else if (!r.ok && !("conflito" in r && r.conflito)) {
             deste.parada = "recusa";
             // crm:WR-11 — o código, nunca `r.error` (o domínio cita nomes).
