@@ -596,12 +596,12 @@ ou `ORCAMENTO_DO_CICLO_ESGOTADO`. As capturas ficam na pasta temporária.
 Encerramento: SIGINT nos PIDs do lançador (a API ignora SIGTERM); SIGKILL só
 de reserva, e só nesses PIDs.
 
-**Autorização:** dada pelo dono em 2026-09-30, nesta conversa ("O owner
-authorized Run A (journey replying in thread) and Run B (crm2:CR-01
-dispensation)"). O executor havia parado no checkpoint depois de rodar só os
-testes automatizados (a "Testes" acima); o orquestrador, já autorizado,
-rodou as execuções A e B e repassou o relato verbatim para registro aqui —
-nada foi rodado de novo por este executor.
+**Autorização:** dada pelo dono em 2026-09-30, nesta conversa, por pergunta
+direta do orquestrador (`AskUserQuestion`) — resposta literal: "Autorizo as
+duas (Recomendado)", para a Execução A e a Execução B juntas. O executor
+havia parado no checkpoint depois de rodar só os testes automatizados (a
+"Testes" acima); o orquestrador, com essa autorização, rodou as execuções A
+e B e repassou o relato ao executor, que registra aqui.
 
 ### Como rodou de verdade
 
@@ -658,12 +658,12 @@ cenário, levar ao dono como achado, e registrar "crm2:CR-01 provado só por
 testes (06-18: `ponte-dispensa-e-fio.test.ts` (a)–(e) e as mutações M1, M2,
 M9, M10)". Idem se esta execução não for autorizada.
 
-**Autorização:** dada pelo dono em 2026-09-30, nesta conversa, à parte da
-anterior ("...and Run B (crm2:CR-01 dispensation)"). Rodada pelo orquestrador,
-com o `automation/` e o contador subindo de novo (um token novo — o da
-execução A é local ao processo e não sobrevive, por desenho, a um reinício;
-nunca impresso nem gravado nos dois casos), e o relato repassado verbatim
-para registro aqui.
+**Autorização:** a mesma resposta da Execução A ("Autorizo as duas
+(Recomendado)" — a pergunta cobria as duas execuções juntas). Rodada pelo
+orquestrador, com o `automation/` e o contador subindo de novo (um token
+novo — o da execução A é local ao processo e não sobrevive, por desenho, a
+um reinício; nunca impresso nem gravado nos dois casos), e o relato
+repassado ao executor, que registra aqui.
 
 ### Como rodou de verdade
 
