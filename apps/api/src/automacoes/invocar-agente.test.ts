@@ -1013,7 +1013,7 @@ describe("criarPonteDoAgente — os dois momentos contra servidorFalso (sem DATA
 
       for (let espera = 0; servidor.recebidas.length < 1 && espera < 100; espera += 1) await new Promise((r) => setTimeout(r, 10));
       expect(caminhos()).toEqual([LANCAR]);
-      mover(estado, das.id, S.paraPagar);
+      das.statusId = S.paraPagar;
       await emVoo;
 
       expect(das.statusId).toBe(S.paraPagar);
@@ -1031,7 +1031,7 @@ describe("criarPonteDoAgente — os dois momentos contra servidorFalso (sem DATA
       const ponte = ponteSobre(estado, {
         executarOperacao: async (operacao) => {
           transacoes += 1;
-          if (transacoes === 1) return { ok: false, error: "Quem invoca não alcança a Tarefa." };
+          if (transacoes === 2) return { ok: false, error: "Quem invoca não alcança a Tarefa." };
           return executarEmMemoria(estado)(operacao);
         },
       });

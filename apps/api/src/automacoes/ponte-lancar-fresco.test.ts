@@ -333,7 +333,7 @@ describe("a releitura antes do /lancar (CR-01) — servidorFalso, sem DATABASE_U
     const ponte = ponteSobre(servidor, estado, {
       executarOperacao: async (op) => {
         gravacoes += 1;
-        if (gravacoes <= TENTATIVAS_TRANSITORIAS) return { ok: false, error: "conflito", conflito: true };
+        if (gravacoes % 2 === 0 && gravacoes <= 2 * TENTATIVAS_TRANSITORIAS) return { ok: false, error: "conflito", conflito: true };
         return emMemoria(op);
       },
     });

@@ -200,8 +200,8 @@ describe("crm2:IN-03 — o aviso de reserva restaura a parada", () => {
     const { ponte } = montar(servidor, estado, {
       executarOperacao: async (operacao) => {
         gravacoes += 1;
-        // A primeira gravação do ciclo é o registro da falha: recusada.
-        if (gravacoes === 1) return { ok: false, error: "recusado pelo teste" };
+        // A segunda gravação do ciclo é o registro da falha: recusada.
+        if (gravacoes === 2) return { ok: false, error: "recusado pelo teste" };
         return noMemoria(operacao);
       },
     });

@@ -99,7 +99,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { ActivityRecord, DataState, Id, OperationResult, Task } from "@n1/dominio";
-import { ok } from "@n1/dominio";
+import { fail } from "@n1/dominio";
 import { effectiveLifecycleOfTask, newestFirst, statusDefinition } from "@n1/dominio/derive";
 import { decideProcessApproval } from "@n1/dominio/operations/ai";
 import { runScheduledAutomations } from "@n1/dominio/operations/automations";
@@ -113,10 +113,12 @@ import {
   decisaoDasRespostasPendentes,
   dispensaSemManual,
   dispensarConferenciaDoResumo,
+  encerrarLancamentoEmCurso,
   erpMissingFields,
   impressaoDeLancamento,
   lancamentoHumanoDe,
   lancamentoSemCodigo,
+  marcarLancamentoEmCurso,
   movidaDepoisDaImportacao,
   publicarResumoParaConferencia,
   registrarFalhaDoLancamento,
@@ -1051,6 +1053,26 @@ export function chaveDaPonte(state: DataState, task: Task): string {
   ]);
 }
 
+/**
+ * 06-19 (crm2:IN-02) — a recusa sentinela dos ramos da ponte que decidem,
+ * DENTRO da Unidade de Trabalho, não mudar nada (o Resumo adiado, a saída
+ * antes do registro, a marca adiada). Uma recusa faz a Unidade de Trabalho
+ * desfazer sem o `update … revisao`: a tela não reidrata e ninguém disputa a
+ * trava por uma gravação vazia. Fora da operação, `!r.ok && r.error ===
+ * SEM_EFEITO` é o caminho do adiamento — o mesmo log e o mesmo Comentário de
+ * antes. Exportada para os testes.
+ */
+export const SEM_EFEITO = "PONTE_SEM_EFEITO";
+
+function semEfeito(): OperationResult<never> {
+  return fail(SEM_EFEITO);
+}
+
+/** `r` é a recusa sentinela `SEM_EFEITO` (e não um conflito). */
+function foiSemEfeito(r: { readonly ok: boolean; readonly error?: string; readonly conflito?: boolean }): boolean {
+  return !r.ok && !r.conflito && r.error === SEM_EFEITO;
+}
+
 const CAMINHO_RESOLVER = "/v1/integrations/contas-a-pagar/resolver";
 const CAMINHO_LANCAR = "/v1/integrations/contas-a-pagar/lancar";
 
@@ -1550,7 +1572,8 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
               agora.impressaoAtual !== conf.impressaoAtual ||
               manualAgora !== manual ||
               (conf.estado === "ajuste-pedido" && (agora.conferencia?.id !== conf.conferencia?.id || agora.conferencia?.decision !== "rejeitada"));
-            if (adiado || !fresca) return ok(undefined);
+            // crm2:IN-02 — nada a gravar: a recusa sentinela desfaz sem subir a revisão.
+            if (adiado || !fresca) return semEfeito();
             // crm:WR-03 — um Resumo sem código de Categoria não se aprova (o
             // domínio recusa), então também não se dispensa (D6-04): sai como
             // Conferência normal, e a resposta no fio diz como seguir.
@@ -1583,7 +1606,7 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
             dispensou = true;
             return dispensarConferenciaDoResumo(s, atorId, publicado.value.conferencia.id);
           });
-          if (r.ok && adiado) {
+          if (foiSemEfeito(r) && adiado) {
             estadoPorConta.delete(task.id);
             registrar("info", "Resumo adiado: a conta mudou depois da leitura do ciclo.", { ...daConta, code: "RESUMO_ADIADO" });
           } else if (r.ok) {
@@ -1660,6 +1683,8 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
             await parar("recusa", TEXTO_VALOR_INVALIDO, "Valor inválido.", "lançaria");
             return;
           }
+          // A impressão da conta de onde o corpo saiu — a marca confere contra ela.
+          const impressaoDoCorpo = impressaoDeLancamento(fresco, atual);
           const codigoAtual = confAtual.origin.lancamento.codigo;
           // As URLs valem 5 min: geradas agora, logo antes do `/lancar`. Só a contagem vai ao log.
           const { anexos, avisos, acimaDoLimite = 0 } = await anexosDaConta(fresco, atual, opcoes.assinarAnexo);
@@ -1675,11 +1700,57 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
             contaConfirmada: confAtual.origin.lancamento.conta,
             ...(anexos.length > 0 ? { anexos } : {}),
           };
-          // (5)
+          // (5) crm2:WR-01 (06-19) — a marca "Lançamento no Omie em curso",
+          // numa Unidade de Trabalho IMEDIATAMENTE antes do `/lancar`, que
+          // pergunta de novo sobre o estado DA GRAVAÇÃO: a impressão é a do
+          // corpo (senão `IMPRESSAO_MUDOU`) e `motivoParaNaoLancar` não tem
+          // nada a opor. A releitura de 06-12 monta o corpo; esta é a
+          // reconferência atômica. Com a marca, ninguém mais move a conta nem
+          // registra o lançamento à mão até o registro, a falha, o
+          // encerramento ou o prazo (`PRAZO_DO_LANCAMENTO_EM_CURSO_MS`).
+          const atorId = await atorDaEscrita();
+          let adiadoNaMarca: CodigoDeAdiamento | "IMPRESSAO_MUDOU" | undefined;
+          const marca = await executarOperacao((s) => {
+            const naGravacao = s.tasks.find((t) => t.id === task.id);
+            adiadoNaMarca =
+              naGravacao && impressaoDeLancamento(s, naGravacao) !== impressaoDoCorpo
+                ? "IMPRESSAO_MUDOU"
+                : motivoParaNaoLancar(s, task.id, conferida.id, criterio);
+            if (adiadoNaMarca) return semEfeito();
+            return marcarLancamentoEmCurso(s, atorId, task.id);
+          });
+          if (!marca.ok) {
+            if ("conflito" in marca && marca.conflito) await falhaTransitoria("CONFLITO_DE_REVISAO", "lançaria");
+            else if (foiSemEfeito(marca)) {
+              estadoPorConta.delete(task.id);
+              registrar("info", "Lançamento adiado: a conta mudou antes da marca.", { ...daConta, code: adiadoNaMarca ?? "CONTA_SUMIU" });
+            } else {
+              deste.parada = "recusa";
+              // T-3-04: o código, nunca `marca.error`.
+              registrar("warn", "O domínio recusou a marca de lançamento em curso; nada foi lançado.", { ...daConta, code: "MARCA_RECUSADA_PELO_DOMINIO" });
+            }
+            return;
+          }
+
+          /**
+           * Tira a marca quando a ponte desiste do `/lancar` sem registro nem
+           * falha permanente registrada. A falha só vai ao log: o prazo cobre.
+           */
+          const encerrar = async (code: string): Promise<void> => {
+            const r = await executarOperacao((s) => encerrarLancamentoEmCurso(s, atorId, task.id, code));
+            if (!r.ok) registrar("warn", "Não consegui encerrar a marca de lançamento em curso; o prazo a encerra.", { ...daConta, code: "MARCA_NAO_ENCERRADA" });
+          };
+
+          // (6)
           const resposta = await chamar(CAMINHO_LANCAR, corpo, { timeoutMs: timeoutLancarMs, idempotencyKey: chaveDeIdempotencia(task.id) });
           if (!resposta.ok) {
+            // A falha permanente registrada encerra a marca pelo domínio
+            // ("Lançamento no Omie falhou"); a recusa dela, em `falhaPermanente`.
             if (resposta.permanente) await falhaPermanente(resposta.motivo, resposta.code, resposta.detalhes);
-            else await falhaTransitoria(resposta.code, "lançaria");
+            else {
+              await encerrar(resposta.code);
+              await falhaTransitoria(resposta.code, "lançaria");
+            }
             return;
           }
           const devolvido = resposta.corpo as { readonly payableId?: unknown; readonly reaproveitado?: unknown } | undefined;
@@ -1688,6 +1759,7 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
           // lançamento: registrar seria mentir. `reaproveitado: true`
           // (consulta-antes-de-incluir) É sucesso.
           if (typeof payableId !== "string" || payableId.length === 0 || payableId.startsWith("mock-")) {
+            await encerrar("LANCAMENTO_NAO_CONFIRMADO");
             await parar("recusa", TEXTO_LANCAMENTO_NAO_CONFIRMADO, "lançamento não confirmado (payableId ausente ou mock).", "lançaria");
             return;
           }
@@ -1714,22 +1786,25 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
           // confirmação nunca diga "sem anexos" quando havia anexos (crm:IN-03).
           const lidos = anexosDaResposta(resposta.corpo, anexos);
           const resultado = { payableId, reaproveitado: devolvido?.reaproveitado === true, anexos: lidos.itens, anexosPedidos: anexos.length };
-          const atorId = await atorDaEscrita();
           let saiuAntes = false;
           const r = await executarOperacao((s) => {
             const naHora = s.tasks.find((t) => t.id === task.id);
             saiuAntes = !naHora || naHora.statusId !== CP.status.emLancamento;
-            if (saiuAntes) return ok(undefined);
+            // crm2:IN-02 — nada a gravar: a recusa sentinela desfaz sem subir a revisão.
+            if (saiuAntes) return semEfeito();
             return registrarLancamentoNoOmie(s, atorId, task.id, resultado);
           });
-          if (r.ok && saiuAntes) {
-            // Alguém moveu a conta durante o `/lancar`: o título existe no
-            // Omie, mas nada foi registrado aqui. Se ela voltar para "em
-            // lançamento omie", a mesma chave só reaproveita o título se ele
-            // tiver os dados do pedido (06-08, `TITULO_EXISTENTE_DIVERGENTE`).
+          if (foiSemEfeito(r) && saiuAntes) {
+            // A conta saiu de "em lançamento omie" durante o `/lancar` por um
+            // caminho que a marca não cobre (fora do domínio, ou a marca
+            // vencida): o título existe no Omie, mas nada foi registrado
+            // aqui. Se ela voltar para "em lançamento omie", a mesma chave só
+            // reaproveita o título se ele tiver os dados do pedido (06-08,
+            // `TITULO_EXISTENTE_DIVERGENTE`).
             estadoPorConta.delete(task.id);
             registrar("warn", 'Lançada no Omie, mas a conta saiu de "em lançamento omie" antes do registro; nada foi gravado.', { ...daConta, payableId });
             await comentar(TEXTO_SAIU_ANTES_DO_REGISTRO);
+            await encerrar("SAIU_ANTES_DO_REGISTRO");
           } else if (r.ok) {
             estadoPorConta.delete(task.id);
             registrar("info", 'Conta lançada no Omie e movida para "lançado omie".', {
@@ -1743,12 +1818,17 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
             if (acimaDoLimite > 0) await comentar(textoDosAnexosAcimaDoLimite(acimaDoLimite), confAtual.origin.threadCommentId);
           } else if ("conflito" in r && r.conflito) {
             // Outra escrita entrou no meio: o próximo ciclo repete com a MESMA
-            // chave, e o Omie devolve o mesmo título (`reaproveitado`).
+            // chave, e o Omie devolve o mesmo título (`reaproveitado`). A
+            // marca FICA enquanto a repetição vier — o título existe, e é
+            // exatamente esse intervalo que ela protege (e vence no prazo). Só
+            // a falha que vira parada a encerra.
             registrar("warn", "Lançada no Omie, mas a gravação conflitou; tento de novo no próximo ciclo.", { ...daConta, payableId, code: "CONFLITO_DE_REVISAO" });
+            if (deste.transitorias + 1 >= TENTATIVAS_TRANSITORIAS) await encerrar("CONFLITO_DE_REVISAO");
             await falhaTransitoria("CONFLITO_DE_REVISAO", "lançaria", textoDoRegistroEmConflito(payableId));
           } else {
             // T-3-04: o log leva o id do título e o código, nunca `r.error`.
             registrar("warn", "Lançada no Omie, mas não consegui registrar o lançamento.", { ...daConta, payableId, code: "REGISTRO_RECUSADO_PELO_DOMINIO" });
+            await encerrar("REGISTRO_RECUSADO_PELO_DOMINIO");
             await parar("recusa", textoDoRegistroRecusado(payableId, r.error), "lançada, mas sem registro.", "lançaria");
           }
         }
@@ -1777,6 +1857,10 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
           if (r.ok) registrar("info", 'Lançamento recusado; a conta voltou para "para pagar".', { ...daConta, code });
           else {
             registrar("warn", "Não consegui registrar a falha do lançamento; aviso por Comentário.", { ...daConta, code });
+            // crm2:WR-01 — sem o Registro "Lançamento no Omie falhou", a marca
+            // sai pelo encerramento (só chega aqui depois dela, no `/lancar`).
+            const fim = await executarOperacao((s) => encerrarLancamentoEmCurso(s, atorId, task.id, code));
+            if (!fim.ok) registrar("warn", "Não consegui encerrar a marca de lançamento em curso; o prazo a encerra.", { ...daConta, code: "MARCA_NAO_ENCERRADA" });
             await comentar(textoDaRecusaPermanente(texto, code));
           }
         }

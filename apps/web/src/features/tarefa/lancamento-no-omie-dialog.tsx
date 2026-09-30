@@ -22,7 +22,7 @@
 
 import { useState } from "react";
 import { useRun } from "@/dados/store";
-import { addTaskComment, textoDoLancamentoHumano } from "@n1/dominio/operations";
+import { RECUSA_LANCAMENTO_EM_CURSO, addTaskComment, lancamentoEmCursoDe, textoDoLancamentoHumano } from "@n1/dominio/operations";
 import { containerAdminRefusal } from "@n1/dominio/derive";
 import type { DataState, OperationResult } from "@n1/dominio/state";
 import type { Id, Task } from "@n1/dominio/types";
@@ -32,8 +32,13 @@ import { ConfirmDialog, Field, TextInput } from "@/features/shell/ui";
  * O Papel `rol_sp_financeiro` ainda não vira Concessão real de Membro nesta
  * fase (mesma ressalva de `fluxoManualRecusado`): o sinal mais próximo já
  * existente no domínio é administrar a Lista da Tarefa.
+ *
+ * 06-19 (crm2:WR-01): enquanto o Agente lança a conta no Omie (a marca
+ * `lancamentoEmCursoDe`), o registro à mão seria um segundo título — a mesma
+ * recusa que `addTaskComment` aplica no domínio, dita antes do clique.
  */
 export function lancamentoNoOmieRecusado(state: DataState, memberId: Id, task: Task): string | undefined {
+  if (lancamentoEmCursoDe(state, task)) return RECUSA_LANCAMENTO_EM_CURSO;
   return containerAdminRefusal(state, memberId, "list", task.listId);
 }
 

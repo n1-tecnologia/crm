@@ -27,6 +27,7 @@ import {
   CP,
   conferenciaDoResumo,
   erpMissingFields,
+  lancamentoEmCursoDe,
   lancamentoSemCodigo,
   movidaDepoisDaImportacao,
   podeDecidirAConferencia,
@@ -309,6 +310,8 @@ export function PainelConferenciaDoResumo({
   const autorizado = podeConferirOResumo(state, memberId, conferencia);
   const { veredito } = conferencia.origin.lancamento;
   const semCodigo = faltaCodigoDaCategoria(conferencia);
+  // 06-19 (crm2:WR-01) — a marca do Agente: ninguém move a conta nem registra à mão até a confirmação.
+  const emCurso = lancamentoEmCursoDe(state, task);
 
   return (
     <Painel>
@@ -334,6 +337,12 @@ export function PainelConferenciaDoResumo({
         <a href={`#comentario-${conferencia.origin.resumoCommentId}`} className="app-sm underline" style={{ color: "var(--texto)" }}>
           Ver o Resumo no tópico
         </a>
+
+        {emCurso ? (
+          <p role="status" className="app-base" style={{ color: "var(--aviso)" }}>
+            O Agente está lançando esta conta no Omie agora. Espere a confirmação neste fio.
+          </p>
+        ) : null}
 
         {controlador.erro ? (
           <p role="alert" className="app-base" style={{ color: "var(--erro)" }}>

@@ -370,7 +370,7 @@ describe("(c)–(f) erro de banco no ciclo", () => {
       intervaloMs: 60_000,
       executarOperacao: async (operacao) => {
         gravacoes += 1;
-        if (gravacoes === 1) throw new Error("Query read timeout");
+        if (gravacoes === 2) throw new Error("Query read timeout");
         return noMemoria(operacao);
       },
     });
@@ -514,7 +514,8 @@ describe("(g) crm:WR-11 — recusa do domínio vira código fixo no log", () => 
       const { controle, executarOperacao } = recusando(estado);
       controle.recusar = true;
       servidor.enfileirar(LANCADO_200);
-      const { ponte, registros } = montar(estado, { executarOperacao });
+      let n = 0;
+      const { ponte, registros } = montar(estado, { executarOperacao: async (op) => (++n === 1 ? executarEmMemoria(estado)(op) : executarOperacao(op)) });
       await ponte.processarContas();
       expect(registros.map((r) => r.dados?.code)).toContain("REGISTRO_RECUSADO_PELO_DOMINIO");
       todos.push(...registros);
