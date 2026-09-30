@@ -414,7 +414,7 @@ Plans:
 - [x] 06-11-PLAN.md — Domínio: Conferência mais estrita (classificador, todas as respostas, sem conferir desatualizada/sem código, tudo ou nada) (RES-02, RES-03)
 - [ ] 06-12-PLAN.md — Ponte: sem lançar de snapshot velho; os 422 v1.2; anexos v1.2; adota 06-11 (RES-01..RES-04)
 - [ ] 06-13-PLAN.md — Ponte: timeouts do ciclo, G3 fechado, chave e avisos persistentes, logs, evento/métrica/classificação por `processStep`, cutucadas (RES-01..RES-03)
-- [ ] 06-14-PLAN.md — Tela: "Responder" no fio, card e fila sem ambiguidade, jornada respondendo no fio (RES-02, RES-06)
+- [x] 06-14-PLAN.md — Tela: "Responder" no fio, card e fila sem ambiguidade, jornada respondendo no fio (RES-02, RES-06)
 - [ ] 06-15-PLAN.md — Docs e as provas de novo (jornada respondendo no fio, 0 `/lancar`) `[BLOCKING]` (RES-06)
 
 Decisões desta fase, com padrão e variável de troca, em `06-CONTEXT.md` (D6-01 quando o Resumo aparece; D6-02 "ok" por comentário; D6-03 falha volta a "para pagar"; D6-04 Integração manual; D6-05 contrato aditivo; D6-06 S5/S6; D6-07 conversão continua botão; D6-08 2 dias úteis; D6-09 revisores; D6-10 códigos como dado; D6-11 três modos; D6-12 cutucão; D6-13 sem nº de NF por IA). O dono ainda não respondeu às quatro perguntas de `docs/08-migracao-financeiro/10-levantamento…`; os padrões seguem "do mesmo jeito que está no ClickUp", exceto D6-04 (o seguro).
@@ -447,7 +447,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 → 6 (0 e 1 em
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
 | 5. Contas a receber e os outros tenants | 25/25 | Complete    | 2026-09-25 |
-| 6. Conferência do Resumo e anexos | 7/15 | In Progress|  |
+| 6. Conferência do Resumo e anexos | 8/15 | In Progress|  |
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*
