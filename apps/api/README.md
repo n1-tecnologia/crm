@@ -147,8 +147,8 @@ conferência e lança no Omie pelo `automation/` (ver
 |---|---|---|
 | `AGENTE_CONTAS_A_PAGAR_MODO` | `ensaio` \| `conferencia` \| `lancar` | D6-11 — `ensaio`: só `/resolver` e log; `conferencia`: Resumos, conferências e revisões, **zero** `/lancar`; `lancar`: tudo. Só os literais exatos; outro valor cai em `ensaio` com aviso. |
 | `AGENTE_CONTAS_A_PAGAR_RESUMO_A_PARTIR_DE` | `para-pagar` \| `em-lancamento-omie` | D6-01 — o Resumo aparece assim que a conta fica completa, ou só ao entrar em "em lançamento omie". |
-| `AGENTE_CONTAS_A_PAGAR_CONFERENCIA_POR_COMENTARIO` | `true` \| `false` | D6-02 — "ok" de um revisor no fio vale como conferência; `false`: só o clique confere (o fio continua pedindo ajuste). |
-| `AGENTE_CONTAS_A_PAGAR_INTEGRACAO_MANUAL` | `nao-encosta` \| `sem-conferencia` | D6-04 — conta Manual: o Agente não encosta; ou Resumo com a Conferência dispensada e lançamento. |
+| `AGENTE_CONTAS_A_PAGAR_CONFERENCIA_POR_COMENTARIO` | `true` \| `false` | D6-02 — "ok" de quem confere no fio vale como conferência; `false`: só o clique confere (o fio continua pedindo ajuste). Com `false`, o Resumo e a tela pedem a conferência pelo botão (a Conferência guarda `aprovacaoPeloFio: false`), e um "ok" no fio recebe, uma vez, a resposta `okPeloFioDesligado` (06-18, crm2:WR-03). |
+| `AGENTE_CONTAS_A_PAGAR_INTEGRACAO_MANUAL` | `nao-encosta` \| `sem-conferencia` | D6-04 — conta Manual: o Agente não encosta; ou Resumo com a Conferência dispensada e lançamento. A dispensa só vale enquanto a conta é "Manual": desmarcar leva o Resumo a uma pessoa, no mesmo fio, e nenhum `/lancar` sai sobre a dispensa (`DISPENSA_SEM_MANUAL`, em qualquer modo — 06-18, crm2:CR-01). |
 | `AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM` | vazio \| texto | G2, **só ambiente de teste** — os dois momentos só olham contas cujo título contém o texto (exato, maiúsculas contam). Produção: vazio. |
 | `AGENTE_CONTAS_A_PAGAR_AVISAR_ID` | vazio \| id de Membro | G3, **só ambiente de teste** — toda Menção da ponte vai a esse Membro no lugar do Financeiro. **Exige `AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM`**: sozinha, a API não sobe (06-13, crm:WR-01). Se o id não for Membro ativo, a ponte **não age** (nenhuma requisição, nenhuma gravação) e avisa a cada ciclo com `AVISAR_ID_INVALIDO`. Produção: vazio. |
 | `AGENTE_CONTAS_A_PAGAR_INTERVALO_MS` | `900000` | O relógio entre ciclos; uma gravação numa conta cutuca a ponte em até 2 s (D6-12). |
@@ -156,6 +156,14 @@ conferência e lança no Omie pelo `automation/` (ver
 
 Contas importadas do ClickUp só entram na ponte depois de um movimento de
 Status feito na plataforma (G1) — o backlog importado nunca é varrido.
+
+**Ordem de implantação (crm2:WR-02).** O `automation/` v1.2 (06-07/06-08: aceita
+`contaConfirmada` e, no título reaproveitado, devolve o `dePara` LIDO DO
+TÍTULO) sobe ANTES desta ponte. Com um `automation/` v1.1 do outro lado, o
+`/lancar` com `contaConfirmada` volta 400 `SCHEMA_INVALIDO` (falha permanente
+em toda conta: cada uma volta para "para pagar" com Menção), e um título
+reaproveitado sem `dePara` vira `REAPROVEITADO_SEM_DE_PARA` — nada é
+registrado, porque a ponte não tem como saber se o título é o da Conferência.
 
 ## 6. Contrato HTTP
 

@@ -108,9 +108,19 @@ pagar" e "em lançamento omie" (ou só nesta, D6-01). Para cada conta:
 
 1. **Integração manual** (D6-04): `nao-encosta` ⇒ nada (nem Resumo, nem
    `/lancar`, nem Comentário); `sem-conferencia` ⇒ segue, e a Conferência é
-   dispensada pelo Membro de serviço (`decideProcessApproval`, clique, motivo
-   "Conferência dispensada (Integração manual)"; o próprio Membro de serviço é
-   o aprovador, para ninguém ser chamado a conferir o dispensado).
+   dispensada pelo Membro de serviço (clique, motivo "Conferência dispensada
+   (Integração manual)"; o próprio Membro de serviço é o aprovador, para
+   ninguém ser chamado a conferir o dispensado). **Desde 06-18 (crm2:CR-01)
+   a dispensa é do domínio e é dado:** `dispensarConferenciaDoResumo` confere
+   "Manual" no estado da GRAVAÇÃO (nunca no `manual` do snapshot) e marca
+   `decisionWaiver = "integracaoManual"`; a dispensa só vale enquanto a conta
+   é "Manual". Desmarcada, o domínio vê a Conferência como `desatualizada`, e
+   o ciclo seguinte publica um Resumo novo, no mesmo fio, para o Financeiro
+   (ou o Membro de G3). Duas corridas, sem parada: "Manual" desmarcado entre
+   a leitura do ciclo e a gravação do Resumo ⇒ `RESUMO_ADIADO`; no passo
+   `pendente`, a dispensa recusada com `recusaDispensaSemManual` ⇒
+   `DISPENSA_ADIADA` (outra recusa continua sendo
+   `DISPENSA_RECUSADA_PELO_DOMINIO`, com parada).
 2. **Faltando dado** (`erpMissingFields`): em "em lançamento omie", o pedido de
    sempre, uma vez; em "para pagar", silêncio (a conta está sendo preenchida).
 3. **`conferenciaDoResumo`** do domínio diz onde a conta está.
@@ -125,7 +135,20 @@ pagar" e "em lançamento omie" (ou só nesta, D6-01). Para cada conta:
    por falta de código (`recusaSemCodigo`) recebe essa resposta no fio (log:
    `RESPOSTA_RECUSADA_PELO_DOMINIO`, nunca o texto da recusa). Numa conta
    Manual com `sem-conferencia`, a pendente COM código é dispensada; a SEM
-   código segue o fio, como qualquer conta.
+   código segue o fio, como qualquer conta. **Quem confere pelo fio é quem
+   confere pelo clique (06-18, crm2:WR-03):** o domínio lê só as respostas de
+   quem `podeDecidirAConferencia` (alcança a conta e é o aprovador designado
+   ou Administrador/Proprietário ativo) — o aprovador de G3 sem papel de
+   Administrador confere respondendo "ok". E nenhum "ok" some em silêncio:
+   `respostaSemEfeitoNoFio` devolve o "ok" de quem não confere
+   (`okDeQuemNaoConfere(<aprovador>)`) e o "ok" de quem confere com a decisão
+   por comentário desligada (`okPeloFioDesligado`), e a ponte responde no fio
+   (log `RESPOSTA_SEM_EFEITO`). O fio é a memória: o domínio descarta a
+   resposta já dada, e nada vai a `EstadoDaConta` — nem depois de um
+   reinício a resposta sai duas vezes. Com `CONFERENCIA_POR_COMENTARIO=false`
+   a publicação leva `aprovacaoPorComentario: false`: o Resumo pede a
+   conferência pelo botão, e a Conferência guarda `aprovacaoPeloFio: false`,
+   que o card e a doca da tela leem.
 5. **`sem-resumo` | `desatualizada` | `ajuste-pedido`** ⇒ Momento 1: UM
    `/resolver` (com `pedidoDeRevisao` e, se o pedido citar um `d.dd.dd`,
    `codigoCategoriaConfirmado`) e UM `publicarResumoParaConferencia` (`motivo:
@@ -149,7 +172,9 @@ pagar" e "em lançamento omie" (ou só nesta, D6-01). Para cada conta:
    (`SAIU_DE_EM_LANCAMENTO`), entrou por movimento
    (`NAO_ENTROU_POR_MOVIMENTO`), está no escopo (`FORA_DO_ESCOPO`), não é
    Manual sob `nao-encosta` (`MANUAL`), não tem lançamento humano registrado
-   (`LANCAMENTO_HUMANO`), e a Conferência vigente é `conferida`
+   (`LANCAMENTO_HUMANO`), não é uma dispensa D6-04 numa conta que deixou de
+   ser Manual (`DISPENSA_SEM_MANUAL`, em qualquer modo — 06-18, crm2:CR-01),
+   e a Conferência vigente é `conferida`
    (`SEM_CONFERENCIA_APROVADA`) e é a mesma que o ciclo leu
    (`CONFERENCIA_TROCADA`). Qualquer código ⇒ zero `/lancar`, nenhum
    Comentário, a conta é esquecida e reavaliada no ciclo seguinte, e o log leva
@@ -180,6 +205,18 @@ pagar" e "em lançamento omie" (ou só nesta, D6-01). Para cada conta:
    Categoria (`lancamentoSemCodigo` do domínio — só uma Conferência aprovada
    antes de 06-11) não vai ao Omie, e o aviso diz como sair: alterar a
    Categoria para sair um Resumo novo. Contrato: `06-GAPS-OUTLINE.md` § v1.2.
+   **O reaproveitado conferido (06-18, crm2:WR-02):** com `reaproveitado:
+   true`, antes do registro, `conferenciaDoReaproveitado` confere o `dePara`
+   que o `automation/` v1.2 LEU DO TÍTULO contra a Conferência relida
+   (`buildResumoDePagamento` sobre a conta relida: conta corrente e código).
+   Diferente ⇒ falha permanente `TITULO_EXISTENTE_DIVERGENTE` com
+   `tituloDivergente(payableId, campos)` (a Conferência fica); sem `dePara`
+   (um `automation/` v1.1) ⇒ falha permanente `REAPROVEITADO_SEM_DE_PARA`
+   (`motivoDoReaproveitadoSemDePara`). Nos dois, nada vira lançamento, a
+   conta volta para "para pagar", e o log leva só `code` e `payableId`.
+   **Ordem de implantação:** o `automation/` v1.2 sobe ANTES desta ponte
+   (`apps/api/README.md` §5b) — com um v1.1, o `/lancar` com
+   `contaConfirmada` volta 400 `SCHEMA_INVALIDO` em toda conta.
 7. **`conferida` em "para pagar"** ⇒ nada: espera o humano mover.
 
 | `AGENTE_CONTAS_A_PAGAR_MODO` (D6-11) | O que a ponte faz |
@@ -253,6 +290,13 @@ restaurada, sem requisição e sem Comentário, com um log `PARADA_RESTAURADA`.
 - a decisão dela, quando não foi o Membro de serviço quem decidiu.
 
 No mesmo milissegundo, a sequência do id desempata.
+
+O aviso de reserva `textoDaRecusaPermanente` (quando o domínio recusa o
+registro da falha) também restaura a parada: ele tem exatamente a forma de
+`falhaSemVolta` sem recusa, e o padrão dela o cobre — um padrão a mais faria
+o texto casar com dois. O caso (n) de `ponte-reaproveitado-conferido.test.ts`
+trava a igualdade das duas formas e o reinício sem `/lancar` novo (06-18,
+crm2:IN-03).
 
 `TEXTOS_DA_CONFERENCIA.falha` fica FORA dos padrões de propósito. Nesse caso a
 conta voltou para "para pagar", e não há parada a restaurar: depois de
