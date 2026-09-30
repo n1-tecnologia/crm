@@ -438,7 +438,7 @@ novo introduzido pelo próprio 06-21 (política de comentário fixa em `true`
 trava a dispensa para sempre quando o espaço desliga a conferência por
 comentário). 0 Críticos.
 
-- [ ] 06-22-PLAN.md — A checagem de resposta pendente respeita a política real de conferência por comentário (RES-02, RES-03)
+- [x] 06-22-PLAN.md — A checagem de resposta pendente respeita a política real de conferência por comentário (RES-02, RES-03)
 
 Decisões desta fase, com padrão e variável de troca, em `06-CONTEXT.md` (D6-01 quando o Resumo aparece; D6-02 "ok" por comentário; D6-03 falha volta a "para pagar"; D6-04 Integração manual; D6-05 contrato aditivo; D6-06 S5/S6; D6-07 conversão continua botão; D6-08 2 dias úteis; D6-09 revisores; D6-10 códigos como dado; D6-11 três modos; D6-12 cutucão; D6-13 sem nº de NF por IA). O dono ainda não respondeu às quatro perguntas de `docs/08-migracao-financeiro/10-levantamento…`; os padrões seguem "do mesmo jeito que está no ClickUp", exceto D6-04 (o seguro).
 
@@ -470,7 +470,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 → 6 (0 e 1 em
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
 | 5. Contas a receber e os outros tenants | 25/25 | Complete    | 2026-09-25 |
-| 6. Conferência do Resumo e anexos | 21/21 | Complete   | 2026-09-30 |
+| 6. Conferência do Resumo e anexos | 22/22 | Complete   | 2026-09-30 |
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*
