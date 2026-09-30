@@ -119,6 +119,12 @@ export const TEXTOS_DA_CONFERENCIA = {
    * Resumo vai a uma pessoa.
    */
   recusaDispensaSemManual: "A conta não é mais de Integração manual: esta Conferência não se dispensa, e o Resumo vai para conferência.",
+  /**
+   * 06-19 (crm2:WR-04) — a porta de teste G3 (`avisarId` com `avisarEstrito`)
+   * aponta para quem não é Membro ativo: a operação recusa sem efeito, em vez
+   * de avisar o Financeiro real.
+   */
+  recusaAvisarInativo: "O Membro indicado para receber os avisos não é um Membro ativo: nada foi gravado.",
   /** Resposta canônica no fio: Conferência aprovada. */
   conferido: (nome: string): string => `✅ Resumo conferido por ${nome}`,
   /** Resposta canônica no fio: ajuste pedido. */

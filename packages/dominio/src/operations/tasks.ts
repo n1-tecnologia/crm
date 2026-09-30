@@ -27,8 +27,15 @@ import type { ActorRef, Comment, FieldRequirement, FieldValue, Id, List, Minutes
 import { memberActor, nextId, recordActivity } from "./activity";
 import { nextOccurrenceRefusal, runningTimer, spawnNextOccurrence } from "./collaboration";
 import { runListAutomations } from "./automations";
-// Módulo-folha (só `import type`): a Conferência vigente e os revisores sem importar `./financeiro` (06-11).
-import { conferenciaVigente, revisoresDoResumo } from "./financeiro-base";
+// Módulo-folha (só `import type`): a Conferência vigente e os revisores sem importar `./financeiro` (06-11);
+// a marca do lançamento em curso e o prefixo do registro humano (06-19).
+import {
+  PREFIXO_LANCAMENTO_HUMANO,
+  RECUSA_LANCAMENTO_EM_CURSO,
+  conferenciaVigente,
+  lancamentoEmCursoDe,
+  revisoresDoResumo,
+} from "./financeiro-base";
 
 const now = (): string => new Date().toISOString();
 
@@ -287,6 +294,14 @@ export function changeTaskStatus(
   }
 
   const before = statusDefinition(state, task.listId, task.statusId);
+  if (task.statusId !== target.id) {
+    // 06-19 (crm2:WR-01) — o Agente está lançando a conta no Omie agora: só
+    // quem marcou (o Membro de serviço, que registra o lançamento ou a falha)
+    // move. Um humano que mexe no meio do `/lancar` produziria um segundo
+    // título. A mesma regra na tela e no endpoint; o lote herda por item.
+    const emCurso = lancamentoEmCursoDe(state, task);
+    if (emCurso && emCurso.porMembroId !== actingMemberId) return fail(RECUSA_LANCAMENTO_EM_CURSO);
+  }
   if (before && before.id !== target.id) {
     // Requisitos de saída do Status atual: o que falta é dito pelo nome, antes de mover.
     const faltando = unmetRequirements(state, task, before.exitRequirements ?? []);
@@ -1539,6 +1554,15 @@ export function addTaskComment(
   }
 
   const actor = input.actor ?? memberActor(actingMemberId);
+  // 06-19 (crm2:WR-01) — o registro humano do lançamento (o diálogo "Lançado
+  // no Omie", que compõe esta operação com `textoDoLancamentoHumano`) não
+  // pode acontecer enquanto o Agente lança a conta: seriam dois títulos. É o
+  // molde de `resolveTaskComment` (06-11), que consulta a Conferência por
+  // `./financeiro-base`. Comentários comuns, e os do Agente, passam.
+  if (actor.kind === "member" && content.startsWith(PREFIXO_LANCAMENTO_HUMANO)) {
+    const emCurso = lancamentoEmCursoDe(state, task);
+    if (emCurso && emCurso.porMembroId !== actingMemberId) return fail(RECUSA_LANCAMENTO_EM_CURSO);
+  }
   const comment: Comment = {
     id: nextId("cmt"),
     author: actor,

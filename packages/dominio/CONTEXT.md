@@ -410,3 +410,37 @@ clique** (`06-REVIEW-2.md`):
   RECENTE (`conferenciaMaisRecente`), mesmo cancelada: depois de
   `superarConferencia`, o Resumo novo responde no fio de antes, com o sufixo
   `superada`, e a conta continua com um fio só de Resumo.
+
+**06-19 — o lançamento em curso e a porta G3 estrita** (`06-REVIEW-2.md`):
+
+- **A marca "Lançamento no Omie em curso" (crm2:WR-01).** Antes de cada
+  `/lancar`, a ponte grava `marcarLancamentoEmCurso(state, ator, taskId)`
+  (fora de `OPERACOES` e da rota; guardas do Agente, conta em "em lançamento
+  omie", Conferência `conferida`, nenhuma marca vigente de outro Membro): um
+  Registro de Atividade do Agente em nome do Membro de serviço. A marca é
+  Atividade, não campo da Tarefa — já é hidratada, é do Agente (não conta como
+  mudança humana na ponte), fica no histórico e não entra na chave da ponte.
+  `lancamentoEmCursoDe(state, task, agora?)` (em `financeiro-base.ts`, pura)
+  olha o mais recente dos quatro Registros do lançamento (`at`, depois a
+  sequência do id): a marca vale até "Lançado no Omie"
+  (`registrarLancamentoNoOmie`), "Lançamento no Omie falhou"
+  (`registrarFalhaDoLancamento`), "Lançamento no Omie interrompido"
+  (`encerrarLancamentoEmCurso`, com o código no `detail`) ou
+  `PRAZO_DO_LANCAMENTO_EM_CURSO_MS` (5 min — a conta se destrava sozinha se a
+  ponte morrer no meio). Os nomes dos Registros são constantes
+  (`REGISTRO_*`), e `PREFIXO_LANCAMENTO_HUMANO` mudou para a base
+  (`financeiro.ts` reexporta tudo).
+- **As duas recusas moram em `tasks.ts`**, para que a tela e o endpoint
+  apliquem a mesma regra: `changeTaskStatus` recusa a OUTRO Membro mudar o
+  Status da conta em lançamento (`RECUSA_LANCAMENTO_EM_CURSO`; o lote herda
+  por item), e `addTaskComment` recusa o registro humano do lançamento (o
+  texto com `PREFIXO_LANCAMENTO_HUMANO`, de Membro). Quem marcou passa — é
+  ele quem move no registro e na falha. Os Campos NÃO travam: uma edição no
+  meio do `/lancar` cai na reconferência de `registrarLancamentoNoOmie`.
+- **A porta G3 estrita (crm2:WR-04).** `avisarEstrito: true` em
+  `publicarResumoParaConferencia` e em `registrarFalhaDoLancamento`: com um
+  `avisarId` que não é Membro ativo, recusa sem efeito com
+  `TEXTOS_DA_CONFERENCIA.recusaAvisarInativo` (antes de qualquer escrita e da
+  idempotência), em vez de cair em silêncio na Maryane. A ponte passa a opção
+  sempre que tem `avisarId`; sem ela, `avisadoDaConferencia` segue a regra de
+  sempre.

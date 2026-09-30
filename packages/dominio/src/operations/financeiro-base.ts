@@ -9,8 +9,10 @@
  * `./financeiro` reexporta `CP`, `impressaoDeLancamento`, `revisoresDoResumo`,
  * `FORMA_DO_CODIGO_DE_CATEGORIA`, `lancamentoSemCodigo`, o tipo
  * `ConferenciaDoResumo` e, desde 06-18, `MOTIVO_DA_DISPENSA`,
- * `dispensaDaConferencia`, `dispensaSemManual` e `conferenciaMaisRecente`:
- * quem já os importa de lá continua importando de lá.
+ * `dispensaDaConferencia`, `dispensaSemManual` e `conferenciaMaisRecente`,
+ * e, desde 06-19, a marca do lançamento em curso (`lancamentoEmCursoDe` e as
+ * constantes) e `PREFIXO_LANCAMENTO_HUMANO`: quem já os importa de lá
+ * continua importando de lá.
  *
  * Puro: nenhuma dependência de execução, nenhum I/O.
  */
@@ -237,4 +239,76 @@ export const FORMA_DO_CODIGO_DE_CATEGORIA = /^\d(\.\d{2}){2,3}$/;
  */
 export function lancamentoSemCodigo(l: { readonly codigo: string; readonly veredito: "resolvida" | "revisar" | "ausente" }): boolean {
   return l.veredito === "ausente" || !FORMA_DO_CODIGO_DE_CATEGORIA.test(l.codigo);
+}
+
+/* ───────────── O lançamento em curso (06-19, crm2:WR-01) ───────────── */
+
+/**
+ * O registro do lançamento feito à mão pelo Financeiro (o diálogo "Lançado
+ * no Omie"). O prefixo é contrato entre `apps/web` (escreve, por
+ * `textoDoLancamentoHumano`) e `apps/api` (lê, por `lancamentoHumanoDe`) —
+ * as duas funções continuam em `./financeiro`. Mora aqui desde 06-19 para que
+ * `./tasks` recuse o registro humano enquanto o Agente lança, sem importar
+ * `./financeiro`; `./financeiro` o reexporta.
+ */
+export const PREFIXO_LANCAMENTO_HUMANO = "Lançado no Omie: ";
+
+/** A marca: a ponte vai chamar o `/lancar` desta conta agora. */
+export const REGISTRO_LANCAMENTO_EM_CURSO = "Lançamento no Omie em curso";
+/** A ponte desistiu do `/lancar` sem registro nem falha permanente (o `detail` é o código). */
+export const REGISTRO_LANCAMENTO_INTERROMPIDO = "Lançamento no Omie interrompido";
+/** Gravado por `registrarLancamentoNoOmie` — também encerra a marca. */
+export const REGISTRO_LANCADO_NO_OMIE = "Lançado no Omie";
+/** Gravado por `registrarFalhaDoLancamento` — também encerra a marca. */
+export const REGISTRO_LANCAMENTO_FALHOU = "Lançamento no Omie falhou";
+
+const REGISTROS_DO_LANCAMENTO: ReadonlySet<string> = new Set([
+  REGISTRO_LANCAMENTO_EM_CURSO,
+  REGISTRO_LANCAMENTO_INTERROMPIDO,
+  REGISTRO_LANCADO_NO_OMIE,
+  REGISTRO_LANCAMENTO_FALHOU,
+]);
+
+/**
+ * Quanto a marca vale sem encerramento: maior que o `/lancar` (60 s na ponte,
+ * `TIMEOUT_LANCAR_MS`) mais o registro, com folga. Se a ponte morrer no meio,
+ * a conta se destrava sozinha — ninguém precisa limpar nada.
+ */
+export const PRAZO_DO_LANCAMENTO_EM_CURSO_MS = 5 * 60_000;
+
+/** A recusa de `changeTaskStatus` e do registro humano enquanto a marca vale — a mesma na tela e no endpoint. */
+export const RECUSA_LANCAMENTO_EM_CURSO =
+  "O Agente está lançando esta conta no Omie agora. Espere a confirmação no fio do Resumo antes de mudar o Status ou de registrar o lançamento à mão.";
+
+/** O contador de `nextId` que gerou o id do Registro — o desempate de `newestFirst` (`../derive`), aqui sem import de valor. */
+function sequenciaDoRegistro(id: Id): number {
+  const n = Number.parseInt(id.slice(id.indexOf("_") + 1), 36);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * 06-19 (crm2:WR-01) — o Agente está lançando esta conta no Omie AGORA? Entre
+ * os quatro Registros do lançamento da Tarefa, o mais recente (por `at`,
+ * empate pela sequência do id — o desempate de `newestFirst`); se ele é a
+ * marca `REGISTRO_LANCAMENTO_EM_CURSO`, em nome de um Membro, e o prazo não
+ * venceu em `agora`, devolve de quando, até quando e em nome de quem. O
+ * registro, a falha e o encerramento, gravados depois, desfazem a marca.
+ *
+ * A marca é Atividade, não campo da Tarefa: já é hidratada, é do Agente (não
+ * conta como mudança humana na ponte) e fica no histórico da conta. Pura.
+ */
+export function lancamentoEmCursoDe(
+  state: DataState,
+  task: Task,
+  agora: string = new Date().toISOString(),
+): { readonly desde: string; readonly ate: string; readonly porMembroId: Id } | undefined {
+  let ultimo: DataState["activity"][number] | undefined;
+  for (const a of state.activity) {
+    if (a.objectType !== "task" || a.objectId !== task.id || !REGISTROS_DO_LANCAMENTO.has(a.action)) continue;
+    if (!ultimo || a.at > ultimo.at || (a.at === ultimo.at && sequenciaDoRegistro(a.id) > sequenciaDoRegistro(ultimo.id))) ultimo = a;
+  }
+  if (!ultimo || ultimo.action !== REGISTRO_LANCAMENTO_EM_CURSO || ultimo.delegate?.kind !== "member") return undefined;
+  const ate = Date.parse(ultimo.at) + PRAZO_DO_LANCAMENTO_EM_CURSO_MS;
+  if (!(ate > Date.parse(agora))) return undefined;
+  return { desde: ultimo.at, ate: new Date(ate).toISOString(), porMembroId: ultimo.delegate.id };
 }

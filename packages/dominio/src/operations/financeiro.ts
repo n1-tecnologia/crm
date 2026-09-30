@@ -26,12 +26,19 @@ import { addMonths } from "./collaboration";
 import {
   CP,
   MOTIVO_DA_DISPENSA,
+  PREFIXO_LANCAMENTO_HUMANO,
+  PRAZO_DO_LANCAMENTO_EM_CURSO_MS,
+  REGISTRO_LANCADO_NO_OMIE,
+  REGISTRO_LANCAMENTO_EM_CURSO,
+  REGISTRO_LANCAMENTO_FALHOU,
+  REGISTRO_LANCAMENTO_INTERROMPIDO,
   conferenciaMaisRecente,
   conferenciaVigente,
   dispensaSemManual,
   ehConferenciaDoResumo,
   fieldValue,
   impressaoDeLancamento,
+  lancamentoEmCursoDe,
   type ConferenciaDoResumo,
 } from "./financeiro-base";
 import { FORMAS_CANONICAS_DO_FIO, TEXTOS_DA_CONFERENCIA, type AnexoDoLancamento } from "./financeiro-textos";
@@ -41,10 +48,18 @@ export {
   CP,
   FORMA_DO_CODIGO_DE_CATEGORIA,
   MOTIVO_DA_DISPENSA,
+  PREFIXO_LANCAMENTO_HUMANO,
+  PRAZO_DO_LANCAMENTO_EM_CURSO_MS,
+  RECUSA_LANCAMENTO_EM_CURSO,
+  REGISTRO_LANCADO_NO_OMIE,
+  REGISTRO_LANCAMENTO_EM_CURSO,
+  REGISTRO_LANCAMENTO_FALHOU,
+  REGISTRO_LANCAMENTO_INTERROMPIDO,
   conferenciaMaisRecente,
   dispensaDaConferencia,
   dispensaSemManual,
   impressaoDeLancamento,
+  lancamentoEmCursoDe,
   lancamentoSemCodigo,
   revisoresDoResumo,
   type ConferenciaDoResumo,
@@ -526,14 +541,15 @@ export function runLancamentoAgent(
  * não se apoia numa junção aproximada.
  */
 
-/**
+/*
  * O registro do lançamento feito à mão pelo Financeiro durante o Ensaio de
  * D3-03 — o lado humano da comparação que 03-14 mede contra o Ensaio do
- * Agente. O prefixo é contrato entre `apps/web` (escreve, por
- * `textoDoLancamentoHumano`) e `apps/api` (lê, por `lancamentoHumanoDe`),
- * sem que nenhum dos dois conheça o outro.
+ * Agente. O prefixo (`PREFIXO_LANCAMENTO_HUMANO`) é contrato entre `apps/web`
+ * (escreve, por `textoDoLancamentoHumano`) e `apps/api` (lê, por
+ * `lancamentoHumanoDe`), sem que nenhum dos dois conheça o outro. Desde 06-19
+ * ele mora em `./financeiro-base` (reexportado acima): `./tasks` recusa o
+ * registro humano enquanto o Agente lança (crm2:WR-01).
  */
-export const PREFIXO_LANCAMENTO_HUMANO = "Lançado no Omie: ";
 
 export interface LancamentoHumano {
   readonly conta: string;
@@ -1091,6 +1107,22 @@ export interface OpcoesDaConferencia {
    * padrão `true`, o texto de sempre.
    */
   readonly aprovacaoPorComentario?: boolean;
+  /**
+   * 06-19 (crm2:WR-04) — a porta de teste G3 falha FECHADA: com `avisarId`
+   * definido que não é Membro ativo, recusa sem efeito
+   * (`TEXTOS_DA_CONFERENCIA.recusaAvisarInativo`), antes de qualquer escrita
+   * e antes da idempotência — em vez de cair em silêncio na regra de sempre
+   * (`avisadoDaConferencia`), que faria a Maryane aprovadora e a mencionaria.
+   * A ponte passa a opção sempre que tem `avisarId`. Opcional e aditivo: sem
+   * ela, nada muda.
+   */
+  readonly avisarEstrito?: true;
+}
+
+/** 06-19 (crm2:WR-04) — `avisarEstrito` com um `avisarId` que não é Membro ativo: a recusa, ou `undefined`. */
+function recusaDoAvisarEstrito(state: DataState, opcoes: { readonly avisarId?: Id; readonly avisarEstrito?: true }): string | undefined {
+  if (!opcoes.avisarEstrito || opcoes.avisarId === undefined) return undefined;
+  return state.members.some((m) => m.id === opcoes.avisarId && m.state === "ativo") ? undefined : TEXTOS_DA_CONFERENCIA.recusaAvisarInativo;
 }
 
 /**
@@ -1121,6 +1153,9 @@ export interface OpcoesDaConferencia {
  * fio de antes, com o sufixo `superada`; e `opcoes.aprovacaoPorComentario:
  * false` (crm2:WR-03) troca o pedido do "ok" pelo do botão nos quatro
  * sufixos e grava `origin.aprovacaoPeloFio = false`.
+ *
+ * 06-19 (crm2:WR-04): com `opcoes.avisarEstrito`, um `avisarId` que não é
+ * Membro ativo recusa sem efeito, logo depois das guardas do Agente.
  */
 export function publicarResumoParaConferencia(
   state: DataState,
@@ -1131,6 +1166,8 @@ export function publicarResumoParaConferencia(
   const guardas = guardasDoAgente(state, actingMemberId, taskId);
   if (typeof guardas === "string") return fail(guardas);
   const { agent, task } = guardas;
+  const avisarInativo = recusaDoAvisarEstrito(state, opcoes);
+  if (avisarInativo) return fail(avisarInativo);
   const faltando = erpMissingFields(state, task);
   if (faltando.length > 0) return fail(`Não publico o Resumo: falta ${faltando.join(", ")}.`);
 
@@ -1369,7 +1406,7 @@ export function registrarLancamentoNoOmie(state: DataState, actingMemberId: Id, 
   recordActivity(state, {
     actor: { kind: "agent", id: agent.id },
     delegate: memberActor(actingMemberId),
-    action: "Lançado no Omie",
+    action: REGISTRO_LANCADO_NO_OMIE,
     objectType: "task",
     objectId: task.id,
     objectName: task.title,
@@ -1399,7 +1436,7 @@ export function registrarLancamentoNoOmie(state: DataState, actingMemberId: Id, 
  *      (Comentário, Registro, `updatedAt`) e publica no lugar dele o texto que
  *      diz que a conta NÃO voltou, com o porquê — o aviso vale mais que a
  *      simetria (06-01), e o texto nunca afirma uma volta que não houve;
- *   4. registra "Lançamento no Omie falhou" por último.
+ *   4. grava o Registro da falha (`REGISTRO_LANCAMENTO_FALHOU`) por último.
  * O Comentário vem antes do Status porque ele se desfaz com segurança, e a
  * mudança de Status não (roda as Automações da Lista).
  *
@@ -1407,7 +1444,9 @@ export function registrarLancamentoNoOmie(state: DataState, actingMemberId: Id, 
  * (`tentaVoltar` sempre falso).
  *
  * `opcoes.avisarId` (aditivo): quem a Menção avisa, no lugar do Financeiro —
- * ver `avisadoDaConferencia`.
+ * ver `avisadoDaConferencia`. Com `opcoes.avisarEstrito` (06-19, crm2:WR-04),
+ * um `avisarId` que não é Membro ativo recusa sem efeito, antes de qualquer
+ * escrita — a porta de teste falha fechada, e a Maryane não é mencionada.
  *
  * `opcoes.superarConferencia` (aditivo, 06-12): com a Conferência vigente
  * `aprovada`, o passo 4 é precedido da superação dela — `decision =
@@ -1427,11 +1466,13 @@ export function registrarFalhaDoLancamento(
   actingMemberId: Id,
   taskId: Id,
   falha: { readonly motivo: string; readonly code: string },
-  opcoes: { readonly avisarId?: Id; readonly superarConferencia?: true } = {},
+  opcoes: { readonly avisarId?: Id; readonly avisarEstrito?: true; readonly superarConferencia?: true } = {},
 ): OperationResult<Task> {
   const guardas = guardasDoAgente(state, actingMemberId, taskId);
   if (typeof guardas === "string") return fail(guardas);
   const { agent, task } = guardas;
+  const avisarInativo = recusaDoAvisarEstrito(state, opcoes);
+  if (avisarInativo) return fail(avisarInativo);
   const motivo = falha.motivo.trim() || "motivo não informado";
   const code = falha.code.trim() || "SEM_CODIGO";
 
@@ -1484,11 +1525,81 @@ export function registrarFalhaDoLancamento(
   recordActivity(state, {
     actor: { kind: "agent", id: agent.id },
     delegate: memberActor(actingMemberId),
-    action: "Lançamento no Omie falhou",
+    action: REGISTRO_LANCAMENTO_FALHOU,
     objectType: "task",
     objectId: task.id,
     objectName: task.title,
     detail: recusaDoStatus ? `${code} — Status não voltou: ${recusaDoStatus}` : code,
+  });
+  return ok(task, task.id);
+}
+
+/**
+ * 06-19 (crm2:WR-01) — a marca "Lançamento no Omie em curso": a ponte vai
+ * chamar o `/lancar` desta conta AGORA. Fora de `OPERACOES` e da rota: só a
+ * ponte chama, numa Unidade de Trabalho imediatamente antes do `/lancar`, e
+ * depois de perguntar de novo, sobre o estado da gravação, se a conta ainda
+ * pode ser lançada.
+ *
+ * Enquanto a marca vale (`lancamentoEmCursoDe`: até o registro, a falha, o
+ * encerramento ou `PRAZO_DO_LANCAMENTO_EM_CURSO_MS`), nenhum OUTRO Membro muda
+ * o Status da conta nem registra o lançamento à mão (`./tasks`). Quem marcou
+ * passa: é ele quem move em `registrarLancamentoNoOmie` e
+ * `registrarFalhaDoLancamento`, e esses Registros encerram a marca.
+ *
+ * Toda recusa antes da escrita: `guardasDoAgente`; a conta em "em lançamento
+ * omie"; a Conferência `conferida`; nenhuma marca vigente de outro Membro.
+ * Uma marca vigente do MESMO Membro é renovada (Registro novo, prazo novo) —
+ * a repetição do `/lancar` depois de um conflito no registro.
+ */
+export function marcarLancamentoEmCurso(state: DataState, actingMemberId: Id, taskId: Id): OperationResult<Task> {
+  const guardas = guardasDoAgente(state, actingMemberId, taskId);
+  if (typeof guardas === "string") return fail(guardas);
+  const { agent, task } = guardas;
+  if (task.statusId !== CP.status.emLancamento) return fail("O lançamento só começa com a conta em “em lançamento omie”.");
+  const { estado } = conferenciaDoResumo(state, task);
+  if (estado !== "conferida") return fail(`Sem Conferência aprovada para os dados atuais (${estado}): o lançamento não começa.`);
+  const agora = now();
+  const vigente = lancamentoEmCursoDe(state, task, agora);
+  if (vigente && vigente.porMembroId !== actingMemberId) return fail("Outro lançamento desta conta já está em curso.");
+  recordActivity(state, {
+    actor: { kind: "agent", id: agent.id },
+    delegate: memberActor(actingMemberId),
+    action: REGISTRO_LANCAMENTO_EM_CURSO,
+    objectType: "task",
+    objectId: task.id,
+    objectName: task.title,
+    at: agora,
+    detail: `até ${new Date(Date.parse(agora) + PRAZO_DO_LANCAMENTO_EM_CURSO_MS).toISOString()}`,
+  });
+  return ok(task, task.id);
+}
+
+/**
+ * 06-19 (crm2:WR-01) — a ponte desiste do `/lancar` sem registro e sem falha
+ * permanente registrada (falha transitória, título não confirmado, conta que
+ * saiu antes do registro, registro recusado, conflito que vira parada): a
+ * marca sai, com um Registro "Lançamento no Omie interrompido" cujo `detail`
+ * é SÓ o código fixo — nunca texto livre. Fora de `OPERACOES`.
+ *
+ * Sem marca vigente, ou com a marca de outro Membro: recusa sem efeito (o
+ * prazo cobre o que ficar).
+ */
+export function encerrarLancamentoEmCurso(state: DataState, actingMemberId: Id, taskId: Id, code: string): OperationResult<Task> {
+  const guardas = guardasDoAgente(state, actingMemberId, taskId);
+  if (typeof guardas === "string") return fail(guardas);
+  const { agent, task } = guardas;
+  const vigente = lancamentoEmCursoDe(state, task);
+  if (!vigente) return fail("Não há lançamento desta conta em curso.");
+  if (vigente.porMembroId !== actingMemberId) return fail("O lançamento em curso desta conta é de outro Membro.");
+  recordActivity(state, {
+    actor: { kind: "agent", id: agent.id },
+    delegate: memberActor(actingMemberId),
+    action: REGISTRO_LANCAMENTO_INTERROMPIDO,
+    objectType: "task",
+    objectId: task.id,
+    objectName: task.title,
+    detail: code.trim() || "SEM_CODIGO",
   });
   return ok(task, task.id);
 }
