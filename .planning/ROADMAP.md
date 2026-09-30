@@ -386,7 +386,7 @@ Antes de planejar: D7/OQ-CR-01 (perguntar ao Financeiro onde o recebimento é co
   4. Nos modos `ensaio` e `conferencia` a contagem de requisições a `/lancar` é zero em qualquer ciclo (asserido com servidor falso); o contrato v1.1 é aditivo e igual nos dois repositórios (hash); `teste:omie-real --lancar --anexo` sobe um anexo de verdade no Omie da Tria e exclui o título no fim.
   5. `handlePlatformApprovalDecision` publica o Resumo na Solicitação depois de `aprovada` e avisa o Solicitante em `rejeitada`, pela porta, nunca por `legacyClickUpRaw()`.
 
-**Plans**: 6 plans
+**Plans**: 15 plans (6 + 9 de fechamento)
 Plans:
 **Wave 1** — domínio e contrato, em paralelo (repositórios diferentes)
 
@@ -404,6 +404,18 @@ Plans:
 - [x] 06-06-PLAN.md — Specs e planos atualizados; as provas (jornada em modo `conferencia`, Omie real com anexo) e o que fica com o dono `[BLOCKING]` (RES-06)
 
 **Ondas de execução:** 1 → [06-01, 06-02] · 2 → [06-03, 06-04] · 3 → [06-05, 06-06]
+
+**Fechamento (gap closure, planejado 2026-09-30)** — a verificação (`06-VERIFICATION.md`: "ok no fio" sem gesto na tela) e a revisão de código (`06-REVIEW.md`, `06-REVIEW-FINANCEIRO-TRIA.md`: 7 críticos) abriram a rodada; escopo "tudo" decidido pelo dono; esboço em `06-GAPS-OUTLINE.md`. Execução estritamente sequencial numa árvore só:
+
+- [ ] 06-07-PLAN.md — `financeiro-tria`: anexos seguros e honestos no `/lancar` (allowlist `CONTAS_A_PAGAR_ANEXOS_HOSTS`, `https:`, prazo, teto, `jaExistia`, códigos fechados; contrato v1.2) (RES-04)
+- [ ] 06-08-PLAN.md — `financeiro-tria`: `/resolver` e `/lancar` só aceitam o que é certo (categoria de despesa/folha/ativa, `TITULO_EXISTENTE_DIVERGENTE`, `CONTA_DIVERGENTE`) (RES-03)
+- [ ] 06-09-PLAN.md — `financeiro-tria`: S5 fora do turno do webhook, idempotente por evento, repetição só do Resumo (RES-05)
+- [ ] 06-10-PLAN.md — `financeiro-tria`: S5 relê a Solicitação, recusa Centro de Custo sem rota, textos fixos, avisos (RES-05)
+- [ ] 06-11-PLAN.md — Domínio: Conferência mais estrita (classificador, todas as respostas, sem conferir desatualizada/sem código, tudo ou nada) (RES-02, RES-03)
+- [ ] 06-12-PLAN.md — Ponte: sem lançar de snapshot velho; os 422 v1.2; anexos v1.2; adota 06-11 (RES-01..RES-04)
+- [ ] 06-13-PLAN.md — Ponte: timeouts do ciclo, G3 fechado, chave e avisos persistentes, logs, evento/métrica/classificação por `processStep`, cutucadas (RES-01..RES-03)
+- [ ] 06-14-PLAN.md — Tela: "Responder" no fio, card e fila sem ambiguidade, jornada respondendo no fio (RES-02, RES-06)
+- [ ] 06-15-PLAN.md — Docs e as provas de novo (jornada respondendo no fio, 0 `/lancar`) `[BLOCKING]` (RES-06)
 
 Decisões desta fase, com padrão e variável de troca, em `06-CONTEXT.md` (D6-01 quando o Resumo aparece; D6-02 "ok" por comentário; D6-03 falha volta a "para pagar"; D6-04 Integração manual; D6-05 contrato aditivo; D6-06 S5/S6; D6-07 conversão continua botão; D6-08 2 dias úteis; D6-09 revisores; D6-10 códigos como dado; D6-11 três modos; D6-12 cutucão; D6-13 sem nº de NF por IA). O dono ainda não respondeu às quatro perguntas de `docs/08-migracao-financeiro/10-levantamento…`; os padrões seguem "do mesmo jeito que está no ClickUp", exceto D6-04 (o seguro).
 
@@ -435,7 +447,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 → 6 (0 e 1 em
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
 | 5. Contas a receber e os outros tenants | 25/25 | Complete    | 2026-09-25 |
-| 6. Conferência do Resumo e anexos | 6/6 | Gaps found |  |
+| 6. Conferência do Resumo e anexos | 6/15 | Gaps — fechamento planejado |  |
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*
