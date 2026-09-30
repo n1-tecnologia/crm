@@ -372,7 +372,7 @@ describe("(j) respostasDeConferenciaPendentes", () => {
     responder(CP.aprovadorId, "ok", raiz);
     responder(admin, `✅ Resumo conferido por ${nome(admin)}`, raiz);
     responder(admin, "🔁 Ajuste pedido por alguém: x", raiz);
-    responder(admin, "⚠️ aviso", raiz);
+    addTaskComment(state, CP.financeiroId, t.id, { content: "⚠️ aviso", parentCommentId: raiz, actor: { kind: "agent", id: CP.agentId } });
     addTaskComment(state, CP.financeiroId, t.id, { content: "ok, mas fora do fio" });
 
     expect(respostasDeConferenciaPendentes(state, t).map((c) => c.id)).toEqual([daMaryane.id, doAdmin.id]);

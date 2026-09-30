@@ -32,7 +32,7 @@ import {
   revisoresDoResumo,
   type ConferenciaDoResumo,
 } from "./financeiro-base";
-import { PREFIXOS_DO_PROCESSO, TEXTOS_DA_CONFERENCIA, type AnexoDoLancamento } from "./financeiro-textos";
+import { FORMAS_CANONICAS_DO_FIO, TEXTOS_DA_CONFERENCIA, type AnexoDoLancamento } from "./financeiro-textos";
 import { addTaskComment, changeTaskStatus, createTask, setTaskFieldValue, trashTask, unmetRequirements } from "./tasks";
 
 export {
@@ -43,7 +43,7 @@ export {
   revisoresDoResumo,
   type ConferenciaDoResumo,
 } from "./financeiro-base";
-export { PREFIXOS_DO_PROCESSO, TEXTOS_DA_CONFERENCIA, type AnexoDoLancamento, type DadosDoLancado } from "./financeiro-textos";
+export { FORMAS_CANONICAS_DO_FIO, PREFIXOS_DO_PROCESSO, TEXTOS_DA_CONFERENCIA, type AnexoDoLancamento, type DadosDoLancado } from "./financeiro-textos";
 
 const now = (): string => new Date().toISOString();
 
@@ -762,9 +762,14 @@ export function conferenciaDoResumo(
  * só enquanto a Conferência vigente está sem decisão; só respostas ao raiz do
  * fio publicadas DEPOIS do Resumo vigente (na ordem do fio); só de Membros de
  * `revisoresDoResumo` (nunca do Agente, nunca de Membro fora da lista); nunca
- * as mensagens do próprio processo (`✅`, `🔁`, `📋`, `⚠️`). Ordenadas por
- * `createdAt`. Quem as transforma em decisão é a ponte, pela
- * `classificarRespostaDeConferencia`.
+ * as respostas canônicas que a decisão publica em nome do decisor
+ * (`FORMAS_CANONICAS_DO_FIO`). Ordenadas por `createdAt`.
+ *
+ * 06-11 (crm:WR-04): as mensagens do processo saem pela AUTORIA (as do Agente)
+ * e pela FORMA EXATA (as canônicas escritas por Membro), nunca pelo emoji
+ * inicial — um revisor que escreve "⚠️ o valor está errado" está pedindo
+ * ajuste, e "✅" sozinho é aprovação. Quem as transforma em decisão é
+ * `decisaoDasRespostasPendentes`, e quem decide é a ponte.
  */
 export function respostasDeConferenciaPendentes(state: DataState, task: Task): Comment[] {
   const conferencia = conferenciaVigente(state, task.id);
@@ -780,9 +785,47 @@ export function respostasDeConferenciaPendentes(state: DataState, task: Task): C
         c.parentCommentId === conferencia.origin.threadCommentId &&
         c.author.kind === "member" &&
         revisores.has(c.author.id) &&
-        !PREFIXOS_DO_PROCESSO.some((p) => c.content.trimStart().startsWith(p) || c.content.trimStart().startsWith(p.replace("️", ""))),
+        !FORMAS_CANONICAS_DO_FIO.some((f) => f.test(c.content.trimStart())),
     )
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+/** O que o lote de respostas pendentes pede: uma decisão com a resposta que a motivou, ou nada. */
+export type DecisaoDasRespostasPendentes =
+  | { readonly sentido: "aprovacao" | "ajuste"; readonly resposta: Comment; readonly ultimaLida: Id }
+  | { readonly sentido: "nenhum"; readonly ultimaLida?: Id };
+
+/**
+ * 06-11 (crm:WR-04) — o que TODAS as respostas pendentes do fio pedem, lidas
+ * em ordem: o PRIMEIRO `ajuste` decide, e vence qualquer `aprovacao` do mesmo
+ * lote (antes ou depois dele); sem ajuste, a primeira `aprovacao` decide, mas
+ * só com `opcoes.aprovacaoPorComentario` (D6-02,
+ * `AGENTE_CONTAS_A_PAGAR_CONFERENCIA_POR_COMENTARIO`); o resto é `nenhum`.
+ * Uma pergunta depois de um pedido de ajuste não o esconde, e um "ok" de um
+ * revisor não atropela o ajuste de outro.
+ *
+ * `ultimaLida` é o id da última resposta pendente — a ponte a guarda para não
+ * reler o mesmo lote. O parâmetro é obrigatório: não há padrão silencioso.
+ * Pura, e não decide nada: quem chama `decideProcessApproval(..., { source:
+ * "comment", reason: resposta.content.trim() })` em nome de
+ * `resposta.author.id` é a ponte.
+ */
+export function decisaoDasRespostasPendentes(
+  state: DataState,
+  task: Task,
+  opcoes: { readonly aprovacaoPorComentario: boolean },
+): DecisaoDasRespostasPendentes {
+  const respostas = respostasDeConferenciaPendentes(state, task);
+  const ultima = respostas.at(-1);
+  if (!ultima) return { sentido: "nenhum" };
+  let aprovacao: Comment | undefined;
+  for (const resposta of respostas) {
+    const sentido = classificarRespostaDeConferencia(resposta.content);
+    if (sentido === "ajuste") return { sentido: "ajuste", resposta, ultimaLida: ultima.id };
+    if (sentido === "aprovacao" && !aprovacao) aprovacao = resposta;
+  }
+  if (aprovacao && opcoes.aprovacaoPorComentario) return { sentido: "aprovacao", resposta: aprovacao, ultimaLida: ultima.id };
+  return { sentido: "nenhum", ultimaLida: ultima.id };
 }
 
 /* A heurística portada do classificador do legado
@@ -803,6 +846,16 @@ const PALAVRAS_DE_APROVACAO = new Set([
   "autorizado", "autorizada", "autorizados", "autorizadas", "autorizo",
 ]);
 const COMPLEMENTOS_DE_PODE = new Set(["seguir", "pagar", "lancar", "liberar", "prosseguir"]);
+/** As palavras que acompanham uma aprovação sem pedir nada ("tudo certo, pode lançar, obrigada"). */
+const CONECTIVOS_DA_APROVACAO = new Set(["pode", "segue", "tudo", "esta", "ta", "e", "obrigado", "obrigada", "valeu", "por", "favor", "pra", "para"]);
+/** 06-11 (crm:CR-03) — as únicas palavras que uma mensagem de aprovação pode ter. */
+const PALAVRAS_DA_APROVACAO_ESTRITA = new Set([...PALAVRAS_DE_APROVACAO, ...COMPLEMENTOS_DE_PODE, ...CONECTIVOS_DA_APROVACAO]);
+/** Mais palavras que isso já é conversa, não aprovação ("tudo certo, pode lançar, obrigada" tem 5). */
+const TETO_DE_PALAVRAS_DA_APROVACAO = 6;
+/** O polegar (com ou sem tom de pele), o visto e o seletor de emoji: os únicos sinais fora das letras. */
+const SINAIS_DE_APROVACAO = /👍|✅|[\u{1F3FB}-\u{1F3FF}]|\u{FE0F}/gu;
+/** Sem os sinais acima, só letras, espaço e pontuação leve: nenhum dígito, emoji ou outro símbolo. */
+const SO_TEXTO_DE_APROVACAO = /^[a-z\s.,;:!]*$/;
 const VERBOS_DE_ADIAMENTO = new Set(["verificar", "conferir", "analisar", "ver", "checar", "olhar"]);
 const PALAVRAS_DE_ESPERA = new Set(["espera", "esperar", "espere"]);
 const comecaCom = (palavra: string, radicais: readonly string[]): boolean => radicais.some((r) => palavra.startsWith(r));
@@ -812,13 +865,29 @@ const comecaCom = (palavra: string, radicais: readonly string[]): boolean => rad
  * sem IA. Ordem (a mesma do legado): (1) recusa/pedido de mudança por radical,
  * "não" na mesma cláusula de um termo de aprovação, ou "Não" seco no começo ⇒
  * `ajuste`; (2) pergunta, "aguardando", "vou verificar" ⇒ `ignorar`; (3)
- * aprovação explícita por palavra inteira ⇒ `aprovacao`; (4) o resto ⇒
- * `ajuste`.
+ * a mensagem INTEIRA é aprovação ⇒ `aprovacao`; (4) o resto ⇒ `ajuste`.
  *
- * Diferença deliberada do legado: lá, "nada casou" é `irrelevant`; aqui, no
- * fio do Resumo, é `ajuste` — o Fluxo 6 trata qualquer resposta de revisor ao
- * RESUMO como pedido de revisão ("segunda-feira" vira um Resumo revisado com
- * esse pedido, e é o Financeiro quem o lê).
+ * O passo 3 é estrito (06-11, crm:CR-03) — quatro condições juntas: (i) toda
+ * palavra normalizada está em `PALAVRAS_DA_APROVACAO_ESTRITA` (as palavras de
+ * aprovação, os complementos de "pode" e os conectivos); (ii) no máximo
+ * `TETO_DE_PALAVRAS_DA_APROVACAO` palavras; (iii) sem 👍, ✅, tom de pele e
+ * seletor de emoji, o texto só tem letras, espaço e pontuação leve — nenhum
+ * dígito, nenhum outro emoji ("👎", "❌", "⚠️"), nenhum outro símbolo ("/",
+ * "$", "-", ":)"); (iv) há ao menos um sinal de aprovação (👍/✅, uma palavra
+ * de aprovação, "pode" + complemento, ou "segue") — "valeu" sozinho não aprova.
+ *
+ * Duas diferenças deliberadas do legado (`adapters/ai.ts:305-343`):
+ * - lá, "nada casou" é `irrelevant`; aqui, no fio do Resumo, é `ajuste` — o
+ *   Fluxo 6 trata qualquer resposta de revisor ao RESUMO como pedido de
+ *   revisão ("segunda-feira" vira um Resumo revisado com esse pedido, e é o
+ *   Financeiro quem o lê);
+ * - lá, basta QUALQUER cláusula ter palavra de aprovação; aqui, a mensagem
+ *   inteira tem de ser aprovação. O erro, quando houver, tem de cair do lado
+ *   do ajuste (custa um Resumo revisado), nunca do lado da aprovação (custa
+ *   um título errado no Omie). Os contraexemplos do review, todos `ajuste`:
+ *   "O valor está certo, mas o vencimento é dia 15", "sim, mas o fornecedor é
+ *   outro", "ok, só falta o boleto", "certo o valor mas a conta é Itaú",
+ *   "👍 mas a categoria é comercial" e "pode lançar dia 20".
  */
 export function classificarRespostaDeConferencia(texto: string): "aprovacao" | "ajuste" | "ignorar" {
   if (!texto.trim()) return "ignorar";
@@ -842,17 +911,16 @@ export function classificarRespostaDeConferencia(texto: string): "aprovacao" | "
   if (palavras.some((p) => p.startsWith("aguard") || PALAVRAS_DE_ESPERA.has(p))) return "ignorar";
   if (clausulas.some((clausula) => clausula.some((p, i) => p === "vou" && VERBOS_DE_ADIAMENTO.has(clausula[i + 1] ?? "")))) return "ignorar";
 
-  // 3) Aprovação explícita, por palavra inteira (ou o polegar/visto).
-  const aprova =
+  // 3) Aprovação: a mensagem INTEIRA, e nada além dela (crm:CR-03).
+  const soPalavrasDeAprovacao = palavras.every((p) => PALAVRAS_DA_APROVACAO_ESTRITA.has(p));
+  const dentroDoTeto = palavras.length <= TETO_DE_PALAVRAS_DA_APROVACAO;
+  const semOutroSimbolo = SO_TEXTO_DE_APROVACAO.test(normalizado.replace(SINAIS_DE_APROVACAO, ""));
+  const temSinal =
     texto.includes("👍") ||
     texto.includes("✅") ||
-    clausulas.some(
-      (clausula) =>
-        clausula.some((p) => PALAVRAS_DE_APROVACAO.has(p)) ||
-        clausula.some((p, i) => p === "pode" && COMPLEMENTOS_DE_PODE.has(clausula[i + 1] ?? "")) ||
-        (clausula.length === 1 && clausula[0] === "segue"),
-    );
-  if (aprova) return "aprovacao";
+    palavras.some((p) => PALAVRAS_DE_APROVACAO.has(p) || p === "segue") ||
+    clausulas.some((clausula) => clausula.some((p, i) => p === "pode" && COMPLEMENTOS_DE_PODE.has(clausula[i + 1] ?? "")));
+  if (soPalavrasDeAprovacao && dentroDoTeto && semOutroSimbolo && temSinal) return "aprovacao";
 
   // 4) Fluxo 6: toda resposta de revisor ao RESUMO é revisão.
   return "ajuste";

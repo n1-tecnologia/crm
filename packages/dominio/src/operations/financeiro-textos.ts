@@ -78,7 +78,21 @@ export const TEXTOS_DA_CONFERENCIA = {
 } as const;
 
 /**
- * Os prefixos das mensagens que o próprio processo escreve no fio — nenhuma
- * delas é resposta de revisor (`respostasDeConferenciaPendentes`).
+ * Os prefixos das mensagens que o próprio processo escreve no fio.
+ *
+ * Deixou de ser o filtro das respostas (06-11, crm:WR-04): um revisor que
+ * escreve "⚠️ o valor está errado" ou "✅" está respondendo, e o emoji
+ * inicial não o torna mensagem do processo. O filtro agora é a autoria e
+ * `FORMAS_CANONICAS_DO_FIO`. Continua exportado por compatibilidade (API
+ * pública de `@n1/dominio/operations`).
  */
 export const PREFIXOS_DO_PROCESSO: readonly string[] = ["✅", "🔁", "📋", "⚠️"];
+
+/**
+ * As formas exatas das respostas que `decideProcessApproval` publica no fio
+ * em nome do DECISOR (`conferido` e `ajuste`, autor Membro): as únicas
+ * mensagens do processo escritas por um Membro. As do Agente (o RESUMO, os
+ * avisos "⚠️", a confirmação do lançamento) saem pela autoria, não por aqui
+ * (`respostasDeConferenciaPendentes`, 06-11, crm:WR-04).
+ */
+export const FORMAS_CANONICAS_DO_FIO: readonly RegExp[] = [/^✅ Resumo conferido por /u, /^🔁 Ajuste pedido por /u];
