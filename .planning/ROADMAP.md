@@ -21,7 +21,7 @@ Fase 0 e Fase 1 correm em paralelo: o que resta da Fase 0 não bloqueia terminar
 - [x] **Phase 3: Contas a pagar** - O Financeiro opera uma semana sem abrir o ClickUp: importação com histórico, motor de Automações executando A1–A9, Agente lançando no Omie de verdade, lote e permissões (completed 2026-09-23)
 - [ ] **Phase 4: As outras telas do financeiro-tria** - As leituras que nunca viveram no ClickUp portadas como tela; `financeiro-tria.vercel.app` sai do ar
 - [x] **Phase 5: Contas a receber e os outros tenants** - Marcos Paulo e Family Office como Empresas do Campo `Empresa`; Contas a receber na forma que D7 determinar; notificar por Canal (gaps_found 2026-09-24 — fechamento de lacunas 05-13..05-25 planejado) (completed 2026-09-25)
-- [ ] **Phase 6: Conferência do Resumo e anexos** - Os Fluxos 5, 6 e 7 da documentação v2 na plataforma: o Agente publica o Resumo ANTES do lançamento, aberto ao Financeiro; conferência por clique ou "ok" no fio, ajuste vira Resumo revisado; o lançamento só sai com conferência, com a categoria confirmada e os anexos no Omie; S5/S6 na Solicitação (planejado 2026-09-29, à mão, a partir dos docs 09 e 10)
+- [x] **Phase 6: Conferência do Resumo e anexos** - Os Fluxos 5, 6 e 7 da documentação v2 na plataforma: o Agente publica o Resumo ANTES do lançamento, aberto ao Financeiro; conferência por clique ou "ok" no fio, ajuste vira Resumo revisado; o lançamento só sai com conferência, com a categoria confirmada e os anexos no Omie; S5/S6 na Solicitação (planejado 2026-09-29, à mão, a partir dos docs 09 e 10) (completed 2026-09-30)
 
 ## Phase Details
 
@@ -423,7 +423,7 @@ Plans:
 - [x] 06-17-PLAN.md — `financeiro-tria`: `/lancar` com orçamento desde a entrada, Storage por prefixo, reaproveitado honesto (RES-04)
 - [x] 06-18-PLAN.md — Dispensa só enquanto Manual; reaproveitado conferido na ponte; quem confere pelo fio = pelo clique (RES-02, RES-03)
 - [x] 06-19-PLAN.md — Marca persistida de lançamento em curso; G3 no meio do ciclo; orçamento de gravações justo (RES-01, RES-03)
-- [ ] 06-20-PLAN.md — Testes completos e as provas de novo, com a autorização do dono `[BLOCKING]` (RES-03, RES-06)
+- [x] 06-20-PLAN.md — Testes completos e as provas de novo, com a autorização do dono `[BLOCKING]` (RES-03, RES-06)
 
 Decisões desta fase, com padrão e variável de troca, em `06-CONTEXT.md` (D6-01 quando o Resumo aparece; D6-02 "ok" por comentário; D6-03 falha volta a "para pagar"; D6-04 Integração manual; D6-05 contrato aditivo; D6-06 S5/S6; D6-07 conversão continua botão; D6-08 2 dias úteis; D6-09 revisores; D6-10 códigos como dado; D6-11 três modos; D6-12 cutucão; D6-13 sem nº de NF por IA). O dono ainda não respondeu às quatro perguntas de `docs/08-migracao-financeiro/10-levantamento…`; os padrões seguem "do mesmo jeito que está no ClickUp", exceto D6-04 (o seguro).
 
@@ -455,7 +455,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 → 6 (0 e 1 em
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
 | 5. Contas a receber e os outros tenants | 25/25 | Complete    | 2026-09-25 |
-| 6. Conferência do Resumo e anexos | 19/20 | In Progress|  |
+| 6. Conferência do Resumo e anexos | 20/20 | Complete   | 2026-09-30 |
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*
