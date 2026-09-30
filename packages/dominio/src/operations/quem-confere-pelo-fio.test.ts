@@ -81,6 +81,11 @@ describe("(i) podeDecidirAConferencia — a régua única", () => {
       Object.fromEntries(["mem_maryane", "mem_walter", "mem_thiago", "mem_rafael", "mem_julia"].map((id) => [id, podeDecidirAConferencia(state, id, conf)]));
     expect(tabela(padrao)).toEqual({ mem_maryane: true, mem_walter: false, mem_thiago: true, mem_rafael: false, mem_julia: false });
 
+    // A de G3 num Espaço novo: sobre a pendente padrão, publicar seria idempotente.
+    state = buildSeed();
+    const t = state.tasks.find((x) => x.id === "tsk_cp_das");
+    if (!t) throw new Error("sem tsk_cp_das");
+    conta = t;
     const g3 = publicar({ avisarId: WALTER });
     expect(g3.approverMemberId).toBe(WALTER);
     expect(tabela(g3)).toEqual({ mem_maryane: false, mem_walter: true, mem_thiago: true, mem_rafael: false, mem_julia: false });

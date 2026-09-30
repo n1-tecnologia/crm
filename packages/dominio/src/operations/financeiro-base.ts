@@ -7,8 +7,10 @@
  * de carga nem em tempo de tipo.
  *
  * `./financeiro` reexporta `CP`, `impressaoDeLancamento`, `revisoresDoResumo`,
- * `FORMA_DO_CODIGO_DE_CATEGORIA`, `lancamentoSemCodigo` e o tipo
- * `ConferenciaDoResumo`: quem já os importa de lá continua importando de lá.
+ * `FORMA_DO_CODIGO_DE_CATEGORIA`, `lancamentoSemCodigo`, o tipo
+ * `ConferenciaDoResumo` e, desde 06-18, `MOTIVO_DA_DISPENSA`,
+ * `dispensaDaConferencia`, `dispensaSemManual` e `conferenciaMaisRecente`:
+ * quem já os importa de lá continua importando de lá.
  *
  * Puro: nenhuma dependência de execução, nenhum I/O.
  */
@@ -77,8 +79,23 @@ export function ehConferenciaDoResumo(a: ApprovalRequest): a is ConferenciaDoRes
 }
 
 /**
- * A Conferência que vale: a MAIS RECENTE da Tarefa (por `createdAt`, empate
- * pela ordem de gravação); se ela estiver `cancelada` ou `expirada`, nenhuma.
+ * A Conferência do Resumo MAIS RECENTE da Tarefa, qualquer que seja a decisão
+ * (por `createdAt`, empate pela ordem de gravação) — mesmo cancelada. É onde
+ * mora o fio do Resumo: depois de uma superação, o Resumo novo responde no
+ * fio dela (06-18, crm2:IN-01), e a conta continua com um fio só.
+ */
+export function conferenciaMaisRecente(state: DataState, taskId: Id): ConferenciaDoResumo | undefined {
+  let maisRecente: ConferenciaDoResumo | undefined;
+  for (const a of state.approvals) {
+    if (!ehConferenciaDoResumo(a) || a.origin.taskId !== taskId) continue;
+    if (!maisRecente || a.createdAt >= maisRecente.createdAt) maisRecente = a;
+  }
+  return maisRecente;
+}
+
+/**
+ * A Conferência que vale: a MAIS RECENTE da Tarefa (`conferenciaMaisRecente`);
+ * se ela estiver `cancelada` ou `expirada`, nenhuma.
  *
  * 06-12 (crm:WR-09): até aqui a regra era "a mais recente que não foi
  * cancelada". Todo fluxo existente dá o mesmo resultado, porque o único
@@ -90,13 +107,42 @@ export function ehConferenciaDoResumo(a: ApprovalRequest): a is ConferenciaDoRes
  * outra coisa, sobre outro momento da conta.
  */
 export function conferenciaVigente(state: DataState, taskId: Id): ConferenciaDoResumo | undefined {
-  let maisRecente: ConferenciaDoResumo | undefined;
-  for (const a of state.approvals) {
-    if (!ehConferenciaDoResumo(a) || a.origin.taskId !== taskId) continue;
-    if (!maisRecente || a.createdAt >= maisRecente.createdAt) maisRecente = a;
-  }
+  const maisRecente = conferenciaMaisRecente(state, taskId);
   if (!maisRecente || maisRecente.decision === "cancelada" || maisRecente.decision === "expirada") return undefined;
   return maisRecente;
+}
+
+/**
+ * D6-04 `sem-conferencia` — o motivo que a ponte grava na dispensa (e no
+ * Registro "Aprovação decidida"). Mora no domínio desde 06-18: a leitura de
+ * compatibilidade de `dispensaDaConferencia` depende desta string exata.
+ */
+export const MOTIVO_DA_DISPENSA = "Conferência dispensada (Integração manual)";
+
+/**
+ * A Conferência foi DISPENSADA (D6-04), não conferida por uma pessoa: aprovada
+ * com `decisionWaiver === "integracaoManual"` (06-18, crm2:CR-01).
+ *
+ * Leitura de compatibilidade, fail-closed, para os registros gravados antes de
+ * 06-18 (sem o campo): a forma que só a ponte gravava — o motivo exato
+ * `MOTIVO_DA_DISPENSA` e o decisor igual ao aprovador (o Membro de serviço que
+ * se designou). Ela só torna uma aprovação MENOS válida, nunca mais.
+ */
+export function dispensaDaConferencia(c: ApprovalRequest): boolean {
+  if (c.decision !== "aprovada") return false;
+  if (c.decisionWaiver === "integracaoManual") return true;
+  return c.decisionWaiver === undefined && c.decisionReason === MOTIVO_DA_DISPENSA && c.decidedByMemberId === c.approverMemberId;
+}
+
+/**
+ * A dispensa não vale mais: a Conferência foi dispensada e a conta deixou de
+ * ser "Manual" (06-18, crm2:CR-01). Desmarcar "Integração manual" é o sinal
+ * de "agora quero conferir": ninguém conferiu nada, e a Conferência não cobre
+ * a conta — em qualquer modo da ponte, inclusive depois de voltar para
+ * `nao-encosta`.
+ */
+export function dispensaSemManual(task: Task, c: ApprovalRequest): boolean {
+  return dispensaDaConferencia(c) && fieldValue(task, CP.fields.integracaoManual) !== "Manual";
 }
 
 /** JSON com as chaves ordenadas em todos os níveis: a mesma conta dá sempre a mesma string, seja qual for a ordem de montagem. */

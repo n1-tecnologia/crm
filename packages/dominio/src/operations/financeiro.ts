@@ -12,7 +12,7 @@
 
 import { agentSeesTask, contactDisplayName, effectiveLifecycleOfTask, memberSeesTask, newestFirst, statusDefinition } from "../derive";
 import { fail, ok, type DataState, type OperationResult } from "../state";
-import type { Agent, AgentExecution, Comment, Contact, Id, Task } from "../types";
+import type { Agent, AgentExecution, ApprovalRequest, Comment, Contact, Id, Task } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
 // Sem ciclo em tempo de carga: `./ai` importa `./tasks`, que importa
 // `./automations`, que importa este arquivo — mas nenhum deles usa o outro no
@@ -21,15 +21,17 @@ import { memberActor, nextId, recordActivity } from "./activity";
 // em `./financeiro-textos` e a impressão, a Conferência vigente e os
 // revisores em `./financeiro-base` (06-11, só `import type`). Nenhum dos dois
 // importa `./financeiro`.
-import { solicitarConferenciaDoResumo } from "./ai";
+import { decideProcessApproval, podeDecidirAConferencia, solicitarConferenciaDoResumo } from "./ai";
 import { addMonths } from "./collaboration";
 import {
   CP,
+  MOTIVO_DA_DISPENSA,
+  conferenciaMaisRecente,
   conferenciaVigente,
+  dispensaSemManual,
   ehConferenciaDoResumo,
   fieldValue,
   impressaoDeLancamento,
-  revisoresDoResumo,
   type ConferenciaDoResumo,
 } from "./financeiro-base";
 import { FORMAS_CANONICAS_DO_FIO, TEXTOS_DA_CONFERENCIA, type AnexoDoLancamento } from "./financeiro-textos";
@@ -38,6 +40,10 @@ import { addTaskComment, changeTaskStatus, createTask, setTaskFieldValue, trashT
 export {
   CP,
   FORMA_DO_CODIGO_DE_CATEGORIA,
+  MOTIVO_DA_DISPENSA,
+  conferenciaMaisRecente,
+  dispensaDaConferencia,
+  dispensaSemManual,
   impressaoDeLancamento,
   lancamentoSemCodigo,
   revisoresDoResumo,
@@ -745,6 +751,13 @@ export type EstadoDaConferencia = "sem-resumo" | "pendente" | "conferida" | "aju
  * Onde a conta está na Conferência. `desatualizada` vence qualquer decisão:
  * uma aprovação para uma impressão que não é mais a da conta não vale.
  * Conferências canceladas (superadas por um Resumo mais novo) não contam.
+ *
+ * 06-18 (crm2:CR-01): também `desatualizada` quando a Conferência foi
+ * DISPENSADA (D6-04) e a conta não é mais "Manual" (`dispensaSemManual`). A
+ * dispensa vale enquanto a conta é "Manual"; desmarcada, ninguém conferiu
+ * nada, e todo consumidor (ponte, `registrarLancamentoNoOmie`, tela) passa a
+ * ver uma Conferência que não cobre a conta — o próximo Resumo vai a uma
+ * pessoa.
  */
 export function conferenciaDoResumo(
   state: DataState,
@@ -754,7 +767,7 @@ export function conferenciaDoResumo(
   const conferencia = conferenciaVigente(state, task.id);
   if (!conferencia) return { estado: "sem-resumo", impressaoAtual };
   const estado: EstadoDaConferencia =
-    conferencia.origin.impressao !== impressaoAtual
+    conferencia.origin.impressao !== impressaoAtual || dispensaSemManual(task, conferencia)
       ? "desatualizada"
       : conferencia.decision === "aprovada"
         ? "conferida"
@@ -765,12 +778,18 @@ export function conferenciaDoResumo(
 }
 
 /**
- * As respostas de revisores no fio do Resumo que ainda não viraram decisão:
+ * As respostas de quem confere no fio do Resumo que ainda não viraram decisão:
  * só enquanto a Conferência vigente está sem decisão; só respostas ao raiz do
- * fio publicadas DEPOIS do Resumo vigente (na ordem do fio); só de Membros de
- * `revisoresDoResumo` (nunca do Agente, nunca de Membro fora da lista); nunca
- * as respostas canônicas que a decisão publica em nome do decisor
- * (`FORMAS_CANONICAS_DO_FIO`). Ordenadas por `createdAt`.
+ * fio publicadas DEPOIS do Resumo vigente (na ordem do fio); só de Membros que
+ * podem decidir ESTA Conferência (`podeDecidirAConferencia` — nunca do
+ * Agente); nunca as respostas canônicas que a decisão publica em nome do
+ * decisor (`FORMAS_CANONICAS_DO_FIO`). Ordenadas por `createdAt`.
+ *
+ * 06-18 (crm2:WR-03): o filtro de autoria era `revisoresDoResumo`, e o
+ * conjunto de quem confere pelo fio divergia do de quem confere pelo clique
+ * (o aprovador de G3 sem papel de Administrador respondia em silêncio; a
+ * Maryane sob G3 era lida e recusada). D6-09 continua como regra de tela
+ * para resolver o fio; quem DECIDE é `podeDecidirAConferencia`.
  *
  * 06-11 (crm:WR-04): as mensagens do processo saem pela AUTORIA (as do Agente)
  * e pela FORMA EXATA (as canônicas escritas por Membro), nunca pelo emoji
@@ -783,7 +802,6 @@ export function respostasDeConferenciaPendentes(state: DataState, task: Task): C
   if (!conferencia || conferencia.decision !== undefined) return [];
   const posicaoDoResumo = task.comments.findIndex((c) => c.id === conferencia.origin.resumoCommentId);
   if (posicaoDoResumo < 0) return [];
-  const revisores = new Set(revisoresDoResumo(state));
   return task.comments
     .slice(posicaoDoResumo + 1)
     .filter(
@@ -791,7 +809,7 @@ export function respostasDeConferenciaPendentes(state: DataState, task: Task): C
         !c.deletedAt &&
         c.parentCommentId === conferencia.origin.threadCommentId &&
         c.author.kind === "member" &&
-        revisores.has(c.author.id) &&
+        podeDecidirAConferencia(state, c.author.id, conferencia) &&
         !FORMAS_CANONICAS_DO_FIO.some((f) => f.test(c.content.trimStart())),
     )
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -833,6 +851,55 @@ export function decisaoDasRespostasPendentes(
   }
   if (aprovacao && opcoes.aprovacaoPorComentario) return { sentido: "aprovacao", resposta: aprovacao, ultimaLida: ultima.id };
   return { sentido: "nenhum", ultimaLida: ultima.id };
+}
+
+/**
+ * 06-18 (crm2:WR-03) — o "ok" no fio que NÃO confere, e o que o Agente
+ * responde a ele: nunca silêncio. Pura; quem comenta é a ponte.
+ *
+ * Só com a Conferência vigente pendente. Olha as respostas de Membro ao raiz
+ * do fio, depois do Resumo vigente, fora de `FORMAS_CANONICAS_DO_FIO`, que
+ * `classificarRespostaDeConferencia` dá `aprovacao`. Candidatas:
+ *   (i) de quem não pode decidir esta Conferência (`podeDecidirAConferencia`)
+ *       ⇒ `okDeQuemNaoConfere(<aprovador>)`;
+ *  (ii) de quem decide, com `aprovacaoPorComentario === false` e o lote em
+ *       `nenhum` (um ajuste no lote decide, e nada há a responder) ⇒
+ *       `okPeloFioDesligado`.
+ * O fio é a memória (como em crm:WR-07): descarta a candidata que já tem,
+ * DEPOIS dela no fio, um Comentário do Agente com exatamente esse texto — a
+ * mesma resposta nunca sai duas vezes, nem depois de um reinício. Devolve a
+ * MAIS RECENTE que sobrar.
+ */
+export function respostaSemEfeitoNoFio(
+  state: DataState,
+  task: Task,
+  opcoes: { readonly aprovacaoPorComentario: boolean },
+): { readonly resposta: Comment; readonly texto: string } | undefined {
+  const vigente = conferenciaVigente(state, task.id);
+  if (!vigente || vigente.decision !== undefined) return undefined;
+  const posicaoDoResumo = task.comments.findIndex((c) => c.id === vigente.origin.resumoCommentId);
+  if (posicaoDoResumo < 0) return undefined;
+  const fio = vigente.origin.threadCommentId;
+  const lote = decisaoDasRespostasPendentes(state, task, opcoes);
+  const aprovador = nomeDoMembro(state, vigente.approverMemberId);
+  let escolhida: { readonly resposta: Comment; readonly texto: string } | undefined;
+  for (let i = posicaoDoResumo + 1; i < task.comments.length; i++) {
+    const c = task.comments[i];
+    if (!c || c.deletedAt || c.parentCommentId !== fio || c.author.kind !== "member") continue;
+    if (FORMAS_CANONICAS_DO_FIO.some((f) => f.test(c.content.trimStart()))) continue;
+    if (classificarRespostaDeConferencia(c.content) !== "aprovacao") continue;
+    const texto = !podeDecidirAConferencia(state, c.author.id, vigente)
+      ? TEXTOS_DA_CONFERENCIA.okDeQuemNaoConfere(aprovador)
+      : !opcoes.aprovacaoPorComentario && lote.sentido === "nenhum"
+        ? TEXTOS_DA_CONFERENCIA.okPeloFioDesligado
+        : undefined;
+    if (texto === undefined) continue;
+    const jaRespondida = task.comments
+      .slice(i + 1)
+      .some((r) => r.author.kind === "agent" && r.author.id === CP.agentId && !r.deletedAt && r.parentCommentId === fio && r.content === texto);
+    if (!jaRespondida) escolhida = { resposta: c, texto };
+  }
+  return escolhida;
 }
 
 /* A heurística portada do classificador do legado
@@ -1016,6 +1083,14 @@ export interface OpcoesDaConferencia {
    * depois de uma rejeição, e por isso é ela quem diz qual.
    */
   readonly conferenciaRejeitadaId?: Id;
+  /**
+   * 06-18 (crm2:WR-03): `false` quando o "ok" pelo fio não confere
+   * (`AGENTE_CONTAS_A_PAGAR_CONFERENCIA_POR_COMENTARIO=false`): os textos do
+   * Resumo pedem a conferência pelo botão, e a Conferência guarda
+   * `origin.aprovacaoPeloFio = false`, que a tela lê. Opcional e aditivo:
+   * padrão `true`, o texto de sempre.
+   */
+  readonly aprovacaoPorComentario?: boolean;
 }
 
 /**
@@ -1040,6 +1115,12 @@ export interface OpcoesDaConferencia {
  * `opcoes.conferenciaRejeitadaId`, recusa sem efeito se essa Conferência não
  * é mais a vigente rejeitada. As duas guardas vêm antes da idempotência e de
  * qualquer escrita.
+ *
+ * 06-18: o fio é o da Conferência MAIS RECENTE, mesmo cancelada
+ * (crm2:IN-01) — depois de `superarConferencia`, o Resumo novo é resposta no
+ * fio de antes, com o sufixo `superada`; e `opcoes.aprovacaoPorComentario:
+ * false` (crm2:WR-03) troca o pedido do "ok" pelo do botão nos quatro
+ * sufixos e grava `origin.aprovacaoPeloFio = false`.
  */
 export function publicarResumoParaConferencia(
   state: DataState,
@@ -1074,13 +1155,20 @@ export function publicarResumoParaConferencia(
   const quemPediu = opcoes.pedidoPor ?? (anterior?.decision === "rejeitada" ? anterior.decidedByMemberId : undefined) ?? actingMemberId;
   const financeiroId = avisadoDaConferencia(state, actingMemberId, opcoes.avisarId);
   const financeiro = nomeDoMembro(state, financeiroId);
+  const porComentario = opcoes.aprovacaoPorComentario !== false;
+  // 06-18 (crm2:IN-01): o fio é o da Conferência MAIS RECENTE, mesmo
+  // cancelada — depois de uma superação, o Resumo novo responde no fio de
+  // antes, e a conta continua com um fio só de Resumo.
+  const maisRecente = conferenciaMaisRecente(state, task.id);
   const sufixo = pedido
-    ? TEXTOS_DA_CONFERENCIA.revisado(nomeDoMembro(state, quemPediu), pedido, financeiro)
+    ? TEXTOS_DA_CONFERENCIA.revisado(nomeDoMembro(state, quemPediu), pedido, financeiro, porComentario)
     : opcoes.motivo === "dados-mudaram" || atual.estado === "desatualizada"
-      ? TEXTOS_DA_CONFERENCIA.dadosMudaram(financeiro)
-      : TEXTOS_DA_CONFERENCIA.chamada(financeiro);
+      ? TEXTOS_DA_CONFERENCIA.dadosMudaram(financeiro, porComentario)
+      : !anterior && maisRecente?.decision === "cancelada"
+        ? TEXTOS_DA_CONFERENCIA.superada(financeiro, porComentario)
+        : TEXTOS_DA_CONFERENCIA.chamada(financeiro, porComentario);
 
-  const raiz = anterior ? task.comments.find((c) => c.id === anterior.origin.threadCommentId && !c.deletedAt) : undefined;
+  const raiz = maisRecente ? task.comments.find((c) => c.id === maisRecente.origin.threadCommentId && !c.deletedAt) : undefined;
   const antes = { activity: state.activity.length, comments: task.comments.length, approvals: state.approvals.length, resolvido: raiz?.resolved };
   const desfazer = (motivo: string): OperationResult<never> => {
     task.comments.splice(antes.comments);
@@ -1119,6 +1207,7 @@ export function publicarResumoParaConferencia(
     impressao: atual.impressaoAtual,
     lancamento: { conta: resumo.conta, categoria: resumo.categoria, codigo: resumo.codigo, veredito: resumo.veredito },
     approverMemberId: financeiroId,
+    ...(porComentario ? {} : { aprovacaoPeloFio: false as const }),
   });
   if (!conferencia.ok) return desfazer(conferencia.error);
   const aberta = conferencia.value;
@@ -1147,6 +1236,37 @@ export function publicarResumoParaConferencia(
     detail: tripla,
   });
   return ok({ comentario: comentario.value, conferencia: aberta, resumo }, aberta.id);
+}
+
+/**
+ * D6-04 `sem-conferencia` — a ponte DISPENSA a Conferência de uma conta de
+ * Integração manual (06-18, crm2:CR-01). Fora de `OPERACOES` e da rota: só a
+ * ponte chama, como `publicarResumoParaConferencia`.
+ *
+ * A decisão é tomada sobre o estado RECEBIDO — dentro da Unidade de Trabalho,
+ * o da gravação, nunca o snapshot do começo do ciclo. Ordem, e toda recusa
+ * antes de qualquer escrita: a Conferência existe e é do Resumo;
+ * `guardasDoAgente`; ela é a vigente e está sem decisão; a conta é "Manual"
+ * AGORA (senão `recusaDispensaSemManual`); então `decideProcessApproval`
+ * (clique, `MOTIVO_DA_DISPENSA` — as guardas de impressão e de código
+ * continuam valendo) e, só com `ok`, a marca `decisionWaiver =
+ * "integracaoManual"`, que faz a dispensa valer só enquanto a conta for
+ * "Manual" (`dispensaSemManual`).
+ */
+export function dispensarConferenciaDoResumo(state: DataState, actingMemberId: Id, conferenciaId: Id): OperationResult<ApprovalRequest> {
+  const conferencia = state.approvals.find((a) => a.id === conferenciaId);
+  if (!conferencia || !ehConferenciaDoResumo(conferencia)) return fail("Conferência do Resumo não encontrada.");
+  const guardas = guardasDoAgente(state, actingMemberId, conferencia.origin.taskId);
+  if (typeof guardas === "string") return fail(guardas);
+  const { task } = guardas;
+  if (conferenciaVigente(state, task.id)?.id !== conferencia.id || conferencia.decision !== undefined) {
+    return fail("Esta Conferência não é mais a vigente pendente: nada foi dispensado.");
+  }
+  if (fieldValue(task, CP.fields.integracaoManual) !== "Manual") return fail(TEXTOS_DA_CONFERENCIA.recusaDispensaSemManual);
+  const decidida = decideProcessApproval(state, actingMemberId, conferencia.id, "aprovada", { source: "click", reason: MOTIVO_DA_DISPENSA });
+  if (!decidida.ok) return decidida;
+  decidida.value.decisionWaiver = "integracaoManual";
+  return decidida;
 }
 
 /** O que a ponte recebe do `/lancar` e entrega ao domínio. */

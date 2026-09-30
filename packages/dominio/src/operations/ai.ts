@@ -15,7 +15,7 @@ import type {
   ChatSession,
   Id,
 } from "../types";
-import { contactDisplayName, effectiveListConfig } from "../derive";
+import { contactDisplayName, effectiveListConfig, memberSeesTask } from "../derive";
 import { memberActor, nextId, recordActivity, systemActor } from "./activity";
 import { addTaskComment, changeTaskStatus } from "./tasks";
 // Os textos da Conferência, a impressão e a forma do código moram fora de
@@ -78,6 +78,26 @@ function mayDecideApproval(state: DataState, actingMemberId: Id, approverMemberI
     role?.base === "administrador" ||
     role?.base === "proprietario"
   );
+}
+
+/**
+ * Quem pode decidir a Conferência do Resumo — a régua ÚNICA, pelo fio e pela
+ * tela (06-18, crm2:WR-03): alcança a conta (`memberSeesTask`) e é o
+ * aprovador designado ou um Membro ativo de Papel base
+ * Administrador/Proprietário (`mayDecideApproval`). Filtra as respostas do fio
+ * (`respostasDeConferenciaPendentes`) e decide os botões do card; antes, o fio
+ * lia `revisoresDoResumo` e o clique, o aprovador — e o aprovador de G3 sem
+ * papel de Administrador respondia "ok" em silêncio.
+ *
+ * `decideProcessApproval` aplica o mesmo `mayDecideApproval`, e o alcance vem
+ * da resposta canônica (`addTaskComment`, que recusa quem não alcança).
+ */
+export function podeDecidirAConferencia(
+  state: DataState,
+  memberId: Id,
+  conferencia: { readonly approverMemberId: Id; readonly origin: { readonly taskId: Id } },
+): boolean {
+  return memberSeesTask(state, memberId, conferencia.origin.taskId) && mayDecideApproval(state, memberId, conferencia.approverMemberId);
 }
 
 /** O status do Conjunto de Status efetivo da Lista cujo nome bate exatamente. */
@@ -268,6 +288,12 @@ export interface SolicitarConferenciaDoResumoInput {
   readonly impressao: string;
   readonly lancamento: { readonly conta: string; readonly categoria: string; readonly codigo: string; readonly veredito: "resolvida" | "revisar" | "ausente" };
   readonly approverMemberId: Id;
+  /**
+   * 06-18 (crm2:WR-03): `false` quando a Conferência não aceita o "ok" pelo
+   * fio (`AGENTE_CONTAS_A_PAGAR_CONFERENCIA_POR_COMENTARIO=false`); vai para
+   * `origin.aprovacaoPeloFio`, que a tela lê. Ausente: o "ok" vale.
+   */
+  readonly aprovacaoPeloFio?: false;
 }
 
 /**
@@ -325,6 +351,7 @@ export function solicitarConferenciaDoResumo(
       resumoCommentId: input.resumoCommentId,
       impressao: input.impressao,
       lancamento: { ...input.lancamento },
+      ...(input.aprovacaoPeloFio === false ? { aprovacaoPeloFio: false as const } : {}),
     },
     requestedBy: memberActor(actingMemberId),
     reason: "processo",

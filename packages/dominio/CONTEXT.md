@@ -368,3 +368,45 @@ Conferência VIGENTE daquele fio ou um Membro de `revisoresDoResumo` — só par
 RESOLVER (06-11, crm:IN-02). O aprovador de uma Conferência cancelada não
 resolve, e ninguém reabre pela exceção: reabrir o fio não reabre a
 Conferência, cuja decisão fica.
+
+**06-18 — a dispensa só enquanto "Manual", e quem confere pelo fio = pelo
+clique** (`06-REVIEW-2.md`):
+
+- **A dispensa é dado (crm2:CR-01).** A dispensa D6-04 (`sem-conferencia`)
+  grava `ApprovalRequest.decisionWaiver = "integracaoManual"` e só vale
+  enquanto o Campo "Integração manual" da conta é "Manual":
+  `dispensaSemManual(task, c)` (em `financeiro-base.ts`, com
+  `dispensaDaConferencia` e `MOTIVO_DA_DISPENSA`, que saiu da ponte) faz
+  `conferenciaDoResumo` devolver `desatualizada` — e com isso
+  `registrarLancamentoNoOmie` recusa, a ponte publica um Resumo novo para uma
+  pessoa e a tela mostra a conta como a conferir. Leitura de compatibilidade,
+  fail-closed, para registros de antes de 06-18: aprovada sem o campo, com o
+  motivo exato `MOTIVO_DA_DISPENSA` e decisor = aprovador (a forma que só a
+  ponte gravava) também é dispensa.
+- **`dispensarConferenciaDoResumo(state, ator, conferenciaId)`** — fora de
+  `OPERACOES` e da rota (só a ponte chama): decide sobre o estado RECEBIDO
+  (dentro da Unidade de Trabalho, o da gravação), recusa sem efeito com
+  `recusaDispensaSemManual` se a conta não é mais "Manual", aplica
+  `decideProcessApproval` (as guardas de impressão e de código valem) e só
+  então marca `decisionWaiver`.
+- **`podeDecidirAConferencia(state, memberId, conferencia)` (em `ai.ts`,
+  crm2:WR-03)** é a régua única de quem confere: alcança a conta e é o
+  aprovador designado ou Administrador/Proprietário ativo. Filtra as
+  respostas do fio (`respostasDeConferenciaPendentes`, que antes usava
+  `revisoresDoResumo`) e os botões da tela. `revisoresDoResumo` (D6-09)
+  continua valendo para RESOLVER o fio.
+- **`respostaSemEfeitoNoFio(state, task, { aprovacaoPorComentario })`** — o
+  "ok" que não confere e o texto que o Agente responde:
+  `okDeQuemNaoConfere(<aprovador>)` a quem não pode decidir;
+  `okPeloFioDesligado` a quem decide, com a decisão por comentário desligada
+  e nenhum ajuste no lote. O fio é a memória: uma resposta já respondida pelo
+  Agente, com o mesmo texto, depois dela, é descartada.
+- **`aprovacaoPorComentario: false`** em `publicarResumoParaConferencia`
+  troca o pedido do "ok" pelo do botão (`chamada`, `revisado`,
+  `dadosMudaram`, `superada`) e grava `origin.aprovacaoPeloFio = false`, que
+  o card e a doca leem (D6-10: dado, não configuração). Sem a opção, o texto
+  é o de sempre, byte a byte.
+- **O fio único (crm2:IN-01).** O fio do Resumo é o da Conferência MAIS
+  RECENTE (`conferenciaMaisRecente`), mesmo cancelada: depois de
+  `superarConferencia`, o Resumo novo responde no fio de antes, com o sufixo
+  `superada`, e a conta continua com um fio só de Resumo.

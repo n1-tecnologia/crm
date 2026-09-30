@@ -122,6 +122,13 @@ export type ApprovalOrigin =
         readonly codigo: string;
         readonly veredito: "resolvida" | "revisar" | "ausente";
       };
+      /**
+       * A Conferência não aceita o "ok" pelo fio —
+       * `AGENTE_CONTAS_A_PAGAR_CONFERENCIA_POR_COMENTARIO=false` no momento da
+       * publicação; a tela lê daqui, D6-10: dado, não configuração (06-18,
+       * crm2:WR-03). Ausente: o "ok" pelo fio vale.
+       */
+      readonly aprovacaoPeloFio?: false;
     };
 
 /**
@@ -160,6 +167,13 @@ export interface ApprovalRequest {
   decisionSource?: "click" | "comment";
   /** D-09 — o motivo, obrigatório em `rejeitada` de processo. */
   decisionReason?: string;
+  /**
+   * D6-04 — esta aprovação é a DISPENSA da conferência de uma conta de
+   * Integração manual, gravada pelo Membro de serviço da ponte; não é
+   * conferência humana, e só vale enquanto a conta for "Manual" (06-18,
+   * crm2:CR-01).
+   */
+  decisionWaiver?: "integracaoManual";
   readonly createdAt: Instant;
 }
 

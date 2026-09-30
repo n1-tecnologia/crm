@@ -67,14 +67,58 @@ function trechoDosAnexos(d: DadosDoLancado): { readonly resumo: string; readonly
 
 const PEDIDO_DE_CONFERENCIA = 'responda "ok" para eu lançar, ou diga o que ajustar.';
 
+/**
+ * O pedido quando a Conferência NÃO aceita o "ok" pelo fio (06-18,
+ * crm2:WR-03): `AGENTE_CONTAS_A_PAGAR_CONFERENCIA_POR_COMENTARIO=false`.
+ * Nenhum texto promete o "ok" que não vale; o ajuste pelo fio continua aberto.
+ */
+const PEDIDO_PELO_BOTAO = 'use o botão "Conferido, pode lançar", no card da conta, para eu lançar, ou responda aqui o que ajustar.';
+
+/** O pedido da Conferência: pelo fio (padrão) ou só pelo botão. */
+const pedidoDaConferencia = (porComentario: boolean): string => (porComentario ? PEDIDO_DE_CONFERENCIA : PEDIDO_PELO_BOTAO);
+
 export const TEXTOS_DA_CONFERENCIA = {
-  /** Depois do bloco do RESUMO, na primeira publicação. */
-  chamada: (financeiro: string): string => `\n\n${financeiro}, confira: responda "ok" para eu lançar, ou diga o que ajustar.`,
+  /**
+   * Depois do bloco do RESUMO, na primeira publicação. `porComentario`
+   * (06-18): `false` troca o pedido do "ok" pelo do botão; o padrão é o texto
+   * de sempre, byte a byte.
+   */
+  chamada: (financeiro: string, porComentario = true): string => `\n\n${financeiro}, confira: ${pedidoDaConferencia(porComentario)}`,
   /** Depois do bloco do RESUMO, quando um revisor pediu ajuste. */
-  revisado: (nome: string, pedido: string, financeiro: string): string =>
-    `\n\nRevisado a pedido de ${nome}: "${pedido}".\n${financeiro}, confira de novo: ${PEDIDO_DE_CONFERENCIA}`,
+  revisado: (nome: string, pedido: string, financeiro: string, porComentario = true): string =>
+    `\n\nRevisado a pedido de ${nome}: "${pedido}".\n${financeiro}, confira de novo: ${pedidoDaConferencia(porComentario)}`,
   /** Depois do bloco do RESUMO, quando a conta mudou depois da conferência. */
-  dadosMudaram: (financeiro: string): string => `\n\nOs dados da conta mudaram depois da conferência.\n${financeiro}, confira de novo: ${PEDIDO_DE_CONFERENCIA}`,
+  dadosMudaram: (financeiro: string, porComentario = true): string =>
+    `\n\nOs dados da conta mudaram depois da conferência.\n${financeiro}, confira de novo: ${pedidoDaConferencia(porComentario)}`,
+  /**
+   * Depois do bloco do RESUMO, quando a Conferência anterior foi superada
+   * (`registrarFalhaDoLancamento(…, { superarConferencia: true })`, depois de
+   * `CONTA_DIVERGENTE`): o Resumo novo responde no MESMO fio (06-18,
+   * crm2:IN-01). O `confira: ` sem "de novo" é de propósito — é o pedido de
+   * sempre para o Resumo que substitui o anterior.
+   */
+  superada: (financeiro: string, porComentario = true): string =>
+    `\n\nEste Resumo substitui o anterior, que não serve mais ao lançamento.\n${financeiro}, confira: ${pedidoDaConferencia(porComentario)}`,
+  /**
+   * Resposta do Agente no fio a um "ok" de quem não confere este Resumo
+   * (06-18, crm2:WR-03): quem confere pelo fio é quem confere pelo clique
+   * (`podeDecidirAConferencia`). Sai uma vez por resposta.
+   */
+  okDeQuemNaoConfere: (aprovador: string): string => `Esta resposta não confere o Resumo: quem confere é ${aprovador} ou um Administrador.`,
+  /**
+   * Resposta do Agente no fio a um "ok" de quem confere, quando a
+   * Conferência não aceita o "ok" pelo fio
+   * (`AGENTE_CONTAS_A_PAGAR_CONFERENCIA_POR_COMENTARIO=false`, 06-18,
+   * crm2:WR-03). Sai uma vez por resposta.
+   */
+  okPeloFioDesligado:
+    'Esta resposta não confere o Resumo: aqui a conferência é pelo botão "Conferido, pode lançar", no card da conta. Para pedir ajuste, responda neste fio o que mudar.',
+  /**
+   * Recusa de `dispensarConferenciaDoResumo` (06-18, crm2:CR-01): no estado
+   * da gravação, a conta não é mais "Manual" — a dispensa D6-04 não cabe, e o
+   * Resumo vai a uma pessoa.
+   */
+  recusaDispensaSemManual: "A conta não é mais de Integração manual: esta Conferência não se dispensa, e o Resumo vai para conferência.",
   /** Resposta canônica no fio: Conferência aprovada. */
   conferido: (nome: string): string => `✅ Resumo conferido por ${nome}`,
   /** Resposta canônica no fio: ajuste pedido. */
