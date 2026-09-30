@@ -27,7 +27,11 @@
  *      `/lancar` com o código conferido e os anexos, e o domínio registra o
  *      título (`registrarLancamentoNoOmie`) ou a falha, que volta a conta
  *      para "para pagar" (`registrarFalhaDoLancamento`, D6-03). **Sem
- *      Conferência aprovada, nenhuma requisição a `/lancar`.**
+ *      Conferência aprovada, nenhuma requisição a `/lancar`** — aprovada
+ *      para o estado relido imediatamente antes da chamada (06-12, crm:CR-01):
+ *      entre a hidratação do ciclo e o `/lancar` cabem vários `/resolver` e
+ *      `/lancar`, então a ponte relê o Espaço e pergunta tudo de novo
+ *      (`motivoParaNaoLancar`), e o corpo sai do estado relido.
  *
  * **Três modos (D6-11), só por literal exato.** `ensaio` (padrão) só chama
  * `/resolver` e registra em log o que publicaria/lançaria — nada gravado na
@@ -67,7 +71,7 @@
 import { randomUUID } from "node:crypto";
 import type { ActivityRecord, DataState, Id, OperationResult, Task } from "@n1/dominio";
 import { ok } from "@n1/dominio";
-import { newestFirst, statusDefinition } from "@n1/dominio/derive";
+import { effectiveLifecycleOfTask, newestFirst, statusDefinition } from "@n1/dominio/derive";
 import { decideProcessApproval } from "@n1/dominio/operations/ai";
 import { runScheduledAutomations } from "@n1/dominio/operations/automations";
 import {
@@ -79,6 +83,7 @@ import {
   conferenciaDoResumo,
   erpMissingFields,
   impressaoDeLancamento,
+  lancamentoHumanoDe,
   movidaDepoisDaImportacao,
   publicarResumoParaConferencia,
   registrarFalhaDoLancamento,
@@ -456,6 +461,51 @@ function dentroDoEscopo(task: Task, soTitulosCom: string | undefined): boolean {
   return titulo.includes(soTitulosCom);
 }
 
+/** Por que a ponte não chama o `/lancar` agora (06-12, crm:CR-01) — só o código vai ao log. */
+export type CodigoDeAdiamento =
+  | "CONTA_SUMIU"
+  | "INATIVA"
+  | "SAIU_DE_EM_LANCAMENTO"
+  | "NAO_ENTROU_POR_MOVIMENTO"
+  | "FORA_DO_ESCOPO"
+  | "MANUAL"
+  | "LANCAMENTO_HUMANO"
+  | "SEM_CONFERENCIA_APROVADA"
+  | "CONFERENCIA_TROCADA";
+
+/**
+ * crm:CR-01 (06-12) — a mesma lista de condições do laço de
+ * `processarContas`, perguntada de novo sobre o estado de AGORA: entre a
+ * hidratação do ciclo e o `/lancar` cabem vários `/resolver` (10 s) e
+ * `/lancar` (60 s) de outras contas, e lançar com o que se leu minutos antes
+ * é gastar dinheiro com dado velho. A primeira pergunta que falha decide o
+ * código; `undefined` quer dizer "pode lançar".
+ *
+ * `conferidaId` é a Conferência que o ciclo leu: a vigente de agora tem de
+ * ser ELA, e `conferida` (o que já quer dizer "aprovada para a impressão
+ * atual"). Manual só conta sob `nao-encosta` — em `sem-conferencia` a conta
+ * Manual É lançada (D6-04). Pura.
+ */
+export function motivoParaNaoLancar(
+  fresco: DataState,
+  taskId: Id,
+  conferidaId: Id,
+  criterio: { readonly listId: Id; readonly soTitulosCom?: string; readonly integracaoManual: OpcoesDeDecisao["integracaoManual"] },
+): CodigoDeAdiamento | undefined {
+  const atual = fresco.tasks.find((t) => t.id === taskId && t.listId === criterio.listId);
+  if (!atual) return "CONTA_SUMIU";
+  if (effectiveLifecycleOfTask(fresco, atual.id) !== "ativo") return "INATIVA";
+  if (atual.statusId !== CP.status.emLancamento) return "SAIU_DE_EM_LANCAMENTO";
+  if (!entrouPorMovimento(fresco, atual)) return "NAO_ENTROU_POR_MOVIMENTO";
+  if (!dentroDoEscopo(atual, criterio.soTitulosCom)) return "FORA_DO_ESCOPO";
+  if (criterio.integracaoManual === "nao-encosta" && valorDoCampo(atual, CP.fields.integracaoManual) === "Manual") return "MANUAL";
+  if (lancamentoHumanoDe(fresco, atual) !== undefined) return "LANCAMENTO_HUMANO";
+  const { estado, conferencia } = conferenciaDoResumo(fresco, atual);
+  if (estado !== "conferida" || !conferencia) return "SEM_CONFERENCIA_APROVADA";
+  if (conferencia.id !== conferidaId) return "CONFERENCIA_TROCADA";
+  return undefined;
+}
+
 interface CorpoResolver {
   readonly taskId: string;
   readonly centroDeCusto: string;
@@ -556,8 +606,24 @@ export const TEXTO_NASCEU_EM_LANCAMENTO =
 export const TEXTO_SEM_CODIGO_CONFERIDO =
   "Não consegui lançar no Omie: o Resumo conferido não tem um código de Categoria do Omie. Responda no fio do Resumo com o código (ex.: 2.02.98) e confira de novo.";
 
+/**
+ * A conta saiu de "em lançamento omie" durante o `/lancar`. Não promete
+ * registrar "sem lançar de novo": desde 06-08 o `automation/` compara o
+ * título existente com o pedido (`TITULO_EXISTENTE_DIVERGENTE`), então o
+ * título só é reaproveitado se tiver os dados da Conferência vigente.
+ */
 export const TEXTO_SAIU_ANTES_DO_REGISTRO =
-  'O Omie confirmou o lançamento desta conta, mas ela saiu de "em lançamento omie" antes de eu registrar o lançamento. Se ela voltar para "em lançamento omie", eu registro sem lançar de novo.';
+  'O Omie confirmou o lançamento desta conta, mas ela saiu de "em lançamento omie" antes de eu registrá-lo: nada foi registrado aqui, e o título continua no Omie. Confira o título no Omie. Se a conta voltar para "em lançamento omie", eu só registro este título se ele tiver os dados da Conferência vigente; se não tiver, aviso e não lanço de novo.';
+
+/** O título existe no Omie, mas o domínio recusou o registro (06-12): o aviso cita o título, para ninguém lançar à mão em dobro. */
+export function textoDoRegistroRecusado(payableId: string, erro: string): string {
+  return `O Omie confirmou o lançamento desta conta (título ${payableId}), mas não consegui registrá-lo nem movê-la para "lançado omie": ${erro} Confira e mova à mão.`;
+}
+
+/** O título existe no Omie, mas o registro conflitou em todas as tentativas (06-12). */
+export function textoDoRegistroEmConflito(payableId: string): string {
+  return `O Omie confirmou o lançamento desta conta (título ${payableId}), mas não consegui registrá-lo e movê-la para "lançado omie" depois de ${TENTATIVAS_TRANSITORIAS} tentativas (CONFLITO_DE_REVISAO). Confira e mova à mão.`;
+}
 
 /** D6-04 `sem-conferencia` — o motivo gravado na decisão (e no Registro "Aprovação decidida"). */
 export const MOTIVO_DA_DISPENSA = "Conferência dispensada (Integração manual)";
@@ -949,12 +1015,21 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
         }
       }
 
-      /** Momento 2 (Fluxo 7) — só com Conferência aprovada para os dados atuais, só no modo `lancar`. */
+      /**
+       * Momento 2 (Fluxo 7) — só com Conferência aprovada para os dados
+       * atuais, só no modo `lancar`. crm:CR-01 (06-12): as guardas
+       * persistentes saem do snapshot, sem releitura; depois a ponte RELÊ o
+       * Espaço e pergunta tudo de novo (`motivoParaNaoLancar`) imediatamente
+       * antes do `/lancar`, e o corpo sai do estado relido.
+       */
       async function momentoDoLancamento(conferida: ConferenciaDoResumo): Promise<void> {
-        const base = corpoResolverDe(state, task);
-        const corpoLancar = base ? corpoLancarDe(task, base) : undefined;
-        if (!corpoLancar) {
-          await parar("recusa", "Não consegui lançar no Omie: o Valor precisa ser um número maior que zero. Corrija e eu tento de novo.", "Valor inválido.", "lançaria");
+        const criterio = { listId, ...(soTitulosCom ? { soTitulosCom } : {}), integracaoManual: decisoes.integracaoManual };
+        // (1) Sobre o snapshot: o que não muda sozinho (na prática, o
+        // lançamento humano — o resto o laço já filtrou). Sem Comentário.
+        const doSnapshot = motivoParaNaoLancar(state, task.id, conferida.id, criterio);
+        if (doSnapshot) {
+          deste.parada = "recusa";
+          registrar("info", "Lançamento não sai: a conta não está pronta.", { ...daConta, code: doSnapshot });
           return;
         }
         // `ausente` (a Categoria não casou no de-para) traz o código de
@@ -965,10 +1040,42 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
           await parar("recusa", TEXTO_SEM_CODIGO_CONFERIDO, "Resumo conferido sem código de Categoria válido.", "lançaria");
           return;
         }
+
+        // (2) A releitura. Falhar ⇒ nenhuma requisição, e uma falha
+        // transitória com código fixo (nunca a mensagem da exceção).
+        let fresco: DataState;
+        try {
+          fresco = await hidratarEstado();
+        } catch {
+          registrar("warn", "Não consegui reler a conta antes do lançamento.", { ...daConta, code: "RELEITURA_FALHOU" });
+          await falhaTransitoria("RELEITURA_FALHOU", "lançaria");
+          return;
+        }
+
+        // (3) As mesmas perguntas, sobre o estado de agora. Qualquer diferença
+        // ⇒ ZERO `/lancar`: a conta é esquecida e reavaliada no ciclo seguinte.
+        const adiamento = motivoParaNaoLancar(fresco, task.id, conferida.id, criterio);
+        const atual = fresco.tasks.find((t) => t.id === task.id);
+        const confAtual = atual ? conferenciaDoResumo(fresco, atual).conferencia : undefined;
+        if (adiamento || !atual || !confAtual) {
+          estadoPorConta.delete(task.id);
+          registrar("info", "Lançamento adiado: a conta mudou depois da leitura do ciclo.", { ...daConta, code: adiamento ?? "CONTA_SUMIU" });
+          return;
+        }
+
+        // (4) Daqui em diante, tudo sai do estado relido.
+        const base = corpoResolverDe(fresco, atual);
+        const corpoLancar = base ? corpoLancarDe(atual, base) : undefined;
+        if (!corpoLancar) {
+          await parar("recusa", "Não consegui lançar no Omie: o Valor precisa ser um número maior que zero. Corrija e eu tento de novo.", "Valor inválido.", "lançaria");
+          return;
+        }
+        const codigoAtual = confAtual.origin.lancamento.codigo;
         // As URLs valem 5 min: geradas agora, logo antes do `/lancar`. Só a contagem vai ao log.
-        const { anexos, avisos } = await anexosDaConta(state, task, opcoes.assinarAnexo);
+        const { anexos, avisos } = await anexosDaConta(fresco, atual, opcoes.assinarAnexo);
         if (avisos.length > 0) registrar("warn", "Anexos da conta que não vão ao Omie.", { ...daConta, anexos: anexos.length, avisos: avisos.length });
-        const corpo = { ...corpoLancar, codigoCategoriaConfirmado: codigoConferido, ...(anexos.length > 0 ? { anexos } : {}) };
+        const corpo = { ...corpoLancar, codigoCategoriaConfirmado: codigoAtual, ...(anexos.length > 0 ? { anexos } : {}) };
+        // (5)
         const resposta = await chamar(CAMINHO_LANCAR, corpo, { timeoutMs: timeoutLancarMs, idempotencyKey: chaveDeIdempotencia(task.id) });
         if (!resposta.ok) {
           if (resposta.permanente) await falhaPermanente(resposta.motivo, resposta.code);
@@ -988,18 +1095,18 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
         const atorId = await atorDaEscrita();
         let saiuAntes = false;
         const r = await executarOperacao((s) => {
-          const atual = s.tasks.find((t) => t.id === task.id);
-          saiuAntes = !atual || atual.statusId !== CP.status.emLancamento;
+          const naHora = s.tasks.find((t) => t.id === task.id);
+          saiuAntes = !naHora || naHora.statusId !== CP.status.emLancamento;
           if (saiuAntes) return ok(undefined);
           return registrarLancamentoNoOmie(s, atorId, task.id, resultado);
         });
         if (r.ok && saiuAntes) {
           // Alguém moveu a conta durante o `/lancar`: o título existe no
           // Omie, mas nada foi registrado aqui. Se ela voltar para "em
-          // lançamento omie", a mesma chave devolve o mesmo título
-          // (`reaproveitado`) e o registro sai — sem lançar de novo.
+          // lançamento omie", a mesma chave só reaproveita o título se ele
+          // tiver os dados do pedido (06-08, `TITULO_EXISTENTE_DIVERGENTE`).
           estadoPorConta.delete(task.id);
-          registrar("warn", 'Lançada no Omie, mas a conta saiu de "em lançamento omie" antes do registro; nada foi gravado.', daConta);
+          registrar("warn", 'Lançada no Omie, mas a conta saiu de "em lançamento omie" antes do registro; nada foi gravado.', { ...daConta, payableId });
           await comentar(TEXTO_SAIU_ANTES_DO_REGISTRO);
         } else if (r.ok) {
           estadoPorConta.delete(task.id);
@@ -1007,20 +1114,12 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
         } else if ("conflito" in r && r.conflito) {
           // Outra escrita entrou no meio: o próximo ciclo repete com a MESMA
           // chave, e o Omie devolve o mesmo título (`reaproveitado`).
-          registrar("warn", "Lançada no Omie, mas a gravação conflitou; tento de novo no próximo ciclo.", daConta);
-          await falhaTransitoria(
-            "CONFLITO_DE_REVISAO",
-            "lançaria",
-            `O Omie confirmou o lançamento desta conta, mas não consegui registrá-lo e movê-la para "lançado omie" depois de ${TENTATIVAS_TRANSITORIAS} tentativas (CONFLITO_DE_REVISAO). Confira e mova à mão.`,
-          );
+          registrar("warn", "Lançada no Omie, mas a gravação conflitou; tento de novo no próximo ciclo.", { ...daConta, payableId, code: "CONFLITO_DE_REVISAO" });
+          await falhaTransitoria("CONFLITO_DE_REVISAO", "lançaria", textoDoRegistroEmConflito(payableId));
         } else {
-          registrar("warn", `Lançada no Omie, mas não consegui registrar o lançamento: ${r.error.slice(0, 200)}`, daConta);
-          await parar(
-            "recusa",
-            `O Omie confirmou o lançamento desta conta, mas não consegui registrá-lo nem movê-la para "lançado omie": ${r.error} Confira e mova à mão.`,
-            "lançada, mas sem registro.",
-            "lançaria",
-          );
+          // T-3-04: o log leva o id do título e o código, nunca `r.error`.
+          registrar("warn", "Lançada no Omie, mas não consegui registrar o lançamento.", { ...daConta, payableId, code: "REGISTRO_RECUSADO_PELO_DOMINIO" });
+          await parar("recusa", textoDoRegistroRecusado(payableId, r.error), "lançada, mas sem registro.", "lançaria");
         }
       }
 
