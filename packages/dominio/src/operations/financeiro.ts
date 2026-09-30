@@ -43,7 +43,14 @@ export {
   revisoresDoResumo,
   type ConferenciaDoResumo,
 } from "./financeiro-base";
-export { FORMAS_CANONICAS_DO_FIO, PREFIXOS_DO_PROCESSO, TEXTOS_DA_CONFERENCIA, type AnexoDoLancamento, type DadosDoLancado } from "./financeiro-textos";
+export {
+  FORMAS_CANONICAS_DO_FIO,
+  PREFIXOS_DO_PROCESSO,
+  TEXTOS_DA_CONFERENCIA,
+  type AnexoDoLancamento,
+  type CampoDivergente,
+  type DadosDoLancado,
+} from "./financeiro-textos";
 
 const now = (): string => new Date().toISOString();
 
@@ -992,6 +999,23 @@ export interface OpcoesDaConferencia {
    * aditivo: sem ele, a regra de sempre. Não muda `revisoresDoResumo`.
    */
   readonly avisarId?: Id;
+  /**
+   * A impressão de lançamento sobre a qual quem chama resolveu o de-para (o
+   * snapshot da ponte). Diferente da impressão atual ⇒ recusa sem efeito: o
+   * de-para foi resolvido para OUTRA conta (06-11, crm:WR-12). Opcional e
+   * aditivo: sem ela, nada muda.
+   */
+  readonly impressaoEsperada?: string;
+  /**
+   * A Conferência rejeitada que este Resumo revisado responde. Se ela não é
+   * mais a vigente, ou não está `rejeitada`, recusa sem efeito — um segundo
+   * Resumo revisado para o mesmo pedido nunca sai em dobro (06-11,
+   * crm:WR-12). A regra depende desta opção, e não de `pedidoDeRevisao`
+   * sozinho, porque revisar sobre uma Conferência PENDENTE é um uso válido do
+   * domínio (`conferencia-do-resumo.test.ts` (e) e (i)); só a ponte revisa
+   * depois de uma rejeição, e por isso é ela quem diz qual.
+   */
+  readonly conferenciaRejeitadaId?: Id;
 }
 
 /**
@@ -1010,6 +1034,12 @@ export interface OpcoesDaConferencia {
  *
  * Tudo ou nada: uma recusa depois do Comentário desfaz o Comentário e os
  * Registros.
+ *
+ * 06-11 (crm:WR-12): com `opcoes.impressaoEsperada`, recusa sem efeito se a
+ * conta mudou desde a leitura de quem chama; com
+ * `opcoes.conferenciaRejeitadaId`, recusa sem efeito se essa Conferência não
+ * é mais a vigente rejeitada. As duas guardas vêm antes da idempotência e de
+ * qualquer escrita.
  */
 export function publicarResumoParaConferencia(
   state: DataState,
@@ -1025,6 +1055,12 @@ export function publicarResumoParaConferencia(
 
   const atual = conferenciaDoResumo(state, task);
   const anterior = atual.conferencia;
+  if (opcoes.impressaoEsperada !== undefined && opcoes.impressaoEsperada !== atual.impressaoAtual) {
+    return fail("Os dados da conta mudaram desde a leitura: o Resumo não foi publicado.");
+  }
+  if (opcoes.conferenciaRejeitadaId !== undefined && (anterior?.id !== opcoes.conferenciaRejeitadaId || anterior.decision !== "rejeitada")) {
+    return fail("A Conferência que pediu este ajuste não é mais a vigente: o Resumo revisado não foi publicado.");
+  }
   const resumo = buildResumoDePagamento(state, task, opcoes.dePara);
   const pedidoInformado = opcoes.pedidoDeRevisao?.trim() || undefined;
 
@@ -1119,6 +1155,8 @@ export interface ResultadoDoLancamento {
   /** O Omie já tinha o título (consulta antes de incluir): nada novo foi criado. */
   readonly reaproveitado: boolean;
   readonly anexos: ReadonlyArray<AnexoDoLancamento>;
+  /** Quantos anexos a ponte pediu (06-11, aditivo) — a confirmação conta pelo pedido, não só pela resposta. */
+  readonly anexosPedidos?: number;
 }
 
 const RECUSA_POR_ESTADO: Readonly<Record<Exclude<EstadoDaConferencia, "conferida">, string>> = {
@@ -1153,7 +1191,15 @@ export function registrarLancamentoNoOmie(state: DataState, actingMemberId: Id, 
   if (!payableId || payableId.startsWith("mock-")) return fail("O Omie não devolveu um título válido.");
 
   const { conta, categoria, codigo } = conferencia.origin.lancamento;
-  const texto = TEXTOS_DA_CONFERENCIA.lancado({ payableId, conta, categoria, codigo, reaproveitado: resultado.reaproveitado, anexos: resultado.anexos });
+  const texto = TEXTOS_DA_CONFERENCIA.lancado({
+    payableId,
+    conta,
+    categoria,
+    codigo,
+    reaproveitado: resultado.reaproveitado,
+    anexos: resultado.anexos,
+    ...(resultado.anexosPedidos !== undefined ? { anexosPedidos: resultado.anexosPedidos } : {}),
+  });
   const raiz = task.comments.find((c) => c.id === conferencia.origin.threadCommentId && !c.deletedAt);
   const antes = { activity: state.activity.length, comments: task.comments.length, executions: state.agentExecutions.length, resolvido: raiz?.resolved };
   const desfazer = (motivo: string, field?: string): OperationResult<Task> => {
@@ -1220,13 +1266,25 @@ export function registrarLancamentoNoOmie(state: DataState, actingMemberId: Id, 
  * o motivo no fio (resposta, se há fio; raiz, se não), com Menção ao
  * Financeiro, e a conta VOLTA para "para pagar" — texto canônico
  * `Não consegui lançar no Omie: {motivo} ({code}). A conta voltou para "para pagar".`
- * A volta só acontece a partir de "em lançamento omie"; se o Status recusar,
- * o aviso fica mesmo assim (vale mais que a simetria), dizendo que a conta
- * NÃO voltou, e o Registro guarda o porquê. O `motivo` fica só no Comentário
- * (pode citar fornecedor); o Registro guarda o `code`.
+ * O `motivo` fica só no Comentário (pode citar fornecedor); o Registro
+ * guarda o `code`.
  *
- * Alternativa de D6-03 (ficar em "em lançamento omie"): é tirar a chamada a
- * `changeTaskStatus` abaixo.
+ * Tudo ou nada (06-11, crm:WR-10): as guardas são `guardasDoAgente`, as
+ * mesmas das operações irmãs, e a ordem é pensada para que uma recusa nunca
+ * deixe metade:
+ *   1. decide se tenta voltar (só a partir de "em lançamento omie");
+ *   2. publica o aviso PRIMEIRO — se o Comentário for recusado, nada foi
+ *      escrito ainda;
+ *   3. volta o Status; se a volta for RECUSADA, desfaz o aviso recém-criado
+ *      (Comentário, Registro, `updatedAt`) e publica no lugar dele o texto que
+ *      diz que a conta NÃO voltou, com o porquê — o aviso vale mais que a
+ *      simetria (06-01), e o texto nunca afirma uma volta que não houve;
+ *   4. registra "Lançamento no Omie falhou" por último.
+ * O Comentário vem antes do Status porque ele se desfaz com segurança, e a
+ * mudança de Status não (roda as Automações da Lista).
+ *
+ * Alternativa de D6-03 (ficar em "em lançamento omie"): é tirar o passo 3
+ * (`tentaVoltar` sempre falso).
  *
  * `opcoes.avisarId` (aditivo): quem a Menção avisa, no lugar do Financeiro —
  * ver `avisadoDaConferencia`.
@@ -1238,30 +1296,41 @@ export function registrarFalhaDoLancamento(
   falha: { readonly motivo: string; readonly code: string },
   opcoes: { readonly avisarId?: Id } = {},
 ): OperationResult<Task> {
-  const agent = state.agents.find((a) => a.id === CP.agentId);
-  if (!agent || agent.lifecycle !== "ativo") return fail("Agente de lançamento não está ativo.");
-  const task = state.tasks.find((t) => t.id === taskId);
-  if (!task || task.listId !== CP.listId || effectiveLifecycleOfTask(state, taskId) !== "ativo") return fail("Conta a pagar não encontrada ou inativa.");
+  const guardas = guardasDoAgente(state, actingMemberId, taskId);
+  if (typeof guardas === "string") return fail(guardas);
+  const { agent, task } = guardas;
   const motivo = falha.motivo.trim() || "motivo não informado";
   const code = falha.code.trim() || "SEM_CODIGO";
 
-  let recusaDoStatus: string | undefined;
-  let voltou = false;
-  if (task.statusId === CP.status.emLancamento) {
-    const volta = changeTaskStatus(state, actingMemberId, task.id, CP.status.paraPagar);
-    voltou = volta.ok;
-    if (!volta.ok) recusaDoStatus = volta.error;
-  }
-  const texto = voltou ? TEXTOS_DA_CONFERENCIA.falha(motivo, code) : TEXTOS_DA_CONFERENCIA.falhaSemVolta(motivo, code, recusaDoStatus);
-
+  const tentaVoltar = task.statusId === CP.status.emLancamento;
   const vigente = conferenciaVigente(state, task.id);
   const raiz = vigente ? task.comments.find((c) => c.id === vigente.origin.threadCommentId && !c.deletedAt) : undefined;
-  const comentario = addTaskComment(state, actingMemberId, task.id, {
-    content: texto,
-    mentions: [{ type: "member", id: avisadoDaConferencia(state, actingMemberId, opcoes.avisarId) }],
-    actor: { kind: "agent", id: agent.id },
-    ...(raiz ? { parentCommentId: raiz.id } : {}),
-  });
+  const avisar = (texto: string) =>
+    addTaskComment(state, actingMemberId, task.id, {
+      content: texto,
+      mentions: [{ type: "member", id: avisadoDaConferencia(state, actingMemberId, opcoes.avisarId) }],
+      actor: { kind: "agent", id: agent.id },
+      ...(raiz ? { parentCommentId: raiz.id } : {}),
+    });
+
+  const antes = { activity: state.activity.length, comments: task.comments.length, updatedAt: task.updatedAt };
+  const aviso = avisar(tentaVoltar ? TEXTOS_DA_CONFERENCIA.falha(motivo, code) : TEXTOS_DA_CONFERENCIA.falhaSemVolta(motivo, code));
+  if (!aviso.ok) return fail(aviso.error, aviso.field);
+
+  let recusaDoStatus: string | undefined;
+  if (tentaVoltar) {
+    const volta = changeTaskStatus(state, actingMemberId, task.id, CP.status.paraPagar);
+    if (!volta.ok) {
+      recusaDoStatus = volta.error;
+      // O aviso publicado dizia que a conta voltou: sai, e entra o que diz que não.
+      task.comments.splice(antes.comments);
+      // `recordActivity` insere no INÍCIO: os Registros novos estão nos primeiros índices.
+      state.activity.splice(0, state.activity.length - antes.activity);
+      task.updatedAt = antes.updatedAt;
+      const semVolta = avisar(TEXTOS_DA_CONFERENCIA.falhaSemVolta(motivo, code, recusaDoStatus));
+      if (!semVolta.ok) return fail(semVolta.error, semVolta.field);
+    }
+  }
 
   recordActivity(state, {
     actor: { kind: "agent", id: agent.id },
@@ -1272,7 +1341,6 @@ export function registrarFalhaDoLancamento(
     objectName: task.title,
     detail: recusaDoStatus ? `${code} — Status não voltou: ${recusaDoStatus}` : code,
   });
-  if (!comentario.ok) return fail(comentario.error, comentario.field);
   return ok(task, task.id);
 }
 

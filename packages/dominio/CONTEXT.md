@@ -325,21 +325,25 @@ tocado**.
 
 Os Fluxos 5, 6 e 7 do módulo TRIA, como o `financeiro-tria/automation` faz no
 ClickUp (`.planning/phases/06-conferencia-do-resumo-e-anexos/06-CONTEXT.md`).
-Tudo em `operations/financeiro.ts` (e a decisão em `operations/ai.ts`), puro:
+Tudo em `operations/financeiro.ts` (e a decisão em `operations/ai.ts`), puro.
+O plano 06-11 fechou no domínio os achados do review (`06-REVIEW.md`:
+crm:CR-03, WR-03, WR-04, WR-08, WR-10, WR-12, IN-02, IN-03):
 
 | Símbolo | O que faz |
 |---|---|
-| `publicarResumoParaConferencia(state, ator, taskId, { dePara, pedidoDeRevisao?, pedidoPor?, motivo? })` | O Agente publica o `📋 RESUMO DE PAGAMENTO` (byte a byte, CON-CP-08) seguido da chamada ao Financeiro — raiz na primeira vez, resposta no MESMO fio nas seguintes —, SEM resolver o fio, e abre a Conferência (`solicitarConferenciaDoResumo`, que cancela a pendente anterior: "Conferência superada"). Idempotente para a mesma impressão; tudo ou nada. |
-| `decideProcessApproval` (ramo `processStep: "resumo"`) | Clique e resposta no fio convergem: resposta canônica no fio, decisão/fonte/motivo gravados, fio resolvido na aprovação; `rejeitada` exige motivo. **Nunca muda o Status.** |
-| `registrarLancamentoNoOmie(state, ator, taskId, { payableId, reaproveitado, anexos })` | Só com a conta em "em lançamento omie" e Conferência `conferida` para a impressão ATUAL: confirma no fio, resolve o fio, grava a `AgentExecution` com o título real e move para "lançado omie" — tudo ou nada. |
-| `registrarFalhaDoLancamento(state, ator, taskId, { motivo, code })` | Comenta o motivo no fio com Menção ao Financeiro e volta a conta para "para pagar" (a partir de "em lançamento omie"). O Registro guarda só o `code`. |
+| `operations/financeiro-base.ts` (06-11) | O módulo-folha: `CP`, `fieldValue`, `ConferenciaDoResumo`, `conferenciaVigente`, `impressaoDeLancamento`, `revisoresDoResumo`, `FORMA_DO_CODIGO_DE_CATEGORIA` e `lancamentoSemCodigo`. Só `import type`, e por isso `./ai` (a decisão) e `./tasks` (resolver o fio) o importam sem o ciclo com `./financeiro`, que reexporta o que já era público lá (crm:WR-08). |
+| `publicarResumoParaConferencia(state, ator, taskId, { dePara, pedidoDeRevisao?, pedidoPor?, motivo?, impressaoEsperada?, conferenciaRejeitadaId? })` | O Agente publica o `📋 RESUMO DE PAGAMENTO` (byte a byte, CON-CP-08) seguido da chamada ao Financeiro — raiz na primeira vez, resposta no MESMO fio nas seguintes —, SEM resolver o fio, e abre a Conferência (`solicitarConferenciaDoResumo`, que cancela a pendente anterior: "Conferência superada"). Idempotente para a mesma impressão; tudo ou nada. 06-11 (crm:WR-12): `impressaoEsperada` diferente da atual e `conferenciaRejeitadaId` que não é a vigente `rejeitada` recusam SEM efeito — o Resumo não sai sobre dados que mudaram, nem em dobro. |
+| `decideProcessApproval` (ramo `processStep: "resumo"`) | Clique e resposta no fio convergem: resposta canônica no fio, decisão/fonte/motivo gravados, fio resolvido na aprovação; `rejeitada` exige motivo. **Nunca muda o Status.** 06-11: duas recusas SEM efeito — a impressão atual não é a da Conferência (`recusaDesatualizada`, as duas decisões, crm:WR-08) e APROVAR um Resumo sem código de Categoria (`lancamentoSemCodigo`: `ausente` ou fora de `d.dd.dd`/`d.dd.dd.dd` ⇒ `recusaSemCodigo`, crm:WR-03). Pedir ajuste continua aberto. |
+| `registrarLancamentoNoOmie(state, ator, taskId, { payableId, reaproveitado, anexos, anexosPedidos? })` | Só com a conta em "em lançamento omie" e Conferência `conferida` para a impressão ATUAL: confirma no fio, resolve o fio, grava a `AgentExecution` com o título real e move para "lançado omie" — tudo ou nada. `anexosPedidos` (06-11) vai ao texto da confirmação. |
+| `registrarFalhaDoLancamento(state, ator, taskId, { motivo, code })` | Comenta o motivo no fio com Menção ao Financeiro e volta a conta para "para pagar" (a partir de "em lançamento omie"). O Registro guarda só o `code`. 06-11 (crm:WR-10): tudo ou nada, com `guardasDoAgente` — o aviso sai ANTES do Status; se a volta for recusada, o aviso é trocado pelo que diz que a conta NÃO voltou; uma recusa não deixa Comentário, Status nem Registro. |
 | `conferenciaDoResumo(state, task)` | `sem-resumo` \| `pendente` \| `conferida` \| `ajuste-pedido` \| `desatualizada`, mais a Conferência vigente e a impressão atual. `desatualizada` vence qualquer decisão. |
-| `respostasDeConferenciaPendentes` / `classificarRespostaDeConferencia` | As respostas de revisores ainda não decididas, e o que cada uma quer dizer (`aprovacao` \| `ajuste` \| `ignorar`) — heurística do legado, sem IA; "nada casou" é `ajuste` (Fluxo 6). |
+| `respostasDeConferenciaPendentes` / `classificarRespostaDeConferencia` | As respostas de revisores ainda não decididas — excluídas as do processo pela autoria (Agente) e pela forma exata (`FORMAS_CANONICAS_DO_FIO`), nunca pelo emoji inicial (06-11, crm:WR-04) — e o que cada uma quer dizer (`aprovacao` \| `ajuste` \| `ignorar`), sem IA. Classificador **estrito: só a mensagem inteira aprova** (06-11, crm:CR-03): toda palavra no conjunto de aprovação, no máximo 6, sem dígito/símbolo/emoji além de 👍/✅, com um sinal de aprovação; "nada casou" é `ajuste` (Fluxo 6). |
+| `decisaoDasRespostasPendentes(state, task, { aprovacaoPorComentario })` | 06-11 (crm:WR-04): percorre TODAS as respostas pendentes em ordem; o primeiro `ajuste` vence qualquer `aprovacao` do lote; sem ajuste, a primeira `aprovacao` só com `aprovacaoPorComentario` (D6-02). Devolve a resposta que decide e `ultimaLida`. Não decide nada: quem chama `decideProcessApproval` é a ponte. |
 | `impressaoDeLancamento(state, task)` | JSON canônico (chaves ordenadas) de tudo o que vai ao Omie: Centro, Empresa, Categoria, fornecedor (tipo, documento, nome), forma, dado de pagamento, Valor, vencimento, Data de Emissão, Tag `conta *`, título e descrição. Anexo, Boleto, QR Code e Comentários NÃO entram. |
 | `revisoresDoResumo(state)` | O Financeiro (quando Membro ativo) e os Membros ativos Administrador/Proprietário (D6-09). |
 | `movidaDepoisDaImportacao(state, task)` | G1: a conta entra na ponte do Agente — nasceu na plataforma, ou foi importada do ClickUp e o último movimento de Status é posterior a `provenance.at`. A ponte (`apps/api`) não varre a importada parada, e a tela não mostra "Aguardando Resumo" para ela: a mesma régua nos dois lados. |
 | `avisadoDaConferencia(state, ator, avisarId?)` | Quem os atos da Conferência mencionam: `avisarId` quando é Membro ativo, senão `avisadoDoLancamento`. É a opção aditiva `avisarId` de `publicarResumoParaConferencia` (Menção, chamada e aprovador) e de `registrarFalhaDoLancamento` (5º parâmetro) — a porta G3 da ponte para ambiente de teste (06-03). Não muda `revisoresDoResumo`. |
-| `TEXTOS_DA_CONFERENCIA` | Os textos canônicos, em `operations/financeiro-textos.ts` (fora de `financeiro.ts` para não criar o ciclo `ai` ↔ `financeiro`) e reexportados por `financeiro.ts`: domínio, ponte e tela usam as mesmas strings. |
+| `TEXTOS_DA_CONFERENCIA` | Os textos canônicos, em `operations/financeiro-textos.ts` (fora de `financeiro.ts` para não criar o ciclo `ai` ↔ `financeiro`) e reexportados por `financeiro.ts`: domínio, ponte e tela usam as mesmas strings. 06-11: `lancado` descreve os anexos pelo status real (`anexos n de m`, `k já estavam no título`, `anexos do primeiro envio`; nunca `sem anexos` com anexos pedidos, crm:IN-03); `recusaDesatualizada` e `recusaSemCodigo`; `tituloDivergente(payableId, campos)` e `contaDivergente(conferida, resolvida)`, o `motivo` de `registrarFalhaDoLancamento` para os 422 da v1.2 — só id do título, nomes de campo e rótulos de conta, nenhum valor. |
 
 As três regras com dono (`06-CONTEXT.md`):
 
@@ -358,6 +362,9 @@ As três regras com dono (`06-CONTEXT.md`):
   `changeTaskStatus` em `registrarFalhaDoLancamento`.
 
 `runLancamentoAgent` não muda: continua sendo o caminho do Ensaio (D3-03) e da
-A7 legada. O fio do Resumo pode ser resolvido à mão por quem o confere
-(`resolveTaskComment` aceita o aprovador da Conferência além do autor e do
-Administrador).
+A7 legada. O fio do Resumo pode ser resolvido à mão por quem o confere:
+`resolveTaskComment` aceita, além do autor e do Administrador, o aprovador da
+Conferência VIGENTE daquele fio ou um Membro de `revisoresDoResumo` — só para
+RESOLVER (06-11, crm:IN-02). O aprovador de uma Conferência cancelada não
+resolve, e ninguém reabre pela exceção: reabrir o fio não reabre a
+Conferência, cuja decisão fica.
