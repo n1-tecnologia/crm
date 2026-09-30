@@ -27,25 +27,33 @@
  * navegador na tela, no ritmo de uma pessoa, com uma faixa no topo dizendo o
  * que o robô está fazendo — a faixa é só da tela, nada dela é gravado).
  *
- * ── Conferência do Resumo (Fase 6) — `cp-conferida` e `cp-ajuste` ──────────
+ * ── Conferência do Resumo (Fase 6) — `cp-conferida`, `cp-ajuste` e
+ *    `cp-conferida-pelo-card` ───────────────────────────────────────────────
  *
- * Dois cenários que SÓ rodam quando pedidos pelo nome
+ * Três cenários que SÓ rodam quando pedidos pelo nome
  * (`JORNADA_SO=cp-conferida` ou `npm run jornada:financeiro -w @n1/web --
- * --so=cp-conferida,cp-ajuste`): eles precisam da ponte do Agente LIGADA, e
- * os quatro de cima pedem a API sem ela. Sem pedir, nada muda para quem já
- * roda a jornada.
+ * --so=cp-conferida,cp-ajuste,cp-conferida-pelo-card`): eles precisam da
+ * ponte do Agente LIGADA, e os quatro de cima pedem a API sem ela. Sem pedir,
+ * nada muda para quem já roda a jornada.
  *
  *   cp-conferida — conta completa SEM Integração manual; espera o
- *     `📋 RESUMO DE PAGAMENTO` no tópico, confere pelo card ("Conferido, pode
- *     lançar"), espera `✅ Resumo conferido`, move para "em lançamento omie" e
- *     espera o desfecho do modo da ponte (JORNADA_MODO).
- *   cp-ajuste — igual até o Resumo; "Pedir ajuste" com o motivo "é prestação
- *     comercial, não ADM"; espera `Revisado a pedido de` e a Conferência nova
- *     pendente no card. Não lança.
+ *     `📋 RESUMO DE PAGAMENTO` no tópico e confere como no ClickUp:
+ *     "Responder" no Comentário do Resumo e "ok" no fio (06-14). Espera
+ *     `✅ Resumo conferido`, o card "Conferido … · por comentário", move para
+ *     "em lançamento omie" e espera o desfecho do modo da ponte (JORNADA_MODO).
+ *   cp-ajuste — igual até o Resumo; RESPONDE no fio do Resumo "é prestação
+ *     comercial, não ADM"; espera `🔁 Ajuste pedido por`, `Revisado a pedido
+ *     de` e a Conferência nova pendente no card. Não lança.
+ *   cp-conferida-pelo-card — o cp-conferida pelo CLIQUE: "Conferido, pode
+ *     lançar" no card (D6-02: o clique continua oficial).
  *
- * O caminho de conferir é o CARD (o clique é o oficial, D6-02). O tópico da
- * tela não tem o gesto "Responder" num Comentário (a ponte só lê RESPOSTAS ao
- * Resumo, nunca Comentário raiz), então a jornada não responde "ok" no fio.
+ * A resposta no fio só decide vinda de um revisor que ALCANÇA a conta: o
+ * Financeiro, ou um Administrador/Proprietário (`revisoresDoResumo`); a de
+ * qualquer outro Membro é só um Comentário. A ponte só lê RESPOSTAS ao Resumo
+ * (nunca um Comentário raiz), e só confere por comentário com
+ * `AGENTE_CONTAS_A_PAGAR_CONFERENCIA_POR_COMENTARIO` vazio ou `true` — na linha
+ * de partida da ponte: `conferenciaPorComentario=true`. Com `false`, o "ok" no
+ * fio não confere, e o cp-conferida para em "Esperar ✅ Resumo conferido".
  *
  * Como subir a API para estes cenários (é o 06-06 quem roda):
  *   AGENTE_CONTAS_A_PAGAR_MODO=conferencia (ou lancar, com autorização do dono)
@@ -117,7 +125,11 @@ const navegador = await chromium.launch({ headless: !VISIVEL, slowMo: VISIVEL ? 
 const pagina = await navegador.newPage({ viewport: { width: 1600, height: 1000 } });
 pagina.setDefaultTimeout(30_000);
 
-/** Espera a gravação que o gesto provoca (`POST /operacoes/<nome>`) e confere que o servidor aceitou. */
+/**
+ * Espera a gravação que o gesto provoca (`POST /operacoes/<nome>`) e confere
+ * que o servidor aceitou. Devolve a `Response` — quem precisa do corpo (ex.:
+ * o Comentário aceito, em `value`) o lê; os outros ignoram.
+ */
 async function gravando(nome, gesto) {
   const [resposta] = await Promise.all([
     pagina.waitForResponse((r) => r.request().method() === "POST" && r.url().includes(`/operacoes/${nome}`), { timeout: 45_000 }),
@@ -126,6 +138,7 @@ async function gravando(nome, gesto) {
   if (resposta.status() !== 200) {
     throw new Error(`${nome}: o servidor respondeu ${resposta.status()} — ${(await resposta.text()).slice(0, 300)}`);
   }
+  return resposta;
 }
 
 async function entrar() {
@@ -309,7 +322,12 @@ async function conferirPeloCard() {
   );
 }
 
-/** "Pedir ajuste" no card, com o motivo — o mesmo fato que uma resposta de ajuste no fio. */
+/**
+ * "Pedir ajuste" no card, com o motivo — o mesmo fato que uma resposta de
+ * ajuste no fio. Desde o 06-14 o cp-ajuste pede o ajuste RESPONDENDO no fio;
+ * este é o gesto do card, para quem quiser o ajuste pelo clique.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- sem uso desde o 06-14 (o cp-ajuste responde no fio); fica como o gesto do card
 async function pedirAjustePeloCard(motivo) {
   const botao = painel().getByRole("button", { name: "Pedir ajuste", exact: true });
   if (await botao.isDisabled()) throw new Error(`o botão está indisponível: ${(await botao.getAttribute("title")) ?? "sem motivo"}`);
@@ -318,6 +336,28 @@ async function pedirAjustePeloCard(motivo) {
   const caixa = confirmacao.getByRole("textbox").first();
   await caixa.pressSequentially(motivo, { delay: VISIVEL ? 35 : 5 });
   await gravando("decideProcessApproval", () => confirmacao.getByRole("button", { name: "Pedir ajuste", exact: true }).click());
+}
+
+/**
+ * O gesto do ClickUp (06-14): "Responder" no Comentário do tópico que casa
+ * com `padrao` (o ÚLTIMO — o Resumo vigente, se houver revisado), `texto`
+ * digitado letra a letra na caixa "Resposta no fio", e Ctrl+Enter. Confere,
+ * no Comentário que o servidor aceitou, que a resposta foi para a RAIZ do fio
+ * (o PRIMEIRO `li` que casa com `padrao`) — é só ali que a ponte lê.
+ */
+async function responderNoFio(padrao, texto) {
+  const linhas = painel().locator('li[id^="comentario-"]').filter({ hasText: padrao });
+  if ((await linhas.count()) === 0) throw new Error(`nenhum Comentário do tópico casa com "${padrao.source}"`);
+  const raizId = ((await linhas.first().getAttribute("id")) ?? "").replace(/^comentario-/, "");
+  const linha = linhas.last();
+  await linha.getByRole("button", { name: "Responder", exact: true }).click();
+  const caixa = linha.getByRole("textbox", { name: "Resposta no fio" });
+  await caixa.pressSequentially(texto, { delay: VISIVEL ? 35 : 5 });
+  const resposta = await gravando("addTaskComment", () => caixa.press("Control+Enter"));
+  const corpo = await resposta.json();
+  const paiId = corpo?.value?.parentCommentId;
+  if (paiId !== raizId) throw new Error(`a resposta foi para "${paiId ?? "nenhum fio"}", e não para a raiz do fio do Resumo (${raizId})`);
+  return `respondido no fio (${raizId})`;
 }
 
 /** O Status do popup contém `nome`. */
@@ -329,6 +369,14 @@ async function statusDeveSer(nome) {
 const RESUMO = /📋 RESUMO DE PAGAMENTO/;
 const CONFERIDO = /✅ Resumo conferido/;
 const REVISADO = /Revisado a pedido de/;
+const AJUSTE = /🔁 Ajuste pedido por/;
+
+/**
+ * Quantos Resumos revisados o tópico tinha ANTES da resposta de ajuste. Contar
+ * depois de esperar o `🔁 Ajuste pedido por` erraria: a ponte decide e
+ * republica na mesma passada, e o revisado novo já entraria na conta.
+ */
+let revisadosAntesDoAjuste = 0;
 const LANCADO = /✅ Lançado no Omie/;
 const MODO_CONFERENCIA = /Neste ambiente o lançamento no Omie está desligado/;
 
@@ -409,7 +457,7 @@ const CENARIOS = [
   {
     chave: "cp-conferida",
     soQuandoPedido: true,
-    titulo: `Contas a pagar — Resumo conferido pelo card (ponte em ${MODO})`,
+    titulo: `Contas a pagar — Resumo conferido com "ok" no fio (ponte em ${MODO})`,
     lista: "lst_contas_a_pagar",
     botao: "+ Nova conta",
     nome: `TESTE AUTOMATIZADO — CP conferida · ${CARIMBO}`,
@@ -419,10 +467,17 @@ const CENARIOS = [
       ["Esperar o 📋 RESUMO DE PAGAMENTO no tópico", () => esperarNoFio(RESUMO)],
       ["Card: Conferência do Resumo · Pendente", () => cardDaConferencia("Pendente")],
       ["Captura do Resumo", () => capturar("cp-conferida-resumo")],
-      // Sem gesto "Responder" no tópico da tela, o "ok" no fio não é possível: o caminho é o card.
-      ["Conferido, pode lançar (card)", () => conferirPeloCard()],
+      // O gesto do ClickUp (D6-02, 06-14): "ok" como RESPOSTA ao Resumo — a ponte lê e confere por comentário.
+      ['Responder "ok" no fio do Resumo', () => responderNoFio(RESUMO, "ok")],
       ["Esperar ✅ Resumo conferido no tópico", () => esperarNoFio(CONFERIDO)],
       ["Card: Conferência do Resumo · Conferido", () => cardDaConferencia("Conferido")],
+      // A linha do card, e não só "por comentário": a Atividade da decisão no tópico também diz "por comentário — ok",
+      // e dois achados seriam violação do modo estrito do Playwright.
+      [
+        "Card: conferido por comentário",
+        () => painel().getByText(/^Conferido por .+ · por comentário$/).waitFor({ state: "visible", timeout: 15_000 }),
+      ],
+      ["Captura do \"ok\" no fio", () => capturar("cp-conferida-ok-no-fio")],
       ["Status → em lançamento omie", () => mudarStatus("em lançamento omie")],
       ...(MODO === "lancar"
         ? [
@@ -437,9 +492,38 @@ const CENARIOS = [
     ],
   },
   {
+    chave: "cp-conferida-pelo-card",
+    soQuandoPedido: true,
+    titulo: `Contas a pagar — Resumo conferido pelo card (ponte em ${MODO})`,
+    lista: "lst_contas_a_pagar",
+    botao: "+ Nova conta",
+    nome: `TESTE AUTOMATIZADO — CP conferida pelo card · ${CARIMBO}`,
+    passos: [
+      ...passosDaContaAPagar(),
+      ["Esperar o 📋 RESUMO DE PAGAMENTO no tópico", () => esperarNoFio(RESUMO)],
+      ["Card: Conferência do Resumo · Pendente", () => cardDaConferencia("Pendente")],
+      ["Captura do Resumo", () => capturar("cp-conferida-pelo-card-resumo")],
+      // O clique continua oficial (D6-02): o mesmo fato, com a fonte "por clique".
+      ["Conferido, pode lançar (card)", () => conferirPeloCard()],
+      ["Esperar ✅ Resumo conferido no tópico", () => esperarNoFio(CONFERIDO)],
+      ["Card: Conferência do Resumo · Conferido", () => cardDaConferencia("Conferido")],
+      ["Status → em lançamento omie", () => mudarStatus("em lançamento omie")],
+      ...(MODO === "lancar"
+        ? [
+            ["Esperar ✅ Lançado no Omie no tópico", () => esperarNoFio(LANCADO)],
+            ["Status agora é lançado omie", () => statusDeveSer("lançado omie")],
+          ]
+        : [
+            ["Esperar o aviso do modo conferência no tópico", () => esperarNoFio(MODO_CONFERENCIA)],
+            ["Status continua em lançamento omie", () => statusDeveSer("em lançamento omie")],
+          ]),
+      ["Captura", () => capturar(`cp-conferida-pelo-card-${MODO}`)],
+    ],
+  },
+  {
     chave: "cp-ajuste",
     soQuandoPedido: true,
-    titulo: "Contas a pagar — ajuste pedido no Resumo",
+    titulo: "Contas a pagar — ajuste pedido no fio do Resumo",
     lista: "lst_contas_a_pagar",
     botao: "+ Nova conta",
     nome: `TESTE AUTOMATIZADO — CP ajuste · ${CARIMBO}`,
@@ -447,10 +531,18 @@ const CENARIOS = [
       ...passosDaContaAPagar(),
       ["Esperar o 📋 RESUMO DE PAGAMENTO no tópico", () => esperarNoFio(RESUMO)],
       ["Card: Conferência do Resumo · Pendente", () => cardDaConferencia("Pendente")],
-      ["Pedir ajuste (card): \"é prestação comercial, não ADM\"", () => pedirAjustePeloCard("é prestação comercial, não ADM")],
+      // Qualquer resposta de revisor ao Resumo que não é aprovação pede ajuste (Fluxo 6).
+      [
+        'Responder no fio: "é prestação comercial, não ADM"',
+        async () => {
+          revisadosAntesDoAjuste = await contarNoFio(REVISADO);
+          return responderNoFio(RESUMO, "é prestação comercial, não ADM");
+        },
+      ],
+      ["Esperar 🔁 Ajuste pedido por no tópico", () => esperarNoFio(AJUSTE)],
       [
         "Esperar o Resumo revisado (Revisado a pedido de) no tópico",
-        async () => esperarNoFio(REVISADO, ESPERA_MS, { aPartirDe: await contarNoFio(REVISADO) }),
+        () => esperarNoFio(REVISADO, ESPERA_MS, { aPartirDe: revisadosAntesDoAjuste }),
       ],
       ["Card: Conferência nova, Pendente", () => cardDaConferencia("Pendente")],
       ["Captura do Resumo revisado", () => capturar("cp-ajuste-resumo-revisado")],
@@ -517,7 +609,8 @@ const retomar = new Map(
     }),
 );
 
-console.log(`Jornada do Financeiro como um humano — ${URL_BASE} — ${CARIMBO}${so.has("cp-conferida") || so.has("cp-ajuste") ? ` — ponte em ${MODO}` : ""}`);
+const pedeAPonte = so.has("cp-conferida") || so.has("cp-ajuste") || so.has("cp-conferida-pelo-card");
+console.log(`Jornada do Financeiro como um humano — ${URL_BASE} — ${CARIMBO}${pedeAPonte ? ` — ponte em ${MODO}` : ""}`);
 await entrar();
 
 for (const c of CENARIOS) {
