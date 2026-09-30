@@ -46,6 +46,22 @@ como **conflito**, igual a uma revisão que mudou:
 Qualquer outro erro, inclusive `57014` (cancelado pelo `statement_timeout`) e
 um `55P03` fora da revisão, sobe como antes e descarta a conexão.
 
+**Os prazos valem para todo chamador de `executar()` (06-19, crm2:IN-05).**
+O `statement_timeout` (80 % de Q) vale também para o `gravar` em lote dos
+importadores e para o `aoConfirmar` dos formulários públicos: uma instrução
+entre 0,8·Q e Q, que antes de 06-13 passava, agora é cancelada com `57014`.
+Por isso a importação longa (`importar-contas-a-pagar`,
+`importar-contas-a-receber`, `financeiro/importar`) roda com
+`DATABASE_QUERY_TIMEOUT_MS=0` na execução manual (Q = 0 abre a transação com
+o `begin` puro) — nunca no processo da API, que continua com os prazos. E o
+`lock_timeout` vale para QUALQUER instrução da transação, não só para o
+`update … revisao`: um `55P03` fora dela (ex.: o `consumirSessao … for update`
+dos formulários públicos, ou a hidratação durante uma DDL) sobe como exceção
+(500), não como 409. É seguro: a Unidade de Trabalho desfaz a transação
+inteira, e a submissão pública é idempotente pelo `submissionId` — o cliente
+repete sem duplicar. Tratar esse `55P03` como 409 em `formularios-publicos`
+fica para depois (exige o Postgres real para provar).
+
 ## A regra das migrações
 
 Numeradas (`apps/api/migracoes/NNN-*.sql`), aplicadas uma vez por

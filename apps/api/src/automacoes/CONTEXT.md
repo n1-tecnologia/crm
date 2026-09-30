@@ -351,6 +351,79 @@ Maryane real:
 
 Produção deixa G2 e G3 vazias.
 
+**A porta G3 estrita no meio do ciclo (06-19, crm2:WR-04).** A porta do
+começo do ciclo olha o snapshot; o Membro de teste pode ser desativado
+depois. Por isso a ponte passa `avisarEstrito: true` a
+`publicarResumoParaConferencia` e a `registrarFalhaDoLancamento` sempre que há
+`avisarId` (na dispensa, o `avisarId` é o próprio Membro de serviço), e todo
+Comentário da ponte — `comentar` e a resposta `recusaSemCodigo` da
+publicação — confere `membroAtivo(s, avisar)` DENTRO da operação. A recusa
+(`TEXTOS_DA_CONFERENCIA.recusaAvisarInativo`) nunca cai na Maryane nem
+menciona um Membro inativo: a ponte registra `AVISAR_ID_INVALIDO` (uma vez,
+sem o id) e o laço para antes da próxima conta. No `comentar`, o texto fica
+em `comentarioPendente` (sai quando a porta for arrumada, sem contar
+tentativa); na publicação, nada é parado — o ciclo seguinte decide pela porta
+do começo.
+
+## O lançamento em curso (06-19, crm2:WR-01)
+
+Antes de cada `/lancar`, depois do corpo e dos anexos assinados, a ponte
+grava numa Unidade de Trabalho a marca "Lançamento no Omie em curso"
+(`marcarLancamentoEmCurso`, do Agente em nome do Membro de serviço). A mesma
+gravação confere de novo, sobre o estado DA GRAVAÇÃO: a impressão de
+lançamento é a do corpo (senão `IMPRESSAO_MUDOU` — conferida primeiro, porque
+depois de `motivoParaNaoLancar` a mudança já sairia como
+`SEM_CONFERENCIA_APROVADA`) e `motivoParaNaoLancar` não tem nada a opor.
+Qualquer diferença ⇒ `SEM_EFEITO`, log `info` "Lançamento adiado: a conta
+mudou antes da marca." com o código, ZERO `/lancar`. Conflito ⇒ transitória;
+outra recusa ⇒ parada com `MARCA_RECUSADA_PELO_DOMINIO`.
+
+Enquanto a marca vale, o domínio recusa a qualquer OUTRO Membro mudar o
+Status da conta e registrar o lançamento à mão (`RECUSA_LANCAMENTO_EM_CURSO`,
+em `changeTaskStatus` e `addTaskComment`), e a tela diz que o Agente está
+lançando. A marca sai:
+- no registro ("Lançado no Omie") e na falha permanente registrada
+  ("Lançamento no Omie falhou") — Registros do domínio;
+- em "Lançamento no Omie interrompido" (`encerrarLancamentoEmCurso`, o `code`
+  no `detail`): falha transitória do `/lancar` (o `code` da resposta),
+  `payableId` ausente ou `mock-` (`LANCAMENTO_NAO_CONFIRMADO`), saída antes do
+  registro (`SAIU_ANTES_DO_REGISTRO`), registro recusado
+  (`REGISTRO_RECUSADO_PELO_DOMINIO`), o conflito do registro que vira parada
+  (`CONFLITO_DE_REVISAO`) e a falha permanente cujo registro foi recusado (o
+  `code` da falha). Se o encerramento falhar, só o log
+  (`MARCA_NAO_ENCERRADA`);
+- no prazo (`PRAZO_DO_LANCAMENTO_EM_CURSO_MS`, 5 min), se a ponte morrer.
+
+No conflito do registro que ainda vai ser repetido, e num erro de BANCO
+depois do 200, a marca FICA: o título existe, e a repetição com a mesma chave
+(que renova a marca) o registra. Em `ensaio` e `conferencia` nenhuma marca é
+gravada. O residual fora da plataforma (alguém lançando direto no Omie
+durante o `/lancar`) não passa por regra nenhuma do CRM: a tela avisa, e o
+`automation/` compara o título existente no próximo `/lancar`.
+
+**`SEM_EFEITO` (crm2:IN-02).** Os ramos que decidem, dentro da gravação, não
+mudar nada — o Resumo adiado, a saída antes do registro e a marca adiada —
+devolvem a recusa sentinela `SEM_EFEITO` (`"PONTE_SEM_EFEITO"`). A Unidade de
+Trabalho desfaz sem o `update … revisao`: a tela não reidrata e ninguém
+disputa a trava por uma gravação vazia. Os logs (`RESUMO_ADIADO`) e o
+Comentário (`TEXTO_SAIU_ANTES_DO_REGISTRO`) são os de antes.
+
+## O orçamento justo (06-19, crm2:WR-05)
+
+- **Cursor rotativo.** Esgotado o orçamento (`maximoDeGravacoesPorCiclo`), a
+  ponte guarda a conta que não foi processada; o ciclo seguinte começa por
+  ela (a lista rodada, nunca pulando), e o laço que chega ao fim zera o
+  cursor. A contagem G1 continua só no ciclo que termina o laço.
+- **Continuação com espera.** O orçamento esgotado agenda o próximo ciclo
+  pelo MESMO temporizador da cutucada (`atrasoDaCutucadaMs`, que `parar()`
+  cancela), quando o ciclo em voo termina — nunca um `repetir` imediato (o
+  laço quente contra o banco). O log `ORCAMENTO_DO_CICLO_ESGOTADO` fica.
+- **Desistência do Comentário pendente.** Cada falha do Comentário do Agente
+  que não é da porta G3 soma uma tentativa na conta (a chave nova zera); em
+  `TENTATIVAS_TRANSITORIAS`, o pendente sai e a ponte registra `info`
+  "Desisti de gravar o Comentário do Agente nesta conta." com
+  `COMENTARIO_PENDENTE_DESISTIDO`. A parada continua; a chave nova a reabre.
+
 ## A ponte do Agente (`invocar-agente.ts`) — o que vem de 03-11 e 1.4
 
 O registro histórico de antes da Fase 6. Onde divergir de "Os dois momentos
