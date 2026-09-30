@@ -618,6 +618,12 @@ interface EstadoDaConta {
   parada?: MotivoDaParada;
   /** O Comentário que não chegou a ser gravado (conflito, por ex.) — tentado de novo sem chamar o Omie. */
   comentarioPendente?: string;
+  /**
+   * 06-19 (crm2:WR-05) — falhas SEGUIDAS do Comentário do Agente com esta
+   * chave (a porta G3 não conta). Em `TENTATIVAS_TRANSITORIAS`, o pendente é
+   * desistido (`COMENTARIO_PENDENTE_DESISTIDO`); a chave nova zera.
+   */
+  tentativasDoComentario?: number;
   /** A última resposta do fio já lida e deixada de lado (ignorada, ou recusada pelo domínio) — não é relida. */
   respostaLida?: Id;
 }
@@ -1219,6 +1225,20 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
   }
 
   /**
+   * 06-19 (crm2:WR-05) — o cursor rotativo: a conta em que o orçamento do
+   * ciclo anterior se esgotou. O ciclo seguinte começa por ela (nunca
+   * pulando), e um laço que chega ao fim o zera — nenhuma conta do fim da
+   * lista passa fome atrás de contas que gastam gravação a cada ciclo.
+   */
+  let cursor: Id | undefined;
+  /**
+   * 06-19 (crm2:WR-05) — o orçamento se esgotou: o próximo ciclo é agendado
+   * pelo temporizador da cutucada (`atrasoDaCutucadaMs`) quando este
+   * terminar, nunca como `repetir` imediato (o laço quente contra o banco).
+   */
+  let continuar = false;
+
+  /**
    * 06-13 — uma falha de banco no ciclo: log de código fixo (nunca a
    * mensagem, crm:WR-11) com os contadores do ciclo, e UM ciclo de
    * recuperação agendado. `false` quando o erro não é do banco — quem chamou
@@ -1279,11 +1299,36 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
     let ator: Id | undefined;
     const atorDaEscrita = async (): Promise<Id> => (ator ??= await resolverAtor(workspaceId));
     let importadasForaDaPonte = 0;
+    /**
+     * 06-19 (crm2:WR-04) — a porta G3 fechou NO MEIO do ciclo: uma gravação
+     * recusou porque `avisarId` deixou de ser Membro ativo. O mesmo aviso do
+     * começo do ciclo (uma vez, sem o id), e o laço para antes da próxima
+     * conta — nenhuma gravação a mais. O ciclo seguinte para no começo.
+     */
+    let portaDoCicloFechada = false;
+    const portaFechada = (): void => {
+      if (portaDoCicloFechada) return;
+      portaDoCicloFechada = true;
+      registrar("warn", "AGENTE_CONTAS_A_PAGAR_AVISAR_ID deixou de ser um Membro ativo do Espaço no meio do ciclo: a ponte parou (a porta de teste está mal configurada).", {
+        workspaceId,
+        listId,
+        code: "AVISAR_ID_INVALIDO",
+      });
+    };
+    /** A recusa do domínio (ou da ponte, dentro da operação) é a da porta G3. */
+    const ehRecusaDaPorta = (r: { readonly ok: boolean; readonly error?: string }): boolean =>
+      !r.ok && r.error === TEXTOS_DA_CONFERENCIA.recusaAvisarInativo;
 
-    for (const task of contas) {
+    // 06-19 (crm2:WR-05) — começa de onde o ciclo anterior parou.
+    const inicio = cursor === undefined ? -1 : contas.findIndex((t) => t.id === cursor);
+    const naOrdem = inicio > 0 ? [...contas.slice(inicio), ...contas.slice(0, inicio)] : contas;
+
+    for (const task of naOrdem) {
+      if (portaDoCicloFechada) return false;
       // 06-13 (H3) — o orçamento: cada gravação hidrata o Espaço inteiro e
       // disputa a revisão com a tela. Esgotado, o resto sai no ciclo
-      // seguinte (cutucado: vira `repetir`, logo depois deste).
+      // seguinte — que começa por esta conta (o cursor) e espera
+      // `atrasoDaCutucadaMs` (a continuação, 06-19).
       if (medida.gravacoes >= maximoDeGravacoesPorCiclo) {
         registrar("info", "Orçamento de gravações do ciclo esgotado; as outras contas ficam para o ciclo seguinte.", {
           workspaceId,
@@ -1291,7 +1336,8 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
           code: "ORCAMENTO_DO_CICLO_ESGOTADO",
           gravacoes: medida.gravacoes,
         });
-        cutucar();
+        cursor = task.id;
+        continuar = true;
         return false;
       }
       try {
@@ -1333,18 +1379,37 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
         /** Grava o Comentário do Agente (modos que gravam); falhando, fica pendente para o próximo ciclo — sem chamar o Omie de novo. */
         const comentar = async (texto: string, parentCommentId?: Id): Promise<void> => {
           const atorId = await atorDaEscrita();
-          const r = await executarOperacao((s) =>
-            addTaskComment(s, atorId, task.id, {
+          const r = await executarOperacao((s) => {
+            // crm2:WR-04 (06-19) — a porta G3 conferida DENTRO da operação:
+            // um Membro de teste inativo nunca é mencionado, e a Maryane não
+            // entra no lugar dele.
+            if (avisar && !membroAtivo(s, avisar)) return fail(TEXTOS_DA_CONFERENCIA.recusaAvisarInativo);
+            return addTaskComment(s, atorId, task.id, {
               content: texto,
               mentions: [{ type: "member", id: avisar ?? avisadoDoLancamento(s, atorId) }],
               actor: { kind: "agent", id: CP.agentId },
               ...(parentCommentId ? { parentCommentId } : {}),
-            }),
-          );
-          if (r.ok) delete deste.comentarioPendente;
-          else {
+            });
+          });
+          if (r.ok) {
+            delete deste.comentarioPendente;
+            deste.tentativasDoComentario = 0;
+          } else if (ehRecusaDaPorta(r)) {
+            // Fica pendente, sem contar tentativa: volta quando a porta for arrumada.
             deste.comentarioPendente = texto;
+            portaFechada();
+          } else {
+            deste.comentarioPendente = texto;
+            deste.tentativasDoComentario = (deste.tentativasDoComentario ?? 0) + 1;
             registrar("warn", "Não consegui gravar o Comentário do Agente; tento de novo no próximo ciclo.", daConta);
+            // crm2:WR-05 (06-19) — um Comentário que falha sempre (Agente
+            // pausado, Convidado sem concessão) não gasta o orçamento de todo
+            // ciclo: depois de `TENTATIVAS_TRANSITORIAS`, desiste. A parada
+            // continua; a chave nova a reabre.
+            if (deste.tentativasDoComentario >= TENTATIVAS_TRANSITORIAS) {
+              delete deste.comentarioPendente;
+              registrar("info", "Desisti de gravar o Comentário do Agente nesta conta.", { ...daConta, code: "COMENTARIO_PENDENTE_DESISTIDO" });
+            }
           }
         };
 
@@ -1591,9 +1656,14 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
               // Na dispensa (D6-04), o aprovador é o próprio Membro de serviço —
               // é ele quem decide logo abaixo, e nenhuma pessoa é chamada a conferir.
               ...(dispensa ? { avisarId: atorId } : avisar ? { avisarId: avisar } : {}),
+              // crm2:WR-04 (06-19) — a porta G3 falha FECHADA também no meio
+              // do ciclo: com o Membro de teste inativo, o domínio recusa em
+              // vez de fazer a Maryane aprovadora.
+              ...(dispensa || avisar ? { avisarEstrito: true as const } : {}),
             });
             if (!publicado.ok) return publicado;
             if (semCodigo) {
+              if (avisar && !membroAtivo(s, avisar)) return fail(TEXTOS_DA_CONFERENCIA.recusaAvisarInativo);
               const resposta = addTaskComment(s, atorId, task.id, {
                 content: TEXTOS_DA_CONFERENCIA.recusaSemCodigo,
                 mentions: [{ type: "member", id: avisadoDaConferencia(s, atorId, avisar) }],
@@ -1613,6 +1683,9 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
             registrar("info", dispensou ? "Resumo publicado com a Conferência dispensada (Integração manual)." : "Resumo publicado para conferência.", daConta);
           } else if ("conflito" in r && r.conflito) {
             await falhaTransitoria("CONFLITO_DE_REVISAO", "publicaria");
+          } else if (ehRecusaDaPorta(r)) {
+            // Nada é parado na conta: o ciclo seguinte decide pela porta do começo.
+            portaFechada();
           } else {
             deste.parada = "recusa";
             // crm:WR-11 — o código, nunca `r.error` (o domínio cita nomes).
@@ -1848,7 +1921,8 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
           const atorId = await atorDaEscrita();
           const texto = motivoDosDetalhes(code, detalhes) ?? motivo;
           const opcoesDaFalha = {
-            ...(avisar ? { avisarId: avisar } : {}),
+            // crm2:WR-04 (06-19) — com o Membro de teste inativo, recusa em vez de mencionar a Maryane.
+            ...(avisar ? { avisarId: avisar, avisarEstrito: true as const } : {}),
             ...(code === "CONTA_DIVERGENTE" ? { superarConferencia: true as const } : {}),
           };
           const r = await executarOperacao((s) =>
@@ -1856,7 +1930,8 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
           );
           if (r.ok) registrar("info", 'Lançamento recusado; a conta voltou para "para pagar".', { ...daConta, code });
           else {
-            registrar("warn", "Não consegui registrar a falha do lançamento; aviso por Comentário.", { ...daConta, code });
+            if (ehRecusaDaPorta(r)) portaFechada();
+            else registrar("warn", "Não consegui registrar a falha do lançamento; aviso por Comentário.", { ...daConta, code });
             // crm2:WR-01 — sem o Registro "Lançamento no Omie falhou", a marca
             // sai pelo encerramento (só chega aqui depois dela, no `/lancar`).
             const fim = await executarOperacao((s) => encerrarLancamentoEmCurso(s, atorId, task.id, code));
@@ -1873,6 +1948,8 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
       }
     }
 
+    // O laço chegou ao fim: o próximo começa do início (06-19, crm2:WR-05).
+    cursor = undefined;
     // G1 — só o ciclo que terminou o laço conhece a contagem inteira.
     if (importadasForaDaPonte !== ultimaContagemDeImportadas) {
       ultimaContagemDeImportadas = importadasForaDaPonte;
@@ -1917,6 +1994,14 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
     recuperacao = undefined;
     const voo = cicloDasContas().finally(() => {
       emVoo = undefined;
+      // 06-19 (crm2:WR-05) — a continuação do orçamento esgotado espera
+      // `atrasoDaCutucadaMs`, pelo MESMO temporizador da cutucada (que
+      // `parar()` cancela). Uma cutucada de fora, pedida durante o ciclo,
+      // continua valendo como `repetir`.
+      if (continuar) {
+        continuar = false;
+        if (!repetir && !parado) cutucar();
+      }
       if (repetir && !parado) {
         repetir = false;
         ciclo();
