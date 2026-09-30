@@ -35,7 +35,7 @@
           "url": "https://exemplo.invalid/storage/v1/object/sign/anexos/obj_81d2e0?assinatura=exemplo-nunca-real",
           "nome": "Boleto outubro.pdf"
         },
-        "https://exemplo.invalid/anexos/comprovante.pdf"
+        "https://exemplo.invalid/storage/v1/object/public/anexos/comprovante.pdf"
       ]
     }
   },

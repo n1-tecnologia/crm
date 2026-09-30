@@ -373,7 +373,7 @@ repo nem no chat):
 | `EXTRATO_WEBHOOK_TOKEN` | Deixe vazio (o upload do painel não manda o cabeçalho) | — |
 | `HOST` | Não defina (padrão 127.0.0.1, atrás do nginx) | — |
 | `PLATAFORMA_MEMBRO_POR_CLICKUP_ID` (quando ligar `PAYMENT_REQUEST_SOURCE=plataforma`) | Pares `<id do ClickUp>=<id do Membro no ws_n1>`, separados por vírgula. Da Fase 6 em diante precisa ter **`81581816=<Membro de Contas a Pagar>`**: é quem o RESUMO publicado na Solicitação depois da aprovação por clique (S5) menciona. Mais os pares dos Aprovadores, para o "para aprovação". | O RESUMO da Solicitação sai **sem Menção** (nunca com o id do ClickUp), e o log avisa a cada RESUMO (`[summary] sem Membro da plataforma para Contas a Pagar`); o roteamento, também |
-| `CONTAS_A_PAGAR_ANEXOS_HOSTS` | Os hostnames de onde o `/lancar` pode baixar anexo, separados por vírgula. **Produção: o host do Storage do Supabase da plataforma**, isto é, o hostname do `SUPABASE_URL` do `apps/api` do CRM N1 — só o host, sem `https://`, sem porta e sem caminho (a comparação é exata, e só `https:` é aceito) | Todo anexo do `/lancar` volta `ANEXO_HOST_NAO_PERMITIDO`, nada é baixado, e o título **lança sem anexo** (`anexos 0 de n` no fio, uma linha `• <nome>: não subiu (ANEXO_HOST_NAO_PERMITIDO)` por anexo); o `/lancar` avisa na montagem |
+| `CONTAS_A_PAGAR_ANEXOS_HOSTS` | Os hostnames de onde o `/lancar` pode baixar anexo, separados por vírgula. **Produção: o host do Storage do Supabase da plataforma**, isto é, o hostname do `SUPABASE_URL` do `apps/api` do CRM N1 — só o host, sem `https://`, sem porta e sem caminho (a comparação é exata, e só `https:` é aceito). A variável continua só o hostname; desde o 06-17 o caminho da URL também tem de ser do Storage (`/storage/v1/object/…`) — nada a configurar a mais: a ponte manda URL assinada do Storage. `/rest/v1`, `/auth/v1`, `/functions/v1` e `/graphql/v1` do mesmo host saem `ANEXO_HOST_NAO_PERMITIDO` | Todo anexo do `/lancar` volta `ANEXO_HOST_NAO_PERMITIDO`, nada é baixado, e o título **lança sem anexo** (`anexos 0 de n` no fio, uma linha `• <nome>: não subiu (ANEXO_HOST_NAO_PERMITIDO)` por anexo); o `/lancar` avisa na montagem |
 
 Os planos 06-09 e 06-10 (S5 assíncrono e S5 sobre o dado atual) **não
 criaram variável nova**. Em produção o S5 assíncrono só roda com
@@ -495,6 +495,15 @@ ligado e das variáveis `PLATAFORMA_BASE_URL`, `PLATAFORMA_SERVICE_TOKEN`,
     `lancar` (passo 2B, "Em produção"). Antes disso: o deploy do
     `automation/` com o contrato v1.2 e o S5 assíncrono, e
     `CONTAS_A_PAGAR_ANEXOS_HOSTS` no `.env` dele (Passo 4).
+11. **Dois anexos no mesmo título, no Omie real (06-20, com a sua
+    autorização):** o `automation/` sobe cada anexo com o `cCodIntAnexo`
+    igual ao id do título, como o legado sempre mandou (NF e boleto no mesmo
+    título desde o n8n), e os nomes já saem desambiguados (`nome.pdf`,
+    `nome-2.pdf`). Falta ver no Omie de produção que o segundo anexo não
+    substitui nem é recusado pelo primeiro. O `teste:omie-real --lancar`
+    aceita hoje um só `--anexo`; com dois, é um ajuste no script — senão,
+    fica registrado o que o legado já faz. Nada a decidir agora: só a
+    autorização para rodar no 06-20.
 
 Resolvidas nesta rodada (2026-09-28/29, sem push): o legado do ClickUp
 passa a cadastrar fornecedor novo (`0014772`); o Family Office sem

@@ -72,10 +72,10 @@ RESPOSTA é a forma de `anexos[]` (sem `url`, `erro` como código) — ver §7 d
 | Onde | O que muda |
 |---|---|
 | `/lancar`, pedido | `anexos[].url` (string ou `{ url, nome }`) é URL absoluta com até 2048 caracteres; a lista tem no máximo 20 itens; `nome` é aparado e tem de 1 a 200 caracteres (só espaços é 400). |
-| `/lancar`, download | Só `https:` de um hostname exato em `CONTAS_A_PAGAR_ANEXOS_HOSTS` (produção: o host do Storage do Supabase da plataforma). Fora da lista, a URL nem é tocada. Variável vazia ⇒ todo anexo sai `ANEXO_HOST_NAO_PERMITIDO` e o título ainda lança. Redirecionamento recusado; prazo de 15 s e teto de 15 MB por anexo; orçamento total de 35 s para os anexos (abaixo dos 60 s da ponte). |
+| `/lancar`, download | Só `https:` de um hostname exato em `CONTAS_A_PAGAR_ANEXOS_HOSTS` (produção: o host do Storage do Supabase da plataforma) E com o caminho começando por `/storage/v1/object/` (06-17: as URLs assinadas e públicas do Storage, que é o que a ponte manda; `/rest/v1`, `/auth/v1`, `/functions/v1`, `/graphql/v1` e a travessia saem `ANEXO_HOST_NAO_PERMITIDO`). Fora da lista, a URL nem é tocada. Variável vazia ⇒ todo anexo sai `ANEXO_HOST_NAO_PERMITIDO` e o título ainda lança. Redirecionamento recusado; prazo de 15 s e teto de 15 MB por anexo. O `/lancar` tem 50 s desde a entrada, e o orçamento dos anexos é `min(35 s, 50 s − decorrido)` (abaixo dos 60 s da ponte). Uma repetição da mesma conta com a primeira ainda em voo espera a primeira e devolve o mesmo resultado; se a primeira falhar, roda a sua. |
 | `/lancar`, resposta | Cada anexo é `{ nome, ok, jaExistia?, erro? }`. `nome` sempre presente: o do pedido, ou o último segmento do caminho da URL (sem query) para um anexo `string`. **Sem `url`** (a URL assinada carrega token). |
-| `/lancar`, resposta | `erro` é um de cinco códigos: `ANEXO_HOST_NAO_PERMITIDO`, `ANEXO_DOWNLOAD_FALHOU`, `ANEXO_TEMPO_ESGOTADO`, `ANEXO_GRANDE_DEMAIS`, `ANEXO_OMIE_RECUSOU` — nunca status HTTP, texto de rede ou do Omie. `ok: false` ⇔ `erro` presente. |
-| `/lancar`, `reaproveitado` | O backend lê os anexos do título (`ListarAnexo`) e sobe só os que faltam, pelo nome; os que já estavam voltam `{ ok: true, jaExistia: true }`. Nunca `anexos: []` quando havia anexos pedidos. `jaExistia` só aparece com `ok: true`. |
+| `/lancar`, resposta | `erro` é um de cinco códigos: `ANEXO_HOST_NAO_PERMITIDO`, `ANEXO_DOWNLOAD_FALHOU`, `ANEXO_TEMPO_ESGOTADO`, `ANEXO_GRANDE_DEMAIS`, `ANEXO_OMIE_RECUSOU` — nunca status HTTP, texto de rede ou do Omie. `ok: false` ⇔ `erro` presente. A lista não muda no 06-17: `ANEXO_TEMPO_ESGOTADO` cobre o orçamento acabado E o Omie que não respondeu ao `IncluirAnexo`/`ListarAnexo` (sem resposta, 5xx, limite de consumo) — pode subir numa repetição; `ANEXO_OMIE_RECUSOU` é só a recusa de negócio do Omie. |
+| `/lancar`, `reaproveitado` | O backend lê os anexos do título (`ListarAnexo`) e sobe só os que faltam, pelo nome; os que já estavam voltam `{ ok: true, jaExistia: true }`. Nunca `anexos: []` quando havia anexos pedidos. `jaExistia` só aparece com `ok: true`. A política de host e caminho decide antes: uma URL fora dela nunca é relatada como `jaExistia`, e sem nenhum anexo na política o título nem é lido (06-17). O `cCodIntAnexo` de cada anexo é o id do título, como o legado sempre mandou; os nomes já são desambiguados (`nome.pdf`, `nome-2.pdf`). |
 
 Falha de anexo continua sem falhar o lançamento: o título sai, o anexo vem
 `ok: false` com o código.
@@ -83,7 +83,8 @@ Falha de anexo continua sem falhar o lançamento: o título sai, o anexo vem
 Exemplos novos: `lancar.sucesso-anexos-com-falhas` (os cinco códigos),
 `lancar.sucesso-reaproveitado-com-anexos` (`jaExistia`) e
 `lancar.erro-400-schema-invalido-anexos`. `lancar.sucesso-anexos-nomeados`
-passou à forma v1.2 da resposta (o pedido é o mesmo).
+passou à forma v1.2 da resposta (o pedido é o mesmo; no 06-17 a URL `string`
+do exemplo passou a ser do Storage, `/storage/v1/object/public/…`, com o mesmo nome).
 
 ### v1.2 — o que é conferido (plano 06-08)
 
@@ -94,9 +95,9 @@ continua funcionando).
 
 | Onde | O que muda |
 |---|---|
-| `/lancar`, pedido | `contaConfirmada` (opcional, 1 a 200 caracteres depois de aparar): o `dePara.conta` que a Conferência guardou. Diferente da conta corrente que o lançamento usaria agora ⇒ `422 CONTA_DIVERGENTE`, antes de qualquer consulta ou escrita. Com o campo e a conta não resolvida ⇒ `422 CONTA_CORRENTE_NAO_RESOLVIDA`. Só o `/lancar` aceita o campo (no `/resolver` é 400). |
+| `/lancar`, pedido | `contaConfirmada` (opcional, 1 a 200 caracteres depois de aparar): o `dePara.conta` que a Conferência guardou. Diferente da conta corrente que o lançamento usaria agora ⇒ `422 CONTA_DIVERGENTE`, antes de qualquer consulta ou escrita. Com o campo e a conta não resolvida ⇒ `422 CONTA_CORRENTE_NAO_RESOLVIDA`. Só o `/lancar` aceita o campo (no `/resolver` é 400). A comparação é pelo rótulo, aparado: duas contas correntes com a mesma descrição, ou um `nCodCC` trocado sob o mesmo rótulo, passam como a mesma conta — limite conhecido do v1.2 (fin2:IN-06); guardar o id da conta na Conferência é v1.3. |
 | `/resolver` e `/lancar`, `codigoCategoriaConfirmado` | Só sai `resolvida` se a linha do `ListarCategorias` existe E tem `conta_despesa = S`, `totalizadora = N` e `conta_inativa = N`. Receita, totalizadora, inativa ou flag ausente saem `revisar` com o motivo — e o `/lancar` recusa com `422 REGRA_DE_DOMINIO`. O formato aceito continua `^\d(\.\d{2}){2,3}$`: um dígito trocado vira um motivo legível, não um 400. |
-| `/lancar`, `reaproveitado` | O título que já existe (achado pela consulta ou pela reconsulta da inclusão) é conferido em valor, vencimento, código da categoria, documento do fornecedor e conta corrente, antes de qualquer anexo. Diferente ⇒ `422 TITULO_EXISTENTE_DIVERGENTE`. Igual ⇒ `reaproveitado: true` com o `dePara` LIDO DO TÍTULO (a categoria e a conta que estão no Omie), não o recalculado do pedido. |
+| `/lancar`, `reaproveitado` | O título que já existe (achado pela consulta ou pela reconsulta da inclusão) é conferido em valor, vencimento, código da categoria, documento do fornecedor e conta corrente, antes de qualquer anexo. Diferente ⇒ `422 TITULO_EXISTENTE_DIVERGENTE`. Igual ⇒ `reaproveitado: true` com o `dePara` LIDO DO TÍTULO (a categoria e a conta que estão no Omie), não o recalculado do pedido. No `dePara` lido do título, um código de categoria fora do plano de contas, ou reprovado pelas flags que o Omie informou (receita, totalizadora, inativa), volta `revisar` com o motivo do `/resolver` — sem recusar o reaproveitado (06-17, fin2:IN-05). |
 
 | `error.code` | HTTP | `retryable` | `error.details` | O que fazer |
 |---|---|---|---|---|
