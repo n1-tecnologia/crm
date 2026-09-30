@@ -407,7 +407,7 @@ Plans:
 
 **Fechamento (gap closure, planejado 2026-09-30)** — a verificação (`06-VERIFICATION.md`: "ok no fio" sem gesto na tela) e a revisão de código (`06-REVIEW.md`, `06-REVIEW-FINANCEIRO-TRIA.md`: 7 críticos) abriram a rodada; escopo "tudo" decidido pelo dono; esboço em `06-GAPS-OUTLINE.md`. Execução estritamente sequencial numa árvore só:
 
-- [ ] 06-07-PLAN.md — `financeiro-tria`: anexos seguros e honestos no `/lancar` (allowlist `CONTAS_A_PAGAR_ANEXOS_HOSTS`, `https:`, prazo, teto, `jaExistia`, códigos fechados; contrato v1.2) (RES-04)
+- [x] 06-07-PLAN.md — `financeiro-tria`: anexos seguros e honestos no `/lancar` (allowlist `CONTAS_A_PAGAR_ANEXOS_HOSTS`, `https:`, prazo, teto, `jaExistia`, códigos fechados; contrato v1.2) (RES-04)
 - [ ] 06-08-PLAN.md — `financeiro-tria`: `/resolver` e `/lancar` só aceitam o que é certo (categoria de despesa/folha/ativa, `TITULO_EXISTENTE_DIVERGENTE`, `CONTA_DIVERGENTE`) (RES-03)
 - [ ] 06-09-PLAN.md — `financeiro-tria`: S5 fora do turno do webhook, idempotente por evento, repetição só do Resumo (RES-05)
 - [ ] 06-10-PLAN.md — `financeiro-tria`: S5 relê a Solicitação, recusa Centro de Custo sem rota, textos fixos, avisos (RES-05)
@@ -447,7 +447,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 → 6 (0 e 1 em
 | 3. Contas a pagar | 15/15 | Complete   | 2026-09-23 |
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
 | 5. Contas a receber e os outros tenants | 25/25 | Complete    | 2026-09-25 |
-| 6. Conferência do Resumo e anexos | 8/15 | In Progress|  |
+| 6. Conferência do Resumo e anexos | 9/15 | In Progress|  |
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*
