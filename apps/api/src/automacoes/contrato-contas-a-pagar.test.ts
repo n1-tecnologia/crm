@@ -255,10 +255,11 @@ describe("contrato v1.1 (aditiva, Plan 06-02) — os exemplos novos têm o que a
     readonly codigoCategoriaConfirmado?: string;
     readonly anexos?: ReadonlyArray<string | { readonly url: string; readonly nome: string }>;
   }
+  /** A forma v1.2 (06-07): sem `url`, `nome` sempre presente, `erro` como código. */
   interface AnexoRelatado {
-    readonly url: string;
-    readonly nome?: string;
+    readonly nome: string;
     readonly ok: boolean;
+    readonly jaExistia?: true;
     readonly erro?: string;
   }
   const categoriaDe = (arquivo: string) =>
@@ -291,7 +292,7 @@ describe("contrato v1.1 (aditiva, Plan 06-02) — os exemplos novos têm o que a
     }
   });
 
-  it("anexos: string (v1) e { url, nome } (v1.1) na mesma lista; a resposta devolve o nome só de quem o mandou", () => {
+  it("anexos: string (v1) e { url, nome } (v1.1) na mesma lista; a resposta v1.2 devolve o nome de todos, nunca a url, e o erro como código", () => {
     const { requisicao, resposta } = exemplo("lancar.sucesso-anexos-nomeados.json");
     const pedidos = (requisicao.body as CorpoDeLancar).anexos ?? [];
     const relatados = (resposta.corpo as { anexos: AnexoRelatado[] }).anexos;
@@ -301,13 +302,13 @@ describe("contrato v1.1 (aditiva, Plan 06-02) — os exemplos novos têm o que a
     pedidos.forEach((pedido, i) => {
       const relatado = relatados[i];
       if (!relatado) throw new Error(`anexo ${i} sem relato na resposta`);
+      expect(relatado).not.toHaveProperty("url");
       if (typeof pedido === "string") {
-        expect(relatado.url).toBe(pedido);
-        expect(relatado).not.toHaveProperty("nome");
+        expect(relatado.nome).toBe(ultimoSegmentoDaUrl(pedido));
       } else {
-        expect(relatado).toMatchObject({ url: pedido.url, nome: pedido.nome });
+        expect(relatado.nome).toBe(pedido.nome);
       }
-      if (!relatado.ok) expect(typeof relatado.erro).toBe("string");
+      if (!relatado.ok) expect(CODIGOS_DO_ANEXO).toContain(relatado.erro);
     });
   });
 });
@@ -321,5 +322,95 @@ describe.skipIf(!existsSync(PASTA_DO_PRODUTOR))("contrato — cópia verbatim da
     for (const arquivo of doProdutor) {
       expect(hash(path.join(PASTA, arquivo)), arquivo).toBe(hash(path.join(PASTA_DO_PRODUTOR, arquivo)));
     }
+  });
+});
+
+/* ── Contrato v1.2 (06-07): anexos seguros e honestos no /lancar ─────────── */
+
+/** Os únicos valores de `anexos[].erro` (v1.2) — espelho de `CODIGOS_DO_ANEXO` do produtor. */
+const CODIGOS_DO_ANEXO = [
+  "ANEXO_HOST_NAO_PERMITIDO",
+  "ANEXO_DOWNLOAD_FALHOU",
+  "ANEXO_TEMPO_ESGOTADO",
+  "ANEXO_GRANDE_DEMAIS",
+  "ANEXO_OMIE_RECUSOU",
+] as const;
+
+/** O `nome` de um anexo `string` na resposta: o último segmento do caminho, sem query. */
+function ultimoSegmentoDaUrl(url: string): string {
+  const segmento = new URL(url).pathname.split("/").pop() ?? "";
+  try {
+    return decodeURIComponent(segmento);
+  } catch {
+    return segmento;
+  }
+}
+
+describe("contrato v1.2 (06-07) — anexos", () => {
+  interface AnexoV12 {
+    readonly nome?: unknown;
+    readonly ok?: unknown;
+    readonly jaExistia?: unknown;
+    readonly erro?: unknown;
+    readonly url?: unknown;
+  }
+  const sucessosDeLancar = arquivos.filter((f) => f.startsWith("lancar.sucesso"));
+
+  it("os exemplos v1.2 estão na pasta", () => {
+    for (const arquivo of [
+      "lancar.sucesso-anexos-com-falhas.json",
+      "lancar.sucesso-reaproveitado-com-anexos.json",
+      "lancar.erro-400-schema-invalido-anexos.json",
+    ]) {
+      expect(arquivos, arquivo).toContain(arquivo);
+    }
+  });
+
+  it.each(sucessosDeLancar.map((f) => [f] as const))("%s: nenhum anexo com url nem token, erro só como código, ok e jaExistia coerentes", (arquivo) => {
+    const { requisicao, resposta } = exemplo(arquivo);
+    const corpo = resposta.corpo as { reaproveitado: boolean; anexos: AnexoV12[] };
+    const texto = JSON.stringify(resposta.corpo);
+    expect(texto).not.toContain("assinatura=");
+    expect(texto).not.toContain("token=");
+    expect(Array.isArray(corpo.anexos)).toBe(true);
+    const pedidos = ((requisicao.body as { anexos?: unknown[] }).anexos ?? []) as Array<string | { url: string; nome: string }>;
+    expect(corpo.anexos).toHaveLength(pedidos.length);
+    corpo.anexos.forEach((anexo, i) => {
+      expect(anexo, `${arquivo} #${i}`).not.toHaveProperty("url");
+      expect(typeof anexo.nome, `${arquivo} #${i}`).toBe("string");
+      expect(anexo.ok === false, `${arquivo} #${i}: ok false ⇔ erro`).toBe(anexo.erro !== undefined);
+      if (anexo.erro !== undefined) expect(CODIGOS_DO_ANEXO, `${arquivo} #${i}`).toContain(anexo.erro);
+      if (anexo.jaExistia !== undefined) {
+        expect(anexo.jaExistia).toBe(true);
+        expect(anexo.ok, `${arquivo} #${i}: jaExistia só com ok`).toBe(true);
+        expect(corpo.reaproveitado, `${arquivo} #${i}: jaExistia só no reaproveitado`).toBe(true);
+      }
+      const pedido = pedidos[i];
+      if (typeof pedido === "string") expect(anexo.nome, `${arquivo} #${i}`).toBe(ultimoSegmentoDaUrl(pedido));
+      else if (pedido) expect(anexo.nome, `${arquivo} #${i}`).toBe(pedido.nome);
+    });
+  });
+
+  it("lancar.sucesso-anexos-com-falhas cobre os cinco códigos, e o título sai assim mesmo", () => {
+    const corpo = exemplo("lancar.sucesso-anexos-com-falhas.json").resposta.corpo as { payableId: string; anexos: AnexoV12[] };
+    expect(corpo.payableId).toMatch(/^\d+$/);
+    const codigos = new Set(corpo.anexos.map((a) => a.erro).filter((e) => e !== undefined));
+    expect([...codigos].sort()).toEqual([...CODIGOS_DO_ANEXO].sort());
+  });
+
+  it("lancar.sucesso-reaproveitado-com-anexos: o que já estava no título volta jaExistia, o que faltava sobe — nunca anexos: []", () => {
+    const corpo = exemplo("lancar.sucesso-reaproveitado-com-anexos.json").resposta.corpo as { reaproveitado: boolean; anexos: AnexoV12[] };
+    expect(corpo.reaproveitado).toBe(true);
+    expect(corpo.anexos.length).toBeGreaterThan(0);
+    expect(corpo.anexos.some((a) => a.jaExistia === true)).toBe(true);
+    expect(corpo.anexos.every((a) => a.ok === true)).toBe(true);
+  });
+
+  it("lancar.erro-400-schema-invalido-anexos: anexo que não é URL é 400 SCHEMA_INVALIDO, permanente", () => {
+    const { requisicao, resposta } = exemplo("lancar.erro-400-schema-invalido-anexos.json");
+    expect(resposta.status).toBe(400);
+    expect((resposta.corpo as unknown as EnvelopeDeErro).error).toMatchObject({ code: "SCHEMA_INVALIDO", retryable: false });
+    const anexos = (requisicao.body as { anexos: unknown[] }).anexos;
+    expect(anexos.some((a) => typeof a === "string" && !/^https?:\/\//.test(a))).toBe(true);
   });
 });

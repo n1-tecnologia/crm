@@ -1,0 +1,112 @@
+{
+  "descricao": "v1.2: lançado mesmo com anexos que não sobem — cada anexo volta pelo nome, com um código da lista fechada no erro, nunca o texto da falha nem a URL. ANEXO_HOST_NAO_PERMITIDO: host fora de CONTAS_A_PAGAR_ANEXOS_HOSTS, ou http: (só https: é aceito) — a URL nem é tocada. ANEXO_DOWNLOAD_FALHOU: o download falhou (status HTTP, porta fechada, redirecionamento — o mesmo código para todos). ANEXO_GRANDE_DEMAIS: acima de 15 MB. ANEXO_OMIE_RECUSOU: o IncluirAnexo recusou. ANEXO_TEMPO_ESGOTADO: não coube no orçamento total dos anexos (35 s em produção; curto neste cenário).",
+  "requisicao": {
+    "metodo": "POST",
+    "caminho": "/v1/integrations/contas-a-pagar/lancar",
+    "headers": {
+      "authorization": "Bearer token-de-exemplo-nunca-real",
+      "x-request-id": "req-exemplo-lancar-anexos-com-falhas",
+      "idempotency-key": "tria:contas-a-pagar:tsk_00001a"
+    },
+    "body": {
+      "taskId": "tsk_00001a",
+      "centroDeCusto": "tria",
+      "categoriaDePagamento": "Impostos",
+      "titulo": "DAS — Simples Nacional",
+      "descricao": "Imposto mensal",
+      "tagDaConta": "conta tria",
+      "valorCentavos": 123456,
+      "vencimento": "2026-10-15",
+      "formaDePagamento": "Chave Pix",
+      "chavePix": "11.222.333/0001-81",
+      "fornecedor": {
+        "tipo": "CNPJ",
+        "documento": "11.222.333/0001-81",
+        "nome": "Fornecedor Fictício LTDA"
+      },
+      "observacao": "Guia mensal",
+      "anexos": [
+        {
+          "url": "https://exemplo.invalid/storage/v1/object/sign/anexos/obj_7f3a9c?assinatura=exemplo-nunca-real",
+          "nome": "NFS-e 21.pdf"
+        },
+        "https://outro-host.exemplo.invalid/anexos/recibo.pdf",
+        "http://exemplo.invalid/anexos/contrato.pdf",
+        {
+          "url": "https://exemplo.invalid/storage/v1/object/sign/anexos/obj_81d2e0?assinatura=exemplo-nunca-real",
+          "nome": "Boleto outubro.pdf"
+        },
+        {
+          "url": "https://exemplo.invalid/storage/v1/object/sign/anexos/obj_a41c77?assinatura=exemplo-nunca-real",
+          "nome": "Extrato anual.pdf"
+        },
+        {
+          "url": "https://exemplo.invalid/storage/v1/object/sign/anexos/obj_c09e15?assinatura=exemplo-nunca-real",
+          "nome": "Planilha.xlsx"
+        },
+        {
+          "url": "https://exemplo.invalid/storage/v1/object/sign/anexos/obj_e5b2d8?assinatura=exemplo-nunca-real",
+          "nome": "Comprovante.pdf"
+        }
+      ]
+    }
+  },
+  "resposta": {
+    "status": 200,
+    "corpo": {
+      "payableId": "4100000001",
+      "codigoLancamentoIntegracao": "tria:contas-a-pagar:tsk_00001a",
+      "reaproveitado": false,
+      "dePara": {
+        "contaPorTag": {
+          "conta tria": "TRIA COMPANY - ITAU"
+        },
+        "categoriaPorCampo": {
+          "Impostos": {
+            "veredito": "resolvida",
+            "nome": "Impostos e taxas",
+            "codigo": "2.06.01",
+            "similaridade": 0.91
+          }
+        },
+        "origem": "omie"
+      },
+      "anexos": [
+        {
+          "nome": "NFS-e 21.pdf",
+          "ok": true
+        },
+        {
+          "nome": "recibo.pdf",
+          "ok": false,
+          "erro": "ANEXO_HOST_NAO_PERMITIDO"
+        },
+        {
+          "nome": "contrato.pdf",
+          "ok": false,
+          "erro": "ANEXO_HOST_NAO_PERMITIDO"
+        },
+        {
+          "nome": "Boleto outubro.pdf",
+          "ok": false,
+          "erro": "ANEXO_DOWNLOAD_FALHOU"
+        },
+        {
+          "nome": "Extrato anual.pdf",
+          "ok": false,
+          "erro": "ANEXO_GRANDE_DEMAIS"
+        },
+        {
+          "nome": "Planilha.xlsx",
+          "ok": false,
+          "erro": "ANEXO_OMIE_RECUSOU"
+        },
+        {
+          "nome": "Comprovante.pdf",
+          "ok": false,
+          "erro": "ANEXO_TEMPO_ESGOTADO"
+        }
+      ]
+    }
+  }
+}

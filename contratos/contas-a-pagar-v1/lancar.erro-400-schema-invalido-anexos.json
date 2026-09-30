@@ -1,0 +1,44 @@
+{
+  "descricao": "v1.2: anexo que não é URL absoluta (aqui, só um nome de arquivo) é 400, permanente, sem details — nada é consultado nem lançado. Também são 400: mais de 20 anexos, URL acima de 2048 caracteres e nome só de espaços.",
+  "requisicao": {
+    "metodo": "POST",
+    "caminho": "/v1/integrations/contas-a-pagar/lancar",
+    "headers": {
+      "authorization": "Bearer token-de-exemplo-nunca-real",
+      "x-request-id": "req-exemplo-lancar-400-anexos",
+      "idempotency-key": "tria:contas-a-pagar:tsk_00001a"
+    },
+    "body": {
+      "taskId": "tsk_00001a",
+      "centroDeCusto": "tria",
+      "categoriaDePagamento": "Impostos",
+      "titulo": "DAS — Simples Nacional",
+      "descricao": "Imposto mensal",
+      "tagDaConta": "conta tria",
+      "valorCentavos": 123456,
+      "vencimento": "2026-10-15",
+      "formaDePagamento": "Chave Pix",
+      "chavePix": "11.222.333/0001-81",
+      "fornecedor": {
+        "tipo": "CNPJ",
+        "documento": "11.222.333/0001-81",
+        "nome": "Fornecedor Fictício LTDA"
+      },
+      "observacao": "Guia mensal",
+      "anexos": [
+        "arquivo.pdf"
+      ]
+    }
+  },
+  "resposta": {
+    "status": 400,
+    "corpo": {
+      "error": {
+        "code": "SCHEMA_INVALIDO",
+        "message": "Corpo da requisição não corresponde ao esperado.",
+        "requestId": "req-exemplo-lancar-400-anexos",
+        "retryable": false
+      }
+    }
+  }
+}

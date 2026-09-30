@@ -106,16 +106,18 @@ Corpo = o de `/resolver` mais:
   "fornecedor": { "tipo": "CNPJ", "documento": "...", "nome": "..." },
   "observacao": "...",                    // opcional, máx. 1000
   "numeroDocumentoFiscal": "...",         // opcional
-  "anexos": [                             // opcional
+  "anexos": [                             // opcional, até 20 itens (v1.2)
     "https://...",                                    // v1: só a URL (o nome vem do fim da URL)
-    { "url": "https://...", "nome": "NFS-e 21.pdf" }  // v1.1: com o nome original (1 a 200 caracteres)
-  ]
+    { "url": "https://...", "nome": "NFS-e 21.pdf" }  // v1.1: com o nome original (1 a 200 caracteres, aparado)
+  ]                                       // v1.2: url absoluta, até 2048 caracteres
 }
 ```
 
 `pedidoDeRevisao` e `codigoCategoriaConfirmado` (v1.1) valem aqui como em `/resolver` — o `/lancar` resolve a Categoria pela mesma peça: com `codigoCategoriaConfirmado`, o `IncluirContaPagar` leva ESSE código, mesmo que o RAG apontasse outro; fora do plano de contas, `422 REGRA_DE_DOMINIO` com o motivo e nada incluído.
 
 **v1.1, opcional — `anexos[]` como `{ url, nome }`:** o `nome` vira o nome do arquivo DENTRO do zip e o `cNomeArquivo` do `IncluirAnexo` (normalizado: sem acento, sem espaço, minúsculas). Sem ele, o nome é o último segmento da URL — numa URL assinada do Storage, um caminho opaco. Os dois formatos convivem na mesma lista; `{ url }` sem `nome`, `nome` vazio ou campo a mais → `400 SCHEMA_INVALIDO`.
+
+**v1.2 — de onde e como o anexo é baixado (Plan 06-07):** a URL é absoluta (`z.url()`) e tem até 2048 caracteres; a lista tem no máximo 20 anexos; o `nome` é aparado, e só de espaços é `400`. O `automation/` só baixa de `https:` com hostname EXATO em `CONTAS_A_PAGAR_ANEXOS_HOSTS` (produção: o host do Storage do Supabase da plataforma) — URL fora da lista nem é tocada e sai `ANEXO_HOST_NAO_PERMITIDO`; variável vazia ⇒ todo anexo sai assim, e o título ainda lança. Redirecionamento é recusado, cada download tem prazo de 15 s e teto de 15 MB (lido em stream), e os anexos têm orçamento total de 35 s (abaixo dos 60 s da ponte) — o que não coube sai `ANEXO_TEMPO_ESGOTADO`. Um nome sem base latina sobe como `anexo-<n>.<ext>`, um sem extensão ganha a do `content-type`, e dois iguais sobem como `nome.pdf` e `nome-2.pdf`.
 
 Resposta `200` (nunca `{ ok: true }` — um replay precisa confirmar o resultado sem uma segunda leitura):
 
@@ -125,14 +127,25 @@ Resposta `200` (nunca `{ ok: true }` — um replay precisa confirmar o resultado
   "codigoLancamentoIntegracao": "tria:contas-a-pagar:tsk_cp_das",
   "reaproveitado": false,
   "dePara": { "...": "mesma forma de /resolver" },
-  "anexos": [
-    { "url": "https://...", "ok": true },
-    { "url": "https://...", "nome": "NFS-e 21.pdf", "ok": false, "erro": "download anexo falhou: 403 Forbidden" }
+  "anexos": [                                          // v1.2: nunca a url
+    { "nome": "guia.pdf", "ok": true },                  // anexo string: o último segmento do caminho, sem query
+    { "nome": "NFS-e 21.pdf", "ok": true, "jaExistia": true },
+    { "nome": "Boleto outubro.pdf", "ok": false, "erro": "ANEXO_DOWNLOAD_FALHOU" }
   ]
 }
 ```
 
-`anexos[].nome` (v1.1) volta só quando o anexo foi pedido com nome — um pedido v1 recebe a resposta de sempre. Um anexo que não sobe não derruba o lançamento: `ok: false` e o `erro`. Com `reaproveitado: true` (o título já existia), `anexos` é `[]`: os anexos subiram no primeiro envio, e o reenvio está adiado (Fase 6).
+Cada anexo volta pelo `nome` (v1.2: sempre presente — o do pedido, ou o último segmento do caminho da URL para um anexo `string`), NUNCA pela `url`: a URL assinada do Storage carrega token. Um anexo que não sobe não derruba o lançamento: `ok: false` e o `erro` — um código da lista fechada, nunca status HTTP, texto de rede ou do Omie (um 404 e uma porta fechada dão o mesmo código):
+
+| `erro` | Quando |
+|---|---|
+| `ANEXO_HOST_NAO_PERMITIDO` | Host fora de `CONTAS_A_PAGAR_ANEXOS_HOSTS`, `http:`, ou credencial na URL — nada foi baixado. |
+| `ANEXO_DOWNLOAD_FALHOU` | O download falhou (status HTTP, rede, redirecionamento). |
+| `ANEXO_TEMPO_ESGOTADO` | Não coube no prazo do download ou no orçamento total dos anexos. |
+| `ANEXO_GRANDE_DEMAIS` | Acima de 15 MB. |
+| `ANEXO_OMIE_RECUSOU` | O Omie recusou o `IncluirAnexo` (ou o `ListarAnexo`, no `reaproveitado`). |
+
+Com `reaproveitado: true` (o título já existia — pela consulta prévia ou pela reconsulta da inclusão), o `automation/` lê os anexos do título (`ListarAnexo`) e sobe só os que faltam, pelo nome com que subiriam; os que já estão voltam `{ "ok": true, "jaExistia": true }` sem serem baixados de novo. Nunca `anexos: []` quando havia anexos pedidos (fin:CR-03: um download lento depois do `IncluirContaPagar` fazia a ponte desistir no prazo dela, e a repetição relatava "sem anexos"). Se o `ListarAnexo` falhar, nada é reenviado às cegas: todos saem `ANEXO_OMIE_RECUSOU`.
 
 `422 REGRA_DE_DOMINIO` quando a Categoria da Tarefa está com `veredito: "revisar"` — `details.motivo` traz o texto da recusa, nunca um dado financeiro.
 
@@ -183,5 +196,7 @@ Depois do corte para produção, 03-11 passa a chamar `POST /lancar` com a `Idem
 Esta superfície nasce v1 PRÓPRIA — o congelamento do contrato de Solicitação de pagamento (§9 de `04-contrato-plataforma-v1.md`) não é tocado por este documento, e este documento não é regido por aquele congelamento: são dois contratos irmãos, não um contrato e sua extensão. Uma mudança de forma aqui segue a mesma disciplina que lá — nova versão de rota (`/v2/...`), nunca mutação retroativa — mas é uma decisão independente, tomada quando (e se) esta superfície precisar mudar.
 
 **v1.1 (aditiva, 2026-09-29).** A Conferência do Resumo (Fase 6) precisou de quatro campos novos — `pedidoDeRevisao` e `codigoCategoriaConfirmado` nos pedidos de `/resolver` e `/lancar`, `anexos[]` como `{ url, nome }` no pedido de `/lancar` e `anexos[].nome` na resposta —, e eles entraram como v1.1 no MESMO endereço, não como `/v2` (D6-05). O motivo: nenhum deles muda a forma do que já existia. A regra que torna isso seguro, e que vale para qualquer v1.x futura: **campo novo é sempre opcional e nunca muda o significado de um campo existente** — um corpo v1 continua válido e recebe exatamente a resposta de antes (os 16 exemplos v1 seguem idênticos), e os schemas continuam `.strict()`, então um produtor v1 recusa com `400` um campo v1.1 em vez de ignorá-lo em silêncio. O `/v2` continua sendo o caminho para uma mudança que quebre isso (campo que vira obrigatório, campo que muda de sentido ou de tipo). A prova são os exemplos canônicos novos em `contratos/contas-a-pagar-v1/` — `resolver.sucesso-pedido-de-revisao`, `resolver.sucesso-codigo-confirmado`, `lancar.sucesso-anexos-nomeados` —, validados contra o handler real no `automation/` (`contas-a-pagar-contrato.test.ts`) e copiados byte a byte para o `crm-n1`, onde `apps/api/src/automacoes/contrato-contas-a-pagar.test.ts` confere o hash de cada arquivo contra a cópia do produtor. Um ajuste só de endurecimento acompanhou: um anexo `""` (string vazia) passou a ser `400`, porque antes virava um download que sempre falhava — nenhum chamador mandava anexos até a v1.1.
+
+**v1.2 (aditiva, 2026-09-30).** Os anexos do `/lancar` ficaram seguros e honestos (Plan 06-07, fin:CR-01/CR-03/IN-02/IN-03), no MESMO endereço (D6-05: nenhum `/v2`, schemas `.strict()`). O que é ADITIVO: `anexos[].jaExistia` na resposta, os cinco códigos de anexo e — em 06-08 — `contaConfirmada` no pedido e os dois `422` novos (`CONTA_DIVERGENTE`, `TITULO_EXISTENTE_DIVERGENTE`). O que é ENDURECIMENTO DE SEGURANÇA do pedido: `url` absoluta (`z.url()`) com até 2048 caracteres, no máximo 20 anexos, `nome` aparado, e o download só de `https:` com hostname em `CONTAS_A_PAGAR_ANEXOS_HOSTS` — antes o backend baixava de qualquer URL, seguia redirecionamento e não tinha prazo nem teto, e quem tivesse o token da rota lia recurso interno da VPS e o subia ao Omie. E a ÚNICA mudança na forma da RESPOSTA, nomeada aqui em vez de escondida: `anexos[].url` sai e `anexos[].erro` passa de texto livre a código fechado. O porquê: a URL assinada carrega o token do Storage (fin:IN-03), e o texto cru da falha (`404 Not Found`, `fetch failed`, `ECONNREFUSED`) era um oráculo de varredura da rede da VPS compartilhada (fin:CR-01). Isso não quebra ninguém: o único consumidor, `anexosDaResposta` da ponte (`apps/api/src/automacoes/invocar-agente.ts`), já descartava `url` e lê `nome`/`ok`/`erro` como texto — até 06-12 traduzir os códigos, o Comentário mostra o código entre parênteses. A regra "campo novo é sempre opcional e nunca muda o significado de um campo existente" continua valendo; esta é a exceção, com o motivo. Do lado da ponte (06-12): limitar a 20 anexos por conta (acima disso o pedido é `400`) e contar `jaExistia` no texto do lançamento. Exemplos novos: `lancar.sucesso-anexos-com-falhas` (os cinco códigos), `lancar.sucesso-reaproveitado-com-anexos` (`jaExistia`) e `lancar.erro-400-schema-invalido-anexos`; `lancar.sucesso-anexos-nomeados` passou à forma v1.2 da resposta com o mesmo pedido.
 
 Os tipos `DeParaDeLancamento`/`ResolucaoDeCategoria`/`OrigemDoDePara` são declarados em DOIS lugares — `packages/dominio/src/operations/financeiro.ts` (`crm-n1`) e `../financeiro-tria/automation/src/tenants/tria/contas-a-pagar-resolucao.ts` — como espelho literal, não como pacote compartilhado (mesmo princípio do §9 de `04-contrato-plataforma-v1.md`: artefatos compartilhados são COPIADOS entre os dois repositórios). Quem detecta deriva entre as duas cópias é o `.strict()` de `apps/api/src/rotas/esquemas/financeiro.ts` com o portão `Confere<Igual<…>>` (IN-10, Plan 03-04) — um campo a mais, a menos ou com outro nome quebra a compilação do lado de `apps/api`, não deste documento.

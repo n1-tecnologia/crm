@@ -61,6 +61,29 @@ campo existente — um corpo v1 continua valendo e recebendo a mesma resposta:
 Exemplos: `resolver.sucesso-pedido-de-revisao`,
 `resolver.sucesso-codigo-confirmado` e `lancar.sucesso-anexos-nomeados`.
 
+## v1.2 (aditiva)
+
+Anexos do `/lancar` seguros e honestos (fase 6, plano 06-07). Sem rota nova;
+o que muda no PEDIDO é endurecimento de segurança, e a única mudança na
+RESPOSTA é a forma de `anexos[]` (sem `url`, `erro` como código) — ver §7 de
+`docs/08-migracao-financeiro/05-contrato-lancamento-contas-a-pagar-v1.md`.
+
+| Onde | O que muda |
+|---|---|
+| `/lancar`, pedido | `anexos[].url` (string ou `{ url, nome }`) é URL absoluta com até 2048 caracteres; a lista tem no máximo 20 itens; `nome` é aparado e tem de 1 a 200 caracteres (só espaços é 400). |
+| `/lancar`, download | Só `https:` de um hostname exato em `CONTAS_A_PAGAR_ANEXOS_HOSTS` (produção: o host do Storage do Supabase da plataforma). Fora da lista, a URL nem é tocada. Variável vazia ⇒ todo anexo sai `ANEXO_HOST_NAO_PERMITIDO` e o título ainda lança. Redirecionamento recusado; prazo de 15 s e teto de 15 MB por anexo; orçamento total de 35 s para os anexos (abaixo dos 60 s da ponte). |
+| `/lancar`, resposta | Cada anexo é `{ nome, ok, jaExistia?, erro? }`. `nome` sempre presente: o do pedido, ou o último segmento do caminho da URL (sem query) para um anexo `string`. **Sem `url`** (a URL assinada carrega token). |
+| `/lancar`, resposta | `erro` é um de cinco códigos: `ANEXO_HOST_NAO_PERMITIDO`, `ANEXO_DOWNLOAD_FALHOU`, `ANEXO_TEMPO_ESGOTADO`, `ANEXO_GRANDE_DEMAIS`, `ANEXO_OMIE_RECUSOU` — nunca status HTTP, texto de rede ou do Omie. `ok: false` ⇔ `erro` presente. |
+| `/lancar`, `reaproveitado` | O backend lê os anexos do título (`ListarAnexo`) e sobe só os que faltam, pelo nome; os que já estavam voltam `{ ok: true, jaExistia: true }`. Nunca `anexos: []` quando havia anexos pedidos. `jaExistia` só aparece com `ok: true`. |
+
+Falha de anexo continua sem falhar o lançamento: o título sai, o anexo vem
+`ok: false` com o código.
+
+Exemplos novos: `lancar.sucesso-anexos-com-falhas` (os cinco códigos),
+`lancar.sucesso-reaproveitado-com-anexos` (`jaExistia`) e
+`lancar.erro-400-schema-invalido-anexos`. `lancar.sucesso-anexos-nomeados`
+passou à forma v1.2 da resposta (o pedido é o mesmo).
+
 ## Dados
 
 Inventados: token `token-de-exemplo-nunca-real`, Tarefa `tsk_00001a`, CNPJ de

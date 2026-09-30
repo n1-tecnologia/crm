@@ -209,7 +209,8 @@ describe("contrato — a ponte em dois momentos com as respostas canônicas", ()
     const confirmacao = t.comments.find((c) => c.content.startsWith("✅ Lançado no Omie"))?.content ?? "";
     // A resposta canônica relata três anexos (dois ok, um falhou).
     expect(confirmacao).toContain("anexos 2 de 3");
-    expect(confirmacao).toContain("• Boleto outubro.pdf: não subiu (download anexo falhou: 403 Forbidden)");
+    // v1.2 (06-07): o erro é um código da lista fechada; 06-12 traduz o código para texto.
+    expect(confirmacao).toContain("• Boleto outubro.pdf: não subiu (ANEXO_DOWNLOAD_FALHOU)");
     expect(confirmacao).not.toContain("assinatura=");
   });
 });
