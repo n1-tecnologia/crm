@@ -105,7 +105,7 @@ Critério de pronto (ROADMAP Phase 6): o Financeiro vê o Resumo no fio antes do
 - [ ] **RES-03**: Fluxo 7 — a ponte só chama `/lancar` com Conferência aprovada para os dados atuais, manda `codigoCategoriaConfirmado`, confirma no fio, move para "lançado omie"; falha permanente comenta o motivo e devolve a conta a "para pagar" (`REQ-f6-lancamento-com-conferencia`). Aceite: critério 3; zero `/lancar` sem conferência (teste). Pendente.
 - [ ] **RES-04**: Anexos no Omie — a ponte manda `anexos` (URLs assinadas de 5 min com o nome original) e o `/lancar` (v1.1) os sobe por `IncluirAnexo` com o nome certo; `teste:omie-real --anexo` prova no Omie real (`REQ-f6-anexos-no-omie`). Aceite: critério 4. Pendente.
 - [x] **RES-05**: S5/S6 na Solicitação (coorte plataforma) — depois de `aprovada`, o pipeline publica o Resumo na Solicitação; em `rejeitada`, avisa o Solicitante; tudo pela porta (`REQ-f6-s5-s6-plataforma`). Aceite: critério 5. Feito em 06-05 (financeiro-tria `2cd13cd`).
-- [ ] **RES-06**: Modo `conferencia` da ponte, jornada `cp-conferida`/`cp-ajuste`, specs e planos atualizados, provas registradas em `06-PROVAS.md` (`REQ-f6-provas-e-docs`). Aceite: critério 4 (zero `/lancar` nos modos sem caneta) e o relato. Pendente.
+- [x] **RES-06**: Modo `conferencia` da ponte, jornada `cp-conferida`/`cp-ajuste`, specs e planos atualizados, provas registradas em `06-PROVAS.md` (`REQ-f6-provas-e-docs`). Aceite: critério 4 (zero `/lancar` nos modos sem caneta) e o relato. Feito em 06-06 (provas em `06-PROVAS.md`).
 
 ## Traceability
 
@@ -153,7 +153,7 @@ Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pe
 | RES-03 | Phase 6 | Pending | planejado 2026-09-29 (06-01, 06-02, 06-03) | REQ-f6-lancamento-com-conferencia |
 | RES-04 | Phase 6 | Pending | planejado 2026-09-29 (06-02, 06-03) | REQ-f6-anexos-no-omie |
 | RES-05 | Phase 6 | Complete | planejado 2026-09-29 (06-05) | REQ-f6-s5-s6-plataforma |
-| RES-06 | Phase 6 | Pending | planejado 2026-09-29 (06-03, 06-04, 06-06) | REQ-f6-provas-e-docs |
+| RES-06 | Phase 6 | Complete | planejado 2026-09-29 (06-03, 06-04, 06-06) | REQ-f6-provas-e-docs |
 
 **Coverage:**
 
