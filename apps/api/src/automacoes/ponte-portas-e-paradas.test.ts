@@ -76,8 +76,11 @@ import {
 type Registro = { readonly nivel: string; readonly mensagem: string; readonly dados?: Record<string, string | number> };
 
 let servidor: ServidorFalso;
+let jaFechado: ServidorFalso | undefined;
 afterEach(async () => {
-  await servidor?.fechar();
+  // Os casos puros não abrem servidor: fecha só o que este caso abriu.
+  if (servidor && servidor !== jaFechado) await servidor.fechar();
+  jaFechado = servidor;
 });
 
 function montar(estado: DataState, extra: Partial<OpcoesDaPonte> = {}) {
@@ -275,7 +278,7 @@ describe("crm:WR-02 — a chave vê arquivos, Manual e anexos", () => {
     const comManual = chaveDaPonte(estado, das);
     expect(comManual).not.toBe(comBoleto);
 
-    das.attachments = [...das.attachments, { fileId: "fil_anexo_novo", order: 99, mediaType: "document" }];
+    das.attachments = [...das.attachments, { fileId: "fil_anexo_novo", order: 99, mediaType: "document", displayName: "nf.pdf" }];
     expect(chaveDaPonte(estado, das)).not.toBe(comManual);
   });
 });

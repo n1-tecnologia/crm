@@ -150,7 +150,7 @@ conferência e lança no Omie pelo `automation/` (ver
 | `AGENTE_CONTAS_A_PAGAR_CONFERENCIA_POR_COMENTARIO` | `true` \| `false` | D6-02 — "ok" de um revisor no fio vale como conferência; `false`: só o clique confere (o fio continua pedindo ajuste). |
 | `AGENTE_CONTAS_A_PAGAR_INTEGRACAO_MANUAL` | `nao-encosta` \| `sem-conferencia` | D6-04 — conta Manual: o Agente não encosta; ou Resumo com a Conferência dispensada e lançamento. |
 | `AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM` | vazio \| texto | G2, **só ambiente de teste** — os dois momentos só olham contas cujo título contém o texto (exato, maiúsculas contam). Produção: vazio. |
-| `AGENTE_CONTAS_A_PAGAR_AVISAR_ID` | vazio \| id de Membro | G3, **só ambiente de teste** — toda Menção da ponte vai a esse Membro no lugar do Financeiro (se for Membro ativo; senão, aviso e a regra de sempre). Produção: vazio. |
+| `AGENTE_CONTAS_A_PAGAR_AVISAR_ID` | vazio \| id de Membro | G3, **só ambiente de teste** — toda Menção da ponte vai a esse Membro no lugar do Financeiro. **Exige `AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM`**: sozinha, a API não sobe (06-13, crm:WR-01). Se o id não for Membro ativo, a ponte **não age** (nenhuma requisição, nenhuma gravação) e avisa a cada ciclo com `AVISAR_ID_INVALIDO`. Produção: vazio. |
 | `AGENTE_CONTAS_A_PAGAR_INTERVALO_MS` | `900000` | O relógio entre ciclos; uma gravação numa conta cutuca a ponte em até 2 s (D6-12). |
 | `AGENTE_CONTAS_A_PAGAR_CNPJ_POR_EMPRESA` | vazio \| JSON | O CNPJ da Empresa no texto da A5. |
 

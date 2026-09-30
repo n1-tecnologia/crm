@@ -46,14 +46,19 @@
  * `/lancar` é inalcançável — o erro barato é não lançar; o erro caro é lançar.
  *
  * **Ninguém fica repetindo chamadas ao Omie.** A ponte guarda, em memória e
- * por conta, uma chave do que decide o próximo passo — a impressão de
- * lançamento do domínio (`impressaoDeLancamento`, D6-10), o Status, o
- * Registro da última mudança de Status e a Conferência vigente com a sua
- * decisão. Depois de uma recusa comentada — dado faltando, erro permanente
- * do `automation/`, lançamento não confirmado, três falhas transitórias
- * seguidas —, a conta não é mais processada até essa chave mudar: alguém
- * corrigir um Campo, mover a conta, ou decidir a Conferência. Conta fora dos
- * dois Status é esquecida.
+ * por conta, uma chave do que decide o próximo passo (`chaveDaPonte`) — a
+ * impressão de lançamento do domínio (`impressaoDeLancamento`, D6-10), o
+ * Status, o Registro da última mudança de Status, a Conferência vigente com a
+ * sua decisão e, desde 06-13 (crm:WR-02), TODOS os Valores de Campo ativos e
+ * os anexos da Tarefa. Depois de uma recusa comentada — dado faltando, erro
+ * permanente do `automation/`, lançamento não confirmado, três falhas
+ * transitórias seguidas —, a conta não é mais processada até essa chave
+ * mudar: alguém corrigir um Campo, subir um arquivo, mover a conta, ou
+ * decidir a Conferência. Conta fora dos dois Status é esquecida. A memória
+ * sobrevive ao reinício pelo fio (crm:WR-07): na primeira vez que o processo
+ * vê a conta, o aviso de parada mais recente do Agente
+ * (`PADROES_DAS_PARADAS`), se é posterior à última mudança humana
+ * (`ultimaMudancaHumana`), restaura a parada sem requisição nem Comentário.
  *
  * **O legado importado nunca é varrido (G1).** Uma conta importada do ClickUp
  * (`provenance.kind === "import"`) só entra na ponte depois de um movimento
@@ -64,7 +69,12 @@
  * **Portas de ambiente de teste (G2, G3).** `soTitulosCom` restringe os dois
  * momentos às contas cujo título contém o texto (ex.: "TESTE
  * AUTOMATIZADO"); `avisarId` troca QUEM toda Menção da ponte avisa (o
- * Financeiro, por padrão). Produção deixa as duas vazias.
+ * Financeiro, por padrão). Produção deixa as duas vazias. A porta FECHA
+ * quando está errada (06-13, crm:WR-01): `avisarId` que não é Membro ativo
+ * deixa a ponte parada — nenhuma requisição, nenhuma gravação, um aviso por
+ * ciclo (`AVISAR_ID_INVALIDO`) —, em vez de mencionar o Financeiro real; e
+ * `avisarId` sem `soTitulosCom` nem deixa a API subir
+ * (`recusaDasPortasDeTeste`).
  *
  * **O ciclo e o banco (06-13, diagnóstico dos timeouts em `06-13-SUMMARY.md`).**
  * Um ciclo por vez (single-flight: relógio, cutucada e chamada direta de
@@ -189,6 +199,24 @@ export function lerOpcoesDeEscopo(env: Readonly<Record<string, string | undefine
   const soTitulosCom = env.AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM?.trim();
   const avisarId = env.AGENTE_CONTAS_A_PAGAR_AVISAR_ID?.trim();
   return { ...(soTitulosCom ? { soTitulosCom } : {}), ...(avisarId ? { avisarId } : {}) };
+}
+
+/**
+ * crm:WR-01 (06-13) — `AVISAR_ID` sozinho é a combinação perigosa: sem
+ * `SO_TITULOS_COM`, a ponte publicaria Resumos em TODAS as contas reais com
+ * o Membro de teste como aprovador. `index.ts` recusa subir com ela, como
+ * recusa subir sem URL ou token. O texto nomeia as variáveis, nunca os
+ * valores.
+ */
+export function recusaDasPortasDeTeste(escopo: { readonly soTitulosCom?: string; readonly avisarId?: Id }): string | undefined {
+  if (escopo.avisarId && !escopo.soTitulosCom) {
+    return (
+      "AGENTE_CONTAS_A_PAGAR_AVISAR_ID exige AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM: trocar quem é mencionado só vale junto com " +
+      "restringir as contas — sozinha, a ponte publicaria Resumos em todas as contas reais com um Membro de teste como " +
+      "aprovador. Defina as duas, ou nenhuma."
+    );
+  }
+  return undefined;
 }
 
 /** O resumo das portas de teste para a linha de partida do log (sem o id do Membro). */
@@ -568,9 +596,14 @@ function dentroDoEscopo(task: Task, soTitulosCom: string | undefined): boolean {
   return titulo.includes(soTitulosCom);
 }
 
+function membroAtivo(state: DataState, id: Id): boolean {
+  return state.members.some((m) => m.id === id && m.state === "ativo");
+}
+
 /** Por que a ponte não chama o `/lancar` agora (06-12, crm:CR-01) — só o código vai ao log. */
 export type CodigoDeAdiamento =
   | "CONTA_SUMIU"
+  | "AVISAR_ID_INVALIDO"
   | "INATIVA"
   | "SAIU_DE_EM_LANCAMENTO"
   | "NAO_ENTROU_POR_MOVIMENTO"
@@ -597,10 +630,17 @@ export function motivoParaNaoLancar(
   fresco: DataState,
   taskId: Id,
   conferidaId: Id,
-  criterio: { readonly listId: Id; readonly soTitulosCom?: string; readonly integracaoManual: OpcoesDeDecisao["integracaoManual"] },
+  criterio: {
+    readonly listId: Id;
+    readonly soTitulosCom?: string;
+    readonly integracaoManual: OpcoesDeDecisao["integracaoManual"];
+    /** G3 — o Membro indicado tem de continuar ativo AGORA (06-13, crm:WR-01). */
+    readonly avisarId?: Id;
+  },
 ): CodigoDeAdiamento | undefined {
   const atual = fresco.tasks.find((t) => t.id === taskId && t.listId === criterio.listId);
   if (!atual) return "CONTA_SUMIU";
+  if (criterio.avisarId && !membroAtivo(fresco, criterio.avisarId)) return "AVISAR_ID_INVALIDO";
   if (effectiveLifecycleOfTask(fresco, atual.id) !== "ativo") return "INATIVA";
   if (atual.statusId !== CP.status.emLancamento) return "SAIU_DE_EM_LANCAMENTO";
   if (!entrouPorMovimento(fresco, atual)) return "NAO_ENTROU_POR_MOVIMENTO";
@@ -734,6 +774,19 @@ export function textoDasTransitorias(code: string): string {
   return `O Omie não respondeu depois de ${TENTATIVAS_TRANSITORIAS} tentativas (${code}). Tento de novo quando algum Campo da conta mudar ou ela sair e voltar para "em lançamento omie".`;
 }
 
+/** Em "em lançamento omie", o pedido do dado que falta (`erpMissingFields`). */
+export function textoDoDadoFaltando(faltando: readonly string[]): string {
+  return `Não consegui lançar no Omie: falta ${faltando.join(", ")}. Preencha e eu tento de novo.`;
+}
+
+/** D3-01 — nenhuma requisição nasce sem Centro de Custo. */
+export const TEXTO_SEM_CENTRO_DE_CUSTO = "Não consegui preparar o Resumo desta conta: falta Centro de Custo.";
+
+export const TEXTO_VALOR_INVALIDO = "Não consegui lançar no Omie: o Valor precisa ser um número maior que zero. Corrija e eu tento de novo.";
+
+/** T-3-37 — `payableId` ausente ou `mock-…`: não é lançamento. */
+export const TEXTO_LANCAMENTO_NAO_CONFIRMADO = "O Omie não confirmou o lançamento desta conta. Nada foi movido.";
+
 export const TEXTO_NASCEU_EM_LANCAMENTO =
   'Não lancei esta conta no Omie: ela chegou em "em lançamento omie" pela importação do ClickUp, não por um movimento aqui, e pode já ter sido lançada pelo processo antigo. Confira no Omie; se ainda não estiver lá, mova-a para "para pagar" e de volta para "em lançamento omie" que eu lanço.';
 
@@ -778,6 +831,162 @@ export function textoDosAnexosAcimaDoLimite(n: number): string {
 
 /** D6-04 `sem-conferencia` — o motivo gravado na decisão (e no Registro "Aprovação decidida"). */
 export const MOTIVO_DA_DISPENSA = "Conferência dispensada (Integração manual)";
+
+/* ───────────── A memória que sobrevive ao reinício (06-13, crm:WR-07) ───────────── */
+
+const CURINGA_TEXTO = "\u0000T\u0000";
+const CURINGA_CODIGO = "\u0000C\u0000";
+
+/**
+ * Um padrão ANCORADO a partir do próprio texto, montado com curingas no lugar
+ * das partes variáveis: texto livre (`[\s\S]+`) e código de erro
+ * (`[A-Z0-9_]+`). Mudar um texto muda o padrão junto; nada é copiado à mão.
+ */
+function padraoDoTexto(molde: string): RegExp {
+  const escapado = molde.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^${escapado.split(CURINGA_TEXTO).join("[\\s\\S]+").split(CURINGA_CODIGO).join("[A-Z0-9_]+")}$`);
+}
+
+/**
+ * Os avisos de PARADA que o Agente publica — os de `parar()` e o
+ * `falhaSemVolta` do domínio (a conta NÃO voltou para "para pagar": sem
+ * parada, um reinício chamaria o `/lancar` de novo). Um padrão por texto; um
+ * texto de parada casa com exatamente um (o caso (k) de
+ * `ponte-portas-e-paradas.test.ts` trava isso).
+ *
+ * Fora de propósito: `TEXTOS_DA_CONFERENCIA.falha` (a conta VOLTOU para "para
+ * pagar" — ali não há parada a restaurar: a conta conferida espera o humano,
+ * e a superada por `CONTA_DIVERGENTE` precisa do Resumo novo), o Resumo, a
+ * resposta `recusaSemCodigo`, os anexos acima do limite e o aviso do modo
+ * conferência (que tem regra própria, `avisoDoModoNoFio`).
+ */
+export const PADROES_DAS_PARADAS: readonly RegExp[] = [
+  textoDaRecusaDoResumo(CURINGA_TEXTO, CURINGA_CODIGO),
+  textoDasTransitorias(CURINGA_CODIGO),
+  TEXTO_NASCEU_EM_LANCAMENTO,
+  TEXTO_SEM_CODIGO_CONFERIDO,
+  textoDoDadoFaltando([CURINGA_TEXTO]),
+  TEXTO_SEM_CENTRO_DE_CUSTO,
+  TEXTO_VALOR_INVALIDO,
+  TEXTO_LANCAMENTO_NAO_CONFIRMADO,
+  textoDoRegistroRecusado(CURINGA_TEXTO, CURINGA_TEXTO),
+  textoDoRegistroEmConflito(CURINGA_TEXTO),
+  TEXTOS_DA_CONFERENCIA.falhaSemVolta(CURINGA_TEXTO, CURINGA_CODIGO),
+  TEXTOS_DA_CONFERENCIA.falhaSemVolta(CURINGA_TEXTO, CURINGA_CODIGO, CURINGA_TEXTO),
+].map(padraoDoTexto);
+
+/**
+ * Um ponto no tempo do Espaço: o instante e a sequência do id que o gerou
+ * (`nextId`, um contador só para todos os prefixos) — no mesmo milissegundo,
+ * a sequência desempata, como `newestFirst` faz com a Atividade.
+ */
+export interface Marco {
+  readonly at: string;
+  readonly sequencia: number;
+}
+
+const PADRAO_DO_ID = /^[a-z]+_([0-9a-z]{6})$/;
+
+function sequenciaDoId(id: string): number {
+  const m = PADRAO_DO_ID.exec(id);
+  return m ? Number.parseInt(m[1]!, 36) : 0;
+}
+
+function depoisDe(a: Marco, b: Marco): boolean {
+  const ta = Date.parse(a.at);
+  const tb = Date.parse(b.at);
+  return ta > tb || (ta === tb && a.sequencia > b.sequencia);
+}
+
+function maisRecente(marcos: ReadonlyArray<Marco | undefined>): Marco | undefined {
+  let melhor: Marco | undefined;
+  for (const m of marcos) if (m && (!melhor || depoisDe(m, melhor))) melhor = m;
+  return melhor;
+}
+
+/**
+ * crm:WR-07 — a última mudança HUMANA na conta: o Registro de Atividade
+ * mais recente da Tarefa feito por um Membro que não é o de serviço (Campo,
+ * Status, Comentário — inclusive a resposta no fio que a ponte converteu em
+ * decisão, que é gravada em nome de quem respondeu); a criação da Conferência
+ * vigente (um Resumo novo é chave nova); e a decisão dela, quando não foi o
+ * Membro de serviço quem decidiu. O que o Agente grava (Comentários, Resumo,
+ * falhas) tem ator Agente e não conta.
+ */
+export function ultimaMudancaHumana(state: DataState, task: Task, atorDoServico: Id): Marco | undefined {
+  const marcos: Marco[] = [];
+  for (const a of state.activity) {
+    if (a.objectType !== "task" || a.objectId !== task.id) continue;
+    if (a.actor.kind !== "member" || a.actor.id === atorDoServico) continue;
+    marcos.push({ at: a.at, sequencia: sequenciaDoId(a.id) });
+  }
+  const vigente = conferenciaDoResumo(state, task).conferencia;
+  if (vigente) {
+    marcos.push({ at: vigente.createdAt, sequencia: sequenciaDoId(vigente.id) });
+    if (vigente.decidedAt && vigente.decidedByMemberId !== atorDoServico) marcos.push({ at: vigente.decidedAt, sequencia: 0 });
+  }
+  return maisRecente(marcos);
+}
+
+const doAgente = (c: Task["comments"][number]): boolean => c.author.kind === "agent" && c.author.id === CP.agentId && !c.deletedAt;
+
+/** O aviso de parada mais recente do Agente no fio da conta (`PADROES_DAS_PARADAS`), como Marco. */
+function ultimaParadaNoFio(task: Task): Marco | undefined {
+  return maisRecente(
+    task.comments
+      .filter((c) => doAgente(c) && PADROES_DAS_PARADAS.some((p) => p.test(c.content)))
+      .map((c) => ({ at: c.createdAt, sequencia: sequenciaDoId(c.id) })),
+  );
+}
+
+/**
+ * crm:WR-07 — o aviso do modo `conferencia` sai uma vez por ENTRADA em "em
+ * lançamento omie": já está no fio da Conferência, publicado depois do mais
+ * recente entre o último "Status alterado" e a decisão dela? Então não sai de
+ * novo — nem depois de um reinício, nem quando um Campo fora da impressão
+ * muda a chave (WR-02). Sair e voltar é Registro novo, e o aviso volta.
+ */
+function avisoDoModoNoFio(state: DataState, task: Task, conferencia: ConferenciaDoResumo): boolean {
+  const status = ultimaMudancaDeStatus(state, task);
+  const desde = maisRecente([
+    status ? { at: status.at, sequencia: sequenciaDoId(status.id) } : undefined,
+    conferencia.decidedAt ? { at: conferencia.decidedAt, sequencia: 0 } : undefined,
+  ]);
+  return task.comments.some(
+    (c) =>
+      doAgente(c) &&
+      c.parentCommentId === conferencia.origin.threadCommentId &&
+      c.content === TEXTOS_DA_CONFERENCIA.modoConferencia &&
+      (!desde || depoisDe({ at: c.createdAt, sequencia: sequenciaDoId(c.id) }, desde)),
+  );
+}
+
+/**
+ * crm:WR-02 (06-13) — a chave da parada. A impressão de lançamento (D6-10)
+ * foi desenhada para o LANÇAMENTO e deixa de fora os Campos de arquivo e a
+ * Integração manual; mas `erpMissingFields` também depende das exigências de
+ * saída do Status (qualquer Campo exigido, arquivos inclusive), e a
+ * Integração manual decide a parada `manual`. Por isso a chave leva também
+ * TODOS os Valores de Campo ativos (pares [definição, valor], ordenados) e os
+ * anexos da Tarefa: subir o Boleto que faltava, ou desmarcar Manual, destrava
+ * a conta na hora. Um Comentário não muda a chave.
+ */
+export function chaveDaPonte(state: DataState, task: Task): string {
+  const conf = conferenciaDoResumo(state, task);
+  const valores = task.fieldValues
+    .filter((v) => v.state === "ativo")
+    .map((v) => [v.definitionId, v.value ?? null] as const)
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  return JSON.stringify([
+    impressaoDeLancamento(state, task),
+    task.statusId,
+    ultimaMudancaDeStatus(state, task)?.id ?? null,
+    conf.conferencia?.id ?? null,
+    conf.conferencia?.decision ?? null,
+    valores,
+    task.attachments.map((a) => a.fileId),
+  ]);
+}
 
 const CAMINHO_RESOLVER = "/v1/integrations/contas-a-pagar/resolver";
 const CAMINHO_LANCAR = "/v1/integrations/contas-a-pagar/lancar";
@@ -915,19 +1124,13 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
   const estadoPorConta = new Map<Id, EstadoDaConta>();
   /** G1 — a última contagem registrada de contas importadas fora da ponte (o log só sai quando ela muda). */
   let ultimaContagemDeImportadas = 0;
-  /** G3 — o aviso de `avisarId` inválido sai uma vez só por processo. */
-  let avisouAvisarInvalido = false;
-
-  /** G3 — `avisarId` quando é Membro ativo AGORA; senão, a regra de sempre (e um aviso, uma vez). */
-  function avisarDoCiclo(state: DataState): Id | undefined {
-    const pedido = opcoes.avisarId;
-    if (!pedido) return undefined;
-    if (state.members.some((m) => m.id === pedido && m.state === "ativo")) return pedido;
-    if (!avisouAvisarInvalido) {
-      avisouAvisarInvalido = true;
-      registrar("warn", "AGENTE_CONTAS_A_PAGAR_AVISAR_ID não é um Membro ativo do Espaço — as Menções da ponte seguem a regra de sempre (o Financeiro).", { workspaceId, listId });
-    }
-    return undefined;
+  /**
+   * G3 — quem as Menções da ponte avisam neste ciclo: `avisarId` (já
+   * conferido como Membro ativo no começo do ciclo — o inválido nem chega
+   * aqui, crm:WR-01) ou a regra de sempre.
+   */
+  function avisarDoCiclo(): Id | undefined {
+    return opcoes.avisarId;
   }
 
   /**
@@ -964,6 +1167,17 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
       if (falhaDeBancoNoCiclo(erro)) return true;
       throw erro;
     }
+    // crm:WR-01 — a porta de teste mal configurada deixa a ponte PARADA: sem
+    // requisição, sem gravação, em todos os modos, com um aviso por ciclo
+    // (sem o id). Falhar aberto mencionaria o Financeiro real.
+    if (opcoes.avisarId && !membroAtivo(state, opcoes.avisarId)) {
+      registrar("warn", "AGENTE_CONTAS_A_PAGAR_AVISAR_ID não é um Membro ativo do Espaço: a ponte não age neste ciclo (a porta de teste está mal configurada).", {
+        workspaceId,
+        listId,
+        code: "AVISAR_ID_INVALIDO",
+      });
+      return false;
+    }
     const statusOlhados: readonly Id[] =
       decisoes.resumoAPartirDe === "para-pagar" ? [CP.status.paraPagar, CP.status.emLancamento] : [CP.status.emLancamento];
     const contas = state.tasks.filter(
@@ -976,7 +1190,7 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
     const presentes = new Set(contas.map((t) => t.id));
     for (const id of [...estadoPorConta.keys()]) if (!presentes.has(id)) estadoPorConta.delete(id);
 
-    const avisar = avisarDoCiclo(state);
+    const avisar = avisarDoCiclo();
     let ator: Id | undefined;
     const atorDaEscrita = async (): Promise<Id> => (ator ??= await resolverAtor(workspaceId));
     let importadasForaDaPonte = 0;
@@ -1008,19 +1222,27 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
         }
 
         const conf = conferenciaDoResumo(state, task);
-        const chave = JSON.stringify([
-          impressaoDeLancamento(state, task),
-          task.statusId,
-          ultimaMudancaDeStatus(state, task)?.id ?? null,
-          conf.conferencia?.id ?? null,
-          conf.conferencia?.decision ?? null,
-        ]);
+        const chave = chaveDaPonte(state, task);
+        const daConta = { workspaceId, listId, taskId: task.id };
         let estado = estadoPorConta.get(task.id);
         if (!estado || estado.chave !== chave) {
+          const primeiraVista = !estado;
           estado = { chave, transitorias: 0 };
           estadoPorConta.set(task.id, estado);
+          // crm:WR-07 — o fio é a memória. Na PRIMEIRA vez que este processo
+          // vê a conta (reinício, deploy), o aviso de parada mais recente do
+          // Agente, se é posterior à última mudança humana, restaura a parada
+          // — sem requisição e sem Comentário. Com o processo vivo, a chave
+          // decide como sempre.
+          if (primeiraVista && escreve) {
+            const parada = ultimaParadaNoFio(task);
+            const humana = parada ? ultimaMudancaHumana(state, task, await atorDaEscrita()) : undefined;
+            if (parada && (!humana || depoisDe(parada, humana))) {
+              estado.parada = "recusa";
+              registrar("info", "Parada restaurada do fio depois de reiniciar.", { ...daConta, code: "PARADA_RESTAURADA" });
+            }
+          }
         }
-        const daConta = { workspaceId, listId, taskId: task.id };
         const deste = estado;
 
         /** Grava o Comentário do Agente (modos que gravam); falhando, fica pendente para o próximo ciclo — sem chamar o Omie de novo. */
@@ -1086,7 +1308,7 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
           // Em "para pagar" a conta está sendo preenchida: silêncio. Em "em
           // lançamento omie", o pedido de sempre, uma vez.
           if (emLancamento) {
-            await parar("recusa", `Não consegui lançar no Omie: falta ${faltando.join(", ")}. Preencha e eu tento de novo.`, `faltam ${faltando.length} Campo(s).`, "lançaria");
+            await parar("recusa", textoDoDadoFaltando(faltando), `faltam ${faltando.length} Campo(s).`, "lançaria");
           }
           continue;
         }
@@ -1127,10 +1349,11 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
           continue;
         }
         if (modo === "conferencia") {
-          // D6-11 — ZERO `/lancar`: diz no fio, uma vez por chave, que nada foi lançado.
+          // D6-11 — ZERO `/lancar`: diz no fio, uma vez por entrada no Status,
+          // que nada foi lançado (crm:WR-07: o fio decide, não a memória).
           estado.parada = "conferencia";
           registrar("info", `Conferência — lançaria: ${conta} · ${categoria} (${codigo}).`, daConta);
-          await comentar(TEXTOS_DA_CONFERENCIA.modoConferencia, conferencia.origin.threadCommentId);
+          if (!avisoDoModoNoFio(state, task, conferencia)) await comentar(TEXTOS_DA_CONFERENCIA.modoConferencia, conferencia.origin.threadCommentId);
           continue;
         }
         await momentoDoLancamento(conferencia);
@@ -1188,7 +1411,7 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
         async function momentoDoResumo(): Promise<void> {
           const base = corpoResolverDe(state, task);
           if (!base) {
-            await parar("recusa", "Não consegui preparar o Resumo desta conta: falta Centro de Custo.", "falta Centro de Custo.", "publicaria");
+            await parar("recusa", TEXTO_SEM_CENTRO_DE_CUSTO, "falta Centro de Custo.", "publicaria");
             return;
           }
           const pedido = conf.estado === "ajuste-pedido" ? conf.conferencia?.decisionReason?.trim() || undefined : undefined;
@@ -1287,7 +1510,12 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
          * antes do `/lancar`, e o corpo sai do estado relido.
          */
         async function momentoDoLancamento(conferida: ConferenciaDoResumo): Promise<void> {
-          const criterio = { listId, ...(soTitulosCom ? { soTitulosCom } : {}), integracaoManual: decisoes.integracaoManual };
+          const criterio = {
+            listId,
+            ...(soTitulosCom ? { soTitulosCom } : {}),
+            ...(opcoes.avisarId ? { avisarId: opcoes.avisarId } : {}),
+            integracaoManual: decisoes.integracaoManual,
+          };
           // (1) Sobre o snapshot: o que não muda sozinho (na prática, o
           // lançamento humano — o resto o laço já filtrou). Sem Comentário.
           const doSnapshot = motivoParaNaoLancar(state, task.id, conferida.id, criterio);
@@ -1334,7 +1562,7 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
           const base = corpoResolverDe(fresco, atual);
           const corpoLancar = base ? corpoLancarDe(atual, base) : undefined;
           if (!corpoLancar) {
-            await parar("recusa", "Não consegui lançar no Omie: o Valor precisa ser um número maior que zero. Corrija e eu tento de novo.", "Valor inválido.", "lançaria");
+            await parar("recusa", TEXTO_VALOR_INVALIDO, "Valor inválido.", "lançaria");
             return;
           }
           const codigoAtual = confAtual.origin.lancamento.codigo;
@@ -1365,7 +1593,7 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
           // lançamento: registrar seria mentir. `reaproveitado: true`
           // (consulta-antes-de-incluir) É sucesso.
           if (typeof payableId !== "string" || payableId.length === 0 || payableId.startsWith("mock-")) {
-            await parar("recusa", "O Omie não confirmou o lançamento desta conta. Nada foi movido.", "lançamento não confirmado (payableId ausente ou mock).", "lançaria");
+            await parar("recusa", TEXTO_LANCAMENTO_NAO_CONFIRMADO, "lançamento não confirmado (payableId ausente ou mock).", "lançaria");
             return;
           }
           // v1.2 — os anexos pelo status real, casados pelo nome com o que foi

@@ -67,6 +67,7 @@ import {
   lerCnpjPorEmpresa,
   lerOpcoesDeDecisao,
   lerOpcoesDeEscopo,
+  recusaDasPortasDeTeste,
   resolverModo,
   type PonteDoAgente,
 } from "./automacoes/invocar-agente";
@@ -132,8 +133,12 @@ if (process.env.AGENTE_CONTAS_A_PAGAR_ATIVO === "true") {
   const { avisos: avisosDasDecisoes, ...decisoes } = lerOpcoesDeDecisao(process.env);
   for (const aviso of avisosDasDecisoes) app.log.warn(aviso);
   // G2/G3 — AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM e AGENTE_CONTAS_A_PAGAR_AVISAR_ID:
-  // portas de ambiente de teste; produção deixa as duas vazias.
-  const { soTitulosCom, avisarId } = lerOpcoesDeEscopo(process.env);
+  // portas de ambiente de teste; produção deixa as duas vazias. AVISAR_ID sem
+  // SO_TITULOS_COM não sobe (06-13, crm:WR-01), como a falta de URL/token.
+  const escopo = lerOpcoesDeEscopo(process.env);
+  const recusa = recusaDasPortasDeTeste(escopo);
+  if (recusa) throw new Error(recusa);
+  const { soTitulosCom, avisarId } = escopo;
   const intervaloMs = process.env.AGENTE_CONTAS_A_PAGAR_INTERVALO_MS ? Number(process.env.AGENTE_CONTAS_A_PAGAR_INTERVALO_MS) : undefined;
   const atorDoAgente = process.env.AUTOMACOES_ATOR_MEMBER_ID;
   const ponteAtiva = criarPonteDoAgente({

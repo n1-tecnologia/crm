@@ -212,10 +212,58 @@ cutucadas nesse intervalo viram um ciclo, e uma cutucada durante um ciclo em
 voo vira exatamente um ciclo a mais, logo depois dele. `parar()` cancela a
 cutucada pendente.
 
-**A parada por chave.** A "uma vez só" de 1.4 continua, com uma chave mais
-larga que a impressão de antes: `impressaoDeLancamento` do domínio (D6-10) +
-Status + o Registro da última mudança de Status + a Conferência vigente e a
-sua decisão. Uma recusa comentada para a conta até essa chave mudar.
+**A parada por chave.** A regra "uma vez só" de 1.4 continua. Uma recusa
+comentada para a conta até a chave dela mudar.
+
+A chave é `chaveDaPonte` e junta:
+- `impressaoDeLancamento` do domínio (D6-10);
+- o Status;
+- o Registro da última mudança de Status;
+- a Conferência vigente e a sua decisão;
+- desde 06-13 (crm:WR-02), TODOS os Valores de Campo ativos, como pares
+  [definição, valor] ordenados;
+- os `fileId` dos anexos da Tarefa.
+
+A impressão sozinha não bastava. Ela deixa de fora os Campos de arquivo e a
+Integração manual, mas `erpMissingFields` também pede o que as exigências de
+saída do Status pedem (Boleto, QR Code), e a Integração manual decide a parada
+`manual`. Com a chave larga, subir o arquivo que faltava ou desmarcar Manual
+destrava a conta sem reiniciar o processo. Um Comentário não muda a chave.
+
+**A parada sobrevive ao reinício: o fio é a memória (06-13, crm:WR-07).**
+`estadoPorConta` mora no processo, e antes cada reinício (deploy, crash)
+repetia os Comentários com Menção.
+
+Agora, na PRIMEIRA vez que o processo vê a conta, a ponte procura o aviso de
+parada mais recente do Agente. Esse aviso é:
+- um Comentário do Agente, não apagado;
+- cujo texto casa com um dos `PADROES_DAS_PARADAS`, padrões ancorados
+  montados a partir das próprias funções de texto.
+
+Os padrões cobrem os textos que `parar()` publica e o `falhaSemVolta` do
+domínio. Se esse aviso é posterior a `ultimaMudancaHumana`, a parada é
+restaurada, sem requisição e sem Comentário, com um log `PARADA_RESTAURADA`.
+`ultimaMudancaHumana` é o mais recente entre:
+- os Registros de Atividade da Tarefa feitos por um Membro que não é o de
+  serviço;
+- a criação da Conferência vigente;
+- a decisão dela, quando não foi o Membro de serviço quem decidiu.
+
+No mesmo milissegundo, a sequência do id desempata.
+
+`TEXTOS_DA_CONFERENCIA.falha` fica FORA dos padrões de propósito. Nesse caso a
+conta voltou para "para pagar", e não há parada a restaurar: depois de
+`CONTA_DIVERGENTE`, o Resumo novo tem de sair mesmo depois de um reinício.
+
+Com o processo vivo, a chave decide como sempre. Uma parada restaurada também
+cai quando a chave muda.
+
+**O aviso do modo `conferencia`** sai uma vez por ENTRADA em "em lançamento
+omie". A regra: se o fio da Conferência já tem esse aviso do Agente, publicado
+depois do mais recente entre o último "Status alterado" e a decisão da
+Conferência, ele não sai de novo. Não sai depois de um reinício, nem quando um
+Campo fora da impressão muda a chave. Sair e voltar faz um Registro novo, e o
+aviso volta.
 
 **As guardas para ambiente de teste (desvios G1–G3 de 06-03, dirigidos pelo
 orquestrador).** A prova de 06-06 roda esta ponte em `conferencia` contra
@@ -240,8 +288,15 @@ Maryane real:
   ciclo: toda Menção da ponte vai a esse Membro no lugar do Financeiro — o
   Resumo (e o aprovador da Conferência, `OpcoesDaConferencia.avisarId`), o
   aviso de falha (`registrarFalhaDoLancamento`, opção `avisarId`) e os
-  Comentários da própria ponte. Definida mas não Membro ativo: um aviso no
-  log (uma vez) e a regra de sempre — nunca uma Menção a quem não é Membro.
+  Comentários da própria ponte. **A porta fecha (06-13, crm:WR-01):**
+  definida mas não Membro ativo, a ponte NÃO AGE no ciclo (nenhuma
+  requisição, nenhuma gravação, em qualquer modo) e avisa a cada ciclo com
+  `AVISAR_ID_INVALIDO`, sem o id; a releitura antes do `/lancar` pergunta de
+  novo (`motivoParaNaoLancar` ⇒ `AVISAR_ID_INVALIDO`). Antes, falhava aberto e
+  mencionava o Financeiro real. E `AVISAR_ID` sem `SO_TITULOS_COM` nem deixa
+  a API subir (`recusaDasPortasDeTeste`, em `index.ts`): sozinha, a ponte
+  publicaria Resumos em todas as contas reais com um Membro de teste como
+  aprovador.
   `revisoresDoResumo` NÃO muda: o Financeiro e os Administradores continuam
   revisores; com o aprovador trocado, decide por comentário quem for revisor
   E puder decidir (`mayDecideApproval`: o aprovador indicado ou um
