@@ -12,65 +12,40 @@
 
 import { agentSeesTask, contactDisplayName, effectiveLifecycleOfTask, memberSeesTask, newestFirst, statusDefinition } from "../derive";
 import { fail, ok, type DataState, type OperationResult } from "../state";
-import type { Agent, AgentExecution, ApprovalOrigin, ApprovalRequest, Comment, Contact, Id, Task } from "../types";
+import type { Agent, AgentExecution, Comment, Contact, Id, Task } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
 // Sem ciclo em tempo de carga: `./ai` importa `./tasks`, que importa
 // `./automations`, que importa este arquivo — mas nenhum deles usa o outro no
-// topo do módulo, só dentro de funções. Os textos que `./ai` precisa moram em
-// `./financeiro-textos`, que não importa ninguém.
+// topo do módulo, só dentro de funções. O que `./ai` e `./tasks` precisam
+// daqui mora em dois módulos-folha que não importam este arquivo: os textos
+// em `./financeiro-textos` e a impressão, a Conferência vigente e os
+// revisores em `./financeiro-base` (06-11, só `import type`). Nenhum dos dois
+// importa `./financeiro`.
 import { solicitarConferenciaDoResumo } from "./ai";
 import { addMonths } from "./collaboration";
+import {
+  CP,
+  conferenciaVigente,
+  ehConferenciaDoResumo,
+  fieldValue,
+  impressaoDeLancamento,
+  revisoresDoResumo,
+  type ConferenciaDoResumo,
+} from "./financeiro-base";
 import { PREFIXOS_DO_PROCESSO, TEXTOS_DA_CONFERENCIA, type AnexoDoLancamento } from "./financeiro-textos";
 import { addTaskComment, changeTaskStatus, createTask, setTaskFieldValue, trashTask, unmetRequirements } from "./tasks";
 
+export {
+  CP,
+  FORMA_DO_CODIGO_DE_CATEGORIA,
+  impressaoDeLancamento,
+  lancamentoSemCodigo,
+  revisoresDoResumo,
+  type ConferenciaDoResumo,
+} from "./financeiro-base";
 export { PREFIXOS_DO_PROCESSO, TEXTOS_DA_CONFERENCIA, type AnexoDoLancamento, type DadosDoLancado } from "./financeiro-textos";
 
 const now = (): string => new Date().toISOString();
-
-/** Ids fixos do processo — a configuração (seed) e o código apontam para os mesmos. */
-export const CP = {
-  spaceId: "spc_gestao",
-  folderId: "fld_financeiro",
-  listId: "lst_contas_a_pagar",
-  taskTypeId: "tt_conta",
-  agentId: "agt_lancamento",
-  financeiroId: "mem_maryane",
-  aprovadorId: "mem_marcos_paulo",
-  aprovadorKonqId: "mem_walter",
-  fields: {
-    centroDeCusto: "fd_cp_centro",
-    bu: "fd_cp_bu",
-    empresa: "fd_cp_empresa",
-    integracaoManual: "fd_cp_integracao",
-    categoria: "fd_cp_categoria",
-    pessoa: "fd_cp_pessoa",
-    fornecedor: "fd_cp_fornecedor",
-    cnpj: "fd_cp_cnpj",
-    cpf: "fd_cp_cpf",
-    nomeFornecedor: "fd_cp_nome_fornecedor",
-    anexo: "fd_cp_anexo",
-    dataEmissao: "fd_cp_data_emissao",
-    valor: "fd_cp_valor",
-    forma: "fd_cp_forma",
-    chavePix: "fd_cp_chave_pix",
-    codigoBarras: "fd_cp_cod_barras",
-    pixCopiaECola: "fd_cp_pix_copia",
-    boleto: "fd_cp_boleto",
-    qrCode: "fd_cp_qrcode",
-    solicitante: "fd_cp_solicitante",
-    whatsapp: "fd_cp_whatsapp",
-  },
-  status: {
-    paraPagar: "st_cp_para_pagar",
-    emLancamento: "st_cp_em_lancamento",
-    lancado: "st_cp_lancado",
-    emRemessa: "st_cp_em_remessa",
-    emAutorizacao: "st_cp_em_autorizacao",
-    aprovado: "st_cp_aprovado",
-    negado: "st_cp_negado",
-    pago: "st_cp_pago",
-  },
-} as const;
 
 /**
  * Quem a `AgentExecution` do lançamento nomeia como invocador (`invokedBy`)
@@ -198,12 +173,6 @@ export interface ResumoDePagamento {
 
 const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const dataBr = (iso: string | undefined): string => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "—");
-
-function fieldValue(task: Task, definitionId: Id): string {
-  const v = task.fieldValues.find((x) => x.definitionId === definitionId && x.state === "ativo")?.value;
-  if (v === undefined || v === null) return "";
-  return Array.isArray(v) ? v.join(", ") : String(v);
-}
 
 /**
  * O que o ERP exige e, quando falta, o que o Agente pede ao Financeiro.
@@ -744,100 +713,7 @@ export function contaSemResumo(state: DataState, task: Task): boolean {
  * saída (CON-CP-08), e reparseá-lo é a fragilidade do legado.
  */
 
-/** A `ApprovalRequest` de uma Conferência do Resumo — o ramo `resumo` de `ApprovalOrigin`. */
-export type ConferenciaDoResumo = ApprovalRequest & { origin: Extract<ApprovalOrigin, { readonly processStep: "resumo" }> };
-
-function ehConferenciaDoResumo(a: ApprovalRequest): a is ConferenciaDoResumo {
-  // Um registro hidratado de antes da Fase 2 pode chegar sem `origin` (`normalizeApprovalOrigin`).
-  const origin = a.origin as ApprovalOrigin | undefined;
-  return origin?.kind === "processTask" && origin.processStep === "resumo";
-}
-
-/** A Conferência que vale: a mais recente (por `createdAt`, empate pela ordem de gravação) que não foi cancelada. */
-function conferenciaVigente(state: DataState, taskId: Id): ConferenciaDoResumo | undefined {
-  let vigente: ConferenciaDoResumo | undefined;
-  for (const a of state.approvals) {
-    if (!ehConferenciaDoResumo(a) || a.origin.taskId !== taskId) continue;
-    if (a.decision === "cancelada" || a.decision === "expirada") continue;
-    if (!vigente || a.createdAt >= vigente.createdAt) vigente = a;
-  }
-  return vigente;
-}
-
-/** JSON com as chaves ordenadas em todos os níveis: a mesma conta dá sempre a mesma string, seja qual for a ordem de montagem. */
-function jsonCanonico(valor: unknown): string {
-  if (Array.isArray(valor)) return `[${valor.map(jsonCanonico).join(",")}]`;
-  if (valor !== null && typeof valor === "object") {
-    const registro = valor as Record<string, unknown>;
-    const chaves = Object.keys(registro)
-      .filter((k) => registro[k] !== undefined)
-      .sort();
-    return `{${chaves.map((k) => `${JSON.stringify(k)}:${jsonCanonico(registro[k])}`).join(",")}}`;
-  }
-  return JSON.stringify(valor ?? null);
-}
-
-function tagDeContaDe(state: DataState, task: Task): string {
-  return task.tagIds.map((id) => state.tags.find((t) => t.id === id)?.name ?? "").find((n) => n.startsWith("conta ")) ?? "";
-}
-
 const nomeDoMembro = (state: DataState, id: Id): string => state.members.find((m) => m.id === id)?.displayName ?? id;
-
-/**
- * A impressão de lançamento (D6-10): tudo o que vai ao Omie, e nada além.
- * Se ela muda depois da Conferência, a Conferência fica `desatualizada` — o
- * Financeiro conferiu OUTRA conta. Anexo, Boleto, QR Code e Comentários não
- * entram (não mudam o título); a Data de Emissão entra (vai ao Omie).
- * É a mesma função que a ponte usa para a parada por impressão.
- */
-export function impressaoDeLancamento(state: DataState, task: Task): string {
-  const forma = fieldValue(task, CP.fields.forma);
-  const tipo = fieldValue(task, CP.fields.fornecedor);
-  const dado =
-    forma === "Chave Pix"
-      ? fieldValue(task, CP.fields.chavePix)
-      : forma === "Boleto"
-        ? fieldValue(task, CP.fields.codigoBarras)
-        : forma === "QRCode Pix"
-          ? fieldValue(task, CP.fields.pixCopiaECola)
-          : "";
-  return jsonCanonico({
-    centro: fieldValue(task, CP.fields.centroDeCusto),
-    empresa: fieldValue(task, CP.fields.empresa),
-    categoria: fieldValue(task, CP.fields.categoria),
-    fornecedor: {
-      tipo,
-      documento: tipo === "CPF" ? fieldValue(task, CP.fields.cpf) : tipo === "CNPJ" ? fieldValue(task, CP.fields.cnpj) : "",
-      nome: fieldValue(task, CP.fields.nomeFornecedor),
-    },
-    forma,
-    dado,
-    valor: fieldValue(task, CP.fields.valor),
-    vencimento: task.dueDate?.value ?? "",
-    dataEmissao: fieldValue(task, CP.fields.dataEmissao),
-    tag: tagDeContaDe(state, task),
-    titulo: task.title,
-    descricao: task.description ?? "",
-  });
-}
-
-/**
- * D6-09 — quem confere o Resumo: o Financeiro (`CP.financeiroId`, quando
- * Membro ativo) e todo Membro ativo de Papel base Administrador/Proprietário.
- * Uma função só, para o Papel "Revisor do Resumo" (L-11) entrar depois sem
- * tocar o resto.
- */
-export function revisoresDoResumo(state: DataState): Id[] {
-  const revisores: Id[] = [];
-  const financeiro = state.members.find((m) => m.id === CP.financeiroId && m.state === "ativo");
-  if (financeiro) revisores.push(financeiro.id);
-  for (const m of state.members) {
-    if (m.state !== "ativo" || revisores.includes(m.id)) continue;
-    const base = state.roles.find((r) => r.id === m.roleId)?.base;
-    if (base === "administrador" || base === "proprietario") revisores.push(m.id);
-  }
-  return revisores;
-}
 
 /**
  * G1 (Fase 6) — a conta pode entrar na ponte do Agente: não é importada, ou

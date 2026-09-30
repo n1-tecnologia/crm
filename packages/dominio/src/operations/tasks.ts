@@ -27,6 +27,8 @@ import type { ActorRef, Comment, FieldRequirement, FieldValue, Id, List, Minutes
 import { memberActor, nextId, recordActivity } from "./activity";
 import { nextOccurrenceRefusal, runningTimer, spawnNextOccurrence } from "./collaboration";
 import { runListAutomations } from "./automations";
+// Módulo-folha (só `import type`): a Conferência vigente e os revisores sem importar `./financeiro` (06-11).
+import { conferenciaVigente, revisoresDoResumo } from "./financeiro-base";
 
 const now = (): string => new Date().toISOString();
 
@@ -1580,9 +1582,16 @@ export function resolveTaskComment(
   const autorId = comment.author.kind === "member" ? comment.author.id : comment.authorDelegate?.id;
   // Fase 6 — o fio do Resumo é aberto pelo Agente em nome do serviço; quem o
   // confere precisa poder fechá-lo à mão também (no ClickUp, "Resolvido" pela Maryane).
-  const confereEsteFio = state.approvals.some(
-    (a) => a.origin?.kind === "processTask" && a.origin.processStep === "resumo" && a.origin.threadCommentId === commentId && a.approverMemberId === actingMemberId,
-  );
+  // 06-11 (crm:IN-02): só para RESOLVER, e só quem confere a Conferência
+  // VIGENTE deste fio — o aprovador dela ou um revisor do Resumo; o aprovador
+  // de uma Conferência cancelada não. Reabrir o fio NÃO reabre a Conferência,
+  // cuja decisão fica: por isso reabrir é gesto de quem abriu o fio ou de
+  // Administrador, como antes da Fase 6.
+  const vigente = resolved ? conferenciaVigente(state, taskId) : undefined;
+  const confereEsteFio =
+    vigente !== undefined &&
+    vigente.origin.threadCommentId === commentId &&
+    (vigente.approverMemberId === actingMemberId || revisoresDoResumo(state).includes(actingMemberId));
   if (autorId !== actingMemberId && !confereEsteFio && !isWorkspaceAdmin(state, actingMemberId)) {
     return fail("Só quem abriu o fio, ou um Administrador, o resolve.");
   }

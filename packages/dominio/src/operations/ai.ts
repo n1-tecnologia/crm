@@ -18,7 +18,10 @@ import type {
 import { contactDisplayName, effectiveListConfig } from "../derive";
 import { memberActor, nextId, recordActivity, systemActor } from "./activity";
 import { addTaskComment, changeTaskStatus } from "./tasks";
-// Os textos da Conferência moram fora de `./financeiro` porque `./financeiro` importa daqui.
+// Os textos da Conferência, a impressão e a forma do código moram fora de
+// `./financeiro` porque `./financeiro` importa daqui: os dois módulos-folha
+// não importam `./financeiro` (06-11).
+import { impressaoDeLancamento, lancamentoSemCodigo } from "./financeiro-base";
 import { TEXTOS_DA_CONFERENCIA } from "./financeiro-textos";
 import { nomeDeAgenteEmUso } from "./ia/agentes";
 import { nomeDeAutomacaoColide } from "./ia/automacoes-editor";
@@ -408,7 +411,21 @@ export function decideProcessApproval(
      * omie" é `registrarLancamentoNoOmie`, depois do Omie).
      * Textos (`TEXTOS_DA_CONFERENCIA`): `✅ Resumo conferido por <nome>` e
      * `🔁 Ajuste pedido por <nome>: <motivo>`.
+     *
+     * Duas recusas SEM efeito (06-11), depois das guardas comuns e da
+     * repetição idempotente: (1) a impressão de lançamento atual não é a da
+     * Conferência ⇒ `recusaDesatualizada`, para as duas decisões (crm:WR-08);
+     * (2) APROVAR um Resumo sem código de Categoria (`lancamentoSemCodigo`)
+     * ⇒ `recusaSemCodigo` (crm:WR-03). O porquê: a Conferência afirma que
+     * ALGUÉM conferiu ESTES dados, e `9.99.99` é preenchimento, não código.
+     * Pedir ajuste continua aberto. Consequência para a ponte (06-12): a
+     * dispensa D6-04 `sem-conferencia` de uma conta com Categoria `ausente`
+     * passa a ser recusada — o lado seguro, porque lançar com `9.99.99` é
+     * errado.
      */
+    if (impressaoDeLancamento(state, task) !== origin.impressao) return fail(TEXTOS_DA_CONFERENCIA.recusaDesatualizada);
+    if (decision === "aprovada" && lancamentoSemCodigo(origin.lancamento)) return fail(TEXTOS_DA_CONFERENCIA.recusaSemCodigo);
+
     const motivo = options.reason?.trim() ?? "";
     const texto = decision === "aprovada" ? TEXTOS_DA_CONFERENCIA.conferido(member.displayName) : TEXTOS_DA_CONFERENCIA.ajuste(member.displayName, motivo);
     const resposta = addTaskComment(state, actingMemberId, task.id, { content: texto, parentCommentId: origin.threadCommentId });

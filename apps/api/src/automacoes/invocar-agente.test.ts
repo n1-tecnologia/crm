@@ -1061,7 +1061,9 @@ describe("criarPonteDoAgente — os dois momentos contra servidorFalso (sem DATA
       const p = publicarResumoParaConferencia(estado, ATOR, das.id, { dePara: semCodigo });
       if (!p.ok) throw new Error(p.error);
       expect(p.value.conferencia.origin.lancamento).toMatchObject({ veredito: "ausente", codigo: "9.99.99" });
-      expect(decideProcessApproval(estado, MARYANE, p.value.conferencia.id, "aprovada", { source: "click" }).ok).toBe(true);
+      expect(decideProcessApproval(estado, MARYANE, p.value.conferencia.id, "aprovada", { source: "click" }).ok).toBe(false);
+      // uma linha aprovada ANTES de 06-11, já gravada no banco: a guarda da ponte continua sendo a defesa em profundidade
+      Object.assign(p.value.conferencia, { decision: "aprovada", decidedByMemberId: MARYANE, decidedAt: new Date().toISOString(), decisionSource: "click" });
       mover(estado, das.id, S.emLancamento);
       const ponte = ponteSobre(estado);
       await ponte.processarContas();

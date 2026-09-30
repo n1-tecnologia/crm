@@ -42,6 +42,19 @@ export const TEXTOS_DA_CONFERENCIA = {
   conferido: (nome: string): string => `✅ Resumo conferido por ${nome}`,
   /** Resposta canônica no fio: ajuste pedido. */
   ajuste: (nome: string, motivo: string): string => `🔁 Ajuste pedido por ${nome}: ${motivo}`,
+  /**
+   * Recusa de `decideProcessApproval` (06-11, crm:WR-08): a impressão de
+   * lançamento mudou depois do Resumo, e decidir agora afirmaria a conferência
+   * de dados que não são os da conta. A tela e a ponte mostram esta string.
+   */
+  recusaDesatualizada: "Os dados da conta mudaram depois deste Resumo; aguarde o Resumo novo.",
+  /**
+   * Recusa de APROVAR (06-11, crm:WR-03): a Categoria veio `ausente` do de-para
+   * (`9.99.99` é preenchimento) ou o código está fora da forma do contrato.
+   * Pedir ajuste continua aberto — é o caminho que esta string indica.
+   */
+  recusaSemCodigo:
+    "Este Resumo não tem o código da Categoria no Omie, e sem ele não há o que conferir. Peça ajuste com o código da Categoria (ex.: 2.04.01).",
   /** Confirmação no fio depois de o Omie devolver o título. */
   lancado: (d: DadosDoLancado): string => {
     const total = d.anexos.length;
