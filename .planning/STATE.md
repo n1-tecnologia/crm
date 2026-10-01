@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 Phase: 06 (conferencia-do-resumo-e-anexos) — COMPLETE (2026-09-30)
 Plan: 22 of 22
 Status: Phase 06 concluída após cinco rodadas de revisão adversarial (06-REVIEW.md → 06-REVIEW-5.md); a última rodada, escopada só ao diff de 06-22, voltou limpa (0 críticos/0 avisos/0 informativos) e confirmou por teste que o starvation achado em 06-REVIEW-4 está mesmo fechado. Abertas no milestone: Phase 02 (26/28) e Phase 04 (13/14)
-Last activity: 2026-09-30 -- 06-REVIEW-5.md fechou a cadeia; RES-01/02/04/05/06 Complete, RES-03 Pending (verificação humana do dono)
+Last activity: 2026-09-30 -- jornada final contra o código do 06-22 (`06-PROVAS.md`): os cinco cenários da Fase 6 OK, inclusive `cp-dispensa-com-resposta` (o conserto do 06-21 provado ao vivo), 8 `/resolver` e 0 `/lancar`; dois achados fora do código da fase (id da conta nova, tela sem atualização sozinha) registrados em Deferred Items
 
 **Fase 06 planejada à mão em 2026-09-29 (Conferência do Resumo e anexos), pronta para `/gsd-execute-phase 6`:**
 `.planning/phases/06-conferencia-do-resumo-e-anexos/` — `06-CONTEXT.md` (13 decisões com padrão e variável de troca) e seis planos em três ondas: 06-01 domínio · 06-02 contrato v1.1 no `financeiro-tria` · 06-03 ponte em dois momentos · 06-04 tela e jornada · 06-05 S5/S6 na Solicitação · 06-06 docs e provas `[BLOCKING]`. Origem: `docs/08-migracao-financeiro/09-…` (desenho) e `10-…` (levantamento etapa por etapa com `arquivo:linha`). Ponto de partida do código: `crm-n1-integracao@3d6f735` (branch `integra-frontend-main`, sem push) e `financeiro-tria@c272dad` (`main`, 99 commits sem push, 89 arquivos sujos só de EOL — `git add` sempre por caminho). O dono ainda não respondeu às quatro perguntas do doc 10; os padrões de D6-01..D6-04 seguem "como no ClickUp", exceto Integração manual (o seguro).
@@ -459,6 +459,8 @@ Items acknowledged and carried forward:
 | Deploy | `automation/` com contrato v1.2 + `PLATAFORMA_MEMBRO_POR_CLICKUP_ID`; S5/S6 ao vivo e `integra-frontend-main` (local, sem push) dependem disso | Adiado pelo dono, mesma família do deploy da Phase 05 | Phase 06 (2026-09-30) |
 | Prova | fin2:IN-07 — dois anexos no mesmo lançamento contra o Omie real | Script `teste:omie-real` só aceita um `--anexo`; opcional | Phase 06 (2026-09-30) |
 | Dados | Residual fin2:CR-01 (índice/migração de banco) | Aceito sem migração; decisão do dono se quiser fechar | Phase 06 (2026-09-30) |
+| Defeito | A conta nova abre no popup com o id da cópia local de `run()` (D-05), não o do servidor — diverge quando a ponte ou outra pessoa grava no meio; achado pela jornada final (`06-PROVAS.md`, achado 1: `cmt_tark9u`) | Correção proposta (abrir só com o id confirmado pelo servidor), aguarda o dono | Phase 06 (2026-09-30) |
+| UX | O popup da conta não vê sozinho o que a ponte grava (sem tempo real, consulta periódica nem revalidação ao focar; só re-hidrata por D-06) | Recomendação: consulta leve à revisão do Espaço com a conta aberta; Realtime depois | Phase 06 (2026-09-30) |
 
 ## Session Continuity
 

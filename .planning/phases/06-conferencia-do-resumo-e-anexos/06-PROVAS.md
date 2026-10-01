@@ -788,3 +788,122 @@ esperado.
 | 6. D6-01..D6-04 | pendente — os padrões seguem em vigor, trocáveis por variável |
 | 7. Timeouts do ciclo | **não voltaram** nas execuções A e B (0 falhas de ciclo nas duas); acompanhar em produção pelos códigos `TRAVA_ESGOTADA`, `TEMPO_DE_CONSULTA_ESGOTADO`, `TEMPO_DE_CONEXAO_ESGOTADO` e, desde 06-13/06-19, `ORCAMENTO_DO_CICLO_ESGOTADO` e `AVISAR_ID_INVALIDO` |
 | 8. Resíduo fin2:CR-01 / Omie real com dois anexos | **fin2:CR-01** (06-16): duas decisões da mesma Tarefa em paralelo antes de qualquer uma gravar a marca — sem trava por Tarefa no banco (seria migração, só do dono, pelo SQL Editor); o RESUMO segue protegido pela releitura do Status. **Omie real com dois anexos** (fin2:IN-07): não rodou nesta rodada (3b acima) — o script aceita um anexo só; ajustá-lo e rodar fica com o dono, quando quiser |
+
+## Jornada final, depois do 06-22 — 2026-09-30
+
+A última jornada era a do 06-20. Depois dela, 06-21 (`e176f7f`, `8186d3a`) e
+06-22 (`1c265d8`) mudaram a ponte e o domínio justamente na dispensa por
+Integração manual, e foram provados só por testes sem navegador, mutação e
+revisão. Esta rodada roda a jornada contra o código final e acrescenta um
+cenário que prova ao vivo o conserto do 06-21 (o Crítico do 06-REVIEW-3).
+
+**Autorização:** o dono perguntou "vc rodou testes automatizado como humano
+para ver se tava tudo funcionando?"; o orquestrador respondeu que não depois
+do 06-20 e perguntou (`AskUserQuestion`) se rodava de novo, gravando contas
+"TESTE AUTOMATIZADO" no `ws_n1` — resposta literal: "Regressão + cenário novo
+(Recomendado)".
+
+Pontos de partida: `crm-n1-integracao` em `7f40ff1` (o código do 06-22 mais o
+cenário `cp-dispensa-com-resposta` na jornada — nada mais mudou) e
+`financeiro-tria` em `6767be1` (os 89 arquivos sujos só de fim de linha,
+intocados). A API e a tela foram reiniciadas antes, com o código final (a API
+de pé era das 14:30, de antes do 06-21; a tela, de 29/09).
+
+### Como rodou
+
+Um lançador por rodada (pasta temporária, fora do git), no molde do 06-20: o
+`automation/` local em 4100, o contador em 4101 (só instante, método, caminho
+e status), o token de `openssl rand -hex 24` numa variável do shell — nunca
+impresso nem gravado —, `OUTBOX_WORKER_ATIVO=false` e
+`AUTOMACOES_WORKER_ATIVO=false` explícitos, e encerramento por SIGINT. As
+portas G2/G3 de sempre (`SO_TITULOS_COM="TESTE AUTOMATIZADO"`,
+`AVISAR_ID=mem_tarjrn`), modo `conferencia`.
+
+| Rodada | Arranjo | `INTEGRACAO_MANUAL` | Ciclo | Cenários |
+|---|---|---|---|---|
+| 1 | a API da tela (3002) COM a ponte, cutucada pelas gravações | `nao-encosta` | 20 s | `cp-conferida`, `cp-conferida-pelo-card`, `cp-ajuste` |
+| 2 | idem | `sem-conferencia` | 20 s | `cp-dispensa-manual` |
+| 3 | a API da tela (3002) SEM a ponte; a ponte numa segunda API (3003), só no relógio | `sem-conferencia` | 120 s | `cp-dispensa-com-resposta` (novo) |
+
+A linha de partida da ponte casou nas três (`modo=conferencia
+resumoAPartirDe=para-pagar conferenciaPorComentario=true
+integracaoManual=<o da rodada> escopo=titulos-com:"TESTE AUTOMATIZADO"
+avisar=membro-indicado`); na Rodada 3, a API da tela subiu sem nenhuma linha
+da ponte.
+
+### Resultado
+
+| Cenário | Conta | Desfecho |
+|---|---|---|
+| `cp-conferida` | `tsk_tark9e` | **OK** (retomado do passo 10, ver incidente 1): Resumo `cmt_tark9u` → "ok" no fio → `✅ Resumo conferido` em 6 s → card "Conferido · por comentário" → "em lançamento omie" → aviso do modo conferência em 6 s |
+| `cp-conferida-pelo-card` | `tsk_tarkbc` | **OK** (2ª tentativa, ver achado 1): Resumo em 12 s → "Conferido, pode lançar" no card → `✅` na hora → aviso do modo conferência em 7 s |
+| `cp-ajuste` | `tsk_tarka6` | **OK**: Resumo em 19 s → resposta "é prestação comercial, não ADM" → `🔁 Ajuste pedido por` em 12 s → Resumo revisado em 11 s → card "Pendente" |
+| `cp-dispensa-manual` | `tsk_tarkc5` | **OK**: dispensa automática → desmarcar "Manual" → 2º Resumo no mesmo fio em 13 s (`cmt_tarkcy`) → dois ciclos sem "lançaria" → "ok" → `✅` da pessoa em 7 s → aviso em 12 s. Log da ponte, na ordem: dispensada 21:51:16 → para conferência 21:51:37 → conferido por resposta 21:52:46 → "lançaria" 21:52:54 (só depois do "ok") |
+| `cp-dispensa-com-resposta` | `tsk_tarkdd` | **OK** — a prova do 06-21, abaixo |
+
+| Contador | Rodada 1 | Rodada 2 | Rodada 3 | Total |
+|---|---|---|---|---|
+| `/resolver` | 4 | 2 | 2 | **8** |
+| `/lancar` | 0 | 0 | 0 | **0** |
+| Falhas de ciclo | 0 | 0 | 0 | **0** |
+
+### O conserto do 06-21 no real (`cp-dispensa-com-resposta`)
+
+O Crítico do 06-REVIEW-3: uma resposta humana ainda não lida no fio e
+"Integração manual" marcada antes de a ponte lê-la — a ponte dispensava a
+Conferência por cima e a resposta sumia. Para a ponte ver as duas coisas no
+MESMO ciclo, ela rodou à parte, só no relógio (as gravações da tela vão para
+outro processo e não a cutucam), e o cenário conferiu pelo relógio dela que
+as duas gravações caíram entre os mesmos dois tiques. O ciclo lê o Espaço uma
+vez, no começo (`hidratarEstado()`), e decide todas as contas sobre essa
+leitura.
+
+| Instante (UTC) | O quê |
+|---|---|
+| 00:53:39 | tique 0 — a ponte sobe (linha de partida) |
+| 00:55:39 → 00:55:54 | tique 1 — `Resumo publicado para conferência.` (ciclo de 15 s); card "Pendente" |
+| 00:56:00 → 00:56:06 | a jornada responde no fio "troca a categoria para 2.04.03" e marca "Integração manual" = Manual — nenhum ciclo em voo |
+| 00:57:39 → 00:57:43 | tique 2 — a leitura vê a resposta pendente E o Manual: `Ajuste do Resumo pedido por resposta no fio.` — nenhum `✅` antes do `🔁` |
+| 00:59:39 → 00:59:46 | tique 3 — `Resumo publicado com a Conferência dispensada (Integração manual).`: o Resumo REVISADO (com o código 2.04.03 da resposta) é que foi dispensado |
+
+Ordem no tópico, conferida pelo cenário: resposta `cmt_tarkdz` → `🔁 Ajuste
+pedido` `cmt_tarke2` → Resumo revisado `cmt_tarke5` → `✅ Resumo conferido`
+`cmt_tarkeb`; card escondido (a conta é Manual). Nenhum ciclo fora do relógio
+(0 falhas, recuperações ou cutucadas no log da ponte). Com o código anterior
+ao 06-21, o tique 2 dispensaria o Resumo original (`✅` sem `🔁`) e o cenário
+falharia em "a ponte dispensou por cima da resposta pendente".
+
+### Incidentes e achados
+
+1. **Ambiente — a tela do Mac apagou (não é defeito).** Às 21:44:07 (local),
+   na bateria (73%), o macOS apagou a tela e suspendeu a rede do Chromium:
+   `page.reload: net::ERR_NETWORK_IO_SUSPENDED` no passo 10 do `cp-conferida`
+   (`pmset -g log`: "Display is turned off" 21:44:07, de volta 21:44:12).
+   Retomado com `JORNADA_RETOMAR=cp-conferida=tsk_tark9e@10` na mesma conta —
+   OK; o resto rodou com `caffeinate -dims`.
+2. **Achado 1 — defeito real na tela: o popup da conta nova abre um id que o
+   servidor não deu.** Na 1ª tentativa do `cp-conferida-pelo-card`, o popup
+   abriu `tsk_tark9u` com "Conta não encontrada". `run()` (`dados/store.ts`)
+   roda a operação numa cópia local e a tela abre o popup com o id da cópia
+   (`openTask(result.value.id)`, `estrutura/listas/[lista]/page.tsx`); o
+   comentário do store supõe que a cópia gera "os MESMOS ids que o servidor
+   vai gerar" — só vale se ninguém gravou desde a última hidratação. A ponte
+   publicou o Resumo do `tsk_tark9e` às 21:44:12, no mesmo segundo do
+   `createTask`, como `cmt_tark9u`: exatamente o número que a tela calculou
+   para a conta. O servidor criou a conta com um id seguinte, e o popup ficou
+   num id inexistente. Com duas pessoas criando contas juntas, o popup
+   poderia abrir a conta da OUTRA. A 2ª tentativa (`tsk_tarkbc`), com a ponte
+   ociosa, passou. Sobrou uma conta "TESTE AUTOMATIZADO — CP conferida pelo
+   card · 30/09 21:44" só com o nome, no id que o servidor deu. Não é código
+   desta fase (é o D-05 da Fase 1), mas a ponte desta fase o torna provável.
+3. **Achado 2 — a tela não vê sozinha o que a ponte grava.** A jornada
+   recarrega a página a cada 3 s porque o popup da conta não tem tempo real,
+   consulta periódica nem revalidação ao focar: o store só re-hidrata depois
+   de uma gravação da própria pessoa com revisão defasada, ou num conflito
+   (D-06). Para o Financeiro, o Resumo do Agente não aparece sem recarregar —
+   no ClickUp, aparece. É a mesma raiz do achado 1.
+
+**Recomendação (com o dono):** uma consulta leve à revisão do Espaço,
+enquanto a conta está aberta, que re-hidrata quando ela muda; e a criação de
+conta abrindo o popup só com o id confirmado pelo servidor. Tempo real
+(Supabase Realtime/SSE) fica para depois.
