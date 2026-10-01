@@ -32,6 +32,7 @@
 import { useId, useRef } from "react";
 import { CheckCircle2, Paperclip, Upload } from "lucide-react";
 import { transportePublico } from "@/dados/transporte-publico";
+import { enviarBytesAoBucket } from "@/dados/envio-ao-bucket";
 import type { ResultadoDeTicket } from "@/dados/transporte-publico";
 import { Button, Icone } from "@/features/shell/ui";
 
@@ -80,37 +81,6 @@ function validarArquivo(file: File, aceitos: readonly string[]): string | undefi
   if (!aceitos.includes(file.type)) return COPY_TIPO_RECUSADO;
   if (file.size <= 0 || file.size > MAX_BYTES_POR_ARQUIVO) return COPY_TAMANHO_RECUSADO;
   return undefined;
-}
-
-/**
- * Sobe os bytes direto ao bucket, reportando progresso real via
- * `XMLHttpRequest.upload.onprogress`. O corpo replica o contrato de
- * `uploadToSignedUrl` do `@supabase/storage-js` (um `FormData` com
- * `cacheControl` e o arquivo sob a chave vazia `""`) porque `uploadUrl` já É
- * a URL assinada completa que aquele método chamaria — não há SDK aqui, só o
- * mesmo formato de corpo, para o Storage aceitar o PUT.
- */
-function enviarBytesAoBucket(
-  uploadUrl: string,
-  file: File,
-  aoProgredir: (percentual: number) => void,
-  aoAbrirXhr: (xhr: XMLHttpRequest) => void,
-): Promise<boolean> {
-  return new Promise((resolve) => {
-    const xhr = new XMLHttpRequest();
-    aoAbrirXhr(xhr);
-    xhr.open("PUT", uploadUrl, true);
-    xhr.upload.onprogress = (evento) => {
-      if (evento.lengthComputable) aoProgredir(Math.round((evento.loaded / evento.total) * 100));
-    };
-    xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300);
-    xhr.onerror = () => resolve(false);
-    xhr.onabort = () => resolve(false);
-    const corpo = new FormData();
-    corpo.append("cacheControl", "3600");
-    corpo.append("", file);
-    xhr.send(corpo);
-  });
 }
 
 export function UploadDeArquivos({

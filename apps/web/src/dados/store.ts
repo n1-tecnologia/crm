@@ -284,4 +284,13 @@ export function useLastResult() {
   return useStore((state) => state.lastResult);
 }
 
+/**
+ * Re-hidrata do servidor (`GET /estado`). Para o que gravou por uma rota que
+ * não é `run()` — o anexo enviado ao Storage, por exemplo — e precisa ver o
+ * resultado na tela.
+ */
+export function useRehidratar() {
+  return useStore((state) => state.rehidratar);
+}
+
 export { operations };

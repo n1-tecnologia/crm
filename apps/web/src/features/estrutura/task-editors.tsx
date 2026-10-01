@@ -9,6 +9,7 @@
 import { Check, MessageSquareReply, RotateCcw, Send } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useData, useRun, useSession } from "@/dados/store";
+import { CampoDeArquivo } from "./campo-de-arquivo";
 import { useRecente } from "@/features/shell/recente";
 import {
   addTaskComment,
@@ -319,38 +320,16 @@ export function TaskFieldValueEditor({
       );
       break;
     case "file":
-      // Protótipo: o Campo guarda o nome do arquivo escolhido; o conteúdo não sai do navegador.
+      // Checklist 7.3 — o arquivo sobe de verdade ao Storage; o Campo guarda os ids.
       controle = (
-        <span className="grid gap-1">
-          <input
-            id={id}
-            type="file"
-            aria-required={definition.required}
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file && gravar(file.name)) setTexto(file.name);
-              event.target.value = "";
-            }}
-            className="app-sm w-full min-w-0 file:mr-2 file:rounded-[var(--r-controle)] file:border file:border-[var(--linha-forte)] file:bg-[var(--superficie-2)] file:px-2 file:py-1 file:text-[var(--texto)]"
-            style={{ color: "var(--texto)" }}
-          />
-          {texto ? (
-            <span className="app-meta flex items-center gap-2">
-              {texto}
-              <button
-                type="button"
-                onClick={() => {
-                  if (gravar(null)) setTexto("");
-                }}
-                className="underline"
-              >
-                remover
-              </button>
-            </span>
-          ) : (
-            <span className="app-meta">nenhum arquivo</span>
-          )}
-        </span>
+        <CampoDeArquivo
+          id={id}
+          task={task}
+          definition={definition}
+          atual={atual}
+          gravar={gravar}
+          aoEnviar={(nome) => report({ ok: true, value: nome }, `${definition.name}: ${nome} enviado.`)}
+        />
       );
       break;
     case "date":

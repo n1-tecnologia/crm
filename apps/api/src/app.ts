@@ -26,6 +26,7 @@ import {
 } from "./plugins/autenticacao-servico";
 import { rotasDeClassificacoes, type OpcoesDeClassificacoes } from "./rotas/classificacoes";
 import { rotasDeEstado } from "./rotas/estado";
+import { rotasDeAnexosDaTarefa } from "./rotas/anexos-da-tarefa";
 import { rotasDeFinanceiro, type OpcoesDeFinanceiro } from "./rotas/financeiro";
 import { rotasDeFormulariosPublicos, type OpcoesDeFormulariosPublicos } from "./rotas/formularios-publicos";
 import { rotasDeIntegracaoDeSolicitacoes } from "./rotas/integracao-solicitacoes";
@@ -176,6 +177,8 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
   // Fastify resolve a fila sozinho no primeiro `ready()`/`listen()`/`inject()`.
   app.register(rotasDeOperacoes);
   app.register(rotasDeEstado);
+  // Checklist 7.3 — o anexo de verdade da Tarefa: ticket, envio direto ao bucket, confirmação.
+  app.register(rotasDeAnexosDaTarefa);
   // Fase 4 (04-05) — na RAIZ herda o JWT de Membro; dentro do bloco de rotas
   // serviço-a-serviço abaixo exigiria credencial de serviço, invertendo quem chama quem (Pitfall 4).
   app.register(rotasDeFinanceiro, opcoes.financeiro ?? {});

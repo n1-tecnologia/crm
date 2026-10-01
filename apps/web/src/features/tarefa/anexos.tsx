@@ -14,13 +14,18 @@
  * caminho do objeto, o nome do repositório, o hash do conteúdo ou a
  * validade da URL — e mostra nome, tipo, tamanho e data, que já vêm do
  * Arquivo do Espaço de Trabalho hidratado no `DataState` local (T-02-14).
+ *
+ * Checklist 7.3 — "Anexar arquivo" sobe o arquivo de verdade (ticket →
+ * bucket privado → confirmação no servidor, `@/dados/anexos-da-tarefa`): é o
+ * que leva o anexo ao `/lancar` do Omie.
  */
 
 import { Paperclip, Trash2 } from "lucide-react";
 import { useId, useState } from "react";
-import { attachFile, removeAttachment } from "@n1/dominio/operations";
-import { useData, useRun } from "@/dados/store";
-import { clienteDoNavegador } from "@/autenticacao/cliente-navegador";
+import { removeAttachment } from "@n1/dominio/operations";
+import { useData, useRehidratar, useRun } from "@/dados/store";
+import { enviarArquivoDaTarefa, pedirUrlDeDownload } from "@/dados/anexos-da-tarefa";
+import { ACEITAR_NO_SELETOR, COPY_FORMATOS_ACEITOS } from "@/dados/envio-ao-bucket";
 import { useFormat } from "@/features/shell/use-format";
 import { Button, ConfirmDialog, EmptyState, Icone } from "@/features/shell/ui";
 import type { OperationResult } from "@n1/dominio/state";
@@ -40,44 +45,20 @@ const MEDIA_LABEL: Record<Attachment["mediaType"], string> = {
   other: "outro",
 };
 
-function mediaTypeDe(file: File): Attachment["mediaType"] {
-  if (file.type.startsWith("image/")) return "image";
-  if (file.type.startsWith("audio/")) return "audio";
-  if (file.type.startsWith("video/")) return "video";
-  if (/spreadsheet|excel|csv/.test(file.type)) return "spreadsheet";
-  if (/pdf|document|text\/|presentation/.test(file.type)) return "document";
-  return "other";
-}
-
 function tamanho(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-const COPY_ERRO_DOWNLOAD = "Não foi possível abrir o arquivo. Tente novamente.";
-
-/**
- * Pede a URL assinada ao `apps/api`, sempre uma nova. Nunca lê nem devolve
- * outra coisa do corpo da resposta além da própria URL — mesmo que o
- * servidor mande junto uma validade, este cliente não a nomeia.
- */
-async function pedirUrlDeDownload(fileId: string): Promise<string | undefined> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-  if (!apiUrl) return undefined;
-  const token = (await clienteDoNavegador().auth.getSession()).data.session?.access_token;
-  if (!token) return undefined;
-  try {
-    const resposta = await fetch(`${apiUrl}/anexos/${fileId}/url`, {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    if (!resposta.ok) return undefined;
-    const corpo = (await resposta.json()) as { readonly url?: string };
-    return corpo.url;
-  } catch {
-    return undefined;
-  }
+interface EnvioEmCurso {
+  readonly chave: string;
+  readonly nome: string;
+  readonly progresso: number;
+  readonly erro?: string;
 }
+
+const COPY_ERRO_DOWNLOAD = "Não foi possível abrir o arquivo. Tente novamente.";
 
 export function PainelDeAnexos({
   task,
@@ -92,7 +73,8 @@ export function PainelDeAnexos({
   const fmt = useFormat();
   const files = useData((data) => data.files);
   const [removendo, setRemovendo] = useState<string | null>(null);
-  const [enviando, setEnviando] = useState(false);
+  const rehidratar = useRehidratar();
+  const [envios, setEnvios] = useState<readonly EnvioEmCurso[]>([]);
   const [baixando, setBaixando] = useState<string | null>(null);
   const [erroPorLinha, setErroPorLinha] = useState<Record<string, string>>({});
   const inputId = useId();
@@ -116,6 +98,27 @@ export function PainelDeAnexos({
       return;
     }
     window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const emCurso = envios.some((e) => !e.erro);
+
+  // Um arquivo por vez: cada um pede ticket, sobe ao bucket e é confirmado
+  // pelo servidor; só então vira anexo — e a tela re-hidrata para mostrá-lo.
+  const enviarTodos = async (arquivos: readonly File[]): Promise<void> => {
+    for (const [indice, file] of arquivos.entries()) {
+      const chave = `${Date.now()}-${indice}-${file.name}`;
+      setEnvios((atual) => [...atual, { chave, nome: file.name, progresso: 0 }]);
+      const resultado = await enviarArquivoDaTarefa(task.id, file, {
+        aoProgredir: (progresso) => setEnvios((atual) => atual.map((e) => (e.chave === chave ? { ...e, progresso } : e))),
+      });
+      if (resultado.ok) {
+        setEnvios((atual) => atual.filter((e) => e.chave !== chave));
+        await rehidratar();
+        report({ ok: true, value: resultado.fileId }, `Anexado: ${file.name}.`);
+      } else {
+        setEnvios((atual) => atual.map((e) => (e.chave === chave ? { ...e, erro: resultado.erro } : e)));
+      }
+    }
   };
 
   return (
@@ -189,26 +192,41 @@ export function PainelDeAnexos({
             tabIndex={-1}
             aria-hidden="true"
             className="sr-only"
+            accept={ACEITAR_NO_SELETOR}
             onChange={(event) => {
               const escolhidos = Array.from(event.target.files ?? []);
               event.target.value = "";
-              if (escolhidos.length === 0) return;
-              setEnviando(true);
-              // Protótipo (mesmo comportamento de `TaskAttachments`): o conteúdo não sai
-              // do navegador por esta rota; o Arquivo guarda nome, tipo e tamanho.
-              for (const file of escolhidos) {
-                report(
-                  run((data, me) => attachFile(data, me, task.id, { name: file.name, mediaType: mediaTypeDe(file), sizeBytes: file.size })),
-                  `Anexado: ${file.name}.`,
-                );
-              }
-              setEnviando(false);
+              if (escolhidos.length > 0) void enviarTodos(escolhidos);
             }}
           />
-          <Button onClick={() => document.getElementById(inputId)?.click()} icon={<Icone de={Paperclip} tamanho="xs" />} disabled={enviando} disabledReason="Enviando…">
+          <Button onClick={() => document.getElementById(inputId)?.click()} icon={<Icone de={Paperclip} tamanho="xs" />} disabled={emCurso} disabledReason="Enviando…">
             Anexar arquivo
           </Button>
-          <span className="app-meta ml-2">Até 25 MB por arquivo.</span>
+          <span className="app-meta ml-2">{COPY_FORMATOS_ACEITOS}</span>
+          {envios.length > 0 ? (
+            <ul className="pilha-solta mt-2" aria-live="polite">
+              {envios.map((envio) => (
+                <li key={envio.chave} className="item-solto app-base flex-wrap" data-estatico="true">
+                  <Icone de={Paperclip} tamanho="xs" style={{ color: "var(--texto-3)" }} />
+                  <span className="min-w-0 flex-1 truncate" style={{ color: "var(--texto)" }}>
+                    {envio.nome}
+                  </span>
+                  {envio.erro ? (
+                    <>
+                      <span role="alert" className="app-sm" style={{ color: "var(--erro)" }}>
+                        {envio.erro}
+                      </span>
+                      <button type="button" className="app-sm underline" onClick={() => setEnvios((atual) => atual.filter((e) => e.chave !== envio.chave))}>
+                        Dispensar
+                      </button>
+                    </>
+                  ) : (
+                    <span className="app-meta">Enviando… {envio.progresso}%</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
       )}
     </div>

@@ -2237,6 +2237,11 @@ function iconeDeCampo(tipo: string): LucideIcon {
 function valorDeCampo(state: DataState, fmt: Formatters, tipo: string, valor: unknown): ReactNode {
   if (valor === undefined || valor === null || valor === "") return <span style={{ color: "var(--texto-4)" }}>—</span>;
   if (tipo === "checkbox") return valor === true ? "Sim" : "Não";
+  // Campo de arquivo guarda ids (checklist 7.3): mostra o nome de cada arquivo.
+  if (tipo === "file") {
+    const brutos = Array.isArray(valor) ? valor.map(String) : [String(valor)];
+    return brutos.map((v) => state.files.find((f) => f.id === v)?.name ?? v).join(", ");
+  }
   if (tipo === "currency" && typeof valor === "number") return fmt.money({ amount: valor, currency: "BRL" });
   if (tipo === "number" && typeof valor === "number") return fmt.number(valor);
   if (tipo === "percent" && typeof valor === "number") return fmt.number(valor) + "%";

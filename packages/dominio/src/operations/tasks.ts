@@ -23,7 +23,7 @@ import {
 } from "../derive";
 import { contatoDaTarefa } from "../derive-conversacional";
 import { fail, ok, type DataState, type OperationResult } from "../state";
-import type { ActorRef, Comment, FieldRequirement, FieldValue, Id, List, Minutes, Priority, StatusDefinition, Task, TaskDate } from "../types";
+import type { ActorRef, Comment, FieldDefinition, FieldRequirement, FieldValue, Id, List, Minutes, Priority, StatusDefinition, Task, TaskDate } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
 import { nextOccurrenceRefusal, runningTimer, spawnNextOccurrence } from "./collaboration";
 import { runListAutomations } from "./automations";
@@ -1387,6 +1387,46 @@ export function updateTask(
  * Lista herda (B25): uma Definição de outro contêiner é recusada mesmo que
  * exista. O espelho de `setDealFieldValue`, com a mesma leitura de tipo.
  */
+/**
+ * Quem pode escrever este Campo nesta Tarefa, e se o Campo vale aqui: a regra
+ * geral, a exceção da Pessoa da conta (só os Campos liberados), Campo ativo,
+ * de Tarefa, não fórmula e da Lista da Tarefa. É o começo de
+ * `setTaskFieldValue`, exportado para quem grava um Campo por outro caminho
+ * (o anexo enviado ao Storage, `anexos-enviados.ts`) seguir a MESMA regra.
+ */
+export function escritaDeCampo(
+  state: DataState,
+  actingMemberId: Id,
+  taskId: Id,
+  definitionId: Id,
+): { readonly task: Task; readonly definition: FieldDefinition } | { readonly erro: string; readonly campo?: Id } {
+  const refusal = mayWriteFieldOrComment(state, actingMemberId, taskId);
+  if (refusal) return { erro: refusal };
+  const task = requireActiveTask(state, taskId);
+  if (typeof task === "string") return { erro: task };
+
+  const definition = state.fieldDefinitions.find((d) => d.id === definitionId);
+  if (!definition) return { erro: "Campo não encontrado." };
+  if (definition.target !== "task") return { erro: "Este Campo não é de Tarefa." };
+  const liberadosAoConvidado = guestFieldWriter(state, actingMemberId, taskId);
+  if (liberadosAoConvidado && !liberadosAoConvidado.includes(definitionId)) {
+    return { erro: `Como Convidado, você só preenche ${liberadosAoConvidado.map((id) => state.fieldDefinitions.find((d) => d.id === id)?.name ?? id).join(" e ")} nesta Tarefa.` };
+  }
+  if (definition.lifecycle !== "ativo") return { erro: "Este Campo está arquivado." };
+  if (definition.type === "formula") return { erro: "Fórmula é calculada, não gravada (6.3).", campo: definitionId };
+  const config = effectiveListConfig(state, task.listId);
+  if (!config || !config.fieldDefinitionIds.includes(definitionId)) {
+    return { erro: `O Campo “${definition.name}” não se aplica à Lista desta Tarefa.`, campo: definitionId };
+  }
+  return { task, definition };
+}
+
+/** Os ids de Arquivo que um valor de Campo de arquivo guarda: lista de ids, ou o nome solto de antes (que não é id). */
+export function idsDeArquivoDoValor(state: DataState, value: FieldValue["value"] | undefined): Id[] {
+  const brutos = typeof value === "string" ? [value] : Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+  return brutos.filter((id) => state.files.some((f) => f.id === id));
+}
+
 export function setTaskFieldValue(
   state: DataState,
   actingMemberId: Id,
@@ -1394,24 +1434,9 @@ export function setTaskFieldValue(
   definitionId: Id,
   value: FieldValue["value"],
 ): OperationResult<Task> {
-  const refusal = mayWriteFieldOrComment(state, actingMemberId, taskId);
-  if (refusal) return fail(refusal);
-  const task = requireActiveTask(state, taskId);
-  if (typeof task === "string") return fail(task);
-
-  const definition = state.fieldDefinitions.find((d) => d.id === definitionId);
-  if (!definition) return fail("Campo não encontrado.");
-  if (definition.target !== "task") return fail("Este Campo não é de Tarefa.");
-  const liberadosAoConvidado = guestFieldWriter(state, actingMemberId, taskId);
-  if (liberadosAoConvidado && !liberadosAoConvidado.includes(definitionId)) {
-    return fail(`Como Convidado, você só preenche ${liberadosAoConvidado.map((id) => state.fieldDefinitions.find((d) => d.id === id)?.name ?? id).join(" e ")} nesta Tarefa.`);
-  }
-  if (definition.lifecycle !== "ativo") return fail("Este Campo está arquivado.");
-  if (definition.type === "formula") return fail("Fórmula é calculada, não gravada (6.3).", definitionId);
-  const config = effectiveListConfig(state, task.listId);
-  if (!config || !config.fieldDefinitionIds.includes(definitionId)) {
-    return fail(`O Campo “${definition.name}” não se aplica à Lista desta Tarefa.`, definitionId);
-  }
+  const escrita = escritaDeCampo(state, actingMemberId, taskId, definitionId);
+  if ("erro" in escrita) return fail(escrita.erro, escrita.campo);
+  const { task, definition } = escrita;
 
   const vazio = value === null || value === undefined || value === "" || (Array.isArray(value) && value.length === 0);
   if (definition.required && vazio) return fail(`${definition.name} é obrigatório.`, definitionId);
@@ -1476,6 +1501,23 @@ export function setTaskFieldValue(
         const texto = String(value).trim();
         if (!/^https?:\/\//.test(texto)) return fail(`${definition.name} precisa começar com http:// ou https://.`, definitionId);
         gravar = texto;
+        break;
+      }
+      case "file": {
+        // Uma lista de ids só REMOVE: todo id tem de já estar neste Campo. Um
+        // arquivo novo entra pelo envio ao Storage (`anexarArquivoEnviado`),
+        // que confere o objeto no servidor — nunca por um id escolhido aqui.
+        if (typeof value === "string") {
+          gravar = value;
+          break;
+        }
+        if (!Array.isArray(value)) return fail(`${definition.name} é uma lista de arquivos.`, definitionId);
+        const atuais = new Set(idsDeArquivoDoValor(state, task.fieldValues.find((v) => v.definitionId === definitionId)?.value));
+        const pedidos = [...new Set(value.map(String))];
+        if (pedidos.some((id) => !atuais.has(id))) {
+          return fail(`Para pôr um arquivo novo em ${definition.name}, envie o arquivo pela tela.`, definitionId);
+        }
+        gravar = pedidos;
         break;
       }
       default:
