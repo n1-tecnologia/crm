@@ -11,6 +11,7 @@
  */
 
 import { garantirFormularioDaSolicitacao } from "@n1/dominio/formulario-da-solicitacao";
+import { evoluirConfiguracaoDeSolicitacoes } from "@n1/dominio/solicitacao-de-pagamento-evolver";
 import { syncIdSequence } from "@n1/dominio/operations";
 import { pool } from "../persistencia/conexao";
 import { hidratar } from "../persistencia/repositorio";
@@ -21,6 +22,11 @@ export interface OpcoesDoFormularioDaSolicitacao {
   /** O dono do Formulário: o envio anônimo cria a Tarefa em nome dele. */
   readonly actingMemberId: string;
   readonly dryRun: boolean;
+  /**
+   * Só no dry-run: simula antes, na mesma transação, o `solicitacoes:configurar`
+   * — para ver o resultado dos dois juntos antes de aplicar qualquer um.
+   */
+  readonly simularConfiguracao?: boolean;
 }
 
 export type ResultadoDoFormularioDaSolicitacao =
@@ -36,7 +42,7 @@ export type ResultadoDoFormularioDaSolicitacao =
   | { readonly ok: false; readonly dryRun: boolean; readonly error: string };
 
 export async function criarFormularioDaSolicitacao(opcoes: OpcoesDoFormularioDaSolicitacao): Promise<ResultadoDoFormularioDaSolicitacao> {
-  const { workspaceId, actingMemberId, dryRun } = opcoes;
+  const { workspaceId, actingMemberId, dryRun, simularConfiguracao } = opcoes;
 
   if (dryRun) {
     const cliente = await pool().connect();
@@ -44,6 +50,10 @@ export async function criarFormularioDaSolicitacao(opcoes: OpcoesDoFormularioDaS
       await cliente.query("begin");
       const { state } = await hidratar(cliente, workspaceId);
       syncIdSequence(state);
+      if (simularConfiguracao) {
+        const configuracao = evoluirConfiguracaoDeSolicitacoes(state, actingMemberId);
+        if (!configuracao.ok) return { ok: false, dryRun: true, error: `a configuração simulada recusou: ${configuracao.error}` };
+      }
       const r = garantirFormularioDaSolicitacao(state, actingMemberId);
       if (!r.ok) return { ok: false, dryRun: true, error: r.error };
       return {

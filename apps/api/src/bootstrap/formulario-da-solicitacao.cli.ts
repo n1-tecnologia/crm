@@ -16,6 +16,8 @@
  *   --workspace=<id>   padrão WORKSPACE_ID do ambiente, ou "ws_n1"
  *   --membro=<id>      o dono do Formulário (o envio cria a Tarefa em nome
  *                      dele); padrão "mem_maryane"
+ *   --com-configuracao só no dry-run: simula antes o solicitacoes:configurar,
+ *                      para ver os dois juntos sem gravar nada
  *
  * Saída: só ids, contagens e o caminho do link — nunca conteúdo de Tarefa.
  * Código de saída 1 quando a criação recusa.
@@ -33,6 +35,7 @@ const resultado = await criarFormularioDaSolicitacao({
   workspaceId: valorDe("workspace") ?? process.env.WORKSPACE_ID ?? "ws_n1",
   actingMemberId: valorDe("membro") ?? "mem_maryane",
   dryRun: !argv.includes("--apply"),
+  simularConfiguracao: argv.includes("--com-configuracao"),
 });
 
 console.log(`modo         ${resultado.dryRun ? "dry-run (nada gravado)" : "apply"}`);
