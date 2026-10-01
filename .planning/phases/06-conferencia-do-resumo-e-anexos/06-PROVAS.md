@@ -953,3 +953,45 @@ Achados de conteúdo:
    ("… · 30/09 21:43", só o nome) existe como **`tsk_tarka0`**; o popup
    tinha aberto `tsk_tark9u`. A ponte gastou `tark9u`…`tark9z` no Resumo de
    `tsk_tark9e` e a conta ficou com o número seguinte.
+
+### Passo 2B — autorizado pelo dono, recusado pelo classificador
+
+**Autorização:** à pergunta (`AskUserQuestion`) "Rodo o passo 2B: lançar de
+verdade no Omie da Tria uma conta 'TESTE AUTOMATIZADO' pela plataforma,
+conferir o título no Omie e excluí-lo no fim?", o dono respondeu "Rodar o 2B
+agora (Recomendado)".
+
+Preparado: o cenário `cp-lancada-no-omie` (`a5aff4d`: R$ 1,00, um PDF pelo
+"Anexar arquivo", "ok" no fio, movimento para "em lançamento omie", espera do
+`✅ Lançado no Omie`); um lançador com a ponte em `lancar` e o escopo preso à
+marca "TESTE AUTOMATIZADO — CP lançada no Omie (2B)"; e um conferidor do Omie
+(consulta pelo código de integração, título, CNPJ do fornecedor, conta
+corrente, categoria e anexos; exclusão confirmada pelo id) — testado só com
+leitura (`encontrado: false` para um código inexistente).
+
+Três achados ao preparar:
+
+7. **Com o escopo de sempre, `lancar` lançaria contas antigas.** Várias contas
+   "TESTE AUTOMATIZADO" das rodadas anteriores estão em "em lançamento omie"
+   com Conferência válida; com `SO_TITULOS_COM="TESTE AUTOMATIZADO"`, a ponte
+   em `lancar` as lançaria no Omie real (R$ 123,45 cada). O lançador do 2B
+   prende o escopo à marca do título, que só a conta nova tem.
+8. **A conta não recebe anexo de verdade pela tela.** A seção "Anexar arquivo"
+   do popup e os Campos de arquivo ("Anexo", "Boleto", "QR Code") são
+   protótipos: gravam nome, tipo e tamanho, e o arquivo não sobe ao Storage
+   (`anexos.tsx`, `task-editors.tsx`; a chave fica `legado/<id>`). Só o
+   Formulário público da Solicitação sobe arquivo. Um anexo posto pelo popup
+   não chega ao Omie: a ponte não consegue assinar o link e avisa no fio.
+9. **A trava do lançador era fraca.** Ela esperava 25 s fixos, mas o primeiro
+   ciclo levou 32,5 s e terminou em `TEMPO_DE_CONSULTA_ESGOTADO` (falha
+   transitória de banco na hidratação: nenhuma gravação, nenhuma requisição;
+   o ciclo de recuperação, 10 s depois, rodou limpo e sem conta no escopo).
+   Agora espera 60 s e exige o log sem `taskId` E o contador vazio.
+
+O que aconteceu: o lançador subiu (`modo=lancar … escopo=titulos-com:"TESTE
+AUTOMATIZADO — CP lançada no Omie (2B)"`) e passou a trava; **a jornada — o
+passo que grava no Omie — foi recusada pelo classificador do modo automático**.
+Nada foi ao Omie: contador com **0 `/resolver` e 0 `/lancar`**. O lançador foi
+desmontado e a API normal voltou na 3002. Como no padrão desta base, o passo
+que grava fica com o dono; o agente faz a conferência de leitura antes e
+depois.
