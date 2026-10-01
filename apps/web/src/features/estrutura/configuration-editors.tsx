@@ -24,9 +24,10 @@ import {
   updateFieldDefinition,
   updateStatus,
   updateTaskType,
+  usarCampoHerdado,
 } from "@n1/dominio/operations";
 import { blockedAbove } from "@n1/dominio/operations/configuration";
-import { containerAdminRefusal, effectiveListConfig } from "@n1/dominio/derive";
+import { containerAdminRefusal, containerPath, effectiveContainerConfig, effectiveListConfig } from "@n1/dominio/derive";
 import { FIELD_TYPE_LABEL, STATUS_CATEGORY_LABEL } from "@/features/shell/format";
 import { ActionMenu, Button, ConfirmDialog, EmptyState, Field, Icone, MultiSelect, Segmentos, Select, TextInput, Toggle } from "@/features/shell/ui";
 import type { OperationResult } from "@n1/dominio/state";
@@ -687,7 +688,80 @@ export function FieldDefinitionsEditor({
           </Button>
         </span>
       )}
+
+      <CamposHerdados containerType={containerType} containerId={containerId} report={report} />
     </div>
+  );
+}
+
+/**
+ * Checklist 1.1 — os Campos que chegam de cima (Espaço, Pasta) e se este
+ * contêiner os usa. Desligar um tira o Campo daqui e de baixo (a Lista de
+ * Solicitações não precisa dos de Contas a pagar com o mesmo nome); quem o
+ * define continua com ele. Um Campo deixado de fora mais acima só volta lá.
+ */
+function CamposHerdados({ containerType, containerId, report }: { readonly containerType: ContainerType; readonly containerId: string; readonly report: Report }) {
+  const run = useRun();
+  const state = useData((data) => data);
+  const bloqueio = useMayConfigure(containerType, containerId);
+  const caminho = containerPath(state, containerType, containerId);
+  const acima = caminho.slice(0, -1);
+  const usados = new Set(effectiveContainerConfig(state, containerType, containerId)?.fieldDefinitionIds ?? []);
+  const container =
+    containerType === "list"
+      ? state.lists.find((l) => l.id === containerId)
+      : containerType === "folder"
+        ? state.folders.find((f) => f.id === containerId)
+        : state.spaces.find((s) => s.id === containerId);
+  const foraAqui = new Set(container?.camposHerdadosFora ?? []);
+  const herdados = state.fieldDefinitions.filter(
+    (d) => d.target === "task" && d.lifecycle === "ativo" && d.definedAtId !== undefined && acima.some((n) => n.id === d.definedAtId),
+  );
+  if (herdados.length === 0) return null;
+  const nomeDoNivel = (id: string | undefined) =>
+    state.spaces.find((s) => s.id === id)?.name ?? state.folders.find((f) => f.id === id)?.name ?? state.lists.find((l) => l.id === id)?.name ?? id ?? "";
+
+  return (
+    <section aria-labelledby={`herdados-${containerId}`} className="grid gap-2">
+      <h3 id={`herdados-${containerId}`} className="rotulo">
+        Campos herdados
+      </h3>
+      <ul className="pilha-solta">
+        {herdados.map((definition) => {
+          const usado = usados.has(definition.id);
+          const foraAcima = !usado && !foraAqui.has(definition.id);
+          const rotulo = `herdado-${definition.id}`;
+          return (
+            <li key={definition.id} className="item-solto app-base flex flex-wrap items-center gap-2" data-estatico="true">
+              <span className="min-w-0 flex-1">
+                <span style={{ color: "var(--texto)" }}>{definition.name}</span>
+                <span className="app-meta block">
+                  {FIELD_TYPE_LABEL[definition.type] ?? definition.type} · de {nomeDoNivel(definition.definedAtId)}
+                  {definition.required ? " · obrigatório" : ""}
+                  {foraAcima ? " · deixado de fora mais acima" : ""}
+                </span>
+              </span>
+              <span className="inline-flex items-center gap-2">
+                <Toggle
+                  checked={usado}
+                  onChange={(usar) =>
+                    report(
+                      run((data, me) => usarCampoHerdado(data, me, containerType, containerId, definition.id, usar)),
+                      usar ? `“${definition.name}” volta a ser usado aqui.` : `“${definition.name}” deixa de ser usado aqui.`,
+                    )
+                  }
+                  labelledBy={rotulo}
+                  disabled={bloqueio !== undefined || foraAcima}
+                />
+                <span id={rotulo} className="app-meta">
+                  usar aqui
+                </span>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 
