@@ -42,6 +42,7 @@ import {
   type ConferenciaDoResumo,
 } from "./financeiro-base";
 import { FORMAS_CANONICAS_DO_FIO, TEXTOS_DA_CONFERENCIA, type AnexoDoLancamento } from "./financeiro-textos";
+import { aplicarMudancasDoPedido, semMudancas, type MudancasDoPedido, type ResultadoDasMudancas } from "./revisao-do-pedido";
 import { addTaskComment, changeTaskStatus, createTask, setTaskFieldValue, trashTask, unmetRequirements } from "./tasks";
 
 export {
@@ -250,7 +251,13 @@ export function erpMissingFields(state: DataState, task: Task): string[] {
  * aqui mesmo quando a resolução é fraca: quem formata tolera, quem executa
  * (`runLancamentoAgent`) recusa.
  */
-export function buildResumoDePagamento(state: DataState, task: Task, dePara: DeParaDeLancamento = DE_PARA_DO_PROTOTIPO): ResumoDePagamento {
+export function buildResumoDePagamento(
+  state: DataState,
+  task: Task,
+  dePara: DeParaDeLancamento = DE_PARA_DO_PROTOTIPO,
+  /** Checklist 6.5 — o que um pedido no fio mudou; vai para as Observações. Sem ele, o texto de sempre. */
+  ajustePedido?: readonly string[],
+): ResumoDePagamento {
   const centro = fieldValue(task, CP.fields.centroDeCusto);
   const tag = task.tagIds.map((id) => state.tags.find((t) => t.id === id)?.name ?? "").find((n) => n.startsWith("conta ")) ?? "";
   const conta = dePara.contaPorTag[tag] ?? (centro ? centro.toUpperCase() : "A DEFINIR");
@@ -262,9 +269,10 @@ export function buildResumoDePagamento(state: DataState, task: Task, dePara: DeP
   const forma = fieldValue(task, CP.fields.forma);
   const dado =
     forma === "Chave Pix" ? fieldValue(task, CP.fields.chavePix) : forma === "Boleto" ? fieldValue(task, CP.fields.codigoBarras) : fieldValue(task, CP.fields.pixCopiaECola);
-  const observacao = tag
+  const observacaoDaConta = tag
     ? `Conta de Pagamento definida como "${conta}" pela Tag "${tag}" e mapeamento por Centro de Custo "${centro}". Código da categoria conforme de-para "${categoriaCampo}".`
     : `Sem Tag "conta *": Conta de Pagamento inferida do Centro de Custo "${centro}". Confirmar antes da remessa.`;
+  const observacao = ajustePedido && ajustePedido.length > 0 ? `${observacaoDaConta} Ajustado a pedido no fio: ${ajustePedido.join("; ")}.` : observacaoDaConta;
   const texto = [
     "📋 RESUMO DE PAGAMENTO",
     "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
@@ -1123,6 +1131,28 @@ export interface OpcoesDaConferencia {
    * é dispensada em vez de pedir "confira", e ninguém é mencionado.
    */
   readonly dispensada?: true;
+  /**
+   * Checklist 6.3 — o que a leitura do pedido (o `/resolver`) pede à conta.
+   * Só vale com um pedido (o informado, ou o motivo da Conferência
+   * rejeitada): o Agente aplica as mudanças a pedido de quem pediu, com a
+   * regra de escrita dessa pessoa, ANTES de montar o Resumo; a Conferência
+   * nova guarda a impressão de depois.
+   */
+  readonly mudancasDoPedido?: MudancasDoPedido;
+  /** Checklist 6.4 — o que a leitura do pedido não entendeu, para a resposta quando nada muda. */
+  readonly pedidoNaoEntendido?: string;
+  /** Checklist 6.1 — a Categoria deste Resumo veio de um pedido no fio: vai para `lancamento.pedida`. */
+  readonly categoriaPedida?: true;
+}
+
+/** Checklist 6.3 — o que mudou no lançamento entre a Conferência anterior e o Resumo novo. */
+function mudancasNoLancamento(anterior: ConferenciaDoResumo["origin"]["lancamento"], novo: ResumoDePagamento): string[] {
+  const linhas: string[] = [];
+  if (anterior.conta !== novo.conta) linhas.push(`Conta pagamento: ${anterior.conta} → ${novo.conta}`);
+  if (anterior.categoria !== novo.categoria || anterior.codigo !== novo.codigo) {
+    linhas.push(`Categoria: ${anterior.categoria} (${anterior.codigo}) → ${novo.categoria} (${novo.codigo})`);
+  }
+  return linhas;
 }
 
 /** 06-19 (crm2:WR-04) — `avisarEstrito` com um `avisarId` que não é Membro ativo: a recusa, ou `undefined`. */
@@ -1185,12 +1215,11 @@ export function publicarResumoParaConferencia(
   if (opcoes.conferenciaRejeitadaId !== undefined && (anterior?.id !== opcoes.conferenciaRejeitadaId || anterior.decision !== "rejeitada")) {
     return fail("A Conferência que pediu este ajuste não é mais a vigente: o Resumo revisado não foi publicado.");
   }
-  const resumo = buildResumoDePagamento(state, task, opcoes.dePara);
   const pedidoInformado = opcoes.pedidoDeRevisao?.trim() || undefined;
 
   if (!pedidoInformado && anterior && (atual.estado === "pendente" || atual.estado === "conferida")) {
     const comentario = task.comments.find((c) => c.id === anterior.origin.resumoCommentId && !c.deletedAt);
-    if (comentario) return ok({ comentario, conferencia: anterior, resumo }, anterior.id);
+    if (comentario) return ok({ comentario, conferencia: anterior, resumo: buildResumoDePagamento(state, task, opcoes.dePara) }, anterior.id);
   }
 
   // Um ajuste pedido por clique (motivo na decisão) vira o pedido do Resumo revisado.
@@ -1204,24 +1233,59 @@ export function publicarResumoParaConferencia(
   // cancelada — depois de uma superação, o Resumo novo responde no fio de
   // antes, e a conta continua com um fio só de Resumo.
   const maisRecente = conferenciaMaisRecente(state, task.id);
-  const sufixo = pedido
-    ? TEXTOS_DA_CONFERENCIA.revisado(nomeDoMembro(state, quemPediu), pedido, financeiro, porComentario, dispensada)
-    : opcoes.motivo === "dados-mudaram" || atual.estado === "desatualizada"
-      ? TEXTOS_DA_CONFERENCIA.dadosMudaram(financeiro, porComentario, dispensada)
-      : !anterior && maisRecente?.decision === "cancelada"
-        ? TEXTOS_DA_CONFERENCIA.superada(financeiro, porComentario, dispensada)
-        : TEXTOS_DA_CONFERENCIA.chamada(financeiro, porComentario, dispensada);
 
   const raiz = maisRecente ? task.comments.find((c) => c.id === maisRecente.origin.threadCommentId && !c.deletedAt) : undefined;
-  const antes = { activity: state.activity.length, comments: task.comments.length, approvals: state.approvals.length, resolvido: raiz?.resolved };
+  const antes = {
+    activity: state.activity.length,
+    comments: task.comments.length,
+    approvals: state.approvals.length,
+    resolvido: raiz?.resolved,
+    // Checklist 6.3 — as mudanças do pedido também se desfazem numa recusa.
+    fieldValues: structuredClone(task.fieldValues),
+    dueDate: task.dueDate,
+    description: task.description,
+    updatedAt: task.updatedAt,
+  };
   const desfazer = (motivo: string): OperationResult<never> => {
     task.comments.splice(antes.comments);
     state.approvals.splice(antes.approvals);
     // `recordActivity` insere no INÍCIO: os Registros novos estão nos primeiros índices.
     state.activity.splice(0, state.activity.length - antes.activity);
     if (raiz && antes.resolvido) raiz.resolved = antes.resolvido;
+    task.fieldValues.splice(0, task.fieldValues.length, ...antes.fieldValues);
+    if (antes.dueDate) task.dueDate = antes.dueDate;
+    else delete task.dueDate;
+    task.description = antes.description;
+    task.updatedAt = antes.updatedAt;
     return fail(motivo);
   };
+
+  // Checklist 6.3 — o Agente aplica o que o pedido muda, a pedido de quem pediu.
+  const mudancas: ResultadoDasMudancas =
+    pedido && !semMudancas(opcoes.mudancasDoPedido)
+      ? aplicarMudancasDoPedido(state, task, opcoes.mudancasDoPedido!, { agentId: agent.id, quemPediuId: quemPediu })
+      : { aplicadas: [], recusadas: [] };
+  if (mudancas.aplicadas.length > 0) {
+    const faltandoDepois = erpMissingFields(state, task);
+    if (faltandoDepois.length > 0) return desfazer(`Não apliquei o ajuste pedido: a conta ficaria sem ${faltandoDepois.join(", ")}.`);
+  }
+  const impressao = mudancas.aplicadas.length > 0 ? impressaoDeLancamento(state, task) : atual.impressaoAtual;
+  const previa = buildResumoDePagamento(state, task, opcoes.dePara);
+  const mudou = pedido ? [...(anterior ? mudancasNoLancamento(anterior.origin.lancamento, previa) : []), ...mudancas.aplicadas] : [];
+  // Checklist 6.5 — as Observações do Resumo revisado registram o que o pedido mudou.
+  const resumo = mudou.length > 0 ? buildResumoDePagamento(state, task, opcoes.dePara, mudou) : previa;
+
+  const sufixo = pedido
+    ? TEXTOS_DA_CONFERENCIA.revisado(nomeDoMembro(state, quemPediu), pedido, financeiro, porComentario, dispensada, {
+        mudou,
+        recusadas: mudancas.recusadas,
+        ...(opcoes.pedidoNaoEntendido ? { naoEntendido: opcoes.pedidoNaoEntendido } : {}),
+      })
+    : opcoes.motivo === "dados-mudaram" || atual.estado === "desatualizada"
+      ? TEXTOS_DA_CONFERENCIA.dadosMudaram(financeiro, porComentario, dispensada)
+      : !anterior && maisRecente?.decision === "cancelada"
+        ? TEXTOS_DA_CONFERENCIA.superada(financeiro, porComentario, dispensada)
+        : TEXTOS_DA_CONFERENCIA.chamada(financeiro, porComentario, dispensada);
 
   // Um fio resolvido (conferido antes de a conta mudar) reabre: há de novo o que conferir.
   if (raiz?.resolved) {
@@ -1248,8 +1312,14 @@ export function publicarResumoParaConferencia(
     taskId: task.id,
     threadCommentId: raiz?.id ?? comentario.value.id,
     resumoCommentId: comentario.value.id,
-    impressao: atual.impressaoAtual,
-    lancamento: { conta: resumo.conta, categoria: resumo.categoria, codigo: resumo.codigo, veredito: resumo.veredito },
+    impressao,
+    lancamento: {
+      conta: resumo.conta,
+      categoria: resumo.categoria,
+      codigo: resumo.codigo,
+      veredito: resumo.veredito,
+      ...(opcoes.categoriaPedida ? { pedida: true as const } : {}),
+    },
     approverMemberId: financeiroId,
     ...(porComentario ? {} : { aprovacaoPeloFio: false as const }),
   });

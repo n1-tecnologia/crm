@@ -84,6 +84,34 @@ const CONFERENCIA_DISPENSADA = "Integração manual: a conferência deste Resumo
 const pedidoOuDispensa = (financeiro: string, confira: string, porComentario: boolean, dispensada: boolean): string =>
   dispensada ? CONFERENCIA_DISPENSADA : `${financeiro}, ${confira}: ${pedidoDaConferencia(porComentario)}`;
 
+/** O que a revisão de um pedido fez — `TEXTOS_DA_CONFERENCIA.revisado`. */
+export interface DetalheDaRevisao {
+  /** "Valor: R$ 100,00 → R$ 120,00", "Categoria: A (2.01.01) → B (2.06.01)". */
+  readonly mudou: readonly string[];
+  /** "Vencimento: <motivo>" — pedido e não aplicado. */
+  readonly recusadas: readonly string[];
+  /** O que a leitura do pedido não entendeu, nas palavras dela. */
+  readonly naoEntendido?: string;
+}
+
+/** Como pedir um ajuste que o Agente entende — a resposta quando nada mudou. */
+export const COMO_PEDIR_AJUSTE = 'Para ajustar, diga o campo e o valor novo — por exemplo: "valor 1.234,56", "vencimento 15/10/2026" ou "categoria 2.06.01".';
+
+function linhasDoDetalhe(d: DetalheDaRevisao): string {
+  const linhas: string[] = [];
+  if (d.mudou.length > 0) linhas.push(`O que mudou: ${d.mudou.join("; ")}.`);
+  if (d.recusadas.length > 0) linhas.push(`Não mudei: ${d.recusadas.map((r) => r.replace(/\.$/u, "")).join("; ")}.`);
+  if (d.mudou.length === 0) {
+    const duvida = d.naoEntendido?.trim().replace(/\.$/u, "");
+    linhas.push(
+      d.recusadas.length > 0
+        ? `O Resumo segue igual. ${COMO_PEDIR_AJUSTE}`
+        : `Não identifiquei o que mudar neste pedido${duvida ? ` (${duvida})` : ""}: o Resumo segue igual. ${COMO_PEDIR_AJUSTE}`,
+    );
+  }
+  return `${linhas.join("\n")}\n`;
+}
+
 export const TEXTOS_DA_CONFERENCIA = {
   /**
    * Depois do bloco do RESUMO, na primeira publicação. `porComentario`
@@ -93,9 +121,14 @@ export const TEXTOS_DA_CONFERENCIA = {
    */
   chamada: (financeiro: string, porComentario = true, dispensada = false): string =>
     `\n\n${pedidoOuDispensa(financeiro, "confira", porComentario, dispensada)}`,
-  /** Depois do bloco do RESUMO, quando um revisor pediu ajuste. */
-  revisado: (nome: string, pedido: string, financeiro: string, porComentario = true, dispensada = false): string =>
-    `\n\nRevisado a pedido de ${nome}: "${pedido}".\n${pedidoOuDispensa(financeiro, "confira de novo", porComentario, dispensada)}`,
+  /**
+   * Depois do bloco do RESUMO, quando um revisor pediu ajuste. `detalhe`
+   * (checklist 6.3/6.4): o que mudou, o que não mudou e por quê — e, quando
+   * nada mudou, a resposta honesta com o jeito de pedir, no lugar de um
+   * "revisado" idêntico ao anterior. Sem `detalhe`, o texto de sempre.
+   */
+  revisado: (nome: string, pedido: string, financeiro: string, porComentario = true, dispensada = false, detalhe?: DetalheDaRevisao): string =>
+    `\n\nRevisado a pedido de ${nome}: "${pedido}".\n${detalhe ? linhasDoDetalhe(detalhe) : ""}${pedidoOuDispensa(financeiro, "confira de novo", porComentario, dispensada)}`,
   /** Depois do bloco do RESUMO, quando a conta mudou depois da conferência. */
   dadosMudaram: (financeiro: string, porComentario = true, dispensada = false): string =>
     `\n\nOs dados da conta mudaram depois da conferência.\n${pedidoOuDispensa(financeiro, "confira de novo", porComentario, dispensada)}`,

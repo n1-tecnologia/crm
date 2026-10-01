@@ -121,6 +121,13 @@ export type ApprovalOrigin =
         readonly categoria: string;
         readonly codigo: string;
         readonly veredito: "resolvida" | "revisar" | "ausente";
+        /**
+         * Checklist 6.1 — a Categoria veio de um pedido no fio (o código
+         * citado, ou o que a leitura do pedido escolheu no plano de contas),
+         * não do Campo "Categoria de pagamento". A ponte a mantém nas
+         * publicações seguintes enquanto o Campo não mudar.
+         */
+        readonly pedida?: true;
       };
       /**
        * A Conferência não aceita o "ok" pelo fio —

@@ -286,7 +286,13 @@ export interface SolicitarConferenciaDoResumoInput {
   /** O Comentário do Resumo que esta Conferência confere (o raiz, ou a resposta revisada). */
   readonly resumoCommentId: Id;
   readonly impressao: string;
-  readonly lancamento: { readonly conta: string; readonly categoria: string; readonly codigo: string; readonly veredito: "resolvida" | "revisar" | "ausente" };
+  readonly lancamento: {
+    readonly conta: string;
+    readonly categoria: string;
+    readonly codigo: string;
+    readonly veredito: "resolvida" | "revisar" | "ausente";
+    readonly pedida?: true;
+  };
   readonly approverMemberId: Id;
   /**
    * 06-18 (crm2:WR-03): `false` quando a Conferência não aceita o "ok" pelo
