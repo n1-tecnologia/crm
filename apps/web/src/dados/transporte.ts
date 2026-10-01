@@ -55,6 +55,13 @@ export interface PedidoDeGravacao {
 export interface Transporte {
   gravar(pedido: PedidoDeGravacao): Promise<RespostaDeGravacao>;
   hidratar(): Promise<EstadoDoServidor | { readonly tipo: "falha"; readonly erro: string }>;
+  /**
+   * Checklist E2 — só a revisão do Espaço no servidor (`GET /estado/revisao`),
+   * para a tela saber se alguém (a ponte, o `automation/`, outra pessoa)
+   * gravou. `undefined` quando não deu para saber. Opcional: as rotas
+   * públicas não têm servidor.
+   */
+  revisaoAtual?(): Promise<number | undefined>;
 }
 
 interface CorpoDeOperacao {
@@ -177,6 +184,19 @@ export function transporteHttp(opcoes: { readonly apiUrl: string; readonly obter
 
       const corpo = (await resposta.json()) as { data: DataState; revisao: number; ordens: Ordens; sessao: { memberId: Id } };
       return { data: corpo.data, revisao: corpo.revisao, ordens: corpo.ordens, memberId: corpo.sessao.memberId };
+    },
+
+    async revisaoAtual() {
+      const token = await obterToken();
+      if (!token) return undefined;
+      try {
+        const resposta = await fetch(`${apiUrl}/estado/revisao`, { headers: { authorization: `Bearer ${token}` } });
+        if (!resposta.ok) return undefined;
+        const { revisao } = (await resposta.json()) as { revisao?: unknown };
+        return typeof revisao === "number" && Number.isFinite(revisao) ? revisao : undefined;
+      } catch {
+        return undefined;
+      }
     },
   };
 }

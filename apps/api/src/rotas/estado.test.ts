@@ -33,6 +33,13 @@ describe("GET /estado — sem banco", () => {
   });
 });
 
+describe("GET /estado/revisao — sem banco", () => {
+  it("sem token responde 401 (checklist E2: a revisão também é do Espaço de quem tem sessão)", async () => {
+    const resposta = await appDeTeste("ws_estado_teste").inject({ method: "GET", url: "/estado/revisao" });
+    expect(resposta.statusCode).toBe(401);
+  });
+});
+
 describe("GET /anexos/:fileId/url — sem banco", () => {
   it("sem token responde 401 (o hook de autenticação cobre toda rota deste módulo, Plan 02-19)", async () => {
     const resposta = await appDeTeste("ws_estado_teste").inject({ method: "GET", url: "/anexos/wf_qualquer/url" });
@@ -90,6 +97,14 @@ d("GET /estado — contra o banco real", () => {
 
     expect(typeof corpo.ordens.tasks[tarefa!.id]).toBe("number");
     expect(corpo.data.tasks.length).toBe(semente.tasks.length);
+  });
+
+  it("GET /estado/revisao devolve a mesma revisão do /estado, e só ela (checklist E2)", async () => {
+    const headers = { authorization: "Bearer token-maryane" };
+    const estado = (await appDeTeste(WS).inject({ method: "GET", url: "/estado", headers })).json() as { revisao: number };
+    const resposta = await appDeTeste(WS).inject({ method: "GET", url: "/estado/revisao", headers });
+    expect(resposta.statusCode).toBe(200);
+    expect(resposta.json()).toEqual({ revisao: estado.revisao });
   });
 
   it("GET /anexos/:fileId/url — Arquivo inexistente no Espaço responde 404 (Plan 02-19)", async () => {

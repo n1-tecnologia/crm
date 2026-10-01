@@ -281,3 +281,43 @@ describe("runConfirmado() — o id que vale é o do servidor (checklist E1)", ()
     expect(await b.confirmado).toEqual({ ok: false, error: "Sem conexão com o servidor." });
   });
 });
+
+describe("verificarRevisao() — a tela vê o que outro processo gravou (checklist E2)", () => {
+  function comRevisao(revisoes: Array<number | undefined>) {
+    const revisaoAtual = vi.fn(async () => revisoes.shift());
+    const comPergunta: Transporte = { gravar: transporte.gravar, hidratar: transporte.hidratar, revisaoAtual };
+    return { revisaoAtual, store: criarStore({ sessao: { memberId: "mem_maryane" }, estadoInicial: { data: state, revisao: 7, ordens }, transporte: comPergunta }) };
+  }
+
+  it("(m) o servidor à frente: re-hidrata e passa a valer a revisão dele", async () => {
+    const outro = { marcador: "a ponte gravou" } as unknown as DataState;
+    transporte.hidratarMock.mockResolvedValueOnce({ data: outro, revisao: 9, ordens: {}, memberId: "mem_maryane" });
+    const { store: s } = comRevisao([9]);
+    expect(await s.getState().verificarRevisao()).toBe(true);
+    expect(s.getState().data).toBe(outro);
+    expect(s.getState().revisaoDoServidor).toBe(9);
+  });
+
+  it("(n) mesma revisão, ou sem resposta: nada é recarregado", async () => {
+    const { store: s } = comRevisao([7, undefined]);
+    expect(await s.getState().verificarRevisao()).toBe(false);
+    expect(await s.getState().verificarRevisao()).toBe(false);
+    expect(transporte.hidratarMock).not.toHaveBeenCalled();
+  });
+
+  it("(o) com uma gravação desta tela a caminho, nem pergunta: o diff dela traz a revisão", async () => {
+    let soltar: (r: RespostaDeGravacao) => void = () => {};
+    transporte.gravarMock.mockImplementationOnce(() => new Promise<RespostaDeGravacao>((resolve) => (soltar = resolve)));
+    const { store: s, revisaoAtual } = comRevisao([99]);
+    const trafego = achar(state, "tsk_cp_trafego");
+    s.getState().run((d, m) => addTaskComment(d, m, trafego.id, { content: "x" }));
+    expect(s.getState().pendentes).toBe(1);
+    expect(await s.getState().verificarRevisao()).toBe(false);
+    expect(revisaoAtual).not.toHaveBeenCalled();
+    soltar({ tipo: "falha", erro: "fim do teste" });
+  });
+
+  it("(p) sem servidor (rotas públicas): nunca pergunta", async () => {
+    expect(await store.getState().verificarRevisao()).toBe(false);
+  });
+});

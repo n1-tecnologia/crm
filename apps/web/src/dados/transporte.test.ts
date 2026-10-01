@@ -186,6 +186,26 @@ describe("transporteHttp — hidratar", () => {
   });
 });
 
+describe("transporteHttp — revisaoAtual (checklist E2)", () => {
+  it("pergunta só a revisão, com a sessão", async () => {
+    fetchMock.mockResolvedValueOnce(respostaFalsa(200, { revisao: 42 }));
+    const transporte = transporteHttp({ apiUrl: "http://api", obterToken: async () => "tok" });
+    expect(await transporte.revisaoAtual?.()).toBe(42);
+    expect(fetchMock).toHaveBeenCalledWith("http://api/estado/revisao", { headers: { authorization: "Bearer tok" } });
+  });
+
+  it("sem sessão, erro HTTP, rede caída ou corpo estranho: não sabe (undefined)", async () => {
+    expect(await transporteHttp({ apiUrl: "http://api", obterToken: async () => undefined }).revisaoAtual?.()).toBeUndefined();
+    const transporte = transporteHttp({ apiUrl: "http://api", obterToken: async () => "tok" });
+    fetchMock.mockResolvedValueOnce(respostaFalsa(500, {}));
+    expect(await transporte.revisaoAtual?.()).toBeUndefined();
+    fetchMock.mockRejectedValueOnce(new Error("rede"));
+    expect(await transporte.revisaoAtual?.()).toBeUndefined();
+    fetchMock.mockResolvedValueOnce(respostaFalsa(200, { revisao: "9" }));
+    expect(await transporte.revisaoAtual?.()).toBeUndefined();
+  });
+});
+
 describe("transporteEmMemoria", () => {
   it("(i) gravar devolve tipo: estado com data === copia, sem fetch", async () => {
     const transporte = transporteEmMemoria();

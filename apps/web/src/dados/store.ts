@@ -37,7 +37,7 @@
  * onde o store vem, nem que ele agora fala com uma API.
  */
 
-import { createContext, createElement, useContext, useState, type ReactNode } from "react";
+import { createContext, createElement, useContext, useEffect, useState, type ReactNode } from "react";
 import { createStore, useStore as useZustandStore, type StoreApi } from "zustand";
 import type { DataState, OperationResult, Session } from "@n1/dominio/state";
 import * as operations from "@n1/dominio/operations";
@@ -73,6 +73,13 @@ interface StoreShape {
   };
   /** Re-hidrata do zero por `GET /estado` — D-06: revisão defasada ou conflito. */
   rehidratar: () => Promise<void>;
+  /**
+   * Checklist E2 — pergunta só a revisão do Espaço ao servidor e re-hidrata
+   * se ele está à frente (a ponte, o `automation/` ou outra pessoa gravou).
+   * Nunca com uma gravação desta tela a caminho: o diff dela é que traz a
+   * revisão nova. `true` quando re-hidratou.
+   */
+  verificarRevisao: () => Promise<boolean>;
 }
 
 export interface SessaoInicial {
@@ -168,6 +175,8 @@ export function criarStore(opcoes: {
       }
     }
 
+    let verificando = false;
+
     /**
      * Roda `operation` numa cópia; se a cópia aceita, dispara o envio e
      * devolve a promessa dele (o resultado do servidor).
@@ -223,6 +232,20 @@ export function criarStore(opcoes: {
         return { local: resultado, confirmado: envio ? (envio as Promise<typeof resultado>) : Promise.resolve(resultado) };
       },
 
+      verificarRevisao: async () => {
+        if (!transporte.revisaoAtual || verificando || get().pendentes > 0) return false;
+        verificando = true;
+        try {
+          const noServidor = await transporte.revisaoAtual();
+          // Uma gravação pode ter saído enquanto a pergunta ia e voltava: o diff dela decide.
+          if (noServidor === undefined || noServidor <= get().revisaoDoServidor || get().pendentes > 0) return false;
+          await get().rehidratar();
+          return true;
+        } finally {
+          verificando = false;
+        }
+      },
+
       rehidratar: async () => {
         const r = await transporte.hidratar();
         if ("tipo" in r) {
@@ -259,7 +282,32 @@ export function StoreProvider({
   readonly children: ReactNode;
 }) {
   const [store] = useState(() => criarStore({ sessao, estadoInicial, transporte }));
-  return createElement(StoreContext.Provider, { value: store }, children);
+  return createElement(StoreContext.Provider, { value: store }, createElement(AcompanhanteDaRevisao, { store }), children);
+}
+
+/** Checklist E2 — de quanto em quanto tempo a tela pergunta a revisão do Espaço. */
+export const INTERVALO_DA_REVISAO_MS = 5_000;
+
+/**
+ * Checklist E2 — com a aba visível, pergunta a revisão a cada
+ * `INTERVALO_DA_REVISAO_MS` e ao voltar à aba; o que a ponte grava aparece
+ * sem recarregar a página. Aba escondida não pergunta nada.
+ */
+function AcompanhanteDaRevisao({ store }: { readonly store: StoreApi<StoreShape> }): null {
+  useEffect(() => {
+    const verificar = () => {
+      if (document.visibilityState === "visible") void store.getState().verificarRevisao();
+    };
+    const intervalo = window.setInterval(verificar, INTERVALO_DA_REVISAO_MS);
+    document.addEventListener("visibilitychange", verificar);
+    window.addEventListener("focus", verificar);
+    return () => {
+      window.clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", verificar);
+      window.removeEventListener("focus", verificar);
+    };
+  }, [store]);
+  return null;
 }
 
 function useStore<T>(selector: (state: StoreShape) => T): T {

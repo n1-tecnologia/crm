@@ -43,6 +43,17 @@ export async function rotasDeEstado(app: FastifyInstance): Promise<void> {
     }
   });
 
+  // Checklist E2 — a tela não via sozinha o que a ponte e o `automation/`
+  // gravam. Ela pergunta só a revisão do Espaço (um número, uma linha) e, se
+  // o servidor está à frente, recarrega o `/estado` inteiro. Sem Espaço
+  // gravado, revisão 0: não há o que recarregar.
+  app.get("/estado/revisao", async (request) => {
+    const { rows } = await pool().query<{ revisao: string }>("select revisao from plataforma.workspaces where workspace_id = $1", [
+      request.membro.workspaceId,
+    ]);
+    return { revisao: Number(rows[0]?.revisao ?? 0) };
+  });
+
   app.get<{ Params: { fileId: string } }>("/anexos/:fileId/url", async (request, reply) => {
     const cliente = await pool().connect();
     try {

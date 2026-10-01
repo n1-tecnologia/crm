@@ -128,8 +128,8 @@ o seletor mostra Campos duplicados com o mesmo nome.
   (dry-run; o `--apply` é do dono). Depois disso, tudo se edita pela tela.
 - [ ] **1.9** Testes (domínio, API, tela) e a jornada `formulario-publico`
   rodando de verdade, com upload.
-- [ ] **1.10** Validação do Fluxo 1 que o documento promete e o `automation/`
-  não faz: o dígito do CPF (`isValidCpf` existe e não é usado).
+- [x] **1.10** `financeiro-tria` `54be18c` — Validação do Fluxo 1 que o documento promete e o `automation/`
+  não faz: o dígito do CPF (`isValidCpf` existe e não é usado). Nos três tenants.
 - [ ] **1.11** [dono] Decidir: prazo mínimo de 2 dias úteis (padrão do
   código) ou 3 (o documento); e se uma Solicitação criada direto na Lista, sem
   o Formulário, deve disparar o pipeline (hoje não dispara).
@@ -149,8 +149,10 @@ o seletor mostra Campos duplicados com o mesmo nome.
   ponte grava no mesmo instante, o id do servidor é outro e o popup mostra
   "Conta não encontrada" (prova: `cmt_tark9u`/`tsk_tarka0`). A criação passa a
   abrir com o id confirmado pelo servidor.
-- [ ] **E2** A tela não vê sozinha o que a ponte grava: consulta leve à
-  revisão do Espaço e recarga quando ela muda.
+- [x] **E2** A tela não vê sozinha o que a ponte grava: consulta leve à
+  revisão do Espaço (`GET /estado/revisao`, a cada 5 s com a aba visível e
+  ao voltar a ela) e recarga quando ela muda — nunca com uma gravação da
+  própria tela a caminho.
 - [x] **E3** `4957baa` — Na dispensa por Integração manual, o Resumo termina pedindo ao
   "Agente do pipeline" que confira; o texto deixa de pedir conferência quando
   ninguém vai conferir.
@@ -169,3 +171,9 @@ o seletor mostra Campos duplicados com o mesmo nome.
 | 2026-10-01 | 3.2 | `ee9c724` · `financeiro-tria` `19959d9` | api 5 casos (Membro de serviço real do configurador); `automation/` 773/773; mutação morde nos dois |
 | 2026-10-01 | 3.3 | `c8fa51e` | janela: ausente/em branco liga; mutação morde |
 | 2026-10-01 | 3.4 | `financeiro-tria` `5d91f51` | 2 casos (2ª página; cursor repetido); 775/775; mutação morde |
+| 2026-10-01 | E1 | `5d4b157` | web: 3 casos no store (id do servidor, recusa, conflito/falha); conta nova, chat e Agente; 294/294 |
+| 2026-10-01 | 6.3–6.5 | `3b24c8f` | domínio: 10 casos (mudanças, Registro do Agente, forma sem dado, sem permissão, desfazer, nada mudou, Categoria pedida); mutações mordem |
+| 2026-10-01 | 6.1–6.2 | `financeiro-tria` `45bdc15` · `f457f7c` | 17 casos (saneamento, candidatas, precedência, IA que falha); contrato 30/30; 795/795; mutações mordem |
+| 2026-10-01 | 6.1–6.4 ponte | `8179fbc` | api: 7 casos da ponte com os exemplos do produtor + 4 de contrato v1.3; 872 sem banco; mutações mordem |
+| 2026-10-01 | 1.10 | `financeiro-tria` `54be18c` | CPF errado recusado, válido segue; 796/796; mutação morde |
+| 2026-10-01 | E2 | este commit | web: 4 casos no store + 2 no transporte; 300/300; api: rota com 401 sem sessão (o caso com banco não rodou) |
