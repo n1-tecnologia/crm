@@ -160,6 +160,16 @@ o seletor mostra Campos duplicados com o mesmo nome.
   configuração da plataforma, editável sem deploy. Fica para depois dos itens
   acima, se o dono quiser.
 
+## Para o dono
+
+- **Deploy:** a plataforma antes do `automation/` (o `createComment` e o
+  `/resolver` são `.strict()` dos dois lados: um campo novo antes da hora é 400).
+- **A análise por comentário** agora vale sem `FALLBACK_COMENTARIO_ATE`; para
+  desligar, `FALLBACK_COMENTARIO_ATE=desligado`.
+- **A suíte do `apps/api`** roda, com o token do `.env`, um teste contra a API
+  real do ClickUp (`exportar.integration.test.ts`, só leitura) e um contra o
+  Supabase Auth real (`resolver-usuario.test.ts`) — anterior a esta rodada.
+
 ## Outros erros achados nesta rodada
 
 - [x] **E1** `5d4b157` — A conta nova abre no popup com o id calculado no navegador; se a
@@ -195,3 +205,4 @@ o seletor mostra Campos duplicados com o mesmo nome.
 | 2026-10-01 | 1.10 | `financeiro-tria` `54be18c` | CPF errado recusado, válido segue; 796/796; mutação morde |
 | 2026-10-01 | E2 | `e1e7d41` | web: 4 casos no store + 2 no transporte; 300/300; api: rota com 401 sem sessão (o caso com banco não rodou) |
 | 2026-10-01 | 1.1–1.8 | `48135af` · `e1f081f` · `cf75dfe` · `3fe2ee8` · `1c0df4c` · `ec6af12` | domínio 9 + configurador 2; api 3 (+2 com banco, não rodaram); tela 31; mutações mordem; dry-run no `ws_n1`: 6 Campos herdados fora, Formulário com 24 perguntas |
+| 2026-10-01 | revisão de código | `d4148be` · `financeiro-tria` `bdc62c3` · `5a23f72` | 2 revisores (plataforma: 4 avisos, 5 info; `automation/`: 5 avisos, 4 info), corrigidos os reais: dispensa com mudanças da IA, id de Arquivo em texto, roteamento que travava a fila, Campo herdado sem permissão na origem, injeção pela descrição da conta, campo lido descartado em silêncio, CPF (chave e PII), corridas do store; api 879, domínio 1039+, web 312, `automation/` 800 |
