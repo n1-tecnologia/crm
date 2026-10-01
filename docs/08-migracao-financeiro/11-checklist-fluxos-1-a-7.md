@@ -52,15 +52,20 @@ dá 409, porque a reprovação exige motivo e a rota não o passa.
 
 - [x] **3.1** `7c51ac6` — Reprovação por comentário: a rota de classificação passa o texto
   da resposta como motivo (`apps/api/src/rotas/classificacoes.ts`).
-- [ ] **3.2** A Solicitação de Aprovação nasce quando o aprovador é marcado:
-  método novo na integração (contrato `payment-requests-v1`, aditivo), que o
-  `automation/` chama logo depois do comentário de roteamento, com o Membro
-  aprovador e o id desse comentário; o Status vai para "em aprovação".
-- [ ] **3.3** A análise por comentário vale sempre, como no backend do
+- [x] **3.2** `ee9c724` · `financeiro-tria` `19959d9` — A Solicitação de
+  Aprovação nasce quando o aprovador é marcado: o `createComment` do contrato
+  ganha `requestApprovalFromMemberId` (aditivo). O comentário de roteamento,
+  a aprovação com ele como fio e o Status "em aprovação" saem na mesma
+  transação; se a aprovação não abre, o comentário também não fica (422). O
+  `automation/` manda o campo só quando o responsável tem Membro na
+  plataforma.
+- [x] **3.3** `c8fa51e` — A análise por comentário vale sempre, como no backend do
   Financeiro: sem `FALLBACK_COMENTARIO_ATE`, ligada; com uma data, até ela.
-- [ ] **3.4** O classificador lê todas as páginas de respostas do fio, não só
+- [x] **3.4** `financeiro-tria` `5d91f51` — O classificador lê todas as páginas de respostas do fio, não só
   a primeira.
-- [ ] **3.5** Testes nos dois repositórios; contrato igual nos dois (hash).
+- [x] **3.5** Testes nos dois repositórios; contrato igual nos dois (hash
+  `47211f2f…`, 82 arquivos). Os casos com banco (`classificacoes.test.ts` (j)
+  e o E2E `dois-servicos`) não rodaram: o banco configurado é o de produção.
 - [ ] **3.6** [dono] Os aprovadores (estrategistas) como Membros do `ws_n1` e
   o mapa `PLATAFORMA_MEMBRO_POR_CLICKUP_ID` no `.env` do `automation/`: sem o
   Membro, não há a quem pedir a aprovação.
@@ -127,7 +132,7 @@ o seletor mostra Campos duplicados com o mesmo nome.
 
 ## Fluxo 2 — marcar o estrategista (pedido 2: o que falta)
 
-- [ ] **2.1** A Solicitação de Aprovação e o Status "em aprovação" — é o 3.2.
+- [x] **2.1** A Solicitação de Aprovação e o Status "em aprovação" — é o 3.2.
 - [ ] **2.2** [dono] Os aprovadores como Membros e o mapa de ids — é o 3.6.
 - [ ] **2.3** A regra de quem aprova (centro de custo e o corte de R$ 5.000)
   mora no código do `automation/`; a decisão D-07 pedia que fosse
@@ -157,3 +162,6 @@ o seletor mostra Campos duplicados com o mesmo nome.
 | 2026-10-01 | 3.1 | `7c51ac6` | api: sem o motivo o domínio recusa; com ele, reprova e responde no fio |
 | 2026-10-01 | E3 | `4957baa` | domínio: textos de sempre iguais byte a byte; ponte: dispensa sem Menção |
 | 2026-10-01 | 7.3 | `099dc56` | domínio 13, api 18, web 11 casos novos; suítes inteiras verdes; a prova real é o 7.4 |
+| 2026-10-01 | 3.2 | `ee9c724` · `financeiro-tria` `19959d9` | api 5 casos (Membro de serviço real do configurador); `automation/` 773/773; mutação morde nos dois |
+| 2026-10-01 | 3.3 | `c8fa51e` | janela: ausente/em branco liga; mutação morde |
+| 2026-10-01 | 3.4 | `financeiro-tria` `5d91f51` | 2 casos (2ª página; cursor repetido); 775/775; mutação morde |
