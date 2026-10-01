@@ -56,24 +56,40 @@ const TIMELINE_PAGE_SIZE = 20;
 
 /* ───────────────────────────── Renderer `rico` ──────────────────────────── */
 
+export type ParteDoTextoRico = { readonly tipo: "negrito" | "italico" | "texto"; readonly texto: string };
+
 /**
- * `**negrito**` e `_itálico_`, quebra de linha preservada por
- * `white-space: pre-wrap`. Nunca usa HTML — cada pedaço vira texto de nó
- * React, nunca `dangerouslySetInnerHTML` — então nenhum HTML arbitrário do
- * conteúdo do Comentário chega a ser interpretado como marcação.
+ * `**negrito**` e `_itálico_`. O sublinhado só abre e fecha itálico na borda
+ * de uma palavra, como no Markdown: dentro dela é letra — `FORNECEDOR_NAO_RESOLVIDO`
+ * e `NFS-e_21_03.pdf` ficam inteiros.
+ */
+export function partesDoTextoRico(texto: string): ParteDoTextoRico[] {
+  const partes: ParteDoTextoRico[] = [];
+  let desde = 0;
+  for (const achado of texto.matchAll(/\*\*[^*]+\*\*|(?<![\p{L}\p{N}_])_[^_\n]+_(?![\p{L}\p{N}_])/gu)) {
+    const inicio = achado.index ?? 0;
+    if (inicio > desde) partes.push({ tipo: "texto", texto: texto.slice(desde, inicio) });
+    const marcado = achado[0];
+    partes.push(marcado.startsWith("**") ? { tipo: "negrito", texto: marcado.slice(2, -2) } : { tipo: "italico", texto: marcado.slice(1, -1) });
+    desde = inicio + marcado.length;
+  }
+  if (desde < texto.length) partes.push({ tipo: "texto", texto: texto.slice(desde) });
+  return partes;
+}
+
+/**
+ * Quebra de linha preservada por `white-space: pre-wrap`. Nunca usa HTML —
+ * cada pedaço vira texto de nó React, nunca `dangerouslySetInnerHTML` — então
+ * nenhum HTML arbitrário do conteúdo do Comentário chega a ser interpretado
+ * como marcação.
  */
 function Rico({ texto }: { readonly texto: string }) {
-  const partes = texto.split(/(\*\*[^*]+\*\*|_[^_]+_)/g).filter((parte) => parte !== "");
   return (
     <p className="app-base mt-1 whitespace-pre-wrap" style={{ color: "var(--texto)" }}>
-      {partes.map((parte, indice) => {
-        if (parte.startsWith("**") && parte.endsWith("**")) {
-          return <strong key={indice}>{parte.slice(2, -2)}</strong>;
-        }
-        if (parte.startsWith("_") && parte.endsWith("_") && parte.length > 2) {
-          return <em key={indice}>{parte.slice(1, -1)}</em>;
-        }
-        return <span key={indice}>{parte}</span>;
+      {partesDoTextoRico(texto).map((parte, indice) => {
+        if (parte.tipo === "negrito") return <strong key={indice}>{parte.texto}</strong>;
+        if (parte.tipo === "italico") return <em key={indice}>{parte.texto}</em>;
+        return <span key={indice}>{parte.texto}</span>;
       })}
     </p>
   );
