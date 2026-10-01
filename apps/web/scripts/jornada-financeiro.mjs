@@ -107,6 +107,33 @@
  * antes de ela sair (`pagina.route`): a mesma operação `setTaskFieldValue`,
  * com a sessão do usuário e o mesmo transporte — só o valor que a tela não
  * sabe pedir.
+ *
+ * ── `cp-dispensa-com-resposta` (a prova do 06-21: o Crítico do 06-REVIEW-3) ─
+ *
+ * Só quando pedido pelo nome, SOZINHO numa execução, e com a ponte num
+ * PROCESSO À PARTE que anda só pelo relógio: a API da tela (a de JORNADA_URL)
+ * SEM a ponte, e outra API (outra PORT) com AGENTE_CONTAS_A_PAGAR_MODO=
+ * conferencia, AGENTE_CONTAS_A_PAGAR_INTEGRACAO_MANUAL=sem-conferencia, as
+ * portas G2/G3 de sempre e AGENTE_CONTAS_A_PAGAR_INTERVALO_MS (ex.: 90000).
+ * A cutucada é do processo que gravou, então as gravações da tela não cutucam
+ * essa ponte — e o cenário CONFERE pelo relógio dela que nenhum ciclo leu a
+ * resposta sem o "Manual": JORNADA_PONTE_INICIO_MS (o `time` da linha de
+ * partida da ponte, registrada logo depois do `iniciar()`, que roda o primeiro
+ * ciclo e arma o relógio) e JORNADA_PONTE_INTERVALO_MS.
+ *
+ *   1. cria a conta completa SEM Integração manual; espera o Resumo e o card
+ *      "Pendente";
+ *   2. logo depois de um tique da ponte, RESPONDE no fio pedindo ajuste
+ *      ("troca a categoria para 2.04.03" — com o código na resposta, o Resumo
+ *      revisado sai com ele, sem depender da IA) e marca "Integração manual" =
+ *      Manual; confere que as duas gravações caíram entre os MESMOS dois
+ *      tiques (senão a prova é inconclusiva e o cenário falha);
+ *   3. espera `🔁 Ajuste pedido por` e falha na hora se um `✅ Resumo
+ *      conferido` chegar antes dele — era o Crítico: a dispensa engolia a
+ *      resposta pendente;
+ *   4. espera o Resumo revisado e, depois dele, a dispensa (`✅ Resumo
+ *      conferido` — a conta agora é Manual); confere a ordem no tópico
+ *      (resposta → ajuste → revisado → conferido) e o card escondido.
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -451,6 +478,43 @@ async function semCardDaConferencia() {
   if (cards > 0) throw new Error("o card da Conferência aparece numa conta Manual");
 }
 
+/** `cp-dispensa-com-resposta` — o relógio da ponte que roda à parte (o primeiro ciclo é o tique 0). */
+const PONTE_INICIO_MS = Number(process.env.JORNADA_PONTE_INICIO_MS);
+const PONTE_INTERVALO_MS = Number(process.env.JORNADA_PONTE_INTERVALO_MS);
+/** Depois do tique, o ciclo já leu o Espaço: a leitura é a primeira coisa que ele faz. */
+const LEITURA_DO_CICLO_MS = 5_000;
+/** O que a resposta e o "Manual" levam juntos, com folga — com menos que isso até o próximo tique, espera o tique. */
+const TEMPO_DAS_DUAS_GRAVACOES_MS = 50_000;
+const PEDIDO_DE_AJUSTE = "troca a categoria para 2.04.03";
+const comResposta = { conferidosAntes: 0, revisadosAntes: 0, antesDaResposta: 0, depoisDoManual: 0 };
+
+const tiqueDaPonte = (t) => Math.floor((t - PONTE_INICIO_MS) / PONTE_INTERVALO_MS);
+const instanteDoTique = (k) => PONTE_INICIO_MS + k * PONTE_INTERVALO_MS;
+const hora = (t) => new Date(t).toISOString().slice(11, 19);
+
+/** Espera, se preciso, até as duas gravações caberem inteiras entre a leitura de um tique e o tique seguinte. */
+async function alinharComOTique() {
+  let esperou = 0;
+  for (;;) {
+    const agora = Date.now();
+    const k = tiqueDaPonte(agora);
+    const desdeOTique = agora - instanteDoTique(k);
+    const ateOProximo = instanteDoTique(k + 1) - agora;
+    let espera = 0;
+    if (desdeOTique < LEITURA_DO_CICLO_MS) espera = LEITURA_DO_CICLO_MS - desdeOTique + 250;
+    else if (ateOProximo < TEMPO_DAS_DUAS_GRAVACOES_MS) espera = ateOProximo + LEITURA_DO_CICLO_MS + 250;
+    if (espera === 0) return `${esperou > 0 ? `esperou ${Math.round(esperou / 1000)} s; ` : ""}tique ${k}, ${Math.round(ateOProximo / 1000)} s até o próximo`;
+    esperou += espera;
+    await pagina.waitForTimeout(espera);
+  }
+}
+
+/** Os Comentários do tópico, na ordem da tela (cronológica: a resposta é um `li` próprio, com link para o pai). */
+const comentariosDoTopico = () =>
+  painel()
+    .locator('li[id^="comentario-"]')
+    .evaluateAll((lis) => lis.map((li) => ({ id: li.id.replace(/^comentario-/, ""), texto: li.innerText })));
+
 
 
 
@@ -693,6 +757,97 @@ const CENARIOS = [
     ],
   },
   {
+    chave: "cp-dispensa-com-resposta",
+    soQuandoPedido: true,
+    titulo: 'Contas a pagar — "Manual" marcado com uma resposta pendente no fio: a resposta decide, a dispensa espera (06-21)',
+    lista: "lst_contas_a_pagar",
+    botao: "+ Nova conta",
+    nome: `TESTE AUTOMATIZADO — CP dispensa com resposta · ${CARIMBO}`,
+    passos: [
+      [
+        "JORNADA_MODO = conferencia e o relógio da ponte à parte (JORNADA_PONTE_INICIO_MS, JORNADA_PONTE_INTERVALO_MS)",
+        async () => {
+          if (MODO !== "conferencia") throw new Error(`cp-dispensa-com-resposta exige JORNADA_MODO=conferencia (veio "${MODO}")`);
+          if (!Number.isFinite(PONTE_INICIO_MS) || !Number.isFinite(PONTE_INTERVALO_MS) || PONTE_INTERVALO_MS < 2 * TEMPO_DAS_DUAS_GRAVACOES_MS) {
+            throw new Error(`exige JORNADA_PONTE_INICIO_MS e JORNADA_PONTE_INTERVALO_MS (≥ ${(2 * TEMPO_DAS_DUAS_GRAVACOES_MS) / 1000} s): a ponte num processo à parte, só no relógio`);
+          }
+          return `ponte iniciada às ${hora(PONTE_INICIO_MS)}, um ciclo a cada ${PONTE_INTERVALO_MS / 1000} s`;
+        },
+      ],
+      // Sem "Integração manual": o Resumo vai para uma pessoa conferir.
+      ...passosDaContaAPagar(),
+      ["Esperar o 📋 RESUMO DE PAGAMENTO no tópico", () => esperarNoFio(RESUMO)],
+      ["Card: Conferência do Resumo · Pendente", () => cardDaConferencia("Pendente")],
+      ["Captura do Resumo", () => capturar("cp-dispensa-com-resposta-resumo")],
+      [
+        `Logo depois de um tique da ponte: responder no fio "${PEDIDO_DE_AJUSTE}" e marcar Integração manual = Manual`,
+        async () => {
+          const alinhamento = await alinharComOTique();
+          comResposta.conferidosAntes = await contarNoFio(CONFERIDO);
+          comResposta.revisadosAntes = await contarNoFio(REVISADO);
+          comResposta.antesDaResposta = Date.now();
+          const respondido = await responderNoFio(RESUMO, PEDIDO_DE_AJUSTE);
+          await escolher("Integração manual", "Manual");
+          comResposta.depoisDoManual = Date.now();
+          return `${alinhamento}; ${respondido}; resposta a partir de ${hora(comResposta.antesDaResposta)}, Manual gravado até ${hora(comResposta.depoisDoManual)}`;
+        },
+      ],
+      [
+        "As duas gravações caíram entre os MESMOS dois tiques: o ciclo seguinte lê a resposta pendente E o Manual juntos",
+        async () => {
+          const k = tiqueDaPonte(comResposta.antesDaResposta);
+          const depoisDaLeitura = comResposta.antesDaResposta >= instanteDoTique(k) + LEITURA_DO_CICLO_MS;
+          const antesDoProximo = comResposta.depoisDoManual < instanteDoTique(k + 1);
+          const janela = `tique ${k} às ${hora(instanteDoTique(k))}, tique ${k + 1} às ${hora(instanteDoTique(k + 1))}`;
+          if (!depoisDaLeitura || !antesDoProximo) {
+            throw new Error(`prova inconclusiva: as gravações (${hora(comResposta.antesDaResposta)}–${hora(comResposta.depoisDoManual)}) não couberam entre a leitura de um tique e o seguinte (${janela})`);
+          }
+          return `${janela}: nenhum ciclo leu uma sem a outra`;
+        },
+      ],
+      [
+        "Esperar 🔁 Ajuste pedido por — sem nenhum ✅ Resumo conferido antes dele",
+        async () => {
+          const inicio = Date.now();
+          for (;;) {
+            const ajustes = await contarNoFio(AJUSTE);
+            const conferidos = await contarNoFio(CONFERIDO);
+            if (ajustes > 0) return `apareceu em ${Math.round((Date.now() - inicio) / 1000)} s`;
+            if (conferidos > comResposta.conferidosAntes) {
+              throw new Error("✅ Resumo conferido sem 🔁 Ajuste pedido: a ponte dispensou por cima da resposta pendente (o Crítico do 06-REVIEW-3)");
+            }
+            if (Date.now() - inicio > ESPERA_MS) throw new Error(`"${AJUSTE.source}" não apareceu no tópico em ${Math.round(ESPERA_MS / 1000)} s`);
+            await pagina.waitForTimeout(3_000);
+            await recarregar();
+          }
+        },
+      ],
+      ["Esperar o Resumo revisado (Revisado a pedido de)", () => esperarNoFio(REVISADO, ESPERA_MS, { aPartirDe: comResposta.revisadosAntes })],
+      [
+        "Esperar a dispensa do Resumo REVISADO (✅ Resumo conferido — agora a conta é Manual)",
+        () => esperarNoFio(CONFERIDO, ESPERA_MS, { aPartirDe: comResposta.conferidosAntes }),
+      ],
+      [
+        "A ordem no tópico: resposta → 🔁 Ajuste pedido → Resumo revisado → ✅ Resumo conferido",
+        async () => {
+          const itens = await comentariosDoTopico();
+          const indice = (padrao, desde = 0) => itens.findIndex((c, i) => i >= desde && padrao.test(c.texto));
+          const iResposta = itens.findIndex((c) => c.texto.includes(PEDIDO_DE_AJUSTE));
+          const iAjuste = indice(AJUSTE, iResposta + 1);
+          const iRevisado = indice(REVISADO, iAjuste + 1);
+          const iConferido = indice(CONFERIDO);
+          if (iResposta < 0 || iAjuste < 0 || iRevisado < 0 || iConferido < 0) {
+            throw new Error(`faltou um elo no tópico (resposta ${iResposta}, ajuste ${iAjuste}, revisado ${iRevisado}, conferido ${iConferido})`);
+          }
+          if (iConferido < iRevisado) throw new Error(`o ✅ Resumo conferido (posição ${iConferido}) veio antes do Resumo revisado (${iRevisado}): foi dispensado o Resumo velho`);
+          return `resposta ${itens[iResposta].id} → ajuste ${itens[iAjuste].id} → revisado ${itens[iRevisado].id} → conferido ${itens[iConferido].id}`;
+        },
+      ],
+      ["Card escondido (a conta é Manual)", () => semCardDaConferencia()],
+      ["Captura", () => capturar("cp-dispensa-com-resposta")],
+    ],
+  },
+  {
     chave: "cr-recebida",
     titulo: "Contas a receber — cobrada e recebida",
     lista: "lst_contas_a_receber",
@@ -753,7 +908,8 @@ const retomar = new Map(
     }),
 );
 
-const pedeAPonte = so.has("cp-conferida") || so.has("cp-ajuste") || so.has("cp-conferida-pelo-card") || so.has("cp-dispensa-manual");
+const pedeAPonte =
+  so.has("cp-conferida") || so.has("cp-ajuste") || so.has("cp-conferida-pelo-card") || so.has("cp-dispensa-manual") || so.has("cp-dispensa-com-resposta");
 console.log(`Jornada do Financeiro como um humano — ${URL_BASE} — ${CARIMBO}${pedeAPonte ? ` — ponte em ${MODO}` : ""}`);
 await entrar();
 
