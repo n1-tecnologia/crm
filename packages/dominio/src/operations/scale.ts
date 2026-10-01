@@ -232,12 +232,66 @@ export interface FormInput {
   readonly questions: ReadonlyArray<Omit<FormQuestion, "id"> & { readonly id?: Id }>;
 }
 
+/** Checklist 1.2 — limites do que o editor grava na pergunta. */
+export const LIMITES_DA_PERGUNTA = { secao: 80, ajuda: 300 } as const;
+
+/**
+ * Checklist 1.3 — a pergunta está à mostra para estas respostas: sem
+ * condição, sempre; com condição, quando a pergunta-gatilho está à mostra E
+ * tem um dos valores. Genérica na forma (`id` + `showWhen`) para a página
+ * pública, que recebe só o DTO, decidir com a MESMA regra do envio.
+ */
+export function perguntaVisivel<P extends { readonly id: Id; readonly showWhen?: { readonly questionId: Id; readonly values: readonly string[] } }>(
+  perguntas: readonly P[],
+  pergunta: P,
+  respostas: Readonly<Record<Id, string | undefined>>,
+): boolean {
+  const vistas = new Set<Id>();
+  let atual: P | undefined = pergunta;
+  while (atual?.showWhen) {
+    if (vistas.has(atual.id)) return false;
+    vistas.add(atual.id);
+    const { questionId, values }: { readonly questionId: Id; readonly values: readonly string[] } = atual.showWhen;
+    const gatilho: P | undefined = perguntas.find((q) => q.id === questionId);
+    if (!gatilho || !values.includes((respostas[gatilho.id] ?? "").trim())) return false;
+    atual = gatilho;
+  }
+  return true;
+}
+
+/** Os valores que uma pergunta-gatilho pode ter: as opções do Campo de escolha única, ou sim/não. */
+function valoresDoGatilho(state: DataState, q: FormInput["questions"][number]): readonly string[] | undefined {
+  if (q.target.kind !== "field") return undefined;
+  const definitionId = q.target.definitionId;
+  const def = state.fieldDefinitions.find((d) => d.id === definitionId);
+  if (def?.type === "singleSelect") return def.options ?? [];
+  if (def?.type === "checkbox") return ["sim", "não"];
+  return undefined;
+}
+
 function validateQuestions(state: DataState, listId: Id, questions: FormInput["questions"]): string | undefined {
   if (questions.length === 0) return "O Formulário precisa de ao menos uma pergunta.";
   const titulos = questions.filter((q) => q.target.kind === "title");
   if (titulos.length !== 1) return "Exatamente uma pergunta vira o título da Tarefa.";
   if (!titulos[0]?.required) return "A pergunta do título é obrigatória.";
+  if (titulos[0]?.showWhen) return "A pergunta do título aparece sempre: ela não tem condição.";
   if (questions.some((q) => !q.label.trim())) return "Toda pergunta precisa de um rótulo.";
+  const ids = questions.map((q) => q.id).filter((id): id is Id => id !== undefined);
+  if (new Set(ids).size !== ids.length) return "Duas perguntas têm o mesmo identificador.";
+  for (const [i, q] of questions.entries()) {
+    if ((q.section?.trim().length ?? 0) > LIMITES_DA_PERGUNTA.secao) return `A seção de “${q.label}” passa de ${LIMITES_DA_PERGUNTA.secao} caracteres.`;
+    if ((q.help?.trim().length ?? 0) > LIMITES_DA_PERGUNTA.ajuda) return `A ajuda de “${q.label}” passa de ${LIMITES_DA_PERGUNTA.ajuda} caracteres.`;
+    if (!q.showWhen) continue;
+    const quando = q.showWhen;
+    const posicao = questions.findIndex((g) => g.id !== undefined && g.id === quando.questionId);
+    if (posicao < 0 || posicao >= i) return `A condição de “${q.label}” precisa apontar para uma pergunta ANTERIOR a ela.`;
+    const gatilho = questions[posicao]!;
+    const possiveis = valoresDoGatilho(state, gatilho);
+    if (!possiveis) return `“${gatilho.label}” não é de escolha: só uma pergunta de escolha única ou de sim/não decide se outra aparece.`;
+    if (quando.values.length === 0) return `A condição de “${q.label}” precisa de ao menos um valor.`;
+    const fora = quando.values.find((v) => !possiveis.includes(v));
+    if (fora !== undefined) return `“${fora}” não é uma resposta possível de “${gatilho.label}”.`;
+  }
   const config = effectiveListConfig(state, listId);
   const permitidos = new Set(config?.fieldDefinitionIds ?? []);
   for (const q of questions) {
@@ -247,16 +301,39 @@ function validateQuestions(state: DataState, listId: Id, questions: FormInput["q
       if (def.type === "formula") return `O Campo “${def.name}” é fórmula e não recebe resposta.`;
     }
   }
-  // Campo obrigatório da Lista sem pergunta obrigatória: a Tarefa nasceria incompleta.
+  // Campo obrigatório da Lista sem pergunta obrigatória — e sempre à mostra: a Tarefa nasceria incompleta.
   for (const id of permitidos) {
     const def = state.fieldDefinitions.find((d) => d.id === id);
-    if (def?.required && !questions.some((q) => q.target.kind === "field" && q.target.definitionId === id && q.required)) {
-      return `O Campo “${def.name}” é obrigatório nesta Lista: o Formulário precisa de uma pergunta obrigatória para ele.`;
+    if (def?.required && !questions.some((q) => q.target.kind === "field" && q.target.definitionId === id && q.required && !q.showWhen)) {
+      return `O Campo “${def.name}” é obrigatório nesta Lista: o Formulário precisa de uma pergunta obrigatória e sem condição para ele.`;
     }
   }
   const alvos = questions.map((q) => JSON.stringify(q.target));
   if (new Set(alvos).size !== alvos.length) return "Duas perguntas apontam para o mesmo destino.";
   return undefined;
+}
+
+/**
+ * As perguntas como o Formulário as guarda. Um `id` que já é de uma pergunta
+ * deste Formulário fica; qualquer outro (o provisório que o editor dá a uma
+ * pergunta nova, ou nenhum) vira um id novo — e a condição que apontava
+ * para ele passa a apontar para o novo.
+ */
+function materializarPerguntas(questions: FormInput["questions"], existentes: ReadonlySet<Id>): FormQuestion[] {
+  const ids = questions.map((q) => (q.id && existentes.has(q.id) ? q.id : nextId("fqs")));
+  const novoId = new Map<Id, Id>();
+  questions.forEach((q, i) => {
+    if (q.id) novoId.set(q.id, ids[i]!);
+  });
+  return questions.map((q, i) => ({
+    id: ids[i]!,
+    label: q.label.trim(),
+    required: q.required,
+    target: q.target,
+    ...(q.section?.trim() ? { section: q.section.trim() } : {}),
+    ...(q.help?.trim() ? { help: q.help.trim() } : {}),
+    ...(q.showWhen ? { showWhen: { questionId: novoId.get(q.showWhen.questionId) ?? q.showWhen.questionId, values: [...q.showWhen.values] } } : {}),
+  }));
 }
 
 export function createForm(state: DataState, actingMemberId: Id, listId: Id, input: FormInput): OperationResult<Form> {
@@ -282,7 +359,7 @@ export function createForm(state: DataState, actingMemberId: Id, listId: Id, inp
     name,
     ...(input.description?.trim() ? { description: input.description.trim() } : {}),
     ownerMemberId: actingMemberId,
-    questions: input.questions.map((q) => ({ id: q.id ?? nextId("fqs"), label: q.label.trim(), required: q.required, target: q.target })),
+    questions: materializarPerguntas(input.questions, new Set()),
     enabled: true,
     secret: secret(),
     submissions: 0,
@@ -311,7 +388,7 @@ export function updateForm(state: DataState, actingMemberId: Id, formId: Id, inp
   if (input.questions !== undefined) {
     const problema = validateQuestions(state, form.listId, input.questions);
     if (problema) return fail(problema, "perguntas");
-    form.questions = input.questions.map((q) => ({ id: q.id ?? nextId("fqs"), label: q.label.trim(), required: q.required, target: q.target }));
+    form.questions = materializarPerguntas(input.questions, new Set(form.questions.map((q) => q.id)));
   }
   if (input.enabled !== undefined) form.enabled = input.enabled;
   recordActivity(state, { actor: memberActor(actingMemberId), action: "Formulário alterado", objectType: "list", objectId: form.listId, objectName: form.name });
@@ -366,7 +443,7 @@ export function formOutdatedReason(state: DataState, form: Form): string | undef
   const config = effectiveListConfig(state, form.listId);
   for (const id of config?.fieldDefinitionIds ?? []) {
     const def = state.fieldDefinitions.find((d) => d.id === id);
-    if (def?.required && !form.questions.some((q) => q.target.kind === "field" && q.target.definitionId === id && q.required)) {
+    if (def?.required && !form.questions.some((q) => q.target.kind === "field" && q.target.definitionId === id && q.required && !q.showWhen)) {
       return `O Campo “${def.name}” passou a ser obrigatório na Lista e o Formulário não pergunta por ele.`;
     }
   }
@@ -396,8 +473,10 @@ export function submitForm(state: DataState, secretValue: string, entrada: Submi
     return state.fieldDefinitions.find((d) => d.id === definitionId)?.type === "file" ? definitionId : undefined;
   };
 
+  // Checklist 1.3 — só a pergunta à mostra conta: escondida, não é obrigatória e a resposta dela não entra.
+  const visivel = (q: FormQuestion) => perguntaVisivel(form.questions, q, answers);
   for (const q of form.questions) {
-    if (!q.required) continue;
+    if (!q.required || !visivel(q)) continue;
     if (arquivoDefinitionId(q) !== undefined) {
       if (!attachments.some((a) => a.questionId === q.id)) return fail(`Responda “${q.label}”.`, q.id);
     } else if (!answers[q.id]?.trim()) {
@@ -446,11 +525,11 @@ export function submitForm(state: DataState, secretValue: string, entrada: Submi
   );
   if (!created.ok) return fail("Não foi possível registrar agora: peça a quem enviou o link para verificar o Formulário.");
   const task = created.value;
-  if (descricao && answers[descricao.id]?.trim()) task.description = answers[descricao.id]?.trim() ?? "";
+  if (descricao && visivel(descricao) && answers[descricao.id]?.trim()) task.description = answers[descricao.id]?.trim() ?? "";
   task.provenance = { kind: "form", sourceId: form.id, sourceName: form.name, at: now() };
 
   for (const q of form.questions) {
-    if (q.target.kind !== "field" || arquivoDefinitionId(q) !== undefined) continue;
+    if (q.target.kind !== "field" || arquivoDefinitionId(q) !== undefined || !visivel(q)) continue;
     const resposta = answers[q.id]?.trim();
     if (!resposta) continue;
     const def = state.fieldDefinitions.find((d) => d.id === (q.target as { definitionId: Id }).definitionId);
@@ -462,8 +541,10 @@ export function submitForm(state: DataState, secretValue: string, entrada: Submi
   }
 
   // Anexos: cada um vira um `WorkspaceFile` do Ator do Formulário e liga ao Campo correspondente, no mesmo ato.
+  // O de uma pergunta que a resposta escondeu fica de fora, como a resposta dela.
   for (const anexo of attachments) {
     const pergunta = form.questions.find((q) => q.id === anexo.questionId);
+    if (pergunta && !visivel(pergunta)) continue;
     const definitionId = pergunta ? arquivoDefinitionId(pergunta) : undefined;
     if (!pergunta || definitionId === undefined) return desfazer("Um anexo aponta para uma pergunta que não existe ou não é de arquivo.");
     const workspaceFile: WorkspaceFile = {

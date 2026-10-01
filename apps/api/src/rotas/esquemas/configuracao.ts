@@ -138,6 +138,8 @@ export const CONFIGURACAO = {
   removeTaskType: z.tuple([ID]),
   // `null` = "herdar" — valor de domínio.
   setContainerFeature: z.tuple([CONTAINER_TYPE, ID, FEATURE, z.boolean().nullable()]),
+  // Checklist 1.1 — usar, ou não, um Campo herdado neste contêiner.
+  usarCampoHerdado: z.tuple([CONTAINER_TYPE, ID, ID, z.boolean()]),
 } satisfies Esquemas;
 
 // ── Portão de enum bidirecional — falta ou sobra de membro não compila ──

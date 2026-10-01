@@ -140,6 +140,20 @@ export function effectiveListConfig(state: DataState, listId: Id): EffectiveList
  * right here would consume. A Space or Folder settings screen reads this
  * instead of borrowing the first List below it.
  */
+/**
+ * Checklist 1.1 — o Campo `definitionId`, definido em `definedAtId`, foi
+ * deixado de fora por um nível ABAIXO do que o define (`camposHerdadosFora`)
+ * neste caminho. Quem o define nunca o tira de si mesmo.
+ */
+function campoHerdadoFora(state: DataState, path: readonly PathNode[], definitionId: Id, definedAtId: Id): boolean {
+  const ondeNasce = path.findIndex((n) => n.id === definedAtId);
+  for (let i = ondeNasce + 1; i < path.length; i += 1) {
+    const node = path[i];
+    if (node && containerOf(state, node)?.camposHerdadosFora?.includes(definitionId)) return true;
+  }
+  return false;
+}
+
 export function effectiveContainerConfig(state: DataState, type: PathNode["type"], id: Id): EffectiveListConfig | null {
   const path = containerPath(state, type, id);
   const self = path.at(-1);
@@ -165,6 +179,7 @@ export function effectiveContainerConfig(state: DataState, type: PathNode["type"
   const fieldDefinitionIds = state.fieldDefinitions
     .filter((d) => d.target === "task" && d.definedAtId !== undefined && pathIds.has(d.definedAtId))
     .filter((d) => d.lifecycle === "ativo")
+    .filter((d) => !campoHerdadoFora(state, path, d.id, d.definedAtId!))
     .map((d) => d.id);
   const taskTypeIds = state.taskTypes.filter((t) => pathIds.has(t.definedAtId)).map((t) => t.id);
 

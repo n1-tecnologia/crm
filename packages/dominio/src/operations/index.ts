@@ -158,6 +158,7 @@ export const createTaskType = instrumentar("createTaskType");
 export const updateTaskType = instrumentar("updateTaskType");
 export const removeTaskType = instrumentar("removeTaskType");
 export const setContainerFeature = instrumentar("setContainerFeature");
+export const usarCampoHerdado = instrumentar("usarCampoHerdado");
 
 // collaboration.ts
 export const addDependency = instrumentar("addDependency");

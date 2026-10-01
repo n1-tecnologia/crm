@@ -25,6 +25,7 @@
  *      regra do cabeçalho de `bootstrap-gestao.ts`).
  */
 
+import { listPath } from "./derive";
 import { CP, CR } from "./operations/financeiro";
 import { memberActor, nextId, recordActivity } from "./operations/activity";
 import { grantGovernanceAccess, inviteMember } from "./operations/members";
@@ -72,6 +73,12 @@ export interface DiffDeConfiguracao {
   readonly concedidos?: string[];
   /** Id do Membro de serviço do "Agente do pipeline" criado nesta execução (item 4b). Ausente quando já existia. */
   readonly membroDeServicoCriado?: string;
+  /**
+   * Checklist 1.1 — os Campos herdados (de "Contas a pagar", no Espaço e na
+   * Pasta) que a Lista deixou de usar nesta execução, pelo nome. Ausente
+   * quando já estavam todos de fora.
+   */
+  readonly camposHerdadosFora?: string[];
   /**
    * As concessões de governança dadas nesta execução (item 6), no formato
    * `<memberId>→<listId>:administrar`. Ausente quando já existiam todas.
@@ -342,6 +349,33 @@ export function evoluirConfiguracaoDeSolicitacoes(
     }
   }
 
+  /* ── Campos herdados que a Lista não usa (checklist 1.1) ───────────────
+   * A Lista tem os próprios Campos de Classificação, Valor e Integração
+   * manual; os de "Contas a pagar" com o MESMO nome, herdados do Espaço e da
+   * Pasta, apareciam em dobro no Formulário e na Tarefa — o "Centro de
+   * Custo" obrigatório duas vezes. Fica de fora o herdado cujo nome é de um
+   * Campo do catálogo. Um Formulário ativo que pergunta por ele o mantém (o
+   * envio quebraria): fica de fora só depois de a pergunta sair — e isso não
+   * é divergência, que recusaria a configuração inteira. */
+  const nomesDoCatalogo = new Set(CATALOGO_SOLICITACAO_DE_PAGAMENTO.campos.map((c) => c.rotulo));
+  const caminhoDaLista = new Set(listPath(state, lista.id).map((n) => n.id));
+  const herdadosFora = new Set(lista.camposHerdadosFora ?? []);
+  const camposHerdadosFora: string[] = [];
+  for (const herdado of state.fieldDefinitions) {
+    if (herdado.target !== "task" || herdado.lifecycle !== "ativo" || !herdado.definedAtId || herdado.definedAtId === lista.id) continue;
+    if (!caminhoDaLista.has(herdado.definedAtId) || !nomesDoCatalogo.has(herdado.name) || herdadosFora.has(herdado.id)) continue;
+    const formulario = state.forms.find(
+      (f) => f.lifecycle === "ativo" && f.listId === lista.id && f.questions.some((q) => q.target.kind === "field" && q.target.definitionId === herdado.id),
+    );
+    if (formulario) continue;
+    herdadosFora.add(herdado.id);
+    camposHerdadosFora.push(herdado.name);
+  }
+  if (camposHerdadosFora.length > 0) {
+    lista.camposHerdadosFora = [...herdadosFora];
+    recordActivity(state, { actor: ator, action: "Campo herdado deixou de ser usado", objectType: "list", objectId: lista.id, objectName: lista.name, detail: camposHerdadosFora.join(", "), at: agora });
+  }
+
   /* ── Papéis → Role (D-13: sem ocupante hardcoded; quem ocupa um Papel é
    * decidido por convite/atribuição, fora deste evolver) ─────────────────
    *
@@ -540,5 +574,6 @@ export function evoluirConfiguracaoDeSolicitacoes(
     ...(tasksPerList ? { tasksPerList } : {}),
     ...(membroDeServicoCriado ? { membroDeServicoCriado } : {}),
     ...(concessoesDeGovernanca.length ? { concessoesDeGovernanca } : {}),
+    ...(camposHerdadosFora.length ? { camposHerdadosFora } : {}),
   });
 }

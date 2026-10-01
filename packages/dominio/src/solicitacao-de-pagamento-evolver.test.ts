@@ -7,6 +7,7 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildGestaoBootstrap } from "./bootstrap-gestao";
+import { effectiveListConfig } from "./derive";
 import { CP } from "./operations/financeiro";
 import { addTaskComment, createTask } from "./operations/tasks";
 import { CATALOGO_SOLICITACAO_DE_PAGAMENTO, SOL } from "./solicitacao-de-pagamento";
@@ -149,12 +150,34 @@ describe("evoluirConfiguracaoDeSolicitacoes", () => {
     expect(r.error).toContain("Fase 1");
   });
 
-  it("(g) o número de Registros de Atividade criados é igual ao número de elementos criados + 1 pela elevação do limite", () => {
+  it("(g) o número de Registros de Atividade criados é igual ao número de elementos criados + 1 pela elevação do limite + 1 pelos Campos herdados deixados de fora", () => {
     expect(s.activity.length).toBe(0);
     const r = evoluirConfiguracaoDeSolicitacoes(s, "mem_maryane");
     expect(r.ok).toBe(true);
     if (!r.ok) throw new Error("unreachable");
-    expect(s.activity.length).toBe(r.value.criados.length + 1);
+    expect(r.value.camposHerdadosFora?.length).toBeGreaterThan(0);
+    expect(s.activity.length).toBe(r.value.criados.length + 2);
+  });
+
+  it("(g2) checklist 1.1 — os Campos de Contas a pagar com nome de Campo do catálogo saem da Lista; reaplicar não muda nada", () => {
+    const r = evoluirConfiguracaoDeSolicitacoes(s, "mem_maryane");
+    if (!r.ok) throw new Error(r.error);
+    expect([...(r.value.camposHerdadosFora ?? [])].sort()).toEqual(["BU", "Centro de Custo", "Empresa", "Integração manual", "Produto", "Valor"]);
+    const lista = acharLista(s);
+    const nomes = (effectiveListConfig(s, lista.id)?.fieldDefinitionIds ?? []).map((id) => s.fieldDefinitions.find((d) => d.id === id)?.name);
+    for (const nome of ["Centro de Custo", "BU", "Empresa", "Valor", "Integração manual", "Produto"]) {
+      expect(nomes.filter((n) => n === nome), nome).toHaveLength(1);
+    }
+    // Contas a pagar continua com os seus.
+    const cp = effectiveListConfig(s, CP.listId)?.fieldDefinitionIds ?? [];
+    expect(cp).toContain(CP.fields.centroDeCusto);
+    expect(cp).toContain(CP.fields.valor);
+
+    const antes = s.activity.length;
+    const de_novo = evoluirConfiguracaoDeSolicitacoes(s, "mem_maryane");
+    if (!de_novo.ok) throw new Error(de_novo.error);
+    expect(de_novo.value.camposHerdadosFora).toBeUndefined();
+    expect(s.activity.length).toBe(antes);
   });
 
   it("(h) um Campo a mais na Lista, fora do catálogo, é reportado em divergentes e não é removido", () => {

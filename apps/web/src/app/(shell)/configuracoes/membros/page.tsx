@@ -46,6 +46,7 @@ const TRANSFER_LABEL: Record<string, string> = {
   automation: "Automação",
   panel: "Painel",
   collection: "Coleção",
+  form: "Formulário",
 };
 
 const RELEASE_LABEL: Record<string, string> = {

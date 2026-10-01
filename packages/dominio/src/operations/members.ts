@@ -6,6 +6,7 @@
 import { fail, ok, type DataState, type OperationResult } from "../state";
 import type { Id, Member, PermissionAction, Role } from "../types";
 import { memberActor, nextId, recordActivity, systemActor } from "./activity";
+import { memberReachesContainer } from "../derive";
 
 const now = (): string => new Date().toISOString();
 
@@ -46,6 +47,10 @@ export function previewSuccession(state: DataState, memberId: Id): SuccessionPre
   }
   for (const panel of state.panels) {
     if (panel.ownerMemberId === memberId) transfers.push({ type: "panel", id: panel.id, name: panel.name });
+  }
+  // Checklist 1.6 — o link público de um Formulário só abre com o dono ativo: ele passa adiante.
+  for (const form of state.forms) {
+    if (form.ownerMemberId === memberId && form.lifecycle === "ativo") transfers.push({ type: "form", id: form.id, name: form.name });
   }
   for (const collection of state.collections) {
     if (collection.ownerMemberId === memberId) {
@@ -255,6 +260,23 @@ export function removeMember(
       objectName: automation.name,
       after: successor.displayName,
       detail: "Verifique se as Ações continuam dentro do teto de permissões do novo Proprietário.",
+    });
+  }
+
+  // Checklist 1.6 — o Formulário passa ao Sucessor, se ele alcança a Lista; senão, a quem remove,
+  // se alcança. Sem isso o link morria junto com o Membro: `formBySecret` exige dono ativo que alcance a Lista.
+  for (const form of state.forms) {
+    if (form.ownerMemberId !== memberId || form.lifecycle !== "ativo") continue;
+    const novoDono =
+      memberReachesContainer(state, successorId, "list", form.listId) || !memberReachesContainer(state, actingMemberId, "list", form.listId) ? successorId : actingMemberId;
+    form.ownerMemberId = novoDono;
+    recordActivity(state, {
+      actor: memberActor(actingMemberId),
+      action: "Dono do Formulário alterado por sucessão",
+      objectType: "list",
+      objectId: form.listId,
+      objectName: form.name,
+      after: state.members.find((m) => m.id === novoDono)?.displayName ?? novoDono,
     });
   }
 

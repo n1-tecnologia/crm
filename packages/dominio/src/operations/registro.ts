@@ -137,6 +137,7 @@ import {
   updateFieldDefinition,
   updateStatus,
   updateTaskType,
+  usarCampoHerdado,
 } from "./configuration";
 
 // ── collaboration.ts ────────────────────────────────────────────────────
@@ -502,6 +503,7 @@ export const OPERACOES = {
   updateTaskType,
   removeTaskType,
   setContainerFeature,
+  usarCampoHerdado,
   // collaboration.ts
   addDependency,
   removeDependency,

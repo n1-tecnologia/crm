@@ -94,6 +94,23 @@ describe("esquemas/escala — a forma dos args de scale.ts", () => {
       ).success,
     ).toBe(true);
     expect(ESCALA.updateForm.safeParse(viaJson(["frm_1", { enabled: false }])).success).toBe(true);
+    // Checklist 1.2/1.3 — a pergunta com seção, ajuda e condição, como o editor manda.
+    expect(
+      ESCALA.updateForm.safeParse(
+        viaJson([
+          "frm_1",
+          {
+            questions: [
+              { id: "fqs_1", label: "Forma", required: false, target: { kind: "field", definitionId: "fd_1" }, section: "Pagamento", help: "Como paga" },
+              { id: "novo_1", label: "Chave", required: false, target: { kind: "field", definitionId: "fd_2" }, showWhen: { questionId: "fqs_1", values: ["Chave Pix"] } },
+            ],
+          },
+        ]),
+      ).success,
+    ).toBe(true);
+    expect(
+      ESCALA.updateForm.safeParse(viaJson(["frm_1", { questions: [{ label: "x", required: true, target: { kind: "title" }, showWhen: { questionId: "a", values: [], extra: 1 } }] }])).success,
+    ).toBe(false);
     expect(
       ESCALA.updateForm.safeParse(
         viaJson([

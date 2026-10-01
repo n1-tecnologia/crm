@@ -51,7 +51,16 @@ const FORM_QUESTION_TARGET = z.discriminatedUnion("kind", [
 ]);
 
 const FORM_QUESTION = z
-  .object({ id: ID.optional(), label: z.string(), required: z.boolean(), target: FORM_QUESTION_TARGET })
+  .object({
+    id: ID.optional(),
+    label: z.string(),
+    required: z.boolean(),
+    target: FORM_QUESTION_TARGET,
+    // Checklist 1.2/1.3 — seção, ajuda e condição da pergunta (os limites são do domínio).
+    section: z.string().optional(),
+    help: z.string().optional(),
+    showWhen: z.object({ questionId: ID, values: z.array(z.string()) }).strict().optional(),
+  })
   .strict();
 
 const FORM_INPUT = z

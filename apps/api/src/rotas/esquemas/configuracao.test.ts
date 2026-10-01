@@ -29,6 +29,7 @@ describe("esquemas/configuracao — a forma dos args de configuration.ts", () =>
       "updateTaskType",
       "removeTaskType",
       "setContainerFeature",
+      "usarCampoHerdado",
     ].sort();
     expect(Object.keys(CONFIGURACAO).sort()).toEqual(esperadas);
   });
@@ -87,6 +88,7 @@ describe("esquemas/configuracao — a forma dos args de configuration.ts", () =>
       ["removeTaskType", ["tt1"]],
       ["setContainerFeature", ["list", "l1", "prioridade", true]],
       ["setContainerFeature", ["list", "l1", "checklists", null]],
+      ["usarCampoHerdado", ["list", "l1", "fd_1", false]],
     ];
     for (const [nome, args] of FORMAS_DO_WEB) {
       expect(CONFIGURACAO[nome].safeParse(viaJson(args)).success, nome).toBe(true);

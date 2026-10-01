@@ -812,3 +812,61 @@ export function setContainerFeature(
   }
   return ok(proprias);
 }
+
+/**
+ * Checklist 1.1 — este contêiner (e o que fica abaixo dele) deixa de usar,
+ * ou volta a usar, um Campo HERDADO de um nível acima. É o caso da Lista de
+ * Solicitações, que tem os próprios Campos de Classificação e herdava do
+ * Espaço os de Contas a pagar com os mesmos nomes — o "Centro de Custo"
+ * obrigatório em dobro.
+ *
+ * Recusa: Campo que não é herdado aqui (quem o define arquiva, não exclui),
+ * e Campo que um Formulário ativo abaixo daqui pergunta — o envio quebraria
+ * ("não se aplica à Lista"); tira-se a pergunta antes.
+ */
+export function usarCampoHerdado(
+  state: DataState,
+  actingMemberId: Id,
+  containerType: ContainerType,
+  containerId: Id,
+  definitionId: Id,
+  usar: boolean,
+): OperationResult<readonly Id[]> {
+  const container = findContainer(state, containerType, containerId);
+  if (!container) return fail(`${CONTAINER_LABEL[containerType]} não encontrado(a).`);
+  const refusal = mayConfigure(state, actingMemberId, containerType, containerId);
+  if (refusal) return fail(refusal);
+  if (container.lifecycle !== "ativo") return fail("Um contêiner arquivado ou na lixeira não muda de configuração.");
+  const definicao = state.fieldDefinitions.find((d) => d.id === definitionId && d.target === "task");
+  if (!definicao) return fail("Campo não encontrado.");
+  const caminho = containerPath(state, containerType, containerId);
+  const herdado = definicao.definedAtId !== undefined && definicao.definedAtId !== containerId && caminho.some((n) => n.id === definicao.definedAtId);
+  if (!herdado) return fail(`O Campo “${definicao.name}” não é herdado aqui: quem o define o arquiva.`);
+
+  const fora = new Set(container.camposHerdadosFora ?? []);
+  if (usar === !fora.has(definitionId)) return ok([...fora]);
+  if (!usar) {
+    const listasAbaixo = state.lists.filter((l) => l.lifecycle === "ativo" && listPath(state, l.id).some((n) => n.id === containerId));
+    const formulario = state.forms.find(
+      (f) =>
+        f.lifecycle === "ativo" &&
+        listasAbaixo.some((l) => l.id === f.listId) &&
+        f.questions.some((q) => q.target.kind === "field" && q.target.definitionId === definitionId),
+    );
+    if (formulario) return fail(`O Formulário “${formulario.name}” pergunta por “${definicao.name}”: tire a pergunta antes de deixar de usar o Campo.`);
+    fora.add(definitionId);
+  } else {
+    fora.delete(definitionId);
+  }
+  if (fora.size > 0) container.camposHerdadosFora = [...fora];
+  else delete container.camposHerdadosFora;
+  recordActivity(state, {
+    actor: memberActor(actingMemberId),
+    action: usar ? "Campo herdado voltou a ser usado" : "Campo herdado deixou de ser usado",
+    objectType: containerType,
+    objectId: container.id,
+    objectName: container.name,
+    detail: definicao.name,
+  });
+  return ok([...fora]);
+}

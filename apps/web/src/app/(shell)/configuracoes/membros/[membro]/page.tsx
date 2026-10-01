@@ -42,6 +42,7 @@ const OWNED_LABEL: Record<string, string> = {
   automation: "Automações",
   panel: "Painéis",
   collection: "Coleções",
+  form: "Formulários",
 };
 
 export default function MembroPage({ params }: { params: Promise<{ membro: string }> }) {

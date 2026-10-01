@@ -154,6 +154,20 @@ export interface FormQuestion {
   label: string;
   required: boolean;
   target: { readonly kind: "title" } | { readonly kind: "description" } | { readonly kind: "field"; readonly definitionId: Id };
+  /**
+   * Checklist 1.2 — o nome da seção da página pública. Perguntas seguidas com
+   * a mesma seção formam um bloco; a ordem é a ordem de `questions`. Sem
+   * seção, a pergunta fica num bloco sem título.
+   */
+  section?: string;
+  /** Checklist 1.2 — a ajuda embaixo da pergunta; sem ela, a descrição do Campo. */
+  help?: string;
+  /**
+   * Checklist 1.3 — a pergunta só aparece (e só é obrigatória) quando a
+   * pergunta `questionId`, de escolha e ANTERIOR a esta, tem um destes
+   * valores. É dado do Formulário: a página pública lê daqui, nunca do rótulo.
+   */
+  showWhen?: { readonly questionId: Id; readonly values: readonly string[] };
 }
 
 /** Fields shared by Space, Folder, Subfolder and List (B45: no owner, no status). */
@@ -172,6 +186,13 @@ interface StructuralContainerBase extends RecordBase {
   statusSet?: StatusSet;
   features?: Partial<EnabledFeatures>;
   provenance?: Provenance;
+  /**
+   * Checklist 1.1 — Campos herdados de um nível acima que ESTE contêiner (e o
+   * que fica abaixo dele) não usa. Os Campos se acumulam pelo caminho (B25);
+   * esta é a exceção explícita, para uma Lista que tem os próprios Campos com
+   * o mesmo papel (a de Solicitações, com os de Contas a pagar do Espaço).
+   */
+  camposHerdadosFora?: Id[];
 }
 
 export interface Space extends StructuralContainerBase {
