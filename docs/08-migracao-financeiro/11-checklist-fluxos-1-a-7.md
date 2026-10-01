@@ -22,21 +22,21 @@ protótipo.
 
 - [x] **7.1** Razão social do fornecedor novo cortada nos 60 do Omie, CNPJ e
   CPF, com teste e mutação — `financeiro-tria` `f9bfcd8`.
-- [ ] **7.2** O fio come os sublinhados: `FORNECEDOR_NAO_RESOLVIDO` aparece
+- [x] **7.2** `5fa07e2` — O fio come os sublinhados: `FORNECEDOR_NAO_RESOLVIDO` aparece
   como "FORNECEDORNAO_RESOLVIDO". O renderizador (`timeline.tsx`, `Rico`) trata
   `_x_` como itálico até dentro de palavras; passa a valer só nas bordas de
   palavra, como no Markdown.
-- [ ] **7.3** Anexo de verdade na conta. Hoje o "Anexar arquivo" e os Campos
+- [x] **7.3** `099dc56` — Anexo de verdade na conta. Hoje o "Anexar arquivo" e os Campos
   Anexo, Boleto e QR Code gravam só nome, tipo e tamanho, com a chave
   `legado/<id>`, e nenhum arquivo sobe. Fica assim:
-  - [ ] 7.3a `apps/api`: rotas autenticadas de upload da Tarefa (ticket →
+  - [x] 7.3a `apps/api`: rotas autenticadas de upload da Tarefa (ticket →
     envio direto ao bucket privado → confirmação no servidor), reaproveitando
     `storage-uploads.ts` (25 MiB, PDF/XML/imagem, assinatura binária).
-  - [ ] 7.3b Domínio: operação que liga à Tarefa um Arquivo já confirmado,
+  - [x] 7.3b Domínio: operação que liga à Tarefa um Arquivo já confirmado,
     com a chave real do Storage, como anexo ou como valor de Campo de arquivo.
-  - [ ] 7.3c Tela: "Anexar arquivo" e os Campos de arquivo da conta sobem de
+  - [x] 7.3c Tela: "Anexar arquivo" e os Campos de arquivo da conta sobem de
     verdade, com progresso e erro legível; o texto "protótipo" sai.
-  - [ ] 7.3d Testes: rota, domínio, a ponte mandando o anexo ao `/lancar`.
+  - [x] 7.3d Testes: rota, domínio, a ponte mandando o anexo ao `/lancar`.
 - [ ] **7.4** [dono] Refazer o 2B na conta `tsk_tarkef` com o fornecedor
   SAFE2PAY (já cadastrado no Omie) e um PDF anexado de verdade; o agente puxa o
   título do Omie, confere campo a campo e passa o comando de exclusão.
@@ -50,7 +50,7 @@ A análise por comentário é uma reserva de 90 dias que, sem a variável
 `FALLBACK_COMENTARIO_ATE`, fica desligada. E todo "reprovado" por comentário
 dá 409, porque a reprovação exige motivo e a rota não o passa.
 
-- [ ] **3.1** Reprovação por comentário: a rota de classificação passa o texto
+- [x] **3.1** `7c51ac6` — Reprovação por comentário: a rota de classificação passa o texto
   da resposta como motivo (`apps/api/src/rotas/classificacoes.ts`).
 - [ ] **3.2** A Solicitação de Aprovação nasce quando o aprovador é marcado:
   método novo na integração (contrato `payment-requests-v1`, aditivo), que o
@@ -142,7 +142,7 @@ o seletor mostra Campos duplicados com o mesmo nome.
   abrir com o id confirmado pelo servidor.
 - [ ] **E2** A tela não vê sozinha o que a ponte grava: consulta leve à
   revisão do Espaço e recarga quando ela muda.
-- [ ] **E3** Na dispensa por Integração manual, o Resumo termina pedindo ao
+- [x] **E3** `4957baa` — Na dispensa por Integração manual, o Resumo termina pedindo ao
   "Agente do pipeline" que confira; o texto deixa de pedir conferência quando
   ninguém vai conferir.
 
@@ -153,3 +153,7 @@ o seletor mostra Campos duplicados com o mesmo nome.
 | Data | Item | Commit | Prova |
 |---|---|---|---|
 | 2026-10-01 | 7.1 | `financeiro-tria` `f9bfcd8` | 772/772, mutação morde |
+| 2026-10-01 | 7.2 | `5fa07e2` | web: 5 casos novos (código e nome de arquivo inteiros; itálico só na borda) |
+| 2026-10-01 | 3.1 | `7c51ac6` | api: sem o motivo o domínio recusa; com ele, reprova e responde no fio |
+| 2026-10-01 | E3 | `4957baa` | domínio: textos de sempre iguais byte a byte; ponte: dispensa sem Menção |
+| 2026-10-01 | 7.3 | `099dc56` | domínio 13, api 18, web 11 casos novos; suítes inteiras verdes; a prova real é o 7.4 |
