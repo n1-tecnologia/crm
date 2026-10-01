@@ -86,9 +86,11 @@ function criarTopicoDeAprovacao(titulo: string, autorId: string, textoDaResposta
   return { ...base, respostaId: resposta.value.id };
 }
 
-// (d)/(i)/(j) — nenhum destes casos decide (todos são "sem efeito"), então
+// (d)/(i) — nenhum destes casos decide (todos são "sem efeito"), então
 // compartilham a mesma Tarefa sem risco de um caso interferir no outro.
 const TOPICO_JANELA = criarTopicoDeAprovacao("Solicitação de teste — janela/tópico", APROVADOR.id);
+// (j) — sem prazo configurado a análise vale (checklist 3.3): decide, então tem Tarefa própria.
+const TOPICO_SEM_PRAZO = criarTopicoDeAprovacao("Solicitação de teste — sem prazo", APROVADOR.id);
 
 // (e) — resposta de quem não é o aprovador designado nem administrador/proprietário.
 // O Espaço "Gestão" é privado (D-04 da spec, `seed-financeiro.ts`): sem uma
@@ -328,11 +330,11 @@ d("POST /payment-approvals/classifications — com banco real", () => {
     expect(approval?.decision).toBeUndefined();
   });
 
-  it("(j) FALLBACK_COMENTARIO_ATE ausente responde fora_da_janela", async () => {
+  it("(j) FALLBACK_COMENTARIO_ATE ausente: a análise vale e a resposta decide (checklist 3.3)", async () => {
     const original = process.env.FALLBACK_COMENTARIO_ATE;
     delete process.env.FALLBACK_COMENTARIO_ATE;
     try {
-      const { corpo, eventId } = corpoValido({ commentId: TOPICO_JANELA.respostaId });
+      const { corpo, eventId } = corpoValido({ commentId: TOPICO_SEM_PRAZO.respostaId });
       const resposta = await appDeTeste().inject({
         method: "POST",
         url: "/v1/integrations/payment-approvals/classifications",
@@ -340,10 +342,15 @@ d("POST /payment-approvals/classifications — com banco real", () => {
         payload: corpo,
       });
       expect(resposta.statusCode).toBe(200);
-      expect(resposta.json()).toEqual({ aplicado: false, motivo: "fora_da_janela" });
+      expect(resposta.json()).toEqual({ aplicado: true });
     } finally {
       process.env.FALLBACK_COMENTARIO_ATE = original;
     }
+
+    const state = await hidratarDeVerdade();
+    const approval = state.approvals.find((a) => a.id === TOPICO_SEM_PRAZO.approvalId);
+    expect(approval?.decision).toBe("aprovada");
+    expect(approval?.decisionSource).toBe("comment");
   });
 
   it("(f)/(g)/(h)/(k) resposta do aprovador designado decide — idêntico ao clique, exceto decisionSource", async () => {

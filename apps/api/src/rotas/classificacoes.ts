@@ -19,7 +19,8 @@
  *   2. Resolve o Comentário por `commentId` (só dentro da Lista "Solicitações
  *      de pagamento") — `404` se não existir.
  *   3. `dentroDaJanela` falso (D-10, `../servicos/janela-de-fallback.ts`) —
- *      `fora_da_janela`. Fallback vencido ou nunca configurado nunca decide.
+ *      `fora_da_janela`. Sem prazo configurado a análise vale sempre
+ *      (checklist 3.3); só um prazo vencido (ou ilegível) a desliga.
  *   4. Resolve a `ApprovalRequest` de processo cujo `origin.threadCommentId`
  *      é o PAI do Comentário — comentário raiz (sem `parentCommentId`) ou pai
  *      que não é o tópico de roteamento vira `fora_do_topico` (RN-SP-05, o
@@ -180,7 +181,7 @@ export function rotasDeClassificacoes(app: FastifyInstance, opcoes: OpcoesDeClas
         return reply.code(404).send(erroDoContrato("ENTIDADE_NAO_ENCONTRADA", request.id));
       }
 
-      // 3) Janela de 90 dias (D-10) — vencida ou nunca configurada nunca decide.
+      // 3) Prazo da análise por comentário (D-10, checklist 3.3) — sem prazo, vale; vencido, não decide.
       if (!dentroDaJanela(relogio)) {
         return responderSemEfeito(request, reply, "fora_da_janela");
       }

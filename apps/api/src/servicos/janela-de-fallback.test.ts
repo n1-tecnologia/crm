@@ -40,10 +40,12 @@ describe("dentroDaJanela", () => {
     expect(dentroDaJanela(relogio, "2026-03-31T23:59:59.000Z")).toBe(false);
   });
 
-  it("(d) variável ausente -> false (fallback desligado, não ligado para sempre)", () => {
+  it("(d) variável ausente ou em branco -> true (checklist 3.3: a análise por comentário vale sempre, sem prazo)", () => {
     delete process.env[VARIAVEL];
     const relogio = relogioFixo("2026-01-01T00:00:00.000Z");
-    expect(dentroDaJanela(relogio)).toBe(false);
+    expect(dentroDaJanela(relogio)).toBe(true);
+    process.env[VARIAVEL] = "  ";
+    expect(dentroDaJanela(relogio)).toBe(true);
   });
 
   it("(e) variável com valor inválido -> false e um aviso no log, nunca true", () => {

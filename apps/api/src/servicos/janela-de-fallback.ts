@@ -1,17 +1,18 @@
 /**
- * A janela de 90 dias do fallback por comentário (D-10) e a métrica que
- * decide se ela continua ativa depois desse prazo.
+ * A janela da análise por comentário (D-10) e a métrica que decide se ela
+ * continua ativa.
  *
- * `dentroDaJanela` lê `FALLBACK_COMENTARIO_ATE` (`apps/api/.env.example`,
- * Plan 02-09) — uma data ISO calculada e registrada NO DEPLOY, nunca um
- * valor de exemplo real. A AUSÊNCIA da variável significa fallback
- * DESLIGADO, não ligado para sempre: um deploy que esquece de configurá-la
- * não pode deixar o classificador de comentário decidindo por Solicitação de
- * pagamento indefinidamente (T-02-19, "um fallback sem prazo vira caminho
- * permanente"). Pelo mesmo motivo, um valor presente mas inválido (data
- * ilegível) TAMBÉM falha fechado — nunca `true` por acidente de parsing —
- * com um aviso no log do processo, para o deploy errado ser visível sem
- * exigir que ninguém decifre por que o classificador nunca dispara.
+ * Checklist 3.3 (2026-10-01, decisão do dono): a análise da resposta do
+ * aprovador no fio vale SEMPRE, como no backend do Financeiro — a AUSÊNCIA
+ * de `FALLBACK_COMENTARIO_ATE` significa LIGADA. A variável passa a ser só o
+ * jeito de pôr um prazo: com uma data ISO, vale até ela (inclusive); uma
+ * data passada desliga. Antes, a ausência desligava (T-02-19, "um fallback
+ * sem prazo vira caminho permanente"), e todo deploy sem a variável deixava
+ * as respostas no fio sem efeito nenhum.
+ *
+ * Um valor presente mas ilegível continua falhando FECHADO — quem escreveu
+ * algo quis um prazo, e "desligado" é a leitura segura —, com um aviso no
+ * log do processo para o erro de configuração ser visível.
  *
  * O instante "agora" vem sempre do `Relogio` injetado (`../testes/relogio.ts`)
  * — nunca do relógio do sistema lido direto — para a janela de 90 dias e o
@@ -39,18 +40,17 @@ export function calcularDataFinal(goLive: string): string {
 }
 
 /**
- * `true` enquanto o instante do `relogio` ainda está DENTRO da janela — o
- * dia da própria data final ainda vale (D-10: "90 dias corridos", inclusive).
- * `ate`, quando passado, tem prioridade sobre `FALLBACK_COMENTARIO_ATE` (uso
- * de teste); em produção, quem chama sempre omite `ate` e lê do ambiente.
+ * `true` quando a análise por comentário vale agora: sem prazo configurado,
+ * sempre; com prazo, enquanto o instante do `relogio` não passou dele — o
+ * dia da própria data final ainda vale. `ate`, quando passado, tem
+ * prioridade sobre `FALLBACK_COMENTARIO_ATE` (uso de teste); em produção,
+ * quem chama omite `ate` e lê do ambiente.
  *
- * Fail-closed em qualquer situação que não seja "data válida e ainda não
- * vencida": variável ausente, string vazia ou data ilegível devolvem
- * `false`, nunca `true`.
+ * Data ilegível devolve `false` (com aviso), nunca `true` por acidente.
  */
 export function dentroDaJanela(relogio: Relogio, ate?: string): boolean {
-  const dataFinal = ate ?? process.env.FALLBACK_COMENTARIO_ATE;
-  if (!dataFinal) return false;
+  const dataFinal = (ate ?? process.env.FALLBACK_COMENTARIO_ATE)?.trim();
+  if (!dataFinal) return true;
 
   const instanteFinal = new Date(dataFinal);
   if (Number.isNaN(instanteFinal.getTime())) {
