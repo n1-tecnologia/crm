@@ -1,62 +1,61 @@
 /**
- * A tabela de "Campos condicionais" do UI-SPEC (`02-UI-SPEC.md`, seção
- * "Formulário público"), traduzida em duas funções puras — sem DOM, sem
- * `PerguntaPublica`, sem conhecer o transporte. Operam por RÓTULO, não por
- * id: o DTO público não expõe `definitionId` (T-02-03), e o rótulo é o único
- * jeito de decidir CONFIGURAÇÃO de visibilidade sem vazar estrutura interna.
- * `formulario.tsx` é quem traduz entre `pergunta.id` (o que ele usa para
- * montar `respostas` e o payload de envio) e `pergunta.label` (o que estas
- * funções leem).
+ * Checklist 1.2/1.3 — as seções e os campos condicionais da página pública,
+ * lidos do FORMULÁRIO (o DTO: `section` e `showWhen` de cada pergunta), em
+ * funções puras, sem DOM. Antes, a ordem, as seções e as condições eram uma
+ * tabela fixa por RÓTULO (`Fornecedor`, `Forma de pagamento`…): renomear uma
+ * pergunta quebrava a página. Agora quem decide é o Formulário, editado pela
+ * tela, e a regra de "está à mostra" é a MESMA do envio
+ * (`perguntaVisivel`, do domínio).
  */
 
-/** Respostas atuais, indexadas por RÓTULO da pergunta — não por id. */
-export type RespostasPorRotulo = Readonly<Record<string, string>>;
+import { perguntaVisivel } from "@n1/dominio/operations/perguntas-do-formulario";
+import type { PerguntaPublica } from "@/dados/transporte-publico";
 
-interface RegraCondicional {
-  /** O rótulo da pergunta que decide (o "gatilho"): `Fornecedor` ou `Forma de pagamento`. */
-  readonly gatilho: string;
-  /** O valor do gatilho que revela os campos abaixo. */
-  readonly valor: string;
-  /** Os rótulos revelados quando `respostas[gatilho] === valor`. */
-  readonly revela: readonly string[];
+/** Respostas atuais, indexadas pelo id da pergunta. */
+export type RespostasPorId = Readonly<Record<string, string>>;
+
+/** Os ids das perguntas à mostra para estas respostas. */
+export function perguntasVisiveis(perguntas: readonly PerguntaPublica[], respostas: RespostasPorId): ReadonlySet<string> {
+  return new Set(perguntas.filter((p) => perguntaVisivel(perguntas, p, respostas)).map((p) => p.id));
 }
 
-/** A tabela literal de "Campos condicionais" do UI-SPEC — nada aqui nasce de configuração. */
-const REGRAS: readonly RegraCondicional[] = [
-  { gatilho: "Fornecedor", valor: "CPF", revela: ["CPF"] },
-  { gatilho: "Fornecedor", valor: "CNPJ", revela: ["CNPJ"] },
-  { gatilho: "Forma de pagamento", valor: "Chave Pix", revela: ["Chave pix"] },
-  { gatilho: "Forma de pagamento", valor: "Boleto", revela: ["Código de barras", "Boleto"] },
-  { gatilho: "Forma de pagamento", valor: "QRCode Pix", revela: ["Pix copia e cola", "QR Code"] },
-  { gatilho: "Forma de pagamento", valor: "Cartão", revela: ["Link de pagamento"] },
-];
+/** A pergunta decide se outra aparece (é gatilho de alguma condição). */
+export function ehGatilho(perguntas: readonly PerguntaPublica[], perguntaId: string): boolean {
+  return perguntas.some((p) => p.showWhen?.questionId === perguntaId);
+}
 
 /**
- * Os rótulos CONDICIONAIS (CPF/CNPJ/Chave pix/Código de barras/Boleto/Pix
- * copia e cola/QR Code/Link de pagamento) que estão visíveis para as
- * respostas atuais. Uma pergunta não-condicional (fora desta tabela) não é
- * decidida por esta função — `formulario.tsx` sempre a renderiza.
+ * Ao trocar `perguntaId` para `valorNovo`, as perguntas que ficariam ocultas
+ * por essa troca E que já têm algo (resposta digitada ou arquivo) — é a lista
+ * que abre a confirmação de troca (UI-SPEC: ocultar não apaga em silêncio o
+ * que já foi digitado). A que perderia a visibilidade vazia não entra.
  */
-export function camposVisiveis(respostas: RespostasPorRotulo): ReadonlySet<string> {
-  const visiveis = new Set<string>();
-  for (const regra of REGRAS) {
-    if (respostas[regra.gatilho] === regra.valor) {
-      for (const rotulo of regra.revela) visiveis.add(rotulo);
-    }
+export function invalidadasPor(
+  perguntas: readonly PerguntaPublica[],
+  perguntaId: string,
+  valorNovo: string,
+  respostas: RespostasPorId,
+  comArquivos: ReadonlySet<string> = new Set(),
+): readonly PerguntaPublica[] {
+  const antes = perguntasVisiveis(perguntas, respostas);
+  const depois = perguntasVisiveis(perguntas, { ...respostas, [perguntaId]: valorNovo });
+  return perguntas.filter((p) => antes.has(p.id) && !depois.has(p.id) && ((respostas[p.id] ?? "").trim() !== "" || comArquivos.has(p.id)));
+}
+
+export interface Secao {
+  /** Ausente: as perguntas sem seção, num bloco sem título. */
+  readonly titulo?: string;
+  readonly perguntas: readonly PerguntaPublica[];
+}
+
+/** As perguntas na ordem do Formulário, em blocos: cada troca de seção começa um bloco novo. */
+export function secoesDoFormulario(perguntas: readonly PerguntaPublica[]): readonly Secao[] {
+  const secoes: { titulo?: string; perguntas: PerguntaPublica[] }[] = [];
+  for (const pergunta of perguntas) {
+    const titulo = pergunta.section?.trim() || undefined;
+    const ultima = secoes.at(-1);
+    if (ultima && ultima.titulo === titulo) ultima.perguntas.push(pergunta);
+    else secoes.push({ ...(titulo ? { titulo } : {}), perguntas: [pergunta] });
   }
-  return visiveis;
-}
-
-/**
- * Ao trocar `campo` (um gatilho, ex.: `Forma de pagamento`) para `valorNovo`,
- * devolve os rótulos que ficariam ocultos por essa troca E que já têm valor
- * digitado — é exatamente a lista que abre a confirmação `Trocar forma de
- * pagamento?` (UI-SPEC, "Ocultar não apaga silenciosamente o que já foi
- * digitado"). Um campo que perderia a visibilidade mas está vazio não entra:
- * não há nada para perder.
- */
-export function camposInvalidadosPor(campo: string, valorNovo: string, respostas: RespostasPorRotulo): readonly string[] {
-  const antes = camposVisiveis(respostas);
-  const depois = camposVisiveis({ ...respostas, [campo]: valorNovo });
-  return [...antes].filter((rotulo) => !depois.has(rotulo) && (respostas[rotulo] ?? "").trim() !== "");
+  return secoes;
 }

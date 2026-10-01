@@ -44,6 +44,12 @@ export interface PerguntaPublica {
   readonly help?: string;
   readonly options?: readonly string[];
   readonly accept?: readonly string[];
+  /** Checklist 1.2 — o nome da seção; perguntas seguidas com a mesma seção formam um bloco. */
+  readonly section?: string;
+  /** Checklist 1.3 — só aparece (e só é obrigatória) quando a pergunta `questionId` tem um destes valores. */
+  readonly showWhen?: { readonly questionId: string; readonly values: readonly string[] };
+  /** Checklist 1.3 — a máscara de apresentação, que vem do Campo (não do rótulo). */
+  readonly mask?: "cpf" | "cnpj" | "telefone";
 }
 
 /** Espelha `paraDtoPublico` — o DTO sanitizado que atravessa a fronteira servidor → Client Component. */
@@ -58,6 +64,8 @@ export type ResultadoDeFormulario =
   | { readonly tipo: "ok"; readonly formulario: FormularioPublicoDto }
   // 404 — segredo inexistente e Formulário pausado respondem exatamente igual (T-02-03): não distinguir aqui.
   | { readonly tipo: "indisponivel" }
+  // 409 — checklist 1.5: o link existe, mas o Formulário precisa de revisão de quem o enviou.
+  | { readonly tipo: "desatualizado"; readonly erro: string }
   | { readonly tipo: "falha"; readonly erro: string };
 
 export interface PedidoDeTicket {
@@ -103,6 +111,9 @@ export type ResultadoDeSubmissao =
   // Rede, 429, 5xx — falha de transporte, não recusa de domínio.
   | { readonly tipo: "falha"; readonly erro: string };
 
+/** A frase do `apps/api` para o Formulário desatualizado (checklist 1.5), se o corpo não vier. */
+export const COPY_DESATUALIZADO = "Este Formulário está desatualizado: peça a quem o enviou para revisá-lo.";
+
 function apiUrlOuFalha(): string | undefined {
   return process.env.NEXT_PUBLIC_API_URL;
 }
@@ -128,6 +139,7 @@ async function obterFormulario(secret: string): Promise<ResultadoDeFormulario> {
   }
 
   if (resposta.status === 404) return { tipo: "indisponivel" };
+  if (resposta.status === 409) return { tipo: "desatualizado", erro: (await corpoDeErro(resposta)) ?? COPY_DESATUALIZADO };
   if (!resposta.ok) return { tipo: "falha", erro: (await corpoDeErro(resposta)) ?? "O servidor não respondeu." };
 
   const formulario = (await resposta.json()) as FormularioPublicoDto;

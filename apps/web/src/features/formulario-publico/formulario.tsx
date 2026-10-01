@@ -18,44 +18,15 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { transportePublico } from "@/dados/transporte-publico";
 import type { FormularioPublicoDto, PerguntaPublica, ResultadoDeTicket } from "@/dados/transporte-publico";
-import { camposInvalidadosPor, camposVisiveis, type RespostasPorRotulo } from "./campos-condicionais";
+import { ehGatilho, invalidadasPor, perguntasVisiveis, secoesDoFormulario } from "./campos-condicionais";
 import { Confirmacao } from "./confirmacao";
 import { COPY_AGUARDE_UPLOAD, UploadDeArquivos, type ArquivoDeUpload } from "./upload-de-arquivos";
 import { Button, ConfirmDialog, Field, MultiSelect, Painel, RecordRow, Select, TextArea, TextInput } from "@/features/shell/ui";
 
 const COPY_ERRO_GENERICO = "Não foi possível enviar a solicitação. Seus dados continuam aqui; tente novamente.";
-const COPY_AJUDA_NAO_OBRIGATORIO = "Necessário para seguir à aprovação.";
 
-/** `Integração manual` e `Equipe` não aparecem no Formulário público (UI-SPEC) — mesmo que o DTO um dia os inclua por engano. */
-const EXCLUIDOS = new Set(["Integração manual", "Equipe"]);
-
-/** "Ordem e agrupamento" do UI-SPEC — a apresentação canônica da Solicitação de pagamento. */
-const SECOES: readonly { readonly titulo: string; readonly rotulos: readonly string[] }[] = [
-  { titulo: "Sobre a solicitação", rotulos: ["O que deve ser pago?", "O que é e como será utilizado?"] },
-  { titulo: "Solicitante", rotulos: ["Nome do solicitante", "WhatsApp"] },
-  { titulo: "Classificação", rotulos: ["Centro de Custo", "BU", "Empresa", "Categoria de pagamento", "Produto"] },
-  { titulo: "Fornecedor", rotulos: ["Fornecedor", "CPF", "CNPJ", "Nome do fornecedor"] },
-  { titulo: "Documento e datas", rotulos: ["Anexo", "Data de Emissão", "Data Vencimento", "Valor"] },
-  {
-    titulo: "Pagamento",
-    rotulos: ["Forma de pagamento", "Chave pix", "Código de barras", "Pix copia e cola", "Link de pagamento", "Boleto", "QR Code"],
-  },
-];
-
-/** Os rótulos que `campos-condicionais.ts` decide — os únicos que podem sumir do DOM. */
-const ROTULOS_CONDICIONAIS = new Set(["CPF", "CNPJ", "Chave pix", "Código de barras", "Boleto", "Pix copia e cola", "QR Code", "Link de pagamento"]);
-
-/** Documento, anexo e dado de pagamento — quando não obrigatórios, a ajuda do UI-SPEC substitui a do DTO. */
-const ROTULOS_DOCUMENTO_E_PAGAMENTO = new Set([...SECOES[4]!.rotulos, ...SECOES[5]!.rotulos]);
-
-type TipoDeMascara = "cpf" | "cnpj" | "telefone";
-
-/** CPF/CNPJ/WhatsApp compartilham `kind` com campos de texto comuns (`text`/`phone`) — só o rótulo os distingue. */
-const MASCARA_POR_ROTULO: Readonly<Record<string, TipoDeMascara>> = {
-  CPF: "cpf",
-  CNPJ: "cnpj",
-  WhatsApp: "telefone",
-};
+/** A máscara de apresentação — vem do Campo, pelo DTO (`mask`), nunca do rótulo (checklist 1.3). */
+type TipoDeMascara = NonNullable<PerguntaPublica["mask"]>;
 
 function apenasDigitos(texto: string): string {
   return texto.replace(/\D/g, "");
@@ -121,7 +92,7 @@ function valorCanonico(pergunta: PerguntaPublica, bruto: string): string {
 }
 
 function valorExibido(pergunta: PerguntaPublica, bruto: string): string {
-  const mascara = MASCARA_POR_ROTULO[pergunta.label];
+  const mascara: TipoDeMascara | undefined = pergunta.mask;
   if (mascara === "cpf") return mascararCpf(bruto);
   if (mascara === "cnpj") return mascararCnpj(bruto);
   if (mascara === "telefone") return mascararTelefone(bruto);
@@ -137,7 +108,7 @@ function ancoraDoCampo(id: string): string {
 interface TrocaPendente {
   readonly pergunta: PerguntaPublica;
   readonly novoValor: string;
-  readonly afetados: readonly string[];
+  readonly afetados: readonly PerguntaPublica[];
 }
 
 export function FormularioPublico({
@@ -187,40 +158,27 @@ export function FormularioPublico({
     }
   }, [enviado]);
 
-  const perguntas = useMemo(() => formulario.questions.filter((q) => !EXCLUIDOS.has(q.label.trim())), [formulario.questions]);
+  // Checklist 1.2/1.3 — a ordem, as seções e as condições são do Formulário (o DTO), não desta página.
+  const perguntas = formulario.questions;
+  const secoes = useMemo(() => secoesDoFormulario(perguntas), [perguntas]);
+  const visiveisAgora = useMemo(() => perguntasVisiveis(perguntas, respostas), [perguntas, respostas]);
+  const perguntasRenderizadas = useMemo(() => perguntas.filter((p) => visiveisAgora.has(p.id)), [perguntas, visiveisAgora]);
 
-  const respostasPorRotulo: RespostasPorRotulo = useMemo(() => {
-    const mapa: Record<string, string> = {};
-    for (const p of perguntas) mapa[p.label] = respostas[p.id] ?? "";
-    return mapa;
-  }, [perguntas, respostas]);
-
-  const visiveisAgora = useMemo(() => camposVisiveis(respostasPorRotulo), [respostasPorRotulo]);
-
-  const perguntasRenderizadas = useMemo(
-    () => perguntas.filter((p) => !ROTULOS_CONDICIONAIS.has(p.label) || visiveisAgora.has(p.label)),
-    [perguntas, visiveisAgora],
+  // Só contam os arquivos das perguntas à mostra: o de uma pergunta escondida não vai no envio.
+  const uploadsVisiveis = useMemo(
+    () => Object.entries(uploadsPorPergunta).filter(([perguntaId]) => visiveisAgora.has(perguntaId)),
+    [uploadsPorPergunta, visiveisAgora],
   );
-
-  const rotulosConhecidos = useMemo(() => new Set(SECOES.flatMap((s) => s.rotulos)), []);
-  const outras = useMemo(() => perguntas.filter((p) => !rotulosConhecidos.has(p.label)), [perguntas, rotulosConhecidos]);
-
-  const totalDeArquivosNoEnvio = useMemo(
-    () => Object.values(uploadsPorPergunta).reduce((soma, lista) => soma + lista.length, 0),
-    [uploadsPorPergunta],
-  );
+  const totalDeArquivosNoEnvio = useMemo(() => uploadsVisiveis.reduce((soma, [, lista]) => soma + lista.length, 0), [uploadsVisiveis]);
   // Bloqueia o CTA enquanto QUALQUER arquivo não estiver "enviado" — inclusive "aguardando" (na
   // fila) e "falhou" (precisa ser removido ou reenviado com sucesso primeiro).
-  const algumUploadPendente = useMemo(
-    () => Object.values(uploadsPorPergunta).some((lista) => lista.some((a) => a.status !== "enviado")),
-    [uploadsPorPergunta],
-  );
+  const algumUploadPendente = useMemo(() => uploadsVisiveis.some(([, lista]) => lista.some((a) => a.status !== "enviado")), [uploadsVisiveis]);
   const attachmentsDoEnvio = useMemo(
     () =>
-      Object.entries(uploadsPorPergunta).flatMap(([perguntaId, lista]) =>
+      uploadsVisiveis.flatMap(([perguntaId, lista]) =>
         lista.filter((a) => a.status === "enviado" && a.objectId).map((a) => ({ questionId: perguntaId, objectId: a.objectId! })),
       ),
-    [uploadsPorPergunta],
+    [uploadsVisiveis],
   );
 
   function executarPedidoDeTicket(
@@ -275,7 +233,8 @@ export function FormularioPublico({
   }
 
   function aoTrocarGatilho(pergunta: PerguntaPublica, novoValor: string): void {
-    const afetados = camposInvalidadosPor(pergunta.label, novoValor, respostasPorRotulo);
+    const comArquivos = new Set(Object.entries(uploadsPorPergunta).filter(([, lista]) => lista.length > 0).map(([id]) => id));
+    const afetados = invalidadasPor(perguntas, pergunta.id, novoValor, respostas, comArquivos);
     if (afetados.length > 0) {
       setTrocaPendente({ pergunta, novoValor, afetados });
       return;
@@ -288,10 +247,13 @@ export function FormularioPublico({
     const { pergunta, novoValor, afetados } = trocaPendente;
     setRespostas((atual) => {
       const proximo = { ...atual, [pergunta.id]: novoValor };
-      for (const rotulo of afetados) {
-        const alvo = perguntas.find((p) => p.label === rotulo);
-        if (alvo) proximo[alvo.id] = "";
-      }
+      for (const alvo of afetados) proximo[alvo.id] = "";
+      return proximo;
+    });
+    // "Trocar e limpar dados" limpa também os arquivos das perguntas que somem.
+    setUploadsPorPergunta((atual) => {
+      const proximo = { ...atual };
+      for (const alvo of afetados) delete proximo[alvo.id];
       return proximo;
     });
     setTrocaPendente(null);
@@ -300,7 +262,7 @@ export function FormularioPublico({
   function ajudaDe(pergunta: PerguntaPublica): string | undefined {
     // O upload desenha sua própria ajuda de formato (`UploadDeArquivos`) — não duplicar aqui.
     if (pergunta.kind === "file") return undefined;
-    if (!pergunta.required && ROTULOS_DOCUMENTO_E_PAGAMENTO.has(pergunta.label)) return COPY_AJUDA_NAO_OBRIGATORIO;
+    // A ajuda é dado do Formulário (a da pergunta, ou a descrição do Campo) — checklist 1.2.
     return pergunta.help;
   }
 
@@ -354,7 +316,8 @@ export function FormularioPublico({
 
   function renderControle(pergunta: PerguntaPublica, id: string): ReactNode {
     const bruto = respostas[pergunta.id] ?? "";
-    const mascara = MASCARA_POR_ROTULO[pergunta.label];
+    const mascara = pergunta.mask;
+    const gatilho = ehGatilho(perguntas, pergunta.id);
 
     if (pergunta.kind === "file") {
       return (
@@ -372,9 +335,8 @@ export function FormularioPublico({
         />
       );
     }
-    if (pergunta.kind === "singleSelect" || pergunta.label === "Fornecedor" || pergunta.label === "Forma de pagamento") {
+    if (pergunta.kind === "singleSelect") {
       const opcoes = (pergunta.options ?? []).map((o) => ({ value: o, label: o }));
-      const gatilho = pergunta.label === "Fornecedor" || pergunta.label === "Forma de pagamento";
       return (
         <Select
           id={id}
@@ -407,7 +369,7 @@ export function FormularioPublico({
             { value: "sim", label: "Sim" },
             { value: "não", label: "Não" },
           ]}
-          onChange={(novo) => atualizarResposta(pergunta.id, novo)}
+          onChange={(novo) => (gatilho ? aoTrocarGatilho(pergunta, novo) : atualizarResposta(pergunta.id, novo))}
         />
       );
     }
@@ -453,12 +415,15 @@ export function FormularioPublico({
     <>
       <header className="grid gap-1">
         <p className="ed-eyebrow">CRM N1</p>
+        {/* Checklist 1.4 — o título e a introdução são o nome e a descrição do Formulário. */}
         <h1 ref={headingRef} tabIndex={-1} className="ed-titulo">
-          Solicitação de pagamento
+          {formulario.title}
         </h1>
-        <p className="app-base" style={{ color: "var(--texto-3)" }}>
-          Preencha os dados do pagamento. O Financeiro acompanhará a solicitação por este número.
-        </p>
+        {formulario.intro ? (
+          <p className="app-base" style={{ color: "var(--texto-3)" }}>
+            {formulario.intro}
+          </p>
+        ) : null}
       </header>
       <Painel solido className="p-6">
         <form className="grid gap-6" onSubmit={(event) => void aoSubmeter(event)} noValidate>
@@ -490,15 +455,14 @@ export function FormularioPublico({
             </div>
           ) : null}
 
-          {SECOES.map((secao) => {
-            const perguntasDaSecao = perguntas.filter((p) => secao.rotulos.includes(p.label));
-            if (perguntasDaSecao.length === 0) return null;
+          {secoes.map((secao, indice) => {
+            const aMostra = secao.perguntas.filter((p) => visiveisAgora.has(p.id));
+            if (aMostra.length === 0) return null;
             return (
-              <fieldset key={secao.titulo} className="grid gap-3">
-                <legend className="rotulo">{secao.titulo}</legend>
+              <fieldset key={`${secao.titulo ?? "sem-secao"}-${indice}`} className="grid gap-3">
+                {secao.titulo ? <legend className="rotulo">{secao.titulo}</legend> : null}
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {perguntasDaSecao.map((pergunta) => {
-                    if (ROTULOS_CONDICIONAIS.has(pergunta.label) && !visiveisAgora.has(pergunta.label)) return null;
+                  {aMostra.map((pergunta) => {
                     const larga = pergunta.kind === "longText" || pergunta.kind === "file";
                     return (
                       <div id={ancoraDoCampo(pergunta.id)} key={pergunta.id} className={larga ? "sm:col-span-2" : undefined}>
@@ -512,21 +476,6 @@ export function FormularioPublico({
               </fieldset>
             );
           })}
-
-          {outras.length > 0 ? (
-            <fieldset className="grid gap-3">
-              <legend className="rotulo">Outras perguntas</legend>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {outras.map((pergunta) => (
-                  <div id={ancoraDoCampo(pergunta.id)} key={pergunta.id}>
-                    <Field label={pergunta.label} required={pergunta.required} hint={ajudaDe(pergunta)} error={erros[pergunta.id]}>
-                      {(id) => renderControle(pergunta, id)}
-                    </Field>
-                  </div>
-                ))}
-              </div>
-            </fieldset>
-          ) : null}
 
           <fieldset className="grid gap-2 rounded-[var(--r-controle)] p-3" style={{ border: "1px solid var(--linha)" }}>
             <legend className="rotulo px-1">Revisão</legend>
@@ -556,10 +505,14 @@ export function FormularioPublico({
 
       <ConfirmDialog
         open={trocaPendente !== null}
-        title="Trocar forma de pagamento?"
-        description={trocaPendente ? `Trocar a forma de pagamento remove os dados preenchidos em ${trocaPendente.afetados.join(", ")}.` : ""}
+        title={trocaPendente ? `Trocar ${trocaPendente.pergunta.label.toLocaleLowerCase("pt-BR")}?` : ""}
+        description={
+          trocaPendente
+            ? `Trocar ${trocaPendente.pergunta.label.toLocaleLowerCase("pt-BR")} remove os dados preenchidos em ${trocaPendente.afetados.map((p) => p.label).join(", ")}.`
+            : ""
+        }
         confirmLabel="Trocar e limpar dados"
-        cancelLabel="Manter forma atual"
+        cancelLabel="Manter a escolha atual"
         destructive
         onConfirm={confirmarTroca}
         onCancel={() => setTrocaPendente(null)}

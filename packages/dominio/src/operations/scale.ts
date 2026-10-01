@@ -9,6 +9,7 @@
  * segredo que a revogação invalida.
  */
 
+import { perguntaVisivel } from "./perguntas-do-formulario";
 import {
   containerAdminRefusal,
   effectiveLifecycleOfList,
@@ -226,6 +227,9 @@ export function applyView(state: DataState, tasks: readonly Task[], view: Pick<V
 
 /* ───────────────────────────── Formulários ───────────────────────────── */
 
+// Checklist 1.3 — num módulo sem dependências, para a página pública usar a MESMA regra sem levar o domínio.
+export { perguntaVisivel } from "./perguntas-do-formulario";
+
 export interface FormInput {
   readonly name: string;
   readonly description?: string;
@@ -234,30 +238,6 @@ export interface FormInput {
 
 /** Checklist 1.2 — limites do que o editor grava na pergunta. */
 export const LIMITES_DA_PERGUNTA = { secao: 80, ajuda: 300 } as const;
-
-/**
- * Checklist 1.3 — a pergunta está à mostra para estas respostas: sem
- * condição, sempre; com condição, quando a pergunta-gatilho está à mostra E
- * tem um dos valores. Genérica na forma (`id` + `showWhen`) para a página
- * pública, que recebe só o DTO, decidir com a MESMA regra do envio.
- */
-export function perguntaVisivel<P extends { readonly id: Id; readonly showWhen?: { readonly questionId: Id; readonly values: readonly string[] } }>(
-  perguntas: readonly P[],
-  pergunta: P,
-  respostas: Readonly<Record<Id, string | undefined>>,
-): boolean {
-  const vistas = new Set<Id>();
-  let atual: P | undefined = pergunta;
-  while (atual?.showWhen) {
-    if (vistas.has(atual.id)) return false;
-    vistas.add(atual.id);
-    const { questionId, values }: { readonly questionId: Id; readonly values: readonly string[] } = atual.showWhen;
-    const gatilho: P | undefined = perguntas.find((q) => q.id === questionId);
-    if (!gatilho || !values.includes((respostas[gatilho.id] ?? "").trim())) return false;
-    atual = gatilho;
-  }
-  return true;
-}
 
 /** Os valores que uma pergunta-gatilho pode ter: as opções do Campo de escolha única, ou sim/não. */
 function valoresDoGatilho(state: DataState, q: FormInput["questions"][number]): readonly string[] | undefined {

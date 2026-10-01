@@ -8,7 +8,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { camposInvalidadosPor, camposVisiveis } from "./campos-condicionais";
+import { invalidadasPor, perguntasVisiveis, secoesDoFormulario } from "./campos-condicionais";
 import { FormularioPublico } from "./formulario";
 import { transportePublico } from "@/dados/transporte-publico";
 import type { FormularioPublicoDto } from "@/dados/transporte-publico";
@@ -23,33 +23,41 @@ vi.mock("@/dados/transporte-publico", () => ({
 
 const enviarSubmissaoMock = vi.mocked(transportePublico.enviarSubmissao);
 
+/**
+ * O Formulário da Solicitação como o `apps/api` o entrega (checklist 1.2/1.3):
+ * seção, condição e máscara são DADO de cada pergunta — a página não sabe
+ * nada de "Fornecedor" ou "Forma de pagamento".
+ */
 function montarFormulario(): FormularioPublicoDto {
+  const quando = (questionId: string, valor: string) => ({ showWhen: { questionId, values: [valor] } });
   return {
     formId: "frm_teste",
     title: "Solicitação de pagamento",
+    intro: "Preencha os dados do pagamento.",
     questions: [
-      { id: "q_titulo", label: "O que deve ser pago?", required: true, kind: "text" },
-      { id: "q_descricao", label: "O que é e como será utilizado?", required: false, kind: "longText" },
-      { id: "q_nome", label: "Nome do solicitante", required: true, kind: "text" },
-      { id: "q_whats", label: "WhatsApp", required: true, kind: "phone" },
-      { id: "q_cc", label: "Centro de Custo", required: true, kind: "singleSelect", options: ["TRIA", "IVL"] },
-      { id: "q_fornecedor", label: "Fornecedor", required: true, kind: "singleSelect", options: ["CPF", "CNPJ"] },
-      { id: "q_cpf", label: "CPF", required: false, kind: "text" },
-      { id: "q_cnpj", label: "CNPJ", required: false, kind: "text" },
-      { id: "q_valor", label: "Valor", required: true, kind: "currency" },
+      { id: "q_titulo", label: "O que deve ser pago?", required: true, kind: "text", section: "Sobre a solicitação" },
+      { id: "q_descricao", label: "O que é e como será utilizado?", required: false, kind: "longText", section: "Sobre a solicitação" },
+      { id: "q_nome", label: "Nome do solicitante", required: true, kind: "text", section: "Solicitante" },
+      { id: "q_whats", label: "WhatsApp", required: true, kind: "phone", section: "Solicitante", mask: "telefone" },
+      { id: "q_cc", label: "Centro de Custo", required: true, kind: "singleSelect", options: ["TRIA", "IVL"], section: "Classificação" },
+      { id: "q_fornecedor", label: "Fornecedor", required: true, kind: "singleSelect", options: ["CPF", "CNPJ"], section: "Fornecedor" },
+      { id: "q_cpf", label: "CPF", required: false, kind: "text", section: "Fornecedor", mask: "cpf", ...quando("q_fornecedor", "CPF") },
+      { id: "q_cnpj", label: "CNPJ", required: false, kind: "text", section: "Fornecedor", mask: "cnpj", ...quando("q_fornecedor", "CNPJ") },
+      { id: "q_valor", label: "Valor", required: true, kind: "currency", section: "Documento e datas" },
       {
         id: "q_forma",
         label: "Forma de pagamento",
         required: true,
         kind: "singleSelect",
         options: ["Chave Pix", "Boleto", "QRCode Pix", "Cartão"],
+        section: "Pagamento",
       },
-      { id: "q_chave", label: "Chave pix", required: false, kind: "text" },
-      { id: "q_codigo", label: "Código de barras", required: false, kind: "text" },
-      { id: "q_boleto", label: "Boleto", required: false, kind: "file" },
-      { id: "q_pix", label: "Pix copia e cola", required: false, kind: "text" },
-      { id: "q_qr", label: "QR Code", required: false, kind: "file" },
-      { id: "q_link", label: "Link de pagamento", required: false, kind: "url" },
+      { id: "q_chave", label: "Chave pix", required: false, kind: "text", section: "Pagamento", help: "Necessário para seguir à aprovação.", ...quando("q_forma", "Chave Pix") },
+      { id: "q_codigo", label: "Código de barras", required: false, kind: "text", section: "Pagamento", ...quando("q_forma", "Boleto") },
+      { id: "q_boleto", label: "Boleto", required: false, kind: "file", section: "Pagamento", ...quando("q_forma", "Boleto") },
+      { id: "q_pix", label: "Pix copia e cola", required: false, kind: "text", section: "Pagamento", ...quando("q_forma", "QRCode Pix") },
+      { id: "q_qr", label: "QR Code", required: false, kind: "file", section: "Pagamento", ...quando("q_forma", "QRCode Pix") },
+      { id: "q_link", label: "Link de pagamento", required: false, kind: "url", section: "Pagamento", ...quando("q_forma", "Cartão") },
     ],
   };
 }
@@ -85,24 +93,30 @@ afterEach(() => {
   cleanup();
 });
 
-describe("campos-condicionais — puro", () => {
+describe("campos-condicionais — puro, lido do Formulário", () => {
+  const perguntas = montarFormulario().questions;
+  const visiveis = (respostas: Record<string, string>) => perguntas.filter((p) => p.showWhen && perguntasVisiveis(perguntas, respostas).has(p.id)).map((p) => p.label);
+
   it("(a) Fornecedor=CPF mostra CPF e oculta CNPJ; Fornecedor=CNPJ é o inverso", () => {
-    expect(camposVisiveis({ Fornecedor: "CPF" }).has("CPF")).toBe(true);
-    expect(camposVisiveis({ Fornecedor: "CPF" }).has("CNPJ")).toBe(false);
-    expect(camposVisiveis({ Fornecedor: "CNPJ" }).has("CNPJ")).toBe(true);
-    expect(camposVisiveis({ Fornecedor: "CNPJ" }).has("CPF")).toBe(false);
+    expect(visiveis({ q_fornecedor: "CPF" })).toEqual(["CPF"]);
+    expect(visiveis({ q_fornecedor: "CNPJ" })).toEqual(["CNPJ"]);
   });
 
-  it("(b) cada Forma de pagamento revela exatamente os campos da tabela do UI-SPEC", () => {
-    expect([...camposVisiveis({ "Forma de pagamento": "Chave Pix" })].sort()).toEqual(["Chave pix"]);
-    expect([...camposVisiveis({ "Forma de pagamento": "Boleto" })].sort()).toEqual(["Boleto", "Código de barras"].sort());
-    expect([...camposVisiveis({ "Forma de pagamento": "QRCode Pix" })].sort()).toEqual(["Pix copia e cola", "QR Code"].sort());
-    expect([...camposVisiveis({ "Forma de pagamento": "Cartão" })].sort()).toEqual(["Link de pagamento"]);
+  it("(b) cada Forma de pagamento revela exatamente os campos que o Formulário declara", () => {
+    expect(visiveis({ q_forma: "Chave Pix" })).toEqual(["Chave pix"]);
+    expect(visiveis({ q_forma: "Boleto" })).toEqual(["Código de barras", "Boleto"]);
+    expect(visiveis({ q_forma: "QRCode Pix" })).toEqual(["Pix copia e cola", "QR Code"]);
+    expect(visiveis({ q_forma: "Cartão" })).toEqual(["Link de pagamento"]);
   });
 
-  it("(c) camposInvalidadosPor ignora campo vazio e devolve o campo quando ele tem valor", () => {
-    expect(camposInvalidadosPor("Forma de pagamento", "Boleto", { "Forma de pagamento": "Chave Pix", "Chave pix": "" })).toEqual([]);
-    expect(camposInvalidadosPor("Forma de pagamento", "Boleto", { "Forma de pagamento": "Chave Pix", "Chave pix": "abc123" })).toEqual(["Chave pix"]);
+  it("(c) invalidadasPor ignora pergunta vazia e devolve a que tem valor ou arquivo", () => {
+    expect(invalidadasPor(perguntas, "q_forma", "Boleto", { q_forma: "Chave Pix", q_chave: "" })).toEqual([]);
+    expect(invalidadasPor(perguntas, "q_forma", "Boleto", { q_forma: "Chave Pix", q_chave: "abc123" }).map((p) => p.label)).toEqual(["Chave pix"]);
+    expect(invalidadasPor(perguntas, "q_forma", "Chave Pix", { q_forma: "Boleto" }, new Set(["q_boleto"])).map((p) => p.label)).toEqual(["Boleto"]);
+  });
+
+  it("(c2) as seções são blocos na ordem do Formulário", () => {
+    expect(secoesDoFormulario(perguntas).map((s) => s.titulo)).toEqual(["Sobre a solicitação", "Solicitante", "Classificação", "Fornecedor", "Documento e datas", "Pagamento"]);
   });
 });
 
@@ -117,7 +131,7 @@ describe("FormularioPublico — componente", () => {
     const dialogo = screen.getByRole("alertdialog");
     expect(within(dialogo).getByText("Trocar forma de pagamento?")).toBeTruthy();
 
-    fireEvent.click(within(dialogo).getByRole("button", { name: "Manter forma atual" }));
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Manter a escolha atual" }));
     expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(screen.getByRole("combobox", { name: "Forma de pagamento" }).textContent).toContain("Chave Pix");
     expect(campo("Chave pix")).toHaveProperty("value", "minhachave@pix.com");
@@ -216,6 +230,48 @@ describe("FormularioPublico — componente", () => {
       expect(fieldset.querySelector("legend")).not.toBeNull();
     }
     expect(container.querySelectorAll("h1")).toHaveLength(1);
+  });
+});
+
+describe("FormularioPublico — o Formulário como dado (checklist 1.2–1.4)", () => {
+  it("(l) título e introdução vêm do Formulário", () => {
+    renderizar({ ...montarFormulario(), title: "Pedido de reembolso", intro: "Para despesas de viagem." });
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Pedido de reembolso");
+    expect(screen.getByText("Para despesas de viagem.")).toBeTruthy();
+  });
+
+  it("(m) renomear as perguntas não quebra a condição nem a máscara: quem decide é o dado", () => {
+    const formulario = montarFormulario();
+    const renomeado = {
+      ...formulario,
+      questions: formulario.questions.map((q) =>
+        q.id === "q_fornecedor" ? { ...q, label: "Tipo de fornecedor" } : q.id === "q_cnpj" ? { ...q, label: "Documento da empresa" } : q,
+      ),
+    };
+    renderizar(renomeado);
+    expect(campoOuNulo("Documento da empresa")).toBeNull();
+    abrirEEscolher("Tipo de fornecedor", "CNPJ");
+    fireEvent.change(campo("Documento da empresa"), { target: { value: "11222333000181" } });
+    expect(campo("Documento da empresa")).toHaveProperty("value", "11.222.333/0001-81");
+  });
+
+  it("(n) a resposta de uma pergunta que ficou escondida não vai no envio", async () => {
+    enviarSubmissaoMock.mockResolvedValue({ tipo: "ok", readableId: "SP-0009" });
+    const formulario = montarFormulario();
+    // Sem confirmação no meio: a pergunta escondida estava vazia quando o gatilho mudou.
+    renderizar(formulario);
+    preencherObrigatorios();
+    fireEvent.click(screen.getByRole("button", { name: "Enviar solicitação" }));
+    await waitFor(() => expect(enviarSubmissaoMock).toHaveBeenCalledTimes(1));
+    const pedido = enviarSubmissaoMock.mock.calls[0]![0];
+    expect(Object.keys(pedido.answers)).not.toContain("q_cpf");
+    expect(pedido.answers["q_cnpj"]).toBe("12345678000199");
+  });
+
+  it("(o) a ajuda é a da pergunta", () => {
+    renderizar();
+    abrirEEscolher("Forma de pagamento", "Chave Pix");
+    expect(screen.getByText("Necessário para seguir à aprovação.")).toBeTruthy();
   });
 });
 

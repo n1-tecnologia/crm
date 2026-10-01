@@ -14,14 +14,17 @@
  */
 
 import type { Metadata } from "next";
-import { FileX, WifiOff } from "lucide-react";
+import { FilePen, FileX, WifiOff } from "lucide-react";
 import { transportePublico } from "@/dados/transporte-publico";
 import { FormularioPublico } from "@/features/formulario-publico/formulario";
 import { EmptyState, Icone, Painel } from "@/features/shell/ui";
 
-export const metadata: Metadata = {
-  title: "Solicitação de pagamento",
-};
+/** Checklist 1.4 — o título da aba é o nome do Formulário (o `fetch` sem cache do mesmo GET da página). */
+export async function generateMetadata({ params }: { params: Promise<{ segredo: string }> }): Promise<Metadata> {
+  const { segredo } = await params;
+  const resultado = await transportePublico.obterFormulario(segredo);
+  return { title: resultado.tipo === "ok" ? resultado.formulario.title : "Formulário" };
+}
 
 const COPY_INDISPONIVEL = "Este link não está disponível. Peça um novo link ao Financeiro.";
 
@@ -35,6 +38,19 @@ export default async function FormularioPublicoPage({ params }: { params: Promis
         <div className="w-full max-w-lg">
           <Painel solido className="p-6">
             <EmptyState icon={<Icone de={FileX} tamanho="lg" />} title="Formulário indisponível" hint={COPY_INDISPONIVEL} />
+          </Painel>
+        </div>
+      </main>
+    );
+  }
+
+  // Checklist 1.5 — o link existe, mas o Formulário precisa de revisão: dizer já, antes de alguém preencher tudo.
+  if (resultado.tipo === "desatualizado") {
+    return (
+      <main className="grade-pontos flex min-h-screen items-center justify-center p-6">
+        <div className="w-full max-w-lg">
+          <Painel solido className="p-6">
+            <EmptyState icon={<Icone de={FilePen} tamanho="lg" />} title="Formulário em revisão" hint={resultado.erro} />
           </Painel>
         </div>
       </main>
