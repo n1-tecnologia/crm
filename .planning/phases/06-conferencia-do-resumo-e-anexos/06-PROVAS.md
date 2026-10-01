@@ -907,3 +907,49 @@ falharia em "a ponte dispensou por cima da resposta pendente".
 enquanto a conta está aberta, que re-hidrata quando ela muda; e a criação de
 conta abrindo o popup só com o id confirmado pelo servidor. Tempo real
 (Supabase Realtime/SSE) fica para depois.
+
+### Conferência do conteúdo (lida da tela depois da rodada)
+
+O dono perguntou se a rodada "foi lançada no Omie" e se os dados foram
+conferidos. **Nada foi ao Omie** — as três rodadas foram em `conferencia`
+(zero `/lancar` por desenho); o lançamento pela plataforma é o passo 2B em
+`lancar`, ainda com o dono. A jornada conferia presença de textos, cards,
+Status e ordem — não o conteúdo. Depois da rodada, um script só de leitura
+(entra como o usuário de teste e lê cada conta na tela, sem gravar nada) puxou
+Campos, Status e fio das cinco contas:
+
+| O quê | Esperado (o que a jornada preencheu) | Lido nas cinco contas |
+|---|---|---|
+| Centro de Custo · Empresa | TRIA · Tria Company | igual |
+| Categoria de pagamento | Contas de consumo | igual |
+| Fornecedor · CNPJ · Nome | CNPJ · 11.222.333/0001-81 · Fornecedor Teste Automatizado LTDA | igual (não aparecem no Resumo; vão no corpo do `/lancar`) |
+| Forma · Chave pix | Chave Pix · teste-integracao@triacompany.com.br | igual, e no Resumo |
+| Valor | R$ 123,45 | igual, e no Resumo |
+| Vencimento | hoje + 10 = 10/10/2026 | "📅 Vencimento: 10/10/2026" no Resumo (a data foi para o vencimento) |
+| Conta pagamento | inferida do Centro de Custo (sem Tag "conta *") | "TRIA", com a observação "Confirmar antes da remessa" |
+| Categoria · Código no Resumo | o de-para do `/resolver` contra o plano de contas REAL da Tria (leitura) | Contas de Consumo · 2.04.03 |
+| Status | por cenário | `em lançamento omie` (conferida, conferida-pelo-card, dispensa-manual); `para pagar` (ajuste, com o revisado pendente; dispensa-com-resposta, Manual) |
+
+Achados de conteúdo:
+
+4. **O ajuste por texto livre não mudou o Resumo.** No `cp-ajuste`, a
+   resposta "é prestação comercial, não ADM" gerou um "Resumo revisado"
+   IDÊNTICO ao original (Contas de Consumo · 2.04.03), só com "Revisado a
+   pedido de…". Causa: o `/resolver` (`automation/`,
+   `consultaDeCategoria`) busca a categoria no RAG com título + o Campo
+   "Categoria de pagamento" + descrição, e o pedido só no fim — com o Campo
+   dizendo "Contas de consumo", a busca volta à mesma categoria. O legado
+   (`reviseSummary`) faz a mesma consulta; lá, uma IA reescreve o texto do
+   Resumo, aqui não. Hoje, só a resposta com o CÓDIGO
+   (`codigoCategoriaConfirmado`) troca a categoria com certeza. O cenário
+   `cp-dispensa-com-resposta` usou o código 2.04.03 — o mesmo da original,
+   para ser determinístico —, então também não exercitou uma troca de
+   categoria de verdade.
+5. **Texto estranho na dispensa (cosmético).** Numa conta Manual, o Resumo
+   revisado termina com "Agente do pipeline, confira de novo…" e, logo
+   abaixo, "✅ Resumo conferido por Agente do pipeline": o Agente pede a si
+   mesmo que confira (D6-04 faz o Membro de serviço aprovador).
+6. **O achado 1 confirmado:** a conta órfã do 1º `cp-conferida-pelo-card`
+   ("… · 30/09 21:43", só o nome) existe como **`tsk_tarka0`**; o popup
+   tinha aberto `tsk_tark9u`. A ponte gastou `tark9u`…`tark9z` no Resumo de
+   `tsk_tark9e` e a conta ficou com o número seguinte.

@@ -460,6 +460,7 @@ Items acknowledged and carried forward:
 | Prova | fin2:IN-07 — dois anexos no mesmo lançamento contra o Omie real | Script `teste:omie-real` só aceita um `--anexo`; opcional | Phase 06 (2026-09-30) |
 | Dados | Residual fin2:CR-01 (índice/migração de banco) | Aceito sem migração; decisão do dono se quiser fechar | Phase 06 (2026-09-30) |
 | Defeito | A conta nova abre no popup com o id da cópia local de `run()` (D-05), não o do servidor — diverge quando a ponte ou outra pessoa grava no meio; achado pela jornada final (`06-PROVAS.md`, achado 1: `cmt_tark9u`) | Correção proposta (abrir só com o id confirmado pelo servidor), aguarda o dono | Phase 06 (2026-09-30) |
+| Comportamento | O ajuste por texto livre não muda a categoria do Resumo revisado (o RAG do `/resolver` busca com o Campo "Categoria de pagamento" e o pedido só no fim) e o revisado sai igual, marcado "Revisado a pedido de"; só o código na resposta troca com certeza (`06-PROVAS.md`, achado 4) | Decisão do dono: avisar no revisado quando nada mudou e/ou dar peso ao pedido | Phase 06 (2026-09-30) |
 | UX | O popup da conta não vê sozinho o que a ponte grava (sem tempo real, consulta periódica nem revalidação ao focar; só re-hidrata por D-06) | Recomendação: consulta leve à revisão do Espaço com a conta aberta; Realtime depois | Phase 06 (2026-09-30) |
 
 ## Session Continuity
