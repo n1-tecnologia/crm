@@ -11,7 +11,7 @@
 import Link from "next/link";
 import { Briefcase, MessageSquare } from "lucide-react";
 import { use, useState, type ReactNode } from "react";
-import { useData, useRun, useSession } from "@/dados/store";
+import { useData, useRun, useRunConfirmado, useSession } from "@/dados/store";
 import {
   checklistProgress,
   containerAdminRefusal,
@@ -100,6 +100,7 @@ import {
   StateSeal,
 } from "@/features/shell/ui";
 import type { DataState } from "@n1/dominio/state";
+import type { OperationResult } from "@n1/dominio";
 import type { Task, View, ViewFilters } from "@n1/dominio/types";
 import type { RelatorioDeLote } from "@n1/dominio/operations/lote";
 
@@ -122,7 +123,7 @@ export default function ListaPage({
   const { lista } = use(params);
   const state = useData((data) => data);
   const fmt = useFormat();
-  const run = useRun();
+  const runConfirmado = useRunConfirmado();
   // A Visualização padrão da Lista abre aplicada; o resto parte do vazio.
   const padrao = state.views.find(
     (v) => v.listId === lista && v.ownerKind === "container" && v.isDefault,
@@ -323,9 +324,24 @@ export default function ListaPage({
   const nomeDoTipo = (taskTypeId: string) =>
     state.taskTypes.find((t) => t.id === taskTypeId)?.name ?? (financeira ? "Conta" : "Tarefa");
 
+  /* O aviso e o popup usam o id que o SERVIDOR deu (checklist E1): o da cópia
+     local é de outro registro quando a ponte gravou no mesmo instante. */
+  const aoConfirmarCriacao = (confirmado: OperationResult<Task>) => {
+    if (!confirmado.ok) {
+      setNotice(null);
+      setError(confirmado.error);
+      return;
+    }
+    setNotice({
+      text: `${nomeDoTipo(confirmado.value.taskTypeId)} criada: ${confirmado.value.title}.`,
+      taskId: confirmado.value.id,
+    });
+    if (financeira) openTask(confirmado.value.id);
+  };
+
   const create = () => {
     if (!newTitle.trim()) return;
-    const result = run((data, memberId) =>
+    const { local: result, confirmado } = runConfirmado((data, memberId) =>
       createTask(data, memberId, {
         listId: list.id,
         title: newTitle.trim(),
@@ -338,13 +354,9 @@ export default function ListaPage({
       setCriandoConta(false);
       // A Tarefa nova pode nascer fora da Visualização em uso (o Calendário só
       // desenha Tarefas com data): o aviso nomeia e dá o caminho para abri-la.
-      setNotice({
-        text: `${nomeDoTipo(result.value.taskTypeId)} criada: ${result.value.title}.`,
-        taskId: result.value.id,
-      });
       // Uma conta nasce só com o nome; Valor, Vencimento e Forma se editam no
       // popup (que é a Tarefa completa), sem sair da Lista.
-      if (financeira) openTask(result.value.id);
+      void confirmado.then(aoConfirmarCriacao);
     } else {
       setNotice(null);
       setError(result.error);
@@ -386,7 +398,7 @@ export default function ListaPage({
   // O "+" de um grupo: a Tarefa nasce já naquele Status. A conta do Financeiro
   // nasce só com o nome e abre no popup, onde Valor, Vencimento e Forma se editam.
   const criarNoGrupo = (title: string, statusId?: string, taskTypeId?: string): boolean => {
-    const result = run((data, memberId) =>
+    const { local: result, confirmado } = runConfirmado((data, memberId) =>
       createTask(data, memberId, {
         listId: list.id,
         title,
@@ -396,11 +408,7 @@ export default function ListaPage({
     );
     if (result.ok) {
       setError(null);
-      setNotice({
-        text: `${nomeDoTipo(result.value.taskTypeId)} criada: ${result.value.title}.`,
-        taskId: result.value.id,
-      });
-      if (financeira) openTask(result.value.id);
+      void confirmado.then(aoConfirmarCriacao);
       return true;
     }
     setNotice(null);

@@ -11,7 +11,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useData, useRun } from "@/dados/store";
+import { useData, useRunConfirmado } from "@/dados/store";
 import { createAgent, publishAgentVersion } from "@n1/dominio/operations";
 import { AgentConfigPanel } from "./agent-config-panel";
 import { AgentPreview, SegmentedControl, type PreviewMessage, type PreviewTab } from "./agent-preview";
@@ -54,7 +54,7 @@ function draftFromAgent(agent: {
 }
 
 export function AgentBuilder() {
-  const run = useRun();
+  const runConfirmado = useRunConfirmado();
   const agents = useData((data) => data.agents);
   // `?editar=<id>` abre um Agente existente no Construtor, com a última Versão carregada.
   const editarId = useSearchParams().get("editar");
@@ -125,24 +125,33 @@ export function AgentBuilder() {
         responseFormat: draft.responseFormat,
         accessPoints: draft.accessPoints,
       };
-      const result = run((data, id) =>
+      // O id do Agente novo é o que o SERVIDOR deu (checklist E1): a próxima
+      // publicação vai para ele, e o da cópia local pode ser de outro registro.
+      const { local, confirmado } = runConfirmado((data, id) =>
         agentId ? publishAgentVersion(data, id, agentId, entrada) : createAgent(data, id, entrada, { ativar }),
       );
-      setPublishing(false);
-      if (result.ok) {
-        const numero = result.value.versions.at(-1)?.number ?? 1;
-        setAgentId(result.value.id);
-        setPublicado(publishable(draft));
-        setPublished(
-          agentId
-            ? `Publicado: ${result.value.name} · versão ${numero}`
-            : result.value.lifecycle === "ativo"
-              ? `Agente ativado · versão ${numero}`
-              : "Agente criado em rascunho · abra a ficha para ativar",
-        );
-      } else {
-        setError(result.error);
+      if (!local.ok) {
+        setPublishing(false);
+        setError(local.error);
+        return;
       }
+      void confirmado.then((result) => {
+        setPublishing(false);
+        if (result.ok) {
+          const numero = result.value.versions.at(-1)?.number ?? 1;
+          setAgentId(result.value.id);
+          setPublicado(publishable(draft));
+          setPublished(
+            agentId
+              ? `Publicado: ${result.value.name} · versão ${numero}`
+              : result.value.lifecycle === "ativo"
+                ? `Agente ativado · versão ${numero}`
+                : "Agente criado em rascunho · abra a ficha para ativar",
+          );
+        } else {
+          setError(result.error);
+        }
+      });
     }, 600);
   };
 

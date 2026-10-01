@@ -17,7 +17,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Anchor, Bot, Plus, Sparkles } from "lucide-react";
-import { useData, useRun, useSession } from "@/dados/store";
+import { useData, useRun, useRunConfirmado, useSession } from "@/dados/store";
 import { createChatSession, sendChatMessage } from "@n1/dominio/operations";
 import { useChatFolderDialogs } from "@/features/ia/chat-folder-dialogs";
 import { ChatSetupBar, MicButton, SendCircle } from "@/features/ia/chat-setup";
@@ -67,6 +67,7 @@ export default function ChatPage() {
   const { memberId } = useSession();
   const state = useData((data) => data);
   const run = useRun();
+  const runConfirmado = useRunConfirmado();
   const router = useRouter();
   const [texto, setTexto] = useState("");
   const [agentId, setAgentId] = useState("");
@@ -105,10 +106,12 @@ export default function ChatPage() {
   /*
     Uma ação só: cria a Sessão e envia a primeira Mensagem. Se a Sessão nasce e
     a Mensagem é recusada, a pessoa cai na Sessão vazia com o erro na tela —
-    o texto dela não some.
+    o texto dela não some. A Mensagem vai para o id que o SERVIDOR deu à
+    Sessão (checklist E1): o da cópia local é de outro registro quando
+    alguém gravou no mesmo instante.
   */
   const comecar = () => {
-    const criada = run((data, id) =>
+    const { local: criada, confirmado } = runConfirmado((data, id) =>
       createChatSession(data, id, {
         title: tituloDe(texto),
         ...(agentId ? { mainAgentId: agentId } : {}),
@@ -129,9 +132,15 @@ export default function ChatPage() {
       setError(criada.error);
       return;
     }
-    const enviada = run((data, id) => sendChatMessage(data, id, criada.value.id, texto));
-    if (!enviada.ok) setError(enviada.error);
-    router.push(`/ia/chat/${criada.value.id}`);
+    void confirmado.then((sessao) => {
+      if (!sessao.ok) {
+        setError(sessao.error);
+        return;
+      }
+      const enviada = run((data, id) => sendChatMessage(data, id, sessao.value.id, texto));
+      if (!enviada.ok) setError(enviada.error);
+      router.push(`/ia/chat/${sessao.value.id}`);
+    });
   };
 
   const bloqueio =

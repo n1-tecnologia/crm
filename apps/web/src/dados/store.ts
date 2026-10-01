@@ -60,6 +60,17 @@ interface StoreShape {
   pendentes: number;
   setSession: (memberId: Id, userId?: string) => void;
   run: <T>(operation: (data: DataState, actingMemberId: Id) => OperationResult<T>) => OperationResult<T>;
+  /**
+   * `run()` com a confirmação do servidor (checklist E1): `local` é o que a
+   * cópia calculou, na hora; `confirmado` resolve com o resultado QUE O
+   * SERVIDOR deu. O id que a cópia calcula só bate com o do servidor se
+   * ninguém gravou desde a última hidratação — a ponte grava sozinha. Quem
+   * navega para o registro recém-criado usa o id de `confirmado`.
+   */
+  runConfirmado: <T>(operation: (data: DataState, actingMemberId: Id) => OperationResult<T>) => {
+    readonly local: OperationResult<T>;
+    readonly confirmado: Promise<OperationResult<T>>;
+  };
   /** Re-hidrata do zero por `GET /estado` — D-06: revisão defasada ou conflito. */
   rehidratar: () => Promise<void>;
 }
@@ -92,9 +103,9 @@ export function criarStore(opcoes: {
      * Manda o que `run()` já aceitou localmente para o servidor, e aplica a
      * resposta. Roda depois de `run()` já ter devolvido o `OperationResult`
      * da cópia para quem chamou — por isso é sempre disparada com `void`,
-     * nunca `await`ada pelo chamador.
+     * `await`ada só por `runConfirmado`, que quer o resultado do servidor.
      */
-    async function enviar(pedido: PedidoDeGravacao): Promise<void> {
+    async function enviar(pedido: PedidoDeGravacao): Promise<OperationResult<unknown>> {
       try {
         const resposta = await transporte.gravar(pedido);
 
@@ -108,7 +119,7 @@ export function criarStore(opcoes: {
               if (!resposta.resultado.ok) {
                 set({ lastResult: { ...resposta.resultado, at: Date.now() } });
               }
-              break;
+              return resposta.resultado;
             }
 
             // Mutação em lugar — o mesmo modelo do store: `aplicarDiferenca`
@@ -123,7 +134,7 @@ export function criarStore(opcoes: {
               // servidor prevalece sobre o `ok:true` que a cópia calculou.
               set((estado) => ({ lastResult: { ...resposta.resultado, at: Date.now() }, revision: estado.revision + 1 }));
             }
-            break;
+            return resposta.resultado;
           }
 
           case "estado": {
@@ -135,13 +146,13 @@ export function criarStore(opcoes: {
               revisaoDoServidor: resposta.estado.revisao,
               revision: estado.revision + 1,
             }));
-            break;
+            return resposta.resultado;
           }
 
           case "conflito": {
             await get().rehidratar();
             set({ lastResult: { ok: false, error: resposta.erro, at: Date.now() } });
-            break;
+            return { ok: false, error: resposta.erro };
           }
 
           case "falha": {
@@ -149,12 +160,46 @@ export function criarStore(opcoes: {
               lastResult: { ok: false, error: resposta.erro, at: Date.now() },
               revision: estado.revision + 1,
             }));
-            break;
+            return { ok: false, error: resposta.erro };
           }
         }
       } finally {
         set((estado) => ({ pendentes: estado.pendentes - 1 }));
       }
+    }
+
+    /**
+     * Roda `operation` numa cópia; se a cópia aceita, dispara o envio e
+     * devolve a promessa dele (o resultado do servidor).
+     */
+    function rodarNaCopia<T>(operation: (data: DataState, actingMemberId: Id) => OperationResult<T>): {
+      readonly resultado: OperationResult<T>;
+      readonly envio?: Promise<OperationResult<unknown>>;
+    } {
+      const { data, session, revisaoDoServidor } = get();
+
+      // O clone custa sub-ms para ~475 KB / ~900 registros (RESEARCH.md,
+      // Pitfall 3) — não é o gargalo, a rede é. Sincronizar o contador de
+      // ids faz a cópia gerar os ids que o servidor vai gerar SE ninguém
+      // gravou desde a última hidratação (a Unidade de Trabalho faz o mesmo
+      // antes de rodar a operação). Não é garantia: a ponte grava sozinha, e
+      // aí o id da cópia é de outro registro — quem navega para o registro
+      // recém-criado usa `runConfirmado` (checklist E1).
+      const copia = structuredClone(data);
+      syncIdSequence(copia);
+
+      const { resultado, chamadas } = gravarChamadas(() => operation(copia, session.memberId));
+
+      if (!resultado.ok) {
+        // Recusa do domínio: a cópia é descartada, nada vai à rede (D-05).
+        set({ lastResult: { ...resultado, at: Date.now() } });
+        return { resultado };
+      }
+
+      set((estado) => ({ pendentes: estado.pendentes + 1, lastResult: { ...resultado, at: Date.now() } }));
+
+      // O estado real só muda quando `enviar` aplicar o diff que voltar do servidor.
+      return { resultado, envio: enviar({ chamadas, revisao: revisaoDoServidor, copia, resultado }) };
     }
 
     return {
@@ -169,35 +214,13 @@ export function criarStore(opcoes: {
       setSession: (memberId, userId) =>
         set({ session: userId === undefined ? { memberId } : { memberId, userId }, revision: get().revision + 1 }),
 
-      run: (operation) => {
-        const { data, session, revisaoDoServidor } = get();
+      // Síncrono para quem chama: devolve o resultado da cópia e o envio segue sem `await`.
+      run: (operation) => rodarNaCopia(operation).resultado,
 
-        // O clone custa sub-ms para ~475 KB / ~900 registros (RESEARCH.md,
-        // Pitfall 3) — não é o gargalo, a rede é. Sincronizar o contador de
-        // ids faz a cópia gerar os MESMOS ids que o servidor vai gerar (a
-        // Unidade de Trabalho faz o mesmo antes de rodar a operação), então
-        // `resultado.value.id` — usado por telas que navegam para o registro
-        // recém-criado — já aponta para o registro certo, mesmo antes de o
-        // diff voltar.
-        const copia = structuredClone(data);
-        syncIdSequence(copia);
-
-        const { resultado, chamadas } = gravarChamadas(() => operation(copia, session.memberId));
-
-        if (!resultado.ok) {
-          // Recusa do domínio: a cópia é descartada, nada vai à rede (D-05).
-          set({ lastResult: { ...resultado, at: Date.now() } });
-          return resultado;
-        }
-
-        set((estado) => ({ pendentes: estado.pendentes + 1, lastResult: { ...resultado, at: Date.now() } }));
-
-        // Disparado sem `await`: `run()` continua síncrono para quem chama
-        // (a API pública não muda). O estado real só muda quando `enviar`
-        // aplicar o diff que voltar do servidor.
-        void enviar({ chamadas, revisao: revisaoDoServidor, copia, resultado });
-
-        return resultado;
+      runConfirmado: (operation) => {
+        const { resultado, envio } = rodarNaCopia(operation);
+        // O servidor roda a mesma operação do mesmo domínio: o valor que ele devolve tem a forma de `T`.
+        return { local: resultado, confirmado: envio ? (envio as Promise<typeof resultado>) : Promise.resolve(resultado) };
       },
 
       rehidratar: async () => {
@@ -278,6 +301,11 @@ export function useCurrentMember() {
 
 export function useRun() {
   return useStore((state) => state.run);
+}
+
+/** `run()` com a confirmação do servidor — ver `StoreShape.runConfirmado`. */
+export function useRunConfirmado() {
+  return useStore((state) => state.runConfirmado);
 }
 
 export function useLastResult() {

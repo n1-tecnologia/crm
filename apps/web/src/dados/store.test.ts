@@ -8,7 +8,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildSeed } from "@n1/dominio/seed";
-import { addTaskComment, changeTaskStatus, CP, createChatSession, resetIdSequence, sendChatMessage, syncIdSequence } from "@n1/dominio/operations";
+import { addTaskComment, changeTaskStatus, CP, createChatSession, createTask, resetIdSequence, sendChatMessage, syncIdSequence } from "@n1/dominio/operations";
 import type { DataState } from "@n1/dominio/state";
 import type { Id, Task } from "@n1/dominio/types";
 import { DIFERENCA_VAZIA, type Ordens } from "@n1/dominio";
@@ -234,5 +234,50 @@ describe("rehidratar()", () => {
     const lastResult = store.getState().lastResult;
     if (lastResult?.ok !== false) throw new Error("esperava recusa");
     expect(lastResult.error).toBe("Sem conexão com o servidor.");
+  });
+});
+
+describe("runConfirmado() — o id que vale é o do servidor (checklist E1)", () => {
+  it("(j) a ponte gravou no meio: a cópia calcula um id, o servidor dá outro, e `confirmado` traz o do servidor", async () => {
+    const estadoDoServidor = { marcador: "rehidratado" } as unknown as DataState;
+    transporte.hidratarMock.mockResolvedValueOnce({ data: estadoDoServidor, revisao: 9, ordens: {}, memberId: "mem_maryane" });
+    transporte.gravarMock.mockImplementationOnce(async (pedido: PedidoDeGravacao) => {
+      const local = pedido.resultado as { readonly ok: true; readonly value: Task };
+      return {
+        tipo: "diferenca",
+        resultado: { ok: true, value: { ...local.value, id: "tsk_do_servidor" } },
+        diferenca: DIFERENCA_VAZIA,
+        revisao: 9,
+        revisaoAnterior: 8, // a ponte gravou a revisão 8 depois da nossa hidratação (7)
+      };
+    });
+
+    const { local, confirmado } = store
+      .getState()
+      .runConfirmado((d, m) => createTask(d, m, { listId: CP.listId, title: "Conta — TESTE AUTOMATIZADO E1" }));
+
+    expect(local.ok).toBe(true);
+    const servidor = await confirmado;
+    expect(servidor).toMatchObject({ ok: true, value: { id: "tsk_do_servidor", title: "Conta — TESTE AUTOMATIZADO E1" } });
+    expect(local.ok && local.value.id).not.toBe("tsk_do_servidor");
+    expect(store.getState().data).toBe(estadoDoServidor);
+  });
+
+  it("(k) recusa do domínio: `confirmado` resolve com a mesma recusa, sem POST", async () => {
+    const { local, confirmado } = store.getState().runConfirmado((d, m) => createTask(d, m, { listId: "lst_nao_existe", title: "Conta — TESTE AUTOMATIZADO E1" }));
+    expect(local.ok).toBe(false);
+    expect(await confirmado).toEqual(local);
+    expect(transporte.gravarMock).not.toHaveBeenCalled();
+  });
+
+  it("(l) conflito e falha de transporte resolvem como recusa, com a frase do transporte", async () => {
+    transporte.hidratarMock.mockResolvedValueOnce({ data: state, revisao: 11, ordens, memberId: "mem_maryane" });
+    transporte.gravarMock.mockResolvedValueOnce({ tipo: "conflito", erro: "Outra alteração entrou antes desta." });
+    const a = store.getState().runConfirmado((d, m) => createTask(d, m, { listId: CP.listId, title: "Conta A — TESTE AUTOMATIZADO E1" }));
+    expect(await a.confirmado).toEqual({ ok: false, error: "Outra alteração entrou antes desta." });
+
+    transporte.gravarMock.mockResolvedValueOnce({ tipo: "falha", erro: "Sem conexão com o servidor." });
+    const b = store.getState().runConfirmado((d, m) => createTask(d, m, { listId: CP.listId, title: "Conta B — TESTE AUTOMATIZADO E1" }));
+    expect(await b.confirmado).toEqual({ ok: false, error: "Sem conexão com o servidor." });
   });
 });
