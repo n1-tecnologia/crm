@@ -96,6 +96,25 @@ export function conferenciaMaisRecente(state: DataState, taskId: Id): Conferenci
 }
 
 /**
+ * Checklist 6.1 — o código de Categoria que um pedido no fio escolheu e que
+ * ainda vale: o da Conferência mais recente com `lancamento.pedida`, enquanto
+ * o Campo "Categoria de pagamento" for o mesmo de quando ela foi aberta (a
+ * impressão guardada nela). Mudou o Campo, a escolha de antes não vale mais —
+ * quem mudou o Campo é quem decide agora. Sem isso, `undefined`.
+ */
+export function codigoDaCategoriaPedida(state: DataState, task: Task): string | undefined {
+  const conferencia = conferenciaMaisRecente(state, task.id);
+  if (!conferencia?.origin.lancamento.pedida) return undefined;
+  let categoriaDeEntao: unknown;
+  try {
+    categoriaDeEntao = (JSON.parse(conferencia.origin.impressao) as Record<string, unknown>).categoria;
+  } catch {
+    return undefined;
+  }
+  return categoriaDeEntao === fieldValue(task, CP.fields.categoria) ? conferencia.origin.lancamento.codigo : undefined;
+}
+
+/**
  * A Conferência que vale: a MAIS RECENTE da Tarefa (`conferenciaMaisRecente`);
  * se ela estiver `cancelada` ou `expirada`, nenhuma.
  *

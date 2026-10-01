@@ -111,6 +111,30 @@ que a ponte manda depois da Conferência) e
 `lancar.sucesso-reaproveitado` não mudou: o título do cenário tem os dados do
 pedido, e o `dePara` lido dele é o mesmo da resolução.
 
+## v1.3 (aditiva) — a leitura do pedido de ajuste
+
+Checklist 6.1/6.2 do CRM N1 (`docs/08-migracao-financeiro/11-checklist-fluxos-1-a-7.md`).
+Sem rota nova e sem campo novo no pedido: a resposta do `/resolver` ganha a
+chave opcional `revisao`, AO LADO do `dePara` (que continua espelho do
+domínio, com as mesmas três chaves). Um cliente v1.2 que só lê `dePara`
+continua funcionando.
+
+| Onde | O que muda |
+|---|---|
+| `/resolver`, com `pedidoDeRevisao` | A IA lê o pedido contra as categorias do plano de contas que servem a uma Conta a pagar (`conta_despesa = S`, `totalizadora = N`, `conta_inativa = N`, as três informadas). A Categoria que ela escolhe é validada como um `codigoCategoriaConfirmado` — o RAG não é chamado — e volta em `revisao.categoria` (`{ codigo, nome }`, o nome do plano). Um `codigoCategoriaConfirmado` no pedido vence a escolha da IA, e aí `revisao.categoria` não vem. |
+| `/resolver`, `revisao.mudancas` | O que o pedido muda nos dados da conta, cada campo saneado (o que não passa some): `valorCentavos` (inteiro > 0), `vencimento` (`AAAA-MM-DD`, data real), `formaDePagamento` (`Chave Pix`, `Boleto`, `QRCode Pix`), `chavePix`, `codigoDeBarras`, `pixCopiaECola` (até 500), `descricao` (até 2000). Quem aplica é a plataforma, com a Conferência nova obrigatória. `{}` quando o pedido não muda dado nenhum. |
+| `/resolver`, `revisao.naoEntendido` | Até 300 caracteres: o que a leitura não entendeu, para a plataforma responder no fio. |
+| `/resolver`, pedido | `codigoCategoriaPedidoAnterior` (opcional, mesmo formato de `codigoCategoriaConfirmado`): a Categoria que um pedido ANTERIOR escolheu e que a plataforma mantém enquanto o Campo "Categoria de pagamento" não muda. Precedência: `codigoCategoriaConfirmado` > a escolha da leitura deste pedido > `codigoCategoriaPedidoAnterior` > o RAG. Validado como o código conferido. Só o `/resolver` aceita (no `/lancar` é 400). |
+| `/resolver`, sem `revisao` | Sem pedido, sem IA configurada, ou a IA falhou (rede, cota, JSON ilegível): o `/resolver` responde como na v1.2 — o pedido no fim da consulta do RAG. Uma falha da IA nunca vira erro da rota. |
+| `/lancar` | Nada muda: o `/lancar` nunca chama a IA. |
+
+O texto do pedido nunca volta na resposta, nem em log, nem em `details.motivo`.
+
+Exemplos: `resolver.sucesso-pedido-interpretado`,
+`resolver.sucesso-pedido-nao-entendido` e
+`resolver.sucesso-categoria-pedida-antes`. `resolver.sucesso-pedido-de-revisao`
+continua o caso sem IA.
+
 ## Dados
 
 Inventados: token `token-de-exemplo-nunca-real`, Tarefa `tsk_00001a`, CNPJ de

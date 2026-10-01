@@ -78,20 +78,24 @@ busca volta à mesma categoria e o "Resumo revisado" sai idêntico. No legado,
 a IA reescreve o Resumo inteiro com o que foi pedido (categoria, valor,
 vencimento, forma…) e o lançamento usa o Resumo revisado.
 
-- [ ] **6.1** `/resolver`: a IA lê o pedido e escolhe a categoria no plano de
+- [x] **6.1** `financeiro-tria` `45bdc15` · `f457f7c` — `/resolver`: a IA lê o pedido e escolhe a categoria no plano de
   contas real (só despesa, ativa, não totalizadora), código validado no Omie.
-  Sem IA ou sem confiança, o pedido continua indo à busca (RAG).
-- [ ] **6.2** `/resolver`: o pedido que muda outros dados (valor, vencimento,
+  Sem IA ou sem confiança, o pedido continua indo à busca (RAG). A Categoria
+  pedida continua valendo nas publicações seguintes enquanto o Campo
+  "Categoria de pagamento" não muda (`codigoCategoriaPedidoAnterior`).
+- [x] **6.2** `financeiro-tria` `45bdc15` — `/resolver`: o pedido que muda outros dados (valor, vencimento,
   dado de pagamento, descrição) volta como mudanças estruturadas e validadas.
-- [ ] **6.3** Ponte: aplica essas mudanças nos Campos da conta, como o
+- [x] **6.3** `3b24c8f` + ponte — Ponte: aplica essas mudanças nos Campos da conta, como o
   Agente, a pedido de quem pediu (com Registro de Atividade), e republica o
   Resumo com "O que mudou". A Conferência nova continua obrigatória: a pessoa
   confere o que a IA entendeu antes de qualquer lançamento.
-- [ ] **6.4** Pedido que não muda nada: o Agente responde no fio o que não
+- [x] **6.4** `3b24c8f` — Pedido que não muda nada: o Agente responde no fio o que não
   entendeu e como pedir, em vez de um "revisado" idêntico.
-- [ ] **6.5** As Observações do Resumo revisado registram o pedido atendido.
+- [x] **6.5** `3b24c8f` — As Observações do Resumo revisado registram o pedido atendido.
 - [ ] **6.6** Contrato `contas-a-pagar-v1` aditivo nos dois repositórios,
-  testes e uma prova real.
+  testes e uma prova real. Contrato v1.3 e testes feitos (cópia igual por
+  hash); falta a prova real: um pedido de ajuste de verdade, com a IA real,
+  na jornada — exige o `automation/` com a chave da OpenAI no ar.
 
 ## Fluxo 1 — o Formulário público editável (pedido 1)
 
@@ -141,7 +145,7 @@ o seletor mostra Campos duplicados com o mesmo nome.
 
 ## Outros erros achados nesta rodada
 
-- [ ] **E1** A conta nova abre no popup com o id calculado no navegador; se a
+- [x] **E1** `5d4b157` — A conta nova abre no popup com o id calculado no navegador; se a
   ponte grava no mesmo instante, o id do servidor é outro e o popup mostra
   "Conta não encontrada" (prova: `cmt_tark9u`/`tsk_tarka0`). A criação passa a
   abrir com o id confirmado pelo servidor.

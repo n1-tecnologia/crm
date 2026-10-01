@@ -106,6 +106,7 @@ import { runScheduledAutomations } from "@n1/dominio/operations/automations";
 import {
   CP,
   TEXTOS_DA_CONFERENCIA,
+  codigoDaCategoriaPedida,
   avisadoDaConferencia,
   avisadoDoLancamento,
   buildResumoDePagamento,
@@ -136,6 +137,7 @@ import { executar } from "../persistencia/unidade-de-trabalho";
 import { hidratar } from "../persistencia/repositorio";
 import { sanitizarErro } from "../persistencia/outbox-worker";
 import { LIMITE_DE_ANEXOS, anexosDaConta, type AssinarDownload } from "./anexos-da-conta";
+import { revisaoDoCorpo } from "./revisao-do-resolver";
 import type { RodarAgenda } from "./scheduler-worker";
 
 /* ─────────────────────────── Funções puras ─────────────────────────── */
@@ -259,6 +261,12 @@ export function chaveDeIdempotencia(taskId: string): string {
  * transitória.
  */
 export const TIMEOUT_RESOLVER_MS = 10_000;
+/**
+ * Checklist 6.1/6.2 — com pedido de ajuste, o `/resolver` lê o plano de
+ * contas e pergunta à IA (até 12 s lá) antes do resto: 10 s cortariam a
+ * leitura no meio, e o corte vira falha transitória a cada ciclo.
+ */
+export const TIMEOUT_RESOLVER_COM_PEDIDO_MS = 30_000;
 export const TIMEOUT_LANCAR_MS = 60_000;
 
 /** D6-12 — quanto a ponte espera depois de uma cutucada antes de rodar o ciclo (coalesce as cutucadas desse intervalo). */
@@ -548,6 +556,8 @@ export interface OpcoesDaPonte {
   readonly fetchImpl?: typeof fetch;
   /** Prazo de `/resolver`, em ms. Padrão `TIMEOUT_RESOLVER_MS` (10 s). */
   readonly timeoutResolverMs?: number;
+  /** Prazo de `/resolver` com pedido de ajuste, em ms. Padrão `TIMEOUT_RESOLVER_COM_PEDIDO_MS` (30 s). */
+  readonly timeoutResolverComPedidoMs?: number;
   /** Prazo de `/lancar`, em ms. Padrão `TIMEOUT_LANCAR_MS` (60 s). */
   readonly timeoutLancarMs?: number;
   /** Intervalo entre ciclos, em ms. Padrão 15 min. */
@@ -1101,6 +1111,7 @@ const CAMINHO_LANCAR = "/v1/integrations/contas-a-pagar/lancar";
 export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
   const fetchImpl = opcoes.fetchImpl ?? fetch;
   const timeoutResolverMs = opcoes.timeoutResolverMs ?? TIMEOUT_RESOLVER_MS;
+  const timeoutResolverComPedidoMs = opcoes.timeoutResolverComPedidoMs ?? TIMEOUT_RESOLVER_COM_PEDIDO_MS;
   const timeoutLancarMs = opcoes.timeoutLancarMs ?? TIMEOUT_LANCAR_MS;
   const intervaloMs = opcoes.intervaloMs ?? 900_000;
   const atrasoDaCutucadaMs = opcoes.atrasoDaCutucadaMs ?? ATRASO_DA_CUTUCADA_MS;
@@ -1680,12 +1691,16 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
           }
           const pedido = conf.estado === "ajuste-pedido" ? conf.conferencia?.decisionReason?.trim() || undefined : undefined;
           const codigoConfirmado = pedido ? codigoNoPedido(pedido) : undefined;
+          // Checklist 6.1 — a Categoria que um pedido anterior escolheu vale enquanto o Campo não muda;
+          // o `/resolver` a usa abaixo do código citado e da escolha da leitura deste pedido.
+          const codigoAnterior = codigoConfirmado ? undefined : codigoDaCategoriaPedida(state, task);
           const corpo = {
             ...base,
             ...(pedido ? { pedidoDeRevisao: pedido.slice(0, TAMANHO_MAXIMO_DO_PEDIDO) } : {}),
             ...(codigoConfirmado ? { codigoCategoriaConfirmado: codigoConfirmado } : {}),
+            ...(codigoAnterior ? { codigoCategoriaPedidoAnterior: codigoAnterior } : {}),
           };
-          const resposta = await chamar(CAMINHO_RESOLVER, corpo, { timeoutMs: timeoutResolverMs });
+          const resposta = await chamar(CAMINHO_RESOLVER, corpo, { timeoutMs: pedido ? timeoutResolverComPedidoMs : timeoutResolverMs });
           if (!resposta.ok) {
             if (resposta.permanente) {
               await parar("recusa", textoDaRecusaDoResumo(resposta.motivo, resposta.code), `recusa permanente (${resposta.code}).`, "publicaria");
@@ -1697,6 +1712,14 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
             await parar("recusa", textoDaRecusaDoResumo("o Financeiro respondeu sem o de-para da conta", "RESPOSTA_INVALIDA"), "resposta sem de-para (RESPOSTA_INVALIDA).", "publicaria");
             return;
           }
+          // Checklist 6.2 — a leitura do pedido vira escrita nos Campos: inválida, nada se aplica.
+          const lida = revisaoDoCorpo(resposta.corpo);
+          if (!lida.ok) {
+            await parar("recusa", textoDaRecusaDoResumo("o Financeiro respondeu com uma leitura do pedido fora do contrato", "RESPOSTA_INVALIDA"), "revisao fora do contrato (RESPOSTA_INVALIDA).", "publicaria");
+            return;
+          }
+          const revisao = pedido ? lida.revisao : undefined;
+          const categoriaPedida = Boolean(codigoConfirmado || codigoAnterior || revisao?.categoria);
           if (!escreve) {
             // D3-03 — em ensaio, só `/resolver` e o log do que publicaria. A
             // parada evita pedir o mesmo de-para a cada ciclo.
@@ -1741,6 +1764,10 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
               impressaoEsperada: conf.impressaoAtual,
               ...(conf.estado === "ajuste-pedido" && conf.conferencia ? { conferenciaRejeitadaId: conf.conferencia.id } : {}),
               ...(pedido ? { pedidoDeRevisao: pedido } : {}),
+              // Checklist 6.3/6.4 — o que a leitura do pedido muda, e o que ela não entendeu.
+              ...(revisao ? { mudancasDoPedido: revisao.mudancas } : {}),
+              ...(revisao?.naoEntendido ? { pedidoNaoEntendido: revisao.naoEntendido } : {}),
+              ...(categoriaPedida ? { categoriaPedida: true as const } : {}),
               ...(conf.estado === "desatualizada" ? { motivo: "dados-mudaram" as const } : {}),
               // Na dispensa (D6-04), o aprovador é o próprio Membro de serviço —
               // é ele quem decide logo abaixo, e nenhuma pessoa é chamada a conferir.

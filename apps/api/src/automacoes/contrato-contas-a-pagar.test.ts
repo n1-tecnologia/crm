@@ -26,6 +26,7 @@ import { changeTaskStatus } from "@n1/dominio/operations/tasks";
 import type { DataState, Task } from "@n1/dominio";
 import { criarServidorFalso, type ServidorFalso } from "../testes/servidor-falso";
 import { classificar, criarPonteDoAgente, motivoDoEnvelope } from "./invocar-agente";
+import { revisaoDoCorpo } from "./revisao-do-resolver";
 
 interface Exemplo {
   readonly descricao: string;
@@ -310,6 +311,41 @@ describe("contrato v1.1 (aditiva, Plan 06-02) — os exemplos novos têm o que a
       }
       if (!relatado.ok) expect(CODIGOS_DO_ANEXO).toContain(relatado.erro);
     });
+  });
+});
+
+describe("contrato v1.3 (aditiva, checklist 6.1/6.2) — a leitura do pedido de ajuste", () => {
+  const V13 = ["resolver.sucesso-pedido-interpretado.json", "resolver.sucesso-pedido-nao-entendido.json", "resolver.sucesso-categoria-pedida-antes.json"];
+
+  it("os exemplos v1.3 estão na pasta, e o caso sem IA (v1.1) continua lá", () => {
+    for (const arquivo of [...V13, "resolver.sucesso-pedido-de-revisao.json"]) expect(arquivos, arquivo).toContain(arquivo);
+  });
+
+  it("toda revisao dos exemplos é aceita pela ponte como está; quem não tem revisao segue sem ela", () => {
+    for (const arquivo of arquivos.filter((f) => f.startsWith("resolver.sucesso"))) {
+      const corpo = exemplo(arquivo).resposta.corpo;
+      const lida = revisaoDoCorpo(corpo);
+      expect(lida.ok, arquivo).toBe(true);
+      expect(lida.ok && lida.revisao, arquivo).toEqual("revisao" in corpo ? corpo.revisao : undefined);
+    }
+  });
+
+  it("o pedido nunca volta na resposta", () => {
+    for (const arquivo of V13) {
+      const pedido = (exemplo(arquivo).requisicao.body as { pedidoDeRevisao?: string }).pedidoDeRevisao;
+      if (pedido) expect(JSON.stringify(exemplo(arquivo).resposta.corpo), arquivo).not.toContain(pedido);
+    }
+  });
+
+  it("a Categoria da leitura e a do pedido anterior voltam resolvidas com similaridade 1, como o código conferido", () => {
+    const interpretado = exemplo("resolver.sucesso-pedido-interpretado.json").resposta.corpo as {
+      dePara: { categoriaPorCampo: Record<string, Record<string, unknown>> };
+      revisao: { categoria: { codigo: string } };
+    };
+    expect(interpretado.dePara.categoriaPorCampo[CATEGORIA_DOS_EXEMPLOS]).toMatchObject({ veredito: "resolvida", codigo: interpretado.revisao.categoria.codigo, similaridade: 1 });
+    const antes = exemplo("resolver.sucesso-categoria-pedida-antes.json");
+    const codigo = (antes.requisicao.body as { codigoCategoriaPedidoAnterior: string }).codigoCategoriaPedidoAnterior;
+    expect((antes.resposta.corpo as typeof interpretado).dePara.categoriaPorCampo[CATEGORIA_DOS_EXEMPLOS]).toMatchObject({ veredito: "resolvida", codigo, similaridade: 1 });
   });
 });
 

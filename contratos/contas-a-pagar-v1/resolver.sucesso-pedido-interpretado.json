@@ -1,0 +1,49 @@
+{
+  "descricao": "v1.3: o pedido de ajuste lido pela IA. A Categoria escolhida entre as do plano de contas que servem a uma Conta a pagar (despesa, ativa, não totalizadora) é validada como um código conferido — o RAG não é chamado — e as mudanças nos dados da conta voltam em revisao.mudancas, já saneadas, para a plataforma aplicar. O texto do pedido não volta na resposta.",
+  "requisicao": {
+    "metodo": "POST",
+    "caminho": "/v1/integrations/contas-a-pagar/resolver",
+    "headers": {
+      "authorization": "Bearer token-de-exemplo-nunca-real",
+      "x-request-id": "req-exemplo-resolver-pedido-interpretado"
+    },
+    "body": {
+      "taskId": "tsk_00001a",
+      "centroDeCusto": "tria",
+      "categoriaDePagamento": "Impostos",
+      "titulo": "DAS — Simples Nacional",
+      "descricao": "Imposto mensal",
+      "tagDaConta": "conta tria",
+      "pedidoDeRevisao": "é tarifa do banco, de mil duzentos e cinquenta reais, vencendo dia vinte"
+    }
+  },
+  "resposta": {
+    "status": 200,
+    "corpo": {
+      "dePara": {
+        "contaPorTag": {
+          "conta tria": "TRIA COMPANY - ITAU"
+        },
+        "categoriaPorCampo": {
+          "Impostos": {
+            "veredito": "resolvida",
+            "nome": "Tarifas bancárias",
+            "codigo": "2.08.05",
+            "similaridade": 1
+          }
+        },
+        "origem": "omie"
+      },
+      "revisao": {
+        "categoria": {
+          "codigo": "2.08.05",
+          "nome": "Tarifas bancárias"
+        },
+        "mudancas": {
+          "valorCentavos": 125000,
+          "vencimento": "2026-10-20"
+        }
+      }
+    }
+  }
+}

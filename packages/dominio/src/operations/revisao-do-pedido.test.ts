@@ -14,7 +14,8 @@ import type { DataState } from "../state";
 import type { ApprovalRequest, Task } from "../types";
 import { decideProcessApproval } from "./ai";
 import { CP, conferenciaDoResumo, impressaoDeLancamento, publicarResumoParaConferencia, type DeParaDeLancamento } from "./financeiro";
-import { fieldValue } from "./financeiro-base";
+import { codigoDaCategoriaPedida, fieldValue } from "./financeiro-base";
+import { setTaskFieldValue } from "./tasks";
 import { COMO_PEDIR_AJUSTE } from "./financeiro-textos";
 
 let state: DataState;
@@ -170,5 +171,23 @@ describe("6.1 — a Categoria pedida", () => {
     if (!r.ok) throw new Error(r.error);
     const origem = r.value.conferencia.origin;
     expect(origem.kind === "processTask" && origem.processStep === "resumo" && "pedida" in origem.lancamento).toBe(false);
+  });
+});
+
+describe("6.1 — a Categoria pedida continua valendo enquanto o Campo não muda", () => {
+  it("vale depois da revisão; some quando alguém muda o Campo Categoria; não existe sem pedido", () => {
+    expect(codigoDaCategoriaPedida(state, das())).toBeUndefined();
+    const rejeitada = pedirAjuste("categoria 2.02.98");
+    expect(codigoDaCategoriaPedida(state, das())).toBeUndefined();
+
+    const r = revisar(rejeitada, { dePara: DE_PARA_PEDIDO, categoriaPedida: true });
+    if (!r.ok) throw new Error(r.error);
+    expect(codigoDaCategoriaPedida(state, das())).toBe("2.02.98");
+
+    const outra = state.fieldDefinitions.find((d) => d.id === CP.fields.categoria)?.options?.find((o) => o !== "Impostos");
+    if (!outra) throw new Error("o Campo Categoria sem outra opção");
+    const mudou = setTaskFieldValue(state, CP.financeiroId, das().id, CP.fields.categoria, outra);
+    if (!mudou.ok) throw new Error(mudou.error);
+    expect(codigoDaCategoriaPedida(state, das())).toBeUndefined();
   });
 });

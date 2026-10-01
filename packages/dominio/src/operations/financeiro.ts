@@ -56,6 +56,7 @@ export {
   REGISTRO_LANCAMENTO_EM_CURSO,
   REGISTRO_LANCAMENTO_FALHOU,
   REGISTRO_LANCAMENTO_INTERROMPIDO,
+  codigoDaCategoriaPedida,
   conferenciaMaisRecente,
   dispensaDaConferencia,
   dispensaSemManual,
@@ -69,10 +70,13 @@ export {
   FORMAS_CANONICAS_DO_FIO,
   PREFIXOS_DO_PROCESSO,
   TEXTOS_DA_CONFERENCIA,
+  COMO_PEDIR_AJUSTE,
   type AnexoDoLancamento,
   type CampoDivergente,
   type DadosDoLancado,
+  type DetalheDaRevisao,
 } from "./financeiro-textos";
+export { FORMAS_DO_PEDIDO, type FormaDoPedido, type MudancasDoPedido } from "./revisao-do-pedido";
 
 const now = (): string => new Date().toISOString();
 

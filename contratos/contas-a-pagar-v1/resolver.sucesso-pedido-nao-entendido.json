@@ -1,0 +1,43 @@
+{
+  "descricao": "v1.3: a IA leu o pedido e não achou o que mudar. Sem Categoria na leitura, o pedido segue para o RAG como na v1.1; revisao.mudancas vem vazio e revisao.naoEntendido diz o que faltou, para a plataforma responder no fio em vez de publicar um Resumo revisado idêntico.",
+  "requisicao": {
+    "metodo": "POST",
+    "caminho": "/v1/integrations/contas-a-pagar/resolver",
+    "headers": {
+      "authorization": "Bearer token-de-exemplo-nunca-real",
+      "x-request-id": "req-exemplo-resolver-pedido-nao-entendido"
+    },
+    "body": {
+      "taskId": "tsk_00001a",
+      "centroDeCusto": "tria",
+      "categoriaDePagamento": "Impostos",
+      "titulo": "DAS — Simples Nacional",
+      "descricao": "Imposto mensal",
+      "tagDaConta": "conta tria",
+      "pedidoDeRevisao": "dá uma olhada de novo nisso"
+    }
+  },
+  "resposta": {
+    "status": 200,
+    "corpo": {
+      "dePara": {
+        "contaPorTag": {
+          "conta tria": "TRIA COMPANY - ITAU"
+        },
+        "categoriaPorCampo": {
+          "Impostos": {
+            "veredito": "resolvida",
+            "nome": "Impostos e taxas",
+            "codigo": "2.06.01",
+            "similaridade": 0.91
+          }
+        },
+        "origem": "omie"
+      },
+      "revisao": {
+        "mudancas": {},
+        "naoEntendido": "O pedido não diz qual campo mudar nem o valor novo."
+      }
+    }
+  }
+}
