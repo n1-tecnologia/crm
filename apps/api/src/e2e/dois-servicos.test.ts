@@ -116,15 +116,6 @@ const formulario = createForm(semente, MEMBRO_ADMIN.id, LISTA_ID, {
     { label: "Título", required: true, target: { kind: "title" } },
     { label: "Centro de Custo", required: true, target: { kind: "field", definitionId: "fld_sp_a_centro_de_custo" } },
     { label: "Empresa", required: true, target: { kind: "field", definitionId: "fld_sp_c_empresa" } },
-    // `fd_cp_centro` ("Centro de Custo" de Contas a pagar) é definido no
-    // Espaço ("spc_gestao", `required: true`) — B25: Campos acumulam pelo
-    // caminho do contêiner, então TODA Lista do Espaço herda esta
-    // obrigatoriedade, Solicitações inclusive. `validateQuestions` exige uma
-    // pergunta obrigatória para CADA Campo obrigatório do config efetivo,
-    // não só os do catálogo §4 da Solicitação — sem esta pergunta, `createForm`
-    // recusa com "O Campo 'Centro de Custo' é obrigatório nesta Lista" (o
-    // OUTRO Centro de Custo, de `fd_cp_centro`, não `fld_sp_a_centro_de_custo`).
-    { label: "Centro de Custo (Contas a pagar, herdado do Espaço)", required: true, target: { kind: "field", definitionId: "fd_cp_centro" } },
   ],
 });
 if (!formulario.ok) throw new Error(`createForm falhou no setup do teste: ${formulario.error}`);
@@ -132,8 +123,7 @@ const FORM_SECRET = formulario.value.secret;
 const PERGUNTA_CUSTO = formulario.value.questions.find((q) => q.target.kind === "field" && q.target.definitionId === "fld_sp_a_centro_de_custo");
 const PERGUNTA_EMPRESA = formulario.value.questions.find((q) => q.target.kind === "field" && q.target.definitionId === "fld_sp_c_empresa");
 const PERGUNTA_TITULO = formulario.value.questions.find((q) => q.target.kind === "title");
-const PERGUNTA_CUSTO_CP = formulario.value.questions.find((q) => q.target.kind === "field" && q.target.definitionId === "fd_cp_centro");
-if (!PERGUNTA_CUSTO || !PERGUNTA_EMPRESA || !PERGUNTA_TITULO || !PERGUNTA_CUSTO_CP) throw new Error("perguntas do Formulário de teste ficaram incompletas");
+if (!PERGUNTA_CUSTO || !PERGUNTA_EMPRESA || !PERGUNTA_TITULO) throw new Error("perguntas do Formulário de teste ficaram incompletas");
 
 const USR_ADMIN = "usr_e2e_admin";
 
@@ -322,7 +312,6 @@ d("E2E entre processos — Fastify (plataforma) + Express (automation/), submiss
           [PERGUNTA_TITULO!.id]: titulo,
           [PERGUNTA_CUSTO!.id]: "TRIA",
           [PERGUNTA_EMPRESA!.id]: "Tria Company",
-          [PERGUNTA_CUSTO_CP!.id]: "TRIA",
         },
       },
     });

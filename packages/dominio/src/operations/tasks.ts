@@ -1507,7 +1507,14 @@ export function setTaskFieldValue(
         // Uma lista de ids só REMOVE: todo id tem de já estar neste Campo. Um
         // arquivo novo entra pelo envio ao Storage (`anexarArquivoEnviado`),
         // que confere o objeto no servidor — nunca por um id escolhido aqui.
+        // O nome solto de antes (texto) continua aceito; um texto que é o id de um Arquivo, não:
+        // seria um Arquivo de outra Tarefa ou de outro Formulário escolhido à mão, sem passar
+        // pelo Storage — e depois a lista "só remove" o aceitaria como já presente (revisão de código).
         if (typeof value === "string") {
+          const atual = task.fieldValues.find((v) => v.definitionId === definitionId)?.value;
+          if (value !== atual && state.files.some((f) => f.id === value.trim())) {
+            return fail(`Para pôr um arquivo novo em ${definition.name}, envie o arquivo pela tela.`, definitionId);
+          }
           gravar = value;
           break;
         }

@@ -101,6 +101,17 @@ function campo(estado: DataState, t: Task, definitionId: string, valor: string |
   if (!r.ok) throw new Error(r.error);
 }
 
+/**
+ * Liga um Arquivo já confirmado a um Campo de arquivo, como o envio ao
+ * Storage faz (`anexarArquivoEnviado`): o id nunca entra por
+ * `setTaskFieldValue` em texto (revisão de código do 7.3).
+ */
+function ligarArquivo(t: Task, definitionId: string, fileId: string): void {
+  const existente = t.fieldValues.find((v) => v.definitionId === definitionId);
+  if (existente) existente.value = [fileId];
+  else t.fieldValues.push({ definitionId, value: [fileId], state: "ativo" });
+}
+
 /** Uma conta importada do ClickUp já em "em lançamento omie" — cópia de `importarNoStatus` de `invocar-agente.test.ts`. */
 function importarEmLancamento(estado: DataState): Task {
   const r = importarContaAPagarHistorica(estado, MARYANE, {
@@ -236,7 +247,7 @@ describe("crm:WR-02 — a chave vê arquivos, Manual e anexos", () => {
     expect(servidor.recebidas).toHaveLength(0);
 
     const boleto = arquivo(estado, "fil_boleto_novo", "boleto-outubro.pdf");
-    campo(estado, das, F.boleto, boleto.id);
+    ligarArquivo(das, F.boleto, boleto.id);
     expect(conferenciaDoResumo(estado, das).estado).toBe("conferida"); // o arquivo não está na impressão
     servidor.enfileirar(LANCADO_200);
     await ponte.processarContas();
@@ -304,7 +315,7 @@ describe("crm:WR-07 — o fio é a memória", () => {
     expect(avisos()).toHaveLength(1);
 
     const anexo = arquivo(estado, "fil_anexo_nf", "nf.pdf");
-    campo(estado, das, F.anexo, anexo.id); // fora da impressão
+    ligarArquivo(das, F.anexo, anexo.id); // fora da impressão
     expect(conferenciaDoResumo(estado, das).estado).toBe("conferida");
     await b.processarContas();
     expect(avisos()).toHaveLength(1);

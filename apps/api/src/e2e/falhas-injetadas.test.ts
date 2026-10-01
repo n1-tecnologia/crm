@@ -77,8 +77,6 @@ const formulario = createForm(semente, MEMBRO_ADMIN.id, LISTA_ID, {
     { label: "Título", required: true, target: { kind: "title" } },
     { label: "Centro de Custo", required: true, target: { kind: "field", definitionId: "fld_sp_a_centro_de_custo" } },
     { label: "Empresa", required: true, target: { kind: "field", definitionId: "fld_sp_c_empresa" } },
-    // Ver dois-servicos.test.ts — `fd_cp_centro` é herdado do Espaço (B25).
-    { label: "Centro de Custo (Contas a pagar, herdado do Espaço)", required: true, target: { kind: "field", definitionId: "fd_cp_centro" } },
   ],
 });
 if (!formulario.ok) throw new Error(`createForm falhou no setup do teste: ${formulario.error}`);
@@ -86,8 +84,7 @@ const FORM_SECRET = formulario.value.secret;
 const PERGUNTA_CUSTO = formulario.value.questions.find((q) => q.target.kind === "field" && q.target.definitionId === "fld_sp_a_centro_de_custo");
 const PERGUNTA_EMPRESA = formulario.value.questions.find((q) => q.target.kind === "field" && q.target.definitionId === "fld_sp_c_empresa");
 const PERGUNTA_TITULO = formulario.value.questions.find((q) => q.target.kind === "title");
-const PERGUNTA_CUSTO_CP = formulario.value.questions.find((q) => q.target.kind === "field" && q.target.definitionId === "fd_cp_centro");
-if (!PERGUNTA_CUSTO || !PERGUNTA_EMPRESA || !PERGUNTA_TITULO || !PERGUNTA_CUSTO_CP) {
+if (!PERGUNTA_CUSTO || !PERGUNTA_EMPRESA || !PERGUNTA_TITULO) {
   throw new Error("perguntas do Formulário de teste ficaram incompletas");
 }
 
@@ -205,7 +202,6 @@ d("Fault-Injection Matrix (02-VALIDATION.md) — no contexto entre processos", (
           [PERGUNTA_TITULO!.id]: titulo,
           [PERGUNTA_CUSTO!.id]: "TRIA",
           [PERGUNTA_EMPRESA!.id]: "Tria Company",
-          [PERGUNTA_CUSTO_CP!.id]: "TRIA",
         },
       },
     });
@@ -293,7 +289,6 @@ d("Fault-Injection Matrix (02-VALIDATION.md) — no contexto entre processos", (
           [PERGUNTA_TITULO!.id]: "Falha injetada (a) — segunda tentativa, mesma sessão",
           [PERGUNTA_CUSTO!.id]: "TRIA",
           [PERGUNTA_EMPRESA!.id]: "Tria Company",
-          [PERGUNTA_CUSTO_CP!.id]: "TRIA",
         },
       },
     });

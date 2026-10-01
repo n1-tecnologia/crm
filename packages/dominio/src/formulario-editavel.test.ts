@@ -15,7 +15,7 @@ import { garantirFormularioDaSolicitacao, NOME_DO_FORMULARIO_DA_SOLICITACAO } fr
 import { usarCampoHerdado } from "./operations/configuration";
 import { CP } from "./operations/financeiro";
 import { removeMember } from "./operations/members";
-import { createForm, formBySecret, perguntaVisivel, submitForm, updateForm, type FormInput } from "./operations/scale";
+import { createForm, formBySecret, formOutdatedReason, perguntaVisivel, submitForm, updateForm, type FormInput } from "./operations/scale";
 import { CATALOGO_SOLICITACAO_DE_PAGAMENTO } from "./solicitacao-de-pagamento";
 import { evoluirConfiguracaoDeSolicitacoes, LISTA_ID } from "./solicitacao-de-pagamento-evolver";
 import type { DataState } from "./state";
@@ -242,5 +242,27 @@ describe("1.6 — remover o Membro dono não mata o link", () => {
     if (!removido.ok) throw new Error(removido.error);
     expect(r.value.form.ownerMemberId).toBe(sucessor.id);
     expect(formBySecret(state, segredo)?.id).toBe(r.value.form.id);
+  });
+});
+
+describe("revisão de código — Campo herdado e condição quebrada", () => {
+  it("quem administra só a Lista não tira um Campo que nasce no Espaço", () => {
+    const so_lista = membro("mem_admin_so_da_lista", "role_mem");
+    const fora = state.lists.find((l) => l.id === LISTA_ID)!.camposHerdadosFora ?? [];
+    const valor = fora.find((id) => id === CP.fields.valor)!;
+    const volta = usarCampoHerdado(state, MARYANE, "list", LISTA_ID, valor, true);
+    if (!volta.ok) throw new Error(volta.error);
+    expect(usarCampoHerdado(state, so_lista.id, "list", LISTA_ID, valor, false)).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("Só quem configura onde o Campo “Valor” nasce"),
+    });
+  });
+
+  it("a condição que aponta para uma opção que saiu deixa o Formulário desatualizado (o link recusa)", () => {
+    const form = formularioDaSolicitacao();
+    expect(formOutdatedReason(state, form)).toBeUndefined();
+    const forma = state.fieldDefinitions.find((d) => d.id === campoSol("Forma de pagamento"))!;
+    (forma as { options?: readonly string[] }).options = (forma.options ?? []).filter((o) => o !== "Boleto");
+    expect(formOutdatedReason(state, form)).toMatch(/A condição da pergunta “Código de barras” aponta para uma resposta que não existe mais em “Forma de pagamento”/);
   });
 });

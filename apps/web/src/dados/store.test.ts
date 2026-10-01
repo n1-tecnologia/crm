@@ -321,3 +321,25 @@ describe("verificarRevisao() — a tela vê o que outro processo gravou (checkli
     expect(await store.getState().verificarRevisao()).toBe(false);
   });
 });
+
+describe("revisão de código — corridas e falhas do envio", () => {
+  it("(q) uma re-hidratação que chega depois com revisão MENOR não sobrescreve o estado mais novo", async () => {
+    const novo = { marcador: "revisão 12" } as unknown as DataState;
+    const velho = { marcador: "revisão 9" } as unknown as DataState;
+    transporte.hidratarMock.mockResolvedValueOnce({ data: novo, revisao: 12, ordens: {}, memberId: "mem_maryane" });
+    await store.getState().rehidratar();
+    transporte.hidratarMock.mockResolvedValueOnce({ data: velho, revisao: 9, ordens: {}, memberId: "mem_maryane" });
+    await store.getState().rehidratar();
+    expect(store.getState().data).toBe(novo);
+    expect(store.getState().revisaoDoServidor).toBe(12);
+  });
+
+  it("(r) um envio que quebra (corpo estranho) resolve `confirmado` como recusa — a tela nunca fica esperando", async () => {
+    transporte.gravarMock.mockRejectedValueOnce(new SyntaxError("Unexpected token < in JSON"));
+    const { confirmado } = store.getState().runConfirmado((d, m) => createTask(d, m, { listId: CP.listId, title: "Conta — TESTE AUTOMATIZADO revisão" }));
+    const r = await confirmado;
+    expect(r.ok).toBe(false);
+    expect(store.getState().pendentes).toBe(0);
+    expect(store.getState().lastResult?.ok).toBe(false);
+  });
+});

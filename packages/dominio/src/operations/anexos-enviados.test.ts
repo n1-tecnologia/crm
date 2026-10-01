@@ -139,3 +139,13 @@ describe("setTaskFieldValue — Campo de arquivo", () => {
     expect(valorDoAnexo()).toBe("nota.pdf");
   });
 });
+
+describe("setTaskFieldValue — o id de um Arquivo em texto (revisão de código)", () => {
+  it("um texto que é o id de um Arquivo de outro lugar é recusado, e a lista 'só remove' não o aceita depois", () => {
+    const outro = anexarArquivoEnviado(state, FINANCEIRO, "tsk_cp_das", pdf({ objectKey: "workspace/ws_n1/forms/tarefa-x/9/9" }), { tipo: "anexo" });
+    if (!outro.ok) throw new Error(outro.error);
+    const idAlheio = outro.value.fileId;
+    expect(setTaskFieldValue(state, FINANCEIRO, TAREFA, CP.fields.boleto, idAlheio)).toMatchObject({ ok: false, error: expect.stringContaining("envie o arquivo pela tela") });
+    expect(setTaskFieldValue(state, FINANCEIRO, TAREFA, CP.fields.boleto, [idAlheio])).toMatchObject({ ok: false });
+  });
+});

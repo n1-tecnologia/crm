@@ -88,7 +88,7 @@ describe("esquemas-de-argumentos — a forma dos args, não a regra", () => {
     expect(ESQUEMAS.runScheduledAutomations.safeParse(["l1", "2026-01-01"]).success).toBe(false);
   });
 
-  it("(h) nenhuma operação cai em fallback — esquemaDeArgumentos(nome) é o próprio ESQUEMAS[nome] para todas as 266", () => {
+  it("(h) nenhuma operação cai em fallback — esquemaDeArgumentos(nome) é o próprio ESQUEMAS[nome] para todas as 267", () => {
     const esquemasPorNome = ESQUEMAS as Record<string, unknown>;
     for (const nome of Object.keys(OPERACOES)) {
       expect(esquemaDeArgumentos(nome as NomeDeOperacao)).toBe(esquemasPorNome[nome]);
@@ -100,11 +100,11 @@ describe("esquemas-de-argumentos — a forma dos args, não a regra", () => {
     expect(esquemaDeArgumentos("updateTask")).toBe(ESQUEMAS.updateTask as unknown);
   });
 
-  it("(j) ESQUEMAS cobre exatamente OPERACOES — mesmas chaves, 266, todas nomes de operação válidos", () => {
+  it("(j) ESQUEMAS cobre exatamente OPERACOES — mesmas chaves, 267, todas nomes de operação válidos", () => {
     const chaves = Object.keys(ESQUEMAS);
     expect(chaves.sort()).toEqual(Object.keys(OPERACOES).sort());
-    // 132 + solicitarAprovacao + decideProcessApproval (Plan 02-04, D-06/D-09) + 65 de Ferramentas (notas, captacao, comunidades, grupos, flows) + iniciarConversa + converterSolicitacaoEmContaAPagar (Plan 03-06, D3-08) + alterarStatusEmLote (Plan 03-12, PAG-05) − 5 de Metas (removidas) = 197; +67 do frontend do main, 2026-09-25 (canais, tarefas-conversacionais, updateCompany/addCompanyNote e a IA: agentes, editor de Automação, conhecimento, habilidades, integrações) = 264; + alterarEmailDoConvite e alterarPapelDoMembro (2026-09-28) = 266.
-    expect(chaves.length).toBe(266);
+    // 132 + solicitarAprovacao + decideProcessApproval (Plan 02-04, D-06/D-09) + 65 de Ferramentas (notas, captacao, comunidades, grupos, flows) + iniciarConversa + converterSolicitacaoEmContaAPagar (Plan 03-06, D3-08) + alterarStatusEmLote (Plan 03-12, PAG-05) − 5 de Metas (removidas) = 197; +67 do frontend do main, 2026-09-25 (canais, tarefas-conversacionais, updateCompany/addCompanyNote e a IA: agentes, editor de Automação, conhecimento, habilidades, integrações) = 264; + alterarEmailDoConvite e alterarPapelDoMembro (2026-09-28) = 266; + usarCampoHerdado (checklist 1.1, 2026-10-01) = 267.
+    expect(chaves.length).toBe(267);
     for (const chave of chaves) expect(ehNomeDeOperacao(chave)).toBe(true);
   });
 });

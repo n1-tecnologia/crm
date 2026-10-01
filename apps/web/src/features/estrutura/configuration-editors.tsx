@@ -703,6 +703,7 @@ export function FieldDefinitionsEditor({
 function CamposHerdados({ containerType, containerId, report }: { readonly containerType: ContainerType; readonly containerId: string; readonly report: Report }) {
   const run = useRun();
   const state = useData((data) => data);
+  const { memberId } = useSession();
   const bloqueio = useMayConfigure(containerType, containerId);
   const caminho = containerPath(state, containerType, containerId);
   const acima = caminho.slice(0, -1);
@@ -730,6 +731,8 @@ function CamposHerdados({ containerType, containerId, report }: { readonly conta
         {herdados.map((definition) => {
           const usado = usados.has(definition.id);
           const foraAcima = !usado && !foraAqui.has(definition.id);
+          // Só quem configura onde o Campo nasce o deixa de fora (a mesma regra do domínio).
+          const naOrigem = definition.definedAtType ? containerAdminRefusal(state, memberId, definition.definedAtType, definition.definedAtId!) : undefined;
           const rotulo = `herdado-${definition.id}`;
           return (
             <li key={definition.id} className="item-solto app-base flex flex-wrap items-center gap-2" data-estatico="true">
@@ -751,7 +754,7 @@ function CamposHerdados({ containerType, containerId, report }: { readonly conta
                     )
                   }
                   labelledBy={rotulo}
-                  disabled={bloqueio !== undefined || foraAcima}
+                  disabled={bloqueio !== undefined || naOrigem !== undefined || foraAcima}
                 />
                 <span id={rotulo} className="app-meta">
                   usar aqui

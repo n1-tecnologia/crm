@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildSeed } from "@n1/dominio/seed";
 import { CP, COMO_PEDIR_AJUSTE, conferenciaDoResumo } from "@n1/dominio/operations/financeiro";
-import { addTaskComment, updateTask } from "@n1/dominio/operations/tasks";
+import { addTaskComment, setTaskFieldValue, updateTask } from "@n1/dominio/operations/tasks";
 import type { DataState, Task } from "@n1/dominio";
 import { criarServidorFalso, type ServidorFalso } from "../testes/servidor-falso";
 import { criarPonteDoAgente } from "./invocar-agente";
@@ -83,7 +83,10 @@ describe("a ponte com a leitura do pedido (v1.3)", () => {
     return t;
   }
 
-  function ponte(estado: DataState, extras: { readonly timeoutResolverMs?: number } = {}) {
+  function ponte(
+    estado: DataState,
+    extras: { readonly timeoutResolverMs?: number; readonly decisoes?: { readonly integracaoManual: "sem-conferencia" | "nao-encosta" } } = {},
+  ) {
     return criarPonteDoAgente({
       destinoUrl: servidor.url,
       token: "tok-lancar",
@@ -204,6 +207,24 @@ describe("a ponte com a leitura do pedido (v1.3)", () => {
     expect(t.comments.filter((c) => c.content.startsWith("📋 RESUMO DE PAGAMENTO"))).toHaveLength(resumosAntes);
     expect(t.comments.some((c) => c.content.includes("RESPOSTA_INVALIDA"))).toBe(true);
     expect(conferenciaDoResumo(estado, t).estado).toBe("ajuste-pedido");
+  });
+
+  it("revisão de código: numa conta Manual (sem-conferencia), o Resumo que mudou a conta a pedido NÃO é dispensado — alguém confere", async () => {
+    servidor = await criarServidorFalso();
+    const estado = buildSeed();
+    const t = das(estado);
+    const p = ponte(estado, { decisoes: { integracaoManual: "sem-conferencia" } });
+    await pedirAjuste(estado, t, p, exemplo("resolver.sucesso-pedido-interpretado.json").requisicao.body.pedidoDeRevisao as string);
+    const manual = setTaskFieldValue(estado, MARYANE, t.id, CP.fields.integracaoManual, "Manual");
+    if (!manual.ok) throw new Error(manual.error);
+
+    servidor.enfileirar(responder("resolver.sucesso-pedido-interpretado.json"));
+    await p.processarContas();
+
+    expect(valorDe(t)).toBe(1250);
+    expect(ultimoResumo(t)).toContain("O que mudou:");
+    expect(conferenciaDoResumo(estado, t).estado).toBe("pendente");
+    expect(t.comments.some((c) => c.content.startsWith("✅ Resumo conferido por"))).toBe(false);
   });
 
   it("com pedido, o /resolver tem o prazo maior: a leitura da IA não é cortada pelo prazo de 10 s", async () => {

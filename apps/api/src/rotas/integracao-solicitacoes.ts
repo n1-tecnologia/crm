@@ -106,13 +106,20 @@ function tarefaDaLista(state: DataState, taskId: string): Task | undefined {
  * (aditivo, 2026-10-01), o comentário de roteamento é o pedido de aprovação:
  * na mesma operação abre a Solicitação de Aprovação do processo para esse
  * Membro, com o comentário como fio, e a Solicitação vai para "em aprovação".
- * Se a aprovação não abre, o comentário também não fica — a recusa volta
- * inteira (422), sem um "para aprovação" que ninguém pode decidir.
+ * O pedido de aprovação abre um fio: como resposta (`parentCommentId`), a
+ * classificação nunca acharia a aprovação (as respostas penduram no raiz) —
+ * recusa (422).
  *
- * Uma aprovação já pendente nesta Solicitação em OUTRO fio é recusada: a
- * classificação acha a aprovação pelo fio (`classificacoes.ts`), e as
- * respostas ao comentário novo nunca chegariam a ela.
+ * Revisão de código: se a aprovação não abre (aprovador inativo, Status
+ * "em aprovação" ausente) ou já há uma pendente noutro fio, o comentário de
+ * roteamento FICA, e o Agente responde no fio por quê. Recusar o comentário
+ * inteiro travava a fila do `automation/` para a Solicitação (4xx é
+ * permanente lá) e ninguém via o motivo onde trabalha.
  */
+export const AVISO_APROVACAO_NAO_ABERTA = "⚠️ A Solicitação de Aprovação não foi aberta:";
+export const AVISO_APROVACAO_EM_OUTRO_FIO =
+  "⚠️ Esta Solicitação já aguarda a aprovação pedida antes: a resposta vale no fio daquele pedido, não neste.";
+
 export function comentarPelaIntegracao(
   state: DataState,
   autorId: string,
@@ -122,6 +129,7 @@ export function comentarPelaIntegracao(
   const task = tarefaDaLista(state, taskId);
   if (!task) return fail("Tarefa não encontrada.");
   const aprovadorId = corpo.requestApprovalFromMemberId;
+  if (aprovadorId && corpo.parentCommentId) return fail("O pedido de aprovação abre um fio: ele não pode ser resposta a outro comentário.");
   const comentario = addTaskComment(state, autorId, taskId, {
     content: corpo.text,
     ...(corpo.parentCommentId ? { parentCommentId: corpo.parentCommentId } : {}),
@@ -129,10 +137,15 @@ export function comentarPelaIntegracao(
   });
   if (!comentario.ok || !aprovadorId) return comentario;
   const aprovacao = solicitarAprovacao(state, autorId, { taskId, approverMemberId: aprovadorId, threadCommentId: comentario.value.id });
-  if (!aprovacao.ok) return fail(aprovacao.error, aprovacao.field);
-  // `solicitarAprovacao` devolve a pendente que já existe; noutro fio, recusa.
-  if (aprovacao.value.origin.kind === "processTask" && aprovacao.value.origin.threadCommentId !== comentario.value.id) {
-    return fail("Esta Solicitação já aguarda uma aprovação em outro comentário; decida aquela antes de pedir outra.");
+  // `solicitarAprovacao` devolve a pendente que já existe — noutro fio, as respostas a este nunca a decidiriam.
+  const motivo = !aprovacao.ok
+    ? `${AVISO_APROVACAO_NAO_ABERTA} ${aprovacao.error}`
+    : aprovacao.value.origin.kind === "processTask" && aprovacao.value.origin.threadCommentId !== comentario.value.id
+      ? AVISO_APROVACAO_EM_OUTRO_FIO
+      : undefined;
+  if (motivo) {
+    const aviso = addTaskComment(state, autorId, taskId, { content: motivo, parentCommentId: comentario.value.id });
+    if (!aviso.ok) return fail(aviso.error);
   }
   return comentario;
 }

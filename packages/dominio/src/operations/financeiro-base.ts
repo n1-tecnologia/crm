@@ -98,20 +98,26 @@ export function conferenciaMaisRecente(state: DataState, taskId: Id): Conferenci
 /**
  * Checklist 6.1 — o código de Categoria que um pedido no fio escolheu e que
  * ainda vale: o da Conferência mais recente com `lancamento.pedida`, enquanto
- * o Campo "Categoria de pagamento" for o mesmo de quando ela foi aberta (a
- * impressão guardada nela). Mudou o Campo, a escolha de antes não vale mais —
+ * a Categoria de pagamento, a Empresa e o Centro de Custo forem os de quando
+ * ela foi aberta (a impressão guardada nela). Mudou o Campo, a escolha de antes não vale mais —
  * quem mudou o Campo é quem decide agora. Sem isso, `undefined`.
  */
 export function codigoDaCategoriaPedida(state: DataState, task: Task): string | undefined {
   const conferencia = conferenciaMaisRecente(state, task.id);
   if (!conferencia?.origin.lancamento.pedida) return undefined;
-  let categoriaDeEntao: unknown;
+  let deEntao: Record<string, unknown>;
   try {
-    categoriaDeEntao = (JSON.parse(conferencia.origin.impressao) as Record<string, unknown>).categoria;
+    deEntao = JSON.parse(conferencia.origin.impressao) as Record<string, unknown>;
   } catch {
     return undefined;
   }
-  return categoriaDeEntao === fieldValue(task, CP.fields.categoria) ? conferencia.origin.lancamento.codigo : undefined;
+  // Revisão de código: o mesmo código pode querer dizer outra coisa no plano de outra Empresa —
+  // a escolha vale enquanto Categoria, Empresa e Centro de Custo forem os de quando ela foi feita.
+  const iguais =
+    deEntao.categoria === fieldValue(task, CP.fields.categoria) &&
+    deEntao.empresa === fieldValue(task, CP.fields.empresa) &&
+    deEntao.centro === fieldValue(task, CP.fields.centroDeCusto);
+  return iguais ? conferencia.origin.lancamento.codigo : undefined;
 }
 
 /**

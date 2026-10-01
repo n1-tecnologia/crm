@@ -842,6 +842,10 @@ export function usarCampoHerdado(
   const caminho = containerPath(state, containerType, containerId);
   const herdado = definicao.definedAtId !== undefined && definicao.definedAtId !== containerId && caminho.some((n) => n.id === definicao.definedAtId);
   if (!herdado) return fail(`O Campo “${definicao.name}” não é herdado aqui: quem o define o arquiva.`);
+  // Revisão de código: tirar um Campo herdado desfaz uma decisão de quem o criou (inclusive "obrigatório"):
+  // só quem configura o nível onde ele nasce pode deixá-lo de fora abaixo.
+  const naOrigem = definicao.definedAtType ? mayConfigure(state, actingMemberId, definicao.definedAtType, definicao.definedAtId!) : undefined;
+  if (naOrigem) return fail(`Só quem configura onde o Campo “${definicao.name}” nasce pode deixá-lo de fora aqui.`);
 
   const fora = new Set(container.camposHerdadosFora ?? []);
   if (usar === !fora.has(definitionId)) return ok([...fora]);

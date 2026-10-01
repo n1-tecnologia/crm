@@ -420,6 +420,17 @@ export function formBySecret(state: DataState, secretValue: string): Form | unde
  */
 export function formOutdatedReason(state: DataState, form: Form): string | undefined {
   if (listaConversacional(state, form.listId)) return FORMULARIO_EM_LISTA_CONVERSACIONAL;
+  // Revisão de código: a condição que aponta para uma opção que saiu (ou um gatilho que deixou de ser
+  // de escolha) esconderia a pergunta para sempre, em silêncio.
+  for (const q of form.questions) {
+    if (!q.showWhen) continue;
+    const quando = q.showWhen;
+    const gatilho = form.questions.find((g) => g.id === quando.questionId);
+    const possiveis = gatilho ? valoresDoGatilho(state, gatilho) : undefined;
+    if (!gatilho || !possiveis || quando.values.some((v) => !possiveis.includes(v))) {
+      return `A condição da pergunta “${q.label}” aponta para uma resposta que não existe mais${gatilho ? ` em “${gatilho.label}”` : ""}.`;
+    }
+  }
   const config = effectiveListConfig(state, form.listId);
   for (const id of config?.fieldDefinitionIds ?? []) {
     const def = state.fieldDefinitions.find((d) => d.id === id);

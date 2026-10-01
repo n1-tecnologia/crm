@@ -170,6 +170,12 @@ export function criarStore(opcoes: {
             return { ok: false, error: resposta.erro };
           }
         }
+      } catch {
+        // Revisão de código: um corpo malformado ou um diff que não aplica não pode deixar
+        // `runConfirmado` rejeitado — a tela que espera a confirmação ficaria travada.
+        const erro = "Não foi possível confirmar a gravação. Recarregue a página para ver o estado atual.";
+        set((estado) => ({ lastResult: { ok: false, error: erro, at: Date.now() }, revision: estado.revision + 1 }));
+        return { ok: false, error: erro };
       } finally {
         set((estado) => ({ pendentes: estado.pendentes - 1 }));
       }
@@ -252,6 +258,9 @@ export function criarStore(opcoes: {
           set({ lastResult: { ok: false, error: r.erro, at: Date.now() } });
           return;
         }
+        // Revisão de código: uma re-hidratação que saiu antes e chegou depois traz um estado mais
+        // velho — a revisão só cresce, então a menor não sobrescreve a maior.
+        if (r.revisao < get().revisaoDoServidor) return;
         set((estado) => ({
           data: r.data,
           ordens: r.ordens,

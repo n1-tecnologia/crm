@@ -1756,7 +1756,10 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
             // Conferência normal, e a resposta no fio diz como seguir.
             const previa = buildResumoDePagamento(s, fresca, dePara);
             const semCodigo = lancamentoSemCodigo({ codigo: previa.codigo, veredito: previa.veredito });
-            const dispensa = manualAgora && !semCodigo;
+            // Revisão de código: o que a IA leu do pedido (Categoria ou dado da conta) alguém confere —
+            // mesmo numa conta Manual, o Resumo que mudou a pedido não se dispensa.
+            const lidoPelaIa = revisao !== undefined && (revisao.categoria !== undefined || Object.keys(revisao.mudancas).length > 0);
+            const dispensa = manualAgora && !semCodigo && !lidoPelaIa;
             const publicado = publicarResumoParaConferencia(s, atorId, task.id, {
               dePara,
               // crm2:WR-03 — sem decisão por comentário, nenhum texto pede "ok".

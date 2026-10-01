@@ -48,6 +48,14 @@ describe("dentroDaJanela", () => {
     expect(dentroDaJanela(relogio)).toBe(true);
   });
 
+  it("(d2) desligar é explícito: \"desligado\", \"off\", \"false\" ou \"0\"", () => {
+    const relogio = relogioFixo("2026-01-01T00:00:00.000Z");
+    for (const valor of ["desligado", "Desligada", "off", "false", "0"]) {
+      process.env[VARIAVEL] = valor;
+      expect(dentroDaJanela(relogio), valor).toBe(false);
+    }
+  });
+
   it("(e) variável com valor inválido -> false e um aviso no log, nunca true", () => {
     process.env[VARIAVEL] = "isto-nao-e-uma-data";
     const aviso = vi.spyOn(console, "warn").mockImplementation(() => undefined);

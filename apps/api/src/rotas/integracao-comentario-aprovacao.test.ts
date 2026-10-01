@@ -11,7 +11,7 @@ import { CP } from "@n1/dominio/operations";
 import { createTask } from "@n1/dominio/operations/tasks";
 import { EMAIL_DO_AGENTE_DO_PIPELINE, evoluirConfiguracaoDeSolicitacoes } from "@n1/dominio/solicitacao-de-pagamento-evolver";
 import { ID_DO_STATUS } from "../servicos/dto-solicitacao";
-import { comentarPelaIntegracao } from "./integracao-solicitacoes";
+import { AVISO_APROVACAO_EM_OUTRO_FIO, AVISO_APROVACAO_NAO_ABERTA, comentarPelaIntegracao } from "./integracao-solicitacoes";
 
 const LISTA_ID = "lst_solicitacoes_de_pagamento";
 const AGORA = "2026-10-01T12:00:00.000Z";
@@ -68,18 +68,33 @@ describe("comentarPelaIntegracao — 3.2", () => {
     expect(state.tasks.find((t) => t.id === taskId)!.comments.some((c) => c.id === r.value.id)).toBe(true);
   });
 
-  it("aprovador que não é Membro ativo: recusa (a rota desfaz o comentário junto)", () => {
+  const respostasA = (state: DataState, taskId: string, comentarioId: string) =>
+    state.tasks.find((x) => x.id === taskId)!.comments.filter((c) => c.parentCommentId === comentarioId).map((c) => c.content);
+
+  it("aprovador que não é Membro ativo: o comentário fica, nenhuma aprovação abre, e o fio diz por quê (a fila do automation/ não trava)", () => {
     const { state, agenteId, taskId } = solicitacaoNova();
     const r = comentarPelaIntegracao(state, agenteId, taskId, { text: "Fulano, para aprovação", requestApprovalFromMemberId: "mem_nao_existe" });
-    expect(r).toMatchObject({ ok: false, error: "O Aprovador precisa ser um Membro ativo." });
+    if (!r.ok) throw new Error(r.error);
+    expect(state.approvals.filter((a) => a.origin.kind === "processTask" && a.origin.taskId === taskId)).toEqual([]);
+    expect(respostasA(state, taskId, r.value.id)).toEqual([`${AVISO_APROVACAO_NAO_ABERTA} O Aprovador precisa ser um Membro ativo.`]);
   });
 
-  it("uma aprovação já pendente noutro fio recusa o pedido novo", () => {
+  it("uma aprovação já pendente noutro fio: o comentário novo fica, com o aviso de onde a resposta vale", () => {
     const { state, agenteId, taskId } = solicitacaoNova();
     const primeiro = comentarPelaIntegracao(state, agenteId, taskId, { text: "Thiago, para aprovação", requestApprovalFromMemberId: APROVADOR });
     if (!primeiro.ok) throw new Error(primeiro.error);
     const segundo = comentarPelaIntegracao(state, agenteId, taskId, { text: "Thiago, para aprovação", requestApprovalFromMemberId: APROVADOR });
-    expect(segundo).toMatchObject({ ok: false, error: expect.stringContaining("já aguarda uma aprovação em outro comentário") });
+    if (!segundo.ok) throw new Error(segundo.error);
+    expect(respostasA(state, taskId, segundo.value.id)).toEqual([AVISO_APROVACAO_EM_OUTRO_FIO]);
+    expect(state.approvals.filter((a) => a.origin.kind === "processTask" && a.origin.taskId === taskId)).toHaveLength(1);
+  });
+
+  it("o pedido de aprovação como resposta a outro comentário é recusado: as respostas penduram no raiz e nunca o decidiriam", () => {
+    const { state, agenteId, taskId } = solicitacaoNova();
+    const raiz = comentarPelaIntegracao(state, agenteId, taskId, { text: "abrindo o fio" });
+    if (!raiz.ok) throw new Error(raiz.error);
+    const r = comentarPelaIntegracao(state, agenteId, taskId, { text: "Thiago, para aprovação", parentCommentId: raiz.value.id, requestApprovalFromMemberId: APROVADOR });
+    expect(r).toMatchObject({ ok: false, error: expect.stringContaining("não pode ser resposta") });
   });
 
   it("Tarefa fora da Lista de Solicitações não é achada", () => {

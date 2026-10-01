@@ -51,6 +51,8 @@ export function calcularDataFinal(goLive: string): string {
 export function dentroDaJanela(relogio: Relogio, ate?: string): boolean {
   const dataFinal = (ate ?? process.env.FALLBACK_COMENTARIO_ATE)?.trim();
   if (!dataFinal) return true;
+  // Revisão de código: antes, a variável vazia DESLIGAVA; quem quer desligar agora diz.
+  if (/^(desligad[ao]|off|false|0|nao|não)$/i.test(dataFinal)) return false;
 
   const instanteFinal = new Date(dataFinal);
   if (Number.isNaN(instanteFinal.getTime())) {

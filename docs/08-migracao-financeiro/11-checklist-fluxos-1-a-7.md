@@ -56,9 +56,14 @@ dá 409, porque a reprovação exige motivo e a rota não o passa.
   Aprovação nasce quando o aprovador é marcado: o `createComment` do contrato
   ganha `requestApprovalFromMemberId` (aditivo). O comentário de roteamento,
   a aprovação com ele como fio e o Status "em aprovação" saem na mesma
-  transação; se a aprovação não abre, o comentário também não fica (422). O
-  `automation/` manda o campo só quando o responsável tem Membro na
-  plataforma.
+  transação. Revisão de código: se a aprovação não abre, o comentário fica e
+  a plataforma responde nele por quê (recusar travava a fila do
+  `automation/`). O `automation/` manda o campo só quando o responsável tem
+  Membro na plataforma. **Deploy: a plataforma antes do `automation/`.**
+  Limite conhecido (do `automation/`, anterior a isto): a chave do comentário
+  de roteamento é a mesma para a Solicitação inteira (`runId` = `task:<id>`),
+  então um re-roteamento depois de "não aprovado" não pede aprovação de novo;
+  as Solicitações já roteadas antes do deploy também não ganham aprovação.
 - [x] **3.3** `c8fa51e` — A análise por comentário vale sempre, como no backend do
   Financeiro: sem `FALLBACK_COMENTARIO_ATE`, ligada; com uma data, até ela.
 - [x] **3.4** `financeiro-tria` `5d91f51` — O classificador lê todas as páginas de respostas do fio, não só

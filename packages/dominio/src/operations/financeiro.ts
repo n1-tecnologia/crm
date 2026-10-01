@@ -1269,6 +1269,8 @@ export function publicarResumoParaConferencia(
     pedido && !semMudancas(opcoes.mudancasDoPedido)
       ? aplicarMudancasDoPedido(state, task, opcoes.mudancasDoPedido!, { agentId: agent.id, quemPediuId: quemPediu })
       : { aplicadas: [], recusadas: [] };
+  // Revisão de código: o que o pedido mudou na conta alguém confere — nunca com a Conferência dispensada.
+  if (mudancas.aplicadas.length > 0 && dispensada) return desfazer("O Resumo que mudou a conta a pedido não se dispensa: alguém confere.");
   if (mudancas.aplicadas.length > 0) {
     const faltandoDepois = erpMissingFields(state, task);
     if (faltandoDepois.length > 0) return desfazer(`Não apliquei o ajuste pedido: a conta ficaria sem ${faltandoDepois.join(", ")}.`);

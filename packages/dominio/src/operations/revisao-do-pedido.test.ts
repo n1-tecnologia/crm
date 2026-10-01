@@ -191,3 +191,25 @@ describe("6.1 — a Categoria pedida continua valendo enquanto o Campo não muda
     expect(codigoDaCategoriaPedida(state, das())).toBeUndefined();
   });
 });
+
+describe("revisão de código", () => {
+  it("o Resumo que mudou a conta a pedido não se dispensa: recusa e desfaz os Campos", () => {
+    const rejeitada = pedirAjuste("valor 50,00");
+    const antes = structuredClone(das().fieldValues);
+    const r = revisar(rejeitada, { mudancasDoPedido: { valorCentavos: 5000 }, dispensada: true });
+    expect(r).toMatchObject({ ok: false, error: expect.stringContaining("não se dispensa") });
+    expect(das().fieldValues).toEqual(antes);
+  });
+
+  it("a Categoria pedida deixa de valer quando a Empresa muda (o código pode ser de outro plano)", () => {
+    const rejeitada = pedirAjuste("categoria 2.02.98");
+    const r = revisar(rejeitada, { dePara: DE_PARA_PEDIDO, categoriaPedida: true });
+    if (!r.ok) throw new Error(r.error);
+    expect(codigoDaCategoriaPedida(state, das())).toBe("2.02.98");
+    const empresa = state.fieldDefinitions.find((d) => d.id === CP.fields.empresa)!;
+    const outra = (empresa.options ?? []).find((o) => o !== fieldValue(das(), CP.fields.empresa))!;
+    const mudou = setTaskFieldValue(state, CP.financeiroId, das().id, CP.fields.empresa, outra);
+    if (!mudou.ok) throw new Error(mudou.error);
+    expect(codigoDaCategoriaPedida(state, das())).toBeUndefined();
+  });
+});
