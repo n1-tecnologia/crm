@@ -76,6 +76,9 @@ console.log(`divergentes  ${resultado.diff.divergentes.length}`);
 if (resultado.diff.tasksPerList) {
   console.log(`tasksPerList ${resultado.diff.tasksPerList.antes} → ${resultado.diff.tasksPerList.depois}`);
 }
+// Checklist 1.1 — os Campos de Contas a pagar com o nome de um Campo da Lista, que ela deixa de usar.
+const herdadosFora = resultado.diff.camposHerdadosFora ?? [];
+console.log(`campos herdados fora ${herdadosFora.length}${herdadosFora.length > 0 ? ` — ${herdadosFora.join(", ")}` : " (já estavam)"}`);
 console.log(`agente do pipeline ${resultado.diff.membroDeServicoCriado ? `criado — ${resultado.diff.membroDeServicoCriado}` : "já existia (nada criado)"}`);
 const concessoes = [...(resultado.diff.concedidos ?? []).map((id) => `${id}→ver na Lista de Solicitações`), ...(resultado.diff.concessoesDeGovernanca ?? [])];
 console.log(`concessões ${concessoes.length}${concessoes.length > 0 ? ` — ${concessoes.join(", ")}` : ""}`);

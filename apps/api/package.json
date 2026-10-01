@@ -11,6 +11,7 @@
     "usuarios:seed": "vite-node src/autenticacao/criar-usuarios-do-seed.ts",
     "bootstrap:gestao": "vite-node src/bootstrap/gestao.cli.ts",
     "solicitacoes:configurar": "vite-node src/bootstrap/solicitacoes.cli.ts",
+    "solicitacoes:formulario": "vite-node src/bootstrap/formulario-da-solicitacao.cli.ts",
     "empresas:configurar": "vite-node src/bootstrap/configuracao-por-empresa.cli.ts",
     "contas-a-receber:conferir": "vite-node src/bootstrap/conferir-contas-a-receber.cli.ts",
     "contas-a-receber:configurar": "vite-node src/bootstrap/contas-a-receber.cli.ts",
