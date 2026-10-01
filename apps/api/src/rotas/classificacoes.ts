@@ -117,6 +117,19 @@ export function resolverAprovacaoPeloTopico(state: DataState, parentCommentId: s
  * (`@n1/dominio/operations/ai`, não exportado) para o ramo `processTask`, que
  * não tem dono extra de Execução de Agente.
  */
+/**
+ * A reprovação exige motivo no domínio (`decideProcessApproval`); por
+ * comentário, o motivo é a própria resposta do aprovador. Sem isso, todo
+ * "reprovado" classificado voltava 409.
+ */
+export function opcoesDaDecisaoPorComentario(
+  decisao: "aprovada" | "rejeitada",
+  textoDaResposta: string,
+): { readonly source: "comment"; readonly reason?: string } {
+  if (decisao === "aprovada") return { source: "comment" };
+  return { source: "comment", reason: textoDaResposta.trim() || "Reprovado por comentário." };
+}
+
 function autorAutorizado(state: DataState, autorMemberId: string, approverMemberId: string): boolean {
   if (autorMemberId === approverMemberId) return true;
   const membro = state.members.find((m) => m.id === autorMemberId);
@@ -187,6 +200,7 @@ export function rotasDeClassificacoes(app: FastifyInstance, opcoes: OpcoesDeClas
       const decisaoAlvo = decision === "aprovado" ? "aprovada" : "rejeitada";
       const approvalId = approval.id;
       const autorMemberId = autor.id;
+      const opcoesDaDecisao = opcoesDaDecisaoPorComentario(decisaoAlvo, resolvido.comment.content);
       let eraReplay = false;
 
       let estadoFinal: DataState | undefined;
@@ -196,7 +210,7 @@ export function rotasDeClassificacoes(app: FastifyInstance, opcoes: OpcoesDeClas
           estadoFinal = state;
           const atual = state.approvals.find((a) => a.id === approvalId);
           eraReplay = atual?.decision === decisaoAlvo;
-          return decideProcessApproval(state, autorMemberId, approvalId, decisaoAlvo, { source: "comment" });
+          return decideProcessApproval(state, autorMemberId, approvalId, decisaoAlvo, opcoesDaDecisao);
         },
         {
           eventos: (valor) => {
