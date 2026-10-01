@@ -149,6 +149,13 @@
  *   tipo e tamanho, o arquivo não sobe ao Storage), preenche, espera o Resumo,
  *   responde "ok", move para "em lançamento omie" e espera `✅ Lançado no
  *   Omie` e o Status "lançado omie"; a nota do passo traz a linha inteira.
+ *
+ *   `cp-lancada-no-omie-de-novo` — a mesma conta depois de uma recusa (ela
+ *   voltou a "para pagar"), só por JORNADA_RETOMAR=…=<conta>@0: troca o
+ *   fornecedor por um que JÁ existe no Omie (JORNADA_FORNECEDOR_CNPJ e
+ *   JORNADA_FORNECEDOR_NOME), espera o Resumo novo ("Os dados da conta
+ *   mudaram…" — o fornecedor está na impressão de lançamento), responde "ok",
+ *   move e espera o `✅ Lançado no Omie`.
  */
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -527,6 +534,11 @@ async function alinharComOTique() {
 /** `cp-lancada-no-omie` — o PDF que a jornada anexa pela seção "Anexar arquivo" do popup. */
 const ANEXO = process.env.JORNADA_ANEXO;
 const lancamento = { texto: "" };
+
+/** `cp-lancada-no-omie-de-novo` — o fornecedor que JÁ existe no Omie, e o que o tópico tinha antes da troca. */
+const FORNECEDOR_CNPJ = process.env.JORNADA_FORNECEDOR_CNPJ;
+const FORNECEDOR_NOME = process.env.JORNADA_FORNECEDOR_NOME;
+const deNovo = { resumosAntes: 0, conferidosAntes: 0, lancadosAntes: 0 };
 
 /** Os Comentários do tópico, na ordem da tela (cronológica: a resposta é um `li` próprio, com link para o pai). */
 const comentariosDoTopico = () =>
@@ -913,6 +925,58 @@ const CENARIOS = [
     ],
   },
   {
+    chave: "cp-lancada-no-omie-de-novo",
+    soQuandoPedido: true,
+    titulo: "Contas a pagar — a conta recusada pelo Omie, com o fornecedor corrigido, conferida de novo e lançada (passo 2B)",
+    lista: "lst_contas_a_pagar",
+    botao: "+ Nova conta",
+    nome: `TESTE AUTOMATIZADO — CP lançada no Omie (2B) · ${CARIMBO}`,
+    passos: [
+      [
+        "JORNADA_MODO = lancar, a conta recusada (JORNADA_RETOMAR) e o fornecedor que já existe no Omie",
+        async () => {
+          if (MODO !== "lancar") throw new Error(`cp-lancada-no-omie-de-novo exige JORNADA_MODO=lancar (veio "${MODO}")`);
+          if (!retomar.get("cp-lancada-no-omie-de-novo")?.id) throw new Error("só roda sobre a conta recusada: JORNADA_RETOMAR=cp-lancada-no-omie-de-novo=<conta>@0");
+          if (!FORNECEDOR_CNPJ || !FORNECEDOR_NOME) throw new Error("exige JORNADA_FORNECEDOR_CNPJ e JORNADA_FORNECEDOR_NOME");
+          await statusDeveSer("para pagar");
+          deNovo.resumosAntes = await contarNoFio(RESUMO);
+          deNovo.conferidosAntes = await contarNoFio(CONFERIDO);
+          deNovo.lancadosAntes = await contarNoFio(LANCADO);
+          return `antes: ${deNovo.resumosAntes} Resumo(s), ${deNovo.conferidosAntes} conferido(s), ${deNovo.lancadosAntes} lançado(s)`;
+        },
+      ],
+      [`CNPJ = ${FORNECEDOR_CNPJ ?? "?"}`, () => digitar("CNPJ", FORNECEDOR_CNPJ)],
+      [`Nome do fornecedor = ${FORNECEDOR_NOME ?? "?"}`, () => digitar("Nome do fornecedor", FORNECEDOR_NOME)],
+      [
+        'Esperar um Resumo NOVO, com "Os dados da conta mudaram depois da conferência."',
+        async () => {
+          const nota = await esperarNoFio(RESUMO, ESPERA_MS, { aPartirDe: deNovo.resumosAntes });
+          const novo = painel().locator('li[id^="comentario-"]').filter({ hasText: RESUMO }).last();
+          if (!(await novo.innerText()).match(DADOS_MUDARAM)) throw new Error("o Resumo novo não diz que os dados da conta mudaram");
+          return nota;
+        },
+      ],
+      ["Card: Conferência do Resumo · Pendente", () => cardDaConferencia("Pendente")],
+      ['Responder "ok" no fio do Resumo', () => responderNoFio(RESUMO, "ok")],
+      ["Esperar ✅ Resumo conferido no tópico", () => esperarNoFio(CONFERIDO, ESPERA_MS, { aPartirDe: deNovo.conferidosAntes })],
+      ["Card: Conferência do Resumo · Conferido", () => cardDaConferencia("Conferido")],
+      ["Status → em lançamento omie", () => mudarStatus("em lançamento omie")],
+      [
+        "Esperar ✅ Lançado no Omie no tópico",
+        async () => {
+          const nota = await esperarNoFio(LANCADO, ESPERA_MS, { aPartirDe: deNovo.lancadosAntes });
+          const texto = await painel().locator('li[id^="comentario-"]').filter({ hasText: LANCADO }).last().innerText();
+          const linhas = texto.split("\n");
+          const inicio = linhas.findIndex((l) => LANCADO.test(l));
+          lancamento.texto = linhas.slice(inicio).filter((l) => l.trim() && l.trim() !== "Responder").join(" | ");
+          return `${nota}: ${lancamento.texto}`;
+        },
+      ],
+      ["Status agora é lançado omie", () => statusDeveSer("lançado omie")],
+      ["Captura", () => capturar("cp-lancada-no-omie-de-novo")],
+    ],
+  },
+  {
     chave: "cr-recebida",
     titulo: "Contas a receber — cobrada e recebida",
     lista: "lst_contas_a_receber",
@@ -979,7 +1043,8 @@ const pedeAPonte =
   so.has("cp-conferida-pelo-card") ||
   so.has("cp-dispensa-manual") ||
   so.has("cp-dispensa-com-resposta") ||
-  so.has("cp-lancada-no-omie");
+  so.has("cp-lancada-no-omie") ||
+  so.has("cp-lancada-no-omie-de-novo");
 console.log(`Jornada do Financeiro como um humano — ${URL_BASE} — ${CARIMBO}${pedeAPonte ? ` — ponte em ${MODO}` : ""}`);
 await entrar();
 
