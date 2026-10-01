@@ -1208,8 +1208,11 @@ describe("criarPonteDoAgente — os dois momentos contra servidorFalso (sem DATA
       expect(c.decisionReason).toBe(MOTIVO_DA_DISPENSA);
       const registro = estado.activity.find((a) => a.objectId === c.id && a.action === "Aprovação decidida");
       expect(registro?.detail).toContain(MOTIVO_DA_DISPENSA);
-      // Ninguém é chamado a conferir o que foi dispensado.
-      expect(resumosDe(das)[0]?.mentions).toEqual([{ type: "member", id: ATOR }]);
+      // Ninguém é chamado a conferir o que foi dispensado: sem Menção, e o
+      // texto diz que a conferência é dispensada (checklist E3).
+      expect(resumosDe(das)[0]?.mentions).toEqual([]);
+      expect(resumosDe(das)[0]?.content).toContain("Integração manual: a conferência deste Resumo é dispensada.");
+      expect(resumosDe(das)[0]?.content).not.toContain("confira");
 
       mover(estado, das.id, S.emLancamento);
       servidor.enfileirar(LANCADO_200);

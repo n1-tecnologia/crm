@@ -1744,7 +1744,7 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
               ...(conf.estado === "desatualizada" ? { motivo: "dados-mudaram" as const } : {}),
               // Na dispensa (D6-04), o aprovador é o próprio Membro de serviço —
               // é ele quem decide logo abaixo, e nenhuma pessoa é chamada a conferir.
-              ...(dispensa ? { avisarId: atorId } : avisar ? { avisarId: avisar } : {}),
+              ...(dispensa ? { avisarId: atorId, dispensada: true as const } : avisar ? { avisarId: avisar } : {}),
               // crm2:WR-04 (06-19) — a porta G3 falha FECHADA também no meio
               // do ciclo: com o Membro de teste inativo, o domínio recusa em
               // vez de fazer a Maryane aprovadora.

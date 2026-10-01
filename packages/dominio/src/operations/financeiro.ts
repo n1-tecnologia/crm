@@ -1117,6 +1117,12 @@ export interface OpcoesDaConferencia {
    * ela, nada muda.
    */
   readonly avisarEstrito?: true;
+  /**
+   * D6-04 — o Resumo vai ser dispensado logo em seguida (Integração manual):
+   * nenhuma pessoa é chamada a conferir, então o texto diz que a conferência
+   * é dispensada em vez de pedir "confira", e ninguém é mencionado.
+   */
+  readonly dispensada?: true;
 }
 
 /** 06-19 (crm2:WR-04) — `avisarEstrito` com um `avisarId` que não é Membro ativo: a recusa, ou `undefined`. */
@@ -1193,17 +1199,18 @@ export function publicarResumoParaConferencia(
   const financeiroId = avisadoDaConferencia(state, actingMemberId, opcoes.avisarId);
   const financeiro = nomeDoMembro(state, financeiroId);
   const porComentario = opcoes.aprovacaoPorComentario !== false;
+  const dispensada = opcoes.dispensada === true;
   // 06-18 (crm2:IN-01): o fio é o da Conferência MAIS RECENTE, mesmo
   // cancelada — depois de uma superação, o Resumo novo responde no fio de
   // antes, e a conta continua com um fio só de Resumo.
   const maisRecente = conferenciaMaisRecente(state, task.id);
   const sufixo = pedido
-    ? TEXTOS_DA_CONFERENCIA.revisado(nomeDoMembro(state, quemPediu), pedido, financeiro, porComentario)
+    ? TEXTOS_DA_CONFERENCIA.revisado(nomeDoMembro(state, quemPediu), pedido, financeiro, porComentario, dispensada)
     : opcoes.motivo === "dados-mudaram" || atual.estado === "desatualizada"
-      ? TEXTOS_DA_CONFERENCIA.dadosMudaram(financeiro, porComentario)
+      ? TEXTOS_DA_CONFERENCIA.dadosMudaram(financeiro, porComentario, dispensada)
       : !anterior && maisRecente?.decision === "cancelada"
-        ? TEXTOS_DA_CONFERENCIA.superada(financeiro, porComentario)
-        : TEXTOS_DA_CONFERENCIA.chamada(financeiro, porComentario);
+        ? TEXTOS_DA_CONFERENCIA.superada(financeiro, porComentario, dispensada)
+        : TEXTOS_DA_CONFERENCIA.chamada(financeiro, porComentario, dispensada);
 
   const raiz = maisRecente ? task.comments.find((c) => c.id === maisRecente.origin.threadCommentId && !c.deletedAt) : undefined;
   const antes = { activity: state.activity.length, comments: task.comments.length, approvals: state.approvals.length, resolvido: raiz?.resolved };
@@ -1231,7 +1238,7 @@ export function publicarResumoParaConferencia(
 
   const comentario = addTaskComment(state, actingMemberId, task.id, {
     content: `${resumo.texto}${sufixo}`,
-    mentions: [{ type: "member", id: financeiroId }],
+    mentions: dispensada ? [] : [{ type: "member", id: financeiroId }],
     actor: { kind: "agent", id: agent.id },
     ...(raiz ? { parentCommentId: raiz.id } : {}),
   });

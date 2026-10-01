@@ -77,19 +77,28 @@ const PEDIDO_PELO_BOTAO = 'use o botão "Conferido, pode lançar", no card da co
 /** O pedido da Conferência: pelo fio (padrão) ou só pelo botão. */
 const pedidoDaConferencia = (porComentario: boolean): string => (porComentario ? PEDIDO_DE_CONFERENCIA : PEDIDO_PELO_BOTAO);
 
+/** D6-04 — no lugar do pedido, quando ninguém vai conferir (Integração manual). */
+const CONFERENCIA_DISPENSADA = "Integração manual: a conferência deste Resumo é dispensada.";
+
+/** A última linha do Resumo: o pedido a quem confere ("confira" ou "confira de novo"), ou a dispensa. */
+const pedidoOuDispensa = (financeiro: string, confira: string, porComentario: boolean, dispensada: boolean): string =>
+  dispensada ? CONFERENCIA_DISPENSADA : `${financeiro}, ${confira}: ${pedidoDaConferencia(porComentario)}`;
+
 export const TEXTOS_DA_CONFERENCIA = {
   /**
    * Depois do bloco do RESUMO, na primeira publicação. `porComentario`
    * (06-18): `false` troca o pedido do "ok" pelo do botão; o padrão é o texto
-   * de sempre, byte a byte.
+   * de sempre, byte a byte. `dispensada` (D6-04): a linha diz que a
+   * conferência é dispensada, sem pedir nada a ninguém.
    */
-  chamada: (financeiro: string, porComentario = true): string => `\n\n${financeiro}, confira: ${pedidoDaConferencia(porComentario)}`,
+  chamada: (financeiro: string, porComentario = true, dispensada = false): string =>
+    `\n\n${pedidoOuDispensa(financeiro, "confira", porComentario, dispensada)}`,
   /** Depois do bloco do RESUMO, quando um revisor pediu ajuste. */
-  revisado: (nome: string, pedido: string, financeiro: string, porComentario = true): string =>
-    `\n\nRevisado a pedido de ${nome}: "${pedido}".\n${financeiro}, confira de novo: ${pedidoDaConferencia(porComentario)}`,
+  revisado: (nome: string, pedido: string, financeiro: string, porComentario = true, dispensada = false): string =>
+    `\n\nRevisado a pedido de ${nome}: "${pedido}".\n${pedidoOuDispensa(financeiro, "confira de novo", porComentario, dispensada)}`,
   /** Depois do bloco do RESUMO, quando a conta mudou depois da conferência. */
-  dadosMudaram: (financeiro: string, porComentario = true): string =>
-    `\n\nOs dados da conta mudaram depois da conferência.\n${financeiro}, confira de novo: ${pedidoDaConferencia(porComentario)}`,
+  dadosMudaram: (financeiro: string, porComentario = true, dispensada = false): string =>
+    `\n\nOs dados da conta mudaram depois da conferência.\n${pedidoOuDispensa(financeiro, "confira de novo", porComentario, dispensada)}`,
   /**
    * Depois do bloco do RESUMO, quando a Conferência anterior foi superada
    * (`registrarFalhaDoLancamento(…, { superarConferencia: true })`, depois de
@@ -97,8 +106,8 @@ export const TEXTOS_DA_CONFERENCIA = {
    * crm2:IN-01). O `confira: ` sem "de novo" é de propósito — é o pedido de
    * sempre para o Resumo que substitui o anterior.
    */
-  superada: (financeiro: string, porComentario = true): string =>
-    `\n\nEste Resumo substitui o anterior, que não serve mais ao lançamento.\n${financeiro}, confira: ${pedidoDaConferencia(porComentario)}`,
+  superada: (financeiro: string, porComentario = true, dispensada = false): string =>
+    `\n\nEste Resumo substitui o anterior, que não serve mais ao lançamento.\n${pedidoOuDispensa(financeiro, "confira", porComentario, dispensada)}`,
   /**
    * Resposta do Agente no fio a um "ok" de quem não confere este Resumo
    * (06-18, crm2:WR-03): quem confere pelo fio é quem confere pelo clique
