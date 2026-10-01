@@ -385,6 +385,29 @@ async function esperarNoFio(padrao, timeoutMs = ESPERA_MS, { aPartirDe = 0 } = {
   }
 }
 
+/**
+ * Checklist E2 — como `esperarNoFio`, mas SEM recarregar: a tela tem de ver
+ * sozinha o que a ponte grava (a consulta à revisão do Espaço, a cada 5 s).
+ */
+async function esperarSemRecarregar(padrao, timeoutMs = ESPERA_MS, { aPartirDe = 0 } = {}) {
+  const inicio = Date.now();
+  for (;;) {
+    const achados = await painel().locator('li[id^="comentario-"]').filter({ hasText: padrao }).count();
+    if (achados > aPartirDe) return `apareceu sem recarregar em ${Math.round((Date.now() - inicio) / 1000)} s`;
+    if (Date.now() - inicio > timeoutMs) {
+      throw new Error(`"${padrao.source}" não apareceu no tópico em ${Math.round(timeoutMs / 1000)} s sem recarregar — a tela está consultando a revisão (E2)?`);
+    }
+    await pagina.waitForTimeout(1_000);
+  }
+}
+
+/** O texto da linha do Campo `nome` no popup casa com `padrao`. */
+async function campoMostra(nome, padrao) {
+  const texto = (await linhaDoCampo(nome).innerText()).replace(/\s+/g, " ").trim();
+  if (!padrao.test(texto)) throw new Error(`"${nome}" mostra "${texto}", esperado ${padrao}`);
+  return texto;
+}
+
 /** Quantos Comentários do tópico casam com `padrao` agora. */
 const contarNoFio = (padrao) => painel().locator('li[id^="comentario-"]').filter({ hasText: padrao }).count();
 
@@ -508,6 +531,8 @@ const LEITURA_DO_CICLO_MS = 5_000;
 /** O que a resposta e o "Manual" levam juntos, com folga — com menos que isso até o próximo tique, espera o tique. */
 const TEMPO_DAS_DUAS_GRAVACOES_MS = 50_000;
 const PEDIDO_DE_AJUSTE = "troca a categoria para 2.04.03";
+/** `cp-ajuste-pelo-fio` — o pedido em português solto, como o Financeiro escreve: a IA tem de ler. */
+const PEDIDO_DO_FLUXO_6 = "o valor certo é 1.234,56 e o vencimento é 20/10/2026";
 const comResposta = { conferidosAntes: 0, revisadosAntes: 0, antesDaResposta: 0, depoisDoManual: 0 };
 
 const tiqueDaPonte = (t) => Math.floor((t - PONTE_INICIO_MS) / PONTE_INTERVALO_MS);
@@ -876,6 +901,38 @@ const CENARIOS = [
       ],
       ["Card escondido (a conta é Manual)", () => semCardDaConferencia()],
       ["Captura", () => capturar("cp-dispensa-com-resposta")],
+    ],
+  },
+  {
+    // Checklist 6.6 e E2: o ajuste pedido no fio é lido pela IA do `automation/`
+    // (o `/resolver` de verdade, com a chave da OpenAI) e aplicado nos Campos
+    // pelo Agente; tudo aparece sem recarregar a página. Precisa da ponte
+    // ligada em `conferencia` e do `automation/` com a leitura do pedido.
+    chave: "cp-ajuste-pelo-fio",
+    soQuandoPedido: true,
+    titulo: "Contas a pagar — ajuste pedido no fio, lido pela IA e aplicado (Fluxo 6, E2)",
+    lista: "lst_contas_a_pagar",
+    botao: "+ Nova conta",
+    nome: `TESTE AUTOMATIZADO — CP ajuste pelo fio · ${CARIMBO}`,
+    passos: [
+      ...passosDaContaAPagar(),
+      ["Esperar o 📋 RESUMO DE PAGAMENTO sem recarregar (E2)", () => esperarSemRecarregar(RESUMO)],
+      ["Card: Conferência pendente", () => cardDaConferencia("Pendente")],
+      ["Responder no fio: valor e vencimento novos", () => responderNoFio(RESUMO, PEDIDO_DO_FLUXO_6)],
+      ["Esperar o Resumo revisado com \"O que mudou\" sem recarregar (E2)", () => esperarSemRecarregar(/O que mudou: /)],
+      [
+        "O que mudou: Valor → R$ 1.234,56 e Vencimento → 20/10/2026",
+        async () => {
+          const revisado = (await painel().locator('li[id^="comentario-"]').filter({ hasText: /O que mudou: / }).last().innerText()).replace(/\s+/g, " ");
+          if (!/Valor: [^;]* → R\$\s?1\.234,56/.test(revisado)) throw new Error(`o Resumo revisado não diz o Valor novo: ${revisado.slice(0, 400)}`);
+          if (!/Vencimento: [^;.]* → 20\/10\/2026/.test(revisado)) throw new Error(`o Resumo revisado não diz o Vencimento novo: ${revisado.slice(0, 400)}`);
+          if (!/Ajustado a pedido no fio: /.test(revisado)) throw new Error("as Observações do Resumo revisado não registram o ajuste");
+          return "o Resumo revisado diz o que mudou, e as Observações registram";
+        },
+      ],
+      ["O Campo Valor mostra R$ 1.234,56", () => campoMostra("Valor", /1\.234,56/)],
+      ["Card: Conferência nova pendente", () => cardDaConferencia("Pendente")],
+      ["Captura", () => capturar("cp-ajuste-pelo-fio")],
     ],
   },
   {
