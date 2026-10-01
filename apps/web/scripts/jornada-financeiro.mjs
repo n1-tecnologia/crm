@@ -134,9 +134,24 @@
  *   4. espera o Resumo revisado e, depois dele, a dispensa (`✅ Resumo
  *      conferido` — a conta agora é Manual); confere a ordem no tópico
  *      (resposta → ajuste → revisado → conferido) e o card escondido.
+ *
+ * ── `cp-lancada-no-omie` (o passo 2B: GRAVA de verdade no Omie) ───────────
+ *
+ * Só com a autorização do dono, pedido pelo nome e sozinho: a API com
+ * AGENTE_CONTAS_A_PAGAR_MODO=lancar e AGENTE_CONTAS_A_PAGAR_SO_TITULOS_COM
+ * igual à marca do título ("TESTE AUTOMATIZADO — CP lançada no Omie (2B)") —
+ * com "TESTE AUTOMATIZADO" sozinho, a ponte lançaria TAMBÉM as contas de teste
+ * antigas paradas em "em lançamento omie". JORNADA_MODO=lancar e
+ * JORNADA_ANEXO=<um PDF pequeno>. Valor R$ 1,00. A jornada não exclui o
+ * título: conferir e excluir no Omie é o passo seguinte, fora dela.
+ *
+ *   anexa o PDF pela seção "Anexar arquivo" (hoje um protótipo: grava nome,
+ *   tipo e tamanho, o arquivo não sobe ao Storage), preenche, espera o Resumo,
+ *   responde "ok", move para "em lançamento omie" e espera `✅ Lançado no
+ *   Omie` e o Status "lançado omie"; a nota do passo traz a linha inteira.
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { chromium } from "playwright";
@@ -509,6 +524,10 @@ async function alinharComOTique() {
   }
 }
 
+/** `cp-lancada-no-omie` — o PDF que a jornada anexa pela seção "Anexar arquivo" do popup. */
+const ANEXO = process.env.JORNADA_ANEXO;
+const lancamento = { texto: "" };
+
 /** Os Comentários do tópico, na ordem da tela (cronológica: a resposta é um `li` próprio, com link para o pai). */
 const comentariosDoTopico = () =>
   painel()
@@ -518,7 +537,7 @@ const comentariosDoTopico = () =>
 
 
 
-const passosDaContaAPagar = () => [
+const passosDaContaAPagar = (valor = "123.45") => [
   ["Centro de Custo = TRIA", () => escolher("Centro de Custo", "TRIA")],
   ["Empresa = Tria Company", () => escolher("Empresa", "Tria Company")],
   ["Categoria = Contas de consumo", () => escolher("Categoria de pagamento", "Contas de consumo")],
@@ -527,7 +546,7 @@ const passosDaContaAPagar = () => [
   ["Nome do fornecedor", () => digitar("Nome do fornecedor", "Fornecedor Teste Automatizado LTDA")],
   ["Forma de pagamento = Chave Pix", () => escolher("Forma de pagamento", "Chave Pix")],
   ["Chave pix", () => digitar("Chave pix", "teste-integracao@triacompany.com.br")],
-  ["Valor = R$ 123,45", () => digitar("Valor", "123.45")],
+  [`Valor = R$ ${valor.replace(".", ",")}`, () => digitar("Valor", valor)],
   ["Vencimento em 10 dias", () => vencimento(diaCivil(10))],
 ];
 
@@ -848,6 +867,52 @@ const CENARIOS = [
     ],
   },
   {
+    chave: "cp-lancada-no-omie",
+    soQuandoPedido: true,
+    titulo: "Contas a pagar — lançada no Omie DE VERDADE pela ponte (passo 2B, R$ 1,00)",
+    lista: "lst_contas_a_pagar",
+    botao: "+ Nova conta",
+    nome: `TESTE AUTOMATIZADO — CP lançada no Omie (2B) · ${CARIMBO}`,
+    passos: [
+      [
+        "JORNADA_MODO = lancar e o PDF do anexo (JORNADA_ANEXO)",
+        async () => {
+          if (MODO !== "lancar") throw new Error(`cp-lancada-no-omie exige JORNADA_MODO=lancar (veio "${MODO}")`);
+          if (!ANEXO || !existsSync(ANEXO)) throw new Error("exige JORNADA_ANEXO com o caminho de um PDF pequeno");
+          return path.basename(ANEXO);
+        },
+      ],
+      // Antes dos Campos: a ponte só vê a conta completa, e já com o anexo.
+      [
+        'Anexar o PDF pela seção "Anexar arquivo" do popup',
+        async () => {
+          await gravando("attachFile", () => painel().locator('input[type="file"][multiple]').setInputFiles(ANEXO));
+          return `anexado: ${path.basename(ANEXO)}`;
+        },
+      ],
+      ...passosDaContaAPagar("1.00"),
+      ["Esperar o 📋 RESUMO DE PAGAMENTO no tópico", () => esperarNoFio(RESUMO)],
+      ["Card: Conferência do Resumo · Pendente", () => cardDaConferencia("Pendente")],
+      ['Responder "ok" no fio do Resumo', () => responderNoFio(RESUMO, "ok")],
+      ["Esperar ✅ Resumo conferido no tópico", () => esperarNoFio(CONFERIDO)],
+      ["Card: Conferência do Resumo · Conferido", () => cardDaConferencia("Conferido")],
+      ["Status → em lançamento omie", () => mudarStatus("em lançamento omie")],
+      [
+        "Esperar ✅ Lançado no Omie no tópico",
+        async () => {
+          const nota = await esperarNoFio(LANCADO);
+          const texto = await painel().locator('li[id^="comentario-"]').filter({ hasText: LANCADO }).last().innerText();
+          const linhas = texto.split("\n");
+          const inicio = linhas.findIndex((l) => LANCADO.test(l));
+          lancamento.texto = linhas.slice(inicio).filter((l) => l.trim() && l.trim() !== "Responder").join(" | ");
+          return `${nota}: ${lancamento.texto}`;
+        },
+      ],
+      ["Status agora é lançado omie", () => statusDeveSer("lançado omie")],
+      ["Captura", () => capturar("cp-lancada-no-omie")],
+    ],
+  },
+  {
     chave: "cr-recebida",
     titulo: "Contas a receber — cobrada e recebida",
     lista: "lst_contas_a_receber",
@@ -909,7 +974,12 @@ const retomar = new Map(
 );
 
 const pedeAPonte =
-  so.has("cp-conferida") || so.has("cp-ajuste") || so.has("cp-conferida-pelo-card") || so.has("cp-dispensa-manual") || so.has("cp-dispensa-com-resposta");
+  so.has("cp-conferida") ||
+  so.has("cp-ajuste") ||
+  so.has("cp-conferida-pelo-card") ||
+  so.has("cp-dispensa-manual") ||
+  so.has("cp-dispensa-com-resposta") ||
+  so.has("cp-lancada-no-omie");
 console.log(`Jornada do Financeiro como um humano — ${URL_BASE} — ${CARIMBO}${pedeAPonte ? ` — ponte em ${MODO}` : ""}`);
 await entrar();
 
