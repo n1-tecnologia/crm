@@ -164,6 +164,13 @@ export const EsquemasV1 = {
         text: z.string(),
         parentCommentId: z.string().optional(),
         mentionMemberIds: z.array(z.string()).optional(),
+        /**
+         * Aditivo (2026-10-01): o comentário de roteamento É o pedido de
+         * aprovação — a plataforma abre, na mesma transação, a Solicitação de
+         * Aprovação para este Membro, com este comentário como fio, e a
+         * Solicitação vai para "em aprovação". Sem o campo, nada muda.
+         */
+        requestApprovalFromMemberId: z.string().optional(),
       })
       .strict(),
     resposta: CommentDtoV1,

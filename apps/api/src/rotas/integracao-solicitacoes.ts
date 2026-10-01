@@ -38,6 +38,7 @@
 import { createHash } from "node:crypto";
 import type { Comment, DataState, OperationResult, Task } from "@n1/dominio";
 import { fail } from "@n1/dominio";
+import { solicitarAprovacao } from "@n1/dominio/operations/ai";
 import { addTaskComment, changeTaskStatus, setTaskTags, updateTask } from "@n1/dominio/operations/tasks";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { z } from "zod";
@@ -98,6 +99,42 @@ async function hidratarSomente(workspaceId: string): Promise<DataState> {
 function tarefaDaLista(state: DataState, taskId: string): Task | undefined {
   const task = state.tasks.find((t) => t.id === taskId);
   return task && task.listId === LISTA_SOLICITACOES_DE_PAGAMENTO_ID ? task : undefined;
+}
+
+/**
+ * O `createComment` da integração. Com `requestApprovalFromMemberId`
+ * (aditivo, 2026-10-01), o comentário de roteamento é o pedido de aprovação:
+ * na mesma operação abre a Solicitação de Aprovação do processo para esse
+ * Membro, com o comentário como fio, e a Solicitação vai para "em aprovação".
+ * Se a aprovação não abre, o comentário também não fica — a recusa volta
+ * inteira (422), sem um "para aprovação" que ninguém pode decidir.
+ *
+ * Uma aprovação já pendente nesta Solicitação em OUTRO fio é recusada: a
+ * classificação acha a aprovação pelo fio (`classificacoes.ts`), e as
+ * respostas ao comentário novo nunca chegariam a ela.
+ */
+export function comentarPelaIntegracao(
+  state: DataState,
+  autorId: string,
+  taskId: string,
+  corpo: z.infer<typeof ESQUEMAS_DE_INTEGRACAO_DE_SOLICITACOES.createComment.body>,
+): OperationResult<Comment> {
+  const task = tarefaDaLista(state, taskId);
+  if (!task) return fail("Tarefa não encontrada.");
+  const aprovadorId = corpo.requestApprovalFromMemberId;
+  const comentario = addTaskComment(state, autorId, taskId, {
+    content: corpo.text,
+    ...(corpo.parentCommentId ? { parentCommentId: corpo.parentCommentId } : {}),
+    ...(corpo.mentionMemberIds ? { mentions: corpo.mentionMemberIds.map((id) => ({ type: "member" as const, id })) } : {}),
+  });
+  if (!comentario.ok || !aprovadorId) return comentario;
+  const aprovacao = solicitarAprovacao(state, autorId, { taskId, approverMemberId: aprovadorId, threadCommentId: comentario.value.id });
+  if (!aprovacao.ok) return fail(aprovacao.error, aprovacao.field);
+  // `solicitarAprovacao` devolve a pendente que já existe; noutro fio, recusa.
+  if (aprovacao.value.origin.kind === "processTask" && aprovacao.value.origin.threadCommentId !== comentario.value.id) {
+    return fail("Esta Solicitação já aguarda uma aprovação em outro comentário; decida aquela antes de pedir outra.");
+  }
+  return comentario;
 }
 
 /** sha-256 do corpo canonicalizado (chaves ordenadas) — `canonico()` é a mesma serialização que `../persistencia/repositorio.ts` usa para comparar registros. */
@@ -316,17 +353,7 @@ export async function rotasDeIntegracaoDeSolicitacoes(app: FastifyInstance): Pro
         executarEscrita<Comment>({
           workspaceId: servico.workspaceId,
           requestId: request.id,
-          operacao: (state) => {
-            const task = tarefaDaLista(state, taskId);
-            if (!task) return fail("Tarefa não encontrada.");
-            return addTaskComment(state, servico.memberId, taskId, {
-              content: body.data.text,
-              ...(body.data.parentCommentId ? { parentCommentId: body.data.parentCommentId } : {}),
-              ...(body.data.mentionMemberIds
-                ? { mentions: body.data.mentionMemberIds.map((id) => ({ type: "member", id })) }
-                : {}),
-            });
-          },
+          operacao: (state) => comentarPelaIntegracao(state, servico.memberId, taskId, body.data),
           eventos: (comentario) => [
             {
               type: "solicitacao.comentario-criado.v1",

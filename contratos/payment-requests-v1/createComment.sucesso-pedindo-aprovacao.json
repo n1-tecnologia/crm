@@ -1,0 +1,36 @@
+{
+  "descricao": "Comentário de roteamento que pede a aprovação (aditivo, 2026-10-01): a plataforma abre a Solicitação de Aprovação para o Membro, com este comentário como fio, e a Solicitação vai para em aprovação. A resposta é o Comentário de sempre.",
+  "requisicao": {
+    "params": {
+      "taskId": "tarefa-002"
+    },
+    "headers": {
+      "idempotency-key": "assign-responsible:run-0002:comment"
+    },
+    "body": {
+      "text": "Fulano, para aprovação",
+      "mentionMemberIds": [
+        "membro-aprovador"
+      ],
+      "requestApprovalFromMemberId": "membro-aprovador"
+    }
+  },
+  "resposta": {
+    "status": 200,
+    "corpo": {
+      "id": "comentario-010",
+      "taskId": "tarefa-002",
+      "parentCommentId": null,
+      "author": {
+        "kind": "automation",
+        "id": "agente-pipeline",
+        "displayName": "Agente do pipeline"
+      },
+      "text": "Fulano, para aprovação",
+      "mentionMemberIds": [
+        "membro-aprovador"
+      ],
+      "createdAt": "2026-09-21T08:05:00.000Z"
+    }
+  }
+}

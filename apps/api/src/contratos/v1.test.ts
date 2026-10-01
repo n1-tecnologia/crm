@@ -51,6 +51,7 @@ const CATEGORIAS_DE_REPLAY = ["replay-mesma-chave", "replay-chave-igual-payload-
  */
 const CATEGORIAS_EXTRAS_POR_METODO: Readonly<Partial<Record<NomeDeEndpointV1, readonly string[]>>> = {
   getTask: ["sucesso-em-revisao"],
+  createComment: ["sucesso-pedindo-aprovacao"],
 };
 
 function categoriasEsperadas(metodo: NomeDeEndpointV1): readonly string[] {
