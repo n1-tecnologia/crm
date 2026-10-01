@@ -108,26 +108,38 @@ Espaço os Campos de Contas a pagar, e um deles, o "Centro de Custo", é
 obrigatório; por isso o Formulário exige duas perguntas de Centro de Custo, e
 o seletor mostra Campos duplicados com o mesmo nome.
 
-- [ ] **1.1** Uma Lista pode deixar de usar Campos herdados; a de
+- [x] **1.1** `48135af` · `3fe2ee8` — Uma Lista pode deixar de usar Campos herdados; a de
   Solicitações deixa de usar os de Contas a pagar (o seletor para de duplicar
-  e o "Centro de Custo" obrigatório em dobro some).
-- [ ] **1.2** Perguntas com ordem e seção como dado: o editor sobe e desce
-  perguntas e dá nome à seção.
-- [ ] **1.3** Condicionais como dado ("mostrar quando <pergunta> for <valor>"),
-  configuráveis no editor; a página pública lê do Formulário, não do rótulo.
-- [ ] **1.4** Título e introdução da página pública vêm do nome e da
+  e o "Centro de Custo" obrigatório em dobro some). Na tela: Configurações da
+  Lista › Campos › "Campos herdados", com "usar aqui". No `ws_n1` (dry-run):
+  saem Centro de Custo, BU, Empresa, Valor, Integração manual e Produto.
+- [x] **1.2** `48135af` · `3fe2ee8` · `cf75dfe` — Perguntas com ordem e seção como dado: o editor sobe e desce
+  perguntas e dá nome à seção (e ajuda por pergunta).
+- [x] **1.3** `48135af` · `e1f081f` · `cf75dfe` · `3fe2ee8` — Condicionais como dado ("mostrar quando <pergunta> for <valor>"),
+  configuráveis no editor; a página pública lê do Formulário, não do rótulo
+  (a máscara de CPF/CNPJ/telefone vem do Campo). O envio só exige e só grava
+  o que está à mostra.
+- [x] **1.4** `cf75dfe` — Título e introdução da página pública (e da aba) vêm do nome e da
   descrição do Formulário.
-- [ ] **1.5** Formulário desatualizado: a página e o upload recusam como o
-  envio já recusa, com mensagem clara.
-- [ ] **1.6** Remover o Membro dono não mata o link: o Formulário passa para
-  quem removeu.
-- [ ] **1.7** O texto velho "Protótipo: os dados vivem na memória" sai do
+- [x] **1.5** `e1f081f` · `cf75dfe` — Formulário desatualizado: a página e o upload recusam como o
+  envio já recusa, com mensagem clara ("Formulário em revisão").
+- [x] **1.6** `48135af` — Remover o Membro dono não mata o link: o Formulário passa ao
+  Sucessor que alcança a Lista (senão, a quem removeu).
+- [x] **1.7** `3fe2ee8` — O texto velho "Protótipo: os dados vivem na memória" sai do
   editor.
-- [ ] **1.8** Comando `solicitacoes:formulario` que cria o Formulário da
+- [x] **1.8** `1c0df4c` · `ec6af12` — Comando `solicitacoes:formulario` que cria o Formulário da
   Solicitação no `ws_n1` com as perguntas, seções e condicionais certas
   (dry-run; o `--apply` é do dono). Depois disso, tudo se edita pela tela.
+  Dry-run no `ws_n1` com `--com-configuracao`: "seria criado, 24 perguntas".
+  **[dono]** para valer: `npm run solicitacoes:configurar -w @n1/api -- --apply`
+  e depois `npm run solicitacoes:formulario -w @n1/api -- --apply` (o
+  segundo imprime o link `/f/<segredo>`).
 - [ ] **1.9** Testes (domínio, API, tela) e a jornada `formulario-publico`
-  rodando de verdade, com upload.
+  rodando de verdade, com upload. Testes feitos (domínio 9, API 3 + 2 com
+  banco, tela 31). A jornada de verdade é **[dono]**: um envio cria uma
+  Solicitação real no `ws_n1`, que vai ao outbox e pode acionar o pipeline do
+  Financeiro (com Menção a um estrategista real). Precisa de um `automation/`
+  que não consuma o outbox, ou de um Espaço de teste.
 - [x] **1.10** `financeiro-tria` `54be18c` — Validação do Fluxo 1 que o documento promete e o `automation/`
   não faz: o dígito do CPF (`isValidCpf` existe e não é usado). Nos três tenants.
 - [ ] **1.11** [dono] Decidir: prazo mínimo de 2 dias úteis (padrão do
@@ -176,4 +188,5 @@ o seletor mostra Campos duplicados com o mesmo nome.
 | 2026-10-01 | 6.1–6.2 | `financeiro-tria` `45bdc15` · `f457f7c` | 17 casos (saneamento, candidatas, precedência, IA que falha); contrato 30/30; 795/795; mutações mordem |
 | 2026-10-01 | 6.1–6.4 ponte | `8179fbc` | api: 7 casos da ponte com os exemplos do produtor + 4 de contrato v1.3; 872 sem banco; mutações mordem |
 | 2026-10-01 | 1.10 | `financeiro-tria` `54be18c` | CPF errado recusado, válido segue; 796/796; mutação morde |
-| 2026-10-01 | E2 | este commit | web: 4 casos no store + 2 no transporte; 300/300; api: rota com 401 sem sessão (o caso com banco não rodou) |
+| 2026-10-01 | E2 | `e1e7d41` | web: 4 casos no store + 2 no transporte; 300/300; api: rota com 401 sem sessão (o caso com banco não rodou) |
+| 2026-10-01 | 1.1–1.8 | `48135af` · `e1f081f` · `cf75dfe` · `3fe2ee8` · `1c0df4c` · `ec6af12` | domínio 9 + configurador 2; api 3 (+2 com banco, não rodaram); tela 31; mutações mordem; dry-run no `ws_n1`: 6 Campos herdados fora, Formulário com 24 perguntas |
