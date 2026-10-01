@@ -35,7 +35,7 @@
  */
 
 import type { DataState, Task } from "@n1/dominio";
-import { formBySecret, submitForm, type SubmitFormAttachment } from "@n1/dominio/operations/scale";
+import { formBySecret, formOutdatedReason, submitForm, type SubmitFormAttachment } from "@n1/dominio/operations/scale";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { pool } from "../persistencia/conexao";
 import { hidratar } from "../persistencia/repositorio";
@@ -53,6 +53,12 @@ const ROTA = {
 
 /** Copy única do UI-SPEC ("Unavailable form body") — segredo inexistente e Formulário pausado nunca se distinguem (T-02-03). */
 const COPY_INDISPONIVEL = "Este link não está disponível. Peça um novo link ao Financeiro.";
+/**
+ * Checklist 1.5 — a mesma frase que o envio já devolve (`submitForm`): agora
+ * também ao abrir e ao subir arquivo, para ninguém preencher tudo e só
+ * descobrir no fim. O motivo interno (qual Campo) não sai: é da Lista.
+ */
+export const COPY_DESATUALIZADO = "Este Formulário está desatualizado: peça a quem o enviou para revisá-lo.";
 /** Copy única do UI-SPEC ("Generic public error") — o resto de uma recusa que não é sobre um campo do próprio Formulário. */
 const COPY_ERRO_GENERICO = "Não foi possível enviar a solicitação. Seus dados continuam aqui; tente novamente.";
 const COPY_SESSAO_INVALIDA =
@@ -101,6 +107,12 @@ function responderFormularioIndisponivel(request: FastifyRequest, reply: Fastify
   return reply.code(404).send({ ok: false, error: COPY_INDISPONIVEL });
 }
 
+/** Checklist 1.5 — 409: o link existe, mas o Formulário precisa de revisão de quem o enviou. */
+function responderDesatualizado(request: FastifyRequest, reply: FastifyReply, rota: string, formId: string): FastifyReply {
+  logarRotaPublica(request, { rota, formId, status: 409 });
+  return reply.code(409).send({ ok: false, error: COPY_DESATUALIZADO, desatualizado: true });
+}
+
 function responderLimiteExcedido(request: FastifyRequest, reply: FastifyReply, rota: string, restanteMs: number): FastifyReply {
   logarRotaPublica(request, { rota, status: 429 });
   return reply
@@ -129,14 +141,34 @@ function paraDtoPublico(state: DataState, form: NonNullable<ReturnType<typeof fo
   };
 }
 
+/**
+ * Checklist 1.3 — a máscara de apresentação vem do CAMPO (o nome da
+ * Definição, ou o tipo telefone), nunca do rótulo da pergunta: renomear a
+ * pergunta não tira a máscara.
+ */
+function mascaraDoCampo(nome: string | undefined, tipo: string | undefined): "cpf" | "cnpj" | "telefone" | undefined {
+  if (tipo === "phone") return "telefone";
+  const normalizado = (nome ?? "").trim().toUpperCase();
+  return normalizado === "CPF" ? "cpf" : normalizado === "CNPJ" ? "cnpj" : undefined;
+}
+
 function paraPerguntaPublica(state: DataState, pergunta: NonNullable<ReturnType<typeof formBySecret>>["questions"][number]) {
-  const base = { id: pergunta.id, label: pergunta.label, required: pergunta.required };
+  // Checklist 1.2/1.3 — seção, ajuda e condição são do Formulário; a página pública lê daqui.
+  const base = {
+    id: pergunta.id,
+    label: pergunta.label,
+    required: pergunta.required,
+    ...(pergunta.section ? { section: pergunta.section } : {}),
+    ...(pergunta.showWhen ? { showWhen: { questionId: pergunta.showWhen.questionId, values: [...pergunta.showWhen.values] } } : {}),
+  };
   const alvo = pergunta.target;
-  if (alvo.kind === "title") return { ...base, kind: "text" as const };
-  if (alvo.kind === "description") return { ...base, kind: "longText" as const };
+  if (alvo.kind === "title") return { ...base, ...(pergunta.help ? { help: pergunta.help } : {}), kind: "text" as const };
+  if (alvo.kind === "description") return { ...base, ...(pergunta.help ? { help: pergunta.help } : {}), kind: "longText" as const };
 
   const definicao = state.fieldDefinitions.find((d) => d.id === alvo.definitionId);
-  const comAjuda = definicao?.description ? { help: definicao.description } : {};
+  const ajuda = pergunta.help ?? definicao?.description;
+  const mascara = mascaraDoCampo(definicao?.name, definicao?.type);
+  const comAjuda = { ...(ajuda ? { help: ajuda } : {}), ...(mascara ? { mask: mascara } : {}) };
   if (definicao?.type === "singleSelect" || definicao?.type === "multiSelect") {
     return { ...base, ...comAjuda, kind: definicao.type, options: definicao.options ?? [] };
   }
@@ -164,6 +196,7 @@ export async function rotasDeFormulariosPublicos(app: FastifyInstance, opcoes: O
     const state = await lerEstado(workspaceId);
     const form = formBySecret(state, params.data.secret);
     if (!form || !form.enabled) return responderFormularioIndisponivel(request, reply, ROTA.getForm);
+    if (formOutdatedReason(state, form)) return responderDesatualizado(request, reply, ROTA.getForm, form.id);
 
     logarRotaPublica(request, { rota: ROTA.getForm, formId: form.id, status: 200 });
     return reply.code(200).send(paraDtoPublico(state, form));
@@ -189,6 +222,7 @@ export async function rotasDeFormulariosPublicos(app: FastifyInstance, opcoes: O
     const state = await lerEstado(workspaceId);
     const form = formBySecret(state, params.data.secret);
     if (!form || !form.enabled) return responderFormularioIndisponivel(request, reply, ROTA.createUploadTicket);
+    if (formOutdatedReason(state, form)) return responderDesatualizado(request, reply, ROTA.createUploadTicket, form.id);
 
     try {
       const submissionId = body.data.submissionId ?? (await abrirSessaoDeUpload({ workspaceId, formId: form.id })).submissionId;
