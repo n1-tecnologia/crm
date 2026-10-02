@@ -37,9 +37,16 @@ protótipo.
   - [x] 7.3c Tela: "Anexar arquivo" e os Campos de arquivo da conta sobem de
     verdade, com progresso e erro legível; o texto "protótipo" sai.
   - [x] 7.3d Testes: rota, domínio, a ponte mandando o anexo ao `/lancar`.
-- [ ] **7.4** [dono] Refazer o 2B na conta `tsk_tarkef` com o fornecedor
-  SAFE2PAY (já cadastrado no Omie) e um PDF anexado de verdade; o agente puxa o
-  título do Omie, confere campo a campo e passa o comando de exclusão.
+- [x] **7.4** `aaa8ddc` — 2B refeito numa conta nova (`tsk_tarkih`, 2026-10-02, rodado pelo dono) com o
+  fornecedor SAFE2PAY (já cadastrado no Omie) e um PDF anexado de verdade:
+  "✅ Lançado no Omie — título 5874899236 · TRIA · Contas de Consumo (2.04.03)
+  · anexos 1 de 1". Conferido no Omie (só leitura): integração
+  `tria:contas-a-pagar:tsk_tarkih`, R$ 1,00, vencimento e previsão 12/10/2026,
+  categoria 2.04.03, conta corrente 5468785966, fornecedor 5456746171
+  (31.037.942/0001-78), departamento Tria, "A VENCER", anexo
+  `nota-teste-automatizado.pdf`. Observação: sem Data de Emissão na conta, o
+  título sai com a emissão igual ao vencimento. **[dono]** excluir o título
+  de teste do Omie (comando no fim da conversa de 2026-10-02).
 
 ## Fluxo 3 — a análise do comentário do aprovador (pedido 3)
 
@@ -213,3 +220,4 @@ o seletor mostra Campos duplicados com o mesmo nome.
 | 2026-10-01 | 1.1–1.8 | `48135af` · `e1f081f` · `cf75dfe` · `3fe2ee8` · `1c0df4c` · `ec6af12` | domínio 9 + configurador 2; api 3 (+2 com banco, não rodaram); tela 31; mutações mordem; dry-run no `ws_n1`: 6 Campos herdados fora, Formulário com 24 perguntas |
 | 2026-10-01 | revisão de código | `d4148be` · `financeiro-tria` `bdc62c3` · `5a23f72` | 2 revisores (plataforma: 4 avisos, 5 info; `automation/`: 5 avisos, 4 info), corrigidos os reais: dispensa com mudanças da IA, id de Arquivo em texto, roteamento que travava a fila, Campo herdado sem permissão na origem, injeção pela descrição da conta, campo lido descartado em silêncio, CPF (chave e PII), corridas do store; api 879, domínio 1039+, web 312, `automation/` 800 |
 | 2026-10-02 | 6.6, E1, E2 (prova real) | `financeiro-tria` `b0b2fde` | jornada `cp-conferida` OK (`tsk_tarkfo`) e `cp-ajuste-pelo-fio` OK (`tsk_tarkhi`): Resumo e Resumo revisado aparecem sem recarregar (E2), popup com o id do servidor (E1), IA real aplicando valor e vencimento; 0 `/lancar`, 0 REDUNDANT |
+| 2026-10-02 | 7.4 (lançamento real) | `aaa8ddc` | título 5874899236 no Omie da Tria, conferido campo a campo e com o anexo; o 7.3 (anexo de verdade) provado de ponta a ponta |
