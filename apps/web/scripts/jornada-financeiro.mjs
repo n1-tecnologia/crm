@@ -574,13 +574,17 @@ const comentariosDoTopico = () =>
 
 
 
-const passosDaContaAPagar = (valor = "123.45") => [
+/**
+ * `fornecedor`: um que já existe no Omie, para o lançamento de verdade não
+ * cadastrar ali o CNPJ de teste — que é de uma empresa real (2B de 2026-10-01).
+ */
+const passosDaContaAPagar = (valor = "123.45", fornecedor = { cnpj: "11.222.333/0001-81", nome: "Fornecedor Teste Automatizado LTDA" }) => [
   ["Centro de Custo = TRIA", () => escolher("Centro de Custo", "TRIA")],
   ["Empresa = Tria Company", () => escolher("Empresa", "Tria Company")],
   ["Categoria = Contas de consumo", () => escolher("Categoria de pagamento", "Contas de consumo")],
   ["Fornecedor = CNPJ", () => escolher("Fornecedor", "CNPJ")],
-  ["CNPJ", () => digitar("CNPJ", "11.222.333/0001-81")],
-  ["Nome do fornecedor", () => digitar("Nome do fornecedor", "Fornecedor Teste Automatizado LTDA")],
+  [`CNPJ = ${fornecedor.cnpj}`, () => digitar("CNPJ", fornecedor.cnpj)],
+  [`Nome do fornecedor = ${fornecedor.nome}`, () => digitar("Nome do fornecedor", fornecedor.nome)],
   ["Forma de pagamento = Chave Pix", () => escolher("Forma de pagamento", "Chave Pix")],
   ["Chave pix", () => digitar("Chave pix", "teste-integracao@triacompany.com.br")],
   [`Valor = R$ ${valor.replace(".", ",")}`, () => digitar("Valor", valor)],
@@ -944,22 +948,30 @@ const CENARIOS = [
     nome: `TESTE AUTOMATIZADO — CP lançada no Omie (2B) · ${CARIMBO}`,
     passos: [
       [
-        "JORNADA_MODO = lancar e o PDF do anexo (JORNADA_ANEXO)",
+        "JORNADA_MODO = lancar, o PDF do anexo (JORNADA_ANEXO) e o fornecedor que já existe no Omie",
         async () => {
           if (MODO !== "lancar") throw new Error(`cp-lancada-no-omie exige JORNADA_MODO=lancar (veio "${MODO}")`);
           if (!ANEXO || !existsSync(ANEXO)) throw new Error("exige JORNADA_ANEXO com o caminho de um PDF pequeno");
-          return path.basename(ANEXO);
+          // O CNPJ de teste é de uma empresa real: lançar com ele cadastraria essa empresa no Omie.
+          if (!FORNECEDOR_CNPJ || !FORNECEDOR_NOME) throw new Error("exige JORNADA_FORNECEDOR_CNPJ e JORNADA_FORNECEDOR_NOME (um fornecedor que já existe no Omie)");
+          return `${path.basename(ANEXO)} · ${FORNECEDOR_NOME}`;
         },
       ],
       // Antes dos Campos: a ponte só vê a conta completa, e já com o anexo.
       [
         'Anexar o PDF pela seção "Anexar arquivo" do popup',
         async () => {
-          await gravando("attachFile", () => painel().locator('input[type="file"][multiple]').setInputFiles(ANEXO));
-          return `anexado: ${path.basename(ANEXO)}`;
+          // Desde o 7.3 o anexo sobe de verdade: ticket → bytes ao bucket → confirmação no servidor.
+          const [confirmacao] = await Promise.all([
+            pagina.waitForResponse((r) => r.request().method() === "POST" && /\/tarefas\/[^/]+\/anexos\/confirmar$/.test(r.url()), { timeout: 90_000 }),
+            painel().locator('input[type="file"][multiple]').setInputFiles(ANEXO),
+          ]);
+          const corpo = await confirmacao.json().catch(() => ({}));
+          if (confirmacao.status() !== 200 || corpo?.ok === false) throw new Error(`o anexo não foi confirmado: ${confirmacao.status()} ${JSON.stringify(corpo).slice(0, 200)}`);
+          return `anexado de verdade: ${path.basename(ANEXO)} (${corpo?.value?.fileId ?? "?"})`;
         },
       ],
-      ...passosDaContaAPagar("1.00"),
+      ...passosDaContaAPagar("1.00", { cnpj: FORNECEDOR_CNPJ ?? "", nome: FORNECEDOR_NOME ?? "" }),
       ["Esperar o 📋 RESUMO DE PAGAMENTO no tópico", () => esperarNoFio(RESUMO)],
       ["Card: Conferência do Resumo · Pendente", () => cardDaConferencia("Pendente")],
       ['Responder "ok" no fio do Resumo', () => responderNoFio(RESUMO, "ok")],
