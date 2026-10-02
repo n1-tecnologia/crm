@@ -84,8 +84,10 @@ export function partesDoTextoRico(texto: string): ParteDoTextoRico[] {
  * como marcação.
  */
 function Rico({ texto }: { readonly texto: string }) {
+  // `overflow-wrap: anywhere` quebra também o que não tem espaço — e-mail, código de barras, a linha
+  // "━━━" do Resumo —, senão o texto mais largo que o painel empurra o Comentário para fora da tela.
   return (
-    <p className="app-base mt-1 whitespace-pre-wrap" style={{ color: "var(--texto)" }}>
+    <p className="app-base mt-1 whitespace-pre-wrap" style={{ color: "var(--texto)", overflowWrap: "anywhere" }}>
       {partesDoTextoRico(texto).map((parte, indice) => {
         if (parte.tipo === "negrito") return <strong key={indice}>{parte.texto}</strong>;
         if (parte.tipo === "italico") return <em key={indice}>{parte.texto}</em>;
@@ -212,12 +214,13 @@ function LinhaDeComentario({
 
   // O cartão do ClickUp: avatar, nome e hora no topo; o texto embaixo. Resposta recua.
   return (
-    <li id={`comentario-${comment.id}`} className={`scroll-mt-4 py-1.5${comment.parentCommentId ? " pl-6" : ""}`}>
+    <li id={`comentario-${comment.id}`} className={`min-w-0 scroll-mt-4 py-1.5${comment.parentCommentId ? " pl-6" : ""}`}>
       <div
-        className="rounded-[var(--r-painel)] px-3 py-2.5"
+        className="min-w-0 rounded-[var(--r-painel)] px-3 py-2.5"
         style={{ background: "var(--superficie-1)", border: "1px solid var(--linha)" }}
       >
-        <div className="flex items-center gap-2">
+        {/* Quebra quando não cabe: nome, selos e hora numa linha só empurravam o cartão para fora do painel. */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <ActorAvatar kind={comment.author.kind} name={nome} />
           <span className="app-base min-w-0 truncate" style={{ fontWeight: 600, color: "var(--texto)" }}>
             {nome}
@@ -237,7 +240,9 @@ function LinhaDeComentario({
         ) : null}
         <Rico texto={comment.content} />
         {comment.mentions.length > 0 ? (
-          <p className="app-meta mt-1">mencionou {comment.mentions.map((m) => nomeDaMencao(state, m)).join(", ")}</p>
+          <p className="app-meta mt-1" style={{ overflowWrap: "anywhere" }}>
+            mencionou {comment.mentions.map((m) => nomeDaMencao(state, m)).join(", ")}
+          </p>
         ) : null}
       </div>
       {/*
@@ -279,11 +284,11 @@ function LinhaDeAtividade({
 
   // A linha discreta do ClickUp: bolinha · quem fez o quê · quando, à direita.
   return (
-    <li className="flex items-start gap-3 py-1.5">
+    <li className="flex min-w-0 items-start gap-3 py-1.5">
       <span aria-hidden="true" className="app-sm shrink-0 leading-5" style={{ color: "var(--texto-4)" }}>
         •
       </span>
-      <span className="app-sm min-w-0 flex-1 break-words leading-5" style={{ color: "var(--texto-3)" }}>
+      <span className="app-sm min-w-0 flex-1 break-words leading-5" style={{ color: "var(--texto-3)", overflowWrap: "anywhere" }}>
         <span>{nome}</span>
         {record.delegate ? ` em nome de ${resolverNomeDoAtor(state, record.delegate)}` : ""} {record.action}
         {!ehIntegracao && (record.before || record.after) ? ` (${record.before ?? "—"} → ${record.after ?? "—"})` : ""}
@@ -632,7 +637,12 @@ export function Timeline({ task, fmt, readOnly }: { readonly task: Task; readonl
                   </Button>
                 </div>
               ) : null}
-              <ol className="grid">
+              {/*
+                A coluna do grid começa em `minmax(0, 1fr)`, não em `auto`: com `auto` ela crescia até o
+                item mais largo que não quebra, e TODOS os Comentários e Registros ficavam mais largos
+                que o painel — cortados à direita.
+              */}
+              <ol className="grid min-w-0 grid-cols-[minmax(0,1fr)]">
                 {blocos.map((bloco) => {
                   if (bloco.tipo === "comentario") {
                     const comment = bloco.entrada.comment;

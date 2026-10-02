@@ -346,3 +346,43 @@ describe("Timeline — vazio e carregando (j)", () => {
     expect(status.textContent).toBe("Carregando a timeline…");
   });
 });
+
+describe("Timeline — nada corta à direita do painel (2026-10-02)", () => {
+  it("a coluna da lista encolhe, o cabeçalho do Comentário quebra e o texto quebra palavras longas", () => {
+    const task = montarTarefa(state);
+    task.comments.push(
+      comentario({
+        id: "cmt_largo",
+        author: { kind: "agent", id: "agt_padrao" },
+        content: "📋 RESUMO DE PAGAMENTO\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nChave pix: teste-integracao-com-um-endereco-bem-comprido@triacompany.com.br",
+        createdAt: "2026-01-01T10:00:00Z",
+        mentions: [{ type: "member", id: "mem_maryane" }],
+      }),
+    );
+    state.activity.unshift(
+      atividade(state, {
+        id: "act_largo",
+        actor: { kind: "member", id: "mem_maryane" },
+        action: "Chave pix alterado",
+        objectId: task.id,
+        after: "teste-integracao-com-um-endereco-bem-comprido@triacompany.com.br",
+        at: "2026-01-01T09:00:00Z",
+      }),
+    );
+
+    const { container } = renderizar(state, ordens, transporte, "mem_maryane", task);
+    const lista = container.querySelector("ol");
+    expect(lista?.className).toContain("grid-cols-[minmax(0,1fr)]");
+    expect(lista?.className).toContain("min-w-0");
+
+    const cartao = container.querySelector("#comentario-cmt_largo");
+    const cabecalho = cartao?.querySelector("div > div");
+    expect(cabecalho?.className).toContain("flex-wrap");
+    const texto = [...(cartao?.querySelectorAll("p") ?? [])].find((p) => p.textContent?.includes("RESUMO DE PAGAMENTO"));
+    expect(texto?.style.overflowWrap).toBe("anywhere");
+
+    const linhaDeAtividade = [...container.querySelectorAll("li")].find((li) => li.textContent?.includes("Chave pix alterado"));
+    const textoDaAtividade = [...(linhaDeAtividade?.querySelectorAll("span") ?? [])].find((s) => s.textContent?.includes("Chave pix alterado"));
+    expect(textoDaAtividade?.style.overflowWrap).toBe("anywhere");
+  });
+});
