@@ -35,8 +35,20 @@ import { rotasDeOperacoes } from "./rotas/operacoes";
 export interface OpcoesDoApp {
   /** Padrão: `process.env.WORKSPACE_ID ?? "ws_n1"`. */
   readonly workspaceId?: string;
-  /** Origem permitida pelo CORS. Padrão: `process.env.WEB_ORIGIN ?? "http://localhost:3001"`. */
+  /**
+   * Origens permitidas pelo CORS, separadas por vírgula (a Vercel tem a URL
+   * de produção e a do domínio próprio). Padrão: `process.env.WEB_ORIGIN ?? "http://localhost:3001"`.
+   */
   readonly webOrigin?: string;
+  /**
+   * Quem pode dizer o IP de quem chamou pelo `X-Forwarded-For` — o
+   * `trustProxy` do Fastify, em endereços ou faixas separados por vírgula
+   * (`loopback` vale). Padrão: `process.env.TRUST_PROXY`; vazio, ninguém. Na
+   * VPS é `loopback`: sem ele, atrás do nginx todo `request.ip` vira
+   * 127.0.0.1 e o limite de taxa por IP do Formulário público vira um balde
+   * só para a internet inteira.
+   */
+  readonly trustProxy?: string;
   /** Padrão: `verificarTokenDoSupabase`. Testes injetam um stub, sem rede. */
   readonly verificarToken?: VerificarToken;
   /** Padrão: `membroPorUsuario`. Testes injetam um stub, sem banco. */
@@ -81,9 +93,13 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
   carregarEnv();
 
   const workspaceId = opcoes.workspaceId ?? process.env.WORKSPACE_ID ?? "ws_n1";
-  const webOrigin = opcoes.webOrigin ?? process.env.WEB_ORIGIN ?? "http://localhost:3001";
+  const webOrigins = (opcoes.webOrigin ?? process.env.WEB_ORIGIN ?? "http://localhost:3001")
+    .split(",")
+    .map((origem) => origem.trim())
+    .filter(Boolean);
+  const trustProxy = opcoes.trustProxy ?? process.env.TRUST_PROXY ?? "";
 
-  const app = Fastify({ logger: opcoes.logger ?? false });
+  const app = Fastify({ logger: opcoes.logger ?? false, ...(trustProxy ? { trustProxy } : {}) });
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
 
@@ -151,7 +167,7 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
     ) => {
       const ehRotaDeServico =
         request.url === PREFIXO_ROTAS_DE_SERVICO || request.url.startsWith(`${PREFIXO_ROTAS_DE_SERVICO}/`);
-      callback(null, { ...opcoesDeCors, origin: ehRotaDeServico ? false : [webOrigin] });
+      callback(null, { ...opcoesDeCors, origin: ehRotaDeServico ? false : webOrigins });
     },
   });
 

@@ -220,5 +220,6 @@ está no documento de topologia, não aqui:
   não como erro (`apps/api/src/persistencia/CONTEXT.md`). `0` desliga os três
   prazos (migração longa, à mão) — nunca em produção.
 
-Nenhum comando de deploy vive neste arquivo — o roteiro de deploy vive no
-documento de topologia linkado acima.
+Nenhum comando de deploy vive neste arquivo — o deploy (VPS, serviço,
+nginx, CI/CD e o `api.env` de produção) está em
+[`deploy/CONTEXT.md`](deploy/CONTEXT.md).

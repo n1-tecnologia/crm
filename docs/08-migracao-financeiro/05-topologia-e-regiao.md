@@ -89,6 +89,14 @@ pré-requisito antes de agir.
 
 ## 3. Topologia alvo (D-15/D-11) — desenhada, não publicada
 
+> **2026-10-02 — o deploy de fato está em
+> [`apps/api/deploy/CONTEXT.md`](../../apps/api/deploy/CONTEXT.md)**, com um
+> desvio deste desenho: a interface foi para a Vercel, então é o navegador
+> que chama `GET /estado` e `POST /operacoes/:nome`. Bloquear essas rotas no
+> nginx deixaria a tela sem dado nenhum; todas passam, e quem barra é o JWT
+> do Supabase (e o CORS por allowlist). O `apps/api` escuta só em
+> `127.0.0.1` (não `0.0.0.0`), atrás do nginx.
+
 ```text
 Navegador (apps/web)
     │ HTTPS

@@ -47,4 +47,50 @@ describe("buildApp — casca do apps/api", () => {
     });
     expect(resposta.headers["access-control-allow-origin"]).toBeUndefined();
   });
+
+  it("CORS: WEB_ORIGIN aceita mais de uma origem, separadas por vírgula", async () => {
+    const app = buildApp({ logger: false, webOrigin: "https://crm.exemplo, https://crm-n1.vercel.app" });
+    for (const origin of ["https://crm.exemplo", "https://crm-n1.vercel.app"]) {
+      const resposta = await app.inject({
+        method: "OPTIONS",
+        url: "/saude",
+        headers: { origin, "access-control-request-method": "GET" },
+      });
+      expect(resposta.headers["access-control-allow-origin"]).toBe(origin);
+    }
+  });
+});
+
+describe("buildApp — o IP de quem chamou (limite de taxa do Formulário público)", () => {
+  function comRotaDeIp(trustProxy: string) {
+    const app = buildApp({ logger: false, trustProxy });
+    app.get("/ip-de-teste", { config: { publica: true } }, async (request) => ({ ip: request.ip }));
+    return app;
+  }
+  async function ipVisto(trustProxy: string, remoteAddress: string, encaminhadoPara: string) {
+    const app = comRotaDeIp(trustProxy);
+    const resposta = await app.inject({
+      method: "GET",
+      url: "/ip-de-teste",
+      remoteAddress,
+      headers: { "x-forwarded-for": encaminhadoPara },
+    });
+    return resposta.json().ip;
+  }
+
+  it("atrás do nginx local (TRUST_PROXY=loopback), o IP é o do navegador, não o 127.0.0.1 do proxy", async () => {
+    expect(await ipVisto("loopback", "127.0.0.1", "203.0.113.7")).toBe("203.0.113.7");
+  });
+
+  it("o X-Forwarded-For que o navegador forja antes do nginx não vale: vale o que o nginx viu", async () => {
+    expect(await ipVisto("loopback", "127.0.0.1", "198.51.100.1, 203.0.113.7")).toBe("203.0.113.7");
+  });
+
+  it("quem chama direto, sem passar pelo nginx, não escolhe o próprio IP", async () => {
+    expect(await ipVisto("loopback", "198.51.100.4", "203.0.113.7")).toBe("198.51.100.4");
+  });
+
+  it("sem TRUST_PROXY (desenvolvimento, sem proxy), o cabeçalho é ignorado", async () => {
+    expect(await ipVisto("", "127.0.0.1", "203.0.113.7")).toBe("127.0.0.1");
+  });
 });

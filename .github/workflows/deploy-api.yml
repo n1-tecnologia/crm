@@ -1,0 +1,67 @@
+# Publica o apps/api na VPS quando uma PR entra na main — e só depois do
+# `check` (check.yml) verde para aquele mesmo commit. A interface não passa
+# por aqui: a Vercel publica a web sozinha, pela integração com o GitHub.
+#
+# Se nada de apps/api, packages/dominio ou do lockfile mudou desde a versão
+# no ar, o publicar.sh não publica (o merge só de tela não reinicia o backend).
+# Roteiro, segredos e como voltar atrás: apps/api/deploy/CONTEXT.md.
+name: deploy-api
+
+on:
+  workflow_run:
+    workflows: [check]
+    types: [completed]
+    branches: [main]
+  # Publicar de novo à mão (Actions → deploy-api → Run workflow), só da main.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Um deploy por vez, e nenhum cancela o outro no meio (a troca de versão na
+# VPS não é interrompível com segurança).
+concurrency:
+  group: deploy-api
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      (github.event_name == 'workflow_run'
+        && github.event.workflow_run.conclusion == 'success'
+        && github.event.workflow_run.event == 'push')
+      || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # O commit que o `check` aprovou, não o que estiver na main agora.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # O histórico inteiro: o publicar.sh compara com a versão no ar.
+          fetch-depth: 0
+
+      - name: chave de deploy
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          # A identidade da VPS fica fixada no segredo: um servidor trocado
+          # no caminho faz o deploy falhar, em vez de receber o código.
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: publicar
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: SSH_KEY="$HOME/.ssh/deploy" apps/api/deploy/publicar.sh HEAD
+
+      - name: conferir pela internet
+        if: vars.API_URL_PUBLICA != ''
+        env:
+          API_URL_PUBLICA: ${{ vars.API_URL_PUBLICA }}
+        run: curl -fsS --retry 5 --retry-delay 3 --retry-all-errors "$API_URL_PUBLICA/saude"

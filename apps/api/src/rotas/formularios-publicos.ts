@@ -121,7 +121,10 @@ function responderLimiteExcedido(request: FastifyRequest, reply: FastifyReply, r
     .send({ ok: false, error: "Muitas tentativas. Aguarde um instante e tente novamente." });
 }
 
-/** A chave de limite de taxa por IP — `request.ip` já considera o encaminhamento do nginx à frente (D-15). */
+/**
+ * A chave de limite de taxa por IP — `request.ip` considera o encaminhamento
+ * do nginx à frente (D-15) só quando `TRUST_PROXY` confia nele (`app.ts`).
+ */
 function chaveDeIp(request: FastifyRequest): string {
   return request.ip;
 }

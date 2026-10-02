@@ -1,0 +1,50 @@
+# apps/api na VPS — instalado por preparar-vps.sh em /etc/systemd/system/.
+# Roteiro completo em apps/api/deploy/CONTEXT.md.
+[Unit]
+Description=N1 CRM — apps/api (Fastify)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=n1crm
+Group=n1crm
+# `current` aponta para a versão no ar; o systemd resolve o link a cada start,
+# então reiniciar depois de trocar o link já sobe a versão nova.
+WorkingDirectory=/opt/n1-crm/current/apps/api
+ExecStart=/opt/n1-crm/current/node_modules/.bin/vite-node src/index.ts
+
+# O que é da máquina mora aqui, não no api.env: `carregarEnv()` nunca
+# sobrescreve o que já está no ambiente, então um .env de desenvolvimento
+# copiado para lá não abre a porta para fora nem liga os workers sem querer.
+Environment=PATH=/opt/n1-crm/node/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOST=127.0.0.1
+Environment=PORT=__PORTA__
+Environment=TRUST_PROXY=loopback
+# A VPS roda em UTC; o domínio calcula "dia civil" no fuso local.
+Environment=TZ=America/Sao_Paulo
+# Workers desligados até a virada: com eles ligados aqui E no notebook, os
+# dois processariam o mesmo outbox/agenda. Ligar com `systemctl edit n1-crm-api`.
+Environment=AGENTE_CONTAS_A_PAGAR_ATIVO=false
+Environment=OUTBOX_WORKER_ATIVO=false
+Environment=AUTOMACOES_WORKER_ATIVO=false
+
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+
+# A VPS é compartilhada: um vazamento de memória aqui não derruba os vizinhos.
+MemoryMax=1536M
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/n1-crm
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
