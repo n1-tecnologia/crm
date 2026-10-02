@@ -97,10 +97,16 @@ vencimento, forma…) e o lançamento usa o Resumo revisado.
 - [x] **6.4** `3b24c8f` — Pedido que não muda nada: o Agente responde no fio o que não
   entendeu e como pedir, em vez de um "revisado" idêntico.
 - [x] **6.5** `3b24c8f` — As Observações do Resumo revisado registram o pedido atendido.
-- [ ] **6.6** Contrato `contas-a-pagar-v1` aditivo nos dois repositórios,
-  testes e uma prova real. Contrato v1.3 e testes feitos (cópia igual por
-  hash); falta a prova real: um pedido de ajuste de verdade, com a IA real,
-  na jornada — exige o `automation/` com a chave da OpenAI no ar.
+- [x] **6.6** `financeiro-tria` `b0b2fde` — Contrato `contas-a-pagar-v1` aditivo nos dois repositórios,
+  testes e uma prova real. Prova (2026-10-02, jornada `cp-ajuste-pelo-fio`,
+  conta `tsk_tarkhi`, IA real, ponte em conferência): o pedido "o valor certo
+  é 1.234,56 e o vencimento é 20/10/2026" virou Valor R$ 1.234,56 e
+  vencimento 20/10/2026 nos Campos, o Resumo revisado disse "O que mudou" e
+  as Observações registraram; Conferência nova pendente; ciclo de 8,2 s; zero
+  `/lancar`. A primeira tentativa (2026-10-01) achou um defeito real: o Omie
+  responde REDUNDANT à leitura repetida em menos de 60 s, a espera de 31 s
+  passava do prazo da ponte — corrigido guardando as leituras de referência
+  do Omie por 5 minutos.
 
 ## Fluxo 1 — o Formulário público editável (pedido 1)
 
@@ -206,3 +212,4 @@ o seletor mostra Campos duplicados com o mesmo nome.
 | 2026-10-01 | E2 | `e1e7d41` | web: 4 casos no store + 2 no transporte; 300/300; api: rota com 401 sem sessão (o caso com banco não rodou) |
 | 2026-10-01 | 1.1–1.8 | `48135af` · `e1f081f` · `cf75dfe` · `3fe2ee8` · `1c0df4c` · `ec6af12` | domínio 9 + configurador 2; api 3 (+2 com banco, não rodaram); tela 31; mutações mordem; dry-run no `ws_n1`: 6 Campos herdados fora, Formulário com 24 perguntas |
 | 2026-10-01 | revisão de código | `d4148be` · `financeiro-tria` `bdc62c3` · `5a23f72` | 2 revisores (plataforma: 4 avisos, 5 info; `automation/`: 5 avisos, 4 info), corrigidos os reais: dispensa com mudanças da IA, id de Arquivo em texto, roteamento que travava a fila, Campo herdado sem permissão na origem, injeção pela descrição da conta, campo lido descartado em silêncio, CPF (chave e PII), corridas do store; api 879, domínio 1039+, web 312, `automation/` 800 |
+| 2026-10-02 | 6.6, E1, E2 (prova real) | `financeiro-tria` `b0b2fde` | jornada `cp-conferida` OK (`tsk_tarkfo`) e `cp-ajuste-pelo-fio` OK (`tsk_tarkhi`): Resumo e Resumo revisado aparecem sem recarregar (E2), popup com o id do servidor (E1), IA real aplicando valor e vencimento; 0 `/lancar`, 0 REDUNDANT |
