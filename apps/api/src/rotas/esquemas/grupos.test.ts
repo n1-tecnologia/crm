@@ -13,7 +13,7 @@ import { GRUPOS } from "./grupos";
 const viaJson = (args: unknown[]): unknown[] => JSON.parse(JSON.stringify(args)) as unknown[];
 
 describe("esquemas/grupos — a forma dos args de ferramentas/grupos.ts", () => {
-  it("(a) cobertura — as 22 chaves de ferramentas/grupos.ts em registro.ts", () => {
+  it("(a) cobertura — as 23 chaves de ferramentas/grupos.ts em registro.ts", () => {
     const esperadas = [
       "criarGrupo",
       "importarGruposDoCanal",
@@ -25,6 +25,7 @@ describe("esquemas/grupos — a forma dos args de ferramentas/grupos.ts", () => 
       "inativarCaptacao",
       "zerarCliques",
       "regenerarLinkDeConvite",
+      "enviarLinkDeConvite",
       "adicionarParticipantes",
       "removerParticipante",
       "promoverParticipante",
@@ -104,5 +105,15 @@ describe("esquemas/grupos — a forma dos args de ferramentas/grupos.ts", () => 
     expect(GRUPOS.enviarMensagemAoGrupo.safeParse(viaJson(["grp_1", { content: "oi", actor: { kind: "robo", id: "x" } }])).success).toBe(false);
     expect(GRUPOS.sairDoGrupo.safeParse(viaJson(["grp_1", { entendiIrreversivel: "sim" }])).success).toBe(false);
     expect(GRUPOS.recusarPedidoDeEntrada.safeParse(viaJson(["grp_1"])).success).toBe(false);
+  });
+
+  it("(d) main a91b852 — criarGrupo com criador, foto e capa, e enviarLinkDeConvite, como a tela manda", () => {
+    const foto = { nome: "foto.jpg", url: "data:image/jpeg;base64,/9j/4AAQ", tamanhoBytes: 1234 };
+    const capa = { nome: "capa.jpg", url: "data:image/jpeg;base64,/9j/4AAQ", tamanhoBytes: 5678 };
+    expect(GRUPOS.criarGrupo.safeParse(viaJson([{ nome: "G", canalId: "cnl_1", contatoCriadorId: "cnt_1", foto, capa }])).success).toBe(true);
+    expect(GRUPOS.criarGrupo.safeParse(viaJson([{ nome: "G", canalId: "cnl_1", foto: { ...foto, lixo: 1 } }])).success).toBe(false);
+    expect(GRUPOS.criarGrupo.safeParse(viaJson([{ nome: "G", canalId: "cnl_1", capa: { nome: "c", url: "x" } }])).success).toBe(false);
+    expect(GRUPOS.enviarLinkDeConvite.safeParse(viaJson(["grp_1", ["cnt_1", "cnt_2"]])).success).toBe(true);
+    expect(GRUPOS.enviarLinkDeConvite.safeParse(viaJson(["grp_1", "cnt_1"])).success).toBe(false);
   });
 });

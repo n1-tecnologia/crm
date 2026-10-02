@@ -1,6 +1,6 @@
 /**
  * A FORMA dos `args` das operações de
- * `packages/dominio/src/operations/ferramentas/grupos.ts` — 22 operações.
+ * `packages/dominio/src/operations/ferramentas/grupos.ts` — 23 operações.
  * `receberPedidoDeEntrada`, `registrarEntradaNoGrupo` e
  * `registrarSaidaDoGrupo` não entram em `OPERACOES` (Eventos do provedor,
  * sem `actingMemberId`) e por isso não têm schema aqui — nem
@@ -31,6 +31,15 @@ const CAPTACAO = z
   })
   .strict();
 
+/** A foto ou a capa, já recortada e reduzida na tela (`ImagemDoGrupo`, data URL). */
+const IMAGEM_DO_GRUPO = z
+  .object({
+    nome: z.string(),
+    url: z.string(),
+    tamanhoBytes: z.number(),
+  })
+  .strict();
+
 const CRIAR_GRUPO_INPUT = z
   .object({
     nome: z.string(),
@@ -39,6 +48,9 @@ const CRIAR_GRUPO_INPUT = z
     configuracoes: CONFIGURACOES_DO_GRUPO.optional(),
     participantesIniciaisContactIds: z.array(ID).optional(),
     administradoresContactIds: z.array(ID).optional(),
+    contatoCriadorId: ID.optional(),
+    foto: IMAGEM_DO_GRUPO.optional(),
+    capa: IMAGEM_DO_GRUPO.optional(),
     comunidadeId: ID.optional(),
     captacao: CAPTACAO.optional(),
   })
@@ -89,6 +101,7 @@ export const GRUPOS = {
   inativarCaptacao: z.tuple([ID]),
   zerarCliques: z.tuple([ID]),
   regenerarLinkDeConvite: z.tuple([ID]),
+  enviarLinkDeConvite: z.tuple([ID, z.array(ID)]),
   adicionarParticipantes: z.tuple([ID, ADICIONAR_PARTICIPANTES_INPUT]),
   removerParticipante: z.tuple([ID, ID]),
   promoverParticipante: z.tuple([ID, ID]),

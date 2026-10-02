@@ -252,6 +252,7 @@ export const ativarCaptacao = instrumentar("ativarCaptacao");
 export const inativarCaptacao = instrumentar("inativarCaptacao");
 export const zerarCliques = instrumentar("zerarCliques");
 export const regenerarLinkDeConvite = instrumentar("regenerarLinkDeConvite");
+export const enviarLinkDeConvite = instrumentar("enviarLinkDeConvite");
 export const adicionarParticipantes = instrumentar("adicionarParticipantes");
 export const removerParticipante = instrumentar("removerParticipante");
 export const promoverParticipante = instrumentar("promoverParticipante");
