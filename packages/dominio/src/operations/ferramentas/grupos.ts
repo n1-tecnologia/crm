@@ -15,7 +15,7 @@ import type { ActorRef, Captacao, ConfiguracoesDoGrupo, Conversation, Grupo, Id,
 import { contactDisplayName } from "../../derive";
 import { conversaDoGrupo, identidadeDeWhatsApp, participacoesVigentes, pedidosPendentes } from "../../derive-ferramentas";
 import { memberActor, nextId, recordActivity, systemActor } from "../activity";
-import { sendMessage } from "../conversations";
+import { sendMessage, startConversation } from "../conversations";
 import { emitirEventoDeFerramentas } from "./automacoes";
 import { CAPACIDADES_DE_ATIVOS, LIMITE_DE_GRUPOS_POR_ESPACO } from "./capacidades";
 import {
@@ -68,8 +68,32 @@ export interface CriarGrupoInput {
   readonly configuracoes?: Partial<ConfiguracoesDoGrupo>;
   readonly participantesIniciaisContactIds?: readonly Id[];
   readonly administradoresContactIds?: readonly Id[];
+  /** C40 — o Contato que fica registrado como criador; entra como administrador. */
+  readonly contatoCriadorId?: Id;
+  /** A Foto do grupo (espelhada no provedor) — uma imagem já recortada em quadrado. */
+  readonly foto?: ImagemDoGrupo;
+  /** C41 — a Capa, só da plataforma — uma imagem já recortada em 3:1. */
+  readonly capa?: ImagemDoGrupo;
   readonly comunidadeId?: Id;
   readonly captacao?: Partial<Captacao>;
+}
+
+/** Uma imagem escolhida na tela, já recortada e reduzida (`features/ferramentas/imagem-do-grupo.ts`). */
+export interface ImagemDoGrupo {
+  readonly nome: string;
+  /** O conteúdo, como data URL de imagem (o protótipo não tem servidor). */
+  readonly url: string;
+  readonly tamanhoBytes: number;
+}
+
+/** O teto de uma imagem de Grupo depois de reduzida — folgado: a foto sai com ~100 KB. */
+export const TETO_DA_IMAGEM_DO_GRUPO = 5 * 1024 * 1024;
+
+function recusaDaImagem(imagem: ImagemDoGrupo | undefined, qual: "A foto" | "A capa"): string | undefined {
+  if (!imagem) return undefined;
+  if (!imagem.url.startsWith("data:image/")) return `${qual} precisa ser uma imagem (JPG, PNG ou WebP).`;
+  if (imagem.tamanhoBytes > TETO_DA_IMAGEM_DO_GRUPO) return `${qual} passa de 5 MB.`;
+  return undefined;
 }
 
 /**
@@ -91,6 +115,10 @@ export function criarGrupo(state: DataState, actingMemberId: Id, input: CriarGru
   if ((input.descricao?.length ?? 0) > capacidades.limiteDaDescricao) return fail(`A descrição passa do limite do provedor (${capacidades.limiteDaDescricao} caracteres).`, "descricao");
   const limite = recusaDeLimiteDeGrupos(state);
   if (limite) return fail(limite);
+  const fotoRecusa = recusaDaImagem(input.foto, "A foto");
+  if (fotoRecusa) return fail(fotoRecusa, "foto");
+  const capaRecusa = recusaDaImagem(input.capa, "A capa");
+  if (capaRecusa) return fail(capaRecusa, "capa");
 
   let comunidade: { id: Id; nome: string } | undefined;
   if (input.comunidadeId) {
@@ -105,7 +133,9 @@ export function criarGrupo(state: DataState, actingMemberId: Id, input: CriarGru
     comunidade = { id: c.id, nome: c.nome };
   }
 
-  const participantes = [...new Set([...(input.participantesIniciaisContactIds ?? []), ...(input.administradoresContactIds ?? [])])];
+  // C40 — o Contato criador entra como administrador, como os escolhidos para administrar.
+  const criador = input.contatoCriadorId ? [input.contatoCriadorId] : [];
+  const participantes = [...new Set([...criador, ...(input.participantesIniciaisContactIds ?? []), ...(input.administradoresContactIds ?? [])])];
   const contatos = participantes.map((id) => state.contacts.find((c) => c.id === id && c.lifecycle === "ativo"));
   for (const contato of contatos) {
     if (!contato) return fail("Um dos Contatos escolhidos não está ativo.", "participantes");
@@ -123,7 +153,7 @@ export function criarGrupo(state: DataState, actingMemberId: Id, input: CriarGru
     lifecycle: "ativo",
     nome: input.nome.trim(),
     tipoDeCanal: canal.channelType,
-    identificadorExterno: gerarJid(),
+    identificadorExterno: gerarJid(state),
     canalId: canal.id,
     sincronizacao: { estado: "sincronizado", conferidoEm: momento, papelDoCanal: "administrador" },
     origemDeCriacao: "criadoPelaPlataforma",
@@ -138,10 +168,11 @@ export function criarGrupo(state: DataState, actingMemberId: Id, input: CriarGru
     pedidosDeEntrada: [],
     ...(comunidade ? { comunidadeId: comunidade.id, papelNaComunidade: "comum" as const, vinculadoAComunidadeEm: momento } : {}),
     captacao: { estado: "ativa", ...input.captacao },
+    ...(input.contatoCriadorId ? { contatoCriadorId: input.contatoCriadorId } : {}),
   };
   // O próprio Canal é o primeiro participante — administrador, "É o Canal" (RN-GRP-11).
   abrirParticipacao(state, grupo, { canalParticipanteId: canal.id, identificadorExterno: canal.externalId, papel: "administrador", origem: "adicionado", at: momento, adicionadoPor: ator });
-  const administradores = new Set(input.administradoresContactIds ?? []);
+  const administradores = new Set([...criador, ...(input.administradoresContactIds ?? [])]);
   for (const contato of contatos) {
     if (!contato) continue;
     const r = abrirParticipacao(state, grupo, {
@@ -154,13 +185,102 @@ export function criarGrupo(state: DataState, actingMemberId: Id, input: CriarGru
     });
     if ("erro" in r) return fail(r.erro, "participantes");
   }
+  // As imagens viram Arquivos do Espaço de Trabalho (A8) só agora, com tudo
+  // validado: uma recusa acima não deixa Arquivo solto.
+  const arquivo = (imagem: ImagemDoGrupo): Id => {
+    const id = nextId("fil");
+    state.files.push({
+      id,
+      workspaceId: state.workspace.id,
+      name: imagem.nome,
+      mediaType: "image",
+      sizeBytes: imagem.tamanhoBytes,
+      createdBy: ator,
+      createdAt: momento,
+      url: imagem.url,
+      // Sem upload autorizado por trás (a imagem vem como data URL): a
+      // referência é o mesmo placeholder estável de `attachFile`, nunca o nome.
+      objectKey: `legado/${id}`,
+      state: "enviado",
+    });
+    return id;
+  };
+  if (input.foto) grupo.fotoFileId = arquivo(input.foto);
+  if (input.capa) grupo.capaFileId = arquivo(input.capa);
   state.grupos.push(grupo);
-  registrarNoGrupo(state, grupo, { actor: ator, action: "Grupo criado", detail: `${canal.name}${comunidade ? ` · na Comunidade ${comunidade.nome}` : ""}` });
+  const nomeDoCriador = input.contatoCriadorId ? contatos.find((c) => c?.id === input.contatoCriadorId) : undefined;
+  registrarNoGrupo(state, grupo, { actor: ator, action: "Grupo criado", detail: `${canal.name}${comunidade ? ` · na Comunidade ${comunidade.nome}` : ""}${nomeDoCriador ? ` · criador ${contactDisplayName(nomeDoCriador)}` : ""}` });
   for (const p of participacoesVigentes(grupo)) {
     if (p.contactId) emitirEventoDeFerramentas(state, { kind: "contatoEntrouNoGrupo", grupoId: grupo.id, contactId: p.contactId, participacaoId: p.id });
   }
   if (comunidade) reconciliarGrupoDeAvisos(state, comunidade.id, momento);
   return ok(grupo, grupo.id);
+}
+
+export interface EnvioDeConvite {
+  /** Os Contatos que receberam o link. */
+  readonly enviados: readonly Id[];
+  /** Os que não receberam, cada um com o porquê (já está no Grupo, janela expirada…). */
+  readonly falhas: ReadonlyArray<{ readonly contactId: Id; readonly motivo: string }>;
+}
+
+/**
+ * ENVIAR O LINK DE CONVITE a Contatos (2026-09-28, C40: "uma lista de
+ * contatos para enviar o link do grupo para entrar como participante"). O
+ * Canal administrador manda, numa Conversa 1:1 com cada Contato (a que está
+ * aberta, ou uma nova — `startConversation`), uma Mensagem com o endereço do
+ * Link de convite. A entrada vem depois, quando a pessoa abre o link:
+ * Participação com Origem `linkDeConvite` — ou Pedido de Entrada, se os
+ * administradores aprovam. Quem já está no Grupo não recebe; cada envio segue
+ * as regras do Canal (`sendMessage`: janela de resposta, consentimento) e a
+ * recusa de um não impede os outros.
+ */
+export function enviarLinkDeConvite(state: DataState, actingMemberId: Id, grupoId: Id, contactIds: readonly Id[]): OperationResult<EnvioDeConvite> {
+  const membro = recusaDeMembroAtivo(state, actingMemberId);
+  if (membro) return fail(membro);
+  const grupo = grupoPorId(state, grupoId);
+  if (!grupo) return fail("Grupo não encontrado.");
+  if (grupo.lifecycle !== "ativo") return fail("Este Grupo não está ativo.");
+  const link = grupo.linkDeConvite;
+  if (!link || link.estado === "invalido") return fail("O Grupo não tem Link de convite válido: regenere ou sincronize antes de enviar.", "link");
+  if (!grupo.canalId) return fail("O Grupo não tem Canal administrador para enviar o link.", "canal");
+  const canalRecusa = recusaDoCanal(state, grupo.canalId, "gruposAdministraveis");
+  if (canalRecusa) return fail(canalRecusa, "canal");
+  const unicos = [...new Set(contactIds)];
+  if (unicos.length === 0) return fail("Escolha ao menos um Contato para receber o link.", "contatos");
+
+  const noGrupo = new Set(participacoesVigentes(grupo).map((p) => p.contactId).filter((id): id is Id => id !== undefined));
+  const enviados: Id[] = [];
+  const falhas: Array<{ readonly contactId: Id; readonly motivo: string }> = [];
+  for (const contactId of unicos) {
+    const contato = state.contacts.find((c) => c.id === contactId);
+    const nome = contato ? contactDisplayName(contato) : "Contato";
+    if (noGrupo.has(contactId)) {
+      falhas.push({ contactId, motivo: `${nome} já está no Grupo.` });
+      continue;
+    }
+    const conversa = startConversation(state, actingMemberId, grupo.canalId, contactId);
+    if (!conversa.ok) {
+      falhas.push({ contactId, motivo: `${nome}: ${conversa.error}` });
+      continue;
+    }
+    const primeiroNome = contato?.firstName.trim();
+    const texto = `${primeiroNome ? `Olá, ${primeiroNome}!` : "Olá!"} Você foi convidado para o grupo “${grupo.nome}” no WhatsApp. Para entrar, abra o link: ${link.endereco}`;
+    const envio = sendMessage(state, actingMemberId, { conversationId: conversa.value.id, content: texto });
+    if (!envio.ok) {
+      falhas.push({ contactId, motivo: `${nome}: ${envio.error}` });
+      continue;
+    }
+    enviados.push(contactId);
+  }
+  if (enviados.length > 0) {
+    const nomes = enviados.map((id) => {
+      const c = state.contacts.find((x) => x.id === id);
+      return c ? contactDisplayName(c) : id;
+    });
+    registrarNoGrupo(state, grupo, { actor: memberActor(actingMemberId), action: "Link de convite enviado", detail: `para ${nomes.join(", ")}` });
+  }
+  return ok({ enviados, falhas }, grupo.id);
 }
 
 /**

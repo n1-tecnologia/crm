@@ -23,6 +23,7 @@ import Image from "next/image";
  */
 
 import {
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -45,8 +46,10 @@ import {
   Minimize2,
   Search,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import { cn } from "./cn";
+import { opcaoCasaComBusca } from "./busca-de-opcoes";
 import { Icone } from "./icone";
 import { Pilula } from "./basicos";
 import { lerDuracao, reduzido, usePresenca } from "./movimento";
@@ -343,7 +346,7 @@ export function Select({
   useDismiss(root, () => setOpen(false), open);
 
   const chosen = options.find((option) => option.value === value);
-  const shown = query ? options.filter((option) => option.label.toLowerCase().includes(query.toLowerCase())) : options;
+  const shown = query.trim() ? options.filter((option) => opcaoCasaComBusca(option, query)) : options;
 
   const choose = (index: number) => {
     const option = shown[index];
@@ -447,7 +450,7 @@ export function MultiSelect({
   const listId = useId();
   useDismiss(root, () => setOpen(false), open);
 
-  const shown = query ? options.filter((option) => option.label.toLowerCase().includes(query.toLowerCase())) : options;
+  const shown = query.trim() ? options.filter((option) => opcaoCasaComBusca(option, query)) : options;
 
   const toggle = (value: string) => {
     onChange(values.includes(value) ? values.filter((v) => v !== value) : [...values, value]);
@@ -518,6 +521,7 @@ export function MultiSelect({
                         {marcada ? <Icone de={Check} tamanho="xs" /> : null}
                       </span>
                       <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                      {option.detail ? <span className="app-meta shrink-0">{option.detail}</span> : null}
                     </button>
                   </li>
                 );
@@ -733,6 +737,7 @@ export function ConfirmDialog({
   onCancel,
   footerStart,
   wide = false,
+  extraLargo = false,
   children,
 }: {
   readonly open: boolean;
@@ -749,6 +754,8 @@ export function ConfirmDialog({
   readonly footerStart?: ReactNode;
   /** Formulários com seções pedem mais largura que uma confirmação de uma frase. */
   readonly wide?: boolean;
+  /** Formulário com uma prévia ao lado (o Novo Grupo): a largura do `--modal-xl`. */
+  readonly extraLargo?: boolean;
   readonly children?: ReactNode;
 }) {
   const dialog = useRef<HTMLDivElement>(null);
@@ -775,7 +782,7 @@ export function ConfirmDialog({
         aria-describedby={descriptionId}
         tabIndex={-1}
         className="flutuante surgir relative flex max-h-[calc(100vh-2rem)] w-full flex-col"
-        style={{ maxWidth: wide ? "var(--modal-lg)" : "var(--modal-sm)" }}
+        style={{ maxWidth: extraLargo ? "var(--modal-xl)" : wide ? "var(--modal-lg)" : "var(--modal-sm)" }}
       >
         <div className="flex items-start justify-between gap-4 px-5 py-4" style={{ borderBottom: "1px solid var(--linha)" }}>
           <div className="min-w-0 flex-1">
@@ -958,10 +965,37 @@ export function NoAccessState({ what }: { readonly what: string }) {
 
 /* ------------------------------------------------------------ action menu */
 
+/** Um item do `ActionMenu`. Só `label` e `onSelect` são obrigatórios. */
+export interface ItemDeMenu {
+  readonly label: string;
+  readonly onSelect: () => void;
+  readonly destructive?: boolean;
+  /** Desligado (aria-disabled: focável e na navegação por setas), com o porquê embaixo do rótulo. */
+  readonly disabledReason?: string;
+  /** O ícone à esquerda do rótulo (sempre pelo `Icone`, nunca emoji). */
+  readonly icone?: LucideIcon;
+  /**
+   * Item de ESCOLHA: com `true`/`false`, vira `menuitemradio` com
+   * `aria-checked`, e o escolhido leva o Check no acento à direita — a marca
+   * não é um "✓ " no texto (o rótulo desalinharia dos vizinhos).
+   */
+  readonly selecionado?: boolean;
+  /** Uma linha de apoio embaixo do rótulo, em meta. */
+  readonly detalhe?: string;
+  /** Abre uma seção nova a partir deste item: um separador e o título dela. */
+  readonly secao?: string;
+}
+
 export function ActionMenu({
   label = "Ações",
   trigger,
   items,
+  gatilhoClassName,
+  dica,
+  abrirParaCima = false,
+  alinhar = "fim",
+  desligadoPor,
+  menuClassName,
 }: {
   readonly label?: string;
   /**
@@ -969,56 +1003,174 @@ export function ActionMenu({
    * quem chama fornece o conteúdo do botão. Continua sendo UM `<button>`.
    */
   readonly trigger?: ReactNode;
-  readonly items: ReadonlyArray<{
-    readonly label: string;
-    readonly onSelect: () => void;
-    readonly destructive?: boolean;
-    readonly disabledReason?: string;
-  }>;
+  readonly items: ReadonlyArray<ItemDeMenu>;
+  /**
+   * A classe do PRÓPRIO botão do gatilho (ex.: um botão-ícone): sem ela, o
+   * conteúdo de `trigger` é que se veste — e um `span.btn-icone` dentro do
+   * botão levantaria sozinho no hover.
+   */
+  readonly gatilhoClassName?: string;
+  /** A dica (`title`) do gatilho; sem `trigger`, é o próprio `label`. */
+  readonly dica?: string;
+  /** Num compositor preso ao pé da tela, o menu não tem para onde descer. */
+  readonly abrirParaCima?: boolean;
+  /** A borda do gatilho em que o menu se apoia: "fim" (direita, o padrão) ou "inicio". */
+  readonly alinhar?: "inicio" | "fim";
+  /** Desligado: o gatilho não abre e diz por quê (na dica e ao leitor de tela). */
+  readonly desligadoPor?: string;
+  /** Classes a mais na lista (ex.: uma largura maior que a mínima, para o texto não quebrar). */
+  readonly menuClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
-  useDismiss(root, () => setOpen(false), open);
+  const gatilho = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLUListElement>(null);
+  const idDoMotivo = useId();
+  // Aberto pelo TECLADO, o foco entra no menu (o primeiro item, ou o último
+  // pela seta para cima); aberto pelo ponteiro, fica onde está. Os itens
+  // desligados ENTRAM na navegação (aria-disabled, não `disabled`): quem usa
+  // teclado ou leitor de tela também ouve o porquê.
+  const focarAoAbrir = useRef<"primeiro" | "ultimo" | null>(null);
+  const itensAtivos = () => [...(menu.current?.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]') ?? [])];
+  // Fechar com o foco DENTRO do menu devolve o foco ao gatilho: o item que o
+  // tinha desmonta, e o foco cairia no <body> sem aviso.
+  const fechar = useCallback(() => {
+    const dentro = menu.current?.contains(document.activeElement) ?? false;
+    setOpen(false);
+    if (dentro) gatilho.current?.focus();
+  }, []);
+  useDismiss(root, fechar, open);
+
+  useEffect(() => {
+    if (!open || !focarAoAbrir.current) return;
+    const lista = itensAtivos();
+    (focarAoAbrir.current === "ultimo" ? lista[lista.length - 1] : lista[0])?.focus();
+    focarAoAbrir.current = null;
+  }, [open]);
+
+  const navegar = (event: React.KeyboardEvent) => {
+    const lista = itensAtivos();
+    if (lista.length === 0) return;
+    const atual = lista.indexOf(document.activeElement as HTMLButtonElement);
+    const ir = (i: number) => {
+      event.preventDefault();
+      lista[(i + lista.length) % lista.length]?.focus();
+    };
+    if (event.key === "ArrowDown") ir(atual + 1);
+    else if (event.key === "ArrowUp") ir(atual < 0 ? -1 : atual - 1);
+    else if (event.key === "Home") ir(0);
+    else if (event.key === "End") ir(-1);
+    else if (event.key === "Tab") setOpen(false);
+  };
+
+  const desligado = desligadoPor !== undefined;
 
   return (
     <div ref={root} className="relative min-w-0">
       <button
+        ref={gatilho}
         type="button"
-        onClick={() => setOpen((current) => !current)}
+        onClick={(event) => {
+          if (desligado) return;
+          // `detail === 0`: o clique veio do teclado (Enter/Espaço).
+          if (!open && event.detail === 0) focarAoAbrir.current = "primeiro";
+          setOpen((current) => !current);
+        }}
+        onKeyDown={(event) => {
+          if (desligado || open) return;
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            focarAoAbrir.current = event.key === "ArrowUp" ? "ultimo" : "primeiro";
+            setOpen(true);
+          }
+        }}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={label}
-        title={trigger ? undefined : label}
-        className={trigger ? "rounded-[var(--r-controle)]" : "btn-icone btn-icone-nu"}
+        aria-disabled={desligado || undefined}
+        aria-describedby={desligado ? idDoMotivo : undefined}
+        title={desligadoPor ?? dica ?? (trigger ? undefined : label)}
+        className={gatilhoClassName ?? (trigger ? "rounded-[var(--r-controle)]" : "btn-icone btn-icone-nu")}
       >
         {trigger ?? <Icone de={Ellipsis} />}
       </button>
+      {desligado ? (
+        <span id={idDoMotivo} hidden>
+          {desligadoPor}
+        </span>
+      ) : null}
       {open ? (
-        <ul role="menu" className="flutuante surgir-rapido absolute right-0 z-30 mt-1 min-w-48 p-1">
-          {items.map((item) => (
-            <li key={item.label} role="none">
-              <button
-                type="button"
-                role="menuitem"
-                disabled={item.disabledReason !== undefined}
-                title={item.disabledReason}
-                data-destrutivo={item.destructive ? "true" : undefined}
-                onClick={() => {
-                  item.onSelect();
-                  setOpen(false);
-                }}
-                className="item-menu w-full"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block">{item.label}</span>
-                  {item.disabledReason ? <span className="app-meta block">{item.disabledReason}</span> : null}
-                </span>
-              </button>
-            </li>
+        <ul
+          ref={menu}
+          role="menu"
+          aria-label={label}
+          onKeyDown={navegar}
+          className={cn(
+            "flutuante surgir-rapido absolute z-30 min-w-48 p-1",
+            alinhar === "inicio" ? "left-0" : "right-0",
+            abrirParaCima ? "bottom-full mb-1" : "mt-1",
+            menuClassName,
+          )}
+        >
+          {items.map((item, i) => (
+            <ItemDoMenu
+              key={`${i}:${item.label}`}
+              item={item}
+              separar={item.secao !== undefined && i > 0}
+              aoEscolher={() => {
+                item.onSelect();
+                setOpen(false);
+                // Antes de o item desmontar. Se a escolha abriu um diálogo, ele
+                // toma o foco depois, e ao fechar devolve a este gatilho.
+                gatilho.current?.focus();
+              }}
+            />
           ))}
         </ul>
       ) : null}
     </div>
+  );
+}
+
+function ItemDoMenu({ item, separar, aoEscolher }: { readonly item: ItemDeMenu; readonly separar: boolean; readonly aoEscolher: () => void }) {
+  const escolha = item.selecionado !== undefined;
+  const desligado = item.disabledReason !== undefined;
+  const idDoMotivo = useId();
+  return (
+    <>
+      {separar ? <li role="separator" className="item-menu-separador" /> : null}
+      {item.secao ? (
+        <li role="presentation" aria-hidden="true" className="item-menu-secao app-xs">
+          {item.secao}
+        </li>
+      ) : null}
+      <li role="none">
+        <button
+          type="button"
+          role={escolha ? "menuitemradio" : "menuitem"}
+          aria-checked={escolha ? item.selecionado : undefined}
+          aria-disabled={desligado || undefined}
+          aria-describedby={desligado ? idDoMotivo : undefined}
+          title={item.disabledReason}
+          data-destrutivo={item.destructive ? "true" : undefined}
+          onClick={desligado ? undefined : aoEscolher}
+          className="item-menu w-full"
+        >
+          {item.icone ? <Icone de={item.icone} tamanho="sm" className="shrink-0" /> : null}
+          <span className="min-w-0 flex-1">
+            <span className="block">{item.label}</span>
+            {item.detalhe ? <span className="app-meta block">{item.detalhe}</span> : null}
+            {item.disabledReason ? (
+              // Fora do nome (aria-hidden), mas lido como descrição pelo aria-describedby.
+              <span id={idDoMotivo} aria-hidden="true" className="app-meta block">
+                {item.disabledReason}
+              </span>
+            ) : null}
+          </span>
+          {item.selecionado ? <Icone de={Check} tamanho="xs" className="shrink-0" style={{ color: "var(--acento)" }} /> : null}
+        </button>
+      </li>
+    </>
   );
 }
 

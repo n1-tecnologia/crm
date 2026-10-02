@@ -10,6 +10,7 @@
 
 import { fail, ok, type DataState, type OperationResult } from "../state";
 import type { Agent, Id } from "../types";
+import { versaoCorrenteDoAgente } from "../derive-ia";
 import { memberActor, nextId, recordActivity } from "./activity";
 import { montarVersaoDoAgente, motivoParaNaoAtivar, nomeDeAgenteEmUso, type ConteudoDaVersaoDoAgente } from "./ia/agentes";
 
@@ -152,7 +153,11 @@ export function publishAgentVersion(
   if (!podeEditar) return fail("Publicar uma Versão exige ser o Proprietário do Agente ou administrar o Espaço de Trabalho.");
   if (nomeDeAgenteEmUso(state, draft.name, agent.id)) return fail(`Já existe um Agente chamado “${draft.name.trim()}”.`, "nome");
 
-  const versao = montarVersaoDoAgente(state, agent.id, agent.versions, actingMemberId, conteudoDoRascunho(draft, actingMemberId));
+  // O Construtor não edita "Admite sobrescrita de Modelo" (B75): a Versão nova
+  // conserva o da corrente — gravar false fixo tirava do Chat a troca de
+  // Modelo do Assistente padrão na primeira publicação.
+  const conteudo = { ...conteudoDoRascunho(draft, actingMemberId), allowsModelOverride: versaoCorrenteDoAgente(agent)?.allowsModelOverride ?? false };
+  const versao = montarVersaoDoAgente(state, agent.id, agent.versions, actingMemberId, conteudo);
   agent.name = draft.name.trim();
   agent.description = draft.description.trim();
   agent.versions.push(versao);

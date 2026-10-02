@@ -27,7 +27,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import {
   Bell,
   Building2,
@@ -884,6 +884,15 @@ function TreeList({
  * As Sessões de Chat como submenu: pasta → Sessões, e as soltas direto sob
  * "Chat". É a mesma árvore da Estrutura, com a mesma linha, para o menu não
  * ter duas gramáticas. Só as MINHAS: pasta e Sessão são do Membro (DO-CHT-09).
+ *
+ * Dois GRUPOS com título (2026-09-28: "preciso que haja uma separação entre
+ * as pastas e os chats sem pastas"): "Pastas", com o "Nova pasta" no fim (é
+ * dele que a pasta nasce), e "Chats", as Sessões soltas, depois de um
+ * hairline (o nome pedido em seguida: "troque por chats, coloque um ícone de
+ * + para começar um novo chat"). O "+" do título leva à home do Chat, onde a
+ * Sessão nasce da primeira mensagem; já estando lá, põe o cursor no campo.
+ * O grupo "Chats" aparece sempre, mesmo vazio, por causa do "+"; sem pasta,
+ * o primeiro fica só com o "Nova pasta".
  */
 function ChatTree({
   pathname,
@@ -895,6 +904,8 @@ function ChatTree({
   const { memberId } = useSession();
   const run = useRun();
   const { dialogs, openCreate, openRename, openDelete } = useChatFolderDialogs(onNotice);
+  const idDasPastas = useId();
+  const idDasSoltas = useId();
   // O seletor devolve o estado inteiro: um seletor que filtra cria um array
   // novo a cada leitura, e o instantâneo do servidor precisa ser estável.
   const state = useData((data) => data);
@@ -950,49 +961,74 @@ function ChatTree({
   return (
     <div className="mb-1">
       {dialogs}
-      {folders.map((folder) => {
-        const inside = sessions.filter((s) => s.folderId === folder.id);
-        return (
-          <div key={folder.id}>
-            <TreeRow
-              depth={1}
-              label={folder.name}
-              icon={<FolderIcon className="size-3.5 shrink-0 text-[var(--cor-tinta-fraca)]" aria-hidden="true" />}
-              open={aberta(folder.id)}
-              onToggle={() => toggle(folder.id)}
-              hasChildren
-              menu={[
-                { label: "Renomear", onSelect: () => openRename(folder) },
-                { label: "Excluir pasta", destructive: true, onSelect: () => openDelete(folder) },
-              ]}
-            />
-            {aberta(folder.id)
-              ? inside.length > 0
-                ? inside.map((session) => sessionRow(session))
-                : (
-                    <p
-                      className="app-meta truncate py-1"
-                      style={{ paddingLeft: `${12 + 24 + 6 + 14 + 6}px` }}
-                    >
-                      Pasta vazia
-                    </p>
-                  )
-              : null}
-          </div>
-        );
-      })}
-      {loose.map((session) => sessionRow(session))}
-      {/* Como o "Novo projeto" do ChatGPT: a pasta nasce onde ela vai morar. */}
-      <div className="flex items-center">
-        <span className="w-6 shrink-0" style={{ marginLeft: "12px" }} />
-        <button
-          type="button"
-          onClick={openCreate}
-          className="app-base flex min-w-0 flex-1 items-center gap-2 rounded-[var(--r-controle)] px-2 text-[var(--texto-3)] transition-colors hover:bg-[var(--superficie-hover)] hover:text-[var(--texto)]"
-        >
-          <Plus className="size-3.5 shrink-0" aria-hidden="true" />
-          <span className="truncate">Nova pasta</span>
-        </button>
+      <div role="group" aria-labelledby={idDasPastas}>
+        <p id={idDasPastas} className="app-coluna chat-arvore-grupo">
+          Pastas
+        </p>
+        {folders.map((folder) => {
+          const inside = sessions.filter((s) => s.folderId === folder.id);
+          return (
+            <div key={folder.id}>
+              <TreeRow
+                depth={1}
+                label={folder.name}
+                icon={<FolderIcon className="size-3.5 shrink-0 text-[var(--cor-tinta-fraca)]" aria-hidden="true" />}
+                open={aberta(folder.id)}
+                onToggle={() => toggle(folder.id)}
+                hasChildren
+                menu={[
+                  { label: "Renomear", onSelect: () => openRename(folder) },
+                  { label: "Excluir pasta", destructive: true, onSelect: () => openDelete(folder) },
+                ]}
+              />
+              {aberta(folder.id)
+                ? inside.length > 0
+                  ? inside.map((session) => sessionRow(session))
+                  : (
+                      <p
+                        className="app-meta truncate py-1"
+                        style={{ paddingLeft: `${12 + 24 + 6 + 14 + 6}px` }}
+                      >
+                        Pasta vazia
+                      </p>
+                    )
+                : null}
+            </div>
+          );
+        })}
+        {/* Como o "Novo projeto" do ChatGPT: a pasta nasce onde ela vai morar. */}
+        <div className="flex items-center">
+          <span className="w-6 shrink-0" style={{ marginLeft: "12px" }} />
+          <button
+            type="button"
+            onClick={openCreate}
+            className="app-base flex min-w-0 flex-1 items-center gap-2 rounded-[var(--r-controle)] px-2 text-[var(--texto-3)] transition-colors hover:bg-[var(--superficie-hover)] hover:text-[var(--texto)]"
+          >
+            <Plus className="size-3.5 shrink-0" aria-hidden="true" />
+            <span className="truncate">Nova pasta</span>
+          </button>
+        </div>
+      </div>
+      <div role="group" aria-labelledby={idDasSoltas} className="chat-arvore-soltas">
+        <div className="chat-arvore-grupo chat-arvore-grupo-com-acao">
+          <span id={idDasSoltas} className="app-coluna">
+            Chats
+          </span>
+          <Link
+            href="/ia/chat"
+            aria-label="Novo chat"
+            title="Novo chat"
+            className="chat-arvore-novo"
+            onNavigate={() => marcarSeMuda("/ia/chat")}
+            onClick={() => {
+              // Já na home do Chat, não há para onde ir: o "+" põe o cursor no campo.
+              if (pathname === "/ia/chat") document.getElementById("comeco-do-chat")?.focus();
+            }}
+          >
+            <Plus className="size-3.5" aria-hidden="true" />
+          </Link>
+        </div>
+        {loose.map((session) => sessionRow(session))}
       </div>
     </div>
   );

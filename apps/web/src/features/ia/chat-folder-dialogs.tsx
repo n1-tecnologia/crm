@@ -14,7 +14,13 @@ import type { ChatFolder } from "@n1/dominio/types";
 
 type Editing = { readonly id?: string; readonly name: string };
 
-export function useChatFolderDialogs(onDone: (message: string) => void) {
+/**
+ * `onDone` recebe a frase do que aconteceu e, quando uma pasta NASCEU, o id
+ * dela: quem abriu "Nova pasta…" a partir de uma escolha (o compositor do
+ * Chat) já a deixa escolhida — criar e ainda ter de escolher de novo seria
+ * trabalho dobrado.
+ */
+export function useChatFolderDialogs(onDone: (message: string, criadaId?: string) => void) {
   const run = useRun();
   const sessions = useData((data) => data.chatSessions);
   const [editing, setEditing] = useState<Editing | null>(null);
@@ -29,7 +35,7 @@ export function useChatFolderDialogs(onDone: (message: string) => void) {
     if (result.ok) {
       setError(null);
       setEditing(null);
-      onDone(editing.id ? "Pasta renomeada." : "Pasta criada.");
+      onDone(editing.id ? "Pasta renomeada." : "Pasta criada.", editing.id ? undefined : result.value.id);
     } else {
       setError(result.error);
     }

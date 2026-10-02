@@ -106,7 +106,7 @@ const TOKENS_DE_TEMPO = {
 
 /* A allowlist do repouso: folhas em que transform em repouso é permitido
    (CHECKLIST-MOVIMENTO, item 5). */
-const REPOUSO_PERMITIDO = [".seta-recolhe", ".chave-polegar", ".capa-orbe", ".girando", ".trilho-luz", ".barra-progresso", ".regua-tempo", ".login-marca", ".carregador-icone", ".carregador-aro", ".cena-spline-selo", ".cena-spline-boca", ".holofote"];
+const REPOUSO_PERMITIDO = [".seta-recolhe", ".chave-polegar", ".capa-orbe", ".girando", ".trilho-luz", ".barra-progresso", ".regua-tempo", ".login-marca", ".carregador-icone", ".carregador-aro", ".cena-spline-selo", ".cena-spline-boca", ".holofote", ".compositor-luz"];
 
 function getJSON(rota) {
   return new Promise((resolve, reject) => {

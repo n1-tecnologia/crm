@@ -8,6 +8,7 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
+import { buildProductSeed } from "../seed-produto";
 import { buildSeed } from "../seed";
 import {
   checklistProgress,
@@ -58,7 +59,7 @@ import {
   trashContact,
 } from "./contacts";
 import { deleteRole, grantGovernanceAccess, inviteMember, previewSuccession, removeMember, roleHolders } from "./members";
-import { configureChatSession, decideApproval, publishAutomation, restoreAgent, sendChatMessage } from "./ai";
+import { configureChatSession, createChatSession, decideApproval, publishAutomation, restoreAgent, sendChatMessage } from "./ai";
 import {
   createChatFolder,
   deleteChatFolder,
@@ -2665,8 +2666,32 @@ describe("Pastas de Chat", () => {
 });
 
 describe("Ajustes da Sessão de Chat", () => {
+  it("o seed traz uma Sessão em andamento: cada resposta e cada Ferramenta saem de uma Execução concluída da mesma Sessão", () => {
+    const sessao = state.chatSessions.find((s) => s.id === "cht_2");
+    const mensagens = sessao?.messages ?? [];
+    expect(mensagens.filter((m) => m.role === "usuario").length).toBe(3);
+    expect(mensagens.filter((m) => m.role === "assistente").length).toBe(3);
+    expect(mensagens.map((m) => m.order)).toEqual(mensagens.map((_, i) => i));
+    for (const m of mensagens.filter((x) => x.role === "assistente" || x.role === "ferramenta")) {
+      const execucao = state.agentExecutions.find((e) => e.id === m.executionId);
+      expect(execucao?.chatSessionId).toBe("cht_2");
+      expect(execucao?.state).toBe("concluida");
+    }
+    // Só se cita o que o Agente acessa: a Coleção do Documento citado tem Concessão ao Assistente padrão.
+    const citadas = mensagens.flatMap((m) => m.knowledgeReferences.map((r) => r.collectionId));
+    expect(citadas.every((c) => state.collectionGrants.some((g) => g.collectionId === c && g.agentId === "agt_padrao"))).toBe(true);
+    // E a conversa sobrevive no seed de PRODUTO (o que a tela usa): o `pruneDemo`
+    // apaga o que cita a árvore de demonstração, e a Tarefa-âncora de cht_2 é dela.
+    const produto = buildProductSeed().chatSessions.find((s) => s.id === "cht_2");
+    expect(produto?.messages.length).toBe(mensagens.length);
+  });
+
   it("pasta, Habilidade e Modelo mudam a qualquer hora; a Âncora só antes da primeira Mensagem", () => {
+    // O Modelo só se escolhe com um Agente que admite sobrescrita (B75): a
+    // cht_6 é do Redator, que não admite — o mesmo ajuste volta ao Assistente
+    // padrão, que admite.
     const vazia = configureChatSession(state, "mem_thiago", "cht_6", {
+      mainAgentId: null,
       folderId: "cfd_propostas",
       skillId: "skl_qualificar",
       chosenModelId: "mdl_rapido",
@@ -2689,6 +2714,72 @@ describe("Ajustes da Sessão de Chat", () => {
     expect(configureChatSession(state, "mem_thiago", "cht_6", { anchor: null }).ok).toBe(false);
     expect(configureChatSession(state, "mem_thiago", "cht_6", { folderId: null }).ok).toBe(true);
     expect(sessao?.folderId).toBeUndefined();
+  });
+
+  it("B75 — o Modelo escolhido só vale com um Agente que admite sobrescrita, e a recusa não grava nada pela metade", () => {
+    const sessao = state.chatSessions.find((s) => s.id === "cht_1");
+    expect(sessao?.mainAgentId).toBe("agt_redator");
+    const pastaAntes = sessao?.folderId;
+    // O Redator não admite: a recusa vem inteira, e a pasta pedida junto não muda.
+    const recusa = configureChatSession(state, "mem_thiago", "cht_1", { folderId: "cfd_processo", chosenModelId: "mdl_rapido" });
+    expect(recusa.ok).toBe(false);
+    if (!recusa.ok) expect(recusa.error).toMatch(/não admite trocar o Modelo/);
+    expect(sessao?.folderId).toBe(pastaAntes);
+    expect(sessao?.chosenModelId).toBeUndefined();
+    // Na criação, a mesma regra.
+    const nascida = createChatSession(state, "mem_thiago", { title: "Teste", mainAgentId: "agt_redator", chosenModelId: "mdl_rapido" });
+    expect(nascida.ok).toBe(false);
+    // Com o Assistente padrão, que admite, passa.
+    expect(createChatSession(state, "mem_thiago", { title: "Teste", chosenModelId: "mdl_rapido" }).ok).toBe(true);
+  });
+
+  it("DO-CHT-12 — com a Sessão em curso, trocar o Agente ou o Modelo deixa uma Mensagem 'sistema'; antes da primeira, não", () => {
+    const nova = createChatSession(state, "mem_thiago", { title: "Sessão nova" });
+    if (!nova.ok) throw new Error(nova.error);
+    const id = nova.value.id;
+    const sessao = state.chatSessions.find((s) => s.id === id);
+    expect(sessao?.messages.length).toBe(0);
+    // Antes da primeira Mensagem: ajuste sem Mensagem nenhuma.
+    expect(configureChatSession(state, "mem_thiago", id, { chosenModelId: "mdl_base" }).ok).toBe(true);
+    expect(sessao?.messages.length).toBe(0);
+
+    expect(sendChatMessage(state, "mem_thiago", id, "Começando").ok).toBe(true);
+    // O Redator não admite sobrescrita: trocar para ele devolve a Sessão ao
+    // Modelo do Agente — e as duas trocas ficam ditas no fio.
+    const troca = configureChatSession(state, "mem_thiago", id, { mainAgentId: "agt_redator" });
+    expect(troca.ok, troca.ok ? "" : troca.error).toBe(true);
+    expect(sessao?.chosenModelId).toBeUndefined();
+    const sistema = (sessao?.messages ?? []).filter((m) => m.role === "sistema");
+    expect(sistema.map((m) => m.content)).toEqual([
+      expect.stringMatching(/A partir daqui responde o Agente “.+”\./),
+      "O Modelo volta a ser o do Agente.",
+    ]);
+    expect(sistema.every((m) => m.author.kind === "system")).toBe(true);
+    // A ordem continua contínua depois da Mensagem do Membro.
+    expect(sessao?.messages.map((m) => m.order)).toEqual([0, 1, 2]);
+    // A pasta não é troca de quem responde: sem Mensagem 'sistema'.
+    expect(configureChatSession(state, "mem_thiago", id, { folderId: "cfd_processo" }).ok).toBe(true);
+    expect(sessao?.messages.length).toBe(3);
+  });
+
+  it("escolher de novo o que já está escolhido não é ajuste: nada vai ao Registro; a troca de quem responde guarda o antes e o depois", () => {
+    const antes = state.activity.length;
+    // cht_1 já é do Redator e já está na pasta Propostas.
+    expect(configureChatSession(state, "mem_thiago", "cht_1", { mainAgentId: "agt_redator", folderId: "cfd_propostas" }).ok).toBe(true);
+    expect(state.activity.length).toBe(antes);
+    expect(configureChatSession(state, "mem_thiago", "cht_1", { mainAgentId: null }).ok).toBe(true);
+    const registro = state.activity[0];
+    expect(registro?.action).toBe("Sessão de Chat ajustada");
+    expect(registro?.before).toMatch(/Redator/);
+    expect(registro?.after).toMatch(/Modelo do Agente/);
+  });
+
+  it("RN-CHT-03 — só se ancora numa Tarefa que o Membro vê", () => {
+    expect(memberSeesTask(state, "mem_thiago_pereira", "tsk_cp_aluguel_out")).toBe(false);
+    const alheia = createChatSession(state, "mem_thiago_pereira", { title: "Teste", anchor: { type: "task", id: "tsk_cp_aluguel_out" } });
+    expect(alheia.ok).toBe(false);
+    const minha = createChatSession(state, "mem_thiago_pereira", { title: "Teste", anchor: { type: "task", id: "tsk_cp_thiago_out" } });
+    expect(minha.ok, minha.ok ? "" : minha.error).toBe(true);
   });
 });
 
@@ -2744,6 +2835,18 @@ describe("Construtor de Agentes", () => {
   it("publicar de novo acrescenta a Versão 2 e mantém a 1 no histórico; só o dono publica", () => {
     const criado = createAgent(state, "mem_thiago", rascunho);
     if (!criado.ok) throw new Error(criado.error);
+    // B75 — o Construtor não edita a sobrescrita: publicar conserva a da Versão
+    // corrente. O Assistente padrão continua deixando trocar o Modelo no Chat.
+    const padrao = state.agents.find((a) => a.id === "agt_padrao");
+    if (!padrao) throw new Error("sem agt_padrao");
+    const doPadrao = publishAgentVersion(state, "mem_thiago", "agt_padrao", {
+      ...rascunho,
+      name: padrao.name,
+    });
+    expect(doPadrao.ok, doPadrao.ok ? "" : doPadrao.error).toBe(true);
+    expect(padrao.versions[padrao.versions.length - 1]?.allowsModelOverride).toBe(true);
+    expect(createChatSession(state, "mem_thiago", { title: "Teste", chosenModelId: "mdl_rapido" }).ok).toBe(true);
+
     const segunda = publishAgentVersion(state, "mem_thiago", criado.value.id, {
       ...rascunho,
       instructions: "Nova instrução.",

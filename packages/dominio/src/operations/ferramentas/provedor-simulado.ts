@@ -5,6 +5,7 @@
  * ainda não espelhou vive aqui — os grupos que uma importação traria.
  */
 
+import type { DataState } from "../../state";
 import type { ConfiguracoesDoGrupo, PapelDoCanal } from "../../types";
 
 export interface GrupoNoProvedor {
@@ -53,10 +54,25 @@ export const GRUPOS_NO_PROVEDOR: Record<string, readonly GrupoNoProvedor[]> = {
 
 let sequencia = 0;
 
-/** Um Identificador externo de grupo no formato do provedor. */
-export function gerarJid(): string {
-  sequencia += 1;
-  return `1203633${String(sequencia).padStart(11, "0")}@g.us`;
+/**
+ * Um Identificador externo de grupo no formato do provedor — nunca um que o
+ * Espaço de Trabalho já usa. Os do seed são fixos (…001, …002, …011…), e a
+ * sequência começava neles: o primeiro Grupo criado herdava o JID de um
+ * semeado e, com ele, a Conversa de grupo desse outro (achada pelo JID —
+ * `conversaDoGrupo`), com a janela de resposta dele. A sequência é do módulo
+ * e não volta a zero; o que garante a unicidade é a conferência no estado.
+ */
+export function gerarJid(state: DataState): string {
+  const emUso = new Set<string>();
+  for (const g of state.grupos) if (g.identificadorExterno) emUso.add(g.identificadorExterno);
+  for (const c of state.comunidades) if (c.identificadorExterno) emUso.add(c.identificadorExterno);
+  for (const c of state.conversations) if (c.groupIdentifier?.externalId) emUso.add(c.groupIdentifier.externalId);
+  let jid: string;
+  do {
+    sequencia += 1;
+    jid = `1203633${String(sequencia).padStart(11, "0")}@g.us`;
+  } while (emUso.has(jid));
+  return jid;
 }
 
 export function gerarEnderecoDeConvite(): string {

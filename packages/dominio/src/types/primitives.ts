@@ -167,6 +167,12 @@ export interface WorkspaceFile {
   readonly objectKey: string;
   readonly sha256?: string;
   readonly state: "enviado" | "ausente";
+  /**
+   * No protótipo (sem servidor), o conteúdo de uma IMAGEM como data URL — é o
+   * que a tela mostra (a foto e a capa de um Grupo, C41). Vive no armazém da
+   * sessão, como o resto.
+   */
+  readonly url?: string;
 }
 
 /**
