@@ -67,17 +67,22 @@ describe("6.3 — o Agente aplica o que o pedido muda", () => {
   it("valor e vencimento mudam nos Campos; o Resumo e as Observações dizem o que mudou; a Conferência nova não nasce desatualizada", () => {
     const valorAntes = Number(fieldValue(das(), CP.fields.valor));
     const vencimentoAntes = das().dueDate?.value.slice(0, 10) ?? "";
-    const rejeitada = pedirAjuste("valor 1.234,56 e vencimento 15/10/2026");
+    // O seed data o DAS a partir de hoje: uma data fixa aqui coincidia com a do seed em um dia
+    // do mês ("15/10 → 15/10" não é mudança) e o teste falhava só naquele dia.
+    const depois = new Date(`${vencimentoAntes}T12:00:00Z`);
+    depois.setUTCDate(depois.getUTCDate() + 10);
+    const vencimentoNovo = depois.toISOString().slice(0, 10);
+    const brl = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+    const dataBr = (iso: string) => iso.split("-").reverse().join("/");
+    const rejeitada = pedirAjuste(`valor 1.234,56 e vencimento ${dataBr(vencimentoNovo)}`);
 
-    const r = revisar(rejeitada, { mudancasDoPedido: { valorCentavos: 123456, vencimento: "2026-10-15" } });
+    const r = revisar(rejeitada, { mudancasDoPedido: { valorCentavos: 123456, vencimento: vencimentoNovo } });
     if (!r.ok) throw new Error(r.error);
 
     expect(fieldValue(das(), CP.fields.valor)).toBe("1234.56");
-    expect(das().dueDate).toEqual({ form: "civilDay", value: "2026-10-15" });
+    expect(das().dueDate).toEqual({ form: "civilDay", value: vencimentoNovo });
 
-    const brl = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
-    const dataBr = (iso: string) => iso.split("-").reverse().join("/");
-    const linhas = `Valor: ${brl(valorAntes)} → ${brl(1234.56)}; Vencimento: ${dataBr(vencimentoAntes)} → 15/10/2026`;
+    const linhas = `Valor: ${brl(valorAntes)} → ${brl(1234.56)}; Vencimento: ${dataBr(vencimentoAntes)} → ${dataBr(vencimentoNovo)}`;
     expect(r.value.comentario.content).toContain(`O que mudou: ${linhas}.`);
     expect(r.value.comentario.content).toContain(`Ajustado a pedido no fio: ${linhas}.`);
     expect(r.value.comentario.content).toContain(`💰 Valor:             ${brl(1234.56)}`);
