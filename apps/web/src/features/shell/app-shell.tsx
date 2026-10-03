@@ -59,6 +59,7 @@ import { Icone } from "@/design/icone";
 import { CarregadorDeIcones } from "@/design/carregador";
 import { EsqueletoDeTela } from "@/design/esqueletos";
 import { ASSUNTO_FINANCEIRO, vePastaFinanceiro } from "@/features/financeiro/navegacao-financeiro";
+import { GuiaDoFinanceiro } from "@/features/financeiro/guia/guia-do-financeiro-dialogo";
 import { BarraDeRota } from "./barra-de-rota";
 import { CascataDeNavegacao, Chegada } from "./chegada";
 import { limpar, marcarSeMuda, useAlvo, useNavegando, useNavegar } from "./navegacao";
@@ -254,6 +255,8 @@ export function AppShell({ children }: { readonly children: React.ReactNode }) {
       {/* Fora do Início, o robô vira um círculo no canto inferior direito que
           volta ao Início. Irmão da coluna: fica montado entre as telas. */}
       <RoboFlutuante />
+      {/* O Guia do Financeiro abre na entrada (até 3 vezes) e segue montado entre as telas: "Ir para lá" não o perde. */}
+      {hidratado ? <GuiaDoFinanceiro /> : null}
     </div>
   );
 }

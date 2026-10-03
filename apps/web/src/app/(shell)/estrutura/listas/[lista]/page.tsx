@@ -9,7 +9,7 @@
  */
 
 import Link from "next/link";
-import { Briefcase, MessageSquare } from "lucide-react";
+import { BookOpen, Briefcase, Link2, MessageSquare } from "lucide-react";
 import { use, useState, type ReactNode } from "react";
 import { useData, useRun, useRunConfirmado, useSession } from "@/dados/store";
 import {
@@ -35,6 +35,8 @@ import {
 } from "@n1/dominio/operations";
 import { canaisDaLista, contatoDaTarefa, listaSemCanais } from "@n1/dominio/derive-conversacional";
 import { LISTA_SEM_CANAIS } from "@n1/dominio/operations/canais";
+import { CP } from "@n1/dominio/operations/financeiro";
+import { abrirGuiaDoFinanceiro } from "@/features/financeiro/guia/guia-do-financeiro-dialogo";
 import { CHANNEL_ICON } from "@/features/crm/conversation-thread";
 import { PRIORITY_LABEL, STATUS_CATEGORY_LABEL, CHANNEL_TYPE_LABEL } from "@/features/shell/format";
 import { useFormat } from "@/features/shell/use-format";
@@ -242,6 +244,18 @@ export default function ListaPage({
       setError(result.error ?? "Não foi possível concluir a operação.");
     }
   };
+  // O Formulário da Lista à mão no topo: abrir a página pública e copiar o link
+  // para mandar a quem pede (o editor continua em Configurações › Formulários).
+  const formulariosAtivos = state.forms.filter((f) => f.listId === list.id && f.lifecycle === "ativo" && f.enabled);
+  const copiarLinkDoFormulario = async (secret: string) => {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/f/${secret}`);
+      reportar({ ok: true }, "Link do formulário copiado.");
+    } catch {
+      reportar({ ok: false, error: "Não foi possível copiar: abra o formulário e copie o endereço do navegador." }, "");
+    }
+  };
+  const daPastaFinanceiro = config.path.some((node) => node.type === "folder" && node.id === CP.folderId);
 
   // As Listas do Financeiro (Contas a pagar, Contas a receber) têm a lente
   // financeira: pelo id da Lista, não pelo nome de um Tipo.
@@ -558,6 +572,16 @@ export default function ListaPage({
           : {})}
         actions={
           <>
+            {formulariosAtivos[0] ? (
+              <a
+                href={`/f/${formulariosAtivos[0].secret}`}
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-contorno btn-sm"
+              >
+                Abrir formulário
+              </a>
+            ) : null}
             <Link
               href={`/estrutura/listas/${list.id}/configuracoes`}
               className="btn btn-contorno btn-sm"
@@ -587,6 +611,15 @@ export default function ListaPage({
             ) : null}
             <ActionMenu
               items={[
+                ...formulariosAtivos.map((form) => ({
+                  label: "Copiar link do formulário",
+                  icone: Link2,
+                  ...(formulariosAtivos.length > 1 ? { detalhe: form.name } : {}),
+                  onSelect: () => void copiarLinkDoFormulario(form.secret),
+                })),
+                ...(daPastaFinanceiro
+                  ? [{ label: "Guia do Financeiro", icone: BookOpen, onSelect: abrirGuiaDoFinanceiro }]
+                  : []),
                 {
                   label: "Salvar como modelo",
                   onSelect: () => setSalvandoModelo(true),
