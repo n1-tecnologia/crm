@@ -1,0 +1,19 @@
+{
+  "name": "video-do-financeiro",
+  "private": true,
+  "description": "Grava a tela real do apps/web contra um servidor de demonstração e monta o vídeo do Guia do Financeiro com Remotion. Fora dos workspaces: o CI não instala nada daqui.",
+  "type": "module",
+  "scripts": {
+    "servidor": "cd ../.. && npx vite-node ferramentas/video-do-financeiro/servidor.ts",
+    "gravar": "cd ../.. && node ferramentas/video-do-financeiro/gravar.mjs",
+    "renderizar": "node renderizar.mjs"
+  },
+  "dependencies": {
+    "@remotion/bundler": "4.0.532",
+    "@remotion/renderer": "4.0.532",
+    "@supabase/supabase-js": "^2.116.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "remotion": "4.0.532"
+  }
+}

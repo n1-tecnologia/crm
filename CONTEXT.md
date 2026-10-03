@@ -61,6 +61,10 @@ Todos rodam da raiz:
 `docs/`, `ontologia/` e o `PRD-FRONTEND-NAVEGAVEL.md` ficam na raiz: valem para
 todas as camadas e não pertencem a nenhuma.
 
+`ferramentas/video-do-financeiro/` grava a tela real do `apps/web` e monta,
+com Remotion, o vídeo que o Guia do Financeiro toca (ver o `CONTEXT.md` de
+lá). Fica fora dos workspaces: nenhuma camada a importa e o CI não a instala.
+
 O plano de migração do Financeiro Tria para cá — inventário do sistema atual,
 comparativo e fases — está em `docs/08-migracao-financeiro/`. É o roteiro do
 primeiro módulo que `apps/api` vai receber.

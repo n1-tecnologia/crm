@@ -135,7 +135,7 @@ function chaveDeIp(request: FastifyRequest): string {
  * configuração da Lista, regra de roteamento, opções invisíveis nem
  * contagem de envios (T-02-03).
  */
-function paraDtoPublico(state: DataState, form: NonNullable<ReturnType<typeof formBySecret>>) {
+export function paraDtoPublico(state: DataState, form: NonNullable<ReturnType<typeof formBySecret>>) {
   return {
     formId: form.id,
     title: form.name,
