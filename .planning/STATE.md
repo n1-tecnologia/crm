@@ -1,17 +1,20 @@
 ---
-gsd_state_version: 1.0
+gsd_state_version: "1.0"
 milestone: v1.0
-milestone_name: milestone
+current_phase: 06
+current_phase_name: conferencia-do-resumo-e-anexos
 status: executing
-stopped_at: "Phase 06 concluída em 2026-09-30 (22/22 planos; 06-REVIEW-5.md limpo, 5ª e última rodada de revisão); RES-03 pendente de verificação humana (passo 2B em lancar); Phases 02 e 04 seguem abertas"
-last_updated: "2026-09-30T23:48:58Z"
-last_activity: "2026-09-30 -- Phase 06 concluída: 06-REVIEW-5.md fechou a cadeia de revisão adversarial sem achado novo"
+stopped_at: Phase 7 context gathered
+last_updated: "2026-10-09T22:50:37.448Z"
+last_activity: 2026-09-30
+last_activity_desc: "jornada final contra o código do 06-22 (`06-PROVAS.md`): os cinco cenários da Fase 6 OK, inclusive `cp-dispensa-com-resposta` (o conserto do 06-21 provado ao vivo), 8 `/resolver` e 0 `/lancar`; dois achados fora do código da fase (id da conta nova, tela sem atualização sozinha) registrados em Deferred Items"
+state_head: fb2fafc8a2a6765c6800489250387faff302a7aa
 progress:
   total_phases: 7
   completed_phases: 6
-  total_plans: 127
+  total_plans: 120
   completed_plans: 126
-  percent: 86
+milestone_name: milestone
 ---
 
 # Project State
@@ -337,6 +340,10 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 
 ## Accumulated Context
 
+### Roadmap Evolution
+
+- Phase 7 added (2026-10-09): CRM (backend e frontend) — CRUD de Contatos, Empresas, Funis e Negócios, do domínio à tela, sobre `007-crm.sql`
+
 ### Decisions
 
 Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candidatas (CAND-01..07) e questões abertas (D6–D12, OQ-*) nas tabelas logo abaixo dele. As que pesam agora:
@@ -465,7 +472,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-09-30T23:48:58Z
-Stopped at: Phase 06 concluída (22/22 planos, 06-REVIEW-5.md limpo); próximas frentes abertas no milestone: Phase 02 (26/28) e Phase 04 (13/14)
-Resume file: None
+Last session: 2026-10-09T22:50:37.268Z
+Stopped at: Phase 7 context gathered
+Resume file: .planning/phases/07-crm-contatos-empresas-funis-e-negocios/07-CONTEXT.md
 None
