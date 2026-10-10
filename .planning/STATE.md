@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 07
 current_phase_name: "CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)"
 status: executing
-stopped_at: Completed 07-09-PLAN.md
-last_updated: "2026-10-10T04:17:27.434Z"
+stopped_at: Completed 07-10-PLAN.md
+last_updated: "2026-10-10T22:51:09.189Z"
 last_activity: 2026-10-09
 last_activity_desc: Phase 07 execution started
-state_head: 79b336c175ae5f907c8c5487ed062c4fb8024b0f
+state_head: ec1d52f87c8fc548a5c784df3adc62ac445b41fc
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 133
-  completed_plans: 128
+  completed_plans: 129
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 07 (CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)) — EXECUTING
-Plan: 10 of 13
+Plan: 11 of 13
 Status: Ready to execute
 Last activity: 2026-10-09 — Phase 07 execution started
 
@@ -350,6 +350,7 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 | Phase 07 P07 | 22 min | 3 tasks | 12 files |
 | Phase 07 P08 | 10 min | 3 tasks | 8 files |
 | Phase 07 P09 | 14 min | 3 tasks | 12 files |
+| Phase 07 P10 | 15 min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -450,6 +451,9 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 07]: 07-08: Corpos de ganhar, perder e reabrir sao nullish; mover recusa Negocio perdido alem do ganho (RN-NEG-04)
 - [Phase 07]: 07-09: SeletorDeRegistro so busca com texto digitado (300 ms, limite 10, estado ativo) e devolve {id, nome}; 07-10/07-11 o reusam passando rotulo e, dentro de Field, o id
 - [Phase 07]: 07-09: retirar o unico admin de Empresa e recusado pelo dominio no clique (frase + botao Trocar admin) em vez de desabilitar Toggle/Encerrar; Trocar admin e POST unico /trocar-admin; restaurar da lixeira pede o Contato admin pre-preenchido com o ultimo admin encerrado
+- [Phase 07]: 07-10: atualizacao otimista do mover do quadro e lista.mutate(otimista, { revalidate: false }) seguida de moverNegocio (que invalida /negocios); a recusa revalida a chave e o cartao volta. Nao usar mutate(chave, promessa, { optimisticData }): o SWR descarta a revalidacao disparada dentro da mutacao
+- [Phase 07]: 07-10: o menu do cartao do quadro traz 'Mover para {Etapa}' por Etapa de destino (UI-SPEC §4, WCAG 2.5.7) alem de Abrir/Ganhar/Perder, pelo mesmo moverNegocio
+- [Phase 07]: 07-10: no POST /negocios a moeda so acompanha o valor e o Proprietario vazio nao vai no corpo (backend usa o Membro da sessao); ao criar, marcarChegada + router.push para a ficha (o Toast viaja com a navegacao)
 
 ### Pending Todos
 
@@ -506,7 +510,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-10T04:17:27.318Z
-Stopped at: Completed 07-09-PLAN.md
+Last session: 2026-10-10T22:51:09.069Z
+Stopped at: Completed 07-10-PLAN.md
 Resume file: None
 None
