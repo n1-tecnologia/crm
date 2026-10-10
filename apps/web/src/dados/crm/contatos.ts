@@ -50,7 +50,11 @@ export function chaveDeContatos(filtro: FiltroDeContatos): string {
 
 export function useContatos(filtro: FiltroDeContatos) {
   const chave = chaveDeContatos(filtro);
-  return useSWR<RespostaDaListaDeContatos, Error>(chave, (k: string) => chamarCrm<RespostaDaListaDeContatos>(k));
+  // `keepPreviousData`: "Mostrar mais" (o `limite` muda a chave) não pisca o esqueleto nem volta ao topo.
+  // Quem usa confere se os dados são do estado pedido (a troca de aba também muda a chave).
+  return useSWR<RespostaDaListaDeContatos, Error>(chave, (k: string) => chamarCrm<RespostaDaListaDeContatos>(k), {
+    keepPreviousData: true,
+  });
 }
 
 export function chaveDoContato(id: string): string {

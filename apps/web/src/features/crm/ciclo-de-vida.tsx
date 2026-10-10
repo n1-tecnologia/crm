@@ -73,8 +73,9 @@ export function AcoesDeCicloDeVida({
   readonly motivoSemPermissao?: string | undefined;
   readonly onArquivar?: () => void | Promise<void>;
   readonly onRestaurar: () => void | Promise<void>;
-  readonly onEnviarParaLixeira: () => void | Promise<void>;
-  readonly onExcluirPermanentemente: () => void | Promise<void>;
+  /** Sem o gesto, o botão não existe (uma linha da Lixeira só restaura e exclui de vez). */
+  readonly onEnviarParaLixeira?: () => void | Promise<void>;
+  readonly onExcluirPermanentemente?: () => void | Promise<void>;
   /** Dentro de uma linha de lista: botões pequenos. */
   readonly compacto?: boolean;
   /** Acréscimo à descrição de "Excluir" (ex.: os vínculos da Empresa, D-08). */
@@ -103,15 +104,16 @@ export function AcoesDeCicloDeVida({
             Restaurar
           </Button>
         ) : null}
-        {estado === "na_lixeira" ? (
+        {estado === "na_lixeira" && onExcluirPermanentemente ? (
           <Button size={tamanho} variant="danger" onClick={() => setConfirmando("permanente")} {...desligado}>
             Excluir permanentemente
           </Button>
-        ) : (
+        ) : null}
+        {estado !== "na_lixeira" && onEnviarParaLixeira ? (
           <Button size={tamanho} variant="danger" onClick={() => setConfirmando("lixeira")} {...desligado}>
             Excluir
           </Button>
-        )}
+        ) : null}
       </span>
 
       <ConfirmDialog
@@ -120,7 +122,7 @@ export function AcoesDeCicloDeVida({
         description={`${rotulo} vai para a Lixeira. Dá para restaurar depois, e nada que o referencia é apagado.${avisoDaLixeira ? ` ${avisoDaLixeira}` : ""}`}
         confirmLabel="Enviar para a Lixeira"
         destructive
-        onConfirm={() => confirmar(onEnviarParaLixeira)}
+        onConfirm={() => (onEnviarParaLixeira ? confirmar(onEnviarParaLixeira) : setConfirmando(null))}
         onCancel={() => setConfirmando(null)}
       />
       <ConfirmDialog
@@ -129,7 +131,7 @@ export function AcoesDeCicloDeVida({
         description={`Isto não pode ser desfeito. ${rotulo} e seus Identificadores, Endereços e vínculos serão apagados de vez.`}
         confirmLabel="Excluir permanentemente"
         destructive
-        onConfirm={() => confirmar(onExcluirPermanentemente)}
+        onConfirm={() => (onExcluirPermanentemente ? confirmar(onExcluirPermanentemente) : setConfirmando(null))}
         onCancel={() => setConfirmando(null)}
       />
     </>
