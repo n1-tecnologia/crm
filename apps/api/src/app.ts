@@ -25,6 +25,7 @@ import {
   type OpcoesDeAutenticacaoDeServico,
 } from "./plugins/autenticacao-servico";
 import { rotasDeClassificacoes, type OpcoesDeClassificacoes } from "./rotas/classificacoes";
+import { rotasDeCrm, type OpcoesDeCrm } from "./rotas/crm";
 import { rotasDeEstado } from "./rotas/estado";
 import { rotasDeAnexosDaTarefa } from "./rotas/anexos-da-tarefa";
 import { rotasDeFinanceiro, type OpcoesDeFinanceiro } from "./rotas/financeiro";
@@ -84,6 +85,8 @@ export interface OpcoesDoApp {
   readonly classificacoes?: OpcoesDeClassificacoes;
   /** Fase 4 (04-05) — troca o cliente de leituras do Financeiro por um falso, sem rede. */
   readonly financeiro?: OpcoesDeFinanceiro;
+  /** Fase 7 (07-01) — SÓ PARA TESTE: troca o serviço (ou o pool) do CRM por um falso, sem banco. */
+  readonly crm?: OpcoesDeCrm;
 }
 
 export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
@@ -198,6 +201,8 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
   // Fase 4 (04-05) — na RAIZ herda o JWT de Membro; dentro do bloco de rotas
   // serviço-a-serviço abaixo exigiria credencial de serviço, invertendo quem chama quem (Pitfall 4).
   app.register(rotasDeFinanceiro, opcoes.financeiro ?? {});
+  // Fase 7 (D-03) — o CRM em REST por recurso, na RAIZ para herdar o JWT de Membro.
+  app.register(rotasDeCrm, opcoes.crm ?? {});
   // D-02 — as únicas rotas SEM `Authorization: Bearer` desta instância: cada
   // uma se isenta explicitamente com `config: { publica: true }`, o mesmo
   // gancho de `/saude` acima (`plugins/autenticacao.ts`). CORS continua pela
