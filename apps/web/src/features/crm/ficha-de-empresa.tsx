@@ -9,7 +9,8 @@
  *
  * O que a 007 NÃO guarda não aparece aqui, nem desabilitado, nem como "em
  * breve" (D-02): Tags, Comentários, Anexos, mesclagem, Sugestões de Vínculo.
- * A seção "Negócios" chega no 07-11.
+ * Os Negócios da Empresa ficam na seção "Negócios" (`NegociosDoRegistro`),
+ * de onde também se cria um já com a Empresa como dona.
  *
  * Duas pontas do D-08 moram aqui: Excluir avisa que os vínculos vigentes serão
  * encerrados (e os Contatos continuam existindo), e restaurar da lixeira pede o
@@ -56,6 +57,7 @@ import { EditorDeCamposAdicionais } from "@/features/crm/editor-de-campos-adicio
 import { EditorDeEnderecos } from "@/features/crm/editor-de-enderecos";
 import { ADMIN_VAZIO, BlocoDoContatoAdmin, MOTIVO_SEM_ADMIN, type ValoresDoAdmin } from "@/features/crm/formulario-de-empresa";
 import { comoErroDeApi } from "@/features/crm/formulario-de-contato";
+import { NegociosDoRegistro } from "@/features/crm/negocios-do-registro";
 import { SeletorDeProprietario } from "@/features/crm/seletor-de-proprietario";
 import { SeletorDeRegistro, type RegistroEscolhido } from "@/features/crm/seletor-de-registro";
 import { VinculosDaEmpresa } from "@/features/crm/vinculos-da-empresa";
@@ -637,6 +639,7 @@ export function FichaDeEmpresa({
         />
         <VinculosDaEmpresa detalhado={detalhado} podeEditar={ativa} motivo={motivoDeEscrita} avisar={setAviso} />
         <SecaoDeMatrizEFiliais detalhado={detalhado} />
+        <NegociosDoRegistro empresa={{ id: empresaId, nome }} />
       </CorpoDeTela>
     </div>
   );

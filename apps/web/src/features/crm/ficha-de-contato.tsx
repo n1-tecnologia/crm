@@ -2,13 +2,15 @@
 
 /**
  * A ficha nova de Contato (D-04): enxuta, sobre o que a 007 guarda — dados,
- * Identificadores, Endereços, Campos adicionais e Empresas vinculadas — e com o
- * ciclo de vida do D-06 (Arquivar, Excluir = Lixeira, Restaurar, Excluir
- * permanentemente) e as recusas do D-09 visíveis por `MensagemDeRecusa`.
+ * Identificadores, Endereços, Campos adicionais, Empresas vinculadas e os
+ * Negócios do Contato (`NegociosDoRegistro`, de onde também se cria um já com
+ * o dono preenchido) — e com o ciclo de vida do D-06 (Arquivar, Excluir =
+ * Lixeira, Restaurar, Excluir permanentemente) e as recusas do D-09 visíveis
+ * por `MensagemDeRecusa`.
  *
  * O que a 007 NÃO guarda não aparece aqui, nem desabilitado, nem como "em
  * breve" (D-02): Tags, Consentimentos, Comentários, Anexos, Conversas,
- * mesclagem e temperatura. A seção "Negócios" chega no 07-11.
+ * mesclagem e temperatura.
  *
  * A ficha recebe o `ContatoDetalhado` pronto (a página lê por `useContato`) e
  * toda gravação passa pelas mutações de `dados/crm/contatos.ts`, que revalidam
@@ -54,6 +56,7 @@ import {
   type ErrosDoContato,
   type ValoresDoContato,
 } from "@/features/crm/formulario-de-contato";
+import { NegociosDoRegistro } from "@/features/crm/negocios-do-registro";
 import {
   Button,
   ConfirmDialog,
@@ -488,6 +491,7 @@ export function FichaDeContato({ contatoId, detalhado }: { readonly contatoId: s
           agir={agir}
         />
         <SecaoDeEmpresas vinculos={vinculos} />
+        <NegociosDoRegistro contato={{ id: contatoId, nome }} />
       </CorpoDeTela>
     </div>
   );
