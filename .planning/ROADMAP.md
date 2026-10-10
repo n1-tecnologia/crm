@@ -22,6 +22,7 @@ Fase 0 e Fase 1 correm em paralelo: o que resta da Fase 0 não bloqueia terminar
 - [ ] **Phase 4: As outras telas do financeiro-tria** - As leituras que nunca viveram no ClickUp portadas como tela; `financeiro-tria.vercel.app` sai do ar
 - [x] **Phase 5: Contas a receber e os outros tenants** - Marcos Paulo e Family Office como Empresas do Campo `Empresa`; Contas a receber na forma que D7 determinar; notificar por Canal (gaps_found 2026-09-24 — fechamento de lacunas 05-13..05-25 planejado) (completed 2026-09-25)
 - [x] **Phase 6: Conferência do Resumo e anexos** - Os Fluxos 5, 6 e 7 da documentação v2 na plataforma: o Agente publica o Resumo ANTES do lançamento, aberto ao Financeiro; conferência por clique ou "ok" no fio, ajuste vira Resumo revisado; o lançamento só sai com conferência, com a categoria confirmada e os anexos no Omie; S5/S6 na Solicitação (planejado 2026-09-29, à mão, a partir dos docs 09 e 10) (completed 2026-09-30)
+- [ ] **Phase 7: CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)** - CRUD de ponta a ponta: regras no `@n1/dominio`, `apps/api` sobre a migração 007 e as telas no `apps/web` para criar, listar, editar e excluir direto pela interface
 
 ## Phase Details
 
@@ -471,6 +472,47 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 → 6 (0 e 1 em
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
 | 5. Contas a receber e os outros tenants | 25/25 | Complete    | 2026-09-25 |
 | 6. Conferência do Resumo e anexos | 22/22 | Complete   | 2026-09-30 |
+
+### Phase 7: CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)
+
+**Goal:** Contatos, Empresas, Funis (com Etapas) e Negócios podem ser criados, lidos, editados e excluídos direto pelo frontend. Cobre as três camadas, começando pelo domínio: tipos e regras em `@n1/dominio` (fonte: `ontologia/03-crm`); repositórios e rotas em `apps/api` sobre `apps/api/migracoes/007-crm.sql`, com isolamento por Espaço de Trabalho e acesso por Membro aplicados no backend; e, em `apps/web`, todas as telas, formulários, listas e navegação que ainda não existem (a web fala com a api só por HTTP, nunca importa dela). Fora do escopo: Caixa de Entrada/Conversas/Mensagens e catálogos (Tag, Origem, Motivo de Perda, Qualificação).
+**Requirements**: CRM-D1, CRM-A1, CRM-A2, CRM-A3, CRM-W1, CRM-W2, CRM-V1 (critérios derivados em `07-RESEARCH.md` "Phase Requirements"; registrados em REQUIREMENTS.md, Fase 7)
+**Depends on:** Phase 1 (persistência e login); independe das fases abertas 2 e 4
+**Plans:** 13 plans
+
+Plans:
+**Wave 1** — o traçador
+- [ ] 07-01-PLAN.md — Traçador: Contato criado pela tela e listado, de ponta a ponta (domínio → api → Postgres → web) (CRM-D1, CRM-A1, CRM-W1, CRM-V1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 07-02-PLAN.md — Endurecimento do traçador: Papel (D-14) e Proprietário (D-11) no backend, transação com SQLSTATE, CORS PATCH/PUT/DELETE, cliente HTTP provado (CRM-D1, CRM-A1, CRM-A2, CRM-V1)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 07-03-PLAN.md — API de Contatos completa: normalização, Identificadores, ciclo de vida, D-09 e RN-CON-11 (CRM-D1, CRM-A1, CRM-A2)
+- [ ] 07-04-PLAN.md — API de Funis e Etapas: padrão automático (D-13), administração (D-14), 409 de D-07 com migrar/remapear (CRM-D1, CRM-A1, CRM-A2)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 07-05-PLAN.md — A 007 corrigida (D-12) e a API de Empresas e vínculos com admin (D-08, RN-EMP-09/10) (CRM-D1, CRM-A1, CRM-A2)
+- [ ] 07-06-PLAN.md — Telas de Contato religadas e as peças compartilhadas do CRM (CRM-W1)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+- [ ] 07-07-PLAN.md — Telas de Funis e os diálogos de D-07 sobre a api (CRM-W1)
+- [ ] 07-08-PLAN.md — API de Negócios: mover, ganhar, perder, reabrir (D-05, D-14) (CRM-D1, CRM-A1, CRM-A3)
+- [ ] 07-09-PLAN.md — Telas de Empresa com o admin no formulário e na ficha (D-08) (CRM-W1)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+- [ ] 07-10-PLAN.md — Quadro de Negócios religado e Novo Negócio (CRM-W2, CRM-W1)
+
+**Wave 7**
+- [ ] 07-11-PLAN.md — Ficha de Negócio e Negócios nas fichas de Contato/Empresa (CRM-W1, CRM-W2)
+
+**Wave 8**
+- [ ] 07-12-PLAN.md — `migrar --seco`, e2e do CRM por HTTP, documentação e portão verde (CRM-V1, CRM-A1, CRM-W1)
+
+**Wave 9**
+- [ ] 07-13-PLAN.md — A 007 no banco da plataforma com a conferência de D-12 (dono) e a UAT `[BLOCKING]` (CRM-V1, CRM-W1, CRM-W2)
+
+**Ondas de execução:** 1 → [07-01] · 2 → [07-02] · 3 → [07-03, 07-04] · 4 → [07-05, 07-06] · 5 → [07-07, 07-08, 07-09] · 6 → [07-10] · 7 → [07-11] · 8 → [07-12] · 9 → [07-13]
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*

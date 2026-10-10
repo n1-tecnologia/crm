@@ -1,0 +1,1 @@
+No external API integration: a fase constrói a própria API REST interna do CRM (`apps/api/src/rotas/crm/*` sobre `apps/api/migracoes/007-crm.sql`) e a consome no `apps/web`; nenhum serviço, SDK ou API de terceiros é integrado (a única dependência nova é a biblioteca de cache `swr`, que não é uma API externa).

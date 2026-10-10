@@ -107,6 +107,18 @@ Critério de pronto (ROADMAP Phase 6): o Financeiro vê o Resumo no fio antes do
 - [x] **RES-05**: S5/S6 na Solicitação (coorte plataforma) — depois de `aprovada`, o pipeline publica o Resumo na Solicitação; em `rejeitada`, avisa o Solicitante; tudo pela porta (`REQ-f6-s5-s6-plataforma`). Aceite: critério 5. Feito em 06-05 (financeiro-tria `2cd13cd`); o S5 assíncrono sem decisão velha (fin2:CR-01, 06-16) é reforço do mesmo requisito, com 769/769 testes verdes.
 - [x] **RES-06**: Modo `conferencia` da ponte, jornada `cp-conferida`/`cp-ajuste`, specs e planos atualizados, provas registradas em `06-PROVAS.md` (`REQ-f6-provas-e-docs`). Aceite: critério 4 (zero `/lancar` nos modos sem caneta) e o relato. Feito em 06-06 (provas em `06-PROVAS.md`); segunda rodada de fechamento em 06-20 (2026-09-30): `npm run check` EXIT 0 (995/995 domínio, 275/275 web, 820 passados·205 pulados·1 todo·0 falhas api), contrato v1.2 igual nos dois repositórios (hash `0adf7a7b…595f71`), `financeiro-tria` 769/769, e as execuções A e B com `/lancar`=0 nas duas.
 
+### Fase 7 — CRM: Contatos, Empresas, Funis e Negócios (CRM)
+
+Critério de pronto (ROADMAP Phase 7): Contatos, Empresas, Funis (com Etapas) e Negócios criados, lidos, editados e excluídos direto pelo frontend, com isolamento por Espaço de Trabalho e acesso por Membro aplicados no backend. Os sete IDs abaixo são **derivados** do goal e das decisões D-01..D-15 (`.planning/phases/07-crm-contatos-empresas-funis-e-negocios/07-RESEARCH.md`, "Phase Requirements"; decisões em `07-CONTEXT.md`) — não vêm do SPEC de migração do Financeiro.
+
+- [ ] **CRM-D1**: Tipos, normalizadores e regras puras de Contato/Empresa/Funil/Etapa/Negócio em `@n1/dominio` (módulo novo `@n1/dominio/crm/*`, em português, espelhando a 007; o modelo inglês convive — D-01). Pendente.
+- [ ] **CRM-A1**: Repositórios + serviços + rotas REST (`/contatos`, `/empresas`, `/funis`, `/negocios`) com isolamento por `workspace_id` e permissão por Papel (D-03, D-10, D-11, D-14). Pendente.
+- [ ] **CRM-A2**: Integridade com 409 ricos: Funil/Etapa com Negócios (D-07), admin da Empresa (D-08, com a correção da 007 — D-12), último admin/Contato de Negócio (D-09), unicidade de Identificador. Pendente.
+- [ ] **CRM-A3**: Ações de Negócio: mover, ganhar, perder, reabrir, arquivar, restaurar, lixeira, excluir permanentemente (D-05, D-06). Pendente.
+- [ ] **CRM-W1**: Telas de Contatos, Empresas, Funis (+Etapas) e Negócios — lista, ficha, formulário criar/editar, lixeira/restaurar — lendo e gravando só por HTTP (D-04, D-02, D-15). Pendente.
+- [ ] **CRM-W2**: Quadro de Negócios (kanban em `/crm/negocios`) com mover/ganhar/perder/reabrir por REST (D-05). Pendente.
+- [ ] **CRM-V1**: `npm run check` verde; testes de domínio, de rota (`app.inject`) e de repositório contra Postgres local; a 007 aplicada no banco da plataforma depois da conferência de D-12. Pendente.
+
 ## Traceability
 
 Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pelas ferramentas): `Pending` · `In Progress` · `Blocked` · `Complete`. A coluna "Situação verificada" carrega o status da intel (código, 2026-09-15).
@@ -154,11 +166,18 @@ Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pe
 | RES-04 | Phase 6 | Complete | planejado 2026-09-29 (06-02, 06-03); fin2:IN-07 (dois anexos) sem prova real — com o dono | REQ-f6-anexos-no-omie |
 | RES-05 | Phase 6 | Complete | planejado 2026-09-29 (06-05); reforçado em 06-16 (fin2:CR-01) | REQ-f6-s5-s6-plataforma |
 | RES-06 | Phase 6 | Complete | segunda rodada de fechamento em 06-20 (2026-09-30) | REQ-f6-provas-e-docs |
+| CRM-D1 | Phase 7 | Pending | planejado 2026-10-09 (07-01..07-05, 07-08) | derivado (07-RESEARCH) |
+| CRM-A1 | Phase 7 | Pending | planejado 2026-10-09 (07-01..07-05, 07-08, 07-12) | derivado (07-RESEARCH) |
+| CRM-A2 | Phase 7 | Pending | planejado 2026-10-09 (07-02..07-05) | derivado (07-RESEARCH) |
+| CRM-A3 | Phase 7 | Pending | planejado 2026-10-09 (07-08) | derivado (07-RESEARCH) |
+| CRM-W1 | Phase 7 | Pending | planejado 2026-10-09 (07-01, 07-06, 07-07, 07-09..07-13) | derivado (07-RESEARCH) |
+| CRM-W2 | Phase 7 | Pending | planejado 2026-10-09 (07-10, 07-11, 07-13) | derivado (07-RESEARCH) |
+| CRM-V1 | Phase 7 | Pending | planejado 2026-10-09 (07-01, 07-02, 07-12, 07-13) | derivado (07-RESEARCH) |
 
 **Coverage:**
 
-- v1 requirements: 41 total (40 executáveis + 1 sobreposto por decisão travada) — RES-01..06 acrescentados em 2026-09-29 (Fase 6)
-- Mapped to phases: 40 (Phase 0: 6 · Phase 1: 8 · Phase 2: 9 · Phase 3: 7 · Phase 4: 1 · Phase 5: 3 · Phase 6: 6)
+- v1 requirements: 48 total (47 executáveis + 1 sobreposto por decisão travada) — RES-01..06 acrescentados em 2026-09-29 (Fase 6); CRM-D1..CRM-V1 (7, derivados) em 2026-10-09 (Fase 7)
+- Mapped to phases: 47 (Phase 0: 6 · Phase 1: 8 · Phase 2: 9 · Phase 3: 7 · Phase 4: 1 · Phase 5: 3 · Phase 6: 6 · Phase 7: 7)
 - Unmapped: 0 ✓ (PERS-03 não tem fase por ser sobreposto — sua parte viva é PERS-07)
 - Já feitos: 8 (PREP-01, PREP-02, PREP-03, PREP-04, PREP-06 — Fase 0 fechada em 2026-09-17, Plan 00-07 — mais PERS-01, PERS-02 da Fase 1) · risco aceito pelo dono: 1 (PREP-05, D-13) · em andamento: 4 · bloqueados por decisão: 4 (D11, D6, D8, D7) · pendentes: 18
 

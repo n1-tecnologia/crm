@@ -36,6 +36,12 @@ Fora do escopo: Caixa de Entrada/Conversas/Mensagens e catálogos (Tag, Origem, 
 - **D-10:** Backend aplica isolamento por Espaço de Trabalho (Membro resolvido pelo JWT) mais permissão do Papel sobre o recurso CRM para criar/editar/excluir, reaproveitando o mecanismo de permissão do domínio. Escopo `próprios` (vendedor vê só seus Negócios) e visibilidade de Funil privado ficam para fase futura; `privado` é só gravado.
 - **D-11:** Proprietário de Contato/Empresa/Negócio padrão = Membro que cria (também `criado_por`), editável no formulário para outro Membro ativo.
 
+### Decididas no plan-phase (2026-10-09, a partir das Open Questions do RESEARCH.md)
+- **D-12:** A 007 ainda não foi aplicada em nenhum banco: a correção do trigger de admin × lixeira (RESEARCH.md Pitfall 2) entra direto em `apps/api/migracoes/007-crm.sql`, que é então commitada. O plano ainda confere `plataforma.migracoes` antes do primeiro `migrar`.
+- **D-13:** O primeiro Funil criado num Espaço sem padrão vira `padrao=true` automaticamente; `POST /funis/:id/padrao` troca o padrão (só Administrador/Proprietário).
+- **D-14:** Matriz de permissão: `membro` cria/edita/exclui Contato, Empresa e Negócio; só `administrador`/`proprietario` cria/exclui Funil, edita Etapas e reabre Negócio `ganho`; `convidado` só lê.
+- **D-15:** Busca global, Lixeira (`/configuracoes/lixeira`), Notificações, `/crm/meus-negocios` e Caixa de Entrada continuam no modelo antigo e não mostram os registros da nova api; limitação aceita, registrada para a fase de unificação.
+
 ### Claude's Discretion
 - Estrutura interna dos repositórios, nomes de módulo e de esquemas, paginação/filtros das listagens, formato exato dos erros 409, normalização de Identificadores (e-mail, telefone, domínio, documento) conforme os comentários da 007.
 
@@ -97,6 +103,8 @@ Sem referências visuais novas: reaproveitar o layout das telas existentes.
 - Tags, comentários, anexos, consentimentos, mesclagem de Contatos/Empresas, temperatura e histórico de etapas (exigem migração própria)
 - Catálogos do Espaço de Trabalho (Origem, Qualificação, Motivo de Perda)
 - Aposentar o modelo antigo em inglês (`Contact`/`Deal`/…) e o seed de CRM
+- Mostrar os registros da nova api na busca global, Lixeira, Notificações e Meus-negócios (D-15)
+- Registro de Atividade das ações de CRM (RN-CON-22, RN-NEG-15): a 007 não tem tabela de atividade
 - Caixa de Entrada, Conversas e Mensagens
 
 </deferred>

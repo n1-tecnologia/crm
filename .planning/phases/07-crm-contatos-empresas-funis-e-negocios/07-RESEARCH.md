@@ -494,18 +494,26 @@ select count(*)::int as negocios from plataforma.negocios where workspace_id = $
 | A8 | Paginação por `limite`/`deslocamento` (default 50, teto 200) e busca `ILIKE` simples bastam para o volume atual (Gestão: dezenas/centenas) | Pattern 4 | Se o volume crescer, trocar por keyset + índice trigram |
 | A9 | Registro de Atividade (RN-*-22) das ações de CRM **não** é gravado nesta fase (a 007 não tem tabela de atividade; `activity` vive em `registros`) | Open Q4 | Auditoria ausente nas novas entidades até a fase própria |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **A 007 já foi aplicada em algum banco?**
+Todas resolvidas no plan-phase de 2026-10-09; a decisão de cada uma está em `07-CONTEXT.md`.
+
+1. **A 007 já foi aplicada em algum banco?** — RESOLVED: D-12.
    - What we know: está untracked; `migrar.ts` registra o **nome do arquivo** e o aplica uma vez (`migrar.ts` cabeçalho: "os arquivos são imutáveis depois de aplicados").
    - What's unclear: se alguém rodou `npm run migrar` contra o Supabase remoto.
    - Recommendation: o plano começa com um passo de conferência (`select nome from plataforma.migracoes`). Se **não** aplicada: incorporar a correção do trigger (Pitfall 2) e quaisquer ajustes direto na 007 antes do primeiro `migrar`, e commitá-la. Se aplicada: `008-crm-admin-lixeira.sql`.
-2. **Como nasce o primeiro Funil padrão?** `funis_padrao_uq` permite no máximo um; RN-FUN-16 diz que o padrão existe desde a criação do Espaço; Negócio sem Funil usa o padrão (RN-NEG-03). Hoje a tabela está vazia.
+   - Resolution (D-12): a 007 não foi aplicada em nenhum banco; a correção do trigger entra direto na 007, que é commitada, e o plano ainda confere `plataforma.migracoes` (`migrar --seco`) antes do primeiro `migrar` no banco da plataforma.
+2. **Como nasce o primeiro Funil padrão?** — RESOLVED: D-13. `funis_padrao_uq` permite no máximo um; RN-FUN-16 diz que o padrão existe desde a criação do Espaço; Negócio sem Funil usa o padrão (RN-NEG-03). Hoje a tabela está vazia.
    - Recommendation: regra de serviço — o **primeiro Funil criado** num Espaço sem padrão vira `padrao=true` automaticamente; `POST /funis/:id/padrao` troca (só Administrador/Proprietário). Alternativa: script de bootstrap. Confirmar com o dono.
-3. **Extensão dos formulários além do que a 007 comporta:** a ficha antiga mostra Requisitos de Etapa, Transições permitidas, probabilidade sobrescrita descartada ao mover (RN-NEG-05), Vínculo Contato-Negócio com papéis, múltiplos Contatos por Negócio. A 007 tem 1 Contato **ou** 1 Empresa por Negócio e nenhuma tabela de Requisitos. O plano deve listar explicitamente o que a UI esconde (D-02).
-4. **Registro de Atividade e notificações:** fora do escopo, mas `ontologia` exige (RN-CON-22, RN-NEG-15). Confirmar com o dono que a fase aceita a ausência (A9).
-5. **`/crm/meus-negocios`, busca global (`/buscar`), Lixeira (`/configuracoes/lixeira`), Notificações e Caixa de Entrada continuam lendo o modelo antigo.** Contatos criados pela nova API não aparecerão nelas. Aceitável por D-01? Se não, abrir item para a fase de unificação.
-6. **Escopo de busca/filtros por `campos_adicionais`** (índice GIN existe): não requerido pelo goal; tratar `campos_adicionais` apenas como leitura/edição de pares chave→valor.
+   - Resolution (D-13): adotada a regra de serviço da recomendação; a troca é só de Administrador/Proprietário (D-14).
+3. **Extensão dos formulários além do que a 007 comporta:** — RESOLVED: D-02. A ficha antiga mostra Requisitos de Etapa, Transições permitidas, probabilidade sobrescrita descartada ao mover (RN-NEG-05), Vínculo Contato-Negócio com papéis, múltiplos Contatos por Negócio. A 007 tem 1 Contato **ou** 1 Empresa por Negócio e nenhuma tabela de Requisitos. O plano deve listar explicitamente o que a UI esconde (D-02).
+   - Resolution (D-02 + Deferred Ideas de `07-CONTEXT.md`): o que a 007 não guarda fica fora do CRUD desta fase; as telas ocultam ou desabilitam esses blocos, e cada plano de tela lista o que esconde.
+4. **Registro de Atividade e notificações:** — RESOLVED: Deferred Ideas de `07-CONTEXT.md` ("Registro de Atividade das ações de CRM (RN-CON-22, RN-NEG-15): a 007 não tem tabela de atividade") e D-15 (Notificações seguem no modelo antigo). Fora do escopo, mas `ontologia` exige (RN-CON-22, RN-NEG-15).
+   - Resolution: a fase aceita a ausência (A9); volta em fase própria, com tabela de atividade.
+5. **`/crm/meus-negocios`, busca global (`/buscar`), Lixeira (`/configuracoes/lixeira`), Notificações e Caixa de Entrada continuam lendo o modelo antigo.** — RESOLVED: D-15. Contatos criados pela nova API não aparecerão nelas. Aceitável por D-01? Se não, abrir item para a fase de unificação.
+   - Resolution (D-15): limitação aceita e registrada para a fase de unificação (Deferred Ideas).
+6. **Escopo de busca/filtros por `campos_adicionais`** (índice GIN existe): — RESOLVED: Claude's Discretion de `07-CONTEXT.md` (paginação/filtros das listagens). Não requerido pelo goal; tratar `campos_adicionais` apenas como leitura/edição de pares chave→valor.
+   - Resolution: `campos_adicionais` é só lido e editado como pares chave→valor (limites em `LIMITES_CRM`); a busca `q` das listagens não filtra por ele.
 
 ## Environment Availability
 

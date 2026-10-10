@@ -1,18 +1,18 @@
 ---
 gsd_state_version: "1.0"
 milestone: v1.0
-current_phase: 06
-current_phase_name: conferencia-do-resumo-e-anexos
+current_phase: 7
+current_phase_name: "CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)"
 status: executing
 stopped_at: Phase 7 context gathered
-last_updated: "2026-10-09T22:50:37.448Z"
+last_updated: "2026-10-10T00:11:44.434Z"
 last_activity: 2026-09-30
 last_activity_desc: "jornada final contra o código do 06-22 (`06-PROVAS.md`): os cinco cenários da Fase 6 OK, inclusive `cp-dispensa-com-resposta` (o conserto do 06-21 provado ao vivo), 8 `/resolver` e 0 `/lancar`; dois achados fora do código da fase (id da conta nova, tela sem atualização sozinha) registrados em Deferred Items"
-state_head: fb2fafc8a2a6765c6800489250387faff302a7aa
+state_head: e949635ceded8173a54c4e5d485ee02342e8e8e5
 progress:
   total_phases: 7
   completed_phases: 6
-  total_plans: 120
+  total_plans: 133
   completed_plans: 126
 milestone_name: milestone
 ---
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 
 ## Current Position
 
-Phase: 06 (conferencia-do-resumo-e-anexos) — COMPLETE (2026-09-30)
+Phase: 7 (CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)) — READY TO EXECUTE
 Plan: 22 of 22
 Status: Phase 06 concluída após cinco rodadas de revisão adversarial (06-REVIEW.md → 06-REVIEW-5.md); a última rodada, escopada só ao diff de 06-22, voltou limpa (0 críticos/0 avisos/0 informativos) e confirmou por teste que o starvation achado em 06-REVIEW-4 está mesmo fechado. Abertas no milestone: Phase 02 (26/28) e Phase 04 (13/14)
 Last activity: 2026-09-30 -- jornada final contra o código do 06-22 (`06-PROVAS.md`): os cinco cenários da Fase 6 OK, inclusive `cp-dispensa-com-resposta` (o conserto do 06-21 provado ao vivo), 8 `/resolver` e 0 `/lancar`; dois achados fora do código da fase (id da conta nova, tela sem atualização sozinha) registrados em Deferred Items
