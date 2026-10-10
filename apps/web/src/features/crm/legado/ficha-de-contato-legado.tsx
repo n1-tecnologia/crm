@@ -1,7 +1,15 @@
 "use client";
 
 /**
- * T14 — Contato.
+ * T14 — Contato (FICHA DO MODELO ANTIGO, em inglês).
+ *
+ * Mantida intacta para os ids que Busca, Lixeira antiga, Caixa de Entrada e
+ * Reuniões ainda produzem (D-15): a página nova (`/crm/contatos/[contato]`)
+ * lê da api e, quando ela responde 404 para um id que existe em
+ * `state.contacts`, renderiza esta. Some na fase de unificação.
+ *
+ * Só a assinatura mudou ao sair de `page.tsx`: o id chega por `contatoId`, em
+ * vez de `params` (Promise) lido com `use`.
  *
  * A coluna principal é a CONVERSA COM A PESSOA, e é o mesmo componente que o
  * Negócio usa: a troca de mensagens não pode divergir entre as duas telas.
@@ -14,7 +22,7 @@
 
 import { Plus, ShieldCheck, StickyNote } from "lucide-react";
 import Link from "next/link";
-import { use, useState } from "react";
+import { useState } from "react";
 import { useData, useRun } from "@/dados/store";
 import { ConversationThread, channelsOf } from "@/features/crm/conversation-thread";
 import { TarefasDoContato } from "@/features/crm/tarefas-do-contato";
@@ -77,12 +85,7 @@ import {
  */
 const ALTURA_DA_CONVERSA = "calc(100dvh - var(--cabecalho-tela-h) - 2 * var(--celula-x))";
 
-export default function ContatoPage({
-  params,
-}: {
-  params: Promise<{ contato: string }>;
-}) {
-  const { contato } = use(params);
+export function FichaDeContatoLegado({ contatoId: contato }: { readonly contatoId: string }) {
   const state = useData((data) => data);
   const fmt = useFormat();
   const { mergingContactId, openMerge, closeMerge } = useMergeDialog();
