@@ -105,6 +105,14 @@ export interface NovoContato {
 
 export type EdicaoDeContato = Partial<Omit<NovoContato, "identificadores">>;
 
+/** O que se muda num Identificador existente: o valor canônico nunca muda (seria outro Identificador). */
+export interface EdicaoDeIdentificador {
+  readonly principal?: boolean;
+  readonly verificado?: boolean;
+  readonly valorExibido?: string;
+  readonly rotuloCanal?: string;
+}
+
 /**
  * "Nome Sobrenome" aparado; sem nome, o identificador principal; sem nada,
  * "Contato sem nome". É derivado a cada leitura — nunca gravado.

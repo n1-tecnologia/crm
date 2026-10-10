@@ -53,6 +53,33 @@ describe("rotas de Contatos — serviço falso, sem banco", () => {
     criar: async () => {
       throw new Error("não deveria chegar ao serviço");
     },
+    obter: async () => {
+      throw new Error("não deveria chegar ao serviço");
+    },
+    editar: async () => {
+      throw new Error("não deveria chegar ao serviço");
+    },
+    adicionarIdentificador: async () => {
+      throw new Error("não deveria chegar ao serviço");
+    },
+    editarIdentificador: async () => {
+      throw new Error("não deveria chegar ao serviço");
+    },
+    removerIdentificador: async () => {
+      throw new Error("não deveria chegar ao serviço");
+    },
+    arquivar: async () => {
+      throw new Error("não deveria chegar ao serviço");
+    },
+    restaurar: async () => {
+      throw new Error("não deveria chegar ao serviço");
+    },
+    enviarParaLixeira: async () => {
+      throw new Error("não deveria chegar ao serviço");
+    },
+    excluirPermanentemente: async () => {
+      throw new Error("não deveria chegar ao serviço");
+    },
   };
   const app = () => buildApp({ ...opcoesDeAutenticacao("ws_falso"), crm: { contatos: falso } });
 
