@@ -4,11 +4,11 @@ milestone: v1.0
 current_phase: 07
 current_phase_name: "CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)"
 status: executing
-stopped_at: Completed 07-06-PLAN.md
-last_updated: "2026-10-10T03:09:36.712Z"
+stopped_at: Completed 07-07-PLAN.md
+last_updated: "2026-10-10T03:32:32.141Z"
 last_activity: 2026-10-09
 last_activity_desc: Phase 07 execution started
-state_head: abc24226253b2c1b1478bfde196d81ce154838ba
+state_head: fa3f495e8088e3cccb982ec716a2a088c26d0bf9
 progress:
   total_phases: 7
   completed_phases: 6
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 07 (CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)) — EXECUTING
-Plan: 7 of 13
+Plan: 8 of 13
 Status: Ready to execute
 Last activity: 2026-10-09 — Phase 07 execution started
 
@@ -347,6 +347,7 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 | Phase 07 P04 | 11 min | 3 tasks | 8 files |
 | Phase 07 P05 | 12 min | 3 tasks | 12 files |
 | Phase 07 P06 | 13 min | 3 tasks | 14 files |
+| Phase 07 P07 | 22 min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -439,6 +440,9 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 07]: 07-06: FormularioDeContato e o corpo controlado (valores/onChange/erros); o servidor normaliza Identificadores e e a autoridade, a tela so pre-valida com o dominio
 - [Phase 07]: 07-06: editores de Endereco e Campos adicionais sao de rascunho e devolvem (valor, erro?); a ficha grava por secao
 - [Phase 07]: 07-06: ficha antiga movida com git mv para features/crm/legado (D-15); 404 da api + id em state.contacts abre FichaDeContatoLegado
+- [Phase 07]: 07-07: lista de Funis com Funil padrao e Privado como Pilulas no Nome (UI-SPEC), sem colunas separadas
+- [Phase 07]: 07-07: MigrateFunnelDialog sem escopo abertos/todos (a rota migra todos os Negocios) e com mapeamento sugerido por nome sem caixa ou Etapa inicial
+- [Phase 07]: 07-07: useFunis aceita pausado e dialogos fechados nao leem a api; Cor do Funil e Select de tokens var(--...)
 
 ### Pending Todos
 
@@ -495,7 +499,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-10T03:09:36.599Z
-Stopped at: Completed 07-06-PLAN.md
+Last session: 2026-10-10T03:32:32.027Z
+Stopped at: Completed 07-07-PLAN.md
 Resume file: None
 None
