@@ -5,8 +5,8 @@
  *
  * Registrado na raiz de `app.ts`, depois de `rotasDeFinanceiro`: herda o hook
  * de JWT, e `request.membro` já chega resolvido. `acesso` (07-02) é a
- * permissão por Papel; os planos seguintes acrescentam `funis`, `empresas` e
- * `negocios`.
+ * permissão por Papel; `funis` (07-04) é a configuração de Funis e Etapas, e os
+ * planos seguintes acrescentam `empresas` e `negocios`.
  */
 
 import type { FastifyInstance } from "fastify";
@@ -16,6 +16,7 @@ import { criarAcessoAoCrmPg, type AcessoAoCrm } from "../../servicos/crm/acesso"
 import { criarServicoDeContatos, type ServicoDeContatos } from "../../servicos/crm/contatos";
 import { criarServicoDeFunis, type ServicoDeFunis } from "../../servicos/crm/funis";
 import { rotasDeContatos } from "./contatos";
+import { rotasDeFunis } from "./funis";
 
 export interface OpcoesDeCrm {
   /** Padrão: o `pool()` do processo. Só é chamado quando uma requisição chega, nunca na montagem. */
@@ -33,6 +34,6 @@ export async function rotasDeCrm(app: FastifyInstance, opcoes: OpcoesDeCrm = {})
   const acesso = opcoes.acesso ?? criarAcessoAoCrmPg(obterPool);
   const contatos = opcoes.contatos ?? criarServicoDeContatos({ pool: obterPool, acesso });
   await app.register(rotasDeContatos, { servico: contatos });
-  // RED (07-04, Task 3): o serviço de Funis já é montado; as rotas entram no GREEN.
-  void (opcoes.funis ?? criarServicoDeFunis({ pool: obterPool, acesso }));
+  const funis = opcoes.funis ?? criarServicoDeFunis({ pool: obterPool, acesso });
+  await app.register(rotasDeFunis, { servico: funis });
 }
