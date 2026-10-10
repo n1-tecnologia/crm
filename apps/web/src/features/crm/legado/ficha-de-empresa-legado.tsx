@@ -1,6 +1,16 @@
 "use client";
 
 /**
+ * Empresa (FICHA DO MODELO ANTIGO, em inglês).
+ *
+ * Mantida intacta para os ids que Busca, Lixeira antiga e Tarefas ainda
+ * produzem (D-15): a página nova (`/crm/empresas/[empresa]`) lê da api e,
+ * quando ela responde 404 para um id que existe em `state.companies`,
+ * renderiza esta. Some na fase de unificação.
+ *
+ * Só a assinatura mudou ao sair de `page.tsx`: o id chega por `empresaId`, em
+ * vez de `params` (Promise) lido com `use`.
+ *
  * Empresa, no mesmo esqueleto de Contato e Negócio.
  *
  * A coluna principal conversa, mas não com a Empresa: não existe Conversa com
@@ -12,7 +22,7 @@
 
 import { FileText, Fingerprint, Network } from "lucide-react";
 import Link from "next/link";
-import { use, useState } from "react";
+import { useState } from "react";
 import { useData, useRun } from "@/dados/store";
 import {
   COMPANY_IDENTIFIER_LABEL,
@@ -54,12 +64,7 @@ import {
  */
 const ALTURA_DA_CONVERSA = "calc(100dvh - var(--cabecalho-tela-h) - 2 * var(--celula-x))";
 
-export default function EmpresaPage({
-  params,
-}: {
-  params: Promise<{ empresa: string }>;
-}) {
-  const { empresa } = use(params);
+export function FichaDeEmpresaLegado({ empresaId: empresa }: { readonly empresaId: string }) {
   const state = useData((data) => data);
   const record = state.companies.find((c) => c.id === empresa);
   const run = useRun();
