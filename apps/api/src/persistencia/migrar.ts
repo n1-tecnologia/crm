@@ -13,6 +13,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
+import type { Pool } from "pg";
 import { pool } from "./conexao";
 
 const PASTA = fileURLToPath(new URL("../../migracoes", import.meta.url));
@@ -20,6 +21,40 @@ const PASTA = fileURLToPath(new URL("../../migracoes", import.meta.url));
 export interface Aplicada {
   readonly nome: string;
   readonly ms: number;
+}
+
+/** O que `migracoesPendentes` devolve: os nomes dos arquivos, separados por situação, cada lista em ordem. */
+export interface EstadoDasMigracoes {
+  readonly aplicadas: readonly string[];
+  readonly pendentes: readonly string[];
+}
+
+/** Os arquivos `.sql` da pasta, na ordem em que `migrar()` os aplica. */
+function arquivosDeMigracao(): string[] {
+  return readdirSync(PASTA).filter((f) => f.endsWith(".sql")).sort();
+}
+
+/**
+ * A conferência de D-12: ver o que `migrar()` aplicaria antes de aplicar, sem
+ * escrever no banco. Só `select`: `to_regclass` diz se a tabela de controle
+ * existe e, só então, `plataforma.migracoes` é lida. Num banco onde nem o
+ * schema `plataforma` existe, nada nasce — todos os arquivos saem como
+ * pendentes (T-07-36). O parâmetro existe para o teste apontar a um banco
+ * vazio; o CLI (`--seco`) usa o `pool()` do processo.
+ */
+export async function migracoesPendentes(cliente: Pick<Pool, "query"> = pool()): Promise<EstadoDasMigracoes> {
+  const arquivos = arquivosDeMigracao();
+  const controle = await cliente.query<{ existe: string | null }>("select to_regclass('plataforma.migracoes') as existe");
+  const registradas = new Set<string>();
+  if (controle.rows[0]?.existe) {
+    for (const { nome } of (await cliente.query<{ nome: string }>("select nome from plataforma.migracoes")).rows) {
+      registradas.add(nome);
+    }
+  }
+  return {
+    aplicadas: arquivos.filter((nome) => registradas.has(nome)),
+    pendentes: arquivos.filter((nome) => !registradas.has(nome)),
+  };
 }
 
 export async function migrar(): Promise<Aplicada[]> {
@@ -38,7 +73,7 @@ export async function migrar(): Promise<Aplicada[]> {
     const jaAplicadas = new Set(
       (await cliente.query<{ nome: string }>("select nome from plataforma.migracoes")).rows.map((r) => r.nome),
     );
-    const arquivos = readdirSync(PASTA).filter((f) => f.endsWith(".sql")).sort();
+    const arquivos = arquivosDeMigracao();
 
     for (const nome of arquivos) {
       if (jaAplicadas.has(nome)) continue;
