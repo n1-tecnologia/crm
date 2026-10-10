@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 1
+open_count: 2
 waived_count: 0
 fixed_count: 0
-total_count: 1
-last_updated: 2026-10-10T03:08:27.555Z
+total_count: 2
+last_updated: 2026-10-10T04:16:05.984Z
 ---
 
 # Broken Windows Ledger
@@ -16,6 +16,7 @@ last_updated: 2026-10-10T03:08:27.555Z
 | id | phase | kind | file | line | description | status | reason | recorded_at | resolved_at |
 |----|-------|------|------|------|-------------|--------|--------|-------------|-------------|
 | 1 | 07 | unrun-verify | apps/web/src/app/(shell)/crm/contatos/page.tsx |  | 07-06: lista, formulario e ficha de Contato nao foram exercitados em navegador real (so teste de componente com fetch falso); verificacao visual fica para o fim da fase (human_verify_mode = end-of-phase) | open |  | 2026-10-10T03:08:27.555Z |  |
+| 2 | 07 | unrun-verify | apps/web/src/app/(shell)/crm/empresas/page.tsx |  | 07-09: lista, popup, formulario Nova Empresa e ficha de Empresa (vinculos, Trocar admin, restauracao pedindo admin) nao foram exercitados em navegador real (so teste de componente com fetch falso e build); verificacao visual fica para o fim da fase (human_verify_mode = end-of-phase) | open |  | 2026-10-10T04:16:05.984Z |  |
 
 ````json
 [
@@ -29,6 +30,19 @@ last_updated: 2026-10-10T03:08:27.555Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-10-10T03:08:27.555Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 2,
+    "kind": "unrun-verify",
+    "phase": "07",
+    "file": "apps/web/src/app/(shell)/crm/empresas/page.tsx",
+    "line": null,
+    "description": "07-09: lista, popup, formulario Nova Empresa e ficha de Empresa (vinculos, Trocar admin, restauracao pedindo admin) nao foram exercitados em navegador real (so teste de componente com fetch falso e build); verificacao visual fica para o fim da fase (human_verify_mode = end-of-phase)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-10T04:16:05.984Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }
