@@ -4,11 +4,11 @@ milestone: v1.0
 current_phase: 07
 current_phase_name: "CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)"
 status: executing
-stopped_at: Completed 07-04-PLAN.md
-last_updated: "2026-10-10T02:22:25.835Z"
+stopped_at: Completed 07-05-PLAN.md
+last_updated: "2026-10-10T02:44:51.198Z"
 last_activity: 2026-10-09
 last_activity_desc: Phase 07 execution started
-state_head: 49eb2a7002d502e3c8a932df34f60727b402d48b
+state_head: f09ccd2c3ff05645b348a7595e2d761a312ef0b2
 progress:
   total_phases: 7
   completed_phases: 6
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 07 (CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)) — EXECUTING
-Plan: 5 of 13
+Plan: 6 of 13
 Status: Ready to execute
 Last activity: 2026-10-09 — Phase 07 execution started
 
@@ -345,6 +345,7 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 | Phase 07 P02 | 6 min | 2 tasks | 15 files |
 | Phase 07 P03 | 14 min | 3 tasks | 12 files |
 | Phase 07 P04 | 11 min | 3 tasks | 8 files |
+| Phase 07 P05 | 12 min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -431,6 +432,9 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 07]: 07-03: forma invalida de Contato (normalizacao, limites) e 400 VALOR_INVALIDO; regra (RN-CON-11, D-09) e 409 com bloqueios; valor canonico de Identificador nao se edita
 - [Phase 07]: 07-03: vinculo com Empresa na lixeira fica oculto na ficha do Contato e nao conta em empresasEmQueEhUnicoAdmin
 - [Phase 07]: 07-04: Funil/Etapa so se editam quando ativos (FUNIL_INATIVO); ContagemDeNegocios e disjunta; remapear nao toca a probabilidade sobrescrita do Negocio; padrao decidido sob lock consultivo por Espaco
+- [Phase 07]: 07-05: RN-EMP-05 (dominio de provedor publico) e INV-EMP-01 sao 409 (DOMINIO_PUBLICO, EMPRESA_SEM_NOME); forma mal formada de Identificador de Empresa e 400 — Regra de negocio recusa em 409 com codigo; forma invalida e 400, como em 07-03
+- [Phase 07]: 07-05: trocarAdmin so rebaixa o admin anterior (vinculo segue vigente); arquivar Empresa nao toca vinculos; so a lixeira encerra (D-08); restaurar da lixeira cria vinculo admin novo — Preserva historico e a regra de que a Empresa nunca fica sem admin
+- [Phase 07]: 07-05: 007 corrigida (D-12) e commitada; 07-13 Task 1 ainda deve conferir plataforma.migracoes antes do primeiro migrar real — T-07-20: a edicao so vale porque a 007 nunca foi aplicada
 
 ### Pending Todos
 
@@ -487,7 +491,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-10T02:22:25.726Z
-Stopped at: Completed 07-04-PLAN.md
+Last session: 2026-10-10T02:44:51.088Z
+Stopped at: Completed 07-05-PLAN.md
 Resume file: None
 None
