@@ -177,7 +177,7 @@ describe("FichaDeEmpresa — vínculos e admin (D-08)", () => {
   it("(a) mostra os vigentes com cargo e o selo admin, e os encerrados recolhidos com a data de fim", async () => {
     await abrirFicha();
     const ana = within(linhaDoContato("Ana Souza"));
-    expect(ana.getByText("Diretora")).toBeTruthy();
+    expect(ana.getByDisplayValue("Diretora")).toBeTruthy();
     expect(ana.getByText("admin")).toBeTruthy();
     const beto = within(linhaDoContato("Beto Lima"));
     expect(beto.queryByText("admin")).toBeNull();
