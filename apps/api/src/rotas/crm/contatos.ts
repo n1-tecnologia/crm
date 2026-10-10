@@ -4,8 +4,9 @@
  * Sem SQL e sem regra aqui (`rotas/CONTEXT.md`): a rota lê a requisição,
  * chama o serviço e formata a resposta. O Membro atuante é SEMPRE
  * `request.membro`; o corpo `.strict()` recusa `workspaceId`, `criadoPor`,
- * `estado` e `proprietarioId` (T-07-02, mass assignment). 07-02 acrescenta a
- * troca de Proprietário e 07-03 alarga o corpo.
+ * e `estado` (T-07-02, mass assignment). `proprietarioId` é aceito desde o
+ * 07-02 (D-11): o serviço o valida como Membro ativo do mesmo Espaço. 07-03
+ * alarga o corpo.
  */
 
 import type { ZodTypeProvider } from "@fastify/type-provider-zod";
@@ -19,6 +20,7 @@ const CORPO_DE_CRIACAO = z
     nome: TEXTO_CURTO.optional(),
     sobrenome: TEXTO_CURTO.optional(),
     descricao: TEXTO_LONGO.optional(),
+    proprietarioId: z.string().min(1).max(64).optional(),
   })
   .strict();
 
