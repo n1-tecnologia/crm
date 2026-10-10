@@ -136,6 +136,15 @@ beforeEach(() => {
     return rota ? rota(init) : resposta(404, { ok: false, error: "não roteado", codigo: "NAO_ROTEADO" });
   });
   vi.stubGlobal("fetch", fetchMock);
+  // O jsdom não tem `ResizeObserver`; a `RolagemNoTopo` do quadro o usa para medir a largura. Aqui nada é medido.
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
   obterSessao.mockReset();
   obterSessao.mockResolvedValue({ data: { session: { access_token: "tok" } } });
 });
@@ -229,10 +238,12 @@ describe("QuadroDoFunil — as colunas e os cartões", () => {
   it("(c) o cabeçalho soma o valor declarado dos abertos e o ponderado pela probabilidade", async () => {
     await abrirQuadro();
     const fmt = makeFormatters(buildSeed().workspace.locale);
+    // "R$" tem `$` e "3.500,50" tem `.`: escapados, senão o `$` vira âncora e nada casa; o espaço do Intl é inquebrável.
+    const literal = (texto: string) => texto.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s/g, "\\s");
     const declarado = fmt.money({ amount: 3500.5, currency: "BRL" });
     const ponderado = fmt.money({ amount: 550.25, currency: "BRL" });
-    expect(screen.getByText(new RegExp(`${declarado.replace(/\s/g, "\\s")}.*declarado`))).toBeTruthy();
-    expect(screen.getByText(new RegExp(`${ponderado.replace(/\s/g, "\\s")}.*ponderado`))).toBeTruthy();
+    expect(screen.getByText(new RegExp(`${literal(declarado)}.*declarado`))).toBeTruthy();
+    expect(screen.getByText(new RegExp(`${literal(ponderado)}.*ponderado`))).toBeTruthy();
     expect(screen.getByText("3 abertos")).toBeTruthy();
   });
 
