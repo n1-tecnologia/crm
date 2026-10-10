@@ -457,7 +457,7 @@ describeComBanco("rotas de Empresas — serviço real, Postgres local", () => {
     });
     expect(deOutroEspaco.statusCode).toBe(404);
 
-    const lista = await servidor.inject({ method: "GET", url: "/empresas?q=rota%20lista&limite=5", headers: AUTORIZACAO });
+    const lista = await servidor.inject({ method: "GET", url: `/empresas?q=${encodeURIComponent("(rota) lista")}&limite=5`, headers: AUTORIZACAO });
     expect(lista.statusCode).toBe(200);
     const corpo = lista.json() as { ok: boolean; itens: Array<{ id: string }>; total: number };
     expect(corpo.ok).toBe(true);

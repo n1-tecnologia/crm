@@ -70,7 +70,8 @@ const CAMPOS_DE_CRIACAO = {
   proprietarioId: PROPRIETARIO.optional(),
 };
 
-const CORPO_DE_CRIACAO = z
+/** Exportado para o `novoContato` do admin de uma Empresa (D-08, `rotas/crm/empresas.ts`). */
+export const NOVO_CONTATO = z
   .object({
     ...CAMPOS_DE_CRIACAO,
     identificadores: z.array(IDENTIFICADOR_NOVO).max(LIMITES_CRM.identificadoresMaximo).optional(),
@@ -108,7 +109,7 @@ export async function rotasDeContatos(app: FastifyInstance, opcoes: { readonly s
     responderLista(reply, await servico.listar(request.membro, request.query)),
   );
 
-  rotas.post("/contatos", { schema: { body: CORPO_DE_CRIACAO } }, async (request, reply) =>
+  rotas.post("/contatos", { schema: { body: NOVO_CONTATO } }, async (request, reply) =>
     responder(reply, await servico.criar(request.membro, request.body), 201),
   );
 
