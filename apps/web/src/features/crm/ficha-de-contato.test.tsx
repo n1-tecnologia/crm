@@ -7,15 +7,18 @@
  * URL, sessão falsa, `StoreProvider` de verdade com o seed.
  */
 
+import { Suspense } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { SWRConfig } from "swr";
 import { buildSeed } from "@n1/dominio/seed";
 import { podeNoCrm } from "@n1/dominio/crm/permissoes";
 import type { ContatoDetalhado } from "@n1/dominio/crm/contatos";
 import { StoreProvider } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
+import { invalidarCrm } from "@/dados/crm/cliente-crm";
 import { useContato } from "@/dados/crm/contatos";
+import ContatoPage from "@/app/(shell)/crm/contatos/[contato]/page";
 import { FichaDeContato } from "./ficha-de-contato";
 
 const { obterSessao } = vi.hoisted(() => ({ obterSessao: vi.fn() }));
@@ -23,6 +26,13 @@ const { obterSessao } = vi.hoisted(() => ({ obterSessao: vi.fn() }));
 vi.mock("@/autenticacao/cliente-navegador", () => ({
   clienteDoNavegador: () => ({ auth: { getSession: obterSessao } }),
 }));
+
+// `invalidarCrm` é espiado: o `mutate` global do SWR não alcança o cache isolado do `SWRConfig` do teste.
+// Que a chave `/contatos…` revalida de fato é do SWR (provado no tracer do 07-01); aqui se prova que a gravação a invalida.
+vi.mock("@/dados/crm/cliente-crm", async (original) => {
+  const real = await original<typeof import("@/dados/crm/cliente-crm")>();
+  return { ...real, invalidarCrm: vi.fn(async () => undefined) };
+});
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/crm/contatos/c1",
@@ -75,6 +85,7 @@ beforeEach(() => {
   process.env.NEXT_PUBLIC_API_URL = "http://api";
   fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
+  vi.mocked(invalidarCrm).mockClear();
   obterSessao.mockReset();
   obterSessao.mockResolvedValue({ data: { session: { access_token: "tok" } } });
 });
@@ -140,7 +151,7 @@ describe("FichaDeContato — leitura", () => {
 });
 
 describe("FichaDeContato — Identificadores e ciclo de vida", () => {
-  it("(b) Tornar principal manda PATCH com principal: true e a ficha revalida", async () => {
+  it("(b) Tornar principal manda PATCH com principal: true e invalida a ficha para revalidar", async () => {
     const depois = detalhado();
     fetchMock.mockImplementation(async (url: string, init: RequestInit) => {
       if (init.method === "PATCH") return resposta(200, { ok: true, dados: depois });
@@ -153,7 +164,7 @@ describe("FichaDeContato — Identificadores e ciclo de vida", () => {
     await waitFor(() => expect(chamadas()).toContain("PATCH /contatos/c1/identificadores/i2"));
     const patch = (fetchMock.mock.calls as Array<[string, RequestInit]>).find(([, init]) => init.method === "PATCH");
     expect(patch?.[1].body).toBe(JSON.stringify({ principal: true }));
-    await waitFor(() => expect(chamadas().filter((c) => c === "GET /contatos/c1").length).toBeGreaterThanOrEqual(2));
+    await waitFor(() => expect(invalidarCrm).toHaveBeenCalledWith("/contatos"));
   });
 
   it("(c) Excluir → confirmar → 409 CONTATO_BLOQUEADO mostra a frase e o link da Empresa, e o selo não vira na lixeira", async () => {
@@ -203,5 +214,78 @@ describe("FichaDeContato — Identificadores e ciclo de vida", () => {
     expect(excluir.getAttribute("title")).toBe(podeNoCrm("convidado", "ativo", "enviar_para_lixeira", "contato"));
     fireEvent.click(excluir);
     expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+});
+
+describe("FichaDeContato — edição e Identificadores novos", () => {
+  it("(g) Editar abre o formulário sem os Identificadores e Salvar alterações manda PATCH com o Proprietário", async () => {
+    fetchMock.mockImplementation(async () => resposta(200, { ok: true, dados: detalhado() }));
+    montar();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Editar" }));
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+    expect(screen.queryByLabelText("E-mail")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Ana Maria" } });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar alterações" }));
+
+    await waitFor(() => expect(chamadas()).toContain("PATCH /contatos/c1"));
+    const patch = (fetchMock.mock.calls as Array<[string, RequestInit]>).find(([, init]) => init.method === "PATCH");
+    const corpo = JSON.parse(patch?.[1].body as string) as { nome: string; proprietarioId: string };
+    expect(corpo.nome).toBe("Ana Maria");
+    expect(corpo.proprietarioId).toBe("mem_julia");
+  });
+
+  it("(h) Adicionar Identificador valida no domínio e só então manda POST /identificadores", async () => {
+    fetchMock.mockImplementation(async () => resposta(200, { ok: true, dados: detalhado() }));
+    montar();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Adicionar Identificador" }));
+    fireEvent.change(screen.getByLabelText("Valor do Identificador"), { target: { value: "isto-nao-e-email" } });
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar" }));
+    expect(screen.getByRole("alert")).toBeTruthy();
+    expect(chamadas().some((c) => c.startsWith("POST"))).toBe(false);
+
+    fireEvent.change(screen.getByLabelText("Valor do Identificador"), { target: { value: "ana3@x.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar" }));
+    await waitFor(() => expect(chamadas()).toContain("POST /contatos/c1/identificadores"));
+    const post = (fetchMock.mock.calls as Array<[string, RequestInit]>).find(([, init]) => init.method === "POST");
+    expect(post?.[1].body).toBe(JSON.stringify({ tipo: "email", valor: "ana3@x.com" }));
+  });
+});
+
+describe("página /crm/contatos/[contato] — recuo para o modelo antigo (D-15)", () => {
+  async function montarPagina(id: string) {
+    fetchMock.mockResolvedValue(resposta(404, { ok: false, error: "Contato não encontrado.", codigo: "CONTATO_NAO_ENCONTRADO" }));
+    const transporte: Transporte = {
+      gravar: vi.fn(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." })),
+      hidratar: vi.fn(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." })),
+    };
+    const params = Promise.resolve({ contato: id });
+    let resultado!: ReturnType<typeof render>;
+    await act(async () => {
+      resultado = render(
+        <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+          <StoreProvider sessao={{ memberId: "mem_julia" }} estadoInicial={{ data: buildSeed(), revisao: 1, ordens: {} }} transporte={transporte}>
+            <Suspense fallback="carregando">
+              <ContatoPage params={params} />
+            </Suspense>
+          </StoreProvider>
+        </SWRConfig>,
+      );
+    });
+    return resultado.container;
+  }
+
+  it("(i) 404 da api para um id que não existe em lugar nenhum mostra Contato não encontrado", async () => {
+    const container = await montarPagina("nao-existe");
+    await vi.waitFor(() => expect(container.textContent).toContain("Contato não encontrado."));
+    expect(container.textContent).toContain("Ele pode ter sido excluído permanentemente.");
+  });
+
+  it("(j) 404 da api para um id do modelo antigo abre a ficha antiga, com o que a nova não tem", async () => {
+    const antigo = buildSeed().contacts[0]!;
+    const container = await montarPagina(antigo.id);
+    await vi.waitFor(() => expect(container.textContent).toContain("Consentimentos"));
+    expect(container.textContent).not.toContain("Contato não encontrado.");
   });
 });
