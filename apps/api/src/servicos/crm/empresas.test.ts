@@ -340,6 +340,11 @@ describeComBanco("ServicoDeEmpresas — Postgres local", () => {
     const admin = valor(await contatos.obter(eu, matriz.adminContatoId));
     expect(admin.contato.estado).toBe("ativo");
     expect(recusado(await servico.enviarParaLixeira(eu, matriz.id)).codigo).toBe("TRANSICAO_INVALIDA");
+
+    // O Contato que era admin de uma Empresa na lixeira pode ser excluído de vez: o vínculo dela já
+    // foi encerrado e o trigger corrigido da 007 (D-12) não exige admin de Empresa na lixeira.
+    valor(await contatos.enviarParaLixeira(eu, matriz.adminContatoId));
+    expect(valor(await contatos.excluirPermanentemente(eu, matriz.adminContatoId))).toEqual({ id: matriz.adminContatoId });
   });
 
   it("(g) restaurar da lixeira pede o admin; de arquivada não pede", async () => {
