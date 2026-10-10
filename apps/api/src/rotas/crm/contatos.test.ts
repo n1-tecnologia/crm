@@ -1,5 +1,5 @@
 /**
- * `GET/POST /contatos` — o traçador do CRM (07-01).
+ * Rotas REST de Contato — o traçador (07-01) e o CRUD completo (07-03).
  *
  * Duas partes. A primeira roda sempre, com um serviço falso injetado por
  * `buildApp({ crm: { contatos } })` (sem banco, D-DEC-09): autenticação, forma
@@ -9,18 +9,23 @@
  * gravação em `plataforma.contatos` com o `workspace_id` da sessão (T-07-01) e
  * o isolamento entre Espaços de Trabalho.
  *
+ * 07-03 completa o contrato REST (ver `<interfaces>` do plano): o bloco sem
+ * banco usa um serviço falso que REGISTRA as chamadas e devolve o que o caso
+ * pede; o bloco com banco percorre o ciclo inteiro por `app.inject`.
+ *
  * 07-02 acrescenta o Papel (D-14) e a troca de Proprietário (D-11): a segunda
  * parte semeia os Membros em `plataforma.registros` e usa o acesso REAL, que é
  * o que prova a consulta `members` → `roles`.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { LIMITES_CRM } from "@n1/dominio/crm/comum";
 import { usuarioDoSeed } from "@n1/dominio";
 import { buildSeed } from "@n1/dominio/seed";
-import type { ContatoResumo } from "@n1/dominio/crm/contatos";
+import type { ContatoDetalhado, ContatoResumo } from "@n1/dominio/crm/contatos";
 import { buildApp } from "../../app";
 import { encerrar, pool } from "../../persistencia/conexao";
-import { sucesso } from "../../servicos/crm/resultado";
+import { recusa, sucesso, type ResultadoCrm } from "../../servicos/crm/resultado";
 import type { ServicoDeContatos } from "../../servicos/crm/contatos";
 import type { AcessoAoCrm } from "../../servicos/crm/acesso";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearMembro } from "../../testes/banco-crm";
@@ -48,39 +53,55 @@ describe("rotas de Contatos — serviço falso, sem banco", () => {
     telefonePrincipal: null,
     atualizadoEm: "2026-10-09T00:00:00.000Z",
   };
-  const falso: ServicoDeContatos = {
-    listar: async () => sucesso({ itens: [resumo], total: 1 }),
-    criar: async () => {
-      throw new Error("não deveria chegar ao serviço");
+  const detalhe: ContatoDetalhado = {
+    contato: {
+      id: "c1",
+      nome: "Falso",
+      sobrenome: null,
+      dataNascimento: null,
+      idioma: null,
+      fusoHorario: null,
+      fotoUrl: null,
+      descricao: null,
+      enderecos: [],
+      camposAdicionais: {},
+      origem: null,
+      qualificacao: null,
+      modoCriacao: "manual",
+      estado: "ativo",
+      proprietarioId: "mem_maryane",
+      criadoPor: "mem_maryane",
+      criadoEm: "2026-10-09T00:00:00.000Z",
+      atualizadoEm: "2026-10-09T00:00:00.000Z",
     },
-    obter: async () => {
-      throw new Error("não deveria chegar ao serviço");
-    },
-    editar: async () => {
-      throw new Error("não deveria chegar ao serviço");
-    },
-    adicionarIdentificador: async () => {
-      throw new Error("não deveria chegar ao serviço");
-    },
-    editarIdentificador: async () => {
-      throw new Error("não deveria chegar ao serviço");
-    },
-    removerIdentificador: async () => {
-      throw new Error("não deveria chegar ao serviço");
-    },
-    arquivar: async () => {
-      throw new Error("não deveria chegar ao serviço");
-    },
-    restaurar: async () => {
-      throw new Error("não deveria chegar ao serviço");
-    },
-    enviarParaLixeira: async () => {
-      throw new Error("não deveria chegar ao serviço");
-    },
-    excluirPermanentemente: async () => {
-      throw new Error("não deveria chegar ao serviço");
-    },
+    identificadores: [],
+    vinculos: [],
   };
+
+  /** Serviço falso: registra `[método, ...argumentos]` e devolve `respostas[método]` ou o detalhe. */
+  function novoFalso(respostas: Partial<Record<keyof ServicoDeContatos, ResultadoCrm<unknown>>> = {}) {
+    const chamadas: unknown[][] = [];
+    const responder = (nome: keyof ServicoDeContatos, ...argumentos: unknown[]) => {
+      chamadas.push([nome, ...argumentos]);
+      return Promise.resolve((respostas[nome] ?? sucesso(detalhe)) as never);
+    };
+    const servico: ServicoDeContatos = {
+      listar: (...a) => responder("listar", ...a),
+      criar: (...a) => responder("criar", ...a),
+      obter: (...a) => responder("obter", ...a),
+      editar: (...a) => responder("editar", ...a),
+      adicionarIdentificador: (...a) => responder("adicionarIdentificador", ...a),
+      editarIdentificador: (...a) => responder("editarIdentificador", ...a),
+      removerIdentificador: (...a) => responder("removerIdentificador", ...a),
+      arquivar: (...a) => responder("arquivar", ...a),
+      restaurar: (...a) => responder("restaurar", ...a),
+      enviarParaLixeira: (...a) => responder("enviarParaLixeira", ...a),
+      excluirPermanentemente: (...a) => responder("excluirPermanentemente", ...a),
+    };
+    return { servico, chamadas };
+  }
+  const falso = novoFalso({ listar: sucesso({ itens: [resumo], total: 1 }) }).servico;
+  const appCom = (servico: ServicoDeContatos) => buildApp({ ...opcoesDeAutenticacao("ws_falso"), crm: { contatos: servico } });
   const app = () => buildApp({ ...opcoesDeAutenticacao("ws_falso"), crm: { contatos: falso } });
 
   it("(a) GET /contatos sem Authorization responde 401", async () => {
@@ -114,6 +135,152 @@ describe("rotas de Contatos — serviço falso, sem banco", () => {
     expect(resposta.statusCode).toBe(200);
     expect(resposta.json()).toEqual({ ok: true, itens: [resumo], total: 1 });
   });
+
+  it("(a) GET /contatos/c1 devolve { ok, dados } do serviço", async () => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({ method: "GET", url: "/contatos/c1", headers: AUTORIZACAO });
+    expect(resposta.statusCode).toBe(200);
+    expect(resposta.json()).toEqual({ ok: true, dados: detalhe });
+    expect(chamadas[0]?.slice(0, 1)).toEqual(["obter"]);
+    expect(chamadas[0]?.[2]).toBe("c1");
+  });
+
+  it("(a) serviço devolvendo 404 vira 404 { ok: false, error }", async () => {
+    const { servico } = novoFalso({ obter: recusa(404, "Contato não encontrado.") });
+    const resposta = await appCom(servico).inject({ method: "GET", url: "/contatos/nao-existe", headers: AUTORIZACAO });
+    expect(resposta.statusCode).toBe(404);
+    expect(resposta.json()).toEqual({ ok: false, error: "Contato não encontrado." });
+  });
+
+  it.each([
+    ["modoCriacao", { nome: "Ana", modoCriacao: "importacao" }],
+    ["estado", { nome: "Ana", estado: "na_lixeira" }],
+    ["criadoPor", { nome: "Ana", criadoPor: "mem_outro" }],
+    ["workspaceId", { nome: "Ana", workspaceId: "ws_de_outro" }],
+    ["tipo de Identificador desconhecido", { identificadores: [{ tipo: "fax", valor: "123" }] }],
+    [
+      "Identificadores demais",
+      { identificadores: Array.from({ length: LIMITES_CRM.identificadoresMaximo + 1 }, (_, i) => ({ tipo: "email", valor: `a${i}@x.com` })) },
+    ],
+    ["dataNascimento fora do formato", { nome: "Ana", dataNascimento: "17/05/1990" }],
+  ])("(b) POST /contatos com %s responde 400 e não chega ao serviço", async (_rotulo, payload) => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({ method: "POST", url: "/contatos", headers: AUTORIZACAO, payload });
+    expect(resposta.statusCode).toBe(400);
+    expect(resposta.json().ok).toBe(false);
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("(c) DELETE /contatos/c1 sem corpo e sem content-type responde 200", async () => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({ method: "DELETE", url: "/contatos/c1", headers: AUTORIZACAO });
+    expect(resposta.statusCode).toBe(200);
+    expect(resposta.json().ok).toBe(true);
+    expect(chamadas[0]?.[0]).toBe("enviarParaLixeira");
+  });
+
+  it("(c) 409 do serviço chega com codigo e bloqueios intactos", async () => {
+    const bloqueios = {
+      empresas: [{ id: "e1", nome: "Alfa" }],
+      negocios: { total: 2, itens: [{ id: "n1", titulo: "A" }] },
+    };
+    const { servico } = novoFalso({
+      enviarParaLixeira: recusa(409, "Este Contato não pode ir para a lixeira.", { codigo: "CONTATO_BLOQUEADO", bloqueios }),
+    });
+    const resposta = await appCom(servico).inject({ method: "DELETE", url: "/contatos/c1", headers: AUTORIZACAO });
+    expect(resposta.statusCode).toBe(409);
+    expect(resposta.json()).toEqual({
+      ok: false,
+      error: "Este Contato não pode ir para a lixeira.",
+      codigo: "CONTATO_BLOQUEADO",
+      bloqueios,
+    });
+  });
+
+  it("(c) DELETE /contatos/c1/permanente responde { ok, dados: { id } }", async () => {
+    const { servico, chamadas } = novoFalso({ excluirPermanentemente: sucesso({ id: "c1" }) });
+    const resposta = await appCom(servico).inject({ method: "DELETE", url: "/contatos/c1/permanente", headers: AUTORIZACAO });
+    expect(resposta.statusCode).toBe(200);
+    expect(resposta.json()).toEqual({ ok: true, dados: { id: "c1" } });
+    expect(chamadas[0]?.[0]).toBe("excluirPermanentemente");
+  });
+
+  it.each([
+    ["arquivar", "/contatos/c1/arquivar"],
+    ["restaurar", "/contatos/c1/restaurar"],
+  ])("(d) POST %s sem corpo responde 200", async (metodo, url) => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({ method: "POST", url, headers: AUTORIZACAO });
+    expect(resposta.statusCode).toBe(200);
+    expect(chamadas[0]?.[0]).toBe(metodo);
+  });
+
+  it("(d) PATCH /contatos/c1 com {} responde 400: edição vazia não é edição", async () => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({ method: "PATCH", url: "/contatos/c1", headers: AUTORIZACAO, payload: {} });
+    expect(resposta.statusCode).toBe(400);
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("(d) PATCH /contatos/c1 não aceita identificadores nem estado", async () => {
+    const { servico } = novoFalso();
+    for (const payload of [{ identificadores: [] }, { estado: "arquivado" }]) {
+      const resposta = await appCom(servico).inject({ method: "PATCH", url: "/contatos/c1", headers: AUTORIZACAO, payload });
+      expect(resposta.statusCode).toBe(400);
+    }
+  });
+
+  it("(d) PATCH /contatos/c1 repassa a edição ao serviço", async () => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({
+      method: "PATCH",
+      url: "/contatos/c1",
+      headers: AUTORIZACAO,
+      payload: { nome: "Novo", proprietarioId: "mem_outro" },
+    });
+    expect(resposta.statusCode).toBe(200);
+    expect(chamadas[0]?.slice(2)).toEqual(["c1", { nome: "Novo", proprietarioId: "mem_outro" }]);
+  });
+
+  it("(d) sub-recurso de Identificadores: POST 201, PATCH e DELETE 200; PATCH vazio e tipo inválido 400", async () => {
+    const { servico, chamadas } = novoFalso();
+    const a = appCom(servico);
+    const criado = await a.inject({
+      method: "POST",
+      url: "/contatos/c1/identificadores",
+      headers: AUTORIZACAO,
+      payload: { tipo: "email", valor: "a@x.com" },
+    });
+    expect(criado.statusCode).toBe(201);
+    const editado = await a.inject({
+      method: "PATCH",
+      url: "/contatos/c1/identificadores/i1",
+      headers: AUTORIZACAO,
+      payload: { principal: true },
+    });
+    expect(editado.statusCode).toBe(200);
+    const removido = await a.inject({ method: "DELETE", url: "/contatos/c1/identificadores/i1", headers: AUTORIZACAO });
+    expect(removido.statusCode).toBe(200);
+    expect(chamadas.map((c) => c[0])).toEqual(["adicionarIdentificador", "editarIdentificador", "removerIdentificador"]);
+
+    const vazio = await a.inject({ method: "PATCH", url: "/contatos/c1/identificadores/i1", headers: AUTORIZACAO, payload: {} });
+    expect(vazio.statusCode).toBe(400);
+    const invalido = await a.inject({
+      method: "POST",
+      url: "/contatos/c1/identificadores",
+      headers: AUTORIZACAO,
+      payload: { tipo: "fax", valor: "1" },
+    });
+    expect(invalido.statusCode).toBe(400);
+  });
+
+  it.each(["/contatos?limite=500", "/contatos?estado=mesclado", "/contatos?q=" + "x".repeat(101)])(
+    "(e) GET %s responde 400",
+    async (url) => {
+      const resposta = await appCom(falso).inject({ method: "GET", url, headers: AUTORIZACAO });
+      expect(resposta.statusCode).toBe(400);
+    },
+  );
 
   it("(i) Convidado recebe 403 em POST /contatos com o acesso falso, sem chegar ao banco", async () => {
     const acessoFalso: AcessoAoCrm = {
@@ -290,5 +457,85 @@ describeComBanco("rotas de Contatos — serviço real, Postgres local", () => {
     const { contato } = resposta.json().dados;
     expect(contato.proprietarioId).toBe("mem_outro");
     expect(contato.criadoPor).toBe("mem_maryane");
+  });
+
+  it("(f) o ciclo inteiro por app.inject: criar, Identificador, principal, lixeira, restaurar, lixeira, excluir, 404", async () => {
+    const app = appA();
+    const criado = await app.inject({
+      method: "POST",
+      url: "/contatos",
+      headers: AUTORIZACAO,
+      payload: { nome: "Ciclo", identificadores: [{ tipo: "email", valor: "Ciclo@X.com" }] },
+    });
+    expect(criado.statusCode).toBe(201);
+    const id: string = criado.json().dados.contato.id;
+    expect(criado.json().dados.identificadores[0]).toMatchObject({ valor: "ciclo@x.com", principal: true });
+
+    const adicionado = await app.inject({
+      method: "POST",
+      url: `/contatos/${id}/identificadores`,
+      headers: AUTORIZACAO,
+      payload: { tipo: "email", valor: "ciclo2@x.com" },
+    });
+    expect(adicionado.statusCode).toBe(201);
+    const segundo = adicionado.json().dados.identificadores.find((i: { valor: string }) => i.valor === "ciclo2@x.com");
+    expect(segundo.principal).toBe(false);
+
+    const trocado = await app.inject({
+      method: "PATCH",
+      url: `/contatos/${id}/identificadores/${segundo.id}`,
+      headers: AUTORIZACAO,
+      payload: { principal: true },
+    });
+    expect(trocado.statusCode).toBe(200);
+    expect(
+      trocado.json().dados.identificadores.filter((i: { principal: boolean }) => i.principal).map((i: { valor: string }) => i.valor),
+    ).toEqual(["ciclo2@x.com"]);
+
+    const lixeira = await app.inject({ method: "DELETE", url: `/contatos/${id}`, headers: AUTORIZACAO });
+    expect(lixeira.statusCode).toBe(200);
+    expect(lixeira.json().dados.contato.estado).toBe("na_lixeira");
+
+    const restaurado = await app.inject({ method: "POST", url: `/contatos/${id}/restaurar`, headers: AUTORIZACAO });
+    expect(restaurado.statusCode).toBe(200);
+    expect(restaurado.json().dados.contato.estado).toBe("ativo");
+
+    expect((await app.inject({ method: "DELETE", url: `/contatos/${id}`, headers: AUTORIZACAO })).statusCode).toBe(200);
+    const permanente = await app.inject({ method: "DELETE", url: `/contatos/${id}/permanente`, headers: AUTORIZACAO });
+    expect(permanente.statusCode).toBe(200);
+    expect(permanente.json()).toEqual({ ok: true, dados: { id } });
+
+    const depois = await app.inject({ method: "GET", url: `/contatos/${id}`, headers: AUTORIZACAO });
+    expect(depois.statusCode).toBe(404);
+  });
+
+  it("(f) GET /contatos/:id de outro Espaço é 404, nunca 403 nem o registro (D-10)", async () => {
+    const criado = await appA().inject({ method: "POST", url: "/contatos", headers: AUTORIZACAO, payload: { nome: "Só de A" } });
+    const id: string = criado.json().dados.contato.id;
+    const alheio = await appB().inject({ method: "GET", url: `/contatos/${id}`, headers: AUTORIZACAO });
+    expect(alheio.statusCode).toBe(404);
+    expect(alheio.json()).toEqual({ ok: false, error: "Contato não encontrado.", codigo: "CONTATO_NAO_ENCONTRADO" });
+  });
+
+  it("(f) IDENTIFICADOR_EM_USO e CONTATO_BLOQUEADO chegam como 409 ricos pelo HTTP", async () => {
+    const app = appA();
+    const dono = await app.inject({
+      method: "POST",
+      url: "/contatos",
+      headers: AUTORIZACAO,
+      payload: { nome: "Dona do E-mail", identificadores: [{ tipo: "email", valor: "unico@x.com" }] },
+    });
+    const outro = await app.inject({
+      method: "POST",
+      url: "/contatos",
+      headers: AUTORIZACAO,
+      payload: { nome: "Quer o mesmo", identificadores: [{ tipo: "email", valor: "UNICO@x.com" }] },
+    });
+    expect(outro.statusCode).toBe(409);
+    expect(outro.json()).toMatchObject({
+      ok: false,
+      codigo: "IDENTIFICADOR_EM_USO",
+      bloqueios: { contatos: [{ id: dono.json().dados.contato.id, nome: "Dona do E-mail" }] },
+    });
   });
 });
