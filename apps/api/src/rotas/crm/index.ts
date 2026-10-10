@@ -17,6 +17,7 @@ import { criarAcessoAoCrmPg, type AcessoAoCrm } from "../../servicos/crm/acesso"
 import { criarServicoDeContatos, type ServicoDeContatos } from "../../servicos/crm/contatos";
 import { criarServicoDeEmpresas, type ServicoDeEmpresas } from "../../servicos/crm/empresas";
 import { criarServicoDeFunis, type ServicoDeFunis } from "../../servicos/crm/funis";
+import type { ServicoDeNegocios } from "../../servicos/crm/negocios";
 import { rotasDeContatos } from "./contatos";
 import { rotasDeEmpresas } from "./empresas";
 import { rotasDeFunis } from "./funis";
@@ -30,6 +31,8 @@ export interface OpcoesDeCrm {
   readonly empresas?: ServicoDeEmpresas;
   /** Injeção só para teste: troca o serviço real de Funis por um falso, sem banco. */
   readonly funis?: ServicoDeFunis;
+  /** Injeção só para teste: troca o serviço real de Negócios por um falso, sem banco. */
+  readonly negocios?: ServicoDeNegocios;
   /** Padrão: lê Papel e Membro de `plataforma.registros`. Injeção para teste sem banco. */
   readonly acesso?: AcessoAoCrm;
 }
