@@ -157,10 +157,15 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
   // chegar ao `@fastify/cors`. Passar a função direto faz `request` virar
   // a instância do servidor, não a requisição, e o hook nunca dispara de
   // verdade por requisição.
-  // Fase 4: as leituras usam só GET, já coberto; por isso as escritas de 04-10 nascem como POST, não PATCH/DELETE.
+  // As rotas REST do CRM (Fase 7, D-03) usam PATCH e DELETE, e
+  // `PUT /funis/:id/etapas/ordem` (07-04) é o único PUT; sem eles o preflight
+  // do navegador recusa a escrita. Os métodos novos valem só para as origens
+  // da allowlist (`webOrigins`): a allowlist, `credentials: false` e o
+  // `origin: false` de `/v1/integrations` não mudam (T-07-04). As escritas da
+  // Fase 4 continuam POST.
   const opcoesDeCors = {
     credentials: false,
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "PATCH", "PUT", "DELETE"],
     allowedHeaders: ["authorization", "content-type"],
   };
   app.register(cors, {
