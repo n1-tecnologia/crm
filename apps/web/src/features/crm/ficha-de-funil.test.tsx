@@ -339,6 +339,26 @@ describe("FichaDeFunil — Funil", () => {
     expect(corpoDa("PATCH /funis/f1")).toEqual({ exigeValorGanho: true });
   });
 
+  it("(n) Salvar alterações manda só o que mudou; nome repetido cai no campo Nome", async () => {
+    rotear(funil(), (_url, init) =>
+      init.method === "PATCH"
+        ? resposta(409, { ok: false, error: "Já existe um Funil com este nome.", codigo: "FUNIL_NOME_EM_USO", campo: "nome" })
+        : resposta(200, { ok: true, dados: funil() }),
+    );
+    montar();
+
+    const salvar = await screen.findByRole("button", { name: "Salvar alterações" });
+    expect(salvar.getAttribute("aria-disabled")).toBe("true");
+    expect(salvar.getAttribute("title")).toBe("Nada para salvar.");
+    fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Pós-venda" } });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar alterações" }));
+
+    await waitFor(() => expect(escritas()).toEqual(["PATCH /funis/f1"]));
+    expect(corpoDa("PATCH /funis/f1")).toEqual({ nome: "Pós-venda" });
+    await screen.findByText("Já existe um Funil com este nome.");
+    expect((screen.getByLabelText("Nome") as HTMLInputElement).value).toBe("Pós-venda");
+  });
+
   it("(k) Migrar Negócios fica desligado sem Negócios, com o motivo", async () => {
     rotear(funil({}, [etapa("e1", 1, "Novo", 10)]));
     montar();
