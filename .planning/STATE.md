@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 07
 current_phase_name: "CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)"
 status: executing
-stopped_at: Completed 07-07-PLAN.md
-last_updated: "2026-10-10T03:32:32.141Z"
+stopped_at: Completed 07-08-PLAN.md
+last_updated: "2026-10-10T03:53:28.653Z"
 last_activity: 2026-10-09
 last_activity_desc: Phase 07 execution started
-state_head: fa3f495e8088e3cccb982ec716a2a088c26d0bf9
+state_head: 4bdc4034246e69983102761ab0fa5e036b97eb54
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 133
-  completed_plans: 126
+  completed_plans: 127
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 07 (CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)) — EXECUTING
-Plan: 8 of 13
+Plan: 9 of 13
 Status: Ready to execute
 Last activity: 2026-10-09 — Phase 07 execution started
 
@@ -348,6 +348,7 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 | Phase 07 P05 | 12 min | 3 tasks | 12 files |
 | Phase 07 P06 | 13 min | 3 tasks | 14 files |
 | Phase 07 P07 | 22 min | 3 tasks | 12 files |
+| Phase 07 P08 | 10 min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -443,6 +444,9 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 07]: 07-07: lista de Funis com Funil padrao e Privado como Pilulas no Nome (UI-SPEC), sem colunas separadas
 - [Phase 07]: 07-07: MigrateFunnelDialog sem escopo abertos/todos (a rota migra todos os Negocios) e com mapeamento sugerido por nome sem caixa ou Etapa inicial
 - [Phase 07]: 07-07: useFunis aceita pausado e dialogos fechados nao leem a api; Cor do Funil e Select de tokens var(--...)
+- [Phase 07]: 07-08: Empresa so ativa recebe Negocio novo ou trocado (RN-NEG-06); Contato so e recusado na lixeira (RN-CON-19)
+- [Phase 07]: 07-08: Restaurar Negocio aberto recusa Funil nao ativo alem da Empresa na lixeira (INV-NEG-03, RN-NEG-18)
+- [Phase 07]: 07-08: Corpos de ganhar, perder e reabrir sao nullish; mover recusa Negocio perdido alem do ganho (RN-NEG-04)
 
 ### Pending Todos
 
@@ -499,7 +503,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-10T03:32:32.027Z
-Stopped at: Completed 07-07-PLAN.md
+Last session: 2026-10-10T03:53:28.539Z
+Stopped at: Completed 07-08-PLAN.md
 Resume file: None
 None
