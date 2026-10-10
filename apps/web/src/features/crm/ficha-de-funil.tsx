@@ -211,12 +211,12 @@ export function FichaDeFunil({ funilId, detalhado }: { readonly funilId: string;
       />
 
       <RemoveStageDialog
-        funnelId={funil.id}
-        stageId={removingStageId}
+        funilId={funil.id}
+        etapaId={removingStageId}
         onClose={closeRemoveStage}
         onDone={setAviso}
       />
-      <MigrateFunnelDialog funnelId={funil.id} open={migrating} onClose={closeMigrate} onDone={setAviso} />
+      <MigrateFunnelDialog funilId={funil.id} open={migrating} onClose={closeMigrate} onDone={setAviso} />
 
       <CorpoDeTela>
         {aviso ? (
