@@ -14,6 +14,7 @@ import type { Pool } from "pg";
 import { pool } from "../../persistencia/conexao";
 import { criarAcessoAoCrmPg, type AcessoAoCrm } from "../../servicos/crm/acesso";
 import { criarServicoDeContatos, type ServicoDeContatos } from "../../servicos/crm/contatos";
+import type { ServicoDeEmpresas } from "../../servicos/crm/empresas";
 import { criarServicoDeFunis, type ServicoDeFunis } from "../../servicos/crm/funis";
 import { rotasDeContatos } from "./contatos";
 import { rotasDeFunis } from "./funis";
@@ -23,6 +24,8 @@ export interface OpcoesDeCrm {
   readonly pool?: () => Pool;
   /** Injeção só para teste: troca o serviço real por um falso, sem banco. */
   readonly contatos?: ServicoDeContatos;
+  /** Injeção só para teste: troca o serviço real de Empresas por um falso, sem banco. */
+  readonly empresas?: ServicoDeEmpresas;
   /** Injeção só para teste: troca o serviço real de Funis por um falso, sem banco. */
   readonly funis?: ServicoDeFunis;
   /** Padrão: lê Papel e Membro de `plataforma.registros`. Injeção para teste sem banco. */
