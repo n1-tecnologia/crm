@@ -1,14 +1,14 @@
 ---
 gsd_state_version: "1.0"
 milestone: v1.0
-current_phase: 7
+current_phase: 07
 current_phase_name: "CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)"
 status: executing
-stopped_at: Phase 7 context gathered
-last_updated: "2026-10-10T00:11:44.434Z"
-last_activity: 2026-09-30
-last_activity_desc: "jornada final contra o código do 06-22 (`06-PROVAS.md`): os cinco cenários da Fase 6 OK, inclusive `cp-dispensa-com-resposta` (o conserto do 06-21 provado ao vivo), 8 `/resolver` e 0 `/lancar`; dois achados fora do código da fase (id da conta nova, tela sem atualização sozinha) registrados em Deferred Items"
-state_head: e949635ceded8173a54c4e5d485ee02342e8e8e5
+stopped_at: Completed 07-01-PLAN.md
+last_updated: "2026-10-10T00:54:34.070Z"
+last_activity: 2026-10-09
+last_activity_desc: Phase 07 execution started
+state_head: 90ede8fab4ae58874a944f616b4b3449e7f11e3c
 progress:
   total_phases: 7
   completed_phases: 6
@@ -24,14 +24,14 @@ milestone_name: milestone
 See: .planning/PROJECT.md (updated 2026-09-15)
 
 **Core value:** Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de ponta a ponta sem abrir o ClickUp — dados no Postgres próprio, regras de `@n1/dominio` intactas.
-**Current focus:** Phase 06 — conferencia-do-resumo-e-anexos
+**Current focus:** Phase 07 — CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)
 
 ## Current Position
 
-Phase: 7 (CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)) — READY TO EXECUTE
-Plan: 22 of 22
-Status: Phase 06 concluída após cinco rodadas de revisão adversarial (06-REVIEW.md → 06-REVIEW-5.md); a última rodada, escopada só ao diff de 06-22, voltou limpa (0 críticos/0 avisos/0 informativos) e confirmou por teste que o starvation achado em 06-REVIEW-4 está mesmo fechado. Abertas no milestone: Phase 02 (26/28) e Phase 04 (13/14)
-Last activity: 2026-09-30 -- jornada final contra o código do 06-22 (`06-PROVAS.md`): os cinco cenários da Fase 6 OK, inclusive `cp-dispensa-com-resposta` (o conserto do 06-21 provado ao vivo), 8 `/resolver` e 0 `/lancar`; dois achados fora do código da fase (id da conta nova, tela sem atualização sozinha) registrados em Deferred Items
+Phase: 07 (CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)) — EXECUTING
+Plan: 2 of 13
+Status: Ready to execute
+Last activity: 2026-10-09 — Phase 07 execution started
 
 **Fase 06 planejada à mão em 2026-09-29 (Conferência do Resumo e anexos), pronta para `/gsd-execute-phase 6`:**
 `.planning/phases/06-conferencia-do-resumo-e-anexos/` — `06-CONTEXT.md` (13 decisões com padrão e variável de troca) e seis planos em três ondas: 06-01 domínio · 06-02 contrato v1.1 no `financeiro-tria` · 06-03 ponte em dois momentos · 06-04 tela e jornada · 06-05 S5/S6 na Solicitação · 06-06 docs e provas `[BLOCKING]`. Origem: `docs/08-migracao-financeiro/09-…` (desenho) e `10-…` (levantamento etapa por etapa com `arquivo:linha`). Ponto de partida do código: `crm-n1-integracao@3d6f735` (branch `integra-frontend-main`, sem push) e `financeiro-tria@c272dad` (`main`, 99 commits sem push, 89 arquivos sujos só de EOL — `git add` sempre por caminho). O dono ainda não respondeu às quatro perguntas do doc 10; os padrões de D6-01..D6-04 seguem "como no ClickUp", exceto Integração manual (o seguro).
@@ -337,6 +337,11 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 | Phase 06 P04 | ~25min | 2 tasks | 6 files |
 | Phase 06 P05 | 75min | 1 tasks | 3 files |
 | Phase 06 P06 | 120min | 2 tasks | 6 files |
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 07 P01 | 25 min | 2 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -416,6 +421,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 06]: 06-21 (terceira rodada, achado de 06-REVIEW-3.md): remarcar "Integração manual" não engole mais uma resposta pendente no fio — defesa em duas camadas (precheck na ponte + re-checagem no domínio dentro da transação, `dispensarConferenciaDoResumo` recusa com `recusaDispensaComRespostaPendente`). O "give-up" de uma resposta sem efeito ficou local ao id do comentário (`semEfeitoDesistidoId`/`tentativasSemEfeito`), nunca em `estado.parada` — a primeira versão do design tocava `estado.parada`, mas `chaveDaPonte()` não reage a comentário e `PARADA_RESTAURADA` só dispara em reinício de processo; o gsd-plan-checker bloqueou esse desenho antes da execução.
 - [Phase 06]: 06-22 (quarta rodada, regressão achada por 06-REVIEW-4.md no próprio 06-21): as três checagens novas de 06-21 fixavam `aprovacaoPorComentario: true`, travando para sempre a dispensa por Integração manual em espaços com `conferenciaPorComentario: false` diante de um "ok" trivial e desatualizado. Corrigido roteando `decisoes.conferenciaPorComentario` de verdade pelos 3 call sites via um parâmetro opcional novo em `dispensarConferenciaDoResumo` (padrão `true`, preserva todo chamador antigo). Teste de mutação (reverter para `true` fixo) reproduz o próprio achado do revisor.
 - [Phase 06]: Fase 06 fechada em 2026-09-30 — 22/22 planos, cinco rodadas de revisão adversarial (crm-n1: 06-REVIEW..06-REVIEW-5; financeiro-tria: 06-REVIEW-FINANCEIRO-TRIA..3), a última (06-REVIEW-5.md) limpa e escopada só ao diff final. RES-01/02/04/05/06 Complete; RES-03 Pending — único item que falta é verificação humana (passo 2B em modo `lancar`, `06-VERIFICATION.md`), não código. Lista do que fica com o dono, fora do alcance deste agente: (1) RES-03 — rodar o modo `lancar` de verdade e confirmar o passo 2B; (2) deploy do `automation/` com o contrato v1.2 + `PLATAFORMA_MEMBRO_POR_CLICKUP_ID`; (3) S5/S6 ao vivo contra produção, só depois do deploy; (4) configuração do `apps/api` em produção para a ponte; (5) push e merge de `integra-frontend-main` (branch local, nunca enviada); (6) decidir se algum padrão D6-01..D6-04 deve deixar de espelhar o ClickUp; (7) o residual fin2:CR-01 (índice/migração de banco, se o dono quiser fechar por completo); (8) fin2:IN-07 — prova real de dois anexos no mesmo lançamento (o script `teste:omie-real` só aceita um `--anexo` hoje).
+- [Phase 07]: 07-01 D-12: temBancoCrm só é verdadeiro para localhost/127.0.0.1; prepararBancoCrm lança fora disso, então migrar() nunca roda contra o Supabase pelo teste
+- [Phase 07]: 07-01 D-11: sem Proprietário informado, Proprietário e criado_por do Contato são o Membro da sessão; corpo de POST /contatos .strict() sem proprietarioId até o 07-02
 
 ### Pending Todos
 
@@ -472,7 +479,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-09T22:50:37.268Z
-Stopped at: Phase 7 context gathered
-Resume file: .planning/phases/07-crm-contatos-empresas-funis-e-negocios/07-CONTEXT.md
+Last session: 2026-10-10T00:54:33.966Z
+Stopped at: Completed 07-01-PLAN.md
+Resume file: None
 None
