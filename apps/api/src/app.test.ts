@@ -61,6 +61,34 @@ describe("buildApp — casca do apps/api", () => {
   });
 });
 
+describe("buildApp — CORS para as rotas REST do CRM (PATCH, PUT, DELETE)", () => {
+  const origem = "http://localhost:3001";
+  const preflight = (metodo: string, url = "/contatos", origin = origem) =>
+    buildApp({ logger: false, webOrigin: origem }).inject({
+      method: "OPTIONS",
+      url,
+      headers: { origin, "access-control-request-method": metodo },
+    });
+
+  it.each(["PATCH", "PUT", "DELETE"])("preflight de %s da origem da allowlist libera o método", async (metodo) => {
+    const resposta = await preflight(metodo);
+    expect(resposta.headers["access-control-allow-origin"]).toBe(origem);
+    const metodos = String(resposta.headers["access-control-allow-methods"]);
+    for (const esperado of ["GET", "POST", "PATCH", "PUT", "DELETE"]) expect(metodos).toContain(esperado);
+  });
+
+  it.each(["PATCH", "PUT", "DELETE"])("preflight de %s de origem fora da allowlist não recebe allow-origin", async (metodo) => {
+    const resposta = await preflight(metodo, "/contatos", "https://outro.exemplo");
+    expect(resposta.headers["access-control-allow-origin"]).toBeUndefined();
+  });
+
+  it("/v1/integrations/* continua sem cabeçalho CORS", async () => {
+    const resposta = await preflight("DELETE", "/v1/integrations/payment-requests/x");
+    expect(resposta.headers["access-control-allow-origin"]).toBeUndefined();
+    expect(resposta.headers["access-control-allow-methods"]).toBeUndefined();
+  });
+});
+
 describe("buildApp — o IP de quem chamou (limite de taxa do Formulário público)", () => {
   function comRotaDeIp(trustProxy: string) {
     const app = buildApp({ logger: false, trustProxy });
