@@ -15,7 +15,7 @@
  * pelo subcaminho `@n1/dominio/crm/comum`.
  */
 
-import { ok, type OperationResult } from "../state";
+import { fail, ok, type OperationResult } from "../state";
 
 /** Ciclo de vida de um registro do CRM (007:69). `na_lixeira` volta; apagar de vez é outro ato. */
 export const ESTADOS_CRM = ["ativo", "arquivado", "na_lixeira"] as const satisfies readonly EstadoCrm[];
@@ -89,10 +89,41 @@ export const LIMITES_CRM = {
   identificadoresMaximo: 20,
 } as const;
 
-// Esqueleto do RED (07-03): compila e erra. O GREEN o substitui.
-export function validarEnderecos(_enderecos: readonly Endereco[] | undefined): OperationResult<void> {
+/**
+ * Endereços: até `enderecosMaximo`, e no máximo um principal (ontologia de
+ * contatos, 7.3). `undefined` e lista vazia valem — o Contato pode não ter nenhum.
+ */
+export function validarEnderecos(enderecos: readonly Endereco[] | undefined): OperationResult<void> {
+  if (enderecos === undefined) return ok(undefined);
+  if (enderecos.length > LIMITES_CRM.enderecosMaximo) {
+    return fail(`No máximo ${LIMITES_CRM.enderecosMaximo} endereços.`, "enderecos");
+  }
+  if (enderecos.filter((endereco) => endereco.principal).length > 1) {
+    return fail("Só um endereço pode ser o principal.", "enderecos");
+  }
   return ok(undefined);
 }
-export function validarCamposAdicionais(_campos: CamposAdicionais | undefined): OperationResult<void> {
+
+/** Limites de T-07-10: quantidade de chaves, tamanho da chave e do valor texto. */
+export function validarCamposAdicionais(campos: CamposAdicionais | undefined): OperationResult<void> {
+  if (campos === undefined) return ok(undefined);
+  const entradas = Object.entries(campos);
+  if (entradas.length > LIMITES_CRM.camposAdicionaisMaximo) {
+    return fail(`No máximo ${LIMITES_CRM.camposAdicionaisMaximo} campos adicionais.`, "camposAdicionais");
+  }
+  for (const [chave, valor] of entradas) {
+    if (chave.trim() === "" || chave.length > LIMITES_CRM.chaveDeCampoMaxima) {
+      return fail(
+        `O nome de um campo adicional vai de 1 a ${LIMITES_CRM.chaveDeCampoMaxima} caracteres.`,
+        "camposAdicionais",
+      );
+    }
+    if (typeof valor === "string" && valor.length > LIMITES_CRM.valorDeCampoMaximo) {
+      return fail(
+        `O valor de um campo adicional tem no máximo ${LIMITES_CRM.valorDeCampoMaximo} caracteres.`,
+        "camposAdicionais",
+      );
+    }
+  }
   return ok(undefined);
 }

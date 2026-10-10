@@ -10,6 +10,7 @@
  */
 
 import { fail, ok, type OperationResult } from "../state";
+import { normalizarIdentificadorDeContato } from "./normalizacao";
 import type { CivilDate } from "../types/primitives";
 import type { BloqueiosCrm, CamposAdicionais, Endereco, EstadoCrm, ModoDeCriacao } from "./comum";
 
@@ -140,22 +141,71 @@ export function validarContato(entrada: {
   return ok(undefined);
 }
 
-// Esqueleto do RED (07-03): compila e erra. O GREEN o substitui.
+/** Como o tipo aparece em frases e na tela. */
 export const ROTULO_DO_TIPO_DE_IDENTIFICADOR: Record<TipoIdentificadorContato, string> = {
-  telefone: "",
-  email: "",
-  whatsapp: "",
-  instagram: "",
+  telefone: "Telefone",
+  email: "E-mail",
+  whatsapp: "WhatsApp",
+  instagram: "Instagram",
 };
-export function validarIdentificadorDeContato(entrada: NovoIdentificadorDeContato): OperationResult<NovoIdentificadorDeContato> {
-  return fail("pendente", "valor") as OperationResult<NovoIdentificadorDeContato> | typeof entrada extends never ? never : OperationResult<NovoIdentificadorDeContato>;
+
+/**
+ * O Identificador pronto para gravar: `valor` na forma canônica (a chave de
+ * unicidade, INV-CON-02) e `valorExibido` com o que a pessoa digitou, quando
+ * difere. A mesma função serve ao endpoint e à tela.
+ */
+export function validarIdentificadorDeContato(
+  entrada: NovoIdentificadorDeContato,
+): OperationResult<NovoIdentificadorDeContato> {
+  const canonico = normalizarIdentificadorDeContato(entrada.tipo, entrada.valor);
+  if (!canonico.ok) return fail(canonico.error, canonico.field);
+  const informado = entrada.valor.trim();
+  const exibido = (entrada.valorExibido ?? "").trim() !== "" ? entrada.valorExibido!.trim() : informado;
+  return ok({
+    tipo: entrada.tipo,
+    valor: canonico.value,
+    ...(exibido !== canonico.value ? { valorExibido: exibido } : {}),
+    ...(entrada.rotuloCanal !== undefined ? { rotuloCanal: entrada.rotuloCanal } : {}),
+  });
 }
-export function primeiroDoTipo(_existentes: readonly { readonly tipo: TipoIdentificadorContato }[], _tipo: TipoIdentificadorContato): boolean {
-  return false;
+
+/** O primeiro Identificador de cada tipo nasce principal (INV-CON-03). */
+export function primeiroDoTipo(
+  existentes: readonly { readonly tipo: TipoIdentificadorContato }[],
+  tipo: TipoIdentificadorContato,
+): boolean {
+  return !existentes.some((existente) => existente.tipo === tipo);
 }
-export function fraseDeContatoBloqueado(_bloqueios: BloqueiosCrm): string {
-  return "";
+
+function listaEmFrase(nomes: readonly string[]): string {
+  if (nomes.length <= 1) return nomes.join("");
+  return `${nomes.slice(0, -1).join(", ")} e ${nomes[nomes.length - 1]}`;
 }
-export function fraseDeIdentificadorEmUso(_tipo: TipoIdentificadorContato, _valor: string, _nome: string): string {
-  return "";
+
+/**
+ * D-09: por que o Contato não vai para a lixeira, e o que fazer. A tela mostra
+ * esta frase literal e, abaixo, os links de `bloqueios`.
+ */
+export function fraseDeContatoBloqueado(bloqueios: BloqueiosCrm): string {
+  const motivos: string[] = [];
+  const acoes: string[] = [];
+  const empresas = bloqueios.empresas ?? [];
+  if (empresas.length > 0) {
+    const nomes = listaEmFrase(empresas.map((empresa) => empresa.nome));
+    motivos.push(
+      empresas.length === 1 ? `é o único admin da Empresa ${nomes}` : `é o único admin das Empresas ${nomes}`,
+    );
+    acoes.push("nomeie outro admin");
+  }
+  const total = bloqueios.negocios?.total ?? 0;
+  if (total > 0) {
+    motivos.push(total === 1 ? "é o Contato de 1 Negócio" : `é o Contato de ${total} Negócios`);
+    acoes.push(total === 1 ? "troque o Contato do Negócio" : "troque o Contato dos Negócios");
+  }
+  return `Este Contato não pode ir para a lixeira: ${motivos.join(" e ")}. Antes, ${acoes.join(" e ")}.`;
+}
+
+/** RN-CON-11: o Identificador já é de outro Contato do Espaço. */
+export function fraseDeIdentificadorEmUso(tipo: TipoIdentificadorContato, valor: string, nomeDoDetentor: string): string {
+  return `${ROTULO_DO_TIPO_DE_IDENTIFICADOR[tipo]} ${valor} já pertence ao Contato ${nomeDoDetentor}. Abra esse Contato ou use outro valor.`;
 }
