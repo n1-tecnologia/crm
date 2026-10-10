@@ -14,6 +14,7 @@
 
 import { randomUUID } from "node:crypto";
 import { describe } from "vitest";
+import type { MemberState, SystemRole } from "@n1/dominio/types/workspace";
 import { carregarEnv, pool } from "../persistencia/conexao";
 import { migrar } from "../persistencia/migrar";
 
@@ -69,6 +70,45 @@ export async function limparEspaco(workspaceId: string): Promise<void> {
     }
     await cliente.query("delete from plataforma.registros where workspace_id = $1", [workspaceId]);
     await cliente.query("delete from plataforma.workspaces where workspace_id = $1", [workspaceId]);
+    await cliente.query("commit");
+  } catch (erro) {
+    await cliente.query("rollback");
+    throw erro;
+  } finally {
+    cliente.release();
+  }
+}
+
+/**
+ * Grava um Membro e o Papel dele em `plataforma.registros`, direto no SQL, sem
+ * passar pelo store: é o que `papelDoMembro` lê (`members` → `roles`). O `id`
+ * precisa ser o mesmo que o `resolverMembro` do teste devolve para a sessão —
+ * a sessão e a linha do banco são o mesmo Membro.
+ */
+export async function semearMembro(
+  workspaceId: string,
+  membro: { readonly id: string; readonly base: SystemRole; readonly state: MemberState },
+): Promise<void> {
+  const roleId = `role_${membro.id}`;
+  const cliente = await pool().connect();
+  try {
+    await cliente.query("begin");
+    await cliente.query(
+      `insert into plataforma.registros (workspace_id, colecao, id, dados)
+       values ($1, 'roles', $2, $3::jsonb)
+       on conflict (workspace_id, colecao, id) do update set dados = excluded.dados`,
+      [workspaceId, roleId, JSON.stringify({ id: roleId, base: membro.base })],
+    );
+    await cliente.query(
+      `insert into plataforma.registros (workspace_id, colecao, id, dados)
+       values ($1, 'members', $2, $3::jsonb)
+       on conflict (workspace_id, colecao, id) do update set dados = excluded.dados`,
+      [
+        workspaceId,
+        membro.id,
+        JSON.stringify({ id: membro.id, state: membro.state, roleId, displayName: membro.id }),
+      ],
+    );
     await cliente.query("commit");
   } catch (erro) {
     await cliente.query("rollback");

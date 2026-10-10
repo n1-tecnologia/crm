@@ -8,6 +8,10 @@
  * contra o banco remoto do `.env` (D-12, `testes/banco-crm.ts`) — e prova a
  * gravação em `plataforma.contatos` com o `workspace_id` da sessão (T-07-01) e
  * o isolamento entre Espaços de Trabalho.
+ *
+ * 07-02 acrescenta o Papel (D-14) e a troca de Proprietário (D-11): a segunda
+ * parte semeia os Membros em `plataforma.registros` e usa o acesso REAL, que é
+ * o que prova a consulta `members` → `roles`.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -18,7 +22,8 @@ import { buildApp } from "../../app";
 import { encerrar, pool } from "../../persistencia/conexao";
 import { sucesso } from "../../servicos/crm/resultado";
 import type { ServicoDeContatos } from "../../servicos/crm/contatos";
-import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm } from "../../testes/banco-crm";
+import type { AcessoAoCrm } from "../../servicos/crm/acesso";
+import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearMembro } from "../../testes/banco-crm";
 
 const MARYANE = usuarioDoSeed("mem_maryane");
 const membros = buildSeed().members;
@@ -82,16 +87,65 @@ describe("rotas de Contatos — serviço falso, sem banco", () => {
     expect(resposta.statusCode).toBe(200);
     expect(resposta.json()).toEqual({ ok: true, itens: [resumo], total: 1 });
   });
+
+  it("(i) Convidado recebe 403 em POST /contatos com o acesso falso, sem chegar ao banco", async () => {
+    const acessoFalso: AcessoAoCrm = {
+      papelDe: async () => ({ base: "convidado", estado: "ativo" }),
+      membroAtivo: async () => true,
+    };
+    // Sem `contatos`: o serviço é o real, e a recusa de Papel vem antes de qualquer `pool()`.
+    const comAcessoFalso = buildApp({ ...opcoesDeAutenticacao("ws_falso"), crm: { acesso: acessoFalso } });
+    const resposta = await comAcessoFalso.inject({
+      method: "POST",
+      url: "/contatos",
+      headers: AUTORIZACAO,
+      payload: { nome: "Ana" },
+    });
+    expect(resposta.statusCode).toBe(403);
+    expect(resposta.json()).toMatchObject({ ok: false, codigo: "PERMISSAO" });
+  });
 });
+
+/** Sessões do bloco com banco: cada token é um Membro, e o `id` dele é o da linha semeada. */
+const SESSOES = {
+  "token-maryane": { sub: MARYANE, membroId: "mem_maryane" },
+  "token-convidado": { sub: "usuario-convidado", membroId: "mem_convidado" },
+} as const;
+
+function opcoesComPapeis(workspaceId: string) {
+  const base = membros.find((m) => m.id === "mem_maryane");
+  return {
+    logger: false,
+    workspaceId,
+    verificarToken: async (token: string) => {
+      const sessao = SESSOES[token as keyof typeof SESSOES];
+      return sessao ? { sub: sessao.sub } : null;
+    },
+    resolverMembro: async (_workspaceId: string, userId: string) => {
+      const sessao = Object.values(SESSOES).find((s) => s.sub === userId);
+      if (!sessao || !base) return undefined;
+      return { ...base, id: sessao.membroId, userId, state: "ativo" as const };
+    },
+  };
+}
+
+const AUTORIZACAO_CONVIDADO = { authorization: "Bearer token-convidado" };
 
 describeComBanco("rotas de Contatos — serviço real, Postgres local", () => {
   const espacoA = novoEspacoDeTeste("contatosa");
   const espacoB = novoEspacoDeTeste("contatosb");
-  const appA = () => buildApp(opcoesDeAutenticacao(espacoA));
-  const appB = () => buildApp(opcoesDeAutenticacao(espacoB));
+  const appA = () => buildApp(opcoesComPapeis(espacoA));
+  const appB = () => buildApp(opcoesComPapeis(espacoB));
 
   beforeAll(async () => {
     await prepararBancoCrm();
+    for (const espaco of [espacoA, espacoB]) {
+      await semearMembro(espaco, { id: "mem_maryane", base: "membro", state: "ativo" });
+      await semearMembro(espaco, { id: "mem_convidado", base: "convidado", state: "ativo" });
+    }
+    await semearMembro(espacoA, { id: "mem_outro", base: "membro", state: "ativo" });
+    await semearMembro(espacoA, { id: "mem_removido", base: "membro", state: "removido" });
+    await semearMembro(espacoB, { id: "mem_so_em_b", base: "membro", state: "ativo" });
   });
 
   afterAll(async () => {
@@ -139,5 +193,75 @@ describeComBanco("rotas de Contatos — serviço real, Postgres local", () => {
     const resposta = await appA().inject({ method: "POST", url: "/contatos", headers: AUTORIZACAO, payload: {} });
     expect(resposta.statusCode).toBe(409);
     expect(resposta.json()).toMatchObject({ ok: false, codigo: "CONTATO_SEM_NOME_NEM_IDENTIFICADOR", campo: "nome" });
+  });
+
+  it("(g) Convidado ativo recebe 403 em POST /contatos e nada é gravado (D-14, T-07-03)", async () => {
+    const resposta = await appA().inject({
+      method: "POST",
+      url: "/contatos",
+      headers: AUTORIZACAO_CONVIDADO,
+      payload: { nome: "Do Convidado" },
+    });
+    expect(resposta.statusCode).toBe(403);
+    expect(resposta.json()).toMatchObject({ ok: false, codigo: "PERMISSAO" });
+    expect(resposta.json().error).toContain("Convidado");
+
+    const gravado = await pool().query("select 1 from plataforma.contatos where workspace_id = $1 and nome = $2", [
+      espacoA,
+      "Do Convidado",
+    ]);
+    expect(gravado.rowCount).toBe(0);
+  });
+
+  it("(g) Convidado ativo lê a lista (consulta é permitida)", async () => {
+    const resposta = await appA().inject({ method: "GET", url: "/contatos", headers: AUTORIZACAO_CONVIDADO });
+    expect(resposta.statusCode).toBe(200);
+  });
+
+  it("(g) Membro com base `membro` cria (a consulta members -> roles resolve a base)", async () => {
+    const resposta = await appA().inject({
+      method: "POST",
+      url: "/contatos",
+      headers: AUTORIZACAO,
+      payload: { nome: "Bia" },
+    });
+    expect(resposta.statusCode).toBe(201);
+  });
+
+  it("(h) proprietarioId de Membro removido responde 409 PROPRIETARIO_INVALIDO", async () => {
+    const resposta = await appA().inject({
+      method: "POST",
+      url: "/contatos",
+      headers: AUTORIZACAO,
+      payload: { nome: "Cris", proprietarioId: "mem_removido" },
+    });
+    expect(resposta.statusCode).toBe(409);
+    expect(resposta.json()).toMatchObject({ ok: false, codigo: "PROPRIETARIO_INVALIDO" });
+  });
+
+  it("(h) proprietarioId inexistente ou de outro Espaço responde 409 PROPRIETARIO_INVALIDO (T-07-40)", async () => {
+    for (const proprietarioId of ["mem_nao_existe", "mem_so_em_b"]) {
+      const resposta = await appA().inject({
+        method: "POST",
+        url: "/contatos",
+        headers: AUTORIZACAO,
+        payload: { nome: "Dani", proprietarioId },
+      });
+      expect(resposta.statusCode).toBe(409);
+      expect(resposta.json()).toMatchObject({ ok: false, codigo: "PROPRIETARIO_INVALIDO" });
+    }
+  });
+
+  it("(h) proprietarioId de outro Membro ativo grava o Proprietário; criadoPor continua o da sessão", async () => {
+    const resposta = await appA().inject({
+      method: "POST",
+      url: "/contatos",
+      headers: AUTORIZACAO,
+      payload: { nome: "Edu", proprietarioId: "mem_outro" },
+    });
+    expect(resposta.statusCode).toBe(201);
+    const { contato } = resposta.json().dados;
+    expect(contato.proprietarioId).toBe("mem_outro");
+    expect(contato.criadoPor).toBe("mem_maryane");
   });
 });
