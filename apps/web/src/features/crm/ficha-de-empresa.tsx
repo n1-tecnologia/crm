@@ -221,8 +221,8 @@ function ultimoAdminEncerrado(vinculos: readonly VinculoDaEmpresa[]): VinculoDaE
     .sort((a, b) => (b.fim ?? "").localeCompare(a.fim ?? ""))[0];
 }
 
-/** Restaurar da lixeira (D-08): uma Empresa precisa de ao menos um Contato admin, então a restauração o pede. */
-function DialogoDeRestauracao({
+/** Restaurar da lixeira (D-08): uma Empresa precisa de ao menos um Contato admin, então a restauração o pede. Também serve a lista (Lixeira). */
+export function DialogoDeRestauracao({
   detalhado,
   onFechar,
   avisar,
