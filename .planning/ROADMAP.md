@@ -478,7 +478,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 → 6 (0 e 1 em
 **Goal:** Contatos, Empresas, Funis (com Etapas) e Negócios podem ser criados, lidos, editados e excluídos direto pelo frontend. Cobre as três camadas, começando pelo domínio: tipos e regras em `@n1/dominio` (fonte: `ontologia/03-crm`); repositórios e rotas em `apps/api` sobre `apps/api/migracoes/007-crm.sql`, com isolamento por Espaço de Trabalho e acesso por Membro aplicados no backend; e, em `apps/web`, todas as telas, formulários, listas e navegação que ainda não existem (a web fala com a api só por HTTP, nunca importa dela). Fora do escopo: Caixa de Entrada/Conversas/Mensagens e catálogos (Tag, Origem, Motivo de Perda, Qualificação).
 **Requirements**: CRM-D1, CRM-A1, CRM-A2, CRM-A3, CRM-W1, CRM-W2, CRM-V1 (critérios derivados em `07-RESEARCH.md` "Phase Requirements"; registrados em REQUIREMENTS.md, Fase 7)
 **Depends on:** Phase 1 (persistência e login); independe das fases abertas 2 e 4
-**Plans:** 8/13 plans executed
+**Plans:** 9/13 plans executed
 
 Plans:
 **Wave 1** — o traçador
@@ -498,7 +498,7 @@ Plans:
 **Wave 5** *(blocked on Wave 4 completion)*
 - [x] 07-07-PLAN.md — Telas de Funis e os diálogos de D-07 sobre a api (CRM-W1)
 - [x] 07-08-PLAN.md — API de Negócios: mover, ganhar, perder, reabrir (D-05, D-14) (CRM-D1, CRM-A1, CRM-A3)
-- [ ] 07-09-PLAN.md — Telas de Empresa com o admin no formulário e na ficha (D-08) (CRM-W1)
+- [x] 07-09-PLAN.md — Telas de Empresa com o admin no formulário e na ficha (D-08) (CRM-W1)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 - [ ] 07-10-PLAN.md — Quadro de Negócios religado e Novo Negócio (CRM-W2, CRM-W1)
