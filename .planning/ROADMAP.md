@@ -478,14 +478,14 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 → 6 (0 e 1 em
 **Goal:** Contatos, Empresas, Funis (com Etapas) e Negócios podem ser criados, lidos, editados e excluídos direto pelo frontend. Cobre as três camadas, começando pelo domínio: tipos e regras em `@n1/dominio` (fonte: `ontologia/03-crm`); repositórios e rotas em `apps/api` sobre `apps/api/migracoes/007-crm.sql`, com isolamento por Espaço de Trabalho e acesso por Membro aplicados no backend; e, em `apps/web`, todas as telas, formulários, listas e navegação que ainda não existem (a web fala com a api só por HTTP, nunca importa dela). Fora do escopo: Caixa de Entrada/Conversas/Mensagens e catálogos (Tag, Origem, Motivo de Perda, Qualificação).
 **Requirements**: CRM-D1, CRM-A1, CRM-A2, CRM-A3, CRM-W1, CRM-W2, CRM-V1 (critérios derivados em `07-RESEARCH.md` "Phase Requirements"; registrados em REQUIREMENTS.md, Fase 7)
 **Depends on:** Phase 1 (persistência e login); independe das fases abertas 2 e 4
-**Plans:** 1/13 plans executed
+**Plans:** 2/13 plans executed
 
 Plans:
 **Wave 1** — o traçador
 - [x] 07-01-PLAN.md — Traçador: Contato criado pela tela e listado, de ponta a ponta (domínio → api → Postgres → web) (CRM-D1, CRM-A1, CRM-W1, CRM-V1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 07-02-PLAN.md — Endurecimento do traçador: Papel (D-14) e Proprietário (D-11) no backend, transação com SQLSTATE, CORS PATCH/PUT/DELETE, cliente HTTP provado (CRM-D1, CRM-A1, CRM-A2, CRM-V1)
+- [x] 07-02-PLAN.md — Endurecimento do traçador: Papel (D-14) e Proprietário (D-11) no backend, transação com SQLSTATE, CORS PATCH/PUT/DELETE, cliente HTTP provado (CRM-D1, CRM-A1, CRM-A2, CRM-V1)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 07-03-PLAN.md — API de Contatos completa: normalização, Identificadores, ciclo de vida, D-09 e RN-CON-11 (CRM-D1, CRM-A1, CRM-A2)

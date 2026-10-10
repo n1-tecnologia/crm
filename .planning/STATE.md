@@ -4,11 +4,11 @@ milestone: v1.0
 current_phase: 07
 current_phase_name: "CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)"
 status: executing
-stopped_at: Completed 07-01-PLAN.md
-last_updated: "2026-10-10T00:54:34.070Z"
+stopped_at: Completed 07-02-PLAN.md
+last_updated: "2026-10-10T01:43:03.467Z"
 last_activity: 2026-10-09
 last_activity_desc: Phase 07 execution started
-state_head: 90ede8fab4ae58874a944f616b4b3449e7f11e3c
+state_head: 07f3a3a536054833db0c95878c077b1ed39a3dff
 progress:
   total_phases: 7
   completed_phases: 6
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 07 (CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)) — EXECUTING
-Plan: 2 of 13
+Plan: 3 of 13
 Status: Ready to execute
 Last activity: 2026-10-09 — Phase 07 execution started
 
@@ -342,6 +342,7 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 07 P01 | 25 min | 2 tasks | 15 files |
+| Phase 07 P02 | 6 min | 2 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -423,6 +424,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 06]: Fase 06 fechada em 2026-09-30 — 22/22 planos, cinco rodadas de revisão adversarial (crm-n1: 06-REVIEW..06-REVIEW-5; financeiro-tria: 06-REVIEW-FINANCEIRO-TRIA..3), a última (06-REVIEW-5.md) limpa e escopada só ao diff final. RES-01/02/04/05/06 Complete; RES-03 Pending — único item que falta é verificação humana (passo 2B em modo `lancar`, `06-VERIFICATION.md`), não código. Lista do que fica com o dono, fora do alcance deste agente: (1) RES-03 — rodar o modo `lancar` de verdade e confirmar o passo 2B; (2) deploy do `automation/` com o contrato v1.2 + `PLATAFORMA_MEMBRO_POR_CLICKUP_ID`; (3) S5/S6 ao vivo contra produção, só depois do deploy; (4) configuração do `apps/api` em produção para a ponte; (5) push e merge de `integra-frontend-main` (branch local, nunca enviada); (6) decidir se algum padrão D6-01..D6-04 deve deixar de espelhar o ClickUp; (7) o residual fin2:CR-01 (índice/migração de banco, se o dono quiser fechar por completo); (8) fin2:IN-07 — prova real de dois anexos no mesmo lançamento (o script `teste:omie-real` só aceita um `--anexo` hoje).
 - [Phase 07]: 07-01 D-12: temBancoCrm só é verdadeiro para localhost/127.0.0.1; prepararBancoCrm lança fora disso, então migrar() nunca roda contra o Supabase pelo teste
 - [Phase 07]: 07-01 D-11: sem Proprietário informado, Proprietário e criado_por do Contato são o Membro da sessão; corpo de POST /contatos .strict() sem proprietarioId até o 07-02
+- [Phase 07]: 07-02 D-14/D-10: podeNoCrm devolve a frase de recusa e o Papel é lido de plataforma.registros (members -> roles) a cada requisição; MembroDaSessao intocado
+- [Phase 07]: 07-02 T-07-06: comTransacao traduz só 23505/23503/23514 com constraint cadastrado; o resto é relançado e vira 500 genérico
 
 ### Pending Todos
 
@@ -479,7 +482,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-10T00:54:33.966Z
-Stopped at: Completed 07-01-PLAN.md
+Last session: 2026-10-10T01:43:03.359Z
+Stopped at: Completed 07-02-PLAN.md
 Resume file: None
 None
