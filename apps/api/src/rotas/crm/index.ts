@@ -14,6 +14,7 @@ import type { Pool } from "pg";
 import { pool } from "../../persistencia/conexao";
 import { criarAcessoAoCrmPg, type AcessoAoCrm } from "../../servicos/crm/acesso";
 import { criarServicoDeContatos, type ServicoDeContatos } from "../../servicos/crm/contatos";
+import { criarServicoDeFunis, type ServicoDeFunis } from "../../servicos/crm/funis";
 import { rotasDeContatos } from "./contatos";
 
 export interface OpcoesDeCrm {
@@ -21,6 +22,8 @@ export interface OpcoesDeCrm {
   readonly pool?: () => Pool;
   /** Injeção só para teste: troca o serviço real por um falso, sem banco. */
   readonly contatos?: ServicoDeContatos;
+  /** Injeção só para teste: troca o serviço real de Funis por um falso, sem banco. */
+  readonly funis?: ServicoDeFunis;
   /** Padrão: lê Papel e Membro de `plataforma.registros`. Injeção para teste sem banco. */
   readonly acesso?: AcessoAoCrm;
 }
@@ -30,4 +33,6 @@ export async function rotasDeCrm(app: FastifyInstance, opcoes: OpcoesDeCrm = {})
   const acesso = opcoes.acesso ?? criarAcessoAoCrmPg(obterPool);
   const contatos = opcoes.contatos ?? criarServicoDeContatos({ pool: obterPool, acesso });
   await app.register(rotasDeContatos, { servico: contatos });
+  // RED (07-04, Task 3): o serviço de Funis já é montado; as rotas entram no GREEN.
+  void (opcoes.funis ?? criarServicoDeFunis({ pool: obterPool, acesso }));
 }
