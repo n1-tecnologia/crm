@@ -11,7 +11,7 @@
 
 import { fail, ok, type OperationResult } from "../state";
 import type { CivilDate } from "../types/primitives";
-import type { CamposAdicionais, Endereco, EstadoCrm, ModoDeCriacao } from "./comum";
+import type { BloqueiosCrm, CamposAdicionais, Endereco, EstadoCrm, ModoDeCriacao } from "./comum";
 
 /** Os tipos de Identificador de Contato (007:110). `telefone` é discável; `whatsapp` é a identidade que um Canal resolve. */
 export const TIPOS_IDENTIFICADOR_CONTATO = ["telefone", "email", "whatsapp", "instagram"] as const;
@@ -138,4 +138,24 @@ export function validarContato(entrada: {
     );
   }
   return ok(undefined);
+}
+
+// Esqueleto do RED (07-03): compila e erra. O GREEN o substitui.
+export const ROTULO_DO_TIPO_DE_IDENTIFICADOR: Record<TipoIdentificadorContato, string> = {
+  telefone: "",
+  email: "",
+  whatsapp: "",
+  instagram: "",
+};
+export function validarIdentificadorDeContato(entrada: NovoIdentificadorDeContato): OperationResult<NovoIdentificadorDeContato> {
+  return fail("pendente", "valor") as OperationResult<NovoIdentificadorDeContato> | typeof entrada extends never ? never : OperationResult<NovoIdentificadorDeContato>;
+}
+export function primeiroDoTipo(_existentes: readonly { readonly tipo: TipoIdentificadorContato }[], _tipo: TipoIdentificadorContato): boolean {
+  return false;
+}
+export function fraseDeContatoBloqueado(_bloqueios: BloqueiosCrm): string {
+  return "";
+}
+export function fraseDeIdentificadorEmUso(_tipo: TipoIdentificadorContato, _valor: string, _nome: string): string {
+  return "";
 }

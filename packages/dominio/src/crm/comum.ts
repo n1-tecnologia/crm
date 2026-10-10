@@ -15,6 +15,8 @@
  * pelo subcaminho `@n1/dominio/crm/comum`.
  */
 
+import { ok, type OperationResult } from "../state";
+
 /** Ciclo de vida de um registro do CRM (007:69). `na_lixeira` volta; apagar de vez é outro ato. */
 export const ESTADOS_CRM = ["ativo", "arquivado", "na_lixeira"] as const satisfies readonly EstadoCrm[];
 export type EstadoCrm = "ativo" | "arquivado" | "na_lixeira";
@@ -70,6 +72,8 @@ export interface BloqueiosCrm {
   };
   readonly empresas?: ReadonlyArray<{ readonly id: string; readonly nome: string }>;
   readonly filiais?: ReadonlyArray<{ readonly id: string; readonly nome: string }>;
+  /** O Contato detentor de um Identificador já em uso (RN-CON-11). */
+  readonly contatos?: ReadonlyArray<{ readonly id: string; readonly nome: string }>;
 }
 
 /** Os tetos que a borda HTTP e a tela respeitam — um só lugar, para não divergirem. */
@@ -84,3 +88,11 @@ export const LIMITES_CRM = {
   enderecosMaximo: 10,
   identificadoresMaximo: 20,
 } as const;
+
+// Esqueleto do RED (07-03): compila e erra. O GREEN o substitui.
+export function validarEnderecos(_enderecos: readonly Endereco[] | undefined): OperationResult<void> {
+  return ok(undefined);
+}
+export function validarCamposAdicionais(_campos: CamposAdicionais | undefined): OperationResult<void> {
+  return ok(undefined);
+}
