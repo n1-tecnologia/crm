@@ -5,9 +5,10 @@
  *
  * Registrado na raiz de `app.ts`, depois de `rotasDeFinanceiro`: herda o hook
  * de JWT, e `request.membro` já chega resolvido. `acesso` (07-02) é a
- * permissão por Papel; `funis` (07-04) é a configuração de Funis e Etapas;
- * `empresas` (07-05) traz Empresa e o vínculo Contato-Empresa, e o plano
- * seguinte acrescenta `negocios`.
+ * permissão por Papel; `contatos` (07-03), `funis` (07-04, a configuração de
+ * Funis e Etapas), `empresas` (07-05, Empresa e o vínculo Contato-Empresa) e
+ * `negocios` (07-08, o CRUD e as ações do quadro: mover, ganhar, perder,
+ * reabrir) são os quatro recursos do CRM.
  */
 
 import type { FastifyInstance } from "fastify";
@@ -17,10 +18,11 @@ import { criarAcessoAoCrmPg, type AcessoAoCrm } from "../../servicos/crm/acesso"
 import { criarServicoDeContatos, type ServicoDeContatos } from "../../servicos/crm/contatos";
 import { criarServicoDeEmpresas, type ServicoDeEmpresas } from "../../servicos/crm/empresas";
 import { criarServicoDeFunis, type ServicoDeFunis } from "../../servicos/crm/funis";
-import type { ServicoDeNegocios } from "../../servicos/crm/negocios";
+import { criarServicoDeNegocios, type ServicoDeNegocios } from "../../servicos/crm/negocios";
 import { rotasDeContatos } from "./contatos";
 import { rotasDeEmpresas } from "./empresas";
 import { rotasDeFunis } from "./funis";
+import { rotasDeNegocios } from "./negocios";
 
 export interface OpcoesDeCrm {
   /** Padrão: o `pool()` do processo. Só é chamado quando uma requisição chega, nunca na montagem. */
@@ -46,4 +48,6 @@ export async function rotasDeCrm(app: FastifyInstance, opcoes: OpcoesDeCrm = {})
   await app.register(rotasDeFunis, { servico: funis });
   const empresas = opcoes.empresas ?? criarServicoDeEmpresas({ pool: obterPool, acesso });
   await app.register(rotasDeEmpresas, { servico: empresas });
+  const negocios = opcoes.negocios ?? criarServicoDeNegocios({ pool: obterPool, acesso });
+  await app.register(rotasDeNegocios, { servico: negocios });
 }
