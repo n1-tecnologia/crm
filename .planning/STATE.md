@@ -4,11 +4,11 @@ milestone: v1.0
 current_phase: 07
 current_phase_name: "CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)"
 status: executing
-stopped_at: Completed 07-02-PLAN.md
-last_updated: "2026-10-10T01:43:03.467Z"
+stopped_at: Completed 07-03-PLAN.md
+last_updated: "2026-10-10T02:03:30.215Z"
 last_activity: 2026-10-09
 last_activity_desc: Phase 07 execution started
-state_head: 07f3a3a536054833db0c95878c077b1ed39a3dff
+state_head: 553d0d8d8090bd380a5a7ad39f228d9c2f621987
 progress:
   total_phases: 7
   completed_phases: 6
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 07 (CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)) — EXECUTING
-Plan: 3 of 13
+Plan: 4 of 13
 Status: Ready to execute
 Last activity: 2026-10-09 — Phase 07 execution started
 
@@ -343,6 +343,7 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 |------|----------|-------|-------|
 | Phase 07 P01 | 25 min | 2 tasks | 15 files |
 | Phase 07 P02 | 6 min | 2 tasks | 15 files |
+| Phase 07 P03 | 14 min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -426,6 +427,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 07]: 07-01 D-11: sem Proprietário informado, Proprietário e criado_por do Contato são o Membro da sessão; corpo de POST /contatos .strict() sem proprietarioId até o 07-02
 - [Phase 07]: 07-02 D-14/D-10: podeNoCrm devolve a frase de recusa e o Papel é lido de plataforma.registros (members -> roles) a cada requisição; MembroDaSessao intocado
 - [Phase 07]: 07-02 T-07-06: comTransacao traduz só 23505/23503/23514 com constraint cadastrado; o resto é relançado e vira 500 genérico
+- [Phase 07]: 07-03: forma invalida de Contato (normalizacao, limites) e 400 VALOR_INVALIDO; regra (RN-CON-11, D-09) e 409 com bloqueios; valor canonico de Identificador nao se edita
+- [Phase 07]: 07-03: vinculo com Empresa na lixeira fica oculto na ficha do Contato e nao conta em empresasEmQueEhUnicoAdmin
 
 ### Pending Todos
 
@@ -482,7 +485,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-10T01:43:03.359Z
-Stopped at: Completed 07-02-PLAN.md
+Last session: 2026-10-10T02:03:30.100Z
+Stopped at: Completed 07-03-PLAN.md
 Resume file: None
 None
