@@ -50,11 +50,12 @@ export function chaveDeFunis(filtro: FiltroDeFunis): string {
   return `/funis?${parametros.toString()}`;
 }
 
-export function useFunis(filtro: FiltroDeFunis) {
+/** `pausado` não lê nada (um diálogo fechado não vai à api). */
+export function useFunis(filtro: FiltroDeFunis, opcoes: { readonly pausado?: boolean } = {}) {
   const chave = chaveDeFunis(filtro);
   // `keepPreviousData`: "Mostrar mais" (o `limite` muda a chave) não pisca o esqueleto nem volta ao topo.
   // Quem usa confere se os dados são do estado pedido (a troca de aba também muda a chave).
-  return useSWR<RespostaDaListaDeFunis, Error>(chave, (k: string) => chamarCrm<RespostaDaListaDeFunis>(k), {
+  return useSWR<RespostaDaListaDeFunis, Error>(opcoes.pausado ? null : chave, (k: string) => chamarCrm<RespostaDaListaDeFunis>(k), {
     keepPreviousData: true,
   });
 }
