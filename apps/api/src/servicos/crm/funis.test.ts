@@ -149,8 +149,11 @@ describeComBanco("ServicoDeFunis — Postgres local", () => {
       "select id, padrao from plataforma.funis where workspace_id = $1 order by nome",
       [c.ws],
     );
-    expect(doBanco.rows.map((l) => l.padrao)).toEqual([false, true]);
-    expect(doBanco.rows[0]!.id).toBe(um.funil.id);
+    // Ordenado por nome: "Dois" (o novo padrão) vem antes de "Um" (o antigo, agora sem ser).
+    expect(doBanco.rows.map((l) => [l.id, l.padrao])).toEqual([
+      [dois.funil.id, true],
+      [um.funil.id, false],
+    ]);
 
     const privado = await funil(c, "Privado", ["A"], { privado: true });
     const recusaPrivado = recusado(await servico.definirPadrao(c.admin, privado.funil.id));
