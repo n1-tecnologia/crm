@@ -3,17 +3,17 @@ gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 07
 current_phase_name: "CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)"
-status: executing
-stopped_at: Completed 07-12-PLAN.md
-last_updated: "2026-10-11T00:11:11.392Z"
+status: verifying
+stopped_at: Completed 07-13-PLAN.md
+last_updated: "2026-10-11T16:56:31.545Z"
 last_activity: 2026-10-09
 last_activity_desc: Phase 07 execution started
-state_head: 574ad31afbf5d8ca5116a139455f6ed7a466e9a4
+state_head: 9b25ac68d58cfe69a0d9429b3f8e2d62f214806c
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 133
-  completed_plans: 131
+  completed_plans: 132
 milestone_name: milestone
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 
 Phase: 07 (CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)) — EXECUTING
 Plan: 13 of 13
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-10-09 — Phase 07 execution started
 
 **Fase 06 planejada à mão em 2026-09-29 (Conferência do Resumo e anexos), pronta para `/gsd-execute-phase 6`:**
@@ -353,6 +353,7 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 | Phase 07 P10 | 15 min | 2 tasks | 10 files |
 | Phase 07 P11 | 22 min | 2 tasks | 9 files |
 | Phase 07 P12 | 21 min | 2 tasks | 11 files |
+| Phase 07 P13 | 2 min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -458,6 +459,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 07]: 07-10: no POST /negocios a moeda so acompanha o valor e o Proprietario vazio nao vai no corpo (backend usa o Membro da sessao); ao criar, marcarChegada + router.push para a ficha (o Toast viaja com a navegacao)
 - [Phase 07]: 07-12: migrar --seco (migracoesPendentes) e leitura pura provada contra banco vazio e pelo CLI; e o comando que 07-13 roda contra o banco da plataforma antes do migrar com a 007
 - [Phase 07]: 07-12: npm run check sai 1 por duas falhas pre-existentes do Financeiro contra o banco remoto (lote-contas-a-pagar 5/6; seed de formularios-publicos.test.ts), reproduzidas isoladas e registradas em deferred-items.md e WINDOWS.md #5 - nao corrigidas, fora do CRM; o resto do portao e o build estao verdes
+- [Phase 07]: 07-13: a 007 esta aplicada no banco da plataforma depois da conferencia de D-12 (--seco: 1 pendente -> migrar pelo dono, 984 ms -> --seco: 0 pendentes), provas em 07-PROVAS.md; qualquer ajuste de schema do CRM daqui em diante e 008
+- [Phase 07]: 07-13: o roteiro da UAT de fim de fase (8 passos em 07-PROVAS.md) e o que fecha as janelas #1-#4 do WINDOWS.md; a janela #5 (portao com duas falhas pre-existentes fora do CRM) fica como decisao aberta do dono
 
 ### Pending Todos
 
@@ -514,7 +517,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-11T00:11:11.269Z
-Stopped at: Completed 07-12-PLAN.md
+Last session: 2026-10-11T16:56:31.422Z
+Stopped at: Completed 07-13-PLAN.md
 Resume file: None
 None
