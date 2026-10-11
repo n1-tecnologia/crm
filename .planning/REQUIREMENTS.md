@@ -112,7 +112,7 @@ Critério de pronto (ROADMAP Phase 6): o Financeiro vê o Resumo no fio antes do
 Critério de pronto (ROADMAP Phase 7): Contatos, Empresas, Funis (com Etapas) e Negócios criados, lidos, editados e excluídos direto pelo frontend, com isolamento por Espaço de Trabalho e acesso por Membro aplicados no backend. Os sete IDs abaixo são **derivados** do goal e das decisões D-01..D-15 (`.planning/phases/07-crm-contatos-empresas-funis-e-negocios/07-RESEARCH.md`, "Phase Requirements"; decisões em `07-CONTEXT.md`) — não vêm do SPEC de migração do Financeiro.
 
 - [x] **CRM-D1**: Tipos, normalizadores e regras puras de Contato/Empresa/Funil/Etapa/Negócio em `@n1/dominio` (módulo novo `@n1/dominio/crm/*`, em português, espelhando a 007; o modelo inglês convive — D-01). Pendente.
-- [ ] **CRM-A1**: Repositórios + serviços + rotas REST (`/contatos`, `/empresas`, `/funis`, `/negocios`) com isolamento por `workspace_id` e permissão por Papel (D-03, D-10, D-11, D-14). Pendente.
+- [x] **CRM-A1**: Repositórios + serviços + rotas REST (`/contatos`, `/empresas`, `/funis`, `/negocios`) com isolamento por `workspace_id` e permissão por Papel (D-03, D-10, D-11, D-14). Pendente.
 - [x] **CRM-A2**: Integridade com 409 ricos: Funil/Etapa com Negócios (D-07), admin da Empresa (D-08, com a correção da 007 — D-12), último admin/Contato de Negócio (D-09), unicidade de Identificador. Pendente.
 - [x] **CRM-A3**: Ações de Negócio: mover, ganhar, perder, reabrir, arquivar, restaurar, lixeira, excluir permanentemente (D-05, D-06). Pendente.
 - [ ] **CRM-W1**: Telas de Contatos, Empresas, Funis (+Etapas) e Negócios — lista, ficha, formulário criar/editar, lixeira/restaurar — lendo e gravando só por HTTP (D-04, D-02, D-15). Pendente.
@@ -167,7 +167,7 @@ Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pe
 | RES-05 | Phase 6 | Complete | planejado 2026-09-29 (06-05); reforçado em 06-16 (fin2:CR-01) | REQ-f6-s5-s6-plataforma |
 | RES-06 | Phase 6 | Complete | segunda rodada de fechamento em 06-20 (2026-09-30) | REQ-f6-provas-e-docs |
 | CRM-D1 | Phase 7 | Complete | planejado 2026-10-09 (07-01..07-05, 07-08) | derivado (07-RESEARCH) |
-| CRM-A1 | Phase 7 | Pending | planejado 2026-10-09 (07-01..07-05, 07-08, 07-12) | derivado (07-RESEARCH) |
+| CRM-A1 | Phase 7 | Complete | planejado 2026-10-09 (07-01..07-05, 07-08, 07-12) | derivado (07-RESEARCH) |
 | CRM-A2 | Phase 7 | Complete | planejado 2026-10-09 (07-02..07-05) | derivado (07-RESEARCH) |
 | CRM-A3 | Phase 7 | Complete | planejado 2026-10-09 (07-08) | derivado (07-RESEARCH) |
 | CRM-W1 | Phase 7 | Pending | planejado 2026-10-09 (07-01, 07-06, 07-07, 07-09..07-13) | derivado (07-RESEARCH) |

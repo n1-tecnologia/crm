@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 07
 current_phase_name: "CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)"
 status: executing
-stopped_at: Completed 07-11-PLAN.md
-last_updated: "2026-10-10T23:29:13.143Z"
+stopped_at: Completed 07-12-PLAN.md
+last_updated: "2026-10-11T00:11:11.392Z"
 last_activity: 2026-10-09
 last_activity_desc: Phase 07 execution started
-state_head: b71e7550392d9da98755f7d2b62605add1c893c1
+state_head: 574ad31afbf5d8ca5116a139455f6ed7a466e9a4
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 133
-  completed_plans: 130
+  completed_plans: 131
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-15)
 ## Current Position
 
 Phase: 07 (CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)) — EXECUTING
-Plan: 12 of 13
+Plan: 13 of 13
 Status: Ready to execute
 Last activity: 2026-10-09 — Phase 07 execution started
 
@@ -352,6 +352,7 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 | Phase 07 P09 | 14 min | 3 tasks | 12 files |
 | Phase 07 P10 | 15 min | 2 tasks | 10 files |
 | Phase 07 P11 | 22 min | 2 tasks | 9 files |
+| Phase 07 P12 | 21 min | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -455,6 +456,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 07]: 07-10: atualizacao otimista do mover do quadro e lista.mutate(otimista, { revalidate: false }) seguida de moverNegocio (que invalida /negocios); a recusa revalida a chave e o cartao volta. Nao usar mutate(chave, promessa, { optimisticData }): o SWR descarta a revalidacao disparada dentro da mutacao
 - [Phase 07]: 07-10: o menu do cartao do quadro traz 'Mover para {Etapa}' por Etapa de destino (UI-SPEC §4, WCAG 2.5.7) alem de Abrir/Ganhar/Perder, pelo mesmo moverNegocio
 - [Phase 07]: 07-10: no POST /negocios a moeda so acompanha o valor e o Proprietario vazio nao vai no corpo (backend usa o Membro da sessao); ao criar, marcarChegada + router.push para a ficha (o Toast viaja com a navegacao)
+- [Phase 07]: 07-12: migrar --seco (migracoesPendentes) e leitura pura provada contra banco vazio e pelo CLI; e o comando que 07-13 roda contra o banco da plataforma antes do migrar com a 007
+- [Phase 07]: 07-12: npm run check sai 1 por duas falhas pre-existentes do Financeiro contra o banco remoto (lote-contas-a-pagar 5/6; seed de formularios-publicos.test.ts), reproduzidas isoladas e registradas em deferred-items.md e WINDOWS.md #5 - nao corrigidas, fora do CRM; o resto do portao e o build estao verdes
 
 ### Pending Todos
 
@@ -511,7 +514,7 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-10T23:29:13.023Z
-Stopped at: Completed 07-11-PLAN.md
+Last session: 2026-10-11T00:11:11.269Z
+Stopped at: Completed 07-12-PLAN.md
 Resume file: None
 None
