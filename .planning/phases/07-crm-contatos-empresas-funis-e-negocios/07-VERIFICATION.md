@@ -1,10 +1,15 @@
 ---
 phase: 07-crm-contatos-empresas-funis-e-negocios
 verified: 2026-10-11T17:38:36Z
-status: human_needed
+status: passed
 score: 53/81 must-haves verified
 behavior_unverified: 26
-overrides_applied: 0
+overrides_applied: 1
+overrides:
+  - must_have: "CRM-V1: npm run check (tipos, lint, tokens, contratos e testes dos três workspaces) e npm run build ficam verdes"
+    reason: "As 5 falhas restantes são pré-existentes e exclusivas do Financeiro (lote-contas-a-pagar.test.ts contra o banco remoto, conhecida desde a Fase 4; seed de formularios-publicos.test.ts), fora dos 115 arquivos da Fase 7; os testes do CRM estão verdes nos três workspaces e registrados em deferred-items.md e WINDOWS.md #5"
+    accepted_by: "Igor Vilas Boas"
+    accepted_at: "2026-10-11T22:25:00Z"
 covered_digest: "v3:sha256:5c2cc324adbfeae0f191e537736305d90dc0bf45b69c5a838a46e0049db14098"
 covered_files:
   - ".planning/phases/07-crm-contatos-empresas-funis-e-negocios/07-01-PLAN.md"
