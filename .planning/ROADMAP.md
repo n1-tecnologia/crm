@@ -22,7 +22,7 @@ Fase 0 e Fase 1 correm em paralelo: o que resta da Fase 0 não bloqueia terminar
 - [ ] **Phase 4: As outras telas do financeiro-tria** - As leituras que nunca viveram no ClickUp portadas como tela; `financeiro-tria.vercel.app` sai do ar
 - [x] **Phase 5: Contas a receber e os outros tenants** - Marcos Paulo e Family Office como Empresas do Campo `Empresa`; Contas a receber na forma que D7 determinar; notificar por Canal (gaps_found 2026-09-24 — fechamento de lacunas 05-13..05-25 planejado) (completed 2026-09-25)
 - [x] **Phase 6: Conferência do Resumo e anexos** - Os Fluxos 5, 6 e 7 da documentação v2 na plataforma: o Agente publica o Resumo ANTES do lançamento, aberto ao Financeiro; conferência por clique ou "ok" no fio, ajuste vira Resumo revisado; o lançamento só sai com conferência, com a categoria confirmada e os anexos no Omie; S5/S6 na Solicitação (planejado 2026-09-29, à mão, a partir dos docs 09 e 10) (completed 2026-09-30)
-- [ ] **Phase 7: CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)** - CRUD de ponta a ponta: regras no `@n1/dominio`, `apps/api` sobre a migração 007 e as telas no `apps/web` para criar, listar, editar e excluir direto pela interface
+- [x] **Phase 7: CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)** - CRUD de ponta a ponta: regras no `@n1/dominio`, `apps/api` sobre a migração 007 e as telas no `apps/web` para criar, listar, editar e excluir direto pela interface (completed 2026-10-11)
 
 ## Phase Details
 
@@ -472,13 +472,14 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 → 6 (0 e 1 em
 | 4. As outras telas do financeiro-tria | 13/14 | In Progress|  |
 | 5. Contas a receber e os outros tenants | 25/25 | Complete    | 2026-09-25 |
 | 6. Conferência do Resumo e anexos | 22/22 | Complete   | 2026-09-30 |
+| 7. CRM: Contatos, Empresas, Funis e Negócios (backend e frontend) | 13/13 | Complete   | 2026-10-11 |
 
 ### Phase 7: CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)
 
 **Goal:** Contatos, Empresas, Funis (com Etapas) e Negócios podem ser criados, lidos, editados e excluídos direto pelo frontend. Cobre as três camadas, começando pelo domínio: tipos e regras em `@n1/dominio` (fonte: `ontologia/03-crm`); repositórios e rotas em `apps/api` sobre `apps/api/migracoes/007-crm.sql`, com isolamento por Espaço de Trabalho e acesso por Membro aplicados no backend; e, em `apps/web`, todas as telas, formulários, listas e navegação que ainda não existem (a web fala com a api só por HTTP, nunca importa dela). Fora do escopo: Caixa de Entrada/Conversas/Mensagens e catálogos (Tag, Origem, Motivo de Perda, Qualificação).
 **Requirements**: CRM-D1, CRM-A1, CRM-A2, CRM-A3, CRM-W1, CRM-W2, CRM-V1 (critérios derivados em `07-RESEARCH.md` "Phase Requirements"; registrados em REQUIREMENTS.md, Fase 7)
 **Depends on:** Phase 1 (persistência e login); independe das fases abertas 2 e 4
-**Plans:** 13/13 plans executed
+**Plans:** 13/13 plans complete
 
 Plans:
 **Wave 1** — o traçador

@@ -1,19 +1,20 @@
 ---
 gsd_state_version: "1.0"
 milestone: v1.0
-current_phase: 07
-current_phase_name: "CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)"
-status: verifying
-stopped_at: Completed 07-13-PLAN.md
-last_updated: "2026-10-11T16:56:31.545Z"
-last_activity: 2026-10-09
-last_activity_desc: Phase 07 execution started
-state_head: 9b25ac68d58cfe69a0d9429b3f8e2d62f214806c
+current_phase: 2
+current_phase_name: Solicitação de pagamento — o front substitui o ClickUp
+status: planning
+stopped_at: Phase 07 complete, ready to plan Phase 2
+last_updated: "2026-10-11T22:26:28.169Z"
+last_activity: 2026-10-11
+last_activity_desc: Phase 07 complete, transitioned to Phase 2
+state_head: 22debe94a81186b51bf29e19f2b50fbe07aca35d
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 133
   completed_plans: 132
+  percent: 67
 milestone_name: milestone
 ---
 
@@ -21,17 +22,17 @@ milestone_name: milestone
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-15)
+See: .planning/PROJECT.md (updated 2026-10-11)
 
 **Core value:** Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de ponta a ponta sem abrir o ClickUp — dados no Postgres próprio, regras de `@n1/dominio` intactas.
-**Current focus:** Phase 07 — CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)
+**Current focus:** Phase 2 — Solicitação de pagamento — o front substitui o ClickUp (restam 02-27 e 02-28; a Phase 4 também segue aberta em 13/14)
 
 ## Current Position
 
-Phase: 07 (CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)) — EXECUTING
-Plan: 13 of 13
-Status: Phase complete — ready for verification
-Last activity: 2026-10-09 — Phase 07 execution started
+Phase: 2 — Solicitação de pagamento — o front substitui o ClickUp
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-10-11 — Phase 07 complete, transitioned to Phase 2
 
 **Fase 06 planejada à mão em 2026-09-29 (Conferência do Resumo e anexos), pronta para `/gsd-execute-phase 6`:**
 `.planning/phases/06-conferencia-do-resumo-e-anexos/` — `06-CONTEXT.md` (13 decisões com padrão e variável de troca) e seis planos em três ondas: 06-01 domínio · 06-02 contrato v1.1 no `financeiro-tria` · 06-03 ponte em dois momentos · 06-04 tela e jornada · 06-05 S5/S6 na Solicitação · 06-06 docs e provas `[BLOCKING]`. Origem: `docs/08-migracao-financeiro/09-…` (desenho) e `10-…` (levantamento etapa por etapa com `arquivo:linha`). Ponto de partida do código: `crm-n1-integracao@3d6f735` (branch `integra-frontend-main`, sem push) e `financeiro-tria@c272dad` (`main`, 99 commits sem push, 89 arquivos sujos só de EOL — `git add` sempre por caminho). O dono ainda não respondeu às quatro perguntas do doc 10; os padrões de D6-01..D6-04 seguem "como no ClickUp", exceto Integração manual (o seguro).
@@ -268,7 +269,7 @@ no checkout principal:**
 
 **Pendência herdada, intocada por decisão do dono:** o worktree órfão `worktree-agent-a5e400fc9712c6c4f` (c131ad0) carrega três commits NÃO MERJADOS do Plano 02-15 (fixação da CA do Postgres em `conexao.ts`, `latencia.test.ts`, runbook de topologia e o próprio 02-15-SUMMARY.md). Existem só ali. A Fase 4 foi iniciada sobre um base SEM essa correção de TLS, deliberadamente. 02-15 continua contando como incompleto.
 
-Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PERS-04 fechado sem ressalva — CR-02 fechado por inteiro no Plan 01-16)
+Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133 plans — Phases 0, 1, 3, 5, 6 e 7 completas; 2 e 4 abertas
 
 **Fase 1 fechada (segunda rodada de CR-02 concluída):** os 9 planos originais (01-01..01-09), o gap-closure de CR-01 (01-10) e as cinco rodadas de fechamento de CR-02 (01-11..01-16) estão feitos e commitados. A re-verificação de 2026-09-16T20:16Z (`01-VERIFICATION.md`) tinha encontrado CR-02 parcialmente aberto (efeito 2 — `ARGUMENTOS_GENERICOS` não barrava tipo/enum errado nas ~109 operações fora de `ESQUEMAS` — e WR-10 — `reviverArgumentos` sem limite de profundidade); a decisão de cobertura total em 5 planos (01-12 fundação+WR-10; 01-13/14/15 schemas por módulo em paralelo; 01-16 composição final) está executada: `ESQUEMAS` cobre as 132 operações sob `satisfies EsquemasCompletos`, sem fallback, e o mapeamento `TypeError → 400` saiu da rota (WR-11). `npm run check` verde nos três workspaces (dominio 253, web 53, api 163). PERS-08 (deploy do `apps/api`) continua bloqueado por D11 — não é gap de código, é decisão de infraestrutura fora do escopo desta fase. Pronta para nova rodada de `/gsd-verify-phase 1`.
 
@@ -278,7 +279,7 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 
 **Velocity:**
 
-- Total plans completed: 25
+- Total plans completed: 38
 - Average duration: —
 - Total execution time: 0 hours
 
@@ -287,6 +288,7 @@ Progress: [██████████] 100% (16/16 planos GSD na Phase 1; PE
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 05 | 25 | - | - |
+| 07 | 13 | - | - |
 
 **Recent Trend:**
 
@@ -461,6 +463,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 07]: 07-12: npm run check sai 1 por duas falhas pre-existentes do Financeiro contra o banco remoto (lote-contas-a-pagar 5/6; seed de formularios-publicos.test.ts), reproduzidas isoladas e registradas em deferred-items.md e WINDOWS.md #5 - nao corrigidas, fora do CRM; o resto do portao e o build estao verdes
 - [Phase 07]: 07-13: a 007 esta aplicada no banco da plataforma depois da conferencia de D-12 (--seco: 1 pendente -> migrar pelo dono, 984 ms -> --seco: 0 pendentes), provas em 07-PROVAS.md; qualquer ajuste de schema do CRM daqui em diante e 008
 - [Phase 07]: 07-13: o roteiro da UAT de fim de fase (8 passos em 07-PROVAS.md) e o que fecha as janelas #1-#4 do WINDOWS.md; a janela #5 (portao com duas falhas pre-existentes fora do CRM) fica como decisao aberta do dono
+- [Phase 07]: fechada em 2026-10-11 — UAT 9/9 pelo dono (07-UAT.md), 07-VERIFICATION.md `passed` com 1 override aceita (CRM-V1: `npm run check` com a ressalva das duas falhas pré-existentes do Financeiro), janelas #1-#4 `fixed` e #5 `waived`; qualquer ajuste de schema do CRM é `008`
 
 ### Pending Todos
 
@@ -475,6 +478,8 @@ Nenhum em `.planning/todos/` ainda. Decisões com prazo (ver ROADMAP.md "Decisõ
 - **SEC-01 (Phase 05, `05-SECURITY.md`, aceito pelo dono em 2026-09-25 com condição):** nenhuma fase ou mudança pode liberar a fonte "plataforma" para `marcos-paulo`/`family-office` sem executar ANTES o corte 05-05 (Tasks 2/3, ordem D-28: desligar webhooks ClickUp → 48h de silêncio → conferir gêmeas → arquivar 901109642259/901111928443). Sem isso, T-5-15 (double-write no Omie, HIGH) volta a ser possível. **SEC-02:** nenhuma Automação de Canal real é publicada em `ws_n1` antes do 05-23 (migração de receipts sozinha no Supabase do `automation/`, depois o deploy).
 - **Antes de ligar qualquer worker de scheduler em produção:** remover ou excluir do catálogo os ~14 Espaços de teste com Automações temporais ativas no Postgres de produção (WR-A, 05-25).
 - **Agentes não conseguem escrever em produção:** o classificador de permissão do Claude Code recusa `--apply`/`migrar` contra o banco real (05-19/05-20/05-21) — o dono roda o comando e cola a saída; o agente faz o dry-run antes e a confirmação somente-leitura depois.
+- **Portão `npm run check` vermelho por duas falhas fora do CRM (aceito pelo dono em 2026-10-11, override em `07-VERIFICATION.md`):** `apps/api/src/e2e/lote-contas-a-pagar.test.ts` (5/6 contra o banco remoto, desde a Fase 4) e o seed da suíte "Automação de Canal publicada na Lista de Solicitações" em `apps/api/src/rotas/formularios-publicos.test.ts`. Quem revisitar DEC-06 ou o bootstrap da Lista de Solicitações (`solicitacoes:configurar`) deve fechá-las; detalhe em `07-.../deferred-items.md`.
+- **CRM em dois modelos (D-15, Phase 07):** Busca global, Lixeira, Notificações, `/crm/meus-negocios` e Caixa de Entrada ainda leem o modelo antigo em inglês e não mostram os registros das rotas `/contatos`, `/empresas`, `/funis`, `/negocios`; limitação aceita até a fase de unificação.
 
 - **ROADMAP.md agora mostra "Phase 3: Contas a pagar" como `[x]` Complete (15/15, 2026-09-23)** — isso é `roadmap update-plan-progress` contando EXISTÊNCIA de SUMMARY.md por plano, não fechamento verificado. Sete dos quinze planos da fase (03-07, 03-08, 03-10, 03-11, 03-13, 03-14, 03-15) têm, dentro do próprio SUMMARY, um checkpoint bloqueante de produção ainda ABERTO — e o critério 1 da própria fase (uma semana sem ClickUp + o corte) é exatamente o que 03-14 Task 4 não executou. Uma rodada de `/gsd-verify-phase 3` deve pegar isso e não assinar a fase como pronta para a Phase 4 só porque a tabela diz "Complete". Não revertido aqui de propósito — é o comportamento padrão da ferramenta, e mascarar isso escondendo o "Complete" seria pior do que registrar a ressalva.
 - PERS-08 bloqueado por D11 (deploy do `apps/api`); não trava o código da Phase 1.
@@ -514,10 +519,12 @@ Items acknowledged and carried forward:
 | Defeito | A conta nova abre no popup com o id da cópia local de `run()` (D-05), não o do servidor — diverge quando a ponte ou outra pessoa grava no meio; achado pela jornada final (`06-PROVAS.md`, achado 1: `cmt_tark9u`) | Correção proposta (abrir só com o id confirmado pelo servidor), aguarda o dono | Phase 06 (2026-09-30) |
 | Comportamento | O ajuste por texto livre não muda a categoria do Resumo revisado (o RAG do `/resolver` busca com o Campo "Categoria de pagamento" e o pedido só no fim) e o revisado sai igual, marcado "Revisado a pedido de"; só o código na resposta troca com certeza (`06-PROVAS.md`, achado 4) | Decisão do dono: avisar no revisado quando nada mudou e/ou dar peso ao pedido | Phase 06 (2026-09-30) |
 | UX | O popup da conta não vê sozinho o que a ponte grava (sem tempo real, consulta periódica nem revalidação ao focar; só re-hidrata por D-06) | Recomendação: consulta leve à revisão do Espaço com a conta aberta; Realtime depois | Phase 06 (2026-09-30) |
+| Teste | `lote-contas-a-pagar.test.ts` 5/6 contra o banco remoto (PAG-05, DEC-06) — fora do CRM | Aceito como ressalva da Fase 7; fecha com quem revisitar DEC-06 com volume real | Phase 07 (2026-10-11) |
+| Teste | Seed da suíte "Automação de Canal publicada na Lista de Solicitações" (`formularios-publicos.test.ts`) aponta Campo que a Lista não tem | Aceito como ressalva da Fase 7; precisa de quem conheça `solicitacoes:configurar` | Phase 07 (2026-10-11) |
+| Escopo | CRM: tags, consentimentos, comentários, anexos, mesclagem, temperatura e histórico de etapas (D-02); Busca global/Lixeira/Notificações no modelo antigo (D-15) | Fase própria de unificação, com migração `008+` | Phase 07 (2026-10-11) |
 
 ## Session Continuity
 
-Last session: 2026-10-11T16:56:31.422Z
-Stopped at: Completed 07-13-PLAN.md
+Last session: 2026-10-11T22:28:25Z
+Stopped at: Phase 07 complete (UAT 9/9, verificação `passed`), ready to plan Phase 2
 Resume file: None
-None

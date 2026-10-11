@@ -2,7 +2,7 @@
 
 ## What This Is
 
-O CRM N1 (`apps/web` + `@n1/dominio`) é a plataforma da Tria que passa a ser o **front único do Financeiro**: substitui o ClickUp (formulário, conversa, decisão do aprovador, progresso) e o painel atual do financeiro-tria (`financeiro-tria.vercel.app`). O backend do financeiro-tria (`automation/` na VPS, schema `public`) fica exatamente como está e passa a conversar com o `apps/api` por HTTP, pelos mesmos 7 métodos do adapter que hoje falam com o ClickUp. Quem usa: o Financeiro da Tria, os aprovadores (Elifas, Fabíola, Thiago, Iallas), as Pessoas das contas, o Agente de lançamento e, na última fase, os tenants Marcos Paulo e Family Office.
+O CRM N1 (`apps/web` + `@n1/dominio`) é a plataforma da Tria que passa a ser o **front único do Financeiro**: substitui o ClickUp (formulário, conversa, decisão do aprovador, progresso) e o painel atual do financeiro-tria (`financeiro-tria.vercel.app`). O backend do financeiro-tria (`automation/` na VPS, schema `public`) fica exatamente como está e passa a conversar com o `apps/api` por HTTP, pelos mesmos 7 métodos do adapter que hoje falam com o ClickUp. Quem usa: o Financeiro da Tria, os aprovadores (Elifas, Fabíola, Thiago, Iallas), as Pessoas das contas, o Agente de lançamento e, na última fase, os tenants Marcos Paulo e Family Office. Desde a Fase 7 a plataforma também é o CRM de verdade: Contatos, Empresas, Funis (com Etapas) e Negócios têm tabelas próprias (`007-crm.sql`), rotas REST em `apps/api` e telas em `apps/web` que criam, editam, movem e excluem direto pela interface.
 
 ## Core Value
 
@@ -19,6 +19,7 @@ Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de po
 - ✓ Schema `plataforma` (`registros` + `workspaces` + `migracoes`) no projeto Supabase próprio `epomplsskqpluxuujpxl`, aplicado por `npm run migrar` com migrações numeradas e imutáveis — Fase 0 (`b20597d`)
 - ✓ Volume do banco legado medido: maior tabela 9.510 linhas, `solicitacoes_pagamentos` 1.110 — risco "volume desconhecido" fechado — Fase 0 (2026-09-15)
 - ✓ Contas a receber na plataforma (Critério 1 verdadeiro em produção); Marcos Paulo e Family Office como Empresas do Campo `Empresa`, recusados visivelmente pelo `automation/` até a fonte "plataforma" chegar aos serviços deles; Ação de notificar por Canal code-complete com contrato ponta a ponta verde — Fase 5 (2026-09-25, com lacunas aceitas: deploy do `automation/` adiado, corte MP/FO e 1º WhatsApp real pendentes — `05-VERIFICATION.md` § Acknowledged Gaps)
+- ✓ CRM de ponta a ponta — Contatos, Empresas, Funis/Etapas e Negócios em `@n1/dominio/crm/*` (português, modelo inglês convivendo — D-01), 53 rotas REST em `apps/api` sobre `007-crm.sql` com isolamento por Espaço e permissão por Papel no backend (D-03, D-10, D-14), 409 ricos para integridade (D-07, D-08, D-09), quadro kanban com mover/ganhar/perder/reabrir e lixeira/restaurar (D-05, D-06); 007 aplicada no banco da plataforma após conferência `--seco` (D-12); UAT 9/9 pelo dono — Fase 7 (2026-10-11, com ressalva aceita: `npm run check` vermelho por duas falhas pré-existentes do Financeiro, `07-VERIFICATION.md` override)
 
 ### Active
 
@@ -39,7 +40,7 @@ Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de po
 - `automation/` escrevendo por SQL direto no schema `plataforma` — DEC-14: pularia Registro de Atividade, Requisito de saída e permissão, corrompendo RN-CP-02, RN-CP-04 e INV-CP-01.
 - Mover o `automation/` para o monorepo agora — DEC-15 (D12): reavaliar ao fim da Fase 2, quando o contrato estiver estável.
 - Portar as 23 telas Vite/React do financeiro-tria como código — DEC-12: elas morrem; o que se porta é **a leitura** que cada uma dá ao Financeiro (Fase 4).
-- Uma tabela por entidade no schema `plataforma` — sobreposto por DEC-02 (tabela genérica `plataforma.registros` + colunas geradas para o que se filtra).
+- Uma tabela por entidade no schema `plataforma` — sobreposto por DEC-02 (tabela genérica `plataforma.registros` + colunas geradas para o que se filtra). **Exceção decidida na Fase 7:** o CRM (Contatos, Empresas, Funis, Etapas, Negócios) tem tabelas próprias em `007-crm.sql` e rotas REST por recurso, fora de `plataforma.registros` e de `POST /operacoes/:nome` (07-CONTEXT D-03).
 - Migrar a observabilidade legada (`automation_runs/steps/events`, `approval_tasks`, `integration_jobs`), `payment_requests` (0 linhas) e as 13 tabelas vetoriais por empresa + 7 views — CAND-03 (a confirmar): nunca pegaram ou a `conciliador_contas` unificada as substitui.
 - Emissão de NF, ingestão Guru/Kiwify/TMB, extratos por WhatsApp, sync semanal de clientes Omie como lógica na plataforma — continuam no `automation/` (DEC-11); a plataforma só lê (Fase 4).
 - Go High Level — zero menções nos dois repositórios; pertence ao CRM, não ao Financeiro; precisa de inventário próprio feito da conta (OQ-GHL-01).
@@ -97,6 +98,14 @@ Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de po
 - **D-DEC-15:** `automation/` fica no repositório `financeiro-tria`; mover para o monorepo é decisão adiada (D12), reavaliar ao fim da Fase 2.
 - **D-DEC-16:** Só o que substitui o ClickUp usa a ontologia (Solicitações, Contas a pagar, Contas a receber); as demais telas do financeiro-tria são portadas como tela lendo a API do `automation/` — **com ponto de revisão antes da Fase 2** (OQ-PLAN-01).
 - **D-DEC-17:** `solicitacoes_pagamentos.TaskID` passa a apontar para a Tarefa da plataforma; coluna `origem` (`clickup` | `plataforma`) desambigua o histórico sem migrar nada.
+
+### Travadas na Fase 7 — `07-CONTEXT.md` (CRM; 15 decisões, todas honradas na verificação)
+
+- **D7-01/D7-03:** Tipos novos em português em `@n1/dominio/crm/*` espelhando a 007; o modelo inglês (`Contact`, `Company`, `Deal`, `Pipeline`) convive porque Caixa de Entrada e Conversas dependem dele. Rotas REST por recurso (`/contatos`, `/empresas`, `/funis`, `/negocios`) — primeiro módulo fora de `plataforma.registros` e de `POST /operacoes/:nome`.
+- **D7-06/D7-07/D7-08/D7-09:** "Excluir" manda à lixeira (restaurar / excluir permanentemente); Funil ou Etapa com Negócios, último admin de Empresa e Contato de Negócio são recusados com 409 rico listando o que bloqueia; criar Empresa exige o Contato admin na mesma transação (trigger deferido).
+- **D7-10/D7-14:** Isolamento por Espaço e permissão por Papel aplicados no backend: `membro` cria/edita/exclui Contato, Empresa e Negócio; só `administrador`/`proprietario` mexe em Funil/Etapas e reabre Negócio ganho; `convidado` só lê.
+- **D7-12:** Migração aplicada é imutável — a correção do trigger entrou na própria 007 porque ela nunca tinha sido aplicada; `npm run migrar -- --seco` confere antes. Daqui em diante qualquer ajuste de schema do CRM é `008`.
+- **D7-15:** Busca global, Lixeira, Notificações, `/crm/meus-negocios` e Caixa de Entrada seguem no modelo antigo e não veem os registros novos — limitação aceita até a fase de unificação.
 </decisions>
 
 ### Candidatas — propostas, NÃO travadas (confirmar antes de depender delas)
@@ -142,4 +151,4 @@ Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de po
 Depois de cada transição de fase: requisitos invalidados → Out of Scope com motivo; validados → Validated com a fase; novos → Active; decisões novas → tabela acima (candidatas que forem confirmadas sobem para o bloco `<decisions>`); "What This Is" ainda vale? Depois de cada marco: revisão completa, Core Value ainda é a prioridade certa?
 
 ---
-*Last updated: 2026-09-25 after Phase 5 (Contas a receber e os outros tenants)*
+*Last updated: 2026-10-11 after Phase 7 (CRM: Contatos, Empresas, Funis e Negócios)*
