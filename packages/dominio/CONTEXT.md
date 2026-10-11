@@ -475,3 +475,40 @@ clique** (`06-REVIEW-2.md`):
   (a política real) nos dois pontos que chamam `dispensarConferenciaDoResumo`
   e na pré-checagem `pendenteNoFio`; o ramo `ajuste` continua bloqueando em
   qualquer política (a opção não o afeta).
+
+## CRM relacional (Fase 7): o modelo novo em português, ao lado do antigo
+
+`src/crm/` é o domínio do CRM sobre `apps/api/migracoes/007-crm.sql`,
+exposto como `@n1/dominio/crm/<modulo>` — **sem barril**: `comum`,
+`contatos`, `empresas`, `funis`, `negocios`, `normalizacao`, `permissoes`.
+O `export "./*"` de `package.json` já resolve o subcaminho; nada entrou no
+barril `@n1/dominio` nem no `DataState`, porque o CRM novo não é hidratado
+por `GET /estado`.
+
+**Tipos em português espelhando a 007 (D-01).** `Contato`, `Empresa`,
+`Funil`, `Etapa`, `Negocio`, os Identificadores e o vínculo
+Contato-Empresa, com os estados de ciclo de vida da 007
+(`ativo`/`arquivado`/`na_lixeira`) e a situação do Negócio
+(`aberto`/`ganho`/`perdido`). `date` e `numeric` são texto (`"AAAA-MM-DD"`,
+`"1234.50"`), como saem do banco.
+
+**Regras puras, usadas pela api e pela tela.** `validarContato`
+(INV-CON-01), `validarEmpresa`, `validarRetiradaDeAdmin` (D-08),
+`validarNovoFunil`, `validarMudancaDeEstado`, `deveNascerPadrao` (D-13),
+`validarMigracao` (D-07), `validarNovoNegocio`, `validarMovimento`,
+`validarGanho`/`validarPerda` (as Regras de encerramento do Funil, D-05),
+`validarReabertura`, `probabilidadeEfetiva`, as frases de bloqueio
+(`fraseDeContatoBloqueado`, `fraseFunilComNegocios`…) e a normalização de
+Identificadores (`normalizacao.ts`: e-mail, telefone, WhatsApp, Instagram,
+domínio, documento). `permissoes.ts` é a matriz de D-14 (`podeNoCrm`,
+`ehAdministracao`): a api a aplica no serviço, a tela a consulta para
+esconder — a regra mora aqui para os dois lados dizerem a mesma coisa.
+Mesma forma de `operations`: `OperationResult`, sem exceção pela
+fronteira.
+
+**O que não mudou.** `types/crm.ts` (`Contact`, `Company`, `Deal`,
+`Pipeline`…), `operations/{contacts,deals}.ts` e o seed de CRM continuam
+inteiros: Caixa de Entrada, Conversas, Busca global, Lixeira, Notificações
+e `/crm/meus-negocios` ainda leem esse modelo. Os dois convivem até a fase
+de unificação (D-01, D-15); nenhum módulo de `src/crm/` importa o antigo
+nem vice-versa.

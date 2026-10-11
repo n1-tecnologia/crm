@@ -40,3 +40,47 @@ admin que `autenticacao/verificar-token.ts` já constrói) e nunca é devolvida
 por nenhuma rota: o navegador só recebe o ticket de upload assinado
 (`createSignedUploadUrl`, escopo de um único objeto, `upsert: false`) ou a
 URL de download assinada — nunca a credencial que os gera.
+
+## CRM (`crm/`, Fase 7)
+
+Um serviço por recurso — `contatos.ts`, `empresas.ts`, `funis.ts`,
+`negocios.ts` — com a mesma forma: `criarServicoDe…({ pool, acesso })`
+devolve a interface que a rota chama, cada método devolve `ResultadoCrm<T>`
+(`resultado.ts`: `sucesso(valor)` ou `recusa(status, frase, { codigo,
+campo?, bloqueios? })`), nunca lança para a rota. As regras puras vêm de
+`@n1/dominio/crm/*`; o serviço as aplica sobre o que leu do banco.
+
+**`comTransacao` (`transacao.ts`).** `begin` → `fn(cliente)` → `commit` no
+sucesso, `rollback` na recusa. O `commit` fica **dentro do `try`** que tem o
+`catch` de tradução, de propósito: o constraint trigger deferido da 007
+("toda Empresa tem ao menos um Contato admin", D-08) só dispara no
+`commit`, e é ali que um 23514 precisa virar 409 e não 500. Os repositórios
+recebem o `PoolClient` e nunca abrem transação.
+
+**Pré-checagem para os 409 ricos, SQLSTATE como rede.** D-07 (Funil ou
+Etapa com Negócios), D-08 (Empresa sem admin) e D-09 (Contato que é o
+único admin de uma Empresa ou dono de Negócio) exigem dizer *quem* bloqueia
+— o serviço consulta antes de escrever e devolve `bloqueios` com a lista ou
+a contagem. Entre a pré-checagem e a escrita outra requisição pode entrar;
+aí é o constraint do banco que segura, e `traduzirErroDePg` transforma
+`23505`/`23503`/`23514` em 409 com uma frase em português cadastrada em
+`FrasesDeRestricao`, **sem o nome do constraint** (T-07-06). SQLSTATE sem
+frase é relançado e vira o 500 genérico.
+
+**Permissão antes de qualquer escrita (D-14, `acesso.ts`).** Todo método
+chama `exigir(acesso, membro, acao, recurso)` antes de ler ou escrever: o
+Papel é lido de `plataforma.registros` (`members` → `roles`) a cada
+requisição, e a decisão é `podeNoCrm` de `@n1/dominio/crm/permissoes` — a
+mesma matriz que a tela consulta para esconder botões. `membro` cria, edita
+e exclui Contato, Empresa e Negócio; só `administrador`/`proprietario`
+configura Funis e Etapas e reabre Negócio `ganho`; `convidado` só lê. A
+tela esconde; o backend recusa (403 `PERMISSAO`).
+
+**Proprietário (D-11, `resolverProprietario`).** Sem `proprietarioId` no
+corpo, Proprietário e `criado_por` são o Membro da sessão; com ele, tem de
+ser Membro `ativo` do MESMO Espaço (id removido, inexistente ou de outro
+Espaço cai na mesma recusa 409 `PROPRIETARIO_INVALIDO`, T-07-40).
+
+**Espaço.** `workspace_id` vem de `request.membro`, nunca do corpo; todo
+`WHERE` dos repositórios o leva (T-07-01). Um registro de outro Espaço não
+existe: 404, não 403.

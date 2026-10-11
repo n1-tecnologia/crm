@@ -44,6 +44,19 @@ dele, o store passa a hidratar do `apps/api` por `GET /estado` e gravar por
 precise ser reescrita: o domínio já está fora do frontend, num pacote que os
 dois lados importam.
 
+A partir da Fase 7, o CRM (Contatos, Empresas, Funis com Etapas e Negócios)
+é o primeiro módulo com tabelas próprias — `apps/api/migracoes/007-crm.sql`,
+uma tabela por entidade, fora de `plataforma.registros` — e com rotas REST
+por recurso em `apps/api` (`/contatos`, `/empresas`, `/funis`, `/negocios`),
+fora de `POST /operacoes/:nome` e de `GET /estado`. As telas de
+`apps/web/src/app/(shell)/crm/` falam com essas rotas por HTTP
+(`src/dados/crm/`), enquanto o resto do app continua hidratando o Espaço
+inteiro por `GET /estado`. O modelo antigo do CRM em inglês (`Contact`,
+`Company`, `Deal`, `Pipeline`) continua vivo ao lado, porque Caixa de
+Entrada e Conversas ainda dependem dele: os dois convivem até a fase de
+unificação. Antes de aplicar a 007 num banco, `npm run migrar -w @n1/api --
+--seco` lista o que `migrar` faria sem escrever nada.
+
 ## Comandos
 
 Todos rodam da raiz:

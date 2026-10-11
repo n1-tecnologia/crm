@@ -25,8 +25,20 @@ workspace não as reescreve.
 
 ## O que sai
 
-Uma API HTTP sobre o domínio. Hoje só `GET /saude` (pública); as rotas por
-operação (`POST /operacoes/:nome`, `GET /estado`) chegam no Plan 01-04.
+Uma API HTTP sobre o domínio. `GET /saude` (pública), as rotas por operação
+(`POST /operacoes/:nome`, `GET /estado`, Plan 01-04) e, desde a Fase 7, as
+rotas REST do CRM — `/contatos`, `/empresas`, `/funis` (com `/etapas`) e
+`/negocios`, GET/POST/PATCH/PUT/DELETE em `src/rotas/crm/` — que não passam
+pelo despacho genérico por operação nem pelo estado hidratado: cada recurso
+tem tabela própria em `apps/api/migracoes/007-crm.sql`, serviço transacional
+em `src/servicos/crm/` e repositório em `src/repositorios/crm/`. Recusa de
+regra nunca viaja em 200 ali (400 forma, 403 Papel, 404 fora do Espaço, 409
+regra) — ver `src/rotas/CONTEXT.md`.
+
+Antes do primeiro `npm run migrar -w @n1/api` com uma migração nova, a
+conferência é `npm run migrar -w @n1/api -- --seco`: lista cada arquivo de
+`migracoes/` como `aplicada` ou `pendente` segundo `plataforma.migracoes` e
+não escreve nada — nem o schema nasce num banco vazio (D-12 da Fase 7).
 
 ## Como está organizada
 
@@ -35,9 +47,11 @@ operação (`POST /operacoes/:nome`, `GET /estado`) chegam no Plan 01-04.
 | `src/index.ts` | Ponto de composição: `carregarEnv()` + `buildApp()` + `listen()`. |
 | `src/app.ts` | Monta o Fastify (CORS, autenticação, rotas, erro) sem escutar — o que permite `app.inject()` nos testes. |
 | `src/plugins/` | Hooks transversais registrados na raiz, antes de qualquer rota — hoje só `autenticacao.ts`. |
-| `src/rotas/` | Um arquivo por recurso. Só traduz HTTP ↔ serviço: sem regra de negócio, sem SQL. |
-| `src/servicos/` | Casos de uso. Compõem operações do domínio e falam com repositórios. É aqui que mora a transação. |
-| `src/repositorios/` | Persistência. Uma interface por agregado, e a implementação atrás dela. |
+| `src/rotas/` | Um arquivo por recurso. Só traduz HTTP ↔ serviço: sem regra de negócio, sem SQL. `rotas/crm/` (Fase 7): as rotas REST do CRM, um recurso por arquivo, registradas por `rotasDeCrm`. |
+| `src/servicos/` | Casos de uso. Compõem operações do domínio e falam com repositórios. É aqui que mora a transação. `servicos/crm/` (Fase 7): um serviço por recurso sobre `comTransacao`, com a permissão do Papel (`acesso.ts`) antes de qualquer escrita. |
+| `src/repositorios/` | Persistência. Uma interface por agregado, e a implementação atrás dela. `repositorios/crm/` (Fase 7) inaugura o padrão — ver o `CONTEXT.md` de lá. |
+| `src/testes/` | Apoio de teste. `banco-crm.ts`: o Postgres LOCAL descartável dos testes do CRM (`describeComBanco`, `prepararBancoCrm`, `semearMembro`, `limparEspaco`) — contra qualquer host que não seja `localhost` os blocos pulam, e `migrar()` nunca roda contra o banco remoto por um teste. |
+| `src/e2e/` | Cenários ponta a ponta por `app.inject()`. `crm-fluxo.test.ts` percorre o CRM inteiro pelo HTTP contra o Postgres local. |
 | `src/bootstrap/` | Script idempotente que materializa a configuração de um Espaço (Plan 01-05). |
 
 A direção é sempre `rotas → servicos → repositorios`. Uma rota que chama

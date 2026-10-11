@@ -44,6 +44,26 @@ resposta anônima age.
 Componente nenhum fala com o domínio por fora de `store.ts`; manter isso
 verdadeiro é o que tornou a migração um arquivo em vez de cem.
 
+**A segunda fronteira (Fase 7): o CRM não passa por `store.ts`.** Contatos,
+Empresas, Funis e Negócios têm tabelas próprias na api e não entram no
+`DataState` nem em `GET /estado`. `src/dados/crm/` é o adaptador deles:
+`cliente-crm.ts` (`chamarCrm`, o `fetch` com o JWT do Supabase contra as
+rotas REST de `NEXT_PUBLIC_API_URL`; `ErroDeApi` com `status`, `codigo`,
+`campo` e `bloqueios`; `invalidarCrm`) e um módulo por recurso
+(`contatos.ts`, `empresas.ts`, `funis.ts`, `negocios.ts`) com os hooks de
+leitura por SWR (`useContatos`/`useContato`…, chave = o caminho da rota com
+a query) e as mutações (`criarContato`, `moverNegocio`…). Depois de cada
+escrita bem-sucedida a mutação **invalida por prefixo de chave**
+(`invalidarCrm("/negocios")` revalida toda chave que começa por
+`/negocios`; mover Negócio invalida também `/funis`, migrar Funil invalida
+`/negocios`); uma recusa não invalida nada. Não há `run()` nem revisão
+otimista aqui: a api é a autoridade, e a tela reage ao 409 com a frase e os
+`bloqueios` que ele traz. O store continua sendo a fonte de **Membros e
+Papéis**: `src/dados/crm/sessao.ts` (`useMembrosAtivos`, `useNomeDoMembro`,
+`usePodeNoCrm`) lê `state.members`/`state.roles` do `DataState` para
+nomear o Proprietário e para esconder o que o Papel não alcança — a mesma
+`podeNoCrm` de `@n1/dominio/crm/permissoes` que o backend aplica.
+
 ## Quem vê o quê na tela
 
 `GET /estado` hidrata o Espaço de Trabalho **inteiro**, sem filtro de
@@ -67,6 +87,28 @@ que a Pessoa de uma conta a pagar vê a própria conta sem que ninguém tenha
 escrito uma Grant. Um componente que filtra `state.grants` diretamente
 reintroduz o bug que 03-15 fechou: a regra muda no domínio e a tela para de
 saber, em silêncio.
+
+**O CRM é filtrado no servidor, não no cliente (Fase 7, D-10/D-14).** As
+telas de `app/(shell)/crm/{contatos,empresas,funis,negocios}` nunca
+enumeram uma coleção do `DataState`: cada lista e cada ficha vem de uma
+chamada à api, que já aplicou o Espaço de Trabalho (o `workspace_id` da
+sessão, resolvido do JWT — um registro de outro Espaço é 404) e a
+permissão do Papel (403). `usePodeNoCrm` só decide o que **mostrar** —
+botões desabilitados com o motivo, nunca escondidos de quem lê; a recusa
+de verdade é a do backend. O escopo "próprios" (vendedor vê só os seus
+Negócios) e a visibilidade de Funil privado ficaram para uma fase futura:
+`privado` é gravado e exibido, mas nenhuma regra o consulta.
+
+**Limitação aceita (D-15).** Busca global (`/buscar`), Lixeira
+(`/configuracoes/lixeira`), Notificações, `/crm/meus-negocios` e Caixa de
+Entrada continuam lendo o modelo antigo do CRM (`state.contacts`,
+`state.companies`, `state.deals`, `state.pipelines` do `DataState`) e **não
+mostram os registros da api nova**. As fichas de Contato
+(`/crm/contatos/[contato]`), Empresa (`/crm/empresas/[empresa]`) e Negócio
+(`/crm/negocios/[negocio]`) tentam a api primeiro e, num 404 cujo id existe
+no `DataState`, **abrem a tela antiga** (`features/crm/legado/*`,
+`DealScreen`) para os ids do modelo antigo. Isso fica assim até a fase de
+unificação, que aposenta o modelo em inglês e religa essas superfícies.
 
 ## Regras de estilo
 
