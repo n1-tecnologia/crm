@@ -13,6 +13,7 @@ suficiente para o domínio nunca saber que existe um banco.
 | `conexao.ts` | `carregarEnv()` lê `apps/api/.env` sem `dotenv`; `pool()` é o `Pool` do `pg`, singleton lazy. |
 | `repositorio.ts` | `hidratar()` (banco → `DataState`), `gravar()` (diff por comparação canônica de JSON), `reordenar()` (posição fracionária), `semear()` (escreve um `DataState` inteiro num Espaço vazio — base do bootstrap e da importação). |
 | `unidade-de-trabalho.ts` | `executar()`: hidratar → operação pura → revisão otimista (3 tentativas) → `gravar()`. A rota HTTP é uma casca em volta disto. |
+| `canais-projetados.ts` | A ponte de D-11: projeta os Canais de `plataforma.canais` (008) em `state.channels` para o resto do app, que ainda lê o modelo antigo. `semCanaisProjetados()` tira os projetados do estado antes de `gravar()`. |
 | `migrar.ts` + `migrar.cli.ts` | Aplica `apps/api/migracoes/NNN-*.sql` em ordem, uma vez cada, dentro de transação, registrado em `plataforma.migracoes`. |
 | `persistencia.test.ts`, `colunas-geradas.test.ts`, `integracao.test.ts`, `agenda-de-automacoes.test.ts` | Testes de integração contra Postgres real; pulam sem `DATABASE_URL` (`temBanco ? describe : describe.skip`, D-DEC-09). |
 
@@ -141,3 +142,51 @@ A importação histórica de Contas a pagar (Planos 03-09/03-10) **reusa**
 `plataforma.importacao_ledger` de `003` com `origem = 'clickup:901107637383'` —
 nenhum ledger novo nasce para este domínio, porque dois ledgers para a mesma
 reconciliação seriam duas contagens a manter iguais.
+
+## A ponte dos Canais (Fase 8)
+
+`008-canais-conversas-mensagens.sql` cria `plataforma.canais`,
+`plataforma.conversas` e `plataforma.mensagens`: **fora de
+`hidratar()`/`gravar()`**, como as de `003` e a de `005`. O resto do app ainda
+lê o Canal do modelo antigo em inglês (`state.channels`), então
+`canais-projetados.ts` é a ponte que traduz a tabela nova para ele (D-11).
+Ela entra em **dois lugares e nunca em `hidratar()`**:
+
+- `GET /estado` (`rotas/estado.ts`): o Canal relacional chega à tela com
+  `relational: true`;
+- `executar()`: logo depois de `hidratar()`, para `startConversation`,
+  `sendMessage` e o resto das operações antigas rodarem no servidor com o Canal
+  à vista. Sem isso o servidor reexecutaria o gesto da tela sobre um estado sem
+  o Canal e responderia "Canal não encontrado" (Pitfall 4).
+
+`hidratar()` fica de fora porque bootstraps, métricas e importações a chamam e
+depois podem `gravar()`, e `gravar()` copiaria o Canal projetado para
+`plataforma.registros`: duas fontes de verdade (Pitfall 3). Pelo mesmo motivo,
+`executar()` grava o estado SEM os projetados (`semCanaisProjetados`): eles
+entram no fim de `state.channels` e não estão no que `hidratar()` leu, então
+tirá-los não gera remoção nem reordena os Canais do seed. Se uma operação do
+modelo antigo **mudou** um projetado, `semCanaisProjetados` lança ("Uma
+operação alterou o Canal … da tabela própria; ele só muda pela api de Canais.")
+e a transação é desfeita: a mudança nunca é descartada em silêncio.
+`opcoes.eventos`, `aoConfirmar` e os eventos de Canal continuam recebendo o
+estado com os projetados; o payload de `automacao.notificar-canal.v1` leva o
+tipo do Canal, não o id, então o contrato não muda.
+
+Três regras que a ponte carrega:
+
+- **Guarda `to_regclass`.** Num banco sem a 008 (o da plataforma antes de
+  aplicá-la, ou um cliente falso de teste) a tabela não existe e a consulta
+  lançaria `42P01` dentro da transação. A guarda devolve lista vazia sem
+  segunda consulta; só o resultado positivo fica em cache de módulo, porque a
+  008 pode ser aplicada com o processo no ar.
+- **O id é o UUID cru da tabela.** Não colide com `chn_*` do seed nem com o
+  `syncIdSequence`; um projetado cujo id já existe no estado hidratado é
+  pulado.
+- **A escrita REST de Canal soma a revisão do Espaço** (A4): quem altera
+  `plataforma.canais` pela api de Canais incrementa a revisão de
+  `plataforma.workspaces`, e uma `executar()` em voo que projetou o estado
+  antigo cai em conflito e tenta de novo em vez de gravar por cima.
+
+A ponte some na fase de unificação, quando as telas lerem Canal, Conversa e
+Mensagem por REST e o modelo antigo deixar de existir. Provada contra o
+Postgres real em `canais-projetados.test.ts`.
