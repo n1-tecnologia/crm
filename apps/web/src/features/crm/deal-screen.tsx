@@ -65,7 +65,7 @@ import {
   TextInput,
   Toast,
 } from "@/features/shell/ui";
-import type { ChannelType, DealContactRole, FieldValue } from "@n1/dominio/types";
+import type { DealContactRole, FieldValue, Id } from "@n1/dominio/types";
 
 /** A situação do Negócio no vocabulário de cor do sistema: `perdido` não é vermelho. */
 const SITUACAO_COR: Record<string, string> = {
@@ -98,7 +98,7 @@ export function DealScreen({
   const [linkingContactId, setLinkingContactId] = useState("");
   const [confirmingReopen, setConfirmingReopen] = useState(false);
   const [desvinculando, setDesvinculando] = useState<string | null>(null);
-  const [canalDaConversa, setCanalDaConversa] = useState<ChannelType | null>(
+  const [canalDaConversa, setCanalDaConversa] = useState<Id | null>(
     null,
   );
   const [linkingRole, setLinkingRole] = useState<DealContactRole>("decisor");

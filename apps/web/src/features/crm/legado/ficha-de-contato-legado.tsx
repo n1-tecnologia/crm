@@ -24,7 +24,8 @@ import { Plus, ShieldCheck, StickyNote } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { useData, useRun } from "@/dados/store";
-import { ConversationThread, channelsOf } from "@/features/crm/conversation-thread";
+import { ConversationThread } from "@/features/crm/conversation-thread";
+import { canaisDoFio } from "@n1/dominio/derive-conversacional";
 import { TarefasDoContato } from "@/features/crm/tarefas-do-contato";
 import { NovaTarefaConversacionalDialog } from "@/features/estrutura/nova-tarefa-conversacional-dialog";
 import {
@@ -52,7 +53,7 @@ import {
   TextInput,
   Toast,
 } from "@/features/shell/ui";
-import type { ChannelType, ContactIdentifierType } from "@n1/dominio/types";
+import type { ContactIdentifierType, Id } from "@n1/dominio/types";
 import {
   addContactIdentifier,
   addContactNote,
@@ -100,7 +101,7 @@ export function FichaDeContatoLegado({ contatoId: contato }: { readonly contatoI
   const [identifierValue, setIdentifierValue] = useState("");
   const [nota, setNota] = useState("");
   const [registrandoNota, setRegistrandoNota] = useState(false);
-  const [canalDaConversa, setCanalDaConversa] = useState<ChannelType | null>(
+  const [canalDaConversa, setCanalDaConversa] = useState<Id | null>(
     null,
   );
   // C35 — a Tarefa nasce deste Contato: Lista e Canal são escolha do diálogo.
@@ -135,7 +136,7 @@ export function FichaDeContatoLegado({ contatoId: contato }: { readonly contatoI
       d.contactLinks.some((l) => l.contactId === record.id),
   );
   // Sem Canal o thread mostra só o estado vazio, e a altura de conversa sobraria.
-  const temCanal = channelsOf(record).length > 0;
+  const temCanal = canaisDoFio(state, record).some((c) => c.alcancavel);
 
   const reportar = (
     resultado: { ok: boolean; error?: string },

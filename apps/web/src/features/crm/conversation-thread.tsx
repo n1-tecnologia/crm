@@ -7,8 +7,11 @@
  * Contato e na do Negócio — e duas cópias divergiriam justamente nas regras do
  * Canal, que é onde errar custa uma Mensagem enviada fora da janela.
  *
- * As abas saem dos Identificadores do Contato: uma aba de Canal que ele não tem
- * é aba morta.
+ * As abas são por Canal (D-14): uma por Canal ativo do Espaço, e a de um Canal
+ * que o Contato não alcança fica desligada dizendo o que falta. O compositor
+ * escolhe por qual Canal responder (D-15) e o separador "via …" marca a troca
+ * de Canal numa sequência de Mensagens (D-13). Toda a conta mora em
+ * `derive-conversacional`; aqui só se desenha.
  */
 
 import Link from "next/link";
@@ -52,14 +55,23 @@ import {
   responseWindowOpenUntil,
   statusCategory,
 } from "@n1/dominio/derive";
-import { canaisDaLista, listaConversacional, listaSemCanais } from "@n1/dominio/derive-conversacional";
+import {
+  canaisDaLista,
+  canaisDoFio,
+  canalDaAbaInicial,
+  canalPadraoDeResposta,
+  listaConversacional,
+  listaSemCanais,
+  marcadoresDeCanal,
+  rotuloDoCanal,
+} from "@n1/dominio/derive-conversacional";
 import { LISTA_SEM_CANAIS } from "@n1/dominio/operations/canais";
 import { SeletorDeTipoDeTarefa } from "@/features/estrutura/seletor-de-tipo";
-import {
-  CHANNEL_TYPE_LABEL,
-  IDENTIFIER_TYPE_LABEL,
-} from "@/features/shell/format";
+import { IDENTIFIER_TYPE_LABEL } from "@/features/shell/format";
 import { ContactAvatar } from "@/features/crm/contact-card";
+import { SeletorDeCanalDeResposta } from "@/features/crm/seletor-de-canal";
+import { SeparadorDeCanal } from "@/features/crm/separador-de-canal";
+import { MarcaDeConexaoSimulada, SeloDoProvedor } from "@/features/crm/selo-do-provedor";
 import { InstagramIcon, LinkedinIcon } from "@/features/crm/brand-icons";
 import { useFormat } from "@/features/shell/use-format";
 import {
@@ -84,17 +96,6 @@ import type {
   Task,
 } from "@n1/dominio/types";
 
-/** Documento 14, 7.1 — o Identificador que cada tipo de Canal resolve. */
-const CHANNEL_OF_IDENTIFIER: Partial<
-  Record<ContactIdentifierType, ChannelType>
-> = {
-  identidadeDeWhatsApp: "whatsapp",
-  usuarioDeInstagram: "instagram",
-  perfilDeLinkedIn: "linkedin",
-  email: "email",
-  identificadorDeChatDoSite: "chatDoSite",
-};
-
 export const CHANNEL_ICON: Record<
   ChannelType,
   (props: { readonly className?: string }) => ReactNode
@@ -105,19 +106,6 @@ export const CHANNEL_ICON: Record<
   email: Mail,
   chatDoSite: Globe,
 };
-
-/**
- * A ordem das abas é da PLATAFORMA, não dos Identificadores do Contato: quem
- * atende usa sempre a mesma tela, e a aba do WhatsApp não pode mudar de lugar
- * porque este Contato tem e-mail e o outro não.
- */
-const ORDEM_DOS_CANAIS: readonly ChannelType[] = [
-  "whatsapp",
-  "instagram",
-  "linkedin",
-  "email",
-  "chatDoSite",
-];
 
 /** O Identificador que cada Canal exige, para a aba desligada dizer o que falta. */
 const IDENTIFICADOR_DO_CANAL: Record<ChannelType, ContactIdentifierType> = {
@@ -187,16 +175,6 @@ const MEDIDA_DO_BOTAO_DO_COMPOSITOR = {
   height: "var(--controle-h)",
 } as const;
 
-/** Os Canais em que este Contato pode ser alcançado, na ordem da plataforma. */
-export function channelsOf(contact: Contact): ChannelType[] {
-  const tem = new Set(
-    contact.identifiers
-      .map((identificador) => CHANNEL_OF_IDENTIFIER[identificador.type])
-      .filter((canal): canal is ChannelType => canal !== undefined),
-  );
-  return ORDEM_DOS_CANAIS.filter((canal) => tem.has(canal));
-}
-
 export function ConversationThread({
   contact,
   canalSelecionado,
@@ -204,9 +182,9 @@ export function ConversationThread({
   flush = false,
 }: {
   readonly contact: Contact;
-  /** Controlado quando a tela tem atalho de Canal fora da aba. */
-  readonly canalSelecionado?: ChannelType | null;
-  readonly onCanalChange?: (canal: ChannelType) => void;
+  /** O id do Canal da aba; controlado quando a tela tem atalho de Canal fora da aba. */
+  readonly canalSelecionado?: Id | null;
+  readonly onCanalChange?: (channelId: Id) => void;
   /** Sem moldura: o thread É o painel, como na Caixa de Entrada. */
   readonly flush?: boolean;
 }) {
@@ -226,7 +204,7 @@ export function ConversationThread({
   */
   const idDoRascunho = useId();
   const [rascunhoAberto, setRascunhoAberto] = useState(false);
-  const [canalAtivo, setCanalAtivo] = useState<ChannelType | null>(null);
+  const [canalAtivo, setCanalAtivo] = useState<Id | null>(null);
   const [draft, setDraft] = useState("");
   const [modeloId, setModeloId] = useState("");
   const [assunto, setAssunto] = useState("");
@@ -249,7 +227,7 @@ export function ConversationThread({
   const [erro, setErro] = useState<string | null>(null);
   const [agora] = useState(() => Date.now());
 
-  const canais = channelsOf(contact);
+  const fio = canaisDoFio(state, contact);
 
   // Quem controla o Canal por fora (os atalhos da ficha) espera ver o chat ao
   // clicar. Ajuste de estado durante a renderização, o padrão do React para
@@ -329,29 +307,23 @@ export function ConversationThread({
     (c) => c.contactId === contact.id && c.lifecycle === "ativo",
   );
 
-  // A aba que abre é a da conversa mais recente, não a do primeiro
-  // Identificador: abrir num Canal vazio enquanto existe conversa viva em outro
-  // esconde justamente o que a pessoa veio ver.
-  const ultimaMensagemEm = (tipo: ChannelType): string =>
-    conversas
-      .filter(
-        (c) =>
-          state.channels.find((ch) => ch.id === c.channelId)?.channelType ===
-          tipo,
-      )
-      .flatMap((c) => c.messages.map((m) => m.createdAt))
-      .sort()
-      .at(-1) ?? "";
-  const comAtividade = [...canais].sort((a, b) =>
-    ultimaMensagemEm(b).localeCompare(ultimaMensagemEm(a)),
-  );
-  const canal = canalSelecionado ?? canalAtivo ?? comAtividade[0] ?? null;
+  /*
+    D-15: a aba abre no Canal da última Mensagem recebida do Contato; sem ela,
+    D-14: no da Conversa mais recente. Depois disso a escolha é de quem atende.
+  */
+  const canalDaAba =
+    canalSelecionado ??
+    canalAtivo ??
+    canalPadraoDeResposta(state, contact) ??
+    canalDaAbaInicial(state, contact) ??
+    null;
+  const canal = canalDaAba
+    ? state.channels.find((ch) => ch.id === canalDaAba)
+    : undefined;
+  // D-14: a Conversa da aba é a deste Canal com o Contato — nunca a de outro
+  // Canal do mesmo tipo.
   const doCanal = canal
-    ? conversas.filter(
-        (c) =>
-          state.channels.find((ch) => ch.id === c.channelId)?.channelType ===
-          canal,
-      )
+    ? conversas.filter((c) => c.channelId === canal.id)
     : [];
   // A Conversa aberta é a que recebe resposta; as resolvidas ficam como histórico.
   const conversa = doCanal.find((c) => c.state !== "resolvida") ?? doCanal[0];
@@ -359,17 +331,10 @@ export function ConversationThread({
     ? state.channels.find((ch) => ch.id === conversa.channelId)
     : undefined;
 
-  /*
-    As abas continuam por tipo (D-14 é de outro plano), mas a Capacidade é do
-    Canal da Conversa (D-02): o provedor muda a janela. Sem Conversa na aba,
-    vale o primeiro Canal ativo do tipo; sem nenhum, a barra da regra some.
-  */
-  const canalDasCapacidades =
-    channel ??
-    (canal
-      ? state.channels.find((ch) => ch.channelType === canal && ch.lifecycle === "ativo")
-      : undefined);
-  const capacidades = canalDasCapacidades ? capacidadesDoCanal(canalDasCapacidades) : undefined;
+  const IconeDaAba = canal ? CHANNEL_ICON[canal.channelType] : undefined;
+
+  // A Capacidade é do Canal da aba (D-02): o provedor muda a janela.
+  const capacidades = canal ? capacidadesDoCanal(canal) : undefined;
   const abertaAte = conversa
     ? responseWindowOpenUntil(state, conversa, capacidadesDoCanal)
     : null;
@@ -394,30 +359,43 @@ export function ConversationThread({
 
   const rascunho = conversa?.drafts.find((item) => item.origin !== "membro");
 
-  // O Canal ATIVO da aba: é nele que o atendimento abre e que a Tarefa
-  // conversacional nasce — uma resolução só, para os dois gestos concordarem.
-  const canalAtivoId = (): Id | undefined =>
-    canal
-      ? state.channels.find(
-          (ch) => ch.channelType === canal && ch.lifecycle === "ativo",
-        )?.id
-      : undefined;
-
+  // O Canal da aba é onde o atendimento abre e onde a Tarefa conversacional
+  // nasce — um id só, para os dois gestos concordarem.
   const abrirAtendimento = () => {
-    const channelId = canalAtivoId();
-    if (!channelId) {
+    if (!canal) {
       setAviso(null);
-      setErro(
-        `Nenhum Canal ativo de ${canal ? CHANNEL_TYPE_LABEL[canal] : "atendimento"}.`,
-      );
+      setErro("Nenhum Canal ativo para abrir atendimento.");
       return;
     }
     const resultado = run((data, memberId) =>
-      startConversation(data, memberId, channelId, contact.id),
+      startConversation(data, memberId, canal.id, contact.id),
     );
     if (resultado.ok) {
       setErro(null);
       setAviso("Atendimento aberto.");
+    } else {
+      setAviso(null);
+      setErro(resultado.error);
+    }
+  };
+
+  /*
+    D-15 — "Responder por": abre (ou reutiliza) a Conversa do par (Canal,
+    Contato) e muda a aba. O Canal de nenhuma Conversa existente muda
+    (INV-CXE-04): quem decide se a Conversa existe é `startConversation`.
+  */
+  const trocarCanalDeResposta = (channelId: Id) => {
+    const resultado = run((data, memberId) =>
+      startConversation(data, memberId, channelId, contact.id),
+    );
+    if (resultado.ok) {
+      const escolhido = state.channels.find((ch) => ch.id === channelId);
+      setCanalAtivo(channelId);
+      onCanalChange?.(channelId);
+      setDraft("");
+      setAdotado(null);
+      setErro(null);
+      setAviso(`Respondendo por ${escolhido ? rotuloDoCanal(escolhido) : "outro Canal"}.`);
     } else {
       setAviso(null);
       setErro(resultado.error);
@@ -463,11 +441,11 @@ export function ConversationThread({
     setConfirmandoEnvio(false);
   };
 
-  if (canais.length === 0) {
+  if (!fio.some((c) => c.alcancavel)) {
     return (
       <EmptyState
-        title="Este Contato não tem Canal."
-        hint="Sem Identificador de Canal não há por onde conversar."
+        title="Nenhum Canal deste Espaço alcança este Contato."
+        hint="Sem um Identificador do tipo de um Canal ativo não há por onde conversar."
       />
     );
   }
@@ -476,7 +454,7 @@ export function ConversationThread({
     <div className={cn("flex h-full min-h-0 flex-col", !flush && "painel")}>
       <ConfirmDialog
         open={confirmandoEnvio}
-        title={`Enviar a ${contactDisplayName(contact)} por ${canal ? CHANNEL_TYPE_LABEL[canal] : ""}?`}
+        title={`Enviar a ${contactDisplayName(contact)} por ${canal ? rotuloDoCanal(canal) : ""}?`}
         description={`Esta Mensagem sai da plataforma.${
           adotado ? " O Rascunho adotado deixa de existir ao enviar." : ""
         } Depois de enviada, nada aqui a apaga do lado de quem recebeu.`}
@@ -519,27 +497,24 @@ export function ConversationThread({
         style={{ borderBottom: "1px solid var(--linha)" }}
       >
         {/*
-          A fileira mostra TODOS os Canais da plataforma, sempre na mesma ordem.
-          Os que este Contato não alcança vêm desligados dizendo por quê, em vez
-          de sumirem: uma barra que muda de tamanho a cada Contato faz procurar
-          a aba, e some justamente com a informação de que falta um
-          Identificador.
+          D-14 — a fileira mostra uma aba por Canal ativo do Espaço, sempre na
+          mesma ordem. Os que este Contato não alcança vêm desligados dizendo
+          por quê, em vez de sumirem: uma barra que muda de tamanho a cada
+          Contato faz procurar a aba, e some justamente com a informação de que
+          falta um Identificador.
         */}
-        {ORDEM_DOS_CANAIS.map((tipo) => {
-          const IconeDoCanal = CHANNEL_ICON[tipo];
-          const alcancavel = canais.includes(tipo);
+        {fio.map(({ canal: canalDaFileira, alcancavel }) => {
+          const IconeDoCanal = CHANNEL_ICON[canalDaFileira.channelType];
           const quantas = conversas.filter(
-            (c) =>
-              state.channels.find((ch) => ch.id === c.channelId)
-                ?.channelType === tipo,
+            (c) => c.channelId === canalDaFileira.id,
           ).length;
-          const ativa = canal === tipo;
+          const ativa = canal?.id === canalDaFileira.id;
           const motivo = alcancavel
             ? undefined
-            : `Este Contato não tem ${IDENTIFIER_TYPE_LABEL[IDENTIFICADOR_DO_CANAL[tipo]] ?? "Identificador"}.`;
+            : `Este Contato não tem ${IDENTIFIER_TYPE_LABEL[IDENTIFICADOR_DO_CANAL[canalDaFileira.channelType]] ?? "Identificador"}.`;
           return (
             <button
-              key={tipo}
+              key={canalDaFileira.id}
               type="button"
               role="tab"
               aria-selected={ativa}
@@ -548,9 +523,9 @@ export function ConversationThread({
               onClick={
                 alcancavel
                   ? () => {
-                      setCanalAtivo(tipo);
+                      setCanalAtivo(canalDaFileira.id);
                       setRegistro(null);
-                      onCanalChange?.(tipo);
+                      onCanalChange?.(canalDaFileira.id);
                       setDraft("");
                       setAdotado(null);
                     }
@@ -568,7 +543,7 @@ export function ConversationThread({
             >
               {/* Ícone de marca não é Lucide: recebe a medida do sistema pela classe. */}
               <IconeDoCanal className="size-[var(--icone-sm)] shrink-0" aria-hidden="true" />
-              {CHANNEL_TYPE_LABEL[tipo]}
+              {rotuloDoCanal(canalDaFileira)}
               {quantas > 0 ? <Contador valor={quantas} /> : null}
               {motivo ? <span className="sr-only">{motivo}</span> : null}
             </button>
@@ -652,10 +627,11 @@ export function ConversationThread({
         ))}
       </div>
 
-      {/* ── a regra do Canal, dita onde ela morde ── */}
-      {capacidades && registro !== "meet" ? (
-        <p
-          className="app-sm shrink-0 px-3 py-2"
+      {/* ── o Canal da aba e a regra dele, ditos onde ela morde (D-13) ── */}
+      {canal && IconeDaAba && capacidades && registro !== "meet" ? (
+        <div
+          data-regra-do-canal="true"
+          className="app-sm flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2"
           style={
             janelaFechada || channel?.connection === "comErro"
               ? {
@@ -666,18 +642,25 @@ export function ConversationThread({
               : { color: "var(--texto-3)" }
           }
         >
-          {channel ? `${channel.name} · ` : ""}
-          {capacidades.responseWindowHours === undefined
-            ? "sem janela de resposta"
-            : janelaFechada && abertaAte
-              ? `janela expirada em ${fmt.instant(abertaAte.toISOString())} — só Mensagem de modelo aprovada`
-              : abertaAte
-                ? `janela de resposta até ${fmt.instant(abertaAte.toISOString())}`
-                : `janela de ${capacidades.responseWindowHours}h após a Mensagem recebida`}
-          {channel?.connection === "comErro"
-            ? " · Canal com erro de conexão"
-            : ""}
-        </p>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <IconeDaAba className="size-[var(--icone-xs)] shrink-0" aria-hidden="true" />
+            <span className="truncate font-medium">{canal.name}</span>
+          </span>
+          <SeloDoProvedor canal={canal} />
+          <MarcaDeConexaoSimulada canal={canal} />
+          <span>
+            {capacidades.responseWindowHours === undefined
+              ? "sem janela de resposta"
+              : janelaFechada && abertaAte
+                ? `janela expirada em ${fmt.instant(abertaAte.toISOString())} — só Mensagem de modelo aprovada`
+                : abertaAte
+                  ? `janela de resposta até ${fmt.instant(abertaAte.toISOString())}`
+                  : `janela de ${capacidades.responseWindowHours}h após a Mensagem recebida`}
+            {channel?.connection === "comErro"
+              ? " · Canal com erro de conexão"
+              : ""}
+          </span>
+        </div>
       ) : null}
 
       {registro !== null ? (
@@ -831,17 +814,17 @@ export function ConversationThread({
                   recusaria a conversacional sem Contato — aqui ele já está.
                 */
                 const conversacional = listaConversacional(state, listaDaTarefa);
-                // C36 — a Tarefa nasce por um canal de atendimento da Lista: o
-                // canal DELA do tipo desta aba, não qualquer Canal do tipo.
+                // C36 por Canal — a Tarefa nasce por um canal de atendimento da
+                // Lista, e só pelo Canal desta aba (não por outro do mesmo tipo).
                 const channelId = conversacional
-                  ? canaisDaLista(state, listaDaTarefa).find((ch) => ch.channelType === canal)?.id
+                  ? canaisDaLista(state, listaDaTarefa).find((ch) => ch.id === canal?.id)?.id
                   : undefined;
                 if (conversacional && !channelId) {
                   setAviso(null);
                   setErro(
                     listaSemCanais(state, listaDaTarefa)
                       ? LISTA_SEM_CANAIS
-                      : `Esta Lista não atende por ${canal ? CHANNEL_TYPE_LABEL[canal] : "este Canal"}.`,
+                      : `Esta Lista não atende por “${canal?.name ?? "este Canal"}”.`,
                   );
                   return;
                 }
@@ -883,7 +866,7 @@ export function ConversationThread({
                 A Tarefa nasce dentro de uma Lista, e é ela que define o Status
                 inicial.
                 {listaDaTarefa && listaConversacional(state, listaDaTarefa)
-                  ? ` Nesta Lista ela nasce com ${contact.firstName} e a conversa de ${canal ? CHANNEL_TYPE_LABEL[canal] : "este Canal"}.`
+                  ? ` Nesta Lista ela nasce com ${contact.firstName} e a conversa do Canal “${canal?.name ?? "este Canal"}”.`
                   : ""}
               </p>
               <label className="sr-only" htmlFor="titulo-da-tarefa">
@@ -915,8 +898,8 @@ export function ConversationThread({
                       ? undefined
                       : listaSemCanais(state, lista.id)
                         ? LISTA_SEM_CANAIS
-                        : canal && !canaisDaLista(state, lista.id).some((ch) => ch.channelType === canal)
-                          ? `Esta Lista não atende por ${CHANNEL_TYPE_LABEL[canal]}.`
+                        : canal && !canaisDaLista(state, lista.id).some((ch) => ch.id === canal.id)
+                          ? `Esta Lista não atende por “${canal.name}”.`
                           : undefined;
                     return {
                       value: lista.id,
@@ -978,12 +961,12 @@ export function ConversationThread({
           >
             {!conversa ? (
               <EmptyState
-                title={`Nenhuma Conversa em ${canal ? CHANNEL_TYPE_LABEL[canal] : ""}.`}
+                title={`Nenhuma Conversa em ${canal ? rotuloDoCanal(canal) : "nenhum Canal"}.`}
                 hint="A Conversa nasce quando a Mensagem do Contato chega — ou agora, se você abrir o atendimento."
                 action={
                   <Button
                     onClick={abrirAtendimento}
-                    disabled={canal === null}
+                    disabled={canal === undefined}
                     disabledReason="Este Contato não tem Canal."
                   >
                     Abrir atendimento
@@ -991,9 +974,25 @@ export function ConversationThread({
                 }
               />
             ) : (
-              [...conversa.messages]
-                .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-                .map((mensagem) => {
+              marcadoresDeCanal(
+                [...conversa.messages]
+                  .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+                  .map((mensagem) => ({ channelId: conversa.channelId, mensagem })),
+              ).map((marcador, posicao) => {
+                  // D-13: o separador "via …" só aparece quando a sequência troca de
+                  // Canal; numa aba por Canal ela é de um Canal só. Bolhas sem selo.
+                  if (marcador.tipo === "via") {
+                    const canalDoMarcador = state.channels.find(
+                      (ch) => ch.id === marcador.channelId,
+                    );
+                    return canalDoMarcador ? (
+                      <SeparadorDeCanal
+                        key={`via-${posicao}`}
+                        canal={canalDoMarcador}
+                      />
+                    ) : null;
+                  }
+                  const { mensagem } = marcador.item;
                   const saiu = mensagem.direction === "enviada";
                   const interna = mensagem.direction === "interna";
                   /*
@@ -1158,6 +1157,13 @@ export function ConversationThread({
           {/* ── compositor ── */}
           <div className="shrink-0" style={{ borderTop: "1px solid var(--linha)" }}>
             <div className="px-3 pt-3 empty:hidden">
+              <div className="mb-2">
+                <SeletorDeCanalDeResposta
+                  contact={contact}
+                  canalId={canal?.id ?? null}
+                  onTrocar={trocarCanalDeResposta}
+                />
+              </div>
               {aviso ? (
                 <p role="status" className="app-sm mb-2" style={{ color: "var(--sucesso)" }}>
                   {aviso}

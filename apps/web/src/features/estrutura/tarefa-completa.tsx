@@ -166,7 +166,7 @@ import {
   cn,
 } from "@/features/shell/ui";
 import type { DataState } from "@n1/dominio/state";
-import type { ActorRef, ChannelType } from "@n1/dominio/types";
+import type { ActorRef, Id } from "@n1/dominio/types";
 
 
 /** A faixa de aviso entre o cabeçalho e o corpo: arquivada, na lixeira, somente leitura. */
@@ -238,7 +238,7 @@ export function TarefaCompleta({
    * abaixo do fio e só se abre por inteiro na terceira coluna; o Negócio
    * troca por um editor que a própria linha abre e fecha.
    */
-  const [canalDoFio, setCanalDoFio] = useState<ChannelType | null>(null);
+  const [canalDoFio, setCanalDoFio] = useState<Id | null>(null);
   const [atividadeAberta, setAtividadeAberta] = useState(false);
   // O toggle "Atividade N" do cabeçalho da Conversa: empilhada, recolher a
   // Atividade pelo chevron do aside esconde o aside inteiro (e o chevron com
@@ -2121,7 +2121,7 @@ export function TarefaCompleta({
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto @max-4xl:overflow-visible">
               <ConversationThread
                 contact={contato}
-                canalSelecionado={canalDoFio ?? canal?.channelType ?? null}
+                canalSelecionado={canalDoFio ?? canal?.id ?? null}
                 onCanalChange={setCanalDoFio}
                 flush
               />

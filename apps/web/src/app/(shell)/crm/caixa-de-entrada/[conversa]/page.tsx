@@ -63,7 +63,7 @@ import {
   Toast,
 } from "@/features/shell/ui";
 import type { DataState } from "@n1/dominio/state";
-import type { ActorRef, ChannelType } from "@n1/dominio/types";
+import type { ActorRef, Id } from "@n1/dominio/types";
 
 export default function ConversaPage({ params }: { params: Promise<{ conversa: string }> }) {
   const { conversa } = use(params);
@@ -82,7 +82,7 @@ export default function ConversaPage({ params }: { params: Promise<{ conversa: s
     mudava o estado interno do thread e a prop o desfazia. Ao trocar de
     Conversa pela lista, a aba volta para o Canal da nova.
   */
-  const [canal, setCanal] = useState<ChannelType | null>(null);
+  const [canal, setCanal] = useState<Id | null>(null);
   const [conversaVista, setConversaVista] = useState(conversa);
   if (conversaVista !== conversa) {
     setConversaVista(conversa);
@@ -428,7 +428,7 @@ export default function ConversaPage({ params }: { params: Promise<{ conversa: s
             <div className="min-h-0 flex-1">
               <ConversationThread
                 contact={contact}
-                canalSelecionado={canal ?? channel.channelType}
+                canalSelecionado={canal ?? channel.id}
                 onCanalChange={setCanal}
                 flush
               />

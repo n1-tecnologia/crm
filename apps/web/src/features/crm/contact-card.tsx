@@ -32,11 +32,12 @@ import {
 } from "lucide-react";
 import { useData, useRun } from "@/dados/store";
 import { contactDisplayName, contactDisplayRole, principalCompanyId } from "@n1/dominio/derive";
+import { canalPadraoDoTipo } from "@n1/dominio/derive-conversacional";
 import { capacidadesDoCanal, setContactCatalogValue } from "@n1/dominio/operations";
 import { IDENTIFIER_TYPE_LABEL } from "@/features/shell/format";
 import { Icone, Pilula, RecordPanel, Select, cn } from "@/features/shell/ui";
 import { InstagramIcon, LinkedinIcon, TikTokIcon } from "@/features/crm/brand-icons";
-import type { ChannelType, Contact, ContactIdentifierType } from "@n1/dominio/types";
+import type { Contact, ContactIdentifierType, Id } from "@n1/dominio/types";
 
 
 /**
@@ -280,10 +281,11 @@ export function ContactQuickActions({
   onNota,
 }: {
   readonly contact: Contact;
-  /** Leva à aba do Canal na conversa; ausente quando a tela não tem conversa. */
-  readonly onCanal?: (canal: ChannelType) => void;
+  /** Leva à aba do Canal padrão do tipo (WhatsApp, e-mail) na conversa; ausente quando a tela não tem conversa. */
+  readonly onCanal?: (channelId: Id) => void;
   readonly onNota?: () => void;
 }) {
+  const state = useData((data) => data);
   const acoes: Array<{
     readonly chave: string;
     readonly rotulo: string;
@@ -306,24 +308,38 @@ export function ContactQuickActions({
       : { indisponivel: "Este Contato não tem telefone." }),
   });
 
+  // D-14/D-15: a ação leva à aba do Canal padrão do tipo (a da última recebida
+  // entre os Canais conectados que alcançam o Contato), não ao "primeiro do tipo".
+  const canalDeWhatsApp = canalPadraoDoTipo(state, contact, "whatsapp");
   const whatsapp = porTipo("identidadeDeWhatsApp");
   acoes.push({
     chave: "whatsapp",
     rotulo: "WhatsApp",
     icone: <Icone de={MessageCircle} tamanho="md" />,
-    ...(whatsapp && onCanal
-      ? { onClick: () => onCanal("whatsapp") }
-      : { indisponivel: "Este Contato não tem WhatsApp." }),
+    ...(whatsapp && onCanal && canalDeWhatsApp
+      ? { onClick: () => onCanal(canalDeWhatsApp) }
+      : {
+          indisponivel:
+            whatsapp && onCanal
+              ? "Nenhum Canal de WhatsApp ativo alcança este Contato."
+              : "Este Contato não tem WhatsApp.",
+        }),
   });
 
+  const canalDeEmail = canalPadraoDoTipo(state, contact, "email");
   const email = porTipo("email");
   acoes.push({
     chave: "email",
     rotulo: "E-mail",
     icone: <Icone de={Mail} tamanho="md" />,
-    ...(email && onCanal
-      ? { onClick: () => onCanal("email") }
-      : { indisponivel: "Este Contato não tem e-mail." }),
+    ...(email && onCanal && canalDeEmail
+      ? { onClick: () => onCanal(canalDeEmail) }
+      : {
+          indisponivel:
+            email && onCanal
+              ? "Nenhum Canal de e-mail ativo alcança este Contato."
+              : "Este Contato não tem e-mail.",
+        }),
   });
 
   const linkedin = porTipo("perfilDeLinkedIn");

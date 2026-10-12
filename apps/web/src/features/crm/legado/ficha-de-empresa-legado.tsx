@@ -37,7 +37,8 @@ import {
 } from "@n1/dominio/operations";
 import { contactDisplayName } from "@n1/dominio/derive";
 import type { Contact } from "@n1/dominio/types";
-import { ConversationThread, channelsOf } from "@/features/crm/conversation-thread";
+import { ConversationThread } from "@/features/crm/conversation-thread";
+import { canaisDoFio } from "@n1/dominio/derive-conversacional";
 import {
   ActionMenu,
   Button,
@@ -118,7 +119,8 @@ export function FichaDeEmpresaLegado({ empresaId: empresa }: { readonly empresaI
     ) ??
     interlocutores[0];
   // Sem Canal o thread mostra só o estado vazio, e a altura de conversa sobraria.
-  const temCanal = interlocutor !== undefined && channelsOf(interlocutor).length > 0;
+  const temCanal =
+    interlocutor !== undefined && canaisDoFio(state, interlocutor).some((c) => c.alcancavel);
 
   const somenteLeitura = record.lifecycle !== "ativo";
 
