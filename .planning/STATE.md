@@ -362,6 +362,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 ### Roadmap Evolution
 
 - Phase 7 added (2026-10-09): CRM (backend e frontend) — CRUD de Contatos, Empresas, Funis e Negócios, do domínio à tela, sobre `007-crm.sql`
+- Phase 8 added (2026-10-12): Canais de comunicação — escolher e conectar Canais (WhatsApp oficial/não oficial, Instagram, E-mail) com orientação por tipo (mockup), mais de um Canal por tipo, Canal/Conversa/Mensagem no Postgres (008) e o chat ciente do Canal de origem/resposta; sem provedor real
 
 ### Decisions
 

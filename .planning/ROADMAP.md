@@ -23,6 +23,7 @@ Fase 0 e Fase 1 correm em paralelo: o que resta da Fase 0 não bloqueia terminar
 - [x] **Phase 5: Contas a receber e os outros tenants** - Marcos Paulo e Family Office como Empresas do Campo `Empresa`; Contas a receber na forma que D7 determinar; notificar por Canal (gaps_found 2026-09-24 — fechamento de lacunas 05-13..05-25 planejado) (completed 2026-09-25)
 - [x] **Phase 6: Conferência do Resumo e anexos** - Os Fluxos 5, 6 e 7 da documentação v2 na plataforma: o Agente publica o Resumo ANTES do lançamento, aberto ao Financeiro; conferência por clique ou "ok" no fio, ajuste vira Resumo revisado; o lançamento só sai com conferência, com a categoria confirmada e os anexos no Omie; S5/S6 na Solicitação (planejado 2026-09-29, à mão, a partir dos docs 09 e 10) (completed 2026-09-30)
 - [x] **Phase 7: CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)** - CRUD de ponta a ponta: regras no `@n1/dominio`, `apps/api` sobre a migração 007 e as telas no `apps/web` para criar, listar, editar e excluir direto pela interface (completed 2026-10-11)
+- [ ] **Phase 8: Canais de comunicação: conexão e omnichannel preparado** - Tela de escolha do Canal e orientação (mockup) por tipo — WhatsApp oficial e não oficial, Instagram, E-mail —, mais de um Canal por tipo; Canal/Conversa/Mensagem modelados no Postgres (migração 008) com rotas REST; o chat mostra de qual Canal a Mensagem veio e por qual responde. Sem provedor real.
 
 ## Phase Details
 
@@ -473,6 +474,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 → 6 (0 e 1 em
 | 5. Contas a receber e os outros tenants | 25/25 | Complete    | 2026-09-25 |
 | 6. Conferência do Resumo e anexos | 22/22 | Complete   | 2026-09-30 |
 | 7. CRM: Contatos, Empresas, Funis e Negócios (backend e frontend) | 13/13 | Complete   | 2026-10-11 |
+| 8. Canais de comunicação: conexão e omnichannel preparado | 0/0 | Not started |  |
 
 ### Phase 7: CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)
 
@@ -514,6 +516,16 @@ Plans:
 - [x] 07-13-PLAN.md — A 007 no banco da plataforma com a conferência de D-12 (dono) e a UAT `[BLOCKING]` (CRM-V1, CRM-W1, CRM-W2)
 
 **Ondas de execução:** 1 → [07-01] · 2 → [07-02] · 3 → [07-03, 07-04] · 4 → [07-05, 07-06] · 5 → [07-07, 07-08, 07-09] · 6 → [07-10] · 7 → [07-11] · 8 → [07-12] · 9 → [07-13]
+
+### Phase 8: Canais de comunicação: conexão e omnichannel preparado
+
+**Goal:** O campo preparado para o omnichannel, sem integrar nenhum provedor de verdade. Em `apps/web`, uma tela onde o Administrador escolhe qual Canal vai conectar (WhatsApp oficial, WhatsApp não oficial, Instagram, E-mail) e, para cada tipo, uma tela de orientação de como conectar — por enquanto um mockup por tipo, a ser configurado quando a integração chegar. O Espaço de Trabalho pode ter mais de um Canal, inclusive mais de um WhatsApp (um oficial e um não oficial lado a lado). Começa pelo domínio: o Canal ganha o provedor/variante (oficial × não oficial) e o estado de conexão em dois atos (`desconectada` → `conectada`, ontologia 12.2), em vez de nascer `conectada` como hoje (C36). Em `apps/api`, a modelagem relacional de Canal, Conversa e Mensagem no Postgres (migração 008, no padrão da 007), incluindo a Mensagem recebida de cada Canal como será renderizada depois — ids externos do provedor, direção, status de entrega, anexos — e as rotas REST por recurso. No chat (Caixa de Entrada e fio da Conversa), toda Mensagem mostra por qual Canal chegou e quem responde escolhe por qual Canal responde — hoje a aba é por TIPO de Canal, o que não distingue dois WhatsApps. Esquema omnichannel tradicional; nada inventado.
+**Requirements**: TBD (derivar em `/gsd-discuss-phase 8` e `08-RESEARCH.md`, como na Fase 7)
+**Depends on:** Phase 7 (Contato e a 007: a Conversa aponta para o Contato relacional); independe das fases abertas 2 e 4
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-discuss-phase 8, depois /gsd-plan-phase 8)
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*
