@@ -1,10 +1,34 @@
 /**
- * A Mensagem do CRM novo — esqueleto do passo RED (08-05, Task 2). Os tipos e as
- * constantes já são os definitivos; as funções ainda não decidem nada.
+ * A Mensagem do CRM novo. Tipos camelCase dos campos de `plataforma.mensagens`
+ * (008; ontologia 7.6), mais as regras que valem dos dois lados da fronteira —
+ * a tela pré-valida e o endpoint aplica as MESMAS funções.
+ *
+ * Convive com o `Message` inglês de `types/crm.ts` até a fase de unificação
+ * (D-11). Decisões do modelo:
+ *   - `carga_bruta` (o que o provedor entregou, cru) existe só no banco e no
+ *     caminho interno de ingestão (`MensagemRecebidaDoProvedor`). O tipo público
+ *     `Mensagem` não a carrega: ela é dado pessoal (A9) e a anonimização futura
+ *     precisa zerá-la, então nada que sai pela api pode depender dela.
+ *   - A Mensagem `recebida` não nasce por rota humana: `DIRECOES_DE_ENVIO` é o
+ *     que uma pessoa manda e é a fonte do `z.enum` da rota (T-08-22).
+ *   - `validarEnvio` é RN-CXE-19 por (tipo, provedor): quem chama entrega as
+ *     capacidades do Canal (`capacidadesDoCanal`), e a regra não conhece
+ *     provedor. B69 mora em `statusInicialDeEnvio`.
+ * Nenhum tipo aqui carrega `workspaceId`.
+ *
+ * Os valores discretos abaixo são cópia literal da 008 (`satisfies` impede que
+ * a constante e o tipo divirjam entre si):
+ *   - `DirecaoDaMensagem`     → `mensagens_direcao_ck`
+ *   - `TipoDeAtorDaMensagem`  → `mensagens_ator_ck`
+ *   - `StatusDeEntrega`       → `mensagens_status_ck`
+ *
+ * Sem barril: `src/index.ts` não reexporta este módulo. Quem precisa importa
+ * pelo subcaminho `@n1/dominio/crm/mensagens`.
  */
 
-import type { OperationResult } from "../state";
+import { fail, ok, type OperationResult } from "../state";
 import type { ConexaoDoCanal } from "./canais";
+import { LIMITES_CRM } from "./comum";
 
 export const DIRECOES_DA_MENSAGEM = ["recebida", "enviada", "interna"] as const satisfies readonly DirecaoDaMensagem[];
 export type DirecaoDaMensagem = "recebida" | "enviada" | "interna";
@@ -96,25 +120,75 @@ export interface MensagemRecebidaDoProvedor {
   readonly cargaBruta: unknown;
 }
 
-export function validarNovaMensagem(_entrada: NovaMensagem): OperationResult<NovaMensagem> {
-  throw new Error("validarNovaMensagem: ainda não implementada");
+/**
+ * Uma Mensagem que uma pessoa manda: `enviada` ao Contato ou `interna` (nota,
+ * B67). Texto obrigatório — anexos ainda não entram por aqui (INV-CXE-07 pede
+ * conteúdo ou anexo, e só o conteúdo existe nesta fase).
+ */
+export function validarNovaMensagem(entrada: NovaMensagem): OperationResult<NovaMensagem> {
+  if (entrada.conversaId.trim() === "") return fail("Escolha a Conversa da Mensagem.", "conversaId");
+  if (!(DIRECOES_DE_ENVIO as readonly string[]).includes(entrada.direcao)) {
+    return fail("Uma Mensagem recebida não é criada por uma pessoa.", "direcao");
+  }
+  if (entrada.conteudo.trim() === "") return fail("Escreva a mensagem antes de enviar.", "conteudo");
+  if (entrada.conteudo.length > LIMITES_CRM.textoLongo) {
+    return fail(`A Mensagem vai até ${LIMITES_CRM.textoLongo} caracteres.`, "conteudo");
+  }
+  return ok(entrada);
 }
 
 export interface EntradaDeEnvio {
+  /** As Capacidades do Canal (`capacidadesDoCanal`): a regra não conhece o provedor. */
   readonly capacidades: {
     readonly responseWindowHours?: number;
     readonly requiresTemplateOutsideWindow: boolean;
   };
+  /** O `criadoEm` da última Mensagem `recebida` da Conversa; `null` se nunca recebeu. */
   readonly ultimaRecebidaEm: string | null;
+  /** O instante do envio, em milissegundos — vem de quem chama, para a regra ser pura. */
   readonly agora: number;
   readonly modeloId?: string;
+  /** Os ids, no provedor, dos modelos aprovados do Canal. A api passa `[]` nesta fase. */
   readonly modelosAprovados: readonly string[];
 }
 
-export function validarEnvio(_entrada: EntradaDeEnvio): OperationResult<void> {
-  throw new Error("validarEnvio: ainda não implementada");
+/**
+ * RN-CXE-19: fora da janela de resposta, só uma Mensagem de modelo aprovada
+ * sai — e a recusa vem ANTES de gravar, para qualquer ator. A janela só existe
+ * depois da primeira recebida, e vale até o instante do fim (a mesma conta de
+ * `sendMessage`). Capacidades sem exigência de modelo (WhatsApp não oficial,
+ * E-mail, Instagram, Chat do site) liberam texto livre a qualquer hora.
+ */
+export function validarEnvio(entrada: EntradaDeEnvio): OperationResult<void> {
+  const { capacidades, ultimaRecebidaEm, agora, modeloId, modelosAprovados } = entrada;
+  if (!capacidades.requiresTemplateOutsideWindow) return ok(undefined);
+  const horas = capacidades.responseWindowHours;
+  if (horas === undefined || ultimaRecebidaEm === null) return ok(undefined);
+  const fimDaJanela = Date.parse(ultimaRecebidaEm) + horas * 3_600_000;
+  if (agora <= fimDaJanela) return ok(undefined);
+
+  if (modelosAprovados.length === 0) {
+    return fail(
+      "Este Canal não tem Mensagem de modelo aprovada: não dá para enviar fora da janela de resposta.",
+      "modelo",
+    );
+  }
+  if (modeloId === undefined || modeloId === "") {
+    return fail(
+      "A janela de resposta deste Canal expirou. Só é possível enviar uma Mensagem de modelo aprovada.",
+      "modelo",
+    );
+  }
+  if (!modelosAprovados.includes(modeloId)) {
+    return fail("Escolha uma Mensagem de modelo aprovada pelo provedor.", "modelo");
+  }
+  return ok(undefined);
 }
 
-export function statusInicialDeEnvio(_conexao: ConexaoDoCanal): StatusDeEntrega {
-  throw new Error("statusInicialDeEnvio: ainda não implementada");
+/**
+ * B69: com o Canal fora do ar a Mensagem é guardada `pendente` — nunca
+ * descartada em silêncio. Só um Canal `conectada` a dá como `enviada`.
+ */
+export function statusInicialDeEnvio(conexao: ConexaoDoCanal): StatusDeEntrega {
+  return conexao === "conectada" ? "enviada" : "pendente";
 }
