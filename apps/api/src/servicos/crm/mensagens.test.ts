@@ -118,6 +118,15 @@ describeComBanco("ServicoDeMensagens — Postgres local", () => {
     expect(await contar(outro.ws)).toBe(0);
   });
 
+  it("registrarRecebida recusa com 400 o que o banco recusaria: id externo vazio, instante inválido, sem conteúdo nem anexo", async () => {
+    const c = await espaco("guarda");
+    const base = { conversaId: c.comercial.conversaId, idExterno: "wamid.x", criadoEm: horasAtras(1), conteudo: "oi", cargaBruta: {} };
+    expect(recusado(await servico.registrarRecebida(c.ws, { ...base, idExterno: " " }))).toMatchObject({ status: 400, codigo: "VALOR_INVALIDO", campo: "idExterno" });
+    expect(recusado(await servico.registrarRecebida(c.ws, { ...base, criadoEm: "ontem" }))).toMatchObject({ status: 400, campo: "criadoEm" });
+    expect(recusado(await servico.registrarRecebida(c.ws, { ...base, conteudo: "  " }))).toMatchObject({ status: 400, campo: "conteudo" });
+    expect(await contar(c.ws)).toBe(0);
+  });
+
   it("WhatsApp oficial com recebida de 30 h: enviada dá 409 JANELA_EXPIRADA (campo modelo); interna passa sem status", async () => {
     const c = await espaco("janela");
     valor(await receber(c.ws, c.comercial.conversaId));
