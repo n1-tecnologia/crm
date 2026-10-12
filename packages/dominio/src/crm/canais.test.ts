@@ -11,7 +11,7 @@ import {
   ehProvedorDeCanal,
   provedorDoCanal,
 } from "../provedores-de-canal";
-import { validarNovoCanal } from "./canais";
+import { proximaConexao, validarArquivamento, validarEdicaoDeCanal, validarNovoCanal } from "./canais";
 
 describe("validarNovoCanal", () => {
   it.each(["whatsapp-cloud", "whatsapp-nao-oficial"] as const)("%s deriva o tipo whatsapp e o número canônico", (provedor) => {
@@ -91,5 +91,71 @@ describe("tabela de provedores (D-01)", () => {
     expect(PROVEDORES["whatsapp-cloud"]).toEqual({ tipo: "whatsapp", rotulo: "WhatsApp oficial", selo: "oficial" });
     expect(PROVEDORES["whatsapp-nao-oficial"].selo).toBe("não oficial");
     expect(PROVEDORES["email-imap-smtp"].selo).toBe("IMAP/SMTP");
+  });
+});
+
+describe("proximaConexao (D-08, ontologia 12.2)", () => {
+  it.each(["desconectada", "com_erro"] as const)("simular a partir de %s conecta, marcando a conexão como simulada", (conexao) => {
+    expect(proximaConexao({ conexao, estado: "ativo" }, "simular_conexao")).toEqual({
+      ok: true,
+      value: { conexao: "conectada", conexaoSimulada: true },
+    });
+  });
+
+  it("simular um Canal já conectado falha", () => {
+    expect(proximaConexao({ conexao: "conectada", estado: "ativo" }, "simular_conexao")).toMatchObject({
+      ok: false,
+      error: "O Canal já está conectado.",
+    });
+  });
+
+  it("simular um Canal arquivado falha", () => {
+    expect(proximaConexao({ conexao: "desconectada", estado: "arquivado" }, "simular_conexao")).toMatchObject({
+      ok: false,
+      error: "Um Canal arquivado não se conecta.",
+    });
+  });
+
+  it("desconectar um Canal conectado o leva a desconectada e apaga a marca de simulada", () => {
+    expect(proximaConexao({ conexao: "conectada", estado: "ativo" }, "desconectar")).toEqual({
+      ok: true,
+      value: { conexao: "desconectada", conexaoSimulada: false },
+    });
+  });
+
+  it("desconectar um Canal desconectado falha", () => {
+    expect(proximaConexao({ conexao: "desconectada", estado: "ativo" }, "desconectar")).toMatchObject({
+      ok: false,
+      error: "O Canal já está desconectado.",
+    });
+  });
+});
+
+describe("validarArquivamento (11.1)", () => {
+  it("Canal arquivado não arquiva de novo", () => {
+    expect(validarArquivamento({ estado: "arquivado" })).toMatchObject({ ok: false, error: "O Canal já está arquivado." });
+  });
+
+  it("Canal ativo arquiva", () => {
+    expect(validarArquivamento({ estado: "ativo" }).ok).toBe(true);
+  });
+});
+
+describe("validarEdicaoDeCanal (INV-CXE-02)", () => {
+  it("nome em branco → campo nome", () => {
+    expect(validarEdicaoDeCanal({ nome: "  " })).toMatchObject({ ok: false, field: "nome" });
+  });
+
+  it("nome acima do limite → campo nome", () => {
+    expect(validarEdicaoDeCanal({ nome: "x".repeat(201) })).toMatchObject({ ok: false, field: "nome" });
+  });
+
+  it("limpar a Fila padrão (null) é válido", () => {
+    expect(validarEdicaoDeCanal({ filaPadraoId: null }).ok).toBe(true);
+  });
+
+  it("apara o nome", () => {
+    const r = validarEdicaoDeCanal({ nome: "  Comercial " });
+    expect(r.ok && r.value.nome).toBe("Comercial");
   });
 });
