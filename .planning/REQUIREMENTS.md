@@ -126,9 +126,9 @@ Critério de pronto (ROADMAP Phase 8): o Administrador escolhe e conecta Canais 
 - [x] **CXE-D1**: `@n1/dominio`: provedor do Canal (`ProvedorDeCanal`, `PROVEDORES`), Capacidades por (tipo, provedor), módulos `@n1/dominio/crm/{canais,conversas,mensagens}` com regras puras (Canal nasce `desconectada`, conexão em dois atos, identificador canônico, regra de envio por janela/modelo) e `podeNoCrm` com `canal`/`conversa`/`mensagem` (D-01..D-04, D-08). Pendente.
 - [x] **CXE-D2**: todos os leitores de janela/modelo (domínio e web) passam por `capacidadesDoCanal`; Canal sem provedor mantém o comportamento de hoje (D-02). Pendente.
 - [ ] **CXE-A1**: migração `008-canais-conversas-mensagens.sql` com as invariantes da Caixa de Entrada no banco, idempotente, conferida por `migrar --seco` e aplicada no banco da plataforma (D-09, D-10). Pendente.
-- [ ] **CXE-A2**: repositórios, serviços e rotas REST `/canais`, `/conversas`, `/mensagens` com isolamento por `workspace_id`, Papel no backend e 400/403/404/409 no envelope do CRM (D-09, D-11). Pendente.
-- [ ] **CXE-A3**: Mensagem com o modelo 7.6 + `carga_bruta`, recebida idempotente por (Canal, id externo), envio pela regra de janela/modelo por (tipo, provedor) e `pendente` com Canal desconectado (D-02, D-10). Pendente.
-- [ ] **CXE-A4**: ponte — Canais relacionais projetados em `GET /estado` e em `executar()`, nunca gravados em `plataforma.registros`; contrato `automacao.notificar-canal.v1` intacto (D-11, D-12). Pendente.
+- [x] **CXE-A2**: repositórios, serviços e rotas REST `/canais`, `/conversas`, `/mensagens` com isolamento por `workspace_id`, Papel no backend e 400/403/404/409 no envelope do CRM (D-09, D-11). Pendente.
+- [x] **CXE-A3**: Mensagem com o modelo 7.6 + `carga_bruta`, recebida idempotente por (Canal, id externo), envio pela regra de janela/modelo por (tipo, provedor) e `pendente` com Canal desconectado (D-02, D-10). Pendente.
+- [x] **CXE-A4**: ponte — Canais relacionais projetados em `GET /estado` e em `executar()`, nunca gravados em `plataforma.registros`; contrato `automacao.notificar-canal.v1` intacto (D-11, D-12). Pendente.
 - [ ] **CXE-W1**: botão "Conectar Canal", tela dos quatro cartões, orientação por provedor (passos + espaço do QR/token + formulário real), Canal criado `desconectada` por REST, "Simular conexão" marcada, lista e ficha com selo do provedor e origem (D-04..D-08, D-12). Pendente.
 - [ ] **CXE-W2**: chat por Canal — abas por Canal, "Responder por" com padrão da última recebida, Canal + selo no topo do fio e separador "via …", item da lista com ícone + nome do Canal e filtro `?canal=` com o provedor (D-13..D-16). Pendente.
 - [ ] **CXE-V1**: `npm run check` verde; testes de domínio, de rota, de repositório e o e2e "dois WhatsApps lado a lado" contra Postgres local; a 008 aplicada no banco da plataforma depois da conferência do dono e a UAT de fim de fase. Pendente.
@@ -190,9 +190,9 @@ Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pe
 | CXE-D1 | Phase 8 | Complete | planejado 2026-10-12 (08-01, 08-02, 08-03, 08-05) | derivado (08-RESEARCH) |
 | CXE-D2 | Phase 8 | Complete | planejado 2026-10-12 (08-02) | derivado (08-RESEARCH) |
 | CXE-A1 | Phase 8 | Pending | planejado 2026-10-12 (08-01, 08-04, 08-14) | derivado (08-RESEARCH) |
-| CXE-A2 | Phase 8 | Pending | planejado 2026-10-12 (08-01, 08-03, 08-04, 08-06, 08-12, 08-13) | derivado (08-RESEARCH) |
-| CXE-A3 | Phase 8 | Pending | planejado 2026-10-12 (08-06, 08-12, 08-13) | derivado (08-RESEARCH) |
-| CXE-A4 | Phase 8 | Pending | planejado 2026-10-12 (08-01, 08-07, 08-13) | derivado (08-RESEARCH) |
+| CXE-A2 | Phase 8 | Complete | planejado 2026-10-12 (08-01, 08-03, 08-04, 08-06, 08-12, 08-13) | derivado (08-RESEARCH) |
+| CXE-A3 | Phase 8 | Complete | planejado 2026-10-12 (08-06, 08-12, 08-13) | derivado (08-RESEARCH) |
+| CXE-A4 | Phase 8 | Complete | planejado 2026-10-12 (08-01, 08-07, 08-13) | derivado (08-RESEARCH) |
 | CXE-W1 | Phase 8 | Pending | planejado 2026-10-12 (08-01, 08-08, 08-09, 08-15) | derivado (08-RESEARCH) |
 | CXE-W2 | Phase 8 | Pending | planejado 2026-10-12 (08-05, 08-10, 08-11, 08-15) | derivado (08-RESEARCH) |
 | CXE-V1 | Phase 8 | Pending | planejado 2026-10-12 (08-01, 08-13, 08-14, 08-15) | derivado (08-RESEARCH) |
