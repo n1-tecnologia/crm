@@ -8,7 +8,7 @@
  * (D-11). O `criado_por` é sempre o Membro da sessão.
  *
  * Toda escrita roda em `comTransacao`. O serviço PRÉ-CHECA as regras para dar
- * a mensagem rica (RN-CON-11, D-09) e o SQLSTATE traduzido por `FRASES` é a
+ * a mensagem rica (RN-CON-11, D-09) e o SQLSTATE traduzido por `FRASES_DE_CONTATOS` é a
  * rede contra a corrida. Registro de outro Espaço é 404, nunca 403 (D-10).
  * Recusa de regra é valor (`recusa`), não exceção; a rota a traduz em HTTP.
  */
@@ -69,7 +69,7 @@ export interface ServicoDeContatos {
 }
 
 /** Rede contra corrida: o constraint que segurou vira esta frase, sem o nome dele (T-07-06). */
-const FRASES: FrasesDeRestricao = {
+export const FRASES_DE_CONTATOS: FrasesDeRestricao = {
   contato_identificadores_unico: { codigo: "IDENTIFICADOR_EM_USO", error: "Este Identificador já pertence a outro Contato." },
   contato_identificadores_principal_uq: {
     codigo: "PRINCIPAL_DUPLICADO",
@@ -82,6 +82,11 @@ const FRASES: FrasesDeRestricao = {
   negocios_workspace_id_contato_id_fkey: {
     codigo: "CONTATO_COM_NEGOCIOS",
     error: "Este Contato ainda tem Negócios. Troque o Contato deles antes.",
+  },
+  // 008: a Conversa referencia o Contato; a pré-checagem dá a frase rica, esta é a rede contra corrida.
+  conversas_workspace_id_contato_id_fkey: {
+    codigo: "CONTATO_COM_CONVERSAS",
+    error: "Este Contato tem Conversas na Caixa de Entrada e não pode ser excluído permanentemente.",
   },
 };
 
@@ -141,7 +146,7 @@ export function criarServicoDeContatos(deps: {
         if (!contato) return naoEncontrado();
         return corpo({ cliente, repositorio, contato });
       },
-      FRASES,
+      FRASES_DE_CONTATOS,
     );
   }
 
@@ -264,7 +269,7 @@ export function criarServicoDeContatos(deps: {
           }
           return devolver(cliente, membro, contato);
         },
-        FRASES,
+        FRASES_DE_CONTATOS,
       );
     },
 
@@ -431,6 +436,16 @@ export function criarServicoDeContatos(deps: {
               ? "Este Contato tem 1 Negócio. Troque o Contato do Negócio antes de excluí-lo."
               : `Este Contato tem ${negocios.total} Negócios. Troque o Contato deles antes de excluí-lo.`,
             { codigo: "CONTATO_COM_NEGOCIOS", bloqueios: { negocios } },
+          );
+        }
+        const conversas = await repositorio.conversasDoContato(membro.workspaceId, contato.id);
+        if (conversas.total > 0) {
+          return recusa<never>(
+            409,
+            conversas.total === 1
+              ? "Este Contato tem 1 Conversa na Caixa de Entrada e não pode ser excluído permanentemente."
+              : `Este Contato tem ${conversas.total} Conversas na Caixa de Entrada e não pode ser excluído permanentemente.`,
+            { codigo: "CONTATO_COM_CONVERSAS", bloqueios: { conversas } },
           );
         }
         // O `delete` cascateia o vínculo e o trigger recusaria no commit; antecipar dá a mensagem rica.

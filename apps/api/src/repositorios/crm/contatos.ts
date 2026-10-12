@@ -49,6 +49,12 @@ export interface NegociosDoContato {
   readonly itens: readonly { readonly id: string; readonly titulo: string }[];
 }
 
+export interface ConversasDoContato {
+  readonly total: number;
+  /** Até 5, as mais novas primeiro; `total` é o de todas. */
+  readonly itens: readonly { readonly id: string; readonly titulo: string }[];
+}
+
 export interface LinhaDeIdentificador {
   readonly tipo: TipoIdentificadorContato;
   readonly valor: string;
@@ -85,6 +91,8 @@ export interface RepositorioDeContatos {
 
   /** Somente leitura de `plataforma.negocios` — a escrita de Negócio é de 07-08. */
   negociosDoContato(workspaceId: string, contatoId: string, opcoes: { readonly incluirLixeira: boolean }): Promise<NegociosDoContato>;
+  /** Somente leitura de `plataforma.conversas` (008): total e até 5 Conversas, as mais novas primeiro. */
+  conversasDoContato(workspaceId: string, contatoId: string): Promise<ConversasDoContato>;
 }
 
 /** As colunas de `plataforma.contatos` na forma que `linhaParaContato` lê (data como texto). */
@@ -391,6 +399,19 @@ export function criarRepositorioDeContatosPg(cliente: Pool | PoolClient): Reposi
       const itens = await cliente.query<{ id: string; titulo: string }>(
         `select id, titulo from plataforma.negocios where workspace_id = $1 and contato_id = $2 ${filtro}
           order by criado_em, id limit 20`,
+        [workspaceId, contatoId],
+      );
+      return { total: total.rows[0]?.total ?? 0, itens: itens.rows };
+    },
+
+    async conversasDoContato(workspaceId, contatoId) {
+      const total = await cliente.query<{ total: number }>(
+        "select count(*)::int as total from plataforma.conversas where workspace_id = $1 and contato_id = $2",
+        [workspaceId, contatoId],
+      );
+      const itens = await cliente.query<{ id: string; titulo: string }>(
+        `select id, titulo from plataforma.conversas where workspace_id = $1 and contato_id = $2
+          order by criado_em desc, id limit 5`,
         [workspaceId, contatoId],
       );
       return { total: total.rows[0]?.total ?? 0, itens: itens.rows };
