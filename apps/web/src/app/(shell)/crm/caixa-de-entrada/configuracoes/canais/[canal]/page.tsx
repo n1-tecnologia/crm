@@ -16,7 +16,7 @@
 import Link from "next/link";
 import { use, useState } from "react";
 import { useData, useRun, useSession } from "@/dados/store";
-import { CHANNEL_CAPABILITIES, configurarCanal, recusaDeGerirCanais } from "@n1/dominio/operations";
+import { capacidadesDoCanal, configurarCanal, recusaDeGerirCanais } from "@n1/dominio/operations";
 import { CHANNEL_TYPE_LABEL, IDENTIFIER_TYPE_LABEL } from "@/features/shell/format";
 import { useFormat } from "@/features/shell/use-format";
 import {
@@ -67,7 +67,7 @@ export default function CanalPage({ params }: { params: Promise<{ canal: string 
     );
   }
 
-  const capabilities = CHANNEL_CAPABILITIES[channel.channelType];
+  const capabilities = capacidadesDoCanal(channel);
   const queue = state.queues.find((q) => q.id === channel.defaultQueueId);
   const configuredBy = state.members.find((m) => m.id === channel.configuredByMemberId);
   const contactOwner = state.members.find((m) => m.id === channel.defaultContactOwnerMemberId);
@@ -254,7 +254,7 @@ export default function CanalPage({ params }: { params: Promise<{ canal: string 
                 <RecordRow label="Identidade anônima">{capabilities.anonymousIdentity ? "sim" : "não"}</RecordRow>
               </dl>
               <p className="app-meta mt-2">
-                Somente leitura: a capacidade é do tipo de Canal. Nem este Canal nem uma Conversa a redefinem.
+                Somente leitura: a capacidade é do tipo de Canal, ajustada pelo provedor só onde ele difere (D-02).
               </p>
             </RecordPanel>
           </aside>

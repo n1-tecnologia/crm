@@ -24,7 +24,7 @@ import { useRecente } from "@/features/shell/recente";
 import { contactDisplayName } from "@n1/dominio/derive";
 // "Não lida" e a última atividade moram no domínio: o resumo do Início conta as mesmas mensagens novas.
 import { naoLidas, ultimaAtividade as lastActivity } from "@n1/dominio/derive-resumo";
-import { CHANNEL_CAPABILITIES, toggleConversationStar } from "@n1/dominio/operations";
+import { capacidadesDoCanal, toggleConversationStar } from "@n1/dominio/operations";
 import { CHANNEL_ICON } from "@/features/crm/conversation-thread";
 import { ContactAvatar } from "@/features/crm/contact-card";
 import { CHANNEL_TYPE_LABEL, CONVERSATION_STATE_LABEL } from "@/features/shell/format";
@@ -524,7 +524,7 @@ export function matchesScope(conversation: Conversation, scope: string, memberId
 function isOutsideWindow(state: DataState, conversation: Conversation, now: number): boolean {
   const channel = state.channels.find((c) => c.id === conversation.channelId);
   if (!channel) return false;
-  const hours = CHANNEL_CAPABILITIES[channel.channelType].responseWindowHours;
+  const hours = capacidadesDoCanal(channel).responseWindowHours;
   if (hours === undefined) return false;
   const received = [...conversation.messages]
     .filter((message) => message.direction === "recebida")

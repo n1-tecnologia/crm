@@ -11,7 +11,7 @@
 
 import Link from "next/link";
 import { useData } from "@/dados/store";
-import { CHANNEL_CAPABILITIES } from "@n1/dominio/operations";
+import { capacidadesDoCanal } from "@n1/dominio/operations";
 import { PROVEDORES, provedorDoCanal } from "@n1/dominio/provedores-de-canal";
 import { MarcaDeConexaoSimulada, SeloDeOrigem, SeloDoProvedor } from "@/features/crm/selo-do-provedor";
 import { CHANNEL_TYPE_LABEL } from "@/features/shell/format";
@@ -75,7 +75,7 @@ export default function ConfiguracoesDaCaixaPage() {
           ) : (
             <ul className="grade-solta sm:grid-cols-2">
               {channels.map((channel) => {
-                const capabilities = CHANNEL_CAPABILITIES[channel.channelType];
+                const capabilities = capacidadesDoCanal(channel);
                 const queue = queues.find((q) => q.id === channel.defaultQueueId);
                 const approved = channel.messageTemplates.filter((t) => t.approval === "aprovado").length;
                 const provedor = provedorDoCanal(channel);

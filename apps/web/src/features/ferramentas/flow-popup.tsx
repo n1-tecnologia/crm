@@ -12,9 +12,9 @@ import { useState } from "react";
 import { ChevronRight, Fingerprint, Hash, KeyRound, Radio, RefreshCw, Send, Tag, Type, Workflow } from "lucide-react";
 import { useData, useRun, useSession } from "@/dados/store";
 import {
-  CHANNEL_CAPABILITIES,
   adicionarNotaNoAtivo,
   arquivarFlow,
+  capacidadesDoCanal,
   copiarFlow,
   criarRascunhoAPartirDe,
   definirPontoDeTrocaDeDados,
@@ -444,7 +444,7 @@ export function EnviarFlowDialog({ flow, onClose, report }: { readonly flow: Flo
     .filter((c) => c.lifecycle === "ativo" && c.channelId === flow.canalId && !c.groupIdentifier && c.contactId)
     .map((c) => {
       const contato = state.contacts.find((x) => x.id === c.contactId);
-      const janela = responseWindowOpenUntil(state, c, (tipo) => CHANNEL_CAPABILITIES[tipo as keyof typeof CHANNEL_CAPABILITIES]);
+      const janela = responseWindowOpenUntil(state, c, capacidadesDoCanal);
       const fora = janela !== null && janela.getTime() < agora;
       return { value: c.id, label: contato ? contactDisplayName(contato) : c.title, detail: `${c.state}${fora ? " · fora da janela de resposta" : ""}`, ...(fora ? { disabledReason: "Fora da Janela de resposta: só Mensagem de modelo (RN-CXE-19)." } : {}) };
     });

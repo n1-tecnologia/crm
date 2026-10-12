@@ -38,7 +38,7 @@ import {
 import { useData, useRun } from "@/dados/store";
 import { useRecente } from "@/features/shell/recente";
 import {
-  CHANNEL_CAPABILITIES,
+  capacidadesDoCanal,
   addContactNote,
   createTask,
   criarTarefaConversacional,
@@ -359,13 +359,19 @@ export function ConversationThread({
     ? state.channels.find((ch) => ch.id === conversa.channelId)
     : undefined;
 
-  const capacidades = canal ? CHANNEL_CAPABILITIES[canal] : undefined;
+  /*
+    As abas continuam por tipo (D-14 é de outro plano), mas a Capacidade é do
+    Canal da Conversa (D-02): o provedor muda a janela. Sem Conversa na aba,
+    vale o primeiro Canal ativo do tipo; sem nenhum, a barra da regra some.
+  */
+  const canalDasCapacidades =
+    channel ??
+    (canal
+      ? state.channels.find((ch) => ch.channelType === canal && ch.lifecycle === "ativo")
+      : undefined);
+  const capacidades = canalDasCapacidades ? capacidadesDoCanal(canalDasCapacidades) : undefined;
   const abertaAte = conversa
-    ? responseWindowOpenUntil(
-        state,
-        conversa,
-        (tipo) => CHANNEL_CAPABILITIES[tipo as ChannelType],
-      )
+    ? responseWindowOpenUntil(state, conversa, capacidadesDoCanal)
     : null;
   const janelaFechada = abertaAte !== null && agora > abertaAte.getTime();
   /*

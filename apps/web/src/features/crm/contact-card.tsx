@@ -32,7 +32,7 @@ import {
 } from "lucide-react";
 import { useData, useRun } from "@/dados/store";
 import { contactDisplayName, contactDisplayRole, principalCompanyId } from "@n1/dominio/derive";
-import { CHANNEL_CAPABILITIES, setContactCatalogValue } from "@n1/dominio/operations";
+import { capacidadesDoCanal, setContactCatalogValue } from "@n1/dominio/operations";
 import { IDENTIFIER_TYPE_LABEL } from "@/features/shell/format";
 import { Icone, Pilula, RecordPanel, Select, cn } from "@/features/shell/ui";
 import { InstagramIcon, LinkedinIcon, TikTokIcon } from "@/features/crm/brand-icons";
@@ -158,9 +158,9 @@ export function ContactIdentity({
    */
   const alcancavel = state.conversations.some((conversa) => {
     if (conversa.contactId !== contact.id || conversa.lifecycle !== "ativo") return false;
-    const tipo = state.channels.find((ch) => ch.id === conversa.channelId)?.channelType;
-    if (!tipo) return false;
-    const horas = CHANNEL_CAPABILITIES[tipo].responseWindowHours;
+    const canal = state.channels.find((ch) => ch.id === conversa.channelId);
+    if (!canal) return false;
+    const horas = capacidadesDoCanal(canal).responseWindowHours;
     if (horas === undefined) return true;
     const ultimaRecebida = [...conversa.messages]
       .filter((m) => m.direction === "recebida")

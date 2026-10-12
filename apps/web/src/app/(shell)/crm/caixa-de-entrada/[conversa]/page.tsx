@@ -38,8 +38,8 @@ import {
   principalCompanyId,
 } from "@n1/dominio/derive";
 import {
-  CHANNEL_CAPABILITIES,
   assignConversation,
+  capacidadesDoCanal,
   reopenConversation,
   resolveConversation,
   trashConversation,
@@ -111,7 +111,7 @@ export default function ConversaPage({ params }: { params: Promise<{ conversa: s
     ? state.contacts.find((c) => c.id === conversation.contactId)
     : undefined;
   const queue = state.queues.find((q) => q.id === conversation.queueId);
-  const capabilities = CHANNEL_CAPABILITIES[channel.channelType];
+  const capabilities = capacidadesDoCanal(channel);
   const inTrash = conversation.lifecycle === "naLixeira";
 
   /*
