@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 08
 current_phase_name: "Canais de comunicação: conexão e omnichannel preparado"
 status: executing
-stopped_at: Completed 08-04-PLAN.md
-last_updated: "2026-10-12T16:55:30.400Z"
+stopped_at: Completed 08-05-PLAN.md
+last_updated: "2026-10-12T17:09:39.527Z"
 last_activity: 2026-10-12
 last_activity_desc: Phase 08 execution started
-state_head: bd85aa5fa5b6e3db50c74ddf2ec074597d3ac39c
+state_head: 29fa656bbc3c7e3201d9d7c75823b1a12cc5d438
 progress:
   total_phases: 8
   completed_phases: 6
   total_plans: 148
-  completed_plans: 136
+  completed_plans: 137
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 ## Current Position
 
 Phase: 08 (Canais de comunicação: conexão e omnichannel preparado) — EXECUTING
-Plan: 5 of 15
+Plan: 6 of 15
 Status: Ready to execute
 Last activity: 2026-10-12 — Phase 08 execution started
 
@@ -359,6 +359,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 08 P02 | 8 min | 2 tasks | 12 files |
 | Phase 08 P03 | 7 min | 3 tasks | 8 files |
 | Phase 08 P04 | 3 min | 2 tasks | 4 files |
+| Phase 08 P05 | 6 min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -474,6 +475,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 08]: 08-03: a decisao de conexao/arquivamento do Canal e funcao pura do dominio (proximaConexao, validarArquivamento); o servico so a grava e os CHECK da 008 ficam como rede contra corrida.
 - [Phase 08]: 08-03: unicidade de nome e conta de Canal vale entre a tabela nova e o channels do seed (canalAntigoEmConflito), e toda escrita de Canal soma 1 em plataforma.workspaces.revisao na mesma transacao.
 - [Phase 08]: 08-04: pre-checagem CONTATO_COM_CONVERSAS fica entre Negocios e Empresas na exclusao permanente; lixeira nao checa Conversas; FRASES_DE_CONTATOS exportada para o teste da corrida
+- [Phase 08]: 08-05: canalPadraoDeResposta e canalPadraoDoTipo so enxergam Canais de resposta (conectados que alcancam o Contato); validarEnvio libera ate o instante exato do fim da janela
 
 ### Pending Todos
 
@@ -535,6 +537,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-12T16:55:30.256Z
-Stopped at: Completed 08-04-PLAN.md
+Last session: 2026-10-12T17:09:39.375Z
+Stopped at: Completed 08-05-PLAN.md
 Resume file: None

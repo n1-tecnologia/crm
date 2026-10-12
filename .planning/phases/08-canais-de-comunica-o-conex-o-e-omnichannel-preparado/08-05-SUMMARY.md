@@ -114,7 +114,7 @@ status: complete
 - `packages/dominio/src/crm/conversas.ts` / `conversas.test.ts` — Conversa relacional (18 testes)
 - `packages/dominio/src/crm/mensagens.ts` / `mensagens.test.ts` — Mensagem relacional (19 testes)
 - `packages/dominio/src/derive-conversacional.ts` — oito derivações novas e `ORDEM_DOS_TIPOS_DE_CANAL`
-- `packages/dominio/src/derive-conversacional.test.ts` — primeiro teste do módulo (25 testes)
+- `packages/dominio/src/derive-conversacional.test.ts` — primeiro teste do módulo (23 testes)
 
 ## Decisions Made
 
@@ -128,7 +128,7 @@ O plano é `type: execute` com `tdd="true"` por tarefa, então `gsd_run check td
 
 - **Task 1 RED:** `c4bb866`. 15 dos 18 testes de `conversas.test.ts` falharam com `Error: <função>: ainda não implementada` (esqueleto que lança); os 3 que passaram são dos valores discretos e do mapa `TIPO_DE_IDENTIFICADOR_DO_CANAL`, dados que o esqueleto já traz definitivos. Avaliação semântica: cada teste-alvo executou e falhou na chamada da função planejada, não por sintaxe, importação ou fixture. **GREEN:** `470f731`, 18/18 e `tsc` verdes. Sem REFACTOR.
 - **Task 2 RED:** `8ae712b`. 17 dos 19 testes falharam do mesmo modo; os 2 que passaram são os dos valores discretos (`DIRECOES_DE_ENVIO` sem `recebida` etc.). Mesma avaliação semântica. **GREEN:** `9a51bfd`, 19/19. Sem REFACTOR.
-- **Task 3 RED:** `ed5d4b6`. 22 dos 25 testes falharam (`canaisDoFio`, `canaisDeResposta`, `canalPadraoDeResposta`, `canalDaAbaInicial`, `canalPadraoDoTipo`, `marcadoresDeCanal`, `rotuloDoCanal`, `textoDoSeparadorDeCanal` "ainda não implementada"); os 3 verdes são o de `canaisQueAlcancam`, que descreve comportamento preservado, e dois de `ORDEM_DOS_TIPOS_DE_CANAL`/guarda que o esqueleto já trazia. A contagem por mensagem de erro confirmou que nenhuma falha veio da fixture. **GREEN:** `3ac5673`, 25/25 e a suíte inteira do domínio (1785) verde. Sem REFACTOR.
+- **Task 3 RED:** `ed5d4b6`. 22 dos 23 testes falharam (`canaisDoFio`, `canaisDeResposta`, `canalPadraoDeResposta`, `canalDaAbaInicial`, `canalPadraoDoTipo`, `marcadoresDeCanal`, `rotuloDoCanal`, `textoDoSeparadorDeCanal` "ainda não implementada"); o único verde é o de `canaisQueAlcancam`, que descreve comportamento preservado. A contagem por mensagem de erro confirmou que nenhuma falha veio da fixture. **GREEN:** `3ac5673`, 23/23 e a suíte inteira do domínio (1785) verde. Sem REFACTOR.
 - **Esqueleto no commit RED:** cada commit `test(08-05)` leva também o módulo-esqueleto (tipos e constantes definitivos, funções que lançam). Isso mantém o `tsc` verde em todo commit e faz o RED falhar na afirmação, não por módulo ausente (que seria `INVALID_RED` por falha de carga).
 
 ### Auto-fixed Issues

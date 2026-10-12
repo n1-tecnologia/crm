@@ -123,7 +123,7 @@ Critério de pronto (ROADMAP Phase 7): Contatos, Empresas, Funis (com Etapas) e 
 
 Critério de pronto (ROADMAP Phase 8): o Administrador escolhe e conecta Canais (WhatsApp oficial, WhatsApp não oficial, Instagram, E-mail) por uma página de orientação por provedor, sem provedor real; o Espaço tem mais de um Canal, inclusive dois WhatsApps lado a lado; Canal, Conversa e Mensagem têm tabela própria (008) e rotas REST; o chat mostra por qual Canal a Mensagem veio e deixa escolher por qual responder. Os nove IDs abaixo são **derivados** do goal e das decisões D-01..D-16 (`.planning/phases/08-canais-de-comunica-o-conex-o-e-omnichannel-preparado/08-RESEARCH.md`, "Phase Requirements"; decisões em `08-CONTEXT.md`).
 
-- [ ] **CXE-D1**: `@n1/dominio`: provedor do Canal (`ProvedorDeCanal`, `PROVEDORES`), Capacidades por (tipo, provedor), módulos `@n1/dominio/crm/{canais,conversas,mensagens}` com regras puras (Canal nasce `desconectada`, conexão em dois atos, identificador canônico, regra de envio por janela/modelo) e `podeNoCrm` com `canal`/`conversa`/`mensagem` (D-01..D-04, D-08). Pendente.
+- [x] **CXE-D1**: `@n1/dominio`: provedor do Canal (`ProvedorDeCanal`, `PROVEDORES`), Capacidades por (tipo, provedor), módulos `@n1/dominio/crm/{canais,conversas,mensagens}` com regras puras (Canal nasce `desconectada`, conexão em dois atos, identificador canônico, regra de envio por janela/modelo) e `podeNoCrm` com `canal`/`conversa`/`mensagem` (D-01..D-04, D-08). Pendente.
 - [x] **CXE-D2**: todos os leitores de janela/modelo (domínio e web) passam por `capacidadesDoCanal`; Canal sem provedor mantém o comportamento de hoje (D-02). Pendente.
 - [ ] **CXE-A1**: migração `008-canais-conversas-mensagens.sql` com as invariantes da Caixa de Entrada no banco, idempotente, conferida por `migrar --seco` e aplicada no banco da plataforma (D-09, D-10). Pendente.
 - [ ] **CXE-A2**: repositórios, serviços e rotas REST `/canais`, `/conversas`, `/mensagens` com isolamento por `workspace_id`, Papel no backend e 400/403/404/409 no envelope do CRM (D-09, D-11). Pendente.
@@ -187,7 +187,7 @@ Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pe
 | CRM-W1 | Phase 7 | Complete | planejado 2026-10-09 (07-01, 07-06, 07-07, 07-09..07-13) | derivado (07-RESEARCH) |
 | CRM-W2 | Phase 7 | Complete | planejado 2026-10-09 (07-10, 07-11, 07-13) | derivado (07-RESEARCH) |
 | CRM-V1 | Phase 7 | Complete | planejado 2026-10-09 (07-01, 07-02, 07-12, 07-13) | derivado (07-RESEARCH) |
-| CXE-D1 | Phase 8 | Pending | planejado 2026-10-12 (08-01, 08-02, 08-03, 08-05) | derivado (08-RESEARCH) |
+| CXE-D1 | Phase 8 | Complete | planejado 2026-10-12 (08-01, 08-02, 08-03, 08-05) | derivado (08-RESEARCH) |
 | CXE-D2 | Phase 8 | Complete | planejado 2026-10-12 (08-02) | derivado (08-RESEARCH) |
 | CXE-A1 | Phase 8 | Pending | planejado 2026-10-12 (08-01, 08-04, 08-14) | derivado (08-RESEARCH) |
 | CXE-A2 | Phase 8 | Pending | planejado 2026-10-12 (08-01, 08-03, 08-04, 08-06, 08-12, 08-13) | derivado (08-RESEARCH) |
