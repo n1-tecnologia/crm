@@ -7,6 +7,8 @@ describe("rotas — a família da tela", () => {
     expect(formaDe("/crm/caixa-de-entrada")).toBe("caixa");
     expect(formaDe("/crm/caixa-de-entrada/cnv_5")).toBe("caixa");
     expect(formaDe("/crm/caixa-de-entrada/configuracoes/filas")).toBe("tabela");
+    expect(formaDe("/crm/caixa-de-entrada/configuracoes/canais/conectar")).toBe("tabela");
+    expect(formaDe("/crm/caixa-de-entrada/configuracoes/canais/conectar/whatsapp-cloud")).toBe("tabela");
     expect(formaDe("/estrutura/listas/lst_1")).toBe("lista");
     expect(formaDe("/crm/negocios")).toBe("quadro");
     expect(formaDe("/crm/negocios/deal_1")).toBe("registro");
@@ -35,6 +37,10 @@ describe("rotas — a chave de chegada", () => {
   it("não colapsa as configurações da Caixa nem qualquer outra rota", () => {
     expect(chaveDeChegada("/crm/caixa-de-entrada/configuracoes")).toBe("/crm/caixa-de-entrada/configuracoes");
     expect(chaveDeChegada("/crm/caixa-de-entrada/configuracoes/filas")).toBe("/crm/caixa-de-entrada/configuracoes/filas");
+    expect(chaveDeChegada("/crm/caixa-de-entrada/configuracoes/canais/conectar")).toBe("/crm/caixa-de-entrada/configuracoes/canais/conectar");
+    expect(chaveDeChegada("/crm/caixa-de-entrada/configuracoes/canais/conectar/whatsapp-cloud")).toBe(
+      "/crm/caixa-de-entrada/configuracoes/canais/conectar/whatsapp-cloud",
+    );
     expect(chaveDeChegada("/crm/contatos/cnt_1")).toBe("/crm/contatos/cnt_1");
     expect(chaveDeChegada("/")).toBe("/");
     // Prova de que nada colapsa: /financeiro/* não é mestre-detalhe.
