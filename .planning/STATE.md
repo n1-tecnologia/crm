@@ -1,19 +1,19 @@
 ---
 gsd_state_version: "1.0"
 milestone: v1.0
-current_phase: 8
+current_phase: 08
 current_phase_name: "Canais de comunicação: conexão e omnichannel preparado"
 status: executing
-stopped_at: Phase 8 context gathered
-last_updated: "2026-10-12T15:44:08.132Z"
-last_activity: 2026-10-11
-last_activity_desc: Phase 07 complete, transitioned to Phase 2
-state_head: d83390da67a771a0d075b89bce77bf674e63eb02
+stopped_at: Completed 08-01-PLAN.md
+last_updated: "2026-10-12T16:08:03.070Z"
+last_activity: 2026-10-12
+last_activity_desc: Phase 08 execution started
+state_head: 878a0d2fe3201004fd840124ae6a58b0aa84c922
 progress:
   total_phases: 8
   completed_phases: 6
   total_plans: 148
-  completed_plans: 132
+  completed_plans: 133
 milestone_name: milestone
 ---
 
@@ -24,14 +24,14 @@ milestone_name: milestone
 See: .planning/PROJECT.md (updated 2026-10-11)
 
 **Core value:** Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de ponta a ponta sem abrir o ClickUp — dados no Postgres próprio, regras de `@n1/dominio` intactas.
-**Current focus:** Phase 2 — Solicitação de pagamento — o front substitui o ClickUp (restam 02-27 e 02-28; a Phase 4 também segue aberta em 13/14)
+**Current focus:** Phase 08 — Canais de comunicação: conexão e omnichannel preparado
 
 ## Current Position
 
-Phase: 8 (Canais de comunicação: conexão e omnichannel preparado) — READY TO EXECUTE
-Plan: Not started
+Phase: 08 (Canais de comunicação: conexão e omnichannel preparado) — EXECUTING
+Plan: 2 of 15
 Status: Ready to execute
-Last activity: 2026-10-11 — Phase 07 complete, transitioned to Phase 2
+Last activity: 2026-10-12 — Phase 08 execution started
 
 **Fase 06 planejada à mão em 2026-09-29 (Conferência do Resumo e anexos), pronta para `/gsd-execute-phase 6`:**
 `.planning/phases/06-conferencia-do-resumo-e-anexos/` — `06-CONTEXT.md` (13 decisões com padrão e variável de troca) e seis planos em três ondas: 06-01 domínio · 06-02 contrato v1.1 no `financeiro-tria` · 06-03 ponte em dois momentos · 06-04 tela e jornada · 06-05 S5/S6 na Solicitação · 06-06 docs e provas `[BLOCKING]`. Origem: `docs/08-migracao-financeiro/09-…` (desenho) e `10-…` (levantamento etapa por etapa com `arquivo:linha`). Ponto de partida do código: `crm-n1-integracao@3d6f735` (branch `integra-frontend-main`, sem push) e `financeiro-tria@c272dad` (`main`, 99 commits sem push, 89 arquivos sujos só de EOL — `git add` sempre por caminho). O dono ainda não respondeu às quatro perguntas do doc 10; os padrões de D6-01..D6-04 seguem "como no ClickUp", exceto Integração manual (o seguro).
@@ -355,6 +355,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 07 P11 | 22 min | 2 tasks | 9 files |
 | Phase 07 P12 | 21 min | 2 tasks | 11 files |
 | Phase 07 P13 | 2 min | 2 tasks | 1 files |
+| Phase 08 P01 | 9 min | 2 tasks | 24 files |
 
 ## Accumulated Context
 
@@ -464,6 +465,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 07]: 07-13: a 007 esta aplicada no banco da plataforma depois da conferencia de D-12 (--seco: 1 pendente -> migrar pelo dono, 984 ms -> --seco: 0 pendentes), provas em 07-PROVAS.md; qualquer ajuste de schema do CRM daqui em diante e 008
 - [Phase 07]: 07-13: o roteiro da UAT de fim de fase (8 passos em 07-PROVAS.md) e o que fecha as janelas #1-#4 do WINDOWS.md; a janela #5 (portao com duas falhas pre-existentes fora do CRM) fica como decisao aberta do dono
 - [Phase 07]: fechada em 2026-10-11 — UAT 9/9 pelo dono (07-UAT.md), 07-VERIFICATION.md `passed` com 1 override aceita (CRM-V1: `npm run check` com a ressalva das duas falhas pré-existentes do Financeiro), janelas #1-#4 `fixed` e #5 `waived`; qualquer ajuste de schema do CRM é `008`
+- [Phase 08]: 08-01: a 008 nasce inteira (Canal, Conversa, Mensagem); o INSERT de POST /canais nunca envia conexao, e o default da 008 garante Canal desconectada
+- [Phase 08]: 08-01: a projecao de Canais relacionais entra so em GET /estado (acrescentarCanaisProjetados), nunca em hidratar(); guarda to_regclass cobre banco sem a 008
 
 ### Pending Todos
 
@@ -525,6 +528,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-12T14:16:39.796Z
-Stopped at: Phase 8 context gathered
-Resume file: .planning/phases/08-canais-de-comunica-o-conex-o-e-omnichannel-preparado/08-CONTEXT.md
+Last session: 2026-10-12T16:08:02.930Z
+Stopped at: Completed 08-01-PLAN.md
+Resume file: None
