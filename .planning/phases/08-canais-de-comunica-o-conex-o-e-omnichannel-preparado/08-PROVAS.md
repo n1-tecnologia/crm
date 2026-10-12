@@ -205,3 +205,108 @@ automatizado fecha:
 | 4 | **Flows e automações com dois WhatsApps** (decisão 4): com o oficial e o não oficial no mesmo Espaço, uma automação de Canal precisa dizer a qual dos dois se refere. Decidir a regra antes de a fase de Flows ligar nisto | aberto |
 | 5 | **`DATABASE_SSL_INSECURE=true` no `.env` deste notebook** (a linha `[conexao]` das saídas acima, T-02-TLS): a verificação da cadeia TLS do Postgres está desligada no ambiente de desenvolvimento, por decisão da Fase 2. Não é desta fase e não muda o que a 008 aplicou; fora do notebook do desenvolvedor, `DATABASE_CA_CERT` ou `DATABASE_CA_PATH` é obrigatório | aceito desde a Fase 2 |
 | 6 | **Qualquer ajuste de schema da Caixa de Entrada a partir daqui** | é `009` — a 008 está aplicada e é imutável |
+
+---
+
+## Portão
+
+Plano 08-15, Task 2. **2026-10-12, `main@79304b6`** (o commit dos `CONTEXT.md`
+da Task 1; nenhum código mudou nesta fase de fechamento), no checkout
+principal, com o `apps/api/.env` da plataforma e a **008 já aplicada** (0
+pendentes, ver "Confirmação"). É a primeira vez que o código da ponte (D-11)
+roda contra um banco da plataforma que tem `plataforma.canais`. Nenhum segredo
+está nesta seção: só os resumos do vitest, os nomes de arquivo e a lista de
+rotas do build (T-08-57).
+
+### `npm run check`
+
+Terminou com **exit 1**. Pela régua do plano ("só as duas falhas
+pré-existentes"), **este portão não é verde limpo**: além das duas aceitas,
+um terceiro arquivo falhou uma vez e passou isolado (abaixo). Não o registro
+como verde.
+
+| Etapa | Resultado |
+|---|---|
+| `typecheck` (`@n1/api`, `@n1/web`, `@n1/dominio`) | verde, 0 erros |
+| `lint` (`@n1/web`) | 0 erros, 3 avisos `no-unused-vars` pré-existentes (`KnowledgeDocument`, `Target`, `memberReachesContainer`), nenhum em arquivo desta fase |
+| `verificar:tokens` | `445 definidos · 356 arquivos varridos · 0 falhas` |
+| `verificar:contratos` | passou; o repositório irmão `financeiro-tria` não existe neste notebook, e o script avisa e pula a comparação (mesmo aviso das fases anteriores) |
+| testes `@n1/web` | `Test Files  60 passed (60)` · `Tests  546 passed (546)` |
+| testes `@n1/dominio` | `Test Files  83 passed (83)` · `Tests  1785 passed (1785)` |
+| testes `@n1/api` | `Test Files  3 failed \| 115 passed \| 15 skipped (133)` · `Tests  6 failed \| 1214 passed \| 198 skipped \| 1 todo (1419)` · 836,71 s |
+
+**Arquivos que falharam em `@n1/api`, cada um com a razão:**
+
+| Arquivo | Situação | Razão |
+|---|---|---|
+| `src/e2e/lote-contas-a-pagar.test.ts` (5 de 6) | **aceito, pré-existente (Fase 3/03-12, `deferred-items.md` da Fase 7)** | asserções de tempo de lock e semeadura de 61 contas contra o Supabase da plataforma; é o Financeiro, nada de Canal o toca. Mesmos cinco casos (a)–(e) de antes. |
+| `src/rotas/formularios-publicos.test.ts` (suíte de Automação de Canal, `beforeAll`) | **aceito, pré-existente (Fase 5/05-17, `deferred-items.md` da Fase 7)** | `seed de teste: A pergunta "Centro de Custo (Financeiro)" aponta para um Campo que esta Lista não tem.` — configuração do Financeiro na Lista de Solicitações. Os demais casos do arquivo passam (11 passam, 2 pulam). |
+| `src/persistencia/colunas-geradas.test.ts` (1 de 8, "due_date: coluna gerada ordena como dueDate.value") | **NÃO listado como aceito — flaky, tratado abaixo** | a ordem de três registros de mesmo vencimento (`tsk_cp_aluguel_out`, `tsk_cp_condominio`, `tsk_cp_energia`) veio diferente da ordem estável do JavaScript: o `select … order by due_date` do teste não tem desempate, e o Postgres devolve empates em ordem não especificada. |
+
+**O terceiro arquivo, honestamente.** `colunas-geradas.test.ts` não foi
+tocado por esta fase (último commit no arquivo: `0c1a26b`, Plan 01-06; a
+migração 002 que ele cobre também não mudou) e não lê `plataforma.canais`. Foi
+re-executado **sozinho**, no mesmo checkout e contra o mesmo `.env`:
+
+```
+$ cd apps/api && npx vitest run src/persistencia/colunas-geradas.test.ts
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+```
+
+Resultado nas duas execuções: **falhou 1 vez no `check` completo, passou 1 vez
+isolado.** Isso é instabilidade de ordem de empate no banco compartilhado, não
+regressão da Fase 8; fica registrado em
+`.planning/phases/08-canais-de-comunica-o-conex-o-e-omnichannel-preparado/deferred-items.md`
+para quem tocar nesse teste (a correção é um `order by due_date, id` com o
+mesmo desempate no sort do JS). Nenhum arquivo de Canal, Conversa, Mensagem, a
+ponte (`canais-projetados`, `executar`) ou `estado.test.ts` falhou.
+`outbox-worker.test.ts`, o arquivo que 08-07 viu instável em execuções
+paralelas, passou nesta execução em série.
+
+**O que o `skipped` significa (198 testes em 15 arquivos).** Os blocos
+`describeComBanco` (`apps/api/src/testes/banco-crm.ts`) só rodam com
+`DATABASE_URL` em `localhost`/`127.0.0.1`: contra o Supabase do `.env` eles
+pulam por desenho (T-07-08, nunca aplicar `migrar()` num banco remoto sem
+conferir), e é nesses blocos que moram as provas de banco de Canal, Conversa e
+Mensagem de 08-01..08-13. Para não deixar o pulado passar por provado, as
+mesmas suítes foram rodadas uma vez, nesta sessão, num Postgres 16 descartável
+(`crm-n1-pg-0815`, porta 55595, parado e removido depois):
+
+```
+$ DATABASE_URL=postgres://postgres:x@localhost:55595/postgres \
+    npx vitest run canais conversas mensagens crm contato-com 008
+ Test Files  23 passed (23)
+      Tests  319 passed (319)
+```
+
+(a URL acima é a do container descartável, sem relação com o banco da
+plataforma.) Os testes que usam `Boolean(DATABASE_URL)`, como
+`rotas/estado.test.ts`, rodaram no `check` contra o banco da plataforma com a
+008, e passaram.
+
+### `npm run build`
+
+**Exit 0.** Rotas da Fase 8 na listagem do `next build`, todas dinâmicas (`ƒ`):
+
+```
+├ ƒ /crm/caixa-de-entrada
+├ ƒ /crm/caixa-de-entrada/[conversa]
+├ ƒ /crm/caixa-de-entrada/configuracoes
+├ ƒ /crm/caixa-de-entrada/configuracoes/canais/[canal]
+├ ƒ /crm/caixa-de-entrada/configuracoes/canais/conectar
+├ ƒ /crm/caixa-de-entrada/configuracoes/canais/conectar/[provedor]
+├ ƒ /crm/caixa-de-entrada/configuracoes/filas/[fila]
+```
+
+As duas rotas novas de conexão (`/conectar` e `/conectar/[provedor]`) estão
+listadas.
+
+### Grep de segurança (T-08-56)
+
+```
+$ git grep -n "dangerouslySetInnerHTML=" -- apps/web/src/features/crm "apps/web/src/app/(shell)/crm/caixa-de-entrada"
+(sem saída)   exit 1
+```
+
+Nenhum componente do chat ou das páginas de Canal renderiza HTML cru.
