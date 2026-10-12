@@ -24,6 +24,7 @@ import { useRecente } from "@/features/shell/recente";
 import { contactDisplayName } from "@n1/dominio/derive";
 // "Não lida" e a última atividade moram no domínio: o resumo do Início conta as mesmas mensagens novas.
 import { naoLidas, ultimaAtividade as lastActivity } from "@n1/dominio/derive-resumo";
+import { rotuloDoCanal } from "@n1/dominio/derive-conversacional";
 import { capacidadesDoCanal, toggleConversationStar } from "@n1/dominio/operations";
 import { CHANNEL_ICON } from "@/features/crm/conversation-thread";
 import { ContactAvatar } from "@/features/crm/contact-card";
@@ -345,12 +346,14 @@ export function InboxColumns({ children }: { readonly children: ReactNode }) {
                       {canal && IconeDoCanal ? (
                         // O disco é opaco de propósito: ele tapa o canto do rosto.
                         <span
-                          title={CHANNEL_TYPE_LABEL[canal] ?? canal}
+                          title={channel ? rotuloDoCanal(channel) : (CHANNEL_TYPE_LABEL[canal] ?? canal)}
                           className="absolute -bottom-1 -right-1 grid size-4 place-items-center rounded-full"
                           style={{ background: "var(--card)", color: "var(--acento)" }}
                         >
                           <IconeDoCanal className="size-3" />
-                          <span className="sr-only">{CHANNEL_TYPE_LABEL[canal] ?? canal}</span>
+                          <span className="sr-only">
+                            {channel ? rotuloDoCanal(channel) : (CHANNEL_TYPE_LABEL[canal] ?? canal)}
+                          </span>
                         </span>
                       ) : null}
                     </span>
@@ -382,6 +385,16 @@ export function InboxColumns({ children }: { readonly children: ReactNode }) {
                           : conversation.title}
                       </span>
                       <span className="app-meta mt-1 flex flex-wrap items-center gap-2">
+                        {/*
+                          D-16: dois WhatsApps têm o mesmo ícone; o nome do Canal
+                          é o que os separa na lista, antes de abrir a Conversa.
+                        */}
+                        {channel && IconeDoCanal ? (
+                          <span className="inline-flex min-w-0 items-center gap-1">
+                            <IconeDoCanal className="size-3 shrink-0" />
+                            <span className="max-w-[12rem] truncate">{channel.name}</span>
+                          </span>
+                        ) : null}
                         <span>{CONVERSATION_STATE_LABEL[conversation.state]}</span>
                         {contact && contact.lifecycle !== "ativo" ? <StateSeal state={contact.lifecycle} /> : null}
                         {conversation.unresolvedIdentifier ? (
@@ -471,7 +484,7 @@ export function InboxColumns({ children }: { readonly children: ReactNode }) {
                   { value: "todos", label: "Todos os Canais" },
                   ...state.channels.map((c) => ({
                     value: c.id,
-                    label: `${c.name} · ${CHANNEL_TYPE_LABEL[c.channelType] ?? c.channelType}`,
+                    label: rotuloDoCanal(c),
                   })),
                 ]}
               />
