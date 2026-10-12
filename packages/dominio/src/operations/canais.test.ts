@@ -307,3 +307,16 @@ describe("O Canal como registro: conectar e configurar (C36)", () => {
     expect(nomeEmUso.ok).toBe(false);
   });
 });
+
+describe("configurarCanal e o Canal relacional (D-11)", () => {
+  it("recusa Canal da tabela própria e não muda nada", () => {
+    const canal = state.channels.find((c) => c.id === "chn_wpp");
+    if (!canal) throw new Error("seed sem chn_wpp");
+    (canal as { relational?: boolean }).relational = true;
+    const nomeAntes = canal.name;
+    const resultado = configurarCanal(state, admin(), canal.id, { name: "X" });
+    expect(resultado.ok).toBe(false);
+    if (!resultado.ok) expect(resultado.error).toBe("Este Canal vem da tabela própria: configure-o pela ficha do Canal, que grava pela api.");
+    expect(canal.name).toBe(nomeAntes);
+  });
+});
