@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 08
 current_phase_name: "Canais de comunicação: conexão e omnichannel preparado"
 status: executing
-stopped_at: Completed 08-11-PLAN.md
-last_updated: "2026-10-12T18:27:01.143Z"
+stopped_at: Completed 08-12-PLAN.md
+last_updated: "2026-10-12T18:41:31.912Z"
 last_activity: 2026-10-12
 last_activity_desc: Phase 08 execution started
-state_head: 0d7d23d6ccec57cf19fab09c411bfbef7b4dc702
+state_head: 85c67de79a350fd9382b5f0d4fb3647de4a16c4a
 progress:
   total_phases: 8
   completed_phases: 6
   total_plans: 148
-  completed_plans: 143
+  completed_plans: 144
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 ## Current Position
 
 Phase: 08 (Canais de comunicação: conexão e omnichannel preparado) — EXECUTING
-Plan: 12 of 15
+Plan: 13 of 15
 Status: Ready to execute
 Last activity: 2026-10-12 — Phase 08 execution started
 
@@ -366,6 +366,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 08 P09 | 14 min | 2 tasks | 4 files |
 | Phase 08 P10 | 15 min | 3 tasks | 10 files |
 | Phase 08 P11 | 6 min | 2 tasks | 2 files |
+| Phase 08 P12 | 11 min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -488,6 +489,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 08]: 08-09: a ficha do Canal decide por channel.relational — REST (PATCH e POST sem corpo) para o relacional, configurarCanal para o seed; Simular conexão em produção só para quem administra, sempre marcada (assunção do dono, Open Question 7).
 - [Phase 08]: 08-10: a aba do fio abre no Canal da ultima recebida (canalPadraoDeResposta), depois canalDaAbaInicial; sem aba 'Todas' o separador via nao aparece (Open Question 2 sinalizada).
 - [Phase 08]: 08-11: disco do Canal na lista mantém fallback CHANNEL_TYPE_LABEL para Conversa órfã; rótulo do Canal sempre via rotuloDoCanal do domínio
+- [Phase 08]: 08-12: registrarRecebida grava sempre no Canal da Conversa e e idempotente por (Canal, id externo); a recebida nao tem rota humana e nenhuma resposta carrega carga_bruta
 
 ### Pending Todos
 
@@ -549,6 +551,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-12T18:27:00.954Z
-Stopped at: Completed 08-11-PLAN.md
+Last session: 2026-10-12T18:41:31.752Z
+Stopped at: Completed 08-12-PLAN.md
 Resume file: None
