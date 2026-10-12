@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 08
 current_phase_name: "Canais de comunicação: conexão e omnichannel preparado"
 status: executing
-stopped_at: Completed 08-02-PLAN.md
-last_updated: "2026-10-12T16:30:51.389Z"
+stopped_at: Completed 08-03-PLAN.md
+last_updated: "2026-10-12T16:44:25.926Z"
 last_activity: 2026-10-12
 last_activity_desc: Phase 08 execution started
-state_head: b4c00de82256109c77d5753b6b658d35367bd3d7
+state_head: 9a2f9cbe8e3a1216c33a45952352e5649f9b1047
 progress:
   total_phases: 8
   completed_phases: 6
   total_plans: 148
-  completed_plans: 134
+  completed_plans: 135
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 ## Current Position
 
 Phase: 08 (Canais de comunicação: conexão e omnichannel preparado) — EXECUTING
-Plan: 3 of 15
+Plan: 4 of 15
 Status: Ready to execute
 Last activity: 2026-10-12 — Phase 08 execution started
 
@@ -357,6 +357,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 07 P13 | 2 min | 2 tasks | 1 files |
 | Phase 08 P01 | 9 min | 2 tasks | 24 files |
 | Phase 08 P02 | 8 min | 2 tasks | 12 files |
+| Phase 08 P03 | 7 min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -469,6 +470,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 08]: 08-01: a 008 nasce inteira (Canal, Conversa, Mensagem); o INSERT de POST /canais nunca envia conexao, e o default da 008 garante Canal desconectada
 - [Phase 08]: 08-01: a projecao de Canais relacionais entra so em GET /estado (acrescentarCanaisProjetados), nunca em hidratar(); guarda to_regclass cobre banco sem a 008
 - [Phase 08]: 08-02: capacidadesDoCanal sobrepoe so o que o provedor muda (whatsapp-nao-oficial sem janela e sem modelo); Canal sem provider = tabela do tipo
+- [Phase 08]: 08-03: a decisao de conexao/arquivamento do Canal e funcao pura do dominio (proximaConexao, validarArquivamento); o servico so a grava e os CHECK da 008 ficam como rede contra corrida.
+- [Phase 08]: 08-03: unicidade de nome e conta de Canal vale entre a tabela nova e o channels do seed (canalAntigoEmConflito), e toda escrita de Canal soma 1 em plataforma.workspaces.revisao na mesma transacao.
 
 ### Pending Todos
 
@@ -530,6 +533,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-12T16:30:51.245Z
-Stopped at: Completed 08-02-PLAN.md
+Last session: 2026-10-12T16:44:25.784Z
+Stopped at: Completed 08-03-PLAN.md
 Resume file: None
