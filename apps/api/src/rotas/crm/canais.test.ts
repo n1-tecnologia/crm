@@ -44,6 +44,26 @@ describe("rotas de Canais — serviço falso, sem banco", () => {
         chamadas.push(["criar", ...a]);
         return Promise.resolve(sucesso({} as Canal));
       },
+      obter: (...a) => {
+        chamadas.push(["obter", ...a]);
+        return Promise.resolve(sucesso({} as Canal));
+      },
+      editar: (...a) => {
+        chamadas.push(["editar", ...a]);
+        return Promise.resolve(sucesso({} as Canal));
+      },
+      simularConexao: (...a) => {
+        chamadas.push(["simularConexao", ...a]);
+        return Promise.resolve(sucesso({} as Canal));
+      },
+      desconectar: (...a) => {
+        chamadas.push(["desconectar", ...a]);
+        return Promise.resolve(sucesso({} as Canal));
+      },
+      arquivar: (...a) => {
+        chamadas.push(["arquivar", ...a]);
+        return Promise.resolve(sucesso({} as Canal));
+      },
     };
     return { servico, chamadas };
   }
