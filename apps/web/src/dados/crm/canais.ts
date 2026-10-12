@@ -11,14 +11,15 @@
  * no sucesso: numa recusa a `ErroDeApi` sobe com `codigo` e `campo` (um 409 de
  * conta ou nome em uso) e a tela segue como estava.
  *
- * Quem cria um Canal por aqui também chama `useRehidratar()`: o resto do app
+ * Quem escreve um Canal por aqui também chama `useRehidratar()`: o resto do app
  * ainda lê o Canal de `state.channels`, que a api projeta em `GET /estado`
- * (D-11).
+ * (D-11). A ficha (`[canal]/page.tsx`) não lê `GET /canais/:id`: depois de cada
+ * escrita ela re-hidrata e lê o Canal atualizado do store.
  */
 
 import useSWR from "swr";
 import { LIMITES_CRM } from "@n1/dominio/crm/comum";
-import type { Canal, EstadoDoCanal, NovoCanal } from "@n1/dominio/crm/canais";
+import type { Canal, EdicaoDeCanal, EstadoDoCanal, NovoCanal } from "@n1/dominio/crm/canais";
 import { chamarCrm, invalidarCrm } from "./cliente-crm";
 
 export interface FiltroDeCanais {
@@ -50,9 +51,47 @@ export function useCanais(filtro: FiltroDeCanais, opcoes: { readonly pausado?: b
   });
 }
 
-/** Cria o Canal `desconectada` (D-08). Só o sucesso invalida a lista. */
-export async function criarCanal(entrada: NovoCanal): Promise<Canal> {
-  const resposta = await chamarCrm<{ ok: true; dados: Canal }>("/canais", { method: "POST", corpo: entrada });
+type Verbo = "POST" | "PATCH";
+
+/**
+ * Uma escrita de Canal. O `corpo` só entra quando definido: `chamarCrm` manda
+ * `content-type` apenas com corpo, e as ações de conexão são POST sem corpo —
+ * um `content-type: application/json` sem corpo é recusado pelo Fastify.
+ * Só o sucesso invalida `/canais`.
+ */
+async function gravar(caminho: string, verbo: Verbo, corpo?: unknown): Promise<Canal> {
+  const resposta = await chamarCrm<{ ok: true; dados: Canal }>(caminho, {
+    method: verbo,
+    ...(corpo !== undefined ? { corpo } : {}),
+  });
   await invalidarCrm("/canais");
   return resposta.dados;
+}
+
+export function chaveDoCanal(id: string): string {
+  return `/canais/${id}`;
+}
+
+/** Cria o Canal `desconectada` (D-08). Só o sucesso invalida a lista. */
+export function criarCanal(entrada: NovoCanal): Promise<Canal> {
+  return gravar("/canais", "POST", entrada);
+}
+
+/** D-11: nome, Fila padrão e Origem padrão. `null` limpa o padrão; ausente não mexe. */
+export function editarCanal(id: string, edicao: EdicaoDeCanal): Promise<Canal> {
+  return gravar(chaveDoCanal(id), "PATCH", edicao);
+}
+
+/** D-08: conecta marcando a conexão como simulada. A api recusa Canal arquivado ou já conectado (409 `TRANSICAO_INVALIDA`). */
+export function simularConexaoDoCanal(id: string): Promise<Canal> {
+  return gravar(`${chaveDoCanal(id)}/simular-conexao`, "POST");
+}
+
+export function desconectarCanal(id: string): Promise<Canal> {
+  return gravar(`${chaveDoCanal(id)}/desconectar`, "POST");
+}
+
+/** 11.1: arquivar desconecta e libera a conta para um Canal novo. */
+export function arquivarCanal(id: string): Promise<Canal> {
+  return gravar(`${chaveDoCanal(id)}/arquivar`, "POST");
 }
