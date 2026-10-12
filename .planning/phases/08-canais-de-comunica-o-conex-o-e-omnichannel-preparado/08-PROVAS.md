@@ -205,6 +205,7 @@ automatizado fecha:
 | 4 | **Flows e automações com dois WhatsApps** (decisão 4): com o oficial e o não oficial no mesmo Espaço, uma automação de Canal precisa dizer a qual dos dois se refere. Decidir a regra antes de a fase de Flows ligar nisto | aberto |
 | 5 | **`DATABASE_SSL_INSECURE=true` no `.env` deste notebook** (a linha `[conexao]` das saídas acima, T-02-TLS): a verificação da cadeia TLS do Postgres está desligada no ambiente de desenvolvimento, por decisão da Fase 2. Não é desta fase e não muda o que a 008 aplicou; fora do notebook do desenvolvedor, `DATABASE_CA_CERT` ou `DATABASE_CA_PATH` é obrigatório | aceito desde a Fase 2 |
 | 6 | **Qualquer ajuste de schema da Caixa de Entrada a partir daqui** | é `009` — a 008 está aplicada e é imutável |
+| 7 | **Resultado da UAT de fim de fase** (`## Roteiro da UAT`, 08-15): dez passos no app real, mais as conferências visuais, com a coluna "Resultado" em branco | aberto — do dono |
 
 ---
 
@@ -310,3 +311,145 @@ $ git grep -n "dangerouslySetInnerHTML=" -- apps/web/src/features/crm "apps/web/
 ```
 
 Nenhum componente do chat ou das páginas de Canal renderiza HTML cru.
+
+---
+
+## Roteiro da UAT
+
+**Quando:** no lote de fim de fase, depois da verificação automática da fase
+(verificador, revisão de código, regressão). **Onde:** no app real — `npm run
+dev` da raiz sobe web (3001) e api (3002) contra o banco da plataforma, com a
+008 aplicada (08-14, "Confirmação": `0 pendente(s)`). **Quem:** o dono, ou
+quem ele indicar, com dois logins reais do Supabase no mesmo Espaço de
+Trabalho: um Administrador (ou Proprietário) e um Membro (B35). **Por que
+humano:** o fluxo depende de JWT real do Supabase, do navegador e do banco da
+plataforma com a 008 — nenhum teste automatizado desta base tem os três
+juntos (`08-VALIDATION.md`, "Manual-Only Verifications"). O que está coberto
+por teste: o mesmo fluxo por `app.inject` contra Postgres local
+(`apps/api/src/e2e/canais-fluxo.test.ts`, 08-13, 9 casos) e as telas por
+teste de componente com `fetch` falso (08-08 a 08-11).
+
+Antes de começar: `lsof -nP -iTCP:3001 -sTCP:LISTEN` e `…:3002…` vazios (ou o
+`npm run dev` deste checkout já de pé); a api precisa do `apps/api/.env` da
+plataforma. **Recarregar a página depois de cada gravação é parte do
+critério:** o dado tem de vir da api, não da memória da tela. Use dois números
+distintos, **A** para o "Comercial" e **B** para o "Suporte" (o mesmo número
+não vai nos dois provedores, ver "Limitações aceitas", item 5). Os Canais
+criados aqui ficam no Espaço depois da UAT; arquive-os no passo 10 ou deixe-os,
+como preferir.
+
+| # | Passo | Esperado | Resultado |
+|---|---|---|---|
+| 1 | Como Administrador, `/crm/caixa-de-entrada/configuracoes` → "Conectar Canal" | Chega na página dos quatro cartões: WhatsApp oficial, WhatsApp não oficial, Instagram, E-mail | |
+| 2 | Cartão **WhatsApp oficial** → orientação com três passos e o espaço "Token de acesso e número verificado" → Nome **Comercial**, o número **A**, um Setor → "Conectar" | Os três passos aparecem com o espaço reservado do token; a ficha abre com o Canal **desconectado**; recarregar mantém o Canal, o nome, o número e o Setor | |
+| 3 | Voltar → cartão **WhatsApp não oficial** → Nome **Suporte**, o número **B** → ficha desconectada. Tentar de novo o não oficial com o número **A** | O Suporte nasce desconectado e persiste ao recarregar. A segunda tentativa é **recusada** com "Esta conta já está conectada em outro Canal ativo." e um link para o Canal que já usa o número | |
+| 4 | Na ficha de cada um, "Simular conexão" | O Canal passa a **conectado** com a marca "conexão simulada" e o aviso de que nenhuma Mensagem sai da plataforma; recarregar mantém a conexão e a marca | |
+| 5 | Configurações da Caixa de Entrada, lista de Canais | "Comercial" (selo **oficial**, marca **cadastrado**), "Suporte" (selo **não oficial**, **cadastrado**) e "Comercial SP" (do seed, marca **demo**) aparecem juntos e distinguíveis | |
+| 6 | Abrir um Contato do seed com WhatsApp (pela Caixa de Entrada ou pela ficha legada) | Abas "Comercial · WhatsApp oficial", "Suporte · WhatsApp não oficial" e "Comercial SP · WhatsApp oficial"; a aba de e-mail aparece desligada se o Contato não tem e-mail | |
+| 7 | No compositor, "Responder por" → "Suporte" | A aba muda para Suporte; o topo do fio mostra Suporte com o selo do provedor e a marca de conexão simulada; uma Mensagem livre é enviada **sem pedir modelo** e sem aviso de janela de 24 h | |
+| 8 | Caixa de Entrada | O item da Conversa mostra o ícone e o nome "Suporte"; o filtro "Canal" lista "Suporte · WhatsApp não oficial" e, escolhido, filtra a lista | |
+| 9 | Sair e entrar como **Membro** → Configurações da Caixa de Entrada e ficha de um Canal | "Conectar Canal" aparece **desabilitado** com a frase de quem administra; a ficha não tem "Simular conexão" | |
+| 10 | De volta como Administrador: "Desconectar" o Suporte; depois "Arquivar" | Desconectar leva a ficha a **desconectada**; arquivar tira o Canal dos Canais ativos (some da lista e das abas do Contato); recarregar mantém ambos | |
+
+**Esperado em geral:** cada passo grava e relê (recarregar mantém o dado); os
+Canais novos nascem desconectados e só ficam conectados pelo "Simular
+conexão", sempre marcado; os dois WhatsApps aparecem separados por nome e selo
+em todas as telas; trocar o "Responder por" nunca move uma Conversa existente
+de Canal.
+
+**O que olhar com olho humano, passo a passo** (os testes provam o
+comportamento e o texto, não o visual — são as conferências de juízo que os
+planos 08-01, 08-02, 08-08, 08-09, 08-10 e 08-11 deixaram para esta UAT; anote
+em "Resultado" se algo estiver feio, ilegível ou confuso, mesmo que o passo
+funcione):
+
+| Passo(s) | O que julgar | Plano que deixou |
+|---|---|---|
+| 1–3 | hierarquia visual dos quatro cartões, do bloco de passos e do espaço tracejado reservado ao token/QR; a orientação se entende sem ajuda | 08-08, 08-01 |
+| 2–3 | o layout do formulário (Nome, número, Setor, Origem) e a página `[provedor]` | 08-01, 08-08 |
+| 4 | a faixa de aviso "conexão simulada" e os botões da ficha: legíveis, e fica claro que nada sai da plataforma | 08-09 |
+| 5 | os selos (oficial / não oficial / cadastrado / demo) distinguem os Canais sem precisar ler o nome inteiro | 08-01 |
+| 6–7 | o desenho das abas com rótulo longo "Nome · Provedor", a barra do topo com ícone + nome + selo + marca simulada e o "Responder por" no topo do compositor | 08-10 |
+| 6, 7 | para o Suporte (não oficial): a barra de modelo **não** aparece, não há ponto de janela de 24 h aberta nem marcador "fora da janela" — o oficial continua com eles | 08-02 |
+| 6 | os atalhos WhatsApp / E-mail das fichas (Contato, Empresa, Negócio, Tarefa) levam à aba certa quando há dois WhatsApps | 08-10 |
+| 8 | o nome do Canal na linha de meta do item cabe na largura real da coluna (truncamento, quebra de linha) | 08-11 |
+
+**O que este roteiro fecha no `WINDOWS.md`:** a janela `unrun-verify` da Fase
+8 (#6: a UAT de fim de fase e as conferências visuais dos planos 08-01, 08-02,
+08-08, 08-09, 08-10 e 08-11) fica `open` até o dono preencher a coluna
+"Resultado". A janela #7 (`deviation`) registra a instabilidade de
+`colunas-geradas.test.ts` no portão.
+
+---
+
+## Limitações aceitas
+
+O que a UAT **não** vai encontrar funcionando, de propósito, e onde cada
+limitação está decidida. Nada disto é defeito desta fase.
+
+1. **D-11 — o chat segue no modelo antigo.** Conversas e Mensagens que a tela
+   cria vão para `plataforma.registros` (operações `startConversation` e
+   `sendMessage` do domínio), não para `plataforma.conversas` e
+   `plataforma.mensagens`. `POST /conversas` e `POST /mensagens` existem e
+   estão provados (08-06, 08-12, 08-13), mas só se alcançam por REST ou por
+   teste, não pela tela. A tela enxerga os Canais da tabela por projeção (a
+   ponte de `GET /estado` e `executar()`), nunca o contrário. Some na fase de
+   unificação.
+2. **Pitfall 8 — Contatos da Fase 7 e o chat não se enxergam.** Um Contato
+   criado em `/crm/contatos` (tabela da 007) não aparece no chat, e os Contatos
+   do modelo antigo (os do seed) não aparecem nas listas novas. Por isso o
+   passo 6 usa um Contato **do seed**. Mesma família do D-15 da Fase 7.
+3. **D-12 — o seed continua.** Os Canais, Conversas e Mensagens do seed
+   continuam existindo e aparecem marcados como **demo**, ao lado dos Canais
+   **cadastrados**. A ficha do Canal do seed grava pela operação antiga, não
+   por REST.
+4. **Decisão 1 — o popup de Lista nasce `conectada`.** O popup de adicionar
+   Canal das Listas é o caminho legado: o Canal sai já `conectada` em
+   `plataforma.registros`, sem passar pela página de conexão. C36 deixa de
+   valer só para os Canais criados pela página nova (D-08). Pendência do dono
+   (abaixo).
+5. **Decisão 3 — o mesmo número não vai em oficial e não oficial.**
+   `canais_conta_uq` é por (tipo, identificador), sem o provedor (INV-CXE-01),
+   e vale também contra o `channels` do seed. Confirmado pelo dono em 08-14,
+   antes de a 008 ficar imutável. É por isso que o roteiro usa dois números.
+6. **Decisão 2 — sem aba "Todas".** O separador "via …" (`SeparadorDeCanal`,
+   derivado por `marcadoresDeCanal`) está ligado às Mensagens, mas numa aba por
+   Canal todas as Mensagens são de um Canal só, então ele não tem onde aparecer
+   e não tem prova positiva (08-10). A aba "Todas" fica para a unificação,
+   pendência do dono.
+7. **Decisão 4 — Flows e "enviar ao contato" das Automações não distinguem os
+   dois WhatsApps.** Com o oficial e o não oficial no mesmo Espaço, uma
+   automação de Canal ainda não diz a qual dos dois se refere (o payload de
+   `automacao.notificar-canal.v1` leva o tipo do Canal, não o id). Decidir a
+   regra antes de a fase de Flows ligar nisto.
+8. **Decisão 7 (08-09) — "Simular conexão" existe no Espaço de produção.**
+   Enquanto não há provedor real, é o único jeito de conectar um Canal novo;
+   fica visível só para Administrador/Proprietário e sempre marcada. Se deve
+   continuar visível no Espaço de produção depois que houver provedor real é
+   decisão do dono (abaixo).
+9. **A reabertura automática de Conversa por Mensagem recebida espera a Caixa
+   relacional.** `registrarRecebida` (08-12) é idempotente e guarda a carga
+   bruta, mas não reabre sozinha uma Conversa resolvida: isso depende de a
+   Caixa de Entrada ler Conversas da tabela nova.
+10. **`isOutsideWindow` usa a última atividade como "agora"** (visto em 08-11,
+    anterior a esta fase e fora do escopo dela). A janela de 24 h exibida na
+    tela do oficial pode divergir do relógio real; o servidor (08-12) aplica a
+    janela com o relógio dele.
+11. **Mensagem com `em_resposta_a_id` inexistente ou de outra Conversa recebe a
+    mesma frase `RESPOSTA_DE_OUTRA_CONVERSA`** (08-12): a FK dispara nos dois
+    casos e o servidor não os distingue na mensagem. Não vaza se o id existe em
+    outro Espaço.
+12. **`outbox-worker.test.ts` é instável só em execução paralela contra banco
+    compartilhado** (08-07). No portão, com `fileParallelism: false`, passou.
+13. **Portão `npm run check` com duas falhas pré-existentes fora desta fase**
+    (`deferred-items.md` da Fase 7): `apps/api/src/e2e/lote-contas-a-pagar.test.ts`
+    (5 de 6, asserções de tempo de lock contra o banco remoto) e a suíte
+    "Automação de Canal publicada na Lista de Solicitações (CR-05/05-17)" de
+    `apps/api/src/rotas/formularios-publicos.test.ts` (o seed aponta para um
+    Campo que a Lista não tem). Mais uma instabilidade nova, não aceita como
+    pré-existente: `colunas-geradas.test.ts` (empate de vencimento sem
+    desempate; passou isolado — `deferred-items.md` desta fase).
+14. **`DATABASE_SSL_INSECURE=true` no `.env` deste notebook** (a linha
+    `[conexao]` das saídas de 08-14, T-02-TLS): a verificação da cadeia TLS do
+    Postgres está desligada no desenvolvimento, por decisão da Fase 2. Fora do
+    notebook, `DATABASE_CA_CERT` ou `DATABASE_CA_PATH` é obrigatório.
