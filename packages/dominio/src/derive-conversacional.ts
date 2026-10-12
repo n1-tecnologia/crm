@@ -7,7 +7,9 @@
 
 import type { DataState } from "./state";
 import type { Channel, ChannelType, Contact, Conversation, Deal, Id, Link, Message, ModeloDeTarefa, Task } from "./types";
+import { ROTULO_DO_TIPO_DE_CANAL } from "./operations/canais";
 import { CHANNEL_CAPABILITIES } from "./operations/conversations";
+import { PROVEDORES, provedorDoCanal } from "./provedores-de-canal";
 
 /** Os papéis dos Vínculos com que a Tarefa conversacional nasce. */
 export const PAPEL_DO_VINCULO = {
@@ -180,8 +182,11 @@ export function listaSemCanais(state: DataState, listId: Id): boolean {
   return listaConversacional(state, listId) && canaisDaLista(state, listId).length === 0;
 }
 
-// ── Esqueleto do passo RED (08-05, Task 3): as assinaturas são as definitivas ──
-
+/**
+ * A ordem das abas é da PLATAFORMA, não dos Identificadores do Contato: quem
+ * atende usa sempre a mesma tela, e a aba do WhatsApp não pode mudar de lugar
+ * porque este Contato tem e-mail e o outro não.
+ */
 export const ORDEM_DOS_TIPOS_DE_CANAL: readonly ChannelType[] = [
   "whatsapp",
   "instagram",
@@ -190,41 +195,153 @@ export const ORDEM_DOS_TIPOS_DE_CANAL: readonly ChannelType[] = [
   "chatDoSite",
 ];
 
+/** Uma aba do chat: o Canal e se ele chega ao Contato (se não, a aba aparece desligada). */
 export interface CanalDoFio {
   readonly canal: Channel;
   readonly alcancavel: boolean;
 }
 
-export function canaisDoFio(_state: DataState, _contact: Contact | undefined): CanalDoFio[] {
-  throw new Error("canaisDoFio: ainda não implementada");
+function alcancaOContato(canal: Channel, contact: Contact | undefined): boolean {
+  if (!contact) return true;
+  const alcanca = CHANNEL_CAPABILITIES[canal.channelType].resolvesIdentifierTypes;
+  return contact.identifiers.some((i) => alcanca.includes(i.type));
 }
 
-export function canaisDeResposta(_state: DataState, _contact: Contact | undefined): Channel[] {
-  throw new Error("canaisDeResposta: ainda não implementada");
+/**
+ * D-14 — uma aba por CANAL, não por tipo: dois WhatsApps dão duas abas. A
+ * fileira mostra todos os Canais ativos do Espaço; os que não chegam ao Contato
+ * vêm desligados (`alcancavel: false`), para a aba dizer por quê — a mesma ideia
+ * de hoje, agora por Canal. O alcance é do TIPO (`resolvesIdentifierTypes`,
+ * como em `canaisQueAlcancam`): o provedor não o muda. Ordem estável: tipo
+ * (`ORDEM_DOS_TIPOS_DE_CANAL`), criação, id.
+ */
+export function canaisDoFio(state: DataState, contact: Contact | undefined): CanalDoFio[] {
+  const posicao = (tipo: ChannelType): number => ORDEM_DOS_TIPOS_DE_CANAL.indexOf(tipo);
+  return state.channels
+    .filter((canal) => canal.lifecycle === "ativo")
+    .sort(
+      (a, b) =>
+        posicao(a.channelType) - posicao(b.channelType) ||
+        a.createdAt.localeCompare(b.createdAt) ||
+        a.id.localeCompare(b.id),
+    )
+    .map((canal) => ({ canal, alcancavel: alcancaOContato(canal, contact) }));
 }
 
-export function canalPadraoDeResposta(_state: DataState, _contact: Contact | undefined): Id | undefined {
-  throw new Error("canalPadraoDeResposta: ainda não implementada");
+/**
+ * D-15 — o que o seletor "Responder por" oferece: só os Canais que alcançam o
+ * Contato E estão `conectada`. Um Canal desligado não aceita resposta nova;
+ * mandar por ele só criaria Mensagem `pendente`.
+ */
+export function canaisDeResposta(state: DataState, contact: Contact | undefined): Channel[] {
+  return canaisDoFio(state, contact)
+    .filter((c) => c.alcancavel && c.canal.connection === "conectada")
+    .map((c) => c.canal);
 }
 
-export function canalDaAbaInicial(_state: DataState, _contact: Contact | undefined): Id | undefined {
-  throw new Error("canalDaAbaInicial: ainda não implementada");
+/** Conversas ativas do Contato; sem Contato, nenhuma. */
+function conversasAtivasDoContato(state: DataState, contact: Contact | undefined): Conversation[] {
+  if (!contact) return [];
+  return state.conversations.filter((c) => c.contactId === contact.id && c.lifecycle === "ativo");
 }
 
-export function canalPadraoDoTipo(_state: DataState, _contact: Contact | undefined, _tipo: ChannelType): Id | undefined {
-  throw new Error("canalPadraoDoTipo: ainda não implementada");
+/** O Canal da Conversa onde está a Mensagem `recebida` mais recente do Contato (entre os Canais aceitos por `serve`). */
+function canalDaUltimaRecebida(
+  state: DataState,
+  contact: Contact | undefined,
+  serve: (canalId: Id) => boolean,
+): Id | undefined {
+  let melhor: { readonly canalId: Id; readonly em: string } | undefined;
+  for (const conversa of conversasAtivasDoContato(state, contact)) {
+    if (!serve(conversa.channelId)) continue;
+    for (const mensagem of conversa.messages) {
+      if (mensagem.direction !== "recebida") continue;
+      if (!melhor || mensagem.createdAt > melhor.em) melhor = { canalId: conversa.channelId, em: mensagem.createdAt };
+    }
+  }
+  return melhor?.canalId;
 }
 
+/**
+ * D-15 — o "Responder por" já vem preenchido com o Canal por onde o Contato
+ * falou por último. Se esse Canal não serve mais (desconectado, arquivado), o
+ * primeiro Canal de resposta do MESMO tipo; sem ele, o primeiro de resposta.
+ * `undefined` quando nenhum Canal serve.
+ */
+export function canalPadraoDeResposta(state: DataState, contact: Contact | undefined): Id | undefined {
+  const resposta = canaisDeResposta(state, contact);
+  const ultimo = canalDaUltimaRecebida(state, contact, () => true);
+  const doUltimo = resposta.find((c) => c.id === ultimo);
+  if (doUltimo) return doUltimo.id;
+  const tipoDoUltimo = state.channels.find((c) => c.id === ultimo)?.channelType;
+  const domesmoTipo = tipoDoUltimo ? resposta.find((c) => c.channelType === tipoDoUltimo) : undefined;
+  return (domesmoTipo ?? resposta[0])?.id;
+}
+
+/**
+ * D-14 — a aba que abre é a do Canal da Conversa mais recente (nota interna
+ * não conta: não foi trocada com o Contato). Abrir numa aba vazia enquanto há
+ * Conversa viva em outro Canal esconde justamente o que a pessoa veio ver. Sem
+ * Conversa, o primeiro Canal alcançável.
+ */
+export function canalDaAbaInicial(state: DataState, contact: Contact | undefined): Id | undefined {
+  const fio = canaisDoFio(state, contact);
+  const noFio = new Set(fio.map((c) => c.canal.id));
+  let melhor: { readonly canalId: Id; readonly em: string } | undefined;
+  for (const conversa of conversasAtivasDoContato(state, contact)) {
+    if (!noFio.has(conversa.channelId)) continue;
+    for (const mensagem of conversa.messages) {
+      if (mensagem.direction === "interna") continue;
+      if (!melhor || mensagem.createdAt > melhor.em) melhor = { canalId: conversa.channelId, em: mensagem.createdAt };
+    }
+  }
+  return melhor?.canalId ?? fio.find((c) => c.alcancavel)?.canal.id;
+}
+
+/**
+ * O Canal que um gesto "por tipo" (abrir atendimento, iniciar Conversa) usa
+ * quando só o tipo é conhecido: entre os Canais de resposta do tipo, o da
+ * última recebida naquele tipo; senão o primeiro. `undefined` se o Contato não
+ * tem Canal conectado desse tipo.
+ */
+export function canalPadraoDoTipo(state: DataState, contact: Contact | undefined, tipo: ChannelType): Id | undefined {
+  const doTipo = canaisDeResposta(state, contact).filter((c) => c.channelType === tipo);
+  if (doTipo.length === 0) return undefined;
+  const ultimo = canalDaUltimaRecebida(state, contact, (id) => doTipo.some((c) => c.id === id));
+  return doTipo.find((c) => c.id === ultimo)?.id ?? doTipo[0]?.id;
+}
+
+/**
+ * D-13 — o separador "via …" marca a TROCA de Canal numa sequência de itens
+ * (Mensagens): vem antes de todo item cujo Canal difere do anterior. Com uma
+ * aba por Canal a sequência de uma aba é de um Canal só e não ganha separador;
+ * ele serve às listas que misturam Canais (Mensagens do Contato, histórico).
+ */
 export function marcadoresDeCanal<T extends { readonly channelId: Id }>(
-  _itens: readonly T[],
+  itens: readonly T[],
 ): Array<{ readonly tipo: "item"; readonly item: T } | { readonly tipo: "via"; readonly channelId: Id }> {
-  throw new Error("marcadoresDeCanal: ainda não implementada");
+  const saida: Array<{ readonly tipo: "item"; readonly item: T } | { readonly tipo: "via"; readonly channelId: Id }> = [];
+  let anterior: Id | undefined;
+  for (const item of itens) {
+    if (anterior !== undefined && item.channelId !== anterior) saida.push({ tipo: "via", channelId: item.channelId });
+    saida.push({ tipo: "item", item });
+    anterior = item.channelId;
+  }
+  return saida;
 }
 
-export function rotuloDoCanal(_canal: Pick<Channel, "name" | "channelType" | "provider">): string {
-  throw new Error("rotuloDoCanal: ainda não implementada");
+/** O que identifica a conta de um Canal além do nome: o provedor ("WhatsApp oficial") ou, sem provedor, o tipo. */
+function rotuloDoProvedor(canal: Pick<Channel, "channelType" | "provider">): string {
+  const provedor = provedorDoCanal(canal);
+  return provedor !== undefined ? PROVEDORES[provedor].rotulo : ROTULO_DO_TIPO_DE_CANAL[canal.channelType];
 }
 
-export function textoDoSeparadorDeCanal(_canal: Pick<Channel, "name" | "channelType" | "provider">): string {
-  throw new Error("textoDoSeparadorDeCanal: ainda não implementada");
+/** "Comercial · WhatsApp oficial": o nome e o provedor, para o seletor "Responder por" e as abas. */
+export function rotuloDoCanal(canal: Pick<Channel, "name" | "channelType" | "provider">): string {
+  return `${canal.name} · ${rotuloDoProvedor(canal)}`;
+}
+
+/** "via Suporte (WhatsApp não oficial)": o texto do separador de troca de Canal. */
+export function textoDoSeparadorDeCanal(canal: Pick<Channel, "name" | "channelType" | "provider">): string {
+  return `via ${canal.name} (${rotuloDoProvedor(canal)})`;
 }
