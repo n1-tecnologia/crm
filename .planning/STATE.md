@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 08
 current_phase_name: "Canais de comunicação: conexão e omnichannel preparado"
 status: executing
-stopped_at: Completed 08-08-PLAN.md
-last_updated: "2026-10-12T17:48:19.468Z"
+stopped_at: Completed 08-09-PLAN.md
+last_updated: "2026-10-12T18:01:48.775Z"
 last_activity: 2026-10-12
 last_activity_desc: Phase 08 execution started
-state_head: 916cdb06dc48a318148d9de7cc280408564435aa
+state_head: 1a2d8bf13423fac9b88b4fc6be61397fd46045f0
 progress:
   total_phases: 8
   completed_phases: 6
   total_plans: 148
-  completed_plans: 140
+  completed_plans: 141
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 ## Current Position
 
 Phase: 08 (Canais de comunicação: conexão e omnichannel preparado) — EXECUTING
-Plan: 9 of 15
+Plan: 10 of 15
 Status: Ready to execute
 Last activity: 2026-10-12 — Phase 08 execution started
 
@@ -363,6 +363,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 08 P06 | 10 min | 3 tasks | 7 files |
 | Phase 08 P07 | 12 min | 2 tasks | 4 files |
 | Phase 08 P08 | 14 min | 3 tasks | 6 files |
+| Phase 08 P09 | 14 min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -482,6 +483,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 08]: 08-06: a Conversa relacional nao avanca a revisao do Espaco (nao e projetada em GET /estado); criar confere Canal, Contato, Identificador do tipo do Canal e o par aberto antes de gravar Conversa e 1a Mensagem no mesmo PoolClient
 - [Phase 08]: 08-07: semCanaisProjetados lanca tambem quando um Canal projetado some do estado; hidratar() continua sem a projecao (so GET /estado e executar())
 - [Phase 08]: 08-08: botão Conectar Canal serve de action da Section e do EmptyState; erros 409 por campo vão ao Field, bloqueios.canais vira link ver o Canal
+- [Phase 08]: 08-09: a ficha do Canal decide por channel.relational — REST (PATCH e POST sem corpo) para o relacional, configurarCanal para o seed; Simular conexão em produção só para quem administra, sempre marcada (assunção do dono, Open Question 7).
 
 ### Pending Todos
 
@@ -543,6 +545,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-12T17:48:19.319Z
-Stopped at: Completed 08-08-PLAN.md
+Last session: 2026-10-12T18:01:48.623Z
+Stopped at: Completed 08-09-PLAN.md
 Resume file: None
