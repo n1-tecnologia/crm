@@ -8,19 +8,43 @@
  * (RN-CXE-05).
  *
  * C36 — da configuração, o SETOR (a Fila padrão) e a ORIGEM padrão se editam
- * aqui (`configurarCanal`), por quem administra o Espaço de Trabalho (B35); o
- * resto do painel continua só leitura. São os mesmos dois campos que o popup
- * de adicionar conta pergunta.
+ * aqui, por quem administra o Espaço de Trabalho (B35); o resto do painel
+ * continua só leitura. São os mesmos dois campos que a página de conexão
+ * pergunta.
+ *
+ * Dois caminhos, decididos por `channel.relational` (Fase 8):
+ *
+ *   - D-11 — o Canal da tabela própria (`plataforma.canais`, 008) grava por REST:
+ *     `PATCH /canais/:id` para Setor e Origem, e `POST /canais/:id/…` para
+ *     simular a conexão, desconectar e arquivar. A permissão vem de
+ *     `usePodeNoCrm(<ação>, "canal")`, a mesma `podeNoCrm` que a api aplica — a
+ *     tela só ESCONDE o botão, quem barra é o servidor (403). Depois de cada
+ *     escrita, `rehidratar()` traz o Canal atualizado para `state.channels`; esta
+ *     tela não lê `GET /canais/:id`.
+ *   - D-12 — o Canal do seed (demo) segue pela operação antiga `configurarCanal`
+ *     e por `recusaDeGerirCanais`, exatamente como antes. Ele não tem o bloco de
+ *     Conexão: `configurarCanal` recusa o relacional, e a api não conhece o do seed.
+ *
+ * D-08 — "Simular conexão" liga o Canal sem provedor real e o MARCA como
+ * simulado: a marca "conexão simulada" no cabeçalho e a faixa de aviso dizem que
+ * nenhuma Mensagem sai da plataforma (T-08-36). Desconectar apaga a marca.
  */
 
 import Link from "next/link";
 import { use, useState } from "react";
-import { useData, useRun, useSession } from "@/dados/store";
+import { ErroDeApi } from "@/dados/crm/cliente-crm";
+import { arquivarCanal, desconectarCanal, editarCanal, simularConexaoDoCanal } from "@/dados/crm/canais";
+import { usePodeNoCrm } from "@/dados/crm/sessao";
+import { useData, useRehidratar, useRun, useSession } from "@/dados/store";
 import { capacidadesDoCanal, configurarCanal, recusaDeGerirCanais } from "@n1/dominio/operations";
+import { PROVEDORES, provedorDoCanal } from "@n1/dominio/provedores-de-canal";
+import { MarcaDeConexaoSimulada, SeloDeOrigem, SeloDoProvedor } from "@/features/crm/selo-do-provedor";
 import { CHANNEL_TYPE_LABEL, IDENTIFIER_TYPE_LABEL } from "@/features/shell/format";
 import { useFormat } from "@/features/shell/use-format";
 import {
+  Button,
   ConditionMarker,
+  ConfirmDialog,
   CorpoDeTela,
   EmptyState,
   PageHeader,
@@ -33,6 +57,9 @@ import {
   Toast,
   type TomPilula,
 } from "@/features/shell/ui";
+
+const AVISO_DA_SIMULACAO =
+  "Conexão simulada: o Canal aparece conectado para testar o chat, mas nenhuma Mensagem sai da plataforma.";
 
 const APPROVAL_LABEL: Record<string, string> = {
   aprovado: "aprovado",
@@ -52,8 +79,16 @@ export default function CanalPage({ params }: { params: Promise<{ canal: string 
   const state = useData((data) => data);
   const run = useRun();
   const session = useSession();
+  const rehidratar = useRehidratar();
   const fmt = useFormat();
   const [aviso, setAviso] = useState<{ readonly texto: string; readonly erro: boolean } | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+  const [arquivando, setArquivando] = useState(false);
+  // Os hooks vêm antes do "Canal não encontrado": a ordem deles não pode depender do Canal.
+  const recusaDeEditar = usePodeNoCrm("editar", "canal");
+  const recusaDeSimular = usePodeNoCrm("simular_conexao", "canal");
+  const recusaDeDesconectar = usePodeNoCrm("desconectar", "canal");
+  const recusaDeArquivar = usePodeNoCrm("arquivar", "canal");
   const channel = state.channels.find((c) => c.id === canal);
 
   if (!channel) {
@@ -72,14 +107,48 @@ export default function CanalPage({ params }: { params: Promise<{ canal: string 
   const configuredBy = state.members.find((m) => m.id === channel.configuredByMemberId);
   const contactOwner = state.members.find((m) => m.id === channel.defaultContactOwnerMemberId);
   const origin = state.catalog.find((item) => item.id === channel.defaultOriginId);
-  const recusaDeConfigurar = recusaDeGerirCanais(state, session.memberId);
-  const configurar = (patch: { readonly defaultQueueId?: string | null; readonly defaultOriginId?: string | null }, mensagem: string) => {
-    const r = run((data, me) => configurarCanal(data, me, channel.id, patch));
+  const relacional = channel.relational === true;
+  const recusaDeConfigurar = relacional
+    ? (recusaDeEditar ?? (channel.lifecycle === "arquivado" ? "Um Canal arquivado não se configura." : undefined))
+    : recusaDeGerirCanais(state, session.memberId);
+  const configurar = async (patch: { readonly fila?: string | null; readonly origem?: string | null }, mensagem: string) => {
+    if (relacional) {
+      await executar(
+        () =>
+          editarCanal(channel.id, {
+            ...(patch.fila !== undefined ? { filaPadraoId: patch.fila } : {}),
+            ...(patch.origem !== undefined ? { origemPadraoId: patch.origem } : {}),
+          }),
+        mensagem,
+      );
+      return;
+    }
+    const r = run((data, me) =>
+      configurarCanal(data, me, channel.id, {
+        ...(patch.fila !== undefined ? { defaultQueueId: patch.fila } : {}),
+        ...(patch.origem !== undefined ? { defaultOriginId: patch.origem } : {}),
+      }),
+    );
     setAviso(r.ok ? { texto: mensagem, erro: false } : { texto: r.error, erro: true });
+  };
+  /** Uma escrita REST do Canal relacional: re-hidrata no sucesso, mostra a frase da api na recusa. */
+  const executar = async (escrita: () => Promise<unknown>, mensagem: string) => {
+    setOcupado(true);
+    try {
+      await escrita();
+      await rehidratar();
+      setAviso({ texto: mensagem, erro: false });
+    } catch (falha) {
+      setAviso({ texto: falha instanceof ErroDeApi ? falha.message : "Não foi possível concluir. Tente de novo.", erro: true });
+    } finally {
+      setOcupado(false);
+    }
   };
   const conversations = state.conversations.filter((c) => c.channelId === channel.id);
 
   const channelType = CHANNEL_TYPE_LABEL[channel.channelType] ?? channel.channelType;
+  const provedor = provedorDoCanal(channel);
+  const rotuloDoProvedor = provedor === undefined ? channelType : PROVEDORES[provedor].rotulo;
   const resolvedIdentifiers = capabilities.resolvesIdentifierTypes
     .map((type) => IDENTIFIER_TYPE_LABEL[type] ?? type)
     .join(", ");
@@ -103,6 +172,9 @@ export default function CanalPage({ params }: { params: Promise<{ canal: string 
         seal={
           <>
             <StateSeal state={channel.lifecycle} />
+            <SeloDoProvedor canal={channel} />
+            <SeloDeOrigem canal={channel} />
+            <MarcaDeConexaoSimulada canal={channel} />
             {channel.connection === "conectada" ? null : (
               <ConditionMarker tone={channel.connection === "comErro" ? "danger" : "warning"}>
                 {channel.connection === "comErro" ? "com erro" : "desconectada"}
@@ -110,8 +182,17 @@ export default function CanalPage({ params }: { params: Promise<{ canal: string 
             )}
           </>
         }
-        meta={`${channelType}${channel.connection === "conectada" ? " · conectada" : ""} · ${conversations.length} Conversa(s)`}
+        meta={`${rotuloDoProvedor}${channel.connection === "conectada" ? " · conectada" : ""} · ${conversations.length} Conversa(s)`}
       />
+
+      {channel.simulatedConnection ? (
+        <p
+          className="app-base shrink-0 px-4 py-2"
+          style={{ background: "var(--aviso-lavado)", color: "var(--aviso)", borderBottom: "1px solid var(--linha)" }}
+        >
+          {AVISO_DA_SIMULACAO}
+        </p>
+      ) : null}
 
       {channel.connection !== "conectada" ? (
         <p
@@ -175,6 +256,15 @@ export default function CanalPage({ params }: { params: Promise<{ canal: string 
           <aside className="grid min-w-0 content-start gap-3">
             <RecordPanel title="Configuração">
               <dl>
+                <RecordRow label="Provedor">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span>{rotuloDoProvedor}</span>
+                    <SeloDoProvedor canal={channel} />
+                  </span>
+                </RecordRow>
+                <RecordRow label="Origem do cadastro">
+                  <SeloDeOrigem canal={channel} />
+                </RecordRow>
                 <RecordRow label="Identificador externo">
                   <span className="identificador">{channel.externalId}</span>
                 </RecordRow>
@@ -185,7 +275,7 @@ export default function CanalPage({ params }: { params: Promise<{ canal: string 
                       <Select
                         size="sm"
                         value={channel.defaultQueueId ?? ""}
-                        onChange={(v) => configurar({ defaultQueueId: v || null }, v ? "Setor do Canal alterado." : "O Canal ficou sem setor.")}
+                        onChange={(v) => void configurar({ fila: v || null }, v ? "Setor do Canal alterado." : "O Canal ficou sem setor.")}
                         placeholder="Nenhum"
                         {...(recusaDeConfigurar ? { disabled: true, disabledReason: recusaDeConfigurar } : {})}
                         options={[
@@ -207,7 +297,7 @@ export default function CanalPage({ params }: { params: Promise<{ canal: string 
                     <Select
                       size="sm"
                       value={channel.defaultOriginId ?? ""}
-                      onChange={(v) => configurar({ defaultOriginId: v || null }, v ? "Origem do Canal alterada." : "O Canal ficou sem origem.")}
+                      onChange={(v) => void configurar({ origem: v || null }, v ? "Origem do Canal alterada." : "O Canal ficou sem origem.")}
                       placeholder={origin?.name ?? "Nenhuma"}
                       {...(recusaDeConfigurar ? { disabled: true, disabledReason: recusaDeConfigurar } : {})}
                       options={[
@@ -219,6 +309,42 @@ export default function CanalPage({ params }: { params: Promise<{ canal: string 
                 </RecordRow>
                 <RecordRow label="Grupos">{channel.groupsEnabled ? "habilitados" : "desabilitados"}</RecordRow>
               </dl>
+              {relacional ? (
+                <div className="mt-3 grid gap-2">
+                  <p className="app-md" style={{ color: "var(--texto)" }}>
+                    Conexão
+                  </p>
+                  <span className="flex flex-wrap gap-2">
+                    {channel.lifecycle === "ativo" && channel.connection !== "conectada" && recusaDeSimular === undefined ? (
+                      <Button
+                        variant="primary"
+                        onClick={() => void executar(() => simularConexaoDoCanal(channel.id), "Conexão simulada.")}
+                        carregando={ocupado}
+                        disabledReason="Enviando…"
+                      >
+                        Simular conexão
+                      </Button>
+                    ) : null}
+                    {channel.connection !== "desconectada" && recusaDeDesconectar === undefined ? (
+                      <Button
+                        onClick={() => void executar(() => desconectarCanal(channel.id), "Canal desconectado.")}
+                        carregando={ocupado}
+                        disabledReason="Enviando…"
+                      >
+                        Desconectar
+                      </Button>
+                    ) : null}
+                    {channel.lifecycle === "ativo" && recusaDeArquivar === undefined ? (
+                      <Button variant="danger" onClick={() => setArquivando(true)} carregando={ocupado} disabledReason="Enviando…">
+                        Arquivar
+                      </Button>
+                    ) : null}
+                  </span>
+                  <p className="app-meta">
+                    Sem um provedor real, a conexão é simulada e marcada como tal: serve para testar o chat.
+                  </p>
+                </div>
+              ) : null}
               <p className="app-meta mt-2">
                 Configurar o Canal é rastreabilidade, não governança: o Canal não tem Proprietário.
               </p>
@@ -260,6 +386,19 @@ export default function CanalPage({ params }: { params: Promise<{ canal: string 
           </aside>
         </div>
       </CorpoDeTela>
+
+      <ConfirmDialog
+        open={arquivando}
+        title="Arquivar o Canal?"
+        description="Ele é desconectado e sai das listas de Canais ativos. As Conversas ficam como histórico; o número pode ser conectado de novo num Canal novo."
+        confirmLabel="Arquivar"
+        destructive
+        onConfirm={() => {
+          setArquivando(false);
+          void executar(() => arquivarCanal(channel.id), "Canal arquivado.");
+        }}
+        onCancel={() => setArquivando(false)}
+      />
     </div>
   );
 }

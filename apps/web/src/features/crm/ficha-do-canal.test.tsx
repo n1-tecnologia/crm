@@ -55,7 +55,9 @@ function resposta(status: number, corpo: unknown): Response {
 /** O Canal da 008 na forma do modelo antigo (`canalParaChannel`, apps/api). */
 function canalRelacional(sobre: Partial<Channel> = {}): Channel {
   const whatsapp = buildSeed().channels.find((c) => c.id === "chn_wpp")!;
-  const { defaultQueueId: _fila, defaultOriginId: _origem, ...base } = whatsapp;
+  const base: Channel = { ...whatsapp };
+  delete base.defaultQueueId;
+  delete base.defaultOriginId;
   return {
     ...base,
     id: "uuid-1",
@@ -126,8 +128,10 @@ describe("08-09 — a ficha do Canal relacional", () => {
     await montar("uuid-1", canalRelacional());
 
     expect(await screen.findByRole("heading", { name: /Suporte do Zap/ })).toBeTruthy();
-    expect(screen.getByText("não oficial")).toBeTruthy();
-    expect(screen.getByText("cadastrado")).toBeTruthy();
+    // No cabeçalho e na linha do painel: o selo do provedor e a origem aparecem nos dois.
+    expect(screen.getAllByText("não oficial").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("WhatsApp não oficial", { selector: "span" })).toBeTruthy();
+    expect(screen.getAllByText("cadastrado").length).toBeGreaterThanOrEqual(2);
     const botao = screen.getByRole("button", { name: "Simular conexão" });
     expect(screen.queryByRole("button", { name: "Desconectar" })).toBeNull();
 
@@ -214,7 +218,7 @@ describe("08-09 — a ficha do Canal relacional", () => {
 
     expect(await screen.findByRole("heading", { name: /Comercial SP/ })).toBeTruthy();
     // O Canal do seed é "demo": sem provedor e sem bloco de Conexão (T-08-38).
-    expect(screen.getByText("demo")).toBeTruthy();
+    expect(screen.getAllByText("demo").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByRole("button", { name: "Simular conexão" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Arquivar" })).toBeNull();
 
