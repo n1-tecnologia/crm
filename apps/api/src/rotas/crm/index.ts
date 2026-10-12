@@ -10,6 +10,8 @@
  * `negocios` (07-08, o CRUD e as ações do quadro: mover, ganhar, perder,
  * reabrir) são os quatro recursos do CRM. `canais` (08-01, Fase 8) é o quinto:
  * a conta conectada de um provedor, com a 008 e a ponte de `GET /estado`.
+ * `conversas` (08-06) é o sexto: a Conversa relacional, aberta com a primeira
+ * Mensagem numa transação só.
  */
 
 import type { FastifyInstance } from "fastify";
@@ -18,11 +20,13 @@ import { pool } from "../../persistencia/conexao";
 import { criarAcessoAoCrmPg, type AcessoAoCrm } from "../../servicos/crm/acesso";
 import { criarServicoDeCanais, type ServicoDeCanais } from "../../servicos/crm/canais";
 import { criarServicoDeContatos, type ServicoDeContatos } from "../../servicos/crm/contatos";
+import { criarServicoDeConversas, type ServicoDeConversas } from "../../servicos/crm/conversas";
 import { criarServicoDeEmpresas, type ServicoDeEmpresas } from "../../servicos/crm/empresas";
 import { criarServicoDeFunis, type ServicoDeFunis } from "../../servicos/crm/funis";
 import { criarServicoDeNegocios, type ServicoDeNegocios } from "../../servicos/crm/negocios";
 import { rotasDeCanais } from "./canais";
 import { rotasDeContatos } from "./contatos";
+import { rotasDeConversas } from "./conversas";
 import { rotasDeEmpresas } from "./empresas";
 import { rotasDeFunis } from "./funis";
 import { rotasDeNegocios } from "./negocios";
@@ -40,6 +44,8 @@ export interface OpcoesDeCrm {
   readonly negocios?: ServicoDeNegocios;
   /** Injeção só para teste: troca o serviço real de Canais por um falso, sem banco. */
   readonly canais?: ServicoDeCanais;
+  /** Injeção só para teste: troca o serviço real de Conversas por um falso, sem banco. */
+  readonly conversas?: ServicoDeConversas;
   /** Padrão: lê Papel e Membro de `plataforma.registros`. Injeção para teste sem banco. */
   readonly acesso?: AcessoAoCrm;
 }
@@ -57,4 +63,6 @@ export async function rotasDeCrm(app: FastifyInstance, opcoes: OpcoesDeCrm = {})
   await app.register(rotasDeNegocios, { servico: negocios });
   const canais = opcoes.canais ?? criarServicoDeCanais({ pool: obterPool, acesso });
   await app.register(rotasDeCanais, { servico: canais });
+  const conversas = opcoes.conversas ?? criarServicoDeConversas({ pool: obterPool, acesso });
+  await app.register(rotasDeConversas, { servico: conversas });
 }
