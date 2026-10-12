@@ -20,7 +20,15 @@ vi.mock("./cliente-crm", async (original) => {
 });
 
 import { ErroDeApi, invalidarCrm } from "./cliente-crm";
-import { chaveDeCanais, criarCanal } from "./canais";
+import {
+  arquivarCanal,
+  chaveDeCanais,
+  chaveDoCanal,
+  criarCanal,
+  desconectarCanal,
+  editarCanal,
+  simularConexaoDoCanal,
+} from "./canais";
 
 function resposta(status: number, corpo: unknown): Response {
   return { ok: status >= 200 && status < 300, status, json: async () => corpo } as Response;
@@ -91,5 +99,72 @@ describe("chaveDeCanais", () => {
     const chave = chaveDeCanais({ estado: "arquivado", limite: 10, deslocamento: 20 });
     expect(chave).toBe("/canais?estado=arquivado&limite=10&deslocamento=20");
     expect(chave.startsWith("/canais")).toBe(true);
+  });
+});
+
+describe("editarCanal", () => {
+  it("faz PATCH /canais/:id com content-type JSON e só as chaves enviadas (null limpa o padrão)", async () => {
+    const canal = { id: "c1", nome: "Comercial", filaPadraoId: null };
+    fetchMock.mockResolvedValueOnce(resposta(200, { ok: true, dados: canal }));
+
+    const editado = await editarCanal("c1", { filaPadraoId: null });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://api/canais/c1");
+    expect(init.method).toBe("PATCH");
+    const cabecalhos = init.headers as Record<string, string>;
+    expect(cabecalhos["authorization"]).toBe("Bearer tok");
+    expect(cabecalhos["content-type"]).toBe("application/json");
+    expect(init.body).toBe('{"filaPadraoId":null}');
+    expect(editado).toEqual(canal);
+    expect(invalidarCrm).toHaveBeenCalledTimes(1);
+    expect(invalidarCrm).toHaveBeenCalledWith("/canais");
+  });
+});
+
+describe.each([
+  ["simularConexaoDoCanal", simularConexaoDoCanal, "simular-conexao"],
+  ["desconectarCanal", desconectarCanal, "desconectar"],
+  ["arquivarCanal", arquivarCanal, "arquivar"],
+] as const)("%s", (_nome, acao, rota) => {
+  it(`faz POST /canais/:id/${rota} com o Bearer, SEM content-type e SEM corpo`, async () => {
+    const canal = { id: "c1", nome: "Comercial", conexao: "conectada" };
+    fetchMock.mockResolvedValueOnce(resposta(200, { ok: true, dados: canal }));
+
+    const resultado = await acao("c1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`http://api/canais/c1/${rota}`);
+    expect(init.method).toBe("POST");
+    const cabecalhos = init.headers as Record<string, string>;
+    expect(cabecalhos["authorization"]).toBe("Bearer tok");
+    expect(Object.keys(cabecalhos).map((k) => k.toLowerCase())).not.toContain("content-type");
+    expect(init.body).toBeUndefined();
+    expect(resultado).toEqual(canal);
+    expect(invalidarCrm).toHaveBeenCalledTimes(1);
+    expect(invalidarCrm).toHaveBeenCalledWith("/canais");
+  });
+
+  it("um 409 TRANSICAO_INVALIDA vira ErroDeApi com codigo e não invalida nada", async () => {
+    fetchMock.mockResolvedValueOnce(
+      resposta(409, { ok: false, error: "O Canal já está conectado.", codigo: "TRANSICAO_INVALIDA" }),
+    );
+
+    const erro = await acao("c1").catch((e: unknown) => e);
+
+    expect(erro).toBeInstanceOf(ErroDeApi);
+    const e = erro as ErroDeApi;
+    expect(e.status).toBe(409);
+    expect(e.codigo).toBe("TRANSICAO_INVALIDA");
+    expect(e.message).toBe("O Canal já está conectado.");
+    expect(invalidarCrm).not.toHaveBeenCalled();
+  });
+});
+
+describe("chaveDoCanal", () => {
+  it("é /canais/<id>, começando por /canais", () => {
+    expect(chaveDoCanal("c1")).toBe("/canais/c1");
   });
 });
