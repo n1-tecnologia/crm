@@ -9,11 +9,14 @@
  *   - a Mensagem é imutável depois de gravada, salvo status de entrega e
  *     marcação de exclusão (RN-CXE-16); por isso não há `atualizar` aqui.
  *
- * 08-06 entrega só `inserir` (a primeira Mensagem da Conversa); 08-12 acrescenta
- * listar, enviar e a atualização de status.
+ * 08-06 entrega `inserir` (a primeira Mensagem da Conversa); 08-12 acrescenta
+ * a lista do fio, a última recebida (a janela de RN-CXE-19) e a ingestão da
+ * `recebida`, que é idempotente por (Canal, id externo) — INV-CXE-08 — e é o
+ * único lugar que escreve e lê `carga_bruta`.
  */
 
 import type { Pool, PoolClient } from "pg";
+import type { Pagina } from "@n1/dominio/crm/comum";
 import type {
   AnexoDaMensagem,
   AtorDaMensagem,
@@ -36,8 +39,45 @@ export interface LinhaNovaDeMensagem {
   readonly emRespostaAId?: string;
 }
 
+/**
+ * O que a integração entrega de uma Mensagem `recebida` (ontologia 7.6). O Ator
+ * é sempre o Canal como Integração e `criado_em` é o momento do PROVEDOR
+ * (Pitfall 9); `registrado_em` fica com o default do banco, o da plataforma.
+ */
+export interface LinhaDeMensagemRecebida {
+  readonly conversaId: string;
+  readonly canalId: string;
+  readonly idExterno: string;
+  readonly criadoEm: string;
+  readonly conteudo: string | null;
+  readonly anexos: readonly AnexoDaMensagem[];
+  readonly assunto: string | null;
+  readonly enderecosAdicionais: readonly EnderecoAdicional[];
+  readonly remetenteExterno: string | null;
+  readonly identificadorId: string | null;
+  readonly cargaBruta: unknown;
+}
+
+export interface FiltroDeMensagens {
+  readonly conversaId: string;
+  readonly limite: number;
+  readonly deslocamento: number;
+}
+
 export interface RepositorioDeMensagens {
   inserir(workspaceId: string, linha: LinhaNovaDeMensagem): Promise<Mensagem>;
+  /** O fio da Conversa por `(criado_em, seq)`; nenhum item carrega a carga bruta. */
+  listar(workspaceId: string, filtro: FiltroDeMensagens): Promise<Pagina<Mensagem>>;
+  /** O `criadoEm` (do provedor) da `recebida` mais recente da Conversa, ou `null` (RN-CXE-19). */
+  ultimaRecebidaEm(workspaceId: string, conversaId: string): Promise<string | null>;
+  /** Grava a `recebida`; `undefined` quando o id externo já existe no Canal (INV-CXE-08). */
+  inserirRecebida(workspaceId: string, linha: LinhaDeMensagemRecebida): Promise<Mensagem | undefined>;
+  obterPorIdExterno(workspaceId: string, canalId: string, idExterno: string): Promise<Mensagem | undefined>;
+  /**
+   * O payload cru do provedor. SÓ ingestão e teste — nunca rota (A9): é dado
+   * pessoal e a anonimização futura precisa zerá-lo.
+   */
+  cargaBruta(workspaceId: string, id: string): Promise<unknown>;
 }
 
 /** Todas as colunas lidas e devolvidas, menos o Espaço e o payload cru do provedor. `seq` vai como texto (bigint). */
@@ -137,6 +177,78 @@ export function criarRepositorioDeMensagensPg(cliente: Pool | PoolClient): Repos
         ],
       );
       return linhaParaMensagem(rows[0]!);
+    },
+
+    async listar(workspaceId, filtro) {
+      const total = await cliente.query<{ total: number }>(
+        "select count(*)::int as total from plataforma.mensagens where workspace_id = $1 and conversa_id = $2",
+        [workspaceId, filtro.conversaId],
+      );
+      const pagina = await cliente.query<LinhaDoBancoDeMensagem>(
+        `select ${COLUNAS_DE_MENSAGEM}
+           from plataforma.mensagens
+          where workspace_id = $1 and conversa_id = $2
+          order by criado_em, seq
+          limit $3 offset $4`,
+        [workspaceId, filtro.conversaId, filtro.limite, filtro.deslocamento],
+      );
+      return { total: total.rows[0]?.total ?? 0, itens: pagina.rows.map(linhaParaMensagem) };
+    },
+
+    async ultimaRecebidaEm(workspaceId, conversaId) {
+      const { rows } = await cliente.query<{ ultima: Date | null }>(
+        `select max(criado_em) as ultima
+           from plataforma.mensagens
+          where workspace_id = $1 and conversa_id = $2 and direcao = 'recebida'`,
+        [workspaceId, conversaId],
+      );
+      const ultima = rows[0]?.ultima;
+      return ultima ? ultima.toISOString() : null;
+    },
+
+    async inserirRecebida(workspaceId, linha) {
+      const { rows } = await cliente.query<LinhaDoBancoDeMensagem>(
+        `insert into plataforma.mensagens
+           (workspace_id, conversa_id, canal_id, direcao, ator_tipo, ator_id, id_externo, criado_em,
+            conteudo, anexos, assunto, enderecos_adicionais, remetente_externo, identificador_id, carga_bruta)
+         values ($1, $2, $3, 'recebida', 'integration', $3, $4, $5::timestamptz,
+                 $6, $7::jsonb, $8, $9::jsonb, $10, $11, $12::jsonb)
+         on conflict (workspace_id, canal_id, id_externo) where id_externo is not null do nothing
+         returning ${COLUNAS_DE_MENSAGEM}`,
+        [
+          workspaceId,
+          linha.conversaId,
+          linha.canalId,
+          linha.idExterno,
+          linha.criadoEm,
+          linha.conteudo,
+          JSON.stringify(linha.anexos),
+          linha.assunto,
+          JSON.stringify(linha.enderecosAdicionais),
+          linha.remetenteExterno,
+          linha.identificadorId,
+          JSON.stringify(linha.cargaBruta ?? null),
+        ],
+      );
+      return rows[0] ? linhaParaMensagem(rows[0]) : undefined;
+    },
+
+    async obterPorIdExterno(workspaceId, canalId, idExterno) {
+      const { rows } = await cliente.query<LinhaDoBancoDeMensagem>(
+        `select ${COLUNAS_DE_MENSAGEM}
+           from plataforma.mensagens
+          where workspace_id = $1 and canal_id = $2 and id_externo = $3`,
+        [workspaceId, canalId, idExterno],
+      );
+      return rows[0] ? linhaParaMensagem(rows[0]) : undefined;
+    },
+
+    async cargaBruta(workspaceId, id) {
+      const { rows } = await cliente.query<{ carga_bruta: unknown }>(
+        "select carga_bruta from plataforma.mensagens where workspace_id = $1 and id = $2",
+        [workspaceId, id],
+      );
+      return rows[0]?.carga_bruta ?? null;
     },
   };
 }
