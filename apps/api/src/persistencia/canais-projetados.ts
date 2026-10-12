@@ -89,3 +89,27 @@ export function acrescentarCanaisProjetados(state: DataState, canais: readonly C
   }
   return { ids, json };
 }
+
+/**
+ * O estado que `gravar()` pode persistir: o de `executar()` SEM os Canais
+ * projetados (D-11, Pitfall 3). Devolve uma cópia rasa com `channels` filtrado,
+ * sem mutar `state` (a Unidade de Trabalho ainda precisa dele inteiro para os
+ * eventos de Canal). Como os projetados entram no FIM de `state.channels` e não
+ * estão no que `hidratar()` leu, tirá-los não gera remoção nem reordena os
+ * Canais do seed.
+ *
+ * Se uma operação do modelo antigo mudou (ou tirou) um projetado, lança: a
+ * tabela própria é a única fonte do Canal, e descartar a mudança em silêncio
+ * faria a tela mostrar um gesto que o servidor não guardou. A transação é
+ * desfeita por quem chamou. Fotografia vazia devolve o próprio `state`.
+ */
+export function semCanaisProjetados(state: DataState, fotografia: FotografiaDosProjetados): DataState {
+  if (fotografia.ids.size === 0) return state;
+  for (const [id, json] of fotografia.json) {
+    const atual = state.channels.find((canal) => canal.id === id);
+    if (!atual || canonico(atual) !== json) {
+      throw new Error(`Uma operação alterou o Canal ${id} da tabela própria; ele só muda pela api de Canais.`);
+    }
+  }
+  return { ...state, channels: state.channels.filter((canal) => !fotografia.ids.has(canal.id)) };
+}

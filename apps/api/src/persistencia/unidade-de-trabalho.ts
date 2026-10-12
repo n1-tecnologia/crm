@@ -21,6 +21,7 @@ import { syncIdSequence } from "@n1/dominio/operations";
 import { limitesDoPool, pool } from "./conexao";
 import { execucoesNovas, eventosDeNotificacaoPorCanal } from "./eventos-de-canal";
 import { gravarEventos, type EventoDeSaida } from "./outbox";
+import { acrescentarCanaisProjetados, carregarCanaisProjetados, semCanaisProjetados } from "./canais-projetados";
 import { gravar, hidratar } from "./repositorio";
 
 export type Conflito = { readonly ok: false; readonly conflito: true; readonly error: string };
@@ -126,6 +127,15 @@ export async function executar<T>(
     try {
       await cliente.query(inicioDaTransacao());
       const antes = await hidratar(cliente, workspaceId);
+      // D-11 (Pitfall 4) — os Canais relacionais (`plataforma.canais`) entram em
+      // `state.channels` para a operação do modelo antigo enxergá-los; sem isso
+      // `startConversation`/`sendMessage` dariam "Canal não encontrado" e
+      // desfariam o gesto da tela. É por tentativa: um retry por conflito
+      // recarrega. `hidratar()` em si não sabe deles.
+      const fotografia = acrescentarCanaisProjetados(
+        antes.state,
+        await carregarCanaisProjetados(cliente, workspaceId),
+      );
       // O contador de `nextId` é de módulo: sem sincronizar com o maior id já
       // presente no estado hidratado, um processo recém-subido geraria
       // `act_000001` de novo e o upsert sobrescreveria um registro real. A
@@ -170,7 +180,13 @@ export async function executar<T>(
         continue;
       }
 
-      const diferenca = await gravar(cliente, workspaceId, antes.state, antes);
+      // D-11 (Pitfall 3) — `gravar` recebe o estado SEM os projetados: copiá-los
+      // para `plataforma.registros` criaria uma segunda fonte de verdade do
+      // Canal. Se a operação mudou algum, `semCanaisProjetados` lança e a
+      // transação é desfeita. `opcoes.eventos`/`aoConfirmar` seguem com
+      // `antes.state` (o payload de `automacao.notificar-canal.v1` leva o tipo,
+      // não o id do Canal).
+      const diferenca = await gravar(cliente, workspaceId, semCanaisProjetados(antes.state, fotografia), antes);
       // D-18 — o evento nasce no MESMO `cliente`, ANTES do commit: Tarefa e
       // evento são a mesma transação, sem que a operação de domínio saiba
       // que outbox existe. Nunca chamar `fetch`/HTTP neste bloco — a entrega
