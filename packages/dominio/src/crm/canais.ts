@@ -97,3 +97,56 @@ export function validarNovoCanal(entrada: NovoCanal): OperationResult<{
   if (identificadorExterno === undefined) return fail(FORMA_DO_IDENTIFICADOR[tipo].dica, "identificador");
   return ok({ tipo, provedor: entrada.provedor, nome, identificadorExterno });
 }
+
+/**
+ * O que a configuração de um Canal pode mudar (INV-CXE-02): o nome e os dois
+ * padrões. `tipo`, `provedor`, `identificador` e `conexao` não estão aqui de
+ * propósito — trocar a conta é arquivar e criar outro Canal. `null` limpa o
+ * padrão; ausente não mexe.
+ */
+export interface EdicaoDeCanal {
+  readonly nome?: string;
+  readonly filaPadraoId?: string | null;
+  readonly origemPadraoId?: string | null;
+}
+
+export function validarEdicaoDeCanal(edicao: EdicaoDeCanal): OperationResult<EdicaoDeCanal> {
+  if (edicao.nome === undefined) return ok(edicao);
+  const nome = edicao.nome.trim();
+  if (nome === "") return fail("Dê um nome ao Canal.", "nome");
+  if (nome.length > LIMITES_CRM.textoCurto) {
+    return fail(`O nome do Canal vai até ${LIMITES_CRM.textoCurto} caracteres.`, "nome");
+  }
+  return ok({ ...edicao, nome });
+}
+
+/**
+ * A conexão em dois atos (ontologia 12.2): o Canal nasce `desconectada` e
+ * conecta depois. Sem provedor real, a conexão é simulada e MARCADA como
+ * simulada (D-08) — `conexaoSimulada` só vale com `conectada`, e desconectar
+ * apaga a marca.
+ */
+export type AcaoDeConexao = "simular_conexao" | "desconectar";
+
+export function proximaConexao(
+  canal: Pick<Canal, "conexao" | "estado">,
+  acao: AcaoDeConexao,
+): OperationResult<{ readonly conexao: ConexaoDoCanal; readonly conexaoSimulada: boolean }> {
+  if (acao === "simular_conexao") {
+    if (canal.estado === "arquivado") return fail("Um Canal arquivado não se conecta.");
+    if (canal.conexao === "conectada") return fail("O Canal já está conectado.");
+    return ok({ conexao: "conectada", conexaoSimulada: true });
+  }
+  if (canal.conexao === "desconectada") return fail("O Canal já está desconectado.");
+  return ok({ conexao: "desconectada", conexaoSimulada: false });
+}
+
+/**
+ * 11.1: arquivar tira o Canal de uso e o libera para o mesmo número entrar
+ * noutro. O Canal arquivado é sempre desconectado — o serviço faz as duas
+ * mudanças na mesma escrita.
+ */
+export function validarArquivamento(canal: Pick<Canal, "estado">): OperationResult<void> {
+  if (canal.estado === "arquivado") return fail("O Canal já está arquivado.");
+  return ok(undefined);
+}
