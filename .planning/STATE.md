@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 08
 current_phase_name: "Canais de comunicação: conexão e omnichannel preparado"
 status: executing
-stopped_at: Completed 08-01-PLAN.md
-last_updated: "2026-10-12T16:08:03.070Z"
+stopped_at: Completed 08-02-PLAN.md
+last_updated: "2026-10-12T16:30:51.389Z"
 last_activity: 2026-10-12
 last_activity_desc: Phase 08 execution started
-state_head: 878a0d2fe3201004fd840124ae6a58b0aa84c922
+state_head: b4c00de82256109c77d5753b6b658d35367bd3d7
 progress:
   total_phases: 8
   completed_phases: 6
   total_plans: 148
-  completed_plans: 133
+  completed_plans: 134
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 ## Current Position
 
 Phase: 08 (Canais de comunicação: conexão e omnichannel preparado) — EXECUTING
-Plan: 2 of 15
+Plan: 3 of 15
 Status: Ready to execute
 Last activity: 2026-10-12 — Phase 08 execution started
 
@@ -356,6 +356,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 07 P12 | 21 min | 2 tasks | 11 files |
 | Phase 07 P13 | 2 min | 2 tasks | 1 files |
 | Phase 08 P01 | 9 min | 2 tasks | 24 files |
+| Phase 08 P02 | 8 min | 2 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -467,6 +468,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 07]: fechada em 2026-10-11 — UAT 9/9 pelo dono (07-UAT.md), 07-VERIFICATION.md `passed` com 1 override aceita (CRM-V1: `npm run check` com a ressalva das duas falhas pré-existentes do Financeiro), janelas #1-#4 `fixed` e #5 `waived`; qualquer ajuste de schema do CRM é `008`
 - [Phase 08]: 08-01: a 008 nasce inteira (Canal, Conversa, Mensagem); o INSERT de POST /canais nunca envia conexao, e o default da 008 garante Canal desconectada
 - [Phase 08]: 08-01: a projecao de Canais relacionais entra so em GET /estado (acrescentarCanaisProjetados), nunca em hidratar(); guarda to_regclass cobre banco sem a 008
+- [Phase 08]: 08-02: capacidadesDoCanal sobrepoe so o que o provedor muda (whatsapp-nao-oficial sem janela e sem modelo); Canal sem provider = tabela do tipo
 
 ### Pending Todos
 
@@ -528,6 +530,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-12T16:08:02.930Z
-Stopped at: Completed 08-01-PLAN.md
+Last session: 2026-10-12T16:30:51.245Z
+Stopped at: Completed 08-02-PLAN.md
 Resume file: None
