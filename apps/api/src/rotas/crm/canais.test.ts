@@ -109,6 +109,128 @@ describe("rotas de Canais — serviço falso, sem banco", () => {
   });
 });
 
+describe("rotas de Canais (08-03) — serviço falso, sem banco", () => {
+  function novoFalso(devolve?: Awaited<ReturnType<ServicoDeCanais["arquivar"]>>) {
+    const chamadas: unknown[][] = [];
+    const resposta = () => Promise.resolve(devolve ?? sucesso({ id: "c1" } as Canal));
+    const registrar =
+      (nome: string) =>
+      (...a: unknown[]) => {
+        chamadas.push([nome, ...a]);
+        return resposta();
+      };
+    const servico: ServicoDeCanais = {
+      listar: (...a) => {
+        chamadas.push(["listar", ...a]);
+        return Promise.resolve(sucesso({ itens: [], total: 0 }));
+      },
+      criar: registrar("criar"),
+      obter: registrar("obter"),
+      editar: registrar("editar"),
+      simularConexao: registrar("simularConexao"),
+      desconectar: registrar("desconectar"),
+      arquivar: registrar("arquivar"),
+    };
+    return { servico, chamadas };
+  }
+  const appCom = (servico: ServicoDeCanais) => buildApp({ ...opcoesDeAutenticacao("ws_falso"), crm: { canais: servico } });
+
+  it.each(["tipo", "provedor", "identificador", "conexao", "workspaceId", "estado"])(
+    "(a) PATCH /canais/c1 com %s no corpo responde 400 e o serviço não é chamado (INV-CXE-02)",
+    async (campo) => {
+      const { servico, chamadas } = novoFalso();
+      const resposta = await appCom(servico).inject({
+        method: "PATCH",
+        url: "/canais/c1",
+        headers: AUTORIZACAO,
+        payload: { nome: "Novo", [campo]: "x" },
+      });
+      expect(resposta.statusCode).toBe(400);
+      expect(chamadas).toEqual([]);
+    },
+  );
+
+  it("(b) PATCH /canais/c1 com corpo vazio responde 400", async () => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({ method: "PATCH", url: "/canais/c1", headers: AUTORIZACAO, payload: {} });
+    expect(resposta.statusCode).toBe(400);
+    expect(chamadas).toEqual([]);
+  });
+
+  it("PATCH /canais/c1 aceita nome, Fila e Origem, e null limpa o padrão", async () => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({
+      method: "PATCH",
+      url: "/canais/c1",
+      headers: AUTORIZACAO,
+      payload: { nome: "Vendas", filaPadraoId: null, origemPadraoId: "origem_1" },
+    });
+    expect(resposta.statusCode).toBe(200);
+    expect(chamadas[0]?.[0]).toBe("editar");
+    expect(chamadas[0]?.[2]).toBe("c1");
+    expect(chamadas[0]?.[3]).toEqual({ nome: "Vendas", filaPadraoId: null, origemPadraoId: "origem_1" });
+  });
+
+  it.each([
+    ["simular-conexao", "simularConexao"],
+    ["desconectar", "desconectar"],
+    ["arquivar", "arquivar"],
+  ])("(c) POST /canais/c1/%s sem content-type e sem corpo responde 200 e chama %s", async (acao, metodo) => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({ method: "POST", url: `/canais/c1/${acao}`, headers: AUTORIZACAO });
+    expect(resposta.statusCode).toBe(200);
+    expect(resposta.json()).toEqual({ ok: true, dados: { id: "c1" } });
+    expect(chamadas).toHaveLength(1);
+    expect(chamadas[0]?.[0]).toBe(metodo);
+    expect(chamadas[0]?.[1]).toMatchObject({ id: "mem_maryane" });
+    expect(chamadas[0]?.[2]).toBe("c1");
+  });
+
+  it("(d) uma recusa 409 TRANSICAO_INVALIDA do serviço sai no envelope { ok: false, error, codigo }", async () => {
+    const { servico } = novoFalso({ ok: false, status: 409, error: "O Canal já está conectado.", codigo: "TRANSICAO_INVALIDA" });
+    const resposta = await appCom(servico).inject({ method: "POST", url: "/canais/c1/simular-conexao", headers: AUTORIZACAO });
+    expect(resposta.statusCode).toBe(409);
+    expect(resposta.json()).toEqual({ ok: false, error: "O Canal já está conectado.", codigo: "TRANSICAO_INVALIDA" });
+  });
+
+  it("(e) GET /canais?conexao=talvez responde 400", async () => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({ method: "GET", url: "/canais?conexao=talvez", headers: AUTORIZACAO });
+    expect(resposta.statusCode).toBe(400);
+    expect(chamadas).toEqual([]);
+  });
+
+  it("GET /canais repassa tipo, provedor, conexao e q ao serviço", async () => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({
+      method: "GET",
+      url: "/canais?tipo=whatsapp&provedor=whatsapp-cloud&conexao=conectada&q=sup",
+      headers: AUTORIZACAO,
+    });
+    expect(resposta.statusCode).toBe(200);
+    expect(chamadas[0]?.[2]).toMatchObject({ tipo: "whatsapp", provedor: "whatsapp-cloud", conexao: "conectada", q: "sup", estado: "ativo" });
+  });
+
+  it("não há DELETE /canais/:id: Canal não tem lixeira (DO-CXE-03)", async () => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({ method: "DELETE", url: "/canais/c1", headers: AUTORIZACAO });
+    expect(resposta.statusCode).toBe(404);
+    expect(chamadas).toEqual([]);
+  });
+
+  it("POST /canais aceita filaPadraoId e origemPadraoId", async () => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({
+      method: "POST",
+      url: "/canais",
+      headers: AUTORIZACAO,
+      payload: { provedor: "whatsapp-cloud", nome: "Suporte", identificador: "+55 11 98765-4321", filaPadraoId: "f1", origemPadraoId: "o1" },
+    });
+    expect(resposta.statusCode).toBe(201);
+    expect(chamadas[0]?.[2]).toMatchObject({ filaPadraoId: "f1", origemPadraoId: "o1" });
+  });
+});
+
 /** Sessões do bloco com banco: cada token é um Membro, e o `id` dele é o da linha semeada. */
 const SESSOES = {
   "token-admin": { sub: MARYANE, membroId: "mem_admin" },
@@ -218,5 +340,45 @@ describeComBanco("rotas de Canais — serviço real, Postgres local", () => {
     const { status, corpo } = await criar({ provedor: "whatsapp-cloud", nome: "Sem DDI", identificador: "11 98765-4321" });
     expect(status).toBe(400);
     expect(corpo).toMatchObject({ ok: false, codigo: "VALOR_INVALIDO", campo: "identificador" });
+  });
+
+  it("(f) GET /canais/:id de um Canal do Espaço A pelo app do Espaço B → 404; pelo de A → 200; Membro lê (B35)", async () => {
+    const criado = await criar({ provedor: "email-imap-smtp", nome: "Caixa de A", identificador: "a@empresa.com" });
+    expect(criado.status).toBe(201);
+    const id = criado.corpo.dados!.id;
+
+    const deB = await appB().inject({ method: "GET", url: `/canais/${id}`, headers: ADMIN });
+    expect(deB.statusCode).toBe(404);
+    expect(deB.json()).toMatchObject({ ok: false, codigo: "CANAL_NAO_ENCONTRADO" });
+
+    const deA = await appA().inject({ method: "GET", url: `/canais/${id}`, headers: MEMBRO });
+    expect(deA.statusCode).toBe(200);
+    expect((deA.json() as { dados: Canal }).dados.nome).toBe("Caixa de A");
+  });
+
+  it("(g) o ciclo pela API: simular → 409 ao repetir → desconectar → arquivar; Membro recebe 403 nas ações", async () => {
+    const criado = await criar({ provedor: "whatsapp-nao-oficial", nome: "Ciclo", identificador: "+55 11 97777-0090" });
+    const id = criado.corpo.dados!.id;
+    const acao = (caminho: string, headers = ADMIN) => appA().inject({ method: "POST", url: `/canais/${id}/${caminho}`, headers });
+
+    for (const caminho of ["simular-conexao", "desconectar", "arquivar"]) {
+      const negado = await acao(caminho, MEMBRO);
+      expect(negado.statusCode).toBe(403);
+      expect(negado.json()).toMatchObject({ ok: false, codigo: "PERMISSAO" });
+    }
+
+    const conectado = await acao("simular-conexao");
+    expect(conectado.statusCode).toBe(200);
+    expect((conectado.json() as { dados: Canal }).dados).toMatchObject({ conexao: "conectada", conexaoSimulada: true });
+    const repetido = await acao("simular-conexao");
+    expect(repetido.statusCode).toBe(409);
+    expect(repetido.json()).toMatchObject({ ok: false, codigo: "TRANSICAO_INVALIDA" });
+
+    const desconectado = await acao("desconectar");
+    expect((desconectado.json() as { dados: Canal }).dados).toMatchObject({ conexao: "desconectada", conexaoSimulada: false });
+
+    const arquivado = await acao("arquivar");
+    expect(arquivado.statusCode).toBe(200);
+    expect((arquivado.json() as { dados: Canal }).dados).toMatchObject({ estado: "arquivado", conexao: "desconectada" });
   });
 });
