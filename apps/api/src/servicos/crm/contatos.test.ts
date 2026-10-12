@@ -15,10 +15,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ContatoDetalhado, NovoContato } from "@n1/dominio/crm/contatos";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { encerrar, pool } from "../../persistencia/conexao";
-import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearMembro } from "../../testes/banco-crm";
+import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearCanal, semearMembro } from "../../testes/banco-crm";
 import { criarAcessoAoCrmPg } from "./acesso";
-import { criarServicoDeContatos } from "./contatos";
+import { criarServicoDeContatos, FRASES_DE_CONTATOS } from "./contatos";
 import type { ResultadoCrm } from "./resultado";
+import { traduzirErroDePg } from "./transacao";
 
 const servico = criarServicoDeContatos({ pool, acesso: criarAcessoAoCrmPg(pool) });
 
@@ -262,6 +263,37 @@ describeComBanco("ServicoDeContatos — Postgres local", () => {
     await pool().query("update plataforma.contatos set estado = 'na_lixeira' where workspace_id = $1 and id = $2", [ws, admin.contato.id]);
     const recusa = recusado(await servico.excluirPermanentemente(eu, admin.contato.id));
     expect([recusa.status, recusa.codigo]).toEqual([409, "CONTATO_BLOQUEADO"]);
+  });
+
+  it("(g) excluir permanentemente um Contato com Conversa é 409 CONTATO_COM_CONVERSAS e o Contato continua existindo (Pitfall 2)", async () => {
+    const c = await criar({ nome: "Com Conversa" });
+    const canal = await semearCanal(ws, {
+      nome: "Canal das Conversas",
+      tipo: "whatsapp",
+      provedor: "whatsapp-cloud",
+      identificadorExterno: "+5511977770401",
+    });
+    const conversa = await pool().query<{ id: string }>(
+      `insert into plataforma.conversas (workspace_id, canal_id, contato_id, titulo, criado_por_tipo, criado_por_id)
+       values ($1, $2, $3, 'Pedido de orçamento', 'system', 'sistema') returning id`,
+      [ws, canal, c.contato.id],
+    );
+    valor(await servico.enviarParaLixeira(eu, c.contato.id));
+
+    const recusa = recusado(await servico.excluirPermanentemente(eu, c.contato.id));
+    expect([recusa.status, recusa.codigo]).toEqual([409, "CONTATO_COM_CONVERSAS"]);
+    expect(recusa.error).toContain("1 Conversa");
+    expect(recusa.bloqueios?.conversas).toEqual({ total: 1, itens: [{ id: conversa.rows[0]!.id, titulo: "Pedido de orçamento" }] });
+    expect(await estadoNoBanco(c.contato.id)).toBe("na_lixeira");
+  });
+
+  it("(g) a corrida: o 23503 de conversas_workspace_id_contato_id_fkey vira 409 CONTATO_COM_CONVERSAS, sem o nome do constraint (T-08-20)", () => {
+    const recusa = traduzirErroDePg(
+      { code: "23503", constraint: "conversas_workspace_id_contato_id_fkey" },
+      FRASES_DE_CONTATOS,
+    );
+    expect(recusa).toMatchObject({ status: 409, codigo: "CONTATO_COM_CONVERSAS" });
+    expect(recusa?.error).not.toContain("conversas_workspace_id_contato_id_fkey");
   });
 
   it("(h) obter de outro Espaço é 404; listar acha por nome e por Identificador, e % não é curinga", async () => {
