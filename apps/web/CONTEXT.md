@@ -110,6 +110,26 @@ no `DataState`, **abrem a tela antiga** (`features/crm/legado/*`,
 `DealScreen`) para os ids do modelo antigo. Isso fica assim até a fase de
 unificação, que aposenta o modelo em inglês e religa essas superfícies.
 
+**A terceira fronteira (Fase 8): o Canal relacional também fala REST.** O
+chat — Caixa de Entrada, fio da Conversa, Listas — segue no store (D-11); só
+a conexão e a ficha do Canal falam REST. `src/dados/crm/canais.ts` é o cliente
+HTTP de Canais (mesmo `chamarCrm` da Fase 7: `/canais`, simular conexão,
+desconectar, arquivar, configurar). O Canal novo nasce `desconectada` pela
+página `conectar/page.tsx` (os quatro cartões de provedor) e
+`conectar/[provedor]/page.tsx`, um Server Component que só valida o slug do
+provedor e entrega a `features/crm/conectar-provedor.tsx` (orientação passo a
+passo, espaço reservado do QR/token e o formulário real). A ficha do Canal
+grava por REST quando o Canal é relacional (vem de `GET /estado` com
+`relational: true`) e pela operação antiga quando é do seed (demo); o botão
+"Simular conexão" só aparece para quem administra. Três peças visuais novas
+em `features/crm/`: `selo-do-provedor.tsx` (oficial/não oficial/cadastrado/
+demo/conexão simulada), `seletor-de-canal.tsx` ("Responder por", que troca a
+aba sem mover uma Conversa existente de Canal) e `separador-de-canal.tsx` (o
+"via …"). `ConversationThread` tem uma aba por Canal ativo, não por tipo, e a
+lista da Caixa de Entrada mostra ícone e nome do Canal em cada item, com o
+filtro `?canal=` pelo rótulo "nome · provedor". Nenhum componente do chat ou
+das páginas de Canal renderiza HTML cru.
+
 ## Regras de estilo
 
 Cor só sai de `src/estilos/tokens.css`. `npm run verificar:tokens` falha se

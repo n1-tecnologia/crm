@@ -57,6 +57,26 @@ Entrada e Conversas ainda dependem dele: os dois convivem até a fase de
 unificação. Antes de aplicar a 007 num banco, `npm run migrar -w @n1/api --
 --seco` lista o que `migrar` faria sem escrever nada.
 
+A partir da Fase 8, o que faltava da Caixa de Entrada ganha tabelas próprias:
+`apps/api/migracoes/008-canais-conversas-mensagens.sql` dá a Canal, Conversa
+e Mensagem as tabelas `plataforma.canais`, `plataforma.conversas` e
+`plataforma.mensagens`, com rotas REST `/canais`, `/conversas` e `/mensagens`
+ao lado das do CRM. O Canal passa a ter `provedor` (WhatsApp oficial e não
+oficial, Instagram, E-mail — a tabela está em
+`@n1/dominio/provedores-de-canal`), e o que um Canal pode fazer (janela de
+24 h, modelo, envio livre) é lido por (tipo, provedor) em `capacidadesDoCanal`,
+não só pelo tipo. O Canal criado pela página nova de conexão
+(`/crm/caixa-de-entrada/configuracoes/canais/conectar`) nasce `desconectada`
+e só conecta por "Simular conexão", sempre marcada, enquanto não há provedor
+real; o popup de adicionar Canal das Listas é o caminho legado e segue
+nascendo `conectada` em `plataforma.registros`. O chat continua no modelo
+antigo e enxerga os Canais da tabela por uma projeção — em `GET /estado` e em
+`executar()`, nunca em `hidratar()` (ver `apps/api/src/persistencia/CONTEXT.md`)
+— até a fase de unificação. O fio da Conversa tem uma aba por Canal e
+"Responder por"; o seed continua, marcado como demo. A 008 já está aplicada no
+banco da plataforma e é imutável: qualquer ajuste de schema daqui em diante é
+a `009`.
+
 ## Comandos
 
 Todos rodam da raiz:
