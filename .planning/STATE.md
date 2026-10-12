@@ -3,17 +3,17 @@ gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 08
 current_phase_name: "Canais de comunicação: conexão e omnichannel preparado"
-status: executing
-stopped_at: Completed 08-14-PLAN.md
-last_updated: "2026-10-12T22:05:26.234Z"
+status: verifying
+stopped_at: Completed 08-15-PLAN.md
+last_updated: "2026-10-12T22:26:16.651Z"
 last_activity: 2026-10-12
 last_activity_desc: Phase 08 execution started
-state_head: edf3d0206e89961d2c0e46f9f0c808650e74e66d
+state_head: 796f73c537212c324ed367238e7cc504e9835292
 progress:
   total_phases: 8
   completed_phases: 6
   total_plans: 148
-  completed_plans: 146
+  completed_plans: 147
 milestone_name: milestone
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 
 Phase: 08 (Canais de comunicação: conexão e omnichannel preparado) — EXECUTING
 Plan: 15 of 15
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-10-12 — Phase 08 execution started
 
 **Fase 06 planejada à mão em 2026-09-29 (Conferência do Resumo e anexos), pronta para `/gsd-execute-phase 6`:**
@@ -369,6 +369,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 08 P12 | 11 min | 3 tasks | 7 files |
 | Phase 08 P13 | 15 min | 2 tasks | 4 files |
 | Phase 08 P14 | 10min | 3 tasks | 1 files |
+| Phase 08 P15 | 22min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -495,6 +496,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 08]: 08-13: o e2e dois WhatsApps lado a lado roda sobre as rotas ja entregues sem mudar producao; nao-vacuidade provada por mutacao restaurada, sem RED fabricado
 - [Phase 08]: 08-14: contrato da 008 (A1 slugs, A2 canais_conta_uq por tipo+identificador, A6 colunas extras, A9 carga_bruta fora do HTTP) confirmado pelo dono e aplicado no banco da plataforma; 008 imutavel, ajuste futuro e 009
 - [Phase 08]: 08-14: aplicacao da 008 feita pelo agente orquestrador sob autorizacao explicita e unica do dono na sessao (desvio registrado em 08-PROVAS.md)
+- [Phase 08]: 08-15: portao nao registrado como verde limpo — colunas-geradas.test.ts (empate de vencimento) falhou uma vez no check completo e passou isolado; aceitar ou corrigir fica com o dono/verificador
+- [Phase 08]: 08-15: suites describeComBanco (198 pulados contra o Supabase) re-executadas num Postgres 16 descartavel: 23 arquivos, 319 testes verdes
 
 ### Pending Todos
 
@@ -556,6 +559,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-12T22:05:26.054Z
-Stopped at: Completed 08-14-PLAN.md
+Last session: 2026-10-12T22:26:16.491Z
+Stopped at: Completed 08-15-PLAN.md
 Resume file: None

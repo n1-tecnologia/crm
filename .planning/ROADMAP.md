@@ -474,7 +474,7 @@ Phases execute in numeric order: 0 ∥ 1 → 2 → 3 → 4 → 5 → 6 (0 e 1 em
 | 5. Contas a receber e os outros tenants | 25/25 | Complete    | 2026-09-25 |
 | 6. Conferência do Resumo e anexos | 22/22 | Complete   | 2026-09-30 |
 | 7. CRM: Contatos, Empresas, Funis e Negócios (backend e frontend) | 13/13 | Complete   | 2026-10-11 |
-| 8. Canais de comunicação: conexão e omnichannel preparado | 14/15 | In Progress |  |
+| 8. Canais de comunicação: conexão e omnichannel preparado | 15/15 | In Progress |  |
 
 ### Phase 7: CRM: Contatos, Empresas, Funis e Negócios (backend e frontend)
 
@@ -522,7 +522,7 @@ Plans:
 **Goal:** O campo preparado para o omnichannel, sem integrar nenhum provedor de verdade. Em `apps/web`, uma tela onde o Administrador escolhe qual Canal vai conectar (WhatsApp oficial, WhatsApp não oficial, Instagram, E-mail) e, para cada tipo, uma tela de orientação de como conectar — por enquanto um mockup por tipo, a ser configurado quando a integração chegar. O Espaço de Trabalho pode ter mais de um Canal, inclusive mais de um WhatsApp (um oficial e um não oficial lado a lado). Começa pelo domínio: o Canal ganha o provedor/variante (oficial × não oficial) e o estado de conexão em dois atos (`desconectada` → `conectada`, ontologia 12.2), em vez de nascer `conectada` como hoje (C36). Em `apps/api`, a modelagem relacional de Canal, Conversa e Mensagem no Postgres (migração 008, no padrão da 007), incluindo a Mensagem recebida de cada Canal como será renderizada depois — ids externos do provedor, direção, status de entrega, anexos — e as rotas REST por recurso. No chat (Caixa de Entrada e fio da Conversa), toda Mensagem mostra por qual Canal chegou e quem responde escolhe por qual Canal responde — hoje a aba é por TIPO de Canal, o que não distingue dois WhatsApps. Esquema omnichannel tradicional; nada inventado.
 **Requirements**: CXE-D1, CXE-D2, CXE-A1, CXE-A2, CXE-A3, CXE-A4, CXE-W1, CXE-W2, CXE-V1 (critérios derivados em `08-RESEARCH.md` "Phase Requirements"; registrados em REQUIREMENTS.md, Fase 8)
 **Depends on:** Phase 7 (Contato e a 007: a Conversa aponta para o Contato relacional); independe das fases abertas 2 e 4
-**Plans:** 14/15 plans executed
+**Plans:** 15/15 plans executed
 
 Plans:
 **Wave 1** — o traçador
@@ -552,7 +552,7 @@ Plans:
 - [x] 08-14-PLAN.md — A 008 no banco da plataforma: decisão do dono sobre o contrato, `--seco`, aplicação, confirmação (CXE-A1, CXE-V1)
 
 **Wave 7**
-- [ ] 08-15-PLAN.md — Documentos vivos, portão `npm run check` + `build` e o roteiro da UAT `[BLOCKING]` (CXE-V1, CXE-W1, CXE-W2)
+- [x] 08-15-PLAN.md — Documentos vivos, portão `npm run check` + `build` e o roteiro da UAT `[BLOCKING]` (CXE-V1, CXE-W1, CXE-W2)
 
 **Ondas de execução:** 1 → [08-01] · 2 → [08-02, 08-03, 08-04, 08-05] · 3 → [08-06, 08-07, 08-08, 08-09, 08-10, 08-11] · 4 → [08-12] · 5 → [08-13] · 6 → [08-14] · 7 → [08-15]
 
