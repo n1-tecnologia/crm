@@ -8,23 +8,38 @@
  * espelha a tabela de provedores do domínio (D-01).
  */
 
+import { randomUUID } from "node:crypto";
+import { readFileSync, readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DataState } from "@n1/dominio";
 import { usuarioDoSeed } from "@n1/dominio";
+import { sendMessage, startConversation } from "@n1/dominio/operations";
 import { buildSeed } from "@n1/dominio/seed";
+import { ok } from "@n1/dominio/state";
 import type { Canal } from "@n1/dominio/crm/canais";
 import { PROVEDORES, PROVEDORES_DE_CANAL, TIPOS_COM_PROVEDOR } from "@n1/dominio/provedores-de-canal";
 import { buildApp } from "../app";
 import { criarRepositorioDeCanaisPg } from "../repositorios/crm/canais";
-import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearMembro } from "../testes/banco-crm";
+import {
+  describeComBanco,
+  limparEspaco,
+  novoEspacoDeTeste,
+  prepararBancoCrm,
+  semearCanal,
+  semearMembro,
+} from "../testes/banco-crm";
 import { encerrar, pool } from "./conexao";
 import {
   acrescentarCanaisProjetados,
   canalParaChannel,
   carregarCanaisProjetados,
   redefinirGuardaDaTabelaDeCanais,
+  semCanaisProjetados,
 } from "./canais-projetados";
 import { semear } from "./repositorio";
+import { executar } from "./unidade-de-trabalho";
 
 /** Um cliente cujas consultas devolvem sempre `resposta` e contam as chamadas. */
 function clienteFalso(resposta: { rows: unknown[] }) {
@@ -109,6 +124,47 @@ describe("ponte de Canais — sem banco", () => {
     expect(estado.channels.at(-1)?.id).toBe(CANAL.id);
     expect(estado.channels).toHaveLength(seed.channels.length + 1);
     expect([...fotografia.ids]).toEqual([CANAL.id]);
+  });
+});
+
+describe("semCanaisProjetados — sem banco (08-07)", () => {
+  const projetado = canalParaChannel(CANAL, "ws");
+
+  function estadoComProjetado() {
+    const seed = buildSeed();
+    const estado = { channels: [...seed.channels] } as DataState;
+    const fotografia = acrescentarCanaisProjetados(estado, [projetado]);
+    return { estado, fotografia, doSeed: seed.channels.length };
+  }
+
+  it("fotografia vazia devolve o próprio estado", () => {
+    const estado = { channels: [] } as unknown as DataState;
+    const fotografia = acrescentarCanaisProjetados(estado, []);
+    expect(semCanaisProjetados(estado, fotografia)).toBe(estado);
+  });
+
+  it("projetado intacto: cópia rasa sem ele, e o estado original ainda o contém", () => {
+    const { estado, fotografia, doSeed } = estadoComProjetado();
+    const limpo = semCanaisProjetados(estado, fotografia);
+    expect(limpo).not.toBe(estado);
+    expect(limpo.channels).toHaveLength(doSeed);
+    expect(limpo.channels.some((c) => c.id === CANAL.id)).toBe(false);
+    expect(estado.channels.some((c) => c.id === CANAL.id)).toBe(true);
+    expect(estado.channels).toHaveLength(doSeed + 1);
+  });
+
+  it("projetado alterado lança a frase da ponte", () => {
+    const { estado, fotografia } = estadoComProjetado();
+    estado.channels.find((c) => c.id === CANAL.id)!.name = "Renomeado por uma operação";
+    expect(() => semCanaisProjetados(estado, fotografia)).toThrow(
+      `Uma operação alterou o Canal ${CANAL.id} da tabela própria; ele só muda pela api de Canais.`,
+    );
+  });
+
+  it("projetado removido do estado também lança (a mudança não some em silêncio)", () => {
+    const { estado, fotografia } = estadoComProjetado();
+    estado.channels = estado.channels.filter((c) => c.id !== CANAL.id);
+    expect(() => semCanaisProjetados(estado, fotografia)).toThrow(/Uma operação alterou o Canal/);
   });
 });
 
@@ -211,6 +267,113 @@ describeComBanco("ponte de Canais — Postgres local", () => {
         [espaco, `Errado ${provedor}`, errado, provedor, `errado-${provedor}`],
       );
       await expect(tentativa).rejects.toMatchObject({ code: "23514", constraint: "canais_provedor_tipo_ck" });
+    }
+  });
+});
+
+const PASTA_DE_MIGRACOES = fileURLToPath(new URL("../../migracoes", import.meta.url));
+
+describeComBanco("a ponte em executar() — Postgres local (08-07)", () => {
+  const espaco = novoEspacoDeTeste("canaisexec");
+  const seed = buildSeed();
+  const administrador = seed.members.find((m) => seed.roles.find((r) => r.id === m.roleId)?.base === "administrador")!;
+  const contato = seed.contacts.find((c) => c.lifecycle === "ativo" && c.identifiers.some((i) => i.type === "identidadeDeWhatsApp"))!;
+  let idComercial = "";
+
+  beforeAll(async () => {
+    await prepararBancoCrm();
+    redefinirGuardaDaTabelaDeCanais();
+    const cliente = await pool().connect();
+    try {
+      await semear(cliente, espaco, buildSeed());
+    } finally {
+      cliente.release();
+    }
+    idComercial = await semearCanal(espaco, {
+      nome: "Comercial",
+      tipo: "whatsapp",
+      provedor: "whatsapp-cloud",
+      identificadorExterno: "+55 11 97777-0007",
+      conexao: "conectada",
+    });
+  });
+
+  afterAll(async () => {
+    await limparEspaco(espaco);
+    await encerrar();
+  });
+
+  async function contar(colecao: string): Promise<number> {
+    const { rows } = await pool().query<{ n: number }>(
+      "select count(*)::int as n from plataforma.registros where workspace_id = $1 and colecao = $2",
+      [espaco, colecao],
+    );
+    return rows[0]!.n;
+  }
+
+  async function revisao(): Promise<number> {
+    const { rows } = await pool().query<{ revisao: string }>(
+      "select revisao from plataforma.workspaces where workspace_id = $1",
+      [espaco],
+    );
+    return Number(rows[0]!.revisao);
+  }
+
+  it("startConversation e sendMessage sobre o Canal relacional gravam a Conversa em registros sem copiar o Canal", async () => {
+    const canaisAntes = await contar("channels");
+
+    const aberta = await executar(espaco, (s) => startConversation(s, administrador.id, idComercial, contato.id));
+    expect(aberta.ok).toBe(true);
+    if (!("value" in aberta) || !aberta.ok) throw new Error("startConversation devia ter dado certo");
+    const idDaConversa = aberta.value.id;
+
+    const { rows } = await pool().query<{ canal: string }>(
+      "select dados->>'channelId' as canal from plataforma.registros where workspace_id = $1 and colecao = 'conversations' and id = $2",
+      [espaco, idDaConversa],
+    );
+    expect(rows[0]?.canal).toBe(idComercial);
+    expect(await contar("channels")).toBe(canaisAntes);
+
+    const enviada = await executar(espaco, (s) =>
+      sendMessage(s, administrador.id, { conversationId: idDaConversa, content: "Olá" }),
+    );
+    expect(enviada.ok).toBe(true);
+    expect(await contar("channels")).toBe(canaisAntes);
+  });
+
+  it("uma operação que altera o Canal projetado lança e a revisão do Espaço não muda", async () => {
+    const antes = await revisao();
+    await expect(
+      executar(espaco, (s) => {
+        s.channels.find((c) => c.id === idComercial)!.name = "Mudado pelo modelo antigo";
+        return ok(undefined);
+      }),
+    ).rejects.toThrow(`Uma operação alterou o Canal ${idComercial} da tabela própria; ele só muda pela api de Canais.`);
+    expect(await revisao()).toBe(antes);
+    const { rows } = await pool().query<{ nome: string }>("select nome from plataforma.canais where id = $1", [idComercial]);
+    expect(rows[0]?.nome).toBe("Comercial");
+  });
+
+  it("banco só com 001..007: carregarCanaisProjetados devolve [] sem lançar", async () => {
+    const nome = `sem008_${randomUUID().slice(0, 8)}`;
+    await pool().query(`create database ${nome}`);
+    const url = new URL(process.env.DATABASE_URL!);
+    url.pathname = `/${nome}`;
+    const aparte = new Pool({ connectionString: url.toString(), max: 2 });
+    try {
+      await aparte.query("create schema if not exists plataforma");
+      const arquivos = readdirSync(PASTA_DE_MIGRACOES)
+        .filter((f) => f.endsWith(".sql") && !f.startsWith("008-"))
+        .sort();
+      for (const arquivo of arquivos) await aparte.query(readFileSync(`${PASTA_DE_MIGRACOES}/${arquivo}`, "utf8"));
+      expect((await aparte.query("select to_regclass('plataforma.canais') as existe")).rows[0].existe).toBeNull();
+
+      redefinirGuardaDaTabelaDeCanais();
+      await expect(carregarCanaisProjetados(aparte, "qualquer")).resolves.toEqual([]);
+    } finally {
+      await aparte.end();
+      await pool().query(`drop database ${nome}`);
+      redefinirGuardaDaTabelaDeCanais();
     }
   });
 });
