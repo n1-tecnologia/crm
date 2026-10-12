@@ -10,12 +10,13 @@
  */
 
 import Link from "next/link";
+import { usePodeNoCrm } from "@/dados/crm/sessao";
 import { useData } from "@/dados/store";
 import { capacidadesDoCanal } from "@n1/dominio/operations";
 import { PROVEDORES, provedorDoCanal } from "@n1/dominio/provedores-de-canal";
 import { MarcaDeConexaoSimulada, SeloDeOrigem, SeloDoProvedor } from "@/features/crm/selo-do-provedor";
 import { CHANNEL_TYPE_LABEL } from "@/features/shell/format";
-import { CorpoDeTela, EmptyState, PageHeader, Painel, Section, StateSeal } from "@/features/shell/ui";
+import { Button, CorpoDeTela, EmptyState, PageHeader, Painel, Section, StateSeal } from "@/features/shell/ui";
 
 const DISTRIBUTION_LABEL: Record<string, string> = {
   herdarDaCaixa: "herda da Caixa",
@@ -36,6 +37,17 @@ export default function ConfiguracoesDaCaixaPage() {
   const state = useData((data) => data);
   const { inbox, channels, queues } = state;
   const owner = state.members.find((m) => m.id === inbox.defaultContactOwnerMemberId);
+  const permissaoParaConectar = usePodeNoCrm("criar", "canal");
+  const botaoConectar =
+    permissaoParaConectar === undefined ? (
+      <Link href="/crm/caixa-de-entrada/configuracoes/canais/conectar" className="btn btn-solido btn-sm alvo-toque">
+        Conectar Canal
+      </Link>
+    ) : (
+      <Button variant="primary" size="sm" disabled disabledReason={permissaoParaConectar}>
+        Conectar Canal
+      </Button>
+    );
 
   return (
     <div className="flex h-full flex-col">
@@ -66,11 +78,12 @@ export default function ConfiguracoesDaCaixaPage() {
           </Painel>
         </Section>
 
-        <Section title="Canais" count={channels.length}>
+        <Section title="Canais" count={channels.length} action={botaoConectar}>
           {channels.length === 0 ? (
             <EmptyState
               title="Nenhum Canal configurado."
               hint="Sem Canal não há Conversa: é por ele que a Mensagem entra e sai."
+              action={botaoConectar}
             />
           ) : (
             <ul className="grade-solta sm:grid-cols-2">
