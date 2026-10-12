@@ -74,6 +74,13 @@ export interface BloqueiosCrm {
   readonly filiais?: ReadonlyArray<{ readonly id: string; readonly nome: string }>;
   /** O Contato detentor de um Identificador já em uso (RN-CON-11). */
   readonly contatos?: ReadonlyArray<{ readonly id: string; readonly nome: string }>;
+  /** O Canal detentor do nome ou da conta que se quer usar (Fase 8, 08-03). */
+  readonly canais?: ReadonlyArray<{ readonly id: string; readonly nome: string }>;
+  /** Conversas que ainda dependem do registro: de um Contato (08-04) ou já abertas (08-06). */
+  readonly conversas?: {
+    readonly total: number;
+    readonly itens: ReadonlyArray<{ readonly id: string; readonly titulo: string }>;
+  };
 }
 
 /** Os tetos que a borda HTTP e a tela respeitam — um só lugar, para não divergirem. */

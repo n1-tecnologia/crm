@@ -120,6 +120,43 @@ describe("podeNoCrm — Funil é da administração (f)", () => {
   });
 });
 
+describe("podeNoCrm — Canal é da administração (B35)", () => {
+  const ACOES_DE_CANAL: readonly AcaoCrm[] = ["criar", "editar", "simular_conexao", "desconectar", "arquivar"];
+
+  it.each(ACOES_DE_CANAL)("membro não %s Canal — frase de B35", (acao) => {
+    expect(podeNoCrm("membro", "ativo", acao, "canal")).toContain("B35");
+  });
+
+  it.each(ACOES_DE_CANAL)("convidado não %s Canal", (acao) => {
+    expect(podeNoCrm("convidado", "ativo", acao, "canal")).toEqual(expect.any(String));
+  });
+
+  it.each(["administrador", "proprietario"] as const)("%s configura Canal em todas as ações", (base) => {
+    for (const acao of ACOES_DE_CANAL) {
+      expect(podeNoCrm(base, "ativo", acao, "canal")).toBeUndefined();
+    }
+  });
+
+  it.each(BASES)("%s ativo lê Canal", (base) => {
+    expect(podeNoCrm(base, "ativo", "ler", "canal")).toBeUndefined();
+  });
+});
+
+describe("podeNoCrm — Conversa e Mensagem (A7)", () => {
+  it("membro cria Conversa e envia Mensagem", () => {
+    expect(podeNoCrm("membro", "ativo", "criar", "conversa")).toBeUndefined();
+    expect(podeNoCrm("membro", "ativo", "resolver", "conversa")).toBeUndefined();
+    expect(podeNoCrm("membro", "ativo", "enviar", "mensagem")).toBeUndefined();
+  });
+
+  it("convidado não cria Conversa nem envia Mensagem, mas lê", () => {
+    expect(podeNoCrm("convidado", "ativo", "criar", "conversa")).toContain("Convidado");
+    expect(podeNoCrm("convidado", "ativo", "enviar", "mensagem")).toContain("Convidado");
+    expect(podeNoCrm("convidado", "ativo", "ler", "conversa")).toBeUndefined();
+    expect(podeNoCrm("convidado", "ativo", "ler", "mensagem")).toBeUndefined();
+  });
+});
+
 describe("ehAdministracao", () => {
   it("só administrador e proprietario", () => {
     expect(ehAdministracao("administrador")).toBe(true);

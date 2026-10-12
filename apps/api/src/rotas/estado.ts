@@ -23,6 +23,7 @@
 
 import type { FastifyInstance } from "fastify";
 import type { WorkspaceFile } from "@n1/dominio";
+import { acrescentarCanaisProjetados, carregarCanaisProjetados } from "../persistencia/canais-projetados";
 import { pool } from "../persistencia/conexao";
 import { hidratar, ordensComoObjeto } from "../persistencia/repositorio";
 import { urlDeDownload } from "../servicos/storage-uploads";
@@ -32,6 +33,9 @@ export async function rotasDeEstado(app: FastifyInstance): Promise<void> {
     const cliente = await pool().connect();
     try {
       const { state, revisao, ordem } = await hidratar(cliente, request.membro.workspaceId);
+      // D-11: os Canais de `plataforma.canais` (008) entram no corpo como Canais relacionais.
+      // Só aqui (e em `executar()`, 08-07), nunca dentro de `hidratar` — ver `persistencia/canais-projetados.ts`.
+      acrescentarCanaisProjetados(state, await carregarCanaisProjetados(cliente, request.membro.workspaceId));
       return {
         data: state,
         revisao,

@@ -375,11 +375,32 @@ export interface MessageTemplate {
   readonly syncedAt: Instant;
 }
 
+/**
+ * D-01 (Fase 8) — por onde a conta do Canal conversa. O provedor é atributo do
+ * Canal, não um Tipo de Canal novo: cada provedor pertence a um Tipo só
+ * (`PROVEDORES` em `provedores-de-canal.ts`, e o `CHECK canais_provedor_tipo_ck`
+ * da 008 é a mesma tabela).
+ */
+export type ProvedorDeCanal = "whatsapp-cloud" | "whatsapp-nao-oficial" | "instagram-graph" | "email-imap-smtp";
+
 /** A4.1 domain exception — the Channel has no `naLixeira`. */
 export interface Channel extends Omit<RecordBase, "lifecycle" | "lifecycleBeforeTrash"> {
   lifecycle: "ativo" | "arquivado";
   name: string;
   readonly channelType: ChannelType;
+  /**
+   * D-01 — ausente = o provedor padrão do Tipo (o Canal do seed e o de
+   * `criarCanal`, a operação antiga, nunca o têm).
+   */
+  readonly provider?: ProvedorDeCanal;
+  /**
+   * D-11 — só existe no Canal que a api projeta de `plataforma.canais` (008) em
+   * `GET /estado`. Nunca é gravado em `registros`: a projeção não passa por
+   * `hidratar()`.
+   */
+  readonly relational?: boolean;
+  /** D-08 — a conexão foi feita pelo botão "Simular conexão", não por um provedor real. */
+  simulatedConnection?: boolean;
   readonly externalId: string;
   connection: "conectada" | "desconectada" | "comErro";
   /** B35 — traceability, not governance. There is no Proprietário. */

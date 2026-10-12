@@ -12,6 +12,8 @@
 import Link from "next/link";
 import { useData } from "@/dados/store";
 import { CHANNEL_CAPABILITIES } from "@n1/dominio/operations";
+import { PROVEDORES, provedorDoCanal } from "@n1/dominio/provedores-de-canal";
+import { MarcaDeConexaoSimulada, SeloDeOrigem, SeloDoProvedor } from "@/features/crm/selo-do-provedor";
 import { CHANNEL_TYPE_LABEL } from "@/features/shell/format";
 import { CorpoDeTela, EmptyState, PageHeader, Painel, Section, StateSeal } from "@/features/shell/ui";
 
@@ -76,6 +78,7 @@ export default function ConfiguracoesDaCaixaPage() {
                 const capabilities = CHANNEL_CAPABILITIES[channel.channelType];
                 const queue = queues.find((q) => q.id === channel.defaultQueueId);
                 const approved = channel.messageTemplates.filter((t) => t.approval === "aprovado").length;
+                const provedor = provedorDoCanal(channel);
                 return (
                   <li key={channel.id}>
                     <Link
@@ -87,10 +90,15 @@ export default function ConfiguracoesDaCaixaPage() {
                         <span className="app-md" style={{ color: "var(--texto)" }}>
                           {channel.name}
                         </span>
-                        <StateSeal state={channel.lifecycle} />
+                        <span className="flex shrink-0 items-center gap-1">
+                          <SeloDoProvedor canal={channel} />
+                          <SeloDeOrigem canal={channel} />
+                          <MarcaDeConexaoSimulada canal={channel} />
+                          <StateSeal state={channel.lifecycle} />
+                        </span>
                       </p>
                       <p className="app-meta mt-1">
-                        {CHANNEL_TYPE_LABEL[channel.channelType] ?? channel.channelType} ·{" "}
+                        {provedor ? PROVEDORES[provedor].rotulo : (CHANNEL_TYPE_LABEL[channel.channelType] ?? channel.channelType)} ·{" "}
                         <span style={channel.connection === "conectada" ? undefined : { color: "var(--aviso)" }}>
                           {CONNECTION_LABEL[channel.connection]}
                         </span>

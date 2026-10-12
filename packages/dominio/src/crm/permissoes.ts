@@ -15,7 +15,12 @@
  *   5. `funil` → só `administrador` e `proprietario` (inclui Etapas e padrão,
  *      RN-FUN-16/17).
  *   6. Reabrir Negócio `ganho` → só `administrador` e `proprietario` (RN-NEG-10).
- *   7. O resto (`membro` em Contato, Empresa e Negócio) → pode.
+ *   7. `canal` com qualquer ação que não seja `ler` → só `administrador` e
+ *      `proprietario` (B35): conectar, configurar, simular conexão, desconectar
+ *      e arquivar Canais é ato de quem administra o Espaço.
+ *   8. O resto (`membro` em Contato, Empresa, Negócio, Conversa e Mensagem) →
+ *      pode. Conversa e Mensagem: o `membro` cria Conversa e envia Mensagem; o
+ *      `convidado` só lê (regra 4).
  *
  * Escopo `próprios` e Funil privado ficam para uma fase futura (D-10):
  * `privado` é só gravado, e nenhuma regra daqui o consulta.
@@ -24,7 +29,7 @@
 import type { MemberState, SystemRole } from "../types/workspace";
 import type { SituacaoNegocio } from "./comum";
 
-export type RecursoCrm = "contato" | "empresa" | "funil" | "negocio";
+export type RecursoCrm = "contato" | "empresa" | "funil" | "negocio" | "canal" | "conversa" | "mensagem";
 
 export type AcaoCrm =
   | "ler"
@@ -38,7 +43,11 @@ export type AcaoCrm =
   | "ganhar"
   | "perder"
   | "reabrir"
-  | "definir_padrao";
+  | "definir_padrao"
+  | "simular_conexao"
+  | "desconectar"
+  | "resolver"
+  | "enviar";
 
 /** Administrador e Proprietário: quem configura Funis e reabre Negócio ganho. */
 export function ehAdministracao(base: SystemRole | undefined): boolean {
@@ -71,6 +80,10 @@ export function podeNoCrm(
 
   if (recurso === "negocio" && acao === "reabrir" && contexto?.situacao === "ganho" && !ehAdministracao(base)) {
     return "Só Administrador ou Proprietário reabre um Negócio ganho (RN-NEG-10).";
+  }
+
+  if (recurso === "canal" && !ehAdministracao(base)) {
+    return "Só Administrador ou Proprietário conecta, configura, simula conexão, desconecta e arquiva Canais (B35).";
   }
 
   return undefined;

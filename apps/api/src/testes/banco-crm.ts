@@ -10,6 +10,9 @@
  * Cada plano da fase sobe o seu container (`crm-n1-pg-07NN`, porta 554NN):
  *
  *   DATABASE_URL=postgres://postgres:x@localhost:55471/postgres npx vitest run src/rotas/crm
+ *
+ * Na Fase 8 a convenção continua: container `crm-n1-pg-08NN`, porta `555NN`
+ * (55580 + o número do plano), por exemplo o 08-01 em `crm-n1-pg-0801`/55581.
  */
 
 import { randomUUID } from "node:crypto";
@@ -57,7 +60,12 @@ export async function limparEspaco(workspaceId: string): Promise<void> {
   const cliente = await pool().connect();
   try {
     await cliente.query("begin");
+    // Mensagens, Conversas e Canais (008) antes de Contatos: a FK de `conversas`
+    // aponta para `contatos` e `canais` (Pitfall 2).
     for (const tabela of [
+      "mensagens",
+      "conversas",
+      "canais",
       "negocios",
       "contato_empresa",
       "empresa_identificadores",
@@ -77,6 +85,44 @@ export async function limparEspaco(workspaceId: string): Promise<void> {
   } finally {
     cliente.release();
   }
+}
+
+/**
+ * Grava um Canal direto em `plataforma.canais` (008), sem passar pelo serviço:
+ * é o ponto de partida dos testes que precisam de um Canal já existente, em
+ * qualquer conexão. Devolve o `id` gerado pelo banco.
+ */
+export async function semearCanal(
+  workspaceId: string,
+  canal: {
+    readonly nome: string;
+    readonly tipo: string;
+    readonly provedor: string;
+    readonly identificadorExterno: string;
+    readonly conexao?: "conectada" | "desconectada" | "com_erro";
+    readonly conexaoSimulada?: boolean;
+    readonly configuradoPor?: string;
+  },
+): Promise<string> {
+  const resultado = await pool().query<{ id: string }>(
+    `insert into plataforma.canais
+       (workspace_id, nome, tipo, provedor, identificador_externo, conexao, conexao_simulada, configurado_por, criado_por)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+     returning id`,
+    [
+      workspaceId,
+      canal.nome,
+      canal.tipo,
+      canal.provedor,
+      canal.identificadorExterno,
+      canal.conexao ?? "desconectada",
+      canal.conexaoSimulada ?? false,
+      canal.configuradoPor ?? "mem_teste",
+    ],
+  );
+  const linha = resultado.rows[0];
+  if (!linha) throw new Error("semearCanal: o INSERT não devolveu o id.");
+  return linha.id;
 }
 
 /**
