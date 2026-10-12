@@ -126,3 +126,28 @@ mínima no mesmo Espaço (`t1`) e contra o teto de 61 transações individuais
 real — por isso o número de referência que fecha DEC-06 de fato vem do
 checkpoint da Task 4 de `03-12-PLAN.md`, contra `ws_n1` com o volume que
 03-10 importou, não daqui.
+
+## O cenário da Fase 8 — "dois WhatsApps lado a lado" (`canais-fluxo.test.ts`)
+
+Prova a Caixa de Entrada do lado do servidor, por `app.inject()` sobre
+`buildApp()` com serviços, repositórios e acesso reais (só o JWT e a resolução
+do Membro são injetados): o Administrador conecta "Comercial" (WhatsApp
+oficial) e "Suporte" (não oficial) com **dois números distintos**; o número do
+oficial no não oficial é recusado (INV-CXE-01, a conta é única entre
+provedores); "Simular conexão" leva os dois a `conectada`; `GET /estado` traz
+os dois como Canais relacionais sem gravar `channels` em `plataforma.registros`
+(D-11, D-12); o mesmo Contato abre uma Conversa em cada; fora da janela de
+24 h o oficial recusa texto livre (409 `JANELA_EXPIRADA`) e o não oficial envia
+(D-02); depois de "Desconectar" a Mensagem nasce `pendente` (B69); Membro não
+conecta (B35) e um Membro de outro Espaço recebe 404 e lista vazia. A recebida
+entra por `registrarRecebida` (não há rota humana) e nenhuma resposta leva
+`carga_bruta`.
+
+Roda **só contra Postgres local** (`testes/banco-crm.ts`: `describeComBanco`
+pula fora de `localhost`/`127.0.0.1`, nunca toca o pooler do Supabase). Container
+`crm-n1-pg-0813` na porta 55593:
+
+```
+TZ=America/Sao_Paulo DATABASE_URL=postgres://postgres:x@localhost:55593/postgres \
+  npx vitest run src/e2e/canais-fluxo.test.ts
+```

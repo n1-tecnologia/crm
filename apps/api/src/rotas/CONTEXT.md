@@ -68,3 +68,51 @@ corpo (Pitfall 4).
 
 A regra continua a deste arquivo: a rota lê a requisição, chama o serviço e
 formata a resposta. Nenhum SQL e nenhuma regra de negócio em `crm/`.
+
+## Rotas REST da Caixa de Entrada (Fase 8)
+
+`rotas/crm/canais.ts`, `conversas.ts` e `mensagens.ts` entram no mesmo `rotasDeCrm`
+da Fase 7 (mesmo envelope, mesmos status, mesma regra "a rota não tem SQL nem
+regra"). As tabelas são as da `008-canais-conversas-mensagens.sql`
+(`plataforma.canais`, `conversas`, `mensagens`); o Espaço vem da sessão e o corpo
+é `.strict()` (T-08-02, T-08-14, T-08-44).
+
+| Verbo e rota | Efeito | Papel |
+|---|---|---|
+| `GET /canais` | lista, filtros `estado` (`ativo`/`arquivado`, sem lixeira), `tipo`, `provedor`, `conexao`, `q` | todo Papel ativo ou suspenso |
+| `GET /canais/:id` | a ficha | idem |
+| `POST /canais` | cria um Canal `desconectada` (201): `provedor`, `nome`, `identificador`; o `tipo` sai do provedor | Administrador/Proprietário (B35) |
+| `PATCH /canais/:id` | só `nome`, `filaPadraoId` e `origemPadraoId` (INV-CXE-02) | Administrador/Proprietário |
+| `POST /canais/:id/simular-conexao` | conecta sem provedor, marcando `conexaoSimulada` (D-08) | Administrador/Proprietário |
+| `POST /canais/:id/desconectar` | volta a `desconectada` | Administrador/Proprietário |
+| `POST /canais/:id/arquivar` | arquiva e desconecta na mesma escrita | Administrador/Proprietário |
+| `GET /conversas`, `GET /conversas/:id` | lista (filtros `canalId`, `contatoId`, `situacao`, `estado`) e ficha com o resumo do Canal | quem lê Conversa |
+| `POST /conversas` | abre a Conversa com a 1ª Mensagem `enviada` (201) | quem envia Mensagem |
+| `POST /conversas/:id/resolver`, `/reabrir` | muda a situação, sem corpo | idem |
+| `GET /mensagens?conversaId=` | o fio, por `(criado_em, seq)` | quem lê Mensagem |
+| `POST /mensagens` | envia (`enviada`) ou anota (`interna`) — 201 | quem envia Mensagem |
+
+Não há `DELETE` em `/canais`: Canal não tem lixeira (DO-CXE-03), arquivar é o
+fim de uso. As ações sem corpo (`simular-conexao`, `desconectar`, `arquivar`,
+`resolver`, `reabrir`) não declaram `body` (Fastify 5, Pitfall 4).
+
+**Não há rota humana de Mensagem `recebida`.** `NOVA_MENSAGEM.direcao` é
+`z.enum(DIRECOES_DE_ENVIO)`: uma pessoa só envia ou anota. A recebida entra por
+`registrarRecebida` do serviço de Mensagens (a porta da integração, idempotente
+por Canal + id externo): hoje chamada direto pelos testes; o webhook autenticado
+por credencial de serviço vem com o provedor, em fase própria.
+
+**Nenhuma resposta leva `carga_bruta`** (A9, T-08-45): o repositório nem a
+seleciona nas leituras (`COLUNAS_DE_MENSAGEM`), então a rota não tem como
+devolvê-la. O e2e `canais-fluxo.test.ts` confere a string crua da resposta.
+
+**Códigos de recusa desta fase.**
+- **404** (não existe NESTE Espaço): `CANAL_NAO_ENCONTRADO`, `CONVERSA_NAO_ENCONTRADA`, `CONTATO_NAO_ENCONTRADO`.
+- **409:** `CANAL_NOME_EM_USO` e `CANAL_CONTA_EM_USO` (com o detentor em `bloqueios.canais`; a conta é única entre provedores — INV-CXE-01), `CANAL_ARQUIVADO`, `FILA_INVALIDA`, `ORIGEM_INVALIDA`, `TRANSICAO_INVALIDA`, `CONVERSA_JA_ABERTA`, `CONVERSA_NA_LIXEIRA`, `CONTATO_INATIVO`, `CONTATO_SEM_IDENTIFICADOR_DO_CANAL`, `RESPOSTA_DE_OUTRA_CONVERSA` e `JANELA_EXPIRADA` (WhatsApp oficial, texto livre fora das 24 h; o não oficial nunca é recusado — D-02).
+- **400:** forma (zod) e `VALOR_INVALIDO`. **403:** `PERMISSAO`.
+
+**A ponte.** `GET /estado` (e `executar()` em `/operacoes`) projeta os Canais de
+`plataforma.canais` como Canais relacionais (`relational: true`, `provider`,
+`simulatedConnection`) ao lado dos do seed, sem gravá-los em
+`plataforma.registros` (D-11, D-12); ver `persistencia/CONTEXT.md`. O cenário
+que prova isso por HTTP é `e2e/canais-fluxo.test.ts`.
