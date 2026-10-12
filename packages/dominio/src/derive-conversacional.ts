@@ -6,7 +6,7 @@
  */
 
 import type { DataState } from "./state";
-import type { Channel, Contact, Conversation, Deal, Id, Link, Message, ModeloDeTarefa, Task } from "./types";
+import type { Channel, ChannelType, Contact, Conversation, Deal, Id, Link, Message, ModeloDeTarefa, Task } from "./types";
 import { CHANNEL_CAPABILITIES } from "./operations/conversations";
 
 /** Os papéis dos Vínculos com que a Tarefa conversacional nasce. */
@@ -178,4 +178,53 @@ export function canaisDaListaQueAlcancam(state: DataState, listId: Id, contact: 
 /** A Lista conversacional ainda sem canais de atendimento: nada nasce nela até configurá-los. */
 export function listaSemCanais(state: DataState, listId: Id): boolean {
   return listaConversacional(state, listId) && canaisDaLista(state, listId).length === 0;
+}
+
+// ── Esqueleto do passo RED (08-05, Task 3): as assinaturas são as definitivas ──
+
+export const ORDEM_DOS_TIPOS_DE_CANAL: readonly ChannelType[] = [
+  "whatsapp",
+  "instagram",
+  "linkedin",
+  "email",
+  "chatDoSite",
+];
+
+export interface CanalDoFio {
+  readonly canal: Channel;
+  readonly alcancavel: boolean;
+}
+
+export function canaisDoFio(_state: DataState, _contact: Contact | undefined): CanalDoFio[] {
+  throw new Error("canaisDoFio: ainda não implementada");
+}
+
+export function canaisDeResposta(_state: DataState, _contact: Contact | undefined): Channel[] {
+  throw new Error("canaisDeResposta: ainda não implementada");
+}
+
+export function canalPadraoDeResposta(_state: DataState, _contact: Contact | undefined): Id | undefined {
+  throw new Error("canalPadraoDeResposta: ainda não implementada");
+}
+
+export function canalDaAbaInicial(_state: DataState, _contact: Contact | undefined): Id | undefined {
+  throw new Error("canalDaAbaInicial: ainda não implementada");
+}
+
+export function canalPadraoDoTipo(_state: DataState, _contact: Contact | undefined, _tipo: ChannelType): Id | undefined {
+  throw new Error("canalPadraoDoTipo: ainda não implementada");
+}
+
+export function marcadoresDeCanal<T extends { readonly channelId: Id }>(
+  _itens: readonly T[],
+): Array<{ readonly tipo: "item"; readonly item: T } | { readonly tipo: "via"; readonly channelId: Id }> {
+  throw new Error("marcadoresDeCanal: ainda não implementada");
+}
+
+export function rotuloDoCanal(_canal: Pick<Channel, "name" | "channelType" | "provider">): string {
+  throw new Error("rotuloDoCanal: ainda não implementada");
+}
+
+export function textoDoSeparadorDeCanal(_canal: Pick<Channel, "name" | "channelType" | "provider">): string {
+  throw new Error("textoDoSeparadorDeCanal: ainda não implementada");
 }
