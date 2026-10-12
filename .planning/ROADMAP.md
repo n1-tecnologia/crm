@@ -520,12 +520,41 @@ Plans:
 ### Phase 8: Canais de comunicação: conexão e omnichannel preparado
 
 **Goal:** O campo preparado para o omnichannel, sem integrar nenhum provedor de verdade. Em `apps/web`, uma tela onde o Administrador escolhe qual Canal vai conectar (WhatsApp oficial, WhatsApp não oficial, Instagram, E-mail) e, para cada tipo, uma tela de orientação de como conectar — por enquanto um mockup por tipo, a ser configurado quando a integração chegar. O Espaço de Trabalho pode ter mais de um Canal, inclusive mais de um WhatsApp (um oficial e um não oficial lado a lado). Começa pelo domínio: o Canal ganha o provedor/variante (oficial × não oficial) e o estado de conexão em dois atos (`desconectada` → `conectada`, ontologia 12.2), em vez de nascer `conectada` como hoje (C36). Em `apps/api`, a modelagem relacional de Canal, Conversa e Mensagem no Postgres (migração 008, no padrão da 007), incluindo a Mensagem recebida de cada Canal como será renderizada depois — ids externos do provedor, direção, status de entrega, anexos — e as rotas REST por recurso. No chat (Caixa de Entrada e fio da Conversa), toda Mensagem mostra por qual Canal chegou e quem responde escolhe por qual Canal responde — hoje a aba é por TIPO de Canal, o que não distingue dois WhatsApps. Esquema omnichannel tradicional; nada inventado.
-**Requirements**: TBD (derivar em `/gsd-discuss-phase 8` e `08-RESEARCH.md`, como na Fase 7)
+**Requirements**: CXE-D1, CXE-D2, CXE-A1, CXE-A2, CXE-A3, CXE-A4, CXE-W1, CXE-W2, CXE-V1 (critérios derivados em `08-RESEARCH.md` "Phase Requirements"; registrados em REQUIREMENTS.md, Fase 8)
 **Depends on:** Phase 7 (Contato e a 007: a Conversa aponta para o Contato relacional); independe das fases abertas 2 e 4
-**Plans:** 0 plans
+**Plans:** 15 plans
 
 Plans:
-- [ ] TBD (run /gsd-discuss-phase 8, depois /gsd-plan-phase 8)
+**Wave 1** — o traçador
+- [ ] 08-01-PLAN.md — Traçador: Canal `desconectada` criado pela página de orientação, gravado na 008, projetado em `GET /estado` e listado com o selo (CXE-D1, CXE-A1, CXE-A2, CXE-A4, CXE-W1, CXE-V1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 08-02-PLAN.md — Capacidades por (tipo, provedor) em todo leitor de janela e modelo (CXE-D2, CXE-D1)
+- [ ] 08-03-PLAN.md — API do Canal completa: ficha, configuração, conexão em dois atos, arquivar (CXE-A2, CXE-D1)
+- [ ] 08-04-PLAN.md — A 008 provada (17 invariantes) e Contato com Conversa na Fase 7 (CXE-A1, CXE-A2)
+- [ ] 08-05-PLAN.md — Domínio do chat: Conversa e Mensagem relacionais e as derivações por Canal (CXE-D1, CXE-W2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 08-06-PLAN.md — API de Conversas: abrir com a 1ª Mensagem, resolver, reabrir (CXE-A2, CXE-A3)
+- [ ] 08-07-PLAN.md — A ponte no `executar()`: operação antiga sobre Canal relacional sem vazar para `registros` (CXE-A4)
+- [ ] 08-08-PLAN.md — Jornada de conexão: "Conectar Canal", quatro cartões e a orientação completa (CXE-W1)
+- [ ] 08-09-PLAN.md — Ficha do Canal: Simular conexão, desconectar, arquivar, Fila/Origem por REST (CXE-W1)
+- [ ] 08-10-PLAN.md — Fio por Canal: abas por Canal, "Responder por", Canal no topo e separador (CXE-W2)
+- [ ] 08-11-PLAN.md — Lista de Conversas com o nome do Canal e filtro por provedor (CXE-W2)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 08-12-PLAN.md — API de Mensagens: envio por (tipo, provedor), recebida idempotente, `carga_bruta` (CXE-A3, CXE-A2)
+
+**Wave 5**
+- [ ] 08-13-PLAN.md — e2e "dois WhatsApps lado a lado" por HTTP e documentos da api (CXE-V1, CXE-A2, CXE-A3, CXE-A4)
+
+**Wave 6**
+- [ ] 08-14-PLAN.md — A 008 no banco da plataforma: decisão do dono sobre o contrato, `--seco`, aplicação, confirmação (CXE-A1, CXE-V1)
+
+**Wave 7**
+- [ ] 08-15-PLAN.md — Documentos vivos, portão `npm run check` + `build` e o roteiro da UAT `[BLOCKING]` (CXE-V1, CXE-W1, CXE-W2)
+
+**Ondas de execução:** 1 → [08-01] · 2 → [08-02, 08-03, 08-04, 08-05] · 3 → [08-06, 08-07, 08-08, 08-09, 08-10, 08-11] · 4 → [08-12] · 5 → [08-13] · 6 → [08-14] · 7 → [08-15]
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*

@@ -119,6 +119,20 @@ Critério de pronto (ROADMAP Phase 7): Contatos, Empresas, Funis (com Etapas) e 
 - [x] **CRM-W2**: Quadro de Negócios (kanban em `/crm/negocios`) com mover/ganhar/perder/reabrir por REST (D-05). Pendente.
 - [x] **CRM-V1**: `npm run check` verde; testes de domínio, de rota (`app.inject`) e de repositório contra Postgres local; a 007 aplicada no banco da plataforma depois da conferência de D-12. Pendente.
 
+### Fase 8 — Canais de comunicação: conexão e omnichannel preparado (CXE)
+
+Critério de pronto (ROADMAP Phase 8): o Administrador escolhe e conecta Canais (WhatsApp oficial, WhatsApp não oficial, Instagram, E-mail) por uma página de orientação por provedor, sem provedor real; o Espaço tem mais de um Canal, inclusive dois WhatsApps lado a lado; Canal, Conversa e Mensagem têm tabela própria (008) e rotas REST; o chat mostra por qual Canal a Mensagem veio e deixa escolher por qual responder. Os nove IDs abaixo são **derivados** do goal e das decisões D-01..D-16 (`.planning/phases/08-canais-de-comunica-o-conex-o-e-omnichannel-preparado/08-RESEARCH.md`, "Phase Requirements"; decisões em `08-CONTEXT.md`).
+
+- [ ] **CXE-D1**: `@n1/dominio`: provedor do Canal (`ProvedorDeCanal`, `PROVEDORES`), Capacidades por (tipo, provedor), módulos `@n1/dominio/crm/{canais,conversas,mensagens}` com regras puras (Canal nasce `desconectada`, conexão em dois atos, identificador canônico, regra de envio por janela/modelo) e `podeNoCrm` com `canal`/`conversa`/`mensagem` (D-01..D-04, D-08). Pendente.
+- [ ] **CXE-D2**: todos os leitores de janela/modelo (domínio e web) passam por `capacidadesDoCanal`; Canal sem provedor mantém o comportamento de hoje (D-02). Pendente.
+- [ ] **CXE-A1**: migração `008-canais-conversas-mensagens.sql` com as invariantes da Caixa de Entrada no banco, idempotente, conferida por `migrar --seco` e aplicada no banco da plataforma (D-09, D-10). Pendente.
+- [ ] **CXE-A2**: repositórios, serviços e rotas REST `/canais`, `/conversas`, `/mensagens` com isolamento por `workspace_id`, Papel no backend e 400/403/404/409 no envelope do CRM (D-09, D-11). Pendente.
+- [ ] **CXE-A3**: Mensagem com o modelo 7.6 + `carga_bruta`, recebida idempotente por (Canal, id externo), envio pela regra de janela/modelo por (tipo, provedor) e `pendente` com Canal desconectado (D-02, D-10). Pendente.
+- [ ] **CXE-A4**: ponte — Canais relacionais projetados em `GET /estado` e em `executar()`, nunca gravados em `plataforma.registros`; contrato `automacao.notificar-canal.v1` intacto (D-11, D-12). Pendente.
+- [ ] **CXE-W1**: botão "Conectar Canal", tela dos quatro cartões, orientação por provedor (passos + espaço do QR/token + formulário real), Canal criado `desconectada` por REST, "Simular conexão" marcada, lista e ficha com selo do provedor e origem (D-04..D-08, D-12). Pendente.
+- [ ] **CXE-W2**: chat por Canal — abas por Canal, "Responder por" com padrão da última recebida, Canal + selo no topo do fio e separador "via …", item da lista com ícone + nome do Canal e filtro `?canal=` com o provedor (D-13..D-16). Pendente.
+- [ ] **CXE-V1**: `npm run check` verde; testes de domínio, de rota, de repositório e o e2e "dois WhatsApps lado a lado" contra Postgres local; a 008 aplicada no banco da plataforma depois da conferência do dono e a UAT de fim de fase. Pendente.
+
 ## Traceability
 
 Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pelas ferramentas): `Pending` · `In Progress` · `Blocked` · `Complete`. A coluna "Situação verificada" carrega o status da intel (código, 2026-09-15).
@@ -173,11 +187,20 @@ Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pe
 | CRM-W1 | Phase 7 | Complete | planejado 2026-10-09 (07-01, 07-06, 07-07, 07-09..07-13) | derivado (07-RESEARCH) |
 | CRM-W2 | Phase 7 | Complete | planejado 2026-10-09 (07-10, 07-11, 07-13) | derivado (07-RESEARCH) |
 | CRM-V1 | Phase 7 | Complete | planejado 2026-10-09 (07-01, 07-02, 07-12, 07-13) | derivado (07-RESEARCH) |
+| CXE-D1 | Phase 8 | Pending | planejado 2026-10-12 (08-01, 08-02, 08-03, 08-05) | derivado (08-RESEARCH) |
+| CXE-D2 | Phase 8 | Pending | planejado 2026-10-12 (08-02) | derivado (08-RESEARCH) |
+| CXE-A1 | Phase 8 | Pending | planejado 2026-10-12 (08-01, 08-04, 08-14) | derivado (08-RESEARCH) |
+| CXE-A2 | Phase 8 | Pending | planejado 2026-10-12 (08-01, 08-03, 08-04, 08-06, 08-12, 08-13) | derivado (08-RESEARCH) |
+| CXE-A3 | Phase 8 | Pending | planejado 2026-10-12 (08-06, 08-12, 08-13) | derivado (08-RESEARCH) |
+| CXE-A4 | Phase 8 | Pending | planejado 2026-10-12 (08-01, 08-07, 08-13) | derivado (08-RESEARCH) |
+| CXE-W1 | Phase 8 | Pending | planejado 2026-10-12 (08-01, 08-08, 08-09, 08-15) | derivado (08-RESEARCH) |
+| CXE-W2 | Phase 8 | Pending | planejado 2026-10-12 (08-05, 08-10, 08-11, 08-15) | derivado (08-RESEARCH) |
+| CXE-V1 | Phase 8 | Pending | planejado 2026-10-12 (08-01, 08-13, 08-14, 08-15) | derivado (08-RESEARCH) |
 
 **Coverage:**
 
-- v1 requirements: 48 total (47 executáveis + 1 sobreposto por decisão travada) — RES-01..06 acrescentados em 2026-09-29 (Fase 6); CRM-D1..CRM-V1 (7, derivados) em 2026-10-09 (Fase 7)
-- Mapped to phases: 47 (Phase 0: 6 · Phase 1: 8 · Phase 2: 9 · Phase 3: 7 · Phase 4: 1 · Phase 5: 3 · Phase 6: 6 · Phase 7: 7)
+- v1 requirements: 57 total (56 executáveis + 1 sobreposto por decisão travada) — RES-01..06 acrescentados em 2026-09-29 (Fase 6); CRM-D1..CRM-V1 (7, derivados) em 2026-10-09 (Fase 7); CXE-D1..CXE-V1 (9, derivados) em 2026-10-12 (Fase 8)
+- Mapped to phases: 56 (Phase 0: 6 · Phase 1: 8 · Phase 2: 9 · Phase 3: 7 · Phase 4: 1 · Phase 5: 3 · Phase 6: 6 · Phase 7: 7 · Phase 8: 9)
 - Unmapped: 0 ✓ (PERS-03 não tem fase por ser sobreposto — sua parte viva é PERS-07)
 - Já feitos: 8 (PREP-01, PREP-02, PREP-03, PREP-04, PREP-06 — Fase 0 fechada em 2026-09-17, Plan 00-07 — mais PERS-01, PERS-02 da Fase 1) · risco aceito pelo dono: 1 (PREP-05, D-13) · em andamento: 4 · bloqueados por decisão: 4 (D11, D6, D8, D7) · pendentes: 18
 
