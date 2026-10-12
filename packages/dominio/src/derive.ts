@@ -10,6 +10,7 @@ import type {
   ActorRef,
   AgentExecution,
   ApprovalRequest,
+  Channel,
   Comment,
   Contact,
   Conversation,
@@ -336,15 +337,20 @@ export function weightedValue(state: DataState, deal: Deal): number | null {
   return (deal.value.amount * effectiveProbability(state, deal)) / 100;
 }
 
-/** RN-CXE-19 — derived: last received message + the channel type window. */
+/**
+ * RN-CXE-19 — derived: last received message + the channel window. O callback
+ * recebe o Canal, não o tipo, porque a janela depende do provedor (D-02);
+ * quem chama entrega `capacidadesDoCanal`. `derive.ts` não importa
+ * `operations/` para não fechar ciclo de módulo.
+ */
 export function responseWindowOpenUntil(
   state: DataState,
   conversation: Conversation,
-  capabilities: (type: string) => { responseWindowHours?: number },
+  capabilities: (channel: Channel) => { readonly responseWindowHours?: number },
 ): Date | null {
   const channel = state.channels.find((c) => c.id === conversation.channelId);
   if (!channel) return null;
-  const hours = capabilities(channel.channelType).responseWindowHours;
+  const hours = capabilities(channel).responseWindowHours;
   if (hours === undefined) return null;
   const lastReceived = [...conversation.messages]
     .filter((m) => m.direction === "recebida")

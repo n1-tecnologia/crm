@@ -17,9 +17,10 @@
  * ou desmarcar os canais de UMA Lista é de quem administra a Lista (fica em
  * `definirCanaisDaLista`).
  *
- * O protótipo SIMULA o provedor: um Canal criado aqui já nasce `conectada`. A
- * ontologia (12.2) faz a conta nascer desconectada e conectar depois; sem
- * provedor de verdade, a espera seria teatro. Registrado em C36.
+ * `criarCanal` (o popup das Listas) é o caminho legado: segue nascendo
+ * `conectada`, como C36 registrou (o protótipo simulava o provedor). A página
+ * nova de conexão cria pela api, `desconectada` (D-08; ontologia 12.2 — a
+ * conta nasce desconectada e conecta depois).
  *
  * O Chat do site é Tipo de Canal do domínio, mas não é canal de atendimento
  * de Lista: ele nasce de visitante anônimo, não de um Contato que a Tarefa
@@ -275,6 +276,8 @@ export function configurarCanal(
   const channel = state.channels.find((c) => c.id === channelId);
   if (!channel) return fail("Canal não encontrado.");
   if (channel.lifecycle !== "ativo") return fail("Um Canal arquivado não muda de configuração.");
+  // D-11 — defesa em profundidade: o Canal da tabela própria grava pela api (PATCH /canais/:id).
+  if (channel.relational) return fail("Este Canal vem da tabela própria: configure-o pela ficha do Canal, que grava pela api.");
 
   const nome = input.name?.trim();
   if (input.name !== undefined && !nome) return fail("Dê um nome ao Canal.", "nome");

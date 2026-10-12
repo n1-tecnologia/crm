@@ -6,13 +6,16 @@
 import { fail, ok, type DataState, type OperationResult } from "../state";
 import type { ActorRef, ChannelCapabilities, ChannelType, Conversation, Id, Message } from "../types";
 import { marketingConsentMissing } from "../derive";
+import { provedorDoCanal } from "../provedores-de-canal";
+import type { ProvedorDeCanal } from "../types";
 import { memberActor, nextId, recordActivity, systemActor } from "./activity";
 
 const now = (): string => new Date().toISOString();
 
 /**
- * Documento 14, 7.1 — capabilities belong to the CHANNEL TYPE. No rule reads
- * them from the Channel or the Conversation (RN-CXE-05).
+ * Documento 14, 7.1 — capabilities belong to the CHANNEL TYPE (RN-CXE-05). Esta
+ * é a tabela do tipo; quem decide o que um Canal pode lê `capacidadesDoCanal`,
+ * que parte daqui e só sobrepõe o que o provedor muda (D-02).
  */
 export const CHANNEL_CAPABILITIES: Record<ChannelType, ChannelCapabilities> = {
   whatsapp: {
@@ -102,10 +105,29 @@ export const CHANNEL_CAPABILITIES: Record<ChannelType, ChannelCapabilities> = {
   },
 };
 
+/**
+ * As Capacidades de UM Canal. Elas continuam sendo do Tipo de Canal (RN-CXE-05;
+ * documento 14, 7.1): o provedor só sobrepõe o que difere (D-02) — o WhatsApp
+ * não oficial não tem janela de 24 h nem exige Mensagem de modelo aprovada.
+ * Canal sem `provider` (o seed, o `criarCanal` antigo) usa `provedorDoCanal`,
+ * que cai no padrão do tipo, e o resultado é a tabela do tipo, como sempre foi.
+ */
+export function capacidadesDoCanal(canal: {
+  readonly channelType: ChannelType;
+  readonly provider?: ProvedorDeCanal;
+}): ChannelCapabilities {
+  const base = CHANNEL_CAPABILITIES[canal.channelType];
+  if (provedorDoCanal(canal) === "whatsapp-nao-oficial") {
+    const { responseWindowHours: _semJanela, ...semJanela } = base;
+    return { ...semJanela, requiresTemplateOutsideWindow: false };
+  }
+  return base;
+}
+
 function windowOpenUntil(state: DataState, conversation: Conversation): Date | null {
   const channel = state.channels.find((c) => c.id === conversation.channelId);
   if (!channel) return null;
-  const hours = CHANNEL_CAPABILITIES[channel.channelType].responseWindowHours;
+  const hours = capacidadesDoCanal(channel).responseWindowHours;
   if (hours === undefined) return null;
   const lastReceived = [...conversation.messages]
     .filter((m) => m.direction === "recebida")
@@ -155,7 +177,7 @@ export function sendMessage(
   const actor = input.actor ?? memberActor(actingMemberId);
 
   if (!input.internal) {
-    const capabilities = CHANNEL_CAPABILITIES[channel.channelType];
+    const capabilities = capacidadesDoCanal(channel);
     const until = windowOpenUntil(state, conversation);
     if (capabilities.requiresTemplateOutsideWindow && until && Date.now() > until.getTime()) {
       if (!input.templateProviderId) {
@@ -693,7 +715,7 @@ export function startConversation(
   }
 
   // Sem Identificador que o Canal resolva não há para onde a Mensagem sair.
-  const capacidades = CHANNEL_CAPABILITIES[channel.channelType];
+  const capacidades = capacidadesDoCanal(channel);
   const identificador = contact.identifiers.find((i) =>
     capacidades.resolvesIdentifierTypes.includes(i.type),
   );
