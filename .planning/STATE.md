@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 08
 current_phase_name: "Canais de comunicação: conexão e omnichannel preparado"
 status: executing
-stopped_at: Completed 08-13-PLAN.md
-last_updated: "2026-10-12T18:55:36.581Z"
+stopped_at: Completed 08-14-PLAN.md
+last_updated: "2026-10-12T22:05:26.234Z"
 last_activity: 2026-10-12
 last_activity_desc: Phase 08 execution started
-state_head: 9ffa6b6607454e9ed73dbea9fb67f22b0d87cec2
+state_head: edf3d0206e89961d2c0e46f9f0c808650e74e66d
 progress:
   total_phases: 8
   completed_phases: 6
   total_plans: 148
-  completed_plans: 145
+  completed_plans: 146
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 ## Current Position
 
 Phase: 08 (Canais de comunicação: conexão e omnichannel preparado) — EXECUTING
-Plan: 14 of 15
+Plan: 15 of 15
 Status: Ready to execute
 Last activity: 2026-10-12 — Phase 08 execution started
 
@@ -368,6 +368,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 08 P11 | 6 min | 2 tasks | 2 files |
 | Phase 08 P12 | 11 min | 3 tasks | 7 files |
 | Phase 08 P13 | 15 min | 2 tasks | 4 files |
+| Phase 08 P14 | 10min | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -492,6 +493,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 08]: 08-11: disco do Canal na lista mantém fallback CHANNEL_TYPE_LABEL para Conversa órfã; rótulo do Canal sempre via rotuloDoCanal do domínio
 - [Phase 08]: 08-12: registrarRecebida grava sempre no Canal da Conversa e e idempotente por (Canal, id externo); a recebida nao tem rota humana e nenhuma resposta carrega carga_bruta
 - [Phase 08]: 08-13: o e2e dois WhatsApps lado a lado roda sobre as rotas ja entregues sem mudar producao; nao-vacuidade provada por mutacao restaurada, sem RED fabricado
+- [Phase 08]: 08-14: contrato da 008 (A1 slugs, A2 canais_conta_uq por tipo+identificador, A6 colunas extras, A9 carga_bruta fora do HTTP) confirmado pelo dono e aplicado no banco da plataforma; 008 imutavel, ajuste futuro e 009
+- [Phase 08]: 08-14: aplicacao da 008 feita pelo agente orquestrador sob autorizacao explicita e unica do dono na sessao (desvio registrado em 08-PROVAS.md)
 
 ### Pending Todos
 
@@ -553,6 +556,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-12T18:55:36.423Z
-Stopped at: Completed 08-13-PLAN.md
+Last session: 2026-10-12T22:05:26.054Z
+Stopped at: Completed 08-14-PLAN.md
 Resume file: None
