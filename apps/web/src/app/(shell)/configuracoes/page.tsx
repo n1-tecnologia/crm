@@ -26,6 +26,7 @@ const SECTIONS: ReadonlyArray<{
   { href: "/configuracoes/catalogos", title: "Catálogos", description: "Origens, qualificações, finalidades de consentimento e motivos." },
   { href: "/configuracoes/templates", title: "Templates", description: "Estruturas reutilizáveis; instanciar não cria vínculo vivo." },
   { href: "/configuracoes/integracoes", title: "Integrações", description: "Conexões com sistemas externos e as Ferramentas que expõem." },
+  { href: "/crm/caixa-de-entrada/configuracoes", title: "Caixa de Entrada", description: "Canais conectados (WhatsApp, Instagram, E-mail) e Filas de atendimento." },
   { href: "/configuracoes/lixeira", title: "Lixeira", description: "O que foi enviado à lixeira e quanto tempo resta." },
   { href: "/configuracoes/auditoria", title: "Auditoria", description: "Todo Registro de Atividade do Espaço de Trabalho." },
 ];

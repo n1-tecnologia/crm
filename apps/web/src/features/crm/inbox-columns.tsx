@@ -18,7 +18,7 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { ArrowUpDown, Check, SlidersHorizontal, Star, Users } from "lucide-react";
+import { ArrowUpDown, Check, Settings, SlidersHorizontal, Star, Users } from "lucide-react";
 import { useData, useRun, useSession } from "@/dados/store";
 import { useRecente } from "@/features/shell/recente";
 import { contactDisplayName } from "@n1/dominio/derive";
@@ -225,6 +225,15 @@ export function InboxColumns({ children }: { readonly children: ReactNode }) {
                 </ul>
               ) : null}
             </span>
+            {/* Fase 8: o único caminho para Canais e Filas é esta página; sem o atalho ela não existe para quem navega. */}
+            <Link
+              href="/crm/caixa-de-entrada/configuracoes"
+              title="Configurações da Caixa de Entrada"
+              className="btn-icone btn-icone-nu"
+            >
+              <Icone de={Settings} tamanho="sm" />
+              <span className="sr-only">Configurações da Caixa de Entrada</span>
+            </Link>
           </div>
 
           {/*

@@ -149,4 +149,10 @@ describe("InboxColumns — a lista por Canal", () => {
     expect(within(itemDe("cnv_comercial")).getByText("fora do Prazo")).toBeTruthy();
     expect(within(itemDe("cnv_suporte")).queryByText("fora do Prazo")).toBeNull();
   });
+
+  it("(5) o cabeçalho leva às Configurações da Caixa de Entrada, onde moram Canais e Filas", () => {
+    montar();
+    const atalho = screen.getByRole("link", { name: "Configurações da Caixa de Entrada" });
+    expect(atalho.getAttribute("href")).toBe("/crm/caixa-de-entrada/configuracoes");
+  });
 });
