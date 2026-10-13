@@ -453,3 +453,9 @@ limitação está decidida. Nada disto é defeito desta fase.
     `[conexao]` das saídas de 08-14, T-02-TLS): a verificação da cadeia TLS do
     Postgres está desligada no desenvolvimento, por decisão da Fase 2. Fora do
     notebook, `DATABASE_CA_CERT` ou `DATABASE_CA_PATH` é obrigatório.
+
+## Correção depois da verificação (2026-10-12)
+
+Ao começar a UAT, o dono não encontrou a página de Configurações da Caixa de Entrada: ela existia desde a Fase 7, mas nenhum menu apontava para ela (nem a Caixa, nem as Configurações do Espaço). Nem o code review nem a auditoria de UI viram a lacuna, porque olharam só as telas novas.
+
+Correção em `main@0b5c5b3`, decidida pelo dono ("implementar agora"): ícone de engrenagem no cabeçalho da coluna de Conversas (`inbox-columns.tsx`, link "Configurações da Caixa de Entrada") e cartão "Caixa de Entrada" na página `/configuracoes`. Teste (5) em `inbox-columns.test.tsx`; `tsc`, `eslint` e `verificar:tokens` sem falha. O passo 1 do Roteiro da UAT passa a começar pela engrenagem da Caixa, não pela URL.
