@@ -3185,6 +3185,23 @@ describe("Fase 1 — revisão: alcance, bloqueio e caminho", () => {
 describe("Fase 2 — colaboração na Tarefa", () => {
   const ativas = (listId: string) => state.tasks.filter((x) => x.listId === listId && x.lifecycle === "ativo" && !x.parentTaskId);
 
+  it("PARA-02 — Dependência cruza Listas e Espaços do mesmo Espaço de Trabalho; só a Lista sem a funcionalidade recusa", () => {
+    const usa = (listId: string) => effectiveListConfig(state, listId)?.features.dependencias === true;
+    const [a] = ativas("lst_propostas");
+    const outraLista = state.lists.find((l) => l.id !== "lst_propostas" && l.lifecycle === "ativo" && usa(l.id) && ativas(l.id).length > 0);
+    const semFuncionalidade = state.lists.find((l) => l.lifecycle === "ativo" && !usa(l.id) && ativas(l.id).length > 0);
+    if (!a || !outraLista || !semFuncionalidade) throw new Error("seed sem as Listas do cenário");
+    const [b] = ativas(outraLista.id);
+    const [c] = ativas(semFuncionalidade.id);
+    expect(outraLista.id).not.toBe(a.listId);
+    const cruzada = addDependency(state, "mem_thiago", a.id, "bloqueia", b!.id);
+    expect(cruzada.ok, cruzada.ok ? "" : cruzada.error).toBe(true);
+    expect(b!.dependencies.some((d) => d.kind === "eBloqueadaPor" && d.taskId === a.id)).toBe(true);
+    const recusada = addDependency(state, "mem_thiago", a.id, "aguarda", c!.id);
+    expect(recusada.ok).toBe(false);
+    if (!recusada.ok) expect(recusada.error).toBe("A Lista da outra Tarefa não usa Dependências.");
+  });
+
   it("Dependência: grava nas duas pontas, recusa ciclo por qualquer caminho e remove a inversa junto", () => {
     const [a, b, c] = ativas("lst_propostas");
     if (!a || !b || !c) throw new Error("precisa de 3 tarefas");

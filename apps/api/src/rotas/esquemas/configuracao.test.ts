@@ -30,6 +30,10 @@ describe("esquemas/configuracao — a forma dos args de configuration.ts", () =>
       "removeTaskType",
       "setContainerFeature",
       "usarCampoHerdado",
+      "createTag",
+      "updateTag",
+      "archiveTag",
+      "restoreTag",
     ].sort();
     expect(Object.keys(CONFIGURACAO).sort()).toEqual(esperadas);
   });
@@ -78,6 +82,28 @@ describe("esquemas/configuracao — a forma dos args de configuration.ts", () =>
       // "Quem pode mover para cá": `[]` abre para qualquer pessoa.
       ["updateStatus", ["list", "l1", "st1", { entryAllowedMemberIds: [] }]],
       ["updateStatus", ["list", "l1", "st1", { entryAllowedMemberIds: ["mem_1", "mem_2"] }]],
+      // requisitos-do-status-dialog.tsx (RELO-04): os dois lados e o "só vindo de", juntos.
+      [
+        "updateStatus",
+        [
+          "list",
+          "l1",
+          "st1",
+          {
+            exitRequirements: [{ definitionId: "fd1", positive: true }, { attribute: "dueDate" }],
+            entryRequirements: [{ definitionId: "fd2", whenDefinitionId: "fd3", whenValue: "Boleto" }],
+            entryFromStatusIds: ["st0"],
+          },
+        ],
+      ],
+      ["updateStatus", ["list", "l1", "st1", { entryRequirements: [], entryFromStatusIds: [] }]],
+      // configuracoes/tags/page.tsx (AVIS-02)
+      ["createTag", [{ name: "Urgente", color: "#be123c", appliesTo: ["task", "deal"] }]],
+      ["createTag", [{ name: "Geral", color: "#0369a1" }]],
+      ["updateTag", ["tag_1", { name: "Novo nome" }]],
+      ["updateTag", ["tag_1", { appliesTo: [] }]],
+      ["archiveTag", ["tag_1"]],
+      ["restoreTag", ["tag_1"]],
       ["reorderStatuses", ["space", "s1", ["st1", "st2"]]],
       ["removeStatus", ["list", "l1", "st1"]],
       ["removeStatus", ["list", "l1", "st1", "st2"]],
@@ -139,6 +165,11 @@ describe("esquemas/configuracao — a forma dos args de configuration.ts", () =>
     ).toBe(false);
     expect(CONFIGURACAO.updateStatus.safeParse(viaJson(["list", "l1", "st1", { exitRequirements: "fd1" }])).success).toBe(false);
     expect(CONFIGURACAO.updateStatus.safeParse(viaJson(["list", "l1", "st1", { entryAllowedMemberIds: "mem_1" }])).success).toBe(false);
+    expect(CONFIGURACAO.updateStatus.safeParse(viaJson(["list", "l1", "st1", { entryRequirements: [{ attribute: "cor" }] }])).success).toBe(false);
+    expect(CONFIGURACAO.updateStatus.safeParse(viaJson(["list", "l1", "st1", { entryFromStatusIds: "st0" }])).success).toBe(false);
+    expect(CONFIGURACAO.createTag.safeParse(viaJson([{ name: "x", appliesTo: ["pessoa"] }])).success).toBe(false);
+    expect(CONFIGURACAO.createTag.safeParse(viaJson([{ nome: "x" }])).success).toBe(false);
+    expect(CONFIGURACAO.archiveTag.safeParse(viaJson([])).success).toBe(false);
     expect(CONFIGURACAO.updateStatus.safeParse(viaJson(["list", "l1", "st1", { entryAllowedMemberIds: [1] }])).success).toBe(false);
   });
 });

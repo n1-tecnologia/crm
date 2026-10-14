@@ -23,6 +23,7 @@ const RECURRENCE_RULE_MAXIMA = {
   interval: 2,
   weekDays: [1, 3],
   triggerMode: "porCalendario",
+  triggerStatusId: "st1",
   whenStillOpen: "aguardarConclusao",
   endsAfter: 5,
   endsOn: "2027-01-01",
@@ -43,6 +44,8 @@ describe("esquemas/colaboracao — a forma dos args de collaboration.ts", () => 
       "removeAttachment",
       "setRecurrence",
       "spawnNextOccurrence",
+      "spawnCalendarOccurrence",
+      "runCalendarRecurrences",
     ].sort();
     expect(Object.keys(COLABORACAO).sort()).toEqual(esperadas);
   });
@@ -65,6 +68,14 @@ describe("esquemas/colaboracao — a forma dos args de collaboration.ts", () => 
     ];
     for (const [nome, args] of FORMAS_DO_WEB) {
       expect(COLABORACAO[nome].safeParse(viaJson(args)).success, nome).toBe(true);
+    }
+  });
+
+  it("(b2) FUND-17 — o dia civil chega como Date revivido (não como texto): aceita Date válido, recusa string e Date inválido", () => {
+    for (const nome of ["spawnCalendarOccurrence", "runCalendarRecurrences"] as const) {
+      expect(COLABORACAO[nome].safeParse(["t1", new Date("2026-10-14T12:00:00")]).success, nome).toBe(true);
+      expect(COLABORACAO[nome].safeParse(["t1", "2026-10-14"]).success, nome).toBe(false);
+      expect(COLABORACAO[nome].safeParse(["t1", new Date("lixo")]).success, nome).toBe(false);
     }
   });
 

@@ -109,6 +109,20 @@ const UPDATE_STATUS_INPUT = z
     color: z.string().optional(),
     exitRequirements: z.array(FIELD_REQUIREMENT).optional(),
     entryAllowedMemberIds: z.array(ID).optional(),
+    // RELO-04 — o diálogo "Requisitos de entrada e saída" manda os dois lados
+    // e o "só vindo de"; "é Status deste Conjunto" é regra de `updateStatus`.
+    entryRequirements: z.array(FIELD_REQUIREMENT).optional(),
+    entryFromStatusIds: z.array(ID).optional(),
+  })
+  .strict();
+
+// AVIS-02 — a Tag: "nome único", "cor hexadecimal" e "família que recebe Tag"
+// são regra de `createTag`/`updateTag`; aqui só a forma.
+const TAG_INPUT = z
+  .object({
+    name: z.string().optional(),
+    color: z.string().optional(),
+    appliesTo: z.array(z.enum(["task", "contact", "company", "deal", "conversation", "grupo", "comunidade", "flow"])).optional(),
   })
   .strict();
 
@@ -139,6 +153,10 @@ export const CONFIGURACAO = {
   // `null` = "herdar" — valor de domínio.
   setContainerFeature: z.tuple([CONTAINER_TYPE, ID, FEATURE, z.boolean().nullable()]),
   // Checklist 1.1 — usar, ou não, um Campo herdado neste contêiner.
+  createTag: z.tuple([TAG_INPUT]),
+  updateTag: z.tuple([ID, TAG_INPUT]),
+  archiveTag: z.tuple([ID]),
+  restoreTag: z.tuple([ID]),
   usarCampoHerdado: z.tuple([CONTAINER_TYPE, ID, ID, z.boolean()]),
 } satisfies Esquemas;
 

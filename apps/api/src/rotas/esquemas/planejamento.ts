@@ -5,11 +5,14 @@
  * porquê da validação ser de transporte, não de regra de negócio.
  */
 
-import { ID, opcional, type Esquemas } from "./fragmentos";
+import { ID, MODELO_DE_TAREFA, opcional, type Esquemas } from "./fragmentos";
 import { z } from "zod";
 
 const TEMPLATE_INPUT = z.object({ name: z.string(), description: z.string().optional() }).strict();
 
+// O mesmo `input` de `createList` sem `templateId` (ele vai posicional):
+// `create-container-dialog.tsx` manda `modeloDeTarefa` (C35) sempre e
+// `canaisDeAtendimento` (C36) quando conversacional.
 const INSTANTIATE_LIST_TEMPLATE_INPUT = z
   .object({
     name: z.string(),
@@ -17,6 +20,8 @@ const INSTANTIATE_LIST_TEMPLATE_INPUT = z
     parentId: ID,
     description: z.string().optional(),
     isPrivate: z.boolean().optional(),
+    modeloDeTarefa: MODELO_DE_TAREFA.optional(),
+    canaisDeAtendimento: z.array(ID).optional(),
   })
   .strict();
 

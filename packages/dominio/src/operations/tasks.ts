@@ -20,12 +20,13 @@ import {
   subtasksOf,
   taskLevel,
   tipoPadraoDaLista,
+  containerAdminRefusal,
 } from "../derive";
 import { contatoDaTarefa } from "../derive-conversacional";
 import { fail, ok, type DataState, type OperationResult } from "../state";
 import type { ActorRef, Comment, FieldDefinition, FieldRequirement, FieldValue, Id, List, Minutes, Priority, StatusDefinition, Task, TaskDate } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
-import { nextOccurrenceRefusal, runningTimer, spawnNextOccurrence } from "./collaboration";
+import { dataDevida, nextOccurrenceRefusal, runningTimer, spawnCalendarOccurrence, spawnNextOccurrence, transicaoDisparaRecorrencia } from "./collaboration";
 import { runListAutomations } from "./automations";
 // Módulo-folha (só `import type`): a Conferência vigente e os revisores sem importar `./financeiro` (06-11);
 // a marca do lançamento em curso e o prefixo do registro humano (06-19).
@@ -348,7 +349,12 @@ export function changeTaskStatus(
   // Documento 06, 6.1 — the completion moment is derived from the transition.
   const concluiuAgora = isTerminalCategory(target.category) && !isTerminalCategory(before?.category);
   // B6 — a recurrence that cannot spawn refuses the completion up front, so it never ends half done.
-  if (concluiuAgora && task.recurrence?.triggerMode === "aoConcluir") {
+  // FUND-08 — com Status de disparo na regra, é entrar nele que dispara (pago), não qualquer conclusão.
+  const disparaRecorrencia = transicaoDisparaRecorrencia(task.recurrence, before, target);
+  // FUND-17 — por calendário com "aguardar conclusão": a data já era devida, a conclusão libera a próxima.
+  const disparaPorCalendario =
+    concluiuAgora && task.recurrence?.triggerMode === "porCalendario" && task.recurrence.whenStillOpen === "aguardarConclusao" && dataDevida(task.dueDate, new Date());
+  if (disparaRecorrencia || disparaPorCalendario) {
     const plano = nextOccurrenceRefusal(state, task);
     if (plano.error) return fail(`Não dá para concluir: ${plano.error}`);
   }
@@ -374,8 +380,8 @@ export function changeTaskStatus(
   // ocorrência seguinte nasce depois de a atual ter sido tratada.
   runListAutomations(state, { kind: "tarefaEntrouEmStatus", taskId: task.id, statusId: target.id, ...(before ? { previousStatusId: before.id } : {}) });
   // B6 — a recurrence in `aoConcluir` mode spawns the next occurrence here, not in the screen.
-  if (concluiuAgora && task.recurrence?.triggerMode === "aoConcluir") {
-    const next = spawnNextOccurrence(state, actingMemberId, task.id);
+  if (disparaRecorrencia || disparaPorCalendario) {
+    const next = disparaRecorrencia ? spawnNextOccurrence(state, actingMemberId, task.id) : spawnCalendarOccurrence(state, actingMemberId, task.id, new Date());
     if (!next.ok) return fail(`Concluída, mas a próxima ocorrência não foi criada: ${next.error}`);
     if (next.value) {
       recordActivity(state, {
@@ -723,6 +729,86 @@ export function restoreTask(state: DataState, actingMemberId: Id, taskId: Id): O
 }
 
 /**
+ * 12.6 — eliminação permanente ("eliminar agora"): não é estado, é o fim.
+ * Só sai da lixeira para o nada o que está na lixeira por ato próprio. Elimina
+ * o agregado inteiro e as Subtarefas (mesmo as que não estavam na lixeira:
+ * a cascata é de eliminação, não de estado); remove Vínculos e Dependências
+ * dos dois lados; NÃO elimina Arquivos (são do Espaço de Trabalho); os
+ * Registros de Atividade permanecem, com o título preservado neles (INV-ET-12).
+ * Exige `excluir` sobre a Tarefa — o mesmo que enviar à lixeira.
+ */
+export function purgeTask(state: DataState, actingMemberId: Id, taskId: Id): OperationResult<{ readonly eliminadas: number }> {
+  const task = requireTask(state, taskId);
+  if (!task) return fail("Tarefa não encontrada.");
+  const escrita = mayWriteTask(state, actingMemberId, taskId);
+  if (escrita) return fail(escrita);
+  if (task.lifecycle !== "naLixeira") return fail("Só uma Tarefa na lixeira é eliminada: envie-a à lixeira primeiro.");
+
+  const arvore = [task, ...descendants(state, task.id)];
+  const ids = new Set(arvore.map((t) => t.id));
+  for (const outra of state.tasks) {
+    if (!ids.has(outra.id) && outra.dependencies.some((d) => ids.has(d.taskId))) {
+      outra.dependencies = outra.dependencies.filter((d) => !ids.has(d.taskId));
+    }
+  }
+  state.links = state.links.filter((l) => !((l.fromType === "task" && ids.has(l.fromId)) || (l.toType === "task" && ids.has(l.toId))));
+  state.tasks = state.tasks.filter((t) => !ids.has(t.id));
+  recordActivity(state, {
+    actor: memberActor(actingMemberId),
+    action: "Tarefa eliminada",
+    objectType: "task",
+    objectId: task.id,
+    objectName: task.title,
+    ...(arvore.length > 1 ? { detail: `${arvore.length - 1} Subtarefa(s) eliminada(s) com ela.` } : {}),
+  });
+  return ok({ eliminadas: arvore.length });
+}
+
+/** B34 — a previsão de eliminação: envio à lixeira + prazo da Política de lixeira do Espaço de Trabalho. */
+export function previsaoDeEliminacao(state: DataState, task: Pick<Task, "trashedAt">): number | undefined {
+  if (!task.trashedAt) return undefined;
+  return Date.parse(task.trashedAt) + state.workspace.trashPolicy.retentionDays * 86_400_000;
+}
+
+/**
+ * PARD-10 — o expurgo pela Política de lixeira: o Sistema elimina o que
+ * passou do prazo (tarefa.md, 12.3). Por Lista e dia, como os outros relógios
+ * da agenda (`runScheduledAutomations`, `runCalendarRecurrences`), e com a
+ * mesma exigência: administrar a Lista. Uma Subtarefa vencida sob uma Tarefa
+ * também vencida cai com a mãe, não em dobro.
+ */
+export function purgeExpiredTasks(
+  state: DataState,
+  actingMemberId: Id,
+  listId: Id,
+  today: Date,
+): OperationResult<{ readonly eliminadas: number; readonly failed: number; readonly failures: ReadonlyArray<{ readonly taskId: Id; readonly title: string; readonly reason: string }> }> {
+  const member = state.members.find((m) => m.id === actingMemberId);
+  if (!member || member.state !== "ativo") return fail("Só um Membro ativo roda o expurgo da lixeira.");
+  if (!state.lists.some((l) => l.id === listId)) return fail("Lista não encontrada.");
+  const admin = containerAdminRefusal(state, actingMemberId, "list", listId);
+  if (admin) return fail(admin);
+  const vencidas = state.tasks.filter((t) => {
+    if (t.listId !== listId || t.lifecycle !== "naLixeira") return false;
+    const previsao = previsaoDeEliminacao(state, t);
+    return previsao !== undefined && previsao <= today.getTime();
+  });
+  let eliminadas = 0;
+  let failed = 0;
+  const failures: Array<{ taskId: Id; title: string; reason: string }> = [];
+  for (const task of vencidas) {
+    if (!state.tasks.some((t) => t.id === task.id)) continue; // caiu com a mãe
+    const r = purgeTask(state, actingMemberId, task.id);
+    if (r.ok) eliminadas += r.value.eliminadas;
+    else {
+      failed += 1;
+      failures.push({ taskId: task.id, title: task.title, reason: r.error });
+    }
+  }
+  return ok({ eliminadas, failed, failures });
+}
+
+/**
  * B43 — restaurar um contêiner devolve o que foi à lixeira COM ele, e só isso:
  * uma Tarefa que já estava na lixeira antes continua lá. É o `trashedAt` que
  * distingue as duas, e sem ele não haveria como saber o que era cascata.
@@ -884,6 +970,84 @@ export function setChecklistItemDone(
     objectId: task.id,
     objectName: task.title,
     detail: `${checklist.name} · ${item.text}`,
+  });
+  return ok(task, task.id);
+}
+
+/**
+ * Remover um Checklist remove os seus Itens. Não há lixeira de Checklist ou
+ * Item: a remoção é definitiva dentro do agregado, e o que foi removido fica
+ * preservado no Registro de Atividade da Tarefa (checklist.md, seção 12).
+ * É edição da Tarefa (`editar`), como acrescentar.
+ */
+export function removeChecklist(
+  state: DataState,
+  actingMemberId: Id,
+  taskId: Id,
+  checklistId: Id,
+): OperationResult<Task> {
+  const task = requireTask(state, taskId);
+  if (!task) return fail("Tarefa não encontrada.");
+  const escrita = mayWriteTask(state, actingMemberId, taskId);
+  if (escrita) return fail(escrita);
+  if (task.lifecycle !== "ativo") return fail("Esta Tarefa não está ativa.");
+  const checklist = task.checklists.find((c) => c.id === checklistId);
+  if (!checklist) return fail("Checklist não encontrado.");
+
+  task.checklists = task.checklists.filter((c) => c.id !== checklistId);
+  task.updatedAt = now();
+  recordActivity(state, {
+    actor: memberActor(actingMemberId),
+    action: "Checklist removido",
+    objectType: "task",
+    objectId: task.id,
+    objectName: task.title,
+    before: checklist.name,
+    detail:
+      checklist.items.length === 0
+        ? "Sem Itens."
+        : `${checklist.items.length} Item(ns) removido(s) com ele: ${checklist.items.map((i) => i.text).join("; ")}`,
+  });
+  return ok(task, task.id);
+}
+
+/**
+ * Remover um Item remove os seus Subitens (checklist.md, seção 12). Um Item
+ * `convertido` pode ser removido sem efeito sobre a Subtarefa (B48): a marca
+ * terminal some do Checklist, a Subtarefa continua existindo.
+ */
+export function removeChecklistItem(
+  state: DataState,
+  actingMemberId: Id,
+  taskId: Id,
+  checklistId: Id,
+  itemId: Id,
+): OperationResult<Task> {
+  const task = requireTask(state, taskId);
+  if (!task) return fail("Tarefa não encontrada.");
+  const escrita = mayWriteTask(state, actingMemberId, taskId);
+  if (escrita) return fail(escrita);
+  if (task.lifecycle !== "ativo") return fail("Esta Tarefa não está ativa.");
+  const checklist = task.checklists.find((c) => c.id === checklistId);
+  if (!checklist) return fail("Checklist não encontrado.");
+  const item = checklist.items.find((i) => i.id === itemId);
+  if (!item) return fail("Item não encontrado.");
+
+  const subitens = checklist.items.filter((i) => i.parentItemId === itemId);
+  const removidos = new Set([itemId, ...subitens.map((i) => i.id)]);
+  checklist.items = checklist.items.filter((i) => !removidos.has(i.id));
+  task.updatedAt = now();
+  recordActivity(state, {
+    actor: memberActor(actingMemberId),
+    action: "Item de Checklist removido",
+    objectType: "task",
+    objectId: task.id,
+    objectName: task.title,
+    before: item.text,
+    detail:
+      subitens.length === 0
+        ? checklist.name
+        : `${checklist.name} · ${subitens.length} Subitem(ns) removido(s) com ele: ${subitens.map((i) => i.text).join("; ")}`,
   });
   return ok(task, task.id);
 }
@@ -1553,8 +1717,9 @@ export function setTaskFieldValue(
 }
 
 /**
- * Comentário na Tarefa (7.1). É do Ator e não se edita: corrigir é comentar de
- * novo. Um Agente comenta em nome de quem o acionou (`authorDelegate`, A6.2).
+ * Comentário na Tarefa (7.1). O autor é imutável; o conteúdo se corrige por
+ * `editTaskComment` e se exclui por `deleteTaskComment` (RN-TAR-13). Um
+ * Agente comenta em nome de quem o acionou (`authorDelegate`, A6.2).
  * A resposta aponta para o Comentário raiz — a ontologia tem um nível de thread.
  */
 export function addTaskComment(
@@ -1634,6 +1799,75 @@ export function addTaskComment(
     detail: content.length > 80 ? `${content.slice(0, 77)}…` : content,
   });
   return ok(comment, comment.id);
+}
+
+/**
+ * RN-TAR-13 — só o autor (ou quem o Agente representou), ou quem tem
+ * `administrar` sobre a Tarefa ou sobre a Lista, edita ou exclui um
+ * Comentário. O autor do registro é imutável; o conteúdo não.
+ */
+function commentEditRefusal(state: DataState, actingMemberId: Id, task: Task, comment: Comment): string | undefined {
+  const base = taskCommentRefusal(state, actingMemberId, task.id);
+  if (base) return base;
+  const autorId = comment.author.kind === "member" ? comment.author.id : comment.authorDelegate?.id;
+  if (autorId === actingMemberId) return undefined;
+  if (isWorkspaceAdmin(state, actingMemberId) || containerAdminRefusal(state, actingMemberId, "list", task.listId) === undefined) return undefined;
+  return "Só quem escreveu o Comentário, ou quem administra a Lista, o edita ou exclui.";
+}
+
+/** FUND-10 — corrigir o próprio Comentário: o conteúdo muda e `editedAt` marca; o autor e a hora de criação ficam. */
+export function editTaskComment(state: DataState, actingMemberId: Id, taskId: Id, commentId: Id, content: string): OperationResult<Comment> {
+  const task = requireActiveTask(state, taskId);
+  if (typeof task === "string") return fail(task);
+  const comment = task.comments.find((c) => c.id === commentId && !c.deletedAt);
+  if (!comment) return fail("Comentário não encontrado.");
+  const refusal = commentEditRefusal(state, actingMemberId, task, comment);
+  if (refusal) return fail(refusal);
+  const novo = content.trim();
+  if (!novo) return fail("Escreva o comentário antes de salvar.", "conteudo");
+  if (novo === comment.content) return ok(comment);
+  const antes = comment.content;
+  comment.content = novo;
+  comment.editedAt = now();
+  task.updatedAt = now();
+  recordActivity(state, {
+    actor: memberActor(actingMemberId),
+    action: "Comentário editado",
+    objectType: "task",
+    objectId: task.id,
+    objectName: task.title,
+    before: antes.length > 80 ? `${antes.slice(0, 77)}…` : antes,
+    after: novo.length > 80 ? `${novo.slice(0, 77)}…` : novo,
+  });
+  return ok(comment);
+}
+
+/**
+ * FUND-10 — excluir deixa o marcador "Comentário excluído" que preserva o
+ * encadeamento (RN-TAR-13): o registro fica, sem conteúdo, com `deletedAt`;
+ * as respostas continuam penduradas nele. O fato vai ao Registro de Atividade.
+ */
+export function deleteTaskComment(state: DataState, actingMemberId: Id, taskId: Id, commentId: Id): OperationResult<Comment> {
+  const task = requireActiveTask(state, taskId);
+  if (typeof task === "string") return fail(task);
+  const comment = task.comments.find((c) => c.id === commentId);
+  if (!comment) return fail("Comentário não encontrado.");
+  if (comment.deletedAt) return ok(comment);
+  const refusal = commentEditRefusal(state, actingMemberId, task, comment);
+  if (refusal) return fail(refusal);
+  const resumo = comment.content.length > 80 ? `${comment.content.slice(0, 77)}…` : comment.content;
+  comment.content = "";
+  comment.deletedAt = now();
+  task.updatedAt = now();
+  recordActivity(state, {
+    actor: memberActor(actingMemberId),
+    action: comment.parentCommentId ? "Resposta excluída" : "Comentário excluído",
+    objectType: "task",
+    objectId: task.id,
+    objectName: task.title,
+    before: resumo,
+  });
+  return ok(comment);
 }
 
 /** Resolver marca o fio como tratado; reabrir tira a marca. Nunca apaga. */

@@ -29,6 +29,7 @@ import {
 import { blockedAbove } from "@n1/dominio/operations/configuration";
 import { containerAdminRefusal, containerPath, effectiveContainerConfig, effectiveListConfig } from "@n1/dominio/derive";
 import { FIELD_TYPE_LABEL, STATUS_CATEGORY_LABEL } from "@/features/shell/format";
+import { RequisitosDoStatusDialog } from "@/features/estrutura/requisitos-do-status-dialog";
 import { ActionMenu, Button, ConfirmDialog, EmptyState, Field, Icone, MultiSelect, Segmentos, Select, TextInput, Toggle } from "@/features/shell/ui";
 import type { OperationResult } from "@n1/dominio/state";
 import type { EnabledFeatures, FieldDefinition, FieldRequirement, FieldType, StatusCategory, StatusSet } from "@n1/dominio/types";
@@ -37,9 +38,11 @@ type Report = (result: OperationResult<unknown>, message: string) => void;
 type ContainerType = "space" | "folder" | "list";
 
 const CATEGORIAS: readonly StatusCategory[] = ["naoIniciado", "emAndamento", "concluido", "fechado"];
+// POSC-08 — `file` entra na lista: antes só os Campos do Financeiro (do seed)
+// eram de arquivo, e ninguém criava um pela tela.
 const TIPOS: readonly FieldType[] = [
   "text", "longText", "number", "currency", "percent", "date", "dateTime",
-  "singleSelect", "multiSelect", "checkbox", "person", "phone", "email", "url",
+  "singleSelect", "multiSelect", "checkbox", "person", "phone", "email", "url", "file",
 ];
 
 /** Quem pode configurar ESTE contêiner: a tela desliga o que a operação recusaria. */
@@ -103,6 +106,8 @@ export function StatusSetEditor({
   const [regraDe, setRegraDe] = useState<string | null>(null);
   const [quemMove, setQuemMove] = useState<"qualquer" | "escolhidos">("qualquer");
   const [escolhidos, setEscolhidos] = useState<readonly string[]>([]);
+  // RELO-04 — "Requisitos de entrada e saída": o Status em edição.
+  const [requisitosDe, setRequisitosDe] = useState<string | null>(null);
 
   const definicoes = [...set.definitions].sort((a, b) => a.order - b.order);
   const membros = state.members.filter((m) => m.state !== "removido");
@@ -239,6 +244,15 @@ export function StatusSetEditor({
           </Field>
         ) : null}
       </ConfirmDialog>
+      <RequisitosDoStatusDialog
+        containerType={containerType}
+        containerId={containerId}
+        definition={definicoes.find((d) => d.id === requisitosDe)}
+        definicoes={definicoes}
+        open={requisitosDe !== null}
+        onClose={() => setRequisitosDe(null)}
+        report={report}
+      />
       <ConfirmDialog
         open={regraDe !== null}
         title={`Quem pode mover para “${emRegra?.name ?? ""}”?`}
@@ -393,6 +407,11 @@ export function StatusSetEditor({
                       {
                         label: "Quem pode mover para cá",
                         onSelect: () => abrirRegra(definition.id),
+                        ...(bloqueio ? { disabledReason: bloqueio } : {}),
+                      },
+                      {
+                        label: "Requisitos de entrada e saída",
+                        onSelect: () => setRequisitosDe(definition.id),
                         ...(bloqueio ? { disabledReason: bloqueio } : {}),
                       },
                       {

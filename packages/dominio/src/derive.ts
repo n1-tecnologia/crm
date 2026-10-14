@@ -95,6 +95,24 @@ export function effectiveLifecycleOfList(state: DataState, listId: Id): Lifecycl
   return effective;
 }
 
+/**
+ * B36 para qualquer contêiner: o mais restritivo entre o estado próprio e o
+ * dos ancestrais, lido ao longo de `containerPath`. Para Lista é o mesmo que
+ * `effectiveLifecycleOfList`; para Pasta e Espaço é o que faltava — a
+ * operação que edita um contêiner precisa saber se ele está EFETIVAMENTE
+ * ativo, não só se o próprio registro está (RN-ESP-11).
+ */
+export function effectiveLifecycleOfContainer(state: DataState, type: PathNode["type"], id: Id): Lifecycle {
+  const path = containerPath(state, type, id);
+  if (path.length === 0) return "naLixeira";
+  let effective: Lifecycle = "ativo";
+  for (const node of path) {
+    const container = containerOf(state, node);
+    if (container) effective = mostRestrictive(effective, container.lifecycle);
+  }
+  return effective;
+}
+
 /** B36 — a Task follows its List and, for a Subtask, its parent Task too. */
 export function effectiveLifecycleOfTask(state: DataState, taskId: Id): Lifecycle {
   const task = state.tasks.find((t) => t.id === taskId);
@@ -1072,6 +1090,29 @@ export function pendingMentions(
 }
 
 /**
+ * AVIS-02 — "quem observa recebe o que acontece sem ser Responsável": os
+ * Comentários em Tarefas que o Membro acompanha, de outros autores, em
+ * conversas ainda abertas. Sai daqui quando a conversa é resolvida, como a
+ * menção. Uma menção já contada não entra duas vezes.
+ */
+export function comentariosObservados(state: DataState, memberId: Id, excetoComentarios: ReadonlySet<Id> = new Set()): Array<{ readonly task: Task; readonly comment: Comment }> {
+  const found: Array<{ task: Task; comment: Comment }> = [];
+  for (const task of state.tasks) {
+    if (!task.observerMemberIds.includes(memberId)) continue;
+    if (effectiveLifecycleOfTask(state, task.id) !== "ativo") continue;
+    if (!memberSeesTask(state, memberId, task.id)) continue;
+    for (const comment of task.comments) {
+      if (comment.deletedAt || excetoComentarios.has(comment.id)) continue;
+      if (comment.author.kind === "member" && comment.author.id === memberId) continue;
+      const root = comment.parentCommentId ? task.comments.find((c) => c.id === comment.parentCommentId) : comment;
+      if (root?.resolved) continue;
+      found.push({ task, comment });
+    }
+  }
+  return found.sort((a, b) => b.comment.createdAt.localeCompare(a.comment.createdAt));
+}
+
+/**
  * As Tarefas que esperam por mim: atribuídas a mim, ativas e fora de categoria
  * terminal. A mesma tripla que o Início, Minhas Tarefas e Notificações liam
  * cada um por si — agora um lugar só, para os três números baterem.
@@ -1086,6 +1127,8 @@ export function tarefasAbertasDoMembro(state: DataState, memberId: Id): Task[] {
 export interface NotificacoesDoMembro {
   readonly aprovacoes: ApprovalRequest[];
   readonly mencoes: Array<{ readonly task: Task; readonly comment: Comment }>;
+  /** AVIS-02 — Comentários em Tarefas que o Membro acompanha (observador), ainda não resolvidos. */
+  readonly observadas: Array<{ readonly task: Task; readonly comment: Comment }>;
   readonly conversas: Conversation[];
   readonly vencidas: Task[];
   readonly bloqueadas: Task[];
@@ -1111,14 +1154,16 @@ export function notificacoesDoMembro(state: DataState, memberId: Id, now: Date):
     return state.agents.find((a) => a.id === execution.agentId)?.ownerMemberId === memberId;
   });
   const mencoes = pendingMentions(state, memberId);
+  const observadas = comentariosObservados(state, memberId, new Set(mencoes.map((m) => m.comment.id)));
   return {
     aprovacoes,
     mencoes,
+    observadas,
     conversas,
     vencidas,
     bloqueadas,
     execucoesFalhas,
-    total: aprovacoes.length + mencoes.length + conversas.length + vencidas.length + bloqueadas.length + execucoesFalhas.length,
+    total: aprovacoes.length + mencoes.length + observadas.length + conversas.length + vencidas.length + bloqueadas.length + execucoesFalhas.length,
   };
 }
 

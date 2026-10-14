@@ -18,6 +18,15 @@ import { escritaDeCampo, idsDeArquivoDoValor } from "./tasks";
 
 const now = (): string => new Date().toISOString();
 
+/**
+ * FUND-07 — um Arquivo gravado pelo `attachFile` antigo (chave `legado/<id>`)
+ * nunca subiu ao Storage: não há o que baixar nem o que lançar. A ficha mostra
+ * isso em vez de oferecer "Baixar", e o servidor recusa gerar URL para ele.
+ */
+export function arquivoSemConteudo(file: Pick<WorkspaceFile, "objectKey">): boolean {
+  return file.objectKey.trim() === "" || file.objectKey.startsWith("legado/");
+}
+
 /** O mesmo teto do envio ao Storage (`UPLOAD_MAX_BYTES`, 25 MiB). */
 export const TETO_DO_ARQUIVO_ENVIADO = 25 * 1024 * 1024;
 
@@ -79,7 +88,7 @@ export function anexarArquivoEnviado(
   if (!Number.isFinite(arquivo.sizeBytes) || arquivo.sizeBytes <= 0) return fail("Tamanho inválido.");
   if (arquivo.sizeBytes > TETO_DO_ARQUIVO_ENVIADO) return fail("O arquivo passa de 25 MB.");
   const objectKey = arquivo.objectKey.trim();
-  if (!objectKey || objectKey.startsWith("legado/")) return fail("O arquivo não está no Storage.");
+  if (arquivoSemConteudo({ objectKey })) return fail("O arquivo não está no Storage.");
 
   const fileId = nextId("fil");
   const mediaType = categoriaDeMidia(arquivo.mime);

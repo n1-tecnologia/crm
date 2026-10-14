@@ -103,9 +103,6 @@ export function ShareTaskDialog({
             <p className="app-sm" style={{ color: "var(--texto-3)" }}>
               Mostra comentários: {ativo.showsComments ? "sim" : "não"} · anexos: {ativo.showsAttachments ? "sim" : "não"}. Para mudar, revogue e gere outro.
             </p>
-            <p className="app-sm" style={{ color: "var(--texto-3)" }}>
-              Protótipo: os dados vivem na memória desta aba, então um link gerado agora abre só nela. O link de demonstração <a href="/p/demo-tarefa" target="_blank" rel="noreferrer" className="underline">/p/demo-tarefa</a> abre em qualquer aba.
-            </p>
           </div>
         ) : (
           <div className="app-base grid gap-2" style={{ color: "var(--texto)" }}>

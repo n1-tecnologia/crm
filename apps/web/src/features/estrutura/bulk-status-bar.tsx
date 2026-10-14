@@ -35,8 +35,8 @@
 
 import { useState } from "react";
 import { useData, useRun, useSession } from "@/dados/store";
-import { alterarStatusEmLote, LIMITE_DO_LOTE, runScheduledAutomations, statusOptionRefusal } from "@n1/dominio/operations";
-import { containerAdminRefusal } from "@n1/dominio/derive";
+import { alterarStatusEmLote, LIMITE_DO_LOTE, runCalendarRecurrences, runScheduledAutomations, statusOptionRefusal } from "@n1/dominio/operations";
+import { containerAdminRefusal, effectiveLifecycleOfTask } from "@n1/dominio/derive";
 import { Button, ConfirmDialog, Field, Painel, Select } from "@/features/shell/ui";
 import type { StatusDefinition, Task } from "@n1/dominio/types";
 // Tipo só — nunca a operação crua. `import type` não tem efeito em tempo de
@@ -180,32 +180,55 @@ export function BulkStatusBar({
   );
 }
 
-/** Só aparece quando a Lista tem Automação por vencimento; roda com a data de hoje. */
+/**
+ * O relógio da Lista, à mão: só aparece quando a Lista tem Automação por
+ * vencimento ou Tarefa recorrente por calendário (FUND-17); roda os dois com
+ * a data de hoje — o mesmo que a agenda do `apps/api` faz sozinha quando o
+ * worker está ligado.
+ */
 export function RunScheduledButton({ listId, report }: { readonly listId: string; readonly report: Report }) {
   const run = useRun();
   const { memberId } = useSession();
   const state = useData((data) => data);
   const agendadas = state.automations.filter((a) => a.lifecycle === "ativo" && a.scopeType === "list" && a.scopeId === listId && a.versions.some((v) => v.state === "publicada" && v.trigger?.kind === "condicaoTemporal"));
-  if (agendadas.length === 0) return null;
+  const recorrentes = state.tasks.filter((t) => t.listId === listId && t.recurrence?.triggerMode === "porCalendario" && effectiveLifecycleOfTask(state, t.id) === "ativo");
+  if (agendadas.length === 0 && recorrentes.length === 0) return null;
   const bloqueio = containerAdminRefusal(state, memberId, "list", listId);
+  const titulo = [
+    agendadas.length > 0 ? `${agendadas.length} Automação(ões) por vencimento: ${agendadas.map((a) => a.name).join("; ")}` : null,
+    recorrentes.length > 0 ? `${recorrentes.length} Tarefa(s) recorrente(s) por calendário` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
-    <span title={`${agendadas.length} Automação(ões) por vencimento: ${agendadas.map((a) => a.name).join("; ")}`}>
+    <span title={titulo}>
       <Button
         onClick={() => {
-          const r = run((data, me) => runScheduledAutomations(data, me, listId, new Date()));
-          if (r.ok && r.value.failed > 0) {
-            report(
-              { ok: false, error: `${r.value.executed} executada(s); ${r.value.failed} falhou(aram): ${r.value.failures.map((f) => `${f.title} — ${f.reason}`).join(" · ")}` },
-              "",
-            );
-          } else {
-            report(r, r.ok ? `Automações por vencimento: ${r.value.executed} executada(s), ${r.value.skipped} já rodada(s) ou fora da condição.` : "");
+          const partes: string[] = [];
+          const erros: string[] = [];
+          if (agendadas.length > 0) {
+            const r = run((data, me) => runScheduledAutomations(data, me, listId, new Date()));
+            if (!r.ok) erros.push(r.error);
+            else {
+              partes.push(`Automações: ${r.value.executed} executada(s), ${r.value.skipped} já rodada(s) ou fora da condição`);
+              if (r.value.failed > 0) erros.push(`${r.value.failed} Automação(ões) falhou(aram): ${r.value.failures.map((f) => `${f.title} — ${f.reason}`).join(" · ")}`);
+            }
           }
+          if (recorrentes.length > 0) {
+            const r = run((data, me) => runCalendarRecurrences(data, me, listId, new Date()));
+            if (!r.ok) erros.push(r.error);
+            else {
+              partes.push(`Recorrência: ${r.value.created} ocorrência(s) criada(s)${r.value.waiting > 0 ? `, ${r.value.waiting} aguardando conclusão` : ""}`);
+              if (r.value.failed > 0) erros.push(`${r.value.failed} Recorrência(s) falhou(aram): ${r.value.failures.map((f) => `${f.title} — ${f.reason}`).join(" · ")}`);
+            }
+          }
+          if (erros.length > 0) report({ ok: false, error: [...partes, ...erros].join(". ") }, "");
+          else report({ ok: true }, `${partes.join(". ")}.`);
         }}
         disabled={bloqueio !== undefined}
         disabledReason={bloqueio ?? ""}
       >
-        Rodar automações por vencimento (hoje)
+        Rodar agenda da Lista (hoje)
       </Button>
     </span>
   );

@@ -40,7 +40,10 @@
  */
 
 import type { DataState, Id, OperationResult } from "@n1/dominio";
+import { ok } from "@n1/dominio/state";
 import { runScheduledAutomations } from "@n1/dominio/operations/automations";
+import { runCalendarRecurrences } from "@n1/dominio/operations/collaboration";
+import { purgeExpiredTasks } from "@n1/dominio/operations/tasks";
 import { resolverMembroAgenteDoPipeline } from "../persistencia/credenciais-de-servico";
 import { sanitizarErro } from "../persistencia/outbox-worker";
 import { pool } from "../persistencia/conexao";
@@ -171,6 +174,29 @@ export type RodarAgenda = (
   readonly failures: ReadonlyArray<{ readonly taskId: Id; readonly title: string; readonly reason: string }>;
 }>;
 
+/**
+ * FUND-17 / PARD-10 — o relógio do dia de uma (Espaço, Lista) é UM: as
+ * Automações por vencimento, a Recorrência por calendário e o expurgo da
+ * lixeira pela retenção rodam na mesma transação, com o
+ * mesmo ator e o mesmo dia civil. As contagens se somam na linha da agenda
+ * (ocorrência criada conta como executada; "aguardando conclusão", como pulada).
+ */
+export const agendaDoDia: RodarAgenda = (state, atorId, listId, diaCivil) => {
+  const automacoes = runScheduledAutomations(state, atorId, listId, diaCivil);
+  if (!automacoes.ok) return automacoes;
+  const recorrencias = runCalendarRecurrences(state, atorId, listId, diaCivil);
+  if (!recorrencias.ok) return recorrencias;
+  // PARD-10 — o expurgo da lixeira pela retenção também é relógio da Lista.
+  const expurgo = purgeExpiredTasks(state, atorId, listId, diaCivil);
+  if (!expurgo.ok) return expurgo;
+  return ok({
+    executed: automacoes.value.executed + recorrencias.value.created + expurgo.value.eliminadas,
+    failed: automacoes.value.failed + recorrencias.value.failed + expurgo.value.failed,
+    skipped: automacoes.value.skipped + recorrencias.value.waiting,
+    failures: [...automacoes.value.failures, ...recorrencias.value.failures, ...expurgo.value.failures],
+  });
+};
+
 export interface OpcoesSchedulerWorker {
   /** Identifica esta instância em `locked_by` — dois processos precisam de valores distintos. */
   readonly workerId: string;
@@ -193,7 +219,7 @@ export interface OpcoesSchedulerWorker {
   readonly leaseMs?: number;
   /** Padrão: `resolverMembroAgenteDoPipeline` (D-15) — nunca uma sessão humana. */
   readonly resolverAtor?: (workspaceId: string) => Promise<Id>;
-  /** Padrão: `runScheduledAutomations` real. Ponto de extensão do Plan 03-11. */
+  /** Padrão: `agendaDoDia` (Automações por vencimento + Recorrência por calendário). Ponto de extensão do Plan 03-11. */
   readonly rodarAgenda?: RodarAgenda;
   readonly registrar?: (nivel: "info" | "warn", mensagem: string, dados?: Record<string, string | number>) => void;
   /**
@@ -304,7 +330,7 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
   const intervaloMs = opcoes.intervaloMs ?? 3_600_000;
   const ensaioNaPrimeiraVolta = opcoes.ensaioNaPrimeiraVolta ?? true;
   const registrar = opcoes.registrar ?? (() => undefined);
-  const rodarAgenda: RodarAgenda = opcoes.rodarAgenda ?? runScheduledAutomations;
+  const rodarAgenda: RodarAgenda = opcoes.rodarAgenda ?? agendaDoDia;
   // `resolverMembroAgenteDoPipeline` devolve `{ id }`, não o `Id` puro que
   // `OpcoesSchedulerWorker.resolverAtor` declara — o padrão adapta a forma
   // uma vez aqui, para que o resto do arquivo só conheça `Promise<Id>`.

@@ -28,6 +28,7 @@ import {
   Toggle,
 } from "@/features/shell/ui";
 import type { Priority, StatusCategory, View, ViewFilters } from "@n1/dominio/types";
+import { abaDaView, ROTULO_DA_ABA } from "./tipo-de-visualizacao";
 
 type Report = (
   result: { ok: boolean; error?: string },
@@ -40,6 +41,7 @@ export function ViewBar({
   listId,
   filters,
   sortBy,
+  kind,
   onFilters,
   onSort,
   activeViewId,
@@ -50,6 +52,8 @@ export function ViewBar({
   readonly listId: string;
   readonly filters: ViewFilters;
   readonly sortBy: View["sortBy"] | undefined;
+  /** RELO-05 — o tipo da aba aberta agora: a Visualização salva o lembra. */
+  readonly kind: View["kind"];
   readonly onFilters: (next: ViewFilters) => void;
   readonly onSort: (next: View["sortBy"] | undefined) => void;
   readonly activeViewId: string | null;
@@ -92,7 +96,7 @@ export function ViewBar({
       <ConfirmDialog
         open={salvando}
         title="Salvar Visualização"
-        description="Guarda o filtro e a ordenação atuais com um nome. Compartilhada, aparece para quem abre esta Lista — cada pessoa vê só o que alcança."
+        description={`Guarda ${ROTULO_DA_ABA[abaDaView(kind)]}, o filtro e a ordenação atuais com um nome. Compartilhada, aparece para quem abre esta Lista — cada pessoa vê só o que alcança.`}
         confirmLabel="Salvar"
         {...(nome.trim() === ""
           ? { confirmDisabledReason: "Dê um nome à Visualização." }
@@ -102,7 +106,7 @@ export function ViewBar({
             saveView(data, me, {
               listId,
               name: nome,
-              kind: "lista",
+              kind,
               filters,
               ...(sortBy ? { sortBy } : {}),
               shared: compartilhada,
@@ -207,11 +211,12 @@ export function ViewBar({
               >
                 {view.name}
                 <span className="app-meta">
+                  {`· ${ROTULO_DA_ABA[abaDaView(view.kind)]}`}
                   {view.ownerKind === "container"
                     ? view.isDefault
-                      ? "· padrão"
-                      : "· da Lista"
-                    : "· minha"}
+                      ? " · padrão"
+                      : " · da Lista"
+                    : " · minha"}
                 </span>
               </button>
               <ActionMenu
@@ -266,9 +271,7 @@ export function ViewBar({
               : `Filtros${ativos > 0 ? ` (${ativos})` : ""}`}
           </Button>
         ) : null}
-        {ativos > 0 || sortBy ? (
-          <Button onClick={() => setSalvando(true)}>Salvar Visualização</Button>
-        ) : null}
+        <Button onClick={() => setSalvando(true)}>Salvar Visualização</Button>
         {ativos > 0 || sortBy ? (
           <Button
             variant="ghost"

@@ -22,6 +22,7 @@ describe("esquemas/escala — a forma dos args de scale.ts", () => {
       "createForm",
       "updateForm",
       "archiveForm",
+      "unarchiveForm",
       "rotateFormSecret",
       "shareTaskPublicly",
       "revokePublicShare",
@@ -123,6 +124,7 @@ describe("esquemas/escala — a forma dos args de scale.ts", () => {
       ).success,
     ).toBe(true);
     expect(ESCALA.archiveForm.safeParse(viaJson(["frm_1"])).success).toBe(true);
+    expect(ESCALA.unarchiveForm.safeParse(viaJson(["frm_1"])).success).toBe(true);
     expect(ESCALA.rotateFormSecret.safeParse(viaJson(["frm_1"])).success).toBe(true);
 
     // share-task-dialog.tsx

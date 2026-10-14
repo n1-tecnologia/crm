@@ -20,14 +20,16 @@ import {
   restoreAutomation,
   restoreCompany,
   restoreContact,
+  restoreContainer,
   restoreConversation,
   restoreDeal,
   restoreList,
   restoreTask,
+  purgeTask,
 } from "@n1/dominio/operations";
 import type { DataState, OperationResult } from "@n1/dominio/state";
 import { useFormat } from "@/features/shell/use-format";
-import { Button, CorpoDeTela, EmptyState, PageHeader, Section, Toast } from "@/features/shell/ui";
+import { Button, ConfirmDialog, CorpoDeTela, EmptyState, PageHeader, Section, Toast } from "@/features/shell/ui";
 
 interface TrashedRow {
   readonly id: string;
@@ -46,6 +48,8 @@ export default function LixeiraPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [now] = useState(() => Date.now());
+  // PARD-10 — "eliminar agora": só Tarefa, por enquanto; definitivo, por isso confirma.
+  const [eliminando, setEliminando] = useState<TrashedRow | null>(null);
 
   const retentionDays = state.workspace.trashPolicy.retentionDays;
 
@@ -60,6 +64,28 @@ export default function LixeiraPage() {
         trashedAt: task.trashedAt,
         restorable: true,
         restoreHint: "Volta ao estado que tinha antes de ir à lixeira.",
+      })),
+    ...state.spaces
+      .filter((space) => space.lifecycle === "naLixeira")
+      .map((space) => ({
+        id: space.id,
+        family: "Espaço",
+        name: space.name,
+        href: `/estrutura/espacos/${space.id}`,
+        trashedAt: space.trashedAt,
+        restorable: true,
+        restoreHint: "Volta com as Pastas, Listas e Tarefas que foram à lixeira junto com ele.",
+      })),
+    ...state.folders
+      .filter((folder) => folder.lifecycle === "naLixeira")
+      .map((folder) => ({
+        id: folder.id,
+        family: "Pasta",
+        name: folder.name,
+        href: `/estrutura/pastas/${folder.id}`,
+        trashedAt: folder.trashedAt,
+        restorable: true,
+        restoreHint: "Volta com as Listas e Tarefas que foram à lixeira junto com ela; o Espaço acima precisa estar fora da lixeira.",
       })),
     ...state.lists
       .filter((list) => list.lifecycle === "naLixeira")
@@ -154,6 +180,8 @@ export default function LixeiraPage() {
       (data: DataState, memberId: string) => OperationResult<unknown>
     > = {
       Tarefa: (data, memberId) => restoreTask(data, memberId, row.id),
+      Espaço: (data, memberId) => restoreContainer(data, memberId, "space", row.id),
+      Pasta: (data, memberId) => restoreContainer(data, memberId, "folder", row.id),
       Lista: (data, memberId) => restoreList(data, memberId, row.id),
       Contato: (data, memberId) => restoreContact(data, memberId, row.id),
       Empresa: (data, memberId) => restoreCompany(data, memberId, row.id),
@@ -171,15 +199,51 @@ export default function LixeiraPage() {
     const result = run(operation);
     if (result.ok) {
       setError(null);
-      setNotice(`${row.family} restaurada: ${row.name}.`);
+      setNotice(`${row.family} ${row.family === "Espaço" || row.family === "Negócio" || row.family === "Contato" || row.family === "Agente" ? "restaurado" : "restaurada"}: ${row.name}.`);
     } else {
       setNotice(null);
       setError(result.error);
     }
   };
 
+  const subtarefasDe = (taskId: string): number => {
+    let total = 0;
+    const desce = (id: string) => {
+      for (const filha of state.tasks.filter((t) => t.parentTaskId === id)) {
+        total += 1;
+        desce(filha.id);
+      }
+    };
+    desce(taskId);
+    return total;
+  };
+
   return (
     <div className="flex h-full flex-col">
+      {eliminando ? (
+        <ConfirmDialog
+          open
+          title={`Eliminar “${eliminando.name}” agora?`}
+          description={`Não tem volta: a Tarefa sai do Espaço de Trabalho com Comentários, Checklists e Registros de Tempo${
+            subtarefasDe(eliminando.id) > 0 ? `, e ${subtarefasDe(eliminando.id)} Subtarefa(s) vão junto` : ""
+          }. Vínculos e Dependências são desfeitos; os Arquivos e o Registro de Atividade ficam.`}
+          confirmLabel="Eliminar agora"
+          destructive
+          onConfirm={() => {
+            const alvo = eliminando;
+            setEliminando(null);
+            const result = run((data, memberId) => purgeTask(data, memberId, alvo.id));
+            if (result.ok) {
+              setError(null);
+              setNotice(`Tarefa eliminada: ${alvo.name}.`);
+            } else {
+              setNotice(null);
+              setError(result.error);
+            }
+          }}
+          onCancel={() => setEliminando(null)}
+        />
+      ) : null}
       <PageHeader
         path={
           <Link href="/configuracoes" className="hover:underline">
@@ -252,15 +316,22 @@ export default function LixeiraPage() {
                           </span>
                         )}
                       </td>
-                      <td className="text-right">
-                        <Button
-                          size="sm"
-                          onClick={() => restore(row)}
-                          disabled={!row.restorable}
-                          disabledReason="A restauração desta família ainda não está implementada neste protótipo."
-                        >
-                          Restaurar
-                        </Button>
+                      <td className="whitespace-nowrap">
+                        <span className="flex justify-end gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => restore(row)}
+                            disabled={!row.restorable}
+                            disabledReason="A restauração desta família ainda não está implementada neste protótipo."
+                          >
+                            Restaurar
+                          </Button>
+                          {row.family === "Tarefa" ? (
+                            <Button size="sm" variant="danger" onClick={() => setEliminando(row)}>
+                              Eliminar agora
+                            </Button>
+                          ) : null}
+                        </span>
                       </td>
                     </tr>
                   );
@@ -270,7 +341,8 @@ export default function LixeiraPage() {
           )}
           <p className="app-meta mt-2">
             Restaurar devolve o registro ao estado que ele tinha antes de ir à lixeira — que nem sempre é
-            ativo: o que estava arquivado volta arquivado.
+            ativo: o que estava arquivado volta arquivado. Passado o prazo, a agenda da Lista elimina a
+            Tarefa de vez, com as Subtarefas; “Eliminar agora” faz o mesmo sem esperar.
           </p>
         </Section>
       </CorpoDeTela>

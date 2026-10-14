@@ -71,6 +71,7 @@ Mudou o arquivo? Reinicie (como root): `systemctl restart n1-crm-api`.
 |---|---|
 | Ver se está de pé | `systemctl status n1-crm-api` · `curl -s 127.0.0.1:3020/saude` |
 | Ler o log | `journalctl -u n1-crm-api -f` |
+| Conferir o bucket de anexos (PIPE-07) | como `n1crm`: `cd /opt/n1-crm/current && npm run storage:conferir -w @n1/api` — variáveis, bucket privado e ticket de envio, sem subir arquivo |
 | Qual versão está no ar | `cat /opt/n1-crm/current/REVISION` |
 | Voltar uma versão | `ln -sfn /opt/n1-crm/releases/<sha> /opt/n1-crm/current && systemctl restart n1-crm-api` |
 | Ligar os workers | `systemctl edit n1-crm-api` → `[Service]` + `Environment=OUTBOX_WORKER_ATIVO=true` (e desligar no notebook: dois processando o mesmo outbox duplicam envio) |

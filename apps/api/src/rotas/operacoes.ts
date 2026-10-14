@@ -35,6 +35,8 @@ import { cutucarPonte, type ParDaPonte } from "../automacoes/ponte-ativa";
 import type { MembroDaSessao } from "../plugins/autenticacao";
 import type { EventoDeSaida } from "../persistencia/outbox";
 import { executar, type ResultadoTransacao } from "../persistencia/unidade-de-trabalho";
+import { filtrarDiferenca, visibilidadePara } from "@n1/dominio/derive-visibilidade";
+import { maiorIdDe } from "@n1/dominio/operations";
 import { convidarMembro } from "../servicos/convidar-membro";
 import { LISTA_SOLICITACOES_DE_PAGAMENTO_ID } from "../servicos/dto-solicitacao";
 import { esquemaDeArgumentos } from "./esquemas-de-argumentos";
@@ -117,6 +119,8 @@ const OPERACOES_QUE_CUTUCAM_A_PONTE: ReadonlySet<string> = new Set([
   "updateTask",
   "changeTaskStatus",
   "addTaskComment",
+  "editTaskComment",
+  "deleteTaskComment",
   "setTaskTags",
   "resolveTaskComment",
   "decideProcessApproval",
@@ -291,12 +295,16 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
       let resultado: ResultadoTransacao<unknown>;
       let eraReplay = false;
       let afetadas: ParDaPonte[] = [];
+      // PRIV-03 — o estado DEPOIS da operação (a última tentativa), para
+      // recortar o diff pelo que este Membro enxerga antes de responder.
+      let depois: DataState | undefined;
       try {
         resultado = servico
           ? await servico(request.membro, args)
           : await executar(
               request.membro.workspaceId,
               (state) => {
+                depois = state;
                 if (nome === "decideProcessApproval") {
                   eraReplay = state.approvals.find((a) => a.id === args[0])?.decision === args[1];
                 }
@@ -348,6 +356,14 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
       // `OperationResult` é valor, mesmo quando `ok:false` — nunca lança, e
       // a rota preserva isso: 200 sempre que a Unidade de Trabalho não
       // devolveu conflito.
+      //
+      // PRIV-03 — o diff volta sem o que o Membro não enxerga (um registro
+      // oculto não entra pela porta de trás), e com o contador de ids do
+      // estado inteiro, como `GET /estado`.
+      if (depois && "diferenca" in resultado) {
+        const { ocultos } = visibilidadePara(depois, request.membro.id);
+        return reply.code(200).send({ ...resultado, diferenca: filtrarDiferenca(resultado.diferenca, ocultos), sequencia: maiorIdDe(depois) });
+      }
       return reply.code(200).send(resultado);
     },
   );

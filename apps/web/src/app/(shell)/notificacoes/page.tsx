@@ -27,6 +27,7 @@ export default function NotificacoesPage() {
   const {
     aprovacoes: approvals,
     mencoes: mentions,
+    observadas: watched,
     conversas: conversations,
     vencidas: overdue,
     bloqueadas: blocked,
@@ -42,7 +43,7 @@ export default function NotificacoesPage() {
         {total === 0 ? (
           <EmptyState
             title="Nada aguarda você."
-            hint="Aparecem aqui Aprovações para você decidir, menções a você em Comentários, Conversas atribuídas, Tarefas vencidas ou bloqueadas e Execuções que falharam."
+            hint="Aparecem aqui Aprovações para você decidir, menções a você em Comentários, Comentários em Tarefas que você acompanha, Conversas atribuídas, Tarefas vencidas ou bloqueadas e Execuções que falharam."
           />
         ) : null}
 
@@ -100,6 +101,37 @@ export default function NotificacoesPage() {
             </ul>
             <p className="app-meta px-1 pt-2">
               Uma menção sai daqui quando a conversa em que ela está é resolvida.
+            </p>
+          </Section>
+        ) : null}
+
+        {watched.length > 0 ? (
+          <Section title="Em Tarefas que você acompanha" count={watched.length}>
+            <ul className="cascata pilha-solta" data-chegada="foco">
+              {watched.map(({ task, comment }) => {
+                const author =
+                  comment.author.kind === "member"
+                    ? state.members.find((m) => m.id === comment.author.id)?.displayName
+                    : state.agents.find((a) => a.id === comment.author.id)?.name;
+                return (
+                  <li key={comment.id}>
+                    <Link href={`/estrutura/tarefas/${task.id}#comentario-${comment.id}`} className="item-solto py-3">
+                      <SeloDaTarefa state={state} task={task} />
+                      <span className="min-w-0 flex-1">
+                        <span className="app-base block truncate text-[var(--texto)]">
+                          {author ?? "Alguém"} comentou em “{task.title}”
+                        </span>
+                        <span className="app-sm block truncate text-[var(--texto-3)]">
+                          {fmt.relative(comment.createdAt)} · {comment.content}
+                        </span>
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+            <p className="app-meta px-1 pt-2">
+              Você acompanha estas Tarefas como observador. O aviso sai quando a conversa é resolvida, ou quando você deixa de acompanhar.
             </p>
           </Section>
         ) : null}

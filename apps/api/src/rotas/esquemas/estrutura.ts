@@ -1,12 +1,12 @@
 /**
  * A FORMA dos `args` das operações de
- * `packages/dominio/src/operations/structure.ts` — 3 operações. Ver
+ * `packages/dominio/src/operations/structure.ts` — 8 operações. Ver
  * `../esquemas/CONTEXT.md` para a regra da pasta e `./fragmentos.ts` para o
  * porquê da validação ser de transporte, não de regra de negócio.
  */
 
 import type { FieldRequirement } from "@n1/dominio";
-import { ID, STATUS_CATEGORY, type Confere, type Esquemas, type Igual } from "./fragmentos";
+import { CONTAINER_TYPE, ID, MODELO_DE_TAREFA, STATUS_CATEGORY, type Confere, type Esquemas, type Igual } from "./fragmentos";
 import { z } from "zod";
 
 const FIELD_REQUIREMENT = z
@@ -61,6 +61,28 @@ const CREATE_CONTAINER_INPUT = z
   .strict();
 
 /**
+ * Só a Lista tem modelo de Tarefa (C35) e canais de atendimento (C36) — a
+ * Pasta não conhece os campos. `create-container-dialog.tsx` manda
+ * `modeloDeTarefa` sempre e `canaisDeAtendimento` quando conversacional;
+ * um `.strict()` sem os dois devolvia 400 para toda Lista criada pela tela.
+ */
+const CREATE_LIST_INPUT = CREATE_CONTAINER_INPUT.extend({
+  modeloDeTarefa: MODELO_DE_TAREFA.optional(),
+  canaisDeAtendimento: z.array(ID).optional(),
+}).strict();
+
+// POSC-09 — `container-settings.tsx` manda só o que mudou; vazio em
+// `description` apaga (regra do domínio, não daqui).
+const UPDATE_CONTAINER_INPUT = z
+  .object({
+    name: z.string().optional(),
+    description: z.string().optional(),
+    color: z.string().optional(),
+    isPrivate: z.boolean().optional(),
+  })
+  .strict();
+
+/**
  * `satisfies` (sobre o tipo `Esquemas` de `./fragmentos`) é o portão de
  * drift: uma entrada cuja aridade ou tipo não bata com `ArgumentosDe<N>` não
  * compila. Se uma entrada não compilar, o erro está na entrada — não relaxar
@@ -69,7 +91,12 @@ const CREATE_CONTAINER_INPUT = z
 export const ESTRUTURA = {
   createSpace: z.tuple([CREATE_SPACE_INPUT]),
   createFolder: z.tuple([CREATE_CONTAINER_INPUT]),
-  createList: z.tuple([CREATE_CONTAINER_INPUT]),
+  createList: z.tuple([CREATE_LIST_INPUT]),
+  updateContainer: z.tuple([CONTAINER_TYPE, ID, UPDATE_CONTAINER_INPUT]),
+  archiveContainer: z.tuple([CONTAINER_TYPE, ID]),
+  unarchiveContainer: z.tuple([CONTAINER_TYPE, ID]),
+  trashContainer: z.tuple([CONTAINER_TYPE, ID]),
+  restoreContainer: z.tuple([CONTAINER_TYPE, ID]),
 } satisfies Esquemas;
 
 // ── Portão de enum bidirecional — falta ou sobra de membro não compila ──

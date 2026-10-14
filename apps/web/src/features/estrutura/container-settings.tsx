@@ -20,7 +20,7 @@
 import Link from "next/link";
 import { MessageSquare } from "lucide-react";
 import { useState } from "react";
-import { useData, useRun } from "@/dados/store";
+import { useData, useRun, useSession } from "@/dados/store";
 import { FORMULARIOS_ANTES_DO_MODELO, LISTA_SEM_CANAIS, alterarModeloDaLista, definirCanaisDaLista, temFormularioAtivo } from "@n1/dominio/operations";
 import type { TipoDeAtendimento } from "@n1/dominio/operations/canais";
 import { AdicionarCanalDialog } from "@/features/crm/adicionar-canal-dialog";
@@ -28,8 +28,9 @@ import { CanaisDeAtendimento } from "@/features/estrutura/canais-de-atendimento"
 import { useRecente } from "@/features/shell/recente";
 import { FeaturesEditor, FieldDefinitionsEditor, StatusSetEditor, TaskTypesEditor, useMayConfigure } from "@/features/estrutura/configuration-editors";
 import { FormsEditor } from "@/features/estrutura/forms-editor";
+import { CicloDeVidaDoConteiner, IdentidadeDoConteiner } from "@/features/estrutura/identidade-e-ciclo-de-vida";
 import { CaixaDeConfiguracoes } from "@/features/ferramentas/caixa-de-configuracoes";
-import { effectiveContainerConfig } from "@n1/dominio/derive";
+import { effectiveContainerConfig, memberReachesContainer } from "@n1/dominio/derive";
 import { FIELD_TYPE_LABEL } from "@/features/shell/format";
 import { CabecalhoDePainel, CorpoDeTela, EmptyState, PageHeader, Painel, Pilula, Section, StateSeal, Toast } from "@/features/shell/ui";
 import type { ConfigurableAspect, InheritanceMode } from "@n1/dominio/types";
@@ -95,6 +96,7 @@ export function ContainerSettings({
   readonly id: string;
 }) {
   const state = useData((data) => data);
+  const { memberId } = useSession();
   const run = useRun();
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -119,7 +121,8 @@ export function ContainerSettings({
         ? state.folders.find((f) => f.id === id)
         : state.lists.find((l) => l.id === id);
 
-  if (!container) {
+  // B38 — privado sem concessão: não existe para quem não alcança, nem as configurações.
+  if (!container || !memberReachesContainer(state, memberId, kind, id)) {
     return (
       <div className="flex h-full flex-col">
         <PageHeader title="Contêiner não encontrado" />
@@ -422,19 +425,10 @@ export function ContainerSettings({
           </div>
         ) : null}
 
-        <Painel>
-          <CabecalhoDePainel titulo="Privacidade" />
-          <div className="p-3">
-            <p className="app-base" style={{ color: "var(--texto)" }}>
-              {container.isPrivate ? "Contêiner privado." : "Contêiner não privado."}
-            </p>
-            <p className="app-meta mt-1">
-              {container.isPrivate
-                ? "Ser privado interrompe as permissões vindas do Papel e da herança: aqui dentro, só alcança quem recebeu Concessão direta ou compartilhamento."
-                : "As permissões vindas do Papel e da herança alcançam este contêiner normalmente."}
-            </p>
-          </div>
-        </Painel>
+        {/* POSC-09 — nome, descrição, cor, privacidade; e o estado próprio. A chave
+            reinicia o formulário quando outra gravação (ou outro Membro) muda o registro. */}
+        <IdentidadeDoConteiner key={`${container.id}:${container.name}:${container.description ?? ""}:${container.color ?? ""}:${String(container.isPrivate)}`} kind={kind} container={container} report={report} />
+        <CicloDeVidaDoConteiner kind={kind} container={container} report={report} />
       </CorpoDeTela>
     </div>
   );

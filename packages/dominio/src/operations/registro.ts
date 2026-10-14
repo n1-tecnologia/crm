@@ -29,6 +29,8 @@ import {
   addChecklist,
   addChecklistItem,
   addTaskComment,
+  editTaskComment,
+  deleteTaskComment,
   assignTask,
   changeTaskStatus,
   convertChecklistItem,
@@ -38,7 +40,11 @@ import {
   resolveTaskComment,
   restoreList,
   restoreTask,
+  purgeTask,
+  purgeExpiredTasks,
   setChecklistItemDone,
+  removeChecklist,
+  removeChecklistItem,
   setTaskFieldValue,
   setTaskTags,
   startMeeting,
@@ -125,6 +131,10 @@ import { createAgent, publishAgentVersion } from "./agent-builder";
 import {
   addStatus,
   archiveFieldDefinition,
+  archiveTag,
+  createTag,
+  restoreTag,
+  updateTag,
   createFieldDefinition,
   createTaskType,
   inheritStatusSet,
@@ -149,6 +159,8 @@ import {
   removeDependency,
   setRecurrence,
   spawnNextOccurrence,
+  spawnCalendarOccurrence,
+  runCalendarRecurrences,
   startTimer,
   stopTimer,
 } from "./collaboration";
@@ -171,6 +183,7 @@ import {
 // ── scale.ts ────────────────────────────────────────────────────────────
 import {
   archiveForm,
+  unarchiveForm,
   createForm,
   deleteView,
   revokePublicShare,
@@ -201,7 +214,7 @@ import { alterarStatusEmLote } from "./lote";
 import { alterarEmailDoConvite, alterarPapelDoMembro, deleteRole, grantGovernanceAccess, inviteMember, removeMember, transferWorkspaceOwnership } from "./members";
 
 // ── structure.ts ────────────────────────────────────────────────────────
-import { createFolder, createList, createSpace } from "./structure";
+import { archiveContainer, createFolder, createList, createSpace, restoreContainer, trashContainer, unarchiveContainer, updateContainer } from "./structure";
 
 // ── iniciar-conversa.ts ─────────────────────────────────────────────────
 import { iniciarConversa } from "./iniciar-conversa";
@@ -414,15 +427,21 @@ export const OPERACOES = {
   convertChecklistItem,
   trashTask,
   restoreTask,
+  purgeTask,
+  purgeExpiredTasks,
   restoreList,
   addChecklist,
   addChecklistItem,
   setChecklistItemDone,
+  removeChecklist,
+  removeChecklistItem,
   startMeeting,
   endMeeting,
   updateTask,
   setTaskFieldValue,
   addTaskComment,
+  editTaskComment,
+  deleteTaskComment,
   resolveTaskComment,
   setTaskTags,
   watchTask,
@@ -494,6 +513,10 @@ export const OPERACOES = {
   updateFieldDefinition,
   archiveFieldDefinition,
   restoreFieldDefinition,
+  createTag,
+  updateTag,
+  archiveTag,
+  restoreTag,
   addStatus,
   updateStatus,
   reorderStatuses,
@@ -515,6 +538,8 @@ export const OPERACOES = {
   removeAttachment,
   setRecurrence,
   spawnNextOccurrence,
+  spawnCalendarOccurrence,
+  runCalendarRecurrences,
   // planning.ts
   setMemberCapacity,
   enableSprints,
@@ -534,6 +559,7 @@ export const OPERACOES = {
   createForm,
   updateForm,
   archiveForm,
+  unarchiveForm,
   rotateFormSecret,
   shareTaskPublicly,
   revokePublicShare,
@@ -558,6 +584,11 @@ export const OPERACOES = {
   createSpace,
   createFolder,
   createList,
+  updateContainer,
+  archiveContainer,
+  unarchiveContainer,
+  trashContainer,
+  restoreContainer,
   // iniciar-conversa.ts
   iniciarConversa,
   // ferramentas/notas.ts

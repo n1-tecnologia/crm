@@ -388,6 +388,24 @@ export function archiveForm(state: DataState, actingMemberId: Id, formId: Id): O
   return ok(form);
 }
 
+/**
+ * POSC-10 — desarquivar devolve o Formulário à Lista com o MESMO segredo: o
+ * link já divulgado volta a valer sem ninguém rodar `solicitacoes:formulario`.
+ * Volta pausado (`enabled: false`), como a Automação restaurada: reabrir o
+ * link é um ato separado, de quem administra a Lista.
+ */
+export function unarchiveForm(state: DataState, actingMemberId: Id, formId: Id): OperationResult<Form> {
+  const form = state.forms.find((f) => f.id === formId);
+  if (!form) return fail("Formulário não encontrado.");
+  const refusal = containerAdminRefusal(state, actingMemberId, "list", form.listId);
+  if (refusal) return fail(refusal);
+  if (form.lifecycle !== "arquivado") return fail("Este Formulário não está arquivado.");
+  form.lifecycle = "ativo";
+  form.enabled = false;
+  recordActivity(state, { actor: memberActor(actingMemberId), action: "Formulário desarquivado", objectType: "list", objectId: form.listId, objectName: form.name, detail: "Volta pausado: ativar o link é um ato separado." });
+  return ok(form);
+}
+
 /** Rotacionar o segredo: o link antigo para de abrir. */
 export function rotateFormSecret(state: DataState, actingMemberId: Id, formId: Id): OperationResult<Form> {
   const form = state.forms.find((f) => f.id === formId);

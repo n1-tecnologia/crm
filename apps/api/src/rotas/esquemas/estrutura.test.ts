@@ -12,8 +12,17 @@ import { ESTRUTURA } from "./estrutura";
 const viaJson = (args: unknown[]): unknown[] => JSON.parse(JSON.stringify(args)) as unknown[];
 
 describe("esquemas/estrutura — a forma dos args de structure.ts", () => {
-  it("(a) cobertura — as 3 chaves de structure.ts em registro.ts", () => {
-    const esperadas = ["createSpace", "createFolder", "createList"].sort();
+  it("(a) cobertura — as 8 chaves de structure.ts em registro.ts", () => {
+    const esperadas = [
+      "createSpace",
+      "createFolder",
+      "createList",
+      "updateContainer",
+      "archiveContainer",
+      "unarchiveContainer",
+      "trashContainer",
+      "restoreContainer",
+    ].sort();
     expect(Object.keys(ESTRUTURA).sort()).toEqual(esperadas);
   });
 
@@ -86,6 +95,52 @@ describe("esquemas/estrutura — a forma dos args de structure.ts", () => {
         ]),
       ).success,
     ).toBe(true);
+    // create-container-dialog.tsx manda `modeloDeTarefa` SEMPRE (C35) — em
+    // branco e a partir de modelo — e `canaisDeAtendimento` quando
+    // conversacional (C36). Era o 400 de "Criar Lista" (bug FUND-05).
+    expect(
+      ESTRUTURA.createList.safeParse(
+        viaJson([{ name: "L", parentType: "space", parentId: "spc_1", isPrivate: false, modeloDeTarefa: "operacional" }]),
+      ).success,
+    ).toBe(true);
+    expect(
+      ESTRUTURA.createList.safeParse(
+        viaJson([
+          {
+            name: "L",
+            parentType: "folder",
+            parentId: "fld_1",
+            isPrivate: false,
+            templateId: "tpl_1",
+            modeloDeTarefa: "operacional",
+          },
+        ]),
+      ).success,
+    ).toBe(true);
+    expect(
+      ESTRUTURA.createList.safeParse(
+        viaJson([
+          {
+            name: "L",
+            parentType: "space",
+            parentId: "spc_1",
+            isPrivate: false,
+            modeloDeTarefa: "conversacional",
+            canaisDeAtendimento: ["chn_1", "chn_2"],
+          },
+        ]),
+      ).success,
+    ).toBe(true);
+    // container-settings.tsx (POSC-09): identidade parcial e as quatro de estado.
+    expect(ESTRUTURA.updateContainer.safeParse(viaJson(["list", "lst_1", { name: "Novo nome" }])).success).toBe(true);
+    expect(
+      ESTRUTURA.updateContainer.safeParse(
+        viaJson(["space", "spc_1", { name: "E", description: "", color: "#0369a1", isPrivate: true }]),
+      ).success,
+    ).toBe(true);
+    for (const nome of ["archiveContainer", "unarchiveContainer", "trashContainer", "restoreContainer"] as const) {
+      expect(ESTRUTURA[nome].safeParse(viaJson(["folder", "fld_1"])).success, nome).toBe(true);
+    }
   });
 
   it("(c) formas hostis caem", () => {
@@ -143,5 +198,25 @@ describe("esquemas/estrutura — a forma dos args de structure.ts", () => {
       ESTRUTURA.createFolder.safeParse(viaJson([{ name: "P", parentType: "list", parentId: "lst_1" }])).success,
     ).toBe(false);
     expect(ESTRUTURA.createList.safeParse(viaJson([{ name: "L" }])).success).toBe(false);
+    expect(
+      ESTRUTURA.createList.safeParse(
+        viaJson([{ name: "L", parentType: "space", parentId: "spc_1", modeloDeTarefa: "outro" }]),
+      ).success,
+    ).toBe(false);
+    expect(
+      ESTRUTURA.createList.safeParse(
+        viaJson([{ name: "L", parentType: "space", parentId: "spc_1", canaisDeAtendimento: "chn_1" }]),
+      ).success,
+    ).toBe(false);
+    expect(ESTRUTURA.updateContainer.safeParse(viaJson(["task", "t_1", { name: "x" }])).success).toBe(false);
+    expect(ESTRUTURA.updateContainer.safeParse(viaJson(["list", "lst_1", { nome: "x" }])).success).toBe(false);
+    expect(ESTRUTURA.archiveContainer.safeParse(viaJson(["list"])).success).toBe(false);
+    expect(ESTRUTURA.trashContainer.safeParse(viaJson(["list", "lst_1", "extra"])).success).toBe(false);
+    // A Pasta não conhece o modelo de Tarefa.
+    expect(
+      ESTRUTURA.createFolder.safeParse(
+        viaJson([{ name: "P", parentType: "space", parentId: "spc_1", modeloDeTarefa: "operacional" }]),
+      ).success,
+    ).toBe(false);
   });
 });

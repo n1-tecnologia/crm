@@ -17,7 +17,8 @@
 import { use } from "react";
 import Link from "next/link";
 import { Folder, List, Plus, Settings } from "lucide-react";
-import { useData } from "@/dados/store";
+import { useData, useSession } from "@/dados/store";
+import { memberReachesContainer } from "@n1/dominio/derive";
 import { effectiveLifecycleOfList, isTerminalCategory, statusCategory } from "@n1/dominio/derive";
 import { useFormat } from "@/features/shell/use-format";
 import {
@@ -37,11 +38,13 @@ import { SprintPanel } from "@/features/estrutura/sprint-panel";
 export default function PastaPage({ params }: { params: Promise<{ pasta: string }> }) {
   const { pasta } = use(params);
   const state = useData((data) => data);
+  const { memberId } = useSession();
   const fmt = useFormat();
   const { openCreate } = useCreateContainerDialog();
   const record = state.folders.find((f) => f.id === pasta);
 
-  if (!record) {
+  // B38 — privado sem concessão: não existe para quem não alcança, nem o nome.
+  if (!record || !memberReachesContainer(state, memberId, "folder", record.id)) {
     return (
       <div className="flex h-full flex-col">
         <PageHeader title="Registro não encontrado" />
@@ -54,8 +57,8 @@ export default function PastaPage({ params }: { params: Promise<{ pasta: string 
 
   const ehPasta = record.parentType === "space";
   const ativa = record.lifecycle === "ativo";
-  const subpastas = state.folders.filter((f) => f.parentId === record.id);
-  const listas = state.lists.filter((l) => l.parentId === record.id);
+  const subpastas = state.folders.filter((f) => f.parentId === record.id && memberReachesContainer(state, memberId, "folder", f.id));
+  const listas = state.lists.filter((l) => l.parentId === record.id && memberReachesContainer(state, memberId, "list", l.id));
   const abertasEm = (listId: string) =>
     state.tasks.filter(
       (t) => t.listId === listId && !t.parentTaskId && t.lifecycle === "ativo" && !isTerminalCategory(statusCategory(state, t)),

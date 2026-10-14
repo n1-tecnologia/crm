@@ -15,7 +15,7 @@
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { useData, useRun } from "@/dados/store";
-import { FORMULARIO_EM_LISTA_CONVERSACIONAL, archiveForm, createForm, formOutdatedReason, rotateFormSecret, updateForm } from "@n1/dominio/operations";
+import { FORMULARIO_EM_LISTA_CONVERSACIONAL, archiveForm, createForm, formOutdatedReason, rotateFormSecret, unarchiveForm, updateForm } from "@n1/dominio/operations";
 import { effectiveListConfig } from "@n1/dominio/derive";
 import { listaConversacional } from "@n1/dominio/derive-conversacional";
 import { FIELD_TYPE_LABEL } from "@/features/shell/format";
@@ -60,6 +60,8 @@ export function FormsEditor({ listId, bloqueio, report }: { readonly listId: str
   const [erro, setErro] = useState<string | null>(null);
 
   const forms = state.forms.filter((f) => f.listId === listId && f.lifecycle === "ativo");
+  // POSC-10 — os arquivados ficam à mão: desarquivar devolve o mesmo link, pausado.
+  const arquivados = state.forms.filter((f) => f.listId === listId && f.lifecycle === "arquivado");
   // C35 — na Lista conversacional o Formulário não cria Tarefa (o envio não
   // traz Contato): criar e editar ficam desligados com a frase do domínio;
   // arquivar segue aberto, porque é a saída.
@@ -280,7 +282,7 @@ export function FormsEditor({ listId, bloqueio, report }: { readonly listId: str
       <ConfirmDialog
         open={arquivando !== null}
         title="Arquivar este Formulário?"
-        description="O link para de abrir e o Formulário sai desta lista. As Tarefas já criadas por ele continuam."
+        description="O link para de abrir e o Formulário sai desta lista. As Tarefas já criadas por ele continuam. Dá para desarquivar depois, com o mesmo link."
         confirmLabel="Arquivar"
         destructive
         onConfirm={() => {
@@ -345,6 +347,29 @@ export function FormsEditor({ listId, bloqueio, report }: { readonly listId: str
           Novo Formulário
         </Button>
       </span>
+      {arquivados.length > 0 ? (
+        <details>
+          <summary className="app-meta cursor-pointer">Arquivados ({arquivados.length})</summary>
+          <ul className="pilha-solta mt-2">
+            {arquivados.map((form) => (
+              <li key={form.id} className="item-solto app-base" data-estatico="true" data-atenuado="true">
+                <span className="min-w-0 flex-1 truncate" style={{ color: "var(--texto-3)" }}>
+                  {form.name}
+                </span>
+                <span className="app-meta app-numero">{form.submissions} envio(s)</span>
+                <Button
+                  size="sm"
+                  onClick={() => report(run((data, me) => unarchiveForm(data, me, form.id)), "Formulário desarquivado: volta pausado, com o mesmo link.")}
+                  disabled={bloqueio !== undefined}
+                  disabledReason={bloqueio ?? ""}
+                >
+                  Desarquivar
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
     </div>
   );
 }

@@ -39,6 +39,7 @@ import { hidratar, semear } from "../persistencia/repositorio";
 
 const MARYANE = usuarioDoSeed("mem_maryane"); // ativo, no seed do Financeiro
 const TIAGO = usuarioDoSeed("mem_tiago"); // removido, no seed do CRM
+const THIAGO = usuarioDoSeed("mem_thiago"); // Proprietário: conecta Canal (B35) e administra a Estrutura
 
 const semente = buildSeed();
 // CR-05/D5-19 (05-17) — o caso (w)/(x) migra para a Solicitação (colateral de
@@ -63,7 +64,9 @@ function appDeTeste(workspaceId = "ws_rotas_teste") {
         ? { sub: MARYANE }
         : token === "token-tiago"
           ? { sub: TIAGO }
-          : null,
+          : token === "token-thiago"
+            ? { sub: THIAGO }
+            : null,
     resolverMembro: async (_workspaceId, userId) => membros.find((m) => m.userId === userId),
   });
 }
@@ -481,6 +484,110 @@ d("POST /operacoes/:nome — contra o banco real", () => {
     try {
       const { state } = await hidratar(cliente, WS);
       expect(state.collections.some((c) => c.name === nome)).toBe(true);
+    } finally {
+      cliente.release();
+    }
+  });
+
+  it("(z) createList com a forma literal de create-container-dialog.tsx (modeloDeTarefa) grava e volta na hidratação — era 400 pelo .strict() (FUND-05)", async () => {
+    const nome = `Lista pela rota ${Date.now()}`;
+    const resposta = await appDeTeste().inject({
+      method: "POST",
+      url: "/operacoes/createList",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: {
+        args: [{ name: nome, parentType: "folder", parentId: CP.folderId, isPrivate: false, modeloDeTarefa: "operacional" }],
+      },
+    });
+    expect(resposta.statusCode, resposta.body).toBe(200);
+    const corpo = resposta.json();
+    expect(corpo.ok, corpo.error).toBe(true);
+
+    const cliente = await pool().connect();
+    try {
+      const { state } = await hidratar(cliente, WS);
+      const lista = state.lists.find((l) => l.name === nome);
+      expect(lista).toBeDefined();
+      expect(lista?.modeloDeTarefa).toBe("operacional");
+    } finally {
+      cliente.release();
+    }
+  });
+
+  it("(z2) updateContainer e archiveContainer pela rota (POSC-09): renomeia e arquiva a Lista no banco, e volta na hidratação", async () => {
+    const nome = `Lista renomeada ${Date.now()}`;
+    const renomear = await appDeTeste().inject({
+      method: "POST",
+      url: "/operacoes/updateContainer",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: { args: ["list", CP.listId, { name: nome }] },
+    });
+    expect(renomear.statusCode, renomear.body).toBe(200);
+    expect(renomear.json().ok, renomear.json().error).toBe(true);
+    const arquivar = await appDeTeste().inject({
+      method: "POST",
+      url: "/operacoes/archiveContainer",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: { args: ["list", CP.listId] },
+    });
+    expect(arquivar.statusCode, arquivar.body).toBe(200);
+    expect(arquivar.json().ok, arquivar.json().error).toBe(true);
+
+    const cliente = await pool().connect();
+    try {
+      const { state } = await hidratar(cliente, WS);
+      const lista = state.lists.find((l) => l.id === CP.listId);
+      expect(lista?.name).toBe(nome);
+      expect(lista?.lifecycle).toBe("arquivado");
+    } finally {
+      cliente.release();
+    }
+    // Desarquiva para não deixar a Lista de Contas a pagar arquivada para os casos seguintes.
+    const desarquivar = await appDeTeste().inject({
+      method: "POST",
+      url: "/operacoes/unarchiveContainer",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: { args: ["list", CP.listId] },
+    });
+    expect(desarquivar.json().ok, desarquivar.json().error).toBe(true);
+  });
+
+  it("(z3) FUND-18 — o fluxo conversacional inteiro pela rota: conectar Canal, criar Lista conversacional com ele, trocar os canais e criar a Tarefa a partir de um Contato", async () => {
+    const chamar = (nome: string, args: unknown[]) =>
+      appDeTeste().inject({ method: "POST", url: `/operacoes/${nome}`, headers: { authorization: "Bearer token-thiago" }, payload: { args } });
+    // Thiago é Proprietário do seed: conecta Canal (B35) e administra a Estrutura.
+    const canal = await chamar("criarCanal", [{ channelType: "whatsapp", name: `Atendimento ${Date.now()}`, externalId: "+55 11 90000-0001" }]);
+    expect(canal.statusCode, canal.body).toBe(200);
+    const canalCorpo = canal.json() as { ok: boolean; error?: string; value: { id: string } };
+    expect(canalCorpo.ok, canalCorpo.error).toBe(true);
+    const canalId = canalCorpo.value.id;
+
+    const lista = await chamar("createList", [
+      { name: `Atendimento ${Date.now()}`, parentType: "folder", parentId: CP.folderId, isPrivate: false, modeloDeTarefa: "conversacional", canaisDeAtendimento: [canalId] },
+    ]);
+    const listaCorpo = lista.json() as { ok: boolean; error?: string; value: { id: string; canaisDeAtendimento?: string[] } };
+    expect(listaCorpo.ok, listaCorpo.error).toBe(true);
+    expect(listaCorpo.value.canaisDeAtendimento).toEqual([canalId]);
+    const listaId = listaCorpo.value.id;
+
+    const canais = await chamar("definirCanaisDaLista", [listaId, [canalId]]);
+    expect((canais.json() as { ok: boolean; error?: string }).ok, canais.body).toBe(true);
+
+    const contato = semente.contacts.find((c) => c.lifecycle === "ativo");
+    if (!contato) throw new Error("o seed precisa de um Contato ativo");
+    const tarefa = await chamar("criarTarefaConversacional", [{ listId: listaId, contactId: contato.id, channelId: canalId }]);
+    const tarefaCorpo = tarefa.json() as { ok: boolean; error?: string; value: { task: { id: string; listId: string }; conversation: { id: string } } };
+    expect(tarefaCorpo.ok, tarefaCorpo.error).toBe(true);
+
+    const cliente = await pool().connect();
+    try {
+      const { state } = await hidratar(cliente, WS);
+      expect(state.channels.some((c) => c.id === canalId && c.connection === "conectada")).toBe(true);
+      const l = state.lists.find((x) => x.id === listaId);
+      expect(l?.modeloDeTarefa).toBe("conversacional");
+      expect(l?.canaisDeAtendimento).toEqual([canalId]);
+      expect(state.tasks.some((t) => t.id === tarefaCorpo.value.task.id && t.listId === listaId)).toBe(true);
+      expect(state.conversations.some((c) => c.id === tarefaCorpo.value.conversation.id)).toBe(true);
     } finally {
       cliente.release();
     }

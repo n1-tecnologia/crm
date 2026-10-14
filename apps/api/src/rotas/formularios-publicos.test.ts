@@ -309,7 +309,7 @@ d("rotasDeFormulariosPublicos — atomicidade contra o banco e o bucket de teste
     }
   }
 
-  it("(g) submissão válida: 201 com readableId; 1 Tarefa, Campos preenchidos, WorkspaceFile ligado, 1 Atividade Ator sistema, exatamente 1 linha de outbox", async () => {
+  it("(g) submissão válida: 201 com readableId; 1 Tarefa, Campos preenchidos, WorkspaceFile ligado, 1 Atividade Ator sistema, ZERO linhas de outbox (PIPE-05: a Lista não é a de Solicitações)", async () => {
     const app = appDb();
     const { titulo, centro, anexo } = perguntas();
     const ticket = await abrirTicketReal(app, "nota-fiscal-g.pdf");
@@ -351,7 +351,8 @@ d("rotasDeFormulariosPublicos — atomicidade contra o banco e o bucket de teste
         "select count(*)::text as n from plataforma.integration_outbox where workspace_id = $1 and aggregate_id = $2",
         [WS, tarefa!.id],
       );
-      expect(Number(outbox.rows[0]!.n)).toBe(1);
+      // PIPE-05 — `solicitacao.criada.v1` só nasce na Lista de Solicitações de pagamento; `lst_prospeccao` não é ela.
+      expect(Number(outbox.rows[0]!.n)).toBe(0);
     } finally {
       cliente.release();
     }
@@ -540,9 +541,8 @@ function montarFormularioDeSolicitacao(state: DataState): Form {
     questions: [
       { label: "Assunto", required: true, target: { kind: "title" } },
       { label: "Centro de Custo (Solicitação)", required: true, target: { kind: "field", definitionId: "fld_sp_a_centro_de_custo" } },
-      // `fd_cp_centro` (RN-CP-01) é escopo "space" (`seed-financeiro.ts`): herdado por TODA Lista do
-      // Espaço "Gestão", inclusive a de Solicitações — os dois "Centro de Custo" são obrigatórios aqui.
-      { label: "Centro de Custo (Financeiro)", required: true, target: { kind: "field", definitionId: "fd_cp_centro" } },
+      // `fd_cp_centro` (RN-CP-01) é herdado do Espaço "Gestão", mas desde o checklist 1.1 o evolver de
+      // Solicitações o deixa FORA da Lista (mesmo nome de um Campo do catálogo): só o da Solicitação vale aqui.
       { label: "Empresa", required: false, target: { kind: "field", definitionId: CANAL_CAMPO_EMPRESA_ID } },
       { label: "WhatsApp", required: false, target: { kind: "field", definitionId: CANAL_CAMPO_WHATSAPP_ID } },
     ],
@@ -592,16 +592,14 @@ dCanal("rotasDeFormulariosPublicos — Automação de Canal publicada na Lista d
   function perguntasDaSolicitacao(): {
     readonly titulo: Form["questions"][number];
     readonly centroSolicitacao: Form["questions"][number];
-    readonly centroFinanceiro: Form["questions"][number];
     readonly empresa: Form["questions"][number];
     readonly whatsapp: Form["questions"][number];
   } {
     const titulo = FORM_CANAL.questions[0]!;
     const centroSolicitacao = FORM_CANAL.questions.find((q) => q.target.kind === "field" && q.target.definitionId === "fld_sp_a_centro_de_custo")!;
-    const centroFinanceiro = FORM_CANAL.questions.find((q) => q.target.kind === "field" && q.target.definitionId === "fd_cp_centro")!;
     const empresa = FORM_CANAL.questions.find((q) => q.target.kind === "field" && q.target.definitionId === CANAL_CAMPO_EMPRESA_ID)!;
     const whatsapp = FORM_CANAL.questions.find((q) => q.target.kind === "field" && q.target.definitionId === CANAL_CAMPO_WHATSAPP_ID)!;
-    return { titulo, centroSolicitacao, centroFinanceiro, empresa, whatsapp };
+    return { titulo, centroSolicitacao, empresa, whatsapp };
   }
 
   /** Conta por `event_type` e `payload->>'taskId'` — nunca um count global (o mesmo cuidado do bloco (g)-(k)). */
@@ -647,7 +645,7 @@ dCanal("rotasDeFormulariosPublicos — Automação de Canal publicada na Lista d
 
   it("Solicitação de 'Marcos Paulo' (canal declarado): 1 linha automacao.notificar-canal.v1, 1 solicitacao.criada.v1, aggregate_id <executionId>:<indicePasso>", async () => {
     const app = appCanal();
-    const { titulo, centroSolicitacao, centroFinanceiro, empresa, whatsapp } = perguntasDaSolicitacao();
+    const { titulo, centroSolicitacao, empresa, whatsapp } = perguntasDaSolicitacao();
     const nomeDaTarefa = "Pedido de teste 05-17 (Marcos Paulo)";
 
     const resposta = await app.inject({
@@ -658,7 +656,6 @@ dCanal("rotasDeFormulariosPublicos — Automação de Canal publicada na Lista d
         answers: {
           [titulo.id]: nomeDaTarefa,
           [centroSolicitacao.id]: "Marcos Paulo",
-          [centroFinanceiro.id]: "Marcos Paulo",
           [empresa.id]: "Marcos Paulo",
           [whatsapp.id]: "whatsapp-mp-de-teste", // sem 9+ dígitos seguidos (convenção 05-07)
         },
@@ -676,7 +673,7 @@ dCanal("rotasDeFormulariosPublicos — Automação de Canal publicada na Lista d
 
   it("Solicitação de 'Tria Company' (sem avisosPorCanal declarado): 0 linhas de Canal, 1 solicitacao.criada.v1", async () => {
     const app = appCanal();
-    const { titulo, centroSolicitacao, centroFinanceiro, empresa, whatsapp } = perguntasDaSolicitacao();
+    const { titulo, centroSolicitacao, empresa, whatsapp } = perguntasDaSolicitacao();
     const nomeDaTarefa = "Pedido de teste 05-17 (Tria Company)";
 
     const resposta = await app.inject({
@@ -687,7 +684,6 @@ dCanal("rotasDeFormulariosPublicos — Automação de Canal publicada na Lista d
         answers: {
           [titulo.id]: nomeDaTarefa,
           [centroSolicitacao.id]: "TRIA",
-          [centroFinanceiro.id]: "TRIA",
           [empresa.id]: "Tria Company",
           [whatsapp.id]: "whatsapp-tria-de-teste",
         },

@@ -30,6 +30,7 @@ import { rotasDeEstado } from "./rotas/estado";
 import { rotasDeAnexosDaTarefa } from "./rotas/anexos-da-tarefa";
 import { rotasDeFinanceiro, type OpcoesDeFinanceiro } from "./rotas/financeiro";
 import { rotasDeFormulariosPublicos, type OpcoesDeFormulariosPublicos } from "./rotas/formularios-publicos";
+import { rotasDeTarefasPublicas, type OpcoesDeTarefasPublicas } from "./rotas/tarefas-publicas";
 import { rotasDeIntegracaoDeSolicitacoes } from "./rotas/integracao-solicitacoes";
 import { rotasDeOperacoes } from "./rotas/operacoes";
 
@@ -76,6 +77,8 @@ export interface OpcoesDoApp {
    * janelas curtas, sem precisar de `DATABASE_URL` (D-DEC-09).
    */
   readonly formulariosPublicos?: Omit<OpcoesDeFormulariosPublicos, "workspaceId">;
+  /** PARA-05 — a leitura pública da Tarefa por link, mesmo gancho `publica: true`. */
+  readonly tarefasPublicas?: Omit<OpcoesDeTarefasPublicas, "workspaceId">;
   /**
    * Plan 02-24 — `POST /v1/integrations/payment-approvals/classifications`
    * (`./rotas/classificacoes.ts`) aceita o mesmo padrão de injeção: testes
@@ -214,6 +217,7 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
   // allowlist (`webOrigin`): estas rotas não vivem sob `PREFIXO_ROTAS_DE_SERVICO`,
   // então o `delegator` de CORS acima aplica a mesma origem do resto do app.
   app.register(rotasDeFormulariosPublicos, { workspaceId, ...opcoes.formulariosPublicos });
+  app.register(rotasDeTarefasPublicas, { workspaceId, ...opcoes.tarefasPublicas });
 
   // Rotas serviço-a-serviço: credencial própria
   // (`plugins/autenticacao-servico.ts`), nunca JWT humano. Rotas

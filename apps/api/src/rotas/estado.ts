@@ -23,6 +23,9 @@
 
 import type { FastifyInstance } from "fastify";
 import type { WorkspaceFile } from "@n1/dominio";
+import { filtrarOrdens, membroVeArquivo, visibilidadePara } from "@n1/dominio/derive-visibilidade";
+import { maiorIdDe } from "@n1/dominio/operations";
+import { arquivoSemConteudo } from "@n1/dominio/operations/anexos-enviados";
 import { acrescentarCanaisProjetados, carregarCanaisProjetados } from "../persistencia/canais-projetados";
 import { pool } from "../persistencia/conexao";
 import { hidratar, ordensComoObjeto } from "../persistencia/repositorio";
@@ -36,10 +39,16 @@ export async function rotasDeEstado(app: FastifyInstance): Promise<void> {
       // D-11: os Canais de `plataforma.canais` (008) entram no corpo como Canais relacionais.
       // Só aqui (e em `executar()`, 08-07), nunca dentro de `hidratar` — ver `persistencia/canais-projetados.ts`.
       acrescentarCanaisProjetados(state, await carregarCanaisProjetados(cliente, request.membro.workspaceId));
+      // PRIV-03 — o Membro recebe só o que alcança (B38): contêiner privado
+      // sem concessão, e as Tarefas dele, não saem do servidor. `sequencia` é
+      // o contador de ids do estado INTEIRO, para a cópia local gerar os
+      // mesmos ids que o servidor vai gerar (ver `maiorIdDe`).
+      const { estado, ocultos } = visibilidadePara(state, request.membro.id);
       return {
-        data: state,
+        data: estado,
         revisao,
-        ordens: ordensComoObjeto(ordem),
+        ordens: filtrarOrdens(ordensComoObjeto(ordem), ocultos),
+        sequencia: maiorIdDe(state),
         sessao: { memberId: request.membro.id },
       };
     } finally {
@@ -61,21 +70,20 @@ export async function rotasDeEstado(app: FastifyInstance): Promise<void> {
   app.get<{ Params: { fileId: string } }>("/anexos/:fileId/url", async (request, reply) => {
     const cliente = await pool().connect();
     try {
-      // Autorização hoje é por Espaço de Trabalho (quem tem sessão neste
-      // Espaço já recebe o `WorkspaceFile` inteiro — objectKey incluído —
-      // por `GET /estado`; esta rota não abre superfície nova, só evita que
-      // a tela precise reter a URL assinada). Uma autorização por Tarefa
-      // ("quem vê a Tarefa vê o anexo") fica para quando o Papel do
-      // Financeiro virar Concessão real de Membro (mesmo adiamento de
-      // `fluxo-manual-dialog.tsx`).
-      const { rows } = await cliente.query<{ dados: unknown }>(
-        `select dados from plataforma.registros where workspace_id = $1 and colecao = 'files' and id = $2`,
-        [request.membro.workspaceId, request.params.fileId],
-      );
-      const arquivo = rows[0]?.dados as WorkspaceFile | undefined;
-      if (!arquivo) {
+      // POSC-08 — autorização por Tarefa: quem vê alguma Tarefa que carrega o
+      // Arquivo baixa; quem não vê nenhuma recebe 404, como se ele não
+      // existisse (a mesma leitura que recorta `GET /estado`). Um Arquivo que
+      // nenhuma Tarefa carrega continua aberto a quem tem sessão no Espaço.
+      const { state } = await hidratar(cliente, request.membro.workspaceId);
+      const arquivo: WorkspaceFile | undefined = state.files.find((f) => f.id === request.params.fileId);
+      if (!arquivo || !membroVeArquivo(state, request.membro.id, arquivo.id)) {
         reply.code(404);
         return { error: "Anexo não encontrado." };
+      }
+      // FUND-07 — anexo de protótipo (`legado/<id>`): nada subiu, não há URL a assinar.
+      if (arquivoSemConteudo(arquivo)) {
+        reply.code(409);
+        return { error: "Este anexo foi gravado sem conteúdo, antes do envio real: não há o que baixar." };
       }
       const gerado = await urlDeDownload(arquivo.objectKey);
       return { url: gerado.downloadUrl, expiresAt: gerado.expiresAt.toISOString() };

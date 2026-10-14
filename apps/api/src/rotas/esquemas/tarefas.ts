@@ -59,16 +59,25 @@ export const TAREFAS = {
   convertChecklistItem: z.tuple([ID, ID, ID, opcional(ID)]),
   trashTask: z.tuple([ID]),
   restoreTask: z.tuple([ID]),
+  // PARD-10 — eliminar agora e o expurgo pela retenção (dia civil como Date revivido).
+  purgeTask: z.tuple([ID]),
+  purgeExpiredTasks: z.tuple([ID, z.date()]),
   restoreList: z.tuple([ID]),
   addChecklist: z.tuple([ID, z.string()]),
   addChecklistItem: z.tuple([ID, ID, z.string()]),
   setChecklistItemDone: z.tuple([ID, ID, ID, z.boolean()]),
+  // Remover Checklist ou Item é edição da Tarefa; o domínio guarda o conteúdo no Registro de Atividade.
+  removeChecklist: z.tuple([ID, ID]),
+  removeChecklistItem: z.tuple([ID, ID, ID]),
   startMeeting: z.tuple([ID]),
   endMeeting: z.tuple([ID]),
   updateTask: z.tuple([ID, UPDATE_TASK_INPUT]),
   setTaskFieldValue: z.tuple([ID, ID, VALOR_DE_CAMPO]),
   addTaskComment: z.tuple([ID, ADD_TASK_COMMENT_INPUT]),
   resolveTaskComment: z.tuple([ID, ID, z.boolean()]),
+  // FUND-10 — "conteúdo não vazio" e "só o autor ou quem administra" são regra do domínio.
+  editTaskComment: z.tuple([ID, ID, z.string()]),
+  deleteTaskComment: z.tuple([ID, ID]),
   setTaskTags: z.tuple([ID, z.array(ID)]),
   watchTask: z.tuple([ID, ID, z.boolean()]),
 } satisfies Esquemas;

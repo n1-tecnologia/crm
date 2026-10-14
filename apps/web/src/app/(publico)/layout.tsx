@@ -5,10 +5,9 @@ import type { ReactNode } from "react";
  * e a Página com segredo (`/p/<segredo>`). O grupo de rotas não muda a URL;
  * existe para as duas dividirem o prefixo que `proxy.ts` reconhece.
  *
- * Não monta `PublicoProvider` aqui: a partir do Plan 02-20, `/f/<segredo>`
- * fala com o `apps/api` por `transportePublico`, sem o store em memória
- * (D-02) — só `/p/<segredo>` (compartilhamento público de Tarefa) ainda lê o
- * seed em memória, e monta o próprio provider em `p/[segredo]/layout.tsx`.
+ * Nenhum store aqui: `/f/<segredo>` (Plan 02-20) e `/p/<segredo>` (PARA-05)
+ * falam com o `apps/api` por `transportePublico`, como Server Components,
+ * sem seed em memória.
  */
 export default function PublicoLayout({ children }: { readonly children: ReactNode }) {
   return <>{children}</>;

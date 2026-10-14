@@ -36,6 +36,7 @@
 
 import type { DataState, Task } from "@n1/dominio";
 import { formBySecret, formOutdatedReason, submitForm, type SubmitFormAttachment } from "@n1/dominio/operations/scale";
+import { LISTA_ID as LISTA_DE_SOLICITACOES } from "@n1/dominio/solicitacao-de-pagamento-evolver";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { pool } from "../persistencia/conexao";
 import { hidratar } from "../persistencia/repositorio";
@@ -317,14 +318,20 @@ export async function rotasDeFormulariosPublicos(app: FastifyInstance, opcoes: O
         workspaceId,
         (estadoDaTransacao) => submitForm(estadoDaTransacao, params.data.secret, { answers: body.data.answers, attachments: anexosConfirmados }),
         {
-          eventos: (task) => [
-            {
-              type: "solicitacao.criada.v1",
-              aggregateType: "task",
-              aggregateId: task.id,
-              payload: { taskId: task.id, readableId: task.readableId ?? task.id, listId: task.listId, origin: "plataforma" },
-            },
-          ],
+          // PIPE-05 — `solicitacao.criada.v1` é o evento do pipeline de pagamento (contrato v1, §8):
+          // só a Tarefa que nasce na Lista de Solicitações de pagamento o emite. Um Formulário de
+          // outra Lista cria a Tarefa e nada mais — o `automation/` não tem o que fazer com ela.
+          eventos: (task) =>
+            task.listId === LISTA_DE_SOLICITACOES
+              ? [
+                  {
+                    type: "solicitacao.criada.v1",
+                    aggregateType: "task",
+                    aggregateId: task.id,
+                    payload: { taskId: task.id, readableId: task.readableId ?? task.id, listId: task.listId, origin: "plataforma" },
+                  },
+                ]
+              : [],
           aoConfirmar: async (cliente) => {
             await consumirSessao(cliente, submissionId);
           },

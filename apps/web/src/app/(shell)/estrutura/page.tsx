@@ -1,12 +1,17 @@
 "use client";
 
-import { useData } from "@/dados/store";
+import { useData, useSession } from "@/dados/store";
+import { memberReachesContainer } from "@n1/dominio/derive";
 import { CorpoDeTela, PageHeader, StateSeal } from "@/features/shell/ui";
 import { RecordList } from "@/features/shell/record-list";
 
 export default function EspacosPage() {
   const state = useData((data) => data);
-  const items = state.spaces.filter((s) => s.lifecycle !== "naLixeira").sort((a, b) => a.order - b.order);
+  const { memberId } = useSession();
+  // B38 — um Espaço privado sem concessão não existe para quem não o alcança.
+  const items = state.spaces
+    .filter((s) => s.lifecycle !== "naLixeira" && memberReachesContainer(state, memberId, "space", s.id))
+    .sort((a, b) => a.order - b.order);
 
   return (
     <div className="flex h-full flex-col">

@@ -47,6 +47,26 @@ describe("esquemas/planejamento — a forma dos args de planning.ts", () => {
         "instantiateListTemplate",
         ["tpl_1", { name: "L", parentType: "space", parentId: "spc_1", description: "d", isPrivate: true }],
       ],
+      // create-container-dialog.tsx, Lista a partir de modelo com configuração:
+      // `modeloDeTarefa` sempre (C35), `canaisDeAtendimento` se conversacional (C36).
+      [
+        "instantiateListTemplate",
+        ["tpl_1", { name: "L", parentType: "folder", parentId: "fld_1", isPrivate: false, modeloDeTarefa: "operacional" }],
+      ],
+      [
+        "instantiateListTemplate",
+        [
+          "tpl_1",
+          {
+            name: "L",
+            parentType: "space",
+            parentId: "spc_1",
+            isPrivate: false,
+            modeloDeTarefa: "conversacional",
+            canaisDeAtendimento: ["chn_1"],
+          },
+        ],
+      ],
       ["renameTemplate", ["tpl_1", { name: "x" }]],
       ["setTemplateArchived", ["tpl_1", true]],
     ];
@@ -69,6 +89,11 @@ describe("esquemas/planejamento — a forma dos args de planning.ts", () => {
     expect(
       PLANEJAMENTO.instantiateListTemplate.safeParse(
         viaJson(["tpl_1", { name: "L", parentType: "folder", parentId: "fld_1", lixo: 1 }]),
+      ).success,
+    ).toBe(false);
+    expect(
+      PLANEJAMENTO.instantiateListTemplate.safeParse(
+        viaJson(["tpl_1", { name: "L", parentType: "folder", parentId: "fld_1", modeloDeTarefa: "outro" }]),
       ).success,
     ).toBe(false);
     expect(PLANEJAMENTO.saveListAsTemplate.safeParse(viaJson(["lst_1", {}])).success).toBe(false);

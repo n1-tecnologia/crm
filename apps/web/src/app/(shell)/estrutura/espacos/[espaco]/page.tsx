@@ -3,7 +3,8 @@
 import { use } from "react";
 import Link from "next/link";
 import { ExternalLink, Folder, LayoutDashboard, List, Settings } from "lucide-react";
-import { useData } from "@/dados/store";
+import { useData, useSession } from "@/dados/store";
+import { memberReachesContainer } from "@n1/dominio/derive";
 import {
   CabecalhoDePainel,
   CorpoDeTela,
@@ -21,9 +22,11 @@ import { shortcutHref } from "@/features/estrutura/shortcuts";
 export default function EspacoPage({ params }: { params: Promise<{ espaco: string }> }) {
   const { espaco } = use(params);
   const state = useData((data) => data);
+  const { memberId } = useSession();
   const record = state.spaces.find((s) => s.id === espaco);
 
-  if (!record) {
+  // B38 — privado sem concessão: não existe para quem não alcança, nem o nome.
+  if (!record || !memberReachesContainer(state, memberId, "space", record.id)) {
     return (
       <div className="flex h-full flex-col">
         <PageHeader title="Registro não encontrado" />
@@ -34,9 +37,9 @@ export default function EspacoPage({ params }: { params: Promise<{ espaco: strin
     );
   }
 
-  const listas = state.lists.filter((l) => l.parentId === record.id);
+  const listas = state.lists.filter((l) => l.parentId === record.id && memberReachesContainer(state, memberId, "list", l.id));
   const atalhos = record.shortcuts ?? [];
-  const pastas = state.folders.filter((f) => f.parentId === record.id);
+  const pastas = state.folders.filter((f) => f.parentId === record.id && memberReachesContainer(state, memberId, "folder", f.id));
   const paineis = state.panels.filter((p) => p.anchor?.id === record.id);
   const criador = state.members.find((m) => m.id === record.createdBy.id)?.displayName ?? "Sistema";
 

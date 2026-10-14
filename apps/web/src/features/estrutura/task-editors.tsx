@@ -6,13 +6,17 @@
  * a tela decide onde avisar; o editor só edita.
  */
 
-import { Check, MessageSquareReply, RotateCcw, Send } from "lucide-react";
+import { Check, MessageSquareReply, Pencil, RotateCcw, Send, Trash2 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useData, useRun, useSession } from "@/dados/store";
 import { CampoDeArquivo } from "./campo-de-arquivo";
 import { useRecente } from "@/features/shell/recente";
+import { containerAdminRefusal } from "@n1/dominio/derive";
+import { administraOEspaco } from "@n1/dominio/operations/ia/permissoes-ia";
 import {
   addTaskComment,
+  deleteTaskComment,
+  editTaskComment,
   resolveTaskComment,
   setTaskFieldValue,
   setTaskTags,
@@ -20,7 +24,7 @@ import {
   watchTask,
 } from "@n1/dominio/operations";
 import { useFormat } from "@/features/shell/use-format";
-import { ActorAvatar, Button, EmptyState, Field, Icone, MultiSelect, Select, TextArea, TextInput, Toast } from "@/features/shell/ui";
+import { ActorAvatar, Button, ConfirmDialog, EmptyState, Field, Icone, MultiSelect, Select, TextArea, TextInput, Toast } from "@/features/shell/ui";
 import type { OperationResult } from "@n1/dominio/state";
 import type { ActorRef, FieldDefinition, FieldValue, Task, TaskDate } from "@n1/dominio/types";
 
@@ -693,7 +697,13 @@ export function TaskComments({
   const { memberId } = useSession();
   const members = useData((data) => data.members);
   const agentes = useData((data) => data.agents);
+  const state = useData((data) => data);
   const [respondendo, setRespondendo] = useState<string | null>(null);
+  // FUND-10 — editar em linha e excluir com confirmação (RN-TAR-13).
+  const [editando, setEditando] = useState<string | null>(null);
+  const [textoEditado, setTextoEditado] = useState("");
+  const [excluindo, setExcluindo] = useState<string | null>(null);
+  const administra = administraOEspaco(state, memberId) || containerAdminRefusal(state, memberId, "list", task.listId) === undefined;
   const rolagem = useRef<HTMLDivElement>(null);
   // O feedback das ações da conversa fica NA conversa, acima do compositor —
   // um Toast lá no centro da tela ficaria longe de onde a pessoa está.
@@ -706,10 +716,12 @@ export function TaskComments({
   const vivos = task.comments.filter((c) => !c.deletedAt);
   const termo = normalizar(busca.trim());
   const casa = (c: (typeof vivos)[number]) => termo === "" || normalizar(c.content).includes(termo);
+  // Um Comentário raiz excluído que ainda tem respostas vivas fica como marcador, para o fio não perder o encadeamento.
   const raizes = ocultarComentarios
     ? []
-    : vivos
+    : task.comments
         .filter((c) => !c.parentCommentId)
+        .filter((c) => !c.deletedAt || vivos.some((r) => r.parentCommentId === c.id))
         .filter((c) => casa(c) || vivos.some((r) => r.parentCommentId === c.id && casa(r)))
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const respostasDe = (id: string) => vivos.filter((c) => c.parentCommentId === id).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -747,26 +759,87 @@ export function TaskComments({
       run((data, actor) => resolveTaskComment(data, actor, task.id, id, resolved)),
       resolved ? "Fio resolvido." : "Fio reaberto.",
     );
+  const salvarEdicao = (id: string) => {
+    const result = run((data, actor) => editTaskComment(data, actor, task.id, id, textoEditado));
+    reportar(result, "Comentário editado.");
+    if (result.ok) setEditando(null);
+  };
+  const excluir = (id: string) => {
+    const comment = task.comments.find((c) => c.id === id);
+    reportar(run((data, actor) => deleteTaskComment(data, actor, task.id, id)), comment?.parentCommentId ? "Resposta excluída." : "Comentário excluído.");
+    setExcluindo(null);
+  };
 
   // O balão: o seu à direita no acento, o dos outros à esquerda na superfície.
   const Balao = ({ comment, resposta }: { readonly comment: (typeof vivos)[number]; readonly resposta?: boolean }) => {
     const meu = minha(comment);
+    const podeMexer = !readOnly && !comment.deletedAt && (meu || administra);
+    const emEdicao = editando === comment.id;
     return (
-      <div id={`comentario-${comment.id}`} className={`flex scroll-mt-4 ${meu ? "justify-end" : "justify-start"} ${resposta ? (meu ? "mr-5" : "ml-5") : ""}${comment.id === recente ? " surgir" : ""}`}>
+      <div id={`comentario-${comment.id}`} className={`group flex scroll-mt-4 ${meu ? "justify-end" : "justify-start"} ${resposta ? (meu ? "mr-5" : "ml-5") : ""}${comment.id === recente ? " surgir" : ""}`}>
         <div
           className={`min-w-0 max-w-[88%] rounded-[var(--r-painel)] px-3 py-2 ${meu ? "rounded-br-md" : "rounded-bl-md"}`}
           style={{
-            background: meu ? "var(--acento-lavado)" : "var(--superficie-2)",
-            border: `1px solid ${meu ? "var(--linha-acento)" : "var(--linha)"}`,
+            background: comment.deletedAt ? "transparent" : meu ? "var(--acento-lavado)" : "var(--superficie-2)",
+            border: `1px ${comment.deletedAt ? "dashed" : "solid"} ${meu && !comment.deletedAt ? "var(--linha-acento)" : "var(--linha)"}`,
           }}
         >
-          <p className="app-base whitespace-pre-wrap break-words" style={{ color: "var(--texto)" }}>
-            {comment.content}
-          </p>
-          <p className="app-meta mt-1">
-            {meu ? "Você" : authorLabel(comment.author)}
-            {comment.authorDelegate ? ` · em nome de ${authorLabel(comment.authorDelegate)}` : ""} · {fmt.relative(comment.createdAt)}
-            {comment.mentions.length > 0 ? ` · mencionou ${comment.mentions.map(nomeDaMencao).join(", ")}` : ""}
+          {comment.deletedAt ? (
+            <p className="app-base italic" style={{ color: "var(--texto-4)" }}>
+              Comentário excluído
+            </p>
+          ) : emEdicao ? (
+            <form
+              className="grid gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (textoEditado.trim()) salvarEdicao(comment.id);
+              }}
+            >
+              <label htmlFor={`editar-${comment.id}`} className="sr-only">
+                Editar comentário
+              </label>
+              <TextArea id={`editar-${comment.id}`} value={textoEditado} onChange={setTextoEditado} rows={3} />
+              <span className="flex justify-end gap-1">
+                <Button size="sm" variant="ghost" onClick={() => setEditando(null)}>
+                  Cancelar
+                </Button>
+                <Button size="sm" variant="primary" type="submit" disabled={textoEditado.trim() === ""} disabledReason="Escreva o comentário antes de salvar.">
+                  Salvar
+                </Button>
+              </span>
+            </form>
+          ) : (
+            <p className="app-base whitespace-pre-wrap break-words" style={{ color: "var(--texto)" }}>
+              {comment.content}
+            </p>
+          )}
+          <p className="app-meta mt-1 flex flex-wrap items-center gap-x-1">
+            <span>
+              {meu ? "Você" : authorLabel(comment.author)}
+              {comment.authorDelegate ? ` · em nome de ${authorLabel(comment.authorDelegate)}` : ""} · {fmt.relative(comment.createdAt)}
+              {comment.editedAt && !comment.deletedAt ? " · editado" : ""}
+              {comment.mentions.length > 0 && !comment.deletedAt ? ` · mencionou ${comment.mentions.map(nomeDaMencao).join(", ")}` : ""}
+            </span>
+            {podeMexer && !emEdicao ? (
+              <span className="ml-auto flex gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTextoEditado(comment.content);
+                    setEditando(comment.id);
+                  }}
+                  aria-label="Editar comentário"
+                  title="Editar"
+                  className="btn-icone btn-icone-nu"
+                >
+                  <Icone de={Pencil} tamanho="xs" />
+                </button>
+                <button type="button" onClick={() => setExcluindo(comment.id)} aria-label="Excluir comentário" title="Excluir" className="btn-icone btn-icone-nu">
+                  <Icone de={Trash2} tamanho="xs" />
+                </button>
+              </span>
+            ) : null}
           </p>
         </div>
       </div>
@@ -775,6 +848,17 @@ export function TaskComments({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <ConfirmDialog
+        open={excluindo !== null}
+        title="Excluir este comentário?"
+        description="Fica o marcador “Comentário excluído” no lugar, para as respostas não perderem o fio. O fato vai ao Registro de Atividade."
+        confirmLabel="Excluir"
+        destructive
+        onConfirm={() => {
+          if (excluindo) excluir(excluindo);
+        }}
+        onCancel={() => setExcluindo(null)}
+      />
       <div ref={rolagem} className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-3">
         {/* Encostado embaixo, como um chat: o espaço vazio fica em cima. */}
         <div className="flex min-h-full flex-col justify-end gap-4">

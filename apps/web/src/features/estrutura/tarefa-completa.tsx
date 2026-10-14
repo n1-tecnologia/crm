@@ -32,7 +32,6 @@ import {
   TaskWatchers,
 } from "@/features/estrutura/task-editors";
 import {
-  TaskAttachments,
   TaskDependencies,
   TaskRecurrence,
   TaskTime,
@@ -69,6 +68,7 @@ import {
   SquareCheck,
   Tag,
   Timer,
+  Trash2,
   Type,
   UserRound,
   Users,
@@ -119,6 +119,8 @@ import {
   convertChecklistItem,
   createTask,
   criarNegocioDaTarefa,
+  removeChecklist,
+  removeChecklistItem,
   setChecklistItemDone,
   trashTask,
   trocarCanalDaTarefa,
@@ -227,6 +229,8 @@ export function TarefaCompleta({
   const [filtroDaAtividade, setFiltroDaAtividade] = useState<FiltroDaAtividade>("tudo");
   const [newChecklist, setNewChecklist] = useState("");
   const [newItem, setNewItem] = useState<Record<string, string>>({});
+  // Remoção de Checklist (sem `itemId`) ou de Item: definitiva, por isso confirma antes.
+  const [removendo, setRemovendo] = useState<{ readonly checklistId: string; readonly itemId?: string } | null>(null);
   const [newSubtask, setNewSubtask] = useState("");
   /* O Tipo da próxima Subtarefa. Vazio até o seletor recondu­zi-lo ao padrão da
      Lista — o mesmo com que a Subtarefa nascia quando não havia escolha. */
@@ -315,9 +319,8 @@ export function TarefaCompleta({
   const definition = statusDefinition(state, task.listId, task.statusId);
   const tipoDaTarefa = state.taskTypes.find((t) => t.id === task.taskTypeId);
   const lenteFinanceira = financeProfileOf(task.listId);
-  // SOL-04 — a Timeline única e o download assinado do anexo só substituem os
-  // painéis desta Lista; outras Listas continuam com os dois painéis atuais
-  // (02-UI-SPEC.md proíbe redesenho geral da página da Tarefa).
+  // SOL-04 — a Timeline única só substitui a Atividade nesta Lista. O painel
+  // de anexos com envio real é de toda Lista desde FUND-07.
   const ehSolicitacaoDePagamento = task.listId === CP.listId;
   const checklist = checklistProgress(task);
   const subtasks = subtaskProgress(state, task.id);
@@ -822,6 +825,43 @@ export function TarefaCompleta({
           </Field>
         </ConfirmDialog>
       ) : null}
+
+      {removendo ? (() => {
+        const grupo = task.checklists.find((c) => c.id === removendo.checklistId);
+        const item = removendo.itemId ? grupo?.items.find((i) => i.id === removendo.itemId) : undefined;
+        const subitens = grupo && removendo.itemId ? subitemsOf(grupo.items, removendo.itemId) : 0;
+        const itensDoGrupo = grupo?.items.length ?? 0;
+        if (!grupo || (removendo.itemId && !item)) return null;
+        return (
+          <ConfirmDialog
+            open
+            title={item ? `Remover o Item “${item.text}”?` : `Remover o Checklist “${grupo.name}”?`}
+            description={
+              item
+                ? `Não há lixeira de Item: a remoção é definitiva, e o texto fica só no Registro de Atividade.${
+                    subitens > 0 ? ` ${subitens === 1 ? "O subitem vai" : `Os ${subitens} subitens vão`} junto.` : ""
+                  }${item.converted ? " A Subtarefa que nasceu dele continua existindo." : ""}`
+                : `Não há lixeira de Checklist: a remoção é definitiva, e o conteúdo fica só no Registro de Atividade.${
+                    itensDoGrupo > 0 ? ` ${itensDoGrupo === 1 ? "O Item vai" : `Os ${itensDoGrupo} Itens vão`} junto.` : ""
+                  }`
+            }
+            confirmLabel="Remover"
+            destructive
+            onConfirm={() => {
+              report(
+                run((data, memberId) =>
+                  item
+                    ? removeChecklistItem(data, memberId, task.id, grupo.id, item.id)
+                    : removeChecklist(data, memberId, task.id, grupo.id),
+                ),
+                item ? "Item removido." : "Checklist removido.",
+              );
+              setRemovendo(null);
+            }}
+            onCancel={() => setRemovendo(null)}
+          />
+        );
+      })() : null}
 
       {/* A ficha no centro, a Atividade à direita — como no ClickUp. Abaixo de xl
           a Atividade fica embaixo, com altura própria. O contêiner tem nome
@@ -1628,10 +1668,23 @@ export function TarefaCompleta({
                             <ReguaDeSecao
                               rotulo={group.name}
                               acao={
-                                <span className="app-meta app-numero shrink-0">
-                                  {countable.length === 0
-                                    ? "sem item contável"
-                                    : `${done} de ${countable.length}`}
+                                <span className="flex shrink-0 items-center gap-2">
+                                  <span className="app-meta app-numero">
+                                    {countable.length === 0
+                                      ? "sem item contável"
+                                      : `${done} de ${countable.length}`}
+                                  </span>
+                                  {editavel ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setRemovendo({ checklistId: group.id })}
+                                      aria-label={`Remover o Checklist ${group.name}`}
+                                      title="Remover Checklist"
+                                      className="btn-icone btn-icone-nu"
+                                    >
+                                      <Icone de={Trash2} tamanho="xs" />
+                                    </button>
+                                  ) : null}
                                 </span>
                               }
                             />
@@ -1663,6 +1716,17 @@ export function TarefaCompleta({
                                         >
                                           abrir Subtarefa
                                         </Link>
+                                        {editavel ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => setRemovendo({ checklistId: group.id, itemId: item.id })}
+                                            aria-label={`Remover o Item ${item.text}`}
+                                            title="Remover Item"
+                                            className="btn-icone btn-icone-nu ml-auto shrink-0"
+                                          >
+                                            <Icone de={Trash2} tamanho="xs" />
+                                          </button>
+                                        ) : null}
                                       </>
                                     ) : (
                                       <>
@@ -1725,6 +1789,17 @@ export function TarefaCompleta({
                                             style={{ color: "var(--erro)" }}
                                           >
                                             Converter em Subtarefa
+                                          </button>
+                                        ) : null}
+                                        {editavel ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => setRemovendo({ checklistId: group.id, itemId: item.id })}
+                                            aria-label={`Remover o Item ${item.text}`}
+                                            title="Remover Item"
+                                            className="btn-icone btn-icone-nu shrink-0"
+                                          >
+                                            <Icone de={Trash2} tamanho="xs" />
                                           </button>
                                         ) : null}
                                       </>
@@ -2037,15 +2112,7 @@ export function TarefaCompleta({
 
             <section>
               <ReguaDeSecao rotulo="Anexos" contagem={task.attachments.length} />
-              {ehSolicitacaoDePagamento ? (
-                <PainelDeAnexos task={task} report={report} readOnly={!editavel} />
-              ) : (
-                <TaskAttachments
-                  task={task}
-                  report={report}
-                  readOnly={!editavel}
-                />
-              )}
+              <PainelDeAnexos task={task} report={report} readOnly={!editavel} />
             </section>
 
             <section>

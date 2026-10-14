@@ -61,9 +61,15 @@ export const carregarEstadoInicial = cache(async (): Promise<EstadoInicial> => {
     return { tipo: "indisponivel", erro: (await corpoDeErro(resposta)) ?? `O servidor respondeu ${resposta.status}.` };
   }
 
-  const corpo = (await resposta.json()) as { data: EstadoDoServidor["data"]; revisao: number; ordens: EstadoDoServidor["ordens"]; sessao: { memberId: EstadoDoServidor["memberId"] } };
+  const corpo = (await resposta.json()) as { data: EstadoDoServidor["data"]; revisao: number; ordens: EstadoDoServidor["ordens"]; sessao: { memberId: EstadoDoServidor["memberId"] }; sequencia?: number };
   return {
     tipo: "ok",
-    estado: { data: corpo.data, revisao: corpo.revisao, ordens: corpo.ordens, memberId: corpo.sessao.memberId },
+    estado: {
+      data: corpo.data,
+      revisao: corpo.revisao,
+      ordens: corpo.ordens,
+      memberId: corpo.sessao.memberId,
+      ...(typeof corpo.sequencia === "number" ? { sequencia: corpo.sequencia } : {}),
+    },
   };
 });

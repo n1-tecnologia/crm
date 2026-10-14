@@ -91,6 +91,7 @@ export const ESCALA = {
   createForm: z.tuple([ID, FORM_INPUT]),
   updateForm: z.tuple([ID, FORM_INPUT_PARCIAL]),
   archiveForm: z.tuple([ID]),
+  unarchiveForm: z.tuple([ID]),
   rotateFormSecret: z.tuple([ID]),
   shareTaskPublicly: z.tuple([ID, SHARE_OPTIONS]),
   revokePublicShare: z.tuple([ID]),

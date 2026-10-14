@@ -15,6 +15,8 @@
  * falaria, mesmo quando quem chama é o Server Component.
  */
 
+import type { TarefaPublica } from "@n1/dominio/tarefa-publica";
+
 export type TipoDePergunta =
   | "text"
   | "longText"
@@ -216,8 +218,31 @@ async function enviarSubmissao(pedido: PedidoDeSubmissao): Promise<ResultadoDeSu
   return { tipo: "ok", readableId: corpo.readableId };
 }
 
+/** PARA-05 — a Tarefa por link público: a projeção de `@n1/dominio/tarefa-publica`, como o `apps/api` a devolve. */
+export type ResultadoDeTarefaPublica =
+  | { readonly tipo: "ok"; readonly tarefa: TarefaPublica }
+  // 404 — segredo inexistente, revogado e Tarefa fora do ativo respondem igual: não distinguir aqui.
+  | { readonly tipo: "indisponivel" }
+  | { readonly tipo: "falha"; readonly erro: string };
+
+async function obterTarefaPublica(secret: string): Promise<ResultadoDeTarefaPublica> {
+  const apiUrl = apiUrlOuFalha();
+  if (!apiUrl) return { tipo: "falha", erro: "NEXT_PUBLIC_API_URL não definida." };
+  let resposta: Response;
+  try {
+    resposta = await fetch(`${apiUrl}/v1/public/tasks/${encodeURIComponent(secret)}`, { cache: "no-store" });
+  } catch {
+    return { tipo: "falha", erro: "Sem conexão com o servidor." };
+  }
+  if (resposta.status === 404) return { tipo: "indisponivel" };
+  if (!resposta.ok) return { tipo: "falha", erro: (await corpoDeErro(resposta)) ?? "O servidor não respondeu." };
+  const tarefa = (await resposta.json()) as TarefaPublica;
+  return { tipo: "ok", tarefa };
+}
+
 export const transportePublico = {
   obterFormulario,
+  obterTarefaPublica,
   pedirTicket,
   enviarSubmissao,
 };

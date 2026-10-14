@@ -18,11 +18,17 @@
  * Checklist 7.3 — "Anexar arquivo" sobe o arquivo de verdade (ticket →
  * bucket privado → confirmação no servidor, `@/dados/anexos-da-tarefa`): é o
  * que leva o anexo ao `/lancar` do Omie.
+ *
+ * FUND-07 — este é o painel de anexos de TODA Lista (antes só de Contas a
+ * pagar; as outras caíam no `TaskAttachments` de protótipo, que gravava só
+ * nome, tipo e tamanho). Um anexo gravado por aquele caminho antigo
+ * (`legado/<id>`) não tem conteúdo: a linha diz isso em vez de "Baixar".
  */
 
 import { Paperclip, Trash2 } from "lucide-react";
 import { useId, useState } from "react";
 import { removeAttachment } from "@n1/dominio/operations";
+import { arquivoSemConteudo } from "@n1/dominio/operations/anexos-enviados";
 import { useData, useRehidratar, useRun } from "@/dados/store";
 import { enviarArquivoDaTarefa, pedirUrlDeDownload } from "@/dados/anexos-da-tarefa";
 import { ACEITAR_NO_SELETOR, COPY_FORMATOS_ACEITOS } from "@/dados/envio-ao-bucket";
@@ -143,6 +149,7 @@ export function PainelDeAnexos({
             .sort((a, b) => a.order - b.order)
             .map((attachment) => {
               const file = files.find((f) => f.id === attachment.fileId);
+              const semConteudo = file !== undefined && arquivoSemConteudo(file);
               const estaBaixando = baixando === attachment.fileId;
               const erroDaLinha = erroPorLinha[attachment.fileId];
               return (
@@ -160,13 +167,19 @@ export function PainelDeAnexos({
                       {erroDaLinha}
                     </span>
                   ) : null}
-                  <Button
-                    onClick={() => void baixar(attachment.fileId)}
-                    disabled={estaBaixando}
-                    disabledReason="Abrindo…"
-                  >
-                    {estaBaixando ? "Abrindo…" : "Baixar"}
-                  </Button>
+                  {semConteudo ? (
+                    <span className="app-meta" title="Anexado antes do envio real: só nome, tipo e tamanho foram gravados.">
+                      sem conteúdo
+                    </span>
+                  ) : (
+                    <Button
+                      onClick={() => void baixar(attachment.fileId)}
+                      disabled={estaBaixando}
+                      disabledReason="Abrindo…"
+                    >
+                      {estaBaixando ? "Abrindo…" : "Baixar"}
+                    </Button>
+                  )}
                   {readOnly ? null : (
                     <button
                       type="button"

@@ -12,7 +12,8 @@
  *
  * `transporteHttp` é a ÚNICA implementação de produção — o que fala de
  * verdade com o `apps/api` (contrato do Plan 01-04). `transporteEmMemoria`
- * serve só ao `PublicoProvider`.
+ * serve só aos testes de tela (as rotas públicas falam com o `apps/api` por
+ * `transporte-publico.ts`, sem store).
  */
 
 import type { DataState, OperationResult } from "@n1/dominio/state";
@@ -26,6 +27,8 @@ export interface EstadoDoServidor {
   readonly revisao: number;
   readonly ordens: Ordens;
   readonly memberId: Id;
+  /** PRIV-03 — o contador de ids do estado INTEIRO no servidor; o `data` chega recortado pelo que o Membro alcança. */
+  readonly sequencia?: number;
 }
 
 export type RespostaDeGravacao =
@@ -35,6 +38,7 @@ export type RespostaDeGravacao =
       readonly diferenca: Diferenca;
       readonly revisao: number;
       readonly revisaoAnterior: number;
+      readonly sequencia?: number;
     }
   // Caminho do transporte em memória: não há revisão do servidor para
   // divergir dela — a cópia gravada VIRA o estado.
@@ -72,6 +76,7 @@ interface CorpoDeOperacao {
   readonly diferenca: Diferenca;
   readonly revisao: number;
   readonly revisaoAnterior: number;
+  readonly sequencia?: number;
 }
 
 async function corpoDeErro(resposta: Response): Promise<string | undefined> {
@@ -134,6 +139,7 @@ async function gravarUma(
     diferenca: corpo.diferenca,
     revisao: corpo.revisao,
     revisaoAnterior: corpo.revisaoAnterior,
+    ...(typeof corpo.sequencia === "number" ? { sequencia: corpo.sequencia } : {}),
   };
 }
 
@@ -182,8 +188,14 @@ export function transporteHttp(opcoes: { readonly apiUrl: string; readonly obter
         return { tipo: "falha", erro: (await corpoDeErro(resposta)) ?? "O servidor não respondeu." };
       }
 
-      const corpo = (await resposta.json()) as { data: DataState; revisao: number; ordens: Ordens; sessao: { memberId: Id } };
-      return { data: corpo.data, revisao: corpo.revisao, ordens: corpo.ordens, memberId: corpo.sessao.memberId };
+      const corpo = (await resposta.json()) as { data: DataState; revisao: number; ordens: Ordens; sessao: { memberId: Id }; sequencia?: number };
+      return {
+        data: corpo.data,
+        revisao: corpo.revisao,
+        ordens: corpo.ordens,
+        memberId: corpo.sessao.memberId,
+        ...(typeof corpo.sequencia === "number" ? { sequencia: corpo.sequencia } : {}),
+      };
     },
 
     async revisaoAtual() {
@@ -202,12 +214,11 @@ export function transporteHttp(opcoes: { readonly apiUrl: string; readonly obter
 }
 
 /**
- * As rotas públicas: sem sessão, sem servidor. `gravar` devolve a própria
- * cópia como o novo estado — não há diff de servidor para aplicar por cima
- * dela. `hidratar` nunca é chamado na prática (a carga inicial das rotas
- * públicas vem do seed do produto montado pelo `PublicoProvider`, não de
- * `rehidratar()`), mas devolve uma falha explícita em vez de lançar,
- * coerente com a interface.
+ * O transporte em memória dos testes de tela: sem sessão, sem servidor.
+ * `gravar` devolve a própria cópia como o novo estado — não há diff de
+ * servidor para aplicar por cima dela. `hidratar` nunca é chamado na prática
+ * (o estado inicial vem de quem monta o `StoreProvider`), mas devolve uma
+ * falha explícita em vez de lançar, coerente com a interface.
  */
 export function transporteEmMemoria(): Transporte {
   return {

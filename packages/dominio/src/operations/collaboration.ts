@@ -4,9 +4,9 @@
  * para Arquivo (A8) e Recorrência que gera a próxima ocorrência ao concluir.
  */
 
-import { civilOf, civilPlusDays, effectiveLifecycleOfTask, effectiveListConfig, isTerminalCategory, statusCategory, taskWriteRefusal } from "../derive";
+import { civilOf, civilPlusDays, containerAdminRefusal, effectiveLifecycleOfTask, effectiveListConfig, isTerminalCategory, statusCategory, taskWriteRefusal } from "../derive";
 import { fail, ok, type DataState, type OperationResult } from "../state";
-import type { ActorRef, Attachment, Checklist, Dependency, DependencyKind, Id, RecurrenceRule, Task, TaskDate, TimeEntry, WorkspaceFile } from "../types";
+import type { ActorRef, Attachment, Checklist, Dependency, DependencyKind, Id, RecurrenceRule, StatusCategory, Task, TaskDate, TimeEntry, WorkspaceFile } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
 import { runListAutomations } from "./automations";
 
@@ -305,6 +305,11 @@ export function setRecurrence(
     if (!Number.isInteger(rule.interval) || rule.interval < 1) return fail("O intervalo é um inteiro maior que zero.", "intervalo");
     if (!task.dueDate) return fail("Uma Tarefa recorrente precisa de vencimento: é dele que a próxima ocorrência é calculada.", "vencimento");
     if (rule.endsAfter !== undefined && (!Number.isInteger(rule.endsAfter) || rule.endsAfter < 1)) return fail("O fim por contagem é um inteiro maior que zero.", "fim");
+    if (rule.triggerStatusId !== undefined) {
+      const disparo = effectiveListConfig(state, task.listId)?.statusSet.definitions.find((d) => d.id === rule.triggerStatusId);
+      if (!disparo) return fail("O Status de disparo não é desta Lista.", "disparo");
+      if (!isTerminalCategory(disparo.category)) return fail(`O Status de disparo precisa ser de conclusão: “${disparo.name}” não é.`, "disparo");
+    }
     task.recurrence = rule;
   } else {
     delete task.recurrence;
@@ -444,7 +449,7 @@ function occurrenceOrdinal(state: DataState, task: Task): number {
  */
 export function nextOccurrenceRefusal(state: DataState, task: Task): { readonly error?: string; readonly dueDate?: TaskDate } {
   const rule = task.recurrence;
-  if (!rule || rule.triggerMode !== "aoConcluir" || !task.dueDate) return {};
+  if (!rule || !task.dueDate) return {};
   if (rule.endsAfter !== undefined && occurrenceOrdinal(state, task) >= rule.endsAfter) return {};
   const proximaData = toBusinessDay(shift(task.dueDate, rule), rule.businessDays);
   if (rule.endsOn && localCivil(proximaData) > String(rule.endsOn)) return {};
@@ -461,6 +466,21 @@ export function nextOccurrenceRefusal(state: DataState, task: Task): { readonly 
 }
 
 /**
+ * FUND-08 — esta transição dispara a Recorrência `aoConcluir`? Com Status de
+ * disparo, é ENTRAR nele (mesmo vindo de outro terminal: aprovado → pago);
+ * sem ele, é a conclusão da ontologia (não terminal → terminal).
+ */
+export function transicaoDisparaRecorrencia(
+  rule: RecurrenceRule | undefined,
+  before: { readonly id: Id; readonly category: StatusCategory } | undefined,
+  target: { readonly id: Id; readonly category: StatusCategory },
+): boolean {
+  if (!rule || rule.triggerMode !== "aoConcluir") return false;
+  if (rule.triggerStatusId !== undefined) return target.id === rule.triggerStatusId && before?.id !== target.id;
+  return isTerminalCategory(target.category) && !isTerminalCategory(before?.category);
+}
+
+/**
  * Concluir uma Tarefa recorrente (modo `aoConcluir`) cria a próxima ocorrência
  * na mesma Lista, com as datas deslocadas e o que a regra manda copiar. A regra
  * é TRANSFERIDA (12.5): a concluída deixa de gerar. `changeTaskStatus` chama
@@ -471,7 +491,100 @@ export function spawnNextOccurrence(state: DataState, actingMemberId: Id, taskId
   if (!task) return fail("Tarefa não encontrada.");
   const rule = task.recurrence;
   if (!rule) return ok(null);
+  if (rule.triggerMode === "porCalendario") return fail("Esta Recorrência é por calendário: a próxima nasce no vencimento, pela agenda da Lista.");
   if (!isTerminalCategory(statusCategory(state, task))) return fail("A próxima ocorrência nasce quando esta é concluída.");
+  if (rule.triggerStatusId !== undefined && task.statusId !== rule.triggerStatusId) {
+    const nome = effectiveListConfig(state, task.listId)?.statusSet.definitions.find((d) => d.id === rule.triggerStatusId)?.name ?? rule.triggerStatusId;
+    return fail(`A próxima ocorrência nasce ao entrar em “${nome}”.`);
+  }
+  return criarOcorrencia(state, actingMemberId, task, rule);
+}
+
+/** `Date` local → `"YYYY-MM-DD"`, a mesma leitura de dia civil de `runScheduledAutomations`. */
+function diaCivilDe(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** FUND-17 — a data devida da corrente chegou (ou passou) no dia civil de `today`. */
+export function dataDevida(dueDate: TaskDate | undefined, today: Date): boolean {
+  return dueDate !== undefined && localCivil(dueDate) <= diaCivilDe(today);
+}
+
+/**
+ * FUND-17 — a ocorrência do modo `porCalendario` (12.5): nasce quando a data
+ * devida da corrente chega, pela agenda da Lista (`runCalendarRecurrences`,
+ * chamada pelo relógio do `apps/api` ou pelo botão da Lista), sem depender
+ * de ninguém concluir nada. Com `whenStillOpen: "aguardarConclusao"` e a
+ * corrente ainda aberta, espera: `changeTaskStatus` chama isto ao concluir,
+ * se a data já era devida. Corrente efetivamente `arquivado` ou `na lixeira`
+ * não gera (`activeTask`). Uma ocorrência por chamada: a série anda um
+ * passo por dia processado, nunca gera o passado em lote.
+ */
+export function spawnCalendarOccurrence(state: DataState, actingMemberId: Id, taskId: Id, today: Date): OperationResult<Task | null> {
+  const task = activeTask(state, actingMemberId, taskId);
+  if (typeof task === "string") return fail(task);
+  const rule = task.recurrence;
+  if (!rule) return ok(null);
+  if (rule.triggerMode !== "porCalendario") return fail("Esta Recorrência é ao concluir: a próxima nasce quando esta for concluída.");
+  if (!effectiveListConfig(state, task.listId)?.features.recorrencia) return fail("Esta Lista não usa Recorrência.");
+  if (!task.dueDate) return fail("Uma Tarefa recorrente precisa de vencimento.");
+  if (!dataDevida(task.dueDate, today)) return fail(`A próxima ocorrência nasce em ${localCivil(task.dueDate)}.`);
+  if (rule.whenStillOpen === "aguardarConclusao" && !isTerminalCategory(statusCategory(state, task))) {
+    return fail("A Regra aguarda a conclusão desta ocorrência para gerar a próxima.");
+  }
+  return criarOcorrencia(state, actingMemberId, task, rule);
+}
+
+/**
+ * FUND-17 — o relógio da Recorrência por calendário de uma Lista: o par da
+ * `runScheduledAutomations`, chamado pelos mesmos três caminhos (agenda do
+ * `apps/api`, `POST /operacoes/runCalendarRecurrences`, botão da Lista).
+ * Rodar o relógio da Lista é administrá-la. Idempotente por desenho: a
+ * Regra se transfere à ocorrência nova, cuja data é futura, então rodar de
+ * novo no mesmo dia não cria nada.
+ */
+export function runCalendarRecurrences(
+  state: DataState,
+  actingMemberId: Id,
+  listId: Id,
+  today: Date,
+): OperationResult<{ readonly created: number; readonly waiting: number; readonly failed: number; readonly failures: ReadonlyArray<{ readonly taskId: Id; readonly title: string; readonly reason: string }> }> {
+  const member = state.members.find((m) => m.id === actingMemberId);
+  if (!member || member.state !== "ativo") return fail("Só um Membro ativo roda a Recorrência por calendário.");
+  if (!state.lists.some((l) => l.id === listId)) return fail("Lista não encontrada.");
+  const admin = containerAdminRefusal(state, actingMemberId, "list", listId);
+  if (admin) return fail(admin);
+  let created = 0;
+  let waiting = 0;
+  let failed = 0;
+  const failures: Array<{ taskId: Id; title: string; reason: string }> = [];
+  // A lista é copiada antes: cada ocorrência nova entra em `state.tasks` durante o laço.
+  const correntes = state.tasks.filter(
+    (t) => t.listId === listId && t.recurrence?.triggerMode === "porCalendario" && effectiveLifecycleOfTask(state, t.id) === "ativo" && dataDevida(t.dueDate, today),
+  );
+  for (const task of correntes) {
+    if (task.recurrence?.whenStillOpen === "aguardarConclusao" && !isTerminalCategory(statusCategory(state, task))) {
+      waiting += 1;
+      continue;
+    }
+    const r = spawnCalendarOccurrence(state, actingMemberId, task.id, today);
+    if (r.ok) {
+      if (r.value) created += 1;
+    } else {
+      failed += 1;
+      failures.push({ taskId: task.id, title: task.title, reason: r.error });
+    }
+  }
+  return ok({ created, waiting, failed, failures });
+}
+
+/**
+ * O que os dois modos têm em comum: a Tarefa nova na mesma Lista, com as
+ * datas deslocadas e o que a Regra manda copiar; a Regra TRANSFERIDA (12.5),
+ * a corrente deixa de gerar. Série no fim (`nextOccurrenceRefusal` sem data):
+ * a Regra some e nada nasce.
+ */
+function criarOcorrencia(state: DataState, actingMemberId: Id, task: Task, rule: RecurrenceRule): OperationResult<Task | null> {
   const plano = nextOccurrenceRefusal(state, task);
   if (plano.error) return fail(plano.error);
   if (!plano.dueDate) {

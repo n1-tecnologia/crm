@@ -49,7 +49,19 @@ const PADRAO_ID = /^[a-z]+_([0-9a-z]{6})$/;
  * casa a expressão e só empurra o contador para cima — inofensivo. Custo:
  * uma passada por ~900 registros, milissegundos.
  */
-export function syncIdSequence(state: DataState): void {
+export function syncIdSequence(state: DataState, minimo = 0): void {
+  resetIdSequence(Math.max(maiorIdDe(state), minimo));
+}
+
+/**
+ * O maior número de id presente no estado — o que `syncIdSequence` usa. Exposto
+ * para `GET /estado` mandar ao cliente o contador do estado INTEIRO: o cliente
+ * recebe um estado filtrado pelo que o Membro alcança (PRIV-03), e o maior id
+ * que ele enxerga pode ser menor que o do servidor; sem o piso, a cópia local
+ * geraria um id que o servidor não gera, e a tela navegaria para um registro
+ * que não existe.
+ */
+export function maiorIdDe(state: DataState): number {
   let maior = 0;
 
   const visitar = (valor: unknown): void => {
@@ -70,7 +82,7 @@ export function syncIdSequence(state: DataState): void {
   };
 
   visitar(state);
-  resetIdSequence(maior);
+  return maior;
 }
 
 export interface RecordActivityInput {

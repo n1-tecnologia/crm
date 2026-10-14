@@ -22,9 +22,11 @@ import type {
   StatusCategory,
   StatusDefinition,
   StatusSet,
+  Tag,
   TaskType,
 } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
+import { administraOEspaco } from "./ia/permissoes-ia";
 
 type ContainerType = "space" | "folder" | "list";
 type Container = Space | Folder | List;
@@ -433,6 +435,19 @@ export function updateStatus(
      * para quem não era Membro — o Status travava e ninguém conseguia mudá-la.
      */
     readonly entryAllowedMemberIds?: readonly Id[];
+    /**
+     * RELO-04 — substitui os requisitos de ENTRADA (a lista inteira; `[]`
+     * apaga): o que a Tarefa precisa ter para CHEGAR a este Status. Antes só
+     * o seed do Financeiro os escrevia; a tela edita os dois lados no mesmo
+     * diálogo que os de saída.
+     */
+    readonly entryRequirements?: readonly FieldRequirement[];
+    /**
+     * RELO-04 — só se chega a este Status vindo destes (a lista inteira; `[]`
+     * apaga: de qualquer um). Precisam ser Status deste Conjunto, e não ele
+     * mesmo.
+     */
+    readonly entryFromStatusIds?: readonly Id[];
   },
 ): OperationResult<StatusDefinition> {
   const refusal = mayConfigure(state, actingMemberId, containerType, containerId);
@@ -446,6 +461,19 @@ export function updateStatus(
     const validados = requisitosValidados(state, input.exitRequirements);
     if (typeof validados === "string") return fail(validados, "requisitos");
     requisitos = validados;
+  }
+  let requisitosDeEntrada: FieldRequirement[] | undefined;
+  if (input.entryRequirements !== undefined) {
+    const validados = requisitosValidados(state, input.entryRequirements);
+    if (typeof validados === "string") return fail(validados, "requisitosDeEntrada");
+    requisitosDeEntrada = validados;
+  }
+  let vindoDe: Id[] | undefined;
+  if (input.entryFromStatusIds !== undefined) {
+    vindoDe = [...new Set(input.entryFromStatusIds)];
+    if (vindoDe.includes(statusId)) return fail("Um Status não vem dele mesmo.", "vindoDe");
+    const estranho = vindoDe.find((id) => !own.set.definitions.some((d) => d.id === id));
+    if (estranho) return fail(`“Só vindo de” aponta para um Status que não é deste Conjunto (${estranho}).`, "vindoDe");
   }
   let quemMove: Id[] | undefined;
   if (input.entryAllowedMemberIds !== undefined) {
@@ -478,6 +506,24 @@ export function updateStatus(
       if (requisitos.length > 0) definition.exitRequirements = requisitos;
       else delete definition.exitRequirements;
       mudancas.push("requisitos de saída");
+    }
+  }
+  if (requisitosDeEntrada !== undefined) {
+    const antes = JSON.stringify((definition.entryRequirements ?? []).map(requisitoNormalizado));
+    if (JSON.stringify(requisitosDeEntrada) !== antes) {
+      if (requisitosDeEntrada.length > 0) definition.entryRequirements = requisitosDeEntrada;
+      else delete definition.entryRequirements;
+      mudancas.push("requisitos de entrada");
+    }
+  }
+  if (vindoDe !== undefined) {
+    const antes = definition.entryFromStatusIds ?? [];
+    if (JSON.stringify(vindoDe) !== JSON.stringify(antes)) {
+      const nomes = (ids: readonly Id[]) =>
+        ids.length > 0 ? ids.map((id) => own.set.definitions.find((d) => d.id === id)?.name ?? id).join(", ") : "qualquer Status";
+      mudancas.push(`“${definition.name}” só vindo de: ${nomes(antes)} → ${nomes(vindoDe)}`);
+      if (vindoDe.length > 0) definition.entryFromStatusIds = vindoDe;
+      else delete definition.entryFromStatusIds;
     }
   }
   if (quemMove !== undefined) {
@@ -873,4 +919,136 @@ export function usarCampoHerdado(
     detail: definicao.name,
   });
   return ok([...fora]);
+}
+
+/* ───────────────────────────── Tags (AVIS-02) ───────────────────────────── */
+
+/**
+ * A Tag é vocabulário do Espaço de Trabalho: a mesma atravessa Tarefas,
+ * Contatos, Empresas, Negócios e Conversas. Até aqui só o seed a escrevia; no
+ * `ws_n1` existiam só as do Financeiro. Criar, editar e arquivar é ato de quem
+ * administra o Espaço de Trabalho (B35), como Canais e Papéis. Arquivar não a
+ * tira de onde já está: ela deixa de ser oferecida e continua legível.
+ */
+
+export const ALVOS_DE_TAG = ["task", "contact", "company", "deal", "conversation", "grupo", "comunidade", "flow"] as const;
+export type AlvoDeTag = (typeof ALVOS_DE_TAG)[number];
+
+export interface TagInput {
+  readonly name?: string;
+  readonly color?: string;
+  /** Vazio ou ausente: todas as famílias. */
+  readonly appliesTo?: readonly AlvoDeTag[];
+}
+
+const COR_HEX = /^#[0-9a-fA-F]{6}$/;
+
+function recusaDeGerirTags(state: DataState, actingMemberId: Id): string | undefined {
+  const member = state.members.find((m) => m.id === actingMemberId);
+  if (!member || member.state !== "ativo") return "Só um Membro ativo mexe nas Tags.";
+  if (!administraOEspaco(state, actingMemberId)) return "Só quem administra o Espaço de Trabalho cria e edita Tags.";
+  return undefined;
+}
+
+function nomeDeTagEmUso(state: DataState, name: string, excetoId?: Id): boolean {
+  const norm = (v: string) => v.trim().toLocaleLowerCase("pt-BR");
+  return state.tags.some((t) => t.id !== excetoId && t.lifecycle !== "naLixeira" && norm(t.name) === norm(name));
+}
+
+function alvosValidados(appliesTo: readonly AlvoDeTag[] | undefined): readonly AlvoDeTag[] | undefined | string {
+  if (appliesTo === undefined) return undefined;
+  const unicos = [...new Set(appliesTo)];
+  const estranho = unicos.find((a) => !(ALVOS_DE_TAG as readonly string[]).includes(a));
+  if (estranho) return `“${estranho}” não é uma família que recebe Tag.`;
+  return unicos.length === 0 ? undefined : unicos;
+}
+
+export function createTag(state: DataState, actingMemberId: Id, input: TagInput): OperationResult<Tag> {
+  const refusal = recusaDeGerirTags(state, actingMemberId);
+  if (refusal) return fail(refusal);
+  const name = (input.name ?? "").trim();
+  if (!name) return fail("Dê um nome à Tag.", "nome");
+  if (nomeDeTagEmUso(state, name)) return fail(`Já existe uma Tag “${name}”.`, "nome");
+  const color = (input.color ?? "#7c3aed").trim();
+  if (!COR_HEX.test(color)) return fail("A cor da Tag é um hexadecimal de seis dígitos.", "cor");
+  const alvos = alvosValidados(input.appliesTo);
+  if (typeof alvos === "string") return fail(alvos, "alvos");
+  const tag: Tag = {
+    id: nextId("tag"),
+    workspaceId: state.workspace.id,
+    name,
+    color,
+    ...(alvos ? { appliesTo: alvos } : {}),
+    lifecycle: "ativo",
+  };
+  state.tags.push(tag);
+  recordActivity(state, {
+    actor: memberActor(actingMemberId),
+    action: "Tag criada",
+    objectType: "tag",
+    objectId: tag.id,
+    objectName: tag.name,
+  });
+  return ok(tag, tag.id);
+}
+
+export function updateTag(state: DataState, actingMemberId: Id, tagId: Id, input: TagInput): OperationResult<Tag> {
+  const refusal = recusaDeGerirTags(state, actingMemberId);
+  if (refusal) return fail(refusal);
+  const atual = state.tags.find((t) => t.id === tagId);
+  if (!atual) return fail("Tag não encontrada.");
+  let name = atual.name;
+  if (input.name !== undefined) {
+    name = input.name.trim();
+    if (!name) return fail("Dê um nome à Tag.", "nome");
+    if (nomeDeTagEmUso(state, name, tagId)) return fail(`Já existe uma Tag “${name}”.`, "nome");
+  }
+  let color = atual.color;
+  if (input.color !== undefined) {
+    color = input.color.trim();
+    if (!COR_HEX.test(color)) return fail("A cor da Tag é um hexadecimal de seis dígitos.", "cor");
+  }
+  const alvos = input.appliesTo === undefined ? atual.appliesTo : alvosValidados(input.appliesTo);
+  if (typeof alvos === "string") return fail(alvos, "alvos");
+  const mudancas: string[] = [];
+  if (name !== atual.name) mudancas.push(`${atual.name} → ${name}`);
+  if (color !== atual.color) mudancas.push("cor");
+  if (JSON.stringify(alvos ?? null) !== JSON.stringify(atual.appliesTo ?? null)) mudancas.push("famílias");
+  if (mudancas.length === 0) return ok(atual);
+  // `Tag` é readonly por fora: o registro é trocado inteiro, no mesmo lugar.
+  const nova: Tag = { id: atual.id, workspaceId: atual.workspaceId, name, color, ...(alvos ? { appliesTo: alvos } : {}), lifecycle: atual.lifecycle };
+  state.tags.splice(state.tags.indexOf(atual), 1, nova);
+  recordActivity(state, {
+    actor: memberActor(actingMemberId),
+    action: "Tag alterada",
+    objectType: "tag",
+    objectId: nova.id,
+    objectName: nova.name,
+    detail: mudancas.join(" · "),
+  });
+  return ok(nova);
+}
+
+export function archiveTag(state: DataState, actingMemberId: Id, tagId: Id): OperationResult<Tag> {
+  const refusal = recusaDeGerirTags(state, actingMemberId);
+  if (refusal) return fail(refusal);
+  const tag = state.tags.find((t) => t.id === tagId);
+  if (!tag) return fail("Tag não encontrada.");
+  if (tag.lifecycle === "arquivado") return ok(tag);
+  if (tag.lifecycle === "naLixeira") return fail("Tag na lixeira.");
+  tag.lifecycle = "arquivado";
+  recordActivity(state, { actor: memberActor(actingMemberId), action: "Tag arquivada", objectType: "tag", objectId: tag.id, objectName: tag.name });
+  return ok(tag);
+}
+
+export function restoreTag(state: DataState, actingMemberId: Id, tagId: Id): OperationResult<Tag> {
+  const refusal = recusaDeGerirTags(state, actingMemberId);
+  if (refusal) return fail(refusal);
+  const tag = state.tags.find((t) => t.id === tagId);
+  if (!tag) return fail("Tag não encontrada.");
+  if (tag.lifecycle === "ativo") return ok(tag);
+  if (nomeDeTagEmUso(state, tag.name, tag.id)) return fail(`Já existe uma Tag “${tag.name}” ativa. Renomeie uma delas.`, "nome");
+  tag.lifecycle = "ativo";
+  recordActivity(state, { actor: memberActor(actingMemberId), action: "Tag desarquivada", objectType: "tag", objectId: tag.id, objectName: tag.name });
+  return ok(tag);
 }

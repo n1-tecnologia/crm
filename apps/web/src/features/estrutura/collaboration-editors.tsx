@@ -7,25 +7,23 @@
  * quando a Tarefa é editável, e a operação recusa de novo por conta própria.
  */
 
-import { Paperclip, Play, Square, Trash2 } from "lucide-react";
+import { Play, Square, Trash2 } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { useData, useRun, useSession } from "@/dados/store";
 import {
   addDependency,
   addTimeEntry,
-  attachFile,
-  removeAttachment,
   removeDependency,
   runningTimer,
   setRecurrence,
   startTimer,
   stopTimer,
 } from "@n1/dominio/operations";
-import { effectiveLifecycleOfTask, isTerminalCategory, memberSeesTask, statusCategory } from "@n1/dominio/derive";
+import { effectiveLifecycleOfTask, effectiveListConfig, isTerminalCategory, listPath, memberSeesTask, statusCategory } from "@n1/dominio/derive";
 import { useFormat } from "@/features/shell/use-format";
 import { Button, ConfirmDialog, EmptyState, Field, Icone, Select, TextInput, Toggle } from "@/features/shell/ui";
 import type { OperationResult } from "@n1/dominio/state";
-import type { Attachment, DependencyKind, RecurrenceRule, Task } from "@n1/dominio/types";
+import type { DependencyKind, RecurrenceRule, Task } from "@n1/dominio/types";
 import Link from "next/link";
 
 type Report = (result: OperationResult<unknown>, message: string) => void;
@@ -46,7 +44,10 @@ export function TaskDependencies({ task, report, readOnly }: { readonly task: Ta
   const [outra, setOutra] = useState("");
   const [removendo, setRemovendo] = useState<string | null>(null);
 
-  // Candidatas: Tarefas ativas da mesma Lista, fora esta e as já ligadas.
+  // Candidatas: Tarefas ativas de qualquer Lista do Espaço de Trabalho que use
+  // Dependências (tarefa.md, seção 7: Listas e Espaços diferentes são
+  // permitidos; a funcionalidade precisa estar ligada nas DUAS Listas), fora
+  // esta e as já ligadas.
   const ligadas = new Set(task.dependencies.map((d) => d.taskId));
   // Nem a própria árvore (INV-TAR-09) nem o que este Membro não alcança.
   const arvore = new Set<string>();
@@ -61,14 +62,16 @@ export function TaskDependencies({ task, report, readOnly }: { readonly task: Ta
   const candidatas = state.tasks.filter(
     (t) =>
       t.id !== task.id &&
-      t.listId === task.listId &&
       !ligadas.has(t.id) &&
+      (t.listId === task.listId || effectiveListConfig(state, t.listId)?.features.dependencias === true) &&
       !arvore.has(t.id) &&
       effectiveLifecycleOfTask(state, t.id) === "ativo" &&
       memberSeesTask(state, memberId, t.id),
   );
   const aRemover = task.dependencies.find((d) => d.id === removendo);
   const tituloDe = (id: string) => state.tasks.find((t) => t.id === id)?.title ?? id;
+  // De outra Lista, o título sozinho não situa: vai o caminho "Espaço › Pasta › Lista".
+  const caminhoDe = (listId: string) => (listId === task.listId ? undefined : listPath(state, listId).map((n) => n.name).join(" › "));
 
   return (
     <div className="grid gap-3">
@@ -98,6 +101,7 @@ export function TaskDependencies({ task, report, readOnly }: { readonly task: Ta
                 <Link href={`/estrutura/tarefas/${dependency.taskId}`} className="min-w-0 flex-1 truncate hover:underline" style={{ color: "var(--texto)" }}>
                   {outraTarefa?.title ?? dependency.taskId}
                 </Link>
+                {outraTarefa && caminhoDe(outraTarefa.listId) ? <span className="app-meta truncate">{caminhoDe(outraTarefa.listId)}</span> : null}
                 <span className="app-meta">{aberta ? "aberta" : "concluída"}</span>
                 {readOnly ? null : (
                   <button
@@ -135,17 +139,20 @@ export function TaskDependencies({ task, report, readOnly }: { readonly task: Ta
               />
             )}
           </Field>
-          <Field label="Outra Tarefa da mesma Lista">
+          <Field label="Outra Tarefa">
             {(id) => (
               <Select
                 id={id}
                 value={outra}
                 onChange={setOutra}
                 searchable
-                placeholder={candidatas.length === 0 ? "Nenhuma outra Tarefa ativa nesta Lista" : "Escolher"}
-                options={candidatas.map((t) => ({ value: t.id, label: t.title }))}
+                placeholder={candidatas.length === 0 ? "Nenhuma outra Tarefa ativa em Lista com Dependências" : "Escolher"}
+                options={candidatas.map((t) => {
+                  const caminho = caminhoDe(t.listId);
+                  return { value: t.id, label: t.title, ...(caminho ? { detail: caminho } : {}) };
+                })}
                 disabled={candidatas.length === 0}
-                disabledReason="Não há outra Tarefa ativa nesta Lista."
+                disabledReason="Não há outra Tarefa ativa em Lista que use Dependências."
               />
             )}
           </Field>
@@ -276,121 +283,6 @@ export function TaskTime({ task, report, readOnly }: { readonly task: Task; read
   );
 }
 
-/* ───────────────────────────── Anexos ───────────────────────────── */
-
-const MEDIA_LABEL: Record<Attachment["mediaType"], string> = {
-  image: "imagem",
-  audio: "áudio",
-  video: "vídeo",
-  document: "documento",
-  spreadsheet: "planilha",
-  location: "localização",
-  sticker: "figurinha",
-  flow: "fluxo",
-  other: "outro",
-};
-
-function mediaTypeDe(file: File): Attachment["mediaType"] {
-  if (file.type.startsWith("image/")) return "image";
-  if (file.type.startsWith("audio/")) return "audio";
-  if (file.type.startsWith("video/")) return "video";
-  if (/spreadsheet|excel|csv/.test(file.type)) return "spreadsheet";
-  if (/pdf|document|text\/|presentation/.test(file.type)) return "document";
-  return "other";
-}
-
-function tamanho(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-export function TaskAttachments({ task, report, readOnly }: { readonly task: Task; readonly report: Report; readonly readOnly: boolean }) {
-  const run = useRun();
-  const fmt = useFormat();
-  const files = useData((data) => data.files);
-  const [removendo, setRemovendo] = useState<string | null>(null);
-  const [enviando, setEnviando] = useState(false);
-  const inputId = useId();
-  const aRemover = task.attachments.find((a) => a.fileId === removendo);
-
-  return (
-    <div className="grid gap-3">
-      <ConfirmDialog
-        open={removendo !== null}
-        title={`Remover o anexo “${aRemover?.displayName ?? ""}”?`}
-        description="O anexo sai desta Tarefa. O Arquivo continua no Espaço de Trabalho, com quem mais o usa."
-        confirmLabel="Remover"
-        destructive
-        onConfirm={() => {
-          if (removendo) report(run((data, me) => removeAttachment(data, me, task.id, removendo)), "Anexo removido.");
-          setRemovendo(null);
-        }}
-        onCancel={() => setRemovendo(null)}
-      />
-      {task.attachments.length === 0 ? (
-        <EmptyState compact title="Nenhum anexo." />
-      ) : (
-        <ul className="pilha-solta">
-          {[...task.attachments]
-            .sort((a, b) => a.order - b.order)
-            .map((attachment) => {
-              const file = files.find((f) => f.id === attachment.fileId);
-              return (
-                <li key={attachment.fileId} className="item-solto app-base flex-wrap" data-estatico="true">
-                  <Icone de={Paperclip} tamanho="xs" style={{ color: "var(--texto-3)" }} />
-                  <span className="min-w-0 flex-1 truncate" style={{ color: "var(--texto)" }}>{attachment.displayName ?? file?.name ?? attachment.fileId}</span>
-                  <span className="app-meta">
-                    {MEDIA_LABEL[attachment.mediaType]}
-                    {file ? ` · ${tamanho(file.sizeBytes)} · ${fmt.relative(file.createdAt)}` : ""}
-                  </span>
-                  {readOnly ? null : (
-                    <button
-                      type="button"
-                      onClick={() => setRemovendo(attachment.fileId)}
-                      aria-label={`Remover anexo ${attachment.displayName ?? ""}`}
-                      className="btn-icone btn-icone-nu"
-                      style={{ color: "var(--erro)" }}
-                    >
-                      <Icone de={Trash2} tamanho="xs" />
-                    </button>
-                  )}
-                </li>
-              );
-            })}
-        </ul>
-      )}
-      {readOnly ? null : (
-        <div>
-          <input
-            id={inputId}
-            type="file"
-            multiple
-            tabIndex={-1}
-            aria-hidden="true"
-            className="sr-only"
-            onChange={(event) => {
-              const escolhidos = Array.from(event.target.files ?? []);
-              event.target.value = "";
-              if (escolhidos.length === 0) return;
-              setEnviando(true);
-              // Protótipo: o conteúdo não sai do navegador; o Arquivo guarda nome, tipo e tamanho.
-              for (const file of escolhidos) {
-                report(run((data, me) => attachFile(data, me, task.id, { name: file.name, mediaType: mediaTypeDe(file), sizeBytes: file.size })), `Anexado: ${file.name}.`);
-              }
-              setEnviando(false);
-            }}
-          />
-          <Button onClick={() => document.getElementById(inputId)?.click()} icon={<Icone de={Paperclip} tamanho="xs" />} disabled={enviando} disabledReason="Enviando…">
-            Anexar arquivo
-          </Button>
-          <span className="app-meta ml-2">Até 25 MB por arquivo.</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
 /* ───────────────────────────── Recorrência ───────────────────────────── */
 
 const FREQ_LABEL: Record<RecurrenceRule["frequency"], string> = {
@@ -406,6 +298,10 @@ export function TaskRecurrence({ task, report, readOnly }: { readonly task: Task
   const [aberto, setAberto] = useState(false);
   const [frequency, setFrequency] = useState<RecurrenceRule["frequency"]>(atual?.frequency ?? "semanal");
   const [triggerMode, setTriggerMode] = useState<RecurrenceRule["triggerMode"]>(atual?.triggerMode ?? "aoConcluir");
+  // FUND-08 — "" é qualquer conclusão (a ontologia); um id é entrar naquele Status terminal.
+  const [triggerStatusId, setTriggerStatusId] = useState(atual?.triggerStatusId ?? "");
+  // FUND-17 — por calendário com a corrente ainda aberta: gerar mesmo assim (duas abertas) ou aguardar a conclusão.
+  const [whenStillOpen, setWhenStillOpen] = useState<NonNullable<RecurrenceRule["whenStillOpen"]>>(atual?.whenStillOpen ?? "gerarMesmoAssim");
   const [interval, setInterval] = useState(String(atual?.interval ?? 1));
   const [endsAfter, setEndsAfter] = useState(atual?.endsAfter !== undefined ? String(atual.endsAfter) : "");
   const [copies, setCopies] = useState(atual?.copies ?? { checklists: true, subtasks: false, assignees: true, fieldValues: true });
@@ -416,8 +312,12 @@ export function TaskRecurrence({ task, report, readOnly }: { readonly task: Task
   const fim = endsAfter.trim() === "" ? undefined : Number(endsAfter);
   const valido = Number.isInteger(intervalo) && intervalo >= 1 && (fim === undefined || (Number.isInteger(fim) && fim >= 1)) && task.dueDate !== undefined;
   const membros = useData((data) => data.members);
+  const statusTerminais = useData((data) => (effectiveListConfig(data, task.listId)?.statusSet.definitions ?? []).filter((d) => isTerminalCategory(d.category)));
+  const nomeDoStatus = (id: string) => statusTerminais.find((d) => d.id === id)?.name ?? id;
   const descricao = (rule: RecurrenceRule) =>
-    `A cada ${rule.interval} ${FREQ_LABEL[rule.frequency]}, ${rule.triggerMode === "aoConcluir" ? "ao concluir" : "por calendário"}${rule.endsAfter !== undefined ? `, até ${rule.endsAfter} ocorrência(s)` : ""}` +
+    `A cada ${rule.interval} ${FREQ_LABEL[rule.frequency]}, ${
+      rule.triggerMode === "aoConcluir" ? (rule.triggerStatusId ? `ao entrar em “${nomeDoStatus(rule.triggerStatusId)}”` : "ao concluir") : "por calendário"
+    }${rule.endsAfter !== undefined ? `, até ${rule.endsAfter} ocorrência(s)` : ""}` +
     `${rule.businessDays ? `; fim de semana vai para o dia útil ${rule.businessDays}` : ""}` +
     `${rule.defaultAssigneeMemberId ? `; a próxima nasce com ${membros.find((m) => m.id === rule.defaultAssigneeMemberId)?.displayName ?? rule.defaultAssigneeMemberId}` : ""}` +
     `${rule.copies.fieldValuesExcept?.length ? `; não copia ${rule.copies.fieldValuesExcept.length} Campo(s)` : ""}.`;
@@ -440,7 +340,10 @@ export function TaskRecurrence({ task, report, readOnly }: { readonly task: Task
         <p className="app-base" style={{ color: "var(--texto)" }}>
           {descricao(atual)}
           {atual.triggerMode === "porCalendario" ? (
-            <span className="app-meta block">Por calendário depende de um agendador; neste protótipo, concluir esta Tarefa não gera a próxima.</span>
+            <span className="app-meta block">
+              A próxima nasce no dia do vencimento, pela agenda da Lista (o relógio do servidor ou o botão “Rodar agenda da Lista”)
+              {atual.whenStillOpen === "aguardarConclusao" ? "; se esta ainda estiver aberta, espera a conclusão" : "; se esta ainda estiver aberta, as duas coexistem"}.
+            </span>
           ) : null}
         </p>
       ) : (
@@ -467,10 +370,14 @@ export function TaskRecurrence({ task, report, readOnly }: { readonly task: Task
               frequency,
               interval: intervalo,
               triggerMode,
+              ...(triggerMode === "aoConcluir" && triggerStatusId ? { triggerStatusId } : {}),
+              ...(triggerMode === "porCalendario" ? { whenStillOpen } : {}),
               ...(fim !== undefined ? { endsAfter: fim } : {}),
               copies: { ...copies, ...(atual?.copies.fieldValuesExcept ? { fieldValuesExcept: atual.copies.fieldValuesExcept } : {}) },
             };
             if (fim === undefined) delete (rule as { endsAfter?: number }).endsAfter;
+            if (triggerMode !== "aoConcluir" || !triggerStatusId) delete (rule as { triggerStatusId?: string }).triggerStatusId;
+            if (triggerMode !== "porCalendario") delete (rule as { whenStillOpen?: string }).whenStillOpen;
             const result = run((data, me) => setRecurrence(data, me, task.id, rule));
             report(result, "Recorrência definida.");
             if (result.ok) setAberto(false);
@@ -496,7 +403,7 @@ export function TaskRecurrence({ task, report, readOnly }: { readonly task: Task
           </div>
           <Field
             label="Quando a próxima nasce"
-            hint={triggerMode === "porCalendario" ? "Por calendário depende de um agendador; neste protótipo a próxima ocorrência só nasce ao concluir." : "A próxima ocorrência nasce quando esta é concluída."}
+            hint={triggerMode === "porCalendario" ? "A próxima nasce no dia do vencimento desta, pela agenda da Lista — concluída ou não." : "A próxima ocorrência nasce quando esta é concluída."}
           >
             {(id) => (
               <Select
@@ -510,6 +417,33 @@ export function TaskRecurrence({ task, report, readOnly }: { readonly task: Task
               />
             )}
           </Field>
+          {triggerMode === "porCalendario" ? (
+            <Field label="Se esta ainda estiver aberta no vencimento" hint="Gerar mesmo assim deixa duas ocorrências abertas; aguardar segura a próxima até esta ser concluída.">
+              {(id) => (
+                <Select
+                  id={id}
+                  value={whenStillOpen}
+                  onChange={(v) => setWhenStillOpen(v as NonNullable<RecurrenceRule["whenStillOpen"]>)}
+                  options={[
+                    { value: "gerarMesmoAssim", label: "gerar mesmo assim" },
+                    { value: "aguardarConclusao", label: "aguardar a conclusão" },
+                  ]}
+                />
+              )}
+            </Field>
+          ) : null}
+          {triggerMode === "aoConcluir" && statusTerminais.length > 1 ? (
+            <Field label="Ao entrar em" hint="Qual conclusão dispara a próxima. Em Contas a pagar, “pago” — não “aprovado” nem “negado”.">
+              {(id) => (
+                <Select
+                  id={id}
+                  value={triggerStatusId}
+                  onChange={setTriggerStatusId}
+                  options={[{ value: "", label: "qualquer conclusão" }, ...statusTerminais.map((d) => ({ value: d.id, label: d.name, color: d.color }))]}
+                />
+              )}
+            </Field>
+          ) : null}
           <fieldset className="grid gap-1">
             <legend className="rotulo">A próxima ocorrência copia</legend>
             {(

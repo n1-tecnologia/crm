@@ -56,6 +56,13 @@ interface StoreShape {
   readonly ordens: Ordens;
   /** A revisão do Espaço de Trabalho que o servidor confirmou por último — não a local, que não existe mais (D-05/D-06). */
   revisaoDoServidor: number;
+  /**
+   * PRIV-03 — o contador de ids do estado INTEIRO no servidor. `data` chega
+   * recortado pelo que o Membro alcança, então o maior id visível pode ser
+   * menor que o real: sem este piso, a cópia geraria um id que o servidor não
+   * gera, e a tela navegaria para um registro que não existe.
+   */
+  sequenciaDoServidor: number;
   /** Quantos `run()` aceitos pelo domínio ainda esperam a confirmação do servidor. */
   pendentes: number;
   setSession: (memberId: Id, userId?: string) => void;
@@ -91,6 +98,7 @@ interface EstadoInicialDoStore {
   readonly data: DataState;
   readonly revisao: number;
   readonly ordens: Ordens;
+  readonly sequencia?: number;
 }
 
 /**
@@ -132,7 +140,11 @@ export function criarStore(opcoes: {
             // Mutação em lugar — o mesmo modelo do store: `aplicarDiferenca`
             // nunca troca a referência das coleções, só o array por dentro.
             aplicarDiferenca(get().data, get().ordens, resposta.diferenca);
-            set((estado) => ({ revisaoDoServidor: resposta.revisao, revision: estado.revision + 1 }));
+            set((estado) => ({
+              revisaoDoServidor: resposta.revisao,
+              sequenciaDoServidor: Math.max(estado.sequenciaDoServidor, resposta.sequencia ?? 0),
+              revision: estado.revision + 1,
+            }));
 
             if (!resposta.resultado.ok) {
               // O servidor recusou o que a cópia aceitou — só acontece por
@@ -201,7 +213,7 @@ export function criarStore(opcoes: {
       // aí o id da cópia é de outro registro — quem navega para o registro
       // recém-criado usa `runConfirmado` (checklist E1).
       const copia = structuredClone(data);
-      syncIdSequence(copia);
+      syncIdSequence(copia, get().sequenciaDoServidor);
 
       const { resultado, chamadas } = gravarChamadas(() => operation(copia, session.memberId));
 
@@ -221,6 +233,7 @@ export function criarStore(opcoes: {
       data: estadoInicial.data,
       ordens: estadoInicial.ordens,
       revisaoDoServidor: estadoInicial.revisao,
+      sequenciaDoServidor: estadoInicial.sequencia ?? 0,
       revision: 0,
       pendentes: 0,
       session: sessao.userId === undefined ? { memberId: sessao.memberId } : { memberId: sessao.memberId, userId: sessao.userId },
@@ -265,6 +278,7 @@ export function criarStore(opcoes: {
           data: r.data,
           ordens: r.ordens,
           revisaoDoServidor: r.revisao,
+          sequenciaDoServidor: Math.max(estado.sequenciaDoServidor, r.sequencia ?? 0),
           revision: estado.revision + 1,
         }));
       },

@@ -1,5 +1,5 @@
 /**
- * Criação de contêineres da Estrutura de Trabalho.
+ * Criação e ciclo de vida de contêineres da Estrutura de Trabalho.
  *
  * A3 — Espaço contém Pastas e Listas; Pasta contém Subpastas e Listas;
  * Subpasta contém só Listas (A3.4); Lista contém Tarefas. A profundidade para
@@ -7,9 +7,9 @@
  * deixa a regra passar por qualquer outro caminho.
  */
 
-import { effectiveListConfig, memberReachesContainer } from "../derive";
+import { containerAdminRefusal, containerPath, effectiveLifecycleOfContainer, effectiveListConfig, memberReachesContainer } from "../derive";
 import { fail, ok, type DataState, type OperationResult } from "../state";
-import type { Folder, Id, List, ModeloDeTarefa, Provenance, Space, StatusSet, Template } from "../types";
+import type { Folder, Id, Lifecycle, List, ModeloDeTarefa, Provenance, Space, StatusSet, Task, Template } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
 import { CANAIS_SO_NA_CONVERSACIONAL, validarCanaisDeAtendimento } from "./canais";
 
@@ -461,4 +461,368 @@ function defaultStatusSet(): StatusSet {
       { id: nextId("st"), name: "Cancelado", color: "#6b7280", category: "fechado", order: 3 },
     ],
   };
+}
+
+/* ───────────────── Ciclo de vida e identidade (POSC-09) ───────────────── */
+
+/**
+ * O que um contêiner é depois de criado também muda: nome, descrição, cor e
+ * privacidade (`updateContainer`); e o estado próprio anda pelos três de
+ * `Lifecycle` — arquivar/desarquivar e enviar à lixeira/restaurar. Antes só
+ * `closeSprint` arquivava uma Lista, e nada a desarquivava.
+ *
+ * As regras vêm de espaco.md (valem para Pasta e Lista por RN-PAS/RN-LIS):
+ *   - RN-ESP-11: sobre um registro cujo estado EFETIVO não é `ativo` só vale
+ *     ver, alterar permissões e alterar o estado próprio — nada de editar
+ *     conteúdo. Por isso `updateContainer` exige efetivamente ativo, e as
+ *     quatro de estado não: uma Lista arquivada sob Espaço arquivado é
+ *     desarquivada mesmo assim, e continua efetivamente arquivada até o
+ *     Espaço voltar (B36 — o efetivo é derivado, nunca gravado).
+ *   - B43: a lixeira grava o estado próprio anterior e a restauração o
+ *     devolve, nunca força `ativo`. O que foi à lixeira COM o contêiner volta
+ *     com ele — é o mesmo `trashedAt` que distingue a cascata do que já
+ *     estava lá antes (o mesmo critério de `restoreList`, em tasks.ts).
+ *   - RN-ESP-23 / B39: nome único entre irmãos não-lixeira; renomear ou
+ *     restaurar com colisão é recusado.
+ *   - espaco.md:217: arquivar e desarquivar exigem `administrar`; lixeira e
+ *     restauração exigem `excluir` — administrar cobre, e uma concessão
+ *     direta de `excluir` no caminho basta.
+ *   - Não existe eliminação permanente a partir de `ativo`: "excluir" na tela
+ *     é enviar à lixeira.
+ */
+
+export type TipoDeConteiner = "space" | "folder" | "list";
+
+type Conteiner = Space | Folder | List;
+
+const ROTULO: Record<TipoDeConteiner, { readonly nome: string; readonly artigo: "o" | "a"; readonly arquivado: string; readonly restaurado: string }> = {
+  space: { nome: "Espaço", artigo: "o", arquivado: "arquivado", restaurado: "restaurado" },
+  folder: { nome: "Pasta", artigo: "a", arquivado: "arquivada", restaurado: "restaurada" },
+  list: { nome: "Lista", artigo: "a", arquivado: "arquivada", restaurado: "restaurada" },
+};
+
+function findContainer(state: DataState, type: TipoDeConteiner, id: Id): Conteiner | undefined {
+  return type === "space"
+    ? state.spaces.find((s) => s.id === id)
+    : type === "folder"
+      ? state.folders.find((f) => f.id === id)
+      : state.lists.find((l) => l.id === id);
+}
+
+/** Os irmãos entre os quais o nome precisa ser único (RN-ESP-23 / B39), sem o próprio. */
+function siblingsOf(state: DataState, type: TipoDeConteiner, container: Conteiner): ReadonlyArray<{ name: string; lifecycle: string }> {
+  if (type === "space") return state.spaces.filter((s) => s.id !== container.id);
+  const own = container as Folder | List;
+  const pool: ReadonlyArray<Folder | List> = type === "folder" ? state.folders : state.lists;
+  return pool.filter((c) => c.id !== own.id && c.parentType === own.parentType && c.parentId === own.parentId);
+}
+
+/** Um contêiner não é encontrado quando não existe OU quando quem pede não o alcança — para quem não alcança, ele não existe (RN-ESP-15). */
+function requireContainer(state: DataState, actingMemberId: Id, type: TipoDeConteiner, id: Id): Conteiner | string {
+  const container = findContainer(state, type, id);
+  if (!container || !memberReachesContainer(state, actingMemberId, type, id)) return `${ROTULO[type].nome} não encontrad${ROTULO[type].artigo}.`;
+  return container;
+}
+
+/**
+ * Lixeira e restauração exigem `excluir` (espaco.md:217): quem administra o
+ * contêiner tem, e uma concessão direta de `excluir` nele ou acima também
+ * serve — é a única porta para quem não é Administrador nem Proprietário.
+ * Exportada para a tela desligar o botão com a mesma frase (não é caso de uso;
+ * não entra em `OPERACOES`).
+ */
+export function containerTrashRefusal(state: DataState, actingMemberId: Id, type: TipoDeConteiner, id: Id): string | undefined {
+  const admin = containerAdminRefusal(state, actingMemberId, type, id);
+  if (!admin) return undefined;
+  const member = state.members.find((m) => m.id === actingMemberId);
+  if (!member || member.state !== "ativo") return admin;
+  const nosDoCaminho = new Set(containerPath(state, type, id).map((n) => n.id));
+  const teams = state.teams.filter((t) => t.memberIds.includes(actingMemberId)).map((t) => t.id);
+  const temExcluir = state.grants.some(
+    (g) =>
+      g.action === "excluir" &&
+      nosDoCaminho.has(g.resourceId) &&
+      ((g.subjectKind === "member" && g.subjectId === actingMemberId) || (g.subjectKind === "team" && teams.includes(g.subjectId))),
+  );
+  if (temExcluir) return undefined;
+  return `Enviar à lixeira ou restaurar exige excluir ${ROTULO[type].artigo} ${ROTULO[type].nome}: Administrador, Proprietário ou concessão direta.`;
+}
+
+/** B36 — um apontamento em andamento fecha no instante em que a Tarefa deixa de estar efetivamente ativa. */
+function closeRunningTimeEntries(task: Task, at: string): void {
+  for (const entry of task.timeEntries) {
+    if (!entry.end) {
+      entry.end = at;
+      entry.durationMinutes = Math.max(1, Math.round((Date.parse(entry.end) - Date.parse(entry.start)) / 60_000));
+    }
+  }
+}
+
+/** Toda a subárvore abaixo de um contêiner, no mesmo formato da cascata (B36). */
+function descendantsOf(state: DataState, type: TipoDeConteiner, id: Id): { readonly folders: Folder[]; readonly lists: List[]; readonly tasks: Task[] } {
+  const folders: Folder[] = [];
+  const lists: List[] = [];
+  if (type !== "list") {
+    const fila: Array<{ type: "space" | "folder"; id: Id }> = [{ type, id }];
+    while (fila.length > 0) {
+      const atual = fila.shift();
+      if (!atual) break;
+      for (const f of state.folders) {
+        if (f.parentType === atual.type && f.parentId === atual.id) {
+          folders.push(f);
+          fila.push({ type: "folder", id: f.id });
+        }
+      }
+      for (const l of state.lists) {
+        if (l.parentType === atual.type && l.parentId === atual.id) lists.push(l);
+      }
+    }
+  }
+  const listIds = new Set(type === "list" ? [id] : lists.map((l) => l.id));
+  const tasks = state.tasks.filter((t) => listIds.has(t.listId));
+  return { folders, lists, tasks };
+}
+
+function parentOf(state: DataState, type: TipoDeConteiner, container: Conteiner): { readonly type: "space" | "folder"; readonly container: Space | Folder | undefined } | undefined {
+  if (type === "space") return undefined;
+  const own = container as Folder | List;
+  return {
+    type: own.parentType,
+    container: own.parentType === "folder" ? state.folders.find((f) => f.id === own.parentId) : state.spaces.find((s) => s.id === own.parentId),
+  };
+}
+
+export interface UpdateContainerInput {
+  readonly name?: string;
+  /** Vazio apaga a descrição. */
+  readonly description?: string;
+  readonly color?: string;
+  readonly isPrivate?: boolean;
+}
+
+/**
+ * Nome, descrição, cor e privacidade de um contêiner existente. Exige
+ * administrar o contêiner e que ele esteja EFETIVAMENTE ativo (RN-ESP-11).
+ * O nome continua único entre os irmãos (RN-ESP-23 / B39).
+ */
+export function updateContainer(
+  state: DataState,
+  actingMemberId: Id,
+  type: TipoDeConteiner,
+  id: Id,
+  input: UpdateContainerInput,
+): OperationResult<Conteiner> {
+  const found = requireContainer(state, actingMemberId, type, id);
+  if (typeof found === "string") return fail(found);
+  const container = found;
+  const refusal = containerAdminRefusal(state, actingMemberId, type, id);
+  if (refusal) return fail(refusal);
+  const efetivo = effectiveLifecycleOfContainer(state, type, id);
+  if (efetivo !== "ativo") {
+    return fail(
+      efetivo === "arquivado"
+        ? `${ROTULO[type].nome} ${ROTULO[type].arquivado}: desarquive antes de editar.`
+        : `${ROTULO[type].nome} na lixeira: restaure antes de editar.`,
+    );
+  }
+
+  const nomeAntes = container.name;
+  if (input.name !== undefined) {
+    const nome = input.name.trim();
+    if (!nome) return fail(`Dê um nome ${ROTULO[type].artigo === "o" ? "ao" : "à"} ${ROTULO[type].nome}.`, "nome");
+    if (nameTaken(siblingsOf(state, type, container), nome)) {
+      return fail(`Já existe ${ROTULO[type].artigo === "o" ? "um" : "uma"} ${ROTULO[type].nome} chamad${ROTULO[type].artigo} “${nome}” aqui.`, "nome");
+    }
+    container.name = nome;
+  }
+  if (input.description !== undefined) {
+    const descricao = input.description.trim();
+    if (descricao) container.description = descricao;
+    else delete container.description;
+  }
+  if (input.color !== undefined) {
+    const cor = input.color.trim();
+    if (type === "space") {
+      if (!cor) return fail("Dê uma cor ao Espaço.", "cor");
+      (container as Space).color = cor;
+    } else if (cor) {
+      container.color = cor;
+    } else {
+      delete container.color;
+    }
+  }
+  if (input.isPrivate !== undefined) container.isPrivate = input.isPrivate;
+
+  const renomeado = input.name !== undefined && container.name !== nomeAntes;
+  recordActivity(state, {
+    actor: memberActor(actingMemberId),
+    action: renomeado ? `${ROTULO[type].nome} renomead${ROTULO[type].artigo}` : `${ROTULO[type].nome} alterad${ROTULO[type].artigo}`,
+    objectType: type,
+    objectId: container.id,
+    objectName: container.name,
+    ...(renomeado ? { before: nomeAntes, after: container.name } : {}),
+  });
+  return ok(container);
+}
+
+/** `ativo` → `arquivado` no estado próprio. Exige administrar; vale sob ancestral arquivado (RN-ESP-11). */
+export function archiveContainer(state: DataState, actingMemberId: Id, type: TipoDeConteiner, id: Id): OperationResult<Conteiner> {
+  const found = requireContainer(state, actingMemberId, type, id);
+  if (typeof found === "string") return fail(found);
+  const container = found;
+  const refusal = containerAdminRefusal(state, actingMemberId, type, id);
+  if (refusal) return fail(refusal);
+  if (container.lifecycle === "naLixeira") return fail(`${ROTULO[type].nome} na lixeira: restaure antes de arquivar.`);
+  if (container.lifecycle === "arquivado") return ok(container);
+
+  const at = now();
+  container.lifecycle = "arquivado";
+  container.archivedAt = at;
+  // B36 — o que está abaixo passa a efetivamente arquivado; apontamento aberto fecha.
+  for (const task of descendantsOf(state, type, id).tasks) closeRunningTimeEntries(task, at);
+  recordActivity(state, {
+    actor: memberActor(actingMemberId),
+    action: `${ROTULO[type].nome} ${ROTULO[type].arquivado}`,
+    objectType: type,
+    objectId: container.id,
+    objectName: container.name,
+    at,
+  });
+  return ok(container);
+}
+
+/** `arquivado` → `ativo` no estado próprio. O efetivo continua derivado: sob ancestral arquivado, segue arquivado até ele voltar. */
+export function unarchiveContainer(state: DataState, actingMemberId: Id, type: TipoDeConteiner, id: Id): OperationResult<Conteiner> {
+  const found = requireContainer(state, actingMemberId, type, id);
+  if (typeof found === "string") return fail(found);
+  const container = found;
+  const refusal = containerAdminRefusal(state, actingMemberId, type, id);
+  if (refusal) return fail(refusal);
+  if (container.lifecycle === "naLixeira") return fail(`${ROTULO[type].nome} na lixeira: restaure em vez de desarquivar.`);
+  if (container.lifecycle === "ativo") return ok(container);
+
+  container.lifecycle = "ativo";
+  delete container.archivedAt;
+  recordActivity(state, {
+    actor: memberActor(actingMemberId),
+    action: `${ROTULO[type].nome} desarquivad${ROTULO[type].artigo}`,
+    objectType: type,
+    objectId: container.id,
+    objectName: container.name,
+  });
+  return ok(container);
+}
+
+/**
+ * B43 — o contêiner e tudo abaixo dele vão à lixeira num só ato, com o MESMO
+ * `trashedAt`: é o que permite à restauração devolver só o que foi junto. Um
+ * descendente que já estava na lixeira não é tocado — ele tem o próprio
+ * `trashedAt`, e continua lá quando o contêiner voltar.
+ */
+export function trashContainer(state: DataState, actingMemberId: Id, type: TipoDeConteiner, id: Id): OperationResult<Conteiner> {
+  const found = requireContainer(state, actingMemberId, type, id);
+  if (typeof found === "string") return fail(found);
+  const container = found;
+  const refusal = containerTrashRefusal(state, actingMemberId, type, id);
+  if (refusal) return fail(refusal);
+  if (container.lifecycle === "naLixeira") return ok(container);
+
+  const at = now();
+  const trash = (record: { lifecycle: Lifecycle; lifecycleBeforeTrash?: "ativo" | "arquivado"; trashedAt?: string }): boolean => {
+    if (record.lifecycle === "naLixeira") return false;
+    record.lifecycleBeforeTrash = record.lifecycle === "arquivado" ? "arquivado" : "ativo";
+    record.lifecycle = "naLixeira";
+    record.trashedAt = at;
+    return true;
+  };
+  const abaixo = descendantsOf(state, type, id);
+  let pastas = 0;
+  let listas = 0;
+  let tarefas = 0;
+  for (const f of abaixo.folders) if (trash(f)) pastas += 1;
+  for (const l of abaixo.lists) if (trash(l)) listas += 1;
+  for (const t of abaixo.tasks) {
+    if (trash(t)) {
+      tarefas += 1;
+      closeRunningTimeEntries(t, at);
+    }
+  }
+  trash(container);
+
+  const partes = [
+    pastas > 0 ? `${pastas} Pasta(s)` : "",
+    listas > 0 ? `${listas} Lista(s)` : "",
+    tarefas > 0 ? `${tarefas} Tarefa(s)` : "",
+  ].filter(Boolean);
+  recordActivity(state, {
+    actor: memberActor(actingMemberId),
+    action: `${ROTULO[type].nome} enviad${ROTULO[type].artigo} à lixeira`,
+    objectType: type,
+    objectId: container.id,
+    objectName: container.name,
+    at,
+    ...(partes.length > 0 ? { detail: `${partes.join(", ")} foram junto.` } : {}),
+  });
+  return ok(container);
+}
+
+/**
+ * B43 — restaurar devolve o estado próprio anterior (nunca força `ativo`) e
+ * traz de volta só o que foi à lixeira COM o contêiner. Exige que o pai
+ * imediato não esteja na lixeira por estado próprio — pai arquivado é aceito,
+ * e o contêiner fica efetivamente arquivado até ele voltar (RN-ESP-11).
+ * Colisão de nome com um irmão vivo é recusada (RN-ESP-23).
+ */
+export function restoreContainer(state: DataState, actingMemberId: Id, type: TipoDeConteiner, id: Id): OperationResult<Conteiner> {
+  const found = requireContainer(state, actingMemberId, type, id);
+  if (typeof found === "string") return fail(found);
+  const container = found;
+  const refusal = containerTrashRefusal(state, actingMemberId, type, id);
+  if (refusal) return fail(refusal);
+  if (container.lifecycle !== "naLixeira") return ok(container);
+
+  const pai = parentOf(state, type, container);
+  if (pai) {
+    if (!pai.container) return fail("O contêiner que o continha já não existe.");
+    if (pai.container.lifecycle === "naLixeira") return fail(`${pai.container.name} está na lixeira. Restaure o contêiner antes.`);
+  }
+  if (nameTaken(siblingsOf(state, type, container), container.name)) {
+    return fail(`Já existe ${ROTULO[type].artigo === "o" ? "um" : "uma"} ${ROTULO[type].nome} chamad${ROTULO[type].artigo} “${container.name}” aqui. Renomeie-${ROTULO[type].artigo} antes de restaurar.`, "nome");
+  }
+
+  const marca = container.trashedAt;
+  const restore = (record: { lifecycle: Lifecycle; lifecycleBeforeTrash?: "ativo" | "arquivado"; trashedAt?: string }): boolean => {
+    if (record.lifecycle !== "naLixeira" || marca === undefined || record.trashedAt !== marca) return false;
+    record.lifecycle = record.lifecycleBeforeTrash ?? "ativo";
+    delete record.lifecycleBeforeTrash;
+    delete record.trashedAt;
+    return true;
+  };
+  const abaixo = descendantsOf(state, type, id);
+  let pastas = 0;
+  let listas = 0;
+  let tarefas = 0;
+  for (const f of abaixo.folders) if (restore(f)) pastas += 1;
+  for (const l of abaixo.lists) if (restore(l)) listas += 1;
+  for (const t of abaixo.tasks) if (restore(t)) tarefas += 1;
+
+  container.lifecycle = container.lifecycleBeforeTrash ?? "ativo";
+  delete container.lifecycleBeforeTrash;
+  delete container.trashedAt;
+
+  const partes = [
+    pastas > 0 ? `${pastas} Pasta(s)` : "",
+    listas > 0 ? `${listas} Lista(s)` : "",
+    tarefas > 0 ? `${tarefas} Tarefa(s)` : "",
+  ].filter(Boolean);
+  recordActivity(state, {
+    actor: memberActor(actingMemberId),
+    action: `${ROTULO[type].nome} ${ROTULO[type].restaurado}`,
+    objectType: type,
+    objectId: container.id,
+    objectName: container.name,
+    after: container.lifecycle,
+    ...(partes.length > 0 ? { detail: `${partes.join(", ")} voltaram junto.` } : {}),
+  });
+  return ok(container, container.id);
 }

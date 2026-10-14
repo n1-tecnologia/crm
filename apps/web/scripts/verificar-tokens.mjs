@@ -46,6 +46,8 @@ const DISPENSADOS = [
   join("features", "estrutura", "configuration-editors.tsx"),
   /* A paleta de cor do Espaço é DADO: o hex escolhido fica gravado em `Space.color`. */
   join("features", "estrutura", "create-container-dialog.tsx"),
+  /* A cor padrão da Tag nova é DADO: vai para o <input type="color"> e é gravada em `Tag.color` (AVIS-02). */
+  join("app", "(shell)", "configuracoes", "tags", "page.tsx"),
 ];
 
 const QUEBRA = String.fromCharCode(10);

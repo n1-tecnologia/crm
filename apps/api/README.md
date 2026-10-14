@@ -117,10 +117,25 @@ anterior no próximo commit.
 ## 5. O scheduler de Automações (AUTO-01, Plan 03-08)
 
 `AUTOMACOES_WORKER_ATIVO=true` liga o poller que garante ao menos uma
-chamada de `runScheduledAutomations` por (Espaço de Trabalho, Lista, dia
-civil) — o relógio do motor de Automações (ver
-`apps/api/src/automacoes/CONTEXT.md`). "false" no ambiente local, no molde
-do `OUTBOX_WORKER_ATIVO`.
+volta da agenda por (Espaço de Trabalho, Lista, dia civil) — o relógio do
+motor de Automações (ver `apps/api/src/automacoes/CONTEXT.md`). "false" no
+ambiente local, no molde do `OUTBOX_WORKER_ATIVO`.
+
+A volta do dia (`agendaDoDia`, `scheduler-worker.ts`) é UMA transação com
+três relógios, na ordem: as Automações por vencimento
+(`runScheduledAutomations`), a Recorrência por calendário
+(`runCalendarRecurrences`, FUND-17 — a próxima ocorrência nasce no dia do
+vencimento) e o expurgo da lixeira pela Política de retenção
+(`purgeExpiredTasks`, PARD-10 — a Tarefa que passou do prazo é eliminada de
+vez, com as Subtarefas). Com o worker desligado, os três só andam pelo botão
+"Rodar agenda da Lista (hoje)" na barra da Lista, para quem a administra —
+e o expurgo, só por "Eliminar agora" na Lixeira.
+
+Ligar o worker numa instância de produção, portanto, não é só ligar as
+cobranças: é também começar a gerar ocorrências e a eliminar o que venceu na
+lixeira, em TODAS as Listas que a agenda semear (ou só na de
+`AUTOMACOES_LISTA_ID`, se definida). O ensaio da primeira volta, abaixo, vale
+para os três — nada é gravado até a liberação por Lista.
 
 A primeira volta REAL de cada (Espaço, Lista) roda em **ensaio**: mede o que
 a agenda faria (as contagens ficam em `plataforma.automacao_agenda`,

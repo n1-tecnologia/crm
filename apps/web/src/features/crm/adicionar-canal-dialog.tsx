@@ -17,11 +17,15 @@
 import { useState } from "react";
 import { useData, useRun } from "@/dados/store";
 import { useSession } from "@/dados/store";
+// FUND-18 — `criarCanal` vem do barril INSTRUMENTADO: a função crua de
+// `operations/canais` muta a cópia local sem registrar a chamada, e o
+// transporte recusa gravar ("não passa por uma operação do domínio"). Era por
+// isso que nenhum Canal nascia pela tela. Só constantes e helpers vêm do módulo.
+import { criarCanal } from "@n1/dominio/operations";
 import {
   FORMA_DO_IDENTIFICADOR,
   ROTULO_DO_TIPO_DE_CANAL,
   TIPOS_DE_ATENDIMENTO,
-  criarCanal,
   identificadorCanonico,
   recusaDeGerirCanais,
   type TipoDeAtendimento,

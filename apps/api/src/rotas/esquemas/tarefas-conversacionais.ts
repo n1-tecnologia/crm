@@ -4,11 +4,8 @@
  * operações. Ver `../esquemas/CONTEXT.md` para a regra da pasta.
  */
 
-import type { ModeloDeTarefa } from "@n1/dominio";
-import { ACTOR_REF, ID, MONEY, PRIORITY, TASK_DATE, type Confere, type Esquemas, type Igual } from "./fragmentos";
+import { ACTOR_REF, ID, MODELO_DE_TAREFA, MONEY, PRIORITY, TASK_DATE, type Esquemas } from "./fragmentos";
 import { z } from "zod";
-
-const MODELO_DE_TAREFA = z.enum(["operacional", "conversacional"]);
 
 const CRIAR_TAREFA_CONVERSACIONAL_INPUT = z
   .object({
@@ -42,7 +39,3 @@ export const TAREFAS_CONVERSACIONAIS = {
   vincularNegocioATarefa: z.tuple([ID, ID.nullable()]),
   criarNegocioDaTarefa: z.tuple([ID, CRIAR_NEGOCIO_DA_TAREFA_INPUT]),
 } satisfies Esquemas;
-
-// ── Portão de enum bidirecional — falta ou sobra de membro não compila ──
-
-type _EnumsCompletos = Confere<[Igual<z.infer<typeof MODELO_DE_TAREFA>, ModeloDeTarefa>]>;

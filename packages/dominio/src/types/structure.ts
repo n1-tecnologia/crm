@@ -320,6 +320,13 @@ export interface RecurrenceRule {
   readonly interval: number;
   readonly weekDays?: readonly number[];
   readonly triggerMode: "aoConcluir" | "porCalendario";
+  /**
+   * FUND-08 — no modo `aoConcluir`, a próxima ocorrência nasce só ao ENTRAR
+   * neste Status (um dos terminais da Lista), e não em qualquer conclusão.
+   * Contas a pagar: "pago", não "aprovado" nem "negado". Sem ele, vale a
+   * ontologia (tarefa.md, 6.1): qualquer passagem para `concluído`/`fechado`.
+   */
+  readonly triggerStatusId?: Id;
   readonly whenStillOpen?: "gerarMesmoAssim" | "aguardarConclusao";
   readonly endsAfter?: number;
   readonly endsOn?: CivilDateLike;

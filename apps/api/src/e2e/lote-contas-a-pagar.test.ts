@@ -132,7 +132,9 @@ async function semear(n: number, prefixo: string, statusId: string = CP.status.e
           taskTypeId: CP.taskTypeId,
           dueDate: { form: "civilDay", value: "2026-09-04" },
         },
-        { runAutomations: false },
+        // `nasceNoStatusPedido`: a conta nasce já em "em autorização" sem passar
+        // pelos requisitos de saída de "para pagar" — a semeadura não é o que se mede.
+        { runAutomations: false, nasceNoStatusPedido: true },
       );
       if (!criado.ok) return criado;
       const regra = setRecurrence(state, CP.financeiroId, criado.value.id, {

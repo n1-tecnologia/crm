@@ -13,7 +13,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useId, useState } from "react";
-import { useData, useRun } from "@/dados/store";
+import { useData, useRunConfirmado } from "@/dados/store";
 import { useRecente } from "@/features/shell/recente";
 import { createFolder, createList, createSpace, instantiateListTemplate } from "@n1/dominio/operations";
 import { Check, CircleDot, Lock, MessageSquare, SquareCheck, type LucideIcon } from "lucide-react";
@@ -118,8 +118,8 @@ const MODELOS: ReadonlyArray<{
   },
 ];
 
-/** Cores para marcar um Espaço na árvore, tiradas da paleta do produto. */
-const SPACE_COLORS = [
+/** Cores para marcar um Espaço na árvore, tiradas da paleta do produto. Também a paleta de `identidade-e-ciclo-de-vida.tsx`. */
+export const SPACE_COLORS = [
   { value: "#9601c5", label: "Roxo" },
   { value: "#0369a1", label: "Azul" },
   { value: "#0f766e", label: "Verde" },
@@ -138,7 +138,7 @@ export function CreateContainerDialog({
   readonly onDone: (message: string, href: string) => void;
 }) {
   const state = useData((data) => data);
-  const run = useRun();
+  const runConfirmado = useRunConfirmado();
   const privacyLabelId = useId();
   const privacyHintId = useId();
 
@@ -211,7 +211,10 @@ export function CreateContainerDialog({
   };
 
   const confirm = () => {
-    const result = run<Space | Folder | List>(
+    // Checklist E1 — a tela navega para o que criou, então o id precisa ser o
+    // que o SERVIDOR gravou: a cópia local só coincide se ninguém gravou no
+    // meio. A recusa local aparece na hora; a do servidor, quando chega.
+    const { local, confirmado } = runConfirmado<Space | Folder | List>(
       (data, memberId): OperationResult<Space | Folder | List> => {
         if (kind === "espaco") {
           return createSpace(data, memberId, {
@@ -242,7 +245,15 @@ export function CreateContainerDialog({
       },
     );
 
-    if (result.ok) {
+    if (!local.ok) {
+      setError(local.error);
+      return;
+    }
+    void confirmado.then((result) => {
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
       const created = result.value;
       const href =
         kind === "espaco"
@@ -254,9 +265,7 @@ export function CreateContainerDialog({
       // §20 — depois de criar, o usuário vai para o que criou. Quem fecha o
       // diálogo é a navegação: chamar `onClose` aqui desfaria o `push`.
       onDone(`${label} criada: ${created.name}.`, href);
-    } else {
-      setError(result.error);
-    }
+    });
   };
 
   return (

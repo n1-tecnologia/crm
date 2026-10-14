@@ -13,24 +13,21 @@ import { BookOpen, Briefcase, Link2, MessageSquare } from "lucide-react";
 import { use, useState, type ReactNode } from "react";
 import { useData, useRun, useRunConfirmado, useSession } from "@/dados/store";
 import {
-  checklistProgress,
   containerAdminRefusal,
   effectiveLifecycleOfList,
   memberReachesContainer,
   effectiveListConfig,
   effectiveLifecycleOfTask,
-  isBlocked,
-  isOverdue,
   isTerminalCategory,
   statusCategory,
   statusDefinition,
-  subtaskProgress,
 } from "@n1/dominio/derive";
 import {
   applyView,
   changeTaskStatus,
   createTask,
   listWriteRefusal,
+  statusOptionRefusal,
   TAREFA_SEM_CONTATO,
 } from "@n1/dominio/operations";
 import { canaisDaLista, contatoDaTarefa, listaSemCanais } from "@n1/dominio/derive-conversacional";
@@ -60,6 +57,9 @@ import { BotaoDeMais, CompositorNoGrupo } from "@/features/estrutura/novo-no-gru
 import { SeletorDeTipoDeTarefa } from "@/features/estrutura/seletor-de-tipo";
 import { useRecente } from "@/features/shell/recente";
 import { TabelaDeTarefas } from "@/features/estrutura/tabela-de-tarefas";
+import { CalendarioMensal } from "@/features/estrutura/calendario-mensal";
+import { abaDaView, kindDaAba, ROTULO_DA_ABA, type TipoDeAba } from "@/features/estrutura/tipo-de-visualizacao";
+import { TaskAttributeEditors } from "@/features/estrutura/task-editors";
 import { IniciarConversaDialog } from "@/features/crm/iniciar-conversa-dialog";
 import {
   BulkStatusBar,
@@ -92,11 +92,10 @@ import {
   CategoryDot,
   CorpoDeTela,
   Icone,
-  ConditionMarker,
   EmptyState,
   PageHeader,
   Pilula,
-  ReguaDeSecao,
+  StatusPicker,
   RolagemNoTopo,
   SidePanel,
   StateSeal,
@@ -106,16 +105,8 @@ import type { OperationResult } from "@n1/dominio";
 import type { Task, View, ViewFilters } from "@n1/dominio/types";
 import type { RelatorioDeLote } from "@n1/dominio/operations/lote";
 
-type ViewKind =
-  "lista" | "quadro" | "calendario" | "tabela" | "linha" | "carga";
-const VIEW_LABEL: Record<ViewKind, string> = {
-  lista: "Lista",
-  quadro: "Quadro",
-  calendario: "Calendário",
-  tabela: "Tabela",
-  linha: "Linha do tempo",
-  carga: "Carga",
-};
+type ViewKind = TipoDeAba;
+const VIEW_LABEL = ROTULO_DA_ABA;
 
 export default function ListaPage({
   params,
@@ -130,16 +121,7 @@ export default function ListaPage({
   const padrao = state.views.find(
     (v) => v.listId === lista && v.ownerKind === "container" && v.isDefault,
   );
-  const [view, setView] = useState<ViewKind>(() =>
-    padrao?.kind === "linhaDoTempo"
-      ? "linha"
-      : padrao?.kind === "quadro" ||
-          padrao?.kind === "calendario" ||
-          padrao?.kind === "tabela" ||
-          padrao?.kind === "carga"
-        ? padrao.kind
-        : "lista",
-  );
+  const [view, setView] = useState<ViewKind>(() => abaDaView(padrao?.kind));
   const [newTitle, setNewTitle] = useState("");
   /* O Tipo da Tarefa que a BARRA DO TOPO vai criar. Nasce indefinido e o
      seletor o reconduz ao padrão da Lista — o mesmo que o domínio usaria se
@@ -896,10 +878,13 @@ export default function ListaPage({
               setActiveViewId(null);
             }}
             activeViewId={activeViewId}
-            onOpenView={(view) => {
-              setActiveViewId(view?.id ?? null);
-              setFilters(view?.filters ?? FILTRO_VAZIO);
-              setSortBy(view?.sortBy);
+            kind={kindDaAba(view)}
+            onOpenView={(aberta) => {
+              setActiveViewId(aberta?.id ?? null);
+              setFilters(aberta?.filters ?? FILTRO_VAZIO);
+              setSortBy(aberta?.sortBy);
+              // RELO-05 — a Visualização lembra o tipo em que foi salva: abrir troca a aba.
+              if (aberta) setView(abaDaView(aberta.kind));
             }}
             report={reportar}
             {...(financeira ? { panelOpen: filtrosAbertos } : {})}
@@ -984,9 +969,9 @@ export default function ListaPage({
             {...(criacaoRecusada ? { criacaoRecusada } : {})}
           />
         ) : view === "calendario" ? (
-          <Calendario state={state} tasks={tasks} openTask={openTask} />
+          <CalendarioMensal state={state} tasks={tasks} openTask={openTask} editavel={effective === "ativo"} report={reportar} />
         ) : view === "tabela" ? (
-          <Tabela state={state} tasks={tasks} />
+          <Tabela state={state} tasks={tasks} editavel={effective === "ativo"} report={reportar} openTask={openTask} />
         ) : view === "linha" ? (
           <LinhaDoTempo
             state={state}
@@ -1180,88 +1165,6 @@ type Definition = NonNullable<
   ReturnType<typeof effectiveListConfig>
 >["statusSet"]["definitions"][number];
 
-function TaskRow({
-  state,
-  task,
-  onOpen,
-  recente = false,
-}: {
-  readonly state: DataState;
-  readonly task: Task;
-  readonly onOpen: (taskId: string) => void;
-  /** É a peça do último resultado: acende por --dur-realce (`data-recente`). */
-  readonly recente?: boolean;
-}) {
-  const fmt = useFormat();
-  const checklist = checklistProgress(task);
-  const subtasks = subtaskProgress(state, task.id);
-  const overdue = isOverdue(state, task, new Date());
-  const blocked = isBlocked(state, task);
-  const own = task.lifecycle;
-
-  // A3 — opens the side panel over the List instead of leaving the collection;
-  // the panel itself offers "abrir em página cheia" for the addressable record.
-  return (
-    <button
-      type="button"
-      onClick={() => onOpen(task.id)}
-      className="item-solto w-full text-left"
-      data-alinhamento="topo"
-      data-recente={recente ? "true" : undefined}
-      style={{ paddingBlock: "var(--e-2)" }}
-    >
-      <div className="min-w-0 flex-1">
-        <p className="app-base truncate" style={{ color: "var(--texto)" }}>
-          {task.title}
-        </p>
-        <p className="app-meta mt-0.5 flex flex-wrap items-center gap-2">
-          {task.readableId ? (
-            <span className="identificador">{task.readableId}</span>
-          ) : null}
-          {task.dueDate ? (
-            <span>vence {fmt.taskDate(task.dueDate)}</span>
-          ) : null}
-          {task.priority !== "semPrioridade" ? (
-            <span>{PRIORITY_LABEL[task.priority]}</span>
-          ) : null}
-          {task.tagIds.map((id) => {
-            const tag = state.tags.find((t) => t.id === id);
-            return tag ? (
-              <Pilula key={id} cor={tag.color}>
-                {tag.name}
-              </Pilula>
-            ) : null;
-          })}
-          {checklist ? (
-            <span>
-              checklist {checklist.done}/{checklist.total}
-            </span>
-          ) : null}
-          {subtasks ? (
-            <span>
-              subtarefas {subtasks.done}/{subtasks.total}
-            </span>
-          ) : null}
-          {overdue ? (
-            <ConditionMarker tone="danger">Vencida</ConditionMarker>
-          ) : null}
-          {blocked ? (
-            <ConditionMarker tone="warning">Bloqueada</ConditionMarker>
-          ) : null}
-        </p>
-      </div>
-      <div className="flex shrink-0 items-center gap-2">
-        {own !== "ativo" ? <StateSeal state={own} /> : null}
-        <span className="app-meta">
-          {task.assignees.length > 0
-            ? `${task.assignees.length} responsável(is)`
-            : "sem Responsável"}
-        </span>
-      </div>
-    </button>
-  );
-}
-
 /**
  * O Quadro das Listas operacionais — e das Contas (Financeiro) — no quadro
  * padrão (`features/shell/quadro.tsx`): a mesma coluna e a mesma anatomia de
@@ -1371,69 +1274,29 @@ function Quadro({
   );
 }
 
-function Calendario({
+/**
+ * PARD-01 — a Tabela edita em linha o que a Tarefa tem de mais mexido: Status
+ * (com a mesma recusa por opção do painel), prioridade e vencimento, pelos
+ * mesmos editores da ficha. Fora disso, o título abre a Tarefa.
+ */
+function Tabela({
   state,
   tasks,
+  editavel,
+  report,
   openTask,
 }: {
   readonly state: DataState;
   readonly tasks: readonly Task[];
+  readonly editavel: boolean;
+  readonly report: (result: { ok: boolean; error?: string }, message: string) => void;
   readonly openTask: (taskId: string) => void;
 }) {
   const fmt = useFormat();
+  const run = useRun();
+  const { memberId } = useSession();
   const recente = useRecente();
-  const withDates = tasks.filter((task) => task.dueDate);
-  const without = tasks.length - withDates.length;
-
-  if (withDates.length === 0) {
-    return (
-      <EmptyState
-        title="Nenhuma Tarefa com data nesta Lista."
-        hint="O Calendário posiciona Tarefas por Data; um dia civil não recebe fuso."
-      />
-    );
-  }
-
-  const byDate = new Map<string, Task[]>();
-  for (const task of withDates) {
-    const key = task.dueDate?.value.slice(0, 10) ?? "";
-    byDate.set(key, [...(byDate.get(key) ?? []), task]);
-  }
-
-  return (
-    <div>
-      {[...byDate.entries()]
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([date, group]) => (
-          <section key={date}>
-            <ReguaDeSecao rotulo={fmt.taskDate({ form: "civilDay", value: date })} contagem={group.length} />
-            <ul className="cascata pilha-solta">
-              {group.map((task) => (
-                <li key={task.id}>
-                  <TaskRow state={state} task={task} onOpen={openTask} recente={task.id === recente} />
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
-      {without > 0 ? (
-        <p className="app-meta mt-3">
-          {without} Tarefa(s) sem data não aparecem no Calendário.
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-function Tabela({
-  state,
-  tasks,
-}: {
-  readonly state: DataState;
-  readonly tasks: readonly Task[];
-}) {
-  const fmt = useFormat();
-  const recente = useRecente();
+  const somenteLeitura = editavel ? undefined : "Esta Lista não está ativa: a Tabela é só leitura.";
   return (
     <div>
       <table className="tabela">
@@ -1461,36 +1324,61 @@ function Tabela({
               task.statusId,
             );
             const category = statusCategory(state, task);
+            const config = effectiveListConfig(state, task.listId);
+            const motivo = somenteLeitura ?? (effectiveLifecycleOfTask(state, task.id) !== "ativo" ? "Esta Tarefa não está ativa." : undefined);
             return (
               <tr key={task.id} data-recente={task.id === recente ? "true" : undefined}>
                 <td>
-                  <Link
-                    href={`/estrutura/tarefas/${task.id}`}
-                    className="app-md hover:underline"
+                  <button
+                    type="button"
+                    onClick={() => openTask(task.id)}
+                    className="app-md text-left hover:underline"
                     style={{ color: "var(--texto)" }}
                   >
                     {task.title}
-                  </Link>
+                  </button>
                 </td>
                 <td>
-                  {definition ? (
-                    <CategoryDot
-                      color={definition.color}
-                      label={definition.name}
+                  {config && definition ? (
+                    <StatusPicker
+                      options={config.statusSet.definitions}
+                      value={task.statusId}
+                      onChange={(statusId) =>
+                        report(
+                          run((data, me) => changeTaskStatus(data, me, task.id, statusId)),
+                          `“${task.title}” foi para ${config.statusSet.definitions.find((d) => d.id === statusId)?.name ?? "outro Status"}.`,
+                        )
+                      }
+                      readOnly={motivo !== undefined}
+                      {...(motivo ? { readOnlyReason: motivo } : {})}
+                      optionBlockReason={(optionId) => statusOptionRefusal(state, memberId, task, optionId)}
                     />
+                  ) : definition ? (
+                    <CategoryDot color={definition.color} label={definition.name} />
                   ) : (
                     "—"
                   )}
                 </td>
                 <td style={{ color: "var(--texto-3)" }}>
                   {category ? STATUS_CATEGORY_LABEL[category] : "—"}
-                  {isTerminalCategory(category) ? "" : ""}
                 </td>
                 <td style={{ color: "var(--texto-3)" }}>
-                  {PRIORITY_LABEL[task.priority]}
+                  {motivo ? (
+                    <span title={motivo}>{PRIORITY_LABEL[task.priority]}</span>
+                  ) : (
+                    <span className="block w-40">
+                      <TaskAttributeEditors task={task} report={report} features={{ prioridade: true, estimativa: false }} apenas="prioridade" />
+                    </span>
+                  )}
                 </td>
                 <td style={{ color: "var(--texto-3)" }}>
-                  {task.dueDate ? fmt.taskDate(task.dueDate) : "—"}
+                  {motivo ? (
+                    <span title={motivo}>{task.dueDate ? fmt.taskDate(task.dueDate) : "—"}</span>
+                  ) : (
+                    <span className="block w-44">
+                      <TaskAttributeEditors task={task} report={report} features={{ prioridade: true, estimativa: false }} apenas="vencimento" />
+                    </span>
+                  )}
                 </td>
                 <td style={{ color: "var(--texto-3)" }}>
                   {task.assignees.length === 0

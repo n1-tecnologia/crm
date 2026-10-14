@@ -61,15 +61,21 @@ export const moveTask = instrumentar("moveTask");
 export const convertChecklistItem = instrumentar("convertChecklistItem");
 export const trashTask = instrumentar("trashTask");
 export const restoreTask = instrumentar("restoreTask");
+export const purgeTask = instrumentar("purgeTask");
+export const purgeExpiredTasks = instrumentar("purgeExpiredTasks");
 export const restoreList = instrumentar("restoreList");
 export const addChecklist = instrumentar("addChecklist");
 export const addChecklistItem = instrumentar("addChecklistItem");
 export const setChecklistItemDone = instrumentar("setChecklistItemDone");
+export const removeChecklist = instrumentar("removeChecklist");
+export const removeChecklistItem = instrumentar("removeChecklistItem");
 export const startMeeting = instrumentar("startMeeting");
 export const endMeeting = instrumentar("endMeeting");
 export const updateTask = instrumentar("updateTask");
 export const setTaskFieldValue = instrumentar("setTaskFieldValue");
 export const addTaskComment = instrumentar("addTaskComment");
+export const editTaskComment = instrumentar("editTaskComment");
+export const deleteTaskComment = instrumentar("deleteTaskComment");
 export const resolveTaskComment = instrumentar("resolveTaskComment");
 export const setTaskTags = instrumentar("setTaskTags");
 export const watchTask = instrumentar("watchTask");
@@ -159,6 +165,10 @@ export const updateTaskType = instrumentar("updateTaskType");
 export const removeTaskType = instrumentar("removeTaskType");
 export const setContainerFeature = instrumentar("setContainerFeature");
 export const usarCampoHerdado = instrumentar("usarCampoHerdado");
+export const createTag = instrumentar("createTag");
+export const updateTag = instrumentar("updateTag");
+export const archiveTag = instrumentar("archiveTag");
+export const restoreTag = instrumentar("restoreTag");
 
 // collaboration.ts
 export const addDependency = instrumentar("addDependency");
@@ -170,6 +180,8 @@ export const attachFile = instrumentar("attachFile");
 export const removeAttachment = instrumentar("removeAttachment");
 export const setRecurrence = instrumentar("setRecurrence");
 export const spawnNextOccurrence = instrumentar("spawnNextOccurrence");
+export const spawnCalendarOccurrence = instrumentar("spawnCalendarOccurrence");
+export const runCalendarRecurrences = instrumentar("runCalendarRecurrences");
 
 // planning.ts
 export const setMemberCapacity = instrumentar("setMemberCapacity");
@@ -191,6 +203,7 @@ export const setDefaultView = instrumentar("setDefaultView");
 export const createForm = instrumentar("createForm");
 export const updateForm = instrumentar("updateForm");
 export const archiveForm = instrumentar("archiveForm");
+export const unarchiveForm = instrumentar("unarchiveForm");
 export const rotateFormSecret = instrumentar("rotateFormSecret");
 export const shareTaskPublicly = instrumentar("shareTaskPublicly");
 export const revokePublicShare = instrumentar("revokePublicShare");
@@ -228,6 +241,11 @@ export const grantGovernanceAccess = instrumentar("grantGovernanceAccess");
 export const createSpace = instrumentar("createSpace");
 export const createFolder = instrumentar("createFolder");
 export const createList = instrumentar("createList");
+export const updateContainer = instrumentar("updateContainer");
+export const archiveContainer = instrumentar("archiveContainer");
+export const unarchiveContainer = instrumentar("unarchiveContainer");
+export const trashContainer = instrumentar("trashContainer");
+export const restoreContainer = instrumentar("restoreContainer");
 
 // iniciar-conversa.ts
 export const iniciarConversa = instrumentar("iniciarConversa");

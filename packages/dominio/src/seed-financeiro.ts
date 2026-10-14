@@ -422,6 +422,8 @@ export function applyContasAPagar(state: DataState, clock: Clock, opcoes: Opcoes
     frequency: "mensal",
     interval: 1,
     triggerMode: "aoConcluir",
+    // FUND-08 — a conta do mês seguinte nasce ao PAGAR, não em "aprovado" nem em "negado".
+    triggerStatusId: S.pago,
     businessDays: "anterior",
     defaultAssigneeMemberId: defaultAssignee,
     copies: { checklists: false, subtasks: false, assignees: false, fieldValues: true, fieldValuesExcept: [F.anexo, F.dataEmissao] },

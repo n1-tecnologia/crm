@@ -39,6 +39,7 @@ const RECURRENCE_RULE = z
     interval: z.number(),
     weekDays: z.array(z.number()).optional(),
     triggerMode: z.enum(["aoConcluir", "porCalendario"]),
+    triggerStatusId: ID.optional(),
     whenStillOpen: z.enum(["gerarMesmoAssim", "aguardarConclusao"]).optional(),
     endsAfter: z.number().optional(),
     endsOn: z.string().optional(),
@@ -71,6 +72,9 @@ export const COLABORACAO = {
   // `null` = "sem recorrência".
   setRecurrence: z.tuple([ID, RECURRENCE_RULE.nullable()]),
   spawnNextOccurrence: z.tuple([ID]),
+  // FUND-17 — o dia civil viaja como Date (revivido antes da validação, como em runScheduledAutomations).
+  spawnCalendarOccurrence: z.tuple([ID, z.date()]),
+  runCalendarRecurrences: z.tuple([ID, z.date()]),
 } satisfies Esquemas;
 
 // ── Portão de enum bidirecional — falta ou sobra de membro não compila ──
