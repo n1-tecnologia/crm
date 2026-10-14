@@ -18,7 +18,8 @@ import { criarRepositorioDeMensagensPg, type LinhaDeMensagemRecebida } from "./m
 
 describeComBanco("RepositorioDeMensagens — Postgres local", () => {
   const espacos: string[] = [];
-  const mensagens = criarRepositorioDeMensagensPg(pool());
+  // Só dentro do `beforeAll`: sem `DATABASE_URL` (CI), `pool()` lança e derrubaria a suíte antes de o `describe.skip` valer.
+  let mensagens: ReturnType<typeof criarRepositorioDeMensagensPg>;
 
   /** Um Espaço com um Contato e uma Conversa em "Comercial" e outra em "Suporte". */
   async function cenario(rotulo: string) {
@@ -60,6 +61,7 @@ describeComBanco("RepositorioDeMensagens — Postgres local", () => {
 
   beforeAll(async () => {
     await prepararBancoCrm();
+    mensagens = criarRepositorioDeMensagensPg(pool());
   });
 
   afterAll(async () => {
