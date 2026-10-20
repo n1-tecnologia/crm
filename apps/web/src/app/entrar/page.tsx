@@ -15,6 +15,7 @@
  * Fora da casca: um cartão sólido centrado sobre a grade de pontos.
  */
 
+import Link from "next/link";
 import { Suspense, useActionState } from "react";
 import { useSearchParams } from "next/navigation";
 import { entrar, type EstadoDoLogin } from "./actions";
@@ -98,6 +99,15 @@ function FormularioDeEntrada() {
 
         <p className="app-sm mt-4 text-center" style={{ color: "var(--texto-3)" }}>
           Quem entra é o Usuário; o Membro — e tudo o que ele pode ver — é resolvido a partir dele.
+        </p>
+        <p className="app-meta mt-2 text-center">
+          <Link href="/privacidade" className="hover:underline">
+            Política de Privacidade
+          </Link>
+          {" · "}
+          <Link href="/termos" className="hover:underline">
+            Termos e Condições
+          </Link>
         </p>
       </div>
     </main>

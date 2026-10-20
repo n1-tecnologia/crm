@@ -13,8 +13,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-/** Rotas que se alcançam sem sessão. */
-const PUBLICAS = ["/entrar", "/sair"];
+/** Rotas que se alcançam sem sessão. `/privacidade` e `/termos` são os endereços que a Meta e o titular abrem antes de ter conta. */
+const PUBLICAS = ["/entrar", "/sair", "/privacidade", "/termos"];
 /** Prefixos públicos por desenho: os Formulários e as Páginas com segredo na URL. */
 const PREFIXOS_PUBLICOS = ["/f/", "/p/"];
 
