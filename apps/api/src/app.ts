@@ -31,6 +31,7 @@ import { rotasDeAnexosDaTarefa } from "./rotas/anexos-da-tarefa";
 import { rotasDeFinanceiro, type OpcoesDeFinanceiro } from "./rotas/financeiro";
 import { rotasDeFormulariosPublicos, type OpcoesDeFormulariosPublicos } from "./rotas/formularios-publicos";
 import { rotasDeTarefasPublicas, type OpcoesDeTarefasPublicas } from "./rotas/tarefas-publicas";
+import { rotasDeWebhookMeta, type OpcoesDeWebhookMeta } from "./rotas/webhook-meta";
 import { rotasDeIntegracaoDeSolicitacoes } from "./rotas/integracao-solicitacoes";
 import { rotasDeOperacoes } from "./rotas/operacoes";
 
@@ -79,6 +80,8 @@ export interface OpcoesDoApp {
   readonly formulariosPublicos?: Omit<OpcoesDeFormulariosPublicos, "workspaceId">;
   /** PARA-05 — a leitura pública da Tarefa por link, mesmo gancho `publica: true`. */
   readonly tarefasPublicas?: Omit<OpcoesDeTarefasPublicas, "workspaceId">;
+  /** O webhook da Meta (WhatsApp oficial): testes injetam o token e o segredo em vez de ler o ambiente. */
+  readonly webhookMeta?: OpcoesDeWebhookMeta;
   /**
    * Plan 02-24 — `POST /v1/integrations/payment-approvals/classifications`
    * (`./rotas/classificacoes.ts`) aceita o mesmo padrão de injeção: testes
@@ -218,6 +221,9 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
   // então o `delegator` de CORS acima aplica a mesma origem do resto do app.
   app.register(rotasDeFormulariosPublicos, { workspaceId, ...opcoes.formulariosPublicos });
   app.register(rotasDeTarefasPublicas, { workspaceId, ...opcoes.tarefasPublicas });
+  // O webhook da Meta chama de servidor, sem JWT: a confiança vem do token de
+  // verificação (GET) e da assinatura do corpo (POST), não de Authorization.
+  app.register(rotasDeWebhookMeta, opcoes.webhookMeta ?? {});
 
   // Rotas serviço-a-serviço: credencial própria
   // (`plugins/autenticacao-servico.ts`), nunca JWT humano. Rotas

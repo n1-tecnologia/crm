@@ -116,3 +116,19 @@ devolvê-la. O e2e `canais-fluxo.test.ts` confere a string crua da resposta.
 `simulatedConnection`) ao lado dos do seed, sem gravá-los em
 `plataforma.registros` (D-11, D-12); ver `persistencia/CONTEXT.md`. O cenário
 que prova isso por HTTP é `e2e/canais-fluxo.test.ts`.
+
+## Webhook da Meta — WhatsApp oficial (só escuta)
+
+`webhook-meta.ts` — `rotasDeWebhookMeta(app, opcoes)` — `GET` e `POST` em
+`/webhooks/meta/whatsapp`, sem `Authorization: Bearer` (`config: { publica: true }`).
+O `GET` é o aperto de mão da Meta ao cadastrar a URL: devolve `hub.challenge` em
+`text/plain` se `hub.verify_token` for `META_WEBHOOK_VERIFY_TOKEN` (sem a variável,
+403 sempre). O `POST` registra o corpo no log e responde 200; com `META_APP_SECRET`
+definido exige `X-Hub-Signature-256` (HMAC-SHA256 do corpo CRU — o parser JSON
+deste plugin guarda os bytes, encapsulado, e não vaza para as outras rotas); sem
+ele aceita e avisa no log.
+
+**Não grava nada e não cria Mensagem.** O formato do payload ainda será validado;
+quando for, a porta é `registrarRecebida` do serviço de Mensagens (idempotente por
+Canal + id externo). O log leva o corpo inteiro — número e texto de quem escreveu —
+e deve ser reduzido quando o formato estiver conhecido.
