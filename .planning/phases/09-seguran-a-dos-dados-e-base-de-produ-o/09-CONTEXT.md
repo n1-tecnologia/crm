@@ -60,6 +60,24 @@ Fechar a segurança dos dados e montar a base de produção **antes de qualquer 
 - **D-18 (1.5):** `apps/api/src/observabilidade/log.ts` com `opcoesDoLogger()` (`LOG_LEVEL`, `redact` de `req.headers.authorization` e de `*.segredo`, `*.secret`, `*.token`, `*.senha`, censura "[oculto]", serializador de `req` que troca o segmento depois de `/v1/public/forms/` e `/v1/public/tasks/` por `***`); no nginx, um `map` sobre `$request_uri` e um `log_format` próprio. **A mudança do nginx vale na VPS à mão** (depois da primeira emissão do certificado o arquivo da VPS é a fonte; `preparar-vps.sh` não o reescreve).
 - **D-19 (1.6):** `limit_req_zone … zone=n1_publico:10m rate=30r/m`, `location /v1/public/` com `burst=10 nodelay` e `limit_req_status 429`; o limite em memória (`limite-de-taxa.ts`) continua como segunda camada, com o comentário corrigido; `TRUST_PROXY` entra no `.env.example` com explicação (vazio em desenvolvimento, `loopback` atrás do nginx).
 
+### Decisões do dono ao planejar (pós-pesquisa, 2026-10-22)
+
+A pesquisa (`09-RESEARCH.md`) abriu quatro perguntas que mudam o escopo de planos específicos; o dono respondeu na abertura do `/gsd-plan-phase 9`.
+
+- **D-20 (nginx, Open Question 1):** **`limit_req` por IP só para `POST`** em `/v1/public/` (envios e uploads, que vêm do navegador): `rate=30r/m`, `burst=10 nodelay`, `limit_req_status 429` (D-19 vale para o `POST`). **O `GET` ganha zona própria com teto mais alto**, porque `/f/` e `/p/` são Server Components que chamam `GET /v1/public/*` pelo IP de saída compartilhado da Vercel (duas vezes por visita). O planejador escolhe o teto do `GET` e o registra no plano, com o motivo. `limit_req_log_level info` + `error_log … crit` no `location /v1/public/`, para o `error_log` do nginx não gravar a URL com o segredo a cada `429` (achado F3 da pesquisa). — **Reversibility:** reversible — é arquivo de configuração do nginx.
+- **D-21 (restauração, Open Question 2):** **A restauração do backup é provada num Postgres descartável no Mac do dono** (`postgres:16` em Docker, com a chave privada `age` que só ele tem): restaura, compara `count(*)` de `plataforma.registros` e apaga. **Nenhum dado real de produção vai para a homologação**, onde o Claude fará a passada exploratória (D-16). Ajusta D-10 e o critério SEG-09 (a restauração não acontece "em homologação"). — **Reversibility:** reversible.
+- **D-22 (recorte, Open Question 3):** **Entram na 1.1.1** os `agentExecutions` com `origin: "sessaoDeChat"` de uma Sessão que o Membro não vê (`input`, `output`, `chatSessionId`), além do que o CONTEXT já cobria; o teste de vazamento procura o **texto das mensagens**, não só ids. **Ficam fora** (decisão do dono de não ampliar): `Agent.memory[].content`, `ApprovalRequest.object.input` e as quatro coleções de IA restantes do Convidado (`agentExecutions`/`automationExecutions`/`skillGrants`/`collectionGrants`) além do que o D-02 já fixou — vão para as ideias adiadas, para a Sessão 17 ou 12. — **Reversibility:** reversible — filtro de leitura do servidor.
+- **D-23 (homologação na VPS, Open Question 6):** **Usuário do sistema próprio `n1crm-hml`** para o serviço `n1-crm-api-hml`, com sudoers e chave de deploy próprios; `preparar-vps.sh` e `n1-crm-api.service` passam a ser parametrizados por `AMBIENTE`. Quem comprometer a homologação não lê o `api.env` de produção. — **Reversibility:** costly — trocar o usuário depois é refazer permissões, sudoers e chave de deploy.
+
+**Correções de fato trazidas pela pesquisa (não são decisões novas, corrigem premissas acima):**
+- **D-16:** a página oficial de política de testes do Supabase **não exige aviso prévio** para scanner; o aviso a `security@supabase.com` é cortesia, não regra.
+- **D-10:** o **Cloudflare R2 não tem token só de escrita** (os quatro níveis leem); o **Backblaze B2 tem** (tipo "Write Only"). Recomendação da pesquisa: B2, salvo conta já existente; com R2, o risco residual fica registrado. Escolha continua na discrição do planejador (checkpoint do dono).
+- **D-06(e):** `public.rls_auto_enable()` **não existe** na imagem base do Supabase; o `revoke execute` entra guardado por `to_regprocedure`. A `009` também **desliga RLS** nas tabelas de `plataforma` (um `ensure_rls` num projeto novo as criaria com RLS ligada e sem policy, e `n1_api` não enxergaria linhas), e o `revoke` de `anon`/`authenticated` precisa de guarda por `pg_roles` (o `postgres:16` local não tem esses papéis).
+- **Escopo da 1.1:** o `value` do `OperationResult` também vaza (`ok(task, task.id)` leva a `Task` inteira com `publicShare.secret`): falta um `recortarValor` além de `recortarRegistro`/`recortarDiferenca`. O achado de `GET /anexos/:fileId/url` (Arquivo órfão deixado por `removeAttachment`) **entra no recorte da 1.1**, com regressão na suíte adversarial.
+- **CI:** `check.yml` roda com `DATABASE_URL: ""`, ou seja, nenhum teste com banco; a suíte adversarial só vira regressão com um job `seguranca` com serviço `postgres:16`.
+- **Escala:** o `REGISTRO` tem **286** operações.
+- **Ordem:** `apps/api/src/autenticacao/criar-usuario.cli.ts` e o script `usuarios:criar` estão **não commitados**; a fase começa por commitá-los.
+
 ### Requisitos derivados (proposta; registrar em `REQUIREMENTS.md` ao planejar)
 
 O ROADMAP deixou "Requirements: TBD (a derivar no discuss)". Derivação por tarefa:
@@ -72,9 +90,9 @@ O ROADMAP deixou "Requirements: TBD (a derivar no discuss)". Derivação por tar
 | SEG-04 | 1.3.1–1.3.4 | `has_schema_privilege('anon','plataforma','USAGE')` e o de `authenticated` são `false`; `009` aplicada em homologação e produção; `apps/api` em produção conecta como `n1_api`; `drop table plataforma.migracoes` por `n1_api` é recusado |
 | SEG-05 | 1.4 | Credencial gravada aparece só cifrada no banco, lê de volta o mesmo valor, chave errada falha, nenhuma rota devolve o segredo |
 | SEG-06 | 1.5 | `/v1/public/forms/<segredo>` não deixa o segredo no log do `apps/api` nem no do nginx |
-| SEG-07 | 1.6 | 50 chamadas seguidas do mesmo IP a `/v1/public/forms/x` recebem `429` a partir de cerca da 40ª |
+| SEG-07 | 1.6, D-20 | Em Docker, 50 `POST` seguidos do mesmo IP a `/v1/public/forms/x`: ≥ 30 recebem `429` e o primeiro `429` vem entre a 11ª e a 20ª chamada (com `rate=30r/m burst=10 nodelay` o primeiro é a 12ª, não a ~40ª); o `GET` tem teto próprio mais alto |
 | SEG-08 | 1.7.1–1.7.2 | Homologação no ar com login e banco próprios; push na branch `homologacao` publica a api |
-| SEG-09 | 1.7.3 | Restauração feita e anotada; `count(*)` de `plataforma.registros` em homologação bate com produção na hora do backup |
+| SEG-09 | 1.7.3, D-21 | Restauração feita e anotada num Postgres descartável no Mac do dono; `count(*)` de `plataforma.registros` bate com produção na hora do backup; nada de produção é restaurado em homologação |
 | SEG-10 | 1.7.4 | Erro forçado em homologação chega como alerta por e-mail em até 5 minutos |
 | SEG-11 | 1.7.5 | Painel da Evolution responde por HTTPS e a chave de API está anotada para a Sessão 4 |
 | SEG-12 | 1.8, D-14–D-16 | Suíte adversarial verde no `npm run check`; `09-PENTEST.md` com autorização, achados por severidade e nenhum crítico ou alto aberto |
@@ -188,6 +206,7 @@ O ROADMAP deixou "Requirements: TBD (a derivar no discuss)". Derivação por tar
 - **Contagem de limite de taxa no banco** — só quando o `apps/api` rodar em mais de um processo (tarefa 1.6.1)
 - **Superadmin e convite por e-mail** — Sessão 12 (o cadastro aberto é desligado agora; o Usuário nasce por `usuarios:criar` até lá)
 - **Troca de região do Supabase** (`us-west-2` para `sa-east-1`) — fora desta fase (decisão da Fase 2)
+- **`Agent.memory[].content`, `ApprovalRequest.object.input` e as quatro coleções de IA restantes do Convidado** (`agentExecutions`, `automationExecutions`, `skillGrants`, `collectionGrants`) — o dono preferiu não ampliar a 1.1 (D-22); Sessão 17 (regra por registro) ou Sessão 12
 
 ### Reviewed Todos (not folded)
 None — nenhum todo pendente casou com a fase.
