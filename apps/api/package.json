@@ -9,6 +9,7 @@
     "test": "vitest run",
     "migrar": "vite-node src/persistencia/migrar.cli.ts",
     "usuarios:seed": "vite-node src/autenticacao/criar-usuarios-do-seed.ts",
+    "usuarios:criar": "vite-node src/autenticacao/criar-usuario.cli.ts",
     "bootstrap:gestao": "vite-node src/bootstrap/gestao.cli.ts",
     "solicitacoes:configurar": "vite-node src/bootstrap/solicitacoes.cli.ts",
     "solicitacoes:formulario": "vite-node src/bootstrap/formulario-da-solicitacao.cli.ts",
