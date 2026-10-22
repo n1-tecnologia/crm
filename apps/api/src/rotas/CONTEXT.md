@@ -117,10 +117,25 @@ devolvê-la. O e2e `canais-fluxo.test.ts` confere a string crua da resposta.
 `plataforma.registros` (D-11, D-12); ver `persistencia/CONTEXT.md`. O cenário
 que prova isso por HTTP é `e2e/canais-fluxo.test.ts`.
 
-## Webhook da Meta — WhatsApp oficial (só escuta)
+## Webhooks da Meta — WhatsApp oficial e Instagram (só escutam)
 
 `webhook-meta.ts` — `rotasDeWebhookMeta(app, opcoes)` — `GET` e `POST` em
-`/webhooks/meta/whatsapp`, sem `Authorization: Bearer` (`config: { publica: true }`).
+`/webhooks/meta/whatsapp` e em `/webhooks/meta/instagram`, sem `Authorization: Bearer`
+(`config: { publica: true }`). Os dois canais compartilham o plugin (e portanto o parser
+de corpo cru, que só pode ser registrado uma vez por plugin), o token de verificação
+(`META_WEBHOOK_VERIFY_TOKEN`) e o formato do log; o que muda é o segredo da assinatura:
+o WhatsApp confere só contra `META_APP_SECRET`; o Instagram aceita `INSTAGRAM_APP_SECRET`
+(a chave do app do Instagram) **ou** `META_APP_SECRET`, enquanto não se confirmar qual a
+Meta usa — o log do POST aceito traz `segredo` com o nome do que bateu. Um canal nunca
+aceita o segredo exclusivo do outro.
+
+**Do Instagram, só estas duas rotas existem.** Ficam por fazer: as de desautorização
+(`/webhooks/meta/instagram/deauthorize`) e exclusão de dados (`.../data-deletion`), que
+recebem `signed_request` (outro formato de assinatura) e a de conexão da conta (OAuth,
+token longo criptografado, `subscribed_apps`) — sem a conexão não há Canal para casar com
+`entry[].id`, então nenhuma DM vira Mensagem ainda.
+
+A descrição abaixo vale para os dois canais.
 O `GET` é o aperto de mão da Meta ao cadastrar a URL: devolve `hub.challenge` em
 `text/plain` se `hub.verify_token` for `META_WEBHOOK_VERIFY_TOKEN` (sem a variável,
 403 sempre). O `POST` registra o corpo no log e responde 200; com `META_APP_SECRET`

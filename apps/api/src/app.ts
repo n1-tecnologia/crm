@@ -80,7 +80,7 @@ export interface OpcoesDoApp {
   readonly formulariosPublicos?: Omit<OpcoesDeFormulariosPublicos, "workspaceId">;
   /** PARA-05 — a leitura pública da Tarefa por link, mesmo gancho `publica: true`. */
   readonly tarefasPublicas?: Omit<OpcoesDeTarefasPublicas, "workspaceId">;
-  /** O webhook da Meta (WhatsApp oficial): testes injetam o token e o segredo em vez de ler o ambiente. */
+  /** Os webhooks da Meta (WhatsApp oficial e Instagram): testes injetam o token e os segredos em vez de ler o ambiente. */
   readonly webhookMeta?: OpcoesDeWebhookMeta;
   /**
    * Plan 02-24 — `POST /v1/integrations/payment-approvals/classifications`
