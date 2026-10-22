@@ -311,7 +311,8 @@ export default function MembrosPage() {
                   {preview.privateContainerGrants} Concessão(ões) sobre contêineres privados passam ao
                   Sucessor.
                 </li>
-                <li>{preview.chatSessions} Sessão(ões) de Chat deixam de ser acessíveis.</li>
+                {/* Sem número: o servidor não manda a Sessão de Chat de outro Membro (DO-CHT-09, D-01), então a contagem daqui seria zero. */}
+                <li>As Sessões de Chat deste Membro deixam de ser acessíveis.</li>
               </ul>
 
               <div className="mt-3 max-w-sm">

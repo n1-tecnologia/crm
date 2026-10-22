@@ -159,3 +159,120 @@ describe("visibilidadePara", () => {
     expect(filtrarOrdens({ tasks: { t_oculta: 1, t_visivel: 2 }, lists: { lst_oculta: 0 } }, ocultos)).toEqual({ tasks: { t_visivel: 2 }, lists: {} });
   });
 });
+
+/**
+ * D-01 / D-22 — a IA pessoal (Sessão de Chat, pasta, Execução de Sessão) só sai
+ * do servidor para quem a lê (DO-CHT-09). No seed, mem_thiago é o dono de
+ * cht_1, cht_2 e cht_6 (e das pastas cfd_propostas e cfd_processo); mem_rafael,
+ * mem_julia e mem_marcos têm uma Sessão cada. mem_thiago também é o Proprietário.
+ */
+describe("visibilidadePara — Sessão de Chat, pasta e execução (D-01, D-22)", () => {
+  const DONO = "mem_thiago";
+  const OUTRO = "mem_rafael"; // está em team_com e team_closers
+  const idsDe = (itens: ReadonlyArray<{ readonly id: string }>) => itens.map((i) => i.id);
+  const sessao = (id: string) => {
+    const s = state.chatSessions.find((x) => x.id === id);
+    if (!s) throw new Error(`o seed precisa da Sessão ${id}`);
+    return s;
+  };
+
+  it("sem compartilhamento, o outro Membro não recebe a Sessão; o dono recebe as dele", () => {
+    const { estado, ocultos } = visibilidadePara(state, OUTRO);
+    for (const id of ["cht_1", "cht_2", "cht_6"]) {
+      expect(idsDe(estado.chatSessions)).not.toContain(id);
+      expect(ocultos.has(id)).toBe(true);
+    }
+    expect(idsDe(estado.chatSessions)).toContain("cht_3");
+    const doDono = visibilidadePara(state, DONO).estado;
+    expect(idsDe(doDono.chatSessions)).toEqual(expect.arrayContaining(["cht_1", "cht_2", "cht_6"]));
+  });
+
+  it("a Sessão compartilhada com o Membro (sharedWithMemberIds) chega", () => {
+    sessao("cht_6").sharedWithMemberIds.push(OUTRO);
+    const { estado, ocultos } = visibilidadePara(state, OUTRO);
+    expect(idsDe(estado.chatSessions)).toContain("cht_6");
+    expect(ocultos.has("cht_6")).toBe(false);
+    // Compartilhar uma Sessão não abre as outras do mesmo dono.
+    expect(idsDe(estado.chatSessions)).not.toContain("cht_1");
+  });
+
+  it("a Sessão compartilhada com uma Equipe do Membro (sharedWithTeamIds) chega; com Equipe que não é dele, não", () => {
+    sessao("cht_6").sharedWithTeamIds.push("team_closers");
+    sessao("cht_1").sharedWithTeamIds.push("team_ops");
+    const { estado } = visibilidadePara(state, OUTRO);
+    expect(idsDe(estado.chatSessions)).toContain("cht_6");
+    expect(idsDe(estado.chatSessions)).not.toContain("cht_1");
+  });
+
+  it("a pasta de chat de outro Membro nunca chega; a Sessão compartilhada chega sem folderId e o estado de origem não muda", () => {
+    expect(sessao("cht_1").folderId).toBe("cfd_propostas");
+    sessao("cht_1").sharedWithMemberIds.push(OUTRO);
+    const { estado, ocultos } = visibilidadePara(state, OUTRO);
+    expect(idsDe(estado.chatFolders)).not.toContain("cfd_propostas");
+    expect(ocultos.has("cfd_propostas")).toBe(true);
+    expect(ocultos.has("cfd_processo")).toBe(true);
+    const chegou = estado.chatSessions.find((x) => x.id === "cht_1");
+    expect(chegou).toBeDefined();
+    expect("folderId" in chegou!).toBe(false);
+    // Nunca muta o estado inteiro: o servidor segue com a pasta no registro.
+    expect(sessao("cht_1").folderId).toBe("cfd_propostas");
+    // O dono continua com as pastas e com o folderId das próprias Sessões.
+    const doDono = visibilidadePara(state, DONO).estado;
+    expect(idsDe(doDono.chatFolders)).toEqual(expect.arrayContaining(["cfd_propostas", "cfd_processo"]));
+    expect(doDono.chatSessions.find((x) => x.id === "cht_1")?.folderId).toBe("cfd_propostas");
+  });
+
+  it("as Execuções de Sessão oculta saem (com os ids em ocultos); as de outras origens e as de Sessão visível ficam", () => {
+    const deCht2 = state.agentExecutions.filter((e) => e.chatSessionId === "cht_2").map((e) => e.id);
+    expect(deCht2.length).toBeGreaterThan(0);
+    const deOutraOrigem = state.agentExecutions.filter((e) => e.origin !== "sessaoDeChat").map((e) => e.id);
+    expect(deOutraOrigem.length).toBeGreaterThan(0);
+
+    const antes = visibilidadePara(state, OUTRO);
+    for (const id of deCht2) {
+      expect(idsDe(antes.estado.agentExecutions)).not.toContain(id);
+      expect(antes.ocultos.has(id)).toBe(true);
+    }
+    expect(idsDe(antes.estado.agentExecutions)).toEqual(expect.arrayContaining(deOutraOrigem));
+    expect(antes.estado.agentExecutions.some((e) => e.origin === "sessaoDeChat" && e.chatSessionId !== undefined && !idsDe(antes.estado.chatSessions).includes(e.chatSessionId))).toBe(false);
+
+    // Compartilhada a Sessão, a conversa dela volta junto.
+    sessao("cht_2").sharedWithMemberIds.push(OUTRO);
+    const depois = visibilidadePara(state, OUTRO);
+    expect(idsDe(depois.estado.agentExecutions)).toEqual(expect.arrayContaining(deCht2));
+    expect(deCht2.some((id) => depois.ocultos.has(id))).toBe(false);
+  });
+
+  it("Pitfall 1 — o Proprietário alcança toda a Estrutura e mesmo assim não recebe a Sessão de outro Membro", () => {
+    expect(state.workspace.ownerMemberId).toBe(DONO);
+    const { estado, ocultos } = visibilidadePara(state, DONO);
+    // Nada da Estrutura saiu...
+    expect(estado.tasks).toHaveLength(state.tasks.length);
+    expect(estado.lists).toHaveLength(state.lists.length);
+    // ...e ainda assim as Sessões de Rafael, Julia e Marcos não vieram, nem as Execuções delas.
+    for (const id of ["cht_3", "cht_4", "cht_5"]) {
+      expect(idsDe(estado.chatSessions)).not.toContain(id);
+      expect(ocultos.has(id)).toBe(true);
+    }
+    // Vale para todo Papel: quem não é dono nem recebeu o compartilhamento não lê.
+    const doRafael = visibilidadePara(state, OUTRO).estado;
+    expect(doRafael.chatSessions.every((x) => x.ownerMemberId === OUTRO)).toBe(true);
+  });
+
+  it("filtrarOrdens tira os ids de Sessão, pasta e Execução ocultas; a ordem das Sessões que ficam é a do estado", () => {
+    const { estado, ocultos } = visibilidadePara(state, OUTRO);
+    const ordens = filtrarOrdens(
+      {
+        chatSessions: Object.fromEntries(state.chatSessions.map((x, i) => [x.id, i])),
+        chatFolders: Object.fromEntries(state.chatFolders.map((x, i) => [x.id, i])),
+        agentExecutions: Object.fromEntries(state.agentExecutions.map((x, i) => [x.id, i])),
+      },
+      ocultos,
+    );
+    expect(Object.keys(ordens.chatSessions ?? {})).toEqual(idsDe(estado.chatSessions));
+    expect(Object.keys(ordens.chatFolders ?? {})).toEqual([]);
+    expect(Object.keys(ordens.agentExecutions ?? {})).toEqual(idsDe(estado.agentExecutions));
+    // Só filtra: a ordem relativa é a do estado.
+    expect(idsDe(estado.chatSessions)).toEqual(idsDe(state.chatSessions).filter((id) => !ocultos.has(id)));
+  });
+});
