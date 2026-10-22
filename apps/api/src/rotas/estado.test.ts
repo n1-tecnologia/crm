@@ -11,8 +11,17 @@ import { buildSeed } from "@n1/dominio/seed";
 import { CP } from "@n1/dominio/operations";
 import { estadoVisivelPara, visibilidadePara } from "@n1/dominio/derive-visibilidade";
 import { buildApp } from "../app";
-import { carregarEnv, encerrar, pool } from "../persistencia/conexao";
+import { encerrar, pool } from "../persistencia/conexao";
 import { semear } from "../persistencia/repositorio";
+import { describeComBanco, prepararBancoCrm } from "../testes/banco-crm";
+import {
+  appDoEspaco,
+  limparEspacoDeVazamento,
+  montarEspacoDeVazamento,
+  semearEspacoDeVazamento,
+  TOKENS_DE_VAZAMENTO,
+  type EspacoDeVazamento,
+} from "../testes/espaco-de-vazamento";
 
 const MARYANE = usuarioDoSeed("mem_maryane");
 const semente = buildSeed();
@@ -57,15 +66,15 @@ describe("GET /anexos/:fileId/url — sem banco", () => {
   });
 });
 
-carregarEnv();
-const temBanco = Boolean(process.env.DATABASE_URL);
-const d = temBanco ? describe : describe.skip;
+// F9 — o guarda é o `describeComBanco` (só Postgres local): este arquivo semeia
+// dado de teste e, com o `.env` do dono, o guarda antigo mirava o Supabase remoto.
 const WS = "ws_estado_teste";
 
-d("GET /estado — contra o banco real", () => {
+describeComBanco("GET /estado — contra o banco real", () => {
   const tarefa = semente.tasks.find((t) => t.listId === CP.listId);
 
   beforeAll(async () => {
+    await prepararBancoCrm();
     expect(tarefa, "o seed precisa ter alguma Tarefa de Contas a pagar").toBeDefined();
     // POSC-08 — um Arquivo anexado a uma conta de Gestão: baixa quem vê a conta.
     semente.files.push({
@@ -111,7 +120,6 @@ d("GET /estado — contra o banco real", () => {
     } finally {
       cliente.release();
     }
-    await encerrar();
   });
 
   it("devolve o Espaço inteiro, a revisão, as ordens e a sessão do Membro (D-04)", async () => {
@@ -193,5 +201,56 @@ d("GET /estado — contra o banco real", () => {
       headers: { authorization: "Bearer token-maryane" },
     });
     expect(resposta.statusCode).toBe(404);
+  });
+});
+
+describeComBanco("GET /estado — vazamento entre Membros: Sessão de Chat (D-01, D-22)", () => {
+  let espaco: EspacoDeVazamento;
+
+  beforeAll(async () => {
+    await prepararBancoCrm();
+    espaco = montarEspacoDeVazamento("estado");
+    await semearEspacoDeVazamento(espaco);
+  });
+
+  afterAll(async () => {
+    await limparEspacoDeVazamento(espaco);
+    await encerrar();
+  });
+
+  const pedir = (token: string) =>
+    appDoEspaco(espaco).inject({ method: "GET", url: "/estado", headers: { authorization: `Bearer ${token}` } });
+
+  it("(a) B não recebe a Sessão, a pasta nem o texto da conversa de A — e recebe a própria", async () => {
+    const resposta = await pedir(TOKENS_DE_VAZAMENTO.b);
+    expect(resposta.statusCode, resposta.body.slice(0, 200)).toBe(200);
+    for (const frase of espaco.frases.a) expect(resposta.body, `frase de A: ${frase}`).not.toContain(frase);
+    for (const id of [espaco.ids.a.sessao, espaco.ids.a.pasta, espaco.ids.a.execucao]) {
+      expect(resposta.body, `id de A: ${id}`).not.toContain(id);
+    }
+    // O que é de B continua chegando.
+    expect(resposta.body).toContain(espaco.frases.b[0]);
+    expect(resposta.body).toContain(espaco.ids.b.sessao);
+    expect(resposta.body).toContain(espaco.ids.b.pasta);
+  });
+
+  it("(b) o Proprietário também não recebe a conversa de A nem a de B (Pitfall 1: sem retorno antecipado)", async () => {
+    const resposta = await pedir(TOKENS_DE_VAZAMENTO.proprietario);
+    expect(resposta.statusCode, resposta.body.slice(0, 200)).toBe(200);
+    for (const frase of [...espaco.frases.a, ...espaco.frases.b]) expect(resposta.body, `frase: ${frase}`).not.toContain(frase);
+    for (const id of [espaco.ids.a.sessao, espaco.ids.b.sessao, espaco.ids.a.pasta, espaco.ids.b.pasta]) {
+      expect(resposta.body, `id: ${id}`).not.toContain(id);
+    }
+  });
+
+  it("(c) o recorte esvazia as coleções de IA pessoal, mas todas as chaves de COLECOES continuam no corpo", async () => {
+    const resposta = await pedir(TOKENS_DE_VAZAMENTO.b);
+    const corpo = resposta.json() as { data: Record<string, unknown>; ordens: Record<string, Record<string, number>> };
+    const chaves = Object.keys(corpo.data);
+    for (const colecao of [...COLECOES, ...SINGULARES]) expect(chaves).toContain(colecao);
+    // `ordens` também não carrega o id do que saiu (um id também é informação).
+    expect(corpo.ordens.chatSessions?.[espaco.ids.a.sessao]).toBeUndefined();
+    expect(corpo.ordens.agentExecutions?.[espaco.ids.a.execucao]).toBeUndefined();
+    expect(corpo.ordens.chatSessions?.[espaco.ids.b.sessao]).toBeTypeOf("number");
   });
 });

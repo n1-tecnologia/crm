@@ -27,6 +27,7 @@ import { use, useEffect, useRef, useState } from "react";
 import { Anchor, Bot, Info, Wrench } from "lucide-react";
 import { useData, useRun, useSession } from "@/dados/store";
 import { useRecente } from "@/features/shell/recente";
+import { membroVeSessaoDeChat } from "@n1/dominio/derive";
 import { configureChatSession, sendChatMessage } from "@n1/dominio/operations";
 import { reduzido } from "@/design/movimento";
 import { useDialogoDeAncora } from "@/features/ia/ancora-do-chat";
@@ -124,14 +125,12 @@ export default function SessaoPage({ params }: { params: Promise<{ sessao: strin
 
   // DO-CHT-09 — nem o Proprietário do Espaço de Trabalho entra numa Sessão
   // alheia; só o compartilhamento explícito dá leitura, e leitura não dá voz.
+  // A regra mora no domínio (`membroVeSessaoDeChat`) e o servidor já não entrega
+  // a Sessão alheia por `GET /estado`: esta tela é a segunda barreira, com a
+  // mesma função. Quem decide a VOZ continua sendo só o dono.
   const isOwner = record.ownerMemberId === memberId;
-  const shared =
-    record.sharedWithMemberIds.includes(memberId) ||
-    state.teams.some(
-      (team) => record.sharedWithTeamIds.includes(team.id) && team.memberIds.includes(memberId),
-    );
 
-  if (!isOwner && !shared) {
+  if (!membroVeSessaoDeChat(state, memberId, record)) {
     return (
       <div className="flex h-full flex-col">
         <PageHeader title="Sessão de Chat" />

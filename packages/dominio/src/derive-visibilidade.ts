@@ -14,19 +14,26 @@
  *   - Tarefa que o Membro não vê (`memberSeesTask`: alcance da Lista, concessão
  *     na Tarefa, ou Campo `person` que o nomeia).
  *   - Registro de Atividade e Pedido de Aprovação sobre o que saiu.
+ *   - IA pessoal (DO-CHT-09, D-01, D-22): a Sessão de Chat que o Membro não lê
+ *     (`membroVeSessaoDeChat` — vale para todo Papel, o Proprietário incluído),
+ *     a pasta de chat que não é dele e a Execução de agente cuja origem é uma
+ *     Sessão que saiu (o texto da conversa mora em `input`/`output`). Uma Sessão
+ *     compartilhada chega sem `folderId` quando a pasta é de outro Membro.
  *
  * O que fica: tudo o mais — Membros, Papéis, Concessões, Equipes são o que a
- * própria leitura de alcance precisa. Coleções fora da Estrutura (CRM, Caixa
- * de Entrada, IA) não têm privacidade por contêiner e não são recortadas aqui.
+ * própria leitura de alcance precisa. Coleções fora da Estrutura e da IA
+ * pessoal (CRM, Caixa de Entrada) não têm privacidade por contêiner e não são
+ * recortadas aqui. O recorte parte sempre do estado INTEIRO, e nunca devolve o
+ * mesmo objeto: não existe atalho "nada oculto, devolve como veio".
  *
  * `ocultos` é o conjunto de ids que saíram: a rota de gravação filtra o diff
  * com ele, para um registro oculto não entrar pela porta de trás.
  */
 
-import { containerPath, memberReachesContainer, memberSeesTask } from "./derive";
+import { containerPath, membroVeSessaoDeChat, memberReachesContainer, memberSeesTask } from "./derive";
 import type { Diferenca, Ordens } from "./diferenca";
 import type { DataState } from "./state";
-import type { Id, Task } from "./types";
+import type { ChatSession, Id, Task } from "./types";
 
 export interface Visibilidade {
   readonly estado: DataState;
@@ -59,7 +66,28 @@ export function visibilidadePara(state: DataState, memberId: Id): Visibilidade {
   const visiveis = new Set(tarefasVisiveis.map((t) => t.id));
   for (const t of state.tasks) if (!visiveis.has(t.id)) ocultos.add(t.id);
 
-  if (ocultos.size === 0) return { estado: state, ocultos };
+  // IA pessoal, a partir do estado INTEIRO (Pattern 1 da Fase 9). Sem retorno
+  // antecipado acima: o Proprietário alcança toda a Estrutura e, ainda assim,
+  // não lê a Sessão de Chat de outro Membro (DO-CHT-09).
+  const sessoesQueSaem = new Set<Id>();
+  const chatSessions: ChatSession[] = [];
+  for (const sessao of state.chatSessions) {
+    if (!membroVeSessaoDeChat(state, memberId, sessao)) {
+      sessoesQueSaem.add(sessao.id);
+      ocultos.add(sessao.id);
+    } else if (sessao.ownerMemberId !== memberId && sessao.folderId !== undefined) {
+      // A pasta de chat é pessoal: a Sessão compartilhada chega sem ela.
+      const semPasta: ChatSession = { ...sessao };
+      delete semPasta.folderId;
+      chatSessions.push(semPasta);
+    } else {
+      chatSessions.push(sessao);
+    }
+  }
+  const chatFolders = state.chatFolders.filter((f) => f.ownerMemberId === memberId || !ocultos.add(f.id));
+  const agentExecutions = state.agentExecutions.filter(
+    (e) => e.chatSessionId === undefined || !sessoesQueSaem.has(e.chatSessionId) || !ocultos.add(e.id),
+  );
 
   const activity = state.activity.filter((a) => !ocultos.has(a.objectId));
   const approvals = state.approvals.filter((a) => !ocultos.has(a.object.targetResourceId));
@@ -71,7 +99,10 @@ export function visibilidadePara(state: DataState, memberId: Id): Visibilidade {
     ocultos.add(f.id);
     return false;
   });
-  return { estado: { ...state, spaces, folders, lists, tasks: tarefasVisiveis, activity, approvals, files }, ocultos };
+  return {
+    estado: { ...state, spaces, folders, lists, tasks: tarefasVisiveis, activity, approvals, files, chatSessions, chatFolders, agentExecutions },
+    ocultos,
+  };
 }
 
 /**

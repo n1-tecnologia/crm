@@ -57,9 +57,14 @@ describe("visibilidadePara", () => {
       const dele = estadoVisivelPara(state, nomeado.id);
       expect(dele.tasks.filter((t) => t.listId === CP.listId).length).toBeLessThan(state.tasks.filter((t) => t.listId === CP.listId).length);
     }
-    // Sem nada oculto, o estado volta como veio — sem cópia.
-    const todos = state.members.find((x) => x.state === "ativo" && visibilidadePara(state, x.id).ocultos.size === 0);
-    if (todos) expect(visibilidadePara(state, todos.id).estado).toBe(state);
+    // Quem alcança toda a Estrutura recebe a Estrutura inteira. Já não existe o atalho
+    // "nada oculto, devolve o mesmo objeto" (Fase 9, Pitfall 1): a IA pessoal alheia sai
+    // para todo Papel, então o recorte sempre monta o estado novo.
+    const dono = state.workspace.ownerMemberId;
+    const doDono = visibilidadePara(state, dono).estado;
+    expect(doDono.spaces).toHaveLength(state.spaces.length);
+    expect(doDono.lists).toHaveLength(state.lists.length);
+    expect(doDono.tasks).toHaveLength(state.tasks.length);
   });
 
   it("uma Lista compartilhada dentro do Espaço privado expõe o caminho (RN-ESP-15), não as irmãs", () => {

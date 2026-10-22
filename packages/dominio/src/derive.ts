@@ -11,6 +11,7 @@ import type {
   AgentExecution,
   ApprovalRequest,
   Channel,
+  ChatSession,
   Comment,
   Contact,
   Conversation,
@@ -1031,6 +1032,23 @@ export function memberSeesTask(state: DataState, memberId: Id, taskId: Id): bool
   // Nomeado num Campo que a Lista declarou: enxerga, e só enxerga.
   if (memberNamedOnTask(state, memberId, task)) return true;
   return memberReachesContainer(state, memberId, "list", task.listId);
+}
+
+/**
+ * DO-CHT-09 / D-01 — quem lê uma Sessão de Chat: o dono, quem está em
+ * `sharedWithMemberIds` e quem pertence a uma Equipe de `sharedWithTeamIds`.
+ * Vale para TODO Papel: nem Administrador nem Proprietário recebe a Sessão de
+ * outro Membro. É a regra única — o servidor a aplica em `visibilidadePara`
+ * (o que sai por `GET /estado`) e a tela de Chat a repete como segunda barreira.
+ */
+export function membroVeSessaoDeChat(
+  state: DataState,
+  memberId: Id,
+  sessao: Pick<ChatSession, "ownerMemberId" | "sharedWithMemberIds" | "sharedWithTeamIds">,
+): boolean {
+  if (sessao.ownerMemberId === memberId) return true;
+  if (sessao.sharedWithMemberIds.includes(memberId)) return true;
+  return state.teams.some((team) => sessao.sharedWithTeamIds.includes(team.id) && team.memberIds.includes(memberId));
 }
 
 /** RN-TAR-06 para Agentes: concessão ao Agente na Tarefa ou no caminho; sem ela, só o que não é privado. */
