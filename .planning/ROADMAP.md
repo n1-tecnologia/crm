@@ -556,5 +556,55 @@ Plans:
 
 **Ondas de execução:** 1 → [08-01] · 2 → [08-02, 08-03, 08-04, 08-05] · 3 → [08-06, 08-07, 08-08, 08-09, 08-10, 08-11] · 4 → [08-12] · 5 → [08-13] · 6 → [08-14] · 7 → [08-15]
 
+### Phase 9: Segurança dos dados e base de produção
+
+**Goal:** Fechar a segurança dos dados e montar a base de produção antes de qualquer dado real de cliente entrar (WhatsApp não oficial em diante). Sete frentes, na ordem do `docs/09-planejamento/TAREFAS-POR-SESSAO.md`, Sessão 1: (1.1) o recorte de `GET /estado` e da resposta de `POST /operacoes` passa a tirar o que é pessoal de outro Membro (Sessão de Chat, pasta de chat, Memória de Usuário, e-mail de convite, Visão pessoal) e os segredos de link público (`publicShare.secret`, `Form.secret`) de quem não administra a Lista; (1.2) Membro `suspenso` recebe 403 em `POST /operacoes`, o CRM antigo e as duas operações soltas (`restoreList`, `createReceivableSeries`) passam a conferir quem chama, e `packages/dominio/CONTEXT.md` ganha a tabela "Quem pode" cobrindo todo o `REGISTRO`; (1.3) o schema `plataforma` fica fechado para `anon` e `authenticated`, a migração `009` revoga o acesso público, e o `apps/api` conecta como `n1_api` (sem superusuário) com as migrações em `DATABASE_URL_MIGRACAO`; (1.4) cofre de credenciais cifrado (`plataforma.credenciais`, AES-256-GCM, chave fora do banco) para os tokens de provedor das Sessões 4, 7, 8 e 9; (1.5) nenhum log do `apps/api` nem do nginx guarda o segredo que vai na URL das rotas públicas; (1.6) `limit_req` no nginx para `/v1/public/`; (1.7) ambiente de homologação com login e banco próprios, backup diário com restauração testada, monitoramento de erro (Sentry) na api e na web, e o servidor da Evolution API preparado. Três decisões do dono dentro da fase: o que mais o `GET /estado` esconde (1.1.4), como proteger o banco, só fechado ou com RLS (1.3.2), e onde fica o banco de homologação (1.7.1). A 1.3.1 (conferir se `anon` alcança `plataforma` e desligar o cadastro aberto no Supabase) é ação do dono, leva minutos e vale fazer antes de a fase começar. A conferência do projeto Supabase de 22/10 fechou a parte de banco da 1.3.1 (`anon` e `authenticated` sem `USAGE` em `plataforma`, schema não exposto na REST) e deixou pendente o cadastro aberto, o papel `n1_api`, três funções com `search_path` mutável e o bucket público `guias`; detalhes e a proposta de um teste de invasão (tarefa 1.8, a decidir) em `09-NOTAS-DA-CONFERENCIA.md`.
+**Requirements**: SEG-01, SEG-02, SEG-03, SEG-04, SEG-05, SEG-06, SEG-07, SEG-08, SEG-09, SEG-10, SEG-11, SEG-12
+**Depends on:** Phase 8 (a `008` já está aplicada e é imutável; a `009` desta fase é a próxima migração). A UAT da Fase 8 segue aberta e não bloqueia o código desta fase, mas o `/gsd-ship` fica bloqueado enquanto `WINDOWS.md` tiver janela aberta
+**Plans:** 22 plans
+
+Plans:
+**Wave 1** — o traçador
+- [ ] 09-01-PLAN.md — Traçador: a Sessão de Chat de um Membro não chega a outro (domínio → `GET /estado` → tela), depois do commit da ponte `usuarios:criar` do dono (SEG-01)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 09-02-PLAN.md — Domínio: o recorte completo (Memória, convite, Visão pessoal, segredos de link, Convidado sem IA, Arquivo órfão, `recortarDiferenca`/`recortarValor`) (SEG-01, SEG-02)
+- [ ] 09-03-PLAN.md — Domínio: escritas com conferência no CRM antigo, `restoreList` e `createReceivableSeries` (SEG-03)
+- [ ] 09-04-PLAN.md — Banco fechado: a `009`, `n1_api`, `DATABASE_URL_MIGRACAO` e `banco:conceder`, provados em Postgres local (SEG-04, SEG-05)
+- [ ] 09-05-PLAN.md — Logs do `apps/api` sem segredo (`mascararSegredoDeUrl` no domínio) (SEG-06)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 09-06-PLAN.md — nginx: `limit_req` por IP no POST, teto próprio do GET, máscara nos logs, provado em Docker; `TRUST_PROXY` (SEG-06, SEG-07)
+- [ ] 09-07-PLAN.md — api: resposta de `POST /operacoes` recortada (incl. `value` e `inviteMember`), 403 do suspenso, teste de vazamento completo (SEG-01, SEG-03)
+- [ ] 09-08-PLAN.md — Web: link público sem segredo, IA fora do trilho do Convidado e `/ia/*` "sem acesso" (SEG-01, SEG-02)
+- [ ] 09-09-PLAN.md — Tabela "Quem pode" das 286 operações e o teste que a cobra (SEG-03)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 09-10-PLAN.md — Cofre de credenciais AES-256-GCM (SEG-05)
+- [ ] 09-11-PLAN.md — Homologação no repositório: scripts por `AMBIENTE`, usuário `n1crm-hml`, job `homologacao` (SEG-08)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+- [ ] 09-12-PLAN.md — Suíte adversarial 1: inventário de rotas, matriz de Papéis, suspenso nas rotas REST, job `seguranca` do CI (SEG-12, SEG-03)
+- [ ] 09-13-PLAN.md — Sentry na api, depois do portão de legitimidade dos pacotes (SEG-10)
+- [ ] 09-14-PLAN.md — Backup cifrado e restauração provados em Docker; arquivos da Evolution API (SEG-09, SEG-11)
+- [ ] 09-17-PLAN.md — Homologação no ar e a `009`/`n1_api` provados nela `[BLOCKING]` (SEG-08, SEG-04)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+- [ ] 09-15-PLAN.md — Suíte adversarial 2: outro Membro e outro Espaço, anexos, segredos, XFF, entrada hostil (SEG-12, SEG-01)
+- [ ] 09-16-PLAN.md — Sentry na web pelo arquivo de instrumentação do Next 16 (SEG-10)
+- [ ] 09-18-PLAN.md — Backup ligado na VPS e restauração provada no Mac do dono `[BLOCKING]` (SEG-09)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+- [ ] 09-19-PLAN.md — Alerta do Sentry provado em homologação e Evolution API no ar `[BLOCKING]` (SEG-10, SEG-11)
+
+**Wave 8** *(blocked on Wave 7 completion)*
+- [ ] 09-20-PLAN.md — Produção: `n1_api`, merge, `009` aplicada, app como `n1_api`, nginx da VPS, ações do Auth `[BLOCKING]` (SEG-04, SEG-06, SEG-07)
+- [ ] 09-21-PLAN.md — Teste de invasão exploratório em homologação com autorização do dono, `09-PENTEST.md` (SEG-12)
+
+**Wave 9** *(blocked on Wave 8 completion)*
+- [ ] 09-22-PLAN.md — Rota de prova removida, documentos vivos e portão final (SEG-10, SEG-12)
+
+**Ondas de execução:** 1 → [09-01] · 2 → [09-02, 09-03, 09-04, 09-05] · 3 → [09-06, 09-07, 09-08, 09-09] · 4 → [09-10, 09-11] · 5 → [09-12, 09-13, 09-14, 09-17] · 6 → [09-15, 09-16, 09-18] · 7 → [09-19] · 8 → [09-20, 09-21] · 9 → [09-22]
+
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*
