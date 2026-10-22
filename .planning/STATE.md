@@ -4,13 +4,13 @@ milestone: v1.0
 current_phase: 08
 current_phase_name: "Canais de comunicação: conexão e omnichannel preparado"
 status: verifying
-stopped_at: Completed 08-15-PLAN.md
-last_updated: "2026-10-12T22:26:16.651Z"
+stopped_at: Phase 9 context gathered
+last_updated: "2026-10-22T19:03:02.239Z"
 last_activity: 2026-10-12
 last_activity_desc: Phase 08 execution started
-state_head: 796f73c537212c324ed367238e7cc504e9835292
+state_head: d1da1e88dcfd06944b0b64e4aa8e80b690068485
 progress:
-  total_phases: 8
+  total_phases: 9
   completed_phases: 6
   total_plans: 148
   completed_plans: 147
@@ -377,6 +377,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 
 - Phase 7 added (2026-10-09): CRM (backend e frontend) — CRUD de Contatos, Empresas, Funis e Negócios, do domínio à tela, sobre `007-crm.sql`
 - Phase 8 added (2026-10-12): Canais de comunicação — escolher e conectar Canais (WhatsApp oficial/não oficial, Instagram, E-mail) com orientação por tipo (mockup), mais de um Canal por tipo, Canal/Conversa/Mensagem no Postgres (008) e o chat ciente do Canal de origem/resposta; sem provedor real
+- Phase 9 added (2026-10-22): Segurança dos dados e base de produção — Sessão 1 do cronograma (`docs/09-planejamento/TAREFAS-POR-SESSAO.md`): recorte do `GET /estado`/`POST /operacoes`, conferências de escrita, migração `009` + usuário `n1_api`, cofre de credenciais, logs sem segredo, `limit_req` no nginx, homologação/backup/monitoramento. Aberta antes da Sessão 0 por decisão do dono; a Fase 8 segue em verificação e as Fases 2 e 4 seguem abertas
 
 ### Decisions
 
@@ -559,6 +560,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-12T22:26:16.491Z
-Stopped at: Completed 08-15-PLAN.md
-Resume file: None
+Last session: 2026-10-22T19:03:01.841Z
+Stopped at: Phase 9 context gathered
+Resume file: .planning/phases/09-seguran-a-dos-dados-e-base-de-produ-o/09-CONTEXT.md
