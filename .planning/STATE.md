@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 09
-current_phase_name: seguran-a-dos-dados-e-base-de-produ-o
+current_phase_name: Segurança dos dados e base de produção
 status: executing
-stopped_at: Phase 9 context gathered
-last_updated: "2026-10-22T23:14:12.747Z"
-last_activity: 2026-10-12
-last_activity_desc: Phase 08 execution started
-state_head: a4cb1d54fce9e51657c0faf014213df8c9b8349a
+stopped_at: Completed 09-01-PLAN.md
+last_updated: "2026-10-22T23:33:48.235Z"
+last_activity: 2026-10-22
+last_activity_desc: Phase 09 execution started
+state_head: d8c99299a0e1ad9fa93b1b4fb1f023cde8f7121e
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 170
-  completed_plans: 147
+  completed_plans: 148
 milestone_name: milestone
 ---
 
@@ -24,14 +24,14 @@ milestone_name: milestone
 See: .planning/PROJECT.md (updated 2026-10-11)
 
 **Core value:** Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de ponta a ponta sem abrir o ClickUp — dados no Postgres próprio, regras de `@n1/dominio` intactas.
-**Current focus:** Phase 08 — Canais de comunicação: conexão e omnichannel preparado
+**Current focus:** Phase 09 — Segurança dos dados e base de produção
 
 ## Current Position
 
-Phase: 09 (seguran-a-dos-dados-e-base-de-produ-o) — READY TO EXECUTE
-Plan: 15 of 15
+Phase: 09 (Segurança dos dados e base de produção) — EXECUTING
+Plan: 2 of 22
 Status: Ready to execute
-Last activity: 2026-10-12 — Phase 08 execution started
+Last activity: 2026-10-22 — Phase 09 execution started
 
 **Fase 06 planejada à mão em 2026-09-29 (Conferência do Resumo e anexos), pronta para `/gsd-execute-phase 6`:**
 `.planning/phases/06-conferencia-do-resumo-e-anexos/` — `06-CONTEXT.md` (13 decisões com padrão e variável de troca) e seis planos em três ondas: 06-01 domínio · 06-02 contrato v1.1 no `financeiro-tria` · 06-03 ponte em dois momentos · 06-04 tela e jornada · 06-05 S5/S6 na Solicitação · 06-06 docs e provas `[BLOCKING]`. Origem: `docs/08-migracao-financeiro/09-…` (desenho) e `10-…` (levantamento etapa por etapa com `arquivo:linha`). Ponto de partida do código: `crm-n1-integracao@3d6f735` (branch `integra-frontend-main`, sem push) e `financeiro-tria@c272dad` (`main`, 99 commits sem push, 89 arquivos sujos só de EOL — `git add` sempre por caminho). O dono ainda não respondeu às quatro perguntas do doc 10; os padrões de D6-01..D6-04 seguem "como no ClickUp", exceto Integração manual (o seguro).
@@ -370,6 +370,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 08 P13 | 15 min | 2 tasks | 4 files |
 | Phase 08 P14 | 10min | 3 tasks | 1 files |
 | Phase 08 P15 | 22min | 3 tasks | 5 files |
+| Phase 09 P01 | 12 min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -499,6 +500,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 08]: 08-14: aplicacao da 008 feita pelo agente orquestrador sob autorizacao explicita e unica do dono na sessao (desvio registrado em 08-PROVAS.md)
 - [Phase 08]: 08-15: portao nao registrado como verde limpo — colunas-geradas.test.ts (empate de vencimento) falhou uma vez no check completo e passou isolado; aceitar ou corrigir fica com o dono/verificador
 - [Phase 08]: 08-15: suites describeComBanco (198 pulados contra o Supabase) re-executadas num Postgres 16 descartavel: 23 arquivos, 319 testes verdes
+- [Phase 09]: 09-01: visibilidadePara sempre monta o estado recortado (sem retorno antecipado); a IA pessoal (Sessão de Chat, pasta, Execução de Sessão) sai de GET /estado para todo Papel via membroVeSessaoDeChat — DO-CHT-09/D-01: nem o Proprietário lê Sessão alheia; ids em ocultos recortam também ordens e diferenças
+- [Phase 09]: 09-01: testes que semeiam dado em estado.test.ts usam describeComBanco (Postgres local) e a fábrica espaco-de-vazamento.ts; container crm-n1-pg-09NN porta 556NN — F9: o guarda antigo mirava o Supabase do .env
 
 ### Pending Todos
 
@@ -560,6 +563,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-22T19:03:01.841Z
-Stopped at: Phase 9 context gathered
-Resume file: .planning/phases/09-seguran-a-dos-dados-e-base-de-produ-o/09-CONTEXT.md
+Last session: 2026-10-22T23:33:48.065Z
+Stopped at: Completed 09-01-PLAN.md
+Resume file: None
