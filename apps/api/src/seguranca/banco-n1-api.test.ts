@@ -10,23 +10,29 @@
  * `authenticated`, (a) os cria e os apaga no fim; `n1_api` fica (o CI o cria
  * antes). Se um caso falhar, o conserto é na `009`, não no teste.
  *
- * O administrador dos casos é `pool()` (`DATABASE_URL`, que `describeComBanco`
- * já exige local) e não `poolDeMigracao()`: um `DATABASE_URL_MIGRACAO` remoto no
- * `.env` não pode levar `create database` para fora do Postgres local.
+ * O administrador dos casos é `poolDoDono()` (`testes/banco-crm.ts`): `DATABASE_URL`
+ * (que `describeComBanco` já exige local) quando o app roda como o dono, e
+ * `DATABASE_URL_MIGRACAO` quando o app roda como `n1_api` (o job `seguranca` do CI,
+ * 09-12) — e só se ela também for local: um `DATABASE_URL_MIGRACAO` remoto no `.env`
+ * não pode levar `create database` para fora do Postgres local.
  */
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { afterAll, describe, expect, it } from "vitest";
-import { describeComBanco } from "../testes/banco-crm";
-import { encerrar, pool } from "../persistencia/conexao";
+import { describeComBanco, poolDoDono } from "../testes/banco-crm";
+import { encerrar } from "../persistencia/conexao";
 import { concederN1Api } from "../persistencia/conceder-n1-api";
 import { migrar, type Aplicada } from "../persistencia/migrar";
 
 const SENHA_DE_TESTE = "x";
 
-/** A mesma `DATABASE_URL`, apontando para outro banco do servidor — e, se pedido, outro usuário. */
+/**
+ * O mesmo servidor do dono (`DATABASE_URL_MIGRACAO` local, ou `DATABASE_URL`), apontando para outro banco —
+ * e, se pedido, outro usuário. O dono do banco descartável é quem o cria, não o `n1_api` do app.
+ */
 function urlDoBanco(nome: string, usuario?: { readonly nome: string; readonly senha: string }): string {
-  const url = new URL(process.env.DATABASE_URL!);
+  const migracao = process.env.DATABASE_URL_MIGRACAO?.trim();
+  const url = new URL(migracao && /localhost|127\.0\.0\.1/.test(migracao) ? migracao : process.env.DATABASE_URL!);
   url.pathname = `/${nome}`;
   if (usuario) {
     url.username = usuario.nome;
@@ -44,13 +50,13 @@ interface BancoDescartavel {
 /** Cria o banco, entrega o pool do dono e SEMPRE apaga o banco depois de `corpo`. */
 async function comBancoDescartavel(caso: string, corpo: (banco: BancoDescartavel) => Promise<void>): Promise<void> {
   const nome = `n1_banco_${caso}_${randomUUID().slice(0, 8)}`;
-  await pool().query(`create database ${nome}`);
+  await poolDoDono().query(`create database ${nome}`);
   const dono = new Pool({ connectionString: urlDoBanco(nome), max: 2 });
   try {
     await corpo({ nome, dono });
   } finally {
     await dono.end();
-    await pool().query(`drop database if exists ${nome} with (force)`);
+    await poolDoDono().query(`drop database if exists ${nome} with (force)`);
   }
 }
 
@@ -67,7 +73,7 @@ async function migrarNo(nome: string): Promise<Aplicada[]> {
 /** Cria o papel do cluster só se ele ainda não existir. */
 async function garantirPapel(papel: "anon" | "authenticated" | "n1_api"): Promise<void> {
   const login = papel === "n1_api" ? `login password '${SENHA_DE_TESTE}'` : "nologin";
-  await pool().query(`
+  await poolDoDono().query(`
     do $$ begin
       if not exists (select 1 from pg_roles where rolname = '${papel}') then
         create role ${papel} ${login};
@@ -78,7 +84,7 @@ async function garantirPapel(papel: "anon" | "authenticated" | "n1_api"): Promis
 /** Apaga `anon`/`authenticated` do cluster; `2BP01` é papel ainda usado por outro banco. */
 async function apagarPapeisDoSupabase(): Promise<void> {
   try {
-    await pool().query("drop role if exists anon, authenticated");
+    await poolDoDono().query("drop role if exists anon, authenticated");
   } catch (erro) {
     if ((erro as { code?: string }).code === "2BP01") {
       throw new Error("recrie o container crm-n1-pg-0904: anon/authenticated ainda têm privilégios em outro banco");

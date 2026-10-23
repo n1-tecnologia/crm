@@ -18,7 +18,7 @@
 import { randomUUID } from "node:crypto";
 import { describe } from "vitest";
 import type { MemberState, SystemRole } from "@n1/dominio/types/workspace";
-import { carregarEnv, pool } from "../persistencia/conexao";
+import { carregarEnv, pool, poolDeMigracao } from "../persistencia/conexao";
 import { migrar } from "../persistencia/migrar";
 
 carregarEnv();
@@ -39,14 +39,26 @@ export const temBancoCrm = hostEhLocal(process.env.DATABASE_URL);
 /** `describe` que pula quando não há Postgres local — nunca roda contra banco remoto. */
 export const describeComBanco = temBancoCrm ? describe : describe.skip;
 
+/**
+ * O pool que roda DDL nos testes (migrar, criar banco e papel de teste): o DONO do banco local.
+ *
+ * Com o app como `n1_api` (só DML; é a topologia de produção e a do job `seguranca` do CI, 09-12), a
+ * `DATABASE_URL` não cria tabela nem banco — o dono vem de `DATABASE_URL_MIGRACAO`. Mas só vale se ela
+ * TAMBÉM aponta para o Postgres local: um `DATABASE_URL_MIGRACAO` remoto no `.env` não pode desviar a
+ * migração, nem um `create database`, para fora do Postgres local (T-07-08). Sem ela, ou se for remota,
+ * o dono é `pool()` — o comportamento de sempre.
+ */
+export function poolDoDono() {
+  const migracao = process.env.DATABASE_URL_MIGRACAO?.trim();
+  return migracao && hostEhLocal(migracao) ? poolDeMigracao() : pool();
+}
+
 /** Aplica as migrações no Postgres local. Lança fora dele (T-07-08). */
 export async function prepararBancoCrm(): Promise<void> {
   if (!temBancoCrm) {
     throw new Error("Os testes do CRM só rodam contra Postgres local (localhost/127.0.0.1); recusado.");
   }
-  // `pool()` e não o padrão (`poolDeMigracao()`): um `DATABASE_URL_MIGRACAO` remoto
-  // no .env não pode desviar a migração dos testes para fora do Postgres local.
-  await migrar(pool());
+  await migrar(poolDoDono());
 }
 
 /** Um Espaço de Trabalho por teste: `ws_crm_teste_<rótulo>_<8 caracteres>`. */

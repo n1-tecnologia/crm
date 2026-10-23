@@ -13,6 +13,8 @@ Os arquivos deste diretório, desde o Plan 01-04 (`esquemas-de-argumentos.ts` ch
 
 **A resposta de `POST /operacoes/:nome` sai recortada (Fase 9, 1.1.5, F1).** Depois de `executar()` (nunca dentro do callback: o evento de outbox do Canal continua derivado do estado inteiro), a rota calcula UM `visibilidadePara` sobre o estado depois da operação e devolve `diferenca` por `recortarDiferenca`, `value` por `recortarValor` e `sequencia` do estado inteiro. O ramo de `SERVICOS` (`inviteMember`) passa pelo mesmo envio: `convidarMembro` aceita `deps.aoTerminar(state)`. Antes de validar o argumento, um Membro `suspenso` recebe 403 (`recusaDeSuspenso`, `../plugins/autenticacao.ts`, 1.2.1): ele consulta, mas toda operação do registro grava.
 
+**O suspenso também não grava pelas rotas REST (Fase 9, 09-12, 1.2).** Financeiro, anexos da Tarefa e CRM registram `recusarSuspensoNaEscrita` (`../plugins/autenticacao.ts`) como hook `preValidation` na primeira linha do plugin: método fora de GET/HEAD/OPTIONS e Membro que não está `ativo` recebem 403 `SUSPENSO` antes de validar o corpo. Rota nova com JWT é coberta sozinha por `../seguranca/inventario-de-rotas.test.ts`, que ouve `onRoute`; rota nova SEM JWT precisa entrar em `ROTAS_PUBLICAS` lá, com o motivo.
+
 A regra continua: a rota chama `executar()` da Unidade de Trabalho (`../persistencia/unidade-de-trabalho.ts`) e traduz o resultado para HTTP — nunca SQL, nunca regra de negócio aqui. Toda rota registrada depois do hook de `../plugins/autenticacao.ts` exige `Authorization: Bearer`, a menos que se marque `config: { publica: true }`.
 
 ## Rotas de integração (v1)

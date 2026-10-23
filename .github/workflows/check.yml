@@ -12,6 +12,9 @@
 #     lado — aqui ele nunca está.
 # Conferido antes do primeiro commit num export limpo do HEAD, sem `.env` e
 # com o ambiente vazio (`env -i`): verde, nos dois fusos abaixo.
+#
+# Dois jobs: `check` (acima: sem banco) e `seguranca` (no fim do arquivo: com
+# Postgres de serviço e o app como `n1_api`, a topologia de produção).
 name: check
 
 on:
@@ -53,3 +56,73 @@ jobs:
         run: npm run test
         env:
           TZ: UTC
+
+  # A suíte de segurança (Fase 9, 09-12, D-14 camada 1) contra Postgres de verdade.
+  #
+  # Por que existe (achado F9, Pitfall 12): o job `check` acima roda com
+  # `DATABASE_URL: ""` e PULA todo teste que fala com o banco (`describe.skip`).
+  # A matriz de Papéis, o vazamento de `GET /estado` e o cofre ficariam verdes
+  # sem rodar. Este job é o `npm run check` com banco que o D-14 pede.
+  #
+  # Topologia de produção, de propósito: o app roda como `n1_api` (só DML, sem
+  # superusuário) por `DATABASE_URL`, e a migração roda como o dono do banco por
+  # `DATABASE_URL_MIGRACAO`. Assim um `grant` que falta numa migração nova
+  # aparece aqui, como `permission denied`, e não no primeiro deploy. O papel
+  # nasce ANTES da migração, como na VPS, para a `009` conceder o que deve.
+  #
+  # E falha se a suíte não rodou: nenhum teste passou, algum falhou, ou algum
+  # ficou pulado/pendente (um `describeComBanco` que não ligou é teste pulado).
+  seguranca:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: x
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL_MIGRACAO: postgres://postgres:x@localhost:5432/postgres
+      DATABASE_URL: postgres://n1_api:x@localhost:5432/postgres
+      TZ: America/Sao_Paulo
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # vitest 5 exige Node ^22.12 || ^24 || >=26.
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: papel n1_api, como em produção
+        run: psql "$DATABASE_URL_MIGRACAO" -c "create role n1_api login password 'x'"
+
+      - name: migrar como o dono e conceder ao n1_api (o que o deploy faz)
+        working-directory: apps/api
+        run: |
+          npm run migrar
+          npm run banco:conceder
+
+      - name: suíte adversarial (como n1_api)
+        working-directory: apps/api
+        run: npx vitest run src/seguranca src/servicos/cofre.test.ts src/rotas/estado.test.ts --reporter=default --reporter=json --outputFile=resultado-seguranca.json
+
+      - name: a suíte rodou de verdade
+        working-directory: apps/api
+        run: |
+          node -e '
+            const r = JSON.parse(require("fs").readFileSync("resultado-seguranca.json", "utf8"));
+            const pulados = r.numPendingTests + r.numTodoTests;
+            console.log(`passaram ${r.numPassedTests}, falharam ${r.numFailedTests}, pulados ${pulados}`);
+            if (r.numPassedTests === 0) { console.error("nenhum teste rodou: a suíte ficou verde sem rodar (F9)"); process.exit(1); }
+            if (r.numFailedTests > 0) { console.error("teste falhou"); process.exit(1); }
+            if (pulados > 0) { console.error("teste pulado: uma guarda de banco não ligou"); process.exit(1); }
+          '
