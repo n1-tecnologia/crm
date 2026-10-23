@@ -6,9 +6,11 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { memberNamedOnTask, memberReachesContainer, memberSeesTask } from "./derive";
+import { actorLabel, memberNamedOnTask, memberReachesContainer, memberSeesTask } from "./derive";
+import { COLECOES } from "./colecoes";
 import { estadoVisivelPara, filtrarDiferenca, filtrarOrdens, membroVeArquivo, recortarRegistro, tarefasComOArquivo, visibilidadePara } from "./derive-visibilidade";
 import { CP } from "./operations/financeiro-base";
+import { setTaskFieldValue } from "./operations/tasks";
 import { createList } from "./operations/structure";
 import { buildSeed } from "./seed";
 import type { DataState } from "./state";
@@ -138,10 +140,11 @@ describe("visibilidadePara", () => {
     state.files.push({ ...state.files.find((f) => f.id === "wf_teste_boleto")!, id: "wf_teste_campo", objectKey: "privado/wf_teste_campo.pdf" });
     conta.fieldValues.push({ definitionId: "fld_qualquer", value: ["wf_teste_campo"], state: "ativo" });
     expect(membroVeArquivo(state, membro, "wf_teste_campo")).toBe(false);
-    // Sem Tarefa nenhuma, fica aberto a quem tem sessão no Espaço.
+    // Sem Tarefa nenhuma, o Arquivo com conteúdo real é de quem o criou e de quem administra o Espaço (Fase 9, R3).
     state.files.push({ ...state.files.find((f) => f.id === "wf_teste_boleto")!, id: "wf_solto", objectKey: "privado/wf_solto.pdf" });
-    expect(membroVeArquivo(state, membro, "wf_solto")).toBe(true);
-    expect(visibilidadePara(state, membro).estado.files.some((f) => f.id === "wf_solto")).toBe(true);
+    expect(membroVeArquivo(state, membro, "wf_solto")).toBe(false);
+    expect(membroVeArquivo(state, CP.financeiroId, "wf_solto")).toBe(true);
+    expect(visibilidadePara(state, membro).estado.files.some((f) => f.id === "wf_solto")).toBe(false);
   });
 
   it("filtrarDiferenca e filtrarOrdens tiram só os ids ocultos", () => {
@@ -426,5 +429,127 @@ describe("recortarRegistro e visibilidadePara — dado pessoal e segredos (D-01)
     visibilidadePara(state, COMUM);
     visibilidadePara(state, ADMIN);
     expect(state).toEqual(antes);
+  });
+});
+
+/**
+ * D-02 (escolha A), D-03 e R3 — o Convidado não recebe as cinco coleções de IA,
+ * o nome de um Agente ausente não duplica o sufixo, e o Arquivo órfão é de quem
+ * o criou ou administra o Espaço. No seed: mem_beatriz é Convidada, mem_julia e
+ * mem_marcos são base membro, mem_rafael é Administrador, mem_thiago é Proprietário.
+ */
+describe("Convidado, rótulo do ator e Arquivo órfão (D-02, D-03, R3)", () => {
+  const CONVIDADO = "mem_beatriz";
+  const CINCO = ["agents", "automations", "documents", "collections", "skills"] as const;
+  const idsDe = (itens: ReadonlyArray<{ readonly id: string }>) => itens.map((i) => i.id);
+
+  it("o Convidado recebe as cinco coleções vazias, com os ids em ocultos; as demais chaves seguem presentes", () => {
+    for (const chave of CINCO) expect(state[chave].length, `o seed precisa de ${chave}`).toBeGreaterThan(0);
+    const { estado, ocultos } = visibilidadePara(state, CONVIDADO);
+    for (const chave of CINCO) {
+      expect(estado[chave], chave).toEqual([]);
+      for (const registro of state[chave]) expect(ocultos.has(registro.id), `${chave}:${registro.id}`).toBe(true);
+    }
+    // O recorte esvazia, não apaga: toda chave de COLECOES continua no estado.
+    for (const colecao of COLECOES) expect(colecao in estado, colecao).toBe(true);
+  });
+
+  it("um Papel personalizado de base convidado também recebe as cinco vazias (a fronteira é a base)", () => {
+    const papel = state.roles.find((r) => r.base === "convidado" && !r.system);
+    if (!papel) throw new Error("o seed precisa de um Papel personalizado de base convidado");
+    state.members.push({
+      id: "mem_com_papel_proprio",
+      workspaceId: state.workspace.id,
+      userId: "u_papel_proprio",
+      displayName: "Com papel próprio",
+      state: "ativo",
+      roleId: papel.id,
+      availability: { value: "disponivel", at: new Date().toISOString(), origin: "membro" },
+      userMemory: { enabled: true, items: [] },
+    });
+    const { estado } = visibilidadePara(state, "mem_com_papel_proprio");
+    for (const chave of CINCO) expect(estado[chave], chave).toEqual([]);
+  });
+
+  it("membro, administrador e proprietário recebem as cinco inteiras, na ordem do estado", () => {
+    for (const quem of ["mem_julia", "mem_rafael", "mem_thiago"]) {
+      const { estado, ocultos } = visibilidadePara(state, quem);
+      for (const chave of CINCO) {
+        expect(idsDe(estado[chave]), `${quem}:${chave}`).toEqual(idsDe(state[chave]));
+        for (const registro of state[chave]) expect(ocultos.has(registro.id)).toBe(false);
+      }
+    }
+  });
+
+  it("actorLabel de Agente ou Automação ausente do estado devolve só o rótulo; com o registro, '<nome> (Agente)'", () => {
+    const agente = state.agents[0];
+    const automacao = state.automations[0];
+    if (!agente || !automacao) throw new Error("o seed precisa de um Agente e de uma Automação");
+    const semIA = { ...state, agents: [], automations: [] };
+    expect(actorLabel(semIA, { kind: "agent", id: agente.id })).toBe("Agente");
+    expect(actorLabel(semIA, { kind: "automation", id: automacao.id })).toBe("Automação");
+    expect(actorLabel(state, { kind: "agent", id: agente.id })).toBe(`${agente.name} (Agente)`);
+    expect(actorLabel(state, { kind: "automation", id: automacao.id })).toBe(`${automacao.name} (Automação)`);
+  });
+
+  it("R5 — setTaskFieldValue da Pessoa da conta dá o mesmo resultado com o estado inteiro e sem as cinco coleções de IA", () => {
+    const PESSOA = "mem_thiago_pereira";
+    const TAREFA = "tsk_cp_thiago_out";
+    const semAsCinco = (s: DataState): DataState => ({ ...s, agents: [], automations: [], documents: [], collections: [], skills: [] });
+    const liberado = (s: DataState) => s.lists.find((l) => l.id === CP.listId)?.guestEditableDefinitionIds ?? [];
+    expect(liberado(state)).toContain(CP.fields.anexo);
+    const naoLiberado = CP.fields.valor;
+    expect(liberado(state)).not.toContain(naoLiberado);
+    for (const [definitionId, valor] of [[CP.fields.anexo, "nota.pdf"], [naoLiberado, 10]] as const) {
+      const inteiro = structuredClone(state);
+      const recortado = semAsCinco(structuredClone(state));
+      const a = setTaskFieldValue(inteiro, PESSOA, TAREFA, definitionId, valor);
+      const b = setTaskFieldValue(recortado, PESSOA, TAREFA, definitionId, valor);
+      expect(b.ok, definitionId).toBe(a.ok);
+    }
+    // Os dois lados do contraste existem de verdade: um aceita, o outro recusa.
+    expect(setTaskFieldValue(structuredClone(state), PESSOA, TAREFA, CP.fields.anexo, "nota.pdf").ok).toBe(true);
+    expect(setTaskFieldValue(structuredClone(state), PESSOA, TAREFA, naoLiberado, 10).ok).toBe(false);
+  });
+
+  describe("Arquivo órfão", () => {
+    const CRIADOR = "mem_julia";
+    const OUTRO = "mem_marcos";
+    const orfao = (id: string, objectKey: string) => {
+      state.files.push({
+        id,
+        workspaceId: state.workspace.id,
+        name: `${id}.pdf`,
+        mediaType: "document",
+        sizeBytes: 100,
+        createdBy: { kind: "member", id: CRIADOR },
+        createdAt: new Date().toISOString(),
+        objectKey,
+        state: "enviado",
+      });
+    };
+
+    it("com conteúdo real: só o criador e quem administra o Espaço o veem; o estado do outro não o traz e o id fica em ocultos", () => {
+      orfao("wf_orfao_real", "privado/ws/wf_orfao_real.pdf");
+      expect(tarefasComOArquivo(state, "wf_orfao_real")).toEqual([]);
+      expect(membroVeArquivo(state, CRIADOR, "wf_orfao_real")).toBe(true);
+      expect(membroVeArquivo(state, "mem_thiago", "wf_orfao_real")).toBe(true);
+      expect(membroVeArquivo(state, "mem_rafael", "wf_orfao_real")).toBe(true);
+      expect(membroVeArquivo(state, OUTRO, "wf_orfao_real")).toBe(false);
+      expect(membroVeArquivo(state, CONVIDADO, "wf_orfao_real")).toBe(false);
+      const doOutro = visibilidadePara(state, OUTRO);
+      expect(doOutro.estado.files.some((f) => f.id === "wf_orfao_real")).toBe(false);
+      expect(doOutro.ocultos.has("wf_orfao_real")).toBe(true);
+      expect(visibilidadePara(state, CRIADOR).estado.files.some((f) => f.id === "wf_orfao_real")).toBe(true);
+      expect(visibilidadePara(state, "mem_thiago").estado.files.some((f) => f.id === "wf_orfao_real")).toBe(true);
+    });
+
+    it("legado/* (sem conteúdo) segue aberto a todos: não há o que baixar", () => {
+      orfao("wf_orfao_legado", "legado/wf_orfao_legado");
+      for (const quem of [CRIADOR, OUTRO, CONVIDADO, "mem_thiago"]) {
+        expect(membroVeArquivo(state, quem, "wf_orfao_legado"), quem).toBe(true);
+        expect(visibilidadePara(state, quem).estado.files.some((f) => f.id === "wf_orfao_legado"), quem).toBe(true);
+      }
+    });
   });
 });
