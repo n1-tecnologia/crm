@@ -140,7 +140,9 @@ export function iniciarConversa(
   task.description = deal.object ?? "";
   task.provenance = { kind: "deal", sourceId: deal.id, sourceName: deal.title, at: now() };
 
-  // 4) a Conversa — a que já está aberta neste Canal, ou uma nova
+  // 4) a Conversa — a que já está aberta neste Canal, ou uma nova.
+  // 1.2.2 — o ator já passou por `createDeal` (Membro ativo, não Convidado) no passo 1:
+  // a `startConversation` registrada confere a mesma regra e segue valendo.
   const conversa = startConversation(state, actingMemberId, input.channelId, contact.id);
   if (!conversa.ok) {
     desfazer();

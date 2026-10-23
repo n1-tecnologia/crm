@@ -860,6 +860,8 @@ export function enviarFlow(state: DataState, actingMemberId: Id, input: EnviarFl
   const inicial = input.telaInicial ?? telaInicial(publicada)?.identificador ?? "";
   if (!publicada.telas.some((t) => t.identificador === inicial)) return fail(`A Tela inicial “${inicial}” não existe na Versão publicada.`, "telaInicial");
   if (!input.corpo.trim()) return fail("Escreva o corpo da Mensagem.", "corpo");
+  // 1.2.2 — o ator já passou por `recusaDeMembroAtivo` acima (Membro ativo, não
+  // Convidado): a `sendMessage` registrada confere a mesma regra e segue valendo.
   const envio = sendMessage(state, actingMemberId, {
     conversationId: conversa.id,
     content: input.corpo,

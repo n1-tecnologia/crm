@@ -16,7 +16,7 @@ import type { Automation, AutomationAction, AutomationExecution, AutomationVersi
 import { contactDisplayName } from "../../derive";
 import { participacoesVigentes } from "../../derive-ferramentas";
 import { memberActor, nextId, recordActivity } from "../activity";
-import { sendMessage, startConversation } from "../conversations";
+import { sendMessageSemConferencia, startConversation } from "../conversations";
 import { encerrarParticipacao, nomeDoParticipante, registrarNoGrupo } from "./participacoes";
 
 const now = (): string => new Date().toISOString();
@@ -104,10 +104,13 @@ function runAction(
       if (!spec.template) return { ok: false, output: "Sem texto." };
       const canalId = spec.channelId ?? grupo?.canalId ?? state.channels.find((c) => c.channelType === "whatsapp" && c.lifecycle === "ativo")?.id;
       if (!canalId) return { ok: false, output: "Sem Canal para enviar." };
+      // 1.2.2 — `startConversation` confere o dono (Membro ativo, não Convidado) e segue
+      // exportada; o envio vai pela variante interna: a Automação age por delegação do
+      // dono, e `sendMessage` (registrada) passou a recusar pelo ator.
       const conversa = startConversation(state, owner, canalId, contato.id);
       if (!conversa.ok) return { ok: false, output: conversa.error };
       const texto = spec.template.replace(/\{\{nome\}\}/g, contato.firstName || contactDisplayName(contato)).replace(/\{\{grupo\}\}/g, grupo?.nome ?? "");
-      const envio = sendMessage(state, owner, { conversationId: conversa.value.id, content: texto, actor: atorDaAutomacao, delegate: memberActor(owner) });
+      const envio = sendMessageSemConferencia(state, owner, { conversationId: conversa.value.id, content: texto, actor: atorDaAutomacao, delegate: memberActor(owner) });
       return envio.ok ? { ok: true, output: "Mensagem enviada" } : { ok: false, output: envio.error };
     }
     default:

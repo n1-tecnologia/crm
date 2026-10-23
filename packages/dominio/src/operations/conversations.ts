@@ -9,6 +9,7 @@ import { marketingConsentMissing } from "../derive";
 import { provedorDoCanal } from "../provedores-de-canal";
 import type { ProvedorDeCanal } from "../types";
 import { memberActor, nextId, recordActivity, systemActor } from "./activity";
+import { recusaDeEscritaNoCrmAntigo } from "./crm-antigo";
 
 const now = (): string => new Date().toISOString();
 
@@ -166,6 +167,23 @@ export function sendMessage(
   actingMemberId: Id,
   input: SendMessageInput,
 ): OperationResult<Message> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
+  return sendMessageSemConferencia(state, actingMemberId, input);
+}
+
+/**
+ * O corpo de `sendMessage`, sem conferir o ator (1.2.2). É a variante das
+ * composições internas — a Automação que envia ao Contato em nome do dono, por
+ * exemplo — onde o ator já foi conferido por quem disparou a composição e pode
+ * agir por delegação. NUNCA entra em `OPERACOES`: nenhuma rota a alcança.
+ */
+export function sendMessageSemConferencia(
+  state: DataState,
+  actingMemberId: Id,
+  input: SendMessageInput,
+): OperationResult<Message> {
   const conversation = state.conversations.find((c) => c.id === input.conversationId);
   if (!conversation) return fail("Conversa não encontrada.");
   if (conversation.lifecycle !== "ativo") return fail("Esta Conversa está na lixeira.");
@@ -259,6 +277,9 @@ export function resolveConversation(
   actingMemberId: Id,
   conversationId: Id,
 ): OperationResult<Conversation> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const conversation = state.conversations.find((c) => c.id === conversationId);
   if (!conversation) return fail("Conversa não encontrada.");
   if (conversation.state === "resolvida") return ok(conversation);
@@ -288,6 +309,9 @@ export function reopenConversation(
   actingMemberId: Id,
   conversationId: Id,
 ): OperationResult<Conversation> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const conversation = state.conversations.find((c) => c.id === conversationId);
   if (!conversation) return fail("Conversa não encontrada.");
   if (conversation.state !== "resolvida") return ok(conversation);
@@ -435,6 +459,9 @@ export function assignConversation(
   conversationId: Id,
   assignee: ActorRef | undefined,
 ): OperationResult<Conversation> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const conversation = state.conversations.find((c) => c.id === conversationId);
   if (!conversation) return fail("Conversa não encontrada.");
   if (assignee?.kind === "member") {
@@ -464,6 +491,9 @@ export function trashConversation(
   actingMemberId: Id,
   conversationId: Id,
 ): OperationResult<Conversation> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const conversation = state.conversations.find((c) => c.id === conversationId);
   if (!conversation) return fail("Conversa não encontrada.");
   if (conversation.state !== "resolvida") {
@@ -499,6 +529,9 @@ export function moveConversationToContact(
   toContactId: Id,
   resolveExisting = false,
 ): OperationResult<Conversation> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const conversation = state.conversations.find((c) => c.id === conversationId);
   if (!conversation) return fail("Conversa não encontrada.");
   if (conversation.lifecycle !== "ativo") return fail("Esta Conversa está na lixeira.");
@@ -619,6 +652,9 @@ export function discardDraft(
   conversationId: Id,
   draftActor: ActorRef,
 ): OperationResult<null> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const conversation = state.conversations.find((c) => c.id === conversationId);
   if (!conversation) return fail("Conversa não encontrada.");
   if (conversation.lifecycle !== "ativo") return fail("Esta Conversa está na lixeira.");
@@ -653,6 +689,9 @@ export function restoreConversation(
   actingMemberId: Id,
   conversationId: Id,
 ): OperationResult<Conversation> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const conversation = state.conversations.find((c) => c.id === conversationId);
   if (!conversation) return fail("Conversa não encontrada.");
   if (conversation.lifecycle !== "naLixeira") return ok(conversation);
@@ -784,6 +823,9 @@ export function toggleConversationStar(
   actingMemberId: Id,
   conversationId: Id,
 ): OperationResult<Conversation> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const member = state.members.find((m) => m.id === actingMemberId);
   if (!member || member.state !== "ativo") return fail("Só um Membro ativo marca Conversa.");
 
@@ -816,6 +858,9 @@ export function markConversationRead(
   actingMemberId: Id,
   conversationId: Id,
 ): OperationResult<Conversation> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const conversation = state.conversations.find((c) => c.id === conversationId);
   if (!conversation) return fail("Conversa não encontrada.");
 

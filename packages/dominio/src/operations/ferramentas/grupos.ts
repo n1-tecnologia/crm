@@ -259,6 +259,8 @@ export function enviarLinkDeConvite(state: DataState, actingMemberId: Id, grupoI
       falhas.push({ contactId, motivo: `${nome} já está no Grupo.` });
       continue;
     }
+    // 1.2.2 — o ator já passou por `recusaDeMembroAtivo` no início da operação: as
+    // exportadas `startConversation` e `sendMessage` conferem a mesma regra.
     const conversa = startConversation(state, actingMemberId, grupo.canalId, contactId);
     if (!conversa.ok) {
       falhas.push({ contactId, motivo: `${nome}: ${conversa.error}` });
@@ -890,6 +892,7 @@ export function enviarMensagemAoGrupo(
   const ator = input.actor ?? memberActor(actingMemberId);
   const conversa = conversaDoGrupoOuCriar(state, ator, grupo);
   if (!conversa.ok) return conversa;
+  // 1.2.2 — o ator já passou por `recusaDeMembroAtivo` acima; a `sendMessage` registrada confere a mesma regra.
   const envio = sendMessage(state, actingMemberId, {
     conversationId: conversa.value.id,
     content: input.content,

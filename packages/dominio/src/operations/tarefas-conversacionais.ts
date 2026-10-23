@@ -199,6 +199,8 @@ export function criarTarefaConversacional(
 
   // 1) a Conversa — a que já está aberta neste Canal, ou uma nova. É ela que
   // recusa o Contato sem Identificador que o Canal alcance.
+  // 1.2.2 — o ator já passou por `listWriteRefusal` (Membro ativo, não Convidado):
+  // a `startConversation` registrada confere a mesma regra e segue valendo.
   const conversa = startConversation(state, actingMemberId, channel.id, contact.id);
   if (!conversa.ok) return conversa;
   const conversation = conversa.value;
@@ -273,6 +275,9 @@ export function trocarCanalDaTarefa(
   const anterior = conversaDaTarefa(state, task);
   const canalAnterior = anterior ? state.channels.find((c) => c.id === anterior.channelId) : undefined;
 
+  // 1.2.2 — `taskWriteRefusal` admite o Agente do pipeline (Convidado com `editar`
+  // restrito), mas `startConversation` já recusava o Convidado antes desta fase e
+  // continua recusando: trocar o Canal segue sendo ato de Membro humano.
   const conversa = startConversation(state, actingMemberId, channel.id, contact.id);
   if (!conversa.ok) return conversa;
   const conversation = conversa.value;
