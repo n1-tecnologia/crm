@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 09
 current_phase_name: Segurança dos dados e base de produção
 status: executing
-stopped_at: Completed 09-15-PLAN.md
-last_updated: "2026-10-23T10:54:03.983Z"
+stopped_at: Completed 09-16-PLAN.md
+last_updated: "2026-10-23T11:05:27.863Z"
 last_activity: 2026-10-22
 last_activity_desc: Phase 09 execution started
-state_head: 8a0ec7223445668f92fe4b37ef2987105cac996e
+state_head: 855beac56fd12b651e582061c9079c746f798185
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 170
-  completed_plans: 162
+  completed_plans: 163
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 ## Current Position
 
 Phase: 09 (Segurança dos dados e base de produção) — EXECUTING
-Plan: 16 of 22
+Plan: 17 of 22
 Status: Ready to execute
 Last activity: 2026-10-22 — Phase 09 execution started
 
@@ -385,6 +385,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 09 P14 | 25 min | 2 tasks | 11 files |
 | Phase 09 P13 | 11 min | 3 tasks | 8 files |
 | Phase 09 P15 | 12min | 2 tasks | 9 files |
+| Phase 09 P16 | 10 min | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -542,6 +543,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 09]: 09-13: dataCollection todo explicito tambem na 10.76.2 (campo omitido volta a LIGADO); URLs perdem query e segredo; Sentry so recebe o ramo 500
 - [Phase 09]: 09-15: text/plain removido do app (415 em vez de 400) e resolvedor de Membro real no teste de cruzamento entre Espacos
 - [Phase 09]: 09-15: runLancamentoAgent do Convidado medido como lacuna do dominio (ok:true, publica o Resumo) e marcado it.fails; inviteMember nao exercida (rede)
+- [Phase 09]: 09-16: @sentry/nextjs 10.76.2 exato na web (igual a @sentry/node da api); SDK so inicia com DSN; withSentryConfig por @sentry/nextjs/config
+- [Phase 09]: 09-16: segredo de /f/ e /p/ mascarado tambem no meio do texto (regra do dominio so ve o comeco); global-error usa py-12 (escala) no lugar de py-10; 'O erro foi registrado.' so e verdade com DSN (UI-SPEC I3)
 
 ### Pending Todos
 
@@ -603,6 +606,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-23T10:54:03.790Z
-Stopped at: Completed 09-15-PLAN.md
+Last session: 2026-10-23T11:05:27.665Z
+Stopped at: Completed 09-16-PLAN.md
 Resume file: None
