@@ -43,7 +43,7 @@ import {
 } from "./financeiro-base";
 import { FORMAS_CANONICAS_DO_FIO, TEXTOS_DA_CONFERENCIA, type AnexoDoLancamento } from "./financeiro-textos";
 import { aplicarMudancasDoPedido, semMudancas, type MudancasDoPedido, type ResultadoDasMudancas } from "./revisao-do-pedido";
-import { addTaskComment, changeTaskStatus, createTask, setTaskFieldValue, trashTask, unmetRequirements } from "./tasks";
+import { addTaskComment, changeTaskStatus, createTask, listWriteRefusal, setTaskFieldValue, trashTask, unmetRequirements } from "./tasks";
 
 export {
   CP,
@@ -1805,6 +1805,11 @@ const parseCivil = (value: string): Date | undefined => {
  * no meio desfaz o que já nasceu — meia série é pior que nenhuma.
  */
 export function createReceivableSeries(state: DataState, actingMemberId: Id, input: ReceivableSeriesInput): OperationResult<Task[]> {
+  // 1.2.3 — quem chama é conferido antes de qualquer validação da entrada: a
+  // série cria Tarefas na Lista de Contas a receber, e a mesma recusa de
+  // `createTask` (Membro ativo, não Convidado, alcança a Lista) vale aqui.
+  const recusa = listWriteRefusal(state, actingMemberId, CR.listId);
+  if (recusa) return fail(recusa);
   const contact = state.contacts.find((c) => c.id === input.contactId);
   if (!contact || contact.lifecycle !== "ativo") return fail("Escolha um Contato ativo do CRM como cliente.", "contactId");
   if (!input.centroDeCusto.trim()) return fail("Centro de Custo é obrigatório (RN-CR-01).", "centroDeCusto");

@@ -28,6 +28,7 @@ import type { ActorRef, Comment, FieldDefinition, FieldRequirement, FieldValue, 
 import { memberActor, nextId, recordActivity } from "./activity";
 import { dataDevida, nextOccurrenceRefusal, runningTimer, spawnCalendarOccurrence, spawnNextOccurrence, transicaoDisparaRecorrencia } from "./collaboration";
 import { runListAutomations } from "./automations";
+import { containerTrashRefusal } from "./structure";
 // Módulo-folha (só `import type`): a Conferência vigente e os revisores sem importar `./financeiro` (06-11);
 // a marca do lançamento em curso e o prefixo do registro humano (06-19).
 import {
@@ -816,6 +817,12 @@ export function purgeExpiredTasks(
 export function restoreList(state: DataState, actingMemberId: Id, listId: Id): OperationResult<List> {
   const list = state.lists.find((l) => l.id === listId);
   if (!list) return fail("Lista não encontrada.");
+  // 1.2.3 — a mesma conferência de `restoreContainer`: para quem não alcança a
+  // Lista ela não existe, e restaurar exige `excluir` (Administrador,
+  // Proprietário ou concessão direta). Antes qualquer ator restaurava.
+  if (!memberReachesContainer(state, actingMemberId, "list", listId)) return fail("Lista não encontrada.");
+  const recusa = containerTrashRefusal(state, actingMemberId, "list", listId);
+  if (recusa) return fail(recusa);
   if (list.lifecycle !== "naLixeira") return ok(list);
 
   // Um contêiner não volta para dentro de um pai que está na lixeira.

@@ -17,6 +17,7 @@ import type {
   StageTransition,
 } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
+import { recusaDeEscritaNoCrmAntigo } from "./crm-antigo";
 
 /** Origin → destination, explicit. Never by name, never by position. */
 export interface StageMapping {
@@ -25,21 +26,6 @@ export interface StageMapping {
 }
 
 const now = (): string => new Date().toISOString();
-
-/**
- * Quem pode escrever num Negócio. Vale para criar e para vincular Contato: a
- * tela do Negócio oferece os dois, e uma regra que só a tela conhece não é
- * regra — é aparência.
- */
-function mayWriteDeal(state: DataState, actingMemberId: Id): string | undefined {
-  const member = state.members.find((m) => m.id === actingMemberId);
-  if (!member || member.state !== "ativo") return "Só um Membro ativo altera Negócio.";
-  const base = state.roles.find((r) => r.id === member.roleId)?.base;
-  if (base === "convidado") {
-    return "Um Convidado não altera Negócio: ele alcança só o que foi compartilhado com ele.";
-  }
-  return undefined;
-}
 
 function funnelOf(state: DataState, deal: Deal): Funnel | undefined {
   return state.funnels.find((f) => f.id === deal.funnelId);
@@ -134,6 +120,9 @@ export function moveDealToStage(
   dealId: Id,
   targetStageId: Id,
 ): OperationResult<Deal> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const deal = state.deals.find((d) => d.id === dealId);
   if (!deal) return fail("Negócio não encontrado.");
   if (deal.lifecycle !== "ativo") {
@@ -197,6 +186,9 @@ export function winDeal(
   dealId: Id,
   input: { value?: Money; winReasonId?: Id; closingNote?: string },
 ): OperationResult<Deal> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const deal = state.deals.find((d) => d.id === dealId);
   if (!deal) return fail("Negócio não encontrado.");
   if (deal.lifecycle !== "ativo") return fail("Só um Negócio ativo pode ser encerrado.");
@@ -239,6 +231,9 @@ export function loseDeal(
   dealId: Id,
   input: { lossReasonId?: Id; closingNote?: string },
 ): OperationResult<Deal> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const deal = state.deals.find((d) => d.id === dealId);
   if (!deal) return fail("Negócio não encontrado.");
   if (deal.lifecycle !== "ativo") return fail("Só um Negócio ativo pode ser encerrado.");
@@ -274,6 +269,9 @@ export function loseDeal(
  * attributes and stay in the activity records.
  */
 export function reopenDeal(state: DataState, actingMemberId: Id, dealId: Id): OperationResult<Deal> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const deal = state.deals.find((d) => d.id === dealId);
   if (!deal) return fail("Negócio não encontrado.");
   if (deal.situation === "aberto") return ok(deal);
@@ -347,7 +345,7 @@ export function linkContactToDeal(
   contactId: Id,
   role: DealContactRole,
 ): OperationResult<Deal> {
-  const refusal = mayWriteDeal(state, actingMemberId);
+  const refusal = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
   if (refusal) return fail(refusal);
   const deal = state.deals.find((d) => d.id === dealId);
   if (!deal) return fail("Negócio não encontrado.");
@@ -401,6 +399,9 @@ export function removeStage(
   stageId: Id,
   targetStageId: Id,
 ): OperationResult<Funnel> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const funnel = state.funnels.find((f) => f.id === funnelId);
   if (!funnel) return fail("Funil não encontrado.");
   if (funnel.stages.length <= 1) return fail("Um Funil precisa de ao menos uma Etapa.");
@@ -456,6 +457,9 @@ export function migrateDealsToFunnel(
   stageMapping: readonly StageMapping[],
   scope: "abertos" | "todos" = "todos",
 ): OperationResult<number> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const from = state.funnels.find((f) => f.id === fromFunnelId);
   const to = state.funnels.find((f) => f.id === toFunnelId);
   if (!from) return fail("Funil de origem não encontrado.");
@@ -524,6 +528,9 @@ export function migrateDealsToFunnel(
  * Registro diz de onde veio: um Negócio sem Etapa não existe (INV-NEG-03).
  */
 export function restoreDeal(state: DataState, actingMemberId: Id, dealId: Id): OperationResult<Deal> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const deal = state.deals.find((d) => d.id === dealId);
   if (!deal) return fail("Negócio não encontrado.");
   if (deal.lifecycle !== "naLixeira") return ok(deal);
@@ -584,6 +591,9 @@ export function moveDealToFunnel(
   toStageId: Id,
   newOwnerMemberId?: Id,
 ): OperationResult<Deal> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const deal = state.deals.find((d) => d.id === dealId);
   if (!deal) return fail("Negócio não encontrado.");
   if (deal.lifecycle !== "ativo") return fail("Este Negócio não está ativo.");
@@ -679,7 +689,7 @@ export function createDeal(
     readonly ownerMemberId?: Id;
   },
 ): OperationResult<Deal> {
-  const refusal = mayWriteDeal(state, actingMemberId);
+  const refusal = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
   if (refusal) return fail(refusal);
 
   const title = input.title.trim();
@@ -777,7 +787,7 @@ export function unlinkContactFromDeal(
   dealId: Id,
   linkId: Id,
 ): OperationResult<Deal> {
-  const refusal = mayWriteDeal(state, actingMemberId);
+  const refusal = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
   if (refusal) return fail(refusal);
   const deal = state.deals.find((d) => d.id === dealId);
   if (!deal) return fail("Negócio não encontrado.");
@@ -835,7 +845,7 @@ export function setDealFieldValue(
   definitionId: Id,
   value: FieldValue["value"],
 ): OperationResult<Deal> {
-  const refusal = mayWriteDeal(state, actingMemberId);
+  const refusal = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
   if (refusal) return fail(refusal);
 
   const deal = state.deals.find((d) => d.id === dealId);
