@@ -237,6 +237,69 @@ export function filtrarDiferenca(diferenca: Diferenca, ocultos: ReadonlySet<Id>)
   };
 }
 
+/**
+ * F1 (1.1.5) — o diff de uma gravação passa pela MESMA regra do estado: o que
+ * saiu de `ocultos` não entra pela porta de trás, e cada registro gravado vai
+ * por `recortarRegistro` (segredo de link, Memória de outro Membro, e-mail de
+ * convite). A rota soma `diferenca` e `value` ao corpo, e os dois saíam inteiros.
+ * `ocultos` é opcional para a rota não calcular `visibilidadePara` duas vezes;
+ * `state` é o estado INTEIRO, depois da gravação. A ordem dos que ficam é a de
+ * entrada.
+ */
+export function recortarDiferenca(diferenca: Diferenca, state: DataState, memberId: Id, ocultos?: ReadonlySet<Id>): Diferenca {
+  const o = ocultos ?? visibilidadePara(state, memberId).ocultos;
+  return {
+    gravados: diferenca.gravados
+      .filter((g) => !o.has(g.id))
+      .map((g) => ({ ...g, dados: recortarRegistro(g.colecao, g.dados, state, memberId) })),
+    removidos: diferenca.removidos.filter((r) => !o.has(r.id)),
+  };
+}
+
+/** Quatro níveis de array/objeto: o `value` de uma operação é uma entidade, uma lista ou um objeto com entidades dentro. */
+const PROFUNDIDADE_MAXIMA_DO_VALOR = 4;
+
+const objetoSimples = (v: unknown): v is Record<string, unknown> => {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return false;
+  const proto: unknown = Object.getPrototypeOf(v);
+  return proto === Object.prototype || proto === null;
+};
+
+/**
+ * F1 (1.1.5) — o `value` que uma operação devolve (a Tarefa inteira, por
+ * exemplo) passa pelo mesmo recorte do estado. Reconhece Membro, Tarefa e
+ * Formulário pelo id no estado inteiro, em qualquer lugar de arrays e de
+ * objetos simples até quatro níveis; troca por `null` o que está em `ocultos`;
+ * o resto volta como veio. Nunca muta a entrada.
+ */
+export function recortarValor(valor: unknown, state: DataState, memberId: Id, ocultos?: ReadonlySet<Id>): unknown {
+  const o = ocultos ?? visibilidadePara(state, memberId).ocultos;
+  const andar = (v: unknown, nivel: number): unknown => {
+    if (nivel > PROFUNDIDADE_MAXIMA_DO_VALOR) return v;
+    if (Array.isArray(v)) {
+      const itens = v.map((item) => andar(item, nivel + 1));
+      return itens.every((item, i) => item === v[i]) ? v : itens;
+    }
+    if (!objetoSimples(v)) return v;
+    const id = v["id"];
+    if (typeof id === "string") {
+      if (o.has(id)) return null;
+      if (state.members.some((m) => m.id === id)) return recortarRegistro("members", v, state, memberId);
+      if (state.tasks.some((t) => t.id === id)) return recortarRegistro("tasks", v, state, memberId);
+      if (state.forms.some((f) => f.id === id)) return recortarRegistro("forms", v, state, memberId);
+    }
+    let mudou = false;
+    const copia: Record<string, unknown> = {};
+    for (const [chave, filho] of Object.entries(v)) {
+      const novo = andar(filho, nivel + 1);
+      if (novo !== filho) mudou = true;
+      copia[chave] = novo;
+    }
+    return mudou ? copia : v;
+  };
+  return andar(valor, 0);
+}
+
 /** As ordens (colecao → id → ordem) sem os ids ocultos — um id também é informação. */
 export function filtrarOrdens(ordens: Ordens, ocultos: ReadonlySet<Id>): Ordens {
   if (ocultos.size === 0) return ordens;
