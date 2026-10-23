@@ -130,6 +130,11 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
   const app = Fastify({ logger: opcoes.logger ?? false, ...(trustProxy ? { trustProxy } : {}) });
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
+  // Fase 9 (09-15, T-09-81) — o Fastify traz um parser embutido de `text/plain` que entrega o corpo como TEXTO.
+  // Nenhuma rota desta API recebe `text/plain` (o JSON é `application/json`, o webhook da Meta registra o próprio
+  // parser, e o Extrato é binário): com ele ligado, `text/plain` virava 400 "esperava objeto" pelo schema, depois de
+  // ler o corpo inteiro como texto. Removido, é recusado como tipo de conteúdo, em 415, antes do schema.
+  app.removeContentTypeParser("text/plain");
 
   app.setNotFoundHandler((_request, reply) => {
     reply.status(404).send({ ok: false, error: "Rota não encontrada." });

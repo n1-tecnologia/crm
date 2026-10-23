@@ -15,6 +15,8 @@ Os arquivos deste diretório, desde o Plan 01-04 (`esquemas-de-argumentos.ts` ch
 
 **O suspenso também não grava pelas rotas REST (Fase 9, 09-12, 1.2).** Financeiro, anexos da Tarefa e CRM registram `recusarSuspensoNaEscrita` (`../plugins/autenticacao.ts`) como hook `preValidation` na primeira linha do plugin: método fora de GET/HEAD/OPTIONS e Membro que não está `ativo` recebem 403 `SUSPENSO` antes de validar o corpo. Rota nova com JWT é coberta sozinha por `../seguranca/inventario-de-rotas.test.ts`, que ouve `onRoute`; rota nova SEM JWT precisa entrar em `ROTAS_PUBLICAS` lá, com o motivo.
 
+**Entrada hostil e IP forjado (Fase 9, 09-15, D-14).** `app.ts` remove o parser embutido de `text/plain` do Fastify: nenhuma rota recebe esse tipo, então ele volta 415 (e não 400 depois de ler o corpo como texto). `../seguranca/entrada-hostil.test.ts` prova 413 (corpo acima de 1 MiB), 415, 400 para aninhamento além do reviver e para `__proto__`/`constructor.prototype`, sem 500 e sem tocar o banco; `../seguranca/xff-e-trust-proxy.test.ts` prova que o balde do limite por IP é o IP que o nginx anexou à direita do `X-Forwarded-For` (`TRUST_PROXY=loopback`) e que o cabeçalho é ignorado fora do loopback ou com `TRUST_PROXY` vazio; `../seguranca/segredos-publicos.test.ts` prova o 404 uniforme e o 429 com `Retry-After` nos links públicos. Rota nova que precise de `text/plain` registra o próprio parser.
+
 A regra continua: a rota chama `executar()` da Unidade de Trabalho (`../persistencia/unidade-de-trabalho.ts`) e traduz o resultado para HTTP — nunca SQL, nunca regra de negócio aqui. Toda rota registrada depois do hook de `../plugins/autenticacao.ts` exige `Authorization: Bearer`, a menos que se marque `config: { publica: true }`.
 
 ## Rotas de integração (v1)
