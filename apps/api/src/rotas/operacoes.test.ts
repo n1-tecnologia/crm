@@ -25,7 +25,7 @@
  * `persistencia/unidade-de-trabalho.ts::executar()` (05-17 Task 1).
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { usuarioDoSeed } from "@n1/dominio";
 import { evoluirConfiguracaoPorEmpresa } from "@n1/dominio/configuracao-por-empresa-evolver";
 import { CP } from "@n1/dominio/operations";
@@ -36,6 +36,22 @@ import { evoluirConfiguracaoDeSolicitacoes } from "@n1/dominio/solicitacao-de-pa
 import { buildApp } from "../app";
 import { carregarEnv, encerrar, pool } from "../persistencia/conexao";
 import { hidratar, semear } from "../persistencia/repositorio";
+import { describeComBanco, prepararBancoCrm } from "../testes/banco-crm";
+import {
+  appDoEspaco,
+  limparEspacoDeVazamento,
+  montarEspacoDeVazamento,
+  semearEspacoDeVazamento,
+  TOKENS_DE_VAZAMENTO,
+  type EspacoDeVazamento,
+} from "../testes/espaco-de-vazamento";
+
+// 1.1.5 — `inviteMember` resolve o e-mail no Supabase Auth ANTES da transação; o teste não vai à rede.
+// O mock só troca `resolverUsuarioPorEmail`: nenhum e-mail do teste tem conta.
+vi.mock("../autenticacao/resolver-usuario", async (importarOriginal) => ({
+  ...(await importarOriginal<typeof import("../autenticacao/resolver-usuario")>()),
+  resolverUsuarioPorEmail: async () => undefined,
+}));
 
 const MARYANE = usuarioDoSeed("mem_maryane"); // ativo, no seed do Financeiro
 const TIAGO = usuarioDoSeed("mem_tiago"); // removido, no seed do CRM
@@ -739,5 +755,69 @@ d("POST /operacoes/:nome — contra o banco real", () => {
     const taskId: string = resposta.json().value.id;
 
     expect(await contarOutboxCanalDaTarefa(taskId)).toBe(0);
+  });
+});
+
+describeComBanco("POST /operacoes — resposta recortada pelo que o Membro enxerga (1.1.5, F1)", () => {
+  let espaco: EspacoDeVazamento;
+
+  beforeAll(async () => {
+    await prepararBancoCrm();
+    espaco = montarEspacoDeVazamento("operacoes");
+    await semearEspacoDeVazamento(espaco);
+  });
+
+  afterAll(async () => {
+    await limparEspacoDeVazamento(espaco);
+    await encerrar();
+  });
+
+  const chamar = (token: string, nome: string, args: unknown[]) =>
+    appDoEspaco(espaco).inject({
+      method: "POST",
+      url: `/operacoes/${nome}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { args },
+    });
+
+  it("B grava um Campo numa Tarefa com link público e o corpo inteiro da resposta (value e diferenca) não traz o segredo", async () => {
+    const { tarefaComLink, campoGravavelPorB, link } = espaco.segredos;
+    const resposta = await chamar(TOKENS_DE_VAZAMENTO.b, "setTaskFieldValue", [tarefaComLink, campoGravavelPorB, 7]);
+    expect(resposta.statusCode, resposta.body.slice(0, 200)).toBe(200);
+    const corpo = resposta.json() as { ok: boolean; value?: { id: string }; diferenca: { gravados: Array<{ id: string }> } };
+    expect(corpo.ok).toBe(true);
+    // A gravação aconteceu e a Tarefa voltou nos dois lugares — só que sem o segredo.
+    expect(corpo.value?.id).toBe(tarefaComLink);
+    expect(corpo.diferenca.gravados.some((g) => g.id === tarefaComLink)).toBe(true);
+    expect(resposta.body, "segredo do link público").not.toContain(link);
+    expect(resposta.body, "segredo do Formulário").not.toContain(espaco.segredos.formulario);
+    for (const frase of [...espaco.frases.a, ...espaco.frases.b]) expect(resposta.body, `frase privada: ${frase}`).not.toContain(frase);
+  });
+
+  it("o Proprietário convida pelo caminho SERVICOS e a resposta traz `sequencia` e `diferenca`, como a do outro ramo", async () => {
+    const papel = espaco.estado.roles.find((r) => r.base === "membro");
+    expect(papel, "o seed precisa de um Papel de base membro").toBeDefined();
+    const email = `novo-${espaco.workspaceId}@exemplo.com`;
+    const resposta = await chamar(TOKENS_DE_VAZAMENTO.proprietario, "inviteMember", [{ email, roleId: papel!.id }]);
+    expect(resposta.statusCode, resposta.body.slice(0, 200)).toBe(200);
+    const corpo = resposta.json() as { ok: boolean; sequencia?: number; diferenca?: { gravados: unknown[] }; value?: { invitedIdentity?: { value: string } } };
+    expect(corpo.ok).toBe(true);
+    expect(typeof corpo.sequencia).toBe("number");
+    expect(corpo.diferenca).toBeDefined();
+    // Quem convida administra o Espaço: o e-mail do convite que ele acabou de criar volta para ele.
+    expect(corpo.value?.invitedIdentity?.value).toBe(email.toLowerCase());
+    for (const frase of [...espaco.frases.a, ...espaco.frases.b]) expect(resposta.body, `frase privada: ${frase}`).not.toContain(frase);
+  });
+
+  it("uma operação que devolve ok:false responde 200 como antes: o erro, uma diferença vazia e nenhum value", async () => {
+    // A Tarefa não existe: o domínio recusa (valor, não falha de transporte).
+    const resposta = await chamar(TOKENS_DE_VAZAMENTO.b, "setTaskFieldValue", ["tsk_nao_existe", espaco.segredos.campoGravavelPorB, 7]);
+    expect(resposta.statusCode).toBe(200);
+    const corpo = resposta.json() as { ok: boolean; error?: string; value?: unknown; diferenca?: { gravados: unknown[]; removidos: unknown[] } };
+    expect(corpo.ok).toBe(false);
+    expect(typeof corpo.error).toBe("string");
+    expect(corpo.value).toBeUndefined();
+    expect(corpo.diferenca?.gravados ?? []).toHaveLength(0);
+    expect(corpo.diferenca?.removidos ?? []).toHaveLength(0);
   });
 });
