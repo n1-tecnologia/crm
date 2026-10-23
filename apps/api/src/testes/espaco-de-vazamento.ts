@@ -11,7 +11,7 @@
  * 09-07 acrescentou Memória de Usuário, Visão pessoal, um convite pendente, o
  * segredo de uma Tarefa com link público e o de um Formulário (numa Lista que B
  * alcança sem administrar), um Campo que B grava e um Arquivo órfão de A; 09-12
- * acrescenta Convidado, Administrador e um segundo Espaço.
+ * acrescenta o Convidado e o Administrador (a matriz Papel × rota de 09-12).
  */
 
 import { randomUUID } from "node:crypto";
@@ -20,13 +20,20 @@ import type { AgentExecution, ChatFolder, ChatSession, DataState, Form, Id, Memb
 import { containerAdminRefusal, memberReachesContainer } from "@n1/dominio/derive";
 import { setTaskFieldValue } from "@n1/dominio/operations/tasks";
 import { buildSeed } from "@n1/dominio/seed";
-import { buildApp } from "../app";
+import { buildApp, type OpcoesDoApp } from "../app";
 import { pool } from "../persistencia/conexao";
 import { semear } from "../persistencia/repositorio";
 import { limparEspaco, novoEspacoDeTeste } from "./banco-crm";
 
 /** O token de cada Membro da fábrica; qualquer outro token é recusado (`null`). */
-export const TOKENS_DE_VAZAMENTO = { a: "token-a", b: "token-b", proprietario: "token-proprietario", suspenso: "token-suspenso" } as const;
+export const TOKENS_DE_VAZAMENTO = {
+  a: "token-a",
+  b: "token-b",
+  proprietario: "token-proprietario",
+  suspenso: "token-suspenso",
+  convidado: "token-convidado",
+  administrador: "token-administrador",
+} as const;
 
 /** Os ids do que é PRIVADO de um Membro: a Sessão de Chat, a pasta, a Execução da conversa e a Visão pessoal. */
 export interface IdsPrivados {
@@ -57,8 +64,18 @@ export interface SegredosDeVazamento {
 export interface EspacoDeVazamento {
   readonly workspaceId: string;
   readonly estado: DataState;
-  /** `suspenso` é um quarto Membro do seed, marcado `suspenso` no estado da fábrica: consulta, mas não grava (1.2.1). */
-  readonly membros: { readonly a: Member; readonly b: Member; readonly proprietario: Member; readonly suspenso: Member };
+  /**
+   * `suspenso` é um Membro do seed de Papel base `membro`, marcado `suspenso` no estado da fábrica: consulta, mas
+   * não grava (1.2.1). `convidado` e `administrador` são Membros ativos do seed de cada Papel base (09-12).
+   */
+  readonly membros: {
+    readonly a: Member;
+    readonly b: Member;
+    readonly proprietario: Member;
+    readonly suspenso: Member;
+    readonly convidado: Member;
+    readonly administrador: Member;
+  };
   /** As frases únicas de cada um: mensagem, entrada e saída da Execução, e o item de Memória de Usuário. */
   readonly frases: { readonly a: readonly string[]; readonly b: readonly string[] };
   readonly ids: { readonly a: IdsPrivados; readonly b: IdsPrivados };
@@ -206,9 +223,15 @@ export function montarEspacoDeVazamento(rotulo: string): EspacoDeVazamento {
   if (!proprietario?.userId) throw new Error("o seed precisa de um Proprietário com usuário");
   const papelMembro = estado.roles.find((r) => r.base === "membro");
   if (!papelMembro) throw new Error("o seed precisa de um Papel de base membro");
-  // 1.2.1 — um Membro ativo, com usuário, diferente de A, B e do Proprietário, que a fábrica marca `suspenso`.
-  const suspenso = estado.members.find((m) => m.state === "ativo" && m.userId !== undefined && ![a.id, b.id, proprietario.id].includes(m.id));
-  if (!suspenso) throw new Error("o seed precisa de um quarto Membro ativo, com usuário, para ser o suspenso");
+  // 09-12 — um Convidado e um Administrador ativos, com usuário, de Papéis base `convidado` e `administrador`.
+  const convidado = estado.members.find((m) => m.state === "ativo" && m.userId !== undefined && baseDoPapel(m) === "convidado");
+  if (!convidado) throw new Error("o seed precisa de um Membro ativo, com usuário, de Papel base convidado");
+  const administrador = estado.members.find((m) => m.state === "ativo" && m.userId !== undefined && baseDoPapel(m) === "administrador");
+  if (!administrador) throw new Error("o seed precisa de um Membro ativo, com usuário, de Papel base administrador");
+  // 1.2.1 — um Membro ativo de Papel base `membro`, com usuário, diferente de A e B, que a fábrica marca `suspenso`.
+  // Não é o Convidado nem o Administrador: a matriz precisa dos quatro estados ao mesmo tempo.
+  const suspenso = estado.members.find((m) => m.state === "ativo" && m.userId !== undefined && baseDoPapel(m) === "membro" && ![a.id, b.id].includes(m.id));
+  if (!suspenso) throw new Error("o seed precisa de um terceiro Membro ativo, com usuário, de Papel base membro, para ser o suspenso");
   suspenso.state = "suspenso";
 
   const alvo = listaDoSegredo(estado, a, b);
@@ -277,7 +300,7 @@ export function montarEspacoDeVazamento(rotulo: string): EspacoDeVazamento {
   return {
     workspaceId: novoEspacoDeTeste(rotulo),
     estado,
-    membros: { a, b, proprietario, suspenso },
+    membros: { a, b, proprietario, suspenso, convidado, administrador },
     frases: { a: privadoA.frases, b: privadoB.frases },
     ids: { a: privadoA.ids, b: privadoB.ids },
     convite,
@@ -301,16 +324,22 @@ export async function limparEspacoDeVazamento(espaco: EspacoDeVazamento): Promis
   await limparEspaco(espaco.workspaceId);
 }
 
-/** O app Fastify do Espaço, com a autenticação trocada por uma tabela de tokens (sem rede, sem Supabase). */
-export function appDoEspaco(espaco: EspacoDeVazamento): FastifyInstance {
+/**
+ * O app Fastify do Espaço, com a autenticação trocada por uma tabela de tokens (sem rede, sem Supabase).
+ * `extras` entra por cima (por exemplo `financeiro` com um cliente falso); a autenticação e o Espaço não se trocam.
+ */
+export function appDoEspaco(espaco: EspacoDeVazamento, extras: Omit<OpcoesDoApp, "workspaceId" | "verificarToken" | "resolverMembro"> = {}): FastifyInstance {
   const usuarios: Record<string, string | undefined> = {
     [TOKENS_DE_VAZAMENTO.a]: espaco.membros.a.userId,
     [TOKENS_DE_VAZAMENTO.b]: espaco.membros.b.userId,
     [TOKENS_DE_VAZAMENTO.proprietario]: espaco.membros.proprietario.userId,
     [TOKENS_DE_VAZAMENTO.suspenso]: espaco.membros.suspenso.userId,
+    [TOKENS_DE_VAZAMENTO.convidado]: espaco.membros.convidado.userId,
+    [TOKENS_DE_VAZAMENTO.administrador]: espaco.membros.administrador.userId,
   };
   return buildApp({
     logger: false,
+    ...extras,
     workspaceId: espaco.workspaceId,
     verificarToken: async (token) => {
       const sub = usuarios[token];
