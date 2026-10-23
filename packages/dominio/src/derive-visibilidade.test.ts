@@ -349,6 +349,15 @@ describe("recortarRegistro e visibilidadePara — dado pessoal e segredos (D-01)
     expect(JSON.stringify(visibilidadePara(state, COMUM).estado.members)).toContain("segredo da Júlia");
   });
 
+  it("um Membro hidratado sem userMemory não derruba o recorte: o de outro chega com a Memória vazia, sem lançar", () => {
+    // O dado que volta do Postgres não garante o campo que o tipo exige; GET /estado não pode virar 500 por isso.
+    delete (state.members.find((m) => m.id === PROPRIETARIO) as { userMemory?: unknown }).userMemory;
+    expect(() => visibilidadePara(state, COMUM)).not.toThrow();
+    expect(membroDe(visibilidadePara(state, COMUM).estado, PROPRIETARIO).userMemory.items).toEqual([]);
+    // Quem lê o próprio registro recebe o que está no estado: o recorte não inventa nem apaga nada dele.
+    expect(() => visibilidadePara(state, PROPRIETARIO)).not.toThrow();
+  });
+
   it("o e-mail de um convite pendente só chega a Administrador e Proprietário; os demais veem 'Convite pendente'", () => {
     state.members.push(pendente());
     const comum = membroDe(visibilidadePara(state, COMUM).estado, "mem_convidado_pendente");
