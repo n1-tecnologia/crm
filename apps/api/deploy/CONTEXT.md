@@ -20,9 +20,10 @@ PR aberta → `check` (tipos, lint, testes) → merge na `main` → `check` de n
 no commit da `main` → `deploy-api` (só se o `check` passou) → `publicar.sh`
 → na VPS, `instalar-release.sh`:
 
+0. confere o `api.env` (Pitfall 9: `n1_api` em `DATABASE_URL` exige `DATABASE_URL_MIGRACAO`);
 1. extrai o pacote do commit (`git archive`: só o que está commitado);
 2. `npm ci` só do `@n1/api` (e do `@n1/dominio`, que ele usa);
-3. `npm run migrar` — as migrações são aditivas; quase sempre "Nada a aplicar";
+3. `npm run migrar` — as migrações são aditivas; quase sempre "Nada a aplicar" — e `npm run banco:conceder` (as concessões do `n1_api`; sem o papel no banco, não faz nada);
 4. troca o link `current` e reinicia o serviço;
 5. espera `/saude` responder; se não responder em 40 s, volta o link para a
    versão anterior e reinicia de novo (o deploy fica vermelho no GitHub).
@@ -156,6 +157,93 @@ cada visita chama a api duas vezes. A Fase 9 não mudou esse limite (D-19 o
 mantém): para o tráfego da Vercel é ele que manda, não o nginx. Decisão para
 uma sessão futura: subir o teto por IP do `GET` em memória, ou contar por
 segredo em vez de por IP.
+
+## Homologação (Fase 9)
+
+Um segundo ambiente na **mesma VPS**, com a api ligada a um **segundo projeto
+Supabase** (D-08), para testar antes da `main`. Os mesmos scripts montam os
+dois, escolhidos por `AMBIENTE` (`producao`, o padrão, ou `homologacao`); nada
+é compartilhado além da máquina (D-09, D-23):
+
+| Peça | Produção | Homologação |
+|---|---|---|
+| Usuário de sistema | `n1crm` | `n1crm-hml` |
+| Pasta | `/opt/n1-crm` | `/opt/n1-crm-hml` |
+| Porta | `127.0.0.1:3020` | `127.0.0.1:3021` |
+| Serviço systemd | `n1-crm-api` | `n1-crm-api-hml` |
+| Site do nginx | `n1-crm-api` | `n1-crm-api-hml` |
+| Domínio | `crm-n1-api.85.155.186.214.nip.io` | `crm-n1-api-hml.85.155.186.214.nip.io` |
+| `sudoers` | `/etc/sudoers.d/n1-crm-api` | `/etc/sudoers.d/n1-crm-api-hml` (só reinicia e lê o próprio serviço) |
+| Chave de deploy | a de produção | **outra**, só da homologação (entra no `authorized_keys` do `n1crm-hml`, com `restrict`) |
+| Branch que publica | `main` | `homologacao` |
+
+Quem comprometer a homologação (o ambiente da passada exploratória, de login
+mais frouxo) não lê o `api.env` de produção: usuário, pasta (750/700), `sudoers`
+e chave são outros, e o `api.env` de cada ambiente é de dono e modo próprios.
+
+**Preparar a VPS** (como root, uma vez; é o roteiro de 09-17 e é do dono).
+Antes de rodar de verdade, **confira** — `--conferir` não pede root e não muda
+nada, só imprime o usuário, a pasta, a porta, o serviço e o site, e o serviço e
+o site já renderizados:
+
+```bash
+AMBIENTE=homologacao bash apps/api/deploy/preparar-vps.sh crm-n1-api-hml.85.155.186.214.nip.io --conferir
+# conferido:
+scp -r apps/api/deploy root@VPS:/tmp/n1-crm-deploy
+ssh root@VPS 'AMBIENTE=homologacao bash /tmp/n1-crm-deploy/preparar-vps.sh crm-n1-api-hml.85.155.186.214.nip.io /tmp/n1-crm-deploy/chave-hml.pub'
+```
+
+**Segredos do GitHub.** No ambiente `homologacao` (Settings → Environments),
+com os mesmos nomes dos de produção e valores próprios: `VPS_HOST`, `VPS_USER`
+(`n1crm-hml`), `VPS_SSH_KEY` (a chave de homologação), `VPS_KNOWN_HOSTS` e a
+variável `API_URL_PUBLICA` (`https://crm-n1-api-hml.85.155.186.214.nip.io`).
+
+**O `api.env` de homologação** (`/opt/n1-crm-hml/shared/api.env`, dono
+`n1crm-hml`, modo 600): as mesmas chaves do de produção, com valores próprios.
+
+- `DATABASE_URL` — o papel `n1_api.<ref-hml>` do projeto de homologação, e
+  `DATABASE_URL_MIGRACAO` — o dono do banco, que migra. **As duas linhas mudam
+  juntas** (Pitfall 9): com `n1_api` em `DATABASE_URL` e sem
+  `DATABASE_URL_MIGRACAO`, o `migrar` rodaria como `n1_api` e falharia em DDL.
+  O `instalar-release.sh` agora confere isso **antes de extrair** e para com
+  "nada foi instalado". Para conferir à mão: `INSTALAR_SO_CONFERIR=1
+  API_ENV=<arquivo> bash instalar-release.sh <sha> homologacao` (sai 0 se
+  passa, 1 se falha).
+- `COFRE_CHAVE` — **própria** da homologação, nunca a de produção.
+- `WORKSPACE_ID` e os `SUPABASE_*` do projeto de homologação.
+- `WEB_ORIGIN` — a URL de **Preview** da Vercel da branch `homologacao`. O CORS
+  é por allowlist: sem essa URL aqui, a interface de Preview não consegue chamar
+  a api.
+- `DATABASE_CA_PATH=/opt/n1-crm-hml/shared/supabase-ca.crt` — a CA do Supabase.
+- Não vão nele o que o serviço já define (`HOST`, `PORT`, `TRUST_PROXY`, `TZ` e
+  os três workers, que ficam desligados).
+
+**A Vercel.** As três `NEXT_PUBLIC_*` do ambiente **Preview** apontam para a
+homologação (api e projeto Supabase de homologação); as de Production seguem
+em produção.
+
+**Nenhum dado de produção vai para a homologação (D-21).** CPF e dados
+bancários do Financeiro são reais; a homologação é onde se faz a passada
+exploratória. A restauração de backup é provada no Mac do dono (09-18), nunca
+no projeto de homologação.
+
+**Como publica.** Push na branch `homologacao` → `check` → job `homologacao` do
+`deploy-api.yml` (`environment: homologacao`) → `AMBIENTE=homologacao
+publicar.sh` → `instalar-release.sh <sha> homologacao`. A cada deploy, depois do
+`migrar`, roda `npm run banco:conceder -w @n1/api` (barato e idempotente; cobre
+o papel `n1_api` criado depois da `009`; aborta antes de trocar o `current`).
+Cada ambiente tem o seu grupo de concorrência (`deploy-api-producao`,
+`deploy-api-homologacao`, sem cancelar): um deploy de homologação pendente
+nunca cancela um de produção pendente. À mão:
+
+```bash
+AMBIENTE=homologacao VPS_HOST=85.155.186.214 VPS_USER=n1crm-hml SSH_KEY=~/.ssh/n1_crm_deploy_hml \
+  apps/api/deploy/publicar.sh [commit]
+```
+
+Voltar uma versão na homologação: o mesmo da produção, trocando a pasta e o
+serviço (`ln -sfn /opt/n1-crm-hml/releases/<sha> /opt/n1-crm-hml/current &&
+systemctl restart n1-crm-api-hml`).
 
 ## Por que assim
 

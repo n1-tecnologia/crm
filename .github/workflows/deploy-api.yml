@@ -1,6 +1,11 @@
-# Publica o apps/api na VPS quando uma PR entra na main — e só depois do
-# `check` (check.yml) verde para aquele mesmo commit. A interface não passa
-# por aqui: a Vercel publica a web sozinha, pela integração com o GitHub.
+# Publica o apps/api na VPS — e só depois do `check` (check.yml) verde para
+# aquele mesmo commit. A interface não passa por aqui: a Vercel publica a web
+# sozinha, pela integração com o GitHub.
+#
+# Dois ambientes (Fase 9, D-09), cada um com o seu job, o seu `environment` do
+# GitHub (segredos próprios) e o seu usuário na VPS (D-23):
+#   - `deploy`       — produção: merge na `main`;
+#   - `homologacao`  — homologação: push na branch `homologacao`.
 #
 # Se nada de apps/api, packages/dominio ou do lockfile mudou desde a versão
 # no ar, o publicar.sh não publica (o merge só de tela não reinicia o backend).
@@ -11,29 +16,33 @@ on:
   workflow_run:
     workflows: [check]
     types: [completed]
-    branches: [main]
-  # Publicar de novo à mão (Actions → deploy-api → Run workflow), só da main.
+    branches: [main, homologacao]
+  # Publicar de novo à mão (Actions → deploy-api → Run workflow): a main vai
+  # para produção e a homologacao vai para a homologação; outra branch não faz nada.
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# Um deploy por vez, e nenhum cancela o outro no meio (a troca de versão na
-# VPS não é interrompível com segurança).
-concurrency:
-  group: deploy-api
-  cancel-in-progress: false
+# Um deploy por vez POR AMBIENTE, e nenhum cancela o outro no meio (a troca de
+# versão na VPS não é interrompível com segurança). O grupo é de cada job, não
+# do workflow: com um grupo só, o GitHub mantém um pendente por grupo e um
+# deploy pendente de homologação cancelaria um pendente de produção.
 
 jobs:
   deploy:
     if: >-
       (github.event_name == 'workflow_run'
         && github.event.workflow_run.conclusion == 'success'
-        && github.event.workflow_run.event == 'push')
+        && github.event.workflow_run.event == 'push'
+        && github.event.workflow_run.head_branch == 'main')
       || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: production
+    concurrency:
+      group: deploy-api-producao
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
         with:
@@ -58,7 +67,52 @@ jobs:
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
-        run: SSH_KEY="$HOME/.ssh/deploy" apps/api/deploy/publicar.sh HEAD
+        run: AMBIENTE=producao SSH_KEY="$HOME/.ssh/deploy" apps/api/deploy/publicar.sh HEAD
+
+      - name: conferir pela internet
+        if: vars.API_URL_PUBLICA != ''
+        env:
+          API_URL_PUBLICA: ${{ vars.API_URL_PUBLICA }}
+        run: curl -fsS --retry 5 --retry-delay 3 --retry-all-errors "$API_URL_PUBLICA/saude"
+
+  # Homologação: a cópia do job acima com o ambiente `homologacao` do GitHub
+  # (VPS_SSH_KEY, VPS_KNOWN_HOSTS, VPS_HOST, VPS_USER e API_URL_PUBLICA próprios,
+  # com o usuário n1crm-hml na VPS) e AMBIENTE=homologacao no publicar.
+  homologacao:
+    if: >-
+      (github.event_name == 'workflow_run'
+        && github.event.workflow_run.conclusion == 'success'
+        && github.event.workflow_run.event == 'push'
+        && github.event.workflow_run.head_branch == 'homologacao')
+      || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/homologacao')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: homologacao
+    concurrency:
+      group: deploy-api-homologacao
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # O commit que o `check` aprovou, não o que estiver na homologacao agora.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+
+      - name: chave de deploy
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: publicar
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: AMBIENTE=homologacao SSH_KEY="$HOME/.ssh/deploy" apps/api/deploy/publicar.sh HEAD
 
       - name: conferir pela internet
         if: vars.API_URL_PUBLICA != ''
