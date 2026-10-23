@@ -114,18 +114,74 @@ export function decifrar(linha: CredencialCifrada, chaves: ChavesDoCofre, dono: 
   return Buffer.concat([decifra.update(linha.segredoCifrado), decifra.final()]).toString("utf8");
 }
 
+/**
+ * Revoga a credencial ativa do mesmo (Espaço, dono, tipo) e insere a nova, no
+ * `cliente` recebido: a transação é de quem chama. A ordem importa - o índice
+ * parcial `credenciais_ativa_unica` só admite uma linha com `revogado_em is null`.
+ * Devolve só o `id`; o segredo nunca volta.
+ */
 export async function guardarCredencial(
-  _cliente: Pick<PoolClient, "query">,
-  _chaves: ChavesDoCofre,
-  _entrada: DonoDaCredencial & { readonly segredo: string },
+  cliente: Pick<PoolClient, "query">,
+  chaves: ChavesDoCofre,
+  entrada: DonoDaCredencial & { readonly segredo: string },
 ): Promise<{ readonly id: string }> {
-  throw new Error("não implementado");
+  const { segredoCifrado, iv, etiqueta, versaoDaChave } = cifrar(
+    entrada.segredo,
+    chaves.atual.chave,
+    chaves.atual.versao,
+    entrada,
+  );
+  await cliente.query(
+    `update plataforma.credenciais
+        set revogado_em = now()
+      where workspace_id = $1 and dono_tipo = $2 and dono_id = $3 and tipo = $4
+        and revogado_em is null`,
+    [entrada.workspaceId, entrada.donoTipo, entrada.donoId, entrada.tipo],
+  );
+  const resultado = await cliente.query<{ id: string }>(
+    `insert into plataforma.credenciais
+       (workspace_id, dono_tipo, dono_id, tipo, segredo_cifrado, iv, etiqueta, versao_da_chave)
+     values ($1, $2, $3, $4, $5, $6, $7, $8)
+     returning id`,
+    [entrada.workspaceId, entrada.donoTipo, entrada.donoId, entrada.tipo, segredoCifrado, iv, etiqueta, versaoDaChave],
+  );
+  const linha = resultado.rows[0];
+  if (!linha) throw new Error("guardarCredencial: o INSERT não devolveu o id.");
+  return { id: linha.id };
 }
 
+/**
+ * Texto da credencial ativa do dono, ou `undefined` se não há. Só serviços de
+ * provedor chamam isto; nenhuma rota. Lança com a chave errada, a etiqueta
+ * adulterada ou a linha copiada para outro dono (AAD).
+ */
 export async function lerCredencial(
-  _cliente: Pick<PoolClient, "query">,
-  _chaves: ChavesDoCofre,
-  _dono: DonoDaCredencial,
+  cliente: Pick<PoolClient, "query">,
+  chaves: ChavesDoCofre,
+  dono: DonoDaCredencial,
 ): Promise<string | undefined> {
-  throw new Error("não implementado");
+  const resultado = await cliente.query<{
+    segredo_cifrado: Buffer;
+    iv: Buffer;
+    etiqueta: Buffer;
+    versao_da_chave: number;
+  }>(
+    `select segredo_cifrado, iv, etiqueta, versao_da_chave
+       from plataforma.credenciais
+      where workspace_id = $1 and dono_tipo = $2 and dono_id = $3 and tipo = $4
+        and revogado_em is null`,
+    [dono.workspaceId, dono.donoTipo, dono.donoId, dono.tipo],
+  );
+  const linha = resultado.rows[0];
+  if (!linha) return undefined;
+  return decifrar(
+    {
+      segredoCifrado: linha.segredo_cifrado,
+      iv: linha.iv,
+      etiqueta: linha.etiqueta,
+      versaoDaChave: linha.versao_da_chave,
+    },
+    chaves,
+    dono,
+  );
 }

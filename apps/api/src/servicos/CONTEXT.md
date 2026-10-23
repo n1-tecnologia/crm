@@ -84,3 +84,40 @@ Espaço cai na mesma recusa 409 `PROPRIETARIO_INVALIDO`, T-07-40).
 **Espaço.** `workspace_id` vem de `request.membro`, nunca do corpo; todo
 `WHERE` dos repositórios o leva (T-07-01). Um registro de outro Espaço não
 existe: 404, não 403.
+
+## Cofre de credenciais (Fase 9)
+
+`cofre.ts` guarda os segredos de provedor (Evolution, Meta, e-mail) em
+`plataforma.credenciais` (criada pela `009`). O segredo só existe cifrado:
+AES-256-GCM do `node:crypto`, IV de 12 bytes novo a cada gravação, etiqueta de
+16 bytes. A chave **não** está no banco: é a `COFRE_CHAVE` (32 bytes em base64)
+do `api.env` de cada ambiente, com a versão em `COFRE_CHAVE_VERSAO`. Quem levar
+uma cópia do banco ou do backup leva só texto cifrado; perder a chave perde as
+credenciais, por isso ela tem cópia fora da VPS, com o dono.
+
+**A API.** `lerChavesDoCofre()` lê as chaves do ambiente e lança com mensagem
+clara se a chave não tem 32 bytes ou a versão é inválida. `guardarCredencial(
+cliente, chaves, entrada)` revoga a credencial ativa do mesmo (Espaço, dono,
+tipo) e insere a nova no `cliente` recebido (a transação é de quem chama),
+devolvendo só `{ id }`. `lerCredencial(cliente, chaves, dono)` devolve o texto da
+credencial ativa ou `undefined`. `cifrar` e `decifrar` são a cifra pura, sem banco.
+
+**Quem pode chamar `lerCredencial`.** Só os serviços de provedor (Sessões 4, 7, 8
+e 9). **Nenhuma rota importa `servicos/cofre`, e nenhuma rota devolve o segredo**,
+nem o cifrado nem o decifrado: um teste estrutural (`cofre.test.ts`) falha se um
+arquivo de `rotas/` importar o módulo. A resposta de uma rota que grava uma
+credencial leva no máximo o `id`.
+
+**O AAD.** Cada texto cifrado fica amarrado à sua linha: o AAD é o JSON de
+`[workspaceId, donoTipo, donoId, tipo, versaoDaChave]`. Uma linha copiada para
+outro dono, outro Espaço ou outro tipo não decifra. **Mudar essa composição
+depois que existirem credenciais obriga a re-cifrar todas.**
+
+**Troca de chave (procedimento).** A leitura é por versão. Para trocar: gere a
+chave nova (`openssl rand -base64 32`), ponha-a em `COFRE_CHAVE` com
+`COFRE_CHAVE_VERSAO` + 1, e a antiga em `COFRE_CHAVE_ANTERIOR` com
+`COFRE_CHAVE_ANTERIOR_VERSAO` (a versão que ela tinha). As credenciais novas
+saem com a chave nova e as antigas continuam legíveis. **Re-cifrar as antigas com
+a chave nova é tarefa futura**, não desta fase: enquanto não for feita, a chave
+anterior precisa continuar configurada. Guarde a cópia da chave nova fora da VPS
+antes de aposentar a antiga.
