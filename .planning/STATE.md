@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 09
 current_phase_name: Segurança dos dados e base de produção
 status: executing
-stopped_at: Completed 09-01-PLAN.md
-last_updated: "2026-10-22T23:33:48.235Z"
+stopped_at: Completed 09-02-PLAN.md
+last_updated: "2026-10-23T00:15:58.828Z"
 last_activity: 2026-10-22
 last_activity_desc: Phase 09 execution started
-state_head: d8c99299a0e1ad9fa93b1b4fb1f023cde8f7121e
+state_head: 266c225c40d46f2e3986725dc6222e3933bc4139
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 170
-  completed_plans: 148
+  completed_plans: 149
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 ## Current Position
 
 Phase: 09 (Segurança dos dados e base de produção) — EXECUTING
-Plan: 2 of 22
+Plan: 3 of 22
 Status: Ready to execute
 Last activity: 2026-10-22 — Phase 09 execution started
 
@@ -371,6 +371,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 08 P14 | 10min | 3 tasks | 1 files |
 | Phase 08 P15 | 22min | 3 tasks | 5 files |
 | Phase 09 P01 | 12 min | 3 tasks | 9 files |
+| Phase 09 P02 | 8 min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -502,6 +503,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 08]: 08-15: suites describeComBanco (198 pulados contra o Supabase) re-executadas num Postgres 16 descartavel: 23 arquivos, 319 testes verdes
 - [Phase 09]: 09-01: visibilidadePara sempre monta o estado recortado (sem retorno antecipado); a IA pessoal (Sessão de Chat, pasta, Execução de Sessão) sai de GET /estado para todo Papel via membroVeSessaoDeChat — DO-CHT-09/D-01: nem o Proprietário lê Sessão alheia; ids em ocultos recortam também ordens e diferenças
 - [Phase 09]: 09-01: testes que semeiam dado em estado.test.ts usam describeComBanco (Postgres local) e a fábrica espaco-de-vazamento.ts; container crm-n1-pg-09NN porta 556NN — F9: o guarda antigo mirava o Supabase do .env
+- [Phase 09]: 09-02: recortarValor também caminha em objeto de id desconhecido (não só sem id), para um objeto com Tarefa dentro não abrir o segredo de link
+- [Phase 09]: 09-02: a fronteira do Convidado é baseDoPapel === 'convidado' (Papel personalizado de base convidado também recebe as cinco coleções de IA vazias)
 
 ### Pending Todos
 
@@ -563,6 +566,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-22T23:33:48.065Z
-Stopped at: Completed 09-01-PLAN.md
+Last session: 2026-10-23T00:15:58.651Z
+Stopped at: Completed 09-02-PLAN.md
 Resume file: None
