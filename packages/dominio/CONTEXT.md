@@ -80,17 +80,17 @@ O que cada nome de recusa quer dizer, em uma linha:
 
 | Operação | Arquivo | Conferência | Observação |
 |---|---|---|---|
-| `createTask` | `operations/tasks.ts` | `listWriteRefusal` | `vinculoRefusal` confere o alcance dos vínculos |
+| `createTask` | `operations/tasks.ts` | `listWriteRefusal` | `vinculoRefusal` confere o alcance dos vínculos da Tarefa nova |
 | `changeTaskStatus` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTaskStatus` (exceção do Agente do pipeline, §9); `entryRefusal` confere quem entra no Status (RN-CP-04) |
-| `assignTask` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
+| `assignTask` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask`; quem recebe a responsabilidade também precisa ver a Tarefa (RN-TAR-06) |
 | `unassignTask` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
-| `moveTask` | `operations/tasks.ts` | `taskWriteRefusal`, `listWriteRefusal` | via `mayWriteTask` |
-| `convertChecklistItem` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
+| `moveTask` | `operations/tasks.ts` | `taskWriteRefusal`, `listWriteRefusal` | via `mayWriteTask` na Tarefa; `listWriteRefusal` confere a Lista de destino |
+| `convertChecklistItem` | `operations/tasks.ts` | `taskWriteRefusal`, `listWriteRefusal` | via `mayWriteTask`; a Tarefa nova nasce por `createTask` |
 | `trashTask` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
 | `restoreTask` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
 | `purgeTask` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
-| `purgeExpiredTasks` | `operations/tasks.ts` | `containerAdminRefusal` |  |
-| `restoreList` | `operations/tasks.ts` | `containerTrashRefusal` |  |
+| `purgeExpiredTasks` | `operations/tasks.ts` | `containerAdminRefusal` | administrar a Lista; Membro ativo |
+| `restoreList` | `operations/tasks.ts` | `containerTrashRefusal` | alcance (`memberReachesContainer`) e excluir ou administrar a Lista, como `restoreContainer` (09-03) |
 | `addChecklist` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
 | `addChecklistItem` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
 | `setChecklistItemDone` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
@@ -99,13 +99,13 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `startMeeting` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
 | `endMeeting` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
 | `updateTask` | `operations/tasks.ts` | `taskWriteRefusal` |  |
-| `setTaskFieldValue` | `operations/tasks.ts` | `taskWriteRefusal` | via `escritaDeCampo` |
-| `addTaskComment` | `operations/tasks.ts` | `taskCommentRefusal` |  |
-| `editTaskComment` | `operations/tasks.ts` | `commentEditRefusal` |  |
-| `deleteTaskComment` | `operations/tasks.ts` | `commentEditRefusal` |  |
-| `resolveTaskComment` | `operations/tasks.ts` | `taskWriteRefusal`, `isWorkspaceAdmin` | via `mayWriteTask` |
+| `setTaskFieldValue` | `operations/tasks.ts` | `taskWriteRefusal` | via `escritaDeCampo` e `mayWriteFieldOrComment`; a Pessoa da conta (Convidado) só preenche os Campos que a Lista liberou |
+| `addTaskComment` | `operations/tasks.ts` | `taskCommentRefusal` | `comentar` basta; a Pessoa da conta (Convidado, `guestFieldWriter`) também comenta |
+| `editTaskComment` | `operations/tasks.ts` | `commentEditRefusal` | `taskCommentRefusal` e ser o autor do Comentário ou administrar a Lista |
+| `deleteTaskComment` | `operations/tasks.ts` | `commentEditRefusal` | `taskCommentRefusal` e ser o autor do Comentário ou administrar a Lista |
+| `resolveTaskComment` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask`; resolver o fio de outra pessoa exige ser Administrador ou Proprietário (`isWorkspaceAdmin`) ou, no fio do Resumo, o aprovador ou revisor da Conferência vigente |
 | `setTaskTags` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
-| `watchTask` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
+| `watchTask` | `operations/tasks.ts` | `memberSeesTask`, `taskWriteRefusal` | observar a si mesmo exige ver a Tarefa; pôr outro Membro como Observador exige `mayWriteTask` |
 | `moveDealToStage` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
 | `winDeal` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
 | `loseDeal` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
@@ -126,7 +126,7 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `moveConversationToContact` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
 | `discardDraft` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
 | `restoreConversation` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `startConversation` | `operations/conversations.ts` | a conferir |  |
+| `startConversation` | `operations/conversations.ts` | recusa embutida (Membro ativo, não Convidado) | a mesma regra de `recusaDeEscritaNoCrmAntigo`, escrita dentro da operação desde antes da Fase 9 (09-03 não criou variante) |
 | `toggleConversationStar` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
 | `markConversationRead` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
 | `addContactIdentifier` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
@@ -148,21 +148,21 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `setContactCatalogValue` | `operations/contacts.ts` | `mayCreateCrmRecord` |  |
 | `updateCompany` | `operations/contacts.ts` | `mayCreateCrmRecord` |  |
 | `addCompanyNote` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `decideApproval` | `operations/ai.ts` | `mayDecideApproval` |  |
-| `decideProcessApproval` | `operations/ai.ts` | `mayDecideApproval` |  |
-| `solicitarAprovacao` | `operations/ai.ts` | `taskWriteRefusal` | via `changeTaskStatus` |
+| `decideApproval` | `operations/ai.ts` | `mayDecideApproval` | o aprovador designado, o dono do Agente ou um Administrador ou Proprietário ativo |
+| `decideProcessApproval` | `operations/ai.ts` | `mayDecideApproval` | o aprovador designado ou um Administrador ou Proprietário ativo; o alcance da Tarefa vem da resposta no fio (`addTaskComment`) |
+| `solicitarAprovacao` | `operations/ai.ts` | `taskWriteRefusal` | o ator é conferido ao mover a Tarefa para 'em aprovação' (`changeTaskStatus`, via `mayWriteTaskStatus`), antes de qualquer gravação |
 | `publishAutomation` | `operations/ai.ts` | `recusaDeAdministrarAutomacao` |  |
 | `restoreAgent` | `operations/ai.ts` | `recusaDeRestaurarAgente` |  |
 | `restoreAutomation` | `operations/ai.ts` | `recusaDeRestaurarAutomacao` |  |
-| `createChatSession` | `operations/ai.ts` | a conferir |  |
-| `configureChatSession` | `operations/ai.ts` | a conferir |  |
-| `sendChatMessage` | `operations/ai.ts` | a conferir |  |
-| `createChatFolder` | `operations/chat-folders.ts` | a conferir |  |
-| `renameChatFolder` | `operations/chat-folders.ts` | a conferir |  |
-| `deleteChatFolder` | `operations/chat-folders.ts` | a conferir |  |
-| `moveChatSessionToFolder` | `operations/chat-folders.ts` | a conferir |  |
-| `createAgent` | `operations/agent-builder.ts` | a conferir |  |
-| `publishAgentVersion` | `operations/agent-builder.ts` | a conferir |  |
+| `createChatSession` | `operations/ai.ts` | recusa embutida (Membro ativo) | a Sessão nasce do próprio Membro (dono); `recusaDeTrocarModelo` confere o Modelo, não o ator |
+| `configureChatSession` | `operations/ai.ts` | dono do registro | só o dono da Sessão a ajusta (`session.ownerMemberId`); nem Administrador nem Proprietário alteram a Sessão de outro |
+| `sendChatMessage` | `operations/ai.ts` | dono do registro | só o dono da Sessão escreve nela (`session.ownerMemberId`); o compartilhamento dá leitura |
+| `createChatFolder` | `operations/chat-folders.ts` | recusa embutida (Membro ativo) | a pasta nasce do próprio Membro (dono) |
+| `renameChatFolder` | `operations/chat-folders.ts` | dono do registro | só o dono da pasta (`folder.ownerMemberId`) |
+| `deleteChatFolder` | `operations/chat-folders.ts` | dono do registro | só o dono da pasta (`folder.ownerMemberId`) |
+| `moveChatSessionToFolder` | `operations/chat-folders.ts` | dono do registro | só o dono da Sessão, e a pasta de destino também tem de ser dele |
+| `createAgent` | `operations/agent-builder.ts` | recusa embutida (Membro ativo, não Convidado) | `validate`: Membro ativo e Papel base diferente de Convidado; o Agente nasce com o Membro como dono |
+| `publishAgentVersion` | `operations/agent-builder.ts` | recusa embutida (dono do Agente ou quem administra o Espaço) | `validate` (Membro ativo, não Convidado) e depois dono do Agente, Administrador ou Proprietário |
 | `createFieldDefinition` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
 | `updateFieldDefinition` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
 | `archiveFieldDefinition` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
@@ -182,50 +182,50 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `removeTaskType` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
 | `setContainerFeature` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
 | `usarCampoHerdado` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
-| `addDependency` | `operations/collaboration.ts` | `taskWriteRefusal` | via `activeTask` |
+| `addDependency` | `operations/collaboration.ts` | `taskWriteRefusal` | via `activeTask`, nas duas Tarefas da Dependência |
 | `removeDependency` | `operations/collaboration.ts` | `taskWriteRefusal` |  |
 | `addTimeEntry` | `operations/collaboration.ts` | `taskWriteRefusal` | via `activeTask` |
 | `startTimer` | `operations/collaboration.ts` | `taskWriteRefusal` | via `activeTask` |
-| `stopTimer` | `operations/collaboration.ts` | a conferir |  |
+| `stopTimer` | `operations/collaboration.ts` | dono do registro | só fecha o cronômetro aberto do próprio Membro (`entry.memberId === actingMemberId`); não confere Papel nem estado do Membro |
 | `attachFile` | `operations/collaboration.ts` | `taskWriteRefusal` | via `activeTask` |
 | `removeAttachment` | `operations/collaboration.ts` | `taskWriteRefusal` | via `activeTask` |
 | `setRecurrence` | `operations/collaboration.ts` | `taskWriteRefusal` | via `activeTask` |
-| `spawnNextOccurrence` | `operations/collaboration.ts` | a conferir |  |
+| `spawnNextOccurrence` | `operations/collaboration.ts` | sem conferência | LACUNA — ver 09-09-SUMMARY: não olha quem chama nem o alcance da Tarefa; `POST /operacoes/spawnNextOccurrence` cria a próxima ocorrência de qualquer Tarefa recorrente já concluída, para qualquer Membro, Convidado incluído (a tela chega aqui por `changeTaskStatus`, que confere) |
 | `spawnCalendarOccurrence` | `operations/collaboration.ts` | `taskWriteRefusal` | via `activeTask` |
 | `runCalendarRecurrences` | `operations/collaboration.ts` | `containerAdminRefusal` |  |
-| `setMemberCapacity` | `operations/planning.ts` | a conferir |  |
+| `setMemberCapacity` | `operations/planning.ts` | recusa embutida (o próprio Membro ou Administrador) | Membro ativo; definir a capacidade de outro Membro exige Papel Administrador ou Proprietário |
 | `enableSprints` | `operations/planning.ts` | `containerAdminRefusal` | via `sprintFolder` |
 | `disableSprints` | `operations/planning.ts` | `containerAdminRefusal` | via `sprintFolder` |
-| `createNextSprint` | `operations/planning.ts` | `containerAdminRefusal`, `mayBuild` | via `sprintFolder`; via `createList` |
-| `closeSprint` | `operations/planning.ts` | `containerAdminRefusal`, `taskWriteRefusal`, `listWriteRefusal` | via `sprintFolder`; via `moveTask` |
+| `createNextSprint` | `operations/planning.ts` | `containerAdminRefusal`, `mayBuild` | via `sprintFolder` (administrar a Pasta); a Lista da sprint nasce por `createList` |
+| `closeSprint` | `operations/planning.ts` | `containerAdminRefusal`, `memberReachesContainer` | via `sprintFolder` (administrar a Pasta); as Tarefas abertas passam à próxima sprint por `moveTask` |
 | `saveListAsTemplate` | `operations/planning.ts` | `containerAdminRefusal` |  |
 | `saveTaskAsTemplate` | `operations/planning.ts` | `containerAdminRefusal` |  |
-| `instantiateTaskTemplate` | `operations/planning.ts` | `listWriteRefusal` | via `createTask` |
-| `instantiateListTemplate` | `operations/planning.ts` | `containerAdminRefusal` |  |
+| `instantiateTaskTemplate` | `operations/planning.ts` | `listWriteRefusal` | via `createTask`, que confere antes de criar |
+| `instantiateListTemplate` | `operations/planning.ts` | `mayBuild`, `containerAdminRefusal` | sempre exige alcançar o contêiner (`memberReachesContainer`) e criar por `createList`; `containerAdminRefusal` entra quando o modelo define Status, Campos ou Tipos |
 | `renameTemplate` | `operations/planning.ts` | `templateAdminRefusal` |  |
 | `setTemplateArchived` | `operations/planning.ts` | `templateAdminRefusal` |  |
-| `saveView` | `operations/scale.ts` | `containerAdminRefusal` |  |
-| `deleteView` | `operations/scale.ts` | `mayEditView` |  |
-| `setDefaultView` | `operations/scale.ts` | `mayEditView` |  |
+| `saveView` | `operations/scale.ts` | recusa embutida (Membro ativo), `containerAdminRefusal` | a Visão pessoal exige Membro ativo que alcance a Lista; compartilhar com a Lista exige `containerAdminRefusal` |
+| `deleteView` | `operations/scale.ts` | `mayEditView` | o dono da Visão pessoal, ou administrar a Lista na compartilhada |
+| `setDefaultView` | `operations/scale.ts` | `mayEditView` | só Visão compartilhada; administrar a Lista |
 | `createForm` | `operations/scale.ts` | `containerAdminRefusal` |  |
 | `updateForm` | `operations/scale.ts` | `containerAdminRefusal` |  |
 | `archiveForm` | `operations/scale.ts` | `containerAdminRefusal` |  |
 | `unarchiveForm` | `operations/scale.ts` | `containerAdminRefusal` |  |
 | `rotateFormSecret` | `operations/scale.ts` | `containerAdminRefusal` |  |
-| `shareTaskPublicly` | `operations/scale.ts` | `containerAdminRefusal` |  |
-| `revokePublicShare` | `operations/scale.ts` | `containerAdminRefusal` |  |
-| `runScheduledAutomations` | `operations/automations.ts` | `containerAdminRefusal` |  |
-| `runLancamentoAgent` | `operations/financeiro.ts` | `taskCommentRefusal` | via `addTaskComment` |
+| `shareTaskPublicly` | `operations/scale.ts` | `containerAdminRefusal`, `memberSeesTask` | ver a Tarefa e administrar a Lista (RN-TAR-21) |
+| `revokePublicShare` | `operations/scale.ts` | `containerAdminRefusal`, `memberSeesTask` | ver a Tarefa e administrar a Lista |
+| `runScheduledAutomations` | `operations/automations.ts` | `containerAdminRefusal` | Membro ativo que administra a Lista; só percorre as Tarefas que ele vê (`memberSeesTask`) |
+| `runLancamentoAgent` | `operations/financeiro.ts` | `memberSeesTask` | conferência fraca, ver 09-09-SUMMARY: exige só alcançar a Tarefa e a concessão do Agente (`agentSeesTask`); não recusa Convidado nem Membro não ativo; o pedido ao Financeiro passa por `addTaskComment` (`taskCommentRefusal`) |
 | `createReceivableSeries` | `operations/financeiro.ts` | `listWriteRefusal` |  |
-| `converterSolicitacaoEmContaAPagar` | `operations/conversao-de-solicitacao.ts` | `listWriteRefusal`, `taskWriteRefusal` | via `createTask`; via `setTaskTags` |
-| `alterarStatusEmLote` | `operations/lote.ts` | `taskWriteRefusal` | via `changeTaskStatus` |
-| `alterarEmailDoConvite` | `operations/members.ts` | a conferir |  |
-| `alterarPapelDoMembro` | `operations/members.ts` | a conferir |  |
-| `removeMember` | `operations/members.ts` | a conferir |  |
-| `transferWorkspaceOwnership` | `operations/members.ts` | a conferir |  |
-| `inviteMember` | `operations/members.ts` | a conferir |  |
-| `deleteRole` | `operations/members.ts` | a conferir |  |
-| `grantGovernanceAccess` | `operations/members.ts` | a conferir |  |
+| `converterSolicitacaoEmContaAPagar` | `operations/conversao-de-solicitacao.ts` | `memberSeesTask`, `listWriteRefusal` | a Solicitação precisa ser vista por quem converte (T-3-12) e a Conta nasce por `createTask`; as Tags passam por `setTaskTags` |
+| `alterarStatusEmLote` | `operations/lote.ts` | `taskWriteRefusal` | por item, via `changeTaskStatus` (`mayWriteTaskStatus`) depois de `memberSeesTask`; a recusa de um item vira `recusada` no relatório, sem derrubar o lote |
+| `alterarEmailDoConvite` | `operations/members.ts` | recusa embutida (Administrador ou Proprietário) | confere o Papel base de quem chama, não o estado do Membro: um suspenso só é barrado pelo 403 da rota |
+| `alterarPapelDoMembro` | `operations/members.ts` | recusa embutida (Administrador ou Proprietário) | confere o Papel base de quem chama, não o estado do Membro: um suspenso só é barrado pelo 403 da rota |
+| `removeMember` | `operations/members.ts` | sem conferência | LACUNA — ver 09-09-SUMMARY: não olha quem chama; qualquer Membro, Convidado incluído, remove outro Membro (só o Proprietário é protegido) e passa os registros dele ao Sucessor; a rota só valida o formato dos argumentos |
+| `transferWorkspaceOwnership` | `operations/members.ts` | recusa embutida (Proprietário do Espaço) | só quem é `workspace.ownerMemberId`; o destinatário precisa ser Membro ativo |
+| `inviteMember` | `operations/members.ts` | recusa embutida (Administrador ou Proprietário) | confere o Papel base de quem chama, não o estado do Membro: um suspenso só é barrado pelo 403 da rota |
+| `deleteRole` | `operations/members.ts` | recusa embutida (Administrador ou Proprietário) | confere o Papel base de quem chama, não o estado do Membro: um suspenso só é barrado pelo 403 da rota |
+| `grantGovernanceAccess` | `operations/members.ts` | recusa embutida (Administrador ou Proprietário) | ato de governança com motivo obrigatório; confere o Papel base, não o estado do Membro: um suspenso só é barrado pelo 403 da rota |
 | `createSpace` | `operations/structure.ts` | `mayBuild` |  |
 | `createFolder` | `operations/structure.ts` | `mayBuild` |  |
 | `createList` | `operations/structure.ts` | `mayBuild` |  |
@@ -234,7 +234,7 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `unarchiveContainer` | `operations/structure.ts` | `containerAdminRefusal` |  |
 | `trashContainer` | `operations/structure.ts` | `containerTrashRefusal` |  |
 | `restoreContainer` | `operations/structure.ts` | `containerTrashRefusal` |  |
-| `iniciarConversa` | `operations/iniciar-conversa.ts` | `recusaDeEscritaNoCrmAntigo`, `mayCreateCrmRecord`, `listWriteRefusal` | via `createDeal`; via `moveDealToStage`; via `setContactCatalogValue`; via `createTask` |
+| `iniciarConversa` | `operations/iniciar-conversa.ts` | `recusaDeEscritaNoCrmAntigo`, `listWriteRefusal` | composição: `createDeal`, `createTask` e `setContactCatalogValue` conferem (esta última por `mayCreateCrmRecord`); as validações anteriores só leem, e a operação desfaz o que criou se um ato recusar |
 | `adicionarNotaNoAtivo` | `operations/ferramentas/notas.ts` | `recusaDeMembroAtivo` |  |
 | `criarLinkDeCaptacao` | `operations/ferramentas/captacao.ts` | `recusaDeMembroAtivo` |  |
 | `editarLinkDeCaptacao` | `operations/ferramentas/captacao.ts` | `recusaDeMembroAtivo` |  |
@@ -264,7 +264,7 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `recusarPedidoDeEntrada` | `operations/ferramentas/grupos.ts` | `recusaDeMembroAtivo` | `recusaExternaNoGrupo` olha o Papel do Canal no Grupo, não o do Membro |
 | `enviarMensagemAoGrupo` | `operations/ferramentas/grupos.ts` | `recusaDeMembroAtivo` | `recusaDeEnvioAoGrupo` olha o estado do Grupo e do Canal |
 | `criarFlow` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo` |  |
-| `editarFlow` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo`, `recusaDeAdministracao` |  |
+| `editarFlow` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo`, `recusaDeAdministracao` | `recusaDeAdministracao` só entra quando a edição troca o Canal de um Flow com Versão publicada |
 | `definirPontoDeTrocaDeDados` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
 | `regenerarChavesDoPonto` | `operations/ferramentas/flows.ts` | `recusaDeAdministracao` |  |
 | `removerPontoDeTrocaDeDados` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
@@ -308,29 +308,29 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `criarTarefaConversacional` | `operations/tarefas-conversacionais.ts` | `listWriteRefusal` |  |
 | `trocarCanalDaTarefa` | `operations/tarefas-conversacionais.ts` | `taskWriteRefusal` | via `tarefaConversacional` |
 | `vincularNegocioATarefa` | `operations/tarefas-conversacionais.ts` | `taskWriteRefusal` | via `tarefaConversacional` |
-| `criarNegocioDaTarefa` | `operations/tarefas-conversacionais.ts` | `taskWriteRefusal`, `recusaDeEscritaNoCrmAntigo` | via `tarefaConversacional`; via `createDeal` |
+| `criarNegocioDaTarefa` | `operations/tarefas-conversacionais.ts` | `taskWriteRefusal`, `recusaDeEscritaNoCrmAntigo` | via `tarefaConversacional` e `createDeal` |
 | `ativarAgente` | `operations/ia/agentes.ts` | `recusaDeGovernarAgente` |  |
 | `pausarAgente` | `operations/ia/agentes.ts` | `recusaDeGovernarAgente` |  |
 | `arquivarAgente` | `operations/ia/agentes.ts` | `recusaDeGovernarAgente` |  |
 | `enviarAgenteALixeira` | `operations/ia/agentes.ts` | `recusaDeGovernarAgente` |  |
 | `transferirAgente` | `operations/ia/agentes.ts` | `recusaDeGovernarAgente` |  |
 | `ensaiarAgente` | `operations/ia/agentes.ts` | `recusaDeGovernarAgente` |  |
-| `cancelarExecucao` | `operations/ia/agentes.ts` | `recusaDeMembroAtivo`, `recusaDeGovernarAgente` |  |
-| `apagarItemDeMemoria` | `operations/ia/agentes.ts` | `recusaDeEditarConfiguracao` |  |
-| `criarAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeConvidado` |  |
-| `editarAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo`, `recusaDeAdministrarAutomacao` | via `automacaoEditavel` |
-| `duplicarAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeConvidado` |  |
-| `criarRascunhoDaAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo`, `recusaDeAdministrarAutomacao` | via `automacaoEditavel` |
-| `descartarRascunhoDaAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
-| `definirGatilho` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
-| `adicionarCondicao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
-| `editarCondicao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
-| `removerCondicao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
-| `adicionarAcao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
-| `editarAcao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
-| `moverAcao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
-| `removerAcao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
-| `definirPoliticaDeErro` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
+| `cancelarExecucao` | `operations/ia/agentes.ts` | `recusaDeGovernarAgente`, `recusaDeMembroAtivo` | administrar o Agente ou ser o delegante da Execução (RN-AGE-21); `recusaDeMembroAtivo` aqui é a da IA (só Membro ativo) |
+| `apagarItemDeMemoria` | `operations/ia/agentes.ts` | `recusaDeGovernarAgente` | via `recusaDeEditarConfiguracao` (`editar` o Agente; Agente arquivado ou na lixeira não se edita) |
+| `criarAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeConvidado` | Membro ativo e Papel base diferente de Convidado |
+| `editarAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo`, `recusaDeAdministrarAutomacao` | via `automacaoEditavel`: editar exige administrar a Automação (dono, criador, Administrador ou Proprietário) |
+| `duplicarAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeConvidado` | Membro ativo e Papel base diferente de Convidado |
+| `criarRascunhoDaAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo`, `recusaDeAdministrarAutomacao` | via `automacaoEditavel`: editar exige administrar a Automação (dono, criador, Administrador ou Proprietário) |
+| `descartarRascunhoDaAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo`, `recusaDeAdministrarAutomacao` | via `rascunhoEditavel` e `automacaoEditavel`: editar o rascunho exige administrar a Automação (dono, criador, Administrador ou Proprietário) |
+| `definirGatilho` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo`, `recusaDeAdministrarAutomacao` | via `rascunhoEditavel` e `automacaoEditavel`: editar o rascunho exige administrar a Automação (dono, criador, Administrador ou Proprietário) |
+| `adicionarCondicao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo`, `recusaDeAdministrarAutomacao` | via `rascunhoEditavel` e `automacaoEditavel`: editar o rascunho exige administrar a Automação (dono, criador, Administrador ou Proprietário) |
+| `editarCondicao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo`, `recusaDeAdministrarAutomacao` | via `rascunhoEditavel` e `automacaoEditavel`: editar o rascunho exige administrar a Automação (dono, criador, Administrador ou Proprietário) |
+| `removerCondicao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo`, `recusaDeAdministrarAutomacao` | via `rascunhoEditavel` e `automacaoEditavel`: editar o rascunho exige administrar a Automação (dono, criador, Administrador ou Proprietário) |
+| `adicionarAcao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo`, `recusaDeAdministrarAutomacao` | via `rascunhoEditavel` e `automacaoEditavel`: editar o rascunho exige administrar a Automação (dono, criador, Administrador ou Proprietário) |
+| `editarAcao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo`, `recusaDeAdministrarAutomacao` | via `rascunhoEditavel` e `automacaoEditavel`: editar o rascunho exige administrar a Automação (dono, criador, Administrador ou Proprietário) |
+| `moverAcao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo`, `recusaDeAdministrarAutomacao` | via `rascunhoEditavel` e `automacaoEditavel`: editar o rascunho exige administrar a Automação (dono, criador, Administrador ou Proprietário) |
+| `removerAcao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo`, `recusaDeAdministrarAutomacao` | via `rascunhoEditavel` e `automacaoEditavel`: editar o rascunho exige administrar a Automação (dono, criador, Administrador ou Proprietário) |
+| `definirPoliticaDeErro` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo`, `recusaDeAdministrarAutomacao` | via `rascunhoEditavel` e `automacaoEditavel`: editar o rascunho exige administrar a Automação (dono, criador, Administrador ou Proprietário) |
 | `pausarAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeAdministrarAutomacao` |  |
 | `retomarAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeAdministrarAutomacao` |  |
 | `arquivarAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeAdministrarAutomacao` |  |
@@ -361,9 +361,9 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `obsoletarVersaoDaHabilidade` | `operations/ia/habilidades.ts` | `recusaDeGovernarHabilidade` |  |
 | `arquivarHabilidade` | `operations/ia/habilidades.ts` | `recusaDeGovernarHabilidade` |  |
 | `restaurarHabilidade` | `operations/ia/habilidades.ts` | `recusaDeGovernarHabilidade` |  |
-| `concederHabilidade` | `operations/ia/habilidades.ts` | `recusaDeMembroAtivo`, `recusaDeGovernarAgente` |  |
-| `fixarVersaoDaConcessao` | `operations/ia/habilidades.ts` | `recusaDeMembroAtivo`, `recusaDeGovernarAgente` |  |
-| `revogarHabilidade` | `operations/ia/habilidades.ts` | `recusaDeMembroAtivo`, `recusaDeGovernarAgente` |  |
+| `concederHabilidade` | `operations/ia/habilidades.ts` | `recusaDeGovernarAgente`, `recusaDeMembroAtivo` | `editar` o Agente que recebe a Concessão; `recusaDeMembroAtivo` aqui é a da IA (só Membro ativo) |
+| `fixarVersaoDaConcessao` | `operations/ia/habilidades.ts` | `recusaDeGovernarAgente`, `recusaDeMembroAtivo` | `editar` o Agente da Concessão; `recusaDeMembroAtivo` aqui é a da IA (só Membro ativo) |
+| `revogarHabilidade` | `operations/ia/habilidades.ts` | `recusaDeGovernarAgente`, `recusaDeMembroAtivo` | `editar` o Agente da Concessão; `recusaDeMembroAtivo` aqui é a da IA (só Membro ativo) |
 | `conectarIntegracao` | `operations/ia/integracoes.ts` | `recusaDeAdministrarIntegracao` |  |
 | `desconectarIntegracao` | `operations/ia/integracoes.ts` | `recusaDeAdministrarIntegracao` |  |
 
