@@ -36,6 +36,7 @@
     "@fastify/cors": "^11.3.0",
     "@fastify/type-provider-zod": "^1.0.0",
     "@n1/dominio": "*",
+    "@sentry/node": "10.76.2",
     "@supabase/supabase-js": "^2.116.0",
     "@types/pg": "^8.23.1",
     "fastify": "^5.12.5",
