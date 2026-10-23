@@ -190,3 +190,65 @@ Três regras que a ponte carrega:
 A ponte some na fase de unificação, quando as telas lerem Canal, Conversa e
 Mensagem por REST e o modelo antigo deixar de existir. Provada contra o
 Postgres real em `canais-projetados.test.ts`.
+
+## Banco fechado e RLS adiada (Fase 9)
+
+**O que a `009-seguranca-e-cofre.sql` faz** (SEG-04, D-04 a D-06, D-17), nesta
+ordem: cria `plataforma.credenciais` (o cofre: segredo só cifrado, com
+`iv`, `etiqueta` e `versao_da_chave`, e um índice único parcial
+`credenciais_ativa_unica` — uma credencial ativa por dono e tipo); fixa
+`search_path = pg_catalog, plataforma` nas três funções da 007; revoga
+`plataforma` de `anon`, `authenticated` e `public` (cada papel só se existir em
+`pg_roles`: o Postgres dos testes e do CI não os tem); desliga a RLS em toda
+tabela de `plataforma`; concede a `n1_api`, se ele existir, só DML; e revoga o
+`execute` de `public.rls_auto_enable()` se ela existir, sem derrubar o deploy
+quando o dono da função é outro. Tudo na transação de `migrar()`: se falhar,
+nem a linha em `plataforma.migracoes` nem os `revoke` ficam. Provada em banco
+novo, com e sem os papéis do Supabase, em `src/seguranca/banco-n1-api.test.ts`.
+
+**`n1_api` só com DML e as duas variáveis.** O app conecta como `n1_api`
+(`DATABASE_URL`): `usage` no schema, `select/insert/update/delete` nas
+tabelas, `usage/select` nas sequências, `execute` nas funções, e **nada** de
+escrita em `plataforma.migracoes` — `drop table` e `create table` voltam
+`42501`. Não há DDL em `apps/api/src` fora de `migrar.ts`, então isso basta. A
+migração, o `banco:conceder` e o backup conectam como o dono do banco
+(`DATABASE_URL_MIGRACAO`, `poolDeMigracao()` em `conexao.ts`; sem ela cai em
+`DATABASE_URL`). As duas linhas do `api.env` **mudam juntas**: com o app em
+`n1_api` e sem `DATABASE_URL_MIGRACAO`, o próximo `migrar` roda como `n1_api`,
+falha no DDL e o deploy volta a versão anterior. No pooler compartilhado o
+usuário é `n1_api.<ref>` (ver `.env.example`).
+
+**`npm run banco:conceder`.** O papel pode nascer depois da `009`, e editar a
+`009` aplicada é proibido. `apps/api/deploy/conceder-n1-api.sql` (fora de
+`migracoes/`, a única pasta que `migrar()` lê) repete o bloco de `n1_api` da
+`009`; `concederN1Api` o roda se o papel existir e diz "o papel não existe"
+se não. É idempotente e deve rodar **a cada deploy, depois do `migrar`**
+(09-11). Um teste compara a matriz de privilégios e os privilégios padrão do
+caminho "`009` com o papel" com o de "`009` sem o papel + script".
+
+**RLS por `workspace_id`: adiada pela decisão 12.1** (mais de uma empresa no
+sistema; hoje há um Espaço de Trabalho em produção). Não foi esquecida:
+adicioná-la depois é **custoso** e esta é a lista para a Sessão 12 não
+redescobrir. São 103 usos de `pool()` em cerca de 40 arquivos, e vários
+caminhos consultam **antes de saber o Espaço**, então uma policy por
+`workspace_id` pediria um papel com bypass ou uma exceção por caminho:
+
+- as rotas públicas de Formulário e de Tarefa (o segredo na URL identifica o
+  Espaço; a rota ainda não o conhece);
+- a credencial de serviço (a chave de serviço entra sem Membro);
+- o outbox e a agenda de Automações (rodam em laço, por todos os Espaços);
+- os webhooks de Canal (o Espaço sai do Canal, não da sessão).
+
+O custo é: `executar` em `unidade-de-trabalho.ts` e os repositórios do CRM
+passariam a abrir toda transação com `set_config('app.workspace_id', …, true)`,
+e cada caminho acima precisaria de papel com bypass ou de policy própria. Até lá
+a `009` **desliga** a RLS (D-05) em vez de deixá-la ligada e sem policy.
+
+**F7, lembrete para toda migração futura.** Se o projeto tem o event trigger
+`ensure_rls` (a função `public.rls_auto_enable()` do guia do Supabase), toda
+tabela nova de `plataforma` nasce com RLS ligada e sem policy, e `n1_api` (sem
+`bypassrls`) enxerga **zero linhas**. A `010`, a `011`… que criarem tabela em
+`plataforma` repetem o bloco "desliga RLS" da `009`, ou o dono remove o event
+trigger. Conferência antes de trocar a conexão do app:
+`select relname from pg_class where relnamespace = 'plataforma'::regnamespace and relkind = 'r' and relrowsecurity;`
+deve voltar 0 linhas.

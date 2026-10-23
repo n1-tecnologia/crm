@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "migrar": "vite-node src/persistencia/migrar.cli.ts",
+    "banco:conceder": "vite-node src/persistencia/conceder-n1-api.cli.ts",
     "usuarios:seed": "vite-node src/autenticacao/criar-usuarios-do-seed.ts",
     "usuarios:criar": "vite-node src/autenticacao/criar-usuario.cli.ts",
     "bootstrap:gestao": "vite-node src/bootstrap/gestao.cli.ts",
