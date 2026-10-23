@@ -1,0 +1,44 @@
+# Backup diário do schema `plataforma` — instalado por instalar-backup.sh em
+# /etc/systemd/system/. Dispara pelo n1-crm-backup.timer; roteiro em
+# apps/api/deploy/CONTEXT.md ("Backup diário (Fase 9)").
+#
+# O ExecStart é a cópia que o root instala em /opt/n1-crm/bin, NÃO a da versão
+# no ar (`current`): o backup precisa existir antes de esta fase chegar à
+# `main`, e uma versão quebrada no ar não pode derrubar o backup. O usuário
+# `n1crm` não escreve ali.
+#
+# Sem `ReadWritePaths`: o dump é um pipe (pg_dump | age | rclone), não toca o
+# disco. O cache do rclone cai em /tmp, que com PrivateTmp é só deste serviço.
+[Unit]
+Description=N1 CRM — backup diário cifrado do schema plataforma
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=n1crm
+Group=n1crm
+# api.env: DATABASE_URL_MIGRACAO e DATABASE_CA_PATH.
+# backup.env: BACKUP_DESTINO, BACKUP_RECIPIENT e RCLONE_CONFIG (o ProtectHome
+# esconde o ~/.config do rclone, então a configuração mora em shared/).
+EnvironmentFile=/opt/n1-crm/shared/api.env
+EnvironmentFile=/opt/n1-crm/shared/backup.env
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=RCLONE_CACHE_DIR=/tmp/rclone
+ExecStart=/opt/n1-crm/bin/n1-crm-backup.sh
+
+# A VPS é compartilhada: o backup cede CPU e disco aos vizinhos.
+Nice=10
+IOSchedulingClass=idle
+
+# O mesmo endurecimento do n1-crm-api.service (sem ReadWritePaths).
+MemoryMax=512M
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true

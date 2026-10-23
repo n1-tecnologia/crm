@@ -1,0 +1,14 @@
+# Dispara o n1-crm-backup.service uma vez por dia — instalado por
+# instalar-backup.sh. 06:30 UTC são 03:30 em Brasília: madrugada, fora do uso.
+[Unit]
+Description=N1 CRM — backup diário (timer)
+
+[Timer]
+OnCalendar=*-*-* 06:30:00 UTC
+# Máquina desligada às 06:30: roda assim que ligar, em vez de pular o dia.
+Persistent=true
+# Espalha o disparo: a VPS tem outros projetos com cron na mesma hora.
+RandomizedDelaySec=900
+
+[Install]
+WantedBy=timers.target
