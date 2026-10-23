@@ -16,9 +16,10 @@
  */
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
-import { afterAll, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { describeComBanco } from "../testes/banco-crm";
 import { encerrar, pool } from "../persistencia/conexao";
+import { concederN1Api } from "../persistencia/conceder-n1-api";
 import { migrar, type Aplicada } from "../persistencia/migrar";
 
 const SENHA_DE_TESTE = "x";
@@ -313,4 +314,75 @@ describeComBanco("banco fechado da Fase 9 (009) — Postgres local", () => {
       expect(indice.rowCount).toBe(0);
     });
   }, 60_000);
+
+  it("(b) n1_api criado DEPOIS da 009: banco:conceder devolve a mesma matriz de privilégios, e de novo, e os padrões valem para tabela futura", async () => {
+    await garantirPapel("n1_api");
+    const padroesDe = async (dono: Pool) =>
+      (
+        await dono.query<{ tipo: string; acl: string }>(
+          `select defaclobjtype::text as tipo, defaclacl::text as acl from pg_default_acl
+            where defaclnamespace = 'plataforma'::regnamespace order by 1, 2`,
+        )
+      ).rows;
+
+    // Referência: a 009 aplicada com o papel presente.
+    let referencia: MatrizDePrivilegios | undefined;
+    let padroesDaReferencia: Awaited<ReturnType<typeof padroesDe>> = [];
+    await comBancoDescartavel("bref", async ({ nome, dono }) => {
+      await migrarNo(nome);
+      referencia = await matrizDe(dono, "n1_api");
+      padroesDaReferencia = await padroesDe(dono);
+    });
+    expect(referencia?.schema).toBe(true);
+
+    await comBancoDescartavel("b", async ({ nome, dono }) => {
+      await migrarNo(nome);
+      // O estado de "papel criado depois da 009": nenhuma concessão, nem padrão.
+      await dono.query(`
+        revoke all on all tables in schema plataforma from n1_api;
+        revoke all on all sequences in schema plataforma from n1_api;
+        revoke all on all functions in schema plataforma from n1_api;
+        revoke all on schema plataforma from n1_api;
+        alter default privileges in schema plataforma revoke all on tables from n1_api;
+        alter default privileges in schema plataforma revoke all on sequences from n1_api;
+        alter default privileges in schema plataforma revoke all on functions from n1_api;
+      `);
+      const sem = await matrizDe(dono, "n1_api");
+      expect(sem.schema).toBe(false);
+      expect(Object.values(sem.tabelas).every((p) => p === "")).toBe(true);
+      expect(Object.values(sem.sequencias).some(Boolean)).toBe(false);
+
+      expect(await concederN1Api(dono)).toEqual({ papelExiste: true });
+      expect(await matrizDe(dono, "n1_api")).toEqual(referencia);
+      expect(await padroesDe(dono)).toEqual(padroesDaReferencia);
+
+      // Idempotente: de novo, a mesma matriz.
+      expect(await concederN1Api(dono)).toEqual({ papelExiste: true });
+      expect(await matrizDe(dono, "n1_api")).toEqual(referencia);
+      expect(await padroesDe(dono)).toEqual(padroesDaReferencia);
+
+      // Os privilégios padrão valem para a tabela que nascer depois.
+      await dono.query("create table plataforma.sonda_futura (a int)");
+      const futura = await dono.query<{ ok: boolean }>(
+        "select has_table_privilege('n1_api', 'plataforma.sonda_futura', 'INSERT') as ok",
+      );
+      expect(futura.rows[0]!.ok).toBe(true);
+    });
+  }, 90_000);
+});
+
+describe("concederN1Api sem o papel (sem banco)", () => {
+  it("um cliente cuja consulta a pg_roles não devolve linha: { papelExiste: false } com uma consulta só", async () => {
+    const consultas: string[] = [];
+    const cliente = {
+      query: async (sql: string) => {
+        consultas.push(sql);
+        return { rows: [], rowCount: 0 };
+      },
+    } as unknown as Parameters<typeof concederN1Api>[0];
+
+    expect(await concederN1Api(cliente)).toEqual({ papelExiste: false });
+    expect(consultas).toHaveLength(1);
+    expect(consultas[0]).toMatch(/pg_roles/);
+  });
 });
