@@ -59,6 +59,7 @@ import { Icone } from "@/design/icone";
 import { CarregadorDeIcones } from "@/design/carregador";
 import { EsqueletoDeTela } from "@/design/esqueletos";
 import { ASSUNTO_FINANCEIRO, vePastaFinanceiro } from "@/features/financeiro/navegacao-financeiro";
+import { ehConvidado, veAssuntoIa } from "@/features/shell/assuntos-do-trilho";
 import { GuiaDoFinanceiro } from "@/features/financeiro/guia/guia-do-financeiro-dialogo";
 import { BarraDeRota } from "./barra-de-rota";
 import { CascataDeNavegacao, Chegada } from "./chegada";
@@ -360,9 +361,13 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
   const { creating, openCreate, closeCreate } = useCreateContainerDialog();
   const workspace = useData((data) => data.workspace.name);
   const data = useData((current) => current);
-  // A única condicional do trilho (D4-14): o item some, nunca aparece
-  // desativado. Quem decide o alcance de verdade é o 403 do `apps/api`.
-  const assuntosVisiveis = ASSUNTOS.filter((a) => a.chave !== "financeiro" || vePastaFinanceiro(data, memberId));
+  // As condicionais do trilho (D4-14): o item some, nunca aparece desativado.
+  // Quem decide o alcance de verdade é o 403 do `apps/api`. Fase 9, D-03: o
+  // assunto IA também some para o Convidado — o servidor já não manda as
+  // coleções de IA (D-02); aqui é só a consequência visual.
+  const assuntosVisiveis = ASSUNTOS.filter(
+    (a) => (a.chave !== "financeiro" || vePastaFinanceiro(data, memberId)) && (a.chave !== "ia" || veAssuntoIa(data, memberId)),
+  );
 
   const assunto = assuntoDe(pathname);
 
@@ -631,9 +636,7 @@ function StructureTree({
     );
   };
 
-  const isGuest =
-    data.roles.find((r) => r.id === data.members.find((m) => m.id === memberId)?.roleId)?.base ===
-    "convidado";
+  const isGuest = ehConvidado(data, memberId);
 
   const visibleSpaces = spaces
     .filter((s) => s.lifecycle !== "naLixeira")

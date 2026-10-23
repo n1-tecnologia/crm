@@ -10,14 +10,12 @@ import type { Id } from "@n1/dominio/types";
 
 /** Papel base `convidado` — a mesma leitura de `isGuest` em `app-shell.tsx`. */
 export function ehConvidado(estado: DataState, memberId: Id | null | undefined): boolean {
-  void estado;
-  void memberId;
-  return false;
+  if (!memberId) return false;
+  const membro = estado.members.find((m) => m.id === memberId);
+  return estado.roles.find((r) => r.id === membro?.roleId)?.base === "convidado";
 }
 
 /** Falso só para o Convidado. Sem Membro resolvido (antes da sessão) nada some à toa. */
 export function veAssuntoIa(estado: DataState, memberId: Id | null | undefined): boolean {
-  void estado;
-  void memberId;
-  return true;
+  return !ehConvidado(estado, memberId);
 }
