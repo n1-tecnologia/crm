@@ -32,7 +32,7 @@ import { ehNomeDeOperacao, OPERACOES, reviverArgumentos, type NomeDeOperacao } f
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { cutucarPonte, type ParDaPonte } from "../automacoes/ponte-ativa";
-import type { MembroDaSessao } from "../plugins/autenticacao";
+import { recusaDeSuspenso, type MembroDaSessao } from "../plugins/autenticacao";
 import type { EventoDeSaida } from "../persistencia/outbox";
 import { executar, type ResultadoTransacao } from "../persistencia/unidade-de-trabalho";
 import { recortarDiferenca, recortarValor, visibilidadePara } from "@n1/dominio/derive-visibilidade";
@@ -258,6 +258,13 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
       if (!ehNomeDeOperacao(nome)) {
         return reply.code(404).send({ ok: false, error: `Operação "${nome}" não existe.` });
       }
+
+      // 1.2.1 — o Membro suspenso passa pela autenticação para consultar, mas
+      // não grava. Toda operação do registro grava (`registro.ts`, regra de
+      // inclusão), então a recusa vale para todas; vem logo depois do nome e
+      // antes de validar o argumento ou tocar o banco.
+      const recusa = recusaDeSuspenso(request.membro);
+      if (recusa) return reply.code(403).send({ ok: false, error: recusa });
 
       // WR-10 — `JSON.parse` do Node é iterativo e aceita qualquer
       // profundidade abaixo do `bodyLimit`; `reviver` (`registro.ts`) é

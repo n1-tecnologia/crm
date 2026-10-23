@@ -11,6 +11,8 @@ Os arquivos deste diretório, desde o Plan 01-04 (`esquemas-de-argumentos.ts` ch
 - `esquemas-de-argumentos.ts` — compõe `esquemas/<modulo>.ts` (um por módulo do domínio) sob `satisfies EsquemasCompletos`: toda operação de `OPERACOES` tem schema; a rota valida antes de `executar()`, forma errada é 400, regra de negócio continua no domínio (recusa em 200).
 - `esquemas/` — a FORMA dos `args` por operação (tipos espelhados da assinatura do domínio, não regras), um arquivo por módulo — ver [`esquemas/CONTEXT.md`](esquemas/CONTEXT.md).
 
+**A resposta de `POST /operacoes/:nome` sai recortada (Fase 9, 1.1.5, F1).** Depois de `executar()` (nunca dentro do callback: o evento de outbox do Canal continua derivado do estado inteiro), a rota calcula UM `visibilidadePara` sobre o estado depois da operação e devolve `diferenca` por `recortarDiferenca`, `value` por `recortarValor` e `sequencia` do estado inteiro. O ramo de `SERVICOS` (`inviteMember`) passa pelo mesmo envio: `convidarMembro` aceita `deps.aoTerminar(state)`. Antes de validar o argumento, um Membro `suspenso` recebe 403 (`recusaDeSuspenso`, `../plugins/autenticacao.ts`, 1.2.1): ele consulta, mas toda operação do registro grava.
+
 A regra continua: a rota chama `executar()` da Unidade de Trabalho (`../persistencia/unidade-de-trabalho.ts`) e traduz o resultado para HTTP — nunca SQL, nunca regra de negócio aqui. Toda rota registrada depois do hook de `../plugins/autenticacao.ts` exige `Authorization: Bearer`, a menos que se marque `config: { publica: true }`.
 
 ## Rotas de integração (v1)

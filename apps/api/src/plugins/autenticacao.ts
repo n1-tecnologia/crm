@@ -37,6 +37,18 @@ declare module "fastify" {
   }
 }
 
+/** A frase que o Membro suspenso lê ao tentar gravar (1.2.1). */
+export const FRASE_DE_SUSPENSO = "Seu acesso está suspenso: você consulta, mas não altera.";
+
+/**
+ * 1.2.1 — o suspenso passa pela autenticação (acima) para CONSULTAR; quem grava
+ * recusa por esta função, ou por `podeNoCrm` no CRM novo. Devolve a frase da
+ * recusa quando o Membro não está `ativo`, e `undefined` quando pode seguir.
+ */
+export function recusaDeSuspenso(membro: MembroDaSessao): string | undefined {
+  return membro.state !== "ativo" ? FRASE_DE_SUSPENSO : undefined;
+}
+
 export interface OpcoesDeAutenticacao {
   readonly workspaceId: string;
   readonly verificarToken: VerificarToken;
