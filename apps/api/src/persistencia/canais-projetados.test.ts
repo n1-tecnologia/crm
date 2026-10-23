@@ -363,7 +363,8 @@ describeComBanco("a ponte em executar() — Postgres local (08-07)", () => {
     try {
       await aparte.query("create schema if not exists plataforma");
       const arquivos = readdirSync(PASTA_DE_MIGRACOES)
-        .filter((f) => f.endsWith(".sql") && !f.startsWith("008-"))
+        // Só 001..007: a 008 é o que falta, e a 009 (Fase 9) pressupõe a 008 e a tabela de controle de migrar().
+        .filter((f) => /^00[1-7]-.*\.sql$/.test(f))
         .sort();
       for (const arquivo of arquivos) await aparte.query(readFileSync(`${PASTA_DE_MIGRACOES}/${arquivo}`, "utf8"));
       expect((await aparte.query("select to_regclass('plataforma.canais') as existe")).rows[0].existe).toBeNull();
