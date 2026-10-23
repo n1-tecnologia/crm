@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 09
 current_phase_name: Segurança dos dados e base de produção
 status: executing
-stopped_at: Completed 09-10-PLAN.md
-last_updated: "2026-10-23T02:14:04.539Z"
+stopped_at: Completed 09-11-PLAN.md
+last_updated: "2026-10-23T02:18:38.593Z"
 last_activity: 2026-10-22
 last_activity_desc: Phase 09 execution started
-state_head: 8da4744203579ae331c315a7ee44ef4b6671d1f8
+state_head: 5ae62651206febd1972f6f2db55cfb91c1b4f666
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 170
-  completed_plans: 157
+  completed_plans: 158
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 ## Current Position
 
 Phase: 09 (Segurança dos dados e base de produção) — EXECUTING
-Plan: 11 of 22
+Plan: 12 of 22
 Status: Ready to execute
 Last activity: 2026-10-22 — Phase 09 execution started
 
@@ -380,6 +380,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 09 P08 | 25 min | 3 tasks | 16 files |
 | Phase 09 P09 | 11 min | 2 tasks | 2 files |
 | Phase 09 P10 | 3 min | 2 tasks | 4 files |
+| Phase 09 P11 | 14 min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -527,6 +528,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 09]: 09-09: lacuna real não vira justificativa — removeMember e spawnNextOccurrence ficam 'sem conferência' com LACUNA e vão como achado à suíte adversarial (09-12/09-15) e à passada 09-21; o domínio não foi tocado
 - [Phase 09]: 09-10: AAD do cofre = JSON de [workspaceId, donoTipo, donoId, tipo, versaoDaChave]; mudar depois da Sessão 4 obriga a re-cifrar todas as credenciais. — Amarra cada texto cifrado à sua linha (T-09-48); decisão costly, barata agora porque nenhuma credencial existe.
 - [Phase 09]: 09-10: nenhuma rota importa servicos/cofre; só serviços de provedor chamam lerCredencial. Re-cifrar com chave nova fica para depois (COFRE_CHAVE_ANTERIOR lê por versão). — T-09-50 e T-09-51; teste estrutural em cofre.test.ts.
+- [Phase 09]: 09-11: AMBIENTE=producao e o padrao dos scripts de deploy; a homologacao (n1crm-hml, /opt/n1-crm-hml, 3021, n1-crm-api-hml) e opt-in e o job de producao do deploy-api continua so para a main — Producao renderiza identica (site byte a byte; servico so ganha comentario) e nenhum chamador precisa mudar
+- [Phase 09]: 09-11: concorrencia por job (deploy-api-producao, deploy-api-homologacao), nao por workflow — Um grupo so faria um deploy pendente de homologacao cancelar um pendente de producao
 
 ### Pending Todos
 
@@ -588,6 +591,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-23T02:14:04.345Z
-Stopped at: Completed 09-10-PLAN.md
+Last session: 2026-10-23T02:18:38.382Z
+Stopped at: Completed 09-11-PLAN.md
 Resume file: None
