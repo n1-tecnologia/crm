@@ -139,7 +139,7 @@ Critério de pronto (ROADMAP Phase 9): a segurança dos dados fechada e a base d
 
 - [x] **SEG-01**: Nenhum Membro recebe Sessão de Chat (inclusive o texto das mensagens e as `agentExecutions` de Sessão), pasta de chat, Memória de Usuário, Visão pessoal nem e-mail de convite de outro; quem não administra a Lista não recebe `publicShare.secret` nem `Form.secret` — nem por `GET /estado`, nem por `POST /operacoes` (inclusive o `value` do resultado e o caminho `SERVICOS`); o Arquivo órfão deixado por `removeAttachment` não é baixável por quem não o vê (D-01, D-22). Pendente.
 - [x] **SEG-02**: Convidado não recebe `agents`, `automations`, `documents`, `collections` nem `skills`; o assunto IA some do trilho dele e `/ia/*` mostra "Sem acesso" (D-02, D-03). Pendente.
-- [ ] **SEG-03**: Membro `suspenso` recebe 403 em `POST /operacoes`; Convidado recebe `ok: false` em `trashContact`, `sendMessage`, `winDeal`, `restoreList` e `createReceivableSeries`; a tabela "Quem pode" de `packages/dominio/CONTEXT.md` cobre todas as chaves do `REGISTRO` (286 operações). Pendente.
+- [x] **SEG-03**: Membro `suspenso` recebe 403 em `POST /operacoes`; Convidado recebe `ok: false` em `trashContact`, `sendMessage`, `winDeal`, `restoreList` e `createReceivableSeries`; a tabela "Quem pode" de `packages/dominio/CONTEXT.md` cobre todas as chaves do `REGISTRO` (286 operações). Pendente.
 - [ ] **SEG-04**: `has_schema_privilege('anon'/'authenticated','plataforma','USAGE')` é `false`; a `009` aplicada em homologação e produção; o `apps/api` em produção conecta como `n1_api`; `drop table plataforma.migracoes` por `n1_api` é recusado; recuperação idempotente dos grants quando o papel nasce depois da `009` (D-04..D-07). Pendente.
 - [x] **SEG-05**: Credencial gravada aparece só cifrada no banco (AES-256-GCM, chave fora do banco), lê de volta o mesmo valor, chave errada falha, linha copiada para outro dono não decifra e nenhuma rota devolve o segredo (D-17). Pendente.
 - [ ] **SEG-06**: `/v1/public/forms/<segredo>` não deixa o segredo no log do `apps/api` nem nos do nginx (`access_log` e `error_log`) (D-18, D-20). Pendente.
@@ -215,7 +215,7 @@ Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pe
 | CXE-V1 | Phase 8 | Complete | planejado 2026-10-12 (08-01, 08-13, 08-14, 08-15) | derivado (08-RESEARCH) |
 | SEG-01 | Phase 9 | Complete | pendente — derivado (09-CONTEXT, 09-RESEARCH) | derivado (09-CONTEXT) |
 | SEG-02 | Phase 9 | Complete | pendente | derivado (09-CONTEXT) |
-| SEG-03 | Phase 9 | Pending | pendente | derivado (09-CONTEXT) |
+| SEG-03 | Phase 9 | Complete | pendente | derivado (09-CONTEXT) |
 | SEG-04 | Phase 9 | Pending | pendente — a conferência de 22/10 já fechou a parte de banco da 1.3.1 | derivado (09-CONTEXT) |
 | SEG-05 | Phase 9 | Complete | pendente | derivado (09-CONTEXT) |
 | SEG-06 | Phase 9 | Pending | pendente | derivado (09-CONTEXT) |
