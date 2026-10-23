@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 09
 current_phase_name: Segurança dos dados e base de produção
 status: executing
-stopped_at: Completed 09-09-PLAN.md
-last_updated: "2026-10-23T01:41:42.214Z"
+stopped_at: Completed 09-10-PLAN.md
+last_updated: "2026-10-23T02:14:04.539Z"
 last_activity: 2026-10-22
 last_activity_desc: Phase 09 execution started
-state_head: b1f6e32b1ece7b6b0be2ce5fb3624793f2d97c7b
+state_head: 8da4744203579ae331c315a7ee44ef4b6671d1f8
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 170
-  completed_plans: 156
+  completed_plans: 157
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 ## Current Position
 
 Phase: 09 (Segurança dos dados e base de produção) — EXECUTING
-Plan: 10 of 22
+Plan: 11 of 22
 Status: Ready to execute
 Last activity: 2026-10-22 — Phase 09 execution started
 
@@ -379,6 +379,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 09 P07 | 8 min | 3 tasks | 8 files |
 | Phase 09 P08 | 25 min | 3 tasks | 16 files |
 | Phase 09 P09 | 11 min | 2 tasks | 2 files |
+| Phase 09 P10 | 3 min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -524,6 +525,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 09]: 09-08: ia/layout.tsx envolve o NoAccessState em PageHeader+CorpoDeTela (A1); forms-editor sem segredo não renderiza Copiar link (A2); rótulos locais do ator (tarefa-completa, timeline) alinhados a actorLabel do domínio (S4)
 - [Phase 09]: 09-09: a coluna Conferência da tabela Quem pode nomeia só quem pode (Papel, estado, alcance, dono); recusas de estado do ativo (recusaExternaNoGrupo, recusaDoCanal…) ficam na Observação
 - [Phase 09]: 09-09: lacuna real não vira justificativa — removeMember e spawnNextOccurrence ficam 'sem conferência' com LACUNA e vão como achado à suíte adversarial (09-12/09-15) e à passada 09-21; o domínio não foi tocado
+- [Phase 09]: 09-10: AAD do cofre = JSON de [workspaceId, donoTipo, donoId, tipo, versaoDaChave]; mudar depois da Sessão 4 obriga a re-cifrar todas as credenciais. — Amarra cada texto cifrado à sua linha (T-09-48); decisão costly, barata agora porque nenhuma credencial existe.
+- [Phase 09]: 09-10: nenhuma rota importa servicos/cofre; só serviços de provedor chamam lerCredencial. Re-cifrar com chave nova fica para depois (COFRE_CHAVE_ANTERIOR lê por versão). — T-09-50 e T-09-51; teste estrutural em cofre.test.ts.
 
 ### Pending Todos
 
@@ -585,6 +588,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-23T01:41:41.966Z
-Stopped at: Completed 09-09-PLAN.md
+Last session: 2026-10-23T02:14:04.345Z
+Stopped at: Completed 09-10-PLAN.md
 Resume file: None
