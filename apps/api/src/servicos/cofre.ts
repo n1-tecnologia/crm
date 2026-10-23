@@ -1,8 +1,31 @@
 /**
- * Esqueleto do cofre de credenciais (Fase 9, D-17) - RED do Plan 09-10.
- * A implementação entra no commit seguinte.
+ * Cofre de credenciais (Fase 9, D-17, SEG-05): o segredo de um provedor (token
+ * da Evolution, da Meta, senha de e-mail) só existe cifrado em
+ * `plataforma.credenciais`.
+ *
+ * Cifra: AES-256-GCM do `node:crypto`, IV de 12 bytes novo a cada gravação e
+ * etiqueta de 16 bytes. A chave NÃO está no banco (não é o Supabase Vault): mora
+ * no `api.env` de cada ambiente (`COFRE_CHAVE`, 32 bytes em base64) e cada
+ * ambiente tem a sua. Quem levar uma cópia do banco ou do backup leva só texto
+ * cifrado. O outro lado da moeda: perder a `COFRE_CHAVE` perde as credenciais,
+ * por isso ela precisa de uma cópia fora da VPS, com o dono.
+ *
+ * AAD: cada texto cifrado fica amarrado à sua linha - JSON de
+ * `[workspaceId, donoTipo, donoId, tipo, versaoDaChave]`. Uma linha copiada para
+ * outro dono, outro Espaço ou outro tipo não decifra. Mudar essa composição
+ * depois que existirem credenciais obriga a re-cifrar todas.
+ *
+ * Quem chama `lerCredencial`: só os serviços de provedor (Sessões 4, 7, 8 e 9).
+ * Nenhuma rota importa este módulo, e nenhuma rota devolve o segredo.
+ *
+ * Rotação: a leitura é por versão. `COFRE_CHAVE_ANTERIOR` e
+ * `COFRE_CHAVE_ANTERIOR_VERSAO` (opcionais) leem as linhas da versão anterior;
+ * re-cifrar com a chave nova não é desta fase (procedimento em `CONTEXT.md`).
+ *
+ * Nada aqui imprime, loga ou lança com o conteúdo de uma chave ou de um segredo.
  */
 
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import type { PoolClient } from "pg";
 
 export interface ChavesDoCofre {
@@ -24,16 +47,71 @@ export interface CredencialCifrada {
   readonly versaoDaChave: number;
 }
 
-export function lerChavesDoCofre(_env: NodeJS.ProcessEnv = process.env): ChavesDoCofre {
-  throw new Error("não implementado");
+const TAMANHO_DA_CHAVE = 32;
+const TAMANHO_DO_IV = 12;
+const TAMANHO_DA_ETIQUETA = 16;
+const MENSAGEM_TAMANHO = "COFRE_CHAVE precisa ter 32 bytes (base64).";
+
+function lerVersao(nome: string, valor: string | undefined): number {
+  const texto = valor?.trim() ?? "";
+  if (!/^\d+$/.test(texto) || Number(texto) < 1 || !Number.isSafeInteger(Number(texto))) {
+    throw new Error(`${nome} precisa ser um inteiro maior ou igual a 1.`);
+  }
+  return Number(texto);
 }
 
-export function cifrar(_texto: string, _chave: Buffer, _versao: number, _dono: DonoDaCredencial): CredencialCifrada {
-  throw new Error("não implementado");
+function lerChave(nome: string, valor: string | undefined): Buffer {
+  const texto = valor?.trim() ?? "";
+  if (texto === "") throw new Error(`${nome} não está configurada.`);
+  const chave = Buffer.from(texto, "base64");
+  if (chave.length !== TAMANHO_DA_CHAVE) {
+    throw new Error(nome === "COFRE_CHAVE" ? MENSAGEM_TAMANHO : `${nome} precisa ter 32 bytes (base64).`);
+  }
+  return chave;
 }
 
-export function decifrar(_linha: CredencialCifrada, _chaves: ChavesDoCofre, _dono: DonoDaCredencial): string {
-  throw new Error("não implementado");
+/** Lê `COFRE_CHAVE`/`COFRE_CHAVE_VERSAO` (e, na troca de chave, as `_ANTERIOR`). Lança com mensagem clara. */
+export function lerChavesDoCofre(env: NodeJS.ProcessEnv = process.env): ChavesDoCofre {
+  const atual = {
+    versao: lerVersao("COFRE_CHAVE_VERSAO", env.COFRE_CHAVE_VERSAO),
+    chave: lerChave("COFRE_CHAVE", env.COFRE_CHAVE),
+  };
+  const anteriorTexto = env.COFRE_CHAVE_ANTERIOR?.trim() ?? "";
+  if (anteriorTexto === "") return { atual };
+  const anterior = {
+    versao: lerVersao("COFRE_CHAVE_ANTERIOR_VERSAO", env.COFRE_CHAVE_ANTERIOR_VERSAO),
+    chave: lerChave("COFRE_CHAVE_ANTERIOR", anteriorTexto),
+  };
+  return { atual, anterior };
+}
+
+function contexto(dono: DonoDaCredencial, versao: number): Buffer {
+  return Buffer.from(JSON.stringify([dono.workspaceId, dono.donoTipo, dono.donoId, dono.tipo, versao]), "utf8");
+}
+
+export function cifrar(texto: string, chave: Buffer, versao: number, dono: DonoDaCredencial): CredencialCifrada {
+  if (chave.length !== TAMANHO_DA_CHAVE) throw new Error(MENSAGEM_TAMANHO);
+  const iv = randomBytes(TAMANHO_DO_IV);
+  const cifra = createCipheriv("aes-256-gcm", chave, iv, { authTagLength: TAMANHO_DA_ETIQUETA });
+  cifra.setAAD(contexto(dono, versao));
+  const segredoCifrado = Buffer.concat([cifra.update(texto, "utf8"), cifra.final()]);
+  return { segredoCifrado, iv, etiqueta: cifra.getAuthTag(), versaoDaChave: versao };
+}
+
+function chaveDaVersao(chaves: ChavesDoCofre, versao: number): Buffer {
+  if (chaves.atual.versao === versao) return chaves.atual.chave;
+  if (chaves.anterior && chaves.anterior.versao === versao) return chaves.anterior.chave;
+  throw new Error(`A chave da versão ${versao} não está configurada.`);
+}
+
+export function decifrar(linha: CredencialCifrada, chaves: ChavesDoCofre, dono: DonoDaCredencial): string {
+  const chave = chaveDaVersao(chaves, linha.versaoDaChave);
+  // `authTagLength` fixo: sem ele o GCM aceitaria etiquetas curtas (4 a 16 bytes).
+  const decifra = createDecipheriv("aes-256-gcm", chave, linha.iv, { authTagLength: TAMANHO_DA_ETIQUETA });
+  decifra.setAAD(contexto(dono, linha.versaoDaChave));
+  decifra.setAuthTag(linha.etiqueta);
+  // `final()` lança se a etiqueta, a chave ou o AAD não bateram.
+  return Buffer.concat([decifra.update(linha.segredoCifrado), decifra.final()]).toString("utf8");
 }
 
 export async function guardarCredencial(
