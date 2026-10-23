@@ -64,7 +64,7 @@ describe("limparEvento", () => {
     const evento = limparEvento(eventoComSegredos());
     expect(evento.transaction).toBe("/p/***");
     expect(evento.message).toBe("falha ao abrir /p/***");
-    expect(evento.exception.values[0].value).toBe("/f/***");
+    expect(evento.exception.values[0]?.value).toBe("/f/***");
   });
 
   it("mascara o segredo mesmo no meio de um texto de exceção, com URL completa ou só o caminho", () => {
@@ -79,7 +79,7 @@ describe("limparEvento", () => {
     const texto = JSON.stringify(evento);
     expect(texto).not.toContain("SEGREDO-P");
     expect(texto).not.toContain("SEGREDO-W");
-    expect(evento.exception.values[0].value).toBe("Failed to fetch RSC payload for https://app.exemplo.com/p/***. Falling back");
+    expect(evento.exception.values[0]?.value).toBe("Failed to fetch RSC payload for https://app.exemplo.com/p/***. Falling back");
   });
 
   it("não troca o que não é link público: /financeiro/f/abc e /inicio ficam como estão", () => {
@@ -89,9 +89,9 @@ describe("limparEvento", () => {
 
   it("mascara as migalhas de navegação, de fetch e de console dentro do evento", () => {
     const { breadcrumbs } = limparEvento(eventoComSegredos());
-    expect(breadcrumbs[0].data).toEqual({ from: "/f/***", to: "/inicio" });
-    expect(breadcrumbs[1].data).toEqual({ url: "https://api/v1/public/forms/***", method: "GET" });
-    expect(breadcrumbs[2].message).toBe("abrindo https://app.exemplo.com/p/*** agora");
+    expect(breadcrumbs[0]?.data).toEqual({ from: "/f/***", to: "/inicio" });
+    expect(breadcrumbs[1]?.data).toEqual({ url: "https://api/v1/public/forms/***", method: "GET" });
+    expect(breadcrumbs[2]?.message).toBe("abrindo https://app.exemplo.com/p/*** agora");
   });
 
   it("não altera o evento de origem e aceita evento sem requisição nem exceção", () => {
