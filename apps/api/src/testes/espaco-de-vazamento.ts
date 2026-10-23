@@ -11,7 +11,9 @@
  * 09-07 acrescentou Memória de Usuário, Visão pessoal, um convite pendente, o
  * segredo de uma Tarefa com link público e o de um Formulário (numa Lista que B
  * alcança sem administrar), um Campo que B grava e um Arquivo órfão de A; 09-12
- * acrescenta o Convidado e o Administrador (a matriz Papel × rota de 09-12).
+ * acrescenta o Convidado e o Administrador (a matriz Papel × rota de 09-12); 09-15
+ * acrescenta o SEGUNDO Espaço (`montarSegundoEspaco`), sem nenhum Usuário em comum
+ * com o primeiro, para provar que um Espaço não enxerga o outro.
  */
 
 import { randomUUID } from "node:crypto";
@@ -347,4 +349,73 @@ export function appDoEspaco(espaco: EspacoDeVazamento, extras: Omit<OpcoesDoApp,
     },
     resolverMembro: async (_workspaceId, userId) => espaco.estado.members.find((m) => m.userId === userId),
   });
+}
+
+/** O segundo Espaço de Trabalho: nenhum Usuário em comum com o primeiro, uma frase única e um Contato do CRM novo. */
+export interface SegundoEspaco {
+  readonly workspaceId: string;
+  readonly estado: DataState;
+  /** As frases únicas do segundo Espaço (numa Sessão de Chat e numa Tarefa): nunca podem aparecer no primeiro. */
+  readonly frases: readonly string[];
+  /** O `userId` de um Membro que só existe no segundo Espaço. */
+  readonly usuarioSoDoSegundo: string;
+  /** O Contato semeado em `plataforma.contatos` com o `workspace_id` do segundo Espaço. */
+  readonly contatoId: string;
+}
+
+/**
+ * Monta o estado do segundo Espaço em memória. Parte de `buildSeed()`, troca o `userId` de TODO Membro por
+ * `usr_ws2_<8 caracteres>` (nenhum Usuário em comum com o primeiro Espaço) e põe uma frase única numa Sessão de Chat e
+ * numa Tarefa. O Contato do CRM novo só é gravado em `semearSegundoEspaco`.
+ */
+export function montarSegundoEspaco(rotulo: string): SegundoEspaco {
+  const estado = buildSeed();
+  const agora = new Date().toISOString();
+  for (const membro of estado.members) {
+    if (membro.userId !== undefined) membro.userId = `usr_ws2_${curto()}`;
+  }
+  const dono = estado.members.find((m) => m.id === estado.workspace.ownerMemberId);
+  if (!dono?.userId) throw new Error("o seed precisa de um Proprietário com usuário");
+
+  const frase = `FRASE-OUTRO-ESPACO-${randomUUID()}`;
+  const ator = { kind: "member", id: dono.id } as const;
+  estado.chatSessions.push({
+    id: `chs_ws2_${curto()}`,
+    workspaceId: estado.workspace.id,
+    createdBy: ator,
+    createdAt: agora,
+    lifecycle: "ativo",
+    ownerMemberId: dono.id,
+    title: `Sessão do segundo Espaço`,
+    titleEdited: false,
+    toolRestriction: { toolIds: [], effectClasses: [] },
+    messages: [{ id: `cmg_ws2_${curto()}`, order: 0, role: "usuario", author: ator, content: frase, fileIds: [], knowledgeReferences: [], at: agora }],
+    sharedWithMemberIds: [],
+    sharedWithTeamIds: [],
+  });
+  const tarefa = estado.tasks.find((t) => t.lifecycle === "ativo");
+  if (!tarefa) throw new Error("o seed precisa de uma Tarefa ativa");
+  tarefa.title = `Tarefa do segundo Espaço ${frase}`;
+
+  return { workspaceId: novoEspacoDeTeste(rotulo), estado, frases: [frase], usuarioSoDoSegundo: dono.userId, contatoId: randomUUID() };
+}
+
+/** Grava o segundo Espaço no Postgres local: o estado em `registros` e o Contato em `plataforma.contatos`. */
+export async function semearSegundoEspaco(segundo: SegundoEspaco): Promise<void> {
+  const cliente = await pool().connect();
+  try {
+    await semear(cliente, segundo.workspaceId, segundo.estado);
+    await cliente.query(
+      `insert into plataforma.contatos (id, workspace_id, nome, proprietario_id, criado_por)
+       values ($1, $2, $3, $4, $4)`,
+      [segundo.contatoId, segundo.workspaceId, `Contato do segundo Espaço ${segundo.frases[0]}`, segundo.estado.workspace.ownerMemberId],
+    );
+  } finally {
+    cliente.release();
+  }
+}
+
+/** Apaga o segundo Espaço: o Contato, os registros e o workspace (`limparEspaco` cobre as tabelas do CRM). */
+export async function limparSegundoEspaco(segundo: SegundoEspaco): Promise<void> {
+  await limparEspaco(segundo.workspaceId);
 }
