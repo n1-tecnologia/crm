@@ -29,8 +29,13 @@ function ordensDeTodasAsColecoes(estado: DataState): Ordens {
   return resultado;
 }
 
-function montar() {
+function montar(opcoes: { readonly secret?: string } = {}) {
   const estado = buildSeed();
+  // 09-02: quem não administra a Lista recebe o segredo do Formulário como "".
+  if (opcoes.secret !== undefined) {
+    const secret = opcoes.secret;
+    estado.forms = estado.forms.map((f) => ({ ...f, secret }));
+  }
   const gravar = vi.fn<Transporte["gravar"]>(async () => ({ tipo: "falha", erro: "fim do teste" }));
   const transporte: Transporte = { gravar, hidratar: async () => ({ tipo: "falha", erro: "sem servidor" }) };
   render(
@@ -50,6 +55,23 @@ const escolher = (combobox: HTMLElement, opcao: string | RegExp) => {
 const cartao = (n: number) => screen.getByLabelText(`Pergunta ${n}`).closest(".painel") as HTMLElement;
 
 afterEach(() => cleanup());
+
+describe("FormsEditor — o link do Formulário (Fase 9, 1.1.3)", () => {
+  it("segredo vazio: a frase no lugar do link, nenhum href '/f/' e sem 'Copiar link'", () => {
+    montar({ secret: "" });
+    expect(screen.getByText("Só quem administra a Lista vê o link.")).toBeTruthy();
+    expect(document.querySelector('a[href^="/f/"]')).toBeNull();
+    expect(document.body.textContent ?? "").not.toContain("/f/");
+    expect(screen.queryByRole("button", { name: "Copiar link" })).toBeNull();
+  });
+
+  it("com segredo: o link /f/abc e 'Copiar link' aparecem como hoje", () => {
+    montar({ secret: "abc" });
+    expect(document.querySelector('a[href="/f/abc"]')).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Copiar link" })).toBeTruthy();
+    expect(screen.queryByText("Só quem administra a Lista vê o link.")).toBeNull();
+  });
+});
 
 describe("FormsEditor — o Formulário editável (checklist 1.2/1.3/1.7)", () => {
   it("1.7: o texto velho de protótipo saiu", () => {
