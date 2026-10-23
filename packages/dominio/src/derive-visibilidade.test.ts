@@ -7,11 +7,12 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { memberNamedOnTask, memberReachesContainer, memberSeesTask } from "./derive";
-import { estadoVisivelPara, filtrarDiferenca, filtrarOrdens, membroVeArquivo, tarefasComOArquivo, visibilidadePara } from "./derive-visibilidade";
+import { estadoVisivelPara, filtrarDiferenca, filtrarOrdens, membroVeArquivo, recortarRegistro, tarefasComOArquivo, visibilidadePara } from "./derive-visibilidade";
 import { CP } from "./operations/financeiro-base";
 import { createList } from "./operations/structure";
 import { buildSeed } from "./seed";
 import type { DataState } from "./state";
+import type { Form, Member, Task, View } from "./types";
 
 let state: DataState;
 beforeEach(() => {
@@ -274,5 +275,155 @@ describe("visibilidadePara — Sessão de Chat, pasta e execução (D-01, D-22)"
     expect(Object.keys(ordens.agentExecutions ?? {})).toEqual(idsDe(estado.agentExecutions));
     // Só filtra: a ordem relativa é a do estado.
     expect(idsDe(estado.chatSessions)).toEqual(idsDe(state.chatSessions).filter((id) => !ocultos.has(id)));
+  });
+});
+
+/**
+ * D-01 (1.1.2, 1.1.3) — dado pessoal de outro Membro e segredos de link. No seed:
+ * mem_thiago é o Proprietário e tem um item de Memória; mem_rafael é
+ * Administrador; mem_julia (Papel Vendas, base membro) é a leitora comum.
+ */
+describe("recortarRegistro e visibilidadePara — dado pessoal e segredos (D-01)", () => {
+  const PROPRIETARIO = "mem_thiago";
+  const ADMIN = "mem_rafael";
+  const COMUM = "mem_julia";
+  const membroDe = (estado: DataState, id: string): Member => {
+    const m = estado.members.find((x) => x.id === id);
+    if (!m) throw new Error(`o estado precisa do Membro ${id}`);
+    return m;
+  };
+  const pendente = (): Member => ({
+    id: "mem_convidado_pendente",
+    workspaceId: state.workspace.id,
+    invitedIdentity: { type: "email", value: "novo@exemplo.com" },
+    displayName: "novo@exemplo.com",
+    state: "pendente",
+    roleId: "role_mem",
+    invitedBy: PROPRIETARIO,
+    availability: { value: "indisponivel", at: new Date().toISOString(), origin: "membro" },
+    userMemory: { enabled: true, items: [] },
+  });
+  const concessao = (listId: string, membroId: string, acao: "administrar" | "ver") => ({
+    id: `gr_teste_${acao}_${listId}_${membroId}`,
+    workspaceId: state.workspace.id,
+    subjectKind: "member" as const,
+    subjectId: membroId,
+    action: acao,
+    resourceType: "list",
+    resourceId: listId,
+    scope: "subarvore" as const,
+    origin: "concessaoDireta" as const,
+    grantedBy: PROPRIETARIO,
+    grantedAt: new Date().toISOString(),
+  });
+  const tarefaComLink = (): Task => {
+    const t = state.tasks.find((x) => x.publicShare !== undefined);
+    if (!t) throw new Error("o seed precisa de uma Tarefa com link público");
+    return t;
+  };
+  const formularioDoSeed = (): Form => {
+    const f = state.forms[0];
+    if (!f) throw new Error("o seed precisa de um Formulário");
+    return f;
+  };
+
+  it("a Memória de Usuário de outro Membro chega vazia (com o enabled dele); a própria chega com os itens", () => {
+    expect(membroDe(state, PROPRIETARIO).userMemory.items.length).toBeGreaterThan(0);
+    const deOutro = membroDe(visibilidadePara(state, COMUM).estado, PROPRIETARIO);
+    expect(deOutro.userMemory).toEqual({ enabled: membroDe(state, PROPRIETARIO).userMemory.enabled, items: [] });
+    const propria = membroDe(visibilidadePara(state, PROPRIETARIO).estado, PROPRIETARIO);
+    expect(propria.userMemory.items).toHaveLength(membroDe(state, PROPRIETARIO).userMemory.items.length);
+    // O Proprietário também não lê a Memória de outro (a regra é por dono, não por Papel).
+    state.members[state.members.findIndex((m) => m.id === COMUM)]!.userMemory.items.push({
+      id: "umi_teste",
+      content: "segredo da Júlia",
+      origin: { kind: "membro" },
+      createdAt: new Date().toISOString(),
+      state: "ativo",
+    });
+    expect(JSON.stringify(visibilidadePara(state, PROPRIETARIO).estado.members)).not.toContain("segredo da Júlia");
+    expect(JSON.stringify(visibilidadePara(state, COMUM).estado.members)).toContain("segredo da Júlia");
+  });
+
+  it("o e-mail de um convite pendente só chega a Administrador e Proprietário; os demais veem 'Convite pendente'", () => {
+    state.members.push(pendente());
+    const comum = membroDe(visibilidadePara(state, COMUM).estado, "mem_convidado_pendente");
+    expect("invitedIdentity" in comum).toBe(false);
+    expect(comum.displayName).toBe("Convite pendente");
+    expect(JSON.stringify(visibilidadePara(state, COMUM).estado.members)).not.toContain("novo@exemplo.com");
+    for (const quem of [ADMIN, PROPRIETARIO]) {
+      const m = membroDe(visibilidadePara(state, quem).estado, "mem_convidado_pendente");
+      expect(m.invitedIdentity).toEqual({ type: "email", value: "novo@exemplo.com" });
+      expect(m.displayName).toBe("novo@exemplo.com");
+    }
+    // Quem está ativo não é escondido: só o pendente vira "Convite pendente".
+    expect(membroDe(visibilidadePara(state, COMUM).estado, ADMIN).displayName).toBe(membroDe(state, ADMIN).displayName);
+  });
+
+  it("a Visão pessoal de outro Membro não chega (id em ocultos); a própria e a de contêiner chegam", () => {
+    const base = { kind: "lista", listId: CP.listId, filters: {}, isDefault: false, createdBy: PROPRIETARIO, createdAt: new Date().toISOString() } as const;
+    const deOutro: View = { ...base, id: "viw_do_dono", name: "Do dono", ownerKind: "member", ownerId: PROPRIETARIO };
+    const propria: View = { ...base, id: "viw_da_julia", name: "Da Júlia", ownerKind: "member", ownerId: COMUM };
+    const compartilhada: View = { ...base, id: "viw_do_conteiner", name: "Do contêiner", ownerKind: "container", ownerId: CP.listId };
+    state.views.push(deOutro, propria, compartilhada);
+    const { estado, ocultos } = visibilidadePara(state, COMUM);
+    const ids = estado.views.map((v) => v.id);
+    expect(ids).not.toContain("viw_do_dono");
+    expect(ocultos.has("viw_do_dono")).toBe(true);
+    expect(ids).toEqual(expect.arrayContaining(["viw_da_julia", "viw_do_conteiner"]));
+    expect(ocultos.has("viw_da_julia")).toBe(false);
+  });
+
+  it("o segredo do link público de uma Tarefa some para quem não administra a Lista; a chave fica e o resto também", () => {
+    const tarefa = tarefaComLink();
+    expect(visibilidadePara(state, COMUM).ocultos.has(tarefa.id)).toBe(false);
+    const veio = visibilidadePara(state, COMUM).estado.tasks.find((t) => t.id === tarefa.id);
+    expect(veio?.publicShare).toBeDefined();
+    expect(veio?.publicShare?.secret).toBe("");
+    expect(veio?.publicShare?.active).toBe(tarefa.publicShare?.active);
+    expect(veio?.publicShare?.showsAttachments).toBe(tarefa.publicShare?.showsAttachments);
+    expect(JSON.stringify(visibilidadePara(state, COMUM).estado.tasks)).not.toContain(tarefa.publicShare!.secret);
+    // Quem administra o Espaço de Trabalho e alcança a Lista recebe o segredo.
+    expect(visibilidadePara(state, ADMIN).estado.tasks.find((t) => t.id === tarefa.id)?.publicShare?.secret).toBe(tarefa.publicShare?.secret);
+    // E quem tem a concessão direta de administrar a Lista também.
+    state.grants.push(concessao(tarefa.listId, COMUM, "administrar"));
+    expect(visibilidadePara(state, COMUM).estado.tasks.find((t) => t.id === tarefa.id)?.publicShare?.secret).toBe(tarefa.publicShare?.secret);
+  });
+
+  it("o segredo do Formulário chega a quem administra a Lista, vem vazio a quem só a alcança, e o de Lista oculta não chega", () => {
+    const form = formularioDoSeed();
+    expect(visibilidadePara(state, PROPRIETARIO).estado.forms.find((f) => f.id === form.id)?.secret).toBe(form.secret);
+    const alcancado = visibilidadePara(state, COMUM);
+    expect(alcancado.ocultos.has(form.id)).toBe(false);
+    expect(alcancado.estado.forms.find((f) => f.id === form.id)?.secret).toBe("");
+    expect(JSON.stringify(alcancado.estado.forms)).not.toContain(form.secret);
+    // Formulário de uma Lista privada que o Membro não alcança: fora, com o id em ocultos.
+    const doFinanceiro: Form = { ...form, id: "frm_gestao", listId: CP.listId, secret: "segredo-da-gestao" };
+    state.forms.push(doFinanceiro);
+    const quemNaoAlcanca = visibilidadePara(state, semGestao());
+    expect(quemNaoAlcanca.estado.forms.some((f) => f.id === "frm_gestao")).toBe(false);
+    expect(quemNaoAlcanca.ocultos.has("frm_gestao")).toBe(true);
+    expect(JSON.stringify(quemNaoAlcanca.estado)).not.toContain("segredo-da-gestao");
+  });
+
+  it("recortarRegistro('tasks'/'forms'/'members') aplica a mesma regra a um registro solto; coleção sem regra volta intacta", () => {
+    const tarefa = tarefaComLink();
+    expect(recortarRegistro("tasks", tarefa, state, COMUM).publicShare?.secret).toBe("");
+    expect(recortarRegistro("tasks", tarefa, state, PROPRIETARIO)).toBe(tarefa);
+    const form = formularioDoSeed();
+    expect(recortarRegistro("forms", form, state, COMUM).secret).toBe("");
+    const dono = membroDe(state, PROPRIETARIO);
+    expect(recortarRegistro("members", dono, state, COMUM).userMemory.items).toEqual([]);
+    const canal = { id: "ch_1", nome: "Canal projetado" };
+    expect(recortarRegistro("channels", canal, state, COMUM)).toBe(canal);
+  });
+
+  it("nunca muta o estado inteiro", () => {
+    state.members.push(pendente());
+    state.forms.push({ ...formularioDoSeed(), id: "frm_gestao", listId: CP.listId, secret: "segredo-da-gestao" });
+    const antes = structuredClone(state);
+    visibilidadePara(state, COMUM);
+    visibilidadePara(state, ADMIN);
+    expect(state).toEqual(antes);
   });
 });
