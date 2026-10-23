@@ -1,0 +1,316 @@
+/**
+ * O banco fechado da Fase 9 (SEG-04, D-04 a D-06): a `009-seguranca-e-cofre.sql`
+ * provada em banco novo, SÓ no Postgres local descartável.
+ *
+ *   docker run -d --rm --name crm-n1-pg-0904 -e POSTGRES_PASSWORD=x -p 55604:5432 postgres:16
+ *   DATABASE_URL=postgres://postgres:x@localhost:55604/postgres npx vitest run src/seguranca/banco-n1-api.test.ts
+ *
+ * Cada caso cria o seu banco (`n1_banco_<caso>_<8 caracteres>`) e o apaga no
+ * `finally`. Papéis são do CLUSTER, não do banco: (c) começa sem `anon` e
+ * `authenticated`, (a) os cria e os apaga no fim; `n1_api` fica (o CI o cria
+ * antes). Se um caso falhar, o conserto é na `009`, não no teste.
+ *
+ * O administrador dos casos é `pool()` (`DATABASE_URL`, que `describeComBanco`
+ * já exige local) e não `poolDeMigracao()`: um `DATABASE_URL_MIGRACAO` remoto no
+ * `.env` não pode levar `create database` para fora do Postgres local.
+ */
+import { randomUUID } from "node:crypto";
+import { Pool } from "pg";
+import { afterAll, expect, it } from "vitest";
+import { describeComBanco } from "../testes/banco-crm";
+import { encerrar, pool } from "../persistencia/conexao";
+import { migrar, type Aplicada } from "../persistencia/migrar";
+
+const SENHA_DE_TESTE = "x";
+
+/** A mesma `DATABASE_URL`, apontando para outro banco do servidor — e, se pedido, outro usuário. */
+function urlDoBanco(nome: string, usuario?: { readonly nome: string; readonly senha: string }): string {
+  const url = new URL(process.env.DATABASE_URL!);
+  url.pathname = `/${nome}`;
+  if (usuario) {
+    url.username = usuario.nome;
+    url.password = usuario.senha;
+  }
+  return url.toString();
+}
+
+interface BancoDescartavel {
+  readonly nome: string;
+  /** Conectado como o usuário de `DATABASE_URL` (superusuário do container). */
+  readonly dono: Pool;
+}
+
+/** Cria o banco, entrega o pool do dono e SEMPRE apaga o banco depois de `corpo`. */
+async function comBancoDescartavel(caso: string, corpo: (banco: BancoDescartavel) => Promise<void>): Promise<void> {
+  const nome = `n1_banco_${caso}_${randomUUID().slice(0, 8)}`;
+  await pool().query(`create database ${nome}`);
+  const dono = new Pool({ connectionString: urlDoBanco(nome), max: 2 });
+  try {
+    await corpo({ nome, dono });
+  } finally {
+    await dono.end();
+    await pool().query(`drop database if exists ${nome} with (force)`);
+  }
+}
+
+/** `migrar()` num banco descartável, com um pool próprio que é fechado em seguida. */
+async function migrarNo(nome: string): Promise<Aplicada[]> {
+  const origem = new Pool({ connectionString: urlDoBanco(nome), max: 2 });
+  try {
+    return await migrar(origem);
+  } finally {
+    await origem.end();
+  }
+}
+
+/** Cria o papel do cluster só se ele ainda não existir. */
+async function garantirPapel(papel: "anon" | "authenticated" | "n1_api"): Promise<void> {
+  const login = papel === "n1_api" ? `login password '${SENHA_DE_TESTE}'` : "nologin";
+  await pool().query(`
+    do $$ begin
+      if not exists (select 1 from pg_roles where rolname = '${papel}') then
+        create role ${papel} ${login};
+      end if;
+    end $$`);
+}
+
+/** Apaga `anon`/`authenticated` do cluster; `2BP01` é papel ainda usado por outro banco. */
+async function apagarPapeisDoSupabase(): Promise<void> {
+  try {
+    await pool().query("drop role if exists anon, authenticated");
+  } catch (erro) {
+    if ((erro as { code?: string }).code === "2BP01") {
+      throw new Error("recrie o container crm-n1-pg-0904: anon/authenticated ainda têm privilégios em outro banco");
+    }
+    throw erro;
+  }
+}
+
+async function codigoDoErro(promessa: Promise<unknown>): Promise<string | undefined> {
+  try {
+    await promessa;
+  } catch (erro) {
+    return (erro as { code?: string }).code;
+  }
+  return undefined;
+}
+
+/** O que `n1_api` pode no schema: USAGE nele, os quatro DML + TRUNCATE por tabela e USAGE por sequência. */
+interface MatrizDePrivilegios {
+  readonly schema: boolean;
+  readonly tabelas: Readonly<Record<string, string>>;
+  readonly sequencias: Readonly<Record<string, boolean>>;
+}
+
+async function matrizDe(dono: Pool, papel: string): Promise<MatrizDePrivilegios> {
+  const schema = await dono.query<{ ok: boolean }>(
+    "select has_schema_privilege($1, 'plataforma', 'USAGE') as ok",
+    [papel],
+  );
+  const tabelas = await dono.query<{ nome: string; privilegios: string }>(
+    `select c.relname as nome,
+            concat_ws(',',
+              case when has_table_privilege($1, c.oid, 'SELECT')   then 'S' end,
+              case when has_table_privilege($1, c.oid, 'INSERT')   then 'I' end,
+              case when has_table_privilege($1, c.oid, 'UPDATE')   then 'U' end,
+              case when has_table_privilege($1, c.oid, 'DELETE')   then 'D' end,
+              case when has_table_privilege($1, c.oid, 'TRUNCATE') then 'T' end) as privilegios
+       from pg_class c
+      where c.relnamespace = 'plataforma'::regnamespace and c.relkind in ('r', 'p')
+      order by c.relname`,
+    [papel],
+  );
+  const sequencias = await dono.query<{ nome: string; ok: boolean }>(
+    `select c.relname as nome, has_sequence_privilege($1, c.oid, 'USAGE') as ok
+       from pg_class c
+      where c.relnamespace = 'plataforma'::regnamespace and c.relkind = 'S'
+      order by c.relname`,
+    [papel],
+  );
+  return {
+    schema: schema.rows[0]!.ok,
+    tabelas: Object.fromEntries(tabelas.rows.map((l) => [l.nome, l.privilegios])),
+    sequencias: Object.fromEntries(sequencias.rows.map((l) => [l.nome, l.ok])),
+  };
+}
+
+const COLUNAS_DO_COFRE = [
+  "id",
+  "workspace_id",
+  "dono_tipo",
+  "dono_id",
+  "tipo",
+  "segredo_cifrado",
+  "iv",
+  "etiqueta",
+  "versao_da_chave",
+  "criado_em",
+  "atualizado_em",
+  "revogado_em",
+];
+
+describeComBanco("banco fechado da Fase 9 (009) — Postgres local", () => {
+  afterAll(async () => {
+    await encerrar();
+  });
+
+  it("(c) sem os papéis anon/authenticated (Postgres puro) a 009 aplica sem erro", async () => {
+    await apagarPapeisDoSupabase();
+    await comBancoDescartavel("c", async ({ nome, dono }) => {
+      const aplicadas = await migrarNo(nome);
+      expect(aplicadas.map((a) => a.nome)).toContain("009-seguranca-e-cofre.sql");
+      const registradas = await dono.query<{ nome: string }>("select nome from plataforma.migracoes order by nome");
+      expect(registradas.rows.map((r) => r.nome).at(-1)).toBe("009-seguranca-e-cofre.sql");
+    });
+  }, 60_000);
+
+  it("(a) fecha anon/authenticated/public, desliga a RLS, fixa o search_path, cria o cofre e concede só DML a n1_api", async () => {
+    await garantirPapel("anon");
+    await garantirPapel("authenticated");
+    await garantirPapel("n1_api");
+    try {
+      await comBancoDescartavel("a", async ({ nome, dono }) => {
+        // O estado de um projeto Supabase de antes da 009: privilégios abertos, RLS ligada por event trigger,
+        // e a função rls_auto_enable() executável por anon.
+        await dono.query(`
+          create schema plataforma;
+          grant usage on schema plataforma to anon, authenticated;
+          alter default privileges in schema plataforma grant select on tables to anon, authenticated;
+          alter default privileges in schema plataforma grant usage, select on sequences to anon, authenticated;
+
+          create function public.rls_auto_enable() returns event_trigger language plpgsql as $f$ begin null; end $f$;
+          grant execute on function public.rls_auto_enable() to anon, authenticated;
+
+          create function public.rls_ligada_de_teste() returns event_trigger language plpgsql as $f$
+          declare cmd record;
+          begin
+            for cmd in select * from pg_event_trigger_ddl_commands() where object_type = 'table' loop
+              execute format('alter table %s enable row level security', cmd.object_identity);
+            end loop;
+          end $f$;
+          create event trigger rls_ligada_de_teste on ddl_command_end
+            when tag in ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO')
+            execute function public.rls_ligada_de_teste();
+        `);
+        // Sonda do próprio teste: sem a 009, o event trigger de fato liga a RLS.
+        await dono.query("create table public.sonda_rls (a int)");
+        const sonda = await dono.query<{ rls: boolean }>(
+          "select relrowsecurity as rls from pg_class where oid = 'public.sonda_rls'::regclass",
+        );
+        expect(sonda.rows[0]!.rls).toBe(true);
+        expect((await dono.query("select has_function_privilege('anon', 'public.rls_auto_enable()', 'EXECUTE') as ok")).rows[0]!.ok).toBe(true);
+
+        await migrarNo(nome);
+
+        // D-04: anon/authenticated fora.
+        for (const papel of ["anon", "authenticated"]) {
+          const schema = await dono.query<{ ok: boolean }>(
+            "select has_schema_privilege($1, 'plataforma', 'USAGE') as ok", [papel]);
+          expect(schema.rows[0]!.ok, `${papel} USAGE`).toBe(false);
+          const leitura = await dono.query<{ nome: string }>(
+            `select c.relname as nome from pg_class c
+              where c.relnamespace = 'plataforma'::regnamespace and c.relkind in ('r', 'p')
+                and has_table_privilege($1, c.oid, 'SELECT')`, [papel]);
+          expect(leitura.rows, `${papel} SELECT`).toEqual([]);
+          const funcao = await dono.query<{ ok: boolean }>(
+            "select has_function_privilege($1, 'public.rls_auto_enable()', 'EXECUTE') as ok", [papel]);
+          expect(funcao.rows[0]!.ok, `${papel} rls_auto_enable`).toBe(false);
+        }
+        const padroes = await dono.query<{ acl: string }>(
+          "select defaclacl::text as acl from pg_default_acl where defaclnamespace = 'plataforma'::regnamespace");
+        for (const { acl } of padroes.rows) {
+          expect(acl).not.toMatch(/anon=/);
+          expect(acl).not.toMatch(/authenticated=/);
+        }
+
+        // D-05: RLS desligada em TODA tabela de plataforma, inclusive o cofre.
+        const tabelas = await dono.query<{ nome: string; rls: boolean }>(
+          `select relname as nome, relrowsecurity as rls from pg_class
+            where relnamespace = 'plataforma'::regnamespace and relkind = 'r' order by relname`);
+        expect(tabelas.rows.map((t) => t.nome)).toContain("credenciais");
+        expect(tabelas.rows.filter((t) => t.rls).map((t) => t.nome)).toEqual([]);
+
+        // (d) do D-06: search_path fixo nas três funções da 007.
+        const funcoes = await dono.query<{ nome: string; config: string[] | null }>(
+          `select proname as nome, proconfig as config from pg_proc
+            where pronamespace = 'plataforma'::regnamespace
+              and proname in ('crm_toque_atualizado_em', 'crm_exige_admin_na_empresa', 'crm_confere_admin')
+            order by proname`);
+        expect(funcoes.rows).toHaveLength(3);
+        for (const f of funcoes.rows) expect(f.config, f.nome).toContain("search_path=pg_catalog, plataforma");
+
+        // D-17: o cofre.
+        const colunas = await dono.query<{ nome: string; tipo: string }>(
+          `select column_name as nome, data_type as tipo from information_schema.columns
+            where table_schema = 'plataforma' and table_name = 'credenciais' order by ordinal_position`);
+        expect(colunas.rows.map((c) => c.nome).sort()).toEqual([...COLUNAS_DO_COFRE].sort());
+        for (const bytea of ["segredo_cifrado", "iv", "etiqueta"]) {
+          expect(colunas.rows.find((c) => c.nome === bytea)?.tipo, bytea).toBe("bytea");
+        }
+        const indice = await dono.query<{ def: string }>(
+          "select indexdef as def from pg_indexes where schemaname = 'plataforma' and indexname = 'credenciais_ativa_unica'");
+        expect(indice.rows[0]?.def).toMatch(/CREATE UNIQUE INDEX/);
+        expect(indice.rows[0]?.def).toMatch(/\(workspace_id, dono_tipo, dono_id, tipo\)/);
+        expect(indice.rows[0]?.def).toMatch(/WHERE \(revogado_em IS NULL\)/);
+
+        // n1_api: só DML, e nada em plataforma.migracoes além de ler.
+        const matriz = await matrizDe(dono, "n1_api");
+        expect(matriz.schema).toBe(true);
+        expect(Object.keys(matriz.tabelas).length).toBeGreaterThan(20);
+        for (const [tabela, privilegios] of Object.entries(matriz.tabelas)) {
+          expect(privilegios, tabela).toBe(tabela === "migracoes" ? "S" : "S,I,U,D");
+        }
+        expect(Object.keys(matriz.sequencias).length).toBeGreaterThan(0);
+        expect(Object.values(matriz.sequencias).every(Boolean)).toBe(true);
+
+        // Conectado como n1_api de verdade.
+        const comoApi = new Pool({ connectionString: urlDoBanco(nome, { nome: "n1_api", senha: SENHA_DE_TESTE }), max: 2 });
+        try {
+          expect((await comoApi.query<{ u: string }>("select current_user as u")).rows[0]!.u).toBe("n1_api");
+          await comoApi.query(
+            "insert into plataforma.registros (workspace_id, colecao, id, dados) values ('ws_t', 'c', 'r1', '{}')");
+          const lida = await comoApi.query("select 1 from plataforma.registros where workspace_id = 'ws_t'");
+          expect(lida.rowCount).toBe(1);
+          const alterada = await comoApi.query(
+            `update plataforma.registros set dados = '{"a":1}' where workspace_id = 'ws_t' and id = 'r1'`);
+          expect(alterada.rowCount).toBe(1);
+          const apagada = await comoApi.query("delete from plataforma.registros where workspace_id = 'ws_t'");
+          expect(apagada.rowCount).toBe(1);
+
+          expect(await codigoDoErro(comoApi.query("drop table plataforma.migracoes"))).toBe("42501");
+          expect(await codigoDoErro(comoApi.query("insert into plataforma.migracoes (nome) values ('x')"))).toBe("42501");
+          expect(await codigoDoErro(comoApi.query("update plataforma.migracoes set nome = nome"))).toBe("42501");
+          expect(await codigoDoErro(comoApi.query("delete from plataforma.migracoes"))).toBe("42501");
+          expect(await codigoDoErro(comoApi.query("create table plataforma.x()"))).toBe("42501");
+        } finally {
+          await comoApi.end();
+        }
+      });
+    } finally {
+      await apagarPapeisDoSupabase();
+    }
+  }, 90_000);
+
+  it("(d) uma 009 que falha no meio não deixa metade aplicada: nem a linha em migracoes, nem a tabela do cofre", async () => {
+    await comBancoDescartavel("d", async ({ nome, dono }) => {
+      // Uma VIEW com o nome do cofre: `create table if not exists` a ignora, e o índice único parcial estoura.
+      await dono.query(`
+        create schema plataforma;
+        create view plataforma.credenciais as select 1 as x;
+      `);
+      await expect(migrarNo(nome)).rejects.toThrow(/009-seguranca-e-cofre/);
+
+      const registradas = await dono.query<{ nome: string }>("select nome from plataforma.migracoes order by nome");
+      const nomes = registradas.rows.map((r) => r.nome);
+      expect(nomes).not.toContain("009-seguranca-e-cofre.sql");
+      expect(nomes).toHaveLength(8);
+      expect(nomes.at(-1)).toBe("008-canais-conversas-mensagens.sql");
+
+      const cofre = await dono.query<{ tipo: string }>(
+        "select relkind as tipo from pg_class where oid = 'plataforma.credenciais'::regclass");
+      expect(cofre.rows[0]!.tipo).toBe("v");
+      const indice = await dono.query("select 1 from pg_indexes where indexname = 'credenciais_ativa_unica'");
+      expect(indice.rowCount).toBe(0);
+    });
+  }, 60_000);
+});
