@@ -5,26 +5,81 @@
 #   scp -r apps/api/deploy root@VPS:/tmp/n1-crm-deploy
 #   ssh root@VPS 'bash /tmp/n1-crm-deploy/preparar-vps.sh <domínio> [chave-de-deploy.pub]'
 #
-# A VPS é compartilhada: este script só cria o que é do N1 CRM (usuário
-# n1crm, /opt/n1-crm, o serviço n1-crm-api, o site n1-crm-api do nginx e o
-# certificado do domínio). O Node global, o pm2 e os sites dos outros
-# projetos ficam como estão; se o `nginx -t` falhar, o site sai e nada recarrega.
+# Homologação (Fase 9, D-09/D-23): o mesmo script, com `AMBIENTE=homologacao`,
+# monta um segundo ambiente ao lado — outro usuário, outra pasta, outra porta,
+# outro serviço e outro site, com sudoers e chave de deploy próprios:
+#
+#   ssh root@VPS 'AMBIENTE=homologacao bash /tmp/n1-crm-deploy/preparar-vps.sh \
+#     crm-n1-api-hml.<ip>.nip.io /tmp/n1-crm-deploy/chave-hml.pub'
+#
+#   AMBIENTE      usuário     pasta              porta  serviço            site
+#   producao      n1crm       /opt/n1-crm        3020   n1-crm-api         n1-crm-api      (padrão)
+#   homologacao   n1crm-hml   /opt/n1-crm-hml    3021   n1-crm-api-hml     n1-crm-api-hml
+#
+# O `api.env` de cada ambiente é de dono e modo próprios ($USUARIO, 600): quem
+# comprometer a homologação não lê o `api.env` de produção.
+#
+# `--conferir` (último argumento; não pede root e não muda nada) imprime as
+# variáveis do ambiente e o serviço e o site já renderizados, para conferir
+# antes de rodar de verdade.
+#
+# A VPS é compartilhada: este script só cria o que é do N1 CRM (usuário, pasta,
+# o serviço, o site do nginx e o certificado do domínio). O Node global, o pm2
+# e os sites dos outros projetos ficam como estão; se o `nginx -t` falhar, o
+# site sai e nada recarrega.
 set -euo pipefail
 
-DOMINIO="${1:?uso: preparar-vps.sh <domínio público da api> [chave-de-deploy.pub]}"
-CHAVE_DE_DEPLOY="${2:-}"
 AQUI="$(cd "$(dirname "$0")" && pwd)"
-USUARIO=n1crm
-BASE=/opt/n1-crm
-PORTA=3020
+CONFERIR=0
+ARGS=()
+for arg in "$@"; do
+  if [ "$arg" = "--conferir" ]; then CONFERIR=1; else ARGS+=("$arg"); fi
+done
+DOMINIO="${ARGS[0]:?uso: [AMBIENTE=homologacao] preparar-vps.sh <domínio público da api> [chave-de-deploy.pub] [--conferir]}"
+CHAVE_DE_DEPLOY="${ARGS[1]:-}"
+
+AMBIENTE="${AMBIENTE:-producao}"
+case "$AMBIENTE" in
+  producao)
+    USUARIO=n1crm; BASE=/opt/n1-crm; PORTA=3020; SERVICO=n1-crm-api; SITE=n1-crm-api ;;
+  homologacao)
+    USUARIO=n1crm-hml; BASE=/opt/n1-crm-hml; PORTA=3021; SERVICO=n1-crm-api-hml; SITE=n1-crm-api-hml ;;
+  *)
+    echo "AMBIENTE deve ser producao ou homologacao (veio: $AMBIENTE)" >&2; exit 1 ;;
+esac
 NODE_MAJOR=24
-SERVICO=n1-crm-api
-SITE=/etc/nginx/sites-available/n1-crm-api
+ARQUIVO_DO_SITE="/etc/nginx/sites-available/$SITE"
 LIMITES=/etc/nginx/conf.d/n1-crm-limites.conf
+
+# Os dois modelos renderizados — o mesmo `sed` serve ao --conferir e ao de verdade.
+renderizar_servico() {
+  sed "s/__USUARIO__/$USUARIO/g; s/__BASE__/${BASE//\//\\/}/g; s/__PORTA__/$PORTA/g" "$AQUI/n1-crm-api.service"
+}
+renderizar_site() {
+  sed "s/__DOMINIO__/$DOMINIO/g; s/__PORTA__/$PORTA/g; s/__SITE__/$SERVICO/g" "$AQUI/nginx-n1-crm-api.conf"
+}
+
+if [ "$CONFERIR" = 1 ]; then
+  echo "AMBIENTE=$AMBIENTE"
+  echo "USUARIO=$USUARIO"
+  echo "BASE=$BASE"
+  echo "PORTA=$PORTA"
+  echo "SERVICO=$SERVICO"
+  echo "SITE=$SITE"
+  echo "DOMINIO=$DOMINIO"
+  echo "SUDOERS=/etc/sudoers.d/$SERVICO"
+  echo
+  echo "== /etc/systemd/system/$SERVICO.service"
+  renderizar_servico
+  echo
+  echo "== $ARQUIVO_DO_SITE"
+  renderizar_site
+  exit 0
+fi
 
 [ "$(id -u)" = 0 ] || { echo "rode como root" >&2; exit 1; }
 
-echo "== usuário $USUARIO e $BASE"
+echo "== ambiente $AMBIENTE: usuário $USUARIO e $BASE"
 if ! id "$USUARIO" >/dev/null 2>&1; then
   useradd --system --create-home --home-dir "$BASE" --shell /bin/bash "$USUARIO"
 fi
@@ -65,7 +120,7 @@ if ss -ltnH "sport = :$PORTA" | grep -q . && ! systemctl is-active --quiet "$SER
 fi
 
 echo "== serviço $SERVICO"
-sed "s/__PORTA__/$PORTA/g" "$AQUI/n1-crm-api.service" > "/etc/systemd/system/$SERVICO.service"
+renderizar_servico > "/etc/systemd/system/$SERVICO.service"
 systemctl daemon-reload
 # Sobe sozinho no boot; o primeiro start é do primeiro deploy (instalar-release.sh).
 systemctl enable "$SERVICO.service"
@@ -78,7 +133,7 @@ chmod 440 "/etc/sudoers.d/$SERVICO.novo"
 visudo -cf "/etc/sudoers.d/$SERVICO.novo"
 mv "/etc/sudoers.d/$SERVICO.novo" "/etc/sudoers.d/$SERVICO"
 
-echo "== nginx: limites e máscara (conf.d) e site n1-crm-api para $DOMINIO"
+echo "== nginx: limites e máscara (conf.d) e site $SITE para $DOMINIO"
 # Zonas, map e log_format do contexto http — o site abaixo os usa, então este
 # arquivo entra antes dele. Só nasce se não existir: se já existe e difere do
 # repositório, a VPS é a fonte (o dono pode ter ajustado) e nada é sobrescrito.
@@ -89,15 +144,15 @@ if [ ! -f "$LIMITES" ]; then
 elif ! cmp -s "$AQUI/n1-crm-limites.conf" "$LIMITES"; then
   echo "aviso: $LIMITES difere do repositório — a VPS é a fonte; compare à mão e não foi sobrescrito" >&2
 fi
-if [ ! -f "$SITE" ]; then
-  sed "s/__DOMINIO__/$DOMINIO/g; s/__PORTA__/$PORTA/g; s/__SITE__/$SERVICO/g" "$AQUI/nginx-n1-crm-api.conf" > "$SITE"
+if [ ! -f "$ARQUIVO_DO_SITE" ]; then
+  renderizar_site > "$ARQUIVO_DO_SITE"
 fi
-ln -sfn "$SITE" /etc/nginx/sites-enabled/n1-crm-api
+ln -sfn "$ARQUIVO_DO_SITE" "/etc/nginx/sites-enabled/$SITE"
 if ! nginx -t; then
-  rm -f /etc/nginx/sites-enabled/n1-crm-api
+  rm -f "/etc/nginx/sites-enabled/$SITE"
   # Um conf.d inválido derrubaria o nginx de todos os projetos: sai o que esta rodada pôs.
   [ "$LIMITES_NOVO" = 1 ] && rm -f "$LIMITES"
-  echo "nginx -t falhou: o site n1-crm-api saiu e o nginx não foi recarregado" >&2
+  echo "nginx -t falhou: o site $SITE saiu e o nginx não foi recarregado" >&2
   exit 1
 fi
 systemctl reload nginx

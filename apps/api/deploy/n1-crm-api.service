@@ -1,5 +1,8 @@
 # apps/api na VPS — instalado por preparar-vps.sh em /etc/systemd/system/.
 # Roteiro completo em apps/api/deploy/CONTEXT.md.
+# Usuário, pasta e porta abaixo são marcadores que o preparar-vps.sh troca
+# conforme o AMBIENTE (produção: n1crm, /opt/n1-crm, 3020; homologação:
+# n1crm-hml, /opt/n1-crm-hml, 3021).
 [Unit]
 Description=N1 CRM — apps/api (Fastify)
 After=network-online.target
@@ -7,17 +10,17 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=n1crm
-Group=n1crm
+User=__USUARIO__
+Group=__USUARIO__
 # `current` aponta para a versão no ar; o systemd resolve o link a cada start,
 # então reiniciar depois de trocar o link já sobe a versão nova.
-WorkingDirectory=/opt/n1-crm/current/apps/api
-ExecStart=/opt/n1-crm/current/node_modules/.bin/vite-node src/index.ts
+WorkingDirectory=__BASE__/current/apps/api
+ExecStart=__BASE__/current/node_modules/.bin/vite-node src/index.ts
 
 # O que é da máquina mora aqui, não no api.env: `carregarEnv()` nunca
 # sobrescreve o que já está no ambiente, então um .env de desenvolvimento
 # copiado para lá não abre a porta para fora nem liga os workers sem querer.
-Environment=PATH=/opt/n1-crm/node/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PATH=__BASE__/node/bin:/usr/local/bin:/usr/bin:/bin
 Environment=HOST=127.0.0.1
 Environment=PORT=__PORTA__
 Environment=TRUST_PROXY=loopback
@@ -39,7 +42,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/n1-crm
+ReadWritePaths=__BASE__
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
