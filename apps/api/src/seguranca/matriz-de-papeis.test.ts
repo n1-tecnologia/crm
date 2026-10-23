@@ -26,7 +26,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { memberSeesTask } from "@n1/dominio/derive";
+import { effectiveListConfig, memberSeesTask } from "@n1/dominio/derive";
 import type { ClienteDeLeituras, RespostaDeLeitura } from "../automacoes/cliente-leituras-financeiro";
 import { FRASE_DE_SUSPENSO } from "../plugins/autenticacao";
 import { encerrar } from "../persistencia/conexao";
@@ -217,6 +217,24 @@ describeComBanco("matriz Papel × família de rota — HTTP contra Postgres loca
 });
 
 /**
+ * Deixa, no estado ainda não semeado, uma Tarefa ativa recorrente (`aoConcluir`, com vencimento) já em Status
+ * terminal e que o Convidado não enxerga — o que `spawnNextOccurrence` precisa para criar a próxima ocorrência.
+ */
+function prepararTarefaRecorrenteConcluida(espaco: EspacoDeVazamento): string {
+  const estado = espaco.estado;
+  for (const tarefa of estado.tasks) {
+    if (tarefa.lifecycle !== "ativo" || !tarefa.dueDate || tarefa.recurrence || memberSeesTask(estado, espaco.membros.convidado.id, tarefa.id)) continue;
+    const definicoes = effectiveListConfig(estado, tarefa.listId)?.statusSet.definitions ?? [];
+    const terminal = definicoes.find((d) => d.category === "concluido" || d.category === "fechado");
+    if (!terminal || !definicoes.some((d) => d.category === "naoIniciado")) continue;
+    tarefa.statusId = terminal.id;
+    tarefa.recurrence = { frequency: "mensal", interval: 1, triggerMode: "aoConcluir", copies: { checklists: false, subtasks: false, assignees: false, fieldValues: false } };
+    return tarefa.id;
+  }
+  throw new Error("o seed precisa de uma Tarefa ativa, com vencimento, que o Convidado não enxergue, numa Lista com Status terminal e inicial");
+}
+
+/**
  * LACUNAS CONHECIDAS DO DOMÍNIO (09-09-SUMMARY, marcadas LACUNA em `packages/dominio/CONTEXT.md`).
  * Cada caso escreve o comportamento CORRETO e seguro. `it.fails` passa enquanto a lacuna existir e
  * FALHA no dia em que o domínio for consertado — aí a marca sai. Este plano não corrige o domínio.
@@ -225,10 +243,12 @@ describeComBanco("matriz Papel × família de rota — HTTP contra Postgres loca
 describeComBanco("lacunas conhecidas do domínio — o comportamento seguro, marcado como falha conhecida", () => {
   let espaco: EspacoDeVazamento;
   let app: ReturnType<typeof appDoEspaco>;
+  let tarefaRecorrenteConcluida: string;
 
   beforeAll(async () => {
     await prepararBancoCrm();
     espaco = montarEspacoDeVazamento("lacunas");
+    tarefaRecorrenteConcluida = prepararTarefaRecorrenteConcluida(espaco);
     await semearEspacoDeVazamento(espaco);
     app = appDoEspaco(espaco);
   });
@@ -252,10 +272,20 @@ describeComBanco("lacunas conhecidas do domínio — o comportamento seguro, mar
   });
 
   // LACUNA — ver 09-09-SUMMARY, achado 2 (médio): `spawnNextOccurrence` não olha quem chama nem o alcance da Tarefa.
-  // Não exercida aqui: exige uma Tarefa recorrente já concluída, que o seed não tem; fica para a suíte de 09-15.
-  it.todo("spawnNextOccurrence: o Convidado, e o Membro que não vê a Tarefa, não criam a próxima ocorrência (LACUNA, 09-09-SUMMARY achado 2)");
+  // O Convidado chama a operação crua numa Tarefa recorrente já concluída que ele nem enxerga.
+  it.fails("spawnNextOccurrence: o Convidado não cria a próxima ocorrência de uma Tarefa que não vê (hoje cria)", async () => {
+    const resposta = await app.inject({
+      method: "POST",
+      url: "/operacoes/spawnNextOccurrence",
+      headers: { authorization: `Bearer ${TOKENS_DE_VAZAMENTO.convidado}` },
+      payload: { args: [tarefaRecorrenteConcluida] },
+    });
+    expect(resposta.statusCode).toBe(200);
+    expect((resposta.json() as { ok: boolean }).ok).toBe(false);
+  });
 
-  // Conferência FRACA — ver 09-09-SUMMARY, item 3: `runLancamentoAgent` não recusa Convidado nem Membro não ativo.
-  // Não exercida aqui: exige um Agente com concessão sobre uma Tarefa de lançamento; fica para a suíte de 09-15.
-  it.todo("runLancamentoAgent: o Convidado com `ver` na Tarefa não aciona o Agente de lançamento (conferência fraca, 09-09-SUMMARY item 3)");
+  // NÃO EXERCIDA — `runLancamentoAgent` (09-09-SUMMARY, item 3, conferência fraca): só confere `memberSeesTask` e a concessão
+  // do Agente, e não recusa Convidado nem Membro não ativo. Provar exige um Agente com concessão sobre uma Tarefa de
+  // lançamento, que este seed não tem; fica para a suíte adversarial de 09-15. Sem `it.todo` de propósito: o job
+  // `seguranca` do CI falha se qualquer teste ficar pendente.
 });
