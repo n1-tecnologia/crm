@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@n1/dominio": "*",
+    "@sentry/nextjs": "10.76.2",
     "@splinetool/runtime": "2.0.56",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.116.0",
