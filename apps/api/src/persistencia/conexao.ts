@@ -128,42 +128,72 @@ export function encerrarAoEstourarOTempo(cliente: ClienteConsultavel): void {
 }
 
 let instancia: Pool | undefined;
+let instanciaDeMigracao: Pool | undefined;
+
+/**
+ * Cria um Pool com TLS, limites de tempo e os ouvintes que todo Pool deste
+ * processo precisa — o do app e o de migração nascem iguais, só mudam a URL e
+ * o teto de conexões.
+ */
+function criarPool(connectionString: string, max: number): Pool {
+  const config: PoolConfig = { connectionString, max, ...limitesDoPool() };
+  const ssl = construirSsl({ connectionString });
+  if (ssl) config.ssl = ssl;
+  const novo = new Pool(config);
+
+  // O pooler do Supabase encerra conexão ociosa por desenho. Quando isso
+  // acontece com um cliente parado NO POOL, o `pg` emite `error` no próprio
+  // Pool — e um `error` sem ouvinte, em Node, é exceção não capturada: o
+  // processo inteiro cai. Sem este handler, o `apps/api` morreria sozinho
+  // depois de um período de baixo tráfego, sem nenhuma requisição envolvida.
+  //
+  // Não é hipótese: medido nesta base ao migrar `DATABASE_URL` para
+  // `aws-0-us-west-2.pooler.supabase.com`, uma execução da suíte produziu
+  // sete "Connection terminated unexpectedly". Com a conexão direta o
+  // sintoma era raro; pelo pooler é rotina — e a VPS (D-15) vai pelo pooler,
+  // porque `db.<ref>.supabase.co` só publica AAAA e não há garantia de IPv6.
+  //
+  // O Pool se recupera sozinho: descarta o cliente quebrado e abre outro na
+  // próxima aquisição. O que faltava era não morrer no caminho.
+  novo.on("error", (erro) => {
+    console.error("[conexao] cliente ocioso do pool caiu (o pool se recompõe na próxima aquisição):", erro.message);
+  });
+  // Cada conexão nova: a consulta que estourar `query_timeout` a encerra.
+  novo.on("connect", (cliente) => encerrarAoEstourarOTempo(cliente));
+  return novo;
+}
 
 export function pool(): Pool {
   if (!instancia) {
     carregarEnv();
     const connectionString = process.env.DATABASE_URL;
     if (!connectionString) throw new Error("DATABASE_URL não definida (ver apps/api/.env.example).");
-
-    const config: PoolConfig = { connectionString, max: 10, ...limitesDoPool() };
-    const ssl = construirSsl({ connectionString });
-    if (ssl) config.ssl = ssl;
-    instancia = new Pool(config);
-
-    // O pooler do Supabase encerra conexão ociosa por desenho. Quando isso
-    // acontece com um cliente parado NO POOL, o `pg` emite `error` no próprio
-    // Pool — e um `error` sem ouvinte, em Node, é exceção não capturada: o
-    // processo inteiro cai. Sem este handler, o `apps/api` morreria sozinho
-    // depois de um período de baixo tráfego, sem nenhuma requisição envolvida.
-    //
-    // Não é hipótese: medido nesta base ao migrar `DATABASE_URL` para
-    // `aws-0-us-west-2.pooler.supabase.com`, uma execução da suíte produziu
-    // sete "Connection terminated unexpectedly". Com a conexão direta o
-    // sintoma era raro; pelo pooler é rotina — e a VPS (D-15) vai pelo pooler,
-    // porque `db.<ref>.supabase.co` só publica AAAA e não há garantia de IPv6.
-    //
-    // O Pool se recupera sozinho: descarta o cliente quebrado e abre outro na
-    // próxima aquisição. O que faltava era não morrer no caminho.
-    instancia.on("error", (erro) => {
-      console.error("[conexao] cliente ocioso do pool caiu (o pool se recompõe na próxima aquisição):", erro.message);
-    });
-    // Cada conexão nova: a consulta que estourar `query_timeout` a encerra.
-    instancia.on("connect", (cliente) => encerrarAoEstourarOTempo(cliente));
+    instancia = criarPool(connectionString, 10);
   }
   return instancia;
 }
 
+/**
+ * O pool das migrações e do backup (D-07, Pitfall 9): o DONO do banco, o único
+ * que roda DDL. O app roda como `n1_api` (só DML) por `DATABASE_URL`; as
+ * migrações rodam por `DATABASE_URL_MIGRACAO`. Sem ela (desenvolvimento, CI de
+ * banco único) cai em `pool()` — a mesma instância, nada a fechar a mais.
+ *
+ * As duas linhas do `api.env` mudam JUNTAS: trocar `DATABASE_URL` para
+ * `n1_api` sem definir `DATABASE_URL_MIGRACAO` faz o próximo `migrar` rodar
+ * como `n1_api`, falhar no DDL e travar a esteira de deploy.
+ */
+export function poolDeMigracao(): Pool {
+  carregarEnv();
+  const connectionString = process.env.DATABASE_URL_MIGRACAO?.trim();
+  if (!connectionString) return pool();
+  if (!instanciaDeMigracao) instanciaDeMigracao = criarPool(connectionString, 2);
+  return instanciaDeMigracao;
+}
+
 export async function encerrar(): Promise<void> {
-  await instancia?.end();
+  const aFechar = [instancia, instanciaDeMigracao];
   instancia = undefined;
+  instanciaDeMigracao = undefined;
+  for (const p of aFechar) await p?.end();
 }

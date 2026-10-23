@@ -66,7 +66,7 @@ describeComBanco("migracoesPendentes e migrar --seco (D-12) — Postgres local",
   });
 
   it("(b) depois de migrar(), todos os arquivos saem como aplicados e nenhum pendente", async () => {
-    const resultado = await migracoesPendentes();
+    const resultado = await migracoesPendentes(pool());
     expect(resultado.aplicadas).toEqual(arquivos());
     expect(resultado.pendentes).toEqual([]);
   });
@@ -76,7 +76,8 @@ describeComBanco("migracoesPendentes e migrar --seco (D-12) — Postgres local",
 
     const saida = execFileSync("npx", ["vite-node", "src/persistencia/migrar.cli.ts", "--seco"], {
       cwd: RAIZ_DA_API,
-      env: { ...process.env },
+      // DATABASE_URL_MIGRACAO vazia: o CLI fica no Postgres local de DATABASE_URL, mesmo com um .env remoto.
+      env: { ...process.env, DATABASE_URL_MIGRACAO: "" },
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });

@@ -44,7 +44,9 @@ export async function prepararBancoCrm(): Promise<void> {
   if (!temBancoCrm) {
     throw new Error("Os testes do CRM só rodam contra Postgres local (localhost/127.0.0.1); recusado.");
   }
-  await migrar();
+  // `pool()` e não o padrão (`poolDeMigracao()`): um `DATABASE_URL_MIGRACAO` remoto
+  // no .env não pode desviar a migração dos testes para fora do Postgres local.
+  await migrar(pool());
 }
 
 /** Um Espaço de Trabalho por teste: `ws_crm_teste_<rótulo>_<8 caracteres>`. */

@@ -1,5 +1,7 @@
 /**
- * `npm run migrar -w @n1/api` aplica o que falta.
+ * `npm run migrar -w @n1/api` aplica o que falta. Roda com
+ * `DATABASE_URL_MIGRACAO` (o dono do banco) quando ela existe e com
+ * `DATABASE_URL` quando não; nenhuma URL, host ou senha é impressa.
  *
  * `npm run migrar -w @n1/api -- --seco` é a conferência de D-12: lista cada
  * arquivo de `migracoes/` como `aplicada` ou `pendente` segundo

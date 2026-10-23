@@ -14,7 +14,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import type { Pool } from "pg";
-import { pool } from "./conexao";
+import { poolDeMigracao } from "./conexao";
 
 const PASTA = fileURLToPath(new URL("../../migracoes", import.meta.url));
 
@@ -40,9 +40,9 @@ function arquivosDeMigracao(): string[] {
  * existe e, só então, `plataforma.migracoes` é lida. Num banco onde nem o
  * schema `plataforma` existe, nada nasce — todos os arquivos saem como
  * pendentes (T-07-36). O parâmetro existe para o teste apontar a um banco
- * vazio; o CLI (`--seco`) usa o `pool()` do processo.
+ * vazio; o CLI (`--seco`) usa o `poolDeMigracao()` do processo.
  */
-export async function migracoesPendentes(cliente: Pick<Pool, "query"> = pool()): Promise<EstadoDasMigracoes> {
+export async function migracoesPendentes(cliente: Pick<Pool, "query"> = poolDeMigracao()): Promise<EstadoDasMigracoes> {
   const arquivos = arquivosDeMigracao();
   const controle = await cliente.query<{ existe: string | null }>("select to_regclass('plataforma.migracoes') as existe");
   const registradas = new Set<string>();
@@ -57,8 +57,13 @@ export async function migracoesPendentes(cliente: Pick<Pool, "query"> = pool()):
   };
 }
 
-export async function migrar(): Promise<Aplicada[]> {
-  const cliente = await pool().connect();
+/**
+ * Aplica o que falta. Roda no dono do banco (`DATABASE_URL_MIGRACAO`, D-07) —
+ * `n1_api` não faz DDL. O parâmetro existe para os testes apontarem um banco
+ * descartável; fora deles, é sempre `poolDeMigracao()`.
+ */
+export async function migrar(origem: Pick<Pool, "connect"> = poolDeMigracao()): Promise<Aplicada[]> {
+  const cliente = await origem.connect();
   const aplicadas: Aplicada[] = [];
   try {
     // A tabela de controle mora no mesmo schema que ela cria; por isso o
