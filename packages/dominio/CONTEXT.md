@@ -56,6 +56,317 @@ sentida pelos dois consumidores — é o preço de ser o contrato, e a razão de
 testes (`npm run test -w @n1/dominio`) serem a rede de segurança mais importante
 do repositório.
 
+## Quem pode (1.2.4)
+
+Uma linha por chave de `OPERACOES` (`operations/registro.ts`): a operação, o módulo onde ela mora, a recusa que ela chama antes de gravar e, quando vale dizer, o porquê. `src/quem-pode.test.ts` lê esta tabela e deixa o `npm run check` vermelho se faltar uma operação, sobrar uma, repetir uma, ficar uma "Conferência" vazia ou pendente, ou se uma linha disser "sem conferência" sem justificar. **Operação nova precisa de linha aqui.**
+
+Duas coisas valem para a tabela inteira. O 403 de Membro `suspenso` (`recusaDeSuspenso`, na rota `POST /operacoes/:nome`, 1.2.1) vale para toda operação antes de qualquer recusa abaixo: o domínio só repete a barreira onde a linha diz. E as variantes `…SemConferencia` (09-03, como `sendMessageSemConferencia`) não são operações registradas: ficam fora do registro e, por isso, fora da tabela.
+
+O que cada nome de recusa quer dizer, em uma linha:
+
+- `taskWriteRefusal` (`derive.ts`): Membro ativo, não Convidado, que vê a Tarefa e, se só chega a ela por concessão, tem `editar`, `excluir` ou `administrar`. `mayWriteTask`, `mayWriteTaskStatus` e `mayWriteFieldOrComment` a embrulham; as duas últimas abrem a exceção do Agente do pipeline (só Status, §9) e da Pessoa da conta (só os Campos liberados da Lista).
+- `taskCommentRefusal` / `commentEditRefusal`: a anterior, mais `comentar`; a segunda ainda exige ser o autor do Comentário ou administrar a Lista.
+- `listWriteRefusal` (`tasks.ts`): Membro ativo, não Convidado, que alcança a Lista (criar Tarefa).
+- `containerAdminRefusal` (`derive.ts`): Administrador ou Proprietário que alcança o contêiner, ou concessão `administrar` nele ou acima. `mayConfigure` e `sprintFolder` a embrulham. `containerTrashRefusal` (`structure.ts`) aceita também a concessão `excluir`.
+- `mayBuild` (`structure.ts`): criar contêiner. Membro ativo, não Convidado, que alcança o pai.
+- `templateAdminRefusal` / `recusaDeGerirTags` / `recusaDeGerirCanais`: Administrador ou Proprietário ativo (catálogo de Templates), ou quem administra o Espaço (Tags, Canais).
+- `mayEditView`: o dono da Visão pessoal, ou `containerAdminRefusal` na compartilhada.
+- `recusaDeEscritaNoCrmAntigo` (`crm-antigo.ts`, 09-03): Membro ativo de Papel base diferente de Convidado. `mayCreateCrmRecord` (`contacts.ts`) é a mesma regra com a frase "cria registro", nas seis operações de Contato e Empresa que já conferiam.
+- `recusaDeMembroAtivo`: em `ferramentas/` (`ferramentas/permissoes.ts`) exige Membro ativo e não Convidado; em `ia/` (`ia/permissoes-ia.ts`) exige só Membro ativo, e o Convidado é barrado por outra recusa da mesma linha quando existe. `recusaDeAdministracao` (Ferramentas): Proprietário ou Administrador.
+- `recusaDeConvidado`, `recusaDeGovernarAgente`, `recusaDeGovernarHabilidade`, `recusaDeAdministrarAutomacao`, `recusaDeAdministrarIntegracao`, `recusaNaColecao`, `recusaNoDocumento` (`ia/permissoes-ia.ts`): a IA por objeto. Convidado nunca cria nem edita; editar é do dono ou criador do objeto ou de quem administra o Espaço.
+- `mayDecideApproval` (`ai.ts`): o aprovador designado, o dono do Agente (só na Aprovação de Agente) ou um Administrador ou Proprietário ativo.
+- `dono do registro` e `recusa embutida (…)`: não há função de recusa nomeada; a conferência está no corpo da operação e a coluna Observação diz qual é.
+- `sem conferência`: a operação não confere quem chama, e a Observação diz por quê. Quando a justificativa honesta não existe, a Observação começa por **LACUNA**: a operação é um achado para a suíte adversarial (09-12 e 09-15) e para a passada exploratória (09-21), e não uma decisão aceita.
+
+| Operação | Arquivo | Conferência | Observação |
+|---|---|---|---|
+| `createTask` | `operations/tasks.ts` | `listWriteRefusal` | `vinculoRefusal` confere o alcance dos vínculos |
+| `changeTaskStatus` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTaskStatus` (exceção do Agente do pipeline, §9); `entryRefusal` confere quem entra no Status (RN-CP-04) |
+| `assignTask` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
+| `unassignTask` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
+| `moveTask` | `operations/tasks.ts` | `taskWriteRefusal`, `listWriteRefusal` | via `mayWriteTask` |
+| `convertChecklistItem` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
+| `trashTask` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
+| `restoreTask` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
+| `purgeTask` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
+| `purgeExpiredTasks` | `operations/tasks.ts` | `containerAdminRefusal` |  |
+| `restoreList` | `operations/tasks.ts` | `containerTrashRefusal` |  |
+| `addChecklist` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
+| `addChecklistItem` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
+| `setChecklistItemDone` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
+| `removeChecklist` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
+| `removeChecklistItem` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
+| `startMeeting` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
+| `endMeeting` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
+| `updateTask` | `operations/tasks.ts` | `taskWriteRefusal` |  |
+| `setTaskFieldValue` | `operations/tasks.ts` | `taskWriteRefusal` | via `escritaDeCampo` |
+| `addTaskComment` | `operations/tasks.ts` | `taskCommentRefusal` |  |
+| `editTaskComment` | `operations/tasks.ts` | `commentEditRefusal` |  |
+| `deleteTaskComment` | `operations/tasks.ts` | `commentEditRefusal` |  |
+| `resolveTaskComment` | `operations/tasks.ts` | `taskWriteRefusal`, `isWorkspaceAdmin` | via `mayWriteTask` |
+| `setTaskTags` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
+| `watchTask` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
+| `moveDealToStage` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `winDeal` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `loseDeal` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `reopenDeal` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `linkContactToDeal` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `removeStage` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `migrateDealsToFunnel` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `restoreDeal` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `moveDealToFunnel` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `createDeal` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `unlinkContactFromDeal` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `setDealFieldValue` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `sendMessage` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `resolveConversation` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `reopenConversation` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `assignConversation` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `trashConversation` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `moveConversationToContact` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `discardDraft` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `restoreConversation` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `startConversation` | `operations/conversations.ts` | a conferir |  |
+| `toggleConversationStar` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `markConversationRead` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `addContactIdentifier` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `transferContactIdentifier` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `mergeContacts` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `endContactCompanyLink` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `trashContact` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `trashCompany` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `restoreMergedCopy` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `importContacts` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `restoreContact` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `restoreCompany` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `markContactsAsDistinct` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `addContactNote` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `createContact` | `operations/contacts.ts` | `mayCreateCrmRecord` |  |
+| `createCompany` | `operations/contacts.ts` | `mayCreateCrmRecord` |  |
+| `linkContactToCompany` | `operations/contacts.ts` | `mayCreateCrmRecord` |  |
+| `addCompanyIdentifier` | `operations/contacts.ts` | `mayCreateCrmRecord` |  |
+| `setContactCatalogValue` | `operations/contacts.ts` | `mayCreateCrmRecord` |  |
+| `updateCompany` | `operations/contacts.ts` | `mayCreateCrmRecord` |  |
+| `addCompanyNote` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `decideApproval` | `operations/ai.ts` | `mayDecideApproval` |  |
+| `decideProcessApproval` | `operations/ai.ts` | `mayDecideApproval` |  |
+| `solicitarAprovacao` | `operations/ai.ts` | `taskWriteRefusal` | via `changeTaskStatus` |
+| `publishAutomation` | `operations/ai.ts` | `recusaDeAdministrarAutomacao` |  |
+| `restoreAgent` | `operations/ai.ts` | `recusaDeRestaurarAgente` |  |
+| `restoreAutomation` | `operations/ai.ts` | `recusaDeRestaurarAutomacao` |  |
+| `createChatSession` | `operations/ai.ts` | a conferir |  |
+| `configureChatSession` | `operations/ai.ts` | a conferir |  |
+| `sendChatMessage` | `operations/ai.ts` | a conferir |  |
+| `createChatFolder` | `operations/chat-folders.ts` | a conferir |  |
+| `renameChatFolder` | `operations/chat-folders.ts` | a conferir |  |
+| `deleteChatFolder` | `operations/chat-folders.ts` | a conferir |  |
+| `moveChatSessionToFolder` | `operations/chat-folders.ts` | a conferir |  |
+| `createAgent` | `operations/agent-builder.ts` | a conferir |  |
+| `publishAgentVersion` | `operations/agent-builder.ts` | a conferir |  |
+| `createFieldDefinition` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
+| `updateFieldDefinition` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
+| `archiveFieldDefinition` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
+| `restoreFieldDefinition` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
+| `createTag` | `operations/configuration.ts` | `recusaDeGerirTags` |  |
+| `updateTag` | `operations/configuration.ts` | `recusaDeGerirTags` |  |
+| `archiveTag` | `operations/configuration.ts` | `recusaDeGerirTags` |  |
+| `restoreTag` | `operations/configuration.ts` | `recusaDeGerirTags` |  |
+| `addStatus` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
+| `updateStatus` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
+| `reorderStatuses` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
+| `removeStatus` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
+| `overrideStatusSet` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
+| `inheritStatusSet` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
+| `createTaskType` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
+| `updateTaskType` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
+| `removeTaskType` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
+| `setContainerFeature` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
+| `usarCampoHerdado` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
+| `addDependency` | `operations/collaboration.ts` | `taskWriteRefusal` | via `activeTask` |
+| `removeDependency` | `operations/collaboration.ts` | `taskWriteRefusal` |  |
+| `addTimeEntry` | `operations/collaboration.ts` | `taskWriteRefusal` | via `activeTask` |
+| `startTimer` | `operations/collaboration.ts` | `taskWriteRefusal` | via `activeTask` |
+| `stopTimer` | `operations/collaboration.ts` | a conferir |  |
+| `attachFile` | `operations/collaboration.ts` | `taskWriteRefusal` | via `activeTask` |
+| `removeAttachment` | `operations/collaboration.ts` | `taskWriteRefusal` | via `activeTask` |
+| `setRecurrence` | `operations/collaboration.ts` | `taskWriteRefusal` | via `activeTask` |
+| `spawnNextOccurrence` | `operations/collaboration.ts` | a conferir |  |
+| `spawnCalendarOccurrence` | `operations/collaboration.ts` | `taskWriteRefusal` | via `activeTask` |
+| `runCalendarRecurrences` | `operations/collaboration.ts` | `containerAdminRefusal` |  |
+| `setMemberCapacity` | `operations/planning.ts` | a conferir |  |
+| `enableSprints` | `operations/planning.ts` | `containerAdminRefusal` | via `sprintFolder` |
+| `disableSprints` | `operations/planning.ts` | `containerAdminRefusal` | via `sprintFolder` |
+| `createNextSprint` | `operations/planning.ts` | `containerAdminRefusal`, `mayBuild` | via `sprintFolder`; via `createList` |
+| `closeSprint` | `operations/planning.ts` | `containerAdminRefusal`, `taskWriteRefusal`, `listWriteRefusal` | via `sprintFolder`; via `moveTask` |
+| `saveListAsTemplate` | `operations/planning.ts` | `containerAdminRefusal` |  |
+| `saveTaskAsTemplate` | `operations/planning.ts` | `containerAdminRefusal` |  |
+| `instantiateTaskTemplate` | `operations/planning.ts` | `listWriteRefusal` | via `createTask` |
+| `instantiateListTemplate` | `operations/planning.ts` | `containerAdminRefusal` |  |
+| `renameTemplate` | `operations/planning.ts` | `templateAdminRefusal` |  |
+| `setTemplateArchived` | `operations/planning.ts` | `templateAdminRefusal` |  |
+| `saveView` | `operations/scale.ts` | `containerAdminRefusal` |  |
+| `deleteView` | `operations/scale.ts` | `mayEditView` |  |
+| `setDefaultView` | `operations/scale.ts` | `mayEditView` |  |
+| `createForm` | `operations/scale.ts` | `containerAdminRefusal` |  |
+| `updateForm` | `operations/scale.ts` | `containerAdminRefusal` |  |
+| `archiveForm` | `operations/scale.ts` | `containerAdminRefusal` |  |
+| `unarchiveForm` | `operations/scale.ts` | `containerAdminRefusal` |  |
+| `rotateFormSecret` | `operations/scale.ts` | `containerAdminRefusal` |  |
+| `shareTaskPublicly` | `operations/scale.ts` | `containerAdminRefusal` |  |
+| `revokePublicShare` | `operations/scale.ts` | `containerAdminRefusal` |  |
+| `runScheduledAutomations` | `operations/automations.ts` | `containerAdminRefusal` |  |
+| `runLancamentoAgent` | `operations/financeiro.ts` | `taskCommentRefusal` | via `addTaskComment` |
+| `createReceivableSeries` | `operations/financeiro.ts` | `listWriteRefusal` |  |
+| `converterSolicitacaoEmContaAPagar` | `operations/conversao-de-solicitacao.ts` | `listWriteRefusal`, `taskWriteRefusal` | via `createTask`; via `setTaskTags` |
+| `alterarStatusEmLote` | `operations/lote.ts` | `taskWriteRefusal` | via `changeTaskStatus` |
+| `alterarEmailDoConvite` | `operations/members.ts` | a conferir |  |
+| `alterarPapelDoMembro` | `operations/members.ts` | a conferir |  |
+| `removeMember` | `operations/members.ts` | a conferir |  |
+| `transferWorkspaceOwnership` | `operations/members.ts` | a conferir |  |
+| `inviteMember` | `operations/members.ts` | a conferir |  |
+| `deleteRole` | `operations/members.ts` | a conferir |  |
+| `grantGovernanceAccess` | `operations/members.ts` | a conferir |  |
+| `createSpace` | `operations/structure.ts` | `mayBuild` |  |
+| `createFolder` | `operations/structure.ts` | `mayBuild` |  |
+| `createList` | `operations/structure.ts` | `mayBuild` |  |
+| `updateContainer` | `operations/structure.ts` | `containerAdminRefusal` |  |
+| `archiveContainer` | `operations/structure.ts` | `containerAdminRefusal` |  |
+| `unarchiveContainer` | `operations/structure.ts` | `containerAdminRefusal` |  |
+| `trashContainer` | `operations/structure.ts` | `containerTrashRefusal` |  |
+| `restoreContainer` | `operations/structure.ts` | `containerTrashRefusal` |  |
+| `iniciarConversa` | `operations/iniciar-conversa.ts` | `recusaDeEscritaNoCrmAntigo`, `mayCreateCrmRecord`, `listWriteRefusal` | via `createDeal`; via `moveDealToStage`; via `setContactCatalogValue`; via `createTask` |
+| `adicionarNotaNoAtivo` | `operations/ferramentas/notas.ts` | `recusaDeMembroAtivo` |  |
+| `criarLinkDeCaptacao` | `operations/ferramentas/captacao.ts` | `recusaDeMembroAtivo` |  |
+| `editarLinkDeCaptacao` | `operations/ferramentas/captacao.ts` | `recusaDeMembroAtivo` |  |
+| `enviarLinkALixeira` | `operations/ferramentas/captacao.ts` | `recusaDeMembroAtivo` |  |
+| `restaurarLinkDaLixeira` | `operations/ferramentas/captacao.ts` | `recusaDeMembroAtivo` |  |
+| `criarGrupo` | `operations/ferramentas/grupos.ts` | `recusaDeMembroAtivo` | `recusaDoCanal` olha o Canal (ativo, conectado, Capacidade); `recusaExternaNaComunidade` olha o Papel do Canal na Comunidade, não o do Membro |
+| `importarGruposDoCanal` | `operations/ferramentas/grupos.ts` | `recusaDeMembroAtivo` | `recusaDoCanal` olha o Canal (ativo, conectado, Capacidade) |
+| `sincronizarGrupo` | `operations/ferramentas/grupos.ts` | `recusaDeMembroAtivo` |  |
+| `editarGrupo` | `operations/ferramentas/grupos.ts` | `recusaDeMembroAtivo` | `recusaExternaNoGrupo` olha o Papel do Canal no Grupo, não o do Membro |
+| `definirCanalDoGrupo` | `operations/ferramentas/grupos.ts` | `recusaDeAdministracao` |  |
+| `editarCaptacaoDoGrupo` | `operations/ferramentas/grupos.ts` | `recusaDeMembroAtivo` |  |
+| `ativarCaptacao` | `operations/ferramentas/grupos.ts` | `recusaDeMembroAtivo` | via `editarCaptacaoDoGrupo` |
+| `inativarCaptacao` | `operations/ferramentas/grupos.ts` | `recusaDeMembroAtivo` | via `editarCaptacaoDoGrupo` |
+| `zerarCliques` | `operations/ferramentas/grupos.ts` | `recusaDeMembroAtivo` |  |
+| `regenerarLinkDeConvite` | `operations/ferramentas/grupos.ts` | `recusaDeMembroAtivo` | `recusaExternaNoGrupo` olha o Papel do Canal no Grupo, não o do Membro |
+| `enviarLinkDeConvite` | `operations/ferramentas/grupos.ts` | `recusaDeMembroAtivo` | `recusaDoCanal` olha o Canal (ativo, conectado, Capacidade) |
+| `adicionarParticipantes` | `operations/ferramentas/grupos.ts` | `recusaDeMembroAtivo` | `recusaExternaNoGrupo` olha o Papel do Canal no Grupo, não o do Membro |
+| `removerParticipante` | `operations/ferramentas/grupos.ts` | `recusaDeMembroAtivo` | `recusaExternaNoGrupo` olha o Papel do Canal no Grupo, não o do Membro |
+| `promoverParticipante` | `operations/ferramentas/grupos.ts` | `recusaDeMembroAtivo` | via `mudarPapel` |
+| `rebaixarParticipante` | `operations/ferramentas/grupos.ts` | `recusaDeMembroAtivo` | via `mudarPapel` |
+| `sairDoGrupo` | `operations/ferramentas/grupos.ts` | `recusaDeAdministracao` | `recusaExternaNoGrupo` olha o Papel do Canal no Grupo, não o do Membro |
+| `arquivarGrupo` | `operations/ferramentas/grupos.ts` | `recusaDeMembroAtivo` |  |
+| `restaurarGrupo` | `operations/ferramentas/grupos.ts` | `recusaDeMembroAtivo` |  |
+| `enviarGrupoALixeira` | `operations/ferramentas/grupos.ts` | `recusaDeMembroAtivo` |  |
+| `restaurarGrupoDaLixeira` | `operations/ferramentas/grupos.ts` | `recusaDeMembroAtivo` |  |
+| `aprovarPedidoDeEntrada` | `operations/ferramentas/grupos.ts` | `recusaDeMembroAtivo` | `recusaExternaNoGrupo` olha o Papel do Canal no Grupo, não o do Membro |
+| `recusarPedidoDeEntrada` | `operations/ferramentas/grupos.ts` | `recusaDeMembroAtivo` | `recusaExternaNoGrupo` olha o Papel do Canal no Grupo, não o do Membro |
+| `enviarMensagemAoGrupo` | `operations/ferramentas/grupos.ts` | `recusaDeMembroAtivo` | `recusaDeEnvioAoGrupo` olha o estado do Grupo e do Canal |
+| `criarFlow` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo` |  |
+| `editarFlow` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo`, `recusaDeAdministracao` |  |
+| `definirPontoDeTrocaDeDados` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
+| `regenerarChavesDoPonto` | `operations/ferramentas/flows.ts` | `recusaDeAdministracao` |  |
+| `removerPontoDeTrocaDeDados` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
+| `adicionarTela` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
+| `editarTela` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
+| `reordenarTela` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
+| `duplicarTela` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
+| `removerTela` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
+| `adicionarComponente` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
+| `editarComponente` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
+| `moverComponente` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
+| `duplicarComponente` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
+| `removerComponente` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
+| `publicarVersao` | `operations/ferramentas/flows.ts` | `recusaDeAdministracao` | `recusaDePublicacao` olha o estado do Flow e do Canal |
+| `despublicarFlow` | `operations/ferramentas/flows.ts` | `recusaDeAdministracao` |  |
+| `descartarRascunho` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo` |  |
+| `criarRascunhoAPartirDe` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo` |  |
+| `copiarFlow` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo` |  |
+| `arquivarFlow` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo` |  |
+| `restaurarFlow` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo` |  |
+| `enviarFlowALixeira` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo` |  |
+| `restaurarFlowDaLixeira` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo` |  |
+| `sincronizarFlow` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo` | `recusaDoCanal` olha o Canal (ativo, conectado, Capacidade) |
+| `enviarFlow` | `operations/ferramentas/flows.ts` | `recusaDeMembroAtivo` | `recusaDeEnvioDeFlow` olha o estado do Flow e do Canal |
+| `criarComunidade` | `operations/ferramentas/comunidades.ts` | `recusaDeMembroAtivo` | `recusaDoCanal` olha o Canal (ativo, conectado, Capacidade) |
+| `sincronizarComunidade` | `operations/ferramentas/comunidades.ts` | `recusaDeMembroAtivo` |  |
+| `editarComunidade` | `operations/ferramentas/comunidades.ts` | `recusaDeMembroAtivo` | `recusaExternaNaComunidade` olha o Papel do Canal na Comunidade, não o do Membro |
+| `alterarConfiguracoesDaComunidade` | `operations/ferramentas/comunidades.ts` | `recusaDeMembroAtivo` | `recusaExternaNaComunidade` olha o Papel do Canal na Comunidade, não o do Membro |
+| `vincularGrupoAComunidade` | `operations/ferramentas/comunidades.ts` | `recusaDeAdministracao` | `recusaExternaNaComunidade` olha o Papel do Canal na Comunidade, não o do Membro; `recusaExternaNoGrupo` olha o Papel do Canal no Grupo, não o do Membro; `recusaDeVinculo` olha o par Grupo-Comunidade |
+| `desvincularGrupoDaComunidade` | `operations/ferramentas/comunidades.ts` | `recusaDeAdministracao` | `recusaExternaNaComunidade` olha o Papel do Canal na Comunidade, não o do Membro |
+| `enviarMensagemAComunidade` | `operations/ferramentas/comunidades.ts` | `recusaDeMembroAtivo` |  |
+| `sairDaComunidade` | `operations/ferramentas/comunidades.ts` | `recusaDeAdministracao` | `recusaExternaNaComunidade` olha o Papel do Canal na Comunidade, não o do Membro |
+| `arquivarComunidade` | `operations/ferramentas/comunidades.ts` | `recusaDeMembroAtivo` |  |
+| `restaurarComunidade` | `operations/ferramentas/comunidades.ts` | `recusaDeMembroAtivo` |  |
+| `enviarComunidadeALixeira` | `operations/ferramentas/comunidades.ts` | `recusaDeMembroAtivo` |  |
+| `restaurarComunidadeDaLixeira` | `operations/ferramentas/comunidades.ts` | `recusaDeMembroAtivo` |  |
+| `criarCanal` | `operations/canais.ts` | `recusaDeGerirCanais` |  |
+| `configurarCanal` | `operations/canais.ts` | `recusaDeGerirCanais` |  |
+| `alterarModeloDaLista` | `operations/tarefas-conversacionais.ts` | `containerAdminRefusal` |  |
+| `definirCanaisDaLista` | `operations/tarefas-conversacionais.ts` | `containerAdminRefusal` |  |
+| `criarTarefaConversacional` | `operations/tarefas-conversacionais.ts` | `listWriteRefusal` |  |
+| `trocarCanalDaTarefa` | `operations/tarefas-conversacionais.ts` | `taskWriteRefusal` | via `tarefaConversacional` |
+| `vincularNegocioATarefa` | `operations/tarefas-conversacionais.ts` | `taskWriteRefusal` | via `tarefaConversacional` |
+| `criarNegocioDaTarefa` | `operations/tarefas-conversacionais.ts` | `taskWriteRefusal`, `recusaDeEscritaNoCrmAntigo` | via `tarefaConversacional`; via `createDeal` |
+| `ativarAgente` | `operations/ia/agentes.ts` | `recusaDeGovernarAgente` |  |
+| `pausarAgente` | `operations/ia/agentes.ts` | `recusaDeGovernarAgente` |  |
+| `arquivarAgente` | `operations/ia/agentes.ts` | `recusaDeGovernarAgente` |  |
+| `enviarAgenteALixeira` | `operations/ia/agentes.ts` | `recusaDeGovernarAgente` |  |
+| `transferirAgente` | `operations/ia/agentes.ts` | `recusaDeGovernarAgente` |  |
+| `ensaiarAgente` | `operations/ia/agentes.ts` | `recusaDeGovernarAgente` |  |
+| `cancelarExecucao` | `operations/ia/agentes.ts` | `recusaDeMembroAtivo`, `recusaDeGovernarAgente` |  |
+| `apagarItemDeMemoria` | `operations/ia/agentes.ts` | `recusaDeEditarConfiguracao` |  |
+| `criarAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeConvidado` |  |
+| `editarAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo`, `recusaDeAdministrarAutomacao` | via `automacaoEditavel` |
+| `duplicarAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeConvidado` |  |
+| `criarRascunhoDaAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo`, `recusaDeAdministrarAutomacao` | via `automacaoEditavel` |
+| `descartarRascunhoDaAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
+| `definirGatilho` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
+| `adicionarCondicao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
+| `editarCondicao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
+| `removerCondicao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
+| `adicionarAcao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
+| `editarAcao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
+| `moverAcao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
+| `removerAcao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
+| `definirPoliticaDeErro` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo` | via `rascunhoEditavel` |
+| `pausarAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeAdministrarAutomacao` |  |
+| `retomarAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeAdministrarAutomacao` |  |
+| `arquivarAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeAdministrarAutomacao` |  |
+| `enviarAutomacaoALixeira` | `operations/ia/automacoes-editor.ts` | `recusaDeAdministrarAutomacao` |  |
+| `criarColecao` | `operations/ia/conhecimento.ts` | `recusaDeConvidado` |  |
+| `editarColecao` | `operations/ia/conhecimento.ts` | `recusaNaColecao` |  |
+| `adicionarFonte` | `operations/ia/conhecimento.ts` | `recusaNaColecao` |  |
+| `arquivarColecao` | `operations/ia/conhecimento.ts` | `recusaNaColecao` |  |
+| `restaurarColecao` | `operations/ia/conhecimento.ts` | `recusaNaColecao` |  |
+| `adicionarDocumento` | `operations/ia/conhecimento.ts` | `recusaNaColecao` |  |
+| `novaVersaoDoDocumento` | `operations/ia/conhecimento.ts` | `recusaNoDocumento` |  |
+| `restaurarVersaoDoDocumento` | `operations/ia/conhecimento.ts` | `recusaNoDocumento` |  |
+| `editarDocumento` | `operations/ia/conhecimento.ts` | `recusaNoDocumento` |  |
+| `moverDocumento` | `operations/ia/conhecimento.ts` | `recusaNoDocumento`, `recusaNaColecao` |  |
+| `comentarDocumento` | `operations/ia/conhecimento.ts` | `recusaNoDocumento` |  |
+| `arquivarDocumento` | `operations/ia/conhecimento.ts` | `recusaNoDocumento` |  |
+| `enviarDocumentoALixeira` | `operations/ia/conhecimento.ts` | `recusaNoDocumento` |  |
+| `restaurarDocumento` | `operations/ia/conhecimento.ts` | `recusaNoDocumento` |  |
+| `concederColecao` | `operations/ia/conhecimento.ts` | `recusaNaColecao` |  |
+| `revogarColecao` | `operations/ia/conhecimento.ts` | `recusaNaColecao` |  |
+| `criarHabilidade` | `operations/ia/habilidades.ts` | `recusaDeConvidado` |  |
+| `copiarHabilidadeDaPlataforma` | `operations/ia/habilidades.ts` | `recusaDeConvidado` |  |
+| `editarHabilidade` | `operations/ia/habilidades.ts` | `recusaDeGovernarHabilidade` |  |
+| `criarRascunhoDaHabilidade` | `operations/ia/habilidades.ts` | `recusaDeGovernarHabilidade` |  |
+| `editarRascunhoDaHabilidade` | `operations/ia/habilidades.ts` | `recusaDeGovernarHabilidade` |  |
+| `descartarRascunhoDaHabilidade` | `operations/ia/habilidades.ts` | `recusaDeGovernarHabilidade` |  |
+| `publicarVersaoDaHabilidade` | `operations/ia/habilidades.ts` | `recusaDeGovernarHabilidade` |  |
+| `obsoletarVersaoDaHabilidade` | `operations/ia/habilidades.ts` | `recusaDeGovernarHabilidade` |  |
+| `arquivarHabilidade` | `operations/ia/habilidades.ts` | `recusaDeGovernarHabilidade` |  |
+| `restaurarHabilidade` | `operations/ia/habilidades.ts` | `recusaDeGovernarHabilidade` |  |
+| `concederHabilidade` | `operations/ia/habilidades.ts` | `recusaDeMembroAtivo`, `recusaDeGovernarAgente` |  |
+| `fixarVersaoDaConcessao` | `operations/ia/habilidades.ts` | `recusaDeMembroAtivo`, `recusaDeGovernarAgente` |  |
+| `revogarHabilidade` | `operations/ia/habilidades.ts` | `recusaDeMembroAtivo`, `recusaDeGovernarAgente` |  |
+| `conectarIntegracao` | `operations/ia/integracoes.ts` | `recusaDeAdministrarIntegracao` |  |
+| `desconectarIntegracao` | `operations/ia/integracoes.ts` | `recusaDeAdministrarIntegracao` |  |
+
 ## Aprovação: duas origens, uma decisão por origem (D-06/D-09/D-11)
 
 `ApprovalRequest.origin` (`types/ai.ts`) é uma união discriminada por `kind`,
