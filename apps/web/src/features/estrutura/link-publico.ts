@@ -9,6 +9,5 @@ export const SEM_LINK_PARA_QUEM_NAO_ADMINISTRA = "Só quem administra a Lista v�
 
 /** Verdadeiro só para um segredo de verdade: string não vazia. */
 export function linkVisivel(segredo: string | undefined): segredo is string {
-  void segredo;
-  return true;
+  return typeof segredo === "string" && segredo !== "";
 }

@@ -11,6 +11,7 @@ import { useRun } from "@/dados/store";
 import { revokePublicShare, shareTaskPublicly } from "@n1/dominio/operations";
 import { Button, ConfirmDialog, Toggle } from "@/features/shell/ui";
 import type { Task } from "@n1/dominio/types";
+import { linkVisivel, SEM_LINK_PARA_QUEM_NAO_ADMINISTRA } from "./link-publico";
 
 type Report = (result: { ok: boolean; error?: string }, message: string) => void;
 
@@ -38,7 +39,8 @@ export function ShareTaskDialog({
   const [copiado, setCopiado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const ativo = task.publicShare?.active ? task.publicShare : undefined;
-  const link = ativo ? `${typeof window === "undefined" ? "" : window.location.origin}/p/${ativo.secret}` : "";
+  // Fase 9, 1.1.3: quem não administra a Lista recebe o segredo como "" — nunca se monta /p/ sem segredo.
+  const link = ativo && linkVisivel(ativo.secret) ? `${typeof window === "undefined" ? "" : window.location.origin}/p/${ativo.secret}` : "";
 
   return (
     <>
@@ -81,25 +83,33 @@ export function ShareTaskDialog({
       >
         {ativo ? (
           <div className="grid gap-2">
-            <p className="identificador break-all rounded-[var(--r-controle)] px-3 py-2" style={{ border: "1px solid var(--linha)", background: "var(--superficie-2)", color: "var(--texto)" }}>{link}</p>
-            <span className="flex flex-wrap gap-2">
-              <Button
-                onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(link);
-                    setCopiado(true);
-                    window.setTimeout(() => setCopiado(false), 2000);
-                  } catch {
-                    report({ ok: false, error: "Não foi possível copiar: selecione o link e copie manualmente." }, "");
-                  }
-                }}
-              >
-                {copiado ? "Copiado" : "Copiar link"}
-              </Button>
-              <a href={link} target="_blank" rel="noreferrer" className="app-base inline-flex items-center underline" style={{ color: "var(--acento)" }}>
-                Abrir em nova aba
-              </a>
-            </span>
+            {link ? (
+              <>
+                <p className="identificador break-all rounded-[var(--r-controle)] px-3 py-2" style={{ border: "1px solid var(--linha)", background: "var(--superficie-2)", color: "var(--texto)" }}>{link}</p>
+                <span className="flex flex-wrap gap-2">
+                  <Button
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(link);
+                        setCopiado(true);
+                        window.setTimeout(() => setCopiado(false), 2000);
+                      } catch {
+                        report({ ok: false, error: "Não foi possível copiar: selecione o link e copie manualmente." }, "");
+                      }
+                    }}
+                  >
+                    {copiado ? "Copiado" : "Copiar link"}
+                  </Button>
+                  <a href={link} target="_blank" rel="noreferrer" className="app-base inline-flex items-center underline" style={{ color: "var(--acento)" }}>
+                    Abrir em nova aba
+                  </a>
+                </span>
+              </>
+            ) : (
+              <p className="app-base" style={{ color: "var(--texto-3)" }}>
+                {SEM_LINK_PARA_QUEM_NAO_ADMINISTRA}
+              </p>
+            )}
             <p className="app-sm" style={{ color: "var(--texto-3)" }}>
               Mostra comentários: {ativo.showsComments ? "sim" : "não"} · anexos: {ativo.showsAttachments ? "sim" : "não"}. Para mudar, revogue e gere outro.
             </p>

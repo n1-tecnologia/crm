@@ -19,6 +19,7 @@ import { FORMULARIO_EM_LISTA_CONVERSACIONAL, archiveForm, createForm, formOutdat
 import { effectiveListConfig } from "@n1/dominio/derive";
 import { listaConversacional } from "@n1/dominio/derive-conversacional";
 import { FIELD_TYPE_LABEL } from "@/features/shell/format";
+import { linkVisivel, SEM_LINK_PARA_QUEM_NAO_ADMINISTRA } from "./link-publico";
 import { ActionMenu, Button, ConfirmDialog, EmptyState, Field, Icone, MultiSelect, Select, TextInput, Toggle } from "@/features/shell/ui";
 import type { Form, FormQuestion } from "@n1/dominio/types";
 
@@ -115,6 +116,7 @@ export function FormsEditor({ listId, bloqueio, report }: { readonly listId: str
     const sai = perguntas[i]!.id;
     setPerguntas(perguntas.filter((_, j) => j !== i).map((p) => (p.gatilho === sai ? { ...p, gatilho: SEMPRE, valores: [] } : p)));
   };
+  // Fase 9, 1.1.3: quem não administra a Lista recebe o segredo como "" — o link só existe com segredo.
   const linkDe = (form: Form) => `${typeof window === "undefined" ? "" : window.location.origin}/f/${form.secret}`;
   const copiar = async (form: Form) => {
     try {
@@ -332,12 +334,18 @@ export function FormsEditor({ listId, bloqueio, report }: { readonly listId: str
                   Desatualizado — o link recusa envios: {formOutdatedReason(state, form)} {conversacional ? "Arquive o Formulário." : "Edite o Formulário e acrescente a pergunta."}
                 </p>
               ) : null}
-              <div className="flex flex-wrap items-center gap-2">
-                <a href={`/f/${form.secret}`} target="_blank" rel="noreferrer" className="identificador min-w-0 truncate underline" style={{ color: "var(--acento)" }}>
-                  {linkDe(form)}
-                </a>
-                <Button onClick={() => copiar(form)}>{copiado === form.id ? "Copiado" : "Copiar link"}</Button>
-              </div>
+              {linkVisivel(form.secret) ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <a href={`/f/${form.secret}`} target="_blank" rel="noreferrer" className="identificador min-w-0 truncate underline" style={{ color: "var(--acento)" }}>
+                    {linkDe(form)}
+                  </a>
+                  <Button onClick={() => copiar(form)}>{copiado === form.id ? "Copiado" : "Copiar link"}</Button>
+                </div>
+              ) : (
+                <p className="app-base" style={{ color: "var(--texto-3)" }}>
+                  {SEM_LINK_PARA_QUEM_NAO_ADMINISTRA}
+                </p>
+              )}
             </li>
           ))}
         </ul>

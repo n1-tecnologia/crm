@@ -83,6 +83,7 @@ import { valorDaConta, type FinanceProfile } from "@/features/estrutura/financei
 import { ColunaDeQuadro, VazioDaColuna } from "@/features/shell/quadro";
 import { DealScreen } from "@/features/crm/deal-screen";
 import { ContaDrawer } from "@/features/estrutura/financeiro/conta-drawer";
+import { linkVisivel, SEM_LINK_PARA_QUEM_NAO_ADMINISTRA } from "@/features/estrutura/link-publico";
 import { MEUS_NEGOCIOS_ID } from "@n1/dominio/seed-comercial";
 import {
   Abas,
@@ -554,7 +555,7 @@ export default function ListaPage({
           : {})}
         actions={
           <>
-            {formulariosAtivos[0] ? (
+            {formulariosAtivos[0] && linkVisivel(formulariosAtivos[0].secret) ? (
               <a
                 href={`/f/${formulariosAtivos[0].secret}`}
                 target="_blank"
@@ -598,6 +599,8 @@ export default function ListaPage({
                   icone: Link2,
                   ...(formulariosAtivos.length > 1 ? { detalhe: form.name } : {}),
                   onSelect: () => void copiarLinkDoFormulario(form.secret),
+                  // Fase 9, 1.1.3: sem o segredo (quem não administra a Lista) não há link a copiar.
+                  ...(linkVisivel(form.secret) ? {} : { disabledReason: SEM_LINK_PARA_QUEM_NAO_ADMINISTRA }),
                 })),
                 ...(daPastaFinanceiro
                   ? [{ label: "Guia do Financeiro", icone: BookOpen, onSelect: abrirGuiaDoFinanceiro }]
