@@ -58,6 +58,7 @@
  */
 
 import { buildApp } from "./app";
+import { opcoesDoLogger } from "./observabilidade/log";
 import { carregarEnv, encerrar } from "./persistencia/conexao";
 import { criarOutboxWorker } from "./persistencia/outbox-worker";
 import { criarSchedulerWorker } from "./automacoes/scheduler-worker";
@@ -94,7 +95,7 @@ carregarEnv();
 const porta = Number(process.env.PORT ?? 3002);
 const host = process.env.HOST ?? "127.0.0.1";
 
-const app = buildApp({ logger: true });
+const app = buildApp({ logger: opcoesDoLogger() });
 
 /** O que esta instância precisa parar ao ser desmontada, e os ouvintes de SIGTERM que ela pendurou no processo. */
 const paradas: Array<() => Promise<void>> = [];

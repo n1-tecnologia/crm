@@ -53,3 +53,27 @@ precisa decidir como produzir o `--resumo=<json>` diário — não é código de
 Nenhum caminho de replay novo nasce nesta pasta (Plan 02-17/02-20 já têm `reenfileirar`). A regra
 vale igual aqui: a interface de replay usa **ids e resumo mascarado**, e toda repetição registra
 **quem/quando/motivo** — nunca o payload original solto num log ou numa tela.
+
+## Log sem segredo (Fase 9)
+
+`log.ts` (`opcoesDoLogger`) é o que `index.ts` entrega ao Fastify no boot
+(`buildApp({ logger: opcoesDoLogger() })`, antes `logger: true`). Testes seguem
+com `logger: false`; `log.test.ts` usa o segundo argumento (`destino`) para ler
+as linhas num array, sem banco e sem `.env`.
+
+- **URL mascarada.** O serializador de `req` troca por `***` o segmento depois
+  de `/v1/public/forms/` e `/v1/public/tasks/` (D-18). Sem isto a linha de
+  entrada de `GET /v1/public/forms/<segredo>` gravava o segredo de link no
+  journald.
+- **Onde mora a regra.** `mascararSegredoDeUrl` em `@n1/dominio/url-segura`,
+  não aqui: o Sentry da api (09-13) e o da web (09-16) usam a mesma, e api e
+  web não podem se importar. Cobre também `/f/<s>` e `/p/<s>`, os caminhos que
+  a web serve. O `access_log` do nginx tem a sua própria máscara (09-06), que
+  espelha o trecho `/v1/public/` à mão: mudou a regra, mude os dois.
+- **Campos censurados** com `"[oculto]"`: `req.headers.authorization`,
+  `req.headers.cookie` e os campos `segredo`, `secret`, `token`, `senha` — no
+  topo do objeto logado e um nível abaixo (o curinga `*.token` do pino não casa
+  o topo, por isso cada campo entra duas vezes).
+- **`LOG_LEVEL`** passa a ser lido (padrão `info`); antes o nível era fixo.
+- Continua valendo a regra do módulo: nenhuma rota loga corpo, valor ou nome
+  de fornecedor. O `redact` é a segunda barreira, não a primeira.

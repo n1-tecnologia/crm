@@ -14,7 +14,7 @@ import {
   serializerCompiler,
   validatorCompiler,
 } from "@fastify/type-provider-zod";
-import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyServerOptions } from "fastify";
 import { verificarTokenDoSupabase, type VerificarToken } from "./autenticacao/verificar-token";
 import { carregarEnv } from "./persistencia/conexao";
 import { membroPorUsuario } from "./persistencia/membros";
@@ -58,8 +58,12 @@ export interface OpcoesDoApp {
   readonly resolverMembro?: OpcoesDeAutenticacao["resolverMembro"];
   /** Padrão: `resolverCredencial` de `persistencia/credenciais-de-servico.ts`. Testes injetam um stub, sem banco. */
   readonly resolverCredencial?: OpcoesDeAutenticacaoDeServico["resolverCredencial"];
-  /** Padrão: `false` em teste, `true` no boot (`index.ts`). */
-  readonly logger?: boolean;
+  /**
+   * Padrão: `false` em teste. No boot (`index.ts`) é `opcoesDoLogger()`
+   * (`./observabilidade/log.ts`): o objeto de opções do logger, com o segredo
+   * de link mascarado e os tokens censurados (D-18).
+   */
+  readonly logger?: boolean | FastifyServerOptions["logger"];
   /**
    * SÓ PARA TESTE. As sete rotas reais de `/v1/integrations/payment-requests/*`
    * (Plan 02-13, `rotasDeIntegracaoDeSolicitacoes`) já nascem direto aqui
