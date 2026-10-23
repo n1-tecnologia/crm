@@ -4,7 +4,12 @@
  * substituído por espiões e o DSN abaixo usa um domínio `.invalid`.
  */
 
+import { buildSeed } from "@n1/dominio/seed";
+import type { Member } from "@n1/dominio";
+import type { FastifyInstance } from "fastify";
+import { z } from "zod";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildApp } from "../app";
 
 const sdk = vi.hoisted(() => ({
   init: vi.fn(),
@@ -144,5 +149,103 @@ describe("fecharSentry", () => {
     await fecharSentry();
 
     expect(sdk.close).toHaveBeenCalledWith(2000);
+  });
+});
+
+// ── Ligação com o app: só o ramo 500 chega ao Sentry, e a rota de prova existe só quando ligada ──
+
+const TOKEN = "token-de-teste";
+const AUTORIZACAO = { authorization: `Bearer ${TOKEN}` };
+
+function membroAtivo(): Member {
+  const base = buildSeed().members.find((m) => m.state === "ativo" && m.userId !== undefined);
+  if (!base) throw new Error("o seed precisa de Membros ativos com usuário");
+  return { ...base, userId: "usuario-sentry", state: "ativo" };
+}
+
+/** Sem banco e sem rede: o token e o Membro são stubs, e `capturarErro` é o espião. */
+function appDeTeste(opcoes: { erroDeProvaAtivo?: boolean } = {}) {
+  const capturarErro = vi.fn();
+  const app = buildApp({
+    logger: false,
+    workspaceId: "ws_sentry_teste",
+    verificarToken: async (token) => (token === TOKEN ? { sub: "usuario-sentry" } : null),
+    resolverMembro: async () => membroAtivo(),
+    capturarErro,
+    ...opcoes,
+  });
+  return { app: app as FastifyInstance, capturarErro };
+}
+
+describe("app — o erro inesperado vai ao Sentry, o erro do cliente não", () => {
+  it("uma rota que lança responde 500 sem detalhe e chama capturarErro uma vez com o erro", async () => {
+    const { app, capturarErro } = appDeTeste();
+    app.get("/teste/lanca", async () => {
+      throw new Error("x");
+    });
+
+    const resposta = await app.inject({ method: "GET", url: "/teste/lanca", headers: AUTORIZACAO });
+    await app.close();
+
+    expect(resposta.statusCode).toBe(500);
+    expect(resposta.json()).toEqual({ ok: false, error: "Erro interno." });
+    expect(capturarErro).toHaveBeenCalledTimes(1);
+    expect(capturarErro.mock.calls[0]?.[0]).toBeInstanceOf(Error);
+    expect((capturarErro.mock.calls[0]?.[0] as Error).message).toBe("x");
+  });
+
+  it("um corpo inválido para o schema (400) não chama capturarErro", async () => {
+    const { app, capturarErro } = appDeTeste();
+    app.post("/teste/schema", { schema: { body: z.object({ nome: z.string() }) } }, async () => ({ ok: true }));
+
+    const resposta = await app.inject({ method: "POST", url: "/teste/schema", headers: AUTORIZACAO, payload: {} });
+    await app.close();
+
+    expect(resposta.statusCode).toBe(400);
+    expect(capturarErro).not.toHaveBeenCalled();
+  });
+
+  it("um corpo acima do bodyLimit (413) não chama capturarErro", async () => {
+    const { app, capturarErro } = appDeTeste();
+    app.post("/teste/limite", { bodyLimit: 8 }, async () => ({ ok: true }));
+
+    const resposta = await app.inject({ method: "POST", url: "/teste/limite", headers: AUTORIZACAO, payload: { texto: "um corpo bem maior que oito bytes" } });
+    await app.close();
+
+    expect(resposta.statusCode).toBe(413);
+    expect(capturarErro).not.toHaveBeenCalled();
+  });
+});
+
+describe("app — a rota de erro de prova (1.7.4) só existe quando ligada", () => {
+  it("sem erroDeProvaAtivo a rota não existe, nem para quem tem sessão", async () => {
+    const { app, capturarErro } = appDeTeste();
+
+    const resposta = await app.inject({ method: "GET", url: "/diagnostico/erro-de-prova", headers: AUTORIZACAO });
+    await app.close();
+
+    expect(resposta.statusCode).toBe(404);
+    expect(capturarErro).not.toHaveBeenCalled();
+  });
+
+  it("ligada, exige sessão como toda rota que não é pública", async () => {
+    const { app, capturarErro } = appDeTeste({ erroDeProvaAtivo: true });
+
+    const semSessao = await app.inject({ method: "GET", url: "/diagnostico/erro-de-prova" });
+    await app.close();
+
+    expect(semSessao.statusCode).toBe(401);
+    expect(capturarErro).not.toHaveBeenCalled();
+  });
+
+  it("ligada e com sessão, lança: 500 e o Sentry recebe o erro de prova", async () => {
+    const { app, capturarErro } = appDeTeste({ erroDeProvaAtivo: true });
+
+    const resposta = await app.inject({ method: "GET", url: "/diagnostico/erro-de-prova", headers: AUTORIZACAO });
+    await app.close();
+
+    expect(resposta.statusCode).toBe(500);
+    expect(capturarErro).toHaveBeenCalledTimes(1);
+    expect((capturarErro.mock.calls[0]?.[0] as Error).message).toBe("Erro de prova do Sentry (SEG-10)");
   });
 });
