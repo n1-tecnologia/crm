@@ -111,6 +111,10 @@ export function limparEvento<T extends object>(evento: T): T {
     saida.request = "url" in requisicao ? { ...requisicao, url: semQuery(requisicao.url) } : requisicao;
   }
 
+  // Etiquetas e dados extras são postos pelo código da aplicação (nenhum hoje): se um dia levarem uma URL, sai mascarada.
+  if (ehRegistro(origem.tags)) saida.tags = mascararProfundo(origem.tags);
+  if (ehRegistro(origem.extra)) saida.extra = mascararProfundo(origem.extra);
+
   if (Array.isArray(origem.breadcrumbs)) {
     saida.breadcrumbs = origem.breadcrumbs.map((migalha: unknown) => (ehRegistro(migalha) ? limparMigalha(migalha) : migalha));
   }

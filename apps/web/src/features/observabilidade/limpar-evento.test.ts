@@ -10,7 +10,7 @@
 import { describe, expect, it } from "vitest";
 import { limparEvento, limparMigalha, opcoesDoSentryNaWeb } from "./limpar-evento";
 
-const DSN_FALSO = "https://chave-falsa@o0.ingest.sentry.invalid/0";
+const DSN_FALSO = "https://chavefalsa@o0.ingest.sentry.invalid/0";
 
 function eventoComSegredos() {
   return {
@@ -92,6 +92,11 @@ describe("limparEvento", () => {
     expect(breadcrumbs[0]?.data).toEqual({ from: "/f/***", to: "/inicio" });
     expect(breadcrumbs[1]?.data).toEqual({ url: "https://api/v1/public/forms/***", method: "GET" });
     expect(breadcrumbs[2]?.message).toBe("abrindo https://app.exemplo.com/p/*** agora");
+  });
+
+  it("mascara o segredo também em tags e extra, postos pelo código da aplicação", () => {
+    const evento = limparEvento({ tags: { rota: "/p/SEGREDO-P" }, extra: { origem: { link: "https://app.exemplo.com/f/SEGREDO-W" }, tentativas: 2 } });
+    expect(evento).toEqual({ tags: { rota: "/p/***" }, extra: { origem: { link: "https://app.exemplo.com/f/***" }, tentativas: 2 } });
   });
 
   it("não altera o evento de origem e aceita evento sem requisição nem exceção", () => {
