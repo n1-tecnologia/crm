@@ -1,4 +1,7 @@
 import type { NextConfig } from "next";
+// `@sentry/nextjs/config` e não `@sentry/nextjs`: na 10.76 o `withSentryConfig` do
+// pacote raiz está deprecado e avisa no build; o subcaminho é o mesmo código, calado.
+import { withSentryConfig } from "@sentry/nextjs/config";
 
 const nextConfig: NextConfig = {
   /**
@@ -26,4 +29,23 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+/**
+ * Sentry (D-13, SEG-10). O build NÃO fala com a rede nem precisa de token: sem
+ * telemetria do plugin, sem envio de source maps, sem criação de release. Ligar
+ * source maps é outro passo, com `SENTRY_AUTH_TOKEN` configurado na Vercel.
+ *
+ * Bundle mínimo: só erros, então os trechos de depuração e de tracing do SDK
+ * saem do pacote, e o de Session Replay também (nunca o ligamos).
+ */
+export default withSentryConfig(nextConfig, {
+  telemetry: false,
+  silent: true,
+  sourcemaps: { disable: true },
+  bundleSizeOptimizations: {
+    excludeDebugStatements: true,
+    excludeTracing: true,
+    excludeReplayShadowDom: true,
+    excludeReplayIframe: true,
+    excludeReplayWorker: true,
+  },
+});
