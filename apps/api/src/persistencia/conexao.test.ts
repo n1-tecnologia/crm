@@ -4,8 +4,15 @@
  * banco e sem `.env`. Origem: em 2026-09-29 duas escritas no `ws_n1` ficaram
  * 16 e 10 minutos paradas quando o pooler derrubou a conexão no meio.
  */
-import { describe, expect, it, vi } from "vitest";
-import { TEMPO_DE_CONSULTA_PADRAO_MS, encerrarAoEstourarOTempo, limitesDoPool } from "./conexao";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  TEMPO_DE_CONSULTA_PADRAO_MS,
+  encerrar,
+  encerrarAoEstourarOTempo,
+  limitesDoPool,
+  pool,
+  poolDeMigracao,
+} from "./conexao";
 
 describe("limitesDoPool", () => {
   it("padrão: 30 s por consulta, 10 s para abrir conexão, keepAlive ligado", () => {
@@ -53,5 +60,57 @@ describe("encerrarAoEstourarOTempo", () => {
     await expect(c.consultar("select $1", [7])).resolves.toEqual({ rows: [{ n: 1 }] });
     expect(c.original).toHaveBeenCalledWith("select $1", [7]);
     expect(c.end).not.toHaveBeenCalled();
+  });
+});
+
+describe("poolDeMigracao (D-07)", () => {
+  const URL_DO_APP = "postgres://n1_api:x@localhost:55604/app";
+  const URL_DE_MIGRACAO = "postgres://postgres:x@localhost:55604/dono";
+  const guardado = { app: process.env.DATABASE_URL, migracao: process.env.DATABASE_URL_MIGRACAO };
+
+  beforeEach(async () => {
+    await encerrar();
+    process.env.DATABASE_URL = URL_DO_APP;
+    // "" e não `delete`: carregarEnv() só preenche chave `undefined`, e o .env do dev não deve vazar para o teste.
+    process.env.DATABASE_URL_MIGRACAO = "";
+  });
+
+  afterEach(async () => {
+    await encerrar();
+    if (guardado.app === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = guardado.app;
+    if (guardado.migracao === undefined) delete process.env.DATABASE_URL_MIGRACAO;
+    else process.env.DATABASE_URL_MIGRACAO = guardado.migracao;
+  });
+
+  it("sem DATABASE_URL_MIGRACAO devolve a mesma instância de pool()", () => {
+    expect(poolDeMigracao()).toBe(pool());
+  });
+
+  it("com DATABASE_URL_MIGRACAO devolve outro Pool, e pool() continua com DATABASE_URL", () => {
+    process.env.DATABASE_URL_MIGRACAO = URL_DE_MIGRACAO;
+    const deMigracao = poolDeMigracao();
+    const doApp = pool();
+    expect(deMigracao).not.toBe(doApp);
+    expect((deMigracao as unknown as { options: { connectionString: string } }).options.connectionString).toBe(URL_DE_MIGRACAO);
+    expect((doApp as unknown as { options: { connectionString: string } }).options.connectionString).toBe(URL_DO_APP);
+    expect(poolDeMigracao()).toBe(deMigracao);
+  });
+
+  it("encerrar() fecha os dois pools quando são distintos", async () => {
+    process.env.DATABASE_URL_MIGRACAO = URL_DE_MIGRACAO;
+    const fim = vi.spyOn(Object.getPrototypeOf(pool()), "end").mockResolvedValue(undefined);
+    poolDeMigracao();
+    await encerrar();
+    expect(fim).toHaveBeenCalledTimes(2);
+    fim.mockRestore();
+  });
+
+  it("encerrar() fecha uma vez só quando o pool de migração é o próprio pool()", async () => {
+    const fim = vi.spyOn(Object.getPrototypeOf(pool()), "end").mockResolvedValue(undefined);
+    poolDeMigracao();
+    await encerrar();
+    expect(fim).toHaveBeenCalledTimes(1);
+    fim.mockRestore();
   });
 });
