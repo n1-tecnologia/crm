@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 09
 current_phase_name: Segurança dos dados e base de produção
 status: executing
-stopped_at: Completed 09-12-PLAN.md
-last_updated: "2026-10-23T02:59:03.956Z"
+stopped_at: Completed 09-14-PLAN.md
+last_updated: "2026-10-23T03:06:29.760Z"
 last_activity: 2026-10-22
 last_activity_desc: Phase 09 execution started
-state_head: 43454effc7599a8ecea9fd2f1d63e792725819e0
+state_head: d978e7bb8747edf9e4515772ef3e2dac012616ea
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 170
-  completed_plans: 159
+  completed_plans: 160
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 ## Current Position
 
 Phase: 09 (Segurança dos dados e base de produção) — EXECUTING
-Plan: 13 of 22
+Plan: 14 of 22
 Status: Ready to execute
 Last activity: 2026-10-22 — Phase 09 execution started
 
@@ -382,6 +382,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 09 P10 | 3 min | 2 tasks | 4 files |
 | Phase 09 P11 | 14 min | 2 tasks | 6 files |
 | Phase 09 P12 | 10 min | 3 tasks | 11 files |
+| Phase 09 P14 | 25 min | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -533,6 +534,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 09]: 09-11: concorrencia por job (deploy-api-producao, deploy-api-homologacao), nao por workflow — Um grupo so faria um deploy pendente de homologacao cancelar um pendente de producao
 - [Phase 09]: 09-12: o job seguranca roda o app como n1_api e o DDL de teste pelo dono local (poolDoDono); it.todo e proibido na suite do CI porque pendente+todo conta como teste pulado
 - [Phase 09]: 09-12: o suspenso nao grava por nenhuma rota REST (recusarSuspensoNaEscrita em Financeiro, anexos e CRM); removeMember e spawnNextOccurrence do Convidado ficam como it.fails ate o dominio ser consertado
+- [Phase 09]: 09-14: pg_restore roda dentro do conteiner descartavel (PG_IMAGEM); URL do banco decomposta em PG* para a senha nao aparecer no ps
+- [Phase 09]: 09-14: Evolution API fixada em evoapicloud/evolution-api:v2.3.7 (tag existe no registro); dono confirma versao e variaveis em 09-19
 
 ### Pending Todos
 
@@ -594,6 +597,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-23T02:59:03.765Z
-Stopped at: Completed 09-12-PLAN.md
+Last session: 2026-10-23T03:06:29.570Z
+Stopped at: Completed 09-14-PLAN.md
 Resume file: None
