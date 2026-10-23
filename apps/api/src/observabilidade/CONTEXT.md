@@ -77,3 +77,35 @@ as linhas num array, sem banco e sem `.env`.
 - **`LOG_LEVEL`** passa a ser lido (padrão `info`); antes o nível era fixo.
 - Continua valendo a regra do módulo: nenhuma rota loga corpo, valor ou nome
   de fornecedor. O `redact` é a segunda barreira, não a primeira.
+
+## Sentry (Fase 9)
+
+`sentry.ts` leva o erro inesperado da `apps/api` ao Sentry (D-13, SEG-10) e
+nada além dele. O pacote é `@sentry/node` em versão exata (`10.76.2`, escolhida
+pelo dono em 2026-10-23 no portão de legitimidade; a web, no 09-16, instala a
+MESMA).
+
+- **Onde inicia.** `index.ts` chama `iniciarSentry()` logo depois de
+  `carregarEnv()` e antes de `buildApp`; `aoEncerrar(fecharSentry)` espera até
+  2 s o envio pendente na desmontagem da recarga e no SIGTERM. Sem `SENTRY_DSN`
+  o SDK nem é iniciado e `capturarErroNoSentry` não faz nada. O processo roda por
+  `vite-node`, sem `--import`, e o Fastify é o 5: não há auto-instrumentação, o
+  erro entra por chamada explícita.
+- **O que sai.** Só o ramo 500 do `setErrorHandler` (`app.ts`) chama
+  `capturarErro`. O 400 do zod e o 4xx do Fastify (413, 415) não saem: são erro de
+  quem chamou e carregam dado de entrada. `tracesSampleRate` é 0: nenhum traço.
+- **O que NÃO sai, em duas camadas.** (1) `dataCollection` desliga na origem
+  usuário, cookies, cabeçalhos, corpos, query, dado de consulta, variáveis de
+  frame, GraphQL e IA; ao informar `dataCollection` todo campo omitido volta a
+  LIGADO, por isso todos estão explícitos em `opcoesDoSentry`. (2)
+  `limparEvento` e `limparMigalha` (`beforeSend`/`beforeBreadcrumb`) apagam o que
+  mesmo assim chegue (`request.headers`, `cookies`, `data`, `query_string`,
+  `env`, `user` e `vars` de frame), tiram a query das URLs e mascaram o segredo
+  de link com `mascararSegredoDeUrl`, a mesma regra do log. `sentry.test.ts`
+  prova o filtro sem rede; e o SDK de verdade, com um transporte falso, foi
+  conferido uma vez na execução do 09-13 (nada vazou).
+- **Rota de erro de prova.** `GET /diagnostico/erro-de-prova` (1.7.4) só existe
+  com `ERRO_DE_PROVA_ATIVO=true`, exige sessão como toda rota não pública e lança
+  `Erro de prova do Sentry (SEG-10)`. Serve para o dono provar o alerta em
+  homologação (09-19). Nunca em produção; **sai do código em 09-22**.
+

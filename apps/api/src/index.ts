@@ -59,6 +59,7 @@
 
 import { buildApp } from "./app";
 import { opcoesDoLogger } from "./observabilidade/log";
+import { fecharSentry, iniciarSentry } from "./observabilidade/sentry";
 import { carregarEnv, encerrar } from "./persistencia/conexao";
 import { criarOutboxWorker } from "./persistencia/outbox-worker";
 import { criarSchedulerWorker } from "./automacoes/scheduler-worker";
@@ -92,6 +93,10 @@ if (desmontarAnterior) {
 
 carregarEnv();
 
+// Fase 9 (D-13): o monitoramento de erros sobe antes do app, para pegar também
+// o que quebrar no boot. Sem `SENTRY_DSN` não faz nada (desenvolvimento).
+const sentryAtivo = iniciarSentry();
+
 const porta = Number(process.env.PORT ?? 3002);
 const host = process.env.HOST ?? "127.0.0.1";
 
@@ -110,6 +115,12 @@ function aoEncerrar(parar: () => Promise<void>): void {
   process.on("SIGTERM", noSigterm);
   ouvintesDeSigterm.push(noSigterm);
 }
+
+// Corre junto com os outros no SIGTERM e na desmontagem da recarga: espera até
+// 2 s o envio pendente, para um erro capturado logo antes do desligamento ainda
+// sair (T-09-65).
+if (sentryAtivo) app.log.info(`Sentry ativo (ambiente=${process.env.SENTRY_AMBIENTE?.trim() || "desenvolvimento"})`);
+aoEncerrar(fecharSentry);
 
 let ponte: PonteDoAgente | undefined;
 

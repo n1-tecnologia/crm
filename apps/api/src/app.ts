@@ -16,6 +16,7 @@ import {
 } from "@fastify/type-provider-zod";
 import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyServerOptions } from "fastify";
 import { verificarTokenDoSupabase, type VerificarToken } from "./autenticacao/verificar-token";
+import { capturarErroNoSentry } from "./observabilidade/sentry";
 import { carregarEnv } from "./persistencia/conexao";
 import { membroPorUsuario } from "./persistencia/membros";
 import { registrarAutenticacao, type OpcoesDeAutenticacao } from "./plugins/autenticacao";
@@ -97,6 +98,18 @@ export interface OpcoesDoApp {
   readonly financeiro?: OpcoesDeFinanceiro;
   /** Fase 7 (07-01) — SÓ PARA TESTE: troca o serviço (ou o pool) do CRM por um falso, sem banco. */
   readonly crm?: OpcoesDeCrm;
+  /**
+   * Fase 9 (09-13, D-13) — recebe o erro inesperado (o ramo 500 do tratador de
+   * erro, e só ele). Padrão: `capturarErroNoSentry`, que não faz nada enquanto o
+   * SDK não foi iniciado (sem `SENTRY_DSN`). Testes injetam um espião.
+   */
+  readonly capturarErro?: (erro: unknown) => void;
+  /**
+   * Fase 9 (09-13, 1.7.4) — liga `GET /diagnostico/erro-de-prova`, a rota que
+   * lança de propósito para o dono provar o alerta do Sentry em homologação.
+   * Padrão: `process.env.ERRO_DE_PROVA_ATIVO === "true"`. Nunca em produção.
+   */
+  readonly erroDeProvaAtivo?: boolean;
 }
 
 export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
@@ -111,6 +124,8 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
     .map((origem) => origem.trim())
     .filter(Boolean);
   const trustProxy = opcoes.trustProxy ?? process.env.TRUST_PROXY ?? "";
+  const capturarErro = opcoes.capturarErro ?? capturarErroNoSentry;
+  const erroDeProvaAtivo = opcoes.erroDeProvaAtivo ?? process.env.ERRO_DE_PROVA_ATIVO === "true";
 
   const app = Fastify({ logger: opcoes.logger ?? false, ...(trustProxy ? { trustProxy } : {}) });
   app.setValidatorCompiler(validatorCompiler);
@@ -140,8 +155,11 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
     }
     // Qualquer outro erro é inesperado: vai ao log do processo, nunca ao
     // corpo da resposta — o cliente não tem por que ver mensagem nem stack
-    // de um bug interno (T-1-06).
+    // de um bug interno (T-1-06). É também o ÚNICO ramo que vai ao Sentry
+    // (D-13, T-09-64): o 400 do zod e o 4xx do Fastify são erro de quem chamou,
+    // e carregam dado de entrada que não deve sair da máquina.
     request.log.error(erro);
+    capturarErro(erro);
     reply.status(500).send({ ok: false, error: "Erro interno." });
   });
 
@@ -204,6 +222,16 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
     ok: true,
     servico: "apps/api",
   }));
+
+  // 1.7.4 (D-13) — a "rota de teste que lança, removida depois". Só existe com
+  // `ERRO_DE_PROVA_ATIVO=true` (homologação, durante a prova do alerta do
+  // Sentry, 09-19); registrada depois do hook de autenticação e sem
+  // `config.publica`, então exige sessão como toda rota. Sai do código em 09-22.
+  if (erroDeProvaAtivo) {
+    app.get("/diagnostico/erro-de-prova", async () => {
+      throw new Error("Erro de prova do Sentry (SEG-10)");
+    });
+  }
 
   // Depois do hook de autenticação: toda rota registrada aqui exige
   // `Authorization: Bearer`, salvo `config: { publica: true }`. `buildApp`
