@@ -9,7 +9,5 @@ import type { Id } from "@n1/dominio/types";
 
 /** O nome do Agente, ou "Agente" quando o registro não está no estado. */
 export function nomeDoAgente(estado: DataState, agentId: Id): string {
-  void estado;
-  void agentId;
-  return "";
+  return estado.agents.find((a) => a.id === agentId)?.name ?? "Agente";
 }

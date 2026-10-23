@@ -84,6 +84,7 @@ import { ColunaDeQuadro, VazioDaColuna } from "@/features/shell/quadro";
 import { DealScreen } from "@/features/crm/deal-screen";
 import { ContaDrawer } from "@/features/estrutura/financeiro/conta-drawer";
 import { linkVisivel, SEM_LINK_PARA_QUEM_NAO_ADMINISTRA } from "@/features/estrutura/link-publico";
+import { nomeDoAgente } from "@/features/estrutura/nome-do-ator";
 import { MEUS_NEGOCIOS_ID } from "@n1/dominio/seed-comercial";
 import {
   Abas,
@@ -1391,8 +1392,7 @@ function Tabela({
                           assignee.kind === "member"
                             ? state.members.find((m) => m.id === assignee.id)
                                 ?.displayName
-                            : state.agents.find((a) => a.id === assignee.id)
-                                ?.name,
+                            : nomeDoAgente(state, assignee.id),
                         )
                         .filter(Boolean)
                         .join(", ")}

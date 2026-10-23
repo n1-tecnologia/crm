@@ -24,6 +24,7 @@ import {
   watchTask,
 } from "@n1/dominio/operations";
 import { useFormat } from "@/features/shell/use-format";
+import { nomeDoAgente } from "@/features/estrutura/nome-do-ator";
 import { ActorAvatar, Button, ConfirmDialog, EmptyState, Field, Icone, MultiSelect, Select, TextArea, TextInput, Toast } from "@/features/shell/ui";
 import type { OperationResult } from "@n1/dominio/state";
 import type { ActorRef, FieldDefinition, FieldValue, Task, TaskDate } from "@n1/dominio/types";
@@ -696,7 +697,6 @@ export function TaskComments({
   const fmt = useFormat();
   const { memberId } = useSession();
   const members = useData((data) => data.members);
-  const agentes = useData((data) => data.agents);
   const state = useData((data) => data);
   const [respondendo, setRespondendo] = useState<string | null>(null);
   // FUND-10 — editar em linha e excluir com confirmação (RN-TAR-13).
@@ -876,7 +876,7 @@ export function TaskComments({
                     <details className="painel px-3 py-2">
                       <summary className="app-meta flex cursor-pointer flex-wrap items-center gap-2">
                         <Icone de={Check} tamanho="xs" style={{ color: "var(--sucesso)" }} />
-                        Fio resolvido por {members.find((m) => m.id === raiz.resolved?.by)?.displayName ?? agentes.find((a) => a.id === raiz.resolved?.by)?.name ?? "—"} · {raiz.content.slice(0, 48)}
+                        Fio resolvido por {members.find((m) => m.id === raiz.resolved?.by)?.displayName ?? (raiz.resolved ? nomeDoAgente(state, raiz.resolved.by) : "—")} · {raiz.content.slice(0, 48)}
                         {raiz.content.length > 48 ? "…" : ""}
                         {respostas.length > 0 ? ` · ${respostas.length} resposta(s)` : ""}
                       </summary>

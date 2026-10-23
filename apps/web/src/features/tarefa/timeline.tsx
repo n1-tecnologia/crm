@@ -110,7 +110,8 @@ function resolverNomeDoAtor(state: DataState, actor: ActorRef): string {
     return state.members.find((m) => m.id === actor.id)?.displayName ?? "Membro removido";
   }
   if (actor.kind === "agent") {
-    return state.agents.find((a) => a.id === actor.id)?.name ?? "Agente eliminado";
+    // Fase 9, D-03: o Convidado recebe `agents: []` — sem o registro, "Agente".
+    return state.agents.find((a) => a.id === actor.id)?.name ?? "Agente";
   }
   if (actor.kind === "automation") {
     return state.automations.find((a) => a.id === actor.id)?.name ?? "Automação";

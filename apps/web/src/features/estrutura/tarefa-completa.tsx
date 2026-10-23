@@ -2358,11 +2358,14 @@ function authorLabel(state: DataState, actor: ActorRef): string {
       "Membro removido"
     );
   }
+  // Fase 9, D-03: o Convidado não recebe Agentes nem Automações — sem o registro, só o rótulo (nunca "Agente (Agente)").
   if (actor.kind === "agent") {
-    return `${state.agents.find((a) => a.id === actor.id)?.name ?? "Agente eliminado"} (Agente)`;
+    const nome = state.agents.find((a) => a.id === actor.id)?.name;
+    return nome === undefined ? "Agente" : `${nome} (Agente)`;
   }
   if (actor.kind === "automation") {
-    return `${state.automations.find((a) => a.id === actor.id)?.name ?? "Automação"} (Automação)`;
+    const nome = state.automations.find((a) => a.id === actor.id)?.name;
+    return nome === undefined ? "Automação" : `${nome} (Automação)`;
   }
   return ACTOR_KIND_LABEL[actor.kind] ?? actor.kind;
 }
