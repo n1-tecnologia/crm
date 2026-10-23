@@ -64,7 +64,9 @@ const NOME_DO_CONVITE_PENDENTE = "Convite pendente";
 
 function recortarMembro(membro: Member, state: DataState, memberId: Id): Member {
   let saida = membro;
-  if (membro.id !== memberId) saida = { ...saida, userMemory: { enabled: membro.userMemory.enabled, items: [] } };
+  // O tipo exige `userMemory`, mas o Membro hidratado do Postgres pode vir sem ele; o recorte não pode derrubar
+  // `GET /estado` por isso. Sem o campo, o de outro chega com o padrão de criação (`enabled: true`) e sem itens.
+  if (membro.id !== memberId) saida = { ...saida, userMemory: { enabled: (membro.userMemory as Member["userMemory"] | undefined)?.enabled ?? true, items: [] } };
   if (membro.state === "pendente" && !administraOEspaco(state, memberId)) {
     // Sem a chave (exactOptionalPropertyTypes): `invitedIdentity: undefined` não é o mesmo que ausente.
     const { invitedIdentity: _email, ...semEmail } = saida;
