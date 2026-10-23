@@ -90,6 +90,73 @@ scp -r apps/api/deploy root@VPS:/tmp/n1-crm-deploy
 ssh root@VPS 'bash /tmp/n1-crm-deploy/preparar-vps.sh crm-n1-api.<ip>.nip.io /tmp/n1-crm-deploy/chave.pub'
 ```
 
+## Limite e máscara no nginx (Fase 9)
+
+Dois arquivos, e só `/v1/public/` (rotas sem login: Formulário e Tarefa por
+link) é limitado na borda:
+
+| Arquivo (repositório) | Onde fica na VPS | O que tem |
+|---|---|---|
+| `deploy/n1-crm-limites.conf` | `/etc/nginx/conf.d/n1-crm-limites.conf` (contexto `http`) | as zonas `n1_publico` (`POST`) e `n1_publico_leitura` (`GET`/`HEAD`), o `map $n1_uri_mascarada` e o `log_format n1_mascarado` |
+| `deploy/nginx-n1-crm-api.conf` | `/etc/nginx/sites-available/n1-crm-api` | o `access_log … n1_mascarado` e o `location /v1/public/` |
+
+- **`POST` por IP, `GET` com teto próprio (D-20).** Uploads e submissões vêm do
+  navegador de quem preenche, com o IP do visitante: 30 por minuto, burst 10
+  (o primeiro `429` é a 12ª chamada seguida). O `GET` de `/f/` e `/p/` é feito
+  pelo servidor da Vercel, duas vezes por visita (`generateMetadata` e a
+  página), por um IP só: com 30/min todos os visitantes dividiriam um balde de
+  umas 15 visitas por minuto. Por isso o `GET`/`HEAD` tem zona própria a
+  120/min, burst 60, acima dos limites em memória do `apps/api` — o nginx só
+  corta enxurrada antes do Node.
+- **Segredo fora dos logs (D-18).** O `log_format` troca o segmento depois de
+  `/v1/public/forms/` e `/v1/public/tasks/` por `***` e não usa `$request` nem
+  `$http_referer`. Mascarar o `access_log` não basta: com `limit_req` ativo o
+  `error_log` grava a linha do pedido (com o segredo) a cada `429`. Por isso o
+  `location /v1/public/` tem `limit_req_log_level info` **e** `error_log
+  …publico.error.log crit`. **Custo:** um erro de proxy dessas rotas (502,
+  timeout) não aparece no log do nginx; a api registra os dela
+  (`journalctl -u n1-crm-api`).
+- **O arquivo da VPS é a fonte.** Depois da primeira emissão do certificado o
+  `preparar-vps.sh` não reescreve o site. Ele instala `n1-crm-limites.conf` só
+  se ainda não existir (se existir e diferir, avisa e não sobrescreve) e, se o
+  `nginx -t` falhar, tira o que essa rodada pôs e não recarrega.
+
+**Prova local, antes de ir à VPS** (precisa de Docker; sobe um `nginx:stable-alpine`
+com os arquivos do repositório, roda as provas e remove tudo):
+
+```bash
+bash apps/api/deploy/provar-nginx.sh      # PORTA_DE_PROVA=18609 por padrão
+```
+
+Saem três linhas `ok`: 50 `POST` seguidos (39 `429`, o primeiro na 12ª
+chamada), 50 `GET` sem nenhum `429`, e nenhum log com o segredo.
+
+**Roteiro à mão na VPS de produção** (como root; cada passo que muda o nginx
+só segue se o `nginx -t` passar — um `reload` com configuração inválida não
+deve ser tentado):
+
+1. Copie o arquivo novo: `install -m 644 n1-crm-limites.conf /etc/nginx/conf.d/n1-crm-limites.conf`.
+2. No site que o certbot já reescreveu (`/etc/nginx/sites-available/n1-crm-api`):
+   troque o `access_log` para `/var/log/nginx/n1-crm-api.access.log n1_mascarado;`
+   e acrescente o `location /v1/public/` do modelo (`nginx-n1-crm-api.conf`)
+   **antes** do `location /`, trocando `__SITE__` por `n1-crm-api` e `__PORTA__`
+   por `3020`. Se o certbot abriu um bloco `443`, o `location` vai nele também.
+3. `nginx -t` — se falhar, **pare** e cole a saída; não recarregue.
+4. `systemctl reload nginx`.
+5. Do notebook, o laço de 50 chamadas (use um segredo qualquer, ele não precisa existir):
+   `for i in $(seq 1 50); do curl -s -o /dev/null -w '%{http_code}\n' -X POST https://crm-n1-api.85.155.186.214.nip.io/v1/public/forms/teste123/submissions; done | sort | uniq -c`
+   — esperado: `429` em 30 ou mais, o primeiro na 11ª–20ª chamada. Repita com `GET` (sem `-X POST`): nenhum `429`.
+6. `grep -c teste123 /var/log/nginx/n1-crm-api*.log` — esperado: `0` em todos —
+   e `grep '/v1/public/forms/' /var/log/nginx/n1-crm-api.access.log | tail -3` mostra `***`.
+
+**Pendência do dono (Pitfall 8).** O limite em memória por IP do `apps/api`
+(`limite-de-taxa.ts`: 30/min no Formulário, 60/min na Tarefa pública) também
+junta num balde só todos os visitantes de `/f/` e `/p/` que vêm da Vercel, e
+cada visita chama a api duas vezes. A Fase 9 não mudou esse limite (D-19 o
+mantém): para o tráfego da Vercel é ele que manda, não o nginx. Decisão para
+uma sessão futura: subir o teto por IP do `GET` em memória, ou contar por
+segredo em vez de por IP.
+
 ## Por que assim
 
 - **systemd, não pm2.** O pm2 da VPS é do root e de todos os projetos; aqui

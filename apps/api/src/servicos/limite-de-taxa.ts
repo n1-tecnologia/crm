@@ -4,8 +4,13 @@
  * Plan 02-16, T-02-03/Denial of Service).
  *
  * Uma implementação em memória é suficiente NESTA fase: `apps/api` roda como
- * processo único atrás do nginx (D-15), e o nginx já impõe o próprio limite
- * na borda (Plan 02-15). O dia em que `apps/api` ganhar uma segunda
+ * processo único atrás do nginx (D-15). Desde a Fase 9 a borda também limita,
+ * em `apps/api/deploy/n1-crm-limites.conf` (`POST` por IP a 30/min, `GET` a
+ * 120/min por IP), e este contador em memória é a SEGUNDA camada. Ressalva: as
+ * páginas `/f/` e `/p/` chamam `GET /v1/public/*` do servidor da Vercel, então
+ * para esse tráfego todos os visitantes chegam por um IP só e é este contador
+ * que manda — o teto por IP do `GET` aqui é decisão do dono (ver
+ * `apps/api/deploy/CONTEXT.md`). O dia em que `apps/api` ganhar uma segunda
  * instância, este contador deixa de valer (cada processo teria a própria
  * janela) — a migração é para uma tabela (`plataforma`) ou Redis
  * compartilhado, não uma reescrita da interface: `consumir(chave)` continua

@@ -20,6 +20,7 @@ PORTA=3020
 NODE_MAJOR=24
 SERVICO=n1-crm-api
 SITE=/etc/nginx/sites-available/n1-crm-api
+LIMITES=/etc/nginx/conf.d/n1-crm-limites.conf
 
 [ "$(id -u)" = 0 ] || { echo "rode como root" >&2; exit 1; }
 
@@ -77,13 +78,25 @@ chmod 440 "/etc/sudoers.d/$SERVICO.novo"
 visudo -cf "/etc/sudoers.d/$SERVICO.novo"
 mv "/etc/sudoers.d/$SERVICO.novo" "/etc/sudoers.d/$SERVICO"
 
-echo "== nginx: site n1-crm-api para $DOMINIO"
+echo "== nginx: limites e máscara (conf.d) e site n1-crm-api para $DOMINIO"
+# Zonas, map e log_format do contexto http — o site abaixo os usa, então este
+# arquivo entra antes dele. Só nasce se não existir: se já existe e difere do
+# repositório, a VPS é a fonte (o dono pode ter ajustado) e nada é sobrescrito.
+LIMITES_NOVO=0
+if [ ! -f "$LIMITES" ]; then
+  LIMITES_NOVO=1
+  install -m 644 "$AQUI/n1-crm-limites.conf" "$LIMITES"
+elif ! cmp -s "$AQUI/n1-crm-limites.conf" "$LIMITES"; then
+  echo "aviso: $LIMITES difere do repositório — a VPS é a fonte; compare à mão e não foi sobrescrito" >&2
+fi
 if [ ! -f "$SITE" ]; then
-  sed "s/__DOMINIO__/$DOMINIO/g; s/__PORTA__/$PORTA/g" "$AQUI/nginx-n1-crm-api.conf" > "$SITE"
+  sed "s/__DOMINIO__/$DOMINIO/g; s/__PORTA__/$PORTA/g; s/__SITE__/$SERVICO/g" "$AQUI/nginx-n1-crm-api.conf" > "$SITE"
 fi
 ln -sfn "$SITE" /etc/nginx/sites-enabled/n1-crm-api
 if ! nginx -t; then
   rm -f /etc/nginx/sites-enabled/n1-crm-api
+  # Um conf.d inválido derrubaria o nginx de todos os projetos: sai o que esta rodada pôs.
+  [ "$LIMITES_NOVO" = 1 ] && rm -f "$LIMITES"
   echo "nginx -t falhou: o site n1-crm-api saiu e o nginx não foi recarregado" >&2
   exit 1
 fi
