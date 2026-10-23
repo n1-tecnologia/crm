@@ -20,6 +20,17 @@
  *     Sessão que saiu (o texto da conversa mora em `input`/`output`). Uma Sessão
  *     compartilhada chega sem `folderId` quando a pasta é de outro Membro.
  *
+ *   - Dado pessoal de outro Membro (D-01, 1.1.2): a Memória de Usuário chega
+ *     como `{ enabled, items: [] }`; o e-mail de um convite `pendente` chega
+ *     como "Convite pendente" a quem não administra o Espaço (o convite grava o
+ *     e-mail também em `displayName`); a Visão pessoal (`ownerKind: "member"`)
+ *     de outro Membro sai.
+ *   - Segredo de link público (1.1.3, Pattern 2): `Task.publicShare.secret` e
+ *     `Form.secret` chegam como "" a quem não administra a Lista
+ *     (`containerAdminRefusal`). O segredo some trocando o valor, não apagando
+ *     a chave — os tipos dizem `readonly secret: string`. O Formulário de uma
+ *     Lista oculta sai.
+ *
  * O que fica: tudo o mais — Membros, Papéis, Concessões, Equipes são o que a
  * própria leitura de alcance precisa. Coleções fora da Estrutura e da IA
  * pessoal (CRM, Caixa de Entrada) não têm privacidade por contêiner e não são
@@ -30,14 +41,56 @@
  * com ele, para um registro oculto não entrar pela porta de trás.
  */
 
-import { containerPath, membroVeSessaoDeChat, memberReachesContainer, memberSeesTask } from "./derive";
+import { containerAdminRefusal, containerPath, membroVeSessaoDeChat, memberReachesContainer, memberSeesTask } from "./derive";
 import type { Diferenca, Ordens } from "./diferenca";
+import { administraOEspaco } from "./operations/ia/permissoes-ia";
 import type { DataState } from "./state";
-import type { ChatSession, Id, Task } from "./types";
+import type { ChatSession, Form, Id, Member, Task } from "./types";
 
 export interface Visibilidade {
   readonly estado: DataState;
   readonly ocultos: ReadonlySet<Id>;
+}
+
+/** O `displayName` de um Membro `pendente` para quem não administra o Espaço (o convite o grava com o e-mail). */
+const NOME_DO_CONVITE_PENDENTE = "Convite pendente";
+
+function recortarMembro(membro: Member, state: DataState, memberId: Id): Member {
+  let saida = membro;
+  if (membro.id !== memberId) saida = { ...saida, userMemory: { enabled: membro.userMemory.enabled, items: [] } };
+  if (membro.state === "pendente" && !administraOEspaco(state, memberId)) {
+    // Sem a chave (exactOptionalPropertyTypes): `invitedIdentity: undefined` não é o mesmo que ausente.
+    const { invitedIdentity: _email, ...semEmail } = saida;
+    saida = { ...semEmail, displayName: NOME_DO_CONVITE_PENDENTE };
+  }
+  return saida;
+}
+
+/**
+ * O registro de UMA coleção como o Membro pode lê-lo (Pattern 2 da Fase 9):
+ * cópia sem os campos que não são dele, sem tocar no original. Coleção sem
+ * regra volta intacta (os Canais projetados da Fase 8 passam por aqui sem
+ * mudança). `state` é sempre o estado INTEIRO: a decisão olha Papéis e
+ * concessões que o estado recortado já não traz.
+ */
+export function recortarRegistro<T>(colecao: string, dados: T, state: DataState, memberId: Id): T {
+  switch (colecao) {
+    case "members":
+      return recortarMembro(dados as Member, state, memberId) as T;
+    case "tasks": {
+      const tarefa = dados as Task;
+      if (tarefa.publicShare === undefined) return dados;
+      if (containerAdminRefusal(state, memberId, "list", tarefa.listId) === undefined) return dados;
+      return { ...tarefa, publicShare: { ...tarefa.publicShare, secret: "" } } as T;
+    }
+    case "forms": {
+      const form = dados as Form;
+      if (containerAdminRefusal(state, memberId, "list", form.listId) === undefined) return dados;
+      return { ...form, secret: "" } as T;
+    }
+    default:
+      return dados;
+  }
 }
 
 export function visibilidadePara(state: DataState, memberId: Id): Visibilidade {
@@ -65,6 +118,14 @@ export function visibilidadePara(state: DataState, memberId: Id): Visibilidade {
   const lists = state.lists.filter((l) => alcancados.has(l.id) || !ocultos.add(l.id));
   const visiveis = new Set(tarefasVisiveis.map((t) => t.id));
   for (const t of state.tasks) if (!visiveis.has(t.id)) ocultos.add(t.id);
+
+  // Dado pessoal e segredos de link (D-01, 1.1.2 e 1.1.3): sempre a partir do estado inteiro.
+  const members = state.members.map((m) => recortarRegistro("members", m, state, memberId));
+  const views = state.views.filter((v) => (v.ownerKind === "member" && v.ownerId !== memberId ? !ocultos.add(v.id) : true));
+  const tasks = tarefasVisiveis.map((t) => recortarRegistro("tasks", t, state, memberId));
+  const forms = state.forms
+    .filter((f) => !ocultos.has(f.listId) || !ocultos.add(f.id))
+    .map((f) => recortarRegistro("forms", f, state, memberId));
 
   // IA pessoal, a partir do estado INTEIRO (Pattern 1 da Fase 9). Sem retorno
   // antecipado acima: o Proprietário alcança toda a Estrutura e, ainda assim,
@@ -100,7 +161,7 @@ export function visibilidadePara(state: DataState, memberId: Id): Visibilidade {
     return false;
   });
   return {
-    estado: { ...state, spaces, folders, lists, tasks: tarefasVisiveis, activity, approvals, files, chatSessions, chatFolders, agentExecutions },
+    estado: { ...state, members, views, spaces, folders, lists, tasks, forms, activity, approvals, files, chatSessions, chatFolders, agentExecutions },
     ocultos,
   };
 }

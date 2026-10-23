@@ -41,7 +41,8 @@ describe("visibilidadePara", () => {
     expect(ocultos.has(CP.listId)).toBe(true);
     // O que não é privado continua inteiro, e o que a leitura de alcance precisa também.
     expect(estado.spaces.length).toBeGreaterThan(0);
-    expect(estado.members).toBe(state.members);
+    // Os Membros chegam todos, na ordem do estado (a Memória de outro sai, o Membro não: Fase 9, D-01).
+    expect(estado.members.map((m) => m.id)).toEqual(state.members.map((m) => m.id));
     expect(estado.grants).toBe(state.grants);
     // Registros de Atividade e Aprovações sobre o que saiu também saem.
     expect(estado.activity.some((a) => ocultos.has(a.objectId))).toBe(false);
