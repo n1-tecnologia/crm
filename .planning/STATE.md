@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 09
 current_phase_name: Segurança dos dados e base de produção
 status: executing
-stopped_at: Completed 09-02-PLAN.md
-last_updated: "2026-10-23T00:15:58.828Z"
+stopped_at: Completed 09-03-PLAN.md
+last_updated: "2026-10-23T00:24:25.380Z"
 last_activity: 2026-10-22
 last_activity_desc: Phase 09 execution started
-state_head: 266c225c40d46f2e3986725dc6222e3933bc4139
+state_head: 73abe99ba7422c20fa78c1b9f405f66785372e90
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 170
-  completed_plans: 149
+  completed_plans: 150
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 ## Current Position
 
 Phase: 09 (Segurança dos dados e base de produção) — EXECUTING
-Plan: 3 of 22
+Plan: 4 of 22
 Status: Ready to execute
 Last activity: 2026-10-22 — Phase 09 execution started
 
@@ -372,6 +372,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 08 P15 | 22min | 3 tasks | 5 files |
 | Phase 09 P01 | 12 min | 3 tasks | 9 files |
 | Phase 09 P02 | 8 min | 3 tasks | 3 files |
+| Phase 09 P03 | 7 min | 3 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -505,6 +506,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 09]: 09-01: testes que semeiam dado em estado.test.ts usam describeComBanco (Postgres local) e a fábrica espaco-de-vazamento.ts; container crm-n1-pg-09NN porta 556NN — F9: o guarda antigo mirava o Supabase do .env
 - [Phase 09]: 09-02: recortarValor também caminha em objeto de id desconhecido (não só sem id), para um objeto com Tarefa dentro não abrir o segredo de link
 - [Phase 09]: 09-02: a fronteira do Convidado é baseDoPapel === 'convidado' (Papel personalizado de base convidado também recebe as cinco coleções de IA vazias)
+- [Phase 09]: 09-03: startConversation não ganhou variante SemConferencia (já recusava Convidado e Membro não ativo); só a Automação envia por sendMessageSemConferencia, fora de OPERACOES
+- [Phase 09]: 09-03: restoreList reaproveita memberReachesContainer + containerTrashRefusal em vez de delegar a restoreContainer (que também recusa colisão de nome)
 
 ### Pending Todos
 
@@ -566,6 +569,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-23T00:15:58.651Z
-Stopped at: Completed 09-02-PLAN.md
+Last session: 2026-10-23T00:24:25.194Z
+Stopped at: Completed 09-03-PLAN.md
 Resume file: None
