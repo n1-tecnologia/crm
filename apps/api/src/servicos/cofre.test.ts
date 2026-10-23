@@ -6,8 +6,20 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { describe, expect, it } from "vitest";
-import { cifrar, decifrar, lerChavesDoCofre, type ChavesDoCofre, type DonoDaCredencial } from "./cofre";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { encerrar, pool } from "../persistencia/conexao";
+import { describeComBanco, novoEspacoDeTeste, prepararBancoCrm } from "../testes/banco-crm";
+import {
+  cifrar,
+  decifrar,
+  guardarCredencial,
+  lerChavesDoCofre,
+  lerCredencial,
+  type ChavesDoCofre,
+  type DonoDaCredencial,
+} from "./cofre";
 
 const dono: DonoDaCredencial = {
   workspaceId: "ws_teste",
@@ -129,5 +141,91 @@ describe("cofre: chaves por ambiente", () => {
         COFRE_CHAVE_ANTERIOR_VERSAO: "1",
       }),
     ).toThrow(/32 bytes/);
+  });
+});
+
+describeComBanco("cofre: gravar e ler no Postgres local", () => {
+  const workspaceId = novoEspacoDeTeste("cofre");
+  const chaves = chavesCom(randomBytes(32));
+  const donoDoBanco: DonoDaCredencial = { workspaceId, donoTipo: "canal", donoId: "canal_a", tipo: "token_de_acesso" };
+
+  beforeAll(async () => {
+    await prepararBancoCrm();
+  });
+
+  afterAll(async () => {
+    await pool().query("delete from plataforma.credenciais where workspace_id = $1", [workspaceId]);
+    await encerrar();
+  });
+
+  it("guarda cifrado e lê de volta o mesmo texto, sem o texto na coluna", async () => {
+    const segredo = `EAAG-${randomBytes(12).toString("hex")}`;
+    const { id } = await guardarCredencial(pool(), chaves, { ...donoDoBanco, segredo });
+    expect(typeof id).toBe("string");
+
+    const lido = await lerCredencial(pool(), chaves, donoDoBanco);
+    expect(lido).toBe(segredo);
+
+    const linha = await pool().query<{ segredo_cifrado: Buffer }>(
+      "select segredo_cifrado from plataforma.credenciais where id = $1",
+      [id],
+    );
+    const guardado = linha.rows[0]!.segredo_cifrado;
+    expect(guardado.includes(Buffer.from(segredo, "utf8"))).toBe(false);
+    expect(guardado.includes(Buffer.from(Buffer.from(segredo, "utf8").toString("base64"), "utf8"))).toBe(false);
+    expect(guardado.toString("utf8")).not.toContain(segredo);
+    expect(guardado.toString("base64")).not.toContain(Buffer.from(segredo, "utf8").toString("base64"));
+  });
+
+  it("gravar duas vezes o mesmo dono deixa uma ativa e a anterior revogada", async () => {
+    const dono: DonoDaCredencial = { ...donoDoBanco, donoId: "canal_b" };
+    await guardarCredencial(pool(), chaves, { ...dono, segredo: "primeiro" });
+    await guardarCredencial(pool(), chaves, { ...dono, segredo: "segundo" });
+
+    const linhas = await pool().query<{ revogado_em: Date | null }>(
+      "select revogado_em from plataforma.credenciais where workspace_id = $1 and dono_id = $2",
+      [workspaceId, "canal_b"],
+    );
+    expect(linhas.rows).toHaveLength(2);
+    expect(linhas.rows.filter((l) => l.revogado_em === null)).toHaveLength(1);
+    expect(linhas.rows.filter((l) => l.revogado_em !== null)).toHaveLength(1);
+    expect(await lerCredencial(pool(), chaves, dono)).toBe("segundo");
+  });
+
+  it("lança com a chave de outro ambiente e devolve undefined para dono sem credencial", async () => {
+    await guardarCredencial(pool(), chaves, { ...donoDoBanco, donoId: "canal_c", segredo: "tok-c" });
+    await expect(
+      lerCredencial(pool(), chavesCom(randomBytes(32)), { ...donoDoBanco, donoId: "canal_c" }),
+    ).rejects.toThrow();
+    expect(await lerCredencial(pool(), chaves, { ...donoDoBanco, donoId: "canal_sem_credencial" })).toBeUndefined();
+  });
+
+  it("uma linha copiada para outro dono_id não decifra (AAD)", async () => {
+    await guardarCredencial(pool(), chaves, { ...donoDoBanco, donoId: "canal_d", segredo: "tok-d" });
+    await pool().query(
+      "update plataforma.credenciais set dono_id = 'canal_d_copia' where workspace_id = $1 and dono_id = 'canal_d'",
+      [workspaceId],
+    );
+    await expect(
+      lerCredencial(pool(), chaves, { ...donoDoBanco, donoId: "canal_d_copia" }),
+    ).rejects.toThrow();
+  });
+});
+
+describe("cofre: nenhuma rota devolve o segredo", () => {
+  function arquivosTs(pasta: string): string[] {
+    return readdirSync(pasta, { withFileTypes: true }).flatMap((entrada) => {
+      const caminho = join(pasta, entrada.name);
+      if (entrada.isDirectory()) return arquivosTs(caminho);
+      return entrada.name.endsWith(".ts") && !entrada.name.endsWith(".test.ts") ? [caminho] : [];
+    });
+  }
+
+  it("nenhum arquivo de rotas/ importa servicos/cofre", () => {
+    const pasta = join(import.meta.dirname, "..", "rotas");
+    const arquivos = arquivosTs(pasta);
+    expect(arquivos.length).toBeGreaterThan(0);
+    const importam = arquivos.filter((arquivo) => readFileSync(arquivo, "utf8").includes("servicos/cofre"));
+    expect(importam).toEqual([]);
   });
 });
