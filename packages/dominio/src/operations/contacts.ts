@@ -19,6 +19,7 @@ import type {
   Link,
 } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
+import { recusaDeEscritaNoCrmAntigo } from "./crm-antigo";
 
 const now = (): string => new Date().toISOString();
 
@@ -42,6 +43,9 @@ export function addContactIdentifier(
   type: ContactIdentifierType,
   value: string,
 ): OperationResult<Contact> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const contact = state.contacts.find((c) => c.id === contactId);
   if (!contact) return fail("Contato não encontrado.");
   const canonical = canonicalIdentifier(type, value);
@@ -97,6 +101,9 @@ export function transferContactIdentifier(
   identifierId: Id,
   toContactId: Id,
 ): OperationResult<Contact> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const from = state.contacts.find((c) => c.id === fromContactId);
   const to = state.contacts.find((c) => c.id === toContactId);
   if (!from || !to) return fail("Contato não encontrado.");
@@ -146,6 +153,9 @@ export function mergeContacts(
   survivorId: Id,
   absorbedId: Id,
 ): OperationResult<Contact> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   if (survivorId === absorbedId) return fail("Escolha dois Contatos diferentes.");
   const survivor = state.contacts.find((c) => c.id === survivorId);
   const absorbed = state.contacts.find((c) => c.id === absorbedId);
@@ -311,6 +321,9 @@ export function endContactCompanyLink(
   linkId: Id,
   endDate: string,
 ): OperationResult<void> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const link = state.contactCompanyLinks.find((l) => l.id === linkId);
   if (!link) return fail("Vínculo não encontrado.");
   if (link.end) return fail("Este Vínculo já está encerrado.");
@@ -331,6 +344,9 @@ export function endContactCompanyLink(
 
 /** RN-CON-13 / B43 — the trash records the previous state; restore gives it back. */
 export function trashContact(state: DataState, actingMemberId: Id, contactId: Id): OperationResult<Contact> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const contact = state.contacts.find((c) => c.id === contactId);
   if (!contact) return fail("Contato não encontrado.");
   if (contact.lifecycle === "mesclado") return fail("Um Contato mesclado não vai para a lixeira.");
@@ -355,6 +371,9 @@ export function trashContact(state: DataState, actingMemberId: Id, contactId: Id
  * `ativo`/`arquivado` subsidiary.
  */
 export function trashCompany(state: DataState, actingMemberId: Id, companyId: Id): OperationResult<void> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const company = state.companies.find((c) => c.id === companyId);
   if (!company) return fail("Empresa não encontrada.");
   // B43 — a second call must not overwrite the state the restore will give back.
@@ -405,6 +424,9 @@ export function restoreMergedCopy(
   actingMemberId: Id,
   mergedContactId: Id,
 ): OperationResult<Contact> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const merged = state.contacts.find((c) => c.id === mergedContactId);
   if (!merged) return fail("Contato não encontrado.");
   if (merged.lifecycle !== "mesclado") {
@@ -507,6 +529,9 @@ export function importContacts(
     readonly originId?: Id;
   },
 ): OperationResult<ImportOutcome> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const owner = state.members.find((m) => m.id === (options.ownerMemberId ?? actingMemberId));
   if (!owner || (owner.state !== "ativo" && owner.state !== "suspenso")) {
     return fail("O Proprietário dos Contatos importados precisa ser um Membro ativo.", "proprietario");
@@ -643,6 +668,9 @@ export function restoreContact(
   actingMemberId: Id,
   contactId: Id,
 ): OperationResult<Contact> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const contact = state.contacts.find((c) => c.id === contactId);
   if (!contact) return fail("Contato não encontrado.");
   if (contact.lifecycle !== "naLixeira") return ok(contact);
@@ -671,6 +699,9 @@ export function restoreCompany(
   actingMemberId: Id,
   companyId: Id,
 ): OperationResult<Company> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const company = state.companies.find((c) => c.id === companyId);
   if (!company) return fail("Empresa não encontrada.");
   if (company.lifecycle !== "naLixeira") return ok(company);
@@ -716,6 +747,9 @@ export function markContactsAsDistinct(
   contactAId: Id,
   contactBId: Id,
 ): OperationResult<void> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   if (contactAId === contactBId) return fail("Um Contato não é distinto de si mesmo.");
   const a = state.contacts.find((c) => c.id === contactAId);
   const b = state.contacts.find((c) => c.id === contactBId);
@@ -764,6 +798,9 @@ export function addContactNote(
   contactId: Id,
   content: string,
 ): OperationResult<Contact> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const contact = state.contacts.find((c) => c.id === contactId);
   if (!contact) return fail("Contato não encontrado.");
   if (contact.lifecycle === "mesclado") return fail("Um Contato mesclado é somente leitura.");
@@ -1254,6 +1291,9 @@ export function addCompanyNote(
   companyId: Id,
   content: string,
 ): OperationResult<Company> {
+  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
+  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
+  if (recusa) return fail(recusa);
   const company = state.companies.find((c) => c.id === companyId);
   if (!company) return fail("Empresa não encontrada.");
   if (company.lifecycle === "mesclado") return fail("Uma Empresa mesclada é somente leitura.");
