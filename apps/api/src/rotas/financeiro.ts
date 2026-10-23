@@ -39,6 +39,7 @@ import type { DataState } from "@n1/dominio";
 import { memberReachesContainer } from "@n1/dominio/derive";
 import { CP } from "@n1/dominio/operations";
 import { pool } from "../persistencia/conexao";
+import { recusarSuspensoNaEscrita } from "../plugins/autenticacao";
 import { hidratar } from "../persistencia/repositorio";
 import {
   criarClienteDeLeituras,
@@ -114,6 +115,8 @@ function queryLimpa(dados: Record<string, string | undefined>): Record<string, s
 }
 
 export async function rotasDeFinanceiro(app: FastifyInstance, opcoes: OpcoesDeFinanceiro = {}): Promise<void> {
+  // 1.2 — o Membro suspenso consulta o Financeiro, mas nenhuma escrita passa.
+  app.addHook("preValidation", recusarSuspensoNaEscrita);
   // Único ponto do módulo que lê variável de ambiente.
   const doAmbiente = opcoesDosClientesDoFinanceiro(process.env);
   const cliente = opcoes.cliente ?? criarClienteDeLeituras(doAmbiente.leitura);

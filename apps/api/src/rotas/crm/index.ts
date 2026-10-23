@@ -18,6 +18,7 @@
 import type { FastifyInstance } from "fastify";
 import type { Pool } from "pg";
 import { pool } from "../../persistencia/conexao";
+import { recusarSuspensoNaEscrita } from "../../plugins/autenticacao";
 import { criarAcessoAoCrmPg, type AcessoAoCrm } from "../../servicos/crm/acesso";
 import { criarServicoDeCanais, type ServicoDeCanais } from "../../servicos/crm/canais";
 import { criarServicoDeContatos, type ServicoDeContatos } from "../../servicos/crm/contatos";
@@ -56,6 +57,9 @@ export interface OpcoesDeCrm {
 }
 
 export async function rotasDeCrm(app: FastifyInstance, opcoes: OpcoesDeCrm = {}): Promise<void> {
+  // 1.2 — o Membro suspenso lê o CRM, mas toda escrita recusa antes de validar o corpo. Vem antes
+  // dos filhos, para que as rotas de cada recurso herdem; `podeNoCrm` segue como segunda barreira.
+  app.addHook("preValidation", recusarSuspensoNaEscrita);
   const obterPool = opcoes.pool ?? pool;
   const acesso = opcoes.acesso ?? criarAcessoAoCrmPg(obterPool);
   const contatos = opcoes.contatos ?? criarServicoDeContatos({ pool: obterPool, acesso });

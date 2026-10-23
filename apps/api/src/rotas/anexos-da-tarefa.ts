@@ -23,6 +23,7 @@ import type { DataState } from "@n1/dominio/state";
 import { anexarArquivoEnviado, recusaDeArquivoEnviado, type DestinoDoArquivo } from "@n1/dominio/operations/anexos-enviados";
 import { cutucarPonte } from "../automacoes/ponte-ativa";
 import { pool } from "../persistencia/conexao";
+import { recusarSuspensoNaEscrita } from "../plugins/autenticacao";
 import { hidratar } from "../persistencia/repositorio";
 import { consumirSessao, obterSessao, objetosDaSessao, type SessaoDeUpload } from "../persistencia/sessoes-de-upload";
 import { executar } from "../persistencia/unidade-de-trabalho";
@@ -93,6 +94,8 @@ async function hidratarSomente(workspaceId: string): Promise<DataState> {
 }
 
 export async function rotasDeAnexosDaTarefa(app: FastifyInstance): Promise<void> {
+  // 1.2 — o Membro suspenso não anexa nem confirma anexo.
+  app.addHook("preValidation", recusarSuspensoNaEscrita);
   app.post<{ Params: { taskId: string } }>("/tarefas/:taskId/anexos/ticket", async (request, reply) => {
     const parametros = PARAMETROS.safeParse(request.params);
     const corpo = CORPO_DO_TICKET.safeParse(request.body);

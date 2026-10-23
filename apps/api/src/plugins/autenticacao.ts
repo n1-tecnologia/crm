@@ -17,7 +17,7 @@
  * (Security Domain V4, RESEARCH.md).
  */
 
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Member } from "@n1/dominio";
 import type { VerificarToken } from "../autenticacao/verificar-token";
 import { PREFIXO_ROTAS_DE_SERVICO } from "./autenticacao-servico";
@@ -48,6 +48,26 @@ export const FRASE_DE_SUSPENSO = "Seu acesso está suspenso: você consulta, mas
 export function recusaDeSuspenso(membro: MembroDaSessao): string | undefined {
   return membro.state !== "ativo" ? FRASE_DE_SUSPENSO : undefined;
 }
+
+/**
+ * Hook `preValidation` das rotas REST que gravam (Financeiro, anexos da Tarefa e
+ * CRM): para um método fora de GET/HEAD/OPTIONS, o Membro que não está `ativo`
+ * recebe 403 com a frase do suspenso, ANTES de validar o corpo (1.2 e a Open
+ * Question 7 da pesquisa: o suspenso consulta e não grava, em toda família de
+ * rota). `POST /operacoes/:nome` recusa na própria rota (1.2.1), depois de
+ * conferir o nome da operação.
+ *
+ * Registre-o na primeira linha do plugin, antes de registrar os filhos, para
+ * que as rotas deles o herdem. No CRM a `podeNoCrm` continua como segunda barreira.
+ */
+export async function recusarSuspensoNaEscrita(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  if (METODOS_DE_LEITURA.has(request.method)) return;
+  const frase = recusaDeSuspenso(request.membro);
+  if (frase === undefined) return;
+  await reply.status(403).send({ ok: false, error: frase, codigo: "SUSPENSO" });
+}
+
+const METODOS_DE_LEITURA: ReadonlySet<string> = new Set(["GET", "HEAD", "OPTIONS"]);
 
 export interface OpcoesDeAutenticacao {
   readonly workspaceId: string;
