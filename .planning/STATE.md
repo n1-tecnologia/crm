@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 09
 current_phase_name: Segurança dos dados e base de produção
 status: executing
-stopped_at: Completed 09-07-PLAN.md
-last_updated: "2026-10-23T01:22:37.952Z"
+stopped_at: Completed 09-08-PLAN.md
+last_updated: "2026-10-23T01:29:35.897Z"
 last_activity: 2026-10-22
 last_activity_desc: Phase 09 execution started
-state_head: 604d148386355ced6f9defd114d3de3bfdac8d34
+state_head: ef73b4da1e823feb7247cdbeb68a453c88564776
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 170
-  completed_plans: 154
+  completed_plans: 155
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 ## Current Position
 
 Phase: 09 (Segurança dos dados e base de produção) — EXECUTING
-Plan: 8 of 22
+Plan: 9 of 22
 Status: Ready to execute
 Last activity: 2026-10-22 — Phase 09 execution started
 
@@ -377,6 +377,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 09 P05 | 12 min | 2 tasks | 7 files |
 | Phase 09 P06 | 55 min | 2 tasks | 7 files |
 | Phase 09 P07 | 8 min | 3 tasks | 8 files |
+| Phase 09 P08 | 25 min | 3 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -519,6 +520,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 09]: 09-06: POST por IP a 30/min e GET/HEAD com zona propria a 120/min (burst 60) em /v1/public/ no nginx, porque /f/ e /p/ chegam pelo IP de saida da Vercel
 - [Phase 09]: 09-06: segredo de link fora do error_log do nginx via limit_req_log_level info mais error_log crit no location /v1/public/; preparar-vps.sh nao sobrescreve o conf.d da VPS e desfaz o que instalou se nginx -t falhar
 - [Phase 09]: 09-07: a resposta de POST /operacoes sai recortada (diferenca e value) depois de executar(), com um unico visibilidadePara, nos dois ramos (executar e SERVICOS via deps.aoTerminar); o suspenso recebe 403 logo depois de ehNomeDeOperacao
+- [Phase 09]: 09-08: ia/layout.tsx envolve o NoAccessState em PageHeader+CorpoDeTela (A1); forms-editor sem segredo não renderiza Copiar link (A2); rótulos locais do ator (tarefa-completa, timeline) alinhados a actorLabel do domínio (S4)
 
 ### Pending Todos
 
@@ -580,6 +582,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-23T01:22:37.199Z
-Stopped at: Completed 09-07-PLAN.md
+Last session: 2026-10-23T01:29:35.709Z
+Stopped at: Completed 09-08-PLAN.md
 Resume file: None
