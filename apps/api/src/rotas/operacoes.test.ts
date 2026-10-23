@@ -36,6 +36,7 @@ import { evoluirConfiguracaoDeSolicitacoes } from "@n1/dominio/solicitacao-de-pa
 import { buildApp } from "../app";
 import { carregarEnv, encerrar, pool } from "../persistencia/conexao";
 import { hidratar, semear } from "../persistencia/repositorio";
+import { FRASE_DE_SUSPENSO } from "../plugins/autenticacao";
 import { describeComBanco, prepararBancoCrm } from "../testes/banco-crm";
 import {
   appDoEspaco,
@@ -758,7 +759,7 @@ d("POST /operacoes/:nome — contra o banco real", () => {
   });
 });
 
-describeComBanco("POST /operacoes — resposta recortada pelo que o Membro enxerga (1.1.5, F1)", () => {
+describeComBanco("POST /operacoes — resposta recortada pelo que o Membro enxerga (1.1.5, F1) e Membro suspenso (1.2.1)", () => {
   let espaco: EspacoDeVazamento;
 
   beforeAll(async () => {
@@ -819,5 +820,21 @@ describeComBanco("POST /operacoes — resposta recortada pelo que o Membro enxer
     expect(corpo.value).toBeUndefined();
     expect(corpo.diferenca?.gravados ?? []).toHaveLength(0);
     expect(corpo.diferenca?.removidos ?? []).toHaveLength(0);
+  });
+
+  it("1.2.1 — o Membro suspenso chama trashContact e recebe 403; depois, o Contato continua ativo no banco", async () => {
+    const contato = espaco.estado.contacts.find((c) => c.lifecycle === "ativo");
+    expect(contato, "o seed precisa de um Contato ativo").toBeDefined();
+    const resposta = await chamar(TOKENS_DE_VAZAMENTO.suspenso, "trashContact", [contato!.id]);
+    expect(resposta.statusCode, resposta.body.slice(0, 200)).toBe(403);
+    expect(resposta.json()).toEqual({ ok: false, error: FRASE_DE_SUSPENSO });
+
+    const cliente = await pool().connect();
+    try {
+      const { state } = await hidratar(cliente, espaco.workspaceId);
+      expect(state.contacts.find((c) => c.id === contato!.id)?.lifecycle).toBe("ativo");
+    } finally {
+      cliente.release();
+    }
   });
 });

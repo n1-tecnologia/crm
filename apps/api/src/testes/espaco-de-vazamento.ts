@@ -26,7 +26,7 @@ import { semear } from "../persistencia/repositorio";
 import { limparEspaco, novoEspacoDeTeste } from "./banco-crm";
 
 /** O token de cada Membro da fábrica; qualquer outro token é recusado (`null`). */
-export const TOKENS_DE_VAZAMENTO = { a: "token-a", b: "token-b", proprietario: "token-proprietario" } as const;
+export const TOKENS_DE_VAZAMENTO = { a: "token-a", b: "token-b", proprietario: "token-proprietario", suspenso: "token-suspenso" } as const;
 
 /** Os ids do que é PRIVADO de um Membro: a Sessão de Chat, a pasta, a Execução da conversa e a Visão pessoal. */
 export interface IdsPrivados {
@@ -57,7 +57,8 @@ export interface SegredosDeVazamento {
 export interface EspacoDeVazamento {
   readonly workspaceId: string;
   readonly estado: DataState;
-  readonly membros: { readonly a: Member; readonly b: Member; readonly proprietario: Member };
+  /** `suspenso` é um quarto Membro do seed, marcado `suspenso` no estado da fábrica: consulta, mas não grava (1.2.1). */
+  readonly membros: { readonly a: Member; readonly b: Member; readonly proprietario: Member; readonly suspenso: Member };
   /** As frases únicas de cada um: mensagem, entrada e saída da Execução, e o item de Memória de Usuário. */
   readonly frases: { readonly a: readonly string[]; readonly b: readonly string[] };
   readonly ids: { readonly a: IdsPrivados; readonly b: IdsPrivados };
@@ -205,6 +206,10 @@ export function montarEspacoDeVazamento(rotulo: string): EspacoDeVazamento {
   if (!proprietario?.userId) throw new Error("o seed precisa de um Proprietário com usuário");
   const papelMembro = estado.roles.find((r) => r.base === "membro");
   if (!papelMembro) throw new Error("o seed precisa de um Papel de base membro");
+  // 1.2.1 — um Membro ativo, com usuário, diferente de A, B e do Proprietário, que a fábrica marca `suspenso`.
+  const suspenso = estado.members.find((m) => m.state === "ativo" && m.userId !== undefined && ![a.id, b.id, proprietario.id].includes(m.id));
+  if (!suspenso) throw new Error("o seed precisa de um quarto Membro ativo, com usuário, para ser o suspenso");
+  suspenso.state = "suspenso";
 
   const alvo = listaDoSegredo(estado, a, b);
   const agora = new Date().toISOString();
@@ -272,7 +277,7 @@ export function montarEspacoDeVazamento(rotulo: string): EspacoDeVazamento {
   return {
     workspaceId: novoEspacoDeTeste(rotulo),
     estado,
-    membros: { a, b, proprietario },
+    membros: { a, b, proprietario, suspenso },
     frases: { a: privadoA.frases, b: privadoB.frases },
     ids: { a: privadoA.ids, b: privadoB.ids },
     convite,
@@ -302,6 +307,7 @@ export function appDoEspaco(espaco: EspacoDeVazamento): FastifyInstance {
     [TOKENS_DE_VAZAMENTO.a]: espaco.membros.a.userId,
     [TOKENS_DE_VAZAMENTO.b]: espaco.membros.b.userId,
     [TOKENS_DE_VAZAMENTO.proprietario]: espaco.membros.proprietario.userId,
+    [TOKENS_DE_VAZAMENTO.suspenso]: espaco.membros.suspenso.userId,
   };
   return buildApp({
     logger: false,
