@@ -35,7 +35,7 @@ import { cutucarPonte, type ParDaPonte } from "../automacoes/ponte-ativa";
 import type { MembroDaSessao } from "../plugins/autenticacao";
 import type { EventoDeSaida } from "../persistencia/outbox";
 import { executar, type ResultadoTransacao } from "../persistencia/unidade-de-trabalho";
-import { filtrarDiferenca, visibilidadePara } from "@n1/dominio/derive-visibilidade";
+import { recortarDiferenca, recortarValor, visibilidadePara } from "@n1/dominio/derive-visibilidade";
 import { maiorIdDe } from "@n1/dominio/operations";
 import { convidarMembro } from "../servicos/convidar-membro";
 import { LISTA_SOLICITACOES_DE_PAGAMENTO_ID } from "../servicos/dto-solicitacao";
@@ -226,20 +226,26 @@ const ENTRADA_INVITE_MEMBER = z.object({ email: z.string(), roleId: z.string() }
  * operação sem entrada aqui segue o caminho de hoje: `executar()` direto.
  */
 const SERVICOS: Partial<
-  Record<NomeDeOperacao, (membro: MembroDaSessao, args: readonly unknown[]) => Promise<ResultadoTransacao<unknown>>>
+  Record<
+    NomeDeOperacao,
+    (membro: MembroDaSessao, args: readonly unknown[], aoTerminar: (state: DataState) => void) => Promise<ResultadoTransacao<unknown>>
+  >
 > = {
   // T-1-08 — `.strip()` descarta qualquer `userId` que o cliente mande em
   // `args[0]`: a única fonte de `userId` é `resolverUsuarioPorEmail`, dentro
   // de `convidarMembro`, nunca o corpo da requisição.
-  inviteMember: (membro, args) => {
+  inviteMember: (membro, args, aoTerminar) => {
     const entrada = ENTRADA_INVITE_MEMBER.safeParse(args[0]);
     if (!entrada.success) throw new ErroDeEntrada(mensagemDeEntradaInvalida("inviteMember"));
-    return convidarMembro({
-      workspaceId: membro.workspaceId,
-      actingMemberId: membro.id,
-      email: entrada.data.email,
-      roleId: entrada.data.roleId,
-    });
+    return convidarMembro(
+      {
+        workspaceId: membro.workspaceId,
+        actingMemberId: membro.id,
+        email: entrada.data.email,
+        roleId: entrada.data.roleId,
+      },
+      { aoTerminar },
+    );
   },
 };
 
@@ -295,12 +301,15 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
       let resultado: ResultadoTransacao<unknown>;
       let eraReplay = false;
       let afetadas: ParDaPonte[] = [];
-      // PRIV-03 — o estado DEPOIS da operação (a última tentativa), para
-      // recortar o diff pelo que este Membro enxerga antes de responder.
+      // PRIV-03 / 1.1.5 — o estado DEPOIS da operação (a última tentativa), para
+      // recortar o diff e o `value` pelo que este Membro enxerga antes de responder.
+      // Os dois ramos o preenchem: `executar()` direto e o serviço de `SERVICOS`.
       let depois: DataState | undefined;
       try {
         resultado = servico
-          ? await servico(request.membro, args)
+          ? await servico(request.membro, args, (state) => {
+              depois = state;
+            })
           : await executar(
               request.membro.workspaceId,
               (state) => {
@@ -357,12 +366,22 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
       // a rota preserva isso: 200 sempre que a Unidade de Trabalho não
       // devolveu conflito.
       //
-      // PRIV-03 — o diff volta sem o que o Membro não enxerga (um registro
-      // oculto não entra pela porta de trás), e com o contador de ids do
-      // estado inteiro, como `GET /estado`.
+      // PRIV-03 / F1 / 1.1.5 — a resposta volta recortada pelo que este Membro
+      // enxerga, com UM único `visibilidadePara` sobre o estado DEPOIS da
+      // operação: o diff sem registro oculto e sem o que é de outro (segredo de
+      // link, Memória, e-mail de convite), o `value` (a Tarefa inteira, por
+      // exemplo) idem, e o contador de ids do estado inteiro, como `GET /estado`.
+      // O recorte roda aqui, DEPOIS de `executar()`, e nunca dentro do callback:
+      // o evento `automacao.notificar-canal.v1` continua derivado do estado
+      // inteiro (R6).
       if (depois && "diferenca" in resultado) {
         const { ocultos } = visibilidadePara(depois, request.membro.id);
-        return reply.code(200).send({ ...resultado, diferenca: filtrarDiferenca(resultado.diferenca, ocultos), sequencia: maiorIdDe(depois) });
+        return reply.code(200).send({
+          ...resultado,
+          diferenca: recortarDiferenca(resultado.diferenca, depois, request.membro.id, ocultos),
+          ...(resultado.ok ? { value: recortarValor(resultado.value, depois, request.membro.id, ocultos) } : {}),
+          sequencia: maiorIdDe(depois),
+        });
       }
       return reply.code(200).send(resultado);
     },
