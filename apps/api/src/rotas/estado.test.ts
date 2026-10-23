@@ -204,7 +204,7 @@ describeComBanco("GET /estado — contra o banco real", () => {
   });
 });
 
-describeComBanco("GET /estado — vazamento entre Membros: Sessão de Chat (D-01, D-22)", () => {
+describeComBanco("GET /estado — vazamento entre Membros (1.1.6, D-01, D-22)", () => {
   let espaco: EspacoDeVazamento;
 
   beforeAll(async () => {
@@ -221,26 +221,46 @@ describeComBanco("GET /estado — vazamento entre Membros: Sessão de Chat (D-01
   const pedir = (token: string) =>
     appDoEspaco(espaco).inject({ method: "GET", url: "/estado", headers: { authorization: `Bearer ${token}` } });
 
-  it("(a) B não recebe a Sessão, a pasta nem o texto da conversa de A — e recebe a própria", async () => {
+  it("(a) B não recebe a Sessão, a pasta, o texto da conversa, a Memória, a Visão de A, o convite, os segredos nem o Arquivo órfão — e recebe o que é dele", async () => {
     const resposta = await pedir(TOKENS_DE_VAZAMENTO.b);
     expect(resposta.statusCode, resposta.body.slice(0, 200)).toBe(200);
+    // Procura no corpo INTEIRO (string), nunca só em campos escolhidos: um dado pode sair por onde ninguém olhou.
     for (const frase of espaco.frases.a) expect(resposta.body, `frase de A: ${frase}`).not.toContain(frase);
-    for (const id of [espaco.ids.a.sessao, espaco.ids.a.pasta, espaco.ids.a.execucao]) {
+    for (const id of [espaco.ids.a.sessao, espaco.ids.a.pasta, espaco.ids.a.execucao, espaco.ids.a.visao]) {
       expect(resposta.body, `id de A: ${id}`).not.toContain(id);
     }
-    // O que é de B continua chegando.
-    expect(resposta.body).toContain(espaco.frases.b[0]);
+    expect(resposta.body, "e-mail do convite").not.toContain(espaco.convite.email);
+    expect(resposta.body, "segredo do link público").not.toContain(espaco.segredos.link);
+    expect(resposta.body, "segredo do Formulário").not.toContain(espaco.segredos.formulario);
+    expect(resposta.body, "Arquivo órfão de A").not.toContain(espaco.arquivoOrfao);
+
+    // O que é de B continua chegando: a conversa, a Memória e a Visão dele.
+    for (const frase of espaco.frases.b) expect(resposta.body, `frase de B: ${frase}`).toContain(frase);
     expect(resposta.body).toContain(espaco.ids.b.sessao);
     expect(resposta.body).toContain(espaco.ids.b.pasta);
+    expect(resposta.body).toContain(espaco.ids.b.visao);
+
+    // A Tarefa do link público chega, com a chave `secret` e o valor vazio (os tipos dizem `secret: string`).
+    const corpo = resposta.json() as { data: { tasks: Array<{ id: string; publicShare?: { secret: string } }> } };
+    const tarefa = corpo.data.tasks.find((t) => t.id === espaco.segredos.tarefaComLink);
+    expect(tarefa, "B alcança a Lista da Tarefa com link público").toBeDefined();
+    expect(tarefa?.publicShare?.secret).toBe("");
   });
 
-  it("(b) o Proprietário também não recebe a conversa de A nem a de B (Pitfall 1: sem retorno antecipado)", async () => {
+  it("(b) o Proprietário recebe o e-mail do convite e os segredos da Lista que administra, mas nenhuma frase privada de A nem de B (Pitfall 1)", async () => {
     const resposta = await pedir(TOKENS_DE_VAZAMENTO.proprietario);
     expect(resposta.statusCode, resposta.body.slice(0, 200)).toBe(200);
     for (const frase of [...espaco.frases.a, ...espaco.frases.b]) expect(resposta.body, `frase: ${frase}`).not.toContain(frase);
-    for (const id of [espaco.ids.a.sessao, espaco.ids.b.sessao, espaco.ids.a.pasta, espaco.ids.b.pasta]) {
+    for (const id of [espaco.ids.a.sessao, espaco.ids.b.sessao, espaco.ids.a.pasta, espaco.ids.b.pasta, espaco.ids.a.execucao, espaco.ids.b.execucao]) {
       expect(resposta.body, `id: ${id}`).not.toContain(id);
     }
+    // A Visão pessoal também é de quem a salvou, mesmo para o Proprietário.
+    expect(resposta.body).not.toContain(espaco.ids.a.visao);
+    expect(resposta.body).not.toContain(espaco.ids.b.visao);
+    // Quem administra o Espaço lê o que o administrar pede: o e-mail do convite e os segredos.
+    expect(resposta.body).toContain(espaco.convite.email);
+    expect(resposta.body).toContain(espaco.segredos.link);
+    expect(resposta.body).toContain(espaco.segredos.formulario);
   });
 
   it("(c) o recorte esvazia as coleções de IA pessoal, mas todas as chaves de COLECOES continuam no corpo", async () => {
@@ -251,6 +271,16 @@ describeComBanco("GET /estado — vazamento entre Membros: Sessão de Chat (D-01
     // `ordens` também não carrega o id do que saiu (um id também é informação).
     expect(corpo.ordens.chatSessions?.[espaco.ids.a.sessao]).toBeUndefined();
     expect(corpo.ordens.agentExecutions?.[espaco.ids.a.execucao]).toBeUndefined();
+    expect(corpo.ordens.views?.[espaco.ids.a.visao]).toBeUndefined();
     expect(corpo.ordens.chatSessions?.[espaco.ids.b.sessao]).toBeTypeOf("number");
+  });
+
+  it("(d) R3/F8 — o Arquivo órfão de A dá 404 em GET /anexos/:fileId/url para B; para A, a resposta não é 404", async () => {
+    const url = `/anexos/${espaco.arquivoOrfao}/url`;
+    const deB = await appDoEspaco(espaco).inject({ method: "GET", url, headers: { authorization: `Bearer ${TOKENS_DE_VAZAMENTO.b}` } });
+    expect(deB.statusCode).toBe(404);
+    const deA = await appDoEspaco(espaco).inject({ method: "GET", url, headers: { authorization: `Bearer ${TOKENS_DE_VAZAMENTO.a}` } });
+    // Passou da autorização: o que vem depois depende do Storage, que este teste não exige.
+    expect(deA.statusCode).not.toBe(404);
   });
 });

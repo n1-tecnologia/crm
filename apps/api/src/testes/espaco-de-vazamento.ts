@@ -8,13 +8,17 @@
  * SÓ TESTES. Os testes que usam esta fábrica rodam com `describeComBanco`
  * (Postgres local, `localhost`/`127.0.0.1`); nada é semeado no Supabase do `.env`.
  *
- * 09-07 acrescenta Memória, convite, Visão pessoal, link público e arquivo
- * órfão; 09-12 acrescenta Convidado, Administrador, Suspenso e um segundo Espaço.
+ * 09-07 acrescentou Memória de Usuário, Visão pessoal, um convite pendente, o
+ * segredo de uma Tarefa com link público e o de um Formulário (numa Lista que B
+ * alcança sem administrar), um Campo que B grava e um Arquivo órfão de A; 09-12
+ * acrescenta Convidado, Administrador e um segundo Espaço.
  */
 
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
-import type { AgentExecution, ChatFolder, ChatSession, DataState, Member } from "@n1/dominio";
+import type { AgentExecution, ChatFolder, ChatSession, DataState, Form, Id, Member, View, WorkspaceFile } from "@n1/dominio";
+import { containerAdminRefusal, memberReachesContainer } from "@n1/dominio/derive";
+import { setTaskFieldValue } from "@n1/dominio/operations/tasks";
 import { buildSeed } from "@n1/dominio/seed";
 import { buildApp } from "../app";
 import { pool } from "../persistencia/conexao";
@@ -24,20 +28,43 @@ import { limparEspaco, novoEspacoDeTeste } from "./banco-crm";
 /** O token de cada Membro da fábrica; qualquer outro token é recusado (`null`). */
 export const TOKENS_DE_VAZAMENTO = { a: "token-a", b: "token-b", proprietario: "token-proprietario" } as const;
 
-/** Os ids do que é PRIVADO de um Membro: a Sessão de Chat, a pasta e a Execução da conversa. */
+/** Os ids do que é PRIVADO de um Membro: a Sessão de Chat, a pasta, a Execução da conversa e a Visão pessoal. */
 export interface IdsPrivados {
   readonly sessao: string;
   readonly pasta: string;
   readonly execucao: string;
+  readonly visao: string;
+}
+
+/** O convite pendente: o e-mail é dado pessoal que só quem administra o Espaço lê (1.1.2). */
+export interface ConviteDeVazamento {
+  readonly id: string;
+  readonly email: string;
+}
+
+/**
+ * Os segredos que moram numa Lista que B alcança SEM administrar (1.1.3):
+ * o do link público da Tarefa `tarefaComLink`, o do Formulário, e o Campo
+ * (`campoGravavelPorB`) que B grava nessa Tarefa — o caminho de `POST /operacoes`.
+ */
+export interface SegredosDeVazamento {
+  readonly link: string;
+  readonly formulario: string;
+  readonly tarefaComLink: string;
+  readonly campoGravavelPorB: string;
 }
 
 export interface EspacoDeVazamento {
   readonly workspaceId: string;
   readonly estado: DataState;
   readonly membros: { readonly a: Member; readonly b: Member; readonly proprietario: Member };
-  /** As frases únicas de cada um: mensagem, entrada e saída da Execução. */
+  /** As frases únicas de cada um: mensagem, entrada e saída da Execução, e o item de Memória de Usuário. */
   readonly frases: { readonly a: readonly string[]; readonly b: readonly string[] };
   readonly ids: { readonly a: IdsPrivados; readonly b: IdsPrivados };
+  readonly convite: ConviteDeVazamento;
+  readonly segredos: SegredosDeVazamento;
+  /** Um Arquivo com conteúdo real que A criou e que nenhuma Tarefa carrega (o efeito de `removeAttachment`). */
+  readonly arquivoOrfao: string;
 }
 
 const curto = () => randomUUID().slice(0, 8);
@@ -48,19 +75,22 @@ interface Privado {
   readonly pasta: ChatFolder;
   readonly sessao: ChatSession;
   readonly execucao: AgentExecution;
+  readonly visao: View;
 }
 
-function privadoDe(estado: DataState, membro: Member, letra: "a" | "b"): Privado {
+function privadoDe(estado: DataState, membro: Member, letra: "a" | "b", listaDaVisao: Id): Privado {
   const agora = new Date().toISOString();
   const rotulo = letra.toUpperCase();
   const unico = randomUUID();
   const mensagem = `FRASE-PRIVADA-${rotulo}-MENSAGEM-${unico}`;
   const entrada = `FRASE-PRIVADA-${rotulo}-ENTRADA-${unico}`;
   const saida = `FRASE-PRIVADA-${rotulo}-SAIDA-${unico}`;
+  const memoria = `FRASE-PRIVADA-${rotulo}-MEMORIA-${unico}`;
   const ids: IdsPrivados = {
     sessao: `chs_vaz_${letra}_${curto()}`,
     pasta: `chf_vaz_${letra}_${curto()}`,
     execucao: `exe_vaz_${letra}_${curto()}`,
+    visao: `viw_vaz_${letra}_${curto()}`,
   };
   const ator = { kind: "member", id: membro.id } as const;
 
@@ -120,7 +150,48 @@ function privadoDe(estado: DataState, membro: Member, letra: "a" | "b"): Privado
     sharedWithMemberIds: [],
     sharedWithTeamIds: [],
   };
-  return { ids, frases: [mensagem, entrada, saida], pasta, sessao, execucao };
+  // 1.1.2 — a Memória de Usuário é do Membro (D-01): o item mora no próprio registro dele.
+  membro.userMemory.items.push({
+    id: `umi_vaz_${letra}_${curto()}`,
+    content: memoria,
+    origin: { kind: "membro" },
+    createdAt: agora,
+    state: "ativo",
+  });
+  // 1.1.2 — a Visão pessoal (`ownerKind: "member"`) é de quem a salvou; a Lista é uma que os dois alcançam.
+  const visao: View = {
+    id: ids.visao,
+    name: `Visão pessoal ${rotulo}`,
+    kind: "lista",
+    ownerKind: "member",
+    ownerId: membro.id,
+    listId: listaDaVisao,
+    filters: {},
+    isDefault: false,
+    createdBy: membro.id,
+    createdAt: agora,
+  };
+  return { ids, frases: [mensagem, entrada, saida, memoria], pasta, sessao, execucao, visao };
+}
+
+/**
+ * A Lista que B alcança SEM administrar (e A também alcança), com uma Tarefa
+ * ativa e um Campo numérico que B grava. Confere com as próprias funções do
+ * domínio, num clone do estado: se o seed mudar e não oferecer, o erro diz o quê.
+ */
+function listaDoSegredo(estado: DataState, a: Member, b: Member): { readonly listId: Id; readonly taskId: Id; readonly fieldId: Id } {
+  for (const lista of estado.lists) {
+    if (!memberReachesContainer(estado, a.id, "list", lista.id)) continue;
+    if (!memberReachesContainer(estado, b.id, "list", lista.id)) continue;
+    if (containerAdminRefusal(estado, b.id, "list", lista.id) === undefined) continue;
+    for (const tarefa of estado.tasks.filter((t) => t.listId === lista.id)) {
+      for (const campo of estado.fieldDefinitions.filter((d) => d.target === "task" && d.type === "number")) {
+        const teste = setTaskFieldValue(structuredClone(estado), b.id, tarefa.id, campo.id, 7);
+        if (teste.ok) return { listId: lista.id, taskId: tarefa.id, fieldId: campo.id };
+      }
+    }
+  }
+  throw new Error("o seed precisa de uma Lista que B alcança sem administrar, com uma Tarefa ativa e um Campo numérico que B grave");
 }
 
 /** Monta o estado em memória; ainda não grava nada no banco. */
@@ -132,20 +203,81 @@ export function montarEspacoDeVazamento(rotulo: string): EspacoDeVazamento {
   if (!a || !b) throw new Error("o seed precisa de dois Membros ativos, com usuário, de Papel base membro");
   const proprietario = estado.members.find((m) => m.id === estado.workspace.ownerMemberId);
   if (!proprietario?.userId) throw new Error("o seed precisa de um Proprietário com usuário");
+  const papelMembro = estado.roles.find((r) => r.base === "membro");
+  if (!papelMembro) throw new Error("o seed precisa de um Papel de base membro");
 
-  const privadoA = privadoDe(estado, a, "a");
-  const privadoB = privadoDe(estado, b, "b");
+  const alvo = listaDoSegredo(estado, a, b);
+  const agora = new Date().toISOString();
+  const ator = { kind: "member", id: proprietario.id } as const;
+
+  const privadoA = privadoDe(estado, a, "a", alvo.listId);
+  const privadoB = privadoDe(estado, b, "b", alvo.listId);
   for (const p of [privadoA, privadoB]) {
     estado.chatFolders.push(p.pasta);
     estado.chatSessions.push(p.sessao);
     estado.agentExecutions.push(p.execucao);
+    estado.views.push(p.visao);
   }
+
+  // 1.1.2 — um convite pendente: o e-mail está em `invitedIdentity` e também em `displayName`.
+  const convite: ConviteDeVazamento = { id: `mem_vaz_convite_${curto()}`, email: `convite-${randomUUID()}@exemplo.com` };
+  estado.members.push({
+    id: convite.id,
+    workspaceId: estado.workspace.id,
+    invitedIdentity: { type: "email", value: convite.email },
+    displayName: convite.email,
+    state: "pendente",
+    roleId: papelMembro.id,
+    invitedBy: proprietario.id,
+    availability: { value: "indisponivel", at: agora, origin: "membro" },
+    userMemory: { enabled: true, items: [] },
+  });
+
+  // 1.1.3 — o segredo do link público de uma Tarefa e o de um Formulário, na Lista que B alcança sem administrar.
+  const segredoDoLink = `SEGREDO-LINK-${randomUUID()}`;
+  const segredoDoFormulario = `SEGREDO-FORM-${randomUUID()}`;
+  const tarefa = estado.tasks.find((t) => t.id === alvo.taskId);
+  if (!tarefa) throw new Error("a Tarefa do segredo sumiu do estado");
+  tarefa.publicShare = { secret: segredoDoLink, active: true, createdBy: proprietario.id, createdAt: agora, showsComments: false, showsAttachments: false };
+  const formulario: Form = {
+    id: `frm_vaz_${curto()}`,
+    workspaceId: estado.workspace.id,
+    createdBy: ator,
+    createdAt: agora,
+    lifecycle: "ativo",
+    listId: alvo.listId,
+    name: "Formulário do vazamento",
+    ownerMemberId: proprietario.id,
+    questions: [{ id: `fqs_vaz_${curto()}`, label: "Assunto", required: true, target: { kind: "title" } }],
+    enabled: true,
+    secret: segredoDoFormulario,
+    submissions: 0,
+  };
+  estado.forms.push(formulario);
+
+  // R3 — um Arquivo com conteúdo real que A criou e que nenhuma Tarefa carrega.
+  const arquivo: WorkspaceFile = {
+    id: `wf_vaz_${curto()}`,
+    workspaceId: estado.workspace.id,
+    name: "orfao-de-a.pdf",
+    mediaType: "document",
+    sizeBytes: 10,
+    createdBy: { kind: "member", id: a.id },
+    createdAt: agora,
+    objectKey: `privado/teste/vaz_${curto()}.pdf`,
+    state: "enviado",
+  };
+  estado.files.push(arquivo);
+
   return {
     workspaceId: novoEspacoDeTeste(rotulo),
     estado,
     membros: { a, b, proprietario },
     frases: { a: privadoA.frases, b: privadoB.frases },
     ids: { a: privadoA.ids, b: privadoB.ids },
+    convite,
+    segredos: { link: segredoDoLink, formulario: segredoDoFormulario, tarefaComLink: alvo.taskId, campoGravavelPorB: alvo.fieldId },
+    arquivoOrfao: arquivo.id,
   };
 }
 
