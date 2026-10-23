@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 09
 current_phase_name: Segurança dos dados e base de produção
 status: executing
-stopped_at: Completed 09-03-PLAN.md
-last_updated: "2026-10-23T00:24:25.380Z"
+stopped_at: Completed 09-04-PLAN.md
+last_updated: "2026-10-23T00:36:28.095Z"
 last_activity: 2026-10-22
 last_activity_desc: Phase 09 execution started
-state_head: 73abe99ba7422c20fa78c1b9f405f66785372e90
+state_head: 0d61a4366b83bd5ef11232b2c05992df4e1608a5
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 170
-  completed_plans: 150
+  completed_plans: 151
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 ## Current Position
 
 Phase: 09 (Segurança dos dados e base de produção) — EXECUTING
-Plan: 4 of 22
+Plan: 5 of 22
 Status: Ready to execute
 Last activity: 2026-10-22 — Phase 09 execution started
 
@@ -373,6 +373,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 09 P01 | 12 min | 3 tasks | 9 files |
 | Phase 09 P02 | 8 min | 3 tasks | 3 files |
 | Phase 09 P03 | 7 min | 3 tasks | 15 files |
+| Phase 09 P04 | 10 min | 3 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -508,6 +509,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 09]: 09-02: a fronteira do Convidado é baseDoPapel === 'convidado' (Papel personalizado de base convidado também recebe as cinco coleções de IA vazias)
 - [Phase 09]: 09-03: startConversation não ganhou variante SemConferencia (já recusava Convidado e Membro não ativo); só a Automação envia por sendMessageSemConferencia, fora de OPERACOES
 - [Phase 09]: 09-03: restoreList reaproveita memberReachesContainer + containerTrashRefusal em vez de delegar a restoreContainer (que também recusa colisão de nome)
+- [Phase 09]: 09-04: administrador dos casos de banco e migrar dos testes ficam presos a pool() (DATABASE_URL local), nunca a poolDeMigracao() — Um DATABASE_URL_MIGRACAO remoto no .env nao pode levar create database nem migrar para fora do Postgres local
+- [Phase 09]: 09-04: 009 + banco:conceder; as duas linhas do api.env (DATABASE_URL n1_api e DATABASE_URL_MIGRACAO dono) mudam juntas; RLS desligada (D-05) e adiada pela decisao 12.1 — Pitfall 9 e F7: app em n1_api sem a variavel de migracao trava o deploy; RLS ligada sem policy zera as linhas de n1_api
 
 ### Pending Todos
 
@@ -569,6 +572,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-23T00:24:25.194Z
-Stopped at: Completed 09-03-PLAN.md
+Last session: 2026-10-23T00:36:27.919Z
+Stopped at: Completed 09-04-PLAN.md
 Resume file: None
