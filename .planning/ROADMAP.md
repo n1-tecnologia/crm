@@ -587,7 +587,7 @@ Plans:
 - [x] 09-12-PLAN.md — Suíte adversarial 1: inventário de rotas, matriz de Papéis, suspenso nas rotas REST, job `seguranca` do CI (SEG-12, SEG-03)
 - [x] 09-13-PLAN.md — Sentry na api, depois do portão de legitimidade dos pacotes (SEG-10)
 - [x] 09-14-PLAN.md — Backup cifrado e restauração provados em Docker; arquivos da Evolution API (SEG-09, SEG-11)
-- [ ] 09-17-PLAN.md — Homologação no ar e a `009`/`n1_api` provados nela `[BLOCKING]` (SEG-08, SEG-04)
+- [ ] 09-17-PLAN.md — Homologação no ar e a `009`/`n1_api` provados nela `[BLOCKING]` (SEG-08, SEG-04) — **PULADO por decisão do dono em 2026-10-23, não executado** (ver `09-17-SUMMARY.md`)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 - [x] 09-15-PLAN.md — Suíte adversarial 2: outro Membro e outro Espaço, anexos, segredos, XFF, entrada hostil (SEG-12, SEG-01)
