@@ -130,6 +130,25 @@ lista da Caixa de Entrada mostra ícone e nome do Canal em cada item, com o
 filtro `?canal=` pelo rótulo "nome · provedor". Nenhum componente do chat ou
 das páginas de Canal renderiza HTML cru.
 
+## Monitoramento de erros (Fase 9)
+
+`@sentry/nextjs` (versão exata, a mesma do `@sentry/node` da api) registra o
+erro de render e de servidor, e só ele. `src/instrumentation.ts` inicia o SDK
+no servidor do Next (`register()`, só no ramo `nodejs`, só com `SENTRY_DSN`) e
+entrega `onRequestError`; `src/instrumentation-client.ts` faz o mesmo no
+navegador (só com `NEXT_PUBLIC_SENTRY_DSN`); `src/app/global-error.tsx` é a
+fronteira de erro do root layout e captura o erro uma vez. Sem DSN o SDK nem
+inicia e a web roda como sempre rodou.
+
+Tudo que o Sentry recebe passa por `features/observabilidade/limpar-evento.ts`:
+nada de corpo, cabeçalho (nem `Referer`), cookie, query nem e-mail do usuário, e
+o segredo de `/f/<segredo>` e `/p/<segredo>` vira `***` com
+`mascararSegredoDeUrl` do domínio (a mesma regra do log e do Sentry da api,
+que não se importam). Sem tracing, sem Session Replay. O `next.config.ts` usa
+`withSentryConfig` de `@sentry/nextjs/config` com `telemetry: false` e
+`sourcemaps: { disable: true }`: o build não usa rede nem token; ligar source
+maps é outro passo, com `SENTRY_AUTH_TOKEN` na Vercel.
+
 ## Regras de estilo
 
 Cor só sai de `src/estilos/tokens.css`. `npm run verificar:tokens` falha se
