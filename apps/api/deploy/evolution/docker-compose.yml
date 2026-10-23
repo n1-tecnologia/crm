@@ -1,0 +1,55 @@
+# Evolution API da Fase 9 (D-12, 1.7.5) — numa VPS PRÓPRIA, não na compartilhada.
+# Instalado por preparar-vps-evolution.sh em /opt/evolution; roteiro em
+# apps/api/deploy/CONTEXT.md, seção "Evolution API (Fase 9)".
+#
+# Sobe com:  docker compose --env-file evolution.env up -d
+#
+# O Postgres e o Redis são SÓ da Evolution e não publicam porta nenhuma: só os
+# outros dois contêineres os enxergam, pela rede interna do compose. A api
+# publica apenas em 127.0.0.1:8080, e quem a expõe é o nginx com HTTPS. Importante:
+# o Docker escreve as próprias regras de iptables e uma porta publicada em
+# 0.0.0.0 FURA o `ufw` — por isso a regra é nunca publicar fora do loopback
+# (T-09-74).
+#
+# A imagem tem tag de versão FIXA, nunca `latest`: uma troca de versão é decisão
+# do dono, não do próximo `pull` (T-09-75). A existência da tag foi conferida no
+# registro; a versão a usar (e as variáveis dela, A11) o dono confirma no
+# Docker Hub no checkpoint de 09-19 antes de subir.
+name: evolution
+
+services:
+  evolution-api:
+    image: evoapicloud/evolution-api:v2.3.7
+    restart: unless-stopped
+    env_file: evolution.env
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - evolution_instances:/evolution/instances
+
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: evolution
+      POSTGRES_DB: evolution
+      # Vem do evolution.env (--env-file). Vazia, o Postgres se recusa a
+      # inicializar: falha segura, nunca uma senha padrão.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+
+volumes:
+  evolution_instances:
+  postgres_data:
+  redis_data:

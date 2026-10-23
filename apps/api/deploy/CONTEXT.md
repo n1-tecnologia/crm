@@ -245,6 +245,104 @@ Voltar uma versão na homologação: o mesmo da produção, trocando a pasta e o
 serviço (`ln -sfn /opt/n1-crm-hml/releases/<sha> /opt/n1-crm-hml/current &&
 systemctl restart n1-crm-api-hml`).
 
+## Backup diário (Fase 9)
+
+Um backup cifrado do schema `plataforma` por dia, **só de produção** (D-10,
+D-21): a homologação não tem dado real e não ganha timer. O Supabase guarda os
+dele (diário; 7 dias no Pro, e o Free não tem) e este é o complemento, fora do
+Supabase e com retenção própria.
+
+| Peça | Onde |
+|---|---|
+| O que roda | `n1-crm-backup.sh`: `pg_dump -Fc --schema=plataforma --no-owner --no-acl` → `age -R` → `rclone rcat --s3-no-check-bucket`. Um pipe, **sem arquivo no disco** da VPS |
+| Quando | `n1-crm-backup.timer`, todo dia 06:30 UTC (03:30 em Brasília), `Persistent=true`, até 15 min de atraso aleatório |
+| Quem | `n1-crm-backup.service`, `oneshot` como `n1crm`, com o endurecimento do `n1-crm-api.service` |
+| Script na VPS | `/opt/n1-crm/bin/n1-crm-backup.sh` — cópia do **root** (o `n1crm` não a altera; existe antes de a fase chegar à `main`) |
+| Ambiente | `api.env` (`DATABASE_URL_MIGRACAO`, `DATABASE_CA_PATH`) e `/opt/n1-crm/shared/backup.env` (`BACKUP_DESTINO`, `BACKUP_RECIPIENT`, `RCLONE_CONFIG`; dono `n1crm`, 600) |
+| Chave pública | `/opt/n1-crm/shared/backup.recipient` — o `age1…` do dono |
+| Bucket | `rclone.conf` em `/opt/n1-crm/shared/` (o `ProtectHome` esconde o `~/.config`). Chave **só de escrita** (B2) e expiração de **14 dias** como regra do bucket |
+| Instalar (root, uma vez) | `bash instalar-backup.sh` (antes, `--conferir`: não pede root nem muda nada) |
+| Provar antes (Docker) | `bash apps/api/deploy/provar-backup.sh` |
+
+**Dois arquivos por backup**, com o mesmo nome-base
+`n1-crm-plataforma-<AAAAMMDDTHHMMSSZ>`: `.dump.age` e `.contagem`
+(`registros_antes=N` e `registros_depois=M`, a contagem de
+`plataforma.registros` imediatamente antes e depois do dump). O `.contagem` sai
+por último: **dump sem `.contagem` é um backup incompleto** e não serve.
+
+**Com quem fica o quê.** A chave **privada** `age` nasce e fica com o dono, no
+Mac, fora do repositório e fora da VPS: a VPS só tem o recipient público
+(T-09-70). A cópia da `COFRE_CHAVE` de produção também é do dono, fora da VPS e
+fora do bucket: sem ela, o dump restaurado traz a coluna cifrada do Cofre e
+nenhuma forma de lê-la.
+
+**O `pg_dump` da VPS não pode ser mais velho que o servidor** (Pitfall 10): o
+script lê `show server_version_num`, compara com `pg_dump --version` e para com
+mensagem clara antes de enviar qualquer coisa. Se parar, instale o
+`postgresql-client-<versão>` do PGDG e aponte `PG_DUMP` para ele.
+
+**Restaurar — no Mac do dono, nunca na homologação (D-21).** Baixe do bucket os
+dois arquivos do mesmo nome-base e rode:
+
+```bash
+bash apps/api/deploy/restaurar-backup.sh <arquivo.dump.age> <arquivo.contagem> <chave-privada-age>
+# PG_IMAGEM=postgres:17 troca a versão (use a do servidor do Supabase ou maior)
+```
+
+Ele sobe um Postgres descartável em Docker (`postgres:16`, porta 55699), decifra
+com a chave privada, restaura, conta `plataforma.registros` e compara com o
+`.contagem`: igual ao número quando antes = depois, ou dentro do intervalo
+quando houve escrita no meio. Só então diz `RESTAURAÇÃO OK — registros=N`; do
+contrário, `RESTAURAÇÃO DIVERGE` e sai 1. O contêiner é apagado no fim. O script
+não recebe URL: não há como apontá-lo para a homologação. Depois de restaurar de
+verdade em outro banco, redefina a senha do papel `n1_api` (o backup do Supabase
+não guarda senha de papel) e rode `conceder-n1-api.sql`.
+
+**Última restauração provada: —** (09-18 preenche com a data, o nome do backup e
+o `registros=N` que o Mac mostrou.)
+
+**O que a prova local cobre e o que não.** `provar-backup.sh` troca `age` e
+`rclone` por substitutos de teste e prova o resto: o pipe, a contagem
+antes/depois, a recusa de `pg_dump` mais velho, a restauração e a recusa de uma
+contagem adulterada. O `age` e o `rclone` **reais**, o bucket e a chave de só
+escrita o dono prova em 09-18.
+
+## Evolution API (Fase 9)
+
+A Evolution API (o provedor de WhatsApp não oficial) roda numa **VPS própria**
+(D-12), não na compartilhada. Os arquivos estão em `deploy/evolution/`:
+
+| Arquivo | O que é |
+|---|---|
+| `docker-compose.yml` | `evolution-api` (tag de versão fixa, nunca `latest`), `postgres` e `redis` próprios — os três `restart: unless-stopped`, volume próprio cada. **Só a api publica porta, e em `127.0.0.1:8080`** |
+| `evolution.env.example` | o modelo do `/opt/evolution/evolution.env`; nenhum valor secreto |
+| `nginx-evolution.conf` | o site do nginx (`proxy_pass` para `127.0.0.1:8080`); o certbot acrescenta o 443 |
+| `preparar-vps-evolution.sh` | o roteiro do root na VPS nova |
+
+**O que fica de pé** com `preparar-vps-evolution.sh <domínio>`: firewall `ufw`
+ligado com só SSH, 80 e 443 (o Docker fura o `ufw` com porta publicada em
+`0.0.0.0`; por isso nada além do loopback publica); os três contêineres; o site
+do nginx com HTTPS por `certbot`. O `evolution.env` nasce modo 600 com
+`AUTHENTICATION_API_KEY` e `POSTGRES_PASSWORD` gerados por `openssl rand -hex 32`
+— o script diz onde estão e **nunca os imprime**. Rodar de novo não os regera.
+Pré-requisitos que o script exige e não instala: Docker com o plugin compose
+(repositório oficial do Docker), nginx, certbot e ufw.
+
+```bash
+bash apps/api/deploy/evolution/preparar-vps-evolution.sh evolution.exemplo.com --conferir   # imprime o plano, não muda nada
+scp -r apps/api/deploy/evolution root@VPS-DA-EVOLUTION:/tmp/evolution
+ssh root@VPS-DA-EVOLUTION 'bash /tmp/evolution/preparar-vps-evolution.sh <domínio>'
+```
+
+**O dono confere no checkpoint de 09-19, antes do primeiro `up`** (A11): a tag
+da imagem (a existência de `v2.3.7` foi conferida no registro, mas a versão a
+usar é do dono) e os nomes das variáveis do `evolution.env`, que vêm de fontes
+de terceiros.
+
+**Fica para a Sessão 4:** conectar o número de WhatsApp, guardar a chave de API
+no cofre do CRM e ligar o webhook da Evolution ao `apps/api`. Nada disso é
+feito aqui.
+
 ## Por que assim
 
 - **systemd, não pm2.** O pm2 da VPS é do root e de todos os projetos; aqui
