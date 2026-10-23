@@ -8,7 +8,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { actorLabel, memberNamedOnTask, memberReachesContainer, memberSeesTask } from "./derive";
 import { COLECOES } from "./colecoes";
-import { estadoVisivelPara, filtrarDiferenca, filtrarOrdens, membroVeArquivo, recortarRegistro, tarefasComOArquivo, visibilidadePara } from "./derive-visibilidade";
+import { estadoVisivelPara, filtrarDiferenca, filtrarOrdens, membroVeArquivo, recortarDiferenca, recortarRegistro, recortarValor, tarefasComOArquivo, visibilidadePara } from "./derive-visibilidade";
 import { CP } from "./operations/financeiro-base";
 import { setTaskFieldValue } from "./operations/tasks";
 import { createList } from "./operations/structure";
@@ -551,5 +551,91 @@ describe("Convidado, rótulo do ator e Arquivo órfão (D-02, D-03, R3)", () => 
         expect(visibilidadePara(state, quem).estado.files.some((f) => f.id === "wf_orfao_legado"), quem).toBe(true);
       }
     });
+  });
+});
+
+/**
+ * F1 (1.1.5) — a rota de gravação soma `diferenca` e `value` ao corpo, e os dois
+ * saíam inteiros. As duas funções passam o que a gravação devolve pela mesma
+ * regra do estado recortado.
+ */
+describe("recortarDiferenca e recortarValor (F1, 1.1.5)", () => {
+  const COMUM = "mem_julia";
+  const DONO = "mem_thiago";
+  const tarefaComLink = (): Task => {
+    const t = state.tasks.find((x) => x.publicShare !== undefined);
+    if (!t) throw new Error("o seed precisa de uma Tarefa com link público");
+    return t;
+  };
+  const dono = (): Member => {
+    const m = state.members.find((x) => x.id === DONO);
+    if (!m) throw new Error("o seed precisa do Proprietário");
+    return m;
+  };
+  const comItens = (): Member => ({ ...dono(), userMemory: { enabled: true, items: [{ id: "umi_x", content: "pessoal", origin: { kind: "membro" }, createdAt: "2026-01-01T00:00:00.000Z", state: "ativo" }] } });
+
+  it("recortarDiferenca: segredo de link, Memória de outro, ocultos fora e ordem preservada", () => {
+    const tarefa = tarefaComLink();
+    const oculta = state.tasks.find((t) => visibilidadePara(state, COMUM).ocultos.has(t.id));
+    if (!oculta) throw new Error("o seed precisa de uma Tarefa que Júlia não veja");
+    const diff = recortarDiferenca(
+      {
+        gravados: [
+          { colecao: "members", id: DONO, dados: comItens(), ordem: 0 },
+          { colecao: "tasks", id: oculta.id, dados: oculta, ordem: 1 },
+          { colecao: "tasks", id: tarefa.id, dados: tarefa, ordem: 2 },
+          { colecao: "channels", id: "ch_1", dados: { id: "ch_1", nome: "Canal" }, ordem: 3 },
+        ],
+        removidos: [{ colecao: "tasks", id: oculta.id }, { colecao: "tasks", id: "tsk_qualquer" }],
+      },
+      state,
+      COMUM,
+    );
+    expect(diff.gravados.map((g) => g.id)).toEqual([DONO, tarefa.id, "ch_1"]);
+    expect((diff.gravados[0]!.dados as Member).userMemory.items).toEqual([]);
+    expect((diff.gravados[1]!.dados as Task).publicShare?.secret).toBe("");
+    expect(diff.gravados[2]!.dados).toEqual({ id: "ch_1", nome: "Canal" });
+    expect(diff.removidos.map((r) => r.id)).toEqual(["tsk_qualquer"]);
+    // Quem administra a Lista recebe o segredo no diff.
+    const doDono = recortarDiferenca({ gravados: [{ colecao: "tasks", id: tarefa.id, dados: tarefa, ordem: 0 }], removidos: [] }, state, DONO);
+    expect((doDono.gravados[0]!.dados as Task).publicShare?.secret).toBe(tarefa.publicShare?.secret);
+  });
+
+  it("recortarValor: Tarefa, lista de Tarefas, objeto com Tarefa, Membro de outro e registro oculto", () => {
+    const tarefa = tarefaComLink();
+    const secret = tarefa.publicShare!.secret;
+    expect((recortarValor(tarefa, state, COMUM) as Task).publicShare?.secret).toBe("");
+    const lista = recortarValor([tarefa, tarefa], state, COMUM) as Task[];
+    expect(lista.map((t) => t.publicShare?.secret)).toEqual(["", ""]);
+    const objeto = recortarValor({ task: tarefa, total: 1 }, state, COMUM) as { task: Task; total: number };
+    expect(objeto.task.publicShare?.secret).toBe("");
+    expect(objeto.total).toBe(1);
+    const fundo = recortarValor({ a: { b: { c: [tarefa] } } }, state, COMUM);
+    expect(JSON.stringify(fundo)).not.toContain(secret);
+    expect((recortarValor(comItens(), state, COMUM) as Member).userMemory.items).toEqual([]);
+    expect((recortarValor(comItens(), state, DONO) as Member).userMemory.items).toHaveLength(1);
+    const oculta = state.tasks.find((t) => visibilidadePara(state, COMUM).ocultos.has(t.id));
+    if (!oculta) throw new Error("o seed precisa de uma Tarefa que Júlia não veja");
+    expect(recortarValor(oculta, state, COMUM)).toBeNull();
+    expect(recortarValor([oculta, { x: oculta }], state, COMUM)).toEqual([null, { x: null }]);
+    const form = state.forms[0]!;
+    expect((recortarValor(form, state, COMUM) as Form).secret).toBe("");
+    // O resto volta como veio.
+    expect(recortarValor("texto", state, COMUM)).toBe("texto");
+    expect(recortarValor(42, state, COMUM)).toBe(42);
+    expect(recortarValor(undefined, state, COMUM)).toBeUndefined();
+    expect(recortarValor(null, state, COMUM)).toBeNull();
+    // Nunca muta a entrada.
+    expect(tarefa.publicShare?.secret).toBe(secret);
+  });
+
+  it("passar 'ocultos' pronto dá o mesmo resultado que deixar a função calcular", () => {
+    const tarefa = tarefaComLink();
+    const oculta = state.tasks.find((t) => visibilidadePara(state, COMUM).ocultos.has(t.id))!;
+    const { ocultos } = visibilidadePara(state, COMUM);
+    const diff = { gravados: [{ colecao: "tasks", id: tarefa.id, dados: tarefa, ordem: 0 }, { colecao: "tasks", id: oculta.id, dados: oculta, ordem: 1 }], removidos: [{ colecao: "tasks", id: oculta.id }] };
+    expect(recortarDiferenca(diff, state, COMUM, ocultos)).toEqual(recortarDiferenca(diff, state, COMUM));
+    const valor = [tarefa, oculta, { m: comItens() }];
+    expect(recortarValor(valor, state, COMUM, ocultos)).toEqual(recortarValor(valor, state, COMUM));
   });
 });
