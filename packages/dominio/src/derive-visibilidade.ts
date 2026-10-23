@@ -31,6 +31,12 @@
  *     a chave — os tipos dizem `readonly secret: string`. O Formulário de uma
  *     Lista oculta sai.
  *
+ *   - IA do Espaço para o Convidado (D-02, escolha A): quem tem Papel de base
+ *     `convidado` recebe Agentes, Automações, Documentos, Coleções e Habilidades
+ *     como `[]` (e os ids em `ocultos`); a regra fina por registro é a Sessão 17.
+ *   - Arquivo órfão (R3): o que nenhuma Tarefa carrega só é visto por quem o
+ *     criou e por quem administra o Espaço; o `legado/*` (sem conteúdo) segue aberto.
+ *
  * O que fica: tudo o mais — Membros, Papéis, Concessões, Equipes são o que a
  * própria leitura de alcance precisa. Coleções fora da Estrutura e da IA
  * pessoal (CRM, Caixa de Entrada) não têm privacidade por contêiner e não são
@@ -43,9 +49,10 @@
 
 import { containerAdminRefusal, containerPath, membroVeSessaoDeChat, memberReachesContainer, memberSeesTask } from "./derive";
 import type { Diferenca, Ordens } from "./diferenca";
-import { administraOEspaco } from "./operations/ia/permissoes-ia";
+import { arquivoSemConteudo } from "./operations/anexos-enviados";
+import { administraOEspaco, baseDoPapel } from "./operations/ia/permissoes-ia";
 import type { DataState } from "./state";
-import type { ChatSession, Form, Id, Member, Task } from "./types";
+import type { ChatSession, Form, Id, Member, Task, WorkspaceFile } from "./types";
 
 export interface Visibilidade {
   readonly estado: DataState;
@@ -150,18 +157,30 @@ export function visibilidadePara(state: DataState, memberId: Id): Visibilidade {
     (e) => e.chatSessionId === undefined || !sessoesQueSaem.has(e.chatSessionId) || !ocultos.add(e.id),
   );
 
+  // D-02 (escolha A): o Convidado não recebe a IA do Espaço — a barreira é o servidor, a tela só deixa de oferecer.
+  const convidado = baseDoPapel(state, memberId) === "convidado";
+  const semIA = <T extends { readonly id: Id }>(registros: T[]): T[] => {
+    if (!convidado) return registros;
+    for (const r of registros) ocultos.add(r.id);
+    return [];
+  };
+  const agents = semIA(state.agents);
+  const automations = semIA(state.automations);
+  const documents = semIA(state.documents);
+  const collections = semIA(state.collections);
+  const skills = semIA(state.skills);
+
   const activity = state.activity.filter((a) => !ocultos.has(a.objectId));
   const approvals = state.approvals.filter((a) => !ocultos.has(a.object.targetResourceId));
   // Um Arquivo que só Tarefas ocultas carregam sai junto (o nome e a chave do objeto também são informação).
   const files = state.files.filter((f) => {
     const donas = tarefasComOArquivo(state, f.id);
-    if (donas.length === 0) return true;
-    if (donas.some((t) => visiveis.has(t.id))) return true;
+    if (donas.length === 0 ? arquivoOrfaoVisivel(state, memberId, f) : donas.some((t) => visiveis.has(t.id))) return true;
     ocultos.add(f.id);
     return false;
   });
   return {
-    estado: { ...state, members, views, spaces, folders, lists, tasks, forms, activity, approvals, files, chatSessions, chatFolders, agentExecutions },
+    estado: { ...state, members, views, spaces, folders, lists, tasks, forms, activity, approvals, files, chatSessions, chatFolders, agentExecutions, agents, automations, documents, collections, skills },
     ocultos,
   };
 }
@@ -181,15 +200,27 @@ export function tarefasComOArquivo(state: DataState, fileId: Id): Task[] {
 }
 
 /**
+ * R3 — o Arquivo que nenhuma Tarefa carrega (removido de uma Tarefa, ou o de um
+ * envio público ainda não convertido). Com conteúdo real, é de quem o criou e
+ * de quem administra o Espaço; o `legado/*` não tem o que baixar e segue aberto.
+ */
+function arquivoOrfaoVisivel(state: DataState, memberId: Id, arquivo: WorkspaceFile): boolean {
+  if (arquivoSemConteudo(arquivo)) return true;
+  if (arquivo.createdBy.kind === "member" && arquivo.createdBy.id === memberId) return true;
+  return administraOEspaco(state, memberId);
+}
+
+/**
  * Quem vê alguma Tarefa que carrega o Arquivo o baixa. Um Arquivo que nenhuma
- * Tarefa carrega (o de um envio público ainda não convertido, por exemplo)
- * continua aberto a quem tem sessão no Espaço de Trabalho — era a regra única
- * antes desta.
+ * Tarefa carrega só é visto por quem o criou e por quem administra o Espaço de
+ * Trabalho (R3) — deixou de ser "aberto a quem tem sessão". O Arquivo
+ * `legado/*` (sem conteúdo) segue como antes.
  */
 export function membroVeArquivo(state: DataState, memberId: Id, fileId: Id): boolean {
-  if (!state.files.some((f) => f.id === fileId)) return false;
+  const arquivo = state.files.find((f) => f.id === fileId);
+  if (!arquivo) return false;
   const tarefas = tarefasComOArquivo(state, fileId);
-  if (tarefas.length === 0) return true;
+  if (tarefas.length === 0) return arquivoOrfaoVisivel(state, memberId, arquivo);
   return tarefas.some((t) => memberSeesTask(state, memberId, t.id));
 }
 

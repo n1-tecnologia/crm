@@ -895,11 +895,14 @@ export function actorLabel(state: DataState, actor: ActorRef): string {
     if (!member) return "Membro eliminado";
     return member.state === "removido" ? `${member.displayName} (removido)` : member.displayName;
   }
+  // O Convidado não recebe Agentes nem Automações (Fase 9, D-02): sem o registro, só o rótulo — nunca "Agente (Agente)".
   if (actor.kind === "agent") {
-    return `${state.agents.find((a) => a.id === actor.id)?.name ?? "Agente"} (Agente)`;
+    const name = state.agents.find((a) => a.id === actor.id)?.name;
+    return name === undefined ? "Agente" : `${name} (Agente)`;
   }
   if (actor.kind === "automation") {
-    return `${state.automations.find((a) => a.id === actor.id)?.name ?? "Automação"} (Automação)`;
+    const name = state.automations.find((a) => a.id === actor.id)?.name;
+    return name === undefined ? "Automação" : `${name} (Automação)`;
   }
   if (actor.kind === "integration") {
     return `${state.integrations.find((i) => i.id === actor.id)?.name ?? "Integração"} (Integração)`;
