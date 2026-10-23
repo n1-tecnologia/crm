@@ -561,7 +561,7 @@ Plans:
 **Goal:** Fechar a segurança dos dados e montar a base de produção antes de qualquer dado real de cliente entrar (WhatsApp não oficial em diante). Sete frentes, na ordem do `docs/09-planejamento/TAREFAS-POR-SESSAO.md`, Sessão 1: (1.1) o recorte de `GET /estado` e da resposta de `POST /operacoes` passa a tirar o que é pessoal de outro Membro (Sessão de Chat, pasta de chat, Memória de Usuário, e-mail de convite, Visão pessoal) e os segredos de link público (`publicShare.secret`, `Form.secret`) de quem não administra a Lista; (1.2) Membro `suspenso` recebe 403 em `POST /operacoes`, o CRM antigo e as duas operações soltas (`restoreList`, `createReceivableSeries`) passam a conferir quem chama, e `packages/dominio/CONTEXT.md` ganha a tabela "Quem pode" cobrindo todo o `REGISTRO`; (1.3) o schema `plataforma` fica fechado para `anon` e `authenticated`, a migração `009` revoga o acesso público, e o `apps/api` conecta como `n1_api` (sem superusuário) com as migrações em `DATABASE_URL_MIGRACAO`; (1.4) cofre de credenciais cifrado (`plataforma.credenciais`, AES-256-GCM, chave fora do banco) para os tokens de provedor das Sessões 4, 7, 8 e 9; (1.5) nenhum log do `apps/api` nem do nginx guarda o segredo que vai na URL das rotas públicas; (1.6) `limit_req` no nginx para `/v1/public/`; (1.7) ambiente de homologação com login e banco próprios, backup diário com restauração testada, monitoramento de erro (Sentry) na api e na web, e o servidor da Evolution API preparado. Três decisões do dono dentro da fase: o que mais o `GET /estado` esconde (1.1.4), como proteger o banco, só fechado ou com RLS (1.3.2), e onde fica o banco de homologação (1.7.1). A 1.3.1 (conferir se `anon` alcança `plataforma` e desligar o cadastro aberto no Supabase) é ação do dono, leva minutos e vale fazer antes de a fase começar. A conferência do projeto Supabase de 22/10 fechou a parte de banco da 1.3.1 (`anon` e `authenticated` sem `USAGE` em `plataforma`, schema não exposto na REST) e deixou pendente o cadastro aberto, o papel `n1_api`, três funções com `search_path` mutável e o bucket público `guias`; detalhes e a proposta de um teste de invasão (tarefa 1.8, a decidir) em `09-NOTAS-DA-CONFERENCIA.md`.
 **Requirements**: SEG-01, SEG-02, SEG-03, SEG-04, SEG-05, SEG-06, SEG-07, SEG-08, SEG-09, SEG-10, SEG-11, SEG-12
 **Depends on:** Phase 8 (a `008` já está aplicada e é imutável; a `009` desta fase é a próxima migração). A UAT da Fase 8 segue aberta e não bloqueia o código desta fase, mas o `/gsd-ship` fica bloqueado enquanto `WINDOWS.md` tiver janela aberta
-**Plans:** 14/22 plans executed
+**Plans:** 15/22 plans executed
 
 Plans:
 **Wave 1** — o traçador
@@ -590,7 +590,7 @@ Plans:
 - [ ] 09-17-PLAN.md — Homologação no ar e a `009`/`n1_api` provados nela `[BLOCKING]` (SEG-08, SEG-04)
 
 **Wave 6** *(blocked on Wave 5 completion)*
-- [ ] 09-15-PLAN.md — Suíte adversarial 2: outro Membro e outro Espaço, anexos, segredos, XFF, entrada hostil (SEG-12, SEG-01)
+- [x] 09-15-PLAN.md — Suíte adversarial 2: outro Membro e outro Espaço, anexos, segredos, XFF, entrada hostil (SEG-12, SEG-01)
 - [ ] 09-16-PLAN.md — Sentry na web pelo arquivo de instrumentação do Next 16 (SEG-10)
 - [ ] 09-18-PLAN.md — Backup ligado na VPS e restauração provada no Mac do dono `[BLOCKING]` (SEG-09)
 

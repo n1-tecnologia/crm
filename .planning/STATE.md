@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 09
 current_phase_name: Segurança dos dados e base de produção
 status: executing
-stopped_at: Completed 09-13-PLAN.md
-last_updated: "2026-10-23T10:38:55.335Z"
+stopped_at: Completed 09-15-PLAN.md
+last_updated: "2026-10-23T10:54:03.983Z"
 last_activity: 2026-10-22
 last_activity_desc: Phase 09 execution started
-state_head: 1e93db839f4fd5fe653ec3bdc09b0377eec4256e
+state_head: 8a0ec7223445668f92fe4b37ef2987105cac996e
 progress:
   total_phases: 9
   completed_phases: 6
   total_plans: 170
-  completed_plans: 161
+  completed_plans: 162
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 ## Current Position
 
 Phase: 09 (Segurança dos dados e base de produção) — EXECUTING
-Plan: 15 of 22
+Plan: 16 of 22
 Status: Ready to execute
 Last activity: 2026-10-22 — Phase 09 execution started
 
@@ -384,6 +384,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 09 P12 | 10 min | 3 tasks | 11 files |
 | Phase 09 P14 | 25 min | 2 tasks | 11 files |
 | Phase 09 P13 | 11 min | 3 tasks | 8 files |
+| Phase 09 P15 | 12min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -539,6 +540,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 09]: 09-14: Evolution API fixada em evoapicloud/evolution-api:v2.3.7 (tag existe no registro); dono confirma versao e variaveis em 09-19
 - [Phase 09]: 09-13: @sentry/node fixado em 10.76.2 (escolha do dono em 2026-10-23); a web (09-16) instala a mesma versao exata
 - [Phase 09]: 09-13: dataCollection todo explicito tambem na 10.76.2 (campo omitido volta a LIGADO); URLs perdem query e segredo; Sentry so recebe o ramo 500
+- [Phase 09]: 09-15: text/plain removido do app (415 em vez de 400) e resolvedor de Membro real no teste de cruzamento entre Espacos
+- [Phase 09]: 09-15: runLancamentoAgent do Convidado medido como lacuna do dominio (ok:true, publica o Resumo) e marcado it.fails; inviteMember nao exercida (rede)
 
 ### Pending Todos
 
@@ -600,6 +603,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-23T10:38:52.114Z
-Stopped at: Completed 09-13-PLAN.md
+Last session: 2026-10-23T10:54:03.790Z
+Stopped at: Completed 09-15-PLAN.md
 Resume file: None
