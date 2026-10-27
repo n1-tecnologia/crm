@@ -592,7 +592,7 @@ Plans:
 **Wave 6** *(blocked on Wave 5 completion)*
 - [x] 09-15-PLAN.md — Suíte adversarial 2: outro Membro e outro Espaço, anexos, segredos, XFF, entrada hostil (SEG-12, SEG-01)
 - [x] 09-16-PLAN.md — Sentry na web pelo arquivo de instrumentação do Next 16 (SEG-10)
-- [ ] 09-18-PLAN.md — Backup ligado na VPS e restauração provada no Mac do dono `[BLOCKING]` (SEG-09)
+- [ ] 09-18-PLAN.md — Backup ligado na VPS e restauração provada no Mac do dono `[BLOCKING]` (SEG-09) — **PULADO por decisão do dono em 2026-10-27, não executado** (ver `09-18-SUMMARY.md`)
 
 **Wave 7** *(blocked on Wave 6 completion)*
 - [ ] 09-19-PLAN.md — Alerta do Sentry provado em homologação e Evolution API no ar `[BLOCKING]` (SEG-10, SEG-11)
