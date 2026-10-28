@@ -47,11 +47,22 @@ interface BancoDescartavel {
   readonly dono: Pool;
 }
 
+/**
+ * Como `new Pool`, mas com o `error` ouvido: sem isso, um `drop database ... with (force)`
+ * que esbarra num `pool.end()` ainda fechando o socket chega como erro sem ouvinte e vira
+ * exceção não tratada do processo (mesma proteção que `conexao.ts` já tem nos pools do app).
+ */
+function novoPool(connectionString: string): Pool {
+  const p = new Pool({ connectionString, max: 2 });
+  p.on("error", () => {});
+  return p;
+}
+
 /** Cria o banco, entrega o pool do dono e SEMPRE apaga o banco depois de `corpo`. */
 async function comBancoDescartavel(caso: string, corpo: (banco: BancoDescartavel) => Promise<void>): Promise<void> {
   const nome = `n1_banco_${caso}_${randomUUID().slice(0, 8)}`;
   await poolDoDono().query(`create database ${nome}`);
-  const dono = new Pool({ connectionString: urlDoBanco(nome), max: 2 });
+  const dono = novoPool(urlDoBanco(nome));
   try {
     await corpo({ nome, dono });
   } finally {
@@ -62,7 +73,7 @@ async function comBancoDescartavel(caso: string, corpo: (banco: BancoDescartavel
 
 /** `migrar()` num banco descartável, com um pool próprio que é fechado em seguida. */
 async function migrarNo(nome: string): Promise<Aplicada[]> {
-  const origem = new Pool({ connectionString: urlDoBanco(nome), max: 2 });
+  const origem = novoPool(urlDoBanco(nome));
   try {
     return await migrar(origem);
   } finally {
@@ -271,7 +282,7 @@ describeComBanco("banco fechado da Fase 9 (009) — Postgres local", () => {
         expect(Object.values(matriz.sequencias).every(Boolean)).toBe(true);
 
         // Conectado como n1_api de verdade.
-        const comoApi = new Pool({ connectionString: urlDoBanco(nome, { nome: "n1_api", senha: SENHA_DE_TESTE }), max: 2 });
+        const comoApi = novoPool(urlDoBanco(nome, { nome: "n1_api", senha: SENHA_DE_TESTE }));
         try {
           expect((await comoApi.query<{ u: string }>("select current_user as u")).rows[0]!.u).toBe("n1_api");
           await comoApi.query(
