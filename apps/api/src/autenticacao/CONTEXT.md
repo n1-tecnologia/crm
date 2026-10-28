@@ -6,7 +6,7 @@ Toda fala com o Supabase Auth (Admin API) passa por aqui — `SUPABASE_SECRET_KE
 
 ## `verificar-token.ts`
 
-`verificarTokenDoSupabase(token)` — verifica a assinatura de um access token contra o JWKS do projeto (`supabase.auth.getClaims()`) e devolve `{ sub, email }` ou `null`. Usado pelo hook de autenticação (`plugins/autenticacao.ts`) em toda requisição.
+`verificarTokenDoSupabase(token)` — verifica a assinatura de um access token contra o JWKS do projeto (`supabase.auth.getClaims()`) e devolve `{ sub, email }` ou `null`. Token malformado (a decodificação do JWT lança, como em `abc.def.ghi`) também é `null`, nunca exceção: o hook responde 401 e nada vai ao Sentry (09-21); só a falta de `SUPABASE_*` continua lançando. Usado pelo hook de autenticação (`plugins/autenticacao.ts`) em toda requisição.
 
 `clienteAdmin()` — fábrica lazy, uma instância por processo, do client Supabase criado com `SUPABASE_SECRET_KEY`. Todo arquivo desta pasta que precisa da Admin API reutiliza esta instância em vez de instanciar outro `createClient`.
 

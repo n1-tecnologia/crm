@@ -40,7 +40,19 @@ export function clienteAdmin(): ReturnType<typeof createClient> {
 }
 
 export async function verificarTokenDoSupabase(token: string): Promise<ClaimsDaSessao | null> {
-  const { data, error } = await clienteAdmin().auth.getClaims(token);
+  // `clienteAdmin()` fica FORA do try: SUPABASE_* ausente é erro do servidor e continua lançando.
+  const cliente = clienteAdmin();
+  let resultado: Awaited<ReturnType<typeof cliente.auth.getClaims>>;
+  try {
+    resultado = await cliente.auth.getClaims(token);
+  } catch {
+    // 09-21 — `getClaims` devolve `{ error }` para token inválido ou expirado, mas LANÇA quando a decodificação do
+    // JWT falha (`Invalid UTF-8 sequence` num cabeçalho em base64 inválido, JSON que não é JSON). Um token que o
+    // cliente inventa não é erro do servidor: é a mesma sessão inválida de qualquer outro token ruim, 401 pelo hook.
+    // A exceção não é registrada nem propagada (o tratador de erro a mandaria ao Sentry): o token é dado de entrada.
+    return null;
+  }
+  const { data, error } = resultado;
   if (error || !data?.claims?.sub) return null;
   return { sub: data.claims.sub, email: data.claims.email };
 }
