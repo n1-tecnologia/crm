@@ -736,6 +736,30 @@ describe("visibilidadePara — Execuções de IA seguem o objeto e o Convidado (
     const doDono = recortarDiferenca({ gravados: [{ colecao: "automationExecutions", id: automacao.id, dados: automacao, ordem: 0 }], removidos: [] }, state, DONO);
     expect(idsDe(doDono.gravados)).toEqual(["aex_cr01_diff"]);
   });
+
+  it("CR-01 (residual, 09-21): a ApprovalRequest de uma Execução de agente oculta some, mesmo com targetResourceId visível", () => {
+    const oculta = tarefaOculta();
+    const visivel = tarefaVisivel();
+    const agente = execucaoDeAgente("exe_cr01_aprovacao", { type: "task", id: oculta.id });
+    state.agentExecutions.push(agente);
+    state.approvals.push({
+      id: "apr_cr01_oculta",
+      origin: { kind: "agentExecution", executionId: agente.id, stepIndex: 0, deadline: "2026-01-01T01:00:00.000Z" },
+      requestedBy: { kind: "agent", id: "agt_1" },
+      reason: "limite",
+      // O targetResourceId é de um objeto VISÍVEL de propósito: a Execução que a gerou está oculta,
+      // e isto não pode bastar para a aprovação (com o `object.input`, SEGREDO) continuar visível.
+      object: { toolId: "ferramenta_1", input: SEGREDO, targetResourceType: "task", targetResourceId: visivel.id, effectClass: "leitura" },
+      approverMemberId: COMUM,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    const deJulia = visibilidadePara(state, COMUM);
+    expect(idsDe(deJulia.estado.approvals)).not.toContain("apr_cr01_oculta");
+    expect(JSON.stringify(deJulia.estado)).not.toContain(SEGREDO);
+    // O Proprietário alcança a Tarefa que ancora a Execução: a aprovação chega.
+    const doDono = visibilidadePara(state, DONO);
+    expect(idsDe(doDono.estado.approvals)).toContain("apr_cr01_oculta");
+  });
 });
 
 /**
