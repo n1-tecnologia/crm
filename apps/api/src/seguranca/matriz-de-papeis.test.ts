@@ -19,10 +19,11 @@
  * sucesso fala com o armazenamento do Supabase (Storage) e por isso não roda
  * aqui; as células dele são só de recusa.
  *
- * LACUNAS DO DOMÍNIO (09-09-SUMMARY): `removeMember` não confere quem chama. O
- * bloco final escreve a asserção do comportamento CORRETO e a marca como falha
- * conhecida (`it.fails`); quando o domínio for consertado, o Vitest avisa que
- * a marca deve sair.
+ * LACUNAS DO DOMÍNIO (09-09-SUMMARY): o bloco final escreve a asserção do
+ * comportamento CORRETO e a marca como falha conhecida (`it.fails`); quando o
+ * domínio for consertado, o Vitest avisa que a marca deve sair. `removeMember`
+ * (que não conferia quem chama) foi fechada em 09-21: o caso virou `it` normal
+ * e ganhou o Membro comum e o Administrador.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -259,8 +260,8 @@ describeComBanco("lacunas conhecidas do domínio — o comportamento seguro, mar
     await encerrar();
   });
 
-  // LACUNA — ver 09-09-SUMMARY, achado 1 (grave): `removeMember` não olha quem chama.
-  it.fails("removeMember: o Convidado não remove outro Membro (hoje remove, e o Sucessor é ele quem escolhe)", async () => {
+  // FECHADA em 09-21 (era a LACUNA do 09-09-SUMMARY, achado 1): `removeMember` agora só aceita Administrador ou Proprietário ativo.
+  it("removeMember: o Convidado não remove outro Membro, nem escolhendo o Sucessor", async () => {
     const resposta = await app.inject({
       method: "POST",
       url: "/operacoes/removeMember",
@@ -269,6 +270,40 @@ describeComBanco("lacunas conhecidas do domínio — o comportamento seguro, mar
     });
     expect(resposta.statusCode).toBe(200);
     expect((resposta.json() as { ok: boolean }).ok).toBe(false);
+  });
+
+  it("removeMember: o Membro comum não remove outro Membro, nem escolhendo o Sucessor", async () => {
+    const resposta = await app.inject({
+      method: "POST",
+      url: "/operacoes/removeMember",
+      headers: { authorization: `Bearer ${TOKENS_DE_VAZAMENTO.a}` },
+      payload: { args: [espaco.membros.b.id, espaco.membros.a.id] },
+    });
+    expect(resposta.statusCode).toBe(200);
+    expect((resposta.json() as { ok: boolean }).ok).toBe(false);
+  });
+
+  it("removeMember: ninguém remove o Proprietário, nem o Administrador", async () => {
+    const resposta = await app.inject({
+      method: "POST",
+      url: "/operacoes/removeMember",
+      headers: { authorization: `Bearer ${TOKENS_DE_VAZAMENTO.administrador}` },
+      payload: { args: [espaco.membros.proprietario.id, espaco.membros.administrador.id] },
+    });
+    expect(resposta.statusCode).toBe(200);
+    expect((resposta.json() as { ok: boolean }).ok).toBe(false);
+  });
+
+  // Por último dos três: este remove de verdade o Membro `b` deste Espaço (que é só deste arquivo).
+  it("removeMember: o Administrador remove (o lado positivo da mesma regra)", async () => {
+    const resposta = await app.inject({
+      method: "POST",
+      url: "/operacoes/removeMember",
+      headers: { authorization: `Bearer ${TOKENS_DE_VAZAMENTO.administrador}` },
+      payload: { args: [espaco.membros.b.id, espaco.membros.administrador.id] },
+    });
+    expect(resposta.statusCode).toBe(200);
+    expect((resposta.json() as { ok: boolean }).ok).toBe(true);
   });
 
   // LACUNA — ver 09-09-SUMMARY, achado 2 (médio): `spawnNextOccurrence` não olha quem chama nem o alcance da Tarefa.
