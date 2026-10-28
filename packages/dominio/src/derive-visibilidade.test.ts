@@ -14,7 +14,7 @@ import { setTaskFieldValue } from "./operations/tasks";
 import { createList } from "./operations/structure";
 import { buildSeed } from "./seed";
 import type { DataState } from "./state";
-import type { Form, Member, Task, View } from "./types";
+import type { AgentExecution, AutomationExecution, Form, Member, Task, View } from "./types";
 
 let state: DataState;
 beforeEach(() => {
@@ -237,6 +237,11 @@ describe("visibilidadePara — Sessão de Chat, pasta e execução (D-01, D-22)"
     for (const id of deCht2) {
       expect(idsDe(antes.estado.agentExecutions)).not.toContain(id);
       expect(antes.ocultos.has(id)).toBe(true);
+    }
+    // CR-01 — as de outra origem só ficam quando o objeto que ancoram é visível a este Membro (Administrador, que
+    // alcança tudo) e o chamador não é Convidado; nenhuma âncora do seed está em `ocultos` para ele.
+    for (const e of state.agentExecutions.filter((x) => x.origin !== "sessaoDeChat")) {
+      expect(e.anchor === undefined || !antes.ocultos.has(e.anchor.id), `âncora de ${e.id}`).toBe(true);
     }
     expect(idsDe(antes.estado.agentExecutions)).toEqual(expect.arrayContaining(deOutraOrigem));
     expect(antes.estado.agentExecutions.some((e) => e.origin === "sessaoDeChat" && e.chatSessionId !== undefined && !idsDe(antes.estado.chatSessions).includes(e.chatSessionId))).toBe(false);
@@ -560,6 +565,176 @@ describe("Convidado, rótulo do ator e Arquivo órfão (D-02, D-03, R3)", () => 
         expect(visibilidadePara(state, quem).estado.files.some((f) => f.id === "wf_orfao_legado"), quem).toBe(true);
       }
     });
+  });
+});
+
+/**
+ * CR-01 — a Execução de IA carrega conteúdo (`input`/`output`/`steps`, e o nome do
+ * objeto em que atuou) e seguia o estado inteiro: a de agente só saía junto com a
+ * Sessão de Chat, e a de Automação nem era filtrada. Ela segue o objeto que
+ * ancora (`anchor` / `objectId`) e a regra D-02 do Convidado (sem a IA do Espaço,
+ * Execuções e Concessões de Habilidade e de Coleção incluídas). No seed, mem_julia
+ * (base membro) não vê a Estrutura de Gestão; mem_thiago é o Proprietário;
+ * mem_beatriz é Convidada.
+ */
+describe("visibilidadePara — Execuções de IA seguem o objeto e o Convidado (CR-01)", () => {
+  const COMUM = "mem_julia";
+  const DONO = "mem_thiago";
+  const CONVIDADO = "mem_beatriz";
+  const idsDe = (itens: ReadonlyArray<{ readonly id: string }>) => itens.map((i) => i.id);
+  const SEGREDO = "TEXTO-DA-EXECUCAO-DO-OBJETO-OCULTO";
+
+  const tarefaOculta = (): Task => {
+    const t = state.tasks.find((x) => visibilidadePara(state, COMUM).ocultos.has(x.id));
+    if (!t) throw new Error("o seed precisa de uma Tarefa que Júlia não veja");
+    return t;
+  };
+  const tarefaVisivel = (): Task => {
+    const t = state.tasks.find((x) => !visibilidadePara(state, COMUM).ocultos.has(x.id));
+    if (!t) throw new Error("o seed precisa de uma Tarefa que Júlia veja");
+    return t;
+  };
+  const execucaoDeAgente = (id: string, ancora: AgentExecution["anchor"], extra: Partial<AgentExecution> = {}): AgentExecution => {
+    const base = state.agentExecutions.find((e) => e.origin === "caixaDeEntrada");
+    if (!base) throw new Error("o seed precisa de uma Execução de agente da Caixa de Entrada");
+    const { anchor: _a, chatSessionId: _c, ...semAncora } = base;
+    return {
+      ...semAncora,
+      id,
+      origin: "acaoDireta",
+      input: SEGREDO,
+      output: SEGREDO,
+      steps: [{ index: 0, kind: "raciocinio", input: SEGREDO, output: SEGREDO, result: "concluido", at: base.startedAt }],
+      ...(ancora === undefined ? {} : { anchor: ancora }),
+      ...extra,
+    };
+  };
+  const execucaoDeAutomacao = (id: string, objeto: { type: string; id: string; name: string }): AutomationExecution => ({
+    id,
+    workspaceId: state.workspace.id,
+    automationId: state.automations[0]!.id,
+    automationVersion: 1,
+    state: "concluida",
+    triggerKind: "evento",
+    objectType: objeto.type,
+    objectId: objeto.id,
+    objectName: objeto.name,
+    invokedBy: { kind: "system", id: "sistema" },
+    chain: { depth: 0, visitedAgentIds: [], visitedAutomationObjects: [] },
+    steps: [{ index: 0, kind: "raciocinio", input: SEGREDO, output: SEGREDO, result: "concluido", at: "2026-01-01T00:00:00.000Z" }],
+    childAgentExecutionIds: [],
+    cost: { modelUnits: 1, toolCalls: 0, childExecutions: 0, durationMs: 1 },
+    startedAt: "2026-01-01T00:00:00.000Z",
+  });
+
+  it("a Execução de agente ancorada numa Tarefa oculta some, com o id em ocultos; quem vê a Tarefa a recebe", () => {
+    const oculta = tarefaOculta();
+    state.agentExecutions.push(execucaoDeAgente("exe_cr01_oculta", { type: "task", id: oculta.id }));
+    const deJulia = visibilidadePara(state, COMUM);
+    expect(idsDe(deJulia.estado.agentExecutions)).not.toContain("exe_cr01_oculta");
+    expect(deJulia.ocultos.has("exe_cr01_oculta")).toBe(true);
+    expect(JSON.stringify(deJulia.estado)).not.toContain(SEGREDO);
+    // O Proprietário alcança a Tarefa: a Execução chega.
+    const doDono = visibilidadePara(state, DONO);
+    expect(idsDe(doDono.estado.agentExecutions)).toContain("exe_cr01_oculta");
+    expect(doDono.ocultos.has("exe_cr01_oculta")).toBe(false);
+  });
+
+  it("a âncora da composição de contexto também conta: o nome do objeto oculto não chega", () => {
+    const oculta = tarefaOculta();
+    const base = execucaoDeAgente("exe_cr01_contexto", undefined);
+    state.agentExecutions.push({
+      ...base,
+      contextComposition: { ...base.contextComposition, anchor: { type: "task", id: oculta.id, name: SEGREDO } },
+    });
+    const deJulia = visibilidadePara(state, COMUM);
+    expect(idsDe(deJulia.estado.agentExecutions)).not.toContain("exe_cr01_contexto");
+    expect(deJulia.ocultos.has("exe_cr01_contexto")).toBe(true);
+    expect(JSON.stringify(deJulia.estado)).not.toContain(SEGREDO);
+  });
+
+  it("a Execução de Automação de um objeto oculto some, com o id em ocultos; quem vê o objeto a recebe", () => {
+    const oculta = tarefaOculta();
+    state.automationExecutions.push(execucaoDeAutomacao("aex_cr01_oculta", { type: "task", id: oculta.id, name: SEGREDO }));
+    const deJulia = visibilidadePara(state, COMUM);
+    expect(idsDe(deJulia.estado.automationExecutions)).not.toContain("aex_cr01_oculta");
+    expect(deJulia.ocultos.has("aex_cr01_oculta")).toBe(true);
+    expect(JSON.stringify(deJulia.estado)).not.toContain(SEGREDO);
+    const doDono = visibilidadePara(state, DONO);
+    expect(idsDe(doDono.estado.automationExecutions)).toContain("aex_cr01_oculta");
+    expect(doDono.ocultos.has("aex_cr01_oculta")).toBe(false);
+  });
+
+  it("Membro comum com o objeto visível continua vendo as duas Execuções (a regra não fecha o que o objeto abre)", () => {
+    const visivel = tarefaVisivel();
+    state.agentExecutions.push(execucaoDeAgente("exe_cr01_visivel", { type: "task", id: visivel.id }));
+    state.automationExecutions.push(execucaoDeAutomacao("aex_cr01_visivel", { type: "task", id: visivel.id, name: visivel.title }));
+    const deJulia = visibilidadePara(state, COMUM);
+    expect(idsDe(deJulia.estado.agentExecutions)).toContain("exe_cr01_visivel");
+    expect(idsDe(deJulia.estado.automationExecutions)).toContain("aex_cr01_visivel");
+    expect(deJulia.ocultos.has("exe_cr01_visivel")).toBe(false);
+    expect(deJulia.ocultos.has("aex_cr01_visivel")).toBe(false);
+    // Sem âncora (objectId ausente), a Execução de Automação de um evento sem objeto também segue visível.
+    const { objectType: _t, objectId: _i, objectName: _n, ...semObjeto } = execucaoDeAutomacao("aex_cr01_sem_objeto", { type: "", id: "", name: "" });
+    state.automationExecutions.push(semObjeto);
+    expect(idsDe(visibilidadePara(state, COMUM).estado.automationExecutions)).toContain("aex_cr01_sem_objeto");
+  });
+
+  it("D-02 — o Convidado não recebe nenhuma Execução (nem de agente nem de Automação), mesmo com o objeto visível", () => {
+    state.agentExecutions.push(execucaoDeAgente("exe_cr01_convidado", { type: "deal", id: "deal_fim_1" }));
+    state.automationExecutions.push(execucaoDeAutomacao("aex_cr01_convidado", { type: "deal", id: "deal_fim_1", name: SEGREDO }));
+    expect(state.agentExecutions.length).toBeGreaterThan(1);
+    const { estado, ocultos } = visibilidadePara(state, CONVIDADO);
+    expect(estado.agentExecutions).toEqual([]);
+    expect(estado.automationExecutions).toEqual([]);
+    for (const e of state.agentExecutions) expect(ocultos.has(e.id), e.id).toBe(true);
+    for (const e of state.automationExecutions) expect(ocultos.has(e.id), e.id).toBe(true);
+    expect(JSON.stringify(estado)).not.toContain(SEGREDO);
+    // O recorte esvazia, não apaga: as chaves seguem no estado.
+    expect("agentExecutions" in estado).toBe(true);
+    expect("automationExecutions" in estado).toBe(true);
+  });
+
+  it("D-02 — a Concessão de Habilidade e a de Coleção (que ligam Agente a Habilidade e a Coleção) também saem para o Convidado", () => {
+    expect(state.skillGrants.length).toBeGreaterThan(0);
+    expect(state.collectionGrants.length).toBeGreaterThan(0);
+    const { estado, ocultos } = visibilidadePara(state, CONVIDADO);
+    expect(estado.skillGrants).toEqual([]);
+    expect(estado.collectionGrants).toEqual([]);
+    for (const g of state.skillGrants) expect(ocultos.has(g.id), g.id).toBe(true);
+    for (const g of state.collectionGrants) expect(ocultos.has(g.id), g.id).toBe(true);
+    // Quem tem IA do Espaço recebe as duas inteiras.
+    for (const quem of [COMUM, "mem_rafael", DONO]) {
+      const { estado: e, ocultos: o } = visibilidadePara(state, quem);
+      expect(idsDe(e.skillGrants), quem).toEqual(idsDe(state.skillGrants));
+      expect(idsDe(e.collectionGrants), quem).toEqual(idsDe(state.collectionGrants));
+      for (const g of [...state.skillGrants, ...state.collectionGrants]) expect(o.has(g.id), `${quem}:${g.id}`).toBe(false);
+    }
+  });
+
+  it("o diff e o value de uma gravação não trazem a Execução nova de um objeto oculto", () => {
+    const oculta = tarefaOculta();
+    const agente = execucaoDeAgente("exe_cr01_diff", { type: "task", id: oculta.id });
+    const automacao = execucaoDeAutomacao("aex_cr01_diff", { type: "task", id: oculta.id, name: SEGREDO });
+    state.agentExecutions.push(agente);
+    state.automationExecutions.push(automacao);
+    const diff = recortarDiferenca(
+      {
+        gravados: [
+          { colecao: "agentExecutions", id: agente.id, dados: agente, ordem: 0 },
+          { colecao: "automationExecutions", id: automacao.id, dados: automacao, ordem: 1 },
+        ],
+        removidos: [],
+      },
+      state,
+      COMUM,
+    );
+    expect(diff.gravados).toEqual([]);
+    expect(JSON.stringify(diff)).not.toContain(SEGREDO);
+    expect(recortarValor({ execucao: automacao, lista: [agente] }, state, COMUM)).toEqual({ execucao: null, lista: [null] });
+    // O Proprietário recebe as duas no diff.
+    const doDono = recortarDiferenca({ gravados: [{ colecao: "automationExecutions", id: automacao.id, dados: automacao, ordem: 0 }], removidos: [] }, state, DONO);
+    expect(idsDe(doDono.gravados)).toEqual(["aex_cr01_diff"]);
   });
 });
 
