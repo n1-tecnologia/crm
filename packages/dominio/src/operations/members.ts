@@ -220,6 +220,13 @@ export function removeMember(
   memberId: Id,
   successorId: Id,
 ): OperationResult<Member> {
+  // 09-21 — quem remove um Membro escolhe o Sucessor que herda os registros dele: só um Administrador ou o
+  // Proprietário ATIVO. É a recusa de `inviteMember` e das vizinhas (Papel base), mais o estado de quem chama.
+  const acting = state.members.find((m) => m.id === actingMemberId);
+  const actingRole = state.roles.find((r) => r.id === acting?.roleId);
+  if (acting?.state !== "ativo" || (actingRole?.base !== "administrador" && actingRole?.base !== "proprietario")) {
+    return fail("Só um Administrador ou o Proprietário ativo remove um Membro.");
+  }
   const member = state.members.find((m) => m.id === memberId);
   if (!member) return fail("Membro não encontrado.");
   if (member.state === "removido") return ok(member);
