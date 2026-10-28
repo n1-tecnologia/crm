@@ -19,6 +19,9 @@
  *     a pasta de chat que não é dele e a Execução de agente cuja origem é uma
  *     Sessão que saiu (o texto da conversa mora em `input`/`output`). Uma Sessão
  *     compartilhada chega sem `folderId` quando a pasta é de outro Membro.
+ *   - Execução de IA (CR-01): a de agente também sai quando o objeto que ela ancora
+ *     saiu, e a de Automação quando o objeto em que atuou saiu (`input`, `output`
+ *     e `steps` carregam o conteúdo do objeto). Ver "IA do Espaço para o Convidado".
  *
  *   - Dado pessoal de outro Membro (D-01, 1.1.2): a Memória de Usuário chega
  *     como `{ enabled, items: [] }`; o e-mail de um convite `pendente` chega
@@ -33,7 +36,9 @@
  *
  *   - IA do Espaço para o Convidado (D-02, escolha A): quem tem Papel de base
  *     `convidado` recebe Agentes, Automações, Documentos, Coleções e Habilidades
- *     como `[]` (e os ids em `ocultos`); a regra fina por registro é a Sessão 17.
+ *     como `[]` (e os ids em `ocultos`), e também as Execuções (de agente e de
+ *     Automação) e as Concessões de Habilidade e de Coleção; a regra fina por
+ *     registro é a Sessão 17.
  *   - Arquivo órfão (R3): o que nenhuma Tarefa carrega só é visto por quem o
  *     criou e por quem administra o Espaço; o `legado/*` (sem conteúdo) segue aberto.
  *
@@ -52,7 +57,7 @@ import type { Diferenca, Ordens } from "./diferenca";
 import { arquivoSemConteudo } from "./operations/anexos-enviados";
 import { administraOEspaco, baseDoPapel } from "./operations/ia/permissoes-ia";
 import type { DataState } from "./state";
-import type { ChatSession, Form, Id, Member, Task, WorkspaceFile } from "./types";
+import type { AgentExecution, ChatSession, Form, Id, Member, Task, WorkspaceFile } from "./types";
 
 export interface Visibilidade {
   readonly estado: DataState;
@@ -155,12 +160,31 @@ export function visibilidadePara(state: DataState, memberId: Id): Visibilidade {
     }
   }
   const chatFolders = state.chatFolders.filter((f) => f.ownerMemberId === memberId || !ocultos.add(f.id));
-  const agentExecutions = state.agentExecutions.filter(
-    (e) => e.chatSessionId === undefined || !sessoesQueSaem.has(e.chatSessionId) || !ocultos.add(e.id),
-  );
 
   // D-02 (escolha A): o Convidado não recebe a IA do Espaço — a barreira é o servidor, a tela só deixa de oferecer.
+  // Calculado ANTES das Execuções: elas carregam conteúdo (`input`/`output`/`steps`) e fazem parte da IA do Espaço.
   const convidado = baseDoPapel(state, memberId) === "convidado";
+
+  // CR-01 — a Execução de IA segue o que ela toca. A de agente sai se a Sessão de Chat saiu, se o objeto que ela
+  // ancora (`anchor`, ou a âncora da composição de contexto, que traz o nome) está em `ocultos`, ou se o chamador
+  // é Convidado. A de Automação sai se o objeto em que atuou (`objectId`) está em `ocultos`, ou se é Convidado.
+  // O id da que sai entra em `ocultos`: o diff de `POST /operacoes/:nome` e o Registro de Atividade dela também saem.
+  const ancoraOculta = (ancora: { readonly id: Id } | undefined): boolean => ancora !== undefined && ocultos.has(ancora.id);
+  const agentExecutions = state.agentExecutions.filter((e) => {
+    const sai =
+      convidado ||
+      (e.chatSessionId !== undefined && sessoesQueSaem.has(e.chatSessionId)) ||
+      ancoraOculta(e.anchor) ||
+      ancoraOculta((e.contextComposition as AgentExecution["contextComposition"] | undefined)?.anchor);
+    if (sai) ocultos.add(e.id);
+    return !sai;
+  });
+  const automationExecutions = state.automationExecutions.filter((e) => {
+    const sai = convidado || (e.objectId !== undefined && ocultos.has(e.objectId));
+    if (sai) ocultos.add(e.id);
+    return !sai;
+  });
+
   const semIA = <T extends { readonly id: Id }>(registros: T[]): T[] => {
     if (!convidado) return registros;
     for (const r of registros) ocultos.add(r.id);
@@ -171,6 +195,9 @@ export function visibilidadePara(state: DataState, memberId: Id): Visibilidade {
   const documents = semIA(state.documents);
   const collections = semIA(state.collections);
   const skills = semIA(state.skills);
+  // As Concessões ligam Agente a Habilidade e a Coleção: sem os dois lados, ficariam só como ids soltos.
+  const skillGrants = semIA(state.skillGrants);
+  const collectionGrants = semIA(state.collectionGrants);
 
   const activity = state.activity.filter((a) => !ocultos.has(a.objectId));
   const approvals = state.approvals.filter((a) => !ocultos.has(a.object.targetResourceId));
@@ -182,7 +209,7 @@ export function visibilidadePara(state: DataState, memberId: Id): Visibilidade {
     return false;
   });
   return {
-    estado: { ...state, members, views, spaces, folders, lists, tasks, forms, activity, approvals, files, chatSessions, chatFolders, agentExecutions, agents, automations, documents, collections, skills },
+    estado: { ...state, members, views, spaces, folders, lists, tasks, forms, activity, approvals, files, chatSessions, chatFolders, agentExecutions, automationExecutions, agents, automations, documents, collections, skills, skillGrants, collectionGrants },
     ocultos,
   };
 }
