@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 2
+open_count: 6
 waived_count: 1
 fixed_count: 4
-total_count: 7
-last_updated: 2026-10-12T22:25:12.604Z
+total_count: 11
+last_updated: 2026-10-28T18:14:48.632Z
 ---
 
 # Broken Windows Ledger
@@ -22,6 +22,10 @@ last_updated: 2026-10-12T22:25:12.604Z
 | 5 | 07 | deviation | apps/api/src/e2e/lote-contas-a-pagar.test.ts |  | 07-12: npm run check nao fica verde por duas falhas pre-existentes fora do CRM (lote-contas-a-pagar 5/6 contra o banco remoto; seed de formularios-publicos.test.ts) - registradas em deferred-items.md da fase | waived | Ressalva aceita pelo dono na UAT da Fase 7 (2026-10-11, teste 1): as duas falhas do portão são pré-existentes e exclusivas do Financeiro, fora dos arquivos da fase; registradas em deferred-items.md e como override em 07-VERIFICATION.md | 2026-10-11T00:08:40.828Z | 2026-10-11T22:24:42.705Z |
 | 6 | 08 | unrun-verify | .planning/phases/08-canais-de-comunica-o-conex-o-e-omnichannel-preparado/08-PROVAS.md |  | 08-15: UAT de fim de fase (dez passos + conferencias visuais de 08-01/02/08/09/10/11) nao exercitada no app real; resultado do dono fica em branco em 08-PROVAS.md | open |  | 2026-10-12T22:25:12.544Z |  |
 | 7 | 08 | deviation | apps/api/src/persistencia/colunas-geradas.test.ts | 111 | 08-15: portao npm run check falhou nesse arquivo uma vez (empate de vencimento sem desempate no order by) e passou isolado; alem das duas falhas pre-existentes da Fase 7; ver deferred-items.md da Fase 8 | open |  | 2026-10-12T22:25:12.604Z |  |
+| 8 | 09 | deviation | packages/dominio/src/derive-visibilidade.ts |  | pentest 09-21 [medio] AgentExecution.contextComposition.readRecordIds pode listar ids de registros ocultos (vaza so o id) | open |  | 2026-10-28T18:14:48.432Z |  |
+| 9 | 09 | deviation | packages/dominio/src/types/ai.ts |  | pentest 09-21 [baixo] AutomationExecution.childAgentExecutionIds pode listar ids de Execucoes ocultas (vaza so o id) | open |  | 2026-10-28T18:14:48.506Z |  |
+| 10 | 09 | deviation | apps/api/src/app.ts |  | pentest 09-21 [baixo/informativo] apps/api e apps/web nao enviam cabecalhos de seguranca de resposta (X-Content-Type-Options, Strict-Transport-Security, Referrer-Policy, CSP) | open |  | 2026-10-28T18:14:48.569Z |  |
+| 11 | 09 | deviation | apps/api/deploy/n1-crm-limites.conf |  | pentest 09-21 [informativo] limite de taxa por IP nao existe no ambiente local/homologacao (sem nginx); provado so em Docker (09-06), pendente repetir na VPS real no 09-20 | open |  | 2026-10-28T18:14:48.632Z |  |
 
 ````json
 [
@@ -113,6 +117,58 @@ last_updated: 2026-10-12T22:25:12.604Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-10-12T22:25:12.604Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 8,
+    "kind": "deviation",
+    "phase": "09",
+    "file": "packages/dominio/src/derive-visibilidade.ts",
+    "line": null,
+    "description": "pentest 09-21 [medio] AgentExecution.contextComposition.readRecordIds pode listar ids de registros ocultos (vaza so o id)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-28T18:14:48.432Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 9,
+    "kind": "deviation",
+    "phase": "09",
+    "file": "packages/dominio/src/types/ai.ts",
+    "line": null,
+    "description": "pentest 09-21 [baixo] AutomationExecution.childAgentExecutionIds pode listar ids de Execucoes ocultas (vaza so o id)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-28T18:14:48.506Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 10,
+    "kind": "deviation",
+    "phase": "09",
+    "file": "apps/api/src/app.ts",
+    "line": null,
+    "description": "pentest 09-21 [baixo/informativo] apps/api e apps/web nao enviam cabecalhos de seguranca de resposta (X-Content-Type-Options, Strict-Transport-Security, Referrer-Policy, CSP)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-28T18:14:48.569Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 11,
+    "kind": "deviation",
+    "phase": "09",
+    "file": "apps/api/deploy/n1-crm-limites.conf",
+    "line": null,
+    "description": "pentest 09-21 [informativo] limite de taxa por IP nao existe no ambiente local/homologacao (sem nginx); provado so em Docker (09-06), pendente repetir na VPS real no 09-20",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-28T18:14:48.632Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }

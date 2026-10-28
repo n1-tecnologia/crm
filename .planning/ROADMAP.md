@@ -599,7 +599,7 @@ Plans:
 
 **Wave 8** *(blocked on Wave 7 completion)*
 - [ ] 09-20-PLAN.md — Produção: `n1_api`, merge, `009` aplicada, app como `n1_api`, nginx da VPS, ações do Auth `[BLOCKING]` (SEG-04, SEG-06, SEG-07)
-- [ ] 09-21-PLAN.md — Teste de invasão exploratório em homologação com autorização do dono, `09-PENTEST.md` (SEG-12)
+- [x] 09-21-PLAN.md — Teste de invasão exploratório em homologação com autorização do dono, `09-PENTEST.md` (SEG-12) — **executado em 2026-10-28 com desvio da D-16** (sem VPS/Vercel de homologação, que o 09-17 não entregou): passada contra a `apps/api` no Mac ligada ao banco e Auth reais de homologação (ver `09-21-SUMMARY.md`)
 
 **Wave 9** *(blocked on Wave 8 completion)*
 - [ ] 09-22-PLAN.md — Rota de prova removida, documentos vivos e portão final (SEG-10, SEG-12)
