@@ -613,7 +613,7 @@ Plans:
 **Decisões do dono antes de planejar:** 2.1.2 (o que roda a recorrência sem o botão), 2.1.7 (manter Lista e Tabela), 2.5.5 (capacidade semanal do Membro).
 **Ordem interna:** domínio e migração antes da tela; a `010` junta 2.5.3 e 2.6.3 (a próxima migração depois da `009`); na página da Lista, 2.1.6 → 2.5.4 → 2.6.2 em sequência; 2.1.8 (Configurações em abas) antes de 2.6.2 e 2.6.5. A 2.1.10 toca `tarefa-completa.tsx`, a única ponta compartilhada com a Fase 11.
 **Itens da 2.7** (relatados nos testes) que mexam em Espaço, Pasta, Lista ou nas Configurações entram aqui, um por subtarefa.
-**Requirements**: TBD — definidos no `/gsd-discuss-phase 10`
+**Requirements**: EST-01, EST-02, EST-03, EST-04, EST-05, EST-06, EST-07, EST-08, EST-09, EST-10, EST-11 (derivados em `10-CONTEXT.md` "Requisitos derivados"; registrados em REQUIREMENTS.md, Fase 10)
 **Depends on:** Phase 9
 **Plans:** 0 plans
 

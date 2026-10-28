@@ -150,6 +150,22 @@ Critério de pronto (ROADMAP Phase 9): a segurança dos dados fechada e a base d
 - [ ] **SEG-11**: Painel da Evolution API responde por HTTPS na VPS nova e a chave de API está anotada para a Sessão 4 (D-12). Pendente.
 - [ ] **SEG-12**: Suíte adversarial verde no `npm run check` e no job `seguranca` do CI; `09-PENTEST.md` com a autorização do dono, achados por severidade e nenhum crítico ou alto aberto (D-14..D-16). Pendente.
 
+### Fase 10 — Clone ClickUp: Contêineres (EST)
+
+Critério de pronto (ROADMAP Phase 10): a Estrutura de Trabalho fechada no nível dos contêineres (Espaço, Pasta, Lista e as Configurações deles): telas sem peça de protótipo, mover e reordenar Pasta e Lista, a Carga fora e as lacunas do modelo de herança. Os onze IDs abaixo são **derivados** das subtarefas 2.1, 2.3, 2.5 e 2.6.1–2.6.5 de `docs/09-planejamento/TAREFAS-POR-SESSAO.md` e das decisões D-01..D-22 (`.planning/phases/10-clone-clickup-cont-ineres-espa-o-pasta-e-lista/10-CONTEXT.md`, "Requisitos derivados").
+
+- [ ] **EST-01**: Nenhuma tela tem "Rodar agenda da Lista" nem "Rodar automações por vencimento"; Lista com Tarefa recorrente por calendário e sem Automação por vencimento gera a próxima ocorrência pelo agendador, sem ensaio; o dono confirmou o agendador ligado em produção antes de o botão sair (2.1.1–2.1.3, D-01..D-04). Pendente.
+- [ ] **EST-02**: Uma só `SelecaoEmLote` nas três lentes; sem frases de explicação nem "De modelo"; contagem "Mostrando X de Y Tarefas."; `listas/[lista]/page.tsx` abaixo de 1.000 linhas; `npm run check` passa (2.1.4–2.1.6, D-17). Pendente.
+- [ ] **EST-03**: Configurações em abas com `?aba=`; "Aspectos configuráveis" não aparece em tela nenhuma; página do Espaço no formato da Pasta, com Painéis só quando houver (2.1.8, 2.1.9, D-17). Pendente.
+- [ ] **EST-04**: `sem-codigo-de-regra.test.ts` passa; os 13 textos sem código entre parênteses (2.1.10, D-17). Pendente.
+- [ ] **EST-05**: `moveContainer` e `reorderContainers` no domínio com `mover-conteiner.test.ts` cobrindo mesmo Conjunto, Conjunto diferente com e sem mapeamento, Campo arquivado, Pasta com Subpastas recusada, promoção/rebaixamento, destino que bloqueia; reordenar por grupo (Espaços, Pastas, Listas) (2.3.1, 2.3.2, D-08, D-11). Pendente.
+- [ ] **EST-06**: Arrastar Lista/Pasta na árvore move (na hora se sem consequência; diálogo se houver) ou reordena dentro do grupo; Espaços reordenam; "Mover para…" no menu; recusa do domínio no diálogo ou `Toast`; ordem nova continua depois de recarregar (2.3.3, D-09, D-10, D-12). Pendente.
+- [ ] **EST-07**: Nenhuma Lista oferece a Carga (5 abas; conversacional 4); a API recusa `saveView` com `kind: carga` (400); `grep -rn workload` e `weeklyCapacityMinutes` sem achados; coluna "Capacidade/sem" fora (2.5.1–2.5.5, D-13, D-14). Pendente.
+- [ ] **EST-08**: Mudar as Visualizações padrão no Espaço muda as abas das Listas abaixo; `visualizacoes-padrao.test.ts` passa; Visualização salva de tipo indisponível some da barra e volta junto (2.6.1, 2.6.2, D-06, D-07). Pendente.
+- [ ] **EST-09**: O tipo não deixa escrever `blocks` numa Lista; `bloqueado` fora de `InheritanceMode` (2.6.3, 2.6.4, D-15). Pendente.
+- [ ] **EST-10**: `setContainerBlock` e o interruptor "Bloquear para os níveis abaixo"; `bloqueio-de-aspecto.test.ts` passa, inclusive a recusa que nomeia a Pasta que sobrescreve e `criarAutomacao` recusada sob bloqueio (2.6.5, D-16). Pendente.
+- [ ] **EST-11**: `010` aplicada em produção após `--seco`; `count(*)` de `views` com `kind = 'carga'` e de `lists` com `blocks` dá 0; as quatro operações novas na tabela "Quem pode" (2.5.3, 2.6.3, D-18, D-19, D-20). Pendente.
+
 ## Traceability
 
 Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pelas ferramentas): `Pending` · `In Progress` · `Blocked` · `Complete`. A coluna "Situação verificada" carrega o status da intel (código, 2026-09-15).
@@ -225,11 +241,22 @@ Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pe
 | SEG-10 | Phase 9 | Pending | pendente | derivado (09-CONTEXT) |
 | SEG-11 | Phase 9 | Pending | pendente — checkpoint do dono | derivado (09-CONTEXT) |
 | SEG-12 | Phase 9 | Pending | pendente | derivado (09-CONTEXT) |
+| EST-01 | Phase 10 | Pending | pendente — checkpoint do dono (2.1.3) | derivado (10-CONTEXT) |
+| EST-02 | Phase 10 | Pending | pendente | derivado (10-CONTEXT) |
+| EST-03 | Phase 10 | Pending | pendente | derivado (10-CONTEXT) |
+| EST-04 | Phase 10 | Pending | pendente | derivado (10-CONTEXT) |
+| EST-05 | Phase 10 | Pending | pendente | derivado (10-CONTEXT) |
+| EST-06 | Phase 10 | Pending | pendente | derivado (10-CONTEXT) |
+| EST-07 | Phase 10 | Pending | pendente | derivado (10-CONTEXT) |
+| EST-08 | Phase 10 | Pending | pendente | derivado (10-CONTEXT) |
+| EST-09 | Phase 10 | Pending | pendente | derivado (10-CONTEXT) |
+| EST-10 | Phase 10 | Pending | pendente | derivado (10-CONTEXT) |
+| EST-11 | Phase 10 | Pending | pendente — checkpoint do dono (010 em produção) | derivado (10-CONTEXT) |
 
 **Coverage:**
 
-- v1 requirements: 69 total (68 executáveis + 1 sobreposto por decisão travada) — RES-01..06 acrescentados em 2026-09-29 (Fase 6); CRM-D1..CRM-V1 (7, derivados) em 2026-10-09 (Fase 7); CXE-D1..CXE-V1 (9, derivados) em 2026-10-12 (Fase 8); SEG-01..SEG-12 (12, derivados) em 2026-10-22 (Fase 9)
-- Mapped to phases: 68 (Phase 0: 6 · Phase 1: 8 · Phase 2: 9 · Phase 3: 7 · Phase 4: 1 · Phase 5: 3 · Phase 6: 6 · Phase 7: 7 · Phase 8: 9 · Phase 9: 12)
+- v1 requirements: 80 total (79 executáveis + 1 sobreposto por decisão travada) — RES-01..06 acrescentados em 2026-09-29 (Fase 6); CRM-D1..CRM-V1 (7, derivados) em 2026-10-09 (Fase 7); CXE-D1..CXE-V1 (9, derivados) em 2026-10-12 (Fase 8); SEG-01..SEG-12 (12, derivados) em 2026-10-22 (Fase 9); EST-01..EST-11 (11, derivados) em 2026-10-28 (Fase 10)
+- Mapped to phases: 79 (Phase 0: 6 · Phase 1: 8 · Phase 2: 9 · Phase 3: 7 · Phase 4: 1 · Phase 5: 3 · Phase 6: 6 · Phase 7: 7 · Phase 8: 9 · Phase 9: 12 · Phase 10: 11)
 - Unmapped: 0 ✓ (PERS-03 não tem fase por ser sobreposto — sua parte viva é PERS-07)
 - Já feitos: 8 (PREP-01, PREP-02, PREP-03, PREP-04, PREP-06 — Fase 0 fechada em 2026-09-17, Plan 00-07 — mais PERS-01, PERS-02 da Fase 1) · risco aceito pelo dono: 1 (PREP-05, D-13) · em andamento: 4 · bloqueados por decisão: 4 (D11, D6, D8, D7) · pendentes: 18
 
