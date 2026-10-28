@@ -156,17 +156,16 @@ copiado para um `.bak` ao lado antes da edição. Depois do `reload`: 50 `POST` 
 segredo em `access.log`, `error.log` e `publico.error.log` — as únicas três linhas com o segredo em texto
 puro no `access.log` são de sondas feitas ANTES do `reload` (formato antigo, sem máscara), não depois.
 
-**Passo 5 (ações do Auth) — ABERTO, não feito.** A chave usada nesta sessão (`SUPABASE_SECRET_KEY`, a de
-dados) não dá acesso à API de gerenciamento do projeto; essas quatro ações dependem do dono ou de um
-token pessoal:
+**Passo 5 (ações do Auth) — feito o que a API de gerenciamento permite.** O dono passou um token
+pessoal (`sbp_...`) depois do registro inicial; com ele:
 
 | Ação | Estado conferido |
 |---|---|
-| "Allow new users to sign up" desligado | **Ainda ligado** — `GET /auth/v1/settings` com a chave publicável respondeu `disable_signup: false`. T-09-105 (spoofing por cadastro aberto) continua aberto em produção. |
-| "Leaked password protection" | Não conferido (mesma falta de acesso) |
-| Bucket `guias` confirmado público de propósito | Não feito |
-| Conector do Supabase do claude.ai na organização "N1" | Não feito — hoje ele lista projetos de uma organização diferente |
-| Duas linhas `FINANCEIRO_TRIA_DATABASE_URL_LEITURA` apagadas do `apps/api/.env` local | Não conferido — o agente não lê esse arquivo (guarda de segredo do projeto) |
+| "Allow new users to sign up" desligado | **Feito.** `PATCH /v1/projects/.../config/auth` com `disable_signup: true`; `GET /auth/v1/settings` público confirmou `disable_signup: true` em até 3 s. T-09-105 fechado. |
+| "Leaked password protection" | **Indisponível, mesmo risco aceito que em homologação.** A API respondeu 402: "available on Pro Plans and up." |
+| Bucket `guias` confirmado público de propósito | **Feito.** `public = t`, só dois objetos dentro: `financeiro.jpg` e `financeiro.mp4` (o material do Guia do Financeiro) — nada sensível. `anexos-solicitacoes` continua privado (`public = f`). |
+| Conector do Supabase do claude.ai na organização "N1" | **Não feito.** É uma reconexão OAuth do lado do dono; o agente não pode fazer por ele. |
+| Duas linhas `FINANCEIRO_TRIA_DATABASE_URL_LEITURA` apagadas do `apps/api/.env` local | **Não feito.** O guarda de segredo do projeto recusa qualquer comando Bash que referencie esse arquivo, mesmo só para contar linhas — por desenho, nem com o token isso muda. Fica para o dono apagar à mão (duas linhas). |
 
 ### Confirmação somente leitura (Task 3)
 
@@ -177,6 +176,7 @@ na conversa, nunca por DDL nem por escrita fora do que os passos 1 e 4 pediam.
 
 ### Resumo
 
-Task 1 completa. Task 2: passos 1 a 4 completos e conferidos; passo 5 (Auth) aberto, depende do dono.
-Isso deixa um risco real em produção — cadastro aberto — que SEG-04/T-09-105 esperam fechado; a fase não
-deveria fechar com isso pendente sem uma decisão explícita do dono sobre aceitar o risco ou agir.
+Task 1 completa. Task 2 completa — todos os 5 passos conferidos; os dois itens que só o dono resolve
+(conector do claude.ai, duas linhas do `apps/api/.env` local) não bloqueiam SEG-04/SEG-06/SEG-07 nem o
+registro STRIDE: nenhum dos dois é uma ameaça aberta do `09-20-PLAN.md`, são tarefas administrativas.
+"Leaked password protection" fica como risco aceito, mesmo padrão já registrado para a homologação.

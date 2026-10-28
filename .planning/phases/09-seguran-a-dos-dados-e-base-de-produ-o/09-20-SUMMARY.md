@@ -20,12 +20,12 @@ actuals:
   tasks: 3
   confidence: alta
 
-commits: 3
-status: partial
+commits: 4
+status: completed
 completed: 2026-10-28
 ---
 
-# Plano 09-20 — Produção: `n1_api`, `009` aplicada, nginx, Auth (parcial)
+# Plano 09-20 — Produção: `n1_api`, `009` aplicada, nginx, Auth
 
 ## O que foi diferente do plano original
 
@@ -49,13 +49,19 @@ remotos) e seguiu o roteiro do plano, substituindo "o dono" nos passos manuais.
 
 ## O que ficou aberto
 
-- **Task 2, passo 5 (ações do Auth): não feito.** A chave disponível nesta sessão não abre a API de
-  gerenciamento do projeto. `disable_signup` continua `false` em produção — T-09-105 (cadastro aberto)
-  **permanece aberto**. "Leaked password protection", o bucket `guias`, o conector do Supabase do
-  claude.ai na organização certa e a limpeza do `FINANCEIRO_TRIA_DATABASE_URL_LEITURA` local também
-  ficaram sem conferência.
+- **Task 2, passo 5 (ações do Auth): completo**, depois que o dono passou um token pessoal de
+  gerenciamento. `disable_signup` desligado e confirmado publicamente — T-09-105 **fechado**. Bucket
+  `guias` confirmado público de propósito (só o material do Guia do Financeiro). "Leaked password
+  protection" fica indisponível (exige plano Pro, 402) — mesmo risco aceito já registrado para a
+  homologação.
+- **Duas tarefas administrativas, só o dono resolve** (não bloqueiam SEG-04/SEG-06/SEG-07 nem o
+  registro STRIDE): reconectar o conector do Supabase do claude.ai à organização "N1" (OAuth, não dá
+  pra fazer por fora); apagar as duas linhas `FINANCEIRO_TRIA_DATABASE_URL_LEITURA` do `apps/api/.env`
+  local (o guarda de segredo do projeto recusa qualquer comando que referencie esse arquivo, mesmo com
+  o token em mãos — por desenho).
 - **Task 3, confirmação somente leitura pelo conector**: não pôde rodar (conector fora da organização
-  "N1"); a seção "Produção (09-20)" de `09-PROVAS.md` foi escrita com as saídas diretas do agente.
+  "N1"); a seção "Produção (09-20)" de `09-PROVAS.md` foi escrita com as saídas diretas do agente
+  (`psql`/`curl` com as credenciais que o dono passou).
 - **Achado no caminho, corrigido**: o `check` do `main`, pós-merge, falhou no job `seguranca` por uma
   exceção não tratada em `banco-n1-api.test.ts` (`drop database ... with (force)` contra um pool sem
   `.on("error", ...)`) — não é um achado de segurança do domínio, é uma lacuna do próprio teste.
@@ -65,18 +71,12 @@ remotos) e seguiu o roteiro do plano, substituindo "o dono" nos passos manuais.
   (remoto `origin`) está. O dono levantou essa dúvida durante a execução; os dois ficam fora de
   sincronia até ele decidir o que fazer com o segundo.
 
-## Por que não fecha a fase
-
-SEG-04 (D-04) espera o acesso de `anon`/`authenticated` fechado — feito — **e** as ações do dono
-fechadas, que incluem o cadastro aberto desligado. T-09-105 (severidade alta no registro STRIDE do
-próprio plano) continua com disposição "mitigate" sem mitigação aplicada. A fase não deveria fechar
-(09-22) sem essa decisão: ou o dono fecha o cadastro aberto, ou aceita o risco por escrito.
-
 ## Self-Check
 
 - [x] `n1_api` criado e conferido (`n1_api | f | f | f`).
 - [x] `009` aplicada em produção, confirmada por `migrar --seco` (`0 pendente(s)`).
 - [x] App de produção conectado como `n1_api` (`pg_stat_activity` e `drop table` recusado).
 - [x] nginx de produção com limite de taxa e máscara de log, provados com tráfego real.
-- [ ] Ações do dono (Auth, bucket, conector, `.env` local) — abertas.
+- [x] Cadastro aberto desligado e confirmado publicamente (T-09-105 fechado).
+- [ ] Conector do claude.ai na org "N1" e limpeza do `.env` local — administrativas, ficam com o dono.
 - [x] `09-PROVAS.md` com a seção "Produção (09-20)", sem segredo (conferido com os `grep` do plano).
