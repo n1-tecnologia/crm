@@ -394,6 +394,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 - Phase 7 added (2026-10-09): CRM (backend e frontend) — CRUD de Contatos, Empresas, Funis e Negócios, do domínio à tela, sobre `007-crm.sql`
 - Phase 8 added (2026-10-12): Canais de comunicação — escolher e conectar Canais (WhatsApp oficial/não oficial, Instagram, E-mail) com orientação por tipo (mockup), mais de um Canal por tipo, Canal/Conversa/Mensagem no Postgres (008) e o chat ciente do Canal de origem/resposta; sem provedor real
 - Phase 9 added (2026-10-22): Segurança dos dados e base de produção — Sessão 1 do cronograma (`docs/09-planejamento/TAREFAS-POR-SESSAO.md`): recorte do `GET /estado`/`POST /operacoes`, conferências de escrita, migração `009` + usuário `n1_api`, cofre de credenciais, logs sem segredo, `limit_req` no nginx, homologação/backup/monitoramento. Aberta antes da Sessão 0 por decisão do dono; a Fase 8 segue em verificação e as Fases 2 e 4 seguem abertas
+- Phases 10, 11 e 12 added (2026-10-28): Sessão 2 do cronograma (Clone ClickUp: ajustes e lacunas, 42 subtarefas) dividida em três fases por decisão do dono, cortadas pelos arquivos que cada parte toca e não pela numeração do doc: Phase 10 Contêineres (2.1, 2.3, 2.5, 2.6.1–2.6.5; 23 subtarefas), Phase 11 Tarefa (2.4, 2.6.6–2.6.9; 9), Phase 12 gravação mais rápida (2.2; 10, começa por medir). A 2.7 (itens relatados nos testes) não vira fase: cada item entra na fase que mexe na tela dele. A lista de testes da Estrutura estava vazia em 2026-10-28
 
 ### Decisions
 

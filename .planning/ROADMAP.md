@@ -606,5 +606,45 @@ Plans:
 
 **Ondas de execução:** 1 → [09-01] · 2 → [09-02, 09-03, 09-04, 09-05] · 3 → [09-06, 09-07, 09-08, 09-09] · 4 → [09-10, 09-11] · 5 → [09-12, 09-13, 09-14, 09-17] · 6 → [09-15, 09-16, 09-18] · 7 → [09-19] · 8 → [09-20, 09-21] · 9 → [09-22]
 
+### Phase 10: Clone ClickUp: Contêineres (Espaço, Pasta e Lista)
+
+**Goal:** Fechar a Estrutura de Trabalho no nível dos contêineres: telas sem peça de protótipo, mover e reordenar Pasta e Lista, a Carga fora e as lacunas do modelo de herança. Sessão 2 do cronograma, parte A, dividida em três fases por decisão do dono em 2026-10-28 (as Fases 11 e 12 são as outras partes). Fonte: `docs/09-planejamento/TAREFAS-POR-SESSAO.md`, Sessão 2, linhas 405–779 (os números de linha do código citados lá deslocaram com a Fase 9: procurar de novo antes de planejar).
+**Entra (23 subtarefas):** 2.1.1–2.1.10 limpar a UI · 2.3.1–2.3.3 mover e reordenar · 2.5.1–2.5.5 remover a Carga · 2.6.1–2.6.5 Visualizações padrão do Espaço, tirar o bloqueio da Lista, operação de bloquear aspecto.
+**Decisões do dono antes de planejar:** 2.1.2 (o que roda a recorrência sem o botão), 2.1.7 (manter Lista e Tabela), 2.5.5 (capacidade semanal do Membro).
+**Ordem interna:** domínio e migração antes da tela; a `010` junta 2.5.3 e 2.6.3 (a próxima migração depois da `009`); na página da Lista, 2.1.6 → 2.5.4 → 2.6.2 em sequência; 2.1.8 (Configurações em abas) antes de 2.6.2 e 2.6.5. A 2.1.10 toca `tarefa-completa.tsx`, a única ponta compartilhada com a Fase 11.
+**Itens da 2.7** (relatados nos testes) que mexam em Espaço, Pasta, Lista ou nas Configurações entram aqui, um por subtarefa.
+**Requirements**: TBD — definidos no `/gsd-discuss-phase 10`
+**Depends on:** Phase 9
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 10 to break down)
+
+### Phase 11: Clone ClickUp: Tarefa (checklist, descrição e tempo)
+
+**Goal:** Converter item do checklist em Subtarefa sem susto e fechar as lacunas da Tarefa: menção na descrição, histórico com o texto anterior e tempo registrado calculado no domínio. Sessão 2 do cronograma, parte B. Fonte: `docs/09-planejamento/TAREFAS-POR-SESSAO.md`, Sessão 2, tarefas 2.4 e 2.6.6–2.6.9.
+**Entra (9 subtarefas):** 2.4.1–2.4.5 converter checklist · 2.6.6–2.6.9 menção na descrição, texto anterior no histórico, tempo registrado.
+**Decisões do dono antes de planejar:** 2.4.3 (confirmação por nome digitado), 2.4.4 (subitens de checklist), 2.4.5 (converter pelo cartão do Quadro), 2.6.7 (menção na descrição avisa a pessoa).
+**Independência:** não depende da Fase 10 (`tasks.ts` e `tarefa-completa.tsx` contra `structure.ts`, `configuration.ts` e as páginas de contêiner). Fica depois dela só porque o GSD daqui executa uma fase por vez; a 2.1.10 da Fase 10 já passa por `tarefa-completa.tsx`.
+**Itens da 2.7** que mexam na Tarefa entram aqui.
+**Requirements**: TBD — definidos no `/gsd-discuss-phase 11`
+**Depends on:** Phase 9
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 11 to break down)
+
+### Phase 12: Clone ClickUp: gravação mais rápida
+
+**Goal:** Medir quanto leva uma gravação (hoje cada uma hidrata o Espaço de Trabalho inteiro e disputa uma revisão única) e cortar o custo onde ele está. Sessão 2 do cronograma, parte C. Fonte: `docs/09-planejamento/TAREFAS-POR-SESSAO.md`, Sessão 2, tarefa 2.2.
+**Começa por medir:** 2.2.1 (instrumentar `executar()` e rodar em produção os quatro gestos) vem antes de qualquer plano; a decisão 2.2.2 depende desses números e as três saídas são projetos diferentes.
+**Caminhos da 2.2.2:** (B) ficar em `plataforma.registros`, travar no começo, encadear as chamadas e mostrar a mudança na hora: 2.2.3, 2.2.4, 2.2.5 e 2.2.10, cerca de 2 dias, e é a recomendação · (A) tabelas próprias de Espaço, Pasta e Lista: 2.2.6–2.2.9, 4 a 5 dias; se for a escolhida, esta fase passa a ir antes da Fase 10, porque a `010` mexe nas linhas de Lista de `plataforma.registros` · (C) tabelas para a Estrutura inteira: sessão própria, fora daqui (8 a 10 dias; só se `hidratar` passar de 300 ms na mediana).
+**Requirements**: TBD — definidos no `/gsd-discuss-phase 12`
+**Depends on:** Phase 9 (medir exige o `apps/api` em produção, entregue no 09-20)
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 12 to break down)
+
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*
