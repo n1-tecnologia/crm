@@ -595,7 +595,7 @@ Plans:
 - [ ] 09-18-PLAN.md — Backup ligado na VPS e restauração provada no Mac do dono `[BLOCKING]` (SEG-09) — **PULADO por decisão do dono em 2026-10-27, não executado** (ver `09-18-SUMMARY.md`)
 
 **Wave 7** *(blocked on Wave 6 completion)*
-- [ ] 09-19-PLAN.md — Alerta do Sentry provado em homologação e Evolution API no ar `[BLOCKING]` (SEG-10, SEG-11)
+- [ ] 09-19-PLAN.md — Alerta do Sentry provado em homologação e Evolution API no ar `[BLOCKING]` (SEG-10, SEG-11) — **prova do alerta em BACKLOG por decisão do dono em 2026-10-28; Evolution API ainda aberta, não pulada** (ver `09-19-SUMMARY.md`)
 
 **Wave 8** *(blocked on Wave 7 completion)*
 - [ ] 09-20-PLAN.md — Produção: `n1_api`, merge, `009` aplicada, app como `n1_api`, nginx da VPS, ações do Auth `[BLOCKING]` (SEG-04, SEG-06, SEG-07)
