@@ -200,7 +200,12 @@ export function visibilidadePara(state: DataState, memberId: Id): Visibilidade {
   const collectionGrants = semIA(state.collectionGrants);
 
   const activity = state.activity.filter((a) => !ocultos.has(a.objectId));
-  const approvals = state.approvals.filter((a) => !ocultos.has(a.object.targetResourceId));
+  // CR-01 (residual, 09-21): a aprovação de uma Execução de agente oculta carrega `object.input` dela —
+  // o `targetResourceId` sozinho não basta, porque pode ser de um objeto diferente e visível.
+  const approvals = state.approvals.filter((a) => {
+    const execOculta = a.origin.kind === "agentExecution" && ocultos.has(a.origin.executionId);
+    return !execOculta && !ocultos.has(a.object.targetResourceId);
+  });
   // Um Arquivo que só Tarefas ocultas carregam sai junto (o nome e a chave do objeto também são informação).
   const files = state.files.filter((f) => {
     const donas = tarefasComOArquivo(state, f.id);
