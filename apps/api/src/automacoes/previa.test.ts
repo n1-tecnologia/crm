@@ -11,7 +11,9 @@ import { buildSeed } from "@n1/dominio/seed";
 import { encerrar, pool } from "../persistencia/conexao";
 import { semear as semearEstadoInteiro } from "../persistencia/repositorio";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm } from "../testes/banco-crm";
-import { candidatosDaLixeira, formatarPrevia, type LinhaDaPrevia, previaDaAgenda, SEM_ATOR_NA_PREVIA } from "./previa";
+import { relogioFixo } from "../testes/relogio";
+import { criarSchedulerWorker } from "./scheduler-worker";
+import { candidatosDaLixeira, formatarAgenda, formatarPrevia, type LinhaDaAgenda, type LinhaDaPrevia, previaDaAgenda, SEM_ATOR_NA_PREVIA, voltasRecentes } from "./previa";
 
 const DIA_MS = 86_400_000;
 const PROPRIETARIO = "mem_thiago";
@@ -107,6 +109,34 @@ describe("formatarPrevia", () => {
   });
 });
 
+describe("formatarAgenda", () => {
+  const linha: LinhaDaAgenda = {
+    workspaceId: "ws_x",
+    listId: "lst_a",
+    nomeDaLista: "Contas a pagar",
+    diaCivil: "2026-10-30",
+    estado: "concluido",
+    codigo: null,
+    executadas: 2,
+    falhadas: 0,
+    puladas: 1,
+  };
+
+  it("imprime as colunas, uma linha por (Lista, dia) e o resumo de falhas e dos dois códigos de alerta", () => {
+    const texto = formatarAgenda([
+      linha,
+      { ...linha, listId: "lst_b", nomeDaLista: "Outra", estado: "falhou", codigo: "SEM_ATOR" },
+      { ...linha, listId: "lst_c", nomeDaLista: "Terceira", estado: "falhou", codigo: "RECUSA_DO_DOMINIO" },
+      { ...linha, listId: "lst_d", nomeDaLista: "Quarta", estado: "concluido", codigo: "ENSAIO_PRIMEIRA_VOLTA" },
+    ]);
+    for (const coluna of ["Lista", "Nome", "Dia", "Estado", "Código", "Executadas", "Falhadas", "Puladas"]) expect(texto).toContain(coluna);
+    expect(texto).toContain("2026-10-30");
+    expect(texto).toContain("2 falhou");
+    expect(texto).toContain("1 SEM_ATOR");
+    expect(texto).toContain("1 RECUSA_DO_DOMINIO");
+  });
+});
+
 describeComBanco("10-15 — a prévia do relógio lê produção sem escrever (EST-01)", () => {
   const hoje = new Date();
   const criados: string[] = [];
@@ -116,7 +146,10 @@ describeComBanco("10-15 — a prévia do relógio lê produção sem escrever (E
   });
 
   afterAll(async () => {
-    for (const workspaceId of criados) await limparEspaco(workspaceId);
+    for (const workspaceId of criados) {
+      await pool().query("delete from plataforma.automacao_agenda where workspace_id = $1", [workspaceId]);
+      await limparEspaco(workspaceId);
+    }
     await encerrar();
   });
 
@@ -199,5 +232,70 @@ describeComBanco("10-15 — a prévia do relógio lê produção sem escrever (E
 
     const linhas = await previaDaAgenda({ workspaceId, hoje });
     expect(linhaDa(linhas, LISTA_SO_LIXEIRA).ator).toBe(SEM_ATOR_NA_PREVIA);
+  });
+
+  it("10-16 — voltasRecentes: uma linha por (Lista, dia) com estado, código, contagens e o nome da Lista; só lê", async () => {
+    const workspaceId = novoEspacoDeTeste("previa_agenda");
+    criados.push(workspaceId);
+    const estado = espacoDaPrevia(hoje);
+    await gravarEspaco(workspaceId, estado);
+
+    // O worker de verdade processa o dia de hoje das três Listas candidatas: a só de recorrência
+    // (direto), a que tem Automação por vencimento (ensaio da primeira volta) e a só de lixeira (direto).
+    // `semear()` olha o catálogo do Espaço inteiro (só `processarUm()` respeita `listId`), então
+    // o primeiro worker semeia as três e os outros dois já a encontram semeada.
+    const relogio = relogioFixo(hoje);
+    const ator = async (): Promise<string> => PROPRIETARIO;
+    let semeadas = 0;
+    for (const [workerId, listId] of [["w_agenda_rec", LISTA_SO_RECORRENCIA], ["w_agenda_aut", LISTA_COM_AUTOMACAO], ["w_agenda_lix", LISTA_SO_LIXEIRA]] as const) {
+      const worker = criarSchedulerWorker({ workerId, workspaceId, listId, relogio, resolverAtor: ator });
+      semeadas += await worker.semear();
+      expect(await worker.processarUm()).toBe(true);
+    }
+    expect(semeadas).toBeGreaterThanOrEqual(3); // o seed ainda traz outras Listas candidatas: ficam `pendente`.
+
+    const antes = await fotografiaDoBanco(workspaceId);
+    const voltas = await voltasRecentes({ workspaceId, dias: 2, hoje });
+    const depois = await fotografiaDoBanco(workspaceId);
+    expect(depois).toEqual(antes); // a consulta só lê: registros, agenda e revisão iguais.
+
+    expect(voltas).toHaveLength(semeadas); // uma linha por (Lista, dia), as processadas e as ainda pendentes.
+    expect(voltas.every((v) => v.workspaceId === workspaceId)).toBe(true);
+
+    const rec = voltas.find((v) => v.listId === LISTA_SO_RECORRENCIA);
+    expect(rec?.nomeDaLista).toBe(estado.lists.find((l) => l.id === LISTA_SO_RECORRENCIA)?.name);
+    expect(rec?.estado).toBe("concluido");
+    expect(rec?.codigo).toBeNull();
+    expect(typeof rec?.executadas).toBe("number");
+    expect(typeof rec?.falhadas).toBe("number");
+    expect(typeof rec?.puladas).toBe("number");
+    expect(rec?.diaCivil).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+    const aut = voltas.find((v) => v.listId === LISTA_COM_AUTOMACAO);
+    expect(aut?.nomeDaLista).toBe(estado.lists.find((l) => l.id === LISTA_COM_AUTOMACAO)?.name);
+    expect(aut?.estado).toBe("concluido");
+    expect(aut?.codigo).toBe("ENSAIO_PRIMEIRA_VOLTA");
+    expect(aut?.diaCivil).toBe(rec?.diaCivil);
+
+    // Ordenado por Lista (e dia): a ordem do resultado é a do nome do id.
+    expect(voltas.map((v) => v.listId)).toEqual([...voltas.map((v) => v.listId)].sort((a, b) => a.localeCompare(b)));
+
+    // A Lista de lixeira também voltou, direto: sem código de ensaio.
+    const lix = voltas.find((v) => v.listId === LISTA_SO_LIXEIRA);
+    expect(lix?.estado).toBe("concluido");
+    expect(lix?.codigo).toBeNull();
+
+    // Uma linha antiga (3 dias atrás) fica fora da janela de 2 dias e entra na de 5.
+    await pool().query(
+      `insert into plataforma.automacao_agenda (workspace_id, list_id, dia_civil, estado, executadas, falhadas, puladas)
+       values ($1, $2, ($3::date - 3), 'concluido', 0, 0, 0)`,
+      [workspaceId, LISTA_SO_LIXEIRA, `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`],
+    );
+    expect(await voltasRecentes({ workspaceId, dias: 2, hoje })).toHaveLength(semeadas);
+    const maisLonge = await voltasRecentes({ workspaceId, dias: 5, hoje });
+    expect(maisLonge).toHaveLength(semeadas + 1);
+    // Dentro da Lista, o dia mais antigo vem primeiro.
+    const dasLixeira = maisLonge.filter((v) => v.listId === LISTA_SO_LIXEIRA).map((v) => v.diaCivil);
+    expect(dasLixeira).toEqual([...dasLixeira].sort());
   });
 });

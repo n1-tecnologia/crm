@@ -23,7 +23,7 @@ import { tarefasDaLixeiraVencidas } from "@n1/dominio/operations/tasks";
 import { resolverMembroAgenteDoPipeline } from "../persistencia/credenciais-de-servico";
 import { pool } from "../persistencia/conexao";
 import { hidratar } from "../persistencia/repositorio";
-import { candidatosDaLixeira, catalogoDeListasComAgenda } from "./scheduler-worker";
+import { candidatosDaLixeira, catalogoDeListasComAgenda, CODIGOS_DA_AGENDA, type LinhaAgenda } from "./scheduler-worker";
 
 /** Por onde uma Lista entra no relógio. */
 export type EntradaNoRelogio = "automacao" | "recorrencia" | "lixeira";
@@ -164,5 +164,110 @@ export function formatarPrevia(linhas: readonly LinhaDaPrevia[]): string {
     ...corpo.map(montar),
     "",
     `${linhas.length} Lista(s) candidata(s). Lixeira vencida (o que a primeira volta real eliminaria): ${total} Tarefa(s).`,
+  ].join("\n");
+}
+
+/**
+ * Uma volta do relógio por (Espaço, Lista, dia civil), como `plataforma.automacao_agenda`
+ * a guarda (10-16, D-04): é o que o dono lê no dia seguinte ao ligar o agendador.
+ * Só números e códigos — a tabela nunca carrega título de Tarefa (T-3-04).
+ */
+export interface LinhaDaAgenda {
+  readonly workspaceId: string;
+  readonly listId: string;
+  /** O nome da Lista no `plataforma.registros`, ou `-` quando a Lista já não existe. */
+  readonly nomeDaLista: string;
+  readonly diaCivil: string;
+  readonly estado: LinhaAgenda["estado"];
+  /** `last_error_code`: o motivo do último evento não rotineiro do dia (`SEM_ATOR`, `ENSAIO_PRIMEIRA_VOLTA`…). */
+  readonly codigo: string | null;
+  readonly executadas: number | null;
+  readonly falhadas: number | null;
+  readonly puladas: number | null;
+}
+
+/** `Date` local → `"YYYY-MM-DD"`, o mesmo dia civil que o worker grava em `dia_civil`. */
+function diaCivilLocal(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * As voltas dos últimos `dias` dias civis (hoje inclusive) por Lista: estado, código,
+ * contagens e o nome da Lista. SÓ LEITURA — uma transação `read only` que termina
+ * em rollback. O corte é calculado em horário local, como o worker semeia os dias.
+ */
+export async function voltasRecentes(opcoes: { readonly workspaceId?: string; readonly dias: number; readonly hoje?: Date }): Promise<readonly LinhaDaAgenda[]> {
+  const hoje = opcoes.hoje ?? new Date();
+  const desde = diaCivilLocal(new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - (Math.max(1, Math.floor(opcoes.dias)) - 1)));
+  const parametros: unknown[] = [desde];
+  let filtroWorkspace = "";
+  if (opcoes.workspaceId !== undefined) {
+    parametros.push(opcoes.workspaceId);
+    filtroWorkspace = `and a.workspace_id = $${parametros.length}`;
+  }
+
+  const cliente = await pool().connect();
+  try {
+    await cliente.query("begin read only");
+    try {
+      const r = await cliente.query<{
+        workspace_id: string;
+        list_id: string;
+        nome: string | null;
+        dia_civil: string;
+        estado: LinhaAgenda["estado"];
+        last_error_code: string | null;
+        executadas: number | null;
+        falhadas: number | null;
+        puladas: number | null;
+      }>(
+        `select a.workspace_id, a.list_id, l.dados->>'name' as nome,
+                to_char(a.dia_civil, 'YYYY-MM-DD') as dia_civil,
+                a.estado, a.last_error_code, a.executadas, a.falhadas, a.puladas
+           from plataforma.automacao_agenda a
+           left join plataforma.registros l
+             on l.workspace_id = a.workspace_id and l.colecao = 'lists' and l.id = a.list_id
+          where a.dia_civil >= $1::date ${filtroWorkspace}
+          order by a.workspace_id, a.list_id, a.dia_civil`,
+        parametros,
+      );
+      return r.rows.map((linha) => ({
+        workspaceId: linha.workspace_id,
+        listId: linha.list_id,
+        nomeDaLista: linha.nome ?? "-",
+        diaCivil: linha.dia_civil,
+        estado: linha.estado,
+        codigo: linha.last_error_code,
+        executadas: linha.executadas,
+        falhadas: linha.falhadas,
+        puladas: linha.puladas,
+      }));
+    } finally {
+      await cliente.query("rollback");
+    }
+  } finally {
+    cliente.release();
+  }
+}
+
+/**
+ * A tabela de texto de `--agenda`: colunas fixas e, no fim, quantas linhas `falhou` e
+ * quantas carregam `SEM_ATOR` e `RECUSA_DO_DOMINIO` (o que o dono quer ver em zero). Pura.
+ */
+export function formatarAgenda(linhas: readonly LinhaDaAgenda[]): string {
+  const cabecalho = ["Espaço de Trabalho", "Lista", "Nome", "Dia", "Estado", "Código", "Executadas", "Falhadas", "Puladas"];
+  const numero = (n: number | null): string => (n === null ? "-" : String(n));
+  const corpo = linhas.map((l) => [l.workspaceId, l.listId, l.nomeDaLista, l.diaCivil, l.estado, l.codigo ?? "-", numero(l.executadas), numero(l.falhadas), numero(l.puladas)]);
+  const larguras = cabecalho.map((titulo, i) => Math.max(titulo.length, ...corpo.map((linha) => (linha[i] ?? "").length)));
+  const montar = (celulas: readonly string[]): string => celulas.map((c, i) => c.padEnd(larguras[i] ?? 0)).join("  ").trimEnd();
+  const falhou = linhas.filter((l) => l.estado === "falhou").length;
+  const semAtor = linhas.filter((l) => l.codigo === CODIGOS_DA_AGENDA.SEM_ATOR).length;
+  const recusa = linhas.filter((l) => l.codigo === CODIGOS_DA_AGENDA.RECUSA_DO_DOMINIO).length;
+  return [
+    montar(cabecalho),
+    montar(larguras.map((n) => "-".repeat(n))),
+    ...corpo.map(montar),
+    "",
+    `${linhas.length} volta(s). ${falhou} falhou · ${semAtor} ${CODIGOS_DA_AGENDA.SEM_ATOR} · ${recusa} ${CODIGOS_DA_AGENDA.RECUSA_DO_DOMINIO}.`,
   ].join("\n");
 }
