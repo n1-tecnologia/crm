@@ -168,7 +168,6 @@ export function applyContasAPagar(state: DataState, clock: Clock, opcoes: Opcoes
     isPrivate: false,
     modeloDeTarefa: "operacional",
     modes: { statusSet: "sobrescrito", features: "sobrescrito" },
-    blocks: {},
     statusSet,
     // Seção 2 — sem Subtarefas, Checklists nem Dependências; Recorrência e Registro de Tempo ficam.
     features: { subtarefas: false, checklists: false, dependencias: false, compartilhamentoPublico: false },

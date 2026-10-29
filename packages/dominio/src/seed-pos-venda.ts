@@ -79,7 +79,6 @@ export function applyPosVenda(state: DataState, clock: Clock): void {
     // e-mail do Suporte.
     canaisDeAtendimento: ["chn_wpp", "chn_mail"],
     modes: { statusSet: "sobrescrito" },
-    blocks: {},
     statusSet: { id: "sts_pos_venda", definitions },
     parentType: "space",
     parentId: "spc_com",

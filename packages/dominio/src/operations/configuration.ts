@@ -51,8 +51,10 @@ function mayConfigure(state: DataState, actingMemberId: Id, type: ContainerType,
 export function blockedAbove(state: DataState, type: ContainerType, id: Id, aspect: ConfigurableAspect): string | undefined {
   for (const node of containerPath(state, type, id)) {
     if (node.id === id) continue;
+    // D-15: só Espaço e Pasta bloqueiam; um `blocks` legado numa Lista é ignorado.
+    if (node.type === "list") continue;
     const ancestor = findContainer(state, node.type, node.id);
-    if (ancestor?.blocks[aspect]) {
+    if (ancestor && "blocks" in ancestor && ancestor.blocks[aspect]) {
       return `${CONTAINER_LABEL[node.type]} ${ancestor.name} bloqueia ${ASPECT_LABEL[aspect]} abaixo dele.`;
     }
   }

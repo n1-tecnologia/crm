@@ -94,7 +94,6 @@ export function applyEspelhoComercial(state: DataState, clock: Clock): void {
       // C36 — por onde cada Funil atende (o WhatsApp em todos; o resto conforme a etapa do comercial).
       canaisDeAtendimento: CANAIS_DO_FUNIL[funnel.id] ?? ["chn_wpp"],
       modes: { statusSet: "sobrescrito" },
-      blocks: {},
       statusSet: { id: `sts_${listId}`, definitions },
       // Negócio não tem Subtarefa nem Checklist aqui: a Tarefa é o cartão do Kanban.
       features: { subtarefas: false, checklists: false },

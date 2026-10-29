@@ -89,7 +89,6 @@ export function applyContasAReceber(state: DataState, clock: Clock, opcoes: Opco
     isPrivate: false,
     modeloDeTarefa: "operacional",
     modes: { statusSet: "sobrescrito", features: "sobrescrito" },
-    blocks: {},
     statusSet,
     // RN-CR-06 — nunca Subtarefa; Checklists e Dependências não fazem parte do processo.
     features: { subtarefas: false, checklists: false, dependencias: false, compartilhamentoPublico: false },

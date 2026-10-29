@@ -266,7 +266,6 @@ export function createFolder(
       // C35 — o Template de Pasta só nomeia as Listas: nascem no modelo padrão.
       modeloDeTarefa: "operacional",
       modes: {},
-      blocks: {},
       provenance: provenanceOf(template as Template),
       parentType: "folder",
       parentId: folder.id,
@@ -355,7 +354,6 @@ export function createList(
     ...(canais ? { canaisDeAtendimento: canais } : {}),
     // Nasce herdando: o ajuste é ato posterior, nas configurações do contêiner.
     modes: {},
-    blocks: {},
     ...(template ? { provenance: provenanceOf(template) } : {}),
     parentType: input.parentType,
     parentId: input.parentId,

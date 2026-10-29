@@ -155,7 +155,6 @@ function montarLista(workspaceId: Id, agora: string, ator: ActorRef): List {
     order: 1,
     isPrivate: false,
     modes: { statusSet: "sobrescrito", features: "sobrescrito" },
-    blocks: {},
     statusSet: { id: CATALOGO_SOLICITACAO_DE_PAGAMENTO.statusSet.id, definitions: [] },
     features: { subtarefas: false, checklists: false, dependencias: false, compartilhamentoPublico: false },
     parentType: "folder",

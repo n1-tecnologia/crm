@@ -69,7 +69,11 @@ export interface TaskType {
   readonly definedAtId: Id;
 }
 
-/** B25 — how a level relates to a configurable aspect defined above. */
+/**
+ * B25 — how a level relates to a configurable aspect defined above. O impedimento
+ * de sobrescrever mora só em `blocks` (Espaço e Pasta); um contêiner pode
+ * sobrescrever e impedir os de baixo ao mesmo tempo (2.6.4).
+ */
 export type InheritanceMode = "herdado" | "sobrescrito" | "bloqueado";
 
 /**
@@ -194,9 +198,8 @@ interface StructuralContainerBase extends RecordBase {
   order: number;
   /** A9.2, B38 — interrupts the `papel` and `heranca` origins. */
   isPrivate: boolean;
-  /** B25 — mode per aspect, plus the block indicator for descendants. */
+  /** B25 — mode per aspect. */
   modes: Partial<Record<ConfigurableAspect, InheritanceMode>>;
-  blocks: Partial<Record<ConfigurableAspect, boolean>>;
   /** Present when the aspect is `sobrescrito`. */
   statusSet?: StatusSet;
   features?: Partial<EnabledFeatures>;
@@ -213,6 +216,12 @@ interface StructuralContainerBase extends RecordBase {
 }
 
 export interface Space extends StructuralContainerBase {
+  /**
+   * B25 — bloquear impede os níveis ABAIXO de sobrescrever o aspecto. Só Espaço
+   * e Pasta têm: abaixo da Lista há apenas Tarefa, que não configura nada
+   * (ontologia `espaco.md:344`, D-15).
+   */
+  blocks: Partial<Record<ConfigurableAspect, boolean>>;
   /** RN-ESP-03 — the Space is the highest point of definition and always defines one. */
   statusSet: StatusSet;
   /**
@@ -238,6 +247,8 @@ export interface SpaceShortcut {
 export interface Folder extends StructuralContainerBase {
   readonly parentType: "space" | "folder";
   readonly parentId: Id;
+  /** B25 — bloquear impede os níveis abaixo de sobrescrever (D-15: a Lista nunca bloqueia). */
+  blocks: Partial<Record<ConfigurableAspect, boolean>>;
   /**
    * Fase 3 — uma Pasta com o papel de sprint: as Listas dela são sprints
    * datadas em sequência. Não é entidade nova; é a Pasta com um papel.

@@ -2186,7 +2186,6 @@ const list = (id: Id, name: string, parentType: "space" | "folder", parentId: Id
   isPrivate: false,
   modeloDeTarefa: "operacional",
   modes: {},
-  blocks: {},
   parentType,
   parentId,
 });

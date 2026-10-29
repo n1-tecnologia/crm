@@ -232,7 +232,8 @@ export function ContainerSettings({
             <tbody>
               {ASPECTS.map((item) => {
                 const mode = container.modes[item.aspect] ?? "herdado";
-                const blocked = container.blocks[item.aspect] === true;
+                // D-15: só Espaço e Pasta bloqueiam; a Lista é tratada como sem bloqueio.
+                const blocked = "blocks" in container && container.blocks[item.aspect] === true;
                 return (
                   <tr key={item.aspect}>
                     {/* Célula de duas linhas: pede o respiro vertical que a linha de uma só não pede. */}
