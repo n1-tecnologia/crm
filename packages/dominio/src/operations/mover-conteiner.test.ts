@@ -863,7 +863,8 @@ describe("moveContainer — bloqueio, colisão de nome, Formulário e estrutura 
 
       expect(r.ok).toBe(false);
       if (r.ok) return;
-      expect(r.error).toContain("o envio quebraria");
+      // 10-REVIEW MEDIUM-02: a Lista que o ator não alcança impede o mover antes da leitura dos Formulários.
+      expect(r.error).toBe("Não dá para mover: há 1 contêiner abaixo que você não alcança.");
       expect(r.error).not.toContain("Pedido de visita");
       expect(r.error).not.toContain("Reservada");
     });
@@ -1152,5 +1153,66 @@ describe("contador `order` sem duplicata ao criar (Pitfall 3)", () => {
     const r = createSpace(state, THIAGO, { name: "Novo Espaço da conferência" });
     if (!r.ok) throw new Error(r.error);
     expect(r.value.order).toBe(maior + 11);
+  });
+});
+
+describe("moveContainer — descendente que o ator não alcança impede o mover (10-REVIEW MEDIUM-02, B38a, RN-ESP-15)", () => {
+  const OPS = { parentType: "space", parentId: "spc_ops" } as const;
+  const FRASE_UM = "Não dá para mover: há 1 contêiner abaixo que você não alcança.";
+
+  it("a recusa não cita o nome do Campo nem o da Subpasta privada que o Administrador não alcança", () => {
+    const origem = pasta("Origem com segredo");
+    const diretoria = pasta("Diretoria", origem, "folder", THIAGO, { isPrivate: true });
+    expect(memberReachesContainer(state, RAFAEL, "folder", diretoria)).toBe(false);
+    const segredo = createFieldDefinition(state, THIAGO, { name: "Salario do CEO", type: "text", definedAtType: "folder", definedAtId: diretoria });
+    if (!segredo.ok) throw new Error(segredo.error);
+    const igual = createFieldDefinition(state, THIAGO, { name: "Salario do CEO", type: "text", definedAtType: "space", definedAtId: "spc_ops" });
+    if (!igual.ok) throw new Error(igual.error);
+    const atividadesAntes = state.activity.length;
+
+    const r = moveContainer(state, RAFAEL, "folder", origem, OPS);
+
+    expect(r).toEqual({ ok: false, error: FRASE_UM });
+    expect(recusaDeMover(state, RAFAEL, "folder", origem, OPS)).toBe(FRASE_UM);
+    for (const pista of ["Salario do CEO", "Diretoria", diretoria]) expect(JSON.stringify(r)).not.toContain(pista);
+    expect(state.folders.find((f) => f.id === origem)?.parentId).toBe("spc_com");
+    expect(state.activity.length).toBe(atividadesAntes);
+  });
+
+  it("não remapeia nem pede mapeamento de Status das Tarefas de uma Lista privada que o ator não vê", () => {
+    const origem = pasta("Origem com Lista reservada");
+    const reservada = createList(state, THIAGO, { name: "Reservada", parentType: "folder", parentId: origem, isPrivate: true });
+    if (!reservada.ok) throw new Error(reservada.error);
+    const oculta = tarefa(reservada.value.id, "Tarefa reservada");
+    const statusAntes = state.tasks.find((t) => t.id === oculta)?.statusId;
+    expect(memberReachesContainer(state, RAFAEL, "list", reservada.value.id)).toBe(false);
+
+    const r = moveContainer(state, RAFAEL, "folder", origem, OPS, [{ fromStatusId: "st_com_novo", toStatusId: "st_ops_fazer" }]);
+
+    expect(r).toEqual({ ok: false, error: FRASE_UM });
+    expect(state.tasks.find((t) => t.id === oculta)?.statusId).toBe(statusAntes);
+    expect(listaPorId(reservada.value.id).parentId).toBe(origem);
+  });
+
+  it("conta todos os que o ator não alcança, inclusive o que está na lixeira, e quem alcança tudo move", () => {
+    const origem = pasta("Origem com reservadas");
+    const sub = pasta("Sub reservada", origem, "folder", THIAGO, { isPrivate: true });
+    lista("Dentro da sub", sub);
+    const naLixeira = createList(state, THIAGO, { name: "Lixo reservado", parentType: "folder", parentId: origem, isPrivate: true });
+    if (!naLixeira.ok) throw new Error(naLixeira.error);
+    listaPorId(naLixeira.value.id).lifecycle = "naLixeira";
+
+    expect(moveContainer(state, RAFAEL, "folder", origem, OPS)).toEqual({
+      ok: false,
+      error: "Não dá para mover: há 3 contêineres abaixo que você não alcança.",
+    });
+    // O Proprietário criou as privadas e as alcança: o mover segue.
+    expect(moveContainer(state, THIAGO, "folder", origem, OPS).ok).toBe(true);
+  });
+
+  it("a Lista movida sozinha não tem descendentes: a regra não a afeta", () => {
+    const origem = pasta("Origem simples");
+    const alfa = lista("Alfa", origem);
+    expect(moveContainer(state, RAFAEL, "list", alfa, { parentType: "folder", parentId: pasta("Destino simples") }).ok).toBe(true);
   });
 });

@@ -703,6 +703,24 @@ function grupoDe(state: DataState, tipo: "folder" | "list", parentType: "space" 
   return pool.filter((c) => c.id !== semId && c.parentType === parentType && c.parentId === parentId);
 }
 
+/**
+ * 10-REVIEW MEDIUM-02 — quantas Pastas e Listas abaixo do movido o ator não
+ * alcança (privadas sem concessão; qualquer ciclo de vida, porque o mover
+ * remapeia as Tarefas de todas). O privado corta até o Administrador sem
+ * concessão, e o mover agiria sobre o que ele não vê (Status, Valor de Campo,
+ * Tipo, link público) e citaria nomes de lá nas recusas de configuração. A
+ * regra: com qualquer um assim, o mover é recusado, e a frase só conta — sem
+ * nome nem id (B38a, RN-ESP-15), como em `setContainerBlock`.
+ */
+function descendentesQueNaoAlcanca(state: DataState, actingMemberId: Id, tipo: "folder" | "list", id: Id): number {
+  if (tipo === "list") return 0;
+  const abaixo = descendantsOf(state, "folder", id);
+  return (
+    abaixo.folders.filter((f) => !memberReachesContainer(state, actingMemberId, "folder", f.id)).length +
+    abaixo.lists.filter((l) => !memberReachesContainer(state, actingMemberId, "list", l.id)).length
+  );
+}
+
 interface RecusaDeMover {
   readonly mensagem: string;
   readonly campo?: string;
@@ -716,6 +734,12 @@ function recusarMover(state: DataState, actingMemberId: Id, tipo: "folder" | "li
   if (admin) return { mensagem: admin };
   // O movido pode estar arquivado (RN-PAS-11) e vai assim mesmo; na lixeira, não.
   if (movido.lifecycle === "naLixeira") return { mensagem: `${ROTULO[tipo].nome} na lixeira: restaure antes de mover.` };
+  const inalcancaveis = descendentesQueNaoAlcanca(state, actingMemberId, tipo, id);
+  if (inalcancaveis > 0) {
+    return {
+      mensagem: `Não dá para mover: há ${inalcancaveis} ${inalcancaveis === 1 ? "contêiner" : "contêineres"} abaixo que você não alcança.`,
+    };
+  }
 
   // O destino que o ator não alcança não existe para ele (RN-ESP-15): sem nome, sem pista.
   const alvo = requireContainer(state, actingMemberId, destino.parentType, destino.parentId);
@@ -980,7 +1004,8 @@ const assinaturaDaTarefa = (t: Task): string => JSON.stringify([t.statusId, t.ta
  * configuração efetiva são derivadas do caminho.
  *
  * As recusas, na ordem (todas em `recusaDeMover`, que a tela lê): permissão no
- * movido e no destino, "já está aqui", "dentro de si", estrutura fixa (Q2),
+ * movido, descendente que o ator não alcança (só a contagem, MEDIUM-02),
+ * permissão no destino, "já está aqui", "dentro de si", estrutura fixa (Q2),
  * profundidade (RN-SUB-11 e RN-SUB-02), nome repetido, bloqueio do destino
  * (RN-ESP-09; só os aspectos que substituem), colisão de nome de Campo e Tipo
  * (RN-PAS-14) e Formulário que o envio quebraria. A Atividade nasce com o nome

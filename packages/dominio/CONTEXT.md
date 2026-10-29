@@ -231,7 +231,7 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `createFolder` | `operations/structure.ts` | `mayBuild` |  |
 | `createList` | `operations/structure.ts` | `mayBuild` |  |
 | `updateContainer` | `operations/structure.ts` | `containerAdminRefusal` |  |
-| `moveContainer` | `operations/structure.ts` | `containerAdminRefusal`, `mayBuild` | administrar o movido e alcançar/criar no destino (`recusaDeMover`, a fonte única das recusas); destino que o ator não alcança devolve "não encontrado" (RN-ESP-15); estruturas fixas recusadas em 10-18 |
+| `moveContainer` | `operations/structure.ts` | `containerAdminRefusal`, `mayBuild` | administrar o movido e alcançar/criar no destino (`recusaDeMover`, a fonte única das recusas); destino que o ator não alcança devolve "não encontrado" (RN-ESP-15); Pasta com descendente que o ator não alcança é recusada com frase que só conta, sem nome nem id (10-REVIEW MEDIUM-02); estruturas fixas recusadas em 10-18 |
 | `reorderContainers` | `operations/structure.ts` | `mayBuild` | Pastas e Listas: alcançar e criar no pai (`recusaDeReordenar`, a mesma frase que desliga Subir/Descer); Espaços: Administrador ou Proprietário (Papel de quem cria Espaço); a ordem é por grupo (D-08) e por fatia (A3): recebe os ids que o Membro vê e deixa os escondidos na vaga; registra "Ordem alterada" no pai |
 | `archiveContainer` | `operations/structure.ts` | `containerAdminRefusal` |  |
 | `unarchiveContainer` | `operations/structure.ts` | `containerAdminRefusal` |  |
