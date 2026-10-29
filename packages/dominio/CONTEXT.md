@@ -181,8 +181,8 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `updateTaskType` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
 | `removeTaskType` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
 | `setContainerFeature` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
-| `setContainerDefaultViews` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure`; recusa sob `blockedAbove(…, "defaultViews")` |
-| `setContainerBlock` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure`; só Espaço e Pasta (a Lista não bloqueia, D-15); bloquear Status, Funcionalidades ou Visualizações padrão é recusado enquanto um descendente sobrescreve (`sobrescritasAbaixo`) |
+| `setContainerDefaultViews` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure`; contêiner que o ator não alcança devolve "não encontrado", como id inexistente (RN-ESP-15, 10-REVIEW MEDIUM-04); recusa sob `blockedAbove(…, "defaultViews")` |
+| `setContainerBlock` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure`; contêiner que o ator não alcança devolve "não encontrado", como id inexistente (RN-ESP-15, 10-REVIEW MEDIUM-04); só Espaço e Pasta (a Lista não bloqueia, D-15); bloquear Status, Funcionalidades ou Visualizações padrão é recusado enquanto um descendente sobrescreve (`sobrescritasAbaixo`) |
 | `usarCampoHerdado` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
 | `addDependency` | `operations/collaboration.ts` | `taskWriteRefusal` | via `activeTask`, nas duas Tarefas da Dependência |
 | `removeDependency` | `operations/collaboration.ts` | `taskWriteRefusal` |  |

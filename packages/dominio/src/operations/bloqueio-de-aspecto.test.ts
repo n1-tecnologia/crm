@@ -8,10 +8,10 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { bloqueioAcima, contagemAcumulada, effectiveListConfig, origemDoAspecto, sobrescritasAbaixo } from "../derive";
+import { bloqueioAcima, contagemAcumulada, effectiveListConfig, memberReachesContainer, origemDoAspecto, sobrescritasAbaixo } from "../derive";
 import { buildSeed } from "../seed";
 import type { DataState } from "../state";
-import { blockedAbove, createFieldDefinition, overrideStatusSet, setContainerBlock, setContainerFeature } from "./configuration";
+import { blockedAbove, createFieldDefinition, overrideStatusSet, setContainerBlock, setContainerDefaultViews, setContainerFeature } from "./configuration";
 import { criarAutomacao } from "./ia/automacoes-editor";
 import { createFolder, createList, createSpace } from "./structure";
 
@@ -197,6 +197,47 @@ describe("setContainerBlock — quem pode e ciclo de vida", () => {
     if (!alvo) throw new Error("Pasta não criada");
     alvo.lifecycle = "arquivado";
     expect(setContainerBlock(state, THIAGO, "folder", pasta, "statusSet", true).ok).toBe(false);
+  });
+});
+
+describe("setContainerBlock e setContainerDefaultViews — o privado que o ator não alcança não existe (10-REVIEW MEDIUM-04, RN-ESP-15)", () => {
+  const soQuadro = { disponiveis: ["quadro"], inicial: "quadro" } as const;
+  let PRIVADO: string;
+  let PASTA_PRIVADA: string;
+  beforeEach(() => {
+    const s = createSpace(state, THIAGO, { name: "Diretoria reservada", isPrivate: true });
+    if (!s.ok) throw new Error(s.error);
+    PRIVADO = s.value.id;
+    const f = createFolder(state, THIAGO, { name: "Pasta reservada", parentType: "space", parentId: ESPACO, isPrivate: true });
+    if (!f.ok) throw new Error(f.error);
+    PASTA_PRIVADA = f.value.id;
+  });
+
+  it("o Administrador e o Membro comum recebem a mesma resposta de um id que não existe, e nada muda", () => {
+    for (const quem of [RAFAEL, JULIA]) {
+      expect(memberReachesContainer(state, quem, "space", PRIVADO), quem).toBe(false);
+      expect(memberReachesContainer(state, quem, "folder", PASTA_PRIVADA), quem).toBe(false);
+      const inexistenteEspaco = setContainerBlock(state, quem, "space", "spc_nao_existe", "statusSet", true);
+      const inexistentePasta = setContainerBlock(state, quem, "folder", "fld_nao_existe", "statusSet", true);
+      expect(inexistenteEspaco).toEqual({ ok: false, error: "Espaço não encontrado(a)." });
+      expect(setContainerBlock(state, quem, "space", PRIVADO, "statusSet", true), quem).toEqual(inexistenteEspaco);
+      expect(setContainerBlock(state, quem, "folder", PASTA_PRIVADA, "fieldDefinitions", true), quem).toEqual(inexistentePasta);
+
+      const viewsInexistente = setContainerDefaultViews(state, quem, "space", "spc_nao_existe", soQuadro);
+      expect(viewsInexistente).toEqual({ ok: false, error: "Espaço não encontrado(a)." });
+      expect(setContainerDefaultViews(state, quem, "space", PRIVADO, soQuadro), quem).toEqual(viewsInexistente);
+      expect(setContainerDefaultViews(state, quem, "folder", PASTA_PRIVADA, soQuadro), quem).toEqual(
+        setContainerDefaultViews(state, quem, "folder", "fld_nao_existe", soQuadro),
+      );
+    }
+    const espacoPrivado = state.spaces.find((x) => x.id === PRIVADO);
+    expect(espacoPrivado?.blocks.statusSet).toBeUndefined();
+    expect(espacoPrivado?.defaultViews).toBeUndefined();
+  });
+
+  it("quem alcança o privado continua configurando", () => {
+    expect(setContainerBlock(state, THIAGO, "space", PRIVADO, "statusSet", true).ok).toBe(true);
+    expect(setContainerDefaultViews(state, THIAGO, "folder", PASTA_PRIVADA, soQuadro).ok).toBe(true);
   });
 });
 

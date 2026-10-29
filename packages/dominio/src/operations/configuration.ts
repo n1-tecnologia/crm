@@ -14,6 +14,7 @@ import {
   effectiveContainerConfig,
   effectiveListConfig,
   listPath,
+  memberReachesContainer,
   NOME_DO_ASPECTO,
   sobrescritasAbaixo,
   VISUALIZACOES_DA_PLATAFORMA,
@@ -911,8 +912,12 @@ export function setContainerDefaultViews(
   containerId: Id,
   valor: VisualizacoesPadrao | null,
 ): OperationResult<VisualizacoesPadrao | null> {
+  // 10-REVIEW MEDIUM-04 — quem não alcança o contêiner recebe a resposta de um id que não existe (RN-ESP-15),
+  // antes de qualquer frase de permissão: a recusa não pode distinguir "existe e é privado" de "não existe".
   const container = findContainer(state, containerType, containerId);
-  if (!container) return fail(`${CONTAINER_LABEL[containerType]} não encontrado(a).`);
+  if (!container || !memberReachesContainer(state, actingMemberId, containerType, containerId)) {
+    return fail(`${CONTAINER_LABEL[containerType]} não encontrado(a).`);
+  }
   const refusal = mayConfigure(state, actingMemberId, containerType, containerId);
   if (refusal) return fail(refusal);
   if (container.lifecycle !== "ativo") return fail("Um contêiner arquivado ou na lixeira não muda de configuração.");
@@ -981,8 +986,11 @@ export function setContainerBlock(
   aspect: ConfigurableAspect,
   bloqueado: boolean,
 ): OperationResult<boolean> {
+  // 10-REVIEW MEDIUM-04 — o privado que o ator não alcança responde como o id inexistente (RN-ESP-15).
   const container = findContainer(state, containerType, containerId);
-  if (!container || !("blocks" in container)) return fail(`${CONTAINER_LABEL[containerType]} não encontrado(a).`);
+  if (!container || !("blocks" in container) || !memberReachesContainer(state, actingMemberId, containerType, containerId)) {
+    return fail(`${CONTAINER_LABEL[containerType]} não encontrado(a).`);
+  }
   const refusal = mayConfigure(state, actingMemberId, containerType, containerId);
   if (refusal) return fail(refusal);
   if (container.lifecycle !== "ativo") return fail("Um contêiner arquivado ou na lixeira não muda de configuração.");
