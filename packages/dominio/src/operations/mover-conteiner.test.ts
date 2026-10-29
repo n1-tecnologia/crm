@@ -15,7 +15,7 @@ import { buildSeed } from "../seed";
 import type { DataState } from "../state";
 import { createFieldDefinition, createTaskType, overrideStatusSet, setContainerFeature } from "./configuration";
 import { shareTaskPublicly } from "./scale";
-import { archiveContainer, createFolder, createList, moveContainer, recusaDeReordenar, reorderContainers } from "./structure";
+import { archiveContainer, createFolder, createList, moveContainer, recusaDeMover, recusaDeReordenar, reorderContainers } from "./structure";
 import { createTask, setTaskFieldValue, updateTask } from "./tasks";
 
 const THIAGO = "mem_thiago"; // Proprietário
@@ -571,5 +571,108 @@ describe("reorderContainers — paridade entre o recorte do Membro e o Espaço i
     for (const id of escondidos) {
       expect(irmaosOrdenados(inteiro, "space", null).findIndex((s) => s.id === id)).toBe(todos.indexOf(id));
     }
+  });
+});
+
+describe("moveContainer — profundidade, promoção e rebaixamento de Pasta (D-11, RN-SUB-02, RN-SUB-11, RN-PAS-15)", () => {
+  let P1: string; // Pasta de nível 1 com uma Subpasta
+  let SUB: string; // Subpasta de P1
+  let P2: string; // Pasta de nível 1 sem Subpastas
+  let P3: string; // outra Pasta de nível 1 sem Subpastas
+  beforeEach(() => {
+    P1 = pasta("Pai com sub");
+    SUB = pasta("Sub de P1", P1, "folder");
+    P2 = pasta("Pai sem sub");
+    P3 = pasta("Outra sem sub");
+  });
+
+  const pastaPorId = (id: string) => {
+    const f = state.folders.find((x) => x.id === id);
+    if (!f) throw new Error(`Pasta ${id} não existe`);
+    return f;
+  };
+
+  it("recusa a Pasta com Subpastas para dentro de outra Pasta, com a frase da RN-SUB-11, e o pai não muda", () => {
+    const r = moveContainer(state, THIAGO, "folder", P1, { parentType: "folder", parentId: P2 });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).toBe("Uma Pasta com Subpastas não vai para dentro de outra Pasta.");
+    expect(pastaPorId(P1).parentType).toBe("space");
+    expect(pastaPorId(P1).parentId).toBe("spc_com");
+    expect(pastaPorId(SUB).parentId).toBe(P1);
+  });
+
+  it("recusa qualquer Pasta para dentro de uma Subpasta (RN-SUB-02) e o pai não muda", () => {
+    const r = moveContainer(state, THIAGO, "folder", P2, { parentType: "folder", parentId: SUB });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).toBe("Uma Subpasta não contém outra Pasta: a estrutura para aqui.");
+    expect(pastaPorId(P2).parentType).toBe("space");
+    expect(pastaPorId(P2).parentId).toBe("spc_com");
+  });
+
+  it("a Pasta com Subpastas para dentro de uma Subpasta cai na primeira recusa da lista (a de Subpastas)", () => {
+    const outra = pasta("Outro pai", "spc_com");
+    const subOutra = pasta("Sub do outro pai", outra, "folder");
+    const r = moveContainer(state, THIAGO, "folder", P1, { parentType: "folder", parentId: subOutra });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).toBe("Uma Pasta com Subpastas não vai para dentro de outra Pasta.");
+  });
+
+  it("a Subpasta vai para um Espaço e vira Pasta de nível 1, com a Atividade 'Subpasta promovida a Pasta' e os caminhos", () => {
+    const r = moveContainer(state, THIAGO, "folder", SUB, { parentType: "space", parentId: "spc_com" });
+    expect(r.ok).toBe(true);
+    expect(pastaPorId(SUB).parentType).toBe("space");
+    expect(pastaPorId(SUB).parentId).toBe("spc_com");
+
+    const atividade = state.activity[0];
+    expect(atividade?.action).toBe("Subpasta promovida a Pasta");
+    expect(atividade?.objectType).toBe("folder");
+    expect(atividade?.objectId).toBe(SUB);
+    expect(atividade?.before).toBe("Comercial › Pai com sub › Sub de P1");
+    expect(atividade?.after).toBe("Comercial › Sub de P1");
+  });
+
+  it("a Pasta sem Subpastas vai para outra Pasta e vira Subpasta, com a Atividade 'Pasta rebaixada a Subpasta'", () => {
+    const r = moveContainer(state, THIAGO, "folder", P2, { parentType: "folder", parentId: P1 });
+    expect(r.ok).toBe(true);
+    expect(pastaPorId(P2).parentType).toBe("folder");
+    expect(pastaPorId(P2).parentId).toBe(P1);
+
+    const atividade = state.activity[0];
+    expect(atividade?.action).toBe("Pasta rebaixada a Subpasta");
+    expect(atividade?.before).toBe("Comercial › Pai sem sub");
+    expect(atividade?.after).toBe("Comercial › Pai com sub › Pai sem sub");
+  });
+
+  it("a Pasta de nível 1 vai de um Espaço para outro e grava 'Pasta movida'", () => {
+    const r = moveContainer(state, THIAGO, "folder", P3, { parentType: "space", parentId: "spc_ops" });
+    expect(r.ok).toBe(true);
+    expect(pastaPorId(P3).parentId).toBe("spc_ops");
+    const atividade = state.activity[0];
+    expect(atividade?.action).toBe("Pasta movida");
+    expect(atividade?.before).toBe("Comercial › Outra sem sub");
+    expect(atividade?.after).toBe("Entrega › Outra sem sub");
+  });
+
+  it("a Subpasta que vai para outra Pasta continua Subpasta e grava 'Pasta movida'", () => {
+    const r = moveContainer(state, THIAGO, "folder", SUB, { parentType: "folder", parentId: P2 });
+    expect(r.ok).toBe(true);
+    expect(pastaPorId(SUB).parentType).toBe("folder");
+    expect(pastaPorId(SUB).parentId).toBe(P2);
+    expect(state.activity[0]?.action).toBe("Pasta movida");
+  });
+
+  it("recusaDeMover devolve as mesmas frases de profundidade (L1)", () => {
+    expect(recusaDeMover(state, THIAGO, "folder", P1, { parentType: "folder", parentId: P2 })).toBe("Uma Pasta com Subpastas não vai para dentro de outra Pasta.");
+    expect(recusaDeMover(state, THIAGO, "folder", P2, { parentType: "folder", parentId: SUB })).toBe("Uma Subpasta não contém outra Pasta: a estrutura para aqui.");
+    expect(recusaDeMover(state, THIAGO, "folder", SUB, { parentType: "space", parentId: "spc_com" })).toBeUndefined();
+  });
+
+  it("uma Lista pode ir para dentro de uma Subpasta (a profundidade só recusa Pastas)", () => {
+    const l = lista("Solta", P2);
+    const r = moveContainer(state, THIAGO, "list", l, { parentType: "folder", parentId: SUB });
+    expect(r.ok).toBe(true);
   });
 });
