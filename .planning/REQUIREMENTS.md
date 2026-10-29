@@ -170,7 +170,7 @@ Critério de pronto (ROADMAP Phase 10): a Estrutura de Trabalho fechada no níve
 
 Critério de pronto (ROADMAP Phase 11): a Tarefa fechada nas lacunas do checklist, da descrição e do tempo: converter item em Subtarefa sem susto, menção na descrição, histórico com o texto anterior e tempo registrado calculado no domínio. Os sete IDs abaixo são **derivados** das subtarefas 2.4.1–2.4.5 e 2.6.6–2.6.9 de `docs/09-planejamento/TAREFAS-POR-SESSAO.md` e das decisões D-01..D-16 (`.planning/phases/11-clone-clickup-tarefa-checklist-descri-o-e-tempo/11-CONTEXT.md`, "Requisitos derivados").
 
-- [ ] **TAR-01**: `conversaoDeItemRecusada(state, actingMemberId, taskId)` em `derive.ts` devolve o motivo para Lista sem Subtarefas, para Tarefa no nível máximo e para quem não escreve na Tarefa, e `undefined` numa Tarefa de primeiro nível com Subtarefas ligadas; `convertChecklistItem` a chama primeiro e a recusa de nível diz "Esta Tarefa já está no nível N, o último permitido. O item não pode virar Subtarefa aqui." (2.4.1, D-04). Pendente.
+- [x] **TAR-01**: `conversaoDeItemRecusada(state, actingMemberId, taskId)` em `derive.ts` devolve o motivo para Lista sem Subtarefas, para Tarefa no nível máximo e para quem não escreve na Tarefa, e `undefined` numa Tarefa de primeiro nível com Subtarefas ligadas; `convertChecklistItem` a chama primeiro e a recusa de nível diz "Esta Tarefa já está no nível N, o último permitido. O item não pode virar Subtarefa aqui." (2.4.1, D-04). Pendente.
 - [ ] **TAR-02**: Em Lista sem Subtarefas e em Tarefa no último nível o botão "Converter em Subtarefa" não aparece; onde aparece, está na cor normal; a confirmação é de um clique, sem digitar o nome do item; converter mostra o aviso com "Abrir" e o link abre a Subtarefa nova; o cartão do Quadro não converte (2.4.2, 2.4.3, 2.4.5, D-01, D-03, D-05). Pendente.
 - [ ] **TAR-03**: `grep -rn parentItemId packages apps` sem achados; `convertChecklistItem` e `removeChecklistItem` sem ramo de subitens; o checklist tem um nível só; `npm run check` passa (2.4.4, D-02). Pendente.
 - [ ] **TAR-04**: `updateTask` com "@Júlia revisar" e a menção grava `Task.descriptionMentions`; Membro inexistente é recusado; o esquema de `updateTask` aceita a chave; digitar "@Jú" na descrição abre o menu de Membros (hook `useMencoes`); o nome mencionado aparece destacado (2.6.6, D-06). Pendente.
@@ -264,7 +264,7 @@ Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pe
 | EST-09 | Phase 10 | Complete | pendente | derivado (10-CONTEXT) |
 | EST-10 | Phase 10 | Complete | pendente | derivado (10-CONTEXT) |
 | EST-11 | Phase 10 | Pending | pendente — checkpoint do dono (010 em produção) | derivado (10-CONTEXT) |
-| TAR-01 | Phase 11 | Pending | pendente | derivado (11-CONTEXT) |
+| TAR-01 | Phase 11 | Complete | pendente | derivado (11-CONTEXT) |
 | TAR-02 | Phase 11 | Pending | pendente | derivado (11-CONTEXT) |
 | TAR-03 | Phase 11 | Pending | pendente — conferir em produção que nenhum registro carrega `parentItemId` | derivado (11-CONTEXT) |
 | TAR-04 | Phase 11 | Pending | pendente | derivado (11-CONTEXT) |

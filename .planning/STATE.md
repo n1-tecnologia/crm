@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 11
-current_phase_name: clone-clickup-tarefa-checklist-descri-o-e-tempo
+current_phase_name: "Clone ClickUp: Tarefa (checklist, descrição e tempo)"
 status: executing
-stopped_at: Phase 11 context gathered
-last_updated: "2026-10-29T21:54:30.198Z"
+stopped_at: Completed 11-01-PLAN.md
+last_updated: "2026-10-29T22:03:08.685Z"
 last_activity: 2026-10-29
-last_activity_desc: Phase 10 execution started
-state_head: 506879bef109263097a136d760227c7790d81753
+last_activity_desc: Phase 11 execution started
+state_head: 224514014ec0df97beff2295dd873aaee9b73b11
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 199
-  completed_plans: 187
+  completed_plans: 188
 milestone_name: milestone
 ---
 
@@ -24,14 +24,14 @@ milestone_name: milestone
 See: .planning/PROJECT.md (updated 2026-10-11)
 
 **Core value:** Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de ponta a ponta sem abrir o ClickUp — dados no Postgres próprio, regras de `@n1/dominio` intactas.
-**Current focus:** Phase 10 — Clone ClickUp: Contêineres (Espaço, Pasta e Lista)
+**Current focus:** Phase 11 — Clone ClickUp: Tarefa (checklist, descrição e tempo)
 
 ## Current Position
 
-Phase: 11 (clone-clickup-tarefa-checklist-descri-o-e-tempo) — READY TO EXECUTE
-Plan: 21 of 21
+Phase: 11 (Clone ClickUp: Tarefa (checklist, descrição e tempo)) — EXECUTING
+Plan: 2 of 8
 Status: Ready to execute
-Last activity: 2026-10-29 — Phase 10 execution started
+Last activity: 2026-10-29 — Phase 11 execution started
 
 **Fase 06 planejada à mão em 2026-09-29 (Conferência do Resumo e anexos), pronta para `/gsd-execute-phase 6`:**
 `.planning/phases/06-conferencia-do-resumo-e-anexos/` — `06-CONTEXT.md` (13 decisões com padrão e variável de troca) e seis planos em três ondas: 06-01 domínio · 06-02 contrato v1.1 no `financeiro-tria` · 06-03 ponte em dois momentos · 06-04 tela e jornada · 06-05 S5/S6 na Solicitação · 06-06 docs e provas `[BLOCKING]`. Origem: `docs/08-migracao-financeiro/09-…` (desenho) e `10-…` (levantamento etapa por etapa com `arquivo:linha`). Ponto de partida do código: `crm-n1-integracao@3d6f735` (branch `integra-frontend-main`, sem push) e `financeiro-tria@c272dad` (`main`, 99 commits sem push, 89 arquivos sujos só de EOL — `git add` sempre por caminho). O dono ainda não respondeu às quatro perguntas do doc 10; os padrões de D6-01..D6-04 seguem "como no ClickUp", exceto Integração manual (o seguro).
@@ -405,6 +405,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 10 P19 | 9 min | 2 tasks | 4 files |
 | Phase 10 P13 | 8 min | 2 tasks | 7 files |
 | Phase 10 P15 | 2h | 3 tasks | 11 files |
+| Phase 11 P01 | 4 min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -591,6 +592,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 10]: 10-19: copy nova «Gravando a ordem…» como motivo dos itens Mover para…/Subir/Descer desligados durante a gravação; fora do UI-SPEC, pendente de confirmação do dono — ActionMenu só desliga um item com disabledReason
 - [Phase 10]: 10-13: o arrastar da árvore é um hook fora da casca (useArrastarNaArvore) e a TreeRow saiu do app-shell para linha-da-arvore.tsx (teto de 1.250 linhas); toda linha da Estrutura fora de Meus negócios recebe a soltura (A2) e só arrasta quem administra o item; o aviso de mover só sai depois da resposta do servidor
 - [Phase 10]: 10-15 Q3 = direto: a Lista que entra no catálogo do relógio só pela lixeira roda a primeira volta sem ensaio e a ponte do Agente de lançamento passa a expurgar Contas a pagar/receber (prévia de produção: 65 Tarefas vencidas, todas em Espaços de teste; 0 no ws_n1) — Decisão do dono em 2026-10-29 depois de ver a prévia só leitura contra produção; registrada em 10-PROVAS.md
+- [Phase 11]: 11-01: conversaoDeItemRecusada (derive.ts) e a recusa unica de convertChecklistItem e da tela; parametro de Tarefa pai alternativa removido da funcao e do esquema (D-04)
+- [Phase 11]: 11-01: checklist de um nivel so, campo de Subitem fora do tipo, do dominio e da tela; sem migracao SQL, contagem em producao fica para o checkpoint de 11-08 (D-02)
 
 ### Pending Todos
 
@@ -652,6 +655,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-29T21:00:37.980Z
-Stopped at: Phase 11 context gathered
-Resume file: .planning/phases/11-clone-clickup-tarefa-checklist-descri-o-e-tempo/11-CONTEXT.md
+Last session: 2026-10-29T22:03:08.448Z
+Stopped at: Completed 11-01-PLAN.md
+Resume file: None

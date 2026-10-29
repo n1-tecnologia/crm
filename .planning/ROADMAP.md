@@ -682,11 +682,11 @@ Plans:
 **Itens da 2.7** que mexam na Tarefa entram aqui.
 **Requirements**: TAR-01, TAR-02, TAR-03, TAR-04, TAR-05, TAR-06, TAR-07 (derivados em `11-CONTEXT.md` "Requisitos derivados"; registrados em REQUIREMENTS.md, Fase 11)
 **Depends on:** Phase 9
-**Plans:** 0/8 plans executed
+**Plans:** 1/8 plans executed
 
 Plans:
 **Wave 1**
-- [ ] 11-01-PLAN.md — Conversão de Item em Subtarefa no domínio e na API: `conversaoDeItemRecusada`, mensagem de nível nova, sem `parentTaskId` e sem subitens de checklist (TAR-01, TAR-03)
+- [x] 11-01-PLAN.md — Conversão de Item em Subtarefa no domínio e na API: `conversaoDeItemRecusada`, mensagem de nível nova, sem `parentTaskId` e sem subitens de checklist (TAR-01, TAR-03)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 11-02-PLAN.md — `Task.descriptionMentions` e o texto anterior da descrição no domínio: `updateTask` valida e grava, `before`/`after` cortados em 2.000, recorrência copia a menção (TAR-04, TAR-06)
