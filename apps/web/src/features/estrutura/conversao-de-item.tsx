@@ -15,8 +15,14 @@
  *
  * D13 — a conversão vive no endereço (`?converter-item=`): quem abre e fecha o
  * diálogo é `tarefa-completa.tsx`, que passa `onFechar`.
+ *
+ * O diálogo não some calado: se o Item deixa de existir ou já está convertido
+ * (hidratação com o diálogo aberto, endereço antigo), ele limpa o endereço por
+ * `onFechar` e, no segundo caso, diz o motivo por `onErro`. E o segundo clique em
+ * "Converter" é engolido enquanto o primeiro ainda está a caminho.
  */
 
+import { useEffect, useRef, useState } from "react";
 import { conversaoDeItemRecusada } from "@n1/dominio/derive";
 import { convertChecklistItem } from "@n1/dominio/operations";
 import type { Task } from "@n1/dominio/types";
@@ -59,13 +65,33 @@ export function DialogoDeConversao({
   const item = task.checklists
     .find((group) => group.id === checklistId)
     ?.items.find((candidato) => candidato.id === itemId);
-  if (!item || item.converted !== undefined) return null;
+  const indisponivel = !item || item.converted !== undefined;
+  const jaConvertido = item !== undefined && item.converted !== undefined;
+  // `enviou` é o guarda síncrono (dois cliques no mesmo tick); `enviando` só pinta o botão.
+  const enviou = useRef(false);
+  const avisou = useRef(false);
+  const [enviando, setEnviando] = useState(false);
+
+  useEffect(() => {
+    // Quando é este diálogo que converte, o Item vira `converted` por causa dele: não é erro.
+    if (!indisponivel || enviou.current || avisou.current) return;
+    avisou.current = true;
+    if (jaConvertido) onErro("Este Item já foi convertido.");
+    onFechar();
+  }, [indisponivel, jaConvertido, onErro, onFechar]);
+
+  if (!item || indisponivel) return null;
 
   const converter = () => {
+    if (enviou.current) return;
+    enviou.current = true;
+    setEnviando(true);
     const { local, confirmado } = runConfirmado((data, memberId) =>
       convertChecklistItem(data, memberId, task.id, checklistId, itemId),
     );
     if (!local.ok) {
+      enviou.current = false;
+      setEnviando(false);
       onErro(local.error);
       onFechar();
       return;
@@ -82,6 +108,8 @@ export function DialogoDeConversao({
       title={`Converter “${item.text}” em Subtarefa?`}
       description="A conversão não tem volta: o Item fica marcado como convertido, sai do progresso do Checklist e vira uma Subtarefa desta Tarefa."
       confirmLabel="Converter"
+      confirmCarregando={enviando}
+      {...(enviando ? { confirmDisabledReason: "Convertendo…" } : {})}
       onConfirm={converter}
       onCancel={onFechar}
     />

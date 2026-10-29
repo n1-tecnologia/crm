@@ -163,20 +163,50 @@ describe("DialogoDeConversao — um clique, sem digitar o nome (D-01)", () => {
     expect(confirmar.getAttribute("aria-disabled")).not.toBe("true");
   });
 
-  it("não renderiza nada quando o Item não existe", () => {
+  it("não renderiza nada quando o Item não existe, e limpa o endereço por onFechar", () => {
+    const onFechar = vi.fn();
+    const onErro = vi.fn();
     comStore(
       THIAGO,
       <DialogoDeConversao
         task={tarefa(TAREFA)}
         checklistId={CHECKLIST}
         itemId="cki_que_nao_existe"
-        onFechar={vi.fn()}
+        onFechar={onFechar}
         onConvertida={vi.fn()}
-        onErro={vi.fn()}
+        onErro={onErro}
       />,
     );
 
     expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(onFechar).toHaveBeenCalledTimes(1);
+    expect(onErro).not.toHaveBeenCalled();
+  });
+
+  it("Item já convertido em outro lugar: não renderiza, avisa o motivo e limpa o endereço (WR-04)", () => {
+    const item = tarefa(TAREFA).checklists.find((c) => c.id === CHECKLIST)?.items.find((i) => i.id === ITEM);
+    if (!item) throw new Error("o seed precisa do Item de teste");
+    item.converted = { taskId: "tsk_outra", title: TEXTO_DO_ITEM, at: new Date().toISOString(), by: { kind: "member", id: THIAGO } };
+    const onFechar = vi.fn();
+    const onErro = vi.fn();
+    renderizarDialogo({ onFechar, onConvertida: vi.fn(), onErro });
+
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(onErro).toHaveBeenCalledWith("Este Item já foi convertido.");
+    expect(onFechar).toHaveBeenCalledTimes(1);
+  });
+
+  it("dois cliques seguidos em Converter mandam uma chamada só e o botão mostra que está convertendo (WR-03)", () => {
+    const onErro = vi.fn();
+    renderizarDialogo({ onFechar: vi.fn(), onConvertida: vi.fn(), onErro });
+    const confirmar = within(screen.getByRole("alertdialog")).getByRole("button", { name: "Converter" });
+
+    fireEvent.click(confirmar);
+    fireEvent.click(confirmar);
+
+    expect(transporte.gravarMock).toHaveBeenCalledTimes(1);
+    expect(onErro).not.toHaveBeenCalled();
+    expect(within(screen.getByRole("alertdialog")).getByRole("button", { name: /Convert/ }).getAttribute("aria-disabled")).toBe("true");
   });
 });
 
