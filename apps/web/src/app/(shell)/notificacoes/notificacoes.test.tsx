@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { buildSeed } from "@n1/dominio/seed";
-import { addTaskComment, updateTask } from "@n1/dominio/operations";
+import { addTaskComment, changeTaskStatus, updateTask } from "@n1/dominio/operations";
 import type { DataState } from "@n1/dominio/state";
 import { StoreProvider } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
@@ -77,6 +77,20 @@ describe("Notificações › Menções a você (11-04)", () => {
 
     const texto = screen.getByText(`Thiago Nascimento mencionou você em “${tarefa().title}”`);
     expect(texto.closest("a")?.getAttribute("href")).toBe(`/estrutura/tarefas/${TAREFA}#comentario-${c.ok ? c.value.id : ""}`);
+    expect(screen.queryByText(/na descrição de/)).toBeNull();
+  });
+
+  it("com a Tarefa fechada, a menção da descrição não aparece", async () => {
+    const r = updateTask(state, THIAGO, TAREFA, {
+      description: "Pedir a @Júlia Prado a revisão",
+      descriptionMentions: [{ type: "member", id: JULIA }],
+    });
+    expect(r.ok).toBe(true);
+    for (const item of tarefa().checklists.flatMap((c) => c.items)) item.done = true;
+    expect(changeTaskStatus(state, THIAGO, TAREFA, "st_ops_conc").ok).toBe(true);
+
+    await montar();
+
     expect(screen.queryByText(/na descrição de/)).toBeNull();
   });
 });
