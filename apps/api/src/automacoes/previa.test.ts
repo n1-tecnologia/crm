@@ -7,13 +7,24 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { DataState } from "@n1/dominio";
+import { purgeExpiredTasks } from "@n1/dominio/operations/tasks";
 import { buildSeed } from "@n1/dominio/seed";
 import { encerrar, pool } from "../persistencia/conexao";
 import { semear as semearEstadoInteiro } from "../persistencia/repositorio";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm } from "../testes/banco-crm";
 import { relogioFixo } from "../testes/relogio";
 import { criarSchedulerWorker } from "./scheduler-worker";
-import { candidatosDaLixeira, formatarAgenda, formatarPrevia, type LinhaDaAgenda, type LinhaDaPrevia, previaDaAgenda, SEM_ATOR_NA_PREVIA, voltasRecentes } from "./previa";
+import {
+  candidatosDaLixeira,
+  formatarAgenda,
+  formatarPrevia,
+  type LinhaDaAgenda,
+  type LinhaDaPrevia,
+  linhasDoEspaco,
+  previaDaAgenda,
+  SEM_ATOR_NA_PREVIA,
+  voltasRecentes,
+} from "./previa";
 
 const DIA_MS = 86_400_000;
 const PROPRIETARIO = "mem_thiago";
@@ -106,6 +117,102 @@ describe("formatarPrevia", () => {
     expect(texto).toContain(SEM_ATOR_NA_PREVIA);
     expect(texto).toContain("2 Lista(s) candidata(s)");
     expect(texto).toContain("7 Tarefa(s)");
+  });
+});
+
+/**
+ * 10-REVIEW MEDIUM-01 — a coluna "Lixeira vencida" é o número que liberou uma
+ * ação irreversível (Q3 = direto). Ela tem de ser EXATAMENTE o que
+ * `purgeExpiredTasks` elimina na primeira volta: com as Subtarefas que caem em
+ * cascata, sem contar duas vezes, e com o "hoje" do worker (a meia-noite local
+ * do dia civil), não o instante em que o CLI rodou. Puro, sem banco.
+ */
+describe("linhasDoEspaco — a lixeira vencida é o que o expurgo real elimina (10-REVIEW MEDIUM-01)", () => {
+  // 15h de um dia civil: o CLI roda a qualquer hora, o worker usa a meia-noite.
+  const agora = new Date(2026, 9, 29, 15, 0);
+  const meiaNoite = new Date(2026, 9, 29);
+
+  /** O seed com a lixeira de LISTA_SO_LIXEIRA vazia; `ajustar` monta o caso. */
+  function estadoCom(ajustar: (estado: DataState, retencaoMs: number) => void): DataState {
+    const estado = buildSeed();
+    for (const t of estado.tasks) {
+      if (t.listId === LISTA_SO_LIXEIRA && t.lifecycle === "naLixeira") {
+        t.lifecycle = "ativo";
+        delete t.trashedAt;
+      }
+    }
+    ajustar(estado, estado.workspace.trashPolicy.retentionDays * DIA_MS);
+    return estado;
+  }
+
+  function tarefa(estado: DataState, id: string) {
+    const t = estado.tasks.find((x) => x.id === id);
+    if (!t) throw new Error(`o seed perdeu ${id}`);
+    return t;
+  }
+
+  /** O que o worker eliminaria: o expurgo real, numa cópia, com o ator e o dia dele. */
+  function eliminadasPeloWorker(estado: DataState): number {
+    const r = purgeExpiredTasks(structuredClone(estado), PROPRIETARIO, LISTA_SO_LIXEIRA, meiaNoite);
+    if (!r.ok) throw new Error(r.error);
+    return r.value.eliminadas;
+  }
+
+  it("Tarefa vencida na lixeira com uma Subtarefa ativa: conta as duas, como o expurgo (antes contava 1)", () => {
+    const estado = estadoCom((e, retencaoMs) => {
+      const mae = tarefa(e, "tsk_seed_11");
+      mae.lifecycle = "naLixeira";
+      mae.trashedAt = iso(agora.getTime() - retencaoMs - 10 * DIA_MS);
+      e.tasks.push({ ...structuredClone(tarefa(e, "tsk_seed_12")), id: "tsk_sub_previa", parentTaskId: mae.id, lifecycle: "ativo" });
+    });
+
+    const [linha] = linhasDoEspaco(estado, "ws_x", [LISTA_SO_LIXEIRA], undefined, agora);
+    expect(eliminadasPeloWorker(estado)).toBe(2);
+    expect(linha?.lixeiraVencida).toBe(2);
+  });
+
+  it("mãe e Subtarefa vencidas na lixeira: conta duas, uma vez cada", () => {
+    const estado = estadoCom((e, retencaoMs) => {
+      const mae = tarefa(e, "tsk_seed_11");
+      mae.lifecycle = "naLixeira";
+      mae.trashedAt = iso(agora.getTime() - retencaoMs - 10 * DIA_MS);
+      e.tasks.push({
+        ...structuredClone(tarefa(e, "tsk_seed_12")),
+        id: "tsk_sub_previa",
+        parentTaskId: mae.id,
+        lifecycle: "naLixeira",
+        trashedAt: iso(agora.getTime() - retencaoMs - 5 * DIA_MS),
+      });
+    });
+
+    const [linha] = linhasDoEspaco(estado, "ws_x", [LISTA_SO_LIXEIRA], undefined, agora);
+    expect(linha?.lixeiraVencida).toBe(eliminadasPeloWorker(estado));
+    expect(linha?.lixeiraVencida).toBe(2);
+  });
+
+  it("a Tarefa que vence HOJE depois da meia-noite não conta: o worker a elimina amanhã (antes contava hoje)", () => {
+    const estado = estadoCom((e, retencaoMs) => {
+      const t = tarefa(e, "tsk_seed_11");
+      t.lifecycle = "naLixeira";
+      // A previsão de eliminação é hoje às 01h: já passou para o CLI das 15h, não para a meia-noite do worker.
+      t.trashedAt = iso(meiaNoite.getTime() + 3_600_000 - retencaoMs);
+    });
+
+    const [linha] = linhasDoEspaco(estado, "ws_x", [LISTA_SO_LIXEIRA], undefined, agora);
+    expect(eliminadasPeloWorker(estado)).toBe(0);
+    expect(linha?.lixeiraVencida).toBe(0);
+  });
+
+  it("roda o expurgo numa cópia: o estado lido não perde nada", () => {
+    const estado = estadoCom((e, retencaoMs) => {
+      const t = tarefa(e, "tsk_seed_11");
+      t.lifecycle = "naLixeira";
+      t.trashedAt = iso(agora.getTime() - retencaoMs - 10 * DIA_MS);
+    });
+    const antes = JSON.stringify(estado);
+    const [linha] = linhasDoEspaco(estado, "ws_x", [LISTA_SO_LIXEIRA], undefined, agora);
+    expect(linha?.lixeiraVencida).toBe(1);
+    expect(JSON.stringify(estado)).toBe(antes);
   });
 });
 

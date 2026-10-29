@@ -127,9 +127,13 @@ podendo olhar todos (só lê).
 **A prévia, só leitura** (`previa.ts`, `npm run automacoes:previa -w @n1/api [-- <workspaceId>]`).
 Por (Espaço, Lista) candidata imprime nome da Lista, por onde entra (automação,
 recorrência, lixeira), regime (`ensaio`/`direto`), o Membro que assinaria
-(`atorDoRelogio`) ou `sem ator`, a contagem de Tarefas vencidas na lixeira
-(`tarefasDaLixeiraVencidas`, a mesma regra de `purgeExpiredTasks`) e a de séries
-por calendário. Hidrata cada Espaço em transação `read only` que termina em
+(`atorDoRelogio`) ou `sem ator`, quantas Tarefas a primeira volta eliminaria
+e a de séries por calendário. Desde o 10-REVIEW (MEDIUM-01) a coluna "Lixeira
+vencida" é o próprio `purgeExpiredTasks` rodado numa cópia do estado
+(`structuredClone`), com o ator escolhido e o "hoje" do worker (a meia-noite
+local do dia civil, não o instante do CLI): conta as Subtarefas que caem em
+cascata, não conta nada duas vezes, e dá 0 para a Lista `sem ator` (a volta
+fecharia `SEM_ATOR` sem eliminar nada). Hidrata cada Espaço em transação `read only` que termina em
 rollback, não contém DML e nunca imprime título de Tarefa (T-3-04). É o comando
 dos checkpoints Q3 e D-04: rodar contra produção ANTES de ligar
 `AUTOMACOES_WORKER_ATIVO=true`.

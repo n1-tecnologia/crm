@@ -165,8 +165,9 @@ describe("atorDoRelogio — F3, Q1 (autoria humana a confirmar com o dono)", () 
 });
 
 /**
- * 10-15 — `tarefasDaLixeiraVencidas` é a regra do expurgo extraída: a prévia
- * do relógio conta com ela exatamente o que `purgeExpiredTasks` eliminaria.
+ * 10-15 — `tarefasDaLixeiraVencidas` é a regra do expurgo extraída (o que
+ * `purgeExpiredTasks` escolhe). A prévia do relógio conta pelo próprio expurgo,
+ * numa cópia, porque ele leva as Subtarefas junto (10-REVIEW MEDIUM-01).
  */
 describe("tarefasDaLixeiraVencidas", () => {
   const LISTA_DA_LIXEIRA = "lst_prospeccao";
