@@ -19,6 +19,23 @@ export interface TextoDoTempo {
   readonly comSubtarefas?: string;
 }
 
+/**
+ * O valor da linha "Rastrear tempo" da Tarefa aberta (11-07). "Iniciar" quando
+ * não há nada a mostrar; senão as partes não vazias separadas por " · ", e a
+ * primeira é sempre o mesmo `textoDoTempo(tempo).total` do editor.
+ */
+export function valorDaLinhaDeTempo(tempo: TempoRegistrado): string {
+  const texto = textoDoTempo(tempo);
+  if (tempo.lancamentos === 0 && texto.comSubtarefas === undefined) return "Iniciar";
+  const partes = [
+    texto.total,
+    tempo.lancamentos > 0 ? `${tempo.lancamentos} ${tempo.lancamentos === 1 ? "registro" : "registros"}` : "",
+    texto.emAndamento ? "em andamento" : "",
+    texto.comSubtarefas ?? "",
+  ];
+  return partes.filter((parte) => parte !== "").join(" · ");
+}
+
 export function textoDoTempo(tempo: TempoRegistrado): TextoDoTempo {
   const base = { total: minutos(tempo.minutos), emAndamento: tempo.emAndamento };
   return tempo.minutosComSubtarefas > tempo.minutos
