@@ -29,6 +29,7 @@ import { CabecalhoDoAspecto } from "@/features/estrutura/cabecalho-do-aspecto";
 import { CanaisDeAtendimento } from "@/features/estrutura/canais-de-atendimento";
 import { useRecente } from "@/features/shell/recente";
 import { FeaturesEditor, FieldDefinitionsEditor, StatusSetEditor, TaskTypesEditor, useMayConfigure } from "@/features/estrutura/configuration-editors";
+import { EditorDeVisualizacoesPadrao } from "@/features/estrutura/editor-de-visualizacoes-padrao";
 import { FormsEditor } from "@/features/estrutura/forms-editor";
 import { CicloDeVidaDoConteiner, IdentidadeDoConteiner } from "@/features/estrutura/identidade-e-ciclo-de-vida";
 import { CaixaDeConfiguracoes } from "@/features/ferramentas/caixa-de-configuracoes";
@@ -40,7 +41,7 @@ import { Abas, CorpoDeTela, EmptyState, PageHeader, StateSeal, Toast, idDaAba, i
  * 2.1.8, D-17 — as Configurações em abas, com a aba na URL (`?aba=`). A tabela
  * didática de "aspectos" saiu: cada aba é UM assunto e diz de onde vem o valor.
  */
-type ChaveDaAba = "geral" | "status" | "funcionalidades" | "campos" | "tipos-de-tarefa" | "formularios" | "modelo-e-canais";
+type ChaveDaAba = "geral" | "status" | "funcionalidades" | "campos" | "tipos-de-tarefa" | "visualizacoes" | "formularios" | "modelo-e-canais";
 
 const ABAS: ReadonlyArray<{ readonly chave: ChaveDaAba; readonly rotulo: string; readonly soLista?: true }> = [
   { chave: "geral", rotulo: "Geral" },
@@ -48,6 +49,7 @@ const ABAS: ReadonlyArray<{ readonly chave: ChaveDaAba; readonly rotulo: string;
   { chave: "funcionalidades", rotulo: "Funcionalidades" },
   { chave: "campos", rotulo: "Campos" },
   { chave: "tipos-de-tarefa", rotulo: "Tipos de Tarefa" },
+  { chave: "visualizacoes", rotulo: "Visualizações" },
   { chave: "formularios", rotulo: "Formulários", soLista: true },
   { chave: "modelo-e-canais", rotulo: "Modelo e canais", soLista: true },
 ];
@@ -290,6 +292,17 @@ export function ContainerSettings({
                 <TaskTypesEditor containerType={kind} containerId={id} report={report} />
               </div>
             </div>
+          ) : null}
+
+          {aba === "visualizacoes" ? (
+            config === null ? (
+              <EmptyState compact title="Este contêiner não resolve as Visualizações padrão." hint="Falta um Conjunto de Status no Espaço acima." />
+            ) : (
+              <>
+                <CabecalhoDoAspecto tipo={kind} id={id} aspecto="defaultViews" />
+                <EditorDeVisualizacoesPadrao tipo={kind} id={id} conversacional={lista?.modeloDeTarefa === "conversacional"} />
+              </>
+            )
           ) : null}
 
           {aba === "formularios" && kind === "list" ? <FormsEditor listId={id} bloqueio={useMayConfigureReason} report={report} /> : null}

@@ -63,8 +63,10 @@ describe("abaDasConfiguracoes — o fallback para `geral` (T-10-21)", () => {
     expect(abaDasConfiguracoes("inexistente", "list")).toBe("geral");
     expect(abaDasConfiguracoes("formularios", "space")).toBe("geral");
     expect(abaDasConfiguracoes("modelo-e-canais", "folder")).toBe("geral");
-    // A aba Visualizações só nasce com o editor (10-10): até lá é desconhecida.
-    expect(abaDasConfiguracoes("visualizacoes", "list")).toBe("geral");
+    // 2.6.2 — a aba Visualizações existe nos três níveis.
+    expect(abaDasConfiguracoes("visualizacoes", "list")).toBe("visualizacoes");
+    expect(abaDasConfiguracoes("visualizacoes", "space")).toBe("visualizacoes");
+    expect(abaDasConfiguracoes("visualizacoes", "folder")).toBe("visualizacoes");
   });
 });
 
@@ -97,10 +99,20 @@ describe("ContainerSettings — a aba vem da URL", () => {
     expect(screen.queryByRole("tab", { name: "Modelo e canais" })).toBeNull();
   });
 
-  it("a Lista tem Formulários e Modelo e canais, e não tem a aba Visualizações ainda", () => {
+  it("a Lista tem Visualizações depois de Tipos de Tarefa, e Formulários e Modelo e canais no fim", () => {
     montar("list", "lst_prospeccao");
     const nomes = screen.getAllByRole("tab").map((aba) => aba.textContent);
-    expect(nomes).toEqual(["Geral", "Status", "Funcionalidades", "Campos", "Tipos de Tarefa", "Formulários", "Modelo e canais"]);
+    expect(nomes).toEqual(["Geral", "Status", "Funcionalidades", "Campos", "Tipos de Tarefa", "Visualizações", "Formulários", "Modelo e canais"]);
+  });
+
+  it("o Espaço também tem a aba Visualizações, com o editor e a linha de origem", () => {
+    navegacao.params = new URLSearchParams({ aba: "visualizacoes" });
+    montar("space", "spc_com");
+
+    expect(abaSelecionada()).toBe("Visualizações");
+    expect(screen.getByText("Padrão da plataforma")).toBeTruthy();
+    expect(screen.getByRole("radiogroup", { name: "Visualização inicial" })).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "Calendário" })).toBeTruthy();
   });
 
   it("clicar em Status faz router.replace com ?aba=status e scroll: false, mantendo os outros parâmetros", () => {
@@ -114,7 +126,7 @@ describe("ContainerSettings — a aba vem da URL", () => {
   });
 
   it("o texto da tabela antiga não aparece em nenhuma das abas", () => {
-    for (const aba of ["geral", "status", "funcionalidades", "campos", "tipos-de-tarefa", "formularios", "modelo-e-canais"]) {
+    for (const aba of ["geral", "status", "funcionalidades", "campos", "tipos-de-tarefa", "visualizacoes", "formularios", "modelo-e-canais"]) {
       navegacao.params = new URLSearchParams({ aba });
       montar("list", "lst_prospeccao");
       expect(screen.queryByText(/Aspectos configuráveis/)).toBeNull();

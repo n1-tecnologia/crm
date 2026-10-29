@@ -47,7 +47,15 @@ import { QuadroDeTarefas } from "@/features/estrutura/quadro-de-tarefas";
 import { TabelaPlana } from "@/features/estrutura/tabela-plana";
 import { TabelaDeTarefas } from "@/features/estrutura/tabela-de-tarefas";
 import { CalendarioMensal } from "@/features/estrutura/calendario-mensal";
-import { abaDaView, kindDaAba, ROTULO_DA_ABA, type TipoDeAba } from "@/features/estrutura/tipo-de-visualizacao";
+import {
+  abaDaView,
+  abaInicialDaLista,
+  abasDaLista,
+  kindDaAba,
+  ROTULO_DA_ABA,
+  type LenteDaLista,
+  type TipoDeAba,
+} from "@/features/estrutura/tipo-de-visualizacao";
 import { RunScheduledButton } from "@/features/estrutura/bulk-status-bar";
 import { BotaoDeSelecao, SelecaoEmLote } from "@/features/estrutura/selecao-em-lote";
 import { BarraDeCriacao, type LenteDaBarra } from "@/features/estrutura/barra-de-criacao";
@@ -82,6 +90,16 @@ import type { RelatorioDeLote } from "@n1/dominio/operations/lote";
 type ViewKind = TipoDeAba;
 const VIEW_LABEL = ROTULO_DA_ABA;
 
+/**
+ * A lente de tipos de Visualização: as Listas do Financeiro não têm restrição;
+ * a conversacional não planeja esforço (sem Linha do tempo). O espelho comercial
+ * é conversacional, e herda a restrição.
+ */
+function lenteDaLista(list: { readonly id: string; readonly modeloDeTarefa?: string }): LenteDaLista {
+  if (financeProfileOf(list.id) !== undefined) return "financeira";
+  return list.modeloDeTarefa === "conversacional" ? "conversacional" : "comum";
+}
+
 export default function ListaPage({
   params,
 }: {
@@ -91,11 +109,28 @@ export default function ListaPage({
   const state = useData((data) => data);
   const fmt = useFormat();
   const runConfirmado = useRunConfirmado();
-  // A Visualização padrão da Lista abre aplicada; o resto parte do vazio.
-  const padrao = state.views.find(
+  const { memberId } = useSession();
+  // B38a — a Lista que o Membro não alcança não existe para ele.
+  const list = state.lists.find(
+    (l) =>
+      l.id === lista && memberReachesContainer(state, memberId, "list", l.id),
+  );
+  const config = list ? effectiveListConfig(state, list.id) : null;
+  // 2.6.2, D-07 — as abas vêm da configuração efetiva (o Espaço e a Pasta
+  // definem), filtradas pela lente; a Lista abre na padrão salva dela quando o
+  // tipo está entre as abas, senão na inicial da configuração (D-06).
+  const abas: readonly TipoDeAba[] = list && config ? abasDaLista(config.views.disponiveis, lenteDaLista(list)) : ["lista"];
+  const padraoSalva = state.views.find(
     (v) => v.listId === lista && v.ownerKind === "container" && v.isDefault,
   );
-  const [view, setView] = useState<ViewKind>(() => abaDaView(padrao?.kind));
+  const abaInicial: TipoDeAba = config ? abaInicialDaLista(abas, padraoSalva, config.views.inicial) : "lista";
+  // A Visualização padrão da Lista abre aplicada; o resto parte do vazio. Uma
+  // padrão de tipo que a Lista não mostra fica guardada e não abre (D-06).
+  const padrao = padraoSalva && abas.includes(abaDaView(padraoSalva.kind)) ? padraoSalva : undefined;
+  const [abaEscolhida, setView] = useState<ViewKind>(abaInicial);
+  // Se outro Membro tira o tipo da aba aberta, a Lista volta à inicial: a aba
+  // mostrada nunca é uma que a configuração efetiva não oferece.
+  const view: ViewKind = abas.includes(abaEscolhida) ? abaEscolhida : abaInicial;
   const [newTitle, setNewTitle] = useState("");
   /* O Tipo da Tarefa que a BARRA DO TOPO vai criar. Nasce indefinido e o
      seletor o reconduz ao padrão da Lista — o mesmo que o domínio usaria se
@@ -126,7 +161,6 @@ export default function ListaPage({
     new Set(),
   );
   const [selecionando, setSelecionando] = useState(false);
-  const { memberId } = useSession();
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<{
     text: string;
@@ -152,13 +186,6 @@ export default function ListaPage({
   const pathname = usePathname();
   // O popup da Tarefa abre o diálogo de mover pela URL; a Lista só o hospeda.
   const { movingTaskId, closeMove } = useMoveTaskDialog();
-
-  // B38a — a Lista que o Membro não alcança não existe para ele.
-  const list = state.lists.find(
-    (l) =>
-      l.id === lista && memberReachesContainer(state, memberId, "list", l.id),
-  );
-  const config = list ? effectiveListConfig(state, list.id) : null;
 
   if (!list || !config) {
     return (
@@ -620,10 +647,7 @@ export default function ListaPage({
 
       <Abas
         rotulo="Visualizações"
-        abas={(["lista", "quadro", "calendario", "tabela", "linha"] as const)
-          // A Linha do tempo é da gestão de projetos: a Lista conversacional não planeja esforço.
-          .filter((kind) => !conversacional || kind !== "linha")
-          .map((kind) => ({ chave: kind, rotulo: VIEW_LABEL[kind] }))}
+        abas={abas.map((kind) => ({ chave: kind, rotulo: VIEW_LABEL[kind] }))}
         ativa={view}
         aoTrocar={(chave) => setView(chave as ViewKind)}
       />
