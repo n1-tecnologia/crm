@@ -232,8 +232,7 @@ export function FinanceToolbar({
   onFilters,
   onOpenFilters,
   filtrosAvancados,
-  selecionando,
-  onToggleSelecionar,
+  fim,
   report,
 }: {
   readonly listId: string;
@@ -242,8 +241,8 @@ export function FinanceToolbar({
   readonly onFilters: (next: FinanceFilters) => void;
   readonly onOpenFilters: () => void;
   readonly filtrosAvancados: number;
-  readonly selecionando: boolean;
-  readonly onToggleSelecionar: () => void;
+  /** O encaixe do fim da barra: a página põe o `BotaoDeSelecao` (a seleção em lote é uma peça só). */
+  readonly fim?: ReactNode;
   readonly report: Report;
 }) {
   const state = useData((data) => data);
@@ -360,13 +359,7 @@ export function FinanceToolbar({
         />
       </span>
       <Divisor vertical className="mx-1" />
-      <Button
-        size="sm"
-        onClick={onToggleSelecionar}
-        aria-pressed={selecionando}
-      >
-        {selecionando ? "Sair da seleção" : "Selecionar várias"}
-      </Button>
+      {fim}
       <ActionMenu
         label="Automatizar"
         trigger={

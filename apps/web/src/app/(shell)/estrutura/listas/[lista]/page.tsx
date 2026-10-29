@@ -61,10 +61,8 @@ import { CalendarioMensal } from "@/features/estrutura/calendario-mensal";
 import { abaDaView, kindDaAba, ROTULO_DA_ABA, type TipoDeAba } from "@/features/estrutura/tipo-de-visualizacao";
 import { TaskAttributeEditors } from "@/features/estrutura/task-editors";
 import { IniciarConversaDialog } from "@/features/crm/iniciar-conversa-dialog";
-import {
-  BulkStatusBar,
-  RunScheduledButton,
-} from "@/features/estrutura/bulk-status-bar";
+import { RunScheduledButton } from "@/features/estrutura/bulk-status-bar";
+import { BotaoDeSelecao, SelecaoEmLote } from "@/features/estrutura/selecao-em-lote";
 import { RelatorioDeLotePainel } from "@/features/estrutura/relatorio-de-lote";
 import {
   applyFinanceFilters,
@@ -161,16 +159,14 @@ export default function ListaPage({
     taskId?: string;
   } | null>(null);
   /*
-   * O relatório de um lote (Plan 03-13) NÃO pode morar dentro de
-   * `BulkStatusBar`: na lente financeira aquela barra só é montada enquanto
-   * `selecionando && selecionadas.size > 0` — um lote 100% bem-sucedido
-   * esvazia a seleção, desmonta a barra, e o relatório sumiria no mesmo
-   * instante em que passa a ser a única prova do que aconteceu. Pior no caso
-   * `parcial`: as contas parciais mudaram de Status e podem sair do filtro
-   * corrente, saindo também de `selecionadas` (a seleção só vale para o que
-   * está na tela) — o relato mais importante seria o mais fácil de perder.
-   * Por isso a página guarda o relatório à parte, fora de qualquer
-   * condicional de seleção.
+   * O relatório de um lote (Plan 03-13) NÃO pode morar dentro do painel do
+   * lote (`SelecaoEmLote`): um lote 100% bem-sucedido esvazia a seleção, e o
+   * painel desmonta junto — o relatório sumiria no mesmo instante em que passa
+   * a ser a única prova do que aconteceu. Pior no caso `parcial`: as contas
+   * parciais mudaram de Status e podem sair do filtro corrente, saindo também
+   * de `selecionadas` (a seleção só vale para o que está na tela) — o relato
+   * mais importante seria o mais fácil de perder. Por isso a página guarda o
+   * relatório à parte, fora de qualquer condicional de seleção.
    */
   const [relatorioDeLote, setRelatorioDeLote] = useState<{
     readonly relatorio: RelatorioDeLote;
@@ -316,6 +312,20 @@ export default function ListaPage({
       definitions.find((d) => d.id === relatorio.statusId)?.name ?? relatorio.statusId;
     setRelatorioDeLote({ relatorio, nomeDoStatus });
   };
+  // O único gesto de seleção (2.1.4): liga/desliga, limpa as marcadas e, como a
+  // seleção só existe na Visualização Lista, leva a pessoa para lá.
+  const alternarSelecao = () => {
+    setSelecionando((v) => !v);
+    setSelecionadas(new Set());
+    if (view !== "lista") setView("lista");
+  };
+  const botaoDeSelecao = (
+    <BotaoDeSelecao
+      selecionando={selecionando}
+      aoAlternar={alternarSelecao}
+      {...(!selecionando && criacaoRecusada !== undefined ? { desligadoPor: criacaoRecusada } : {})}
+    />
+  );
 
   /* O aviso nomeia o que NASCEU, não a lente da tela: numa Lista do Financeiro
      quem escolhe "Tarefa" no seletor não criou uma "Conta". */
@@ -703,20 +713,7 @@ export default function ListaPage({
             De modelo
           </Button>
           <span className="flex-1" />
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              setSelecionando((v) => !v);
-              setSelecionadas(new Set());
-              if (view !== "lista") setView("lista");
-            }}
-            aria-pressed={selecionando}
-            disabled={criacaoRecusada !== undefined}
-            disabledReason={criacaoRecusada ?? ""}
-          >
-            {selecionando ? "Sair da seleção" : "Selecionar várias"}
-          </Button>
+          {botaoDeSelecao}
           <RunScheduledButton listId={list.id} report={reportar} />
         </BarraDeFiltros>
       ) : null}
@@ -771,20 +768,7 @@ export default function ListaPage({
           ) : (
             <>
               <span className="flex-1" />
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setSelecionando((v) => !v);
-                  setSelecionadas(new Set());
-                  if (view !== "lista") setView("lista");
-                }}
-                aria-pressed={selecionando}
-                disabled={criacaoRecusada !== undefined}
-                disabledReason={criacaoRecusada ?? ""}
-              >
-                {selecionando ? "Sair da seleção" : "Selecionar várias"}
-              </Button>
+              {botaoDeSelecao}
               <RunScheduledButton listId={list.id} report={reportar} />
             </>
           )}
@@ -793,48 +777,28 @@ export default function ListaPage({
 
       {financeira && effective === "ativo" ? (
         <BarraDeFiltros>
-          {selecionando && selecionadas.size > 0 ? (
-            <>
-              <span className="flex-1">
-                <BulkStatusBar
-                  tasks={tasks}
-                  definitions={definitions}
-                  selected={selecionadas}
-                  onSelect={setSelecionadas}
-                  onClear={() => setSelecionadas(new Set())}
-                  onRelatorio={aoReceberRelatorio}
-                  report={reportar}
-                />
-              </span>
-              <Button
-                size="sm"
-                onClick={() => {
-                  setSelecionando(false);
-                  setSelecionadas(new Set());
-                }}
-              >
-                Sair da seleção
-              </Button>
-            </>
-          ) : (
-            <FinanceToolbar
-              listId={list.id}
-              profile={lente}
-              filters={financeFilters}
-              onFilters={setFinanceFilters}
-              onOpenFilters={() => setFiltrosAbertos((v) => !v)}
-              filtrosAvancados={filtrosAvancados}
-              selecionando={selecionando}
-              onToggleSelecionar={() => {
-                setSelecionando((v) => !v);
-                setSelecionadas(new Set());
-                if (view !== "lista") setView("lista");
-              }}
-              report={reportar}
-            />
-          )}
+          <FinanceToolbar
+            listId={list.id}
+            profile={lente}
+            filters={financeFilters}
+            onFilters={setFinanceFilters}
+            onOpenFilters={() => setFiltrosAbertos((v) => !v)}
+            filtrosAvancados={filtrosAvancados}
+            fim={botaoDeSelecao}
+            report={reportar}
+          />
         </BarraDeFiltros>
       ) : null}
+
+      <SelecaoEmLote
+        tasks={tasks}
+        definitions={definitions}
+        selecionadas={selecionadas}
+        onSelecionar={setSelecionadas}
+        onRelatorio={aoReceberRelatorio}
+        report={reportar}
+        selecionando={selecionando}
+      />
 
       <CorpoDeTela semRespiro={tabelaColada}>
         {relatorioDeLote ? (
@@ -844,20 +808,6 @@ export default function ListaPage({
               nomeDoStatus={relatorioDeLote.nomeDoStatus}
               onFechar={() => setRelatorioDeLote(null)}
               onAbrirConta={openTask}
-            />
-          </div>
-        ) : null}
-
-        {selecionando && !financeira ? (
-          <div className={`${respiroAntes}mb-4`}>
-            <BulkStatusBar
-              tasks={tasks}
-              definitions={definitions}
-              selected={selecionadas}
-              onSelect={setSelecionadas}
-              onClear={() => setSelecionadas(new Set())}
-              onRelatorio={aoReceberRelatorio}
-              report={reportar}
             />
           </div>
         ) : null}
