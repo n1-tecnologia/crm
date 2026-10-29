@@ -9,12 +9,12 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { effectiveListConfig } from "../derive";
+import { effectiveListConfig, irmaosOrdenados } from "../derive";
 import { buildSeed } from "../seed";
 import type { DataState } from "../state";
 import { createFieldDefinition, createTaskType, overrideStatusSet, setContainerFeature } from "./configuration";
 import { shareTaskPublicly } from "./scale";
-import { archiveContainer, createFolder, createList, moveContainer } from "./structure";
+import { archiveContainer, createFolder, createList, moveContainer, reorderContainers } from "./structure";
 import { createTask, setTaskFieldValue, updateTask } from "./tasks";
 
 const THIAGO = "mem_thiago"; // Proprietário
@@ -311,5 +311,56 @@ describe("moveContainer — Conjunto de Status, B37, Tipo de Tarefa e link públ
 
     expect(tarefaDe(t).publicShare?.active).toBe(false);
     expect(state.activity.some((a) => a.action === "Link público revogado" && a.objectId === t)).toBe(true);
+  });
+});
+
+/**
+ * Fase 10, 2.3.2 (D-08, D-09, EST-05/EST-06) — reordenar os irmãos de um grupo
+ * (Pastas, Listas ou Espaços). A operação recebe os ids que o Membro VÊ, reocupa
+ * as vagas deles na sequência pedida e deixa os irmãos não citados no lugar
+ * (A3, RESEARCH Pitfall 6).
+ */
+describe("reorderContainers — o traçador (EST-05)", () => {
+  let F: string;
+  let L0: string;
+  let L1: string;
+  let L2: string;
+  beforeEach(() => {
+    F = pasta("Pasta de ordem");
+    L0 = lista("L0", F);
+    L1 = lista("L1", F);
+    L2 = lista("L2", F);
+  });
+
+  const ordens = (ids: readonly string[]): number[] => ids.map((id) => listaPorId(id).order);
+
+  it("reordena três Listas de uma Pasta, grava 0, 1, 2 na ordem pedida e registra 'Ordem alterada' na Pasta", () => {
+    expect(ordens([L0, L1, L2])).toEqual([0, 1, 2]);
+
+    const r = reorderContainers(state, THIAGO, "list", { type: "folder", id: F }, [L2, L0, L1]);
+
+    expect(r.ok).toBe(true);
+    expect(ordens([L2, L0, L1])).toEqual([0, 1, 2]);
+    expect(irmaosOrdenados(state, "list", { type: "folder", id: F }).map((l) => l.id)).toEqual([L2, L0, L1]);
+    const atividade = state.activity[0];
+    expect(atividade?.action).toBe("Ordem alterada");
+    expect(atividade?.objectType).toBe("folder");
+    expect(atividade?.objectId).toBe(F);
+  });
+
+  it("um irmão arquivado fora da lista de ids fica na mesma vaga; o grupo inteiro fica 0..3 sem repetição", () => {
+    const L3 = lista("L3", F);
+    expect(archiveContainer(state, THIAGO, "list", L3).ok).toBe(true);
+    // L0=0, L3=1 (arquivada), L1=2, L2=3
+    listaPorId(L0).order = 0;
+    listaPorId(L3).order = 1;
+    listaPorId(L1).order = 2;
+    listaPorId(L2).order = 3;
+
+    const r = reorderContainers(state, THIAGO, "list", { type: "folder", id: F }, [L2, L0, L1]);
+
+    expect(r.ok).toBe(true);
+    expect(irmaosOrdenados(state, "list", { type: "folder", id: F }).map((l) => l.id)).toEqual([L2, L3, L0, L1]);
+    expect(ordens([L2, L3, L0, L1])).toEqual([0, 1, 2, 3]);
   });
 });
