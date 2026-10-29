@@ -259,7 +259,7 @@ export function saveTaskAsTemplate(
     .map((t) => t.title);
   const checklists = task.checklists
     .sort((a, b) => a.order - b.order)
-    .map((c) => ({ name: c.name, items: c.items.filter((i) => !i.converted && !i.parentItemId).sort((a, b) => a.order - b.order).map((i) => i.text) }));
+    .map((c) => ({ name: c.name, items: c.items.filter((i) => !i.converted).sort((a, b) => a.order - b.order).map((i) => i.text) }));
   const template: Template = {
     id: nextId("tpl"),
     workspaceId: state.workspace.id,

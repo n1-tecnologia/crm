@@ -1046,9 +1046,9 @@ export function removeChecklist(
 }
 
 /**
- * Remover um Item remove os seus Subitens (checklist.md, seção 12). Um Item
- * `convertido` pode ser removido sem efeito sobre a Subtarefa (B48): a marca
- * terminal some do Checklist, a Subtarefa continua existindo.
+ * Remover um Item remove só ele (D-02: não há Subitem, o checklist tem um nível
+ * só). Um Item `convertido` pode ser removido sem efeito sobre a Subtarefa
+ * (B48): a marca terminal some do Checklist, a Subtarefa continua existindo.
  */
 export function removeChecklistItem(
   state: DataState,
@@ -1067,9 +1067,7 @@ export function removeChecklistItem(
   const item = checklist.items.find((i) => i.id === itemId);
   if (!item) return fail("Item não encontrado.");
 
-  const subitens = checklist.items.filter((i) => i.parentItemId === itemId);
-  const removidos = new Set([itemId, ...subitens.map((i) => i.id)]);
-  checklist.items = checklist.items.filter((i) => !removidos.has(i.id));
+  checklist.items = checklist.items.filter((i) => i.id !== itemId);
   task.updatedAt = now();
   recordActivity(state, {
     actor: memberActor(actingMemberId),
@@ -1078,10 +1076,7 @@ export function removeChecklistItem(
     objectId: task.id,
     objectName: task.title,
     before: item.text,
-    detail:
-      subitens.length === 0
-        ? checklist.name
-        : `${checklist.name} · ${subitens.length} Subitem(ns) removido(s) com ele: ${subitens.map((i) => i.text).join("; ")}`,
+    detail: checklist.name,
   });
   return ok(task, task.id);
 }

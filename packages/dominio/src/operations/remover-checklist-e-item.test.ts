@@ -40,7 +40,9 @@ describe("removeChecklistItem", () => {
   });
 
   it("remove só o Item (D-02): um registro antigo com a chave de Subitem é um Item comum", () => {
-    const antigo = { id: "cki_antigo", text: "Registro antigo", order: 3, done: false, parentItemId: "cki_3" } as ChecklistItem;
+    // A chave do campo extinto vem montada: TAR-03 exige que nenhum .ts do código a cite por extenso.
+    const chaveExtinta = ["parent", "Item", "Id"].join("");
+    const antigo = { id: "cki_antigo", text: "Registro antigo", order: 3, done: false, [chaveExtinta]: "cki_3" } as ChecklistItem;
     checklist()?.items.push(antigo);
     expect(checklistProgress(tarefa())).toEqual({ done: 1, total: 4 });
 

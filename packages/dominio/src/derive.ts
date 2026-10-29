@@ -496,11 +496,9 @@ export function subtaskProgress(state: DataState, taskId: Id): { done: number; t
   return { done, total: children.length };
 }
 
-/** B48 — countable item = first-level item that was not converted. */
+/** B48 — countable item = item that was not converted (D-02: the checklist has one level only). */
 export function checklistProgress(task: Task): { done: number; total: number } | null {
-  const countable = task.checklists.flatMap((c) =>
-    c.items.filter((i) => i.parentItemId === undefined && i.converted === undefined),
-  );
+  const countable = task.checklists.flatMap((c) => c.items.filter((i) => i.converted === undefined));
   if (countable.length === 0) return null;
   return { done: countable.filter((i) => i.done).length, total: countable.length };
 }
@@ -708,7 +706,7 @@ export function terminalStatusBlockReason(state: DataState, task: Task): string 
     (total, checklist) =>
       total +
       checklist.items.filter(
-        (item) => item.parentItemId === undefined && item.converted === undefined && !item.done,
+        (item) => item.converted === undefined && !item.done,
       ).length,
     0,
   );
