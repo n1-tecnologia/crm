@@ -66,7 +66,7 @@ export function useMoverConteinerDialog(): {
   };
 }
 
-type Movel = { readonly tipo: "folder"; readonly item: Folder } | { readonly tipo: "list"; readonly item: List };
+export type Movel = { readonly tipo: "folder"; readonly item: Folder } | { readonly tipo: "list"; readonly item: List };
 
 /** O que o `?mover=` aponta: Pasta, Subpasta ou Lista que o Membro alcança. Id desconhecido não abre nada (T-10-31). */
 function acharMovel(state: DataState, memberId: Id, id: Id): Movel | undefined {
@@ -155,9 +155,10 @@ function opcoesDeDestino(state: DataState, memberId: Id, movel: Movel): Option[]
 
 /**
  * A frase do Toast, pelo caso (UI-SPEC, «Avisos de sucesso»): o caso sai do tipo
- * e do nível de origem e de destino.
+ * e do nível de origem e de destino. O arrastar da árvore a reusa (10-13): mover
+ * pelo gesto e pelo diálogo avisam com a mesma frase.
  */
-function frasePronta(movel: Movel, destino: DestinoDeMover, nomeDoDestino: string): string {
+export function frasePronta(movel: Movel, destino: DestinoDeMover, nomeDoDestino: string): string {
   const { tipo, item } = movel;
   if (tipo === "list") return `Lista ${item.name} movida para ${nomeDoDestino}.`;
   const eraSubpasta = item.parentType === "folder";

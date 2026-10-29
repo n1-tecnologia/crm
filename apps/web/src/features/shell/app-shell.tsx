@@ -42,7 +42,6 @@ import {
   LayoutGrid,
   Layers,
   ListTodo,
-  Lock,
   MessageSquare,
   Plus,
   Settings,
@@ -54,7 +53,7 @@ import {
   Wrench,
   type LucideIcon,
 } from "lucide-react";
-import { ActionMenu, Toast } from "@/design/components";
+import { Toast } from "@/design/components";
 import { Icone } from "@/design/icone";
 import { CarregadorDeIcones } from "@/design/carregador";
 import { EsqueletoDeTela } from "@/design/esqueletos";
@@ -72,6 +71,8 @@ import { chaveDeChegada, formaDe } from "./rotas";
 import type { ContainerKind } from "@/features/estrutura/create-container-dialog";
 import { shortcutHref } from "@/features/estrutura/shortcuts";
 import { BrandMark } from "./brand";
+import { TreeRow } from "./linha-da-arvore";
+import { useArrastarNaArvore, type NoDaArvore, type PropsDeArrasto } from "./arrastar-na-arvore";
 
 import { useData, useRun, useRunConfirmado, useSession } from "@/dados/store";
 import { MEUS_NEGOCIOS_ID } from "@n1/dominio/seed-comercial";
@@ -92,6 +93,7 @@ import {
   useCreateContainerDialog,
 } from "@/features/estrutura/create-container-dialog";
 import { MoverConteinerDialog, useMoverConteinerDialog } from "@/features/estrutura/mover-conteiner-dialog";
+import type { DataState, OperationResult } from "@n1/dominio/state";
 import type { Folder, Id, List, Space, SpaceShortcut } from "@n1/dominio/types";
 
 // Mantido aqui pelos chamadores antigos (app/f, app/p); vive em ./hidratado.
@@ -552,7 +554,7 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
               >
                 Espaços
               </RotuloDeGrupo>
-              <StructureTree showArchived={showArchived} openCreate={openCreate} openMover={openMover} onErro={setNoticeErro} />
+              <StructureTree showArchived={showArchived} openCreate={openCreate} openMover={openMover} onErro={setNoticeErro} onAviso={setNotice} />
               <button
                 type="button"
                 onClick={() => setShowArchived((value) => !value)}
@@ -632,12 +634,15 @@ function StructureTree({
   openCreate,
   openMover,
   onErro,
+  onAviso,
 }: {
   readonly showArchived: boolean;
   readonly openCreate: (kind: ContainerKind, parentType?: "space" | "folder", parentId?: string) => void;
-  readonly openMover: (id: Id) => void;
-  /** A recusa do servidor ao reordenar vai ao Toast de erro da barra lateral; `null` limpa o aviso anterior. */
+  readonly openMover: (id: Id, destinoId?: Id) => void;
+  /** A recusa do domínio ou do servidor ao mover e reordenar vai ao Toast de erro da barra lateral; `null` limpa o aviso anterior. */
   readonly onErro: (frase: string | null) => void;
+  /** O sucesso de mover (reordenar não avisa), dito só depois da resposta do servidor. */
+  readonly onAviso: (frase: string) => void;
 }) {
   const { memberId } = useSession();
   const runConfirmado = useRunConfirmado();
@@ -681,10 +686,6 @@ function StructureTree({
     .filter((s) => memberSeesResource(data, memberId, s.id))
     .filter((s) => !isGuest || spaceHasVisibleContent(s));
 
-  if (visibleSpaces.length === 0) {
-    return <p className="app-meta px-3 py-1">Nenhum Espaço visível para você.</p>;
-  }
-
   /**
    * Os irmãos que o menu de ordem conhece: os que a árvore mostra E que o Membro
    * alcança (10-04). Um Espaço privado pode aparecer só porque o caminho de uma
@@ -698,30 +699,43 @@ function StructureTree({
     return grupo.filter((c) => memberReachesContainer(data, memberId, tipo, c.id)).map((c) => c.id);
   };
 
-  const reordenar = (tipo: TipoDoGrupo, pai: PaiDeConteiner, id: Id, passo: -1 | 1) => {
+  // A4: grava por `runConfirmado`; a recusa local e a do servidor vão ao Toast de erro, e `aoGravar` só roda depois da resposta.
+  const gravar = (comando: (estado: DataState, quem: Id) => OperationResult<unknown>, aoGravar?: () => void) => {
     if (gravando) return;
-    const ids = [...irmaos(tipo, pai)];
-    const de = ids.indexOf(id);
-    const para = de + passo;
-    if (de < 0 || para < 0 || para >= ids.length) return;
-    [ids[de], ids[para]] = [ids[para]!, ids[de]!];
-    const { local, confirmado } = runConfirmado((estado, quem) => reorderContainers(estado, quem, tipo, pai, ids));
+    const { local, confirmado } = runConfirmado(comando);
     if (!local.ok) {
       onErro(local.error);
       return;
     }
     onErro(null);
     setGravando(true);
-    // Sem Toast no sucesso: a linha mudar de lugar é o aviso. Só a falha fala.
     void confirmado.then((resposta) => {
       setGravando(false);
       if (!resposta.ok) onErro(resposta.error);
+      else aoGravar?.();
     });
   };
 
+  // Sem Toast no sucesso: a linha mudar de lugar é o aviso. Só a falha fala.
+  const reordenar = (tipo: TipoDoGrupo, pai: PaiDeConteiner, id: Id, passo: -1 | 1) => {
+    const ids = [...irmaos(tipo, pai)];
+    const de = ids.indexOf(id);
+    const para = de + passo;
+    if (de < 0 || para < 0 || para >= ids.length) return;
+    [ids[de], ids[para]] = [ids[para]!, ids[de]!];
+    gravar((estado, quem) => reorderContainers(estado, quem, tipo, pai, ids));
+  };
+
+  // D-10: o gesto de arrastar mora no hook; a árvore só dá o que ele precisa.
+  const arrasto = useArrastarNaArvore({ data, memberId, gravando, irmaos, gravar, openMover, onErro, onAviso });
+
+  if (visibleSpaces.length === 0) {
+    return <p className="app-meta px-3 py-1">Nenhum Espaço visível para você.</p>;
+  }
+
   return (
-    <OrdemDaArvoreContext.Provider value={{ ocupado: gravando, irmaos, reordenar }}>
-      <ul aria-busy={gravando || undefined}>
+    <OrdemDaArvoreContext.Provider value={{ ocupado: gravando, irmaos, reordenar, arrastar: arrasto.propsDaLinha }}>
+      <ul aria-busy={gravando || undefined} {...arrasto.propsDaArvore}>
         {visibleSpaces.map((space) => (
           <TreeSpace
             key={space.id}
@@ -750,6 +764,8 @@ interface OrdemDaArvore {
   readonly ocupado: boolean;
   readonly irmaos: (tipo: TipoDoGrupo, pai: PaiDeConteiner) => readonly Id[];
   readonly reordenar: (tipo: TipoDoGrupo, pai: PaiDeConteiner, id: Id, passo: -1 | 1) => void;
+  /** O gesto de arrastar da linha (10-13); `undefined` onde a linha não participa. */
+  readonly arrastar: (no: NoDaArvore) => PropsDeArrasto | undefined;
 }
 const OrdemDaArvoreContext = createContext<OrdemDaArvore | null>(null);
 
@@ -805,6 +821,12 @@ function useMenuDeMover(
   return [{ label: "Mover para…", onSelect: () => openMover(id), ...(recusa ? { disabledReason: recusa } : {}) }];
 }
 
+/** As props de arrastar de uma linha da Estrutura: nenhuma fora da `StructureTree` e nenhuma para o Convidado (D-09). */
+function useArrastoDaLinha(no: NoDaArvore, inert: boolean): PropsDeArrasto | undefined {
+  const ordem = useContext(OrdemDaArvoreContext);
+  return ordem && !inert ? ordem.arrastar(no) : undefined;
+}
+
 function TreeSpace({
   space,
   inert,
@@ -824,6 +846,8 @@ function TreeSpace({
   const childFolders = foldersUnder(space.id);
   const directLists = listsUnder(space.id);
   const menu = useMenuDeOrdem("space", space.id, null, inert);
+  const temFilhos = childFolders.length + directLists.length > 0;
+  const arrastar = useArrastoDaLinha({ tipo: "space", id: space.id, aberto: open, temFilhosVisiveis: temFilhos, abrir: () => setOpen(true) }, inert);
 
   return (
     <li>
@@ -831,7 +855,7 @@ function TreeSpace({
         depth={0}
         open={open}
         onToggle={() => setOpen((value) => !value)}
-        hasChildren={childFolders.length + directLists.length > 0}
+        hasChildren={temFilhos}
         href={inert ? undefined : `/estrutura/espacos/${space.id}`}
         no={space.id}
         label={space.name}
@@ -847,6 +871,7 @@ function TreeSpace({
               ]
         }
         menu={menu}
+        {...(arrastar ? { arrastar } : {})}
       />
       {open ? (
         <ul className="surgir-rapido">
@@ -937,6 +962,11 @@ function TreeFolder({
   // A3.4 — a Subfolder never expands into another Subfolder.
   const subfolders = folder.parentType === "space" ? foldersUnder(folder.id) : [];
   const childLists = listsUnder(folder.id);
+  const temFilhos = subfolders.length + childLists.length > 0;
+  const arrastar = useArrastoDaLinha(
+    { tipo: "folder", id: folder.id, paiTipo: folder.parentType, paiId: folder.parentId, aberto: open, temFilhosVisiveis: temFilhos, abrir: () => setOpen(true) },
+    inert,
+  );
 
   return (
     <li>
@@ -944,7 +974,7 @@ function TreeFolder({
         depth={depth}
         open={open}
         onToggle={() => setOpen((value) => !value)}
-        hasChildren={subfolders.length + childLists.length > 0}
+        hasChildren={temFilhos}
         href={inert ? undefined : enderecos.pasta(folder)}
         no={folder.id}
         active={pathname === enderecos.pasta(folder)}
@@ -969,6 +999,7 @@ function TreeFolder({
               ]
         }
         menu={menu}
+        {...(arrastar ? { arrastar } : {})}
       />
       {open ? (
         <ul className="surgir-rapido">
@@ -1014,6 +1045,7 @@ function TreeList({
     ...useMenuDeMover("list", list.id, inert ? undefined : openMover),
     ...useMenuDeOrdem("list", list.id, { type: list.parentType, id: list.parentId }, inert),
   ];
+  const arrastar = useArrastoDaLinha({ tipo: "list", id: list.id, paiTipo: list.parentType, paiId: list.parentId, aberto: true, temFilhosVisiveis: false }, inert);
   const href = enderecos.lista(list);
   const novo = enderecos.novoNaLista ?? {
     // Dentro de uma Lista o que se cria é Tarefa, e o campo dela já vive na
@@ -1046,6 +1078,7 @@ function TreeList({
             : []
         }
         menu={menu}
+        {...(arrastar ? { arrastar } : {})}
       />
     </li>
   );
@@ -1201,120 +1234,6 @@ function ChatTree({
         </div>
         {loose.map((session) => sessionRow(session))}
       </div>
-    </div>
-  );
-}
-
-function TreeRow({
-  depth,
-  label,
-  icon,
-  href,
-  open,
-  onToggle,
-  hasChildren,
-  privateContainer,
-  archived,
-  active,
-  creatable,
-  menu,
-  no,
-}: {
-  readonly depth: number;
-  readonly label: string;
-  readonly icon: React.ReactNode;
-  readonly href?: string;
-  /** O id do contêiner da linha: o link ganha `arvore-no-{id}`, onde o foco volta depois de mover. */
-  readonly no?: Id;
-  readonly open?: boolean;
-  readonly onToggle?: () => void;
-  readonly hasChildren: boolean;
-  readonly privateContainer?: boolean;
-  readonly archived?: boolean;
-  readonly active?: boolean;
-  /** O que este contêiner aceita dentro dele (A3). Vazio esconde o "+". */
-  readonly creatable?: ReadonlyArray<{ readonly label: string; readonly onSelect: () => void }>;
-  /** Ações sobre a própria linha. Vazio esconde o "⋯". */
-  readonly menu?: ReadonlyArray<{
-    readonly label: string;
-    readonly onSelect: () => void;
-    readonly destructive?: boolean;
-    /** Desligado, com o motivo embaixo do rótulo (o `ActionMenu` desenha). */
-    readonly disabledReason?: string;
-  }>;
-}) {
-  const content = (
-    <>
-      {icon}
-      <span className="truncate">{label}</span>
-      {privateContainer ? <Lock className="size-3 text-[var(--cor-tinta-fraca)]" aria-label="Contêiner privado" /> : null}
-      {archived ? <span className="app-meta" style={{ color: "var(--aviso)" }}>arquivado</span> : null}
-    </>
-  );
-
-  return (
-    <div className="group/linha flex items-center">
-      {hasChildren && onToggle ? (
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-label={open ? `Recolher ${label}` : `Expandir ${label}`}
-          aria-expanded={open}
-          // Alvo de 24px: a seta desenhada tem 14px, e mirar nela erra para o
-          // link ao lado, que navega em vez de recolher.
-          className="grid size-6 shrink-0 place-items-center rounded-[var(--r-controle)] text-[var(--texto-4)] transition-colors hover:bg-[var(--superficie-hover)] hover:text-[var(--texto)]"
-          style={{ marginLeft: `${depth * 12}px` }}
-        >
-          <ChevronRight className="seta-recolhe size-3.5" data-aberto={open ? "true" : "false"} />
-        </button>
-      ) : (
-        <span className="w-6 shrink-0" style={{ marginLeft: `${depth * 12}px` }} />
-      )}
-      {href ? (
-        <Link
-          href={href}
-          {...(no ? { id: `arvore-no-${no}` } : {})}
-          onNavigate={() => marcarSeMuda(href)}
-          className={`app-base flex min-w-0 flex-1 items-center gap-2 rounded-[var(--r-controle)] px-2 transition-colors ${
-            active ? "bg-[var(--acento-lavado)] font-medium text-[var(--texto)]" : "text-[var(--texto-2)] hover:bg-[var(--superficie-hover)] hover:text-[var(--texto)]"
-          }`}
-        >
-          {content}
-        </Link>
-      ) : (
-        // B38e — the ancestor name exists ONLY for navigation: inert, never a
-        // clickable element that does nothing (PADROES §11).
-        // O recuo já veio do espaçador ao lado: repeti-lo aqui empurrava o
-        // nome inerte 14px para a direita dos irmãos com link.
-        <span
-          aria-disabled="true"
-          title="Nome exibido apenas para navegação."
-          className="app-base flex min-w-0 flex-1 cursor-default items-center gap-2 px-2 text-[var(--texto-4)]"
-        >
-          {content}
-        </span>
-      )}
-      {creatable && creatable.length > 0 ? (
-        // Aparece no hover e no foco do teclado: um controle que só existe sob
-        // o ponteiro é um controle que o teclado não tem. Em aparelho sem hover
-        // (toque) fica sempre à vista, senão o menu é inalcançável (A7).
-        <span className="shrink-0 opacity-0 transition-opacity focus-within:opacity-100 group-hover/linha:opacity-100 [@media(hover:none)]:opacity-100">
-          <ActionMenu
-            label={`Criar dentro de ${label}`}
-            trigger={
-              <span className="grid size-6 place-items-center rounded-[var(--r-controle)] text-[var(--texto-4)] transition-colors hover:bg-[var(--superficie-hover)] hover:text-[var(--texto)]">
-                <Plus className="size-3.5" aria-hidden="true" />
-              </span>
-            }
-            items={creatable.map((item) => ({ label: item.label, onSelect: item.onSelect }))}
-          />
-        </span>
-      ) : null}
-      {menu && menu.length > 0 ? (
-        <span className="shrink-0 opacity-0 transition-opacity focus-within:opacity-100 group-hover/linha:opacity-100 [@media(hover:none)]:opacity-100">
-          <ActionMenu label={`Ações de ${label}`} items={menu} />
-        </span>
-      ) : null}
     </div>
   );
 }
