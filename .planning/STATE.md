@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 10
 current_phase_name: "Clone ClickUp: Contêineres (Espaço, Pasta e Lista)"
 status: executing
-stopped_at: Completed 10-12-PLAN.md
-last_updated: "2026-10-29T10:47:45.297Z"
+stopped_at: Completed 10-19-PLAN.md
+last_updated: "2026-10-29T10:57:01.911Z"
 last_activity: 2026-10-29
 last_activity_desc: Phase 10 execution started
-state_head: 95208c31ac317ee75ee91e04f56e22deacf38843
+state_head: afd4ad0991c631eab11b6b4702759fa727d9d2f7
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 191
-  completed_plans: 184
+  completed_plans: 185
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 ## Current Position
 
 Phase: 10 (Clone ClickUp: Contêineres (Espaço, Pasta e Lista)) — EXECUTING
-Plan: 17 of 21
+Plan: 19 of 21
 Status: Ready to execute
 Last activity: 2026-10-29 — Phase 10 execution started
 
@@ -402,6 +402,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 10 P21 | 5 min | 2 tasks | 13 files |
 | Phase 10 P11 | 5 min | 2 tasks | 2 files |
 | Phase 10 P12 | 16min | 3 tasks | 5 files |
+| Phase 10 P19 | 9 min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -584,6 +585,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 10]: 10-11: o InterruptorDeBloqueio usa useRunConfirmado (estado gravando real, Toast só após a resposta) e não consulta sobrescritasAbaixo nos aspectos que acumulam; ligado, nunca fica impedido por descendentes.
 - [Phase 10]: [10-12] O diálogo Mover para… é montado fora do <aside> da casca (com o painel recolhido a página da Lista ainda o abre) e aceita onDone opcional para o Toast de sucesso
 - [Phase 10]: [10-12] Q4 (owner-confirmation: pending): copy nova do painel âmbar de Mover para… para Tipo de Tarefa e link público revogado; a dica de categoria não promete evento de conclusão porque o remapeamento do domínio não grava conclusão
+- [Phase 10]: 10-19: o pedido de Subir/Descer sai dos irmãos que a árvore mostra E que o Membro alcança (memberReachesContainer); os escondidos o domínio deixa na vaga — Um Espaço privado que só aparece pelo caminho de uma Tarefa visível faria o domínio recusar o lote inteiro (10-04)
+- [Phase 10]: 10-19: copy nova «Gravando a ordem…» como motivo dos itens Mover para…/Subir/Descer desligados durante a gravação; fora do UI-SPEC, pendente de confirmação do dono — ActionMenu só desliga um item com disabledReason
 
 ### Pending Todos
 
@@ -645,6 +648,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-29T10:47:45.080Z
-Stopped at: Completed 10-12-PLAN.md
+Last session: 2026-10-29T10:57:01.691Z
+Stopped at: Completed 10-19-PLAN.md
 Resume file: None
