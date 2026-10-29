@@ -28,7 +28,6 @@ import {
   createTask,
   listWriteRefusal,
   statusOptionRefusal,
-  TAREFA_SEM_CONTATO,
 } from "@n1/dominio/operations";
 import { canaisDaLista, contatoDaTarefa, listaSemCanais } from "@n1/dominio/derive-conversacional";
 import { LISTA_SEM_CANAIS } from "@n1/dominio/operations/canais";
@@ -63,6 +62,7 @@ import { TaskAttributeEditors } from "@/features/estrutura/task-editors";
 import { IniciarConversaDialog } from "@/features/crm/iniciar-conversa-dialog";
 import { RunScheduledButton } from "@/features/estrutura/bulk-status-bar";
 import { BotaoDeSelecao, SelecaoEmLote } from "@/features/estrutura/selecao-em-lote";
+import { ContagemFiltrada } from "@/features/estrutura/contagem-filtrada";
 import { RelatorioDeLotePainel } from "@/features/estrutura/relatorio-de-lote";
 import {
   applyFinanceFilters,
@@ -691,7 +691,6 @@ export default function ListaPage({
           >
             Iniciar conversa
           </Button>
-          <span className="app-meta">Escolha o Contato, a Etapa em que o lead está e o Canal — e o chat abre.</span>
         </BarraDeFiltros>
       ) : null}
 
@@ -707,10 +706,6 @@ export default function ListaPage({
             disabledReason={criacaoRecusada ?? ""}
           >
             Nova Tarefa
-          </Button>
-          <span className="app-meta">Escolha o Contato e o Canal — a Tarefa nasce com a conversa dele.</span>
-          <Button size="sm" disabled disabledReason={TAREFA_SEM_CONTATO}>
-            De modelo
           </Button>
           <span className="flex-1" />
           {botaoDeSelecao}
@@ -844,10 +839,7 @@ export default function ListaPage({
             {...(financeira ? { panelOpen: filtrosAbertos } : {})}
           />
           {filtrando ? (
-            <p className="app-meta mt-2">
-              Mostrando {tasks.length} de {todas.length} Tarefa(s) — o filtro
-              vale em todas as Visualizações.
-            </p>
+            <ContagemFiltrada x={tasks.length} y={todas.length} financeira={financeira} />
           ) : null}
         </div>
 
@@ -1219,11 +1211,6 @@ function Quadro({
           );
         })}
       </div>
-      <p className="app-meta mt-3">
-        Arrastar altera o Status. As validações da Lista continuam valendo: a
-        coluna recusa a Tarefa quando a Funcionalidade exige Subtarefas ou
-        Checklists concluídos.
-      </p>
     </RolagemNoTopo>
   );
 }
