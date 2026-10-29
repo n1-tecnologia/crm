@@ -11,10 +11,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { effectiveListConfig, irmaosOrdenados, memberReachesContainer } from "../derive";
 import { visibilidadePara } from "../derive-visibilidade";
+import { MEUS_NEGOCIOS_ID } from "../seed-comercial";
 import { buildSeed } from "../seed";
+import { LISTA_ID as LISTA_SOLICITACOES_ID } from "../solicitacao-de-pagamento-evolver";
 import type { DataState } from "../state";
-import { createFieldDefinition, createTaskType, overrideStatusSet, setContainerFeature } from "./configuration";
-import { shareTaskPublicly } from "./scale";
+import { createFieldDefinition, createTaskType, overrideStatusSet, setContainerBlock, setContainerDefaultViews, setContainerFeature } from "./configuration";
+import { createForm, shareTaskPublicly } from "./scale";
+import { CP, CR } from "./financeiro";
 import { archiveContainer, createFolder, createList, moveContainer, recusaDeMover, recusaDeReordenar, reorderContainers } from "./structure";
 import { createTask, setTaskFieldValue, updateTask } from "./tasks";
 
@@ -674,5 +677,241 @@ describe("moveContainer — profundidade, promoção e rebaixamento de Pasta (D-
     const l = lista("Solta", P2);
     const r = moveContainer(state, THIAGO, "list", l, { parentType: "folder", parentId: SUB });
     expect(r.ok).toBe(true);
+  });
+});
+
+describe("moveContainer — bloqueio, colisão de nome, Formulário e estrutura fixa (D-11, RN-ESP-09, RN-PAS-14)", () => {
+  let ORIGEM: string;
+  let ALFA: string;
+  let DEST: string;
+  beforeEach(() => {
+    ORIGEM = pasta("Origem A");
+    ALFA = lista("Alfa", ORIGEM);
+    DEST = pasta("Destino B");
+  });
+
+  const campoEm = (tipo: "space" | "folder" | "list", id: string, nome: string): string => {
+    const r = createFieldDefinition(state, THIAGO, { name: nome, type: "text", definedAtType: tipo, definedAtId: id });
+    if (!r.ok) throw new Error(r.error);
+    return r.value.id;
+  };
+
+  describe("bloqueio do destino (RN-ESP-09, T-10-48)", () => {
+    it("recusa a Lista com Conjunto próprio para uma Pasta que bloqueia o Conjunto, citando a Pasta de destino", () => {
+      expect(overrideStatusSet(state, THIAGO, "list", ALFA).ok).toBe(true);
+      expect(setContainerBlock(state, THIAGO, "folder", DEST, "statusSet", true).ok).toBe(true);
+
+      const r = moveContainer(state, THIAGO, "list", ALFA, { parentType: "folder", parentId: DEST });
+
+      expect(r.ok).toBe(false);
+      if (r.ok) return;
+      expect(r.error).toBe("Pasta Destino B bloqueia a sobrescrita do Conjunto de Status abaixo dele.");
+      expect(listaPorId(ALFA).parentId).toBe(ORIGEM);
+    });
+
+    it("o `blocks` do PRÓPRIO destino entra, e o de um ancestral dele também", () => {
+      expect(setContainerFeature(state, THIAGO, "list", ALFA, "compartilhamentoPublico", false).ok).toBe(true);
+      expect(setContainerBlock(state, THIAGO, "space", "spc_ops", "features", true).ok).toBe(true);
+
+      const noEspaco = moveContainer(state, THIAGO, "list", ALFA, { parentType: "space", parentId: "spc_ops" });
+      expect(noEspaco.ok).toBe(false);
+      if (noEspaco.ok) return;
+      expect(noEspaco.error).toBe("Espaço Entrega bloqueia as Funcionalidades abaixo dele.");
+
+      const abaixo = moveContainer(state, THIAGO, "list", ALFA, { parentType: "folder", parentId: "fld_protocolos" });
+      expect(abaixo.ok).toBe(false);
+      if (abaixo.ok) return;
+      expect(abaixo.error).toBe("Espaço Entrega bloqueia as Funcionalidades abaixo dele.");
+    });
+
+    it("a Pasta recusa quando um DESCENDENTE dela define o aspecto bloqueado no destino", () => {
+      expect(setContainerDefaultViews(state, THIAGO, "list", ALFA, { disponiveis: ["lista", "quadro"], inicial: "lista" }).ok).toBe(true);
+      expect(setContainerBlock(state, THIAGO, "folder", "fld_protocolos", "defaultViews", true).ok).toBe(true);
+
+      const r = moveContainer(state, THIAGO, "folder", ORIGEM, { parentType: "folder", parentId: "fld_protocolos" });
+
+      expect(r.ok).toBe(false);
+      if (r.ok) return;
+      expect(r.error).toBe("Pasta Playbooks bloqueia as Visualizações padrão abaixo dele.");
+      expect(state.folders.find((f) => f.id === ORIGEM)?.parentId).toBe("spc_com");
+    });
+
+    it("sem nada definido no movido, o bloqueio do destino não recusa", () => {
+      expect(setContainerBlock(state, THIAGO, "folder", DEST, "statusSet", true).ok).toBe(true);
+      expect(setContainerBlock(state, THIAGO, "folder", DEST, "features", true).ok).toBe(true);
+      expect(moveContainer(state, THIAGO, "list", ALFA, { parentType: "folder", parentId: DEST }).ok).toBe(true);
+    });
+
+    it("A5: aspecto que ACUMULA (Campos, Tipos) não recusa por bloqueio do destino; o que existe fica", () => {
+      const campo = campoEm("list", ALFA, "Turma da Alfa");
+      const tipo = createTaskType(state, THIAGO, { name: "Visita da Alfa", icon: "map-pin", definedAtType: "list", definedAtId: ALFA });
+      if (!tipo.ok) throw new Error(tipo.error);
+      expect(setContainerBlock(state, THIAGO, "folder", DEST, "fieldDefinitions", true).ok).toBe(true);
+      expect(setContainerBlock(state, THIAGO, "folder", DEST, "taskTypes", true).ok).toBe(true);
+
+      const r = moveContainer(state, THIAGO, "list", ALFA, { parentType: "folder", parentId: DEST });
+
+      expect(r.ok).toBe(true);
+      expect(state.fieldDefinitions.find((d) => d.id === campo)?.lifecycle).toBe("ativo");
+      expect(state.taskTypes.some((t) => t.id === tipo.value.id)).toBe(true);
+    });
+
+    it("o Espaço Marketing, que já bloqueia Campos no seed, recebe a Lista com Campo próprio (A5)", () => {
+      campoEm("list", ALFA, "Turma da Alfa");
+      expect(moveContainer(state, THIAGO, "list", ALFA, { parentType: "folder", parentId: "fld_campanhas" }).ok).toBe(true);
+    });
+  });
+
+  describe("colisão de nome de Campo e de Tipo no caminho novo (Q5, RN-PAS-14)", () => {
+    it("recusa a Lista cujo Campo próprio tem o nome de um Campo efetivo no destino (sem diferenciar maiúsculas)", () => {
+      campoEm("list", ALFA, "Responsável técnico");
+      campoEm("folder", DEST, "responsável TÉCNICO");
+
+      const r = moveContainer(state, THIAGO, "list", ALFA, { parentType: "folder", parentId: DEST });
+
+      expect(r.ok).toBe(false);
+      if (r.ok) return;
+      expect(r.error).toContain("Responsável técnico");
+      expect(r.error).toContain("Campo");
+      expect(listaPorId(ALFA).parentId).toBe(ORIGEM);
+    });
+
+    it("a Pasta recusa quando o Campo de uma Lista dentro dela colide com o do Espaço de destino", () => {
+      campoEm("list", ALFA, "Região");
+      campoEm("space", "spc_ops", "Região");
+
+      const r = moveContainer(state, THIAGO, "folder", ORIGEM, { parentType: "space", parentId: "spc_ops" });
+
+      expect(r.ok).toBe(false);
+      if (r.ok) return;
+      expect(r.error).toContain("Região");
+      expect(state.folders.find((f) => f.id === ORIGEM)?.parentId).toBe("spc_com");
+    });
+
+    it("recusa o Tipo de Tarefa próprio com o nome de um Tipo do caminho de destino", () => {
+      const tipo = createTaskType(state, THIAGO, { name: "Visita", icon: "map-pin", definedAtType: "list", definedAtId: ALFA });
+      if (!tipo.ok) throw new Error(tipo.error);
+      expect(createTaskType(state, THIAGO, { name: "visita", icon: "map-pin", definedAtType: "folder", definedAtId: DEST }).ok).toBe(true);
+
+      const r = moveContainer(state, THIAGO, "list", ALFA, { parentType: "folder", parentId: DEST });
+
+      expect(r.ok).toBe(false);
+      if (r.ok) return;
+      expect(r.error).toContain("Tipo de Tarefa");
+      expect(r.error).toContain("Visita");
+    });
+
+    it("um Campo de outra Lista irmã do destino, fora do caminho dele, não colide", () => {
+      campoEm("list", ALFA, "Prazo do cliente");
+      const irma = lista("Irmã", DEST);
+      campoEm("list", irma, "Prazo do cliente");
+
+      expect(moveContainer(state, THIAGO, "list", ALFA, { parentType: "folder", parentId: DEST }).ok).toBe(true);
+    });
+  });
+
+  describe("Formulário que o envio deixaria de aceitar", () => {
+    const formularioPerguntando = (listId: string, definitionId: string, como = THIAGO): void => {
+      const r = createForm(state, como, listId, {
+        name: "Pedido de visita",
+        questions: [
+          { label: "Título", required: true, target: { kind: "title" } },
+          { label: "Turma", required: false, target: { kind: "field", definitionId } },
+        ],
+      });
+      if (!r.ok) throw new Error(r.error);
+    };
+
+    it("recusa quando um Formulário ativo da Lista pergunta um Campo herdado que não vale no destino", () => {
+      const campo = campoEm("folder", ORIGEM, "Turma");
+      formularioPerguntando(ALFA, campo);
+
+      const r = moveContainer(state, THIAGO, "list", ALFA, { parentType: "folder", parentId: DEST });
+
+      expect(r.ok).toBe(false);
+      if (r.ok) return;
+      expect(r.error).toContain("Pedido de visita");
+      expect(r.error).toContain("Turma");
+      expect(r.error).toContain("o envio quebraria");
+      expect(listaPorId(ALFA).parentId).toBe(ORIGEM);
+    });
+
+    it("o Formulário arquivado não impede, nem o que pergunta um Campo que continua valendo", () => {
+      const campo = campoEm("folder", ORIGEM, "Turma");
+      formularioPerguntando(ALFA, campo);
+      const form = state.forms.find((f) => f.listId === ALFA);
+      if (!form) throw new Error("sem Formulário");
+      form.lifecycle = "arquivado";
+      expect(moveContainer(state, THIAGO, "list", ALFA, { parentType: "folder", parentId: DEST }).ok).toBe(true);
+
+      const campoDoEspaco = campoEm("space", "spc_com", "Origem do contato");
+      const beta = lista("Beta", ORIGEM);
+      formularioPerguntando(beta, campoDoEspaco);
+      expect(moveContainer(state, THIAGO, "list", beta, { parentType: "folder", parentId: DEST }).ok).toBe(true);
+    });
+
+    it("a frase não cita o Formulário nem a Lista privada que o ator não alcança (B38a)", () => {
+      const campo = campoEm("folder", ORIGEM, "Turma");
+      const reservada = createList(state, THIAGO, { name: "Reservada da diretoria", parentType: "folder", parentId: ORIGEM, isPrivate: true });
+      if (!reservada.ok) throw new Error(reservada.error);
+      formularioPerguntando(reservada.value.id, campo);
+      expect(memberReachesContainer(state, RAFAEL, "list", reservada.value.id)).toBe(false);
+
+      const r = moveContainer(state, RAFAEL, "folder", ORIGEM, { parentType: "space", parentId: "spc_ops" });
+
+      expect(r.ok).toBe(false);
+      if (r.ok) return;
+      expect(r.error).toContain("o envio quebraria");
+      expect(r.error).not.toContain("Pedido de visita");
+      expect(r.error).not.toContain("Reservada");
+    });
+  });
+
+  describe("estruturas fixas (Q2/A7, T-10-09)", () => {
+    it("recusa mover Contas a pagar e Contas a receber, com a frase própria", () => {
+      for (const [id, nome] of [
+        [CP.listId, "Contas a pagar"],
+        [CR.listId, "Contas a receber"],
+      ] as const) {
+        const r = moveContainer(state, THIAGO, "list", id, { parentType: "space", parentId: "spc_ops" });
+        expect(r.ok).toBe(false);
+        if (r.ok) return;
+        expect(r.error).toBe(`Lista ${nome} é uma estrutura fixa e não muda de lugar.`);
+        expect(listaPorId(id).parentId).toBe("fld_financeiro");
+      }
+    });
+
+    it("recusa mover a Lista Solicitações de pagamento", () => {
+      const nova = createList(state, THIAGO, { name: "Solicitações de pagamento", parentType: "folder", parentId: "fld_financeiro" });
+      if (!nova.ok) throw new Error(nova.error);
+      listaPorId(nova.value.id).id = LISTA_SOLICITACOES_ID;
+
+      const r = moveContainer(state, THIAGO, "list", LISTA_SOLICITACOES_ID, { parentType: "space", parentId: "spc_ops" });
+
+      expect(r.ok).toBe(false);
+      if (r.ok) return;
+      expect(r.error).toBe("Lista Solicitações de pagamento é uma estrutura fixa e não muda de lugar.");
+    });
+
+    it("recusa mover a Pasta Meus negócios", () => {
+      const r = moveContainer(state, THIAGO, "folder", MEUS_NEGOCIOS_ID, { parentType: "space", parentId: "spc_ops" });
+      expect(r.ok).toBe(false);
+      if (r.ok) return;
+      expect(r.error).toBe("Pasta Meus negócios é uma estrutura fixa e não muda de lugar.");
+      expect(state.folders.find((f) => f.id === MEUS_NEGOCIOS_ID)?.parentId).toBe("spc_com");
+    });
+
+    it("recusa qualquer destino dentro de Meus negócios, para Lista e para Pasta", () => {
+      const lista1 = moveContainer(state, THIAGO, "list", ALFA, { parentType: "folder", parentId: MEUS_NEGOCIOS_ID });
+      expect(lista1.ok).toBe(false);
+      if (lista1.ok) return;
+      expect(lista1.error).toBe("A Pasta Meus negócios não recebe Pastas nem Listas.");
+
+      const pasta1 = moveContainer(state, THIAGO, "folder", DEST, { parentType: "folder", parentId: MEUS_NEGOCIOS_ID });
+      expect(pasta1.ok).toBe(false);
+      if (pasta1.ok) return;
+      expect(pasta1.error).toBe("A Pasta Meus negócios não recebe Pastas nem Listas.");
+      expect(listaPorId(ALFA).parentId).toBe(ORIGEM);
+    });
   });
 });
