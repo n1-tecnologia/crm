@@ -105,9 +105,33 @@ negócio; o domínio decide o que de fato roda, dentro do `executar()`.
 1. Lista com Automação `ativo`, de escopo Lista, com versão publicada de gatilho `condicaoTemporal`.
 2. Lista com Tarefa de `recurrence.triggerMode = porCalendario` (coluna gerada `list_id`, migração 002).
 
-(A terceira fonte, a lixeira vencida, chega em 10-15.) As fontes se unem num só
-`Map` de pares (Espaço, Lista): uma linha de agenda por par e dia, venha ele de
-onde vier.
+3. Lista com Tarefa na lixeira (`lifecycle = naLixeira`, `candidatosDaLixeira`) — o
+   expurgo pela retenção é relógio da Lista (PARD-10). **Decisão do dono no
+   checkpoint Q3 (10-15, 2026-10-29): `direto`**, depois de ver a prévia de
+   produção (65 Tarefas vencidas, todas em Espaços de teste; 0 no Espaço real e
+   0 em Contas a pagar/receber). A Lista que entra SÓ pela lixeira roda a
+   primeira volta sem ensaio, e a primeira volta real elimina de vez o que já
+   passou da retenção. O registro está em `10-PROVAS.md`, na pasta da fase.
+
+As fontes se unem num só `Map` de pares (Espaço, Lista): uma linha de agenda
+por par e dia, venha ele de onde vier.
+
+**A prévia, só leitura** (`previa.ts`, `npm run automacoes:previa -w @n1/api [-- <workspaceId>]`).
+Por (Espaço, Lista) candidata imprime nome da Lista, por onde entra (automação,
+recorrência, lixeira), regime (`ensaio`/`direto`), o Membro que assinaria
+(`atorDoRelogio`) ou `sem ator`, a contagem de Tarefas vencidas na lixeira
+(`tarefasDaLixeiraVencidas`, a mesma regra de `purgeExpiredTasks`) e a de séries
+por calendário. Hidrata cada Espaço em transação `read only` que termina em
+rollback, não contém DML e nunca imprime título de Tarefa (T-3-04). É o comando
+dos checkpoints Q3 e D-04: rodar contra produção ANTES de ligar
+`AUTOMACOES_WORKER_ATIVO=true`.
+
+**A ponte compõe os três relógios** (F4). A `rodarAgenda` da ponte do Agente de
+lançamento (`invocar-agente.ts`) chama `agendaDoDia` nos dois ramos: para a
+Lista dela com as opções da ponte (`cnpjPorEmpresa`, `lancamento`) repassadas a
+`runScheduledAutomations`, para todas as outras sem opções. Com
+`AGENTE_CONTAS_A_PAGAR_ATIVO=true` a Recorrência por calendário e o expurgo
+também rodam pela agenda (antes só rodava a Automação por vencimento).
 
 **O ator, por Lista** (`atorDoRelogio`, domínio — `agenda-do-relogio.ts`).
 `runScheduledAutomations` e `runCalendarRecurrences` recusam quem não administra
@@ -155,8 +179,8 @@ Pontos de extensão de teste (`OpcoesSchedulerWorker`): `escolherAtor` e
 ## Onde a ponte pluga no agendador
 
 A ponte do Agente (`invocar-agente.ts`) entra no worker por um caminho só: a
-opção `rodarAgenda`, cuja assinatura é a de `runScheduledAutomations` (tipo
-`RodarAgenda`, exportado). Lease, catch-up, contabilidade da linha,
+opção `rodarAgenda`, cuja assinatura é a do relógio do dia (tipo `RodarAgenda`,
+exportado; a ponte a implementa por cima de `agendaDoDia`). Lease, catch-up, contabilidade da linha,
 saneamento e o gate da primeira volta continuam intocados. Em `../index.ts`,
 o bloco da ponte vem ANTES do bloco do agendador, porque este usa a
 `rodarAgenda` daquela.

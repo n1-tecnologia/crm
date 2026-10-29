@@ -23,7 +23,7 @@ import { tarefasDaLixeiraVencidas } from "@n1/dominio/operations/tasks";
 import { resolverMembroAgenteDoPipeline } from "../persistencia/credenciais-de-servico";
 import { pool } from "../persistencia/conexao";
 import { hidratar } from "../persistencia/repositorio";
-import { catalogoDeListasComAgenda } from "./scheduler-worker";
+import { candidatosDaLixeira, catalogoDeListasComAgenda } from "./scheduler-worker";
 
 /** Por onde uma Lista entra no relógio. */
 export type EntradaNoRelogio = "automacao" | "recorrencia" | "lixeira";
@@ -44,35 +44,12 @@ export interface LinhaDaPrevia {
 /** O texto de `ator` quando `atorDoRelogio` não acha ninguém que administre a Lista (a volta fecharia `SEM_ATOR`). */
 export const SEM_ATOR_NA_PREVIA = "sem ator";
 
-interface ParCandidato {
-  readonly workspaceId: string;
-  readonly listId: string;
-}
-
 /**
- * Terceira fonte candidata do catálogo (D-01): as (Espaço, Lista) com ao menos
- * uma Tarefa na lixeira (`dados->>'lifecycle' = 'naLixeira'`). Candidato, não
- * decisão: se a Tarefa já passou da retenção é `tarefasDaLixeiraVencidas`, no
- * domínio, quem diz. Filtro opcional de Espaço, como o resto do catálogo.
+ * A terceira fonte do catálogo (a lixeira) mora com as outras duas, em
+ * `scheduler-worker.ts`: o worker não pode importar este arquivo (que já
+ * importa o worker). Reexportada aqui porque é por ela que a prévia a conhece.
  */
-export async function candidatosDaLixeira(workspaceId?: string): Promise<ParCandidato[]> {
-  const parametros: unknown[] = [];
-  let filtroWorkspace = "";
-  if (workspaceId !== undefined) {
-    parametros.push(workspaceId);
-    filtroWorkspace = `and workspace_id = $${parametros.length}`;
-  }
-  const resultado = await pool().query<{ workspace_id: string; list_id: string }>(
-    `select distinct workspace_id, list_id
-       from plataforma.registros
-      where colecao = 'tasks'
-        and list_id is not null
-        and dados->>'lifecycle' = 'naLixeira'
-        ${filtroWorkspace}`,
-    parametros,
-  );
-  return resultado.rows.map((linha) => ({ workspaceId: linha.workspace_id, listId: linha.list_id }));
-}
+export { candidatosDaLixeira };
 
 /** Hidrata um Espaço SÓ para ler: `begin read only` e rollback, nunca commit (T-10-38). */
 async function hidratarSoParaLer(workspaceId: string): Promise<DataState> {

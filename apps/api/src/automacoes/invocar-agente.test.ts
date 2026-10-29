@@ -1610,11 +1610,50 @@ describe("rodarAgenda — a agenda nunca lança (1.4, f)", () => {
     expect(r.ok, r.ok ? "" : r.error).toBe(true);
   });
 
-  it("outro par (Espaço, Lista) delega a runScheduledAutomations sem opções — a ponte não mexe na agenda das outras Listas", () => {
+  it("outro par (Espaço, Lista) segue o padrão do agendador (agendaDoDia) sem opções — a ponte não mexe na agenda das outras Listas", () => {
     const estado = buildSeed();
     const ponte = ponteSemRede(estado, fetch);
     const r = ponte.rodarAgenda(estado, MARYANE, "lst_nao_configurada", HOJE);
     expect(r.ok).toBe(false);
     if (!r.ok && !("conflito" in r)) expect(r.error).toContain("Lista não encontrada");
+  });
+
+  // 10-15 (F4) — antes a ponte chamava só `runScheduledAutomations`: com ela ligada,
+  // a Recorrência por calendário e o expurgo da lixeira não rodavam pela agenda.
+  const ocorrenciasDaSerie = (estado: DataState, serieId: string): number => estado.tasks.filter((t) => t.provenance?.kind === "recurrence" && t.provenance.sourceId === serieId).length;
+
+  it("F4: para uma Lista que NÃO é a da ponte, a série por calendário vencida gera a próxima ocorrência (antes não gerava)", () => {
+    const estado = buildSeed();
+    const serie = estado.tasks.find((t) => t.id === "tsk_seed_9");
+    if (!serie) throw new Error("o seed perdeu tsk_seed_9");
+    serie.dueDate = { form: "civilDay", value: diaCivilEm(-11) };
+    expect(serie.recurrence?.triggerMode).toBe("porCalendario");
+    expect(serie.listId).not.toBe(CP.listId);
+    expect(ocorrenciasDaSerie(estado, serie.id)).toBe(0);
+    const ponte = ponteSemRede(estado, fetch);
+
+    const r = ponte.rodarAgenda(estado, "mem_thiago", serie.listId, HOJE);
+
+    expect(r.ok, r.ok ? "" : r.error).toBe(true);
+    expect(ocorrenciasDaSerie(estado, serie.id)).toBe(1);
+    if (r.ok) expect(r.value.executed).toBeGreaterThanOrEqual(1);
+  });
+
+  it("F4: para a Lista da ponte, o expurgo da lixeira também roda pela agenda, e as opções (CNPJ) continuam chegando à A5", () => {
+    const estado = buildSeed();
+    const vencida = conta(estado, "tsk_cp_das");
+    vencida.lifecycle = "naLixeira";
+    vencida.trashedAt = new Date(HOJE.getTime() - (estado.workspace.trashPolicy.retentionDays + 10) * 86_400_000).toISOString();
+    const comPessoa = conta(estado, "tsk_cp_thiago_out");
+    comPessoa.dueDate = { form: "civilDay", value: diaCivilEm(5) };
+    const ponte = ponteSemRede(estado, (async () => {
+      throw new Error("a agenda não deveria chamar a rede");
+    }) as unknown as typeof fetch);
+
+    const r = ponte.rodarAgenda(estado, MARYANE, CP.listId, HOJE);
+
+    expect(r.ok, r.ok ? "" : r.error).toBe(true);
+    expect(estado.tasks.some((t) => t.id === vencida.id)).toBe(false); // eliminada pela retenção
+    expect(comPessoa.comments.some((c) => c.content.includes("11.222.333/0001-81 (Tria Company)"))).toBe(true);
   });
 });

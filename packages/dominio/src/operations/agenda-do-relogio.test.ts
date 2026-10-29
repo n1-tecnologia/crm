@@ -67,6 +67,16 @@ describe("listaTemAgendaPorVencimento / regimeDaPrimeiraVolta — D-02", () => {
     expect(regimeDaPrimeiraVolta(state, LISTA)).toBe("direto");
   });
 
+  it("Q3 = direto (10-15): a Lista que só tem Tarefa na lixeira nasce direto — a primeira volta já expurga, sem ensaio", () => {
+    const tarefa = state.tasks.find((t) => t.listId === "lst_prospeccao");
+    if (!tarefa) throw new Error("o seed perdeu a Lista lst_prospeccao");
+    tarefa.lifecycle = "naLixeira";
+    tarefa.trashedAt = "2026-01-01T00:00:00.000Z";
+    expect(state.tasks.some((t) => t.listId === "lst_prospeccao" && t.recurrence?.triggerMode === "porCalendario")).toBe(false);
+    expect(listaTemAgendaPorVencimento(state, "lst_prospeccao")).toBe(false);
+    expect(regimeDaPrimeiraVolta(state, "lst_prospeccao")).toBe("direto");
+  });
+
   it("a Lista com Automação ativa de gatilho por vencimento publicado fica em ensaio", () => {
     state.automations.push(automacaoPorVencimento("aut_teste_venc", LISTA));
     expect(listaTemAgendaPorVencimento(state, LISTA)).toBe(true);

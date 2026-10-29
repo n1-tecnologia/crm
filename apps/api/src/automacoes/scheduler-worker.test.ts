@@ -34,6 +34,8 @@ import { semear as semearEstadoInteiro } from "../persistencia/repositorio";
 import { describeComBanco, novoEspacoDeTeste, prepararBancoCrm, temBancoCrm } from "../testes/banco-crm";
 import { relogioFixo } from "../testes/relogio";
 import {
+  candidatosDaLixeira,
+  catalogoDeListasComAgenda,
   CODIGOS_DA_AGENDA,
   criarSchedulerWorker as criarSchedulerWorkerDaFase10,
   dataCivil,
@@ -1264,5 +1266,117 @@ describeComBanco("10-05 — SEM_ATOR: a Lista que nenhum Membro ativo administra
     const mesmaLinha = await lerLinhaDaAgenda(workspaceId, LISTA_DA_RECORRENCIA, DIA_DA_VOLTA);
     expect(mesmaLinha.last_error_code).toBe(CODIGOS_DA_AGENDA.SEM_ATOR);
     expect(mesmaLinha.tentativas).toBe(1);
+  });
+});
+
+/* ── 10-15 — Q3 = direto: a lixeira é a terceira fonte do catálogo e a Lista só de lixeira expurga na primeira volta ── */
+
+const LISTA_SO_DE_LIXEIRA = "lst_prospeccao";
+const DIA_MS_DA_LIXEIRA = 86_400_000;
+
+/** O seed com 2 Tarefas de `lst_prospeccao` vencidas na lixeira e 1 dentro da retenção; as outras da Lista, ativas. */
+function semearLixeiraNoEstado(estado: DataState, hoje: Date): { vencidas: string[]; naRetencao: string } {
+  const retencao = estado.workspace.trashPolicy.retentionDays;
+  for (const t of estado.tasks) {
+    if (t.listId !== LISTA_SO_DE_LIXEIRA) continue;
+    if (t.id === "tsk_seed_11" || t.id === "tsk_seed_12") {
+      t.lifecycle = "naLixeira";
+      t.trashedAt = new Date(hoje.getTime() - (retencao + 10) * DIA_MS_DA_LIXEIRA).toISOString();
+    } else if (t.id === "tsk_seed_10") {
+      t.lifecycle = "naLixeira";
+      t.trashedAt = new Date(hoje.getTime() - 3 * DIA_MS_DA_LIXEIRA).toISOString();
+    } else if (t.lifecycle === "naLixeira") {
+      t.lifecycle = "ativo";
+      delete t.trashedAt;
+    }
+  }
+  return { vencidas: ["tsk_seed_11", "tsk_seed_12"], naRetencao: "tsk_seed_10" };
+}
+
+async function tarefasQueRestam(workspaceId: string, ids: readonly string[]): Promise<string[]> {
+  const r = await pool().query<{ id: string }>(
+    "select id from plataforma.registros where workspace_id = $1 and colecao = 'tasks' and id = any($2)",
+    [workspaceId, ids],
+  );
+  return r.rows.map((linha) => linha.id).sort();
+}
+
+describeComBanco("10-15 — a lixeira vencida no relógio (Q3 = direto): a Lista só de lixeira entra e expurga na primeira volta, sem ensaio", () => {
+  const criados: string[] = [];
+  const hoje = new Date(2026, 7, 31, 12);
+
+  async function espacoComLixeira(rotulo: string): Promise<{ workspaceId: string; vencidas: string[]; naRetencao: string }> {
+    const workspaceId = novoEspacoDeTeste(rotulo);
+    criados.push(workspaceId);
+    const estado = buildSeed();
+    const { vencidas, naRetencao } = semearLixeiraNoEstado(estado, hoje);
+    const cliente = await pool().connect();
+    try {
+      await semearEstadoInteiro(cliente, workspaceId, estado);
+    } finally {
+      cliente.release();
+    }
+    return { workspaceId, vencidas, naRetencao };
+  }
+
+  beforeAll(async () => {
+    await prepararBancoCrm();
+  });
+
+  afterAll(async () => {
+    for (const workspaceId of criados) await limparWorkspace(workspaceId);
+    await encerrar();
+  });
+
+  it("(z1) o catálogo vê a Lista que só tem Tarefa na lixeira, ao lado das outras fontes", async () => {
+    const { workspaceId } = await espacoComLixeira("lixeira_catalogo");
+    const listas = (await catalogoDeListasComAgenda(workspaceId)).map((p) => p.listId);
+    expect(listas).toContain(LISTA_SO_DE_LIXEIRA);
+    expect((await candidatosDaLixeira(workspaceId)).map((p) => p.listId)).toContain(LISTA_SO_DE_LIXEIRA);
+  });
+
+  it("(z2) a primeira volta real é DIRETO: fecha 'concluido' sem ENSAIO_PRIMEIRA_VOLTA, elimina as vencidas e deixa a que está na retenção", async () => {
+    const { workspaceId, vencidas, naRetencao } = await espacoComLixeira("lixeira_direto");
+    expect(await tarefasQueRestam(workspaceId, [...vencidas, naRetencao])).toEqual([naRetencao, ...vencidas].sort());
+
+    const relogio = relogioFixo(hoje);
+    // Sem `ensaioNaPrimeiraVolta: false` e com o regime de verdade: é o domínio quem diz "direto".
+    const worker = criarSchedulerWorkerDaFase10({ workerId: "w_z2", workspaceId, listId: LISTA_SO_DE_LIXEIRA, relogio, resolverAtor: preferidoQueFalha });
+
+    expect(await worker.semear()).toBeGreaterThan(0);
+    expect(await worker.processarUm()).toBe(true);
+
+    const linha = await lerLinhaDaAgenda(workspaceId, LISTA_SO_DE_LIXEIRA, DIA_DA_VOLTA);
+    expect(linha.estado).toBe("concluido");
+    expect(linha.last_error_code).toBeNull();
+    expect(linha.executadas).toBe(2); // o expurgo conta as eliminadas como executadas.
+    expect(linha.falhadas).toBe(0);
+    expect(await tarefasQueRestam(workspaceId, [...vencidas, naRetencao])).toEqual([naRetencao]);
+  });
+
+  it("(z3) sem nenhuma Tarefa vencida a volta fecha 'concluido' com zero executadas e nada some", async () => {
+    const workspaceId = novoEspacoDeTeste("lixeira_na_retencao");
+    criados.push(workspaceId);
+    const estado = buildSeed();
+    const { vencidas, naRetencao } = semearLixeiraNoEstado(estado, hoje);
+    for (const id of vencidas) {
+      const t = estado.tasks.find((x) => x.id === id);
+      if (t) t.trashedAt = new Date(hoje.getTime() - 3 * DIA_MS_DA_LIXEIRA).toISOString();
+    }
+    const cliente = await pool().connect();
+    try {
+      await semearEstadoInteiro(cliente, workspaceId, estado);
+    } finally {
+      cliente.release();
+    }
+
+    const worker = criarSchedulerWorkerDaFase10({ workerId: "w_z3", workspaceId, listId: LISTA_SO_DE_LIXEIRA, relogio: relogioFixo(hoje), resolverAtor: preferidoQueFalha });
+    expect(await worker.semear()).toBeGreaterThan(0);
+    expect(await worker.processarUm()).toBe(true);
+
+    const linha = await lerLinhaDaAgenda(workspaceId, LISTA_SO_DE_LIXEIRA, DIA_DA_VOLTA);
+    expect(linha.estado).toBe("concluido");
+    expect(linha.executadas).toBe(0);
+    expect(await tarefasQueRestam(workspaceId, [...vencidas, naRetencao])).toEqual([naRetencao, ...vencidas].sort());
   });
 });

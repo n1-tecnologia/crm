@@ -60,3 +60,5 @@ Apenas Contas a pagar e Contas a receber (automacao, ensaio, Maryane Generozo, 0
 
 - As 65 Tarefas estão todas em 13 Espaços de teste; no `ws_n1` são 0; em Contas a pagar e Contas a receber são 0 em todos os Espaços.
 - Ator no `ws_n1`: Contas a pagar/receber = Agente do pipeline; Lista 1 e Lista do subgrupo = Maryane Generozo (pessoa humana). É o Q1, que continua pendente de confirmação do dono no checkpoint D-04 de 10-16.
+
+**Implementado para a escolha `direto` (10-15, Task 3):** a lixeira entra no catálogo do worker (`candidatosDaLixeira`, `scheduler-worker.ts`); a Lista que entra só pela lixeira fecha a primeira volta `concluido` sem ensaio e elimina o que passou da retenção (`regimeDaPrimeiraVolta` segue devolvendo `direto` para ela; só a Lista com Automação por vencimento mantém o ensaio); a `rodarAgenda` da ponte do Agente de lançamento compõe os três relógios por `agendaDoDia`, com as opções da ponte repassadas à Lista dela. Provado contra Postgres local em `scheduler-worker.test.ts` (z1-z3) e `invocar-agente.test.ts` (F4).

@@ -102,7 +102,6 @@ import type { ActivityRecord, DataState, Id, OperationResult, Task } from "@n1/d
 import { fail } from "@n1/dominio";
 import { effectiveLifecycleOfTask, newestFirst, statusDefinition } from "@n1/dominio/derive";
 import { decideProcessApproval } from "@n1/dominio/operations/ai";
-import { runScheduledAutomations } from "@n1/dominio/operations/automations";
 import {
   CP,
   TEXTOS_DA_CONFERENCIA,
@@ -138,7 +137,7 @@ import { hidratar } from "../persistencia/repositorio";
 import { sanitizarErro } from "../persistencia/outbox-worker";
 import { LIMITE_DE_ANEXOS, anexosDaConta, type AssinarDownload } from "./anexos-da-conta";
 import { revisaoDoCorpo } from "./revisao-do-resolver";
-import type { RodarAgenda } from "./scheduler-worker";
+import { agendaDoDia, type RodarAgenda } from "./scheduler-worker";
 
 /* ─────────────────────────── Funções puras ─────────────────────────── */
 
@@ -1219,12 +1218,17 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
     };
   }
 
+  // 10-15 (F4) — os DOIS ramos compõem os três relógios por `agendaDoDia`
+  // (Automação por vencimento, Recorrência por calendário e expurgo da lixeira
+  // pela retenção). Antes chamavam só `runScheduledAutomations`: com a ponte
+  // ligada (`AGENTE_CONTAS_A_PAGAR_ATIVO=true`), nem a Lista dela nem as outras
+  // geravam a próxima ocorrência por calendário nem expurgavam pela agenda.
   const rodarAgenda: RodarAgenda = (state, atorId, listIdRecebido, diaCivilData) => {
-    // A ponte só age sobre o par configurado — qualquer outra Lista (mesmo
+    // A ponte só injeta opções no par configurado — qualquer outra Lista (mesmo
     // Espaço ou outro) segue o padrão do agendador. A ponte não pode quebrar
     // a agenda das outras Listas.
     if (state.workspace.id !== workspaceId || listIdRecebido !== listId) {
-      return runScheduledAutomations(state, atorId, listIdRecebido, diaCivilData);
+      return agendaDoDia(state, atorId, listIdRecebido, diaCivilData);
     }
     // Plano pós-auditoria, 1.4/1.5 — sem cache e sem rede: o lançamento não
     // acontece pela agenda. `rehearsal: false` com `tarefasLancadas: []`
@@ -1232,7 +1236,7 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
     // ANTES de invocar o Agente — nunca lança, e o de-para (vazio, origem
     // "omie") nunca é o do protótipo (T-3-39). As outras Automações por data
     // (A5/A6) rodam como sempre, com o CNPJ da Empresa injetado.
-    return runScheduledAutomations(state, atorId, listId, diaCivilData, {
+    return agendaDoDia(state, atorId, listId, diaCivilData, {
       ...(cnpjPorEmpresa ? { cnpjPorEmpresa } : {}),
       lancamento: { rehearsal: false, tarefasLancadas: [], dePara: DE_PARA_VAZIO },
     });

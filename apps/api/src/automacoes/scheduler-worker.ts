@@ -42,7 +42,7 @@
 import type { DataState, Id, OperationResult } from "@n1/dominio";
 import { ok } from "@n1/dominio/state";
 import { atorDoRelogio, regimeDaPrimeiraVolta } from "@n1/dominio/operations/agenda-do-relogio";
-import { runScheduledAutomations } from "@n1/dominio/operations/automations";
+import { type OpcoesDaAgenda, runScheduledAutomations } from "@n1/dominio/operations/automations";
 import { runCalendarRecurrences } from "@n1/dominio/operations/collaboration";
 import { purgeExpiredTasks } from "@n1/dominio/operations/tasks";
 import { resolverMembroAgenteDoPipeline } from "../persistencia/credenciais-de-servico";
@@ -184,8 +184,16 @@ export type RodarAgenda = (
  * mesmo ator e o mesmo dia civil. As contagens se somam na linha da agenda
  * (ocorrência criada conta como executada; "aguardando conclusão", como pulada).
  */
-export const agendaDoDia: RodarAgenda = (state, atorId, listId, diaCivil) => {
-  const automacoes = runScheduledAutomations(state, atorId, listId, diaCivil);
+export const agendaDoDia = (
+  state: DataState,
+  atorId: Id,
+  listId: Id,
+  diaCivil: Date,
+  opcoes?: OpcoesDaAgenda,
+): ReturnType<RodarAgenda> => {
+  // `opcoes` (CNPJ por Empresa, lançamento) só interessa à Automação por vencimento:
+  // é o que a ponte do Agente de lançamento repassa (10-15, F4).
+  const automacoes = runScheduledAutomations(state, atorId, listId, diaCivil, opcoes);
   if (!automacoes.ok) return automacoes;
   const recorrencias = runCalendarRecurrences(state, atorId, listId, diaCivil);
   if (!recorrencias.ok) return recorrencias;
@@ -243,7 +251,7 @@ export interface OpcoesSchedulerWorker {
   readonly escolherAtor?: (state: DataState, listId: Id, preferidoId: Id | undefined) => Id | undefined;
   /** Ponto de extensão de TESTE: troca a decisão ensaio × direto por Lista (padrão `regimeDaPrimeiraVolta`). */
   readonly escolherRegime?: (state: DataState, listId: Id) => "ensaio" | "direto";
-  /** Padrão: `agendaDoDia` (Automações por vencimento + Recorrência por calendário). Ponto de extensão do Plan 03-11. */
+  /** Padrão: `agendaDoDia` (Automações por vencimento + Recorrência por calendário + expurgo da lixeira). Ponto de extensão do Plan 03-11. */
   readonly rodarAgenda?: RodarAgenda;
   readonly registrar?: (nivel: "info" | "warn", mensagem: string, dados?: Record<string, string | number>) => void;
   /**
@@ -294,18 +302,48 @@ interface ParRegistrado {
 }
 
 /**
+ * Terceira fonte candidata do catálogo (D-01): as (Espaço, Lista) com ao menos
+ * uma Tarefa na lixeira (`dados->>'lifecycle' = 'naLixeira'`). Candidato, não
+ * decisão: se a Tarefa já passou da retenção é `tarefasDaLixeiraVencidas`, no
+ * domínio, quem diz. Filtro opcional de Espaço, como o resto do catálogo.
+ */
+export async function candidatosDaLixeira(workspaceId?: string): Promise<ParDoCatalogo[]> {
+  const parametros: unknown[] = [];
+  let filtroWorkspace = "";
+  if (workspaceId !== undefined) {
+    parametros.push(workspaceId);
+    filtroWorkspace = `and workspace_id = $${parametros.length}`;
+  }
+  const resultado = await pool().query<ParRegistrado>(
+    `select distinct workspace_id, list_id
+       from plataforma.registros
+      where colecao = 'tasks'
+        and list_id is not null
+        and dados->>'lifecycle' = 'naLixeira'
+        ${filtroWorkspace}`,
+    parametros,
+  );
+  return resultado.rows.map((linha) => ({ workspaceId: linha.workspace_id, listId: linha.list_id }));
+}
+
+/**
  * Catálogo das (Espaço, Lista) que o relógio PODE ter de visitar (exportado para a
  * prévia `automacoes:previa`, que lê o mesmo catálogo sem rodar nada). Leitura de
  * catálogo, não de estado — não substitui `hidratar()`, que continua sendo a
  * única fonte de verdade dentro da Unidade de Trabalho. Três fontes
- * candidatas, unidas num só `Map` de pares (a terceira, a lixeira vencida,
- * chega em 10-15):
+ * candidatas, unidas num só `Map` de pares:
  *
  *   1. Lista com ao menos uma Automação ATIVA, de escopo Lista, e alguma
  *      versão PUBLICADA de gatilho `condicaoTemporal`;
  *   2. Lista com Tarefa de Recorrência por calendário (`recurrence.triggerMode
  *      = porCalendario`) — a coluna gerada `list_id` (002) evita abrir o JSON
- *      para o filtro de Lista (D-01, 2.1.2 escolha A).
+ *      para o filtro de Lista (D-01, 2.1.2 escolha A);
+ *   3. Lista com Tarefa na lixeira (`lifecycle = naLixeira`) — o expurgo pela
+ *      retenção é relógio da Lista (PARD-10). Decisão do dono no checkpoint Q3
+ *      (10-15, 2026-10-29), vendo a prévia de produção: `direto`. A Lista que
+ *      entra SÓ por aqui roda a primeira volta direto, sem ensaio
+ *      (`regimeDaPrimeiraVolta`), e a primeira volta real elimina de vez o
+ *      que já passou da retenção. Ver o 10-PROVAS.md da pasta da Fase 10.
  *
  * O filtro aqui é deliberadamente CANDIDATO, não precedência: quem decide o
  * que de fato roda (qual versão vale, se a Tarefa está ativa, se a data é
@@ -354,6 +392,11 @@ export async function catalogoDeListasComAgenda(workspaceId?: string): Promise<P
   );
   for (const linha of recorrencias.rows) {
     pares.set(`${linha.workspace_id}::${linha.list_id}`, { workspaceId: linha.workspace_id, listId: linha.list_id });
+  }
+
+  // 3ª fonte (10-15, Q3 = direto): a Lista com Tarefa na lixeira também é visitada.
+  for (const par of await candidatosDaLixeira(workspaceId)) {
+    pares.set(`${par.workspaceId}::${par.listId}`, par);
   }
   return [...pares.values()];
 }
