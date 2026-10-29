@@ -41,6 +41,7 @@
 
 import type { DataState, Id, OperationResult } from "@n1/dominio";
 import { ok } from "@n1/dominio/state";
+import { atorDoRelogio, regimeDaPrimeiraVolta } from "@n1/dominio/operations/agenda-do-relogio";
 import { runScheduledAutomations } from "@n1/dominio/operations/automations";
 import { runCalendarRecurrences } from "@n1/dominio/operations/collaboration";
 import { purgeExpiredTasks } from "@n1/dominio/operations/tasks";
@@ -152,6 +153,8 @@ export const CODIGOS_DA_AGENDA = {
   CONFLITO_DE_REVISAO: "CONFLITO_DE_REVISAO",
   /** Exceção não classificada durante o processamento da linha. */
   ERRO_INESPERADO: "ERRO_INESPERADO",
+  /** Nenhum Membro ativo administra esta Lista (`atorDoRelogio` devolveu `undefined`): o relógio não tem quem assine. */
+  SEM_ATOR: "SEM_ATOR",
 } as const;
 
 /**
@@ -217,8 +220,29 @@ export interface OpcoesSchedulerWorker {
   readonly maxTentativas?: number;
   /** Tempo (ms) após o qual uma linha `processando` é considerada abandonada. Padrão 15min. */
   readonly leaseMs?: number;
-  /** Padrão: `resolverMembroAgenteDoPipeline` (D-15) — nunca uma sessão humana. */
+  /**
+   * Padrão: `resolverMembroAgenteDoPipeline` (D-15) — nunca uma sessão humana.
+   * Desde a Fase 10 o valor é só o PREFERIDO: quem de fato assina cada volta é
+   * `atorDoRelogio`, dentro do `executar()`, por Lista. Se a resolução lançar
+   * (não existe Membro do Papel no Espaço), a volta não cai — escolhe o Membro humano.
+   */
   readonly resolverAtor?: (workspaceId: string) => Promise<Id>;
+  /**
+   * Quantas linhas uma volta de `iniciar()` processa, no máximo, antes de
+   * devolver o relógio ao intervalo (F5, 10-05). Antes era UMA linha por
+   * `intervaloMs`: com dezenas de Listas no catálogo, a fila nunca esvaziava.
+   * Padrão 200.
+   */
+  readonly maxPorVolta?: number;
+  /**
+   * Ponto de extensão de TESTE: troca a escolha do ator por Lista (padrão
+   * `atorDoRelogio`). Os casos antigos do agendador usam uma espiã de
+   * `rodarAgenda` sobre um Espaço vazio e só querem o preferido de volta; os
+   * casos da Fase 10 usam o padrão. Em produção fica ausente.
+   */
+  readonly escolherAtor?: (state: DataState, listId: Id, preferidoId: Id | undefined) => Id | undefined;
+  /** Ponto de extensão de TESTE: troca a decisão ensaio × direto por Lista (padrão `regimeDaPrimeiraVolta`). */
+  readonly escolherRegime?: (state: DataState, listId: Id) => "ensaio" | "direto";
   /** Padrão: `agendaDoDia` (Automações por vencimento + Recorrência por calendário). Ponto de extensão do Plan 03-11. */
   readonly rodarAgenda?: RodarAgenda;
   readonly registrar?: (nivel: "info" | "warn", mensagem: string, dados?: Record<string, string | number>) => void;
@@ -263,16 +287,30 @@ interface AutomationRegistrada {
   }>;
 }
 
+/** O suficiente de uma Tarefa de `plataforma.registros` — só o que a consulta de recorrência projeta. */
+interface ParRegistrado {
+  readonly workspace_id: string;
+  readonly list_id: string;
+}
+
 /**
- * Catálogo das (Espaço, Lista) que têm ao menos uma Automação ATIVA, com
- * escopo de Lista, e alguma versão PUBLICADA de gatilho `condicaoTemporal`.
- * Leitura de catálogo, não de estado — não substitui `hidratar()`, que
- * continua sendo a única fonte de verdade dentro da Unidade de Trabalho.
+ * Catálogo das (Espaço, Lista) que o relógio PODE ter de visitar. Leitura de
+ * catálogo, não de estado — não substitui `hidratar()`, que continua sendo a
+ * única fonte de verdade dentro da Unidade de Trabalho. Três fontes
+ * candidatas, unidas num só `Map` de pares (a terceira, a lixeira vencida,
+ * chega em 10-15):
  *
- * O filtro aqui é deliberadamente CANDIDATO, não precedência de versão: quem
- * decide o que de fato dispara é `runScheduledAutomations`, no domínio.
- * Replicar aqui a escolha de qual versão vale duplicaria regra de negócio
- * fora de `packages/dominio`. Precedente de ler uma coleção por SQL direto:
+ *   1. Lista com ao menos uma Automação ATIVA, de escopo Lista, e alguma
+ *      versão PUBLICADA de gatilho `condicaoTemporal`;
+ *   2. Lista com Tarefa de Recorrência por calendário (`recurrence.triggerMode
+ *      = porCalendario`) — a coluna gerada `list_id` (002) evita abrir o JSON
+ *      para o filtro de Lista (D-01, 2.1.2 escolha A).
+ *
+ * O filtro aqui é deliberadamente CANDIDATO, não precedência: quem decide o
+ * que de fato roda (qual versão vale, se a Tarefa está ativa, se a data é
+ * devida, em que regime, com que ator) é o domínio, dentro do `executar()`.
+ * Replicar essas escolhas aqui duplicaria regra de negócio fora de
+ * `packages/dominio`. Precedente de ler uma coleção por SQL direto:
  * `persistencia/credenciais-de-servico.ts::resolverMembroAgenteDoPipeline`.
  */
 async function catalogoDeListasComAgenda(workspaceId?: string): Promise<ParDoCatalogo[]> {
@@ -300,6 +338,21 @@ async function catalogoDeListasComAgenda(workspaceId?: string): Promise<ParDoCat
     if (!temGatilhoDeAgendaPublicado) continue;
     const chave = `${linha.workspace_id}::${linha.dados.scopeId}`;
     pares.set(chave, { workspaceId: linha.workspace_id, listId: linha.dados.scopeId });
+  }
+
+  // 2.1.2 (escolha A) — a Lista com Tarefa recorrente por calendário nasce no
+  // catálogo sem precisar de Automação nenhuma. Mesmo filtro opcional de Espaço.
+  const recorrencias = await pool().query<ParRegistrado>(
+    `select distinct workspace_id, list_id
+       from plataforma.registros
+      where colecao = 'tasks'
+        and list_id is not null
+        and dados->'recurrence'->>'triggerMode' = 'porCalendario'
+        ${filtroWorkspace}`,
+    parametros,
+  );
+  for (const linha of recorrencias.rows) {
+    pares.set(`${linha.workspace_id}::${linha.list_id}`, { workspaceId: linha.workspace_id, listId: linha.list_id });
   }
   return [...pares.values()];
 }
@@ -331,6 +384,9 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
   const ensaioNaPrimeiraVolta = opcoes.ensaioNaPrimeiraVolta ?? true;
   const registrar = opcoes.registrar ?? (() => undefined);
   const rodarAgenda: RodarAgenda = opcoes.rodarAgenda ?? agendaDoDia;
+  const maxPorVolta = opcoes.maxPorVolta ?? 200;
+  const escolherAtor = opcoes.escolherAtor ?? ((state: DataState, listId: Id, preferidoId: Id | undefined) => atorDoRelogio(state, listId, preferidoId));
+  const escolherRegime = opcoes.escolherRegime ?? ((state: DataState, listId: Id) => regimeDaPrimeiraVolta(state, listId));
   // `resolverMembroAgenteDoPipeline` devolve `{ id }`, não o `Id` puro que
   // `OpcoesSchedulerWorker.resolverAtor` declara — o padrão adapta a forma
   // uma vez aqui, para que o resto do arquivo só conheça `Promise<Id>`.
@@ -548,10 +604,23 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
     // (`unidade-de-trabalho.ts`, `if (!resultado.ok)`).
     let ensaioContagem: { readonly executed: number; readonly failed: number; readonly skipped: number } | undefined;
     let foiForcadoAoEnsaio = false;
+    // 10-05 (F3) — nenhum Membro ativo administra a Lista: o relógio não tem quem assine.
+    let semAtor = false as boolean;
 
     try {
-      const emEnsaio = ensaioNaPrimeiraVolta && (await primeiraVoltaPendente(workspaceId, listId));
-      const atorId = await resolverAtor(workspaceId);
+      // A primeira volta REAL só pode virar ensaio se o worker o quiser; QUAL
+      // regime vale para esta Lista (D-02) o domínio decide, dentro do
+      // `executar()`, sobre o estado hidratado.
+      const primeiraVolta = ensaioNaPrimeiraVolta && (await primeiraVoltaPendente(workspaceId, listId));
+      // O ator de `resolverAtor` é só o PREFERIDO (10-05, F3): se a resolução
+      // falhar — não existe Membro do Papel "Agente do pipeline" neste Espaço
+      // — a volta não cai, `atorDoRelogio` escolhe um Membro humano.
+      let preferidoId: Id | undefined;
+      try {
+        preferidoId = await resolverAtor(workspaceId);
+      } catch {
+        preferidoId = undefined;
+      }
 
       // CR-05 — o evento de Canal não é mais derivado aqui: a Unidade de
       // Trabalho deriva sozinha, obrigatoriamente, a partir das
@@ -562,6 +631,19 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
       // Execução inteira) — a derivação obrigatória que agora mora em
       // `executar()` nunca chega a rodar nesse caminho.
       const resultadoDaTransacao = await executar(workspaceId, (state) => {
+        // `executar()` repete a operação em conflito de revisão: zera o que a
+        // tentativa anterior deixou.
+        ensaioContagem = undefined;
+        foiForcadoAoEnsaio = false;
+        semAtor = false;
+
+        const atorId = escolherAtor(state, listId, preferidoId);
+        if (atorId === undefined) {
+          semAtor = true;
+          return { ok: false, error: "Nenhum Membro ativo administra esta Lista: o relógio não tem quem assine." };
+        }
+        const emEnsaio = primeiraVolta && escolherRegime(state, listId) === "ensaio";
+
         const resultado = rodarAgenda(state, atorId, listId, diaCivilData);
         if (emEnsaio && resultado.ok) {
           ensaioContagem = { executed: resultado.value.executed, failed: resultado.value.failed, skipped: resultado.value.skipped };
@@ -576,7 +658,11 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
         const erro = sanitizarErro(resultadoDaTransacao.error, CODIGOS_DA_AGENDA.CONFLITO_DE_REVISAO);
         await fecharLinha(linha, "falhou", erro.code, erro.summary);
       } else if (!resultadoDaTransacao.ok) {
-        if (foiForcadoAoEnsaio && ensaioContagem) {
+        if (semAtor) {
+          const erro = sanitizarErro(resultadoDaTransacao.error, CODIGOS_DA_AGENDA.SEM_ATOR);
+          await fecharLinha(linha, "falhou", erro.code, erro.summary);
+          registrar("warn", "Nenhum Membro ativo administra esta Lista: a volta não tem quem assine.", { workspaceId, listId, diaCivil: diaCivilTexto });
+        } else if (foiForcadoAoEnsaio && ensaioContagem) {
           const erro = sanitizarErro(mensagemDeEnsaio(workspaceId, listId), CODIGOS_DA_AGENDA.ENSAIO_PRIMEIRA_VOLTA);
           await fecharLinha(linha, "concluido", erro.code, erro.summary, ensaioContagem);
           registrar("info", "Primeira volta em ensaio: nada foi gravado.", { workspaceId, listId, diaCivil: diaCivilTexto });

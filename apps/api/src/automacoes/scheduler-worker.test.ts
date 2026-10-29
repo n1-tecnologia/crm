@@ -26,16 +26,52 @@ import { CP, CR } from "@n1/dominio/operations/financeiro";
 import { CANAL_CAMPO_EMPRESA_ID, CANAL_CAMPO_WHATSAPP_ID, CANAL_LISTA_ID } from "@n1/dominio/operations/automations";
 import { createTask, setTaskFieldValue } from "@n1/dominio/operations/tasks";
 import type { DataState, Id, OperationResult } from "@n1/dominio";
+import { buildSeed } from "@n1/dominio/seed";
 import { SOL } from "@n1/dominio/solicitacao-de-pagamento";
 import { evoluirConfiguracaoDeSolicitacoes } from "@n1/dominio/solicitacao-de-pagamento-evolver";
 import { carregarEnv, encerrar, pool } from "../persistencia/conexao";
 import { semear as semearEstadoInteiro } from "../persistencia/repositorio";
+import { describeComBanco, novoEspacoDeTeste, prepararBancoCrm, temBancoCrm } from "../testes/banco-crm";
 import { relogioFixo } from "../testes/relogio";
-import { CODIGOS_DA_AGENDA, criarSchedulerWorker, dataCivil, diasCiveisPendentes, liberarLista, type RodarAgenda, type SchedulerWorker } from "./scheduler-worker";
+import {
+  CODIGOS_DA_AGENDA,
+  criarSchedulerWorker as criarSchedulerWorkerDaFase10,
+  dataCivil,
+  diasCiveisPendentes,
+  liberarLista,
+  type OpcoesSchedulerWorker,
+  type RodarAgenda,
+  type SchedulerWorker,
+} from "./scheduler-worker";
 
 carregarEnv();
 const temBanco = Boolean(process.env.DATABASE_URL);
 const d = temBanco ? describe : describe.skip;
+
+// Os casos de Postgres deste arquivo precisam das migrações aplicadas (005 em
+// diante). `prepararBancoCrm` só roda contra Postgres LOCAL e lança fora dele
+// (T-07-08) — por isso o `if`: contra o banco remoto do `.env` nada migra.
+beforeAll(async () => {
+  if (temBancoCrm) await prepararBancoCrm();
+});
+
+/**
+ * 10-05 — os casos (a)-(s) são ANTERIORES à escolha do ator e do regime por
+ * Lista: rodam uma espiã de `rodarAgenda` sobre um Espaço vazio (sem Membro
+ * nenhum), onde o ator é o preferido que o teste injeta e a primeira volta é
+ * sempre ensaio. Este invólucro devolve a esses casos exatamente esse
+ * comportamento, pelos pontos de extensão `escolherAtor`/`escolherRegime`,
+ * sem mexer em nenhuma das chamadas antigas. Os casos da Fase 10 (bloco
+ * `describeComBanco` no fim do arquivo) usam `criarSchedulerWorkerDaFase10`, o
+ * worker com as escolhas de verdade.
+ */
+function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWorker {
+  return criarSchedulerWorkerDaFase10({
+    escolherAtor: (_state, _listId, preferidoId) => preferidoId,
+    escolherRegime: () => "ensaio",
+    ...opcoes,
+  });
+}
 
 /* ── (a)-(e) — puras, sem banco, rodam sempre ────────────────────────────── */
 
@@ -943,5 +979,120 @@ d("scheduler-worker (Postgres real) — Canal por agenda (AUTO-02, Task 3; migra
     await drenarAgenda(worker);
 
     expect(await contarOutboxCanalDaTarefa(WORKSPACE_CANAL_C, taskId)).toBe(0);
+  });
+});
+
+/* ── 10-05 — a Recorrência por calendário ganha o relógio do servidor (D-01, D-02, F3) ── */
+
+/** A Lista `lst_revisoes` do seed tem a Tarefa `tsk_seed_9`, recorrente por calendário (e a Automação `aut_revisao`, PAUSADA, por evento). */
+const LISTA_DA_RECORRENCIA = "lst_revisoes";
+const SERIE_DA_RECORRENCIA = "tsk_seed_9";
+const MEMBRO_PROPRIETARIO = "mem_thiago";
+const DIA_DA_VOLTA = "2026-08-31";
+
+/** Grava o Espaço de Trabalho do seed, com a Tarefa recorrente VENCIDA, e devolve o `workspace_id` novo. */
+async function semearEspacoDeRecorrencia(rotulo: string, ajustar?: (estado: DataState) => void): Promise<string> {
+  const workspaceId = novoEspacoDeTeste(rotulo);
+  const estado = buildSeed();
+  const serie = estado.tasks.find((t) => t.id === SERIE_DA_RECORRENCIA);
+  if (!serie) throw new Error(`o seed perdeu ${SERIE_DA_RECORRENCIA}`);
+  serie.dueDate = { form: "civilDay", value: "2026-08-20" }; // vencida em relação ao relógio fixo de 31/08
+  ajustar?.(estado);
+  const cliente = await pool().connect();
+  try {
+    await semearEstadoInteiro(cliente, workspaceId, estado);
+  } finally {
+    cliente.release();
+  }
+  return workspaceId;
+}
+
+/** Quantas ocorrências nasceram da série por recorrência (provenance), direto em `plataforma.registros`. */
+async function contarOcorrenciasDaSerie(workspaceId: string): Promise<number> {
+  const r = await pool().query<{ n: string }>(
+    `select count(*)::text as n from plataforma.registros
+      where workspace_id = $1 and colecao = 'tasks'
+        and dados->'provenance'->>'kind' = 'recurrence' and dados->'provenance'->>'sourceId' = $2`,
+    [workspaceId, SERIE_DA_RECORRENCIA],
+  );
+  return Number(r.rows[0]?.n ?? "0");
+}
+
+/** Os autores (Membro) da Atividade "Próxima ocorrência criada" do Espaço. */
+async function autoresDaProximaOcorrencia(workspaceId: string): Promise<string[]> {
+  const r = await pool().query<{ ator: string }>(
+    `select dados->'actor'->>'id' as ator from plataforma.registros
+      where workspace_id = $1 and colecao = 'activity' and dados->>'action' = 'Próxima ocorrência criada'`,
+    [workspaceId],
+  );
+  return r.rows.map((linha) => linha.ator);
+}
+
+/** O Agente do pipeline some do Espaço (não há Membro do Papel): a resolução do preferido LANÇA. */
+const preferidoQueFalha = async (): Promise<Id> => {
+  throw new Error("Não existe Membro do Papel 'Agente do pipeline' neste Espaço.");
+};
+
+describeComBanco("10-05 — Lista só com recorrência por calendário: direto, assinada por quem a administra (EST-01)", () => {
+  const criados: string[] = [];
+
+  beforeAll(async () => {
+    await prepararBancoCrm();
+  });
+
+  afterAll(async () => {
+    for (const workspaceId of criados) await limparWorkspace(workspaceId);
+    await encerrar();
+  });
+
+  it("(t) Lista sem Automação, com Tarefa recorrente vencida: o catálogo a vê, a volta nasce DIRETO, cria a próxima ocorrência e a Atividade é de um Membro humano que a administra", async () => {
+    const workspaceId = await semearEspacoDeRecorrencia("agenda_direto");
+    criados.push(workspaceId);
+    expect(await contarOcorrenciasDaSerie(workspaceId)).toBe(0);
+
+    const relogio = relogioFixo(new Date(2026, 7, 31, 12));
+    // Sem `ensaioNaPrimeiraVolta: false`: o regime de verdade é quem decide.
+    const worker = criarSchedulerWorkerDaFase10({ workerId: "w_t", workspaceId, listId: LISTA_DA_RECORRENCIA, relogio, resolverAtor: preferidoQueFalha });
+
+    expect(await worker.semear()).toBeGreaterThan(0);
+    expect(await contarLinhasDaAgenda(workspaceId, LISTA_DA_RECORRENCIA)).toBe(1);
+    expect(await worker.processarUm()).toBe(true);
+
+    const linha = await lerLinhaDaAgenda(workspaceId, LISTA_DA_RECORRENCIA, DIA_DA_VOLTA);
+    expect(linha.estado).toBe("concluido");
+    expect(linha.last_error_code).toBeNull(); // sem ENSAIO_PRIMEIRA_VOLTA
+    expect(linha.executadas).toBeGreaterThanOrEqual(1);
+
+    expect(await contarOcorrenciasDaSerie(workspaceId)).toBe(1);
+    // O preferido falhou ao resolver e a volta não caiu: assinou o Proprietário do Espaço de Trabalho.
+    expect(await autoresDaProximaOcorrencia(workspaceId)).toEqual([MEMBRO_PROPRIETARIO]);
+  });
+
+  it("(u) a mesma Lista COM Automação por vencimento mantém o ensaio: a linha fecha ENSAIO_PRIMEIRA_VOLTA e nada é gravado", async () => {
+    const workspaceId = await semearEspacoDeRecorrencia("agenda_ensaio", (estado) => {
+      const molde = estado.automations.find((a) => a.id === "aut_revisao");
+      const [versao] = molde?.versions ?? [];
+      if (!molde || !versao) throw new Error("o seed perdeu aut_revisao");
+      estado.automations.push({
+        ...molde,
+        id: "aut_teste_vencimento_10_05",
+        lifecycle: "ativo",
+        versions: [{ ...versao, state: "publicada", trigger: { kind: "condicaoTemporal", temporalPredicate: JSON.stringify({ dueDateOffsetDays: 0 }) } }],
+      });
+    });
+    criados.push(workspaceId);
+    const revisaoAntes = await lerRevisao(workspaceId);
+
+    const relogio = relogioFixo(new Date(2026, 7, 31, 12));
+    const worker = criarSchedulerWorkerDaFase10({ workerId: "w_u", workspaceId, listId: LISTA_DA_RECORRENCIA, relogio, resolverAtor: preferidoQueFalha });
+
+    expect(await worker.semear()).toBeGreaterThan(0);
+    expect(await worker.processarUm()).toBe(true);
+
+    const linha = await lerLinhaDaAgenda(workspaceId, LISTA_DA_RECORRENCIA, DIA_DA_VOLTA);
+    expect(linha.estado).toBe("concluido");
+    expect(linha.last_error_code).toBe(CODIGOS_DA_AGENDA.ENSAIO_PRIMEIRA_VOLTA);
+    expect(await contarOcorrenciasDaSerie(workspaceId)).toBe(0);
+    expect(await lerRevisao(workspaceId)).toBe(revisaoAntes); // a revisão do Espaço é a MESMA: nada foi gravado
   });
 });
