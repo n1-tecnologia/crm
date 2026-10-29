@@ -9,10 +9,10 @@
 
 import { containerAdminRefusal, containerPath, effectiveLifecycleOfContainer, effectiveListConfig, memberReachesContainer } from "../derive";
 import { fail, ok, type DataState, type OperationResult } from "../state";
-import type { Folder, Id, Lifecycle, List, ModeloDeTarefa, Provenance, Space, StatusSet, Task, Template } from "../types";
+import type { EffectiveListConfig, Folder, Id, Lifecycle, List, ModeloDeTarefa, Provenance, Space, StatusSet, Task, Template } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
 import { CANAIS_SO_NA_CONVERSACIONAL, validarCanaisDeAtendimento } from "./canais";
-import type { StatusMapping } from "./tasks";
+import { aplicarConfiguracaoEfetiva, frasePedindoMapeamento, statusSemMapeamento, type StatusMapping } from "./tasks";
 
 const now = (): string => new Date().toISOString();
 
@@ -737,6 +737,45 @@ export function recusaDeMover(state: DataState, actingMemberId: Id, tipo: "folde
   return recusarMover(state, actingMemberId, tipo, id, destino)?.mensagem;
 }
 
+/** A configuração efetiva de uma Lista da subárvore movida, antes (`from`) e depois (`to`). */
+interface MudancaDeConfiguracao {
+  readonly lista: List;
+  readonly from: EffectiveListConfig;
+  readonly to: EffectiveListConfig;
+}
+
+/**
+ * Para cada Lista da subárvore do movido (ele mesmo, se for Lista), a
+ * configuração efetiva antes e depois do mover. Não deixa o estado mudado: o
+ * pai do movido é trocado só enquanto `to` é lido, e volta (também se a leitura
+ * lançar). `null` quando alguma Lista ficaria sem configuração efetiva.
+ */
+function mudancasDeConfiguracao(state: DataState, tipo: "folder" | "list", movido: Movel, destino: DestinoDeMover): MudancaDeConfiguracao[] | null {
+  const listas = tipo === "list" ? [movido as List] : descendantsOf(state, "folder", movido.id).lists;
+  const antes = listas.map((l) => effectiveListConfig(state, l.id));
+  const origem = { parentType: movido.parentType, parentId: movido.parentId };
+  movido.parentType = destino.parentType;
+  movido.parentId = destino.parentId;
+  let depois: Array<EffectiveListConfig | null>;
+  try {
+    depois = listas.map((l) => effectiveListConfig(state, l.id));
+  } finally {
+    movido.parentType = origem.parentType;
+    movido.parentId = origem.parentId;
+  }
+  const mudancas: MudancaDeConfiguracao[] = [];
+  for (const [i, lista] of listas.entries()) {
+    const from = antes[i];
+    const to = depois[i];
+    if (!from || !to) return null;
+    mudancas.push({ lista, from, to });
+  }
+  return mudancas;
+}
+
+/** O que da Tarefa a regra de configuração efetiva pode tocar: se mudou, a Tarefa foi atualizada. */
+const assinaturaDaTarefa = (t: Task): string => JSON.stringify([t.statusId, t.taskTypeId, t.publicShare?.active ?? null, t.fieldValues.map((v) => v.state)]);
+
 /**
  * D-11 (2.3.1) — uma Lista ou Pasta muda de lugar. Exige administrar o movido e
  * criar no destino (`mayBuild`); o destino precisa estar efetivamente ativo e
@@ -744,6 +783,19 @@ export function recusaDeMover(state: DataState, actingMemberId: Id, tipo: "folde
  * destino (`max(order) + 1`) e o grupo de origem é renumerado de 0 a n-1.
  * Nada que o movido contém é apagado ou copiado: a privacidade e a
  * configuração efetiva são derivadas do caminho.
+ *
+ * Quando o Conjunto de Status efetivo muda para alguma Lista da subárvore, cada
+ * Status em uso nas Tarefas dela (de qualquer ciclo de vida, Subtarefas
+ * incluídas) precisa de mapeamento — senão a operação recusa com a frase de
+ * `moveTask` e nada muda. O que a Tarefa faz com a nova configuração (Status,
+ * Valor de Campo arquivado ou reativado, Tipo, link público) é
+ * `aplicarConfiguracaoEfetiva`, a mesma de `moveTask`.
+ *
+ * Lacuna conhecida (RESEARCH §5(f)): referências a Status por id fora das
+ * Tarefas (`RecurrenceRule.triggerStatusId`, filtros de Visualização,
+ * condições de Automação) não são remapeadas, como em `moveTask`. Os
+ * Responsáveis que perdem `ver` ao entrar num Espaço privado também não são
+ * liberados (A8), como em `updateContainer`.
  */
 export function moveContainer(
   state: DataState,
@@ -751,12 +803,22 @@ export function moveContainer(
   tipo: "folder" | "list",
   id: Id,
   destino: DestinoDeMover,
-  // Task 2 (EST-05): o mapeamento só importa quando o Conjunto de Status muda.
-  _mapeamento: readonly StatusMapping[] = [],
+  mapeamento: readonly StatusMapping[] = [],
 ): OperationResult<Movel> {
   const recusa = recusarMover(state, actingMemberId, tipo, id, destino);
   if (recusa) return fail(recusa.mensagem, recusa.campo);
   const movido = findContainer(state, tipo, id) as Movel;
+
+  const mudancas = mudancasDeConfiguracao(state, tipo, movido, destino);
+  if (!mudancas) return fail("Configuração efetiva indisponível.");
+  const tarefasDe = (lista: List): Task[] => state.tasks.filter((t) => t.listId === lista.id);
+
+  // Só as Listas cujo Conjunto muda entram no mapeamento.
+  const faltando = new Set<string>();
+  for (const m of mudancas) {
+    for (const nome of statusSemMapeamento(tarefasDe(m.lista), m.from, m.to, mapeamento)) faltando.add(nome);
+  }
+  if (faltando.size > 0) return fail(frasePedindoMapeamento([...faltando]), "mapeamento");
 
   const caminhoAntes = caminhoLegivel(state, tipo, id);
   const origem = { parentType: movido.parentType, parentId: movido.parentId };
@@ -771,6 +833,15 @@ export function moveContainer(
   movido.parentType = destino.parentType;
   movido.parentId = destino.parentId;
   movido.order = novaOrdem;
+
+  for (const m of mudancas) {
+    const tarefas = tarefasDe(m.lista);
+    const antes = new Map(tarefas.map((t) => [t.id, assinaturaDaTarefa(t)]));
+    aplicarConfiguracaoEfetiva(state, actingMemberId, tarefas, m.from, m.to, mapeamento);
+    for (const t of tarefas) {
+      if (antes.get(t.id) !== assinaturaDaTarefa(t)) t.updatedAt = now();
+    }
+  }
 
   recordActivity(state, {
     actor: memberActor(actingMemberId),

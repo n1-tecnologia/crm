@@ -24,7 +24,7 @@ import {
 } from "../derive";
 import { contatoDaTarefa } from "../derive-conversacional";
 import { fail, ok, type DataState, type OperationResult } from "../state";
-import type { ActorRef, Comment, FieldDefinition, FieldRequirement, FieldValue, Id, List, Minutes, Priority, StatusDefinition, Task, TaskDate } from "../types";
+import type { ActorRef, Comment, EffectiveListConfig, FieldDefinition, FieldRequirement, FieldValue, Id, List, Minutes, Priority, StatusDefinition, Task, TaskDate } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
 import { dataDevida, nextOccurrenceRefusal, runningTimer, spawnCalendarOccurrence, spawnNextOccurrence, transicaoDisparaRecorrencia } from "./collaboration";
 import { runListAutomations } from "./automations";
@@ -459,6 +459,90 @@ export interface StatusMapping {
 }
 
 /**
+ * RN-LIS-06 / B40 — os nomes dos Status em uso pelas `tarefas` que o
+ * `mapeamento` não leva a um Status do Conjunto de destino. Vazio quando o
+ * Conjunto efetivo não muda: nesse caso nada precisa ser mapeado. Compartilhada
+ * por `moveTask` e `moveContainer`, para as duas nunca divergirem.
+ */
+export function statusSemMapeamento(
+  tarefas: readonly Task[],
+  from: EffectiveListConfig,
+  to: EffectiveListConfig,
+  mapeamento: readonly StatusMapping[],
+): string[] {
+  if (from.statusSet.id === to.statusSet.id) return [];
+  const inUse = new Set(tarefas.map((t) => t.statusId));
+  const missing: string[] = [];
+  for (const statusId of inUse) {
+    const mapped = mapeamento.find((m) => m.fromStatusId === statusId);
+    const destination = mapped ? to.statusSet.definitions.find((d) => d.id === mapped.toStatusId) : undefined;
+    if (!destination) {
+      const name = from.statusSet.definitions.find((d) => d.id === statusId)?.name ?? statusId;
+      missing.push(name);
+    }
+  }
+  return missing;
+}
+
+/** A frase de recusa por falta de mapeamento: a mesma em `moveTask` e `moveContainer`. */
+export function frasePedindoMapeamento(missing: readonly string[]): string {
+  return `Mapeie ${missing.length === 1 ? "o status" : "os status"} ${missing.map((n) => `“${n}”`).join(", ")} para continuar.`;
+}
+
+/**
+ * O que acontece a CADA Tarefa quando a configuração efetiva da Lista dela
+ * muda de `from` para `to` — o laço que `moveTask` e `moveContainer` dividem:
+ * Status remapeado (com Atividade), Valores de Campo arquivados ou reativados
+ * (B37), Tipo de Tarefa sem efeito cai no primeiro do destino (RN-LIS-10(e)) e
+ * link público revogado quando o destino não habilita a Funcionalidade. Quem
+ * chama já conferiu o mapeamento (`statusSemMapeamento`) e é quem muda
+ * `listId` e `updatedAt`.
+ */
+export function aplicarConfiguracaoEfetiva(
+  state: DataState,
+  actingMemberId: Id,
+  tarefas: readonly Task[],
+  from: EffectiveListConfig,
+  to: EffectiveListConfig,
+  mapeamento: readonly StatusMapping[],
+): void {
+  const keptDefinitions = new Set(to.fieldDefinitionIds);
+  for (const item of tarefas) {
+    if (from.statusSet.id !== to.statusSet.id) {
+      const mapped = mapeamento.find((m) => m.fromStatusId === item.statusId);
+      if (mapped) {
+        const beforeName = from.statusSet.definitions.find((d) => d.id === item.statusId)?.name;
+        const afterName = to.statusSet.definitions.find((d) => d.id === mapped.toStatusId)?.name;
+        item.statusId = mapped.toStatusId;
+        recordActivity(state, {
+          actor: memberActor(actingMemberId),
+          action: "Status alterado por remapeamento",
+          objectType: "task",
+          objectId: item.id,
+          objectName: item.title,
+          before: beforeName,
+          after: afterName,
+        });
+      }
+    }
+    // B37 — archive what stopped applying, reactivate what applies again.
+    for (const value of item.fieldValues) {
+      value.state = keptDefinitions.has(value.definitionId) ? "ativo" : "arquivado";
+    }
+    // RN-LIS-10(e) — a task type not effective at the destination falls back.
+    if (!to.taskTypeIds.includes(item.taskTypeId)) {
+      const fallback = to.taskTypeIds[0];
+      if (fallback) item.taskTypeId = fallback;
+    }
+    // tarefa.md §353 — o link público só sobrevive se o destino habilita a Funcionalidade.
+    if (item.publicShare?.active && !to.features.compartilhamentoPublico) {
+      item.publicShare.active = false;
+      recordActivity(state, { actor: memberActor(actingMemberId), action: "Link público revogado", objectType: "task", objectId: item.id, objectName: item.title, detail: "A Lista de destino não permite compartilhamento público" });
+    }
+  }
+}
+
+/**
  * RN-LIS-06 / B40 — moving a Task to a List with a different effective Status
  * Set requires an explicit mapping of every status in use. Without a complete
  * mapping the operation is invalid; the category never changes without an
@@ -498,64 +582,13 @@ export function moveTask(
 
   const tree = [task, ...descendants(state, task.id)];
 
-  if (from.statusSet.id !== to.statusSet.id) {
-    const inUse = new Set(tree.map((t) => t.statusId));
-    const missing: string[] = [];
-    for (const statusId of inUse) {
-      const mapped = mapping.find((m) => m.fromStatusId === statusId);
-      const destination = mapped
-        ? to.statusSet.definitions.find((d) => d.id === mapped.toStatusId)
-        : undefined;
-      if (!destination) {
-        const name = from.statusSet.definitions.find((d) => d.id === statusId)?.name ?? statusId;
-        missing.push(name);
-      }
-    }
-    if (missing.length > 0) {
-      return fail(
-        `Mapeie ${missing.length === 1 ? "o status" : "os status"} ${missing
-          .map((n) => `“${n}”`)
-          .join(", ")} para continuar.`,
-        "mapeamento",
-      );
-    }
-  }
+  const missing = statusSemMapeamento(tree, from, to, mapping);
+  if (missing.length > 0) return fail(frasePedindoMapeamento(missing), "mapeamento");
 
-  const keptDefinitions = new Set(to.fieldDefinitionIds);
   const previousPath = from.path.map((p) => p.name).join(" › ");
 
+  aplicarConfiguracaoEfetiva(state, actingMemberId, tree, from, to, mapping);
   for (const item of tree) {
-    if (from.statusSet.id !== to.statusSet.id) {
-      const mapped = mapping.find((m) => m.fromStatusId === item.statusId);
-      if (mapped) {
-        const beforeName = from.statusSet.definitions.find((d) => d.id === item.statusId)?.name;
-        const afterName = to.statusSet.definitions.find((d) => d.id === mapped.toStatusId)?.name;
-        item.statusId = mapped.toStatusId;
-        recordActivity(state, {
-          actor: memberActor(actingMemberId),
-          action: "Status alterado por remapeamento",
-          objectType: "task",
-          objectId: item.id,
-          objectName: item.title,
-          before: beforeName,
-          after: afterName,
-        });
-      }
-    }
-    // B37 — archive what stopped applying, reactivate what applies again.
-    for (const value of item.fieldValues) {
-      value.state = keptDefinitions.has(value.definitionId) ? "ativo" : "arquivado";
-    }
-    // RN-LIS-10(e) — a task type not effective at the destination falls back.
-    if (!to.taskTypeIds.includes(item.taskTypeId)) {
-      const fallback = to.taskTypeIds[0];
-      if (fallback) item.taskTypeId = fallback;
-    }
-    // tarefa.md §353 — o link público só sobrevive se o destino habilita a Funcionalidade.
-    if (item.publicShare?.active && !to.features.compartilhamentoPublico) {
-      item.publicShare.active = false;
-      recordActivity(state, { actor: memberActor(actingMemberId), action: "Link público revogado", objectType: "task", objectId: item.id, objectName: item.title, detail: "A Lista de destino não permite compartilhamento público" });
-    }
     item.listId = targetListId;
     item.updatedAt = now();
   }
