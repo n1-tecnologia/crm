@@ -57,6 +57,22 @@ export function blockedAbove(state: DataState, type: ContainerType, id: Id, aspe
   return `${CONTAINER_LABEL[bloqueio.tipo]} ${bloqueio.nome} bloqueia ${ASPECT_LABEL[aspect]} abaixo dele.`;
 }
 
+/**
+ * Como `blockedAbove`, mas o PRÓPRIO nó também conta. `blockedAbove` pula o nó
+ * (quem bloqueia, bloqueia os de baixo, não a si); quem PERGUNTA "posso entrar
+ * aqui dentro?" (mover para o destino) precisa do `blocks` do destino também
+ * (RESEARCH F11). A frase é a mesma de `blockedAbove`.
+ */
+export function blockedAtOrAbove(state: DataState, type: "space" | "folder", id: Id, aspect: ConfigurableAspect): string | undefined {
+  const acima = blockedAbove(state, type, id, aspect);
+  if (acima) return acima;
+  const proprio = findContainer(state, type, id);
+  if (proprio && "blocks" in proprio && proprio.blocks[aspect]) {
+    return `${CONTAINER_LABEL[type]} ${proprio.name} bloqueia ${ASPECT_LABEL[aspect]} abaixo dele.`;
+  }
+  return undefined;
+}
+
 const ASPECT_LABEL: Record<ConfigurableAspect, string> = {
   statusSet: "a sobrescrita do Conjunto de Status",
   fieldDefinitions: "novas Definições de Campo",
@@ -82,7 +98,7 @@ function visibleScopeOf(state: DataState, type: ContainerType, id: Id): Set<Id> 
   return scope;
 }
 
-function fieldNameCollision(state: DataState, type: ContainerType, id: Id, name: string, exceptId?: Id): FieldDefinition | undefined {
+export function fieldNameCollision(state: DataState, type: ContainerType, id: Id, name: string, exceptId?: Id): FieldDefinition | undefined {
   const scope = visibleScopeOf(state, type, id);
   return state.fieldDefinitions.find(
     (d) =>
@@ -95,7 +111,7 @@ function fieldNameCollision(state: DataState, type: ContainerType, id: Id, name:
   );
 }
 
-function taskTypeNameCollision(state: DataState, type: ContainerType, id: Id, name: string, exceptId?: Id): TaskType | undefined {
+export function taskTypeNameCollision(state: DataState, type: ContainerType, id: Id, name: string, exceptId?: Id): TaskType | undefined {
   const scope = visibleScopeOf(state, type, id);
   return state.taskTypes.find(
     (t) => t.id !== exceptId && scope.has(t.definedAtId) && t.name.trim().toLocaleLowerCase("pt-BR") === name.toLocaleLowerCase("pt-BR"),
@@ -940,7 +956,7 @@ export function setContainerDefaultViews(
 /* ───────────────────────────── Bloqueio de aspecto ───────────────────────── */
 
 /** Os aspectos que SUBSTITUEM: bloquear exige que ninguém abaixo já sobrescreva. Os outros ACUMULAM. */
-const ASPECTOS_QUE_SUBSTITUEM: ReadonlySet<ConfigurableAspect> = new Set<ConfigurableAspect>(["statusSet", "features", "defaultViews"]);
+export const ASPECTOS_QUE_SUBSTITUEM: ReadonlySet<ConfigurableAspect> = new Set<ConfigurableAspect>(["statusSet", "features", "defaultViews"]);
 
 /** `Pasta Clientes`, `Subpasta Q3`, `Lista Propostas` — como a recusa nomeia quem sobrescreve. */
 function rotuloDoDescendente(state: DataState, item: { readonly tipo: "folder" | "list"; readonly id: Id; readonly nome: string }): string {

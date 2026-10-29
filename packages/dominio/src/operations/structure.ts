@@ -7,13 +7,15 @@
  * deixa a regra passar por qualquer outro caminho.
  */
 
-import { containerAdminRefusal, containerPath, effectiveLifecycleOfContainer, effectiveListConfig, irmaosOrdenados, memberReachesContainer } from "../derive";
+import { containerAdminRefusal, containerPath, definesAspect, effectiveLifecycleOfContainer, effectiveListConfig, irmaosOrdenados, memberReachesContainer } from "../derive";
+import { ehEstruturaFixa, PASTA_MEUS_NEGOCIOS_ID } from "../estruturas-fixas";
 import { fail, ok, type DataState, type OperationResult } from "../state";
 import type { EffectiveListConfig, Folder, Id, Lifecycle, List, ModeloDeTarefa, PaiDeConteiner, Provenance, Space, StatusSet, Task, Template } from "../types";
 
 export type { PaiDeConteiner };
 import { memberActor, nextId, recordActivity } from "./activity";
 import { CANAIS_SO_NA_CONVERSACIONAL, validarCanaisDeAtendimento } from "./canais";
+import { ASPECTOS_QUE_SUBSTITUEM, blockedAtOrAbove, fieldNameCollision, taskTypeNameCollision } from "./configuration";
 import { aplicarConfiguracaoEfetiva, frasePedindoMapeamento, statusSemMapeamento, type StatusMapping } from "./tasks";
 
 const now = (): string => new Date().toISOString();
@@ -719,6 +721,11 @@ function recusarMover(state: DataState, actingMemberId: Id, tipo: "folder" | "li
   if (tipo === "folder" && containerPath(state, destino.parentType, destino.parentId).some((n) => n.type === "folder" && n.id === id)) {
     return { mensagem: "Um contêiner não vai para dentro de si mesmo." };
   }
+  // Q2/A7 — o conjunto fechado das estruturas que o código endereça por id; só o movido e o destino são nomeados.
+  if (ehEstruturaFixa(tipo, id)) return { mensagem: `${ROTULO[tipo].nome} ${movido.name} é uma estrutura fixa e não muda de lugar.` };
+  if (containerPath(state, destino.parentType, destino.parentId).some((n) => n.type === "folder" && n.id === PASTA_MEUS_NEGOCIOS_ID)) {
+    return { mensagem: "A Pasta Meus negócios não recebe Pastas nem Listas." };
+  }
   // Profundidade (RN-SUB-11, RN-SUB-02): a estrutura tem no máximo dois níveis de Pasta.
   if (tipo === "folder" && destino.parentType === "folder") {
     if (state.folders.some((f) => f.parentType === "folder" && f.parentId === id)) {
@@ -735,6 +742,92 @@ function recusarMover(state: DataState, actingMemberId: Id, tipo: "folder" | "li
       campo: "nome",
     };
   }
+  return recusaPorConfiguracao(state, actingMemberId, tipo, movido, destino);
+}
+
+/** O movido e tudo abaixo dele que não está na lixeira: onde a configuração própria pode morar. */
+function nosDaSubarvore(state: DataState, tipo: "folder" | "list", movido: Movel): Array<{ readonly tipo: "folder" | "list"; readonly id: Id }> {
+  const nos: Array<{ readonly tipo: "folder" | "list"; readonly id: Id }> = [{ tipo, id: movido.id }];
+  if (tipo === "list") return nos;
+  const abaixo = descendantsOf(state, "folder", movido.id);
+  for (const f of abaixo.folders) if (effectiveLifecycleOfContainer(state, "folder", f.id) !== "naLixeira") nos.push({ tipo: "folder", id: f.id });
+  for (const l of abaixo.lists) if (effectiveLifecycleOfContainer(state, "list", l.id) !== "naLixeira") nos.push({ tipo: "list", id: l.id });
+  return nos;
+}
+
+/** Roda `ler` com o pai do movido já trocado pelo destino e o devolve como estava (também se `ler` lançar). */
+function comPaiNoDestino<T>(movido: Movel, destino: DestinoDeMover, ler: () => T): T {
+  const origem = { parentType: movido.parentType, parentId: movido.parentId };
+  movido.parentType = destino.parentType;
+  movido.parentId = destino.parentId;
+  try {
+    return ler();
+  } finally {
+    movido.parentType = origem.parentType;
+    movido.parentId = origem.parentId;
+  }
+}
+
+/**
+ * As recusas que dependem do que o movido e o que está abaixo dele CONFIGURAM
+ * (RESEARCH Pattern 3, itens 6 a 8): bloqueio do destino, colisão de nome de
+ * Campo e de Tipo no caminho novo e Formulário que o envio deixaria de aceitar.
+ * Nenhuma frase nomeia contêiner que o ator não alcança (B38a): os nomes citados
+ * são o do destino e de quem o bloqueia (o ator alcança o destino, logo o
+ * caminho dele), o do Campo ou Tipo que o movido define e, no Formulário, só o
+ * de uma Lista que o ator administra.
+ */
+function recusaPorConfiguracao(state: DataState, actingMemberId: Id, tipo: "folder" | "list", movido: Movel, destino: DestinoDeMover): RecusaDeMover | undefined {
+  const nos = nosDaSubarvore(state, tipo, movido);
+
+  // 6. Bloqueio (RN-ESP-09, D-16): só os aspectos que SUBSTITUEM recusam; os que acumulam ficam (A5).
+  for (const aspecto of ASPECTOS_QUE_SUBSTITUEM) {
+    if (!nos.some((n) => definesAspect(state, n.tipo, n.id, aspecto))) continue;
+    const bloqueio = blockedAtOrAbove(state, destino.parentType, destino.parentId, aspecto);
+    if (bloqueio) return { mensagem: bloqueio };
+  }
+
+  // 7. Colisão de nome (RN-PAS-14, DO-LIS-05): a leitura é a de `createFieldDefinition`, só que com o movido já no caminho novo.
+  const ids = new Set(nos.map((n) => n.id));
+  const colisao = comPaiNoDestino(movido, destino, (): string | undefined => {
+    for (const d of state.fieldDefinitions) {
+      if (d.target !== "task" || d.lifecycle !== "ativo" || d.definedAtId === undefined || !ids.has(d.definedAtId)) continue;
+      const no = nos.find((n) => n.id === d.definedAtId);
+      if (no && fieldNameCollision(state, no.tipo, no.id, d.name, d.id)) {
+        return `Já existe um Campo chamado “${d.name}” no caminho de destino: renomeie antes de mover.`;
+      }
+    }
+    for (const t of state.taskTypes) {
+      if (t.isPlatformDefault || !ids.has(t.definedAtId)) continue;
+      const no = nos.find((n) => n.id === t.definedAtId);
+      if (no && taskTypeNameCollision(state, no.tipo, no.id, t.name, t.id)) {
+        return `Já existe um Tipo de Tarefa chamado “${t.name}” no caminho de destino: renomeie antes de mover.`;
+      }
+    }
+    return undefined;
+  });
+  if (colisao) return { mensagem: colisao, campo: "nome" };
+
+  // 8. Formulário ativo que pergunta um Campo que deixaria de valer: o envio quebraria (molde de `usarCampoHerdado`).
+  const mudancas = mudancasDeConfiguracao(state, tipo, movido, destino);
+  if (!mudancas) return { mensagem: "Configuração efetiva indisponível." };
+  let anonimo = false;
+  for (const m of mudancas) {
+    const saem = new Set(m.from.fieldDefinitionIds.filter((campo) => !m.to.fieldDefinitionIds.includes(campo)));
+    if (saem.size === 0) continue;
+    for (const f of state.forms) {
+      if (f.lifecycle !== "ativo" || f.listId !== m.lista.id) continue;
+      const pergunta = f.questions.find((q) => q.target.kind === "field" && saem.has(q.target.definitionId));
+      if (!pergunta || pergunta.target.kind !== "field") continue;
+      if (containerAdminRefusal(state, actingMemberId, "list", m.lista.id)) {
+        anonimo = true;
+        continue;
+      }
+      const campo = state.fieldDefinitions.find((d) => d.id === (pergunta.target as { definitionId: Id }).definitionId);
+      return { mensagem: `O Formulário “${f.name}” pergunta por “${campo?.name ?? "um Campo"}”: o envio quebraria no destino. Tire a pergunta antes de mover.` };
+    }
+  }
+  if (anonimo) return { mensagem: "Um Formulário de uma Lista abaixo pergunta por um Campo que deixaria de valer no destino: o envio quebraria. Tire a pergunta antes de mover." };
   return undefined;
 }
 
@@ -776,16 +869,7 @@ interface MudancaDeConfiguracao {
 function mudancasDeConfiguracao(state: DataState, tipo: "folder" | "list", movido: Movel, destino: DestinoDeMover): MudancaDeConfiguracao[] | null {
   const listas = tipo === "list" ? [movido as List] : descendantsOf(state, "folder", movido.id).lists;
   const antes = listas.map((l) => effectiveListConfig(state, l.id));
-  const origem = { parentType: movido.parentType, parentId: movido.parentId };
-  movido.parentType = destino.parentType;
-  movido.parentId = destino.parentId;
-  let depois: Array<EffectiveListConfig | null>;
-  try {
-    depois = listas.map((l) => effectiveListConfig(state, l.id));
-  } finally {
-    movido.parentType = origem.parentType;
-    movido.parentId = origem.parentId;
-  }
+  const depois = comPaiNoDestino(movido, destino, () => listas.map((l) => effectiveListConfig(state, l.id)));
   const mudancas: MudancaDeConfiguracao[] = [];
   for (const [i, lista] of listas.entries()) {
     const from = antes[i];

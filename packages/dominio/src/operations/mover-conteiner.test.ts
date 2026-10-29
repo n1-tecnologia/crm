@@ -851,7 +851,8 @@ describe("moveContainer — bloqueio, colisão de nome, Formulário e estrutura 
     });
 
     it("a frase não cita o Formulário nem a Lista privada que o ator não alcança (B38a)", () => {
-      const campo = campoEm("folder", ORIGEM, "Turma");
+      // O Campo vem do Espaço de origem: a Pasta que o leva não o leva junto.
+      const campo = campoEm("space", "spc_com", "Turma do Espaço");
       const reservada = createList(state, THIAGO, { name: "Reservada da diretoria", parentType: "folder", parentId: ORIGEM, isPrivate: true });
       if (!reservada.ok) throw new Error(reservada.error);
       formularioPerguntando(reservada.value.id, campo);
@@ -884,7 +885,7 @@ describe("moveContainer — bloqueio, colisão de nome, Formulário e estrutura 
     it("recusa mover a Lista Solicitações de pagamento", () => {
       const nova = createList(state, THIAGO, { name: "Solicitações de pagamento", parentType: "folder", parentId: "fld_financeiro" });
       if (!nova.ok) throw new Error(nova.error);
-      listaPorId(nova.value.id).id = LISTA_SOLICITACOES_ID;
+      (listaPorId(nova.value.id) as { id: string }).id = LISTA_SOLICITACOES_ID;
 
       const r = moveContainer(state, THIAGO, "list", LISTA_SOLICITACOES_ID, { parentType: "space", parentId: "spc_ops" });
 
