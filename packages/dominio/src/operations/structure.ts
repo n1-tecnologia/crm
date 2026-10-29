@@ -10,7 +10,7 @@
 import { containerAdminRefusal, containerPath, definesAspect, effectiveLifecycleOfContainer, effectiveListConfig, irmaosOrdenados, memberReachesContainer } from "../derive";
 import { ehEstruturaFixa, PASTA_MEUS_NEGOCIOS_ID } from "../estruturas-fixas";
 import { fail, ok, type DataState, type OperationResult } from "../state";
-import type { EffectiveListConfig, Folder, Id, Lifecycle, List, ModeloDeTarefa, PaiDeConteiner, Provenance, Space, StatusSet, Task, Template } from "../types";
+import type { EffectiveListConfig, Folder, Id, Lifecycle, List, ModeloDeTarefa, PaiDeConteiner, Provenance, Space, StatusCategory, StatusSet, Task, Template } from "../types";
 
 export type { PaiDeConteiner };
 import { memberActor, nextId, recordActivity } from "./activity";
@@ -38,6 +38,16 @@ function mayBuild(state: DataState, actingMemberId: Id, parent?: { readonly type
 function nameTaken(existing: ReadonlyArray<{ name: string; lifecycle: string }>, name: string): boolean {
   const norm = (value: string) => value.trim().toLocaleLowerCase("pt-BR");
   return existing.some((item) => item.lifecycle !== "naLixeira" && norm(item.name) === norm(name));
+}
+
+/**
+ * Pitfall 3 — a `order` de quem entra num grupo de irmãos: depois do maior que
+ * já existe, nunca `length`. Mover renumera a origem e põe o movido no fim do
+ * destino; criar com `length` repetiria a `order` de qualquer grupo que tenha um
+ * buraco (dado antigo, ou um irmão que saiu). A lixeira conta, como sempre.
+ */
+function proximaOrdem(irmaos: ReadonlyArray<{ readonly order: number }>): number {
+  return irmaos.length === 0 ? 0 : Math.max(...irmaos.map((c) => c.order)) + 1;
 }
 
 /**
@@ -95,7 +105,7 @@ export function createSpace(
     name: input.name.trim(),
     ...(input.description?.trim() ? { description: input.description.trim() } : {}),
     ...(input.color ? { color: input.color } : {}),
-    order: state.spaces.length,
+    order: proximaOrdem(state.spaces),
     isPrivate: input.isPrivate ?? false,
     modes: {},
     blocks: {},
@@ -123,7 +133,7 @@ export function createSpace(
       createdAt: now(),
       lifecycle: "ativo",
       name,
-      order: state.folders.filter((f) => f.parentId === space.id).length,
+      order: proximaOrdem(state.folders.filter((f) => f.parentType === "space" && f.parentId === space.id)),
       isPrivate: false,
       modes: {},
       blocks: {},
@@ -229,7 +239,7 @@ export function createFolder(
     lifecycle: "ativo",
     name: input.name.trim(),
     ...(input.description?.trim() ? { description: input.description.trim() } : {}),
-    order: siblings.length,
+    order: proximaOrdem(siblings),
     isPrivate: input.isPrivate ?? false,
     // Nasce herdando: o ajuste é ato posterior, nas configurações do contêiner.
     modes: {},
@@ -266,7 +276,7 @@ export function createFolder(
       createdAt: now(),
       lifecycle: "ativo",
       name,
-      order: state.lists.filter((l) => l.parentId === folder.id).length,
+      order: proximaOrdem(state.lists.filter((l) => l.parentType === "folder" && l.parentId === folder.id)),
       isPrivate: false,
       // C35 — o Template de Pasta só nomeia as Listas: nascem no modelo padrão.
       modeloDeTarefa: "operacional",
@@ -353,7 +363,7 @@ export function createList(
     lifecycle: "ativo",
     name: input.name.trim(),
     ...(input.description?.trim() ? { description: input.description.trim() } : {}),
-    order: siblings.length,
+    order: proximaOrdem(siblings),
     isPrivate: input.isPrivate ?? false,
     modeloDeTarefa: modelo,
     ...(canais ? { canaisDeAtendimento: canais } : {}),
@@ -880,6 +890,84 @@ function mudancasDeConfiguracao(state: DataState, tipo: "folder" | "list", movid
   return mudancas;
 }
 
+/**
+ * L2 / Q4 (`owner-confirmation: pending`) — o que o mover faria com o que já
+ * existe, lido SEM mudar nada: o que o diálogo "Mover para…" mostra antes de
+ * agir. Calcula sobre as mesmas Listas e Tarefas que `moveContainer` toca
+ * (qualquer ciclo de vida, Subtarefas incluídas) e com a mesma leitura de
+ * `from`/`to` por Lista, então o que o diálogo mostra é o que a operação faz.
+ *
+ * - `conjuntoMuda`/`statusEmUso`: algum Conjunto efetivo muda; cada Status em
+ *   uso pelas Tarefas dessas Listas, uma vez, na ordem do Conjunto de origem.
+ * - `camposQueSaem`/`valoresAfetados`: Campos que a Lista deixa de ter e que
+ *   têm Valor `ativo` (o que vai a `arquivado`, B37).
+ * - `tiposQueMudam`: Tarefas cujo Tipo sai do destino e cai no primeiro dele.
+ * - `linksPublicosRevogados`: Tarefas com link público ativo que o destino não
+ *   permite.
+ *
+ * Não confere permissão nem as recusas: `recusaDeMover` é quem diz se pode.
+ */
+export interface ConsequenciasDeMover {
+  readonly conjuntoMuda: boolean;
+  readonly statusEmUso: ReadonlyArray<{ readonly statusId: Id; readonly nome: string; readonly categoria: StatusCategory; readonly tarefas: number }>;
+  readonly camposQueSaem: ReadonlyArray<{ readonly id: Id; readonly nome: string }>;
+  readonly valoresAfetados: number;
+  readonly tiposQueMudam: number;
+  readonly linksPublicosRevogados: number;
+}
+
+export function consequenciasDeMover(state: DataState, tipo: "folder" | "list", id: Id, destino: DestinoDeMover): ConsequenciasDeMover {
+  const vazio: ConsequenciasDeMover = { conjuntoMuda: false, statusEmUso: [], camposQueSaem: [], valoresAfetados: 0, tiposQueMudam: 0, linksPublicosRevogados: 0 };
+  const movido = findContainer(state, tipo, id) as Movel | undefined;
+  if (!movido) return vazio;
+  const mudancas = mudancasDeConfiguracao(state, tipo, movido, destino);
+  if (!mudancas) return vazio;
+
+  let conjuntoMuda = false;
+  const emUso = new Map<Id, { statusId: Id; nome: string; categoria: StatusCategory; tarefas: number; posicao: number }>();
+  const campos = new Map<Id, string>();
+  let valoresAfetados = 0;
+  let tiposQueMudam = 0;
+  let linksPublicosRevogados = 0;
+
+  for (const m of mudancas) {
+    const tarefas = state.tasks.filter((t) => t.listId === m.lista.id);
+    if (m.from.statusSet.id !== m.to.statusSet.id) {
+      conjuntoMuda = true;
+      const definicoes = [...m.from.statusSet.definitions].sort((x, y) => x.order - y.order);
+      for (const t of tarefas) {
+        const posicao = definicoes.findIndex((d) => d.id === t.statusId);
+        const definicao = definicoes[posicao];
+        if (!definicao) continue;
+        const atual = emUso.get(definicao.id);
+        if (atual) atual.tarefas += 1;
+        else emUso.set(definicao.id, { statusId: definicao.id, nome: definicao.name, categoria: definicao.category, tarefas: 1, posicao });
+      }
+    }
+
+    const mantidos = new Set(m.to.fieldDefinitionIds);
+    const saem = new Set(m.from.fieldDefinitionIds.filter((campo) => !mantidos.has(campo)));
+    for (const t of tarefas) {
+      for (const v of t.fieldValues) {
+        if (v.state !== "ativo" || !saem.has(v.definitionId)) continue;
+        valoresAfetados += 1;
+        if (!campos.has(v.definitionId)) campos.set(v.definitionId, state.fieldDefinitions.find((d) => d.id === v.definitionId)?.name ?? v.definitionId);
+      }
+      if (m.to.taskTypeIds.length > 0 && !m.to.taskTypeIds.includes(t.taskTypeId)) tiposQueMudam += 1;
+      if (t.publicShare?.active && !m.to.features.compartilhamentoPublico) linksPublicosRevogados += 1;
+    }
+  }
+
+  return {
+    conjuntoMuda,
+    statusEmUso: [...emUso.values()].sort((x, y) => x.posicao - y.posicao).map(({ statusId, nome, categoria, tarefas }) => ({ statusId, nome, categoria, tarefas })),
+    camposQueSaem: [...campos.entries()].map(([campoId, nome]) => ({ id: campoId, nome })),
+    valoresAfetados,
+    tiposQueMudam,
+    linksPublicosRevogados,
+  };
+}
+
 /** O que da Tarefa a regra de configuração efetiva pode tocar: se mudou, a Tarefa foi atualizada. */
 const assinaturaDaTarefa = (t: Task): string => JSON.stringify([t.statusId, t.taskTypeId, t.publicShare?.active ?? null, t.fieldValues.map((v) => v.state)]);
 
@@ -890,6 +978,13 @@ const assinaturaDaTarefa = (t: Task): string => JSON.stringify([t.statusId, t.ta
  * destino (`max(order) + 1`) e o grupo de origem é renumerado de 0 a n-1.
  * Nada que o movido contém é apagado ou copiado: a privacidade e a
  * configuração efetiva são derivadas do caminho.
+ *
+ * As recusas, na ordem (todas em `recusaDeMover`, que a tela lê): permissão no
+ * movido e no destino, "já está aqui", "dentro de si", estrutura fixa (Q2),
+ * profundidade (RN-SUB-11 e RN-SUB-02), nome repetido, bloqueio do destino
+ * (RN-ESP-09; só os aspectos que substituem), colisão de nome de Campo e Tipo
+ * (RN-PAS-14) e Formulário que o envio quebraria. A Atividade nasce com o nome
+ * do caso: promovida, rebaixada, "Pasta movida" ou "Lista movida".
  *
  * Quando o Conjunto de Status efetivo muda para alguma Lista da subárvore, cada
  * Status em uso nas Tarefas dela (de qualquer ciclo de vida, Subtarefas
@@ -931,7 +1026,7 @@ export function moveContainer(
   const origem = { parentType: movido.parentType, parentId: movido.parentId };
 
   const noDestino = grupoDe(state, tipo, destino.parentType, destino.parentId, id);
-  const novaOrdem = noDestino.length === 0 ? 0 : Math.max(...noDestino.map((c) => c.order)) + 1;
+  const novaOrdem = proximaOrdem(noDestino);
   const naOrigem = grupoDe(state, tipo, origem.parentType, origem.parentId, id).sort((x, y) => x.order - y.order);
   naOrigem.forEach((c, i) => {
     c.order = i;

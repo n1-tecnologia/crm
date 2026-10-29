@@ -3,9 +3,10 @@
  * lugar da Estrutura. O núcleo deste arquivo: a operação registrada, as
  * recusas básicas e a regra por Tarefa que `moveTask` também aplica (Conjunto
  * de Status que muda, B37, Tipo de Tarefa, link público). Cada teste afirma o
- * RESULTADO da operação e o estado que ela deixou; as recusas de profundidade,
- * bloqueio, colisão de nome entre níveis, Formulário e estrutura fixa entram
- * em 10-18.
+ * RESULTADO da operação e o estado que ela deixou. Desde 10-18 também as
+ * recusas de profundidade, bloqueio, colisão de nome entre níveis, Formulário
+ * e estrutura fixa, a leitura `consequenciasDeMover` (L2), a paridade entre
+ * `recusaDeMover` e a operação e o contador `order` sem duplicata.
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
@@ -1003,7 +1004,11 @@ describe("consequenciasDeMover — L2: o que o diálogo mostra antes de agir (Q4
     expect(setContainerFeature(state, THIAGO, "folder", DEST, "compartilhamentoPublico", false).ok).toBe(true);
     const a = tarefa(ALFA, "Visita 1");
     const b = tarefa(ALFA, "Visita 2");
-    tarefa(ALFA, "Comum");
+    // O Tipo mais próximo da Lista vem primeiro: a Tarefa nasce "Visita". A comum volta ao Tipo do Espaço, que o destino também tem.
+    const comum = tarefa(ALFA, "Comum");
+    const doEspaco = state.taskTypes.find((t) => t.isPlatformDefault && t.definedAtId === "spc_com");
+    if (!doEspaco) throw new Error("sem Tipo do Espaço");
+    expect(updateTask(state, THIAGO, comum, { taskTypeId: doEspaco.id }).ok).toBe(true);
     expect(updateTask(state, THIAGO, a, { taskTypeId: tipo.value.id }).ok).toBe(true);
     expect(updateTask(state, THIAGO, b, { taskTypeId: tipo.value.id }).ok).toBe(true);
     expect(shareTaskPublicly(state, THIAGO, a, { showsComments: false, showsAttachments: false }).ok).toBe(true);
