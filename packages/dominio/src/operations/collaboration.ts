@@ -606,6 +606,9 @@ function criarOcorrencia(state: DataState, actingMemberId: Id, task: Task, rule:
     siblingOrder: state.tasks.filter((t) => t.parentTaskId === task.parentTaskId && t.listId === task.listId).length,
     title: task.title,
     description: task.description,
+    // Padrão de trabalho nº 2: a ocorrência leva a menção junto (cópia, não a mesma referência).
+    // Se o texto mudar, o filtro de `membrosMencionadosNaDescricao` na leitura protege.
+    ...(task.descriptionMentions?.length ? { descriptionMentions: task.descriptionMentions.map((m) => ({ type: "member" as const, id: m.id })) } : {}),
     statusId: inicial.id,
     taskTypeId: task.taskTypeId,
     priority: task.priority,
