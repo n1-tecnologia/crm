@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 10
-current_phase_name: clone-clickup-cont-ineres-espa-o-pasta-e-lista
+current_phase_name: "Clone ClickUp: Contêineres (Espaço, Pasta e Lista)"
 status: executing
-stopped_at: Phase 10 UI-SPEC approved
-last_updated: "2026-10-29T00:55:52.448Z"
-last_activity: 2026-10-22
-last_activity_desc: Phase 09 execution started
-state_head: de80089557891b91c22180fc2646745d7cfa0a00
+stopped_at: Completed 10-01-PLAN.md
+last_updated: "2026-10-29T08:38:19.478Z"
+last_activity: 2026-10-29
+last_activity_desc: Phase 10 execution started
+state_head: 187b32eb57ef06f2337ea578c0cbb513a5a1d74e
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 191
-  completed_plans: 168
+  completed_plans: 169
 milestone_name: milestone
 ---
 
@@ -24,14 +24,14 @@ milestone_name: milestone
 See: .planning/PROJECT.md (updated 2026-10-11)
 
 **Core value:** Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de ponta a ponta sem abrir o ClickUp — dados no Postgres próprio, regras de `@n1/dominio` intactas.
-**Current focus:** Phase 09 — Segurança dos dados e base de produção
+**Current focus:** Phase 10 — Clone ClickUp: Contêineres (Espaço, Pasta e Lista)
 
 ## Current Position
 
-Phase: 10 (clone-clickup-cont-ineres-espa-o-pasta-e-lista) — READY TO EXECUTE
-Plan: 17 of 22
+Phase: 10 (Clone ClickUp: Contêineres (Espaço, Pasta e Lista)) — EXECUTING
+Plan: 2 of 21
 Status: Ready to execute
-Last activity: 2026-10-22 — Phase 09 execution started
+Last activity: 2026-10-29 — Phase 10 execution started
 
 **Fase 06 planejada à mão em 2026-09-29 (Conferência do Resumo e anexos), pronta para `/gsd-execute-phase 6`:**
 `.planning/phases/06-conferencia-do-resumo-e-anexos/` — `06-CONTEXT.md` (13 decisões com padrão e variável de troca) e seis planos em três ondas: 06-01 domínio · 06-02 contrato v1.1 no `financeiro-tria` · 06-03 ponte em dois momentos · 06-04 tela e jornada · 06-05 S5/S6 na Solicitação · 06-06 docs e provas `[BLOCKING]`. Origem: `docs/08-migracao-financeiro/09-…` (desenho) e `10-…` (levantamento etapa por etapa com `arquivo:linha`). Ponto de partida do código: `crm-n1-integracao@3d6f735` (branch `integra-frontend-main`, sem push) e `financeiro-tria@c272dad` (`main`, 99 commits sem push, 89 arquivos sujos só de EOL — `git add` sempre por caminho). O dono ainda não respondeu às quatro perguntas do doc 10; os padrões de D6-01..D6-04 seguem "como no ClickUp", exceto Integração manual (o seguro).
@@ -386,6 +386,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 09 P13 | 11 min | 3 tasks | 8 files |
 | Phase 09 P15 | 12min | 2 tasks | 9 files |
 | Phase 09 P16 | 10 min | 2 tasks | 11 files |
+| Phase 10 P01 | 5 min | 2 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -546,6 +547,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 09]: 09-15: runLancamentoAgent do Convidado medido como lacuna do dominio (ok:true, publica o Resumo) e marcado it.fails; inviteMember nao exercida (rede)
 - [Phase 09]: 09-16: @sentry/nextjs 10.76.2 exato na web (igual a @sentry/node da api); SDK so inicia com DSN; withSentryConfig por @sentry/nextjs/config
 - [Phase 09]: 09-16: segredo de /f/ e /p/ mascarado tambem no meio do texto (regra do dominio so ve o comeco); global-error usa py-12 (escala) no lugar de py-10; 'O erro foi registrado.' so e verdade com DSN (UI-SPEC I3)
+- [Phase 10]: 10-01: a Atividade 'Visualizações padrão alteradas' compara a definição própria do nó, não a efetiva
+- [Phase 10]: 10-01: viewsDefinedAt acrescentado a EffectiveListConfig para a tela dizer 'Herdado de X' (10-08)
 
 ### Pending Todos
 
@@ -607,6 +610,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-28T23:06:58.922Z
-Stopped at: Phase 10 UI-SPEC approved
-Resume file: .planning/phases/10-clone-clickup-cont-ineres-espa-o-pasta-e-lista/10-UI-SPEC.md
+Last session: 2026-10-29T08:38:19.278Z
+Stopped at: Completed 10-01-PLAN.md
+Resume file: None
