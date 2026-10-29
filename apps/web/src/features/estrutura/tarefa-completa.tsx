@@ -77,6 +77,7 @@ import {
 import { LinhaDeProp } from "@/features/estrutura/linha-de-propriedade";
 import { corDeTipo, iconeDeTipo } from "@/features/estrutura/icone-de-tipo";
 import { SeletorDeTipoDeTarefa } from "@/features/estrutura/seletor-de-tipo";
+import { BotaoDeConversao, DialogoDeConversao } from "@/features/estrutura/conversao-de-item";
 import { financeProfileOf, valorDaConta } from "@/features/estrutura/financeiro/lens";
 import { CHANNEL_ICON, ConversationThread } from "@/features/crm/conversation-thread";
 import { ContactAvatar } from "@/features/crm/contact-card";
@@ -116,7 +117,6 @@ import {
   addChecklistItem,
   assignTask,
   changeTaskStatus,
-  convertChecklistItem,
   createTask,
   criarNegocioDaTarefa,
   removeChecklist,
@@ -198,16 +198,15 @@ export function TarefaCompleta({
   const { memberId } = useSession();
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [proximaOcorrencia, setProximaOcorrencia] = useState<string | null>(
-    null,
-  );
+  // O id da Tarefa a que o aviso aponta com "Abrir": a próxima ocorrência ou a Subtarefa recém-convertida.
+  const [linkDoAviso, setLinkDoAviso] = useState<string | null>(null);
   const router = useRouter();
   const query = useSearchParams();
   const pathname = usePathname();
   /**
    * D13 — a conversão vive no endereço (`?converter-item=<checklist>:<item>`).
-   * É terminal, sem inversa, e exige digitar o nome do Item: o gesto precisa
-   * custar tanto quanto a consequência.
+   * É terminal e sem inversa, por isso a confirmação de um clique avisa (D-01);
+   * o botão só aparece onde a derivada deixa (D-05), então o erro não é fácil.
    */
   const convertingRaw = query.get("converter-item");
   const converting = (() => {
@@ -215,7 +214,6 @@ export function TarefaCompleta({
     const [checklistId, itemId] = convertingRaw.split(":");
     return checklistId && itemId ? { checklistId, itemId } : null;
   })();
-  const [typedItem, setTypedItem] = useState("");
   const [confirmingTrash, setConfirmingTrash] = useState(false);
   // Numa conta do Financeiro, mudar o Status dispara Automações: pede confirmação
   // aqui como a linha da tabela e o rodapé do popup pedem.
@@ -260,13 +258,11 @@ export function TarefaCompleta({
   const [navegar] = useNavegar();
   // Os outros parâmetros ficam: no popup, `?tarefa=` é o que o mantém aberto.
   const openConversion = (checklistId: string, itemId: string) => {
-    setTypedItem("");
     const next = new URLSearchParams(query.toString());
     next.set("converter-item", `${checklistId}:${itemId}`);
     router.replace(`${pathname}?${next}`, { scroll: false });
   };
   const closeConversion = () => {
-    setTypedItem("");
     const next = new URLSearchParams(query.toString());
     next.delete("converter-item");
     router.replace(next.size > 0 ? `${pathname}?${next}` : pathname, { scroll: false });
@@ -399,21 +395,7 @@ export function TarefaCompleta({
           ? `Status alterado. Próxima ocorrência criada: ${proxima.title}.`
           : "Status alterado.",
       );
-      setProximaOcorrencia(proxima?.id ?? null);
-    } else {
-      setNotice(null);
-      setError(result.error);
-    }
-  };
-
-  const convert = (checklistId: string, itemId: string) => {
-    const result = run((data, memberId) =>
-      convertChecklistItem(data, memberId, task.id, checklistId, itemId),
-    );
-    if (result.ok) {
-      setError(null);
-      setNotice(`Item convertido em Subtarefa: ${result.value.title}.`);
-      closeConversion();
+      setLinkDoAviso(proxima?.id ?? null);
     } else {
       setNotice(null);
       setError(result.error);
@@ -425,13 +407,6 @@ export function TarefaCompleta({
   );
   // A contagem do cabeçalho "Atividade" — e do botão que a abre na ficha empilhada.
   const contagemDaAtividade = task.comments.filter((c) => !c.deletedAt).length + activity.length;
-
-  const convertingChecklist = converting
-    ? task.checklists.find((group) => group.id === converting.checklistId)
-    : undefined;
-  const convertingItem = convertingChecklist?.items.find(
-    (item) => item.id === converting?.itemId,
-  );
 
   const assign = (ids: readonly string[]) => {
     const current = new Set(task.assignees.map((a) => a.id));
@@ -786,37 +761,22 @@ export function TarefaCompleta({
         onCancel={() => setConfirmingTrash(false)}
       />
 
-      {convertingItem ? (
-        <ConfirmDialog
-          open
-          title={`Converter “${convertingItem.text}” em Subtarefa?`}
-          description="Sem conversão inversa. O Item fica marcado como convertido e sai do progresso do Checklist."
-          confirmLabel="Converter"
-          destructive
-          {...(typedItem.trim() !== convertingItem.text
-            ? {
-                confirmDisabledReason: `Digite “${convertingItem.text}” para confirmar.`,
-              }
-            : {})}
-          onConfirm={() =>
-            converting && convert(converting.checklistId, converting.itemId)
-          }
-          onCancel={closeConversion}
-        >
-          <Field label={`Digite “${convertingItem.text}” para confirmar`}>
-            {(id) => (
-              <TextInput
-                id={id}
-                value={typedItem}
-                onChange={setTypedItem}
-                invalid={
-                  typedItem !== "" && typedItem.trim() !== convertingItem.text
-                }
-                placeholder={convertingItem.text}
-              />
-            )}
-          </Field>
-        </ConfirmDialog>
+      {converting ? (
+        <DialogoDeConversao
+          task={task}
+          checklistId={converting.checklistId}
+          itemId={converting.itemId}
+          onFechar={closeConversion}
+          onConvertida={({ id, title }) => {
+            setError(null);
+            setNotice(`Item convertido em Subtarefa: ${title}.`);
+            setLinkDoAviso(id);
+          }}
+          onErro={(mensagem) => {
+            setNotice(null);
+            setError(mensagem);
+          }}
+        />
       ) : null}
 
       {removendo ? (() => {
@@ -886,15 +846,15 @@ export function TarefaCompleta({
             tone="success"
             onDismiss={() => {
               setNotice(null);
-              setProximaOcorrencia(null);
+              setLinkDoAviso(null);
             }}
           >
             {notice}
-            {proximaOcorrencia ? (
+            {linkDoAviso ? (
               <>
                 {" "}
                 <Link
-                  href={`/estrutura/tarefas/${proximaOcorrencia}`}
+                  href={`/estrutura/tarefas/${linkDoAviso}`}
                   className="underline"
                 >
                   Abrir
@@ -1767,16 +1727,10 @@ export function TarefaCompleta({
                                           </span>
                                         ) : null}
                                         {editavel ? (
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              openConversion(group.id, item.id)
-                                            }
-                                            className="btn btn-sutil btn-sm ml-auto shrink-0"
-                                            style={{ color: "var(--erro)" }}
-                                          >
-                                            Converter em Subtarefa
-                                          </button>
+                                          <BotaoDeConversao
+                                            task={task}
+                                            onConverter={() => openConversion(group.id, item.id)}
+                                          />
                                         ) : null}
                                         {editavel ? (
                                           <button
