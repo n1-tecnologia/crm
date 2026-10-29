@@ -315,7 +315,6 @@ export interface ChecklistItem {
   doneBy?: ActorRef;
   /** B48 — 0..1 Member, never an Agent. */
   assigneeMemberId?: Id;
-  readonly parentItemId?: Id;
   /** B48 — terminal marker; out of numerator and denominator of the progress. */
   converted?: { readonly taskId: Id; readonly title: string; readonly at: Instant; readonly by: ActorRef };
 }

@@ -432,9 +432,6 @@ export function TarefaCompleta({
   const convertingItem = convertingChecklist?.items.find(
     (item) => item.id === converting?.itemId,
   );
-  const convertingSubitems = convertingChecklist
-    ? subitemsOf(convertingChecklist.items, converting?.itemId ?? "")
-    : 0;
 
   const assign = (ids: readonly string[]) => {
     const current = new Set(task.assignees.map((a) => a.id));
@@ -793,11 +790,7 @@ export function TarefaCompleta({
         <ConfirmDialog
           open
           title={`Converter “${convertingItem.text}” em Subtarefa?`}
-          description={`Sem conversão inversa. O Item fica marcado como convertido e sai do progresso do Checklist.${
-            convertingSubitems > 0
-              ? ` Os ${convertingSubitems} subitens migram como Checklist da nova Subtarefa e saem deste.`
-              : ""
-          }`}
+          description="Sem conversão inversa. O Item fica marcado como convertido e sai do progresso do Checklist."
           confirmLabel="Converter"
           destructive
           {...(typedItem.trim() !== convertingItem.text
@@ -829,7 +822,6 @@ export function TarefaCompleta({
       {removendo ? (() => {
         const grupo = task.checklists.find((c) => c.id === removendo.checklistId);
         const item = removendo.itemId ? grupo?.items.find((i) => i.id === removendo.itemId) : undefined;
-        const subitens = grupo && removendo.itemId ? subitemsOf(grupo.items, removendo.itemId) : 0;
         const itensDoGrupo = grupo?.items.length ?? 0;
         if (!grupo || (removendo.itemId && !item)) return null;
         return (
@@ -838,9 +830,7 @@ export function TarefaCompleta({
             title={item ? `Remover o Item “${item.text}”?` : `Remover o Checklist “${grupo.name}”?`}
             description={
               item
-                ? `Não há lixeira de Item: a remoção é definitiva, e o texto fica só no Registro de Atividade.${
-                    subitens > 0 ? ` ${subitens === 1 ? "O subitem vai" : `Os ${subitens} subitens vão`} junto.` : ""
-                  }${item.converted ? " A Subtarefa que nasceu dele continua existindo." : ""}`
+                ? `Não há lixeira de Item: a remoção é definitiva, e o texto fica só no Registro de Atividade.${item.converted ? " A Subtarefa que nasceu dele continua existindo." : ""}`
                 : `Não há lixeira de Checklist: a remoção é definitiva, e o conteúdo fica só no Registro de Atividade.${
                     itensDoGrupo > 0 ? ` ${itensDoGrupo === 1 ? "O Item vai" : `Os ${itensDoGrupo} Itens vão`} junto.` : ""
                   }`
@@ -1658,9 +1648,7 @@ export function TarefaCompleta({
                     <div className="grid gap-4">
                       {task.checklists.map((group) => {
                         const countable = group.items.filter(
-                          (item) =>
-                            item.parentItemId === undefined &&
-                            item.converted === undefined,
+                          (item) => item.converted === undefined,
                         );
                         const done = countable.filter((item) => item.done).length;
                         return (
@@ -1690,7 +1678,6 @@ export function TarefaCompleta({
                             />
                             <ul className="pilha-solta">
                               {group.items
-                                .filter((item) => item.parentItemId === undefined)
                                 .map((item) => (
                                   <li
                                     key={item.id}
@@ -2319,13 +2306,6 @@ function valorDeCampo(state: DataState, fmt: Formatters, tipo: string, valor: un
   }
   if (Array.isArray(valor)) return valor.map(String).join(", ");
   return String(valor);
-}
-/** B48 — the subitems migrate with the conversion and leave the origin checklist. */
-function subitemsOf(
-  items: readonly { readonly id: string; readonly parentItemId?: string }[],
-  itemId: string,
-): number {
-  return items.filter((item) => item.parentItemId === itemId).length;
 }
 
 /**
