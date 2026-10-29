@@ -1492,8 +1492,8 @@ export function TarefaCompleta({
                     className="app-base mt-2 rounded-[var(--r-controle)] px-3 py-2"
                     style={AVISO_EM_CAIXA}
                   >
-                    Conta lançada sem “Resumo de pagamento” e sem Integração manual
-                    (INV-CP-01): peça ao Agente de lançamento, registre o lançamento
+                    Conta lançada sem “Resumo de pagamento” e sem Integração manual:
+                    peça ao Agente de lançamento, registre o lançamento
                     que você fez no Omie, ou marque a Integração manual.
                     {task.listId === CP.listId && lancamentoHumanoDe(state, task) === undefined
                       ? (() => {
@@ -1521,7 +1521,7 @@ export function TarefaCompleta({
                     className="app-base mt-2 rounded-[var(--r-controle)] px-3 py-2"
                     style={AVISO_EM_CAIXA}
                   >
-                    Entrada ou parcela sem cliente vinculado (RN-CR-02): a soma por
+                    Entrada ou parcela sem cliente vinculado: a soma por
                     cliente não a conta. Crie a série por “Nova série de parcelas”
                     para nascer com o Vínculo.
                   </p>
@@ -1534,7 +1534,7 @@ export function TarefaCompleta({
                       className="app-base mt-2 rounded-[var(--r-controle)] px-3 py-2"
                       style={AVISO_EM_CAIXA}
                     >
-                      Parcela duplicada (RN-CR-07): já existe{" "}
+                      Parcela duplicada: já existe{" "}
                       <Link href={`/estrutura/tarefas/${outra.id}`} className="underline">
                         {outra.readableId ?? outra.title}
                       </Link>{" "}

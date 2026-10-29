@@ -380,7 +380,7 @@ export function CreateContainerDialog({
             label="Localização"
             {...(kind === "pasta"
               ? {
-                  hint: "Dentro de uma Pasta, a nova nasce Subpasta — e uma Subpasta não contém outra (A3.4).",
+                  hint: "Dentro de uma Pasta, a nova nasce Subpasta — e uma Subpasta não contém outra.",
                 }
               : {})}
           >
@@ -425,7 +425,7 @@ export function CreateContainerDialog({
                 </span>
                 <span id={privacyHintId} className="app-sm block" style={{ color: "var(--texto-3)" }}>
                   Some da árvore para quem não tem concessão — inclusive para o Proprietário do Espaço
-                  de Trabalho. Quem fica de fora só entra por um ato de governança registrado (B38).
+                  de Trabalho. Quem fica de fora só entra por um ato de governança registrado.
                 </span>
               </span>
               <Toggle
@@ -438,8 +438,8 @@ export function CreateContainerDialog({
           </div>
           <p className="ajuda">
             {kind === "espaco"
-              ? "Um Espaço sempre define o próprio Conjunto de Status, porque é dele que todo o resto herda (RN-ESP-03). Ele se ajusta depois, nas configurações do Espaço."
-              : `A herança é por aspecto (B25) e se ajusta depois, nas configurações da ${label}.`}
+              ? "Um Espaço sempre define o próprio Conjunto de Status, porque é dele que todo o resto herda. Ele se ajusta depois, nas configurações do Espaço."
+              : `A herança é por aspecto e se ajusta depois, nas configurações da ${label}.`}
           </p>
         </div>
 

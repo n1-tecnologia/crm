@@ -440,7 +440,7 @@ function resolveTemplate(
   if (template.kind !== kind) return { error: `Este Template não é de ${kind}.` };
   if (kind === "pasta" && template.containsSubfolders && parentType === "folder") {
     return {
-      error: "Este Template contém Subpastas e só pode ser instanciado dentro de um Espaço (B47).",
+      error: "Este Template contém Subpastas e só pode ser instanciado dentro de um Espaço.",
     };
   }
   return { template };

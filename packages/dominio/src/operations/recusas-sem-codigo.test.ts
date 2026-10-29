@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../seed";
 import type { DataState } from "../state";
 import { CP, createReceivableSeries } from "./financeiro";
+import { createFolder } from "./structure";
 
 /** A expressão do UI-SPEC S10: RN-/INV-/DO-, (B..) e (A..). */
 const CODIGO_DE_REGRA = /\((RN|INV|DO)-[A-Z]+-[0-9]+\)|\(B[0-9]+[a-z]?\)|\(A[0-9]+\.[0-9]+\)/;
@@ -67,6 +68,17 @@ describe("recusas do domínio sem código de regra (UI-SPEC S10)", () => {
       createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_2", centroDeCusto: "Tria Tech", valorParcela: 1, parcelas: 1, primeiroVencimento: em(60) }),
     );
     expect(erro).toBe("Marina Alves já tem a 1ª Parcela nesta Lista. Descarte a série antiga antes de criar outra.");
+    expect(erro).not.toMatch(CODIGO_DE_REGRA);
+  });
+
+  it("Template de Pasta com Subpastas dentro de outra Pasta: a frase termina em \"dentro de um Espaço.\"", () => {
+    const template = state.templates.find((t) => t.kind === "pasta");
+    if (!template) throw new Error("seed sem Template de Pasta");
+    (template as { containsSubfolders?: boolean }).containsSubfolders = true;
+    const pai = state.folders.find((f) => f.parentType === "space");
+    if (!pai) throw new Error("seed sem Pasta de primeiro nível");
+    const erro = recusa(createFolder(state, "mem_thiago", { name: "Com subpastas", parentType: "folder", parentId: pai.id, templateId: template.id }));
+    expect(erro).toBe("Este Template contém Subpastas e só pode ser instanciado dentro de um Espaço.");
     expect(erro).not.toMatch(CODIGO_DE_REGRA);
   });
 });
