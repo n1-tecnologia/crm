@@ -22,7 +22,8 @@ function registrosAposEdicao() {
   const state = buildSeed();
   expect(updateTask(state, "mem_thiago", TAREFA, { description: "A" }).ok).toBe(true);
   expect(updateTask(state, "mem_thiago", TAREFA, { description: "B" }).ok).toBe(true);
-  return state.activity.filter((a) => a.objectId === TAREFA);
+  // Só o registro "A → B" (o do segundo updateTask): o do primeiro leva before "".
+  return state.activity.filter((a) => a.objectId === TAREFA && a.after === "B");
 }
 
 function feed(registros: ReturnType<typeof registrosAposEdicao>, busca = "") {
@@ -36,8 +37,7 @@ describe("FeedDeAtividade — Descrição alterada (11-06)", () => {
     expect(container.textContent).toContain("Descrição alterada");
     expect(container.textContent).not.toContain("(A → B)");
 
-    const botoes = screen.getAllByRole("button", { name: "Ver alteração" });
-    fireEvent.click(botoes[botoes.length - 1]!);
+    fireEvent.click(screen.getByRole("button", { name: "Ver alteração" }));
     expect(screen.getByText("Antes")).toBeTruthy();
     expect(screen.getByText("Depois")).toBeTruthy();
     expect(screen.getByText("A")).toBeTruthy();
@@ -53,8 +53,7 @@ describe("FeedDeAtividade — Descrição alterada (11-06)", () => {
   it("a expansão sobrevive a um re-render do Feed", () => {
     const registros = registrosAposEdicao();
     const { rerender } = render(feed(registros));
-    const botoes = screen.getAllByRole("button", { name: "Ver alteração" });
-    fireEvent.click(botoes[botoes.length - 1]!);
+    fireEvent.click(screen.getByRole("button", { name: "Ver alteração" }));
     rerender(feed(registros, ""));
     rerender(feed([...registros]));
     expect(screen.getByText("Antes")).toBeTruthy();
