@@ -4,6 +4,7 @@
  * do estado, nunca do relógio: o seed, os instantes e as durações abaixo são
  * montados à mão.
  */
+import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "./seed";
 import { tempoRegistrado } from "./derive";
@@ -76,5 +77,104 @@ describe("tempoRegistrado — o número da Tarefa (TAR-07, D-15)", () => {
 
   it("Tarefa inexistente devolve tudo zerado", () => {
     expect(tempoRegistrado(state, "tsk_que_nao_existe")).toEqual({ minutos: 0, lancamentos: 0, emAndamento: false, minutosComSubtarefas: 0 });
+  });
+});
+
+describe("tempoRegistrado — bordas (TAR-07)", () => {
+  it("Tarefa sem lançamentos: tudo zerado", () => {
+    const mae = novaTarefa("Mãe");
+    expect(tempoRegistrado(state, mae.id)).toEqual({ minutos: 0, lancamentos: 0, emAndamento: false, minutosComSubtarefas: 0 });
+  });
+
+  it("só um cronômetro aberto: 0 min, 1 lançamento, em andamento", () => {
+    const mae = novaTarefa("Mãe");
+    aberto(mae);
+    expect(tempoRegistrado(state, mae.id)).toEqual({ minutos: 0, lancamentos: 1, emAndamento: true, minutosComSubtarefas: 0 });
+  });
+
+  it("só fechados: não está em andamento", () => {
+    const mae = novaTarefa("Mãe");
+    fechado(mae, 30);
+    fechado(mae, 45);
+    expect(tempoRegistrado(state, mae.id)).toEqual({ minutos: 75, lancamentos: 2, emAndamento: false, minutosComSubtarefas: 75 });
+  });
+
+  it("Subtarefa na lixeira não soma, e a neta dela também não (A3)", () => {
+    const mae = novaTarefa("Mãe");
+    fechado(mae, 30);
+    fechado(mae, 45);
+    const filha = novaTarefa("Filha", mae.id);
+    fechado(filha, 20);
+    const neta = novaTarefa("Neta", filha.id);
+    fechado(neta, 10);
+    expect(tempoRegistrado(state, mae.id).minutosComSubtarefas).toBe(105);
+
+    expect(trashTask(state, THIAGO, filha.id).ok).toBe(true);
+
+    expect(tempoRegistrado(state, mae.id).minutosComSubtarefas).toBe(75);
+  });
+
+  it("cronômetro aberto só na Subtarefa não muda o 'em andamento' da mãe", () => {
+    const mae = novaTarefa("Mãe");
+    fechado(mae, 30);
+    const filha = novaTarefa("Filha", mae.id);
+    aberto(filha);
+    expect(tempoRegistrado(state, mae.id).emAndamento).toBe(false);
+    expect(tempoRegistrado(state, filha.id).emAndamento).toBe(true);
+  });
+
+  it("a neta (Subtarefa da Subtarefa) entra no total da avó", () => {
+    const avo = novaTarefa("Avó");
+    fechado(avo, 30);
+    const mae = novaTarefa("Mãe", avo.id);
+    const neta = novaTarefa("Neta", mae.id);
+    fechado(neta, 10);
+    expect(tempoRegistrado(state, avo.id)).toMatchObject({ minutos: 30, minutosComSubtarefas: 40 });
+  });
+
+  it("parentTaskId em ciclo não trava a soma", () => {
+    const avo = novaTarefa("Avó");
+    fechado(avo, 30);
+    const filha = novaTarefa("Filha", avo.id);
+    const neta = novaTarefa("Neta", filha.id);
+    fechado(filha, 20);
+    fechado(neta, 10);
+    // Ciclo forjado: filha aponta para a neta, neta aponta para a filha.
+    filha.parentTaskId = neta.id;
+    neta.parentTaskId = filha.id;
+
+    const tempo = tempoRegistrado(state, avo.id);
+    expect(Number.isFinite(tempo.minutosComSubtarefas)).toBe(true);
+    expect(tempoRegistrado(state, filha.id).minutosComSubtarefas).toBeGreaterThanOrEqual(20);
+  });
+
+  it("lançamento fechado sem durationMinutes (registro antigo) conta 0", () => {
+    const mae = novaTarefa("Mãe");
+    fechado(mae, 30);
+    mae.timeEntries.push({
+      id: "tme_antigo",
+      memberId: THIAGO,
+      start: "2026-01-01T10:00:00.000Z",
+      end: "2026-01-01T11:00:00.000Z",
+      createdBy: { kind: "member", id: THIAGO },
+    });
+    expect(tempoRegistrado(state, mae.id)).toMatchObject({ minutos: 30, lancamentos: 2, emAndamento: false });
+  });
+
+  it("duas chamadas seguidas com o mesmo estado devolvem o mesmo objeto (D-16)", () => {
+    const mae = novaTarefa("Mãe");
+    fechado(mae, 30);
+    aberto(mae);
+    expect(tempoRegistrado(state, mae.id)).toEqual(tempoRegistrado(state, mae.id));
+  });
+
+  it("o corpo de tempoRegistrado não chama relógio nenhum (D-16)", () => {
+    const fonte = readFileSync(new URL("./derive.ts", import.meta.url), "utf8");
+    const inicio = fonte.indexOf("export function tempoRegistrado");
+    expect(inicio).toBeGreaterThan(-1);
+    const proxima = fonte.indexOf("\nexport function", inicio + 10);
+    const corpo = fonte.slice(inicio, proxima === -1 ? undefined : proxima);
+    expect(corpo).not.toContain("Date");
+    expect(corpo).not.toContain("now(");
   });
 });
