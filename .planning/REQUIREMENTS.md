@@ -163,7 +163,7 @@ Critério de pronto (ROADMAP Phase 10): a Estrutura de Trabalho fechada no níve
 - [x] **EST-07**: Nenhuma Lista oferece a Carga (5 abas; conversacional 4); a API recusa `saveView` com `kind: carga` (400); `grep -rn workload` e `weeklyCapacityMinutes` sem achados; coluna "Capacidade/sem" fora (2.5.1–2.5.5, D-13, D-14). Pendente.
 - [x] **EST-08**: Mudar as Visualizações padrão no Espaço muda as abas das Listas abaixo; `visualizacoes-padrao.test.ts` passa; Visualização salva de tipo indisponível some da barra e volta junto (2.6.1, 2.6.2, D-06, D-07). Pendente.
 - [x] **EST-09**: O tipo não deixa escrever `blocks` numa Lista; `bloqueado` fora de `InheritanceMode` (2.6.3, 2.6.4, D-15). Pendente.
-- [ ] **EST-10**: `setContainerBlock` e o interruptor "Bloquear para os níveis abaixo"; `bloqueio-de-aspecto.test.ts` passa, inclusive a recusa que nomeia a Pasta que sobrescreve e `criarAutomacao` recusada sob bloqueio (2.6.5, D-16). Pendente.
+- [x] **EST-10**: `setContainerBlock` e o interruptor "Bloquear para os níveis abaixo"; `bloqueio-de-aspecto.test.ts` passa, inclusive a recusa que nomeia a Pasta que sobrescreve e `criarAutomacao` recusada sob bloqueio (2.6.5, D-16). Pendente.
 - [ ] **EST-11**: `010` aplicada em produção após `--seco`; `count(*)` de `views` com `kind = 'carga'` e de `lists` com `blocks` dá 0; as quatro operações novas na tabela "Quem pode" (2.5.3, 2.6.3, D-18, D-19, D-20). Pendente.
 
 ## Traceability
@@ -250,7 +250,7 @@ Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pe
 | EST-07 | Phase 10 | Complete | pendente | derivado (10-CONTEXT) |
 | EST-08 | Phase 10 | Complete | pendente | derivado (10-CONTEXT) |
 | EST-09 | Phase 10 | Complete | pendente | derivado (10-CONTEXT) |
-| EST-10 | Phase 10 | Pending | pendente | derivado (10-CONTEXT) |
+| EST-10 | Phase 10 | Complete | pendente | derivado (10-CONTEXT) |
 | EST-11 | Phase 10 | Pending | pendente — checkpoint do dono (010 em produção) | derivado (10-CONTEXT) |
 
 **Coverage:**
