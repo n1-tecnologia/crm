@@ -496,6 +496,59 @@ export function subtaskProgress(state: DataState, taskId: Id): { done: number; t
   return { done, total: children.length };
 }
 
+/** D-15 — o número de tempo de uma Tarefa (11-03). */
+export interface TempoRegistrado {
+  /** Soma dos lançamentos FECHADOS da própria Tarefa (D-16). */
+  readonly minutos: number;
+  /** Quantos lançamentos a Tarefa tem, o cronômetro aberto incluído (é o que a lista do editor mostra). */
+  readonly lancamentos: number;
+  /** `true` quando a Tarefa tem lançamento sem `end`, de qualquer Membro. */
+  readonly emAndamento: boolean;
+  /** `minutos` mais os minutos fechados das Subtarefas ativas, em qualquer nível. */
+  readonly minutosComSubtarefas: number;
+}
+
+function minutosFechados(task: Task): number {
+  return task.timeEntries.reduce((soma, e) => (e.end !== undefined ? soma + (e.durationMinutes ?? 0) : soma), 0);
+}
+
+/**
+ * D-15 (Tempo registrado × agregado, ontologia `tarefa.md`:114-115) e D-16 (só
+ * lançamentos fechados; o cronômetro aberto só liga `emAndamento`). Depende só
+ * de `state`: não lê o relógio, então Painel, IA e tela leem o mesmo valor para
+ * o mesmo estado. Subtarefa fora de `ativo` não soma, e a descida para nela
+ * (mesma régua de `subtaskProgress`).
+ *
+ * Pitfall 9: o agregado `minutosComSubtarefas` vale para o estado que quem
+ * chama já enxerga. No navegador o estado vem recortado por `visibilidadePara`;
+ * quem chamar isto no servidor com o estado inteiro deve passar antes o recorte
+ * do Membro, ou somará Subtarefas que ele não vê.
+ */
+export function tempoRegistrado(state: DataState, taskId: Id): TempoRegistrado {
+  const task = state.tasks.find((t) => t.id === taskId);
+  if (!task) return { minutos: 0, lancamentos: 0, emAndamento: false, minutosComSubtarefas: 0 };
+  const minutos = minutosFechados(task);
+  let minutosComSubtarefas = minutos;
+  const visitadas = new Set<Id>([task.id]);
+  const pendentes: Id[] = [task.id];
+  while (pendentes.length > 0) {
+    const paiId = pendentes.pop()!;
+    for (const filha of state.tasks) {
+      if (filha.parentTaskId !== paiId || visitadas.has(filha.id)) continue;
+      visitadas.add(filha.id);
+      if (effectiveLifecycleOfTask(state, filha.id) !== "ativo") continue;
+      minutosComSubtarefas += minutosFechados(filha);
+      pendentes.push(filha.id);
+    }
+  }
+  return {
+    minutos,
+    lancamentos: task.timeEntries.length,
+    emAndamento: task.timeEntries.some((e) => e.end === undefined),
+    minutosComSubtarefas,
+  };
+}
+
 /** B48 — countable item = item that was not converted (D-02: the checklist has one level only). */
 export function checklistProgress(task: Task): { done: number; total: number } | null {
   const countable = task.checklists.flatMap((c) => c.items.filter((i) => i.converted === undefined));
