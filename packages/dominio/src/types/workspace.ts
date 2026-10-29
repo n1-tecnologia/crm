@@ -124,8 +124,6 @@ export interface Member {
   successorId?: Id;
   availability: AttendanceAvailability;
   userMemory: UserMemory;
-  /** Fase 3 — capacidade semanal para a Carga de trabalho; sem valor, 40 h. */
-  weeklyCapacityMinutes?: number;
 }
 
 /** B34 — value object of the workspace. */

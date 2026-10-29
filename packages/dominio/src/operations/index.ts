@@ -186,7 +186,6 @@ export const spawnCalendarOccurrence = instrumentar("spawnCalendarOccurrence");
 export const runCalendarRecurrences = instrumentar("runCalendarRecurrences");
 
 // planning.ts
-export const setMemberCapacity = instrumentar("setMemberCapacity");
 export const enableSprints = instrumentar("enableSprints");
 export const disableSprints = instrumentar("disableSprints");
 export const createNextSprint = instrumentar("createNextSprint");

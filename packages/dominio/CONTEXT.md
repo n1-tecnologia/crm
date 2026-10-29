@@ -195,7 +195,6 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `spawnNextOccurrence` | `operations/collaboration.ts` | sem conferência | LACUNA — ver 09-09-SUMMARY: não olha quem chama nem o alcance da Tarefa; `POST /operacoes/spawnNextOccurrence` cria a próxima ocorrência de qualquer Tarefa recorrente já concluída, para qualquer Membro, Convidado incluído (a tela chega aqui por `changeTaskStatus`, que confere) |
 | `spawnCalendarOccurrence` | `operations/collaboration.ts` | `taskWriteRefusal` | via `activeTask` |
 | `runCalendarRecurrences` | `operations/collaboration.ts` | `containerAdminRefusal` |  |
-| `setMemberCapacity` | `operations/planning.ts` | recusa embutida (o próprio Membro ou Administrador) | Membro ativo; definir a capacidade de outro Membro exige Papel Administrador ou Proprietário |
 | `enableSprints` | `operations/planning.ts` | `containerAdminRefusal` | via `sprintFolder` |
 | `disableSprints` | `operations/planning.ts` | `containerAdminRefusal` | via `sprintFolder` |
 | `createNextSprint` | `operations/planning.ts` | `containerAdminRefusal`, `mayBuild` | via `sprintFolder` (administrar a Pasta); a Lista da sprint nasce por `createList` |

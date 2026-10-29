@@ -1,7 +1,7 @@
 /**
  * Fase 3 da Gestão de Projetos: o que só faz sentido depois de datas,
- * estimativas e dependências existirem — sprints, capacidade por Membro e
- * Templates de Lista e de Tarefa.
+ * estimativas e dependências existirem — sprints e Templates de Lista e de
+ * Tarefa.
  *
  * Sprint não é entidade: é a Pasta com um papel, e as Listas dela são as
  * sprints datadas em sequência. Fechar uma sprint move o que ficou aberto para
@@ -17,7 +17,6 @@ import { createList } from "./structure";
 import { createTask, moveTask, type StatusMapping } from "./tasks";
 
 const now = (): string => new Date().toISOString();
-const DEFAULT_CAPACITY = 40 * 60;
 
 const civil = (d: Date): string => {
   const y = d.getFullYear();
@@ -31,45 +30,6 @@ const addDays = (iso: string, days: number): string => {
   const date = new Date(y ?? 1970, (m ?? 1) - 1, (d ?? 1) + days);
   return civil(date);
 };
-
-/* ───────────────────────────── Capacidade ───────────────────────────── */
-
-export function memberCapacityMinutes(state: DataState, memberId: Id): number {
-  return state.members.find((m) => m.id === memberId)?.weeklyCapacityMinutes ?? DEFAULT_CAPACITY;
-}
-
-/** O próprio Membro ou quem administra o Espaço de Trabalho. */
-export function setMemberCapacity(
-  state: DataState,
-  actingMemberId: Id,
-  memberId: Id,
-  weeklyCapacityMinutes: number,
-): OperationResult<number> {
-  const acting = state.members.find((m) => m.id === actingMemberId);
-  if (!acting || acting.state !== "ativo") return fail("Só um Membro ativo altera capacidade.");
-  const base = state.roles.find((r) => r.id === acting.roleId)?.base;
-  const admin = base === "proprietario" || base === "administrador";
-  if (memberId !== actingMemberId && !admin) return fail("Só o próprio Membro ou um Administrador define a capacidade.");
-  const target = state.members.find((m) => m.id === memberId);
-  if (!target || target.state !== "ativo") return fail("Membro não encontrado ou inativo.");
-  if (!Number.isInteger(weeklyCapacityMinutes) || weeklyCapacityMinutes < 0 || weeklyCapacityMinutes > 7 * 24 * 60) {
-    return fail("A capacidade é em minutos por semana, de 0 a 10080.", "capacidade");
-  }
-  const antes = memberCapacityMinutes(state, memberId);
-  target.weeklyCapacityMinutes = weeklyCapacityMinutes;
-  if (antes !== weeklyCapacityMinutes) {
-    recordActivity(state, {
-      actor: memberActor(actingMemberId),
-      action: "Capacidade semanal alterada",
-      objectType: "member",
-      objectId: target.id,
-      objectName: target.displayName,
-      before: `${antes} min`,
-      after: `${weeklyCapacityMinutes} min`,
-    });
-  }
-  return ok(weeklyCapacityMinutes);
-}
 
 /* ───────────────────────────── Sprints ───────────────────────────── */
 

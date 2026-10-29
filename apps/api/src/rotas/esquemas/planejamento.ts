@@ -32,7 +32,6 @@ const INSTANTIATE_LIST_TEMPLATE_INPUT = z
  * para `z.ZodTypeAny`.
  */
 export const PLANEJAMENTO = {
-  setMemberCapacity: z.tuple([ID, z.number()]),
   enableSprints: z.tuple([ID, z.number()]),
   disableSprints: z.tuple([ID]),
   createNextSprint: z.tuple([ID]),

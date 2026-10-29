@@ -86,7 +86,6 @@ import {
   instantiateTaskTemplate,
   saveListAsTemplate,
   saveTaskAsTemplate,
-  setMemberCapacity,
   sprintsOf,
 } from "./planning";
 import { CP, contaSemResumo } from "./financeiro";
@@ -3359,13 +3358,6 @@ describe("Fase 2 — colaboração na Tarefa", () => {
 describe("Fase 3 — planejamento", () => {
   it("weekStartOf: o domingo cai na segunda anterior (a Linha do tempo agrupa por semana)", () => {
     expect(weekStartOf("2026-09-13")).toBe("2026-09-07");
-  });
-
-  it("Capacidade: o próprio ou Administrador define; Membro comum não define a de outro (sai em 10-21)", () => {
-    expect(setMemberCapacity(state, "mem_julia", "mem_marcos", 1200).ok).toBe(false);
-    expect(setMemberCapacity(state, "mem_julia", "mem_julia", 1200).ok).toBe(true);
-    expect(setMemberCapacity(state, "mem_rafael", "mem_marcos", 99999).ok).toBe(false);
-    expect(setMemberCapacity(state, "mem_rafael", "mem_marcos", 1800).ok).toBe(true);
   });
 
   it("Sprints: Pasta com papel; próxima sprint nasce datada em sequência; fechar move o aberto para a próxima e arquiva", () => {

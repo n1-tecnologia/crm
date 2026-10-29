@@ -70,7 +70,6 @@ export function applyContasAPagar(state: DataState, clock: Clock, opcoes: Opcoes
       joinedAt: at(300),
       availability: { value: "disponivel", at: at(1), origin: "membro" },
       userMemory: { enabled: true, items: [] },
-      weeklyCapacityMinutes: 40 * 60,
     });
     state.members.push(
       mk(CP.financeiroId, "Maryane Generozo", "role_mem"),

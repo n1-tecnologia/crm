@@ -7,8 +7,8 @@
  * Regra de inclusão: entra se e somente se os dois primeiros parâmetros são
  * `(state: DataState, actingMemberId: Id, ...)` e o retorno é
  * `OperationResult<...>` — um caso de uso de um Membro, não um helper
- * (`nextId`, `recordActivity`), não uma leitura (`roleHolders`,
- * `memberCapacityMinutes`), não uma recusa pré-calculada (`listWriteRefusal`,
+ * (`nextId`, `recordActivity`), não uma leitura (`roleHolders`),
+ * não uma recusa pré-calculada (`listWriteRefusal`,
  * `statusOptionRefusal`) e não `submitForm` (quem responde a um Formulário
  * não é Membro — OQ-PF-01, Phase 2).
  *
@@ -178,7 +178,6 @@ import {
   renameTemplate,
   saveListAsTemplate,
   saveTaskAsTemplate,
-  setMemberCapacity,
   setTemplateArchived,
 } from "./planning";
 
@@ -545,7 +544,6 @@ export const OPERACOES = {
   spawnCalendarOccurrence,
   runCalendarRecurrences,
   // planning.ts
-  setMemberCapacity,
   enableSprints,
   disableSprints,
   createNextSprint,

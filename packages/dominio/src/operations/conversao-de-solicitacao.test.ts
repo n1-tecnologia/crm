@@ -127,7 +127,6 @@ function membroDeFixture(id: Id, displayName: string, roleId: Id): Member {
     joinedAt: AGORA,
     availability: { value: "disponivel", at: AGORA, origin: "membro" },
     userMemory: { enabled: true, items: [] },
-    weeklyCapacityMinutes: 40 * 60,
   };
 }
 

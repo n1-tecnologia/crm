@@ -12,7 +12,6 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { memberCapacityMinutes, setMemberCapacity } from "@n1/dominio/operations";
 import { useData, useRun, useSession } from "@/dados/store";
 import { AVAILABILITY_LABEL } from "@/features/shell/format";
 import { inviteMember, previewSuccession, removeMember } from "@n1/dominio/operations";
@@ -344,7 +343,6 @@ export default function MembrosPage() {
                 <th className="app-coluna">Estado</th>
                 <th className="app-coluna">Disponibilidade</th>
                 <th className="app-coluna">Entrou</th>
-                <th className="app-coluna">Capacidade/sem</th>
                 <th className="app-coluna" />
               </tr>
             </thead>
@@ -385,21 +383,6 @@ export default function MembrosPage() {
                       <span className="app-meta app-numero">
                         {member.joinedAt ? fmt.instant(member.joinedAt) : "—"}
                       </span>
-                    </td>
-                    <td>
-                      <CapacityEditor
-                        memberId={member.id}
-                        editavel={member.state === "ativo" && (mayGovern || member.id === memberId)}
-                        onResult={(result, message) => {
-                          if (result.ok) {
-                            setError(null);
-                            setNotice(message);
-                          } else {
-                            setNotice(null);
-                            setError(result.error ?? "Não foi possível concluir a operação.");
-                          }
-                        }}
-                      />
                     </td>
                     <td className="text-right">
                       <Button
@@ -459,69 +442,5 @@ export default function MembrosPage() {
         </Section>
       </CorpoDeTela>
     </div>
-  );
-}
-
-/**
- * Fase 3 — capacidade semanal em horas, gravada em minutos. Só o próprio ou
- * quem governa edita; o resto lê.
- */
-function CapacityEditor({
-  memberId,
-  editavel,
-  onResult,
-}: {
-  readonly memberId: string;
-  readonly editavel: boolean;
-  readonly onResult: (result: { ok: boolean; error?: string }, message: string) => void;
-}) {
-  const run = useRun();
-  const minutos = useData((data) => memberCapacityMinutes(data, memberId));
-  const [horas, setHoras] = useState(String(minutos / 60));
-  const valor = Number(horas.replace(",", "."));
-  const valido = horas.trim() !== "" && Number.isFinite(valor) && valor >= 0 && valor <= 168;
-  const gravar = () => {
-    if (!valido) {
-      onResult({ ok: false, error: "A capacidade é em horas por semana, de 0 a 168." }, "");
-      setHoras(String(minutos / 60));
-      return;
-    }
-    if (Math.round(valor * 60) !== minutos) {
-      onResult(run((data, me) => setMemberCapacity(data, me, memberId, Math.round(valor * 60))), "Capacidade semanal alterada.");
-    }
-  };
-  if (!editavel) {
-    return (
-      <span className="app-numero" style={{ color: "var(--texto)" }}>
-        {minutos / 60} h
-      </span>
-    );
-  }
-  return (
-    <form
-      className="flex items-center gap-1"
-      onSubmit={(event) => {
-        event.preventDefault();
-        gravar();
-      }}
-    >
-      <label className="sr-only" htmlFor={`capacidade-${memberId}`}>
-        Capacidade semanal em horas
-      </label>
-      <input
-        id={`capacidade-${memberId}`}
-        type="number"
-        min={0}
-        max={168}
-        step={0.5}
-        value={horas}
-        onChange={(event) => setHoras(event.target.value)}
-        onBlur={gravar}
-        aria-invalid={!valido}
-        className="campo app-numero w-16"
-        style={{ height: "var(--controle-h-sm)" }}
-      />
-      <span className="app-meta">h</span>
-    </form>
   );
 }

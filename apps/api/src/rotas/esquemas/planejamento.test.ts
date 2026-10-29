@@ -12,9 +12,8 @@ import { PLANEJAMENTO } from "./planejamento";
 const viaJson = (args: unknown[]): unknown[] => JSON.parse(JSON.stringify(args)) as unknown[];
 
 describe("esquemas/planejamento — a forma dos args de planning.ts", () => {
-  it("(a) cobertura — as 11 chaves de planning.ts em registro.ts", () => {
+  it("(a) cobertura — as 10 chaves de planning.ts em registro.ts", () => {
     const esperadas = [
-      "setMemberCapacity",
       "enableSprints",
       "disableSprints",
       "createNextSprint",
@@ -31,7 +30,6 @@ describe("esquemas/planejamento — a forma dos args de planning.ts", () => {
 
   it("(b) formas literais do web passam", () => {
     const FORMAS_DO_WEB: ReadonlyArray<readonly [keyof typeof PLANEJAMENTO, unknown[]]> = [
-      ["setMemberCapacity", ["mem_1", 2400]],
       ["enableSprints", ["fld_1", 14]],
       ["disableSprints", ["fld_1"]],
       ["createNextSprint", ["fld_1"]],
@@ -80,7 +78,6 @@ describe("esquemas/planejamento — a forma dos args de planning.ts", () => {
   });
 
   it("(c) formas hostis caem", () => {
-    expect(PLANEJAMENTO.setMemberCapacity.safeParse(viaJson(["mem_1", "2400"])).success).toBe(false);
     expect(
       PLANEJAMENTO.instantiateListTemplate.safeParse(
         viaJson(["tpl_1", { name: "L", parentType: "list", parentId: "lst_1" }]),
