@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 11
 current_phase_name: "Clone ClickUp: Tarefa (checklist, descrição e tempo)"
 status: executing
-stopped_at: Completed 11-05-PLAN.md
-last_updated: "2026-10-29T22:26:19.579Z"
+stopped_at: Completed 11-06-PLAN.md
+last_updated: "2026-10-29T22:30:02.698Z"
 last_activity: 2026-10-29
 last_activity_desc: Phase 11 execution started
-state_head: 95022d92132271a58260dff62c3af7e117816180
+state_head: c0cd3e187ea2eebf9813ece22743a9ec52ab69d7
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 199
-  completed_plans: 192
+  completed_plans: 193
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 ## Current Position
 
 Phase: 11 (Clone ClickUp: Tarefa (checklist, descrição e tempo)) — EXECUTING
-Plan: 6 of 8
+Plan: 7 of 8
 Status: Ready to execute
 Last activity: 2026-10-29 — Phase 11 execution started
 
@@ -410,6 +410,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 11 P03 | 5 min | 2 tasks | 6 files |
 | Phase 11 P04 | 5 min | 2 tasks | 6 files |
 | Phase 11 P05 | 13 min | 2 tasks | 4 files |
+| Phase 11 P06 | 6 min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -603,6 +604,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 11]: [11-03] D-15/D-16: tempoRegistrado conta o cronometro aberto em lancamentos (A2), ignora Subtarefa fora de ativo e tudo abaixo dela (A3) e nao le o relogio; minutos() vive so em features/estrutura/tempo.ts
 - [Phase 11]: 11-04: variante descricao de pendingMentions só para quem vê a Tarefa, ativa e fora de categoria terminal; Comentário sem o filtro terminal; ordem pela última Descrição alterada; quem se menciona também vê o aviso
 - [Phase 11]: 11-05: useMencoes e a copia unica do @ na Estrutura; campoRef do hook e ref de callback e o TextArea o liga por useImperativeHandle (react-hooks/refs)
+- [Phase 11]: 11-06: AlteracaoDeDescricao única serve Feed e Timeline; ehAlteracaoDeDescricao guarda Feed, Timeline, Auditoria e Reunião
 
 ### Pending Todos
 
@@ -664,6 +666,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-29T22:26:19.332Z
-Stopped at: Completed 11-05-PLAN.md
+Last session: 2026-10-29T22:30:02.445Z
+Stopped at: Completed 11-06-PLAN.md
 Resume file: None
