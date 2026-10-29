@@ -74,7 +74,7 @@ export interface TaskType {
  * de sobrescrever mora só em `blocks` (Espaço e Pasta); um contêiner pode
  * sobrescrever e impedir os de baixo ao mesmo tempo (2.6.4).
  */
-export type InheritanceMode = "herdado" | "sobrescrito" | "bloqueado";
+export type InheritanceMode = "herdado" | "sobrescrito";
 
 /**
  * Extensão do produto (C35) — o que a Tarefa é ao nascer nesta Lista.

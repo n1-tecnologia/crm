@@ -82,7 +82,6 @@ const ASPECTS: ReadonlyArray<{
 const MODE_LABEL: Record<InheritanceMode, string> = {
   herdado: "herdado",
   sobrescrito: "sobrescrito",
-  bloqueado: "bloqueado",
 };
 
 /** A regra que antes era prosa sob o título; agora é o title da coluna que a aplica. */
@@ -244,7 +243,7 @@ export function ContainerSettings({
                       <span className="app-meta block">{item.explanation}</span>
                     </td>
                     <td className="py-2">
-                      <Pilula tom={mode === "sobrescrito" ? "info" : mode === "bloqueado" ? "aviso" : "neutro"}>{MODE_LABEL[mode]}</Pilula>
+                      <Pilula tom={mode === "sobrescrito" ? "info" : "neutro"}>{MODE_LABEL[mode]}</Pilula>
                       {blocked ? (
                         <span className="app-meta mt-1 block" style={{ color: "var(--aviso)" }}>
                           Nenhum nível abaixo pode sobrescrever.
