@@ -615,7 +615,7 @@ Plans:
 **Itens da 2.7** (relatados nos testes) que mexam em Espaço, Pasta, Lista ou nas Configurações entram aqui, um por subtarefa.
 **Requirements**: EST-01, EST-02, EST-03, EST-04, EST-05, EST-06, EST-07, EST-08, EST-09, EST-10, EST-11 (derivados em `10-CONTEXT.md` "Requisitos derivados"; registrados em REQUIREMENTS.md, Fase 10)
 **Depends on:** Phase 9
-**Plans:** 9/21 plans executed
+**Plans:** 10/21 plans executed
 
 Plans:
 **Wave 1**
@@ -642,7 +642,7 @@ Plans:
 **Wave 8** *(blocked on Wave 7 completion)*
 - [x] 10-06-PLAN.md — Página da Lista limpa e abaixo de 1.000 linhas: `SelecaoEmLote`, frases fora, extrações (EST-02)
 - [x] 10-08-PLAN.md — Configurações em abas com `?aba=` e a linha de origem (EST-03)
-- [ ] 10-14-PLAN.md — Os 13 códigos de regra fora dos textos e o teste de varredura (EST-04)
+- [x] 10-14-PLAN.md — Os 13 códigos de regra fora dos textos e o teste de varredura (EST-04)
 
 **Wave 9** *(blocked on Wave 8 completion)*
 - [ ] 10-07-PLAN.md — A Carga fora, de ponta a ponta (EST-07)
