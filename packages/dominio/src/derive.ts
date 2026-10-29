@@ -518,6 +518,30 @@ export function taskLevel(state: DataState, task: Task): number {
   return level;
 }
 
+/**
+ * D-04 (2.4.1) — por que um Item de Checklist desta Tarefa NÃO pode virar
+ * Subtarefa, ou `undefined` se pode. `convertChecklistItem` recusa com esta
+ * frase antes de qualquer efeito, e a tela esconde o botão "Converter" com esta
+ * mesma função: o clique nunca é o primeiro a saber. Ordem fixa — a Tarefa
+ * existe, quem escreve nela, ciclo de vida, Lista com Subtarefas, nível —, e
+ * vale o primeiro motivo. Não lê o relógio.
+ */
+export function conversaoDeItemRecusada(state: DataState, actingMemberId: Id, taskId: Id): string | undefined {
+  const task = state.tasks.find((t) => t.id === taskId);
+  if (!task) return "Tarefa não encontrada.";
+  const escrita = taskWriteRefusal(state, actingMemberId, taskId);
+  if (escrita) return escrita;
+  if (effectiveLifecycleOfTask(state, taskId) !== "ativo") {
+    return "Esta Tarefa não está ativa. Restaure-a para editá-la.";
+  }
+  if (!effectiveListConfig(state, task.listId)?.features.subtarefas) return "Esta Lista não usa Subtarefas.";
+  const nivel = taskLevel(state, task);
+  if (nivel + 1 > state.workspace.maxSubtaskDepth) {
+    return `Esta Tarefa já está no nível ${nivel}, o último permitido. O item não pode virar Subtarefa aqui.`;
+  }
+  return undefined;
+}
+
 /** Documento 10, 6 — derived, never stored. */
 export function contactDisplayName(contact: Contact): string {
   const full = `${contact.firstName} ${contact.lastName}`.trim();

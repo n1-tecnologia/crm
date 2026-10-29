@@ -5,6 +5,7 @@
 
 import {
   checklistProgress,
+  conversaoDeItemRecusada,
   effectiveListConfig,
   effectiveLifecycleOfList,
   effectiveLifecycleOfTask,
@@ -620,6 +621,11 @@ function descendants(state: DataState, taskId: Id): Task[] {
 /**
  * B48 — converting a checklist item into a Subtask is a single act, without an
  * inverse, rejected before any effect when it would exceed the maximum depth.
+ *
+ * D-04 (2.4.1) — the refusal is `conversaoDeItemRecusada`, the same function
+ * the screen asks to hide the button, so both sides say the same sentence. The
+ * Subtask is always born under the Task of the Checklist (no alternative parent)
+ * and the Checklist has one level only (D-02): there is no Subitem to migrate.
  */
 export function convertChecklistItem(
   state: DataState,
@@ -627,49 +633,23 @@ export function convertChecklistItem(
   taskId: Id,
   checklistId: Id,
   itemId: Id,
-  parentTaskId?: Id,
 ): OperationResult<Task> {
   const task = requireTask(state, taskId);
   if (!task) return fail("Tarefa não encontrada.");
-  const escrita = mayWriteTask(state, actingMemberId, taskId);
-  if (escrita) return fail(escrita);
+  const recusa = conversaoDeItemRecusada(state, actingMemberId, taskId);
+  if (recusa) return fail(recusa);
   const checklist = task.checklists.find((c) => c.id === checklistId);
   const item = checklist?.items.find((i) => i.id === itemId);
   if (!checklist || !item) return fail("Item de Checklist não encontrado.");
   if (item.converted) return fail("Este Item já foi convertido.");
-  if (item.parentItemId) return fail("Só um Item de primeiro nível vira Subtarefa.");
-
-  const parent = parentTaskId ?? task.id;
-  const parentTask = requireTask(state, parent);
-  if (!parentTask) return fail("Tarefa pai não encontrada.");
-  const level = taskLevel(state, parentTask) + 1;
-  if (level > state.workspace.maxSubtaskDepth) {
-    return fail(
-      `Converter aqui criaria o nível ${level}. Escolha outra Tarefa pai ou converta a partir de um nível acima.`,
-    );
-  }
 
   const created = createTask(state, actingMemberId, {
     listId: task.listId,
     title: item.text,
-    parentTaskId: parent,
+    parentTaskId: task.id,
     ...(item.assigneeMemberId ? { assignees: [memberActor(item.assigneeMemberId)] } : {}),
   });
   if (!created.ok) return created;
-
-  // B48 — the subitems migrate as a checklist of the new Subtask.
-  const subitems = checklist.items.filter((i) => i.parentItemId === item.id);
-  if (subitems.length > 0) {
-    created.value.checklists.push({
-      id: nextId("chk"),
-      name: checklist.name,
-      order: 0,
-      items: subitems.map((s, index) => ({ ...s, id: nextId("cki"), order: index, parentItemId: undefined })),
-      createdBy: memberActor(actingMemberId),
-      createdAt: now(),
-    });
-    checklist.items = checklist.items.filter((i) => i.parentItemId !== item.id);
-  }
 
   item.converted = {
     taskId: created.value.id,

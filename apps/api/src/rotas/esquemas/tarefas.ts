@@ -56,7 +56,7 @@ export const TAREFAS = {
   assignTask: z.tuple([ID, ACTOR_REF]),
   unassignTask: z.tuple([ID, ACTOR_REF]),
   moveTask: z.tuple([ID, ID, opcional(z.array(STATUS_MAPPING))]),
-  convertChecklistItem: z.tuple([ID, ID, ID, opcional(ID)]),
+  convertChecklistItem: z.tuple([ID, ID, ID]),
   trashTask: z.tuple([ID]),
   restoreTask: z.tuple([ID]),
   // PARD-10 — eliminar agora e o expurgo pela retenção (dia civil como Date revivido).
