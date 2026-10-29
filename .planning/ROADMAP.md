@@ -615,7 +615,7 @@ Plans:
 **Itens da 2.7** (relatados nos testes) que mexam em Espaço, Pasta, Lista ou nas Configurações entram aqui, um por subtarefa.
 **Requirements**: EST-01, EST-02, EST-03, EST-04, EST-05, EST-06, EST-07, EST-08, EST-09, EST-10, EST-11 (derivados em `10-CONTEXT.md` "Requisitos derivados"; registrados em REQUIREMENTS.md, Fase 10)
 **Depends on:** Phase 9
-**Plans:** 11/21 plans executed
+**Plans:** 12/21 plans executed
 
 Plans:
 **Wave 1**
@@ -646,7 +646,7 @@ Plans:
 
 **Wave 9** *(blocked on Wave 8 completion)*
 - [x] 10-07-PLAN.md — A Carga fora, de ponta a ponta (EST-07)
-- [ ] 10-09-PLAN.md — Página do Espaço no formato da Pasta (EST-03)
+- [x] 10-09-PLAN.md — Página do Espaço no formato da Pasta (EST-03)
 
 **Wave 10** *(blocked on Wave 9 completion)*
 - [ ] 10-10-PLAN.md — Visualizações padrão na Lista e nas Configurações; salvas somem e voltam (EST-08)

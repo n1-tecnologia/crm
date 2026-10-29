@@ -156,7 +156,7 @@ Critério de pronto (ROADMAP Phase 10): a Estrutura de Trabalho fechada no níve
 
 - [ ] **EST-01**: Nenhuma tela tem "Rodar agenda da Lista" nem "Rodar automações por vencimento"; Lista com Tarefa recorrente por calendário e sem Automação por vencimento gera a próxima ocorrência pelo agendador, sem ensaio; o dono confirmou o agendador ligado em produção antes de o botão sair (2.1.1–2.1.3, D-01..D-04). Pendente.
 - [ ] **EST-02**: Uma só `SelecaoEmLote` nas três lentes; sem frases de explicação nem "De modelo"; contagem "Mostrando X de Y Tarefas."; `listas/[lista]/page.tsx` abaixo de 1.000 linhas; `npm run check` passa (2.1.4–2.1.6, D-17). Pendente.
-- [ ] **EST-03**: Configurações em abas com `?aba=`; "Aspectos configuráveis" não aparece em tela nenhuma; página do Espaço no formato da Pasta, com Painéis só quando houver (2.1.8, 2.1.9, D-17). Pendente.
+- [x] **EST-03**: Configurações em abas com `?aba=`; "Aspectos configuráveis" não aparece em tela nenhuma; página do Espaço no formato da Pasta, com Painéis só quando houver (2.1.8, 2.1.9, D-17). Pendente.
 - [x] **EST-04**: `sem-codigo-de-regra.test.ts` passa; os 13 textos sem código entre parênteses (2.1.10, D-17). Pendente.
 - [x] **EST-05**: `moveContainer` e `reorderContainers` no domínio com `mover-conteiner.test.ts` cobrindo mesmo Conjunto, Conjunto diferente com e sem mapeamento, Campo arquivado, Pasta com Subpastas recusada, promoção/rebaixamento, destino que bloqueia; reordenar por grupo (Espaços, Pastas, Listas) (2.3.1, 2.3.2, D-08, D-11). Pendente.
 - [ ] **EST-06**: Arrastar Lista/Pasta na árvore move (na hora se sem consequência; diálogo se houver) ou reordena dentro do grupo; Espaços reordenam; "Mover para…" no menu; recusa do domínio no diálogo ou `Toast`; ordem nova continua depois de recarregar (2.3.3, D-09, D-10, D-12). Pendente.
@@ -243,7 +243,7 @@ Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pe
 | SEG-12 | Phase 9 | Pending | pendente | derivado (09-CONTEXT) |
 | EST-01 | Phase 10 | Pending | pendente — checkpoint do dono (2.1.3) | derivado (10-CONTEXT) |
 | EST-02 | Phase 10 | Pending | pendente | derivado (10-CONTEXT) |
-| EST-03 | Phase 10 | Pending | pendente | derivado (10-CONTEXT) |
+| EST-03 | Phase 10 | Complete | pendente | derivado (10-CONTEXT) |
 | EST-04 | Phase 10 | Complete | pendente | derivado (10-CONTEXT) |
 | EST-05 | Phase 10 | Complete | pendente | derivado (10-CONTEXT) |
 | EST-06 | Phase 10 | Pending | pendente | derivado (10-CONTEXT) |
