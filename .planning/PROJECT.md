@@ -20,6 +20,7 @@ Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de po
 - ✓ Volume do banco legado medido: maior tabela 9.510 linhas, `solicitacoes_pagamentos` 1.110 — risco "volume desconhecido" fechado — Fase 0 (2026-09-15)
 - ✓ Contas a receber na plataforma (Critério 1 verdadeiro em produção); Marcos Paulo e Family Office como Empresas do Campo `Empresa`, recusados visivelmente pelo `automation/` até a fonte "plataforma" chegar aos serviços deles; Ação de notificar por Canal code-complete com contrato ponta a ponta verde — Fase 5 (2026-09-25, com lacunas aceitas: deploy do `automation/` adiado, corte MP/FO e 1º WhatsApp real pendentes — `05-VERIFICATION.md` § Acknowledged Gaps)
 - ✓ CRM de ponta a ponta — Contatos, Empresas, Funis/Etapas e Negócios em `@n1/dominio/crm/*` (português, modelo inglês convivendo — D-01), 53 rotas REST em `apps/api` sobre `007-crm.sql` com isolamento por Espaço e permissão por Papel no backend (D-03, D-10, D-14), 409 ricos para integridade (D-07, D-08, D-09), quadro kanban com mover/ganhar/perder/reabrir e lixeira/restaurar (D-05, D-06); 007 aplicada no banco da plataforma após conferência `--seco` (D-12); UAT 9/9 pelo dono — Fase 7 (2026-10-11, com ressalva aceita: `npm run check` vermelho por duas falhas pré-existentes do Financeiro, `07-VERIFICATION.md` override)
+- ✓ Tarefa — fechada a parte B da Sessão 2 do cronograma: converter Item do checklist em Subtarefa com um clique e só onde o domínio deixa (`conversaoDeItemRecusada`, aviso com "Abrir"); checklist de um nível (Subitem saiu do modelo; produção conferida pelo dono, 0 registros com a chave); menção na descrição com o `@Nome` destacado e aviso em Notificações; histórico "Descrição alterada" com o texto anterior ("Ver alteração", cortado em 2.000); tempo registrado calculado no domínio (`tempoRegistrado`) e igual na linha e no editor — Fase 11 (TAR-01..07, 8 planos, verificação 7/7, 21 ameaças fechadas, UAT aprovada pelo dono em 2026-10-29)
 
 ### Active
 
@@ -106,6 +107,13 @@ Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de po
 - **D7-10/D7-14:** Isolamento por Espaço e permissão por Papel aplicados no backend: `membro` cria/edita/exclui Contato, Empresa e Negócio; só `administrador`/`proprietario` mexe em Funil/Etapas e reabre Negócio ganho; `convidado` só lê.
 - **D7-12:** Migração aplicada é imutável — a correção do trigger entrou na própria 007 porque ela nunca tinha sido aplicada; `npm run migrar -- --seco` confere antes. Daqui em diante qualquer ajuste de schema do CRM é `008`.
 - **D7-15:** Busca global, Lixeira, Notificações, `/crm/meus-negocios` e Caixa de Entrada seguem no modelo antigo e não veem os registros novos — limitação aceita até a fase de unificação.
+### Travadas na Fase 11 — `11-CONTEXT.md` (Tarefa; decisões honradas na verificação)
+
+- **D-02/D-04:** o checklist tem um nível só — Subitem não existe na implementação e a conversão cria a Subtarefa sempre sob a Tarefa do Checklist (sem pai alternativo); a ontologia (B48) segue descrevendo os dois conceitos e a divergência está registrada em `ontologia/DECISOES-E-PENDENCIAS.md`.
+- **D-08/D-09:** o aviso da menção na descrição não é estado novo: vem da leitura (`pendingMentions`) e some quando a descrição deixa de citar a pessoa ou a Tarefa fecha; só vale para quem enxerga a Tarefa.
+- **D-13/D-14:** quem vê a Tarefa vê o texto anterior da descrição (risco aceito, `AR-11-02`); o recorte de visibilidade e o Ator de integração ficam de fora do histórico com texto.
+- **D-15:** a linha "Rastrear tempo" e o editor mostram o mesmo número, vindo de `tempoRegistrado` no domínio.
+
 </decisions>
 
 ### Candidatas — propostas, NÃO travadas (confirmar antes de depender delas)
@@ -151,4 +159,4 @@ Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de po
 Depois de cada transição de fase: requisitos invalidados → Out of Scope com motivo; validados → Validated com a fase; novos → Active; decisões novas → tabela acima (candidatas que forem confirmadas sobem para o bloco `<decisions>`); "What This Is" ainda vale? Depois de cada marco: revisão completa, Core Value ainda é a prioridade certa?
 
 ---
-*Last updated: 2026-10-11 after Phase 7 (CRM: Contatos, Empresas, Funis e Negócios)*
+*Last updated: 2026-10-29 after Phase 11 (Clone ClickUp: Tarefa) — as Fases 8, 9 e 10 ainda não estão refletidas neste arquivo*

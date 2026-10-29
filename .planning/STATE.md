@@ -22,10 +22,10 @@ milestone_name: milestone
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-10-11)
+See: .planning/PROJECT.md (updated 2026-10-29)
 
 **Core value:** Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de ponta a ponta sem abrir o ClickUp — dados no Postgres próprio, regras de `@n1/dominio` intactas.
-**Current focus:** Phase 11 — Clone ClickUp: Tarefa (checklist, descrição e tempo)
+**Current focus:** Phase 2 — Solicitação de pagamento — o front substitui o ClickUp
 
 ## Current Position
 
