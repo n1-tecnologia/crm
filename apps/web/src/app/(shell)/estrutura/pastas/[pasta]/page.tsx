@@ -18,8 +18,17 @@ import { use } from "react";
 import Link from "next/link";
 import { Folder, List, Plus, Settings } from "lucide-react";
 import { useData, useSession } from "@/dados/store";
-import { memberReachesContainer } from "@n1/dominio/derive";
-import { effectiveLifecycleOfList, isTerminalCategory, statusCategory } from "@n1/dominio/derive";
+import {
+  containerAdminRefusal,
+  containerPath,
+  effectiveLifecycleOfList,
+  irmaosOrdenados,
+  isTerminalCategory,
+  memberReachesContainer,
+  statusCategory,
+} from "@n1/dominio/derive";
+import { MEUS_NEGOCIOS_ID } from "@n1/dominio/seed-comercial";
+import type { Folder as Pasta, List as Lista } from "@n1/dominio/types";
 import { useFormat } from "@/features/shell/use-format";
 import {
   ActionMenu,
@@ -33,6 +42,7 @@ import {
   StateSeal,
 } from "@/features/shell/ui";
 import { useCreateContainerDialog } from "@/features/estrutura/create-container-dialog";
+import { useMoverConteinerDialog } from "@/features/estrutura/mover-conteiner-dialog";
 import { SprintPanel } from "@/features/estrutura/sprint-panel";
 
 export default function PastaPage({ params }: { params: Promise<{ pasta: string }> }) {
@@ -41,6 +51,7 @@ export default function PastaPage({ params }: { params: Promise<{ pasta: string 
   const { memberId } = useSession();
   const fmt = useFormat();
   const { openCreate } = useCreateContainerDialog();
+  const { openMover } = useMoverConteinerDialog();
   const record = state.folders.find((f) => f.id === pasta);
 
   // B38 — privado sem concessão: não existe para quem não alcança, nem o nome.
@@ -57,8 +68,13 @@ export default function PastaPage({ params }: { params: Promise<{ pasta: string 
 
   const ehPasta = record.parentType === "space";
   const ativa = record.lifecycle === "ativo";
-  const subpastas = state.folders.filter((f) => f.parentId === record.id && memberReachesContainer(state, memberId, "folder", f.id));
-  const listas = state.lists.filter((l) => l.parentId === record.id && memberReachesContainer(state, memberId, "list", l.id));
+  // F2: a ordem gravada (`order`), a mesma da árvore; o que o Membro não alcança não aparece.
+  const pai = { type: "folder", id: record.id } as const;
+  const subpastas = (irmaosOrdenados(state, "folder", pai) as readonly Pasta[]).filter((f) => memberReachesContainer(state, memberId, "folder", f.id));
+  const listas = (irmaosOrdenados(state, "list", pai) as readonly Lista[]).filter((l) => memberReachesContainer(state, memberId, "list", l.id));
+  // A9: a Pasta «Meus negócios» (e o que mora nela) não se move; o CRM tem a árvore própria.
+  const moravelAqui = !containerPath(state, "folder", record.id).some((no) => no.id === MEUS_NEGOCIOS_ID);
+  const recusaDeMover = containerAdminRefusal(state, memberId, "folder", record.id);
   const abertasEm = (listId: string) =>
     state.tasks.filter(
       (t) => t.listId === listId && !t.parentTaskId && t.lifecycle === "ativo" && !isTerminalCategory(statusCategory(state, t)),
@@ -100,6 +116,14 @@ export default function PastaPage({ params }: { params: Promise<{ pasta: string 
                   Nova Lista
                 </Button>
               )
+            ) : null}
+            {/* A8-bis: a casa das próximas ações da Pasta; hoje só «Mover para…» (D-10). */}
+            {moravelAqui ? (
+              <ActionMenu
+                label="Mais ações"
+                gatilhoClassName="btn-icone"
+                items={[{ label: "Mover para…", onSelect: () => openMover(record.id), ...(recusaDeMover ? { disabledReason: recusaDeMover } : {}) }]}
+              />
             ) : null}
           </>
         }

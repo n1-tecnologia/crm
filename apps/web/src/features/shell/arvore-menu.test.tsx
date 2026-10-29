@@ -15,6 +15,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { buildSeed } from "@n1/dominio/seed";
 import { MEUS_NEGOCIOS_ID } from "@n1/dominio/seed-comercial";
 import type { Ordens } from "@n1/dominio";
+import { containerAdminRefusal } from "@n1/dominio/derive";
 import { createFolder, createList, recusaDeReordenar } from "@n1/dominio/operations";
 import type { DataState } from "@n1/dominio/state";
 import { StoreProvider } from "@/dados/store";
@@ -467,8 +468,151 @@ describe("Subir e Descer — a fatia visível, a falha e a gravação (EST-06, T
   });
 });
 
-// Mantém os imports que a segunda metade do arquivo usa.
-void Suspense;
-void PastaPage;
-void MoverConteinerDialog;
-void enderecoAtual;
+describe("A árvore em telas sem hover (A7)", () => {
+  it("o «+» e o «⋯» de cada linha ficam sempre visíveis sob `(hover: none)`", async () => {
+    const { alfa } = pastaComTresListas();
+    await abrirArvore();
+    await waitFor(() => expect(temLinha(alfa)).toBe(true));
+
+    const mais = within(linha(alfa)).getByRole("button", { name: `Criar dentro de Alfa` }).closest("span.shrink-0");
+    const acoes = within(linha(alfa)).getByRole("button", { name: "Ações de Alfa" }).closest("span.shrink-0");
+    for (const envoltorio of [mais, acoes]) {
+      expect(envoltorio?.className).toContain("[@media(hover:none)]:opacity-100");
+      // Continua escondido sem hover nem foco quando há ponteiro.
+      expect(envoltorio?.className).toContain("opacity-0");
+    }
+  });
+});
+
+describe("A página da Pasta e da Subpasta (D-10, A8-bis, F2)", () => {
+  async function montarPagina(pastaId: string, memberId = THIAGO) {
+    const params = Promise.resolve({ pasta: pastaId });
+    await act(async () => {
+      render(
+        <StoreProvider
+          sessao={{ memberId }}
+          estadoInicial={{ data: state, revisao: 1, ordens: ordensDeTodasAsColecoes(state) }}
+          transporte={servidor.transporte}
+        >
+          <Suspense fallback="carregando">
+            <PastaPage params={params} />
+          </Suspense>
+          <MoverConteinerDialog />
+        </StoreProvider>,
+      );
+    });
+  }
+
+  const idsDeListas = (): string[] =>
+    screen
+      .getAllByRole("link")
+      .map((a) => a.getAttribute("href") ?? "")
+      .filter((h) => h.startsWith("/estrutura/listas/"))
+      .map((h) => h.replace("/estrutura/listas/", ""));
+
+  const idsDePastas = (): string[] =>
+    screen
+      .getAllByRole("link")
+      .map((a) => a.getAttribute("href") ?? "")
+      .filter((h) => h.startsWith("/estrutura/pastas/") && !h.endsWith("/configuracoes"))
+      .map((h) => h.replace("/estrutura/pastas/", ""));
+
+  it("mostra as Listas e as Subpastas na ordem gravada (inverter `order` inverte a página)", async () => {
+    const { pasta: P, alfa, beta, gama } = pastaComTresListas();
+    const s1 = pasta("Sub 1", P, "folder");
+    const s2 = pasta("Sub 2", P, "folder");
+    state.lists.find((l) => l.id === alfa)!.order = 2;
+    state.lists.find((l) => l.id === gama)!.order = 0;
+    state.folders.find((f) => f.id === s1)!.order = 1;
+    state.folders.find((f) => f.id === s2)!.order = 0;
+
+    await montarPagina(P);
+
+    expect(idsDeListas()).toEqual([gama, beta, alfa]);
+    expect(idsDePastas()).toEqual([s2, s1]);
+  });
+
+  it("«Mais ações» vem depois de «Configurações» e de «Criar» e «Mover para…» abre o diálogo da Pasta", async () => {
+    const { pasta: P } = pastaComTresListas();
+    await montarPagina(P);
+
+    const configuracoes = screen.getByRole("link", { name: /Configurações/ });
+    const criar = screen.getByRole("button", { name: "Criar nesta Pasta" });
+    const mais = screen.getByRole("button", { name: "Mais ações" });
+    expect(configuracoes.compareDocumentPosition(criar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(criar.compareDocumentPosition(mais) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(mais.className).toContain("btn-icone");
+
+    fireEvent.click(mais);
+    expect(nomes(screen.getAllByRole("menuitem"))).toEqual(["Mover para…"]);
+    fireEvent.click(item("Mover para…"));
+
+    expect(await screen.findByRole("alertdialog", { name: "Mover “Origem A”" })).toBeTruthy();
+    expect((await enderecoAtual()).get("mover")).toBe(P);
+  });
+
+  it("a Subpasta também tem «Mais ações»", async () => {
+    const { pasta: P } = pastaComTresListas();
+    const sub = pasta("Sub A", P, "folder");
+    await montarPagina(sub);
+
+    fireEvent.click(screen.getByRole("button", { name: "Mais ações" }));
+
+    expect(nomes(screen.getAllByRole("menuitem"))).toEqual(["Mover para…"]);
+  });
+
+  it("o Membro que não administra vê «Mover para…» desligado com a frase de `containerAdminRefusal`", async () => {
+    const { pasta: P } = pastaComTresListas();
+    const frase = containerAdminRefusal(state, JULIA, "folder", P);
+    expect(frase).toBeTruthy();
+    await montarPagina(P, JULIA);
+
+    fireEvent.click(screen.getByRole("button", { name: "Mais ações" }));
+
+    expect(desligado(item("Mover para…"))).toBe(true);
+    expect(item("Mover para…").getAttribute("title")).toBe(frase);
+    fireEvent.click(item("Mover para…"));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("a Pasta Meus negócios não tem «Mais ações» (A9)", async () => {
+    await montarPagina(MEUS_NEGOCIOS_ID);
+
+    expect(screen.queryByRole("button", { name: "Mais ações" })).toBeNull();
+    // O controle: o botão «Criar» da Pasta continua lá.
+    expect(screen.getByRole("button", { name: "Criar nesta Pasta" })).toBeTruthy();
+  });
+
+  it("EST-06: «Descer» na primeira Lista troca a ordem na árvore e na página da Pasta, no mesmo estado", async () => {
+    const { pasta: P, alfa, beta, gama } = pastaComTresListas();
+    const params = Promise.resolve({ pasta: P });
+    await act(async () => {
+      montar(
+        <>
+          <AppShell>{null}</AppShell>
+          <div data-testid="pagina">
+            <Suspense fallback="carregando">
+              <PastaPage params={params} />
+            </Suspense>
+          </div>
+        </>,
+      );
+    });
+    await waitFor(() => expect(temLinha(alfa)).toBe(true));
+    const pagina = screen.getByTestId("pagina");
+    const naPagina = (): string[] =>
+      within(pagina)
+        .getAllByRole("link")
+        .map((a) => a.getAttribute("href") ?? "")
+        .filter((h) => h.startsWith("/estrutura/listas/"))
+        .map((h) => h.replace("/estrutura/listas/", ""));
+    expect(filhosDe(P)).toEqual([alfa, beta, gama]);
+    expect(naPagina()).toEqual([alfa, beta, gama]);
+
+    abrirMenuDaLinha(alfa);
+    fireEvent.click(item("Descer"));
+
+    await waitFor(() => expect(filhosDe(P)).toEqual([beta, alfa, gama]));
+    expect(naPagina()).toEqual([beta, alfa, gama]);
+  });
+});
