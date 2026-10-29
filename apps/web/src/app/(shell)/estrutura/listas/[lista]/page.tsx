@@ -10,8 +10,8 @@
 
 import Link from "next/link";
 import { BookOpen, Briefcase, Link2, MessageSquare } from "lucide-react";
-import { use, useState, type ReactNode } from "react";
-import { useData, useRun, useRunConfirmado, useSession } from "@/dados/store";
+import { use, useState } from "react";
+import { useData, useRunConfirmado, useSession } from "@/dados/store";
 import {
   containerAdminRefusal,
   effectiveLifecycleOfList,
@@ -20,29 +20,22 @@ import {
   effectiveLifecycleOfTask,
   isTerminalCategory,
   statusCategory,
-  statusDefinition,
 } from "@n1/dominio/derive";
 import {
   applyView,
-  changeTaskStatus,
   createTask,
   listWriteRefusal,
-  statusOptionRefusal,
 } from "@n1/dominio/operations";
-import { canaisDaLista, contatoDaTarefa, listaSemCanais } from "@n1/dominio/derive-conversacional";
+import { contatoDaTarefa, listaSemCanais } from "@n1/dominio/derive-conversacional";
 import { LISTA_SEM_CANAIS } from "@n1/dominio/operations/canais";
 import { CP } from "@n1/dominio/operations/financeiro";
 import { abrirGuiaDoFinanceiro } from "@/features/financeiro/guia/guia-do-financeiro-dialogo";
-import { CHANNEL_ICON } from "@/features/crm/conversation-thread";
-import { PRIORITY_LABEL, STATUS_CATEGORY_LABEL, CHANNEL_TYPE_LABEL } from "@/features/shell/format";
+import { DetalhesDaLista } from "@/features/estrutura/detalhes-da-lista";
 import { useFormat } from "@/features/shell/use-format";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { TASK_PANEL_PARAM, TaskPanel, useTaskPanel } from "@/features/estrutura/task-panel";
-import { NovaTarefaConversacionalDialog } from "@/features/estrutura/nova-tarefa-conversacional-dialog";
-import {
-  MoveTaskDialog,
-  useMoveTaskDialog,
-} from "@/features/estrutura/move-task-dialog";
+import { TASK_PANEL_PARAM, useTaskPanel } from "@/features/estrutura/task-panel";
+import { useMoveTaskDialog } from "@/features/estrutura/move-task-dialog";
+import { DialogosDaLista } from "@/features/estrutura/dialogos-da-lista";
 import {
   CargaDeTrabalho,
   LinhaDoTempo,
@@ -52,16 +45,15 @@ import {
   SaveTemplateDialog,
 } from "@/features/estrutura/template-dialogs";
 import { FILTRO_VAZIO, ViewBar } from "@/features/estrutura/view-bar";
-import { BotaoDeMais, CompositorNoGrupo } from "@/features/estrutura/novo-no-grupo";
 import { SeletorDeTipoDeTarefa } from "@/features/estrutura/seletor-de-tipo";
-import { useRecente } from "@/features/shell/recente";
+import { QuadroDeTarefas } from "@/features/estrutura/quadro-de-tarefas";
+import { TabelaPlana } from "@/features/estrutura/tabela-plana";
 import { TabelaDeTarefas } from "@/features/estrutura/tabela-de-tarefas";
 import { CalendarioMensal } from "@/features/estrutura/calendario-mensal";
 import { abaDaView, kindDaAba, ROTULO_DA_ABA, type TipoDeAba } from "@/features/estrutura/tipo-de-visualizacao";
-import { TaskAttributeEditors } from "@/features/estrutura/task-editors";
-import { IniciarConversaDialog } from "@/features/crm/iniciar-conversa-dialog";
 import { RunScheduledButton } from "@/features/estrutura/bulk-status-bar";
 import { BotaoDeSelecao, SelecaoEmLote } from "@/features/estrutura/selecao-em-lote";
+import { BarraDeCriacao, type LenteDaBarra } from "@/features/estrutura/barra-de-criacao";
 import { ContagemFiltrada } from "@/features/estrutura/contagem-filtrada";
 import { RelatorioDeLotePainel } from "@/features/estrutura/relatorio-de-lote";
 import {
@@ -71,36 +63,21 @@ import {
   FinanceIndicators,
   financeProfileOf,
   FinanceTable,
-  FinanceToolbar,
   type FinanceFilters,
 } from "@/features/estrutura/financeiro/contas-view";
-import { SerieDeParcelasDialog } from "@/features/estrutura/financeiro/serie-dialog";
 import { dealOfTask, QuadroNegocios } from "@/features/estrutura/quadro-negocios";
-import { CartaoDeTarefa } from "@/features/estrutura/cartao-de-tarefa";
-import { valorDaConta, type FinanceProfile } from "@/features/estrutura/financeiro/lens";
-import { ColunaDeQuadro, VazioDaColuna } from "@/features/shell/quadro";
-import { DealScreen } from "@/features/crm/deal-screen";
-import { ContaDrawer } from "@/features/estrutura/financeiro/conta-drawer";
 import { linkVisivel, SEM_LINK_PARA_QUEM_NAO_ADMINISTRA } from "@/features/estrutura/link-publico";
-import { nomeDoAgente } from "@/features/estrutura/nome-do-ator";
 import { MEUS_NEGOCIOS_ID } from "@n1/dominio/seed-comercial";
 import {
   Abas,
   ActionMenu,
-  BarraDeFiltros,
   Button,
-  CategoryDot,
   CorpoDeTela,
   Icone,
   EmptyState,
   PageHeader,
-  Pilula,
-  StatusPicker,
-  RolagemNoTopo,
-  SidePanel,
   StateSeal,
 } from "@/features/shell/ui";
-import type { DataState } from "@n1/dominio/state";
 import type { OperationResult } from "@n1/dominio";
 import type { Task, View, ViewFilters } from "@n1/dominio/types";
 import type { RelatorioDeLote } from "@n1/dominio/operations/lote";
@@ -263,6 +240,14 @@ export default function ListaPage({
   // pura (Pós-venda) e para o lado da Estrutura das Listas de "Meus negócios".
   const conversacional = list.modeloDeTarefa === "conversacional";
   const conversacionalPura = conversacional && !espelhoComercial;
+  // Precedência das lentes da barra principal: financeira > espelho > conversacional.
+  const lenteDaBarra: LenteDaBarra = financeira
+    ? "financeira"
+    : espelhoComercial
+      ? "espelhoComercial"
+      : conversacional
+        ? "conversacional"
+        : "comum";
   const pedidaPelaUrl = query.get("nova-tarefa") !== null;
   const todas = state.tasks
     .filter(
@@ -319,6 +304,22 @@ export default function ListaPage({
     setSelecionadas(new Set());
     if (view !== "lista") setView("lista");
   };
+  const marcarUma = (id: string) =>
+    setSelecionadas((atual) => {
+      const next = new Set(atual);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const marcarVarias = (ids: readonly string[], on: boolean) =>
+    setSelecionadas((atual) => {
+      const next = new Set(atual);
+      for (const id of ids) {
+        if (on) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
   const botaoDeSelecao = (
     <BotaoDeSelecao
       selecionando={selecionando}
@@ -513,54 +514,7 @@ export default function ListaPage({
         {...(espelhoComercial || conversacional || list.plannedPeriod?.start
           ? {
               details: (
-                <span className="app-meta flex flex-wrap items-center gap-3">
-                  {conversacional ? (
-                    // C36 — por onde esta Lista atende: o tipo e a conta, na ordem marcada.
-                    canaisDaLista(state, list.id).length > 0 ? (
-                      <span className="flex flex-wrap items-center gap-1.5">
-                        <span>Atende por</span>
-                        {canaisDaLista(state, list.id).map((ch) => {
-                          const IconeDoCanal = CHANNEL_ICON[ch.channelType];
-                          return (
-                            <Pilula key={ch.id} tom="neutro" className="gap-1.5" title={`${CHANNEL_TYPE_LABEL[ch.channelType]} · ${ch.externalId}`}>
-                              <IconeDoCanal className="size-[var(--icone-xs)] shrink-0" aria-hidden="true" />
-                              {ch.name}
-                            </Pilula>
-                          );
-                        })}
-                      </span>
-                    ) : (
-                      <span role="status" style={{ color: "var(--aviso)" }}>
-                        {LISTA_SEM_CANAIS.replace(" configure-os nas Configurações da Lista.", "")}{" "}
-                        <Link href={`/estrutura/listas/${list.id}/configuracoes`} className="underline">
-                          Configurar os canais
-                        </Link>
-                        .
-                      </span>
-                    )
-                  ) : null}
-                  {espelhoComercial ? (
-                    <span>
-                      Cópia do Funil “{list.name}”: mover aqui não move o Negócio em{" "}
-                      <Link href="/crm/negocios" className="underline">
-                        Negócios
-                      </Link>
-                      .
-                    </span>
-                  ) : null}
-                  {list.plannedPeriod?.start ? (
-                    <span>
-                      Período planejado:{" "}
-                      {fmt.taskDate({
-                        form: "civilDay",
-                        value: list.plannedPeriod.start,
-                      })}
-                      {list.plannedPeriod.end
-                        ? ` a ${fmt.taskDate({ form: "civilDay", value: list.plannedPeriod.end })}`
-                        : ""}
-                    </span>
-                  ) : null}
-                </span>
+                <DetalhesDaLista list={list} conversacional={conversacional} espelhoComercial={espelhoComercial} />
               ),
             }
           : {})}
@@ -679,110 +633,47 @@ export default function ListaPage({
         aoTrocar={(chave) => setView(chave as ViewKind)}
       />
 
-      {effective === "ativo" && espelhoComercial ? (
-        <BarraDeFiltros>
-          <Button
-            size="sm"
-            variant="primary"
-            onClick={() => setIniciandoConversa({})}
-            icon={<Icone de={MessageSquare} tamanho="xs" />}
-            disabled={criacaoRecusada !== undefined}
-            disabledReason={criacaoRecusada ?? ""}
-          >
-            Iniciar conversa
-          </Button>
-        </BarraDeFiltros>
-      ) : null}
-
-      {effective === "ativo" && conversacionalPura ? (
-        // C35 — sem campo de título: a Tarefa nasce do Contato, no diálogo.
-        <BarraDeFiltros>
-          <Button
-            size="sm"
-            variant="primary"
-            onClick={() => setNovaConversacional({})}
-            icon={<Icone de={MessageSquare} tamanho="xs" />}
-            disabled={criacaoRecusada !== undefined}
-            disabledReason={criacaoRecusada ?? ""}
-          >
-            Nova Tarefa
-          </Button>
-          <span className="flex-1" />
-          {botaoDeSelecao}
-          <RunScheduledButton listId={list.id} report={reportar} />
-        </BarraDeFiltros>
-      ) : null}
-
-      {effective === "ativo" &&
-      !espelhoComercial &&
-      !conversacional &&
-      (!financeira || criandoConta || pedidaPelaUrl) ? (
-        <BarraDeFiltros>
-          <label className="sr-only" htmlFor="nova-tarefa">
-            {financeira ? "Nome da nova conta" : "Título da nova Tarefa"}
-          </label>
-          <SeletorDeTipoDeTarefa state={state} listId={list.id} value={novoTipo} onChange={setNovoTipo} />
-          <input
-            id="nova-tarefa"
-            value={newTitle}
-            onChange={(event) => setNewTitle(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") create();
-              if (event.key === "Escape" && financeira) fecharCriacao();
-            }}
-            placeholder={lente ? lente.labels.novaPlaceholder : "Nova Tarefa"}
-            // O "+" da árvore chega aqui com `?nova-tarefa=1`: o campo já
-            // recebe o foco, senão o atalho para no meio do caminho.
-            autoFocus={query.get("nova-tarefa") !== null || criandoConta}
-            className="campo min-w-48 flex-1"
-            style={{ height: "var(--controle-h-sm)", maxWidth: "28rem" }}
-          />
-          <Button
-            size="sm"
-            variant="primary"
-            onClick={create}
-            disabled={!newTitle.trim() || criacaoRecusada !== undefined}
-            disabledReason={
-              criacaoRecusada ?? "Escreva o título da Tarefa."
-            }
-          >
-            Criar
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => setCriandoDeModelo(true)}
-            disabled={criacaoRecusada !== undefined}
-            disabledReason={criacaoRecusada ?? ""}
-          >
-            De modelo
-          </Button>
-          {financeira ? (
-            <Button size="sm" variant="ghost" onClick={fecharCriacao}>
-              Cancelar
-            </Button>
-          ) : (
-            <>
-              <span className="flex-1" />
-              {botaoDeSelecao}
-              <RunScheduledButton listId={list.id} report={reportar} />
-            </>
-          )}
-        </BarraDeFiltros>
-      ) : null}
-
-      {financeira && effective === "ativo" ? (
-        <BarraDeFiltros>
-          <FinanceToolbar
-            listId={list.id}
-            profile={lente}
-            filters={financeFilters}
-            onFilters={setFinanceFilters}
-            onOpenFilters={() => setFiltrosAbertos((v) => !v)}
-            filtrosAvancados={filtrosAvancados}
-            fim={botaoDeSelecao}
-            report={reportar}
-          />
-        </BarraDeFiltros>
+      {effective === "ativo" ? (
+        <BarraDeCriacao
+          lente={lenteDaBarra}
+          listId={list.id}
+          {...(criacaoRecusada ? { criacaoRecusada } : {})}
+          fim={
+            financeira ? (
+              botaoDeSelecao
+            ) : (
+              <>
+                {botaoDeSelecao}
+                <RunScheduledButton listId={list.id} report={reportar} />
+              </>
+            )
+          }
+          aoIniciarConversa={() => setIniciandoConversa({})}
+          aoNovaConversacional={() => setNovaConversacional({})}
+          campo={{
+            aberto: criandoConta || pedidaPelaUrl,
+            titulo: newTitle,
+            aoMudarTitulo: setNewTitle,
+            tipo: novoTipo,
+            aoMudarTipo: setNovoTipo,
+            aoCriar: create,
+            aoCriarDeModelo: () => setCriandoDeModelo(true),
+            aoCancelar: fecharCriacao,
+            autoFocar: pedidaPelaUrl || criandoConta,
+          }}
+          {...(lente
+            ? {
+                financeiro: {
+                  perfil: lente,
+                  filtros: financeFilters,
+                  aoFiltrar: setFinanceFilters,
+                  aoAbrirFiltros: () => setFiltrosAbertos((v) => !v),
+                  filtrosAvancados,
+                },
+              }
+            : {})}
+          report={reportar}
+        />
       ) : null}
 
       <SelecaoEmLote
@@ -904,7 +795,7 @@ export default function ListaPage({
             {...maisConversacional}
           />
         ) : view === "quadro" ? (
-          <Quadro
+          <QuadroDeTarefas
             state={state}
             tasks={tasks}
             definitions={definitions}
@@ -917,24 +808,14 @@ export default function ListaPage({
         ) : view === "calendario" ? (
           <CalendarioMensal state={state} tasks={tasks} openTask={openTask} editavel={effective === "ativo"} report={reportar} />
         ) : view === "tabela" ? (
-          <Tabela state={state} tasks={tasks} editavel={effective === "ativo"} report={reportar} openTask={openTask} />
+          <TabelaPlana state={state} tasks={tasks} editavel={effective === "ativo"} report={reportar} openTask={openTask} />
         ) : view === "linha" ? (
           <LinhaDoTempo
             state={state}
             tasks={tasks}
             openTask={openTask}
             editavel={effective === "ativo" && criacaoRecusada === undefined}
-            report={(result, message) => {
-              if (result.ok) {
-                setError(null);
-                setNotice({ text: message });
-              } else {
-                setNotice(null);
-                setError(
-                  result.error ?? "Não foi possível concluir a operação.",
-                );
-              }
-            }}
+            report={reportar}
           />
         ) : view === "carga" ? (
           <CargaDeTrabalho state={state} tasks={tasks} openTask={openTask} />
@@ -951,23 +832,8 @@ export default function ListaPage({
                 definitions={definitions}
                 selected={selecionadas}
                 selecionando={selecionando}
-                onToggle={(id) =>
-                  setSelecionadas((atual) => {
-                    const next = new Set(atual);
-                    if (next.has(id)) next.delete(id);
-                    else next.add(id);
-                    return next;
-                  })
-                }
-                onToggleMany={(ids, on) =>
-                  setSelecionadas((atual) => {
-                    const next = new Set(atual);
-                    for (const id of ids)
-                      if (on) next.add(id);
-                      else next.delete(id);
-                    return next;
-                  })
-                }
+                onToggle={marcarUma}
+                onToggleMany={marcarVarias}
                 openTask={openTask}
                 report={reportar}
               />
@@ -994,351 +860,64 @@ export default function ListaPage({
             {...(criaNoGrupo ? { onCreateInGroup: criaNoGrupo, seletorDeTipo } : {})}
             {...(criacaoRecusada ? { criacaoRecusada } : {})}
             {...(selecionando
-              ? {
-                  selected: selecionadas,
-                  onToggle: (id: string) =>
-                    setSelecionadas((atual) => {
-                      const next = new Set(atual);
-                      if (next.has(id)) next.delete(id);
-                      else next.add(id);
-                      return next;
-                    }),
-                  onToggleMany: (ids: readonly string[], on: boolean) =>
-                    setSelecionadas((atual) => {
-                      const next = new Set(atual);
-                      for (const id of ids) if (on) next.add(id); else next.delete(id);
-                      return next;
-                    }),
-                }
+              ? { selected: selecionadas, onToggle: marcarUma, onToggleMany: marcarVarias }
               : {})}
           />
         )}
         </div>
       </CorpoDeTela>
 
-      {lente?.kind === "receber" ? (
-        <SerieDeParcelasDialog
-          open={criandoSerie}
-          onClose={() => setCriandoSerie(false)}
-          onCreated={(tasks, cliente) => {
-            // As novas nascem "para receber": um filtro de cartão as esconderia.
-            setFinanceFilters(FILTROS_INICIAIS);
-            setError(null);
-            setNotice({
-              text: `${tasks.length} conta(s) a receber criada(s) para ${cliente}, em “A receber”.`,
-              ...(tasks[0] ? { taskId: tasks[0].id } : {}),
-            });
-          }}
-        />
-      ) : null}
-      {espelhoComercial && iniciandoConversa ? (
-        <IniciarConversaDialog
-          listId={list.id}
-          open
-          {...(iniciandoConversa?.stageId ? { stageId: iniciandoConversa.stageId } : {})}
-          onClose={() => setIniciandoConversa(null)}
-          onDone={(text) => {
-            setIniciandoConversa(null);
-            setNotice({ text });
-          }}
-        />
-      ) : null}
-      {/* Renderizado sempre e controlado por `open`, como na Caixa de Entrada e
-          na ficha do Contato: a saída de `--dur-1` anima (COMPONENTES.md). A
-          `key` é a Lista — o diálogo parte dos props a cada abertura, então o
-          Status do "+" do grupo vale sem remontar (remontar ao fechar perderia a saída). */}
-      {conversacionalPura ? (
-        <NovaTarefaConversacionalDialog
-          key={list.id}
-          listId={list.id}
-          open={dialogoConversacional}
-          {...(novaConversacional?.statusId ? { statusId: novaConversacional.statusId } : {})}
-          onClose={fecharNovaConversacional}
-          onDone={(text, taskId) => {
-            // A Tarefa nasceu com a conversa: o popup dela abre no lugar do diálogo.
-            setNovaConversacional(null);
-            setError(null);
-            setNotice({ text, taskId });
-            abrirTarefaCriada(taskId);
-          }}
-        />
-      ) : null}
-      {financeira ? (
-        <ContaDrawer
-          key={openTaskId ?? "fechado"}
-          taskId={openTaskId}
-          onClose={closeTask}
-          report={reportar}
-        />
-      ) : negocioAberto ? (
-        // O card do Funil abre o Negócio (contato, conversa, roteiro), não a
-        // Tarefa que o espelha: é o dado do lead que o Comercial veio ver.
-        <SidePanel title={negocioAberto.title} open onClose={closeTask} wide bare>
-          <DealScreen
-            dealId={negocioAberto.id}
-            embedded={{
-              path: (
-                <>
-                  {config.path.map((node, index) => (
-                    <span key={node.id}>
-                      {index > 0 ? " › " : ""}
-                      {node.name}
-                    </span>
-                  ))}
-                </>
-              ),
-              onClose: closeTask,
-            }}
-          />
-        </SidePanel>
-      ) : (
-        <TaskPanel taskId={openTaskId} onClose={closeTask} />
-      )}
-      <MoveTaskDialog
-        taskId={movingTaskId}
-        onClose={closeMove}
-        onDone={(text) => {
+      <DialogosDaLista
+        listId={list.id}
+        financeira={financeira}
+        espelhoComercial={espelhoComercial}
+        conversacionalPura={conversacionalPura}
+        {...(lente?.kind === "receber"
+          ? {
+              serie: {
+                aberta: criandoSerie,
+                aoFechar: () => setCriandoSerie(false),
+                aoCriar: (novas: readonly Task[], cliente: string) => {
+                  // As novas nascem "para receber": um filtro de cartão as esconderia.
+                  setFinanceFilters(FILTROS_INICIAIS);
+                  setError(null);
+                  setNotice({
+                    text: `${novas.length} conta(s) a receber criada(s) para ${cliente}, em “A receber”.`,
+                    ...(novas[0] ? { taskId: novas[0].id } : {}),
+                  });
+                },
+              },
+            }
+          : {})}
+        iniciandoConversa={iniciandoConversa}
+        aoFecharIniciarConversa={() => setIniciandoConversa(null)}
+        aoIniciarConversa={(text) => {
+          setIniciandoConversa(null);
+          setNotice({ text });
+        }}
+        conversacionalAberto={dialogoConversacional}
+        statusDaConversacional={novaConversacional?.statusId}
+        aoFecharConversacional={fecharNovaConversacional}
+        aoNovaConversacional={(text, taskId) => {
+          // A Tarefa nasceu com a conversa: o popup dela abre no lugar do diálogo.
+          setNovaConversacional(null);
+          setError(null);
+          setNotice({ text, taskId });
+          abrirTarefaCriada(taskId);
+        }}
+        openTaskId={openTaskId}
+        aoFecharTarefa={closeTask}
+        negocioAberto={negocioAberto}
+        caminho={config.path}
+        movingTaskId={movingTaskId}
+        aoFecharMover={closeMove}
+        aoMoverTarefa={(text) => {
           // A Tarefa foi para outra Lista: o popup dela fecha, e o aviso fica à vista.
           closeTask();
           setNotice({ text });
         }}
+        report={reportar}
       />
-    </div>
-  );
-}
-
-type Definition = NonNullable<
-  ReturnType<typeof effectiveListConfig>
->["statusSet"]["definitions"][number];
-
-/**
- * O Quadro das Listas operacionais — e das Contas (Financeiro) — no quadro
- * padrão (`features/shell/quadro.tsx`): a mesma coluna e a mesma anatomia de
- * cartão do quadro de Negócios (fim de 2026-09-23: "tudo que for quadro, a
- * visualização deve ser igual à da segunda imagem"). Numa Lista financeira a
- * coluna soma o valor das Contas e o cartão destaca o valor.
- */
-function Quadro({
-  state,
-  tasks,
-  definitions,
-  onError,
-  openTask,
-  financeiro,
-  onCreateInGroup,
-  seletorDeTipo,
-  criacaoRecusada,
-}: {
-  readonly state: DataState;
-  readonly tasks: readonly Task[];
-  readonly definitions: readonly Definition[];
-  readonly onError: (message: string | null) => void;
-  readonly openTask: (taskId: string) => void;
-  /** A lente financeira da Lista: a coluna soma e o cartão destaca o valor. */
-  readonly financeiro?: FinanceProfile;
-  /** O "+" da coluna: a Tarefa nasce naquele Status. */
-  readonly onCreateInGroup?: (title: string, statusId: string, taskTypeId?: string) => boolean;
-  readonly seletorDeTipo?: (valor: string | undefined, aoEscolher: (taskTypeId: string) => void) => ReactNode;
-  readonly criacaoRecusada?: string;
-}) {
-  const run = useRun();
-  const fmt = useFormat();
-  const [dragging, setDragging] = useState<string | null>(null);
-  const recente = useRecente();
-  const [criandoEm, setCriandoEm] = useState<string | null>(null);
-  const motivoDoMais = onCreateInGroup ? criacaoRecusada : (criacaoRecusada ?? "Esta Lista não recebe Tarefas novas.");
-
-  const drop = (statusId: string) => {
-    if (!dragging) return;
-    const result = run((data, memberId) =>
-      changeTaskStatus(data, memberId, dragging, statusId),
-    );
-    onError(result.ok ? null : result.error);
-    setDragging(null);
-  };
-
-  return (
-    <RolagemNoTopo>
-      <div className="flex gap-4">
-        {definitions.map((definition) => {
-          const group = tasks.filter((task) => task.statusId === definition.id);
-          const soma = financeiro ? group.reduce((total, task) => total + valorDaConta(task), 0) : 0;
-          return (
-            <ColunaDeQuadro
-              key={definition.id}
-              contagem={group.length}
-              nome={definition.name}
-              cor={definition.color}
-              onDrop={() => drop(definition.id)}
-              mais={
-                <BotaoDeMais
-                  rotulo={definition.name}
-                  aberto={criandoEm === definition.id}
-                  onClick={() => setCriandoEm((atual) => (atual === definition.id ? null : definition.id))}
-                  {...(motivoDoMais ? { motivo: motivoDoMais } : {})}
-                />
-              }
-              subtitulo={`${STATUS_CATEGORY_LABEL[definition.category] ?? definition.category}${financeiro ? ` · ${fmt.money({ amount: soma, currency: "BRL" })}` : ""}`}
-            >
-              {criandoEm === definition.id && onCreateInGroup ? (
-                <CompositorNoGrupo
-                  placeholder={`Nova em ${definition.name}`}
-                  onCreate={(title, taskTypeId) => onCreateInGroup(title, definition.id, taskTypeId)}
-                  seletor={seletorDeTipo}
-                  onCancel={() => setCriandoEm(null)}
-                />
-              ) : null}
-              {group.length === 0 ? (
-                <VazioDaColuna
-                  texto={`Nenhuma Tarefa em “${definition.name}”.`}
-                  {...(onCreateInGroup && !motivoDoMais ? { onCriar: () => setCriandoEm(definition.id) } : {})}
-                />
-              ) : (
-                group.map((task) => (
-                  <CartaoDeTarefa
-                    key={task.id}
-                    state={state}
-                    task={task}
-                    {...(financeiro ? { financeiro } : {})}
-                    onOpen={() => openTask(task.id)}
-                    onDragStart={() => setDragging(task.id)}
-                    onDragEnd={() => setDragging(null)}
-                    recente={task.id === recente}
-                  />
-                ))
-              )}
-            </ColunaDeQuadro>
-          );
-        })}
-      </div>
-    </RolagemNoTopo>
-  );
-}
-
-/**
- * PARD-01 — a Tabela edita em linha o que a Tarefa tem de mais mexido: Status
- * (com a mesma recusa por opção do painel), prioridade e vencimento, pelos
- * mesmos editores da ficha. Fora disso, o título abre a Tarefa.
- */
-function Tabela({
-  state,
-  tasks,
-  editavel,
-  report,
-  openTask,
-}: {
-  readonly state: DataState;
-  readonly tasks: readonly Task[];
-  readonly editavel: boolean;
-  readonly report: (result: { ok: boolean; error?: string }, message: string) => void;
-  readonly openTask: (taskId: string) => void;
-}) {
-  const fmt = useFormat();
-  const run = useRun();
-  const { memberId } = useSession();
-  const recente = useRecente();
-  const somenteLeitura = editavel ? undefined : "Esta Lista não está ativa: a Tabela é só leitura.";
-  return (
-    <div>
-      <table className="tabela">
-        <thead>
-          <tr>
-            {[
-              "Título",
-              "Status",
-              "Categoria",
-              "Prioridade",
-              "Vencimento",
-              "Responsáveis",
-            ].map((label) => (
-              <th key={label} className="app-coluna">
-                {label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="cascata">
-          {tasks.map((task) => {
-            const definition = statusDefinition(
-              state,
-              task.listId,
-              task.statusId,
-            );
-            const category = statusCategory(state, task);
-            const config = effectiveListConfig(state, task.listId);
-            const motivo = somenteLeitura ?? (effectiveLifecycleOfTask(state, task.id) !== "ativo" ? "Esta Tarefa não está ativa." : undefined);
-            return (
-              <tr key={task.id} data-recente={task.id === recente ? "true" : undefined}>
-                <td>
-                  <button
-                    type="button"
-                    onClick={() => openTask(task.id)}
-                    className="app-md text-left hover:underline"
-                    style={{ color: "var(--texto)" }}
-                  >
-                    {task.title}
-                  </button>
-                </td>
-                <td>
-                  {config && definition ? (
-                    <StatusPicker
-                      options={config.statusSet.definitions}
-                      value={task.statusId}
-                      onChange={(statusId) =>
-                        report(
-                          run((data, me) => changeTaskStatus(data, me, task.id, statusId)),
-                          `“${task.title}” foi para ${config.statusSet.definitions.find((d) => d.id === statusId)?.name ?? "outro Status"}.`,
-                        )
-                      }
-                      readOnly={motivo !== undefined}
-                      {...(motivo ? { readOnlyReason: motivo } : {})}
-                      optionBlockReason={(optionId) => statusOptionRefusal(state, memberId, task, optionId)}
-                    />
-                  ) : definition ? (
-                    <CategoryDot color={definition.color} label={definition.name} />
-                  ) : (
-                    "—"
-                  )}
-                </td>
-                <td style={{ color: "var(--texto-3)" }}>
-                  {category ? STATUS_CATEGORY_LABEL[category] : "—"}
-                </td>
-                <td style={{ color: "var(--texto-3)" }}>
-                  {motivo ? (
-                    <span title={motivo}>{PRIORITY_LABEL[task.priority]}</span>
-                  ) : (
-                    <span className="block w-40">
-                      <TaskAttributeEditors task={task} report={report} features={{ prioridade: true, estimativa: false }} apenas="prioridade" />
-                    </span>
-                  )}
-                </td>
-                <td style={{ color: "var(--texto-3)" }}>
-                  {motivo ? (
-                    <span title={motivo}>{task.dueDate ? fmt.taskDate(task.dueDate) : "—"}</span>
-                  ) : (
-                    <span className="block w-44">
-                      <TaskAttributeEditors task={task} report={report} features={{ prioridade: true, estimativa: false }} apenas="vencimento" />
-                    </span>
-                  )}
-                </td>
-                <td style={{ color: "var(--texto-3)" }}>
-                  {task.assignees.length === 0
-                    ? "—"
-                    : task.assignees
-                        .map((assignee) =>
-                          assignee.kind === "member"
-                            ? state.members.find((m) => m.id === assignee.id)
-                                ?.displayName
-                            : nomeDoAgente(state, assignee.id),
-                        )
-                        .filter(Boolean)
-                        .join(", ")}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
     </div>
   );
 }
