@@ -8,12 +8,16 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
+import { bloqueioAcima, contagemAcumulada, effectiveListConfig, origemDoAspecto, sobrescritasAbaixo } from "../derive";
 import { buildSeed } from "../seed";
 import type { DataState } from "../state";
-import { blockedAbove, createFieldDefinition, overrideStatusSet, setContainerBlock } from "./configuration";
+import { blockedAbove, createFieldDefinition, overrideStatusSet, setContainerBlock, setContainerFeature } from "./configuration";
+import { criarAutomacao } from "./ia/automacoes-editor";
 import { createFolder, createList, createSpace } from "./structure";
 
 const THIAGO = "mem_thiago"; // Proprietário
+const RAFAEL = "mem_rafael"; // Administrador
+const JULIA = "mem_julia"; // Papel de vendas: não administra
 
 // Um Espaço novo, sem nenhuma sobrescrita abaixo: o `spc_com` do seed já tem Listas e
 // uma Subpasta com Conjunto próprio, e o teste precisa partir de um Espaço limpo.
@@ -103,5 +107,141 @@ describe("setContainerBlock — recusas básicas", () => {
 
     const novo = createFieldDefinition(state, THIAGO, { name: "Vigência", type: "text", definedAtType: "folder", definedAtId: pasta });
     expect(novo.ok).toBe(false);
+  });
+});
+
+describe("setContainerBlock — aspectos que acumulam", () => {
+  it("o Campo existente continua na Lista abaixo e um Campo novo na Pasta é recusado", () => {
+    const pasta = novaPasta("Contratos");
+    const lista = createList(state, THIAGO, { name: "Vigentes", parentType: "folder", parentId: pasta });
+    if (!lista.ok) throw new Error(lista.error);
+    const campo = createFieldDefinition(state, THIAGO, { name: "Valor", type: "text", definedAtType: "folder", definedAtId: pasta });
+    if (!campo.ok) throw new Error(campo.error);
+
+    expect(setContainerBlock(state, THIAGO, "space", ESPACO, "fieldDefinitions", true).ok).toBe(true);
+
+    expect(effectiveListConfig(state, lista.value.id)?.fieldDefinitionIds).toContain(campo.value.id);
+    const novo = createFieldDefinition(state, THIAGO, { name: "Prazo", type: "text", definedAtType: "folder", definedAtId: pasta });
+    expect(novo.ok).toBe(false);
+    if (!novo.ok) expect(novo.error).toBe(blockedAbove(state, "folder", pasta, "fieldDefinitions"));
+  });
+});
+
+describe("setContainerBlock — Automações (T-10-06)", () => {
+  it("bloquear Automações numa Pasta recusa criarAutomacao numa Lista dentro dela e libera o Espaço acima", () => {
+    const pasta = novaPasta("Marketing");
+    const lista = createList(state, THIAGO, { name: "Campanhas", parentType: "folder", parentId: pasta });
+    if (!lista.ok) throw new Error(lista.error);
+    expect(setContainerBlock(state, THIAGO, "folder", pasta, "automations", true).ok).toBe(true);
+
+    const abaixo = criarAutomacao(state, THIAGO, { name: "Avisar", scopeType: "list", scopeId: lista.value.id });
+    expect(abaixo.ok).toBe(false);
+    if (!abaixo.ok) {
+      expect(abaixo.error).toBe(blockedAbove(state, "list", lista.value.id, "automations"));
+      expect(abaixo.error).toContain("Pasta Marketing");
+    }
+    expect(state.automations.some((a) => a.scopeId === lista.value.id)).toBe(false);
+
+    const acima = criarAutomacao(state, THIAGO, { name: "Avisar o Espaço", scopeType: "space", scopeId: ESPACO });
+    expect(acima.ok).toBe(true);
+  });
+});
+
+describe("setContainerBlock — privacidade da recusa (B38a, T-10-05)", () => {
+  it("a Pasta privada que o ator não alcança entra só como contagem, nunca pelo nome", () => {
+    const publica = novaPasta("Clientes");
+    const privada = novaPasta("Diretoria secreta", { isPrivate: true });
+    expect(overrideStatusSet(state, THIAGO, "folder", publica).ok).toBe(true);
+    expect(overrideStatusSet(state, THIAGO, "folder", privada).ok).toBe(true);
+
+    const r = setContainerBlock(state, RAFAEL, "space", ESPACO, "statusSet", true);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error).toContain("Pasta Clientes");
+      expect(r.error).not.toContain("Diretoria secreta");
+      expect(r.error).toContain("e mais 1 que você não alcança");
+    }
+  });
+
+  it("se só houver a privada, a frase fala só na contagem", () => {
+    const privada = novaPasta("Diretoria secreta", { isPrivate: true });
+    expect(overrideStatusSet(state, THIAGO, "folder", privada).ok).toBe(true);
+
+    const r = setContainerBlock(state, RAFAEL, "space", ESPACO, "statusSet", true);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error).not.toContain("Diretoria secreta");
+      expect(r.error).toContain("1 contêiner que você não alcança define");
+    }
+  });
+
+  it("sobrescritasAbaixo com o Membro devolve só os que ele alcança; sem ele, todos", () => {
+    const privada = novaPasta("Diretoria secreta", { isPrivate: true });
+    expect(overrideStatusSet(state, THIAGO, "folder", privada).ok).toBe(true);
+    expect(sobrescritasAbaixo(state, "space", ESPACO, "statusSet").map((x) => x.id)).toEqual([privada]);
+    expect(sobrescritasAbaixo(state, "space", ESPACO, "statusSet", RAFAEL)).toEqual([]);
+    expect(sobrescritasAbaixo(state, "space", ESPACO, "statusSet", THIAGO).map((x) => x.id)).toEqual([privada]);
+  });
+});
+
+describe("setContainerBlock — quem pode e ciclo de vida", () => {
+  it("Membro sem administrar é recusado e nada muda", () => {
+    const r = setContainerBlock(state, JULIA, "space", ESPACO, "statusSet", true);
+    expect(r.ok).toBe(false);
+    expect(espaco().blocks.statusSet).toBeUndefined();
+  });
+
+  it("contêiner arquivado não muda de bloqueio", () => {
+    const pasta = novaPasta("Antiga");
+    const alvo = state.folders.find((f) => f.id === pasta);
+    if (!alvo) throw new Error("Pasta não criada");
+    alvo.lifecycle = "arquivado";
+    expect(setContainerBlock(state, THIAGO, "folder", pasta, "statusSet", true).ok).toBe(false);
+  });
+});
+
+describe("leituras para a tela (L5, origem, contagem)", () => {
+  it("bloqueioAcima devolve quem bloqueia e blockedAbove monta a mesma frase a partir dele", () => {
+    const pasta = novaPasta("Contratos");
+    expect(bloqueioAcima(state, "folder", pasta, "features")).toBeUndefined();
+    expect(setContainerBlock(state, THIAGO, "space", ESPACO, "features", true).ok).toBe(true);
+
+    const acima = bloqueioAcima(state, "folder", pasta, "features");
+    expect(acima).toEqual({ tipo: "space", id: ESPACO, nome: "Operações novas" });
+    expect(blockedAbove(state, "folder", pasta, "features")).toBe("Espaço Operações novas bloqueia as Funcionalidades abaixo dele.");
+    // o próprio nó que bloqueia não se bloqueia
+    expect(bloqueioAcima(state, "space", ESPACO, "features")).toBeUndefined();
+  });
+
+  it("origemDoAspecto: herdado, aqui e plataforma", () => {
+    const pasta = novaPasta("Contratos");
+    const lista = createList(state, THIAGO, { name: "Vigentes", parentType: "folder", parentId: pasta });
+    if (!lista.ok) throw new Error(lista.error);
+
+    expect(origemDoAspecto(state, "list", lista.value.id, "statusSet")).toEqual({
+      origem: "herdado",
+      de: { tipo: "space", id: ESPACO, nome: "Operações novas" },
+    });
+    expect(overrideStatusSet(state, THIAGO, "list", lista.value.id).ok).toBe(true);
+    expect(origemDoAspecto(state, "list", lista.value.id, "statusSet")).toEqual({ origem: "aqui" });
+
+    expect(origemDoAspecto(state, "list", lista.value.id, "defaultViews")).toEqual({ origem: "plataforma" });
+    expect(setContainerFeature(state, THIAGO, "folder", pasta, "prioridade", false).ok).toBe(true);
+    expect(origemDoAspecto(state, "list", lista.value.id, "features")).toEqual({
+      origem: "herdado",
+      de: { tipo: "folder", id: pasta, nome: "Contratos" },
+    });
+  });
+
+  it("contagemAcumulada: um Campo próprio na Pasta sob dois do Espaço", () => {
+    const pasta = novaPasta("Contratos");
+    for (const nome of ["Valor", "Prazo"]) {
+      const r = createFieldDefinition(state, THIAGO, { name: nome, type: "text", definedAtType: "space", definedAtId: ESPACO });
+      if (!r.ok) throw new Error(r.error);
+    }
+    const proprio = createFieldDefinition(state, THIAGO, { name: "Cláusula", type: "text", definedAtType: "folder", definedAtId: pasta });
+    if (!proprio.ok) throw new Error(proprio.error);
+    expect(contagemAcumulada(state, "folder", pasta, "fieldDefinitions")).toEqual({ aqui: 1, herdados: 2 });
+    expect(contagemAcumulada(state, "space", ESPACO, "fieldDefinitions")).toEqual({ aqui: 2, herdados: 0 });
   });
 });
