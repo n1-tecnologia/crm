@@ -117,6 +117,13 @@ negócio; o domínio decide o que de fato roda, dentro do `executar()`.
 As fontes se unem num só `Map` de pares (Espaço, Lista): uma linha de agenda
 por par e dia, venha ele de onde vier.
 
+**Um Espaço por worker, obrigatório** (10-REVIEW MEDIUM-08). `workspaceId` é
+exigido por `criarSchedulerWorker` (vazio lança) e `../index.ts` só liga o
+agendador com `AUTOMACOES_ESPACO_ID` preenchido (`escopoDoAgendador`): a volta
+expurga a lixeira vencida sem ensaio (Q3 = direto), e um worker sem filtro
+alcançaria todos os Espaços do banco, os de teste inclusive. A prévia continua
+podendo olhar todos (só lê).
+
 **A prévia, só leitura** (`previa.ts`, `npm run automacoes:previa -w @n1/api [-- <workspaceId>]`).
 Por (Espaço, Lista) candidata imprime nome da Lista, por onde entra (automação,
 recorrência, lixeira), regime (`ensaio`/`direto`), o Membro que assinaria

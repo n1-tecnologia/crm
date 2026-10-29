@@ -62,7 +62,7 @@ import { opcoesDoLogger } from "./observabilidade/log";
 import { fecharSentry, iniciarSentry } from "./observabilidade/sentry";
 import { carregarEnv, encerrar } from "./persistencia/conexao";
 import { criarOutboxWorker } from "./persistencia/outbox-worker";
-import { criarSchedulerWorker } from "./automacoes/scheduler-worker";
+import { criarSchedulerWorker, escopoDoAgendador } from "./automacoes/scheduler-worker";
 import {
   criarPonteDoAgente,
   descreverEscopo,
@@ -205,10 +205,12 @@ if (process.env.AUTOMACOES_WORKER_ATIVO === "true") {
   const intervaloMs = process.env.AUTOMACOES_INTERVALO_MS ? Number(process.env.AUTOMACOES_INTERVALO_MS) : undefined;
   const janelaDias = process.env.AUTOMACOES_JANELA_DIAS ? Number(process.env.AUTOMACOES_JANELA_DIAS) : undefined;
   const atorMemberId = process.env.AUTOMACOES_ATOR_MEMBER_ID;
+  // 10-REVIEW MEDIUM-08 — sem `AUTOMACOES_ESPACO_ID` o processo NÃO sobe: o
+  // expurgo da lixeira é irreversível e, sem filtro, alcançaria todos os Espaços.
+  const escopo = escopoDoAgendador(process.env);
   const schedulerWorker = criarSchedulerWorker({
     workerId: process.env.AUTOMACOES_WORKER_ID || `apps-api-agenda-${process.pid}`,
-    ...(process.env.AUTOMACOES_ESPACO_ID ? { workspaceId: process.env.AUTOMACOES_ESPACO_ID } : {}),
-    ...(process.env.AUTOMACOES_LISTA_ID ? { listId: process.env.AUTOMACOES_LISTA_ID } : {}),
+    ...escopo,
     ...(intervaloMs !== undefined ? { intervaloMs } : {}),
     ...(janelaDias !== undefined ? { janelaDias } : {}),
     // Padrão ligado (Task 2, D3-03): a primeira volta REAL de cada
@@ -226,7 +228,7 @@ if (process.env.AUTOMACOES_WORKER_ATIVO === "true") {
   });
   schedulerWorker.iniciar();
   aoEncerrar(() => schedulerWorker.parar());
-  app.log.info("scheduler de Automações ativo");
+  app.log.info({ espaco: escopo.workspaceId, lista: escopo.listId ?? "todas" }, "scheduler de Automações ativo");
 }
 
 // Registrada ANTES do `listen`: se ele falhar (porta ocupada), a próxima

@@ -40,6 +40,7 @@ import {
   criarSchedulerWorker as criarSchedulerWorkerDaFase10,
   dataCivil,
   diasCiveisPendentes,
+  escopoDoAgendador,
   liberarLista,
   type OpcoesSchedulerWorker,
   type RodarAgenda,
@@ -107,6 +108,27 @@ describe("dataCivil / diasCiveisPendentes — puras (03-VALIDATION.md § Samplin
     // lido como meia-noite UTC, que em América/São_Paulo (UTC-3) cai no dia
     // anterior — por isso `dataCivil()` nunca recebe o dia por esse caminho,
     // e converte sempre pelo construtor numérico de `Date` (achado de 03-02).
+  });
+});
+
+describe("10-REVIEW MEDIUM-08 — o agendador destrutivo nunca roda em todos os Espaços por omissão (sem banco)", () => {
+  it("AUTOMACOES_ESPACO_ID ausente, vazio ou em branco: recusa subir, com a variável que falta na mensagem", () => {
+    for (const env of [{}, { AUTOMACOES_ESPACO_ID: "" }, { AUTOMACOES_ESPACO_ID: "   " }]) {
+      expect(() => escopoDoAgendador(env)).toThrow(/AUTOMACOES_ESPACO_ID/);
+    }
+  });
+
+  it("com o Espaço preenchido, o escopo é ele (e a Lista, só se vier)", () => {
+    expect(escopoDoAgendador({ AUTOMACOES_ESPACO_ID: "ws_n1" })).toEqual({ workspaceId: "ws_n1" });
+    expect(escopoDoAgendador({ AUTOMACOES_ESPACO_ID: " ws_n1 ", AUTOMACOES_LISTA_ID: "lst_contas_a_pagar" })).toEqual({
+      workspaceId: "ws_n1",
+      listId: "lst_contas_a_pagar",
+    });
+    expect(escopoDoAgendador({ AUTOMACOES_ESPACO_ID: "ws_n1", AUTOMACOES_LISTA_ID: "" })).toEqual({ workspaceId: "ws_n1" });
+  });
+
+  it("criarSchedulerWorker sem Espaço lança antes de qualquer consulta", () => {
+    expect(() => criarSchedulerWorkerDaFase10({ workerId: "w_sem_espaco", workspaceId: "" })).toThrow(/Espaço de Trabalho/);
   });
 });
 

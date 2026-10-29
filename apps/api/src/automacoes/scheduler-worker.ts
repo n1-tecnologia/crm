@@ -212,11 +212,13 @@ export interface OpcoesSchedulerWorker {
   /** Identifica esta instância em `locked_by` — dois processos precisam de valores distintos. */
   readonly workerId: string;
   /**
-   * Quando definido, estreita a semeadura e a reivindicação a um único
-   * Espaço de Trabalho — o teste isola a própria fatia; em produção fica
-   * ausente e o worker cobre todos os Espaços, como o outbox.
+   * O ÚNICO Espaço de Trabalho que este worker semeia, reivindica e recupera.
+   * Obrigatório desde o 10-REVIEW (MEDIUM-08): a volta elimina de vez a
+   * lixeira vencida, e um worker sem Espaço cobria TODOS os Espaços do banco
+   * (os de teste inclusive) quando `AUTOMACOES_ESPACO_ID` se perdia num
+   * redeploy. Vazio ou em branco, `criarSchedulerWorker` lança.
    */
-  readonly workspaceId?: string;
+  readonly workspaceId: string;
   /** Quando definido, só reivindica linhas desta Lista — para ligar um fluxo isolado (ex.: só Contas a pagar) sem rodar as Automações das outras Listas. */
   readonly listId?: string;
   readonly relogio?: Relogio;
@@ -419,7 +421,31 @@ export async function liberarLista(workspaceId: string, listId: string): Promise
   return resultado.rowCount ?? 0;
 }
 
+/**
+ * O escopo do agendador lido do ambiente (`AUTOMACOES_ESPACO_ID`,
+ * `AUTOMACOES_LISTA_ID`), para `../index.ts`. 10-REVIEW MEDIUM-08: com
+ * `AUTOMACOES_WORKER_ATIVO=true`, o Espaço é OBRIGATÓRIO — o expurgo da
+ * lixeira é irreversível e, sem filtro, alcançaria todos os Espaços do banco.
+ * Falhar ao subir, com a variável na mensagem, é o erro barato; rodar em
+ * todos é o caro. Pura: não lê `process.env` sozinha.
+ */
+export function escopoDoAgendador(env: Readonly<Record<string, string | undefined>>): { readonly workspaceId: string; readonly listId?: string } {
+  const workspaceId = env.AUTOMACOES_ESPACO_ID?.trim();
+  if (!workspaceId) {
+    throw new Error(
+      "AUTOMACOES_WORKER_ATIVO=true exige AUTOMACOES_ESPACO_ID (o Espaço de Trabalho que o relógio visita, ex.: ws_n1). " +
+        "Sem ele o agendador rodaria — e expurgaria a lixeira vencida — em TODOS os Espaços do banco. Ver apps/api/.env.example.",
+    );
+  }
+  const listId = env.AUTOMACOES_LISTA_ID?.trim();
+  return { workspaceId, ...(listId ? { listId } : {}) };
+}
+
 export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWorker {
+  if (!opcoes.workspaceId?.trim()) {
+    throw new Error("criarSchedulerWorker exige o Espaço de Trabalho (workspaceId): o agendador nunca roda em todos os Espaços (10-REVIEW MEDIUM-08).");
+  }
+  const espacoDoWorker = opcoes.workspaceId;
   const relogio = opcoes.relogio ?? relogioDoSistema;
   const janelaDias = opcoes.janelaDias ?? 7;
   const maxTentativas = opcoes.maxTentativas ?? 3;
@@ -488,18 +514,12 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
       new Error("Lease vencida: o processo caiu antes de fechar este dia."),
       CODIGOS_DA_AGENDA.LEASE_EXPIRADO,
     );
-    const parametros: unknown[] = [limite, erro.code, erro.summary];
-    let filtroWorkspace = "";
-    if (opcoes.workspaceId !== undefined) {
-      parametros.push(opcoes.workspaceId);
-      filtroWorkspace = `and workspace_id = $${parametros.length}`;
-    }
     await pool().query(
       `update plataforma.automacao_agenda
           set estado = 'falhou', locked_by = null, locked_at = null,
               last_error_code = $2, last_error_summary = $3
-        where estado = 'processando' and locked_at < $1 ${filtroWorkspace}`,
-      parametros,
+        where estado = 'processando' and locked_at < $1 and workspace_id = $4`,
+      [limite, erro.code, erro.summary, espacoDoWorker],
     );
   }
 
@@ -514,7 +534,7 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
     const hoje = relogio.agora();
     const diaDaSemeadura = formatarDiaCivil(inicioDoDia(hoje));
 
-    const pares = await catalogoDeListasComAgenda(opcoes.workspaceId);
+    const pares = await catalogoDeListasComAgenda(espacoDoWorker);
     let linhasCriadas = 0;
 
     for (const par of pares) {
@@ -582,12 +602,8 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
     const instante = relogio.agora();
     const agora = instante.toISOString();
     const tentarDeNovoSoAntesDe = new Date(instante.getTime() - intervaloMs).toISOString();
-    const parametros: unknown[] = [opcoes.workerId, agora, maxTentativas, tentarDeNovoSoAntesDe];
-    let filtroWorkspace = "";
-    if (opcoes.workspaceId !== undefined) {
-      parametros.push(opcoes.workspaceId);
-      filtroWorkspace = `and s.workspace_id = $${parametros.length}`;
-    }
+    const parametros: unknown[] = [opcoes.workerId, agora, maxTentativas, tentarDeNovoSoAntesDe, espacoDoWorker];
+    let filtroWorkspace = "and s.workspace_id = $5";
     if (opcoes.listId !== undefined) {
       parametros.push(opcoes.listId);
       filtroWorkspace += ` and s.list_id = $${parametros.length}`;
