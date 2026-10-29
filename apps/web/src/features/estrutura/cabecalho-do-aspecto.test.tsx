@@ -8,9 +8,10 @@
  */
 
 import { afterEach, describe, expect, it } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { buildSeed } from "@n1/dominio/seed";
-import { createFolder, createList, createSpace } from "@n1/dominio/operations/structure";
+import { createFieldDefinition, overrideStatusSet, setContainerDefaultViews, setContainerFeature } from "@n1/dominio/operations/configuration";
+import { archiveContainer, createFolder, createList, createSpace } from "@n1/dominio/operations/structure";
 import type { ChamadaDeOperacao } from "@n1/dominio/operations";
 import type { DataState } from "@n1/dominio/state";
 import { StoreProvider } from "@/dados/store";
@@ -144,5 +145,252 @@ describe("InterruptorDeBloqueio — o traçador (EST-10)", () => {
 
     expect(gravacoes.chamadas).toEqual([{ nome: "setContainerBlock", args: ["folder", pastaId, "features", true] }]);
     expect(screen.getByRole("status").textContent).toContain("Funcionalidades bloqueadas para os níveis abaixo.");
+  });
+});
+
+/* ───────────── Task 2: "Já definido em:", aspectos que acumulam e a privacidade ───────────── */
+
+const RAFAEL = "mem_rafael"; // Administrador: administra o Espaço, mas não alcança Pasta privada alheia
+const JULIA = "mem_julia"; // Papel de vendas: não administra
+
+describe("InterruptorDeBloqueio — aspecto que substitui com sobrescrita abaixo (D-16)", () => {
+  it("Pasta com Conjunto próprio: o interruptor fica desligado e impedido, e a lista aponta para a mesma aba da Pasta", () => {
+    const { estado, dono, espacoId } = cadeia();
+    const clientes = createFolder(estado, dono, { name: "Clientes", parentType: "space", parentId: espacoId });
+    if (!clientes.ok) throw new Error(clientes.error);
+    const sobrescreve = overrideStatusSet(estado, dono, "folder", clientes.value.id);
+    if (!sobrescreve.ok) throw new Error(sobrescreve.error);
+    montar({ tipo: "space", id: espacoId, aspecto: "statusSet" }, estado);
+
+    expect(interruptor().disabled).toBe(true);
+    expect(interruptor().getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByText("Já definido em:")).toBeTruthy();
+    const link = screen.getByRole("link", { name: "Abrir as Configurações de Pasta Clientes" });
+    expect(link.getAttribute("href")).toBe(`/estrutura/pastas/${clientes.value.id}/configuracoes?aba=status`);
+    expect(link.textContent).toBe("Pasta Clientes");
+    expect(screen.getByText("Volte a herdar neles para poder bloquear.")).toBeTruthy();
+  });
+
+  it("o describedBy do interruptor aponta para a lista e a lista rola dentro de max-h-48", () => {
+    const { estado, dono, espacoId } = cadeia();
+    const clientes = createFolder(estado, dono, { name: "Clientes", parentType: "space", parentId: espacoId });
+    if (!clientes.ok) throw new Error(clientes.error);
+    expect(overrideStatusSet(estado, dono, "folder", clientes.value.id).ok).toBe(true);
+    montar({ tipo: "space", id: espacoId, aspecto: "statusSet" }, estado);
+
+    const descricao = document.getElementById(interruptor().getAttribute("aria-describedby") ?? "");
+    expect(descricao?.textContent).toContain("Já definido em:");
+    expect(descricao?.textContent).toContain("Volte a herdar neles para poder bloquear.");
+    const lista = within(descricao as HTMLElement).getByRole("list");
+    expect(lista.className).toContain("max-h-48");
+    expect(lista.className).toContain("overflow-y-auto");
+  });
+
+  it("um link por contêiner: Pasta, Subpasta e Lista, cada um para as Configurações dele na mesma aba", () => {
+    const { estado, dono, espacoId, pastaId } = cadeia();
+    const sub = createFolder(estado, dono, { name: "Aditivos", parentType: "folder", parentId: pastaId });
+    if (!sub.ok) throw new Error(sub.error);
+    const solta = createList(estado, dono, { name: "Propostas", parentType: "space", parentId: espacoId });
+    if (!solta.ok) throw new Error(solta.error);
+    for (const [tipo, id] of [["folder", pastaId], ["folder", sub.value.id], ["list", solta.value.id]] as const) {
+      const r = overrideStatusSet(estado, dono, tipo, id);
+      if (!r.ok) throw new Error(r.error);
+    }
+    montar({ tipo: "space", id: espacoId, aspecto: "statusSet" }, estado);
+
+    const href = (nome: string) => screen.getByRole("link", { name: `Abrir as Configurações de ${nome}` }).getAttribute("href");
+    expect(href("Pasta Contratos")).toBe(`/estrutura/pastas/${pastaId}/configuracoes?aba=status`);
+    expect(href("Subpasta Aditivos")).toBe(`/estrutura/pastas/${sub.value.id}/configuracoes?aba=status`);
+    expect(href("Lista Propostas")).toBe(`/estrutura/listas/${solta.value.id}/configuracoes?aba=status`);
+    expect(screen.getAllByRole("link")).toHaveLength(3);
+  });
+
+  it("o link leva para a mesma aba do aspecto: Funcionalidades abre ?aba=funcionalidades e Visualizações ?aba=visualizacoes", () => {
+    const { estado, dono, espacoId, pastaId } = cadeia();
+    const funcionalidade = setContainerFeature(estado, dono, "folder", pastaId, "prioridade", false);
+    if (!funcionalidade.ok) throw new Error(funcionalidade.error);
+    const visualizacoes = setContainerDefaultViews(estado, dono, "folder", pastaId, { disponiveis: ["lista", "quadro"], inicial: "lista" });
+    if (!visualizacoes.ok) throw new Error(visualizacoes.error);
+
+    montar({ tipo: "space", id: espacoId, aspecto: "features" }, estado);
+    expect(screen.getByRole("link", { name: "Abrir as Configurações de Pasta Contratos" }).getAttribute("href")).toBe(
+      `/estrutura/pastas/${pastaId}/configuracoes?aba=funcionalidades`,
+    );
+    cleanup();
+
+    montar({ tipo: "space", id: espacoId, aspecto: "defaultViews" }, estado);
+    expect(screen.getByRole("link", { name: "Abrir as Configurações de Pasta Contratos" }).getAttribute("href")).toBe(
+      `/estrutura/pastas/${pastaId}/configuracoes?aba=visualizacoes`,
+    );
+  });
+
+  it("sem sobrescrita abaixo a lista não aparece e o interruptor está livre", () => {
+    const { estado, espacoId } = cadeia();
+    montar({ tipo: "space", id: espacoId, aspecto: "statusSet" }, estado);
+
+    expect(screen.queryByText("Já definido em:")).toBeNull();
+    expect(screen.queryByText("Volte a herdar neles para poder bloquear.")).toBeNull();
+    expect(interruptor().disabled).toBe(false);
+  });
+});
+
+describe("InterruptorDeBloqueio — aspecto que acumula (A15)", () => {
+  it("Campo próprio numa Pasta abaixo não impede o interruptor da aba Campos", () => {
+    const { estado, dono, espacoId, pastaId } = cadeia();
+    const campo = createFieldDefinition(estado, dono, { name: "Cliente", type: "text", definedAtType: "folder", definedAtId: pastaId });
+    if (!campo.ok) throw new Error(campo.error);
+    montar({ tipo: "space", id: espacoId, aspecto: "fieldDefinitions" }, estado);
+
+    expect(interruptor().disabled).toBe(false);
+    expect(screen.queryByText("Já definido em:")).toBeNull();
+  });
+
+  it("ligado, mostra \"Os já criados continuam valendo.\" ligada por aria-describedby; desligado, a dica some", async () => {
+    const { estado, espacoId } = cadeia();
+    montar({ tipo: "space", id: espacoId, aspecto: "taskTypes" }, estado);
+    expect(screen.queryByText("Os já criados continuam valendo.")).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(interruptor());
+    });
+
+    const dica = screen.getByText("Os já criados continuam valendo.");
+    expect(interruptor().getAttribute("aria-describedby")).toBe(dica.id || dica.parentElement?.id);
+    expect(screen.getByRole("status").textContent).toContain("Tipos de Tarefa bloqueados para os níveis abaixo.");
+
+    await act(async () => {
+      fireEvent.click(interruptor());
+    });
+    expect(screen.queryByText("Os já criados continuam valendo.")).toBeNull();
+  });
+
+  it("aspecto que substitui, ligado, não mostra a dica dos que acumulam", async () => {
+    const { estado, espacoId } = cadeia();
+    montar({ tipo: "space", id: espacoId, aspecto: "statusSet" }, estado);
+    await act(async () => {
+      fireEvent.click(interruptor());
+    });
+    expect(screen.queryByText("Os já criados continuam valendo.")).toBeNull();
+  });
+});
+
+describe("InterruptorDeBloqueio — privacidade da lista (B38a, T-10-28)", () => {
+  /** Uma Pasta privada criada pelo dono, que o Administrador (Rafael) não alcança. */
+  function comPastaPrivada() {
+    const { estado, dono, espacoId } = cadeia();
+    const privada = createFolder(estado, dono, { name: "Diretoria secreta", parentType: "space", parentId: espacoId, isPrivate: true });
+    if (!privada.ok) throw new Error(privada.error);
+    const r = overrideStatusSet(estado, dono, "folder", privada.value.id);
+    if (!r.ok) throw new Error(r.error);
+    return { estado, espacoId, privadaId: privada.value.id };
+  }
+
+  it("a Pasta privada que o Membro não alcança não aparece na lista, e o nome dela não está na tela", () => {
+    const { estado, espacoId } = comPastaPrivada();
+    montar({ tipo: "space", id: espacoId, aspecto: "statusSet" }, estado, RAFAEL);
+
+    expect(document.body.textContent).not.toContain("Diretoria secreta");
+    expect(screen.queryByText("Já definido em:")).toBeNull();
+  });
+
+  it("sendo a única, o interruptor continua habilitado; forçar vira Toast de erro com a frase do domínio, sem o nome privado", async () => {
+    const { estado, espacoId } = comPastaPrivada();
+    const gravacoes = montar({ tipo: "space", id: espacoId, aspecto: "statusSet" }, estado, RAFAEL);
+    expect(interruptor().disabled).toBe(false);
+
+    await act(async () => {
+      fireEvent.click(interruptor());
+    });
+
+    expect(gravacoes.chamadas).toEqual([]);
+    const alerta = screen.getByRole("alert");
+    expect(alerta.textContent).toContain("1 contêiner que você não alcança define");
+    expect(document.body.textContent).not.toContain("Diretoria secreta");
+    expect(interruptor().getAttribute("aria-checked")).toBe("false");
+    expect(interruptor().disabled).toBe(false);
+  });
+
+  it("o dono, que alcança a Pasta privada, a vê na lista", () => {
+    const { estado, espacoId, privadaId } = comPastaPrivada();
+    montar({ tipo: "space", id: espacoId, aspecto: "statusSet" }, estado);
+
+    const link = screen.getByRole("link", { name: "Abrir as Configurações de Pasta Diretoria secreta" });
+    expect(link.getAttribute("href")).toBe(`/estrutura/pastas/${privadaId}/configuracoes?aba=status`);
+    expect(interruptor().disabled).toBe(true);
+  });
+});
+
+describe("InterruptorDeBloqueio — quem pode, estado e erro (T-10-29)", () => {
+  it("Membro que não administra: interruptor desligado e a nota com a frase de containerAdminRefusal", () => {
+    const { estado, espacoId } = cadeia();
+    montar({ tipo: "space", id: espacoId, aspecto: "statusSet" }, estado, JULIA);
+
+    expect(interruptor().disabled).toBe(true);
+    expect(screen.getByText(/Somente leitura: Configurar a Estrutura exige administrar o contêiner/)).toBeTruthy();
+  });
+
+  it("Pasta arquivada: interruptor desligado com a frase de arquivada", () => {
+    const { estado, dono, pastaId } = cadeia();
+    const r = archiveContainer(estado, dono, "folder", pastaId);
+    if (!r.ok) throw new Error(r.error);
+    montar({ tipo: "folder", id: pastaId, aspecto: "statusSet" }, estado);
+
+    expect(interruptor().disabled).toBe(true);
+    expect(screen.getByText("Somente leitura: Pasta arquivada: desarquive antes de editar.")).toBeTruthy();
+  });
+
+  it("gravando, o interruptor fica desligado até a resposta; o Toast vem depois", async () => {
+    const { estado, espacoId } = cadeia();
+    let liberar: () => void = () => undefined;
+    const lenta: Transporte = {
+      gravar: (pedido) =>
+        new Promise((resolver) => {
+          liberar = () =>
+            resolver({
+              tipo: "estado",
+              resultado: pedido.resultado,
+              estado: { data: pedido.copia, revisao: pedido.revisao + 1, ordens: {}, memberId: "" },
+            });
+        }),
+      hidratar: async () => ({ tipo: "falha", erro: "sem servidor neste teste." }),
+    };
+    render(
+      <StoreProvider sessao={{ memberId: estado.workspace.ownerMemberId }} estadoInicial={{ data: estado, revisao: 1, ordens: {} }} transporte={lenta}>
+        <CabecalhoDoAspecto tipo="space" id={espacoId} aspecto="statusSet" />
+      </StoreProvider>,
+    );
+
+    await act(async () => {
+      fireEvent.click(interruptor());
+    });
+    expect(interruptor().disabled).toBe(true);
+    expect(screen.queryByRole("status")).toBeNull();
+
+    await act(async () => {
+      liberar();
+    });
+    expect(interruptor().disabled).toBe(false);
+    expect(screen.getByRole("status").textContent).toContain("Conjunto de Status bloqueado para os níveis abaixo.");
+  });
+
+  it("recusa do servidor (corrida): Toast de erro com a frase e o interruptor volta ao estado anterior", async () => {
+    const { estado, espacoId } = cadeia();
+    const recusa: Transporte = {
+      gravar: async () => ({ tipo: "falha", erro: "Não dá para bloquear Conjunto de Status: Pasta Clientes define o próprio. Volte a herdar neles para poder bloquear." }),
+      hidratar: async () => ({ tipo: "falha", erro: "sem servidor neste teste." }),
+    };
+    render(
+      <StoreProvider sessao={{ memberId: estado.workspace.ownerMemberId }} estadoInicial={{ data: estado, revisao: 1, ordens: {} }} transporte={recusa}>
+        <CabecalhoDoAspecto tipo="space" id={espacoId} aspecto="statusSet" />
+      </StoreProvider>,
+    );
+
+    await act(async () => {
+      fireEvent.click(interruptor());
+    });
+
+    expect(screen.getByRole("alert").textContent).toContain("Pasta Clientes define o próprio");
+    expect(interruptor().getAttribute("aria-checked")).toBe("false");
+    expect(interruptor().disabled).toBe(false);
   });
 });
