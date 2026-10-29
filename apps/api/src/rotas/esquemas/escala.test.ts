@@ -153,6 +153,19 @@ describe("esquemas/escala — a forma dos args de scale.ts", () => {
     ).toBe(false);
   });
 
+  it("(c) 2.5.2 — saveView com kind carga é recusado (a rota devolve 400 para esquema recusado)", () => {
+    expect(
+      ESCALA.saveView.safeParse(
+        viaJson([{ listId: "lst_1", name: "V", kind: "carga", filters: {}, shared: false }]),
+      ).success,
+    ).toBe(false);
+    expect(
+      ESCALA.saveView.safeParse(
+        viaJson([{ listId: "lst_1", name: "V", kind: "lista", filters: {}, shared: false }]),
+      ).success,
+    ).toBe(true);
+  });
+
   it("(c) outras formas hostis caem", () => {
     expect(
       ESCALA.createForm.safeParse(

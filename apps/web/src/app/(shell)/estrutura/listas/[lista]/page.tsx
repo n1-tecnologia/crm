@@ -36,10 +36,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { TASK_PANEL_PARAM, useTaskPanel } from "@/features/estrutura/task-panel";
 import { useMoveTaskDialog } from "@/features/estrutura/move-task-dialog";
 import { DialogosDaLista } from "@/features/estrutura/dialogos-da-lista";
-import {
-  CargaDeTrabalho,
-  LinhaDoTempo,
-} from "@/features/estrutura/planning-views";
+import { LinhaDoTempo } from "@/features/estrutura/planning-views";
 import {
   NewTaskFromTemplateDialog,
   SaveTemplateDialog,
@@ -623,11 +620,9 @@ export default function ListaPage({
 
       <Abas
         rotulo="Visualizações"
-        abas={(["lista", "quadro", "calendario", "tabela", "linha", "carga"] as const)
-          // A Carga é da gestão de projetos; a Lista financeira mostra as cinco do mockup.
-          .filter((kind) => !financeira || kind !== "carga")
-          // Carga e Linha do tempo são da gestão de projetos: a Lista conversacional não planeja esforço.
-          .filter((kind) => !conversacional || (kind !== "carga" && kind !== "linha"))
+        abas={(["lista", "quadro", "calendario", "tabela", "linha"] as const)
+          // A Linha do tempo é da gestão de projetos: a Lista conversacional não planeja esforço.
+          .filter((kind) => !conversacional || kind !== "linha")
           .map((kind) => ({ chave: kind, rotulo: VIEW_LABEL[kind] }))}
         ativa={view}
         aoTrocar={(chave) => setView(chave as ViewKind)}
@@ -817,8 +812,6 @@ export default function ListaPage({
             editavel={effective === "ativo" && criacaoRecusada === undefined}
             report={reportar}
           />
-        ) : view === "carga" ? (
-          <CargaDeTrabalho state={state} tasks={tasks} openTask={openTask} />
         ) : lente ? (
           <>
             <div className="hidden sm:block">

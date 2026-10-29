@@ -891,7 +891,6 @@ const ROTULO_DA_VISUALIZACAO: Record<TipoDeVisualizacao, string> = {
   calendario: "Calendário",
   tabela: "Tabela",
   linhaDoTempo: "Linha do tempo",
-  carga: "Carga",
 };
 
 /** `Lista, Quadro · inicial Lista` — ou `herdadas` quando o nó não define as próprias. */

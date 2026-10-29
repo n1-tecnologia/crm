@@ -92,9 +92,10 @@ export const MODELO_DE_TAREFA = z.enum(["operacional", "conversacional"]);
 /**
  * Os tipos de Visualização. Mora aqui (e não em `escala.ts`) porque `saveView`
  * (`escala.ts`) e `setContainerDefaultViews` (`configuracao.ts`) o usam; tirar
- * `carga` (10-07) acontece num lugar só, junto da conferência contra `View["kind"]`.
+ * o conjunto de tipos muda num lugar só, junto da conferência contra `View["kind"]`
+ * (a Carga saiu em 10-07).
  */
-export const VIEW_KIND = z.enum(["lista", "quadro", "calendario", "linhaDoTempo", "tabela", "carga"]);
+export const VIEW_KIND = z.enum(["lista", "quadro", "calendario", "linhaDoTempo", "tabela"]);
 
 // ── Portão de enum bidirecional — falta ou sobra de membro não compila ──
 

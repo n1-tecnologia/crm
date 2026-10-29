@@ -112,7 +112,7 @@ export interface EnabledFeatures {
 export interface View {
   readonly id: Id;
   name: string;
-  kind: "lista" | "quadro" | "calendario" | "linhaDoTempo" | "tabela" | "carga";
+  kind: "lista" | "quadro" | "calendario" | "linhaDoTempo" | "tabela";
   /** Belongs to a container (shared with whoever opens it) or to a Member (personal view). */
   ownerKind: "container" | "member";
   ownerId: Id;

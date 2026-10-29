@@ -11,4 +11,11 @@ describe("tipo de Visualização — aba ↔ kind", () => {
     expect(abaDaView("quadro")).toBe("quadro");
     expect(abaDaView(undefined)).toBe("lista");
   });
+  it("tem cinco abas, sem Carga", () => {
+    expect(Object.keys(ROTULO_DA_ABA)).toHaveLength(5);
+  });
+  it("é total: uma Visualização salva do tipo carga (ainda sem a 010) abre na Lista", () => {
+    expect(abaDaView("carga" as never)).toBe("lista");
+    expect(abaDaView("qualquer" as never)).toBe("lista");
+  });
 });
