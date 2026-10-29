@@ -17,6 +17,7 @@
  * `setContainerBlock` e mostra a frase que o domínio devolver.
  */
 
+import Link from "next/link";
 import { Lock } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import { useData, useRunConfirmado, useSession } from "@/dados/store";
@@ -26,9 +27,10 @@ import {
   contagemAcumulada,
   effectiveLifecycleOfContainer,
   origemDoAspecto,
+  sobrescritasAbaixo,
 } from "@n1/dominio/derive";
 import { setContainerBlock } from "@n1/dominio/operations";
-import { blockedAbove } from "@n1/dominio/operations/configuration";
+import { ASPECTOS_QUE_SUBSTITUEM, blockedAbove } from "@n1/dominio/operations/configuration";
 import { ReadOnlyNote } from "@/features/estrutura/configuration-editors";
 import { Icone, Pilula, Toast, Toggle } from "@/features/shell/ui";
 import type { DataState } from "@n1/dominio/state";
@@ -66,6 +68,20 @@ const FRASE_DO_BLOQUEIO: Partial<Record<ConfigurableAspect, { readonly bloquear:
   },
 };
 
+/** A chave de `?aba=` de cada aspecto: o link «Já definido em:» abre o contêiner NA MESMA aba (container-settings.tsx). */
+const ABA_DO_ASPECTO: Partial<Record<ConfigurableAspect, string>> = {
+  statusSet: "status",
+  features: "funcionalidades",
+  fieldDefinitions: "campos",
+  taskTypes: "tipos-de-tarefa",
+  defaultViews: "visualizacoes",
+};
+
+/** `Pasta Clientes`, `Subpasta Q3`, `Lista Propostas` — como o domínio nomeia quem sobrescreve. */
+function rotuloDoDescendente(state: DataState, item: { readonly tipo: "folder" | "list"; readonly id: Id; readonly nome: string }): string {
+  return `${item.tipo === "list" ? "Lista" : palavraDoTipo(state, "folder", item.id)} ${item.nome}`;
+}
+
 /**
  * D-16 — Espaço ou Pasta/Subpasta bloqueia o aspecto para os níveis abaixo. A
  * tela desliga o controle onde a operação recusaria (sem permissão, contêiner
@@ -87,6 +103,8 @@ export function InterruptorDeBloqueio({
   const runConfirmado = useRunConfirmado();
   const rotuloId = useId();
   const motivoId = useId();
+  const listaId = useId();
+  const dicaId = useId();
   const [gravando, setGravando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -107,6 +125,15 @@ export function InterruptorDeBloqueio({
         : undefined);
   const bloqueadoAcima = bloqueioAcima(state, tipo, id, aspecto) !== undefined;
 
+  // Os aspectos que ACUMULAM nunca perguntam quem está abaixo: bloquear vale só para o que vier depois.
+  // Ligado, o interruptor sempre pode desligar; "impedido" só vale para quem ainda vai ligar.
+  const substitui = ASPECTOS_QUE_SUBSTITUEM.has(aspecto);
+  // B38a — `memberId` faz a leitura devolver só o que o Membro alcança: contêiner privado alheio não é nomeado.
+  const abaixo = substitui && !ligado ? sobrescritasAbaixo(state, tipo, id, aspecto, memberId) : [];
+  const impedidoPorDescendentes = abaixo.length > 0;
+  const aba = ABA_DO_ASPECTO[aspecto];
+  const mostraDicaDoAcumulado = !substitui && ligado;
+
   const alternar = (proximo: boolean): void => {
     setAviso(null);
     setErro(null);
@@ -123,7 +150,8 @@ export function InterruptorDeBloqueio({
     });
   };
 
-  const desligado = gravando || motivoDePermissao !== undefined || bloqueadoAcima;
+  const desligado = gravando || motivoDePermissao !== undefined || bloqueadoAcima || impedidoPorDescendentes;
+  const descricaoId = impedidoPorDescendentes ? listaId : mostraDicaDoAcumulado ? dicaId : motivoDePermissao ? motivoId : undefined;
 
   return (
     <>
@@ -135,10 +163,39 @@ export function InterruptorDeBloqueio({
           checked={ligado}
           onChange={alternar}
           labelledBy={rotuloId}
-          {...(motivoDePermissao ? { describedBy: motivoId } : {})}
+          {...(descricaoId ? { describedBy: descricaoId } : {})}
           disabled={desligado}
         />
       </div>
+      {mostraDicaDoAcumulado ? (
+        <p id={dicaId} className="app-meta basis-full">
+          Os já criados continuam valendo.
+        </p>
+      ) : null}
+      {impedidoPorDescendentes ? (
+        <div id={listaId} className="basis-full grid gap-1">
+          <p className="app-meta">Já definido em:</p>
+          <ul className="pilha-solta max-h-48 overflow-y-auto">
+            {abaixo.map((item) => {
+              const rotulo = rotuloDoDescendente(state, item);
+              return (
+                <li key={`${item.tipo}:${item.id}`} className="min-w-0">
+                  <Link
+                    href={`/estrutura/${item.tipo === "list" ? "listas" : "pastas"}/${item.id}/configuracoes${aba ? `?aba=${aba}` : ""}`}
+                    aria-label={`Abrir as Configurações de ${rotulo}`}
+                    title={rotulo}
+                    className="app-base block truncate hover:underline"
+                    style={{ color: "var(--texto)" }}
+                  >
+                    {rotulo}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="app-meta">Volte a herdar neles para poder bloquear.</p>
+        </div>
+      ) : null}
       {motivoDePermissao ? (
         <div id={motivoId} className="basis-full">
           <ReadOnlyNote reason={motivoDePermissao} />
