@@ -9,7 +9,7 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { effectiveListConfig, irmaosOrdenados, memberReachesContainer } from "../derive";
+import { effectiveContainerConfig, effectiveListConfig, irmaosOrdenados, memberReachesContainer } from "../derive";
 import { visibilidadePara } from "../derive-visibilidade";
 import { MEUS_NEGOCIOS_ID } from "../seed-comercial";
 import { buildSeed } from "../seed";
@@ -18,7 +18,7 @@ import type { DataState } from "../state";
 import { createFieldDefinition, createTaskType, overrideStatusSet, setContainerBlock, setContainerDefaultViews, setContainerFeature } from "./configuration";
 import { createForm, shareTaskPublicly } from "./scale";
 import { CP, CR } from "./financeiro";
-import { archiveContainer, createFolder, createList, moveContainer, recusaDeMover, recusaDeReordenar, reorderContainers } from "./structure";
+import { archiveContainer, consequenciasDeMover, createFolder, createList, createSpace, moveContainer, recusaDeMover, recusaDeReordenar, reorderContainers } from "./structure";
 import { createTask, setTaskFieldValue, updateTask } from "./tasks";
 
 const THIAGO = "mem_thiago"; // Proprietário
@@ -914,5 +914,238 @@ describe("moveContainer — bloqueio, colisão de nome, Formulário e estrutura 
       expect(pasta1.error).toBe("A Pasta Meus negócios não recebe Pastas nem Listas.");
       expect(listaPorId(ALFA).parentId).toBe(ORIGEM);
     });
+  });
+});
+
+describe("consequenciasDeMover — L2: o que o diálogo mostra antes de agir (Q4)", () => {
+  let ORIGEM: string;
+  let ALFA: string;
+  let DEST: string;
+  beforeEach(() => {
+    ORIGEM = pasta("Origem A");
+    ALFA = lista("Alfa", ORIGEM);
+    DEST = pasta("Destino B");
+  });
+
+  const tarefaDe = (id: string) => {
+    const t = state.tasks.find((x) => x.id === id);
+    if (!t) throw new Error(`Tarefa ${id} não existe`);
+    return t;
+  };
+  const noDestino = (id: string) => ({ parentType: "folder", parentId: id }) as const;
+
+  it("mesmo Conjunto e mesmos Campos: nada muda e nada é listado", () => {
+    tarefa(ALFA, "Uma");
+    expect(consequenciasDeMover(state, "list", ALFA, noDestino(DEST))).toEqual({
+      conjuntoMuda: false,
+      statusEmUso: [],
+      camposQueSaem: [],
+      valoresAfetados: 0,
+      tiposQueMudam: 0,
+      linksPublicosRevogados: 0,
+    });
+  });
+
+  it("outro Conjunto: lista cada Status em uso uma vez, na ordem do Conjunto de origem, com categoria e Tarefas", () => {
+    const config = effectiveListConfig(state, ALFA);
+    if (!config) throw new Error("sem configuração");
+    const [primeiro, segundo] = [...config.statusSet.definitions].sort((x, y) => x.order - y.order);
+    if (!primeiro || !segundo) throw new Error("Conjunto curto demais");
+    const a = tarefa(ALFA, "A");
+    const b = tarefa(ALFA, "B");
+    const c = tarefa(ALFA, "C");
+    tarefaDe(a).statusId = segundo.id;
+    tarefaDe(b).statusId = segundo.id;
+    tarefaDe(c).statusId = primeiro.id;
+    // Uma Subtarefa e uma Tarefa arquivada também contam (todos os ciclos de vida).
+    const sub = createTask(state, THIAGO, { listId: ALFA, title: "Sub de A", parentTaskId: a });
+    if (!sub.ok) throw new Error(sub.error);
+    tarefaDe(sub.value.id).statusId = segundo.id;
+
+    const r = consequenciasDeMover(state, "list", ALFA, { parentType: "space", parentId: "spc_ops" });
+
+    expect(r.conjuntoMuda).toBe(true);
+    expect(r.statusEmUso.map((s) => s.statusId)).toEqual([primeiro.id, segundo.id]);
+    expect(r.statusEmUso[0]).toEqual({ statusId: primeiro.id, nome: primeiro.name, categoria: primeiro.category, tarefas: 1 });
+    expect(r.statusEmUso[1]).toEqual({ statusId: segundo.id, nome: segundo.name, categoria: segundo.category, tarefas: 3 });
+  });
+
+  it("não deixa o estado mudado, nem o pai do movido", () => {
+    tarefa(ALFA, "A");
+    const antes = JSON.stringify(state);
+    consequenciasDeMover(state, "list", ALFA, { parentType: "space", parentId: "spc_ops" });
+    consequenciasDeMover(state, "folder", ORIGEM, { parentType: "space", parentId: "spc_ops" });
+    expect(JSON.stringify(state)).toBe(antes);
+  });
+
+  it("Campo que sai: nome e Valores `ativo` das Tarefas afetadas; o Valor já arquivado não conta", () => {
+    const campo = createFieldDefinition(state, THIAGO, { name: "Turma", type: "text", definedAtType: "folder", definedAtId: ORIGEM });
+    if (!campo.ok) throw new Error(campo.error);
+    const comValor = tarefa(ALFA, "Com valor");
+    const outra = tarefa(ALFA, "Com valor arquivado");
+    tarefa(ALFA, "Sem valor");
+    expect(setTaskFieldValue(state, THIAGO, comValor, campo.value.id, "Turma 1").ok).toBe(true);
+    expect(setTaskFieldValue(state, THIAGO, outra, campo.value.id, "Turma 2").ok).toBe(true);
+    const arquivado = tarefaDe(outra).fieldValues.find((v) => v.definitionId === campo.value.id);
+    if (!arquivado) throw new Error("sem Valor");
+    arquivado.state = "arquivado";
+
+    const r = consequenciasDeMover(state, "list", ALFA, noDestino(DEST));
+
+    expect(r.conjuntoMuda).toBe(false);
+    expect(r.camposQueSaem).toEqual([{ id: campo.value.id, nome: "Turma" }]);
+    expect(r.valoresAfetados).toBe(1);
+  });
+
+  it("Tipo sem efeito no destino e link público: contam as Tarefas", () => {
+    const tipo = createTaskType(state, THIAGO, { name: "Visita", icon: "map-pin", definedAtType: "folder", definedAtId: ORIGEM });
+    if (!tipo.ok) throw new Error(tipo.error);
+    expect(setContainerFeature(state, THIAGO, "folder", DEST, "compartilhamentoPublico", false).ok).toBe(true);
+    const a = tarefa(ALFA, "Visita 1");
+    const b = tarefa(ALFA, "Visita 2");
+    tarefa(ALFA, "Comum");
+    expect(updateTask(state, THIAGO, a, { taskTypeId: tipo.value.id }).ok).toBe(true);
+    expect(updateTask(state, THIAGO, b, { taskTypeId: tipo.value.id }).ok).toBe(true);
+    expect(shareTaskPublicly(state, THIAGO, a, { showsComments: false, showsAttachments: false }).ok).toBe(true);
+
+    const r = consequenciasDeMover(state, "list", ALFA, noDestino(DEST));
+
+    expect(r.tiposQueMudam).toBe(2);
+    expect(r.linksPublicosRevogados).toBe(1);
+  });
+
+  it("Pasta: soma as Listas da subárvore cujo Conjunto muda", () => {
+    const outra = lista("Beta", ORIGEM);
+    tarefa(ALFA, "A");
+    tarefa(outra, "B");
+    const r = consequenciasDeMover(state, "folder", ORIGEM, { parentType: "space", parentId: "spc_ops" });
+    expect(r.conjuntoMuda).toBe(true);
+    expect(r.statusEmUso.reduce((soma, s) => soma + s.tarefas, 0)).toBe(2);
+  });
+
+  it("devolve tudo zerado para um contêiner que não existe", () => {
+    expect(consequenciasDeMover(state, "list", "lst_nao_existe", noDestino(DEST)).conjuntoMuda).toBe(false);
+  });
+});
+
+describe("recusaDeMover × moveContainer — paridade (L1, Pitfall 6)", () => {
+  /** O mapeamento mais largo possível: todo Status que existe leva ao primeiro do Conjunto do destino. */
+  const mapeamentoCompleto = (alvo: { parentType: "space" | "folder"; parentId: string }) => {
+    const destinoSet = effectiveContainerConfig(state, alvo.parentType, alvo.parentId)?.statusSet.definitions.find((d) => d.order === 0) ?? effectiveContainerConfig(state, alvo.parentType, alvo.parentId)?.statusSet.definitions[0];
+    if (!destinoSet) throw new Error("destino sem Conjunto");
+    const todos = [state.spaces, state.folders, state.lists].flatMap((cs) => cs.flatMap((c) => c.statusSet?.definitions ?? []));
+    return todos.map((d) => ({ fromStatusId: d.id, toStatusId: destinoSet.id }));
+  };
+  const destinosDoSeed = () => [
+    ...state.spaces.map((s) => ({ parentType: "space", parentId: s.id }) as const),
+    ...state.folders.map((f) => ({ parentType: "folder", parentId: f.id }) as const),
+  ];
+
+  const divergencias = (ator: string, tipo: "folder" | "list", id: string) => {
+    const achados: string[] = [];
+    let aceitos = 0;
+    let recusados = 0;
+    for (const destino of destinosDoSeed()) {
+      const recusa = recusaDeMover(state, ator, tipo, id, destino);
+      const copia = structuredClone(state);
+      const r = moveContainer(copia, ator, tipo, id, destino, mapeamentoCompleto(destino));
+      if (r.ok === (recusa === undefined)) {
+        if (r.ok) aceitos += 1;
+        else recusados += 1;
+      } else {
+        achados.push(`${tipo} ${id} → ${destino.parentType} ${destino.parentId}: moveContainer.ok=${r.ok}, recusaDeMover=${String(recusa)}`);
+      }
+    }
+    return { achados, aceitos, recusados };
+  };
+
+  it("para uma Lista com Tarefas, em todos os Espaços e Pastas do seed, o Proprietário e o Administrador", () => {
+    for (const ator of [THIAGO, RAFAEL]) {
+      const r = divergencias(ator, "list", "lst_propostas");
+      expect(r.achados).toEqual([]);
+      expect(r.aceitos).toBeGreaterThan(0);
+      expect(r.recusados).toBeGreaterThan(0);
+    }
+  });
+
+  it("para uma Pasta com Listas e para uma Pasta com Subpastas, em todos os destinos do seed", () => {
+    const comLista = divergencias(THIAGO, "folder", "fld_propostas");
+    expect(comLista.achados).toEqual([]);
+    expect(comLista.aceitos).toBeGreaterThan(0);
+    const comSubpastas = divergencias(THIAGO, "folder", "fld_clientes");
+    expect(comSubpastas.achados).toEqual([]);
+    expect(comSubpastas.recusados).toBeGreaterThan(0);
+  });
+
+  it("para as estruturas fixas e para um Membro que não administra, todo destino é recusado nos dois lados", () => {
+    expect(divergencias(THIAGO, "list", CP.listId)).toMatchObject({ achados: [], aceitos: 0 });
+    expect(divergencias(THIAGO, "folder", MEUS_NEGOCIOS_ID)).toMatchObject({ achados: [], aceitos: 0 });
+    expect(divergencias(JULIA, "list", "lst_propostas")).toMatchObject({ achados: [], aceitos: 0 });
+  });
+
+  it("sobre o recorte do Membro (`visibilidadePara`), a recusa é a mesma do estado inteiro para um destino que ele vê (Pitfall 6)", () => {
+    const origem = pasta("Origem A");
+    const alfa = lista("Alfa", origem);
+    const dest = pasta("Destino B");
+    lista("Alfa", dest); // nome repetido: recusa por nome
+    const livre = pasta("Livre");
+    const campo = createFieldDefinition(state, THIAGO, { name: "Turma", type: "text", definedAtType: "folder", definedAtId: origem });
+    if (!campo.ok) throw new Error(campo.error);
+    const recorte = visibilidadePara(state, RAFAEL).estado;
+    expect(recorte.folders.some((f) => f.id === livre)).toBe(true);
+
+    for (const destino of [dest, livre, "spc_ops"].map((id) => (id.startsWith("spc_") ? ({ parentType: "space", parentId: id } as const) : ({ parentType: "folder", parentId: id } as const)))) {
+      expect(recusaDeMover(recorte, RAFAEL, "list", alfa, destino)).toBe(recusaDeMover(state, RAFAEL, "list", alfa, destino));
+      expect(consequenciasDeMover(recorte, "list", alfa, destino)).toEqual(consequenciasDeMover(state, "list", alfa, destino));
+    }
+    // Um destino que o Membro não alcança é "não encontrado" nos dois estados.
+    const escondido = { parentType: "space", parentId: "spc_gestao" } as const;
+    expect(recusaDeMover(recorte, RAFAEL, "list", alfa, escondido)).toBe(recusaDeMover(state, RAFAEL, "list", alfa, escondido));
+  });
+});
+
+describe("contador `order` sem duplicata ao criar (Pitfall 3)", () => {
+  it("mover e criar em seguida nunca repete `order` no grupo", () => {
+    const A = pasta("Origem A");
+    const B = pasta("Destino B");
+    const a1 = lista("A1", A);
+    lista("A2", A);
+    lista("B1", B);
+    expect(moveContainer(state, THIAGO, "list", a1, { parentType: "folder", parentId: B }).ok).toBe(true);
+    lista("Nova em B", B);
+    lista("Nova em A", A);
+    for (const pai of [A, B]) {
+      const ordens = state.lists.filter((l) => l.parentId === pai).map((l) => l.order).sort((x, y) => x - y);
+      expect(new Set(ordens).size).toBe(ordens.length);
+    }
+  });
+
+  it("a Lista criada num grupo com buraco na ordem entra depois do maior `order`, não no `length`", () => {
+    const A = pasta("Origem A");
+    lista("A1", A);
+    const a2 = lista("A2", A);
+    listaPorId(a2).order = 2; // dado antigo: 0 e 2, sem o 1
+    const nova = lista("A3", A);
+    expect(listaPorId(nova).order).toBe(3);
+  });
+
+  it("a Pasta criada entra depois do maior `order` dos irmãos, e a primeira de um pai vazio tem 0", () => {
+    const vazio = pasta("Vazio");
+    expect(state.folders.find((f) => f.id === vazio)?.order).toBe(state.folders.filter((f) => f.parentId === "spc_com" && f.id !== vazio).reduce((m, f) => Math.max(m, f.order), -1) + 1);
+    const sub = pasta("Primeira sub", vazio, "folder");
+    expect(state.folders.find((f) => f.id === sub)?.order).toBe(0);
+    const segunda = pasta("Segunda sub", vazio, "folder");
+    (state.folders.find((f) => f.id === sub) as { order: number }).order = 5;
+    const terceira = pasta("Terceira sub", vazio, "folder");
+    expect(state.folders.find((f) => f.id === terceira)?.order).toBe(6);
+    expect(state.folders.find((f) => f.id === segunda)?.order).toBe(1);
+  });
+
+  it("o Espaço criado entra depois do maior `order`", () => {
+    const maior = Math.max(...state.spaces.map((s) => s.order));
+    (state.spaces[0] as { order: number }).order = maior + 10;
+    const r = createSpace(state, THIAGO, { name: "Novo Espaço da conferência" });
+    if (!r.ok) throw new Error(r.error);
+    expect(r.value.order).toBe(maior + 11);
   });
 });
