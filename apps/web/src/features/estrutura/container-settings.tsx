@@ -18,6 +18,7 @@
  */
 
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { MessageSquare } from "lucide-react";
 import { useState } from "react";
 import { useData, useRun, useSession } from "@/dados/store";
@@ -32,60 +33,33 @@ import { CicloDeVidaDoConteiner, IdentidadeDoConteiner } from "@/features/estrut
 import { CaixaDeConfiguracoes } from "@/features/ferramentas/caixa-de-configuracoes";
 import { effectiveContainerConfig, memberReachesContainer } from "@n1/dominio/derive";
 import { FIELD_TYPE_LABEL } from "@/features/shell/format";
-import { CabecalhoDePainel, CorpoDeTela, EmptyState, PageHeader, Painel, Pilula, Section, StateSeal, Toast } from "@/features/shell/ui";
-import type { ConfigurableAspect, InheritanceMode } from "@n1/dominio/types";
+import { Abas, CorpoDeTela, EmptyState, PageHeader, StateSeal, Toast, type Aba } from "@/features/shell/ui";
 
-const ASPECTS: ReadonlyArray<{
-  readonly aspect: ConfigurableAspect;
-  readonly label: string;
-  readonly composition: "substitui" | "acumula";
-  readonly explanation: string;
-}> = [
-  {
-    aspect: "statusSet",
-    label: "Conjunto de Status",
-    composition: "substitui",
-    explanation: "O nível mais próximo que define vence por inteiro; nada do nível acima sobrevive.",
-  },
-  {
-    aspect: "features",
-    label: "Funcionalidades",
-    composition: "substitui",
-    explanation: "Cada funcionalidade é decidida pelo nível mais próximo que a define.",
-  },
-  {
-    aspect: "defaultViews",
-    label: "Visualizações padrão",
-    composition: "substitui",
-    explanation: "As Visualizações do nível mais próximo substituem as de cima.",
-  },
-  {
-    aspect: "fieldDefinitions",
-    label: "Definições de Campo",
-    composition: "acumula",
-    explanation: "Somam-se ao longo do caminho: o que vem de cima continua valendo aqui.",
-  },
-  {
-    aspect: "taskTypes",
-    label: "Tipos de Tarefa",
-    composition: "acumula",
-    explanation: "Somam-se ao longo do caminho.",
-  },
-  {
-    aspect: "automations",
-    label: "Automações",
-    composition: "acumula",
-    explanation: "Somam-se ao longo do caminho.",
-  },
+/**
+ * 2.1.8, D-17 — as Configurações em abas, com a aba na URL (`?aba=`). A tabela
+ * didática de "aspectos" saiu: cada aba é UM assunto e diz de onde vem o valor.
+ */
+type ChaveDaAba = "geral" | "status" | "funcionalidades" | "campos" | "tipos-de-tarefa" | "formularios" | "modelo-e-canais";
+
+const ABAS: ReadonlyArray<{ readonly chave: ChaveDaAba; readonly rotulo: string; readonly soLista?: true }> = [
+  { chave: "geral", rotulo: "Geral" },
+  { chave: "status", rotulo: "Status" },
+  { chave: "funcionalidades", rotulo: "Funcionalidades" },
+  { chave: "campos", rotulo: "Campos" },
+  { chave: "tipos-de-tarefa", rotulo: "Tipos de Tarefa" },
+  { chave: "formularios", rotulo: "Formulários", soLista: true },
+  { chave: "modelo-e-canais", rotulo: "Modelo e canais", soLista: true },
 ];
 
-const MODE_LABEL: Record<InheritanceMode, string> = {
-  herdado: "herdado",
-  sobrescrito: "sobrescrito",
-};
+const abasDoNivel = (tipo: "space" | "folder" | "list") => ABAS.filter((aba) => aba.soLista !== true || tipo === "list");
 
-/** A regra que antes era prosa sob o título; agora é o title da coluna que a aplica. */
-const REGRA_DOS_MODOS = "Cada aspecto é herdado, sobrescrito ou bloqueado. Bloquear impede que qualquer nível abaixo sobrescreva.";
+/**
+ * T-10-21 — o `?aba=` é entrada de quem abre o link: só as chaves da lista
+ * fechada DO NÍVEL valem, o resto cai em `geral`, e o valor nunca é desenhado.
+ */
+export function abaDasConfiguracoes(valor: string | null, tipo: "space" | "folder" | "list"): ChaveDaAba {
+  return abasDoNivel(tipo).find((aba) => aba.chave === valor)?.chave ?? "geral";
+}
 
 export function ContainerSettings({
   kind,
@@ -102,6 +76,9 @@ export function ContainerSettings({
   // C36 — o tipo cujo popup de "adicionar conta" está no ar.
   const [adicionando, setAdicionando] = useState<TipoDeAtendimento | null>(null);
   const recente = useRecente();
+  const router = useRouter();
+  const pathname = usePathname();
+  const query = useSearchParams();
   const report = (result: { ok: boolean; error?: string }, message: string) => {
     if (result.ok) {
       setError(null);
@@ -150,6 +127,17 @@ export function ContainerSettings({
 
   const backHref = hrefOf({ type: kind, id });
 
+  // 2.1.8 — a aba ativa vive em `?aba=` (A14): trocar substitui a entrada, não empilha histórico.
+  const aba = abaDasConfiguracoes(query.get("aba"), kind);
+  const abasVisiveis: ReadonlyArray<Aba> = abasDoNivel(kind).map(({ chave, rotulo }) => ({ chave, rotulo }));
+  const trocarDeAba = (chave: string): void => {
+    const proxima = new URLSearchParams(query.toString());
+    proxima.set("aba", chave);
+    router.replace(`${pathname}?${proxima}`, { scroll: false });
+  };
+  const fieldDefinitionIds = config?.fieldDefinitionIds ?? [];
+  const taskTypeIds = config?.taskTypeIds ?? [];
+
   // C35 — o modelo de Tarefa é atributo nativo da Lista (irmão de `isPrivate`),
   // não aspecto herdável: muda só enquanto ela está vazia, contando a lixeira.
   const lista = kind === "list" && "modeloDeTarefa" in container ? container : undefined;
@@ -160,27 +148,6 @@ export function ContainerSettings({
   const motivoDoModelo = temTarefas
     ? "O modelo de Tarefa não muda numa Lista que já tem Tarefas."
     : (useMayConfigureReason ?? (formularioSegura ? FORMULARIOS_ANTES_DO_MODELO : undefined));
-
-  const definedHere = (aspect: ConfigurableAspect): boolean =>
-    (container.modes[aspect] ?? "herdado") !== "herdado";
-
-  const sourceOf = (aspect: ConfigurableAspect): string => {
-    if (definedHere(aspect)) return "definido aqui";
-    for (let i = ancestors.length - 1; i >= 0; i -= 1) {
-      const node = ancestors[i];
-      if (!node) continue;
-      const ancestor =
-        node.type === "space"
-          ? state.spaces.find((s) => s.id === node.id)
-          : node.type === "folder"
-            ? state.folders.find((f) => f.id === node.id)
-            : state.lists.find((l) => l.id === node.id);
-      if (ancestor && (ancestor.modes[aspect] ?? "herdado") !== "herdado") {
-        return `vem de ${node.name}`;
-      }
-    }
-    return "padrão da plataforma";
-  };
 
   return (
     <div className="flex h-full flex-col">
@@ -204,6 +171,8 @@ export function ContainerSettings({
         seal={<StateSeal state={container.lifecycle} />}
       />
 
+      <Abas abas={abasVisiveis} ativa={aba} aoTrocar={trocarDeAba} rotulo="Configurações" />
+
       <CorpoDeTela>
         {notice ? (
           <Toast tone="success" onDismiss={() => setNotice(null)}>
@@ -216,219 +185,159 @@ export function ContainerSettings({
           </Toast>
         ) : null}
 
-        <Section title="Aspectos configuráveis">
-          <table className="tabela">
-            <thead>
-              <tr>
-                <th className="app-coluna">Aspecto</th>
-                <th className="app-coluna" title={REGRA_DOS_MODOS}>
-                  Neste nível
-                </th>
-                <th className="app-coluna">Origem do valor</th>
-                <th className="app-coluna">Como compõe</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ASPECTS.map((item) => {
-                const mode = container.modes[item.aspect] ?? "herdado";
-                // D-15: só Espaço e Pasta bloqueiam; a Lista é tratada como sem bloqueio.
-                const blocked = "blocks" in container && container.blocks[item.aspect] === true;
-                return (
-                  <tr key={item.aspect}>
-                    {/* Célula de duas linhas: pede o respiro vertical que a linha de uma só não pede. */}
-                    <td className="py-2">
-                      <span className="app-base block" style={{ color: "var(--texto)" }}>
-                        {item.label}
-                      </span>
-                      <span className="app-meta block">{item.explanation}</span>
-                    </td>
-                    <td className="py-2">
-                      <Pilula tom={mode === "sobrescrito" ? "info" : "neutro"}>{MODE_LABEL[mode]}</Pilula>
-                      {blocked ? (
-                        <span className="app-meta mt-1 block" style={{ color: "var(--aviso)" }}>
-                          Nenhum nível abaixo pode sobrescrever.
-                        </span>
-                      ) : null}
-                    </td>
-                    <td>{sourceOf(item.aspect)}</td>
-                    <td>{item.composition === "substitui" ? "substitui" : "acumula"}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </Section>
+        <div className="max-w-3xl">
+          {aba === "geral" ? (
+            <div className="grid gap-3">
+              {/* POSC-09 — nome, descrição, cor, privacidade; e o estado próprio. A chave
+                  reinicia o formulário quando outra gravação (ou outro Membro) muda o registro. */}
+              <IdentidadeDoConteiner key={`${container.id}:${container.name}:${container.description ?? ""}:${container.color ?? ""}:${String(container.isPrivate)}`} kind={kind} container={container} report={report} />
+              <CicloDeVidaDoConteiner kind={kind} container={container} report={report} />
+            </div>
+          ) : null}
 
-        {config === null ? (
-          <Painel className="mb-3">
-            <CabecalhoDePainel titulo="Valor efetivo" />
-            <div className="p-3">
+          {aba === "status" ? (
+            config === null ? (
               <EmptyState
                 compact
                 title="Este contêiner não resolve um Conjunto de Status."
                 hint="O Espaço acima dele precisa definir um: sem isso nenhuma Lista abaixo recebe Tarefas."
               />
+            ) : (
+              <StatusSetEditor
+                containerType={kind}
+                containerId={id}
+                own={container.statusSet !== undefined}
+                set={config.statusSet}
+                definedAtName={config.statusSetDefinedAt.name}
+                report={report}
+              />
+            )
+          ) : null}
+
+          {aba === "funcionalidades" ? (
+            config === null ? (
+              <EmptyState compact title="Este contêiner não resolve as Funcionalidades." hint="Falta um Conjunto de Status no Espaço acima." />
+            ) : (
+              <FeaturesEditor containerType={kind} containerId={id} features={config.features} own={container.features ?? {}} report={report} />
+            )
+          ) : null}
+
+          {aba === "campos" ? (
+            <div className="grid gap-3">
+              {fieldDefinitionIds.length === 0 ? (
+                <EmptyState compact title="Nenhuma Definição de Campo alcança este caminho." />
+              ) : (
+                <ul className="pilha-solta">
+                  {fieldDefinitionIds.map((definitionId) => {
+                    const definition = state.fieldDefinitions.find((d) => d.id === definitionId);
+                    return (
+                      <li key={definitionId} className="item-solto flex-wrap justify-between" data-estatico="true">
+                        <span className="app-base min-w-0 truncate" style={{ color: "var(--texto)" }}>
+                          {definition?.name ?? definitionId}
+                        </span>
+                        <span className="app-meta shrink-0">
+                          {definition ? (FIELD_TYPE_LABEL[definition.type] ?? definition.type) : "—"}
+                          {definition?.required ? " · obrigatório" : ""}
+                          {definition?.definedAtId && definition.definedAtId !== id
+                            ? ` · de ${path.find((n) => n.id === definition.definedAtId)?.name ?? "acima"}`
+                            : ""}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              <div className="pt-3" style={{ borderTop: "1px solid var(--linha)" }}>
+                <FieldDefinitionsEditor containerType={kind} containerId={id} report={report} />
+              </div>
             </div>
-          </Painel>
-        ) : (
-          <div className="mb-3 grid gap-3 lg:grid-cols-2 lg:items-start">
-            <Painel>
-              <CabecalhoDePainel titulo="Conjunto de Status efetivo" />
-              <div className="p-3">
-                <p className="app-meta mb-2">
-                  Definido em {config.statusSetDefinedAt.name}
-                  {kind === "list" ? "" : ": é o que uma Lista criada aqui consome"}.
-                </p>
-                <StatusSetEditor
-                  containerType={kind}
-                  containerId={id}
-                  own={container.statusSet !== undefined}
-                  set={config.statusSet}
-                  definedAtName={config.statusSetDefinedAt.name}
-                  report={report}
-                />
-              </div>
-            </Painel>
+          ) : null}
 
-            <Painel>
-              <CabecalhoDePainel titulo="Funcionalidades efetivas" />
-              <div className="p-3">
-                <FeaturesEditor containerType={kind} containerId={id} features={config.features} own={container.features ?? {}} report={report} />
+          {aba === "tipos-de-tarefa" ? (
+            <div className="grid gap-3">
+              {taskTypeIds.length === 0 ? (
+                <EmptyState compact title="Nenhum Tipo de Tarefa alcança este caminho." />
+              ) : (
+                <ul className="pilha-solta">
+                  {taskTypeIds.map((taskTypeId) => {
+                    const taskType = state.taskTypes.find((t) => t.id === taskTypeId);
+                    return (
+                      <li key={taskTypeId} className="item-solto" data-estatico="true">
+                        <span className="app-base min-w-0 flex-1 truncate" style={{ color: "var(--texto)" }}>
+                          {taskType?.name ?? taskTypeId}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              <div className="pt-3" style={{ borderTop: "1px solid var(--linha)" }}>
+                <TaskTypesEditor containerType={kind} containerId={id} report={report} />
               </div>
-            </Painel>
+            </div>
+          ) : null}
 
-            <Painel>
-              <CabecalhoDePainel titulo="Definições de Campo acumuladas" contagem={config.fieldDefinitionIds.length} />
-              <div className="p-3">
-                {config.fieldDefinitionIds.length === 0 ? (
-                  <EmptyState compact title="Nenhuma Definição de Campo alcança este caminho." />
-                ) : (
-                  <ul className="pilha-solta">
-                    {config.fieldDefinitionIds.map((definitionId) => {
-                      const definition = state.fieldDefinitions.find((d) => d.id === definitionId);
-                      return (
-                        <li key={definitionId} className="item-solto flex-wrap justify-between" data-estatico="true">
-                          <span className="app-base min-w-0 truncate" style={{ color: "var(--texto)" }}>
-                            {definition?.name ?? definitionId}
-                          </span>
-                          <span className="app-meta shrink-0">
-                            {definition ? (FIELD_TYPE_LABEL[definition.type] ?? definition.type) : "—"}
-                            {definition?.required ? " · obrigatório" : ""}
-                            {definition?.definedAtId && definition.definedAtId !== id
-                              ? ` · de ${path.find((n) => n.id === definition.definedAtId)?.name ?? "acima"}`
-                              : ""}
-                          </span>
-                        </li>
+          {aba === "formularios" && kind === "list" ? <FormsEditor listId={id} bloqueio={useMayConfigureReason} report={report} /> : null}
+
+          {aba === "modelo-e-canais" && lista ? (
+            <div className="grid gap-3">
+              <CaixaDeConfiguracoes
+                rotulo="Modelo de Tarefa"
+                linhas={[
+                  {
+                    chave: "conversacional",
+                    titulo: "Tarefas conversacionais",
+                    dica: "Cada Tarefa nasce de um Contato e traz a conversa dele; a Lista tem acesso ao CRM. Desligado: Tarefa operacional, a padrão.",
+                    icone: MessageSquare,
+                    ligado: lista.modeloDeTarefa === "conversacional",
+                    onChange: (ligado) =>
+                      report(
+                        run((data, me) => alterarModeloDaLista(data, me, lista.id, ligado ? "conversacional" : "operacional")),
+                        ligado ? "Agora cada Tarefa desta Lista nasce de um Contato." : "As Tarefas desta Lista voltam ao modelo operacional.",
+                      ),
+                    ...(motivoDoModelo ? { motivo: motivoDoModelo } : {}),
+                  },
+                ]}
+              />
+
+              {lista.modeloDeTarefa === "conversacional" ? (
+                <div className="grid gap-2">
+                  {/* C36 — por onde a Lista atende, gravado na hora; a última conta não sai. */}
+                  {(lista.canaisDeAtendimento ?? []).length === 0 ? (
+                    <p role="status" className="app-sm rounded-[var(--r-controle)] px-3 py-2" style={{ background: "var(--aviso-lavado)", color: "var(--aviso)" }}>
+                      {LISTA_SEM_CANAIS} Até lá, nenhuma Tarefa nasce nela.
+                    </p>
+                  ) : null}
+                  <CanaisDeAtendimento
+                    valor={lista.canaisDeAtendimento ?? []}
+                    onChange={(ids) =>
+                      report(
+                        run((data, me) => definirCanaisDaLista(data, me, lista.id, ids)),
+                        "Canais de atendimento atualizados.",
+                      )
+                    }
+                    onAdicionar={setAdicionando}
+                    {...(useMayConfigureReason ? { motivo: useMayConfigureReason } : {})}
+                    podeFicarVazio={(lista.canaisDeAtendimento ?? []).length === 0}
+                    recente={recente}
+                  />
+                  <AdicionarCanalDialog
+                    {...(adicionando ? { tipo: adicionando } : {})}
+                    open={adicionando !== null}
+                    onClose={() => setAdicionando(null)}
+                    onDone={(canal) => {
+                      setAdicionando(null);
+                      report(
+                        run((data, me) => definirCanaisDaLista(data, me, lista.id, [...(lista.canaisDeAtendimento ?? []), canal.id])),
+                        `${canal.name} conectado e marcado nesta Lista.`,
                       );
-                    })}
-                  </ul>
-                )}
-                <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--linha)" }}>
-                  <FieldDefinitionsEditor containerType={kind} containerId={id} report={report} />
+                    }}
+                  />
                 </div>
-              </div>
-            </Painel>
-
-            {kind === "list" ? (
-              <Painel>
-                <CabecalhoDePainel titulo="Formulários" />
-                <div className="p-3">
-                  <FormsEditor listId={id} bloqueio={useMayConfigureReason} report={report} />
-                </div>
-              </Painel>
-            ) : null}
-
-            <Painel>
-              <CabecalhoDePainel titulo="Tipos de Tarefa acumulados" contagem={config.taskTypeIds.length} />
-              <div className="p-3">
-                {config.taskTypeIds.length === 0 ? (
-                  <EmptyState compact title="Nenhum Tipo de Tarefa alcança este caminho." />
-                ) : (
-                  <ul className="pilha-solta">
-                    {config.taskTypeIds.map((taskTypeId) => {
-                      const taskType = state.taskTypes.find((t) => t.id === taskTypeId);
-                      return (
-                        <li key={taskTypeId} className="item-solto" data-estatico="true">
-                          <span className="app-base min-w-0 flex-1 truncate" style={{ color: "var(--texto)" }}>
-                            {taskType?.name ?? taskTypeId}
-                          </span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-                <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--linha)" }}>
-                  <TaskTypesEditor containerType={kind} containerId={id} report={report} />
-                </div>
-              </div>
-            </Painel>
-          </div>
-        )}
-
-        {lista ? (
-          <div className="mb-3">
-            <CaixaDeConfiguracoes
-              rotulo="Modelo de Tarefa"
-              linhas={[
-                {
-                  chave: "conversacional",
-                  titulo: "Tarefas conversacionais",
-                  dica: "Cada Tarefa nasce de um Contato e traz a conversa dele; a Lista tem acesso ao CRM. Desligado: Tarefa operacional, a padrão.",
-                  icone: MessageSquare,
-                  ligado: lista.modeloDeTarefa === "conversacional",
-                  onChange: (ligado) =>
-                    report(
-                      run((data, me) => alterarModeloDaLista(data, me, lista.id, ligado ? "conversacional" : "operacional")),
-                      ligado ? "Agora cada Tarefa desta Lista nasce de um Contato." : "As Tarefas desta Lista voltam ao modelo operacional.",
-                    ),
-                  ...(motivoDoModelo ? { motivo: motivoDoModelo } : {}),
-                },
-              ]}
-              ajuda="O modelo é da Lista e não herda: uma Pasta pode ter Listas dos dois modelos."
-            />
-          </div>
-        ) : null}
-
-        {lista && lista.modeloDeTarefa === "conversacional" ? (
-          <div className="mb-3 grid gap-2">
-            {/* C36 — por onde a Lista atende, gravado na hora; a última conta não sai. */}
-            {(lista.canaisDeAtendimento ?? []).length === 0 ? (
-              <p role="status" className="app-sm rounded-[var(--r-controle)] px-3 py-2" style={{ background: "var(--aviso-lavado)", color: "var(--aviso)" }}>
-                {LISTA_SEM_CANAIS} Até lá, nenhuma Tarefa nasce nela.
-              </p>
-            ) : null}
-            <CanaisDeAtendimento
-              valor={lista.canaisDeAtendimento ?? []}
-              onChange={(ids) =>
-                report(
-                  run((data, me) => definirCanaisDaLista(data, me, lista.id, ids)),
-                  "Canais de atendimento atualizados.",
-                )
-              }
-              onAdicionar={setAdicionando}
-              {...(useMayConfigureReason ? { motivo: useMayConfigureReason } : {})}
-              podeFicarVazio={(lista.canaisDeAtendimento ?? []).length === 0}
-              recente={recente}
-            />
-            <AdicionarCanalDialog
-              {...(adicionando ? { tipo: adicionando } : {})}
-              open={adicionando !== null}
-              onClose={() => setAdicionando(null)}
-              onDone={(canal) => {
-                setAdicionando(null);
-                report(
-                  run((data, me) => definirCanaisDaLista(data, me, lista.id, [...(lista.canaisDeAtendimento ?? []), canal.id])),
-                  `${canal.name} conectado e marcado nesta Lista.`,
-                );
-              }}
-            />
-          </div>
-        ) : null}
-
-        {/* POSC-09 — nome, descrição, cor, privacidade; e o estado próprio. A chave
-            reinicia o formulário quando outra gravação (ou outro Membro) muda o registro. */}
-        <IdentidadeDoConteiner key={`${container.id}:${container.name}:${container.description ?? ""}:${container.color ?? ""}:${String(container.isPrivate)}`} kind={kind} container={container} report={report} />
-        <CicloDeVidaDoConteiner kind={kind} container={container} report={report} />
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </CorpoDeTela>
     </div>
   );
