@@ -12,12 +12,12 @@
 
 import { Suspense } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { buildSeed } from "@n1/dominio/seed";
 import { setContainerDefaultViews } from "@n1/dominio/operations/configuration";
 import { saveView, setDefaultView } from "@n1/dominio/operations";
 import type { DataState } from "@n1/dominio/state";
-import { StoreProvider } from "@/dados/store";
+import { StoreProvider, useRun } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
 import ListaPage from "@/app/(shell)/estrutura/listas/[lista]/page";
 
@@ -52,15 +52,36 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** O que outro Membro faria no meio da sessão: muda as Visualizações padrão do Espaço com a Lista aberta. */
+const mudanca: { valor: Parameters<typeof setContainerDefaultViews>[4] } = { valor: null };
+function ControleDoEspaco() {
+  const run = useRun();
+  return (
+    <button type="button" data-testid="muda-o-espaco" onClick={() => run((data, me) => setContainerDefaultViews(data, me, "space", ESPACO, mudanca.valor))}>
+      outro Membro muda o Espaço
+    </button>
+  );
+}
+
+function mudarOEspaco(valor: Parameters<typeof setContainerDefaultViews>[4]) {
+  mudanca.valor = valor;
+  fireEvent.click(screen.getByTestId("muda-o-espaco"));
+}
+
 async function montar(listaId: string = LISTA) {
   const transporte: Transporte = {
-    gravar: vi.fn(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." })),
+    gravar: vi.fn(async (pedido) => ({
+      tipo: "estado" as const,
+      resultado: pedido.resultado,
+      estado: { data: pedido.copia, revisao: pedido.revisao + 1, ordens: {}, memberId: "" },
+    })),
     hidratar: vi.fn(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." })),
   };
   const params = Promise.resolve({ lista: listaId });
   await act(async () => {
     render(
       <StoreProvider sessao={{ memberId: dono }} estadoInicial={{ data: state, revisao: 1, ordens: {} }} transporte={transporte}>
+        <ControleDoEspaco />
         <Suspense fallback="carregando">
           <ListaPage params={params} />
         </Suspense>
@@ -135,5 +156,51 @@ describe("Página da Lista — as abas vêm das Visualizações padrão (EST-08)
     await montar("lst_pos_venda");
 
     expect(nomesDasAbas()).toEqual(["Lista", "Quadro", "Calendário", "Tabela"]);
+  });
+});
+
+describe("Página da Lista — uma só aba, sem a aba Lista e a aba que some (A18, A19)", () => {
+  it("com uma só aba mostrada a barra de Abas não é desenhada e o resto da página segue", async () => {
+    definirNoEspaco({ disponiveis: ["quadro"], inicial: "quadro" });
+
+    await montar();
+
+    expect(screen.queryByRole("tablist", { name: "Visualizações" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Salvar Visualização" })).toBeTruthy();
+  });
+
+  it("com todas as abas a barra de Abas existe", async () => {
+    await montar();
+    expect(screen.getByRole("tablist", { name: "Visualizações" })).toBeTruthy();
+  });
+
+  it("sem a aba Lista, «Selecionar várias» fica desligado com o motivo", async () => {
+    definirNoEspaco({ disponiveis: ["quadro", "tabela"], inicial: "quadro" });
+
+    await montar();
+
+    const botao = screen.getByRole("button", { name: /Selecionar várias/ });
+    expect(botao.getAttribute("aria-disabled")).toBe("true");
+    expect(botao.getAttribute("title")).toBe("A seleção em lote só existe na Visualização Lista.");
+  });
+
+  it("com a aba Lista, «Selecionar várias» está ligado", async () => {
+    await montar();
+    expect(screen.getByRole("button", { name: /Selecionar várias/ }).getAttribute("aria-disabled")).toBe("false");
+  });
+
+  it("a aba aberta deixa de existir com a Lista aberta: a página volta à inicial", async () => {
+    await montar();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("tab", { name: "Calendário" }));
+    });
+    expect(abaAtiva()).toBe("Calendário");
+
+    await act(async () => {
+      mudarOEspaco({ disponiveis: ["lista", "quadro", "tabela"], inicial: "quadro" });
+    });
+
+    expect(nomesDasAbas()).not.toContain("Calendário");
+    expect(abaAtiva()).toBe("Quadro");
   });
 });

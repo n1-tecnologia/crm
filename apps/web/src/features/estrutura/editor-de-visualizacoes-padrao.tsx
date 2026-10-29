@@ -16,10 +16,11 @@ import { useId, useState } from "react";
 import { useData, useRun, useSession } from "@/dados/store";
 import { setContainerDefaultViews } from "@n1/dominio/operations";
 import { blockedAbove } from "@n1/dominio/operations/configuration";
-import { containerAdminRefusal, effectiveContainerConfig } from "@n1/dominio/derive";
+import { containerAdminRefusal, effectiveContainerConfig, effectiveListConfig } from "@n1/dominio/derive";
+import type { DataState } from "@n1/dominio/state";
 import { ReadOnlyNote } from "@/features/estrutura/configuration-editors";
 import { Button, Toast } from "@/features/shell/ui";
-import { ORDEM_DAS_ABAS, ROTULO_DA_ABA, kindDaAba, type TipoDeAba } from "@/features/estrutura/tipo-de-visualizacao";
+import { ORDEM_DAS_ABAS, ROTULO_DA_ABA, abaDaView, kindDaAba, type TipoDeAba } from "@/features/estrutura/tipo-de-visualizacao";
 import type { Id, TipoDeVisualizacao, VisualizacoesPadrao } from "@n1/dominio/types";
 
 type TipoDeConteiner = "space" | "folder" | "list";
@@ -32,6 +33,28 @@ const NOME_DO_NIVEL: Record<TipoDeConteiner, { readonly nome: string; readonly a
   folder: { nome: "Pasta", arquivado: "arquivada" },
   list: { nome: "Lista", arquivado: "arquivada" },
 };
+
+/**
+ * D-06 — quantas Visualizações SALVAS de `kind` ficam escondidas pela mudança:
+ * as das Listas abaixo do contêiner (pelo caminho) cuja configuração efetiva,
+ * já com a mudança aplicada, deixou de oferecer o tipo. Nada é apagado — o
+ * número só avisa o que volta se o tipo voltar.
+ */
+function salvasGuardadas(data: DataState, tipo: TipoDeConteiner, id: Id, kind: TipoDeVisualizacao): number {
+  return data.views.filter((salva) => {
+    if (salva.kind !== kind) return false;
+    const lista = effectiveListConfig(data, salva.listId);
+    if (!lista) return false;
+    const abaixo = tipo === "list" ? salva.listId === id : lista.path.some((no) => no.id === id);
+    return abaixo && !lista.views.disponiveis.includes(kind);
+  }).length;
+}
+
+/** `{n} {Visualização salva|Visualizações salvas} de {Tipo} {fica guardada|ficam guardadas} e {volta|voltam} se o tipo voltar.` */
+function fraseDasGuardadas(n: number, kind: TipoDeVisualizacao): string {
+  const um = n === 1;
+  return `${n} ${um ? "Visualização salva" : "Visualizações salvas"} de ${ROTULO_DA_ABA[abaDaView(kind)]} ${um ? "fica guardada" : "ficam guardadas"} e ${um ? "volta" : "voltam"} se o tipo voltar.`;
+}
 
 export function EditorDeVisualizacoesPadrao({
   tipo,
@@ -77,10 +100,24 @@ export function EditorDeVisualizacoesPadrao({
   const desligado = recusa ?? bloqueadoAcima;
 
   const gravar = (valor: VisualizacoesPadrao | null, sucesso: string): void => {
-    const resultado = run((data, me) => setContainerDefaultViews(data, me, tipo, id, valor));
+    // Os tipos que saem da configuração efetiva deste contêiner com a mudança; a conta das
+    // salvas guardadas é feita na cópia, já com a mudança aplicada.
+    const guardadas: Array<{ readonly kind: TipoDeVisualizacao; readonly n: number }> = [];
+    const resultado = run((data, me) => {
+      const gravado = setContainerDefaultViews(data, me, tipo, id, valor);
+      if (gravado.ok) {
+        const depois = effectiveContainerConfig(data, tipo, id)?.views.disponiveis ?? [];
+        for (const kind of efetivo.disponiveis) {
+          if (depois.includes(kind)) continue;
+          const n = salvasGuardadas(data, tipo, id, kind);
+          if (n > 0) guardadas.push({ kind, n });
+        }
+      }
+      return gravado;
+    });
     if (resultado.ok) {
       setErro(null);
-      setAviso(sucesso);
+      setAviso([sucesso, ...guardadas.map(({ kind, n }) => fraseDasGuardadas(n, kind))].join(" "));
     } else {
       setAviso(null);
       setErro(resultado.error);

@@ -7,7 +7,7 @@
  * que este Membro alcança antes de chegar aqui.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useData, useRun, useSession } from "@/dados/store";
 import {
   deleteView,
@@ -28,7 +28,7 @@ import {
   Toggle,
 } from "@/features/shell/ui";
 import type { Priority, StatusCategory, View, ViewFilters } from "@n1/dominio/types";
-import { abaDaView, ROTULO_DA_ABA } from "./tipo-de-visualizacao";
+import { abaDaView, ROTULO_DA_ABA, type TipoDeAba } from "./tipo-de-visualizacao";
 
 type Report = (
   result: { ok: boolean; error?: string },
@@ -42,6 +42,7 @@ export function ViewBar({
   filters,
   sortBy,
   kind,
+  abas,
   onFilters,
   onSort,
   activeViewId,
@@ -54,6 +55,12 @@ export function ViewBar({
   readonly sortBy: View["sortBy"] | undefined;
   /** RELO-05 — o tipo da aba aberta agora: a Visualização salva o lembra. */
   readonly kind: View["kind"];
+  /**
+   * D-06 — as abas que a Lista mostra agora (as Visualizações padrão herdadas,
+   * filtradas pela lente). Uma Visualização salva de tipo fora delas some da
+   * barra e volta junto com o tipo; nada é apagado nem migrado.
+   */
+  readonly abas: readonly TipoDeAba[];
   readonly onFilters: (next: ViewFilters) => void;
   readonly onSort: (next: View["sortBy"] | undefined) => void;
   readonly activeViewId: string | null;
@@ -75,7 +82,17 @@ export function ViewBar({
   const setAberto = (v: boolean | ((prev: boolean) => boolean)) =>
     setAbertoLocal(v);
 
-  const views = viewsFor(state, memberId, listId);
+  const todas = viewsFor(state, memberId, listId);
+  // Só leitura (T-10-26): esconder não é apagar — `state.views` segue com todas.
+  const views = todas.filter((v) => abas.includes(abaDaView(v.kind)));
+  // A salva ativa cujo tipo saiu das abas (outro Membro mudou o Espaço): a seleção limpa, sem aviso.
+  const ativaEscondida = activeViewId !== null && todas.some((v) => v.id === activeViewId) && !views.some((v) => v.id === activeViewId);
+  useEffect(() => {
+    if (!ativaEscondida) return;
+    onFilters(FILTRO_VAZIO);
+    onSort(undefined);
+    onOpenView(null);
+  }, [ativaEscondida, onFilters, onSort, onOpenView]);
   const administra = containerAdminRefusal(state, memberId, "list", listId);
   const membros = state.members.filter((m) => m.state === "ativo");
   const statusOptions = [

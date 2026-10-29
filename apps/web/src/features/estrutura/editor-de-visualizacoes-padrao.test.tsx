@@ -11,6 +11,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { buildSeed } from "@n1/dominio/seed";
 import { containerAdminRefusal } from "@n1/dominio/derive";
 import { setContainerBlock, setContainerDefaultViews } from "@n1/dominio/operations/configuration";
+import { saveView } from "@n1/dominio/operations";
 import type { DataState } from "@n1/dominio/state";
 import type { ChamadaDeOperacao } from "@n1/dominio/operations";
 import { StoreProvider } from "@/dados/store";
@@ -218,5 +219,68 @@ describe("EditorDeVisualizacoesPadrao — desligado com o motivo", () => {
 
     expect(chamadas).toHaveLength(0);
     expect(screen.getByRole("alert").textContent).toContain("Um contêiner arquivado ou na lixeira não muda de configuração.");
+  });
+});
+
+describe("EditorDeVisualizacoesPadrao — o aviso das salvas guardadas (D-06)", () => {
+  function salvar(estado: DataState, listId: string, name: string, kind: "calendario" | "quadro") {
+    const resultado = saveView(estado, estado.workspace.ownerMemberId, { listId, name, kind, filters: {}, shared: true });
+    if (!resultado.ok) throw new Error(resultado.error);
+  }
+
+  it("desmarcar um tipo com 2 Visualizações salvas abaixo acrescenta a frase de guardadas, no plural", async () => {
+    const estado = buildSeed();
+    salvar(estado, "lst_prospeccao", "Agenda A", "calendario");
+    salvar(estado, "lst_pos_venda", "Agenda B", "calendario");
+    // Outro tipo, e outro Espaço: nenhum dos dois conta.
+    salvar(estado, "lst_prospeccao", "Quadro A", "quadro");
+    const outraLista = estado.lists.find((l) => l.id !== "lst_prospeccao" && l.id !== "lst_pos_venda" && l.id !== "lst_indicadores" && l.parentType === "space" && l.parentId !== ESPACO);
+    if (outraLista) salvar(estado, outraLista.id, "Agenda de fora", "calendario");
+
+    montar({ tipo: "space", id: ESPACO }, estado);
+    await act(async () => {
+      fireEvent.click(caixa("Calendário"));
+    });
+
+    expect(
+      screen.getByText("Visualizações padrão alteradas. 2 Visualizações salvas de Calendário ficam guardadas e voltam se o tipo voltar."),
+    ).toBeTruthy();
+  });
+
+  it("com 1 Visualização salva a frase vai ao singular", async () => {
+    const estado = buildSeed();
+    salvar(estado, "lst_prospeccao", "Agenda A", "calendario");
+
+    montar({ tipo: "space", id: ESPACO }, estado);
+    await act(async () => {
+      fireEvent.click(caixa("Calendário"));
+    });
+
+    expect(
+      screen.getByText("Visualizações padrão alteradas. 1 Visualização salva de Calendário fica guardada e volta se o tipo voltar."),
+    ).toBeTruthy();
+  });
+
+  it("sem salvas do tipo, o aviso é só «Visualizações padrão alteradas.»", async () => {
+    montar({ tipo: "space", id: ESPACO });
+    await act(async () => {
+      fireEvent.click(caixa("Calendário"));
+    });
+    expect(screen.getByText("Visualizações padrão alteradas.")).toBeTruthy();
+  });
+
+  it("uma Lista que define as próprias Visualizações e continua oferecendo o tipo não tem salva escondida", async () => {
+    const estado = buildSeed();
+    const dono = estado.workspace.ownerMemberId;
+    const propria = setContainerDefaultViews(estado, dono, "list", "lst_prospeccao", { disponiveis: [...TODOS], inicial: "lista" });
+    expect(propria.ok).toBe(true);
+    salvar(estado, "lst_prospeccao", "Agenda A", "calendario");
+
+    montar({ tipo: "space", id: ESPACO }, estado);
+    await act(async () => {
+      fireEvent.click(caixa("Calendário"));
+    });
+
+    expect(screen.getByText("Visualizações padrão alteradas.")).toBeTruthy();
   });
 });

@@ -326,7 +326,7 @@ export default function ListaPage({
   const alternarSelecao = () => {
     setSelecionando((v) => !v);
     setSelecionadas(new Set());
-    if (view !== "lista") setView("lista");
+    if (view !== "lista" && abas.includes("lista")) setView("lista");
   };
   const marcarUma = (id: string) =>
     setSelecionadas((atual) => {
@@ -344,11 +344,17 @@ export default function ListaPage({
       }
       return next;
     });
+  // A seleção em lote só existe na aba Lista (A19): sem ela entre as abas, o botão não liga.
+  const motivoDaSelecao = selecionando
+    ? undefined
+    : !abas.includes("lista")
+      ? "A seleção em lote só existe na Visualização Lista."
+      : criacaoRecusada;
   const botaoDeSelecao = (
     <BotaoDeSelecao
       selecionando={selecionando}
       aoAlternar={alternarSelecao}
-      {...(!selecionando && criacaoRecusada !== undefined ? { desligadoPor: criacaoRecusada } : {})}
+      {...(motivoDaSelecao !== undefined ? { desligadoPor: motivoDaSelecao } : {})}
     />
   );
 
@@ -645,12 +651,15 @@ export default function ListaPage({
         </div>
       ) : null}
 
-      <Abas
-        rotulo="Visualizações"
-        abas={abas.map((kind) => ({ chave: kind, rotulo: VIEW_LABEL[kind] }))}
-        ativa={view}
-        aoTrocar={(chave) => setView(chave as ViewKind)}
-      />
+      {/* Uma única aba não deixa nada a escolher: a barra não é desenhada (A18). */}
+      {abas.length > 1 ? (
+        <Abas
+          rotulo="Visualizações"
+          abas={abas.map((kind) => ({ chave: kind, rotulo: VIEW_LABEL[kind] }))}
+          ativa={view}
+          aoTrocar={(chave) => setView(chave as ViewKind)}
+        />
+      ) : null}
 
       {effective === "ativo" ? (
         <BarraDeCriacao
@@ -738,6 +747,7 @@ export default function ListaPage({
             }}
             activeViewId={activeViewId}
             kind={kindDaAba(view)}
+            abas={abas}
             onOpenView={(aberta) => {
               setActiveViewId(aberta?.id ?? null);
               setFilters(aberta?.filters ?? FILTRO_VAZIO);
