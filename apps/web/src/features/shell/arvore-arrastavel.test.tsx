@@ -322,3 +322,260 @@ describe("Arrastar na árvore — o traçador: a Lista \"Propostas\" vai para a 
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });
+
+describe("Arrastar na árvore — reordenar, Espaços, diálogo, recusa e árvore inerte", () => {
+  let P: string;
+  let ALFA: string;
+  let BETA: string;
+  let GAMA: string;
+  beforeEach(() => {
+    P = pasta("Origem A");
+    ALFA = lista("Alfa", P);
+    BETA = lista("Beta", P);
+    GAMA = lista("Gama", P);
+  });
+
+  it("soltar a Lista Gama em «antes» de Alfa (mesmo pai) grava `reorderContainers` com os ids visíveis do grupo, sem Toast", async () => {
+    await abrirArvore();
+    await waitFor(() => expect(temLinha(GAMA)).toBe(true));
+    expect(filhosDe(P)).toEqual([ALFA, BETA, GAMA]);
+
+    comecar(GAMA);
+    expect(passarSobre(ALFA, 10)).toBe(true);
+    expect(zonaAcesa(ALFA)).toBe("antes");
+    soltarEm(ALFA, 10);
+
+    await waitFor(() => expect(filhosDe(P)).toEqual([GAMA, ALFA, BETA]));
+    const chamada = servidor.gravar.mock.calls[0]?.[0]?.chamadas[0];
+    expect(chamada?.nome).toBe("reorderContainers");
+    expect(chamada?.args).toEqual(["list", { type: "folder", id: P }, [GAMA, ALFA, BETA]]);
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("soltar em «depois» de Beta põe a Lista logo depois dela", async () => {
+    await abrirArvore();
+    await waitFor(() => expect(temLinha(ALFA)).toBe(true));
+
+    arrastarPara(ALFA, BETA, 90);
+
+    await waitFor(() => expect(filhosDe(P)).toEqual([BETA, ALFA, GAMA]));
+    expect(servidor.gravar.mock.calls[0]?.[0]?.chamadas[0]?.args[2]).toEqual([BETA, ALFA, GAMA]);
+  });
+
+  it("soltar onde a Lista já está («depois» da vizinha de cima) não grava nada", async () => {
+    await abrirArvore();
+    await waitFor(() => expect(temLinha(BETA)).toBe(true));
+
+    arrastarPara(BETA, ALFA, 90);
+
+    expect(servidor.gravar).not.toHaveBeenCalled();
+    expect(filhosDe(P)).toEqual([ALFA, BETA, GAMA]);
+  });
+
+  it("o que a árvore esconde (Lista na lixeira) não entra no pedido e continua na vaga (UI S1/parcial)", async () => {
+    state.lists.find((l) => l.id === BETA)!.lifecycle = "naLixeira";
+    await abrirArvore();
+    await waitFor(() => expect(temLinha(GAMA)).toBe(true));
+    expect(filhosDe(P)).toEqual([ALFA, GAMA]);
+
+    arrastarPara(GAMA, ALFA, 10);
+
+    await waitFor(() => expect(filhosDe(P)).toEqual([GAMA, ALFA]));
+    expect(servidor.gravar.mock.calls[0]?.[0]?.chamadas[0]?.args).toEqual(["list", { type: "folder", id: P }, [GAMA, ALFA]]);
+    expect(state.lists.find((l) => l.id === BETA)?.lifecycle).toBe("naLixeira");
+  });
+
+  it("soltar um Espaço em «depois» de outro reordena os Espaços (`pai: null`), e um Espaço nunca recebe «dentro» (D-09)", async () => {
+    await abrirArvore();
+    await waitFor(() => expect(temLinha("spc_com")).toBe(true));
+    expect(espacosNaArvore().slice(0, 2)).toEqual(["spc_com", "spc_ops"]);
+
+    comecar("spc_com");
+    // Na metade de baixo do Espaço vizinho: «depois», não «dentro»; sobre uma Pasta ou Lista, nada.
+    expect(passarSobre("spc_ops", 90)).toBe(true);
+    expect(zonaAcesa("spc_ops")).toBe("depois");
+    expect(passarSobre("fld_clientes", 50)).toBe(false);
+    expect(zonaAcesa("fld_clientes")).toBeNull();
+    expect(zonaAcesa("spc_ops")).toBeNull();
+    expect(passarSobre("spc_ops", 90)).toBe(true);
+    soltarEm("spc_ops", 90);
+
+    await waitFor(() => expect(espacosNaArvore().slice(0, 2)).toEqual(["spc_ops", "spc_com"]));
+    const chamada = servidor.gravar.mock.calls[0]?.[0]?.chamadas[0];
+    expect(chamada?.nome).toBe("reorderContainers");
+    expect(chamada?.args[0]).toBe("space");
+    expect(chamada?.args[1]).toBeNull();
+  });
+
+  it("soltar uma Pasta com Subpastas «dentro» de outra Pasta mostra a recusa do domínio no Toast de erro e nada muda", async () => {
+    const A = pasta("Pasta A");
+    pasta("Sub de A", A, "folder");
+    const B = pasta("Pasta B");
+    const recusa = recusaDeMover(state, THIAGO, "folder", A, { parentType: "folder", parentId: B });
+    expect(recusa).toBeTruthy();
+    await abrirArvore();
+    await waitFor(() => expect(temLinha(B)).toBe(true));
+    const antes = filhosDe("spc_com");
+
+    comecar(A);
+    // A Pasta B é irmã de A: 50% é «dentro» e o alvo acende, mesmo sabendo que o domínio vai recusar (A2).
+    expect(passarSobre(B, 50)).toBe(true);
+    expect(zonaAcesa(B)).toBe("dentro");
+    soltarEm(B, 50);
+
+    const aviso = await screen.findByRole("alert");
+    expect(aviso.textContent).toContain(recusa);
+    expect(servidor.gravar).not.toHaveBeenCalled();
+    expect(filhosDe("spc_com")).toEqual(antes);
+    expect(paiNaArvore(A)).toBe("spc_com");
+  });
+
+  it("soltar uma Lista «dentro» de um Espaço com outro Conjunto de Status abre o diálogo de mover com o destino escolhido, e nada muda até confirmar", async () => {
+    await abrirArvore();
+    await waitFor(() => expect(temLinha(ALFA)).toBe(true));
+
+    arrastarPara(ALFA, "spc_ops", 50);
+
+    const dialogo = await screen.findByRole("alertdialog", { name: "Mover “Alfa”" });
+    expect(dialogo).toBeTruthy();
+    const endereco = await enderecoAtual();
+    expect(endereco.get("mover")).toBe(ALFA);
+    expect(endereco.get("destino")).toBe("spc_ops");
+    expect(servidor.gravar).not.toHaveBeenCalled();
+    expect(paiNaArvore(ALFA)).toBe(P);
+    expect(screen.queryByText(/movida para/)).toBeNull();
+  });
+
+  it("soltar em cima do próprio pai não é alvo: sem realce, sem Toast, sem gravar (A10)", async () => {
+    await abrirArvore();
+    await waitFor(() => expect(temLinha(ALFA)).toBe(true));
+
+    comecar(ALFA);
+    expect(passarSobre(P, 50)).toBe(false);
+    expect(zonaAcesa(P)).toBeNull();
+    soltarEm(P, 50);
+
+    expect(servidor.gravar).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(paiNaArvore(ALFA)).toBe(P);
+  });
+
+  it("durante a gravação a árvore fica `aria-busy` e nenhuma linha começa novo arraste nem aceita soltura (A4)", async () => {
+    const soltar = servidor.segurar();
+    await abrirArvore();
+    await waitFor(() => expect(temLinha(ALFA)).toBe(true));
+
+    arrastarPara(GAMA, ALFA, 10);
+    await waitFor(() => expect(servidor.gravar).toHaveBeenCalledTimes(1));
+    expect(document.querySelector("ul[aria-busy='true']")).not.toBeNull();
+
+    // Um novo arraste não começa: o início é cancelado e nenhuma zona é aceita.
+    const iniciado = fireEvent.dragStart(linha(BETA), { dataTransfer: transferenciaFalsa() });
+    expect(iniciado).toBe(false);
+    expect(passarSobre(ALFA, 10)).toBe(false);
+    soltarEm(ALFA, 10);
+    expect(servidor.gravar).toHaveBeenCalledTimes(1);
+
+    await act(async () => soltar());
+    await waitFor(() => expect(document.querySelector("ul[aria-busy='true']")).toBeNull());
+    expect(filhosDe(P)).toEqual([GAMA, ALFA, BETA]);
+  });
+
+  it("a Pasta «Meus negócios» e as Listas dela não arrastam nem recebem soltura (A9)", async () => {
+    await abrirArvore();
+    await waitFor(() => expect(temLinha(MEUS_NEGOCIOS_ID)).toBe(true));
+    const listaDeNegocios = filhosDe(MEUS_NEGOCIOS_ID)[0];
+    expect(listaDeNegocios).toBeTruthy();
+
+    expect(linha(MEUS_NEGOCIOS_ID).getAttribute("draggable")).toBeNull();
+    expect(linha(listaDeNegocios!).getAttribute("draggable")).toBeNull();
+
+    comecar(ALFA);
+    expect(passarSobre(MEUS_NEGOCIOS_ID, 50)).toBe(false);
+    expect(zonaAcesa(MEUS_NEGOCIOS_ID)).toBeNull();
+    soltarEm(MEUS_NEGOCIOS_ID, 50);
+    expect(servidor.gravar).not.toHaveBeenCalled();
+  });
+
+  it("o Convidado vê a árvore inerte: nenhuma linha é arrastável e a soltura não grava (D-09)", async () => {
+    for (const [resourceType, resourceId] of [["space", "spc_com"], ["list", ALFA]] as const) {
+      state.grants.push({
+        id: `gr_teste_${resourceId}`,
+        workspaceId: state.workspace.id,
+        subjectKind: "member",
+        subjectId: BEATRIZ,
+        action: "ver",
+        resourceType,
+        resourceId,
+        scope: "subarvore",
+        origin: "compartilhamento",
+        grantedBy: THIAGO,
+        grantedAt: new Date().toISOString(),
+      });
+    }
+    montar(<AppShell>{null}</AppShell>, BEATRIZ);
+    const painel = await screen.findByRole("complementary", { name: "Navegação" });
+    await waitFor(() => expect(within(painel).getByText("Alfa")).toBeTruthy());
+
+    expect(painel.querySelectorAll("[draggable='true']")).toHaveLength(0);
+    expect(painel.querySelectorAll("[data-soltura]")).toHaveLength(0);
+    const alfa = within(painel).getByText("Alfa").closest("div") as HTMLElement;
+    fireEvent.dragStart(alfa, { dataTransfer: transferenciaFalsa() });
+    fireEvent.drop(alfa, { dataTransfer: transferenciaFalsa() });
+    expect(servidor.gravar).not.toHaveBeenCalled();
+  });
+
+  it("o Membro que não administra não arrasta nenhuma linha", async () => {
+    await abrirArvore(JULIA);
+    const painel = await screen.findByRole("complementary", { name: "Navegação" });
+    await waitFor(() => expect(painel.querySelectorAll("a[id^='arvore-no-']").length).toBeGreaterThan(0));
+
+    expect(painel.querySelectorAll("[draggable='true']")).toHaveLength(0);
+  });
+
+  it("Pasta fechada sob o ponteiro por 600 ms (ABRIR_AO_PAIRAR_MS) abre uma vez; antes disso, não", async () => {
+    const dentro = lista("Dentro de Clientes", "fld_clientes");
+    await abrirArvore();
+    await waitFor(() => expect(temLinha(dentro)).toBe(true));
+    fireEvent.click(within(linha("fld_clientes")).getByRole("button", { name: "Recolher Clientes" }));
+    expect(temLinha(dentro)).toBe(false);
+    comecar(ALFA);
+
+    vi.useFakeTimers();
+    act(() => {
+      passarSobre("fld_clientes", 50);
+    });
+    act(() => {
+      vi.advanceTimersByTime(599);
+    });
+    expect(temLinha(dentro)).toBe(false);
+    // O ponteiro continua sobre a linha: os `dragover` seguintes não rearmam nem adiantam o temporizador.
+    act(() => {
+      passarSobre("fld_clientes", 50);
+      vi.advanceTimersByTime(1);
+    });
+    expect(temLinha(dentro)).toBe(true);
+    expect(within(linha("fld_clientes")).getByRole("button", { name: "Recolher Clientes" })).toBeTruthy();
+  });
+
+  it("sair da Pasta fechada antes dos 600 ms cancela a abertura", async () => {
+    const dentro = lista("Dentro de Clientes", "fld_clientes");
+    await abrirArvore();
+    await waitFor(() => expect(temLinha(dentro)).toBe(true));
+    fireEvent.click(within(linha("fld_clientes")).getByRole("button", { name: "Recolher Clientes" }));
+    comecar(ALFA);
+
+    vi.useFakeTimers();
+    act(() => {
+      passarSobre("fld_clientes", 50);
+      vi.advanceTimersByTime(400);
+      // Passa para uma linha que não é alvo: o temporizador morre.
+      passarSobre(P, 50);
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(temLinha(dentro)).toBe(false);
+  });
+});
