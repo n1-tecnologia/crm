@@ -181,8 +181,8 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `updateTaskType` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
 | `removeTaskType` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
 | `setContainerFeature` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
-| `setContainerDefaultViews` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure`; recusa sob `blockedAbove(…, "defaultViews")` |
-| `setContainerBlock` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure`; só Espaço e Pasta (a Lista não bloqueia, D-15); bloquear Status, Funcionalidades ou Visualizações padrão é recusado enquanto um descendente sobrescreve (`sobrescritasAbaixo`) |
+| `setContainerDefaultViews` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure`; contêiner que o ator não alcança devolve "não encontrado", como id inexistente (RN-ESP-15, 10-REVIEW MEDIUM-04); recusa sob `blockedAbove(…, "defaultViews")` |
+| `setContainerBlock` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure`; contêiner que o ator não alcança devolve "não encontrado", como id inexistente (RN-ESP-15, 10-REVIEW MEDIUM-04); só Espaço e Pasta (a Lista não bloqueia, D-15); bloquear Status, Funcionalidades ou Visualizações padrão é recusado enquanto um descendente sobrescreve (`sobrescritasAbaixo`) |
 | `usarCampoHerdado` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
 | `addDependency` | `operations/collaboration.ts` | `taskWriteRefusal` | via `activeTask`, nas duas Tarefas da Dependência |
 | `removeDependency` | `operations/collaboration.ts` | `taskWriteRefusal` |  |
@@ -231,8 +231,8 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `createFolder` | `operations/structure.ts` | `mayBuild` |  |
 | `createList` | `operations/structure.ts` | `mayBuild` |  |
 | `updateContainer` | `operations/structure.ts` | `containerAdminRefusal` |  |
-| `moveContainer` | `operations/structure.ts` | `containerAdminRefusal`, `mayBuild` | administrar o movido e alcançar/criar no destino (`recusaDeMover`, a fonte única das recusas); destino que o ator não alcança devolve "não encontrado" (RN-ESP-15); estruturas fixas recusadas em 10-18 |
-| `reorderContainers` | `operations/structure.ts` | `mayBuild` | Pastas e Listas: alcançar e criar no pai (`recusaDeReordenar`, a mesma frase que desliga Subir/Descer); Espaços: Administrador ou Proprietário (Papel de quem cria Espaço); a ordem é por grupo (D-08) e por fatia (A3): recebe os ids que o Membro vê e deixa os escondidos na vaga; registra "Ordem alterada" no pai |
+| `moveContainer` | `operations/structure.ts` | `containerAdminRefusal`, `mayBuild` | administrar o movido e alcançar/criar no destino (`recusaDeMover`, a fonte única das recusas); destino que o ator não alcança devolve "não encontrado" (RN-ESP-15); Pasta com descendente que o ator não alcança é recusada com frase que só conta, sem nome nem id (10-REVIEW MEDIUM-02); estruturas fixas recusadas em 10-18 |
+| `reorderContainers` | `operations/structure.ts` | `mayBuild` | Pastas e Listas: alcançar e criar no pai (`recusaDeReordenar`, a mesma frase que desliga Subir/Descer); Espaços: Administrador ou Proprietário (Papel de quem cria Espaço); a ordem é por grupo (D-08) e por fatia (A3): recebe os ids que o Membro vê e deixa os escondidos na vaga; devolve só os ids que o ator alcança (10-REVIEW MEDIUM-03); registra "Ordem alterada" no pai |
 | `archiveContainer` | `operations/structure.ts` | `containerAdminRefusal` |  |
 | `unarchiveContainer` | `operations/structure.ts` | `containerAdminRefusal` |  |
 | `trashContainer` | `operations/structure.ts` | `containerTrashRefusal` |  |

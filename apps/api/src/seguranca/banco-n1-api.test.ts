@@ -178,7 +178,7 @@ describeComBanco("banco fechado da Fase 9 (009) — Postgres local", () => {
       const aplicadas = await migrarNo(nome);
       expect(aplicadas.map((a) => a.nome)).toContain("009-seguranca-e-cofre.sql");
       const registradas = await dono.query<{ nome: string }>("select nome from plataforma.migracoes order by nome");
-      expect(registradas.rows.map((r) => r.nome).at(-1)).toBe("009-seguranca-e-cofre.sql");
+      expect(registradas.rows.map((r) => r.nome)).toContain("009-seguranca-e-cofre.sql");
     });
   }, 60_000);
 

@@ -119,7 +119,10 @@ anterior no próximo commit.
 `AUTOMACOES_WORKER_ATIVO=true` liga o poller que garante ao menos uma
 volta da agenda por (Espaço de Trabalho, Lista, dia civil) — o relógio do
 motor de Automações (ver `apps/api/src/automacoes/CONTEXT.md`). "false" no
-ambiente local, no molde do `OUTBOX_WORKER_ATIVO`.
+ambiente local, no molde do `OUTBOX_WORKER_ATIVO`. Ligado, exige
+`AUTOMACOES_ESPACO_ID` (ex.: `ws_n1`): sem ela o processo recusa subir, porque
+a volta expurga a lixeira vencida e, sem filtro, alcançaria todos os Espaços
+do banco (10-REVIEW MEDIUM-08).
 
 A volta do dia (`agendaDoDia`, `scheduler-worker.ts`) é UMA transação com
 três relógios, na ordem: as Automações por vencimento

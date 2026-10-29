@@ -40,6 +40,7 @@ import {
   criarSchedulerWorker as criarSchedulerWorkerDaFase10,
   dataCivil,
   diasCiveisPendentes,
+  escopoDoAgendador,
   liberarLista,
   type OpcoesSchedulerWorker,
   type RodarAgenda,
@@ -107,6 +108,27 @@ describe("dataCivil / diasCiveisPendentes — puras (03-VALIDATION.md § Samplin
     // lido como meia-noite UTC, que em América/São_Paulo (UTC-3) cai no dia
     // anterior — por isso `dataCivil()` nunca recebe o dia por esse caminho,
     // e converte sempre pelo construtor numérico de `Date` (achado de 03-02).
+  });
+});
+
+describe("10-REVIEW MEDIUM-08 — o agendador destrutivo nunca roda em todos os Espaços por omissão (sem banco)", () => {
+  it("AUTOMACOES_ESPACO_ID ausente, vazio ou em branco: recusa subir, com a variável que falta na mensagem", () => {
+    for (const env of [{}, { AUTOMACOES_ESPACO_ID: "" }, { AUTOMACOES_ESPACO_ID: "   " }]) {
+      expect(() => escopoDoAgendador(env)).toThrow(/AUTOMACOES_ESPACO_ID/);
+    }
+  });
+
+  it("com o Espaço preenchido, o escopo é ele (e a Lista, só se vier)", () => {
+    expect(escopoDoAgendador({ AUTOMACOES_ESPACO_ID: "ws_n1" })).toEqual({ workspaceId: "ws_n1" });
+    expect(escopoDoAgendador({ AUTOMACOES_ESPACO_ID: " ws_n1 ", AUTOMACOES_LISTA_ID: "lst_contas_a_pagar" })).toEqual({
+      workspaceId: "ws_n1",
+      listId: "lst_contas_a_pagar",
+    });
+    expect(escopoDoAgendador({ AUTOMACOES_ESPACO_ID: "ws_n1", AUTOMACOES_LISTA_ID: "" })).toEqual({ workspaceId: "ws_n1" });
+  });
+
+  it("criarSchedulerWorker sem Espaço lança antes de qualquer consulta", () => {
+    expect(() => criarSchedulerWorkerDaFase10({ workerId: "w_sem_espaco", workspaceId: "" })).toThrow(/Espaço de Trabalho/);
   });
 });
 
@@ -1266,6 +1288,49 @@ describeComBanco("10-05 — SEM_ATOR: a Lista que nenhum Membro ativo administra
     const mesmaLinha = await lerLinhaDaAgenda(workspaceId, LISTA_DA_RECORRENCIA, DIA_DA_VOLTA);
     expect(mesmaLinha.last_error_code).toBe(CODIGOS_DA_AGENDA.SEM_ATOR);
     expect(mesmaLinha.tentativas).toBe(1);
+  });
+
+  it("(y2) 10-REVIEW MEDIUM-07 — a linha SEM_ATOR não é reivindicada de novo na mesma volta: a próxima tentativa espera um intervalo, e o código fica gravado", async () => {
+    const workspaceId = await semearEspacoDeRecorrencia("agenda_sem_ator_laco", (estado) => {
+      for (const membro of estado.members) {
+        const base = estado.roles.find((r) => r.id === membro.roleId)?.base;
+        if (base === "proprietario" || base === "administrador") membro.state = "suspenso";
+      }
+    });
+    criados.push(workspaceId);
+
+    const INTERVALO_MS = 3_600_000;
+    const relogio = relogioFixo(new Date(2026, 7, 31, 12));
+    const worker = criarSchedulerWorkerDaFase10({
+      workerId: "w_y2",
+      workspaceId,
+      listId: LISTA_DA_RECORRENCIA,
+      relogio,
+      intervaloMs: INTERVALO_MS,
+      resolverAtor: async () => "mem_julia",
+    });
+
+    expect(await worker.processarUm()).toBe(true);
+    const primeira = await lerLinhaDaAgenda(workspaceId, LISTA_DA_RECORRENCIA, DIA_DA_VOLTA);
+    expect(primeira.estado).toBe("falhou");
+    expect(primeira.last_error_code).toBe(CODIGOS_DA_AGENDA.SEM_ATOR);
+    expect(primeira.tentativas).toBe(1);
+
+    // A mesma volta (drenagem, mesmo instante): a recusa é determinística, não há o que tentar de novo agora.
+    expect(await worker.processarUm()).toBe(false);
+    expect((await lerLinhaDaAgenda(workspaceId, LISTA_DA_RECORRENCIA, DIA_DA_VOLTA)).tentativas).toBe(1);
+
+    // Ainda dentro do intervalo: nada.
+    relogio.definir(new Date(2026, 7, 31, 12, 59));
+    expect(await worker.processarUm()).toBe(false);
+
+    // Um intervalo depois, a volta seguinte tenta de novo (quem sabe alguém ganhou `administrar`) e grava o código outra vez.
+    relogio.definir(new Date(2026, 7, 31, 13, 0, 1));
+    expect(await worker.processarUm()).toBe(true);
+    const segunda = await lerLinhaDaAgenda(workspaceId, LISTA_DA_RECORRENCIA, DIA_DA_VOLTA);
+    expect(segunda.estado).toBe("falhou");
+    expect(segunda.last_error_code).toBe(CODIGOS_DA_AGENDA.SEM_ATOR);
+    expect(segunda.tentativas).toBe(2);
   });
 });
 

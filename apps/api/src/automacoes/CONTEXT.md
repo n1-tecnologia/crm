@@ -13,6 +13,7 @@ que a chamada acontece.
 |---|---|
 | `scheduler-worker.ts` | `criarSchedulerWorker()` — o poller: lease por `for update skip locked` sobre `plataforma.automacao_agenda`, catch-up do dia perdido, Ator de sistema, e o gate da primeira volta em ensaio. |
 | `scheduler-worker.test.ts` | Os 19 casos (item Wave 0 de `03-VALIDATION.md`) — puros (a)-(e) e (s), os demais contra Postgres real. |
+| `scheduler-worker-drenagem.test.ts` | 10-REVIEW MEDIUM-05, sem banco (`pool()` falso que falha): a volta que rejeita vai para o log (`Volta do relógio falhou.`) e não derruba o processo; `semear()` que falhou é tentada de novo no mesmo dia. |
 | `liberar.cli.ts` | CLI fino de liberação da primeira volta em ensaio — só compõe `liberarLista()`. |
 | `invocar-agente.ts` (Plan 03-11; plano pós-auditoria 1.4; Plan 06-03) | `criarPonteDoAgente()` — a ponte HTTP do Agente de lançamento em DOIS momentos (Fase 6): publica o Resumo para conferência (`/resolver`), lê o fio, e só lança (`/lancar`, com o código conferido e os anexos) com a Conferência aprovada; e entrega ao scheduler acima uma `rodarAgenda` que nunca lança. |
 | `invocar-agente.test.ts` | Puros e HTTP contra `servidorFalso` — todos sem `DATABASE_URL`; o cabeçalho do arquivo diz onde cada caso de 06-03 é provado. |
@@ -116,12 +117,23 @@ negócio; o domínio decide o que de fato roda, dentro do `executar()`.
 As fontes se unem num só `Map` de pares (Espaço, Lista): uma linha de agenda
 por par e dia, venha ele de onde vier.
 
+**Um Espaço por worker, obrigatório** (10-REVIEW MEDIUM-08). `workspaceId` é
+exigido por `criarSchedulerWorker` (vazio lança) e `../index.ts` só liga o
+agendador com `AUTOMACOES_ESPACO_ID` preenchido (`escopoDoAgendador`): a volta
+expurga a lixeira vencida sem ensaio (Q3 = direto), e um worker sem filtro
+alcançaria todos os Espaços do banco, os de teste inclusive. A prévia continua
+podendo olhar todos (só lê).
+
 **A prévia, só leitura** (`previa.ts`, `npm run automacoes:previa -w @n1/api [-- <workspaceId>]`).
 Por (Espaço, Lista) candidata imprime nome da Lista, por onde entra (automação,
 recorrência, lixeira), regime (`ensaio`/`direto`), o Membro que assinaria
-(`atorDoRelogio`) ou `sem ator`, a contagem de Tarefas vencidas na lixeira
-(`tarefasDaLixeiraVencidas`, a mesma regra de `purgeExpiredTasks`) e a de séries
-por calendário. Hidrata cada Espaço em transação `read only` que termina em
+(`atorDoRelogio`) ou `sem ator`, quantas Tarefas a primeira volta eliminaria
+e a de séries por calendário. Desde o 10-REVIEW (MEDIUM-01) a coluna "Lixeira
+vencida" é o próprio `purgeExpiredTasks` rodado numa cópia do estado
+(`structuredClone`), com o ator escolhido e o "hoje" do worker (a meia-noite
+local do dia civil, não o instante do CLI): conta as Subtarefas que caem em
+cascata, não conta nada duas vezes, e dá 0 para a Lista `sem ator` (a volta
+fecharia `SEM_ATOR` sem eliminar nada). Hidrata cada Espaço em transação `read only` que termina em
 rollback, não contém DML e nunca imprime título de Tarefa (T-3-04). É o comando
 dos checkpoints Q3 e D-04: rodar contra produção ANTES de ligar
 `AUTOMACOES_WORKER_ATIVO=true`.
@@ -153,6 +165,15 @@ concessão a ninguém, Proprietário e Administradores suspensos): a linha fecha
 `falhou` com `SEM_ATOR`, nada é gravado, e `semear()` do dia seguinte cria só o
 dia novo — a linha que já existe não é recriada. Resolver é dar `administrar`
 a um Membro humano naquela Lista (ou reativar um Administrador).
+
+Desde o 10-REVIEW (MEDIUM-07) a linha `falhou` não é reivindicada de novo na
+mesma volta: `reivindicar()` só a devolve depois de um `intervaloMs` desde o
+último `locked_at` (a lease vencida, com `locked_at` nulo, volta já). Um
+`SEM_ATOR` tenta no máximo uma vez por volta, até `maxTentativas`, em vez de
+gastar as três em sequência. E a Lista sem ator não fica só numa linha da
+tabela: `automacoes:previa` (a prévia e o `--agenda`) termina com um alerta
+`BLOQUEIO: N Lista(s) sem ator …` com o nome e o id de cada uma — o checkpoint
+lê esse alerta como impeditivo.
 
 **O regime, por Lista** (`regimeDaPrimeiraVolta`, domínio — D-02). O ensaio da
 primeira volta (seção acima) existe para a Automação por vencimento, cujos

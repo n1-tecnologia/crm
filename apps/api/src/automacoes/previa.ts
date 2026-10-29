@@ -12,14 +12,16 @@
  * texto colado no chat não pode vazar nome de fornecedor nem valor.
  *
  * As decisões são do domínio, não do SQL: o SQL só acha os pares CANDIDATOS
- * (o catálogo do worker mais a lixeira); regime, ator e a contagem de vencidas
- * saem de `regimeDaPrimeiraVolta`, `atorDoRelogio` e `tarefasDaLixeiraVencidas`
- * sobre o estado hidratado — a mesma regra que o expurgo usa.
+ * (o catálogo do worker mais a lixeira); regime e ator saem de
+ * `regimeDaPrimeiraVolta` e `atorDoRelogio` sobre o estado hidratado, e a
+ * contagem da lixeira vencida é o próprio `purgeExpiredTasks` rodado numa
+ * CÓPIA do estado, com o mesmo ator e o mesmo "hoje" do worker (10-REVIEW
+ * MEDIUM-01) — não uma regra paralela que só se parece com ele.
  */
 
 import type { DataState, Id } from "@n1/dominio";
 import { atorDoRelogio, listaTemAgendaPorVencimento, type RegimeDaPrimeiraVolta, regimeDaPrimeiraVolta } from "@n1/dominio/operations/agenda-do-relogio";
-import { tarefasDaLixeiraVencidas } from "@n1/dominio/operations/tasks";
+import { purgeExpiredTasks } from "@n1/dominio/operations/tasks";
 import { resolverMembroAgenteDoPipeline } from "../persistencia/credenciais-de-servico";
 import { pool } from "../persistencia/conexao";
 import { hidratar } from "../persistencia/repositorio";
@@ -36,7 +38,11 @@ export interface LinhaDaPrevia {
   readonly regime: RegimeDaPrimeiraVolta;
   /** O nome do Membro que assinaria a Atividade do relógio nesta Lista, ou `sem ator`. */
   readonly ator: string;
-  /** Quantas Tarefas da lixeira a primeira volta real eliminaria nesta Lista. */
+  /**
+   * Quantas Tarefas a primeira volta real eliminaria nesta Lista: o que
+   * `purgeExpiredTasks` elimina, Subtarefas em cascata inclusive. `0` quando a
+   * Lista está `sem ator` — sem ator a volta fecha `SEM_ATOR` e nada some.
+   */
   readonly lixeiraVencida: number;
   readonly seriesPorCalendario: number;
 }
@@ -75,14 +81,39 @@ async function preferidoDoEspaco(workspaceId: string): Promise<Id | undefined> {
   }
 }
 
-/** As linhas da prévia para um Espaço, sobre o estado já hidratado. */
-function linhasDoEspaco(state: DataState, workspaceId: string, listIds: readonly string[], preferidoId: Id | undefined, hoje: Date): LinhaDaPrevia[] {
+/**
+ * O "hoje" que o worker passa à volta: a meia-noite local do dia civil
+ * (`dataCivil(dia_civil)` em `scheduler-worker.ts`), nunca o instante do CLI.
+ * Uma Tarefa cuja retenção acaba hoje às 10h sai na volta de AMANHÃ.
+ */
+function diaDoWorker(hoje: Date): Date {
+  return new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+}
+
+/**
+ * 10-REVIEW MEDIUM-01 — o que a primeira volta real elimina nesta Lista,
+ * medido pelo próprio expurgo, numa cópia descartável do estado: as
+ * Subtarefas que caem com a mãe entram, a Subtarefa vencida sob mãe vencida
+ * conta uma vez, e a recusa do expurgo (ator que não serve) conta zero, como
+ * na volta. A cópia é o que mantém a prévia só leitura.
+ */
+function eliminadasNaVolta(state: DataState, atorId: Id | undefined, listId: Id, hoje: Date): number {
+  if (atorId === undefined) return 0;
+  const r = purgeExpiredTasks(structuredClone(state), atorId, listId, diaDoWorker(hoje));
+  return r.ok ? r.value.eliminadas : 0;
+}
+
+/**
+ * As linhas da prévia para um Espaço, sobre o estado já hidratado. `hoje` é
+ * qualquer instante do dia civil: a contagem da lixeira usa a meia-noite dele,
+ * como o worker. Pura e só leitura — exportada para o teste sem banco.
+ */
+export function linhasDoEspaco(state: DataState, workspaceId: string, listIds: readonly string[], preferidoId: Id | undefined, hoje: Date): LinhaDaPrevia[] {
   const linhas: LinhaDaPrevia[] = [];
   for (const listId of listIds) {
     const lista = state.lists.find((l) => l.id === listId);
     if (!lista) continue; // a Lista já não existe no estado: sai da prévia.
 
-    const lixeiraVencida = tarefasDaLixeiraVencidas(state, listId, hoje).length;
     const seriesPorCalendario = state.tasks.filter((t) => t.listId === listId && t.recurrence?.triggerMode === "porCalendario").length;
     const temTarefaNaLixeira = state.tasks.some((t) => t.listId === listId && t.lifecycle === "naLixeira");
 
@@ -92,6 +123,7 @@ function linhasDoEspaco(state: DataState, workspaceId: string, listIds: readonly
     if (temTarefaNaLixeira) entraPor.push("lixeira");
 
     const atorId = atorDoRelogio(state, listId, preferidoId);
+    const lixeiraVencida = eliminadasNaVolta(state, atorId, listId, hoje);
     const ator = atorId === undefined ? SEM_ATOR_NA_PREVIA : (state.members.find((m) => m.id === atorId)?.displayName ?? atorId);
 
     linhas.push({
@@ -164,7 +196,25 @@ export function formatarPrevia(linhas: readonly LinhaDaPrevia[]): string {
     ...corpo.map(montar),
     "",
     `${linhas.length} Lista(s) candidata(s). Lixeira vencida (o que a primeira volta real eliminaria): ${total} Tarefa(s).`,
+    ...alertaDeSemAtor(linhas.filter((l) => l.ator === SEM_ATOR_NA_PREVIA)),
   ].join("\n");
+}
+
+/**
+ * 10-REVIEW MEDIUM-07 — a Lista que ninguém pode assinar não roda nunca: sem
+ * recorrência por calendário, sem expurgo, sem Automação por vencimento. Na
+ * tabela ela é só mais uma linha; aqui vira um alerta próprio (uma vez por
+ * Lista), que o checkpoint lê como BLOQUEIO antes de ligar o agendador ou de
+ * tirar o botão "Rodar agenda". Pura; vazio quando não há Lista sem ator.
+ */
+function alertaDeSemAtor(linhas: ReadonlyArray<{ readonly workspaceId: string; readonly listId: string; readonly nomeDaLista: string }>): string[] {
+  const porLista = new Map<string, string>();
+  for (const l of linhas) porLista.set(`${l.workspaceId}::${l.listId}`, `${l.nomeDaLista} (${l.listId})`);
+  if (porLista.size === 0) return [];
+  return [
+    `BLOQUEIO: ${porLista.size} Lista(s) sem ator — o relógio não roda nelas (nem recorrência, nem expurgo). ` +
+      `Dê administrar a um Membro humano ativo em cada uma: ${[...porLista.values()].join(", ")}.`,
+  ];
 }
 
 /**
@@ -252,7 +302,8 @@ export async function voltasRecentes(opcoes: { readonly workspaceId?: string; re
 
 /**
  * A tabela de texto de `--agenda`: colunas fixas e, no fim, quantas linhas `falhou` e
- * quantas carregam `SEM_ATOR` e `RECUSA_DO_DOMINIO` (o que o dono quer ver em zero). Pura.
+ * quantas carregam `SEM_ATOR` e `RECUSA_DO_DOMINIO` (o que o dono quer ver em zero), e o
+ * alerta de BLOQUEIO com cada Lista `SEM_ATOR` (10-REVIEW MEDIUM-07). Pura.
  */
 export function formatarAgenda(linhas: readonly LinhaDaAgenda[]): string {
   const cabecalho = ["Espaço de Trabalho", "Lista", "Nome", "Dia", "Estado", "Código", "Executadas", "Falhadas", "Puladas"];
@@ -269,5 +320,6 @@ export function formatarAgenda(linhas: readonly LinhaDaAgenda[]): string {
     ...corpo.map(montar),
     "",
     `${linhas.length} volta(s). ${falhou} falhou · ${semAtor} ${CODIGOS_DA_AGENDA.SEM_ATOR} · ${recusa} ${CODIGOS_DA_AGENDA.RECUSA_DO_DOMINIO}.`,
+    ...alertaDeSemAtor(linhas.filter((l) => l.codigo === CODIGOS_DA_AGENDA.SEM_ATOR)),
   ].join("\n");
 }

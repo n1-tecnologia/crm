@@ -703,6 +703,24 @@ function grupoDe(state: DataState, tipo: "folder" | "list", parentType: "space" 
   return pool.filter((c) => c.id !== semId && c.parentType === parentType && c.parentId === parentId);
 }
 
+/**
+ * 10-REVIEW MEDIUM-02 — quantas Pastas e Listas abaixo do movido o ator não
+ * alcança (privadas sem concessão; qualquer ciclo de vida, porque o mover
+ * remapeia as Tarefas de todas). O privado corta até o Administrador sem
+ * concessão, e o mover agiria sobre o que ele não vê (Status, Valor de Campo,
+ * Tipo, link público) e citaria nomes de lá nas recusas de configuração. A
+ * regra: com qualquer um assim, o mover é recusado, e a frase só conta — sem
+ * nome nem id (B38a, RN-ESP-15), como em `setContainerBlock`.
+ */
+function descendentesQueNaoAlcanca(state: DataState, actingMemberId: Id, tipo: "folder" | "list", id: Id): number {
+  if (tipo === "list") return 0;
+  const abaixo = descendantsOf(state, "folder", id);
+  return (
+    abaixo.folders.filter((f) => !memberReachesContainer(state, actingMemberId, "folder", f.id)).length +
+    abaixo.lists.filter((l) => !memberReachesContainer(state, actingMemberId, "list", l.id)).length
+  );
+}
+
 interface RecusaDeMover {
   readonly mensagem: string;
   readonly campo?: string;
@@ -716,6 +734,12 @@ function recusarMover(state: DataState, actingMemberId: Id, tipo: "folder" | "li
   if (admin) return { mensagem: admin };
   // O movido pode estar arquivado (RN-PAS-11) e vai assim mesmo; na lixeira, não.
   if (movido.lifecycle === "naLixeira") return { mensagem: `${ROTULO[tipo].nome} na lixeira: restaure antes de mover.` };
+  const inalcancaveis = descendentesQueNaoAlcanca(state, actingMemberId, tipo, id);
+  if (inalcancaveis > 0) {
+    return {
+      mensagem: `Não dá para mover: há ${inalcancaveis} ${inalcancaveis === 1 ? "contêiner" : "contêineres"} abaixo que você não alcança.`,
+    };
+  }
 
   // O destino que o ator não alcança não existe para ele (RN-ESP-15): sem nome, sem pista.
   const alvo = requireContainer(state, actingMemberId, destino.parentType, destino.parentId);
@@ -980,7 +1004,8 @@ const assinaturaDaTarefa = (t: Task): string => JSON.stringify([t.statusId, t.ta
  * configuração efetiva são derivadas do caminho.
  *
  * As recusas, na ordem (todas em `recusaDeMover`, que a tela lê): permissão no
- * movido e no destino, "já está aqui", "dentro de si", estrutura fixa (Q2),
+ * movido, descendente que o ator não alcança (só a contagem, MEDIUM-02),
+ * permissão no destino, "já está aqui", "dentro de si", estrutura fixa (Q2),
  * profundidade (RN-SUB-11 e RN-SUB-02), nome repetido, bloqueio do destino
  * (RN-ESP-09; só os aspectos que substituem), colisão de nome de Campo e Tipo
  * (RN-PAS-14) e Formulário que o envio quebraria. A Atividade nasce com o nome
@@ -1099,7 +1124,8 @@ export function recusaDeReordenar(state: DataState, actingMemberId: Id, tipo: Ti
  * Recusa: sem ids; id repetido; id que não pertence ao grupo (outro pai, outro
  * tipo) ou que o ator não alcança ("não encontrado", sem pista — T-10-11).
  * Registra "Ordem alterada" no pai (nos Espaços, no Espaço de Trabalho) só
- * quando a sequência mudou.
+ * quando a sequência mudou. Devolve a sequência nova só com os ids que o ator
+ * alcança (MEDIUM-03): os irmãos privados mudam de `order`, mas não voltam.
  */
 export function reorderContainers(
   state: DataState,
@@ -1134,7 +1160,10 @@ export function reorderContainers(
   nova.forEach((c, i) => {
     c.order = i;
   });
-  const sequencia = nova.map((c) => c.id);
+  // 10-REVIEW MEDIUM-03 — o grupo inteiro foi renumerado, mas o resultado só traz
+  // os ids que o ator alcança: um id também é informação (como em `filtrarOrdens`),
+  // e `recortarValor` não reconhece id solto num array de texto.
+  const sequencia = nova.filter((c) => memberReachesContainer(state, actingMemberId, tipo, c.id)).map((c) => c.id);
   if (!mudou) return ok(sequencia);
 
   const rotuloDoGrupo = tipo === "space" ? "Espaços" : tipo === "folder" ? "Pastas" : "Listas";

@@ -807,10 +807,12 @@ export function previsaoDeEliminacao(state: DataState, task: Pick<Task, "trashed
 /**
  * As Tarefas da Lista que estão na lixeira e já passaram do prazo de retenção
  * (`previsaoDeEliminacao` <= `hoje`). É A regra do expurgo: `purgeExpiredTasks`
- * a chama para eliminar e a prévia do relógio (`apps/api`, `automacoes:previa`)
- * a chama para CONTAR — as duas veem exatamente o mesmo conjunto (10-15, Q3).
- * Leitura pura: não grava nada. Pode incluir uma Subtarefa cuja mãe também está
- * na lista; o expurgo a trata (cai com a mãe, não em dobro).
+ * a chama para escolher o que eliminar. NÃO é a contagem do que some: o
+ * expurgo leva junto as Subtarefas (mesmo as ativas), e uma Subtarefa cuja mãe
+ * também está na lista cai com a mãe, não em dobro. Por isso a prévia do
+ * relógio (`apps/api`, `automacoes:previa`) conta rodando `purgeExpiredTasks`
+ * numa cópia do estado (10-REVIEW MEDIUM-01), não por esta função.
+ * Leitura pura: não grava nada.
  */
 export function tarefasDaLixeiraVencidas(state: DataState, listId: Id, hoje: Date): Task[] {
   return state.tasks.filter((t) => {

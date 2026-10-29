@@ -212,11 +212,13 @@ export interface OpcoesSchedulerWorker {
   /** Identifica esta instância em `locked_by` — dois processos precisam de valores distintos. */
   readonly workerId: string;
   /**
-   * Quando definido, estreita a semeadura e a reivindicação a um único
-   * Espaço de Trabalho — o teste isola a própria fatia; em produção fica
-   * ausente e o worker cobre todos os Espaços, como o outbox.
+   * O ÚNICO Espaço de Trabalho que este worker semeia, reivindica e recupera.
+   * Obrigatório desde o 10-REVIEW (MEDIUM-08): a volta elimina de vez a
+   * lixeira vencida, e um worker sem Espaço cobria TODOS os Espaços do banco
+   * (os de teste inclusive) quando `AUTOMACOES_ESPACO_ID` se perdia num
+   * redeploy. Vazio ou em branco, `criarSchedulerWorker` lança.
    */
-  readonly workspaceId?: string;
+  readonly workspaceId: string;
   /** Quando definido, só reivindica linhas desta Lista — para ligar um fluxo isolado (ex.: só Contas a pagar) sem rodar as Automações das outras Listas. */
   readonly listId?: string;
   readonly relogio?: Relogio;
@@ -419,7 +421,31 @@ export async function liberarLista(workspaceId: string, listId: string): Promise
   return resultado.rowCount ?? 0;
 }
 
+/**
+ * O escopo do agendador lido do ambiente (`AUTOMACOES_ESPACO_ID`,
+ * `AUTOMACOES_LISTA_ID`), para `../index.ts`. 10-REVIEW MEDIUM-08: com
+ * `AUTOMACOES_WORKER_ATIVO=true`, o Espaço é OBRIGATÓRIO — o expurgo da
+ * lixeira é irreversível e, sem filtro, alcançaria todos os Espaços do banco.
+ * Falhar ao subir, com a variável na mensagem, é o erro barato; rodar em
+ * todos é o caro. Pura: não lê `process.env` sozinha.
+ */
+export function escopoDoAgendador(env: Readonly<Record<string, string | undefined>>): { readonly workspaceId: string; readonly listId?: string } {
+  const workspaceId = env.AUTOMACOES_ESPACO_ID?.trim();
+  if (!workspaceId) {
+    throw new Error(
+      "AUTOMACOES_WORKER_ATIVO=true exige AUTOMACOES_ESPACO_ID (o Espaço de Trabalho que o relógio visita, ex.: ws_n1). " +
+        "Sem ele o agendador rodaria — e expurgaria a lixeira vencida — em TODOS os Espaços do banco. Ver apps/api/.env.example.",
+    );
+  }
+  const listId = env.AUTOMACOES_LISTA_ID?.trim();
+  return { workspaceId, ...(listId ? { listId } : {}) };
+}
+
 export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWorker {
+  if (!opcoes.workspaceId?.trim()) {
+    throw new Error("criarSchedulerWorker exige o Espaço de Trabalho (workspaceId): o agendador nunca roda em todos os Espaços (10-REVIEW MEDIUM-08).");
+  }
+  const espacoDoWorker = opcoes.workspaceId;
   const relogio = opcoes.relogio ?? relogioDoSistema;
   const janelaDias = opcoes.janelaDias ?? 7;
   const maxTentativas = opcoes.maxTentativas ?? 3;
@@ -488,18 +514,12 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
       new Error("Lease vencida: o processo caiu antes de fechar este dia."),
       CODIGOS_DA_AGENDA.LEASE_EXPIRADO,
     );
-    const parametros: unknown[] = [limite, erro.code, erro.summary];
-    let filtroWorkspace = "";
-    if (opcoes.workspaceId !== undefined) {
-      parametros.push(opcoes.workspaceId);
-      filtroWorkspace = `and workspace_id = $${parametros.length}`;
-    }
     await pool().query(
       `update plataforma.automacao_agenda
           set estado = 'falhou', locked_by = null, locked_at = null,
               last_error_code = $2, last_error_summary = $3
-        where estado = 'processando' and locked_at < $1 ${filtroWorkspace}`,
-      parametros,
+        where estado = 'processando' and locked_at < $1 and workspace_id = $4`,
+      [limite, erro.code, erro.summary, espacoDoWorker],
     );
   }
 
@@ -512,9 +532,9 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
    */
   async function semear(): Promise<number> {
     const hoje = relogio.agora();
-    ultimaSemeaduraEm = formatarDiaCivil(inicioDoDia(hoje));
+    const diaDaSemeadura = formatarDiaCivil(inicioDoDia(hoje));
 
-    const pares = await catalogoDeListasComAgenda(opcoes.workspaceId);
+    const pares = await catalogoDeListasComAgenda(espacoDoWorker);
     let linhasCriadas = 0;
 
     for (const par of pares) {
@@ -556,6 +576,10 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
       }
     }
 
+    // 10-REVIEW MEDIUM-05 — só depois do último insert: uma semeadura que caiu
+    // no meio (banco fora do ar) é tentada de novo na volta seguinte, não no
+    // dia civil seguinte.
+    ultimaSemeaduraEm = diaDaSemeadura;
     return linhasCriadas;
   }
 
@@ -566,15 +590,20 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
    * dia_civil` faz o dia mais antigo em aberto ser o primeiro — é o
    * catch-up. `tentativas < maxTentativas` impede que uma recusa permanente
    * seja reivindicada para sempre.
+   *
+   * 10-REVIEW MEDIUM-07 — uma linha `falhou` só volta depois de um
+   * `intervaloMs` desde a última reivindicação (`locked_at`, que `fecharLinha`
+   * não apaga). Sem isso, a drenagem reivindicava de novo, na mesma volta, a
+   * linha que acabara de falhar: um `SEM_ATOR` (recusa determinística) gastava
+   * as três tentativas em sequência e um `CONFLITO_DE_REVISAO` passageiro matava
+   * o dia. A linha devolvida pela lease vencida tem `locked_at` nulo e volta já.
    */
   async function reivindicar(): Promise<LinhaAgenda | undefined> {
-    const agora = relogio.agora().toISOString();
-    const parametros: unknown[] = [opcoes.workerId, agora, maxTentativas];
-    let filtroWorkspace = "";
-    if (opcoes.workspaceId !== undefined) {
-      parametros.push(opcoes.workspaceId);
-      filtroWorkspace = `and s.workspace_id = $${parametros.length}`;
-    }
+    const instante = relogio.agora();
+    const agora = instante.toISOString();
+    const tentarDeNovoSoAntesDe = new Date(instante.getTime() - intervaloMs).toISOString();
+    const parametros: unknown[] = [opcoes.workerId, agora, maxTentativas, tentarDeNovoSoAntesDe, espacoDoWorker];
+    let filtroWorkspace = "and s.workspace_id = $5";
     if (opcoes.listId !== undefined) {
       parametros.push(opcoes.listId);
       filtroWorkspace += ` and s.list_id = $${parametros.length}`;
@@ -585,7 +614,9 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
         where (a.workspace_id, a.list_id, a.dia_civil) = (
           select s.workspace_id, s.list_id, s.dia_civil
             from plataforma.automacao_agenda s
-           where s.estado in ('pendente','falhou') and s.tentativas < $3 ${filtroWorkspace}
+           where s.estado in ('pendente','falhou') and s.tentativas < $3
+             and (s.estado = 'pendente' or s.locked_at is null or s.locked_at <= $4)
+             ${filtroWorkspace}
            order by s.dia_civil, s.criado_em
            limit 1
              for update skip locked
@@ -732,8 +763,7 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
 
   let temporizador: ReturnType<typeof setInterval> | undefined;
   // A volta em voo, só para `parar()` poder esperá-la: uma promessa À PARTE,
-  // resolvida no `finally`. A da volta segue como antes (`void`, sem
-  // `catch`), para uma rejeição continuar se comportando exatamente igual.
+  // resolvida no `finally`, que nunca rejeita.
   let emVoo: Promise<void> | undefined;
 
   /**
@@ -760,10 +790,25 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
         emVoo = new Promise<void>((resolve) => {
           terminou = resolve;
         });
-        void drenar().finally(() => {
-          emVoo = undefined;
-          terminou();
-        });
+        // 10-REVIEW MEDIUM-05 — `recuperarTravadas()`, `semear()`,
+        // `reivindicar()` e o `fecharLinha` do `catch` de `processarUm()`
+        // falam com o banco fora de qualquer `try`: um blip do Postgres fazia
+        // `drenar()` rejeitar sem ninguém tratar, e a rejeição não tratada
+        // derruba o processo inteiro — a API HTTP junto com o relógio. A
+        // falha vai para o log (saneada, sem dado de Tarefa) e a volta
+        // seguinte tenta de novo; a linha presa em `processando` volta pela lease.
+        void drenar()
+          .catch((erro: unknown) => {
+            try {
+              registrar("warn", "Volta do relógio falhou.", { causa: sanitizarErro(erro, CODIGOS_DA_AGENDA.ERRO_INESPERADO).summary });
+            } catch {
+              // Nem o log pode derrubar o processo.
+            }
+          })
+          .finally(() => {
+            emVoo = undefined;
+            terminou();
+          });
       }, intervaloMs);
     },
     async parar() {
