@@ -200,9 +200,10 @@ export function TarefaCompleta({
   const run = useRun();
   const { memberId } = useSession();
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  // O id da Tarefa a que o aviso aponta com "Abrir": a próxima ocorrência ou a Subtarefa recém-convertida.
-  const [linkDoAviso, setLinkDoAviso] = useState<string | null>(null);
+  // O link "Abrir" (a próxima ocorrência ou a Subtarefa recém-convertida) é parte do aviso:
+  // trocar ou limpar o aviso leva o link junto, e um aviso posterior não herda o anterior.
+  const [aviso, setAviso] = useState<{ readonly texto: string; readonly abrir?: string } | null>(null);
+  const setNotice = (texto: string | null) => setAviso(texto === null ? null : { texto });
   const router = useRouter();
   const query = useSearchParams();
   const pathname = usePathname();
@@ -393,12 +394,12 @@ export function TarefaCompleta({
         tinhaRecorrencia && result.value.recurrence === undefined
           ? spawnedOccurrenceOf(state, task.id)
           : undefined;
-      setNotice(
-        proxima
+      setAviso({
+        texto: proxima
           ? `Status alterado. Próxima ocorrência criada: ${proxima.title}.`
           : "Status alterado.",
-      );
-      setLinkDoAviso(proxima?.id ?? null);
+        ...(proxima ? { abrir: proxima.id } : {}),
+      });
     } else {
       setNotice(null);
       setError(result.error);
@@ -772,8 +773,7 @@ export function TarefaCompleta({
           onFechar={closeConversion}
           onConvertida={({ id, title }) => {
             setError(null);
-            setNotice(`Item convertido em Subtarefa: ${title}.`);
-            setLinkDoAviso(id);
+            setAviso({ texto: `Item convertido em Subtarefa: ${title}.`, abrir: id });
           }}
           onErro={(mensagem) => {
             setNotice(null);
@@ -844,20 +844,14 @@ export function TarefaCompleta({
           ? { className: "@max-4xl:min-h-[calc(var(--conversa-empilhada-min)*0.75)]" }
           : {})}
       >
-        {notice ? (
-          <Toast
-            tone="success"
-            onDismiss={() => {
-              setNotice(null);
-              setLinkDoAviso(null);
-            }}
-          >
-            {notice}
-            {linkDoAviso ? (
+        {aviso ? (
+          <Toast tone="success" onDismiss={() => setAviso(null)}>
+            {aviso.texto}
+            {aviso.abrir ? (
               <>
                 {" "}
                 <Link
-                  href={`/estrutura/tarefas/${linkDoAviso}`}
+                  href={`/estrutura/tarefas/${aviso.abrir}`}
                   className="underline"
                 >
                   Abrir
