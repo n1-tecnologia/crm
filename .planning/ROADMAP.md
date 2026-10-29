@@ -615,7 +615,7 @@ Plans:
 **Itens da 2.7** (relatados nos testes) que mexam em Espaço, Pasta, Lista ou nas Configurações entram aqui, um por subtarefa.
 **Requirements**: EST-01, EST-02, EST-03, EST-04, EST-05, EST-06, EST-07, EST-08, EST-09, EST-10, EST-11 (derivados em `10-CONTEXT.md` "Requisitos derivados"; registrados em REQUIREMENTS.md, Fase 10)
 **Depends on:** Phase 9
-**Plans:** 18/21 plans executed
+**Plans:** 19/21 plans executed
 
 Plans:
 **Wave 1**
@@ -663,7 +663,7 @@ Plans:
 - [x] 10-13-PLAN.md — Arrastar na árvore com HTML5 nativo (EST-06)
 
 **Wave 14** *(blocked on Wave 13 completion)*
-- [ ] 10-15-PLAN.md — Prévia do relógio, decisão Q3 da lixeira `[BLOCKING]` e a ponte com os três relógios (EST-01)
+- [x] 10-15-PLAN.md — Prévia do relógio, decisão Q3 da lixeira `[BLOCKING]` e a ponte com os três relógios (EST-01)
 
 **Wave 15** *(blocked on Wave 14 completion)*
 - [ ] 10-16-PLAN.md — D-04 `[BLOCKING]`: agendador em produção (merge A), Q1, e só então o botão sai (EST-01, EST-02)

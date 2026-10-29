@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 10
 current_phase_name: "Clone ClickUp: Contêineres (Espaço, Pasta e Lista)"
 status: executing
-stopped_at: Completed 10-13-PLAN.md
-last_updated: "2026-10-29T11:09:24.008Z"
+stopped_at: Completed 10-15-PLAN.md
+last_updated: "2026-10-29T12:57:13.400Z"
 last_activity: 2026-10-29
 last_activity_desc: Phase 10 execution started
-state_head: ab24b01b6d56d5c0fc0b0480eeae89f4d48d5762
+state_head: 3aacf6175c0de90d5b5adf02c744269a1274d307
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 191
-  completed_plans: 186
+  completed_plans: 187
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 ## Current Position
 
 Phase: 10 (Clone ClickUp: Contêineres (Espaço, Pasta e Lista)) — EXECUTING
-Plan: 20 of 21
+Plan: 21 of 21
 Status: Ready to execute
 Last activity: 2026-10-29 — Phase 10 execution started
 
@@ -404,6 +404,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 10 P12 | 16min | 3 tasks | 5 files |
 | Phase 10 P19 | 9 min | 2 tasks | 4 files |
 | Phase 10 P13 | 8 min | 2 tasks | 7 files |
+| Phase 10 P15 | 2h | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -589,6 +590,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 10]: 10-19: o pedido de Subir/Descer sai dos irmãos que a árvore mostra E que o Membro alcança (memberReachesContainer); os escondidos o domínio deixa na vaga — Um Espaço privado que só aparece pelo caminho de uma Tarefa visível faria o domínio recusar o lote inteiro (10-04)
 - [Phase 10]: 10-19: copy nova «Gravando a ordem…» como motivo dos itens Mover para…/Subir/Descer desligados durante a gravação; fora do UI-SPEC, pendente de confirmação do dono — ActionMenu só desliga um item com disabledReason
 - [Phase 10]: 10-13: o arrastar da árvore é um hook fora da casca (useArrastarNaArvore) e a TreeRow saiu do app-shell para linha-da-arvore.tsx (teto de 1.250 linhas); toda linha da Estrutura fora de Meus negócios recebe a soltura (A2) e só arrasta quem administra o item; o aviso de mover só sai depois da resposta do servidor
+- [Phase 10]: 10-15 Q3 = direto: a Lista que entra no catálogo do relógio só pela lixeira roda a primeira volta sem ensaio e a ponte do Agente de lançamento passa a expurgar Contas a pagar/receber (prévia de produção: 65 Tarefas vencidas, todas em Espaços de teste; 0 no ws_n1) — Decisão do dono em 2026-10-29 depois de ver a prévia só leitura contra produção; registrada em 10-PROVAS.md
 
 ### Pending Todos
 
@@ -650,6 +652,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-29T11:09:23.778Z
-Stopped at: Completed 10-13-PLAN.md
+Last session: 2026-10-29T12:57:13.170Z
+Stopped at: Completed 10-15-PLAN.md
 Resume file: None
