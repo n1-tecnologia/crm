@@ -631,7 +631,8 @@ describe("Mover para… — as linhas de Pasta, Subpasta e Lista da árvore (D-0
     await abrirArvore(JULIA);
 
     const itens = itensDoMenu(ALFA);
-    expect(itens.map((i) => i.textContent)).toEqual([expect.stringContaining("Mover para…")]);
+    // «Subir» e «Descer» (10-19) vêm depois de «Mover para…»: o primeiro item é o que este teste examina.
+    expect(itens[0]?.textContent).toContain("Mover para…");
     expect(itens[0]?.getAttribute("aria-disabled")).toBe("true");
     expect(itens[0]?.getAttribute("title")).toBe(frase);
     fireEvent.click(itens[0]!);

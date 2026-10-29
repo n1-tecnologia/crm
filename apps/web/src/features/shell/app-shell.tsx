@@ -27,7 +27,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import {
   Bell,
   Building2,
@@ -73,11 +73,18 @@ import type { ContainerKind } from "@/features/estrutura/create-container-dialog
 import { shortcutHref } from "@/features/estrutura/shortcuts";
 import { BrandMark } from "./brand";
 
-import { useData, useRun, useSession } from "@/dados/store";
+import { useData, useRun, useRunConfirmado, useSession } from "@/dados/store";
 import { MEUS_NEGOCIOS_ID } from "@n1/dominio/seed-comercial";
-import { moveChatSessionToFolder } from "@n1/dominio/operations";
+import { moveChatSessionToFolder, recusaDeReordenar, reorderContainers, type PaiDeConteiner } from "@n1/dominio/operations";
 import { useChatFolderDialogs } from "@/features/ia/chat-folder-dialogs";
-import { containerAdminRefusal, containerPath, memberReachesContainer, memberSeesResource, notificacoesDoMembro } from "@n1/dominio/derive";
+import {
+  containerAdminRefusal,
+  containerPath,
+  irmaosOrdenados,
+  memberReachesContainer,
+  memberSeesResource,
+  notificacoesDoMembro,
+} from "@n1/dominio/derive";
 import { useSidebarCollapsed } from "./use-sidebar";
 import { TarefasCompartilhadas } from "./compartilhadas-comigo";
 import {
@@ -545,7 +552,7 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
               >
                 Espaços
               </RotuloDeGrupo>
-              <StructureTree showArchived={showArchived} openCreate={openCreate} openMover={openMover} />
+              <StructureTree showArchived={showArchived} openCreate={openCreate} openMover={openMover} onErro={setNoticeErro} />
               <button
                 type="button"
                 onClick={() => setShowArchived((value) => !value)}
@@ -624,14 +631,20 @@ function StructureTree({
   showArchived,
   openCreate,
   openMover,
+  onErro,
 }: {
   readonly showArchived: boolean;
   readonly openCreate: (kind: ContainerKind, parentType?: "space" | "folder", parentId?: string) => void;
   readonly openMover: (id: Id) => void;
+  /** A recusa do servidor ao reordenar vai ao Toast de erro da barra lateral; `null` limpa o aviso anterior. */
+  readonly onErro: (frase: string | null) => void;
 }) {
   const { memberId } = useSession();
+  const runConfirmado = useRunConfirmado();
   const data = useData((current) => current);
-  const { spaces, folders, lists } = data;
+  const { spaces } = data;
+  // A3/A4: enquanto uma reordenação grava, a árvore fica ocupada e nenhum segundo comando de ordem sai.
+  const [gravando, setGravando] = useState(false);
 
   const visibleList = (list: List): boolean => {
     if (list.lifecycle === "naLixeira") return false;
@@ -641,11 +654,13 @@ function StructureTree({
     return memberSeesResource(data, memberId, list.id);
   };
 
-  const listsUnder = (parentId: Id) => lists.filter((l) => l.parentId === parentId).filter(visibleList);
+  // F2: cada grupo sai na ordem gravada (`order`, desempate estável), nunca na ordem do array.
+  const paiDe = (parentId: Id): PaiDeConteiner => ({ type: spaces.some((s) => s.id === parentId) ? "space" : "folder", id: parentId });
+
+  const listsUnder = (parentId: Id): List[] => (irmaosOrdenados(data, "list", paiDe(parentId)) as readonly List[]).filter(visibleList);
 
   const foldersUnder = (parentId: Id): Folder[] =>
-    folders
-      .filter((f) => f.parentId === parentId)
+    (irmaosOrdenados(data, "folder", paiDe(parentId)) as readonly Folder[])
       .filter((f) => f.lifecycle !== "naLixeira")
       .filter((f) => f.lifecycle !== "arquivado" || showArchived);
 
@@ -658,34 +673,116 @@ function StructureTree({
 
   const isGuest = ehConvidado(data, memberId);
 
-  const visibleSpaces = spaces
+  const visibleSpaces = (irmaosOrdenados(data, "space", null) as readonly Space[])
     .filter((s) => s.lifecycle !== "naLixeira")
     .filter((s) => s.lifecycle !== "arquivado" || showArchived)
     // B38a vive em memberSeesResource: o contêiner privado sem concessão não
     // existe aqui, e o Convidado só chega ao que lhe foi concedido.
     .filter((s) => memberSeesResource(data, memberId, s.id))
-    .filter((s) => !isGuest || spaceHasVisibleContent(s))
-    .sort((a, b) => a.order - b.order);
+    .filter((s) => !isGuest || spaceHasVisibleContent(s));
 
   if (visibleSpaces.length === 0) {
     return <p className="app-meta px-3 py-1">Nenhum Espaço visível para você.</p>;
   }
 
+  /**
+   * Os irmãos que o menu de ordem conhece: os que a árvore mostra E que o Membro
+   * alcança (10-04). Um Espaço privado pode aparecer só porque o caminho de uma
+   * Tarefa visível passa por ele; mandá-lo faria o domínio recusar o pedido
+   * inteiro. Os escondidos (arquivados, na lixeira, privados) ficam de fora e o
+   * domínio os deixa na vaga deles.
+   */
+  const irmaos = (tipo: TipoDoGrupo, pai: PaiDeConteiner): readonly Id[] => {
+    const grupo: ReadonlyArray<Space | Folder | List> =
+      tipo === "space" ? visibleSpaces : tipo === "folder" ? foldersUnder(pai?.id ?? "") : listsUnder(pai?.id ?? "");
+    return grupo.filter((c) => memberReachesContainer(data, memberId, tipo, c.id)).map((c) => c.id);
+  };
+
+  const reordenar = (tipo: TipoDoGrupo, pai: PaiDeConteiner, id: Id, passo: -1 | 1) => {
+    if (gravando) return;
+    const ids = [...irmaos(tipo, pai)];
+    const de = ids.indexOf(id);
+    const para = de + passo;
+    if (de < 0 || para < 0 || para >= ids.length) return;
+    [ids[de], ids[para]] = [ids[para]!, ids[de]!];
+    const { local, confirmado } = runConfirmado((estado, quem) => reorderContainers(estado, quem, tipo, pai, ids));
+    if (!local.ok) {
+      onErro(local.error);
+      return;
+    }
+    onErro(null);
+    setGravando(true);
+    // Sem Toast no sucesso: a linha mudar de lugar é o aviso. Só a falha fala.
+    void confirmado.then((resposta) => {
+      setGravando(false);
+      if (!resposta.ok) onErro(resposta.error);
+    });
+  };
+
   return (
-    <ul>
-      {visibleSpaces.map((space) => (
-        <TreeSpace
-          key={space.id}
-          space={space}
-          inert={isGuest}
-          foldersUnder={foldersUnder}
-          listsUnder={listsUnder}
-          openCreate={openCreate}
-          openMover={openMover}
-        />
-      ))}
-    </ul>
+    <OrdemDaArvoreContext.Provider value={{ ocupado: gravando, irmaos, reordenar }}>
+      <ul aria-busy={gravando || undefined}>
+        {visibleSpaces.map((space) => (
+          <TreeSpace
+            key={space.id}
+            space={space}
+            inert={isGuest}
+            foldersUnder={foldersUnder}
+            listsUnder={listsUnder}
+            openCreate={openCreate}
+            openMover={openMover}
+          />
+        ))}
+      </ul>
+    </OrdemDaArvoreContext.Provider>
   );
+}
+
+type TipoDoGrupo = "space" | "folder" | "list";
+
+/**
+ * O que a árvore da Estrutura sabe e as linhas precisam para «Subir»/«Descer»:
+ * os irmãos que ela mostra, o comando que grava e se há gravação em curso. Só a
+ * `StructureTree` fornece; a árvore de «Meus negócios» fica sem (A9), e então
+ * nenhuma linha dela ganha item de ordem.
+ */
+interface OrdemDaArvore {
+  readonly ocupado: boolean;
+  readonly irmaos: (tipo: TipoDoGrupo, pai: PaiDeConteiner) => readonly Id[];
+  readonly reordenar: (tipo: TipoDoGrupo, pai: PaiDeConteiner, id: Id, passo: -1 | 1) => void;
+}
+const OrdemDaArvoreContext = createContext<OrdemDaArvore | null>(null);
+
+/** O motivo dos itens de comando enquanto uma reordenação grava (T-10-51). */
+const MOTIVO_GRAVANDO = "Gravando a ordem…";
+
+type ItemDeLinha = { readonly label: string; readonly onSelect: () => void; readonly disabledReason?: string };
+
+/**
+ * «Subir» e «Descer» da linha (D-08, D-09, A6): trocam o item com o vizinho
+ * VISÍVEL do mesmo grupo por `reorderContainers`. São o caminho por teclado e
+ * leitor de tela da reordenação. Desligados pelo topo/fim, pela frase de
+ * `recusaDeReordenar` e durante uma gravação. Vazio para o Convidado (árvore
+ * inerte), para a árvore sem `StructureTree` e para a Pasta «Meus negócios» e o
+ * que mora nela (A9).
+ */
+function useMenuDeOrdem(tipo: TipoDoGrupo, id: Id, pai: PaiDeConteiner, inert: boolean): ReadonlyArray<ItemDeLinha> {
+  const ordem = useContext(OrdemDaArvoreContext);
+  const { memberId } = useSession();
+  const data = useData((current) => current);
+  if (!ordem || inert) return [];
+  if (tipo !== "space" && containerPath(data, tipo, id).some((node) => node.id === MEUS_NEGOCIOS_ID)) return [];
+  const irmaos = ordem.irmaos(tipo, pai);
+  const posicao = irmaos.indexOf(id);
+  if (posicao < 0) return [];
+  const recusa = recusaDeReordenar(data, memberId, tipo, pai);
+  const motivo = (limite: string | undefined): string | undefined => recusa ?? limite ?? (ordem.ocupado ? MOTIVO_GRAVANDO : undefined);
+  const subir = motivo(posicao === 0 ? "Já está no topo." : undefined);
+  const descer = motivo(posicao === irmaos.length - 1 ? "Já está no fim." : undefined);
+  return [
+    { label: "Subir", onSelect: () => ordem.reordenar(tipo, pai, id, -1), ...(subir ? { disabledReason: subir } : {}) },
+    { label: "Descer", onSelect: () => ordem.reordenar(tipo, pai, id, 1), ...(descer ? { disabledReason: descer } : {}) },
+  ];
 }
 
 /**
@@ -699,11 +796,12 @@ function useMenuDeMover(
   id: Id,
   openMover: ((id: Id) => void) | undefined,
 ): ReadonlyArray<{ readonly label: string; readonly onSelect: () => void; readonly disabledReason?: string }> {
+  const ordem = useContext(OrdemDaArvoreContext);
   const { memberId } = useSession();
   const data = useData((current) => current);
   if (!openMover) return [];
   if (containerPath(data, tipo, id).some((node) => node.id === MEUS_NEGOCIOS_ID)) return [];
-  const recusa = containerAdminRefusal(data, memberId, tipo, id);
+  const recusa = containerAdminRefusal(data, memberId, tipo, id) ?? (ordem?.ocupado ? MOTIVO_GRAVANDO : undefined);
   return [{ label: "Mover para…", onSelect: () => openMover(id), ...(recusa ? { disabledReason: recusa } : {}) }];
 }
 
@@ -725,6 +823,7 @@ function TreeSpace({
   const [open, setOpen] = useState(true);
   const childFolders = foldersUnder(space.id);
   const directLists = listsUnder(space.id);
+  const menu = useMenuDeOrdem("space", space.id, null, inert);
 
   return (
     <li>
@@ -747,6 +846,7 @@ function TreeSpace({
                 { label: "Pasta", onSelect: () => openCreate("pasta", "space", space.id) },
               ]
         }
+        menu={menu}
       />
       {open ? (
         <ul className="surgir-rapido">
@@ -830,7 +930,10 @@ function TreeFolder({
 }) {
   const [open, setOpen] = useState(true);
   const pathname = usePathname();
-  const menu = useMenuDeMover("folder", folder.id, inert ? undefined : openMover);
+  const menu = [
+    ...useMenuDeMover("folder", folder.id, inert ? undefined : openMover),
+    ...useMenuDeOrdem("folder", folder.id, { type: folder.parentType, id: folder.parentId }, inert),
+  ];
   // A3.4 — a Subfolder never expands into another Subfolder.
   const subfolders = folder.parentType === "space" ? foldersUnder(folder.id) : [];
   const childLists = listsUnder(folder.id);
@@ -907,7 +1010,10 @@ function TreeList({
 }) {
   const pathname = usePathname();
   const [navegar] = useNavegar();
-  const menu = useMenuDeMover("list", list.id, inert ? undefined : openMover);
+  const menu = [
+    ...useMenuDeMover("list", list.id, inert ? undefined : openMover),
+    ...useMenuDeOrdem("list", list.id, { type: list.parentType, id: list.parentId }, inert),
+  ];
   const href = enderecos.lista(list);
   const novo = enderecos.novoNaLista ?? {
     // Dentro de uma Lista o que se cria é Tarefa, e o campo dela já vive na
@@ -1190,8 +1296,9 @@ function TreeRow({
       )}
       {creatable && creatable.length > 0 ? (
         // Aparece no hover e no foco do teclado: um controle que só existe sob
-        // o ponteiro é um controle que o teclado não tem.
-        <span className="shrink-0 opacity-0 transition-opacity focus-within:opacity-100 group-hover/linha:opacity-100">
+        // o ponteiro é um controle que o teclado não tem. Em aparelho sem hover
+        // (toque) fica sempre à vista, senão o menu é inalcançável (A7).
+        <span className="shrink-0 opacity-0 transition-opacity focus-within:opacity-100 group-hover/linha:opacity-100 [@media(hover:none)]:opacity-100">
           <ActionMenu
             label={`Criar dentro de ${label}`}
             trigger={
@@ -1204,7 +1311,7 @@ function TreeRow({
         </span>
       ) : null}
       {menu && menu.length > 0 ? (
-        <span className="shrink-0 opacity-0 transition-opacity focus-within:opacity-100 group-hover/linha:opacity-100">
+        <span className="shrink-0 opacity-0 transition-opacity focus-within:opacity-100 group-hover/linha:opacity-100 [@media(hover:none)]:opacity-100">
           <ActionMenu label={`Ações de ${label}`} items={menu} />
         </span>
       ) : null}
