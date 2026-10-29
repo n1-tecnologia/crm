@@ -171,12 +171,12 @@ Critério de pronto (ROADMAP Phase 10): a Estrutura de Trabalho fechada no níve
 Critério de pronto (ROADMAP Phase 11): a Tarefa fechada nas lacunas do checklist, da descrição e do tempo: converter item em Subtarefa sem susto, menção na descrição, histórico com o texto anterior e tempo registrado calculado no domínio. Os sete IDs abaixo são **derivados** das subtarefas 2.4.1–2.4.5 e 2.6.6–2.6.9 de `docs/09-planejamento/TAREFAS-POR-SESSAO.md` e das decisões D-01..D-16 (`.planning/phases/11-clone-clickup-tarefa-checklist-descri-o-e-tempo/11-CONTEXT.md`, "Requisitos derivados").
 
 - [x] **TAR-01**: `conversaoDeItemRecusada(state, actingMemberId, taskId)` em `derive.ts` devolve o motivo para Lista sem Subtarefas, para Tarefa no nível máximo e para quem não escreve na Tarefa, e `undefined` numa Tarefa de primeiro nível com Subtarefas ligadas; `convertChecklistItem` a chama primeiro e a recusa de nível diz "Esta Tarefa já está no nível N, o último permitido. O item não pode virar Subtarefa aqui." (2.4.1, D-04). Pendente.
-- [ ] **TAR-02**: Em Lista sem Subtarefas e em Tarefa no último nível o botão "Converter em Subtarefa" não aparece; onde aparece, está na cor normal; a confirmação é de um clique, sem digitar o nome do item; converter mostra o aviso com "Abrir" e o link abre a Subtarefa nova; o cartão do Quadro não converte (2.4.2, 2.4.3, 2.4.5, D-01, D-03, D-05). Pendente.
+- [x] **TAR-02**: Em Lista sem Subtarefas e em Tarefa no último nível o botão "Converter em Subtarefa" não aparece; onde aparece, está na cor normal; a confirmação é de um clique, sem digitar o nome do item; converter mostra o aviso com "Abrir" e o link abre a Subtarefa nova; o cartão do Quadro não converte (2.4.2, 2.4.3, 2.4.5, D-01, D-03, D-05). Pendente.
 - [ ] **TAR-03**: `grep -rn parentItemId packages apps` sem achados; `convertChecklistItem` e `removeChecklistItem` sem ramo de subitens; o checklist tem um nível só; `npm run check` passa (2.4.4, D-02). Pendente.
 - [ ] **TAR-04**: `updateTask` com "@Júlia revisar" e a menção grava `Task.descriptionMentions`; Membro inexistente é recusado; o esquema de `updateTask` aceita a chave; digitar "@Jú" na descrição abre o menu de Membros (hook `useMencoes`); o nome mencionado aparece destacado (2.6.6, D-06). Pendente.
 - [x] **TAR-05**: Notificações › "Menções a você" mostra a menção da descrição, com o trecho, enquanto o nome estiver nela e a Tarefa estiver aberta; some ao fechar a Tarefa ou tirar o nome; quem não enxerga a Tarefa não recebe; uma menção sem o "@Nome" no texto nunca avisa; o aviso de Comentário segue igual (2.6.7, D-07, D-08, D-09). Pendente.
 - [ ] **TAR-06**: Editar a descrição de "A" para "B" grava Atividade com `before: "A"` e `after: "B"`; descrição de 3.000 caracteres grava 2.000 e "…"; no histórico "Ver alteração" expande o texto anterior e o novo; edição antiga e Ator de integração não têm o botão (2.6.8, D-10..D-14). Pendente.
-- [ ] **TAR-07**: `tempoRegistrado(state, taskId)` em `tempo-registrado.test.ts`: lançamentos de 30 e 45 min mais um cronômetro aberto devolvem 75 min e `emAndamento: true`; com uma Subtarefa de 20 min, `minutosComSubtarefas` é 95; a linha "Rastrear tempo" e o editor mostram o mesmo número (2.6.9, D-15, D-16). Pendente.
+- [x] **TAR-07**: `tempoRegistrado(state, taskId)` em `tempo-registrado.test.ts`: lançamentos de 30 e 45 min mais um cronômetro aberto devolvem 75 min e `emAndamento: true`; com uma Subtarefa de 20 min, `minutosComSubtarefas` é 95; a linha "Rastrear tempo" e o editor mostram o mesmo número (2.6.9, D-15, D-16). Pendente.
 
 ## Traceability
 
@@ -265,12 +265,12 @@ Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pe
 | EST-10 | Phase 10 | Complete | pendente | derivado (10-CONTEXT) |
 | EST-11 | Phase 10 | Pending | pendente — checkpoint do dono (010 em produção) | derivado (10-CONTEXT) |
 | TAR-01 | Phase 11 | Complete | pendente | derivado (11-CONTEXT) |
-| TAR-02 | Phase 11 | Pending | pendente | derivado (11-CONTEXT) |
+| TAR-02 | Phase 11 | Complete | pendente | derivado (11-CONTEXT) |
 | TAR-03 | Phase 11 | Pending | pendente — conferir em produção que nenhum registro carrega `parentItemId` | derivado (11-CONTEXT) |
 | TAR-04 | Phase 11 | Pending | pendente | derivado (11-CONTEXT) |
 | TAR-05 | Phase 11 | Complete | pendente | derivado (11-CONTEXT) |
 | TAR-06 | Phase 11 | Pending | pendente | derivado (11-CONTEXT) |
-| TAR-07 | Phase 11 | Pending | pendente | derivado (11-CONTEXT) |
+| TAR-07 | Phase 11 | Complete | pendente | derivado (11-CONTEXT) |
 
 **Coverage:**
 
