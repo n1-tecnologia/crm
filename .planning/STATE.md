@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 11
 current_phase_name: "Clone ClickUp: Tarefa (checklist, descrição e tempo)"
 status: executing
-stopped_at: Completed 11-01-PLAN.md
-last_updated: "2026-10-29T22:03:08.685Z"
+stopped_at: Completed 11-02-PLAN.md
+last_updated: "2026-10-29T22:08:54.590Z"
 last_activity: 2026-10-29
 last_activity_desc: Phase 11 execution started
-state_head: 224514014ec0df97beff2295dd873aaee9b73b11
+state_head: 862b0484c275bab540d13b37fedbc75ec45cfcfa
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 199
-  completed_plans: 188
+  completed_plans: 189
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 ## Current Position
 
 Phase: 11 (Clone ClickUp: Tarefa (checklist, descrição e tempo)) — EXECUTING
-Plan: 2 of 8
+Plan: 3 of 8
 Status: Ready to execute
 Last activity: 2026-10-29 — Phase 11 execution started
 
@@ -406,6 +406,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 10 P13 | 8 min | 2 tasks | 7 files |
 | Phase 10 P15 | 2h | 3 tasks | 11 files |
 | Phase 11 P01 | 4 min | 3 tasks | 12 files |
+| Phase 11 P02 | 6 min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -594,6 +595,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 10]: 10-15 Q3 = direto: a Lista que entra no catálogo do relógio só pela lixeira roda a primeira volta sem ensaio e a ponte do Agente de lançamento passa a expurgar Contas a pagar/receber (prévia de produção: 65 Tarefas vencidas, todas em Espaços de teste; 0 no ws_n1) — Decisão do dono em 2026-10-29 depois de ver a prévia só leitura contra produção; registrada em 10-PROVAS.md
 - [Phase 11]: 11-01: conversaoDeItemRecusada (derive.ts) e a recusa unica de convertChecklistItem e da tela; parametro de Tarefa pai alternativa removido da funcao e do esquema (D-04)
 - [Phase 11]: 11-01: checklist de um nivel so, campo de Subitem fora do tipo, do dominio e da tela; sem migracao SQL, contagem em producao fica para o checkpoint de 11-08 (D-02)
+- [Phase 11]: 11-02: a invariante 'menção sem @Nome nunca avisa' vale na leitura (membrosMencionadosNaDescricao); updateTask só refiltra por higiene — Rollback do financeiro e recorrência escrevem a descrição fora de updateTask
+- [Phase 11]: 11-02: histórico da descrição corta em 2.000 pontos de código + '…' (2.001), before vazio presente — A4 do plano; muda uma constante se o dono esperava 2.000 contando o '…'
 
 ### Pending Todos
 
@@ -655,6 +658,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-29T22:03:08.448Z
-Stopped at: Completed 11-01-PLAN.md
+Last session: 2026-10-29T22:08:54.339Z
+Stopped at: Completed 11-02-PLAN.md
 Resume file: None
