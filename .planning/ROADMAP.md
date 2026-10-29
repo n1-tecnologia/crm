@@ -682,7 +682,7 @@ Plans:
 **Itens da 2.7** que mexam na Tarefa entram aqui.
 **Requirements**: TAR-01, TAR-02, TAR-03, TAR-04, TAR-05, TAR-06, TAR-07 (derivados em `11-CONTEXT.md` "Requisitos derivados"; registrados em REQUIREMENTS.md, Fase 11)
 **Depends on:** Phase 9
-**Plans:** 7/8 plans executed
+**Plans:** 8/8 plans executed
 
 Plans:
 **Wave 1**
@@ -699,7 +699,7 @@ Plans:
 - [x] 11-07-PLAN.md — Na Tarefa aberta: converter em um clique só onde dá, descrição com o nome destacado e a linha "Rastrear tempo" com o número do domínio (TAR-02, TAR-04, TAR-07)
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 11-08-PLAN.md — Fechamento: e2e local de `POST /operacoes` e `GET /estado`, `npm run check`, divergência da ontologia (D-02), `11-PROVAS.md` e a conferência do dono em produção (TAR-03, TAR-04, TAR-06)
+- [x] 11-08-PLAN.md — Fechamento: e2e local de `POST /operacoes` e `GET /estado`, `npm run check`, divergência da ontologia (D-02), `11-PROVAS.md` e a conferência do dono em produção (TAR-03, TAR-04, TAR-06)
 
 ### Phase 12: Clone ClickUp: gravação mais rápida
 
