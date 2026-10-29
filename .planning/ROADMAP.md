@@ -615,10 +615,63 @@ Plans:
 **Itens da 2.7** (relatados nos testes) que mexam em Espaço, Pasta, Lista ou nas Configurações entram aqui, um por subtarefa.
 **Requirements**: EST-01, EST-02, EST-03, EST-04, EST-05, EST-06, EST-07, EST-08, EST-09, EST-10, EST-11 (derivados em `10-CONTEXT.md` "Requisitos derivados"; registrados em REQUIREMENTS.md, Fase 10)
 **Depends on:** Phase 9
-**Plans:** 0 plans
+**Plans:** 21 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 10 to break down)
+**Wave 1**
+- [ ] 10-01-PLAN.md — Visualizações padrão no domínio (`setContainerDefaultViews`) e `saveView` sem tipo indisponível (EST-08, EST-11)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 10-20-PLAN.md — A Lista sem `blocks` e sem o modo de bloqueio, com as limpezas que o `tsc` aponta (EST-09)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 10-02-PLAN.md — Bloqueio de aspecto no domínio: `setContainerBlock`, `sobrescritasAbaixo`, `criarAutomacao` sob bloqueio (EST-10, EST-11)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 10-03-PLAN.md — `moveContainer` traçador: cadeia de registro, recusas básicas, Conjunto que muda, B37 e o laço de `moveTask` compartilhado (EST-05, EST-11)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+- [ ] 10-04-PLAN.md — `reorderContainers` por fatia (desvio declarado do D-08), ordem estável, prova pela API e suíte de segurança (EST-05, EST-06, EST-11)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+- [ ] 10-18-PLAN.md — `moveContainer` expansão: profundidade, bloqueio, colisão, Formulário, estruturas fixas, L2 e `order` nas criações (EST-05)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+- [ ] 10-05-PLAN.md — O relógio gera a recorrência: catálogo, ator e regime por Lista, volta que drena (EST-01)
+
+**Wave 8** *(blocked on Wave 7 completion)*
+- [ ] 10-06-PLAN.md — Página da Lista limpa e abaixo de 1.000 linhas: `SelecaoEmLote`, frases fora, extrações (EST-02)
+- [ ] 10-08-PLAN.md — Configurações em abas com `?aba=` e a linha de origem (EST-03)
+- [ ] 10-14-PLAN.md — Os 13 códigos de regra fora dos textos e o teste de varredura (EST-04)
+
+**Wave 9** *(blocked on Wave 8 completion)*
+- [ ] 10-07-PLAN.md — A Carga fora, de ponta a ponta (EST-07)
+- [ ] 10-09-PLAN.md — Página do Espaço no formato da Pasta (EST-03)
+
+**Wave 10** *(blocked on Wave 9 completion)*
+- [ ] 10-10-PLAN.md — Visualizações padrão na Lista e nas Configurações; salvas somem e voltam (EST-08)
+- [ ] 10-21-PLAN.md — A capacidade semanal do Membro fora; contagem final 289 (EST-07, EST-11)
+
+**Wave 11** *(blocked on Wave 10 completion)*
+- [ ] 10-11-PLAN.md — Interruptor "Bloquear para os níveis abaixo" (EST-10)
+- [ ] 10-12-PLAN.md — Diálogo "Mover para…" e o item na árvore e na Lista (EST-06)
+
+**Wave 12** *(blocked on Wave 11 completion)*
+- [ ] 10-19-PLAN.md — Subir/Descer, a árvore e a Pasta por `order`, "Mais ações" da Pasta (EST-06)
+
+**Wave 13** *(blocked on Wave 12 completion)*
+- [ ] 10-13-PLAN.md — Arrastar na árvore com HTML5 nativo (EST-06)
+
+**Wave 14** *(blocked on Wave 13 completion)*
+- [ ] 10-15-PLAN.md — Prévia do relógio, decisão Q3 da lixeira `[BLOCKING]` e a ponte com os três relógios (EST-01)
+
+**Wave 15** *(blocked on Wave 14 completion)*
+- [ ] 10-16-PLAN.md — D-04 `[BLOCKING]`: agendador em produção (merge A), Q1, e só então o botão sai (EST-01, EST-02)
+
+**Wave 16** *(blocked on Wave 15 completion)*
+- [ ] 10-17-PLAN.md — A `010` ensaiada, aplicada em produção após `--seco` `[BLOCKING]` (merge B), a lista da UAT e o fechamento da fase (EST-11)
+
+**Ondas de execução:** 1 → [10-01] · 2 → [10-20] · 3 → [10-02] · 4 → [10-03] · 5 → [10-04] · 6 → [10-18] · 7 → [10-05] · 8 → [10-06, 10-08, 10-14] · 9 → [10-07, 10-09] · 10 → [10-10, 10-21] · 11 → [10-11, 10-12] · 12 → [10-19] · 13 → [10-13] · 14 → [10-15] · 15 → [10-16] · 16 → [10-17]
 
 ### Phase 11: Clone ClickUp: Tarefa (checklist, descrição e tempo)
 
