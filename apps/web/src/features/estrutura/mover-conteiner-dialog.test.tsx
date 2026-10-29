@@ -10,10 +10,12 @@
  * feche o diálogo como o navegador faz.
  */
 
-import type { ReactElement } from "react";
+import { Suspense, type ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { buildSeed } from "@n1/dominio/seed";
+import { containerAdminRefusal } from "@n1/dominio/derive";
+import { MEUS_NEGOCIOS_ID } from "@n1/dominio/seed-comercial";
 import type { Ordens } from "@n1/dominio";
 import {
   createFieldDefinition,
@@ -31,6 +33,8 @@ import type { DataState } from "@n1/dominio/state";
 import { StoreProvider } from "@/dados/store";
 import type { RespostaDeGravacao, Transporte } from "@/dados/transporte";
 import { AppShell } from "@/features/shell/app-shell";
+import { MoverConteinerDialog } from "@/features/estrutura/mover-conteiner-dialog";
+import ListaPage from "@/app/(shell)/estrutura/listas/[lista]/page";
 
 // O robô flutuante mede a tela com APIs que o jsdom não tem, e o Guia do Financeiro não é o assunto aqui.
 vi.mock("@/features/shell/robo-flutuante", () => ({ RoboFlutuante: () => null }));
@@ -527,5 +531,176 @@ describe("Mover para… — sem destino disponível", () => {
 
     expect(screen.queryAllByRole("option")).toHaveLength(0);
     expect(screen.getByText("Nenhum destino disponível.")).toBeTruthy();
+  });
+});
+
+describe("Mover para… — as linhas de Pasta, Subpasta e Lista da árvore (D-09, A9)", () => {
+  async function abrirArvore(memberId = THIAGO) {
+    montar(<AppShell>{null}</AppShell>, memberId);
+    await waitFor(() => expect(temLinha("fld_clientes")).toBe(true));
+  }
+
+  const itensDoMenu = (id: string): HTMLElement[] => {
+    abrirMenuDaLinha(id);
+    return screen.queryAllByRole("menuitem");
+  };
+
+  it("o ⋯ de uma Pasta e o de uma Subpasta têm \"Mover para…\" e abrem o diálogo com o título delas", async () => {
+    const A = pasta("Origem A");
+    const SUB = pasta("Subpasta de A", A, "folder");
+    await abrirArvore();
+
+    moverPeloMenu(A);
+    expect(screen.getByRole("alertdialog", { name: "Mover “Origem A”" })).toBeTruthy();
+    expect(screen.getByText("A Pasta, as Listas e as Tarefas dela mudam de lugar juntas.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+
+    moverPeloMenu(SUB);
+    expect(screen.getByRole("alertdialog", { name: "Mover “Subpasta de A”" })).toBeTruthy();
+    expect(screen.getByText("A Subpasta, as Listas e as Tarefas dela mudam de lugar juntas.")).toBeTruthy();
+    expect((await enderecoAtual()).get("mover")).toBe(SUB);
+  });
+
+  it("uma Subpasta promovida a Pasta avisa o caso: \"agora é Pasta em …\"", async () => {
+    const A = pasta("Origem A");
+    const SUB = pasta("Subpasta de A", A, "folder");
+    await abrirArvore();
+
+    moverPeloMenu(SUB);
+    escolherNoSelect("Destino", "Entrega");
+    fireEvent.click(confirmar());
+
+    await waitFor(() => expect(screen.getByText("Subpasta Subpasta de A agora é Pasta em Entrega.")).toBeTruthy());
+  });
+
+  it("a Pasta Meus negócios e as Listas dela não têm o ⋯ de mover", async () => {
+    const dosNegocios = state.lists.filter((l) => l.parentId === MEUS_NEGOCIOS_ID);
+    expect(dosNegocios.length).toBeGreaterThan(0);
+    await abrirArvore();
+
+    expect(within(linha(MEUS_NEGOCIOS_ID)).queryByRole("button", { name: /^Ações de / })).toBeNull();
+    for (const l of dosNegocios) {
+      expect(temLinha(l.id)).toBe(true);
+      expect(within(linha(l.id)).queryByRole("button", { name: /^Ações de / })).toBeNull();
+    }
+    // O controle: uma Lista vizinha, fora de Meus negócios, tem.
+    const vizinha = state.lists.find((l) => l.parentId !== MEUS_NEGOCIOS_ID && temLinha(l.id));
+    expect(vizinha).toBeDefined();
+    expect(within(linha(vizinha!.id)).queryByRole("button", { name: /^Ações de / })).not.toBeNull();
+  });
+
+  it("o Convidado vê a árvore inerte como hoje: Espaço e Pasta sem link nem «+», e sem ⋯ em linha nenhuma", async () => {
+    const A = pasta("Origem A");
+    const ALFA = lista("Alfa", A);
+    // Concessões de ver no Espaço Comercial e na Lista: o Convidado passa a ter Espaço, Pasta e Lista na árvore.
+    for (const [resourceType, resourceId] of [["space", "spc_com"], ["list", ALFA]] as const) {
+      state.grants.push({
+        id: `gr_teste_${resourceId}`,
+        workspaceId: state.workspace.id,
+        subjectKind: "member",
+        subjectId: BEATRIZ,
+        action: "ver",
+        resourceType,
+        resourceId,
+        scope: "subarvore",
+        origin: "compartilhamento",
+        grantedBy: THIAGO,
+        grantedAt: new Date().toISOString(),
+      });
+    }
+    montar(<AppShell>{null}</AppShell>, BEATRIZ);
+    const painel = await screen.findByRole("complementary", { name: "Navegação" });
+    await waitFor(() => expect(within(painel).getByText("Alfa")).toBeTruthy());
+
+    // Inerte como hoje: Espaço e Pasta são só o nome (sem link), e nenhuma linha tem o ⋯ nem o «+».
+    expect(within(painel).getByText("Origem A")).toBeTruthy();
+    expect(temLinha("spc_com")).toBe(false);
+    expect(temLinha(A)).toBe(false);
+    expect(temLinha(ALFA)).toBe(true);
+    expect(within(painel).queryAllByRole("button", { name: /^Ações de / })).toHaveLength(0);
+    expect(within(painel).queryByRole("button", { name: "Criar dentro de Origem A" })).toBeNull();
+    expect(within(painel).queryByRole("button", { name: "Criar dentro de Comercial" })).toBeNull();
+  });
+
+  it("o Membro que não administra vê \"Mover para…\" desligado com a frase do domínio", async () => {
+    const A = pasta("Origem A");
+    const ALFA = lista("Alfa", A);
+    const frase = containerAdminRefusal(state, JULIA, "list", ALFA);
+    expect(frase).toBeTruthy();
+    await abrirArvore(JULIA);
+
+    const itens = itensDoMenu(ALFA);
+    expect(itens.map((i) => i.textContent)).toEqual([expect.stringContaining("Mover para…")]);
+    expect(itens[0]?.getAttribute("aria-disabled")).toBe("true");
+    expect(itens[0]?.getAttribute("title")).toBe(frase);
+    fireEvent.click(itens[0]!);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+});
+
+describe("Mover para… — o cabeçalho da página da Lista", () => {
+  async function montarPagina(listaId: string, memberId = THIAGO) {
+    const params = Promise.resolve({ lista: listaId });
+    await act(async () => {
+      render(
+        <StoreProvider
+          sessao={{ memberId }}
+          estadoInicial={{ data: state, revisao: 1, ordens: ordensDeTodasAsColecoes(state) }}
+          transporte={servidor.transporte}
+        >
+          <Suspense fallback="carregando">
+            <ListaPage params={params} />
+          </Suspense>
+          <MoverConteinerDialog />
+        </StoreProvider>,
+      );
+    });
+  }
+
+  /** Abre o ⋯ do cabeçalho (o último gatilho "Ações" da página) e devolve os itens. */
+  const itensDoCabecalho = (): HTMLElement[] => {
+    const gatilhos = screen.getAllByRole("button", { name: "Ações" });
+    fireEvent.click(gatilhos[gatilhos.length - 1]!);
+    return screen.queryAllByRole("menuitem");
+  };
+
+  it("\"Mover para…\" é o último item e abre o diálogo da Lista", async () => {
+    const A = pasta("Origem A");
+    const ALFA = lista("Alfa", A);
+    await montarPagina(ALFA);
+
+    const itens = itensDoCabecalho();
+    const rotulos = itens.map((i) => i.textContent ?? "");
+    expect(rotulos.at(-1)).toContain("Mover para…");
+    expect(rotulos.findIndex((r) => r.includes("Salvar como modelo"))).toBeLessThan(rotulos.length - 1);
+    fireEvent.click(itens.at(-1)!);
+
+    expect(screen.getByRole("alertdialog", { name: "Mover “Alfa”" })).toBeTruthy();
+    expect((await enderecoAtual()).get("mover")).toBe(ALFA);
+  });
+
+  it("não aparece na Lista de Meus negócios", async () => {
+    const dosNegocios = state.lists.find((l) => l.parentId === MEUS_NEGOCIOS_ID);
+    expect(dosNegocios).toBeDefined();
+    await montarPagina(dosNegocios!.id);
+
+    const rotulos = itensDoCabecalho().map((i) => i.textContent ?? "");
+    expect(rotulos.some((r) => r.includes("Salvar como modelo"))).toBe(true);
+    expect(rotulos.some((r) => r.includes("Mover para…"))).toBe(false);
+  });
+
+  it("fica desligado com a frase de containerAdminRefusal quando o Membro não administra", async () => {
+    const A = pasta("Origem A");
+    const ALFA = lista("Alfa", A);
+    const frase = containerAdminRefusal(state, JULIA, "list", ALFA);
+    expect(frase).toBeTruthy();
+    await montarPagina(ALFA, JULIA);
+
+    const mover = itensDoCabecalho().find((i) => (i.textContent ?? "").includes("Mover para…"));
+    expect(mover?.getAttribute("aria-disabled")).toBe("true");
+    expect(mover?.getAttribute("title")).toBe(frase);
+    fireEvent.click(mover!);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 });

@@ -35,6 +35,7 @@ import { useFormat } from "@/features/shell/use-format";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { TASK_PANEL_PARAM, useTaskPanel } from "@/features/estrutura/task-panel";
 import { useMoveTaskDialog } from "@/features/estrutura/move-task-dialog";
+import { useMoverConteinerDialog } from "@/features/estrutura/mover-conteiner-dialog";
 import { DialogosDaLista } from "@/features/estrutura/dialogos-da-lista";
 import { LinhaDoTempo } from "@/features/estrutura/planning-views";
 import {
@@ -186,6 +187,7 @@ export default function ListaPage({
   const pathname = usePathname();
   // O popup da Tarefa abre o diálogo de mover pela URL; a Lista só o hospeda.
   const { movingTaskId, closeMove } = useMoveTaskDialog();
+  const { openMover } = useMoverConteinerDialog();
 
   if (!list || !config) {
     return (
@@ -605,6 +607,16 @@ export default function ListaPage({
                   onSelect: () => setSalvandoModelo(true),
                   ...(administra ? { disabledReason: administra } : {}),
                 },
+                // D-10 — por último; a Lista de Meus negócios é o espelho do Funil e não se move (A9).
+                ...(pastaDeNegocios
+                  ? []
+                  : [
+                      {
+                        label: "Mover para…",
+                        onSelect: () => openMover(list.id),
+                        ...(administra ? { disabledReason: administra } : {}),
+                      },
+                    ]),
               ]}
             />
           </>
