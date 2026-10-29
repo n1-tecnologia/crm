@@ -5,7 +5,7 @@
  *
  * Provas contra o Postgres LOCAL (`testes/banco-crm.ts`, nunca o do Supabase),
  * cada caso num banco descartável `m010_<8>` com as migrações 001 a 009
- * aplicadas — a 010 é executada pelo TEXTO do arquivo, como `migrar()` faz:
+ * aplicadas e registradas — a 010 é executada pelo TEXTO do arquivo, como `migrar()` faz:
  *
  *  (a) o dado antigo é convertido e NADA além dele muda (outras coleções, outros
  *      `kind`, `blocks` de Espaço e Pasta, Espaços sem linha alterada);
@@ -53,13 +53,22 @@ interface BancoDescartavel {
   readonly encerrar: () => Promise<void>;
 }
 
-/** Um banco novo com as migrações 001 a 009 aplicadas; a 010 fica por conta do teste. */
+/**
+ * Um banco novo no estado de produção antes da 010: 001 a 009 aplicadas e
+ * registradas em `plataforma.migracoes`. A tabela de controle nasce antes,
+ * como em `migrar()`, porque a 009 a referencia. A 010 fica por conta do teste.
+ */
 async function bancoAte009(): Promise<BancoDescartavel> {
   const nome = `m010_${randomUUID().slice(0, 8)}`;
   await poolDoDono().query(`create database ${nome}`);
   const pool = new Pool({ connectionString: urlDoBanco(nome), max: 2 });
+  await pool.query("create schema if not exists plataforma");
+  await pool.query(
+    "create table plataforma.migracoes (nome text primary key, aplicada_em timestamptz not null default now())",
+  );
   for (const arquivo of ate009()) {
     await pool.query(readFileSync(join(PASTA_DE_MIGRACOES, arquivo), "utf8"));
+    await pool.query("insert into plataforma.migracoes (nome) values ($1)", [arquivo]);
   }
   return {
     pool,
@@ -228,13 +237,6 @@ describeComBanco("010 — carga vira lista, Lista perde blocks (D-18) — Postgr
   it("(e) pelo migrar(): uma 010 interrompida não deixa dado alterado nem registro; depois aplica", async () => {
     const banco = await bancoAte009();
     try {
-      // O estado de produção antes da 010: 001-009 aplicadas e registradas.
-      await banco.pool.query(
-        "create table plataforma.migracoes (nome text primary key, aplicada_em timestamptz not null default now())",
-      );
-      for (const arquivo of ate009()) {
-        await banco.pool.query("insert into plataforma.migracoes (nome) values ($1)", [arquivo]);
-      }
       await semear(banco.pool);
       const antes = await dadosDe(banco.pool);
       const revisaoAntes = await revisoes(banco.pool);
