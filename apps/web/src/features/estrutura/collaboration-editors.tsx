@@ -341,7 +341,7 @@ export function TaskRecurrence({ task, report, readOnly }: { readonly task: Task
           {descricao(atual)}
           {atual.triggerMode === "porCalendario" ? (
             <span className="app-meta block">
-              A próxima nasce no dia do vencimento, pela agenda da Lista (o relógio do servidor ou o botão “Rodar agenda da Lista”)
+              A próxima nasce no dia do vencimento
               {atual.whenStillOpen === "aguardarConclusao" ? "; se esta ainda estiver aberta, espera a conclusão" : "; se esta ainda estiver aberta, as duas coexistem"}.
             </span>
           ) : null}
