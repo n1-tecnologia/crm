@@ -7,9 +7,11 @@
  * deixa a regra passar por qualquer outro caminho.
  */
 
-import { containerAdminRefusal, containerPath, effectiveLifecycleOfContainer, effectiveListConfig, memberReachesContainer } from "../derive";
+import { containerAdminRefusal, containerPath, effectiveLifecycleOfContainer, effectiveListConfig, irmaosOrdenados, memberReachesContainer } from "../derive";
 import { fail, ok, type DataState, type OperationResult } from "../state";
-import type { EffectiveListConfig, Folder, Id, Lifecycle, List, ModeloDeTarefa, Provenance, Space, StatusSet, Task, Template } from "../types";
+import type { EffectiveListConfig, Folder, Id, Lifecycle, List, ModeloDeTarefa, PaiDeConteiner, Provenance, Space, StatusSet, Task, Template } from "../types";
+
+export type { PaiDeConteiner };
 import { memberActor, nextId, recordActivity } from "./activity";
 import { CANAIS_SO_NA_CONVERSACIONAL, validarCanaisDeAtendimento } from "./canais";
 import { aplicarConfiguracaoEfetiva, frasePedindoMapeamento, statusSemMapeamento, type StatusMapping } from "./tasks";
@@ -853,6 +855,100 @@ export function moveContainer(
     after: caminhoLegivel(state, tipo, id),
   });
   return ok(movido);
+}
+
+/**
+ * L3 — a frase que desliga Subir/Descer e o arrastar entre irmãos. `reorderContainers`
+ * a chama primeiro, então a tela e a operação recusam pelo mesmo motivo.
+ *
+ * "Editar no pai" (2.3.2) é `mayBuild(pai)` (A4): Membro ativo, não Convidado, que
+ * alcança o pai — este código não tem conferência `editar` de contêiner. Os
+ * Espaços não têm pai: reordená-los pede Papel Administrador ou Proprietário.
+ */
+export function recusaDeReordenar(state: DataState, actingMemberId: Id, tipo: TipoDeConteiner, pai: PaiDeConteiner): string | undefined {
+  if (tipo === "space") {
+    if (pai !== null) return "Os Espaços ficam direto no Espaço de Trabalho: não têm pai.";
+    const member = state.members.find((m) => m.id === actingMemberId);
+    if (!member || member.state !== "ativo") return "Só um Membro ativo reordena os Espaços.";
+    const base = state.roles.find((r) => r.id === member.roleId)?.base;
+    if (base !== "proprietario" && base !== "administrador") return "Reordenar os Espaços exige Administrador ou Proprietário.";
+    return undefined;
+  }
+  if (pai === null) return "Diga em que Espaço ou Pasta estão os itens a reordenar.";
+  const alvo = requireContainer(state, actingMemberId, pai.type, pai.id);
+  if (typeof alvo === "string") return alvo;
+  if (effectiveLifecycleOfContainer(state, pai.type, pai.id) !== "ativo") {
+    const r = ROTULO[pai.type];
+    return `${r.artigo === "o" ? "Este" : "Esta"} ${r.nome} não está ativ${r.artigo}.`;
+  }
+  return mayBuild(state, actingMemberId, pai);
+}
+
+/**
+ * D-08 / D-09 (2.3.2) — reordena um GRUPO de irmãos: os Espaços, as Pastas de um
+ * pai ou as Listas de um pai. Pastas e Listas continuam em dois grupos, cada um
+ * com a própria `order`.
+ *
+ * A3 (DESVIO declarado de "a permutação completa"): o estado de um Membro é um
+ * recorte (privados que ele não alcança, arquivados e lixeira saem da árvore) e
+ * a operação roda na cópia dele antes de rodar no Espaço inteiro. Por isso
+ * recebe os ids que o Membro VÊ, reocupa as vagas deles na sequência recebida e
+ * deixa os irmãos não citados onde estavam. O grupo inteiro é regravado de 0 a
+ * n-1, o que também conserta dado antigo com `order` repetido.
+ *
+ * Recusa: sem ids; id repetido; id que não pertence ao grupo (outro pai, outro
+ * tipo) ou que o ator não alcança ("não encontrado", sem pista — T-10-11).
+ * Registra "Ordem alterada" no pai (nos Espaços, no Espaço de Trabalho) só
+ * quando a sequência mudou.
+ */
+export function reorderContainers(
+  state: DataState,
+  actingMemberId: Id,
+  tipo: TipoDeConteiner,
+  pai: PaiDeConteiner,
+  ids: readonly Id[],
+): OperationResult<readonly Id[]> {
+  const recusa = recusaDeReordenar(state, actingMemberId, tipo, pai);
+  if (recusa) return fail(recusa);
+  if (ids.length === 0) return fail("Nada a reordenar.");
+  if (new Set(ids).size !== ids.length) return fail("Um contêiner aparece duas vezes na ordem.");
+
+  const grupo = irmaosOrdenados(state, tipo, pai);
+  const noGrupo = new Set(grupo.map((c) => c.id));
+  for (const id of ids) {
+    const existe = findContainer(state, tipo, id);
+    if (!existe || !memberReachesContainer(state, actingMemberId, tipo, id)) {
+      return fail(`${ROTULO[tipo].nome} não encontrad${ROTULO[tipo].artigo}.`);
+    }
+    if (!noGrupo.has(id)) return fail(`${existe.name} não pertence a este grupo.`);
+  }
+
+  const citados = new Set(ids);
+  const vagas = grupo.flatMap((c, i) => (citados.has(c.id) ? [i] : []));
+  const nova: Conteiner[] = [...grupo];
+  vagas.forEach((vaga, i) => {
+    nova[vaga] = grupo.find((c) => c.id === ids[i]) as Conteiner;
+  });
+
+  const mudou = nova.some((c, i) => c.id !== grupo[i]?.id);
+  nova.forEach((c, i) => {
+    c.order = i;
+  });
+  const sequencia = nova.map((c) => c.id);
+  if (!mudou) return ok(sequencia);
+
+  const rotuloDoGrupo = tipo === "space" ? "Espaços" : tipo === "folder" ? "Pastas" : "Listas";
+  const dono =
+    pai === null
+      ? { objectType: "workspace", objectId: state.workspace.id, objectName: state.workspace.name }
+      : { objectType: pai.type, objectId: pai.id, objectName: (findContainer(state, pai.type, pai.id) as Conteiner).name };
+  recordActivity(state, {
+    actor: memberActor(actingMemberId),
+    action: "Ordem alterada",
+    ...dono,
+    detail: rotuloDoGrupo,
+  });
+  return ok(sequencia);
 }
 
 /** `ativo` → `arquivado` no estado próprio. Exige administrar; vale sob ancestral arquivado (RN-ESP-11). */

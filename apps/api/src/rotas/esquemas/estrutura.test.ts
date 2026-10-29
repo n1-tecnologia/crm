@@ -12,13 +12,14 @@ import { ESTRUTURA } from "./estrutura";
 const viaJson = (args: unknown[]): unknown[] => JSON.parse(JSON.stringify(args)) as unknown[];
 
 describe("esquemas/estrutura — a forma dos args de structure.ts", () => {
-  it("(a) cobertura — as 9 chaves de structure.ts em registro.ts", () => {
+  it("(a) cobertura — as 10 chaves de structure.ts em registro.ts", () => {
     const esperadas = [
       "createSpace",
       "createFolder",
       "createList",
       "updateContainer",
       "moveContainer",
+      "reorderContainers",
       "archiveContainer",
       "unarchiveContainer",
       "trashContainer",
@@ -146,6 +147,9 @@ describe("esquemas/estrutura — a forma dos args de structure.ts", () => {
         viaJson(["folder", "fld_1", { parentType: "space", parentId: "spc_1" }, [{ fromStatusId: "a", toStatusId: "b" }]]),
       ).success,
     ).toBe(true);
+    // Fase 10, 10-04 (D-08, D-09): reordenar um grupo de irmãos; Espaços têm pai `null`.
+    expect(ESTRUTURA.reorderContainers.safeParse(viaJson(["list", { type: "folder", id: "fld_1" }, ["lst_2", "lst_1"]])).success).toBe(true);
+    expect(ESTRUTURA.reorderContainers.safeParse(viaJson(["space", null, ["spc_2", "spc_1"]])).success).toBe(true);
     for (const nome of ["archiveContainer", "unarchiveContainer", "trashContainer", "restoreContainer"] as const) {
       expect(ESTRUTURA[nome].safeParse(viaJson(["folder", "fld_1"])).success, nome).toBe(true);
     }
@@ -231,6 +235,13 @@ describe("esquemas/estrutura — a forma dos args de structure.ts", () => {
         viaJson(["list", "lst_1", { parentType: "folder", parentId: "fld_2" }, [{ fromStatusId: "a" }]]),
       ).success,
     ).toBe(false);
+    // reorderContainers: pai de outro tipo, chave extra, ids que não são texto e pai ausente caem; vazio passa (o domínio recusa).
+    expect(ESTRUTURA.reorderContainers.safeParse(viaJson(["list", { type: "list", id: "lst_1" }, ["lst_2"]])).success).toBe(false);
+    expect(ESTRUTURA.reorderContainers.safeParse(viaJson(["list", { type: "folder", id: "fld_1", lixo: 1 }, ["lst_2"]])).success).toBe(false);
+    expect(ESTRUTURA.reorderContainers.safeParse(viaJson(["list", { type: "folder", id: "fld_1" }, [1, 2]])).success).toBe(false);
+    expect(ESTRUTURA.reorderContainers.safeParse(viaJson(["task", null, ["x"]])).success).toBe(false);
+    expect(ESTRUTURA.reorderContainers.safeParse(viaJson(["list", { type: "folder", id: "fld_1" }])).success).toBe(false);
+    expect(ESTRUTURA.reorderContainers.safeParse(viaJson(["list", { type: "folder", id: "fld_1" }, []])).success).toBe(true);
     // A Pasta não conhece o modelo de Tarefa.
     expect(
       ESTRUTURA.createFolder.safeParse(

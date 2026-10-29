@@ -241,6 +241,12 @@ export interface SpaceShortcut {
 }
 
 /**
+ * O pai de um grupo de irmãos (D-08): um Espaço ou uma Pasta. `null` é o pai dos
+ * Espaços, que ficam direto no Espaço de Trabalho.
+ */
+export type PaiDeConteiner = { readonly type: "space" | "folder"; readonly id: Id } | null;
+
+/**
  * B3 — a Subfolder is a Folder whose parent is a Folder. Same entity, same
  * capabilities, one restriction: it contains no Folder (A3.4).
  */

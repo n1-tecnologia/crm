@@ -216,7 +216,7 @@ import { alterarStatusEmLote } from "./lote";
 import { alterarEmailDoConvite, alterarPapelDoMembro, deleteRole, grantGovernanceAccess, inviteMember, removeMember, transferWorkspaceOwnership } from "./members";
 
 // ── structure.ts ────────────────────────────────────────────────────────
-import { archiveContainer, createFolder, createList, createSpace, moveContainer, restoreContainer, trashContainer, unarchiveContainer, updateContainer } from "./structure";
+import { archiveContainer, createFolder, createList, createSpace, moveContainer, reorderContainers, restoreContainer, trashContainer, unarchiveContainer, updateContainer } from "./structure";
 
 // ── iniciar-conversa.ts ─────────────────────────────────────────────────
 import { iniciarConversa } from "./iniciar-conversa";
@@ -590,6 +590,7 @@ export const OPERACOES = {
   createList,
   updateContainer,
   moveContainer,
+  reorderContainers,
   archiveContainer,
   unarchiveContainer,
   trashContainer,

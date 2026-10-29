@@ -1,6 +1,6 @@
 /**
  * A FORMA dos `args` das operações de
- * `packages/dominio/src/operations/structure.ts` — 9 operações. Ver
+ * `packages/dominio/src/operations/structure.ts` — 10 operações. Ver
  * `../esquemas/CONTEXT.md` para a regra da pasta e `./fragmentos.ts` para o
  * porquê da validação ser de transporte, não de regra de negócio.
  */
@@ -88,6 +88,11 @@ const FOLDER_OU_LIST = z.enum(["folder", "list"]);
 
 const DESTINO_DE_MOVER = z.object({ parentType: z.enum(["space", "folder"]), parentId: ID }).strict();
 
+// D-08 / D-09 (2.3.2) — o pai do grupo que se reordena: um Espaço ou uma Pasta;
+// `null` só para os Espaços. Vazio, repetido e fora do grupo são recusas do
+// domínio, por isso a lista de ids não tem `.min()`/`.max()`.
+const PAI_DE_CONTEINER = z.object({ type: z.enum(["space", "folder"]), id: ID }).strict();
+
 /**
  * `satisfies` (sobre o tipo `Esquemas` de `./fragmentos`) é o portão de
  * drift: uma entrada cuja aridade ou tipo não bata com `ArgumentosDe<N>` não
@@ -100,6 +105,7 @@ export const ESTRUTURA = {
   createList: z.tuple([CREATE_LIST_INPUT]),
   updateContainer: z.tuple([CONTAINER_TYPE, ID, UPDATE_CONTAINER_INPUT]),
   moveContainer: z.tuple([FOLDER_OU_LIST, ID, DESTINO_DE_MOVER, opcional(z.array(STATUS_MAPPING))]),
+  reorderContainers: z.tuple([CONTAINER_TYPE, PAI_DE_CONTEINER.nullable(), z.array(ID)]),
   archiveContainer: z.tuple([CONTAINER_TYPE, ID]),
   unarchiveContainer: z.tuple([CONTAINER_TYPE, ID]),
   trashContainer: z.tuple([CONTAINER_TYPE, ID]),

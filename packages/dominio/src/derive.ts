@@ -24,6 +24,7 @@ import type {
   Id,
   Lifecycle,
   List,
+  PaiDeConteiner,
   Space,
   StatusCategory,
   StatusDefinition,
@@ -96,6 +97,23 @@ export function effectiveLifecycleOfList(state: DataState, listId: Id): Lifecycl
   const space = state.spaces.find((s) => s.id === parentId);
   if (space) effective = mostRestrictive(effective, space.lifecycle);
   return effective;
+}
+
+/**
+ * F2 + D-08 — os irmãos de um grupo (Espaços; Pastas ou Listas sob um pai) na
+ * ordem de `order`, de TODOS os ciclos de vida: quem chama filtra o que mostra.
+ * O desempate é estável pela posição no array (a que `plataforma.registros.ordem`
+ * mantém entre recargas), então dado antigo com `order` repetido sai sempre na
+ * mesma sequência. Árvore, páginas do Espaço e da Pasta e `reorderContainers`
+ * usam esta função e nenhuma outra ordenação.
+ */
+export function irmaosOrdenados(state: DataState, tipo: "space" | "folder" | "list", pai: PaiDeConteiner): ReadonlyArray<Space | Folder | List> {
+  const grupo: Array<Space | Folder | List> =
+    tipo === "space"
+      ? [...state.spaces]
+      : (tipo === "folder" ? state.folders : state.lists).filter((c) => pai !== null && c.parentType === pai.type && c.parentId === pai.id);
+  // `Array.prototype.sort` é estável: o empate de `order` mantém a posição no array.
+  return grupo.sort((a, b) => a.order - b.order);
 }
 
 /**
