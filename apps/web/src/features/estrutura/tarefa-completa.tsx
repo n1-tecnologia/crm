@@ -79,6 +79,7 @@ import { corDeTipo, iconeDeTipo } from "@/features/estrutura/icone-de-tipo";
 import { SeletorDeTipoDeTarefa } from "@/features/estrutura/seletor-de-tipo";
 import { BotaoDeConversao, DialogoDeConversao } from "@/features/estrutura/conversao-de-item";
 import { DescricaoDaTarefa } from "@/features/estrutura/descricao-da-tarefa";
+import { valorDaLinhaDeTempo } from "@/features/estrutura/tempo";
 import { financeProfileOf, valorDaConta } from "@/features/estrutura/financeiro/lens";
 import { CHANNEL_ICON, ConversationThread } from "@/features/crm/conversation-thread";
 import { ContactAvatar } from "@/features/crm/contact-card";
@@ -103,6 +104,7 @@ import {
   taskLevel,
   taskCommentRefusal,
   taskWriteRefusal,
+  tempoRegistrado,
 } from "@n1/dominio/derive";
 import {
   canalDaTarefa,
@@ -1144,11 +1146,7 @@ export function TarefaCompleta({
                 <LinhaDeProp
                   icone={Timer}
                   rotulo="Rastrear tempo"
-                  valor={
-                    task.timeEntries.length === 0
-                      ? "Iniciar"
-                      : `${task.timeEntries.reduce((s, e) => s + (e.durationMinutes ?? 0), 0)} min · ${task.timeEntries.length} registro${task.timeEntries.length === 1 ? "" : "s"}`
-                  }
+                  valor={valorDaLinhaDeTempo(tempoRegistrado(state, task.id))}
                   // Abre sempre: a lista de lançamentos mora aqui, e uma Tarefa
                   // arquivada ainda tem o que mostrar (o TaskTime cuida do só-leitura).
                   editavel
