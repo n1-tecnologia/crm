@@ -136,7 +136,8 @@ function parseJson<T>(text: string | undefined): T | undefined {
   }
 }
 
-function publishedVersion(automation: Automation): AutomationVersion | undefined {
+/** A versão que vale: a última `publicada`. Exportada para `agenda-do-relogio.ts` repetir a MESMA regra de `runScheduledAutomations`. */
+export function publishedVersion(automation: Automation): AutomationVersion | undefined {
   return [...automation.versions].reverse().find((v) => v.state === "publicada");
 }
 
