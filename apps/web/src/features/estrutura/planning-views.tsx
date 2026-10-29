@@ -1,19 +1,18 @@
 "use client";
 
 /**
- * Fase 3 — as Visualizações que só fazem sentido com datas e estimativas:
- * Linha do tempo (barras entre início e vencimento, arrastáveis) e Carga de
- * trabalho (estimativa por Membro por semana contra a capacidade dele).
+ * Fase 3 — a Visualização que só faz sentido com datas: a Linha do tempo
+ * (barras entre início e vencimento, arrastáveis). A Carga de trabalho saiu
+ * em 10-07.
  *
  * Sem biblioteca: a Linha do tempo é um grid CSS com uma coluna por dia. As
  * setas de Dependência são um SVG por cima, medido a partir das colunas.
  */
 
 import { useMemo, useRef, useState } from "react";
-import { useData, useRun, useSession } from "@/dados/store";
+import { useRun, useSession } from "@/dados/store";
 import { updateTask } from "@n1/dominio/operations";
-import { memberCapacityMinutes } from "@n1/dominio/operations/planning";
-import { civilPlusDays, isTerminalCategory, statusCategory, statusDefinition, taskCivilDay, taskWriteRefusal, weekStartOf, workload } from "@n1/dominio/derive";
+import { civilPlusDays, isTerminalCategory, statusCategory, statusDefinition, taskCivilDay, taskWriteRefusal, weekStartOf } from "@n1/dominio/derive";
 import { useFormat } from "@/features/shell/use-format";
 import { EmptyState, Painel, ReguaDeSecao } from "@/features/shell/ui";
 import type { DataState } from "@n1/dominio/state";
@@ -281,96 +280,6 @@ export function LinhaDoTempo({
           </ul>
           <p className="app-meta mt-2">Dê início ou vencimento na Tarefa para ela entrar na linha.</p>
         </section>
-      ) : null}
-    </div>
-  );
-}
-
-/* ───────────────────────────── Carga de trabalho ───────────────────────────── */
-
-const horas = (min: number): string => (min >= 60 ? `${(min / 60).toFixed(min % 60 === 0 ? 0 : 1)} h` : `${Math.round(min)} min`);
-
-export function CargaDeTrabalho({ state, tasks, openTask }: { readonly state: DataState; readonly tasks: readonly Task[]; readonly openTask: (taskId: string) => void }) {
-  const fmt = useFormat();
-  const members = useData((data) => data.members);
-  const cells = workload(state, tasks);
-  if (tasks.length === 0) return <EmptyState title="Nenhuma Tarefa nesta Lista ainda." />;
-  if (cells.length === 0) {
-    return (
-      <EmptyState
-        title="Nenhuma carga a somar."
-        hint="A Carga soma a estimativa das Tarefas abertas por Responsável. Dê estimativa e Responsável às Tarefas para vê-la."
-      />
-    );
-  }
-
-  const weeks = [...new Set(cells.map((c) => c.week).filter((w) => w !== "semData"))].sort();
-  const temSemData = cells.some((c) => c.week === "semData");
-  const memberIds = [...new Set(cells.map((c) => c.memberId))];
-  const cellOf = (memberId: string, week: string) => cells.find((c) => c.memberId === memberId && c.week === week);
-  const semEstimativa = tasks.filter((t) => !isTerminalCategory(statusCategory(state, t)) && (t.estimate === undefined || t.estimate <= 0)).length;
-
-  return (
-    <div className="grid gap-3">
-      <p className="app-meta">
-        Estimativa das Tarefas abertas por Responsável, na semana do vencimento, contra a capacidade semanal de cada Membro. Uma Tarefa com dois Responsáveis divide a estimativa.
-      </p>
-      {/* Sem wrapper de rolagem: quem rola é o corpo da tela, e é nele que o cabeçalho de colunas gruda. */}
-      <table className="tabela">
-        <thead>
-          <tr>
-            <th className="app-coluna">Membro</th>
-            <th className="app-coluna">Capacidade</th>
-            {weeks.map((w) => (
-              <th key={w} className="app-coluna">
-                Semana de {fmt.civilDate(w)}
-              </th>
-            ))}
-            {temSemData ? <th className="app-coluna">Sem vencimento</th> : null}
-          </tr>
-        </thead>
-        <tbody>
-          {memberIds.map((memberId) => {
-            const capacidade = memberCapacityMinutes(state, memberId);
-            return (
-              <tr key={memberId}>
-                <td className="app-md" style={{ color: "var(--texto)" }}>{members.find((m) => m.id === memberId)?.displayName ?? memberId}</td>
-                <td className="app-numero" style={{ color: "var(--texto-3)" }}>{horas(capacidade)}/sem</td>
-                {[...weeks, ...(temSemData ? ["semData"] : [])].map((w) => {
-                  const cell = cellOf(memberId, w);
-                  if (!cell) return <td key={w} style={{ color: "var(--texto-4)" }}>—</td>;
-                  const pct = capacidade > 0 ? Math.round((cell.minutes / capacidade) * 100) : Infinity;
-                  const acima = w !== "semData" && pct > 100;
-                  return (
-                    <td key={w} className="py-2">
-                      <details>
-                        <summary className="app-numero cursor-pointer list-none" style={{ color: acima ? "var(--erro)" : "var(--texto)", fontWeight: acima ? 600 : undefined }}>
-                          {horas(cell.minutes)}
-                          {w !== "semData" ? ` · ${Number.isFinite(pct) ? `${pct}%` : "sem capacidade"}` : ""}
-                          {acima ? " · acima da capacidade" : ""}
-                        </summary>
-                        <ul className="mt-1 grid gap-0.5">
-                          {cell.taskIds.map((id) => (
-                            <li key={id}>
-                              <button type="button" onClick={() => openTask(id)} className="app-sm hover:underline" style={{ color: "var(--texto-3)" }}>
-                                {tasks.find((t) => t.id === id)?.title ?? id}
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      </details>
-                    </td>
-                  );
-                })}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      {semEstimativa > 0 ? (
-        <p className="app-meta">
-          {semEstimativa} Tarefa(s) aberta(s) sem estimativa ficam fora da soma.
-        </p>
       ) : null}
     </div>
   );

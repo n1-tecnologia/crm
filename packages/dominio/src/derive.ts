@@ -1415,39 +1415,6 @@ export function taskCivilDay(date: TaskDate | undefined): string | undefined {
   return date.form === "civilDay" ? date.value : civilOf(new Date(date.value));
 }
 
-export interface WorkloadCell {
-  readonly memberId: Id;
-  /** Segunda-feira da semana, ou "semData" para Tarefas sem vencimento. */
-  readonly week: string;
-  readonly minutes: number;
-  readonly taskIds: readonly Id[];
-}
-
-/**
- * Carga de trabalho: a estimativa de cada Tarefa aberta cai na semana do
- * vencimento, dividida entre os Membros Responsáveis. Agentes não têm
- * capacidade e ficam fora. Sem vencimento, a carga vai para "semData".
- */
-export function workload(state: DataState, tasks: readonly Task[]): WorkloadCell[] {
-  const cells = new Map<string, { memberId: Id; week: string; minutes: number; taskIds: Id[] }>();
-  for (const task of tasks) {
-    if (isTerminalCategory(statusCategory(state, task))) continue;
-    if (task.estimate === undefined || task.estimate <= 0) continue;
-    const membros = task.assignees.filter((a) => a.kind === "member");
-    if (membros.length === 0) continue;
-    const dia = taskCivilDay(task.dueDate);
-    const week = dia ? weekStartOf(dia) : "semData";
-    for (const a of membros) {
-      const key = `${a.id}|${week}`;
-      const cell = cells.get(key) ?? { memberId: a.id, week, minutes: 0, taskIds: [] };
-      cell.minutes += task.estimate / membros.length;
-      cell.taskIds.push(task.id);
-      cells.set(key, cell);
-    }
-  }
-  return [...cells.values()];
-}
-
 /** A ocorrência que nasceu desta Tarefa ao concluí-la (B6) — para a tela apontar para ela. */
 export function spawnedOccurrenceOf(state: DataState, taskId: Id): Task | undefined {
   return [...state.tasks].reverse().find((t) => t.provenance?.kind === "recurrence" && t.provenance.sourceId === taskId);

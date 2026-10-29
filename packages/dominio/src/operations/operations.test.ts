@@ -21,7 +21,6 @@ import {
   memberSeesResource,
   memberSeesTask,
   weekStartOf,
-  workload,
   widgetReading,
   notificacoesDoMembro,
   tarefasAbertasDoMembro,
@@ -3358,18 +3357,11 @@ describe("Fase 2 — colaboração na Tarefa", () => {
 });
 
 describe("Fase 3 — planejamento", () => {
-  it("Carga: estimativa cai na semana do vencimento, dividida entre Membros Responsáveis; Agente fica fora; sem vencimento vai para semData", () => {
-    const t = state.tasks.find((x) => x.listId === "lst_propostas" && x.lifecycle === "ativo" && !x.parentTaskId);
-    if (!t) throw new Error("sem tarefa");
-    t.assignees = [{ kind: "member", id: "mem_julia" }, { kind: "member", id: "mem_marcos" }, { kind: "agent", id: "agt_sdr" }];
-    expect(updateTask(state, "mem_thiago", t.id, { estimate: 120, startDate: null, dueDate: { form: "civilDay", value: "2026-09-16" } }).ok).toBe(true);
-    const cells = workload(state, [t]);
-    expect(cells).toHaveLength(2);
-    expect(cells.every((c) => c.minutes === 60 && c.week === "2026-09-14")).toBe(true);
+  it("weekStartOf: o domingo cai na segunda anterior (a Linha do tempo agrupa por semana)", () => {
     expect(weekStartOf("2026-09-13")).toBe("2026-09-07");
-    expect(updateTask(state, "mem_thiago", t.id, { dueDate: null }).ok).toBe(true);
-    expect(workload(state, [t]).every((c) => c.week === "semData")).toBe(true);
-    // Capacidade: o próprio ou Administrador; Membro comum não define a de outro.
+  });
+
+  it("Capacidade: o próprio ou Administrador define; Membro comum não define a de outro (sai em 10-21)", () => {
     expect(setMemberCapacity(state, "mem_julia", "mem_marcos", 1200).ok).toBe(false);
     expect(setMemberCapacity(state, "mem_julia", "mem_julia", 1200).ok).toBe(true);
     expect(setMemberCapacity(state, "mem_rafael", "mem_marcos", 99999).ok).toBe(false);
