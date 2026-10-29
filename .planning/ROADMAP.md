@@ -682,7 +682,7 @@ Plans:
 **Itens da 2.7** que mexam na Tarefa entram aqui.
 **Requirements**: TAR-01, TAR-02, TAR-03, TAR-04, TAR-05, TAR-06, TAR-07 (derivados em `11-CONTEXT.md` "Requisitos derivados"; registrados em REQUIREMENTS.md, Fase 11)
 **Depends on:** Phase 9
-**Plans:** 3/8 plans executed
+**Plans:** 4/8 plans executed
 
 Plans:
 **Wave 1**
@@ -693,7 +693,7 @@ Plans:
 - [x] 11-03-PLAN.md — `tempoRegistrado` no domínio, `tempo.ts` na web e o `TaskTime` com o mesmo número (TAR-07)
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 11-04-PLAN.md — `pendingMentions` como união (Comentário | descrição), filtro de Tarefa aberta e a página de Notificações (TAR-05)
+- [x] 11-04-PLAN.md — `pendingMentions` como união (Comentário | descrição), filtro de Tarefa aberta e a página de Notificações (TAR-05)
 - [ ] 11-05-PLAN.md — Hook `useMencoes` e o "@" na descrição, com o `CommentComposer` usando o mesmo hook (TAR-04)
 - [ ] 11-06-PLAN.md — `AlteracaoDeDescricao` ("Ver alteração") no Feed e na Timeline; Auditoria e Reunião sem o texto na frase (TAR-06)
 - [ ] 11-07-PLAN.md — Na Tarefa aberta: converter em um clique só onde dá, descrição com o nome destacado e a linha "Rastrear tempo" com o número do domínio (TAR-02, TAR-04, TAR-07)

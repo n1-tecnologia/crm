@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 11
 current_phase_name: "Clone ClickUp: Tarefa (checklist, descrição e tempo)"
 status: executing
-stopped_at: Completed 11-03-PLAN.md
-last_updated: "2026-10-29T22:13:08.486Z"
+stopped_at: Completed 11-04-PLAN.md
+last_updated: "2026-10-29T22:19:26.961Z"
 last_activity: 2026-10-29
 last_activity_desc: Phase 11 execution started
-state_head: 80e96dc111c3a162c3ff0e3dc62507be701e7418
+state_head: dfcf1862decceaa5297d037c1f8ffee9e5fd89d4
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 199
-  completed_plans: 190
+  completed_plans: 191
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 ## Current Position
 
 Phase: 11 (Clone ClickUp: Tarefa (checklist, descrição e tempo)) — EXECUTING
-Plan: 4 of 8
+Plan: 5 of 8
 Status: Ready to execute
 Last activity: 2026-10-29 — Phase 11 execution started
 
@@ -408,6 +408,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 11 P01 | 4 min | 3 tasks | 12 files |
 | Phase 11 P02 | 6 min | 2 tasks | 8 files |
 | Phase 11 P03 | 5 min | 2 tasks | 6 files |
+| Phase 11 P04 | 5 min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -599,6 +600,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 11]: 11-02: a invariante 'menção sem @Nome nunca avisa' vale na leitura (membrosMencionadosNaDescricao); updateTask só refiltra por higiene — Rollback do financeiro e recorrência escrevem a descrição fora de updateTask
 - [Phase 11]: 11-02: histórico da descrição corta em 2.000 pontos de código + '…' (2.001), before vazio presente — A4 do plano; muda uma constante se o dono esperava 2.000 contando o '…'
 - [Phase 11]: [11-03] D-15/D-16: tempoRegistrado conta o cronometro aberto em lancamentos (A2), ignora Subtarefa fora de ativo e tudo abaixo dela (A3) e nao le o relogio; minutos() vive so em features/estrutura/tempo.ts
+- [Phase 11]: 11-04: variante descricao de pendingMentions só para quem vê a Tarefa, ativa e fora de categoria terminal; Comentário sem o filtro terminal; ordem pela última Descrição alterada; quem se menciona também vê o aviso
 
 ### Pending Todos
 
@@ -660,6 +662,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-29T22:13:08.248Z
-Stopped at: Completed 11-03-PLAN.md
+Last session: 2026-10-29T22:19:26.705Z
+Stopped at: Completed 11-04-PLAN.md
 Resume file: None
