@@ -7,6 +7,7 @@
 
 import type { EnabledFeatures, FieldRequirement, FieldType } from "@n1/dominio";
 import {
+  ASPECTO_CONFIGURAVEL,
   CONTAINER_TYPE,
   ID,
   opcional,
@@ -159,6 +160,8 @@ export const CONFIGURACAO = {
   setContainerFeature: z.tuple([CONTAINER_TYPE, ID, FEATURE, z.boolean().nullable()]),
   // `null` = herdar — valor de domínio (Fase 10, D-07).
   setContainerDefaultViews: z.tuple([CONTAINER_TYPE, ID, VISUALIZACOES_PADRAO.nullable()]),
+  // Fase 10, D-16 — só Espaço e Pasta bloqueiam (D-15): "list" cai no transporte.
+  setContainerBlock: z.tuple([z.enum(["space", "folder"]), ID, ASPECTO_CONFIGURAVEL, z.boolean()]),
   // Checklist 1.1 — usar, ou não, um Campo herdado neste contêiner.
   createTag: z.tuple([TAG_INPUT]),
   updateTag: z.tuple([ID, TAG_INPUT]),

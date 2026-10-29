@@ -13,6 +13,7 @@ import type {
   Channel,
   ChatSession,
   Comment,
+  ConfigurableAspect,
   Contact,
   Conversation,
   Deal,
@@ -277,6 +278,73 @@ function containerOf(state: DataState, node: PathNode): Space | Folder | List | 
     : node.type === "folder"
       ? state.folders.find((f) => f.id === node.id)
       : state.spaces.find((s) => s.id === node.id);
+}
+
+/* ───────── Bloqueio de aspecto (Fase 10, 2.6.5, D-16, RN-ESP-09) ───────── */
+
+/** Como a tela e a recusa chamam cada aspecto: um nome só, em `setContainerBlock` e na tela de bloqueio. */
+export const NOME_DO_ASPECTO: Record<ConfigurableAspect, string> = {
+  statusSet: "Conjunto de Status",
+  fieldDefinitions: "Campos",
+  taskTypes: "Tipos de Tarefa",
+  features: "Funcionalidades",
+  automations: "Automações",
+  defaultViews: "Visualizações padrão",
+};
+
+/**
+ * D-16 — este nó DEFINE o próprio valor do aspecto? É o predicado único: a
+ * operação que recusa bloquear, a tela que lista "Já definido em:" e
+ * `moveContainer` (10-18) perguntam a mesma coisa aqui, senão três respostas
+ * divergiriam na primeira mudança. `statusSet`, `features` e `defaultViews`
+ * SUBSTITUEM; os outros três ACUMULAM e "definir" é ter criado algo no nó.
+ */
+export function definesAspect(state: DataState, type: PathNode["type"], id: Id, aspect: ConfigurableAspect): boolean {
+  const node = containerPath(state, type, id).at(-1);
+  const container = node ? containerOf(state, node) : undefined;
+  if (!container) return false;
+  switch (aspect) {
+    case "statusSet":
+      return container.statusSet !== undefined;
+    case "features":
+      return container.modes.features === "sobrescrito";
+    case "defaultViews":
+      return container.defaultViews !== undefined;
+    case "fieldDefinitions":
+      return state.fieldDefinitions.some((d) => d.target === "task" && d.lifecycle === "ativo" && d.definedAtId === id);
+    case "taskTypes":
+      return state.taskTypes.some((t) => !t.isPlatformDefault && t.definedAtId === id);
+    case "automations":
+      return state.automations.some((a) => a.lifecycle !== "naLixeira" && a.scopeType === type && a.scopeId === id);
+  }
+}
+
+/**
+ * RN-ESP-09, D-16 — os descendentes (fora da lixeira) que definem o aspecto, na
+ * ordem do caminho: do mais perto do nó para o mais fundo, Pastas antes de
+ * Listas no mesmo nível. Com `memberId`, devolve só os que ele ALCANÇA (B38a):
+ * é a leitura que a tela usa, para nunca nomear um contêiner privado que o
+ * Membro não abre.
+ */
+export function sobrescritasAbaixo(
+  state: DataState,
+  type: "space" | "folder",
+  id: Id,
+  aspect: ConfigurableAspect,
+  memberId?: Id,
+): ReadonlyArray<{ readonly tipo: "folder" | "list"; readonly id: Id; readonly nome: string }> {
+  const candidatos: Array<{ readonly tipo: "folder" | "list"; readonly id: Id; readonly nome: string; readonly fundo: number }> = [];
+  const considerar = (tipo: "folder" | "list", item: Folder | List): void => {
+    const caminho = containerPath(state, tipo, item.id);
+    if (!caminho.some((n) => n.type === type && n.id === id) || item.id === id) return;
+    if (effectiveLifecycleOfContainer(state, tipo, item.id) === "naLixeira") return;
+    if (!definesAspect(state, tipo, item.id, aspect)) return;
+    if (memberId !== undefined && !memberReachesContainer(state, memberId, tipo, item.id)) return;
+    candidatos.push({ tipo, id: item.id, nome: item.name, fundo: caminho.length });
+  };
+  for (const folder of state.folders) considerar("folder", folder);
+  for (const list of state.lists) considerar("list", list);
+  return candidatos.sort((a, b) => a.fundo - b.fundo).map(({ tipo, id: itemId, nome }) => ({ tipo, id: itemId, nome }));
 }
 
 export function statusDefinition(

@@ -30,6 +30,7 @@ describe("esquemas/configuracao — a forma dos args de configuration.ts", () =>
       "removeTaskType",
       "setContainerFeature",
       "setContainerDefaultViews",
+      "setContainerBlock",
       "usarCampoHerdado",
       "createTag",
       "updateTag",
@@ -119,6 +120,9 @@ describe("esquemas/configuracao — a forma dos args de configuration.ts", () =>
       // Fase 10, D-07 — as formas que a web vai mandar; `null` = herdar.
       ["setContainerDefaultViews", ["space", "spc_1", { disponiveis: ["lista", "quadro"], inicial: "quadro" }]],
       ["setContainerDefaultViews", ["folder", "fld_1", null]],
+      // Fase 10, D-16 — bloquear e desbloquear um aspecto no Espaço e na Pasta.
+      ["setContainerBlock", ["space", "spc_1", "statusSet", true]],
+      ["setContainerBlock", ["folder", "fld_1", "fieldDefinitions", false]],
     ];
     for (const [nome, args] of FORMAS_DO_WEB) {
       expect(CONFIGURACAO[nome].safeParse(viaJson(args)).success, nome).toBe(true);
@@ -168,6 +172,10 @@ describe("esquemas/configuracao — a forma dos args de configuration.ts", () =>
       CONFIGURACAO.setContainerDefaultViews.safeParse(viaJson(["space", "spc_1", { disponiveis: ["mapa"], inicial: "mapa" }])).success,
     ).toBe(false);
     expect(CONFIGURACAO.setContainerDefaultViews.safeParse(viaJson(["space", "spc_1"])).success).toBe(false);
+    // Bloqueio: a Lista não bloqueia (D-15), aspecto desconhecido e booleano ausente caem.
+    expect(CONFIGURACAO.setContainerBlock.safeParse(viaJson(["list", "lst_1", "statusSet", true])).success).toBe(false);
+    expect(CONFIGURACAO.setContainerBlock.safeParse(viaJson(["space", "spc_1", "cor", true])).success).toBe(false);
+    expect(CONFIGURACAO.setContainerBlock.safeParse(viaJson(["space", "spc_1", "statusSet"])).success).toBe(false);
     // Requisito de Status: atributo fora da lista e chave desconhecida caem.
     expect(
       CONFIGURACAO.updateStatus.safeParse(viaJson(["list", "l1", "st1", { exitRequirements: [{ attribute: "prazo" }] }])).success,

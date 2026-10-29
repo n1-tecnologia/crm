@@ -11,15 +11,23 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../seed";
 import type { DataState } from "../state";
 import { blockedAbove, createFieldDefinition, overrideStatusSet, setContainerBlock } from "./configuration";
-import { createFolder } from "./structure";
+import { createFolder, createList, createSpace } from "./structure";
 
 const THIAGO = "mem_thiago"; // Proprietário
-const ESPACO = "spc_com";
-const LISTA_NO_ESPACO = "lst_prospeccao";
 
+// Um Espaço novo, sem nenhuma sobrescrita abaixo: o `spc_com` do seed já tem Listas e
+// uma Subpasta com Conjunto próprio, e o teste precisa partir de um Espaço limpo.
 let state: DataState;
+let ESPACO: string;
+let LISTA_NO_ESPACO: string;
 beforeEach(() => {
   state = buildSeed();
+  const espacoNovo = createSpace(state, THIAGO, { name: "Operações novas" });
+  if (!espacoNovo.ok) throw new Error(espacoNovo.error);
+  ESPACO = espacoNovo.value.id;
+  const lista = createList(state, THIAGO, { name: "Fila", parentType: "space", parentId: ESPACO });
+  if (!lista.ok) throw new Error(lista.error);
+  LISTA_NO_ESPACO = lista.value.id;
 });
 
 const espaco = () => {
@@ -30,7 +38,7 @@ const espaco = () => {
 
 const novaPasta = (nome: string, extra: { isPrivate?: boolean } = {}): string => {
   const r = createFolder(state, THIAGO, { name: nome, parentType: "space", parentId: ESPACO, ...extra });
-  if (!r.ok) throw new Error(r.reason);
+  if (!r.ok) throw new Error(r.error);
   return r.value.id;
 };
 
@@ -46,7 +54,7 @@ describe("setContainerBlock — Conjunto de Status (EST-10)", () => {
 
     const sobrescrita = overrideStatusSet(state, THIAGO, "list", LISTA_NO_ESPACO);
     expect(sobrescrita.ok).toBe(false);
-    if (!sobrescrita.ok) expect(sobrescrita.reason).toBe(blockedAbove(state, "list", LISTA_NO_ESPACO, "statusSet"));
+    if (!sobrescrita.ok) expect(sobrescrita.error).toBe(blockedAbove(state, "list", LISTA_NO_ESPACO, "statusSet"));
     expect(state.lists.find((l) => l.id === LISTA_NO_ESPACO)?.statusSet).toBeUndefined();
   });
 
@@ -57,8 +65,8 @@ describe("setContainerBlock — Conjunto de Status (EST-10)", () => {
     const r = setContainerBlock(state, THIAGO, "space", ESPACO, "statusSet", true);
     expect(r.ok).toBe(false);
     if (!r.ok) {
-      expect(r.reason).toContain("Pasta Clientes VIP");
-      expect(r.reason).toContain("Conjunto de Status");
+      expect(r.error).toContain("Pasta Clientes VIP");
+      expect(r.error).toContain("Conjunto de Status");
     }
     expect(espaco().blocks.statusSet).toBeUndefined();
   });

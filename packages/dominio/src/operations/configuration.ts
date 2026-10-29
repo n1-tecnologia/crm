@@ -13,6 +13,8 @@ import {
   effectiveContainerConfig,
   effectiveListConfig,
   listPath,
+  NOME_DO_ASPECTO,
+  sobrescritasAbaixo,
   VISUALIZACOES_DA_PLATAFORMA,
 } from "../derive";
 import { fail, ok, type DataState, type OperationResult } from "../state";
@@ -939,6 +941,68 @@ export function setContainerDefaultViews(
     });
   }
   return ok(novo ?? null);
+}
+
+/* ───────────────────────────── Bloqueio de aspecto ───────────────────────── */
+
+/** Os aspectos que SUBSTITUEM: bloquear exige que ninguém abaixo já sobrescreva. Os outros ACUMULAM. */
+const ASPECTOS_QUE_SUBSTITUEM: ReadonlySet<ConfigurableAspect> = new Set<ConfigurableAspect>(["statusSet", "features", "defaultViews"]);
+
+/** `Pasta Clientes`, `Subpasta Q3`, `Lista Propostas` — como a recusa nomeia quem sobrescreve. */
+function rotuloDoDescendente(state: DataState, item: { readonly tipo: "folder" | "list"; readonly id: Id; readonly nome: string }): string {
+  if (item.tipo === "list") return `Lista ${item.nome}`;
+  const pasta = state.folders.find((f) => f.id === item.id);
+  return `${pasta?.parentType === "folder" ? "Subpasta" : "Pasta"} ${item.nome}`;
+}
+
+/**
+ * D-16, 2.6.5, RN-ESP-09 — o Espaço ou a Pasta bloqueia (ou libera) um aspecto
+ * para tudo abaixo dele. Para os aspectos que SUBSTITUEM, bloquear é recusado
+ * enquanto algum descendente sobrescrever, e a frase nomeia quais — é a mesma
+ * leitura (`sobrescritasAbaixo`) que a tela usa para desligar o interruptor.
+ * Para os que ACUMULAM, bloquear vale só para o que for criado depois: o que
+ * já existe fica. Desbloquear é sempre permitido a quem administra. A Lista
+ * nunca bloqueia (D-15): o tipo só aceita Espaço e Pasta.
+ */
+export function setContainerBlock(
+  state: DataState,
+  actingMemberId: Id,
+  containerType: "space" | "folder",
+  containerId: Id,
+  aspect: ConfigurableAspect,
+  bloqueado: boolean,
+): OperationResult<boolean> {
+  const container = findContainer(state, containerType, containerId);
+  if (!container || !("blocks" in container)) return fail(`${CONTAINER_LABEL[containerType]} não encontrado(a).`);
+  const refusal = mayConfigure(state, actingMemberId, containerType, containerId);
+  if (refusal) return fail(refusal);
+  if (container.lifecycle !== "ativo") return fail("Um contêiner arquivado ou na lixeira não muda de configuração.");
+
+  const atual = container.blocks[aspect] === true;
+  if (bloqueado && !atual && ASPECTOS_QUE_SUBSTITUEM.has(aspect)) {
+    const abaixo = sobrescritasAbaixo(state, containerType, containerId, aspect);
+    if (abaixo.length > 0) {
+      const nomes = abaixo.map((item) => rotuloDoDescendente(state, item)).join(", ");
+      return fail(
+        `Não dá para bloquear ${NOME_DO_ASPECTO[aspect]}: ${nomes} ${abaixo.length === 1 ? "define" : "definem"} o próprio. Volte a herdar neles para poder bloquear.`,
+      );
+    }
+  }
+  if (bloqueado === atual) return ok(bloqueado);
+
+  const blocks = { ...container.blocks };
+  if (bloqueado) blocks[aspect] = true;
+  else delete blocks[aspect];
+  container.blocks = blocks;
+  recordActivity(state, {
+    actor: memberActor(actingMemberId),
+    action: bloqueado ? "Aspecto bloqueado" : "Aspecto desbloqueado",
+    objectType: containerType,
+    objectId: container.id,
+    objectName: container.name,
+    detail: NOME_DO_ASPECTO[aspect],
+  });
+  return ok(bloqueado);
 }
 
 /**

@@ -21,7 +21,7 @@
  * irmão desta pasta.
  */
 
-import type { ActorKind, DataState, Id, ModeloDeTarefa, Priority, StatusCategory, View } from "@n1/dominio";
+import type { ActorKind, ConfigurableAspect, DataState, Id, ModeloDeTarefa, Priority, StatusCategory, View } from "@n1/dominio";
 import { OPERACOES, type NomeDeOperacao } from "@n1/dominio/operations/registro";
 import { z } from "zod";
 
@@ -81,6 +81,11 @@ export const STATUS_MAPPING = z.object({ fromStatusId: ID, toStatusId: ID }).str
 export const VALOR_DE_CAMPO = z.union([z.string(), z.number(), z.boolean(), z.array(z.string()), z.null()]);
 export const CONTAINER_TYPE = z.enum(["space", "folder", "list"]);
 export const STATUS_CATEGORY = z.enum(["naoIniciado", "emAndamento", "concluido", "fechado"]);
+/**
+ * Os seis aspectos configuráveis de um contêiner (B25). `setContainerBlock` o usa;
+ * a conferência abaixo falha a compilação se o domínio ganhar ou perder um.
+ */
+export const ASPECTO_CONFIGURAVEL = z.enum(["statusSet", "fieldDefinitions", "taskTypes", "features", "defaultViews", "automations"]);
 export const MONEY = z.object({ amount: z.number(), currency: z.string() }).strict();
 /** C35 — usado por `estrutura.ts` (`createList`), `planejamento.ts` (`instantiateListTemplate`) e `tarefas-conversacionais.ts`. */
 export const MODELO_DE_TAREFA = z.enum(["operacional", "conversacional"]);
@@ -98,6 +103,7 @@ type _EnumsCompletos = Confere<
     Igual<z.infer<typeof PRIORITY>, Priority>,
     Igual<z.infer<typeof STATUS_CATEGORY>, StatusCategory>,
     Igual<z.infer<typeof ACTOR_REF>["kind"], ActorKind>,
+    Igual<z.infer<typeof ASPECTO_CONFIGURAVEL>, ConfigurableAspect>,
     Igual<z.infer<typeof CONTAINER_TYPE>, "space" | "folder" | "list">,
     Igual<z.infer<typeof MODELO_DE_TAREFA>, ModeloDeTarefa>,
     Igual<z.infer<typeof VIEW_KIND>, View["kind"]>,
