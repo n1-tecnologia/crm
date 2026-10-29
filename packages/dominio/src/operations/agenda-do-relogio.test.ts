@@ -13,6 +13,7 @@ import { buildSeed } from "../seed";
 import type { DataState } from "../state";
 import type { Automation, Grant } from "../types";
 import { atorDoRelogio, listaTemAgendaPorVencimento, regimeDaPrimeiraVolta } from "./agenda-do-relogio";
+import { purgeExpiredTasks, tarefasDaLixeiraVencidas } from "./tasks";
 
 const LISTA = "lst_revisoes";
 const ESPACO = "spc_ops";
@@ -150,5 +151,62 @@ describe("atorDoRelogio — F3, Q1 (autoria humana a confirmar com o dono)", () 
   it("o Membro de Papel comum com concessão só em OUTRA Lista não é ator desta", () => {
     state.grants.push(concessaoDeAdministrar(MEMBRO, "list", "lst_propostas"));
     expect(atorDoRelogio(state, LISTA, MEMBRO)).toBe(PROPRIETARIO);
+  });
+});
+
+/**
+ * 10-15 — `tarefasDaLixeiraVencidas` é a regra do expurgo extraída: a prévia
+ * do relógio conta com ela exatamente o que `purgeExpiredTasks` eliminaria.
+ */
+describe("tarefasDaLixeiraVencidas", () => {
+  const LISTA_DA_LIXEIRA = "lst_prospeccao";
+  const diasAtras = (n: number): string => new Date(Date.now() - n * 86_400_000).toISOString();
+
+  /** Põe na lixeira de `LISTA_DA_LIXEIRA` só o que o caso descreve: ids -> há quantos dias foram. */
+  function lixeiraDe(dias: Record<string, number>): void {
+    for (const t of state.tasks) {
+      if (t.listId !== LISTA_DA_LIXEIRA) continue;
+      if (t.id in dias) {
+        t.lifecycle = "naLixeira";
+        t.trashedAt = diasAtras(dias[t.id] ?? 0);
+      } else if (t.lifecycle === "naLixeira") {
+        t.lifecycle = "ativo";
+        delete t.trashedAt;
+      }
+    }
+  }
+
+  it("devolve só as Tarefas da Lista na lixeira com a previsão de eliminação até hoje", () => {
+    const retencao = state.workspace.trashPolicy.retentionDays;
+    lixeiraDe({ tsk_seed_11: retencao + 3, tsk_seed_12: retencao + 1, tsk_seed_10: retencao - 2 });
+    const ids = tarefasDaLixeiraVencidas(state, LISTA_DA_LIXEIRA, new Date()).map((t) => t.id);
+    expect(ids.sort()).toEqual(["tsk_seed_11", "tsk_seed_12"]);
+  });
+
+  it("Lista sem nada na lixeira, ou com tudo dentro da retenção, devolve vazio", () => {
+    const retencao = state.workspace.trashPolicy.retentionDays;
+    lixeiraDe({});
+    expect(tarefasDaLixeiraVencidas(state, LISTA_DA_LIXEIRA, new Date())).toEqual([]);
+    lixeiraDe({ tsk_seed_11: retencao - 1 });
+    expect(tarefasDaLixeiraVencidas(state, LISTA_DA_LIXEIRA, new Date())).toEqual([]);
+  });
+
+  it("outra Lista não entra na conta", () => {
+    const retencao = state.workspace.trashPolicy.retentionDays;
+    lixeiraDe({ tsk_seed_11: retencao + 3 });
+    expect(tarefasDaLixeiraVencidas(state, LISTA, new Date())).toEqual([]);
+  });
+
+  it("é leitura pura: não elimina nada, e a contagem bate com o que purgeExpiredTasks elimina", () => {
+    const retencao = state.workspace.trashPolicy.retentionDays;
+    lixeiraDe({ tsk_seed_11: retencao + 3, tsk_seed_12: retencao + 1 });
+    const totalAntes = state.tasks.length;
+    const vencidas = tarefasDaLixeiraVencidas(state, LISTA_DA_LIXEIRA, new Date());
+    expect(state.tasks).toHaveLength(totalAntes);
+
+    const r = purgeExpiredTasks(state, PROPRIETARIO, LISTA_DA_LIXEIRA, new Date());
+    expect(r.ok, r.ok ? "" : r.error).toBe(true);
+    if (r.ok) expect(r.value.eliminadas).toBe(vencidas.length);
+    expect(state.tasks).toHaveLength(totalAntes - vencidas.length);
   });
 });

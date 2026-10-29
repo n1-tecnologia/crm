@@ -805,6 +805,22 @@ export function previsaoDeEliminacao(state: DataState, task: Pick<Task, "trashed
 }
 
 /**
+ * As Tarefas da Lista que estão na lixeira e já passaram do prazo de retenção
+ * (`previsaoDeEliminacao` <= `hoje`). É A regra do expurgo: `purgeExpiredTasks`
+ * a chama para eliminar e a prévia do relógio (`apps/api`, `automacoes:previa`)
+ * a chama para CONTAR — as duas veem exatamente o mesmo conjunto (10-15, Q3).
+ * Leitura pura: não grava nada. Pode incluir uma Subtarefa cuja mãe também está
+ * na lista; o expurgo a trata (cai com a mãe, não em dobro).
+ */
+export function tarefasDaLixeiraVencidas(state: DataState, listId: Id, hoje: Date): Task[] {
+  return state.tasks.filter((t) => {
+    if (t.listId !== listId || t.lifecycle !== "naLixeira") return false;
+    const previsao = previsaoDeEliminacao(state, t);
+    return previsao !== undefined && previsao <= hoje.getTime();
+  });
+}
+
+/**
  * PARD-10 — o expurgo pela Política de lixeira: o Sistema elimina o que
  * passou do prazo (tarefa.md, 12.3). Por Lista e dia, como os outros relógios
  * da agenda (`runScheduledAutomations`, `runCalendarRecurrences`), e com a
@@ -822,11 +838,7 @@ export function purgeExpiredTasks(
   if (!state.lists.some((l) => l.id === listId)) return fail("Lista não encontrada.");
   const admin = containerAdminRefusal(state, actingMemberId, "list", listId);
   if (admin) return fail(admin);
-  const vencidas = state.tasks.filter((t) => {
-    if (t.listId !== listId || t.lifecycle !== "naLixeira") return false;
-    const previsao = previsaoDeEliminacao(state, t);
-    return previsao !== undefined && previsao <= today.getTime();
-  });
+  const vencidas = tarefasDaLixeiraVencidas(state, listId, today);
   let eliminadas = 0;
   let failed = 0;
   const failures: Array<{ taskId: Id; title: string; reason: string }> = [];

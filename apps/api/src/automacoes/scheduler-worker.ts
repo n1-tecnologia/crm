@@ -294,7 +294,8 @@ interface ParRegistrado {
 }
 
 /**
- * Catálogo das (Espaço, Lista) que o relógio PODE ter de visitar. Leitura de
+ * Catálogo das (Espaço, Lista) que o relógio PODE ter de visitar (exportado para a
+ * prévia `automacoes:previa`, que lê o mesmo catálogo sem rodar nada). Leitura de
  * catálogo, não de estado — não substitui `hidratar()`, que continua sendo a
  * única fonte de verdade dentro da Unidade de Trabalho. Três fontes
  * candidatas, unidas num só `Map` de pares (a terceira, a lixeira vencida,
@@ -313,7 +314,7 @@ interface ParRegistrado {
  * `packages/dominio`. Precedente de ler uma coleção por SQL direto:
  * `persistencia/credenciais-de-servico.ts::resolverMembroAgenteDoPipeline`.
  */
-async function catalogoDeListasComAgenda(workspaceId?: string): Promise<ParDoCatalogo[]> {
+export async function catalogoDeListasComAgenda(workspaceId?: string): Promise<ParDoCatalogo[]> {
   const parametros: unknown[] = [];
   let filtroWorkspace = "";
   if (workspaceId !== undefined) {
