@@ -30,6 +30,7 @@ import type {
   Task,
   TaskType,
   TaskDate,
+  VisualizacoesPadrao,
 } from "./types";
 
 const RESTRICTION: Record<Lifecycle, number> = { ativo: 0, arquivado: 1, naLixeira: 2 };
@@ -147,6 +148,15 @@ const DEFAULT_FEATURES: EnabledFeatures = {
 };
 
 /**
+ * D-07 — as Visualizações padrão de quem ainda não definiu nenhuma: os cinco
+ * tipos na ordem da barra, abrindo na Lista. Vale sem migração de dados.
+ */
+export const VISUALIZACOES_DA_PLATAFORMA: VisualizacoesPadrao = Object.freeze({
+  disponiveis: Object.freeze(["lista", "quadro", "calendario", "tabela", "linhaDoTempo"] as const),
+  inicial: "lista",
+});
+
+/**
  * B45 — the effective Status Set is resolved by the path at every query, never
  * stored: the List's own if `sobrescrito`, otherwise the nearest ancestor that
  * defines one (the Space always defines one).
@@ -210,7 +220,31 @@ export function effectiveContainerConfig(state: DataState, type: PathNode["type"
     if (container?.features) Object.assign(features, container.features);
   }
 
-  return { statusSet, statusSetDefinedAt: definedAt, fieldDefinitionIds, taskTypeIds, features, path };
+  // D-07 — as Visualizações padrão SUBSTITUEM por inteiro: o nó mais próximo que
+  // define vence, sem mesclar por chave. Ninguém definindo = padrão da plataforma.
+  let views: VisualizacoesPadrao = VISUALIZACOES_DA_PLATAFORMA;
+  let viewsDefinedAt: PathNode | undefined;
+  for (let i = path.length - 1; i >= 0; i -= 1) {
+    const node = path[i];
+    if (!node) continue;
+    const definidas = containerOf(state, node)?.defaultViews;
+    if (definidas) {
+      views = definidas;
+      viewsDefinedAt = node;
+      break;
+    }
+  }
+
+  return {
+    statusSet,
+    statusSetDefinedAt: definedAt,
+    fieldDefinitionIds,
+    taskTypeIds,
+    features,
+    views,
+    ...(viewsDefinedAt ? { viewsDefinedAt } : {}),
+    path,
+  };
 }
 
 /**

@@ -1,6 +1,6 @@
 /**
  * A FORMA dos `args` das operações de
- * `packages/dominio/src/operations/configuration.ts` — 14 operações. Ver
+ * `packages/dominio/src/operations/configuration.ts` — 15 operações. Ver
  * `../esquemas/CONTEXT.md` para a regra da pasta e `./fragmentos.ts` para o
  * porquê da validação ser de transporte, não de regra de negócio.
  */
@@ -11,6 +11,7 @@ import {
   ID,
   opcional,
   STATUS_CATEGORY,
+  VIEW_KIND,
   type Confere,
   type Esquemas,
   type Igual,
@@ -54,6 +55,10 @@ const FEATURE = z.enum([
 ]);
 
 const FOLDER_OU_LIST = z.enum(["folder", "list"]);
+
+// D-07 — a FORMA das Visualizações padrão; "ao menos um tipo", "sem repetição" e
+// "inicial entre as disponíveis" são regra de `setContainerDefaultViews`.
+const VISUALIZACOES_PADRAO = z.object({ disponiveis: z.array(VIEW_KIND), inicial: VIEW_KIND }).strict();
 
 // "opções não vazias" e "sem repetição" são regra — `validateOptions` em
 // `configuration.ts` — não repetir aqui.
@@ -152,6 +157,8 @@ export const CONFIGURACAO = {
   removeTaskType: z.tuple([ID]),
   // `null` = "herdar" — valor de domínio.
   setContainerFeature: z.tuple([CONTAINER_TYPE, ID, FEATURE, z.boolean().nullable()]),
+  // `null` = herdar — valor de domínio (Fase 10, D-07).
+  setContainerDefaultViews: z.tuple([CONTAINER_TYPE, ID, VISUALIZACOES_PADRAO.nullable()]),
   // Checklist 1.1 — usar, ou não, um Campo herdado neste contêiner.
   createTag: z.tuple([TAG_INPUT]),
   updateTag: z.tuple([ID, TAG_INPUT]),

@@ -6,10 +6,8 @@
  */
 
 import type { View } from "@n1/dominio";
-import { CONTAINER_TYPE, ID, PRIORITY, STATUS_CATEGORY, type Confere, type Esquemas, type Igual } from "./fragmentos";
+import { CONTAINER_TYPE, ID, PRIORITY, STATUS_CATEGORY, VIEW_KIND, type Confere, type Esquemas, type Igual } from "./fragmentos";
 import { z } from "zod";
-
-const VIEW_KIND = z.enum(["lista", "quadro", "calendario", "linhaDoTempo", "tabela", "carga"]);
 
 // `ViewFilters` é fechado no domínio — todo filtro é opcional, mas a chave
 // tem de ser conhecida; é exatamente o que o verificador reproduziu com
@@ -101,7 +99,6 @@ export const ESCALA = {
 
 type _EnumsCompletos = Confere<
   [
-    Igual<z.infer<typeof VIEW_KIND>, View["kind"]>,
     Igual<z.infer<typeof GROUP_BY>, NonNullable<View["groupBy"]>>,
   ]
 >;

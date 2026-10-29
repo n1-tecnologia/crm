@@ -146,7 +146,7 @@ describe("setContainerDefaultViews — Atividade", () => {
     expect(registro?.after).toBe("Lista, Quadro, Tabela, Linha do tempo · inicial Lista");
 
     setContainerDefaultViews(state, THIAGO, "space", ESPACO, null);
-    const volta = state.activity.filter((a) => a.action === "Visualizações padrão alteradas" && a.objectId === ESPACO).at(-1);
+    const volta = state.activity.filter((a) => a.action === "Visualizações padrão alteradas" && a.objectId === ESPACO)[0]; // a Atividade mais nova vem primeiro
     expect(volta?.before).toBe("Lista, Quadro, Tabela, Linha do tempo · inicial Lista");
     expect(volta?.after).toBe("herdadas");
   });

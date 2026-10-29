@@ -122,6 +122,21 @@ export interface View {
   readonly createdAt: Instant;
 }
 
+/** Os tipos de Visualização que a plataforma oferece (a barra da Lista). */
+export type TipoDeVisualizacao = View["kind"];
+
+/**
+ * 2.6.1, D-07, RN-ESP-08 — as Visualizações padrão de um Espaço ou Pasta: quais
+ * tipos as Listas abaixo oferecem e qual abre primeiro. O aspecto SUBSTITUI por
+ * inteiro (como o Conjunto de Status): o nó mais próximo que define vence, sem
+ * mesclar por chave. Visualizações já salvas de um tipo que saiu daqui ficam
+ * guardadas (D-06); só não se salva uma nova desse tipo.
+ */
+export interface VisualizacoesPadrao {
+  readonly disponiveis: readonly TipoDeVisualizacao[];
+  readonly inicial: TipoDeVisualizacao;
+}
+
 /** Every filter optional; absent means "não filtra por isto". */
 export interface ViewFilters {
   readonly statusCategory?: StatusCategory;
@@ -185,6 +200,8 @@ interface StructuralContainerBase extends RecordBase {
   /** Present when the aspect is `sobrescrito`. */
   statusSet?: StatusSet;
   features?: Partial<EnabledFeatures>;
+  /** D-07 — presente quando o aspecto `defaultViews` é `sobrescrito`. */
+  defaultViews?: VisualizacoesPadrao;
   provenance?: Provenance;
   /**
    * Checklist 1.1 — Campos herdados de um nível acima que ESTE contêiner (e o
@@ -403,6 +420,10 @@ export interface EffectiveListConfig {
   readonly fieldDefinitionIds: readonly Id[];
   readonly taskTypeIds: readonly Id[];
   readonly features: EnabledFeatures;
+  /** D-07 — as Visualizações padrão resolvidas pelo ponto de definição mais próximo. */
+  readonly views: VisualizacoesPadrao;
+  /** O nó que definiu `views`; ausente = padrão da plataforma ("Herdado de X" na tela). */
+  readonly viewsDefinedAt?: { readonly type: string; readonly id: Id; readonly name: string };
   readonly path: ReadonlyArray<{ readonly type: "space" | "folder" | "list"; readonly id: Id; readonly name: string }>;
 }
 

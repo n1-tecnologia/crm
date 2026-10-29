@@ -164,6 +164,7 @@ export const createTaskType = instrumentar("createTaskType");
 export const updateTaskType = instrumentar("updateTaskType");
 export const removeTaskType = instrumentar("removeTaskType");
 export const setContainerFeature = instrumentar("setContainerFeature");
+export const setContainerDefaultViews = instrumentar("setContainerDefaultViews");
 export const usarCampoHerdado = instrumentar("usarCampoHerdado");
 export const createTag = instrumentar("createTag");
 export const updateTag = instrumentar("updateTag");

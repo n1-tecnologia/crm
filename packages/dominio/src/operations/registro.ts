@@ -143,6 +143,7 @@ import {
   removeTaskType,
   reorderStatuses,
   restoreFieldDefinition,
+  setContainerDefaultViews,
   setContainerFeature,
   updateFieldDefinition,
   updateStatus,
@@ -527,6 +528,7 @@ export const OPERACOES = {
   updateTaskType,
   removeTaskType,
   setContainerFeature,
+  setContainerDefaultViews,
   usarCampoHerdado,
   // collaboration.ts
   addDependency,

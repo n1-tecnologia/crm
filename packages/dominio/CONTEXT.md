@@ -181,6 +181,7 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `updateTaskType` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
 | `removeTaskType` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
 | `setContainerFeature` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
+| `setContainerDefaultViews` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure`; recusa sob `blockedAbove(…, "defaultViews")` |
 | `usarCampoHerdado` | `operations/configuration.ts` | `containerAdminRefusal` | via `mayConfigure` |
 | `addDependency` | `operations/collaboration.ts` | `taskWriteRefusal` | via `activeTask`, nas duas Tarefas da Dependência |
 | `removeDependency` | `operations/collaboration.ts` | `taskWriteRefusal` |  |

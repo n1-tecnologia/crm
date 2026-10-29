@@ -21,7 +21,7 @@
  * irmão desta pasta.
  */
 
-import type { ActorKind, DataState, Id, ModeloDeTarefa, Priority, StatusCategory } from "@n1/dominio";
+import type { ActorKind, DataState, Id, ModeloDeTarefa, Priority, StatusCategory, View } from "@n1/dominio";
 import { OPERACOES, type NomeDeOperacao } from "@n1/dominio/operations/registro";
 import { z } from "zod";
 
@@ -84,6 +84,12 @@ export const STATUS_CATEGORY = z.enum(["naoIniciado", "emAndamento", "concluido"
 export const MONEY = z.object({ amount: z.number(), currency: z.string() }).strict();
 /** C35 — usado por `estrutura.ts` (`createList`), `planejamento.ts` (`instantiateListTemplate`) e `tarefas-conversacionais.ts`. */
 export const MODELO_DE_TAREFA = z.enum(["operacional", "conversacional"]);
+/**
+ * Os tipos de Visualização. Mora aqui (e não em `escala.ts`) porque `saveView`
+ * (`escala.ts`) e `setContainerDefaultViews` (`configuracao.ts`) o usam; tirar
+ * `carga` (10-07) acontece num lugar só, junto da conferência contra `View["kind"]`.
+ */
+export const VIEW_KIND = z.enum(["lista", "quadro", "calendario", "linhaDoTempo", "tabela", "carga"]);
 
 // ── Portão de enum bidirecional — falta ou sobra de membro não compila ──
 
@@ -94,5 +100,6 @@ type _EnumsCompletos = Confere<
     Igual<z.infer<typeof ACTOR_REF>["kind"], ActorKind>,
     Igual<z.infer<typeof CONTAINER_TYPE>, "space" | "folder" | "list">,
     Igual<z.infer<typeof MODELO_DE_TAREFA>, ModeloDeTarefa>,
+    Igual<z.infer<typeof VIEW_KIND>, View["kind"]>,
   ]
 >;

@@ -29,6 +29,7 @@ describe("esquemas/configuracao — a forma dos args de configuration.ts", () =>
       "updateTaskType",
       "removeTaskType",
       "setContainerFeature",
+      "setContainerDefaultViews",
       "usarCampoHerdado",
       "createTag",
       "updateTag",
@@ -115,6 +116,9 @@ describe("esquemas/configuracao — a forma dos args de configuration.ts", () =>
       ["setContainerFeature", ["list", "l1", "prioridade", true]],
       ["setContainerFeature", ["list", "l1", "checklists", null]],
       ["usarCampoHerdado", ["list", "l1", "fd_1", false]],
+      // Fase 10, D-07 — as formas que a web vai mandar; `null` = herdar.
+      ["setContainerDefaultViews", ["space", "spc_1", { disponiveis: ["lista", "quadro"], inicial: "quadro" }]],
+      ["setContainerDefaultViews", ["folder", "fld_1", null]],
     ];
     for (const [nome, args] of FORMAS_DO_WEB) {
       expect(CONFIGURACAO[nome].safeParse(viaJson(args)).success, nome).toBe(true);
@@ -156,6 +160,14 @@ describe("esquemas/configuracao — a forma dos args de configuration.ts", () =>
       CONFIGURACAO.setContainerFeature.safeParse(viaJson(["list", "l1", "prioridade", "sim"])).success,
     ).toBe(false);
     expect(CONFIGURACAO.reorderStatuses.safeParse(viaJson(["list", "l1", "a"])).success).toBe(false);
+    // Visualizações padrão: chave extra, tipo desconhecido e `undefined` no lugar de `null` caem.
+    expect(
+      CONFIGURACAO.setContainerDefaultViews.safeParse(viaJson(["space", "spc_1", { disponiveis: ["lista"], inicial: "lista", extra: 1 }])).success,
+    ).toBe(false);
+    expect(
+      CONFIGURACAO.setContainerDefaultViews.safeParse(viaJson(["space", "spc_1", { disponiveis: ["mapa"], inicial: "mapa" }])).success,
+    ).toBe(false);
+    expect(CONFIGURACAO.setContainerDefaultViews.safeParse(viaJson(["space", "spc_1"])).success).toBe(false);
     // Requisito de Status: atributo fora da lista e chave desconhecida caem.
     expect(
       CONFIGURACAO.updateStatus.safeParse(viaJson(["list", "l1", "st1", { exitRequirements: [{ attribute: "prazo" }] }])).success,

@@ -7,7 +7,14 @@
  * nunca numa Tarefa — Tarefa não define configuração.
  */
 
-import { containerAdminRefusal, containerPath, effectiveContainerConfig, effectiveListConfig, listPath } from "../derive";
+import {
+  containerAdminRefusal,
+  containerPath,
+  effectiveContainerConfig,
+  effectiveListConfig,
+  listPath,
+  VISUALIZACOES_DA_PLATAFORMA,
+} from "../derive";
 import { fail, ok, type DataState, type OperationResult } from "../state";
 import type {
   ConfigurableAspect,
@@ -24,6 +31,8 @@ import type {
   StatusSet,
   Tag,
   TaskType,
+  TipoDeVisualizacao,
+  VisualizacoesPadrao,
 } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
 import { administraOEspaco } from "./ia/permissoes-ia";
@@ -857,6 +866,77 @@ export function setContainerFeature(
     });
   }
   return ok(proprias);
+}
+
+/* ─────────────────────────── Visualizações padrão ─────────────────────────── */
+
+/** Os rótulos que a Atividade mostra; o domínio não importa a web. */
+const ROTULO_DA_VISUALIZACAO: Record<TipoDeVisualizacao, string> = {
+  lista: "Lista",
+  quadro: "Quadro",
+  calendario: "Calendário",
+  tabela: "Tabela",
+  linhaDoTempo: "Linha do tempo",
+  carga: "Carga",
+};
+
+/** `Lista, Quadro · inicial Lista` — ou `herdadas` quando o nó não define as próprias. */
+function descreverVisualizacoes(valor: VisualizacoesPadrao | undefined): string {
+  if (!valor) return "herdadas";
+  return `${valor.disponiveis.map((t) => ROTULO_DA_VISUALIZACAO[t]).join(", ")} · inicial ${ROTULO_DA_VISUALIZACAO[valor.inicial]}`;
+}
+
+/**
+ * D-07, RN-ESP-08 — as Visualizações padrão SUBSTITUEM por inteiro: definir
+ * aqui vence o de cima para este nó e tudo abaixo; `null` volta a herdar.
+ * Não mexe nas Visualizações já salvas (D-06): só limita as novas (`saveView`).
+ */
+export function setContainerDefaultViews(
+  state: DataState,
+  actingMemberId: Id,
+  containerType: ContainerType,
+  containerId: Id,
+  valor: VisualizacoesPadrao | null,
+): OperationResult<VisualizacoesPadrao | null> {
+  const container = findContainer(state, containerType, containerId);
+  if (!container) return fail(`${CONTAINER_LABEL[containerType]} não encontrado(a).`);
+  const refusal = mayConfigure(state, actingMemberId, containerType, containerId);
+  if (refusal) return fail(refusal);
+  if (container.lifecycle !== "ativo") return fail("Um contêiner arquivado ou na lixeira não muda de configuração.");
+  const bloqueio = blockedAbove(state, containerType, containerId, "defaultViews");
+  if (bloqueio) return fail(bloqueio);
+
+  let novo: VisualizacoesPadrao | undefined;
+  if (valor !== null) {
+    const conhecidos: readonly TipoDeVisualizacao[] = VISUALIZACOES_DA_PLATAFORMA.disponiveis;
+    const vistos = new Set<TipoDeVisualizacao>();
+    for (const tipo of valor.disponiveis) {
+      if (!conhecidos.includes(tipo) || vistos.has(tipo)) return fail("Tipo de Visualização desconhecido.");
+      vistos.add(tipo);
+    }
+    if (vistos.size === 0) return fail("Escolha ao menos um tipo de Visualização.");
+    if (!conhecidos.includes(valor.inicial) || !vistos.has(valor.inicial)) return fail("A Visualização inicial precisa estar entre as disponíveis.");
+    novo = { disponiveis: [...valor.disponiveis], inicial: valor.inicial };
+  }
+
+  const antes = descreverVisualizacoes(container.defaultViews);
+  const depois = descreverVisualizacoes(novo);
+  if (novo) container.defaultViews = novo;
+  else delete container.defaultViews;
+  container.modes = { ...container.modes, defaultViews: novo ? "sobrescrito" : "herdado" };
+  if (antes !== depois) {
+    recordActivity(state, {
+      actor: memberActor(actingMemberId),
+      action: "Visualizações padrão alteradas",
+      objectType: containerType,
+      objectId: container.id,
+      objectName: container.name,
+      detail: "Visualizações padrão",
+      before: antes,
+      after: depois,
+    });
+  }
+  return ok(novo ?? null);
 }
 
 /**
