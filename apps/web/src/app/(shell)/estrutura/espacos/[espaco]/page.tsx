@@ -27,12 +27,11 @@ import type { Folder as Pasta, List as Lista } from "@n1/dominio/types";
 import { useFormat } from "@/features/shell/use-format";
 import {
   ActionMenu,
-  CabecalhoDePainel,
+  Button,
   CorpoDeTela,
   EmptyState,
   Icone,
   PageHeader,
-  Painel,
   Pilula,
   ReguaDeSecao,
   StateSeal,
@@ -72,6 +71,8 @@ export default function EspacoPage({ params }: { params: Promise<{ espaco: strin
       (t) => t.listId === listId && !t.parentTaskId && t.lifecycle === "ativo" && !isTerminalCategory(statusCategory(state, t)),
     ).length;
 
+  // A22 — sem Lista nem Pasta: um só estado vazio no lugar das duas seções.
+  const vazio = listas.length + atalhos.length === 0 && pastas.length === 0;
   const contagem = `${listas.length} ${listas.length === 1 ? "Lista" : "Listas"} · ${pastas.length} ${pastas.length === 1 ? "Pasta" : "Pastas"}`;
 
   return (
@@ -119,119 +120,133 @@ export default function EspacoPage({ params }: { params: Promise<{ espaco: strin
         <div className="grid min-w-0 content-start gap-6">
           {/* ------------------------------------------------------ listas
               As Listas diretas e, depois delas, os atalhos: contam juntos. */}
-          <section>
-            <ReguaDeSecao rotulo="Listas" contagem={listas.length + atalhos.length} />
-            {listas.length + atalhos.length === 0 ? (
-              <p className="app-meta px-1">Nenhuma Lista.</p>
-            ) : (
-              <ul className="pilha-solta">
-                {listas.map((list) => {
-                  const abertas = abertasEm(list.id);
-                  const efetivo = effectiveLifecycleOfList(state, list.id);
-                  const periodo = list.plannedPeriod?.start
-                    ? `${fmt.civilDate(list.plannedPeriod.start)}${list.plannedPeriod.end ? ` a ${fmt.civilDate(list.plannedPeriod.end)}` : ""}`
-                    : null;
-                  return (
-                    <li key={list.id}>
-                      <Link
-                        href={`/estrutura/listas/${list.id}`}
-                        className="item-solto"
-                        data-atenuado={efetivo !== "ativo" ? "true" : undefined}
-                      >
-                        <Icone de={List} tamanho="sm" style={{ color: "var(--texto-4)" }} />
-                        <span className="min-w-0 flex-1">
-                          <span className="flex min-w-0 items-center gap-2">
-                            <span className="app-md min-w-0 truncate" title={list.name} style={{ color: "var(--texto)" }}>
-                              {list.name}
+          {vazio ? (
+            <EmptyState
+              compact
+              icon={<Icone de={List} tamanho="lg" />}
+              title="Este Espaço está vazio."
+              hint="Crie uma Lista ou uma Pasta pelo botão Criar."
+              action={
+                ativo ? (
+                  <Button size="sm" variant="primary" icon={<Icone de={Plus} tamanho="xs" />} onClick={() => openCreate("lista", "space", record.id)}>
+                    Nova Lista
+                  </Button>
+                ) : undefined
+              }
+            />
+          ) : (
+            <>
+              <section>
+                <ReguaDeSecao rotulo="Listas" contagem={listas.length + atalhos.length} />
+                {listas.length + atalhos.length === 0 ? (
+                  <p className="app-meta px-1">Nenhuma Lista.</p>
+                ) : (
+                  <ul className="pilha-solta">
+                    {listas.map((list) => {
+                      const abertas = abertasEm(list.id);
+                      const efetivo = effectiveLifecycleOfList(state, list.id);
+                      const periodo = list.plannedPeriod?.start
+                        ? `${fmt.civilDate(list.plannedPeriod.start)}${list.plannedPeriod.end ? ` a ${fmt.civilDate(list.plannedPeriod.end)}` : ""}`
+                        : null;
+                      return (
+                        <li key={list.id}>
+                          <Link
+                            href={`/estrutura/listas/${list.id}`}
+                            className="item-solto"
+                            data-atenuado={efetivo !== "ativo" ? "true" : undefined}
+                          >
+                            <Icone de={List} tamanho="sm" style={{ color: "var(--texto-4)" }} />
+                            <span className="min-w-0 flex-1">
+                              <span className="flex min-w-0 items-center gap-2">
+                                <span className="app-md min-w-0 truncate" title={list.name} style={{ color: "var(--texto)" }}>
+                                  {list.name}
+                                </span>
+                                {/* C35 — o modelo é da Lista, não do Espaço. */}
+                                {list.modeloDeTarefa === "conversacional" ? <Pilula tom="acento">Conversacional</Pilula> : null}
+                              </span>
+                              {periodo ? <span className="app-meta app-numero block">{periodo}</span> : null}
                             </span>
-                            {/* C35 — o modelo é da Lista, não do Espaço. */}
-                            {list.modeloDeTarefa === "conversacional" ? <Pilula tom="acento">Conversacional</Pilula> : null}
+                            {efetivo !== "ativo" ? <StateSeal state={efetivo} /> : null}
+                            <span className="app-sm app-numero shrink-0" style={{ color: abertas > 0 ? "var(--texto-1)" : "var(--texto-4)" }}>
+                              {abertas} {abertas === 1 ? "aberta" : "abertas"}
+                            </span>
+                          </Link>
+                        </li>
+                      );
+                    })}
+                    {atalhos.map((shortcut) => (
+                      <li key={shortcut.id}>
+                        <Link href={shortcutHref(shortcut)} className="item-solto flex-wrap">
+                          <Icone de={ExternalLink} tamanho="sm" style={{ color: "var(--texto-4)" }} />
+                          <span className="app-md min-w-0 flex-1 truncate" title={shortcut.name} style={{ color: "var(--texto)" }}>
+                            {shortcut.name}
                           </span>
-                          {periodo ? <span className="app-meta app-numero block">{periodo}</span> : null}
-                        </span>
-                        {efetivo !== "ativo" ? <StateSeal state={efetivo} /> : null}
-                        <span className="app-sm app-numero shrink-0" style={{ color: abertas > 0 ? "var(--texto-1)" : "var(--texto-4)" }}>
-                          {abertas} {abertas === 1 ? "aberta" : "abertas"}
-                        </span>
-                      </Link>
-                    </li>
-                  );
-                })}
-                {atalhos.map((shortcut) => (
-                  <li key={shortcut.id}>
-                    <Link href={shortcutHref(shortcut)} className="item-solto flex-wrap">
-                      <Icone de={ExternalLink} tamanho="sm" style={{ color: "var(--texto-4)" }} />
-                      <span className="app-md min-w-0 flex-1 truncate" title={shortcut.name} style={{ color: "var(--texto)" }}>
-                        {shortcut.name}
-                      </span>
-                      <span className="app-meta shrink-0">
-                        Caixa de Entrada do CRM{shortcut.scope === "minhas" ? ", só as suas Conversas" : ""}
+                          <span className="app-meta shrink-0">
+                            Caixa de Entrada do CRM{shortcut.scope === "minhas" ? ", só as suas Conversas" : ""}
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+
+              {/* ------------------------------------------------------ pastas */}
+              <section>
+                <ReguaDeSecao rotulo="Pastas" contagem={pastas.length} />
+                {pastas.length === 0 ? (
+                  <p className="app-meta px-1">Nenhuma Pasta.</p>
+                ) : (
+                  <ul className="pilha-solta">
+                    {pastas.map((folder) => {
+                      const listasDela = state.lists.filter((l) => l.parentId === folder.id).length;
+                      return (
+                        <li key={folder.id}>
+                          <Link
+                            href={`/estrutura/pastas/${folder.id}`}
+                            className="item-solto"
+                            data-atenuado={folder.lifecycle !== "ativo" ? "true" : undefined}
+                          >
+                            <Icone de={Folder} tamanho="sm" style={{ color: "var(--texto-4)" }} />
+                            <span className="app-md min-w-0 flex-1 truncate" title={folder.name} style={{ color: "var(--texto)" }}>
+                              {folder.name}
+                            </span>
+                            {folder.lifecycle !== "ativo" ? <StateSeal state={folder.lifecycle} /> : null}
+                            <span className="app-sm app-numero shrink-0" style={{ color: "var(--texto-4)" }}>
+                              {listasDela} {listasDela === 1 ? "Lista" : "Listas"}
+                            </span>
+                          </Link>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </section>
+
+            </>
+          )}
+
+          {/* ------------------------------------------------------ painéis
+              Só existe quando há Painel ancorado aqui: sem Painel, nem a régua
+              nem a dica de como criar um Painel aparecem (S8). */}
+          {paineis.length > 0 ? (
+            <section>
+              <ReguaDeSecao rotulo="Painéis" contagem={paineis.length} />
+              <ul className="pilha-solta">
+                {paineis.map((panel) => (
+                  <li key={panel.id}>
+                    <Link href={`/paineis/${panel.id}`} className="item-solto">
+                      <Icone de={LayoutDashboard} tamanho="sm" style={{ color: "var(--texto-4)" }} />
+                      <span className="app-md min-w-0 flex-1 truncate" title={panel.name} style={{ color: "var(--texto)" }}>
+                        {panel.name}
                       </span>
                     </Link>
                   </li>
                 ))}
               </ul>
-            )}
-          </section>
-
-          {/* ------------------------------------------------------ pastas */}
-          <section>
-            <ReguaDeSecao rotulo="Pastas" contagem={pastas.length} />
-            {pastas.length === 0 ? (
-              <p className="app-meta px-1">Nenhuma Pasta.</p>
-            ) : (
-              <ul className="pilha-solta">
-                {pastas.map((folder) => {
-                  const listasDela = state.lists.filter((l) => l.parentId === folder.id).length;
-                  return (
-                    <li key={folder.id}>
-                      <Link
-                        href={`/estrutura/pastas/${folder.id}`}
-                        className="item-solto"
-                        data-atenuado={folder.lifecycle !== "ativo" ? "true" : undefined}
-                      >
-                        <Icone de={Folder} tamanho="sm" style={{ color: "var(--texto-4)" }} />
-                        <span className="app-md min-w-0 flex-1 truncate" title={folder.name} style={{ color: "var(--texto)" }}>
-                          {folder.name}
-                        </span>
-                        {folder.lifecycle !== "ativo" ? <StateSeal state={folder.lifecycle} /> : null}
-                        <span className="app-sm app-numero shrink-0" style={{ color: "var(--texto-4)" }}>
-                          {listasDela} {listasDela === 1 ? "Lista" : "Listas"}
-                        </span>
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
-
-          {/* ------------------------------------------------------ painéis */}
-          <Painel>
-            <CabecalhoDePainel titulo="Painéis" contagem={paineis.length} />
-            <div className="p-3">
-              {paineis.length === 0 ? (
-                <EmptyState
-                  compact
-                  title="Nenhum Painel de contexto ancorado aqui."
-                  hint="Um Painel é criado em Painéis e ancorado neste registro."
-                />
-              ) : (
-                <ul className="pilha-solta">
-                  {paineis.map((panel) => (
-                    <li key={panel.id}>
-                      <Link href={`/paineis/${panel.id}`} className="item-solto">
-                        <Icone de={LayoutDashboard} tamanho="xs" style={{ color: "var(--texto-4)" }} />
-                        <span className="app-base min-w-0 flex-1 truncate" style={{ color: "var(--texto)" }}>
-                          {panel.name}
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </Painel>
+            </section>
+          ) : null}
         </div>
       </CorpoDeTela>
     </div>

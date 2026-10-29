@@ -154,6 +154,92 @@ describe("Página do Espaço — formato da Pasta (2.1.9)", () => {
   });
 });
 
-// `createList`/`createSpace` ficam importados para os casos de vazio e plural.
-void createList;
-void createSpace;
+/** Cria um Espaço com `listas` Listas e `pastas` Pastas diretas, pelas operações do domínio. */
+function espacoCom(nome: string, listas: number, pastas: number): string {
+  const espaco = createSpace(state, THIAGO, { name: nome });
+  if (!espaco.ok) throw new Error(espaco.error);
+  for (let i = 1; i <= listas; i++) {
+    expect(createList(state, THIAGO, { name: `Lista ${i} de ${nome}`, parentType: "space", parentId: espaco.value.id }).ok).toBe(true);
+  }
+  for (let i = 1; i <= pastas; i++) {
+    expect(createFolder(state, THIAGO, { name: `Pasta ${i} de ${nome}`, parentType: "space", parentId: espaco.value.id }).ok).toBe(true);
+  }
+  return espaco.value.id;
+}
+
+describe("Página do Espaço — Painéis, vazios e plural (2.1.9)", () => {
+  it("sem Painel ancorado, nem a régua «Painéis» nem a dica aparecem", async () => {
+    await montar(COMERCIAL);
+    expect(screen.queryByText("Painéis")).toBeNull();
+    expect(screen.queryByText(/Um Painel é criado em Painéis/)).toBeNull();
+    expect(screen.queryByText(/Nenhum Painel/)).toBeNull();
+  });
+
+  it("com um Painel ancorado, aparece a régua «Painéis» com a contagem e o item", async () => {
+    await montar("spc_ops");
+    const regua = screen.getByText("Painéis");
+    expect(regua).toBeTruthy();
+    expect(regua.parentElement?.textContent).toContain("1");
+    const painel = document.querySelector<HTMLAnchorElement>('a[href="/paineis/pnl_ops"]');
+    expect(painel?.textContent).toContain("Operações");
+  });
+
+  it("um Espaço sem Lista nem Pasta mostra um só estado vazio, com «Nova Lista» abrindo o diálogo", async () => {
+    const id = espacoCom("Vazio", 0, 0);
+    await montar(id);
+
+    expect(screen.getByText("Este Espaço está vazio.")).toBeTruthy();
+    expect(screen.getByText("Crie uma Lista ou uma Pasta pelo botão Criar.")).toBeTruthy();
+    // Um só aviso: nenhuma das duas réguas, nem as linhas de grupo vazio.
+    expect(screen.queryByText("Nenhuma Lista.")).toBeNull();
+    expect(screen.queryByText("Nenhuma Pasta.")).toBeNull();
+    expect(screen.queryByText("Listas")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Nova Lista" }));
+    const destino = new URL(String(replace.mock.calls[0]![0]), "http://x");
+    expect(destino.searchParams.get("criar")).toBe(`lista:space:${id}`);
+  });
+
+  it("só sem Pastas: a régua «Pastas» diz «Nenhuma Pasta.» e as Listas seguem", async () => {
+    const id = espacoCom("So listas", 1, 0);
+    await montar(id);
+    expect(screen.getByText("Nenhuma Pasta.")).toBeTruthy();
+    expect(screen.queryByText("Nenhuma Lista.")).toBeNull();
+    expect(screen.queryByText("Este Espaço está vazio.")).toBeNull();
+    expect(screen.getByText("Lista 1 de So listas")).toBeTruthy();
+  });
+
+  it("só sem Listas: a régua «Listas» diz «Nenhuma Lista.» e as Pastas seguem", async () => {
+    const id = espacoCom("So pastas", 0, 1);
+    await montar(id);
+    expect(screen.getByText("Nenhuma Lista.")).toBeTruthy();
+    expect(screen.queryByText("Nenhuma Pasta.")).toBeNull();
+    expect(screen.queryByText("Este Espaço está vazio.")).toBeNull();
+    expect(screen.getByText("Pasta 1 de So pastas")).toBeTruthy();
+  });
+
+  it("um Espaço arquivado e vazio não oferece «Nova Lista»", async () => {
+    const id = espacoCom("Arquivado vazio", 0, 0);
+    expect(archiveContainer(state, THIAGO, "space", id).ok).toBe(true);
+    await montar(id);
+    expect(screen.getByText("Este Espaço está vazio.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Nova Lista" })).toBeNull();
+  });
+
+  it("o cabeçalho conta no plural certo: «1 Lista · 2 Pastas» e «2 Listas · 1 Pasta»", async () => {
+    await montar(espacoCom("Um e dois", 1, 2));
+    expect(screen.getByText("1 Lista · 2 Pastas")).toBeTruthy();
+    cleanup();
+    await montar(espacoCom("Dois e um", 2, 1));
+    expect(screen.getByText("2 Listas · 1 Pasta")).toBeTruthy();
+  });
+
+  it("um atalho conta como Lista na seção: um Espaço só com atalho não está vazio", async () => {
+    const id = espacoCom("Com atalho", 0, 0);
+    const espaco = state.spaces.find((s) => s.id === id)!;
+    (espaco as { shortcuts?: unknown }).shortcuts = state.spaces.find((s) => s.id === COMERCIAL)!.shortcuts;
+    await montar(id);
+    expect(screen.queryByText("Este Espaço está vazio.")).toBeNull();
+    expect(screen.getByText(/Caixa de Entrada do CRM/)).toBeTruthy();
+  });
+});
