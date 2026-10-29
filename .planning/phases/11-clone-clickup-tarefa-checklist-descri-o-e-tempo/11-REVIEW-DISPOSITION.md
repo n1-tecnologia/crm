@@ -5,19 +5,19 @@ titles: json
 findings:
   - id: WR-01
     severity: warning
-    disposition: open
+    disposition: fixed
     title: "`pendingMentions` takes the \"most recent edit\" from array position, which `newestFirst` documents as unreliable"
   - id: WR-02
     severity: warning
-    disposition: open
+    disposition: fixed
     title: "`linkDoAviso` outlives the notice it belongs to, so a later notice can show \"Abrir\" pointing at the wrong Tarefa"
   - id: WR-03
     severity: warning
-    disposition: open
+    disposition: fixed
     title: "`DialogoDeConversao` has no double-submit guard; a double click ends in an error banner after a successful conversion"
   - id: WR-04
     severity: warning
-    disposition: open
+    disposition: fixed
     title: "Item converted elsewhere makes the dialog vanish silently and leaves `?converter-item=` in the URL"
   - id: IN-01
     severity: info
@@ -35,19 +35,19 @@ findings:
     severity: info
     disposition: open
     title: "A stale client sending the old 4-argument `convertChecklistItem` gets a 400"
-open: 8
+open: 4
 total: 8
-recorded: 2026-10-29T23:14:39.066Z
+recorded: 2026-10-29T23:44:29.290Z
 ---
 
 # Phase 11: Code Review Disposition
 
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
-| WR-01 | warning | open | - |
-| WR-02 | warning | open | - |
-| WR-03 | warning | open | - |
-| WR-04 | warning | open | - |
+| WR-01 | warning | fixed | 11-REVIEW-FIX.md |
+| WR-02 | warning | fixed | 11-REVIEW-FIX.md |
+| WR-03 | warning | fixed | 11-REVIEW-FIX.md |
+| WR-04 | warning | fixed | 11-REVIEW-FIX.md |
 | IN-01 | info | open | - |
 | IN-02 | info | open | - |
 | IN-03 | info | open | - |
