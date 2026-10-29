@@ -126,7 +126,7 @@ describe("Processo Contas a receber", () => {
     expect(contaSemCliente(state, r.value[1]!)).toBe(false);
     const dobrada = createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_2", centroDeCusto: "Tria Tech", valorParcela: 1, parcelas: 1, primeiroVencimento: em(5) });
     expect(dobrada.ok).toBe(false);
-    if (!dobrada.ok) expect(dobrada.error).toMatch(/RN-CR-07/);
+    if (!dobrada.ok) expect(dobrada.error).toMatch(/já tem a 1ª Parcela nesta Lista\. Descarte a série antiga/);
     // Sem alcance à Lista: nada nasce.
     const semAlcance = createReceivableSeries(state, "mem_julia", { contactId: "cnt_1", centroDeCusto: "Tria Tech", valorParcela: 1, parcelas: 2, primeiroVencimento: em(5) });
     expect(semAlcance.ok).toBe(false);

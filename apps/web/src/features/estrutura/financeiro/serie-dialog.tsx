@@ -114,7 +114,7 @@ export function SerieDeParcelasDialog({
   const faltando = !form.contactId
     ? "Escolha o cliente."
     : !form.centroDeCusto
-      ? "Escolha o Centro de Custo (RN-CR-01)."
+      ? "Escolha o Centro de Custo."
       : !(valorParcela > 0)
         ? "Informe o valor da parcela."
         : !(Number.isInteger(parcelas) && parcelas >= 1)
@@ -147,7 +147,7 @@ export function SerieDeParcelasDialog({
     <ConfirmDialog
       open={open}
       title="Nova série de parcelas"
-      description="Cria de uma vez a Entrada (se houver) e cada parcela como contas “para receber”, com Vínculo ao cliente e o Financeiro como Responsável. Uma série sobre outra do mesmo cliente é recusada (RN-CR-07)."
+      description="Cria de uma vez a Entrada (se houver) e cada parcela como contas “para receber”, com Vínculo ao cliente e o Financeiro como Responsável. Uma série sobre outra do mesmo cliente é recusada."
       confirmLabel={parcelas >= 1 ? `Criar ${valorEntrada !== undefined ? "entrada + " : ""}${parcelas} parcela(s)` : "Criar série"}
       {...(faltando ? { confirmDisabledReason: faltando } : {})}
       onConfirm={() => {

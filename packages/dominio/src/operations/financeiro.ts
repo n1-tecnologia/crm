@@ -1812,7 +1812,7 @@ export function createReceivableSeries(state: DataState, actingMemberId: Id, inp
   if (recusa) return fail(recusa);
   const contact = state.contacts.find((c) => c.id === input.contactId);
   if (!contact || contact.lifecycle !== "ativo") return fail("Escolha um Contato ativo do CRM como cliente.", "contactId");
-  if (!input.centroDeCusto.trim()) return fail("Centro de Custo é obrigatório (RN-CR-01).", "centroDeCusto");
+  if (!input.centroDeCusto.trim()) return fail("Centro de Custo é obrigatório.", "centroDeCusto");
   if (!Number.isInteger(input.parcelas) || input.parcelas < 1 || input.parcelas > 60) return fail("Informe de 1 a 60 parcelas.", "parcelas");
   if (!(input.valorParcela > 0)) return fail("O valor da parcela precisa ser maior que zero.", "valorParcela");
   if (input.valorEntrada !== undefined && !(input.valorEntrada > 0)) return fail("O valor da entrada precisa ser maior que zero, ou fique em branco.", "valorEntrada");
@@ -1826,10 +1826,10 @@ export function createReceivableSeries(state: DataState, actingMemberId: Id, inp
   const existentes = state.tasks.filter((t) => t.listId === CR.listId && effectiveLifecycleOfTask(state, t.id) === "ativo" && clienteDe(state, t)?.id === contact.id);
   const numeros = new Set(existentes.filter((t) => fieldValue(t, CR.fields.tipo) === CR.tipos.parcela).map((t) => fieldValue(t, CR.fields.numeroParcela)));
   if (input.valorEntrada !== undefined && existentes.some((t) => fieldValue(t, CR.fields.tipo) === CR.tipos.entrada)) {
-    return fail(`${nome} já tem uma Entrada em aberto ou recebida nesta Lista (RN-CR-07).`, "contactId");
+    return fail(`${nome} já tem uma Entrada em aberto ou recebida nesta Lista.`, "contactId");
   }
   for (let n = 1; n <= input.parcelas; n += 1) {
-    if (numeros.has(String(n))) return fail(`${nome} já tem a ${n}ª Parcela nesta Lista (RN-CR-07). Descarte a série antiga antes de criar outra.`, "contactId");
+    if (numeros.has(String(n))) return fail(`${nome} já tem a ${n}ª Parcela nesta Lista. Descarte a série antiga antes de criar outra.`, "contactId");
   }
 
   const criadas: Task[] = [];
