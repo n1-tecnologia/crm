@@ -10,7 +10,7 @@ import { actorLabel, memberNamedOnTask, memberReachesContainer, memberSeesTask }
 import { COLECOES } from "./colecoes";
 import { estadoVisivelPara, filtrarDiferenca, filtrarOrdens, membroVeArquivo, recortarDiferenca, recortarRegistro, recortarValor, tarefasComOArquivo, visibilidadePara } from "./derive-visibilidade";
 import { CP } from "./operations/financeiro-base";
-import { setTaskFieldValue } from "./operations/tasks";
+import { setTaskFieldValue, updateTask } from "./operations/tasks";
 import { createList } from "./operations/structure";
 import { buildSeed } from "./seed";
 import type { DataState } from "./state";
@@ -69,6 +69,21 @@ describe("visibilidadePara", () => {
     expect(doDono.spaces).toHaveLength(state.spaces.length);
     expect(doDono.lists).toHaveLength(state.lists.length);
     expect(doDono.tasks).toHaveLength(state.tasks.length);
+  });
+
+  it("D-14 — o Registro \"Descrição alterada\" de uma Tarefa de Gestão (e o texto dele) não chega a quem não enxerga Gestão", () => {
+    const conta = state.tasks.find((t) => t.listId === CP.listId)!;
+    const escrita = updateTask(state, CP.financeiroId, conta.id, { description: "texto-secreto-11" });
+    expect(escrita.ok, escrita.ok ? "" : escrita.error).toBe(true);
+    const registro = state.activity.find((a) => a.objectId === conta.id && a.action === "Descrição alterada");
+    expect(registro?.after).toBe("texto-secreto-11");
+
+    const dele = visibilidadePara(state, semGestao()).estado;
+    expect(dele.activity.some((a) => a.objectId === conta.id && a.action === "Descrição alterada")).toBe(false);
+    expect(JSON.stringify(dele.activity)).not.toContain("texto-secreto-11");
+
+    const doFinanceiro = visibilidadePara(state, CP.financeiroId).estado;
+    expect(doFinanceiro.activity.some((a) => a.objectId === conta.id && a.action === "Descrição alterada" && a.after === "texto-secreto-11")).toBe(true);
   });
 
   it("uma Lista compartilhada dentro do Espaço privado expõe o caminho (RN-ESP-15), não as irmãs", () => {

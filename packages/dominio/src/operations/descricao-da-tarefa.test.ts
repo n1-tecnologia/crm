@@ -6,8 +6,17 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../seed";
 import type { DataState } from "../state";
-import { cortarParaHistorico, LIMITE_DO_HISTORICO } from "../descricao-da-tarefa";
-import { updateTask } from "./tasks";
+import {
+  cortarParaHistorico,
+  ehAlteracaoDeDescricao,
+  LIMITE_DO_HISTORICO,
+  membrosMencionadosNaDescricao,
+  mencionaNoTexto,
+  segmentosComMencoes,
+  trechoDaMencao,
+} from "../descricao-da-tarefa";
+import { CP } from "./financeiro";
+import { changeTaskStatus, updateTask } from "./tasks";
 
 const THIAGO = "mem_thiago";
 const TAREFA = "tsk_seed_1";
@@ -151,5 +160,100 @@ describe("cortarParaHistorico", () => {
     const cortado = cortarParaHistorico(emojis);
     expect(Array.from(cortado).length).toBe(2001);
     expect(cortado).toBe(`${"😀".repeat(2000)}…`);
+  });
+});
+
+describe("mencionaNoTexto", () => {
+  it("exige o @, o nome exato e uma fronteira depois do nome", () => {
+    expect(mencionaNoTexto("Oi @Júlia Prado.", "Júlia Prado")).toBe(true);
+    expect(mencionaNoTexto("@Júlia Prado", "Júlia Prado")).toBe(true);
+    expect(mencionaNoTexto("@Júlia Pradoso", "Júlia Prado")).toBe(false);
+    expect(mencionaNoTexto("Júlia Prado", "Júlia Prado")).toBe(false);
+    expect(mencionaNoTexto("@Julia Prado", "Júlia Prado")).toBe(false);
+  });
+});
+
+describe("membrosMencionadosNaDescricao", () => {
+  it("devolve só quem tem o @Nome no texto, qualquer que seja o escritor da descrição", () => {
+    updateTask(state, THIAGO, TAREFA, { description: "@Júlia Prado revisar", descriptionMentions: [JULIA] });
+    expect(membrosMencionadosNaDescricao(state, tarefa())).toEqual(["mem_julia"]);
+
+    // O rollback e a recorrência escrevem a descrição por atribuição direta, sem passar por updateTask.
+    tarefa().description = "texto sem nome";
+    expect(membrosMencionadosNaDescricao(state, tarefa())).toEqual([]);
+  });
+
+  it("ignora o id que não é Membro, sem exceção, e responde vazio sem a chave", () => {
+    expect(membrosMencionadosNaDescricao(state, tarefa())).toEqual([]);
+    tarefa().description = "@Fantasma e @Júlia Prado";
+    tarefa().descriptionMentions = [{ type: "member", id: "mem_fantasma" }, JULIA, JULIA];
+    expect(membrosMencionadosNaDescricao(state, tarefa())).toEqual(["mem_julia"]);
+  });
+});
+
+describe("segmentosComMencoes", () => {
+  it("separa texto e menção, e o nome mais longo vence", () => {
+    expect(segmentosComMencoes("Oi @Ana Lima e @Ana!", ["Ana", "Ana Lima"])).toEqual([
+      { mencao: false, texto: "Oi " },
+      { mencao: true, texto: "@Ana Lima" },
+      { mencao: false, texto: " e " },
+      { mencao: true, texto: "@Ana" },
+      { mencao: false, texto: "!" },
+    ]);
+  });
+
+  it("sem nomes devolve o texto inteiro num segmento, e texto vazio devolve nada", () => {
+    expect(segmentosComMencoes("Oi @Ana", [])).toEqual([{ mencao: false, texto: "Oi @Ana" }]);
+    expect(segmentosComMencoes("", ["Ana"])).toEqual([]);
+  });
+
+  it("não vê menção no meio de uma palavra maior", () => {
+    expect(segmentosComMencoes("@Anabela", ["Ana"])).toEqual([{ mencao: false, texto: "@Anabela" }]);
+  });
+});
+
+describe("trechoDaMencao", () => {
+  it("texto curto volta inteiro, com quebras de linha viradas espaço", () => {
+    expect(trechoDaMencao("Oi @Ana\nveja isto", "Ana")).toBe("Oi @Ana veja isto");
+  });
+
+  it("texto longo volta uma janela com a menção e reticências onde cortou", () => {
+    const texto = `${"a ".repeat(100)}@Ana${" b".repeat(100)}`;
+    const trecho = trechoDaMencao(texto, "Ana");
+    expect(trecho).toContain("@Ana");
+    expect(trecho.startsWith("…")).toBe(true);
+    expect(trecho.endsWith("…")).toBe(true);
+    expect(Array.from(trecho).length).toBeLessThan(160);
+  });
+
+  it("nome ausente: o começo do texto, cortado pela mesma régua", () => {
+    const trecho = trechoDaMencao("x".repeat(500), "Ana");
+    expect(trecho.startsWith("x")).toBe(true);
+    expect(trecho.endsWith("…")).toBe(true);
+  });
+});
+
+describe("ehAlteracaoDeDescricao", () => {
+  it("reconhece só a ação de descrição de uma Tarefa", () => {
+    expect(ehAlteracaoDeDescricao({ objectType: "task", action: "Descrição alterada" })).toBe(true);
+    expect(ehAlteracaoDeDescricao({ objectType: "company", action: "Descrição alterada" })).toBe(false);
+    expect(ehAlteracaoDeDescricao({ objectType: "task", action: "Título alterado" })).toBe(false);
+  });
+});
+
+describe("recorrência (padrão de trabalho nº 2)", () => {
+  it("a próxima ocorrência nasce com a mesma lista de menções, em cópia", () => {
+    const conta = state.tasks.find((t) => t.id === "tsk_cp_thiago_out")!;
+    conta.description = "@Júlia Prado conferir";
+    conta.descriptionMentions = [{ ...JULIA }];
+    const S = CP.status;
+    expect(changeTaskStatus(state, CP.financeiroId, conta.id, S.emAutorizacao).ok).toBe(true);
+    expect(changeTaskStatus(state, CP.aprovadorId, conta.id, S.aprovado).ok).toBe(true);
+    expect(changeTaskStatus(state, CP.aprovadorId, conta.id, S.pago).ok).toBe(true);
+
+    const gerada = state.tasks.find((t) => t.provenance?.kind === "recurrence" && t.provenance.sourceId === conta.id);
+    expect(gerada?.descriptionMentions).toEqual([JULIA]);
+    expect(gerada?.descriptionMentions).not.toBe(conta.descriptionMentions);
+    expect(gerada?.descriptionMentions?.[0]).not.toBe(conta.descriptionMentions?.[0]);
   });
 });
