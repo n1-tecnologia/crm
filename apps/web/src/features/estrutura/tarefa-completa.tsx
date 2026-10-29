@@ -78,6 +78,7 @@ import { LinhaDeProp } from "@/features/estrutura/linha-de-propriedade";
 import { corDeTipo, iconeDeTipo } from "@/features/estrutura/icone-de-tipo";
 import { SeletorDeTipoDeTarefa } from "@/features/estrutura/seletor-de-tipo";
 import { BotaoDeConversao, DialogoDeConversao } from "@/features/estrutura/conversao-de-item";
+import { DescricaoDaTarefa } from "@/features/estrutura/descricao-da-tarefa";
 import { financeProfileOf, valorDaConta } from "@/features/estrutura/financeiro/lens";
 import { CHANNEL_ICON, ConversationThread } from "@/features/crm/conversation-thread";
 import { ContactAvatar } from "@/features/crm/contact-card";
@@ -919,11 +920,11 @@ export function TarefaCompleta({
                 style={{ color: "var(--texto-1)" }}
                 title="Editar título e descrição"
               >
-                {task.description}
+                <DescricaoDaTarefa task={task} />
               </button>
             ) : (
               <p className="app-base mt-1 whitespace-pre-wrap px-2 py-1" style={{ color: "var(--texto-1)" }}>
-                {task.description}
+                <DescricaoDaTarefa task={task} />
               </p>
             )
           ) : editavel ? (
