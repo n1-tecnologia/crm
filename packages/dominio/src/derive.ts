@@ -347,6 +347,87 @@ export function sobrescritasAbaixo(
   return candidatos.sort((a, b) => a.fundo - b.fundo).map(({ tipo, id: itemId, nome }) => ({ tipo, id: itemId, nome }));
 }
 
+/**
+ * L5 do UI-SPEC — quem bloqueia o aspecto ACIMA deste nó: o primeiro Espaço ou
+ * Pasta do caminho (do Espaço para baixo) com `blocks[aspecto]`, sem contar o
+ * próprio nó (ele bloqueia os de baixo, não a si mesmo). Só Espaço e Pasta
+ * bloqueiam (D-15); um `blocks` legado numa Lista é ignorado. É a única fonte:
+ * `blockedAbove` (a recusa das operações) monta a frase a partir daqui.
+ */
+export function bloqueioAcima(
+  state: DataState,
+  type: PathNode["type"],
+  id: Id,
+  aspect: ConfigurableAspect,
+): { readonly tipo: "space" | "folder"; readonly id: Id; readonly nome: string } | undefined {
+  for (const node of containerPath(state, type, id)) {
+    if (node.id === id || node.type === "list") continue;
+    const ancestor = containerOf(state, node);
+    if (ancestor && "blocks" in ancestor && ancestor.blocks[aspect]) {
+      return { tipo: node.type, id: node.id, nome: ancestor.name };
+    }
+  }
+  return undefined;
+}
+
+/**
+ * De onde o nó tira o valor de um aspecto que SUBSTITUI: `aqui` se ele mesmo
+ * define, `herdado` do Espaço ou Pasta mais próximo que define, `plataforma`
+ * se ninguém define (só acontece com Funcionalidades e Visualizações padrão;
+ * o Espaço sempre define o Conjunto de Status, RN-ESP-03).
+ */
+export function origemDoAspecto(
+  state: DataState,
+  type: PathNode["type"],
+  id: Id,
+  aspect: "statusSet" | "features" | "defaultViews",
+):
+  | { readonly origem: "aqui" }
+  | { readonly origem: "herdado"; readonly de: { readonly tipo: "space" | "folder"; readonly id: Id; readonly nome: string } }
+  | { readonly origem: "plataforma" } {
+  const path = containerPath(state, type, id);
+  for (let i = path.length - 1; i >= 0; i -= 1) {
+    const node = path[i];
+    if (!node || !definesAspect(state, node.type, node.id, aspect)) continue;
+    if (node.id === id) return { origem: "aqui" };
+    if (node.type === "list") continue;
+    return { origem: "herdado", de: { tipo: node.type, id: node.id, nome: node.name } };
+  }
+  return { origem: "plataforma" };
+}
+
+/**
+ * Quantos Campos ou Tipos de Tarefa o nó define (`aqui`) e quantos enxerga dos
+ * níveis acima (`herdados`). Os Tipos da plataforma ficam de fora das duas
+ * contas: ninguém os "define" num contêiner. Um Campo que um nível abaixo do
+ * que o define deixou de usar (`camposHerdadosFora`) não conta como herdado.
+ */
+export function contagemAcumulada(
+  state: DataState,
+  type: PathNode["type"],
+  id: Id,
+  aspect: "fieldDefinitions" | "taskTypes",
+): { readonly aqui: number; readonly herdados: number } {
+  const path = containerPath(state, type, id);
+  const pathIds = new Set(path.map((n) => n.id));
+  let aqui = 0;
+  let herdados = 0;
+  if (aspect === "fieldDefinitions") {
+    for (const d of state.fieldDefinitions) {
+      if (d.target !== "task" || d.lifecycle !== "ativo" || d.definedAtId === undefined || !pathIds.has(d.definedAtId)) continue;
+      if (d.definedAtId === id) aqui += 1;
+      else if (!campoHerdadoFora(state, path, d.id, d.definedAtId)) herdados += 1;
+    }
+  } else {
+    for (const t of state.taskTypes) {
+      if (t.isPlatformDefault || !pathIds.has(t.definedAtId)) continue;
+      if (t.definedAtId === id) aqui += 1;
+      else herdados += 1;
+    }
+  }
+  return { aqui, herdados };
+}
+
 export function statusDefinition(
   state: DataState,
   listId: Id,

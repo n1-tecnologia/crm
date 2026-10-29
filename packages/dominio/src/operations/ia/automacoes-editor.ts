@@ -26,6 +26,7 @@ import type {
 import { rascunhoDaAutomacao, versaoVigenteDaAutomacao } from "../../derive-ia";
 import { OBJECT_TYPE_LABEL } from "../../rotulos";
 import { memberActor, nextId, recordActivity } from "../activity";
+import { blockedAbove } from "../configuration";
 import { CONTROLES, escopoExiste, eventoDoCatalogo } from "./automacoes-catalogo";
 import { recusaDoEvento } from "./automacoes-validacao";
 import { recusaDeAdministrarAutomacao, recusaDeConvidado, recusaDeMembroAtivo } from "./permissoes-ia";
@@ -197,6 +198,11 @@ export function criarAutomacao(state: DataState, actingMemberId: Id, input: Cria
   const name = input.name.trim();
   if (!name) return fail("Dê um nome à Automação.", "nome");
   if (!escopoExiste(state, input.scopeType, input.scopeId)) return fail("O escopo indicado não existe.", "escopo");
+  // D-16, 2.6.5 item 4 — um Espaço ou Pasta acima pode ter bloqueado as Automações abaixo dele.
+  if (input.scopeType === "folder" || input.scopeType === "list") {
+    const bloqueio = blockedAbove(state, input.scopeType, input.scopeId, "automations");
+    if (bloqueio) return fail(bloqueio, "escopo");
+  }
   if (nomeDeAutomacaoColide(state, input.scopeType, input.scopeId, name)) return fail(recusaDeNomeRepetido(name), "nome");
   if (input.trigger?.kind === "evento" && input.trigger.eventType !== undefined) {
     const recusa = recusaDoEvento(input.scopeType, input.trigger.eventType);

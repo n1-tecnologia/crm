@@ -319,7 +319,7 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `ensaiarAgente` | `operations/ia/agentes.ts` | `recusaDeGovernarAgente` |  |
 | `cancelarExecucao` | `operations/ia/agentes.ts` | `recusaDeGovernarAgente`, `recusaDeMembroAtivo` | administrar o Agente ou ser o delegante da Execução (RN-AGE-21); `recusaDeMembroAtivo` aqui é a da IA (só Membro ativo) |
 | `apagarItemDeMemoria` | `operations/ia/agentes.ts` | `recusaDeGovernarAgente` | via `recusaDeEditarConfiguracao` (`editar` o Agente; Agente arquivado ou na lixeira não se edita) |
-| `criarAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeConvidado` | Membro ativo e Papel base diferente de Convidado |
+| `criarAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeConvidado`, `blockedAbove` | Membro ativo e Papel base diferente de Convidado; escopo em Pasta ou Lista respeita o bloqueio de Automações |
 | `editarAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo`, `recusaDeAdministrarAutomacao` | via `automacaoEditavel`: editar exige administrar a Automação (dono, criador, Administrador ou Proprietário) |
 | `duplicarAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeConvidado` | Membro ativo e Papel base diferente de Convidado |
 | `criarRascunhoDaAutomacao` | `operations/ia/automacoes-editor.ts` | `recusaDeMembroAtivo`, `recusaDeAdministrarAutomacao` | via `automacaoEditavel`: editar exige administrar a Automação (dono, criador, Administrador ou Proprietário) |

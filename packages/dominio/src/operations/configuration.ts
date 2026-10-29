@@ -8,6 +8,7 @@
  */
 
 import {
+  bloqueioAcima,
   containerAdminRefusal,
   containerPath,
   effectiveContainerConfig,
@@ -49,18 +50,11 @@ function mayConfigure(state: DataState, actingMemberId: Id, type: ContainerType,
   return containerAdminRefusal(state, actingMemberId, type, id);
 }
 
-/** B25 — um ancestral que bloqueia o aspecto impede definir abaixo dele. */
+/** B25 — um ancestral que bloqueia o aspecto impede definir abaixo dele. A leitura é `bloqueioAcima`; aqui só a frase. */
 export function blockedAbove(state: DataState, type: ContainerType, id: Id, aspect: ConfigurableAspect): string | undefined {
-  for (const node of containerPath(state, type, id)) {
-    if (node.id === id) continue;
-    // D-15: só Espaço e Pasta bloqueiam; um `blocks` legado numa Lista é ignorado.
-    if (node.type === "list") continue;
-    const ancestor = findContainer(state, node.type, node.id);
-    if (ancestor && "blocks" in ancestor && ancestor.blocks[aspect]) {
-      return `${CONTAINER_LABEL[node.type]} ${ancestor.name} bloqueia ${ASPECT_LABEL[aspect]} abaixo dele.`;
-    }
-  }
-  return undefined;
+  const bloqueio = bloqueioAcima(state, type, id, aspect);
+  if (!bloqueio) return undefined;
+  return `${CONTAINER_LABEL[bloqueio.tipo]} ${bloqueio.nome} bloqueia ${ASPECT_LABEL[aspect]} abaixo dele.`;
 }
 
 const ASPECT_LABEL: Record<ConfigurableAspect, string> = {
@@ -980,11 +974,21 @@ export function setContainerBlock(
 
   const atual = container.blocks[aspect] === true;
   if (bloqueado && !atual && ASPECTOS_QUE_SUBSTITUEM.has(aspect)) {
+    // B38a, Pitfall 7 — a frase só nomeia o que o ator alcança; o resto entra como contagem.
     const abaixo = sobrescritasAbaixo(state, containerType, containerId, aspect);
+    const alcancaveis = sobrescritasAbaixo(state, containerType, containerId, aspect, actingMemberId);
+    const ocultos = abaixo.length - alcancaveis.length;
     if (abaixo.length > 0) {
-      const nomes = abaixo.map((item) => rotuloDoDescendente(state, item)).join(", ");
+      const aspectoNome = NOME_DO_ASPECTO[aspect];
+      if (alcancaveis.length === 0) {
+        return fail(
+          `Não dá para bloquear ${aspectoNome}: ${ocultos} ${ocultos === 1 ? "contêiner que você não alcança define" : "contêineres que você não alcança definem"} o próprio.`,
+        );
+      }
+      const nomes = alcancaveis.map((item) => rotuloDoDescendente(state, item)).join(", ");
+      const resto = ocultos > 0 ? ` e mais ${ocultos} que você não alcança` : "";
       return fail(
-        `Não dá para bloquear ${NOME_DO_ASPECTO[aspect]}: ${nomes} ${abaixo.length === 1 ? "define" : "definem"} o próprio. Volte a herdar neles para poder bloquear.`,
+        `Não dá para bloquear ${aspectoNome}: ${nomes}${resto} ${abaixo.length === 1 ? "define" : "definem"} o próprio. Volte a herdar neles para poder bloquear.`,
       );
     }
   }
