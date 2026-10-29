@@ -265,8 +265,8 @@ describe("Motor de Automações — as cinco Ações de controle", () => {
     expect([...(aviso?.mentions ?? [])].map((m) => m.id).sort()).toEqual([CP.aprovadorId, "mem_thiago_pereira"].sort());
 
     // A metade que importa: o Membro alvo PASSA A ENXERGAR o aviso.
-    expect(pendingMentions(state, CP.aprovadorId).some((p) => p.comment.id === aviso?.id)).toBe(true);
-    expect(pendingMentions(state, "mem_thiago_pereira").some((p) => p.comment.id === aviso?.id)).toBe(true);
+    expect(pendingMentions(state, CP.aprovadorId).some((p) => p.tipo === "comentario" && p.comment.id === aviso?.id)).toBe(true);
+    expect(pendingMentions(state, "mem_thiago_pereira").some((p) => p.tipo === "comentario" && p.comment.id === aviso?.id)).toBe(true);
 
     expect(terminou("aut_teste_notificar", t.id)?.state).toBe("concluida");
   });

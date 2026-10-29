@@ -3,6 +3,7 @@
  * the recorded state, as the ontology requires (B36, B45, B100, RN-CRM-16).
  */
 
+import { ACAO_DESCRICAO_ALTERADA, membrosMencionadosNaDescricao, trechoDaMencao } from "./descricao-da-tarefa";
 import { ACTOR_KIND_LABEL } from "./rotulos";
 import type { DataState } from "./state";
 import type {
@@ -1361,15 +1362,37 @@ export function containerAdminRefusal(state: DataState, memberId: Id, type: Path
 }
 
 /**
- * Menções a um Membro em Comentários de Tarefa que ele alcança, em conversas
- * ainda abertas. Não há entidade Notificação: resolver a conversa é o que
- * "dá baixa" — o Comentário é imutável (7.1), a marca de resolvido é da conversa.
+ * Uma menção que espera pelo Membro: a origem é o Comentário (`comentario`) ou
+ * a descrição da Tarefa (`descricao`, Fase 11, 2.6.7). A união obriga cada
+ * leitor de `comment` a estreitar por `tipo`.
  */
-export function pendingMentions(
-  state: DataState,
-  memberId: Id,
-): Array<{ readonly task: Task; readonly comment: Comment }> {
-  const found: Array<{ task: Task; comment: Comment }> = [];
+export type MencaoPendente =
+  | { readonly tipo: "comentario"; readonly task: Task; readonly comment: Comment }
+  | { readonly tipo: "descricao"; readonly task: Task; readonly trecho: string };
+
+/**
+ * Menções a um Membro em Tarefas que ele alcança, numa lista só, do instante
+ * mais novo para o mais velho. Não há entidade Notificação nem estado novo:
+ * tudo sai do dado.
+ *
+ * - `comentario`: o Comentário que o menciona, em conversa ainda aberta.
+ *   Resolver a conversa é o que "dá baixa" — o Comentário é imutável (7.1), a
+ *   marca de resolvido é da conversa.
+ * - `descricao` (D-07, D-08): a descrição escreve o `@Nome` dele (lido por
+ *   `membrosMencionadosNaDescricao`, nunca pela lista crua), a Tarefa está
+ *   `ativo` e fora de categoria terminal. Some por conta própria quando a
+ *   Tarefa fecha, vai à lixeira ou ao arquivo, ou o nome sai do texto; não há
+ *   "Dispensar" nem "já vi". A descrição não tem autor, então quem se menciona
+ *   também é avisado. O filtro de categoria terminal vale só aqui: o Comentário
+ *   segue como era.
+ *
+ * Ambas só entram para quem enxerga a Tarefa (RN-TAR-14). O instante da
+ * `descricao` é o do Registro "Descrição alterada" mais recente, ou a criação
+ * da Tarefa sem Registro.
+ */
+export function pendingMentions(state: DataState, memberId: Id): MencaoPendente[] {
+  const found: Array<{ item: MencaoPendente; at: string }> = [];
+  const nomeDoMembro = state.members.find((m) => m.id === memberId)?.displayName;
   for (const task of state.tasks) {
     if (effectiveLifecycleOfTask(state, task.id) !== "ativo") continue;
     if (!memberSeesTask(state, memberId, task.id)) continue;
@@ -1380,10 +1403,23 @@ export function pendingMentions(
       if (comment.author.kind === "member" && comment.author.id === memberId) continue;
       const root = comment.parentCommentId ? task.comments.find((c) => c.id === comment.parentCommentId) : comment;
       if (root?.resolved) continue;
-      found.push({ task, comment });
+      found.push({ item: { tipo: "comentario", task, comment }, at: comment.createdAt });
+    }
+    if (
+      nomeDoMembro !== undefined &&
+      task.descriptionMentions?.length &&
+      !isTerminalCategory(statusCategory(state, task)) &&
+      membrosMencionadosNaDescricao(state, task).includes(memberId)
+    ) {
+      // `state.activity` vem do mais novo para o mais velho: o primeiro Registro é o mais recente.
+      const alteracao = state.activity.find((a) => a.objectId === task.id && a.action === ACAO_DESCRICAO_ALTERADA);
+      found.push({
+        item: { tipo: "descricao", task, trecho: trechoDaMencao(task.description, nomeDoMembro) },
+        at: alteracao?.at ?? task.createdAt,
+      });
     }
   }
-  return found.sort((a, b) => b.comment.createdAt.localeCompare(a.comment.createdAt));
+  return found.sort((a, b) => b.at.localeCompare(a.at)).map((f) => f.item);
 }
 
 /**
@@ -1423,7 +1459,7 @@ export function tarefasAbertasDoMembro(state: DataState, memberId: Id): Task[] {
 
 export interface NotificacoesDoMembro {
   readonly aprovacoes: ApprovalRequest[];
-  readonly mencoes: Array<{ readonly task: Task; readonly comment: Comment }>;
+  readonly mencoes: MencaoPendente[];
   /** AVIS-02 — Comentários em Tarefas que o Membro acompanha (observador), ainda não resolvidos. */
   readonly observadas: Array<{ readonly task: Task; readonly comment: Comment }>;
   readonly conversas: Conversation[];
@@ -1451,7 +1487,7 @@ export function notificacoesDoMembro(state: DataState, memberId: Id, now: Date):
     return state.agents.find((a) => a.id === execution.agentId)?.ownerMemberId === memberId;
   });
   const mencoes = pendingMentions(state, memberId);
-  const observadas = comentariosObservados(state, memberId, new Set(mencoes.map((m) => m.comment.id)));
+  const observadas = comentariosObservados(state, memberId, new Set(mencoes.flatMap((m) => (m.tipo === "comentario" ? [m.comment.id] : []))));
   return {
     aprovacoes,
     mencoes,

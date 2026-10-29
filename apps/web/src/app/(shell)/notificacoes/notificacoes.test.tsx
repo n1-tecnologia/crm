@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { buildSeed } from "@n1/dominio/seed";
-import { addTaskComment, changeTaskStatus, updateTask } from "@n1/dominio/operations";
+import { addTaskComment, updateTask } from "@n1/dominio/operations";
 import type { DataState } from "@n1/dominio/state";
 import { StoreProvider } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
@@ -64,7 +64,7 @@ describe("Notificações › Menções a você (11-04)", () => {
 
     expect(screen.getByText("Menções a você")).toBeTruthy();
     expect(screen.getByText(`Menção a você na descrição de “${tarefa().title}”`)).toBeTruthy();
-    expect(screen.getByText(/@Júlia Prado/)).toBeTruthy();
+    expect(screen.getByText("Pedir a @Júlia Prado a revisão")).toBeTruthy();
     const link = screen.getByText(`Menção a você na descrição de “${tarefa().title}”`).closest("a");
     expect(link?.getAttribute("href")).toBe(`/estrutura/tarefas/${TAREFA}`);
   });
