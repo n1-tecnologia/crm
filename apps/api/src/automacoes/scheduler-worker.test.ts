@@ -19,7 +19,7 @@
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { buildGestaoBootstrap } from "@n1/dominio/bootstrap-gestao";
 import { evoluirConfiguracaoPorEmpresa } from "@n1/dominio/configuracao-por-empresa-evolver";
 import { CP, CR } from "@n1/dominio/operations/financeiro";
@@ -1094,5 +1094,175 @@ describeComBanco("10-05 — Lista só com recorrência por calendário: direto, 
     expect(linha.last_error_code).toBe(CODIGOS_DA_AGENDA.ENSAIO_PRIMEIRA_VOLTA);
     expect(await contarOcorrenciasDaSerie(workspaceId)).toBe(0);
     expect(await lerRevisao(workspaceId)).toBe(revisaoAntes); // a revisão do Espaço é a MESMA: nada foi gravado
+  });
+});
+
+/* ── 10-05 Task 2 — a volta drena a fila; SEM_ATOR fecha com motivo claro (F5, F3) ── */
+
+const WORKSPACE_DRENO = `ws_${RUN}_dreno`;
+
+async function contarLinhasFechadas(workspaceId: string): Promise<number> {
+  const r = await pool().query<{ n: string }>(
+    "select count(*)::text as n from plataforma.automacao_agenda where workspace_id = $1 and estado = 'concluido'",
+    [workspaceId],
+  );
+  return Number(r.rows[0]?.n ?? "0");
+}
+
+async function contarLinhasProcessando(workspaceId: string): Promise<number> {
+  const r = await pool().query<{ n: string }>(
+    "select count(*)::text as n from plataforma.automacao_agenda where workspace_id = $1 and estado = 'processando'",
+    [workspaceId],
+  );
+  return Number(r.rows[0]?.n ?? "0");
+}
+
+d("10-05 — iniciar() drena a fila até maxPorVolta (F5)", () => {
+  const INTERVALO_MS = 1_000;
+  const ZERO_FECHADAS_COM_ESPIA = () => ({ ok: true as const, value: { executed: 0, failed: 0, skipped: 0, failures: [] } });
+
+  /** Três Listas candidatas, cada uma com o dia 31/08 pendente. */
+  async function prepararTresListas(): Promise<void> {
+    for (const sufixo of ["a", "b", "c"]) await inserirLinhaDeAgenda(WORKSPACE_DRENO, `lst_dreno_${sufixo}_${RUN}`, DIA_DA_VOLTA, "pendente");
+  }
+
+  beforeAll(async () => {
+    await limparWorkspace(WORKSPACE_DRENO);
+    await prepararWorkspaceVazio(WORKSPACE_DRENO);
+  });
+
+  afterEach(async () => {
+    await pool().query("delete from plataforma.automacao_agenda where workspace_id = $1", [WORKSPACE_DRENO]);
+  });
+
+  afterAll(async () => {
+    await limparWorkspace(WORKSPACE_DRENO);
+    await encerrar();
+  });
+
+  it("(v) UMA volta de iniciar() fecha as três linhas — antes eram três intervalos", async () => {
+    await prepararTresListas();
+    const { rodarAgenda } = criarEspiaDeAgenda(ZERO_FECHADAS_COM_ESPIA);
+    const worker = criarSchedulerWorker({
+      workerId: "w_v",
+      workspaceId: WORKSPACE_DRENO,
+      relogio: relogioFixo(new Date(2026, 7, 31, 12)),
+      resolverAtor: atorDeTeste,
+      rodarAgenda,
+      ensaioNaPrimeiraVolta: false,
+      intervaloMs: INTERVALO_MS,
+    });
+
+    const inicio = Date.now();
+    worker.iniciar();
+    try {
+      await vi.waitFor(async () => expect(await contarLinhasFechadas(WORKSPACE_DRENO)).toBe(3), { timeout: 5_000, interval: 25 });
+    } finally {
+      await worker.parar();
+    }
+    // Uma linha por intervalo precisaria de ao menos 3 intervalos; a drenagem fecha as três no primeiro.
+    expect(Date.now() - inicio).toBeLessThan(2 * INTERVALO_MS);
+  });
+
+  it("(w) com maxPorVolta: 2, a primeira volta fecha duas e a seguinte fecha a terceira", async () => {
+    await prepararTresListas();
+    const { rodarAgenda } = criarEspiaDeAgenda(ZERO_FECHADAS_COM_ESPIA);
+    const worker = criarSchedulerWorker({
+      workerId: "w_w",
+      workspaceId: WORKSPACE_DRENO,
+      relogio: relogioFixo(new Date(2026, 7, 31, 12)),
+      resolverAtor: atorDeTeste,
+      rodarAgenda,
+      ensaioNaPrimeiraVolta: false,
+      intervaloMs: INTERVALO_MS,
+      maxPorVolta: 2,
+    });
+
+    worker.iniciar();
+    try {
+      await vi.waitFor(async () => expect(await contarLinhasFechadas(WORKSPACE_DRENO)).toBeGreaterThanOrEqual(2), { timeout: 5_000, interval: 10 });
+      // O teto: a terceira linha só sai na volta seguinte, um intervalo depois.
+      expect(await contarLinhasFechadas(WORKSPACE_DRENO)).toBe(2);
+      await vi.waitFor(async () => expect(await contarLinhasFechadas(WORKSPACE_DRENO)).toBe(3), { timeout: 5_000, interval: 25 });
+    } finally {
+      await worker.parar();
+    }
+  });
+
+  it("(x) parar() espera a linha em curso fechar: nada fica preso em 'processando'", async () => {
+    await prepararTresListas();
+    const { rodarAgenda } = criarEspiaDeAgenda(ZERO_FECHADAS_COM_ESPIA);
+    let comecou = false;
+    const atorLento = async (): Promise<Id> => {
+      comecou = true;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return "mem_teste";
+    };
+    const worker = criarSchedulerWorker({
+      workerId: "w_x",
+      workspaceId: WORKSPACE_DRENO,
+      relogio: relogioFixo(new Date(2026, 7, 31, 12)),
+      resolverAtor: atorLento,
+      rodarAgenda,
+      ensaioNaPrimeiraVolta: false,
+      intervaloMs: 50,
+    });
+
+    worker.iniciar();
+    await vi.waitFor(() => expect(comecou).toBe(true), { timeout: 5_000, interval: 10 });
+    await worker.parar();
+
+    expect(await contarLinhasProcessando(WORKSPACE_DRENO)).toBe(0);
+    expect(await contarLinhasFechadas(WORKSPACE_DRENO)).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describeComBanco("10-05 — SEM_ATOR: a Lista que nenhum Membro ativo administra fecha 'falhou' com motivo claro (F3)", () => {
+  const criados: string[] = [];
+
+  beforeAll(async () => {
+    await prepararBancoCrm();
+  });
+
+  afterAll(async () => {
+    for (const workspaceId of criados) await limparWorkspace(workspaceId);
+    await encerrar();
+  });
+
+  it("(y) o único Administrador e o Proprietário suspensos: a linha fecha SEM_ATOR, nada é gravado e o dia seguinte não repete a linha", async () => {
+    const workspaceId = await semearEspacoDeRecorrencia("agenda_sem_ator", (estado) => {
+      // Só há dois Membros de Papel base Proprietário/Administrador no seed: ambos suspensos.
+      for (const membro of estado.members) {
+        const base = estado.roles.find((r) => r.id === membro.roleId)?.base;
+        if (base === "proprietario" || base === "administrador") membro.state = "suspenso";
+      }
+    });
+    criados.push(workspaceId);
+    const revisaoAntes = await lerRevisao(workspaceId);
+
+    const relogio = relogioFixo(new Date(2026, 7, 31, 12));
+    // O preferido é um Membro comum, sem concessão na Lista: também não administra.
+    const worker = criarSchedulerWorkerDaFase10({ workerId: "w_y", workspaceId, listId: LISTA_DA_RECORRENCIA, relogio, resolverAtor: async () => "mem_julia" });
+
+    // O seed traz também as Listas de Contas a pagar e a receber no catálogo: uma linha por Lista candidata.
+    const listasNoCatalogo = await worker.semear();
+    expect(listasNoCatalogo).toBeGreaterThan(0);
+    expect(await worker.processarUm()).toBe(true);
+
+    const linha = await lerLinhaDaAgenda(workspaceId, LISTA_DA_RECORRENCIA, DIA_DA_VOLTA);
+    expect(linha.estado).toBe("falhou");
+    expect(linha.last_error_code).toBe(CODIGOS_DA_AGENDA.SEM_ATOR);
+    expect(linha.last_error_summary ?? "").toContain("Nenhum Membro ativo administra esta Lista");
+    expect(linha.tentativas).toBe(1);
+    expect(await contarOcorrenciasDaSerie(workspaceId)).toBe(0);
+    expect(await lerRevisao(workspaceId)).toBe(revisaoAntes);
+
+    // No dia seguinte nasce só o dia novo; a linha que já existe não é recriada nem perde o motivo.
+    relogio.definir(new Date(2026, 8, 1, 9));
+    expect(await worker.semear()).toBe(listasNoCatalogo); // um dia novo por Lista, nenhum dia antigo de volta
+    expect((await listarDiasDaAgenda(workspaceId, LISTA_DA_RECORRENCIA)).map((l) => l.dia_civil)).toEqual([DIA_DA_VOLTA, "2026-09-01"]);
+    const mesmaLinha = await lerLinhaDaAgenda(workspaceId, LISTA_DA_RECORRENCIA, DIA_DA_VOLTA);
+    expect(mesmaLinha.last_error_code).toBe(CODIGOS_DA_AGENDA.SEM_ATOR);
+    expect(mesmaLinha.tentativas).toBe(1);
   });
 });

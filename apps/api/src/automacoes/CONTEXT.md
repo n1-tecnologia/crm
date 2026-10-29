@@ -53,6 +53,7 @@ migrações são numeradas e imutáveis, DEC-10, e `005` já está aplicada).
 | `RECUSA_DO_DOMINIO` | `scheduler-worker.ts` | `runScheduledAutomations`/`executar()` devolveram `ok: false` sem conflito de revisão (ex.: falta a concessão de `administrar`). |
 | `CONFLITO_DE_REVISAO` | `scheduler-worker.ts` | `executar()` devolveu `{ conflito: true }` — transitório, a próxima volta tenta de novo. |
 | `ERRO_INESPERADO` | `scheduler-worker.ts` | Exceção não classificada durante o processamento da linha. |
+| `SEM_ATOR` | `scheduler-worker.ts` | Nenhum Membro ativo administra esta Lista (`atorDoRelogio` devolveu `undefined`): o relógio não tem quem assine — ver "Quais Listas o relógio visita". |
 
 Quem lê `last_error_code`/`last_error_summary` para qualquer fim — log, CLI,
 tela futura — importa `CODIGOS_DA_AGENDA` em vez de repetir os literais.
@@ -89,6 +90,67 @@ linhas daquele par — nunca toca `MARCO_ZERO` e nunca toca outro par. Depois de
 liberada, a volta seguinte processa de verdade. `ensaioNaPrimeiraVolta: false`
 (opção do worker) desativa o gate inteiro — a porta para uma Lista que nasce
 sem backlog e não precisa do ritual.
+
+## Quais Listas o relógio visita (Fase 10)
+
+Até a Fase 9 o relógio só visitava Listas com Automação por vencimento. Desde
+10-05 (D-01, 2.1.2 escolha A) ele também gera, sozinho, a próxima ocorrência da
+**Recorrência por calendário** — o botão da Lista deixa de ser a única forma
+(10-16 o retira, depois de isto estar publicado e ligado em produção).
+
+**As fontes do catálogo** (`catalogoDeListasComAgenda`, `scheduler-worker.ts`).
+São CANDIDATAS: SQL barato sobre `plataforma.registros`, sem repetir regra de
+negócio; o domínio decide o que de fato roda, dentro do `executar()`.
+
+1. Lista com Automação `ativo`, de escopo Lista, com versão publicada de gatilho `condicaoTemporal`.
+2. Lista com Tarefa de `recurrence.triggerMode = porCalendario` (coluna gerada `list_id`, migração 002).
+
+(A terceira fonte, a lixeira vencida, chega em 10-15.) As fontes se unem num só
+`Map` de pares (Espaço, Lista): uma linha de agenda por par e dia, venha ele de
+onde vier.
+
+**O ator, por Lista** (`atorDoRelogio`, domínio — `agenda-do-relogio.ts`).
+`runScheduledAutomations` e `runCalendarRecurrences` recusam quem não administra
+a Lista, e o Agente do pipeline só administra Contas a pagar e a receber. Em vez
+de alargar as concessões dele — o Agente do pipeline é também a credencial de
+serviço usada por HTTP externo, e `administrar` em todo Espaço ampliaria o raio
+dela (T-10-14) —, o ator é escolhido DENTRO do `executar()`, por Lista, sobre o
+estado hidratado: o PREFERIDO (`resolverAtor`: o Agente do pipeline, ou
+`AUTOMACOES_ATOR_MEMBER_ID`) se ele administra a Lista; senão o Proprietário do
+Espaço de Trabalho; senão o primeiro Membro ativo Proprietário ou Administrador
+que a administra. Se o preferido nem resolve (não há Membro do Papel no
+Espaço), a volta não cai: segue para o Membro humano. A Atividade "Próxima
+ocorrência criada" passa a ser autoria desse Membro humano — **assunção a
+confirmar com o dono no checkpoint D-04 do 10-16 (Q1/A1)**; se ele preferir
+autoria "Sistema", a mudança é no domínio (variantes com `ActorRef`).
+
+**`SEM_ATOR`.** Nenhum candidato administra a Lista (Espaço privado sem
+concessão a ninguém, Proprietário e Administradores suspensos): a linha fecha
+`falhou` com `SEM_ATOR`, nada é gravado, e `semear()` do dia seguinte cria só o
+dia novo — a linha que já existe não é recriada. Resolver é dar `administrar`
+a um Membro humano naquela Lista (ou reativar um Administrador).
+
+**O regime, por Lista** (`regimeDaPrimeiraVolta`, domínio — D-02). O ensaio da
+primeira volta (seção acima) existe para a Automação por vencimento, cujos
+disparos em lote custam dinheiro ou mandam mensagem. A Lista que só tem
+recorrência por calendário nasce **direto**: a série anda um passo por dia
+processado e nunca gera o passado em lote. A Lista com Automação por vencimento
+— inclusive a que tem as duas coisas — mantém o ensaio. A regra repete a de
+`runScheduledAutomations` (Automação `ativo`, escopo Lista, última versão
+publicada de gatilho `condicaoTemporal`) e mora no domínio, não no SQL nem no
+worker. Lacuna aceita: uma Lista que ganha Automação por vencimento DEPOIS de
+já ter voltas reais não volta ao ensaio.
+
+**A volta drena** (`maxPorVolta`, padrão 200). `iniciar()` processa linhas em
+sequência a cada `intervaloMs` até não haver reivindicável ou até o teto, em
+vez de UMA linha por intervalo (F5: com dezenas de Listas a fila nunca esvaziava).
+Uma volta em voo por vez (`emVoo`); `parar()` interrompe a drenagem entre duas
+linhas — a linha em curso fecha, nenhuma fica presa em `processando`. Cada
+linha ainda hidrata o Espaço inteiro: N Listas × dias de atraso é o pior caso e
+conta para a Fase 12.
+
+Pontos de extensão de teste (`OpcoesSchedulerWorker`): `escolherAtor` e
+`escolherRegime` trocam as duas escolhas acima; em produção ficam ausentes.
 
 ## Onde a ponte pluga no agendador
 

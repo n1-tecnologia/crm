@@ -692,6 +692,21 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
   // `catch`), para uma rejeição continuar se comportando exatamente igual.
   let emVoo: Promise<void> | undefined;
 
+  /**
+   * F5 (10-05) — uma volta DRENA: processa linhas em sequência até não haver
+   * reivindicável ou até `maxPorVolta`. Antes era UMA linha por `intervaloMs`
+   * (1 h): com dezenas de Listas no catálogo a fila nunca esvaziava. O teto é o
+   * que impede a drenagem de prender o processo (T-10-16), e `emVoo` garante
+   * UMA volta por vez. `parar()` interrompe o laço entre duas linhas — a linha
+   * em curso termina e fecha, nenhuma fica presa em `processando`.
+   */
+  async function drenar(): Promise<void> {
+    for (let n = 0; n < maxPorVolta; n += 1) {
+      if (!(await processarUm())) return;
+      if (temporizador === undefined) return;
+    }
+  }
+
   return {
     iniciar() {
       if (temporizador) return;
@@ -701,7 +716,7 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
         emVoo = new Promise<void>((resolve) => {
           terminou = resolve;
         });
-        void processarUm().finally(() => {
+        void drenar().finally(() => {
           emVoo = undefined;
           terminou();
         });
