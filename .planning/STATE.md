@@ -4,11 +4,11 @@ milestone: v1.0
 current_phase: 10
 current_phase_name: "Clone ClickUp: Contêineres (Espaço, Pasta e Lista)"
 status: executing
-stopped_at: Completed 10-15-PLAN.md
-last_updated: "2026-10-29T12:57:13.400Z"
+stopped_at: Phase 11 context gathered
+last_updated: "2026-10-29T21:00:38.662Z"
 last_activity: 2026-10-29
 last_activity_desc: Phase 10 execution started
-state_head: 3aacf6175c0de90d5b5adf02c744269a1274d307
+state_head: 59141578c8769e0e7f61f1a684c6d04f759f9704
 progress:
   total_phases: 12
   completed_phases: 6
@@ -652,6 +652,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-29T12:57:13.170Z
-Stopped at: Completed 10-15-PLAN.md
-Resume file: None
+Last session: 2026-10-29T21:00:37.980Z
+Stopped at: Phase 11 context gathered
+Resume file: .planning/phases/11-clone-clickup-tarefa-checklist-descri-o-e-tempo/11-CONTEXT.md
