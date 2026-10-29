@@ -719,6 +719,15 @@ function recusarMover(state: DataState, actingMemberId: Id, tipo: "folder" | "li
   if (tipo === "folder" && containerPath(state, destino.parentType, destino.parentId).some((n) => n.type === "folder" && n.id === id)) {
     return { mensagem: "Um contêiner não vai para dentro de si mesmo." };
   }
+  // Profundidade (RN-SUB-11, RN-SUB-02): a estrutura tem no máximo dois níveis de Pasta.
+  if (tipo === "folder" && destino.parentType === "folder") {
+    if (state.folders.some((f) => f.parentType === "folder" && f.parentId === id)) {
+      return { mensagem: "Uma Pasta com Subpastas não vai para dentro de outra Pasta." };
+    }
+    if (state.folders.find((f) => f.id === destino.parentId)?.parentType === "folder") {
+      return { mensagem: "Uma Subpasta não contém outra Pasta: a estrutura para aqui." };
+    }
+  }
   if (nameTaken(grupoDe(state, tipo, destino.parentType, destino.parentId, id), movido.name)) {
     const r = ROTULO[tipo];
     return {
@@ -737,6 +746,18 @@ function recusarMover(state: DataState, actingMemberId: Id, tipo: "folder" | "li
  */
 export function recusaDeMover(state: DataState, actingMemberId: Id, tipo: "folder" | "list", id: Id, destino: DestinoDeMover): string | undefined {
   return recusarMover(state, actingMemberId, tipo, id, destino)?.mensagem;
+}
+
+/**
+ * O nome da Atividade do mover (RESEARCH Pattern 3, item 11): a Subpasta que
+ * sobe para um Espaço é "promovida a Pasta" e a Pasta de nível 1 que entra
+ * numa Pasta é "rebaixada a Subpasta" (RN-PAS-15); o resto é "Lista movida" ou
+ * "Pasta movida".
+ */
+function acaoDeMover(tipo: "folder" | "list", origem: "space" | "folder", destino: "space" | "folder"): string {
+  if (tipo === "folder" && origem === "folder" && destino === "space") return "Subpasta promovida a Pasta";
+  if (tipo === "folder" && origem === "space" && destino === "folder") return "Pasta rebaixada a Subpasta";
+  return `${ROTULO[tipo].nome} movid${ROTULO[tipo].artigo}`;
 }
 
 /** A configuração efetiva de uma Lista da subárvore movida, antes (`from`) e depois (`to`). */
@@ -847,7 +868,7 @@ export function moveContainer(
 
   recordActivity(state, {
     actor: memberActor(actingMemberId),
-    action: `${ROTULO[tipo].nome} movid${ROTULO[tipo].artigo}`,
+    action: acaoDeMover(tipo, origem.parentType, destino.parentType),
     objectType: tipo,
     objectId: movido.id,
     objectName: movido.name,
