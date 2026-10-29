@@ -26,11 +26,15 @@ import {
   useCallback,
   useEffect,
   useId,
+  useImperativeHandle,
   useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEventHandler,
+  type ReactEventHandler,
   type ReactNode,
+  type Ref,
 } from "react";
 import {
   AlertTriangle,
@@ -237,10 +241,16 @@ export function TextArea({
   autoGrow = false,
   maxHeight = 240,
   required = false,
+  campoRef,
+  onKeyDown,
+  onSelect,
+  ariaAutocomplete,
+  ariaControls,
 }: {
   readonly id?: string;
   readonly value: string;
-  readonly onChange: (value: string) => void;
+  /** O 2º argumento é a posição do cursor (`selectionStart`): quem quer só o texto ignora. */
+  readonly onChange: (value: string, cursor: number) => void;
   readonly rows?: number;
   readonly placeholder?: string;
   readonly disabled?: boolean;
@@ -252,8 +262,18 @@ export function TextArea({
   readonly maxHeight?: number;
   /** Marca `aria-required` no próprio controle — `Field` só desenha o asterisco. */
   readonly required?: boolean;
+  /** Acesso ao `<textarea>` (foco, cursor) sem abrir mão do `autoGrow`. */
+  readonly campoRef?: Ref<HTMLTextAreaElement>;
+  readonly onKeyDown?: KeyboardEventHandler<HTMLTextAreaElement>;
+  /** Dispara quando o cursor ou a seleção andam (setas, clique). */
+  readonly onSelect?: ReactEventHandler<HTMLTextAreaElement>;
+  /** Para o campo que abre uma lista de sugestões (o "@" das menções). */
+  readonly ariaAutocomplete?: "list";
+  readonly ariaControls?: string;
 }) {
   const campo = useRef<HTMLTextAreaElement>(null);
+  // `campoRef` (de fora) recebe o mesmo elemento que o `autoGrow` mede aqui.
+  useImperativeHandle(campoRef, () => campo.current as HTMLTextAreaElement, []);
 
   /*
    * `field-sizing: content` resolve isto sem JavaScript, mas ainda não está em
@@ -273,7 +293,11 @@ export function TextArea({
       ref={campo}
       id={id}
       value={value}
-      onChange={(event) => onChange(event.target.value)}
+      onChange={(event) => onChange(event.target.value, event.target.selectionStart ?? event.target.value.length)}
+      {...(onKeyDown ? { onKeyDown } : {})}
+      {...(onSelect ? { onSelect } : {})}
+      {...(ariaAutocomplete ? { "aria-autocomplete": ariaAutocomplete } : {})}
+      {...(ariaControls ? { "aria-controls": ariaControls } : {})}
       rows={rows}
       placeholder={placeholder}
       readOnly={disabled}

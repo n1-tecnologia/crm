@@ -13,6 +13,7 @@ import { CampoDeArquivo } from "./campo-de-arquivo";
 import { useRecente } from "@/features/shell/recente";
 import { containerAdminRefusal } from "@n1/dominio/derive";
 import { administraOEspaco } from "@n1/dominio/operations/ia/permissoes-ia";
+import { membrosMencionadosNaDescricao } from "@n1/dominio/descricao-da-tarefa";
 import {
   addTaskComment,
   deleteTaskComment,
@@ -25,6 +26,7 @@ import {
 } from "@n1/dominio/operations";
 import { useFormat } from "@/features/shell/use-format";
 import { nomeDoAgente } from "@/features/estrutura/nome-do-ator";
+import { normalizar, useMencoes } from "./mencoes";
 import { ActorAvatar, Button, ConfirmDialog, EmptyState, Field, Icone, MultiSelect, Select, TextArea, TextInput, Toast } from "@/features/shell/ui";
 import type { OperationResult } from "@n1/dominio/state";
 import type { ActorRef, FieldDefinition, FieldValue, Task, TaskDate } from "@n1/dominio/types";
@@ -49,13 +51,24 @@ export function TaskTitleDescriptionEditor({
   readonly onClose: () => void;
 }) {
   const run = useRun();
+  const state = useData((data) => data);
   const [title, setTitle] = useState(task.title);
-  const [description, setDescription] = useState(task.description);
+  // D-06: o editor abre com quem a Tarefa já menciona, então salvar só o título mantém a menção.
+  const mencoes = useMencoes({
+    texto: task.description,
+    escolhidos: membrosMencionadosNaDescricao(state, task).flatMap((id) => {
+      const membro = state.members.find((m) => m.id === id);
+      return membro ? [{ id, nome: membro.displayName }] : [];
+    }),
+  });
   const [erro, setErro] = useState<string | null>(null);
-  const mudou = title.trim() !== task.title || description !== task.description;
+  const idDoMenu = useId();
+  const mudou = title.trim() !== task.title || mencoes.texto !== task.description;
 
   const salvar = () => {
-    const result = run((data, memberId) => updateTask(data, memberId, task.id, { title, description }));
+    const result = run((data, memberId) =>
+      updateTask(data, memberId, task.id, { title, description: mencoes.texto, descriptionMentions: mencoes.mencoesEfetivas }),
+    );
     if (result.ok) {
       report(result, "Tarefa atualizada.");
       onClose();
@@ -76,8 +89,32 @@ export function TaskTitleDescriptionEditor({
       <Field label="Título" {...(erro ? { error: erro } : {})}>
         {(id) => <TextInput id={id} value={title} onChange={setTitle} invalid={title.trim() === ""} />}
       </Field>
-      <Field label="Descrição" hint="O que precisa ser feito, e o que conta como feito.">
-        {(id) => <TextArea id={id} value={description} onChange={setDescription} rows={5} autoGrow />}
+      <Field label="Descrição" hint="O que precisa ser feito, e o que conta como feito. @ menciona alguém.">
+        {(id) => (
+          <div className="relative">
+            <TextArea
+              id={id}
+              value={mencoes.texto}
+              onChange={mencoes.aoMudar}
+              campoRef={mencoes.campoRef}
+              onSelect={(event) => mencoes.aoSelecionar(event.currentTarget.selectionStart ?? 0)}
+              onKeyDown={(event) => {
+                mencoes.aoTeclar(event);
+              }}
+              ariaAutocomplete="list"
+              {...(mencoes.sugestoes.length > 0 ? { ariaControls: idDoMenu } : {})}
+              rows={5}
+              autoGrow
+            />
+            <ListaDeMencoes
+              id={idDoMenu}
+              sugestoes={mencoes.sugestoes}
+              sugestaoAtiva={mencoes.sugestaoAtiva}
+              onEscolher={mencoes.mencionar}
+              onPassar={mencoes.setSugestaoAtiva}
+            />
+          </div>
+        )}
       </Field>
       <span className="flex justify-end gap-2">
         <Button onClick={onClose}>Cancelar</Button>
@@ -91,6 +128,55 @@ export function TaskTitleDescriptionEditor({
         </Button>
       </span>
     </form>
+  );
+}
+
+/** O menu de "Pessoas para mencionar", o mesmo na descrição e no Comentário. */
+function ListaDeMencoes({
+  id,
+  sugestoes,
+  sugestaoAtiva,
+  onEscolher,
+  onPassar,
+  presoNaBase,
+}: {
+  readonly id: string;
+  readonly sugestoes: ReadonlyArray<{ readonly id: string; readonly displayName: string }>;
+  readonly sugestaoAtiva: number;
+  readonly onEscolher: (membro: { readonly id: string; readonly displayName: string }) => void;
+  readonly onPassar: (indice: number) => void;
+  /** Preso à base da coluna: o menu abre para cima. */
+  readonly presoNaBase?: boolean;
+}) {
+  if (sugestoes.length === 0) return null;
+  return (
+    <ul
+      id={id}
+      role="listbox"
+      aria-label="Pessoas para mencionar"
+      className={`flutuante surgir-rapido absolute left-0 z-20 w-full max-w-xs overflow-hidden p-1 ${presoNaBase ? "bottom-full mb-1" : "top-full mt-1"}`}
+    >
+      {sugestoes.map((membro, index) => (
+        <li key={membro.id} role="none">
+          <button
+            type="button"
+            role="option"
+            aria-selected={index === sugestaoAtiva}
+            data-highlighted={index === sugestaoAtiva ? "" : undefined}
+            onMouseEnter={() => onPassar(index)}
+            // pointerdown, não click: o click tiraria o foco do campo antes de escolher.
+            onPointerDown={(event) => {
+              event.preventDefault();
+              onEscolher(membro);
+            }}
+            className="item-menu w-full"
+          >
+            <ActorAvatar kind="member" name={membro.displayName} />
+            <span className="min-w-0 flex-1 truncate">{membro.displayName}</span>
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -952,9 +1038,4 @@ export function TaskComments({
       )}
     </div>
   );
-}
-
-/** Sem acento e em minúsculas, para o "@" achar "Galvão" por "galvao". */
-function normalizar(texto: string): string {
-  return texto.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase("pt-BR");
 }
