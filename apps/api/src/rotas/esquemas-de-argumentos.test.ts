@@ -27,6 +27,20 @@ describe("esquemas-de-argumentos — a forma dos args, não a regra", () => {
     ).toBe(true);
   });
 
+  it("(a2) updateTask aceita descriptionMentions só de Membro e sem chave a mais no item (11-02)", () => {
+    expect(
+      ESQUEMAS.updateTask.safeParse([
+        "t1",
+        { description: "@Júlia Prado revisar", descriptionMentions: [{ type: "member", id: "mem_julia" }] },
+      ]).success,
+    ).toBe(true);
+    expect(ESQUEMAS.updateTask.safeParse(["t1", { descriptionMentions: [{ type: "team", id: "team_com" }] }]).success).toBe(false);
+    expect(
+      ESQUEMAS.updateTask.safeParse(["t1", { descriptionMentions: [{ type: "member", id: "mem_julia", extra: 1 }] }]).success,
+    ).toBe(false);
+    expect(ESQUEMAS.updateTask.safeParse(["t1", { descriptionMentions: "mem_julia" }]).success).toBe(false);
+  });
+
   it("(c) updateTask recusa tupla incompleta e tupla com argumento a mais", () => {
     expect(ESQUEMAS.updateTask.safeParse(["t1"]).success).toBe(false);
     expect(ESQUEMAS.updateTask.safeParse(["t1", {}, "extra"]).success).toBe(false);
