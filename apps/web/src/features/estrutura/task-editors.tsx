@@ -572,63 +572,21 @@ function CommentComposer({
   readonly presoNaBase?: boolean;
 }) {
   const run = useRun();
-  const members = useData((data) => data.members);
-  const [texto, setTexto] = useState("");
-  /** Quem foi escolhido pelo "@" — só conta na hora de enviar se o "@Nome" ainda estiver no texto. */
-  const [mencoes, setMencoes] = useState<ReadonlyArray<{ readonly id: string; readonly nome: string }>>([]);
-  const [caret, setCaret] = useState(0);
-  const [sugestaoAtiva, setSugestaoAtiva] = useState(0);
-  const [sugestoesFechadas, setSugestoesFechadas] = useState(false);
-  const campo = useRef<HTMLTextAreaElement>(null);
+  const mencoes = useMencoes({ texto: "" });
+  const { texto, campoRef: ligarCampo } = mencoes;
   const id = useId();
-
-  // O "@" em curso: o que vem depois do último "@" antes do cursor (até dois
-  // espaços — nomes têm sobrenome). Sem "@" em curso, não há menu.
-  const arroba = (() => {
-    const antes = texto.slice(0, caret);
-    const m = /(^|\s)@([^\s@]*(?:\s[^\s@]*){0,2})$/.exec(antes);
-    const consulta = m?.[2];
-    return consulta !== undefined ? { inicio: antes.length - consulta.length - 1, consulta } : null;
-  })();
-  const sugestoes = arroba && !sugestoesFechadas
-    ? members
-        .filter((m) => m.state === "ativo")
-        .filter((m) => normalizar(m.displayName).includes(normalizar(arroba.consulta)))
-        .slice(0, 6)
-    : [];
-
-  const mencionar = (membro: { readonly id: string; readonly displayName: string }) => {
-    if (!arroba) return;
-    const antes = texto.slice(0, arroba.inicio);
-    const depois = texto.slice(caret);
-    const novo = `${antes}@${membro.displayName} ${depois}`;
-    const novoCaret = antes.length + membro.displayName.length + 2;
-    setTexto(novo);
-    setMencoes((atual) => (atual.some((m) => m.id === membro.id) ? atual : [...atual, { id: membro.id, nome: membro.displayName }]));
-    setCaret(novoCaret);
-    setSugestaoAtiva(0);
-    // O cursor volta para depois do nome, e o foco continua no campo.
-    requestAnimationFrame(() => {
-      const el = campo.current;
-      if (!el) return;
-      el.focus({ preventScroll: true });
-      el.setSelectionRange(novoCaret, novoCaret);
-    });
-  };
 
   const enviar = () => {
     const result = run((data, memberId) =>
       addTaskComment(data, memberId, task.id, {
         content: texto,
         ...(parentCommentId ? { parentCommentId } : {}),
-        mentions: mencoes.filter((m) => texto.includes(`@${m.nome}`)).map((m) => ({ type: "member", id: m.id })),
+        mentions: mencoes.mencoesEfetivas,
       }),
     );
     report(result, parentCommentId ? "Resposta enviada." : "Comentário enviado.");
     if (result.ok) {
-      setTexto("");
-      setMencoes([]);
-      setCaret(0);
+      mencoes.limpar();
       onDone?.();
     }
   };
@@ -646,42 +604,14 @@ function CommentComposer({
       </label>
       <div className="relative">
         <textarea
-          ref={campo}
+          ref={ligarCampo}
           id={id}
           value={texto}
-          onChange={(event) => {
-            setTexto(event.target.value);
-            setCaret(event.target.selectionStart ?? event.target.value.length);
-            setSugestaoAtiva(0);
-            setSugestoesFechadas(false);
-          }}
-          onSelect={(event) => setCaret((event.target as HTMLTextAreaElement).selectionStart ?? 0)}
+          onChange={(event) => mencoes.aoMudar(event.target.value, event.target.selectionStart ?? event.target.value.length)}
+          onSelect={(event) => mencoes.aoSelecionar(event.currentTarget.selectionStart ?? 0)}
           onKeyDown={(event) => {
             // Com o menu de "@" aberto, as setas e o Enter escolhem; Esc fecha só o menu.
-            if (sugestoes.length > 0) {
-              if (event.key === "ArrowDown") {
-                event.preventDefault();
-                setSugestaoAtiva((i) => (i + 1) % sugestoes.length);
-                return;
-              }
-              if (event.key === "ArrowUp") {
-                event.preventDefault();
-                setSugestaoAtiva((i) => (i - 1 + sugestoes.length) % sugestoes.length);
-                return;
-              }
-              if ((event.key === "Enter" && !event.ctrlKey && !event.metaKey) || event.key === "Tab") {
-                event.preventDefault();
-                const escolhido = sugestoes[sugestaoAtiva];
-                if (escolhido) mencionar(escolhido);
-                return;
-              }
-              if (event.key === "Escape") {
-                event.preventDefault();
-                event.stopPropagation();
-                setSugestoesFechadas(true);
-                return;
-              }
-            }
+            if (mencoes.aoTeclar(event)) return;
             if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && texto.trim()) {
               event.preventDefault();
               enviar();
@@ -690,7 +620,7 @@ function CommentComposer({
           rows={2}
           autoFocus={autoFocus}
           aria-autocomplete="list"
-          aria-controls={sugestoes.length > 0 ? `${id}-sugestoes` : undefined}
+          aria-controls={mencoes.sugestoes.length > 0 ? `${id}-sugestoes` : undefined}
           placeholder={parentCommentId ? "Responder…" : "Escreva um comentário. @ menciona alguém. Ctrl+Enter envia."}
           // `block`: como inline, a textarea deixa um vão de linha embaixo e o
           // botão ancorado no pé do invólucro escorrega para fora dela.
@@ -708,35 +638,14 @@ function CommentComposer({
         >
           <Icone de={Send} tamanho="xs" />
         </button>
-        {sugestoes.length > 0 ? (
-          <ul
-            id={`${id}-sugestoes`}
-            role="listbox"
-            aria-label="Pessoas para mencionar"
-            className={`flutuante surgir-rapido absolute left-0 z-20 w-full max-w-xs overflow-hidden p-1 ${presoNaBase ? "bottom-full mb-1" : "top-full mt-1"}`}
-          >
-            {sugestoes.map((membro, index) => (
-              <li key={membro.id} role="none">
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={index === sugestaoAtiva}
-                  data-highlighted={index === sugestaoAtiva ? "" : undefined}
-                  onMouseEnter={() => setSugestaoAtiva(index)}
-                  // pointerdown, não click: o click tiraria o foco do campo antes de escolher.
-                  onPointerDown={(event) => {
-                    event.preventDefault();
-                    mencionar(membro);
-                  }}
-                  className="item-menu w-full"
-                >
-                  <ActorAvatar kind="member" name={membro.displayName} />
-                  <span className="min-w-0 flex-1 truncate">{membro.displayName}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
+        <ListaDeMencoes
+          id={`${id}-sugestoes`}
+          sugestoes={mencoes.sugestoes}
+          sugestaoAtiva={mencoes.sugestaoAtiva}
+          onEscolher={mencoes.mencionar}
+          onPassar={mencoes.setSugestaoAtiva}
+          {...(presoNaBase ? { presoNaBase } : {})}
+        />
       </div>
       {onDone ? (
         <div className="flex justify-end">
