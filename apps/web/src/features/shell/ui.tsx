@@ -66,6 +66,8 @@ export {
   Divisor,
   Esqueleto,
   EsqueletoDeLinhas,
+  idDaAba,
+  idDoPainel,
   Painel,
   Pilula,
   ReguaDeSecao,

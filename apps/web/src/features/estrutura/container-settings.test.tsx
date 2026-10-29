@@ -7,10 +7,10 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { buildSeed } from "@n1/dominio/seed";
-
-
+import { blockedAbove, createFieldDefinition, overrideStatusSet, setContainerBlock } from "@n1/dominio/operations/configuration";
+import { createFolder, createList, createSpace } from "@n1/dominio/operations/structure";
 import type { DataState } from "@n1/dominio/state";
 import { StoreProvider } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
@@ -121,5 +121,128 @@ describe("ContainerSettings — a aba vem da URL", () => {
       expect(screen.queryByText("Origem do valor")).toBeNull();
       cleanup();
     }
+  });
+});
+
+/* ───────────── Task 2: a linha de origem, "Criado por" e o painel da aba ───────────── */
+
+/** Um Espaço novo com uma Pasta e uma Lista: nenhum dado do seed interfere nas frases de origem. */
+function cadeia() {
+  const estado = buildSeed();
+  const dono = estado.workspace.ownerMemberId;
+  const espaco = createSpace(estado, dono, { name: "Operações novas" });
+  if (!espaco.ok) throw new Error(espaco.error);
+  const pasta = createFolder(estado, dono, { name: "Contratos", parentType: "space", parentId: espaco.value.id });
+  if (!pasta.ok) throw new Error(pasta.error);
+  const lista = createList(estado, dono, { name: "Vigentes", parentType: "folder", parentId: pasta.value.id });
+  if (!lista.ok) throw new Error(lista.error);
+  return { estado, dono, espacoId: espaco.value.id, pastaId: pasta.value.id, listaId: lista.value.id };
+}
+
+describe("ContainerSettings — a linha de origem de cada aba (D-16)", () => {
+  it("Lista sem Conjunto próprio mostra \"Herdado de Espaço {nome}\"", () => {
+    const { estado, listaId } = cadeia();
+    navegacao.params = new URLSearchParams({ aba: "status" });
+    montar("list", listaId, estado);
+
+    expect(screen.getByText("Herdado de Espaço Operações novas")).toBeTruthy();
+  });
+
+  it("Lista com Conjunto próprio mostra \"Definido aqui\"", () => {
+    const { estado, dono, listaId } = cadeia();
+    const r = overrideStatusSet(estado, dono, "list", listaId);
+    if (!r.ok) throw new Error(r.error);
+    navegacao.params = new URLSearchParams({ aba: "status" });
+    montar("list", listaId, estado);
+
+    expect(screen.getByText("Definido aqui")).toBeTruthy();
+    expect(screen.queryByText(/Herdado de/)).toBeNull();
+  });
+
+  it("Subpasta herda de Pasta: a palavra do tipo é \"Subpasta\"", () => {
+    const { estado, dono, pastaId } = cadeia();
+    const sub = createFolder(estado, dono, { name: "Aditivos", parentType: "folder", parentId: pastaId });
+    if (!sub.ok) throw new Error(sub.error);
+    const lista = createList(estado, dono, { name: "Abertos", parentType: "folder", parentId: sub.value.id });
+    if (!lista.ok) throw new Error(lista.error);
+    const sobrescreve = overrideStatusSet(estado, dono, "folder", sub.value.id);
+    if (!sobrescreve.ok) throw new Error(sobrescreve.error);
+    navegacao.params = new URLSearchParams({ aba: "status" });
+    montar("list", lista.value.id, estado);
+
+    expect(screen.getByText("Herdado de Subpasta Aditivos")).toBeTruthy();
+  });
+
+  it("Espaço que bloqueia o Conjunto: a Lista abaixo mostra \"Bloqueado por Espaço {nome}\" e a frase do domínio", () => {
+    const { estado, dono, espacoId, listaId } = cadeia();
+    const bloqueio = setContainerBlock(estado, dono, "space", espacoId, "statusSet", true);
+    if (!bloqueio.ok) throw new Error(bloqueio.error);
+    navegacao.params = new URLSearchParams({ aba: "status" });
+    montar("list", listaId, estado);
+
+    expect(screen.getByText("Bloqueado por Espaço Operações novas")).toBeTruthy();
+    // A frase é a do domínio, literal: a mesma que a operação devolveria.
+    const frase = blockedAbove(estado, "list", listaId, "statusSet");
+    expect(frase).toContain("Espaço Operações novas bloqueia");
+    expect(screen.getByText(`Somente leitura: ${frase}`)).toBeTruthy();
+  });
+
+  it("aba Funcionalidades bloqueada traz a frase do domínio uma vez só", () => {
+    const { estado, dono, espacoId, listaId } = cadeia();
+    const bloqueio = setContainerBlock(estado, dono, "space", espacoId, "features", true);
+    if (!bloqueio.ok) throw new Error(bloqueio.error);
+    navegacao.params = new URLSearchParams({ aba: "funcionalidades" });
+    montar("list", listaId, estado);
+
+    expect(screen.getByText("Bloqueado por Espaço Operações novas")).toBeTruthy();
+    expect(screen.getAllByText(/Somente leitura: Espaço Operações novas bloqueia/)).toHaveLength(1);
+    // Os interruptores ficam desligados pela mesma frase.
+    for (const interruptor of screen.getAllByRole("switch")) expect(interruptor.hasAttribute("disabled") || interruptor.getAttribute("aria-disabled") === "true").toBe(true);
+  });
+
+  it("Campos de uma Pasta com 1 Campo próprio sob Espaço com 2: \"1 definido aqui · 2 herdados\"", () => {
+    const { estado, dono, espacoId, pastaId } = cadeia();
+    for (const nome of ["Região", "Segmento"]) {
+      const r = createFieldDefinition(estado, dono, { name: nome, type: "text", definedAtType: "space", definedAtId: espacoId });
+      if (!r.ok) throw new Error(r.error);
+    }
+    const propria = createFieldDefinition(estado, dono, { name: "Valor", type: "text", definedAtType: "folder", definedAtId: pastaId });
+    if (!propria.ok) throw new Error(propria.error);
+    navegacao.params = new URLSearchParams({ aba: "campos" });
+    montar("folder", pastaId, estado);
+
+    expect(screen.getByText("1 definido aqui · 2 herdados")).toBeTruthy();
+  });
+
+  it("Tipos de Tarefa sem nenhum Tipo: \"0 definidos aqui · 0 herdados\"", () => {
+    const { estado, pastaId } = cadeia();
+    navegacao.params = new URLSearchParams({ aba: "tipos-de-tarefa" });
+    montar("folder", pastaId, estado);
+
+    expect(screen.getByText("0 definidos aqui · 0 herdados")).toBeTruthy();
+  });
+});
+
+describe("ContainerSettings — Geral e o painel da aba", () => {
+  it("a aba Geral mostra \"Criado por {nome}\" entre a Identidade e o Ciclo de vida", () => {
+    montar("space", "spc_com");
+    const criador = buildSeed().members.find((m) => m.id === buildSeed().spaces.find((s) => s.id === "spc_com")?.createdBy.id)?.displayName ?? "Sistema";
+    expect(screen.getByText(`Criado por ${criador}`)).toBeTruthy();
+  });
+
+  it("o conteúdo da aba é um tabpanel ligado à aba ativa", () => {
+    navegacao.params = new URLSearchParams({ aba: "campos" });
+    montar("list", "lst_prospeccao");
+
+    const painel = screen.getByRole("tabpanel");
+    const aba = screen.getByRole("tab", { name: "Campos" });
+    expect(aba.getAttribute("aria-controls")).toBe(painel.id);
+    expect(painel.getAttribute("aria-labelledby")).toBe(aba.id);
+    expect(within(painel).getByRole("region", { name: "Campos herdados" })).toBeTruthy();
+  });
+
+  it("contêiner inexistente mostra \"Contêiner não encontrado.\"", () => {
+    montar("list", "lst_que_nao_existe");
+    expect(screen.getByText("Contêiner não encontrado.")).toBeTruthy();
   });
 });

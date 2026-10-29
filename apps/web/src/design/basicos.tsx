@@ -1,7 +1,7 @@
 "use client";
 
 import type { LucideIcon } from "lucide-react";
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useRef, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "./cn";
 import { Icone } from "./icone";
 
@@ -246,7 +246,17 @@ export type Aba = {
  * A aba usa o sublinhado do sistema: régua de 1px em `--acento` que cresce da
  * esquerda em 300ms. O estado NÃO mora aqui — quem chama passa `ativa`, porque
  * em quase toda tela a aba ativa vai para a URL.
+ *
+ * Teclado (A13, padrão WAI-ARIA de abas com ativação automática): só a aba
+ * ativa entra na ordem de Tab (`tabIndex` móvel); setas esquerda e direita
+ * andam em círculo, Home e End vão às pontas, e a tecla troca a aba e leva o
+ * foco junto. Com `idBase`, cada aba ganha `id = {idBase}-aba-{chave}` e
+ * `aria-controls = {idBase}-painel-{chave}`: o painel que a tela desenha usa o
+ * mesmo par (`idDoPainel`/`idDaAba`) para devolver `aria-labelledby`.
  */
+export const idDaAba = (idBase: string, chave: string): string => `${idBase}-aba-${chave}`;
+export const idDoPainel = (idBase: string, chave: string): string => `${idBase}-painel-${chave}`;
+
 export function Abas({
   abas,
   ativa,
@@ -254,6 +264,7 @@ export function Abas({
   className,
   acao,
   rotulo = "Abas",
+  idBase,
 }: {
   readonly abas: ReadonlyArray<Aba>;
   readonly ativa: string;
@@ -261,22 +272,54 @@ export function Abas({
   readonly className?: string;
   readonly acao?: ReactNode;
   readonly rotulo?: string;
+  readonly idBase?: string;
 }) {
+  const botoes = useRef(new Map<string, HTMLButtonElement>());
+  const ativaExiste = abas.some((a) => a.chave === ativa);
+
+  // Em tela estreita a lista rola de lado: a aba ativa tem de estar à vista ao carregar com `?aba=`.
+  useEffect(() => {
+    botoes.current.get(ativa)?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [ativa]);
+
+  const aoTeclar = (evento: KeyboardEvent<HTMLButtonElement>, indice: number): void => {
+    const ultimo = abas.length - 1;
+    const alvo =
+      evento.key === "ArrowRight" ? (indice === ultimo ? 0 : indice + 1)
+      : evento.key === "ArrowLeft" ? (indice === 0 ? ultimo : indice - 1)
+      : evento.key === "Home" ? 0
+      : evento.key === "End" ? ultimo
+      : -1;
+    const proxima = abas[alvo];
+    if (!proxima) return;
+    evento.preventDefault();
+    aoTrocar(proxima.chave);
+    botoes.current.get(proxima.chave)?.focus();
+  };
+
   return (
     <div
       className={cn("flex shrink-0 items-center justify-between gap-2 px-4", className)}
       style={{ borderBottom: "1px solid var(--linha)" }}
     >
       <div role="tablist" aria-label={rotulo} className="sem-barra flex items-center overflow-x-auto">
-        {abas.map((a) => {
+        {abas.map((a, indice) => {
           const selecionada = a.chave === ativa;
           return (
             <button
               key={a.chave}
+              ref={(no) => {
+                if (no) botoes.current.set(a.chave, no);
+                else botoes.current.delete(a.chave);
+              }}
               type="button"
               role="tab"
+              id={idBase ? idDaAba(idBase, a.chave) : undefined}
               aria-selected={selecionada}
+              aria-controls={idBase ? idDoPainel(idBase, a.chave) : undefined}
+              tabIndex={selecionada || (!ativaExiste && indice === 0) ? 0 : -1}
               onClick={() => aoTrocar(a.chave)}
+              onKeyDown={(evento) => aoTeclar(evento, indice)}
               data-ativo={selecionada}
               className="sublinhado app-base flex items-center gap-1.5 whitespace-nowrap px-3 py-2 transition-colors"
               style={{

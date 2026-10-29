@@ -25,6 +25,7 @@ import { useData, useRun, useSession } from "@/dados/store";
 import { FORMULARIOS_ANTES_DO_MODELO, LISTA_SEM_CANAIS, alterarModeloDaLista, definirCanaisDaLista, temFormularioAtivo } from "@n1/dominio/operations";
 import type { TipoDeAtendimento } from "@n1/dominio/operations/canais";
 import { AdicionarCanalDialog } from "@/features/crm/adicionar-canal-dialog";
+import { CabecalhoDoAspecto } from "@/features/estrutura/cabecalho-do-aspecto";
 import { CanaisDeAtendimento } from "@/features/estrutura/canais-de-atendimento";
 import { useRecente } from "@/features/shell/recente";
 import { FeaturesEditor, FieldDefinitionsEditor, StatusSetEditor, TaskTypesEditor, useMayConfigure } from "@/features/estrutura/configuration-editors";
@@ -33,7 +34,7 @@ import { CicloDeVidaDoConteiner, IdentidadeDoConteiner } from "@/features/estrut
 import { CaixaDeConfiguracoes } from "@/features/ferramentas/caixa-de-configuracoes";
 import { effectiveContainerConfig, memberReachesContainer } from "@n1/dominio/derive";
 import { FIELD_TYPE_LABEL } from "@/features/shell/format";
-import { Abas, CorpoDeTela, EmptyState, PageHeader, StateSeal, Toast, type Aba } from "@/features/shell/ui";
+import { Abas, CorpoDeTela, EmptyState, PageHeader, StateSeal, Toast, idDaAba, idDoPainel, type Aba } from "@/features/shell/ui";
 
 /**
  * 2.1.8, D-17 — as Configurações em abas, com a aba na URL (`?aba=`). A tabela
@@ -50,6 +51,9 @@ const ABAS: ReadonlyArray<{ readonly chave: ChaveDaAba; readonly rotulo: string;
   { chave: "formularios", rotulo: "Formulários", soLista: true },
   { chave: "modelo-e-canais", rotulo: "Modelo e canais", soLista: true },
 ];
+
+/** O par `id` da aba / `id` do painel que `Abas` e o painel desta tela combinam (A13). */
+const ID_BASE = "configuracoes";
 
 const abasDoNivel = (tipo: "space" | "folder" | "list") => ABAS.filter((aba) => aba.soLista !== true || tipo === "list");
 
@@ -135,6 +139,7 @@ export function ContainerSettings({
     proxima.set("aba", chave);
     router.replace(`${pathname}?${proxima}`, { scroll: false });
   };
+  const criador = state.members.find((m) => m.id === container.createdBy.id)?.displayName ?? "Sistema";
   const fieldDefinitionIds = config?.fieldDefinitionIds ?? [];
   const taskTypeIds = config?.taskTypeIds ?? [];
 
@@ -171,7 +176,7 @@ export function ContainerSettings({
         seal={<StateSeal state={container.lifecycle} />}
       />
 
-      <Abas abas={abasVisiveis} ativa={aba} aoTrocar={trocarDeAba} rotulo="Configurações" />
+      <Abas abas={abasVisiveis} ativa={aba} aoTrocar={trocarDeAba} rotulo="Configurações" idBase={ID_BASE} />
 
       <CorpoDeTela>
         {notice ? (
@@ -185,12 +190,14 @@ export function ContainerSettings({
           </Toast>
         ) : null}
 
-        <div className="max-w-3xl">
+        <div className="max-w-3xl" role="tabpanel" id={idDoPainel(ID_BASE, aba)} aria-labelledby={idDaAba(ID_BASE, aba)}>
           {aba === "geral" ? (
             <div className="grid gap-3">
               {/* POSC-09 — nome, descrição, cor, privacidade; e o estado próprio. A chave
                   reinicia o formulário quando outra gravação (ou outro Membro) muda o registro. */}
               <IdentidadeDoConteiner key={`${container.id}:${container.name}:${container.description ?? ""}:${container.color ?? ""}:${String(container.isPrivate)}`} kind={kind} container={container} report={report} />
+              {/* 2.1.9 — quem criou: o Membro, ou "Sistema" quando o registro veio do próprio sistema. */}
+              <p className="app-meta">Criado por {criador}</p>
               <CicloDeVidaDoConteiner kind={kind} container={container} report={report} />
             </div>
           ) : null}
@@ -203,14 +210,17 @@ export function ContainerSettings({
                 hint="O Espaço acima dele precisa definir um: sem isso nenhuma Lista abaixo recebe Tarefas."
               />
             ) : (
-              <StatusSetEditor
-                containerType={kind}
-                containerId={id}
-                own={container.statusSet !== undefined}
-                set={config.statusSet}
-                definedAtName={config.statusSetDefinedAt.name}
-                report={report}
-              />
+              <>
+                <CabecalhoDoAspecto tipo={kind} id={id} aspecto="statusSet" />
+                <StatusSetEditor
+                  containerType={kind}
+                  containerId={id}
+                  own={container.statusSet !== undefined}
+                  set={config.statusSet}
+                  definedAtName={config.statusSetDefinedAt.name}
+                  report={report}
+                />
+              </>
             )
           ) : null}
 
@@ -218,12 +228,16 @@ export function ContainerSettings({
             config === null ? (
               <EmptyState compact title="Este contêiner não resolve as Funcionalidades." hint="Falta um Conjunto de Status no Espaço acima." />
             ) : (
-              <FeaturesEditor containerType={kind} containerId={id} features={config.features} own={container.features ?? {}} report={report} />
+              <>
+                <CabecalhoDoAspecto tipo={kind} id={id} aspecto="features" />
+                <FeaturesEditor containerType={kind} containerId={id} features={config.features} own={container.features ?? {}} report={report} />
+              </>
             )
           ) : null}
 
           {aba === "campos" ? (
             <div className="grid gap-3">
+              <CabecalhoDoAspecto tipo={kind} id={id} aspecto="fieldDefinitions" />
               {fieldDefinitionIds.length === 0 ? (
                 <EmptyState compact title="Nenhuma Definição de Campo alcança este caminho." />
               ) : (
@@ -255,6 +269,7 @@ export function ContainerSettings({
 
           {aba === "tipos-de-tarefa" ? (
             <div className="grid gap-3">
+              <CabecalhoDoAspecto tipo={kind} id={id} aspecto="taskTypes" />
               {taskTypeIds.length === 0 ? (
                 <EmptyState compact title="Nenhum Tipo de Tarefa alcança este caminho." />
               ) : (

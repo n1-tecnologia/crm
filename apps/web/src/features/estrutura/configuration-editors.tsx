@@ -58,7 +58,7 @@ function useBlockedAbove(containerType: ContainerType, containerId: string, aspe
   return blockedAbove(state, containerType, containerId, aspect);
 }
 
-function ReadOnlyNote({ reason }: { readonly reason: string | undefined }) {
+export function ReadOnlyNote({ reason }: { readonly reason: string | undefined }) {
   if (!reason) return null;
   return (
     <p
@@ -960,7 +960,8 @@ export function FeaturesEditor({
   const ids = useId();
   return (
     <div className="grid gap-2">
-      <ReadOnlyNote reason={desligado} />
+      {/* O motivo de um ancestral bloquear mora na linha de origem da aba (CabecalhoDoAspecto): repeti-lo aqui seria a mesma frase duas vezes. */}
+      <ReadOnlyNote reason={bloqueio} />
       <ul className="pilha-solta">
         {(Object.keys(FEATURE_LABEL) as Array<keyof EnabledFeatures>).map((feature) => {
           const definidaAqui = own[feature] !== undefined;
