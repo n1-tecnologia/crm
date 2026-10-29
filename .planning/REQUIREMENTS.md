@@ -159,7 +159,7 @@ Critério de pronto (ROADMAP Phase 10): a Estrutura de Trabalho fechada no níve
 - [x] **EST-03**: Configurações em abas com `?aba=`; "Aspectos configuráveis" não aparece em tela nenhuma; página do Espaço no formato da Pasta, com Painéis só quando houver (2.1.8, 2.1.9, D-17). Pendente.
 - [x] **EST-04**: `sem-codigo-de-regra.test.ts` passa; os 13 textos sem código entre parênteses (2.1.10, D-17). Pendente.
 - [x] **EST-05**: `moveContainer` e `reorderContainers` no domínio com `mover-conteiner.test.ts` cobrindo mesmo Conjunto, Conjunto diferente com e sem mapeamento, Campo arquivado, Pasta com Subpastas recusada, promoção/rebaixamento, destino que bloqueia; reordenar por grupo (Espaços, Pastas, Listas) (2.3.1, 2.3.2, D-08, D-11). Pendente.
-- [ ] **EST-06**: Arrastar Lista/Pasta na árvore move (na hora se sem consequência; diálogo se houver) ou reordena dentro do grupo; Espaços reordenam; "Mover para…" no menu; recusa do domínio no diálogo ou `Toast`; ordem nova continua depois de recarregar (2.3.3, D-09, D-10, D-12). Pendente.
+- [x] **EST-06**: Arrastar Lista/Pasta na árvore move (na hora se sem consequência; diálogo se houver) ou reordena dentro do grupo; Espaços reordenam; "Mover para…" no menu; recusa do domínio no diálogo ou `Toast`; ordem nova continua depois de recarregar (2.3.3, D-09, D-10, D-12). Pendente.
 - [x] **EST-07**: Nenhuma Lista oferece a Carga (5 abas; conversacional 4); a API recusa `saveView` com `kind: carga` (400); `grep -rn workload` e `weeklyCapacityMinutes` sem achados; coluna "Capacidade/sem" fora (2.5.1–2.5.5, D-13, D-14). Pendente.
 - [x] **EST-08**: Mudar as Visualizações padrão no Espaço muda as abas das Listas abaixo; `visualizacoes-padrao.test.ts` passa; Visualização salva de tipo indisponível some da barra e volta junto (2.6.1, 2.6.2, D-06, D-07). Pendente.
 - [x] **EST-09**: O tipo não deixa escrever `blocks` numa Lista; `bloqueado` fora de `InheritanceMode` (2.6.3, 2.6.4, D-15). Pendente.
@@ -246,7 +246,7 @@ Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pe
 | EST-03 | Phase 10 | Complete | pendente | derivado (10-CONTEXT) |
 | EST-04 | Phase 10 | Complete | pendente | derivado (10-CONTEXT) |
 | EST-05 | Phase 10 | Complete | pendente | derivado (10-CONTEXT) |
-| EST-06 | Phase 10 | Pending | pendente | derivado (10-CONTEXT) |
+| EST-06 | Phase 10 | Complete | pendente | derivado (10-CONTEXT) |
 | EST-07 | Phase 10 | Complete | pendente | derivado (10-CONTEXT) |
 | EST-08 | Phase 10 | Complete | pendente | derivado (10-CONTEXT) |
 | EST-09 | Phase 10 | Complete | pendente | derivado (10-CONTEXT) |
