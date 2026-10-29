@@ -325,6 +325,7 @@ export function Select({
   disabledReason,
   size = "md",
   required = false,
+  semOpcoes,
 }: {
   readonly id?: string;
   readonly value: string;
@@ -334,6 +335,8 @@ export function Select({
   readonly searchable?: boolean;
   readonly disabled?: boolean;
   readonly disabledReason?: string;
+  /** O texto da lista quando NÃO há opção nenhuma («Nenhum destino disponível.»); com busca sem resultado, vale o texto da busca. */
+  readonly semOpcoes?: string;
   /** Numa barra de filtros todo controle tem a altura pequena; fora dela, a cheia. */
   readonly size?: "sm" | "md";
   /** Marca `aria-required` no próprio controle — `Field` só desenha o asterisco. */
@@ -390,7 +393,9 @@ export function Select({
           {searchable ? <BuscaDeOpcoes query={query} onChange={setQuery} /> : null}
           <ul id={listId} role="listbox" className="relative max-h-64 overflow-y-auto p-1">
             {shown.length === 0 ? (
-              <li className="app-meta px-2 py-3 text-center">Nenhuma opção corresponde a “{query}”.</li>
+              <li className="app-meta px-2 py-3 text-center">
+                {options.length === 0 && semOpcoes !== undefined ? semOpcoes : `Nenhuma opção corresponde a “${query}”.`}
+              </li>
             ) : (
               shown.map((option, index) => (
                 // role="none" — an `option` must be owned by the `listbox`; a
@@ -733,6 +738,7 @@ export function ConfirmDialog({
   cancelLabel = "Cancelar",
   destructive = false,
   confirmDisabledReason,
+  confirmCarregando = false,
   onConfirm,
   onCancel,
   footerStart,
@@ -748,6 +754,8 @@ export function ConfirmDialog({
   readonly destructive?: boolean;
   /** When set, confirming is blocked and this says why. */
   readonly confirmDisabledReason?: string;
+  /** Gravação a caminho: o botão vira o spinner e engole o clique (exige `confirmDisabledReason`, «Movendo…»). */
+  readonly confirmCarregando?: boolean;
   readonly onConfirm: () => void;
   readonly onCancel: () => void;
   /** Ação secundária à esquerda do rodapé — usar Template, por exemplo. */
@@ -786,7 +794,7 @@ export function ConfirmDialog({
       >
         <div className="flex items-start justify-between gap-4 px-5 py-4" style={{ borderBottom: "1px solid var(--linha)" }}>
           <div className="min-w-0 flex-1">
-            <h2 id={titleId} className="ed-subtitulo">
+            <h2 id={titleId} className="ed-subtitulo break-words">
               {title}
             </h2>
             <p id={descriptionId} className="app-base mt-1" style={{ color: "var(--texto-2)" }}>
@@ -811,6 +819,7 @@ export function ConfirmDialog({
               variant={destructive ? "danger" : "primary"}
               onClick={onConfirm}
               disabled={confirmDisabledReason !== undefined}
+              carregando={confirmCarregando}
               {...(confirmDisabledReason ? { disabledReason: confirmDisabledReason } : {})}
             >
               {confirmLabel}

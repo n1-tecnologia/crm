@@ -77,13 +77,14 @@ import { useData, useRun, useSession } from "@/dados/store";
 import { MEUS_NEGOCIOS_ID } from "@n1/dominio/seed-comercial";
 import { moveChatSessionToFolder } from "@n1/dominio/operations";
 import { useChatFolderDialogs } from "@/features/ia/chat-folder-dialogs";
-import { memberReachesContainer, memberSeesResource, notificacoesDoMembro } from "@n1/dominio/derive";
+import { containerAdminRefusal, containerPath, memberReachesContainer, memberSeesResource, notificacoesDoMembro } from "@n1/dominio/derive";
 import { useSidebarCollapsed } from "./use-sidebar";
 import { TarefasCompartilhadas } from "./compartilhadas-comigo";
 import {
   CreateContainerDialog,
   useCreateContainerDialog,
 } from "@/features/estrutura/create-container-dialog";
+import { MoverConteinerDialog, useMoverConteinerDialog } from "@/features/estrutura/mover-conteiner-dialog";
 import type { Folder, Id, List, Space, SpaceShortcut } from "@n1/dominio/types";
 
 // Mantido aqui pelos chamadores antigos (app/f, app/p); vive em ./hidratado.
@@ -358,7 +359,10 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
   const notificacoes = hidratado ? notificacoesDoMembro(estado, memberId, agora).total : 0;
   const [showArchived, setShowArchived] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // O aviso de recusa da árvore: não expira (WCAG 2.2.1), a pessoa dispensa.
+  const [noticeErro, setNoticeErro] = useState<string | null>(null);
   const { creating, openCreate, closeCreate } = useCreateContainerDialog();
+  const { openMover } = useMoverConteinerDialog();
   const workspace = useData((data) => data.workspace.name);
   const data = useData((current) => current);
   // As condicionais do trilho (D4-14): o item some, nunca aparece desativado.
@@ -541,7 +545,7 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
               >
                 Espaços
               </RotuloDeGrupo>
-              <StructureTree showArchived={showArchived} openCreate={openCreate} />
+              <StructureTree showArchived={showArchived} openCreate={openCreate} openMover={openMover} />
               <button
                 type="button"
                 onClick={() => setShowArchived((value) => !value)}
@@ -583,6 +587,13 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
             navegar(href);
           }}
         />
+        {noticeErro ? (
+          <div className="px-2 pb-2">
+            <Toast tone="error" onDismiss={() => setNoticeErro(null)}>
+              {noticeErro}
+            </Toast>
+          </div>
+        ) : null}
         {notice ? (
           <div className="px-2 pb-2">
             <Toast tone="success" onDismiss={() => setNotice(null)}>
@@ -592,6 +603,13 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
         ) : null}
       </aside>
       )}
+      {/* Fora da barra lateral de propósito: "Mover para…" também abre da página da Lista, com o painel recolhido. */}
+      <MoverConteinerDialog
+        onDone={(message) => {
+          setNoticeErro(null);
+          setNotice(message);
+        }}
+      />
     </div>
   );
 }
@@ -605,9 +623,11 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
 function StructureTree({
   showArchived,
   openCreate,
+  openMover,
 }: {
   readonly showArchived: boolean;
   readonly openCreate: (kind: ContainerKind, parentType?: "space" | "folder", parentId?: string) => void;
+  readonly openMover: (id: Id) => void;
 }) {
   const { memberId } = useSession();
   const data = useData((current) => current);
@@ -661,10 +681,30 @@ function StructureTree({
           foldersUnder={foldersUnder}
           listsUnder={listsUnder}
           openCreate={openCreate}
+          openMover={openMover}
         />
       ))}
     </ul>
   );
+}
+
+/**
+ * O menu "⋯" de uma Pasta, Subpasta ou Lista da Estrutura: só "Mover para…"
+ * (D-10). Vazio, e então sem "⋯", para o Convidado (árvore inerte, D-09), para
+ * a árvore que não passa `openMover` e para a Pasta "Meus negócios" e tudo
+ * dentro dela (A9). Sem permissão, o item vem desligado com a frase do domínio.
+ */
+function useMenuDeMover(
+  tipo: "folder" | "list",
+  id: Id,
+  openMover: ((id: Id) => void) | undefined,
+): ReadonlyArray<{ readonly label: string; readonly onSelect: () => void; readonly disabledReason?: string }> {
+  const { memberId } = useSession();
+  const data = useData((current) => current);
+  if (!openMover) return [];
+  if (containerPath(data, tipo, id).some((node) => node.id === MEUS_NEGOCIOS_ID)) return [];
+  const recusa = containerAdminRefusal(data, memberId, tipo, id);
+  return [{ label: "Mover para…", onSelect: () => openMover(id), ...(recusa ? { disabledReason: recusa } : {}) }];
 }
 
 function TreeSpace({
@@ -673,12 +713,14 @@ function TreeSpace({
   foldersUnder,
   listsUnder,
   openCreate,
+  openMover,
 }: {
   readonly space: Space;
   readonly inert: boolean;
   readonly foldersUnder: (parentId: Id) => Folder[];
   readonly listsUnder: (parentId: Id) => List[];
   readonly openCreate: (kind: ContainerKind, parentType?: "space" | "folder", parentId?: string) => void;
+  readonly openMover: (id: Id) => void;
 }) {
   const [open, setOpen] = useState(true);
   const childFolders = foldersUnder(space.id);
@@ -692,6 +734,7 @@ function TreeSpace({
         onToggle={() => setOpen((value) => !value)}
         hasChildren={childFolders.length + directLists.length > 0}
         href={inert ? undefined : `/estrutura/espacos/${space.id}`}
+        no={space.id}
         label={space.name}
         icon={<span className="size-2 rounded-sm" style={{ backgroundColor: space.color ?? "var(--cor-dom-estrutura)" }} />}
         privateContainer={space.isPrivate}
@@ -720,10 +763,11 @@ function TreeSpace({
               foldersUnder={foldersUnder}
               listsUnder={listsUnder}
               openCreate={openCreate}
+              openMover={openMover}
             />
           ))}
           {directLists.map((list) => (
-            <TreeList key={list.id} list={list} depth={1} />
+            <TreeList key={list.id} list={list} depth={1} inert={inert} openMover={openMover} />
           ))}
         </ul>
       ) : null}
@@ -771,6 +815,7 @@ function TreeFolder({
   foldersUnder,
   listsUnder,
   openCreate,
+  openMover,
   enderecos = ENDERECOS_DA_ESTRUTURA,
 }: {
   readonly folder: Folder;
@@ -779,10 +824,13 @@ function TreeFolder({
   readonly foldersUnder: (parentId: Id) => Folder[];
   readonly listsUnder: (parentId: Id) => List[];
   readonly openCreate: (kind: ContainerKind, parentType?: "space" | "folder", parentId?: string) => void;
+  /** Só a árvore da Estrutura passa: a de "Meus negócios" não tem o gesto (A9). */
+  readonly openMover?: (id: Id) => void;
   readonly enderecos?: EnderecosDaArvore;
 }) {
   const [open, setOpen] = useState(true);
   const pathname = usePathname();
+  const menu = useMenuDeMover("folder", folder.id, inert ? undefined : openMover);
   // A3.4 — a Subfolder never expands into another Subfolder.
   const subfolders = folder.parentType === "space" ? foldersUnder(folder.id) : [];
   const childLists = listsUnder(folder.id);
@@ -795,6 +843,7 @@ function TreeFolder({
         onToggle={() => setOpen((value) => !value)}
         hasChildren={subfolders.length + childLists.length > 0}
         href={inert ? undefined : enderecos.pasta(folder)}
+        no={folder.id}
         active={pathname === enderecos.pasta(folder)}
         label={folder.name}
         icon={<FolderIcon className="size-3.5 text-[var(--cor-tinta-fraca)]" aria-hidden="true" />}
@@ -816,6 +865,7 @@ function TreeFolder({
                   : []),
               ]
         }
+        menu={menu}
       />
       {open ? (
         <ul className="surgir-rapido">
@@ -828,11 +878,12 @@ function TreeFolder({
               foldersUnder={foldersUnder}
               listsUnder={listsUnder}
               openCreate={openCreate}
+              openMover={openMover}
               enderecos={enderecos}
             />
           ))}
           {childLists.map((list) => (
-            <TreeList key={list.id} list={list} depth={depth + 1} enderecos={enderecos} />
+            <TreeList key={list.id} list={list} depth={depth + 1} inert={inert} openMover={openMover} enderecos={enderecos} />
           ))}
         </ul>
       ) : null}
@@ -843,14 +894,20 @@ function TreeFolder({
 function TreeList({
   list,
   depth,
+  inert = false,
+  openMover,
   enderecos = ENDERECOS_DA_ESTRUTURA,
 }: {
   readonly list: List;
   readonly depth: number;
+  readonly inert?: boolean;
+  /** Só a árvore da Estrutura passa: a de "Meus negócios" não tem o gesto (A9). */
+  readonly openMover?: (id: Id) => void;
   readonly enderecos?: EnderecosDaArvore;
 }) {
   const pathname = usePathname();
   const [navegar] = useNavegar();
+  const menu = useMenuDeMover("list", list.id, inert ? undefined : openMover);
   const href = enderecos.lista(list);
   const novo = enderecos.novoNaLista ?? {
     // Dentro de uma Lista o que se cria é Tarefa, e o campo dela já vive na
@@ -864,6 +921,7 @@ function TreeList({
         depth={depth}
         hasChildren={false}
         href={href}
+        no={list.id}
         label={list.name}
         // C35 — a Lista conversacional se lê na árvore: o balão no lugar da lista de tarefas.
         icon={
@@ -881,6 +939,7 @@ function TreeList({
             ? [{ label: novo.rotulo, onSelect: () => navegar(novo.href(list)) }]
             : []
         }
+        menu={menu}
       />
     </li>
   );
@@ -1053,11 +1112,14 @@ function TreeRow({
   active,
   creatable,
   menu,
+  no,
 }: {
   readonly depth: number;
   readonly label: string;
   readonly icon: React.ReactNode;
   readonly href?: string;
+  /** O id do contêiner da linha: o link ganha `arvore-no-{id}`, onde o foco volta depois de mover. */
+  readonly no?: Id;
   readonly open?: boolean;
   readonly onToggle?: () => void;
   readonly hasChildren: boolean;
@@ -1071,6 +1133,8 @@ function TreeRow({
     readonly label: string;
     readonly onSelect: () => void;
     readonly destructive?: boolean;
+    /** Desligado, com o motivo embaixo do rótulo (o `ActionMenu` desenha). */
+    readonly disabledReason?: string;
   }>;
 }) {
   const content = (
@@ -1103,6 +1167,7 @@ function TreeRow({
       {href ? (
         <Link
           href={href}
+          {...(no ? { id: `arvore-no-${no}` } : {})}
           onNavigate={() => marcarSeMuda(href)}
           className={`app-base flex min-w-0 flex-1 items-center gap-2 rounded-[var(--r-controle)] px-2 transition-colors ${
             active ? "bg-[var(--acento-lavado)] font-medium text-[var(--texto)]" : "text-[var(--texto-2)] hover:bg-[var(--superficie-hover)] hover:text-[var(--texto)]"
