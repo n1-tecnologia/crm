@@ -120,6 +120,10 @@ export function saveView(state: DataState, actingMemberId: Id, input: SaveViewIn
   if (!memberReachesContainer(state, actingMemberId, "list", input.listId)) return fail("Você não alcança esta Lista.");
   const name = input.name.trim();
   if (!name) return fail("Dê um nome à Visualização.", "nome");
+  // D-06, 2.6.1 item 5 — o tipo precisa estar entre as Visualizações padrão da
+  // Lista. Só recusa salvar uma NOVA: as já salvas de um tipo que saiu ficam.
+  const config = effectiveListConfig(state, input.listId);
+  if (config && !config.views.disponiveis.includes(input.kind)) return fail("Esta Lista não oferece esse tipo de Visualização.");
   // Compartilhar é configurar a Lista: exige administrá-la. A pessoal é de quem vê.
   if (input.shared) {
     const admin = containerAdminRefusal(state, actingMemberId, "list", input.listId);
