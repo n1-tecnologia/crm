@@ -615,7 +615,7 @@ Plans:
 **Itens da 2.7** (relatados nos testes) que mexam em Espaço, Pasta, Lista ou nas Configurações entram aqui, um por subtarefa.
 **Requirements**: EST-01, EST-02, EST-03, EST-04, EST-05, EST-06, EST-07, EST-08, EST-09, EST-10, EST-11 (derivados em `10-CONTEXT.md` "Requisitos derivados"; registrados em REQUIREMENTS.md, Fase 10)
 **Depends on:** Phase 9
-**Plans:** 15/21 plans executed
+**Plans:** 16/21 plans executed
 
 Plans:
 **Wave 1**
@@ -654,7 +654,7 @@ Plans:
 
 **Wave 11** *(blocked on Wave 10 completion)*
 - [x] 10-11-PLAN.md — Interruptor "Bloquear para os níveis abaixo" (EST-10)
-- [ ] 10-12-PLAN.md — Diálogo "Mover para…" e o item na árvore e na Lista (EST-06)
+- [x] 10-12-PLAN.md — Diálogo "Mover para…" e o item na árvore e na Lista (EST-06)
 
 **Wave 12** *(blocked on Wave 11 completion)*
 - [ ] 10-19-PLAN.md — Subir/Descer, a árvore e a Pasta por `order`, "Mais ações" da Pasta (EST-06)
