@@ -232,6 +232,7 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `createFolder` | `operations/structure.ts` | `mayBuild` |  |
 | `createList` | `operations/structure.ts` | `mayBuild` |  |
 | `updateContainer` | `operations/structure.ts` | `containerAdminRefusal` |  |
+| `moveContainer` | `operations/structure.ts` | `containerAdminRefusal`, `mayBuild` | administrar o movido e alcançar/criar no destino (`recusaDeMover`, a fonte única das recusas); destino que o ator não alcança devolve "não encontrado" (RN-ESP-15); estruturas fixas recusadas em 10-18 |
 | `archiveContainer` | `operations/structure.ts` | `containerAdminRefusal` |  |
 | `unarchiveContainer` | `operations/structure.ts` | `containerAdminRefusal` |  |
 | `trashContainer` | `operations/structure.ts` | `containerTrashRefusal` |  |

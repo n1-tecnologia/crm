@@ -12,6 +12,7 @@ import { fail, ok, type DataState, type OperationResult } from "../state";
 import type { Folder, Id, Lifecycle, List, ModeloDeTarefa, Provenance, Space, StatusSet, Task, Template } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
 import { CANAIS_SO_NA_CONVERSACIONAL, validarCanaisDeAtendimento } from "./canais";
+import type { StatusMapping } from "./tasks";
 
 const now = (): string => new Date().toISOString();
 
@@ -661,6 +662,126 @@ export function updateContainer(
     ...(renomeado ? { before: nomeAntes, after: container.name } : {}),
   });
   return ok(container);
+}
+
+/**
+ * D-11 (2.3.1) — o novo pai de uma Pasta ou Lista. O Espaço não se move: ele é
+ * a raiz. Uma Lista ou Pasta vai para um Espaço (sem Pasta no meio) ou para uma
+ * Pasta.
+ */
+export interface DestinoDeMover {
+  readonly parentType: "space" | "folder";
+  readonly parentId: Id;
+}
+
+type Movel = Folder | List;
+
+/** O caminho legível de um contêiner (`Comercial › Clientes`), como `moveTask` grava. */
+function caminhoLegivel(state: DataState, type: TipoDeConteiner, id: Id): string {
+  return containerPath(state, type, id)
+    .map((p) => p.name)
+    .join(" › ");
+}
+
+/** Os irmãos do mesmo tipo sob um pai, sem o próprio: o grupo cuja `order` o mover mexe. */
+function grupoDe(state: DataState, tipo: "folder" | "list", parentType: "space" | "folder", parentId: Id, semId?: Id): Movel[] {
+  const pool: ReadonlyArray<Movel> = tipo === "folder" ? state.folders : state.lists;
+  return pool.filter((c) => c.id !== semId && c.parentType === parentType && c.parentId === parentId);
+}
+
+interface RecusaDeMover {
+  readonly mensagem: string;
+  readonly campo?: string;
+}
+
+function recusarMover(state: DataState, actingMemberId: Id, tipo: "folder" | "list", id: Id, destino: DestinoDeMover): RecusaDeMover | undefined {
+  const found = requireContainer(state, actingMemberId, tipo, id);
+  if (typeof found === "string") return { mensagem: found };
+  const movido = found as Movel;
+  const admin = containerAdminRefusal(state, actingMemberId, tipo, id);
+  if (admin) return { mensagem: admin };
+  // O movido pode estar arquivado (RN-PAS-11) e vai assim mesmo; na lixeira, não.
+  if (movido.lifecycle === "naLixeira") return { mensagem: `${ROTULO[tipo].nome} na lixeira: restaure antes de mover.` };
+
+  // O destino que o ator não alcança não existe para ele (RN-ESP-15): sem nome, sem pista.
+  const alvo = requireContainer(state, actingMemberId, destino.parentType, destino.parentId);
+  if (typeof alvo === "string") return { mensagem: alvo };
+  if (effectiveLifecycleOfContainer(state, destino.parentType, destino.parentId) !== "ativo") {
+    const r = ROTULO[destino.parentType];
+    return { mensagem: `${r.artigo === "o" ? "Este" : "Esta"} ${r.nome} não está ativ${r.artigo}.` };
+  }
+  const construir = mayBuild(state, actingMemberId, { type: destino.parentType, id: destino.parentId });
+  if (construir) return { mensagem: construir };
+
+  if (movido.parentType === destino.parentType && movido.parentId === destino.parentId) return { mensagem: "Já está aqui." };
+  if (tipo === "folder" && containerPath(state, destino.parentType, destino.parentId).some((n) => n.type === "folder" && n.id === id)) {
+    return { mensagem: "Um contêiner não vai para dentro de si mesmo." };
+  }
+  if (nameTaken(grupoDe(state, tipo, destino.parentType, destino.parentId, id), movido.name)) {
+    const r = ROTULO[tipo];
+    return {
+      mensagem: `Já existe ${r.artigo === "o" ? "um" : "uma"} ${r.nome} chamad${r.artigo} “${movido.name}” em ${alvo.name}.`,
+      campo: "nome",
+    };
+  }
+  return undefined;
+}
+
+/**
+ * L1 — a fonte única das recusas de mover (menos a falta de mapeamento, que
+ * depende do que as Tarefas usam). A tela chama esta mesma função para
+ * desligar o destino com a frase da operação; `moveContainer` a chama primeiro.
+ * Devolve a frase, ou `undefined` quando o mover é permitido.
+ */
+export function recusaDeMover(state: DataState, actingMemberId: Id, tipo: "folder" | "list", id: Id, destino: DestinoDeMover): string | undefined {
+  return recusarMover(state, actingMemberId, tipo, id, destino)?.mensagem;
+}
+
+/**
+ * D-11 (2.3.1) — uma Lista ou Pasta muda de lugar. Exige administrar o movido e
+ * criar no destino (`mayBuild`); o destino precisa estar efetivamente ativo e
+ * não pode ter outro irmão com o mesmo nome. O movido entra no FIM do grupo do
+ * destino (`max(order) + 1`) e o grupo de origem é renumerado de 0 a n-1.
+ * Nada que o movido contém é apagado ou copiado: a privacidade e a
+ * configuração efetiva são derivadas do caminho.
+ */
+export function moveContainer(
+  state: DataState,
+  actingMemberId: Id,
+  tipo: "folder" | "list",
+  id: Id,
+  destino: DestinoDeMover,
+  // Task 2 (EST-05): o mapeamento só importa quando o Conjunto de Status muda.
+  _mapeamento: readonly StatusMapping[] = [],
+): OperationResult<Movel> {
+  const recusa = recusarMover(state, actingMemberId, tipo, id, destino);
+  if (recusa) return fail(recusa.mensagem, recusa.campo);
+  const movido = findContainer(state, tipo, id) as Movel;
+
+  const caminhoAntes = caminhoLegivel(state, tipo, id);
+  const origem = { parentType: movido.parentType, parentId: movido.parentId };
+
+  const noDestino = grupoDe(state, tipo, destino.parentType, destino.parentId, id);
+  const novaOrdem = noDestino.length === 0 ? 0 : Math.max(...noDestino.map((c) => c.order)) + 1;
+  const naOrigem = grupoDe(state, tipo, origem.parentType, origem.parentId, id).sort((x, y) => x.order - y.order);
+  naOrigem.forEach((c, i) => {
+    c.order = i;
+  });
+
+  movido.parentType = destino.parentType;
+  movido.parentId = destino.parentId;
+  movido.order = novaOrdem;
+
+  recordActivity(state, {
+    actor: memberActor(actingMemberId),
+    action: `${ROTULO[tipo].nome} movid${ROTULO[tipo].artigo}`,
+    objectType: tipo,
+    objectId: movido.id,
+    objectName: movido.name,
+    before: caminhoAntes,
+    after: caminhoLegivel(state, tipo, id),
+  });
+  return ok(movido);
 }
 
 /** `ativo` → `arquivado` no estado próprio. Exige administrar; vale sob ancestral arquivado (RN-ESP-11). */

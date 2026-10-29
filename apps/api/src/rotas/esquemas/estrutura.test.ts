@@ -12,12 +12,13 @@ import { ESTRUTURA } from "./estrutura";
 const viaJson = (args: unknown[]): unknown[] => JSON.parse(JSON.stringify(args)) as unknown[];
 
 describe("esquemas/estrutura — a forma dos args de structure.ts", () => {
-  it("(a) cobertura — as 8 chaves de structure.ts em registro.ts", () => {
+  it("(a) cobertura — as 9 chaves de structure.ts em registro.ts", () => {
     const esperadas = [
       "createSpace",
       "createFolder",
       "createList",
       "updateContainer",
+      "moveContainer",
       "archiveContainer",
       "unarchiveContainer",
       "trashContainer",
@@ -138,6 +139,13 @@ describe("esquemas/estrutura — a forma dos args de structure.ts", () => {
         viaJson(["space", "spc_1", { name: "E", description: "", color: "#0369a1", isPrivate: true }]),
       ).success,
     ).toBe(true);
+    // Fase 10, 10-03 (D-11): mover Lista ou Pasta, com mapeamento só quando o Conjunto muda.
+    expect(ESTRUTURA.moveContainer.safeParse(viaJson(["list", "lst_1", { parentType: "folder", parentId: "fld_2" }])).success).toBe(true);
+    expect(
+      ESTRUTURA.moveContainer.safeParse(
+        viaJson(["folder", "fld_1", { parentType: "space", parentId: "spc_1" }, [{ fromStatusId: "a", toStatusId: "b" }]]),
+      ).success,
+    ).toBe(true);
     for (const nome of ["archiveContainer", "unarchiveContainer", "trashContainer", "restoreContainer"] as const) {
       expect(ESTRUTURA[nome].safeParse(viaJson(["folder", "fld_1"])).success, nome).toBe(true);
     }
@@ -212,6 +220,17 @@ describe("esquemas/estrutura — a forma dos args de structure.ts", () => {
     expect(ESTRUTURA.updateContainer.safeParse(viaJson(["list", "lst_1", { nome: "x" }])).success).toBe(false);
     expect(ESTRUTURA.archiveContainer.safeParse(viaJson(["list"])).success).toBe(false);
     expect(ESTRUTURA.trashContainer.safeParse(viaJson(["list", "lst_1", "extra"])).success).toBe(false);
+    // moveContainer: o Espaço é a raiz e não se move; o destino não aceita chave extra.
+    expect(ESTRUTURA.moveContainer.safeParse(viaJson(["space", "spc_1", { parentType: "space", parentId: "spc_2" }])).success).toBe(false);
+    expect(
+      ESTRUTURA.moveContainer.safeParse(viaJson(["list", "lst_1", { parentType: "folder", parentId: "fld_2", lixo: 1 }])).success,
+    ).toBe(false);
+    expect(ESTRUTURA.moveContainer.safeParse(viaJson(["list", "lst_1", { parentType: "list", parentId: "lst_2" }])).success).toBe(false);
+    expect(
+      ESTRUTURA.moveContainer.safeParse(
+        viaJson(["list", "lst_1", { parentType: "folder", parentId: "fld_2" }, [{ fromStatusId: "a" }]]),
+      ).success,
+    ).toBe(false);
     // A Pasta não conhece o modelo de Tarefa.
     expect(
       ESTRUTURA.createFolder.safeParse(

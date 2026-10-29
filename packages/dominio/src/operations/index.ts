@@ -244,6 +244,7 @@ export const createSpace = instrumentar("createSpace");
 export const createFolder = instrumentar("createFolder");
 export const createList = instrumentar("createList");
 export const updateContainer = instrumentar("updateContainer");
+export const moveContainer = instrumentar("moveContainer");
 export const archiveContainer = instrumentar("archiveContainer");
 export const unarchiveContainer = instrumentar("unarchiveContainer");
 export const trashContainer = instrumentar("trashContainer");

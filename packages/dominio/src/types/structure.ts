@@ -245,8 +245,9 @@ export interface SpaceShortcut {
  * capabilities, one restriction: it contains no Folder (A3.4).
  */
 export interface Folder extends StructuralContainerBase {
-  readonly parentType: "space" | "folder";
-  readonly parentId: Id;
+  /** Só `moveContainer` muda o pai (D-11): o resto da base lê, nunca grava. */
+  parentType: "space" | "folder";
+  parentId: Id;
   /** B25 — bloquear impede os níveis abaixo de sobrescrever (D-15: a Lista nunca bloqueia). */
   blocks: Partial<Record<ConfigurableAspect, boolean>>;
   /**
@@ -257,8 +258,9 @@ export interface Folder extends StructuralContainerBase {
 }
 
 export interface List extends StructuralContainerBase {
-  readonly parentType: "space" | "folder";
-  readonly parentId: Id;
+  /** Só `moveContainer` muda o pai (D-11): o resto da base lê, nunca grava. */
+  parentType: "space" | "folder";
+  parentId: Id;
   /**
    * C35 — atributo nativo da Lista (irmão de `isPrivate`), não um aspecto
    * herdável: um Espaço mistura os dois modelos. Muda só por

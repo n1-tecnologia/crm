@@ -1,12 +1,12 @@
 /**
  * A FORMA dos `args` das operações de
- * `packages/dominio/src/operations/structure.ts` — 8 operações. Ver
+ * `packages/dominio/src/operations/structure.ts` — 9 operações. Ver
  * `../esquemas/CONTEXT.md` para a regra da pasta e `./fragmentos.ts` para o
  * porquê da validação ser de transporte, não de regra de negócio.
  */
 
 import type { FieldRequirement } from "@n1/dominio";
-import { CONTAINER_TYPE, ID, MODELO_DE_TAREFA, STATUS_CATEGORY, type Confere, type Esquemas, type Igual } from "./fragmentos";
+import { CONTAINER_TYPE, ID, MODELO_DE_TAREFA, opcional, STATUS_CATEGORY, STATUS_MAPPING, type Confere, type Esquemas, type Igual } from "./fragmentos";
 import { z } from "zod";
 
 const FIELD_REQUIREMENT = z
@@ -82,6 +82,12 @@ const UPDATE_CONTAINER_INPUT = z
   })
   .strict();
 
+// D-11 (2.3.1) — só Pasta e Lista se movem; o Espaço é a raiz. O destino é o
+// novo pai: um Espaço ou uma Pasta. A regra de profundidade é do domínio.
+const FOLDER_OU_LIST = z.enum(["folder", "list"]);
+
+const DESTINO_DE_MOVER = z.object({ parentType: z.enum(["space", "folder"]), parentId: ID }).strict();
+
 /**
  * `satisfies` (sobre o tipo `Esquemas` de `./fragmentos`) é o portão de
  * drift: uma entrada cuja aridade ou tipo não bata com `ArgumentosDe<N>` não
@@ -93,6 +99,7 @@ export const ESTRUTURA = {
   createFolder: z.tuple([CREATE_CONTAINER_INPUT]),
   createList: z.tuple([CREATE_LIST_INPUT]),
   updateContainer: z.tuple([CONTAINER_TYPE, ID, UPDATE_CONTAINER_INPUT]),
+  moveContainer: z.tuple([FOLDER_OU_LIST, ID, DESTINO_DE_MOVER, opcional(z.array(STATUS_MAPPING))]),
   archiveContainer: z.tuple([CONTAINER_TYPE, ID]),
   unarchiveContainer: z.tuple([CONTAINER_TYPE, ID]),
   trashContainer: z.tuple([CONTAINER_TYPE, ID]),
