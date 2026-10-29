@@ -13,6 +13,7 @@ import type { DataState } from "../state";
 import type { VisualizacoesPadrao } from "../types";
 import { administraOEspaco } from "./ia/permissoes-ia";
 import { setContainerDefaultViews } from "./configuration";
+import { saveView } from "./scale";
 
 const THIAGO = "mem_thiago";
 const ESPACO = "spc_com";
@@ -157,5 +158,32 @@ describe("setContainerDefaultViews — Atividade", () => {
     const r = setContainerDefaultViews(state, THIAGO, "space", ESPACO, { ...semCalendario });
     expect(r.ok).toBe(true);
     expect(state.activity.length).toBe(antes);
+  });
+});
+
+describe("saveView — só salva tipo que a Lista oferece (D-06, 2.6.1 item 5)", () => {
+  const salvar = (kind: Parameters<typeof saveView>[2]["kind"], name: string) =>
+    saveView(state, THIAGO, { listId: LISTA_NA_PASTA, name, kind, filters: {}, shared: true });
+
+  it("recusa kind fora de `views.disponiveis` da Lista e aceita o disponível", () => {
+    setContainerDefaultViews(state, THIAGO, "space", ESPACO, semCalendario);
+    const recusada = salvar("calendario", "Prazos");
+    expect(recusada.ok).toBe(false);
+    if (!recusada.ok) expect(recusada.error).toBe("Esta Lista não oferece esse tipo de Visualização.");
+    expect(state.views.some((v) => v.listId === LISTA_NA_PASTA && v.name === "Prazos")).toBe(false);
+
+    expect(salvar("quadro", "Por Status").ok).toBe(true);
+  });
+
+  it("tirar um tipo das Visualizações padrão não apaga nem muda as Visualizações já salvas daquele tipo", () => {
+    const antiga = salvar("calendario", "Prazos antigos");
+    expect(antiga.ok).toBe(true);
+    const idAntiga = antiga.ok ? antiga.value.id : "";
+    const antes = JSON.stringify(state.views.find((v) => v.id === idAntiga));
+
+    expect(setContainerDefaultViews(state, THIAGO, "space", ESPACO, semCalendario).ok).toBe(true);
+
+    expect(JSON.stringify(state.views.find((v) => v.id === idAntiga))).toBe(antes);
+    expect(salvar("calendario", "Prazos novos").ok).toBe(false);
   });
 });
