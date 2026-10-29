@@ -615,7 +615,7 @@ Plans:
 **Itens da 2.7** (relatados nos testes) que mexam em Espaço, Pasta, Lista ou nas Configurações entram aqui, um por subtarefa.
 **Requirements**: EST-01, EST-02, EST-03, EST-04, EST-05, EST-06, EST-07, EST-08, EST-09, EST-10, EST-11 (derivados em `10-CONTEXT.md` "Requisitos derivados"; registrados em REQUIREMENTS.md, Fase 10)
 **Depends on:** Phase 9
-**Plans:** 2/21 plans executed
+**Plans:** 3/21 plans executed
 
 Plans:
 **Wave 1**
@@ -625,7 +625,7 @@ Plans:
 - [x] 10-20-PLAN.md — A Lista sem `blocks` e sem o modo de bloqueio, com as limpezas que o `tsc` aponta (EST-09)
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 10-02-PLAN.md — Bloqueio de aspecto no domínio: `setContainerBlock`, `sobrescritasAbaixo`, `criarAutomacao` sob bloqueio (EST-10, EST-11)
+- [x] 10-02-PLAN.md — Bloqueio de aspecto no domínio: `setContainerBlock`, `sobrescritasAbaixo`, `criarAutomacao` sob bloqueio (EST-10, EST-11)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 10-03-PLAN.md — `moveContainer` traçador: cadeia de registro, recusas básicas, Conjunto que muda, B37 e o laço de `moveTask` compartilhado (EST-05, EST-11)

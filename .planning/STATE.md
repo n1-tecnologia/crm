@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 10
 current_phase_name: "Clone ClickUp: Contêineres (Espaço, Pasta e Lista)"
 status: executing
-stopped_at: Completed 10-20-PLAN.md
-last_updated: "2026-10-29T08:42:09.972Z"
+stopped_at: Completed 10-02-PLAN.md
+last_updated: "2026-10-29T08:50:06.281Z"
 last_activity: 2026-10-29
 last_activity_desc: Phase 10 execution started
-state_head: 1b5ab13f654de3b9253c5399b70c7415ecb0c381
+state_head: 21059b845bda05bed546f3497c9ae05d9071311e
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 191
-  completed_plans: 170
+  completed_plans: 171
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 ## Current Position
 
 Phase: 10 (Clone ClickUp: Contêineres (Espaço, Pasta e Lista)) — EXECUTING
-Plan: 3 of 21
+Plan: 4 of 21
 Status: Ready to execute
 Last activity: 2026-10-29 — Phase 10 execution started
 
@@ -388,6 +388,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 09 P16 | 10 min | 2 tasks | 11 files |
 | Phase 10 P01 | 5 min | 2 tasks | 13 files |
 | Phase 10 P20 | 6 min | 2 tasks | 11 files |
+| Phase 10 P02 | 6 min | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -551,6 +552,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 10]: 10-01: a Atividade 'Visualizações padrão alteradas' compara a definição própria do nó, não a efetiva
 - [Phase 10]: 10-01: viewsDefinedAt acrescentado a EffectiveListConfig para a tela dizer 'Herdado de X' (10-08)
 - [Phase 10]: 10-20: blocks sai de StructuralContainerBase (so Space e Folder); InheritanceMode sem bloqueado; blockedAbove ignora blocks legado em Lista
+- [Phase 10]: 10-02: definesAspect conta só Campo de Tarefa ativo e Tipo não-plataforma; contagemAcumulada exclui Tipos da plataforma; a recusa de setContainerBlock nomeia só o que o ator alcança (B38a) e conta o resto
 
 ### Pending Todos
 
@@ -612,6 +614,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-29T08:42:06.693Z
-Stopped at: Completed 10-20-PLAN.md
+Last session: 2026-10-29T08:50:06.055Z
+Stopped at: Completed 10-02-PLAN.md
 Resume file: None
