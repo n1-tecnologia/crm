@@ -11,7 +11,7 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { effectiveContainerConfig, effectiveListConfig, irmaosOrdenados, memberReachesContainer } from "../derive";
-import { visibilidadePara } from "../derive-visibilidade";
+import { recortarDiferenca, recortarValor, visibilidadePara } from "../derive-visibilidade";
 import { MEUS_NEGOCIOS_ID } from "../seed-comercial";
 import { buildSeed } from "../seed";
 import { LISTA_ID as LISTA_SOLICITACOES_ID } from "../solicitacao-de-pagamento-evolver";
@@ -575,6 +575,43 @@ describe("reorderContainers — paridade entre o recorte do Membro e o Espaço i
     for (const id of escondidos) {
       expect(irmaosOrdenados(inteiro, "space", null).findIndex((s) => s.id === id)).toBe(todos.indexOf(id));
     }
+  });
+});
+
+describe("reorderContainers — o resultado não traz id que o ator não alcança (10-REVIEW MEDIUM-03)", () => {
+  it("devolve só os irmãos que o Administrador alcança, e o diff recortado também não traz o privado", () => {
+    const P1 = pasta("Visível 1");
+    const PRIVADA = pasta("Privada da diretoria", "spc_com", "space", THIAGO, { isPrivate: true });
+    const P2 = pasta("Visível 2");
+    expect(memberReachesContainer(state, RAFAEL, "folder", PRIVADA)).toBe(false);
+    const pai = { type: "space", id: "spc_com" } as const;
+    const antes = new Map(state.folders.map((f) => [f.id, f.order]));
+
+    const r = reorderContainers(state, RAFAEL, "folder", pai, [P2, P1]);
+
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value).not.toContain(PRIVADA);
+    expect(r.value.every((id) => memberReachesContainer(state, RAFAEL, "folder", id))).toBe(true);
+    expect(r.value.indexOf(P2)).toBeLessThan(r.value.indexOf(P1));
+    // O que a rota `POST /operacoes/:nome` devolve: `value` e diff pelo recorte do Membro.
+    const { ocultos } = visibilidadePara(state, RAFAEL);
+    expect(JSON.stringify(recortarValor(r.value, state, RAFAEL, ocultos))).not.toContain(PRIVADA);
+    const gravados = state.folders
+      .filter((f) => antes.get(f.id) !== f.order)
+      .map((f) => ({ colecao: "folders", id: f.id, dados: f, ordem: f.order }));
+    expect(gravados.some((g) => g.id === PRIVADA)).toBe(true); // o Espaço inteiro renumerou a privada também
+    const diff = recortarDiferenca({ gravados, removidos: [] }, state, RAFAEL, ocultos);
+    expect(JSON.stringify(diff)).not.toContain(PRIVADA);
+  });
+
+  it("quem alcança tudo recebe a sequência inteira", () => {
+    const P1 = pasta("Visível 1");
+    const PRIVADA = pasta("Privada da diretoria", "spc_com", "space", THIAGO, { isPrivate: true });
+    const r = reorderContainers(state, THIAGO, "folder", { type: "space", id: "spc_com" }, [PRIVADA, P1]);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value).toEqual(irmaosOrdenados(state, "folder", { type: "space", id: "spc_com" }).map((f) => f.id));
   });
 });
 

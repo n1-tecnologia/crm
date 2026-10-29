@@ -1124,7 +1124,8 @@ export function recusaDeReordenar(state: DataState, actingMemberId: Id, tipo: Ti
  * Recusa: sem ids; id repetido; id que não pertence ao grupo (outro pai, outro
  * tipo) ou que o ator não alcança ("não encontrado", sem pista — T-10-11).
  * Registra "Ordem alterada" no pai (nos Espaços, no Espaço de Trabalho) só
- * quando a sequência mudou.
+ * quando a sequência mudou. Devolve a sequência nova só com os ids que o ator
+ * alcança (MEDIUM-03): os irmãos privados mudam de `order`, mas não voltam.
  */
 export function reorderContainers(
   state: DataState,
@@ -1159,7 +1160,10 @@ export function reorderContainers(
   nova.forEach((c, i) => {
     c.order = i;
   });
-  const sequencia = nova.map((c) => c.id);
+  // 10-REVIEW MEDIUM-03 — o grupo inteiro foi renumerado, mas o resultado só traz
+  // os ids que o ator alcança: um id também é informação (como em `filtrarOrdens`),
+  // e `recortarValor` não reconhece id solto num array de texto.
+  const sequencia = nova.filter((c) => memberReachesContainer(state, actingMemberId, tipo, c.id)).map((c) => c.id);
   if (!mudou) return ok(sequencia);
 
   const rotuloDoGrupo = tipo === "space" ? "Espaços" : tipo === "folder" ? "Pastas" : "Listas";
