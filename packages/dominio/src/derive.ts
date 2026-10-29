@@ -1411,8 +1411,11 @@ export function pendingMentions(state: DataState, memberId: Id): MencaoPendente[
       !isTerminalCategory(statusCategory(state, task)) &&
       membrosMencionadosNaDescricao(state, task).includes(memberId)
     ) {
-      // `state.activity` vem do mais novo para o mais velho: o primeiro Registro é o mais recente.
-      const alteracao = state.activity.find((a) => a.objectId === task.id && a.action === ACAO_DESCRICAO_ALTERADA);
+      // O mais recente por valor (`at`, depois a sequência do id), não por posição:
+      // a posição no array não diz qual é o mais novo (ver `newestFirst`).
+      const alteracao = newestFirst(
+        state.activity.filter((a) => a.objectId === task.id && a.action === ACAO_DESCRICAO_ALTERADA),
+      )[0];
       found.push({
         item: { tipo: "descricao", task, trecho: trechoDaMencao(task.description, nomeDoMembro) },
         at: alteracao?.at ?? task.createdAt,

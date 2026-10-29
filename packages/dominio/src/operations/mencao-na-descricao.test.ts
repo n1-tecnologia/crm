@@ -4,7 +4,7 @@
  * única com as menções de Comentário e as da descrição.
  */
 import { beforeEach, describe, expect, it } from "vitest";
-import { effectiveListConfig, memberSeesTask, notificacoesDoMembro, pendingMentions } from "../derive";
+import { effectiveListConfig, memberSeesTask, newestFirst, notificacoesDoMembro, pendingMentions } from "../derive";
 import type { MencaoPendente } from "../derive";
 import { visibilidadePara } from "../derive-visibilidade";
 import { buildSeed } from "../seed";
@@ -183,6 +183,31 @@ describe("ordem e contagem da lista única", () => {
 
     const doTarefa = pendingMentions(state, JULIA).filter((m) => m.task.id === TAREFA);
     expect(doTarefa.map((m) => (m.tipo === "comentario" ? m.comment.content : "descricao"))).toEqual(["comentário novo", "descricao", "comentário velho"]);
+  });
+
+  it("o instante da descrição vem da edição mais recente, em qualquer ordem do array de Registros", () => {
+    gravarMencao("Pedir a @Júlia Prado a revisão");
+    gravarMencao("Pedir de novo a @Júlia Prado a revisão");
+    const edicoes = state.activity.filter((a) => a.objectId === TAREFA && a.action === "Descrição alterada");
+    expect(edicoes.length).toBeGreaterThanOrEqual(2);
+    // As duas edições em instantes distintos; a mais nova é a que decide.
+    const [maisNova, maisVelha] = newestFirst(edicoes) as Array<{ at: string }>;
+    maisNova!.at = "2026-03-10T12:00:00.000Z";
+    maisVelha!.at = "2026-03-01T12:00:00.000Z";
+
+    const comentario = addTaskComment(state, THIAGO, TAREFA, { content: "entre as duas edições", mentions: [MENCAO_JULIA] });
+    if (!comentario.ok) throw new Error("o Comentário devia ser criado");
+    (comentario.value as { createdAt: string }).createdAt = "2026-03-05T12:00:00.000Z";
+
+    const ordem = () =>
+      pendingMentions(state, JULIA)
+        .filter((m) => m.task.id === TAREFA)
+        .map((m) => (m.tipo === "comentario" ? "comentario" : "descricao"));
+
+    // Mais nova (10/03) vence o Comentário (05/03), seja qual for a posição no array.
+    expect(ordem()).toEqual(["descricao", "comentario"]);
+    state.activity = [...state.activity].reverse();
+    expect(ordem()).toEqual(["descricao", "comentario"]);
   });
 
   it("sem Registro de edição, o instante da descrição é a criação da Tarefa", () => {
