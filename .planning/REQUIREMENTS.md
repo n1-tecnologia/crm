@@ -266,7 +266,7 @@ Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pe
 | EST-11 | Phase 10 | Pending | pendente — checkpoint do dono (010 em produção) | derivado (10-CONTEXT) |
 | TAR-01 | Phase 11 | Complete | pendente | derivado (11-CONTEXT) |
 | TAR-02 | Phase 11 | Complete | pendente | derivado (11-CONTEXT) |
-| TAR-03 | Phase 11 | Complete | pendente — conferir em produção que nenhum registro carrega `parentItemId` | derivado (11-CONTEXT) |
+| TAR-03 | Phase 11 | Complete | pendente — produção conferida pelo dono em 29/10/2026: nenhum registro carrega `parentItemId` (contagem 0) | derivado (11-CONTEXT) |
 | TAR-04 | Phase 11 | Complete | pendente | derivado (11-CONTEXT) |
 | TAR-05 | Phase 11 | Complete | pendente | derivado (11-CONTEXT) |
 | TAR-06 | Phase 11 | Complete | pendente | derivado (11-CONTEXT) |

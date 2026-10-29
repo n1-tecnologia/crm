@@ -1,19 +1,20 @@
 ---
 gsd_state_version: "1.0"
 milestone: v1.0
-current_phase: 11
-current_phase_name: "Clone ClickUp: Tarefa (checklist, descrição e tempo)"
-status: verifying
-stopped_at: Completed 11-08-PLAN.md
-last_updated: "2026-10-29T22:57:48.464Z"
+current_phase: 2
+current_phase_name: Solicitação de pagamento — o front substitui o ClickUp
+status: planning
+stopped_at: Phase 11 complete, ready to plan Phase 2
+last_updated: "2026-10-29T23:18:10.523Z"
 last_activity: 2026-10-29
-last_activity_desc: Phase 11 execution started
-state_head: 66251beb48eb4fb5939d5191f2fb37c2a2512700
+last_activity_desc: Phase 11 complete, transitioned to Phase 2
+state_head: 3305e499ad7bfb8808549a0077eaaf9966266c69
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 199
   completed_plans: 195
+  percent: 63
 milestone_name: milestone
 ---
 
@@ -28,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 
 ## Current Position
 
-Phase: 11 (Clone ClickUp: Tarefa (checklist, descrição e tempo)) — EXECUTING
-Plan: 8 of 8
-Status: Phase complete — ready for verification
-Last activity: 2026-10-29 — Phase 11 execution started
+Phase: 2 — Solicitação de pagamento — o front substitui o ClickUp
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-10-29 — Phase 11 complete, transitioned to Phase 2
 
 **Fase 06 planejada à mão em 2026-09-29 (Conferência do Resumo e anexos), pronta para `/gsd-execute-phase 6`:**
 `.planning/phases/06-conferencia-do-resumo-e-anexos/` — `06-CONTEXT.md` (13 decisões com padrão e variável de troca) e seis planos em três ondas: 06-01 domínio · 06-02 contrato v1.1 no `financeiro-tria` · 06-03 ponte em dois momentos · 06-04 tela e jornada · 06-05 S5/S6 na Solicitação · 06-06 docs e provas `[BLOCKING]`. Origem: `docs/08-migracao-financeiro/09-…` (desenho) e `10-…` (levantamento etapa por etapa com `arquivo:linha`). Ponto de partida do código: `crm-n1-integracao@3d6f735` (branch `integra-frontend-main`, sem push) e `financeiro-tria@c272dad` (`main`, 99 commits sem push, 89 arquivos sujos só de EOL — `git add` sempre por caminho). O dono ainda não respondeu às quatro perguntas do doc 10; os padrões de D6-01..D6-04 seguem "como no ClickUp", exceto Integração manual (o seguro).
@@ -268,7 +269,7 @@ no checkout principal:**
 
 **Pendência herdada, intocada por decisão do dono:** o worktree órfão `worktree-agent-a5e400fc9712c6c4f` (c131ad0) carrega três commits NÃO MERJADOS do Plano 02-15 (fixação da CA do Postgres em `conexao.ts`, `latencia.test.ts`, runbook de topologia e o próprio 02-15-SUMMARY.md). Existem só ali. A Fase 4 foi iniciada sobre um base SEM essa correção de TLS, deliberadamente. 02-15 continua contando como incompleto.
 
-Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133 plans — Phases 0, 1, 3, 5, 6 e 7 completas; 2 e 4 abertas
+Progress: [██████░░░░] 63%
 
 **Fase 1 fechada (segunda rodada de CR-02 concluída):** os 9 planos originais (01-01..01-09), o gap-closure de CR-01 (01-10) e as cinco rodadas de fechamento de CR-02 (01-11..01-16) estão feitos e commitados. A re-verificação de 2026-09-16T20:16Z (`01-VERIFICATION.md`) tinha encontrado CR-02 parcialmente aberto (efeito 2 — `ARGUMENTOS_GENERICOS` não barrava tipo/enum errado nas ~109 operações fora de `ESQUEMAS` — e WR-10 — `reviverArgumentos` sem limite de profundidade); a decisão de cobertura total em 5 planos (01-12 fundação+WR-10; 01-13/14/15 schemas por módulo em paralelo; 01-16 composição final) está executada: `ESQUEMAS` cobre as 132 operações sob `satisfies EsquemasCompletos`, sem fallback, e o mapeamento `TypeError → 400` saiu da rota (WR-11). `npm run check` verde nos três workspaces (dominio 253, web 53, api 163). PERS-08 (deploy do `apps/api`) continua bloqueado por D11 — não é gap de código, é decisão de infraestrutura fora do escopo desta fase. Pronta para nova rodada de `/gsd-verify-phase 1`.
 
@@ -278,7 +279,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 
 **Velocity:**
 
-- Total plans completed: 38
+- Total plans completed: 46
 - Average duration: —
 - Total execution time: 0 hours
 
@@ -288,6 +289,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 |-------|-------|-------|----------|
 | 05 | 25 | - | - |
 | 07 | 13 | - | - |
+| 11 | 8 | - | - |
 
 **Recent Trend:**
 
@@ -671,5 +673,5 @@ Items acknowledged and carried forward:
 ## Session Continuity
 
 Last session: 2026-10-29T22:57:48.227Z
-Stopped at: Completed 11-08-PLAN.md
+Stopped at: Phase 11 complete, ready to plan Phase 2
 Resume file: None

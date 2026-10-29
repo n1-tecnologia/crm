@@ -682,7 +682,7 @@ Plans:
 **Itens da 2.7** que mexam na Tarefa entram aqui.
 **Requirements**: TAR-01, TAR-02, TAR-03, TAR-04, TAR-05, TAR-06, TAR-07 (derivados em `11-CONTEXT.md` "Requisitos derivados"; registrados em REQUIREMENTS.md, Fase 11)
 **Depends on:** Phase 9
-**Plans:** 8/8 plans executed
+**Plans:** 8/8 plans complete
 
 Plans:
 **Wave 1**
