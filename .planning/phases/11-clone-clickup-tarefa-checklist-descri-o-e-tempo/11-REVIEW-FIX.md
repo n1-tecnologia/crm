@@ -28,7 +28,7 @@ Verification ran in the main checkout, without a database:
 
 ## Fixed Issues
 
-### WR-01: `pendingMentions` takes the "most recent edit" from array position
+### WR-01: `pendingMentions` takes the "most recent edit" from array position, which `newestFirst` documents as unreliable
 
 **Files modified:** `packages/dominio/src/derive.ts`, `packages/dominio/src/operations/mencao-na-descricao.test.ts`
 **Commit:** db243dc
@@ -36,19 +36,19 @@ Verification ran in the main checkout, without a database:
 
 Logic change (ordering): fixed: requires human verification.
 
-### WR-02: `linkDoAviso` outlives the notice it belongs to
+### WR-02: `linkDoAviso` outlives the notice it belongs to, so a later notice can show "Abrir" pointing at the wrong Tarefa
 
 **Files modified:** `apps/web/src/features/estrutura/tarefa-completa.tsx`
 **Commit:** c09d5ac
 **Applied fix:** The two states (`notice`, `linkDoAviso`) were replaced by one `aviso: { texto, abrir? } | null`. `setNotice(texto)` was kept as a thin wrapper that stores `{ texto }` (or null) and so drops any link, which leaves the other `setNotice` call sites unchanged. Only the two writers that carry a link (`changeStatus` with a next occurrence, `onConvertida`) call `setAviso({ texto, abrir })`. The Toast reads `aviso.texto` and `aviso.abrir`, and its `onDismiss` is `setAviso(null)`. The file went from 2,304 to 2,298 lines. No regression test: no test mounts `TarefaCompleta`, and building that harness was not cheap. The fix is structural (the link can no longer outlive its notice) and type-checked.
 
-### WR-03: `DialogoDeConversao` has no double-submit guard
+### WR-03: `DialogoDeConversao` has no double-submit guard; a double click ends in an error banner after a successful conversion
 
 **Files modified:** `apps/web/src/features/estrutura/conversao-de-item.tsx`, `apps/web/src/features/estrutura/conversao-de-item.test.tsx`
 **Commit:** 2a82b6c (shared with WR-04, because both live in the same component)
 **Applied fix:** A synchronous `useRef` flag (`enviou`) makes `converter` return early on a second call, and a `useState` (`enviando`) passes `confirmCarregando` and `confirmDisabledReason="Convertendo…"` to `ConfirmDialog`. If the local operation refuses, the flag is reset (that path closes the dialog anyway). New test: two consecutive clicks send exactly one `gravar` call, with no `onErro`, and the button ends `aria-disabled`. Checked that the test fails (2 calls instead of 1) when the guard and the loading props are all removed.
 
-### WR-04: Item converted elsewhere makes the dialog vanish silently
+### WR-04: Item converted elsewhere makes the dialog vanish silently and leaves `?converter-item=` in the URL
 
 **Files modified:** `apps/web/src/features/estrutura/conversao-de-item.tsx`, `apps/web/src/features/estrutura/conversao-de-item.test.tsx`
 **Commit:** 2a82b6c
