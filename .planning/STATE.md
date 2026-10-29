@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 10
 current_phase_name: "Clone ClickUp: Contêineres (Espaço, Pasta e Lista)"
 status: executing
-stopped_at: Completed 10-10-PLAN.md
-last_updated: "2026-10-29T10:20:32.765Z"
+stopped_at: Completed 10-21-PLAN.md
+last_updated: "2026-10-29T10:24:51.811Z"
 last_activity: 2026-10-29
 last_activity_desc: Phase 10 execution started
-state_head: 2f7b4f861861b952847dd5af5db891ecad7aacf6
+state_head: ed35e233bf205b799f079eba58685b8d293a75ea
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 191
-  completed_plans: 181
+  completed_plans: 182
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 ## Current Position
 
 Phase: 10 (Clone ClickUp: Contêineres (Espaço, Pasta e Lista)) — EXECUTING
-Plan: 14 of 21
+Plan: 15 of 21
 Status: Ready to execute
 Last activity: 2026-10-29 — Phase 10 execution started
 
@@ -399,6 +399,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 10 P07 | 12 min | 2 tasks | 10 files |
 | Phase 10 P09 | 8 min | 2 tasks | 2 files |
 | Phase 10 P10 | 14 min | 2 tasks | 10 files |
+| Phase 10 P21 | 5 min | 2 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -577,6 +578,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 10]: 10-07: abaDaView total (string | undefined) — Visualizacao salva carga abre na aba Lista ate a 010 converte-la; VIEW_KIND sem carga recusa saveView (400)
 - [Phase 10]: 10-09: Espaco arquivado e vazio mostra o EmptyState sem 'Nova Lista'; itens de Lista/Pasta repetem o markup da Pasta (extracao prematura).
 - [Phase 10]: 10-10: a aba mostrada na Lista e derivada na renderizacao (sem setState em efeito); padrao salva de tipo escondido nao abre nem aplica filtros; a contagem de salvas guardadas e feita na copia do run() e so conta Listas que deixaram de oferecer o tipo
+- [Phase 10]: 10-21: a capacidade semanal sai ponta a ponta; o valor gravado nos Membros fica inerte (D-13) e (j) fecha em 289
 
 ### Pending Todos
 
@@ -638,6 +640,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-29T10:20:32.548Z
-Stopped at: Completed 10-10-PLAN.md
+Last session: 2026-10-29T10:24:51.593Z
+Stopped at: Completed 10-21-PLAN.md
 Resume file: None
