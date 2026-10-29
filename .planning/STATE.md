@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 10
 current_phase_name: "Clone ClickUp: Contêineres (Espaço, Pasta e Lista)"
 status: executing
-stopped_at: Completed 10-18-PLAN.md
-last_updated: "2026-10-29T09:23:33.460Z"
+stopped_at: Completed 10-05-PLAN.md
+last_updated: "2026-10-29T09:36:33.247Z"
 last_activity: 2026-10-29
 last_activity_desc: Phase 10 execution started
-state_head: 0d908ad0c535f47f0c455ea9abe5dbab8e7be635
+state_head: 1f7d5d528b0efeeca727735c4e4aad5b3f9c62ae
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 191
-  completed_plans: 174
+  completed_plans: 175
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 ## Current Position
 
 Phase: 10 (Clone ClickUp: Contêineres (Espaço, Pasta e Lista)) — EXECUTING
-Plan: 7 of 21
+Plan: 8 of 21
 Status: Ready to execute
 Last activity: 2026-10-29 — Phase 10 execution started
 
@@ -392,6 +392,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 10 P03 | 8 min | 2 tasks | 10 files |
 | Phase 10 P04 | 8min | 2 tasks | 12 files |
 | Phase 10 P18 | 12 min | 3 tasks | 5 files |
+| Phase 10 P05 | 14 min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -560,6 +561,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 10]: 10-04: reorderContainers reordena por fatia (A3, pending): reocupa as vagas dos ids recebidos e deixa os escondidos no lugar; Espacos exigem Administrador/Proprietario; 'editar no pai' e mayBuild (A4, pending)
 - [Phase 10]: 10-04: o pedido de reordenar deve conter so ids que o Membro alcanca; a operacao recusa o lote inteiro com 'nao encontrado' se um id e inalcancavel (a arvore de 10-12 filtra)
 - [Phase 10]: 10-18: moveContainer mede a colisao de nome de Campo/Tipo com o movido ja no caminho novo (nao no escopo inteiro do destino); estruturas fixas ficam em estruturas-fixas.ts por causa de ciclo de carga (A5, Q2, Q4, Q5 pending na UAT 10-17)
+- [Phase 10]: 10-05: ator do relógio escolhido por Lista dentro do executar() (atorDoRelogio); o Agente do pipeline não ganha administrar (T-10-14). Autoria humana da Atividade é assunção Q1/A1 a confirmar no checkpoint D-04 do 10-16.
+- [Phase 10]: 10-05: Lista só com recorrência por calendário nasce direta (regimeDaPrimeiraVolta, D-02); com Automação por vencimento mantém o ensaio. parar() interrompe a drenagem entre linhas; worker ganhou escolherAtor/escolherRegime como pontos de extensão de teste.
 
 ### Pending Todos
 
@@ -621,6 +624,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-29T09:23:33.260Z
-Stopped at: Completed 10-18-PLAN.md
+Last session: 2026-10-29T09:36:33.039Z
+Stopped at: Completed 10-05-PLAN.md
 Resume file: None

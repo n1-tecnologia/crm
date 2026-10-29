@@ -615,7 +615,7 @@ Plans:
 **Itens da 2.7** (relatados nos testes) que mexam em Espaço, Pasta, Lista ou nas Configurações entram aqui, um por subtarefa.
 **Requirements**: EST-01, EST-02, EST-03, EST-04, EST-05, EST-06, EST-07, EST-08, EST-09, EST-10, EST-11 (derivados em `10-CONTEXT.md` "Requisitos derivados"; registrados em REQUIREMENTS.md, Fase 10)
 **Depends on:** Phase 9
-**Plans:** 6/21 plans executed
+**Plans:** 7/21 plans executed
 
 Plans:
 **Wave 1**
@@ -637,7 +637,7 @@ Plans:
 - [x] 10-18-PLAN.md — `moveContainer` expansão: profundidade, bloqueio, colisão, Formulário, estruturas fixas, L2 e `order` nas criações (EST-05)
 
 **Wave 7** *(blocked on Wave 6 completion)*
-- [ ] 10-05-PLAN.md — O relógio gera a recorrência: catálogo, ator e regime por Lista, volta que drena (EST-01)
+- [x] 10-05-PLAN.md — O relógio gera a recorrência: catálogo, ator e regime por Lista, volta que drena (EST-01)
 
 **Wave 8** *(blocked on Wave 7 completion)*
 - [ ] 10-06-PLAN.md — Página da Lista limpa e abaixo de 1.000 linhas: `SelecaoEmLote`, frases fora, extrações (EST-02)
