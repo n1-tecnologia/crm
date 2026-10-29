@@ -100,6 +100,11 @@ describe("esquemas-de-argumentos — a forma dos args, não a regra", () => {
     expect(esquemaDeArgumentos("updateTask")).toBe(ESQUEMAS.updateTask as unknown);
   });
 
+  it("(i2) convertChecklistItem aceita três argumentos e recusa o quarto (Tarefa pai alternativa, 11-01, D-04)", () => {
+    expect(ESQUEMAS.convertChecklistItem.safeParse(["tsk_1", "chk_1", "cki_1"]).success).toBe(true);
+    expect(ESQUEMAS.convertChecklistItem.safeParse(["tsk_1", "chk_1", "cki_1", "tsk_pai"]).success).toBe(false);
+  });
+
   it("(j) ESQUEMAS cobre exatamente OPERACOES — mesmas chaves, 289, todas nomes de operação válidos", () => {
     const chaves = Object.keys(ESQUEMAS);
     expect(chaves.sort()).toEqual(Object.keys(OPERACOES).sort());

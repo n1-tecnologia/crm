@@ -269,7 +269,8 @@ describe("Profundidade máxima de Subtarefas (RN-STA-04)", () => {
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.error).toContain("nível 4");
+    expect(result.error).toContain("nível 3");
+    expect(result.error).toContain("o último permitido");
     expect(state.tasks.length).toBe(before);
     // O Item continua aberto: a rejeição é anterior a qualquer efeito.
     expect(task?.checklists.find((c) => c.id === "chk_x")?.items[0]?.converted).toBeUndefined();
