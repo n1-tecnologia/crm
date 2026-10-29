@@ -9,12 +9,13 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { effectiveListConfig, irmaosOrdenados } from "../derive";
+import { effectiveListConfig, irmaosOrdenados, memberReachesContainer } from "../derive";
+import { visibilidadePara } from "../derive-visibilidade";
 import { buildSeed } from "../seed";
 import type { DataState } from "../state";
 import { createFieldDefinition, createTaskType, overrideStatusSet, setContainerFeature } from "./configuration";
 import { shareTaskPublicly } from "./scale";
-import { archiveContainer, createFolder, createList, moveContainer, reorderContainers } from "./structure";
+import { archiveContainer, createFolder, createList, moveContainer, recusaDeReordenar, reorderContainers } from "./structure";
 import { createTask, setTaskFieldValue, updateTask } from "./tasks";
 
 const THIAGO = "mem_thiago"; // Proprietário
@@ -362,5 +363,213 @@ describe("reorderContainers — o traçador (EST-05)", () => {
     expect(r.ok).toBe(true);
     expect(irmaosOrdenados(state, "list", { type: "folder", id: F }).map((l) => l.id)).toEqual([L2, L3, L0, L1]);
     expect(ordens([L2, L3, L0, L1])).toEqual([0, 1, 2, 3]);
+  });
+});
+
+const BEATRIZ = "mem_beatriz"; // Convidado
+
+describe("reorderContainers — as bordas da ordem (EST-11)", () => {
+  let F: string;
+  let L0: string;
+  let L1: string;
+  let L2: string;
+  const pai = () => ({ type: "folder", id: F }) as const;
+  beforeEach(() => {
+    F = pasta("Pasta de ordem");
+    L0 = lista("L0", F);
+    L1 = lista("L1", F);
+    L2 = lista("L2", F);
+  });
+  const ids = (): string[] => irmaosOrdenados(state, "list", pai()).map((l) => l.id);
+
+  it("irmãos com o mesmo `order` saem na ordem do array e, depois de reordenar, o grupo fica 0..n-1 sem repetição", () => {
+    listaPorId(L0).order = 1;
+    listaPorId(L1).order = 1;
+    listaPorId(L2).order = 1;
+    expect(ids()).toEqual([L0, L1, L2]);
+
+    expect(reorderContainers(state, THIAGO, "list", pai(), [L2, L1, L0]).ok).toBe(true);
+
+    expect(ids()).toEqual([L2, L1, L0]);
+    expect([L2, L1, L0].map((id) => listaPorId(id).order)).toEqual([0, 1, 2]);
+  });
+
+  it("a ordenação não muda o array do estado", () => {
+    listaPorId(L0).order = 5;
+    const antes = state.lists.map((l) => l.id);
+    irmaosOrdenados(state, "list", pai());
+    expect(state.lists.map((l) => l.id)).toEqual(antes);
+  });
+
+  it("um só id já no lugar é aceito e não grava Atividade", () => {
+    const atividades = state.activity.length;
+    const r = reorderContainers(state, THIAGO, "list", pai(), [L1]);
+    expect(r.ok).toBe(true);
+    expect(state.activity.length).toBe(atividades);
+    expect(ids()).toEqual([L0, L1, L2]);
+  });
+
+  it("ids vazio é recusado", () => {
+    const r = reorderContainers(state, THIAGO, "list", pai(), []);
+    expect(r).toEqual({ ok: false, error: "Nada a reordenar." });
+  });
+
+  it("id repetido é recusado e a ordem não muda", () => {
+    const r = reorderContainers(state, THIAGO, "list", pai(), [L0, L0]);
+    expect(r.ok).toBe(false);
+    expect(ids()).toEqual([L0, L1, L2]);
+  });
+
+  it("id de Pasta num grupo de Listas é recusado (T-10-11)", () => {
+    const r = reorderContainers(state, THIAGO, "list", pai(), [L0, F]);
+    expect(r.ok).toBe(false);
+    expect(ids()).toEqual([L0, L1, L2]);
+  });
+
+  it("id de Lista de outra Pasta é recusado como 'não pertence a este grupo' e nada muda (T-10-11)", () => {
+    const outra = pasta("Outra Pasta");
+    const estrangeira = lista("Estrangeira", outra);
+    const r = reorderContainers(state, THIAGO, "list", pai(), [L0, estrangeira]);
+    expect(r).toEqual({ ok: false, error: "Estrangeira não pertence a este grupo." });
+    expect(ids()).toEqual([L0, L1, L2]);
+    expect(listaPorId(estrangeira).parentId).toBe(outra);
+  });
+
+  it("id que não existe é 'não encontrado'", () => {
+    const r = reorderContainers(state, THIAGO, "list", pai(), [L0, "lst_que_nao_existe"]);
+    expect(r).toEqual({ ok: false, error: "Lista não encontrada." });
+  });
+
+  it("Pastas e Listas são grupos separados: reordenar Pastas não mexe nas Listas do mesmo pai", () => {
+    const P1 = pasta("Pasta 1");
+    const P2 = pasta("Pasta 2");
+    const ordemDasListas = ids();
+    const r = reorderContainers(state, THIAGO, "folder", { type: "space", id: "spc_com" }, [P2, P1]);
+    expect(r.ok).toBe(true);
+    const pastas = irmaosOrdenados(state, "folder", { type: "space", id: "spc_com" }).map((f) => f.id);
+    expect(pastas.indexOf(P2)).toBeLessThan(pastas.indexOf(P1));
+    expect(ids()).toEqual(ordemDasListas);
+  });
+});
+
+describe("reorderContainers — Espaços (D-09) e quem pode (A4, L3)", () => {
+  /** Os Espaços que o Membro alcança (os privados sem concessão ficam de fora) na ordem atual. */
+  const alcancados = (quem: string): string[] =>
+    irmaosOrdenados(state, "space", null)
+      .filter((s) => memberReachesContainer(state, quem, "space", s.id))
+      .map((s) => s.id);
+
+  it("o Administrador reordena os Espaços que alcança, os privados ficam na vaga e a Atividade fica no Espaço de Trabalho", () => {
+    const todos = irmaosOrdenados(state, "space", null).map((s) => s.id);
+    const meus = alcancados(RAFAEL);
+    expect(meus.length).toBeGreaterThan(1);
+    expect(meus.length).toBeLessThan(todos.length);
+    const invertida = [...meus].reverse();
+    const r = reorderContainers(state, RAFAEL, "space", null, invertida);
+    expect(r.ok).toBe(true);
+    const depois = irmaosOrdenados(state, "space", null);
+    expect(depois.map((s) => s.id).filter((id) => meus.includes(id))).toEqual(invertida);
+    expect(depois.map((s) => s.order)).toEqual(depois.map((_, i) => i));
+    for (const id of todos.filter((id) => !meus.includes(id))) expect(depois.findIndex((s) => s.id === id)).toBe(todos.indexOf(id));
+    const atividade = state.activity[0];
+    expect(atividade?.action).toBe("Ordem alterada");
+    expect(atividade?.objectType).toBe("workspace");
+    expect(atividade?.objectId).toBe(state.workspace.id);
+    expect(atividade?.objectName).toBe(state.workspace.name);
+  });
+
+  it("um Espaço privado que o Administrador não alcança é 'não encontrado' e nada muda", () => {
+    const todos = irmaosOrdenados(state, "space", null).map((s) => s.id);
+    const r = reorderContainers(state, RAFAEL, "space", null, [...todos].reverse());
+    expect(r).toEqual({ ok: false, error: "Espaço não encontrado." });
+    expect(irmaosOrdenados(state, "space", null).map((s) => s.id)).toEqual(todos);
+  });
+
+  it("Membro de Papel base `membro` e Convidado não reordenam Espaços", () => {
+    const antes = irmaosOrdenados(state, "space", null).map((s) => s.id);
+    for (const quem of [JULIA, BEATRIZ]) {
+      const r = reorderContainers(state, quem, "space", null, [...antes].reverse());
+      expect(r.ok, quem).toBe(false);
+    }
+    expect(irmaosOrdenados(state, "space", null).map((s) => s.id)).toEqual(antes);
+  });
+
+  it("um pai informado para Espaços é recusado", () => {
+    const r = reorderContainers(state, THIAGO, "space", { type: "space", id: "spc_com" }, ["spc_com"]);
+    expect(r.ok).toBe(false);
+  });
+
+  it("recusaDeReordenar: pai arquivado devolve a frase; pai ativo que o Membro alcança devolve undefined", () => {
+    const F = pasta("Pai que muda");
+    expect(recusaDeReordenar(state, THIAGO, "list", { type: "folder", id: F })).toBeUndefined();
+    expect(archiveContainer(state, THIAGO, "folder", F).ok).toBe(true);
+    expect(recusaDeReordenar(state, THIAGO, "list", { type: "folder", id: F })).toBe("Esta Pasta não está ativa.");
+    const r = reorderContainers(state, THIAGO, "list", { type: "folder", id: F }, ["lst_x"]);
+    expect(r).toEqual({ ok: false, error: "Esta Pasta não está ativa." });
+  });
+
+  it("recusaDeReordenar: Convidado que não alcança o pai recebe 'não encontrado'; sem pai para Listas é recusado", () => {
+    const F = pasta("Privada", "spc_com", "space", THIAGO, { isPrivate: true });
+    expect(recusaDeReordenar(state, BEATRIZ, "list", { type: "folder", id: F })).toBe("Pasta não encontrada.");
+    expect(recusaDeReordenar(state, THIAGO, "list", null)).toBeDefined();
+  });
+});
+
+describe("reorderContainers — paridade entre o recorte do Membro e o Espaço inteiro (A3, Pitfall 6)", () => {
+  it("Listas: rodar na cópia filtrada e no estado inteiro dá a mesma ordem para as visíveis, e a escondida fica na vaga", () => {
+    const F = pasta("Pasta mista");
+    const L0 = lista("V0", F);
+    const ESCONDIDA = lista("Escondida", F);
+    const L1 = lista("V1", F);
+    const L2 = lista("V2", F);
+    // Privada: nada foi concedido ao Rafael, então ela some do recorte dele.
+    expect(createList(state, THIAGO, { name: "x", parentType: "folder", parentId: F }).ok).toBe(true);
+    listaPorId(ESCONDIDA).isPrivate = true;
+    const pai = { type: "folder", id: F } as const;
+    const recorte = visibilidadePara(state, RAFAEL).estado;
+    expect(recorte.lists.some((l) => l.id === ESCONDIDA)).toBe(false);
+
+    const pedido = [L2, L0, L1];
+    const copia = structuredClone(recorte);
+    expect(reorderContainers(copia, RAFAEL, "list", pai, pedido).ok).toBe(true);
+    const inteiro = structuredClone(state);
+    expect(reorderContainers(inteiro, RAFAEL, "list", pai, pedido).ok).toBe(true);
+
+    const visiveis = new Set(pedido);
+    const naCopia = irmaosOrdenados(copia, "list", pai).filter((l) => visiveis.has(l.id)).map((l) => l.id);
+    const noInteiro = irmaosOrdenados(inteiro, "list", pai).filter((l) => visiveis.has(l.id)).map((l) => l.id);
+    expect(naCopia).toEqual(pedido);
+    expect(noInteiro).toEqual(pedido);
+    // A escondida manteve a vaga (posição 1 do grupo original: L0, ESCONDIDA, L1, L2, x).
+    expect(irmaosOrdenados(inteiro, "list", pai).findIndex((l) => l.id === ESCONDIDA)).toBe(1);
+    const ordens = irmaosOrdenados(inteiro, "list", pai).map((l) => l.order);
+    expect(ordens).toEqual(ordens.map((_, i) => i));
+  });
+
+  it("Espaços: o Administrador reordena os que alcança na cópia e no estado inteiro, e os privados ficam na vaga", () => {
+    const todos = irmaosOrdenados(state, "space", null).map((s) => s.id);
+    const recorte = visibilidadePara(state, RAFAEL).estado;
+    const alcancados = irmaosOrdenados(recorte, "space", null)
+      .map((s) => s.id)
+      .filter((id) => memberReachesContainer(recorte, RAFAEL, "space", id));
+    const escondidos = todos.filter((id) => !alcancados.includes(id));
+    expect(alcancados.length).toBeGreaterThan(1);
+    expect(escondidos.length).toBeGreaterThan(0);
+    const pedido = [...alcancados].reverse();
+
+    const copia = structuredClone(recorte);
+    expect(reorderContainers(copia, RAFAEL, "space", null, pedido).ok).toBe(true);
+    const inteiro = structuredClone(state);
+    expect(reorderContainers(inteiro, RAFAEL, "space", null, pedido).ok).toBe(true);
+
+    const soAlcancados = (e: DataState) =>
+      irmaosOrdenados(e, "space", null)
+        .map((s) => s.id)
+        .filter((id) => alcancados.includes(id));
+    expect(soAlcancados(copia)).toEqual(pedido);
+    expect(soAlcancados(inteiro)).toEqual(pedido);
+    for (const id of escondidos) {
+      expect(irmaosOrdenados(inteiro, "space", null).findIndex((s) => s.id === id)).toBe(todos.indexOf(id));
+    }
   });
 });
