@@ -25,6 +25,8 @@ const UPDATE_TASK_INPUT = z
   .object({
     title: z.string().optional(),
     description: z.string().optional(),
+    // Forma de transporte: só Membro. Que o Membro exista e que o @Nome esteja no texto é regra do domínio.
+    descriptionMentions: z.array(z.object({ type: z.literal("member"), id: ID }).strict()).optional(),
     priority: PRIORITY.optional(),
     startDate: TASK_DATE.nullable().optional(),
     dueDate: TASK_DATE.nullable().optional(),

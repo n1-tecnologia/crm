@@ -24,6 +24,7 @@ import {
   containerAdminRefusal,
 } from "../derive";
 import { contatoDaTarefa } from "../derive-conversacional";
+import { ACAO_DESCRICAO_ALTERADA, cortarParaHistorico, mencionaNoTexto } from "../descricao-da-tarefa";
 import { fail, ok, type DataState, type OperationResult } from "../state";
 import type { ActorRef, Comment, EffectiveListConfig, FieldDefinition, FieldRequirement, FieldValue, Id, List, Minutes, Priority, StatusDefinition, Task, TaskDate } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
@@ -1448,6 +1449,11 @@ const dateKey = (date: TaskDate | undefined): string | undefined => date?.value;
 export interface UpdateTaskInput {
   readonly title?: string;
   readonly description?: string;
+  /**
+   * D-06 — quem foi escolhido ao digitar `@Nome` na descrição. Só Membro. A lista
+   * gravada é a derivada do texto: quem não tem o `@Nome` escrito não entra.
+   */
+  readonly descriptionMentions?: ReadonlyArray<{ readonly type: "member"; readonly id: Id }>;
   readonly priority?: Priority;
   /** `null` limpa a data; `undefined` não toca nela. */
   readonly startDate?: TaskDate | null;
@@ -1473,6 +1479,11 @@ export function updateTask(
   if (typeof task === "string") return fail(task);
   const features = effectiveListConfig(state, task.listId)?.features;
 
+  // Menção a quem não existe é recusada ANTES de mudar qualquer campo (a mesma frase de addTaskComment).
+  for (const mention of input.descriptionMentions ?? []) {
+    if (!state.members.some((m) => m.id === mention.id)) return fail("A menção aponta para um Membro que não existe.");
+  }
+
   const mudancas: Array<{ readonly action: string; readonly before?: string; readonly after?: string }> = [];
 
   if (input.title !== undefined) {
@@ -1484,8 +1495,24 @@ export function updateTask(
     }
   }
   if (input.description !== undefined && input.description !== task.description) {
-    mudancas.push({ action: "Descrição alterada" });
+    // D-10 — o texto antigo e o novo vão no Registro, cortados (a descrição em si não é cortada).
+    mudancas.push({ action: ACAO_DESCRICAO_ALTERADA, before: cortarParaHistorico(task.description), after: cortarParaHistorico(input.description) });
     task.description = input.description;
+  }
+  // D-06/D-09 — a lista gravada é a derivada do texto: sem repetição, só Membro que existe e cujo @Nome está na descrição.
+  let mencoesMudaram = false;
+  if (input.descriptionMentions !== undefined || input.description !== undefined) {
+    const antes = (task.descriptionMentions ?? []).map((m) => m.id);
+    const candidatas = input.descriptionMentions ?? task.descriptionMentions ?? [];
+    const ids: Id[] = [];
+    for (const candidata of candidatas) {
+      if (ids.includes(candidata.id)) continue;
+      const membro = state.members.find((m) => m.id === candidata.id);
+      if (membro && mencionaNoTexto(task.description, membro.displayName)) ids.push(membro.id);
+    }
+    mencoesMudaram = ids.length !== antes.length || ids.some((id, i) => id !== antes[i]);
+    if (ids.length === 0) delete task.descriptionMentions;
+    else task.descriptionMentions = ids.map((id) => ({ type: "member" as const, id }));
   }
   if (input.priority !== undefined && input.priority !== task.priority) {
     if (features && !features.prioridade) return fail("Esta Lista não usa Prioridade.", "prioridade");
@@ -1559,7 +1586,12 @@ export function updateTask(
     task.taskTypeId = input.taskTypeId;
   }
 
-  if (mudancas.length === 0) return ok(task);
+  if (mudancas.length === 0) {
+    if (!mencoesMudaram) return ok(task);
+    // Só a lista de menções mudou: a Tarefa mudou, mas não há o que contar na Atividade.
+    task.updatedAt = now();
+    return ok(task, task.id);
+  }
   task.updatedAt = now();
   for (const mudanca of mudancas) {
     recordActivity(state, {
