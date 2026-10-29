@@ -2,13 +2,14 @@
  * PARA-01 — remover Checklist e Item de Checklist (checklist.md, seção 12):
  * edição da Tarefa, definitiva (não há lixeira de componente), com o conteúdo
  * removido preservado no Registro de Atividade. Remover um Checklist leva os
- * Itens; remover um Item leva os Subitens; um Item `convertido` sai do
- * Checklist sem efeito sobre a Subtarefa (B48).
+ * Itens; remover um Item remove só ele (D-02, o checklist tem um nível só); um
+ * Item `convertido` sai do Checklist sem efeito sobre a Subtarefa (B48).
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import { checklistProgress } from "../derive";
 import { buildSeed } from "../seed";
 import type { DataState } from "../state";
+import type { ChecklistItem } from "../types";
 import { convertChecklistItem, removeChecklist, removeChecklistItem } from "./tasks";
 
 const THIAGO = "mem_thiago";
@@ -38,18 +39,18 @@ describe("removeChecklistItem", () => {
     expect(registro?.detail).toBe("Revisão");
   });
 
-  it("leva os Subitens junto e diz quantos foram", () => {
-    checklist()?.items.push(
-      { id: "cki_sub_a", text: "Subitem A", order: 3, done: false, parentItemId: "cki_3" },
-      { id: "cki_sub_b", text: "Subitem B", order: 4, done: true, parentItemId: "cki_3" },
-    );
+  it("remove só o Item (D-02): um registro antigo com a chave de Subitem é um Item comum", () => {
+    const antigo = { id: "cki_antigo", text: "Registro antigo", order: 3, done: false, parentItemId: "cki_3" } as ChecklistItem;
+    checklist()?.items.push(antigo);
+    expect(checklistProgress(tarefa())).toEqual({ done: 1, total: 4 });
 
     const result = removeChecklistItem(state, THIAGO, TAREFA, CHECKLIST, "cki_3");
 
     expect(result.ok).toBe(true);
-    expect(checklist()?.items.map((i) => i.id)).toEqual(["cki_1", "cki_2"]);
+    expect(checklist()?.items.map((i) => i.id)).toEqual(["cki_1", "cki_2", "cki_antigo"]);
     const registro = state.activity.find((a) => a.action === "Item de Checklist removido");
-    expect(registro?.detail).toContain("2 Subitem(ns) removido(s) com ele: Subitem A; Subitem B");
+    expect(registro?.before).toBe("Publicar no Conhecimento");
+    expect(registro?.detail).toBe("Revisão");
   });
 
   it("remove um Item convertido sem efeito sobre a Subtarefa (B48)", () => {
