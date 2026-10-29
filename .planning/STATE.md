@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 10
 current_phase_name: "Clone ClickUp: Contêineres (Espaço, Pasta e Lista)"
 status: executing
-stopped_at: Completed 10-03-PLAN.md
-last_updated: "2026-10-29T08:58:57.711Z"
+stopped_at: Completed 10-04-PLAN.md
+last_updated: "2026-10-29T09:08:41.934Z"
 last_activity: 2026-10-29
 last_activity_desc: Phase 10 execution started
-state_head: 796b45459644362cf6b7d7636d6712154588eb16
+state_head: 520c1c5ca43f86412d38b5666759bf5833954299
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 191
-  completed_plans: 172
+  completed_plans: 173
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-11)
 ## Current Position
 
 Phase: 10 (Clone ClickUp: Contêineres (Espaço, Pasta e Lista)) — EXECUTING
-Plan: 5 of 21
+Plan: 6 of 21
 Status: Ready to execute
 Last activity: 2026-10-29 — Phase 10 execution started
 
@@ -390,6 +390,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 10 P20 | 6 min | 2 tasks | 11 files |
 | Phase 10 P02 | 6 min | 2 tasks | 11 files |
 | Phase 10 P03 | 8 min | 2 tasks | 10 files |
+| Phase 10 P04 | 8min | 2 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -555,6 +556,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 10]: 10-20: blocks sai de StructuralContainerBase (so Space e Folder); InheritanceMode sem bloqueado; blockedAbove ignora blocks legado em Lista
 - [Phase 10]: 10-02: definesAspect conta só Campo de Tarefa ativo e Tipo não-plataforma; contagemAcumulada exclui Tipos da plataforma; a recusa de setContainerBlock nomeia só o que o ator alcança (B38a) e conta o resto
 - [Phase 10]: 10-03: moveContainer grava a Atividade com o caminho do próprio movido, entra no fim do grupo de destino (max(order)+1) e renumera a origem 0..n-1; movido na lixeira é recusado, arquivado não.
+- [Phase 10]: 10-04: reorderContainers reordena por fatia (A3, pending): reocupa as vagas dos ids recebidos e deixa os escondidos no lugar; Espacos exigem Administrador/Proprietario; 'editar no pai' e mayBuild (A4, pending)
+- [Phase 10]: 10-04: o pedido de reordenar deve conter so ids que o Membro alcanca; a operacao recusa o lote inteiro com 'nao encontrado' se um id e inalcancavel (a arvore de 10-12 filtra)
 
 ### Pending Todos
 
@@ -616,6 +619,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-29T08:58:57.505Z
-Stopped at: Completed 10-03-PLAN.md
+Last session: 2026-10-29T09:08:41.728Z
+Stopped at: Completed 10-04-PLAN.md
 Resume file: None

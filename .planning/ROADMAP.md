@@ -615,7 +615,7 @@ Plans:
 **Itens da 2.7** (relatados nos testes) que mexam em Espaço, Pasta, Lista ou nas Configurações entram aqui, um por subtarefa.
 **Requirements**: EST-01, EST-02, EST-03, EST-04, EST-05, EST-06, EST-07, EST-08, EST-09, EST-10, EST-11 (derivados em `10-CONTEXT.md` "Requisitos derivados"; registrados em REQUIREMENTS.md, Fase 10)
 **Depends on:** Phase 9
-**Plans:** 4/21 plans executed
+**Plans:** 5/21 plans executed
 
 Plans:
 **Wave 1**
@@ -631,7 +631,7 @@ Plans:
 - [x] 10-03-PLAN.md — `moveContainer` traçador: cadeia de registro, recusas básicas, Conjunto que muda, B37 e o laço de `moveTask` compartilhado (EST-05, EST-11)
 
 **Wave 5** *(blocked on Wave 4 completion)*
-- [ ] 10-04-PLAN.md — `reorderContainers` por fatia (desvio declarado do D-08), ordem estável, prova pela API e suíte de segurança (EST-05, EST-06, EST-11)
+- [x] 10-04-PLAN.md — `reorderContainers` por fatia (desvio declarado do D-08), ordem estável, prova pela API e suíte de segurança (EST-05, EST-06, EST-11)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 - [ ] 10-18-PLAN.md — `moveContainer` expansão: profundidade, bloqueio, colisão, Formulário, estruturas fixas, L2 e `order` nas criações (EST-05)
