@@ -135,6 +135,45 @@ describe("formatarAgenda", () => {
     expect(texto).toContain("1 SEM_ATOR");
     expect(texto).toContain("1 RECUSA_DO_DOMINIO");
   });
+
+  it("10-REVIEW MEDIUM-07 — a Lista SEM_ATOR sai num alerta próprio, uma vez por Lista, com o que fazer", () => {
+    const texto = formatarAgenda([
+      linha,
+      { ...linha, listId: "lst_b", nomeDaLista: "Privada", estado: "falhou", codigo: "SEM_ATOR" },
+      { ...linha, listId: "lst_b", nomeDaLista: "Privada", diaCivil: "2026-10-31", estado: "falhou", codigo: "SEM_ATOR" },
+    ]);
+    const alerta = texto.split("\n").find((l) => l.startsWith("BLOQUEIO"));
+    expect(alerta).toBeDefined();
+    expect(alerta).toContain("1 Lista(s) sem ator");
+    expect(alerta).toContain("Privada (lst_b)");
+    expect(alerta).toContain("administrar");
+    expect(alerta).not.toContain("lst_a");
+  });
+
+  it("sem SEM_ATOR, nenhum alerta", () => {
+    expect(formatarAgenda([linha])).not.toContain("BLOQUEIO");
+  });
+});
+
+describe("formatarPrevia — Listas sem ator (10-REVIEW MEDIUM-07)", () => {
+  it("a Lista que ninguém pode assinar sai num alerta próprio, com o nome e o id", () => {
+    const base: LinhaDaPrevia = {
+      workspaceId: "ws_x",
+      listId: "lst_a",
+      nomeDaLista: "Pública",
+      entraPor: ["recorrencia"],
+      regime: "direto",
+      ator: "Thiago",
+      lixeiraVencida: 0,
+      seriesPorCalendario: 1,
+    };
+    const texto = formatarPrevia([base, { ...base, listId: "lst_b", nomeDaLista: "Privada", ator: SEM_ATOR_NA_PREVIA }]);
+    const alerta = texto.split("\n").find((l) => l.startsWith("BLOQUEIO"));
+    expect(alerta).toContain("1 Lista(s) sem ator");
+    expect(alerta).toContain("Privada (lst_b)");
+    expect(alerta).not.toContain("lst_a");
+    expect(formatarPrevia([base])).not.toContain("BLOQUEIO");
+  });
 });
 
 describeComBanco("10-15 — a prévia do relógio lê produção sem escrever (EST-01)", () => {

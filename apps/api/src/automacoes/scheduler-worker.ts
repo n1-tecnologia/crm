@@ -566,10 +566,19 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
    * dia_civil` faz o dia mais antigo em aberto ser o primeiro — é o
    * catch-up. `tentativas < maxTentativas` impede que uma recusa permanente
    * seja reivindicada para sempre.
+   *
+   * 10-REVIEW MEDIUM-07 — uma linha `falhou` só volta depois de um
+   * `intervaloMs` desde a última reivindicação (`locked_at`, que `fecharLinha`
+   * não apaga). Sem isso, a drenagem reivindicava de novo, na mesma volta, a
+   * linha que acabara de falhar: um `SEM_ATOR` (recusa determinística) gastava
+   * as três tentativas em sequência e um `CONFLITO_DE_REVISAO` passageiro matava
+   * o dia. A linha devolvida pela lease vencida tem `locked_at` nulo e volta já.
    */
   async function reivindicar(): Promise<LinhaAgenda | undefined> {
-    const agora = relogio.agora().toISOString();
-    const parametros: unknown[] = [opcoes.workerId, agora, maxTentativas];
+    const instante = relogio.agora();
+    const agora = instante.toISOString();
+    const tentarDeNovoSoAntesDe = new Date(instante.getTime() - intervaloMs).toISOString();
+    const parametros: unknown[] = [opcoes.workerId, agora, maxTentativas, tentarDeNovoSoAntesDe];
     let filtroWorkspace = "";
     if (opcoes.workspaceId !== undefined) {
       parametros.push(opcoes.workspaceId);
@@ -585,7 +594,9 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
         where (a.workspace_id, a.list_id, a.dia_civil) = (
           select s.workspace_id, s.list_id, s.dia_civil
             from plataforma.automacao_agenda s
-           where s.estado in ('pendente','falhou') and s.tentativas < $3 ${filtroWorkspace}
+           where s.estado in ('pendente','falhou') and s.tentativas < $3
+             and (s.estado = 'pendente' or s.locked_at is null or s.locked_at <= $4)
+             ${filtroWorkspace}
            order by s.dia_civil, s.criado_em
            limit 1
              for update skip locked

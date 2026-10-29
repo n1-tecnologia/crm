@@ -164,7 +164,25 @@ export function formatarPrevia(linhas: readonly LinhaDaPrevia[]): string {
     ...corpo.map(montar),
     "",
     `${linhas.length} Lista(s) candidata(s). Lixeira vencida (o que a primeira volta real eliminaria): ${total} Tarefa(s).`,
+    ...alertaDeSemAtor(linhas.filter((l) => l.ator === SEM_ATOR_NA_PREVIA)),
   ].join("\n");
+}
+
+/**
+ * 10-REVIEW MEDIUM-07 — a Lista que ninguém pode assinar não roda nunca: sem
+ * recorrência por calendário, sem expurgo, sem Automação por vencimento. Na
+ * tabela ela é só mais uma linha; aqui vira um alerta próprio (uma vez por
+ * Lista), que o checkpoint lê como BLOQUEIO antes de ligar o agendador ou de
+ * tirar o botão "Rodar agenda". Pura; vazio quando não há Lista sem ator.
+ */
+function alertaDeSemAtor(linhas: ReadonlyArray<{ readonly workspaceId: string; readonly listId: string; readonly nomeDaLista: string }>): string[] {
+  const porLista = new Map<string, string>();
+  for (const l of linhas) porLista.set(`${l.workspaceId}::${l.listId}`, `${l.nomeDaLista} (${l.listId})`);
+  if (porLista.size === 0) return [];
+  return [
+    `BLOQUEIO: ${porLista.size} Lista(s) sem ator — o relógio não roda nelas (nem recorrência, nem expurgo). ` +
+      `Dê administrar a um Membro humano ativo em cada uma: ${[...porLista.values()].join(", ")}.`,
+  ];
 }
 
 /**
@@ -252,7 +270,8 @@ export async function voltasRecentes(opcoes: { readonly workspaceId?: string; re
 
 /**
  * A tabela de texto de `--agenda`: colunas fixas e, no fim, quantas linhas `falhou` e
- * quantas carregam `SEM_ATOR` e `RECUSA_DO_DOMINIO` (o que o dono quer ver em zero). Pura.
+ * quantas carregam `SEM_ATOR` e `RECUSA_DO_DOMINIO` (o que o dono quer ver em zero), e o
+ * alerta de BLOQUEIO com cada Lista `SEM_ATOR` (10-REVIEW MEDIUM-07). Pura.
  */
 export function formatarAgenda(linhas: readonly LinhaDaAgenda[]): string {
   const cabecalho = ["Espaço de Trabalho", "Lista", "Nome", "Dia", "Estado", "Código", "Executadas", "Falhadas", "Puladas"];
@@ -269,5 +288,6 @@ export function formatarAgenda(linhas: readonly LinhaDaAgenda[]): string {
     ...corpo.map(montar),
     "",
     `${linhas.length} volta(s). ${falhou} falhou · ${semAtor} ${CODIGOS_DA_AGENDA.SEM_ATOR} · ${recusa} ${CODIGOS_DA_AGENDA.RECUSA_DO_DOMINIO}.`,
+    ...alertaDeSemAtor(linhas.filter((l) => l.codigo === CODIGOS_DA_AGENDA.SEM_ATOR)),
   ].join("\n");
 }

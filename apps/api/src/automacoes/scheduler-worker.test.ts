@@ -1267,6 +1267,49 @@ describeComBanco("10-05 — SEM_ATOR: a Lista que nenhum Membro ativo administra
     expect(mesmaLinha.last_error_code).toBe(CODIGOS_DA_AGENDA.SEM_ATOR);
     expect(mesmaLinha.tentativas).toBe(1);
   });
+
+  it("(y2) 10-REVIEW MEDIUM-07 — a linha SEM_ATOR não é reivindicada de novo na mesma volta: a próxima tentativa espera um intervalo, e o código fica gravado", async () => {
+    const workspaceId = await semearEspacoDeRecorrencia("agenda_sem_ator_laco", (estado) => {
+      for (const membro of estado.members) {
+        const base = estado.roles.find((r) => r.id === membro.roleId)?.base;
+        if (base === "proprietario" || base === "administrador") membro.state = "suspenso";
+      }
+    });
+    criados.push(workspaceId);
+
+    const INTERVALO_MS = 3_600_000;
+    const relogio = relogioFixo(new Date(2026, 7, 31, 12));
+    const worker = criarSchedulerWorkerDaFase10({
+      workerId: "w_y2",
+      workspaceId,
+      listId: LISTA_DA_RECORRENCIA,
+      relogio,
+      intervaloMs: INTERVALO_MS,
+      resolverAtor: async () => "mem_julia",
+    });
+
+    expect(await worker.processarUm()).toBe(true);
+    const primeira = await lerLinhaDaAgenda(workspaceId, LISTA_DA_RECORRENCIA, DIA_DA_VOLTA);
+    expect(primeira.estado).toBe("falhou");
+    expect(primeira.last_error_code).toBe(CODIGOS_DA_AGENDA.SEM_ATOR);
+    expect(primeira.tentativas).toBe(1);
+
+    // A mesma volta (drenagem, mesmo instante): a recusa é determinística, não há o que tentar de novo agora.
+    expect(await worker.processarUm()).toBe(false);
+    expect((await lerLinhaDaAgenda(workspaceId, LISTA_DA_RECORRENCIA, DIA_DA_VOLTA)).tentativas).toBe(1);
+
+    // Ainda dentro do intervalo: nada.
+    relogio.definir(new Date(2026, 7, 31, 12, 59));
+    expect(await worker.processarUm()).toBe(false);
+
+    // Um intervalo depois, a volta seguinte tenta de novo (quem sabe alguém ganhou `administrar`) e grava o código outra vez.
+    relogio.definir(new Date(2026, 7, 31, 13, 0, 1));
+    expect(await worker.processarUm()).toBe(true);
+    const segunda = await lerLinhaDaAgenda(workspaceId, LISTA_DA_RECORRENCIA, DIA_DA_VOLTA);
+    expect(segunda.estado).toBe("falhou");
+    expect(segunda.last_error_code).toBe(CODIGOS_DA_AGENDA.SEM_ATOR);
+    expect(segunda.tentativas).toBe(2);
+  });
 });
 
 /* ── 10-15 — Q3 = direto: a lixeira é a terceira fonte do catálogo e a Lista só de lixeira expurga na primeira volta ── */

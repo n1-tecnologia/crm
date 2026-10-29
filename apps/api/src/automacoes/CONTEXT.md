@@ -154,6 +154,15 @@ concessão a ninguém, Proprietário e Administradores suspensos): a linha fecha
 dia novo — a linha que já existe não é recriada. Resolver é dar `administrar`
 a um Membro humano naquela Lista (ou reativar um Administrador).
 
+Desde o 10-REVIEW (MEDIUM-07) a linha `falhou` não é reivindicada de novo na
+mesma volta: `reivindicar()` só a devolve depois de um `intervaloMs` desde o
+último `locked_at` (a lease vencida, com `locked_at` nulo, volta já). Um
+`SEM_ATOR` tenta no máximo uma vez por volta, até `maxTentativas`, em vez de
+gastar as três em sequência. E a Lista sem ator não fica só numa linha da
+tabela: `automacoes:previa` (a prévia e o `--agenda`) termina com um alerta
+`BLOQUEIO: N Lista(s) sem ator …` com o nome e o id de cada uma — o checkpoint
+lê esse alerta como impeditivo.
+
 **O regime, por Lista** (`regimeDaPrimeiraVolta`, domínio — D-02). O ensaio da
 primeira volta (seção acima) existe para a Automação por vencimento, cujos
 disparos em lote custam dinheiro ou mandam mensagem. A Lista que só tem
