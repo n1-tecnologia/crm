@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useId, useState } from "react";
 import { useData } from "@/dados/store";
 import { actorLabel, newestFirst } from "@n1/dominio/derive";
+import { ehAlteracaoDeDescricao } from "@n1/dominio/descricao-da-tarefa";
 import { OBJECT_TYPE_LABEL } from "@/features/shell/format";
 import { useFormat } from "@/features/shell/use-format";
 import {
@@ -277,7 +278,8 @@ export default function AuditoriaPage() {
                     </td>
                     <td>
                       <span className="app-meta">
-                        {record.before || record.after
+                        {/* D-10: a Auditoria não tem onde expandir; o texto da descrição continua no registro. */}
+                        {!ehAlteracaoDeDescricao(record) && (record.before || record.after)
                           ? `${record.before ?? "—"} → ${record.after ?? "—"}`
                           : "—"}
                       </span>
