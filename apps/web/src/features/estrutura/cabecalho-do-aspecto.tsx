@@ -9,17 +9,28 @@
  *
  * Aspectos que SUBSTITUEM (Conjunto de Status, Funcionalidades, Visualizações
  * padrão) mostram a origem; os que ACUMULAM (Campos, Tipos de Tarefa) mostram
- * quantos o nível define e quantos herda. `direita` recebe o interruptor de
- * bloqueio, que entra em 10-11.
+ * quantos o nível define e quantos herda.
+ *
+ * 2.6.5 item 7, D-15, D-16 — Espaço e Pasta/Subpasta ganham, na mesma faixa, o
+ * interruptor «Bloquear para os níveis abaixo» (`InterruptorDeBloqueio`). A Lista
+ * nunca o mostra (D-15: ela não bloqueia). A tela não decide a regra: chama
+ * `setContainerBlock` e mostra a frase que o domínio devolver.
  */
 
 import { Lock } from "lucide-react";
-import type { ReactNode } from "react";
-import { useData } from "@/dados/store";
-import { bloqueioAcima, contagemAcumulada, origemDoAspecto } from "@n1/dominio/derive";
+import { useId, useState, type ReactNode } from "react";
+import { useData, useRunConfirmado, useSession } from "@/dados/store";
+import {
+  bloqueioAcima,
+  containerAdminRefusal,
+  contagemAcumulada,
+  effectiveLifecycleOfContainer,
+  origemDoAspecto,
+} from "@n1/dominio/derive";
+import { setContainerBlock } from "@n1/dominio/operations";
 import { blockedAbove } from "@n1/dominio/operations/configuration";
 import { ReadOnlyNote } from "@/features/estrutura/configuration-editors";
-import { Icone, Pilula } from "@/features/shell/ui";
+import { Icone, Pilula, Toast, Toggle } from "@/features/shell/ui";
 import type { DataState } from "@n1/dominio/state";
 import type { ConfigurableAspect, Id } from "@n1/dominio/types";
 
@@ -29,6 +40,126 @@ type TipoDeConteiner = "space" | "folder" | "list";
 function palavraDoTipo(state: DataState, tipo: "space" | "folder", id: Id): "Espaço" | "Pasta" | "Subpasta" {
   if (tipo === "space") return "Espaço";
   return state.folders.find((f) => f.id === id)?.parentType === "folder" ? "Subpasta" : "Pasta";
+}
+
+/** O nome do aspecto no Toast, com a concordância fixada pelo UI-SPEC («Aspecto × frase»). */
+const FRASE_DO_BLOQUEIO: Partial<Record<ConfigurableAspect, { readonly bloquear: string; readonly liberar: string }>> = {
+  statusSet: {
+    bloquear: "Conjunto de Status bloqueado para os níveis abaixo.",
+    liberar: "Conjunto de Status liberado para os níveis abaixo.",
+  },
+  features: {
+    bloquear: "Funcionalidades bloqueadas para os níveis abaixo.",
+    liberar: "Funcionalidades liberadas para os níveis abaixo.",
+  },
+  defaultViews: {
+    bloquear: "Visualizações padrão bloqueadas para os níveis abaixo.",
+    liberar: "Visualizações padrão liberadas para os níveis abaixo.",
+  },
+  fieldDefinitions: {
+    bloquear: "Campos bloqueados para os níveis abaixo.",
+    liberar: "Campos liberados para os níveis abaixo.",
+  },
+  taskTypes: {
+    bloquear: "Tipos de Tarefa bloqueados para os níveis abaixo.",
+    liberar: "Tipos de Tarefa liberados para os níveis abaixo.",
+  },
+};
+
+/**
+ * D-16 — Espaço ou Pasta/Subpasta bloqueia o aspecto para os níveis abaixo. A
+ * tela desliga o controle onde a operação recusaria (sem permissão, contêiner
+ * inativo, ancestral já bloqueando) e deixa a operação decidir o resto: uma
+ * recusa vira `Toast tone="error"` com a frase do domínio, e o interruptor fica
+ * onde estava. Gravando, ele fica desligado até o servidor responder.
+ */
+export function InterruptorDeBloqueio({
+  tipo,
+  id,
+  aspecto,
+}: {
+  readonly tipo: "space" | "folder";
+  readonly id: Id;
+  readonly aspecto: ConfigurableAspect;
+}) {
+  const state = useData((data) => data);
+  const { memberId } = useSession();
+  const runConfirmado = useRunConfirmado();
+  const rotuloId = useId();
+  const motivoId = useId();
+  const [gravando, setGravando] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const container = tipo === "space" ? state.spaces.find((s) => s.id === id) : state.folders.find((f) => f.id === id);
+  if (!container) return null;
+
+  const ligado = container.blocks[aspecto] === true;
+  const efetivo = effectiveLifecycleOfContainer(state, tipo, id);
+  const palavra = palavraDoTipo(state, tipo, id);
+  const feminino = tipo === "folder";
+  const motivoDePermissao =
+    containerAdminRefusal(state, memberId, tipo, id) ??
+    (efetivo === "arquivado"
+      ? `${palavra} ${feminino ? "arquivada" : "arquivado"}: desarquive antes de editar.`
+      : efetivo === "naLixeira"
+        ? `${palavra} na lixeira: restaure antes de editar.`
+        : undefined);
+  const bloqueadoAcima = bloqueioAcima(state, tipo, id, aspecto) !== undefined;
+
+  const alternar = (proximo: boolean): void => {
+    setAviso(null);
+    setErro(null);
+    const { local, confirmado } = runConfirmado((data, me) => setContainerBlock(data, me, tipo, id, aspecto, proximo));
+    if (!local.ok) {
+      setErro(local.error ?? "Não foi possível concluir a operação.");
+      return;
+    }
+    setGravando(true);
+    void confirmado.then((resposta) => {
+      setGravando(false);
+      if (resposta.ok) setAviso(FRASE_DO_BLOQUEIO[aspecto]?.[proximo ? "bloquear" : "liberar"] ?? "Bloqueio alterado.");
+      else setErro(resposta.error ?? "Não foi possível concluir a operação.");
+    });
+  };
+
+  const desligado = gravando || motivoDePermissao !== undefined || bloqueadoAcima;
+
+  return (
+    <>
+      <div className="ml-auto flex items-center gap-2">
+        <span id={rotuloId} className="app-base" style={{ color: "var(--texto-2)" }}>
+          Bloquear para os níveis abaixo
+        </span>
+        <Toggle
+          checked={ligado}
+          onChange={alternar}
+          labelledBy={rotuloId}
+          {...(motivoDePermissao ? { describedBy: motivoId } : {})}
+          disabled={desligado}
+        />
+      </div>
+      {motivoDePermissao ? (
+        <div id={motivoId} className="basis-full">
+          <ReadOnlyNote reason={motivoDePermissao} />
+        </div>
+      ) : null}
+      {aviso ? (
+        <div className="basis-full">
+          <Toast tone="success" onDismiss={() => setAviso(null)}>
+            {aviso}
+          </Toast>
+        </div>
+      ) : null}
+      {erro ? (
+        <div className="basis-full">
+          <Toast tone="error" onDismiss={() => setErro(null)}>
+            {erro}
+          </Toast>
+        </div>
+      ) : null}
+    </>
+  );
 }
 
 export function CabecalhoDoAspecto({
@@ -85,6 +216,7 @@ export function CabecalhoDoAspecto({
       ) : null}
       {mostraOrigem ? origem : null}
       {direita ? <div className="ml-auto">{direita}</div> : null}
+      {tipo === "list" ? null : <InterruptorDeBloqueio tipo={tipo} id={id} aspecto={aspecto} />}
       {frase ? (
         <div className="basis-full">
           <ReadOnlyNote reason={frase} />
