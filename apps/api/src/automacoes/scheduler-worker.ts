@@ -512,7 +512,7 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
    */
   async function semear(): Promise<number> {
     const hoje = relogio.agora();
-    ultimaSemeaduraEm = formatarDiaCivil(inicioDoDia(hoje));
+    const diaDaSemeadura = formatarDiaCivil(inicioDoDia(hoje));
 
     const pares = await catalogoDeListasComAgenda(opcoes.workspaceId);
     let linhasCriadas = 0;
@@ -556,6 +556,10 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
       }
     }
 
+    // 10-REVIEW MEDIUM-05 — só depois do último insert: uma semeadura que caiu
+    // no meio (banco fora do ar) é tentada de novo na volta seguinte, não no
+    // dia civil seguinte.
+    ultimaSemeaduraEm = diaDaSemeadura;
     return linhasCriadas;
   }
 
@@ -743,8 +747,7 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
 
   let temporizador: ReturnType<typeof setInterval> | undefined;
   // A volta em voo, só para `parar()` poder esperá-la: uma promessa À PARTE,
-  // resolvida no `finally`. A da volta segue como antes (`void`, sem
-  // `catch`), para uma rejeição continuar se comportando exatamente igual.
+  // resolvida no `finally`, que nunca rejeita.
   let emVoo: Promise<void> | undefined;
 
   /**
@@ -771,10 +774,25 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
         emVoo = new Promise<void>((resolve) => {
           terminou = resolve;
         });
-        void drenar().finally(() => {
-          emVoo = undefined;
-          terminou();
-        });
+        // 10-REVIEW MEDIUM-05 — `recuperarTravadas()`, `semear()`,
+        // `reivindicar()` e o `fecharLinha` do `catch` de `processarUm()`
+        // falam com o banco fora de qualquer `try`: um blip do Postgres fazia
+        // `drenar()` rejeitar sem ninguém tratar, e a rejeição não tratada
+        // derruba o processo inteiro — a API HTTP junto com o relógio. A
+        // falha vai para o log (saneada, sem dado de Tarefa) e a volta
+        // seguinte tenta de novo; a linha presa em `processando` volta pela lease.
+        void drenar()
+          .catch((erro: unknown) => {
+            try {
+              registrar("warn", "Volta do relógio falhou.", { causa: sanitizarErro(erro, CODIGOS_DA_AGENDA.ERRO_INESPERADO).summary });
+            } catch {
+              // Nem o log pode derrubar o processo.
+            }
+          })
+          .finally(() => {
+            emVoo = undefined;
+            terminou();
+          });
       }, intervaloMs);
     },
     async parar() {
