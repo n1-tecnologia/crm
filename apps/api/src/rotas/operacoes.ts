@@ -228,13 +228,18 @@ const ENTRADA_INVITE_MEMBER = z.object({ email: z.string(), roleId: z.string() }
 const SERVICOS: Partial<
   Record<
     NomeDeOperacao,
-    (membro: MembroDaSessao, args: readonly unknown[], aoTerminar: (state: DataState) => void) => Promise<ResultadoTransacao<unknown>>
+    (
+      membro: MembroDaSessao,
+      args: readonly unknown[],
+      aoTerminar: (state: DataState) => void,
+      aoMedir: (medicao: MedicaoDaExecucao) => void,
+    ) => Promise<ResultadoTransacao<unknown>>
   >
 > = {
   // T-1-08 — `.strip()` descarta qualquer `userId` que o cliente mande em
   // `args[0]`: a única fonte de `userId` é `resolverUsuarioPorEmail`, dentro
   // de `convidarMembro`, nunca o corpo da requisição.
-  inviteMember: (membro, args, aoTerminar) => {
+  inviteMember: (membro, args, aoTerminar, aoMedir) => {
     const entrada = ENTRADA_INVITE_MEMBER.safeParse(args[0]);
     if (!entrada.success) throw new ErroDeEntrada(mensagemDeEntradaInvalida("inviteMember"));
     return convidarMembro(
@@ -244,7 +249,7 @@ const SERVICOS: Partial<
         email: entrada.data.email,
         roleId: entrada.data.roleId,
       },
-      { aoTerminar },
+      { aoTerminar, aoMedir },
     );
   },
 };
@@ -327,9 +332,16 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
       };
       try {
         resultado = servico
-          ? await servico(request.membro, args, (state) => {
-              depois = state;
-            })
+          ? await servico(
+              request.membro,
+              args,
+              (state) => {
+                depois = state;
+              },
+              (m) => {
+                medicao = m;
+              },
+            )
           : await executar(
               request.membro.workspaceId,
               (state) => {
@@ -368,10 +380,14 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
         if (erro instanceof ErroDeEntrada) {
           return reply.code(400).send({ ok: false, error: erro.message });
         }
+        // 500: a exceção também deixa a sua linha (é onde `tentativas` e `travaMs`
+        // altos aparecem) e sobe ao `setErrorHandler` de `app.ts`.
+        registrarMedicao({});
         throw erro;
       }
 
       if ("conflito" in resultado && resultado.conflito) {
+        registrarMedicao({});
         return reply.code(409).send(resultado);
       }
 
@@ -410,6 +426,7 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
         registrarMedicao({ recorteMs: Math.round((performance.now() - inicioDoRecorte) * 10) / 10 });
         return reply.code(200).send(corpo);
       }
+      registrarMedicao({});
       return reply.code(200).send(resultado);
     },
   );
