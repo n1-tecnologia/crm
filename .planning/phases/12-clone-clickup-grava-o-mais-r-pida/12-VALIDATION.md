@@ -44,23 +44,34 @@ created: "2026-10-30"
 
 ## Per-Task Verification Map
 
-> Os IDs de tarefa são preenchidos pelo planejador; as linhas abaixo ficam por requisito até lá.
+> IDs `12-PP-TT` = plano PP, tarefa TT. "Docker" = Postgres local `postgres:16` com `DATABASE_URL`/`DATABASE_URL_MIGRACAO` explícitos (contêiner `crm-n1-pg-12PP`, porta 556(20+PP)); o comando completo está no `<verify>` de cada tarefa.
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 12-xx-xx | — | — | GRV-01 | V7 / vazamento de `medicao` | `medicao` fora do corpo (200, recusa, 409); log só com nome da operação e números | integração sem banco | `cd apps/api && DATABASE_URL= npx vitest run src/rotas/operacoes-medicao.test.ts` | ❌ W0 | ⬜ pending |
-| 12-xx-xx | — | — | GRV-01 | — | etapas, `tentativas`, `linhasLidas` coletados; `aoMedir` também em conflito/exceção | unit | `cd apps/api && DATABASE_URL= npx vitest run src/persistencia/unidade-de-trabalho.test.ts` | ✅ (estender) | ⬜ pending |
-| 12-xx-xx | — | — | GRV-01 | — | mediana, pior caso e tabela do comando | unit puro | `cd apps/api && DATABASE_URL= npx vitest run src/observabilidade/medicao-da-gravacao.test.ts` | ❌ W0 | ⬜ pending |
-| 12-xx-xx | — | — | GRV-03 | pool esgotado por espera de trava | trava é a 1ª instrução após `begin`; `55P03` → 409 sem repetir; regime otimista mantém 3 tentativas | unit (fake) | `cd apps/api && DATABASE_URL= npx vitest run src/persistencia/unidade-de-trabalho-trava.test.ts` | ✅ (reescrever linhas 101 e 110) | ⬜ pending |
-| 12-xx-xx | — | — | GRV-03 | — | 2 `executar()` simultâneas gravam, 1 tentativa cada, `hidratar` ×2 | integração, Postgres local | `cd apps/api && DATABASE_URL=<docker> DATABASE_URL_MIGRACAO=<docker> npx vitest run src/persistencia/unidade-de-trabalho-concorrencia.test.ts` | ❌ W0 | ⬜ pending |
-| 12-xx-xx | — | — | GRV-03 | — | as 4 importações longas passam `regime: "otimista"`; os demais, não | unit | `cd apps/api && DATABASE_URL= npx vitest run src/importacao` | ✅ (estender) | ⬜ pending |
-| 12-xx-xx | — | — | GRV-04 | — | `run` com 2 chamadas aplica 2 diferenças em ordem e não chama `hidratar` | unit (transporte falso) | `cd apps/web && npx vitest run src/dados/store.test.ts` | ✅ (novo caso) | ⬜ pending |
-| 12-xx-xx | — | — | GRV-04 | — | `transporteHttp.gravar` devolve a lista, parando na 1ª que não for `diferenca` | unit (`fetch` falso) | `cd apps/web && npx vitest run src/dados/transporte.test.ts` | ✅ (ajustar `(g)`) | ⬜ pending |
-| 12-xx-xx | — | — | GRV-05 | mudança mostrada e perdida | `data.lists` já tem a Lista antes de o transporte responder; `ok:false` a remove e `lastResult.error` traz a mensagem | unit (transporte lento) | `cd apps/web && npx vitest run src/dados/store.test.ts` | ✅ (novo; inverter `(b)`) | ⬜ pending |
-| 12-xx-xx | — | — | GRV-05 | — | dois `run` seguidos: 1 pedido em voo por vez, ordem preservada; recusa do 1º refaz o 2º | unit | `cd apps/web && npx vitest run src/dados/store.test.ts` | ❌ W0 | ⬜ pending |
-| 12-xx-xx | — | — | GRV-05 | segredo de link antes de existir | lista de exceções: chaves válidas e motivos não vazios; gesto com exceção não vira `data` na hora | unit | `cd apps/web && npx vitest run src/dados/operacoes-que-esperam.test.ts` | ❌ W0 | ⬜ pending |
-| 12-xx-xx | — | — | GRV-05 | — | lista nova aparece sem link e com `aria-busy` até confirmar | jsdom | `cd apps/web && npx vitest run src/features/shell` | ✅ (estender) | ⬜ pending |
-| 12-xx-xx | — | — | GRV-05 | mudança mostrada e perdida | `beforeunload` só avisa com `pendentes > 0` | unit da função pura | `cd apps/web && npx vitest run src/dados/store.test.ts` | ❌ W0 | ⬜ pending |
+| 12-01-01 | 12-01 | 1 | GRV-01 | T-12-01 | medição fora do corpo no 200; linha "gravacao medida" com as etapas; `aoMedir` em sucesso, recusa, conflito e exceção | unit + integração sem banco | `cd apps/api && DATABASE_URL= npx vitest run src/rotas/operacoes-medicao.test.ts src/persistencia/unidade-de-trabalho.test.ts src/persistencia/unidade-de-trabalho-trava.test.ts && npx tsc --noEmit` | ❌ W0 (`operacoes-medicao.test.ts` nasce na tarefa) | ⬜ pending |
+| 12-01-02 | 12-01 | 1 | GRV-01 | T-12-01, T-12-02 | recusa, 409, 500 e `inviteMember` sem medição no corpo; linha sem nome de Lista nem e-mail | integração sem banco + e2e Docker | `cd apps/api && DATABASE_URL= npx vitest run src/rotas/operacoes-medicao.test.ts src/servicos/convidar-membro.test.ts src/persistencia/unidade-de-trabalho.test.ts && npx tsc --noEmit` + Docker `operacoes.test.ts` e `estado.test.ts` | ✅ | ⬜ pending |
+| 12-02-01 | 12-02 | 2 | GRV-01 | — | mediana, pior caso, formatação; `createList` medido num Fastify em loopback | unit puro + Docker | `cd apps/api && DATABASE_URL= npx vitest run src/observabilidade/medicao-da-gravacao.test.ts && npx tsc --noEmit` + Docker `medir-gravacao.test.ts` | ❌ W0 | ⬜ pending |
+| 12-02-02 | 12-02 | 2 | GRV-01 | T-12-03, T-12-04, T-12-05 | quatro gestos; registros pré-existentes com o mesmo `md5`; saída sem nomes; códigos de saída do comando; stub sem `export` | Docker + grep | `cd apps/api && DATABASE_URL= npx vitest run src/observabilidade && npx tsc --noEmit` + Docker `medir-gravacao.test.ts` | ❌ W0 | ⬜ pending |
+| 12-02-03 | 12-02 | 2 | GRV-01 | T-12-07 | o "antes" em produção, com o SHA publicado | manual (dono) | `ssh … 'cd /opt/n1-crm/current && PATH=/opt/n1-crm/node/bin:$PATH npm run --silent gravacao:medir -w @n1/api -- --repeticoes=10'` | n/a | ⬜ pending |
+| 12-03-01 | 12-03 | 3 | GRV-02 | — | gatilho de D-07 e "onde está o custo" a partir da saída colada | grep | `grep -c "Parada (2.2.2" .planning/phases/12-clone-clickup-grava-o-mais-r-pida/12-PROVAS.md` | n/a | ⬜ pending |
+| 12-03-02 | 12-03 | 3 | GRV-02 | T-12-08 | decisão do dono (meta, B, sessão C) | manual (`checkpoint:decision`, `blocking-human`) | — | n/a | ⬜ pending |
+| 12-03-03 | 12-03 | 3 | GRV-02 | T-12-08 | meta registrada; sessão C no ROADMAP se disparou | grep | `grep -A6 "### Meta (fixada na parada)" .planning/phases/12-clone-clickup-grava-o-mais-r-pida/12-CONTEXT.md \| grep -c "Fixada em"` | n/a | ⬜ pending |
+| 12-04-01 | 12-04 | 4 | GRV-03 | T-12-09, T-12-10 | trava é a 1ª instrução após o `begin`; `55P03` → 409 sem repetir; Q=0 com trava de reserva; 2 `executar()` simultâneas com `hidratar` ×2 | unit (fake) + Docker | `cd apps/api && DATABASE_URL= npx vitest run src/persistencia/unidade-de-trabalho-trava.test.ts src/persistencia/unidade-de-trabalho.test.ts src/rotas/operacoes-medicao.test.ts && npx tsc --noEmit` + Docker `unidade-de-trabalho-concorrencia.test.ts` | ✅ + ❌ W0 (concorrência) | ⬜ pending |
+| 12-04-02 | 12-04 | 4 | GRV-03 | T-12-11 | só as quatro importações longas no regime otimista | unit (lê o código-fonte) | `cd apps/api && DATABASE_URL= npx vitest run src/persistencia/regime-dos-chamadores.test.ts src/importacao && npx tsc --noEmit` | ❌ W0 | ⬜ pending |
+| 12-04-03 | 12-04 | 4 | GRV-03 | T-12-12 | portão contra Postgres local e suíte sem banco inteira | Docker + suíte | Docker `src/persistencia`, `operacoes`, `estado`, `formularios-publicos`, `scheduler-worker`, `medir-gravacao`, e2e; `cd apps/api && DATABASE_URL= DATABASE_URL_MIGRACAO= npx vitest run && npx tsc --noEmit` | ✅ | ⬜ pending |
+| 12-05-01 | 12-05 | 5 | GRV-04 | T-12-13 | `run` com 2 chamadas aplica 2 diferenças e não chama `hidratar`; `transporteHttp.gravar` devolve a lista | unit (transporte e `fetch` falsos) | `cd apps/web && npx tsc --noEmit && npx vitest run src/dados/store.test.ts src/dados/transporte.test.ts` | ✅ (novos casos) | ⬜ pending |
+| 12-05-02 | 12-05 | 5 | GRV-04 | T-12-13 | resposta fora de ordem re-hidrata 1 vez; conflito e falha no meio | unit + suíte web | `cd apps/web && npx vitest run && cd ../.. && npm run lint -w @n1/web` | ✅ | ⬜ pending |
+| 12-06-01 | 12-06 | 6 | GRV-05 | T-12-14 | `data.lists` tem a Lista antes de o transporte responder; recusa e falha a tiram com `lastResult.error` | unit (transporte lento) + suíte web | `cd apps/web && npx tsc --noEmit && npx vitest run src/dados` + `cd apps/web && npx vitest run` | ✅ (inverter `(b)`) | ⬜ pending |
+| 12-06-02 | 12-06 | 6 | GRV-05 | T-12-15, T-12-16 | um pedido por vez na ordem do clique; recusa do 1º refaz o 2º; `rehidratar` de fora espera a vez (Pitfall 3) | unit + suíte web | `cd apps/web && npx vitest run && cd ../.. && npm run lint -w @n1/web` | ✅ (novos casos) | ⬜ pending |
+| 12-07-01 | 12-07 | 7 | GRV-05 | T-12-17, T-12-18 | `createForm` espera o servidor e mostra o segredo dele; chaves válidas, motivos não vazios | unit | `cd apps/web && npx tsc --noEmit && npx vitest run src/dados/operacoes-que-esperam.test.ts src/dados/store.test.ts` | ❌ W0 | ⬜ pending |
+| 12-07-02 | 12-07 | 7 | GRV-05 | T-12-17 | levantamento fechado; conjunto de chaves igual ao registrado | unit + grep | `cd apps/web && npx tsc --noEmit && npx vitest run src/dados` | ❌ W0 | ⬜ pending |
+| 12-08-01 | 12-08 | 8 | GRV-05 | T-12-19 | Lista nova sem link e com `aria-busy` até confirmar; depois com link | jsdom | `cd apps/web && npx tsc --noEmit && npx vitest run src/features/shell src/dados` | ❌ W0 (`arvore-salvando.test.tsx`) | ⬜ pending |
+| 12-08-02 | 12-08 | 8 | GRV-05 | T-12-19 | Tarefa e Subtarefa pendentes não abrem; "Abrir em página cheia" desligado | jsdom + suíte web | `cd apps/web && npx tsc --noEmit && npx vitest run src/features/estrutura/tarefa-salvando.test.tsx src/features/estrutura/pagina-da-lista-visualizacoes.test.tsx` + `cd apps/web && npx vitest run && cd ../.. && npm run lint -w @n1/web` | ❌ W0 | ⬜ pending |
+| 12-09-01 | 12-09 | 9 | GRV-05 | T-12-24, T-12-21 | com o `StoreProvider` de verdade, a guarda cancela `click`/`auxclick` em âncora com id pendente e só ela; solta depois da confirmação e ao desmontar | jsdom + unit | `cd apps/web && npx tsc --noEmit && npx vitest run src/dados` | ❌ W0 (`guarda-de-navegacao.test.tsx`) | ⬜ pending |
+| 12-09-02 | 12-09 | 9 | GRV-05 | T-12-20 | `beforeunload` só com `pendentes > 0`; suíte web, lint e build | unit + suíte web + build | `cd apps/web && npx tsc --noEmit && npx vitest run src/dados` + `cd apps/web && npx vitest run && cd ../.. && npm run lint -w @n1/web && npm run build` | ✅ (novo caso em `store.test.ts`) | ⬜ pending |
+| 12-10-01 | 12-10 | 10 | GRV-06 | T-12-22 | `npm run check` verde contra Postgres local; regime travado na saída do comando | suíte inteira (Docker) | `npm run migrar -w @n1/api` + `npm run check` com `DATABASE_URL`/`DATABASE_URL_MIGRACAO` do Docker | ✅ | ⬜ pending |
+| 12-10-02 | 12-10 | 10 | GRV-06 | T-12-22, T-12-23 | o "depois" em produção com o mesmo comando; Lista aparece na hora na tela | manual (dono) | o mesmo `ssh … gravacao:medir … --repeticoes=10` do "antes" | n/a | ⬜ pending |
+| 12-10-03 | 12-10 | 10 | GRV-06 | — | tabela antes/depois/meta e pronto da 2.2 | grep | `grep -c "Comparação com a meta (D-08)" .planning/phases/12-clone-clickup-grava-o-mais-r-pida/12-PROVAS.md` | n/a | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -68,13 +79,20 @@ created: "2026-10-30"
 
 ## Wave 0 Requirements
 
-- [ ] `apps/api/src/rotas/operacoes-medicao.test.ts` — GRV-01 (sem vazamento + linha de log)
-- [ ] `apps/api/src/observabilidade/medicao-da-gravacao.test.ts` — GRV-01 (mediana/pior caso/tabela)
-- [ ] `apps/api/src/persistencia/unidade-de-trabalho-concorrencia.test.ts` — GRV-03 (Postgres local, `describeComBanco`)
-- [ ] `apps/web/src/dados/operacoes-que-esperam.test.ts` — GRV-05
-- [ ] Ajuste dos fakes de `unidade-de-trabalho*.test.ts` (linha do `select … for update`, `linhasLidas` defensivo)
-- [ ] Auxiliar de teste do transporte lento/controlável (promessa que o teste solta, como `store.test.ts (o)` com `soltar`) — GRV-05
-- [ ] Container Docker local `postgres:16` para os testes com banco (já disponível; sem instalação)
+Cada arquivo nasce na primeira tarefa que o usa (TDD dentro da própria tarefa):
+
+- [ ] `apps/api/src/rotas/operacoes-medicao.test.ts` — GRV-01 (12-01-01)
+- [ ] `apps/api/src/observabilidade/medicao-da-gravacao.test.ts` — GRV-01 (12-02-01)
+- [ ] `apps/api/src/observabilidade/medir-gravacao.test.ts` — GRV-01, Postgres local (12-02-01)
+- [ ] `apps/api/src/persistencia/unidade-de-trabalho-concorrencia.test.ts` — GRV-03, Postgres local, `describeComBanco` (12-04-01)
+- [ ] `apps/api/src/persistencia/regime-dos-chamadores.test.ts` — GRV-03 (12-04-02)
+- [ ] `apps/web/src/dados/operacoes-que-esperam.test.ts` — GRV-05 (12-07-01)
+- [ ] `apps/web/src/features/shell/arvore-salvando.test.tsx` — GRV-05 (12-08-01)
+- [ ] `apps/web/src/features/estrutura/tarefa-salvando.test.tsx` — GRV-05 (12-08-02)
+- [ ] `apps/web/src/dados/guarda-de-navegacao.test.tsx` — GRV-05 (12-09-01, traçador do plano)
+- [ ] Ajuste dos fakes de `unidade-de-trabalho*.test.ts` (linha do `select … for update`, `linhasLidas` defensivo) — 12-01-01 e 12-04-01
+- [ ] Auxiliar `transporteLento` em `store.test.ts` (promessa que o teste solta) — 12-06-01
+- [ ] Contêiner Docker local `postgres:16` para os testes com banco (já disponível; sem instalação)
 
 ---
 
@@ -84,7 +102,9 @@ created: "2026-10-30"
 |----------|-------------|------------|-------------------|
 | O comando repete os 4 gestos ×10 em produção e imprime a tabela "antes"; tamanho de `plataforma.registros` | GRV-01 | roda na VPS contra o banco real; ação do dono | `ssh … 'cd /opt/n1-crm/current && npm run gravacao:medir -w @n1/api -- --repeticoes=10'` → `12-PROVAS.md` |
 | Parada `[BLOCKING]` com a tabela "antes" na mão do dono; meta fixada | GRV-02 | decisão do dono | preencher "Meta (fixada na parada)" no `12-CONTEXT.md`; conferir com `grep -n "Meta (fixada na parada)" -A3 .planning/phases/12-*/12-CONTEXT.md` (sem "A preencher") |
-| Tabela "depois" com o mesmo comando, comparada à meta | GRV-06 | roda na VPS; ação do dono | idem GRV-01, depois de publicar a trava e o store |
+| Tabela "depois" com o mesmo comando, comparada à meta | GRV-06 | roda na VPS; ação do dono | idem GRV-01, depois de publicar a trava e o store (12-10-02) |
+| A linha "gravacao medida" no log do serviço real (D-03) | GRV-01, GRV-06 | log da VPS | `sudo journalctl --no-pager -u n1-crm-api.service -n 80 \| grep "gravacao medida"` depois de um gesto na tela (12-02-03 e 12-10-02) |
+| Criar uma Lista em produção aparece na árvore na hora, "salvando" e sem link, e vira link | GRV-05 | comportamento visual em produção | 12-10-02, passo 3 |
 
 ---
 

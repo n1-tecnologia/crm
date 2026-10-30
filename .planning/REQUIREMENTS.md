@@ -178,6 +178,17 @@ Critério de pronto (ROADMAP Phase 11): a Tarefa fechada nas lacunas do checklis
 - [x] **TAR-06**: Editar a descrição de "A" para "B" grava Atividade com `before: "A"` e `after: "B"`; descrição de 3.000 caracteres grava 2.000 e "…"; no histórico "Ver alteração" expande o texto anterior e o novo; edição antiga e Ator de integração não têm o botão (2.6.8, D-10..D-14). Pendente.
 - [x] **TAR-07**: `tempoRegistrado(state, taskId)` em `tempo-registrado.test.ts`: lançamentos de 30 e 45 min mais um cronômetro aberto devolvem 75 min e `emAndamento: true`; com uma Subtarefa de 20 min, `minutosComSubtarefas` é 95; a linha "Rastrear tempo" e o editor mostram o mesmo número (2.6.9, D-15, D-16). Pendente.
 
+### Fase 12 — Clone ClickUp: gravação mais rápida (GRV)
+
+Critério de pronto (ROADMAP Phase 12): medir quanto leva uma gravação e cortar o custo onde ele está, pelo caminho B da 2.2.2 (ficar em `plataforma.registros`): os tempos de `createList`, `updateContainer`, `trashContainer` e `changeTaskStatus` medidos em produção antes e depois; criar uma Lista aparece na árvore antes da resposta do servidor; duas gravações simultâneas no mesmo Espaço de Trabalho não hidratam de novo. Os seis IDs abaixo são **derivados** das subtarefas 2.2.1–2.2.5 e 2.2.10 de `docs/09-planejamento/TAREFAS-POR-SESSAO.md` e das decisões D-01..D-17 (`.planning/phases/12-clone-clickup-grava-o-mais-r-pida/12-CONTEXT.md`, "Requisitos derivados").
+
+- [ ] **GRV-01**: Cada gravação por `POST /operacoes` escreve no log o nome da operação e o tempo de `hidratar`, operação, trava, `gravar`, recorte, tentativas e linhas lidas; a medição **não aparece** no corpo da resposta (teste `operacoes-medicao.test.ts`); o comando `gravacao:medir` (Fastify próprio em loopback na VPS, D-17) repete os quatro gestos 10 vezes e imprime mediana e pior caso por etapa, mais o tempo total do pedido; a tabela "antes" e o tamanho real de `plataforma.registros` estão em `12-PROVAS.md` (2.2.1, D-01..D-05, D-17). Pendente.
+- [ ] **GRV-02**: A parada `[BLOCKING]` aconteceu com a tabela "antes" na mão do dono; a meta está registrada na seção "Meta (fixada na parada)" de `12-CONTEXT.md` antes de a 2.2.3 começar; se `hidratar` passou de 300 ms na mediana, a sessão C está no ROADMAP como fase própria (2.2.2, D-06..D-08). Pendente.
+- [ ] **GRV-03**: Teste novo `unidade-de-trabalho-concorrencia.test.ts` contra Postgres local (o `unidade-de-trabalho-trava.test.ts` mocka o pool inteiro e não serve para trava real): duas `executar()` simultâneas no mesmo Espaço gravam com uma tentativa cada e `hidratar` roda exatamente 2 vezes (pula sem `DATABASE_URL` local); em `unidade-de-trabalho-trava.test.ts`, a trava esgotada (`55P03`) vira 409 sem repetir; as importações longas seguem no regime otimista; `CONTEXT.md` da persistência atualizado (2.2.3, D-09, D-10). Pendente.
+- [ ] **GRV-04**: Teste em `store.test.ts` com transporte falso: um `run` com duas chamadas aplica as duas diferenças e **não** chama `hidratar` (2.2.4, D-11, D-12). Pendente.
+- [ ] **GRV-05**: Teste em `store.test.ts` com transporte lento: `data.lists` já tem a Lista antes de o transporte responder; com `ok: false` ela some e `lastResult.error` traz a mensagem; dois `run` seguidos saem um de cada vez, em ordem; o item criado aparece sem link até confirmado; a lista de exceções está no código com o motivo de cada uma (2.2.5, D-13..D-16). Pendente.
+- [ ] **GRV-06**: A tabela de `12-PROVAS.md` tem as colunas "antes" e "depois" preenchidas, com o mesmo comando, e o "depois" comparado à meta de D-08 (2.2.10, D-01, D-08). Pendente.
+
 ## Traceability
 
 Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pelas ferramentas): `Pending` · `In Progress` · `Blocked` · `Complete`. A coluna "Situação verificada" carrega o status da intel (código, 2026-09-15).
@@ -271,11 +282,17 @@ Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pe
 | TAR-05 | Phase 11 | Complete | pendente | derivado (11-CONTEXT) |
 | TAR-06 | Phase 11 | Complete | pendente | derivado (11-CONTEXT) |
 | TAR-07 | Phase 11 | Complete | pendente | derivado (11-CONTEXT) |
+| GRV-01 | Phase 12 | Pending | pendente — checkpoint do dono (publicar e medir o "antes" na VPS) | derivado (12-CONTEXT) |
+| GRV-02 | Phase 12 | Pending | pendente — parada do dono (meta, D-07) | derivado (12-CONTEXT) |
+| GRV-03 | Phase 12 | Pending | pendente | derivado (12-CONTEXT) |
+| GRV-04 | Phase 12 | Pending | pendente | derivado (12-CONTEXT) |
+| GRV-05 | Phase 12 | Pending | pendente | derivado (12-CONTEXT) |
+| GRV-06 | Phase 12 | Pending | pendente — checkpoint do dono (publicar e medir o "depois" na VPS) | derivado (12-CONTEXT) |
 
 **Coverage:**
 
-- v1 requirements: 87 total (86 executáveis + 1 sobreposto por decisão travada) — RES-01..06 acrescentados em 2026-09-29 (Fase 6); CRM-D1..CRM-V1 (7, derivados) em 2026-10-09 (Fase 7); CXE-D1..CXE-V1 (9, derivados) em 2026-10-12 (Fase 8); SEG-01..SEG-12 (12, derivados) em 2026-10-22 (Fase 9); EST-01..EST-11 (11, derivados) em 2026-10-28 (Fase 10); TAR-01..TAR-07 (7, derivados) em 2026-10-29 (Fase 11)
-- Mapped to phases: 86 (Phase 0: 6 · Phase 1: 8 · Phase 2: 9 · Phase 3: 7 · Phase 4: 1 · Phase 5: 3 · Phase 6: 6 · Phase 7: 7 · Phase 8: 9 · Phase 9: 12 · Phase 10: 11 · Phase 11: 7)
+- v1 requirements: 93 total (92 executáveis + 1 sobreposto por decisão travada) — RES-01..06 acrescentados em 2026-09-29 (Fase 6); CRM-D1..CRM-V1 (7, derivados) em 2026-10-09 (Fase 7); CXE-D1..CXE-V1 (9, derivados) em 2026-10-12 (Fase 8); SEG-01..SEG-12 (12, derivados) em 2026-10-22 (Fase 9); EST-01..EST-11 (11, derivados) em 2026-10-28 (Fase 10); TAR-01..TAR-07 (7, derivados) em 2026-10-29 (Fase 11); GRV-01..GRV-06 (6, derivados) em 2026-10-30 (Fase 12)
+- Mapped to phases: 92 (Phase 0: 6 · Phase 1: 8 · Phase 2: 9 · Phase 3: 7 · Phase 4: 1 · Phase 5: 3 · Phase 6: 6 · Phase 7: 7 · Phase 8: 9 · Phase 9: 12 · Phase 10: 11 · Phase 11: 7 · Phase 12: 6)
 - Unmapped: 0 ✓ (PERS-03 não tem fase por ser sobreposto — sua parte viva é PERS-07)
 - Já feitos: 8 (PREP-01, PREP-02, PREP-03, PREP-04, PREP-06 — Fase 0 fechada em 2026-09-17, Plan 00-07 — mais PERS-01, PERS-02 da Fase 1) · risco aceito pelo dono: 1 (PREP-05, D-13) · em andamento: 4 · bloqueados por decisão: 4 (D11, D6, D8, D7) · pendentes: 18
 
