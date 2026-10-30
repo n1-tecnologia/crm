@@ -49,11 +49,30 @@ vi.mock("../persistencia/repositorio", async () => {
     gravar: async () => DIFERENCA_VAZIA,
   };
 });
+// `inviteMember` resolve e-mail → userId no Supabase Auth ANTES da transação: o teste não vai à rede.
+vi.mock("../autenticacao/resolver-usuario", async (importarOriginal) => ({
+  ...(await importarOriginal<typeof import("../autenticacao/resolver-usuario")>()),
+  resolverUsuarioPorEmail: async () => "usr_convidado",
+}));
 vi.mock("../persistencia/outbox", () => ({ gravarEventos: async () => undefined }));
 vi.mock("../persistencia/eventos-de-canal", () => ({ execucoesNovas: () => [], eventosDeNotificacaoPorCanal: () => [] }));
 
 const PROPRIETARIO = buildSeed().members.find((m) => m.id === "mem_thiago")!;
 const NOME_DA_LISTA = "Lista Medicao Sigilosa 4711";
+const EMAIL_DO_CONVITE = "convite.medicao@exemplo.com";
+
+/** POST autenticado numa operação: devolve a resposta e as linhas de log capturadas. */
+async function postar(nome: string, args: unknown[]) {
+  const { app, linhas } = appComLogCapturado();
+  const resposta = await app.inject({
+    method: "POST",
+    url: `/operacoes/${nome}`,
+    headers: { authorization: "Bearer qualquer" },
+    payload: { args },
+  });
+  await app.close();
+  return { resposta, linhas, corpo: resposta.json() as Record<string, unknown> };
+}
 
 function appComLogCapturado() {
   const linhas: string[] = [];
@@ -108,5 +127,74 @@ describe("POST /operacoes/:nome — a linha de medição (D-02/D-03)", () => {
     // T-12-02 — o nome da Lista que a pessoa digitou nunca entra no log de medição.
     const crua = linhas.find((l) => l.includes("gravacao medida"))!;
     expect(crua).not.toContain(NOME_DA_LISTA);
+  });
+
+  it("recusa do domínio (Espaço inexistente): 200 ok:false, corpo sem medicao, linha com desfecho recusou", async () => {
+    const { resposta, linhas, corpo } = await postar("createList", [
+      { name: NOME_DA_LISTA, parentType: "space", parentId: "spc_que_nao_existe" },
+    ]);
+
+    expect(resposta.statusCode).toBe(200);
+    expect(corpo.ok).toBe(false);
+    expect(Object.keys(corpo)).not.toContain("medicao");
+    const medidas = linhasDeMedicao(linhas);
+    expect(medidas).toHaveLength(1);
+    expect(medidas[0]!.medicao?.desfecho).toBe("recusou");
+    expect(typeof medidas[0]!.medicao?.totalMs).toBe("number");
+  });
+
+  it("409 (a revisão mudou nas três tentativas): corpo sem medicao, linha com desfecho conflito e tentativas 3", async () => {
+    falso.linhasDoUpdate = 0;
+    const { resposta, linhas, corpo } = await postar("createList", [
+      { name: NOME_DA_LISTA, parentType: "space", parentId: "spc_com" },
+    ]);
+
+    expect(resposta.statusCode).toBe(409);
+    expect(corpo).toMatchObject({ ok: false, conflito: true });
+    expect(typeof corpo.error).toBe("string");
+    expect(Object.keys(corpo)).not.toContain("medicao");
+    const medidas = linhasDeMedicao(linhas);
+    expect(medidas).toHaveLength(1);
+    expect(medidas[0]!.operacao).toBe("createList");
+    expect(medidas[0]!.medicao?.desfecho).toBe("conflito");
+    expect(medidas[0]!.medicao?.tentativas).toBe(3);
+  });
+
+  it("500 (exceção no meio da transação): corpo opaco sem medicao, linha com desfecho excecao", async () => {
+    falso.hidratarLanca = new Error("falha de teste na hidratação");
+    const { resposta, linhas, corpo } = await postar("createList", [
+      { name: NOME_DA_LISTA, parentType: "space", parentId: "spc_com" },
+    ]);
+
+    expect(resposta.statusCode).toBe(500);
+    expect(corpo).toEqual({ ok: false, error: "Erro interno." });
+    expect(Object.keys(corpo)).not.toContain("medicao");
+    const medidas = linhasDeMedicao(linhas);
+    expect(medidas).toHaveLength(1);
+    expect(medidas[0]!.medicao?.desfecho).toBe("excecao");
+  });
+
+  it("inviteMember (por SERVICOS): 200 sem medicao no corpo, linha com a operação e sem o e-mail do convite", async () => {
+    const { resposta, linhas, corpo } = await postar("inviteMember", [{ email: EMAIL_DO_CONVITE, roleId: "role_adm" }]);
+
+    expect(resposta.statusCode).toBe(200);
+    expect(corpo.ok).toBe(true);
+    expect(Object.keys(corpo)).not.toContain("medicao");
+    const medidas = linhasDeMedicao(linhas);
+    expect(medidas).toHaveLength(1);
+    expect(medidas[0]!.operacao).toBe("inviteMember");
+    expect(medidas[0]!.medicao?.desfecho).toBe("gravou");
+    const crua = linhas.find((l) => l.includes("gravacao medida"))!;
+    expect(crua).not.toContain(EMAIL_DO_CONVITE);
+  });
+
+  it("400/403/404 não gravam e não escrevem a linha de medição", async () => {
+    const naoExiste = await postar("operacaoQueNaoExiste", []);
+    expect(naoExiste.resposta.statusCode).toBe(404);
+    expect(linhasDeMedicao(naoExiste.linhas)).toHaveLength(0);
+
+    const malFormada = await postar("createList", [{ name: NOME_DA_LISTA }]);
+    expect(malFormada.resposta.statusCode).toBe(400);
+    expect(linhasDeMedicao(malFormada.linhas)).toHaveLength(0);
   });
 });
