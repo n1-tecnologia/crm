@@ -248,4 +248,10 @@ describe("formatarRelatorio", () => {
     };
     expect(formatarRelatorio(com)).toContain("travado");
   });
+
+  it("traz as observações da rodada quando existem, e nada quando não existem", () => {
+    const base = relatorio(120);
+    expect(formatarRelatorio({ ...base, observacoes: ["lixeira: restaurar e enviar de novo"] })).toContain("lixeira: restaurar e enviar de novo");
+    expect(formatarRelatorio(base)).not.toContain("Observações");
+  });
 });
