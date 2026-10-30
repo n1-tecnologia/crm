@@ -708,11 +708,11 @@ Plans:
 **Caminhos da 2.2.2:** (B) ficar em `plataforma.registros`, travar no começo, encadear as chamadas e mostrar a mudança na hora: 2.2.3, 2.2.4, 2.2.5 e 2.2.10, cerca de 2 dias, e é a recomendação · (A) tabelas próprias de Espaço, Pasta e Lista: 2.2.6–2.2.9, 4 a 5 dias; se for a escolhida, esta fase passa a ir antes da Fase 10, porque a `010` mexe nas linhas de Lista de `plataforma.registros` · (C) tabelas para a Estrutura inteira: sessão própria, fora daqui (8 a 10 dias; só se `hidratar` passar de 300 ms na mediana).
 **Requirements**: GRV-01, GRV-02, GRV-03, GRV-04, GRV-05, GRV-06
 **Depends on:** Phase 9 (medir exige o `apps/api` em produção, entregue no 09-20)
-**Plans:** 10 plans
+**Plans:** 1/10 plans executed
 
 Plans:
 **Wave 1**
-- [ ] 12-01-PLAN.md — Medição por etapa em `executar()` (`aoMedir`) e a linha "gravacao medida" de `POST /operacoes`, sem nada no corpo (GRV-01)
+- [x] 12-01-PLAN.md — Medição por etapa em `executar()` (`aoMedir`) e a linha "gravacao medida" de `POST /operacoes`, sem nada no corpo (GRV-01)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 12-02-PLAN.md — O comando `gravacao:medir` (Fastify próprio em loopback, D-17), ensaiado no Postgres local, e o "antes" na VPS `[BLOCKING]` (GRV-01)

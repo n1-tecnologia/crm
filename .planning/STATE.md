@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 12
-current_phase_name: Clone ClickUp — gravação mais rápida
+current_phase_name: "Clone ClickUp: gravação mais rápida"
 status: executing
-stopped_at: Phase 12 planned (10 plans, verified)
-last_updated: "2026-10-30T16:29:56.472Z"
+stopped_at: Completed 12-01-PLAN.md
+last_updated: "2026-10-30T16:48:21.662Z"
 last_activity: 2026-10-30
-last_activity_desc: Phase 12 planned — 10 plans in 10 waves, verification passed
-state_head: c22452c338d4ffdb1d030ebe37c20f09b63c16fb
+last_activity_desc: Phase 12 execution started
+state_head: 01ff6fb7cae78721b16a8da72158ab6f09c37a5b
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 209
-  completed_plans: 195
+  completed_plans: 196
 milestone_name: milestone
 ---
 
@@ -24,14 +24,14 @@ milestone_name: milestone
 See: .planning/PROJECT.md (updated 2026-10-29)
 
 **Core value:** Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de ponta a ponta sem abrir o ClickUp — dados no Postgres próprio, regras de `@n1/dominio` intactas.
-**Current focus:** Phase 2 — Solicitação de pagamento — o front substitui o ClickUp
+**Current focus:** Phase 12 — Clone ClickUp: gravação mais rápida
 
 ## Current Position
 
-Phase: 12 (Clone ClickUp — gravação mais rápida) — READY TO EXECUTE
-Plan: Not started
+Phase: 12 (Clone ClickUp: gravação mais rápida) — EXECUTING
+Plan: 2 of 10
 Status: Ready to execute
-Last activity: 2026-10-30 — Phase 12 planned (10 plans, 10 waves; verification passed)
+Last activity: 2026-10-30 — Phase 12 execution started
 
 **Fase 06 planejada à mão em 2026-09-29 (Conferência do Resumo e anexos), pronta para `/gsd-execute-phase 6`:**
 `.planning/phases/06-conferencia-do-resumo-e-anexos/` — `06-CONTEXT.md` (13 decisões com padrão e variável de troca) e seis planos em três ondas: 06-01 domínio · 06-02 contrato v1.1 no `financeiro-tria` · 06-03 ponte em dois momentos · 06-04 tela e jornada · 06-05 S5/S6 na Solicitação · 06-06 docs e provas `[BLOCKING]`. Origem: `docs/08-migracao-financeiro/09-…` (desenho) e `10-…` (levantamento etapa por etapa com `arquivo:linha`). Ponto de partida do código: `crm-n1-integracao@3d6f735` (branch `integra-frontend-main`, sem push) e `financeiro-tria@c272dad` (`main`, 99 commits sem push, 89 arquivos sujos só de EOL — `git add` sempre por caminho). O dono ainda não respondeu às quatro perguntas do doc 10; os padrões de D6-01..D6-04 seguem "como no ClickUp", exceto Integração manual (o seguro).
@@ -414,6 +414,7 @@ Progress: [██████░░░░] 63%
 | Phase 11 P06 | 6 min | 3 tasks | 8 files |
 | Phase 11 P07 | 10 min | 3 tasks | 5 files |
 | Phase 11 P08 | 20 min | 3 tasks | 5 files |
+| Phase 12 P01 | 8 min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -610,6 +611,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 11]: 11-06: AlteracaoDeDescricao única serve Feed e Timeline; ehAlteracaoDeDescricao guarda Feed, Timeline, Auditoria e Reunião
 - [Phase 11]: 11-07 D-05/D-01: botao de converter sai de conversaoDeItemRecusada; confirmacao de um clique sem digitar o nome; aviso Abrir usa o id do servidor (useRunConfirmado)
 - [Phase 11]: 11-07 D-06: DescricaoDaTarefa destaca so o @Nome da lista efetiva (segmentosComMencoes), com span data-mencao e sem HTML
+- [Phase 12]: 12-01: medição de executar() por callback aoMedir, não por campo de ResultadoTransacao (o resultado vira corpo HTTP em cinco pontos; D-03 proíbe a medição no corpo)
+- [Phase 12]: 12-01: travaMs = tempo até a revisão estar garantida nos dois regimes (aqui o update ... where revisao; em 12-04 o select for update mais o update); atualizaMs isola o update
 
 ### Pending Todos
 
@@ -671,6 +674,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-30T14:35:55.571Z
-Stopped at: Phase 12 context gathered
-Resume file: .planning/phases/12-clone-clickup-grava-o-mais-r-pida/12-CONTEXT.md
+Last session: 2026-10-30T16:48:16.000Z
+Stopped at: Completed 12-01-PLAN.md
+Resume file: None
