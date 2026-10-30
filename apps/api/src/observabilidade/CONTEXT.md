@@ -109,3 +109,43 @@ MESMA).
   `Erro de prova do Sentry (SEG-10)`. Serve para o dono provar o alerta em
   homologação (09-19). Nunca em produção; **sai do código em 09-22**.
 
+## O comando `gravacao:medir` (Fase 12, D-01/D-17)
+
+`npm run gravacao:medir -w @n1/api -- [--repeticoes=10] [--workspace=<id> --confirmar-espaco] [--membro=<id>]`
+mede a gravação do jeito que a pessoa a sente. Repete 10 vezes cada um de quatro
+gestos — criar Lista (`createList`), renomear Lista (`updateContainer`), enviar à
+lixeira um Espaço com Listas (`trashContainer`) e mudar o Status de uma Tarefa
+(`changeTaskStatus`) — e imprime, por gesto e por etapa, mediana e pior caso:
+as etapas de `executar()`, `recorteMs` e `totalMs` do handler, o `pedidoMs` de
+ponta a ponta e as duas sobras (`foraDasEtapasMs`, dentro do handler; `foraDoHandlerMs`,
+`pedidoMs − totalMs`: autenticação, serialização, loopback). Mede também `select 1`
+(a ida e volta de referência VPS↔banco), `hidratar` direto numa transação só de
+leitura (com o limite de 300 ms da sessão C, D-07), `GET /estado` pelo total (D-12)
+e o tamanho de `plataforma.registros` por coleção (D-05: `pg_column_size` e bytes do
+texto). O MESMO comando, sem mudança, mede o "depois" em 12-10.
+
+- **Por que sobe o próprio Fastify em loopback (D-17).** As etapas só existem na
+  linha de log "gravacao medida" (D-03 as tirou da resposta), então o comando monta
+  `buildApp` com `opcoesDoLogger(env, destino)` apontando para um array e lê a linha
+  de cada pedido. É o mesmo código, o mesmo banco e a mesma rede do serviço, em
+  processo à parte: não pega o pool quente do serviço nem o nginx/TLS.
+- **O stub de token fica só no `.cli.ts`.** O arquivo do comando não exporta nada,
+  ninguém o importa (nem `app.ts`, nem `index.ts`; só o teste o executa), aceita
+  apenas o `randomUUID` que o próprio processo gera, escuta só `127.0.0.1` em porta
+  efêmera e fecha no `finally`. Não há variável de ambiente que o ligue. Assina como o
+  Proprietário (ou `--membro`), pelo `userId` lido de `plataforma.registros`.
+- **A lógica fica fora do `.cli.ts`**, no molde de `previa.ts`: `medicao-da-gravacao.ts`
+  é pura (ler a linha, mediana, pior caso, texto) e `medir-gravacao.ts` faz os pedidos
+  e as consultas. `medir-gravacao.test.ts` as exercita contra Postgres local.
+- **Como roda na VPS** (só com ordem do dono):
+  `ssh … 'cd /opt/n1-crm/current && PATH=/opt/n1-crm/node/bin:$PATH npm run --silent gravacao:medir -w @n1/api -- --repeticoes=10'`.
+  A revisão do código impressa é o `REVISION` da raiz do release.
+- **O rastro em produção (D-04, aceito pelo dono).** Grava num Espaço de teste
+  `ZZ-MEDICAO-<carimbo>` (e um segundo, `…-lixeira`) dentro de `ws_n1`, toca só ids que
+  ele mesmo criou e manda os Espaços para a lixeira num `finally` — nunca apaga. Ficam
+  Atividade assinada pelo Proprietário e os Espaços `ZZ-MEDICAO-…` na lixeira.
+  `--workspace` diferente de `WORKSPACE_ID` exige `--confirmar-espaco`.
+- **A saída não traz nome nem valor**: só nomes de operação e de coleção, contagens,
+  bytes e milissegundos (o teste varre contra título de Tarefa e `@`). Se o banco
+  recusar a consulta de tamanho (permissão), a saída diz para rodar à mão no `psql`.
+

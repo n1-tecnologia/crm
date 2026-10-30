@@ -138,6 +138,8 @@ export interface RelatorioDaMedicao {
   readonly estado: SerieDeTempos;
   readonly tamanho: TamanhoDoEspaco;
   readonly gestos: readonly ResumoDoGesto[];
+  /** Escolhas que a rodada fez (por exemplo qual caminho valeu para o gesto da lixeira); sem dado de negócio. */
+  readonly observacoes?: readonly string[];
 }
 
 const MSG_DA_LINHA = "gravacao medida";
@@ -322,6 +324,9 @@ export function formatarRelatorio(relatorio: RelatorioDaMedicao): string {
     "",
     ...secaoDoTamanho(relatorio.tamanho),
     ...relatorio.gestos.flatMap((gesto) => ["", ...secaoDoGesto(gesto)]),
+    ...(relatorio.observacoes && relatorio.observacoes.length > 0
+      ? ["", "Observações", ...relatorio.observacoes.map((o) => `- ${o}`)]
+      : []),
     "",
   ].join("\n");
 }
