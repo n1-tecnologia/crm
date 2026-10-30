@@ -4,17 +4,16 @@ milestone: v1.0
 current_phase: 2
 current_phase_name: Solicitação de pagamento — o front substitui o ClickUp
 status: planning
-stopped_at: Phase 11 complete, ready to plan Phase 2
-last_updated: "2026-10-29T23:18:10.523Z"
+stopped_at: Phase 12 context gathered
+last_updated: "2026-10-30T14:35:56.350Z"
 last_activity: 2026-10-29
 last_activity_desc: Phase 11 complete, transitioned to Phase 2
-state_head: 3305e499ad7bfb8808549a0077eaaf9966266c69
+state_head: 1c79e693fd71e1027c23c5d2b7957c40452cfd89
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 199
   completed_plans: 195
-  percent: 63
 milestone_name: milestone
 ---
 
@@ -672,6 +671,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-29T22:57:48.227Z
-Stopped at: Phase 11 complete, ready to plan Phase 2
-Resume file: None
+Last session: 2026-10-30T14:35:55.571Z
+Stopped at: Phase 12 context gathered
+Resume file: .planning/phases/12-clone-clickup-grava-o-mais-r-pida/12-CONTEXT.md
