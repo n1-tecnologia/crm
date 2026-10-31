@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 12
 current_phase_name: "Clone ClickUp: gravação mais rápida"
 status: executing
-stopped_at: Completed 12-01-PLAN.md
-last_updated: "2026-10-30T16:48:21.662Z"
+stopped_at: Completed 12-02-PLAN.md
+last_updated: "2026-10-31T04:19:32.068Z"
 last_activity: 2026-10-30
 last_activity_desc: Phase 12 execution started
-state_head: 01ff6fb7cae78721b16a8da72158ab6f09c37a5b
+state_head: 5a74ee7548d5437745677e997484ff5b1f906657
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 209
-  completed_plans: 196
+  completed_plans: 197
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 12 (Clone ClickUp: gravação mais rápida) — EXECUTING
-Plan: 2 of 10
+Plan: 3 of 10
 Status: Ready to execute
 Last activity: 2026-10-30 — Phase 12 execution started
 
@@ -415,6 +415,7 @@ Progress: [██████░░░░] 63%
 | Phase 11 P07 | 10 min | 3 tasks | 5 files |
 | Phase 11 P08 | 20 min | 3 tasks | 5 files |
 | Phase 12 P01 | 8 min | 2 tasks | 6 files |
+| Phase 12 P02 | 7 min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -613,6 +614,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 11]: 11-07 D-06: DescricaoDaTarefa destaca so o @Nome da lista efetiva (segmentosComMencoes), com span data-mencao e sem HTML
 - [Phase 12]: 12-01: medição de executar() por callback aoMedir, não por campo de ResultadoTransacao (o resultado vira corpo HTTP em cinco pontos; D-03 proíbe a medição no corpo)
 - [Phase 12]: 12-01: travaMs = tempo até a revisão estar garantida nos dois regimes (aqui o update ... where revisao; em 12-04 o select for update mais o update); atualizaMs isola o update
+- [Phase 12]: 12-02: gesto da lixeira usa o mesmo Espaço de teste restaurado por restoreContainer fora da medição (o domínio aceitou)
+- [Phase 12]: 12-02: Task 3 fechada sem a observação do D-03 no serviço real (nenhuma requisição da tela chegou à VPS; causa não apurada); ponto aberto para o 12-10
 
 ### Pending Todos
 
@@ -674,6 +677,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-30T16:48:16.000Z
-Stopped at: Completed 12-01-PLAN.md
+Last session: 2026-10-31T04:19:31.802Z
+Stopped at: Completed 12-02-PLAN.md
 Resume file: None
