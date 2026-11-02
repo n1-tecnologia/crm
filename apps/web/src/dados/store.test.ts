@@ -10,7 +10,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildSeed } from "@n1/dominio/seed";
-import { addTaskComment, changeTaskStatus, CP, createChatSession, createList, createTask, resetIdSequence, sendChatMessage, syncIdSequence, updateContainer } from "@n1/dominio/operations";
+import { addTaskComment, changeTaskStatus, CP, createChatSession, createForm, createList, createTask, resetIdSequence, sendChatMessage, syncIdSequence, updateContainer } from "@n1/dominio/operations";
 import type { DataState } from "@n1/dominio/state";
 import type { Id, Task } from "@n1/dominio/types";
 import { DIFERENCA_VAZIA, type Diferenca, type Ordens } from "@n1/dominio";
@@ -248,6 +248,85 @@ describe("D-13 — a mudança aparece na hora", () => {
     expect(store.getState().data).toBe(dataAntes);
     expect(await confirmado).toEqual({ ok: false, error: "Esta ação não passa por uma operação do domínio e não foi gravada." });
     expect(store.getState().data).toBe(dataAntes);
+  });
+});
+
+describe("D-13 — as operações da lista de exceções esperam o servidor", () => {
+  const LISTA_DO_FORMULARIO = "lst_prospeccao";
+  const NOME_DO_FORMULARIO = "Formulário de teste do D-13";
+  const perguntas = [{ label: "Assunto", required: true, target: { kind: "title" as const } }];
+  const formulariosChamados = (estado: DataState) => estado.forms.filter((f) => f.name === NOME_DO_FORMULARIO);
+
+  it("`createForm` não põe o Formulário em `data` antes da resposta; depois dela, `data` tem o segredo que o SERVIDOR gerou (T-12-17)", async () => {
+    const soltar = segurarGravacoes();
+    store = criarComoDono();
+    const dataAntes = store.getState().data;
+
+    const { local, confirmado } = store.getState().runConfirmado((d, m) => createForm(d, m, LISTA_DO_FORMULARIO, { name: NOME_DO_FORMULARIO, questions: perguntas }));
+
+    // O domínio aceitou na cópia e o pedido saiu, mas a tela não mostra nada que o servidor ainda não gravou.
+    expect(local.ok).toBe(true);
+    expect(soltar).toHaveLength(1);
+    expect(formulariosChamados(store.getState().data)).toHaveLength(0);
+    expect(store.getState().data).toBe(dataAntes);
+    expect(store.getState().data).toBe(store.getState().confirmado);
+    expect(store.getState().pendentes).toBe(1);
+
+    // O "servidor": a mesma operação numa cópia independente, que gera o SEU segredo.
+    const estadoServidor = structuredClone(state);
+    const noServidor = createForm(estadoServidor, DONO, LISTA_DO_FORMULARIO, { name: NOME_DO_FORMULARIO, questions: perguntas });
+    if (!noServidor.ok) throw new Error(`setup inválido: ${noServidor.error}`);
+    if (!local.ok) throw new Error("esperava a cópia aceitar");
+    expect(noServidor.value.secret).not.toBe(local.value.secret);
+
+    soltar[0]?.({
+      tipo: "diferenca",
+      resultado: noServidor,
+      diferenca: { gravados: [{ colecao: "forms", id: noServidor.value.id, dados: noServidor.value, ordem: 9999 }], removidos: [] },
+      revisao: 8,
+      revisaoAnterior: 7,
+    });
+
+    expect(await confirmado).toMatchObject({ ok: true });
+    const formularios = formulariosChamados(store.getState().data);
+    expect(formularios).toHaveLength(1);
+    expect(formularios[0]?.secret).toBe(noServidor.value.secret);
+    expect(formularios[0]?.secret).not.toBe(local.value.secret);
+    expect(store.getState().data).toBe(store.getState().confirmado);
+    expect(store.getState().pendentes).toBe(0);
+  });
+
+  it("um gesto que mistura `createList` e `createForm` espera inteiro: a Lista também não aparece antes da resposta", () => {
+    const soltar = segurarGravacoes();
+    store = criarComoDono();
+
+    const resultado = store.getState().run((d, m) => {
+      const lista = createList(d, m, { name: NOVA_LISTA, parentType: "space", parentId: ESPACO });
+      if (!lista.ok) return lista;
+      return createForm(d, m, lista.value.id, { name: NOME_DO_FORMULARIO, questions: perguntas });
+    });
+
+    expect(resultado.ok).toBe(true);
+    expect(soltar).toHaveLength(1);
+    const pedido = transporte.gravarMock.mock.calls[0]?.[0] as PedidoDeGravacao;
+    expect(pedido.chamadas.map((c) => c.nome)).toEqual(["createList", "createForm"]);
+    expect(listasChamadas(store.getState().data, NOVA_LISTA)).toHaveLength(0);
+    expect(formulariosChamados(store.getState().data)).toHaveLength(0);
+    expect(store.getState().data).toBe(store.getState().confirmado);
+  });
+
+  it("a recusa do servidor a uma operação da lista não deixa nada em `data` e `lastResult.error` traz a mensagem (D-14)", async () => {
+    const soltar = segurarGravacoes();
+    store = criarComoDono();
+    const { confirmado } = store.getState().runConfirmado((d, m) => createForm(d, m, LISTA_DO_FORMULARIO, { name: NOME_DO_FORMULARIO, questions: perguntas }));
+
+    soltar[0]?.(RECUSA_DO_SERVIDOR);
+
+    expect(await confirmado).toEqual({ ok: false, error: "Já existe uma Lista com este nome aqui." });
+    expect(formulariosChamados(store.getState().data)).toHaveLength(0);
+    const lastResult = store.getState().lastResult;
+    if (lastResult?.ok !== false) throw new Error("esperava recusa");
+    expect(lastResult.error).toBe("Já existe uma Lista com este nome aqui.");
   });
 });
 
