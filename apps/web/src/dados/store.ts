@@ -89,6 +89,17 @@ interface Pendente {
   readonly concluir: (resultado: OperationResult<unknown>) => void;
 }
 
+/**
+ * D-16: a fila tem dois tipos de item. `gravar` é uma pendente à espera da sua
+ * vez (ou em voo, quando é o primeiro); `rehidratar` é um `GET /estado` pedido
+ * de fora (`useRehidratar`, `verificarRevisao`) que espera o pedido em voo
+ * responder antes de buscar — senão o estado já traria o que a pendente gravou
+ * e a reconstrução a faria duas vezes (Pitfall 3).
+ */
+type ItemDaFila =
+  | { readonly tipo: "gravar"; readonly pendente: Pendente }
+  | { readonly tipo: "rehidratar"; readonly concluir: () => void; readonly falhar: (erro: unknown) => void };
+
 /** D-13: hoje toda cópia que registrou ao menos uma chamada vira `data`; 12-07 acrescenta as que esperam o servidor. */
 function otimistaPara(chamadas: readonly ChamadaDeOperacao[]): boolean {
   return chamadas.length > 0;
@@ -168,13 +179,30 @@ export function criarStore(opcoes: {
   const { sessao, estadoInicial, transporte } = opcoes;
 
   return createStore<StoreShape>((set, get) => {
-    /** As gravações aceitas pela cópia que o servidor ainda não confirmou, na ordem do clique. */
-    const pendentes: Pendente[] = [];
+    /**
+     * D-16 (e Pitfall 3): os pedidos de um store saem um de cada vez, na ordem
+     * do clique. A fila guarda as gravações que o servidor ainda não confirmou
+     * (a primeira pode estar em voo) e as re-hidratações pedidas de fora;
+     * `emVoo` diz se `processarFila` já está trabalhando.
+     */
+    const fila: ItemDaFila[] = [];
+    let emVoo = false;
 
-    /** Tira a pendente da lista (se ainda estiver nela). */
+    /** As gravações na fila, na ordem do clique (a primeira pode estar em voo). */
+    function gravacoesNaFila(): Pendente[] {
+      return fila.flatMap((item) => (item.tipo === "gravar" ? [item.pendente] : []));
+    }
+
+    /** Tira o item da fila (se ainda estiver nela). */
+    function sairDaFila(item: ItemDaFila): void {
+      const indice = fila.indexOf(item);
+      if (indice !== -1) fila.splice(indice, 1);
+    }
+
+    /** Tira a pendente da fila (se ainda estiver nela). */
     function tirar(pendente: Pendente): void {
-      const indice = pendentes.indexOf(pendente);
-      if (indice !== -1) pendentes.splice(indice, 1);
+      const item = fila.find((candidato) => candidato.tipo === "gravar" && candidato.pendente === pendente);
+      if (item) sairDaFila(item);
     }
 
     /**
@@ -211,7 +239,7 @@ export function criarStore(opcoes: {
       let data = confirmado;
 
       for (;;) {
-        const otimistas = pendentes.filter((p) => p.otimista);
+        const otimistas = gravacoesNaFila().filter((p) => p.otimista);
         if (otimistas.length === 0) {
           data = confirmado;
           break;
@@ -234,7 +262,7 @@ export function criarStore(opcoes: {
 
       set((estado) => ({
         data,
-        pendentes: pendentes.length,
+        pendentes: gravacoesNaFila().length,
         revision: estado.revision + 1,
         ...(erroDaRefeita !== null && !causaJaMostrada
           ? { lastResult: { ok: false as const, error: erroDaRefeita, at: Date.now() } }
@@ -367,6 +395,43 @@ export function criarStore(opcoes: {
       pendente.concluir(resultado);
     }
 
+    /**
+     * Esvazia a fila, um item de cada vez. O `transporte.gravar` do primeiro
+     * item é chamado de forma SÍNCRONA dentro desta função (antes do primeiro
+     * `await`): o primeiro `run` sai na hora, como o caso (b) de `store.test.ts`
+     * afirma (Pitfall 8). Encadear com um `.then` incondicional adiaria o
+     * primeiro envio por uma microtarefa — proibido. Enquanto algo está em voo,
+     * quem enfileira só põe o item e deixa o laço pegá-lo na sua vez.
+     */
+    async function processarFila(): Promise<void> {
+      if (emVoo) return;
+      emVoo = true;
+      try {
+        while (fila.length > 0) {
+          const item = fila[0];
+          if (!item) break;
+          if (item.tipo === "gravar") {
+            const resposta = await enviar(item.pendente);
+            terminar(item.pendente, resposta);
+            continue;
+          }
+          try {
+            await hidratarAgora();
+            sairDaFila(item);
+            refazerPendentes(false);
+            item.concluir();
+          } catch (erro) {
+            // Quem pediu a re-hidratação recebe a rejeição, como antes da fila; a fila segue.
+            sairDaFila(item);
+            refazerPendentes(false);
+            item.falhar(erro);
+          }
+        }
+      } finally {
+        emVoo = false;
+      }
+    }
+
     let verificando = false;
 
     /**
@@ -410,17 +475,17 @@ export function criarStore(opcoes: {
         resultado,
         concluir,
       };
-      pendentes.push(pendente);
+      fila.push({ tipo: "gravar", pendente });
 
       set((estado) => ({
         // D-13: a cópia aceita é o que a tela mostra. Uma cópia sem chamadas nunca vai ao servidor como mudança — não vira `data`.
         ...(otimista ? { data: copia } : {}),
-        pendentes: pendentes.length,
+        pendentes: gravacoesNaFila().length,
         lastResult: { ...resultado, at: Date.now() },
         revision: estado.revision + 1,
       }));
 
-      void enviar(pendente).then((resposta) => terminar(pendente, resposta));
+      void processarFila();
       return { resultado, envio };
     }
 
@@ -461,10 +526,13 @@ export function criarStore(opcoes: {
         }
       },
 
-      rehidratar: async () => {
-        await hidratarAgora();
-        refazerPendentes(false);
-      },
+      // Pitfall 3: entra na MESMA fila — espera o pedido em voo responder, busca o `GET /estado` e
+      // refaz por cima só as pendentes que ainda não saíram. Com a fila vazia, roda na hora.
+      rehidratar: () =>
+        new Promise<void>((resolve, reject) => {
+          fila.push({ tipo: "rehidratar", concluir: resolve, falhar: reject });
+          void processarFila();
+        }),
     };
   });
 }

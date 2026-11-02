@@ -302,10 +302,8 @@ describe("D-16 — um pedido por vez", () => {
     expect(listasChamadas(store.getState().data, NOME_A)).toHaveLength(1);
     expect(listasChamadas(store.getState().data, NOME_B)).toHaveLength(1);
 
-    // O servidor roda B depois de A: parte do estado que já tem A.
-    const depoisDeA = structuredClone(state);
-    createList(depoisDeA, DONO, { name: NOME_A, parentType: "space", parentId: ESPACO });
-    soltar[1]?.(respostaDeCriar(NOME_B, 8, depoisDeA));
+    // O servidor roda B depois de A: `state` (o `confirmado` de partida, mutado em lugar) já tem A.
+    soltar[1]?.(respostaDeCriar(NOME_B, 8));
     await b.confirmado;
 
     expect(store.getState().revisaoDoServidor).toBe(9);
@@ -375,6 +373,10 @@ describe("D-16 — um pedido por vez", () => {
     expect(store.getState().data.lists.some((l) => l.id === idLocal)).toBe(false);
     expect(store.getState().data).toBe(store.getState().confirmado);
     expect(store.getState().pendentes).toBe(0);
+    // A causa (a recusa do servidor) continua no canal de erro; o erro da renomeação refeita não a encobre.
+    const lastResult = store.getState().lastResult;
+    if (lastResult?.ok !== false) throw new Error("esperava recusa");
+    expect(lastResult.error).toBe("Já existe uma Lista com este nome aqui.");
   });
 
   it("conflito no primeiro: re-hidrata uma vez, o primeiro some com a frase do conflito e o segundo é refeito sobre o estado re-hidratado e enviado", async () => {

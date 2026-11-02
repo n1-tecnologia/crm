@@ -25,21 +25,49 @@ As telas. Next.js 16 com App Router, tudo sob `src/app/(shell)/`.
 ## A fronteira que importa
 
 `src/dados/store.ts` é o único ponto onde o domínio vira estado de tela. Ele
-guarda a sessão e o `DataState`, e expõe `run()`, que executa uma operação do
-domínio e incrementa a revisão para os assinantes recalcularem.
+guarda a sessão e dois `DataState` — `confirmado` e `data` — e expõe `run()`,
+que executa uma operação do domínio e incrementa a revisão para os assinantes
+recalcularem.
 
 A troca da memória por chamadas ao backend aconteceu nesse arquivo — e só
 nele: nenhum componente mudou. `store.ts` hidrata do `apps/api` (`GET
 /estado`, chamado no Server Component da casca por `dados/estado-inicial.ts`)
-e grava por `POST /operacoes/:nome` (`dados/transporte.ts`). `run()` é
-híbrido (D-05): clona o estado, roda a operação na cópia — uma recusa do
-domínio aparece na hora, sem nenhuma requisição; um sucesso manda a chamada
-gravada ao servidor e só muda o estado real quando o diff volta. Revisão
-defasada ou conflito (409) re-hidratam por `GET /estado` em vez de aplicar
-diff parcial (D-06). `NEXT_PUBLIC_API_URL` é a única configuração nova que a
-tela precisa. As rotas públicas (`/f/<segredo>`, `/p/<segredo>`) continuam em
-memória, com o seed do produto, até OQ-PF-01 decidir em nome de quem uma
-resposta anônima age.
+e grava por `POST /operacoes/:nome` (`dados/transporte.ts`). `NEXT_PUBLIC_API_URL`
+é a única configuração nova que a tela precisa. As rotas públicas
+(`/f/<segredo>`, `/p/<segredo>`) continuam em memória, com o seed do produto,
+até OQ-PF-01 decidir em nome de quem uma resposta anônima age.
+
+**Os dois estados (Fase 12, D-13).** `confirmado` é o que o servidor já
+devolveu: só ele recebe as diferenças (`aplicarDiferenca`) e é dono das
+`ordens`. `data` é o que a tela mostra: o `confirmado` com, por cima, as
+gravações que o servidor ainda não respondeu. `run()` é híbrido (D-05): clona
+`data`, roda a operação na cópia — uma recusa do domínio aparece na hora, sem
+nenhuma requisição — e, se a cópia aceita, ela vira o `data` na hora e a
+chamada gravada segue para o servidor. Sem nenhuma gravação a caminho, `data` e
+`confirmado` são o MESMO objeto (nenhuma cópia a mais); o clone extra só
+existe enquanto sobra gravação na fila. Uma cópia que aceita sem registrar
+chamada alguma não vira `data` (seria mostrar uma mudança que nunca vai ao
+servidor).
+
+**Um pedido por vez (D-16).** As gravações de um store saem em fila, na ordem
+do clique: o primeiro pedido sai na hora, os seguintes esperam a resposta do
+anterior e levam a revisão que ela devolveu. Cada resposta é aplicada em
+`confirmado`; as gravações que ainda esperam são refeitas por cima, pelo
+registro `OPERACOES` do domínio, para dar o novo `data`. `rehidratar()`, quando
+chamado de fora (`useRehidratar`, `verificarRevisao`), entra na mesma fila:
+espera o pedido em voo responder antes de buscar `GET /estado`, para não refazer
+o que o servidor já gravou. `pendentes` conta as gravações na fila, e
+`verificarRevisao` não pergunta nada enquanto houver uma.
+
+**Quando o servidor diz não (D-14).** Recusa, falha, conflito (409) e erro de
+corpo tiram a gravação: `data` volta a ser o `confirmado` mais o que sobrou na
+fila, e o erro aparece pelo canal de sempre, `lastResult`, com a mensagem do
+servidor — sem botão "Tentar de novo". Uma gravação que depende da recusada (renomear
+a Lista que não chegou a existir) falha ao ser refeita, sai com o erro e nunca é
+enviada. Revisão defasada ou conflito re-hidratam por `GET /estado` em vez de
+aplicar diferença parcial (D-06, D-12). Quem navega para um registro recém-criado
+usa o resultado de `runConfirmado(...).confirmado`, não `local.value`: o `local`
+é um objeto vivo dentro do `data` e fica velho depois da reconstrução.
 
 Componente nenhum fala com o domínio por fora de `store.ts`; manter isso
 verdadeiro é o que tornou a migração um arquivo em vez de cem.
