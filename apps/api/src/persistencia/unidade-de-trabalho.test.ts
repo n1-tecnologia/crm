@@ -25,6 +25,8 @@ vi.mock("./conexao", async (importOriginal) => ({
         falso.consultas.push(sql);
         const erro = falso.erroEm(sql);
         if (erro) throw erro;
+        // 12-04 — o regime travado (o padrão) toma a trava do Espaço antes de hidratar.
+        if (sql.startsWith("select revisao from plataforma.workspaces")) return { rowCount: 1, rows: [{ revisao: "7" }] };
         if (sql.startsWith("update plataforma.workspaces")) {
           return falso.linhasDoUpdate === 0 ? { rowCount: 0, rows: [] } : { rowCount: 1, rows: [{ revisao: "8" }] };
         }
@@ -129,15 +131,37 @@ describe("medição por etapa (D-02)", () => {
     expect(medicoes[0]!.gravarMs).toBe(0);
   });
 
-  it("conflito: a revisão mudou nas três tentativas, e a medição soma as três", async () => {
+  it("regime otimista, conflito: a revisão mudou nas três tentativas, e a medição soma as três", async () => {
     falso.linhasDoUpdate = 0;
+    const { medicoes, aoMedir } = coletor();
+    const r = await executar("ws_x", () => ok("feito"), { aoMedir, regime: "otimista" });
+    expect(r.ok).toBe(false);
+    expect("conflito" in r && r.conflito).toBe(true);
+    expect(medicoes).toHaveLength(1);
+    expect(medicoes[0]!.tentativas).toBe(3);
+    expect(medicoes[0]!.regime).toBe("otimista");
+    expect(medicoes[0]!.desfecho).toBe("conflito");
+  });
+
+  it("regime travado, conflito: o 55P03 na trava dá UMA tentativa, desfecho conflito, sem repetir", async () => {
+    falso.erroEm = (sql) =>
+      sql.startsWith("select revisao from plataforma.workspaces")
+        ? Object.assign(new Error("canceling statement due to lock timeout"), { code: "55P03" })
+        : undefined;
     const { medicoes, aoMedir } = coletor();
     const r = await executar("ws_x", () => ok("feito"), { aoMedir });
     expect(r.ok).toBe(false);
     expect("conflito" in r && r.conflito).toBe(true);
     expect(medicoes).toHaveLength(1);
-    expect(medicoes[0]!.tentativas).toBe(3);
+    expect(medicoes[0]!.tentativas).toBe(1);
+    expect(medicoes[0]!.regime).toBe("travado");
     expect(medicoes[0]!.desfecho).toBe("conflito");
+  });
+
+  it("gravação no padrão: o regime é travado", async () => {
+    const { medicoes, aoMedir } = coletor();
+    await executar("ws_x", () => ok("feito"), { aoMedir });
+    expect(medicoes[0]!.regime).toBe("travado");
   });
 
   it("exceção no begin: o erro continua subindo, a conexão sai do pool, e aoMedir recebeu excecao", async () => {

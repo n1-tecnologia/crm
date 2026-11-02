@@ -18,8 +18,8 @@ import { buildApp } from "../app";
 import { opcoesDoLogger } from "../observabilidade/log";
 
 const falso = vi.hoisted(() => ({
-  /** Linhas do `update plataforma.workspaces`: 0 simula a revisão que mudou (conflito). */
-  linhasDoUpdate: 1,
+  /** Quando verdadeiro, o `select … for update` do regime travado dá 55P03 (a trava esgotada): conflito, 409. */
+  travaEsgotada: false,
   /** Quando preenchido, `hidratar` lança isto (a exceção que vira 500). */
   hidratarLanca: undefined as Error | undefined,
 }));
@@ -29,9 +29,11 @@ vi.mock("../persistencia/conexao", async (importOriginal) => ({
   pool: () => ({
     connect: async () => ({
       query: async (sql: string) => {
-        if (sql.startsWith("update plataforma.workspaces")) {
-          return falso.linhasDoUpdate === 0 ? { rowCount: 0, rows: [] } : { rowCount: 1, rows: [{ revisao: "8" }] };
+        if (sql.startsWith("select revisao from plataforma.workspaces")) {
+          if (falso.travaEsgotada) throw Object.assign(new Error("canceling statement due to lock timeout"), { code: "55P03" });
+          return { rowCount: 1, rows: [{ revisao: "7" }] };
         }
+        if (sql.startsWith("update plataforma.workspaces")) return { rowCount: 1, rows: [{ revisao: "8" }] };
         return { rowCount: 0, rows: [] };
       },
       release: () => undefined,
@@ -94,7 +96,7 @@ function linhasDeMedicao(linhas: readonly string[]) {
 }
 
 beforeEach(() => {
-  falso.linhasDoUpdate = 1;
+  falso.travaEsgotada = false;
   falso.hidratarLanca = undefined;
 });
 
@@ -123,6 +125,7 @@ describe("POST /operacoes/:nome — a linha de medição (D-02/D-03)", () => {
     expect(typeof linha.medicao?.recorteMs).toBe("number");
     expect(typeof linha.medicao?.totalMs).toBe("number");
     expect(linha.medicao?.desfecho).toBe("gravou");
+    expect(linha.medicao?.regime).toBe("travado");
 
     // T-12-02 — o nome da Lista que a pessoa digitou nunca entra no log de medição.
     const crua = linhas.find((l) => l.includes("gravacao medida"))!;
@@ -143,8 +146,8 @@ describe("POST /operacoes/:nome — a linha de medição (D-02/D-03)", () => {
     expect(typeof medidas[0]!.medicao?.totalMs).toBe("number");
   });
 
-  it("409 (a revisão mudou nas três tentativas): corpo sem medicao, linha com desfecho conflito e tentativas 3", async () => {
-    falso.linhasDoUpdate = 0;
+  it("409 (a trava esgotou, 55P03 no select … for update): corpo sem medicao, linha com desfecho conflito, tentativas 1 e regime travado", async () => {
+    falso.travaEsgotada = true;
     const { resposta, linhas, corpo } = await postar("createList", [
       { name: NOME_DA_LISTA, parentType: "space", parentId: "spc_com" },
     ]);
@@ -157,7 +160,8 @@ describe("POST /operacoes/:nome — a linha de medição (D-02/D-03)", () => {
     expect(medidas).toHaveLength(1);
     expect(medidas[0]!.operacao).toBe("createList");
     expect(medidas[0]!.medicao?.desfecho).toBe("conflito");
-    expect(medidas[0]!.medicao?.tentativas).toBe(3);
+    expect(medidas[0]!.medicao?.tentativas).toBe(1);
+    expect(medidas[0]!.medicao?.regime).toBe("travado");
   });
 
   it("500 (exceção no meio da transação): corpo opaco sem medicao, linha com desfecho excecao", async () => {
