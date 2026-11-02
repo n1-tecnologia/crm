@@ -11,7 +11,7 @@
 import Link from "next/link";
 import { BookOpen, Briefcase, Link2, MessageSquare } from "lucide-react";
 import { use, useState } from "react";
-import { useData, useRunConfirmado, useSession } from "@/dados/store";
+import { useData, useIdsNaoConfirmados, useRunConfirmado, useSession } from "@/dados/store";
 import {
   containerAdminRefusal,
   effectiveLifecycleOfList,
@@ -184,6 +184,8 @@ export default function ListaPage({
   const { openTaskId, openTask, closeTask } = useTaskPanel();
   const query = useSearchParams();
   const router = useRouter();
+  // D-15: o `router.push` direto da Reunião no Quadro do Funil não passa pela guarda de âncoras.
+  const naoConfirmados = useIdsNaoConfirmados();
   const pathname = usePathname();
   // O popup da Tarefa abre o diálogo de mover pela URL; a Lista só o hospeda.
   const { movingTaskId, closeMove } = useMoveTaskDialog();
@@ -286,6 +288,7 @@ export default function ListaPage({
     espelhoComercial && tarefaAberta?.provenance?.kind === "deal" ? dealOfTask(state, tarefaAberta) : undefined;
   // No Quadro do Funil, uma Reunião é a call: abre a tela dela, não um painel.
   const abrirNoQuadro = (taskId: string) => {
+    if (naoConfirmados.has(taskId)) return;
     const t = todas.find((x) => x.id === taskId);
     if (t && state.taskTypes.find((x) => x.id === t.taskTypeId)?.name === "Reunião") router.push(`/crm/reunioes/${t.id}`);
     else openTask(taskId);
