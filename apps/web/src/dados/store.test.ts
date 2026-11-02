@@ -251,6 +251,208 @@ describe("D-13 — a mudança aparece na hora", () => {
   });
 });
 
+describe("D-16 — um pedido por vez", () => {
+  const NOME_A = "Lista A do D-16";
+  const NOME_B = "Lista B do D-16";
+  const NOME_C = "Lista C do D-16";
+
+  const criar = (nome: string) => (d: DataState, m: Id) => createList(d, m, { name: nome, parentType: "space", parentId: ESPACO });
+  const ordemDoPedido = () => transporte.gravarMock.mock.calls.map((c) => (c[0].chamadas[0]?.args[0] as { name?: string } | undefined)?.name);
+
+  /**
+   * A resposta que o servidor daria para criar `nome` quando a revisão dele é `de`: roda a operação numa cópia
+   * independente do estado de partida e devolve a Lista que ele gravou.
+   */
+  function respostaDeCriar(nome: string, de: number, base: DataState = state): RespostaDeGravacao {
+    const noServidor = createList(structuredClone(base), DONO, { name: nome, parentType: "space", parentId: ESPACO });
+    if (!noServidor.ok) throw new Error(`setup inválido: ${noServidor.error}`);
+    return {
+      tipo: "diferenca",
+      resultado: noServidor,
+      diferenca: { gravados: [{ colecao: "lists", id: noServidor.value.id, dados: noServidor.value, ordem: 9000 + de }], removidos: [] },
+      revisao: de + 1,
+      revisaoAnterior: de,
+    };
+  }
+
+  beforeEach(() => {
+    store = criarComoDono();
+  });
+
+  it("dois `run` seguidos: o segundo pedido só sai depois da resposta do primeiro, e as duas respostas entram na revisão sem re-hidratar", async () => {
+    const soltar = segurarGravacoes();
+    const a = store.getState().runConfirmado(criar(NOME_A));
+    const b = store.getState().runConfirmado(criar(NOME_B));
+
+    // As duas mudanças já estão na tela, mas só o primeiro pedido saiu.
+    expect(listasChamadas(store.getState().data, NOME_A)).toHaveLength(1);
+    expect(listasChamadas(store.getState().data, NOME_B)).toHaveLength(1);
+    expect(store.getState().pendentes).toBe(2);
+    expect(transporte.gravarMock).toHaveBeenCalledTimes(1);
+
+    soltar[0]?.(respostaDeCriar(NOME_A, 7));
+    await a.confirmado;
+
+    expect(transporte.gravarMock).toHaveBeenCalledTimes(2);
+    expect(ordemDoPedido()).toEqual([NOME_A, NOME_B]);
+    // O segundo pedido sai com a revisão que o primeiro devolveu.
+    expect((transporte.gravarMock.mock.calls[1]?.[0] as PedidoDeGravacao).revisao).toBe(8);
+    expect(store.getState().pendentes).toBe(1);
+    // Enquanto o segundo espera, a tela mostra as duas (A confirmada, B refeita por cima).
+    expect(listasChamadas(store.getState().data, NOME_A)).toHaveLength(1);
+    expect(listasChamadas(store.getState().data, NOME_B)).toHaveLength(1);
+
+    // O servidor roda B depois de A: parte do estado que já tem A.
+    const depoisDeA = structuredClone(state);
+    createList(depoisDeA, DONO, { name: NOME_A, parentType: "space", parentId: ESPACO });
+    soltar[1]?.(respostaDeCriar(NOME_B, 8, depoisDeA));
+    await b.confirmado;
+
+    expect(store.getState().revisaoDoServidor).toBe(9);
+    expect(transporte.hidratarMock).not.toHaveBeenCalled();
+    expect(store.getState().pendentes).toBe(0);
+    expect(store.getState().data).toBe(store.getState().confirmado);
+    expect(listasChamadas(store.getState().data, NOME_A)).toHaveLength(1);
+    expect(listasChamadas(store.getState().data, NOME_B)).toHaveLength(1);
+  });
+
+  it("três `run` seguidos: `transporte.gravar` recebe os pedidos na ordem do clique, um de cada vez", async () => {
+    const soltar = segurarGravacoes();
+    const envios = [NOME_A, NOME_B, NOME_C].map((nome) => store.getState().runConfirmado(criar(nome)));
+
+    expect(ordemDoPedido()).toEqual([NOME_A]);
+    soltar[0]?.(respostaDeCriar(NOME_A, 7));
+    await envios[0]?.confirmado;
+    expect(ordemDoPedido()).toEqual([NOME_A, NOME_B]);
+    soltar[1]?.(respostaDeCriar(NOME_B, 8));
+    await envios[1]?.confirmado;
+    expect(ordemDoPedido()).toEqual([NOME_A, NOME_B, NOME_C]);
+    soltar[2]?.(respostaDeCriar(NOME_C, 9));
+    await envios[2]?.confirmado;
+
+    expect(store.getState().revisaoDoServidor).toBe(10);
+    expect(transporte.hidratarMock).not.toHaveBeenCalled();
+    expect(store.getState().pendentes).toBe(0);
+  });
+
+  it("o primeiro é recusado e o segundo é independente: continua em `data`, é enviado e é confirmado", async () => {
+    const soltar = segurarGravacoes();
+    const a = store.getState().runConfirmado(criar(NOME_A));
+    const b = store.getState().runConfirmado(criar(NOME_B));
+
+    soltar[0]?.(RECUSA_DO_SERVIDOR);
+    expect(await a.confirmado).toEqual({ ok: false, error: "Já existe uma Lista com este nome aqui." });
+
+    // A some; B, refeita por cima de `confirmado`, fica e segue para o servidor.
+    expect(listasChamadas(store.getState().data, NOME_A)).toHaveLength(0);
+    expect(listasChamadas(store.getState().data, NOME_B)).toHaveLength(1);
+    expect(transporte.gravarMock).toHaveBeenCalledTimes(2);
+    expect(ordemDoPedido()).toEqual([NOME_A, NOME_B]);
+
+    soltar[1]?.(respostaDeCriar(NOME_B, 7));
+    expect(await b.confirmado).toMatchObject({ ok: true });
+    expect(listasChamadas(store.getState().data, NOME_A)).toHaveLength(0);
+    expect(listasChamadas(store.getState().data, NOME_B)).toHaveLength(1);
+    expect(store.getState().data).toBe(store.getState().confirmado);
+    expect(store.getState().pendentes).toBe(0);
+  });
+
+  it("criar uma Lista e renomeá-la pelo id dela: se a criação é recusada, a renomeação falha ao ser refeita, some com o erro e NUNCA vai ao servidor (T-12-16)", async () => {
+    const soltar = segurarGravacoes();
+    const criada = store.getState().runConfirmado(criar(NOME_A));
+    if (!criada.local.ok) throw new Error(`setup inválido: ${criada.local.error}`);
+    const idLocal = criada.local.value.id;
+    const renomeada = store.getState().runConfirmado((d, m) => updateContainer(d, m, "list", idLocal, { name: "Nome novo do D-16" }));
+    expect(renomeada.local.ok).toBe(true);
+    expect(store.getState().pendentes).toBe(2);
+
+    soltar[0]?.(RECUSA_DO_SERVIDOR);
+    await criada.confirmado;
+    const segundo = await renomeada.confirmado;
+
+    expect(segundo.ok).toBe(false);
+    expect(transporte.gravarMock).toHaveBeenCalledTimes(1);
+    expect(store.getState().data.lists.some((l) => l.id === idLocal)).toBe(false);
+    expect(store.getState().data).toBe(store.getState().confirmado);
+    expect(store.getState().pendentes).toBe(0);
+  });
+
+  it("conflito no primeiro: re-hidrata uma vez, o primeiro some com a frase do conflito e o segundo é refeito sobre o estado re-hidratado e enviado", async () => {
+    const soltar = segurarGravacoes();
+    const reidratado = structuredClone(state);
+    transporte.hidratarMock.mockResolvedValueOnce({ data: reidratado, revisao: 9, ordens: ordensDeTodasAsColecoes(reidratado), memberId: DONO });
+    const a = store.getState().runConfirmado(criar(NOME_A));
+    const b = store.getState().runConfirmado(criar(NOME_B));
+
+    soltar[0]?.({ tipo: "conflito", erro: "Outra alteração entrou antes desta." });
+
+    expect(await a.confirmado).toEqual({ ok: false, error: "Outra alteração entrou antes desta." });
+    expect(transporte.hidratarMock).toHaveBeenCalledTimes(1);
+    expect(store.getState().revisaoDoServidor).toBe(9);
+    expect(listasChamadas(store.getState().data, NOME_A)).toHaveLength(0);
+    expect(listasChamadas(store.getState().data, NOME_B)).toHaveLength(1);
+    expect(transporte.gravarMock).toHaveBeenCalledTimes(2);
+    expect((transporte.gravarMock.mock.calls[1]?.[0] as PedidoDeGravacao).revisao).toBe(9);
+
+    soltar[1]?.(respostaDeCriar(NOME_B, 9, reidratado));
+    expect(await b.confirmado).toMatchObject({ ok: true });
+    expect(store.getState().revisaoDoServidor).toBe(10);
+    expect(store.getState().pendentes).toBe(0);
+  });
+
+  it("`rehidratar()` de fora com um pedido em voo espera a resposta: a Lista que o pedido criou aparece uma vez só (Pitfall 3)", async () => {
+    const soltar = segurarGravacoes();
+    const criada = store.getState().runConfirmado(criar(NOME_A));
+    const resposta = respostaDeCriar(NOME_A, 7);
+    // O `GET /estado` que vem depois do commit já traz a Lista que o pedido em voo gravou.
+    const doServidor = structuredClone(state);
+    const gravada = (resposta as Extract<RespostaDeGravacao, { tipo: "diferenca" }>).diferenca.gravados[0];
+    if (!gravada) throw new Error("setup inválido");
+    doServidor.lists.push(gravada.dados as DataState["lists"][number]);
+    transporte.hidratarMock.mockResolvedValueOnce({ data: doServidor, revisao: 8, ordens: ordensDeTodasAsColecoes(doServidor), memberId: DONO });
+
+    const fora = store.getState().rehidratar();
+
+    expect(transporte.hidratarMock).not.toHaveBeenCalled();
+    soltar[0]?.(resposta);
+    await criada.confirmado;
+    await fora;
+
+    expect(transporte.hidratarMock).toHaveBeenCalledTimes(1);
+    expect(listasChamadas(store.getState().data, NOME_A)).toHaveLength(1);
+    expect(store.getState().data).toBe(store.getState().confirmado);
+    expect(store.getState().revisaoDoServidor).toBe(8);
+  });
+
+  it("fila vazia: `data` é o mesmo objeto que `confirmado` e `rehidratar()` busca na hora", async () => {
+    expect(store.getState().data).toBe(store.getState().confirmado);
+    const doServidor = structuredClone(state);
+    transporte.hidratarMock.mockResolvedValueOnce({ data: doServidor, revisao: 8, ordens: ordensDeTodasAsColecoes(doServidor), memberId: DONO });
+
+    const promessa = store.getState().rehidratar();
+
+    expect(transporte.hidratarMock).toHaveBeenCalledTimes(1); // síncrono: ninguém em voo
+    await promessa;
+    expect(store.getState().data).toBe(doServidor);
+    expect(store.getState().confirmado).toBe(doServidor);
+  });
+
+  it("`verificarRevisao()` com uma gravação na fila não pergunta a revisão", async () => {
+    const soltar = segurarGravacoes();
+    const revisaoAtual = vi.fn(async () => 99);
+    const comPergunta: Transporte = { gravar: transporte.gravar, hidratar: transporte.hidratar, revisaoAtual };
+    const s = criarStore({ sessao: { memberId: DONO }, estadoInicial: { data: state, revisao: 7, ordens }, transporte: comPergunta });
+    s.getState().run(criar(NOME_A));
+    s.getState().run(criar(NOME_B));
+    expect(s.getState().pendentes).toBe(2);
+
+    expect(await s.getState().verificarRevisao()).toBe(false);
+
+    expect(revisaoAtual).not.toHaveBeenCalled();
+    soltar[0]?.({ tipo: "falha", erro: "fim do teste" });
+  });
+});
+
 describe("run() — revisão defasada e conflito (D-06)", () => {
   it("(d) revisaoAnterior diferente da local aciona rehidratar() e substitui o data", async () => {
     const estadoFake = { marcador: "veio-do-rehidratar" } as unknown as DataState;
