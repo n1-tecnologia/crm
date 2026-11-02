@@ -740,6 +740,22 @@ describe("run() — mais de uma chamada no mesmo run()", () => {
     if (lastResult?.ok !== false) throw new Error("esperava recusa");
     expect(lastResult.error).toBe("O prazo virou entre o clique e a resposta.");
   });
+
+  it("(x) [recusa do servidor na primeira, ok na segunda]: a recusa encerra o gesto — `confirmado` resolve com ela, a segunda não é aplicada e lastResult a mantém (WR-07)", async () => {
+    transporte.gravarMock.mockResolvedValueOnce([
+      { tipo: "diferenca", resultado: { ok: false, error: "A sessão não aceita mensagem." }, diferenca: DIFERENCA_VAZIA, revisao: 7, revisaoAnterior: 7 },
+      { tipo: "diferenca", resultado: { ok: true, value: undefined }, diferenca: diferencaDoRegistro("chat_b"), revisao: 8, revisaoAnterior: 7 },
+    ]);
+
+    const { confirmado } = dividirEmDuasChamadas();
+
+    expect(await confirmado).toEqual({ ok: false, error: "A sessão não aceita mensagem." });
+    expect(registroEm("chat_b")).toBeUndefined();
+    expect(store.getState().revisaoDoServidor).toBe(7);
+    const lastResult = store.getState().lastResult;
+    if (lastResult?.ok !== false) throw new Error("esperava recusa");
+    expect(lastResult.error).toBe("A sessão não aceita mensagem.");
+  });
 });
 
 describe("rehidratar()", () => {
@@ -858,6 +874,154 @@ describe("revisão de código — corridas e falhas do envio", () => {
     expect(r.ok).toBe(false);
     expect(store.getState().pendentes).toBe(0);
     expect(store.getState().lastResult?.ok).toBe(false);
+  });
+});
+
+describe("revisão de código — a fila e o `confirmado` não perdem uma gravação já confirmada (WR-01 a WR-05)", () => {
+  const NOME_A = "Lista A da revisão";
+  const NOME_B = "Lista B da revisão";
+  const criar = (nome: string) => (d: DataState, m: Id) => createList(d, m, { name: nome, parentType: "space", parentId: ESPACO });
+
+  /** A resposta do servidor para criar `nome` na revisão `de`; `id` força o id que ele deu (por padrão, o que a cópia calculou). */
+  function respostaDeCriar(nome: string, de: number, id?: string): RespostaDeGravacao {
+    const noServidor = createList(structuredClone(state), DONO, { name: nome, parentType: "space", parentId: ESPACO });
+    if (!noServidor.ok) throw new Error(`setup inválido: ${noServidor.error}`);
+    const registro = id === undefined ? noServidor.value : { ...noServidor.value, id };
+    return {
+      tipo: "diferenca",
+      resultado: { ok: true, value: registro },
+      diferenca: { gravados: [{ colecao: "lists", id: registro.id, dados: registro, ordem: 9000 + de }], removidos: [] },
+      revisao: de + 1,
+      revisaoAnterior: de,
+    };
+  }
+
+  beforeEach(() => {
+    store = criarComoDono();
+  });
+
+  it("WR-01: um envio que quebra depois de o servidor responder re-hidrata antes de avisar, para o `confirmado` não ficar meio aplicado", async () => {
+    const doServidor = structuredClone(state);
+    transporte.hidratarMock.mockResolvedValueOnce({ data: doServidor, revisao: 8, ordens: ordensDeTodasAsColecoes(doServidor), memberId: DONO });
+    transporte.gravarMock.mockRejectedValueOnce(new SyntaxError("Unexpected token < in JSON"));
+
+    const r = await store.getState().runConfirmado(criar(NOME_A)).confirmado;
+
+    expect(r.ok).toBe(false);
+    expect(transporte.hidratarMock).toHaveBeenCalledTimes(1);
+    expect(store.getState().revisaoDoServidor).toBe(8);
+    expect(store.getState().confirmado).toBe(doServidor);
+  });
+
+  it("WR-02: revisão defasada e a re-hidratação não alcança a revisão do servidor (falhou duas vezes): `confirmado` resolve como recusa, em vez de apagar a gravação da tela em silêncio", async () => {
+    // hidratar() devolve a falha de rede padrão do transporte falso nas duas tentativas.
+    transporte.gravarMock.mockResolvedValueOnce(respostaDeCriar(NOME_A, 9));
+
+    const r = await store.getState().runConfirmado(criar(NOME_A)).confirmado;
+
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error("esperava recusa");
+    expect(r.error).toMatch(/gravada, mas a tela não conseguiu atualizar/);
+    expect(transporte.hidratarMock).toHaveBeenCalledTimes(2);
+    expect(store.getState().pendentes).toBe(0);
+    expect(store.getState().lastResult?.ok).toBe(false);
+  });
+
+  it("WR-02: a primeira re-hidratação vem com revisão menor que a do servidor e a segunda alcança: a gravação é confirmada", async () => {
+    const velho = structuredClone(state);
+    const novo = structuredClone(state);
+    transporte.hidratarMock
+      .mockResolvedValueOnce({ data: velho, revisao: 8, ordens: ordensDeTodasAsColecoes(velho), memberId: DONO })
+      .mockResolvedValueOnce({ data: novo, revisao: 10, ordens: ordensDeTodasAsColecoes(novo), memberId: DONO });
+    transporte.gravarMock.mockResolvedValueOnce(respostaDeCriar(NOME_A, 9));
+
+    const r = await store.getState().runConfirmado(criar(NOME_A)).confirmado;
+
+    expect(r.ok).toBe(true);
+    expect(transporte.hidratarMock).toHaveBeenCalledTimes(2);
+    expect(store.getState().revisaoDoServidor).toBe(10);
+    expect(store.getState().confirmado).toBe(novo);
+  });
+
+  it("WR-03: uma falha por prazo (`incerta`) re-hidrata, porque o servidor pode ter gravado antes de a resposta se perder", async () => {
+    const doServidor = structuredClone(state);
+    transporte.hidratarMock.mockResolvedValueOnce({ data: doServidor, revisao: 8, ordens: ordensDeTodasAsColecoes(doServidor), memberId: DONO });
+    transporte.gravarMock.mockResolvedValueOnce({ tipo: "falha", erro: "O servidor demorou demais para responder.", incerta: true });
+
+    const r = await store.getState().runConfirmado(criar(NOME_A)).confirmado;
+
+    expect(r).toEqual({ ok: false, error: "O servidor demorou demais para responder." });
+    expect(transporte.hidratarMock).toHaveBeenCalledTimes(1);
+    expect(store.getState().confirmado).toBe(doServidor);
+  });
+
+  it("WR-03: uma falha comum (sem conexão) não re-hidrata", async () => {
+    transporte.gravarMock.mockResolvedValueOnce({ tipo: "falha", erro: "Sem conexão com o servidor." });
+
+    await store.getState().runConfirmado(criar(NOME_A)).confirmado;
+
+    expect(transporte.hidratarMock).not.toHaveBeenCalled();
+  });
+
+  it("WR-04: se a reconstrução lança depois de a primeira pendente responder, as duas promessas resolvem e a segunda ainda é enviada", async () => {
+    const soltar = segurarGravacoes();
+    const a = store.getState().runConfirmado(criar(NOME_A));
+    const b = store.getState().runConfirmado(criar(NOME_B));
+    let armado = true;
+    // O ouvinte lança quando `pendentes` muda — o que só acontece na reconstrução de `terminar()`.
+    const parar = store.subscribe((estado, anterior) => {
+      if (armado && estado.pendentes !== anterior.pendentes) {
+        armado = false;
+        throw new Error("ouvinte quebrado");
+      }
+    });
+
+    soltar[0]?.(respostaDeCriar(NOME_A, 7));
+    await a.confirmado;
+    expect(transporte.gravarMock).toHaveBeenCalledTimes(2);
+
+    soltar[1]?.(respostaDeCriar(NOME_B, 8));
+    await b.confirmado;
+    parar();
+
+    expect(store.getState().pendentes).toBe(0);
+    expect(store.getState().revisaoDoServidor).toBe(9);
+  });
+
+  it("WR-05: o servidor dá outro id à Lista criada: a renomeação já enfileirada sobre o id local NÃO é enviada e sai com o erro", async () => {
+    const soltar = segurarGravacoes();
+    const criada = store.getState().runConfirmado(criar(NOME_A));
+    if (!criada.local.ok) throw new Error(`setup inválido: ${criada.local.error}`);
+    const idLocal = criada.local.value.id;
+    const renomeada = store.getState().runConfirmado((d, m) => updateContainer(d, m, "list", idLocal, { name: "Nome novo da revisão" }));
+    expect(store.getState().pendentes).toBe(2);
+
+    soltar[0]?.(respostaDeCriar(NOME_A, 7, "lst_do_servidor"));
+    await criada.confirmado;
+    const segundo = await renomeada.confirmado;
+
+    expect(segundo.ok).toBe(false);
+    if (segundo.ok) throw new Error("esperava recusa");
+    expect(segundo.error).toMatch(/outro identificador/);
+    expect(transporte.gravarMock).toHaveBeenCalledTimes(1);
+    expect(store.getState().pendentes).toBe(0);
+    // A Lista do servidor fica; nenhuma renomeação foi aplicada a ela.
+    expect(store.getState().data.lists.find((l) => l.id === "lst_do_servidor")?.name).toBe(NOME_A);
+    expect(store.getState().lastResult?.ok).toBe(false);
+  });
+
+  it("WR-05: o servidor dá o MESMO id (o caso de sempre): a renomeação enfileirada segue e é enviada", async () => {
+    const soltar = segurarGravacoes();
+    const criada = store.getState().runConfirmado(criar(NOME_A));
+    if (!criada.local.ok) throw new Error(`setup inválido: ${criada.local.error}`);
+    const idLocal = criada.local.value.id;
+    store.getState().runConfirmado((d, m) => updateContainer(d, m, "list", idLocal, { name: "Nome novo da revisão" }));
+
+    soltar[0]?.(respostaDeCriar(NOME_A, 7, idLocal));
+    await criada.confirmado;
+
+    expect(transporte.gravarMock).toHaveBeenCalledTimes(2);
+    expect(store.getState().pendentes).toBe(1);
   });
 });
 

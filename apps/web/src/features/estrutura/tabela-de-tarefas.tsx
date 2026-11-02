@@ -292,18 +292,22 @@ export function TabelaDeTarefas({
                   const contato = conversacional ? contatoDaTarefa(state, task) : undefined;
                   const canal = conversacional ? canalDaTarefa(state, task) : undefined;
                   const escreve = taskWriteRefusal(state, memberId, task.id) === undefined;
+                  // Uma Tarefa ainda "Salvando…" tem o id que a cópia calculou, não o do servidor: um gesto que
+                  // grava sobre ela (Status) poderia agir em outro registro se os ids divergirem.
+                  const salvando = naoConfirmados.has(task.id);
                   const motivoDe = (statusId: string | undefined) =>
-                    statusId === undefined
-                      ? "Este Conjunto de Status não tem um Status de conclusão."
-                      : !escreve
-                        ? "Você não altera esta Tarefa."
-                        : task.statusId === statusId
-                          ? "Já está neste Status."
-                          : statusOptionRefusal(state, memberId, task, statusId);
+                    salvando
+                      ? MOTIVO_SALVANDO
+                      : statusId === undefined
+                        ? "Este Conjunto de Status não tem um Status de conclusão."
+                        : !escreve
+                          ? "Você não altera esta Tarefa."
+                          : task.statusId === statusId
+                            ? "Já está neste Status."
+                            : statusOptionRefusal(state, memberId, task, statusId);
                   const podeConcluir = motivoDe(terminal?.id);
                   const selecionada = selected?.has(task.id) ?? false;
                   const prioridade = PRIORITY_ICON[task.priority];
-                  const salvando = naoConfirmados.has(task.id);
                   return (
                     <tr
                       key={task.id}
@@ -461,7 +465,7 @@ export function TabelaDeTarefas({
                                 .filter((d) => d.id !== task.statusId)
                                 .sort((a, b) => a.order - b.order)
                                 .map((d) => {
-                                  const motivo = escreve ? statusOptionRefusal(state, memberId, task, d.id) : "Você não altera esta Tarefa.";
+                                  const motivo = salvando ? MOTIVO_SALVANDO : escreve ? statusOptionRefusal(state, memberId, task, d.id) : "Você não altera esta Tarefa.";
                                   return {
                                     label: `Mover para “${d.name}”`,
                                     onSelect: () => setConfirmando({ taskId: task.id, statusId: d.id, label: `Mover para “${d.name}”` }),

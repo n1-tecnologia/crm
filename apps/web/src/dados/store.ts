@@ -120,6 +120,24 @@ function otimistaPara(chamadas: readonly ChamadaDeOperacao[]): boolean {
   return chamadas.length > 0 && !esperaOServidor(chamadas);
 }
 
+/** O `id` do registro que o resultado devolve, quando devolve um (as criações devolvem o registro criado). */
+function idDoResultado(resultado: OperationResult<unknown>): string | undefined {
+  if (!resultado.ok) return undefined;
+  const valor = resultado.value;
+  if (typeof valor !== "object" || valor === null || !("id" in valor)) return undefined;
+  const id = (valor as { readonly id: unknown }).id;
+  return typeof id === "string" ? id : undefined;
+}
+
+/** A pendente cita `id` em algum argumento? Compara o texto entre aspas, para `tsk_1` não casar com `tsk_10`. */
+function citaOId(pendente: Pendente, id: string): boolean {
+  try {
+    return JSON.stringify(pendente.chamadas.map((chamada) => chamada.args)).includes(JSON.stringify(id));
+  } catch {
+    return false;
+  }
+}
+
 interface StoreShape {
   /** O que a tela mostra: o `confirmado` com as gravações a caminho refeitas por cima (D-13). */
   readonly data: DataState;
@@ -304,6 +322,35 @@ export function criarStore(opcoes: {
       }));
     }
 
+    /** `hidratarAgora()` que nunca lança: para quem já tem outro erro a mostrar (o servidor pode ter gravado antes de a resposta se perder). */
+    async function tentarHidratar(): Promise<void> {
+      try {
+        await hidratarAgora();
+      } catch {
+        // o erro que quem chamou vai mostrar já avisa que a tela pode estar desatualizada
+      }
+    }
+
+    /**
+     * Re-hidrata até `revisaoDoServidor` alcançar `minima` — a revisão que o
+     * servidor devolveu ao gravar. `hidratarAgora()` ignora a resposta em
+     * silêncio (rede, ou revisão menor que a de agora); sem esta conferência a
+     * gravação confirmada sumia da tela. Tenta duas vezes antes de desistir.
+     */
+    async function hidratarAteRevisao(minima: number): Promise<boolean> {
+      for (let tentativa = 0; tentativa < 2; tentativa += 1) {
+        await hidratarAgora();
+        if (get().revisaoDoServidor >= minima) return true;
+      }
+      return false;
+    }
+
+    /** Mostra o erro pelo canal de sempre (`lastResult`) e devolve a recusa. */
+    function recusar(erro: string): OperationResult<unknown> {
+      set((estado) => ({ lastResult: { ok: false, error: erro, at: Date.now() }, revision: estado.revision + 1 }));
+      return { ok: false, error: erro };
+    }
+
     /**
      * Manda o que `run()` já aceitou localmente para o servidor, e aplica a
      * resposta no `confirmado`. Roda depois de `run()` já ter devolvido o
@@ -338,7 +385,13 @@ export function criarStore(opcoes: {
                 // `GET /estado` já traz as chamadas seguintes da lista, e a
                 // pendente corrente (que o servidor confirmou) sai antes de
                 // `refazerPendentes`, para não ser refeita (Pitfall 3).
-                await hidratarAgora();
+                // Uma gravação que o servidor confirmou só pode sair da fila
+                // quando o `confirmado` já a traz: se a re-hidratação não
+                // chegou lá (rede, ou revisão menor), a mudança sumiria da tela.
+                const atualizou = await hidratarAteRevisao(resposta.resultado.ok ? resposta.revisao : 0);
+                if (!atualizou) {
+                  return recusar("A alteração foi gravada, mas a tela não conseguiu atualizar. Recarregue a página para ver o estado atual.");
+                }
                 if (!resposta.resultado.ok) {
                   set({ lastResult: { ...resposta.resultado, at: Date.now() } });
                 }
@@ -358,8 +411,10 @@ export function criarStore(opcoes: {
               if (!resposta.resultado.ok) {
                 // O servidor recusou o que a cópia aceitou (D-14): o diff (vazio
                 // nesse caso) já aplicou, e o erro do servidor prevalece sobre o
-                // `ok:true` que a cópia calculou.
+                // `ok:true` que a cópia calculou. A recusa encerra o gesto: uma
+                // resposta seguinte `ok` não pode encobri-la.
                 set((estado) => ({ lastResult: { ...resposta.resultado, at: Date.now() }, revision: estado.revision + 1 }));
+                return resposta.resultado;
               }
               ultimo = resposta.resultado;
               break;
@@ -384,11 +439,10 @@ export function criarStore(opcoes: {
             }
 
             case "falha": {
-              set((estado) => ({
-                lastResult: { ok: false, error: resposta.erro, at: Date.now() },
-                revision: estado.revision + 1,
-              }));
-              return { ok: false, error: resposta.erro };
+              // Prazo estourado: o servidor pode ter gravado antes de a resposta
+              // se perder. Re-hidrata, senão o `confirmado` fica sem o que ele tem.
+              if (resposta.incerta) await tentarHidratar();
+              return recusar(resposta.erro);
             }
           }
         }
@@ -397,17 +451,48 @@ export function criarStore(opcoes: {
       } catch {
         // Revisão de código: um corpo malformado ou um diff que não aplica não pode deixar
         // `runConfirmado` rejeitado — a tela que espera a confirmação ficaria travada.
-        const erro = "Não foi possível confirmar a gravação. Recarregue a página para ver o estado atual.";
-        set((estado) => ({ lastResult: { ok: false, error: erro, at: Date.now() }, revision: estado.revision + 1 }));
-        return { ok: false, error: erro };
+        // `aplicarDiferenca` muta o `confirmado` em lugar, então o estado pode ter ficado
+        // meio aplicado, e o servidor pode ter gravado: re-hidrata antes de avisar.
+        await tentarHidratar();
+        return recusar("Não foi possível confirmar a gravação. Recarregue a página para ver o estado atual.");
       }
     }
 
-    /** A pendente respondeu: sai da lista ANTES de reconstruir (nunca refeita duas vezes), `data` é refeito e a promessa resolve. */
+    /**
+     * A pendente respondeu: sai da lista ANTES de reconstruir (nunca refeita
+     * duas vezes), `data` é refeito e a promessa resolve — mesmo que a
+     * reconstrução lance, senão quem espera `runConfirmado` espera para sempre.
+     */
     function terminar(pendente: Pendente, resultado: OperationResult<unknown>): void {
-      tirar(pendente);
-      refazerPendentes(!resultado.ok);
-      pendente.concluir(resultado);
+      try {
+        tirar(pendente);
+        descartarSeguintesDeIdDivergente(pendente, resultado);
+        refazerPendentes(!resultado.ok);
+      } finally {
+        pendente.concluir(resultado);
+      }
+    }
+
+    /**
+     * O id que a cópia calculou para um registro criado pode não ser o que o
+     * servidor deu (a ponte, o agendador ou outra pessoa consomem ids). Uma
+     * pendente já enfileirada que cita o id local agiria em OUTRO registro, nos
+     * dois lados, sem erro: sai da fila com o erro e nunca é enviada.
+     */
+    function descartarSeguintesDeIdDivergente(pendente: Pendente, resultado: OperationResult<unknown>): void {
+      const idLocal = idDoResultado(pendente.resultado);
+      const idDoServidor = idDoResultado(resultado);
+      if (idLocal === undefined || idDoServidor === undefined || idLocal === idDoServidor) return;
+
+      const erro = "O servidor criou o item com outro identificador, então a alteração seguinte sobre ele não foi enviada. Confira o item e refaça a alteração.";
+      let descartou = false;
+      for (const seguinte of gravacoesNaFila()) {
+        if (!citaOId(seguinte, idLocal)) continue;
+        tirar(seguinte);
+        seguinte.concluir({ ok: false, error: erro });
+        descartou = true;
+      }
+      if (descartou) set((estado) => ({ lastResult: { ok: false, error: erro, at: Date.now() }, revision: estado.revision + 1 }));
     }
 
     /**
@@ -427,7 +512,12 @@ export function criarStore(opcoes: {
           if (!item) break;
           if (item.tipo === "gravar") {
             const resposta = await enviar(item.pendente);
-            terminar(item.pendente, resposta);
+            try {
+              terminar(item.pendente, resposta);
+            } catch {
+              // `terminar` já concluiu a promessa; o que importa é a fila seguir.
+              sairDaFila(item);
+            }
             continue;
           }
           try {
@@ -438,7 +528,11 @@ export function criarStore(opcoes: {
           } catch (erro) {
             // Quem pediu a re-hidratação recebe a rejeição, como antes da fila; a fila segue.
             sairDaFila(item);
-            refazerPendentes(false);
+            try {
+              refazerPendentes(false);
+            } catch {
+              // se a reconstrução lançou uma vez, não derruba a fila na segunda
+            }
             item.falhar(erro);
           }
         }

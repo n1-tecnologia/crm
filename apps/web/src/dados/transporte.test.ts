@@ -212,6 +212,100 @@ describe("transporteHttp — gravar", () => {
 
     expect(resposta).toEqual({ tipo: "falha", erro: "O servidor não respondeu." });
   });
+
+  it("(k) WR-07: uma recusa de domínio (`diferenca` com ok:false) encerra a lista — a segunda chamada não vai ao servidor", async () => {
+    fetchMock.mockResolvedValueOnce(respostaFalsa(200, { ok: false, error: "A sessão não aceita mensagem.", diferenca: DIFERENCA_VAZIA, revisao: 7, revisaoAnterior: 7 }));
+    const transporte = transporteHttp({ apiUrl: "http://api", obterToken: async () => "tok" });
+
+    const lista = await gravarLista(transporte, {
+      chamadas: [
+        { nome: "createChatSession", args: [{ title: "Pergunta" }] },
+        { nome: "sendChatMessage", args: ["chat_1", "Pergunta"] },
+      ],
+      revisao: 7,
+      copia: {} as DataState,
+      resultado: { ok: true, value: undefined },
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(lista).toHaveLength(1);
+    expect(lista[0]).toMatchObject({ tipo: "diferenca", resultado: { ok: false } });
+  });
+});
+
+describe("transporteHttp — prazo do pedido (WR-03)", () => {
+  const pedido: PedidoDeGravacao = {
+    chamadas: [{ nome: "addTaskComment", args: ["tsk_x", { content: "x" }] }],
+    revisao: 7,
+    copia: {} as DataState,
+    resultado: { ok: true, value: undefined },
+  };
+
+  it("(a) todo pedido leva um AbortSignal de prazo", async () => {
+    fetchMock
+      .mockResolvedValueOnce(respostaFalsa(200, { ok: true, value: undefined, diferenca: DIFERENCA_VAZIA, revisao: 8, revisaoAnterior: 7 }))
+      .mockResolvedValueOnce(respostaFalsa(200, { data: { tasks: [] }, revisao: 8, ordens: {}, sessao: { memberId: "mem_maryane" } }));
+    const transporte = transporteHttp({ apiUrl: "http://api", obterToken: async () => "tok" });
+
+    await gravarLista(transporte, pedido);
+    await transporte.hidratar();
+
+    for (const [, opcoes] of fetchMock.mock.calls as [string, RequestInit][]) {
+      expect(opcoes.signal).toBeInstanceOf(AbortSignal);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("(b) o prazo estourar no POST vira falha `incerta` (o servidor pode ter gravado) com a frase do prazo", async () => {
+    fetchMock.mockRejectedValueOnce(new DOMException("The operation timed out.", "TimeoutError"));
+    const transporte = transporteHttp({ apiUrl: "http://api", obterToken: async () => "tok" });
+
+    const resposta = await gravarPrimeira(transporte, pedido);
+
+    expect(resposta).toEqual({ tipo: "falha", erro: "O servidor demorou demais para responder.", incerta: true });
+  });
+
+  it("(c) uma falha de rede comum NÃO é `incerta`", async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError("fetch failed"));
+    const transporte = transporteHttp({ apiUrl: "http://api", obterToken: async () => "tok" });
+
+    expect(await gravarPrimeira(transporte, pedido)).toEqual({ tipo: "falha", erro: "Sem conexão com o servidor." });
+  });
+
+  it("(d) o prazo estourar enquanto lê o corpo da resposta também vira falha `incerta`", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw new DOMException("The operation timed out.", "TimeoutError");
+      },
+    } as unknown as Response);
+    const transporte = transporteHttp({ apiUrl: "http://api", obterToken: async () => "tok" });
+
+    expect(await gravarPrimeira(transporte, pedido)).toEqual({ tipo: "falha", erro: "O servidor demorou demais para responder.", incerta: true });
+  });
+
+  it("(e) hidratar() com o prazo estourado devolve a falha em vez de pendurar", async () => {
+    fetchMock.mockRejectedValueOnce(new DOMException("The operation timed out.", "TimeoutError"));
+    const transporte = transporteHttp({ apiUrl: "http://api", obterToken: async () => "tok" });
+
+    expect(await transporte.hidratar()).toEqual({ tipo: "falha", erro: "O servidor demorou demais para responder." });
+  });
+
+  it("(f) `obterToken()` que nunca responde vira falha depois do prazo, sem chamar fetch", async () => {
+    vi.useFakeTimers();
+    try {
+      const transporte = transporteHttp({ apiUrl: "http://api", obterToken: () => new Promise<string | undefined>(() => undefined) });
+
+      const gravando = gravarPrimeira(transporte, pedido);
+      await vi.advanceTimersByTimeAsync(45_001);
+
+      expect(await gravando).toEqual({ tipo: "falha", erro: "A sessão demorou demais para responder. Tente de novo." });
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("transporteHttp — hidratar", () => {
@@ -233,7 +327,7 @@ describe("transporteHttp — revisaoAtual (checklist E2)", () => {
     fetchMock.mockResolvedValueOnce(respostaFalsa(200, { revisao: 42 }));
     const transporte = transporteHttp({ apiUrl: "http://api", obterToken: async () => "tok" });
     expect(await transporte.revisaoAtual?.()).toBe(42);
-    expect(fetchMock).toHaveBeenCalledWith("http://api/estado/revisao", { headers: { authorization: "Bearer tok" } });
+    expect(fetchMock).toHaveBeenCalledWith("http://api/estado/revisao", { headers: { authorization: "Bearer tok" }, signal: expect.any(AbortSignal) });
   });
 
   it("sem sessão, erro HTTP, rede caída ou corpo estranho: não sabe (undefined)", async () => {

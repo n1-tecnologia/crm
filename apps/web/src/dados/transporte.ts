@@ -45,8 +45,10 @@ export type RespostaDeGravacao =
   | { readonly tipo: "estado"; readonly resultado: OperationResult<unknown>; readonly estado: EstadoDoServidor }
   // 409 — revisão defasada esgotou as tentativas da Unidade de Trabalho.
   | { readonly tipo: "conflito"; readonly erro: string }
-  // Rede, 401/403/404/500 — falha de transporte, não recusa de domínio.
-  | { readonly tipo: "falha"; readonly erro: string; readonly sessaoExpirada?: boolean };
+  // Rede, 401/403/404/500 — falha de transporte, não recusa de domínio. `incerta`:
+  // o prazo estourou depois de o pedido sair, então o servidor PODE ter gravado —
+  // quem recebe re-hidrata em vez de supor que nada mudou.
+  | { readonly tipo: "falha"; readonly erro: string; readonly sessaoExpirada?: boolean; readonly incerta?: boolean };
 
 export interface PedidoDeGravacao {
   readonly chamadas: readonly ChamadaDeOperacao[];
@@ -96,6 +98,34 @@ async function corpoDeErro(resposta: Response): Promise<string | undefined> {
 }
 
 /**
+ * Prazo do cliente para cada pedido, acima do `query_timeout` de 30 s do
+ * servidor. A fila de gravações do store é serial (D-16): sem prazo, uma
+ * conexão meio-aberta (TCP sem RST, rede móvel) seguraria todas as gravações,
+ * a re-hidratação e o poll, com o item em "Salvando…" para sempre.
+ */
+const PRAZO_DO_PEDIDO_MS = 45_000;
+const FRASE_DO_PRAZO = "O servidor demorou demais para responder.";
+const FRASE_DA_SESSAO_LENTA = "A sessão demorou demais para responder. Tente de novo.";
+const SEM_TOKEN_A_TEMPO = Symbol("sem-token-a-tempo");
+
+function estourouOPrazo(erro: unknown): boolean {
+  return erro instanceof Error && (erro.name === "TimeoutError" || erro.name === "AbortError");
+}
+
+/** `obterToken()` com o mesmo prazo: ele também pode ir à rede (renovar a sessão). */
+async function tokenComPrazo(obterToken: () => Promise<string | undefined>): Promise<string | undefined | typeof SEM_TOKEN_A_TEMPO> {
+  let relogio: ReturnType<typeof setTimeout> | undefined;
+  const prazo = new Promise<typeof SEM_TOKEN_A_TEMPO>((resolve) => {
+    relogio = setTimeout(() => resolve(SEM_TOKEN_A_TEMPO), PRAZO_DO_PEDIDO_MS);
+  });
+  try {
+    return await Promise.race([obterToken(), prazo]);
+  } finally {
+    clearTimeout(relogio);
+  }
+}
+
+/**
  * Uma chamada por `POST /operacoes/:nome`. Nunca loga o token; nunca manda
  * para outra origem que não `apiUrl` — as duas coisas seguram T-1-11 (o
  * header `authorization` só existe dentro desta função, fechado sobre
@@ -107,7 +137,8 @@ async function gravarUma(
   chamada: ChamadaDeOperacao,
   revisao: number,
 ): Promise<RespostaDeGravacao> {
-  const token = await obterToken();
+  const token = await tokenComPrazo(obterToken);
+  if (token === SEM_TOKEN_A_TEMPO) return { tipo: "falha", erro: FRASE_DA_SESSAO_LENTA };
   if (!token) {
     return { tipo: "falha", erro: "Sua sessão expirou. Entre de novo.", sessaoExpirada: true };
   }
@@ -118,8 +149,11 @@ async function gravarUma(
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify({ args: serializarArgumentos(chamada.args), revisao }),
+      signal: AbortSignal.timeout(PRAZO_DO_PEDIDO_MS),
     });
-  } catch {
+  } catch (erro) {
+    // O pedido já tinha saído: se o prazo estourou, o servidor pode ter gravado.
+    if (estourouOPrazo(erro)) return { tipo: "falha", erro: FRASE_DO_PRAZO, incerta: true };
     return { tipo: "falha", erro: "Sem conexão com o servidor." };
   }
 
@@ -133,7 +167,14 @@ async function gravarUma(
     return { tipo: "falha", erro: (await corpoDeErro(resposta)) ?? "O servidor não respondeu." };
   }
 
-  const corpo = (await resposta.json()) as CorpoDeOperacao;
+  let corpo: CorpoDeOperacao;
+  try {
+    corpo = (await resposta.json()) as CorpoDeOperacao;
+  } catch (erro) {
+    // O prazo cobre também a leitura do corpo; qualquer outro erro (corpo malformado) o store trata.
+    if (estourouOPrazo(erro)) return { tipo: "falha", erro: FRASE_DO_PRAZO, incerta: true };
+    throw erro;
+  }
   const resultado: OperationResult<unknown> = corpo.ok
     ? { ok: true, value: corpo.value }
     : corpo.field === undefined
@@ -173,31 +214,39 @@ export function transporteHttp(opcoes: { readonly apiUrl: string; readonly obter
       // nenhuma tela faz duas operações numa closure só (o chat faz dois `run`
       // separados); isto vale como robustez. O `resultado` que a tela usa veio
       // da cópia local; o servidor é a verdade sobre o que persistiu — paramos
-      // na primeira resposta que não for `"diferenca"` e a lista termina nela.
+      // na primeira resposta que não for `"diferenca"` OU que seja uma recusa de
+      // domínio (`diferenca` com `resultado.ok === false`), e a lista termina nela.
       const respostas: RespostaDeGravacao[] = [];
       for (const chamada of pedido.chamadas) {
         const resposta = await gravarUma(apiUrl, obterToken, chamada, pedido.revisao);
         respostas.push(resposta);
-        if (resposta.tipo !== "diferenca") break;
+        if (resposta.tipo !== "diferenca" || !resposta.resultado.ok) break;
       }
       return respostas;
     },
 
     async hidratar() {
-      const token = await obterToken();
+      const token = await tokenComPrazo(obterToken);
+      if (token === SEM_TOKEN_A_TEMPO) return { tipo: "falha", erro: FRASE_DA_SESSAO_LENTA };
       if (!token) return { tipo: "falha", erro: "Sua sessão expirou. Entre de novo." };
 
       let resposta: Response;
       try {
-        resposta = await fetch(`${apiUrl}/estado`, { headers: { authorization: `Bearer ${token}` } });
-      } catch {
-        return { tipo: "falha", erro: "Sem conexão com o servidor." };
+        resposta = await fetch(`${apiUrl}/estado`, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(PRAZO_DO_PEDIDO_MS) });
+      } catch (erro) {
+        return { tipo: "falha", erro: estourouOPrazo(erro) ? FRASE_DO_PRAZO : "Sem conexão com o servidor." };
       }
       if (!resposta.ok) {
         return { tipo: "falha", erro: (await corpoDeErro(resposta)) ?? "O servidor não respondeu." };
       }
 
-      const corpo = (await resposta.json()) as { data: DataState; revisao: number; ordens: Ordens; sessao: { memberId: Id }; sequencia?: number };
+      let corpo: { data: DataState; revisao: number; ordens: Ordens; sessao: { memberId: Id }; sequencia?: number };
+      try {
+        corpo = (await resposta.json()) as typeof corpo;
+      } catch (erro) {
+        if (estourouOPrazo(erro)) return { tipo: "falha", erro: FRASE_DO_PRAZO };
+        throw erro;
+      }
       return {
         data: corpo.data,
         revisao: corpo.revisao,
@@ -208,10 +257,10 @@ export function transporteHttp(opcoes: { readonly apiUrl: string; readonly obter
     },
 
     async revisaoAtual() {
-      const token = await obterToken();
-      if (!token) return undefined;
+      const token = await tokenComPrazo(obterToken);
+      if (!token || token === SEM_TOKEN_A_TEMPO) return undefined;
       try {
-        const resposta = await fetch(`${apiUrl}/estado/revisao`, { headers: { authorization: `Bearer ${token}` } });
+        const resposta = await fetch(`${apiUrl}/estado/revisao`, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(PRAZO_DO_PEDIDO_MS) });
         if (!resposta.ok) return undefined;
         const { revisao } = (await resposta.json()) as { revisao?: unknown };
         return typeof revisao === "number" && Number.isFinite(revisao) ? revisao : undefined;
