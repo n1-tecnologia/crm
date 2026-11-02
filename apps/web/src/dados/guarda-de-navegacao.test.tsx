@@ -11,7 +11,8 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { AppRouterContext, type AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
+import { RouterContext } from "next/dist/shared/lib/router-context.shared-runtime";
+import type { NextRouter } from "next/router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { buildSeed } from "@n1/dominio/seed";
@@ -118,17 +119,16 @@ function LinkDaListaNova({ aoNavegar, aoClicar }: { readonly aoNavegar: () => vo
   );
 }
 
+/**
+ * O `Link` que o vitest resolve é `next/dist/client/link.js`; o do app em
+ * produção é `app-dir/link.js` (o Next troca no build), que não carrega sob o
+ * vitest (`react-server-dom-webpack`). Os dois navegam do mesmo jeito: dentro do
+ * `onClick` do React, depois de `if (e.defaultPrevented) return`. Este roteador
+ * dá ao `Link` onde navegar sem navegar de verdade (o `onNavigate` do teste cancela).
+ */
 function RoteadorFalso({ children }: { readonly children: ReactNode }) {
-  const [roteador] = useState<AppRouterInstance>(() => ({
-    back: vi.fn(),
-    forward: vi.fn(),
-    refresh: vi.fn(),
-    push: vi.fn(),
-    replace: vi.fn(),
-    prefetch: vi.fn(),
-    bfcacheId: "teste",
-  }));
-  return <AppRouterContext.Provider value={roteador}>{children}</AppRouterContext.Provider>;
+  const [roteador] = useState(() => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn(async () => undefined) }) as unknown as NextRouter);
+  return <RouterContext.Provider value={roteador}>{children}</RouterContext.Provider>;
 }
 
 function montar(ui: ReactNode) {

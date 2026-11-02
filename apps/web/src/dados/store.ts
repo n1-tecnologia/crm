@@ -61,6 +61,7 @@ import { aplicarDiferenca, type Ordens } from "@n1/dominio";
 import type { Id } from "@n1/dominio/types";
 import type { PedidoDeGravacao, RespostaDeGravacao, Transporte } from "./transporte";
 import { esperaOServidor } from "./operacoes-que-esperam";
+import { instalarGuardaDeNavegacao } from "./guarda-de-navegacao";
 
 /**
  * D-11 / Open Question 2 da Fase 12: as implementações reais de `Transporte`
@@ -589,10 +590,23 @@ function AcompanhanteDaRevisao({ store }: { readonly store: StoreApi<StoreShape>
     const intervalo = window.setInterval(verificar, INTERVALO_DA_REVISAO_MS);
     document.addEventListener("visibilitychange", verificar);
     window.addEventListener("focus", verificar);
+    /*
+      D-15: nenhuma âncora, em tela nenhuma, leva a um id que o servidor ainda não
+      confirmou. "Pendente" é derivado de `data` menos `confirmado`; a guarda não
+      guarda lista nenhuma, pergunta a cada clique (guarda-de-navegacao.ts).
+    */
+    const removerGuarda = instalarGuardaDeNavegacao(
+      {
+        idsPendentes: () => idsNaoConfirmados(store.getState().data, store.getState().confirmado),
+        assinar: (ouvinte) => store.subscribe(ouvinte),
+      },
+      document,
+    );
     return () => {
       window.clearInterval(intervalo);
       document.removeEventListener("visibilitychange", verificar);
       window.removeEventListener("focus", verificar);
+      removerGuarda();
     };
   }, [store]);
   return null;
