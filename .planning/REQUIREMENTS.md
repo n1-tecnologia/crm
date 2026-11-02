@@ -184,9 +184,9 @@ Critério de pronto (ROADMAP Phase 12): medir quanto leva uma gravação e corta
 
 - [x] **GRV-01**: Cada gravação por `POST /operacoes` escreve no log o nome da operação e o tempo de `hidratar`, operação, trava, `gravar`, recorte, tentativas e linhas lidas; a medição **não aparece** no corpo da resposta (teste `operacoes-medicao.test.ts`); o comando `gravacao:medir` (Fastify próprio em loopback na VPS, D-17) repete os quatro gestos 10 vezes e imprime mediana e pior caso por etapa, mais o tempo total do pedido; a tabela "antes" e o tamanho real de `plataforma.registros` estão em `12-PROVAS.md` (2.2.1, D-01..D-05, D-17). Pendente.
 - [x] **GRV-02**: A parada `[BLOCKING]` aconteceu com a tabela "antes" na mão do dono; a meta está registrada na seção "Meta (fixada na parada)" de `12-CONTEXT.md` antes de a 2.2.3 começar; se `hidratar` passou de 300 ms na mediana, a sessão C está no ROADMAP como fase própria (2.2.2, D-06..D-08). Feito em 2026-11-02 (12-03): o dono respondeu na parada (b-ganho-basta, sem meta numérica; sessão C fora, o gatilho não disparou).
-- [x] **GRV-03**: Teste novo `unidade-de-trabalho-concorrencia.test.ts` contra Postgres local (o `unidade-de-trabalho-trava.test.ts` mocka o pool inteiro e não serve para trava real): duas `executar()` simultâneas no mesmo Espaço gravam com uma tentativa cada e `hidratar` roda exatamente 2 vezes (pula sem `DATABASE_URL` local); em `unidade-de-trabalho-trava.test.ts`, a trava esgotada (`55P03`) vira 409 sem repetir; as importações longas seguem no regime otimista; `CONTEXT.md` da persistência atualizado (2.2.3, D-09, D-10). Pendente.
-- [x] **GRV-04**: Teste em `store.test.ts` com transporte falso: um `run` com duas chamadas aplica as duas diferenças e **não** chama `hidratar` (2.2.4, D-11, D-12). Pendente.
-- [ ] **GRV-05**: Teste em `store.test.ts` com transporte lento: `data.lists` já tem a Lista antes de o transporte responder; com `ok: false` ela some e `lastResult.error` traz a mensagem; dois `run` seguidos saem um de cada vez, em ordem; o item criado aparece sem link até confirmado; a lista de exceções está no código com o motivo de cada uma (2.2.5, D-13..D-16). Pendente.
+- [x] **GRV-03**: Teste novo `unidade-de-trabalho-concorrencia.test.ts` contra Postgres local (o `unidade-de-trabalho-trava.test.ts` mocka o pool inteiro e não serve para trava real): duas `executar()` simultâneas no mesmo Espaço gravam com uma tentativa cada e `hidratar` roda exatamente 2 vezes (pula sem `DATABASE_URL` local); em `unidade-de-trabalho-trava.test.ts`, a trava esgotada (`55P03`) vira 409 sem repetir; as importações longas seguem no regime otimista; `CONTEXT.md` da persistência atualizado (2.2.3, D-09, D-10). Feito em 2026-11-02 (12-04).
+- [x] **GRV-04**: Teste em `store.test.ts` com transporte falso: um `run` com duas chamadas aplica as duas diferenças e **não** chama `hidratar` (2.2.4, D-11, D-12). Feito em 2026-11-02 (12-05).
+- [x] **GRV-05**: Teste em `store.test.ts` com transporte lento: `data.lists` já tem a Lista antes de o transporte responder; com `ok: false` ela some e `lastResult.error` traz a mensagem; dois `run` seguidos saem um de cada vez, em ordem; o item criado aparece sem link até confirmado; a lista de exceções está no código com o motivo de cada uma (2.2.5, D-13..D-16). Feito em 2026-11-02 (12-06 a 12-09): `data`/`confirmado` e a fila serial no store, a lista de exceções, o "salvando" na árvore e na Tarefa, a guarda de navegação para qualquer âncora e o aviso ao fechar a aba.
 - [ ] **GRV-06**: A tabela de `12-PROVAS.md` tem as colunas "antes" e "depois" preenchidas, com o mesmo comando, e o "depois" comparado à meta de D-08 (2.2.10, D-01, D-08). Pendente.
 
 ## Traceability
@@ -284,9 +284,9 @@ Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pe
 | TAR-07 | Phase 11 | Complete | pendente | derivado (11-CONTEXT) |
 | GRV-01 | Phase 12 | Complete | feito — "antes" medido na VPS e registrado em `12-PROVAS.md`; a linha de log no serviço real (D-03) fica para o 12-10 | derivado (12-CONTEXT) |
 | GRV-02 | Phase 12 | Complete | feito — parada respondida pelo dono em 2026-11-02: `b-ganho-basta`, sessão C fora (hidratar direto 147.5 ms < 300 ms) | derivado (12-CONTEXT) |
-| GRV-03 | Phase 12 | Complete | pendente | derivado (12-CONTEXT) |
-| GRV-04 | Phase 12 | Complete | pendente | derivado (12-CONTEXT) |
-| GRV-05 | Phase 12 | Pending | pendente | derivado (12-CONTEXT) |
+| GRV-03 | Phase 12 | Complete | feito — 12-04 | derivado (12-CONTEXT) |
+| GRV-04 | Phase 12 | Complete | feito — 12-05 | derivado (12-CONTEXT) |
+| GRV-05 | Phase 12 | Complete | feito — 12-06 a 12-09 (store com `confirmado`/`data` e fila serial, exceções, "salvando", guarda de navegação e aviso ao fechar a aba) | derivado (12-CONTEXT) |
 | GRV-06 | Phase 12 | Pending | pendente — checkpoint do dono (publicar e medir o "depois" na VPS) | derivado (12-CONTEXT) |
 
 **Coverage:**

@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 12
 current_phase_name: "Clone ClickUp: gravação mais rápida"
 status: executing
-stopped_at: Completed 12-08-PLAN.md
-last_updated: "2026-11-02T14:16:34.069Z"
+stopped_at: Completed 12-09-PLAN.md
+last_updated: "2026-11-02T14:28:34.569Z"
 last_activity: 2026-10-30
 last_activity_desc: Phase 12 execution started
-state_head: 6c8f939b96210d20b0065ff08d60e37fb3136330
+state_head: 37c1cab2e6f35b337c5d26318aae5432db5d620c
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 209
-  completed_plans: 203
+  completed_plans: 204
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 12 (Clone ClickUp: gravação mais rápida) — EXECUTING
-Plan: 9 of 10
+Plan: 10 of 10
 Status: Ready to execute
 Last activity: 2026-10-30 — Phase 12 execution started
 
@@ -422,6 +422,7 @@ Progress: [██████░░░░] 63%
 | Phase 12 P06 | 15min | 2 tasks | 7 files |
 | Phase 12 P07 | 20 min | 2 tasks | 6 files |
 | Phase 12 P08 | 20min | 2 tasks | 8 files |
+| Phase 12 P09 | 25 min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -635,6 +636,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 12]: 12-07: decideProcessApproval e a conferência do resumo ficam fora da lista (resultado local = servidor); entrar nela é decisão de UX do dono, registrada em 12-PROVAS.md
 - [Phase 12]: 12-08: todo id novo de qualquer coleção conta como pendente (idsNaoConfirmados), não só o do registro criado; o 12-09 consome esse conjunto
 - [Phase 12]: 12-08: o 'salvando' é anunciável (aria-busy, title e texto sr-only 'Salvando…'), não só cor; ações de Status da linha pendente seguem ligadas pela fila serial
+- [Phase 12]: 12-09: a guarda de navegação cancela na captura do document o click, o auxclick, o cmd/ctrl+clique e o clique de teclado numa âncora com id pendente; o botão direito (menu do navegador) não é interceptável — O Link navega dentro do onClick do React (contêiner raiz, abaixo do document), então parar a propagação na captura o impede de rodar; o cmd/ctrl+clique abriria uma aba nova numa página que não existe
+- [Phase 12]: 12-09: router.push direto para id local não passa pela guarda de âncoras; Editar conta (financeiro) e a Reunião do Quadro do Funil esperam o id (Salvando…); iniciar-conversa-dialog.tsx:113 ficou em aberto — D-15: nunca leva a uma página de id que não existe; trocar o diálogo de iniciar conversa por runConfirmado muda o ritmo do diálogo e é decisão de produto
 
 ### Pending Todos
 
@@ -696,6 +699,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-02T14:16:33.811Z
-Stopped at: Completed 12-08-PLAN.md
+Last session: 2026-11-02T14:28:34.314Z
+Stopped at: Completed 12-09-PLAN.md
 Resume file: None
