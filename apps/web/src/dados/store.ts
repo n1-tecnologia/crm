@@ -574,6 +574,11 @@ export function StoreProvider({
   return createElement(StoreContext.Provider, { value: store }, createElement(AcompanhanteDaRevisao, { store }), children);
 }
 
+/** Casca do RED (12-09): o comportamento vem no GREEN. */
+export function deveAvisarAoSair(_pendentes: number): boolean {
+  return false;
+}
+
 /** Checklist E2 — de quanto em quanto tempo a tela pergunta a revisão do Espaço. */
 export const INTERVALO_DA_REVISAO_MS = 5_000;
 

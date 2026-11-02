@@ -15,7 +15,7 @@ import type { DataState } from "@n1/dominio/state";
 import type { Id, Task } from "@n1/dominio/types";
 import { DIFERENCA_VAZIA, type Diferenca, type Ordens } from "@n1/dominio";
 import type { PedidoDeGravacao, RespostaDeGravacao, Transporte } from "./transporte";
-import { criarStore } from "./store";
+import { criarStore, deveAvisarAoSair } from "./store";
 
 function achar(estado: DataState, id: Id): Task {
   const t = estado.tasks.find((x) => x.id === id);
@@ -858,5 +858,16 @@ describe("revisão de código — corridas e falhas do envio", () => {
     expect(r.ok).toBe(false);
     expect(store.getState().pendentes).toBe(0);
     expect(store.getState().lastResult?.ok).toBe(false);
+  });
+});
+
+describe("deveAvisarAoSair — fechar a aba com gravação pendente pede confirmação (T-12-20)", () => {
+  it("sem gravação pendente, a aba fecha sem perguntar", () => {
+    expect(deveAvisarAoSair(0)).toBe(false);
+  });
+
+  it("com uma ou mais gravações pendentes, pergunta", () => {
+    expect(deveAvisarAoSair(1)).toBe(true);
+    expect(deveAvisarAoSair(3)).toBe(true);
   });
 });

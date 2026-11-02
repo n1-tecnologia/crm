@@ -373,3 +373,38 @@ describe("a guarda de navegação com o StoreProvider de verdade (D-15, GRV-05)"
     expect(aoNavegar).toHaveBeenCalledTimes(1);
   });
 });
+
+/** O que o navegador faria ao fechar a aba: um `beforeunload` cancelável em `window`. */
+function fecharAAba(): Event {
+  const aviso = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(aviso);
+  return aviso;
+}
+
+describe("o aviso ao fechar a aba com gravação pendente (T-12-20, Claude's Discretion)", () => {
+  it("sem gravação a caminho, a aba fecha sem perguntar", () => {
+    montar(<Criador />);
+    expect(fecharAAba().defaultPrevented).toBe(false);
+  });
+
+  it("com a gravação a caminho, pede confirmação; confirmada pelo servidor, deixa de pedir", async () => {
+    const soltar = servidor.segurar();
+    montar(<Criador />);
+    criar();
+    expect(fecharAAba().defaultPrevented).toBe(true);
+
+    await act(async () => {
+      soltar();
+    });
+    await waitFor(() => expect(fecharAAba().defaultPrevented).toBe(false));
+  });
+
+  it("depois de desmontar o StoreProvider, o ouvinte sai e a aba não pergunta mais", () => {
+    servidor.segurar();
+    const { unmount } = montar(<Criador />);
+    criar();
+    expect(fecharAAba().defaultPrevented).toBe(true);
+    unmount();
+    expect(fecharAAba().defaultPrevented).toBe(false);
+  });
+});
