@@ -456,6 +456,8 @@ describe("Mover para… — o diálogo inteiro (D-11, L1, L2)", () => {
     expect(motivoDoMover()).toBe("Movendo…");
     expect(screen.getByRole("alertdialog")).toBeTruthy();
     expect(screen.queryByText(/movida para/)).toBeNull();
+    // D-13: o diálogo espera a resposta, mas a árvore por trás já mostra a Lista no Espaço novo.
+    expect(linha(ALFA).closest("li")?.parentElement?.closest("li")?.querySelector("a")?.id).toBe("arvore-no-spc_ops");
     // Cancelar durante a gravação não fecha: o fim é a resposta.
     fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
     expect((await enderecoAtual()).get("mover")).toBe(ALFA);

@@ -3,16 +3,26 @@
 /**
  * O store da interface: o `DataState` do domínio mais a sessão e o resultado
  * da última operação. Continua um store por árvore (via contexto, não
- * singleton — ver o porquê abaixo) e continua revisão em vez de objeto novo
- * — mas agora **o servidor é a verdade**: o `DataState` real só muda quando
- * o diff volta do `apps/api` (D-03); a cópia serve só para recusar na hora.
+ * singleton — ver o porquê abaixo) e continua revisão em vez de objeto novo.
  *
- * `run()` é o híbrido de D-05: clona o estado (`structuredClone`), roda a
+ * Dois estados (Fase 12, D-13): `confirmado` é o que o servidor já devolveu —
+ * o único alvo de `aplicarDiferenca` (D-03) e o dono das `ordens`; `data` é o
+ * que a tela mostra, e é o `confirmado` com as gravações ainda a caminho
+ * refeitas por cima. Sem nenhuma a caminho, os dois são o MESMO objeto
+ * (copy-on-write: nenhuma cópia a mais).
+ *
+ * `run()` é o híbrido de D-05: clona `data` (`structuredClone`) e roda a
  * operação pura na cópia. Se o domínio recusar, o erro aparece instantâneo e
- * NADA vai à rede — a cópia é descartada. Se aceitar, a cópia também é
- * descartada, mas os nomes+argumentos das operações chamadas (gravados pelo
+ * NADA vai à rede — a cópia é descartada. Se aceitar, a cópia vira o `data`
+ * na hora (D-13) e os nomes+argumentos das operações chamadas (gravados pelo
  * gravador de `@n1/dominio/operations/registro`, Plan 01-03) são mandados ao
- * `apps/api`, e o estado real só muda quando o diff da resposta voltar. Se a
+ * `apps/api`. Quando a resposta volta, a diferença entra em `confirmado` e as
+ * gravações que ainda esperam são refeitas por cima, pelo registro
+ * `OPERACOES` (o mesmo que o servidor roda), para obter o novo `data`.
+ *
+ * Recusa do servidor, falha, conflito e erro de corpo tiram a gravação: `data`
+ * volta a ser o `confirmado` mais o que sobrou na fila, e o erro aparece pelo
+ * canal de sempre (`lastResult`), com a mensagem do servidor (D-14). Se a
  * revisão do cliente estava defasada — outra pessoa gravou no meio — ou o
  * servidor devolver 409, o store re-hidrata por `GET /estado` em vez de
  * aplicar qualquer coisa parcial (D-06): o cliente nunca fica com um estado
@@ -41,7 +51,8 @@ import { createContext, createElement, useContext, useEffect, useState, type Rea
 import { createStore, useStore as useZustandStore, type StoreApi } from "zustand";
 import type { DataState, OperationResult, Session } from "@n1/dominio/state";
 import * as operations from "@n1/dominio/operations";
-import { gravarChamadas, syncIdSequence } from "@n1/dominio/operations";
+import { gravarChamadas, syncIdSequence, type ChamadaDeOperacao } from "@n1/dominio/operations";
+import { OPERACOES } from "@n1/dominio/operations/registro";
 import { aplicarDiferenca, type Ordens } from "@n1/dominio";
 import type { Id } from "@n1/dominio/types";
 import type { PedidoDeGravacao, RespostaDeGravacao, Transporte } from "./transporte";
@@ -55,8 +66,42 @@ function respostasDe(retorno: RespostaDeGravacao | readonly RespostaDeGravacao[]
   return Array.isArray(retorno) ? retorno : [retorno as RespostaDeGravacao];
 }
 
+/**
+ * `OPERACOES` é `as const satisfies Record<...>`: indexar por um `NomeDeOperacao`
+ * genérico devolve a união das assinaturas, que o TypeScript não deixa chamar.
+ * A assinatura comum `(state, actingMemberId, ...args)` é garantida por
+ * `registro.ts`; o cast só relaxa o que o compilador não consegue expressar
+ * (o mesmo que `apps/api/src/rotas/operacoes.ts` faz).
+ */
+type OperacaoDoRegistro = (state: DataState, actingMemberId: Id, ...args: unknown[]) => OperationResult<unknown>;
+
+/**
+ * Uma gravação que a cópia aceitou e que o servidor ainda não confirmou. As
+ * `chamadas` são clonadas ao entrar (o gravador guarda os `args` por
+ * referência) e `concluir` resolve a promessa de `runConfirmado`.
+ */
+interface Pendente {
+  readonly chamadas: readonly ChamadaDeOperacao[];
+  /** Vira `data` e é refeita sobre o `confirmado`; `false` quando a cópia aceitou sem registrar chamada alguma. */
+  readonly otimista: boolean;
+  readonly copia: DataState;
+  readonly resultado: OperationResult<unknown>;
+  readonly concluir: (resultado: OperationResult<unknown>) => void;
+}
+
+/** D-13: hoje toda cópia que registrou ao menos uma chamada vira `data`; 12-07 acrescenta as que esperam o servidor. */
+function otimistaPara(chamadas: readonly ChamadaDeOperacao[]): boolean {
+  return chamadas.length > 0;
+}
+
 interface StoreShape {
+  /** O que a tela mostra: o `confirmado` com as gravações a caminho refeitas por cima (D-13). */
   readonly data: DataState;
+  /**
+   * O que o servidor já devolveu — leitura. Quando não há gravação otimista a
+   * caminho, é o MESMO objeto que `data`.
+   */
+  readonly confirmado: DataState;
   revision: number;
   session: Session & { readonly userId?: string };
   /** Last operation result, so a screen can render the feedback it produced. */
@@ -123,14 +168,115 @@ export function criarStore(opcoes: {
   const { sessao, estadoInicial, transporte } = opcoes;
 
   return createStore<StoreShape>((set, get) => {
+    /** As gravações aceitas pela cópia que o servidor ainda não confirmou, na ordem do clique. */
+    const pendentes: Pendente[] = [];
+
+    /** Tira a pendente da lista (se ainda estiver nela). */
+    function tirar(pendente: Pendente): void {
+      const indice = pendentes.indexOf(pendente);
+      if (indice !== -1) pendentes.splice(indice, 1);
+    }
+
+    /**
+     * Refaz uma pendente por cima de `copia`, chamada a chamada, pelo registro
+     * `OPERACOES` — o mesmo que o servidor roda. Devolve o erro se alguma
+     * chamada recusa ou lança.
+     */
+    function refazer(copia: DataState, memberId: Id, pendente: Pendente): string | null {
+      try {
+        for (const chamada of pendente.chamadas) {
+          const operacao = OPERACOES[chamada.nome] as OperacaoDoRegistro;
+          const r = operacao(copia, memberId, ...chamada.args);
+          if (!r.ok) return r.error;
+        }
+        return null;
+      } catch {
+        return "Não foi possível refazer esta alteração sobre o estado confirmado pelo servidor.";
+      }
+    }
+
+    /**
+     * D-13/D-14: recalcula `data` a partir do `confirmado` e das pendentes
+     * otimistas que sobram. Sem nenhuma, `data` é o próprio `confirmado` (zero
+     * cópia). Uma pendente que falha ao ser refeita por cima — a Lista que ela
+     * renomeava foi recusada — sai da lista com o erro, NUNCA é enviada ao
+     * servidor, e a reconstrução recomeça do `confirmado` sem ela.
+     * `causaJaMostrada`: quando a causa (a recusa que derrubou a anterior) já
+     * está em `lastResult`, o erro da refeita não a encobre; só a promessa dela
+     * resolve com o seu.
+     */
+    function refazerPendentes(causaJaMostrada: boolean): void {
+      const { confirmado, session } = get();
+      let erroDaRefeita: string | null = null;
+      let data = confirmado;
+
+      for (;;) {
+        const otimistas = pendentes.filter((p) => p.otimista);
+        if (otimistas.length === 0) {
+          data = confirmado;
+          break;
+        }
+        const copia = structuredClone(confirmado);
+        syncIdSequence(copia, get().sequenciaDoServidor);
+        const falhou = otimistas.find((p) => {
+          const erro = refazer(copia, session.memberId, p);
+          if (erro === null) return false;
+          tirar(p);
+          p.concluir({ ok: false, error: erro });
+          erroDaRefeita = erro;
+          return true;
+        });
+        if (!falhou) {
+          data = copia;
+          break;
+        }
+      }
+
+      set((estado) => ({
+        data,
+        pendentes: pendentes.length,
+        revision: estado.revision + 1,
+        ...(erroDaRefeita !== null && !causaJaMostrada
+          ? { lastResult: { ok: false as const, error: erroDaRefeita, at: Date.now() } }
+          : {}),
+      }));
+    }
+
+    /** Busca `GET /estado` e põe em `confirmado`. A revisão só cresce: uma resposta mais velha não sobrescreve a mais nova. */
+    async function hidratarAgora(): Promise<void> {
+      const r = await transporte.hidratar();
+      if ("tipo" in r) {
+        set({ lastResult: { ok: false, error: r.erro, at: Date.now() } });
+        return;
+      }
+      // Revisão de código: uma re-hidratação que saiu antes e chegou depois traz um estado mais
+      // velho — a revisão só cresce, então a menor não sobrescreve a maior.
+      if (r.revisao < get().revisaoDoServidor) return;
+      set((estado) => ({
+        confirmado: r.data,
+        ordens: r.ordens,
+        revisaoDoServidor: r.revisao,
+        sequenciaDoServidor: Math.max(estado.sequenciaDoServidor, r.sequencia ?? 0),
+        revision: estado.revision + 1,
+      }));
+    }
+
     /**
      * Manda o que `run()` já aceitou localmente para o servidor, e aplica a
-     * resposta. Roda depois de `run()` já ter devolvido o `OperationResult`
-     * da cópia para quem chamou — por isso é sempre disparada com `void`,
-     * `await`ada só por `runConfirmado`, que quer o resultado do servidor.
+     * resposta no `confirmado`. Roda depois de `run()` já ter devolvido o
+     * `OperationResult` da cópia para quem chamou — por isso é sempre
+     * disparada sem `await`, `await`ada só por `runConfirmado`, que quer o
+     * resultado do servidor. Não mexe em `data`: quem reconstrói é
+     * `refazerPendentes`, depois de a pendente sair da lista.
      */
-    async function enviar(pedido: PedidoDeGravacao): Promise<OperationResult<unknown>> {
+    async function enviar(pendente: Pendente): Promise<OperationResult<unknown>> {
       try {
+        const pedido: PedidoDeGravacao = {
+          chamadas: pendente.chamadas,
+          revisao: get().revisaoDoServidor,
+          copia: pendente.copia,
+          resultado: pendente.resultado,
+        };
         const respostas = respostasDe(await transporte.gravar(pedido));
         if (respostas.length === 0) throw new Error("O transporte não devolveu nenhuma resposta.");
 
@@ -146,8 +292,10 @@ export function criarStore(opcoes: {
                 // Alguém gravou no meio (D-06, D-12): o diff foi calculado sobre
                 // uma revisão que já não é a de agora — aplicá-lo por cima seria
                 // arriscar um furo de ordem (T-12-13). Re-hidrata tudo; o
-                // `GET /estado` já traz as chamadas seguintes da lista.
-                await get().rehidratar();
+                // `GET /estado` já traz as chamadas seguintes da lista, e a
+                // pendente corrente (que o servidor confirmou) sai antes de
+                // `refazerPendentes`, para não ser refeita (Pitfall 3).
+                await hidratarAgora();
                 if (!resposta.resultado.ok) {
                   set({ lastResult: { ...resposta.resultado, at: Date.now() } });
                 }
@@ -156,7 +304,8 @@ export function criarStore(opcoes: {
 
               // Mutação em lugar — o mesmo modelo do store: `aplicarDiferenca`
               // nunca troca a referência das coleções, só o array por dentro.
-              aplicarDiferenca(get().data, get().ordens, resposta.diferenca);
+              // O alvo é sempre o `confirmado` (D-13), nunca o `data` otimista.
+              aplicarDiferenca(get().confirmado, get().ordens, resposta.diferenca);
               set((estado) => ({
                 revisaoDoServidor: resposta.revisao,
                 sequenciaDoServidor: Math.max(estado.sequenciaDoServidor, resposta.sequencia ?? 0),
@@ -164,10 +313,9 @@ export function criarStore(opcoes: {
               }));
 
               if (!resposta.resultado.ok) {
-                // O servidor recusou o que a cópia aceitou — só acontece por
-                // não-determinismo (ex.: um prazo virou entre o clique e a
-                // resposta); o diff (vazio nesse caso) já aplicou, o erro do
-                // servidor prevalece sobre o `ok:true` que a cópia calculou.
+                // O servidor recusou o que a cópia aceitou (D-14): o diff (vazio
+                // nesse caso) já aplicou, e o erro do servidor prevalece sobre o
+                // `ok:true` que a cópia calculou.
                 set((estado) => ({ lastResult: { ...resposta.resultado, at: Date.now() }, revision: estado.revision + 1 }));
               }
               ultimo = resposta.resultado;
@@ -176,9 +324,9 @@ export function criarStore(opcoes: {
 
             case "estado": {
               // Caminho do transporte em memória (rotas públicas): não há
-              // servidor divergindo — a cópia gravada VIRA o estado.
+              // servidor divergindo — a cópia gravada VIRA o estado confirmado.
               set((estado) => ({
-                data: resposta.estado.data,
+                confirmado: resposta.estado.data,
                 ordens: resposta.estado.ordens,
                 revisaoDoServidor: resposta.estado.revisao,
                 revision: estado.revision + 1,
@@ -187,7 +335,7 @@ export function criarStore(opcoes: {
             }
 
             case "conflito": {
-              await get().rehidratar();
+              await hidratarAgora();
               set({ lastResult: { ok: false, error: resposta.erro, at: Date.now() } });
               return { ok: false, error: resposta.erro };
             }
@@ -209,22 +357,27 @@ export function criarStore(opcoes: {
         const erro = "Não foi possível confirmar a gravação. Recarregue a página para ver o estado atual.";
         set((estado) => ({ lastResult: { ok: false, error: erro, at: Date.now() }, revision: estado.revision + 1 }));
         return { ok: false, error: erro };
-      } finally {
-        set((estado) => ({ pendentes: estado.pendentes - 1 }));
       }
+    }
+
+    /** A pendente respondeu: sai da lista ANTES de reconstruir (nunca refeita duas vezes), `data` é refeito e a promessa resolve. */
+    function terminar(pendente: Pendente, resultado: OperationResult<unknown>): void {
+      tirar(pendente);
+      refazerPendentes(!resultado.ok);
+      pendente.concluir(resultado);
     }
 
     let verificando = false;
 
     /**
-     * Roda `operation` numa cópia; se a cópia aceita, dispara o envio e
-     * devolve a promessa dele (o resultado do servidor).
+     * Roda `operation` numa cópia; se a cópia aceita, ela vira o `data` na hora
+     * (D-13), dispara o envio e devolve a promessa dele (o resultado do servidor).
      */
     function rodarNaCopia<T>(operation: (data: DataState, actingMemberId: Id) => OperationResult<T>): {
       readonly resultado: OperationResult<T>;
       readonly envio?: Promise<OperationResult<unknown>>;
     } {
-      const { data, session, revisaoDoServidor } = get();
+      const { data, session } = get();
 
       // O clone custa sub-ms para ~475 KB / ~900 registros (RESEARCH.md,
       // Pitfall 3) — não é o gargalo, a rede é. Sincronizar o contador de
@@ -244,14 +397,36 @@ export function criarStore(opcoes: {
         return { resultado };
       }
 
-      set((estado) => ({ pendentes: estado.pendentes + 1, lastResult: { ...resultado, at: Date.now() } }));
+      const otimista = otimistaPara(chamadas);
+      let concluir: (r: OperationResult<unknown>) => void = () => undefined;
+      const envio = new Promise<OperationResult<unknown>>((resolve) => {
+        concluir = resolve;
+      });
+      const pendente: Pendente = {
+        // Os `args` são gravados por referência: clona para a reconstrução não ver o que o chamador mutar depois.
+        chamadas: structuredClone(chamadas),
+        otimista,
+        copia,
+        resultado,
+        concluir,
+      };
+      pendentes.push(pendente);
 
-      // O estado real só muda quando `enviar` aplicar o diff que voltar do servidor.
-      return { resultado, envio: enviar({ chamadas, revisao: revisaoDoServidor, copia, resultado }) };
+      set((estado) => ({
+        // D-13: a cópia aceita é o que a tela mostra. Uma cópia sem chamadas nunca vai ao servidor como mudança — não vira `data`.
+        ...(otimista ? { data: copia } : {}),
+        pendentes: pendentes.length,
+        lastResult: { ...resultado, at: Date.now() },
+        revision: estado.revision + 1,
+      }));
+
+      void enviar(pendente).then((resposta) => terminar(pendente, resposta));
+      return { resultado, envio };
     }
 
     return {
       data: estadoInicial.data,
+      confirmado: estadoInicial.data,
       ordens: estadoInicial.ordens,
       revisaoDoServidor: estadoInicial.revisao,
       sequenciaDoServidor: estadoInicial.sequencia ?? 0,
@@ -287,21 +462,8 @@ export function criarStore(opcoes: {
       },
 
       rehidratar: async () => {
-        const r = await transporte.hidratar();
-        if ("tipo" in r) {
-          set({ lastResult: { ok: false, error: r.erro, at: Date.now() } });
-          return;
-        }
-        // Revisão de código: uma re-hidratação que saiu antes e chegou depois traz um estado mais
-        // velho — a revisão só cresce, então a menor não sobrescreve a maior.
-        if (r.revisao < get().revisaoDoServidor) return;
-        set((estado) => ({
-          data: r.data,
-          ordens: r.ordens,
-          revisaoDoServidor: r.revisao,
-          sequenciaDoServidor: Math.max(estado.sequenciaDoServidor, r.sequencia ?? 0),
-          revision: estado.revision + 1,
-        }));
+        await hidratarAgora();
+        refazerPendentes(false);
       },
     };
   });

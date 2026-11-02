@@ -3,8 +3,10 @@
  * Fase 10, 2.3.3 (D-08, D-09, D-10, EST-06) — «Subir»/«Descer» no menu de linha
  * da árvore, a ordem gravada na árvore e na página da Pasta, e o «Mais ações» da
  * Pasta. A casca de verdade (`AppShell`) sobre o `StoreProvider` de verdade e um
- * transporte falso que confirma: o que a tela mostra depois de reordenar é o que
- * o servidor devolveu, nunca o que a cópia aceitou.
+ * transporte falso que confirma. D-13 (Fase 12): a ordem nova aparece na árvore
+ * na hora, a partir da cópia que o domínio aceitou, enquanto a árvore fica
+ * `aria-busy` até a resposta; se o servidor recusa, o lugar antigo volta com o
+ * erro (D-14).
  *
  * Molde de `mover-conteiner-dialog.test.tsx`.
  */
@@ -382,8 +384,8 @@ describe("Subir e Descer — a fatia visível, a falha e a gravação (EST-06, T
     fireEvent.click(item("Descer"));
 
     await waitFor(() => expect(raiz.getAttribute("aria-busy")).toBe("true"));
-    // A tela ainda não mudou: só muda quando o servidor responde.
-    expect(filhosDe(P)).toEqual([alfa, beta, gama]);
+    // D-13: a ordem nova já está na tela, antes de o servidor responder; a árvore só fica ocupada.
+    expect(filhosDe(P)).toEqual([beta, alfa, gama]);
     abrirMenuDaLinha(beta);
     for (const nome of ["Mover para…", "Subir", "Descer"]) {
       expect(desligado(item(nome))).toBe(true);

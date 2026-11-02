@@ -255,11 +255,11 @@ describe("Arrastar na árvore — o traçador: a Lista \"Propostas\" vai para a 
     expect(zonaAcesa("fld_clientes")).toBe("dentro");
     soltarEm("fld_clientes", 50);
 
-    // O servidor ainda não respondeu: a árvore está ocupada, o aviso não existe, a tela não mudou.
+    // O servidor ainda não respondeu: a árvore está ocupada e o aviso não existe, mas (D-13) o lugar novo já está na tela.
     await waitFor(() => expect(servidor.gravar).toHaveBeenCalledTimes(1));
     expect(document.querySelector("ul[aria-busy='true']")).not.toBeNull();
     expect(screen.queryByText("Lista Propostas movida para Clientes.")).toBeNull();
-    expect(paiNaArvore(PROPOSTAS)).toBe("fld_propostas");
+    expect(paiNaArvore(PROPOSTAS)).toBe("fld_clientes");
 
     await act(async () => soltar());
 
@@ -477,6 +477,8 @@ describe("Arrastar na árvore — reordenar, Espaços, diálogo, recusa e árvor
     expect(passarSobre(ALFA, 10)).toBe(false);
     soltarEm(ALFA, 10);
     expect(servidor.gravar).toHaveBeenCalledTimes(1);
+    // D-13: a ordem nova já está na tela enquanto o servidor não responde.
+    expect(filhosDe(P)).toEqual([GAMA, ALFA, BETA]);
 
     await act(async () => soltar());
     await waitFor(() => expect(document.querySelector("ul[aria-busy='true']")).toBeNull());
