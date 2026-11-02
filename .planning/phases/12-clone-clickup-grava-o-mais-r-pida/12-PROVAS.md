@@ -168,6 +168,176 @@ Observações
 - Espaço com Listas à lixeira: o mesmo Espaço de teste, restaurado fora da medição a cada repetição.
 ```
 
+## Depois — saída do comando
+
+Mesmo comando do "Antes", a partir da VPS, sobre o código com a trava (12-04) e o store novo (12-05 a 12-09). O dono colou a saída; ela entra abaixo exatamente como veio.
+
+- **Comando:** `npm run --silent gravacao:medir -w @n1/api -- --repeticoes=10`, em `/opt/n1-crm/current`, via ssh como `n1crm` (o mesmo do "Antes").
+- **Código medido (SHA):** `37c1cab2e6f35b337c5d26318aae5432db5d620c`, o último commit de código da fase (`feat(12-09)`). É o SHA que o `publicar.sh` imprimiu como no ar ("37c1cab2e6f35b337c5d26318aae5432db5d620c no ar em 127.0.0.1:3020"; "== migrações: Nada a aplicar: o banco já está em dia."; "n1_api: concessões aplicadas") e a "revisão do código" que o próprio comando leu do `REVISION` do release. O `cat /opt/n1-crm/current/REVISION` à parte não foi colado; a igualdade foi conferida entre a saída do `publicar.sh` e a revisão impressa pelo comando. Os commits seguintes (`faa5be8`, `b997d21`) só tocam `.planning/`: para `apps/` e `packages/` o conteúdo é idêntico ao de `37c1cab`. A API foi publicada direto pelo SHA do ramo `fase-11`, **não** por um commit da `main` (como o "Antes" também foi).
+- **Quando:** `2026-11-02T18:59:40.498Z` (o `quando` impresso). Espaço de Trabalho `ws_n1`.
+- **Só a API foi publicada.** A web nova não está no ar (ver "Conferência do dono na tela"). Isto não afeta esta medição: o comando sobe o próprio Fastify em loopback e fala com o banco de produção, sem passar pela web.
+
+Saída colada pelo dono, sem edição:
+
+```text
+Medição da gravação (gravacao:medir)
+quando: 2026-11-02T18:59:40.498Z
+revisão do código: 37c1cab2e6f35b337c5d26318aae5432db5d620c
+Espaço de Trabalho: ws_n1
+repetições: 10
+
+Ida e volta (select 1)
+select 1: mediana 51.4 ms · pior 52.2 ms · 10 amostra(s)
+
+hidratar direto (transação só de leitura)
+hidratar: mediana 186.6 ms · pior 198.4 ms · 10 amostra(s)
+registros lidos: 4673
+limite da sessão C (D-07): 300 ms na mediana; mediana 186.6 ms, abaixo do limite
+
+GET /estado (total)
+GET /estado: mediana 337.6 ms · pior 364.8 ms · 10 amostra(s)
+
+plataforma.registros (D-05)
+coleção               registros  comprimido      texto
+--------------------  ---------  ----------  ---------
+activity                   3841   1404.8 KB  1319.6 KB
+tasks                       535    816.3 KB   920.4 KB
+automationExecutions         50     58.1 KB    51.8 KB
+agentExecutions              28     47.5 KB    41.7 KB
+approvals                    27     32.0 KB    32.4 KB
+fieldDefinitions             55     16.7 KB    16.1 KB
+automations                  13     15.3 KB    14.1 KB
+lists                        20     11.5 KB    11.8 KB
+spaces                        6      5.2 KB     4.6 KB
+tools                        20      4.2 KB     4.0 KB
+grants                       12      3.6 KB     3.5 KB
+integrations                  7      3.2 KB     2.9 KB
+agents                        2      2.6 KB     2.3 KB
+roles                         9      2.4 KB     2.2 KB
+members                       5      2.1 KB     1.9 KB
+documents                     1      1.9 KB     1.7 KB
+forms                         1      1.8 KB     5.2 KB
+views                         5      1.7 KB     1.6 KB
+files                         4      1.6 KB     1.5 KB
+folders                       4      1.6 KB     1.4 KB
+chatSessions                  2      1.3 KB     1.2 KB
+tags                          9      1.0 KB     1.0 KB
+workspace                     1      0.9 KB     0.8 KB
+taskTypes                     6      0.9 KB     0.8 KB
+collections                   1      0.6 KB     0.5 KB
+skills                        1      0.5 KB     0.5 KB
+models                        3      0.5 KB     0.4 KB
+funnels                       1      0.5 KB     0.4 KB
+chatFolders                   3      0.4 KB     0.4 KB
+inbox                         1      0.1 KB     0.1 KB
+TOTAL                      4673   2440.7 KB  2447.0 KB
+
+criar Lista (createList) · 10 amostra(s)
+etapa            mediana   pior
+---------------  -------  -----
+conexaoMs            0.1    0.1
+inicioMs            51.3   51.5
+travaMs            103.1  104.5
+hidratarMs         161.7  188.7
+canaisMs            52.7   53.0
+operacaoMs           0.3    1.2
+atualizaMs          51.5   52.0
+gravarMs           109.4  120.3
+eventosMs            0.1    0.4
+commitMs            51.7   51.9
+recorteMs           10.9   19.3
+totalMs            557.0  574.6
+pedidoMs           611.9  629.3
+foraDasEtapasMs      6.2    9.0
+foraDoHandlerMs     55.1   55.7
+tentativas             1      1
+linhasLidas         4685   4694
+linhasGravadas         2      2
+regimes: travado
+desfechos: gravou 10
+
+renomear Lista (updateContainer) · 10 amostra(s)
+etapa            mediana   pior
+---------------  -------  -----
+conexaoMs            0.1    0.1
+inicioMs            51.3   51.5
+travaMs            103.2  104.4
+hidratarMs         162.1  207.3
+canaisMs            52.7   53.5
+operacaoMs           0.2    0.9
+atualizaMs          51.5   52.1
+gravarMs           112.5  137.4
+eventosMs            0.1    0.1
+commitMs            51.6   53.7
+recorteMs           15.8   24.9
+totalMs            557.0  610.1
+pedidoMs           612.1  665.1
+foraDasEtapasMs      6.8   12.2
+foraDoHandlerMs     55.0   55.4
+tentativas             1      1
+linhasLidas       4700.5   4705
+linhasGravadas         2      2
+regimes: travado
+desfechos: gravou 10
+
+Espaço com Listas à lixeira (trashContainer) · 10 amostra(s)
+etapa            mediana   pior
+---------------  -------  -----
+conexaoMs            0.1    0.1
+inicioMs            51.1   51.3
+travaMs            102.8  103.1
+hidratarMs         159.6  202.3
+canaisMs            52.8   53.1
+operacaoMs           0.3    1.1
+atualizaMs          51.5   51.7
+gravarMs           105.9  136.4
+eventosMs            0.1    0.1
+commitMs            51.7   51.9
+recorteMs           11.6   18.8
+totalMs            559.9  588.5
+pedidoMs           614.4  644.2
+foraDasEtapasMs      5.6    9.8
+foraDoHandlerMs     54.5   55.8
+tentativas             1      1
+linhasLidas         4722   4731
+linhasGravadas         4      4
+regimes: travado
+desfechos: gravou 10
+
+mudar Status (changeTaskStatus) · 10 amostra(s)
+etapa            mediana   pior
+---------------  -------  -----
+conexaoMs            0.1    0.1
+inicioMs            51.3   51.5
+travaMs            103.0  104.2
+hidratarMs         159.3  187.4
+canaisMs            52.6   53.9
+operacaoMs           0.9    6.7
+atualizaMs          51.5   52.7
+gravarMs           108.7  153.1
+eventosMs            0.1    0.1
+commitMs            51.6   51.7
+recorteMs           10.3   17.2
+totalMs            556.7  603.3
+pedidoMs           611.0  658.1
+foraDasEtapasMs      6.2   19.0
+foraDoHandlerMs     54.6   55.3
+tentativas             1      1
+linhasLidas       4738.5   4743
+linhasGravadas         2      2
+regimes: travado
+desfechos: gravou 10
+
+Observações
+- Espaço com Listas à lixeira: o mesmo Espaço de teste, restaurado fora da medição a cada repetição.
+```
+
+Conferência do agente antes de gravar a saída (Task 2, T-12-23), por `grep`/`awk` sobre o texto colado:
+
+- **Revisão do código:** a linha "revisão do código" é `37c1cab2e6f35b337c5d26318aae5432db5d620c`, igual ao SHA que o `publicar.sh` imprimiu como no ar. Confere.
+- **Os quatro gestos:** createList, updateContainer, trashContainer e changeTaskStatus têm `10 amostra(s)`, `regimes: travado`, `tentativas` 1 na mediana e 1 no pior caso, e `desfechos: gravou 10`. Confere nos quatro. (Também `select 1`, `hidratar` e `GET /estado` têm 10 amostras.)
+- **Nada sensível:** a saída só tem números e nomes técnicos de etapa e de coleção. Busca por `password`, `senha`, `@`, `postgres://`, `http(s)://`, `supabase`, `api.env`, `Bearer`, `eyJ` e `ZZ-` voltou vazia. Nenhum nome de Tarefa, Contato, e-mail ou URL com senha. Gravada.
+
 ## Tamanho de `plataforma.registros` (D-05)
 
 A tabela, como veio (a consulta de D-05 não foi recusada pelo banco; não foi preciso rodar nada à mão no `psql`):
@@ -216,105 +386,131 @@ Leitura, só aritmética sobre a tabela:
 
 ## Tabela antes/depois
 
-Os números da coluna "Antes" são os impressos acima: mediana e pior caso de 10 amostras por gesto, em ms (as três últimas linhas de cada gesto são contagens: `tentativas`, `linhasLidas`, `linhasGravadas`). As colunas "Depois" e "Meta" ficam vazias: o 12-03 fixa a meta e o 12-10 mede o depois.
+**As duas rodadas** (o mesmo comando, 10 repetições, `ws_n1`, a partir da VPS):
+
+| Rodada | SHA | Quando | Registros de `plataforma.registros` | O que `executar()` era |
+|---|---|---|---:|---|
+| Antes | `5a74ee7548d5437745677e997484ff5b1f906657` | 2026-10-31T04:10:33.571Z | 4601 | antes da trava (a saída não traz o `regime`: "a linha não traz") |
+| Depois | `37c1cab2e6f35b337c5d26318aae5432db5d620c` | 2026-11-02T18:59:40.498Z | 4673 | `regimes: travado` nos quatro gestos, `tentativas` 1 |
+
+**Como ler.** Os números das colunas "Antes" são os de "Antes — saída do comando"; os das colunas "Depois" são os de "Depois — saída do comando", sem arredondar nem ajustar (cada um aparece no texto colado; conferido por busca mecânica, nenhum faltou). Todos são mediana ou pior caso de 10 amostras, em ms, exceto as linhas `tentativas`, `linhasLidas` e `linhasGravadas`, que são contagens. **Diferença = depois − antes**: em ms (e em % da mediana do antes) para a mediana, e em ms para o pior caso; positivo é mais lento (ou mais linhas). Onde o antes é 0.0 o % não existe ("—"); em etapas abaixo de 1 ms o % é só ruído de uma casa decimal. Cada conta foi feita sobre os valores impressos e conferida duas vezes (uma à mão, outra por script).
+
+**Coluna "Meta".** A meta da parada é a decisão `b-ganho-basta` do dono (2026-11-02, `12-CONTEXT.md` § "Meta (fixada na parada)"): o ganho que o B der basta, **sem alvo numérico por gesto** e sem a sessão C. Por isso a coluna diz "sem alvo numérico" em toda linha: nenhum número de meta foi inventado, e a comparação do "depois" é só contra o "antes" (ver "Comparação com a meta (D-08)").
+
+**O que mudou entre as rodadas além do código** (fatos impressos, sem afirmar causa):
+
+- **A base cresceu.** `plataforma.registros` passou de 4601 para 4673 registros (+72, +1,6%), de 2415.1 KB para 2440.7 KB comprimidos (+25.6 KB, +1,1%). Por coleção: `activity` 3786 → 3841 (+55), `lists` 8 → 20 (+12), `spaces` 4 → 6 (+2), `taskTypes` 4 → 6 (+2), `tasks` 534 → 535 (+1). Isso pesa em `hidratar`: `linhasLidas` sobe 72 em todos os gestos (4613 → 4685 em createList, por exemplo). O aumento de 2 Espaços e 12 Listas é compatível com o rastro do próprio "antes" (ver "Rastro em produção"), mas a saída não diz de onde veio.
+- **A ida e volta de referência quase não mudou:** `select 1` 51.7 → 51.4 ms. Cada etapa de uma ida só (`inicioMs`, `canaisMs`, `atualizaMs`, `commitMs`) fica igual ao `select 1` nas duas rodadas; a comparação não é distorcida por uma rede diferente.
+- **`hidratar` direto subiu mais do que a base:** 147.5 → 186.6 ms (+39.1 ms, +26,5%) com 1,6% mais registros. Dentro dos gestos, `hidratarMs` subiu menos (+7.1 a +14.0 ms, +4,6% a +9,5%). Os números não dizem a causa.
+- **`GET /estado` desceu:** 370.6 → 337.6 ms (−33.0 ms, −8,9%), apesar de `hidratar` ter subido. As duas leituras andaram em sentidos opostos, o que mostra o tamanho do ruído entre rodadas (dezenas de ms, 10 amostras, momentos diferentes de produção): diferenças dessa ordem não são confiáveis, só a direção das grandes (como a da trava, de 51 ms, cravada em quatro gestos) é.
 
 Linhas de referência (10 amostras cada):
 
-| Referência | Antes: mediana | Antes: pior caso | Depois | Meta |
-|---|---:|---:|---|---|
-| `select 1` (ida e volta VPS↔banco) | 51.7 ms | 52.9 ms | | |
-| `hidratar` direto (transação só de leitura; 4601 registros lidos) | 147.5 ms | 203.1 ms | | |
-| `GET /estado` (total) | 370.6 ms | 429.7 ms | | |
+| Referência | Antes: mediana | Antes: pior caso | Depois: mediana | Depois: pior caso | Dif. mediana (ms) | Dif. mediana (%) | Dif. pior caso (ms) | Meta |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| `select 1` (ida e volta VPS↔banco) | 51.7 ms | 52.9 ms | 51.4 ms | 52.2 ms | −0.3 ms | −0.6% | −0.7 ms | sem alvo numérico |
+| `hidratar` direto (transação só de leitura) (4601 registros lidos no antes; 4673 no depois) | 147.5 ms | 203.1 ms | 186.6 ms | 198.4 ms | +39.1 ms | +26.5% | −4.7 ms | sem alvo numérico |
+| `GET /estado` (total) | 370.6 ms | 429.7 ms | 337.6 ms | 364.8 ms | −33.0 ms | −8.9% | −64.9 ms | sem alvo numérico |
 
-O comando compara o `hidratar` direto com o limite de 300 ms da sessão C (D-07): mediana de 147.5 ms, "abaixo do limite".
+O comando compara o `hidratar` direto com o limite de 300 ms da sessão C (D-07): no antes, mediana de 147.5 ms, "abaixo do limite"; no depois, mediana de 186.6 ms, "abaixo do limite" (folga de 300 − 186.6 = 113.4 ms). O gatilho continua sem disparar; a sessão C segue fora do ROADMAP.
 
 Por gesto e por etapa:
 
-| Gesto | Etapa | Antes: mediana (ms) | Antes: pior caso (ms) | Depois | Meta |
-|---|---|---:|---:|---|---|
-| createList | conexaoMs | 0.1 | 0.2 | | |
-| createList | inicioMs | 51.5 | 51.8 | | |
-| createList | travaMs | 51.8 | 52.3 | | |
-| createList | hidratarMs | 154.6 | 173.4 | | |
-| createList | canaisMs | 52.8 | 53.0 | | |
-| createList | operacaoMs | 0.3 | 1.5 | | |
-| createList | atualizaMs | 51.8 | 52.3 | | |
-| createList | gravarMs | 105.7 | 145.4 | | |
-| createList | eventosMs | 0.1 | 0.1 | | |
-| createList | commitMs | 52.0 | 52.4 | | |
-| createList | recorteMs | 10.8 | 19.0 | | |
-| createList | totalMs | 495.5 | 540.9 | | |
-| createList | pedidoMs | 551.0 | 597.6 | | |
-| createList | foraDasEtapasMs | 6.2 | 12.1 | | |
-| createList | foraDoHandlerMs | 55.4 | 56.7 | | |
-| createList | tentativas | 1 | 1 | | |
-| createList | linhasLidas | 4613 | 4622 | | |
-| createList | linhasGravadas | 2 | 2 | | |
-| createList | desfechos: | gravou | 10 | | |
-| updateContainer | conexaoMs | 0.1 | 0.2 | | |
-| updateContainer | inicioMs | 51.5 | 51.7 | | |
-| updateContainer | travaMs | 51.8 | 52.6 | | |
-| updateContainer | hidratarMs | 148.1 | 163.6 | | |
-| updateContainer | canaisMs | 52.8 | 53.6 | | |
-| updateContainer | operacaoMs | 0.2 | 1.0 | | |
-| updateContainer | atualizaMs | 51.8 | 52.6 | | |
-| updateContainer | gravarMs | 102.3 | 109.0 | | |
-| updateContainer | eventosMs | 0.0 | 0.1 | | |
-| updateContainer | commitMs | 51.8 | 51.9 | | |
-| updateContainer | recorteMs | 11.8 | 22.7 | | |
-| updateContainer | totalMs | 477.5 | 495.0 | | |
-| updateContainer | pedidoMs | 531.9 | 550.0 | | |
-| updateContainer | foraDasEtapasMs | 5.7 | 10.5 | | |
-| updateContainer | foraDoHandlerMs | 54.8 | 55.1 | | |
-| updateContainer | tentativas | 1 | 1 | | |
-| updateContainer | linhasLidas | 4628.5 | 4633 | | |
-| updateContainer | linhasGravadas | 2 | 2 | | |
-| updateContainer | desfechos: | gravou | 10 | | |
-| trashContainer | conexaoMs | 0.1 | 0.1 | | |
-| trashContainer | inicioMs | 51.3 | 51.7 | | |
-| trashContainer | travaMs | 51.7 | 52.0 | | |
-| trashContainer | hidratarMs | 147.9 | 167.8 | | |
-| trashContainer | canaisMs | 53.0 | 53.1 | | |
-| trashContainer | operacaoMs | 0.3 | 1.1 | | |
-| trashContainer | atualizaMs | 51.7 | 52.0 | | |
-| trashContainer | gravarMs | 102.4 | 123.0 | | |
-| trashContainer | eventosMs | 0.0 | 0.1 | | |
-| trashContainer | commitMs | 51.8 | 52.2 | | |
-| trashContainer | recorteMs | 9.8 | 16.2 | | |
-| trashContainer | totalMs | 471.5 | 508.2 | | |
-| trashContainer | pedidoMs | 526.1 | 563.3 | | |
-| trashContainer | foraDasEtapasMs | 5.3 | 6.3 | | |
-| trashContainer | foraDoHandlerMs | 54.8 | 55.9 | | |
-| trashContainer | tentativas | 1 | 1 | | |
-| trashContainer | linhasLidas | 4650 | 4659 | | |
-| trashContainer | linhasGravadas | 4 | 4 | | |
-| trashContainer | desfechos: | gravou | 10 | | |
-| changeTaskStatus | conexaoMs | 0.1 | 0.1 | | |
-| changeTaskStatus | inicioMs | 51.3 | 51.8 | | |
-| changeTaskStatus | travaMs | 51.7 | 51.8 | | |
-| changeTaskStatus | hidratarMs | 150.3 | 192.8 | | |
-| changeTaskStatus | canaisMs | 53.0 | 53.2 | | |
-| changeTaskStatus | operacaoMs | 0.8 | 2.5 | | |
-| changeTaskStatus | atualizaMs | 51.7 | 51.8 | | |
-| changeTaskStatus | gravarMs | 104.3 | 127.9 | | |
-| changeTaskStatus | eventosMs | 0.0 | 0.1 | | |
-| changeTaskStatus | commitMs | 51.8 | 52.1 | | |
-| changeTaskStatus | recorteMs | 8.9 | 10.2 | | |
-| changeTaskStatus | totalMs | 480.9 | 548.4 | | |
-| changeTaskStatus | pedidoMs | 535.5 | 602.7 | | |
-| changeTaskStatus | foraDasEtapasMs | 5.7 | 8.9 | | |
-| changeTaskStatus | foraDoHandlerMs | 54.5 | 55.5 | | |
-| changeTaskStatus | tentativas | 1 | 1 | | |
-| changeTaskStatus | linhasLidas | 4666.5 | 4671 | | |
-| changeTaskStatus | linhasGravadas | 2 | 2 | | |
-| changeTaskStatus | desfechos: | gravou | 10 | | |
+| Gesto | Etapa | Antes: mediana (ms) | Antes: pior caso (ms) | Depois: mediana (ms) | Depois: pior caso (ms) | Dif. mediana (ms) | Dif. mediana (%) | Dif. pior caso (ms) | Meta |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---|
+| createList | conexaoMs | 0.1 | 0.2 | 0.1 | 0.1 | 0.0 | 0.0% | −0.1 | sem alvo numérico |
+| createList | inicioMs | 51.5 | 51.8 | 51.3 | 51.5 | −0.2 | −0.4% | −0.3 | sem alvo numérico |
+| createList | travaMs | 51.8 | 52.3 | 103.1 | 104.5 | +51.3 | +99.0% | +52.2 | sem alvo numérico |
+| createList | hidratarMs | 154.6 | 173.4 | 161.7 | 188.7 | +7.1 | +4.6% | +15.3 | sem alvo numérico |
+| createList | canaisMs | 52.8 | 53.0 | 52.7 | 53.0 | −0.1 | −0.2% | 0.0 | sem alvo numérico |
+| createList | operacaoMs | 0.3 | 1.5 | 0.3 | 1.2 | 0.0 | 0.0% | −0.3 | sem alvo numérico |
+| createList | atualizaMs | 51.8 | 52.3 | 51.5 | 52.0 | −0.3 | −0.6% | −0.3 | sem alvo numérico |
+| createList | gravarMs | 105.7 | 145.4 | 109.4 | 120.3 | +3.7 | +3.5% | −25.1 | sem alvo numérico |
+| createList | eventosMs | 0.1 | 0.1 | 0.1 | 0.4 | 0.0 | 0.0% | +0.3 | sem alvo numérico |
+| createList | commitMs | 52.0 | 52.4 | 51.7 | 51.9 | −0.3 | −0.6% | −0.5 | sem alvo numérico |
+| createList | recorteMs | 10.8 | 19.0 | 10.9 | 19.3 | +0.1 | +0.9% | +0.3 | sem alvo numérico |
+| createList | totalMs | 495.5 | 540.9 | 557.0 | 574.6 | +61.5 | +12.4% | +33.7 | sem alvo numérico |
+| createList | pedidoMs | 551.0 | 597.6 | 611.9 | 629.3 | +60.9 | +11.1% | +31.7 | sem alvo numérico |
+| createList | foraDasEtapasMs | 6.2 | 12.1 | 6.2 | 9.0 | 0.0 | 0.0% | −3.1 | sem alvo numérico |
+| createList | foraDoHandlerMs | 55.4 | 56.7 | 55.1 | 55.7 | −0.3 | −0.5% | −1.0 | sem alvo numérico |
+| createList | tentativas | 1 | 1 | 1 | 1 | 0 (contagem) | 0.0% | 0 (contagem) | sem alvo numérico |
+| createList | linhasLidas | 4613 | 4622 | 4685 | 4694 | +72 (contagem) | +1.6% | +72 (contagem) | sem alvo numérico |
+| createList | linhasGravadas | 2 | 2 | 2 | 2 | 0 (contagem) | 0.0% | 0 (contagem) | sem alvo numérico |
+| createList | regimes | (a linha não trazia) | | travado | | | | | sem alvo numérico |
+| createList | desfechos | gravou 10 | | gravou 10 | | | | | sem alvo numérico |
+| updateContainer | conexaoMs | 0.1 | 0.2 | 0.1 | 0.1 | 0.0 | 0.0% | −0.1 | sem alvo numérico |
+| updateContainer | inicioMs | 51.5 | 51.7 | 51.3 | 51.5 | −0.2 | −0.4% | −0.2 | sem alvo numérico |
+| updateContainer | travaMs | 51.8 | 52.6 | 103.2 | 104.4 | +51.4 | +99.2% | +51.8 | sem alvo numérico |
+| updateContainer | hidratarMs | 148.1 | 163.6 | 162.1 | 207.3 | +14.0 | +9.5% | +43.7 | sem alvo numérico |
+| updateContainer | canaisMs | 52.8 | 53.6 | 52.7 | 53.5 | −0.1 | −0.2% | −0.1 | sem alvo numérico |
+| updateContainer | operacaoMs | 0.2 | 1.0 | 0.2 | 0.9 | 0.0 | 0.0% | −0.1 | sem alvo numérico |
+| updateContainer | atualizaMs | 51.8 | 52.6 | 51.5 | 52.1 | −0.3 | −0.6% | −0.5 | sem alvo numérico |
+| updateContainer | gravarMs | 102.3 | 109.0 | 112.5 | 137.4 | +10.2 | +10.0% | +28.4 | sem alvo numérico |
+| updateContainer | eventosMs | 0.0 | 0.1 | 0.1 | 0.1 | +0.1 | — | 0.0 | sem alvo numérico |
+| updateContainer | commitMs | 51.8 | 51.9 | 51.6 | 53.7 | −0.2 | −0.4% | +1.8 | sem alvo numérico |
+| updateContainer | recorteMs | 11.8 | 22.7 | 15.8 | 24.9 | +4.0 | +33.9% | +2.2 | sem alvo numérico |
+| updateContainer | totalMs | 477.5 | 495.0 | 557.0 | 610.1 | +79.5 | +16.6% | +115.1 | sem alvo numérico |
+| updateContainer | pedidoMs | 531.9 | 550.0 | 612.1 | 665.1 | +80.2 | +15.1% | +115.1 | sem alvo numérico |
+| updateContainer | foraDasEtapasMs | 5.7 | 10.5 | 6.8 | 12.2 | +1.1 | +19.3% | +1.7 | sem alvo numérico |
+| updateContainer | foraDoHandlerMs | 54.8 | 55.1 | 55.0 | 55.4 | +0.2 | +0.4% | +0.3 | sem alvo numérico |
+| updateContainer | tentativas | 1 | 1 | 1 | 1 | 0 (contagem) | 0.0% | 0 (contagem) | sem alvo numérico |
+| updateContainer | linhasLidas | 4628.5 | 4633 | 4700.5 | 4705 | +72 (contagem) | +1.6% | +72 (contagem) | sem alvo numérico |
+| updateContainer | linhasGravadas | 2 | 2 | 2 | 2 | 0 (contagem) | 0.0% | 0 (contagem) | sem alvo numérico |
+| updateContainer | regimes | (a linha não trazia) | | travado | | | | | sem alvo numérico |
+| updateContainer | desfechos | gravou 10 | | gravou 10 | | | | | sem alvo numérico |
+| trashContainer | conexaoMs | 0.1 | 0.1 | 0.1 | 0.1 | 0.0 | 0.0% | 0.0 | sem alvo numérico |
+| trashContainer | inicioMs | 51.3 | 51.7 | 51.1 | 51.3 | −0.2 | −0.4% | −0.4 | sem alvo numérico |
+| trashContainer | travaMs | 51.7 | 52.0 | 102.8 | 103.1 | +51.1 | +98.8% | +51.1 | sem alvo numérico |
+| trashContainer | hidratarMs | 147.9 | 167.8 | 159.6 | 202.3 | +11.7 | +7.9% | +34.5 | sem alvo numérico |
+| trashContainer | canaisMs | 53.0 | 53.1 | 52.8 | 53.1 | −0.2 | −0.4% | 0.0 | sem alvo numérico |
+| trashContainer | operacaoMs | 0.3 | 1.1 | 0.3 | 1.1 | 0.0 | 0.0% | 0.0 | sem alvo numérico |
+| trashContainer | atualizaMs | 51.7 | 52.0 | 51.5 | 51.7 | −0.2 | −0.4% | −0.3 | sem alvo numérico |
+| trashContainer | gravarMs | 102.4 | 123.0 | 105.9 | 136.4 | +3.5 | +3.4% | +13.4 | sem alvo numérico |
+| trashContainer | eventosMs | 0.0 | 0.1 | 0.1 | 0.1 | +0.1 | — | 0.0 | sem alvo numérico |
+| trashContainer | commitMs | 51.8 | 52.2 | 51.7 | 51.9 | −0.1 | −0.2% | −0.3 | sem alvo numérico |
+| trashContainer | recorteMs | 9.8 | 16.2 | 11.6 | 18.8 | +1.8 | +18.4% | +2.6 | sem alvo numérico |
+| trashContainer | totalMs | 471.5 | 508.2 | 559.9 | 588.5 | +88.4 | +18.7% | +80.3 | sem alvo numérico |
+| trashContainer | pedidoMs | 526.1 | 563.3 | 614.4 | 644.2 | +88.3 | +16.8% | +80.9 | sem alvo numérico |
+| trashContainer | foraDasEtapasMs | 5.3 | 6.3 | 5.6 | 9.8 | +0.3 | +5.7% | +3.5 | sem alvo numérico |
+| trashContainer | foraDoHandlerMs | 54.8 | 55.9 | 54.5 | 55.8 | −0.3 | −0.5% | −0.1 | sem alvo numérico |
+| trashContainer | tentativas | 1 | 1 | 1 | 1 | 0 (contagem) | 0.0% | 0 (contagem) | sem alvo numérico |
+| trashContainer | linhasLidas | 4650 | 4659 | 4722 | 4731 | +72 (contagem) | +1.5% | +72 (contagem) | sem alvo numérico |
+| trashContainer | linhasGravadas | 4 | 4 | 4 | 4 | 0 (contagem) | 0.0% | 0 (contagem) | sem alvo numérico |
+| trashContainer | regimes | (a linha não trazia) | | travado | | | | | sem alvo numérico |
+| trashContainer | desfechos | gravou 10 | | gravou 10 | | | | | sem alvo numérico |
+| changeTaskStatus | conexaoMs | 0.1 | 0.1 | 0.1 | 0.1 | 0.0 | 0.0% | 0.0 | sem alvo numérico |
+| changeTaskStatus | inicioMs | 51.3 | 51.8 | 51.3 | 51.5 | 0.0 | 0.0% | −0.3 | sem alvo numérico |
+| changeTaskStatus | travaMs | 51.7 | 51.8 | 103.0 | 104.2 | +51.3 | +99.2% | +52.4 | sem alvo numérico |
+| changeTaskStatus | hidratarMs | 150.3 | 192.8 | 159.3 | 187.4 | +9.0 | +6.0% | −5.4 | sem alvo numérico |
+| changeTaskStatus | canaisMs | 53.0 | 53.2 | 52.6 | 53.9 | −0.4 | −0.8% | +0.7 | sem alvo numérico |
+| changeTaskStatus | operacaoMs | 0.8 | 2.5 | 0.9 | 6.7 | +0.1 | +12.5% | +4.2 | sem alvo numérico |
+| changeTaskStatus | atualizaMs | 51.7 | 51.8 | 51.5 | 52.7 | −0.2 | −0.4% | +0.9 | sem alvo numérico |
+| changeTaskStatus | gravarMs | 104.3 | 127.9 | 108.7 | 153.1 | +4.4 | +4.2% | +25.2 | sem alvo numérico |
+| changeTaskStatus | eventosMs | 0.0 | 0.1 | 0.1 | 0.1 | +0.1 | — | 0.0 | sem alvo numérico |
+| changeTaskStatus | commitMs | 51.8 | 52.1 | 51.6 | 51.7 | −0.2 | −0.4% | −0.4 | sem alvo numérico |
+| changeTaskStatus | recorteMs | 8.9 | 10.2 | 10.3 | 17.2 | +1.4 | +15.7% | +7.0 | sem alvo numérico |
+| changeTaskStatus | totalMs | 480.9 | 548.4 | 556.7 | 603.3 | +75.8 | +15.8% | +54.9 | sem alvo numérico |
+| changeTaskStatus | pedidoMs | 535.5 | 602.7 | 611.0 | 658.1 | +75.5 | +14.1% | +55.4 | sem alvo numérico |
+| changeTaskStatus | foraDasEtapasMs | 5.7 | 8.9 | 6.2 | 19.0 | +0.5 | +8.8% | +10.1 | sem alvo numérico |
+| changeTaskStatus | foraDoHandlerMs | 54.5 | 55.5 | 54.6 | 55.3 | +0.1 | +0.2% | −0.2 | sem alvo numérico |
+| changeTaskStatus | tentativas | 1 | 1 | 1 | 1 | 0 (contagem) | 0.0% | 0 (contagem) | sem alvo numérico |
+| changeTaskStatus | linhasLidas | 4666.5 | 4671 | 4738.5 | 4743 | +72 (contagem) | +1.5% | +72 (contagem) | sem alvo numérico |
+| changeTaskStatus | linhasGravadas | 2 | 2 | 2 | 2 | 0 (contagem) | 0.0% | 0 (contagem) | sem alvo numérico |
+| changeTaskStatus | regimes | (a linha não trazia) | | travado | | | | | sem alvo numérico |
+| changeTaskStatus | desfechos | gravou 10 | | gravou 10 | | | | | sem alvo numérico |
 
-Observações de leitura (só aritmética sobre números impressos, sem afirmar causa):
+Observações de leitura do "antes" (só aritmética sobre números impressos, sem afirmar causa):
 
 - A ida e volta do `select 1` (51.7 ms na mediana) é praticamente igual ao custo de cada etapa de uma ida só: `inicioMs`, `travaMs`, `canaisMs`, `atualizaMs` e `commitMs` ficam entre 51.3 e 53.0 ms de mediana nos quatro gestos.
 - `hidratarMs` fica entre 147.9 e 154.6 ms de mediana nos quatro gestos, perto dos 147.5 ms do `hidratar` direto; `gravarMs` fica entre 102.3 e 105.7 ms.
 - `foraDoHandlerMs` fica entre 54.5 e 55.4 ms de mediana nos quatro gestos; `foraDasEtapasMs`, entre 5.3 e 6.2 ms.
 - O `GET /estado` (370.6 ms) tem 223.1 ms a mais que o `hidratar` direto (147.5 ms); os números não dizem de onde vem a diferença.
+
+Observações de leitura do "depois" (só aritmética sobre números impressos):
+
+- **O que a trava custou, em uma linha por gesto.** `travaMs` (mediana) foi de 51.8, 51.8, 51.7 e 51.7 ms para 103.1, 103.2, 102.8 e 103.0 ms (+51.3, +51.4, +51.1 e +51.3 ms, +99%), quase exatamente um `select 1` (51.4 ms). No "antes" `travaMs` e `atualizaMs` eram o mesmo número (o `update` da revisão era a única instrução da trava); no "depois" `travaMs − atualizaMs` é 51.6, 51.7, 51.3 e 51.5 ms: a diferença é a instrução `select … for update` que ficou antes de `hidratar`. `atualizaMs`, `inicioMs`, `canaisMs` e `commitMs` não mudaram (no máximo 0.4 ms de diferença, para menos, em todos os gestos).
+- **`tentativas` e o regime.** Os quatro gestos têm `tentativas` 1 na mediana e no pior caso, `regimes: travado` e `desfechos: gravou 10`. Como não houve gravação concorrente na medição, nenhuma gravação precisou repetir, nem no antes (também `tentativas` 1): a medição de um pedido isolado não exercita o que a trava elimina.
+- **O resto da subida.** `pedidoMs` subiu +60.9, +80.2, +88.3 e +75.5 ms; descontada a trava (+51.3, +51.4, +51.1 e +51.3), sobram +9.6, +28.8, +37.2 e +24.2 ms, em `hidratarMs` (+7.1, +14.0, +11.7 e +9.0 ms), `gravarMs` (+3.7, +10.2, +3.5 e +4.4 ms) e, em updateContainer, `recorteMs` (+4.0 ms). Em trashContainer e changeTaskStatus a soma das medianas das etapas não fecha com o `totalMs` (a soma das medianas não é a mediana da soma, ressalva da "Parada"): em trashContainer as onze medianas somam 520.0 ms no antes e 587.5 ms no depois (+67.5 ms), e o `totalMs` mediano vai de 471.5 a 559.9 ms (+88.4 ms); em changeTaskStatus, +65.5 contra +75.8 ms. Em createList e updateContainer as duas contas andam juntas (+61.3 contra +61.5 e +78.9 contra +79.5 ms).
 
 ## D-03 em produção
 
@@ -332,6 +528,8 @@ O que se viu, em fatos, pelo que o dono relatou (ele rodou pela chave de deploy)
 **Estado da prova.** O D-03 está provado em teste (`apps/api/src/rotas/operacoes-medicao.test.ts`, que cobre a linha em 200, recusa, 409 e 500), e o comando `gravacao:medir` leu a linha com sucesso em produção: os quatro gestos têm 10 amostras e desfecho "gravou 10". Mas a linha **não foi observada no serviço real**, por requisição vinda de uma tela. O dono, perguntado, escolheu explicitamente "Seguir sem o passo 2".
 
 **Ponto aberto para o 12-10:** tentar de novo quando a tela de produção falar com a API (renomear uma Lista na tela e procurar a linha no journal), e colar UMA linha aqui.
+
+**Atualização do 12-10:** a segunda tentativa (depois da publicação de `37c1cab`) também voltou vazia e continua aberta; ver "D-03 em produção (depois)".
 
 ## Rastro em produção (D-04, T-12-06)
 
@@ -540,3 +738,89 @@ Ensaio do plano 12-10 (Task 1), feito em 2026-11-02, de 14:32Z a 14:48Z, num Pos
 
   No `medir-gravacao.test.ts` (10 testes) o caso dos quatro gestos com `regimes` igual a `["travado"]` passou também em rodada à parte.
 - **Limite deste ensaio:** ele prova que o código final, com o comando de sempre, mostra a trava nova e uma tentativa por gravação num Postgres local. Não prova nada sobre o tempo na VPS, sobre o pool quente do serviço, sobre o nginx e o TLS, nem sobre a tela no navegador (a conferência visual e o aviso ao fechar a aba, `beforeunload`, não foram vistos em navegador nesta fase; só provados por teste).
+
+## D-03 em produção (depois)
+
+**A linha "gravacao medida" do serviço real NÃO foi observada.** Não há, neste arquivo, nenhuma linha do `n1-crm-api.service` colada do `journalctl`, e nenhuma foi escrita à mão. Registro: **NÃO OBSERVADO**, aberto.
+
+O que se viu, em fatos:
+
+- O dono rodou `ssh -i ~/.ssh/n1_crm_deploy_ci n1crm@85.155.186.214 'sudo -n /usr/bin/journalctl --no-pager -u n1-crm-api.service -n 80' | grep "gravacao medida"` e a saída voltou **vazia** (nenhuma linha).
+- O dono **não disse** se fez o gesto (criar uma Lista) na tela de produção antes do `grep`, nem o que viu. Também **não disse** "seguir sem este passo": a decisão sobre o D-03 do "depois" não foi tomada.
+- A web nova não está no ar: o PR #3 (https://github.com/n1-tecnologia/crm/pull/3) estava **aberto, não mesclado**, quando o orquestrador o leu (2026-11-02, cerca de 19:00Z: `OPEN`, `MERGEABLE`, `UNSTABLE`, `headRefOid` `b997d21c211509f500f3404a45013eab63042b91`, checks `check` e `seguranca` em andamento, preview da Vercel pendente). A web de produção segue no estado de 29/10. Na rodada do "antes", a tela que o dono usou não gerou nenhuma requisição ao serviço da VPS (nenhum `POST /operacoes` nas 34 requisições do journal; ver "D-03 em produção"), e essa causa **não foi apurada**; esta rodada não a esclarece.
+
+**O que a medição de produção prova, e o que não prova.** A saída do `gravacao:medir` (acima) mostra `regimes: travado` e `tentativas` 1 nos quatro gestos, medidos pelo código de `37c1cab` **contra o banco de produção** (`ws_n1`): a linha "gravacao medida" que o comando lê do Fastify que ele mesmo sobe em loopback, no processo dele, traz o regime e a tentativa. Isso prova que o código publicado, executando contra o banco real, escolhe o regime `travado` e grava com uma tentativa. **Não prova** que o serviço de verdade (pool quente do `n1-crm-api.service`, nginx e TLS, uma requisição vinda de uma pessoa na tela) escreve a linha com `"regime":"travado"`: o caminho HTTP real não foi observado. A linha em si continua provada por teste (`apps/api/src/rotas/operacoes-medicao.test.ts`).
+
+**Ponto aberto para o dono** (depois do merge do PR #3 e do deploy da web): criar uma Lista num Espaço seu na tela de produção e rodar `ssh -i ~/.ssh/n1_crm_deploy_ci n1crm@85.155.186.214 'sudo -n /usr/bin/journalctl --no-pager -u n1-crm-api.service -n 200' | grep "gravacao medida"`; colar UMA linha aqui (precisa ter `"regime":"travado"` e nenhum nome):
+
+```text
+(vazio: a linha ainda não foi colada)
+```
+
+## Conferência do dono na tela
+
+**NÃO FEITA.** Não há resposta do dono sobre a tela. Razões, em fatos: (1) a web nova (store com `confirmado`/`data`, o "salvando", a guarda de navegação, o aviso ao fechar a aba) **não está em produção**, porque o PR #3 não foi mesclado; sem ela, criar uma Lista na tela de produção não mostra nada do que a fase muda; (2) o `grep` do passo 3 voltou vazio e o dono não relatou o gesto nem o que viu. A pergunta do plano, "a Lista apareceu na hora, sem link, e virou link em seguida?", **não foi respondida**.
+
+O que fica provado **só por teste** (jsdom, transporte falso), sem conferência em navegador:
+
+- a Lista aparece na árvore antes da resposta do servidor, e some com o erro quando o servidor recusa (12-06, `store.test.ts`);
+- o item novo aparece "salvando", sem link, com `aria-busy`, até o servidor confirmar (12-08, `arvore-salvando.test.tsx`, `tarefa-salvando.test.tsx`);
+- o clique cancelado numa âncora com id pendente (`click`, `auxclick`, cmd/ctrl+clique e Enter) e o aviso ao fechar a aba com gravação pendente (12-09, `guarda-de-navegacao.test.tsx`).
+
+O diálogo nativo do navegador no `beforeunload` e o comportamento real do clique em Chrome e Safari não foram vistos. Isso entra nos "Seguimentos" como pendência do dono, ligada ao merge do PR #3.
+
+## Comparação com a meta (D-08)
+
+**A meta** é a decisão `b-ganho-basta` da parada: o ganho que o B der basta, sem alvo numérico por gesto. Com isso, a comparação é só contra o "antes" (`12-CONTEXT.md` § "Meta (fixada na parada)"). Nenhum número de meta foi inventado.
+
+**Veredito, gesto por gesto, na medição que o comando faz (um pedido de cada vez, sem concorrência, em loopback na VPS):** o `pedidoMs` **subiu** nos quatro. Contra "o ganho que o B der basta", nesta medição **não bateu** em nenhum.
+
+| Gesto | `pedidoMs` mediana: antes → depois | Diferença | `travaMs` mediana: antes → depois | Resto da diferença (depois − antes − trava) | Veredito |
+|---|---:|---:|---:|---:|---|
+| createList | 551.0 → 611.9 ms | +60.9 ms (+11,1%) | 51.8 → 103.1 ms (+51.3) | +9.6 ms (`hidratarMs` +7.1, `gravarMs` +3.7) | não bateu: subiu |
+| updateContainer | 531.9 → 612.1 ms | +80.2 ms (+15,1%) | 51.8 → 103.2 ms (+51.4) | +28.8 ms (`hidratarMs` +14.0, `gravarMs` +10.2, `recorteMs` +4.0) | não bateu: subiu |
+| trashContainer | 526.1 → 614.4 ms | +88.3 ms (+16,8%) | 51.7 → 102.8 ms (+51.1) | +37.2 ms (`hidratarMs` +11.7, `gravarMs` +3.5, `recorteMs` +1.8; o resto não cabe nas medianas das etapas) | não bateu: subiu |
+| changeTaskStatus | 535.5 → 611.0 ms | +75.5 ms (+14,1%) | 51.7 → 103.0 ms (+51.3) | +24.2 ms (`hidratarMs` +9.0, `gravarMs` +4.4, `recorteMs` +1.4) | não bateu: subiu |
+
+**A etapa que explica a maior parte da subida é a trava**, e a conta fecha com o código. Em `executar()` (`apps/api/src/persistencia/unidade-de-trabalho.ts`), no regime `travado` o `travaMs` soma duas instruções: o `select revisao … for update` (`SQL_DA_TRAVA`), que ficou antes de `hidratar`, e o `update … returning revisao` (`SQL_REVISAO_TRAVADO`), que também entra em `atualizaMs`. No regime otimista do "antes" o `travaMs` era só o `update`, e por isso era igual a `atualizaMs` (51.8 = 51.8, 51.8 = 51.8, 51.7 = 51.7, 51.7 = 51.7). No "depois", `travaMs − atualizaMs` é 51.6, 51.7, 51.3 e 51.5 ms, e o `select 1` da mesma rodada é 51.4 ms: **a trava custou exatamente uma ida e volta a mais** (uma instrução de uma ida só custa o `select 1`; `inicioMs`, `canaisMs`, `atualizaMs` e `commitMs` repetem esse valor nas duas rodadas). É a RESEARCH Pitfall 9, e é o que o `12-04-SUMMARY.md` deixou para esta medição decidir (item "o regime travado não piora a gravação sem concorrência"): **piora, em uma ida e volta (cerca de 51 ms), e a medição de um pedido isolado não mostra o ganho que a trava compra.** O resto da subida (+9.6 a +37.2 ms) vem de `hidratarMs`, `gravarMs` e `recorteMs` e acompanha uma base que cresceu 72 registros; a saída não diz mais do que isso, e o ruído entre rodadas (ver a nota sobre `GET /estado` e `hidratar` direto acima) é da mesma ordem.
+
+**Opção para o dono decidir (Pitfall 9), sem implementar.** Recuperar a ida e volta da trava sem mudar a semântica de D-09 (a hidratação continua vindo depois da trava, em instrução própria):
+
+1. **(b1) Juntar `begin` e a trava numa consulta só:** enviar `begin; set local …; select revisao … for update` numa única consulta simples. Exige escapar o `workspaceId` (a RESEARCH aponta `pg.escapeLiteral`, marcada `[ASSUMED]` e ainda a conferir na versão instalada; as fakes de teste só têm `query`).
+2. **(b2) Tomar a trava com o próprio `update … set revisao = revisao + 1 … returning revisao` no começo** (o `rollback` desfaz em recusa), o que apaga a instrução `update` do fim.
+
+Qualquer das duas economiza **uma ida e volta, cerca de 51.4 ms (o `select 1` desta rodada)** por gravação. A conta, sobre as medianas impressas e **não medida**: createList 611.9 − 51.4 = 560.5 ms (antes: 551.0), updateContainer 612.1 − 51.4 = 560.7 (531.9), trashContainer 614.4 − 51.4 = 563.0 (526.1), changeTaskStatus 611.0 − 51.4 = 559.6 (535.5). Mesmo assim ficaria 9.5, 28.8, 36.9 e 24.1 ms acima do "antes" nesta medição isolada, porque o resto da subida (hidratação e gravação sobre uma base maior) não é da trava. É decisão do dono; nada foi mudado em `apps/` nem em `packages/`.
+
+**O que a medição NÃO capta.** O ganho da fase não está no `pedidoMs` de um pedido isolado:
+
+- **Na tela:** a mudança aparece na hora, sem esperar a resposta (12-06 a 12-09). Esse ganho é a distância entre o clique e a Lista na árvore, e o `gravacao:medir` mede o pedido ao servidor, não a tela. Está provado por teste, não medido em navegador.
+- **Sob concorrência:** uma tentativa em vez de até três, sem re-hidratar a cada falha (12-04). No "antes", cada repetição refazia pelo menos `inicioMs`, `hidratarMs`, `canaisMs` e o `update` (304 a 311 ms em medianas do "antes": 310.7, 304.2, 303.9 e 306.3), fora o `rollback`; a trava custa 51.4 ms em toda gravação e troca essas repetições por uma espera. A medição de um pedido de cada vez nunca tem conflito (`tentativas` 1 nas duas rodadas), então não mostra isso. A prova está no teste de concorrência de 12-04 (`unidade-de-trabalho-concorrencia.test.ts`, contra Postgres 16 local): duas `executar()` simultâneas no mesmo Espaço hidratam 2 vezes em vez de 3, com `tentativas` 1 nas duas.
+- **O caminho real do navegador:** o nginx e o TLS, e o pool quente do serviço, não estão no comando (D-17).
+
+**D-07.** `hidratar` direto: mediana 186.6 ms, abaixo do limite de 300 ms (folga de 113.4 ms; no antes, 147.5 ms). Subiu 39.1 ms. O gatilho da sessão C não disparou; ela continua fora do ROADMAP, mas a folga encolheu e `hidratar` é a maior etapa de cada gesto (159.3 a 162.1 ms de mediana no "depois").
+
+## Pronto da 2.2
+
+Os três itens do "Pronto quando" da 2.2 (`docs/09-planejamento/TAREFAS-POR-SESSAO.md`, linhas 503-508, só leitura), com a prova de cada um:
+
+| # | Pronto quando | Prova | Estado |
+|---|---|---|---|
+| 1 | "Os tempos de `createList`, `updateContainer`, `trashContainer` e `changeTaskStatus` medidos em produção antes e depois estão anotados" | A tabela acima (mesmo comando, SHA `5a74ee7` e SHA `37c1cab`, mediana e pior caso por etapa, `select 1`, `hidratar` e `GET /estado` nas duas rodadas). Medido na VPS contra o banco de produção, em loopback (D-17). | **Provado** pela medição. Ressalva: não é o caminho do navegador (sem nginx/TLS) e a linha de log do serviço real não foi observada (D-03, aberto). |
+| 2 | "criar uma Lista aparece na árvore antes da resposta do servidor" | Testes: `store.test.ts` com transporte lento (12-06: `data.lists` já tem a Lista antes de o transporte responder; com `ok: false` ela some e `lastResult.error` traz a mensagem) e `arvore-salvando.test.tsx` (12-08: aparece sem link, "salvando", até confirmar). | **Provado só por teste.** A conferência do dono em produção está **PENDENTE**: a web nova não está no ar (PR #3 aberto) e o dono não respondeu. |
+| 3 | "duas gravações simultâneas no mesmo Espaço de Trabalho não hidratam de novo" | `unidade-de-trabalho-concorrencia.test.ts` (12-04), contra Postgres 16 local: as duas `executar()` hidratam 2 vezes (não 3), `tentativas` 1 nas duas, revisões n+1 e n+2, e a segunda hidratação enxerga o que a primeira gravou; o regime otimista, de contraste, hidrata 3 vezes. Em produção, a medição mostra `regimes: travado` e `tentativas` 1 nos quatro gestos. | **Provado só por teste** (Postgres local). A concorrência em produção não foi exercitada. |
+
+A 2.2 está **fechada nos números e nos testes**, e **aberta em dois pontos que dependem do dono**: a conferência visual em produção (item 2) e a linha de log do serviço real (D-03).
+
+## Seguimentos
+
+- **Conferência visual no navegador, PENDENTE do dono**, ligada ao merge do PR #3: criar uma Lista e ver "salvando" e o link depois; o clique cancelado; o aviso ao fechar a aba (`beforeunload`). Hoje só provados por teste.
+- **O D-03 em produção, ainda por observar:** a linha `"gravacao medida"` com `"regime":"travado"` do serviço real (seção "D-03 em produção (depois)"); o dono cola UMA linha depois do deploy da web.
+- **PR #3 aberto** (https://github.com/n1-tecnologia/crm/pull/3): traz a Fase 11 junto, porque o ramo é `fase-11`. A API de produção roda `37c1cab`, que a `main` do `n1` ainda não tem; enquanto o PR não for mesclado, a VPS está à frente da `main`.
+- **Decisão sobre a ida e volta a mais da trava (Pitfall 9)**: juntar `begin` e trava, ou tomar a trava no `update`; economiza cerca de 51.4 ms por gravação. Não implementada.
+- **Telas só com a guarda de navegação, sem o visual de "salvando"** (12-09): a guarda cancela o clique em qualquer âncora com id pendente, mas só a árvore e a Tarefa ganharam o texto "Salvando…". As outras telas mostram o item e ele não navega, sem explicação visível.
+- **O custo do `structuredClone` de `confirmado` com pendentes (premissa A8)**: não medido no navegador (12-06). Com fila de um não há clone a mais; com dois cliques seguidos há um clone e um refazer por resposta.
+- **`apps/web/src/features/crm/iniciar-conversa-dialog.tsx:113`** faz `router.push` para `/crm/caixa-de-entrada/<conversation.id>` com o id do resultado local de um `run`; se o servidor der outro id, leva a uma conversa que não existe. Trocar por `runConfirmado` muda o ritmo do diálogo e é **decisão de produto** (12-06, 12-09).
+- **O painel de aprovação (`decideProcessApproval`) e a conferência do resumo** (`painel-conferencia-do-resumo.tsx`) fecham o diálogo e soltam o aviso de sucesso antes de o servidor responder; se ele recusa, o cartão volta a pendente com o erro, mas o diálogo já fechou. Decisão de produto do dono (seção "Candidata de UX, fora do critério").
+- **Espaços `ZZ-MEDICAO-*` que sobraram na lixeira do `ws_n1`:** dois do "antes" e dois do "depois" (o Espaço de teste e o da lixeira, por rodada). A medição nunca apaga; o dono limpa se quiser, pelo prefixo `ZZ-MEDICAO`. O carimbo não foi impresso nas duas rodadas.
+- **A sessão C (as tabelas próprias de Espaço, Pasta, Lista e Tarefa)** foi registrada na parada como **NÃO executada** (gatilho de D-07 não disparou; o dono não mandou registrá-la). `hidratar` direto foi de 147.5 para 186.6 ms: ainda abaixo de 300 ms, com a folga menor.
+- **A ligação da 2.2 para `12-PROVAS.md`** em `docs/09-planejamento/TAREFAS-POR-SESSAO.md` não foi feita (o arquivo tem mudanças do dono não commitadas); fica com o dono.
