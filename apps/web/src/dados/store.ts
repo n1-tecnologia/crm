@@ -19,6 +19,10 @@
  * `apps/api`. Quando a resposta volta, a diferença entra em `confirmado` e as
  * gravações que ainda esperam são refeitas por cima, pelo registro
  * `OPERACOES` (o mesmo que o servidor roda), para obter o novo `data`.
+ * Exceção (D-13): um gesto com qualquer operação de `operacoes-que-esperam.ts`
+ * — segredo de link, JID, resolução só do servidor, agendador — NÃO vira `data`
+ * na hora; vai ao servidor e só aparece quando a diferença volta, com o valor
+ * que o servidor gerou.
  *
  * Recusa do servidor, falha, conflito e erro de corpo tiram a gravação: `data`
  * volta a ser o `confirmado` mais o que sobrou na fila, e o erro aparece pelo
@@ -56,6 +60,7 @@ import { OPERACOES } from "@n1/dominio/operations/registro";
 import { aplicarDiferenca, type Ordens } from "@n1/dominio";
 import type { Id } from "@n1/dominio/types";
 import type { PedidoDeGravacao, RespostaDeGravacao, Transporte } from "./transporte";
+import { esperaOServidor } from "./operacoes-que-esperam";
 
 /**
  * D-11 / Open Question 2 da Fase 12: as implementações reais de `Transporte`
@@ -82,7 +87,11 @@ type OperacaoDoRegistro = (state: DataState, actingMemberId: Id, ...args: unknow
  */
 interface Pendente {
   readonly chamadas: readonly ChamadaDeOperacao[];
-  /** Vira `data` e é refeita sobre o `confirmado`; `false` quando a cópia aceitou sem registrar chamada alguma. */
+  /**
+   * Vira `data` e é refeita sobre o `confirmado`. `false` quando a cópia aceitou
+   * sem registrar chamada alguma, ou quando uma chamada está na lista de
+   * exceções de D-13 (`operacoes-que-esperam.ts`): o gesto espera o servidor.
+   */
   readonly otimista: boolean;
   readonly copia: DataState;
   readonly resultado: OperationResult<unknown>;
@@ -100,9 +109,14 @@ type ItemDaFila =
   | { readonly tipo: "gravar"; readonly pendente: Pendente }
   | { readonly tipo: "rehidratar"; readonly concluir: () => void; readonly falhar: (erro: unknown) => void };
 
-/** D-13: hoje toda cópia que registrou ao menos uma chamada vira `data`; 12-07 acrescenta as que esperam o servidor. */
+/**
+ * D-13: a cópia aceita vira `data` na hora quando registrou ao menos uma chamada
+ * E nenhuma delas está na lista de exceções (`operacoes-que-esperam.ts`): um
+ * gesto com qualquer operação cujo resultado local difere do servidor (segredo
+ * de link, JID, resolução do servidor, agendador) espera a resposta inteiro.
+ */
 function otimistaPara(chamadas: readonly ChamadaDeOperacao[]): boolean {
-  return chamadas.length > 0;
+  return chamadas.length > 0 && !esperaOServidor(chamadas);
 }
 
 interface StoreShape {
@@ -478,7 +492,7 @@ export function criarStore(opcoes: {
       fila.push({ tipo: "gravar", pendente });
 
       set((estado) => ({
-        // D-13: a cópia aceita é o que a tela mostra. Uma cópia sem chamadas nunca vai ao servidor como mudança — não vira `data`.
+        // D-13: a cópia aceita é o que a tela mostra. Uma cópia sem chamadas nunca vai ao servidor como mudança, e uma com operação da lista de exceções espera a resposta — nenhuma das duas vira `data`.
         ...(otimista ? { data: copia } : {}),
         pendentes: gravacoesNaFila().length,
         lastResult: { ...resultado, at: Date.now() },
