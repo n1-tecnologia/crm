@@ -510,3 +510,33 @@ A lista fica com as catorze entradas verificadas; o levantamento não acrescento
 - **O que acontece hoje (D-13):** a decisão aparece na hora, o cartão mostra "Aprovação concluída", o diálogo fecha e o aviso de sucesso sai ANTES da resposta do servidor. Se o servidor recusa, o cartão volta a "Aprovação pendente" com o erro (D-14), mas o diálogo já fechou.
 - **O que mudaria se entrasse na lista:** o botão ficaria em "Aprovando…" até a resposta, como era antes da fase; o diálogo só fecharia, e o aviso só sairia, depois da confirmação.
 - **O que isso custa:** nesse gesto a tela voltaria a esperar uma ida e volta ao servidor para mostrar a decisão, ou seja, perderia o ganho de velocidade percebida que D-13 dá aos demais gestos. Entrar na lista não é uma decisão técnica (o resultado local não difere do servidor): é a escolha de produto entre "parecer decidida na hora" e "só parecer decidida depois da confirmação". Não foi alterada; a lista e o conjunto fechado do teste ficam como estão até o dono decidir.
+
+## Ensaio local do depois
+
+Ensaio do plano 12-10 (Task 1), feito em 2026-11-02, de 14:32Z a 14:48Z, num Postgres descartável em Docker (`postgres:16`, contêiner criado para o ensaio e removido ao fim; `docker ps -a` sem nenhum contêiner `crm-n1-pg` depois). **Isto NÃO é o "depois".** O "depois" é a saída do mesmo comando na VPS (Task 2, do dono). Nada daqui entra na coluna "Depois" da tabela antes/depois: os tempos locais não se comparam aos da VPS (aqui o `select 1` mediano é 0.3 ms; na VPS, 51.7 ms) e o Espaço local é o seed (1007 registros), não os 4601 de produção.
+
+- **SHA ensaiado (`git rev-parse HEAD` antes do commit deste arquivo):** `faa5be8b9ce2e5b9023c5d5272584fb8118a3fb6`, no ramo `fase-11`.
+- **SHA a publicar (último commit de código da fase, `git log --oneline -1 -- apps packages`):** `37c1cab` (`feat(12-09)`: fechar a aba com gravação pendente pede confirmação). Os commits depois dele (`faa5be8` e o deste ensaio) só tocam `.planning/`; para `apps/` e `packages/` o conteúdo é idêntico ao de `37c1cab`. Se o dono passar pela `main` do `n1`, o SHA publicado será o da `main` depois do merge, e o `REVISION` na VPS terá esse SHA.
+- **Portão local:** o Postgres descartável foi migrado (`npm run migrar -w @n1/api`, 001 a 010 aplicadas) e o `npm run check` da raiz rodou com `DATABASE_URL` e `DATABASE_URL_MIGRACAO` apontando para ele, na mesma linha de comando; o `.env` não foi usado para o banco.
+- **Resultado do `npm run check`: verde na terceira rodada (`EXIT=0`).** Passos de tipos (3 workspaces), lint (0 erros, 2 avisos de import não usado em `apps/web/src/features/ia/conhecimento/rotulos.ts` e `apps/web/src/features/shell/app-shell.tsx`), `verificar:tokens` e `verificar:contratos` passaram nas três rodadas. Testes na rodada verde:
+
+| Workspace | Arquivos | Testes |
+|---|---|---|
+| `@n1/dominio` | 113 passaram | 2198 passaram |
+| `@n1/web` | 97 passaram | 918 passaram |
+| `@n1/api` | 158 passaram, 2 pulados (160) | 1722 passaram, 21 pulados, 2 `expected fail`, 1 `todo` (1746) |
+
+- **Rodadas que falharam, sem mudar nada no código:** a primeira (`@n1/api`: `outbox-worker.test.ts`, casos (i) e (k)) e a segunda (mesmo arquivo, caso (i)) falharam só nesse arquivo; `@n1/web` e `@n1/dominio` passaram inteiros nas duas. Rodado isolado, o arquivo falhou também (1 a 2 casos entre (i), (j) e (k) em 8 de 9 rodadas isoladas seguidas; passou 15/15 em 1). Nos casos que falham, o worker não chega a reivindicar a linha (a linha fica `pending`; no (i) o servidor falso recebeu 0 pedidos). O arquivo e o `outbox-worker.ts` não mudam na fase (`git diff` do intervalo vazio para os dois, e para `conexao.ts` e `testes/`). **Hipótese, não provada:** o teste insere `available_at` com o relógio da máquina e o worker reivindica com `available_at <= now()` do banco; numa medição solta o relógio do Postgres em Docker estava cerca de 7 ms atrás do da máquina, e uns dez minutos depois cerca de 0,5 ms. A terceira rodada completa foi verde sem mexer em nada; uma quarta rodada só da API (para listar os pulados) voltou a ter 1 falha no mesmo arquivo. É o ruído já visto nas Fases 11 e 12, não regressão desta fase.
+- **O que saiu pulado, e por quê:** `apps/api/src/e2e/dois-servicos.test.ts` (9) e `apps/api/src/e2e/falhas-injetadas.test.ts` (9) ficam inteiros pulados porque o repositório irmão `financeiro-tria` não está ao lado deste (`describe.skip`; ambiental, não corrigido). `contrato-contas-a-pagar.test.ts` pula o bloco "cópia verbatim da pasta do produtor (financeiro-tria)" pelo mesmo motivo. Os outros três pulos avulsos (`rotas/integracao-solicitacoes.test.ts`, `importacao/clickup/contas-a-pagar.test.ts`, `importacao/clickup/contas-a-receber.test.ts`, 1 cada) não tiveram o motivo aberto um a um. `lote-contas-a-pagar` passou com o banco migrado.
+- **O domínio e o schema intactos:** com `BASE` = `c821b53` (o primeiro commit de `git log --reverse --grep='(12-01)'`), `git diff --stat BASE^..HEAD -- packages/dominio` não imprime nada, e `git diff --stat BASE^..HEAD -- apps/api/migracoes` também não (nenhuma migração nova na fase; contra `n1/main` local também vazio).
+- **O mesmo comando, sobre o código final, no Postgres local:** `npm run --silent gravacao:medir -w @n1/api -- --repeticoes=10` (com `WORKSPACE_ID=ws_n1`, Espaço de Trabalho `ws_n1` semeado com o seed no banco descartável, e as duas variáveis de banco locais). `revisão do código` saiu "(sem REVISION)", como esperado fora da VPS. **Para os quatro gestos, no ensaio local: `regimes: travado`, `tentativas` mediana 1 e pior 1, `desfechos: gravou 10`.**
+
+| Gesto (ensaio local, não é o "depois") | `regimes` | `tentativas` mediana / pior | `desfechos` | `travaMs` mediana | `pedidoMs` mediana |
+|---|---|---|---|---:|---:|
+| createList | travado | 1 / 1 | gravou 10 | 0.6 ms | 15.8 ms |
+| updateContainer | travado | 1 / 1 | gravou 10 | 0.6 ms | 15.5 ms |
+| trashContainer | travado | 1 / 1 | gravou 10 | 0.6 ms | 15.4 ms |
+| changeTaskStatus | travado | 1 / 1 | gravou 10 | 0.6 ms | 15.4 ms |
+
+  No `medir-gravacao.test.ts` (10 testes) o caso dos quatro gestos com `regimes` igual a `["travado"]` passou também em rodada à parte.
+- **Limite deste ensaio:** ele prova que o código final, com o comando de sempre, mostra a trava nova e uma tentativa por gravação num Postgres local. Não prova nada sobre o tempo na VPS, sobre o pool quente do serviço, sobre o nginx e o TLS, nem sobre a tela no navegador (a conferência visual e o aviso ao fechar a aba, `beforeunload`, não foram vistos em navegador nesta fase; só provados por teste).
