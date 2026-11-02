@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 12
 current_phase_name: "Clone ClickUp: gravação mais rápida"
 status: executing
-stopped_at: Completed 12-07-PLAN.md
-last_updated: "2026-11-02T14:05:04.398Z"
+stopped_at: Completed 12-08-PLAN.md
+last_updated: "2026-11-02T14:16:34.069Z"
 last_activity: 2026-10-30
 last_activity_desc: Phase 12 execution started
-state_head: 743acb4755d45377312e469ceed99c39f6af526f
+state_head: 6c8f939b96210d20b0065ff08d60e37fb3136330
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 209
-  completed_plans: 202
+  completed_plans: 203
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 12 (Clone ClickUp: gravação mais rápida) — EXECUTING
-Plan: 8 of 10
+Plan: 9 of 10
 Status: Ready to execute
 Last activity: 2026-10-30 — Phase 12 execution started
 
@@ -421,6 +421,7 @@ Progress: [██████░░░░] 63%
 | Phase 12 P05 | 6 min | 2 tasks | 4 files |
 | Phase 12 P06 | 15min | 2 tasks | 7 files |
 | Phase 12 P07 | 20 min | 2 tasks | 6 files |
+| Phase 12 P08 | 20min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -632,6 +633,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 12]: 12-06: rehidratar() público entra na fila serial (D-16, Pitfall 3); a re-hidratação de dentro de enviar chama hidratarAgora direto
 - [Phase 12]: 12-07: a lista de exceções de D-13 fica com as 14 operações verificadas (segredo, JID, link, chave, inviteMember, agendador); as 7 candidatas [ASSUMED] foram lidas e ficam otimistas
 - [Phase 12]: 12-07: decideProcessApproval e a conferência do resumo ficam fora da lista (resultado local = servidor); entrar nela é decisão de UX do dono, registrada em 12-PROVAS.md
+- [Phase 12]: 12-08: todo id novo de qualquer coleção conta como pendente (idsNaoConfirmados), não só o do registro criado; o 12-09 consome esse conjunto
+- [Phase 12]: 12-08: o 'salvando' é anunciável (aria-busy, title e texto sr-only 'Salvando…'), não só cor; ações de Status da linha pendente seguem ligadas pela fila serial
 
 ### Pending Todos
 
@@ -693,6 +696,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-02T14:05:04.127Z
-Stopped at: Completed 12-07-PLAN.md
+Last session: 2026-11-02T14:16:33.811Z
+Stopped at: Completed 12-08-PLAN.md
 Resume file: None
