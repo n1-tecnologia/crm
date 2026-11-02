@@ -187,7 +187,7 @@ Critério de pronto (ROADMAP Phase 12): medir quanto leva uma gravação e corta
 - [x] **GRV-03**: Teste novo `unidade-de-trabalho-concorrencia.test.ts` contra Postgres local (o `unidade-de-trabalho-trava.test.ts` mocka o pool inteiro e não serve para trava real): duas `executar()` simultâneas no mesmo Espaço gravam com uma tentativa cada e `hidratar` roda exatamente 2 vezes (pula sem `DATABASE_URL` local); em `unidade-de-trabalho-trava.test.ts`, a trava esgotada (`55P03`) vira 409 sem repetir; as importações longas seguem no regime otimista; `CONTEXT.md` da persistência atualizado (2.2.3, D-09, D-10). Feito em 2026-11-02 (12-04).
 - [x] **GRV-04**: Teste em `store.test.ts` com transporte falso: um `run` com duas chamadas aplica as duas diferenças e **não** chama `hidratar` (2.2.4, D-11, D-12). Feito em 2026-11-02 (12-05).
 - [x] **GRV-05**: Teste em `store.test.ts` com transporte lento: `data.lists` já tem a Lista antes de o transporte responder; com `ok: false` ela some e `lastResult.error` traz a mensagem; dois `run` seguidos saem um de cada vez, em ordem; o item criado aparece sem link até confirmado; a lista de exceções está no código com o motivo de cada uma (2.2.5, D-13..D-16). Feito em 2026-11-02 (12-06 a 12-09): `data`/`confirmado` e a fila serial no store, a lista de exceções, o "salvando" na árvore e na Tarefa, a guarda de navegação para qualquer âncora e o aviso ao fechar a aba.
-- [ ] **GRV-06**: A tabela de `12-PROVAS.md` tem as colunas "antes" e "depois" preenchidas, com o mesmo comando, e o "depois" comparado à meta de D-08 (2.2.10, D-01, D-08). Pendente.
+- [x] **GRV-06**: A tabela de `12-PROVAS.md` tem as colunas "antes" e "depois" preenchidas, com o mesmo comando, e o "depois" comparado à meta de D-08 (2.2.10, D-01, D-08). Feito em 2026-11-02 (12-10): o "depois" (`37c1cab`, VPS) está em `12-PROVAS.md` ao lado do "antes"; o `pedidoMs` isolado subiu 11% a 17% (a trava custa uma ida e volta). Abertos, do dono: a linha de log do serviço real (D-03) e a conferência visual em produção.
 
 ## Traceability
 
@@ -287,7 +287,7 @@ Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pe
 | GRV-03 | Phase 12 | Complete | feito — 12-04 | derivado (12-CONTEXT) |
 | GRV-04 | Phase 12 | Complete | feito — 12-05 | derivado (12-CONTEXT) |
 | GRV-05 | Phase 12 | Complete | feito — 12-06 a 12-09 (store com `confirmado`/`data` e fila serial, exceções, "salvando", guarda de navegação e aviso ao fechar a aba) | derivado (12-CONTEXT) |
-| GRV-06 | Phase 12 | Pending | pendente — checkpoint do dono (publicar e medir o "depois" na VPS) | derivado (12-CONTEXT) |
+| GRV-06 | Phase 12 | Complete | feito — 12-10: "depois" medido na VPS e comparado ao "antes"; D-03 no serviço real e conferência visual em produção ficam com o dono | derivado (12-CONTEXT) |
 
 **Coverage:**
 

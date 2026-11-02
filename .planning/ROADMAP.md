@@ -708,7 +708,7 @@ Plans:
 **Caminhos da 2.2.2:** (B) ficar em `plataforma.registros`, travar no começo, encadear as chamadas e mostrar a mudança na hora: 2.2.3, 2.2.4, 2.2.5 e 2.2.10, cerca de 2 dias, e é a recomendação · (A) tabelas próprias de Espaço, Pasta e Lista: 2.2.6–2.2.9, 4 a 5 dias; se for a escolhida, esta fase passa a ir antes da Fase 10, porque a `010` mexe nas linhas de Lista de `plataforma.registros` · (C) tabelas para a Estrutura inteira: sessão própria, fora daqui (8 a 10 dias; só se `hidratar` passar de 300 ms na mediana).
 **Requirements**: GRV-01, GRV-02, GRV-03, GRV-04, GRV-05, GRV-06
 **Depends on:** Phase 9 (medir exige o `apps/api` em produção, entregue no 09-20)
-**Plans:** 9/10 plans executed
+**Plans:** 10/10 plans executed
 
 Plans:
 **Wave 1**
@@ -739,7 +739,7 @@ Plans:
 - [x] 12-09-PLAN.md — A guarda de navegação para qualquer âncora com id pendente e o aviso ao fechar a aba com gravação pendente (GRV-05)
 
 **Wave 10** *(blocked on Wave 9 completion)*
-- [ ] 12-10-PLAN.md — Publicar e medir o "depois" na VPS `[BLOCKING]`, a tabela antes/depois/meta em `12-PROVAS.md` (GRV-06)
+- [x] 12-10-PLAN.md — Publicar e medir o "depois" na VPS `[BLOCKING]`, a tabela antes/depois/meta em `12-PROVAS.md` (GRV-06)
 
 **Ondas de execução:** 1 → [12-01] · 2 → [12-02] · 3 → [12-03] · 4 → [12-04] · 5 → [12-05] · 6 → [12-06] · 7 → [12-07] · 8 → [12-08] · 9 → [12-09] · 10 → [12-10]
 
