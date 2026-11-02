@@ -1,14 +1,16 @@
 /**
- * `run()` híbrido (D-05/D-06) contra um `Transporte` falso — sem `fetch`,
- * sem `apps/api` no ar. Prova: recusa do domínio é síncrona e não grava;
- * sucesso otimista some sem tocar `data` real até o diff voltar; revisão
+ * `run()` híbrido (D-05/D-06, Fase 12 D-13/D-14/D-16) contra um `Transporte`
+ * falso — sem `fetch`, sem `apps/api` no ar. Prova: recusa do domínio é
+ * síncrona e não grava; o sucesso aparece em `data` na hora e o
+ * `confirmado` só muda quando o diff volta; recusa e falha do servidor tiram
+ * a mudança e mostram o erro; os pedidos saem um de cada vez; revisão
  * defasada e conflito re-hidratam; ids da cópia batem com os de um segundo
  * processo (a UoW do `apps/api` sincroniza do mesmo jeito).
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildSeed } from "@n1/dominio/seed";
-import { addTaskComment, changeTaskStatus, CP, createChatSession, createTask, resetIdSequence, sendChatMessage, syncIdSequence } from "@n1/dominio/operations";
+import { addTaskComment, changeTaskStatus, CP, createChatSession, createList, createTask, resetIdSequence, sendChatMessage, syncIdSequence, updateContainer } from "@n1/dominio/operations";
 import type { DataState } from "@n1/dominio/state";
 import type { Id, Task } from "@n1/dominio/types";
 import { DIFERENCA_VAZIA, type Diferenca, type Ordens } from "@n1/dominio";
@@ -79,7 +81,7 @@ describe("run() — recusa do domínio (D-05)", () => {
 });
 
 describe("run() — sucesso otimista (D-05)", () => {
-  it("(b) roda síncrono; antes do POST resolver, o dado real não mudou", () => {
+  it("(b) roda síncrono; antes do POST resolver, a mudança já está em `data` e ainda não em `confirmado` (D-13)", () => {
     transporte.gravarMock.mockImplementationOnce(() => new Promise<RespostaDeGravacao>(() => {})); // nunca resolve neste teste
     const trafego = achar(state, "tsk_cp_trafego");
 
@@ -91,8 +93,9 @@ describe("run() — sucesso otimista (D-05)", () => {
     expect(pedido.chamadas).toEqual([{ nome: "addTaskComment", args: [trafego.id, { content: "x" }] }]);
     expect(pedido.revisao).toBe(7);
 
-    const contaReal = achar(store.getState().data, trafego.id);
-    expect(contaReal.comments.some((c) => c.content === "x")).toBe(false);
+    // D-13: a cópia aceita é o que a tela mostra; o que o servidor confirmou não mudou.
+    expect(achar(store.getState().data, trafego.id).comments.some((c) => c.content === "x")).toBe(true);
+    expect(achar(store.getState().confirmado, trafego.id).comments.some((c) => c.content === "x")).toBe(false);
     expect(store.getState().pendentes).toBe(1);
   });
 
@@ -130,6 +133,121 @@ describe("run() — sucesso otimista (D-05)", () => {
     const contaDepois = achar(store.getState().data, trafego.id);
     expect(contaDepois.comments.some((c) => c.content === "x")).toBe(true);
     expect(store.getState().data.activity[0]?.id).toBe(atividadeGravada.id);
+  });
+});
+
+/** Um transporte que não responde até o teste soltar: cada `gravar` deixa a sua resposta esperando em `soltar`. */
+type Soltar = (resposta: RespostaDeGravacao | readonly RespostaDeGravacao[]) => void;
+function segurarGravacoes(): Soltar[] {
+  const soltar: Soltar[] = [];
+  transporte.gravarMock.mockImplementation(() => new Promise((resolve) => soltar.push(resolve)));
+  return soltar;
+}
+
+const ESPACO = "spc_com";
+const NOVA_LISTA = "Lista de teste do D-13";
+const DONO = "mem_thiago";
+
+function criarComoDono(): ReturnType<typeof criarStore> {
+  return criarStore({ sessao: { memberId: DONO }, estadoInicial: { data: state, revisao: 7, ordens }, transporte });
+}
+
+function listasChamadas(estado: DataState, nome: string) {
+  return estado.lists.filter((l) => l.name === nome);
+}
+
+const RECUSA_DO_SERVIDOR: RespostaDeGravacao = {
+  tipo: "diferenca",
+  resultado: { ok: false, error: "Já existe uma Lista com este nome aqui." },
+  diferenca: DIFERENCA_VAZIA,
+  revisao: 7,
+  revisaoAnterior: 7,
+};
+
+describe("D-13 — a mudança aparece na hora", () => {
+  it("a Lista criada já está em `data` antes de o transporte responder, e ainda não em `confirmado`", () => {
+    const soltar = segurarGravacoes();
+    store = criarComoDono();
+
+    const resultado = store.getState().run((d, m) => createList(d, m, { name: NOVA_LISTA, parentType: "space", parentId: ESPACO }));
+
+    expect(resultado.ok).toBe(true);
+    expect(soltar).toHaveLength(1);
+    expect(listasChamadas(store.getState().data, NOVA_LISTA)).toHaveLength(1);
+    expect(listasChamadas(store.getState().confirmado, NOVA_LISTA)).toHaveLength(0);
+    expect(store.getState().pendentes).toBe(1);
+    expect(transporte.gravarMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("a recusa do servidor (`ok: false`) tira a Lista de `data` e `lastResult.error` traz a mensagem dele (D-14)", async () => {
+    const soltar = segurarGravacoes();
+    store = criarComoDono();
+    const { confirmado } = store.getState().runConfirmado((d, m) => createList(d, m, { name: NOVA_LISTA, parentType: "space", parentId: ESPACO }));
+    expect(listasChamadas(store.getState().data, NOVA_LISTA)).toHaveLength(1);
+
+    soltar[0]?.(RECUSA_DO_SERVIDOR);
+
+    expect(await confirmado).toEqual({ ok: false, error: "Já existe uma Lista com este nome aqui." });
+    expect(listasChamadas(store.getState().data, NOVA_LISTA)).toHaveLength(0);
+    expect(store.getState().data).toBe(store.getState().confirmado);
+    const lastResult = store.getState().lastResult;
+    if (lastResult?.ok !== false) throw new Error("esperava recusa");
+    expect(lastResult.error).toBe("Já existe uma Lista com este nome aqui.");
+    expect(store.getState().pendentes).toBe(0);
+  });
+
+  it("a falha de transporte tira a Lista de `data` e `lastResult.error` traz a frase da falha (D-14)", async () => {
+    const soltar = segurarGravacoes();
+    store = criarComoDono();
+    const { confirmado } = store.getState().runConfirmado((d, m) => createList(d, m, { name: NOVA_LISTA, parentType: "space", parentId: ESPACO }));
+
+    soltar[0]?.({ tipo: "falha", erro: "Sem conexão com o servidor." });
+
+    expect(await confirmado).toEqual({ ok: false, error: "Sem conexão com o servidor." });
+    expect(listasChamadas(store.getState().data, NOVA_LISTA)).toHaveLength(0);
+    expect(store.getState().data).toBe(store.getState().confirmado);
+    const lastResult = store.getState().lastResult;
+    if (lastResult?.ok !== false) throw new Error("esperava recusa");
+    expect(lastResult.error).toBe("Sem conexão com o servidor.");
+  });
+
+  it("a confirmação do servidor põe a Lista que ele gravou em `confirmado`, e `data` é o mesmo objeto", async () => {
+    const soltar = segurarGravacoes();
+    store = criarComoDono();
+    const { confirmado } = store.getState().runConfirmado((d, m) => createList(d, m, { name: NOVA_LISTA, parentType: "space", parentId: ESPACO }));
+
+    const estadoServidor = structuredClone(state);
+    const noServidor = createList(estadoServidor, DONO, { name: NOVA_LISTA, parentType: "space", parentId: ESPACO });
+    if (!noServidor.ok) throw new Error(`setup inválido: ${noServidor.error}`);
+    soltar[0]?.({
+      tipo: "diferenca",
+      resultado: noServidor,
+      diferenca: { gravados: [{ colecao: "lists", id: noServidor.value.id, dados: noServidor.value, ordem: 9999 }], removidos: [] },
+      revisao: 8,
+      revisaoAnterior: 7,
+    });
+
+    expect(await confirmado).toMatchObject({ ok: true });
+    expect(listasChamadas(store.getState().confirmado, NOVA_LISTA)).toHaveLength(1);
+    expect(store.getState().data).toBe(store.getState().confirmado);
+    expect(store.getState().revisaoDoServidor).toBe(8);
+    expect(store.getState().pendentes).toBe(0);
+  });
+
+  it("sem pendente otimista, `data` e `confirmado` são o mesmo objeto (copy-on-write)", () => {
+    expect(store.getState().data).toBe(store.getState().confirmado);
+  });
+
+  it("um `run` que a cópia aceita sem registrar nenhuma chamada não muda `data` e resolve com a falha de hoje", async () => {
+    const dataAntes = store.getState().data;
+    transporte.gravarMock.mockResolvedValueOnce({ tipo: "falha", erro: "Esta ação não passa por uma operação do domínio e não foi gravada." });
+
+    const { local, confirmado } = store.getState().runConfirmado(() => ({ ok: true, value: "nada" }));
+
+    expect(local.ok).toBe(true);
+    expect(store.getState().data).toBe(dataAntes);
+    expect(await confirmado).toEqual({ ok: false, error: "Esta ação não passa por uma operação do domínio e não foi gravada." });
+    expect(store.getState().data).toBe(dataAntes);
   });
 });
 
