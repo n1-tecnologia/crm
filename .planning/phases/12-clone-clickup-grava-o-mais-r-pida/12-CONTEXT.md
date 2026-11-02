@@ -87,7 +87,13 @@ O ROADMAP deixou "Requirements: TBD (definidos no discuss)". Prefixo `GRV`, sem 
 
 ### Meta (fixada na parada)
 
-_A preencher pelo dono depois da medição "antes" (D-08), antes de a 2.2.3 começar._
+**Fixada em 2026-11-02 pelo dono:** "pode seguir com o caminho que voce recomenda"
+
+Esta é a frase exata do dono, sem paráfrase. Ela é a aceitação da recomendação que o orquestrador apresentou na parada (`b-ganho-basta` e "C não entra"); o dono não digitou o nome de nenhuma opção.
+
+Lido como: `b-ganho-basta`, `C não entra`.
+
+Para 12-04 a 12-10: não há meta numérica por gesto. O caminho B segue como planejado; o 12-10 mede o "depois" com o mesmo comando, registra-o ao lado do "antes" em `12-PROVAS.md` e a fase fecha com os dois, sem comparar a um alvo. A sessão C não entra no ROADMAP (o gatilho de D-07 não disparou).
 
 </decisions>
 

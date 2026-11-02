@@ -432,3 +432,12 @@ Três respostas possíveis (Task 2):
 E sobre a sessão C: o gatilho não disparou, então por D-07 ela não entra; só entra se o dono responder "C no ROADMAP" (com o texto acima).
 
 A meta pode ser um número por gesto (ms do pedido) ou "o ganho que o B der basta".
+
+### Decisão do dono (2026-11-02)
+
+- **Resposta do dono, sem paráfrase:** "pode seguir com o caminho que voce recomenda"
+- **O que isso é:** o dono aceitando a recomendação do orquestrador na parada (`b-ganho-basta` e "C não entra"). Não é um texto em que o dono digitou o nome de uma opção.
+- **Lido como:** `b-ganho-basta` e `C não entra`.
+- **Opção escolhida:** `b-ganho-basta`. O caminho B segue como planejado (12-04 a 12-10 rodam).
+- **Meta:** nenhuma meta numérica por gesto. O ganho que o B der basta. O 12-10 registra o "depois" ao lado do "antes", com o mesmo comando, e a fase fecha com os dois valores. A mesma frase está em `12-CONTEXT.md`, seção "Meta (fixada na parada)".
+- **Sessão C:** não entra. O gatilho de D-07 não disparou (a mediana do `hidratar` direto, 147.5 ms, ficou abaixo do limite de 300 ms) e o dono não mandou registrá-la. Nenhuma fase foi adicionada ao ROADMAP; o texto de "Entrada proposta para o ROADMAP" fica aqui só como registro.
