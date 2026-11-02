@@ -708,7 +708,7 @@ Plans:
 **Caminhos da 2.2.2:** (B) ficar em `plataforma.registros`, travar no começo, encadear as chamadas e mostrar a mudança na hora: 2.2.3, 2.2.4, 2.2.5 e 2.2.10, cerca de 2 dias, e é a recomendação · (A) tabelas próprias de Espaço, Pasta e Lista: 2.2.6–2.2.9, 4 a 5 dias; se for a escolhida, esta fase passa a ir antes da Fase 10, porque a `010` mexe nas linhas de Lista de `plataforma.registros` · (C) tabelas para a Estrutura inteira: sessão própria, fora daqui (8 a 10 dias; só se `hidratar` passar de 300 ms na mediana).
 **Requirements**: GRV-01, GRV-02, GRV-03, GRV-04, GRV-05, GRV-06
 **Depends on:** Phase 9 (medir exige o `apps/api` em produção, entregue no 09-20)
-**Plans:** 6/10 plans executed
+**Plans:** 7/10 plans executed
 
 Plans:
 **Wave 1**
@@ -730,7 +730,7 @@ Plans:
 - [x] 12-06-PLAN.md — `confirmado`/`data`: a mudança aparece na hora, a recusa a tira, e os pedidos saem um de cada vez (GRV-05)
 
 **Wave 7** *(blocked on Wave 6 completion)*
-- [ ] 12-07-PLAN.md — A lista de operações que esperam o servidor, com o motivo de cada uma (GRV-05)
+- [x] 12-07-PLAN.md — A lista de operações que esperam o servidor, com o motivo de cada uma (GRV-05)
 
 **Wave 8** *(blocked on Wave 7 completion)*
 - [ ] 12-08-PLAN.md — O item criado "salvando" e sem link até confirmar, na árvore e na Tarefa, e o `openTask` que ignora id pendente (GRV-05)
