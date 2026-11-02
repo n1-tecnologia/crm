@@ -102,6 +102,9 @@ describeComBanco("medirGravacao — contra o banco local", () => {
     for (const gesto of relatorio.gestos) {
       expect(gesto.amostras, gesto.operacao).toBe(2);
       expect(gesto.desfechos, gesto.operacao).toEqual({ gravou: 2 });
+      // 12-04 — o comando mede o regime padrão: a linha de log traz `regime` e a gravação sem concorrência é de uma tentativa só.
+      expect(gesto.regimes, gesto.operacao).toEqual(["travado"]);
+      expect(gesto.tentativas.mediana, gesto.operacao).toBe(1);
       expect(gesto.etapas.totalMs.mediana, gesto.operacao).toBeGreaterThan(0);
       expect(gesto.pedidoMs.mediana, gesto.operacao).toBeGreaterThan(0);
       expect(gesto.linhasLidas.mediana, gesto.operacao).toBeGreaterThan(0);

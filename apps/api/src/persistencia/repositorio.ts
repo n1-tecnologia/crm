@@ -7,10 +7,12 @@
  * operação sem alterá-la, e gravar só o que mudou.
  *
  * O que torna isso viável é a escala real: o Espaço de Trabalho inteiro são
- * cerca de 900 registros e 475 KB. Hidratar é uma consulta; comparar é passar
- * por 900 strings. Se um dia um Espaço de Trabalho crescer a ponto de isso
- * doer, a saída é carregar um recorte (a Lista e o que ela referencia) — o
- * formato do `DataState` não muda, só o `where` da consulta.
+ * 4601 registros e 2422.8 KB de texto (medido em produção, `ws_n1`, em
+ * 2026-10-31; ver `12-PROVAS.md`, "Tamanho de `plataforma.registros` (D-05)").
+ * Hidratar é uma consulta; comparar é passar por 4601 strings. 3786 desses
+ * registros são `activity` e 534 são `tasks`. Se um dia um Espaço de Trabalho
+ * crescer a ponto de isso doer, a saída é carregar um recorte (a Lista e o que
+ * ela referencia) — o formato do `DataState` não muda, só o `where` da consulta.
  */
 
 import type { PoolClient } from "pg";
