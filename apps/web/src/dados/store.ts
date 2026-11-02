@@ -574,9 +574,14 @@ export function StoreProvider({
   return createElement(StoreContext.Provider, { value: store }, createElement(AcompanhanteDaRevisao, { store }), children);
 }
 
-/** Casca do RED (12-09): o comportamento vem no GREEN. */
-export function deveAvisarAoSair(_pendentes: number): boolean {
-  return false;
+/**
+ * Fechar a aba com gravação a caminho a perderia em silêncio: com D-13 a mudança
+ * aparece antes de gravada. Com uma ou mais pendentes, o navegador deve pedir
+ * confirmação (Claude's Discretion da Fase 12, T-12-20); sem nenhuma, a aba fecha
+ * sem perguntar.
+ */
+export function deveAvisarAoSair(pendentes: number): boolean {
+  return pendentes > 0;
 }
 
 /** Checklist E2 — de quanto em quanto tempo a tela pergunta a revisão do Espaço. */
@@ -596,6 +601,18 @@ function AcompanhanteDaRevisao({ store }: { readonly store: StoreApi<StoreShape>
     document.addEventListener("visibilitychange", verificar);
     window.addEventListener("focus", verificar);
     /*
+      Claude's Discretion (aviso ao fechar a aba, incluído): fecha o furo de a mudança
+      mostrada na hora (D-13) se perder em silêncio. Só `beforeunload` de verdade
+      (fechar a aba, recarregar, sair para outro site) chega aqui; navegar dentro do
+      app pelo App Router não descarrega a página e não dispara o aviso.
+    */
+    const aoSair = (evento: BeforeUnloadEvent) => {
+      if (!deveAvisarAoSair(store.getState().pendentes)) return;
+      evento.preventDefault();
+      evento.returnValue = "";
+    };
+    window.addEventListener("beforeunload", aoSair);
+    /*
       D-15: nenhuma âncora, em tela nenhuma, leva a um id que o servidor ainda não
       confirmou. "Pendente" é derivado de `data` menos `confirmado`; a guarda não
       guarda lista nenhuma, pergunta a cada clique (guarda-de-navegacao.ts).
@@ -611,6 +628,7 @@ function AcompanhanteDaRevisao({ store }: { readonly store: StoreApi<StoreShape>
       window.clearInterval(intervalo);
       document.removeEventListener("visibilitychange", verificar);
       window.removeEventListener("focus", verificar);
+      window.removeEventListener("beforeunload", aoSair);
       removerGuarda();
     };
   }, [store]);

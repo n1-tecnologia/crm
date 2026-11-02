@@ -80,6 +80,30 @@ aplicar diferença parcial (D-06, D-12). Quem navega para um registro recém-cri
 usa o resultado de `runConfirmado(...).confirmado`, não `local.value`: o `local`
 é um objeto vivo dentro do `data` e fica velho depois da reconstrução.
 
+**Pendente, "salvando" e a guarda (D-15).** O que aparece antes de gravado tem um
+id que o servidor ainda não confirmou, e esse id pode não ser o que ele vai dar.
+"Pendente" é DERIVADO, nunca guardado: o id que está em `data` e ainda não está em
+`confirmado` (`idsNaoConfirmados`; com `data === confirmado` é o conjunto vazio,
+sem varrer nada; `useIdsNaoConfirmados` é a versão para componente). Nenhum lugar
+leva a um id pendente: a árvore desenha o Espaço, a Pasta e a Lista novos como
+linha "salvando" (sem link, `aria-busy`, sem "+", "⋯" nem arrastar), `openTask`
+ignora id pendente, a linha da Tarefa e a Subtarefa novas não abrem, e o diálogo
+de criação só navega pelo id que `runConfirmado` devolve. Para o resto das telas,
+sem editar nenhuma, a **guarda de navegação** (`dados/guarda-de-navegacao.ts`,
+instalada por `StoreProvider`) cancela, na captura do `document`, o clique, o
+clique do meio, o cmd/ctrl+clique e o Enter numa âncora cujo endereço carrega um
+id pendente — por igualdade inteira de segmento ou de valor de parâmetro, só na
+mesma origem —, marca a âncora com `aria-busy` e a solta quando o id é
+confirmado. Fora dessa janela ela não toca em nada. Um `router.push` direto para
+um id recém-criado não passa por ela: ele precisa usar o id de `runConfirmado`.
+E o que espera o servidor (`dados/operacoes-que-esperam.ts`, acima) nem aparece
+antes de confirmado, então não chega a ser pendente.
+
+**Fechar a aba com gravação pendente.** Com `pendentes > 0`, o `beforeunload`
+(`deveAvisarAoSair`) pede confirmação ao fechar a aba, recarregar ou sair para
+outro site; sem pendentes a aba fecha sem perguntar. Navegar dentro do app pelo
+App Router não descarrega a página e não dispara o aviso.
+
 Componente nenhum fala com o domínio por fora de `store.ts`; manter isso
 verdadeiro é o que tornou a migração um arquivo em vez de cem.
 
