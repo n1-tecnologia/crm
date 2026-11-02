@@ -11,7 +11,7 @@ import { buildSeed } from "@n1/dominio/seed";
 import { addTaskComment, changeTaskStatus, CP, createChatSession, createTask, resetIdSequence, sendChatMessage, syncIdSequence } from "@n1/dominio/operations";
 import type { DataState } from "@n1/dominio/state";
 import type { Id, Task } from "@n1/dominio/types";
-import { DIFERENCA_VAZIA, type Ordens } from "@n1/dominio";
+import { DIFERENCA_VAZIA, type Diferenca, type Ordens } from "@n1/dominio";
 import type { PedidoDeGravacao, RespostaDeGravacao, Transporte } from "./transporte";
 import { criarStore } from "./store";
 
@@ -222,6 +222,41 @@ describe("run() — mais de uma chamada no mesmo run()", () => {
     expect(resultado.ok).toBe(true);
     const pedido = transporte.gravarMock.mock.calls[0]?.[0] as PedidoDeGravacao;
     expect(pedido.chamadas.map((c) => c.nome)).toEqual(["createChatSession", "sendChatMessage"]);
+  });
+
+  /** Um registro de `chatSessions` por diferença: basta para ver cada uma aplicada, na ordem, sem montar o chat inteiro. */
+  function diferencaDoRegistro(id: string): Diferenca {
+    return { gravados: [{ colecao: "chatSessions", id, dados: { id }, ordem: 500 + (id === "chat_a" ? 0 : 1) }], removidos: [] };
+  }
+
+  function dividirEmDuasChamadas() {
+    return store.getState().runConfirmado((d, m) => {
+      const sessao = createChatSession(d, m, { title: "Pergunta" });
+      if (!sessao.ok) return sessao;
+      sendChatMessage(d, m, sessao.value.id, "Pergunta");
+      return sessao;
+    });
+  }
+
+  function registroEm(id: string): unknown {
+    return (store.getState().data.chatSessions as ReadonlyArray<{ readonly id: string }>).find((r) => r.id === id);
+  }
+
+  it("(s) duas chamadas, duas diferenças encadeadas (7→8, 8→9): aplica as duas, termina na revisão 9 e não hidrata (GRV-04)", async () => {
+    transporte.gravarMock.mockResolvedValueOnce([
+      { tipo: "diferenca", resultado: { ok: true, value: { id: "chat_a" } }, diferenca: diferencaDoRegistro("chat_a"), revisao: 8, revisaoAnterior: 7 },
+      { tipo: "diferenca", resultado: { ok: true, value: undefined }, diferenca: diferencaDoRegistro("chat_b"), revisao: 9, revisaoAnterior: 8 },
+    ]);
+
+    const { confirmado } = dividirEmDuasChamadas();
+    const servidor = await confirmado;
+
+    expect(servidor).toEqual({ ok: true, value: undefined }); // a última resposta processada
+    expect(registroEm("chat_a")).toEqual({ id: "chat_a" });
+    expect(registroEm("chat_b")).toEqual({ id: "chat_b" });
+    expect(store.getState().revisaoDoServidor).toBe(9);
+    expect(transporte.hidratarMock).not.toHaveBeenCalled();
+    expect(store.getState().pendentes).toBe(0);
   });
 });
 
