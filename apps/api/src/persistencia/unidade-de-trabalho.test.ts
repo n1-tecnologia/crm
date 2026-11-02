@@ -7,12 +7,14 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fail, ok } from "@n1/dominio/state";
-import { executar, inicioDaTransacao } from "./unidade-de-trabalho";
+import { executar, inicioDaTransacao, type MedicaoDaExecucao } from "./unidade-de-trabalho";
 
 const falso = vi.hoisted(() => ({
   consultas: [] as string[],
   erroEm: (_sql: string): Error | undefined => undefined,
   release: [] as unknown[],
+  /** Quantas linhas o `update plataforma.workspaces` devolve: 0 simula a revisão que mudou (conflito). */
+  linhasDoUpdate: 1,
 }));
 
 vi.mock("./conexao", async (importOriginal) => ({
@@ -23,7 +25,11 @@ vi.mock("./conexao", async (importOriginal) => ({
         falso.consultas.push(sql);
         const erro = falso.erroEm(sql);
         if (erro) throw erro;
-        if (sql.startsWith("update plataforma.workspaces")) return { rowCount: 1, rows: [{ revisao: "8" }] };
+        // 12-04 — o regime travado (o padrão) toma a trava do Espaço antes de hidratar.
+        if (sql.startsWith("select revisao from plataforma.workspaces")) return { rowCount: 1, rows: [{ revisao: "7" }] };
+        if (sql.startsWith("update plataforma.workspaces")) {
+          return falso.linhasDoUpdate === 0 ? { rowCount: 0, rows: [] } : { rowCount: 1, rows: [{ revisao: "8" }] };
+        }
         return { rowCount: 0, rows: [] };
       },
       release: (descartar?: unknown) => falso.release.push(descartar),
@@ -41,6 +47,7 @@ beforeEach(() => {
   falso.consultas.length = 0;
   falso.release.length = 0;
   falso.erroEm = () => undefined;
+  falso.linhasDoUpdate = 1;
 });
 
 describe("Unidade de Trabalho — conexão que cai no meio", () => {
@@ -75,5 +82,104 @@ describe("Unidade de Trabalho — conexão que cai no meio", () => {
     falso.erroEm = (sql) => (sql.startsWith("begin") ? new Error("Connection terminated unexpectedly") : undefined);
     await expect(executar("ws_x", () => ok("feito"))).rejects.toThrow("Connection terminated unexpectedly");
     expect(falso.release).toEqual([true]);
+  });
+});
+
+describe("medição por etapa (D-02)", () => {
+  const CAMPOS_EM_MS = [
+    "conexaoMs",
+    "inicioMs",
+    "travaMs",
+    "hidratarMs",
+    "canaisMs",
+    "operacaoMs",
+    "atualizaMs",
+    "gravarMs",
+    "eventosMs",
+    "commitMs",
+  ] as const;
+
+  function coletor() {
+    const medicoes: MedicaoDaExecucao[] = [];
+    return { medicoes, aoMedir: (m: MedicaoDaExecucao) => void medicoes.push(m) };
+  }
+
+  it("gravação: aoMedir chamado uma vez, com todas as etapas em ms, tentativas 1 e desfecho gravou", async () => {
+    const { medicoes, aoMedir } = coletor();
+    const r = await executar("ws_x", () => ok("feito"), { aoMedir });
+    expect(r.ok).toBe(true);
+    expect(medicoes).toHaveLength(1);
+    const m = medicoes[0]!;
+    expect(m.tentativas).toBe(1);
+    expect(m.desfecho).toBe("gravou");
+    for (const campo of CAMPOS_EM_MS) {
+      expect(typeof m[campo]).toBe("number");
+      expect(m[campo]).toBeGreaterThanOrEqual(0);
+    }
+    // As fakes não têm `original` e `gravar` devolve `{}`: a contagem tem padrão 0.
+    expect(m.linhasLidas).toBe(0);
+    expect(m.linhasGravadas).toBe(0);
+  });
+
+  it("recusa do domínio: desfecho recusou, e nem o update nem o gravar rodaram", async () => {
+    const { medicoes, aoMedir } = coletor();
+    const r = await executar("ws_x", () => fail("recusado"), { aoMedir });
+    expect(r.ok).toBe(false);
+    expect(medicoes).toHaveLength(1);
+    expect(medicoes[0]!.desfecho).toBe("recusou");
+    expect(medicoes[0]!.atualizaMs).toBe(0);
+    expect(medicoes[0]!.gravarMs).toBe(0);
+  });
+
+  it("regime otimista, conflito: a revisão mudou nas três tentativas, e a medição soma as três", async () => {
+    falso.linhasDoUpdate = 0;
+    const { medicoes, aoMedir } = coletor();
+    const r = await executar("ws_x", () => ok("feito"), { aoMedir, regime: "otimista" });
+    expect(r.ok).toBe(false);
+    expect("conflito" in r && r.conflito).toBe(true);
+    expect(medicoes).toHaveLength(1);
+    expect(medicoes[0]!.tentativas).toBe(3);
+    expect(medicoes[0]!.regime).toBe("otimista");
+    expect(medicoes[0]!.desfecho).toBe("conflito");
+  });
+
+  it("regime travado, conflito: o 55P03 na trava dá UMA tentativa, desfecho conflito, sem repetir", async () => {
+    falso.erroEm = (sql) =>
+      sql.startsWith("select revisao from plataforma.workspaces")
+        ? Object.assign(new Error("canceling statement due to lock timeout"), { code: "55P03" })
+        : undefined;
+    const { medicoes, aoMedir } = coletor();
+    const r = await executar("ws_x", () => ok("feito"), { aoMedir });
+    expect(r.ok).toBe(false);
+    expect("conflito" in r && r.conflito).toBe(true);
+    expect(medicoes).toHaveLength(1);
+    expect(medicoes[0]!.tentativas).toBe(1);
+    expect(medicoes[0]!.regime).toBe("travado");
+    expect(medicoes[0]!.desfecho).toBe("conflito");
+  });
+
+  it("gravação no padrão: o regime é travado", async () => {
+    const { medicoes, aoMedir } = coletor();
+    await executar("ws_x", () => ok("feito"), { aoMedir });
+    expect(medicoes[0]!.regime).toBe("travado");
+  });
+
+  it("exceção no begin: o erro continua subindo, a conexão sai do pool, e aoMedir recebeu excecao", async () => {
+    falso.erroEm = (sql) => (sql.startsWith("begin") ? new Error("Connection terminated unexpectedly") : undefined);
+    const { medicoes, aoMedir } = coletor();
+    await expect(executar("ws_x", () => ok("feito"), { aoMedir })).rejects.toThrow("Connection terminated unexpectedly");
+    expect(falso.release).toEqual([true]);
+    expect(medicoes).toHaveLength(1);
+    expect(medicoes[0]!.desfecho).toBe("excecao");
+  });
+
+  it("um aoMedir que lança nunca muda o resultado da gravação", async () => {
+    const r = await executar("ws_x", () => ok("feito"), {
+      aoMedir: () => {
+        throw new Error("o medidor quebrou");
+      },
+    });
+    expect(r.ok).toBe(true);
+    expect(falso.consultas.at(-1)).toBe("commit");
   });
 });

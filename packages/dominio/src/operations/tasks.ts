@@ -5,6 +5,7 @@
 
 import {
   checklistProgress,
+  conversaoDeItemRecusada,
   effectiveListConfig,
   effectiveLifecycleOfList,
   effectiveLifecycleOfTask,
@@ -23,6 +24,7 @@ import {
   containerAdminRefusal,
 } from "../derive";
 import { contatoDaTarefa } from "../derive-conversacional";
+import { ACAO_DESCRICAO_ALTERADA, cortarParaHistorico, mencionaNoTexto } from "../descricao-da-tarefa";
 import { fail, ok, type DataState, type OperationResult } from "../state";
 import type { ActorRef, Comment, EffectiveListConfig, FieldDefinition, FieldRequirement, FieldValue, Id, List, Minutes, Priority, StatusDefinition, Task, TaskDate } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
@@ -620,6 +622,11 @@ function descendants(state: DataState, taskId: Id): Task[] {
 /**
  * B48 — converting a checklist item into a Subtask is a single act, without an
  * inverse, rejected before any effect when it would exceed the maximum depth.
+ *
+ * D-04 (2.4.1) — the refusal is `conversaoDeItemRecusada`, the same function
+ * the screen asks to hide the button, so both sides say the same sentence. The
+ * Subtask is always born under the Task of the Checklist (no alternative parent)
+ * and the Checklist has one level only (D-02): there is no Subitem to migrate.
  */
 export function convertChecklistItem(
   state: DataState,
@@ -627,49 +634,23 @@ export function convertChecklistItem(
   taskId: Id,
   checklistId: Id,
   itemId: Id,
-  parentTaskId?: Id,
 ): OperationResult<Task> {
   const task = requireTask(state, taskId);
   if (!task) return fail("Tarefa não encontrada.");
-  const escrita = mayWriteTask(state, actingMemberId, taskId);
-  if (escrita) return fail(escrita);
+  const recusa = conversaoDeItemRecusada(state, actingMemberId, taskId);
+  if (recusa) return fail(recusa);
   const checklist = task.checklists.find((c) => c.id === checklistId);
   const item = checklist?.items.find((i) => i.id === itemId);
   if (!checklist || !item) return fail("Item de Checklist não encontrado.");
   if (item.converted) return fail("Este Item já foi convertido.");
-  if (item.parentItemId) return fail("Só um Item de primeiro nível vira Subtarefa.");
-
-  const parent = parentTaskId ?? task.id;
-  const parentTask = requireTask(state, parent);
-  if (!parentTask) return fail("Tarefa pai não encontrada.");
-  const level = taskLevel(state, parentTask) + 1;
-  if (level > state.workspace.maxSubtaskDepth) {
-    return fail(
-      `Converter aqui criaria o nível ${level}. Escolha outra Tarefa pai ou converta a partir de um nível acima.`,
-    );
-  }
 
   const created = createTask(state, actingMemberId, {
     listId: task.listId,
     title: item.text,
-    parentTaskId: parent,
+    parentTaskId: task.id,
     ...(item.assigneeMemberId ? { assignees: [memberActor(item.assigneeMemberId)] } : {}),
   });
   if (!created.ok) return created;
-
-  // B48 — the subitems migrate as a checklist of the new Subtask.
-  const subitems = checklist.items.filter((i) => i.parentItemId === item.id);
-  if (subitems.length > 0) {
-    created.value.checklists.push({
-      id: nextId("chk"),
-      name: checklist.name,
-      order: 0,
-      items: subitems.map((s, index) => ({ ...s, id: nextId("cki"), order: index, parentItemId: undefined })),
-      createdBy: memberActor(actingMemberId),
-      createdAt: now(),
-    });
-    checklist.items = checklist.items.filter((i) => i.parentItemId !== item.id);
-  }
 
   item.converted = {
     taskId: created.value.id,
@@ -1066,9 +1047,9 @@ export function removeChecklist(
 }
 
 /**
- * Remover um Item remove os seus Subitens (checklist.md, seção 12). Um Item
- * `convertido` pode ser removido sem efeito sobre a Subtarefa (B48): a marca
- * terminal some do Checklist, a Subtarefa continua existindo.
+ * Remover um Item remove só ele (D-02: não há Subitem, o checklist tem um nível
+ * só). Um Item `convertido` pode ser removido sem efeito sobre a Subtarefa
+ * (B48): a marca terminal some do Checklist, a Subtarefa continua existindo.
  */
 export function removeChecklistItem(
   state: DataState,
@@ -1087,9 +1068,7 @@ export function removeChecklistItem(
   const item = checklist.items.find((i) => i.id === itemId);
   if (!item) return fail("Item não encontrado.");
 
-  const subitens = checklist.items.filter((i) => i.parentItemId === itemId);
-  const removidos = new Set([itemId, ...subitens.map((i) => i.id)]);
-  checklist.items = checklist.items.filter((i) => !removidos.has(i.id));
+  checklist.items = checklist.items.filter((i) => i.id !== itemId);
   task.updatedAt = now();
   recordActivity(state, {
     actor: memberActor(actingMemberId),
@@ -1098,10 +1077,7 @@ export function removeChecklistItem(
     objectId: task.id,
     objectName: task.title,
     before: item.text,
-    detail:
-      subitens.length === 0
-        ? checklist.name
-        : `${checklist.name} · ${subitens.length} Subitem(ns) removido(s) com ele: ${subitens.map((i) => i.text).join("; ")}`,
+    detail: checklist.name,
   });
   return ok(task, task.id);
 }
@@ -1473,6 +1449,11 @@ const dateKey = (date: TaskDate | undefined): string | undefined => date?.value;
 export interface UpdateTaskInput {
   readonly title?: string;
   readonly description?: string;
+  /**
+   * D-06 — quem foi escolhido ao digitar `@Nome` na descrição. Só Membro. A lista
+   * gravada é a derivada do texto: quem não tem o `@Nome` escrito não entra.
+   */
+  readonly descriptionMentions?: ReadonlyArray<{ readonly type: "member"; readonly id: Id }>;
   readonly priority?: Priority;
   /** `null` limpa a data; `undefined` não toca nela. */
   readonly startDate?: TaskDate | null;
@@ -1498,6 +1479,11 @@ export function updateTask(
   if (typeof task === "string") return fail(task);
   const features = effectiveListConfig(state, task.listId)?.features;
 
+  // Menção a quem não existe é recusada ANTES de mudar qualquer campo (a mesma frase de addTaskComment).
+  for (const mention of input.descriptionMentions ?? []) {
+    if (!state.members.some((m) => m.id === mention.id)) return fail("A menção aponta para um Membro que não existe.");
+  }
+
   const mudancas: Array<{ readonly action: string; readonly before?: string; readonly after?: string }> = [];
 
   if (input.title !== undefined) {
@@ -1509,8 +1495,24 @@ export function updateTask(
     }
   }
   if (input.description !== undefined && input.description !== task.description) {
-    mudancas.push({ action: "Descrição alterada" });
+    // D-10 — o texto antigo e o novo vão no Registro, cortados (a descrição em si não é cortada).
+    mudancas.push({ action: ACAO_DESCRICAO_ALTERADA, before: cortarParaHistorico(task.description), after: cortarParaHistorico(input.description) });
     task.description = input.description;
+  }
+  // D-06/D-09 — a lista gravada é a derivada do texto: sem repetição, só Membro que existe e cujo @Nome está na descrição.
+  let mencoesMudaram = false;
+  if (input.descriptionMentions !== undefined || input.description !== undefined) {
+    const antes = (task.descriptionMentions ?? []).map((m) => m.id);
+    const candidatas = input.descriptionMentions ?? task.descriptionMentions ?? [];
+    const ids: Id[] = [];
+    for (const candidata of candidatas) {
+      if (ids.includes(candidata.id)) continue;
+      const membro = state.members.find((m) => m.id === candidata.id);
+      if (membro && mencionaNoTexto(task.description, membro.displayName)) ids.push(membro.id);
+    }
+    mencoesMudaram = ids.length !== antes.length || ids.some((id, i) => id !== antes[i]);
+    if (ids.length === 0) delete task.descriptionMentions;
+    else task.descriptionMentions = ids.map((id) => ({ type: "member" as const, id }));
   }
   if (input.priority !== undefined && input.priority !== task.priority) {
     if (features && !features.prioridade) return fail("Esta Lista não usa Prioridade.", "prioridade");
@@ -1584,7 +1586,12 @@ export function updateTask(
     task.taskTypeId = input.taskTypeId;
   }
 
-  if (mudancas.length === 0) return ok(task);
+  if (mudancas.length === 0) {
+    if (!mencoesMudaram) return ok(task);
+    // Só a lista de menções mudou: a Tarefa mudou, mas não há o que contar na Atividade.
+    task.updatedAt = now();
+    return ok(task, task.id);
+  }
   task.updatedAt = now();
   for (const mudanca of mudancas) {
     recordActivity(state, {

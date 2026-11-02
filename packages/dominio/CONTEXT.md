@@ -85,7 +85,7 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `assignTask` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask`; quem recebe a responsabilidade também precisa ver a Tarefa (RN-TAR-06) |
 | `unassignTask` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
 | `moveTask` | `operations/tasks.ts` | `taskWriteRefusal`, `listWriteRefusal` | via `mayWriteTask` na Tarefa; `listWriteRefusal` confere a Lista de destino |
-| `convertChecklistItem` | `operations/tasks.ts` | `taskWriteRefusal`, `listWriteRefusal` | via `mayWriteTask`; a Tarefa nova nasce por `createTask` |
+| `convertChecklistItem` | `operations/tasks.ts` | `taskWriteRefusal`, `listWriteRefusal` | via `conversaoDeItemRecusada` (`derive.ts`), que embrulha `taskWriteRefusal` e recusa Tarefa inativa, Lista sem Subtarefas e Tarefa no último nível; a Tarefa nova nasce por `createTask`, sempre sob a Tarefa do Checklist |
 | `trashTask` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
 | `restoreTask` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
 | `purgeTask` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
@@ -98,7 +98,7 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `removeChecklistItem` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
 | `startMeeting` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
 | `endMeeting` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
-| `updateTask` | `operations/tasks.ts` | `taskWriteRefusal` |  |
+| `updateTask` | `operations/tasks.ts` | `taskWriteRefusal` | recusa menção a Membro inexistente em `descriptionMentions`; grava antes/depois da descrição cortados em 2.000 (D-10) |
 | `setTaskFieldValue` | `operations/tasks.ts` | `taskWriteRefusal` | via `escritaDeCampo` e `mayWriteFieldOrComment`; a Pessoa da conta (Convidado) só preenche os Campos que a Lista liberou |
 | `addTaskComment` | `operations/tasks.ts` | `taskCommentRefusal` | `comentar` basta; a Pessoa da conta (Convidado, `guestFieldWriter`) também comenta |
 | `editTaskComment` | `operations/tasks.ts` | `commentEditRefusal` | `taskCommentRefusal` e ser o autor do Comentário ou administrar a Lista |

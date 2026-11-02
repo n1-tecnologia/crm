@@ -25,6 +25,8 @@ const UPDATE_TASK_INPUT = z
   .object({
     title: z.string().optional(),
     description: z.string().optional(),
+    // Forma de transporte: só Membro. Que o Membro exista e que o @Nome esteja no texto é regra do domínio.
+    descriptionMentions: z.array(z.object({ type: z.literal("member"), id: ID }).strict()).optional(),
     priority: PRIORITY.optional(),
     startDate: TASK_DATE.nullable().optional(),
     dueDate: TASK_DATE.nullable().optional(),
@@ -56,7 +58,7 @@ export const TAREFAS = {
   assignTask: z.tuple([ID, ACTOR_REF]),
   unassignTask: z.tuple([ID, ACTOR_REF]),
   moveTask: z.tuple([ID, ID, opcional(z.array(STATUS_MAPPING))]),
-  convertChecklistItem: z.tuple([ID, ID, ID, opcional(ID)]),
+  convertChecklistItem: z.tuple([ID, ID, ID]),
   trashTask: z.tuple([ID]),
   restoreTask: z.tuple([ID]),
   // PARD-10 — eliminar agora e o expurgo pela retenção (dia civil como Date revivido).

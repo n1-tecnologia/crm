@@ -36,6 +36,7 @@ import {
   newestFirst,
   statusCategory,
 } from "@n1/dominio/derive";
+import { ehAlteracaoDeDescricao } from "@n1/dominio/descricao-da-tarefa";
 import { addContactNote, endMeeting, startMeeting } from "@n1/dominio/operations";
 import { ContactAvatar } from "@/features/crm/contact-card";
 import {
@@ -779,8 +780,9 @@ export default function ReuniaoPage({
                           ? { delegateName: actorLabel(state, registro.delegate) }
                           : {}),
                         action: registro.action,
-                        ...(registro.before ? { before: registro.before } : {}),
-                        ...(registro.after ? { after: registro.after } : {}),
+                        // D-10: a descrição da Tarefa não derrama na frase da linha do tempo.
+                        ...(registro.before && !ehAlteracaoDeDescricao(registro) ? { before: registro.before } : {}),
+                        ...(registro.after && !ehAlteracaoDeDescricao(registro) ? { after: registro.after } : {}),
                         ...(registro.detail ? { detail: registro.detail } : {}),
                       }))}
                   />

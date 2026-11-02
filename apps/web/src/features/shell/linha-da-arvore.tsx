@@ -32,6 +32,7 @@ export function TreeRow({
   menu,
   no,
   arrastar,
+  salvando,
 }: {
   readonly depth: number;
   readonly label: string;
@@ -57,6 +58,13 @@ export function TreeRow({
   }>;
   /** O gesto de arrastar (só as linhas da Estrutura; Convidado e Meus negócios não recebem). */
   readonly arrastar?: PropsDeArrasto;
+  /**
+   * D-15 — o contêiner aparece na hora (D-13), mas o servidor ainda não devolveu o
+   * id verdadeiro: a linha é só o nome, sem link, sem «+», sem «⋯» e sem arrastar.
+   * `aria-busy` e o `title` dizem o estado (não é só a cor); ao confirmar, a linha
+   * volta a ser a de sempre.
+   */
+  readonly salvando?: boolean;
 }) {
   const content = (
     <>
@@ -67,25 +75,27 @@ export function TreeRow({
     </>
   );
 
-  const zona = arrastar?.zona ?? null;
-  const arrastavel = arrastar?.arrastavel === true;
+  // Linha salvando: nada do que leva ou mexe num id que o servidor pode não ter.
+  const zona = salvando ? null : (arrastar?.zona ?? null);
+  const arrastavel = !salvando && arrastar?.arrastavel === true;
+  const gesto = salvando ? undefined : arrastar;
 
   return (
     <div
       className="group/linha relative flex items-center"
-      {...(arrastar
+      {...(gesto
         ? {
-            onDragOver: arrastar.onDragOver,
-            onDrop: arrastar.onDrop,
-            onDragEnd: arrastar.onDragEnd,
-            ...(arrastavel ? { draggable: true, onDragStart: arrastar.onDragStart } : {}),
+            onDragOver: gesto.onDragOver,
+            onDrop: gesto.onDrop,
+            onDragEnd: gesto.onDragEnd,
+            ...(arrastavel ? { draggable: true, onDragStart: gesto.onDragStart } : {}),
             "data-soltura": zona ?? undefined,
           }
         : {})}
       style={{
         // Origem a 60%; o alvo «dentro» ganha fundo e contorno interno (UI-SPEC S1, A1).
-        opacity: arrastar?.origem ? 0.6 : undefined,
-        cursor: arrastavel ? (arrastar?.origem ? "grabbing" : "grab") : undefined,
+        opacity: gesto?.origem ? 0.6 : undefined,
+        cursor: arrastavel ? (gesto?.origem ? "grabbing" : "grab") : undefined,
         ...(zona === "dentro"
           ? { background: "var(--acento-lavado)", boxShadow: "inset 0 0 0 1px var(--linha-acento)", borderRadius: "var(--r-controle)" }
           : {}),
@@ -107,7 +117,19 @@ export function TreeRow({
       ) : (
         <span className="w-6 shrink-0" style={{ marginLeft: `${depth * 12}px` }} />
       )}
-      {href ? (
+      {salvando ? (
+        // D-15 — salvando: sem `href`, o nome só informa. Não usa o `title` do
+        // Convidado (aquele diz que a linha é só de navegação).
+        <span
+          aria-busy="true"
+          title="Salvando…"
+          className="app-base flex min-w-0 flex-1 cursor-default items-center gap-2 px-2"
+          style={{ color: "var(--texto-4)" }}
+        >
+          {content}
+          <span className="sr-only">Salvando…</span>
+        </span>
+      ) : href ? (
         <Link
           href={href}
           {...(no ? { id: `arvore-no-${no}` } : {})}
@@ -133,7 +155,7 @@ export function TreeRow({
           {content}
         </span>
       )}
-      {creatable && creatable.length > 0 ? (
+      {!salvando && creatable && creatable.length > 0 ? (
         // Aparece no hover e no foco do teclado: um controle que só existe sob
         // o ponteiro é um controle que o teclado não tem. Em aparelho sem hover
         // (toque) fica sempre à vista, senão o menu é inalcançável (A7).
@@ -149,7 +171,7 @@ export function TreeRow({
           />
         </span>
       ) : null}
-      {menu && menu.length > 0 ? (
+      {!salvando && menu && menu.length > 0 ? (
         <span className="shrink-0 opacity-0 transition-opacity focus-within:opacity-100 group-hover/linha:opacity-100 [@media(hover:none)]:opacity-100">
           <ActionMenu label={`Ações de ${label}`} items={menu} />
         </span>

@@ -2,8 +2,9 @@
 /**
  * Fase 10, 2.3.3 item 1 (D-08, D-09, D-10, D-12, EST-06) — arrastar na árvore
  * da Estrutura. A casca de verdade (`AppShell`) sobre o `StoreProvider` de
- * verdade e um transporte falso que confirma: o que a tela mostra depois de
- * soltar é o que o servidor devolveu, nunca o que a cópia aceitou.
+ * verdade e um transporte falso que confirma. D-13 (Fase 12): o lugar novo
+ * aparece na árvore na hora, a partir da cópia que o domínio aceitou, e a
+ * árvore fica `aria-busy` até a resposta; a recusa devolve o lugar antigo.
  *
  * Os eventos são os do HTML5 nativo (`dragstart`, `dragover`, `drop`, `dragend`)
  * disparados por `fireEvent`. O jsdom zera `getBoundingClientRect` e não traz
@@ -255,11 +256,11 @@ describe("Arrastar na árvore — o traçador: a Lista \"Propostas\" vai para a 
     expect(zonaAcesa("fld_clientes")).toBe("dentro");
     soltarEm("fld_clientes", 50);
 
-    // O servidor ainda não respondeu: a árvore está ocupada, o aviso não existe, a tela não mudou.
+    // O servidor ainda não respondeu: a árvore está ocupada e o aviso não existe, mas (D-13) o lugar novo já está na tela.
     await waitFor(() => expect(servidor.gravar).toHaveBeenCalledTimes(1));
     expect(document.querySelector("ul[aria-busy='true']")).not.toBeNull();
     expect(screen.queryByText("Lista Propostas movida para Clientes.")).toBeNull();
-    expect(paiNaArvore(PROPOSTAS)).toBe("fld_propostas");
+    expect(paiNaArvore(PROPOSTAS)).toBe("fld_clientes");
 
     await act(async () => soltar());
 
@@ -477,6 +478,8 @@ describe("Arrastar na árvore — reordenar, Espaços, diálogo, recusa e árvor
     expect(passarSobre(ALFA, 10)).toBe(false);
     soltarEm(ALFA, 10);
     expect(servidor.gravar).toHaveBeenCalledTimes(1);
+    // D-13: a ordem nova já está na tela enquanto o servidor não responde.
+    expect(filhosDe(P)).toEqual([GAMA, ALFA, BETA]);
 
     await act(async () => soltar());
     await waitFor(() => expect(document.querySelector("ul[aria-busy='true']")).toBeNull());

@@ -474,7 +474,12 @@ export async function importarLote(opcoes: OpcoesDeImportarLote): Promise<Result
         // reprocessados pelo pipeline (D-24/T-02-16). A linha abaixo falha alto
         // se o parâmetro proibido for acrescentado ao objeto no futuro, em vez de
         // deixar passar em silêncio.
-        const opcoesDeExecucao: OpcoesExecucao<readonly ResultadoPorLinha[]> = { aoConfirmar, semEventosDeSaida: true };
+        // D-10 (Fase 12) — importação manual longa: fica no regime otimista (revisão
+        // conferida no fim, até 3 tentativas), como até a Fase 11. Roda com
+        // `DATABASE_QUERY_TIMEOUT_MS=0` por minutos; o regime travado (o padrão de
+        // `executar()`) seguraria a linha do `ws_n1` desde o começo e bloquearia a
+        // tela e o agendador durante toda a importação.
+        const opcoesDeExecucao: OpcoesExecucao<readonly ResultadoPorLinha[]> = { aoConfirmar, semEventosDeSaida: true, regime: "otimista" };
         if ("eventos" in opcoesDeExecucao) throw new Error("importarLote nunca pode carregar isto — plataforma.integration_outbox não pode crescer.");
 
         const resultadoDaTransacao = await executar(opcoes.workspaceId, operacaoDoLote, opcoesDeExecucao);

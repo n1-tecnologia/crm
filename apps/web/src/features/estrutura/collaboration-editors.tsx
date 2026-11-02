@@ -19,12 +19,13 @@ import {
   startTimer,
   stopTimer,
 } from "@n1/dominio/operations";
-import { effectiveLifecycleOfTask, effectiveListConfig, isTerminalCategory, listPath, memberSeesTask, statusCategory } from "@n1/dominio/derive";
+import { effectiveLifecycleOfTask, effectiveListConfig, isTerminalCategory, listPath, memberSeesTask, statusCategory, tempoRegistrado } from "@n1/dominio/derive";
 import { useFormat } from "@/features/shell/use-format";
 import { Button, ConfirmDialog, EmptyState, Field, Icone, Select, TextInput, Toggle } from "@/features/shell/ui";
 import type { OperationResult } from "@n1/dominio/state";
 import type { DependencyKind, RecurrenceRule, Task } from "@n1/dominio/types";
 import Link from "next/link";
+import { minutos, textoDoTempo } from "./tempo";
 
 type Report = (result: OperationResult<unknown>, message: string) => void;
 
@@ -167,12 +168,6 @@ export function TaskDependencies({ task, report, readOnly }: { readonly task: Ta
 
 /* ───────────────────────────── Tempo ───────────────────────────── */
 
-function minutos(total: number): string {
-  const h = Math.floor(total / 60);
-  const m = total % 60;
-  return h > 0 ? `${h} h ${m.toString().padStart(2, "0")} min` : `${m} min`;
-}
-
 /** O cronômetro aberto conta na tela; `revision` não muda enquanto ele corre, então há um relógio local. */
 function useAgora(ativo: boolean): number {
   const [agora, setAgora] = useState(() => Date.now());
@@ -195,8 +190,8 @@ export function TaskTime({ task, report, readOnly }: { readonly task: Task; read
   const abertoAqui = meuAberto?.task.id === task.id ? meuAberto.entry : undefined;
   const agora = useAgora(abertoAqui !== undefined);
 
-  const fechados = task.timeEntries.filter((e) => e.end !== undefined);
-  const total = fechados.reduce((sum, e) => sum + (e.durationMinutes ?? 0), 0);
+  const tempo = tempoRegistrado(state, task.id);
+  const texto = textoDoTempo(tempo);
   const nomeDe = (id: string) => state.members.find((m) => m.id === id)?.displayName ?? id;
   const duracaoNumero = Number(duracao);
   const duracaoValida = Number.isFinite(duracaoNumero) && duracaoNumero > 0 && duracaoNumero <= 24 * 60;
@@ -204,7 +199,9 @@ export function TaskTime({ task, report, readOnly }: { readonly task: Task; read
   return (
     <div className="grid gap-3">
       <p className="app-base" style={{ color: "var(--texto)" }}>
-        Total registrado: <strong className="app-numero">{minutos(total)}</strong>
+        Total registrado: <strong className="app-numero">{texto.total}</strong>
+        {texto.emAndamento ? <span className="app-numero" style={{ color: "var(--texto-3)" }}> · em andamento</span> : null}
+        {texto.comSubtarefas ? <span className="app-numero" style={{ color: "var(--texto-3)" }}> · {texto.comSubtarefas}</span> : null}
         {task.estimate !== undefined ? <span className="app-numero" style={{ color: "var(--texto-3)" }}> · estimativa {minutos(task.estimate)}</span> : null}
       </p>
 

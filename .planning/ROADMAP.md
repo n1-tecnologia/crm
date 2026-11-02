@@ -680,24 +680,68 @@ Plans:
 **Decisões do dono antes de planejar:** 2.4.3 (confirmação por nome digitado), 2.4.4 (subitens de checklist), 2.4.5 (converter pelo cartão do Quadro), 2.6.7 (menção na descrição avisa a pessoa).
 **Independência:** não depende da Fase 10 (`tasks.ts` e `tarefa-completa.tsx` contra `structure.ts`, `configuration.ts` e as páginas de contêiner). Fica depois dela só porque o GSD daqui executa uma fase por vez; a 2.1.10 da Fase 10 já passa por `tarefa-completa.tsx`.
 **Itens da 2.7** que mexam na Tarefa entram aqui.
-**Requirements**: TBD — definidos no `/gsd-discuss-phase 11`
+**Requirements**: TAR-01, TAR-02, TAR-03, TAR-04, TAR-05, TAR-06, TAR-07 (derivados em `11-CONTEXT.md` "Requisitos derivados"; registrados em REQUIREMENTS.md, Fase 11)
 **Depends on:** Phase 9
-**Plans:** 0 plans
+**Plans:** 8/8 plans complete
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 11 to break down)
+**Wave 1**
+- [x] 11-01-PLAN.md — Conversão de Item em Subtarefa no domínio e na API: `conversaoDeItemRecusada`, mensagem de nível nova, sem `parentTaskId` e sem subitens de checklist (TAR-01, TAR-03)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [x] 11-02-PLAN.md — `Task.descriptionMentions` e o texto anterior da descrição no domínio: `updateTask` valida e grava, `before`/`after` cortados em 2.000, recorrência copia a menção (TAR-04, TAR-06)
+- [x] 11-03-PLAN.md — `tempoRegistrado` no domínio, `tempo.ts` na web e o `TaskTime` com o mesmo número (TAR-07)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [x] 11-04-PLAN.md — `pendingMentions` como união (Comentário | descrição), filtro de Tarefa aberta e a página de Notificações (TAR-05)
+- [x] 11-05-PLAN.md — Hook `useMencoes` e o "@" na descrição, com o `CommentComposer` usando o mesmo hook (TAR-04)
+- [x] 11-06-PLAN.md — `AlteracaoDeDescricao` ("Ver alteração") no Feed e na Timeline; Auditoria e Reunião sem o texto na frase (TAR-06)
+- [x] 11-07-PLAN.md — Na Tarefa aberta: converter em um clique só onde dá, descrição com o nome destacado e a linha "Rastrear tempo" com o número do domínio (TAR-02, TAR-04, TAR-07)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [x] 11-08-PLAN.md — Fechamento: e2e local de `POST /operacoes` e `GET /estado`, `npm run check`, divergência da ontologia (D-02), `11-PROVAS.md` e a conferência do dono em produção (TAR-03, TAR-04, TAR-06)
 
 ### Phase 12: Clone ClickUp: gravação mais rápida
 
 **Goal:** Medir quanto leva uma gravação (hoje cada uma hidrata o Espaço de Trabalho inteiro e disputa uma revisão única) e cortar o custo onde ele está. Sessão 2 do cronograma, parte C. Fonte: `docs/09-planejamento/TAREFAS-POR-SESSAO.md`, Sessão 2, tarefa 2.2.
 **Começa por medir:** 2.2.1 (instrumentar `executar()` e rodar em produção os quatro gestos) vem antes de qualquer plano; a decisão 2.2.2 depende desses números e as três saídas são projetos diferentes.
 **Caminhos da 2.2.2:** (B) ficar em `plataforma.registros`, travar no começo, encadear as chamadas e mostrar a mudança na hora: 2.2.3, 2.2.4, 2.2.5 e 2.2.10, cerca de 2 dias, e é a recomendação · (A) tabelas próprias de Espaço, Pasta e Lista: 2.2.6–2.2.9, 4 a 5 dias; se for a escolhida, esta fase passa a ir antes da Fase 10, porque a `010` mexe nas linhas de Lista de `plataforma.registros` · (C) tabelas para a Estrutura inteira: sessão própria, fora daqui (8 a 10 dias; só se `hidratar` passar de 300 ms na mediana).
-**Requirements**: TBD — definidos no `/gsd-discuss-phase 12`
+**Requirements**: GRV-01, GRV-02, GRV-03, GRV-04, GRV-05, GRV-06
 **Depends on:** Phase 9 (medir exige o `apps/api` em produção, entregue no 09-20)
-**Plans:** 0 plans
+**Plans:** 10/10 plans executed
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 12 to break down)
+**Wave 1**
+- [x] 12-01-PLAN.md — Medição por etapa em `executar()` (`aoMedir`) e a linha "gravacao medida" de `POST /operacoes`, sem nada no corpo (GRV-01)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [x] 12-02-PLAN.md — O comando `gravacao:medir` (Fastify próprio em loopback, D-17), ensaiado no Postgres local, e o "antes" na VPS `[BLOCKING]` (GRV-01)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [x] 12-03-PLAN.md — A parada `[BLOCKING]`: meta do dono, caminho B e a sessão C no ROADMAP se `hidratar` > 300 ms (GRV-02)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [x] 12-04-PLAN.md — Trava no começo e dois regimes em `executar()`, importações longas no otimista, teste de concorrência contra Postgres local (GRV-03)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+- [x] 12-05-PLAN.md — `gravar` devolve a lista de respostas e `enviar` aplica em ordem, sem re-hidratar (GRV-04)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+- [x] 12-06-PLAN.md — `confirmado`/`data`: a mudança aparece na hora, a recusa a tira, e os pedidos saem um de cada vez (GRV-05)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+- [x] 12-07-PLAN.md — A lista de operações que esperam o servidor, com o motivo de cada uma (GRV-05)
+
+**Wave 8** *(blocked on Wave 7 completion)*
+- [x] 12-08-PLAN.md — O item criado "salvando" e sem link até confirmar, na árvore e na Tarefa, e o `openTask` que ignora id pendente (GRV-05)
+
+**Wave 9** *(blocked on Wave 8 completion)*
+- [x] 12-09-PLAN.md — A guarda de navegação para qualquer âncora com id pendente e o aviso ao fechar a aba com gravação pendente (GRV-05)
+
+**Wave 10** *(blocked on Wave 9 completion)*
+- [x] 12-10-PLAN.md — Publicar e medir o "depois" na VPS `[BLOCKING]`, a tabela antes/depois/meta em `12-PROVAS.md` (GRV-06)
+
+**Ondas de execução:** 1 → [12-01] · 2 → [12-02] · 3 → [12-03] · 4 → [12-04] · 5 → [12-05] · 6 → [12-06] · 7 → [12-07] · 8 → [12-08] · 9 → [12-09] · 10 → [12-10]
 
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*

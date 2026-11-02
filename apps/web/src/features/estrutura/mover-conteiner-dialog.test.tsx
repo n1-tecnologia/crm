@@ -2,8 +2,9 @@
 /**
  * Fase 10, 2.3.3 (D-10, D-11, EST-06) — "Mover para…" pelo menu. A casca de
  * verdade (`AppShell`, com a árvore e o diálogo) sobre o `StoreProvider` de
- * verdade e um transporte falso que confirma: o que a tela mostra depois de
- * mover é o que o servidor devolveu, nunca o que a cópia aceitou.
+ * verdade e um transporte falso que confirma. D-13 (Fase 12): a árvore mostra
+ * o lugar novo na hora, a partir da cópia que o domínio aceitou, enquanto o
+ * diálogo espera a resposta; a recusa devolve o lugar antigo com o erro.
  *
  * Molde de `visibilidade-na-tela.test.tsx`. `next/navigation` guarda os
  * parâmetros de endereço num armazém reativo, para que `router.replace` abra e
@@ -456,6 +457,8 @@ describe("Mover para… — o diálogo inteiro (D-11, L1, L2)", () => {
     expect(motivoDoMover()).toBe("Movendo…");
     expect(screen.getByRole("alertdialog")).toBeTruthy();
     expect(screen.queryByText(/movida para/)).toBeNull();
+    // D-13: o diálogo espera a resposta, mas a árvore por trás já mostra a Lista no Espaço novo.
+    expect(linha(ALFA).closest("li")?.parentElement?.closest("li")?.querySelector("a")?.id).toBe("arvore-no-spc_ops");
     // Cancelar durante a gravação não fecha: o fim é a resposta.
     fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
     expect((await enderecoAtual()).get("mover")).toBe(ALFA);

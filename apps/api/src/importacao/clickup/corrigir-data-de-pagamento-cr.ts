@@ -234,7 +234,11 @@ export async function aplicarCorrecoes(opcoes: OpcoesDeAplicarCorrecoes): Promis
     return ok(aCorrigir);
   };
 
-  const opcoesDeExecucao: OpcoesExecucao<readonly CorrecaoDeDataDePagamento[]> = { semEventosDeSaida: true };
+  // D-10 (Fase 12) — decisão do planejador (Open Question 4): este lote histórico
+  // manual é "de igual natureza" que as importações de contas, então fica no
+  // regime otimista como elas. Uma `executar()` corrige até 240 Tarefas de uma vez;
+  // travar o Espaço desde o começo não ganha nada aqui e segura o `ws_n1` inteiro.
+  const opcoesDeExecucao: OpcoesExecucao<readonly CorrecaoDeDataDePagamento[]> = { semEventosDeSaida: true, regime: "otimista" };
   if ("eventos" in opcoesDeExecucao) throw new Error("aplicarCorrecoes nunca pode carregar isto — plataforma.integration_outbox não pode crescer.");
 
   const resultadoDaTransacao = await executar(opcoes.workspaceId, operacao, opcoesDeExecucao);

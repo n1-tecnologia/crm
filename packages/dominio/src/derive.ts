@@ -3,6 +3,7 @@
  * the recorded state, as the ontology requires (B36, B45, B100, RN-CRM-16).
  */
 
+import { ACAO_DESCRICAO_ALTERADA, membrosMencionadosNaDescricao, trechoDaMencao } from "./descricao-da-tarefa";
 import { ACTOR_KIND_LABEL } from "./rotulos";
 import type { DataState } from "./state";
 import type {
@@ -496,11 +497,62 @@ export function subtaskProgress(state: DataState, taskId: Id): { done: number; t
   return { done, total: children.length };
 }
 
-/** B48 — countable item = first-level item that was not converted. */
+/** D-15 — o número de tempo de uma Tarefa (11-03). */
+export interface TempoRegistrado {
+  /** Soma dos lançamentos FECHADOS da própria Tarefa (D-16). */
+  readonly minutos: number;
+  /** Quantos lançamentos a Tarefa tem, o cronômetro aberto incluído (é o que a lista do editor mostra). */
+  readonly lancamentos: number;
+  /** `true` quando a Tarefa tem lançamento sem `end`, de qualquer Membro. */
+  readonly emAndamento: boolean;
+  /** `minutos` mais os minutos fechados das Subtarefas ativas, em qualquer nível. */
+  readonly minutosComSubtarefas: number;
+}
+
+function minutosFechados(task: Task): number {
+  return task.timeEntries.reduce((soma, e) => (e.end !== undefined ? soma + (e.durationMinutes ?? 0) : soma), 0);
+}
+
+/**
+ * D-15 (Tempo registrado × agregado, ontologia `tarefa.md`:114-115) e D-16 (só
+ * lançamentos fechados; o cronômetro aberto só liga `emAndamento`). Depende só
+ * de `state`: não lê o relógio, então Painel, IA e tela leem o mesmo valor para
+ * o mesmo estado. Subtarefa fora de `ativo` não soma, e a descida para nela
+ * (mesma régua de `subtaskProgress`).
+ *
+ * Pitfall 9: o agregado `minutosComSubtarefas` vale para o estado que quem
+ * chama já enxerga. No navegador o estado vem recortado por `visibilidadePara`;
+ * quem chamar isto no servidor com o estado inteiro deve passar antes o recorte
+ * do Membro, ou somará Subtarefas que ele não vê.
+ */
+export function tempoRegistrado(state: DataState, taskId: Id): TempoRegistrado {
+  const task = state.tasks.find((t) => t.id === taskId);
+  if (!task) return { minutos: 0, lancamentos: 0, emAndamento: false, minutosComSubtarefas: 0 };
+  const minutos = minutosFechados(task);
+  let minutosComSubtarefas = minutos;
+  const visitadas = new Set<Id>([task.id]);
+  const pendentes: Id[] = [task.id];
+  while (pendentes.length > 0) {
+    const paiId = pendentes.pop()!;
+    for (const filha of state.tasks) {
+      if (filha.parentTaskId !== paiId || visitadas.has(filha.id)) continue;
+      visitadas.add(filha.id);
+      if (effectiveLifecycleOfTask(state, filha.id) !== "ativo") continue;
+      minutosComSubtarefas += minutosFechados(filha);
+      pendentes.push(filha.id);
+    }
+  }
+  return {
+    minutos,
+    lancamentos: task.timeEntries.length,
+    emAndamento: task.timeEntries.some((e) => e.end === undefined),
+    minutosComSubtarefas,
+  };
+}
+
+/** B48 — countable item = item that was not converted (D-02: the checklist has one level only). */
 export function checklistProgress(task: Task): { done: number; total: number } | null {
-  const countable = task.checklists.flatMap((c) =>
-    c.items.filter((i) => i.parentItemId === undefined && i.converted === undefined),
-  );
+  const countable = task.checklists.flatMap((c) => c.items.filter((i) => i.converted === undefined));
   if (countable.length === 0) return null;
   return { done: countable.filter((i) => i.done).length, total: countable.length };
 }
@@ -516,6 +568,30 @@ export function taskLevel(state: DataState, task: Task): number {
     parentId = state.tasks.find((t) => t.id === parentId)?.parentTaskId;
   }
   return level;
+}
+
+/**
+ * D-04 (2.4.1) — por que um Item de Checklist desta Tarefa NÃO pode virar
+ * Subtarefa, ou `undefined` se pode. `convertChecklistItem` recusa com esta
+ * frase antes de qualquer efeito, e a tela esconde o botão "Converter" com esta
+ * mesma função: o clique nunca é o primeiro a saber. Ordem fixa — a Tarefa
+ * existe, quem escreve nela, ciclo de vida, Lista com Subtarefas, nível —, e
+ * vale o primeiro motivo. Não lê o relógio.
+ */
+export function conversaoDeItemRecusada(state: DataState, actingMemberId: Id, taskId: Id): string | undefined {
+  const task = state.tasks.find((t) => t.id === taskId);
+  if (!task) return "Tarefa não encontrada.";
+  const escrita = taskWriteRefusal(state, actingMemberId, taskId);
+  if (escrita) return escrita;
+  if (effectiveLifecycleOfTask(state, taskId) !== "ativo") {
+    return "Esta Tarefa não está ativa. Restaure-a para editá-la.";
+  }
+  if (!effectiveListConfig(state, task.listId)?.features.subtarefas) return "Esta Lista não usa Subtarefas.";
+  const nivel = taskLevel(state, task);
+  if (nivel + 1 > state.workspace.maxSubtaskDepth) {
+    return `Esta Tarefa já está no nível ${nivel}, o último permitido. O item não pode virar Subtarefa aqui.`;
+  }
+  return undefined;
 }
 
 /** Documento 10, 6 — derived, never stored. */
@@ -684,7 +760,7 @@ export function terminalStatusBlockReason(state: DataState, task: Task): string 
     (total, checklist) =>
       total +
       checklist.items.filter(
-        (item) => item.parentItemId === undefined && item.converted === undefined && !item.done,
+        (item) => item.converted === undefined && !item.done,
       ).length,
     0,
   );
@@ -1286,15 +1362,37 @@ export function containerAdminRefusal(state: DataState, memberId: Id, type: Path
 }
 
 /**
- * Menções a um Membro em Comentários de Tarefa que ele alcança, em conversas
- * ainda abertas. Não há entidade Notificação: resolver a conversa é o que
- * "dá baixa" — o Comentário é imutável (7.1), a marca de resolvido é da conversa.
+ * Uma menção que espera pelo Membro: a origem é o Comentário (`comentario`) ou
+ * a descrição da Tarefa (`descricao`, Fase 11, 2.6.7). A união obriga cada
+ * leitor de `comment` a estreitar por `tipo`.
  */
-export function pendingMentions(
-  state: DataState,
-  memberId: Id,
-): Array<{ readonly task: Task; readonly comment: Comment }> {
-  const found: Array<{ task: Task; comment: Comment }> = [];
+export type MencaoPendente =
+  | { readonly tipo: "comentario"; readonly task: Task; readonly comment: Comment }
+  | { readonly tipo: "descricao"; readonly task: Task; readonly trecho: string };
+
+/**
+ * Menções a um Membro em Tarefas que ele alcança, numa lista só, do instante
+ * mais novo para o mais velho. Não há entidade Notificação nem estado novo:
+ * tudo sai do dado.
+ *
+ * - `comentario`: o Comentário que o menciona, em conversa ainda aberta.
+ *   Resolver a conversa é o que "dá baixa" — o Comentário é imutável (7.1), a
+ *   marca de resolvido é da conversa.
+ * - `descricao` (D-07, D-08): a descrição escreve o `@Nome` dele (lido por
+ *   `membrosMencionadosNaDescricao`, nunca pela lista crua), a Tarefa está
+ *   `ativo` e fora de categoria terminal. Some por conta própria quando a
+ *   Tarefa fecha, vai à lixeira ou ao arquivo, ou o nome sai do texto; não há
+ *   "Dispensar" nem "já vi". A descrição não tem autor, então quem se menciona
+ *   também é avisado. O filtro de categoria terminal vale só aqui: o Comentário
+ *   segue como era.
+ *
+ * Ambas só entram para quem enxerga a Tarefa (RN-TAR-14). O instante da
+ * `descricao` é o do Registro "Descrição alterada" mais recente, ou a criação
+ * da Tarefa sem Registro.
+ */
+export function pendingMentions(state: DataState, memberId: Id): MencaoPendente[] {
+  const found: Array<{ item: MencaoPendente; at: string }> = [];
+  const nomeDoMembro = state.members.find((m) => m.id === memberId)?.displayName;
   for (const task of state.tasks) {
     if (effectiveLifecycleOfTask(state, task.id) !== "ativo") continue;
     if (!memberSeesTask(state, memberId, task.id)) continue;
@@ -1305,10 +1403,26 @@ export function pendingMentions(
       if (comment.author.kind === "member" && comment.author.id === memberId) continue;
       const root = comment.parentCommentId ? task.comments.find((c) => c.id === comment.parentCommentId) : comment;
       if (root?.resolved) continue;
-      found.push({ task, comment });
+      found.push({ item: { tipo: "comentario", task, comment }, at: comment.createdAt });
+    }
+    if (
+      nomeDoMembro !== undefined &&
+      task.descriptionMentions?.length &&
+      !isTerminalCategory(statusCategory(state, task)) &&
+      membrosMencionadosNaDescricao(state, task).includes(memberId)
+    ) {
+      // O mais recente por valor (`at`, depois a sequência do id), não por posição:
+      // a posição no array não diz qual é o mais novo (ver `newestFirst`).
+      const alteracao = newestFirst(
+        state.activity.filter((a) => a.objectId === task.id && a.action === ACAO_DESCRICAO_ALTERADA),
+      )[0];
+      found.push({
+        item: { tipo: "descricao", task, trecho: trechoDaMencao(task.description, nomeDoMembro) },
+        at: alteracao?.at ?? task.createdAt,
+      });
     }
   }
-  return found.sort((a, b) => b.comment.createdAt.localeCompare(a.comment.createdAt));
+  return found.sort((a, b) => b.at.localeCompare(a.at)).map((f) => f.item);
 }
 
 /**
@@ -1348,7 +1462,7 @@ export function tarefasAbertasDoMembro(state: DataState, memberId: Id): Task[] {
 
 export interface NotificacoesDoMembro {
   readonly aprovacoes: ApprovalRequest[];
-  readonly mencoes: Array<{ readonly task: Task; readonly comment: Comment }>;
+  readonly mencoes: MencaoPendente[];
   /** AVIS-02 — Comentários em Tarefas que o Membro acompanha (observador), ainda não resolvidos. */
   readonly observadas: Array<{ readonly task: Task; readonly comment: Comment }>;
   readonly conversas: Conversation[];
@@ -1376,7 +1490,7 @@ export function notificacoesDoMembro(state: DataState, memberId: Id, now: Date):
     return state.agents.find((a) => a.id === execution.agentId)?.ownerMemberId === memberId;
   });
   const mencoes = pendingMentions(state, memberId);
-  const observadas = comentariosObservados(state, memberId, new Set(mencoes.map((m) => m.comment.id)));
+  const observadas = comentariosObservados(state, memberId, new Set(mencoes.flatMap((m) => (m.tipo === "comentario" ? [m.comment.id] : []))));
   return {
     aprovacoes,
     mencoes,

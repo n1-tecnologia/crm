@@ -27,6 +27,7 @@
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { usuarioDoSeed } from "@n1/dominio";
+import { conversaoDeItemRecusada } from "@n1/dominio/derive";
 import { evoluirConfiguracaoPorEmpresa } from "@n1/dominio/configuracao-por-empresa-evolver";
 import { CP } from "@n1/dominio/operations";
 import { CANAL_CAMPO_EMPRESA_ID, CANAL_CAMPO_WHATSAPP_ID, CANAL_LISTA_ID } from "@n1/dominio/operations/automations";
@@ -483,6 +484,150 @@ d("POST /operacoes/:nome — contra o banco real", () => {
     } finally {
       cliente.release();
     }
+  });
+
+  it("(r2) updateTask com descriptionMentions grava a lista e o antes/depois do histórico, e a hidratação devolve os dois (Fase 11)", async () => {
+    const maryane = membros.find((m) => m.userId === MARYANE);
+    expect(maryane, "o seed precisa ter o Membro da sessão").toBeDefined();
+
+    const clienteAntes = await pool().connect();
+    let descricaoAntes = "";
+    try {
+      const { state } = await hidratar(clienteAntes, WS);
+      descricaoAntes = state.tasks.find((t) => t.id === tarefaDeContasAPagar!.id)?.description ?? "";
+    } finally {
+      clienteAntes.release();
+    }
+
+    const nova = `@${maryane!.displayName} conferir o vencimento`;
+    const resposta = await appDeTeste().inject({
+      method: "POST",
+      url: "/operacoes/updateTask",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: {
+        args: [tarefaDeContasAPagar!.id, { description: nova, descriptionMentions: [{ type: "member", id: maryane!.id }] }],
+      },
+    });
+    expect(resposta.statusCode, resposta.body).toBe(200);
+    const corpo = resposta.json();
+    expect(corpo.ok, corpo.error).toBe(true);
+
+    const cliente = await pool().connect();
+    try {
+      const { state } = await hidratar(cliente, WS);
+      const tarefa = state.tasks.find((t) => t.id === tarefaDeContasAPagar!.id);
+      expect(tarefa?.description).toBe(nova);
+      expect(tarefa?.descriptionMentions).toEqual([{ type: "member", id: maryane!.id }]);
+      const registro = state.activity.find(
+        (a) => a.objectId === tarefaDeContasAPagar!.id && a.action === "Descrição alterada" && a.after === nova,
+      );
+      expect(registro, "o Registro da descrição precisa voltar na hidratação").toBeDefined();
+      expect(registro?.before).toBe(descricaoAntes);
+    } finally {
+      cliente.release();
+    }
+  });
+
+  it("(r2b) updateTask com descriptionMentions de um Membro que não existe responde ok:false e não grava a lista", async () => {
+    const resposta = await appDeTeste().inject({
+      method: "POST",
+      url: "/operacoes/updateTask",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: {
+        args: [tarefaDeContasAPagar!.id, { description: "@Fulano Inexistente olhe", descriptionMentions: [{ type: "member", id: "mem_que_nao_existe" }] }],
+      },
+    });
+    expect(resposta.statusCode, resposta.body).toBe(200);
+    const corpo = resposta.json();
+    expect(corpo.ok).toBe(false);
+    expect(corpo.diferenca.gravados.length).toBe(0);
+
+    const cliente = await pool().connect();
+    try {
+      const { state } = await hidratar(cliente, WS);
+      const tarefa = state.tasks.find((t) => t.id === tarefaDeContasAPagar!.id);
+      expect(tarefa?.description).not.toBe("@Fulano Inexistente olhe");
+    } finally {
+      cliente.release();
+    }
+  });
+
+  it("(r3) convertChecklistItem de três argumentos chega ao domínio; com quatro, o esquema responde 400 antes de executar() (Fase 11)", async () => {
+    // Contas a pagar não usa Checklists nem Subtarefas: a prova do caminho de três argumentos
+    // pede uma Lista que usa os dois — a de Revisões (`tsk_seed_1`), pelo Proprietário.
+    const tarefaId = "tsk_seed_1";
+    const chamar = (nome: string, args: unknown[]) =>
+      appDeTeste().inject({
+        method: "POST",
+        url: `/operacoes/${nome}`,
+        headers: { authorization: "Bearer token-thiago" },
+        payload: { args },
+      });
+
+    const criada = await chamar("addChecklist", [tarefaId, "Passos da conta"]);
+    expect(criada.statusCode, criada.body).toBe(200);
+    expect(criada.json().ok, criada.json().error).toBe(true);
+    // As duas operações devolvem a Tarefa inteira: o Checklist e o Item novos são os últimos da lista.
+    const checklistId: string = criada.json().value.checklists.at(-1).id;
+
+    const item = await chamar("addChecklistItem", [tarefaId, checklistId, "Conferir o boleto"]);
+    expect(item.statusCode, item.body).toBe(200);
+    expect(item.json().ok, item.json().error).toBe(true);
+    const itemId: string = item.json().value.checklists.find((c: { id: string }) => c.id === checklistId).items.at(-1).id;
+
+    // Quatro argumentos: o esquema recusa antes de `executar()` — nada é gravado.
+    const quatro = await chamar("convertChecklistItem", [tarefaId, checklistId, itemId, "tsk_pai_alternativo"]);
+    expect(quatro.statusCode).toBe(400);
+    expect(quatro.json().ok).toBe(false);
+
+    const clienteAntes = await pool().connect();
+    let tarefasAntes: number;
+    try {
+      const { state } = await hidratar(clienteAntes, WS);
+      tarefasAntes = state.tasks.length;
+    } finally {
+      clienteAntes.release();
+    }
+
+    // Três argumentos: chega ao domínio e a Subtarefa nasce sempre sob a Tarefa do Checklist (D-04).
+    const tres = await chamar("convertChecklistItem", [tarefaId, checklistId, itemId]);
+    expect(tres.statusCode, tres.body).toBe(200);
+    const corpo = tres.json();
+    expect(corpo.ok, corpo.error).toBe(true);
+
+    const cliente = await pool().connect();
+    try {
+      const { state } = await hidratar(cliente, WS);
+      const subtarefa = state.tasks.find((t) => t.id === corpo.value.id);
+      expect(subtarefa?.parentTaskId).toBe(tarefaId);
+      expect(state.tasks.length).toBe(tarefasAntes + 1);
+    } finally {
+      cliente.release();
+    }
+  });
+
+  it("(r3b) convertChecklistItem numa Lista sem Subtarefas (Contas a pagar) responde ok:false com a frase da derivada e grava nada", async () => {
+    const tarefaId = tarefaDeContasAPagar!.id;
+    const cliente = await pool().connect();
+    try {
+      const { state } = await hidratar(cliente, WS);
+      const tarefa = state.tasks.find((t) => t.id === tarefaId);
+      expect(conversaoDeItemRecusada(state, "mem_maryane", tarefaId)).toBe("Esta Lista não usa Subtarefas.");
+      expect(tarefa).toBeDefined();
+    } finally {
+      cliente.release();
+    }
+    const resposta = await appDeTeste().inject({
+      method: "POST",
+      url: "/operacoes/convertChecklistItem",
+      headers: { authorization: "Bearer token-maryane" },
+      payload: { args: [tarefaId, "chk_que_nao_importa", "chi_que_nao_importa"] },
+    });
+    expect(resposta.statusCode, resposta.body).toBe(200);
+    const corpo = resposta.json();
+    expect(corpo.ok).toBe(false);
+    expect(corpo.error).toBe("Esta Lista não usa Subtarefas.");
+    expect(corpo.diferenca.gravados.length).toBe(0);
   });
 
   it("(y) uma operação nova do frontend do main (criarColecao) grava e volta na hidratação — não fica só na cópia do cliente", async () => {

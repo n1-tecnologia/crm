@@ -409,19 +409,17 @@ function toBusinessDay(date: TaskDate, rule: RecurrenceRule["businessDays"]): Ta
 function copyChecklist(state: DataState, source: Checklist, by: ActorRef): Checklist {
   // RN-CHK-13 — um Item convertido é marcador terminal: não nasce de novo.
   const vivos = source.items.filter((i) => !i.converted);
-  const ids = new Map(vivos.map((i) => [i.id, nextId("cki")] as const));
   const ativo = (memberId: Id | undefined) => memberId !== undefined && state.members.some((m) => m.id === memberId && m.state === "ativo");
   return {
     id: nextId("chk"),
     name: source.name,
     order: source.order,
     items: vivos.map((i) => ({
-      id: ids.get(i.id)!,
+      id: nextId("cki"),
       text: i.text,
       order: i.order,
       done: false,
       ...(ativo(i.assigneeMemberId) ? { assigneeMemberId: i.assigneeMemberId } : {}),
-      ...(i.parentItemId && ids.has(i.parentItemId) ? { parentItemId: ids.get(i.parentItemId)! } : {}),
     })),
     createdBy: by,
     createdAt: now(),
@@ -608,6 +606,9 @@ function criarOcorrencia(state: DataState, actingMemberId: Id, task: Task, rule:
     siblingOrder: state.tasks.filter((t) => t.parentTaskId === task.parentTaskId && t.listId === task.listId).length,
     title: task.title,
     description: task.description,
+    // Padrão de trabalho nº 2: a ocorrência leva a menção junto (cópia, não a mesma referência).
+    // Se o texto mudar, o filtro de `membrosMencionadosNaDescricao` na leitura protege.
+    ...(task.descriptionMentions?.length ? { descriptionMentions: task.descriptionMentions.map((m) => ({ type: "member" as const, id: m.id })) } : {}),
     statusId: inicial.id,
     taskTypeId: task.taskTypeId,
     priority: task.priority,
