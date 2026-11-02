@@ -57,7 +57,14 @@ export interface PedidoDeGravacao {
 }
 
 export interface Transporte {
-  gravar(pedido: PedidoDeGravacao): Promise<RespostaDeGravacao>;
+  /**
+   * D-11: as duas implementações reais (`transporteHttp`, `transporteEmMemoria`)
+   * devolvem SEMPRE a lista de respostas, uma por chamada, na ordem das
+   * chamadas. A união com uma resposta só existe para as fakes de teste do
+   * store, que devolvem uma resposta e continuam valendo sem edição (decisão da
+   * Open Question 2 da Fase 12); `store.ts` normaliza com `Array.isArray`.
+   */
+  gravar(pedido: PedidoDeGravacao): Promise<RespostaDeGravacao | readonly RespostaDeGravacao[]>;
   hidratar(): Promise<EstadoDoServidor | { readonly tipo: "falha"; readonly erro: string }>;
   /**
    * Checklist E2 — só a revisão do Espaço no servidor (`GET /estado/revisao`),
@@ -157,21 +164,23 @@ export function transporteHttp(opcoes: { readonly apiUrl: string; readonly obter
         // (foi o caso da troca de Papel em `configuracoes/membros/[membro]`,
         // hoje `alterarPapelDoMembro`): gravar em silêncio seria mentir para
         // a tela sobre o que persistiu.
-        return { tipo: "falha", erro: "Esta ação não passa por uma operação do domínio e não foi gravada." };
+        return [{ tipo: "falha", erro: "Esta ação não passa por uma operação do domínio e não foi gravada." }];
       }
 
-      // Mais de uma chamada no mesmo `run` — caso de `(shell)/page.tsx`, que
-      // cria uma Sessão de Chat e manda a mensagem no mesmo clique: cada
-      // chamada é uma transação própria no servidor, gravada em sequência.
-      // O `resultado` que a tela usa veio da cópia local; o servidor é a
-      // verdade sobre o que persistiu — paramos na primeira resposta que não
-      // for `"diferenca"` e devolvemos essa (a última processada).
-      let ultima: RespostaDeGravacao = { tipo: "falha", erro: "Nenhuma chamada foi gravada." };
+      // Mais de uma chamada no mesmo `run` (D-11): cada chamada é uma transação
+      // própria no servidor, gravada em sequência, e o cliente aplica as
+      // respostas em ordem, encaixando a revisão de uma na seguinte. Hoje
+      // nenhuma tela faz duas operações numa closure só (o chat faz dois `run`
+      // separados); isto vale como robustez. O `resultado` que a tela usa veio
+      // da cópia local; o servidor é a verdade sobre o que persistiu — paramos
+      // na primeira resposta que não for `"diferenca"` e a lista termina nela.
+      const respostas: RespostaDeGravacao[] = [];
       for (const chamada of pedido.chamadas) {
-        ultima = await gravarUma(apiUrl, obterToken, chamada, pedido.revisao);
-        if (ultima.tipo !== "diferenca") break;
+        const resposta = await gravarUma(apiUrl, obterToken, chamada, pedido.revisao);
+        respostas.push(resposta);
+        if (resposta.tipo !== "diferenca") break;
       }
-      return ultima;
+      return respostas;
     },
 
     async hidratar() {
@@ -223,11 +232,13 @@ export function transporteHttp(opcoes: { readonly apiUrl: string; readonly obter
 export function transporteEmMemoria(): Transporte {
   return {
     async gravar(pedido) {
-      return {
-        tipo: "estado",
-        resultado: pedido.resultado,
-        estado: { data: pedido.copia, revisao: pedido.revisao + 1, ordens: {}, memberId: "" },
-      };
+      return [
+        {
+          tipo: "estado",
+          resultado: pedido.resultado,
+          estado: { data: pedido.copia, revisao: pedido.revisao + 1, ordens: {}, memberId: "" },
+        },
+      ];
     },
     async hidratar() {
       return { tipo: "falha", erro: "Sem servidor nas rotas públicas." };

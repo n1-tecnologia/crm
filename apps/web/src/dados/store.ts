@@ -44,7 +44,16 @@ import * as operations from "@n1/dominio/operations";
 import { gravarChamadas, syncIdSequence } from "@n1/dominio/operations";
 import { aplicarDiferenca, type Ordens } from "@n1/dominio";
 import type { Id } from "@n1/dominio/types";
-import type { PedidoDeGravacao, Transporte } from "./transporte";
+import type { PedidoDeGravacao, RespostaDeGravacao, Transporte } from "./transporte";
+
+/**
+ * D-11 / Open Question 2 da Fase 12: as implementações reais de `Transporte`
+ * devolvem a lista de respostas, uma por chamada; as fakes de teste do store
+ * seguem devolvendo uma resposta só. Aqui as duas formas viram a mesma lista.
+ */
+function respostasDe(retorno: RespostaDeGravacao | readonly RespostaDeGravacao[]): readonly RespostaDeGravacao[] {
+  return Array.isArray(retorno) ? retorno : [retorno as RespostaDeGravacao];
+}
 
 interface StoreShape {
   readonly data: DataState;
@@ -122,66 +131,78 @@ export function criarStore(opcoes: {
      */
     async function enviar(pedido: PedidoDeGravacao): Promise<OperationResult<unknown>> {
       try {
-        const resposta = await transporte.gravar(pedido);
+        const respostas = respostasDe(await transporte.gravar(pedido));
+        if (respostas.length === 0) throw new Error("O transporte não devolveu nenhuma resposta.");
 
-        switch (resposta.tipo) {
-          case "diferenca": {
-            if (resposta.revisaoAnterior !== get().revisaoDoServidor) {
-              // Alguém gravou no meio (D-06): o diff foi calculado sobre uma
-              // revisão que já não é a de agora — aplicá-lo por cima seria
-              // arriscar um furo de ordem. Re-hidrata tudo.
-              await get().rehidratar();
-              if (!resposta.resultado.ok) {
-                set({ lastResult: { ...resposta.resultado, at: Date.now() } });
+        // D-11: as respostas entram em ordem, uma por chamada do `run`. O
+        // resultado devolvido é o da última processada (ou o erro do conflito
+        // ou da falha que interrompeu a lista).
+        let ultimo: OperationResult<unknown> = { ok: true, value: undefined };
+
+        for (const resposta of respostas) {
+          switch (resposta.tipo) {
+            case "diferenca": {
+              if (resposta.revisaoAnterior !== get().revisaoDoServidor) {
+                // Alguém gravou no meio (D-06, D-12): o diff foi calculado sobre
+                // uma revisão que já não é a de agora — aplicá-lo por cima seria
+                // arriscar um furo de ordem (T-12-13). Re-hidrata tudo; o
+                // `GET /estado` já traz as chamadas seguintes da lista.
+                await get().rehidratar();
+                if (!resposta.resultado.ok) {
+                  set({ lastResult: { ...resposta.resultado, at: Date.now() } });
+                }
+                return resposta.resultado;
               }
+
+              // Mutação em lugar — o mesmo modelo do store: `aplicarDiferenca`
+              // nunca troca a referência das coleções, só o array por dentro.
+              aplicarDiferenca(get().data, get().ordens, resposta.diferenca);
+              set((estado) => ({
+                revisaoDoServidor: resposta.revisao,
+                sequenciaDoServidor: Math.max(estado.sequenciaDoServidor, resposta.sequencia ?? 0),
+                revision: estado.revision + 1,
+              }));
+
+              if (!resposta.resultado.ok) {
+                // O servidor recusou o que a cópia aceitou — só acontece por
+                // não-determinismo (ex.: um prazo virou entre o clique e a
+                // resposta); o diff (vazio nesse caso) já aplicou, o erro do
+                // servidor prevalece sobre o `ok:true` que a cópia calculou.
+                set((estado) => ({ lastResult: { ...resposta.resultado, at: Date.now() }, revision: estado.revision + 1 }));
+              }
+              ultimo = resposta.resultado;
+              break;
+            }
+
+            case "estado": {
+              // Caminho do transporte em memória (rotas públicas): não há
+              // servidor divergindo — a cópia gravada VIRA o estado.
+              set((estado) => ({
+                data: resposta.estado.data,
+                ordens: resposta.estado.ordens,
+                revisaoDoServidor: resposta.estado.revisao,
+                revision: estado.revision + 1,
+              }));
               return resposta.resultado;
             }
 
-            // Mutação em lugar — o mesmo modelo do store: `aplicarDiferenca`
-            // nunca troca a referência das coleções, só o array por dentro.
-            aplicarDiferenca(get().data, get().ordens, resposta.diferenca);
-            set((estado) => ({
-              revisaoDoServidor: resposta.revisao,
-              sequenciaDoServidor: Math.max(estado.sequenciaDoServidor, resposta.sequencia ?? 0),
-              revision: estado.revision + 1,
-            }));
-
-            if (!resposta.resultado.ok) {
-              // O servidor recusou o que a cópia aceitou — só acontece por
-              // não-determinismo (ex.: um prazo virou entre o clique e a
-              // resposta); o diff (vazio nesse caso) já aplicou, o erro do
-              // servidor prevalece sobre o `ok:true` que a cópia calculou.
-              set((estado) => ({ lastResult: { ...resposta.resultado, at: Date.now() }, revision: estado.revision + 1 }));
+            case "conflito": {
+              await get().rehidratar();
+              set({ lastResult: { ok: false, error: resposta.erro, at: Date.now() } });
+              return { ok: false, error: resposta.erro };
             }
-            return resposta.resultado;
-          }
 
-          case "estado": {
-            // Caminho do transporte em memória (rotas públicas): não há
-            // servidor divergindo — a cópia gravada VIRA o estado.
-            set((estado) => ({
-              data: resposta.estado.data,
-              ordens: resposta.estado.ordens,
-              revisaoDoServidor: resposta.estado.revisao,
-              revision: estado.revision + 1,
-            }));
-            return resposta.resultado;
-          }
-
-          case "conflito": {
-            await get().rehidratar();
-            set({ lastResult: { ok: false, error: resposta.erro, at: Date.now() } });
-            return { ok: false, error: resposta.erro };
-          }
-
-          case "falha": {
-            set((estado) => ({
-              lastResult: { ok: false, error: resposta.erro, at: Date.now() },
-              revision: estado.revision + 1,
-            }));
-            return { ok: false, error: resposta.erro };
+            case "falha": {
+              set((estado) => ({
+                lastResult: { ok: false, error: resposta.erro, at: Date.now() },
+                revision: estado.revision + 1,
+              }));
+              return { ok: false, error: resposta.erro };
+            }
           }
         }
+
+        return ultimo;
       } catch {
         // Revisão de código: um corpo malformado ou um diff que não aplica não pode deixar
         // `runConfirmado` rejeitado — a tela que espera a confirmação ficaria travada.
