@@ -229,8 +229,8 @@ describe("(m) o regime travado (o padrão, D-09): a trava no começo, uma tentat
     // O que o compilador impede (`tsc --noEmit` roda sobre este arquivo): quem não declara
     // `regime: "otimista"` não pode passar `tentativas`.
     const semRegime = () =>
+      // @ts-expect-error — `tentativas` só existe no regime otimista
       executar("ws_x", () => ok("feito"), {
-        // @ts-expect-error — `tentativas` só existe no regime otimista
         tentativas: 2,
       });
     falso.erroEm = (sql) => (NA_TRAVA(sql) ? erroDoBanco("55P03", "canceling statement due to lock timeout") : undefined);
