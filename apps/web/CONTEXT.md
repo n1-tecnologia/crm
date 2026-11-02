@@ -49,6 +49,17 @@ existe enquanto sobra gravação na fila. Uma cópia que aceita sem registrar
 chamada alguma não vira `data` (seria mostrar uma mudança que nunca vai ao
 servidor).
 
+**O que espera o servidor (D-13).** `src/dados/operacoes-que-esperam.ts` lista,
+com o motivo de cada uma, as operações cujo resultado local não é o que o
+servidor grava: segredo de link, JID, link de convite e chave pública (valor
+aleatório ou de contador gerado na operação), `inviteMember` (resolução só do
+servidor) e as rotinas que o agendador também roda. Um gesto com QUALQUER
+chamada da lista não vira `data` na hora e só aparece quando a diferença volta,
+com o valor do servidor; o resto aparece na hora. A lista é regra de tela (por
+isso mora aqui, não no domínio), é um conjunto fechado por teste e tem o
+levantamento em `.planning/phases/12-*/12-PROVAS.md`. Operação nova que gere um
+valor desse tipo entra na lista junto com o teste.
+
 **Um pedido por vez (D-16).** As gravações de um store saem em fila, na ordem
 do clique: o primeiro pedido sai na hora, os seguintes esperam a resposta do
 anterior e levam a revisão que ela devolveu. Cada resposta é aplicada em
