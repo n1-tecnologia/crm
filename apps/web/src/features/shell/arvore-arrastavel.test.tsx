@@ -2,8 +2,9 @@
 /**
  * Fase 10, 2.3.3 item 1 (D-08, D-09, D-10, D-12, EST-06) — arrastar na árvore
  * da Estrutura. A casca de verdade (`AppShell`) sobre o `StoreProvider` de
- * verdade e um transporte falso que confirma: o que a tela mostra depois de
- * soltar é o que o servidor devolveu, nunca o que a cópia aceitou.
+ * verdade e um transporte falso que confirma. D-13 (Fase 12): o lugar novo
+ * aparece na árvore na hora, a partir da cópia que o domínio aceitou, e a
+ * árvore fica `aria-busy` até a resposta; a recusa devolve o lugar antigo.
  *
  * Os eventos são os do HTML5 nativo (`dragstart`, `dragover`, `drop`, `dragend`)
  * disparados por `fireEvent`. O jsdom zera `getBoundingClientRect` e não traz
