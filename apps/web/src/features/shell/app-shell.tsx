@@ -74,7 +74,7 @@ import { BrandMark } from "./brand";
 import { TreeRow } from "./linha-da-arvore";
 import { useArrastarNaArvore, type NoDaArvore, type PropsDeArrasto } from "./arrastar-na-arvore";
 
-import { useData, useRun, useRunConfirmado, useSession } from "@/dados/store";
+import { useData, useIdsNaoConfirmados, useRun, useRunConfirmado, useSession } from "@/dados/store";
 import { MEUS_NEGOCIOS_ID } from "@n1/dominio/seed-comercial";
 import { moveChatSessionToFolder, recusaDeReordenar, reorderContainers, type PaiDeConteiner } from "@n1/dominio/operations";
 import { useChatFolderDialogs } from "@/features/ia/chat-folder-dialogs";
@@ -843,11 +843,13 @@ function TreeSpace({
   readonly openMover: (id: Id) => void;
 }) {
   const [open, setOpen] = useState(true);
+  // D-15: o Espaço que o servidor ainda não confirmou aparece, mas não leva a lugar nenhum nem se mexe.
+  const salvando = useIdsNaoConfirmados().has(space.id);
   const childFolders = foldersUnder(space.id);
   const directLists = listsUnder(space.id);
-  const menu = useMenuDeOrdem("space", space.id, null, inert);
+  const menu = useMenuDeOrdem("space", space.id, null, inert || salvando);
   const temFilhos = childFolders.length + directLists.length > 0;
-  const arrastar = useArrastoDaLinha({ tipo: "space", id: space.id, aberto: open, temFilhosVisiveis: temFilhos, abrir: () => setOpen(true) }, inert);
+  const arrastar = useArrastoDaLinha({ tipo: "space", id: space.id, aberto: open, temFilhosVisiveis: temFilhos, abrir: () => setOpen(true) }, inert || salvando);
 
   return (
     <li>
@@ -856,14 +858,15 @@ function TreeSpace({
         open={open}
         onToggle={() => setOpen((value) => !value)}
         hasChildren={temFilhos}
-        href={inert ? undefined : `/estrutura/espacos/${space.id}`}
+        href={inert || salvando ? undefined : `/estrutura/espacos/${space.id}`}
         no={space.id}
+        salvando={salvando}
         label={space.name}
         icon={<span className="size-2 rounded-sm" style={{ backgroundColor: space.color ?? "var(--cor-dom-estrutura)" }} />}
         privateContainer={space.isPrivate}
         archived={space.lifecycle === "arquivado"}
         creatable={
-          inert
+          inert || salvando
             ? []
             : [
                 { label: "Lista", onSelect: () => openCreate("lista", "space", space.id) },
@@ -955,9 +958,11 @@ function TreeFolder({
 }) {
   const [open, setOpen] = useState(true);
   const pathname = usePathname();
+  // D-15: a Pasta que o servidor ainda não confirmou aparece, mas não leva a lugar nenhum nem se mexe.
+  const salvando = useIdsNaoConfirmados().has(folder.id);
   const menu = [
-    ...useMenuDeMover("folder", folder.id, inert ? undefined : openMover),
-    ...useMenuDeOrdem("folder", folder.id, { type: folder.parentType, id: folder.parentId }, inert),
+    ...useMenuDeMover("folder", folder.id, inert || salvando ? undefined : openMover),
+    ...useMenuDeOrdem("folder", folder.id, { type: folder.parentType, id: folder.parentId }, inert || salvando),
   ];
   // A3.4 — a Subfolder never expands into another Subfolder.
   const subfolders = folder.parentType === "space" ? foldersUnder(folder.id) : [];
@@ -965,7 +970,7 @@ function TreeFolder({
   const temFilhos = subfolders.length + childLists.length > 0;
   const arrastar = useArrastoDaLinha(
     { tipo: "folder", id: folder.id, paiTipo: folder.parentType, paiId: folder.parentId, aberto: open, temFilhosVisiveis: temFilhos, abrir: () => setOpen(true) },
-    inert,
+    inert || salvando,
   );
 
   return (
@@ -975,15 +980,16 @@ function TreeFolder({
         open={open}
         onToggle={() => setOpen((value) => !value)}
         hasChildren={temFilhos}
-        href={inert ? undefined : enderecos.pasta(folder)}
+        href={inert || salvando ? undefined : enderecos.pasta(folder)}
         no={folder.id}
+        salvando={salvando}
         active={pathname === enderecos.pasta(folder)}
         label={folder.name}
         icon={<FolderIcon className="size-3.5 text-[var(--cor-tinta-fraca)]" aria-hidden="true" />}
         privateContainer={folder.isPrivate}
         archived={folder.lifecycle === "arquivado"}
         creatable={
-          inert
+          inert || salvando
             ? []
             : [
                 { label: "Lista", onSelect: () => openCreate("lista", "folder", folder.id) },
@@ -1041,11 +1047,13 @@ function TreeList({
 }) {
   const pathname = usePathname();
   const [navegar] = useNavegar();
+  // D-15: a Lista que o servidor ainda não confirmou aparece, mas não leva a lugar nenhum nem se mexe.
+  const salvando = useIdsNaoConfirmados().has(list.id);
   const menu = [
-    ...useMenuDeMover("list", list.id, inert ? undefined : openMover),
-    ...useMenuDeOrdem("list", list.id, { type: list.parentType, id: list.parentId }, inert),
+    ...useMenuDeMover("list", list.id, inert || salvando ? undefined : openMover),
+    ...useMenuDeOrdem("list", list.id, { type: list.parentType, id: list.parentId }, inert || salvando),
   ];
-  const arrastar = useArrastoDaLinha({ tipo: "list", id: list.id, paiTipo: list.parentType, paiId: list.parentId, aberto: true, temFilhosVisiveis: false }, inert);
+  const arrastar = useArrastoDaLinha({ tipo: "list", id: list.id, paiTipo: list.parentType, paiId: list.parentId, aberto: true, temFilhosVisiveis: false }, inert || salvando);
   const href = enderecos.lista(list);
   const novo = enderecos.novoNaLista ?? {
     // Dentro de uma Lista o que se cria é Tarefa, e o campo dela já vive na
@@ -1058,8 +1066,9 @@ function TreeList({
       <TreeRow
         depth={depth}
         hasChildren={false}
-        href={href}
+        href={salvando ? undefined : href}
         no={list.id}
+        salvando={salvando}
         label={list.name}
         // C35 — a Lista conversacional se lê na árvore: o balão no lugar da lista de tarefas.
         icon={
@@ -1073,7 +1082,7 @@ function TreeList({
         archived={list.lifecycle === "arquivado"}
         active={pathname === href}
         creatable={
-          list.lifecycle === "ativo"
+          list.lifecycle === "ativo" && !salvando
             ? [{ label: novo.rotulo, onSelect: () => navegar(novo.href(list)) }]
             : []
         }

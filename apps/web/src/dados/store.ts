@@ -51,7 +51,7 @@
  * onde o store vem, nem que ele agora fala com uma API.
  */
 
-import { createContext, createElement, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, createElement, useContext, useEffect, useState, type ReactNode } from "react";
 import { createStore, useStore as useZustandStore, type StoreApi } from "zustand";
 import type { DataState, OperationResult, Session } from "@n1/dominio/state";
 import * as operations from "@n1/dominio/operations";
@@ -659,13 +659,58 @@ export function useRehidratar() {
 
 export { operations };
 
+const NENHUM_ID: ReadonlySet<Id> = new Set<Id>();
+
 /**
- * D-15 — esqueleto do RED: ainda não calcula nada.
+ * D-15 — "pendente" é DERIVADO, nunca guardado: o id que está em `data` e ainda
+ * não está em `confirmado` (o servidor ainda não devolveu o registro). Vale para
+ * toda coleção-array do estado, então serve a qualquer registro, não só aos da
+ * Estrutura. Sem gravação otimista a caminho, `data` é o MESMO objeto que
+ * `confirmado` (copy-on-write, D-13) e o conjunto é vazio sem varrer nada.
+ *
+ * O id local pode não ser o do servidor (a ponte do Agente e outras gravações
+ * consomem ids): por isso a tela não abre nem leva a um registro pendente. Quem
+ * guarda a navegação (12-09) recebe `() => idsNaoConfirmados(data, confirmado)`.
  */
-export function idsNaoConfirmados(_data: DataState, _confirmado: DataState): ReadonlySet<Id> {
-  return new Set<Id>();
+export function idsNaoConfirmados(data: DataState, confirmado: DataState): ReadonlySet<Id> {
+  if (data === confirmado) return NENHUM_ID;
+  const pendentes = new Set<Id>();
+  const doConfirmado = confirmado as unknown as Record<string, unknown>;
+  for (const [colecao, valor] of Object.entries(data)) {
+    if (!Array.isArray(valor)) continue;
+    const confirmados = new Set<unknown>();
+    const outra = doConfirmado[colecao];
+    if (Array.isArray(outra)) {
+      for (const registro of outra) {
+        if (registro && typeof registro === "object" && "id" in registro) confirmados.add((registro as { readonly id: unknown }).id);
+      }
+    }
+    for (const registro of valor) {
+      if (!registro || typeof registro !== "object" || !("id" in registro)) continue;
+      const id = (registro as { readonly id: Id }).id;
+      if (!confirmados.has(id)) pendentes.add(id);
+    }
+  }
+  return pendentes;
 }
 
+/** O último cálculo: a árvore tem um hook por linha, e todas leem o mesmo conjunto. */
+let ultimoCalculo: { data: DataState; confirmado: DataState; revision: number; conjunto: ReadonlySet<Id> } | null = null;
+
+/**
+ * Os ids que a tela mostra e o servidor ainda não confirmou (D-15), memorizados
+ * pela revisão: `aplicarDiferenca` muta `confirmado` em lugar, então só as
+ * referências não bastam para saber que o conjunto envelheceu.
+ */
 export function useIdsNaoConfirmados(): ReadonlySet<Id> {
-  return useMemo(() => new Set<Id>(), []);
+  const revision = useStore((state) => state.revision);
+  const data = useStore((state) => state.data);
+  const confirmado = useStore((state) => state.confirmado);
+  if (data === confirmado) return NENHUM_ID;
+  if (ultimoCalculo && ultimoCalculo.data === data && ultimoCalculo.confirmado === confirmado && ultimoCalculo.revision === revision) {
+    return ultimoCalculo.conjunto;
+  }
+  const conjunto = idsNaoConfirmados(data, confirmado);
+  ultimoCalculo = { data, confirmado, revision, conjunto };
+  return conjunto;
 }

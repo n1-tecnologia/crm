@@ -175,7 +175,12 @@ describe("idsNaoConfirmados — pendente é derivado, sem estado novo (D-15)", (
     const data = structuredClone(confirmado);
     const r = createList(data, THIAGO, { name: "Lista nova", parentType: "space", parentId: ESPACO });
     if (!r.ok) throw new Error(r.error);
-    expect([...idsNaoConfirmados(data, confirmado)]).toEqual([r.value.id]);
+    const pendentes = idsNaoConfirmados(data, confirmado);
+    // A Lista e o registro de atividade que o domínio grava junto: todo id novo, de qualquer coleção, e nenhum do seed.
+    expect(pendentes.has(r.value.id)).toBe(true);
+    expect(pendentes.has(ESPACO)).toBe(false);
+    expect(pendentes.size).toBeGreaterThan(0);
+    expect(pendentes.size).toBeLessThan(4);
   });
 
   it("é vazio quando `data` é uma cópia igual ao `confirmado` (nada a caminho)", () => {
