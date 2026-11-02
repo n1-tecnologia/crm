@@ -441,3 +441,72 @@ A meta pode ser um número por gesto (ms do pedido) ou "o ganho que o B der bast
 - **Opção escolhida:** `b-ganho-basta`. O caminho B segue como planejado (12-04 a 12-10 rodam).
 - **Meta:** nenhuma meta numérica por gesto. O ganho que o B der basta. O 12-10 registra o "depois" ao lado do "antes", com o mesmo comando, e a fase fecha com os dois valores. A mesma frase está em `12-CONTEXT.md`, seção "Meta (fixada na parada)".
 - **Sessão C:** não entra. O gatilho de D-07 não disparou (a mediana do `hidratar` direto, 147.5 ms, ficou abaixo do limite de 300 ms) e o dono não mandou registrá-la. Nenhuma fase foi adicionada ao ROADMAP; o texto de "Entrada proposta para o ROADMAP" fica aqui só como registro.
+
+## Operações que esperam o servidor (D-13)
+
+Levantamento do plano 12-07 (2026-11-02). A lista mora em `apps/web/src/dados/operacoes-que-esperam.ts` (`OPERACOES_QUE_ESPERAM`, nome → motivo) e o conjunto é fechado por `operacoes-que-esperam.test.ts`. Um gesto em que qualquer chamada está na lista não vira `data` na hora: espera a resposta do servidor, como antes da fase.
+
+### Critério
+
+Espera o servidor a operação cujo resultado local difere do que o servidor grava de um jeito que a pessoa vê e usa: (1) valor aleatório ou de contador de módulo gerado na operação; (2) resolução que só o servidor faz antes da transação (`SERVICOS`); (3) efeito de relógio ou idempotência do servidor que a cópia não enxerga. Ficam otimistas: ids sequenciais (`nextId`, `activity.ts:12`; D-15 cobre com "sem link até confirmar"), timestamps (`now()`), Execuções de Automação e Atividade, o disparo da ponte do Agente (`tarefasAfetadasPelaOperacao`, `apps/api/src/rotas/operacoes.ts:144`, depois do commit) e o recorte por Membro.
+
+### Como o levantamento foi feito
+
+1. Varredura mecânica em `packages/dominio/src` (fora de `*.test.ts`) por `secret(`, `gerarJid(`, `gerarEnderecoDeConvite(`, `gerarChavePublica(`, `gerarIdentificadorDeFlow(`, `gerarIdentificadorDeResposta(`, `crypto.`, `Math.random(`, `randomUUID(`, `getRandomValues`: só `scale.ts:48` (`crypto.getRandomValues`) e as cinco funções de `ferramentas/provedor-simulado.ts:65-96`, que usam o contador de módulo `let sequencia = 0` (`provedor-simulado.ts:55`). Nenhum `Math.random` nem `randomUUID` no domínio.
+2. Varredura de contadores de módulo (`^let `): `activity.ts:9` (`sequence`, o `nextId`: ids sequenciais, fora do critério), `provedor-simulado.ts:55` (`sequencia`), `automations.ts:696` e `ferramentas/automacoes.ts:185` (`profundidade`, a guarda de recursão: sobe e desce no `try/finally`, nunca aparece na tela) e `registro.ts:765` (`gravador`, o gravador de chamadas).
+3. Para cada ocorrência, a função exportada que a contém (por `awk` sobre o arquivo) e todos os chamadores dela no domínio (`grep` do nome da função): nenhuma função da tabela abaixo tem chamador que seja outra operação do registro; o único chamador de `createForm` fora do registro é `garantirFormularioDaSolicitacao` (`formulario-da-solicitacao.ts:114`), usado só pelo bootstrap da API (`apps/api/src/bootstrap/formulario-da-solicitacao.ts`), que não está em `OPERACOES`.
+4. `SERVICOS` em `apps/api/src/rotas/operacoes.ts:228`: tem uma única entrada, `inviteMember`.
+5. As sete candidatas `[ASSUMED]` da RESEARCH (A4): o corpo de cada uma foi lido.
+6. Os 14 nomes da lista e as 7 candidatas foram conferidos como chaves de `OPERACOES` (`registro.ts:421-742`).
+
+### As catorze verificadas na RESEARCH: ficam na lista
+
+| Operação | Gerador / evidência (arquivo:linha) | Veredito | Motivo |
+|---|---|---|---|
+| `createForm` | `scale.ts:348` `secret: secret()`; `scale.ts:46-50` `crypto.getRandomValues` | espera | 1: o segredo do link público é aleatório; o da cópia nunca é o do servidor |
+| `rotateFormSecret` | `scale.ts:419` `form.secret = secret()` | espera | 1: idem |
+| `shareTaskPublicly` | `scale.ts:614` `task.publicShare = { secret: secret(), … }` | espera | 1: idem |
+| `criarGrupo` | `ferramentas/grupos.ts:156` `gerarJid(state)`, `:165` `gerarEnderecoDeConvite()`; contador `provedor-simulado.ts:55` | espera | 1: JID e link de convite saem do contador do módulo |
+| `sincronizarGrupo` | `grupos.ts:384` `gerarEnderecoDeConvite()` | espera | 1: idem |
+| `regenerarLinkDeConvite` | `grupos.ts:530` `gerarEnderecoDeConvite()` | espera | 1: idem |
+| `criarComunidade` | `ferramentas/comunidades.ts:70` e `:89` `gerarJid(state)` (a linha 89 está DENTRO de `criarComunidade`, que começa na 45: é o Grupo de avisos da mesma função; fecha a premissa A5 da RESEARCH) | espera | 1: a Comunidade e o Grupo de avisos recebem JID do contador |
+| `definirPontoDeTrocaDeDados` | `ferramentas/flows.ts:231` `gerarChavePublica()` | espera | 1: a chave pública sai do contador |
+| `regenerarChavesDoPonto` | `flows.ts:243` `gerarChavePublica()` | espera | 1: idem |
+| `publicarVersao` | `flows.ts:651` `gerarIdentificadorDeFlow()` | espera | 1: o identificador externo do Flow sai do contador |
+| `copiarFlow` | `flows.ts:735` `gerarChavePublica()` | espera | 1: a cópia ganha chave nova do contador |
+| `inviteMember` | `apps/api/src/rotas/operacoes.ts:237-249` (`SERVICOS.inviteMember`): o servidor resolve e-mail → `userId` no Supabase Auth antes da transação e reativa Membro removido; a cópia roda sem `userId` | espera | 2: resolução só do servidor (T-12-18) |
+| `runScheduledAutomations` | `automations.ts:750`; `jaRodou` em `:794-800`; chamado com `new Date()` em `features/estrutura/bulk-status-bar.tsx:210` e `features/estrutura/financeiro/contas-view.tsx:376` | espera | 3: idempotência e corrida com o agendador do servidor |
+| `runCalendarRecurrences` | `collaboration.ts:544`; chamado com `new Date()` em `features/estrutura/bulk-status-bar.tsx:218` | espera | 3: cria registros em massa com ids da sequência, em corrida com o agendador |
+
+As linhas citadas pela RESEARCH para `flows.ts` (`651`, `735`) são as das chamadas ao gerador, não as da função (`publicarVersao` começa na 624, `copiarFlow` na 708); as duas conferem.
+
+### As sete candidatas `[ASSUMED]`: lidas, ficam otimistas
+
+| Candidata | Onde (arquivo:linha) | O que o corpo faz | Veredito | Motivo |
+|---|---|---|---|---|
+| `importarGruposDoCanal` | `ferramentas/grupos.ts:293`; lê `GRUPOS_NO_PROVEDOR[canal.externalId]` em `:300` | Cria Grupos a partir de uma tabela fixa do módulo (`provedor-simulado.ts:31`): o JID (`remoto.jid`) e o link (`remoto.linkDeConvite`) vêm dela, não de `gerarJid` nem de `gerarEnderecoDeConvite`; só os ids são `nextId("grp")` | otimista | Não há gerador aleatório nem de contador: a tabela é a mesma no cliente e no servidor; o que difere é só o id sequencial (D-15) |
+| `criarRascunhoAPartirDe` | `flows.ts:691`; `novaVersao` em `:701` (definida em `:76`) | Copia as telas da Versão de origem; o id é `nextId("vfl")` e o número é `max + 1` | otimista | Sem gerador; id sequencial e número derivados do estado |
+| `enviarFlow` | `flows.ts:845`; delega a `sendMessage` (`conversations.ts:165`, `nextId("msg")` em `:225`) | Valida o Flow publicado, a Conversa e o Canal e grava a Mensagem com o Flow anexado; o identificador de resposta do provedor (`gerarIdentificadorDeResposta`, `flows.ts:935`) é de `receberRespostaDeFlow`, que NÃO está em `OPERACOES` (`registro.ts:266`) | otimista | Sem gerador; id sequencial e `now()`. A janela de 24 h compara o relógio da própria cópia (`Date.now()`), não um relógio que só o servidor tem |
+| `ensaiarAgente` | `ia/agentes.ts:428`; id `nextId("exe")` em `:444`; passos em `:488-509` | Monta uma Execução `rehearsal` com passos fixos ("Leitura simulada de …", "Escrita não aplicada: ensaio") e referências de Conhecimento lidas do estado; não chama modelo algum. Em `apps/api/src` o nome só aparece no esquema de argumentos (`rotas/esquemas/ia-agentes.ts:24`); o "ensaio" do resto da API (`AUTOMACOES_ENSAIO_PRIMEIRA_VOLTA`, `observabilidade/`) é a primeira volta do agendador de Automações, outra coisa | otimista | A resposta do ensaio é determinística sobre o estado e nasce no domínio, não num servidor nem num gerador |
+| `sendChatMessage` | `ai.ts:955`; `nextId("cmg")` em `:970` | Só acrescenta a mensagem do USUÁRIO à Sessão (`role: "usuario"`); não há resposta do assistente nesta operação, e `role: "assistente"` só aparece no seed (`seed.ts:2501,2517,2536`) | otimista | Sem gerador; a resposta do assistente não é produzida por ela |
+| `runLancamentoAgent` | `financeiro.ts:406`; `nextId("exe")` em `:437`; de-para `opcoes?.dePara ?? DE_PARA_DO_PROTOTIPO` em `:414` (`:189`) | Gera o Resumo de pagamento a partir da Tarefa e de um de-para constante; o lançamento no ERP é "simulado (Integração ERP do protótipo)" (`:530`). Não há chamador na web (`grep`), só o esquema de argumentos da API | otimista | Sem gerador, sem I/O; determinística sobre o estado |
+| `converterSolicitacaoEmContaAPagar` | `conversao-de-solicitacao.ts:185`; `createTask` em `:251`; `agoraISO` em `:59` | Valida a Solicitação aprovada e cria a Conta a pagar, tudo ou nada; o id legível (`CP-n`) sai do contador do ESTADO (`workspace.taskReadableId.next`, `tasks.ts:201-204`), que viaja com `data` | otimista | Sem gerador de módulo; o id e o id legível são sequenciais (D-15 cobre) e a Atividade chega na confirmação |
+
+### Achadas pela varredura e fora do registro
+
+| Função | Onde | Por que não entra |
+|---|---|---|
+| `receberRespostaDeFlow` | `flows.ts:910`; `gerarIdentificadorDeResposta()` em `:935` | Evento do provedor, sem `actingMemberId`; fora de `OPERACOES` (`registro.ts:266`), nenhum `run` da tela a chama |
+| `garantirFormularioDaSolicitacao` | `formulario-da-solicitacao.ts:106` (chama `createForm` em `:114`) | Bootstrap da API; fora de `OPERACOES` |
+
+### Veredito
+
+A lista fica com as catorze entradas verificadas; o levantamento não acrescentou nenhuma e não tirou nenhuma. As sete candidatas `[ASSUMED]` foram lidas e ficam otimistas. Toda operação do registro que usa um gerador aleatório ou de contador do domínio está na lista; o único outro contador de módulo que a pessoa vê é o `nextId`, que D-15 cobre.
+
+### Candidata de UX, fora do critério — decisão do dono
+
+`decideProcessApproval` (o painel de aprovação) e a conferência do resumo (`painel-conferencia-do-resumo.tsx`), que usa o mesmo molde, não entram na lista: o resultado local é o que o servidor grava, então não cumprem o critério acima. Foram achadas pelo 12-06, que reescreveu o teste (e) de `painel-aprovacao.test.tsx` para o comportamento de hoje.
+
+- **O que acontece hoje (D-13):** a decisão aparece na hora, o cartão mostra "Aprovação concluída", o diálogo fecha e o aviso de sucesso sai ANTES da resposta do servidor. Se o servidor recusa, o cartão volta a "Aprovação pendente" com o erro (D-14), mas o diálogo já fechou.
+- **O que mudaria se entrasse na lista:** o botão ficaria em "Aprovando…" até a resposta, como era antes da fase; o diálogo só fecharia, e o aviso só sairia, depois da confirmação.
+- **O que isso custa:** nesse gesto a tela voltaria a esperar uma ida e volta ao servidor para mostrar a decisão, ou seja, perderia o ganho de velocidade percebida que D-13 dá aos demais gestos. Entrar na lista não é uma decisão técnica (o resultado local não difere do servidor): é a escolha de produto entre "parecer decidida na hora" e "só parecer decidida depois da confirmação". Não foi alterada; a lista e o conjunto fechado do teste ficam como estão até o dono decidir.

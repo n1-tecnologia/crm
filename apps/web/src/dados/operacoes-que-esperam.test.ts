@@ -27,6 +27,55 @@ describe("OPERACOES_QUE_ESPERAM — a lista de D-13", () => {
   });
 });
 
+/**
+ * O conjunto que o levantamento da Fase 12 (plano 07, Task 2) fechou, em ordem
+ * alfabética: `12-PROVAS.md` § "Operações que esperam o servidor (D-13)". Mudar
+ * a lista exige mudar esta constante — e o levantamento junto com ela.
+ */
+const ESPERADAS_PELO_LEVANTAMENTO: readonly string[] = [
+  "copiarFlow",
+  "createForm",
+  "criarComunidade",
+  "criarGrupo",
+  "definirPontoDeTrocaDeDados",
+  "inviteMember",
+  "publicarVersao",
+  "regenerarChavesDoPonto",
+  "regenerarLinkDeConvite",
+  "rotateFormSecret",
+  "runCalendarRecurrences",
+  "runScheduledAutomations",
+  "shareTaskPublicly",
+  "sincronizarGrupo",
+];
+
+/** As candidatas que o levantamento leu e deixou otimistas: o valor local é o que o servidor grava. */
+const LIDAS_E_DEIXADAS_OTIMISTAS = [
+  "importarGruposDoCanal",
+  "criarRascunhoAPartirDe",
+  "enviarFlow",
+  "ensaiarAgente",
+  "sendChatMessage",
+  "runLancamentoAgent",
+  "converterSolicitacaoEmContaAPagar",
+] as const;
+
+describe("OPERACOES_QUE_ESPERAM — o conjunto fechado pelo levantamento", () => {
+  it("a constante do teste está em ordem alfabética (sem repetição)", () => {
+    expect(ESPERADAS_PELO_LEVANTAMENTO).toEqual([...new Set(ESPERADAS_PELO_LEVANTAMENTO)].sort());
+  });
+
+  it("as chaves do Map são exatamente as do levantamento", () => {
+    expect([...OPERACOES_QUE_ESPERAM.keys()].sort()).toEqual(ESPERADAS_PELO_LEVANTAMENTO);
+  });
+
+  it.each(LIDAS_E_DEIXADAS_OTIMISTAS)("%s foi lida, não gera valor que o servidor decida, e fica otimista", (nome) => {
+    expect(ehNomeDeOperacao(nome), `${nome} não está em OPERACOES`).toBe(true);
+    expect(OPERACOES_QUE_ESPERAM.has(nome as never)).toBe(false);
+    expect(esperaOServidor([{ nome: nome as never, args: [] }])).toBe(false);
+  });
+});
+
 describe("esperaOServidor", () => {
   it("é verdadeiro quando a chamada está na lista", () => {
     expect(esperaOServidor([{ nome: "createForm", args: [] }])).toBe(true);
