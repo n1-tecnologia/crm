@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 12
 current_phase_name: "Clone ClickUp: gravação mais rápida"
 status: executing
-stopped_at: Completed 12-03-PLAN.md
-last_updated: "2026-11-02T13:14:03.904Z"
+stopped_at: Completed 12-04-PLAN.md
+last_updated: "2026-11-02T13:28:48.981Z"
 last_activity: 2026-10-30
 last_activity_desc: Phase 12 execution started
-state_head: 8f62b7df49074fe158c4f046bdb65684c53d3c77
+state_head: 8d98b76e2de8eddcab85fceeeda687dd18e56d01
 progress:
   total_phases: 12
   completed_phases: 6
   total_plans: 209
-  completed_plans: 198
+  completed_plans: 199
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 12 (Clone ClickUp: gravação mais rápida) — EXECUTING
-Plan: 4 of 10
+Plan: 5 of 10
 Status: Ready to execute
 Last activity: 2026-10-30 — Phase 12 execution started
 
@@ -417,6 +417,7 @@ Progress: [██████░░░░] 63%
 | Phase 12 P01 | 8 min | 2 tasks | 6 files |
 | Phase 12 P02 | 7 min | 3 tasks | 8 files |
 | Phase 12 P03 | 5min | 3 tasks | 2 files |
+| Phase 12 P04 | 27 min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -618,6 +619,9 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 12]: 12-02: gesto da lixeira usa o mesmo Espaço de teste restaurado por restoreContainer fora da medição (o domínio aceitou)
 - [Phase 12]: 12-02: Task 3 fechada sem a observação do D-03 no serviço real (nenhuma requisição da tela chegou à VPS; causa não apurada); ponto aberto para o 12-10
 - [Phase 12]: 12-03: parada respondida com b-ganho-basta e 'C não entra' (dono aceitou a recomendação); caminho B sem meta numérica, 12-10 registra o 'depois' ao lado do 'antes'; sessão C fora do ROADMAP (hidratar direto 147.5 ms < 300 ms)
+- [Phase 12]: 12-04: a trava é uma instrução própria (select … for update) depois do begin e antes de hidratar; fundir begin e trava numa consulta só fica para depois da medição (Pitfall 9).
+- [Phase 12]: 12-04: OpcoesExecucao é união por regime — tentativas só existe no regime otimista; o travado grava com uma tentativa e 55P03 na trava vira conflito (409) sem repetir.
+- [Phase 12]: 12-04: com Q = 0 o regime travado abre com set local lock_timeout = 10000 (TRAVA_DE_RESERVA_MS); só as quatro importações longas (otimista) usam o begin puro.
 
 ### Pending Todos
 
@@ -679,6 +683,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-02T13:14:03.637Z
-Stopped at: Completed 12-03-PLAN.md
+Last session: 2026-11-02T13:28:37.574Z
+Stopped at: Completed 12-04-PLAN.md
 Resume file: None
