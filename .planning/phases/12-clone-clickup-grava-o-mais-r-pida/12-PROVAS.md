@@ -745,13 +745,13 @@ Ensaio do plano 12-10 (Task 1), feito em 2026-11-02, de 14:32Z a 14:48Z, num Pos
 
 O que se viu, em fatos:
 
-- O dono rodou `ssh -i ~/.ssh/n1_crm_deploy_ci n1crm@85.155.186.214 'sudo -n /usr/bin/journalctl --no-pager -u n1-crm-api.service -n 80' | grep "gravacao medida"` e a saída voltou **vazia** (nenhuma linha).
+- O dono rodou, por ssh na VPS como `n1crm`, `sudo -n /usr/bin/journalctl --no-pager -u n1-crm-api.service -n 80` filtrado por `grep "gravacao medida"`, e a saída voltou **vazia** (nenhuma linha).
 - O dono **não disse** se fez o gesto (criar uma Lista) na tela de produção antes do `grep`, nem o que viu. Também **não disse** "seguir sem este passo": a decisão sobre o D-03 do "depois" não foi tomada.
 - A web nova não está no ar: o PR #3 (https://github.com/n1-tecnologia/crm/pull/3) estava **aberto, não mesclado**, quando o orquestrador o leu (2026-11-02, cerca de 19:00Z: `OPEN`, `MERGEABLE`, `UNSTABLE`, `headRefOid` `b997d21c211509f500f3404a45013eab63042b91`, checks `check` e `seguranca` em andamento, preview da Vercel pendente). A web de produção segue no estado de 29/10. Na rodada do "antes", a tela que o dono usou não gerou nenhuma requisição ao serviço da VPS (nenhum `POST /operacoes` nas 34 requisições do journal; ver "D-03 em produção"), e essa causa **não foi apurada**; esta rodada não a esclarece.
 
 **O que a medição de produção prova, e o que não prova.** A saída do `gravacao:medir` (acima) mostra `regimes: travado` e `tentativas` 1 nos quatro gestos, medidos pelo código de `37c1cab` **contra o banco de produção** (`ws_n1`): a linha "gravacao medida" que o comando lê do Fastify que ele mesmo sobe em loopback, no processo dele, traz o regime e a tentativa. Isso prova que o código publicado, executando contra o banco real, escolhe o regime `travado` e grava com uma tentativa. **Não prova** que o serviço de verdade (pool quente do `n1-crm-api.service`, nginx e TLS, uma requisição vinda de uma pessoa na tela) escreve a linha com `"regime":"travado"`: o caminho HTTP real não foi observado. A linha em si continua provada por teste (`apps/api/src/rotas/operacoes-medicao.test.ts`).
 
-**Ponto aberto para o dono** (depois do merge do PR #3 e do deploy da web): criar uma Lista num Espaço seu na tela de produção e rodar `ssh -i ~/.ssh/n1_crm_deploy_ci n1crm@85.155.186.214 'sudo -n /usr/bin/journalctl --no-pager -u n1-crm-api.service -n 200' | grep "gravacao medida"`; colar UMA linha aqui (precisa ter `"regime":"travado"` e nenhum nome):
+**Ponto aberto para o dono** (depois do merge do PR #3 e do deploy da web): criar uma Lista num Espaço seu na tela de produção e rodar, por ssh na VPS como `n1crm` (o mesmo host e a mesma chave do `publicar.sh`), `sudo -n /usr/bin/journalctl --no-pager -u n1-crm-api.service -n 200` filtrado por `grep "gravacao medida"`; colar UMA linha aqui (precisa ter `"regime":"travado"` e nenhum nome):
 
 ```text
 (vazio: a linha ainda não foi colada)
