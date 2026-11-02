@@ -3,7 +3,7 @@ status: partial
 phase: 12-clone-clickup-grava-o-mais-r-pida
 source: [12-VERIFICATION.md]
 started: 2026-11-02T21:30:00Z
-updated: 2026-11-02T21:56:26.759Z
+updated: 2026-11-02T22:05:30.277Z
 ---
 
 ## Current Test
@@ -34,17 +34,15 @@ result: pass
 
 ### 5. Triar os avisos de revisão de código WR-01 a WR-07
 expected: Cada um fica corrigido, adiado com motivo ou aceito, em `12-REVIEW-DISPOSITION.md` (hoje os 11 achados estão "open"). Em especial WR-01 (o `catch` genérico de `enviar()` não re-hidrata), WR-02 (re-hidratação ignorada ou falha apaga da tela uma gravação confirmada), WR-03 (a fila serial não tem prazo de rede) e WR-05 (ações de status ligadas na linha "Salvando…") antes de publicar a web.
-result: blocked
-blocked_by: other
-reason: "Dono respondeu pass, reaberto por conferência: 12-REVIEW-DISPOSITION.md segue com os 11 achados em open (open: 11), em todas as branches. Falta registrar corrigido, adiado com motivo ou aceito para cada um."
+result: pass
 
 ## Summary
 
 total: 5
-passed: 2
+passed: 3
 issues: 0
 pending: 0
 skipped: 0
-blocked: 3
+blocked: 2
 
 ## Gaps
