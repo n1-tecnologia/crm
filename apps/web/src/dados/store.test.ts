@@ -258,6 +258,87 @@ describe("run() — mais de uma chamada no mesmo run()", () => {
     expect(transporte.hidratarMock).not.toHaveBeenCalled();
     expect(store.getState().pendentes).toBe(0);
   });
+
+  it("(t) a segunda resposta não encaixa (revisaoAnterior 10): aplica a primeira, re-hidrata UMA vez e o estado final é o do GET /estado (D-12, T-12-13)", async () => {
+    const doServidor = { marcador: "estado do GET /estado", chatSessions: [] } as unknown as DataState;
+    transporte.hidratarMock.mockResolvedValueOnce({ data: doServidor, revisao: 11, ordens: {}, memberId: "mem_maryane" });
+    const aplicada = vi.fn();
+    transporte.gravarMock.mockImplementationOnce(async () => {
+      aplicada(registroEm("chat_a"));
+      return [
+        { tipo: "diferenca", resultado: { ok: true, value: { id: "chat_a" } }, diferenca: diferencaDoRegistro("chat_a"), revisao: 8, revisaoAnterior: 7 },
+        { tipo: "diferenca", resultado: { ok: true, value: undefined }, diferenca: diferencaDoRegistro("chat_b"), revisao: 11, revisaoAnterior: 10 },
+      ];
+    });
+    const revisoes: number[] = [];
+    store.subscribe((estado) => revisoes.push(estado.revisaoDoServidor));
+
+    const { confirmado } = dividirEmDuasChamadas();
+    await confirmado;
+
+    expect(aplicada).toHaveBeenCalledWith(undefined); // antes da resposta, a primeira ainda não estava na tela
+    expect(revisoes).toContain(8); // a primeira encaixou e foi aplicada
+    expect(transporte.hidratarMock).toHaveBeenCalledTimes(1);
+    expect(store.getState().data).toBe(doServidor);
+    expect(store.getState().revisaoDoServidor).toBe(11);
+    expect(store.getState().pendentes).toBe(0);
+  });
+
+  it("(u) [diferença 7→8, conflito]: aplica a primeira, re-hidrata uma vez e `confirmado` resolve com a frase do conflito", async () => {
+    const doServidor = { marcador: "depois do conflito" } as unknown as DataState;
+    transporte.hidratarMock.mockResolvedValueOnce({ data: doServidor, revisao: 9, ordens: {}, memberId: "mem_maryane" });
+    const revisoes: number[] = [];
+    store.subscribe((estado) => revisoes.push(estado.revisaoDoServidor));
+    transporte.gravarMock.mockResolvedValueOnce([
+      { tipo: "diferenca", resultado: { ok: true, value: { id: "chat_a" } }, diferenca: diferencaDoRegistro("chat_a"), revisao: 8, revisaoAnterior: 7 },
+      { tipo: "conflito", erro: "Outra alteração entrou antes desta." },
+    ]);
+
+    const { confirmado } = dividirEmDuasChamadas();
+
+    expect(await confirmado).toEqual({ ok: false, error: "Outra alteração entrou antes desta." });
+    expect(revisoes).toContain(8);
+    expect(transporte.hidratarMock).toHaveBeenCalledTimes(1);
+    const lastResult = store.getState().lastResult;
+    if (lastResult?.ok !== false) throw new Error("esperava recusa");
+    expect(lastResult.error).toBe("Outra alteração entrou antes desta.");
+    expect(store.getState().data).toBe(doServidor);
+  });
+
+  it("(v) [diferença 7→8, falha]: aplica a primeira, NÃO re-hidrata e mostra a frase da falha", async () => {
+    transporte.gravarMock.mockResolvedValueOnce([
+      { tipo: "diferenca", resultado: { ok: true, value: { id: "chat_a" } }, diferenca: diferencaDoRegistro("chat_a"), revisao: 8, revisaoAnterior: 7 },
+      { tipo: "falha", erro: "Sem conexão com o servidor." },
+    ]);
+
+    const { confirmado } = dividirEmDuasChamadas();
+
+    expect(await confirmado).toEqual({ ok: false, error: "Sem conexão com o servidor." });
+    expect(registroEm("chat_a")).toEqual({ id: "chat_a" });
+    expect(registroEm("chat_b")).toBeUndefined();
+    expect(store.getState().revisaoDoServidor).toBe(8);
+    expect(transporte.hidratarMock).toHaveBeenCalledTimes(0);
+    const lastResult = store.getState().lastResult;
+    if (lastResult?.ok !== false) throw new Error("esperava recusa");
+    expect(lastResult.error).toBe("Sem conexão com o servidor.");
+  });
+
+  it("(w) [ok, recusa do servidor na segunda]: aplica as duas (a segunda com diferença vazia) e lastResult traz a recusa", async () => {
+    transporte.gravarMock.mockResolvedValueOnce([
+      { tipo: "diferenca", resultado: { ok: true, value: { id: "chat_a" } }, diferenca: diferencaDoRegistro("chat_a"), revisao: 8, revisaoAnterior: 7 },
+      { tipo: "diferenca", resultado: { ok: false, error: "O prazo virou entre o clique e a resposta." }, diferenca: DIFERENCA_VAZIA, revisao: 9, revisaoAnterior: 8 },
+    ]);
+
+    const { confirmado } = dividirEmDuasChamadas();
+
+    expect(await confirmado).toEqual({ ok: false, error: "O prazo virou entre o clique e a resposta." });
+    expect(registroEm("chat_a")).toEqual({ id: "chat_a" });
+    expect(store.getState().revisaoDoServidor).toBe(9);
+    expect(transporte.hidratarMock).toHaveBeenCalledTimes(0);
+    const lastResult = store.getState().lastResult;
+    if (lastResult?.ok !== false) throw new Error("esperava recusa");
+    expect(lastResult.error).toBe("O prazo virou entre o clique e a resposta.");
+  });
 });
 
 describe("rehidratar()", () => {
