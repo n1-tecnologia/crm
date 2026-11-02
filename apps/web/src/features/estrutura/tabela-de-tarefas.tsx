@@ -32,7 +32,7 @@ import {
   Minus,
   type LucideIcon,
 } from "lucide-react";
-import { useRun, useSession } from "@/dados/store";
+import { useIdsNaoConfirmados, useRun, useSession } from "@/dados/store";
 import { useRecente } from "@/features/shell/recente";
 import { changeTaskStatus, statusOptionRefusal } from "@n1/dominio/operations";
 import {
@@ -118,6 +118,8 @@ export function TabelaDeTarefas({
   const run = useRun();
   const recente = useRecente();
   const router = useRouter();
+  // D-15: a Tarefa que o servidor ainda não confirmou aparece, mas não abre.
+  const naoConfirmados = useIdsNaoConfirmados();
   const { memberId } = useSession();
   const now = useMemo(() => new Date(), []);
   const [fechados, setFechados] = useState<ReadonlySet<string>>(new Set());
@@ -301,11 +303,12 @@ export function TabelaDeTarefas({
                   const podeConcluir = motivoDe(terminal?.id);
                   const selecionada = selected?.has(task.id) ?? false;
                   const prioridade = PRIORITY_ICON[task.priority];
+                  const salvando = naoConfirmados.has(task.id);
                   return (
                     <tr
                       key={task.id}
                       data-recente={task.id === recente ? "true" : undefined}
-                      className="group cursor-pointer"
+                      className={`group ${salvando ? "cursor-default" : "cursor-pointer"}`}
                       data-selecionada={selecionada ? "true" : undefined}
                       // A linha inteira abre a Tarefa; um clique que nasce num
                       // controle (caixa, ação rápida, menu) é dele.
@@ -334,15 +337,28 @@ export function TabelaDeTarefas({
                       </td>
                       <td className="max-w-[28ch]" style={{ paddingBlock: "var(--e-1)" }}>
                         <span className="flex min-w-0 items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => openTask(task.id)}
-                            className="app-md block min-w-0 truncate text-left hover:underline"
-                            style={{ color: "var(--texto)" }}
-                            title={task.readableId ? `${task.readableId} · ${task.title}` : task.title}
-                          >
-                            {task.title}
-                          </button>
+                          {salvando ? (
+                            // D-15: o título é só texto até o servidor devolver o id verdadeiro.
+                            <span
+                              aria-busy="true"
+                              title="Salvando…"
+                              className="app-md block min-w-0 truncate text-left"
+                              style={{ color: "var(--texto-4)" }}
+                            >
+                              {task.title}
+                              <span className="sr-only"> (Salvando…)</span>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => openTask(task.id)}
+                              className="app-md block min-w-0 truncate text-left hover:underline"
+                              style={{ color: "var(--texto)" }}
+                              title={task.readableId ? `${task.readableId} · ${task.title}` : task.title}
+                            >
+                              {task.title}
+                            </button>
+                          )}
                           {task.lifecycle !== "ativo" ? <StateSeal state={task.lifecycle} /> : null}
                           {isBlocked(state, task) ? <ConditionMarker tone="warning">Bloqueada</ConditionMarker> : null}
                         </span>
@@ -424,7 +440,7 @@ export function TabelaDeTarefas({
                               mostram no hover/foco — nunca por cima do Status. Onde a largura não
                               cabe (abaixo de @5xl), ficam só no menu. */}
                           <span className="invisible hidden items-center gap-0.5 group-focus-within:visible group-hover:visible @5xl:flex">
-                            <QuickAction label="Abrir detalhes" onClick={() => openTask(task.id)} icone={ExternalLink} />
+                            <QuickAction label="Abrir detalhes" onClick={() => openTask(task.id)} icone={ExternalLink} {...(salvando ? { disabledReason: MOTIVO_SALVANDO } : {})} />
                             <QuickAction
                               label={terminal ? `Mover para “${terminal.name}”` : "Concluir"}
                               onClick={() => terminal && setConfirmando({ taskId: task.id, statusId: terminal.id, label: `Mover para “${terminal.name}”` })}
@@ -435,8 +451,12 @@ export function TabelaDeTarefas({
                           <ActionMenu
                             label={`Mais opções de ${task.title}`}
                             items={[
-                              { label: "Abrir detalhes", onSelect: () => openTask(task.id) },
-                              { label: "Abrir em página cheia", onSelect: () => router.push(`/estrutura/tarefas/${task.id}`) },
+                              { label: "Abrir detalhes", onSelect: () => openTask(task.id), ...(salvando ? { disabledReason: MOTIVO_SALVANDO } : {}) },
+                              {
+                                label: "Abrir em página cheia",
+                                onSelect: () => router.push(`/estrutura/tarefas/${task.id}`),
+                                ...(salvando ? { disabledReason: MOTIVO_SALVANDO } : {}),
+                              },
                               ...definitions
                                 .filter((d) => d.id !== task.statusId)
                                 .sort((a, b) => a.order - b.order)
@@ -464,6 +484,9 @@ export function TabelaDeTarefas({
     </div>
   );
 }
+
+/** O motivo dos gestos que abrem uma Tarefa cujo id o servidor ainda não confirmou (D-15). */
+const MOTIVO_SALVANDO = "Salvando…";
 
 function QuickAction({
   label,

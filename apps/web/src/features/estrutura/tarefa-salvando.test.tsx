@@ -172,8 +172,8 @@ describe("a Tarefa nova na Lista — aparece salvando e só abre depois de confi
 
 describe("a Subtarefa nova na Tarefa aberta — aparece sem link até confirmar (D-15, GRV-05)", () => {
   it("segurando o transporte: a Subtarefa está na lista, sem link e aria-busy; soltando, ganha o link", async () => {
-    const mae = state.tasks.find((t) => t.listId === LISTA && t.parentTaskId === undefined);
-    if (!mae) throw new Error("o seed não tem Tarefa-mãe na Lista de prospecção");
+    const mae = state.tasks.find((t) => t.listId === LISTA && t.parentTaskId === undefined && t.lifecycle === "ativo");
+    if (!mae) throw new Error("o seed não tem Tarefa-mãe ativa na Lista de prospecção");
     await act(async () => {
       render(
         <StoreProvider sessao={{ memberId: dono }} estadoInicial={{ data: state, revisao: 1, ordens: {} }} transporte={transporte()}>

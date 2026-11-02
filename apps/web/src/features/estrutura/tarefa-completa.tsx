@@ -84,7 +84,7 @@ import { financeProfileOf, valorDaConta } from "@/features/estrutura/financeiro/
 import { CHANNEL_ICON, ConversationThread } from "@/features/crm/conversation-thread";
 import { ContactAvatar } from "@/features/crm/contact-card";
 import { marcarSeMuda, useNavegar } from "@/features/shell/navegacao";
-import { useData, useRun, useSession } from "@/dados/store";
+import { useData, useIdsNaoConfirmados, useRun, useSession } from "@/dados/store";
 import {
   actorLabel,
   checklistProgress,
@@ -198,6 +198,8 @@ export function TarefaCompleta({
   const state = useData((data) => data);
   const fmt = useFormat();
   const run = useRun();
+  // D-15: a Subtarefa que o servidor ainda não confirmou aparece sem link.
+  const naoConfirmados = useIdsNaoConfirmados();
   const { memberId } = useSession();
   const [error, setError] = useState<string | null>(null);
   // O link "Abrir" (a próxima ocorrência ou a Subtarefa recém-convertida) é parte do aviso:
@@ -1859,24 +1861,34 @@ export function TarefaCompleta({
                           child.listId,
                           child.statusId,
                         );
+                        const pendente = naoConfirmados.has(child.id);
+                        const conteudo = (
+                          <>
+                            <span
+                              className="app-base min-w-0 flex-1 truncate"
+                              style={{ color: pendente ? "var(--texto-4)" : "var(--texto)" }}
+                            >
+                              {child.title}
+                            </span>
+                            {situacao ? (
+                              <Pilula cor={situacao.color} className="shrink-0">
+                                {situacao.name}
+                              </Pilula>
+                            ) : null}
+                          </>
+                        );
                         return (
                           <li key={child.id}>
-                            <Link
-                              href={`/estrutura/tarefas/${child.id}`}
-                              className="item-solto"
-                            >
-                              <span
-                                className="app-base min-w-0 flex-1 truncate"
-                                style={{ color: "var(--texto)" }}
-                              >
-                                {child.title}
+                            {pendente ? (
+                              <span aria-busy="true" title="Salvando…" className="item-solto">
+                                {conteudo}
+                                <span className="sr-only">Salvando…</span>
                               </span>
-                              {situacao ? (
-                                <Pilula cor={situacao.color} className="shrink-0">
-                                  {situacao.name}
-                                </Pilula>
-                              ) : null}
-                            </Link>
+                            ) : (
+                              <Link href={`/estrutura/tarefas/${child.id}`} className="item-solto">
+                                {conteudo}
+                              </Link>
+                            )}
                           </li>
                         );
                       })}
