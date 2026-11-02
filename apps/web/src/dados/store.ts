@@ -51,7 +51,7 @@
  * onde o store vem, nem que ele agora fala com uma API.
  */
 
-import { createContext, createElement, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, createElement, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { createStore, useStore as useZustandStore, type StoreApi } from "zustand";
 import type { DataState, OperationResult, Session } from "@n1/dominio/state";
 import * as operations from "@n1/dominio/operations";
@@ -658,3 +658,14 @@ export function useRehidratar() {
 }
 
 export { operations };
+
+/**
+ * D-15 — esqueleto do RED: ainda não calcula nada.
+ */
+export function idsNaoConfirmados(_data: DataState, _confirmado: DataState): ReadonlySet<Id> {
+  return new Set<Id>();
+}
+
+export function useIdsNaoConfirmados(): ReadonlySet<Id> {
+  return useMemo(() => new Set<Id>(), []);
+}
