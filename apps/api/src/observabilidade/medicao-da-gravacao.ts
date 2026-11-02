@@ -194,7 +194,7 @@ function somaDasEtapas(medicao: MedicaoLida): number {
   let soma = medicao.recorteMs ?? 0;
   for (const etapa of ETAPAS_DE_EXECUTAR) {
     if (etapa === ETAPA_CONTIDA_EM_OUTRA) continue;
-    soma += medicao[etapa];
+    soma += medicao[etapa] ?? 0;
   }
   return soma;
 }

@@ -41,7 +41,11 @@ gravações no mesmo Espaço se invalidem de duas formas, escolhidas por
   importação. As quatro: `importar-contas-a-pagar`, `importar-contas-a-receber`,
   `financeiro/importar` e `corrigir-data-de-pagamento-cr`. Tela, agendador,
   ponte do Agente, ponte do Financeiro, formulários públicos, anexos, convite,
-  `criar-usuario` e todo `bootstrap/*` gravam no `travado`;
+  `criar-usuario` e todo `bootstrap/*` gravam no `travado`. A janela que
+  sobra: o `update` do fim toma a trava da linha do Espaço e a segura durante o
+  `gravar()` do lote, os eventos e o `commit`; uma gravação da tela nesse
+  intervalo espera o `lock_timeout` (10 s), vira 409 e a tela reverte o que
+  já tinha mostrado. Rode as importações fora do horário de uso.
   `regime-dos-chamadores.test.ts` falha se outro arquivo passar `otimista`.
 
 `inicioDaTransacao()` abre toda Unidade de Trabalho com três prazos do lado do

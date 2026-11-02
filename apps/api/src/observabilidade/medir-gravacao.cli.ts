@@ -67,6 +67,8 @@ function lerArgumentos(): { repeticoes: number; workspaceId: string; membroId: s
   for (const a of argv) {
     const chave = a.startsWith("--") ? a.slice(2).split("=")[0] : undefined;
     if (!chave || !CONHECIDOS.includes(chave)) argumentoInvalido(`argumento desconhecido: ${a}`);
+    // `--repeticoes` sem `=` passava e o valor era ignorado em silêncio (o comando media o padrão).
+    if (chave !== "confirmar-espaco" && !a.includes("=")) argumentoInvalido(`${a} precisa de um valor: use --${chave}=<valor>.`);
   }
   const bruto = valorDe("repeticoes");
   const repeticoes = bruto === undefined ? 10 : Number(bruto);

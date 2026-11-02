@@ -23,7 +23,11 @@
  *     meio, devolve conflito e o laço tenta de novo sobre o estado novo, até 3
  *     vezes (`tentativas`). Travar o Espaço no começo seguraria o `ws_n1`
  *     inteiro durante os minutos de uma importação. `55P03` no `update` é
- *     conflito, como a revisão que mudou.
+ *     conflito, como a revisão que mudou. O `update` do fim toma a mesma
+ *     trava e a segura durante o `gravar()` do lote, os eventos e o `commit`:
+ *     uma gravação da tela nessa janela espera o `lock_timeout` (10 s) e vira
+ *     409 — e a tela reverte o que já tinha mostrado. Rode as importações fora
+ *     do horário de uso.
  */
 
 import type { PoolClient } from "pg";

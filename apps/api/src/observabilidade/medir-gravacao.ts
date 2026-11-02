@@ -179,6 +179,9 @@ class Medidor {
             await this.gravar("restoreContainer", ["space", espacoId]);
             this.espacos.set(espacoId, { naLixeira: false });
           } catch {
+            // O servidor pode ter aplicado o `restoreContainer` e a resposta se perdido: o Espaço
+            // antigo estaria ativo. Marcá-lo fora da lixeira faz o `limpar()` enviá-lo de novo à lixeira.
+            this.espacos.set(espacoId, { naLixeira: false });
             caminho = "espaco-novo";
           }
         }

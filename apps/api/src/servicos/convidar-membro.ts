@@ -29,8 +29,9 @@ export async function convidarMembro(
     /**
      * 1.1.5 — chamado DENTRO do callback de `executar()`, com o estado depois de
      * `inviteMember`. A rota guarda esse estado para recortar a resposta pelo
-     * que quem convidou enxerga, igual ao caminho de `executar()` direto. A
-     * última tentativa (conflito de revisão repete o callback) é a que vale.
+     * que quem convidou enxerga, igual ao caminho de `executar()` direto. O
+     * convite roda no regime `travado` (uma tentativa só): o callback roda uma
+     * vez por chamada.
      */
     readonly aoTerminar?: (state: DataState) => void;
     /**
