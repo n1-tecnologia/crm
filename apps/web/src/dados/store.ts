@@ -694,23 +694,23 @@ export function idsNaoConfirmados(data: DataState, confirmado: DataState): Reado
   return pendentes;
 }
 
-/** O último cálculo: a árvore tem um hook por linha, e todas leem o mesmo conjunto. */
-let ultimoCalculo: { data: DataState; confirmado: DataState; revision: number; conjunto: ReadonlySet<Id> } | null = null;
+/** O último conjunto de cada `data`: a árvore tem um hook por linha e todas leem o mesmo conjunto. */
+const conjuntoPorData = new WeakMap<DataState, { readonly confirmado: DataState; readonly revision: number; readonly conjunto: ReadonlySet<Id> }>();
 
 /**
  * Os ids que a tela mostra e o servidor ainda não confirmou (D-15), memorizados
  * pela revisão: `aplicarDiferenca` muta `confirmado` em lugar, então só as
- * referências não bastam para saber que o conjunto envelheceu.
+ * referências não bastam para saber que o conjunto envelheceu. Sem gravação a
+ * caminho (`data === confirmado`) a varredura nem acontece.
  */
 export function useIdsNaoConfirmados(): ReadonlySet<Id> {
   const revision = useStore((state) => state.revision);
   const data = useStore((state) => state.data);
   const confirmado = useStore((state) => state.confirmado);
   if (data === confirmado) return NENHUM_ID;
-  if (ultimoCalculo && ultimoCalculo.data === data && ultimoCalculo.confirmado === confirmado && ultimoCalculo.revision === revision) {
-    return ultimoCalculo.conjunto;
-  }
+  const guardado = conjuntoPorData.get(data);
+  if (guardado && guardado.confirmado === confirmado && guardado.revision === revision) return guardado.conjunto;
   const conjunto = idsNaoConfirmados(data, confirmado);
-  ultimoCalculo = { data, confirmado, revision, conjunto };
+  conjuntoPorData.set(data, { confirmado, revision, conjunto });
   return conjunto;
 }
