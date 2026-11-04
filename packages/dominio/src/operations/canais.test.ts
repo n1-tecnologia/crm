@@ -11,7 +11,6 @@ import { buildSeed } from "../seed";
 import type { DataState } from "../state";
 import {
   FORMA_DO_IDENTIFICADOR,
-  LISTA_SEM_CANAIS,
   configurarCanal,
   criarCanal,
   identificadorCanonico,

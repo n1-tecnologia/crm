@@ -140,7 +140,7 @@ import {
 import { startConversation } from "./conversations";
 import { TAREFA_SEM_CONTATO } from "./tasks";
 import { FORMULARIOS_ANTES_DO_MODELO, alterarModeloDaLista } from "./tarefas-conversacionais";
-import { PAPEL_DO_VINCULO, canaisQueAlcancam, contatoDaTarefa, conversaDaTarefa, negocioDaTarefa, tarefasConversacionaisDoContato } from "../derive-conversacional";
+import { PAPEL_DO_VINCULO, contatoDaTarefa, conversaDaTarefa, tarefasConversacionaisDoContato } from "../derive-conversacional";
 
 const THIAGO = "mem_thiago";
 const RAFAEL = "mem_rafael";
