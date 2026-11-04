@@ -8,9 +8,10 @@
  * `registrarRecebida`, o caminho interno que a integração usará.
  */
 
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { encerrar, pool } from "../../persistencia/conexao";
+import { criarRepositorioDeConsentimentosPg } from "../../repositorios/crm/consentimentos";
 import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
 import { criarRepositorioDeConversasPg } from "../../repositorios/crm/conversas";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearCanal, semearMembro } from "../../testes/banco-crm";
@@ -234,6 +235,91 @@ describeComBanco("ServicoDeMensagens — Postgres local", () => {
     expect(recusado(await servico.listar(outro.membro, { conversaId: c.comercial.conversaId, limite: 50, deslocamento: 0 }))).toMatchObject({
       status: 404,
       codigo: "CONVERSA_NAO_ENCONTRADA",
+    });
+  });
+  describe("SEM_CONSENTIMENTO (14-08, 3.2.4): modelo de marketing exige consentimento vigente", () => {
+    /** O serviço com o resolvedor de modelo injetado: a Sessão 7 trará os modelos de verdade. */
+    const comCategoria = (categoria: string | undefined) =>
+      criarServicoDeMensagens({ pool, acesso: criarAcessoAoCrmPg(pool), categoriaDoModelo: async () => categoria });
+
+    const enviarSuporte = (svc: ReturnType<typeof comCategoria>, c: Awaited<ReturnType<typeof espaco>>, direcao: "enviada" | "interna" = "enviada") =>
+      svc.enviar(c.membro, { conversaId: c.suporte.conversaId, direcao, conteudo: "Novidades do mês" });
+
+    /** O Espaço de teste com a finalidade "Marketing" no Catálogo e o id do Contato da Conversa. */
+    async function espacoComMarketing(rotulo: string) {
+      const c = await espaco(rotulo);
+      await pool().query(
+        `insert into plataforma.registros (workspace_id, colecao, id, dados)
+         values ($1, 'catalog', 'cat_fin_mkt', $2::jsonb)
+         on conflict (workspace_id, colecao, id) do nothing`,
+        [c.ws, JSON.stringify({ id: "cat_fin_mkt", kind: "finalidadeConsentimento", name: "Marketing", lifecycle: "ativo" })],
+      );
+      const { rows } = await pool().query<{ contato_id: string }>("select contato_id from plataforma.conversas where workspace_id = $1 and id = $2", [
+        c.ws,
+        c.suporte.conversaId,
+      ]);
+      return { ...c, contatoId: rows[0]!.contato_id };
+    }
+
+    const consentir = (ws: string, contatoId: string, extra: { tipoDeCanal?: "whatsapp" | "email" | "todos"; decisao?: "concedido" | "revogado"; em: string }) =>
+      criarRepositorioDeConsentimentosPg(pool()).inserir(
+        ws,
+        contatoId,
+        { finalidadeId: "cat_fin_mkt", tipoDeCanal: extra.tipoDeCanal ?? "whatsapp", decisao: extra.decisao ?? "concedido", origem: "formulario", em: extra.em },
+        "mem_ana",
+      );
+
+    it("modelo de marketing sem nenhum consentimento: 409 SEM_CONSENTIMENTO (campo modelo) e nenhuma Mensagem nova", async () => {
+      const c = await espacoComMarketing("semconsent");
+      const r = recusado(await enviarSuporte(comCategoria("marketing"), c));
+      expect(r).toMatchObject({ status: 409, codigo: "SEM_CONSENTIMENTO", campo: "modelo" });
+      expect(r.error).toBe("Este Contato não consentiu receber marketing por este Canal.");
+      expect(await contar(c.ws)).toBe(0);
+    });
+
+    it("com concedido de marketing para o tipo do Canal, a Mensagem é gravada", async () => {
+      const c = await espacoComMarketing("comconsent");
+      await consentir(c.ws, c.contatoId, { em: horasAtras(48) });
+      const m = valor(await enviarSuporte(comCategoria("marketing"), c));
+      expect(m).toMatchObject({ direcao: "enviada", canalId: c.suporte.canalId });
+      expect(await contar(c.ws)).toBe(1);
+    });
+
+    it("um revogado posterior volta a recusar; um concedido para todos libera de novo", async () => {
+      const c = await espacoComMarketing("revogado");
+      await consentir(c.ws, c.contatoId, { em: horasAtras(48) });
+      await consentir(c.ws, c.contatoId, { decisao: "revogado", em: horasAtras(24) });
+      expect(recusado(await enviarSuporte(comCategoria("marketing"), c))).toMatchObject({ status: 409, codigo: "SEM_CONSENTIMENTO" });
+      expect(await contar(c.ws)).toBe(0);
+
+      await consentir(c.ws, c.contatoId, { tipoDeCanal: "todos", em: horasAtras(1) });
+      valor(await enviarSuporte(comCategoria("marketing"), c));
+      expect(await contar(c.ws)).toBe(1);
+    });
+
+    it("o consentimento de outro tipo de Canal não vale para o WhatsApp", async () => {
+      const c = await espacoComMarketing("outrotipo");
+      await consentir(c.ws, c.contatoId, { tipoDeCanal: "email", em: horasAtras(48) });
+      expect(recusado(await enviarSuporte(comCategoria("marketing"), c))).toMatchObject({ status: 409, codigo: "SEM_CONSENTIMENTO" });
+    });
+
+    it("sem a finalidade Marketing no Catálogo não há como provar o consentimento: recusa", async () => {
+      const c = await espaco("semfinalidade");
+      expect(recusado(await enviarSuporte(comCategoria("marketing"), c))).toMatchObject({ status: 409, codigo: "SEM_CONSENTIMENTO" });
+    });
+
+    it("categoria utilidade, ou nenhum resolvedor, não muda nada em relação a hoje", async () => {
+      const c = await espacoComMarketing("utilidade");
+      valor(await enviarSuporte(comCategoria("utilidade"), c));
+      valor(await enviarSuporte(comCategoria(undefined), c));
+      valor(await enviarSuporte(servico, c));
+      expect(await contar(c.ws)).toBe(3);
+    });
+
+    it("a Mensagem interna não passa pela regra", async () => {
+      const c = await espacoComMarketing("interna");
+      const m = valor(await enviarSuporte(comCategoria("marketing"), c, "interna"));
+      expect(m).toMatchObject({ direcao: "interna", statusEntrega: null });
     });
   });
 });

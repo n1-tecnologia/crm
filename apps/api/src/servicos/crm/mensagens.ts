@@ -33,6 +33,7 @@
 
 import type { Pool, PoolClient } from "pg";
 import type { Pagina } from "@n1/dominio/crm/comum";
+import type { Conversa } from "@n1/dominio/crm/conversas";
 import { statusInicialDeEnvio, validarEnvio, validarNovaMensagem, type Mensagem, type MensagemRecebidaDoProvedor, type NovaMensagem } from "@n1/dominio/crm/mensagens";
 import { capacidadesDoCanal } from "@n1/dominio/operations";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
@@ -76,7 +77,12 @@ function validarRecebida(entrada: MensagemRecebidaDoProvedor): { readonly error:
   return undefined;
 }
 
-export function criarServicoDeMensagens(deps: { readonly pool: () => Pool; readonly acesso: AcessoAoCrm }): ServicoDeMensagens {
+export function criarServicoDeMensagens(deps: {
+  readonly pool: () => Pool;
+  readonly acesso: AcessoAoCrm;
+  /** ESQUELETO do RED (14-08): ainda não é lido. */
+  readonly categoriaDoModelo?: (cliente: PoolClient, workspaceId: string, conversa: Conversa, entrada: NovaMensagem) => Promise<string | undefined>;
+}): ServicoDeMensagens {
   return {
     async listar(membro, filtro) {
       const negado = await exigir(deps.acesso, membro, "ler", "mensagem");
