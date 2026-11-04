@@ -179,6 +179,21 @@ lado do mesmo gesto:
   descobre quem é Membro); 404 `MEMBRO_NAO_ENCONTRADO` para Membro de outro
   Espaço ou inexistente. Não lê nem escreve `registros`.
 
+**Canais da Lista conferidos na tabela (Fase 14, 14-12, 3.3.7).**
+`POST /operacoes/definirCanaisDaLista` e `POST /operacoes/createList` leem
+`plataforma.canais` NA transação, pela opção `lerDoCrm` de `executar()` (mapa
+`LER_DO_CRM` em `operacoes.ts`: a posição do argumento e o leitor), e entregam
+ao domínio o `Canal[]` do Espaço, em qualquer estado, como último argumento
+(`[listId, ids, canais]` e `[input, canais]`). O `canais` que o navegador manda
+nessa posição só existe para a execução local do `run()`: o schema
+(`CANAIS_DO_NAVEGADOR`, até 100 itens com `id`) valida a forma e o tamanho, e a
+rota o DESCARTA, trocando a posição pelo que `lerDoCrm` leu (Pitfall 12,
+T-14-29). Um Canal forjado no corpo nunca vale; o ramo antigo, `state.channels`
+(o mesmo id, sem tradução), segue valendo até a 3.5.4. Estas duas operações
+pagam uma ida a mais ao banco (a leitura de `plataforma.canais`); são gestos
+raros. Não gravam nas tabelas do CRM nem avançam a revisão do Espaço por fora de
+`executar()`.
+
 ## Rotas REST da Caixa de Entrada (Fase 8)
 
 `rotas/crm/canais.ts`, `conversas.ts` e `mensagens.ts` entram no mesmo `rotasDeCrm`

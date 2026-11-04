@@ -28,6 +28,7 @@
 
 import type { ZodTypeProvider } from "@fastify/type-provider-zod";
 import type { ApprovalRequest, Comment, DataState, Id, OperationResult } from "@n1/dominio";
+import type { Canal } from "@n1/dominio/crm/canais";
 import { ehNomeDeOperacao, OPERACOES, reviverArgumentos, type NomeDeOperacao } from "@n1/dominio/operations/registro";
 import type { FastifyInstance } from "fastify";
 import type { PoolClient } from "pg";
@@ -37,6 +38,7 @@ import { recusaDeSuspenso, type MembroDaSessao } from "../plugins/autenticacao";
 import type { EventoDeSaida } from "../persistencia/outbox";
 import { executar, type MedicaoDaExecucao, type ResultadoTransacao } from "../persistencia/unidade-de-trabalho";
 import { convidarMembro } from "../servicos/convidar-membro";
+import { criarRepositorioDeCanaisPg } from "../repositorios/crm/canais";
 import { passarAoSucessor } from "../repositorios/crm/sucessao";
 import { LISTA_SOLICITACOES_DE_PAGAMENTO_ID } from "../servicos/dto-solicitacao";
 import { esquemaDeArgumentos } from "./esquemas-de-argumentos";
@@ -278,6 +280,34 @@ const AO_CONFIRMAR: Partial<
   },
 };
 
+/**
+ * Operações que conferem algo contra as tabelas do CRM ANTES de decidir (Fase 14,
+ * 3.3.7): `executar()` as lê pela opção `lerDoCrm`, no MESMO cliente e dentro da
+ * transação, e o resultado ocupa a posição `posicao` dos `args`.
+ *
+ * `definirCanaisDaLista` e `createList` conferem os Canais de atendimento da
+ * Lista contra `plataforma.canais`, não contra a projeção em `state.channels`
+ * (que some na 3.5.4). O `canais` que o navegador mandou (último argumento, só
+ * para a execução local) é DESCARTADO: a posição é sobrescrita com o que o
+ * servidor leu, deste Espaço, em qualquer estado (Pitfall 12, T-14-29). Quem
+ * decide se o Canal está ativo e é de atendimento é o domínio, com esse conjunto.
+ *
+ * `posicao` é o índice em `args`: `[listId, ids, canais]` e `[input, canais]`.
+ */
+const LER_DO_CRM: Partial<
+  Record<NomeDeOperacao, { readonly posicao: number; readonly ler: (cliente: PoolClient, workspaceId: string) => Promise<readonly Canal[]> }>
+> = {
+  definirCanaisDaLista: { posicao: 2, ler: (cliente, workspaceId) => criarRepositorioDeCanaisPg(cliente).todos(workspaceId) },
+  createList: { posicao: 1, ler: (cliente, workspaceId) => criarRepositorioDeCanaisPg(cliente).todos(workspaceId) },
+};
+
+/** Os `args` com a posição `posicao` trocada pelo que o servidor leu; o que o navegador mandou ali some. */
+function comLidoDoCrm(args: readonly unknown[], posicao: number, lido: unknown): unknown[] {
+  const copia = args.slice(0, posicao);
+  while (copia.length < posicao) copia.push(undefined);
+  return [...copia, lido];
+}
+
 export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
   app.withTypeProvider<ZodTypeProvider>().post(
     "/operacoes/:nome",
@@ -335,6 +365,7 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
       const args: unknown[] = validacao.data;
       const servico = SERVICOS[nome];
       const aoConfirmar = AO_CONFIRMAR[nome];
+      const leituraDoCrm = LER_DO_CRM[nome];
 
       let resultado: ResultadoTransacao<unknown>;
       let eraReplay = false;
@@ -367,9 +398,9 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
                 medicao = m;
               },
             )
-          : await executar(
+          : await executar<unknown, readonly Canal[] | undefined>(
               request.membro.workspaceId,
-              (state) => {
+              (state, lidoDoCrm) => {
                 depois = state;
                 if (nome === "decideProcessApproval") {
                   eraReplay = state.approvals.find((a) => a.id === args[0])?.decision === args[1];
@@ -387,7 +418,7 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
                 // Unidade de Trabalho (`persistencia/unidade-de-trabalho.ts`)
                 // deriva sozinha, obrigatoriamente, a partir das
                 // `AutomationExecution` que nasceram na transação.
-                const r = REGISTRO[nome]!(state, request.membro.id, ...args);
+                const r = REGISTRO[nome]!(state, request.membro.id, ...(leituraDoCrm && lidoDoCrm ? comLidoDoCrm(args, leituraDoCrm.posicao, lidoDoCrm) : args));
                 // D6-12 — só ANOTA quais Tarefas foram gravadas; a cutucada
                 // sai depois do commit, nunca dentro da transação.
                 if (r.ok) afetadas = tarefasAfetadasPelaOperacao(nome, args, r.value, state);
@@ -399,6 +430,9 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
                 aoMedir: (m) => {
                   medicao = m;
                 },
+                ...(leituraDoCrm
+                  ? { lerDoCrm: (cliente: PoolClient) => leituraDoCrm.ler(cliente, request.membro.workspaceId) }
+                  : {}),
                 ...(aoConfirmar
                   ? { aoConfirmar: (cliente: PoolClient, _valor: unknown, state: DataState) => aoConfirmar(cliente, args, request.membro, state) }
                   : {}),
