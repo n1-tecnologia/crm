@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 14
 current_phase_name: "Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional"
 status: executing
-stopped_at: Completed 14-16-PLAN.md
-last_updated: "2026-11-04T20:25:34.709Z"
+stopped_at: Completed 14-17-PLAN.md
+last_updated: "2026-11-04T20:40:44.243Z"
 last_activity: 2026-11-04
 last_activity_desc: Phase 14 execution started
-state_head: 78de93c6d39c5ccda7e9241bb58f9f753ec6bae4
+state_head: de5f19f35882172fa937c619aeb821fdcee64702
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 228
-  completed_plans: 222
+  completed_plans: 223
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 14 (Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional) — EXECUTING
-Plan: 17 of 19
+Plan: 18 of 19
 Status: Ready to execute
 Last activity: 2026-11-04 — Phase 14 execution started
 
@@ -440,6 +440,7 @@ Progress: [██████░░░░] 63%
 | Phase 14 P14 | 25 min | 2 tasks | 8 files |
 | Phase 14 P15 | 25 min | 3 tasks | 9 files |
 | Phase 14 P16 | 20 min | 3 tasks | 15 files |
+| Phase 14 P17 | 18 min | 2 tasks | 18 files |
 
 ## Accumulated Context
 
@@ -680,6 +681,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 14]: 14-15: o provedor do resumo cobre a página inteira da Lista e todas as Tarefas dela (filtro e busca não refazem a chamada); a chave de SWR leva os três ids de cada Tarefa; sem ponte (D-01), Empresa, temperatura e estado da Conversa saíram do cartão e da ficha até a api os devolver no resumo
 - [Phase 14]: 14-15: a ficha da Tarefa mantém a leitura antiga só para o fio de Mensagens e os três gestos de escrita (14-16); depois da migração o fio some da ficha até a Fase 15 entregar a Caixa no modelo novo
 - [Phase 14]: 14-16: trocar o Canal da ficha confirma num diálogo que pede a primeira Mensagem só sem Conversa aberta (conversaAbertaDoPar = aberta ou pendente, 2 perguntas a GET /conversas); rehidratar() depois de cada sucesso (A5); só no deploy da Fase 15
+- [Phase 14]: 14-17: contatoDaTarefa, canalDaTarefa e conversaDaTarefa ficam (o fio da ficha as lê até a 3.4.2); só ultimaMensagemDaTarefa saiu, e contatoAlcancado virou detalhe interno de contatoDaTarefa
 
 ### Pending Todos
 
@@ -741,6 +743,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-04T20:25:34.436Z
-Stopped at: Completed 14-16-PLAN.md
+Last session: 2026-11-04T20:40:43.936Z
+Stopped at: Completed 14-17-PLAN.md
 Resume file: None
