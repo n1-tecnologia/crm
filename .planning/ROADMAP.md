@@ -761,12 +761,33 @@ Plans:
 **Entra (20 subtarefas):** 3.1.1–3.1.5 decidir o corte e dar ao modelo novo o que falta · 3.2.1–3.2.8 operações que só existem no antigo (mesclar Contatos, transferir Identificador, consentimento, mover Conversa, notas, sucessor) · 3.3.1–3.3.7 Tarefa conversacional nas tabelas novas.
 **Decisões do dono (tomadas em 2026-11-04, ver `14-CONTEXT.md`):** corte de uma vez, ensaiado numa cópia local dos dados reais (sem homologação); só o essencial entra no modelo novo; Conversa de Grupo e Mensagens de Flow ficam no antigo até as Sessões 6 e 7; Meus negócios aposenta as Listas espelho; a Tarefa conversacional pede a primeira Mensagem.
 **Ordem interna:** as decisões da 3.1 primeiro; a migração nova da 3.1.5 (a próxima depois da `010`) antes das operações da 3.2; a 3.2.1 (gesto que grava nas tabelas do CRM e em `plataforma.registros` no mesmo commit) antes das demais da 3.2; a 3.3 depois da 3.2. Domínio antes de api antes de tela.
-**Requirements**: TBD (derivar em `14-CONTEXT.md`)
+**Requirements**: UNI-01 a UNI-17 (IDs locais da fase, tabela "Phase Requirements" de `14-RESEARCH.md`)
 **Depends on:** Phase 9 (a Sessão 3 depende só da Sessão 1)
-**Plans:** 0 plans
+**Plans:** 19 plans
+**Fronteira de deploy (D-01):** 14-01 a 14-14 são aditivos e podem subir; 14-15, 14-16 e 14-17 só sobem no deploy da Fase 15; o ensaio 14-19 espera a cópia do dono e não segura nada.
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 14 to break down)
+- [ ] 14-01-PLAN.md — Traçador: a migração 011 e o Contato `mesclado` do banco à tela; a 011 provada; guardas de D-06 (UNI-01, UNI-02)
+- [ ] 14-02-PLAN.md — Domínio da Tarefa conversacional por ids: `vinculosDoCrmDaTarefa` e as operações `…NasTabelas` fora de `OPERACOES` (UNI-12, 13, 15, 16)
+- [ ] 14-03-PLAN.md — Gesto misto: `lerDoCrm` em `executar()`, `executarGestoMisto` tudo ou nada, recorte da resposta compartilhado (UNI-04)
+- [ ] 14-04-PLAN.md — Contato `mesclado` somente leitura em todo serviço do CRM novo (UNI-05)
+- [ ] 14-05-PLAN.md — Conversa: mover para outro Contato e atribuir (UNI-08, UNI-09)
+- [ ] 14-06-PLAN.md — Notas do Contato e transferir Identificador na api (UNI-10, UNI-06)
+- [ ] 14-07-PLAN.md — Conversa: lixeira, restaurar, estrela e leitura por Membro, filtros de `GET /conversas` (UNI-09)
+- [ ] 14-08-PLAN.md — Consentimento: regra, rotas só de inserção e `SEM_CONSENTIMENTO` no envio (UNI-07)
+- [ ] 14-09-PLAN.md — Mesclar Contatos pelo gesto misto (UNI-05)
+- [ ] 14-10-PLAN.md — Sucessão do Membro removido nas tabelas e a prévia em números (UNI-11)
+- [ ] 14-11-PLAN.md — Ficha nova de Contato: notas, consentimentos, mesclar e transferir (UNI-05, 06, 07, 10)
+- [ ] 14-12-PLAN.md — Canais da Lista conversacional conferidos na tabela (UNI-17)
+- [ ] 14-13-PLAN.md — Tarefa conversacional nasce nas tabelas e o resumo em lote (UNI-12, UNI-14)
+- [ ] 14-14-PLAN.md — Trocar o Canal e ligar/criar o Negócio da Tarefa pela api (UNI-15, UNI-16)
+- [ ] 14-15-PLAN.md — Só no deploy da Fase 15: cartão, tabela, Reunião e ficha da Tarefa pelo resumo (UNI-14)
+- [ ] 14-16-PLAN.md — Só no deploy da Fase 15: diálogo da Lista, fio, ficha da Tarefa e Membros pelas rotas novas (UNI-11, 12, 15, 16)
+- [ ] 14-17-PLAN.md — Só no deploy da Fase 15: as quatro operações antigas fora de `OPERACOES` e as leituras antigas sem chamador (UNI-12, UNI-13)
+- [ ] 14-18-PLAN.md — Fechamento: gate `npm run check` em Docker migrado, `14-PROVAS.md`, `CONTEXT.md` da raiz
+- [ ] 14-19-PLAN.md — Ensaio D-02 da 011 sobre a cópia dos dados reais (UNI-03; espera a cópia do dono)
+
+**Ondas de execução:** 1 → [14-01, 14-02] · 2 → [14-03, 14-04, 14-05] · 3 → [14-06] · 4 → [14-07] · 5 → [14-08] · 6 → [14-09] · 7 → [14-10, 14-11] · 8 → [14-12] · 9 → [14-13] · 10 → [14-14, 14-15] · 11 → [14-16] · 12 → [14-17] · 13 → [14-18] · 14 → [14-19]
 
 ### Phase 15: Unificação do CRM: telas no modelo novo e remoção do modelo antigo
 
