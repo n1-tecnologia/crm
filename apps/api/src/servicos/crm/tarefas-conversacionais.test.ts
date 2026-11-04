@@ -16,10 +16,12 @@
  */
 
 import { randomUUID } from "node:crypto";
+import type { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ok } from "@n1/dominio/state";
 import { buildSeed } from "@n1/dominio/seed";
 import type { TipoIdentificadorContato } from "@n1/dominio/crm/contatos";
+import { RESUMO_MAXIMO } from "@n1/dominio/crm/resumo-da-tarefa";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { encerrar, pool } from "../../persistencia/conexao";
 import { executar } from "../../persistencia/unidade-de-trabalho";
@@ -284,6 +286,163 @@ describeComBanco("ServicoDeTarefasConversacionais — Postgres local", () => {
       const marina = await contato(e.ws, "Marina Duarte");
       expect(recusado(await servico.criar(membro(e.ws, "mem_convidado_teste"), entrada(e, marina)))).toMatchObject({ status: 403, codigo: "PERMISSAO" });
       expect(await conversasNasTabelas(e.ws)).toBe(0);
+    });
+  });
+
+  describe("resumo (3.3.3)", () => {
+    /** Uma Mensagem na Conversa, na hora dada. `recebida` leva o `id_externo` que a 008 exige; `enviada`, o status. */
+    async function mensagem(ws: string, conversaId: string, canalId: string, direcao: "recebida" | "enviada" | "interna", conteudo: string, criadoEm: string): Promise<void> {
+      await pool().query(
+        `insert into plataforma.mensagens (workspace_id, conversa_id, canal_id, direcao, ator_tipo, ator_id, conteudo, status_entrega, id_externo, criado_em)
+         values ($1, $2, $3, $4, 'member', $5, $6, $7, $8, $9)`,
+        [ws, conversaId, canalId, direcao, SESSAO, conteudo, direcao === "enviada" ? "enviada" : null, direcao === "recebida" ? `ext-${randomUUID()}` : null, criadoEm],
+      );
+    }
+
+    async function conversa(ws: string, canalId: string, contatoId: string): Promise<string> {
+      return (await criarRepositorioDeConversasPg(pool()).inserir(ws, {
+        canalId,
+        contatoId,
+        titulo: "Conversa",
+        filaId: null,
+        atribuido: { tipo: "membro", id: SESSAO },
+        participantes: [],
+        criadoPor: { tipo: "member", id: SESSAO },
+      })).id;
+    }
+
+    const resolver = (ws: string, id: string) =>
+      pool().query("update plataforma.conversas set situacao = 'resolvida', resolvida_em = now() where workspace_id = $1 and id = $2", [ws, id]);
+
+    it("50 Vínculos numa consulta só: 50 itens na ordem pedida, com Contato, Canal, última Mensagem e Negócio", async () => {
+      const e = await espaco("resumolote");
+      const marina = await contato(e.ws, "Marina", [{ tipo: "whatsapp", valor: "+5511911110001" }]);
+      const joao = await contato(e.ws, "João", [{ tipo: "whatsapp", valor: "+5511911110002" }]);
+      const conversaDaMarina = await conversa(e.ws, e.canal, marina);
+      const conversaDoJoao = await conversa(e.ws, e.canal, joao);
+      await mensagem(e.ws, conversaDaMarina, e.canal, "recebida", "Oi, quero renovar", "2026-03-01T10:00:00Z");
+      await mensagem(e.ws, conversaDoJoao, e.canal, "enviada", "Bom dia, João", "2026-03-02T10:00:00Z");
+      const renovacao = await negocio(e.ws, marina, "Renovação 2027");
+
+      const vinculos = Array.from({ length: 50 }, (_, i) =>
+        i % 2 === 0
+          ? { taskId: `tsk_${i}`, contatoId: marina, conversaId: conversaDaMarina, negocioId: renovacao }
+          : { taskId: `tsk_${i}`, contatoId: joao, conversaId: conversaDoJoao },
+      );
+      let consultas = 0;
+      const contado = { query: (...a: unknown[]) => { consultas += 1; return (pool().query as (...x: unknown[]) => unknown)(...a); } } as unknown as Pool;
+      const contador = criarServicoDeTarefasConversacionais({ pool: () => contado, acesso: criarAcessoAoCrmPg(pool) });
+
+      const itens = valor(await contador.resumo(membro(e.ws), vinculos));
+      expect(consultas).toBe(1);
+      expect(itens.map((i) => i.taskId)).toEqual(vinculos.map((v) => v.taskId));
+      expect(itens[0]).toEqual({
+        taskId: "tsk_0",
+        contato: { id: marina, nome: "Marina" },
+        canal: { id: e.canal, nome: "Comercial", tipo: "whatsapp", provedor: "whatsapp-cloud", conexao: "conectada" },
+        ultimaMensagem: { trecho: "Oi, quero renovar", direcao: "recebida", criadoEm: "2026-03-01T10:00:00.000Z" },
+        negocio: { id: renovacao, titulo: "Renovação 2027", etapa: "Início" },
+      });
+      expect(itens[1]).toMatchObject({
+        contato: { id: joao, nome: "João" },
+        ultimaMensagem: { trecho: "Bom dia, João", direcao: "enviada" },
+        negocio: null,
+      });
+    });
+
+    it("Contato mesclado em B → o item mostra B (id e nome), com a Mensagem das Conversas de B", async () => {
+      const e = await espaco("resumomesclado");
+      const b = await contato(e.ws, "Marina Duarte");
+      const a = await contato(e.ws, "Marina D.");
+      const conversaDeA = await conversa(e.ws, e.canal, a);
+      await mensagem(e.ws, conversaDeA, e.canal, "recebida", "Mensagem do absorvido", "2026-03-01T10:00:00Z");
+      await poolDoDono().query(
+        "update plataforma.contatos set estado = 'mesclado', mesclado_em_id = $3, mesclado_em = now() where workspace_id = $1 and id = $2",
+        [e.ws, a, b],
+      );
+      await pool().query("update plataforma.conversas set contato_id = $3 where workspace_id = $1 and id = $2", [e.ws, conversaDeA, b]);
+
+      const [item] = valor(await servico.resumo(membro(e.ws), [{ taskId: "t", contatoId: a, conversaId: conversaDeA }]));
+      expect(item!.contato).toEqual({ id: b, nome: "Marina Duarte" });
+      expect(item!.ultimaMensagem?.trecho).toBe("Mensagem do absorvido");
+    });
+
+    it("duas Conversas ativas do Contato no Canal: vale a Mensagem mais recente; interna e Conversa na lixeira não contam", async () => {
+      const e = await espaco("resumoultima");
+      const marina = await contato(e.ws, "Marina");
+      const velha = await conversa(e.ws, e.canal, marina);
+      await mensagem(e.ws, velha, e.canal, "recebida", "primeira", "2026-03-01T10:00:00Z");
+      await resolver(e.ws, velha);
+      const nova = await conversa(e.ws, e.canal, marina);
+      await mensagem(e.ws, nova, e.canal, "enviada", "a mais recente", "2026-03-03T10:00:00Z");
+      await mensagem(e.ws, nova, e.canal, "interna", "nota interna, depois de todas", "2026-03-09T10:00:00Z");
+      const vinculo = { taskId: "t", contatoId: marina, conversaId: nova };
+
+      expect(valor(await servico.resumo(membro(e.ws), [vinculo]))[0]!.ultimaMensagem?.trecho).toBe("a mais recente");
+
+      // Uma terceira, resolvida e na lixeira, com a Mensagem mais nova de todas: não conta.
+      // O par só aceita uma aberta (INV-CXE-03): a `nova` é resolvida antes de abrir a próxima.
+      await resolver(e.ws, nova);
+      const naLixeira = await conversa(e.ws, e.canal, marina);
+      await mensagem(e.ws, naLixeira, e.canal, "recebida", "da lixeira, a mais nova", "2026-03-20T10:00:00Z");
+      await resolver(e.ws, naLixeira);
+      await pool().query("update plataforma.conversas set estado = 'na_lixeira', na_lixeira_em = now() where workspace_id = $1 and id = $2", [e.ws, naLixeira]);
+      expect(valor(await servico.resumo(membro(e.ws), [vinculo]))[0]!.ultimaMensagem?.trecho).toBe("a mais recente");
+    });
+
+    it("a última Mensagem é a do Canal da Tarefa: a Conversa do mesmo Contato em outro Canal não entra; trecho vai até 140 caracteres", async () => {
+      const e = await espaco("resumocanal");
+      const marina = await contato(e.ws, "Marina");
+      const doCanal = await conversa(e.ws, e.canal, marina);
+      const deOutro = await conversa(e.ws, e.canalSemLista, marina);
+      await mensagem(e.ws, doCanal, e.canal, "recebida", "x".repeat(300), "2026-03-01T10:00:00Z");
+      await mensagem(e.ws, deOutro, e.canalSemLista, "recebida", "em outro canal, mais nova", "2026-03-05T10:00:00Z");
+
+      const [item] = valor(await servico.resumo(membro(e.ws), [{ taskId: "t", contatoId: marina, conversaId: doCanal }]));
+      expect(item!.ultimaMensagem?.trecho).toHaveLength(140);
+      expect(item!.canal?.id).toBe(e.canal);
+    });
+
+    it("Conversa sem Mensagem não tem última Mensagem; Negócio na lixeira não aparece", async () => {
+      const e = await espaco("resumovazio");
+      const marina = await contato(e.ws, "Marina");
+      const vazia = await conversa(e.ws, e.canal, marina);
+      const naLixeira = await negocio(e.ws, marina, "Descartado", "na_lixeira");
+
+      const [item] = valor(await servico.resumo(membro(e.ws), [{ taskId: "t", contatoId: marina, conversaId: vazia, negocioId: naLixeira }]));
+      expect(item).toMatchObject({ ultimaMensagem: null, negocio: null, contato: { id: marina } });
+    });
+
+    it("ids de outro Espaço voltam vazios (não 404, não erro) e não vazam nome, Canal, trecho nem título", async () => {
+      const e = await espaco("resumomeu");
+      const outro = await espaco("resumooutro");
+      const dele = await contato(outro.ws, "Segredo do Outro");
+      const conversaDele = await conversa(outro.ws, outro.canal, dele);
+      await mensagem(outro.ws, conversaDele, outro.canal, "recebida", "texto privado do outro Espaço", "2026-03-01T10:00:00Z");
+      const negocioDele = await negocio(outro.ws, dele, "Negócio privado");
+
+      const itens = valor(await servico.resumo(membro(e.ws), [{ taskId: "t", contatoId: dele, conversaId: conversaDele, negocioId: negocioDele }]));
+      expect(itens).toEqual([{ taskId: "t", contato: null, canal: null, ultimaMensagem: null, negocio: null }]);
+      expect(JSON.stringify(itens)).not.toMatch(/Segredo|privado|Comercial/);
+    });
+
+    it("Vínculos sem Conversa, sem Contato e lote vazio", async () => {
+      const e = await espaco("resumoparcial");
+      const marina = await contato(e.ws, "Marina");
+      const itens = valor(await servico.resumo(membro(e.ws), [{ taskId: "a", contatoId: marina }, { taskId: "b" }]));
+      expect(itens).toEqual([
+        { taskId: "a", contato: { id: marina, nome: "Marina" }, canal: null, ultimaMensagem: null, negocio: null },
+        { taskId: "b", contato: null, canal: null, ultimaMensagem: null, negocio: null },
+      ]);
+      expect(valor(await servico.resumo(membro(e.ws), []))).toEqual([]);
+    });
+
+    it("mais de RESUMO_MAXIMO Vínculos → 400, sem consultar o banco; Convidado lê", async () => {
+      const e = await espaco("resumoteto");
+      const demais = Array.from({ length: RESUMO_MAXIMO + 1 }, (_, i) => ({ taskId: `t${i}` }));
+      expect(recusado(await servico.resumo(membro(e.ws), demais))).toMatchObject({ status: 400, codigo: "VALOR_INVALIDO", campo: "vinculos" });
+      const noLimite = demais.slice(0, RESUMO_MAXIMO);
+      expect(valor(await servico.resumo(membro(e.ws, "mem_convidado_teste"), noLimite))).toHaveLength(RESUMO_MAXIMO);
     });
   });
 });

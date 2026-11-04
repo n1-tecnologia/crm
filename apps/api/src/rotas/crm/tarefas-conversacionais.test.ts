@@ -1,5 +1,5 @@
 /**
- * `POST /tarefas-conversacionais` (14-13, 3.3.1), com serviço falso e sem banco:
+ * `POST /tarefas-conversacionais` e `/resumo` (14-13, 3.3.1 e 3.3.3), com serviço falso e sem banco:
  * autenticação, forma do corpo (`.strict()`: referências conferidas e `workspaceId`
  * nunca vêm do navegador, T-14-31) e o envelope. A criação contra o Postgres local
  * está em `servicos/crm/tarefas-conversacionais.test.ts`.
@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import { usuarioDoSeed } from "@n1/dominio";
 import { buildSeed } from "@n1/dominio/seed";
 import { buildApp } from "../../app";
+import { RESUMO_MAXIMO, type ResumoDaTarefaConversacional } from "@n1/dominio/crm/resumo-da-tarefa";
 import { recusa, sucesso, type ResultadoCrm } from "../../servicos/crm/resultado";
 import type { RespostaDaTarefaConversacional, ServicoDeTarefasConversacionais } from "../../servicos/crm/tarefas-conversacionais";
 
@@ -37,6 +38,7 @@ describe("POST /tarefas-conversacionais — serviço falso, sem banco", () => {
         chamadas.push(a);
         return Promise.resolve(desfecho);
       },
+      resumo: () => Promise.reject(new Error("fora do escopo deste bloco")),
     };
     return { servico, chamadas };
   }
@@ -123,5 +125,81 @@ describe("POST /tarefas-conversacionais — serviço falso, sem banco", () => {
     expect(r.statusCode).toBe(status);
     expect(r.json()).toEqual({ ok: false, error: frase, codigo, ...(campo !== undefined ? { campo } : {}) });
     expect(JSON.stringify(r.json())).not.toMatch(/_fk|_uq|_ck|constraint/i);
+  });
+});
+
+const itemDeResumo: ResumoDaTarefaConversacional = {
+  taskId: "tsk_1",
+  contato: { id: "c1", nome: "Marina" },
+  canal: { id: "k1", nome: "Comercial", tipo: "whatsapp", provedor: "whatsapp-cloud", conexao: "conectada" },
+  ultimaMensagem: { trecho: "Oi", direcao: "recebida", criadoEm: "2026-03-01T10:00:00.000Z" },
+  negocio: null,
+};
+
+describe("POST /tarefas-conversacionais/resumo — serviço falso, sem banco", () => {
+  function novoFalso(desfecho: ResultadoCrm<readonly ResumoDaTarefaConversacional[]> = sucesso([itemDeResumo])) {
+    const chamadas: unknown[][] = [];
+    const servico: ServicoDeTarefasConversacionais = {
+      criar: () => Promise.reject(new Error("fora do escopo deste bloco")),
+      resumo: (...a) => {
+        chamadas.push(a);
+        return Promise.resolve(desfecho);
+      },
+    };
+    return { servico, chamadas };
+  }
+  const appCom = (servico: ServicoDeTarefasConversacionais) => buildApp({ ...opcoesDeAutenticacao("ws_falso"), crm: { tarefasConversacionais: servico } });
+  const resumir = (servico: ServicoDeTarefasConversacionais, payload?: Record<string, unknown>) =>
+    appCom(servico).inject(
+      payload === undefined
+        ? { method: "POST", url: "/tarefas-conversacionais/resumo", headers: AUTORIZACAO }
+        : { method: "POST", url: "/tarefas-conversacionais/resumo", headers: AUTORIZACAO, payload },
+    );
+  const vinculo = (i: number) => ({ taskId: `tsk_${i}`, contatoId: "c1", conversaId: "cv1", negocioId: "n1" });
+
+  it("sem Authorization responde 401 e não chega ao serviço", async () => {
+    const { servico, chamadas } = novoFalso();
+    const r = await appCom(servico).inject({ method: "POST", url: "/tarefas-conversacionais/resumo", payload: { vinculos: [] } });
+    expect(r.statusCode).toBe(401);
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("repassa o Membro e os Vínculos, e devolve 200 { ok, itens, total }", async () => {
+    const { servico, chamadas } = novoFalso();
+    const vinculos = [vinculo(1), { taskId: "tsk_2" }];
+    const r = await resumir(servico, { vinculos });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toEqual({ ok: true, itens: [itemDeResumo], total: 1 });
+    expect(chamadas[0]?.[0]).toMatchObject({ id: "mem_maryane" });
+    expect(chamadas[0]?.[1]).toEqual(vinculos);
+  });
+
+  it(`aceita ${RESUMO_MAXIMO} Vínculos e recusa ${RESUMO_MAXIMO + 1} com 400 antes do serviço`, async () => {
+    const { servico, chamadas } = novoFalso();
+    expect((await resumir(servico, { vinculos: Array.from({ length: RESUMO_MAXIMO }, (_, i) => vinculo(i)) })).statusCode).toBe(200);
+    expect((await resumir(servico, { vinculos: Array.from({ length: RESUMO_MAXIMO + 1 }, (_, i) => vinculo(i)) })).statusCode).toBe(400);
+    expect(chamadas).toHaveLength(1);
+  });
+
+  it.each([
+    ["Vínculo com campo a mais", { vinculos: [{ ...vinculo(1), workspaceId: "ws_de_outro" }] }],
+    ["Vínculo sem taskId", { vinculos: [{ contatoId: "c1" }] }],
+    ["id que não é texto", { vinculos: [{ taskId: "t", contatoId: 7 }] }],
+    ["workspaceId no corpo", { vinculos: [], workspaceId: "ws_de_outro" }],
+    ["sem vinculos", {}],
+    ["vinculos que não é lista", { vinculos: "tsk_1" }],
+  ])("com %s responde 400 e não chega ao serviço", async (_rotulo, payload) => {
+    const { servico, chamadas } = novoFalso();
+    const r = await resumir(servico, payload);
+    expect(r.statusCode).toBe(400);
+    expect(r.json().ok).toBe(false);
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("a recusa do serviço chega com status e frase", async () => {
+    const { servico } = novoFalso(recusa(403, "Seu Papel não pode ler Contatos.", { codigo: "PERMISSAO" }));
+    const r = await resumir(servico, { vinculos: [vinculo(1)] });
+    expect(r.statusCode).toBe(403);
+    expect(r.json()).toEqual({ ok: false, error: "Seu Papel não pode ler Contatos.", codigo: "PERMISSAO" });
   });
 });
