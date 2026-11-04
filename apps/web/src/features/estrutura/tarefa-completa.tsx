@@ -83,12 +83,23 @@ import { financeProfileOf, valorDaConta } from "@/features/estrutura/financeiro/
 import { CHANNEL_ICON, ConversationThread } from "@/features/crm/conversation-thread";
 import { SeloDoProvedor } from "@/features/crm/selo-do-provedor";
 import { RostoDoContato } from "@/features/estrutura/cartao-conversacional";
-import { useResumoDaTarefa } from "@/dados/crm/tarefas-conversacionais";
+import {
+  criarNegocioDaTarefa,
+  trocarCanalDaTarefa,
+  useConversaAbertaDoPar,
+  useResumoDaTarefa,
+  vincularNegocioATarefa,
+} from "@/dados/crm/tarefas-conversacionais";
+import { LIMITES_CRM } from "@n1/dominio/crm/comum";
+import { ErroDeApi } from "@/dados/crm/cliente-crm";
+import { useCanais } from "@/dados/crm/canais";
+import { useContato } from "@/dados/crm/contatos";
+import { useFunis } from "@/dados/crm/funis";
+import { useNegocios } from "@/dados/crm/negocios";
 import { marcarSeMuda, useNavegar } from "@/features/shell/navegacao";
-import { useData, useIdsNaoConfirmados, useRun, useSession } from "@/dados/store";
+import { useData, useIdsNaoConfirmados, useRehidratar, useRun, useSession } from "@/dados/store";
 import {
   checklistProgress,
-  contactDisplayName,
   containerAdminRefusal,
   effectiveListConfig,
   effectiveLifecycleOfTask,
@@ -107,10 +118,9 @@ import {
 } from "@n1/dominio/derive";
 import {
   canalDaTarefa,
+  canaisDaListaQueAlcancamNasTabelas,
   contatoDaTarefa,
   listaConversacional,
-  negocioDaTarefa,
-  canaisDaListaQueAlcancam,
   vinculosDoCrmDaTarefa,
 } from "@n1/dominio/derive-conversacional";
 import {
@@ -119,15 +129,12 @@ import {
   assignTask,
   changeTaskStatus,
   createTask,
-  criarNegocioDaTarefa,
   removeChecklist,
   removeChecklistItem,
   setChecklistItemDone,
   trashTask,
-  trocarCanalDaTarefa,
   unassignTask,
   updateTask,
-  vincularNegocioATarefa,
   contaSemCliente,
   contaSemResumo,
   guestFieldWriter,
@@ -163,6 +170,7 @@ import {
   SidePanel,
   StateSeal,
   StatusPicker,
+  TextArea,
   TextInput,
   Toast,
   cn,
@@ -195,6 +203,7 @@ export function TarefaCompleta({
   const state = useData((data) => data);
   const fmt = useFormat();
   const run = useRun();
+  const rehidratar = useRehidratar();
   // D-15: a Subtarefa que o servidor ainda não confirmou aparece sem link.
   const naoConfirmados = useIdsNaoConfirmados();
   const { memberId } = useSession();
@@ -258,6 +267,13 @@ export function TarefaCompleta({
   const [tituloDoNegocio, setTituloDoNegocio] = useState("");
   const [valorDoNegocio, setValorDoNegocio] = useState("");
   const [erroDoNegocio, setErroDoNegocio] = useState<string | null>(null);
+  // 14-16: os três gestos falam com a api; cada um espera a resposta antes de re-hidratar (A5).
+  const [criandoNegocioNaApi, setCriandoNegocioNaApi] = useState(false);
+  /** O Canal escolhido no seletor, ainda por confirmar: trocar pode pedir a primeira Mensagem (D-07). */
+  const [canalNovo, setCanalNovo] = useState<string | null>(null);
+  const [mensagemDoCanal, setMensagemDoCanal] = useState("");
+  const [erroDoCanal, setErroDoCanal] = useState<{ readonly texto: string; readonly campo: string | undefined } | null>(null);
+  const [trocandoCanal, setTrocandoCanal] = useState(false);
   const [navegar] = useNavegar();
   // Os outros parâmetros ficam: no popup, `?tarefa=` é o que o mantém aberto.
   const openConversion = (checklistId: string, itemId: string) => {
@@ -276,6 +292,18 @@ export function TarefaCompleta({
   // chamada. Uma Lista que não é conversacional não pergunta nada. O hook fica antes do retorno antecipado.
   const listaDaTarefa = state.tasks.find((t) => t.id === tarefa)?.listId;
   const resumo = useResumoDaTarefa(tarefa, { pausado: listaDaTarefa === undefined || !listaConversacional(state, listaDaTarefa) });
+  // 14-16: o que os gestos de escrita oferecem (Canais, Negócios, Funis) vem das tabelas pela api, pelo Contato
+  // do resumo (o sobrevivente, se foi mesclado). Só uma Tarefa conversacional com Contato pergunta; os Funis, só com o diálogo aberto.
+  const contatoIdDoResumo = listaDaTarefa !== undefined && listaConversacional(state, listaDaTarefa) ? resumo?.contato?.id : undefined;
+  const detalheDoContato = useContato(contatoIdDoResumo);
+  const canaisDasTabelas = useCanais({ estado: "ativo", limite: LIMITES_CRM.paginaMaxima }, { pausado: contatoIdDoResumo === undefined });
+  const negociosDoContato = useNegocios(
+    { contatoId: contatoIdDoResumo ?? "", situacao: "aberto", limite: LIMITES_CRM.paginaMaxima },
+    { pausado: contatoIdDoResumo === undefined },
+  );
+  const funisDasTabelas = useFunis({ estado: "ativo", limite: LIMITES_CRM.paginaMaxima }, { pausado: !criandoNegocio });
+  // D-07: trocar para um Canal em que o Contato não tem Conversa aberta pede a primeira Mensagem.
+  const conversaDoCanalNovo = useConversaAbertaDoPar(contatoIdDoResumo, canalNovo ?? undefined, { pausado: canalNovo === null });
   // B38a — o que o Membro não alcança não existe para ele: a mesma tela de "não encontrada".
   const task = state.tasks.find(
     (t) => t.id === tarefa && memberSeesTask(state, memberId, t.id),
@@ -337,11 +365,12 @@ export function TarefaCompleta({
    * o fio não tem com quem ser.
    *
    * 14-15: a seção "CRM" e o aviso leem o RESUMO da api (`resumo`); a Conversa
-   * é o id do Vínculo. `contato`, `canal` e `negocio` abaixo são a leitura
-   * ANTIGA e ficam só para o que ainda não foi para a api: o fio de Mensagens
-   * (`ConversationThread`) e os três gestos de escrita (trocar o Canal, ligar o
-   * Negócio, criar o Negócio), que o plano 14-16 troca. Nenhuma exibição cai
-   * para elas quando o resumo vem vazio (D-01).
+   * é o id do Vínculo. `contato` e `canal` abaixo são a leitura ANTIGA e ficam
+   * só para o fio de Mensagens (`ConversationThread`) e o layout de três
+   * colunas, que a Caixa nova (Fase 15, 3.4.2) troca. Os três gestos de escrita
+   * (trocar o Canal, ligar o Negócio, criar o Negócio) já falam com a api (14-16)
+   * e decidem pelo resumo. Nenhuma exibição cai para a leitura antiga quando o
+   * resumo vem vazio (D-01).
    */
   const conversacional = listaConversacional(state, task.listId);
   const contatoDoResumo = resumo?.contato ?? undefined;
@@ -350,7 +379,6 @@ export function TarefaCompleta({
   const conversaId = conversacional ? vinculosDoCrmDaTarefa(state, task).conversaId : undefined;
   const contato = conversacional ? contatoDaTarefa(state, task) : undefined;
   const canal = contato ? canalDaTarefa(state, task) : undefined;
-  const negocio = contato ? negocioDaTarefa(state, task) : undefined;
   const fichaConversacional = contato !== undefined;
 
   const blockReason = terminalStatusBlockReason(state, task);
@@ -548,11 +576,13 @@ export function TarefaCompleta({
                 },
                 ...(somenteLeitura
                   ? { disabledReason: somenteLeitura }
-                  : !contato
-                    ? { disabledReason: "Esta Tarefa não tem Contato vinculado." }
-                    : negocio
-                      ? { disabledReason: "Esta Tarefa já tem Negócio vinculado." }
-                      : {}),
+                  : resumo === undefined
+                    ? { disabledReason: "Lendo o Contato e o Negócio desta Tarefa…" }
+                    : !contatoDoResumo
+                      ? { disabledReason: "Esta Tarefa não tem Contato vinculado." }
+                      : negocioDoResumo
+                        ? { disabledReason: "Esta Tarefa já tem Negócio vinculado." }
+                        : {}),
               },
             ]
           : []),
@@ -704,66 +734,129 @@ export function TarefaCompleta({
           onCancel={() => setConfirmandoStatus(null)}
         />
       ) : null}
-      {/* C35 — o Negócio nasce do Contato da Tarefa, na 1ª Etapa do Funil, já vinculado a ela. */}
-      {contato ? (
+      {/* C35 — o Negócio nasce do Contato da Tarefa, na 1ª Etapa do Funil, já vinculado a ela (14-16: `POST .../negocio/novo`). */}
+      {contatoDoResumo ? (
         <ConfirmDialog
           open={criandoNegocio}
           title="Criar Negócio a partir desta Tarefa"
-          description={`O Negócio nasce com ${contactDisplayName(contato)} na primeira Etapa do Funil escolhido e fica vinculado a esta Tarefa.`}
+          description={`O Negócio nasce com ${contatoDoResumo.nome} na primeira Etapa do Funil escolhido e fica vinculado a esta Tarefa.`}
           confirmLabel="Criar Negócio"
           wide
-          {...(funilDoNegocio === "" ? { confirmDisabledReason: "Escolha o Funil." } : {})}
+          {...(criandoNegocioNaApi
+            ? { confirmDisabledReason: "Criando…" }
+            : funilDoNegocio === ""
+              ? { confirmDisabledReason: "Escolha o Funil." }
+              : {})}
+          confirmCarregando={criandoNegocioNaApi}
           onConfirm={() => {
-            const result = run((data, me) =>
-              criarNegocioDaTarefa(data, me, task.id, {
-                funnelId: funilDoNegocio,
-                ...(tituloDoNegocio.trim() ? { title: tituloDoNegocio.trim() } : {}),
-                ...(valorDoNegocio.trim() ? { value: { amount: Number(valorDoNegocio), currency: "BRL" } } : {}),
-              }),
-            );
-            if (!result.ok) {
-              setErroDoNegocio(result.error);
-              return;
-            }
-            setCriandoNegocio(false);
-            report(result, `Negócio criado: ${result.value.deal.title}.`);
+            setErroDoNegocio(null);
+            setCriandoNegocioNaApi(true);
+            void criarNegocioDaTarefa(task.id, {
+              funilId: funilDoNegocio,
+              ...(tituloDoNegocio.trim() ? { titulo: tituloDoNegocio.trim() } : {}),
+              ...(valorDoNegocio.trim() ? { valor: valorDoNegocio.trim() } : {}),
+            })
+              // A5: o `GET /estado` traz o Vínculo novo; se ele falhar o Negócio já existe e a revisão do Espaço alcança o store depois.
+              .then(async ({ negocio }) => {
+                await rehidratar().catch(() => undefined);
+                setCriandoNegocio(false);
+                report({ ok: true }, `Negócio criado: ${negocio.titulo}.`);
+              })
+              .catch((falha: unknown) => setErroDoNegocio(falha instanceof ErroDeApi ? falha.message : "Não foi possível criar o Negócio. Tente de novo."))
+              .finally(() => setCriandoNegocioNaApi(false));
           }}
           onCancel={() => setCriandoNegocio(false)}
         >
           <div className="grid gap-4">
-            {(() => {
-              const funis = state.funnels.filter((f) => f.lifecycle === "ativo");
-              const funil = funis.find((f) => f.id === funilDoNegocio);
-              const primeiraEtapa = funil ? [...funil.stages].sort((a, b) => a.order - b.order)[0] : undefined;
-              return (
-                <Field
-                  label="Funil"
-                  required
-                  {...(primeiraEtapa ? { hint: `O Negócio nasce na Etapa ${primeiraEtapa.name}.` } : {})}
-                >
-                  {(id) => (
-                    <Select
-                      id={id}
-                      value={funilDoNegocio}
-                      onChange={setFunilDoNegocio}
-                      placeholder="Escolha o Funil"
-                      options={funis.map((f) => ({ value: f.id, label: f.name }))}
-                    />
-                  )}
-                </Field>
-              );
-            })()}
+            <Field label="Funil" required hint="O Negócio nasce na primeira Etapa do Funil.">
+              {(id) => (
+                <Select
+                  id={id}
+                  value={funilDoNegocio}
+                  onChange={setFunilDoNegocio}
+                  placeholder={funisDasTabelas.data === undefined ? "Carregando os Funis…" : "Escolha o Funil"}
+                  options={(funisDasTabelas.data?.itens ?? []).map((f) => ({ value: f.funil.id, label: f.funil.nome }))}
+                />
+              )}
+            </Field>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Título" hint="Vazio, fica o título da Tarefa.">
                 {(id) => <TextInput id={id} value={tituloDoNegocio} onChange={setTituloDoNegocio} placeholder={task.title} />}
               </Field>
-              <Field label="Valor em reais" hint="Opcional.">
+              <Field label="Valor em reais" hint="Opcional. Com ponto nos centavos, como 1234.50.">
                 {(id) => <TextInput id={id} value={valorDoNegocio} onChange={setValorDoNegocio} type="number" />}
               </Field>
             </div>
             {erroDoNegocio ? (
               <p role="alert" className="app-base" style={{ color: "var(--erro)" }}>
                 {erroDoNegocio}
+              </p>
+            ) : null}
+          </div>
+        </ConfirmDialog>
+      ) : null}
+      {/* 14-16 (3.3.5): trocar o Canal confirma aqui, porque pode pedir a primeira Mensagem (D-07). */}
+      {contatoDoResumo && canalNovo !== null ? (
+        <ConfirmDialog
+          open
+          title="Trocar o Canal da Tarefa"
+          description={`A Tarefa passa a conversar com ${contatoDoResumo.nome} por ${canaisDasTabelas.data?.itens.find((c) => c.id === canalNovo)?.nome ?? "outro Canal"}.`}
+          confirmLabel="Trocar o Canal"
+          wide
+          {...(trocandoCanal
+            ? { confirmDisabledReason: "Trocando…" }
+            : conversaDoCanalNovo.conversa === undefined && conversaDoCanalNovo.erro === undefined
+              ? { confirmDisabledReason: "Conferindo a conversa deste Contato neste Canal…" }
+              : (conversaDoCanalNovo.conversa === null || conversaDoCanalNovo.erro !== undefined) && mensagemDoCanal.trim() === ""
+                ? { confirmDisabledReason: "Escreva a primeira Mensagem." }
+                : {})}
+          confirmCarregando={trocandoCanal}
+          onConfirm={() => {
+            const pedeMensagem = conversaDoCanalNovo.conversa === null || conversaDoCanalNovo.erro !== undefined;
+            setErroDoCanal(null);
+            setTrocandoCanal(true);
+            void trocarCanalDaTarefa(task.id, {
+              canalId: canalNovo,
+              // O campo só aparece sem Conversa aberta no Canal novo; com ela o corpo não leva a Mensagem.
+              ...(pedeMensagem && mensagemDoCanal.trim() ? { mensagem: { conteudo: mensagemDoCanal.trim() } } : {}),
+            })
+              // A5: o `GET /estado` traz o Vínculo novo; se ele falhar a troca já valeu e a revisão do Espaço alcança o store depois.
+              .then(async ({ mudou }) => {
+                await rehidratar().catch(() => undefined);
+                setCanalNovo(null);
+                setMensagemDoCanal("");
+                // O fio segue o novo Canal em vez de ficar na aba anterior.
+                setCanalDoFio(null);
+                report({ ok: true }, mudou ? "Canal alterado." : "A Tarefa já conversava por este Canal.");
+              })
+              .catch((falha: unknown) =>
+                setErroDoCanal({
+                  texto: falha instanceof ErroDeApi ? falha.message : "Não foi possível trocar o Canal. Tente de novo.",
+                  campo: falha instanceof ErroDeApi ? falha.campo : undefined,
+                }),
+              )
+              .finally(() => setTrocandoCanal(false));
+          }}
+          onCancel={() => {
+            setCanalNovo(null);
+            setMensagemDoCanal("");
+            setErroDoCanal(null);
+          }}
+        >
+          <div className="grid gap-4">
+            {conversaDoCanalNovo.conversa === null || conversaDoCanalNovo.erro !== undefined ? (
+              <Field
+                label="Primeira Mensagem"
+                required
+                hint="Este Contato não tem conversa aberta neste Canal: a conversa nasce com esta Mensagem."
+                {...(erroDoCanal?.campo === "mensagem" ? { error: erroDoCanal.texto } : {})}
+              >
+                {(id) => <TextArea id={id} value={mensagemDoCanal} onChange={setMensagemDoCanal} rows={3} required placeholder="O que você quer dizer ao Contato" />}
+              </Field>
+            ) : null}
+            {erroDoCanal && (erroDoCanal.campo !== "mensagem" || conversaDoCanalNovo.conversa !== null) ? (
+              <p role="alert" className="app-base" style={{ color: "var(--erro)" }}>
+                {erroDoCanal.texto}
               </p>
             ) : null}
           </div>
@@ -1228,27 +1321,32 @@ export function TarefaCompleta({
                       <span className="block w-64">
                         <Select
                           id="canal-da-tarefa"
-                          value={canal?.id ?? ""}
-                          onChange={(channelId) => {
-                            const result = run((data, me) => trocarCanalDaTarefa(data, me, task.id, channelId));
-                            report(result, "Canal alterado.");
-                            // O fio segue o novo Canal em vez de ficar na aba anterior.
-                            if (result.ok) setCanalDoFio(null);
+                          value={canalDoResumo?.id ?? ""}
+                          onChange={(canalId) => {
+                            // O seletor só escolhe: a troca confirma no diálogo, que pede a primeira Mensagem quando precisa (D-07).
+                            setErroDoCanal(null);
+                            setMensagemDoCanal("");
+                            setCanalNovo(canalId);
                           }}
-                          placeholder="Escolher o Canal"
+                          placeholder={canaisDasTabelas.data === undefined ? "Carregando os Canais…" : "Escolher o Canal"}
                           options={(() => {
-                            // C36 — os canais de atendimento da Lista; o atual, se a Lista
+                            // C36 — os canais de atendimento da Lista que alcançam o Contato; o atual, se a Lista
                             // deixou de atender por ele, fica à vista mas não se escolhe.
-                            const daLista = canaisDaListaQueAlcancam(state, task.listId, contato);
-                            const atualFora = canal && !daLista.some((ch) => ch.id === canal.id) ? [canal] : [];
-                            return [...atualFora, ...daLista].map((ch) => ({
-                              value: ch.id,
-                              label: ch.name,
-                              detail: CHANNEL_TYPE_LABEL[ch.channelType] ?? ch.channelType,
-                              ...(atualFora.includes(ch)
+                            const todos = canaisDasTabelas.data?.itens ?? [];
+                            const lista = state.lists.find((l) => l.id === task.listId);
+                            const daLista = detalheDoContato.data
+                              ? canaisDaListaQueAlcancamNasTabelas(lista, todos, detalheDoContato.data.identificadores)
+                              : [];
+                            const atual = canalDoResumo ? todos.find((c) => c.id === canalDoResumo.id) : undefined;
+                            const atualFora = atual && !daLista.some((c) => c.id === atual.id) ? [atual] : [];
+                            return [...atualFora, ...daLista].map((c) => ({
+                              value: c.id,
+                              label: c.nome,
+                              detail: CHANNEL_TYPE_LABEL[c.tipo] ?? c.tipo,
+                              ...(atualFora.includes(c)
                                 ? { disabledReason: "Esta Lista não atende mais por este Canal." }
-                                : ch.connection === "desconectada"
-                                  ? { disabledReason: `O Canal ${ch.name} está desconectado: escolha outro Canal ou reconecte-o.` }
+                                : c.conexao === "desconectada"
+                                  ? { disabledReason: `O Canal ${c.nome} está desconectado: escolha outro Canal ou reconecte-o.` }
                                   : {}),
                             }));
                           })()}
@@ -1281,36 +1379,28 @@ export function TarefaCompleta({
 
                 <div className="grid min-w-0 content-start gap-0.5">
                   {(() => {
-                    const funilDe = (funnelId: string, stageId: string) => {
-                      const funil = state.funnels.find((f) => f.id === funnelId);
-                      const etapa = funil?.stages.find((s) => s.id === stageId);
-                      return `${funil?.name ?? "—"} › ${etapa?.name ?? "—"}`;
-                    };
-                    // Os Negócios abertos do Contato — e o vinculado, mesmo já fechado, para a opção não sumir.
-                    // (Opções do editor de escrita: ainda do modelo antigo até o 14-16.)
-                    const abertos = contato
-                      ? state.deals.filter(
-                          (d) => d.lifecycle === "ativo" && d.situation === "aberto" && d.contactLinks.some((l) => l.contactId === contato.id),
-                        )
-                      : [];
+                    // Os Negócios abertos do Contato, das tabelas — e o vinculado, mesmo já fechado, para a opção não sumir.
+                    const abertos = negociosDoContato.data?.itens ?? [];
                     const opcoes = [
                       { value: "", label: "Sem Negócio" },
-                      ...(negocio && !abertos.some((d) => d.id === negocio.id) ? [negocio] : []).concat(abertos).map((d) => ({
-                        value: d.id,
-                        label: d.title,
-                        detail: funilDe(d.funnelId, d.stageId),
-                      })),
+                      ...(negocioDoResumo && !abertos.some((n) => n.id === negocioDoResumo.id)
+                        ? [{ value: negocioDoResumo.id, label: negocioDoResumo.titulo }]
+                        : []),
+                      ...abertos.map((n) => ({ value: n.id, label: n.titulo })),
                     ];
                     const seletor = (
                       <Select
                         id="negocio-da-tarefa"
-                        value={negocio?.id ?? ""}
-                        onChange={(dealId) => {
-                          report(
-                            run((data, me) => vincularNegocioATarefa(data, me, task.id, dealId || null)),
-                            dealId ? "Negócio vinculado." : "Negócio desvinculado.",
-                          );
+                        value={negocioDoResumo?.id ?? ""}
+                        onChange={(negocioId) => {
                           setEditandoNegocio(false);
+                          // A5: o `GET /estado` traz o Vínculo novo. A recusa da api (Negócio de outro Contato…) aparece no aviso da ficha.
+                          void vincularNegocioATarefa(task.id, negocioId || null)
+                            .then(async () => {
+                              await rehidratar().catch(() => undefined);
+                              report({ ok: true }, negocioId ? "Negócio vinculado." : "Negócio desvinculado.");
+                            })
+                            .catch((falha: unknown) => report({ ok: false, error: falha instanceof ErroDeApi ? falha.message : "Não foi possível alterar o Negócio. Tente de novo." }, ""));
                         }}
                         placeholder="Sem Negócio"
                         options={opcoes}

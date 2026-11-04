@@ -10,14 +10,24 @@
  */
 
 import { useEffect } from "react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { buildSeed } from "@n1/dominio/seed";
 import type { DataState } from "@n1/dominio/state";
 import type { Channel, Contact, Conversation, Message } from "@n1/dominio/types";
+import { POS_VENDA_LIST_ID } from "@n1/dominio/seed-pos-venda";
+import { ErroDeApi } from "@/dados/crm/cliente-crm";
 import { StoreProvider, useData } from "@/dados/store";
 import { transporteEmMemoria } from "@/dados/transporte";
 import { ConversationThread } from "@/features/crm/conversation-thread";
+
+// 14-16: o botão "Criar Tarefa" de uma Lista conversacional chama a rota da api; a rede é falsa.
+const { criarTarefa, rehidratar } = vi.hoisted(() => ({ criarTarefa: vi.fn(), rehidratar: vi.fn(async () => undefined) }));
+vi.mock("@/dados/crm/tarefas-conversacionais", () => ({ criarTarefaConversacional: criarTarefa }));
+vi.mock("@/dados/store", async (original) => ({
+  ...(await original<typeof import("@/dados/store")>()),
+  useRehidratar: () => rehidratar,
+}));
 
 let estado: DataState;
 let contato: Contact;
@@ -114,6 +124,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   sonda.dados = undefined;
+  criarTarefa.mockReset();
+  rehidratar.mockClear();
 });
 
 function montar() {
@@ -232,5 +244,43 @@ describe("ConversationThread — o fio por Canal", () => {
       const outra = dadosDoStore().conversations.find((c) => c.id === id);
       expect(outra?.messages.some((m) => m.content === "olá, pelo Suporte")).toBe(false);
     }
+  });
+});
+
+describe("ConversationThread — Criar Tarefa numa Lista conversacional (14-16)", () => {
+  function criarPeloFio() {
+    render(
+      <StoreProvider sessao={{ memberId: "mem_thiago" }} estadoInicial={{ data: estado, revisao: 1, ordens: {} }} transporte={transporteEmMemoria()}>
+        <ConversationThread contact={contato} canalSelecionado="chn_wpp" />
+      </StoreProvider>,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Tarefa" }));
+    fireEvent.change(screen.getByLabelText("Título da Tarefa"), { target: { value: "Retomar a matrícula" } });
+    fireEvent.click(document.getElementById("lista-da-tarefa") as HTMLElement);
+    fireEvent.click(screen.getByRole("option", { name: /Pós-venda/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Criar Tarefa" }));
+  }
+
+  it("(7) chama a rota com o Contato e o Canal da aba, sem Mensagem, e re-hidrata depois", async () => {
+    criarTarefa.mockResolvedValue({ task: { id: "t_9", title: "Retomar a matrícula" }, conversa: { id: "cv_9", aberta: false } });
+    criarPeloFio();
+    await waitFor(() => expect(screen.getByText("Tarefa criada com o Contato e atribuída a você.")).toBeTruthy());
+    expect(criarTarefa).toHaveBeenCalledTimes(1);
+    // O Tipo da Tarefa vem do seletor (o padrão da Lista); a Mensagem não vai: a Conversa do fio já está aberta.
+    expect(criarTarefa.mock.calls[0]?.[0]).toMatchObject({
+      listId: POS_VENDA_LIST_ID,
+      contatoId: contato.id,
+      canalId: "chn_wpp",
+      title: "Retomar a matrícula",
+    });
+    expect(criarTarefa.mock.calls[0]?.[0]).not.toHaveProperty("mensagem");
+    expect(rehidratar).toHaveBeenCalledTimes(1);
+  });
+
+  it("(8) a recusa da api (por exemplo, pedir a primeira Mensagem) aparece no fio e nada é re-hidratado", async () => {
+    criarTarefa.mockRejectedValue(new ErroDeApi(400, "Escreva a primeira Mensagem.", { codigo: "VALOR_INVALIDO", campo: "mensagem" }));
+    criarPeloFio();
+    await waitFor(() => expect(screen.getByText("Escreva a primeira Mensagem.")).toBeTruthy());
+    expect(rehidratar).not.toHaveBeenCalled();
   });
 });

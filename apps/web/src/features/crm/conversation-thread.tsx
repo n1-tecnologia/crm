@@ -38,13 +38,14 @@ import {
   Workflow,
   type LucideIcon,
 } from "lucide-react";
-import { useData, useRun } from "@/dados/store";
+import { useData, useRehidratar, useRun } from "@/dados/store";
+import { ErroDeApi } from "@/dados/crm/cliente-crm";
+import { criarTarefaConversacional } from "@/dados/crm/tarefas-conversacionais";
 import { useRecente } from "@/features/shell/recente";
 import {
   capacidadesDoCanal,
   addContactNote,
   createTask,
-  criarTarefaConversacional,
   discardDraft,
   sendMessage,
   startConversation,
@@ -190,6 +191,7 @@ export function ConversationThread({
 }) {
   const state = useData((data) => data);
   const run = useRun();
+  const rehidratar = useRehidratar();
   // A Mensagem recém-enviada surge; as outras já estão (o fio não tem cascata).
   const recente = useRecente();
   const fmt = useFormat();
@@ -225,6 +227,8 @@ export function ConversationThread({
   const [descartando, setDescartando] = useState<ActorRef | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  // A Tarefa conversacional é uma chamada à api: o botão espera a resposta, sem criar duas.
+  const [criandoTarefa, setCriandoTarefa] = useState(false);
   const [agora] = useState(() => Date.now());
 
   const fio = canaisDoFio(state, contact);
@@ -809,9 +813,17 @@ export function ConversationThread({
                 evento.preventDefault();
                 /*
                   C35 — numa Lista conversacional a Tarefa nasce COM este
-                  Contato e a conversa do Canal ativo (criarTarefaConversacional);
-                  numa operacional, pelo título, como sempre. O `createTask`
-                  recusaria a conversacional sem Contato — aqui ele já está.
+                  Contato e a conversa do Canal ativo; numa operacional, pelo
+                  título, como sempre. O `createTask` recusaria a conversacional
+                  sem Contato — aqui ele já está.
+
+                  Fase 14 (3.3.4): a conversacional nasce por
+                  `POST /tarefas-conversacionais` (só os ids; o servidor confere
+                  Contato e Canal nas tabelas) e a tela re-hidrata o store depois
+                  (A5). O fio inteiro troca de base na 3.4.2; este botão já fala
+                  com a api. Sem `mensagem`: a Conversa do fio já está aberta, e
+                  se ela estiver resolvida a api pede a primeira Mensagem (D-07)
+                  e a recusa aparece aqui.
                 */
                 const conversacional = listaConversacional(state, listaDaTarefa);
                 // C36 por Canal — a Tarefa nasce por um canal de atendimento da
@@ -828,33 +840,40 @@ export function ConversationThread({
                   );
                   return;
                 }
-                const resultado =
-                  conversacional && channelId
-                    ? run((data, memberId) =>
-                        criarTarefaConversacional(data, memberId, {
-                          listId: listaDaTarefa,
-                          contactId: contact.id,
-                          channelId,
-                          title: textoDoRegistro,
-                          assignees: [{ kind: "member", id: memberId }],
-                          ...(tipoDaTarefa ? { taskTypeId: tipoDaTarefa } : {}),
-                        }),
-                      )
-                    : run((data, memberId) =>
-                        createTask(data, memberId, {
-                          listId: listaDaTarefa,
-                          title: textoDoRegistro,
-                          assignees: [{ kind: "member", id: memberId }],
-                          ...(tipoDaTarefa ? { taskTypeId: tipoDaTarefa } : {}),
-                        }),
-                      );
+                if (conversacional && channelId) {
+                  setCriandoTarefa(true);
+                  void criarTarefaConversacional({
+                    listId: listaDaTarefa,
+                    contatoId: contact.id,
+                    canalId: channelId,
+                    title: textoDoRegistro,
+                    ...(tipoDaTarefa ? { taskTypeId: tipoDaTarefa } : {}),
+                  })
+                    // Se o `GET /estado` falhar a Tarefa já existe: o aviso vale e a revisão do Espaço alcança o store depois.
+                    .then(() => rehidratar().catch(() => undefined))
+                    .then(() => {
+                      setErro(null);
+                      setAviso("Tarefa criada com o Contato e atribuída a você.");
+                      setTextoDoRegistro("");
+                    })
+                    .catch((falha: unknown) => {
+                      setAviso(null);
+                      setErro(falha instanceof ErroDeApi ? falha.message : "Não foi possível criar a Tarefa. Tente de novo.");
+                    })
+                    .finally(() => setCriandoTarefa(false));
+                  return;
+                }
+                const resultado = run((data, memberId) =>
+                  createTask(data, memberId, {
+                    listId: listaDaTarefa,
+                    title: textoDoRegistro,
+                    assignees: [{ kind: "member", id: memberId }],
+                    ...(tipoDaTarefa ? { taskTypeId: tipoDaTarefa } : {}),
+                  }),
+                );
                 if (resultado.ok) {
                   setErro(null);
-                  setAviso(
-                    conversacional
-                      ? "Tarefa criada com o Contato e atribuída a você."
-                      : "Tarefa criada e atribuída a você.",
-                  );
+                  setAviso("Tarefa criada e atribuída a você.");
                   setTextoDoRegistro("");
                 } else {
                   setAviso(null);
@@ -924,12 +943,14 @@ export function ConversationThread({
                 <Button
                   type="submit"
                   disabled={
-                    textoDoRegistro.trim() === "" || listaDaTarefa === ""
+                    textoDoRegistro.trim() === "" || listaDaTarefa === "" || criandoTarefa
                   }
                   disabledReason={
-                    listaDaTarefa === ""
-                      ? "Escolha a Lista."
-                      : "Dê um título à Tarefa."
+                    criandoTarefa
+                      ? "Criando a Tarefa…"
+                      : listaDaTarefa === ""
+                        ? "Escolha a Lista."
+                        : "Dê um título à Tarefa."
                   }
                 >
                   Criar Tarefa

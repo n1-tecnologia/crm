@@ -32,7 +32,7 @@ import { RESUMO_MAXIMO, type ResumoDaTarefaConversacional, type VinculoParaResum
 import { vinculosDoCrmDaTarefa } from "@n1/dominio/derive-conversacional";
 import type { ActorRef, Priority, Task, TaskDate } from "@n1/dominio/types";
 import { useData } from "@/dados/store";
-import { chamarCrm, ErroDeApi } from "./cliente-crm";
+import { chamarCrm, ErroDeApi, invalidarCrm } from "./cliente-crm";
 
 const CAMINHO_DO_RESUMO = "/tarefas-conversacionais/resumo";
 
@@ -163,8 +163,10 @@ export function useResumoDaTarefa(taskId: string, opcoes: { readonly pausado?: b
  * nas tabelas, e os corpos `.strict()` da api recusam qualquer outro campo
  * (T-14-41). A tela chama `rehidratar()` depois de cada sucesso (A5): o
  * `GET /estado` traz a Tarefa nova ou alterada, e nada é aplicado à mão no store.
- * Por isso as funções não tocam o store nem o cache do SWR: a recusa da api sobe
- * como `ErroDeApi` com a mensagem do servidor, e quem chama decide onde mostrá-la.
+ * Por isso as funções não tocam o store: a recusa da api sobe como `ErroDeApi`
+ * com a mensagem do servidor, e quem chama decide onde mostrá-la. O cache do SWR
+ * dos recursos do CRM que o gesto mexeu (Conversas, Negócios, Funis, Contatos)
+ * é invalidado só no sucesso, como nas outras funções de escrita de `dados/crm`.
  *
  * Só no deploy da Fase 15 (D-01): enquanto as Tarefas e as Conversas da tela
  * ainda são ids do modelo antigo, estas rotas respondem 404 para elas.
@@ -205,6 +207,7 @@ function caminhoDaTarefa(taskId: string): string {
 /** 3.3.4: a Tarefa nasce em `registros` e a Conversa abre (ou é reaproveitada) em `plataforma.conversas`, no mesmo commit. */
 export async function criarTarefaConversacional(entrada: NovaTarefaConversacionalNaTela): Promise<{ readonly task: Task; readonly conversa: ConversaDaTarefa }> {
   const { dados } = await chamarCrm<RespostaDaEscrita<{ readonly task: Task }>>("/tarefas-conversacionais", { method: "POST", corpo: entrada });
+  await invalidarCrm("/conversas");
   return { task: dados.value.task, conversa: dados.conversa as ConversaDaTarefa };
 }
 
@@ -217,6 +220,7 @@ export async function trocarCanalDaTarefa(
     method: "POST",
     corpo: entrada,
   });
+  await invalidarCrm("/conversas");
   return { task: dados.value.task, mudou: dados.value.mudou, conversa: dados.conversa as ConversaDaTarefa };
 }
 
@@ -232,6 +236,8 @@ export async function criarNegocioDaTarefa(
   entrada: { readonly funilId: string; readonly titulo?: string; readonly valor?: string },
 ): Promise<{ readonly task: Task; readonly negocio: { readonly id: string; readonly titulo: string } }> {
   const { dados } = await chamarCrm<RespostaDaEscrita<Task>>(`${caminhoDaTarefa(taskId)}/negocio/novo`, { method: "POST", corpo: entrada });
+  // O Negócio é novo: a lista e o quadro, as contagens do Funil e as fichas do Contato e da Empresa o trazem.
+  await Promise.all([invalidarCrm("/negocios"), invalidarCrm("/funis"), invalidarCrm("/contatos"), invalidarCrm("/empresas")]);
   return { task: dados.value, negocio: dados.negocio as { readonly id: string; readonly titulo: string } };
 }
 

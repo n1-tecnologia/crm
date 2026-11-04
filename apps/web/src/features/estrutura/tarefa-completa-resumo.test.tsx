@@ -28,7 +28,18 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/dados/crm/tarefas-conversacionais", () => ({
   useResumoDaTarefa: () => resumo.atual,
+  // 14-16: os gestos da ficha também vêm deste módulo; aqui só a leitura é o assunto.
+  useConversaAbertaDoPar: () => ({ conversa: undefined }),
+  trocarCanalDaTarefa: vi.fn(),
+  vincularNegocioATarefa: vi.fn(),
+  criarNegocioDaTarefa: vi.fn(),
 }));
+
+// ...e as listas que os gestos oferecem (Canais, Negócios, Funis, Contato) vêm da api: nenhuma rede aqui.
+vi.mock("@/dados/crm/contatos", () => ({ useContato: () => ({ data: undefined }) }));
+vi.mock("@/dados/crm/canais", () => ({ useCanais: () => ({ data: undefined }) }));
+vi.mock("@/dados/crm/negocios", () => ({ useNegocios: () => ({ data: undefined }) }));
+vi.mock("@/dados/crm/funis", () => ({ useFunis: () => ({ data: undefined }) }));
 
 const TAREFA = "tsk_lst_funil_sdr_deal_sdr_2";
 
