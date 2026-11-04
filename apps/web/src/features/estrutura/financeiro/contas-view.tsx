@@ -43,11 +43,9 @@ import { useRecente } from "@/features/shell/recente";
 import {
   changeTaskStatus,
   CP,
-  runScheduledAutomations,
   statusOptionRefusal,
 } from "@n1/dominio/operations";
 import {
-  containerAdminRefusal,
   effectiveListConfig,
   isTerminalCategory,
   statusCategory,
@@ -226,16 +224,13 @@ export function FinanceIndicators({
  * seletores e as ações de lote. Quem a hospeda põe a barra; aqui só o miolo.
  */
 export function FinanceToolbar({
-  listId,
   profile,
   filters,
   onFilters,
   onOpenFilters,
   filtrosAvancados,
   fim,
-  report,
 }: {
-  readonly listId: string;
   readonly profile: FinanceProfile;
   readonly filters: FinanceFilters;
   readonly onFilters: (next: FinanceFilters) => void;
@@ -243,24 +238,10 @@ export function FinanceToolbar({
   readonly filtrosAvancados: number;
   /** O encaixe do fim da barra: a página põe o `BotaoDeSelecao` (a seleção em lote é uma peça só). */
   readonly fim?: ReactNode;
-  readonly report: Report;
 }) {
   const state = useData((data) => data);
-  const run = useRun();
   const router = useRouter();
-  const { memberId } = useSession();
   const empresas = opcoesDeEmpresa(state);
-  const admin = containerAdminRefusal(state, memberId, "list", listId);
-  const agendadas = state.automations.filter(
-    (a) =>
-      a.lifecycle === "ativo" &&
-      a.scopeType === "list" &&
-      a.scopeId === listId &&
-      a.versions.some(
-        (v) =>
-          v.state === "publicada" && v.trigger?.kind === "condicaoTemporal",
-      ),
-  ).length;
   const chips: Array<{ key: string; label: string; onRemove: () => void }> = [];
   if (filters.texto.trim())
     chips.push({
@@ -369,37 +350,6 @@ export function FinanceToolbar({
           </span>
         }
         items={[
-          {
-            label: "Rodar automações por vencimento (hoje)",
-            onSelect: () => {
-              const r = run((data, me) =>
-                runScheduledAutomations(data, me, listId, new Date()),
-              );
-              if (r.ok && r.value.failed > 0)
-                report(
-                  {
-                    ok: false,
-                    error: `${r.value.executed} executada(s); ${r.value.failed} falhou(aram): ${r.value.failures.map((f) => `${f.title} — ${f.reason}`).join(" · ")}`,
-                  },
-                  "",
-                );
-              else
-                report(
-                  r,
-                  r.ok
-                    ? `Automações por vencimento: ${r.value.executed} executada(s), ${r.value.skipped} já rodada(s) ou fora da condição.`
-                    : "",
-                );
-            },
-            ...(admin
-              ? { disabledReason: admin }
-              : agendadas === 0
-                ? {
-                    disabledReason:
-                      "Esta Lista não tem Automação por vencimento.",
-                  }
-                : {}),
-          },
           {
             label: "Ver Automações desta Lista",
             onSelect: () => router.push("/ia/personalizar/automacao"),
