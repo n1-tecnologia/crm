@@ -38,7 +38,7 @@ import { buildApp } from "../app";
 import { carregarEnv, encerrar, pool } from "../persistencia/conexao";
 import { hidratar, semear } from "../persistencia/repositorio";
 import { FRASE_DE_SUSPENSO } from "../plugins/autenticacao";
-import { describeComBanco, prepararBancoCrm } from "../testes/banco-crm";
+import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearCanal } from "../testes/banco-crm";
 import {
   appDoEspaco,
   limparEspacoDeVazamento,
@@ -981,5 +981,127 @@ describeComBanco("POST /operacoes — resposta recortada pelo que o Membro enxer
     } finally {
       cliente.release();
     }
+  });
+});
+
+describeComBanco("POST /operacoes/removeMember — a sucessão chega às tabelas do CRM no mesmo commit (14-10, 3.2.8)", () => {
+  let espaco: EspacoDeVazamento;
+  /** Outro Espaço com o mesmo `proprietario_id`: a passagem nunca atravessa o `workspace_id`. */
+  let outroEspaco: string;
+  let ids: { contatoA: string; contatoB: string; contatoDeOutro: string; empresa: string; negocio: string; conversaDoRemovido: string; conversaDeOutro: string; contatoDoOutroEspaco: string };
+
+  const removido = () => espaco.membros.suspenso.id;
+  const sucessor = () => espaco.membros.a.id;
+  const donoDe = async (tabela: "contatos" | "empresas" | "negocios", workspaceId: string, id: string) =>
+    (await pool().query<{ proprietario_id: string }>(`select proprietario_id from plataforma.${tabela} where workspace_id = $1 and id = $2`, [workspaceId, id])).rows[0]?.proprietario_id;
+  const atribuicaoDe = async (id: string) =>
+    (await pool().query<{ atribuido_tipo: string | null; atribuido_id: string | null }>("select atribuido_tipo, atribuido_id from plataforma.conversas where workspace_id = $1 and id = $2", [espaco.workspaceId, id])).rows[0];
+  const chamar = (token: string, args: unknown[]) =>
+    appDoEspaco(espaco).inject({ method: "POST", url: "/operacoes/removeMember", headers: { authorization: `Bearer ${token}` }, payload: { args } });
+
+  async function contato(workspaceId: string, nome: string, dono: string): Promise<string> {
+    const { rows } = await pool().query<{ id: string }>(
+      "insert into plataforma.contatos (workspace_id, nome, proprietario_id, criado_por) values ($1, $2, $3, $3) returning id",
+      [workspaceId, nome, dono],
+    );
+    return rows[0]!.id;
+  }
+
+  beforeAll(async () => {
+    await prepararBancoCrm();
+    espaco = montarEspacoDeVazamento("sucessao");
+    await semearEspacoDeVazamento(espaco);
+    outroEspaco = novoEspacoDeTeste("sucessaob");
+    const ws = espaco.workspaceId;
+    const contatoA = await contato(ws, "Do removido 1", removido());
+    const contatoB = await contato(ws, "Do removido 2", removido());
+    const contatoDeOutro = await contato(ws, "De outro Membro", espaco.membros.b.id);
+    // A Empresa exige um Contato admin vigente já no commit (trigger deferido): Empresa e vínculo vão numa transação.
+    let empresa: string;
+    const cliente = await pool().connect();
+    try {
+      await cliente.query("begin");
+      empresa = (
+        await cliente.query<{ id: string }>("insert into plataforma.empresas (workspace_id, nome_fantasia, proprietario_id, criado_por) values ($1, 'Empresa do removido', $2, $2) returning id", [ws, removido()])
+      ).rows[0]!.id;
+      await cliente.query("insert into plataforma.contato_empresa (workspace_id, contato_id, empresa_id, admin, criado_por) values ($1, $2, $3, true, $4)", [ws, contatoA, empresa, removido()]);
+      await cliente.query("commit");
+    } catch (erro) {
+      await cliente.query("rollback");
+      throw erro;
+    } finally {
+      cliente.release();
+    }
+    const funil = (await pool().query<{ id: string }>("insert into plataforma.funis (workspace_id, nome, criado_por) values ($1, 'Funil', $2) returning id", [ws, removido()])).rows[0]!.id;
+    const etapa = (await pool().query<{ id: string }>("insert into plataforma.etapas (workspace_id, funil_id, nome, ordem) values ($1, $2, 'Etapa', 1) returning id", [ws, funil])).rows[0]!.id;
+    const negocio = (
+      await pool().query<{ id: string }>(
+        "insert into plataforma.negocios (workspace_id, titulo, contato_id, funil_id, etapa_id, proprietario_id, criado_por) values ($1, 'Negócio do removido', $2, $3, $4, $5, $5) returning id",
+        [ws, contatoA, funil, etapa, removido()],
+      )
+    ).rows[0]!.id;
+    const canal = await semearCanal(ws, { nome: "Canal", tipo: "whatsapp", provedor: "whatsapp-cloud", identificadorExterno: "5511900000000" });
+    const conversa = async (contatoId: string, titulo: string, membroId: string) =>
+      (
+        await pool().query<{ id: string }>(
+          `insert into plataforma.conversas (workspace_id, canal_id, contato_id, titulo, atribuido_tipo, atribuido_id, criado_por_tipo, criado_por_id)
+           values ($1, $2, $3, $4, 'membro', $5, 'membro', $5) returning id`,
+          [ws, canal, contatoId, titulo, membroId],
+        )
+      ).rows[0]!.id;
+    const conversaDoRemovido = await conversa(contatoA, "Atribuída ao removido", removido());
+    const conversaDeOutro = await conversa(contatoB, "Atribuída a outro", espaco.membros.b.id);
+    const contatoDoOutroEspaco = await contato(outroEspaco, "Outro Espaço", removido());
+    ids = { contatoA, contatoB, contatoDeOutro, empresa, negocio, conversaDoRemovido, conversaDeOutro, contatoDoOutroEspaco };
+  });
+
+  afterAll(async () => {
+    await limparEspacoDeVazamento(espaco);
+    await limparEspaco(outroEspaco);
+    await encerrar();
+  });
+
+  it("quem não é Administrador nem Proprietário pede a remoção: o domínio recusa (200, ok:false) e as tabelas do CRM ficam iguais", async () => {
+    const resposta = await chamar(TOKENS_DE_VAZAMENTO.b, [removido(), sucessor()]);
+    expect(resposta.statusCode, resposta.body.slice(0, 200)).toBe(200);
+    expect(resposta.json().ok).toBe(false);
+    const ws = espaco.workspaceId;
+    expect(await donoDe("contatos", ws, ids.contatoA)).toBe(removido());
+    expect(await donoDe("contatos", ws, ids.contatoB)).toBe(removido());
+    expect(await donoDe("empresas", ws, ids.empresa)).toBe(removido());
+    expect(await donoDe("negocios", ws, ids.negocio)).toBe(removido());
+    expect(await atribuicaoDe(ids.conversaDoRemovido)).toEqual({ atribuido_tipo: "membro", atribuido_id: removido() });
+  });
+
+  it("um Sucessor que o domínio recusa (Convidado) também não mexe nas tabelas", async () => {
+    const resposta = await chamar(TOKENS_DE_VAZAMENTO.administrador, [removido(), espaco.membros.convidado.id]);
+    expect(resposta.statusCode).toBe(200);
+    expect(resposta.json().ok).toBe(false);
+    expect(await donoDe("contatos", espaco.workspaceId, ids.contatoA)).toBe(removido());
+  });
+
+  it("o Administrador remove o Membro: Contatos, Empresa e Negócio passam ao Sucessor, a Conversa dele fica sem Atribuído, e o resto não muda", async () => {
+    const resposta = await chamar(TOKENS_DE_VAZAMENTO.administrador, [removido(), sucessor()]);
+    expect(resposta.statusCode, resposta.body.slice(0, 200)).toBe(200);
+    expect(resposta.json().ok).toBe(true);
+    const ws = espaco.workspaceId;
+    expect(await donoDe("contatos", ws, ids.contatoA)).toBe(sucessor());
+    expect(await donoDe("contatos", ws, ids.contatoB)).toBe(sucessor());
+    expect(await donoDe("empresas", ws, ids.empresa)).toBe(sucessor());
+    expect(await donoDe("negocios", ws, ids.negocio)).toBe(sucessor());
+    // RN-ET-09 (b): a Conversa é liberada, não passa ao Sucessor.
+    expect(await atribuicaoDe(ids.conversaDoRemovido)).toEqual({ atribuido_tipo: null, atribuido_id: null });
+    // O que era de outro Membro e o que era de outro Espaço ficam como estavam.
+    expect(await donoDe("contatos", ws, ids.contatoDeOutro)).toBe(espaco.membros.b.id);
+    expect(await atribuicaoDe(ids.conversaDeOutro)).toEqual({ atribuido_tipo: "membro", atribuido_id: espaco.membros.b.id });
+    expect(await donoDe("contatos", outroEspaco, ids.contatoDoOutroEspaco)).toBe(removido());
+  });
+
+  it("repetir a remoção de quem já saiu é sucesso do domínio, mas um Sucessor que não é Membro ativo do Espaço não recebe nada", async () => {
+    const novo = await contato(espaco.workspaceId, "Chegou depois", removido());
+    const resposta = await chamar(TOKENS_DE_VAZAMENTO.administrador, [removido(), "mem_que_nao_existe"]);
+    expect(resposta.statusCode, resposta.body.slice(0, 200)).toBe(200);
+    expect(resposta.json().ok).toBe(true);
+    expect(await donoDe("contatos", espaco.workspaceId, novo)).toBe(removido());
   });
 });
