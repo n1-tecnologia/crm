@@ -22,6 +22,7 @@ import { recusarSuspensoNaEscrita } from "../../plugins/autenticacao";
 import { criarAcessoAoCrmPg, type AcessoAoCrm } from "../../servicos/crm/acesso";
 import { criarServicoDeCanais, type ServicoDeCanais } from "../../servicos/crm/canais";
 import { criarServicoDeContatos, type ServicoDeContatos } from "../../servicos/crm/contatos";
+import { criarServicoDeConsentimentos, type ServicoDeConsentimentos } from "../../servicos/crm/consentimentos";
 import { criarServicoDeConversas, type ServicoDeConversas } from "../../servicos/crm/conversas";
 import { criarServicoDeEmpresas, type ServicoDeEmpresas } from "../../servicos/crm/empresas";
 import { criarServicoDeFunis, type ServicoDeFunis } from "../../servicos/crm/funis";
@@ -29,6 +30,7 @@ import { criarServicoDeMensagens, type ServicoDeMensagens } from "../../servicos
 import { criarServicoDeNegocios, type ServicoDeNegocios } from "../../servicos/crm/negocios";
 import { criarServicoDeNotas, type ServicoDeNotas } from "../../servicos/crm/notas";
 import { rotasDeCanais } from "./canais";
+import { rotasDeConsentimentos } from "./consentimentos";
 import { rotasDeContatos } from "./contatos";
 import { rotasDeConversas } from "./conversas";
 import { rotasDeEmpresas } from "./empresas";
@@ -56,6 +58,8 @@ export interface OpcoesDeCrm {
   readonly mensagens?: ServicoDeMensagens;
   /** Injeção só para teste: troca o serviço real de Notas do Contato por um falso, sem banco. */
   readonly notas?: ServicoDeNotas;
+  /** Injeção só para teste: troca o serviço real de Consentimentos do Contato por um falso, sem banco. */
+  readonly consentimentos?: ServicoDeConsentimentos;
   /** Padrão: lê Papel e Membro de `plataforma.registros`. Injeção para teste sem banco. */
   readonly acesso?: AcessoAoCrm;
 }
@@ -82,4 +86,6 @@ export async function rotasDeCrm(app: FastifyInstance, opcoes: OpcoesDeCrm = {})
   await app.register(rotasDeMensagens, { servico: mensagens });
   const notas = opcoes.notas ?? criarServicoDeNotas({ pool: obterPool, acesso });
   await app.register(rotasDeNotas, { servico: notas });
+  const consentimentos = opcoes.consentimentos ?? criarServicoDeConsentimentos({ pool: obterPool, acesso });
+  await app.register(rotasDeConsentimentos, { servico: consentimentos });
 }
