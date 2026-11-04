@@ -12,6 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { encerrar, pool } from "../../persistencia/conexao";
 import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
+import { criarRepositorioDeMensagensPg } from "../../repositorios/crm/mensagens";
 import {
   describeComBanco,
   limparEspaco,
@@ -568,6 +569,158 @@ describeComBanco("ServicoDeConversas — Postgres local", () => {
       expect(recusado(await servico.enviarParaLixeira(outro.membro, id))).toMatchObject({ status: 404, codigo: "CONVERSA_NAO_ENCONTRADA" });
       expect(recusado(await servico.restaurar(outro.membro, id))).toMatchObject({ status: 404, codigo: "CONVERSA_NAO_ENCONTRADA" });
       expect(valor(await servico.obter(c.membro, id)).conversa.estado).toBe("ativo");
+    });
+  });
+
+  describe("marcação por Membro e listagem com filtros (3.2.6)", () => {
+    const todas = { estado: "ativo", limite: 50, deslocamento: 0 } as const;
+    const horasAtras = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+
+    async function recebida(ws: string, conversaId: string, canalId: string, idExterno: string, criadoEm: string) {
+      await criarRepositorioDeMensagensPg(pool()).inserirRecebida(ws, {
+        conversaId,
+        canalId,
+        idExterno,
+        criadoEm,
+        conteudo: "oi",
+        anexos: [],
+        assunto: null,
+        enderecosAdicionais: [],
+        remetenteExterno: null,
+        identificadorId: null,
+        cargaBruta: {},
+      });
+    }
+
+    it("a estrela é do Membro: X marca, Y não vê e a lista de Y tem estrela false", async () => {
+      const c = await espaco("estrela");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966664001" }]);
+      const canal = await comercial(c.ws);
+      const { conversa } = valor(await abrir(c, canal, ana));
+
+      expect(valor(await servico.marcar(c.membro, conversa.id, { estrela: true }))).toEqual({ estrela: true, lidaAte: null });
+
+      const deX = valor(await servico.listar(c.membro, { ...todas, comEstrela: true }));
+      expect(deX.itens.map((i) => i.id)).toEqual([conversa.id]);
+      expect(deX.itens[0]?.estrela).toBe(true);
+      expect(valor(await servico.listar(c.admin, { ...todas, comEstrela: true })).total).toBe(0);
+      expect(valor(await servico.listar(c.admin, todas)).itens[0]?.estrela).toBe(false);
+      expect(valor(await servico.listar(c.membro, { ...todas, comEstrela: false })).total).toBe(0);
+
+      // Y desmarcar a própria não mexe na de X.
+      valor(await servico.marcar(c.admin, conversa.id, { estrela: false }));
+      expect(valor(await servico.listar(c.membro, { ...todas, comEstrela: true })).total).toBe(1);
+    });
+
+    it("naoLidas conta as recebidas depois do lidaAte do Membro; sem marcação conta todas; enviada não conta", async () => {
+      const c = await espaco("naolidas");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966664002" }]);
+      const canal = await comercial(c.ws);
+      const { conversa } = valor(await abrir(c, canal, ana));
+      await recebida(c.ws, conversa.id, canal, "wamid.1", horasAtras(2));
+      await recebida(c.ws, conversa.id, canal, "wamid.2", horasAtras(1));
+      const naoLidas = async (quem: MembroDaSessao) => valor(await servico.listar(quem, todas)).itens[0]?.naoLidas;
+
+      expect(await naoLidas(c.membro)).toBe(2);
+      valor(await servico.marcar(c.membro, conversa.id, { lidaAte: horasAtras(1.5) }));
+      expect(await naoLidas(c.membro)).toBe(1);
+      expect(valor(await servico.marcar(c.membro, conversa.id, { lidaAte: new Date().toISOString() })).estrela).toBe(false);
+      expect(await naoLidas(c.membro)).toBe(0);
+      expect(await naoLidas(c.admin)).toBe(2);
+    });
+
+    it("marcar só um campo não apaga o outro", async () => {
+      const c = await espaco("doiscampos");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966664003" }]);
+      const canal = await comercial(c.ws);
+      const { conversa } = valor(await abrir(c, canal, ana));
+      const lidaAte = horasAtras(1);
+
+      valor(await servico.marcar(c.membro, conversa.id, { estrela: true }));
+      const depois = valor(await servico.marcar(c.membro, conversa.id, { lidaAte }));
+      expect(depois).toEqual({ estrela: true, lidaAte });
+      expect(valor(await servico.marcar(c.membro, conversa.id, { estrela: false }))).toEqual({ estrela: false, lidaAte });
+    });
+
+    it("atribuidoId e filaId filtram; q acha o título sem diferenciar maiúscula", async () => {
+      const c = await espaco("filtros");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966664004" }]);
+      const bia = await contato(c.ws, "Bia", [{ tipo: "whatsapp", valor: "+5511966664005" }]);
+      const canal = await comercial(c.ws);
+      const daAna = valor(await abrir(c, canal, ana)).conversa;
+      const daBia = valor(await abrir(c, canal, bia)).conversa;
+      valor(await servico.atribuir(c.membro, daBia.id, { atribuido: { tipo: "membro", id: "mem_admin" } }));
+      await pool().query("update plataforma.conversas set fila_id = 'fila_vendas', titulo = 'Conversa com João' where workspace_id = $1 and id = $2", [c.ws, daAna.id]);
+      const ids = async (filtro: object) => valor(await servico.listar(c.membro, { ...todas, ...filtro })).itens.map((i) => i.id);
+
+      expect(await ids({ atribuidoId: "mem_admin" })).toEqual([daBia.id]);
+      expect(await ids({ atribuidoId: "mem_ana" })).toEqual([daAna.id]);
+      expect(await ids({ filaId: "fila_vendas" })).toEqual([daAna.id]);
+      expect(await ids({ filaId: "fila_nao_existe" })).toEqual([]);
+      expect(await ids({ q: "joão" })).toEqual([daAna.id]);
+      expect(await ids({ q: "JOÃO" })).toEqual([daAna.id]);
+      expect(await ids({ q: "com jo", filaId: "fila_vendas", atribuidoId: "mem_ana" })).toEqual([daAna.id]);
+      expect(await ids({ q: "com jo", atribuidoId: "mem_admin" })).toEqual([]);
+    });
+
+    it("q é literal: % e _ não viram curinga e aspas não quebram a consulta (T-14-16)", async () => {
+      const c = await espaco("qliteral");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966664006" }]);
+      const bia = await contato(c.ws, "Bia", [{ tipo: "whatsapp", valor: "+5511966664007" }]);
+      const canal = await comercial(c.ws);
+      const daAna = valor(await abrir(c, canal, ana)).conversa;
+      valor(await abrir(c, canal, bia));
+      await pool().query("update plataforma.conversas set titulo = '100% certo_mesmo' where workspace_id = $1 and id = $2", [c.ws, daAna.id]);
+      const ids = async (q: string) => valor(await servico.listar(c.membro, { ...todas, q })).itens.map((i) => i.id);
+
+      expect(await ids("%")).toEqual([daAna.id]);
+      expect(await ids("_")).toEqual([daAna.id]);
+      expect(await ids("%%")).toEqual([]);
+      expect(await ids("a_b")).toEqual([]);
+      expect(await ids("x'; drop table plataforma.conversas; --")).toEqual([]);
+      expect(await contarConversas(c.ws)).toBe(2);
+    });
+
+    it("cada item traz contatoNome: nome e sobrenome, ou o e-mail/telefone principal", async () => {
+      const c = await espaco("contatonome");
+      const completo = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966664008" }]);
+      await pool().query("update plataforma.contatos set sobrenome = 'Silva' where workspace_id = $1 and id = $2", [c.ws, completo]);
+      const semNome = await contato(c.ws, "Provisorio", [{ tipo: "email", valor: "zeca@exemplo.com" }, { tipo: "whatsapp", valor: "+5511966664009" }]);
+      await pool().query("update plataforma.contatos set nome = null where workspace_id = $1 and id = $2", [c.ws, semNome]);
+      const canal = await comercial(c.ws);
+      const a = valor(await abrir(c, canal, completo)).conversa;
+      const b = valor(await abrir(c, canal, semNome)).conversa;
+
+      const itens = valor(await servico.listar(c.membro, todas)).itens;
+      expect(itens.find((i) => i.id === a.id)?.contatoNome).toBe("Ana Silva");
+      expect(itens.find((i) => i.id === b.id)?.contatoNome).toBe("zeca@exemplo.com");
+    });
+
+    it("a lista de outro Espaço não vê a Conversa, e q e filtros não vazam entre Espaços", async () => {
+      const c = await espaco("isolamento");
+      const outro = await espaco("isolamentob");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966664010" }]);
+      const canal = await comercial(c.ws);
+      const { conversa } = valor(await abrir(c, canal, ana));
+      valor(await servico.marcar(c.membro, conversa.id, { estrela: true }));
+
+      expect(valor(await servico.listar(outro.membro, { ...todas, q: "Ana" })).total).toBe(0);
+      expect(valor(await servico.listar(outro.membro, { ...todas, comEstrela: true })).total).toBe(0);
+    });
+
+    it("marcar: {} e lidaAte inválida → 400; outro Espaço → 404; Convidado → 403, e nada é gravado", async () => {
+      const c = await espaco("marcarerros");
+      const outro = await espaco("marcarerrosb");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966664011" }]);
+      const canal = await comercial(c.ws);
+      const { conversa } = valor(await abrir(c, canal, ana));
+
+      expect(recusado(await servico.marcar(c.membro, conversa.id, {}))).toMatchObject({ status: 400, codigo: "VALOR_INVALIDO" });
+      expect(recusado(await servico.marcar(c.membro, conversa.id, { lidaAte: "ontem" }))).toMatchObject({ status: 400, codigo: "VALOR_INVALIDO", campo: "lidaAte" });
+      expect(recusado(await servico.marcar(outro.membro, conversa.id, { estrela: true }))).toMatchObject({ status: 404, codigo: "CONVERSA_NAO_ENCONTRADA" });
+      expect(recusado(await servico.marcar(c.convidado, conversa.id, { estrela: true }))).toMatchObject({ status: 403, codigo: "PERMISSAO" });
+      const { rows } = await pool().query("select count(*)::int as n from plataforma.conversa_marcacoes where workspace_id = $1", [c.ws]);
+      expect(rows[0]?.n).toBe(0);
     });
   });
 });

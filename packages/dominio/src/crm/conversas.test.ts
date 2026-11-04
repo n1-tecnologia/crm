@@ -16,6 +16,7 @@ import {
   validarAtribuicao,
   validarLixeira,
   validarMover,
+  validarMarcacao,
   validarNovaConversa,
   validarRestauracao,
   type ParticipanteDaConversa,
@@ -230,6 +231,26 @@ describe("validarRestauracao (3.2.6: a Conversa volta para ativo, mas não para 
     expect(validarRestauracao({ estado: "na_lixeira" }, { estado: "na_lixeira" })).toEqual({
       ok: false,
       error: "O Contato está na lixeira. Restaure o Contato antes: uma Conversa sem Contato resolvido não é roteável.",
+    });
+  });
+});
+
+describe("validarMarcacao (3.2.6: estrela e leitura são do Membro)", () => {
+  it("aceita só a estrela, só a leitura ou as duas", () => {
+    expect(validarMarcacao({ estrela: false })).toEqual({ ok: true, value: { estrela: false } });
+    expect(validarMarcacao({ lidaAte: "2026-11-04T10:00:00.000Z" })).toEqual({ ok: true, value: { lidaAte: "2026-11-04T10:00:00.000Z" } });
+    expect(validarMarcacao({ estrela: true, lidaAte: "2026-11-04T10:00:00Z" }).ok).toBe(true);
+  });
+
+  it("recusa a edição sem campo algum", () => {
+    expect(validarMarcacao({})).toEqual({ ok: false, error: "Informe a estrela ou até quando a Conversa foi lida." });
+  });
+
+  it.each(["ontem", "2026-11-04", "2026-13-45T00:00:00Z", ""])("recusa lidaAte %j, no campo lidaAte", (lidaAte) => {
+    expect(validarMarcacao({ lidaAte })).toEqual({
+      ok: false,
+      error: "Informe a data de leitura em ISO 8601, com hora (AAAA-MM-DDTHH:MM:SSZ).",
+      field: "lidaAte",
     });
   });
 });
