@@ -67,4 +67,19 @@ describe("esquemas/tarefas-conversacionais — a forma dos args de tarefas-conve
     expect(T.criarTarefaConversacional.safeParse([{ listId: "l", contactId: "c", channelId: "ch", x: 1 }]).success).toBe(false);
     expect(T.vincularNegocioATarefa.safeParse(["tsk_1"]).success).toBe(false);
   });
+
+  it("(d) 3.3.7 — definirCanaisDaLista aceita o Canal[] opcional da execução local, limitado em tamanho", () => {
+    const T = TAREFAS_CONVERSACIONAIS;
+    const canal = { id: "can_1", nome: "WhatsApp", tipo: "whatsapp", estado: "ativo" };
+    expect(T.definirCanaisDaLista.safeParse(viaJson(["lst_1", ["can_1"], [canal]])).success).toBe(true);
+    expect(T.definirCanaisDaLista.safeParse(viaJson(["lst_1", ["can_1"], []])).success).toBe(true);
+    // Sem o terceiro argumento, a forma de antes segue valendo.
+    expect(T.definirCanaisDaLista.safeParse(viaJson(["lst_1", ["can_1"]])).success).toBe(true);
+    // Mais de 100 itens, um quarto elemento e um item sem id caem.
+    const cem = Array.from({ length: 100 }, (_, i) => ({ id: `can_${i}` }));
+    expect(T.definirCanaisDaLista.safeParse(viaJson(["lst_1", ["can_1"], cem])).success).toBe(true);
+    expect(T.definirCanaisDaLista.safeParse(viaJson(["lst_1", ["can_1"], [...cem, { id: "can_x" }]])).success).toBe(false);
+    expect(T.definirCanaisDaLista.safeParse(viaJson(["lst_1", ["can_1"], [canal], "extra"])).success).toBe(false);
+    expect(T.definirCanaisDaLista.safeParse(viaJson(["lst_1", ["can_1"], [{ nome: "sem id" }]])).success).toBe(false);
+  });
 });
