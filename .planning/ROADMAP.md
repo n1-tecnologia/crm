@@ -763,7 +763,7 @@ Plans:
 **Ordem interna:** as decisões da 3.1 primeiro; a migração nova da 3.1.5 (a próxima depois da `010`) antes das operações da 3.2; a 3.2.1 (gesto que grava nas tabelas do CRM e em `plataforma.registros` no mesmo commit) antes das demais da 3.2; a 3.3 depois da 3.2. Domínio antes de api antes de tela.
 **Requirements**: UNI-01 a UNI-17 (IDs locais da fase, tabela "Phase Requirements" de `14-RESEARCH.md`)
 **Depends on:** Phase 9 (a Sessão 3 depende só da Sessão 1)
-**Plans:** 11/19 plans executed
+**Plans:** 12/19 plans executed
 **Fronteira de deploy (D-01):** 14-01 a 14-14 são aditivos e podem subir; 14-15, 14-16 e 14-17 só sobem no deploy da Fase 15; o ensaio 14-19 espera a cópia do dono e não segura nada.
 
 Plans:
@@ -793,7 +793,7 @@ Plans:
 - [x] 14-11-PLAN.md — Ficha nova de Contato: notas, consentimentos, mesclar e transferir (UNI-05, 06, 07, 10)
 
 **Wave 8** *(blocked on Wave 7 completion)*
-- [ ] 14-12-PLAN.md — Canais da Lista conversacional conferidos na tabela (UNI-17)
+- [x] 14-12-PLAN.md — Canais da Lista conversacional conferidos na tabela (UNI-17)
 
 **Wave 9** *(blocked on Wave 8 completion)*
 - [ ] 14-13-PLAN.md — Tarefa conversacional nasce nas tabelas e o resumo em lote (UNI-12, UNI-14)
