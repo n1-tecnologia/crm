@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 14
 current_phase_name: "Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional"
 status: executing
-stopped_at: Completed 14-02-PLAN.md
-last_updated: "2026-11-04T17:39:46.061Z"
+stopped_at: Completed 14-03-PLAN.md
+last_updated: "2026-11-04T17:48:24.457Z"
 last_activity: 2026-11-04
 last_activity_desc: Phase 14 execution started
-state_head: 756ed3caa8511093593c2a957e4f64f43c13a00a
+state_head: b4e5daf67c39f0665518ebd00069626b3156f1ed
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 228
-  completed_plans: 208
+  completed_plans: 209
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 14 (Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional) — EXECUTING
-Plan: 3 of 19
+Plan: 4 of 19
 Status: Ready to execute
 Last activity: 2026-11-04 — Phase 14 execution started
 
@@ -426,6 +426,7 @@ Progress: [██████░░░░] 63%
 | Phase 12 P10 | 50min | 3 tasks | 2 files |
 | Phase 14 P01 | 8 min | 2 tasks | 17 files |
 | Phase 14 P02 | 6 min | 2 tasks | 8 files |
+| Phase 14 P03 | 14 min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -648,6 +649,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 14]: 14-01: guardas de D-06 varrem o texto inteiro (comentario incluso) por funilDaLista|iniciar-conversa; listas congeladas so encolhem
 - [Phase 14]: 14-02: vinculosDoCrmDaTarefa lê só Vínculos; lixeira e mesclado são da api (3.3.2)
 - [Phase 14]: 14-02: as quatro operações NasTabelas ficam fora de OPERACOES; alvoConferido só nasce no servidor
+- [Phase 14]: 14-03: lerDoCrm recebe o state hidratado; gravarNoCrm pode devolver recusa que vira excecao interna e volta como valor; o tempo de lerDoCrm soma em hidratarMs sem campo novo na medicao
 
 ### Pending Todos
 
@@ -709,6 +711,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-04T17:39:43.090Z
-Stopped at: Completed 14-02-PLAN.md
+Last session: 2026-11-04T17:48:24.208Z
+Stopped at: Completed 14-03-PLAN.md
 Resume file: None
