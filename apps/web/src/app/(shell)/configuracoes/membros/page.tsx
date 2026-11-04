@@ -12,6 +12,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
+import { invalidarCrmDaSucessao, useSucessaoNoCrm } from "@/dados/crm/sucessao";
 import { useData, useRun, useSession } from "@/dados/store";
 import { AVAILABILITY_LABEL } from "@/features/shell/format";
 import { inviteMember, previewSuccession, removeMember } from "@n1/dominio/operations";
@@ -37,10 +38,12 @@ import {
 } from "@/features/configuracoes/transfer-ownership-dialog";
 
 
+/**
+ * Contatos, Empresas e Negócios do CRM NÃO estão aqui: a prévia deles vem das
+ * tabelas (`useSucessaoNoCrm`, 14-10), não do estado em memória. O que sobra de
+ * `previewSuccession` são os donos de Agentes, Automações, Painéis, Coleções e Formulários.
+ */
 const TRANSFER_LABEL: Record<string, string> = {
-  contact: "Contato",
-  company: "Empresa",
-  deal: "Negócio",
   agent: "Agente",
   automation: "Automação",
   panel: "Painel",
@@ -48,11 +51,14 @@ const TRANSFER_LABEL: Record<string, string> = {
   form: "Formulário",
 };
 
+/** As Conversas liberadas também vêm das tabelas; aqui, só o que o estado em memória ainda sabe. */
 const RELEASE_LABEL: Record<string, string> = {
   task: "Tarefa",
   checklistItem: "Item de Checklist",
-  conversation: "Conversa",
 };
+
+/** O que `previewSuccession` conta e que agora é lido nas tabelas do CRM. */
+const TIPOS_DO_CRM_NAS_TABELAS = new Set(["contact", "company", "deal", "conversation"]);
 
 export default function MembrosPage() {
   const state = useData((data) => data);
@@ -92,6 +98,25 @@ export default function MembrosPage() {
 
   const target = removing ? state.members.find((m) => m.id === removing) : undefined;
   const preview = target ? previewSuccession(state, target.id) : null;
+  // 14-16 (3.2.8): Contatos, Empresas, Negócios e Conversas liberadas vêm das tabelas pela api; o resto, do estado.
+  const sucessaoNoCrm = useSucessaoNoCrm(target?.id);
+  const aTransferir = preview?.transfers.filter((item) => !TIPOS_DO_CRM_NAS_TABELAS.has(item.type)) ?? [];
+  const aLiberar = preview?.releases.filter((item) => !TIPOS_DO_CRM_NAS_TABELAS.has(item.type)) ?? [];
+  const noCrm = sucessaoNoCrm.data;
+  const totalAPassar = aTransferir.length + (noCrm ? noCrm.contatos + noCrm.empresas + noCrm.negocios : 0);
+  const totalALiberar = aLiberar.length + (noCrm?.conversasLiberadas ?? 0);
+  /** Uma linha por tipo do CRM com algo a mover; sem a resposta da api, a linha diz o que falta em vez de mostrar zero. */
+  const linhasDoCrm = (itens: ReadonlyArray<readonly [string, number | undefined]>) => {
+    if (sucessaoNoCrm.error) {
+      return (
+        <li role="alert" style={{ color: "var(--erro)" }}>
+          Não foi possível contar o CRM: {sucessaoNoCrm.error.message}
+        </li>
+      );
+    }
+    if (!noCrm) return <li>Contando o que está no CRM…</li>;
+    return itens.filter(([, quantos]) => (quantos ?? 0) > 0).map(([rotulo, quantos]) => <li key={rotulo}>{rotulo}: {quantos}</li>);
+  };
 
   const eligibleSuccessors = state.members.filter((member) => {
     if (member.state !== "ativo") return false;
@@ -127,6 +152,8 @@ export default function MembrosPage() {
       setNotice(`Participação de ${target.displayName} encerrada; a autoria histórica permanece.`);
       setRemoving(null);
       setSuccessorId("");
+      // O servidor passou os registros do CRM ao Sucessor: as listas em cache mostram o dono antigo até reler.
+      void invalidarCrmDaSucessao();
     } else {
       setNotice(null);
       setError(result.error);
@@ -272,13 +299,18 @@ export default function MembrosPage() {
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
                 <div>
                   <p className="app-coluna">
-                    Passa ao Sucessor ({preview.transfers.length})
+                    Passa ao Sucessor ({totalAPassar})
                   </p>
-                  {preview.transfers.length === 0 ? (
+                  {noCrm && totalAPassar === 0 ? (
                     <p className="app-base mt-1" style={{ color: "var(--texto-3)" }}>Nada a transferir.</p>
                   ) : (
                     <ul className="app-base relative mt-1 max-h-40 space-y-0.5 overflow-y-auto" style={{ color: "var(--texto-3)" }}>
-                      {preview.transfers.map((item) => (
+                      {linhasDoCrm([
+                        ["Contatos", noCrm?.contatos],
+                        ["Empresas", noCrm?.empresas],
+                        ["Negócios", noCrm?.negocios],
+                      ])}
+                      {aTransferir.map((item) => (
                         <li key={`${item.type}-${item.id}`}>
                           {TRANSFER_LABEL[item.type] ?? item.type}: {item.name}
                         </li>
@@ -288,13 +320,14 @@ export default function MembrosPage() {
                 </div>
                 <div>
                   <p className="app-coluna">
-                    Fica sem Responsável ({preview.releases.length})
+                    Fica sem Responsável ({totalALiberar})
                   </p>
-                  {preview.releases.length === 0 ? (
+                  {noCrm && totalALiberar === 0 ? (
                     <p className="app-base mt-1" style={{ color: "var(--texto-3)" }}>Nada a liberar.</p>
                   ) : (
                     <ul className="app-base relative mt-1 max-h-40 space-y-0.5 overflow-y-auto" style={{ color: "var(--texto-3)" }}>
-                      {preview.releases.map((item) => (
+                      {linhasDoCrm([["Conversas", noCrm?.conversasLiberadas]])}
+                      {aLiberar.map((item) => (
                         <li key={`${item.type}-${item.id}`}>
                           {RELEASE_LABEL[item.type] ?? item.type}: {item.name}
                         </li>

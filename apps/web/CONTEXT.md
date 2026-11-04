@@ -145,6 +145,32 @@ recusa 409 da api aparece dentro do diálogo, que continua aberto, e as duas
 ações ficam desligadas pelo Papel (`usePodeNoCrm`) e, a mesclagem, também pela
 lixeira. Nenhuma tela antiga muda: a ficha nova é a única tela da Fase 14 (OQ8).
 
+**A Tarefa conversacional sobre as tabelas (Fase 14, 14-15 e 14-16, só no deploy da
+Fase 15).** `dados/crm/tarefas-conversacionais.ts` fala com
+`/tarefas-conversacionais` em duas metades. Leitura: `useResumoDasTarefas`,
+`ProvedorDoResumoDasTarefas` e `useResumoDaTarefa` pedem Contato, Canal, última
+Mensagem e Negócio de toda a Lista numa chamada só (lotes de 200); a chave SWR é
+um array com os ids de cada Tarefa, então `invalidarCrm` não a alcança. Escrita:
+`criarTarefaConversacional`, `trocarCanalDaTarefa`, `vincularNegocioATarefa`,
+`criarNegocioDaTarefa` e `conversaAbertaDoPar` (com o hook
+`useConversaAbertaDoPar`), que mandam só ids e a primeira Mensagem. A tela chama
+`rehidratar()` do store DEPOIS de cada sucesso (A5): o `GET /estado` traz a Tarefa
+nova ou alterada e nada é aplicado à mão no store; a recusa da api sobe como
+`ErroDeApi` e fica dentro do diálogo. D-07: o campo "Primeira Mensagem" do
+diálogo de nova Tarefa e do diálogo de trocar o Canal só aparece quando o Contato
+não tem Conversa aberta no Canal. Os chamadores são o diálogo da Lista
+(`nova-tarefa-conversacional-dialog.tsx`), o botão "Criar Tarefa" do fio
+(`conversation-thread.tsx`) e os três gestos da ficha (`tarefa-completa.tsx`);
+nenhum chama mais as operações antigas. O fio e o layout de três colunas da ficha
+ainda leem o Contato e o Canal do modelo antigo até a Caixa nova (Fase 15). Como
+as Tarefas e as Conversas de hoje ainda apontam para ids antigos, estas telas só
+vão ao ar junto com o script de migração da Fase 15. A prévia da remoção de um
+Membro (`dados/crm/sucessao.ts`, `useSucessaoNoCrm`) lê Contatos, Empresas,
+Negócios e Conversas liberadas de `GET /membros/:id/sucessao-no-crm`; Agentes,
+Automações e o resto continuam de `previewSuccession`. `src/sem-listas-espelho.test.ts`
+(D-06) congela os dois arquivos da web que ainda citam as Listas espelho e proíbe
+um terceiro.
+
 ## Quem vê o quê na tela
 
 `GET /estado` hidrata o Espaço de Trabalho **inteiro**, sem filtro de
