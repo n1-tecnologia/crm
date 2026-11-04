@@ -15,9 +15,9 @@
 
 import { CalendarClock, Flag, ListChecks, User as UserIcon, Users, Wallet } from "lucide-react";
 import { checklistProgress, isBlocked, isOverdue, subtaskProgress } from "@n1/dominio/derive";
-import { negocioDaTarefa } from "@n1/dominio/derive-conversacional";
 import type { DataState } from "@n1/dominio/state";
 import type { Task } from "@n1/dominio/types";
+import { useResumoDaTarefa } from "@/dados/crm/tarefas-conversacionais";
 import { iconeDoTipoNoQuadro } from "@/features/estrutura/icone-de-tipo";
 import type { FinanceProfile } from "@/features/estrutura/financeiro/lens";
 import { valorDaConta } from "@/features/estrutura/financeiro/lens";
@@ -50,7 +50,9 @@ export function CartaoDeTarefa({
   const bloqueada = isBlocked(state, task);
   const checklist = checklistProgress(task);
   const subtarefas = subtaskProgress(state, task.id);
-  const negocio = tipo?.name === "Reunião" ? negocioDaTarefa(state, task) : undefined;
+  // 14-15: o Negócio da Reunião vem do resumo da api. Só a Reunião o pede (`pausado` nas demais:
+  // um cartão de Tarefa comum não faz chamada), e sem resumo ainda o subtítulo fica sem ele.
+  const negocio = useResumoDaTarefa(task.id, { pausado: tipo?.name !== "Reunião" })?.negocio;
   const doTipo = iconeDoTipoNoQuadro(tipo);
 
   const membros = task.assignees.filter((a) => a.kind === "member");
@@ -74,7 +76,7 @@ export function CartaoDeTarefa({
       : { icone: ListChecks, rotulo: "Progresso", valor: "—", vazio: true };
 
   const prazo = task.dueDate ? fmt.taskDate(task.dueDate) : financeiro ? "sem vencimento" : "sem prazo";
-  const tipoENome = [task.readableId, negocio ? `Reunião · ${negocio.title}` : tipo?.name].filter(Boolean).join(" · ");
+  const tipoENome = [task.readableId, negocio ? `Reunião · ${negocio.titulo}` : tipo?.name].filter(Boolean).join(" · ");
   // A contraparte da Conta; o "—" do perfil (sem cliente) é marcador de TABELA,
   // não subtítulo — aí o cartão cai no identificador · Tipo (achado da revisão).
   const contraparte = financeiro?.counterpart(state, task).trim();

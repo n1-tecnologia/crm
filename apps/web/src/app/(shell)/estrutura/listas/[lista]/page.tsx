@@ -26,8 +26,9 @@ import {
   createTask,
   listWriteRefusal,
 } from "@n1/dominio/operations";
-import { contatoDaTarefa, listaSemCanais } from "@n1/dominio/derive-conversacional";
+import { listaSemCanais, vinculosDoCrmDaTarefa } from "@n1/dominio/derive-conversacional";
 import { LISTA_SEM_CANAIS } from "@n1/dominio/operations/canais";
+import { ProvedorDoResumoDasTarefas } from "@/dados/crm/tarefas-conversacionais";
 import { CP } from "@n1/dominio/operations/financeiro";
 import { abrirGuiaDoFinanceiro } from "@/features/financeiro/guia/guia-do-financeiro-dialogo";
 import { DetalhesDaLista } from "@/features/estrutura/detalhes-da-lista";
@@ -473,6 +474,9 @@ export default function ListaPage({
     conversacionalPura && effective === "ativo" ? { onMais: (statusId: string) => setNovaConversacional({ statusId }) } : {};
 
   return (
+    // 14-15 (3.3.3): UMA chamada ao resumo da api por Lista; o cartão, a linha da tabela, o cartão de
+    // Reunião e a ficha aberta em popup leem Contato, Canal, última Mensagem e Negócio desta resposta.
+    <ProvedorDoResumoDasTarefas tarefas={conversacional ? todas : []}>
     <div className="flex h-full flex-col">
       <PageHeader
         path={
@@ -540,8 +544,8 @@ export default function ListaPage({
                 })()
               : conversacionalPura
                 ? (() => {
-                    // Quantas pessoas, não quantos Vínculos: duas Tarefas do mesmo Contato contam um.
-                    const contatos = new Set(todas.map((t) => contatoDaTarefa(state, t)?.id).filter(Boolean)).size;
+                    // Quantas pessoas, não quantos Vínculos: duas Tarefas do mesmo Contato contam um. Pelos ids dos Vínculos, sem chamar a api.
+                    const contatos = new Set(todas.map((t) => vinculosDoCrmDaTarefa(state, t).contatoId).filter(Boolean)).size;
                     return `${todas.length} ${todas.length === 1 ? "Tarefa" : "Tarefas"} · ${contatos} ${contatos === 1 ? "Contato" : "Contatos"}`;
                   })()
                 : `${todas.length} ${todas.length === 1 ? "Tarefa" : "Tarefas"}`
@@ -961,5 +965,6 @@ export default function ListaPage({
         report={reportar}
       />
     </div>
+    </ProvedorDoResumoDasTarefas>
   );
 }

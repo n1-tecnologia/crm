@@ -35,7 +35,7 @@ import { CartaoDeTarefa } from "./cartao-de-tarefa";
 import { CelulaDoCanal, CelulaDoContato } from "./tabela-de-tarefas";
 
 function task(id: string, extra: Partial<Task> = {}): Task {
-  return { id, listId: "l1", title: `Tarefa ${id}`, assignees: [], taskTypeId: "tt1", tagIds: [], priority: "semPrioridade", lifecycle: "ativo", ...extra } as unknown as Task;
+  return { id, listId: "l1", title: `Tarefa ${id}`, assignees: [], taskTypeId: "tt1", tagIds: [], dependencies: [], checklists: [], priority: "semPrioridade", lifecycle: "ativo", ...extra } as unknown as Task;
 }
 
 function vinculo(taskId: string, toType: Link["toType"], toId: string, role: string): Link {
