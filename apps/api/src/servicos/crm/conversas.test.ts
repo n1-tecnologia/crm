@@ -8,6 +8,8 @@
  * seed antigo é do Espaço antigo): a Conversa nasce com `filaId` nulo.
  */
 
+import { randomUUID } from "node:crypto";
+import type { PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { encerrar, pool } from "../../persistencia/conexao";
@@ -23,8 +25,9 @@ import {
   semearMembro,
 } from "../../testes/banco-crm";
 import { criarAcessoAoCrmPg } from "./acesso";
-import { criarServicoDeConversas } from "./conversas";
+import { abrirConversaNoCliente, criarServicoDeConversas, FRASES_DE_CONVERSAS } from "./conversas";
 import type { ResultadoCrm } from "./resultado";
+import { comTransacao } from "./transacao";
 
 const servico = criarServicoDeConversas({ pool, acesso: criarAcessoAoCrmPg(pool) });
 
@@ -216,6 +219,41 @@ describeComBanco("ServicoDeConversas — Postgres local", () => {
       await expect(abrir(c, canal, ana, "oi\u0000")).rejects.toBeDefined();
       expect(await contarConversas(c.ws)).toBe(0);
       expect(await contarMensagens(c.ws)).toBe(0);
+    });
+  });
+
+  describe("abrirConversaNoCliente (14-13)", () => {
+    it("dentro de uma transação grava a Conversa com o id escolhido por quem chama e a primeira Mensagem", async () => {
+      const c = await espaco("idescolhido");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966660020" }]);
+      const canal = await comercial(c.ws);
+      const id = randomUUID();
+
+      const aberta = await comTransacao(
+        () => pool(),
+        (cliente) => abrirConversaNoCliente(cliente, c.membro, { canalId: canal, contatoId: ana, mensagem: { conteudo: "Oi, Ana" } }, { id }),
+        FRASES_DE_CONVERSAS,
+      );
+      const resultado = valor(aberta);
+      expect(resultado.conversa.id).toBe(id);
+      expect(resultado.primeiraMensagem).toMatchObject({ conversaId: id, direcao: "enviada", conteudo: "Oi, Ana" });
+      expect(await contarConversas(c.ws)).toBe(1);
+      expect(await contarMensagens(c.ws)).toBe(1);
+    });
+
+    it("sem id, o default do banco gera um; com o par já aberto, recusa 409 e não grava nada", async () => {
+      const c = await espaco("semid");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966660021" }]);
+      const canal = await comercial(c.ws);
+      const entrada = { canalId: canal, contatoId: ana, mensagem: { conteudo: "Oi" } };
+      const sem = (cliente: PoolClient) => abrirConversaNoCliente(cliente, c.membro, entrada);
+
+      const primeira = valor(await comTransacao(() => pool(), sem, FRASES_DE_CONVERSAS));
+      expect(primeira.conversa.id).toMatch(/^[0-9a-f-]{36}$/);
+      const segunda = recusado(await comTransacao(() => pool(), sem, FRASES_DE_CONVERSAS));
+      expect(segunda).toMatchObject({ status: 409, codigo: "CONVERSA_JA_ABERTA" });
+      expect(await contarConversas(c.ws)).toBe(1);
+      expect(await contarMensagens(c.ws)).toBe(1);
     });
   });
 
