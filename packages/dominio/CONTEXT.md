@@ -826,3 +826,18 @@ inteiros: Caixa de Entrada, Conversas, Busca global, Lixeira, Notificações
 e `/crm/meus-negocios` ainda leem esse modelo. Os dois convivem até a fase
 de unificação (D-01, D-15); nenhum módulo de `src/crm/` importa o antigo
 nem vice-versa.
+
+**Gestos da Conversa nova (Fase 14).** `crm/conversas.ts` ganhou as regras
+de dois gestos, para a tela pré-validar e o endpoint aplicar as mesmas.
+`validarMover` (3.2.5) recusa Conversa na lixeira (está parada, INV-CXE-13),
+o mesmo Contato e destino que não é `ativo` — arquivado, na lixeira e
+mesclado não recebem Conversa — com o campo `contatoId`;
+`participantesComContato` reescreve só o Participante do tipo contato que
+apontava para a origem, mantendo `principal`. O Canal e as Mensagens nunca
+mudam (INV-CXE-04). A colisão com a Conversa aberta do destino não é do
+domínio: depende de ler o banco, e fica com o serviço (o índice único só
+cobre aberta e pendente, então mover uma resolvida nunca colide).
+`validarAtribuicao` (3.2.6, parte 1) só recusa a Conversa na lixeira; que
+o Membro seja ativo e o Agente exista neste Espaço também depende do banco.
+`Atribuicao` é o tipo da coluna dupla `atribuido_tipo/atribuido_id`.
+

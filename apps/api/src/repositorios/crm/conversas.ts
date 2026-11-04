@@ -17,6 +17,7 @@
 import type { Pool, PoolClient } from "pg";
 import type { Pagina } from "@n1/dominio/crm/comum";
 import type {
+  Atribuicao,
   Conversa,
   EstadoDaConversa,
   FiltroDeConversas,
@@ -51,6 +52,8 @@ export interface RepositorioDeConversas {
     contatoId: string,
     participantes: readonly ParticipanteDaConversa[],
   ): Promise<Conversa | undefined>;
+  /** As duas colunas da atribuição andam juntas (`conversas_atribuido_ck`): nulas quando `null`. */
+  definirAtribuicao(workspaceId: string, id: string, atribuido: Atribuicao): Promise<Conversa | undefined>;
 }
 
 const COLUNAS_CONVERSA = `id, canal_id, contato_id, titulo, titulo_editado, situacao, estado, fila_id,
@@ -201,6 +204,17 @@ export function criarRepositorioDeConversasPg(cliente: Pool | PoolClient): Repos
           where workspace_id = $1 and id = $2
           returning ${COLUNAS_CONVERSA}`,
         [workspaceId, id, contatoId, JSON.stringify(participantes)],
+      );
+      return rows[0] ? linhaParaConversa(rows[0]) : undefined;
+    },
+
+    async definirAtribuicao(workspaceId, id, atribuido) {
+      const { rows } = await cliente.query<LinhaDoBancoDeConversa>(
+        `update plataforma.conversas
+            set atribuido_tipo = $3, atribuido_id = $4
+          where workspace_id = $1 and id = $2
+          returning ${COLUNAS_CONVERSA}`,
+        [workspaceId, id, atribuido?.tipo ?? null, atribuido?.id ?? null],
       );
       return rows[0] ? linhaParaConversa(rows[0]) : undefined;
     },

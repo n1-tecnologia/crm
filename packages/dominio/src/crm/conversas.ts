@@ -42,6 +42,9 @@ export interface ParticipanteDaConversa {
   readonly saiuEm: string | null;
 }
 
+/** A quem a Conversa está atribuída: um Membro ou um Agente do Espaço, ou ninguém. */
+export type Atribuicao = { readonly tipo: "membro" | "agente"; readonly id: string } | null;
+
 export interface Conversa {
   readonly id: string;
   readonly canalId: string;
@@ -51,7 +54,7 @@ export interface Conversa {
   readonly situacao: SituacaoDaConversa;
   readonly estado: EstadoDaConversa;
   readonly filaId: string | null;
-  readonly atribuido: { readonly tipo: "membro" | "agente"; readonly id: string } | null;
+  readonly atribuido: Atribuicao;
   readonly adiadaAte: string | null;
   readonly adiamentoMotivo: string | null;
   readonly participantes: readonly ParticipanteDaConversa[];
@@ -179,4 +182,14 @@ export function participantesComContato(
       ? { ...participante, sujeito: { tipo: "contato", id: paraContatoId } }
       : participante,
   );
+}
+
+/**
+ * Atribuir (3.2.6, parte 1): uma Conversa na lixeira está parada (INV-CXE-13) e
+ * não é atribuída. Quem pode receber a atribuição (Membro ativo NESTE Espaço,
+ * Agente ativo NESTE Espaço) depende de ler o banco e fica com o serviço.
+ */
+export function validarAtribuicao(conversa: Pick<Conversa, "estado">): OperationResult<void> {
+  if (conversa.estado === "na_lixeira") return fail("Uma Conversa na lixeira não é atribuída. Restaure-a antes.");
+  return ok(undefined);
 }

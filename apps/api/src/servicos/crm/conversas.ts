@@ -35,9 +35,11 @@ import {
   proximaSituacao,
   TIPO_DE_IDENTIFICADOR_DO_CANAL,
   tituloDaConversa,
+  validarAtribuicao,
   validarMover,
   validarNovaConversa,
   type AcaoDeSituacao,
+  type Atribuicao,
   type Conversa,
   type ConversaDetalhada,
   type FiltroDeConversas,
@@ -51,6 +53,8 @@ import { criarRepositorioDeCanaisPg } from "../../repositorios/crm/canais";
 import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
 import { criarRepositorioDeConversasPg } from "../../repositorios/crm/conversas";
 import { criarRepositorioDeMensagensPg } from "../../repositorios/crm/mensagens";
+import { membroAtivo } from "../../repositorios/crm/membros";
+import { agenteAtivo } from "../../repositorios/crm/referencias";
 import { exigir, type AcessoAoCrm } from "./acesso";
 import { recusa, sucesso, type ResultadoCrm } from "./resultado";
 import { comTransacao, type FrasesDeRestricao } from "./transacao";
@@ -70,6 +74,8 @@ export interface ServicoDeConversas {
     id: string,
     entrada: { readonly contatoId: string; readonly resolverExistente?: boolean },
   ): Promise<ResultadoCrm<ConversaDetalhada>>;
+  /** Atribui a Conversa a um Membro ativo ou a um Agente deste Espaço; `null` tira a atribuição. */
+  atribuir(membro: MembroDaSessao, id: string, entrada: { readonly atribuido: Atribuicao }): Promise<ResultadoCrm<ConversaDetalhada>>;
 }
 
 const FRASE_JA_ABERTA = "Este Contato já tem uma Conversa aberta neste Canal.";
@@ -294,6 +300,46 @@ export function criarServicoDeConversas(deps: { readonly pool: () => Pool; reado
           const canal = await criarRepositorioDeCanaisPg(cliente).obter(membro.workspaceId, movida.canalId);
           if (!canal) return canalNaoEncontrado();
           return sucesso({ conversa: movida, canal: resumoDoCanal(canal) });
+        },
+        FRASES,
+      );
+    },
+
+    async atribuir(membro, id, entrada) {
+      const negado = await exigir(deps.acesso, membro, "editar", "conversa");
+      if (negado) return { ok: false, ...negado };
+
+      return comTransacao(
+        deps.pool,
+        async (cliente: PoolClient) => {
+          const conversas = criarRepositorioDeConversasPg(cliente);
+          const atual = await conversas.obter(membro.workspaceId, id, { travar: true });
+          if (!atual) return conversaNaoEncontrada();
+
+          const valida = validarAtribuicao(atual);
+          if (!valida.ok) return recusa<never>(409, valida.error, { codigo: "TRANSICAO_INVALIDA" });
+
+          // Quem recebe precisa existir (e estar ativo) NESTE Espaço: o id vem do corpo (T-14-10).
+          const destino = entrada.atribuido;
+          if (destino !== null) {
+            const existe =
+              destino.tipo === "membro"
+                ? await membroAtivo(cliente, membro.workspaceId, destino.id)
+                : await agenteAtivo(cliente, membro.workspaceId, destino.id);
+            if (!existe) {
+              return recusa<never>(
+                409,
+                destino.tipo === "membro" ? "Só um Membro ativo deste Espaço pode receber a Conversa." : "Só um Agente ativo deste Espaço pode receber a Conversa.",
+                { codigo: "ATRIBUIDO_INVALIDO", campo: "atribuido" },
+              );
+            }
+          }
+
+          const atualizada = await conversas.definirAtribuicao(membro.workspaceId, id, destino);
+          if (!atualizada) return conversaNaoEncontrada();
+          const canal = await criarRepositorioDeCanaisPg(cliente).obter(membro.workspaceId, atualizada.canalId);
+          if (!canal) return canalNaoEncontrado();
+          return sucesso({ conversa: atualizada, canal: resumoDoCanal(canal) });
         },
         FRASES,
       );

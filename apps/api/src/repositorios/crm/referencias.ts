@@ -34,6 +34,20 @@ export async function filaAtiva(cliente: Cliente, workspaceId: string, filaId: s
   return (rowCount ?? 0) > 0;
 }
 
+/** O Agente existe NESTE Espaço e está `ativo` (o mesmo filtro de `assignConversation` no modelo antigo). */
+export async function agenteAtivo(cliente: Cliente, workspaceId: string, agenteId: string): Promise<boolean> {
+  const { rowCount } = await cliente.query(
+    `select 1
+       from plataforma.registros
+      where workspace_id = $1
+        and colecao = 'agents'
+        and id = $2
+        and dados->>'lifecycle' = 'ativo'`,
+    [workspaceId, agenteId],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
 /** O item do catálogo existe NESTE Espaço, é `kind = 'origem'` e está `ativo`. */
 export async function origemAtiva(cliente: Cliente, workspaceId: string, origemId: string): Promise<boolean> {
   const { rowCount } = await cliente.query(

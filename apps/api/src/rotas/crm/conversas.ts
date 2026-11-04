@@ -6,6 +6,7 @@
  *   POST /conversas                 abre a Conversa COM a primeira Mensagem, numa transação (201)
  *   POST /conversas/:id/resolver    `aberta`/`pendente` → `resolvida`
  *   POST /conversas/:id/reabrir     `resolvida` → `aberta`, contando uma reabertura
+ *   POST /conversas/:id/atribuir    atribui a um Membro ativo ou a um Agente do Espaço, ou tira a atribuição (`null`)
  *   POST /conversas/:id/mover       troca o Contato da Conversa (3.2.5); `resolverExistente` resolve a que ocupa o par
  *
  * Sem `DELETE` nesta fase. As duas ações não têm corpo e por isso não declaram
@@ -53,6 +54,10 @@ export const NOVA_CONVERSA = z
 
 export const MOVER_CONVERSA = z.object({ contatoId: ID, resolverExistente: z.boolean().optional() }).strict();
 
+export const ATRIBUIR_CONVERSA = z
+  .object({ atribuido: z.object({ tipo: z.enum(["membro", "agente"]), id: ID }).strict().nullable() })
+  .strict();
+
 export async function rotasDeConversas(app: FastifyInstance, opcoes: { readonly servico: ServicoDeConversas }): Promise<void> {
   const rotas = app.withTypeProvider<ZodTypeProvider>();
   const { servico } = opcoes;
@@ -94,5 +99,9 @@ export async function rotasDeConversas(app: FastifyInstance, opcoes: { readonly 
         resolverExistente: request.body.resolverExistente ?? false,
       }),
     ),
+  );
+
+  rotas.post("/conversas/:id/atribuir", { schema: { params: PARAMS_ID, body: ATRIBUIR_CONVERSA } }, async (request, reply) =>
+    responder(reply, await servico.atribuir(request.membro, request.params.id, { atribuido: request.body.atribuido })),
   );
 }

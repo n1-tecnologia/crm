@@ -97,12 +97,29 @@ regra"). As tabelas são as da `008-canais-conversas-mensagens.sql`
 | `GET /conversas`, `GET /conversas/:id` | lista (filtros `canalId`, `contatoId`, `situacao`, `estado`) e ficha com o resumo do Canal | quem lê Conversa |
 | `POST /conversas` | abre a Conversa com a 1ª Mensagem `enviada` (201) | quem envia Mensagem |
 | `POST /conversas/:id/resolver`, `/reabrir` | muda a situação, sem corpo | idem |
+| `POST /conversas/:id/mover` | troca o Contato da Conversa (3.2.5): `{ contatoId, resolverExistente? }`; o Canal e as Mensagens ficam | ação `mover` em `conversa` |
+| `POST /conversas/:id/atribuir` | atribui (3.2.6): `{ atribuido: { tipo: "membro" \| "agente", id } \| null }`; `null` tira a atribuição | ação `editar` em `conversa` |
 | `GET /mensagens?conversaId=` | o fio, por `(criado_em, seq)` | quem lê Mensagem |
 | `POST /mensagens` | envia (`enviada`) ou anota (`interna`) — 201 | quem envia Mensagem |
 
 Não há `DELETE` em `/canais`: Canal não tem lixeira (DO-CXE-03), arquivar é o
 fim de uso. As ações sem corpo (`simular-conexao`, `desconectar`, `arquivar`,
 `resolver`, `reabrir`) não declaram `body` (Fastify 5, Pitfall 4).
+
+**Mover e atribuir (Fase 14).** Os dois corpos são `.strict()` (`workspaceId`,
+`estado`, `situacao` ou qualquer campo a mais é 400, T-14-11), o Papel é
+exigido antes de ler e o Membro atuante é sempre `request.membro`; não há ação
+nova em `AcaoCrm`. `mover` recusa com 409: `CONVERSA_JA_ABERTA` quando o
+destino já tem Conversa aberta ou pendente no mesmo Canal (a que ocupa o par
+vem em `bloqueios.conversas`; com `resolverExistente: true` ela fica `resolvida`,
+sem adiamento, na mesma transação e a movida vai), e `MOVER_INVALIDO`, com
+`campo: "contatoId"`, para destino arquivado, na lixeira ou mesclado, mesmo
+Contato, ou Conversa na lixeira. Contato de outro Espaço é 404
+`CONTATO_NAO_ENCONTRADO`. `atribuir` recusa com 409 `ATRIBUIDO_INVALIDO`
+(`campo: "atribuido"`) o Membro que não é ativo neste Espaço e o Agente que não
+existe ativo aqui, e com `TRANSICAO_INVALIDA` a Conversa na lixeira. Nenhuma das
+duas grava Registro de Atividade nesta fase. A Caixa antiga continua no diálogo
+de mover do modelo antigo; a troca para estas rotas é da Fase 15.
 
 **Não há rota humana de Mensagem `recebida`.** `NOVA_MENSAGEM.direcao` é
 `z.enum(DIRECOES_DE_ENVIO)`: uma pessoa só envia ou anota. A recebida entra por
@@ -116,7 +133,7 @@ devolvê-la. O e2e `canais-fluxo.test.ts` confere a string crua da resposta.
 
 **Códigos de recusa desta fase.**
 - **404** (não existe NESTE Espaço): `CANAL_NAO_ENCONTRADO`, `CONVERSA_NAO_ENCONTRADA`, `CONTATO_NAO_ENCONTRADO`.
-- **409:** `CANAL_NOME_EM_USO` e `CANAL_CONTA_EM_USO` (com o detentor em `bloqueios.canais`; a conta é única entre provedores — INV-CXE-01), `CANAL_ARQUIVADO`, `FILA_INVALIDA`, `ORIGEM_INVALIDA`, `TRANSICAO_INVALIDA`, `CONVERSA_JA_ABERTA`, `CONVERSA_NA_LIXEIRA`, `CONTATO_INATIVO`, `CONTATO_SEM_IDENTIFICADOR_DO_CANAL`, `RESPOSTA_DE_OUTRA_CONVERSA` e `JANELA_EXPIRADA` (WhatsApp oficial, texto livre fora das 24 h; o não oficial nunca é recusado — D-02).
+- **409:** `CANAL_NOME_EM_USO` e `CANAL_CONTA_EM_USO` (com o detentor em `bloqueios.canais`; a conta é única entre provedores — INV-CXE-01), `CANAL_ARQUIVADO`, `FILA_INVALIDA`, `ORIGEM_INVALIDA`, `TRANSICAO_INVALIDA`, `CONVERSA_JA_ABERTA`, `CONVERSA_NA_LIXEIRA`, `MOVER_INVALIDO`, `ATRIBUIDO_INVALIDO`, `CONTATO_INATIVO`, `CONTATO_SEM_IDENTIFICADOR_DO_CANAL`, `RESPOSTA_DE_OUTRA_CONVERSA` e `JANELA_EXPIRADA` (WhatsApp oficial, texto livre fora das 24 h; o não oficial nunca é recusado — D-02).
 - **400:** forma (zod) e `VALOR_INVALIDO`. **403:** `PERMISSAO`.
 
 **A ponte.** `GET /estado` (e `executar()` em `/operacoes`) projeta os Canais de
