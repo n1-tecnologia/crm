@@ -233,3 +233,138 @@ describe("medição por etapa (D-02)", () => {
     expect(falso.consultas.at(-1)!.endsWith("commit")).toBe(true);
   });
 });
+
+describe("lerDoCrm (Fase 14)", () => {
+  it("o que lerDoCrm devolve chega à operação (2º argumento) e a aoConfirmar (4º), pelo MESMO cliente, depois da entrada e antes da operação", async () => {
+    falso.canaisConfirmados = true;
+    const ordem: string[] = [];
+    let estadoDaLeitura: unknown;
+    let estadoDaOperacao: unknown;
+    let lidoNaOperacao: unknown;
+    let lidoNoFim: unknown;
+    const r = await executar(
+      "ws_x",
+      (state, lido: { x: number }) => {
+        ordem.push("operacao");
+        estadoDaOperacao = state;
+        lidoNaOperacao = lido;
+        return ok("feito");
+      },
+      {
+        lerDoCrm: async (cliente, state) => {
+          ordem.push("lerDoCrm");
+          estadoDaLeitura = state;
+          await cliente.query("select 'do crm'");
+          return { x: 1 };
+        },
+        aoConfirmar: async (_cliente, _valor, _state, lido) => {
+          ordem.push("aoConfirmar");
+          lidoNoFim = lido;
+        },
+      },
+    );
+    expect(r.ok).toBe(true);
+    expect(ordem).toEqual(["lerDoCrm", "operacao", "aoConfirmar"]);
+    expect(lidoNaOperacao).toEqual({ x: 1 });
+    expect(lidoNoFim).toEqual({ x: 1 });
+    // O mesmo estado, já com os Canais projetados: a leitura e a operação enxergam o mesmo objeto.
+    expect(estadoDaLeitura).toBe(estadoDaOperacao);
+    // A consulta de `lerDoCrm` foi pelo cliente falso, DEPOIS da mensagem de entrada (trava + leitura) e antes do `update` da revisão.
+    const iEntrada = falso.consultas.findIndex((sql) => sql.startsWith("begin") && sql.includes("for update"));
+    const iLeitura = falso.consultas.indexOf("select 'do crm'");
+    const iRevisao = falso.consultas.findIndex((sql) => sql.startsWith("update plataforma.workspaces"));
+    expect(iEntrada).toBe(0);
+    expect(iLeitura).toBeGreaterThan(iEntrada);
+    expect(iRevisao).toBeGreaterThan(iLeitura);
+  });
+
+  it("sem a guarda dos Canais confirmada, lerDoCrm só roda depois de os Canais serem carregados", async () => {
+    falso.canaisConfirmados = false;
+    await executar("ws_x", () => ok("feito"), {
+      lerDoCrm: async (cliente) => {
+        await cliente.query("select 'do crm'");
+      },
+    });
+    const iGuarda = falso.consultas.findIndex((sql) => sql.includes("to_regclass"));
+    const iLeitura = falso.consultas.indexOf("select 'do crm'");
+    expect(iGuarda).toBeGreaterThanOrEqual(0);
+    expect(iLeitura).toBeGreaterThan(iGuarda);
+  });
+
+  it("lerDoCrm que lança: a transação é desfeita, a conexão sai do pool, a operação não roda e a exceção sobe", async () => {
+    let operacaoRodou = false;
+    await expect(
+      executar(
+        "ws_x",
+        () => {
+          operacaoRodou = true;
+          return ok("feito");
+        },
+        {
+          lerDoCrm: async () => {
+            throw new Error("a leitura do CRM quebrou");
+          },
+        },
+      ),
+    ).rejects.toThrow("a leitura do CRM quebrou");
+    expect(operacaoRodou).toBe(false);
+    expect(falso.consultas).toContain("rollback");
+    expect(falso.release).toEqual([true]);
+  });
+
+  it("sem lerDoCrm tudo é igual a hoje: um chamador de um argumento só continua compilando e o lido é undefined", async () => {
+    let lido: unknown = "nao-chamou";
+    const r = await executar("ws_x", (_state, recebido) => {
+      lido = recebido;
+      return ok("feito");
+    });
+    expect(r.ok).toBe(true);
+    expect(lido).toBeUndefined();
+  });
+
+  it("com lerDoCrm e sem aoConfirmar, o fim da transação continua em UMA ida (update, escritas e commit juntos)", async () => {
+    falso.canaisConfirmados = true;
+    const medicoes: MedicaoDaExecucao[] = [];
+    await executar("ws_x", () => ok("feito"), {
+      aoMedir: (m) => void medicoes.push(m),
+      lerDoCrm: async (cliente) => {
+        await cliente.query("select 'do crm'");
+      },
+    });
+    // Entrada, a leitura do CRM e a saída.
+    expect(medicoes[0]!.idasEVoltas).toBe(3);
+    expect(falso.consultas.at(-1)!.endsWith("commit")).toBe(true);
+    expect(falso.consultas.at(-1)!.startsWith("update plataforma.workspaces")).toBe(true);
+  });
+
+  it("o tempo de lerDoCrm soma em hidratarMs, e MedicaoDaExecucao não ganha campo", async () => {
+    const medicoes: MedicaoDaExecucao[] = [];
+    await executar("ws_x", () => ok("feito"), {
+      aoMedir: (m) => void medicoes.push(m),
+      lerDoCrm: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 15));
+      },
+    });
+    expect(medicoes[0]!.hidratarMs).toBeGreaterThanOrEqual(10);
+    expect(Object.keys(medicoes[0]!).sort()).toEqual(
+      [
+        "atualizaMs",
+        "canaisMs",
+        "commitMs",
+        "conexaoMs",
+        "desfecho",
+        "eventosMs",
+        "gravarMs",
+        "hidratarMs",
+        "idasEVoltas",
+        "inicioMs",
+        "linhasGravadas",
+        "linhasLidas",
+        "operacaoMs",
+        "regime",
+        "tentativas",
+        "travaMs",
+      ],
+    );
+  });
+});
