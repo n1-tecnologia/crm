@@ -2,18 +2,18 @@
 gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 14
-current_phase_name: unifica-o-do-crm-o-modelo-novo-ganha-o-que-falta-e-a-tarefa
+current_phase_name: "Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional"
 status: executing
-stopped_at: Phase 14 context gathered
-last_updated: "2026-11-04T17:02:58.767Z"
-last_activity: 2026-10-30
-last_activity_desc: Phase 12 execution started
-state_head: 574f3fc24ebd2829f7ebcf8c84a7fcb634518d2d
+stopped_at: Completed 14-01-PLAN.md
+last_updated: "2026-11-04T17:33:51.901Z"
+last_activity: 2026-11-04
+last_activity_desc: Phase 14 execution started
+state_head: b03bb193c869208c58331ef586869cd6ae9def33
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 228
-  completed_plans: 206
+  completed_plans: 207
 milestone_name: milestone
 ---
 
@@ -24,14 +24,14 @@ milestone_name: milestone
 See: .planning/PROJECT.md (updated 2026-10-29)
 
 **Core value:** Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de ponta a ponta sem abrir o ClickUp — dados no Postgres próprio, regras de `@n1/dominio` intactas.
-**Current focus:** Phase 12 — Clone ClickUp: gravação mais rápida
+**Current focus:** Phase 14 — Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional
 
 ## Current Position
 
-Phase: 14 (unifica-o-do-crm-o-modelo-novo-ganha-o-que-falta-e-a-tarefa) — READY TO EXECUTE
-Plan: 10 of 10
+Phase: 14 (Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional) — EXECUTING
+Plan: 2 of 19
 Status: Ready to execute
-Last activity: 2026-10-30 — Phase 12 execution started
+Last activity: 2026-11-04 — Phase 14 execution started
 
 **Fase 06 planejada à mão em 2026-09-29 (Conferência do Resumo e anexos), pronta para `/gsd-execute-phase 6`:**
 `.planning/phases/06-conferencia-do-resumo-e-anexos/` — `06-CONTEXT.md` (13 decisões com padrão e variável de troca) e seis planos em três ondas: 06-01 domínio · 06-02 contrato v1.1 no `financeiro-tria` · 06-03 ponte em dois momentos · 06-04 tela e jornada · 06-05 S5/S6 na Solicitação · 06-06 docs e provas `[BLOCKING]`. Origem: `docs/08-migracao-financeiro/09-…` (desenho) e `10-…` (levantamento etapa por etapa com `arquivo:linha`). Ponto de partida do código: `crm-n1-integracao@3d6f735` (branch `integra-frontend-main`, sem push) e `financeiro-tria@c272dad` (`main`, 99 commits sem push, 89 arquivos sujos só de EOL — `git add` sempre por caminho). O dono ainda não respondeu às quatro perguntas do doc 10; os padrões de D6-01..D6-04 seguem "como no ClickUp", exceto Integração manual (o seguro).
@@ -424,6 +424,7 @@ Progress: [██████░░░░] 63%
 | Phase 12 P08 | 20min | 2 tasks | 8 files |
 | Phase 12 P09 | 25 min | 2 tasks | 8 files |
 | Phase 12 P10 | 50min | 3 tasks | 2 files |
+| Phase 14 P01 | 8 min | 2 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -642,6 +643,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 12]: 12-09: a guarda de navegação cancela na captura do document o click, o auxclick, o cmd/ctrl+clique e o clique de teclado numa âncora com id pendente; o botão direito (menu do navegador) não é interceptável — O Link navega dentro do onClick do React (contêiner raiz, abaixo do document), então parar a propagação na captura o impede de rodar; o cmd/ctrl+clique abriria uma aba nova numa página que não existe
 - [Phase 12]: 12-09: router.push direto para id local não passa pela guarda de âncoras; Editar conta (financeiro) e a Reunião do Quadro do Funil esperam o id (Salvando…); iniciar-conversa-dialog.tsx:113 ficou em aberto — D-15: nunca leva a uma página de id que não existe; trocar o diálogo de iniciar conversa por runConfirmado muda o ritmo do diálogo e é decisão de produto
 - [Phase 12]: 12-10: coluna Meta 'sem alvo numerico' (b-ganho-basta); a trava custou uma ida e volta (~51 ms) e o pedidoMs isolado subiu 11% a 17%; D-03 do depois e a conferencia do dono na tela NAO OBSERVADOS; opcao do Pitfall 9 registrada para o dono decidir — A medicao de um pedido isolado nao capta o ganho da fase (a tela e a concorrencia).
+- [Phase 14]: 14-01: NegocioDetalhado.contato.estado e seloDoEstado passam a EstadoDoContato; Conversa na lixeira por SQL exige na_lixeira_em (conversas_na_lixeira_em_ck da 011)
+- [Phase 14]: 14-01: guardas de D-06 varrem o texto inteiro (comentario incluso) por funilDaLista|iniciar-conversa; listas congeladas so encolhem
 
 ### Pending Todos
 
@@ -703,6 +706,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-04T14:54:36.318Z
-Stopped at: Phase 14 context gathered
-Resume file: .planning/phases/14-unifica-o-do-crm-o-modelo-novo-ganha-o-que-falta-e-a-tarefa/14-CONTEXT.md
+Last session: 2026-11-04T17:33:51.652Z
+Stopped at: Completed 14-01-PLAN.md
+Resume file: None
