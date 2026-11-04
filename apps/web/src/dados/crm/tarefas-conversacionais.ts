@@ -1,6 +1,9 @@
 "use client";
 
 /**
+ * A Tarefa conversacional por HTTP (Fase 14, 3.3.3 a 3.3.6). Leitura: o resumo
+ * em lote. Escrita: criar, trocar o Canal, ligar e criar o Negócio.
+ *
  * O resumo da Tarefa conversacional, lido em lote da api (Fase 14, 3.3.3): o
  * Contato, o Canal, a última Mensagem e o Negócio de cada Tarefa vêm de
  * `POST /tarefas-conversacionais/resumo` (`apps/api`, plano 14-13), numa chamada
@@ -27,7 +30,7 @@ import { createContext, createElement, useContext, useMemo, type ReactNode } fro
 import useSWR from "swr";
 import { RESUMO_MAXIMO, type ResumoDaTarefaConversacional, type VinculoParaResumo } from "@n1/dominio/crm/resumo-da-tarefa";
 import { vinculosDoCrmDaTarefa } from "@n1/dominio/derive-conversacional";
-import type { Task } from "@n1/dominio/types";
+import type { ActorRef, Priority, Task, TaskDate } from "@n1/dominio/types";
 import { useData } from "@/dados/store";
 import { chamarCrm, ErroDeApi } from "./cliente-crm";
 
@@ -152,4 +155,122 @@ export function useResumoDaTarefa(taskId: string, opcoes: { readonly pausado?: b
   const cobertaPeloProvedor = doProvedor !== null && doProvedor.cobre.has(taskId);
   const propria = useBuscaDoResumo(cobertaPeloProvedor || opcoes.pausado === true || task === undefined ? [] : [task]);
   return (cobertaPeloProvedor ? doProvedor : propria).porTarefa.get(taskId);
+}
+
+/*
+ * ESCRITA. Cada função manda só ids e a primeira Mensagem: o Contato do Vínculo,
+ * a Etapa, o Proprietário e o que mais a Tarefa precisa o servidor lê e confere
+ * nas tabelas, e os corpos `.strict()` da api recusam qualquer outro campo
+ * (T-14-41). A tela chama `rehidratar()` depois de cada sucesso (A5): o
+ * `GET /estado` traz a Tarefa nova ou alterada, e nada é aplicado à mão no store.
+ * Por isso as funções não tocam o store nem o cache do SWR: a recusa da api sobe
+ * como `ErroDeApi` com a mensagem do servidor, e quem chama decide onde mostrá-la.
+ *
+ * Só no deploy da Fase 15 (D-01): enquanto as Tarefas e as Conversas da tela
+ * ainda são ids do modelo antigo, estas rotas respondem 404 para elas.
+ */
+
+/** A Conversa da Tarefa: `aberta: false` quer dizer que o Contato já tinha uma aberta no Canal e a Tarefa a reaproveitou. */
+export interface ConversaDaTarefa {
+  readonly id: string;
+  readonly aberta: boolean;
+}
+
+/** O que o navegador PODE dizer ao criar: a Lista, o Contato, o Canal, a Mensagem e os campos da Tarefa (`.strict()` na api). */
+export interface NovaTarefaConversacionalNaTela {
+  readonly listId: string;
+  readonly contatoId: string;
+  readonly canalId: string;
+  /** Obrigatória só quando o Contato não tem Conversa aberta no Canal (D-07). */
+  readonly mensagem?: { readonly conteudo: string };
+  readonly negocioId?: string;
+  readonly title?: string;
+  readonly statusId?: string;
+  readonly assignees?: readonly ActorRef[];
+  readonly priority?: Priority;
+  readonly dueDate?: TaskDate;
+  readonly taskTypeId?: string;
+}
+
+/** O corpo recortado de `POST /operacoes` (`value`, `diferenca`, `revisao`…) mais o que a rota acrescenta; a tela só lê estes campos. */
+interface RespostaDaEscrita<V> {
+  readonly ok: true;
+  readonly dados: { readonly value: V; readonly conversa?: ConversaDaTarefa; readonly negocio?: { readonly id: string; readonly titulo: string } };
+}
+
+function caminhoDaTarefa(taskId: string): string {
+  return `/tarefas-conversacionais/${encodeURIComponent(taskId)}`;
+}
+
+/** 3.3.4: a Tarefa nasce em `registros` e a Conversa abre (ou é reaproveitada) em `plataforma.conversas`, no mesmo commit. */
+export async function criarTarefaConversacional(entrada: NovaTarefaConversacionalNaTela): Promise<{ readonly task: Task; readonly conversa: ConversaDaTarefa }> {
+  const { dados } = await chamarCrm<RespostaDaEscrita<{ readonly task: Task }>>("/tarefas-conversacionais", { method: "POST", corpo: entrada });
+  return { task: dados.value.task, conversa: dados.conversa as ConversaDaTarefa };
+}
+
+/** 3.3.5: troca o Canal. `mudou: false` é a Tarefa que já estava na Conversa do Canal pedido (nada foi gravado). */
+export async function trocarCanalDaTarefa(
+  taskId: string,
+  entrada: { readonly canalId: string; readonly mensagem?: { readonly conteudo: string } },
+): Promise<{ readonly task: Task; readonly mudou: boolean; readonly conversa: ConversaDaTarefa }> {
+  const { dados } = await chamarCrm<RespostaDaEscrita<{ readonly task: Task; readonly mudou: boolean }>>(`${caminhoDaTarefa(taskId)}/canal`, {
+    method: "POST",
+    corpo: entrada,
+  });
+  return { task: dados.value.task, mudou: dados.value.mudou, conversa: dados.conversa as ConversaDaTarefa };
+}
+
+/** 3.3.6: liga um Negócio do Contato da Tarefa, ou o desliga com `null`. */
+export async function vincularNegocioATarefa(taskId: string, negocioId: string | null): Promise<Task> {
+  const { dados } = await chamarCrm<RespostaDaEscrita<Task>>(`${caminhoDaTarefa(taskId)}/negocio`, { method: "POST", corpo: { negocioId } });
+  return dados.value;
+}
+
+/** 3.3.6: cria o Negócio na 1ª Etapa do Funil, do Contato da Tarefa, e liga a Tarefa a ele. `valor` é texto decimal como em `POST /negocios`. */
+export async function criarNegocioDaTarefa(
+  taskId: string,
+  entrada: { readonly funilId: string; readonly titulo?: string; readonly valor?: string },
+): Promise<{ readonly task: Task; readonly negocio: { readonly id: string; readonly titulo: string } }> {
+  const { dados } = await chamarCrm<RespostaDaEscrita<Task>>(`${caminhoDaTarefa(taskId)}/negocio/novo`, { method: "POST", corpo: entrada });
+  return { task: dados.value, negocio: dados.negocio as { readonly id: string; readonly titulo: string } };
+}
+
+interface RespostaDeConversas {
+  readonly ok: true;
+  readonly itens: readonly { readonly id: string }[];
+  readonly total: number;
+}
+
+/**
+ * A Conversa aberta do Contato no Canal, ou `null`. "Aberta" é a mesma regra da
+ * api (D-07): situação `aberta` ou `pendente`, e `estado` ativo. A listagem aceita
+ * uma situação por vez, então são duas perguntas de uma linha cada, juntas.
+ */
+export async function conversaAbertaDoPar(contatoId: string, canalId: string): Promise<{ readonly id: string } | null> {
+  const perguntar = (situacao: "aberta" | "pendente") => {
+    const parametros = new URLSearchParams({ contatoId, canalId, estado: "ativo", situacao, limite: "1" });
+    return chamarCrm<RespostaDeConversas>(`/conversas?${parametros.toString()}`);
+  };
+  const [aberta, pendente] = await Promise.all([perguntar("aberta"), perguntar("pendente")]);
+  const achada = aberta.itens[0] ?? pendente.itens[0];
+  return achada ? { id: achada.id } : null;
+}
+
+/**
+ * `conversaAbertaDoPar` como leitura da tela: `conversa` é `undefined` enquanto a
+ * resposta não chega (ou o par está incompleto, ou `pausado`), `null` sem Conversa
+ * aberta e `{ id }` com uma. A chave leva o par, então trocar o Canal volta a
+ * "verificando" em vez de servir a resposta do Canal anterior.
+ */
+export function useConversaAbertaDoPar(
+  contatoId: string | undefined,
+  canalId: string | undefined,
+  opcoes: { readonly pausado?: boolean } = {},
+): { readonly conversa: { readonly id: string } | null | undefined; readonly erro?: Error } {
+  const par = contatoId !== undefined && contatoId !== "" && canalId !== undefined && canalId !== "" && opcoes.pausado !== true;
+  const chave = par ? `/conversas/aberta-do-par?contatoId=${encodeURIComponent(contatoId)}&canalId=${encodeURIComponent(canalId)}` : null;
+  const busca = useSWR<{ readonly id: string } | null, Error>(chave, () => conversaAbertaDoPar(contatoId as string, canalId as string), {
+    shouldRetryOnError: valeRepetir,
+  });
+  return { conversa: busca.data, ...(busca.error ? { erro: busca.error } : {}) };
 }
