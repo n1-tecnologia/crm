@@ -134,7 +134,7 @@ export interface MedicaoDaExecucao {
 }
 
 /** As opções de `executar()` que valem nos dois regimes. */
-export interface OpcoesComunsDaExecucao<T = unknown> {
+export interface OpcoesComunsDaExecucao<T = unknown, L = undefined> {
   /**
    * Fase 12 (D-02/D-03) — recebe a medição por etapa, UMA vez por chamada de
    * `executar()`, inclusive na recusa do domínio, no conflito e na exceção
@@ -181,7 +181,25 @@ export interface OpcoesComunsDaExecucao<T = unknown> {
    * função). Lançar aqui desfaz a transação inteira — mesmo efeito de uma
    * exceção dentro de `operacao`.
    */
-  readonly aoConfirmar?: (cliente: PoolClient, valor: T, state: DataState) => Promise<void>;
+  readonly aoConfirmar?: (cliente: PoolClient, valor: T, state: DataState, lido: L) => Promise<void>;
+  /**
+   * Fase 14 (3.2.1, o gesto misto) — lê as tabelas do CRM NO MESMO `cliente`,
+   * depois da trava do Espaço, da hidratação e da projeção dos Canais, e antes
+   * da `operacao`. O que devolve chega à `operacao` (2º argumento) e a
+   * `aoConfirmar` (4º): é por aí que um gesto que mexe nas duas bases enxerga
+   * o CRM sem abrir outra transação. Recebe o `state` já com os Canais
+   * projetados (a troca de Canal da Tarefa precisa achar o Contato pelo
+   * Vínculo antes de ler o CRM).
+   *
+   * Quem a usa trava com `for update`, em ordem de id, as linhas do CRM de que
+   * a escrita depende; a trava do Espaço já é a primeira. NÃO avançar a
+   * revisão do Espaço por fora daqui: `executar()` já a sobe, e inverter a
+   * ordem das travas abre deadlock com o REST de Canal. Lançar desfaz a
+   * transação e a conexão sai do pool, como qualquer exceção do bloco. O tempo
+   * soma em `hidratarMs` (é leitura dentro da transação); a medição não ganha
+   * campo.
+   */
+  readonly lerDoCrm?: (cliente: PoolClient, state: DataState) => Promise<L>;
 }
 
 /**
@@ -195,7 +213,7 @@ export interface OpcoesComunsDaExecucao<T = unknown> {
  *     `otimista` sem ser uma dessas quatro importações falha em
  *     `regime-dos-chamadores.test.ts`.
  */
-export type OpcoesExecucao<T = unknown> = OpcoesComunsDaExecucao<T> &
+export type OpcoesExecucao<T = unknown, L = undefined> = OpcoesComunsDaExecucao<T, L> &
   (
     | { readonly regime?: "travado"; readonly tentativas?: never }
     | {
@@ -320,10 +338,10 @@ type Tentativa<T> =
   | { readonly tipo: "concluida"; readonly resultado: ResultadoTransacao<T>; readonly desfecho: "gravou" | "recusou" }
   | { readonly tipo: "conflito"; readonly conflito: Conflito };
 
-export async function executar<T>(
+export async function executar<T, L = undefined>(
   workspaceId: string,
-  operacao: (state: DataState) => OperationResult<T>,
-  opcoes: OpcoesExecucao<T> = {},
+  operacao: (state: DataState, lido: L) => OperationResult<T>,
+  opcoes: OpcoesExecucao<T, L> = {},
 ): Promise<ResultadoTransacao<T>> {
   const regime: RegimeDaExecucao = opcoes.regime ?? "travado";
   // D-09: o travado grava com UMA tentativa — esperou a vez, não há o que repetir.
@@ -493,10 +511,10 @@ async function abrirTravado(cliente: PoolClient, workspaceId: string, acc: Acumu
  * instruções depois das escritas e seguem pelo caminho de sempre. O regime
  * `otimista` não mudou: uma instrução por ida, como na Fase 12.
  */
-async function umaTentativa<T>(
+async function umaTentativa<T, L>(
   workspaceId: string,
-  operacao: (state: DataState) => OperationResult<T>,
-  opcoes: OpcoesExecucao<T>,
+  operacao: (state: DataState, lido: L) => OperationResult<T>,
+  opcoes: OpcoesExecucao<T, L>,
   regime: RegimeDaExecucao,
   acc: Acumulador,
 ): Promise<Tentativa<T>> {
@@ -537,6 +555,12 @@ async function umaTentativa<T>(
     t = performance.now();
     const fotografia = acrescentarCanaisProjetados(antes.state, canais);
     acc.canaisMs += performance.now() - t;
+    // Fase 14 (3.2.1) — a leitura do CRM (`lerDoCrm`) vai pelo MESMO cliente, depois da trava,
+    // da hidratação e da projeção dos Canais, e antes da operação. Sem a opção,
+    // o lido é `undefined` e nada muda para quem já chama `executar()`.
+    t = performance.now();
+    const lido = opcoes.lerDoCrm ? await opcoes.lerDoCrm(cliente, antes.state) : (undefined as L);
+    acc.hidratarMs += performance.now() - t;
     // O contador de `nextId` é de módulo: sem sincronizar com o maior id já
     // presente no estado hidratado, um processo recém-subido geraria
     // `act_000001` de novo e o upsert sobrescreveria um registro real. A
@@ -550,7 +574,7 @@ async function umaTentativa<T>(
     // documentavam quando a captura ainda morava em cada chamador.
     const idsAntes = new Set(antes.state.automationExecutions.map((e) => e.id));
     t = performance.now();
-    const resultado = operacao(antes.state);
+    const resultado = operacao(antes.state, lido);
     acc.operacaoMs += performance.now() - t;
 
     if (!resultado.ok) {
@@ -653,7 +677,7 @@ async function umaTentativa<T>(
     acc.linhasGravadas += (diferenca.gravados?.length ?? 0) + (diferenca.removidos?.length ?? 0);
     t = performance.now();
     await gravarEventos(cliente, workspaceId, eventos);
-    if (opcoes.aoConfirmar) await opcoes.aoConfirmar(cliente, resultado.value, antes.state);
+    if (opcoes.aoConfirmar) await opcoes.aoConfirmar(cliente, resultado.value, antes.state, lido);
     acc.eventosMs += performance.now() - t;
     t = performance.now();
     await cliente.query("commit");

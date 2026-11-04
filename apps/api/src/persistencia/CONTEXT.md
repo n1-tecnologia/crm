@@ -61,6 +61,51 @@ entrada inteira (inclusive a espera pela trava) e `gravarMs`, a de saída; `trav
 `atualizaMs` e `commitMs` ficam em 0 no caminho em lote, e `hidratarMs` passa a
 ser só processador.
 
+## O gesto misto (Fase 14, 3.2.1)
+
+Um gesto que grava nas tabelas do CRM (`plataforma.contatos`, `conversas`, …) **e**
+em `plataforma.registros` precisa ser uma transação só: dois commits deixariam
+uma Tarefa sem Conversa, ou uma Conversa sem Tarefa. `executar()` ganhou as duas
+peças que faltavam, sem mudar nada para quem já a chama:
+
+- **`lerDoCrm(cliente, state)`** roda no MESMO `PoolClient`, depois da trava do
+  Espaço, da hidratação e da projeção dos Canais, e antes da `operacao`. Recebe o
+  `state` já projetado (a troca de Canal da Tarefa acha o Contato pelo Vínculo
+  antes de ler o CRM). O que devolve chega à `operacao` (2º argumento) e a
+  `aoConfirmar` (4º, novo e opcional). O tempo soma em `hidratarMs`;
+  `MedicaoDaExecucao` não ganhou campo.
+- **`aoConfirmar(cliente, valor, state, lido)`** já existia (depois das escritas de
+  `registros` e do outbox, antes do `commit`): é onde `gravarNoCrm` roda.
+
+**A ordem das travas** é: a linha do Espaço primeiro (a de sempre), depois as
+linhas do CRM de que a escrita depende, com `select … for update` **em ordem de
+id**. Nenhum serviço novo chama `avancarRevisaoDoEspaco` dentro do gesto: a trava
+do Espaço já é a primeira e `executar()` já sobe a revisão; inverter a ordem abre
+deadlock com o REST de Canal.
+
+**A porta para os serviços é `executarGestoMisto`**
+(`servicos/crm/gesto-misto.ts`), não `executar()` direto. Ela dá o contrato:
+
+- a **recusa é valor**: `lerDoCrm` devolve `ResultadoCrm`, a `operacao` devolve
+  `fail(...)`, e ambos voltam como `ResultadoCrm` com status e frase, sem exceção
+  e sem `gravarNoCrm` rodar. Exceção como fluxo normal destruiria conexões do pool
+  (`release(true)`).
+- o **SQLSTATE é rede**: `23505`, `23503` e `23514` dentro de `gravarNoCrm`
+  (corrida que a leitura não pegou: a conexão sai do pool entre a pré-checagem e a
+  escrita) viram 409 com a frase que o serviço passou em `frases`, nunca com o
+  nome da constraint. O índice único é quem decide a corrida; a frase só a traduz.
+- uma recusa devolvida por `gravarNoCrm` (`ok: false`) vira uma exceção interna
+  que desfaz tudo e volta como valor: serve só para o que a pré-checagem não pegou.
+- D-01: o gesto não traduz id antigo em novo. Cada lado grava os ids que já são
+  seus.
+
+**O custo, aceito.** Um gesto com `aoConfirmar` sai do caminho de duas idas da
+Fase 13 e segue instrução por instrução (update, escritas, outbox, `aoConfirmar`,
+`commit`); `lerDoCrm` soma a sua ida. Para gestos raros (mesclar Contatos, as
+quatro rotas da Tarefa conversacional) isso é aceito e aparece em `idasEVoltas`.
+Quem precisar das duas idas de volta tem de tirar o `aoConfirmar`, o que um gesto
+que grava no CRM não pode.
+
 ## Os prazos do servidor e a trava esgotada (06-13; a trava no começo, Fase 12)
 
 **A trava e os dois regimes (12-04, D-09/D-10).** `executar()` evita que duas
