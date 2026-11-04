@@ -126,6 +126,49 @@ describeComBanco("ServicoDeContatos — Postgres local", () => {
     expect(ativos.itens.map((item) => item.id)).toContain(sobrevivente);
   });
 
+  describe("RN-CON-14: Contato `mesclado` é somente leitura", () => {
+    const FRASE = "Este Contato foi mesclado e agora é somente leitura. Abra o Contato que ficou.";
+
+    /** Um absorvido com um e-mail, já marcado `mesclado` no sobrevivente por SQL (só a 14-09 grava isso). */
+    async function absorvidoPorSql(nome: string): Promise<{ id: string; identificadorId: string }> {
+      const absorvido = await criar({ nome, identificadores: [{ tipo: "email", valor: `${nome.toLowerCase().replace(/\W+/g, "")}@mesclado.test` }] });
+      const sobrevivente = (await criar({ nome: `Sobrevivente de ${nome}` })).contato.id;
+      await poolDoDono().query(
+        "update plataforma.contatos set estado = 'mesclado', mesclado_em_id = $3, mesclado_em = now() where workspace_id = $1 and id = $2",
+        [ws, absorvido.contato.id, sobrevivente],
+      );
+      return { id: absorvido.contato.id, identificadorId: absorvido.identificadores[0]!.id };
+    }
+
+    const linhaDoContato = async (id: string) =>
+      (await pool().query("select * from plataforma.contatos where workspace_id = $1 and id = $2", [ws, id])).rows[0];
+
+    it.each([
+      ["editar", (id: string) => servico.editar(eu, id, { nome: "Mudou" })],
+      ["adicionarIdentificador", (id: string) => servico.adicionarIdentificador(eu, id, { tipo: "email", valor: "novo@mesclado.test" })],
+      ["editarIdentificador", (id: string, identificadorId: string) => servico.editarIdentificador(eu, id, identificadorId, { verificado: true })],
+      ["removerIdentificador", (id: string, identificadorId: string) => servico.removerIdentificador(eu, id, identificadorId)],
+      ["arquivar", (id: string) => servico.arquivar(eu, id)],
+      ["restaurar", (id: string) => servico.restaurar(eu, id)],
+      ["enviarParaLixeira", (id: string) => servico.enviarParaLixeira(eu, id)],
+      ["excluirPermanentemente", (id: string) => servico.excluirPermanentemente(eu, id)],
+    ])("%s sobre um Contato mesclado é 409 CONTATO_MESCLADO e a linha não muda", async (gesto, executar) => {
+      const absorvido = await absorvidoPorSql(`Absorvido ${gesto}`);
+      const antes = await linhaDoContato(absorvido.id);
+      const recusa = recusado(await executar(absorvido.id, absorvido.identificadorId));
+      expect(recusa.status).toBe(409);
+      expect(recusa.codigo).toBe("CONTATO_MESCLADO");
+      expect(recusa.error).toBe(FRASE);
+      expect(await linhaDoContato(absorvido.id)).toEqual(antes);
+    });
+
+    it("obter continua devolvendo o Contato mesclado (leitura liberada)", async () => {
+      const absorvido = await absorvidoPorSql("Absorvido lido");
+      const lido = valor(await servico.obter(eu, absorvido.id));
+      expect(lido.contato.estado).toBe("mesclado");
+    });
+  });
+
   it("(a) criar normaliza o e-mail, o primeiro de cada tipo nasce principal e a data civil volta igual", async () => {
     const detalhe = await criar({
       nome: "Ana Souza",

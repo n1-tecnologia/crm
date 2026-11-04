@@ -16,7 +16,7 @@ import type { NovoFunil, FunilDetalhado } from "@n1/dominio/crm/funis";
 import type { NegocioDetalhado, NovoNegocio } from "@n1/dominio/crm/negocios";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { encerrar, pool } from "../../persistencia/conexao";
-import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearMembro } from "../../testes/banco-crm";
+import { describeComBanco, limparEspaco, novoEspacoDeTeste, poolDoDono, prepararBancoCrm, semearMembro } from "../../testes/banco-crm";
 import { criarAcessoAoCrmPg } from "./acesso";
 import { criarServicoDeContatos } from "./contatos";
 import { criarServicoDeEmpresas } from "./empresas";
@@ -477,5 +477,34 @@ describeComBanco("ServicoDeNegocios — Postgres local", () => {
     const paraLixeira = recusado(await servico.editar(membro, criado.negocio.id, { empresaId: naLixeira }));
     expect(paraLixeira.status).toBe(409);
     expect(paraLixeira.codigo).toBe("EMPRESA_INATIVA");
+  });
+
+  it("(i) RN-CON-14: Contato `mesclado` não ganha Negócio, nem entra por edição; `arquivado` continua aceito", async () => {
+    const absorvido = await contato("Absorvido de Negócio");
+    const sobrevivente = await contato("Sobrevivente de Negócio");
+    await poolDoDono().query(
+      "update plataforma.contatos set estado = 'mesclado', mesclado_em_id = $3, mesclado_em = now() where workspace_id = $1 and id = $2",
+      [ws, absorvido, sobrevivente],
+    );
+    const quantos = async () =>
+      (await pool().query<{ n: number }>("select count(*)::int as n from plataforma.negocios where workspace_id = $1 and titulo like 'Mesclado (i)%'", [ws]))
+        .rows[0]!.n;
+
+    const criacao = recusado(await servico.criar(membro, { titulo: "Mesclado (i) criar", contatoId: absorvido }));
+    expect(criacao.status).toBe(409);
+    expect(criacao.codigo).toBe("CONTATO_MESCLADO");
+    expect(criacao.campo).toBe("contatoId");
+    expect(await quantos()).toBe(0);
+
+    const doSobrevivente = await negocio("Mesclado (i) edição", { contatoId: sobrevivente });
+    const edicao = recusado(await servico.editar(membro, doSobrevivente.negocio.id, { contatoId: absorvido }));
+    expect(edicao.status).toBe(409);
+    expect(edicao.codigo).toBe("CONTATO_MESCLADO");
+    expect((await linhaNoBanco(doSobrevivente.negocio.id))?.contato_id).toBe(sobrevivente);
+
+    // RN-CON-19: arquivado continua referenciável.
+    const arquivado = await contato("Arquivado de Negócio");
+    valor(await contatos.arquivar(admin, arquivado));
+    expect(valor(await servico.criar(membro, { titulo: "Mesclado (i) arquivado", contatoId: arquivado })).negocio.contatoId).toBe(arquivado);
   });
 });

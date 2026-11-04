@@ -15,7 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { EmpresaDetalhada, NovaEmpresa } from "@n1/dominio/crm/empresas";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { encerrar, pool } from "../../persistencia/conexao";
-import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearMembro } from "../../testes/banco-crm";
+import { describeComBanco, limparEspaco, novoEspacoDeTeste, poolDoDono, prepararBancoCrm, semearMembro } from "../../testes/banco-crm";
 import { criarAcessoAoCrmPg } from "./acesso";
 import { criarServicoDeContatos } from "./contatos";
 import { criarServicoDeEmpresas } from "./empresas";
@@ -441,5 +441,26 @@ describeComBanco("ServicoDeEmpresas — Postgres local", () => {
 
     expect(valor(await servico.enviarParaLixeira(bia, criada.empresa.id)).empresa.estado).toBe("na_lixeira");
     expect(valor(await servico.excluirPermanentemente(bia, criada.empresa.id))).toEqual({ id: criada.empresa.id });
+  });
+
+  it("(j) RN-CON-14: Contato `mesclado` não vira vínculo de Empresa, nem admin", async () => {
+    const e = await empresa("Empresa (j)");
+    const absorvido = await contato("Absorvido (j)");
+    const sobrevivente = await contato("Sobrevivente (j)");
+    await poolDoDono().query(
+      "update plataforma.contatos set estado = 'mesclado', mesclado_em_id = $3, mesclado_em = now() where workspace_id = $1 and id = $2",
+      [ws, absorvido, sobrevivente],
+    );
+
+    const vinculo = recusado(await servico.vincularContato(eu, e.id, { contatoId: absorvido }));
+    expect(vinculo.status).toBe(409);
+    expect(vinculo.codigo).toBe("CONTATO_MESCLADO");
+    expect(vinculo.campo).toBe("contatoId");
+    expect((await vinculosNoBanco(e.id)).some((v) => v.contato_id === absorvido)).toBe(false);
+
+    const comoAdmin = recusado(await servico.criar(eu, { empresa: { nomeFantasia: "Empresa (j) com absorvido" }, admin: { contatoId: absorvido } }));
+    expect(comoAdmin.status).toBe(409);
+    expect(comoAdmin.codigo).toBe("CONTATO_MESCLADO");
+    expect(await quantasEmpresas("Empresa (j) com absorvido")).toBe(0);
   });
 });
