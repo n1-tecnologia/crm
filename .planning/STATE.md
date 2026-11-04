@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 14
 current_phase_name: "Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional"
 status: executing
-stopped_at: Completed 14-01-PLAN.md
-last_updated: "2026-11-04T17:33:51.901Z"
+stopped_at: Completed 14-02-PLAN.md
+last_updated: "2026-11-04T17:39:46.061Z"
 last_activity: 2026-11-04
 last_activity_desc: Phase 14 execution started
-state_head: b03bb193c869208c58331ef586869cd6ae9def33
+state_head: 756ed3caa8511093593c2a957e4f64f43c13a00a
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 228
-  completed_plans: 207
+  completed_plans: 208
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 14 (Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional) — EXECUTING
-Plan: 2 of 19
+Plan: 3 of 19
 Status: Ready to execute
 Last activity: 2026-11-04 — Phase 14 execution started
 
@@ -425,6 +425,7 @@ Progress: [██████░░░░] 63%
 | Phase 12 P09 | 25 min | 2 tasks | 8 files |
 | Phase 12 P10 | 50min | 3 tasks | 2 files |
 | Phase 14 P01 | 8 min | 2 tasks | 17 files |
+| Phase 14 P02 | 6 min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -645,6 +646,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 12]: 12-10: coluna Meta 'sem alvo numerico' (b-ganho-basta); a trava custou uma ida e volta (~51 ms) e o pedidoMs isolado subiu 11% a 17%; D-03 do depois e a conferencia do dono na tela NAO OBSERVADOS; opcao do Pitfall 9 registrada para o dono decidir — A medicao de um pedido isolado nao capta o ganho da fase (a tela e a concorrencia).
 - [Phase 14]: 14-01: NegocioDetalhado.contato.estado e seloDoEstado passam a EstadoDoContato; Conversa na lixeira por SQL exige na_lixeira_em (conversas_na_lixeira_em_ck da 011)
 - [Phase 14]: 14-01: guardas de D-06 varrem o texto inteiro (comentario incluso) por funilDaLista|iniciar-conversa; listas congeladas so encolhem
+- [Phase 14]: 14-02: vinculosDoCrmDaTarefa lê só Vínculos; lixeira e mesclado são da api (3.3.2)
+- [Phase 14]: 14-02: as quatro operações NasTabelas ficam fora de OPERACOES; alvoConferido só nasce no servidor
 
 ### Pending Todos
 
@@ -706,6 +709,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-04T17:33:51.652Z
-Stopped at: Completed 14-01-PLAN.md
+Last session: 2026-11-04T17:39:43.090Z
+Stopped at: Completed 14-02-PLAN.md
 Resume file: None

@@ -763,13 +763,13 @@ Plans:
 **Ordem interna:** as decisões da 3.1 primeiro; a migração nova da 3.1.5 (a próxima depois da `010`) antes das operações da 3.2; a 3.2.1 (gesto que grava nas tabelas do CRM e em `plataforma.registros` no mesmo commit) antes das demais da 3.2; a 3.3 depois da 3.2. Domínio antes de api antes de tela.
 **Requirements**: UNI-01 a UNI-17 (IDs locais da fase, tabela "Phase Requirements" de `14-RESEARCH.md`)
 **Depends on:** Phase 9 (a Sessão 3 depende só da Sessão 1)
-**Plans:** 1/19 plans executed
+**Plans:** 2/19 plans executed
 **Fronteira de deploy (D-01):** 14-01 a 14-14 são aditivos e podem subir; 14-15, 14-16 e 14-17 só sobem no deploy da Fase 15; o ensaio 14-19 espera a cópia do dono e não segura nada.
 
 Plans:
 **Wave 1**
 - [x] 14-01-PLAN.md — Traçador: a migração 011 e o Contato `mesclado` do banco à tela; a 011 provada; guardas de D-06 (UNI-01, UNI-02)
-- [ ] 14-02-PLAN.md — Domínio da Tarefa conversacional por ids: `vinculosDoCrmDaTarefa` e as operações `…NasTabelas` fora de `OPERACOES` (UNI-12, 13, 15, 16)
+- [x] 14-02-PLAN.md — Domínio da Tarefa conversacional por ids: `vinculosDoCrmDaTarefa` e as operações `…NasTabelas` fora de `OPERACOES` (UNI-12, 13, 15, 16)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 14-03-PLAN.md — Gesto misto: `lerDoCrm` em `executar()`, `executarGestoMisto` tudo ou nada, recorte da resposta compartilhado (UNI-04)
