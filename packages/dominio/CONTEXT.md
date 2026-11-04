@@ -874,3 +874,17 @@ serviço: se o Identificador é da origem, se o destino existe neste Espaço, o
 teto de Identificadores do destino e qual dos dois fica principal (INV-CON-03).
 A transferência muda só a resolução futura: as Conversas passadas continuam
 com o Contato de origem.
+
+**Consentimento do Contato (Fase 14, 14-08, 3.2.4).** `crm/consentimentos.ts`
+é o módulo novo: `ConsentimentoDoContato` (a linha de
+`contato_consentimentos`), `NovoConsentimento` (sem `registradoPor`: quem
+registra é o Membro da sessão), `validarNovoConsentimento` (vocabulários da 011,
+finalidade preenchida e `em` que não esteja no futuro, com o campo `em`) e as
+duas regras que a tela e a api aplicam iguais. O consentimento é só inserção:
+revogar é registrar um `revogado`, e o vigente é DERIVADO por
+`consentimentoVigente` (o mais recente por `em` da finalidade para o tipo do
+Canal ou para `todos`, e no empate o registrado depois). Quem aplica a recusa é
+o envio de Mensagem: `recusaPorFaltaDeConsentimento` diz se o modelo de
+marketing barra o envio (a conta de `marketingConsentMissing`, sobre as linhas
+novas). O que depende do banco fica com o serviço: se a finalidade existe no
+Catálogo do Espaço e se a Mensagem de evidência é de uma Conversa do Contato.
