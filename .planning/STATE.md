@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 14
 current_phase_name: "Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional"
 status: executing
-stopped_at: Completed 14-14-PLAN.md
-last_updated: "2026-11-04T19:57:28.291Z"
+stopped_at: Completed 14-15-PLAN.md
+last_updated: "2026-11-04T20:10:31.847Z"
 last_activity: 2026-11-04
 last_activity_desc: Phase 14 execution started
-state_head: 99821062310d351597f4b3f9cf13ecab772f86d8
+state_head: 4b6f0dcfac0567652d512135d9059847b2ccc613
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 228
-  completed_plans: 220
+  completed_plans: 221
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 14 (Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional) — EXECUTING
-Plan: 15 of 19
+Plan: 16 of 19
 Status: Ready to execute
 Last activity: 2026-11-04 — Phase 14 execution started
 
@@ -438,6 +438,7 @@ Progress: [██████░░░░] 63%
 | Phase 14 P12 | 7 min | 3 tasks | 14 files |
 | Phase 14 P13 | 22 min | 3 tasks | 11 files |
 | Phase 14 P14 | 25 min | 2 tasks | 8 files |
+| Phase 14 P15 | 25 min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -675,6 +676,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 14]: 14-13: a resposta de POST /tarefas-conversacionais é o corpo de POST /operacoes recortado (Tarefa em value.task) mais conversa { id, aberta }; o resumo devolve { ok, itens, total }
 - [Phase 14]: 14-13: no resumo, Negócio na lixeira não aparece (RN-TAR-15) e Mensagem com marcacao_exclusao não é candidata a última Mensagem; OQ6 segue a confirmar
 - [Phase 14]: Plan 14-14: trocar o Canal e ligar ou criar o Negócio da Tarefa são gestos mistos; o Contato vem do Vínculo lido no servidor (o sobrevivente, se mesclado), nunca do corpo. criarNegocioNoCliente e prepararNegocioNovo foram extraídos de POST /negocios: lerDoCrm pré-checa Funil, Etapa e Contato (a recusa volta como valor) e gravarNoCrm só insere o Negócio depois que a operação aceitou o Vínculo, então nunca há Negócio órfão. Contato arquivado recusa criar Negócio pela Tarefa (409 CONTATO_INATIVO). Sem Conversa aberta e sem mensagem, o 400 de D-07 vem antes da recusa de Canal fora da Lista ou desconectado.
+- [Phase 14]: 14-15: o provedor do resumo cobre a página inteira da Lista e todas as Tarefas dela (filtro e busca não refazem a chamada); a chave de SWR leva os três ids de cada Tarefa; sem ponte (D-01), Empresa, temperatura e estado da Conversa saíram do cartão e da ficha até a api os devolver no resumo
+- [Phase 14]: 14-15: a ficha da Tarefa mantém a leitura antiga só para o fio de Mensagens e os três gestos de escrita (14-16); depois da migração o fio some da ficha até a Fase 15 entregar a Caixa no modelo novo
 
 ### Pending Todos
 
@@ -736,6 +739,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-04T19:57:28.015Z
-Stopped at: Completed 14-14-PLAN.md
+Last session: 2026-11-04T20:10:31.581Z
+Stopped at: Completed 14-15-PLAN.md
 Resume file: None
