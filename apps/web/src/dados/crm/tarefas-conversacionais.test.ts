@@ -174,7 +174,7 @@ describe("ProvedorDoResumoDasTarefas e useResumoDaTarefa", () => {
     const { tarefas } = montarEstado(50);
     responderComOsItens();
     const dentro = ({ children }: { children: ReactNode }) =>
-      envoltorio({ children: createElement(ProvedorDoResumoDasTarefas, { tarefas, children }) });
+      envoltorio({ children: createElement(ProvedorDoResumoDasTarefas, { tarefas }, children) });
     const { result } = renderHook(() => tarefas.map((t) => useResumoDaTarefa(t.id)), { wrapper: dentro });
     await waitFor(() => expect(result.current.every((r) => r !== undefined)).toBe(true));
     expect(fetchMock).toHaveBeenCalledTimes(1);
