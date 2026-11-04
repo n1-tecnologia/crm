@@ -842,6 +842,21 @@ o Membro seja ativo e o Agente exista neste Espaço também depende do banco.
 `Atribuicao` é o tipo da coluna dupla `atribuido_tipo/atribuido_id`.
 
 
+**Lixeira, restaurar e marcação da Conversa (Fase 14, 14-07).** `Conversa`
+ganhou `naLixeiraEm` (a coluna `na_lixeira_em` da 011: só tem valor com
+`estado = "na_lixeira"`). `validarLixeira` recusa a Conversa que já está na
+lixeira e a que não está `resolvida` (`conversas_lixeira_ck`);
+`validarRestauracao` recusa a Conversa fora da lixeira e o Contato na lixeira
+(frase do modelo antigo: "Restaure o Contato antes"). Contato arquivado ou
+mesclado não impede a restauração. A estrela e a leitura são do Membro, não da
+Conversa: `MarcacaoDaConversa` (`estrela`, `lidaAte`) mora em
+`conversa_marcacoes`, `EdicaoDeMarcacao` traz só os campos que mudam e
+`validarMarcacao` exige ao menos um e `lidaAte` em ISO 8601 com hora. De quem é
+a marcação nunca é campo: é o Membro da sessão. `ConversaNaLista` é a Conversa
+mais `contatoNome` (derivado a cada leitura), `estrela` e `naoLidas`, e
+`FiltroDeConversas` ganhou `atribuidoId`, `filaId`, `comEstrela` e `q` (trecho
+literal do título).
+
 **Notas do Contato e a transferência de Identificador (Fase 14, 14-06).**
 `crm/notas.ts` é o módulo novo: `NotaDoContato` (a linha de
 `contato_notas`), `NovaNota` (só `conteudo`: o autor é o Membro da sessão e

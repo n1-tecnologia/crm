@@ -86,6 +86,37 @@ export interface FiltroDeConversas {
   readonly canalId?: string;
   readonly contatoId?: string;
   readonly situacao?: SituacaoDaConversa;
+  /** O Atribuído, Membro ou Agente: o id basta, a coluna do tipo anda junto com ele. */
+  readonly atribuidoId?: string;
+  readonly filaId?: string;
+  /** `true`: só as que o Membro da sessão marcou com estrela; `false`: só as que não marcou. */
+  readonly comEstrela?: boolean;
+  /** Trecho do título, sem diferenciar maiúscula; é texto literal, sem curinga. */
+  readonly q?: string;
+}
+
+/**
+ * A Conversa como a Caixa a lista: o nome do Contato, a estrela e as Mensagens
+ * não lidas são do Membro da sessão (3.2.6), não da Conversa. `contatoNome` é
+ * derivado a cada leitura, como na ficha; é `null` só quando o Contato não é
+ * achado neste Espaço.
+ */
+export interface ConversaNaLista extends Conversa {
+  readonly contatoNome: string | null;
+  readonly estrela: boolean;
+  readonly naoLidas: number;
+}
+
+/** A estrela e o ponto até onde o Membro leu a Conversa (`conversa_marcacoes`, 011). */
+export interface MarcacaoDaConversa {
+  readonly estrela: boolean;
+  readonly lidaAte: string | null;
+}
+
+/** O que o Membro muda na própria marcação: só os campos enviados mudam. */
+export interface EdicaoDeMarcacao {
+  readonly estrela?: boolean;
+  readonly lidaAte?: string;
 }
 
 /**
@@ -222,4 +253,21 @@ export function validarRestauracao(
     return fail("O Contato está na lixeira. Restaure o Contato antes: uma Conversa sem Contato resolvido não é roteável.");
   }
   return ok(undefined);
+}
+
+const DATA_COM_HORA = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+
+/**
+ * Estrela e leitura (3.2.6): ao menos um campo, e `lidaAte` é um instante ISO
+ * 8601 com hora e fuso. De quem é a marcação não está aqui: é sempre o Membro da
+ * sessão, nunca um campo da edição.
+ */
+export function validarMarcacao(edicao: EdicaoDeMarcacao): OperationResult<EdicaoDeMarcacao> {
+  if (edicao.estrela === undefined && edicao.lidaAte === undefined) {
+    return fail("Informe a estrela ou até quando a Conversa foi lida.");
+  }
+  if (edicao.lidaAte !== undefined && !(DATA_COM_HORA.test(edicao.lidaAte) && !Number.isNaN(Date.parse(edicao.lidaAte)))) {
+    return fail("Informe a data de leitura em ISO 8601, com hora (AAAA-MM-DDTHH:MM:SSZ).", "lidaAte");
+  }
+  return ok(edicao);
 }

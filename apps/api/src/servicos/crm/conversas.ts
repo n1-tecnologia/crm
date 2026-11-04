@@ -38,13 +38,17 @@ import {
   validarAtribuicao,
   validarMover,
   validarLixeira,
+  validarMarcacao,
   validarNovaConversa,
   validarRestauracao,
   type AcaoDeSituacao,
   type Atribuicao,
   type Conversa,
   type ConversaDetalhada,
+  type ConversaNaLista,
+  type EdicaoDeMarcacao,
   type FiltroDeConversas,
+  type MarcacaoDaConversa,
   type NovaConversa,
   type ParticipanteDaConversa,
 } from "@n1/dominio/crm/conversas";
@@ -54,6 +58,7 @@ import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { criarRepositorioDeCanaisPg } from "../../repositorios/crm/canais";
 import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
 import { criarRepositorioDeConversasPg } from "../../repositorios/crm/conversas";
+import { criarRepositorioDeMarcacoesPg } from "../../repositorios/crm/marcacoes";
 import { criarRepositorioDeMensagensPg } from "../../repositorios/crm/mensagens";
 import { membroAtivo } from "../../repositorios/crm/membros";
 import { agenteAtivo } from "../../repositorios/crm/referencias";
@@ -62,7 +67,8 @@ import { recusa, sucesso, type ResultadoCrm } from "./resultado";
 import { comTransacao, type FrasesDeRestricao } from "./transacao";
 
 export interface ServicoDeConversas {
-  listar(membro: MembroDaSessao, filtro: FiltroDeConversas): Promise<ResultadoCrm<Pagina<Conversa>>>;
+  /** A estrela, o `naoLidas` e o filtro `comEstrela` são do Membro da sessão. */
+  listar(membro: MembroDaSessao, filtro: FiltroDeConversas): Promise<ResultadoCrm<Pagina<ConversaNaLista>>>;
   obter(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<ConversaDetalhada>>;
   criar(
     membro: MembroDaSessao,
@@ -82,6 +88,8 @@ export interface ServicoDeConversas {
   enviarParaLixeira(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<ConversaDetalhada>>;
   /** Volta para `ativo` e zera `na_lixeira_em`; recusa quando o Contato está na lixeira. */
   restaurar(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<ConversaDetalhada>>;
+  /** Estrela e leitura do PRÓPRIO Membro da sessão (3.2.6); devolve a marcação inteira depois da edição. */
+  marcar(membro: MembroDaSessao, id: string, edicao: EdicaoDeMarcacao): Promise<ResultadoCrm<MarcacaoDaConversa>>;
 }
 
 const FRASE_JA_ABERTA = "Este Contato já tem uma Conversa aberta neste Canal.";
@@ -161,7 +169,7 @@ export function criarServicoDeConversas(deps: { readonly pool: () => Pool; reado
     async listar(membro, filtro) {
       const negado = await exigir(deps.acesso, membro, "ler", "conversa");
       if (negado) return { ok: false, ...negado };
-      return sucesso(await criarRepositorioDeConversasPg(deps.pool()).listar(membro.workspaceId, filtro));
+      return sucesso(await criarRepositorioDeConversasPg(deps.pool()).listar(membro.workspaceId, filtro, membro.id));
     },
 
     async obter(membro, id) {
@@ -410,6 +418,20 @@ export function criarServicoDeConversas(deps: { readonly pool: () => Pool; reado
         },
         FRASES,
       );
+    },
+
+    async marcar(membro, id, edicao) {
+      const negado = await exigir(deps.acesso, membro, "editar", "conversa");
+      if (negado) return { ok: false, ...negado };
+
+      const valida = validarMarcacao(edicao);
+      if (!valida.ok) return valorInvalido(valida);
+
+      // O Membro da marcação é SEMPRE o da sessão (T-14-17); a Conversa precisa existir NESTE Espaço.
+      const pool = deps.pool();
+      const conversa = await criarRepositorioDeConversasPg(pool).obter(membro.workspaceId, id);
+      if (!conversa) return conversaNaoEncontrada();
+      return sucesso(await criarRepositorioDeMarcacoesPg(pool).gravar(membro.workspaceId, id, membro.id, valida.value));
     },
 
     resolver: (membro, id) => mudarSituacao(membro, id, "resolver"),
