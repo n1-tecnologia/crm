@@ -1,7 +1,8 @@
 /**
  * Rotas REST da Tarefa conversacional nas tabelas novas (Fase 14, 3.3.1):
  *
- *   POST /tarefas-conversacionais    cria a Tarefa (em `registros`) e abre ou reaproveita a Conversa (em `plataforma.conversas`), no mesmo commit (201)
+ *   POST /tarefas-conversacionais          cria a Tarefa (em `registros`) e abre ou reaproveita a Conversa (em `plataforma.conversas`), no mesmo commit (201)
+ *   POST /tarefas-conversacionais/resumo   Contato, Canal, última Mensagem e Negócio de até 200 Tarefas, numa chamada só (200 `{ itens, total }`)
  *
  * Sem SQL e sem regra aqui (`rotas/CONTEXT.md`): a rota lê a requisição, chama o
  * serviço e formata a resposta. O Membro atuante é SEMPRE `request.membro`.
@@ -11,14 +12,20 @@
  * aceita `alvoConferido`, `referencias`, `workspaceId` nem nome de Contato: quem
  * confere Contato, Canal e Negócio é o serviço, lendo as tabelas na transação
  * (T-14-31). O objeto `mensagem` também é `.strict()`.
+ *
+ * O resumo é POST porque os Vínculos (até 200 trios de ids) não cabem numa query
+ * string. É leitura: não grava nada, e o corpo `.strict()` com `.max(200)` é a
+ * primeira barreira contra o lote grande demais (T-14-34); o serviço confere de novo.
  */
 
 import type { ZodTypeProvider } from "@fastify/type-provider-zod";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { RESUMO_MAXIMO } from "@n1/dominio/crm/resumo-da-tarefa";
+import { sucesso } from "../../servicos/crm/resultado";
 import type { ServicoDeTarefasConversacionais } from "../../servicos/crm/tarefas-conversacionais";
 import { ACTOR_REF, PRIORITY, TASK_DATE } from "../esquemas/fragmentos";
-import { responder, TEXTO_CURTO, TEXTO_LONGO } from "./comum";
+import { responder, responderLista, TEXTO_CURTO, TEXTO_LONGO } from "./comum";
 
 const ID = z.string().min(1).max(64);
 
@@ -39,6 +46,15 @@ export const NOVA_TAREFA_CONVERSACIONAL = z
   })
   .strict();
 
+/** Só os ids que a Tarefa guarda: o Espaço vem da sessão, e nenhum campo a mais passa. */
+export const RESUMO_DE_TAREFAS = z
+  .object({
+    vinculos: z
+      .array(z.object({ taskId: ID, contatoId: ID.optional(), conversaId: ID.optional(), negocioId: ID.optional() }).strict())
+      .max(RESUMO_MAXIMO),
+  })
+  .strict();
+
 export async function rotasDeTarefasConversacionais(
   app: FastifyInstance,
   opcoes: { readonly servico: ServicoDeTarefasConversacionais },
@@ -49,4 +65,9 @@ export async function rotasDeTarefasConversacionais(
   rotas.post("/tarefas-conversacionais", { schema: { body: NOVA_TAREFA_CONVERSACIONAL } }, async (request, reply) =>
     responder(reply, await servico.criar(request.membro, request.body), 201),
   );
+
+  rotas.post("/tarefas-conversacionais/resumo", { schema: { body: RESUMO_DE_TAREFAS } }, async (request, reply) => {
+    const resultado = await servico.resumo(request.membro, request.body.vinculos);
+    return responderLista(reply, resultado.ok ? sucesso({ itens: [...resultado.valor], total: resultado.valor.length }) : resultado);
+  });
 }

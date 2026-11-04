@@ -30,6 +30,7 @@ import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { nomeDeExibicaoDoContato } from "@n1/dominio/crm/contatos";
 import { validarNovaConversa } from "@n1/dominio/crm/conversas";
+import { RESUMO_MAXIMO, type ResumoDaTarefaConversacional, type VinculoParaResumo } from "@n1/dominio/crm/resumo-da-tarefa";
 import { criarTarefaConversacionalNasTabelas, type ReferenciasDaTarefaConversacional } from "@n1/dominio/operations";
 import type { ActorRef, Id, Priority, Task, TaskDate } from "@n1/dominio";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
@@ -37,6 +38,7 @@ import { criarRepositorioDeCanaisPg } from "../../repositorios/crm/canais";
 import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
 import { criarRepositorioDeConversasPg } from "../../repositorios/crm/conversas";
 import { criarRepositorioDeNegociosPg } from "../../repositorios/crm/negocios";
+import { resumoDasTarefas } from "../../repositorios/crm/tarefas-conversacionais";
 import { recortarResposta } from "../../rotas/resposta-recortada";
 import { exigir, type AcessoAoCrm } from "./acesso";
 import { abrirConversaNoCliente, canalArquivado, FRASES_DE_CONVERSAS, identificadorDoCanal } from "./conversas";
@@ -66,6 +68,11 @@ export type RespostaDaTarefaConversacional = ReturnType<typeof recortarResposta<
 
 export interface ServicoDeTarefasConversacionais {
   criar(membro: MembroDaSessao, entrada: NovaTarefaConversacional): Promise<ResultadoCrm<RespostaDaTarefaConversacional>>;
+  /**
+   * Contato, Canal, última Mensagem e Negócio de até `RESUMO_MAXIMO` Tarefas, numa ida só (3.3.3).
+   * Um item por Vínculo, na ordem pedida; id que não é deste Espaço volta com os quatro campos `null`.
+   */
+  resumo(membro: MembroDaSessao, vinculos: readonly VinculoParaResumo[]): Promise<ResultadoCrm<readonly ResumoDaTarefaConversacional[]>>;
 }
 
 /** A mesma frase de `NEGOCIO_DE_OUTRO_CONTATO` do domínio (`operations/tarefas-conversacionais.ts`). */
@@ -220,6 +227,18 @@ export function criarServicoDeTarefasConversacionais(deps: {
       const { resultado, depois } = desfecho.valor;
       if (!anotado.conversa) throw new Error("O gesto da Tarefa gravou sem ler a Conversa.");
       return sucesso({ ...recortarResposta(resultado, depois, membro.id), conversa: anotado.conversa });
+    },
+
+    async resumo(membro, vinculos) {
+      // O cartão mostra nome de Contato e trecho de Mensagem: pede-se a leitura dos dois recursos, antes de olhar o banco.
+      const semContato = await exigir(deps.acesso, membro, "ler", "contato");
+      if (semContato) return { ok: false, ...semContato };
+      const semConversa = await exigir(deps.acesso, membro, "ler", "conversa");
+      if (semConversa) return { ok: false, ...semConversa };
+      if (vinculos.length > RESUMO_MAXIMO) {
+        return recusa<never>(400, `O resumo aceita até ${RESUMO_MAXIMO} Tarefas por chamada.`, { codigo: "VALOR_INVALIDO", campo: "vinculos" });
+      }
+      return sucesso(await resumoDasTarefas(deps.pool(), membro.workspaceId, vinculos));
     },
   };
 }

@@ -194,6 +194,45 @@ pagam uma ida a mais ao banco (a leitura de `plataforma.canais`); são gestos
 raros. Não gravam nas tabelas do CRM nem avançam a revisão do Espaço por fora de
 `executar()`.
 
+**Tarefa conversacional nas tabelas (Fase 14, 14-13, 3.3.1, 3.3.3 e 3.3.4).**
+`rotas/crm/tarefas-conversacionais.ts` tem duas rotas por ora (as de trocar o
+Canal e o Negócio da Tarefa entram no 14-14):
+- `POST /tarefas-conversacionais` — corpo `.strict()` `{ listId, contatoId,
+  canalId, mensagem?, negocioId?, title?, statusId?, assignees?, priority?,
+  dueDate?, taskTypeId? }`; 201 `{ ok: true, dados }`. É um **gesto misto**
+  (`executarGestoMisto`): a Tarefa e os Vínculos nascem em `plataforma.registros`
+  e a Conversa em `plataforma.conversas`, no mesmo commit. `lerDoCrm` trava o
+  Contato e lê Canal, Identificador do tipo do Canal, Conversa aberta do par e
+  Negócio NA transação; o corpo nunca carrega referência "conferida" (`alvoConferido`,
+  `referencias`, `workspaceId` dão 400). **D-07:** sem Conversa aberta no par, a
+  primeira Mensagem é obrigatória (400 `VALOR_INVALIDO`, `campo: "mensagem"`); com
+  uma aberta ela é reaproveitada e a `mensagem` do corpo é ignorada. A Mensagem vai
+  para `plataforma.mensagens`, nunca para `registros`. `dados` é o corpo de
+  `POST /operacoes` (`ok`, `value: { task }`, `diferenca`, `revisao`,
+  `revisaoAnterior`, `sequencia`, já pelo recorte por Membro, `recortarResposta`)
+  mais `conversa: { id, aberta }` (`aberta: false` = a Conversa já existia).
+  Recusas: 409 `RECUSA_DO_DOMINIO` com `campo` (`lista`, `canal`) para Lista
+  operacional, Canal fora da Lista ou desconectado; 409 `CONTATO_MESCLADO`,
+  `CONTATO_INATIVO`, `CANAL_ARQUIVADO`, `CONTATO_SEM_IDENTIFICADOR_DO_CANAL`,
+  `NEGOCIO_DE_OUTRO_CONTATO` (`campo: "negocioId"`; vale para Negócio de outro
+  Contato, de outro Espaço e fora de `ativo`); 404 `CONTATO_NAO_ENCONTRADO`,
+  `CANAL_NAO_ENCONTRADO`; 403 `PERMISSAO` (Convidado). Uma recusa nunca deixa
+  Tarefa, Conversa nem Mensagem. Não cutuca a ponte do Agente.
+- `POST /tarefas-conversacionais/resumo` — corpo `{ vinculos: [{ taskId,
+  contatoId?, conversaId?, negocioId? }] }` (até 200, `.strict()`); 200
+  `{ ok: true, itens, total }`, um item por Vínculo na ordem pedida: `contato`
+  (seguindo `mesclado_em_id`), `canal` (o da Conversa vinculada), `ultimaMensagem`
+  (a mais recente que não é `interna` entre as Conversas `ativas` do Contato no
+  Canal da Tarefa, trecho de 140 caracteres) e `negocio` (com a Etapa; o da
+  lixeira não aparece). É POST só porque os ids não cabem numa query string:
+  é leitura. Uma consulta SQL para o lote inteiro (`unnest ... with ordinality`),
+  todo `join` com `workspace_id`: id de outro Espaço volta com os quatro campos
+  `null`, nunca 404. Convidado lê.
+
+O diálogo de criar da Lista e o botão do fio só chamam estas rotas no deploy da
+Fase 15 (14-15 e 14-16); até lá o fluxo antigo (`criarTarefaConversacional` em
+`POST /operacoes`) segue sendo o que as telas usam.
+
 ## Rotas REST da Caixa de Entrada (Fase 8)
 
 `rotas/crm/canais.ts`, `conversas.ts` e `mensagens.ts` entram no mesmo `rotasDeCrm`
