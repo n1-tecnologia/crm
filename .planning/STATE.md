@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 14
 current_phase_name: "Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional"
 status: executing
-stopped_at: Completed 14-10-PLAN.md
-last_updated: "2026-11-04T18:59:26.951Z"
+stopped_at: Completed 14-11-PLAN.md
+last_updated: "2026-11-04T19:09:43.973Z"
 last_activity: 2026-11-04
 last_activity_desc: Phase 14 execution started
-state_head: 335c5c2725f6e36e4e0e32bccdcda694c24308b8
+state_head: 58f9026e1daac391acc9539eabac0b1dfe096047
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 228
-  completed_plans: 216
+  completed_plans: 217
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 14 (Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional) — EXECUTING
-Plan: 11 of 19
+Plan: 12 of 19
 Status: Ready to execute
 Last activity: 2026-11-04 — Phase 14 execution started
 
@@ -434,6 +434,7 @@ Progress: [██████░░░░] 63%
 | Phase 14 P08 | 22 min | 3 tasks | 13 files |
 | Phase 14 P09 | 12 min | 3 tasks | 14 files |
 | Phase 14 P10 | 9 min | 2 tasks | 9 files |
+| Phase 14 P11 | 13 min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -665,6 +666,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 14]: 14-08: validarNovoConsentimento dá 5 min de folga ao relógio da tela em em; sem a finalidade Marketing no Catálogo o envio de modelo de marketing recusa; contato arquivado aceita consentimento
 - [Phase 14]: 14-09: consentimentos do absorvido sao copiados (nao movidos); vinculo com Empresa que colide funde admin e encerra o do absorvido; colisao de Conversa segue RN-CXE-10 (OQ3 a confirmar)
 - [Phase 14]: 14-10: as Conversas do Membro removido são liberadas (não passam ao Sucessor); suposição OQ2/A8, a confirmar com o dono. aoConfirmar de removeMember só passa registros a Sucessor Membro ativo.
+- [Phase 14]: 14-11: Mesclar com… não exige digitar o nome do absorvido (o diálogo antigo exigia); o aviso de irreversível e o seletor da api bastam. Reversível de adotar depois.
+- [Phase 14]: 14-11: Notas e Consentimentos revalidam só a chave do próprio Contato (/contatos/<id>/notas, /consentimentos); o vigente do consentimento é calculado na tela por consentimentoVigente.
 
 ### Pending Todos
 
@@ -726,6 +729,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-04T18:59:26.686Z
-Stopped at: Completed 14-10-PLAN.md
+Last session: 2026-11-04T19:09:43.705Z
+Stopped at: Completed 14-11-PLAN.md
 Resume file: None
