@@ -53,6 +53,8 @@ export interface Conversa {
   readonly tituloEditado: boolean;
   readonly situacao: SituacaoDaConversa;
   readonly estado: EstadoDaConversa;
+  /** Quando foi para a lixeira (011, `conversas_na_lixeira_em_ck`): só tem valor com `estado = "na_lixeira"`. */
+  readonly naLixeiraEm: string | null;
   readonly filaId: string | null;
   readonly atribuido: Atribuicao;
   readonly adiadaAte: string | null;
@@ -191,5 +193,33 @@ export function participantesComContato(
  */
 export function validarAtribuicao(conversa: Pick<Conversa, "estado">): OperationResult<void> {
   if (conversa.estado === "na_lixeira") return fail("Uma Conversa na lixeira não é atribuída. Restaure-a antes.");
+  return ok(undefined);
+}
+
+/**
+ * Lixeira (3.2.6): só a Conversa resolvida vai para a lixeira
+ * (`conversas_lixeira_ck`). Mandar a que já está lá é recusado, para a data
+ * `naLixeiraEm` não ser reescrita por engano.
+ */
+export function validarLixeira(conversa: Pick<Conversa, "situacao" | "estado">): OperationResult<void> {
+  if (conversa.estado === "na_lixeira") return fail("A Conversa já está na lixeira.");
+  if (conversa.situacao !== "resolvida") return fail("Resolva a Conversa antes de mandá-la para a lixeira.");
+  return ok(undefined);
+}
+
+/**
+ * Restaurar (3.2.6): só a Conversa que está na lixeira volta, e não para um
+ * Contato que também está lá (uma Conversa sem Contato resolvido não é
+ * roteável). Contato arquivado ou mesclado não impede: a Conversa volta e o
+ * resto segue as regras desses estados.
+ */
+export function validarRestauracao(
+  conversa: Pick<Conversa, "estado">,
+  contato: Pick<Contato, "estado">,
+): OperationResult<void> {
+  if (conversa.estado !== "na_lixeira") return fail("A Conversa não está na lixeira.");
+  if (contato.estado === "na_lixeira") {
+    return fail("O Contato está na lixeira. Restaure o Contato antes: uma Conversa sem Contato resolvido não é roteável.");
+  }
   return ok(undefined);
 }

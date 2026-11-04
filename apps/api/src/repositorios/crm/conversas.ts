@@ -54,11 +54,14 @@ export interface RepositorioDeConversas {
   ): Promise<Conversa | undefined>;
   /** As duas colunas da atribuição andam juntas (`conversas_atribuido_ck`): nulas quando `null`. */
   definirAtribuicao(workspaceId: string, id: string, atribuido: Atribuicao): Promise<Conversa | undefined>;
+  /** `estado` e `na_lixeira_em` andam juntos (`conversas_na_lixeira_em_ck`); quem chama confere que a Conversa está resolvida. */
+  enviarParaLixeira(workspaceId: string, id: string): Promise<Conversa | undefined>;
+  restaurar(workspaceId: string, id: string): Promise<Conversa | undefined>;
 }
 
 const COLUNAS_CONVERSA = `id, canal_id, contato_id, titulo, titulo_editado, situacao, estado, fila_id,
   atribuido_tipo, atribuido_id, adiada_ate, adiamento_motivo, participantes, resolvida_em, reaberta_em,
-  reaberturas, criado_por_tipo, criado_por_id, criado_em, atualizado_em`;
+  reaberturas, criado_por_tipo, criado_por_id, criado_em, atualizado_em, na_lixeira_em`;
 
 export interface LinhaDoBancoDeConversa {
   readonly id: string;
@@ -81,6 +84,7 @@ export interface LinhaDoBancoDeConversa {
   readonly criado_por_id: string;
   readonly criado_em: Date;
   readonly atualizado_em: Date;
+  readonly na_lixeira_em: Date | null;
 }
 
 const iso = (data: Date | null): string | null => (data === null ? null : data.toISOString());
@@ -95,6 +99,7 @@ export function linhaParaConversa(linha: LinhaDoBancoDeConversa): Conversa {
     tituloEditado: linha.titulo_editado,
     situacao: linha.situacao,
     estado: linha.estado,
+    naLixeiraEm: iso(linha.na_lixeira_em),
     filaId: linha.fila_id,
     atribuido:
       linha.atribuido_tipo === null || linha.atribuido_id === null
@@ -215,6 +220,28 @@ export function criarRepositorioDeConversasPg(cliente: Pool | PoolClient): Repos
           where workspace_id = $1 and id = $2
           returning ${COLUNAS_CONVERSA}`,
         [workspaceId, id, atribuido?.tipo ?? null, atribuido?.id ?? null],
+      );
+      return rows[0] ? linhaParaConversa(rows[0]) : undefined;
+    },
+
+    async enviarParaLixeira(workspaceId, id) {
+      const { rows } = await cliente.query<LinhaDoBancoDeConversa>(
+        `update plataforma.conversas
+            set estado = 'na_lixeira', na_lixeira_em = now()
+          where workspace_id = $1 and id = $2
+          returning ${COLUNAS_CONVERSA}`,
+        [workspaceId, id],
+      );
+      return rows[0] ? linhaParaConversa(rows[0]) : undefined;
+    },
+
+    async restaurar(workspaceId, id) {
+      const { rows } = await cliente.query<LinhaDoBancoDeConversa>(
+        `update plataforma.conversas
+            set estado = 'ativo', na_lixeira_em = null
+          where workspace_id = $1 and id = $2
+          returning ${COLUNAS_CONVERSA}`,
+        [workspaceId, id],
       );
       return rows[0] ? linhaParaConversa(rows[0]) : undefined;
     },

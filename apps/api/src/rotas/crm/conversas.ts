@@ -7,9 +7,11 @@
  *   POST /conversas/:id/resolver    `aberta`/`pendente` → `resolvida`
  *   POST /conversas/:id/reabrir     `resolvida` → `aberta`, contando uma reabertura
  *   POST /conversas/:id/atribuir    atribui a um Membro ativo ou a um Agente do Espaço, ou tira a atribuição (`null`)
+ *   POST /conversas/:id/lixeira     só a Conversa `resolvida` vai para a lixeira, guardando `naLixeiraEm` (3.2.6)
+ *   POST /conversas/:id/restaurar   volta para `ativo`; recusa quando o Contato está na lixeira
  *   POST /conversas/:id/mover       troca o Contato da Conversa (3.2.5); `resolverExistente` resolve a que ocupa o par
  *
- * Sem `DELETE` nesta fase. As duas ações não têm corpo e por isso não declaram
+ * Sem `DELETE` nesta fase. Resolver, reabrir, lixeira e restaurar não têm corpo e por isso não declaram
  * `body` (o Fastify 5 recusa `content-type: json` sem corpo; ver `canais.ts`).
  *
  * Sem SQL e sem regra aqui (`rotas/CONTEXT.md`): a rota lê a requisição,
@@ -103,5 +105,13 @@ export async function rotasDeConversas(app: FastifyInstance, opcoes: { readonly 
 
   rotas.post("/conversas/:id/atribuir", { schema: { params: PARAMS_ID, body: ATRIBUIR_CONVERSA } }, async (request, reply) =>
     responder(reply, await servico.atribuir(request.membro, request.params.id, { atribuido: request.body.atribuido })),
+  );
+
+  rotas.post("/conversas/:id/lixeira", { schema: { params: PARAMS_ID } }, async (request, reply) =>
+    responder(reply, await servico.enviarParaLixeira(request.membro, request.params.id)),
+  );
+
+  rotas.post("/conversas/:id/restaurar", { schema: { params: PARAMS_ID } }, async (request, reply) =>
+    responder(reply, await servico.restaurar(request.membro, request.params.id)),
   );
 }

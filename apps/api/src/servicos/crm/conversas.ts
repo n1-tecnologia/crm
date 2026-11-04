@@ -37,7 +37,9 @@ import {
   tituloDaConversa,
   validarAtribuicao,
   validarMover,
+  validarLixeira,
   validarNovaConversa,
+  validarRestauracao,
   type AcaoDeSituacao,
   type Atribuicao,
   type Conversa,
@@ -76,6 +78,10 @@ export interface ServicoDeConversas {
   ): Promise<ResultadoCrm<ConversaDetalhada>>;
   /** Atribui a Conversa a um Membro ativo ou a um Agente deste Espaço; `null` tira a atribuição. */
   atribuir(membro: MembroDaSessao, id: string, entrada: { readonly atribuido: Atribuicao }): Promise<ResultadoCrm<ConversaDetalhada>>;
+  /** Só a Conversa resolvida vai para a lixeira (3.2.6); grava `na_lixeira_em`. */
+  enviarParaLixeira(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<ConversaDetalhada>>;
+  /** Volta para `ativo` e zera `na_lixeira_em`; recusa quando o Contato está na lixeira. */
+  restaurar(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<ConversaDetalhada>>;
 }
 
 const FRASE_JA_ABERTA = "Este Contato já tem uma Conversa aberta neste Canal.";
@@ -336,6 +342,67 @@ export function criarServicoDeConversas(deps: { readonly pool: () => Pool; reado
           }
 
           const atualizada = await conversas.definirAtribuicao(membro.workspaceId, id, destino);
+          if (!atualizada) return conversaNaoEncontrada();
+          const canal = await criarRepositorioDeCanaisPg(cliente).obter(membro.workspaceId, atualizada.canalId);
+          if (!canal) return canalNaoEncontrado();
+          return sucesso({ conversa: atualizada, canal: resumoDoCanal(canal) });
+        },
+        FRASES,
+      );
+    },
+
+    async enviarParaLixeira(membro, id) {
+      const negado = await exigir(deps.acesso, membro, "enviar_para_lixeira", "conversa");
+      if (negado) return { ok: false, ...negado };
+
+      return comTransacao(
+        deps.pool,
+        async (cliente: PoolClient) => {
+          const conversas = criarRepositorioDeConversasPg(cliente);
+          const atual = await conversas.obter(membro.workspaceId, id, { travar: true });
+          if (!atual) return conversaNaoEncontrada();
+
+          const valida = validarLixeira(atual);
+          if (!valida.ok) return transicaoInvalida(valida.error);
+
+          const atualizada = await conversas.enviarParaLixeira(membro.workspaceId, id);
+          if (!atualizada) return conversaNaoEncontrada();
+          const canal = await criarRepositorioDeCanaisPg(cliente).obter(membro.workspaceId, atualizada.canalId);
+          if (!canal) return canalNaoEncontrado();
+          return sucesso({ conversa: atualizada, canal: resumoDoCanal(canal) });
+        },
+        FRASES,
+      );
+    },
+
+    async restaurar(membro, id) {
+      const negado = await exigir(deps.acesso, membro, "restaurar", "conversa");
+      if (negado) return { ok: false, ...negado };
+
+      return comTransacao(
+        deps.pool,
+        async (cliente: PoolClient) => {
+          const conversas = criarRepositorioDeConversasPg(cliente);
+          const contatos = criarRepositorioDeContatosPg(cliente);
+
+          // Contato antes da Conversa na ordem das travas (como em `mover`): lê-se a
+          // Conversa sem trava só para saber o Contato, trava-se o Contato e então a
+          // Conversa, conferindo que o Contato não mudou no meio.
+          const lida = await conversas.obter(membro.workspaceId, id);
+          if (!lida) return conversaNaoEncontrada();
+          const contato = await contatos.obter(membro.workspaceId, lida.contatoId, { travar: true });
+          if (!contato) return contatoNaoEncontrado();
+
+          const atual = await conversas.obter(membro.workspaceId, id, { travar: true });
+          if (!atual) return conversaNaoEncontrada();
+          if (atual.contatoId !== lida.contatoId) {
+            return recusa<never>(409, "A Conversa mudou de Contato enquanto você a restaurava. Tente de novo.", { codigo: "CONFLITO" });
+          }
+
+          const valida = validarRestauracao(atual, contato);
+          if (!valida.ok) return transicaoInvalida(valida.error);
+
+          const atualizada = await conversas.restaurar(membro.workspaceId, id);
           if (!atualizada) return conversaNaoEncontrada();
           const canal = await criarRepositorioDeCanaisPg(cliente).obter(membro.workspaceId, atualizada.canalId);
           if (!canal) return canalNaoEncontrado();

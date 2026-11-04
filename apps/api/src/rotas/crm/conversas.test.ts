@@ -275,12 +275,13 @@ describe("rotas de Conversas — serviço falso, sem banco", () => {
     expect(chamadas[0]?.[0]).toBe(metodo);
     expect(chamadas[0]?.[1]).toMatchObject({ id: "mem_maryane" });
     expect(chamadas[0]?.[2]).toBe("x");
-    // Com content-type json e corpo vazio a rota (sem `body` no schema) também não quebra.
+    // Sem `body` no schema, um `{}` com content-type json também passa (o Fastify 5
+    // recusa o JSON de corpo vazio, não o objeto vazio).
     const comJson = await app.inject({
       method: "POST",
       url: `/conversas/x/${acao}`,
       headers: { ...AUTORIZACAO, "content-type": "application/json" },
-      payload: "",
+      payload: {},
     });
     expect(comJson.statusCode).toBe(200);
   });
