@@ -106,6 +106,24 @@ export function removerIdentificador(id: string, identificadorId: string): Promi
   return gravar(`${chaveDoContato(id)}/identificadores/${identificadorId}`, "DELETE");
 }
 
+/**
+ * 3.2.3: passa o Identificador de `contatoId` ao Contato de destino. Só a
+ * resolução futura muda; Conversas e Mensagens passadas ficam onde estão. A
+ * resposta é o Contato de ORIGEM, já sem o Identificador.
+ */
+export function transferirIdentificador(contatoId: string, identificadorId: string, paraContatoId: string): Promise<ContatoDetalhado> {
+  return gravar(`${chaveDoContato(contatoId)}/identificadores/${identificadorId}/transferir`, "POST", { paraContatoId });
+}
+
+/**
+ * 3.2.2: o Contato `sobreviventeId` absorve o `absorvidoId`; irreversível. A
+ * resposta é o sobrevivente. O absorvido passa a `mesclado` e a página dele
+ * leva ao sobrevivente (14-01).
+ */
+export function mesclarContatos(sobreviventeId: string, absorvidoId: string): Promise<ContatoDetalhado> {
+  return gravar(`${chaveDoContato(sobreviventeId)}/mesclar`, "POST", { absorvidoId });
+}
+
 export function arquivarContato(id: string): Promise<ContatoDetalhado> {
   return gravar(`${chaveDoContato(id)}/arquivar`, "POST");
 }
