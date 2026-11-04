@@ -7,13 +7,15 @@
  * URL, sessão falsa, `StoreProvider` de verdade com o seed.
  */
 
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { SWRConfig } from "swr";
+import { SWRConfig, useSWRConfig } from "swr";
 import { buildSeed } from "@n1/dominio/seed";
 import { podeNoCrm } from "@n1/dominio/crm/permissoes";
+import type { ConsentimentoDoContato } from "@n1/dominio/crm/consentimentos";
 import type { ContatoDetalhado } from "@n1/dominio/crm/contatos";
+import type { NotaDoContato } from "@n1/dominio/crm/notas";
 import { StoreProvider } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
 import { invalidarCrm } from "@/dados/crm/cliente-crm";
@@ -21,17 +23,23 @@ import { useContato } from "@/dados/crm/contatos";
 import ContatoPage from "@/app/(shell)/crm/contatos/[contato]/page";
 import { FichaDeContato } from "./ficha-de-contato";
 
-const { obterSessao, trocarRota } = vi.hoisted(() => ({ obterSessao: vi.fn(), trocarRota: vi.fn() }));
+const { obterSessao, trocarRota, revalidador } = vi.hoisted(() => ({
+  obterSessao: vi.fn(),
+  trocarRota: vi.fn(),
+  // O `mutate` do SWRConfig do teste: o global não alcança o cache isolado, este sim.
+  revalidador: { revalidar: undefined as undefined | ((prefixo: string) => Promise<unknown>) },
+}));
 
 vi.mock("@/autenticacao/cliente-navegador", () => ({
   clienteDoNavegador: () => ({ auth: { getSession: obterSessao } }),
 }));
 
 // `invalidarCrm` é espiado: o `mutate` global do SWR não alcança o cache isolado do `SWRConfig` do teste.
-// Que a chave `/contatos…` revalida de fato é do SWR (provado no tracer do 07-01); aqui se prova que a gravação a invalida.
+// Aqui se prova que a gravação a invalida; quem a faz valer no cache do teste é `RegistrarRevalidacao`, que
+// repassa o prefixo ao `mutate` do próprio `SWRConfig` (é assim que a nota nova, depois do POST, aparece na lista).
 vi.mock("@/dados/crm/cliente-crm", async (original) => {
   const real = await original<typeof import("@/dados/crm/cliente-crm")>();
-  return { ...real, invalidarCrm: vi.fn(async () => undefined) };
+  return { ...real, invalidarCrm: vi.fn(async (prefixo: string) => revalidador.revalidar?.(prefixo)) };
 });
 
 vi.mock("next/navigation", () => ({
@@ -103,6 +111,17 @@ function Pagina() {
   return data ? <FichaDeContato contatoId="c1" detalhado={data} /> : null;
 }
 
+function RegistrarRevalidacao() {
+  const { mutate } = useSWRConfig();
+  useEffect(() => {
+    revalidador.revalidar = (prefixo) => mutate((chave) => typeof chave === "string" && chave.startsWith(prefixo));
+    return () => {
+      revalidador.revalidar = undefined;
+    };
+  }, [mutate]);
+  return null;
+}
+
 function montar(memberId = "mem_julia") {
   const transporte: Transporte = {
     gravar: vi.fn(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." })),
@@ -111,10 +130,59 @@ function montar(memberId = "mem_julia") {
   return render(
     <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
       <StoreProvider sessao={{ memberId }} estadoInicial={{ data: buildSeed(), revisao: 1, ordens: {} }} transporte={transporte}>
+        <RegistrarRevalidacao />
         <Pagina />
       </StoreProvider>
     </SWRConfig>,
   );
+}
+
+interface Servidor {
+  detalhado: ContatoDetalhado;
+  notas: NotaDoContato[];
+  consentimentos: ConsentimentoDoContato[];
+  /** Resposta fixa do POST de notas (uma recusa); ausente: a nota é gravada. */
+  postDeNotas?: Response;
+  postDeConsentimentos?: Response;
+}
+
+/** A api falsa do Contato `c1`: ficha, notas e consentimentos com estado, e Negócios vazios. O POST grava e o GET seguinte devolve. */
+function servir(sobre: Partial<Servidor> = {}): Servidor {
+  const servidor: Servidor = { detalhado: detalhado(), notas: [], consentimentos: [], ...sobre };
+  fetchMock.mockImplementation(async (url: string, init: RequestInit) => {
+    const caminho = url.replace("http://api", "");
+    if (caminho === "/contatos/c1/notas") {
+      if (init.method === "POST") {
+        if (servidor.postDeNotas) return servidor.postDeNotas;
+        const { conteudo } = JSON.parse(init.body as string) as { conteudo: string };
+        const nota: NotaDoContato = { id: `n${servidor.notas.length + 1}`, contatoId: "c1", conteudo, autorId: "mem_julia", criadoEm: "2026-11-01T12:00:00.000Z" };
+        servidor.notas = [nota, ...servidor.notas];
+        return resposta(201, { ok: true, dados: nota });
+      }
+      return resposta(200, { ok: true, itens: servidor.notas, total: servidor.notas.length });
+    }
+    if (caminho === "/contatos/c1/consentimentos") {
+      if (init.method === "POST") {
+        if (servidor.postDeConsentimentos) return servidor.postDeConsentimentos;
+        const entrada = JSON.parse(init.body as string) as Omit<ConsentimentoDoContato, "id" | "contatoId" | "em" | "evidenciaMensagemId" | "registradoPor" | "registradoEm">;
+        const registro: ConsentimentoDoContato = {
+          ...entrada,
+          id: `k${servidor.consentimentos.length + 1}`,
+          contatoId: "c1",
+          em: "2026-11-01T12:00:00.000Z",
+          evidenciaMensagemId: null,
+          registradoPor: "mem_julia",
+          registradoEm: "2026-11-01T12:00:00.000Z",
+        };
+        servidor.consentimentos = [registro, ...servidor.consentimentos];
+        return resposta(201, { ok: true, dados: registro });
+      }
+      return resposta(200, { ok: true, itens: servidor.consentimentos, total: servidor.consentimentos.length });
+    }
+    if (caminho.startsWith("/negocios")) return resposta(200, { ok: true, itens: [], total: 0 });
+    return resposta(200, { ok: true, dados: servidor.detalhado });
+  });
+  return servidor;
 }
 
 function chamadas(): string[] {
@@ -123,13 +191,14 @@ function chamadas(): string[] {
 
 describe("FichaDeContato — leitura", () => {
   it("(a) mostra nome, Proprietário, Identificadores com rótulo e selo, e Empresas vinculadas", async () => {
-    fetchMock.mockResolvedValue(resposta(200, { ok: true, dados: detalhado() }));
+    servir();
     const { container } = montar();
 
     await vi.waitFor(() => expect(container.textContent).toContain("ana@x.com"));
     expect(container.textContent).toContain("Ana Souza");
     expect(container.textContent).toContain("Proprietário: Júlia Prado");
-    expect(screen.getAllByText("E-mail").length).toBe(2);
+    // "E-mail" também é coluna do quadro de Consentimentos: aqui só contam as linhas de Identificador.
+    expect(screen.getAllByText("E-mail").filter((rotulo) => rotulo.closest("li") !== null).length).toBe(2);
     expect(screen.getByText("Telefone")).toBeTruthy();
     expect(screen.getByText("(11) 98765-4321")).toBeTruthy();
     expect(screen.getAllByText("principal").length).toBe(2);
@@ -143,11 +212,11 @@ describe("FichaDeContato — leitura", () => {
     expect(container.textContent).toMatch(/encerrado em .*2024/);
   });
 
-  it("(e) não mostra Tags, Consentimentos, Comentários, Anexos, Conversas, Mesclar nem Temperatura", async () => {
-    fetchMock.mockResolvedValue(resposta(200, { ok: true, dados: detalhado() }));
+  it("(e) não mostra Tags, Comentários, Anexos, Conversas, Mesclar nem Temperatura (Notas e Consentimentos agora são guardados)", async () => {
+    servir();
     const { container } = montar();
     await screen.findByText("ana@x.com");
-    for (const proibido of ["Tags", "Consentimentos", "Comentários", "Anexos", "Conversas", "Mesclar", "Temperatura"]) {
+    for (const proibido of ["Tags", "Comentários", "Anexos", "Conversas", "Mesclar", "Temperatura"]) {
       expect(container.textContent).not.toContain(proibido);
     }
   });
@@ -253,6 +322,197 @@ describe("FichaDeContato — edição e Identificadores novos", () => {
     await waitFor(() => expect(chamadas()).toContain("POST /contatos/c1/identificadores"));
     const post = (fetchMock.mock.calls as Array<[string, RequestInit]>).find(([, init]) => init.method === "POST");
     expect(post?.[1].body).toBe(JSON.stringify({ tipo: "email", valor: "ana3@x.com" }));
+  });
+});
+
+const NOTA_ANTIGA: NotaDoContato = { id: "n1", contatoId: "c1", conteudo: "Pediu retorno na segunda.", autorId: "mem_beatriz", criadoEm: "2026-10-01T10:00:00.000Z" };
+const NOTA_NOVA: NotaDoContato = { id: "n2", contatoId: "c1", conteudo: "Fechou o contrato.", autorId: "mem_julia", criadoEm: "2026-10-20T10:00:00.000Z" };
+
+function registro(sobre: Partial<ConsentimentoDoContato>): ConsentimentoDoContato {
+  return {
+    id: "k1",
+    contatoId: "c1",
+    finalidadeId: "cat_fin_mkt",
+    tipoDeCanal: "whatsapp",
+    decisao: "concedido",
+    em: "2026-10-01T10:00:00.000Z",
+    origem: "verbal",
+    evidenciaMensagemId: null,
+    registradoPor: "mem_julia",
+    registradoEm: "2026-10-01T10:00:00.000Z",
+    ...sobre,
+  };
+}
+
+/** Abre o `Select` do rótulo e escolhe a opção pelo texto exato. */
+function escolher(rotulo: string, opcao: string) {
+  fireEvent.click(screen.getByRole("combobox", { name: rotulo }));
+  fireEvent.click(screen.getByRole("option", { name: opcao }));
+}
+
+describe("FichaDeContato — Notas (14-06, 3.2.7)", () => {
+  it("(l) mostra as notas da api, a mais recente primeiro, com o autor pelo nome do Membro e a data", async () => {
+    servir({ notas: [NOTA_ANTIGA, NOTA_NOVA] });
+    const { container } = montar();
+
+    await screen.findByText("Fechou o contrato.");
+    const texto = container.textContent ?? "";
+    expect(texto.indexOf("Fechou o contrato.")).toBeLessThan(texto.indexOf("Pediu retorno na segunda."));
+    expect(texto).toContain("Júlia Prado · ");
+    expect(texto).toContain("Beatriz Sales · ");
+    expect(texto).toMatch(/2026/);
+  });
+
+  it("(m) escrever e salvar manda POST /contatos/c1/notas e a nota aparece na lista", async () => {
+    servir({ notas: [NOTA_ANTIGA] });
+    montar();
+    await screen.findByText("Pediu retorno na segunda.");
+
+    fireEvent.change(screen.getByLabelText("Nova nota"), { target: { value: "  Ligar amanhã.  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar nota" }));
+
+    await waitFor(() => expect(chamadas()).toContain("POST /contatos/c1/notas"));
+    const post = (fetchMock.mock.calls as Array<[string, RequestInit]>).find(([url, init]) => init.method === "POST" && url.endsWith("/notas"));
+    expect(post?.[1].body).toBe(JSON.stringify({ conteudo: "Ligar amanhã." }));
+    expect(await screen.findByText("Ligar amanhã.")).toBeTruthy();
+    expect(screen.getByText("Nota salva.")).toBeTruthy();
+    expect((screen.getByLabelText("Nova nota") as HTMLTextAreaElement).value).toBe("");
+    await waitFor(() => expect(invalidarCrm).toHaveBeenCalledWith("/contatos/c1/notas"));
+  });
+
+  it("(n) nota vazia: o botão fica desligado com o motivo e nada é enviado", async () => {
+    servir();
+    montar();
+
+    const salvar = await screen.findByRole("button", { name: "Salvar nota" });
+    expect(salvar.getAttribute("aria-disabled")).toBe("true");
+    expect(salvar.getAttribute("title")).toBe("Escreva a nota antes de salvar.");
+    fireEvent.change(screen.getByLabelText("Nova nota"), { target: { value: "   " } });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar nota" }));
+    expect(chamadas().some((c) => c.startsWith("POST"))).toBe(false);
+  });
+
+  it("(n) um 400 da api marca o campo com a frase dela, sem aviso de sucesso", async () => {
+    const frase = "A nota vai até 5000 caracteres.";
+    servir({ postDeNotas: resposta(400, { ok: false, error: frase, codigo: "VALOR_INVALIDO", campo: "conteudo" }) });
+    montar();
+    await screen.findByRole("button", { name: "Salvar nota" });
+
+    fireEvent.change(screen.getByLabelText("Nova nota"), { target: { value: "texto" } });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar nota" }));
+
+    expect(await screen.findByText(frase)).toBeTruthy();
+    expect(screen.queryByText("Nota salva.")).toBeNull();
+    expect((screen.getByLabelText("Nova nota") as HTMLTextAreaElement).value).toBe("texto");
+  });
+
+  it("(o) um 409 da api aparece por MensagemDeRecusa, com a frase literal", async () => {
+    const frase = "Um Contato mesclado é somente leitura. Escreva a nota no Contato que ficou.";
+    servir({ postDeNotas: resposta(409, { ok: false, error: frase, codigo: "NOTA_RECUSADA" }) });
+    montar();
+    await screen.findByRole("button", { name: "Salvar nota" });
+
+    fireEvent.change(screen.getByLabelText("Nova nota"), { target: { value: "texto" } });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar nota" }));
+
+    const aviso = await screen.findByText(frase);
+    expect(aviso.closest('[role="alert"]')).toBeTruthy();
+  });
+
+  it("(p) um Convidado lê as notas, mas o botão fica desligado com a frase do Papel", async () => {
+    servir({ notas: [NOTA_NOVA] });
+    montar("mem_beatriz");
+
+    await screen.findByText("Fechou o contrato.");
+    const salvar = screen.getByRole("button", { name: "Salvar nota" });
+    expect(salvar.getAttribute("aria-disabled")).toBe("true");
+    expect(salvar.getAttribute("title")).toBe(podeNoCrm("convidado", "ativo", "editar", "contato"));
+  });
+
+  it("(p) Contato na lixeira: escrever nota fica desligado com a frase do domínio", async () => {
+    servir({ detalhado: detalhado({ estado: "na_lixeira" }) });
+    montar();
+
+    const salvar = await screen.findByRole("button", { name: "Salvar nota" });
+    expect(salvar.getAttribute("aria-disabled")).toBe("true");
+    expect(salvar.getAttribute("title")).toBe("Este Contato está na lixeira. Restaure-o antes de escrever a nota.");
+  });
+});
+
+describe("FichaDeContato — Consentimentos (14-08, 3.2.4)", () => {
+  it("(q) mostra o histórico (finalidade, tipo de Canal, decisão, origem) e o vigente calculado pelo domínio", async () => {
+    servir({
+      consentimentos: [
+        registro({ id: "k2", decisao: "revogado", em: "2026-10-10T10:00:00.000Z", origem: "mensagem" }),
+        registro({ id: "k1", decisao: "concedido", em: "2026-10-01T10:00:00.000Z", origem: "verbal" }),
+        registro({ id: "k3", finalidadeId: "cat_fin_atend", tipoDeCanal: "todos", decisao: "concedido", origem: "formulario" }),
+      ],
+    });
+    const { container } = montar();
+
+    const historico = await screen.findByRole("list", { name: "Histórico de consentimento" });
+    expect(within(historico).getAllByRole("listitem").length).toBe(3);
+    expect(historico.textContent).toContain("Marketing");
+    expect(historico.textContent).toContain("WhatsApp");
+    expect(historico.textContent).toContain("Revogado");
+    expect(historico.textContent).toContain("Formulário");
+
+    // Marketing no WhatsApp: o mais recente é o revogado. No e-mail nunca houve decisão. Atendimento vale para todos.
+    expect(container.querySelector('[data-vigente="cat_fin_mkt:whatsapp"]')?.textContent).toBe("Revogado");
+    expect(container.querySelector('[data-vigente="cat_fin_mkt:email"]')?.textContent).toBe("Sem registro");
+    expect(container.querySelector('[data-vigente="cat_fin_atend:instagram"]')?.textContent).toBe("Concedido");
+  });
+
+  it("(r) Registrar consentimento abre o formulário e manda POST com finalidade, tipo de Canal, decisão e origem", async () => {
+    const servidor = servir();
+    montar();
+    fireEvent.click(await screen.findByRole("button", { name: "Registrar consentimento" }));
+
+    const registrar = screen.getByRole("button", { name: "Registrar" });
+    expect(registrar.getAttribute("aria-disabled")).toBe("true");
+    expect(registrar.getAttribute("title")).toBe("Escolha a finalidade.");
+
+    escolher("Finalidade", "Marketing");
+    escolher("Tipo de Canal", "E-mail");
+    escolher("Decisão", "Concedido");
+    escolher("Origem", "Verbal");
+    fireEvent.click(screen.getByRole("button", { name: "Registrar" }));
+
+    await waitFor(() => expect(chamadas()).toContain("POST /contatos/c1/consentimentos"));
+    const post = (fetchMock.mock.calls as Array<[string, RequestInit]>).find(([url, init]) => init.method === "POST" && url.endsWith("/consentimentos"));
+    expect(JSON.parse(post?.[1].body as string)).toEqual({ finalidadeId: "cat_fin_mkt", tipoDeCanal: "email", decisao: "concedido", origem: "verbal" });
+    expect(await screen.findByText("Consentimento registrado.")).toBeTruthy();
+    expect(servidor.consentimentos.length).toBe(1);
+    await waitFor(() => expect(screen.getByRole("list", { name: "Histórico de consentimento" })).toBeTruthy());
+    await waitFor(() => expect(invalidarCrm).toHaveBeenCalledWith("/contatos/c1/consentimentos"));
+  });
+
+  it("(s) um 409 ao registrar aparece por MensagemDeRecusa e o formulário continua aberto", async () => {
+    const frase = "Este Contato está na lixeira. Restaure-o antes de registrar o consentimento.";
+    servir({ postDeConsentimentos: resposta(409, { ok: false, error: frase, codigo: "CONSENTIMENTO_RECUSADO" }) });
+    montar();
+    fireEvent.click(await screen.findByRole("button", { name: "Registrar consentimento" }));
+    escolher("Finalidade", "Marketing");
+    escolher("Tipo de Canal", "WhatsApp");
+    escolher("Decisão", "Revogado");
+    escolher("Origem", "Verbal");
+    fireEvent.click(screen.getByRole("button", { name: "Registrar" }));
+
+    const aviso = await screen.findByText(frase);
+    expect(aviso.closest('[role="alert"]')).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Registrar" })).toBeTruthy();
+  });
+
+  it("(t) um Convidado lê o histórico, mas Registrar consentimento fica desligado com a frase do Papel", async () => {
+    servir({ consentimentos: [registro({})] });
+    montar("mem_beatriz");
+
+    await screen.findByRole("list", { name: "Histórico de consentimento" });
+    const botao = screen.getByRole("button", { name: "Registrar consentimento" });
+    expect(botao.getAttribute("aria-disabled")).toBe("true");
+    expect(botao.getAttribute("title")).toBe(podeNoCrm("convidado", "ativo", "editar", "contato"));
+    fireEvent.click(botao);
+    expect(screen.queryByRole("button", { name: "Registrar" })).toBeNull();
   });
 });
 
