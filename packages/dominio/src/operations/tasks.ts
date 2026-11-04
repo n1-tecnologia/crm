@@ -23,7 +23,7 @@ import {
   tipoPadraoDaLista,
   containerAdminRefusal,
 } from "../derive";
-import { contatoDaTarefa } from "../derive-conversacional";
+import { contatoDaTarefa, vinculosDoCrmDaTarefa } from "../derive-conversacional";
 import { ACAO_DESCRICAO_ALTERADA, cortarParaHistorico, mencionaNoTexto } from "../descricao-da-tarefa";
 import { fail, ok, type DataState, type OperationResult } from "../state";
 import type { ActorRef, Comment, EffectiveListConfig, FieldDefinition, FieldRequirement, FieldValue, Id, List, Minutes, Priority, StatusDefinition, Task, TaskDate } from "../types";
@@ -65,6 +65,14 @@ export interface VinculoDeNascimento {
   readonly toType: "contact" | "conversation" | "deal";
   readonly toId: Id;
   readonly role?: string;
+  /**
+   * O alvo já foi conferido em quem o guarda (as tabelas novas do CRM), dentro
+   * da transação: `createTask` não o procura em `state.contacts`, `state.conversations`
+   * nem `state.deals`. Preenchido só pelo servidor — `createTask` por HTTP não
+   * aceita `vinculos`, então o navegador não o forja. Sem ele, a conferência
+   * antiga segue para os chamadores antigos até o corte da Fase 15.
+   */
+  readonly alvoConferido?: true;
 }
 
 /** C35 — a recusa da Lista conversacional para a Tarefa raiz que chega sem Contato. */
@@ -72,6 +80,7 @@ export const TAREFA_SEM_CONTATO = "Nesta Lista toda Tarefa nasce de um Contato."
 
 /** O alvo de cada Vínculo de nascimento existe e está ativo — conferido antes de a Tarefa nascer. */
 function vinculoRefusal(state: DataState, vinculo: VinculoDeNascimento): string | undefined {
+  if (vinculo.alvoConferido === true) return undefined;
   if (vinculo.toType === "contact") {
     const contact = state.contacts.find((c) => c.id === vinculo.toId);
     if (!contact) return "Contato não encontrado.";
@@ -574,7 +583,12 @@ export function moveTask(
   if (targetListId === task.listId) return ok(task);
   // C35 — o modelo é da Lista, não da Tarefa: sair para uma operacional é
   // livre; entrar numa conversacional exige o Contato que a ficha vai mostrar.
-  if (target.modeloDeTarefa === "conversacional" && !contatoDaTarefa(state, task)) {
+  // O segundo ramo (o CRM antigo no estado) sai junto com ele, no corte da Fase 15.
+  if (
+    target.modeloDeTarefa === "conversacional" &&
+    vinculosDoCrmDaTarefa(state, task).contatoId === undefined &&
+    !contatoDaTarefa(state, task)
+  ) {
     return fail("Uma Lista conversacional só recebe Tarefa com Contato vinculado.");
   }
 

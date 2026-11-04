@@ -25,6 +25,7 @@ import {
   vinculosDoCrmDaTarefa,
 } from "./derive-conversacional";
 import type { Canal } from "./crm/canais";
+import { effectiveListConfig } from "./derive";
 import { createList } from "./operations/structure";
 import { createTask, moveTask } from "./operations/tasks";
 import { buildSeed } from "./seed";
@@ -368,7 +369,9 @@ describe("leituras por id (3.3.2)", () => {
   });
 
   it("Tarefa sem Vínculos devolve objeto sem ids", () => {
-    expect(vinculosDoCrmDaTarefa(limpo, tarefa())).toEqual({});
+    const t = tarefa();
+    limpo.links = limpo.links.filter((l) => l.fromId !== t.id);
+    expect(vinculosDoCrmDaTarefa(limpo, t)).toEqual({});
   });
 
   it("a Subtarefa sem Vínculo próprio lê a raiz", () => {
@@ -435,18 +438,25 @@ describe("leituras por id (3.3.2)", () => {
   });
 
   it("moveTask aceita entrar numa Lista conversacional a Tarefa com Vínculo de Contato fora do estado", () => {
-    const origem = createTask(limpo, THIAGO, {
-      listId: listaDoSuporte.id,
-      title: "Para mover",
-      vinculos: [{ toType: "contact", toId: CONTATO, role: PAPEL_DO_VINCULO.contato, alvoConferido: true }],
-    });
-    if (!origem.ok) throw new Error(origem.error);
-    const operacional = limpo.lists.find((l) => l.modeloDeTarefa !== "conversacional" && l.lifecycle === "ativo");
-    if (!operacional) throw new Error("o seed precisa de uma Lista operacional");
-    // Uma Tarefa que sai e volta: a volta é a entrada na conversacional.
-    const saiu = moveTask(limpo, THIAGO, origem.value.id, operacional.id, undefined);
-    if (!saiu.ok) throw new Error(`saída: ${saiu.error}`);
-    const entrou = moveTask(limpo, THIAGO, origem.value.id, listaDoSuporte.id, undefined);
+    const operacional = limpo.lists.find((l) => l.id === "lst_ativacao");
+    if (!operacional) throw new Error("o seed precisa de lst_ativacao");
+    const nasceu = createTask(limpo, THIAGO, { listId: operacional.id, title: "Para entrar" });
+    if (!nasceu.ok) throw new Error(nasceu.error);
+    const sem = moveTask(limpo, THIAGO, nasceu.value.id, listaDoSuporte.id, mapeamentoPara(nasceu.value));
+    expect(sem.ok).toBe(false);
+    if (!sem.ok) expect(sem.error).toBe("Uma Lista conversacional só recebe Tarefa com Contato vinculado.");
+
+    limpo.links.push(elo(nasceu.value.id, "contact", CONTATO, PAPEL_DO_VINCULO.contato));
+    const entrou = moveTask(limpo, THIAGO, nasceu.value.id, listaDoSuporte.id, mapeamentoPara(nasceu.value));
     expect(entrou.ok).toBe(true);
+    expect(nasceu.value.listId).toBe(listaDoSuporte.id);
   });
+
+  /** Leva o Status atual da Tarefa ao primeiro Status da Lista do Suporte. */
+  function mapeamentoPara(task: Task): { fromStatusId: string; toStatusId: string }[] {
+    const config = effectiveListConfig(limpo, listaDoSuporte.id);
+    const alvo = config?.statusSet.definitions[0];
+    if (!alvo) throw new Error("a Lista do Suporte precisa de um Status");
+    return [{ fromStatusId: task.statusId, toStatusId: alvo.id }];
+  }
 });

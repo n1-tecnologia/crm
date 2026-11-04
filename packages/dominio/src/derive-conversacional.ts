@@ -6,7 +6,10 @@
  */
 
 import type { DataState } from "./state";
-import type { Channel, ChannelType, Contact, Conversation, Deal, Id, Link, Message, ModeloDeTarefa, Task } from "./types";
+import type { Channel, ChannelType, Contact, Conversation, Deal, Id, Link, List, Message, ModeloDeTarefa, Task } from "./types";
+import type { Canal } from "./crm/canais";
+import type { IdentificadorDeContato } from "./crm/contatos";
+import { TIPO_DE_IDENTIFICADOR_DO_CANAL } from "./crm/conversas";
 import { ROTULO_DO_TIPO_DE_CANAL } from "./operations/canais";
 import { CHANNEL_CAPABILITIES } from "./operations/conversations";
 import { PROVEDORES, provedorDoCanal } from "./provedores-de-canal";
@@ -180,6 +183,72 @@ export function canaisDaListaQueAlcancam(state: DataState, listId: Id, contact: 
 /** A Lista conversacional ainda sem canais de atendimento: nada nasce nela até configurá-los. */
 export function listaSemCanais(state: DataState, listId: Id): boolean {
   return listaConversacional(state, listId) && canaisDaLista(state, listId).length === 0;
+}
+
+/** Os ids do CRM novo a que a Tarefa conversacional aponta, lidos só dos Vínculos. */
+export interface VinculosDoCrmDaTarefa {
+  readonly contatoId?: Id;
+  readonly conversaId?: Id;
+  readonly negocioId?: Id;
+}
+
+/**
+ * A Tarefa conversacional lida por ids (3.3.2): o primeiro Vínculo de cada tipo,
+ * o do papel "… da Tarefa" na frente, e a Subtarefa lendo a raiz. Só `state.links`
+ * e `state.tasks` entram: quem confere se o alvo existe nas tabelas, se está na
+ * lixeira ou se é um `mesclado` (que responde pelo sobrevivente) é a api, e é por
+ * isso que esta leitura passa num estado sem Contato, Conversa, Canal nem Negócio.
+ */
+export function vinculosDoCrmDaTarefa(state: DataState, task: Task): VinculosDoCrmDaTarefa {
+  const primeiro = (toType: Link["toType"], papel: string): Id | undefined => {
+    for (const alvo of alvosDe(state, task)) {
+      const link = vinculosDaTarefa(state, alvo, toType, papel)[0];
+      if (link) return link.toId;
+    }
+    return undefined;
+  };
+  const contatoId = primeiro("contact", PAPEL_DO_VINCULO.contato);
+  const conversaId = primeiro("conversation", PAPEL_DO_VINCULO.conversa);
+  const negocioId = primeiro("deal", PAPEL_DO_VINCULO.negocio);
+  return {
+    ...(contatoId !== undefined ? { contatoId } : {}),
+    ...(conversaId !== undefined ? { conversaId } : {}),
+    ...(negocioId !== undefined ? { negocioId } : {}),
+  };
+}
+
+type ListaComCanais = Pick<List, "modeloDeTarefa" | "canaisDeAtendimento">;
+
+/**
+ * Os canais de atendimento da Lista sobre os Canais das tabelas novas: só os
+ * `ativo`, na ordem em que foram marcados. Vazio para a Lista operacional e
+ * para a conversacional que ainda não os configurou.
+ */
+export function canaisDaListaNasTabelas(list: ListaComCanais | undefined, canais: readonly Canal[]): Canal[] {
+  if (!list || list.modeloDeTarefa !== "conversacional") return [];
+  return (list.canaisDeAtendimento ?? [])
+    .map((id) => canais.find((c) => c.id === id))
+    .filter((c): c is Canal => c !== undefined && c.estado === "ativo");
+}
+
+/**
+ * Os canais da Lista que alcançam algum Identificador do Contato, pelo tipo do
+ * Identificador que cada tipo de Canal resolve. Sem Identificadores informados,
+ * todos os da Lista (a mesma regra de `canaisDaListaQueAlcancam`).
+ */
+export function canaisDaListaQueAlcancamNasTabelas(
+  list: ListaComCanais | undefined,
+  canais: readonly Canal[],
+  identificadores: readonly Pick<IdentificadorDeContato, "tipo">[] | undefined,
+): Canal[] {
+  const daLista = canaisDaListaNasTabelas(list, canais);
+  if (!identificadores) return daLista;
+  return daLista.filter((c) => identificadores.some((i) => i.tipo === TIPO_DE_IDENTIFICADOR_DO_CANAL[c.tipo]));
+}
+
+/** A Lista conversacional ainda sem canais de atendimento ativos: nada nasce nela até configurá-los. */
+export function listaSemCanaisNasTabelas(list: ListaComCanais | undefined, canais: readonly Canal[]): boolean {
+  return list?.modeloDeTarefa === "conversacional" && canaisDaListaNasTabelas(list, canais).length === 0;
 }
 
 /**

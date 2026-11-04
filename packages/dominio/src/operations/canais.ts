@@ -29,6 +29,7 @@
 
 import { fail, ok, type DataState, type OperationResult } from "../state";
 import type { Channel, ChannelType, Id, List } from "../types";
+import type { Canal } from "../crm/canais";
 import { memberActor, nextId, recordActivity } from "./activity";
 import { administraOEspaco } from "./ia/permissoes-ia";
 
@@ -153,6 +154,15 @@ export function canalForaDaLista(state: DataState, list: List, channel: Channel)
   if (canais.length === 0) return LISTA_SEM_CANAIS;
   if (canais.includes(channel.id)) return undefined;
   return `Esta Lista não atende por “${channel.name}” (${ROTULO_DO_TIPO_DE_CANAL[channel.channelType]}).`;
+}
+
+/** `canalForaDaLista` para o Canal da tabela nova: as mesmas frases, o Canal só por id, nome e tipo. */
+export function canalForaDaListaNasTabelas(list: List, canal: Pick<Canal, "id" | "nome" | "tipo">): string | undefined {
+  if (list.modeloDeTarefa !== "conversacional") return undefined;
+  const canais = list.canaisDeAtendimento ?? [];
+  if (canais.length === 0) return LISTA_SEM_CANAIS;
+  if (canais.includes(canal.id)) return undefined;
+  return `Esta Lista não atende por “${canal.nome}” (${ROTULO_DO_TIPO_DE_CANAL[canal.tipo]}).`;
 }
 
 /** Nome único entre Canais ativos (RN-CXE-31), sem distinção de caixa nem espaços nas pontas. */
