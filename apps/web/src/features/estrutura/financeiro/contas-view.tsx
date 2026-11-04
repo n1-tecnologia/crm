@@ -38,7 +38,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, type ReactNode } from "react";
-import { useData, useRun, useSession } from "@/dados/store";
+import { useData, useIdsNaoConfirmados, useRun, useSession } from "@/dados/store";
 import { useRecente } from "@/features/shell/recente";
 import {
   changeTaskStatus,
@@ -477,6 +477,9 @@ export function FinanceTable({
   // pelo compositor inline já entra acesa, sem cascata.
   const recente = useRecente();
   const router = useRouter();
+  // D-15: a Conta que o servidor ainda não confirmou não tem página; o `router.push`
+  // direto abaixo não passa pela guarda de âncoras (dados/guarda-de-navegacao.ts).
+  const naoConfirmados = useIdsNaoConfirmados();
   const [acao1, acao2] = profile.quickActions;
   const { memberId } = useSession();
   const now = useMemo(() => new Date(), []);
@@ -902,6 +905,9 @@ export function FinanceTable({
                                 label: "Editar conta (página completa)",
                                 onSelect: () =>
                                   router.push(`/estrutura/tarefas/${task.id}`),
+                                ...(naoConfirmados.has(task.id)
+                                  ? { disabledReason: "Salvando…" }
+                                  : {}),
                               },
                               {
                                 label: acao1.label,

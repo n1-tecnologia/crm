@@ -19,7 +19,7 @@
 import type { Pool, PoolClient } from "pg";
 import type { Channel, DataState } from "@n1/dominio";
 import type { Canal } from "@n1/dominio/crm/canais";
-import { criarRepositorioDeCanaisPg } from "../repositorios/crm/canais";
+import { criarRepositorioDeCanaisPg, linhaParaCanal, type LinhaDoBancoDeCanal } from "../repositorios/crm/canais";
 import { canonico } from "./repositorio";
 
 let tabelaDeCanaisExiste = false;
@@ -58,6 +58,21 @@ export function canalParaChannel(canal: Canal, workspaceId: string): Channel {
     relational: true,
     simulatedConnection: canal.conexaoSimulada,
   };
+}
+
+/**
+ * A guarda já confirmou a tabela neste processo (só o resultado positivo fica
+ * em cache). É o que deixa `executar()` pôr a leitura dos Canais no lote de
+ * entrada sem repetir a guarda: enquanto for `false`, ele segue pelo caminho de
+ * `carregarCanaisProjetados()`, que confirma e, na próxima gravação, entra no lote.
+ */
+export function tabelaDeCanaisConfirmada(): boolean {
+  return tabelaDeCanaisExiste;
+}
+
+/** As linhas de `sqlDeTodosOsCanais()` na forma do modelo antigo: o fim de `carregarCanaisProjetados()`, para quem leu pela própria conexão. */
+export function canaisProjetadosDasLinhas(linhas: readonly LinhaDoBancoDeCanal[], workspaceId: string): Channel[] {
+  return linhas.map((linha) => canalParaChannel(linhaParaCanal(linha), workspaceId));
 }
 
 export async function carregarCanaisProjetados(cliente: Pool | PoolClient, workspaceId: string): Promise<Channel[]> {

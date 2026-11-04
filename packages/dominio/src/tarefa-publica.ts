@@ -67,7 +67,7 @@ export function projecaoPublicaDaTarefa(state: DataState, segredo: string): Tare
     assignees: task.assignees.map((a) => nomeDe(a.id)),
     fields,
     subtasks,
-    checklists: task.checklists.map((c) => ({ name: c.name, items: c.items.filter((i) => !i.converted && !i.parentItemId).map((i) => ({ text: i.text, done: i.done })) })),
+    checklists: task.checklists.map((c) => ({ name: c.name, items: c.items.filter((i) => !i.converted).map((i) => ({ text: i.text, done: i.done })) })),
     ...(share.showsAttachments ? { attachments: task.attachments.map((a) => ({ displayName: a.displayName ?? "Arquivo", mediaType: a.mediaType })) } : {}),
     ...(share.showsComments
       ? { comments: task.comments.filter((c) => !c.deletedAt).map((c) => ({ author: nomeDe(c.author.id), createdAt: c.createdAt, content: c.content })) }

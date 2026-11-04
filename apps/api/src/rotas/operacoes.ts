@@ -34,7 +34,7 @@ import { z } from "zod";
 import { cutucarPonte, type ParDaPonte } from "../automacoes/ponte-ativa";
 import { recusaDeSuspenso, type MembroDaSessao } from "../plugins/autenticacao";
 import type { EventoDeSaida } from "../persistencia/outbox";
-import { executar, type ResultadoTransacao } from "../persistencia/unidade-de-trabalho";
+import { executar, type MedicaoDaExecucao, type ResultadoTransacao } from "../persistencia/unidade-de-trabalho";
 import { recortarDiferenca, recortarValor, visibilidadePara } from "@n1/dominio/derive-visibilidade";
 import { maiorIdDe } from "@n1/dominio/operations";
 import { convidarMembro } from "../servicos/convidar-membro";
@@ -228,13 +228,18 @@ const ENTRADA_INVITE_MEMBER = z.object({ email: z.string(), roleId: z.string() }
 const SERVICOS: Partial<
   Record<
     NomeDeOperacao,
-    (membro: MembroDaSessao, args: readonly unknown[], aoTerminar: (state: DataState) => void) => Promise<ResultadoTransacao<unknown>>
+    (
+      membro: MembroDaSessao,
+      args: readonly unknown[],
+      aoTerminar: (state: DataState) => void,
+      aoMedir: (medicao: MedicaoDaExecucao) => void,
+    ) => Promise<ResultadoTransacao<unknown>>
   >
 > = {
   // T-1-08 — `.strip()` descarta qualquer `userId` que o cliente mande em
   // `args[0]`: a única fonte de `userId` é `resolverUsuarioPorEmail`, dentro
   // de `convidarMembro`, nunca o corpo da requisição.
-  inviteMember: (membro, args, aoTerminar) => {
+  inviteMember: (membro, args, aoTerminar, aoMedir) => {
     const entrada = ENTRADA_INVITE_MEMBER.safeParse(args[0]);
     if (!entrada.success) throw new ErroDeEntrada(mensagemDeEntradaInvalida("inviteMember"));
     return convidarMembro(
@@ -244,7 +249,7 @@ const SERVICOS: Partial<
         email: entrada.data.email,
         roleId: entrada.data.roleId,
       },
-      { aoTerminar },
+      { aoTerminar, aoMedir },
     );
   },
 };
@@ -254,6 +259,7 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
     "/operacoes/:nome",
     { schema: { params: PARAMS, body: BODY } },
     async (request, reply) => {
+      const inicio = performance.now();
       const { nome } = request.params;
       if (!ehNomeDeOperacao(nome)) {
         return reply.code(404).send({ ok: false, error: `Operação "${nome}" não existe.` });
@@ -312,11 +318,30 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
       // recortar o diff e o `value` pelo que este Membro enxerga antes de responder.
       // Os dois ramos o preenchem: `executar()` direto e o serviço de `SERVICOS`.
       let depois: DataState | undefined;
+      // Fase 12 (D-02/D-03) — a medição por etapa de `executar()` chega por
+      // callback e vai SÓ para o log do servidor (`registrarMedicao`): nunca para
+      // o corpo nem para cabeçalho da resposta (T-12-01). A linha não leva
+      // `args`, `value`, título, e-mail nem valor — só o nome da operação (já
+      // validado por `ehNomeDeOperacao`: o 404 sai antes), números e o desfecho
+      // (T-12-02). Os caminhos 400/403/404 não gravam e não escrevem a linha.
+      let medicao: MedicaoDaExecucao | undefined;
+      const registrarMedicao = (extra: { readonly recorteMs?: number }): void => {
+        if (!medicao) return;
+        const totalMs = Math.round((performance.now() - inicio) * 10) / 10;
+        request.log.info({ operacao: nome, medicao: { ...medicao, ...extra, totalMs } }, "gravacao medida");
+      };
       try {
         resultado = servico
-          ? await servico(request.membro, args, (state) => {
-              depois = state;
-            })
+          ? await servico(
+              request.membro,
+              args,
+              (state) => {
+                depois = state;
+              },
+              (m) => {
+                medicao = m;
+              },
+            )
           : await executar(
               request.membro.workspaceId,
               (state) => {
@@ -346,16 +371,23 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
               {
                 eventos: (valor, state) =>
                   eventosDeSaidaDaOperacao(nome, { args, valor, state, membroId: request.membro.id, eraReplay }),
+                aoMedir: (m) => {
+                  medicao = m;
+                },
               },
             );
       } catch (erro) {
         if (erro instanceof ErroDeEntrada) {
           return reply.code(400).send({ ok: false, error: erro.message });
         }
+        // 500: a exceção também deixa a sua linha (é onde `tentativas` e `travaMs`
+        // altos aparecem) e sobe ao `setErrorHandler` de `app.ts`.
+        registrarMedicao({});
         throw erro;
       }
 
       if ("conflito" in resultado && resultado.conflito) {
+        registrarMedicao({});
         return reply.code(409).send(resultado);
       }
 
@@ -382,14 +414,19 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
       // o evento `automacao.notificar-canal.v1` continua derivado do estado
       // inteiro (R6).
       if (depois && "diferenca" in resultado) {
+        // `recorteMs` é a etapa do recorte por Membro (SEG-01), própria da D-02.
+        const inicioDoRecorte = performance.now();
         const { ocultos } = visibilidadePara(depois, request.membro.id);
-        return reply.code(200).send({
+        const corpo = {
           ...resultado,
           diferenca: recortarDiferenca(resultado.diferenca, depois, request.membro.id, ocultos),
           ...(resultado.ok ? { value: recortarValor(resultado.value, depois, request.membro.id, ocultos) } : {}),
           sequencia: maiorIdDe(depois),
-        });
+        };
+        registrarMedicao({ recorteMs: Math.round((performance.now() - inicioDoRecorte) * 10) / 10 });
+        return reply.code(200).send(corpo);
       }
+      registrarMedicao({});
       return reply.code(200).send(resultado);
     },
   );

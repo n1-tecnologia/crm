@@ -7,15 +7,18 @@
  * operação sem alterá-la, e gravar só o que mudou.
  *
  * O que torna isso viável é a escala real: o Espaço de Trabalho inteiro são
- * cerca de 900 registros e 475 KB. Hidratar é uma consulta; comparar é passar
- * por 900 strings. Se um dia um Espaço de Trabalho crescer a ponto de isso
- * doer, a saída é carregar um recorte (a Lista e o que ela referencia) — o
- * formato do `DataState` não muda, só o `where` da consulta.
+ * 4601 registros e 2422.8 KB de texto (medido em produção, `ws_n1`, em
+ * 2026-10-31; ver `12-PROVAS.md`, "Tamanho de `plataforma.registros` (D-05)").
+ * Hidratar é uma consulta; comparar é passar por 4601 strings. 3786 desses
+ * registros são `activity` e 534 são `tasks`. Se um dia um Espaço de Trabalho
+ * crescer a ponto de isso doer, a saída é carregar um recorte (a Lista e o que
+ * ela referencia) — o formato do `DataState` não muda, só o `where` da consulta.
  */
 
 import type { PoolClient } from "pg";
 import type { DataState, Diferenca, Ordens, RegistroGravado, RegistroRemovido } from "@n1/dominio";
 import { COLECOES, SINGULARES as SINGULARES_DO_DOMINIO } from "@n1/dominio";
+import { literalEntreDolares } from "./sql-literal";
 
 /** Chaves de `DataState` que não são coleção: entidade única do Espaço. */
 const SINGULARES = new Set<string>(SINGULARES_DO_DOMINIO);
@@ -50,6 +53,15 @@ type Original = Map<string, Map<string, string>>;
 /** A posição de cada registro como veio do banco: coleção > id > ordem. */
 type Ordem = Map<string, Map<string, number>>;
 
+/**
+ * A chave de um registro em `planejarGravacao`: coleção e id separados por NUL,
+ * que nenhum dos dois contém. Escrita com o escape (`\u0000`), e NÃO com o byte
+ * cru: o byte cru some na tela e parece um espaço, e quem o redigita com espaço
+ * faz o `get` procurar outra chave que o `set` (a diferença voltava com `dados`
+ * indefinido).
+ */
+const chaveDoRegistro = (colecao: string, id: string): string => `${colecao}\u0000${id}`;
+
 /** O menor passo entre duas posições antes de a precisão do double acabar. */
 const PRECISAO_MINIMA = 1e-9;
 
@@ -60,18 +72,47 @@ export interface EstadoHidratado {
   readonly ordem: Ordem;
 }
 
-export async function hidratar(cliente: PoolClient, workspaceId: string): Promise<EstadoHidratado> {
-  // Uma ida e volta só. A revisão vem repetida em cada linha — são 8 bytes
-  // por registro contra uma latência de rede inteira; e o LEFT JOIN garante
-  // que um Espaço de Trabalho vazio ainda devolva a sua revisão.
-  const linhas = await cliente.query<{ colecao: string | null; id: string | null; dados: unknown; ordem: number | null; revisao: string }>(
-    `select r.colecao, r.id, r.dados, r.ordem, w.revisao
+/** Uma linha de `sqlDeHidratar`: o registro e, repetida em todas, a revisão do Espaço. */
+export interface LinhaDoEspaco {
+  readonly colecao: string | null;
+  readonly id: string | null;
+  readonly dados: unknown;
+  readonly ordem: number | null;
+  readonly revisao: string;
+}
+
+/**
+ * A consulta de `hidratar()`, com o id do Espaço escrito como o chamador quiser:
+ * `"$1"` (o `hidratar()` de sempre) ou um literal (`executar()`, que a manda
+ * junto com o `begin` e a trava numa ida só — Fase 13).
+ *
+ * Uma ida e volta só. A revisão vem repetida em cada linha — são 8 bytes
+ * por registro contra uma latência de rede inteira; e o LEFT JOIN garante
+ * que um Espaço de Trabalho vazio ainda devolva a sua revisão.
+ */
+export function sqlDeHidratar(workspaceId: string): string {
+  return `select r.colecao, r.id, r.dados, r.ordem, w.revisao
        from plataforma.workspaces w
        left join plataforma.registros r on r.workspace_id = w.workspace_id
-      where w.workspace_id = $1
-      order by r.colecao, r.ordem`,
-    [workspaceId],
-  );
+      where w.workspace_id = ${workspaceId}
+      order by r.colecao, r.ordem`;
+}
+
+export async function hidratar(cliente: PoolClient, workspaceId: string): Promise<EstadoHidratado> {
+  const linhas = await cliente.query<LinhaDoEspaco>(sqlDeHidratar("$1"), [workspaceId]);
+  return estadoDasLinhas(workspaceId, linhas);
+}
+
+/**
+ * O `DataState` a partir das linhas de `sqlDeHidratar`: a parte de `hidratar()`
+ * que só gasta processador (o `JSON` de cada registro, o `canonico()` de cada
+ * um). Separada para `executar()` poder rodar a consulta dentro do lote de
+ * entrada e montar o estado depois.
+ */
+export function estadoDasLinhas(
+  workspaceId: string,
+  linhas: { readonly rowCount: number | null; readonly rows: readonly LinhaDoEspaco[] },
+): EstadoHidratado {
   if (linhas.rowCount === 0) throw new Error(`Espaço de Trabalho "${workspaceId}" não existe.`);
   const revisao = Number(linhas.rows[0]!.revisao);
 
@@ -151,19 +192,23 @@ export function ordensComoObjeto(ordem: EstadoHidratado["ordem"]): Ordens {
   return resultado;
 }
 
+/** O que `gravar()` vai escrever: as linhas a inserir ou atualizar, as a remover, e a diferença que a rota devolve. */
+export interface PlanoDeGravacao {
+  readonly upserts: ReadonlyArray<readonly [colecao: string, id: string, json: string, ordem: number]>;
+  readonly removidos: ReadonlyArray<readonly [colecao: string, id: string]>;
+  readonly diferenca: Diferenca;
+}
+
 /**
- * Grava o que mudou entre o estado hidratado e o estado depois da operação.
+ * Compara o estado hidratado com o estado depois da operação e diz o que mudou.
+ * Só processador, sem banco: é a metade de `gravar()` que `executar()` roda
+ * antes de mandar o fim da transação inteiro numa ida só (Fase 13).
  *
  * A comparação é por JSON e não por identidade de objeto porque as operações
  * mutam em lugar: o objeto que saiu do banco é o mesmo que a operação alterou,
  * então comparar referências não acusaria nada.
  */
-export async function gravar(
-  cliente: PoolClient,
-  workspaceId: string,
-  depois: DataState,
-  antes: EstadoHidratado,
-): Promise<Diferenca> {
+export function planejarGravacao(depois: DataState, antes: EstadoHidratado): PlanoDeGravacao {
   const vistos: Original = new Map();
   // Guarda também o próprio registro (não só o `json` canônico): `dados` na
   // resposta HTTP (D-03) é o objeto que a operação produziu, não uma
@@ -184,7 +229,7 @@ export async function gravar(
       const id = (registro as { id?: string }).id;
       if (id === undefined) throw new Error(`Registro sem id em "${colecao}".`);
       daColecao.set(id, canonico(registro));
-      registrosPorChave.set(`${colecao} ${id}`, registro);
+      registrosPorChave.set(chaveDoRegistro(colecao, id), registro);
       ids.push(id);
     }
     const ordens = reordenar(ids, ordensAntigas);
@@ -204,6 +249,31 @@ export async function gravar(
       if (!agora?.has(id)) removidos.push([colecao, id]);
     }
   }
+
+  const gravados: RegistroGravado[] = upserts.map(([colecao, id, , ordem]) => ({
+    colecao,
+    id,
+    dados: registrosPorChave.get(chaveDoRegistro(colecao, id)),
+    ordem,
+  }));
+  const removidosDetalhados: RegistroRemovido[] = removidos.map(([colecao, id]) => ({ colecao, id }));
+
+  return { upserts, removidos, diferenca: { gravados, removidos: removidosDetalhados } };
+}
+
+/**
+ * Grava o que mudou entre o estado hidratado e o estado depois da operação:
+ * `planejarGravacao()` mais uma ida e volta por tipo de escrita (parâmetros,
+ * protocolo estendido). Quem quer o fim da transação numa ida só usa
+ * `sqlsDoPlano()`.
+ */
+export async function gravar(
+  cliente: PoolClient,
+  workspaceId: string,
+  depois: DataState,
+  antes: EstadoHidratado,
+): Promise<Diferenca> {
+  const { upserts, removidos, diferenca } = planejarGravacao(depois, antes);
 
   if (upserts.length > 0) {
     // Um INSERT só com todas as linhas: 900 round-trips seria o custo dominante.
@@ -228,15 +298,43 @@ export async function gravar(
     );
   }
 
-  const gravados: RegistroGravado[] = upserts.map(([colecao, id, , ordem]) => ({
-    colecao,
-    id,
-    dados: registrosPorChave.get(`${colecao} ${id}`),
-    ordem,
-  }));
-  const removidosDetalhados: RegistroRemovido[] = removidos.map(([colecao, id]) => ({ colecao, id }));
+  return diferenca;
+}
 
-  return { gravados, removidos: removidosDetalhados };
+/**
+ * As mesmas escritas de `gravar()` como instruções SIMPLES (sem `$1`), para
+ * irem numa mensagem só com o `update` da revisão e o `commit` (Fase 13). Os
+ * dados viajam como UM literal `jsonb` entre dólares e voltam a linhas com
+ * `jsonb_to_recordset`: é o `unnest` de `gravar()` com o array escrito no
+ * texto. O `d` de cada linha segue sendo o JSON canônico em texto, convertido
+ * por `d::jsonb`, e a `ordem` um número do JSON: os dois chegam ao banco com o
+ * mesmo valor que o caminho por parâmetros gravaria.
+ */
+export function sqlsDoPlano(workspaceId: string, plano: PlanoDeGravacao): string[] {
+  const sqls: string[] = [];
+  const espaco = literalEntreDolares(workspaceId);
+  if (plano.upserts.length > 0) {
+    const linhas = JSON.stringify(plano.upserts.map(([c, i, d, o]) => ({ c, i, d, o })));
+    sqls.push(
+      `insert into plataforma.registros (workspace_id, colecao, id, dados, ordem, revisao, atualizado_em)
+       select ${espaco}, r.c, r.i, r.d::jsonb, r.o, 1, now()
+         from jsonb_to_recordset(${literalEntreDolares(linhas)}::jsonb) as r(c text, i text, d text, o double precision)
+       on conflict (workspace_id, colecao, id) do update
+         set dados = excluded.dados,
+             ordem = excluded.ordem,
+             revisao = plataforma.registros.revisao + 1,
+             atualizado_em = now()`,
+    );
+  }
+  if (plano.removidos.length > 0) {
+    const chaves = JSON.stringify(plano.removidos.map(([c, i]) => ({ c, i })));
+    sqls.push(
+      `delete from plataforma.registros
+        where workspace_id = ${espaco}
+          and (colecao, id) in (select r.c, r.i from jsonb_to_recordset(${literalEntreDolares(chaves)}::jsonb) as r(c text, i text))`,
+    );
+  }
+  return sqls;
 }
 
 /** Escreve um `DataState` inteiro num Espaço de Trabalho vazio (bootstrap, importação). */

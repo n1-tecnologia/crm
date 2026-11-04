@@ -14,7 +14,9 @@
 
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { Bell, ChevronRight, ListFilter, Search, X } from "lucide-react";
+import { ehAlteracaoDeDescricao } from "@n1/dominio/descricao-da-tarefa";
 import type { ActivityRecord, ActorRef } from "@n1/dominio/types";
+import { AlteracaoDeDescricao } from "@/features/tarefa/alteracao-de-descricao";
 import { Icone } from "@/features/shell/ui";
 
 export type FiltroDaAtividade = "tudo" | "comentarios" | "atividade";
@@ -194,8 +196,35 @@ export function CabecalhoDaAtividade({
 const VISIVEIS_NO_FIM = 3;
 
 function textoDaLinha(record: ActivityRecord, nome: string, delegado: string | undefined): string {
-  const antesDepois = record.before || record.after ? ` (${record.before ?? "—"} → ${record.after ?? "—"})` : "";
+  // D-10: a descrição não derrama no meio da frase; "Ver alteração" a expande.
+  const antesDepois = !ehAlteracaoDeDescricao(record) && (record.before || record.after) ? ` (${record.before ?? "—"} → ${record.after ?? "—"})` : "";
   return `${nome}${delegado ? ` em nome de ${delegado}` : ""} ${record.action}${antesDepois}`;
+}
+
+/**
+ * Uma linha do Feed. Vive no escopo do módulo (não dentro de `FeedDeAtividade`)
+ * para o estado do "Ver alteração" não ser recriado a cada render (D-11).
+ */
+function LinhaDoFeed({
+  linha,
+  timeZone,
+}: {
+  readonly linha: { readonly record: ActivityRecord; readonly texto: string };
+  readonly timeZone: string;
+}) {
+  return (
+    <li className="flex items-start gap-3 py-1.5">
+      <span aria-hidden="true" className="app-sm shrink-0 leading-5" style={{ color: "var(--texto-4)" }}>
+        •
+      </span>
+      <span className="app-sm min-w-0 flex-1 leading-5 break-words" style={{ color: "var(--texto-3)" }}>
+        {linha.texto} <AlteracaoDeDescricao record={linha.record} />
+      </span>
+      <time dateTime={linha.record.at} className="app-sm shrink-0 whitespace-nowrap leading-5" style={{ color: "var(--texto-3)" }}>
+        {formatarQuando(linha.record.at, timeZone)}
+      </time>
+    </li>
+  );
 }
 
 export function FeedDeAtividade({
@@ -231,25 +260,11 @@ export function FeedDeAtividade({
   const escondidas = recolhe ? linhas.length - 1 - VISIVEIS_NO_FIM : 0;
   const visiveis = recolhe ? [linhas[0]!, ...linhas.slice(-VISIVEIS_NO_FIM)] : linhas;
 
-  const Linha = ({ linha }: { readonly linha: (typeof linhas)[number] }) => (
-    <li className="flex items-start gap-3 py-1.5">
-      <span aria-hidden="true" className="app-sm shrink-0 leading-5" style={{ color: "var(--texto-4)" }}>
-        •
-      </span>
-      <span className="app-sm min-w-0 flex-1 leading-5 break-words" style={{ color: "var(--texto-3)" }}>
-        {linha.texto}
-      </span>
-      <time dateTime={linha.record.at} className="app-sm shrink-0 whitespace-nowrap leading-5" style={{ color: "var(--texto-3)" }}>
-        {formatarQuando(linha.record.at, timeZone)}
-      </time>
-    </li>
-  );
-
   return (
     <ol className="grid" aria-label="Registro de Atividade">
       {visiveis.map((linha, indice) => (
         <Fragment key={linha.record.id}>
-          <Linha linha={linha} />
+          <LinhaDoFeed linha={linha} timeZone={timeZone} />
           {recolhe && indice === 0 ? (
             <li>
               <button

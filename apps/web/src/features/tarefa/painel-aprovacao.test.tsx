@@ -219,21 +219,33 @@ describe("PainelAprovacao — rejeitar com motivo vazio (d)", () => {
 });
 
 describe("PainelAprovacao — durante o envio (e)", () => {
-  it("CTAs desabilitados e label «Aprovando…»", async () => {
+  it("D-13: a decisão aparece na hora (diálogo fechado, aviso dado) e a recusa do servidor devolve a Solicitação pendente com o erro", async () => {
     const { task } = montarCenario(state, "mem_julia");
-    // Nunca resolve neste teste — mantém o controlador em `processando`.
-    transporte.gravarMock.mockImplementationOnce(() => new Promise<RespostaDeGravacao>(() => {}));
-    renderizar(state, ordens, transporte, "mem_julia", task);
+    // A resposta fica segurada até o teste soltar: o que a tela mostra antes dela é a cópia que o domínio aceitou.
+    let soltar: (resposta: RespostaDeGravacao) => void = () => undefined;
+    transporte.gravarMock.mockImplementationOnce(() => new Promise<RespostaDeGravacao>((resolve) => (soltar = resolve)));
+    const avisos: string[] = [];
+    renderizarComReport(state, ordens, transporte, "mem_julia", task, (_resultado, mensagem) => avisos.push(mensagem));
 
     fireEvent.click(screen.getByRole("button", { name: "Aprovar solicitação" }));
     const dialogo = screen.getByRole("alertdialog");
     fireEvent.click(within(dialogo).getByRole("button", { name: "Aprovar solicitação" }));
 
-    await waitFor(() =>
-      expect(within(dialogo).getByRole("button", { name: "Aprovando…" })).toBeTruthy(),
-    );
-    const confirmar = within(dialogo).getByRole("button", { name: "Aprovando…" });
-    expect(confirmar.getAttribute("aria-disabled")).toBe("true");
+    // Antes era «Aprovando…» até o servidor responder; com D-13 a decisão já está no cartão.
+    await waitFor(() => expect(screen.getByText("Aprovação concluída")).toBeTruthy());
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(avisos).toEqual(["Solicitação aprovada; a Execução retomou."]);
+    expect(transporte.gravarMock).toHaveBeenCalledTimes(1);
+
+    // D-14: o servidor recusa — a Solicitação volta a pendente e o erro dele aparece.
+    soltar({
+      tipo: "diferenca",
+      resultado: { ok: false, error: "Esta Solicitação já foi aprovada por Marcos Lima." },
+      diferenca: { gravados: [], removidos: [] },
+      revisao: 1,
+      revisaoAnterior: 1,
+    });
+    await waitFor(() => expect(screen.getByText("Aprovação pendente")).toBeTruthy());
   });
 });
 

@@ -220,9 +220,9 @@ describe("PAG-06 — o ciclo de vida: a visibilidade acompanha o dado, e continu
     expect(cobranca).toBeDefined();
     expect(cobranca?.mentions.some((m) => m.id === PEDRO)).toBe(true);
     // A Menção chega ao Pedro porque ele enxerga a Tarefa por derivação…
-    expect(pendingMentions(state, PEDRO).some((p) => p.comment.id === cobranca?.id)).toBe(true);
+    expect(pendingMentions(state, PEDRO).some((p) => p.tipo === "comentario" && p.comment.id === cobranca?.id)).toBe(true);
     // …e não ao Lucas, que não é a Pessoa desta conta.
-    expect(pendingMentions(state, LUCAS).some((p) => p.comment.id === cobranca?.id)).toBe(false);
+    expect(pendingMentions(state, LUCAS).some((p) => p.tipo === "comentario" && p.comment.id === cobranca?.id)).toBe(false);
   });
 });
 

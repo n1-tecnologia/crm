@@ -34,6 +34,8 @@ import { ChevronRight, MessageSquareReply, Send } from "lucide-react";
 import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { CabecalhoDaAtividade, formatarQuando, normalizarBusca, type FiltroDaAtividade } from "@/features/tarefa/feed-de-atividade";
 import { addTaskComment } from "@n1/dominio/operations";
+import { ehAlteracaoDeDescricao } from "@n1/dominio/descricao-da-tarefa";
+import { AlteracaoDeDescricao } from "@/features/tarefa/alteracao-de-descricao";
 import { useData, useLastResult, useRun } from "@/dados/store";
 import type { Formatters } from "@/features/shell/format";
 import { ACTOR_KIND_LABEL } from "@/features/shell/format";
@@ -292,8 +294,10 @@ function LinhaDeAtividade({
       <span className="app-sm min-w-0 flex-1 break-words leading-5" style={{ color: "var(--texto-3)", overflowWrap: "anywhere" }}>
         <span>{nome}</span>
         {record.delegate ? ` em nome de ${resolverNomeDoAtor(state, record.delegate)}` : ""} {record.action}
-        {!ehIntegracao && (record.before || record.after) ? ` (${record.before ?? "—"} → ${record.after ?? "—"})` : ""}
-        {!ehIntegracao && record.detail ? ` · ${record.detail}` : ""}
+        {!ehIntegracao && !ehAlteracaoDeDescricao(record) && (record.before || record.after)
+          ? ` (${record.before ?? "—"} → ${record.after ?? "—"})`
+          : ""}
+        {!ehIntegracao && record.detail ? ` · ${record.detail}` : ""} <AlteracaoDeDescricao record={record} />
       </span>
       <time dateTime={record.at} className="app-sm shrink-0 whitespace-nowrap leading-5" style={{ color: "var(--texto-3)" }}>
         {formatarQuando(record.at, timeZone)}

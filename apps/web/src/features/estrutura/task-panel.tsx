@@ -13,6 +13,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useIdsNaoConfirmados } from "@/dados/store";
 import { SidePanel } from "@/features/shell/ui";
 import { TarefaCompleta } from "@/features/estrutura/tarefa-completa";
 
@@ -29,8 +30,13 @@ export function useTaskPanel(): {
   // Do roteador, não de `window.location`: na primeira renderização após uma
   // navegação no cliente a URL ainda é a da página anterior.
   const pathname = usePathname();
+  const naoConfirmados = useIdsNaoConfirmados();
 
   const openTask = (taskId: string) => {
+    // D-15: este é o ponto único por onde as lentes da Lista (Lista, Tabela,
+    // Quadro, Calendário, Financeiro) abrem uma Tarefa. Um id que o servidor
+    // ainda não confirmou pode não ser o verdadeiro: não abre o painel dele.
+    if (naoConfirmados.has(taskId)) return;
     const next = new URLSearchParams(query.toString());
     next.set(TASK_PANEL_PARAM, taskId);
     router.replace(`${pathname}?${next}`, { scroll: false });

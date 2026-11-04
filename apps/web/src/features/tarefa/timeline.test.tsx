@@ -264,6 +264,53 @@ describe("Timeline — sanitização de integração (f)", () => {
   });
 });
 
+describe("Timeline — Descrição alterada com Ver alteração (k)", () => {
+  const descricao = (state: DataState, task: Task, overrides: Partial<ActivityRecord> = {}) =>
+    atividade(state, {
+      id: "atv_descricao",
+      actor: { kind: "member", id: "mem_maryane" },
+      action: "Descrição alterada",
+      objectId: task.id,
+      at: "2026-01-01T10:00:00Z",
+      ...overrides,
+    });
+
+  it("Membro: sem (A → B) na frase, com Ver alteração que expande A e B", () => {
+    const task = montarTarefa(state);
+    state.activity.push(descricao(state, task, { before: "A", after: "B" }));
+
+    const { container } = renderizar(state, ordens, transporte, "mem_maryane", task);
+    expect(container.textContent).toContain("Descrição alterada");
+    expect(container.textContent).not.toContain("(A → B)");
+
+    fireEvent.click(screen.getByRole("button", { name: "Ver alteração" }));
+    expect(screen.getByText("Antes")).toBeTruthy();
+    expect(screen.getByText("A")).toBeTruthy();
+    expect(screen.getByText("B")).toBeTruthy();
+  });
+
+  it("Ator de integração: nem botão, nem A, nem B", () => {
+    const task = montarTarefa(state);
+    state.activity.push(
+      descricao(state, task, { actor: { kind: "integration", id: "itg_omie" }, before: "texto-anterior-A", after: "texto-novo-B" }),
+    );
+
+    const { container } = renderizar(state, ordens, transporte, "mem_maryane", task);
+    expect(container.textContent).toContain("Descrição alterada");
+    expect(screen.queryByRole("button", { name: "Ver alteração" })).toBeNull();
+    expect(container.textContent).not.toContain("texto-anterior-A");
+    expect(container.textContent).not.toContain("texto-novo-B");
+  });
+
+  it("registro sem before/after: sem botão", () => {
+    const task = montarTarefa(state);
+    state.activity.push(descricao(state, task));
+
+    renderizar(state, ordens, transporte, "mem_maryane", task);
+    expect(screen.queryByRole("button", { name: "Ver alteração" })).toBeNull();
+  });
+});
+
 describe("Timeline — Ctrl+Enter envia, Enter sozinho não (g)", () => {
   it("Ctrl+Enter dispara o envio; Enter sozinho mantém o compositor parado", async () => {
     const task = montarTarefa(state);

@@ -77,11 +77,14 @@ import {
 import { LinhaDeProp } from "@/features/estrutura/linha-de-propriedade";
 import { corDeTipo, iconeDeTipo } from "@/features/estrutura/icone-de-tipo";
 import { SeletorDeTipoDeTarefa } from "@/features/estrutura/seletor-de-tipo";
+import { BotaoDeConversao, DialogoDeConversao } from "@/features/estrutura/conversao-de-item";
+import { DescricaoDaTarefa } from "@/features/estrutura/descricao-da-tarefa";
+import { valorDaLinhaDeTempo } from "@/features/estrutura/tempo";
 import { financeProfileOf, valorDaConta } from "@/features/estrutura/financeiro/lens";
 import { CHANNEL_ICON, ConversationThread } from "@/features/crm/conversation-thread";
 import { ContactAvatar } from "@/features/crm/contact-card";
 import { marcarSeMuda, useNavegar } from "@/features/shell/navegacao";
-import { useData, useRun, useSession } from "@/dados/store";
+import { useData, useIdsNaoConfirmados, useRun, useSession } from "@/dados/store";
 import {
   actorLabel,
   checklistProgress,
@@ -101,6 +104,7 @@ import {
   taskLevel,
   taskCommentRefusal,
   taskWriteRefusal,
+  tempoRegistrado,
 } from "@n1/dominio/derive";
 import {
   canalDaTarefa,
@@ -116,7 +120,6 @@ import {
   addChecklistItem,
   assignTask,
   changeTaskStatus,
-  convertChecklistItem,
   createTask,
   criarNegocioDaTarefa,
   removeChecklist,
@@ -195,19 +198,21 @@ export function TarefaCompleta({
   const state = useData((data) => data);
   const fmt = useFormat();
   const run = useRun();
+  // D-15: a Subtarefa que o servidor ainda não confirmou aparece sem link.
+  const naoConfirmados = useIdsNaoConfirmados();
   const { memberId } = useSession();
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [proximaOcorrencia, setProximaOcorrencia] = useState<string | null>(
-    null,
-  );
+  // O link "Abrir" (a próxima ocorrência ou a Subtarefa recém-convertida) é parte do aviso:
+  // trocar ou limpar o aviso leva o link junto, e um aviso posterior não herda o anterior.
+  const [aviso, setAviso] = useState<{ readonly texto: string; readonly abrir?: string } | null>(null);
+  const setNotice = (texto: string | null) => setAviso(texto === null ? null : { texto });
   const router = useRouter();
   const query = useSearchParams();
   const pathname = usePathname();
   /**
    * D13 — a conversão vive no endereço (`?converter-item=<checklist>:<item>`).
-   * É terminal, sem inversa, e exige digitar o nome do Item: o gesto precisa
-   * custar tanto quanto a consequência.
+   * É terminal e sem inversa, por isso a confirmação de um clique avisa (D-01);
+   * o botão só aparece onde a derivada deixa (D-05), então o erro não é fácil.
    */
   const convertingRaw = query.get("converter-item");
   const converting = (() => {
@@ -215,7 +220,6 @@ export function TarefaCompleta({
     const [checklistId, itemId] = convertingRaw.split(":");
     return checklistId && itemId ? { checklistId, itemId } : null;
   })();
-  const [typedItem, setTypedItem] = useState("");
   const [confirmingTrash, setConfirmingTrash] = useState(false);
   // Numa conta do Financeiro, mudar o Status dispara Automações: pede confirmação
   // aqui como a linha da tabela e o rodapé do popup pedem.
@@ -260,13 +264,11 @@ export function TarefaCompleta({
   const [navegar] = useNavegar();
   // Os outros parâmetros ficam: no popup, `?tarefa=` é o que o mantém aberto.
   const openConversion = (checklistId: string, itemId: string) => {
-    setTypedItem("");
     const next = new URLSearchParams(query.toString());
     next.set("converter-item", `${checklistId}:${itemId}`);
     router.replace(`${pathname}?${next}`, { scroll: false });
   };
   const closeConversion = () => {
-    setTypedItem("");
     const next = new URLSearchParams(query.toString());
     next.delete("converter-item");
     router.replace(next.size > 0 ? `${pathname}?${next}` : pathname, { scroll: false });
@@ -394,26 +396,12 @@ export function TarefaCompleta({
         tinhaRecorrencia && result.value.recurrence === undefined
           ? spawnedOccurrenceOf(state, task.id)
           : undefined;
-      setNotice(
-        proxima
+      setAviso({
+        texto: proxima
           ? `Status alterado. Próxima ocorrência criada: ${proxima.title}.`
           : "Status alterado.",
-      );
-      setProximaOcorrencia(proxima?.id ?? null);
-    } else {
-      setNotice(null);
-      setError(result.error);
-    }
-  };
-
-  const convert = (checklistId: string, itemId: string) => {
-    const result = run((data, memberId) =>
-      convertChecklistItem(data, memberId, task.id, checklistId, itemId),
-    );
-    if (result.ok) {
-      setError(null);
-      setNotice(`Item convertido em Subtarefa: ${result.value.title}.`);
-      closeConversion();
+        ...(proxima ? { abrir: proxima.id } : {}),
+      });
     } else {
       setNotice(null);
       setError(result.error);
@@ -425,16 +413,6 @@ export function TarefaCompleta({
   );
   // A contagem do cabeçalho "Atividade" — e do botão que a abre na ficha empilhada.
   const contagemDaAtividade = task.comments.filter((c) => !c.deletedAt).length + activity.length;
-
-  const convertingChecklist = converting
-    ? task.checklists.find((group) => group.id === converting.checklistId)
-    : undefined;
-  const convertingItem = convertingChecklist?.items.find(
-    (item) => item.id === converting?.itemId,
-  );
-  const convertingSubitems = convertingChecklist
-    ? subitemsOf(convertingChecklist.items, converting?.itemId ?? "")
-    : 0;
 
   const assign = (ids: readonly string[]) => {
     const current = new Set(task.assignees.map((a) => a.id));
@@ -789,47 +767,26 @@ export function TarefaCompleta({
         onCancel={() => setConfirmingTrash(false)}
       />
 
-      {convertingItem ? (
-        <ConfirmDialog
-          open
-          title={`Converter “${convertingItem.text}” em Subtarefa?`}
-          description={`Sem conversão inversa. O Item fica marcado como convertido e sai do progresso do Checklist.${
-            convertingSubitems > 0
-              ? ` Os ${convertingSubitems} subitens migram como Checklist da nova Subtarefa e saem deste.`
-              : ""
-          }`}
-          confirmLabel="Converter"
-          destructive
-          {...(typedItem.trim() !== convertingItem.text
-            ? {
-                confirmDisabledReason: `Digite “${convertingItem.text}” para confirmar.`,
-              }
-            : {})}
-          onConfirm={() =>
-            converting && convert(converting.checklistId, converting.itemId)
-          }
-          onCancel={closeConversion}
-        >
-          <Field label={`Digite “${convertingItem.text}” para confirmar`}>
-            {(id) => (
-              <TextInput
-                id={id}
-                value={typedItem}
-                onChange={setTypedItem}
-                invalid={
-                  typedItem !== "" && typedItem.trim() !== convertingItem.text
-                }
-                placeholder={convertingItem.text}
-              />
-            )}
-          </Field>
-        </ConfirmDialog>
+      {converting ? (
+        <DialogoDeConversao
+          task={task}
+          checklistId={converting.checklistId}
+          itemId={converting.itemId}
+          onFechar={closeConversion}
+          onConvertida={({ id, title }) => {
+            setError(null);
+            setAviso({ texto: `Item convertido em Subtarefa: ${title}.`, abrir: id });
+          }}
+          onErro={(mensagem) => {
+            setNotice(null);
+            setError(mensagem);
+          }}
+        />
       ) : null}
 
       {removendo ? (() => {
         const grupo = task.checklists.find((c) => c.id === removendo.checklistId);
         const item = removendo.itemId ? grupo?.items.find((i) => i.id === removendo.itemId) : undefined;
-        const subitens = grupo && removendo.itemId ? subitemsOf(grupo.items, removendo.itemId) : 0;
         const itensDoGrupo = grupo?.items.length ?? 0;
         if (!grupo || (removendo.itemId && !item)) return null;
         return (
@@ -838,9 +795,7 @@ export function TarefaCompleta({
             title={item ? `Remover o Item “${item.text}”?` : `Remover o Checklist “${grupo.name}”?`}
             description={
               item
-                ? `Não há lixeira de Item: a remoção é definitiva, e o texto fica só no Registro de Atividade.${
-                    subitens > 0 ? ` ${subitens === 1 ? "O subitem vai" : `Os ${subitens} subitens vão`} junto.` : ""
-                  }${item.converted ? " A Subtarefa que nasceu dele continua existindo." : ""}`
+                ? `Não há lixeira de Item: a remoção é definitiva, e o texto fica só no Registro de Atividade.${item.converted ? " A Subtarefa que nasceu dele continua existindo." : ""}`
                 : `Não há lixeira de Checklist: a remoção é definitiva, e o conteúdo fica só no Registro de Atividade.${
                     itensDoGrupo > 0 ? ` ${itensDoGrupo === 1 ? "O Item vai" : `Os ${itensDoGrupo} Itens vão`} junto.` : ""
                   }`
@@ -891,20 +846,14 @@ export function TarefaCompleta({
           ? { className: "@max-4xl:min-h-[calc(var(--conversa-empilhada-min)*0.75)]" }
           : {})}
       >
-        {notice ? (
-          <Toast
-            tone="success"
-            onDismiss={() => {
-              setNotice(null);
-              setProximaOcorrencia(null);
-            }}
-          >
-            {notice}
-            {proximaOcorrencia ? (
+        {aviso ? (
+          <Toast tone="success" onDismiss={() => setAviso(null)}>
+            {aviso.texto}
+            {aviso.abrir ? (
               <>
                 {" "}
                 <Link
-                  href={`/estrutura/tarefas/${proximaOcorrencia}`}
+                  href={`/estrutura/tarefas/${aviso.abrir}`}
                   className="underline"
                 >
                   Abrir
@@ -969,11 +918,11 @@ export function TarefaCompleta({
                 style={{ color: "var(--texto-1)" }}
                 title="Editar título e descrição"
               >
-                {task.description}
+                <DescricaoDaTarefa task={task} />
               </button>
             ) : (
               <p className="app-base mt-1 whitespace-pre-wrap px-2 py-1" style={{ color: "var(--texto-1)" }}>
-                {task.description}
+                <DescricaoDaTarefa task={task} />
               </p>
             )
           ) : editavel ? (
@@ -1193,11 +1142,7 @@ export function TarefaCompleta({
                 <LinhaDeProp
                   icone={Timer}
                   rotulo="Rastrear tempo"
-                  valor={
-                    task.timeEntries.length === 0
-                      ? "Iniciar"
-                      : `${task.timeEntries.reduce((s, e) => s + (e.durationMinutes ?? 0), 0)} min · ${task.timeEntries.length} registro${task.timeEntries.length === 1 ? "" : "s"}`
-                  }
+                  valor={valorDaLinhaDeTempo(tempoRegistrado(state, task.id))}
                   // Abre sempre: a lista de lançamentos mora aqui, e uma Tarefa
                   // arquivada ainda tem o que mostrar (o TaskTime cuida do só-leitura).
                   editavel
@@ -1658,9 +1603,7 @@ export function TarefaCompleta({
                     <div className="grid gap-4">
                       {task.checklists.map((group) => {
                         const countable = group.items.filter(
-                          (item) =>
-                            item.parentItemId === undefined &&
-                            item.converted === undefined,
+                          (item) => item.converted === undefined,
                         );
                         const done = countable.filter((item) => item.done).length;
                         return (
@@ -1690,7 +1633,6 @@ export function TarefaCompleta({
                             />
                             <ul className="pilha-solta">
                               {group.items
-                                .filter((item) => item.parentItemId === undefined)
                                 .map((item) => (
                                   <li
                                     key={item.id}
@@ -1780,16 +1722,10 @@ export function TarefaCompleta({
                                           </span>
                                         ) : null}
                                         {editavel ? (
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              openConversion(group.id, item.id)
-                                            }
-                                            className="btn btn-sutil btn-sm ml-auto shrink-0"
-                                            style={{ color: "var(--erro)" }}
-                                          >
-                                            Converter em Subtarefa
-                                          </button>
+                                          <BotaoDeConversao
+                                            task={task}
+                                            onConverter={() => openConversion(group.id, item.id)}
+                                          />
                                         ) : null}
                                         {editavel ? (
                                           <button
@@ -1925,24 +1861,34 @@ export function TarefaCompleta({
                           child.listId,
                           child.statusId,
                         );
+                        const pendente = naoConfirmados.has(child.id);
+                        const conteudo = (
+                          <>
+                            <span
+                              className="app-base min-w-0 flex-1 truncate"
+                              style={{ color: pendente ? "var(--texto-4)" : "var(--texto)" }}
+                            >
+                              {child.title}
+                            </span>
+                            {situacao ? (
+                              <Pilula cor={situacao.color} className="shrink-0">
+                                {situacao.name}
+                              </Pilula>
+                            ) : null}
+                          </>
+                        );
                         return (
                           <li key={child.id}>
-                            <Link
-                              href={`/estrutura/tarefas/${child.id}`}
-                              className="item-solto"
-                            >
-                              <span
-                                className="app-base min-w-0 flex-1 truncate"
-                                style={{ color: "var(--texto)" }}
-                              >
-                                {child.title}
+                            {pendente ? (
+                              <span aria-busy="true" title="Salvando…" className="item-solto">
+                                {conteudo}
+                                <span className="sr-only">Salvando…</span>
                               </span>
-                              {situacao ? (
-                                <Pilula cor={situacao.color} className="shrink-0">
-                                  {situacao.name}
-                                </Pilula>
-                              ) : null}
-                            </Link>
+                            ) : (
+                              <Link href={`/estrutura/tarefas/${child.id}`} className="item-solto">
+                                {conteudo}
+                              </Link>
+                            )}
                           </li>
                         );
                       })}
@@ -2319,13 +2265,6 @@ function valorDeCampo(state: DataState, fmt: Formatters, tipo: string, valor: un
   }
   if (Array.isArray(valor)) return valor.map(String).join(", ");
   return String(valor);
-}
-/** B48 — the subitems migrate with the conversion and leave the origin checklist. */
-function subitemsOf(
-  items: readonly { readonly id: string; readonly parentItemId?: string }[],
-  itemId: string,
-): number {
-  return items.filter((item) => item.parentItemId === itemId).length;
 }
 
 /**

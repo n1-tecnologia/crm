@@ -166,6 +166,29 @@ Critério de pronto (ROADMAP Phase 10): a Estrutura de Trabalho fechada no níve
 - [x] **EST-10**: `setContainerBlock` e o interruptor "Bloquear para os níveis abaixo"; `bloqueio-de-aspecto.test.ts` passa, inclusive a recusa que nomeia a Pasta que sobrescreve e `criarAutomacao` recusada sob bloqueio (2.6.5, D-16). Pendente.
 - [ ] **EST-11**: `010` aplicada em produção após `--seco`; `count(*)` de `views` com `kind = 'carga'` e de `lists` com `blocks` dá 0; as quatro operações novas na tabela "Quem pode" (2.5.3, 2.6.3, D-18, D-19, D-20). Pendente.
 
+### Fase 11 — Clone ClickUp: Tarefa (TAR)
+
+Critério de pronto (ROADMAP Phase 11): a Tarefa fechada nas lacunas do checklist, da descrição e do tempo: converter item em Subtarefa sem susto, menção na descrição, histórico com o texto anterior e tempo registrado calculado no domínio. Os sete IDs abaixo são **derivados** das subtarefas 2.4.1–2.4.5 e 2.6.6–2.6.9 de `docs/09-planejamento/TAREFAS-POR-SESSAO.md` e das decisões D-01..D-16 (`.planning/phases/11-clone-clickup-tarefa-checklist-descri-o-e-tempo/11-CONTEXT.md`, "Requisitos derivados").
+
+- [x] **TAR-01**: `conversaoDeItemRecusada(state, actingMemberId, taskId)` em `derive.ts` devolve o motivo para Lista sem Subtarefas, para Tarefa no nível máximo e para quem não escreve na Tarefa, e `undefined` numa Tarefa de primeiro nível com Subtarefas ligadas; `convertChecklistItem` a chama primeiro e a recusa de nível diz "Esta Tarefa já está no nível N, o último permitido. O item não pode virar Subtarefa aqui." (2.4.1, D-04). Pendente.
+- [x] **TAR-02**: Em Lista sem Subtarefas e em Tarefa no último nível o botão "Converter em Subtarefa" não aparece; onde aparece, está na cor normal; a confirmação é de um clique, sem digitar o nome do item; converter mostra o aviso com "Abrir" e o link abre a Subtarefa nova; o cartão do Quadro não converte (2.4.2, 2.4.3, 2.4.5, D-01, D-03, D-05). Pendente.
+- [x] **TAR-03**: `grep -rn parentItemId packages apps` sem achados; `convertChecklistItem` e `removeChecklistItem` sem ramo de subitens; o checklist tem um nível só; `npm run check` passa (2.4.4, D-02). Pendente.
+- [x] **TAR-04**: `updateTask` com "@Júlia revisar" e a menção grava `Task.descriptionMentions`; Membro inexistente é recusado; o esquema de `updateTask` aceita a chave; digitar "@Jú" na descrição abre o menu de Membros (hook `useMencoes`); o nome mencionado aparece destacado (2.6.6, D-06). Pendente.
+- [x] **TAR-05**: Notificações › "Menções a você" mostra a menção da descrição, com o trecho, enquanto o nome estiver nela e a Tarefa estiver aberta; some ao fechar a Tarefa ou tirar o nome; quem não enxerga a Tarefa não recebe; uma menção sem o "@Nome" no texto nunca avisa; o aviso de Comentário segue igual (2.6.7, D-07, D-08, D-09). Pendente.
+- [x] **TAR-06**: Editar a descrição de "A" para "B" grava Atividade com `before: "A"` e `after: "B"`; descrição de 3.000 caracteres grava 2.000 e "…"; no histórico "Ver alteração" expande o texto anterior e o novo; edição antiga e Ator de integração não têm o botão (2.6.8, D-10..D-14). Pendente.
+- [x] **TAR-07**: `tempoRegistrado(state, taskId)` em `tempo-registrado.test.ts`: lançamentos de 30 e 45 min mais um cronômetro aberto devolvem 75 min e `emAndamento: true`; com uma Subtarefa de 20 min, `minutosComSubtarefas` é 95; a linha "Rastrear tempo" e o editor mostram o mesmo número (2.6.9, D-15, D-16). Pendente.
+
+### Fase 12 — Clone ClickUp: gravação mais rápida (GRV)
+
+Critério de pronto (ROADMAP Phase 12): medir quanto leva uma gravação e cortar o custo onde ele está, pelo caminho B da 2.2.2 (ficar em `plataforma.registros`): os tempos de `createList`, `updateContainer`, `trashContainer` e `changeTaskStatus` medidos em produção antes e depois; criar uma Lista aparece na árvore antes da resposta do servidor; duas gravações simultâneas no mesmo Espaço de Trabalho não hidratam de novo. Os seis IDs abaixo são **derivados** das subtarefas 2.2.1–2.2.5 e 2.2.10 de `docs/09-planejamento/TAREFAS-POR-SESSAO.md` e das decisões D-01..D-17 (`.planning/phases/12-clone-clickup-grava-o-mais-r-pida/12-CONTEXT.md`, "Requisitos derivados").
+
+- [x] **GRV-01**: Cada gravação por `POST /operacoes` escreve no log o nome da operação e o tempo de `hidratar`, operação, trava, `gravar`, recorte, tentativas e linhas lidas; a medição **não aparece** no corpo da resposta (teste `operacoes-medicao.test.ts`); o comando `gravacao:medir` (Fastify próprio em loopback na VPS, D-17) repete os quatro gestos 10 vezes e imprime mediana e pior caso por etapa, mais o tempo total do pedido; a tabela "antes" e o tamanho real de `plataforma.registros` estão em `12-PROVAS.md` (2.2.1, D-01..D-05, D-17). Feito em 2026-11-02 (12-01 e 12-02); a linha do serviço real (D-03) ainda não foi observada em produção e fica com o dono.
+- [x] **GRV-02**: A parada `[BLOCKING]` aconteceu com a tabela "antes" na mão do dono; a meta está registrada na seção "Meta (fixada na parada)" de `12-CONTEXT.md` antes de a 2.2.3 começar; se `hidratar` passou de 300 ms na mediana, a sessão C está no ROADMAP como fase própria (2.2.2, D-06..D-08). Feito em 2026-11-02 (12-03): o dono respondeu na parada (b-ganho-basta, sem meta numérica; sessão C fora, o gatilho não disparou).
+- [x] **GRV-03**: Teste novo `unidade-de-trabalho-concorrencia.test.ts` contra Postgres local (o `unidade-de-trabalho-trava.test.ts` mocka o pool inteiro e não serve para trava real): duas `executar()` simultâneas no mesmo Espaço gravam com uma tentativa cada e `hidratar` roda exatamente 2 vezes (pula sem `DATABASE_URL` local); em `unidade-de-trabalho-trava.test.ts`, a trava esgotada (`55P03`) vira 409 sem repetir; as importações longas seguem no regime otimista; `CONTEXT.md` da persistência atualizado (2.2.3, D-09, D-10). Feito em 2026-11-02 (12-04).
+- [x] **GRV-04**: Teste em `store.test.ts` com transporte falso: um `run` com duas chamadas aplica as duas diferenças e **não** chama `hidratar` (2.2.4, D-11, D-12). Feito em 2026-11-02 (12-05).
+- [x] **GRV-05**: Teste em `store.test.ts` com transporte lento: `data.lists` já tem a Lista antes de o transporte responder; com `ok: false` ela some e `lastResult.error` traz a mensagem; dois `run` seguidos saem um de cada vez, em ordem; o item criado aparece sem link até confirmado; a lista de exceções está no código com o motivo de cada uma (2.2.5, D-13..D-16). Feito em 2026-11-02 (12-06 a 12-09): `data`/`confirmado` e a fila serial no store, a lista de exceções, o "salvando" na árvore e na Tarefa, a guarda de navegação para qualquer âncora e o aviso ao fechar a aba.
+- [x] **GRV-06**: A tabela de `12-PROVAS.md` tem as colunas "antes" e "depois" preenchidas, com o mesmo comando, e o "depois" comparado à meta de D-08 (2.2.10, D-01, D-08). Feito em 2026-11-02 (12-10): o "depois" (`37c1cab`, VPS) está em `12-PROVAS.md` ao lado do "antes"; o `pedidoMs` isolado subiu 11% a 17% (a trava custa uma ida e volta). Abertos, do dono: a linha de log do serviço real (D-03) e a conferência visual em produção.
+
 ## Traceability
 
 Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pelas ferramentas): `Pending` · `In Progress` · `Blocked` · `Complete`. A coluna "Situação verificada" carrega o status da intel (código, 2026-09-15).
@@ -252,11 +275,24 @@ Cada requisito mapeia a exatamente uma fase. Status GSD (coluna 3, atualizada pe
 | EST-09 | Phase 10 | Complete | pendente | derivado (10-CONTEXT) |
 | EST-10 | Phase 10 | Complete | pendente | derivado (10-CONTEXT) |
 | EST-11 | Phase 10 | Pending | pendente — checkpoint do dono (010 em produção) | derivado (10-CONTEXT) |
+| TAR-01 | Phase 11 | Complete | pendente | derivado (11-CONTEXT) |
+| TAR-02 | Phase 11 | Complete | pendente | derivado (11-CONTEXT) |
+| TAR-03 | Phase 11 | Complete | pendente — produção conferida pelo dono em 29/10/2026: nenhum registro carrega `parentItemId` (contagem 0) | derivado (11-CONTEXT) |
+| TAR-04 | Phase 11 | Complete | pendente | derivado (11-CONTEXT) |
+| TAR-05 | Phase 11 | Complete | pendente | derivado (11-CONTEXT) |
+| TAR-06 | Phase 11 | Complete | pendente | derivado (11-CONTEXT) |
+| TAR-07 | Phase 11 | Complete | pendente | derivado (11-CONTEXT) |
+| GRV-01 | Phase 12 | Complete | feito — "antes" medido na VPS e registrado em `12-PROVAS.md`; a linha de log no serviço real (D-03) ainda não foi observada e fica com o dono | derivado (12-CONTEXT) |
+| GRV-02 | Phase 12 | Complete | feito — parada respondida pelo dono em 2026-11-02: `b-ganho-basta`, sessão C fora (hidratar direto 147.5 ms < 300 ms) | derivado (12-CONTEXT) |
+| GRV-03 | Phase 12 | Complete | feito — 12-04 | derivado (12-CONTEXT) |
+| GRV-04 | Phase 12 | Complete | feito — 12-05 | derivado (12-CONTEXT) |
+| GRV-05 | Phase 12 | Complete | feito — 12-06 a 12-09 (store com `confirmado`/`data` e fila serial, exceções, "salvando", guarda de navegação e aviso ao fechar a aba) | derivado (12-CONTEXT) |
+| GRV-06 | Phase 12 | Complete | feito — 12-10: "depois" medido na VPS e comparado ao "antes"; D-03 no serviço real e conferência visual em produção ficam com o dono | derivado (12-CONTEXT) |
 
 **Coverage:**
 
-- v1 requirements: 80 total (79 executáveis + 1 sobreposto por decisão travada) — RES-01..06 acrescentados em 2026-09-29 (Fase 6); CRM-D1..CRM-V1 (7, derivados) em 2026-10-09 (Fase 7); CXE-D1..CXE-V1 (9, derivados) em 2026-10-12 (Fase 8); SEG-01..SEG-12 (12, derivados) em 2026-10-22 (Fase 9); EST-01..EST-11 (11, derivados) em 2026-10-28 (Fase 10)
-- Mapped to phases: 79 (Phase 0: 6 · Phase 1: 8 · Phase 2: 9 · Phase 3: 7 · Phase 4: 1 · Phase 5: 3 · Phase 6: 6 · Phase 7: 7 · Phase 8: 9 · Phase 9: 12 · Phase 10: 11)
+- v1 requirements: 93 total (92 executáveis + 1 sobreposto por decisão travada) — RES-01..06 acrescentados em 2026-09-29 (Fase 6); CRM-D1..CRM-V1 (7, derivados) em 2026-10-09 (Fase 7); CXE-D1..CXE-V1 (9, derivados) em 2026-10-12 (Fase 8); SEG-01..SEG-12 (12, derivados) em 2026-10-22 (Fase 9); EST-01..EST-11 (11, derivados) em 2026-10-28 (Fase 10); TAR-01..TAR-07 (7, derivados) em 2026-10-29 (Fase 11); GRV-01..GRV-06 (6, derivados) em 2026-10-30 (Fase 12)
+- Mapped to phases: 92 (Phase 0: 6 · Phase 1: 8 · Phase 2: 9 · Phase 3: 7 · Phase 4: 1 · Phase 5: 3 · Phase 6: 6 · Phase 7: 7 · Phase 8: 9 · Phase 9: 12 · Phase 10: 11 · Phase 11: 7 · Phase 12: 6)
 - Unmapped: 0 ✓ (PERS-03 não tem fase por ser sobreposto — sua parte viva é PERS-07)
 - Já feitos: 8 (PREP-01, PREP-02, PREP-03, PREP-04, PREP-06 — Fase 0 fechada em 2026-09-17, Plan 00-07 — mais PERS-01, PERS-02 da Fase 1) · risco aceito pelo dono: 1 (PREP-05, D-13) · em andamento: 4 · bloqueados por decisão: 4 (D11, D6, D8, D7) · pendentes: 18
 

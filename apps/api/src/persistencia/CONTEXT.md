@@ -11,13 +11,84 @@ suficiente para o domínio nunca saber que existe um banco.
 | Arquivo | O que faz |
 |---|---|
 | `conexao.ts` | `carregarEnv()` lê `apps/api/.env` sem `dotenv`; `pool()` é o `Pool` do `pg`, singleton lazy. |
-| `repositorio.ts` | `hidratar()` (banco → `DataState`), `gravar()` (diff por comparação canônica de JSON), `reordenar()` (posição fracionária), `semear()` (escreve um `DataState` inteiro num Espaço vazio — base do bootstrap e da importação). |
-| `unidade-de-trabalho.ts` | `executar()`: hidratar → operação pura → revisão otimista (3 tentativas) → `gravar()`. A rota HTTP é uma casca em volta disto. |
+| `repositorio.ts` | `hidratar()` (banco → `DataState`), `gravar()` (diff por comparação canônica de JSON), `reordenar()` (posição fracionária), `semear()` (escreve um `DataState` inteiro num Espaço vazio — base do bootstrap e da importação). Cada um é a soma de uma parte que só gasta processador e outra que fala com o banco: `estadoDasLinhas()`/`sqlDeHidratar()` e `planejarGravacao()`/`sqlsDoPlano()` (Fase 13), que `executar()` usa para mandar várias instruções numa ida só. |
+| `sql-literal.ts` | `literalEntreDolares()`: o texto como literal SQL entre dólares, com marca sorteada que o texto não contém. É o que deixa as mensagens de várias instruções (sem `$1`) levarem dados sem escape à mão. |
+| `unidade-de-trabalho.ts` | `executar()`: trava o Espaço no começo (`select … for update`) e hidrata → operação pura → `gravar()`, com uma tentativa só (D-09); as importações longas usam o regime otimista (revisão conferida no fim, até 3 tentativas, D-10). No `travado` isso custa DUAS idas ao banco (Fase 13, ver "Idas ao banco"). A rota HTTP é uma casca em volta disto. |
 | `canais-projetados.ts` | A ponte de D-11: projeta os Canais de `plataforma.canais` (008) em `state.channels` para o resto do app, que ainda lê o modelo antigo. `semCanaisProjetados()` tira os projetados do estado antes de `gravar()`. |
 | `migrar.ts` + `migrar.cli.ts` | Aplica `apps/api/migracoes/NNN-*.sql` em ordem, uma vez cada, dentro de transação, registrado em `plataforma.migracoes`. |
 | `persistencia.test.ts`, `colunas-geradas.test.ts`, `integracao.test.ts`, `agenda-de-automacoes.test.ts` | Testes de integração contra Postgres real; pulam sem `DATABASE_URL` (`temBanco ? describe : describe.skip`, D-DEC-09). |
+| `unidade-de-trabalho-concorrencia.test.ts` | GRV-03 contra Postgres real: duas `executar()` simultâneas no mesmo Espaço gravam com uma tentativa cada e a leitura do Espaço roda 2 vezes (3 no regime otimista); trava esgotada vira conflito sem hidratar. Arquivo próprio porque `unidade-de-trabalho-trava.test.ts` mocka `./conexao` e `./repositorio` no módulo inteiro. Pula sem Postgres local (`describeComBanco`). |
+| `regime-dos-chamadores.test.ts` | Sem banco; lê o código-fonte. Só as quatro importações longas passam `regime: "otimista"`, todo `semEventosDeSaida: true` o exige, `bootstrap/` nunca passa `regime:` (D-10). |
 
-## Os prazos do servidor e a trava esgotada (06-13)
+## Idas ao banco: duas por gravação (Fase 13)
+
+Cada ida e volta ao banco custa a distância até ele: ~52 ms da VPS (Chicago) ao
+pooler do Supabase (`us-west-2`, Oregon), medidos em produção (`select 1` =
+51,4 ms). A Fase 12 fazia sete por gravação (`begin`, trava, leitura, Canais,
+`update` da revisão, `gravar`, `commit`; oito com remoção ou na primeira do
+processo, que ainda paga a guarda dos Canais), cerca de 360 ms só de rede. O
+regime `travado` as junta em duas **mensagens de várias instruções** (protocolo
+simples do `pg`, que devolve um resultado por instrução):
+
+- **Entrada:** `begin` com os prazos, a trava (`select … for update`), a leitura
+  do Espaço (`sqlDeHidratar`) e, quando a guarda já confirmou a tabela, os
+  Canais (`sqlDeTodosOsCanais`). A **ordem** dentro da mensagem é a mesma de
+  antes e é o que garante a regra: em READ COMMITTED cada instrução tira o
+  próprio retrato quando COMEÇA, então a leitura, depois da trava, vê o que o
+  escritor anterior confirmou. O que continua proibido é fundir trava e leitura
+  numa CONSULTA só. `55P03` aqui só pode ser a trava (leitura não espera
+  trava) e vira conflito, como antes.
+- **Saída:** o `update` da revisão, o `insert`/`delete` dos registros
+  (`sqlsDoPlano`) e o `commit`. Se uma instrução falha, o servidor descarta o
+  resto da mensagem (o `commit` não roda) e o `catch` de `executar()` desfaz.
+  Só vale **sem evento de saída e sem `aoConfirmar`**: esses precisam de
+  instruções depois das escritas, e o fim segue instrução por instrução, como
+  na Fase 12. Nenhum chamador do regime `travado` mudou.
+
+Sem `$1` na mensagem, os dados viajam como **literal entre dólares**
+(`literalEntreDolares`): a marca é sorteada a cada uso e só vale se o texto não
+a contém. Os registros vão como UM literal `jsonb` lido de volta por
+`jsonb_to_recordset`. `unidade-de-trabalho-em-lote.test.ts` prova, contra
+Postgres, que isso grava exatamente o que `gravar()` por parâmetros gravaria
+(texto hostil, `ordem` fracionária, remoção, carga de ~1,6 MB) e que uma falha
+no meio da mensagem desfaz a revisão também.
+
+`MedicaoDaExecucao.idasEVoltas` conta as vezes que a gravação foi ao banco, e vai
+na linha `"gravacao medida"`. Uma gravação comum mede **2**; a primeira do
+processo mede até 4 (a guarda dos Canais ainda não confirmou a tabela). O
+regime `otimista` não mudou. Com o lote, `inicioMs` guarda a mensagem de
+entrada inteira (inclusive a espera pela trava) e `gravarMs`, a de saída; `travaMs`,
+`atualizaMs` e `commitMs` ficam em 0 no caminho em lote, e `hidratarMs` passa a
+ser só processador.
+
+## Os prazos do servidor e a trava esgotada (06-13; a trava no começo, Fase 12)
+
+**A trava e os dois regimes (12-04, D-09/D-10).** `executar()` evita que duas
+gravações no mesmo Espaço se invalidem de duas formas, escolhidas por
+`regime`:
+
+- **`travado` (o padrão).** Logo depois do `begin` com os prazos, a primeira
+  instrução é `select revisao from plataforma.workspaces where workspace_id = $1
+  for update`, **separada** de `hidratar()` (em READ COMMITTED cada instrução
+  enxerga o que foi confirmado até o instante em que começa, então a hidratação
+  seguinte vê o que o escritor anterior confirmou; fundir as duas numa consulta
+  daria registros velhos com a revisão nova). Quem chega durante outra gravação
+  espera a vez e grava com **uma tentativa só**; o `update … revisao = revisao + 1`
+  não confere mais a revisão. `tentativas` não existe nesse regime (o tipo
+  recusa).
+- **`otimista` (só as quatro importações manuais longas).** O que valia até a
+  Fase 11: a revisão é lida na hidratação e conferida no `update … where
+  revisao = $2` do fim, com até 3 tentativas (`tentativas`). Travar o Espaço
+  desde o começo seguraria o `ws_n1` inteiro durante os minutos de uma
+  importação. As quatro: `importar-contas-a-pagar`, `importar-contas-a-receber`,
+  `financeiro/importar` e `corrigir-data-de-pagamento-cr`. Tela, agendador,
+  ponte do Agente, ponte do Financeiro, formulários públicos, anexos, convite,
+  `criar-usuario` e todo `bootstrap/*` gravam no `travado`. A janela que
+  sobra: o `update` do fim toma a trava da linha do Espaço e a segura durante o
+  `gravar()` do lote, os eventos e o `commit`; uma gravação da tela nesse
+  intervalo espera o `lock_timeout` (10 s), vira 409 e a tela reverte o que
+  já tinha mostrado. Rode as importações fora do horário de uso.
+  `regime-dos-chamadores.test.ts` falha se outro arquivo passar `otimista`.
 
 `inicioDaTransacao()` abre toda Unidade de Trabalho com três prazos do lado do
 servidor, derivados do `query_timeout` Q do pool (`DATABASE_QUERY_TIMEOUT_MS`,
@@ -27,25 +98,41 @@ servidor, derivados do `query_timeout` Q do pool (`DATABASE_QUERY_TIMEOUT_MS`,
   depois de travar a revisão é encerrada;
 - `statement_timeout = 80 % de Q`: o servidor cancela a instrução antes de o
   cliente desistir dela;
-- `lock_timeout = Q / 3`: a espera pela trava da revisão do Espaço tem prazo.
+- `lock_timeout = Q / 3`: a espera pela trava do Espaço tem prazo (10 s com
+  Q = 30 s).
 
-Os três ficam com no mínimo 1 ms, porque `0` desliga. Com Q = 0, a transação
-abre com o `begin` puro.
+Os três ficam com no mínimo 1 ms, porque `0` desliga. **Com Q = 0 o regime
+`otimista` abre com o `begin` puro; o `travado` abre com `begin; set local
+lock_timeout = 10000`** (`inicioDaTransacaoTravada()`, `TRAVA_DE_RESERVA_MS`):
+um CLI de `bootstrap/` rodado com a variável herdada do shell do operador nunca
+espera pela trava sem prazo. Q = 0 é só das importações otimistas.
 
-O motivo é o diagnóstico H4 de `06-13-SUMMARY.md`. O `query_timeout` é um
-temporizador do CLIENTE: quando ele estoura, o `pg` devolve `Query read timeout`
-e não cancela nada no servidor. Um `update ... revisao` órfão podia continuar
+O motivo dos prazos é o diagnóstico H4 de `06-13-SUMMARY.md`. O `query_timeout`
+é um temporizador do CLIENTE: quando ele estoura, o `pg` devolve `Query read
+timeout` e não cancela nada no servidor. Uma instrução órfã podia continuar
 esperando a trava, e depois segurá-la, enquanto os escritores seguintes
 estouravam os seus 30 s.
 
-Em `executar()`, `55P03` (trava esgotada) no `update ... revisao` é tratado
-como **conflito**, igual a uma revisão que mudou:
-- desfaz a transação e tenta de novo, até `tentativas`;
-- devolve `{ conflito: true }` (409 na rota, transitório na ponte);
-- a conexão está sã e volta ao pool.
+**O que `55P03` (trava esgotada) vira em `executar()`:**
 
-Qualquer outro erro, inclusive `57014` (cancelado pelo `statement_timeout`) e
-um `55P03` fora da revisão, sobe como antes e descarta a conexão.
+- **Regime `travado`:** `55P03` no `select … for update` é **conflito**, sem
+  repetir — desfaz com um `rollback`, devolve `{ conflito: true }` (409 na rota,
+  transitório na ponte) depois de no máximo ~10 s (Q = 30 s), e a conexão, que
+  está sã, volta ao pool. Quem chamou decide se tenta de novo.
+- **Regime `otimista`:** `55P03` no `update … revisao` continua conflito, igual
+  a uma revisão que mudou: desfaz e tenta de novo, até 3 tentativas.
+- **Fora da trava, nos dois regimes:** qualquer outro erro, inclusive `57014`
+  (cancelado pelo `statement_timeout`) e um `55P03` em outro ponto (no
+  `commit`, no `aoConfirmar`), sobe como exceção e descarta a conexão.
+
+**Escritores esperando seguram conexão.** No `travado` cada escritor que espera
+a vez fica com a conexão tomada (até o `lock_timeout`), e o pool tem 10: dez
+escritores esperando esgotam o pool, e o hook de autenticação e `GET /estado`
+entram na fila (RESEARCH, Pitfall 2; T-12-09). Por isso a espera é limitada a
+~10 s e a uma tentativa, e a linha de medição de `POST /operacoes/:nome` traz
+`conexaoMs` (a espera pelo pool) e `travaMs` (a espera pela trava) — é onde se
+vê isso acontecer. O agendador e a ponte do Agente também enfileiram atrás dos
+gestos de tela no mesmo Espaço.
 
 **Os prazos valem para todo chamador de `executar()` (06-19, crm2:IN-05).**
 O `statement_timeout` (80 % de Q) vale também para o `gravar` em lote dos
@@ -53,10 +140,10 @@ importadores e para o `aoConfirmar` dos formulários públicos: uma instrução
 entre 0,8·Q e Q, que antes de 06-13 passava, agora é cancelada com `57014`.
 Por isso a importação longa (`importar-contas-a-pagar`,
 `importar-contas-a-receber`, `financeiro/importar`) roda com
-`DATABASE_QUERY_TIMEOUT_MS=0` na execução manual (Q = 0 abre a transação com
-o `begin` puro) — nunca no processo da API, que continua com os prazos. E o
-`lock_timeout` vale para QUALQUER instrução da transação, não só para o
-`update … revisao`: um `55P03` fora dela (ex.: o `consumirSessao … for update`
+`DATABASE_QUERY_TIMEOUT_MS=0` na execução manual (Q = 0 abre a transação do
+regime otimista com o `begin` puro) — nunca no processo da API, que continua
+com os prazos. E o `lock_timeout` vale para QUALQUER instrução da transação,
+não só para a trava: um `55P03` fora dela (ex.: o `consumirSessao … for update`
 dos formulários públicos, ou a hidratação durante uma DDL) sobe como exceção
 (500), não como 409. É seguro: a Unidade de Trabalho desfaz a transação
 inteira, e a submissão pública é idempotente pelo `submissionId` — o cliente

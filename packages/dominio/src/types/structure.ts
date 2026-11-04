@@ -315,7 +315,6 @@ export interface ChecklistItem {
   doneBy?: ActorRef;
   /** B48 — 0..1 Member, never an Agent. */
   assigneeMemberId?: Id;
-  readonly parentItemId?: Id;
   /** B48 — terminal marker; out of numerator and denominator of the progress. */
   converted?: { readonly taskId: Id; readonly title: string; readonly at: Instant; readonly by: ActorRef };
 }
@@ -407,6 +406,14 @@ export interface Task extends RecordBase {
   readableId?: string;
   title: string;
   description: string;
+  /**
+   * D-06 (Fase 11) — quem foi escolhido ao digitar `@Nome` na descrição. Só
+   * Membro nesta fase (RN-TAR-14 prevê outros alvos). A lista é DERIVADA do
+   * texto: `updateTask` a refiltra ao gravar e a leitura
+   * (`membrosMencionadosNaDescricao`) só conta o Membro cujo `@Nome` continua
+   * escrito, qualquer que seja o escritor da descrição.
+   */
+  descriptionMentions?: { readonly type: "member"; readonly id: Id }[];
   /** INV-TAR-04 — points at a definition of the List's effective Status Set. */
   statusId: Id;
   taskTypeId: Id;

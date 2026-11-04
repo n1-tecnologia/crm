@@ -13,7 +13,7 @@
 import type { DataState, Member } from "@n1/dominio";
 import { inviteMember } from "@n1/dominio/operations/members";
 import { resolverUsuarioPorEmail, type ResolverUsuario } from "../autenticacao/resolver-usuario";
-import { executar, type ResultadoTransacao } from "../persistencia/unidade-de-trabalho";
+import { executar, type MedicaoDaExecucao, type ResultadoTransacao } from "../persistencia/unidade-de-trabalho";
 
 export interface PedidoDeConvite {
   readonly workspaceId: string;
@@ -29,10 +29,16 @@ export async function convidarMembro(
     /**
      * 1.1.5 — chamado DENTRO do callback de `executar()`, com o estado depois de
      * `inviteMember`. A rota guarda esse estado para recortar a resposta pelo
-     * que quem convidou enxerga, igual ao caminho de `executar()` direto. A
-     * última tentativa (conflito de revisão repete o callback) é a que vale.
+     * que quem convidou enxerga, igual ao caminho de `executar()` direto. O
+     * convite roda no regime `travado` (uma tentativa só): o callback roda uma
+     * vez por chamada.
      */
     readonly aoTerminar?: (state: DataState) => void;
+    /**
+     * Fase 12 (D-02) — repassado a `executar()` (`opcoes.aoMedir`): a medição por
+     * etapa do convite chega à rota, que a escreve no log. Nunca vai ao corpo.
+     */
+    readonly aoMedir?: (medicao: MedicaoDaExecucao) => void;
   } = {},
 ): Promise<ResultadoTransacao<Member>> {
   // Resolve ANTES da transação: se existir uma conta no Auth com este
@@ -42,13 +48,17 @@ export async function convidarMembro(
   const resolver = deps.resolverUsuario ?? resolverUsuarioPorEmail;
   const userId = await resolver(pedido.email);
 
-  return executar(pedido.workspaceId, (state) => {
-    const resultado = inviteMember(state, pedido.actingMemberId, {
-      email: pedido.email,
-      roleId: pedido.roleId,
-      ...(userId !== undefined ? { userId } : {}),
-    });
-    deps.aoTerminar?.(state);
-    return resultado;
-  });
+  return executar(
+    pedido.workspaceId,
+    (state) => {
+      const resultado = inviteMember(state, pedido.actingMemberId, {
+        email: pedido.email,
+        roleId: pedido.roleId,
+        ...(userId !== undefined ? { userId } : {}),
+      });
+      deps.aoTerminar?.(state);
+      return resultado;
+    },
+    deps.aoMedir ? { aoMedir: deps.aoMedir } : {},
+  );
 }

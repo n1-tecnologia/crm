@@ -1,19 +1,19 @@
 ---
 gsd_state_version: "1.0"
 milestone: v1.0
-current_phase: 10
-current_phase_name: "Clone ClickUp: Contêineres (Espaço, Pasta e Lista)"
-status: executing
-stopped_at: Completed 10-15-PLAN.md
-last_updated: "2026-10-29T12:57:13.400Z"
-last_activity: 2026-10-29
-last_activity_desc: Phase 10 execution started
-state_head: 3aacf6175c0de90d5b5adf02c744269a1274d307
+current_phase: 12
+current_phase_name: "Clone ClickUp: gravação mais rápida"
+status: verifying
+stopped_at: Completed 12-10-PLAN.md
+last_updated: "2026-11-02T19:09:23.115Z"
+last_activity: 2026-10-30
+last_activity_desc: Phase 12 execution started
+state_head: 836c7bea139aec7c1af8da6c2d907ae9568a917a
 progress:
   total_phases: 12
   completed_phases: 6
-  total_plans: 191
-  completed_plans: 187
+  total_plans: 209
+  completed_plans: 205
 milestone_name: milestone
 ---
 
@@ -21,17 +21,17 @@ milestone_name: milestone
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-10-11)
+See: .planning/PROJECT.md (updated 2026-10-29)
 
 **Core value:** Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de ponta a ponta sem abrir o ClickUp — dados no Postgres próprio, regras de `@n1/dominio` intactas.
-**Current focus:** Phase 10 — Clone ClickUp: Contêineres (Espaço, Pasta e Lista)
+**Current focus:** Phase 12 — Clone ClickUp: gravação mais rápida
 
 ## Current Position
 
-Phase: 10 (Clone ClickUp: Contêineres (Espaço, Pasta e Lista)) — EXECUTING
-Plan: 21 of 21
-Status: Ready to execute
-Last activity: 2026-10-29 — Phase 10 execution started
+Phase: 12 (Clone ClickUp: gravação mais rápida) — EXECUTING
+Plan: 10 of 10
+Status: Phase complete — ready for verification
+Last activity: 2026-10-30 — Phase 12 execution started
 
 **Fase 06 planejada à mão em 2026-09-29 (Conferência do Resumo e anexos), pronta para `/gsd-execute-phase 6`:**
 `.planning/phases/06-conferencia-do-resumo-e-anexos/` — `06-CONTEXT.md` (13 decisões com padrão e variável de troca) e seis planos em três ondas: 06-01 domínio · 06-02 contrato v1.1 no `financeiro-tria` · 06-03 ponte em dois momentos · 06-04 tela e jornada · 06-05 S5/S6 na Solicitação · 06-06 docs e provas `[BLOCKING]`. Origem: `docs/08-migracao-financeiro/09-…` (desenho) e `10-…` (levantamento etapa por etapa com `arquivo:linha`). Ponto de partida do código: `crm-n1-integracao@3d6f735` (branch `integra-frontend-main`, sem push) e `financeiro-tria@c272dad` (`main`, 99 commits sem push, 89 arquivos sujos só de EOL — `git add` sempre por caminho). O dono ainda não respondeu às quatro perguntas do doc 10; os padrões de D6-01..D6-04 seguem "como no ClickUp", exceto Integração manual (o seguro).
@@ -268,7 +268,7 @@ no checkout principal:**
 
 **Pendência herdada, intocada por decisão do dono:** o worktree órfão `worktree-agent-a5e400fc9712c6c4f` (c131ad0) carrega três commits NÃO MERJADOS do Plano 02-15 (fixação da CA do Postgres em `conexao.ts`, `latencia.test.ts`, runbook de topologia e o próprio 02-15-SUMMARY.md). Existem só ali. A Fase 4 foi iniciada sobre um base SEM essa correção de TLS, deliberadamente. 02-15 continua contando como incompleto.
 
-Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133 plans — Phases 0, 1, 3, 5, 6 e 7 completas; 2 e 4 abertas
+Progress: [██████░░░░] 63%
 
 **Fase 1 fechada (segunda rodada de CR-02 concluída):** os 9 planos originais (01-01..01-09), o gap-closure de CR-01 (01-10) e as cinco rodadas de fechamento de CR-02 (01-11..01-16) estão feitos e commitados. A re-verificação de 2026-09-16T20:16Z (`01-VERIFICATION.md`) tinha encontrado CR-02 parcialmente aberto (efeito 2 — `ARGUMENTOS_GENERICOS` não barrava tipo/enum errado nas ~109 operações fora de `ESQUEMAS` — e WR-10 — `reviverArgumentos` sem limite de profundidade); a decisão de cobertura total em 5 planos (01-12 fundação+WR-10; 01-13/14/15 schemas por módulo em paralelo; 01-16 composição final) está executada: `ESQUEMAS` cobre as 132 operações sob `satisfies EsquemasCompletos`, sem fallback, e o mapeamento `TypeError → 400` saiu da rota (WR-11). `npm run check` verde nos três workspaces (dominio 253, web 53, api 163). PERS-08 (deploy do `apps/api`) continua bloqueado por D11 — não é gap de código, é decisão de infraestrutura fora do escopo desta fase. Pronta para nova rodada de `/gsd-verify-phase 1`.
 
@@ -278,7 +278,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 
 **Velocity:**
 
-- Total plans completed: 38
+- Total plans completed: 46
 - Average duration: —
 - Total execution time: 0 hours
 
@@ -288,6 +288,7 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 |-------|-------|-------|----------|
 | 05 | 25 | - | - |
 | 07 | 13 | - | - |
+| 11 | 8 | - | - |
 
 **Recent Trend:**
 
@@ -405,6 +406,24 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 132/133
 | Phase 10 P19 | 9 min | 2 tasks | 4 files |
 | Phase 10 P13 | 8 min | 2 tasks | 7 files |
 | Phase 10 P15 | 2h | 3 tasks | 11 files |
+| Phase 11 P01 | 4 min | 3 tasks | 12 files |
+| Phase 11 P02 | 6 min | 2 tasks | 8 files |
+| Phase 11 P03 | 5 min | 2 tasks | 6 files |
+| Phase 11 P04 | 5 min | 2 tasks | 6 files |
+| Phase 11 P05 | 13 min | 2 tasks | 4 files |
+| Phase 11 P06 | 6 min | 3 tasks | 8 files |
+| Phase 11 P07 | 10 min | 3 tasks | 5 files |
+| Phase 11 P08 | 20 min | 3 tasks | 5 files |
+| Phase 12 P01 | 8 min | 2 tasks | 6 files |
+| Phase 12 P02 | 7 min | 3 tasks | 8 files |
+| Phase 12 P03 | 5min | 3 tasks | 2 files |
+| Phase 12 P04 | 27 min | 3 tasks | 13 files |
+| Phase 12 P05 | 6 min | 2 tasks | 4 files |
+| Phase 12 P06 | 15min | 2 tasks | 7 files |
+| Phase 12 P07 | 20 min | 2 tasks | 6 files |
+| Phase 12 P08 | 20min | 2 tasks | 8 files |
+| Phase 12 P09 | 25 min | 2 tasks | 8 files |
+| Phase 12 P10 | 50min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -591,6 +610,36 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 10]: 10-19: copy nova «Gravando a ordem…» como motivo dos itens Mover para…/Subir/Descer desligados durante a gravação; fora do UI-SPEC, pendente de confirmação do dono — ActionMenu só desliga um item com disabledReason
 - [Phase 10]: 10-13: o arrastar da árvore é um hook fora da casca (useArrastarNaArvore) e a TreeRow saiu do app-shell para linha-da-arvore.tsx (teto de 1.250 linhas); toda linha da Estrutura fora de Meus negócios recebe a soltura (A2) e só arrasta quem administra o item; o aviso de mover só sai depois da resposta do servidor
 - [Phase 10]: 10-15 Q3 = direto: a Lista que entra no catálogo do relógio só pela lixeira roda a primeira volta sem ensaio e a ponte do Agente de lançamento passa a expurgar Contas a pagar/receber (prévia de produção: 65 Tarefas vencidas, todas em Espaços de teste; 0 no ws_n1) — Decisão do dono em 2026-10-29 depois de ver a prévia só leitura contra produção; registrada em 10-PROVAS.md
+- [Phase 11]: 11-01: conversaoDeItemRecusada (derive.ts) e a recusa unica de convertChecklistItem e da tela; parametro de Tarefa pai alternativa removido da funcao e do esquema (D-04)
+- [Phase 11]: 11-01: checklist de um nivel so, campo de Subitem fora do tipo, do dominio e da tela; sem migracao SQL, contagem em producao fica para o checkpoint de 11-08 (D-02)
+- [Phase 11]: 11-02: a invariante 'menção sem @Nome nunca avisa' vale na leitura (membrosMencionadosNaDescricao); updateTask só refiltra por higiene — Rollback do financeiro e recorrência escrevem a descrição fora de updateTask
+- [Phase 11]: 11-02: histórico da descrição corta em 2.000 pontos de código + '…' (2.001), before vazio presente — A4 do plano; muda uma constante se o dono esperava 2.000 contando o '…'
+- [Phase 11]: [11-03] D-15/D-16: tempoRegistrado conta o cronometro aberto em lancamentos (A2), ignora Subtarefa fora de ativo e tudo abaixo dela (A3) e nao le o relogio; minutos() vive so em features/estrutura/tempo.ts
+- [Phase 11]: 11-04: variante descricao de pendingMentions só para quem vê a Tarefa, ativa e fora de categoria terminal; Comentário sem o filtro terminal; ordem pela última Descrição alterada; quem se menciona também vê o aviso
+- [Phase 11]: 11-05: useMencoes e a copia unica do @ na Estrutura; campoRef do hook e ref de callback e o TextArea o liga por useImperativeHandle (react-hooks/refs)
+- [Phase 11]: 11-06: AlteracaoDeDescricao única serve Feed e Timeline; ehAlteracaoDeDescricao guarda Feed, Timeline, Auditoria e Reunião
+- [Phase 11]: 11-07 D-05/D-01: botao de converter sai de conversaoDeItemRecusada; confirmacao de um clique sem digitar o nome; aviso Abrir usa o id do servidor (useRunConfirmado)
+- [Phase 11]: 11-07 D-06: DescricaoDaTarefa destaca so o @Nome da lista efetiva (segmentosComMencoes), com span data-mencao e sem HTML
+- [Phase 12]: 12-01: medição de executar() por callback aoMedir, não por campo de ResultadoTransacao (o resultado vira corpo HTTP em cinco pontos; D-03 proíbe a medição no corpo)
+- [Phase 12]: 12-01: travaMs = tempo até a revisão estar garantida nos dois regimes (aqui o update ... where revisao; em 12-04 o select for update mais o update); atualizaMs isola o update
+- [Phase 12]: 12-02: gesto da lixeira usa o mesmo Espaço de teste restaurado por restoreContainer fora da medição (o domínio aceitou)
+- [Phase 12]: 12-02: Task 3 fechada sem a observação do D-03 no serviço real (nenhuma requisição da tela chegou à VPS; causa não apurada); ponto aberto para o 12-10
+- [Phase 12]: 12-03: parada respondida com b-ganho-basta e 'C não entra' (dono aceitou a recomendação); caminho B sem meta numérica, 12-10 registra o 'depois' ao lado do 'antes'; sessão C fora do ROADMAP (hidratar direto 147.5 ms < 300 ms)
+- [Phase 12]: 12-04: a trava é uma instrução própria (select … for update) depois do begin e antes de hidratar; fundir begin e trava numa consulta só fica para depois da medição (Pitfall 9).
+- [Phase 12]: 12-04: OpcoesExecucao é união por regime — tentativas só existe no regime otimista; o travado grava com uma tentativa e 55P03 na trava vira conflito (409) sem repetir.
+- [Phase 12]: 12-04: com Q = 0 o regime travado abre com set local lock_timeout = 10000 (TRAVA_DE_RESERVA_MS); só as quatro importações longas (otimista) usam o begin puro.
+- [Phase 12]: 12-05: Transporte.gravar devolve resposta ou lista; as implementações reais sempre devolvem lista e store.ts normaliza com Array.isArray (as fakes de teste não mudam)
+- [Phase 12]: 12-05: diferença que não encaixa na revisão do store re-hidrata uma vez e para; o GET /estado já traz as chamadas seguintes (D-12)
+- [Phase 12]: 12-06: copy-on-write no store — data e confirmado são o mesmo objeto sem pendente otimista; a cópia aceita vira data na hora (D-13)
+- [Phase 12]: 12-06: o erro de uma pendente que falha ao ser refeita não encobre em lastResult a recusa que a derrubou; a promessa dela resolve com o erro próprio
+- [Phase 12]: 12-06: rehidratar() público entra na fila serial (D-16, Pitfall 3); a re-hidratação de dentro de enviar chama hidratarAgora direto
+- [Phase 12]: 12-07: a lista de exceções de D-13 fica com as 14 operações verificadas (segredo, JID, link, chave, inviteMember, agendador); as 7 candidatas [ASSUMED] foram lidas e ficam otimistas
+- [Phase 12]: 12-07: decideProcessApproval e a conferência do resumo ficam fora da lista (resultado local = servidor); entrar nela é decisão de UX do dono, registrada em 12-PROVAS.md
+- [Phase 12]: 12-08: todo id novo de qualquer coleção conta como pendente (idsNaoConfirmados), não só o do registro criado; o 12-09 consome esse conjunto
+- [Phase 12]: 12-08: o 'salvando' é anunciável (aria-busy, title e texto sr-only 'Salvando…'), não só cor; ações de Status da linha pendente seguem ligadas pela fila serial
+- [Phase 12]: 12-09: a guarda de navegação cancela na captura do document o click, o auxclick, o cmd/ctrl+clique e o clique de teclado numa âncora com id pendente; o botão direito (menu do navegador) não é interceptável — O Link navega dentro do onClick do React (contêiner raiz, abaixo do document), então parar a propagação na captura o impede de rodar; o cmd/ctrl+clique abriria uma aba nova numa página que não existe
+- [Phase 12]: 12-09: router.push direto para id local não passa pela guarda de âncoras; Editar conta (financeiro) e a Reunião do Quadro do Funil esperam o id (Salvando…); iniciar-conversa-dialog.tsx:113 ficou em aberto — D-15: nunca leva a uma página de id que não existe; trocar o diálogo de iniciar conversa por runConfirmado muda o ritmo do diálogo e é decisão de produto
+- [Phase 12]: 12-10: coluna Meta 'sem alvo numerico' (b-ganho-basta); a trava custou uma ida e volta (~51 ms) e o pedidoMs isolado subiu 11% a 17%; D-03 do depois e a conferencia do dono na tela NAO OBSERVADOS; opcao do Pitfall 9 registrada para o dono decidir — A medicao de um pedido isolado nao capta o ganho da fase (a tela e a concorrencia).
 
 ### Pending Todos
 
@@ -652,6 +701,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-10-29T12:57:13.170Z
-Stopped at: Completed 10-15-PLAN.md
+Last session: 2026-11-02T19:09:13.769Z
+Stopped at: Completed 12-10-PLAN.md
 Resume file: None
