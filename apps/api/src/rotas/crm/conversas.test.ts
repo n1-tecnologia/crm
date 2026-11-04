@@ -63,6 +63,14 @@ describe("rotas de Conversas — serviço falso, sem banco", () => {
         chamadas.push(["atribuir", ...a]);
         return resposta();
       },
+      enviarParaLixeira: (...a) => {
+        chamadas.push(["enviarParaLixeira", ...a]);
+        return resposta();
+      },
+      restaurar: (...a) => {
+        chamadas.push(["restaurar", ...a]);
+        return resposta();
+      },
     };
     return { servico, chamadas };
   }
@@ -254,6 +262,28 @@ describe("rotas de Conversas — serviço falso, sem banco", () => {
       expect(chamadas[0]?.[3]).toEqual({ atribuido });
     },
   );
+
+  it.each([
+    ["lixeira", "enviarParaLixeira"],
+    ["restaurar", "restaurar"],
+  ])("POST /conversas/x/%s sem corpo e sem content-type responde 200 e chama o serviço", async (acao, metodo) => {
+    const { servico, chamadas } = novoFalso();
+    const app = appCom(servico);
+    const resposta = await app.inject({ method: "POST", url: `/conversas/x/${acao}`, headers: AUTORIZACAO });
+    expect(resposta.statusCode).toBe(200);
+    expect(resposta.json()).toMatchObject({ ok: true, dados: { conversa: { id: "v1" } } });
+    expect(chamadas[0]?.[0]).toBe(metodo);
+    expect(chamadas[0]?.[1]).toMatchObject({ id: "mem_maryane" });
+    expect(chamadas[0]?.[2]).toBe("x");
+    // Com content-type json e corpo vazio a rota (sem `body` no schema) também não quebra.
+    const comJson = await app.inject({
+      method: "POST",
+      url: `/conversas/x/${acao}`,
+      headers: { ...AUTORIZACAO, "content-type": "application/json" },
+      payload: "",
+    });
+    expect(comJson.statusCode).toBe(200);
+  });
 
   it("não há DELETE /conversas/:id nesta fase", async () => {
     const { servico, chamadas } = novoFalso();

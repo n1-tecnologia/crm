@@ -498,4 +498,76 @@ describeComBanco("ServicoDeConversas — Postgres local", () => {
       expect(recusado(await servico.atribuir(c.membro, conversa.id, { atribuido: { tipo: "membro", id: "mem_admin" } }))).toMatchObject({ status: 409 });
     });
   });
+
+  describe("lixeira e restaurar (3.2.6)", () => {
+    async function resolvida(c: Contexto, valorWhats: string, nome = "Ana") {
+      const ana = await contato(c.ws, nome, [{ tipo: "whatsapp", valor: valorWhats }]);
+      const canal = await comercial(c.ws, { identificadorExterno: `+55119${valorWhats.slice(-8)}` });
+      const aberta = valor(await abrir(c, canal, ana));
+      valor(await servico.resolver(c.membro, aberta.conversa.id));
+      return { ana, canal, id: aberta.conversa.id };
+    }
+
+    const filtro = (estado: "ativo" | "na_lixeira") => ({ estado, limite: 50, deslocamento: 0 });
+
+    it("Conversa resolvida → lixeira guarda na_lixeira_em, sai de ativo e aparece em na_lixeira; restaurar volta e zera a data", async () => {
+      const c = await espaco("lixeira");
+      const { id } = await resolvida(c, "+5511966663001");
+
+      const mandada = valor(await servico.enviarParaLixeira(c.membro, id));
+      expect(mandada.conversa).toMatchObject({ id, estado: "na_lixeira", situacao: "resolvida" });
+      expect(mandada.conversa.naLixeiraEm).not.toBeNull();
+      expect(mandada.canal.id).toBeTruthy();
+      expect(valor(await servico.listar(c.membro, filtro("ativo"))).itens.map((i) => i.id)).not.toContain(id);
+      expect(valor(await servico.listar(c.membro, filtro("na_lixeira"))).itens.map((i) => i.id)).toEqual([id]);
+
+      const volta = valor(await servico.restaurar(c.membro, id));
+      expect(volta.conversa).toMatchObject({ id, estado: "ativo", naLixeiraEm: null });
+      const { rows } = await pool().query("select estado, na_lixeira_em from plataforma.conversas where workspace_id = $1 and id = $2", [c.ws, id]);
+      expect(rows[0]).toEqual({ estado: "ativo", na_lixeira_em: null });
+      expect(valor(await servico.listar(c.membro, filtro("na_lixeira"))).total).toBe(0);
+    });
+
+    it("Conversa aberta → 409 TRANSICAO_INVALIDA com a frase; já na lixeira também; restaurar fora da lixeira também", async () => {
+      const c = await espaco("lixeiraaberta");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966663002" }]);
+      const canal = await comercial(c.ws);
+      const aberta = valor(await abrir(c, canal, ana));
+
+      expect(recusado(await servico.enviarParaLixeira(c.membro, aberta.conversa.id))).toMatchObject({
+        status: 409,
+        codigo: "TRANSICAO_INVALIDA",
+        error: "Resolva a Conversa antes de mandá-la para a lixeira.",
+      });
+      expect(recusado(await servico.restaurar(c.membro, aberta.conversa.id))).toMatchObject({ status: 409, codigo: "TRANSICAO_INVALIDA" });
+
+      valor(await servico.resolver(c.membro, aberta.conversa.id));
+      valor(await servico.enviarParaLixeira(c.membro, aberta.conversa.id));
+      expect(recusado(await servico.enviarParaLixeira(c.membro, aberta.conversa.id))).toMatchObject({ status: 409, codigo: "TRANSICAO_INVALIDA" });
+    });
+
+    it("restaurar com o Contato na lixeira → 409 e a Conversa continua na lixeira", async () => {
+      const c = await espaco("lixeiracontato");
+      const { ana, id } = await resolvida(c, "+5511966663003");
+      valor(await servico.enviarParaLixeira(c.membro, id));
+      await pool().query("update plataforma.contatos set estado = 'na_lixeira' where workspace_id = $1 and id = $2", [c.ws, ana]);
+
+      const r = recusado(await servico.restaurar(c.membro, id));
+      expect(r).toMatchObject({ status: 409, codigo: "TRANSICAO_INVALIDA" });
+      expect(r.error).toContain("Restaure o Contato antes");
+      expect(valor(await servico.obter(c.membro, id)).conversa.estado).toBe("na_lixeira");
+    });
+
+    it("Convidado → 403 nas duas; outro Espaço → 404 nas duas", async () => {
+      const c = await espaco("lixeirapapel");
+      const outro = await espaco("lixeirapapelb");
+      const { id } = await resolvida(c, "+5511966663004");
+
+      expect(recusado(await servico.enviarParaLixeira(c.convidado, id))).toMatchObject({ status: 403, codigo: "PERMISSAO" });
+      expect(recusado(await servico.restaurar(c.convidado, id))).toMatchObject({ status: 403, codigo: "PERMISSAO" });
+      expect(recusado(await servico.enviarParaLixeira(outro.membro, id))).toMatchObject({ status: 404, codigo: "CONVERSA_NAO_ENCONTRADA" });
+      expect(recusado(await servico.restaurar(outro.membro, id))).toMatchObject({ status: 404, codigo: "CONVERSA_NAO_ENCONTRADA" });
+      expect(valor(await servico.obter(c.membro, id)).conversa.estado).toBe("ativo");
+    });
+  });
 });

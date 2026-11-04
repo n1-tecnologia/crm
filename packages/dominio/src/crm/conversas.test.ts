@@ -14,8 +14,10 @@ import {
   proximaSituacao,
   tituloDaConversa,
   validarAtribuicao,
+  validarLixeira,
   validarMover,
   validarNovaConversa,
+  validarRestauracao,
   type ParticipanteDaConversa,
 } from "./conversas";
 
@@ -186,6 +188,48 @@ describe("validarAtribuicao (3.2.6, parte 1)", () => {
     expect(validarAtribuicao({ estado: "na_lixeira" })).toEqual({
       ok: false,
       error: "Uma Conversa na lixeira não é atribuída. Restaure-a antes.",
+    });
+  });
+});
+
+describe("validarLixeira (3.2.6: só a Conversa resolvida vai para a lixeira)", () => {
+  it("aceita a Conversa resolvida e ativa", () => {
+    expect(validarLixeira({ situacao: "resolvida", estado: "ativo" })).toEqual({ ok: true, value: undefined });
+  });
+
+  it.each(["aberta", "pendente"] as const)("recusa a Conversa %s: resolva antes", (situacao) => {
+    expect(validarLixeira({ situacao, estado: "ativo" })).toEqual({
+      ok: false,
+      error: "Resolva a Conversa antes de mandá-la para a lixeira.",
+    });
+  });
+
+  it("recusa a Conversa que já está na lixeira", () => {
+    expect(validarLixeira({ situacao: "resolvida", estado: "na_lixeira" })).toEqual({
+      ok: false,
+      error: "A Conversa já está na lixeira.",
+    });
+  });
+});
+
+describe("validarRestauracao (3.2.6: a Conversa volta para ativo, mas não para um Contato na lixeira)", () => {
+  it("aceita a Conversa na lixeira com Contato ativo, arquivado ou mesclado", () => {
+    for (const estado of ["ativo", "arquivado", "mesclado"] as const) {
+      expect(validarRestauracao({ estado: "na_lixeira" }, { estado })).toEqual({ ok: true, value: undefined });
+    }
+  });
+
+  it("recusa a Conversa que não está na lixeira", () => {
+    expect(validarRestauracao({ estado: "ativo" }, { estado: "ativo" })).toEqual({
+      ok: false,
+      error: "A Conversa não está na lixeira.",
+    });
+  });
+
+  it("recusa quando o Contato está na lixeira: restaure o Contato antes", () => {
+    expect(validarRestauracao({ estado: "na_lixeira" }, { estado: "na_lixeira" })).toEqual({
+      ok: false,
+      error: "O Contato está na lixeira. Restaure o Contato antes: uma Conversa sem Contato resolvido não é roteável.",
     });
   });
 });
