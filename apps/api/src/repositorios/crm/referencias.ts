@@ -119,3 +119,43 @@ export async function avancarRevisaoDoEspaco(cliente: Cliente, workspaceId: stri
     [workspaceId],
   );
 }
+
+/**
+ * A finalidade de consentimento existe NESTE Espaço, é `kind = 'finalidadeConsentimento'`
+ * e está `ativo` (3.2.4). O Catálogo continua em `registros` até a unificação (OQ7): o
+ * consentimento novo só aponta para ele por id.
+ */
+export async function finalidadeDeConsentimentoAtiva(cliente: Cliente, workspaceId: string, id: string): Promise<boolean> {
+  const { rowCount } = await cliente.query(
+    `select 1
+       from plataforma.registros
+      where workspace_id = $1
+        and colecao = 'catalog'
+        and id = $2
+        and dados->>'kind' = 'finalidadeConsentimento'
+        and dados->>'lifecycle' = 'ativo'`,
+    [workspaceId, id],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+/**
+ * O id da finalidade "marketing" do Espaço: o item `finalidadeConsentimento` de nome
+ * "marketing", sem diferenciar maiúscula — o mesmo critério com que
+ * `marketingConsentMissing` (`derive.ts`) a acha no modelo antigo. `undefined` quando
+ * o Espaço não tem a finalidade.
+ */
+export async function finalidadeDeMarketing(cliente: Cliente, workspaceId: string): Promise<string | undefined> {
+  const { rows } = await cliente.query<{ id: string }>(
+    `select id
+       from plataforma.registros
+      where workspace_id = $1
+        and colecao = 'catalog'
+        and dados->>'kind' = 'finalidadeConsentimento'
+        and lower(dados->>'name') = 'marketing'
+      order by ordem, id
+      limit 1`,
+    [workspaceId],
+  );
+  return rows[0]?.id;
+}
