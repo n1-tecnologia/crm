@@ -1,9 +1,9 @@
 /**
- * 1.2.1 — o Membro `suspenso` consulta, mas não grava: `POST /operacoes/:nome`
- * responde 403 logo depois de conferir o nome da operação, ANTES de validar o
- * argumento e antes de tocar o banco. O hook de autenticação deixa o suspenso
- * passar de propósito (para consultar); toda operação do registro grava
- * (`registro.ts`, regra de inclusão), então a recusa vale para todas.
+ * 12.1.5 (B) — o Membro `suspenso` fica sem acesso: o hook de autenticação o
+ * recusa com 403 `SUSPENSO` antes de qualquer rota, inclusive a leitura de
+ * `GET /estado`, antes de validar o argumento e antes de tocar o banco. Até a
+ * Sessão 12 (1.2.1) ele consultava e só a escrita era recusada; a recusa de
+ * `POST /operacoes/:nome` continua lá como segunda barreira.
  *
  * Sem banco: rodar com `DATABASE_URL` vazia prova que o 403 vem antes de
  * qualquer acesso a ele. A autenticação é uma tabela de tokens injetada, e este
@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 import { usuarioDoSeed } from "@n1/dominio";
 import { buildSeed } from "@n1/dominio/seed";
 import { buildApp } from "../app";
-import { FRASE_DE_SUSPENSO } from "../plugins/autenticacao";
+import { CODIGO_SUSPENSO, FRASE_DE_SUSPENSO } from "../plugins/autenticacao";
 
 const semente = buildSeed();
 const ativo = semente.members.find((m) => m.id === "mem_maryane");
@@ -41,18 +41,25 @@ function appDeTeste() {
 const chamar = (token: string, nome: string, payload: unknown) =>
   appDeTeste().inject({ method: "POST", url: `/operacoes/${nome}`, headers: { authorization: `Bearer ${token}` }, payload: payload as object });
 
-describe("POST /operacoes/:nome — Membro suspenso (1.2.1), sem banco", () => {
-  it("o suspenso chama trashContact com qualquer corpo e recebe 403 com a frase do acesso suspenso", async () => {
+describe("Membro suspenso (12.1.5 B), sem banco", () => {
+  it("o suspenso chama trashContact com qualquer corpo e recebe 403 com a frase e o codigo do suspenso", async () => {
     // O corpo é inválido para a operação de propósito: a recusa vem antes da validação do argumento.
     const resposta = await chamar(TOKEN_SUSPENSO, "trashContact", { args: [] });
     expect(resposta.statusCode).toBe(403);
-    expect(resposta.json()).toEqual({ ok: false, error: FRASE_DE_SUSPENSO });
-    expect(FRASE_DE_SUSPENSO).toBe("Seu acesso está suspenso: você consulta, mas não altera.");
+    expect(resposta.json()).toEqual({ ok: false, error: FRASE_DE_SUSPENSO, codigo: CODIGO_SUSPENSO });
+    expect(FRASE_DE_SUSPENSO).toBe("Seu acesso foi suspenso.");
   });
 
-  it("o nome da operação é conferido primeiro: o suspenso chamando uma operação que não existe recebe 404", async () => {
+  it("o suspenso não chega nem à conferência do nome: uma operação que não existe também dá 403", async () => {
     const resposta = await chamar(TOKEN_SUSPENSO, "naoExiste", { args: [] });
-    expect(resposta.statusCode).toBe(404);
+    expect(resposta.statusCode).toBe(403);
+    expect(resposta.json().codigo).toBe(CODIGO_SUSPENSO);
+  });
+
+  it("o suspenso não consulta: GET /estado dá 403 antes de tocar o banco", async () => {
+    const resposta = await appDeTeste().inject({ method: "GET", url: "/estado", headers: { authorization: `Bearer ${TOKEN_SUSPENSO}` } });
+    expect(resposta.statusCode).toBe(403);
+    expect(resposta.json()).toEqual({ ok: false, error: FRASE_DE_SUSPENSO, codigo: CODIGO_SUSPENSO });
   });
 
   it("um Membro ativo com argumentos inválidos continua recebendo 400 (a recusa nova não engole a validação)", async () => {

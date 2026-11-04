@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../seed";
 import type { DataState } from "../state";
 import type { Member } from "../types";
-import { aceitarConvite, reativarMembro, suspenderMembro } from "./ciclo-do-membro";
+import { aceitarConvite, reativarMembro, registrarReenvioDoConvite, suspenderMembro } from "./ciclo-do-membro";
 import { inviteMember } from "./members";
 
 let state: DataState;
@@ -102,5 +102,25 @@ describe("suspenderMembro e reativarMembro", () => {
     expect(reativarMembro(state, dono, pendente.id).ok).toBe(false);
     const removido = state.members.find((m) => m.state === "removido")!;
     expect(reativarMembro(state, dono, removido.id).ok).toBe(false);
+  });
+});
+
+describe("registrarReenvioDoConvite (12.3.2, fora de OPERACOES)", () => {
+  it("liga a conta criada pelo reenvio ao convite antigo sem Usuário e grava a Atividade", () => {
+    const antigo = convidado();
+    expect(antigo.userId).toBeUndefined();
+    const r = registrarReenvioDoConvite(state, dono, { memberId: antigo.id, userId: "usr_reenvio" });
+    expect(r.ok).toBe(true);
+    expect(antigo.userId).toBe("usr_reenvio");
+    expect(ultimaAtividade()).toMatchObject({ action: "Convite reenviado", actor: { kind: "member", id: dono }, objectId: antigo.id });
+  });
+
+  it("não troca a conta de um convite que já tem Usuário, e recusa quem não é pendente ou não governa", () => {
+    const comConta = convidado("usr_original");
+    expect(registrarReenvioDoConvite(state, dono, { memberId: comConta.id, userId: "usr_outro" }).ok).toBe(false);
+    expect(comConta.userId).toBe("usr_original");
+    expect(registrarReenvioDoConvite(state, dono, { memberId: comConta.id }).ok).toBe(true);
+    expect(registrarReenvioDoConvite(state, dono, { memberId: comum().id }).ok).toBe(false);
+    expect(registrarReenvioDoConvite(state, comum().id, { memberId: comConta.id }).ok).toBe(false);
   });
 });

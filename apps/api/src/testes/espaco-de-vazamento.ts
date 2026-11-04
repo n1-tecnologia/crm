@@ -67,8 +67,8 @@ export interface EspacoDeVazamento {
   readonly workspaceId: string;
   readonly estado: DataState;
   /**
-   * `suspenso` é um Membro do seed de Papel base `membro`, marcado `suspenso` no estado da fábrica: consulta, mas
-   * não grava (1.2.1). `convidado` e `administrador` são Membros ativos do seed de cada Papel base (09-12).
+   * `suspenso` é um Membro do seed de Papel base `membro`, marcado `suspenso` no estado da fábrica: desde a
+   * 12.1.5 (B) não entra em rota nenhuma (antes, 1.2.1, consultava e não gravava). `convidado` e `administrador` são Membros ativos do seed de cada Papel base (09-12).
    */
   readonly membros: {
     readonly a: Member;

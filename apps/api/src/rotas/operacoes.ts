@@ -32,12 +32,13 @@ import { ehNomeDeOperacao, OPERACOES, reviverArgumentos, type NomeDeOperacao } f
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { cutucarPonte, type ParDaPonte } from "../automacoes/ponte-ativa";
-import { recusaDeSuspenso, type MembroDaSessao } from "../plugins/autenticacao";
+import { CODIGO_SUSPENSO, recusaDeSuspenso, type MembroDaSessao } from "../plugins/autenticacao";
 import type { EventoDeSaida } from "../persistencia/outbox";
 import { executar, type MedicaoDaExecucao, type ResultadoTransacao } from "../persistencia/unidade-de-trabalho";
 import { recortarDiferenca, recortarValor, visibilidadePara } from "@n1/dominio/derive-visibilidade";
 import { maiorIdDe } from "@n1/dominio/operations";
 import { convidarMembro } from "../servicos/convidar-membro";
+import { LimiteDeEnvio, type AuthDeConvite } from "../autenticacao/auth-de-convite";
 import { LISTA_SOLICITACOES_DE_PAGAMENTO_ID } from "../servicos/dto-solicitacao";
 import { esquemaDeArgumentos } from "./esquemas-de-argumentos";
 
@@ -225,36 +226,41 @@ const ENTRADA_INVITE_MEMBER = z.object({ email: z.string(), roleId: z.string() }
  * compõe I/O antes de entrar na transação em vez de rodar dentro dela. Uma
  * operação sem entrada aqui segue o caminho de hoje: `executar()` direto.
  */
-const SERVICOS: Partial<
-  Record<
-    NomeDeOperacao,
-    (
-      membro: MembroDaSessao,
-      args: readonly unknown[],
-      aoTerminar: (state: DataState) => void,
-      aoMedir: (medicao: MedicaoDaExecucao) => void,
-    ) => Promise<ResultadoTransacao<unknown>>
-  >
-> = {
-  // T-1-08 — `.strip()` descarta qualquer `userId` que o cliente mande em
-  // `args[0]`: a única fonte de `userId` é `resolverUsuarioPorEmail`, dentro
-  // de `convidarMembro`, nunca o corpo da requisição.
-  inviteMember: (membro, args, aoTerminar, aoMedir) => {
-    const entrada = ENTRADA_INVITE_MEMBER.safeParse(args[0]);
-    if (!entrada.success) throw new ErroDeEntrada(mensagemDeEntradaInvalida("inviteMember"));
-    return convidarMembro(
-      {
-        workspaceId: membro.workspaceId,
-        actingMemberId: membro.id,
-        email: entrada.data.email,
-        roleId: entrada.data.roleId,
-      },
-      { aoTerminar, aoMedir },
-    );
-  },
-};
+type Servico = (
+  membro: MembroDaSessao,
+  args: readonly unknown[],
+  aoTerminar: (state: DataState) => void,
+  aoMedir: (medicao: MedicaoDaExecucao) => void,
+) => Promise<ResultadoTransacao<unknown>>;
 
-export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
+function criarServicos(opcoes: OpcoesDeOperacoes): Partial<Record<NomeDeOperacao, Servico>> {
+  return {
+    // T-1-08 — `.strip()` descarta qualquer `userId` que o cliente mande em
+    // `args[0]`: a única fonte de `userId` é `resolverUsuarioPorEmail`, dentro
+    // de `convidarMembro`, nunca o corpo da requisição.
+    inviteMember: (membro, args, aoTerminar, aoMedir) => {
+      const entrada = ENTRADA_INVITE_MEMBER.safeParse(args[0]);
+      if (!entrada.success) throw new ErroDeEntrada(mensagemDeEntradaInvalida("inviteMember"));
+      return convidarMembro(
+        {
+          workspaceId: membro.workspaceId,
+          actingMemberId: membro.id,
+          email: entrada.data.email,
+          roleId: entrada.data.roleId,
+        },
+        { aoTerminar, aoMedir, ...(opcoes.auth ? { auth: opcoes.auth } : {}) },
+      );
+    },
+  };
+}
+
+export interface OpcoesDeOperacoes {
+  /** 12.3.2 — o Auth do convite por e-mail; os testes passam um falso, e nunca o Supabase real. */
+  readonly auth?: AuthDeConvite;
+}
+
+export async function rotasDeOperacoes(app: FastifyInstance, opcoes: OpcoesDeOperacoes = {}): Promise<void> {
+  const SERVICOS = criarServicos(opcoes);
   app.withTypeProvider<ZodTypeProvider>().post(
     "/operacoes/:nome",
     { schema: { params: PARAMS, body: BODY } },
@@ -265,12 +271,13 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
         return reply.code(404).send({ ok: false, error: `Operação "${nome}" não existe.` });
       }
 
-      // 1.2.1 — o Membro suspenso passa pela autenticação para consultar, mas
-      // não grava. Toda operação do registro grava (`registro.ts`, regra de
+      // 1.2.1 — só o Membro ativo grava. Desde a 12.1.5 (B) o hook de
+      // autenticação já recusa o suspenso em toda rota; esta é a segunda
+      // barreira. Toda operação do registro grava (`registro.ts`, regra de
       // inclusão), então a recusa vale para todas; vem logo depois do nome e
       // antes de validar o argumento ou tocar o banco.
       const recusa = recusaDeSuspenso(request.membro);
-      if (recusa) return reply.code(403).send({ ok: false, error: recusa });
+      if (recusa) return reply.code(403).send({ ok: false, error: recusa, codigo: CODIGO_SUSPENSO });
 
       // WR-10 — `JSON.parse` do Node é iterativo e aceita qualquer
       // profundidade abaixo do `bodyLimit`; `reviver` (`registro.ts`) é
@@ -379,6 +386,10 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
       } catch (erro) {
         if (erro instanceof ErroDeEntrada) {
           return reply.code(400).send({ ok: false, error: erro.message });
+        }
+        // 12.3.2 — o convite por e-mail bateu no limite de envio do Auth: não é falha do servidor.
+        if (erro instanceof LimiteDeEnvio) {
+          return reply.code(429).send({ ok: false, error: "O envio de e-mails chegou ao limite por hora. Tente de novo mais tarde." });
         }
         // 500: a exceção também deixa a sua linha (é onde `tentativas` e `travaMs`
         // altos aparecem) e sobe ao `setErrorHandler` de `app.ts`.

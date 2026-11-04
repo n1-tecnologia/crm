@@ -8,9 +8,9 @@ Hooks transversais registrados na instância raiz do Fastify, antes de qualquer 
 
 `registrarAutenticacao(app, opcoes)` decora `request.membro` a partir do `Authorization: Bearer`: verifica a assinatura do JWT do Supabase (`verificarToken`, injetável — produção usa `verificarTokenDoSupabase`, que chama `supabase.auth.getClaims()`), e resolve o Membro por `userId === sub` dentro do `workspaceId` configurado (`resolverMembro`, produção usa `membroPorUsuario`).
 
-Uma rota se isenta marcando `config: { publica: true }` — hoje só `GET /saude`. Todas as outras exigem token e Membro `ativo`/`suspenso`.
+Uma rota se isenta marcando `config: { publica: true }` — hoje só `GET /saude`. Todas as outras exigem token e Membro `ativo`. Desde a Sessão 12 (decisão 12.1.5 B) o `suspenso` fica sem acesso, como o `removido`: 403 com `codigo: "SUSPENSO"` em toda rota, leitura também, e volta com o histórico ao ser reativado. O `pendente` recebe 403 `CONVITE_PENDENTE`, menos nas rotas marcadas `config: { aceitaPendente: true }` — hoje só `POST /convites/aceitar` (12.3.3). O `removido` recebe `REMOVIDO`. `../seguranca/inventario-de-rotas.test.ts` prova as três recusas em toda rota com JWT e exige que cada rota `aceitaPendente` esteja em `ROTAS_DO_PENDENTE`, com o motivo.
 
-**A regra de acesso é a mesma do front, mas aqui é de verdade.** `apps/web/src/dados/sessao-provider.tsx` já barra `state !== "ativo" && state !== "suspenso"` na tela — mas isso é só UX: nada impedia hoje um `fetch` direto contra o backend com o Membro `removido`. Este hook é o controle de acesso que passa a valer de fato (Security Domain V4).
+**A regra de acesso é a mesma do front, mas aqui é de verdade.** `apps/web/src/dados/sessao-provider.tsx` repete a regra na tela — mas isso é só UX: nada impedia hoje um `fetch` direto contra o backend com o Membro `removido`. Este hook é o controle de acesso que passa a valer de fato (Security Domain V4).
 
 Nunca confiar em `memberId`/`workspaceId` vindo do cliente: a resolução é sempre "este `sub` do JWT dentro DESTE `workspaceId` de configuração" (T-1-02).
 

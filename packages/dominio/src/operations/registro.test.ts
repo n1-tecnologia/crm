@@ -41,6 +41,8 @@ describe("OPERACOES", () => {
     expect(ehNomeDeOperacao("recordActivity")).toBe(false);
     expect(ehNomeDeOperacao("submitForm")).toBe(false);
     expect(ehNomeDeOperacao("listWriteRefusal")).toBe(false);
+    // 12.3.2 / T-1-08 — o userId do reenvio vem do Auth, nunca do cliente: fora do registro de propósito.
+    expect(ehNomeDeOperacao("registrarReenvioDoConvite")).toBe(false);
     expect(ehNomeDeOperacao("__proto__")).toBe(false);
     expect(ehNomeDeOperacao("constructor")).toBe(false);
     expect(ehNomeDeOperacao("toString")).toBe(false);

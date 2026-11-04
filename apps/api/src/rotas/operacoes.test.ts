@@ -972,7 +972,7 @@ describeComBanco("POST /operacoes — resposta recortada pelo que o Membro enxer
     expect(contato, "o seed precisa de um Contato ativo").toBeDefined();
     const resposta = await chamar(TOKENS_DE_VAZAMENTO.suspenso, "trashContact", [contato!.id]);
     expect(resposta.statusCode, resposta.body.slice(0, 200)).toBe(403);
-    expect(resposta.json()).toEqual({ ok: false, error: FRASE_DE_SUSPENSO });
+    expect(resposta.json()).toEqual({ ok: false, error: FRASE_DE_SUSPENSO, codigo: "SUSPENSO" });
 
     const cliente = await pool().connect();
     try {

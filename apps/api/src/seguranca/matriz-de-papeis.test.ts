@@ -2,6 +2,8 @@
  * A matriz Papel × família de rota (Fase 9, 1.8, D-14 camada 1): o que o
  * Convidado, o Membro, o Administrador e o Membro suspenso fazem, por HTTP e
  * contra Postgres de verdade, em uma rota representativa de cada família.
+ * Desde a 12.1.5 (B) o suspenso fica sem acesso: 403 `SUSPENSO` em toda célula,
+ * inclusive na leitura de `GET /estado`.
  *
  * O inventário (`inventario-de-rotas.test.ts`) prova, sem banco, que TODA rota
  * recusa sessão ausente, token recusado e suspenso na escrita. Esta matriz prova
@@ -52,7 +54,7 @@ const TOKEN_DO_PAPEL: Readonly<Record<Papel, string>> = {
 };
 
 /** As conferências que vão além de status/ok/codigo — nomeadas, para a tabela continuar sendo dado. */
-type Conferencia = "convidado-sem-agentes" | "suspenso-com-dados" | "sem-url-de-upload";
+type Conferencia = "convidado-sem-agentes" | "sem-url-de-upload";
 
 interface Celula {
   readonly familia: string;
@@ -108,7 +110,7 @@ const CELULAS = celulas([
   { familia: "operacoes", metodo: "POST", url: () => "/operacoes/trashContact", corpo: (e, p) => ({ args: [contatoAtivo(e, INDICE_DO_CONTATO[p])] }), papel: "convidado", esperado: { status: 200, ok: false } },
   { familia: "operacoes", metodo: "POST", url: () => "/operacoes/trashContact", corpo: (e, p) => ({ args: [contatoAtivo(e, INDICE_DO_CONTATO[p])] }), papel: "membro", esperado: { status: 200, ok: true } },
   { familia: "operacoes", metodo: "POST", url: () => "/operacoes/trashContact", corpo: (e, p) => ({ args: [contatoAtivo(e, INDICE_DO_CONTATO[p])] }), papel: "administrador", esperado: { status: 200, ok: true } },
-  { familia: "operacoes", metodo: "POST", url: () => "/operacoes/trashContact", corpo: (e, p) => ({ args: [contatoAtivo(e, INDICE_DO_CONTATO[p])] }), papel: "suspenso", esperado: { status: 403, ok: false } },
+  { familia: "operacoes", metodo: "POST", url: () => "/operacoes/trashContact", corpo: (e, p) => ({ args: [contatoAtivo(e, INDICE_DO_CONTATO[p])] }), papel: "suspenso", esperado: { status: 403, ok: false, codigo: "SUSPENSO" } },
 
   // POST /contatos — o CRM novo, em REST por recurso (`podeNoCrm`).
   { familia: "crm-contatos", metodo: "POST", url: () => "/contatos", corpo: () => ({ nome: "Contato da matriz" }), papel: "convidado", esperado: { status: 403, ok: false, codigo: "PERMISSAO" } },
@@ -122,11 +124,11 @@ const CELULAS = celulas([
   { familia: "crm-canais", metodo: "POST", url: () => "/canais", corpo: () => ({ provedor: "whatsapp-nao-oficial", nome: "Canal da matriz", identificador: "+55 11 97777-1212" }), papel: "administrador", esperado: { status: 201, ok: true } },
   { familia: "crm-canais", metodo: "POST", url: () => "/canais", corpo: () => ({ provedor: "whatsapp-nao-oficial", nome: "Canal da matriz", identificador: "+55 11 97777-1212" }), papel: "suspenso", esperado: { status: 403, ok: false, codigo: "SUSPENSO" } },
 
-  // GET /estado — todos leem; o Convidado não recebe os Agentes do Espaço (D-02); o suspenso consulta.
+  // GET /estado — todos leem; o Convidado não recebe os Agentes do Espaço (D-02); o suspenso não entra (12.1.5 B).
   { familia: "estado", metodo: "GET", url: () => "/estado", papel: "convidado", esperado: { status: 200, conferencia: "convidado-sem-agentes" } },
   { familia: "estado", metodo: "GET", url: () => "/estado", papel: "membro", esperado: { status: 200 } },
   { familia: "estado", metodo: "GET", url: () => "/estado", papel: "administrador", esperado: { status: 200 } },
-  { familia: "estado", metodo: "GET", url: () => "/estado", papel: "suspenso", esperado: { status: 200, conferencia: "suspenso-com-dados" } },
+  { familia: "estado", metodo: "GET", url: () => "/estado", papel: "suspenso", esperado: { status: 403, ok: false, codigo: "SUSPENSO" } },
 
   // POST /tarefas/:taskId/anexos/ticket — numa Tarefa que o Papel não enxerga, ninguém recebe URL de envio.
   { familia: "anexos", metodo: "POST", url: (e, p) => `/tarefas/${tarefaOculta(e, p)}/anexos/ticket`, corpo: () => CORPO_DO_TICKET, papel: "convidado", esperado: { status: 403, ok: false, conferencia: "sem-url-de-upload" } },
@@ -197,9 +199,6 @@ describeComBanco("matriz Papel × família de rota — HTTP contra Postgres loca
     switch (celula.esperado.conferencia) {
       case "convidado-sem-agentes":
         expect(corpo.data?.agents, contexto).toEqual([]);
-        break;
-      case "suspenso-com-dados":
-        expect((corpo.data?.members ?? []).length, contexto).toBeGreaterThan(0);
         break;
       case "sem-url-de-upload":
         expect(resposta.body, contexto).not.toContain("uploadUrl");

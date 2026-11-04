@@ -47,6 +47,39 @@ export function aceitarConvite(state: DataState, actingMemberId: Id, input: { re
   return ok(membro, membro.id);
 }
 
+/**
+ * 12.3.2 — o reenvio do convite, chamado pelo serviço da api DEPOIS de o
+ * Supabase Auth reenviar o e-mail. NÃO entra em `OPERACOES` (T-1-08): o
+ * `userId` vem do Auth, nunca do corpo de uma requisição, e uma operação no
+ * registro deixaria o cliente escolher a conta de outra pessoa.
+ *
+ * O convite feito antes da Sessão 12 não tem Usuário (`userId`): o reenvio cria
+ * a conta no Auth e o vínculo nasce aqui. Um Membro que já tem conta não muda
+ * de conta por reenvio.
+ */
+export function registrarReenvioDoConvite(
+  state: DataState,
+  actingMemberId: Id,
+  input: { readonly memberId: Id; readonly userId?: Id },
+): OperationResult<Member> {
+  const recusa = recusaDeGovernanca(state, actingMemberId, "reenvia um convite");
+  if (recusa) return fail(recusa);
+  const membro = state.members.find((m) => m.id === input.memberId);
+  if (!membro || membro.state !== "pendente") return fail("Só um convite pendente pode ser reenviado.");
+  if (input.userId !== undefined && membro.userId !== undefined && membro.userId !== input.userId) {
+    return fail("Este convite já está ligado a outra conta.");
+  }
+  if (input.userId !== undefined) membro.userId = input.userId;
+  recordActivity(state, {
+    actor: memberActor(actingMemberId),
+    action: "Convite reenviado",
+    objectType: "member",
+    objectId: membro.id,
+    objectName: membro.displayName,
+  });
+  return ok(membro, membro.id);
+}
+
 /** Só um Membro `ativo` é suspenso; nunca o Proprietário, nunca quem suspende. */
 export function suspenderMembro(state: DataState, actingMemberId: Id, memberId: Id): OperationResult<Member> {
   const recusa = recusaDeGovernanca(state, actingMemberId, "suspende um Membro");
