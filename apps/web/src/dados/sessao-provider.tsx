@@ -11,10 +11,15 @@
  * `apps/api`, que é onde vira controle de acesso de verdade (Security
  * Domain V4) — esta tela só mostra o `motivo` que a API mandou (403), nunca
  * decide sozinha se alguém pode entrar.
+ *
+ * Sessão 12: o `codigo` do 403 escolhe a tela. `CONVITE_PENDENTE` mostra o
+ * aceite do convite (12.3.3); `SUSPENSO` (12.1.5 B) e os demais mostram a frase
+ * da api com o botão de sair.
  */
 
 import { useMemo, type ReactNode } from "react";
 import { clienteDoNavegador } from "@/autenticacao/cliente-navegador";
+import { AceiteDoConvite } from "@/features/convite/aceite-do-convite";
 import { Painel } from "@/features/shell/ui";
 import type { EstadoInicial } from "./estado-inicial";
 import { StoreProvider } from "./store";
@@ -41,6 +46,7 @@ export function SessaoProvider({
     [],
   );
 
+  if (inicial.tipo === "semAcesso" && inicial.codigo === "CONVITE_PENDENTE") return <AceiteDoConvite />;
   if (inicial.tipo === "semAcesso") {
     return (
       <main className="grade-pontos flex min-h-screen items-center justify-center p-6">

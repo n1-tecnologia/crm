@@ -10,6 +10,7 @@
 
 import { redirect } from "next/navigation";
 import { clienteDoServidor } from "@/autenticacao/cliente-servidor";
+import { destinoSeguro } from "@/autenticacao/destino-seguro";
 
 export interface EstadoDoLogin {
   readonly erro?: string;
@@ -25,6 +26,6 @@ export async function entrar(_anterior: EstadoDoLogin, form: FormData): Promise<
   const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
   if (error) return { erro: "E-mail ou senha incorretos." };
 
-  // Só volta para caminhos internos: um `para` externo seria redirecionamento aberto.
-  redirect(para.startsWith("/") && !para.startsWith("//") ? para : "/");
+  // Só volta para caminhos internos: um `para` externo seria redirecionamento aberto (12.3.8).
+  redirect(destinoSeguro(para));
 }

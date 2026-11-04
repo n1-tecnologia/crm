@@ -26,6 +26,7 @@ import {
   PageHeader,
   Painel,
   Section,
+  Segmentos,
   Select,
   StateSeal,
   TextInput,
@@ -46,6 +47,17 @@ const TRANSFER_LABEL: Record<string, string> = {
   panel: "Painel",
   collection: "Coleção",
   form: "Formulário",
+};
+
+/** 12.5.1 — o filtro por estado da participação, guardado no endereço (`?estado=`). */
+type FiltroDeEstado = "todos" | "pendente" | "ativo" | "suspenso" | "removido";
+const FILTROS: readonly FiltroDeEstado[] = ["todos", "pendente", "ativo", "suspenso", "removido"];
+const ROTULO_DO_FILTRO: Readonly<Record<FiltroDeEstado, string>> = {
+  todos: "Todos",
+  pendente: "Pendentes",
+  ativo: "Ativos",
+  suspenso: "Suspensos",
+  removido: "Encerrados",
 };
 
 const RELEASE_LABEL: Record<string, string> = {
@@ -73,6 +85,14 @@ export default function MembrosPage() {
     else next.set("remover-membro", value);
     router.replace(next.size > 0 ? `?${next}` : "?", { scroll: false });
   };
+  const estadoNaUrl = query.get("estado");
+  const filtro: FiltroDeEstado = FILTROS.includes(estadoNaUrl as FiltroDeEstado) ? (estadoNaUrl as FiltroDeEstado) : "todos";
+  const setFiltro = (valor: FiltroDeEstado) => {
+    const next = new URLSearchParams(query.toString());
+    if (valor === "todos") next.delete("estado");
+    else next.set("estado", valor);
+    router.replace(next.size > 0 ? `?${next}` : "?", { scroll: false });
+  };
   const [successorId, setSuccessorId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -87,6 +107,9 @@ export default function MembrosPage() {
 
   const active = state.members.filter((m) => m.state !== "removido");
   const removed = state.members.filter((m) => m.state === "removido");
+  const naTabela = filtro === "todos" ? active : active.filter((m) => m.state === filtro);
+  const contagem = (valor: FiltroDeEstado) =>
+    valor === "todos" ? state.members.length : state.members.filter((m) => m.state === valor).length;
   const limit = state.workspace.limits.members;
   const atLimit = active.length >= limit;
 
@@ -109,7 +132,9 @@ export default function MembrosPage() {
     );
     if (result.ok) {
       setError(null);
-      setNotice(`Convite enviado para ${result.value.invitedIdentity?.value}. O Membro entra como pendente e conta para o limite.`);
+      setNotice(
+        `Convite feito para ${result.value.invitedIdentity?.value}. Se o e-mail ainda não tinha conta, a pessoa recebe um link para criar a senha; se já tinha, aceita no primeiro acesso.`,
+      );
       setInviting(false);
       setInviteEmail("");
       setInviteRoleId("");
@@ -190,8 +215,10 @@ export default function MembrosPage() {
             <CabecalhoDePainel titulo="Convidar Membro" />
             <div className="p-4">
               <p className="app-base" style={{ color: "var(--texto-3)" }}>
-                O convite é dirigido a um e-mail. O Membro entra como <em>pendente</em>, já conta para o
-                limite do Espaço de Trabalho e só age depois de aceitar.
+                O convite é dirigido a um e-mail, e a pessoa recebe um link para criar a senha. Se o e-mail
+                já tiver conta, nenhum e-mail sai: ela entra com a senha que já tem e aceita no primeiro
+                acesso. O Membro entra como <em>pendente</em>, já conta para o limite do Espaço de Trabalho e
+                só age depois de aceitar.
               </p>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <Field label="E-mail">
@@ -334,7 +361,19 @@ export default function MembrosPage() {
           </ConfirmDialog>
         ) : null}
 
-        <Section title="Participações" count={active.length}>
+        <Segmentos
+          rotulo="Filtrar por estado"
+          className="mb-3"
+          opcoes={FILTROS.map((valor) => ({ valor, rotulo: `${ROTULO_DO_FILTRO[valor]} (${contagem(valor)})` }))}
+          valor={filtro}
+          aoTrocar={setFiltro}
+        />
+
+        {filtro !== "removido" ? (
+        <Section title="Participações" count={naTabela.length}>
+          {naTabela.length === 0 ? (
+            <EmptyState title={`Nenhum Membro ${ROTULO_DO_FILTRO[filtro].toLowerCase()}.`} />
+          ) : (
           <table className="tabela">
             <thead>
               <tr>
@@ -347,7 +386,7 @@ export default function MembrosPage() {
               </tr>
             </thead>
             <tbody>
-              {active.map((member) => {
+              {naTabela.map((member) => {
                 const role = state.roles.find((r) => r.id === member.roleId);
                 const isOwner = state.workspace.ownerMemberId === member.id;
                 return (
@@ -410,8 +449,11 @@ export default function MembrosPage() {
               })}
             </tbody>
           </table>
+          )}
         </Section>
+        ) : null}
 
+        {filtro === "todos" || filtro === "removido" ? (
         <Section title="Participações encerradas" count={removed.length}>
           {removed.length === 0 ? (
             <EmptyState title="Nenhuma participação encerrada." />
@@ -440,6 +482,7 @@ export default function MembrosPage() {
             Atividade que criou.
           </p>
         </Section>
+        ) : null}
       </CorpoDeTela>
     </div>
   );
