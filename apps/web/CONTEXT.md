@@ -127,6 +127,17 @@ Papéis**: `src/dados/crm/sessao.ts` (`useMembrosAtivos`, `useNomeDoMembro`,
 nomear o Proprietário e para esconder o que o Papel não alcança — a mesma
 `podeNoCrm` de `@n1/dominio/crm/permissoes` que o backend aplica.
 
+**A ficha nova de Contato (Fase 14).** `features/crm/ficha-de-contato.tsx` ganhou
+as seções Notas (`notas-do-contato.tsx`, de `GET`/`POST /contatos/:id/notas`) e
+Consentimentos (`consentimentos-do-contato.tsx`, de `.../consentimentos`), cada
+uma com o cliente próprio em `dados/crm/` (`notas.ts`, `consentimentos.ts`) e a
+chave SWR `/contatos/<id>/notas` ou `/consentimentos`, revalidada só para aquele
+Contato. O vigente por finalidade e tipo de Canal a tela calcula com
+`consentimentoVigente` do domínio sobre o histórico que a api devolve (o
+histórico é só inserção: revogar é registrar um `revogado`); as finalidades do
+formulário são os itens `finalidadeConsentimento` do Catálogo, a única leitura
+do store nessas seções (o Catálogo continua em `registros`, OQ7).
+
 ## Quem vê o quê na tela
 
 `GET /estado` hidrata o Espaço de Trabalho **inteiro**, sem filtro de

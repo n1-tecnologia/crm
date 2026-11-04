@@ -1,16 +1,21 @@
 "use client";
 
 /**
- * A ficha nova de Contato (D-04): enxuta, sobre o que a 007 guarda — dados,
- * Identificadores, Endereços, Campos adicionais, Empresas vinculadas e os
+ * A ficha nova de Contato (D-04): enxuta, sobre o que o CRM novo guarda — dados,
+ * Identificadores, Endereços, Campos adicionais, Empresas vinculadas, os
  * Negócios do Contato (`NegociosDoRegistro`, de onde também se cria um já com
- * o dono preenchido) — e com o ciclo de vida do D-06 (Arquivar, Excluir =
- * Lixeira, Restaurar, Excluir permanentemente) e as recusas do D-09 visíveis
- * por `MensagemDeRecusa`.
+ * o dono preenchido), as Notas (3.2.7) e os Consentimentos (3.2.4) — e com o
+ * ciclo de vida do D-06 (Arquivar, Excluir = Lixeira, Restaurar, Excluir
+ * permanentemente) e as recusas do D-09 visíveis por `MensagemDeRecusa`.
  *
- * O que a 007 NÃO guarda não aparece aqui, nem desabilitado, nem como "em
- * breve" (D-02): Tags, Consentimentos, Comentários, Anexos, Conversas,
- * mesclagem e temperatura.
+ * Notas e Consentimentos vêm de `notas-do-contato.tsx` e
+ * `consentimentos-do-contato.tsx`, cada um lendo e gravando pela própria rota
+ * (`GET`/`POST /contatos/:id/notas` e `/consentimentos`); só as finalidades do
+ * Catálogo ainda saem do store (OQ7).
+ *
+ * O que continua FORA, sem aparecer nem desabilitado nem como "em breve" (D-02,
+ * D-04): Tags, Comentários, Anexos, Conversas e temperatura. As Notas daqui são
+ * só texto: os anexos e menções da nota antiga ficam no modelo antigo.
  *
  * A ficha recebe o `ContatoDetalhado` pronto (a página lê por `useContato`) e
  * toda gravação passa pelas mutações de `dados/crm/contatos.ts`, que revalidam
@@ -56,7 +61,9 @@ import {
   type ErrosDoContato,
   type ValoresDoContato,
 } from "@/features/crm/formulario-de-contato";
+import { ConsentimentosDoContato } from "@/features/crm/consentimentos-do-contato";
 import { NegociosDoRegistro } from "@/features/crm/negocios-do-registro";
+import { NotasDoContato } from "@/features/crm/notas-do-contato";
 import {
   Button,
   ConfirmDialog,
@@ -498,6 +505,8 @@ export function FichaDeContato({ contatoId, detalhado }: { readonly contatoId: s
         />
         <SecaoDeEmpresas vinculos={vinculos} />
         <NegociosDoRegistro contato={{ id: contatoId, nome }} />
+        <NotasDoContato contatoId={contatoId} estado={contato.estado} motivo={motivoDeEscrita} />
+        <ConsentimentosDoContato contatoId={contatoId} estado={contato.estado} motivo={motivoDeEscrita} />
       </CorpoDeTela>
     </div>
   );
