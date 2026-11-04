@@ -29,6 +29,8 @@ import type {
 
 /** O que o serviço decide gravar: o resto (situação, estado, datas) é default da 008. */
 export interface LinhaNovaDeConversa {
+  /** Quem precisa do id antes de inserir (a Tarefa conversacional, 14-13) o escolhe; ausente, o default do banco gera. */
+  readonly id?: string;
   readonly canalId: string;
   readonly contatoId: string;
   readonly titulo: string;
@@ -141,11 +143,13 @@ export function linhaParaConversa(linha: LinhaDoBancoDeConversa): Conversa {
 export function criarRepositorioDeConversasPg(cliente: Pool | PoolClient): RepositorioDeConversas {
   return {
     async inserir(workspaceId, linha) {
+      // O `id` só entra quando vem: sem ele a coluna fica fora do `insert` e o default da 008 decide.
+      const comId = linha.id !== undefined;
       const { rows } = await cliente.query<LinhaDoBancoDeConversa>(
         `insert into plataforma.conversas
            (workspace_id, canal_id, contato_id, titulo, fila_id, atribuido_tipo, atribuido_id,
-            participantes, criado_por_tipo, criado_por_id)
-         values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10)
+            participantes, criado_por_tipo, criado_por_id${comId ? ", id" : ""})
+         values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10${comId ? ", $11" : ""})
          returning ${COLUNAS_CONVERSA}`,
         [
           workspaceId,
@@ -158,6 +162,7 @@ export function criarRepositorioDeConversasPg(cliente: Pool | PoolClient): Repos
           JSON.stringify(linha.participantes),
           linha.criadoPor.tipo,
           linha.criadoPor.id,
+          ...(comId ? [linha.id] : []),
         ],
       );
       return linhaParaConversa(rows[0]!);

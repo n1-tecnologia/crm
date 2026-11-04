@@ -23,7 +23,7 @@
  *
  * O Papel é exigido ANTES de qualquer leitura ou transação (T-08-27) e a
  * validação de forma roda antes de abrir a transação. O `conteudo` da Mensagem
- * nunca é logado (T-08-29). O `SQLSTATE` traduzido por `FRASES` é a rede contra
+ * nunca é logado (T-08-29). O `SQLSTATE` traduzido por `FRASES_DE_CONVERSAS` é a rede contra
  * a corrida da unicidade do par; a frase não carrega o nome do constraint.
  */
 
@@ -95,7 +95,7 @@ export interface ServicoDeConversas {
 const FRASE_JA_ABERTA = "Este Contato já tem uma Conversa aberta neste Canal.";
 
 /** Rede contra corrida: o constraint que segurou vira esta frase, sem o nome dele. */
-const FRASES: FrasesDeRestricao = {
+export const FRASES_DE_CONVERSAS: FrasesDeRestricao = {
   conversas_nao_resolvida_uq: { codigo: "CONVERSA_JA_ABERTA", error: FRASE_JA_ABERTA },
 };
 
@@ -161,7 +161,7 @@ export function criarServicoDeConversas(deps: { readonly pool: () => Pool; reado
         if (!canal) return canalNaoEncontrado();
         return sucesso({ conversa: atualizada, canal: resumoDoCanal(canal) });
       },
-      FRASES,
+      FRASES_DE_CONVERSAS,
     );
   }
 
@@ -190,70 +190,7 @@ export function criarServicoDeConversas(deps: { readonly pool: () => Pool; reado
       const validacao = validarNovaConversa(entrada);
       if (!validacao.ok) return valorInvalido(validacao);
 
-      return comTransacao(
-        deps.pool,
-        async (cliente: PoolClient) => {
-          const canal = await criarRepositorioDeCanaisPg(cliente).obter(membro.workspaceId, entrada.canalId);
-          if (!canal) return canalNaoEncontrado();
-          if (canal.estado === "arquivado") {
-            return recusa<never>(409, "Um Canal arquivado não abre Conversa. Escolha outro Canal.", {
-              codigo: "CANAL_ARQUIVADO",
-              campo: "canalId",
-            });
-          }
-
-          const contatos = criarRepositorioDeContatosPg(cliente);
-          const contato = await contatos.obter(membro.workspaceId, entrada.contatoId);
-          if (!contato) return contatoNaoEncontrado();
-          if (contato.estado !== "ativo") {
-            return recusa<never>(409, "Só um Contato ativo abre Conversa.", { codigo: "CONTATO_INATIVO", campo: "contatoId" });
-          }
-
-          // O Identificador do tipo que o Canal resolve; o principal vem primeiro.
-          const tipoDoIdentificador = TIPO_DE_IDENTIFICADOR_DO_CANAL[canal.tipo];
-          const doTipo = (await contatos.listarIdentificadores(membro.workspaceId, contato.id)).filter(
-            (identificador) => identificador.tipo === tipoDoIdentificador,
-          );
-          const identificador = doTipo.find((candidato) => candidato.principal) ?? doTipo[0];
-          if (!identificador) {
-            return recusa<never>(409, `Este Contato não tem ${rotuloDoIdentificador(tipoDoIdentificador)} para conversar por este Canal.`, {
-              codigo: "CONTATO_SEM_IDENTIFICADOR_DO_CANAL",
-              campo: "contatoId",
-            });
-          }
-
-          const conversas = criarRepositorioDeConversasPg(cliente);
-          const existente = await conversas.abertaDoPar(membro.workspaceId, contato.id, canal.id);
-          if (existente) return jaAberta(existente);
-
-          const agora = new Date().toISOString();
-          const participantes: ParticipanteDaConversa[] = [
-            { id: randomUUID(), sujeito: { tipo: "contato", id: contato.id }, papel: "contato", principal: true, entrouEm: agora, saiuEm: null },
-            { id: randomUUID(), sujeito: { tipo: "membro", id: membro.id }, papel: "atendente", principal: false, entrouEm: agora, saiuEm: null },
-          ];
-          const conversa = await conversas.inserir(membro.workspaceId, {
-            canalId: canal.id,
-            contatoId: contato.id,
-            titulo: tituloDaConversa(contato, identificador.valorExibido ?? identificador.valor),
-            filaId: canal.filaPadraoId,
-            atribuido: { tipo: "membro", id: membro.id },
-            participantes,
-            criadoPor: { tipo: "member", id: membro.id },
-          });
-
-          const primeiraMensagem = await criarRepositorioDeMensagensPg(cliente).inserir(membro.workspaceId, {
-            conversaId: conversa.id,
-            canalId: canal.id,
-            direcao: "enviada",
-            ator: { tipo: "member", id: membro.id },
-            conteudo: entrada.mensagem.conteudo,
-            statusEntrega: statusInicialDeEnvio(canal.conexao),
-          });
-
-          return sucesso({ conversa, canal: resumoDoCanal(canal), primeiraMensagem });
-        },
-        FRASES,
-      );
+      return comTransacao(deps.pool, (cliente: PoolClient) => abrirConversaNoCliente(cliente, membro, entrada), FRASES_DE_CONVERSAS);
     },
 
     async mover(membro, id, entrada) {
@@ -315,7 +252,7 @@ export function criarServicoDeConversas(deps: { readonly pool: () => Pool; reado
           if (!canal) return canalNaoEncontrado();
           return sucesso({ conversa: movida, canal: resumoDoCanal(canal) });
         },
-        FRASES,
+        FRASES_DE_CONVERSAS,
       );
     },
 
@@ -355,7 +292,7 @@ export function criarServicoDeConversas(deps: { readonly pool: () => Pool; reado
           if (!canal) return canalNaoEncontrado();
           return sucesso({ conversa: atualizada, canal: resumoDoCanal(canal) });
         },
-        FRASES,
+        FRASES_DE_CONVERSAS,
       );
     },
 
@@ -379,7 +316,7 @@ export function criarServicoDeConversas(deps: { readonly pool: () => Pool; reado
           if (!canal) return canalNaoEncontrado();
           return sucesso({ conversa: atualizada, canal: resumoDoCanal(canal) });
         },
-        FRASES,
+        FRASES_DE_CONVERSAS,
       );
     },
 
@@ -416,7 +353,7 @@ export function criarServicoDeConversas(deps: { readonly pool: () => Pool; reado
           if (!canal) return canalNaoEncontrado();
           return sucesso({ conversa: atualizada, canal: resumoDoCanal(canal) });
         },
-        FRASES,
+        FRASES_DE_CONVERSAS,
       );
     },
 
@@ -438,6 +375,83 @@ export function criarServicoDeConversas(deps: { readonly pool: () => Pool; reado
 
     reabrir: (membro, id) => mudarSituacao(membro, id, "reabrir"),
   };
+}
+
+/**
+ * Abre a Conversa e grava a primeira Mensagem no `cliente` que vier, dentro da
+ * transação de quem chama (INV-CXE-05). É o mesmo código de `POST /conversas`
+ * e do gesto misto da Tarefa conversacional (14-13), que escolhe o `id` da
+ * Conversa antes de gravar para já apontar o Vínculo da Tarefa para ele.
+ *
+ * Confere Canal, Contato `ativo`, Identificador do tipo do Canal e o par livre;
+ * a recusa volta como valor. O Papel e a forma da entrada ficam com quem chama,
+ * ANTES da transação. Sem `opcoes.id`, o default do banco gera o id.
+ */
+export async function abrirConversaNoCliente(
+  cliente: PoolClient,
+  membro: MembroDaSessao,
+  entrada: NovaConversa,
+  opcoes: { readonly id?: string } = {},
+): Promise<ResultadoCrm<ConversaDetalhada & { readonly primeiraMensagem: Mensagem }>> {
+  const canal = await criarRepositorioDeCanaisPg(cliente).obter(membro.workspaceId, entrada.canalId);
+  if (!canal) return canalNaoEncontrado();
+  if (canal.estado === "arquivado") {
+    return recusa<never>(409, "Um Canal arquivado não abre Conversa. Escolha outro Canal.", {
+      codigo: "CANAL_ARQUIVADO",
+      campo: "canalId",
+    });
+  }
+
+  const contatos = criarRepositorioDeContatosPg(cliente);
+  const contato = await contatos.obter(membro.workspaceId, entrada.contatoId);
+  if (!contato) return contatoNaoEncontrado();
+  if (contato.estado !== "ativo") {
+    return recusa<never>(409, "Só um Contato ativo abre Conversa.", { codigo: "CONTATO_INATIVO", campo: "contatoId" });
+  }
+
+  // O Identificador do tipo que o Canal resolve; o principal vem primeiro.
+  const tipoDoIdentificador = TIPO_DE_IDENTIFICADOR_DO_CANAL[canal.tipo];
+  const doTipo = (await contatos.listarIdentificadores(membro.workspaceId, contato.id)).filter(
+    (identificador) => identificador.tipo === tipoDoIdentificador,
+  );
+  const identificador = doTipo.find((candidato) => candidato.principal) ?? doTipo[0];
+  if (!identificador) {
+    return recusa<never>(409, `Este Contato não tem ${rotuloDoIdentificador(tipoDoIdentificador)} para conversar por este Canal.`, {
+      codigo: "CONTATO_SEM_IDENTIFICADOR_DO_CANAL",
+      campo: "contatoId",
+    });
+  }
+
+  const conversas = criarRepositorioDeConversasPg(cliente);
+  const existente = await conversas.abertaDoPar(membro.workspaceId, contato.id, canal.id);
+  if (existente) return jaAberta(existente);
+
+  const agora = new Date().toISOString();
+  const participantes: ParticipanteDaConversa[] = [
+    { id: randomUUID(), sujeito: { tipo: "contato", id: contato.id }, papel: "contato", principal: true, entrouEm: agora, saiuEm: null },
+    { id: randomUUID(), sujeito: { tipo: "membro", id: membro.id }, papel: "atendente", principal: false, entrouEm: agora, saiuEm: null },
+  ];
+  const conversa = await conversas.inserir(membro.workspaceId, {
+    canalId: canal.id,
+    contatoId: contato.id,
+    titulo: tituloDaConversa(contato, identificador.valorExibido ?? identificador.valor),
+    filaId: canal.filaPadraoId,
+    atribuido: { tipo: "membro", id: membro.id },
+    participantes,
+    criadoPor: { tipo: "member", id: membro.id },
+    ...(opcoes.id !== undefined ? { id: opcoes.id } : {}),
+  });
+
+  const primeiraMensagem = await criarRepositorioDeMensagensPg(cliente).inserir(membro.workspaceId, {
+    conversaId: conversa.id,
+    canalId: canal.id,
+    direcao: "enviada",
+    ator: { tipo: "member", id: membro.id },
+    conteudo: entrada.mensagem.conteudo,
+    statusEntrega: statusInicialDeEnvio(canal.conexao),
+  });
+
+  return sucesso({ conversa, canal: resumoDoCanal(canal), primeiraMensagem });
 }
 
 function rotuloDoIdentificador(tipo: string): string {
