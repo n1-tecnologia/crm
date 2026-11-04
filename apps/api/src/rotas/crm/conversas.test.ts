@@ -55,6 +55,10 @@ describe("rotas de Conversas — serviço falso, sem banco", () => {
         chamadas.push(["reabrir", ...a]);
         return resposta();
       },
+      mover: (...a) => {
+        chamadas.push(["mover", ...a]);
+        return resposta();
+      },
     };
     return { servico, chamadas };
   }
@@ -178,6 +182,47 @@ describe("rotas de Conversas — serviço falso, sem banco", () => {
       codigo: "CONVERSA_JA_ABERTA",
       bloqueios,
     });
+  });
+
+  it.each(["workspaceId", "estado", "situacao", "canalId"])(
+    "POST /conversas/x/mover com %s no corpo responde 400 e o serviço não é chamado",
+    async (campo) => {
+      const { servico, chamadas } = novoFalso();
+      const resposta = await appCom(servico).inject({
+        method: "POST",
+        url: "/conversas/x/mover",
+        headers: AUTORIZACAO,
+        payload: { contatoId: "p2", [campo]: "x" },
+      });
+      expect(resposta.statusCode).toBe(400);
+      expect(chamadas).toEqual([]);
+    },
+  );
+
+  it("POST /conversas/x/mover sem contatoId responde 400", async () => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({ method: "POST", url: "/conversas/x/mover", headers: AUTORIZACAO, payload: {} });
+    expect(resposta.statusCode).toBe(400);
+    expect(chamadas).toEqual([]);
+  });
+
+  it("POST /conversas/x/mover repassa o Membro da sessão, o id e o corpo; resolverExistente ausente vira false", async () => {
+    const { servico, chamadas } = novoFalso();
+    const app = appCom(servico);
+    const sem = await app.inject({ method: "POST", url: "/conversas/x/mover", headers: AUTORIZACAO, payload: { contatoId: "p2" } });
+    expect(sem.statusCode).toBe(200);
+    expect(chamadas[0]?.[0]).toBe("mover");
+    expect(chamadas[0]?.[1]).toMatchObject({ id: "mem_maryane" });
+    expect(chamadas[0]?.[2]).toBe("x");
+    expect(chamadas[0]?.[3]).toEqual({ contatoId: "p2", resolverExistente: false });
+    const com = await app.inject({
+      method: "POST",
+      url: "/conversas/x/mover",
+      headers: AUTORIZACAO,
+      payload: { contatoId: "p2", resolverExistente: true },
+    });
+    expect(com.statusCode).toBe(200);
+    expect(chamadas[1]?.[3]).toEqual({ contatoId: "p2", resolverExistente: true });
   });
 
   it("não há DELETE /conversas/:id nesta fase", async () => {

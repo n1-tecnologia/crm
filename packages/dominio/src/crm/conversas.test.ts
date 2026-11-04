@@ -10,9 +10,12 @@ import {
   ESTADOS_DA_CONVERSA,
   SITUACOES_DA_CONVERSA,
   TIPO_DE_IDENTIFICADOR_DO_CANAL,
+  participantesComContato,
   proximaSituacao,
   tituloDaConversa,
+  validarMover,
   validarNovaConversa,
+  type ParticipanteDaConversa,
 } from "./conversas";
 
 describe("validarNovaConversa (INV-CXE-05: a Conversa nasce com Mensagem)", () => {
@@ -112,5 +115,63 @@ describe("os valores discretos espelham os CHECK da 008", () => {
   it("situações e estados", () => {
     expect([...SITUACOES_DA_CONVERSA]).toEqual(["aberta", "pendente", "resolvida"]);
     expect([...ESTADOS_DA_CONVERSA]).toEqual(["ativo", "na_lixeira"]);
+  });
+});
+
+describe("validarMover (3.2.5: a Conversa muda de Contato, o Canal e as Mensagens ficam)", () => {
+  const conversa = { estado: "ativo", contatoId: "c1" } as const;
+
+  it("aceita um Contato ativo diferente do atual", () => {
+    expect(validarMover(conversa, { id: "c2", estado: "ativo" })).toEqual({ ok: true, value: undefined });
+  });
+
+  it("recusa Conversa na lixeira", () => {
+    expect(validarMover({ estado: "na_lixeira", contatoId: "c1" }, { id: "c2", estado: "ativo" })).toEqual({
+      ok: false,
+      error: "Uma Conversa na lixeira não muda de Contato.",
+    });
+  });
+
+  it("recusa o mesmo Contato, no campo contatoId", () => {
+    expect(validarMover(conversa, { id: "c1", estado: "ativo" })).toEqual({
+      ok: false,
+      error: "A Conversa já é deste Contato.",
+      field: "contatoId",
+    });
+  });
+
+  it.each(["arquivado", "na_lixeira", "mesclado"] as const)("recusa destino %s, no campo contatoId", (estado) => {
+    expect(validarMover(conversa, { id: "c2", estado })).toEqual({
+      ok: false,
+      error: "Escolha um Contato ativo.",
+      field: "contatoId",
+    });
+  });
+});
+
+describe("participantesComContato", () => {
+  const participante = (id: string, tipo: ParticipanteDaConversa["sujeito"]["tipo"], sujeitoId: string, principal: boolean): ParticipanteDaConversa => ({
+    id,
+    sujeito: { tipo, id: sujeitoId },
+    papel: tipo === "contato" ? "contato" : "atendente",
+    principal,
+    entrouEm: "2026-01-01T00:00:00.000Z",
+    saiuEm: null,
+  });
+
+  it("troca só o sujeito dos Participantes contato que apontavam para a origem, mantendo principal", () => {
+    const antes = [participante("p1", "contato", "c1", true), participante("p2", "membro", "c1", false), participante("p3", "contato", "c9", false)];
+    const depois = participantesComContato(antes, "c1", "c2");
+    expect(depois.map((p) => [p.id, p.sujeito.tipo, p.sujeito.id, p.principal])).toEqual([
+      ["p1", "contato", "c2", true],
+      ["p2", "membro", "c1", false],
+      ["p3", "contato", "c9", false],
+    ]);
+  });
+
+  it("não muda a lista original", () => {
+    const antes = [participante("p1", "contato", "c1", true)];
+    participantesComContato(antes, "c1", "c2");
+    expect(antes[0]?.sujeito.id).toBe("c1");
   });
 });

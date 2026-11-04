@@ -12,7 +12,15 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { encerrar, pool } from "../../persistencia/conexao";
 import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
-import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearCanal, semearMembro } from "../../testes/banco-crm";
+import {
+  describeComBanco,
+  limparEspaco,
+  novoEspacoDeTeste,
+  poolDoDono,
+  prepararBancoCrm,
+  semearCanal,
+  semearMembro,
+} from "../../testes/banco-crm";
 import { criarAcessoAoCrmPg } from "./acesso";
 import { criarServicoDeConversas } from "./conversas";
 import type { ResultadoCrm } from "./resultado";
@@ -281,6 +289,134 @@ describeComBanco("ServicoDeConversas — Postgres local", () => {
       expect(detalhe.conversa.id).toBe(a.conversa.id);
       expect(detalhe.canal).toMatchObject({ id: canalA, nome: "Comercial", provedor: "whatsapp-cloud" });
       expect(recusado(await servico.obter(outro.membro, a.conversa.id))).toMatchObject({ status: 404, codigo: "CONVERSA_NAO_ENCONTRADA" });
+    });
+  });
+  describe("mover (3.2.5)", () => {
+    const mensagensDaConversa = async (ws: string, conversaId: string) =>
+      Number(
+        (await pool().query<{ n: string }>("select count(*) as n from plataforma.mensagens where workspace_id = $1 and conversa_id = $2", [ws, conversaId]))
+          .rows[0]!.n,
+      );
+
+    it("A para B sem colisão: Contato B, mesmo Canal, mesmas Mensagens, Participante principal aponta B", async () => {
+      const c = await espaco("mover");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966661001" }]);
+      const bia = await contato(c.ws, "Bia", [{ tipo: "whatsapp", valor: "+5511966661002" }]);
+      const canal = await comercial(c.ws);
+      const aberta = valor(await abrir(c, canal, ana));
+      const mensagens = await mensagensDaConversa(c.ws, aberta.conversa.id);
+
+      const movida = valor(await servico.mover(c.membro, aberta.conversa.id, { contatoId: bia }));
+      expect(movida.conversa).toMatchObject({ id: aberta.conversa.id, contatoId: bia, canalId: canal, situacao: "aberta" });
+      expect(movida.canal.id).toBe(canal);
+      expect(await mensagensDaConversa(c.ws, aberta.conversa.id)).toBe(mensagens);
+      const doContato = movida.conversa.participantes.find((p) => p.sujeito.tipo === "contato");
+      expect(doContato).toMatchObject({ principal: true, sujeito: { tipo: "contato", id: bia } });
+      expect(movida.conversa.participantes.find((p) => p.sujeito.tipo === "membro")?.sujeito.id).toBe("mem_ana");
+    });
+
+    it("destino com Conversa aberta no mesmo Canal: sem resolverExistente → 409 CONVERSA_JA_ABERTA e nada muda", async () => {
+      const c = await espaco("movercolide");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966661003" }]);
+      const bia = await contato(c.ws, "Bia", [{ tipo: "whatsapp", valor: "+5511966661004" }]);
+      const canal = await comercial(c.ws);
+      const daAna = valor(await abrir(c, canal, ana));
+      const daBia = valor(await abrir(c, canal, bia));
+
+      const r = recusado(await servico.mover(c.membro, daAna.conversa.id, { contatoId: bia }));
+      expect(r).toMatchObject({ status: 409, codigo: "CONVERSA_JA_ABERTA" });
+      expect(r.bloqueios?.conversas?.itens[0]?.id).toBe(daBia.conversa.id);
+      expect(valor(await servico.obter(c.membro, daAna.conversa.id)).conversa.contatoId).toBe(ana);
+      expect(valor(await servico.obter(c.membro, daBia.conversa.id)).conversa.situacao).toBe("aberta");
+    });
+
+    it("resolverExistente: a existente fica resolvida (sem adiamento) e a movida vai para o destino", async () => {
+      const c = await espaco("moverresolve");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966661005" }]);
+      const bia = await contato(c.ws, "Bia", [{ tipo: "whatsapp", valor: "+5511966661006" }]);
+      const canal = await comercial(c.ws);
+      const daAna = valor(await abrir(c, canal, ana));
+      const daBia = valor(await abrir(c, canal, bia));
+      await pool().query(
+        "update plataforma.conversas set situacao = 'pendente', adiada_ate = now() + interval '1 day', adiamento_motivo = 'volto' where workspace_id = $1 and id = $2",
+        [c.ws, daBia.conversa.id],
+      );
+
+      const movida = valor(await servico.mover(c.membro, daAna.conversa.id, { contatoId: bia, resolverExistente: true }));
+      expect(movida.conversa.contatoId).toBe(bia);
+      const existente = valor(await servico.obter(c.membro, daBia.conversa.id)).conversa;
+      expect(existente).toMatchObject({ situacao: "resolvida", adiadaAte: null, adiamentoMotivo: null });
+      expect(existente.resolvidaEm).not.toBeNull();
+    });
+
+    it("Conversa resolvida nunca colide: vai mesmo com Conversa aberta no destino", async () => {
+      const c = await espaco("moverresolvida");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966661007" }]);
+      const bia = await contato(c.ws, "Bia", [{ tipo: "whatsapp", valor: "+5511966661008" }]);
+      const canal = await comercial(c.ws);
+      const daAna = valor(await abrir(c, canal, ana));
+      valor(await servico.resolver(c.membro, daAna.conversa.id));
+      const daBia = valor(await abrir(c, canal, bia));
+
+      const movida = valor(await servico.mover(c.membro, daAna.conversa.id, { contatoId: bia }));
+      expect(movida.conversa).toMatchObject({ contatoId: bia, situacao: "resolvida" });
+      expect(valor(await servico.obter(c.membro, daBia.conversa.id)).conversa.situacao).toBe("aberta");
+    });
+
+    it("destino arquivado ou mesclado → 409 com campo contatoId; o mesmo Contato também", async () => {
+      const c = await espaco("moverdestino");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966661009" }]);
+      const arquivado = await contato(c.ws, "Arq", [{ tipo: "whatsapp", valor: "+5511966661010" }]);
+      const absorvido = await contato(c.ws, "Abs", [{ tipo: "whatsapp", valor: "+5511966661011" }]);
+      const canal = await comercial(c.ws);
+      const aberta = valor(await abrir(c, canal, ana));
+      await pool().query("update plataforma.contatos set estado = 'arquivado' where workspace_id = $1 and id = $2", [c.ws, arquivado]);
+      await poolDoDono().query(
+        "update plataforma.contatos set estado = 'mesclado', mesclado_em_id = $3, mesclado_em = now() where workspace_id = $1 and id = $2",
+        [c.ws, absorvido, ana],
+      );
+
+      for (const destino of [arquivado, absorvido]) {
+        expect(recusado(await servico.mover(c.membro, aberta.conversa.id, { contatoId: destino }))).toMatchObject({ status: 409, campo: "contatoId" });
+      }
+      expect(recusado(await servico.mover(c.membro, aberta.conversa.id, { contatoId: ana }))).toMatchObject({ status: 409, campo: "contatoId" });
+      expect(valor(await servico.obter(c.membro, aberta.conversa.id)).conversa.contatoId).toBe(ana);
+    });
+
+    it("Conversa na lixeira não muda de Contato (409)", async () => {
+      const c = await espaco("movertrash");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966661012" }]);
+      const bia = await contato(c.ws, "Bia", [{ tipo: "whatsapp", valor: "+5511966661013" }]);
+      const canal = await comercial(c.ws);
+      const aberta = valor(await abrir(c, canal, ana));
+      await pool().query(
+        "update plataforma.conversas set situacao = 'resolvida', estado = 'na_lixeira', na_lixeira_em = now() where workspace_id = $1 and id = $2",
+        [c.ws, aberta.conversa.id],
+      );
+      expect(recusado(await servico.mover(c.membro, aberta.conversa.id, { contatoId: bia }))).toMatchObject({ status: 409 });
+      expect(valor(await servico.obter(c.membro, aberta.conversa.id)).conversa.contatoId).toBe(ana);
+    });
+
+    it("Convidado → 403 antes de ler; Conversa ou Contato de outro Espaço → 404", async () => {
+      const c = await espaco("moverpapel");
+      const outro = await espaco("moverpapelb");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966661014" }]);
+      const bia = await contato(c.ws, "Bia", [{ tipo: "whatsapp", valor: "+5511966661015" }]);
+      const deFora = await contato(outro.ws, "Fora", [{ tipo: "whatsapp", valor: "+5511966661016" }]);
+      const canal = await comercial(c.ws);
+      const aberta = valor(await abrir(c, canal, ana));
+
+      expect(recusado(await servico.mover(c.convidado, aberta.conversa.id, { contatoId: bia }))).toMatchObject({ status: 403, codigo: "PERMISSAO" });
+      expect(recusado(await servico.mover(outro.membro, aberta.conversa.id, { contatoId: deFora }))).toMatchObject({
+        status: 404,
+        codigo: "CONVERSA_NAO_ENCONTRADA",
+      });
+      expect(recusado(await servico.mover(c.membro, aberta.conversa.id, { contatoId: deFora }))).toMatchObject({
+        status: 404,
+        codigo: "CONTATO_NAO_ENCONTRADO",
+        campo: "contatoId",
+      });
+      expect(valor(await servico.obter(c.membro, aberta.conversa.id)).conversa.contatoId).toBe(ana);
     });
   });
 });
