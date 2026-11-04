@@ -179,7 +179,7 @@ describeComBanco("ServicoDeMensagens — Postgres local", () => {
 
   it("Conversa na lixeira, Canal arquivado e Conversa inexistente recusam o envio", async () => {
     const c = await espaco("recusas");
-    await pool().query("update plataforma.conversas set situacao = 'resolvida', estado = 'na_lixeira' where workspace_id = $1 and id = $2", [
+    await pool().query("update plataforma.conversas set situacao = 'resolvida', estado = 'na_lixeira', na_lixeira_em = now() where workspace_id = $1 and id = $2", [
       c.ws,
       c.suporte.conversaId,
     ]);

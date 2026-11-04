@@ -76,6 +76,9 @@ export async function limparEspaco(workspaceId: string): Promise<void> {
     await cliente.query("begin");
     // Mensagens, Conversas e Canais (008) antes de Contatos: a FK de `conversas`
     // aponta para `contatos` e `canais` (Pitfall 2).
+    // As tabelas da 011 com FK saem pela cascata: `contato_notas` e `contato_consentimentos`
+    // com o Contato, `conversa_marcacoes` com a Conversa. `crm_de_para` e `registros_crm_antigo`
+    // não têm FK e entram na lista.
     for (const tabela of [
       "mensagens",
       "conversas",
@@ -87,6 +90,8 @@ export async function limparEspaco(workspaceId: string): Promise<void> {
       "contato_identificadores",
       "contatos",
       "funis",
+      "crm_de_para",
+      "registros_crm_antigo",
     ]) {
       await cliente.query(`delete from plataforma.${tabela} where workspace_id = $1`, [workspaceId]);
     }

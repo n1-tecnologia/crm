@@ -157,6 +157,22 @@ Numeradas (`apps/api/migracoes/NNN-*.sql`), aplicadas uma vez por
 aplicado, um arquivo é imutável (D-DEC-10): uma correção é a migração
 seguinte, nunca uma edição no arquivo já aplicado.
 
+**A `011` (Fase 14, `011-crm-o-que-faltava.sql`).** Dá ao CRM novo o que só o
+antigo tinha (D-04, só o essencial): `contatos.mesclado_em_id`/`mesclado_em` e o
+estado `mesclado` (RN-CON-14, terminal e só de leitura; a regra "sem cadeia" é do
+serviço, não de constraint), `contato_consentimentos` (só inserção),
+`contato_notas`, `conversa_marcacoes` (estrela e leitura, por Membro),
+`conversas.na_lixeira_em` (com backfill antes do check) e os índices parciais de
+`atribuido_id` e `fila_id`. **Não** cria coluna de Grupo na Conversa nem de Flow na
+Mensagem (D-05), nem campo de Funil na Lista (D-06), nem `webhooks_recebidos`
+(Fase 16); `migracao-011.test.ts` e `sem-listas-espelho.test.ts` seguram isso.
+`crm_de_para` e `registros_crm_antigo` são **só do script de migração da Fase 15**:
+nenhuma rota e nenhum `hidratar()` as lê, e guardam dado pessoal das coleções
+antigas (por isso nunca vão a log). A 011 não apaga nem altera linha de
+`plataforma.registros` (D-03). Depois de aplicá-la, rode `npm run banco:conceder`
+(a rede da 009 para o `n1_api`). Ela só vai a produção no deploy da Fase 15 (D-01:
+o corte é de uma vez); antes, `npm run migrar -- --seco` lista o que seria aplicado.
+
 ## Colunas geradas e índices de `002`
 
 `002-registros-colunas-geradas.sql` estende `plataforma.registros` com três
