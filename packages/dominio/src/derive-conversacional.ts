@@ -6,7 +6,7 @@
  */
 
 import type { DataState } from "./state";
-import type { Channel, ChannelType, Contact, Conversation, Deal, Id, Link, List, Message, ModeloDeTarefa, Task } from "./types";
+import type { Channel, ChannelType, Contact, Conversation, Deal, Id, Link, List, ModeloDeTarefa, Task } from "./types";
 import type { Canal } from "./crm/canais";
 import type { IdentificadorDeContato } from "./crm/contatos";
 import { TIPO_DE_IDENTIFICADOR_DO_CANAL } from "./crm/conversas";
@@ -48,38 +48,40 @@ function vinculosDaTarefa(state: DataState, task: Task, toType: Link["toType"], 
 }
 
 /**
- * O Contato que um Vínculo alcança HOJE. Um `mesclado` responde pelo
- * sobrevivente (RN-CON-14; a mesclagem migra os Vínculos, mas um Vínculo
- * anterior a ela ainda pode apontar para o absorvido — e B14 garante que não
- * há cadeia). Um Contato na lixeira suspende a exibição do Vínculo
- * (RN-TAR-15): a Tarefa fica sem Contato até que ele seja restaurado.
- */
-function contatoAlcancado(state: DataState, contactId: Id): Contact | undefined {
-  const registro = state.contacts.find((c) => c.id === contactId);
-  const contact =
-    registro?.lifecycle === "mesclado" && registro.mergedIntoId !== undefined
-      ? state.contacts.find((c) => c.id === registro.mergedIntoId)
-      : registro;
-  if (!contact || contact.lifecycle === "naLixeira" || contact.lifecycle === "mesclado") return undefined;
-  return contact;
-}
-
-/**
  * O Contato da Tarefa: o Vínculo task→contact (papel "contato da Tarefa"
  * primeiro, depois qualquer). Sem ele, o Contato principal do Negócio
  * vinculado — é o que cobre as Reuniões de "Meus negócios", que só apontam
  * para o Negócio. A Subtarefa lê a raiz.
+ *
+ * Um Vínculo alcança o Contato HOJE: um `mesclado` responde pelo sobrevivente
+ * (RN-CON-14; a mesclagem migra os Vínculos, mas um Vínculo anterior a ela ainda
+ * pode apontar para o absorvido — e B14 garante que não há cadeia). Um Contato na
+ * lixeira suspende a exibição do Vínculo (RN-TAR-15): a Tarefa fica sem Contato
+ * até que ele seja restaurado.
+ *
+ * Esta leitura olha `state.contacts` (o CRM antigo) e só fica porque o fio da
+ * Conversa e o layout da ficha ainda a chamam (3.4.2); sai na 3.5.4. Quem lê a
+ * Tarefa por ids usa `vinculosDoCrmDaTarefa`.
  */
 export function contatoDaTarefa(state: DataState, task: Task): Contact | undefined {
+  const alcancado = (contactId: Id): Contact | undefined => {
+    const registro = state.contacts.find((c) => c.id === contactId);
+    const contact =
+      registro?.lifecycle === "mesclado" && registro.mergedIntoId !== undefined
+        ? state.contacts.find((c) => c.id === registro.mergedIntoId)
+        : registro;
+    if (!contact || contact.lifecycle === "naLixeira" || contact.lifecycle === "mesclado") return undefined;
+    return contact;
+  };
   for (const alvo of alvosDe(state, task)) {
     for (const link of vinculosDaTarefa(state, alvo, "contact", PAPEL_DO_VINCULO.contato)) {
-      const contact = contatoAlcancado(state, link.toId);
+      const contact = alcancado(link.toId);
       if (contact) return contact;
     }
   }
   const deal = negocioDaTarefa(state, task);
   const principal = deal?.contactLinks.find((l) => l.principal) ?? deal?.contactLinks[0];
-  return principal ? contatoAlcancado(state, principal.contactId) : undefined;
+  return principal ? alcancado(principal.contactId) : undefined;
 }
 
 /** A Conversa da Tarefa: o Vínculo task→conversation — suspenso enquanto ela está na lixeira (RN-TAR-15). A Subtarefa lê a raiz. */
@@ -113,27 +115,6 @@ export function negocioDaTarefa(state: DataState, task: Task): Deal | undefined 
     }
   }
   return undefined;
-}
-
-/**
- * A última Mensagem trocada com o Contato no Canal da Tarefa — ou, sem
- * Canal, em qualquer Conversa dele. Nota interna não conta: não foi trocada
- * com o Contato (mesma leitura de `lastInteraction`).
- */
-export function ultimaMensagemDaTarefa(state: DataState, task: Task): Message | undefined {
-  const contact = contatoDaTarefa(state, task);
-  if (!contact) return undefined;
-  const channel = canalDaTarefa(state, task);
-  let ultima: Message | undefined;
-  for (const conversation of state.conversations) {
-    if (conversation.contactId !== contact.id || conversation.lifecycle !== "ativo") continue;
-    if (channel && conversation.channelId !== channel.id) continue;
-    for (const message of conversation.messages) {
-      if (message.direction === "interna") continue;
-      if (!ultima || message.createdAt > ultima.createdAt) ultima = message;
-    }
-  }
-  return ultima;
 }
 
 /** As Tarefas conversacionais ativas do Contato, a mais recente primeiro. */

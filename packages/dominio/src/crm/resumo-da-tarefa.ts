@@ -9,7 +9,7 @@
  *
  * A "última Mensagem" é a mais recente entre as Conversas `ativas` do Contato
  * no Canal da Tarefa, sem contar a Mensagem `interna` (não foi trocada com o
- * Contato): a mesma leitura de `ultimaMensagemDaTarefa` na derivação do CRM antigo.
+ * Contato): a mesma leitura que a derivação do CRM antigo fazia antes de sair no 14-17.
  *
  * Sem barril: quem precisa importa por `@n1/dominio/crm/resumo-da-tarefa`.
  */

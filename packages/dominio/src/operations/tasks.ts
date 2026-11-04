@@ -23,7 +23,7 @@ import {
   tipoPadraoDaLista,
   containerAdminRefusal,
 } from "../derive";
-import { contatoDaTarefa, vinculosDoCrmDaTarefa } from "../derive-conversacional";
+import { vinculosDoCrmDaTarefa } from "../derive-conversacional";
 import { ACAO_DESCRICAO_ALTERADA, cortarParaHistorico, mencionaNoTexto } from "../descricao-da-tarefa";
 import { fail, ok, type DataState, type OperationResult } from "../state";
 import type { ActorRef, Comment, EffectiveListConfig, FieldDefinition, FieldRequirement, FieldValue, Id, List, Minutes, Priority, StatusDefinition, Task, TaskDate } from "../types";
@@ -583,12 +583,9 @@ export function moveTask(
   if (targetListId === task.listId) return ok(task);
   // C35 — o modelo é da Lista, não da Tarefa: sair para uma operacional é
   // livre; entrar numa conversacional exige o Contato que a ficha vai mostrar.
-  // O segundo ramo (o CRM antigo no estado) sai junto com ele, no corte da Fase 15.
-  if (
-    target.modeloDeTarefa === "conversacional" &&
-    vinculosDoCrmDaTarefa(state, task).contatoId === undefined &&
-    !contatoDaTarefa(state, task)
-  ) {
+  // O Vínculo de Contato basta, qualquer que seja o id: quem confere se o Contato
+  // existe nas tabelas é a api (3.3.2), não o estado do navegador.
+  if (target.modeloDeTarefa === "conversacional" && vinculosDoCrmDaTarefa(state, task).contatoId === undefined) {
     return fail("Uma Lista conversacional só recebe Tarefa com Contato vinculado.");
   }
 
