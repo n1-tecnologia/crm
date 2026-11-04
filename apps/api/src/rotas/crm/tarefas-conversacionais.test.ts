@@ -1,5 +1,5 @@
 /**
- * `POST /tarefas-conversacionais`, `/resumo` e `/:taskId/canal` (14-13 e 14-14, 3.3.1, 3.3.3 e 3.3.5), com serviço falso e sem banco:
+ * `POST /tarefas-conversacionais`, `/resumo`, `/:taskId/canal`, `/:taskId/negocio` e `/:taskId/negocio/novo` (14-13 e 14-14, 3.3.1 e 3.3.3 a 3.3.6), com serviço falso e sem banco:
  * autenticação, forma do corpo (`.strict()`: referências conferidas e `workspaceId`
  * nunca vêm do navegador, T-14-31) e o envelope. A criação contra o Postgres local
  * está em `servicos/crm/tarefas-conversacionais.test.ts`.
@@ -29,7 +29,9 @@ function opcoesDeAutenticacao(workspaceId: string) {
 /** Os gestos do 14-14 que o bloco em teste não chama: o falso recusa se alguém os chamar. */
 const FORA_DO_ESCOPO = {
   trocarCanal: () => Promise.reject(new Error("fora do escopo deste bloco")),
-} satisfies Pick<ServicoDeTarefasConversacionais, "trocarCanal">;
+  vincularNegocio: () => Promise.reject(new Error("fora do escopo deste bloco")),
+  criarNegocio: () => Promise.reject(new Error("fora do escopo deste bloco")),
+} satisfies Pick<ServicoDeTarefasConversacionais, "trocarCanal" | "vincularNegocio" | "criarNegocio">;
 
 const CORPO = { listId: "lst_pos_venda", contatoId: "c1", canalId: "k1", mensagem: { conteudo: "Olá!" } };
 
@@ -302,5 +304,135 @@ describe("POST /tarefas-conversacionais/:taskId/canal — serviço falso, sem ba
     expect(r.statusCode).toBe(status);
     expect(r.json()).toEqual({ ok: false, error: frase, codigo, ...(campo !== undefined ? { campo } : {}) });
     expect(JSON.stringify(r.json())).not.toMatch(/_fk|_uq|_ck|constraint/i);
+  });
+});
+
+const respostaDoNegocio = { ok: true, value: { id: "tsk_1" }, diferenca: {}, revisao: 5, revisaoAnterior: 4, sequencia: 12 };
+
+describe("POST /tarefas-conversacionais/:taskId/negocio e /negocio/novo — serviço falso, sem banco", () => {
+  function novoFalso(desfecho: ResultadoCrm<unknown> = sucesso(respostaDoNegocio)) {
+    const ligar: unknown[][] = [];
+    const criar: unknown[][] = [];
+    const servico: ServicoDeTarefasConversacionais = {
+      criar: () => Promise.reject(new Error("fora do escopo deste bloco")),
+      resumo: () => Promise.reject(new Error("fora do escopo deste bloco")),
+      ...FORA_DO_ESCOPO,
+      vincularNegocio: (...a) => {
+        ligar.push(a);
+        return Promise.resolve(desfecho as never);
+      },
+      criarNegocio: (...a) => {
+        criar.push(a);
+        return Promise.resolve(desfecho as never);
+      },
+    };
+    return { servico, ligar, criar };
+  }
+  const appCom = (servico: ServicoDeTarefasConversacionais) => buildApp({ ...opcoesDeAutenticacao("ws_falso"), crm: { tarefasConversacionais: servico } });
+  const postar = (servico: ServicoDeTarefasConversacionais, url: string, payload?: Record<string, unknown>) =>
+    appCom(servico).inject(payload === undefined ? { method: "POST", url, headers: AUTORIZACAO } : { method: "POST", url, headers: AUTORIZACAO, payload });
+
+  describe("/negocio", () => {
+    it("sem Authorization responde 401 e não chega ao serviço", async () => {
+      const { servico, ligar } = novoFalso();
+      const r = await appCom(servico).inject({ method: "POST", url: "/tarefas-conversacionais/tsk_1/negocio", payload: { negocioId: "n1" } });
+      expect(r.statusCode).toBe(401);
+      expect(ligar).toHaveLength(0);
+    });
+
+    it("repassa o Membro, o taskId do caminho e o negocioId (ou null, que desliga) e devolve 200 { ok, dados }", async () => {
+      const { servico, ligar } = novoFalso();
+      const r = await postar(servico, "/tarefas-conversacionais/tsk_9/negocio", { negocioId: "n1" });
+      expect(r.statusCode).toBe(200);
+      expect(r.json()).toEqual({ ok: true, dados: respostaDoNegocio });
+      expect(ligar[0]?.[0]).toMatchObject({ id: "mem_maryane" });
+      expect(ligar[0]?.[1]).toBe("tsk_9");
+      expect(ligar[0]?.[2]).toEqual({ negocioId: "n1" });
+
+      expect((await postar(servico, "/tarefas-conversacionais/tsk_9/negocio", { negocioId: null })).statusCode).toBe(200);
+      expect(ligar[1]?.[2]).toEqual({ negocioId: null });
+    });
+
+    it.each([
+      ["sem negocioId", {}],
+      ["negocioId que não é texto nem null", { negocioId: 7 }],
+      ["negocioId vazio", { negocioId: "" }],
+      ["contatoId no corpo (o Contato vem do Vínculo)", { negocioId: "n1", contatoId: "c1" }],
+      ["workspaceId no corpo", { negocioId: "n1", workspaceId: "ws_de_outro" }],
+    ])("com %s responde 400 e não chega ao serviço", async (_rotulo, payload) => {
+      const { servico, ligar } = novoFalso();
+      const r = await postar(servico, "/tarefas-conversacionais/tsk_1/negocio", payload);
+      expect(r.statusCode).toBe(400);
+      expect(r.json().ok).toBe(false);
+      expect(ligar).toHaveLength(0);
+    });
+
+    it("sem corpo responde 400", async () => {
+      const { servico, ligar } = novoFalso();
+      expect((await postar(servico, "/tarefas-conversacionais/tsk_1/negocio")).statusCode).toBe(400);
+      expect(ligar).toHaveLength(0);
+    });
+
+    it("a recusa 409 do serviço chega com a frase e o campo", async () => {
+      const { servico } = novoFalso(recusa(409, "Este Negócio não é deste Contato.", { codigo: "NEGOCIO_DE_OUTRO_CONTATO", campo: "negocioId" }));
+      const r = await postar(servico, "/tarefas-conversacionais/tsk_1/negocio", { negocioId: "n1" });
+      expect(r.statusCode).toBe(409);
+      expect(r.json()).toEqual({ ok: false, error: "Este Negócio não é deste Contato.", codigo: "NEGOCIO_DE_OUTRO_CONTATO", campo: "negocioId" });
+    });
+  });
+
+  describe("/negocio/novo", () => {
+    it("sem Authorization responde 401 e não chega ao serviço", async () => {
+      const { servico, criar } = novoFalso();
+      const r = await appCom(servico).inject({ method: "POST", url: "/tarefas-conversacionais/tsk_1/negocio/novo", payload: { funilId: "f1" } });
+      expect(r.statusCode).toBe(401);
+      expect(criar).toHaveLength(0);
+    });
+
+    it("repassa o Membro, o taskId e o corpo, e devolve 201 { ok, dados }", async () => {
+      const { servico, criar } = novoFalso();
+      const corpo = { funilId: "f1", titulo: "Renovação", valor: "1500.50" };
+      const r = await postar(servico, "/tarefas-conversacionais/tsk_9/negocio/novo", corpo);
+      expect(r.statusCode).toBe(201);
+      expect(r.json()).toEqual({ ok: true, dados: respostaDoNegocio });
+      expect(criar[0]?.[0]).toMatchObject({ id: "mem_maryane" });
+      expect(criar[0]?.[1]).toBe("tsk_9");
+      expect(criar[0]?.[2]).toEqual(corpo);
+    });
+
+    it("só o Funil é obrigatório (título e valor são opcionais)", async () => {
+      const { servico, criar } = novoFalso();
+      expect((await postar(servico, "/tarefas-conversacionais/tsk_1/negocio/novo", { funilId: "f1" })).statusCode).toBe(201);
+      expect(criar[0]?.[2]).toEqual({ funilId: "f1" });
+    });
+
+    it.each([
+      ["sem Funil", { titulo: "Renovação" }],
+      ["valor com vírgula", { funilId: "f1", valor: "1500,50" }],
+      ["valor como número", { funilId: "f1", valor: 1500 }],
+      ["título vazio", { funilId: "f1", titulo: "" }],
+      ["contatoId no corpo (o Contato vem do Vínculo)", { funilId: "f1", contatoId: "c1" }],
+      ["etapaId no corpo (nasce na 1ª Etapa)", { funilId: "f1", etapaId: "e1" }],
+      ["proprietarioId no corpo", { funilId: "f1", proprietarioId: "mem_outro" }],
+      ["workspaceId no corpo", { funilId: "f1", workspaceId: "ws_de_outro" }],
+    ])("com %s responde 400 e não chega ao serviço", async (_rotulo, payload) => {
+      const { servico, criar } = novoFalso();
+      const r = await postar(servico, "/tarefas-conversacionais/tsk_1/negocio/novo", payload);
+      expect(r.statusCode).toBe(400);
+      expect(r.json().ok).toBe(false);
+      expect(criar).toHaveLength(0);
+    });
+
+    it.each([
+      [404, "Funil não encontrado.", "FUNIL_NAO_ENCONTRADO", "funilId"],
+      [409, "Esta Tarefa já tem Negócio vinculado.", "RECUSA_DO_DOMINIO", undefined],
+      [403, "Seu Papel não pode criar Negócios.", "PERMISSAO", undefined],
+    ] as const)("a recusa %i do serviço chega com status e frase, sem nome de constraint", async (status, frase, codigo, campo) => {
+      const { servico } = novoFalso(recusa(status, frase, { codigo, ...(campo !== undefined ? { campo } : {}) }));
+      const r = await postar(servico, "/tarefas-conversacionais/tsk_1/negocio/novo", { funilId: "f1" });
+      expect(r.statusCode).toBe(status);
+      expect(r.json()).toEqual({ ok: false, error: frase, codigo, ...(campo !== undefined ? { campo } : {}) });
+      expect(JSON.stringify(r.json())).not.toMatch(/_fk|_uq|_ck|constraint/i);
+    });
   });
 });

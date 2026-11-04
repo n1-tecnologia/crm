@@ -11,6 +11,7 @@
  * Rode com `TZ=America/Sao_Paulo` (Pitfall 5).
  */
 
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { NovoFunil, FunilDetalhado } from "@n1/dominio/crm/funis";
 import type { NegocioDetalhado, NovoNegocio } from "@n1/dominio/crm/negocios";
@@ -21,7 +22,7 @@ import { criarAcessoAoCrmPg } from "./acesso";
 import { criarServicoDeContatos } from "./contatos";
 import { criarServicoDeEmpresas } from "./empresas";
 import { criarServicoDeFunis } from "./funis";
-import { criarServicoDeNegocios } from "./negocios";
+import { criarNegocioNoCliente, criarServicoDeNegocios } from "./negocios";
 import type { ResultadoCrm } from "./resultado";
 
 const acesso = criarAcessoAoCrmPg(pool);
@@ -477,6 +478,32 @@ describeComBanco("ServicoDeNegocios — Postgres local", () => {
     const paraLixeira = recusado(await servico.editar(membro, criado.negocio.id, { empresaId: naLixeira }));
     expect(paraLixeira.status).toBe(409);
     expect(paraLixeira.codigo).toBe("EMPRESA_INATIVA");
+  });
+
+  it("(j) criarNegocioNoCliente (14-14) dentro de outra transação: com `id` o Negócio nasce com ele; sem Funil, o padrão e a Etapa inicial; a recusa volta como valor e nada fica", async () => {
+    const cliente = await pool().connect();
+    try {
+      await cliente.query("begin");
+      const id = randomUUID();
+      const criado = valor(await criarNegocioNoCliente(cliente, membro, { titulo: "Dentro de outra transação", contatoId }, { id }));
+      expect(criado.negocio.id).toBe(id);
+      expect(criado.negocio.funilId).toBe(vendas.funil.id);
+      expect(criado.negocio.etapaId).toBe(vendas.etapas[0]!.id);
+      expect(criado.negocio.proprietarioId).toBe("mem_ana");
+
+      // Sem `id`, o banco decide.
+      const sem = valor(await criarNegocioNoCliente(cliente, membro, { titulo: "Sem id", contatoId }));
+      expect(sem.negocio.id).not.toBe(id);
+
+      const semFunil = recusado(await criarNegocioNoCliente(cliente, membro, { titulo: "Funil que não existe", contatoId, funilId: randomUUID() }));
+      expect(semFunil).toMatchObject({ status: 404, codigo: "FUNIL_NAO_ENCONTRADO" });
+      await cliente.query("commit");
+    } finally {
+      cliente.release();
+    }
+    expect((await linhaNoBanco((await pool().query<{ id: string }>("select id from plataforma.negocios where workspace_id = $1 and titulo = 'Dentro de outra transação'", [ws])).rows[0]!.id))?.estado).toBe("ativo");
+    const naoCriado = await pool().query("select 1 from plataforma.negocios where workspace_id = $1 and titulo = 'Funil que não existe'", [ws]);
+    expect(naoCriado.rowCount).toBe(0);
   });
 
   it("(i) RN-CON-14: Contato `mesclado` não ganha Negócio, nem entra por edição; `arquivado` continua aceito", async () => {

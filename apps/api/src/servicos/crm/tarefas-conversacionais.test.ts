@@ -457,6 +457,198 @@ describeComBanco("ServicoDeTarefasConversacionais — Postgres local", () => {
     });
   });
 
+  /** Um Funil com Etapas (nesta ordem); devolve o id dele e o da primeira Etapa. */
+  async function funilComEtapas(ws: string, nome: string, etapas: readonly string[] = ["Primeiro contato", "Proposta"], estado = "ativo"): Promise<{ funilId: string; primeiraEtapaId: string }> {
+    const funil = await pool().query<{ id: string }>("insert into plataforma.funis (workspace_id, nome, criado_por, estado) values ($1, $2, $3, $4) returning id", [ws, nome, SESSAO, estado]);
+    const ids: string[] = [];
+    for (const [i, etapa] of etapas.entries()) {
+      const criada = await pool().query<{ id: string }>("insert into plataforma.etapas (workspace_id, funil_id, nome, ordem) values ($1, $2, $3, $4) returning id", [ws, funil.rows[0]!.id, etapa, i + 1]);
+      ids.push(criada.rows[0]!.id);
+    }
+    return { funilId: funil.rows[0]!.id, primeiraEtapaId: ids[0]! };
+  }
+
+  const negociosNasTabelas = (ws: string) => contar("select count(*) as n from plataforma.negocios where workspace_id = $1", ws);
+  const negociosEmRegistros = colecao("deals");
+  const negocioDaTarefa = async (ws: string, taskId: string): Promise<string[]> => (await vinculosDaTarefa(ws, taskId)).filter((v) => v.toType === "deal").map((v) => v.toId);
+
+  describe("vincularNegocio (3.3.6)", () => {
+    it("liga um Negócio ativo do Contato da Tarefa; ligar outro troca (um Vínculo só); null desliga; nada em registros `deals`", async () => {
+      const e = await espaco("ligar");
+      const marina = await contato(e.ws, "Marina Duarte");
+      const { taskId } = await tarefaNova(e, marina);
+      const renovacao = await negocio(e.ws, marina, "Renovação 2027");
+      const upsell = await negocio(e.ws, marina, "Upsell");
+      const deals = await negociosEmRegistros(e.ws);
+      const negocios = await negociosNasTabelas(e.ws);
+
+      const ligado = valor(await servico.vincularNegocio(membro(e.ws), taskId, { negocioId: renovacao }));
+      expect(ligado.ok).toBe(true);
+      expect(typeof ligado.sequencia).toBe("number");
+      expect(await negocioDaTarefa(e.ws, taskId)).toEqual([renovacao]);
+
+      valor(await servico.vincularNegocio(membro(e.ws), taskId, { negocioId: upsell }));
+      expect(await negocioDaTarefa(e.ws, taskId)).toEqual([upsell]);
+
+      valor(await servico.vincularNegocio(membro(e.ws), taskId, { negocioId: null }));
+      expect(await negocioDaTarefa(e.ws, taskId)).toEqual([]);
+      // O Contato e a Conversa seguem ligados; nenhum Negócio nasceu nem sumiu.
+      expect((await vinculosDaTarefa(e.ws, taskId)).map((v) => v.toType).sort()).toEqual(["contact", "conversation"]);
+      expect(await negociosEmRegistros(e.ws)).toBe(deals);
+      expect(await negociosNasTabelas(e.ws)).toBe(negocios);
+    });
+
+    it("desligar quando não há Negócio e religar o mesmo são ok e não mexem em nada", async () => {
+      const e = await espaco("ligarigual");
+      const marina = await contato(e.ws, "Marina Duarte");
+      const { taskId } = await tarefaNova(e, marina);
+      const renovacao = await negocio(e.ws, marina, "Renovação 2027");
+      valor(await servico.vincularNegocio(membro(e.ws), taskId, { negocioId: null }));
+      valor(await servico.vincularNegocio(membro(e.ws), taskId, { negocioId: renovacao }));
+      const vinculos = await vinculosDaTarefa(e.ws, taskId);
+      valor(await servico.vincularNegocio(membro(e.ws), taskId, { negocioId: renovacao }));
+      expect(await vinculosDaTarefa(e.ws, taskId)).toEqual(vinculos);
+    });
+
+    it("Negócio de outro Contato, de outro Espaço, arquivado, na lixeira ou inexistente → 409 com a frase do domínio, e o Vínculo fica como estava (T-14-35)", async () => {
+      const e = await espaco("ligarrecusa");
+      const outro = await espaco("ligarrecusab");
+      const marina = await contato(e.ws, "Marina Duarte");
+      const joao = await contato(e.ws, "João");
+      const { taskId } = await tarefaNova(e, marina);
+      const dela = await negocio(e.ws, marina, "Renovação 2027");
+      valor(await servico.vincularNegocio(membro(e.ws), taskId, { negocioId: dela }));
+      const dele = await negocio(e.ws, joao, "Do João");
+      const arquivado = await negocio(e.ws, marina, "Arquivado", "arquivado");
+      const naLixeira = await negocio(e.ws, marina, "Descartado", "na_lixeira");
+      const deOutroEspaco = await negocio(outro.ws, await contato(outro.ws, "X"), "De outro Espaço");
+
+      for (const id of [dele, arquivado, naLixeira, deOutroEspaco, randomUUID()]) {
+        const r = recusado(await servico.vincularNegocio(membro(e.ws), taskId, { negocioId: id }));
+        expect(r).toMatchObject({ status: 409, error: "Este Negócio não é deste Contato.", codigo: "NEGOCIO_DE_OUTRO_CONTATO", campo: "negocioId" });
+      }
+      expect(await negocioDaTarefa(e.ws, taskId)).toEqual([dela]);
+    });
+
+    it("o Contato da Tarefa vem do Vínculo: se foi mesclado, o Negócio do sobrevivente liga e o do absorvido não", async () => {
+      const e = await espaco("ligarmesclado");
+      const sobrevivente = await contato(e.ws, "Sobrevivente");
+      const absorvido = await contato(e.ws, "Absorvido");
+      const { taskId } = await tarefaNova(e, absorvido);
+      const doSobrevivente = await negocio(e.ws, sobrevivente, "Do sobrevivente");
+      const doAbsorvido = await negocio(e.ws, absorvido, "Do absorvido");
+      await poolDoDono().query("update plataforma.contatos set estado = 'mesclado', mesclado_em_id = $3, mesclado_em = now() where workspace_id = $1 and id = $2", [e.ws, absorvido, sobrevivente]);
+
+      expect(recusado(await servico.vincularNegocio(membro(e.ws), taskId, { negocioId: doAbsorvido }))).toMatchObject({ status: 409, codigo: "NEGOCIO_DE_OUTRO_CONTATO" });
+      valor(await servico.vincularNegocio(membro(e.ws), taskId, { negocioId: doSobrevivente }));
+      expect(await negocioDaTarefa(e.ws, taskId)).toEqual([doSobrevivente]);
+    });
+
+    it("Tarefa inexistente → 409 pela operação do domínio; Convidado não altera Tarefa; Papel sem ler Negócio é 403", async () => {
+      const e = await espaco("ligarpapel");
+      const marina = await contato(e.ws, "Marina Duarte");
+      const { taskId } = await tarefaNova(e, marina);
+      const renovacao = await negocio(e.ws, marina, "Renovação 2027");
+
+      expect(recusado(await servico.vincularNegocio(membro(e.ws), "tsk_que_nao_existe", { negocioId: renovacao }))).toMatchObject({ status: 409, codigo: "RECUSA_DO_DOMINIO", error: "Tarefa não encontrada." });
+      expect(recusado(await servico.vincularNegocio(membro(e.ws, "mem_convidado_teste"), taskId, { negocioId: renovacao }))).toMatchObject({ status: 409, codigo: "RECUSA_DO_DOMINIO" });
+      expect(await negocioDaTarefa(e.ws, taskId)).toEqual([]);
+    });
+  });
+
+  describe("criarNegocio (3.3.6)", () => {
+    it("cria o Negócio na 1ª Etapa do Funil, do Contato da Tarefa, com o título dela, e grava o Vínculo com esse id; nada em registros `deals`", async () => {
+      const e = await espaco("novo");
+      const marina = await contato(e.ws, "Marina Duarte");
+      const { taskId } = await tarefaNova(e, marina, { title: "Renovar contrato" });
+      const { funilId, primeiraEtapaId } = await funilComEtapas(e.ws, "Pós-venda");
+      const deals = await negociosEmRegistros(e.ws);
+      const antes = await negociosNasTabelas(e.ws);
+
+      const r = valor(await servico.criarNegocio(membro(e.ws), taskId, { funilId }));
+
+      expect(await negociosNasTabelas(e.ws)).toBe(antes + 1);
+      expect(await negociosEmRegistros(e.ws)).toBe(deals);
+      expect(r.negocio.titulo).toBe("Renovar contrato");
+      const { rows } = await pool().query("select titulo, contato_id, empresa_id, funil_id, etapa_id, proprietario_id, criado_por, situacao, estado from plataforma.negocios where workspace_id = $1 and id = $2", [e.ws, r.negocio.id]);
+      expect(rows).toEqual([{ titulo: "Renovar contrato", contato_id: marina, empresa_id: null, funil_id: funilId, etapa_id: primeiraEtapaId, proprietario_id: SESSAO, criado_por: SESSAO, situacao: "aberto", estado: "ativo" }]);
+      expect(await negocioDaTarefa(e.ws, taskId)).toEqual([r.negocio.id]);
+    });
+
+    it("título e valor do corpo valem; sem título, o da Tarefa", async () => {
+      const e = await espaco("novotitulo");
+      const marina = await contato(e.ws, "Marina Duarte");
+      const { taskId } = await tarefaNova(e, marina);
+      const { funilId } = await funilComEtapas(e.ws, "Pós-venda");
+
+      const r = valor(await servico.criarNegocio(membro(e.ws), taskId, { funilId, titulo: "  Upsell 2027  ", valor: "1500.50" }));
+      const { rows } = await pool().query("select titulo, valor::text as valor from plataforma.negocios where workspace_id = $1 and id = $2", [e.ws, r.negocio.id]);
+      expect(rows).toEqual([{ titulo: "Upsell 2027", valor: "1500.50" }]);
+    });
+
+    it("a Tarefa já tem Negócio → 409 \"Esta Tarefa já tem Negócio vinculado.\" e o Negócio NÃO fica (T-14-37)", async () => {
+      const e = await espaco("novoorfao");
+      const marina = await contato(e.ws, "Marina Duarte");
+      const { taskId } = await tarefaNova(e, marina);
+      const existente = await negocio(e.ws, marina, "Já ligado");
+      valor(await servico.vincularNegocio(membro(e.ws), taskId, { negocioId: existente }));
+      const { funilId } = await funilComEtapas(e.ws, "Pós-venda");
+      const negocios = await negociosNasTabelas(e.ws);
+
+      const r = recusado(await servico.criarNegocio(membro(e.ws), taskId, { funilId }));
+      expect(r).toMatchObject({ status: 409, codigo: "RECUSA_DO_DOMINIO", error: "Esta Tarefa já tem Negócio vinculado." });
+      expect(await negociosNasTabelas(e.ws)).toBe(negocios);
+      expect(await negocioDaTarefa(e.ws, taskId)).toEqual([existente]);
+    });
+
+    it("Funil inexistente → 404, Funil arquivado → 409, Funil de outro Espaço → 404; valor mal formado → 400; nada fica", async () => {
+      const e = await espaco("novofunil");
+      const outro = await espaco("novofunilb");
+      const marina = await contato(e.ws, "Marina Duarte");
+      const { taskId } = await tarefaNova(e, marina);
+      const arquivado = await funilComEtapas(e.ws, "Aposentado", ["Única"], "arquivado");
+      const deOutro = await funilComEtapas(outro.ws, "De outro Espaço");
+      const { funilId } = await funilComEtapas(e.ws, "Pós-venda");
+      const negocios = await negociosNasTabelas(e.ws);
+
+      expect(recusado(await servico.criarNegocio(membro(e.ws), taskId, { funilId: randomUUID() }))).toMatchObject({ status: 404, codigo: "FUNIL_NAO_ENCONTRADO" });
+      expect(recusado(await servico.criarNegocio(membro(e.ws), taskId, { funilId: deOutro.funilId }))).toMatchObject({ status: 404, codigo: "FUNIL_NAO_ENCONTRADO" });
+      expect(recusado(await servico.criarNegocio(membro(e.ws), taskId, { funilId: arquivado.funilId }))).toMatchObject({ status: 409, codigo: "FUNIL_INATIVO" });
+      expect(recusado(await servico.criarNegocio(membro(e.ws), taskId, { funilId, valor: "mil reais" }))).toMatchObject({ status: 400, codigo: "VALOR_INVALIDO", campo: "valor" });
+      expect(await negociosNasTabelas(e.ws)).toBe(negocios);
+      expect(await negocioDaTarefa(e.ws, taskId)).toEqual([]);
+    });
+
+    it("Contato da Tarefa arquivado ou mesclado → recusa; mesclado: o Negócio é do sobrevivente", async () => {
+      const e = await espaco("novocontato");
+      const sobrevivente = await contato(e.ws, "Sobrevivente");
+      const absorvido = await contato(e.ws, "Absorvido");
+      const arquivado = await contato(e.ws, "Arquivado");
+      const { taskId } = await tarefaNova(e, absorvido);
+      const { taskId: taskDoArquivado } = await tarefaNova(e, arquivado);
+      const { funilId } = await funilComEtapas(e.ws, "Pós-venda");
+      await poolDoDono().query("update plataforma.contatos set estado = 'mesclado', mesclado_em_id = $3, mesclado_em = now() where workspace_id = $1 and id = $2", [e.ws, absorvido, sobrevivente]);
+      await pool().query("update plataforma.contatos set estado = 'arquivado' where workspace_id = $1 and id = $2", [e.ws, arquivado]);
+
+      expect(recusado(await servico.criarNegocio(membro(e.ws), taskDoArquivado, { funilId }))).toMatchObject({ status: 409, codigo: "CONTATO_INATIVO" });
+      const r = valor(await servico.criarNegocio(membro(e.ws), taskId, { funilId }));
+      const { rows } = await pool().query("select contato_id from plataforma.negocios where workspace_id = $1 and id = $2", [e.ws, r.negocio.id]);
+      expect(rows).toEqual([{ contato_id: sobrevivente }]);
+    });
+
+    it("Tarefa inexistente → 409 e nenhum Negócio; Convidado → 403 antes de ler", async () => {
+      const e = await espaco("novopapel");
+      const marina = await contato(e.ws, "Marina Duarte");
+      const { taskId } = await tarefaNova(e, marina);
+      const { funilId } = await funilComEtapas(e.ws, "Pós-venda");
+      const negocios = await negociosNasTabelas(e.ws);
+
+      expect(recusado(await servico.criarNegocio(membro(e.ws), "tsk_que_nao_existe", { funilId }))).toMatchObject({ status: 409, codigo: "RECUSA_DO_DOMINIO", error: "Tarefa não encontrada." });
+      expect(recusado(await servico.criarNegocio(membro(e.ws, "mem_convidado_teste"), taskId, { funilId }))).toMatchObject({ status: 403, codigo: "PERMISSAO" });
+      expect(await negociosNasTabelas(e.ws)).toBe(negocios);
+    });
+  });
+
   describe("resumo (3.3.3)", () => {
     /** Uma Mensagem na Conversa, na hora dada. `recebida` leva o `id_externo` que a 008 exige; `enviada`, o status. */
     async function mensagem(ws: string, conversaId: string, canalId: string, direcao: "recebida" | "enviada" | "interna", conteudo: string, criadoEm: string): Promise<void> {
