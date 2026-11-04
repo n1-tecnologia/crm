@@ -48,7 +48,6 @@ import { useId, useRef, useState, type ReactNode } from "react";
 import {
   ArrowRight,
   Briefcase,
-  Building2,
   CalendarDays,
   Check,
   ChevronDown,
@@ -82,11 +81,12 @@ import { DescricaoDaTarefa } from "@/features/estrutura/descricao-da-tarefa";
 import { valorDaLinhaDeTempo } from "@/features/estrutura/tempo";
 import { financeProfileOf, valorDaConta } from "@/features/estrutura/financeiro/lens";
 import { CHANNEL_ICON, ConversationThread } from "@/features/crm/conversation-thread";
-import { ContactAvatar } from "@/features/crm/contact-card";
+import { SeloDoProvedor } from "@/features/crm/selo-do-provedor";
+import { RostoDoContato } from "@/features/estrutura/cartao-conversacional";
+import { useResumoDaTarefa } from "@/dados/crm/tarefas-conversacionais";
 import { marcarSeMuda, useNavegar } from "@/features/shell/navegacao";
 import { useData, useIdsNaoConfirmados, useRun, useSession } from "@/dados/store";
 import {
-  actorLabel,
   checklistProgress,
   contactDisplayName,
   containerAdminRefusal,
@@ -96,7 +96,6 @@ import {
   isOverdue,
   memberReachesContainer,
   memberSeesTask,
-  principalCompanyId,
   spawnedOccurrenceOf,
   statusDefinition,
   subtaskProgress,
@@ -109,13 +108,12 @@ import {
 import {
   canalDaTarefa,
   contatoDaTarefa,
-  conversaDaTarefa,
   listaConversacional,
   negocioDaTarefa,
   canaisDaListaQueAlcancam,
+  vinculosDoCrmDaTarefa,
 } from "@n1/dominio/derive-conversacional";
 import {
-  CHANNEL_CAPABILITIES,
   addChecklist,
   addChecklistItem,
   assignTask,
@@ -141,7 +139,6 @@ import {
 import {
   ACTOR_KIND_LABEL,
   CHANNEL_TYPE_LABEL,
-  CONVERSATION_STATE_LABEL,
   OBJECT_TYPE_LABEL,
   PRIORITY_LABEL,
 } from "@/features/shell/format";
@@ -274,6 +271,11 @@ export function TarefaCompleta({
     router.replace(next.size > 0 ? `${pathname}?${next}` : pathname, { scroll: false });
   };
 
+  // 14-15 (3.3.3): o que a ficha MOSTRA do CRM (Contato, Canal, Conversa, Negócio) vem do resumo da
+  // api. Dentro do popup da Lista ele sai da resposta única dela; aberta sozinha, a ficha faz a própria
+  // chamada. Uma Lista que não é conversacional não pergunta nada. O hook fica antes do retorno antecipado.
+  const listaDaTarefa = state.tasks.find((t) => t.id === tarefa)?.listId;
+  const resumo = useResumoDaTarefa(tarefa, { pausado: listaDaTarefa === undefined || !listaConversacional(state, listaDaTarefa) });
   // B38a — o que o Membro não alcança não existe para ele: a mesma tela de "não encontrada".
   const task = state.tasks.find(
     (t) => t.id === tarefa && memberSeesTask(state, memberId, t.id),
@@ -333,10 +335,20 @@ export function TarefaCompleta({
    * Contato, a Conversa (e por ela o Canal) e o Negócio, se houver. Uma
    * Tarefa conversacional SEM Contato cai no layout de sempre com um aviso —
    * o fio não tem com quem ser.
+   *
+   * 14-15: a seção "CRM" e o aviso leem o RESUMO da api (`resumo`); a Conversa
+   * é o id do Vínculo. `contato`, `canal` e `negocio` abaixo são a leitura
+   * ANTIGA e ficam só para o que ainda não foi para a api: o fio de Mensagens
+   * (`ConversationThread`) e os três gestos de escrita (trocar o Canal, ligar o
+   * Negócio, criar o Negócio), que o plano 14-16 troca. Nenhuma exibição cai
+   * para elas quando o resumo vem vazio (D-01).
    */
   const conversacional = listaConversacional(state, task.listId);
+  const contatoDoResumo = resumo?.contato ?? undefined;
+  const canalDoResumo = resumo?.canal ?? undefined;
+  const negocioDoResumo = resumo?.negocio ?? undefined;
+  const conversaId = conversacional ? vinculosDoCrmDaTarefa(state, task).conversaId : undefined;
   const contato = conversacional ? contatoDaTarefa(state, task) : undefined;
-  const conversa = contato ? conversaDaTarefa(state, task) : undefined;
   const canal = contato ? canalDaTarefa(state, task) : undefined;
   const negocio = contato ? negocioDaTarefa(state, task) : undefined;
   const fichaConversacional = contato !== undefined;
@@ -521,9 +533,9 @@ export function TarefaCompleta({
               {
                 label: "Abrir na Caixa de Entrada",
                 onSelect: () => {
-                  if (conversa) navegar(`/crm/caixa-de-entrada/${conversa.id}`);
+                  if (conversaId) navegar(`/crm/caixa-de-entrada/${conversaId}`);
                 },
-                ...(conversa ? {} : { disabledReason: "Esta Tarefa ainda não tem Conversa." }),
+                ...(conversaId ? {} : { disabledReason: "Esta Tarefa ainda não tem Conversa." }),
               },
               {
                 label: "Criar Negócio a partir desta Tarefa",
@@ -1165,7 +1177,7 @@ export function TarefaCompleta({
           </div>
 
           {/* ───────────────────────── o CRM: com quem, por onde, sobre o quê ── */}
-          {contato ? (
+          {contatoDoResumo ? (
             <section className="mt-5">
               <ReguaDeSecao rotulo="CRM" />
               <div className="grid gap-x-8 gap-y-0.5 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -1174,13 +1186,7 @@ export function TarefaCompleta({
                     icone={UserRound}
                     rotulo="Contato"
                     controle={(() => {
-                      // O Identificador que o Canal da Tarefa resolve; sem Canal, o principal.
-                      const tipos = canal ? CHANNEL_CAPABILITIES[canal.channelType].resolvesIdentifierTypes : undefined;
-                      const candidatos = tipos ? contato.identifiers.filter((i) => tipos.includes(i.type)) : contato.identifiers;
-                      const identificador = (candidatos.find((i) => i.principal) ?? candidatos[0])?.displayValue;
-                      const qualificacao = state.catalog.find((c) => c.id === contato.qualificationId);
-                      const temperatura = state.catalog.find((c) => c.id === contato.temperatureId);
-                      const href = `/crm/contatos/${contato.id}`;
+                      const href = `/crm/contatos/${contatoDoResumo.id}`;
                       return (
                         <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
                           <Link
@@ -1189,16 +1195,9 @@ export function TarefaCompleta({
                             className="app-base flex min-w-0 items-center gap-2 hover:underline"
                             style={{ color: "var(--texto)" }}
                           >
-                            <ContactAvatar contact={contato} />
-                            <span className="truncate">{contactDisplayName(contato)}</span>
-                            {identificador ? <span className="app-meta truncate">{identificador}</span> : null}
+                            <RostoDoContato nome={contatoDoResumo.nome} tamanho="normal" />
+                            <span className="truncate">{contatoDoResumo.nome}</span>
                           </Link>
-                          {qualificacao ? <Pilula tom="neutro">{qualificacao.name}</Pilula> : null}
-                          {temperatura ? (
-                            <Pilula {...(temperatura.color ? { cor: temperatura.color } : { tom: "neutro" })}>
-                              {temperatura.name}
-                            </Pilula>
-                          ) : null}
                         </span>
                       );
                     })()}
@@ -1207,16 +1206,17 @@ export function TarefaCompleta({
                     icone={Radio}
                     rotulo="Canal"
                     valor={
-                      canal
+                      canalDoResumo
                         ? (() => {
-                            const IconeDoCanal = CHANNEL_ICON[canal.channelType];
+                            const IconeDoCanal = CHANNEL_ICON[canalDoResumo.tipo];
                             return (
                               <span className="flex items-center gap-2">
                                 <Pilula tom="neutro" className="shrink-0 gap-1.5">
                                   <IconeDoCanal className="size-[var(--icone-xs)] shrink-0" aria-hidden="true" />
-                                  {CHANNEL_TYPE_LABEL[canal.channelType]}
+                                  {CHANNEL_TYPE_LABEL[canalDoResumo.tipo]}
                                 </Pilula>
-                                <span className="truncate">{canal.name}</span>
+                                <span className="truncate">{canalDoResumo.nome}</span>
+                                <SeloDoProvedor canal={{ channelType: canalDoResumo.tipo, provider: canalDoResumo.provedor }} />
                               </span>
                             );
                           })()
@@ -1259,30 +1259,19 @@ export function TarefaCompleta({
                   <LinhaDeProp
                     icone={MessageSquare}
                     rotulo="Conversa"
-                    {...(conversa
+                    {...(conversaId
                       ? {
                           controle: (() => {
-                            const href = `/crm/caixa-de-entrada/${conversa.id}`;
+                            const href = `/crm/caixa-de-entrada/${conversaId}`;
                             return (
-                              <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                                <Pilula
-                                  tom={conversa.state === "aberta" ? "sucesso" : conversa.state === "pendente" ? "aviso" : "neutro"}
-                                  comPonto={conversa.state === "aberta"}
-                                >
-                                  {CONVERSATION_STATE_LABEL[conversa.state] ?? conversa.state}
-                                </Pilula>
-                                <span className="app-base truncate" style={{ color: "var(--texto)" }}>
-                                  {conversa.assignee ? `atribuída a ${actorLabel(state, conversa.assignee)}` : "sem Atribuído"}
-                                </span>
-                                <Link
-                                  href={href}
-                                  onNavigate={() => marcarSeMuda(href)}
-                                  className="app-sm shrink-0 underline"
-                                  style={{ color: "var(--texto-1)" }}
-                                >
-                                  Abrir na Caixa de Entrada
-                                </Link>
-                              </span>
+                              <Link
+                                href={href}
+                                onNavigate={() => marcarSeMuda(href)}
+                                className="app-sm shrink-0 underline"
+                                style={{ color: "var(--texto-1)" }}
+                              >
+                                Abrir na Caixa de Entrada
+                              </Link>
                             );
                           })(),
                         }
@@ -1292,40 +1281,18 @@ export function TarefaCompleta({
 
                 <div className="grid min-w-0 content-start gap-0.5">
                   {(() => {
-                    const empresaId = principalCompanyId(state, contato.id);
-                    const empresa = state.companies.find((c) => c.id === empresaId);
-                    const href = `/crm/empresas/${empresa?.id ?? ""}`;
-                    return (
-                      <LinhaDeProp
-                        icone={Building2}
-                        rotulo="Empresa"
-                        {...(empresa
-                          ? {
-                              controle: (
-                                <Link
-                                  href={href}
-                                  onNavigate={() => marcarSeMuda(href)}
-                                  className="app-base min-w-0 truncate hover:underline"
-                                  style={{ color: "var(--texto)" }}
-                                >
-                                  {empresa.tradeName}
-                                </Link>
-                              ),
-                            }
-                          : { valor: "—" })}
-                      />
-                    );
-                  })()}
-                  {(() => {
                     const funilDe = (funnelId: string, stageId: string) => {
                       const funil = state.funnels.find((f) => f.id === funnelId);
                       const etapa = funil?.stages.find((s) => s.id === stageId);
                       return `${funil?.name ?? "—"} › ${etapa?.name ?? "—"}`;
                     };
                     // Os Negócios abertos do Contato — e o vinculado, mesmo já fechado, para a opção não sumir.
-                    const abertos = state.deals.filter(
-                      (d) => d.lifecycle === "ativo" && d.situation === "aberto" && d.contactLinks.some((l) => l.contactId === contato.id),
-                    );
+                    // (Opções do editor de escrita: ainda do modelo antigo até o 14-16.)
+                    const abertos = contato
+                      ? state.deals.filter(
+                          (d) => d.lifecycle === "ativo" && d.situation === "aberto" && d.contactLinks.some((l) => l.contactId === contato.id),
+                        )
+                      : [];
                     const opcoes = [
                       { value: "", label: "Sem Negócio" },
                       ...(negocio && !abertos.some((d) => d.id === negocio.id) ? [negocio] : []).concat(abertos).map((d) => ({
@@ -1349,7 +1316,7 @@ export function TarefaCompleta({
                         options={opcoes}
                       />
                     );
-                    if (!negocio) {
+                    if (!negocioDoResumo) {
                       return (
                         <LinhaDeProp
                           icone={Briefcase}
@@ -1361,7 +1328,7 @@ export function TarefaCompleta({
                         />
                       );
                     }
-                    const href = `/crm/negocios/${negocio.id}`;
+                    const href = `/crm/negocios/${negocioDoResumo.id}`;
                     return (
                       <LinhaDeProp
                         icone={Briefcase}
@@ -1389,9 +1356,9 @@ export function TarefaCompleta({
                                 className="app-base min-w-0 truncate hover:underline"
                                 style={{ color: "var(--texto)" }}
                               >
-                                {negocio.title}
+                                {negocioDoResumo.titulo}
                               </Link>
-                              <span className="app-meta truncate">{funilDe(negocio.funnelId, negocio.stageId)}</span>
+                              {negocioDoResumo.etapa ? <span className="app-meta truncate">{negocioDoResumo.etapa}</span> : null}
                               <span className="ml-auto shrink-0">
                                 <Button
                                   variant="ghost"
@@ -1416,7 +1383,7 @@ export function TarefaCompleta({
 
           {/* Os avisos de regra que acompanham o Status. */}
           <div className="mt-2 grid gap-2">
-                {conversacional && !contato ? (
+                {conversacional && resumo !== undefined && resumo.contato === null ? (
                   <p
                     role="status"
                     className="app-base mt-2 rounded-[var(--r-controle)] px-3 py-2"
