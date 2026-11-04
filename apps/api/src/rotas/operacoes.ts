@@ -35,11 +35,10 @@ import { cutucarPonte, type ParDaPonte } from "../automacoes/ponte-ativa";
 import { recusaDeSuspenso, type MembroDaSessao } from "../plugins/autenticacao";
 import type { EventoDeSaida } from "../persistencia/outbox";
 import { executar, type MedicaoDaExecucao, type ResultadoTransacao } from "../persistencia/unidade-de-trabalho";
-import { recortarDiferenca, recortarValor, visibilidadePara } from "@n1/dominio/derive-visibilidade";
-import { maiorIdDe } from "@n1/dominio/operations";
 import { convidarMembro } from "../servicos/convidar-membro";
 import { LISTA_SOLICITACOES_DE_PAGAMENTO_ID } from "../servicos/dto-solicitacao";
 import { esquemaDeArgumentos } from "./esquemas-de-argumentos";
+import { recortarResposta } from "./resposta-recortada";
 
 /**
  * As duas operações desta rota que o pipeline de pagamento precisa ouvir (D-09, contrato v1 §8):
@@ -416,13 +415,7 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
       if (depois && "diferenca" in resultado) {
         // `recorteMs` é a etapa do recorte por Membro (SEG-01), própria da D-02.
         const inicioDoRecorte = performance.now();
-        const { ocultos } = visibilidadePara(depois, request.membro.id);
-        const corpo = {
-          ...resultado,
-          diferenca: recortarDiferenca(resultado.diferenca, depois, request.membro.id, ocultos),
-          ...(resultado.ok ? { value: recortarValor(resultado.value, depois, request.membro.id, ocultos) } : {}),
-          sequencia: maiorIdDe(depois),
-        };
+        const corpo = recortarResposta(resultado, depois, request.membro.id);
         registrarMedicao({ recorteMs: Math.round((performance.now() - inicioDoRecorte) * 10) / 10 });
         return reply.code(200).send(corpo);
       }
