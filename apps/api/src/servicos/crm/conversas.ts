@@ -377,6 +377,30 @@ export function criarServicoDeConversas(deps: { readonly pool: () => Pool; reado
   };
 }
 
+/** 409 do Canal arquivado: ele não abre Conversa nem recebe Tarefa. */
+export const canalArquivado = () =>
+  recusa<never>(409, "Um Canal arquivado não abre Conversa. Escolha outro Canal.", { codigo: "CANAL_ARQUIVADO", campo: "canalId" });
+
+/**
+ * O Identificador do Contato que o Canal resolve (o principal vem primeiro), ou
+ * o 409 com a frase. RN-CXE-21: `telefone` não é WhatsApp.
+ */
+export function identificadorDoCanal<I extends { readonly tipo: string; readonly principal: boolean }>(
+  identificadores: readonly I[],
+  canal: Pick<Canal, "tipo">,
+): ResultadoCrm<I> {
+  const tipoDoIdentificador = TIPO_DE_IDENTIFICADOR_DO_CANAL[canal.tipo];
+  const doTipo = identificadores.filter((identificador) => identificador.tipo === tipoDoIdentificador);
+  const identificador = doTipo.find((candidato) => candidato.principal) ?? doTipo[0];
+  if (!identificador) {
+    return recusa<never>(409, `Este Contato não tem ${rotuloDoIdentificador(tipoDoIdentificador)} para conversar por este Canal.`, {
+      codigo: "CONTATO_SEM_IDENTIFICADOR_DO_CANAL",
+      campo: "contatoId",
+    });
+  }
+  return sucesso(identificador);
+}
+
 /**
  * Abre a Conversa e grava a primeira Mensagem no `cliente` que vier, dentro da
  * transação de quem chama (INV-CXE-05). É o mesmo código de `POST /conversas`
@@ -395,12 +419,7 @@ export async function abrirConversaNoCliente(
 ): Promise<ResultadoCrm<ConversaDetalhada & { readonly primeiraMensagem: Mensagem }>> {
   const canal = await criarRepositorioDeCanaisPg(cliente).obter(membro.workspaceId, entrada.canalId);
   if (!canal) return canalNaoEncontrado();
-  if (canal.estado === "arquivado") {
-    return recusa<never>(409, "Um Canal arquivado não abre Conversa. Escolha outro Canal.", {
-      codigo: "CANAL_ARQUIVADO",
-      campo: "canalId",
-    });
-  }
+  if (canal.estado === "arquivado") return canalArquivado();
 
   const contatos = criarRepositorioDeContatosPg(cliente);
   const contato = await contatos.obter(membro.workspaceId, entrada.contatoId);
@@ -409,18 +428,9 @@ export async function abrirConversaNoCliente(
     return recusa<never>(409, "Só um Contato ativo abre Conversa.", { codigo: "CONTATO_INATIVO", campo: "contatoId" });
   }
 
-  // O Identificador do tipo que o Canal resolve; o principal vem primeiro.
-  const tipoDoIdentificador = TIPO_DE_IDENTIFICADOR_DO_CANAL[canal.tipo];
-  const doTipo = (await contatos.listarIdentificadores(membro.workspaceId, contato.id)).filter(
-    (identificador) => identificador.tipo === tipoDoIdentificador,
-  );
-  const identificador = doTipo.find((candidato) => candidato.principal) ?? doTipo[0];
-  if (!identificador) {
-    return recusa<never>(409, `Este Contato não tem ${rotuloDoIdentificador(tipoDoIdentificador)} para conversar por este Canal.`, {
-      codigo: "CONTATO_SEM_IDENTIFICADOR_DO_CANAL",
-      campo: "contatoId",
-    });
-  }
+  const doCanal = identificadorDoCanal(await contatos.listarIdentificadores(membro.workspaceId, contato.id), canal);
+  if (!doCanal.ok) return doCanal;
+  const identificador = doCanal.valor;
 
   const conversas = criarRepositorioDeConversasPg(cliente);
   const existente = await conversas.abertaDoPar(membro.workspaceId, contato.id, canal.id);
