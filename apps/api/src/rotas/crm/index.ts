@@ -17,6 +17,8 @@
  * histórico de consentimento é só inserção e a recusa de modelo de marketing
  * sem consentimento mora em `ServicoDeMensagens.enviar`. `mesclagem` (14-09) é o
  * gesto que junta dois Contatos nas duas bases, `POST /contatos/:id/mesclar`.
+ * `sucessao` (14-10) é só a prévia, `GET /membros/:id/sucessao-no-crm`: a passagem
+ * ao Sucessor mora em `POST /operacoes/removeMember`.
  */
 
 import type { FastifyInstance } from "fastify";
@@ -34,6 +36,7 @@ import { criarServicoDeMensagens, type ServicoDeMensagens } from "../../servicos
 import { criarServicoDeMesclagem, type ServicoDeMesclagem } from "../../servicos/crm/mesclagem";
 import { criarServicoDeNegocios, type ServicoDeNegocios } from "../../servicos/crm/negocios";
 import { criarServicoDeNotas, type ServicoDeNotas } from "../../servicos/crm/notas";
+import { criarServicoDeSucessao, type ServicoDeSucessao } from "../../servicos/crm/sucessao";
 import { rotasDeCanais } from "./canais";
 import { rotasDeConsentimentos } from "./consentimentos";
 import { rotasDeContatos } from "./contatos";
@@ -44,6 +47,7 @@ import { rotasDeMensagens } from "./mensagens";
 import { rotasDeMesclagem } from "./mesclagem";
 import { rotasDeNegocios } from "./negocios";
 import { rotasDeNotas } from "./notas";
+import { rotasDeSucessao } from "./sucessao";
 
 export interface OpcoesDeCrm {
   /** Padrão: o `pool()` do processo. Só é chamado quando uma requisição chega, nunca na montagem. */
@@ -68,6 +72,8 @@ export interface OpcoesDeCrm {
   readonly consentimentos?: ServicoDeConsentimentos;
   /** Injeção só para teste: troca o serviço real de mesclagem de Contatos por um falso, sem banco. */
   readonly mesclagem?: ServicoDeMesclagem;
+  /** Injeção só para teste: troca o serviço real da prévia de sucessão por um falso, sem banco. */
+  readonly sucessao?: ServicoDeSucessao;
   /** Padrão: lê Papel e Membro de `plataforma.registros`. Injeção para teste sem banco. */
   readonly acesso?: AcessoAoCrm;
 }
@@ -98,4 +104,6 @@ export async function rotasDeCrm(app: FastifyInstance, opcoes: OpcoesDeCrm = {})
   await app.register(rotasDeConsentimentos, { servico: consentimentos });
   const mesclagem = opcoes.mesclagem ?? criarServicoDeMesclagem({ pool: obterPool, acesso });
   await app.register(rotasDeMesclagem, { servico: mesclagem });
+  const sucessao = opcoes.sucessao ?? criarServicoDeSucessao({ pool: obterPool });
+  await app.register(rotasDeSucessao, { servico: sucessao });
 }

@@ -152,6 +152,33 @@ Contato, sobre `plataforma.contato_consentimentos` (011), que é SÓ INSERÇÃO:
   Fica de fora: restaurar cópia de um Contato mesclado e marcar dois Contatos
   como distintos (só a ficha antiga os oferece).
 
+**Sucessão do Membro removido (Fase 14, 14-10, 3.2.8).** Duas peças, uma de cada
+lado do mesmo gesto:
+
+- `POST /operacoes/removeMember` ganhou um `aoConfirmar` (mapa `AO_CONFIRMAR` em
+  `operacoes.ts`, ao lado de `SERVICOS`): no MESMO commit da remoção, depois do
+  `ok` do domínio, `passarAoSucessor` (`repositorios/crm/sucessao.ts`) muda
+  `proprietario_id` de Contatos, Empresas e Negócios do Membro para o Sucessor
+  (RN-ET-09 a) e LIBERA as Conversas atribuídas a ele, `atribuido_tipo` e
+  `atribuido_id` nulos (RN-ET-09 b: a Conversa NÃO passa ao Sucessor; é a
+  suposição OQ2/A8, a confirmar com o dono, mesma de `removeMember` no modelo
+  antigo). Recusa do domínio (quem pede não é Administrador nem Proprietário
+  ativo, Sucessor inválido) não roda o `aoConfirmar`: as tabelas ficam iguais. O
+  domínio só valida o Sucessor quando o Membro ainda não tinha saído, então o
+  `aoConfirmar` exige que ele seja Membro ATIVO do Espaço, senão nada passa.
+  Todos os estados dos registros entram (inclusive arquivado e na lixeira) e
+  nada de outro Espaço muda (`workspace_id` em todo `WHERE`). Gesto com
+  `aoConfirmar` sai do caminho de duas idas da Fase 13 e paga mais idas ao banco:
+  aceito, é raro. Não grava Registro de Atividade no CRM nem muda o modelo
+  antigo: o diálogo de remoção das Configurações segue com os números antigos até
+  o corte (14-16).
+- `GET /membros/:id/sucessao-no-crm` — as contagens `{ contatos, empresas,
+  negocios, conversasLiberadas }` que o `aoConfirmar` vai mover, em
+  `{ ok: true, dados }`. Só Administrador ou Proprietário ATIVO (403
+  `PERMISSAO`, conferido ANTES de olhar o Membro pedido, então quem não pode não
+  descobre quem é Membro); 404 `MEMBRO_NAO_ENCONTRADO` para Membro de outro
+  Espaço ou inexistente. Não lê nem escreve `registros`.
+
 ## Rotas REST da Caixa de Entrada (Fase 8)
 
 `rotas/crm/canais.ts`, `conversas.ts` e `mensagens.ts` entram no mesmo `rotasDeCrm`
