@@ -136,7 +136,14 @@ Contato. O vigente por finalidade e tipo de Canal a tela calcula com
 `consentimentoVigente` do domínio sobre o histórico que a api devolve (o
 histórico é só inserção: revogar é registrar um `revogado`); as finalidades do
 formulário são os itens `finalidadeConsentimento` do Catálogo, a única leitura
-do store nessas seções (o Catálogo continua em `registros`, OQ7).
+do store nessas seções (o Catálogo continua em `registros`, OQ7). "Mesclar com…"
+(`mesclar-contato-dialog.tsx`, `mesclarContatos(sobrevivente, absorvido)`: o
+Contato da ficha é o sobrevivente) e "Transferir" por Identificador
+(`transferir-identificador-dialog.tsx`) são as versões sobre a api dos diálogos
+antigos, que leem o store antigo e ficam para a ficha antiga até o corte; a
+recusa 409 da api aparece dentro do diálogo, que continua aberto, e as duas
+ações ficam desligadas pelo Papel (`usePodeNoCrm`) e, a mesclagem, também pela
+lixeira. Nenhuma tela antiga muda: a ficha nova é a única tela da Fase 14 (OQ8).
 
 ## Quem vê o quê na tela
 

@@ -8,6 +8,12 @@
  * ciclo de vida do D-06 (Arquivar, Excluir = Lixeira, Restaurar, Excluir
  * permanentemente) e as recusas do D-09 visíveis por `MensagemDeRecusa`.
  *
+ * Também daqui saem dois gestos sobre a api: "Mesclar com…" no cabeçalho (o Contato
+ * da ficha é o sobrevivente, `mesclar-contato-dialog.tsx`, 3.2.2) e "Transferir" na
+ * linha de cada Identificador (`transferir-identificador-dialog.tsx`, 3.2.3). Os
+ * dois diálogos mostram a recusa da api (409) dentro deles e a ficha só recebe o
+ * aviso de sucesso.
+ *
  * Notas e Consentimentos vêm de `notas-do-contato.tsx` e
  * `consentimentos-do-contato.tsx`, cada um lendo e gravando pela própria rota
  * (`GET`/`POST /contatos/:id/notas` e `/consentimentos`); só as finalidades do
@@ -39,6 +45,7 @@ import {
   type IdentificadorDeContato,
   type TipoIdentificadorContato,
 } from "@n1/dominio/crm/contatos";
+import { validarMesclagem } from "@n1/dominio/crm/mesclagem";
 import type { ErroDeApi } from "@/dados/crm/cliente-crm";
 import {
   adicionarIdentificador,
@@ -62,8 +69,10 @@ import {
   type ValoresDoContato,
 } from "@/features/crm/formulario-de-contato";
 import { ConsentimentosDoContato } from "@/features/crm/consentimentos-do-contato";
+import { MesclarContatoDialog } from "@/features/crm/mesclar-contato-dialog";
 import { NegociosDoRegistro } from "@/features/crm/negocios-do-registro";
 import { NotasDoContato } from "@/features/crm/notas-do-contato";
+import { TransferirIdentificadorDialog } from "@/features/crm/transferir-identificador-dialog";
 import {
   Button,
   ConfirmDialog,
@@ -163,11 +172,14 @@ function SecaoDeIdentificadores({
   somenteLeitura,
   motivo,
   agir,
+  onTransferir,
 }: {
   readonly detalhado: ContatoDetalhado;
   readonly somenteLeitura: boolean;
   readonly motivo: string | undefined;
   readonly agir: Agir;
+  /** Abre o diálogo de transferência para esse Identificador. */
+  readonly onTransferir: (identificador: IdentificadorDeContato) => void;
 }) {
   const { contato, identificadores } = detalhado;
   const [adicionando, setAdicionando] = useState(false);
@@ -219,6 +231,9 @@ function SecaoDeIdentificadores({
               Marcar como verificado
             </Button>
           )}
+          <Button size="sm" variant="ghost" onClick={() => onTransferir(identificador)} {...desligado}>
+            Transferir
+          </Button>
           <Button
             size="sm"
             variant="ghost"
@@ -405,6 +420,8 @@ export function FichaDeContato({ contatoId, detalhado }: { readonly contatoId: s
   const nomeDoMembro = useNomeDoMembro();
   const motivoDeEscrita = usePodeNoCrm("editar", "contato");
   const [editando, setEditando] = useState(false);
+  const [mesclando, setMesclando] = useState(false);
+  const [transferindo, setTransferindo] = useState<IdentificadorDeContato | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [recusa, setRecusa] = useState<ErroDeApi | null>(null);
 
@@ -433,6 +450,10 @@ export function FichaDeContato({ contatoId, detalhado }: { readonly contatoId: s
 
   const desligado = motivoDeEscrita ? { disabled: true, disabledReason: motivoDeEscrita } : {};
 
+  // Só se mescla Contato ativo ou arquivado (RN-CON-14): a frase é a da MESMA regra que a api aplica.
+  const doEstado = validarMesclagem({ id: contatoId, estado: contato.estado }, { id: "outro", estado: "ativo" });
+  const motivoDeMesclar = motivoDeEscrita ?? (doEstado.ok ? undefined : doEstado.error);
+
   return (
     <div className="flex h-full flex-col">
       <PageHeader
@@ -440,17 +461,22 @@ export function FichaDeContato({ contatoId, detalhado }: { readonly contatoId: s
         seal={<StateSeal state={seloDoEstado(contato.estado)} />}
         meta={`Proprietário: ${nomeDoMembro(contato.proprietarioId)}`}
         actions={
-          <AcoesDeCicloDeVida
-            estado={contato.estado}
-            rotulo={nome}
-            motivoSemPermissao={motivoDeEscrita}
-            onArquivar={() => void agir(() => arquivarContato(contatoId), `${nome} arquivado.`)}
-            onRestaurar={() => void agir(() => restaurarContato(contatoId), `${nome} restaurado.`)}
-            onEnviarParaLixeira={() => void agir(() => enviarContatoParaLixeira(contatoId), `${nome} foi para a Lixeira.`)}
-            onExcluirPermanentemente={async () => {
-              if (await agir(() => excluirContatoPermanentemente(contatoId))) router.push("/crm/contatos");
-            }}
-          />
+          <>
+            <Button size="sm" onClick={() => setMesclando(true)} {...(motivoDeMesclar ? { disabled: true, disabledReason: motivoDeMesclar } : {})}>
+              Mesclar com…
+            </Button>
+            <AcoesDeCicloDeVida
+              estado={contato.estado}
+              rotulo={nome}
+              motivoSemPermissao={motivoDeEscrita}
+              onArquivar={() => void agir(() => arquivarContato(contatoId), `${nome} arquivado.`)}
+              onRestaurar={() => void agir(() => restaurarContato(contatoId), `${nome} restaurado.`)}
+              onEnviarParaLixeira={() => void agir(() => enviarContatoParaLixeira(contatoId), `${nome} foi para a Lixeira.`)}
+              onExcluirPermanentemente={async () => {
+                if (await agir(() => excluirContatoPermanentemente(contatoId))) router.push("/crm/contatos");
+              }}
+            />
+          </>
         }
       />
 
@@ -488,7 +514,7 @@ export function FichaDeContato({ contatoId, detalhado }: { readonly contatoId: s
         </Section>
         {editando ? <DialogoDeEdicao detalhado={detalhado} onFechar={() => setEditando(false)} agir={agir} /> : null}
 
-        <SecaoDeIdentificadores detalhado={detalhado} somenteLeitura={!ativo} motivo={motivoDeEscrita} agir={agir} />
+        <SecaoDeIdentificadores detalhado={detalhado} somenteLeitura={!ativo} motivo={motivoDeEscrita} agir={agir} onTransferir={setTransferindo} />
         <SecaoDeEnderecos
           key={`enderecos-${JSON.stringify(contato.enderecos)}`}
           contato={contato}
@@ -507,6 +533,30 @@ export function FichaDeContato({ contatoId, detalhado }: { readonly contatoId: s
         <NegociosDoRegistro contato={{ id: contatoId, nome }} />
         <NotasDoContato contatoId={contatoId} estado={contato.estado} motivo={motivoDeEscrita} />
         <ConsentimentosDoContato contatoId={contatoId} estado={contato.estado} motivo={motivoDeEscrita} />
+
+        {mesclando ? (
+          <MesclarContatoDialog
+            contatoId={contatoId}
+            nome={nome}
+            onFechar={() => setMesclando(false)}
+            onMesclado={(frase) => {
+              setRecusa(null);
+              setAviso(frase);
+            }}
+          />
+        ) : null}
+        {transferindo ? (
+          <TransferirIdentificadorDialog
+            contatoId={contatoId}
+            nome={nome}
+            identificador={transferindo}
+            onFechar={() => setTransferindo(null)}
+            onTransferido={(frase) => {
+              setRecusa(null);
+              setAviso(frase);
+            }}
+          />
+        ) : null}
       </CorpoDeTela>
     </div>
   );
