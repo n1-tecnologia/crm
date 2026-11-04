@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 14
 current_phase_name: "Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional"
 status: executing
-stopped_at: Completed 14-03-PLAN.md
-last_updated: "2026-11-04T17:48:24.457Z"
+stopped_at: Completed 14-04-PLAN.md
+last_updated: "2026-11-04T17:52:28.757Z"
 last_activity: 2026-11-04
 last_activity_desc: Phase 14 execution started
-state_head: b4e5daf67c39f0665518ebd00069626b3156f1ed
+state_head: aacc9b38911a8f4e6a22ed470d93a35ca8a897a3
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 228
-  completed_plans: 209
+  completed_plans: 210
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 14 (Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional) — EXECUTING
-Plan: 4 of 19
+Plan: 5 of 19
 Status: Ready to execute
 Last activity: 2026-11-04 — Phase 14 execution started
 
@@ -427,6 +427,7 @@ Progress: [██████░░░░] 63%
 | Phase 14 P01 | 8 min | 2 tasks | 17 files |
 | Phase 14 P02 | 6 min | 2 tasks | 8 files |
 | Phase 14 P03 | 14 min | 2 tasks | 7 files |
+| Phase 14 P04 | 8 min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -650,6 +651,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 14]: 14-02: vinculosDoCrmDaTarefa lê só Vínculos; lixeira e mesclado são da api (3.3.2)
 - [Phase 14]: 14-02: as quatro operações NasTabelas ficam fora de OPERACOES; alvoConferido só nasce no servidor
 - [Phase 14]: 14-03: lerDoCrm recebe o state hidratado; gravarNoCrm pode devolver recusa que vira excecao interna e volta como valor; o tempo de lerDoCrm soma em hidratarMs sem campo novo na medicao
+- [Phase 14]: 14-04: a recusa CONTATO_MESCLADO mora no helper escrita de contatos.ts (antes de qualquer regra de transição) e em conferirContato/carregarContato; Contato arquivado segue aceito em Negócio
 
 ### Pending Todos
 
@@ -711,6 +713,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-04T17:48:24.208Z
-Stopped at: Completed 14-03-PLAN.md
+Last session: 2026-11-04T17:52:28.506Z
+Stopped at: Completed 14-04-PLAN.md
 Resume file: None
