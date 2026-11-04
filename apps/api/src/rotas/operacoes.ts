@@ -39,6 +39,7 @@ import { recortarDiferenca, recortarValor, visibilidadePara } from "@n1/dominio/
 import { maiorIdDe } from "@n1/dominio/operations";
 import { convidarMembro } from "../servicos/convidar-membro";
 import { LimiteDeEnvio, type AuthDeConvite } from "../autenticacao/auth-de-convite";
+import type { ResolverUsuario } from "../autenticacao/resolver-usuario";
 import { LISTA_SOLICITACOES_DE_PAGAMENTO_ID } from "../servicos/dto-solicitacao";
 import { esquemaDeArgumentos } from "./esquemas-de-argumentos";
 
@@ -248,7 +249,12 @@ function criarServicos(opcoes: OpcoesDeOperacoes): Partial<Record<NomeDeOperacao
           email: entrada.data.email,
           roleId: entrada.data.roleId,
         },
-        { aoTerminar, aoMedir, ...(opcoes.auth ? { auth: opcoes.auth } : {}) },
+        {
+          aoTerminar,
+          aoMedir,
+          ...(opcoes.auth ? { auth: opcoes.auth } : {}),
+          ...(opcoes.resolverUsuario ? { resolverUsuario: opcoes.resolverUsuario } : {}),
+        },
       );
     },
   };
@@ -257,6 +263,8 @@ function criarServicos(opcoes: OpcoesDeOperacoes): Partial<Record<NomeDeOperacao
 export interface OpcoesDeOperacoes {
   /** 12.3.2 — o Auth do convite por e-mail; os testes passam um falso, e nunca o Supabase real. */
   readonly auth?: AuthDeConvite;
+  /** O "que Usuário tem este e-mail" do convite; os testes passam um falso. */
+  readonly resolverUsuario?: ResolverUsuario;
 }
 
 export async function rotasDeOperacoes(app: FastifyInstance, opcoes: OpcoesDeOperacoes = {}): Promise<void> {

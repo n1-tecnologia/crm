@@ -246,7 +246,10 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
   // `Authorization: Bearer`, salvo `config: { publica: true }`. `buildApp`
   // continua síncrono — `app.register` sem `await` enfileira o plugin, e o
   // Fastify resolve a fila sozinho no primeiro `ready()`/`listen()`/`inject()`.
-  app.register(rotasDeOperacoes, opcoes.membros?.auth ? { auth: opcoes.membros.auth } : {});
+  app.register(rotasDeOperacoes, {
+    ...(opcoes.membros?.auth ? { auth: opcoes.membros.auth } : {}),
+    ...(opcoes.membros?.resolverUsuario ? { resolverUsuario: opcoes.membros.resolverUsuario } : {}),
+  });
   app.register(rotasDeEstado);
   // 12.3.3 — o aceite do convite: a única rota que o Membro `pendente` alcança.
   app.register(rotasDeConvites);

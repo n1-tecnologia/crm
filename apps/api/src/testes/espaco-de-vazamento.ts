@@ -23,6 +23,7 @@ import { containerAdminRefusal, memberReachesContainer } from "@n1/dominio/deriv
 import { setTaskFieldValue } from "@n1/dominio/operations/tasks";
 import { buildSeed } from "@n1/dominio/seed";
 import { buildApp, type OpcoesDoApp } from "../app";
+import type { AuthDeConvite } from "../autenticacao/auth-de-convite";
 import { pool } from "../persistencia/conexao";
 import { semear } from "../persistencia/repositorio";
 import { limparEspaco, novoEspacoDeTeste } from "./banco-crm";
@@ -326,6 +327,17 @@ export async function limparEspacoDeVazamento(espaco: EspacoDeVazamento): Promis
   await limparEspaco(espaco.workspaceId);
 }
 
+/** O Auth do convite nos testes: devolve um id novo e não fala com o Supabase. */
+const AUTH_DE_TESTE: AuthDeConvite = {
+  async convidar() {
+    return randomUUID();
+  },
+  async reenviar() {
+    return randomUUID();
+  },
+  async apagar() {},
+};
+
 /**
  * O app Fastify do Espaço, com a autenticação trocada por uma tabela de tokens (sem rede, sem Supabase).
  * `extras` entra por cima (por exemplo `financeiro` com um cliente falso); a autenticação e o Espaço não se trocam.
@@ -341,6 +353,9 @@ export function appDoEspaco(espaco: EspacoDeVazamento, extras: Omit<OpcoesDoApp,
   };
   return buildApp({
     logger: false,
+    // 12.3.2 — o convite fala com o Supabase Auth. Aqui, por padrão, um Auth e um
+    // resolvedor de teste que nunca saem para a rede; `extras.membros` troca os dois.
+    membros: { auth: AUTH_DE_TESTE, resolverUsuario: async () => undefined },
     ...extras,
     workspaceId: espaco.workspaceId,
     verificarToken: async (token) => {
