@@ -5,6 +5,7 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
+import type { Canal } from "../crm/canais";
 import { canaisDaLista, canaisDaListaQueAlcancam, listaSemCanais } from "../derive-conversacional";
 import { buildSeed } from "../seed";
 import type { DataState } from "../state";
@@ -318,5 +319,99 @@ describe("configurarCanal e o Canal relacional (D-11)", () => {
     expect(resultado.ok).toBe(false);
     if (!resultado.ok) expect(resultado.error).toBe("Este Canal vem da tabela própria: configure-o pela ficha do Canal, que grava pela api.");
     expect(canal.name).toBe(nomeAntes);
+  });
+});
+
+describe("Canais da Lista conferidos num Canal[] recebido (3.3.7)", () => {
+  /** Um Canal da tabela `plataforma.canais`; o seed não o conhece (o estado do teste não tem como projetá-lo). */
+  const canalDaTabela = (parcial: Partial<Canal> = {}): Canal => ({
+    id: "can_tabela",
+    nome: "WhatsApp da loja",
+    tipo: "whatsapp",
+    provedor: "whatsapp-cloud",
+    identificadorExterno: "+5511987654321",
+    conexao: "conectada",
+    conexaoSimulada: true,
+    conectadaEm: "2026-11-01T10:00:00.000Z",
+    estado: "ativo",
+    arquivadoEm: null,
+    configuradoPor: THIAGO,
+    filaPadraoId: null,
+    proprietarioPadraoId: null,
+    origemPadraoId: null,
+    gruposHabilitados: false,
+    criadoPor: THIAGO,
+    criadoEm: "2026-11-01T10:00:00.000Z",
+    atualizadoEm: "2026-11-01T10:00:00.000Z",
+    ...parcial,
+  });
+
+  it("definirCanaisDaLista marca um Canal da tabela com state.channels vazio, e a Atividade usa o nome dele", () => {
+    const listId = listaConversacionalVazia();
+    state.channels = [];
+    const gravado = definirCanaisDaLista(state, THIAGO, listId, ["can_tabela"], [canalDaTabela()]);
+    expect(gravado.ok).toBe(true);
+    expect(state.lists.find((l) => l.id === listId)?.canaisDeAtendimento).toEqual(["can_tabela"]);
+    expect(state.activity[0]?.action).toBe("Canais de atendimento alterados");
+    expect(state.activity[0]?.after).toBe("WhatsApp da loja");
+  });
+
+  it("um id fora de `canais` e de state.channels recusa com a frase de hoje e field canais", () => {
+    const listId = listaConversacionalVazia();
+    state.channels = [];
+    const recusa = definirCanaisDaLista(state, THIAGO, listId, ["inexistente"], [canalDaTabela()]);
+    expect(recusa.ok).toBe(false);
+    if (!recusa.ok) {
+      expect(recusa.error).toBe("Canal não encontrado ou arquivado.");
+      expect(recusa.field).toBe("canais");
+    }
+  });
+
+  it("Canal da tabela arquivado recusa", () => {
+    const listId = listaConversacionalVazia();
+    state.channels = [];
+    const recusa = definirCanaisDaLista(state, THIAGO, listId, ["can_tabela"], [canalDaTabela({ estado: "arquivado", arquivadoEm: "2026-11-02T10:00:00.000Z" })]);
+    expect(recusa.ok).toBe(false);
+    if (!recusa.ok) expect(recusa.error).toBe("Canal não encontrado ou arquivado.");
+  });
+
+  it("sem `canais`, o Canal antigo de state.channels segue valendo; com `canais` vazio também (o servidor leu a tabela e não há nada)", () => {
+    const listId = listaConversacionalVazia();
+    expect(definirCanaisDaLista(state, THIAGO, listId, ["chn_wpp"], []).ok).toBe(true);
+    expect(state.lists.find((l) => l.id === listId)?.canaisDeAtendimento).toEqual(["chn_wpp"]);
+  });
+
+  it("o nome do Canal da tabela vence o de state.channels quando o id coincide (a projeção repete o id)", () => {
+    const listId = listaConversacionalVazia();
+    const gravado = definirCanaisDaLista(state, THIAGO, listId, ["chn_wpp"], [canalDaTabela({ id: "chn_wpp", nome: "Nome da tabela" })]);
+    expect(gravado.ok).toBe(true);
+    expect(state.activity[0]?.after).toBe("Nome da tabela");
+  });
+
+  it("createList conversacional com o Canal da tabela passa, e a Atividade traz o nome dele", () => {
+    state.channels = [];
+    const criada = createList(
+      state,
+      THIAGO,
+      { name: "Suporte da loja", parentType: "space", parentId: "spc_com", modeloDeTarefa: "conversacional", canaisDeAtendimento: ["can_tabela"] },
+      [canalDaTabela()],
+    );
+    expect(criada.ok).toBe(true);
+    if (!criada.ok) return;
+    expect(criada.value.canaisDeAtendimento).toEqual(["can_tabela"]);
+    const atividade = state.activity.find((a) => a.action === "Lista criada" && a.objectId === criada.value.id);
+    expect(atividade?.detail).toContain("Atende por WhatsApp da loja");
+  });
+
+  it("createList com Canal inexistente recusa mesmo com `canais` e não deixa Lista", () => {
+    state.channels = [];
+    const recusa = createList(
+      state,
+      THIAGO,
+      { name: "Suporte da loja", parentType: "space", parentId: "spc_com", modeloDeTarefa: "conversacional", canaisDeAtendimento: ["inexistente"] },
+      [canalDaTabela()],
+    );
+    expect(recusa.ok).toBe(false);
+    expect(state.lists.some((l) => l.name === "Suporte da loja")).toBe(false);
   });
 });
