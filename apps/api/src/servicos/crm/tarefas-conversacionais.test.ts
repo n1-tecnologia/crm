@@ -1,7 +1,8 @@
 /**
- * `ServicoDeTarefasConversacionais` (14-13, 3.3.1, 3.3.3 e 3.3.4) contra o Postgres LOCAL:
+ * `ServicoDeTarefasConversacionais` (14-13 e 14-14: 3.3.1, 3.3.3 a 3.3.6) contra o Postgres LOCAL:
  * a Tarefa nasce em `plataforma.registros` e a Conversa em `plataforma.conversas`, no
- * mesmo commit; o resumo do cartão sai de `plataforma.*` numa consulta só.
+ * mesmo commit; o resumo do cartão sai de `plataforma.*` numa consulta só; trocar o Canal
+ * e ligar ou criar o Negócio da Tarefa mexem só nos Vínculos dela e, se for o caso, nas tabelas.
  *
  *   docker run -d --rm --name crm-n1-pg-1413 -e POSTGRES_PASSWORD=x -p 55673:5432 postgres:16
  *   cd apps/api
@@ -67,13 +68,14 @@ describeComBanco("ServicoDeTarefasConversacionais — Postgres local", () => {
     const canal = await semearCanal(ws, { nome: "Comercial", tipo: "whatsapp", provedor: "whatsapp-cloud", identificadorExterno: "+5511977770001", conexao: "conectada" });
     const canalDesconectado = await semearCanal(ws, { nome: "Antigo", tipo: "whatsapp", provedor: "whatsapp-nao-oficial", identificadorExterno: "+5511977770002", conexao: "desconectada" });
     const canalSemLista = await semearCanal(ws, { nome: "Suporte", tipo: "whatsapp", provedor: "whatsapp-cloud", identificadorExterno: "+5511977770003", conexao: "conectada" });
+    const canalEmail = await semearCanal(ws, { nome: "Atendimento por e-mail", tipo: "email", provedor: "email-imap-smtp", identificadorExterno: "atendimento@exemplo.com", conexao: "conectada" });
     await executar(ws, (state) => {
       const lista = state.lists.find((l) => l.id === LISTA);
       if (!lista) throw new Error("o seed precisa de lst_pos_venda");
-      lista.canaisDeAtendimento = [canal, canalDesconectado];
+      lista.canaisDeAtendimento = [canal, canalDesconectado, canalEmail];
       return ok(undefined);
     });
-    return { ws, canal, canalDesconectado, canalSemLista };
+    return { ws, canal, canalDesconectado, canalSemLista, canalEmail };
   }
 
   async function contato(ws: string, nome: string, identificadores: readonly { tipo: TipoIdentificadorContato; valor: string }[] = [{ tipo: "whatsapp", valor: `+55119${Math.floor(Math.random() * 1e8)}` }]): Promise<string> {
@@ -286,6 +288,168 @@ describeComBanco("ServicoDeTarefasConversacionais — Postgres local", () => {
       const marina = await contato(e.ws, "Marina Duarte");
       expect(recusado(await servico.criar(membro(e.ws, "mem_convidado_teste"), entrada(e, marina)))).toMatchObject({ status: 403, codigo: "PERMISSAO" });
       expect(await conversasNasTabelas(e.ws)).toBe(0);
+    });
+  });
+
+  /** Uma Tarefa conversacional pela api (WhatsApp, Conversa nova), com o id dela e o da Conversa. */
+  async function tarefaNova(e: Awaited<ReturnType<typeof espaco>>, contatoId: string, extra: Partial<NovaTarefaConversacional> = {}): Promise<{ taskId: string; conversaId: string }> {
+    const criada = valor(await servico.criar(membro(e.ws), entrada(e, contatoId, extra)));
+    return { taskId: (criada as unknown as { value: { task: { id: string } } }).value.task.id, conversaId: criada.conversa.id };
+  }
+
+  const conversaDaTarefa = async (ws: string, taskId: string): Promise<string | undefined> =>
+    (await vinculosDaTarefa(ws, taskId)).find((v) => v.toType === "conversation")?.toId;
+
+  describe("trocarCanal (3.3.5)", () => {
+    const COM_EMAIL = [{ tipo: "whatsapp", valor: "+5511955550001" }, { tipo: "email", valor: "marina@exemplo.com" }] as const;
+
+    it("com Mensagem e sem aberta no Canal novo: abre a Conversa de e-mail nas tabelas, o Vínculo passa a ela e a de WhatsApp continua aberta e ativa", async () => {
+      const e = await espaco("trocar");
+      const marina = await contato(e.ws, "Marina Duarte", COM_EMAIL);
+      const { taskId, conversaId: doWhatsapp } = await tarefaNova(e, marina);
+      const registros = await conversasEmRegistros(e.ws);
+
+      const r = valor(await servico.trocarCanal(membro(e.ws), taskId, { canalId: e.canalEmail, mensagem: { conteudo: "Escrevo por e-mail também." } }));
+
+      expect(r.conversa.aberta).toBe(true);
+      expect(r.conversa.id).not.toBe(doWhatsapp);
+      expect((r as unknown as { value: { mudou: boolean } }).value.mudou).toBe(true);
+      expect(typeof r.sequencia).toBe("number");
+      expect(await conversasNasTabelas(e.ws)).toBe(2);
+      expect(await conversasEmRegistros(e.ws)).toBe(registros);
+      const nova = await criarRepositorioDeConversasPg(pool()).obter(e.ws, r.conversa.id);
+      expect(nova).toMatchObject({ contatoId: marina, canalId: e.canalEmail, situacao: "aberta" });
+      expect(await conversaDaTarefa(e.ws, taskId)).toBe(r.conversa.id);
+      // Só o Vínculo trocou: o Contato segue ligado, e a Conversa antiga não mudou de situação.
+      expect((await vinculosDaTarefa(e.ws, taskId)).filter((v) => v.toType === "conversation")).toHaveLength(1);
+      expect(await criarRepositorioDeConversasPg(pool()).obter(e.ws, doWhatsapp)).toMatchObject({ situacao: "aberta", estado: "ativo", canalId: e.canal });
+      const { rows } = await pool().query<{ conteudo: string }>("select conteudo from plataforma.mensagens where workspace_id = $1 and conversa_id = $2", [e.ws, r.conversa.id]);
+      expect(rows).toEqual([{ conteudo: "Escrevo por e-mail também." }]);
+    });
+
+    it("o Contato já tem Conversa aberta no Canal novo: reaproveita, sem Conversa nem Mensagem nova (a Mensagem do corpo é ignorada)", async () => {
+      const e = await espaco("trocarreaproveita");
+      const marina = await contato(e.ws, "Marina Duarte", COM_EMAIL);
+      const doEmail = await conversaAberta(e.ws, e.canalEmail, marina);
+      const { taskId } = await tarefaNova(e, marina);
+      const conversas = await conversasNasTabelas(e.ws);
+      const mensagens = await mensagensNasTabelas(e.ws);
+
+      const r = valor(await servico.trocarCanal(membro(e.ws), taskId, { canalId: e.canalEmail, mensagem: { conteudo: "ignorada" } }));
+
+      expect(r.conversa).toEqual({ id: doEmail, aberta: false });
+      expect(await conversaDaTarefa(e.ws, taskId)).toBe(doEmail);
+      expect(await conversasNasTabelas(e.ws)).toBe(conversas);
+      expect(await mensagensNasTabelas(e.ws)).toBe(mensagens);
+    });
+
+    it("sem Conversa aberta no Canal novo e sem Mensagem → 400 VALOR_INVALIDO campo mensagem, e o Vínculo fica como estava (D-07)", async () => {
+      const e = await espaco("trocarsemmensagem");
+      const marina = await contato(e.ws, "Marina Duarte", COM_EMAIL);
+      const { taskId, conversaId } = await tarefaNova(e, marina);
+      const conversas = await conversasNasTabelas(e.ws);
+
+      const r = recusado(await servico.trocarCanal(membro(e.ws), taskId, { canalId: e.canalEmail }));
+      expect(r).toMatchObject({ status: 400, codigo: "VALOR_INVALIDO", campo: "mensagem" });
+      expect(await conversaDaTarefa(e.ws, taskId)).toBe(conversaId);
+      expect(await conversasNasTabelas(e.ws)).toBe(conversas);
+    });
+
+    it("Mensagem mal formada → 400 com o campo conteudo, antes de abrir transação", async () => {
+      const e = await espaco("trocarmensagemruim");
+      const marina = await contato(e.ws, "Marina Duarte", COM_EMAIL);
+      const { taskId } = await tarefaNova(e, marina);
+      const r = recusado(await servico.trocarCanal(membro(e.ws), taskId, { canalId: e.canalEmail, mensagem: { conteudo: "   " } }));
+      expect(r).toMatchObject({ status: 400, codigo: "VALOR_INVALIDO", campo: "conteudo" });
+    });
+
+    it.each([
+      ["fora da Lista", "canalSemLista"],
+      ["desconectado", "canalDesconectado"],
+    ] as const)("Canal %s → 409 RECUSA_DO_DOMINIO campo canal, sem Conversa nem Mensagem nova e com o Vínculo intacto", async (_rotulo, qual) => {
+      const e = await espaco("trocarrecusa");
+      const marina = await contato(e.ws, "Marina Duarte", COM_EMAIL);
+      const { taskId, conversaId } = await tarefaNova(e, marina);
+      const conversas = await conversasNasTabelas(e.ws);
+      const mensagens = await mensagensNasTabelas(e.ws);
+
+      const r = recusado(await servico.trocarCanal(membro(e.ws), taskId, { canalId: e[qual], mensagem: { conteudo: "Oi" } }));
+      expect(r).toMatchObject({ status: 409, codigo: "RECUSA_DO_DOMINIO", campo: "canal" });
+      expect(await conversasNasTabelas(e.ws)).toBe(conversas);
+      expect(await mensagensNasTabelas(e.ws)).toBe(mensagens);
+      expect(await conversaDaTarefa(e.ws, taskId)).toBe(conversaId);
+    });
+
+    it("Canal de outro Espaço → 404; Canal arquivado → 409; Contato sem Identificador do tipo do Canal → 409", async () => {
+      const e = await espaco("trocarcanais");
+      const outro = await espaco("trocarcanaisb");
+      const marina = await contato(e.ws, "Marina Duarte", COM_EMAIL);
+      const soWhatsapp = await contato(e.ws, "Só WhatsApp");
+      const { taskId } = await tarefaNova(e, marina);
+      const { taskId: taskSoWhatsapp } = await tarefaNova(e, soWhatsapp);
+      const mensagem = { conteudo: "Oi" };
+
+      expect(recusado(await servico.trocarCanal(membro(e.ws), taskId, { canalId: outro.canalEmail, mensagem }))).toMatchObject({ status: 404, codigo: "CANAL_NAO_ENCONTRADO" });
+      expect(recusado(await servico.trocarCanal(membro(e.ws), taskSoWhatsapp, { canalId: e.canalEmail, mensagem }))).toMatchObject({ status: 409, codigo: "CONTATO_SEM_IDENTIFICADOR_DO_CANAL" });
+      await pool().query("update plataforma.canais set estado = 'arquivado', conexao = 'desconectada', arquivado_em = now() where workspace_id = $1 and id = $2", [e.ws, e.canalEmail]);
+      expect(recusado(await servico.trocarCanal(membro(e.ws), taskId, { canalId: e.canalEmail, mensagem }))).toMatchObject({ status: 409, codigo: "CANAL_ARQUIVADO" });
+    });
+
+    it("Tarefa inexistente (ou de outro Espaço) → 409 pela operação do domínio; Tarefa sem Vínculo de Contato → 409 \"Esta Tarefa não tem Contato vinculado.\"", async () => {
+      const e = await espaco("trocartarefa");
+      const outro = await espaco("trocartarefab");
+      const marina = await contato(e.ws, "Marina Duarte", COM_EMAIL);
+      const { taskId } = await tarefaNova(e, marina);
+      const deOutro = await tarefaNova(outro, await contato(outro.ws, "Outro", COM_EMAIL));
+      const mensagem = { conteudo: "Oi" };
+
+      expect(recusado(await servico.trocarCanal(membro(e.ws), "tsk_que_nao_existe", { canalId: e.canalEmail, mensagem }))).toMatchObject({ status: 409, codigo: "RECUSA_DO_DOMINIO", error: "Tarefa não encontrada." });
+      expect(recusado(await servico.trocarCanal(membro(e.ws), deOutro.taskId, { canalId: e.canalEmail, mensagem }))).toMatchObject({ status: 409, error: "Tarefa não encontrada." });
+
+      await pool().query("delete from plataforma.registros where workspace_id = $1 and colecao = 'links' and dados->>'fromId' = $2 and dados->>'toType' = 'contact'", [e.ws, taskId]);
+      expect(recusado(await servico.trocarCanal(membro(e.ws), taskId, { canalId: e.canalEmail, mensagem }))).toMatchObject({ status: 409, error: "Esta Tarefa não tem Contato vinculado." });
+      expect(await conversasNasTabelas(e.ws)).toBe(1);
+    });
+
+    it("trocar para o Canal da Conversa atual → ok, nada muda (nem Conversa, nem Mensagem, nem Vínculo)", async () => {
+      const e = await espaco("trocarigual");
+      const marina = await contato(e.ws, "Marina Duarte", COM_EMAIL);
+      const { taskId, conversaId } = await tarefaNova(e, marina);
+      const vinculos = await vinculosDaTarefa(e.ws, taskId);
+      const conversas = await conversasNasTabelas(e.ws);
+      const mensagens = await mensagensNasTabelas(e.ws);
+
+      const r = valor(await servico.trocarCanal(membro(e.ws), taskId, { canalId: e.canal }));
+      expect(r.conversa).toEqual({ id: conversaId, aberta: false });
+      expect((r as unknown as { value: { mudou: boolean } }).value.mudou).toBe(false);
+      expect(await conversasNasTabelas(e.ws)).toBe(conversas);
+      expect(await mensagensNasTabelas(e.ws)).toBe(mensagens);
+      expect(await vinculosDaTarefa(e.ws, taskId)).toEqual(vinculos);
+    });
+
+    it("o Contato da Tarefa foi mesclado: a Conversa nova abre para o Contato que ficou, e um Contato arquivado recusa", async () => {
+      const e = await espaco("trocarmesclado");
+      const sobrevivente = await contato(e.ws, "Sobrevivente", [{ tipo: "whatsapp", valor: "+5511955550009" }, { tipo: "email", valor: "sobrevivente@exemplo.com" }]);
+      const absorvido = await contato(e.ws, "Absorvido", COM_EMAIL);
+      const arquivado = await contato(e.ws, "Arquivado", [{ tipo: "whatsapp", valor: "+5511955550002" }, { tipo: "email", valor: "arquivado@exemplo.com" }]);
+      const { taskId } = await tarefaNova(e, absorvido);
+      const { taskId: taskDoArquivado } = await tarefaNova(e, arquivado);
+      await poolDoDono().query("update plataforma.contatos set estado = 'mesclado', mesclado_em_id = $3, mesclado_em = now() where workspace_id = $1 and id = $2", [e.ws, absorvido, sobrevivente]);
+      await pool().query("update plataforma.contatos set estado = 'arquivado' where workspace_id = $1 and id = $2", [e.ws, arquivado]);
+
+      const r = valor(await servico.trocarCanal(membro(e.ws), taskId, { canalId: e.canalEmail, mensagem: { conteudo: "Oi" } }));
+      expect(await criarRepositorioDeConversasPg(pool()).obter(e.ws, r.conversa.id)).toMatchObject({ contatoId: sobrevivente, canalId: e.canalEmail });
+
+      expect(recusado(await servico.trocarCanal(membro(e.ws), taskDoArquivado, { canalId: e.canalEmail, mensagem: { conteudo: "Oi" } }))).toMatchObject({ status: 409, codigo: "CONTATO_INATIVO" });
+    });
+
+    it("Convidado → 403 antes de ler qualquer coisa", async () => {
+      const e = await espaco("trocarpapel");
+      const marina = await contato(e.ws, "Marina Duarte", COM_EMAIL);
+      const { taskId } = await tarefaNova(e, marina);
+      const conversas = await conversasNasTabelas(e.ws);
+      expect(recusado(await servico.trocarCanal(membro(e.ws, "mem_convidado_teste"), taskId, { canalId: e.canalEmail, mensagem: { conteudo: "Oi" } }))).toMatchObject({ status: 403, codigo: "PERMISSAO" });
+      expect(await conversasNasTabelas(e.ws)).toBe(conversas);
     });
   });
 

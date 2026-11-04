@@ -1,5 +1,5 @@
 /**
- * `POST /tarefas-conversacionais` e `/resumo` (14-13, 3.3.1 e 3.3.3), com serviço falso e sem banco:
+ * `POST /tarefas-conversacionais`, `/resumo` e `/:taskId/canal` (14-13 e 14-14, 3.3.1, 3.3.3 e 3.3.5), com serviço falso e sem banco:
  * autenticação, forma do corpo (`.strict()`: referências conferidas e `workspaceId`
  * nunca vêm do navegador, T-14-31) e o envelope. A criação contra o Postgres local
  * está em `servicos/crm/tarefas-conversacionais.test.ts`.
@@ -26,6 +26,13 @@ function opcoesDeAutenticacao(workspaceId: string) {
   };
 }
 
+/** Os gestos do 14-14 que o bloco em teste não chama: o falso recusa se alguém os chamar. */
+const FORA_DO_ESCOPO = {
+  trocarCanal: () => Promise.reject(new Error("fora do escopo deste bloco")),
+  vincularNegocio: () => Promise.reject(new Error("fora do escopo deste bloco")),
+  criarNegocio: () => Promise.reject(new Error("fora do escopo deste bloco")),
+} satisfies Pick<ServicoDeTarefasConversacionais, "trocarCanal" | "vincularNegocio" | "criarNegocio">;
+
 const CORPO = { listId: "lst_pos_venda", contatoId: "c1", canalId: "k1", mensagem: { conteudo: "Olá!" } };
 
 const resposta = { ok: true, value: { task: { id: "tsk_1" } }, diferenca: {}, revisao: 3, revisaoAnterior: 2, sequencia: 10, conversa: { id: "cv1", aberta: true } };
@@ -39,6 +46,7 @@ describe("POST /tarefas-conversacionais — serviço falso, sem banco", () => {
         return Promise.resolve(desfecho);
       },
       resumo: () => Promise.reject(new Error("fora do escopo deste bloco")),
+      ...FORA_DO_ESCOPO,
     };
     return { servico, chamadas };
   }
@@ -145,6 +153,7 @@ describe("POST /tarefas-conversacionais/resumo — serviço falso, sem banco", (
         chamadas.push(a);
         return Promise.resolve(desfecho);
       },
+      ...FORA_DO_ESCOPO,
     };
     return { servico, chamadas };
   }
@@ -201,5 +210,99 @@ describe("POST /tarefas-conversacionais/resumo — serviço falso, sem banco", (
     const r = await resumir(servico, { vinculos: [vinculo(1)] });
     expect(r.statusCode).toBe(403);
     expect(r.json()).toEqual({ ok: false, error: "Seu Papel não pode ler Contatos.", codigo: "PERMISSAO" });
+  });
+});
+
+const respostaDoCanal = {
+  ok: true,
+  value: { task: { id: "tsk_1" }, mudou: true },
+  diferenca: {},
+  revisao: 4,
+  revisaoAnterior: 3,
+  sequencia: 11,
+  conversa: { id: "cv2", aberta: true },
+};
+
+describe("POST /tarefas-conversacionais/:taskId/canal — serviço falso, sem banco", () => {
+  function novoFalso(desfecho: ResultadoCrm<unknown> = sucesso(respostaDoCanal)) {
+    const chamadas: unknown[][] = [];
+    const servico: ServicoDeTarefasConversacionais = {
+      criar: () => Promise.reject(new Error("fora do escopo deste bloco")),
+      resumo: () => Promise.reject(new Error("fora do escopo deste bloco")),
+      ...FORA_DO_ESCOPO,
+      trocarCanal: (...a) => {
+        chamadas.push(a);
+        return Promise.resolve(desfecho as never);
+      },
+    };
+    return { servico, chamadas };
+  }
+  const appCom = (servico: ServicoDeTarefasConversacionais) => buildApp({ ...opcoesDeAutenticacao("ws_falso"), crm: { tarefasConversacionais: servico } });
+  const trocar = (servico: ServicoDeTarefasConversacionais, payload?: Record<string, unknown>, taskId = "tsk_1") =>
+    appCom(servico).inject(
+      payload === undefined
+        ? { method: "POST", url: `/tarefas-conversacionais/${taskId}/canal`, headers: AUTORIZACAO }
+        : { method: "POST", url: `/tarefas-conversacionais/${taskId}/canal`, headers: AUTORIZACAO, payload },
+    );
+
+  it("sem Authorization responde 401 e não chega ao serviço", async () => {
+    const { servico, chamadas } = novoFalso();
+    const r = await appCom(servico).inject({ method: "POST", url: "/tarefas-conversacionais/tsk_1/canal", payload: { canalId: "k2" } });
+    expect(r.statusCode).toBe(401);
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("repassa o Membro da sessão, o taskId do caminho e o corpo, e devolve 200 { ok, dados }", async () => {
+    const { servico, chamadas } = novoFalso();
+    const corpo = { canalId: "k2", mensagem: { conteudo: "Escrevo por e-mail." } };
+    const r = await trocar(servico, corpo, "tsk_77");
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toEqual({ ok: true, dados: respostaDoCanal });
+    expect(chamadas[0]?.[0]).toMatchObject({ id: "mem_maryane" });
+    expect(chamadas[0]?.[1]).toBe("tsk_77");
+    expect(chamadas[0]?.[2]).toEqual(corpo);
+  });
+
+  it("a Mensagem é opcional (D-07 é regra do serviço)", async () => {
+    const { servico, chamadas } = novoFalso();
+    const r = await trocar(servico, { canalId: "k2" });
+    expect(r.statusCode).toBe(200);
+    expect(chamadas[0]?.[2]).toEqual({ canalId: "k2" });
+  });
+
+  it.each([
+    ["sem Canal", {}],
+    ["Canal que não é texto", { canalId: 7 }],
+    ["workspaceId no corpo", { canalId: "k2", workspaceId: "ws_de_outro" }],
+    ["contatoId no corpo (o Contato vem do Vínculo)", { canalId: "k2", contatoId: "c1" }],
+    ["conversaId no corpo", { canalId: "k2", conversaId: "cv9" }],
+    ["campo a mais na Mensagem", { canalId: "k2", mensagem: { conteudo: "Oi", direcao: "recebida" } }],
+    ["Mensagem vazia", { canalId: "k2", mensagem: { conteudo: "" } }],
+  ])("com %s responde 400 e não chega ao serviço", async (_rotulo, payload) => {
+    const { servico, chamadas } = novoFalso();
+    const r = await trocar(servico, payload);
+    expect(r.statusCode).toBe(400);
+    expect(r.json().ok).toBe(false);
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("sem corpo responde 400", async () => {
+    const { servico, chamadas } = novoFalso();
+    expect((await trocar(servico)).statusCode).toBe(400);
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it.each([
+    [400, "Escreva a primeira Mensagem: este Contato não tem Conversa aberta neste Canal.", "VALOR_INVALIDO", "mensagem"],
+    [404, "Canal não encontrado.", "CANAL_NAO_ENCONTRADO", "canalId"],
+    [409, "O Canal Antigo está desconectado: escolha outro Canal ou reconecte-o.", "RECUSA_DO_DOMINIO", "canal"],
+    [409, "Esta Tarefa não tem Contato vinculado.", "RECUSA_DO_DOMINIO", undefined],
+    [403, "Seu Papel não pode criar Conversas.", "PERMISSAO", undefined],
+  ] as const)("a recusa %i do serviço chega com status e frase, sem nome de constraint", async (status, frase, codigo, campo) => {
+    const { servico } = novoFalso(recusa(status, frase, { codigo, ...(campo !== undefined ? { campo } : {}) }));
+    const r = await trocar(servico, { canalId: "k2" });
+    expect(r.statusCode).toBe(status);
+    expect(r.json()).toEqual({ ok: false, error: frase, codigo, ...(campo !== undefined ? { campo } : {}) });
+    expect(JSON.stringify(r.json())).not.toMatch(/_fk|_uq|_ck|constraint/i);
   });
 });
