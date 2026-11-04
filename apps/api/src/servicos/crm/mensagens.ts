@@ -16,6 +16,11 @@
  *   - B69: `enviada` num Canal que não está `conectada` nasce `pendente`
  *     (`statusInicialDeEnvio`); `interna` não tem status de entrega e não passa
  *     pela janela (INV-CXE-09).
+ *   - 3.2.4: o modelo de marketing só sai se o consentimento vigente do Contato, para
+ *     o tipo do Canal, é `concedido` — 409 `SEM_CONSENTIMENTO` (campo `modelo`). A regra
+ *     é `recusaPorFaltaDeConsentimento` do domínio; quem diz a categoria do modelo é
+ *     `deps.categoriaDoModelo`, que a Sessão 7 preenche (hoje ninguém, e a rota
+ *     `POST /mensagens` não manda modelo).
  *   - INV-CXE-10: "em resposta a" é da MESMA Conversa; a FK composta da 008 é a
  *     rede e `FRASES` a traduz, sem o nome do constraint.
  *   - INV-CXE-08 / RN-CXE-17: `registrarRecebida` é idempotente por (Canal, id
@@ -34,12 +39,15 @@
 import type { Pool, PoolClient } from "pg";
 import type { Pagina } from "@n1/dominio/crm/comum";
 import type { Conversa } from "@n1/dominio/crm/conversas";
+import { recusaPorFaltaDeConsentimento } from "@n1/dominio/crm/consentimentos";
 import { statusInicialDeEnvio, validarEnvio, validarNovaMensagem, type Mensagem, type MensagemRecebidaDoProvedor, type NovaMensagem } from "@n1/dominio/crm/mensagens";
 import { capacidadesDoCanal } from "@n1/dominio/operations";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { criarRepositorioDeCanaisPg } from "../../repositorios/crm/canais";
+import { criarRepositorioDeConsentimentosPg } from "../../repositorios/crm/consentimentos";
 import { criarRepositorioDeConversasPg } from "../../repositorios/crm/conversas";
 import { criarRepositorioDeMensagensPg, type FiltroDeMensagens } from "../../repositorios/crm/mensagens";
+import { finalidadeDeMarketing } from "../../repositorios/crm/referencias";
 import { exigir, type AcessoAoCrm } from "./acesso";
 import { recusa, sucesso, type ResultadoCrm } from "./resultado";
 import { comTransacao, type FrasesDeRestricao } from "./transacao";
@@ -80,7 +88,12 @@ function validarRecebida(entrada: MensagemRecebidaDoProvedor): { readonly error:
 export function criarServicoDeMensagens(deps: {
   readonly pool: () => Pool;
   readonly acesso: AcessoAoCrm;
-  /** ESQUELETO do RED (14-08): ainda não é lido. */
+  /**
+   * A categoria do modelo que esta Mensagem usa (`"marketing"`, `"utilidade"`...), ou `undefined`
+   * para texto livre. Os modelos chegam na Sessão 7 (Fase 16): `NovaMensagem` ainda não tem campo
+   * de modelo, então hoje ninguém passa isto e o envio segue como estava. Quando passa, o modelo
+   * de marketing só sai com consentimento vigente (3.2.4).
+   */
   readonly categoriaDoModelo?: (cliente: PoolClient, workspaceId: string, conversa: Conversa, entrada: NovaMensagem) => Promise<string | undefined>;
 }): ServicoDeMensagens {
   return {
@@ -126,6 +139,18 @@ export function criarServicoDeMensagens(deps: {
             });
             if (!envio.ok) {
               return recusa<never>(409, envio.error, { codigo: "JANELA_EXPIRADA", campo: envio.field ?? "modelo" });
+            }
+
+            // 3.2.4: o modelo de marketing só sai com consentimento vigente do Contato para o tipo do Canal.
+            const categoria = await deps.categoriaDoModelo?.(cliente, membro.workspaceId, conversa, entrada);
+            if (categoria !== undefined) {
+              const frase = recusaPorFaltaDeConsentimento({
+                categoriaDoModelo: categoria,
+                registros: await criarRepositorioDeConsentimentosPg(cliente).listarDoContato(membro.workspaceId, conversa.contatoId),
+                finalidadeDeMarketingId: await finalidadeDeMarketing(cliente, membro.workspaceId),
+                tipoDoCanal: canal.tipo,
+              });
+              if (frase !== undefined) return recusa<never>(409, frase, { codigo: "SEM_CONSENTIMENTO", campo: "modelo" });
             }
           }
 

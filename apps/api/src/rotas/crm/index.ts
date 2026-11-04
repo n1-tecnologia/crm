@@ -13,6 +13,9 @@
  * `conversas` (08-06) é o sexto: a Conversa relacional, aberta com a primeira
  * Mensagem numa transação só. `mensagens` (08-12) é o sétimo: o fio da Conversa
  * e o envio humano; a `recebida` não tem rota, só o caminho interno do serviço.
+ * `notas` (14-06) e `consentimentos` (14-08) são sub-recursos do Contato: o
+ * histórico de consentimento é só inserção e a recusa de modelo de marketing
+ * sem consentimento mora em `ServicoDeMensagens.enviar`.
  */
 
 import type { FastifyInstance } from "fastify";

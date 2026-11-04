@@ -107,6 +107,30 @@ Três rotas ao lado das de Contato, nas tabelas da 011:
   lixeira ou com Identificadores demais; `nome`: a origem ficaria sem Nome e
   sem Identificador, INV-CON-01).
 
+**Consentimento do Contato (Fase 14, 14-08, 3.2.4).** Duas rotas ao lado das de
+Contato, sobre `plataforma.contato_consentimentos` (011), que é SÓ INSERÇÃO:
+
+- `GET /contatos/:id/consentimentos` — o histórico do Contato, o mais recente
+  (por `em`) primeiro, `{ ok: true, itens, total }`, sem paginação. A tela
+  calcula o vigente por finalidade e tipo de Canal com `consentimentoVigente`
+  do domínio. Qualquer Membro ativo ou suspenso lê, inclusive de Contato
+  `mesclado` ou na lixeira.
+- `POST /contatos/:id/consentimentos` — corpo `{ finalidadeId, tipoDeCanal,
+  decisao, origem, em?, evidenciaMensagemId? }` (`.strict()`), **201** com a
+  linha. Os três vocabulários são os do domínio (cópia da 011). Revogar é um
+  `POST` com `decisao: "revogado"`: a linha anterior continua, e não há
+  `PUT`, `PATCH` nem `DELETE` (o repositório também não tem `update` nem
+  `delete`). `registradoPor`, `registradoEm`, `contatoId` e `workspaceId` no
+  corpo são 400 (T-14-19): o registrador é o Membro da sessão e `registrado_em`
+  é do banco. Papel `editar` em `contato`: o Convidado é 403.
+  Recusas: 400 `VALOR_INVALIDO` com `campo` `finalidadeId` (não é item ativo
+  `finalidadeConsentimento` do Catálogo DESTE Espaço), `evidenciaMensagemId`
+  (não é Mensagem de uma Conversa deste Contato neste Espaço) ou `em` (no
+  futuro); 404 `CONTATO_NAO_ENCONTRADO` (outro Espaço); 409
+  `CONSENTIMENTO_RECUSADO` (Contato `mesclado` ou na lixeira; o arquivado
+  aceita). Não grava Registro de Atividade nem avança a revisão do Espaço, e
+  nada de consentimento entra em `GET /estado`.
+
 ## Rotas REST da Caixa de Entrada (Fase 8)
 
 `rotas/crm/canais.ts`, `conversas.ts` e `mensagens.ts` entram no mesmo `rotasDeCrm`
@@ -171,6 +195,17 @@ marcação, todas as recebidas). Nada disso grava Registro de Atividade nem
 avança a revisão do Espaço. O fio da Caixa antiga segue na leitura antiga
 (`leituras_internas` da 008, que ninguém escreve aqui) até a Fase 15.
 
+**Consentimento no envio (Fase 14, 14-08).** `ServicoDeMensagens.enviar` recusa
+com 409 `SEM_CONSENTIMENTO` (`campo: "modelo"`) a Mensagem `enviada` cujo modelo é
+de marketing quando o consentimento vigente de marketing do Contato, para o tipo
+do Canal, não é `concedido` (`recusaPorFaltaDeConsentimento` do domínio; sem a
+finalidade Marketing no Catálogo também recusa). A regra está PRONTA e testada,
+mas SEM caminho HTTP até a Sessão 7: `POST /mensagens` não manda modelo
+(`NOVA_MENSAGEM` é `.strict()` e não tem esse campo), e quem diz a categoria é
+`deps.categoriaDoModelo` do serviço, que hoje ninguém passa. A Mensagem
+`interna` não passa pela regra, e a janela de 24 h (`JANELA_EXPIRADA`) é
+conferida antes.
+
 **Não há rota humana de Mensagem `recebida`.** `NOVA_MENSAGEM.direcao` é
 `z.enum(DIRECOES_DE_ENVIO)`: uma pessoa só envia ou anota. A recebida entra por
 `registrarRecebida` do serviço de Mensagens (a porta da integração, idempotente
@@ -183,7 +218,7 @@ devolvê-la. O e2e `canais-fluxo.test.ts` confere a string crua da resposta.
 
 **Códigos de recusa desta fase.**
 - **404** (não existe NESTE Espaço): `CANAL_NAO_ENCONTRADO`, `CONVERSA_NAO_ENCONTRADA`, `CONTATO_NAO_ENCONTRADO`.
-- **409:** `CANAL_NOME_EM_USO` e `CANAL_CONTA_EM_USO` (com o detentor em `bloqueios.canais`; a conta é única entre provedores — INV-CXE-01), `CANAL_ARQUIVADO`, `FILA_INVALIDA`, `ORIGEM_INVALIDA`, `TRANSICAO_INVALIDA`, `CONVERSA_JA_ABERTA`, `CONVERSA_NA_LIXEIRA`, `MOVER_INVALIDO`, `ATRIBUIDO_INVALIDO`, `CONTATO_INATIVO`, `CONTATO_SEM_IDENTIFICADOR_DO_CANAL`, `RESPOSTA_DE_OUTRA_CONVERSA` e `JANELA_EXPIRADA` (WhatsApp oficial, texto livre fora das 24 h; o não oficial nunca é recusado — D-02).
+- **409:** `CANAL_NOME_EM_USO` e `CANAL_CONTA_EM_USO` (com o detentor em `bloqueios.canais`; a conta é única entre provedores — INV-CXE-01), `CANAL_ARQUIVADO`, `FILA_INVALIDA`, `ORIGEM_INVALIDA`, `TRANSICAO_INVALIDA`, `CONVERSA_JA_ABERTA`, `CONVERSA_NA_LIXEIRA`, `MOVER_INVALIDO`, `ATRIBUIDO_INVALIDO`, `CONTATO_INATIVO`, `CONTATO_SEM_IDENTIFICADOR_DO_CANAL`, `RESPOSTA_DE_OUTRA_CONVERSA`, `SEM_CONSENTIMENTO` e `JANELA_EXPIRADA` (WhatsApp oficial, texto livre fora das 24 h; o não oficial nunca é recusado — D-02).
 - **400:** forma (zod) e `VALOR_INVALIDO`. **403:** `PERMISSAO`.
 
 **A ponte.** `GET /estado` (e `executar()` em `/operacoes`) projeta os Canais de
