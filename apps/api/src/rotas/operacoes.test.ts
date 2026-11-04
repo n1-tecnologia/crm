@@ -37,6 +37,7 @@ import { evoluirConfiguracaoDeSolicitacoes } from "@n1/dominio/solicitacao-de-pa
 import { buildApp } from "../app";
 import { carregarEnv, encerrar, pool } from "../persistencia/conexao";
 import { hidratar, semear } from "../persistencia/repositorio";
+import { criarRepositorioDeContatosPg } from "../repositorios/crm/contatos";
 import { FRASE_DE_SUSPENSO } from "../plugins/autenticacao";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearCanal } from "../testes/banco-crm";
 import {
@@ -100,6 +101,22 @@ describe("POST /operacoes/:nome — sem banco", () => {
     expect(resposta.statusCode).toBe(404);
     expect(resposta.json().ok).toBe(false);
   });
+
+  // Só no deploy da Fase 15 (14-17, T-14-42): a Tarefa conversacional nasce e muda pelas rotas
+  // `/tarefas-conversacionais`, que conferem Contato, Canal, Conversa e Negócio nas tabelas.
+  it.each(["criarTarefaConversacional", "trocarCanalDaTarefa", "vincularNegocioATarefa", "criarNegocioDaTarefa"])(
+    "(a2) a operação antiga %s não está mais no registro: responde 404",
+    async (nome) => {
+      const resposta = await appDeTeste().inject({
+        method: "POST",
+        url: `/operacoes/${nome}`,
+        headers: { authorization: "Bearer token-thiago" },
+        payload: { args: [] },
+      });
+      expect(resposta.statusCode).toBe(404);
+      expect(resposta.json()).toEqual({ ok: false, error: `Operação "${nome}" não existe.` });
+    },
+  );
 
   it("(b) um helper que não é caso de uso (nextId) responde 404 — não está em OPERACOES", async () => {
     const resposta = await appDeTeste().inject({
@@ -323,11 +340,16 @@ d("POST /operacoes/:nome — contra o banco real", () => {
       // Os ids de Tarefa do seed se repetem entre execuções: sem limpar o outbox, as linhas
       // de Canal de uma rodada anterior entram na contagem de (w) e (x) da seguinte.
       await cliente.query("delete from plataforma.integration_outbox where workspace_id = $1", [WS]);
-      await cliente.query("delete from plataforma.registros where workspace_id = $1", [WS]);
-      await cliente.query("delete from plataforma.workspaces where workspace_id = $1", [WS]);
-      await semear(cliente, WS, semente);
     } finally {
       cliente.release();
+    }
+    // O (z3) deixa Canal, Contato e Conversa nas tabelas do CRM: `limparEspaco` tira tudo do Espaço.
+    await limparEspaco(WS);
+    const clienteDoSeed = await pool().connect();
+    try {
+      await semear(clienteDoSeed, WS, semente);
+    } finally {
+      clienteDoSeed.release();
     }
     await inserirAutomacaoDeCanal(WS);
   });
@@ -336,11 +358,10 @@ d("POST /operacoes/:nome — contra o banco real", () => {
     const cliente = await pool().connect();
     try {
       await cliente.query("delete from plataforma.integration_outbox where workspace_id = $1", [WS]);
-      await cliente.query("delete from plataforma.registros where workspace_id = $1", [WS]);
-      await cliente.query("delete from plataforma.workspaces where workspace_id = $1", [WS]);
     } finally {
       cliente.release();
     }
+    await limparEspaco(WS);
     await encerrar();
   });
 
@@ -714,18 +735,25 @@ d("POST /operacoes/:nome — contra o banco real", () => {
     expect(desarquivar.json().ok, desarquivar.json().error).toBe(true);
   });
 
-  it("(z3) FUND-18 — o fluxo conversacional inteiro pela rota: conectar Canal, criar Lista conversacional com ele, trocar os canais e criar a Tarefa a partir de um Contato", async () => {
+  it("(z3) FUND-18 — o fluxo conversacional pela rota: Canal e Contato nas tabelas, criar Lista conversacional com o Canal, trocar os canais e criar a Tarefa por POST /tarefas-conversacionais", async () => {
     const chamar = (nome: string, args: unknown[]) =>
       appDeTeste().inject({ method: "POST", url: `/operacoes/${nome}`, headers: { authorization: "Bearer token-thiago" }, payload: { args } });
-    // Thiago é Proprietário do seed: conecta Canal (B35) e administra a Estrutura.
-    const canal = await chamar("criarCanal", [{ channelType: "whatsapp", name: `Atendimento ${Date.now()}`, externalId: "+55 11 90000-0001" }]);
-    expect(canal.statusCode, canal.body).toBe(200);
-    const canalCorpo = canal.json() as { ok: boolean; error?: string; value: { id: string } };
-    expect(canalCorpo.ok, canalCorpo.error).toBe(true);
-    const canalId = canalCorpo.value.id;
+    // 14-17 — a Tarefa conversacional não nasce mais por `POST /operacoes/criarTarefaConversacional`: o Canal e o
+    // Contato vivem em `plataforma.canais` e `plataforma.contatos`, e a rota nova os confere ali.
+    const sufixo = Date.now();
+    const canalId = await semearCanal(WS, {
+      nome: `Atendimento ${sufixo}`,
+      tipo: "whatsapp",
+      provedor: "whatsapp-cloud",
+      identificadorExterno: `+5511${String(sufixo).slice(-9)}`,
+      conexao: "conectada",
+    });
+    const repositorioDeContatos = criarRepositorioDeContatosPg(pool());
+    const contato = await repositorioDeContatos.inserir(WS, { nome: "Contato", sobrenome: `da Tarefa ${sufixo}`, proprietarioId: "mem_thiago", criadoPor: "mem_thiago" });
+    await repositorioDeContatos.inserirIdentificador(WS, contato.id, { tipo: "whatsapp", valor: `+5511988${String(sufixo).slice(-6)}`, principal: true });
 
     const lista = await chamar("createList", [
-      { name: `Atendimento ${Date.now()}`, parentType: "folder", parentId: CP.folderId, isPrivate: false, modeloDeTarefa: "conversacional", canaisDeAtendimento: [canalId] },
+      { name: `Atendimento ${sufixo}`, parentType: "folder", parentId: CP.folderId, isPrivate: false, modeloDeTarefa: "conversacional", canaisDeAtendimento: [canalId] },
     ]);
     const listaCorpo = lista.json() as { ok: boolean; error?: string; value: { id: string; canaisDeAtendimento?: string[] } };
     expect(listaCorpo.ok, listaCorpo.error).toBe(true);
@@ -735,21 +763,30 @@ d("POST /operacoes/:nome — contra o banco real", () => {
     const canais = await chamar("definirCanaisDaLista", [listaId, [canalId]]);
     expect((canais.json() as { ok: boolean; error?: string }).ok, canais.body).toBe(true);
 
-    const contato = semente.contacts.find((c) => c.lifecycle === "ativo");
-    if (!contato) throw new Error("o seed precisa de um Contato ativo");
-    const tarefa = await chamar("criarTarefaConversacional", [{ listId: listaId, contactId: contato.id, channelId: canalId }]);
-    const tarefaCorpo = tarefa.json() as { ok: boolean; error?: string; value: { task: { id: string; listId: string }; conversation: { id: string } } };
-    expect(tarefaCorpo.ok, tarefaCorpo.error).toBe(true);
+    const tarefa = await appDeTeste().inject({
+      method: "POST",
+      url: "/tarefas-conversacionais",
+      headers: { authorization: "Bearer token-thiago" },
+      payload: { listId: listaId, contatoId: contato.id, canalId, mensagem: { conteudo: "Olá, tudo bem?" } },
+    });
+    expect(tarefa.statusCode, tarefa.body).toBe(201);
+    const tarefaCorpo = tarefa.json() as { ok: boolean; dados: { value: { task: { id: string; listId: string } }; conversa: { id: string; aberta: boolean } } };
+    expect(tarefaCorpo.ok).toBe(true);
+    expect(tarefaCorpo.dados.conversa.aberta).toBe(false);
 
     const cliente = await pool().connect();
     try {
       const { state } = await hidratar(cliente, WS);
-      expect(state.channels.some((c) => c.id === canalId && c.connection === "conectada")).toBe(true);
       const l = state.lists.find((x) => x.id === listaId);
       expect(l?.modeloDeTarefa).toBe("conversacional");
       expect(l?.canaisDeAtendimento).toEqual([canalId]);
-      expect(state.tasks.some((t) => t.id === tarefaCorpo.value.task.id && t.listId === listaId)).toBe(true);
-      expect(state.conversations.some((c) => c.id === tarefaCorpo.value.conversation.id)).toBe(true);
+      const nascida = state.tasks.find((t) => t.id === tarefaCorpo.dados.value.task.id);
+      expect(nascida?.listId).toBe(listaId);
+      // A Tarefa aponta para o CRM só por Vínculos, com os ids das tabelas.
+      const vinculos = state.links.filter((v) => v.fromType === "task" && v.fromId === tarefaCorpo.dados.value.task.id);
+      expect(vinculos.map((v) => `${v.toType}:${v.toId}`).sort()).toEqual([`contact:${contato.id}`, `conversation:${tarefaCorpo.dados.conversa.id}`].sort());
+      const conversa = await cliente.query("select 1 from plataforma.conversas where workspace_id = $1 and id = $2 and canal_id = $3", [WS, tarefaCorpo.dados.conversa.id, canalId]);
+      expect(conversa.rowCount).toBe(1);
     } finally {
       cliente.release();
     }

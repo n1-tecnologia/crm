@@ -316,4 +316,16 @@ describe("fora do registro", () => {
       expect(nomes).not.toContain(nome);
     }
   });
+
+  // Só no deploy da Fase 15 (14-17, T-14-42): as quatro operações antigas, que conferiam o CRM antigo
+  // no estado do navegador, saíram do registro. Quem cria e altera a Tarefa conversacional são as rotas.
+  it("as quatro operações antigas da Tarefa conversacional também não estão mais em OPERACOES", () => {
+    const nomes = Object.keys(OPERACOES);
+    for (const nome of ["criarTarefaConversacional", "trocarCanalDaTarefa", "vincularNegocioATarefa", "criarNegocioDaTarefa"]) {
+      expect(nomes).not.toContain(nome);
+    }
+    // O que a Lista conversacional ainda usa do registro segue lá.
+    expect(nomes).toContain("alterarModeloDaLista");
+    expect(nomes).toContain("definirCanaisDaLista");
+  });
 });
