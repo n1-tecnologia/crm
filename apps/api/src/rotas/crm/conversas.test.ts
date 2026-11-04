@@ -59,6 +59,10 @@ describe("rotas de Conversas — serviço falso, sem banco", () => {
         chamadas.push(["mover", ...a]);
         return resposta();
       },
+      atribuir: (...a) => {
+        chamadas.push(["atribuir", ...a]);
+        return resposta();
+      },
     };
     return { servico, chamadas };
   }
@@ -224,6 +228,32 @@ describe("rotas de Conversas — serviço falso, sem banco", () => {
     expect(com.statusCode).toBe(200);
     expect(chamadas[1]?.[3]).toEqual({ contatoId: "p2", resolverExistente: true });
   });
+
+  it.each([
+    ["campo a mais no objeto atribuido", { atribuido: { tipo: "membro", id: "x", extra: 1 } }],
+    ["corpo vazio", {}],
+    ["tipo desconhecido", { atribuido: { tipo: "fila", id: "x" } }],
+    ["workspaceId no corpo", { atribuido: null, workspaceId: "ws_outro" }],
+    ["estado no corpo", { atribuido: null, estado: "ativo" }],
+  ])("POST /conversas/x/atribuir com %s responde 400 e o serviço não é chamado", async (_rotulo, payload) => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({ method: "POST", url: "/conversas/x/atribuir", headers: AUTORIZACAO, payload });
+    expect(resposta.statusCode).toBe(400);
+    expect(chamadas).toEqual([]);
+  });
+
+  it.each([{ tipo: "membro", id: "mem_ana" }, { tipo: "agente", id: "agt_1" }, null])(
+    "POST /conversas/x/atribuir com %j repassa o Membro da sessão, o id e o corpo",
+    async (atribuido) => {
+      const { servico, chamadas } = novoFalso();
+      const resposta = await appCom(servico).inject({ method: "POST", url: "/conversas/x/atribuir", headers: AUTORIZACAO, payload: { atribuido } });
+      expect(resposta.statusCode).toBe(200);
+      expect(chamadas[0]?.[0]).toBe("atribuir");
+      expect(chamadas[0]?.[1]).toMatchObject({ id: "mem_maryane" });
+      expect(chamadas[0]?.[2]).toBe("x");
+      expect(chamadas[0]?.[3]).toEqual({ atribuido });
+    },
+  );
 
   it("não há DELETE /conversas/:id nesta fase", async () => {
     const { servico, chamadas } = novoFalso();

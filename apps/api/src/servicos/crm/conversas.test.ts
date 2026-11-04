@@ -419,4 +419,83 @@ describeComBanco("ServicoDeConversas — Postgres local", () => {
       expect(valor(await servico.obter(c.membro, aberta.conversa.id)).conversa.contatoId).toBe(ana);
     });
   });
+  describe("atribuir (3.2.6, parte 1)", () => {
+    async function agente(ws: string, id: string, lifecycle: string) {
+      await pool().query(
+        `insert into plataforma.registros (workspace_id, colecao, id, dados)
+         values ($1, 'agents', $2, $3::jsonb)
+         on conflict (workspace_id, colecao, id) do update set dados = excluded.dados`,
+        [ws, id, JSON.stringify({ id, lifecycle, name: id })],
+      );
+    }
+
+    async function conversaAberta(c: Contexto, valorWhats: string) {
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: valorWhats }]);
+      const canal = await comercial(c.ws);
+      return valor(await abrir(c, canal, ana)).conversa;
+    }
+
+    it("Membro ativo do Espaço, Agente ativo e null: grava, troca e tira a atribuição", async () => {
+      const c = await espaco("atribuir");
+      await semearMembro(c.ws, { id: "mem_bia", base: "membro", state: "ativo" });
+      await agente(c.ws, "agt_1", "ativo");
+      const conversa = await conversaAberta(c, "+5511966662001");
+
+      const paraMembro = valor(await servico.atribuir(c.membro, conversa.id, { atribuido: { tipo: "membro", id: "mem_bia" } }));
+      expect(paraMembro.conversa.atribuido).toEqual({ tipo: "membro", id: "mem_bia" });
+      const paraAgente = valor(await servico.atribuir(c.membro, conversa.id, { atribuido: { tipo: "agente", id: "agt_1" } }));
+      expect(paraAgente.conversa.atribuido).toEqual({ tipo: "agente", id: "agt_1" });
+      expect(paraAgente.canal.id).toBe(conversa.canalId);
+      const livre = valor(await servico.atribuir(c.membro, conversa.id, { atribuido: null }));
+      expect(livre.conversa.atribuido).toBeNull();
+      const { rows } = await pool().query("select atribuido_tipo, atribuido_id from plataforma.conversas where workspace_id = $1 and id = $2", [c.ws, conversa.id]);
+      expect(rows[0]).toEqual({ atribuido_tipo: null, atribuido_id: null });
+    });
+
+    it("Membro de outro Espaço, suspenso ou removido → 409 com campo atribuido, e nada muda", async () => {
+      const c = await espaco("atribuirinvalido");
+      const outro = await espaco("atribuirinvalidob");
+      await semearMembro(outro.ws, { id: "mem_fora", base: "membro", state: "ativo" });
+      await semearMembro(c.ws, { id: "mem_susp", base: "membro", state: "suspenso" });
+      await semearMembro(c.ws, { id: "mem_rem", base: "membro", state: "removido" });
+      const conversa = await conversaAberta(c, "+5511966662002");
+
+      for (const id of ["mem_fora", "mem_susp", "mem_rem", "mem_inexistente"]) {
+        const r = recusado(await servico.atribuir(c.membro, conversa.id, { atribuido: { tipo: "membro", id } }));
+        expect(r).toMatchObject({ status: 409, codigo: "ATRIBUIDO_INVALIDO", campo: "atribuido" });
+      }
+      expect(valor(await servico.obter(c.membro, conversa.id)).conversa.atribuido).toEqual({ tipo: "membro", id: "mem_ana" });
+    });
+
+    it("Agente inexistente, de outro Espaço ou fora do ar → 409 com campo atribuido", async () => {
+      const c = await espaco("atribuiragente");
+      const outro = await espaco("atribuiragenteb");
+      await agente(outro.ws, "agt_fora", "ativo");
+      await agente(c.ws, "agt_pausado", "pausado");
+      const conversa = await conversaAberta(c, "+5511966662003");
+
+      for (const id of ["agt_nao_existe", "agt_fora", "agt_pausado"]) {
+        const r = recusado(await servico.atribuir(c.membro, conversa.id, { atribuido: { tipo: "agente", id } }));
+        expect(r).toMatchObject({ status: 409, codigo: "ATRIBUIDO_INVALIDO", campo: "atribuido" });
+      }
+    });
+
+    it("Conversa na lixeira → 409; Convidado → 403 antes de ler; outro Espaço → 404", async () => {
+      const c = await espaco("atribuirpapel");
+      const outro = await espaco("atribuirpapelb");
+      const conversa = await conversaAberta(c, "+5511966662004");
+
+      expect(recusado(await servico.atribuir(c.convidado, conversa.id, { atribuido: null }))).toMatchObject({ status: 403, codigo: "PERMISSAO" });
+      expect(recusado(await servico.atribuir(outro.membro, conversa.id, { atribuido: null }))).toMatchObject({
+        status: 404,
+        codigo: "CONVERSA_NAO_ENCONTRADA",
+      });
+
+      await pool().query(
+        "update plataforma.conversas set situacao = 'resolvida', estado = 'na_lixeira', na_lixeira_em = now() where workspace_id = $1 and id = $2",
+        [c.ws, conversa.id],
+      );
+      expect(recusado(await servico.atribuir(c.membro, conversa.id, { atribuido: { tipo: "membro", id: "mem_admin" } }))).toMatchObject({ status: 409 });
+    });
+  });
 });

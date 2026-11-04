@@ -13,6 +13,7 @@ import {
   participantesComContato,
   proximaSituacao,
   tituloDaConversa,
+  validarAtribuicao,
   validarMover,
   validarNovaConversa,
   type ParticipanteDaConversa,
@@ -173,5 +174,18 @@ describe("participantesComContato", () => {
     const antes = [participante("p1", "contato", "c1", true)];
     participantesComContato(antes, "c1", "c2");
     expect(antes[0]?.sujeito.id).toBe("c1");
+  });
+});
+
+describe("validarAtribuicao (3.2.6, parte 1)", () => {
+  it("aceita Conversa ativa", () => {
+    expect(validarAtribuicao({ estado: "ativo" })).toEqual({ ok: true, value: undefined });
+  });
+
+  it("recusa Conversa na lixeira", () => {
+    expect(validarAtribuicao({ estado: "na_lixeira" })).toEqual({
+      ok: false,
+      error: "Uma Conversa na lixeira não é atribuída. Restaure-a antes.",
+    });
   });
 });
