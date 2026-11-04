@@ -88,6 +88,12 @@ export interface RepositorioDeContatos {
   /** Tira a marca de principal do Identificador atual do tipo (INV-CON-03). */
   rebaixarPrincipal(workspaceId: string, contatoId: string, tipo: TipoIdentificadorContato): Promise<void>;
   removerIdentificador(workspaceId: string, identificadorId: string): Promise<void>;
+  /**
+   * Passa o Identificador para outro Contato (3.2.3, DO-CON-12) e fixa se chega principal. Não
+   * confere nada: quem chama já travou os dois Contatos e decidiu o principal. O par (tipo, valor)
+   * não muda, então `contato_identificadores_unico` não é tocado.
+   */
+  moverIdentificador(workspaceId: string, identificadorId: string, paraContatoId: string, principal: boolean): Promise<void>;
   detentorDoIdentificador(workspaceId: string, tipo: TipoIdentificadorContato, valor: string): Promise<DetentorDeIdentificador | undefined>;
 
   /** Somente leitura de `plataforma.negocios` — a escrita de Negócio é de 07-08. */
@@ -381,6 +387,13 @@ export function criarRepositorioDeContatosPg(cliente: Pool | PoolClient): Reposi
         workspaceId,
         identificadorId,
       ]);
+    },
+
+    async moverIdentificador(workspaceId, identificadorId, paraContatoId, principal) {
+      await cliente.query(
+        "update plataforma.contato_identificadores set contato_id = $3, principal = $4 where workspace_id = $1 and id = $2",
+        [workspaceId, identificadorId, paraContatoId, principal],
+      );
     },
 
     async detentorDoIdentificador(workspaceId, tipo, valor) {

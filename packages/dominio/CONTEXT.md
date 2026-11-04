@@ -841,3 +841,21 @@ cobre aberta e pendente, então mover uma resolvida nunca colide).
 o Membro seja ativo e o Agente exista neste Espaço também depende do banco.
 `Atribuicao` é o tipo da coluna dupla `atribuido_tipo/atribuido_id`.
 
+
+**Notas do Contato e a transferência de Identificador (Fase 14, 14-06).**
+`crm/notas.ts` é o módulo novo: `NotaDoContato` (a linha de
+`contato_notas`), `NovaNota` (só `conteudo`: o autor é o Membro da sessão e
+não um campo de quem escreve), `validarNovaNota` (aparada, não vazia, até
+`LIMITES_CRM.textoLongo`, sempre com o campo `conteudo`) e
+`recusaDeNotaNoContato` (o `mesclado` é somente leitura, RN-CON-14, e o da
+lixeira está parado; `arquivado` aceita). D-04: a nota é só texto; os anexos
+e as menções da nota do modelo antigo não vêm para cá.
+`validarTransferenciaDeIdentificador` (`crm/contatos.ts`, 3.2.3, DO-CON-12)
+recusa a origem `mesclado`, o mesmo Contato, o destino `mesclado` (a frase
+manda para o Contato que ficou) ou na lixeira, com o campo `paraContatoId`, e
+a origem que ficaria sem Nome e sem Identificador (INV-CON-01, reusa
+`validarContato` sobre `restantesDaOrigem`). O que depende do banco fica com o
+serviço: se o Identificador é da origem, se o destino existe neste Espaço, o
+teto de Identificadores do destino e qual dos dois fica principal (INV-CON-03).
+A transferência muda só a resolução futura: as Conversas passadas continuam
+com o Contato de origem.

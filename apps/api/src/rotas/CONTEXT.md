@@ -77,6 +77,36 @@ corpo (Pitfall 4).
 A regra continua a deste arquivo: a rota lê a requisição, chama o serviço e
 formata a resposta. Nenhum SQL e nenhuma regra de negócio em `crm/`.
 
+**Notas do Contato e transferência de Identificador (Fase 14, 14-06).**
+Três rotas ao lado das de Contato, nas tabelas da 011:
+
+- `GET /contatos/:id/notas` — as notas do Contato, a mais recente primeiro,
+  `{ ok: true, itens, total }`. Querystring só `limite` (teto de
+  `LIMITES_CRM.paginaMaxima`) e `deslocamento`; `estado` e `q` são 400.
+  Qualquer Membro ativo ou suspenso lê, inclusive de Contato `mesclado` ou
+  na lixeira (o histórico não some com o estado).
+- `POST /contatos/:id/notas` — corpo `{ conteudo }` (`.strict()`, aparado,
+  1 a 5000 caracteres), **201** com a nota. O autor é sempre o Membro da
+  sessão: `autorId`, `contatoId` e `workspaceId` no corpo são 400 (T-14-13).
+  Papel `editar` em `contato`: o Convidado é 403 e o Membro suspenso também.
+  Recusas: 400 `VALOR_INVALIDO` (campo `conteudo`), 404
+  `CONTATO_NAO_ENCONTRADO` (outro Espaço), 409 `NOTA_RECUSADA` (Contato
+  `mesclado` ou na lixeira, com a frase do domínio). A nota é só texto
+  (D-04). O fio da Caixa e a Reunião ainda não escrevem aqui: é a Fase 15.
+- `POST /contatos/:id/identificadores/:identificadorId/transferir` — corpo
+  `{ paraContatoId }` (`.strict()`: `principal` é 400, quem decide é o
+  serviço), 200 com a ficha da ORIGEM. O Identificador chega ao destino como
+  principal só se o destino não tem principal do tipo; na origem, se era o
+  principal, o mais antigo do mesmo tipo é promovido. As Conversas e as
+  Mensagens passadas ficam na origem (DO-CON-12); depois da transferência o
+  detentor do número é o destino. Papel `editar` em `contato`. Recusas: 404
+  `CONTATO_NAO_ENCONTRADO` (origem ou destino de outro Espaço; o destino
+  traz `campo: "paraContatoId"`), 404 `IDENTIFICADOR_NAO_ENCONTRADO`, 409
+  `CONTATO_MESCLADO` (origem absorvida), 409 `TRANSFERENCIA_RECUSADA` com
+  `campo` (`paraContatoId`: o mesmo Contato, destino `mesclado`, destino na
+  lixeira ou com Identificadores demais; `nome`: a origem ficaria sem Nome e
+  sem Identificador, INV-CON-01).
+
 ## Rotas REST da Caixa de Entrada (Fase 8)
 
 `rotas/crm/canais.ts`, `conversas.ts` e `mensagens.ts` entram no mesmo `rotasDeCrm`

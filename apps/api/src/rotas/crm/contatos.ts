@@ -8,6 +8,7 @@
  *   POST   /contatos/:id/identificadores               adiciona Identificador (201)
  *   PATCH  /contatos/:id/identificadores/:identificadorId
  *   DELETE /contatos/:id/identificadores/:identificadorId
+ *   POST   /contatos/:id/identificadores/:identificadorId/transferir   passa o Identificador a outro Contato (3.2.3)
  *   POST   /contatos/:id/arquivar | /restaurar
  *   DELETE /contatos/:id                               lixeira (D-06)
  *   DELETE /contatos/:id/permanente                    exclusão de vez, só da lixeira
@@ -50,6 +51,9 @@ const IDENTIFICADOR_NOVO = z
     rotuloCanal: TEXTO_CURTO.optional(),
   })
   .strict();
+
+/** O principal do transferido o serviço decide (INV-CON-03): o corpo só diz para quem vai. */
+const CORPO_DE_TRANSFERENCIA = z.object({ paraContatoId: z.string().min(1).max(64) }).strict();
 
 const PROPRIETARIO = z.string().min(1).max(64);
 const ENDERECOS = z.array(ENDERECO).max(LIMITES_CRM.enderecosMaximo);
@@ -143,6 +147,16 @@ export async function rotasDeContatos(app: FastifyInstance, opcoes: { readonly s
     { schema: { params: PARAMS_IDENTIFICADOR } },
     async (request, reply) =>
       responder(reply, await servico.removerIdentificador(request.membro, request.params.id, request.params.identificadorId)),
+  );
+
+  rotas.post(
+    "/contatos/:id/identificadores/:identificadorId/transferir",
+    { schema: { params: PARAMS_IDENTIFICADOR, body: CORPO_DE_TRANSFERENCIA } },
+    async (request, reply) =>
+      responder(
+        reply,
+        await servico.transferirIdentificador(request.membro, request.params.id, request.params.identificadorId, request.body),
+      ),
   );
 
   rotas.post("/contatos/:id/arquivar", { schema: { params: PARAMS_ID } }, async (request, reply) =>

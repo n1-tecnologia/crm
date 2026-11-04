@@ -22,6 +22,7 @@ import {
   primeiroDoTipo,
   validarContato,
   validarIdentificadorDeContato,
+  validarTransferenciaDeIdentificador,
   type Contato,
   type ContatoDetalhado,
   type ContatoResumo,
@@ -142,7 +143,7 @@ export function criarServicoDeContatos(deps: {
   /**
    * Papel primeiro (um Convidado nunca descobre se o corpo era válido); depois a validação
    * de forma, sem banco; depois a transação. O Contato é carregado travado e tem de existir
-   * NESTE Espaço.
+   * NESTE Espaço. `tambem` é o outro Contato de um gesto entre dois (a transferência).
    */
   async function escrita<T>(
     membro: MembroDaSessao,
@@ -150,6 +151,7 @@ export function criarServicoDeContatos(deps: {
     id: string,
     corpo: (contexto: { cliente: PoolClient; repositorio: RepositorioDeContatos; contato: Contato }) => Promise<ResultadoCrm<T>>,
     validar?: () => ResultadoCrm<never> | undefined,
+    tambem?: string,
   ): Promise<ResultadoCrm<T>> {
     const negado = await exigir(deps.acesso, membro, acao, "contato");
     if (negado) return { ok: false, ...negado };
@@ -159,6 +161,9 @@ export function criarServicoDeContatos(deps: {
       deps.pool,
       async (cliente) => {
         const repositorio = criarRepositorioDeContatosPg(cliente);
+        // Gesto entre dois Contatos: as travas saem em ordem de id (a mesclagem faz o mesmo), para
+        // duas transferências opostas não darem deadlock. O de id maior é travado pelo `corpo`.
+        if (tambem !== undefined && tambem < id) await repositorio.obter(membro.workspaceId, tambem, { travar: true });
         const contato = await repositorio.obter(membro.workspaceId, id, { travar: true });
         if (!contato) return naoEncontrado();
         // RN-CON-14: antes de qualquer outra regra, inclusive as de transição (restaurar, arquivar, lixeira).
@@ -397,9 +402,54 @@ export function criarServicoDeContatos(deps: {
       });
     },
 
-    async transferirIdentificador() {
-      // Esqueleto do RED.
-      return naoEncontrado();
+    async transferirIdentificador(membro, id, identificadorId, entrada) {
+      return escrita(
+        membro,
+        "editar",
+        id,
+        async ({ cliente, repositorio, contato }) => {
+          // O destino é travado depois da origem, que já foi travada (em ordem de id, ver `escrita`).
+          const destino = await repositorio.obter(membro.workspaceId, entrada.paraContatoId, { travar: true });
+          if (!destino) {
+            return recusa<never>(404, "Contato de destino não encontrado.", {
+              codigo: "CONTATO_NAO_ENCONTRADO",
+              campo: "paraContatoId",
+            });
+          }
+          const existentes = await repositorio.listarIdentificadores(membro.workspaceId, contato.id);
+          const alvo = existentes.find((identificador) => identificador.id === identificadorId);
+          if (!alvo) return recusa<never>(404, "Identificador não encontrado.", { codigo: "IDENTIFICADOR_NAO_ENCONTRADO" });
+          const restantes = existentes.filter((identificador) => identificador.id !== alvo.id);
+
+          const validacao = validarTransferenciaDeIdentificador({ origem: contato, destino, restantesDaOrigem: restantes });
+          if (!validacao.ok) {
+            return recusa<never>(409, validacao.error, {
+              codigo: "TRANSFERENCIA_RECUSADA",
+              ...(validacao.field !== undefined ? { campo: validacao.field } : {}),
+            });
+          }
+
+          const doDestino = await repositorio.listarIdentificadores(membro.workspaceId, destino.id);
+          if (doDestino.length >= LIMITES_CRM.identificadoresMaximo) {
+            return recusa<never>(409, `Um Contato tem no máximo ${LIMITES_CRM.identificadoresMaximo} Identificadores.`, {
+              codigo: "TRANSFERENCIA_RECUSADA",
+              campo: "paraContatoId",
+            });
+          }
+
+          // INV-CON-03: chega principal só se o destino ainda não tem principal desse tipo.
+          const principal = !doDestino.some((identificador) => identificador.tipo === alvo.tipo && identificador.principal);
+          await repositorio.moverIdentificador(membro.workspaceId, alvo.id, destino.id, principal);
+          if (alvo.principal) {
+            // Na origem, o mesmo tratamento de `removerIdentificador`: promove o mais antigo do mesmo tipo.
+            const proximo = restantes.find((identificador) => identificador.tipo === alvo.tipo);
+            if (proximo) await repositorio.atualizarIdentificador(membro.workspaceId, proximo.id, { principal: true });
+          }
+          return devolver(cliente, membro, contato);
+        },
+        undefined,
+        entrada.paraContatoId,
+      );
     },
 
     async arquivar(membro, id) {

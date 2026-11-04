@@ -233,13 +233,30 @@ export function fraseDeIdentificadorEmUso(tipo: TipoIdentificadorContato, valor:
 }
 
 /**
- * Transferir um Identificador de um Contato para outro (DO-CON-12, esqueleto do RED):
- * por ora aceita tudo.
+ * DO-CON-12: transferir um Identificador de um Contato para outro. Só a resolução futura
+ * muda de dono: as Conversas e as Mensagens passadas ficam com a origem. A regra recusa:
+ *   - a origem `mesclado` (RN-CON-14: somente leitura);
+ *   - o mesmo Contato como destino;
+ *   - o destino `mesclado` (a frase manda para o Contato que ficou) ou na lixeira;
+ *   - a origem que ficaria sem Nome e sem Identificador (INV-CON-01, `validarContato`).
+ * O destino `arquivado` recebe, como já recebe Negócio. `field` é `paraContatoId` nas recusas
+ * do destino, para a tela marcar o campo; a de INV-CON-01 traz o `field` de `validarContato`.
  */
-export function validarTransferenciaDeIdentificador(_entrada: {
+export function validarTransferenciaDeIdentificador(entrada: {
   readonly origem: Pick<Contato, "id" | "estado" | "nome" | "sobrenome">;
   readonly destino: Pick<Contato, "id" | "estado">;
   readonly restantesDaOrigem: readonly Pick<IdentificadorDeContato, "tipo" | "valor">[];
 }): OperationResult<void> {
-  return ok(undefined);
+  const { origem, destino, restantesDaOrigem } = entrada;
+  if (origem.estado === "mesclado") {
+    return fail("Este Contato foi mesclado e agora é somente leitura. Abra o Contato que ficou.");
+  }
+  if (destino.id === origem.id) return fail("Escolha outro Contato: o Identificador já é deste.", "paraContatoId");
+  if (destino.estado === "mesclado") {
+    return fail("Este Contato foi mesclado: transfira para o Contato que ficou.", "paraContatoId");
+  }
+  if (destino.estado === "na_lixeira") {
+    return fail("O Contato de destino está na lixeira. Restaure-o ou escolha outro.", "paraContatoId");
+  }
+  return validarContato({ nome: origem.nome, identificadores: restantesDaOrigem });
 }
