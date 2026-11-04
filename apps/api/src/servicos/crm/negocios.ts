@@ -142,10 +142,17 @@ async function conferirEmpresa(cliente: Cliente, workspaceId: string, empresaId:
   return undefined;
 }
 
-/** Contato do Espaço e fora da lixeira (RN-CON-19: arquivado continua referenciável). */
+/** Contato do Espaço, nem mesclado nem na lixeira (RN-CON-19: arquivado continua referenciável). */
 async function conferirContato(cliente: Cliente, workspaceId: string, contatoId: string): Promise<ResultadoCrm<never> | undefined> {
   const contato = await criarRepositorioDeContatosPg(cliente).obter(workspaceId, contatoId);
   if (!contato) return recusa<never>(404, "Contato não encontrado.", { codigo: "CONTATO_NAO_ENCONTRADO", campo: "contatoId" });
+  // RN-CON-14: o absorvido é somente leitura; o Negócio vai para o Contato que ficou.
+  if (contato.estado === "mesclado") {
+    return recusa<never>(409, "Este Contato foi mesclado em outro: escolha o Contato que ficou.", {
+      codigo: "CONTATO_MESCLADO",
+      campo: "contatoId",
+    });
+  }
   if (contato.estado === "na_lixeira") {
     return recusa<never>(409, "O Contato está na lixeira. Restaure o Contato antes de criar um Negócio para ele.", {
       codigo: "CONTATO_INATIVO",

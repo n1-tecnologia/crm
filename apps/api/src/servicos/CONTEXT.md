@@ -85,6 +85,29 @@ Espaço cai na mesma recusa 409 `PROPRIETARIO_INVALIDO`, T-07-40).
 `WHERE` dos repositórios o leva (T-07-01). Um registro de outro Espaço não
 existe: 404, não 403.
 
+## Contato mesclado (Fase 14)
+
+**RN-CON-14: o Contato `mesclado` é somente leitura em todo serviço do CRM
+novo.** `mesclado` é o quarto estado do Contato (011): o Contato foi absorvido
+por outro (`mescladoEmId`) e não volta. Em `crm/contatos.ts` o helper `escrita`
+confere o estado logo depois de travar a linha e, antes de qualquer outra regra,
+recusa **409 `CONTATO_MESCLADO`** — "Este Contato foi mesclado e agora é somente
+leitura. Abra o Contato que ficou." Isso cobre editar, os três gestos de
+Identificador, arquivar, restaurar, lixeira e exclusão permanente, e a linha do
+banco não muda. `obter` e `listar` seguem liberados (a tela leva o absorvido ao
+sobrevivente).
+
+**Quem o referencia.** `crm/negocios.ts` (`conferirContato`, em criar e em
+editar trocando o Contato) e `crm/empresas.ts` (`carregarContato`, em criar com
+Contato admin existente, vincular e trocar admin) recusam o absorvido com o mesmo
+código e `campo: "contatoId"`. Contato `arquivado` continua aceito em Negócio
+(RN-CON-19); a Tarefa conversacional exige `ativo` e confere isso no próprio
+serviço (14-14).
+
+**Quem grava o estado.** Só a mesclagem (14-09). `definirEstado` do repositório
+continua tipado com `EstadoCrm`, que não inclui `mesclado`: nenhum outro serviço
+consegue gravá-lo. Os testes marcam o absorvido por SQL, com `poolDoDono()`.
+
 ## Cofre de credenciais (Fase 9)
 
 `cofre.ts` guarda os segredos de provedor (Evolution, Meta, e-mail) em
