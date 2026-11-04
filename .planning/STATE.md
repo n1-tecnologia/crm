@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 14
 current_phase_name: "Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional"
 status: executing
-stopped_at: Completed 14-13-PLAN.md
-last_updated: "2026-11-04T19:32:28.636Z"
+stopped_at: Completed 14-14-PLAN.md
+last_updated: "2026-11-04T19:57:28.291Z"
 last_activity: 2026-11-04
 last_activity_desc: Phase 14 execution started
-state_head: cb3087503b9f67eec5fa5811326be8b69aa38cfb
+state_head: 99821062310d351597f4b3f9cf13ecab772f86d8
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 228
-  completed_plans: 219
+  completed_plans: 220
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 14 (Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional) — EXECUTING
-Plan: 14 of 19
+Plan: 15 of 19
 Status: Ready to execute
 Last activity: 2026-11-04 — Phase 14 execution started
 
@@ -437,6 +437,7 @@ Progress: [██████░░░░] 63%
 | Phase 14 P11 | 13 min | 3 tasks | 13 files |
 | Phase 14 P12 | 7 min | 3 tasks | 14 files |
 | Phase 14 P13 | 22 min | 3 tasks | 11 files |
+| Phase 14 P14 | 25 min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -673,6 +674,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 14]: 14-12: definirCanaisDaLista e createList conferem Canais em plataforma.canais por lerDoCrm (mapa LER_DO_CRM); o canais do navegador é descartado; ramo state.channels sai na 3.5.4
 - [Phase 14]: 14-13: a resposta de POST /tarefas-conversacionais é o corpo de POST /operacoes recortado (Tarefa em value.task) mais conversa { id, aberta }; o resumo devolve { ok, itens, total }
 - [Phase 14]: 14-13: no resumo, Negócio na lixeira não aparece (RN-TAR-15) e Mensagem com marcacao_exclusao não é candidata a última Mensagem; OQ6 segue a confirmar
+- [Phase 14]: Plan 14-14: trocar o Canal e ligar ou criar o Negócio da Tarefa são gestos mistos; o Contato vem do Vínculo lido no servidor (o sobrevivente, se mesclado), nunca do corpo. criarNegocioNoCliente e prepararNegocioNovo foram extraídos de POST /negocios: lerDoCrm pré-checa Funil, Etapa e Contato (a recusa volta como valor) e gravarNoCrm só insere o Negócio depois que a operação aceitou o Vínculo, então nunca há Negócio órfão. Contato arquivado recusa criar Negócio pela Tarefa (409 CONTATO_INATIVO). Sem Conversa aberta e sem mensagem, o 400 de D-07 vem antes da recusa de Canal fora da Lista ou desconectado.
 
 ### Pending Todos
 
@@ -734,6 +736,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-04T19:32:28.361Z
-Stopped at: Completed 14-13-PLAN.md
+Last session: 2026-11-04T19:57:28.015Z
+Stopped at: Completed 14-14-PLAN.md
 Resume file: None
