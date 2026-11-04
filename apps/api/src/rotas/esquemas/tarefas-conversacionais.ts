@@ -1,35 +1,14 @@
 /**
  * A FORMA dos `args` das operações de
- * `packages/dominio/src/operations/tarefas-conversacionais.ts` — 6
- * operações. Ver `../esquemas/CONTEXT.md` para a regra da pasta.
+ * `packages/dominio/src/operations/tarefas-conversacionais.ts` — 2
+ * operações (o modelo e os canais da Lista). A Tarefa conversacional em si
+ * nasce e muda pelas rotas `/tarefas-conversacionais`, não por aqui (14-17).
+ * Ver `../esquemas/CONTEXT.md` para a regra da pasta.
  */
 
-import { ACTOR_REF, ID, MODELO_DE_TAREFA, MONEY, opcional, PRIORITY, TASK_DATE, type Esquemas } from "./fragmentos";
+import { ID, MODELO_DE_TAREFA, opcional, type Esquemas } from "./fragmentos";
 import type { Canal } from "@n1/dominio/crm/canais";
 import { z } from "zod";
-
-const CRIAR_TAREFA_CONVERSACIONAL_INPUT = z
-  .object({
-    listId: ID,
-    contactId: ID,
-    channelId: ID,
-    title: z.string().optional(),
-    statusId: ID.optional(),
-    assignees: z.array(ACTOR_REF).optional(),
-    priority: PRIORITY.optional(),
-    dueDate: TASK_DATE.optional(),
-    dealId: ID.optional(),
-    taskTypeId: ID.optional(),
-  })
-  .strict();
-
-const CRIAR_NEGOCIO_DA_TAREFA_INPUT = z
-  .object({
-    funnelId: ID,
-    title: z.string().optional(),
-    value: MONEY.optional(),
-  })
-  .strict();
 
 /**
  * 3.3.7 — o `Canal[]` que a execução local de `definirCanaisDaLista` e de
@@ -48,9 +27,4 @@ export const CANAIS_DO_NAVEGADOR = z.array(z.object({ id: ID }).passthrough()).m
 export const TAREFAS_CONVERSACIONAIS = {
   alterarModeloDaLista: z.tuple([ID, MODELO_DE_TAREFA]),
   definirCanaisDaLista: z.tuple([ID, z.array(ID), opcional(CANAIS_DO_NAVEGADOR)]),
-  criarTarefaConversacional: z.tuple([CRIAR_TAREFA_CONVERSACIONAL_INPUT]),
-  trocarCanalDaTarefa: z.tuple([ID, ID]),
-  // `dealId || null` em `tarefa-completa.tsx`: `null` desvincula.
-  vincularNegocioATarefa: z.tuple([ID, ID.nullable()]),
-  criarNegocioDaTarefa: z.tuple([ID, CRIAR_NEGOCIO_DA_TAREFA_INPUT]),
 } satisfies Esquemas;

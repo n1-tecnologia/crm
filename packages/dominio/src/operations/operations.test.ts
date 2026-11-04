@@ -139,7 +139,7 @@ import {
 } from "./deals";
 import { startConversation } from "./conversations";
 import { TAREFA_SEM_CONTATO } from "./tasks";
-import { FORMULARIOS_ANTES_DO_MODELO, alterarModeloDaLista, criarTarefaConversacional, trocarCanalDaTarefa, vincularNegocioATarefa } from "./tarefas-conversacionais";
+import { FORMULARIOS_ANTES_DO_MODELO, alterarModeloDaLista } from "./tarefas-conversacionais";
 import { PAPEL_DO_VINCULO, canaisQueAlcancam, contatoDaTarefa, conversaDaTarefa, negocioDaTarefa, tarefasConversacionaisDoContato } from "../derive-conversacional";
 
 const THIAGO = "mem_thiago";
@@ -3956,75 +3956,6 @@ describe("Modelo de Tarefa da Lista (C35)", () => {
     expect(contatoDaTarefa(state, comContato.value)?.id).toBe("cnt_1");
   });
 
-  it("criarTarefaConversacional reaproveita a Conversa aberta do Contato no Canal e nomeia a Tarefa pelo Contato", () => {
-    const antes = state.conversations.length;
-    // No seed, a cnv_1 (WhatsApp, aberta) é da Marina (cnt_2): a Ana (cnt_1) não tem Conversa.
-    const r = criarTarefaConversacional(state, THIAGO, { listId: "lst_pos_venda", contactId: "cnt_2", channelId: "chn_wpp" });
-    expect(r.ok).toBe(true);
-    if (!r.ok) return;
-    expect(r.id).toBe(r.value.task.id);
-    expect(r.value.conversation.id).toBe("cnv_1");
-    expect(state.conversations).toHaveLength(antes);
-    expect(conversaDaTarefa(state, r.value.task)?.id).toBe("cnv_1");
-    expect(contatoDaTarefa(state, r.value.task)?.id).toBe("cnt_2");
-    expect(r.value.task.title).toBe("Marina Alves");
-    expect(r.value.task.provenance?.kind).toBe("contact");
-    expect(r.value.task.listId).toBe("lst_pos_venda");
-    expect(state.activity.some((a) => a.action === "Tarefa vinculada ao Contato" && a.objectId === r.value.task.id)).toBe(true);
-  });
-
-  it("um Contato sem Identificador que o Canal alcance não abre Tarefa conversacional, e nada fica para trás", () => {
-    const contato = createContact(state, THIAGO, { firstName: "Só", lastName: "E-mail", identifierType: "email", identifierValue: "so.email@exemplo.com.br" });
-    if (!contato.ok) throw new Error(contato.error);
-    expect(canaisQueAlcancam(state, contato.value).map((c) => c.id)).not.toContain("chn_wpp");
-    const tarefas = state.tasks.length;
-    const links = state.links.length;
-    const r = criarTarefaConversacional(state, THIAGO, { listId: "lst_pos_venda", contactId: contato.value.id, channelId: "chn_wpp" });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toContain("Identificador");
-    expect(state.tasks).toHaveLength(tarefas);
-    expect(state.links).toHaveLength(links);
-  });
-
-  it("um Canal desconectado é recusado antes de qualquer coisa nascer", () => {
-    // C36 — o Instagram não é canal do Pós-venda (recusaria por isso antes);
-    // derruba-se o WhatsApp, que é, para chegar à recusa de conexão.
-    const wpp = state.channels.find((c) => c.id === "chn_wpp");
-    if (!wpp) throw new Error("chn_wpp");
-    wpp.connection = "desconectada";
-    const r = criarTarefaConversacional(state, THIAGO, { listId: "lst_pos_venda", contactId: "cnt_35", channelId: "chn_wpp" });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toContain("desconectado");
-  });
-
-  it("numa Lista operacional o gesto conversacional não cabe", () => {
-    const r = criarTarefaConversacional(state, THIAGO, { listId: "lst_ativacao", contactId: "cnt_1", channelId: "chn_wpp" });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toBe("Esta Lista é operacional: a Tarefa nasce pelo título, sem Contato.");
-  });
-
-  it("o Negócio da Tarefa precisa ser do Contato; sendo, nasce o Vínculo com o papel do Negócio", () => {
-    const deOutro = criarTarefaConversacional(state, THIAGO, { listId: "lst_pos_venda", contactId: "cnt_1", channelId: "chn_wpp", dealId: "deal_sdr_1" });
-    expect(deOutro.ok).toBe(false);
-    if (!deOutro.ok) expect(deOutro.error).toBe("Este Negócio não é deste Contato.");
-
-    const doContato = criarTarefaConversacional(state, THIAGO, { listId: "lst_pos_venda", contactId: "cnt_35", channelId: "chn_wpp", dealId: "deal_sdr_1", title: "Fechar o parcelamento" });
-    expect(doContato.ok).toBe(true);
-    if (!doContato.ok) return;
-    const link = state.links.find((l) => l.fromType === "task" && l.fromId === doContato.value.task.id && l.toType === "deal");
-    expect(link?.toId).toBe("deal_sdr_1");
-    expect(link?.role).toBe(PAPEL_DO_VINCULO.negocio);
-    expect(negocioDaTarefa(state, doContato.value.task)?.id).toBe("deal_sdr_1");
-
-    // Desligar e religar pela porta própria: só o Vínculo com esse papel sai.
-    const solta = vincularNegocioATarefa(state, THIAGO, doContato.value.task.id, null);
-    expect(solta.ok).toBe(true);
-    expect(negocioDaTarefa(state, doContato.value.task)).toBeUndefined();
-    const deOutroDepois = vincularNegocioATarefa(state, THIAGO, doContato.value.task.id, "deal_fim_1");
-    expect(deOutroDepois.ok).toBe(false);
-    if (!deOutroDepois.ok) expect(deOutroDepois.error).toBe("Este Negócio não é deste Contato.");
-  });
-
   it("moveTask: entrar numa Lista conversacional exige Contato; sair dela para uma operacional é livre e o Vínculo fica", () => {
     const solta = state.tasks.find((t) => t.id === "tsk_seed_4");
     if (!solta) throw new Error("seed sem tsk_seed_4");
@@ -4050,26 +3981,6 @@ describe("Modelo de Tarefa da Lista (C35)", () => {
     expect(state.links.some((l) => l.fromType === "task" && l.fromId === sub.value.id)).toBe(false);
     expect(contatoDaTarefa(state, sub.value)?.id).toBe("cnt_2");
     expect(conversaDaTarefa(state, sub.value)?.id).toBe("cnv_1");
-  });
-
-  it("trocarCanalDaTarefa troca a Conversa vinculada: o Vínculo antigo sai, o novo aponta para a Conversa no Canal escolhido", () => {
-    const tarefa = state.tasks.find((t) => t.id === "tsk_pv_1");
-    if (!tarefa) throw new Error("seed sem tsk_pv_1");
-    expect(conversaDaTarefa(state, tarefa)?.channelId).toBe("chn_wpp");
-    const r = trocarCanalDaTarefa(state, THIAGO, "tsk_pv_1", "chn_mail");
-    expect(r.ok).toBe(true);
-    if (!r.ok) return;
-    expect(r.value.conversation.channelId).toBe("chn_mail");
-    expect(r.value.conversation.contactId).toBe("cnt_2");
-    const vinculos = state.links.filter((l) => l.fromType === "task" && l.fromId === "tsk_pv_1" && l.toType === "conversation");
-    expect(vinculos).toHaveLength(1);
-    expect(vinculos[0]?.toId).toBe(r.value.conversation.id);
-    expect(vinculos[0]?.role).toBe(PAPEL_DO_VINCULO.conversa);
-    expect(state.links.some((l) => l.fromId === "tsk_pv_1" && l.toId === "cnv_1")).toBe(false);
-    expect(state.activity[0]?.action).toBe("Canal da Tarefa alterado");
-    expect(state.activity[0]?.before).toBe("Comercial SP");
-    // A Conversa antiga continua na Caixa de Entrada: só o Vínculo saiu.
-    expect(state.conversations.some((c) => c.id === "cnv_1")).toBe(true);
   });
 
   it("Formulário numa Lista conversacional: createForm recusa com a frase do domínio", () => {
@@ -4147,8 +4058,6 @@ describe("Modelo de Tarefa da Lista (C35)", () => {
     expect(contatoDaTarefa(state, tarefa)?.id).toBe("cnt_5");
     expect(tarefasConversacionaisDoContato(state, "cnt_5").map((t) => t.id)).toContain("tsk_pv_1");
     expect(state.links.filter((l) => l.fromType === "task" && l.fromId === dupla.value.id && l.toType === "contact")).toHaveLength(1);
-    // A Tarefa volta a operar: a Conversa migrou junto e o Canal pode ser trocado.
-    expect(trocarCanalDaTarefa(state, THIAGO, "tsk_pv_1", "chn_mail").ok).toBe(true);
     // O Estado pré-mesclagem guarda os Vínculos como estavam.
     const absorvido = state.contacts.find((c) => c.id === "cnt_2");
     const snapshot = JSON.parse(absorvido?.preMergeState?.snapshot ?? "{}") as { links?: ReadonlyArray<{ fromId: string; toId: string }> };
@@ -4231,21 +4140,5 @@ describe("O Tipo da Tarefa na criação", () => {
     const uma = tiposDaLista(state, "lst_conteudo");
     expect(uma.length).toBe(1);
     expect(tipoPadraoDaLista(state, "lst_conteudo")).toBe(uma[0]!.id);
-  });
-
-  it("a Tarefa conversacional também nasce com o Tipo escolhido", () => {
-    const tipos = tiposDaLista(state, "lst_pos_venda");
-    const escolhido = tipos[tipos.length - 1];
-    expect(escolhido).toBeDefined();
-    if (!escolhido) return;
-    const criada = criarTarefaConversacional(state, THIAGO, {
-      listId: "lst_pos_venda",
-      contactId: "cnt_5",
-      channelId: "chn_wpp",
-      title: "Retomar com o aluno",
-      taskTypeId: escolhido.id,
-    });
-    expect(criada.ok).toBe(true);
-    if (criada.ok) expect(criada.value.task.taskTypeId).toBe(escolhido.id);
   });
 });

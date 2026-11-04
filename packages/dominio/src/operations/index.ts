@@ -343,10 +343,6 @@ export const configurarCanal = instrumentar("configurarCanal");
 // tarefas-conversacionais.ts
 export const alterarModeloDaLista = instrumentar("alterarModeloDaLista");
 export const definirCanaisDaLista = instrumentar("definirCanaisDaLista");
-export const criarTarefaConversacional = instrumentar("criarTarefaConversacional");
-export const trocarCanalDaTarefa = instrumentar("trocarCanalDaTarefa");
-export const vincularNegocioATarefa = instrumentar("vincularNegocioATarefa");
-export const criarNegocioDaTarefa = instrumentar("criarNegocioDaTarefa");
 
 // ia/agentes.ts
 export const ativarAgente = instrumentar("ativarAgente");

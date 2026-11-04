@@ -127,7 +127,7 @@ export interface ServicoDeTarefasConversacionais {
   ): Promise<ResultadoCrm<RespostaDoNegocioNovoDaTarefa>>;
 }
 
-/** A mesma frase de `NEGOCIO_DE_OUTRO_CONTATO` do domínio (`operations/tarefas-conversacionais.ts`). */
+/** A frase que a operação antiga do domínio dava (`NEGOCIO_DE_OUTRO_CONTATO`, que saiu do registro no 14-17); o domínio não a exporta. */
 const FRASE_NEGOCIO_DE_OUTRO_CONTATO = "Este Negócio não é deste Contato.";
 
 const negocioDeOutroContato = () =>

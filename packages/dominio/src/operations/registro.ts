@@ -321,14 +321,7 @@ import {
 } from "./canais";
 
 // ── tarefas-conversacionais.ts ───────────────────────────────────────────
-import {
-  alterarModeloDaLista,
-  criarNegocioDaTarefa,
-  criarTarefaConversacional,
-  definirCanaisDaLista,
-  trocarCanalDaTarefa,
-  vincularNegocioATarefa,
-} from "./tarefas-conversacionais";
+import { alterarModeloDaLista, definirCanaisDaLista } from "./tarefas-conversacionais";
 
 // ── ia/agentes.ts ────────────────────────────────────────────────────────
 import {
@@ -672,10 +665,6 @@ export const OPERACOES = {
   // tarefas-conversacionais.ts
   alterarModeloDaLista,
   definirCanaisDaLista,
-  criarTarefaConversacional,
-  trocarCanalDaTarefa,
-  vincularNegocioATarefa,
-  criarNegocioDaTarefa,
   // ia/agentes.ts
   ativarAgente,
   pausarAgente,

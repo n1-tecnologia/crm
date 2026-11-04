@@ -60,7 +60,7 @@ do repositório.
 
 Uma linha por chave de `OPERACOES` (`operations/registro.ts`): a operação, o módulo onde ela mora, a recusa que ela chama antes de gravar e, quando vale dizer, o porquê. `src/quem-pode.test.ts` lê esta tabela e deixa o `npm run check` vermelho se faltar uma operação, sobrar uma, repetir uma, ficar uma "Conferência" vazia ou pendente, ou se uma linha disser "sem conferência" sem justificar. **Operação nova precisa de linha aqui.**
 
-Duas coisas valem para a tabela inteira. O 403 de Membro `suspenso` (`recusaDeSuspenso`, na rota `POST /operacoes/:nome`, 1.2.1) vale para toda operação antes de qualquer recusa abaixo: o domínio só repete a barreira onde a linha diz. E as variantes `…SemConferencia` (09-03, como `sendMessageSemConferencia`) não são operações registradas: ficam fora do registro e, por isso, fora da tabela. O mesmo vale para as quatro operações `…NasTabelas` de `operations/tarefa-conversacional-nas-tabelas.ts` (Fase 14, plano 14-02: `criarTarefaConversacionalNasTabelas`, `trocarCanalDaTarefaNasTabelas`, `vincularNegocioATarefaNasTabelas`, `ligarNegocioNovoATarefaNasTabelas`): recebem Contato, Canal, Conversa e Negócio já conferidos nas tabelas do CRM, então só as rotas `/tarefas-conversacionais` da api as chamam, dentro da transação, e `POST /operacoes/:nome` não as alcança.
+Duas coisas valem para a tabela inteira. O 403 de Membro `suspenso` (`recusaDeSuspenso`, na rota `POST /operacoes/:nome`, 1.2.1) vale para toda operação antes de qualquer recusa abaixo: o domínio só repete a barreira onde a linha diz. E as variantes `…SemConferencia` (09-03, como `sendMessageSemConferencia`) não são operações registradas: ficam fora do registro e, por isso, fora da tabela. O mesmo vale para as quatro operações `…NasTabelas` de `operations/tarefa-conversacional-nas-tabelas.ts` (Fase 14, plano 14-02: `criarTarefaConversacionalNasTabelas`, `trocarCanalDaTarefaNasTabelas`, `vincularNegocioATarefaNasTabelas`, `ligarNegocioNovoATarefaNasTabelas`): recebem Contato, Canal, Conversa e Negócio já conferidos nas tabelas do CRM, então só as rotas `/tarefas-conversacionais` da api as chamam, dentro da transação, e `POST /operacoes/:nome` não as alcança. Desde o 14-17 isso é tudo o que existe da Tarefa conversacional: ela é criada e alterada só pelas rotas `/tarefas-conversacionais`, e as quatro operações antigas (`criarTarefaConversacional` e as outras três), que conferiam Contato, Canal e Negócio no estado do navegador, saíram do registro e desta tabela; ficam `alterarModeloDaLista` e `definirCanaisDaLista`, do modelo da Lista.
 
 O que cada nome de recusa quer dizer, em uma linha:
 
@@ -308,10 +308,6 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `configurarCanal` | `operations/canais.ts` | `recusaDeGerirCanais` |  |
 | `alterarModeloDaLista` | `operations/tarefas-conversacionais.ts` | `containerAdminRefusal` |  |
 | `definirCanaisDaLista` | `operations/tarefas-conversacionais.ts` | `containerAdminRefusal` |  |
-| `criarTarefaConversacional` | `operations/tarefas-conversacionais.ts` | `listWriteRefusal` |  |
-| `trocarCanalDaTarefa` | `operations/tarefas-conversacionais.ts` | `taskWriteRefusal` | via `tarefaConversacional` |
-| `vincularNegocioATarefa` | `operations/tarefas-conversacionais.ts` | `taskWriteRefusal` | via `tarefaConversacional` |
-| `criarNegocioDaTarefa` | `operations/tarefas-conversacionais.ts` | `taskWriteRefusal`, `recusaDeEscritaNoCrmAntigo` | via `tarefaConversacional` e `createDeal` |
 | `ativarAgente` | `operations/ia/agentes.ts` | `recusaDeGovernarAgente` |  |
 | `pausarAgente` | `operations/ia/agentes.ts` | `recusaDeGovernarAgente` |  |
 | `arquivarAgente` | `operations/ia/agentes.ts` | `recusaDeGovernarAgente` |  |

@@ -772,7 +772,8 @@ d("POST /operacoes/:nome — contra o banco real", () => {
     expect(tarefa.statusCode, tarefa.body).toBe(201);
     const tarefaCorpo = tarefa.json() as { ok: boolean; dados: { value: { task: { id: string; listId: string } }; conversa: { id: string; aberta: boolean } } };
     expect(tarefaCorpo.ok).toBe(true);
-    expect(tarefaCorpo.dados.conversa.aberta).toBe(false);
+    // `aberta: true`: o par (Contato, Canal) não tinha Conversa e ela nasceu com a Tarefa.
+    expect(tarefaCorpo.dados.conversa.aberta).toBe(true);
 
     const cliente = await pool().connect();
     try {

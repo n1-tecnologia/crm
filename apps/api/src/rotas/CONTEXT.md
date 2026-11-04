@@ -270,8 +270,10 @@ ligar. A 007 dá um dono por Negócio (`negocios_dono_ck`), então a conferênci
 só por `contato_id`; trazer os Negócios da Empresa é decisão à parte.
 
 O diálogo de criar da Lista, o botão do fio e a ficha da Tarefa só chamam estas
-rotas no deploy da Fase 15 (14-15 e 14-16); até lá o fluxo antigo (`criarTarefaConversacional` em
-`POST /operacoes`) segue sendo o que as telas usam.
+rotas no deploy da Fase 15 (14-15 e 14-16). No mesmo deploy, o 14-17 tira de
+`POST /operacoes/:nome` as quatro operações antigas (`criarTarefaConversacional` e
+as outras três): daí em diante a Tarefa conversacional só nasce e muda por estas rotas
+e `POST /operacoes/criarTarefaConversacional` responde 404.
 
 ## Rotas REST da Caixa de Entrada (Fase 8)
 

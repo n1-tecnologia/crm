@@ -19,7 +19,7 @@ import {
 import { administraOEspaco, baseDoPapel } from "./ia/permissoes-ia";
 import { funilDaLista, iniciarConversa } from "./iniciar-conversa";
 import { createList } from "./structure";
-import { alterarModeloDaLista, criarTarefaConversacional, definirCanaisDaLista, trocarCanalDaTarefa } from "./tarefas-conversacionais";
+import { alterarModeloDaLista, definirCanaisDaLista } from "./tarefas-conversacionais";
 
 const THIAGO = "mem_thiago";
 
@@ -129,35 +129,6 @@ describe("Canais de atendimento da Lista (C36)", () => {
     expect(alterarModeloDaLista(state, THIAGO, listId, "operacional").ok).toBe(true);
     expect(state.lists.find((l) => l.id === listId)?.canaisDeAtendimento).toBeUndefined();
     expect(canaisDaLista(state, listId)).toEqual([]);
-  });
-
-  it("criarTarefaConversacional: Canal fora da Lista é recusado e nada nasce; Lista sem canais idem", () => {
-    const tarefas = state.tasks.length;
-    const conversas = state.conversations.length;
-    const links = state.links.length;
-    // Iallas (cnt_35) tem LinkedIn, mas o Pós-venda atende por WhatsApp e e-mail.
-    const fora = criarTarefaConversacional(state, THIAGO, { listId: "lst_pos_venda", contactId: "cnt_35", channelId: "chn_linkedin" });
-    expect(fora.ok).toBe(false);
-    if (!fora.ok) {
-      expect(fora.error).toBe("Esta Lista não atende por “Instituto Igor Alves no LinkedIn” (LinkedIn).");
-      expect(fora.field).toBe("canal");
-    }
-    expect(state.tasks.length).toBe(tarefas);
-    expect(state.conversations.length).toBe(conversas);
-    expect(state.links.length).toBe(links);
-
-    const listId = listaConversacionalVazia();
-    const semCanais = criarTarefaConversacional(state, THIAGO, { listId, contactId: "cnt_35", channelId: "chn_wpp" });
-    expect(semCanais.ok).toBe(false);
-    if (!semCanais.ok) expect(semCanais.error).toBe(LISTA_SEM_CANAIS);
-  });
-
-  it("trocarCanalDaTarefa respeita os canais da Lista", () => {
-    const fora = trocarCanalDaTarefa(state, THIAGO, "tsk_pv_1", "chn_linkedin");
-    expect(fora.ok).toBe(false);
-    if (!fora.ok) expect(fora.error).toContain("não atende por");
-    const dentro = trocarCanalDaTarefa(state, THIAGO, "tsk_pv_1", "chn_mail");
-    expect(dentro.ok).toBe(true);
   });
 
   it("iniciarConversa (espelho do Funil) respeita os canais da Lista e não deixa rastro ao recusar", () => {
