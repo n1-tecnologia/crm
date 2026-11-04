@@ -52,6 +52,12 @@ export interface Grant {
   readonly grantedAt: Instant;
 }
 
+/**
+ * 12.2.1 — os seis assuntos do trilho como módulos que um Papel libera. A
+ * regra de quem acessa qual está em `derive-modulos.ts` (`membroAcessaModulo`).
+ */
+export type Modulo = "trabalho" | "crm" | "ia" | "ferramentas" | "paineis" | "financeiro";
+
 export interface Role {
   readonly id: Id;
   readonly workspaceId: Id;
@@ -59,6 +65,11 @@ export interface Role {
   /** B30 — a system role is immutable; a custom role declares a base as ceiling. */
   readonly system: boolean;
   readonly base: SystemRole;
+  /**
+   * 12.1.3 (A) — os módulos que este Papel libera. Ausente = todos, o que mantém
+   * os Papéis de antes da Sessão 12 como estavam.
+   */
+  readonly modulos?: readonly Modulo[];
   readonly permissions: ReadonlyArray<{
     readonly action: PermissionAction;
     readonly resourceType: string;
