@@ -108,6 +108,16 @@ function contatoInativo() {
   return recusa<never>(409, "Restaure o Contato antes de editar.", { codigo: "CONTATO_INATIVO" });
 }
 
+/**
+ * RN-CON-14 (011): um Contato `mesclado` foi absorvido por outro e é somente leitura em toda
+ * escrita do CRM novo. Só a mesclagem (14-09) grava esse estado; nenhuma porta o desfaz.
+ */
+function contatoMesclado() {
+  return recusa<never>(409, "Este Contato foi mesclado e agora é somente leitura. Abra o Contato que ficou.", {
+    codigo: "CONTATO_MESCLADO",
+  });
+}
+
 type Cliente = Pool | PoolClient;
 
 async function detalhar(cliente: Cliente, workspaceId: string, contato: Contato): Promise<ContatoDetalhado> {
@@ -144,6 +154,8 @@ export function criarServicoDeContatos(deps: {
         const repositorio = criarRepositorioDeContatosPg(cliente);
         const contato = await repositorio.obter(membro.workspaceId, id, { travar: true });
         if (!contato) return naoEncontrado();
+        // RN-CON-14: antes de qualquer outra regra, inclusive as de transição (restaurar, arquivar, lixeira).
+        if (contato.estado === "mesclado") return contatoMesclado();
         return corpo({ cliente, repositorio, contato });
       },
       FRASES_DE_CONTATOS,
