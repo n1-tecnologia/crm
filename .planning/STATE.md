@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 14
 current_phase_name: "Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional"
 status: executing
-stopped_at: Completed 14-05-PLAN.md
-last_updated: "2026-11-04T17:58:27.852Z"
+stopped_at: Completed 14-06-PLAN.md
+last_updated: "2026-11-04T18:14:59.028Z"
 last_activity: 2026-11-04
 last_activity_desc: Phase 14 execution started
-state_head: 969fafa63b935d4886243a13a09a4b774c67d0c1
+state_head: 89befef80b26dd92cfb23d4c272b48ac0ef756e5
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 228
-  completed_plans: 211
+  completed_plans: 212
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 14 (Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional) — EXECUTING
-Plan: 6 of 19
+Plan: 7 of 19
 Status: Ready to execute
 Last activity: 2026-11-04 — Phase 14 execution started
 
@@ -429,6 +429,7 @@ Progress: [██████░░░░] 63%
 | Phase 14 P03 | 14 min | 2 tasks | 7 files |
 | Phase 14 P04 | 8 min | 2 tasks | 7 files |
 | Phase 14 P05 | 6 min | 2 tasks | 10 files |
+| Phase 14 P06 | 10 min | 2 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -654,6 +655,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 14]: 14-03: lerDoCrm recebe o state hidratado; gravarNoCrm pode devolver recusa que vira excecao interna e volta como valor; o tempo de lerDoCrm soma em hidratarMs sem campo novo na medicao
 - [Phase 14]: 14-04: a recusa CONTATO_MESCLADO mora no helper escrita de contatos.ts (antes de qualquer regra de transição) e em conferirContato/carregarContato; Contato arquivado segue aceito em Negócio
 - [Phase 14]: 14-05: mover e atribuir recusam por regra do domínio com 409 MOVER_INVALIDO / ATRIBUIDO_INVALIDO; travas em ordem Contatos (id) e depois Conversa, para não haver deadlock com a mesclagem
+- [Phase 14]: 14-06: a transferência de Identificador trava os dois Contatos em ordem de id (escrita ganhou o parâmetro tambem) e recusa tudo como 409 TRANSFERENCIA_RECUSADA com o campo do domínio; Convidado lê notas e é 403 ao escrever; nota e transferência não gravam Registro de Atividade.
 
 ### Pending Todos
 
@@ -715,6 +717,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-04T17:58:27.602Z
-Stopped at: Completed 14-05-PLAN.md
+Last session: 2026-11-04T18:14:58.754Z
+Stopped at: Completed 14-06-PLAN.md
 Resume file: None

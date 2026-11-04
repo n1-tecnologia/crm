@@ -146,7 +146,7 @@ status: complete
 ## TDD Gate Compliance
 
 - **RED Task 1** (`9f1768a`): 4 de 5 testes do domínio e 20 de 21 do serviço e das rotas falharam (o que passou é o `401` sem Authorization e o "aceita nota no teto" do esqueleto que aceita tudo). Avaliação semântica: cada falha é a ausência planejada do comportamento (o serviço esqueleto devolvia 404 "Ainda não implementado" onde o teste esperava sucesso ou o código de recusa; as rotas não existiam e davam 404 onde o teste esperava 200, 201 ou 400). Alvo executou; nenhuma falha de carga, sintaxe ou fixture. O módulo novo nasceu com esqueleto no RED porque importar um módulo inexistente seria falha de carga (INVALID_RED).
-- **RED Task 2** (`05bc8b4`): 5 de 22 testes do domínio, 10 de 11 da transferência no serviço (o (e), "identificador não é da origem", dava 404 no esqueleto e o código do 404 diferia) e os 6 de transferir nas rotas falharam. Mesma avaliação semântica.
+- **RED Task 2** (`05bc8b4`): 5 de 22 testes do domínio, os 10 da transferência no serviço ((a) a (j)) e os 6 de transferir nas rotas falharam; os demais testes dos três arquivos (62) seguiram passando. Mesma avaliação semântica.
 - **GREEN** (`ed3ac9b`, `d3bac7b`): domínio 116 arquivos, 2260 testes; api 166 arquivos, 1849 testes passando, contra Postgres 16 migrado até a 011.
 - **REFACTOR:** nenhum commit.
 - O classificador `check tdd-red-evidence` não foi rodado: o vitest não persiste TAP/JUnit neste repositório (mesma situação do 14-04); a evidência é o relatório da execução.
