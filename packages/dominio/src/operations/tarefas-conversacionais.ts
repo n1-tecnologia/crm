@@ -19,6 +19,7 @@ import { containerAdminRefusal, contactDisplayName, taskWriteRefusal } from "../
 import { PAPEL_DO_VINCULO, contatoDaTarefa, conversaDaTarefa, listaConversacional, listaSemCanais, negocioDaTarefa } from "../derive-conversacional";
 import { fail, ok, type DataState, type OperationResult } from "../state";
 import type { ActorRef, Contact, Conversation, Deal, Id, List, ModeloDeTarefa, Money, Priority, Task, TaskDate } from "../types";
+import type { Canal } from "../crm/canais";
 import { memberActor, nextId, recordActivity } from "./activity";
 import { CANAIS_SO_NA_CONVERSACIONAL, LISTA_SEM_CANAIS, canalForaDaLista, validarCanaisDeAtendimento } from "./canais";
 import { startConversation } from "./conversations";
@@ -98,12 +99,16 @@ export function alterarModeloDaLista(
  * as Tarefas já criadas continuam com a conversa que têm; os canais governam
  * onde a próxima conversa nasce. Ao menos um, todos ativos e de um tipo de
  * atendimento — a mesma validação com que a Lista nasce.
+ *
+ * 3.3.7 — `canais` são os Canais de `plataforma.canais` que o servidor leu na
+ * transação (`lerDoCrm`); quem os preenche é o servidor, nunca o navegador.
  */
 export function definirCanaisDaLista(
   state: DataState,
   actingMemberId: Id,
   listId: Id,
   ids: readonly Id[],
+  canais?: readonly Canal[],
 ): OperationResult<List> {
   const list = state.lists.find((l) => l.id === listId);
   if (!list) return fail("Lista não encontrada.");
@@ -111,7 +116,7 @@ export function definirCanaisDaLista(
   if (refusal) return fail(refusal);
   if (list.lifecycle !== "ativo") return fail("Um contêiner arquivado ou na lixeira não muda de configuração.");
   if (list.modeloDeTarefa !== "conversacional") return fail(CANAIS_SO_NA_CONVERSACIONAL, "canais");
-  const validos = validarCanaisDeAtendimento(state, ids);
+  const validos = validarCanaisDeAtendimento(state, ids, canais);
   if (typeof validos === "string") return fail(validos, "canais");
   const atuais = list.canaisDeAtendimento ?? [];
   if (atuais.length === validos.ids.length && atuais.every((id, i) => id === validos.ids[i])) return ok(list);
@@ -122,8 +127,8 @@ export function definirCanaisDaLista(
     objectType: "list",
     objectId: list.id,
     objectName: list.name,
-    before: atuais.length ? nomesDosCanais(state, atuais) : "nenhum",
-    after: nomesDosCanais(state, validos.ids),
+    before: atuais.length ? nomesDosCanais(state, atuais, canais) : "nenhum",
+    after: nomesDosCanais(state, validos.ids, canais),
   });
   return ok(list, list.id);
 }

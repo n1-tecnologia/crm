@@ -905,3 +905,14 @@ serve à `mergeContacts` e a `mesclarContatoNoEspaco`, e dois Vínculos que fica
 iguais se fundem, ficando o mais antigo (INV-CON-07). `mesclarContatoNoEspaco`
 está FORA de `OPERACOES`: os dois Contatos chegam em `referencias`, lidos pelo
 servidor, e a operação não os procura em `state.contacts`.
+
+**Canais da Lista conversacional conferidos nas tabelas (Fase 14, 14-12, 3.3.7).**
+`validarCanaisDeAtendimento`, `nomesDosCanais`, `definirCanaisDaLista` e
+`createList` aceitam `canais?: readonly Canal[]` como último argumento
+(`Canal` de `crm/canais`, a linha de `plataforma.canais`). Um id que está
+em `canais` vale pelo Canal da tabela (`estado` `ativo`, tipo de atendimento) e
+o nome na Atividade vem dele; sem `canais`, ou para um id que não está nele, a
+regra é a de antes e olha `state.channels`. Quem preenche `canais` é o servidor,
+dentro da transação (`lerDoCrm`, em `POST /operacoes`): o que o navegador manda
+nesse argumento é descartado. O ramo de `state.channels` sai com o CRM antigo
+(3.5.4).

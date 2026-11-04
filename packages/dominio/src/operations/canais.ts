@@ -130,14 +130,29 @@ export const CANAIS_SO_NA_CONVERSACIONAL = "Só uma Lista conversacional tem can
  * ativos e de um tipo de atendimento. Devolve os ids sem repetição, ou a frase
  * da recusa. A conexão NÃO entra aqui — é transitória; a tela impede marcar um
  * Canal desconectado, e o domínio recusa usá-lo na hora de abrir a conversa.
+ *
+ * 3.3.7 — `canais` é o conjunto de `plataforma.canais` que o SERVIDOR leu na
+ * transação (`lerDoCrm`): um id que está nele vale pelo Canal da tabela, sem
+ * depender de `state.channels` (a projeção some na 3.5.4). Quem chama de um
+ * cliente nunca preenche `canais` com o que veio do navegador. Um id fora de
+ * `canais` cai no ramo antigo, `state.channels`, que sai com o CRM antigo (3.5.4).
  */
 export function validarCanaisDeAtendimento(
   state: DataState,
   ids: readonly Id[] | undefined,
+  canais?: readonly Canal[],
 ): { readonly ids: readonly Id[] } | string {
   const unicos = [...new Set(ids ?? [])];
   if (unicos.length === 0) return "Escolha ao menos um Canal de atendimento.";
   for (const id of unicos) {
+    const daTabela = canais?.find((c) => c.id === id);
+    if (daTabela) {
+      if (daTabela.estado !== "ativo") return "Canal não encontrado ou arquivado.";
+      if (!(TIPOS_DE_ATENDIMENTO as readonly string[]).includes(daTabela.tipo)) {
+        return `${ROTULO_DO_TIPO_DE_CANAL[daTabela.tipo]} não é canal de atendimento de Lista.`;
+      }
+      continue;
+    }
     const canal = state.channels.find((c) => c.id === id);
     if (!canal || canal.lifecycle !== "ativo") return "Canal não encontrado ou arquivado.";
     if (!(TIPOS_DE_ATENDIMENTO as readonly string[]).includes(canal.channelType)) {
