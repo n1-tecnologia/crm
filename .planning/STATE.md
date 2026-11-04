@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 14
 current_phase_name: "Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional"
 status: executing
-stopped_at: Completed 14-17-PLAN.md
-last_updated: "2026-11-04T20:40:44.243Z"
+stopped_at: Completed 14-18-PLAN.md
+last_updated: "2026-11-04T20:55:51.138Z"
 last_activity: 2026-11-04
 last_activity_desc: Phase 14 execution started
-state_head: de5f19f35882172fa937c619aeb821fdcee64702
+state_head: fa7dd70bf785a4901b0a538f96e8f6c98879fd1d
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 228
-  completed_plans: 223
+  completed_plans: 224
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 14 (Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional) — EXECUTING
-Plan: 18 of 19
+Plan: 19 of 19
 Status: Ready to execute
 Last activity: 2026-11-04 — Phase 14 execution started
 
@@ -441,6 +441,7 @@ Progress: [██████░░░░] 63%
 | Phase 14 P15 | 25 min | 3 tasks | 9 files |
 | Phase 14 P16 | 20 min | 3 tasks | 15 files |
 | Phase 14 P17 | 18 min | 2 tasks | 18 files |
+| Phase 14 P18 | 14 min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -682,6 +683,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 14]: 14-15: a ficha da Tarefa mantém a leitura antiga só para o fio de Mensagens e os três gestos de escrita (14-16); depois da migração o fio some da ficha até a Fase 15 entregar a Caixa no modelo novo
 - [Phase 14]: 14-16: trocar o Canal da ficha confirma num diálogo que pede a primeira Mensagem só sem Conversa aberta (conversaAbertaDoPar = aberta ou pendente, 2 perguntas a GET /conversas); rehidratar() depois de cada sucesso (A5); só no deploy da Fase 15
 - [Phase 14]: 14-17: contatoDaTarefa, canalDaTarefa e conversaDaTarefa ficam (o fio da ficha as lê até a 3.4.2); só ultimaMensagemDaTarefa saiu, e contatoAlcancado virou detalhe interno de contatoDaTarefa
+- [Phase 14]: 14-18: o gate da Fase 14 foi registrado como verde exceto o flake de baseline de outbox-worker (h a k), com o arquivo isolado em banco novo passando 15/15; nenhum outro teste falhou
+- [Phase 14]: 14-18: a fronteira de deploy fica em 14-PROVAS.md; 14-01 a 14-14 aditivos, 14-15 a 14-17 so com a Fase 15; as linhas de andamento.mjs ficam sugeridas para o dono colar
 
 ### Pending Todos
 
@@ -743,6 +746,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-04T20:40:43.936Z
-Stopped at: Completed 14-17-PLAN.md
+Last session: 2026-11-04T20:55:50.862Z
+Stopped at: Completed 14-18-PLAN.md
 Resume file: None

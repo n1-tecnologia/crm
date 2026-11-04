@@ -763,7 +763,7 @@ Plans:
 **Ordem interna:** as decisões da 3.1 primeiro; a migração nova da 3.1.5 (a próxima depois da `010`) antes das operações da 3.2; a 3.2.1 (gesto que grava nas tabelas do CRM e em `plataforma.registros` no mesmo commit) antes das demais da 3.2; a 3.3 depois da 3.2. Domínio antes de api antes de tela.
 **Requirements**: UNI-01 a UNI-17 (IDs locais da fase, tabela "Phase Requirements" de `14-RESEARCH.md`)
 **Depends on:** Phase 9 (a Sessão 3 depende só da Sessão 1)
-**Plans:** 17/19 plans executed
+**Plans:** 18/19 plans executed
 **Fronteira de deploy (D-01):** 14-01 a 14-14 são aditivos e podem subir; 14-15, 14-16 e 14-17 só sobem no deploy da Fase 15; o ensaio 14-19 espera a cópia do dono e não segura nada.
 
 Plans:
@@ -809,7 +809,7 @@ Plans:
 - [x] 14-17-PLAN.md — Só no deploy da Fase 15: as quatro operações antigas fora de `OPERACOES` e as leituras antigas sem chamador (UNI-12, UNI-13)
 
 **Wave 13** *(blocked on Wave 12 completion)*
-- [ ] 14-18-PLAN.md — Fechamento: gate `npm run check` em Docker migrado, `14-PROVAS.md`, `CONTEXT.md` da raiz
+- [x] 14-18-PLAN.md — Fechamento: gate `npm run check` em Docker migrado, `14-PROVAS.md`, `CONTEXT.md` da raiz
 
 **Wave 14** *(blocked on Wave 13 completion)*
 - [ ] 14-19-PLAN.md — Ensaio D-02 da 011 sobre a cópia dos dados reais (UNI-03; espera a cópia do dono)
