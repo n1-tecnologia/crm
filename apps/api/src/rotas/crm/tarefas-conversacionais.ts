@@ -4,6 +4,8 @@
  *   POST /tarefas-conversacionais          cria a Tarefa (em `registros`) e abre ou reaproveita a Conversa (em `plataforma.conversas`), no mesmo commit (201)
  *   POST /tarefas-conversacionais/resumo   Contato, Canal, última Mensagem e Negócio de até 200 Tarefas, numa chamada só (200 `{ itens, total }`)
  *   POST /tarefas-conversacionais/:taskId/canal   troca o Canal da Tarefa: reaproveita ou abre a Conversa e troca só o Vínculo (200)
+ *   POST /tarefas-conversacionais/:taskId/negocio   liga o Negócio do Contato da Tarefa, ou o desliga com `negocioId: null` (200)
+ *   POST /tarefas-conversacionais/:taskId/negocio/novo   cria o Negócio na 1ª Etapa do Funil e liga a Tarefa a ele, no mesmo commit (201)
  *
  * Sem SQL e sem regra aqui (`rotas/CONTEXT.md`): a rota lê a requisição, chama o
  * serviço e formata a resposta. O Membro atuante é SEMPRE `request.membro`.
@@ -22,6 +24,7 @@
 import type { ZodTypeProvider } from "@fastify/type-provider-zod";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { VALOR_DECIMAL } from "@n1/dominio/crm/negocios";
 import { RESUMO_MAXIMO } from "@n1/dominio/crm/resumo-da-tarefa";
 import { sucesso } from "../../servicos/crm/resultado";
 import type { ServicoDeTarefasConversacionais } from "../../servicos/crm/tarefas-conversacionais";
@@ -38,6 +41,13 @@ export const TROCA_DE_CANAL = z
     mensagem: z.object({ conteudo: TEXTO_LONGO.min(1) }).strict().optional(),
   })
   .strict();
+
+/** `null` desliga. O Contato do Negócio é conferido contra o Vínculo da Tarefa, lido no servidor: o corpo não o diz. */
+export const LIGAR_NEGOCIO = z.object({ negocioId: ID.nullable() }).strict();
+
+/** O mesmo `valor` de `POST /negocios`: texto decimal com até 2 casas, nunca número. Sem Contato, Etapa nem Proprietário: o Negócio nasce do Contato da Tarefa, na 1ª Etapa, do Membro da sessão. */
+const VALOR = z.string().regex(VALOR_DECIMAL, "O valor é um número com até 2 casas decimais, escrito com ponto (ex.: 1234.50).");
+export const NEGOCIO_NOVO_DA_TAREFA = z.object({ funilId: ID, titulo: TEXTO_CURTO.min(1).optional(), valor: VALOR.optional() }).strict();
 
 const PARAMS_DA_TAREFA = z.object({ taskId: ID }).strict();
 
@@ -85,5 +95,13 @@ export async function rotasDeTarefasConversacionais(
 
   rotas.post("/tarefas-conversacionais/:taskId/canal", { schema: { params: PARAMS_DA_TAREFA, body: TROCA_DE_CANAL } }, async (request, reply) =>
     responder(reply, await servico.trocarCanal(request.membro, request.params.taskId, request.body)),
+  );
+
+  rotas.post("/tarefas-conversacionais/:taskId/negocio", { schema: { params: PARAMS_DA_TAREFA, body: LIGAR_NEGOCIO } }, async (request, reply) =>
+    responder(reply, await servico.vincularNegocio(request.membro, request.params.taskId, request.body)),
+  );
+
+  rotas.post("/tarefas-conversacionais/:taskId/negocio/novo", { schema: { params: PARAMS_DA_TAREFA, body: NEGOCIO_NOVO_DA_TAREFA } }, async (request, reply) =>
+    responder(reply, await servico.criarNegocio(request.membro, request.params.taskId, request.body), 201),
   );
 }

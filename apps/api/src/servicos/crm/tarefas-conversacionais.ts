@@ -36,10 +36,13 @@ import { taskWriteRefusal } from "@n1/dominio/derive";
 import { vinculosDoCrmDaTarefa } from "@n1/dominio/derive-conversacional";
 import {
   criarTarefaConversacionalNasTabelas,
+  ligarNegocioNovoATarefaNasTabelas,
   trocarCanalDaTarefaNasTabelas,
+  vincularNegocioATarefaNasTabelas,
   type ReferenciasDaTarefaConversacional,
 } from "@n1/dominio/operations";
-import type { ActorRef, DataState, Id, Priority, Task, TaskDate } from "@n1/dominio";
+import type { NovoNegocio } from "@n1/dominio/crm/negocios";
+import type { ActorRef, DataState, Id, OperationResult, Priority, Task, TaskDate } from "@n1/dominio";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { criarRepositorioDeCanaisPg } from "../../repositorios/crm/canais";
 import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
@@ -50,6 +53,7 @@ import { recortarResposta } from "../../rotas/resposta-recortada";
 import { exigir, type AcessoAoCrm } from "./acesso";
 import { abrirConversaNoCliente, canalArquivado, FRASES_DE_CONVERSAS, identificadorDoCanal } from "./conversas";
 import { executarGestoMisto } from "./gesto-misto";
+import { criarNegocioNoCliente, FRASES_DE_NEGOCIOS, prepararNegocioNovo, recusaDeFormaDoNegocio } from "./negocios";
 import { recusa, sucesso, type ResultadoCrm } from "./resultado";
 
 export interface NovaTarefaConversacional {
@@ -81,6 +85,12 @@ export type RespostaDaTarefaConversacional = RespostaRecortada<{ readonly task: 
 /** Trocar o Canal: `value.mudou` é `false` quando a Tarefa já estava naquela Conversa (nada foi gravado). */
 export type RespostaDaTrocaDeCanal = RespostaRecortada<{ readonly task: Task; readonly mudou: boolean }> & ConversaDaResposta;
 
+/** Ligar ou desligar o Negócio: o `value` é a Tarefa. */
+export type RespostaDoNegocioDaTarefa = RespostaRecortada<Task>;
+
+/** Criar o Negócio pela Tarefa: o `value` é a Tarefa, e `negocio` é o que nasceu nas tabelas. */
+export type RespostaDoNegocioNovoDaTarefa = RespostaRecortada<Task> & { readonly negocio: { readonly id: string; readonly titulo: string } };
+
 export interface ServicoDeTarefasConversacionais {
   criar(membro: MembroDaSessao, entrada: NovaTarefaConversacional): Promise<ResultadoCrm<RespostaDaTarefaConversacional>>;
   /**
@@ -97,10 +107,38 @@ export interface ServicoDeTarefasConversacionais {
     taskId: string,
     entrada: { readonly canalId: string; readonly mensagem?: { readonly conteudo: string } | undefined },
   ): Promise<ResultadoCrm<RespostaDaTrocaDeCanal>>;
+  /**
+   * Liga o Negócio à Tarefa, ou o desliga com `null` (3.3.6). O Negócio tem de estar `ativo` e ser do Contato da
+   * Tarefa (lido do Vínculo, no servidor); qualquer outro é 409 com a mesma frase.
+   */
+  vincularNegocio(
+    membro: MembroDaSessao,
+    taskId: string,
+    entrada: { readonly negocioId: string | null },
+  ): Promise<ResultadoCrm<RespostaDoNegocioDaTarefa>>;
+  /**
+   * Cria o Negócio do Contato da Tarefa na 1ª Etapa do Funil, pelo mesmo código de `POST /negocios`, e liga a Tarefa
+   * a ele no mesmo commit. Se o Vínculo é recusado (a Tarefa já tem Negócio), o Negócio não fica.
+   */
+  criarNegocio(
+    membro: MembroDaSessao,
+    taskId: string,
+    entrada: { readonly funilId: string; readonly titulo?: string | undefined; readonly valor?: string | undefined },
+  ): Promise<ResultadoCrm<RespostaDoNegocioNovoDaTarefa>>;
 }
 
 /** A mesma frase de `NEGOCIO_DE_OUTRO_CONTATO` do domínio (`operations/tarefas-conversacionais.ts`). */
 const FRASE_NEGOCIO_DE_OUTRO_CONTATO = "Este Negócio não é deste Contato.";
+
+const negocioDeOutroContato = () =>
+  recusa<never>(409, FRASE_NEGOCIO_DE_OUTRO_CONTATO, { codigo: "NEGOCIO_DE_OUTRO_CONTATO", campo: "negocioId" });
+
+/** O Contato foi mesclado e o que ficou não pôde ser seguido: o mesmo 409 de `lerParaConversa`. */
+const contatoMesclado = () =>
+  recusa<never>(409, "Este Contato foi mesclado e agora é somente leitura. Abra o Contato que ficou.", {
+    codigo: "CONTATO_MESCLADO",
+    campo: "contatoId",
+  });
 
 const contatoNaoEncontrado = () =>
   recusa<never>(404, "Contato não encontrado.", { codigo: "CONTATO_NAO_ENCONTRADO", campo: "contatoId" });
@@ -213,10 +251,33 @@ function tarefaEContato(state: DataState, membroId: string, taskId: string): { r
   return contatoId === undefined ? undefined : { task, contatoId };
 }
 
+/**
+ * Quando `lerDoCrm` não achou como seguir (`ausente`), a operação pura é quem recusa, com a frase dela, dentro da
+ * mesma transação. Se ela aceitasse, `lerDoCrm` e o domínio discordariam sobre a Tarefa: isso é bug, não recusa.
+ */
+function recusaDoAusente<T>(recusada: OperationResult<T>): OperationResult<T> {
+  if (recusada.ok) throw new Error("A operação do domínio aceitou uma Tarefa que lerDoCrm não achou.");
+  return recusada;
+}
+
 /** O que `lerDoCrm` leu para a troca de Canal; `ausente` quando a operação pura é quem recusa. */
 type LidoDaTroca =
   | { readonly ausente: true }
   | { readonly ausente: false; readonly lido: LidoParaConversa; readonly canalAnterior?: { readonly nome: string } };
+
+/** O que `lerDoCrm` leu ao ligar ou desligar o Negócio: o Negócio conferido (ou `null` que desliga) e o título do que sai. */
+type LidoDoVinculoDoNegocio =
+  | { readonly ausente: true }
+  | {
+      readonly ausente: false;
+      readonly negocio: { readonly id: string; readonly titulo: string } | null;
+      readonly anterior?: { readonly titulo: string };
+    };
+
+/** O que `lerDoCrm` leu e conferiu para criar o Negócio: a linha que `gravarNoCrm` insere, com o id já escolhido. */
+type LidoDoNegocioNovo =
+  | { readonly ausente: true }
+  | { readonly ausente: false; readonly negocio: { readonly id: string; readonly titulo: string }; readonly novo: NovoNegocio };
 
 /** Um Canal qualquer para a operação pura recusar pela Tarefa (que não existe, sem Contato...) antes de olhar o Canal. */
 const CANAL_DE_PASSAGEM: ReferenciasDaTarefaConversacional["canal"] = { id: "", nome: "", tipo: "whatsapp", conexao: "conectada" };
@@ -252,7 +313,7 @@ export function criarServicoDeTarefasConversacionais(deps: {
             // O Negócio tem de ser `ativo`, deste Espaço e do Contato da Tarefa; qualquer falha é a mesma frase.
             const negocio = await criarRepositorioDeNegociosPg(cliente).obter(workspaceId, entrada.negocioId);
             if (!negocio || negocio.estado !== "ativo" || negocio.contatoId !== lido.valor.contato.id) {
-              return recusa<never>(409, FRASE_NEGOCIO_DE_OUTRO_CONTATO, { codigo: "NEGOCIO_DE_OUTRO_CONTATO", campo: "negocioId" });
+              return negocioDeOutroContato();
             }
             return sucesso({ ...lido.valor, negocio: { id: negocio.id, titulo: negocio.titulo } });
           },
@@ -332,12 +393,8 @@ export function criarServicoDeTarefasConversacionais(deps: {
           },
 
           operacao: (state, lido) => {
-            if (lido.ausente) {
-              // A operação pura recusa pela mesma razão que `lerDoCrm` viu; o Canal de passagem nunca é lido.
-              const recusada = trocarCanalDaTarefaNasTabelas(state, membro.id, taskId, { canal: CANAL_DE_PASSAGEM, conversaId: "" });
-              if (recusada.ok) throw new Error("A troca de Canal aceitou uma Tarefa que lerDoCrm não achou.");
-              return recusada;
-            }
+            // O Canal de passagem nunca é lido: a operação recusa pela Tarefa antes de olhar o Canal.
+            if (lido.ausente) return recusaDoAusente(trocarCanalDaTarefaNasTabelas(state, membro.id, taskId, { canal: CANAL_DE_PASSAGEM, conversaId: "" }));
             return trocarCanalDaTarefaNasTabelas(state, membro.id, taskId, {
               canal: lido.lido.canal,
               conversaId: lido.lido.conversaId,
@@ -366,6 +423,107 @@ export function criarServicoDeTarefasConversacionais(deps: {
       const { resultado, depois } = desfecho.valor;
       if (!anotado.conversa) throw new Error("O gesto da Tarefa gravou sem ler a Conversa.");
       return sucesso({ ...recortarResposta(resultado, depois, membro.id), conversa: anotado.conversa });
+    },
+
+    async vincularNegocio(membro, taskId, entrada) {
+      const negado = await exigir(deps.acesso, membro, "ler", "negocio");
+      if (negado) return { ok: false, ...negado };
+
+      const workspaceId = membro.workspaceId;
+      const desfecho = await executarGestoMisto<LidoDoVinculoDoNegocio, Task>(workspaceId, {
+        lerDoCrm: async (cliente, state) => {
+          const alvo = tarefaEContato(state, membro.id, taskId);
+          if (!alvo) return sucesso({ ausente: true });
+          // O Contato do Vínculo (ou o que ficou, se foi mesclado): é dele que o Negócio tem de ser (T-14-35).
+          const contatoId = await contatoVigenteDaTarefa(cliente, workspaceId, alvo.contatoId);
+          const negocios = criarRepositorioDeNegociosPg(cliente);
+
+          let negocio: { readonly id: string; readonly titulo: string } | null = null;
+          if (entrada.negocioId !== null) {
+            // Trava o Negócio: ele não vai para a lixeira entre a conferência e o Vínculo.
+            const achado = await negocios.obter(workspaceId, entrada.negocioId, { travar: true });
+            if (!achado || achado.estado !== "ativo" || achado.contatoId !== contatoId) return negocioDeOutroContato();
+            negocio = { id: achado.id, titulo: achado.titulo };
+          }
+          // O título do Negócio que sai, para a Atividade.
+          const atualId = vinculosDoCrmDaTarefa(state, alvo.task).negocioId;
+          const atual = atualId === undefined ? undefined : await negocios.obter(workspaceId, atualId);
+          return sucesso({ ausente: false, negocio, ...(atual ? { anterior: { titulo: atual.titulo } } : {}) });
+        },
+
+        operacao: (state, lido) =>
+          lido.ausente
+            ? recusaDoAusente(vincularNegocioATarefaNasTabelas(state, membro.id, taskId, null))
+            : vincularNegocioATarefaNasTabelas(state, membro.id, taskId, lido.negocio, lido.anterior),
+
+        // Ligar não grava no CRM: só o Vínculo, em `registros`.
+        gravarNoCrm: async () => undefined,
+      });
+      if (!desfecho.ok) return desfecho;
+
+      const { resultado, depois } = desfecho.valor;
+      return sucesso(recortarResposta(resultado, depois, membro.id));
+    },
+
+    async criarNegocio(membro, taskId, entrada) {
+      const negado = await exigir(deps.acesso, membro, "criar", "negocio");
+      if (negado) return { ok: false, ...negado };
+
+      const workspaceId = membro.workspaceId;
+      // O Negócio que nasceu, anotado por `lerDoCrm` para a resposta (o desfecho do gesto não carrega o que foi lido).
+      const anotado: { negocio?: { readonly id: string; readonly titulo: string } } = {};
+      const desfecho = await executarGestoMisto<LidoDoNegocioNovo, Task>(
+        workspaceId,
+        {
+          lerDoCrm: async (cliente, state) => {
+            const alvo = tarefaEContato(state, membro.id, taskId);
+            if (!alvo) return sucesso({ ausente: true });
+            const contatoId = await contatoVigenteDaTarefa(cliente, workspaceId, alvo.contatoId);
+            const contato = await criarRepositorioDeContatosPg(cliente).obter(workspaceId, contatoId, { travar: true });
+            if (!contato) return contatoNaoEncontrado();
+            if (contato.estado === "mesclado") return contatoMesclado();
+            // Negócios aceitam Contato arquivado; a Tarefa conversacional não: ela conversa com um Contato ativo.
+            if (contato.estado !== "ativo") return recusa<never>(409, "Só um Contato ativo recebe um Negócio pela Tarefa.", { codigo: "CONTATO_INATIVO", campo: "contatoId" });
+
+            const titulo = entrada.titulo?.trim() || alvo.task.title;
+            const novo: NovoNegocio = {
+              titulo,
+              contatoId: contato.id,
+              funilId: entrada.funilId,
+              ...(entrada.valor !== undefined ? { valor: entrada.valor } : {}),
+              proprietarioId: membro.id,
+            };
+            // As mesmas conferências de `POST /negocios`, lidas aqui para a recusa voltar como valor antes de gravar.
+            const malFormado = recusaDeFormaDoNegocio(novo);
+            if (malFormado) return malFormado;
+            const preparado = await prepararNegocioNovo(cliente, membro, novo);
+            if (!preparado.ok) return preparado;
+
+            const negocio = { id: randomUUID(), titulo };
+            anotado.negocio = negocio;
+            return sucesso({ ausente: false, negocio, novo });
+          },
+
+          // Recusa se a Tarefa já tem Negócio: `gravarNoCrm` não roda e o Negócio não nasce (T-14-37).
+          operacao: (state, lido) =>
+            lido.ausente
+              ? recusaDoAusente(ligarNegocioNovoATarefaNasTabelas(state, membro.id, taskId, { id: "", titulo: "" }))
+              : ligarNegocioNovoATarefaNasTabelas(state, membro.id, taskId, lido.negocio),
+
+          gravarNoCrm: async (cliente, _valor, lido) => {
+            if (lido.ausente) return;
+            const criado = await criarNegocioNoCliente(cliente, membro, lido.novo, { id: lido.negocio.id });
+            if (!criado.ok) return criado;
+            return;
+          },
+        },
+        FRASES_DE_NEGOCIOS,
+      );
+      if (!desfecho.ok) return desfecho;
+
+      const { resultado, depois } = desfecho.valor;
+      if (!anotado.negocio) throw new Error("O gesto da Tarefa gravou sem ler o Negócio.");
+      return sucesso({ ...recortarResposta(resultado, depois, membro.id), negocio: anotado.negocio });
     },
 
     async resumo(membro, vinculos) {

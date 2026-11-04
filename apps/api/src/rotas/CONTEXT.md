@@ -194,9 +194,9 @@ pagam uma ida a mais ao banco (a leitura de `plataforma.canais`); são gestos
 raros. Não gravam nas tabelas do CRM nem avançam a revisão do Espaço por fora de
 `executar()`.
 
-**Tarefa conversacional nas tabelas (Fase 14, 14-13, 3.3.1, 3.3.3 e 3.3.4).**
-`rotas/crm/tarefas-conversacionais.ts` tem duas rotas por ora (as de trocar o
-Canal e o Negócio da Tarefa entram no 14-14):
+**Tarefa conversacional nas tabelas (Fase 14, 14-13 e 14-14, 3.3.1 e 3.3.3 a 3.3.6).**
+`rotas/crm/tarefas-conversacionais.ts` tem cinco rotas (criar e resumo no 14-13;
+trocar o Canal e ligar ou criar o Negócio no 14-14):
 - `POST /tarefas-conversacionais` — corpo `.strict()` `{ listId, contatoId,
   canalId, mensagem?, negocioId?, title?, statusId?, assignees?, priority?,
   dueDate?, taskTypeId? }`; 201 `{ ok: true, dados }`. É um **gesto misto**
@@ -228,9 +228,49 @@ Canal e o Negócio da Tarefa entram no 14-14):
   é leitura. Uma consulta SQL para o lote inteiro (`unnest ... with ordinality`),
   todo `join` com `workspace_id`: id de outro Espaço volta com os quatro campos
   `null`, nunca 404. Convidado lê.
+- `POST /tarefas-conversacionais/:taskId/canal` — corpo `.strict()` `{ canalId,
+  mensagem? }`; 200 `{ ok: true, dados }` com o corpo recortado de `POST
+  /operacoes` (`value: { task, mudou }`) mais `conversa: { id, aberta }`. Gesto
+  misto: o Contato vem do Vínculo da Tarefa lido no servidor (o sobrevivente, se
+  o do Vínculo foi mesclado), nunca do corpo (`contatoId` e `conversaId` dão 400).
+  Reaproveita a Conversa aberta do Contato no Canal novo ou abre uma em
+  `plataforma.conversas` (a Mensagem vai para `plataforma.mensagens`); a operação
+  pura só troca o Vínculo "conversa da Tarefa". A Conversa anterior continua
+  `aberta` e `ativo` na Caixa. D-07: `mensagem` só é exigida sem Conversa aberta
+  no Canal novo (400 `VALOR_INVALIDO`, `campo: "mensagem"`). Trocar para o Canal
+  da Conversa atual é 200 com `mudou: false` e nada gravado. Recusas: 409
+  `RECUSA_DO_DOMINIO` com `campo: "canal"` (Canal fora da Lista ou desconectado)
+  e sem `campo` (Tarefa inexistente, sem Contato, que o Membro não escreve);
+  409 `CONTATO_INATIVO`, `CANAL_ARQUIVADO`, `CONTATO_SEM_IDENTIFICADOR_DO_CANAL`;
+  404 `CANAL_NAO_ENCONTRADO`; 403 `PERMISSAO` (Convidado). Nada novo em
+  `registros` na coleção `conversations`.
+- `POST /tarefas-conversacionais/:taskId/negocio` — corpo `.strict()`
+  `{ negocioId: string | null }`; 200. Liga o Negócio ao Contato da Tarefa, ou o
+  desliga com `null`. O Negócio é conferido em `plataforma.negocios` com
+  `workspace_id` e `contato_id` = Contato do Vínculo: de outro Contato, de outro
+  Espaço, arquivado, na lixeira ou inexistente é 409 `NEGOCIO_DE_OUTRO_CONTATO`
+  (`campo: "negocioId"`, T-14-35). Também é gesto misto (a conferência do Negócio
+  e o Vínculo na mesma transação), mesmo sem escrita no CRM. Convidado: 409
+  `RECUSA_DO_DOMINIO` (o domínio não o deixa alterar Tarefa). Nada em `registros`
+  na coleção `deals`.
+- `POST /tarefas-conversacionais/:taskId/negocio/novo` — corpo `.strict()`
+  `{ funilId, titulo?, valor? }` (`valor` é texto decimal como em `POST
+  /negocios`; Contato, Etapa e Proprietário não vêm do corpo); 201 com o mesmo
+  corpo mais `negocio: { id, titulo }`. Cria o Negócio na 1ª Etapa do Funil pelo
+  mesmo `criarNegocioNoCliente` de `POST /negocios`, do Contato da Tarefa, com o
+  título da Tarefa se `titulo` não vier, e liga a Tarefa a ele no mesmo commit. Se
+  a Tarefa já tem Negócio (409 "Esta Tarefa já tem Negócio vinculado.") o Negócio
+  NÃO fica: ele só é inserido depois que a operação aceita. As recusas de Funil e
+  Etapa (404 `FUNIL_NAO_ENCONTRADO`, 409 `FUNIL_INATIVO`, `SEM_FUNIL_PADRAO`) são
+  pré-checadas e voltam como valor; Contato `arquivado` ou na lixeira é 409
+  `CONTATO_INATIVO`; Convidado é 403.
 
-O diálogo de criar da Lista e o botão do fio só chamam estas rotas no deploy da
-Fase 15 (14-15 e 14-16); até lá o fluxo antigo (`criarTarefaConversacional` em
+**Atenção (3.3.6):** o Negócio cujo dono é a Empresa do Contato não aparece para
+ligar. A 007 dá um dono por Negócio (`negocios_dono_ck`), então a conferência é
+só por `contato_id`; trazer os Negócios da Empresa é decisão à parte.
+
+O diálogo de criar da Lista, o botão do fio e a ficha da Tarefa só chamam estas
+rotas no deploy da Fase 15 (14-15 e 14-16); até lá o fluxo antigo (`criarTarefaConversacional` em
 `POST /operacoes`) segue sendo o que as telas usam.
 
 ## Rotas REST da Caixa de Entrada (Fase 8)
