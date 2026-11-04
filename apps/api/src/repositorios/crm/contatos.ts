@@ -19,6 +19,7 @@ import {
   type Contato,
   type ContatoResumo,
   type EdicaoDeContato,
+  type EstadoDoContato,
   type IdentificadorDeContato,
   type NovoContato,
   type TipoIdentificadorContato,
@@ -98,7 +99,7 @@ export interface RepositorioDeContatos {
 /** As colunas de `plataforma.contatos` na forma que `linhaParaContato` lê (data como texto). */
 const COLUNAS = `id, nome, sobrenome, data_nascimento::text as data_nascimento, idioma, fuso_horario,
   foto_url, descricao, enderecos, campos_adicionais, origem, qualificacao, modo_criacao, estado,
-  proprietario_id, criado_por, criado_em, atualizado_em`;
+  mesclado_em_id, mesclado_em, proprietario_id, criado_por, criado_em, atualizado_em`;
 
 interface LinhaDoBanco {
   readonly id: string;
@@ -114,7 +115,9 @@ interface LinhaDoBanco {
   readonly origem: string | null;
   readonly qualificacao: string | null;
   readonly modo_criacao: ModoDeCriacao;
-  readonly estado: EstadoCrm;
+  readonly estado: EstadoDoContato;
+  readonly mesclado_em_id: string | null;
+  readonly mesclado_em: Date | null;
   readonly proprietario_id: string;
   readonly criado_por: string;
   readonly criado_em: Date;
@@ -138,6 +141,8 @@ export function linhaParaContato(linha: LinhaDoBanco): Contato {
     qualificacao: linha.qualificacao,
     modoCriacao: linha.modo_criacao,
     estado: linha.estado,
+    mescladoEmId: linha.mesclado_em_id,
+    mescladoEm: linha.mesclado_em?.toISOString() ?? null,
     proprietarioId: linha.proprietario_id,
     criadoPor: linha.criado_por,
     criadoEm: linha.criado_em.toISOString(),
@@ -218,6 +223,7 @@ export function criarRepositorioDeContatosPg(cliente: Pool | PoolClient): Reposi
     },
 
     async listar(workspaceId, filtro) {
+      // `filtro.estado` é `EstadoCrm`: um Contato `mesclado` (011) nunca é listado — ele só abre pelo id.
       const parametros: unknown[] = [workspaceId, filtro.estado];
       let busca = "";
       const texto = filtro.q?.trim() ?? "";
@@ -255,7 +261,7 @@ export function criarRepositorioDeContatosPg(cliente: Pool | PoolClient): Reposi
           return {
             id: contato.id,
             nomeDeExibicao: nomeDeExibicaoDoContato(contato, linha.email_principal ?? linha.telefone_principal),
-            estado: contato.estado,
+            estado: filtro.estado,
             proprietarioId: contato.proprietarioId,
             emailPrincipal: linha.email_principal,
             telefonePrincipal: linha.telefone_principal,

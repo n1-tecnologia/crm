@@ -21,7 +21,7 @@ import { useContato } from "@/dados/crm/contatos";
 import ContatoPage from "@/app/(shell)/crm/contatos/[contato]/page";
 import { FichaDeContato } from "./ficha-de-contato";
 
-const { obterSessao } = vi.hoisted(() => ({ obterSessao: vi.fn() }));
+const { obterSessao, trocarRota } = vi.hoisted(() => ({ obterSessao: vi.fn(), trocarRota: vi.fn() }));
 
 vi.mock("@/autenticacao/cliente-navegador", () => ({
   clienteDoNavegador: () => ({ auth: { getSession: obterSessao } }),
@@ -36,7 +36,7 @@ vi.mock("@/dados/crm/cliente-crm", async (original) => {
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/crm/contatos/c1",
-  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
+  useRouter: () => ({ replace: trocarRota, push: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
 }));
 
@@ -57,6 +57,8 @@ function detalhado(sobre: Partial<ContatoDetalhado["contato"]> = {}): ContatoDet
       qualificacao: null,
       modoCriacao: "manual",
       estado: "ativo",
+      mescladoEmId: null,
+      mescladoEm: null,
       proprietarioId: "mem_julia",
       criadoPor: "mem_julia",
       criadoEm: "2026-10-01T10:00:00.000Z",
@@ -86,6 +88,7 @@ beforeEach(() => {
   fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
   vi.mocked(invalidarCrm).mockClear();
+  trocarRota.mockClear();
   obterSessao.mockReset();
   obterSessao.mockResolvedValue({ data: { session: { access_token: "tok" } } });
 });
@@ -254,8 +257,8 @@ describe("FichaDeContato — edição e Identificadores novos", () => {
 });
 
 describe("página /crm/contatos/[contato] — recuo para o modelo antigo (D-15)", () => {
-  async function montarPagina(id: string) {
-    fetchMock.mockResolvedValue(resposta(404, { ok: false, error: "Contato não encontrado.", codigo: "CONTATO_NAO_ENCONTRADO" }));
+  async function montarPagina(id: string, resposta404 = true) {
+    if (resposta404) fetchMock.mockResolvedValue(resposta(404, { ok: false, error: "Contato não encontrado.", codigo: "CONTATO_NAO_ENCONTRADO" }));
     const transporte: Transporte = {
       gravar: vi.fn(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." })),
       hidratar: vi.fn(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." })),
@@ -287,5 +290,15 @@ describe("página /crm/contatos/[contato] — recuo para o modelo antigo (D-15)"
     const container = await montarPagina(antigo.id);
     await vi.waitFor(() => expect(container.textContent).toContain("Consentimentos"));
     expect(container.textContent).not.toContain("Contato não encontrado.");
+  });
+
+  it("(k) Contato mesclado (011): a página leva ao sobrevivente e não desenha a ficha do absorvido", async () => {
+    fetchMock.mockResolvedValue(
+      resposta(200, { ok: true, dados: detalhado({ id: "c_absorvido", estado: "mesclado", mescladoEmId: "c_sobrevivente", mescladoEm: "2026-11-01T10:00:00.000Z" }) }),
+    );
+    const container = await montarPagina("c_absorvido", false);
+    await vi.waitFor(() => expect(trocarRota).toHaveBeenCalledWith("/crm/contatos/c_sobrevivente"));
+    expect(container.textContent).not.toContain("ana@x.com");
+    expect(container.textContent).not.toContain("Ana Souza");
   });
 });

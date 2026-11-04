@@ -69,6 +69,8 @@ describe("rotas de Contatos — serviço falso, sem banco", () => {
       qualificacao: null,
       modoCriacao: "manual",
       estado: "ativo",
+      mescladoEmId: null,
+      mescladoEm: null,
       proprietarioId: "mem_maryane",
       criadoPor: "mem_maryane",
       criadoEm: "2026-10-09T00:00:00.000Z",

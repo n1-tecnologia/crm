@@ -15,11 +15,12 @@
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import type { EstadoCrm } from "@n1/dominio/crm/comum";
+import type { EstadoDoContato } from "@n1/dominio/crm/contatos";
 import { ErroDeApi } from "@/dados/crm/cliente-crm";
 import { Abas, Button, ConfirmDialog, Toast } from "@/features/shell/ui";
 
 /** O `StateSeal` conhece `naLixeira`; a api fala `na_lixeira`. */
-export function seloDoEstado(estado: EstadoCrm): string {
+export function seloDoEstado(estado: EstadoDoContato): string {
   return estado === "na_lixeira" ? "naLixeira" : estado;
 }
 

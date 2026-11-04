@@ -13,6 +13,7 @@
 import { fail, ok, type OperationResult } from "../state";
 import type { CivilDate } from "../types/primitives";
 import { LIMITES_CRM, type EstadoCrm, type SituacaoNegocio } from "./comum";
+import type { EstadoDoContato } from "./contatos";
 
 /** Cabe em `numeric(15,2)`: até 13 dígitos inteiros e 2 casas. */
 export const VALOR_DECIMAL = /^\d{1,13}(\.\d{1,2})?$/;
@@ -77,7 +78,7 @@ export interface NegocioDetalhado {
   readonly etapa: { readonly id: string; readonly nome: string; readonly probabilidadePadrao: number };
   readonly etapasDoFunil: readonly { readonly id: string; readonly nome: string; readonly ordem: number }[];
   readonly empresa: { readonly id: string; readonly nome: string; readonly estado: EstadoCrm } | null;
-  readonly contato: { readonly id: string; readonly nome: string; readonly estado: EstadoCrm } | null;
+  readonly contato: { readonly id: string; readonly nome: string; readonly estado: EstadoDoContato } | null;
   readonly probabilidadeEfetiva: number;
 }
 

@@ -12,11 +12,21 @@
 import { fail, ok, type OperationResult } from "../state";
 import { normalizarIdentificadorDeContato } from "./normalizacao";
 import type { CivilDate } from "../types/primitives";
-import type { BloqueiosCrm, CamposAdicionais, Endereco, EstadoCrm, ModoDeCriacao } from "./comum";
+import { ESTADOS_CRM, type BloqueiosCrm, type CamposAdicionais, type Endereco, type EstadoCrm, type ModoDeCriacao } from "./comum";
 
 /** Os tipos de Identificador de Contato (007:110). `telefone` é discável; `whatsapp` é a identidade que um Canal resolve. */
 export const TIPOS_IDENTIFICADOR_CONTATO = ["telefone", "email", "whatsapp", "instagram"] as const;
 export type TipoIdentificadorContato = (typeof TIPOS_IDENTIFICADOR_CONTATO)[number];
+
+/**
+ * O ciclo de vida do Contato: o de todo registro do CRM mais `mesclado` (011).
+ * `mesclado` é terminal e somente leitura (RN-CON-14): o Contato absorvido fica
+ * apontando o sobrevivente por `mescladoEmId`, e o sobrevivente nunca é `mesclado`
+ * (sem cadeia). Só o Contato tem este estado, por isso `ESTADOS_CRM` não muda: ele
+ * alimenta o filtro de lista de todos os recursos, e uma lista nunca traz `mesclado`.
+ */
+export const ESTADOS_DO_CONTATO = [...ESTADOS_CRM, "mesclado"] as const;
+export type EstadoDoContato = EstadoCrm | "mesclado";
 
 export interface Contato {
   readonly id: string;
@@ -32,7 +42,11 @@ export interface Contato {
   readonly origem: string | null;
   readonly qualificacao: string | null;
   readonly modoCriacao: ModoDeCriacao;
-  readonly estado: EstadoCrm;
+  readonly estado: EstadoDoContato;
+  /** O sobrevivente, quando `estado` é `mesclado` (RN-CON-14); `null` em qualquer outro estado. */
+  readonly mescladoEmId: string | null;
+  /** Quando a mesclagem aconteceu (ISO 8601); anda junto com `mescladoEmId`. */
+  readonly mescladoEm: string | null;
   readonly proprietarioId: string;
   readonly criadoPor: string;
   readonly criadoEm: string;

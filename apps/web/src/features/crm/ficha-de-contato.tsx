@@ -405,6 +405,12 @@ export function FichaDeContato({ contatoId, detalhado }: { readonly contatoId: s
   const nome = nomeDeExibicaoDoContato(contato, principal ? (principal.valorExibido ?? principal.valor) : null);
   const ativo = contato.estado === "ativo";
 
+  // Um Contato `mesclado` é terminal e somente leitura (RN-CON-14): a página redireciona para o
+  // sobrevivente antes de chegar aqui, então a ficha nunca desenha um. O retorno vem DEPOIS dos
+  // hooks (regra dos hooks) e estreita o estado para os componentes de ciclo de vida, que só
+  // conhecem os três estados comuns do CRM.
+  if (contato.estado === "mesclado") return null;
+
   const agir: Agir = async (acao, sucesso) => {
     setRecusa(null);
     setAviso(null);
