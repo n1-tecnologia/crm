@@ -31,6 +31,7 @@ export * from "./scale";
 export * from "./iniciar-conversa";
 export * from "./ferramentas";
 export * from "./tarefas-conversacionais";
+export * from "./tarefa-conversacional-nas-tabelas";
 export * from "./canais";
 export * from "./ia";
 export * from "./automations";
