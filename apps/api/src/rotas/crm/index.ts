@@ -15,7 +15,8 @@
  * e o envio humano; a `recebida` não tem rota, só o caminho interno do serviço.
  * `notas` (14-06) e `consentimentos` (14-08) são sub-recursos do Contato: o
  * histórico de consentimento é só inserção e a recusa de modelo de marketing
- * sem consentimento mora em `ServicoDeMensagens.enviar`.
+ * sem consentimento mora em `ServicoDeMensagens.enviar`. `mesclagem` (14-09) é o
+ * gesto que junta dois Contatos nas duas bases, `POST /contatos/:id/mesclar`.
  */
 
 import type { FastifyInstance } from "fastify";
@@ -30,6 +31,7 @@ import { criarServicoDeConversas, type ServicoDeConversas } from "../../servicos
 import { criarServicoDeEmpresas, type ServicoDeEmpresas } from "../../servicos/crm/empresas";
 import { criarServicoDeFunis, type ServicoDeFunis } from "../../servicos/crm/funis";
 import { criarServicoDeMensagens, type ServicoDeMensagens } from "../../servicos/crm/mensagens";
+import { criarServicoDeMesclagem, type ServicoDeMesclagem } from "../../servicos/crm/mesclagem";
 import { criarServicoDeNegocios, type ServicoDeNegocios } from "../../servicos/crm/negocios";
 import { criarServicoDeNotas, type ServicoDeNotas } from "../../servicos/crm/notas";
 import { rotasDeCanais } from "./canais";
@@ -39,6 +41,7 @@ import { rotasDeConversas } from "./conversas";
 import { rotasDeEmpresas } from "./empresas";
 import { rotasDeFunis } from "./funis";
 import { rotasDeMensagens } from "./mensagens";
+import { rotasDeMesclagem } from "./mesclagem";
 import { rotasDeNegocios } from "./negocios";
 import { rotasDeNotas } from "./notas";
 
@@ -63,6 +66,8 @@ export interface OpcoesDeCrm {
   readonly notas?: ServicoDeNotas;
   /** Injeção só para teste: troca o serviço real de Consentimentos do Contato por um falso, sem banco. */
   readonly consentimentos?: ServicoDeConsentimentos;
+  /** Injeção só para teste: troca o serviço real de mesclagem de Contatos por um falso, sem banco. */
+  readonly mesclagem?: ServicoDeMesclagem;
   /** Padrão: lê Papel e Membro de `plataforma.registros`. Injeção para teste sem banco. */
   readonly acesso?: AcessoAoCrm;
 }
@@ -91,4 +96,6 @@ export async function rotasDeCrm(app: FastifyInstance, opcoes: OpcoesDeCrm = {})
   await app.register(rotasDeNotas, { servico: notas });
   const consentimentos = opcoes.consentimentos ?? criarServicoDeConsentimentos({ pool: obterPool, acesso });
   await app.register(rotasDeConsentimentos, { servico: consentimentos });
+  const mesclagem = opcoes.mesclagem ?? criarServicoDeMesclagem({ pool: obterPool, acesso });
+  await app.register(rotasDeMesclagem, { servico: mesclagem });
 }

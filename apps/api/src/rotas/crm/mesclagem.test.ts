@@ -65,8 +65,12 @@ describe("POST /contatos/:id/mesclar — serviço falso, sem banco", () => {
     return { servico, chamadas };
   }
   const appCom = (servico: ServicoDeMesclagem) => buildApp({ ...opcoesDeAutenticacao("ws_falso"), crm: { mesclagem: servico } });
-  const mesclar = (servico: ServicoDeMesclagem, payload?: unknown, id = "b") =>
-    appCom(servico).inject({ method: "POST", url: `/contatos/${id}/mesclar`, headers: AUTORIZACAO, ...(payload !== undefined ? { payload } : {}) });
+  const mesclar = (servico: ServicoDeMesclagem, payload?: Record<string, unknown>, id = "b") =>
+    appCom(servico).inject(
+      payload === undefined
+        ? { method: "POST", url: `/contatos/${id}/mesclar`, headers: AUTORIZACAO }
+        : { method: "POST", url: `/contatos/${id}/mesclar`, headers: AUTORIZACAO, payload },
+    );
 
   it("sem Authorization responde 401 e não chega ao serviço", async () => {
     const { servico, chamadas } = novoFalso();

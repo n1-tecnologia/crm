@@ -131,6 +131,27 @@ Contato, sobre `plataforma.contato_consentimentos` (011), que é SÓ INSERÇÃO:
   aceita). Não grava Registro de Atividade nem avança a revisão do Espaço, e
   nada de consentimento entra em `GET /estado`.
 
+**Mesclar Contatos (Fase 14, 14-09, 3.2.2).** Uma rota ao lado das de Contato:
+
+- `POST /contatos/:id/mesclar` — corpo `{ absorvidoId }` (`.strict()`). O
+  sobrevivente é o `:id` da rota, nunca um campo do corpo (`sobreviventeId` e
+  `workspaceId` no corpo são 400). **200** com o Contato sobrevivente
+  detalhado `{ contato, identificadores, vinculos }`; nada de `registros` volta
+  no corpo. É **irreversível** e grava nas DUAS bases pelo gesto misto
+  (`servicos/crm/gesto-misto.ts`): Identificadores, Conversas, Negócios,
+  vínculos com Empresa, Endereços (sem principal) e notas passam ao
+  sobrevivente, os consentimentos são copiados (o histórico é só inserção), o
+  absorvido fica `mesclado`, e em `registros` todo Vínculo que tocava o
+  absorvido passa a tocar o sobrevivente, tudo no mesmo commit. Papel `editar`
+  em `contato`: o Convidado é 403.
+  Recusas: 404 `CONTATO_NAO_ENCONTRADO` (um dos dois não existe NESTE Espaço);
+  409 `MESCLAGEM_RECUSADA` com `campo` (`absorvidoId` ou `sobreviventeId`: o
+  mesmo Contato dos dois lados, ou um lado na lixeira ou já `mesclado`).
+  Duas mesclagens cruzadas ao mesmo tempo não dão deadlock: uma vence, a outra
+  recebe 409.
+  Fica de fora: restaurar cópia de um Contato mesclado e marcar dois Contatos
+  como distintos (só a ficha antiga os oferece).
+
 ## Rotas REST da Caixa de Entrada (Fase 8)
 
 `rotas/crm/canais.ts`, `conversas.ts` e `mensagens.ts` entram no mesmo `rotasDeCrm`
