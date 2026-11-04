@@ -99,7 +99,7 @@ describe("mesclarContatoNoEspaco", () => {
 
   it("reaponta a âncora das Sessões de Chat", () => {
     const sessao = state.chatSessions[0] as ChatSession;
-    sessao.anchor = { type: "contact", id: A, name: "Marina D." } as ChatSession["anchor"];
+    sessao.anchor = { type: "contact", id: A, nameAtTheTime: "Marina D." };
     mesclarContatoNoEspaco(state, THIAGO, referencias);
     expect(sessao.anchor?.id).toBe(B);
     expect(sessao.anchor?.type).toBe("contact");

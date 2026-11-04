@@ -888,3 +888,20 @@ o envio de Mensagem: `recusaPorFaltaDeConsentimento` diz se o modelo de
 marketing barra o envio (a conta de `marketingConsentMissing`, sobre as linhas
 novas). O que depende do banco fica com o serviço: se a finalidade existe no
 Catálogo do Espaço e se a Mensagem de evidência é de uma Conversa do Contato.
+
+**Mesclar Contatos no modelo novo (Fase 14, 14-09, 3.2.2).** `crm/mesclagem.ts`
+é o módulo novo: `validarMesclagem` (RN-CON-14) recusa o mesmo Contato e
+qualquer lado na lixeira ou já `mesclado` (por isso o sobrevivente nunca é
+`mesclado`: sem cadeia), e diz em que estado o sobrevivente termina (`ativo` se
+qualquer dos dois era). `conversasQueResolvemNaColisao` (RN-CXE-10) escolhe,
+entre as Conversas abertas ou pendentes dos dois no mesmo Canal, as que viram
+`resolvida`: fica a de Mensagem mais recente (sem Mensagem, `criadoEm`; empate
+pelo id). Move tudo para o sobrevivente: Identificadores, Conversas, Negócios,
+vínculos com Empresa, Endereços (sem principal) e notas; os consentimentos são
+COPIADOS, porque o histórico de cada Contato é só inserção. O banco é com o
+serviço da api. A troca dos Vínculos em `registros` é a mesma função da
+mesclagem antiga: `reapontarContatoNosVinculos` (`operations/vinculos-da-mesclagem.ts`)
+serve à `mergeContacts` e a `mesclarContatoNoEspaco`, e dois Vínculos que ficam
+iguais se fundem, ficando o mais antigo (INV-CON-07). `mesclarContatoNoEspaco`
+está FORA de `OPERACOES`: os dois Contatos chegam em `referencias`, lidos pelo
+servidor, e a operação não os procura em `state.contacts`.

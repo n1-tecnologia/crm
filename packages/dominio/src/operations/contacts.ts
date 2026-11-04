@@ -20,6 +20,7 @@ import type {
 } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
 import { recusaDeEscritaNoCrmAntigo } from "./crm-antigo";
+import { reapontarContatoNosVinculos } from "./vinculos-da-mesclagem";
 
 const now = (): string => new Date().toISOString();
 
@@ -228,26 +229,9 @@ export function mergeContacts(
   // contatos.md 12.4 §7 / INV-CON-07 — os Vínculos passam a referenciar o
   // sobrevivente, e dois que fiquem iguais (mesma origem, destino e papel) se
   // fundem: a Tarefa que apontava para os dois Contatos fica com um só Vínculo.
-  const reapontados = state.links.map((link) =>
-    tocaOAbsorvido(link)
-      ? {
-          ...link,
-          ...(link.toType === "contact" && link.toId === absorbedId ? { toId: survivorId } : {}),
-          ...(link.fromType === "contact" && link.fromId === absorbedId ? { fromId: survivorId } : {}),
-        }
-      : link,
-  );
-  // Fica o MAIS ANTIGO (12.4 §3): `state.links` só cresce por append, então a
-  // ordem do array é a ordem de criação e o primeiro visto é o mais antigo.
-  const vistos = new Set<string>();
-  state.links = reapontados.filter((link) => {
-    const tocaOSobrevivente = (link.toType === "contact" && link.toId === survivorId) || (link.fromType === "contact" && link.fromId === survivorId);
-    if (!tocaOSobrevivente) return true;
-    const chave = `${link.fromType}|${link.fromId}|${link.toType}|${link.toId}|${link.role ?? ""}`;
-    if (vistos.has(chave)) return false;
-    vistos.add(chave);
-    return true;
-  });
+  // A troca e a fusão moram em `vinculos-da-mesclagem.ts`: a mesclagem do modelo
+  // novo usa a mesma função (o mais antigo fica, 12.4 §3).
+  state.links = reapontarContatoNosVinculos(state.links, absorbedId, survivorId);
   // B14 — previous `mesclado` records repoint to the new survivor; no chains.
   for (const contact of state.contacts) {
     if (contact.mergedIntoId === absorbedId) contact.mergedIntoId = survivorId;
