@@ -15,7 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ContatoDetalhado, NovoContato } from "@n1/dominio/crm/contatos";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { encerrar, pool } from "../../persistencia/conexao";
-import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearCanal, semearMembro } from "../../testes/banco-crm";
+import { describeComBanco, limparEspaco, novoEspacoDeTeste, poolDoDono, prepararBancoCrm, semearCanal, semearMembro } from "../../testes/banco-crm";
 import { criarAcessoAoCrmPg } from "./acesso";
 import { criarServicoDeContatos, FRASES_DE_CONTATOS } from "./contatos";
 import type { ResultadoCrm } from "./resultado";
@@ -105,6 +105,25 @@ describeComBanco("ServicoDeContatos — Postgres local", () => {
     await limparEspaco(ws);
     await limparEspaco(outroWs);
     await encerrar();
+  });
+
+  it("traçador (011): um Contato `mesclado` sai de obter com `mescladoEmId` e não aparece entre os ativos", async () => {
+    const absorvido = (await criar({ nome: "Absorvido" })).contato.id;
+    const sobrevivente = (await criar({ nome: "Sobrevivente" })).contato.id;
+    // Só o serviço de mesclagem (14-09) grava este estado; aqui entra por SQL, como o dono do banco.
+    await poolDoDono().query(
+      "update plataforma.contatos set estado = 'mesclado', mesclado_em_id = $3, mesclado_em = now() where workspace_id = $1 and id = $2",
+      [ws, absorvido, sobrevivente],
+    );
+
+    const lido = valor(await servico.obter(eu, absorvido));
+    expect(lido.contato.estado).toBe("mesclado");
+    expect(lido.contato.mescladoEmId).toBe(sobrevivente);
+    expect(lido.contato.mescladoEm).toEqual(expect.any(String));
+
+    const ativos = valor(await servico.listar(eu, { estado: "ativo", limite: 100, deslocamento: 0 }));
+    expect(ativos.itens.map((item) => item.id)).not.toContain(absorvido);
+    expect(ativos.itens.map((item) => item.id)).toContain(sobrevivente);
   });
 
   it("(a) criar normaliza o e-mail, o primeiro de cada tipo nasce principal e a data civil volta igual", async () => {
