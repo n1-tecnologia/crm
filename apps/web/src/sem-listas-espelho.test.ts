@@ -65,3 +65,34 @@ describe("D-06 — nada novo depende das Listas espelho (web)", () => {
     ).toEqual([]);
   });
 });
+
+/**
+ * 14-16: as quatro operações antigas da Tarefa conversacional (que liam o CRM em
+ * memória) não têm mais chamador na web; as telas chamam as rotas REST de
+ * `dados/crm/tarefas-conversacionais`. O plano 14-17 as tira de `OPERACOES`.
+ */
+const OPERACOES_ANTIGAS = ["criarTarefaConversacional", "trocarCanalDaTarefa", "vincularNegocioATarefa", "criarNegocioDaTarefa"] as const;
+
+describe("14-16 — nenhum chamador web das operações antigas da Tarefa conversacional", () => {
+  const producao = arquivosDeProducao(RAIZ).map((caminho) => ({
+    arquivo: relative(RAIZ, caminho).split(sep).join("/"),
+    texto: readFileSync(caminho, "utf8"),
+  }));
+
+  it("nenhum arquivo importa uma delas de @n1/dominio/operations", () => {
+    const importaDoDominio = /import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*"@n1\/dominio\/operations[^"]*"/g;
+    const achados: string[] = [];
+    for (const { arquivo, texto } of producao) {
+      for (const importacao of texto.matchAll(importaDoDominio)) {
+        const nomes = (importacao[1] ?? "").split(",").map((n) => n.trim().split(/\s+as\s+/)[0]);
+        for (const nome of nomes) if ((OPERACOES_ANTIGAS as readonly (string | undefined)[]).includes(nome)) achados.push(`${arquivo}: ${nome}`);
+      }
+    }
+    expect(achados, `Quem chama a Tarefa conversacional na web usa as rotas de dados/crm/tarefas-conversacionais, não a operação do domínio: ${achados.join("; ")}`).toEqual([]);
+  });
+
+  it("o teste enxerga o que procura: o cliente REST existe e é importado por quem chama", () => {
+    const quemChama = producao.filter((f) => /from\s*"@\/dados\/crm\/tarefas-conversacionais"/.test(f.texto)).map((f) => f.arquivo);
+    expect(quemChama).toEqual(expect.arrayContaining(["features/crm/conversation-thread.tsx", "features/estrutura/tarefa-completa.tsx", "features/estrutura/nova-tarefa-conversacional-dialog.tsx"]));
+  });
+});
