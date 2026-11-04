@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 14
 current_phase_name: "Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional"
 status: executing
-stopped_at: Completed 14-12-PLAN.md
-last_updated: "2026-11-04T19:18:56.221Z"
+stopped_at: Completed 14-13-PLAN.md
+last_updated: "2026-11-04T19:32:28.636Z"
 last_activity: 2026-11-04
 last_activity_desc: Phase 14 execution started
-state_head: d6d997a21ab1bc55bdfcefcc5770803989784323
+state_head: cb3087503b9f67eec5fa5811326be8b69aa38cfb
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 228
-  completed_plans: 218
+  completed_plans: 219
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 14 (Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional) — EXECUTING
-Plan: 13 of 19
+Plan: 14 of 19
 Status: Ready to execute
 Last activity: 2026-11-04 — Phase 14 execution started
 
@@ -436,6 +436,7 @@ Progress: [██████░░░░] 63%
 | Phase 14 P10 | 9 min | 2 tasks | 9 files |
 | Phase 14 P11 | 13 min | 3 tasks | 13 files |
 | Phase 14 P12 | 7 min | 3 tasks | 14 files |
+| Phase 14 P13 | 22 min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -670,6 +671,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 14]: 14-11: Mesclar com… não exige digitar o nome do absorvido (o diálogo antigo exigia); o aviso de irreversível e o seletor da api bastam. Reversível de adotar depois.
 - [Phase 14]: 14-11: Notas e Consentimentos revalidam só a chave do próprio Contato (/contatos/<id>/notas, /consentimentos); o vigente do consentimento é calculado na tela por consentimentoVigente.
 - [Phase 14]: 14-12: definirCanaisDaLista e createList conferem Canais em plataforma.canais por lerDoCrm (mapa LER_DO_CRM); o canais do navegador é descartado; ramo state.channels sai na 3.5.4
+- [Phase 14]: 14-13: a resposta de POST /tarefas-conversacionais é o corpo de POST /operacoes recortado (Tarefa em value.task) mais conversa { id, aberta }; o resumo devolve { ok, itens, total }
+- [Phase 14]: 14-13: no resumo, Negócio na lixeira não aparece (RN-TAR-15) e Mensagem com marcacao_exclusao não é candidata a última Mensagem; OQ6 segue a confirmar
 
 ### Pending Todos
 
@@ -731,6 +734,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-04T19:18:55.911Z
-Stopped at: Completed 14-12-PLAN.md
+Last session: 2026-11-04T19:32:28.361Z
+Stopped at: Completed 14-13-PLAN.md
 Resume file: None
