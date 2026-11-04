@@ -767,24 +767,51 @@ Plans:
 **Fronteira de deploy (D-01):** 14-01 a 14-14 são aditivos e podem subir; 14-15, 14-16 e 14-17 só sobem no deploy da Fase 15; o ensaio 14-19 espera a cópia do dono e não segura nada.
 
 Plans:
+**Wave 1**
 - [ ] 14-01-PLAN.md — Traçador: a migração 011 e o Contato `mesclado` do banco à tela; a 011 provada; guardas de D-06 (UNI-01, UNI-02)
 - [ ] 14-02-PLAN.md — Domínio da Tarefa conversacional por ids: `vinculosDoCrmDaTarefa` e as operações `…NasTabelas` fora de `OPERACOES` (UNI-12, 13, 15, 16)
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 14-03-PLAN.md — Gesto misto: `lerDoCrm` em `executar()`, `executarGestoMisto` tudo ou nada, recorte da resposta compartilhado (UNI-04)
 - [ ] 14-04-PLAN.md — Contato `mesclado` somente leitura em todo serviço do CRM novo (UNI-05)
 - [ ] 14-05-PLAN.md — Conversa: mover para outro Contato e atribuir (UNI-08, UNI-09)
+
+**Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 14-06-PLAN.md — Notas do Contato e transferir Identificador na api (UNI-10, UNI-06)
+
+**Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 14-07-PLAN.md — Conversa: lixeira, restaurar, estrela e leitura por Membro, filtros de `GET /conversas` (UNI-09)
+
+**Wave 5** *(blocked on Wave 4 completion)*
 - [ ] 14-08-PLAN.md — Consentimento: regra, rotas só de inserção e `SEM_CONSENTIMENTO` no envio (UNI-07)
+
+**Wave 6** *(blocked on Wave 5 completion)*
 - [ ] 14-09-PLAN.md — Mesclar Contatos pelo gesto misto (UNI-05)
+
+**Wave 7** *(blocked on Wave 6 completion)*
 - [ ] 14-10-PLAN.md — Sucessão do Membro removido nas tabelas e a prévia em números (UNI-11)
 - [ ] 14-11-PLAN.md — Ficha nova de Contato: notas, consentimentos, mesclar e transferir (UNI-05, 06, 07, 10)
+
+**Wave 8** *(blocked on Wave 7 completion)*
 - [ ] 14-12-PLAN.md — Canais da Lista conversacional conferidos na tabela (UNI-17)
+
+**Wave 9** *(blocked on Wave 8 completion)*
 - [ ] 14-13-PLAN.md — Tarefa conversacional nasce nas tabelas e o resumo em lote (UNI-12, UNI-14)
+
+**Wave 10** *(blocked on Wave 9 completion)*
 - [ ] 14-14-PLAN.md — Trocar o Canal e ligar/criar o Negócio da Tarefa pela api (UNI-15, UNI-16)
 - [ ] 14-15-PLAN.md — Só no deploy da Fase 15: cartão, tabela, Reunião e ficha da Tarefa pelo resumo (UNI-14)
+
+**Wave 11** *(blocked on Wave 10 completion)*
 - [ ] 14-16-PLAN.md — Só no deploy da Fase 15: diálogo da Lista, fio, ficha da Tarefa e Membros pelas rotas novas (UNI-11, 12, 15, 16)
+
+**Wave 12** *(blocked on Wave 11 completion)*
 - [ ] 14-17-PLAN.md — Só no deploy da Fase 15: as quatro operações antigas fora de `OPERACOES` e as leituras antigas sem chamador (UNI-12, UNI-13)
+
+**Wave 13** *(blocked on Wave 12 completion)*
 - [ ] 14-18-PLAN.md — Fechamento: gate `npm run check` em Docker migrado, `14-PROVAS.md`, `CONTEXT.md` da raiz
+
+**Wave 14** *(blocked on Wave 13 completion)*
 - [ ] 14-19-PLAN.md — Ensaio D-02 da 011 sobre a cópia dos dados reais (UNI-03; espera a cópia do dono)
 
 **Ondas de execução:** 1 → [14-01, 14-02] · 2 → [14-03, 14-04, 14-05] · 3 → [14-06] · 4 → [14-07] · 5 → [14-08] · 6 → [14-09] · 7 → [14-10, 14-11] · 8 → [14-12] · 9 → [14-13] · 10 → [14-14, 14-15] · 11 → [14-16] · 12 → [14-17] · 13 → [14-18] · 14 → [14-19]
