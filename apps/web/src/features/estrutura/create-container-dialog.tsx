@@ -13,6 +13,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useId, useState } from "react";
+import { useCanais } from "@/dados/crm/canais";
 import { useData, useRunConfirmado } from "@/dados/store";
 import { useRecente } from "@/features/shell/recente";
 import { createFolder, createList, createSpace, instantiateListTemplate } from "@n1/dominio/operations";
@@ -29,6 +30,7 @@ import {
 import { Selo } from "@/features/estrutura/icone-de-tipo";
 import { CanaisDeAtendimento } from "@/features/estrutura/canais-de-atendimento";
 import { AdicionarCanalDialog } from "@/features/crm/adicionar-canal-dialog";
+import type { Canal } from "@n1/dominio/crm/canais";
 import type { TipoDeAtendimento } from "@n1/dominio/operations/canais";
 import type { DataState, OperationResult } from "@n1/dominio/state";
 import type { Folder, List, ModeloDeTarefa, Space } from "@n1/dominio/types";
@@ -128,6 +130,11 @@ export const SPACE_COLORS = [
   { value: "#57534e", label: "Grafite" },
 ];
 
+/** Dos Canais ativos das tabelas, os que a Lista vai marcar: o suficiente para a execução local conferir. */
+function canaisEscolhidos(itens: readonly Canal[] | undefined, ids: readonly string[]): readonly Canal[] {
+  return (itens ?? []).filter((canal) => ids.includes(canal.id));
+}
+
 export function CreateContainerDialog({
   target,
   onClose,
@@ -157,6 +164,10 @@ export function CreateContainerDialog({
   const [templateId, setTemplateId] = useState("");
   const [location, setLocation] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // 3.3.7 — os Canais ativos das tabelas, só enquanto a Lista conversacional escolhe canais. O servidor DESCARTA
+  // este argumento e lê `plataforma.canais` na transação; ele existe para a execução local não depender da
+  // projeção em `state.channels`.
+  const canaisDaTabela = useCanais({ estado: "ativo", limite: 100 }, { pausado: !target || target.kind !== "lista" || modeloDeTarefa !== "conversacional" });
 
   if (!target) return null;
 
@@ -241,7 +252,7 @@ export function CreateContainerDialog({
         // Um Template de Lista com configuração (Status, Campos, Tipos) instancia a estrutura junto.
         return templateId && data.templates.find((t) => t.id === templateId)?.creates?.listConfig
           ? instantiateListTemplate(data, memberId, templateId, listInput)
-          : createList(data, memberId, listInput);
+          : createList(data, memberId, listInput, canaisEscolhidos(canaisDaTabela.data?.itens, canais));
       },
     );
 
