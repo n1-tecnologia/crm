@@ -62,6 +62,13 @@ export interface ServicoDeContatos {
     entrada: EdicaoDeIdentificador,
   ): Promise<ResultadoCrm<ContatoDetalhado>>;
   removerIdentificador(membro: MembroDaSessao, id: string, identificadorId: string): Promise<ResultadoCrm<ContatoDetalhado>>;
+  /** 3.2.3: passa o Identificador para outro Contato; devolve a ficha da origem. As Conversas passadas ficam (DO-CON-12). */
+  transferirIdentificador(
+    membro: MembroDaSessao,
+    id: string,
+    identificadorId: string,
+    entrada: { readonly paraContatoId: string },
+  ): Promise<ResultadoCrm<ContatoDetalhado>>;
   arquivar(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<ContatoDetalhado>>;
   restaurar(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<ContatoDetalhado>>;
   enviarParaLixeira(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<ContatoDetalhado>>;
@@ -388,6 +395,11 @@ export function criarServicoDeContatos(deps: {
         }
         return devolver(cliente, membro, contato);
       });
+    },
+
+    async transferirIdentificador() {
+      // Esqueleto do RED.
+      return naoEncontrado();
     },
 
     async arquivar(membro, id) {

@@ -95,6 +95,7 @@ describe("rotas de Contatos — serviço falso, sem banco", () => {
       adicionarIdentificador: (...a) => responder("adicionarIdentificador", ...a),
       editarIdentificador: (...a) => responder("editarIdentificador", ...a),
       removerIdentificador: (...a) => responder("removerIdentificador", ...a),
+      transferirIdentificador: (...a) => responder("transferirIdentificador", ...a),
       arquivar: (...a) => responder("arquivar", ...a),
       restaurar: (...a) => responder("restaurar", ...a),
       enviarParaLixeira: (...a) => responder("enviarParaLixeira", ...a),
@@ -179,6 +180,60 @@ describe("rotas de Contatos — serviço falso, sem banco", () => {
     expect(resposta.statusCode).toBe(200);
     expect(resposta.json().ok).toBe(true);
     expect(chamadas[0]?.[0]).toBe("enviarParaLixeira");
+  });
+
+  it("(k) POST /contatos/c1/identificadores/i1/transferir chama o serviço com o Membro da sessão e devolve a ficha da origem", async () => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({
+      method: "POST",
+      url: "/contatos/c1/identificadores/i1/transferir",
+      headers: AUTORIZACAO,
+      payload: { paraContatoId: "c2" },
+    });
+    expect(resposta.statusCode).toBe(200);
+    expect(resposta.json()).toEqual({ ok: true, dados: detalhe });
+    expect(chamadas[0]?.[0]).toBe("transferirIdentificador");
+    expect(chamadas[0]?.[1]).toMatchObject({ id: "mem_maryane" });
+    expect(chamadas[0]?.slice(2)).toEqual(["c1", "i1", { paraContatoId: "c2" }]);
+  });
+
+  it.each([
+    ["principal (o serviço decide)", { paraContatoId: "c2", principal: true }],
+    ["workspaceId", { paraContatoId: "c2", workspaceId: "ws_de_outro" }],
+    ["corpo sem paraContatoId", {}],
+    ["paraContatoId vazio", { paraContatoId: "" }],
+  ])("(k) transferir com %s responde 400 e não chega ao serviço", async (_rotulo, payload) => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({
+      method: "POST",
+      url: "/contatos/c1/identificadores/i1/transferir",
+      headers: AUTORIZACAO,
+      payload,
+    });
+    expect(resposta.statusCode).toBe(400);
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("(k) a recusa de transferir chega com status, codigo e campo intactos", async () => {
+    const { servico } = novoFalso({
+      transferirIdentificador: recusa(409, "Este Contato foi mesclado: transfira para o Contato que ficou.", {
+        codigo: "TRANSFERENCIA_RECUSADA",
+        campo: "paraContatoId",
+      }),
+    });
+    const resposta = await appCom(servico).inject({
+      method: "POST",
+      url: "/contatos/c1/identificadores/i1/transferir",
+      headers: AUTORIZACAO,
+      payload: { paraContatoId: "c2" },
+    });
+    expect(resposta.statusCode).toBe(409);
+    expect(resposta.json()).toEqual({
+      ok: false,
+      error: "Este Contato foi mesclado: transfira para o Contato que ficou.",
+      codigo: "TRANSFERENCIA_RECUSADA",
+      campo: "paraContatoId",
+    });
   });
 
   it("(c) 409 do serviço chega com codigo e bloqueios intactos", async () => {

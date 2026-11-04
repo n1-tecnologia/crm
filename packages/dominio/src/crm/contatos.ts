@@ -231,3 +231,15 @@ export function fraseDeContatoBloqueado(bloqueios: BloqueiosCrm): string {
 export function fraseDeIdentificadorEmUso(tipo: TipoIdentificadorContato, valor: string, nomeDoDetentor: string): string {
   return `${ROTULO_DO_TIPO_DE_IDENTIFICADOR[tipo]} ${valor} já pertence ao Contato ${nomeDoDetentor}. Abra esse Contato ou use outro valor.`;
 }
+
+/**
+ * Transferir um Identificador de um Contato para outro (DO-CON-12, esqueleto do RED):
+ * por ora aceita tudo.
+ */
+export function validarTransferenciaDeIdentificador(_entrada: {
+  readonly origem: Pick<Contato, "id" | "estado" | "nome" | "sobrenome">;
+  readonly destino: Pick<Contato, "id" | "estado">;
+  readonly restantesDaOrigem: readonly Pick<IdentificadorDeContato, "tipo" | "valor">[];
+}): OperationResult<void> {
+  return ok(undefined);
+}

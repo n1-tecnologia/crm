@@ -15,6 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ContatoDetalhado, NovoContato } from "@n1/dominio/crm/contatos";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { encerrar, pool } from "../../persistencia/conexao";
+import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, poolDoDono, prepararBancoCrm, semearCanal, semearMembro } from "../../testes/banco-crm";
 import { criarAcessoAoCrmPg } from "./acesso";
 import { criarServicoDeContatos, FRASES_DE_CONTATOS } from "./contatos";
@@ -394,5 +395,163 @@ describeComBanco("ServicoDeContatos — Postgres local", () => {
     }
     expect(valor(await servico.obter(convidado, c.contato.id)).contato.nome).toBe("Intocável");
     expect((await pool().query("select 1 from plataforma.contatos where workspace_id = $1 and nome = 'Do Convidado'", [ws])).rowCount).toBe(0);
+  });
+
+  describe("transferirIdentificador (3.2.3, DO-CON-12)", () => {
+    let seq = 0;
+    /** Um WhatsApp novo a cada chamada: o par (tipo, valor) é único no Espaço. */
+    const zap = (): string => `+55119880${String(++seq).padStart(5, "0")}`;
+
+    const donoNoBanco = async (tipo: string, valorCanonico: string) =>
+      (
+        await pool().query<{ contato_id: string; principal: boolean }>(
+          "select contato_id, principal from plataforma.contato_identificadores where workspace_id = $1 and tipo = $2 and valor = $3",
+          [ws, tipo, valorCanonico],
+        )
+      ).rows[0];
+
+    it("(a) o número vai para o destino como principal, a origem perde, e o detentor passa a ser o destino", async () => {
+      const numero = zap();
+      const a = await criar({ nome: "Origem A", identificadores: [{ tipo: "whatsapp", valor: numero }] });
+      const b = await criar({ nome: "Destino B", identificadores: [{ tipo: "email", valor: "b-a@transf.test" }] });
+      const identificador = a.identificadores[0]!;
+
+      const ficha = valor(await servico.transferirIdentificador(eu, a.contato.id, identificador.id, { paraContatoId: b.contato.id }));
+
+      expect(ficha.contato.id).toBe(a.contato.id);
+      expect(ficha.identificadores).toEqual([]);
+      expect(await donoNoBanco("whatsapp", identificador.valor)).toEqual({ contato_id: b.contato.id, principal: true });
+      const detentor = await criarRepositorioDeContatosPg(pool()).detentorDoIdentificador(ws, "whatsapp", identificador.valor);
+      expect(detentor?.contatoId).toBe(b.contato.id);
+      expect(valor(await servico.obter(eu, b.contato.id)).identificadores.map((i) => i.id)).toContain(identificador.id);
+    });
+
+    it("(b) o destino que já tem WhatsApp principal recebe o transferido como não principal", async () => {
+      const a = await criar({ nome: "Origem B1", identificadores: [{ tipo: "whatsapp", valor: zap() }] });
+      const b = await criar({ nome: "Destino B1", identificadores: [{ tipo: "whatsapp", valor: zap() }] });
+      const identificador = a.identificadores[0]!;
+
+      valor(await servico.transferirIdentificador(eu, a.contato.id, identificador.id, { paraContatoId: b.contato.id }));
+
+      expect(await donoNoBanco("whatsapp", identificador.valor)).toEqual({ contato_id: b.contato.id, principal: false });
+      const doDestino = valor(await servico.obter(eu, b.contato.id)).identificadores.filter((i) => i.tipo === "whatsapp");
+      expect(doDestino.filter((i) => i.principal).map((i) => i.id)).toEqual([b.identificadores[0]!.id]);
+    });
+
+    it("(c) transferir o principal da origem promove o outro do mesmo tipo, como removerIdentificador", async () => {
+      const a = await criar({
+        nome: "Origem C",
+        identificadores: [
+          { tipo: "whatsapp", valor: zap() },
+          { tipo: "whatsapp", valor: zap() },
+        ],
+      });
+      const b = await criar({ nome: "Destino C" });
+      const [principal, segundo] = a.identificadores;
+      expect([principal!.principal, segundo!.principal]).toEqual([true, false]);
+
+      const ficha = valor(await servico.transferirIdentificador(eu, a.contato.id, principal!.id, { paraContatoId: b.contato.id }));
+
+      expect(ficha.identificadores.map((i) => [i.id, i.principal])).toEqual([[segundo!.id, true]]);
+    });
+
+    it("(d) a Conversa aberta antes da transferência continua no Contato de origem (DO-CON-12)", async () => {
+      const a = await criar({ nome: "Origem D", identificadores: [{ tipo: "whatsapp", valor: zap() }] });
+      const b = await criar({ nome: "Destino D" });
+      const canal = await semearCanal(ws, { nome: "Canal D", tipo: "whatsapp", provedor: "whatsapp-cloud", identificadorExterno: zap() });
+      const conversa = await pool().query<{ id: string }>(
+        `insert into plataforma.conversas (workspace_id, canal_id, contato_id, titulo, criado_por_tipo, criado_por_id)
+         values ($1, $2, $3, 'Antes da transferência', 'system', 'sistema') returning id`,
+        [ws, canal, a.contato.id],
+      );
+
+      valor(await servico.transferirIdentificador(eu, a.contato.id, a.identificadores[0]!.id, { paraContatoId: b.contato.id }));
+
+      const depois = await pool().query<{ contato_id: string }>(
+        "select contato_id from plataforma.conversas where workspace_id = $1 and id = $2",
+        [ws, conversa.rows[0]!.id],
+      );
+      expect(depois.rows[0]?.contato_id).toBe(a.contato.id);
+    });
+
+    it("(e) Identificador que não é da origem é 404 e nada muda", async () => {
+      const a = await criar({ nome: "Origem E" });
+      const b = await criar({ nome: "Dono E", identificadores: [{ tipo: "whatsapp", valor: zap() }] });
+      const c = await criar({ nome: "Destino E" });
+      const recusa = recusado(await servico.transferirIdentificador(eu, a.contato.id, b.identificadores[0]!.id, { paraContatoId: c.contato.id }));
+      expect([recusa.status, recusa.codigo]).toEqual([404, "IDENTIFICADOR_NAO_ENCONTRADO"]);
+      expect((await donoNoBanco("whatsapp", b.identificadores[0]!.valor))?.contato_id).toBe(b.contato.id);
+    });
+
+    it("(f) Contato de outro Espaço, de origem ou de destino, é 404 (T-14-14)", async () => {
+      const a = await criar({ nome: "Origem F", identificadores: [{ tipo: "whatsapp", valor: zap() }] });
+      const deOutro = valor(await servico.criar(membro(outroWs), { nome: "De outro Espaço", identificadores: [{ tipo: "whatsapp", valor: zap() }] }));
+
+      const destinoAlheio = recusado(await servico.transferirIdentificador(eu, a.contato.id, a.identificadores[0]!.id, { paraContatoId: deOutro.contato.id }));
+      expect([destinoAlheio.status, destinoAlheio.codigo, destinoAlheio.campo]).toEqual([404, "CONTATO_NAO_ENCONTRADO", "paraContatoId"]);
+      const origemAlheia = recusado(
+        await servico.transferirIdentificador(eu, deOutro.contato.id, deOutro.identificadores[0]!.id, { paraContatoId: a.contato.id }),
+      );
+      expect([origemAlheia.status, origemAlheia.codigo]).toEqual([404, "CONTATO_NAO_ENCONTRADO"]);
+      expect((await donoNoBanco("whatsapp", a.identificadores[0]!.valor))?.contato_id).toBe(a.contato.id);
+    });
+
+    it("(g) destino mesclado, destino na lixeira e o mesmo Contato são 409 TRANSFERENCIA_RECUSADA no campo paraContatoId", async () => {
+      const a = await criar({ nome: "Origem G", identificadores: [{ tipo: "whatsapp", valor: zap() }] });
+      const mesclado = await criar({ nome: "Destino mesclado" });
+      const naLixeira = await criar({ nome: "Destino na lixeira" });
+      const sobrevivente = await criar({ nome: "Sobrevivente G" });
+      await poolDoDono().query(
+        "update plataforma.contatos set estado = 'mesclado', mesclado_em_id = $3, mesclado_em = now() where workspace_id = $1 and id = $2",
+        [ws, mesclado.contato.id, sobrevivente.contato.id],
+      );
+      await pool().query("update plataforma.contatos set estado = 'na_lixeira' where workspace_id = $1 and id = $2", [ws, naLixeira.contato.id]);
+      const identificadorId = a.identificadores[0]!.id;
+
+      for (const destino of [mesclado.contato.id, naLixeira.contato.id, a.contato.id]) {
+        const recusa = recusado(await servico.transferirIdentificador(eu, a.contato.id, identificadorId, { paraContatoId: destino }));
+        expect([recusa.status, recusa.codigo, recusa.campo]).toEqual([409, "TRANSFERENCIA_RECUSADA", "paraContatoId"]);
+      }
+      expect((await donoNoBanco("whatsapp", a.identificadores[0]!.valor))?.contato_id).toBe(a.contato.id);
+    });
+
+    it("(h) a origem que ficaria sem nome nem Identificador é 409 TRANSFERENCIA_RECUSADA e o número fica onde estava (INV-CON-01)", async () => {
+      const a = await criar({ identificadores: [{ tipo: "whatsapp", valor: zap() }] });
+      const b = await criar({ nome: "Destino H" });
+      const recusa = recusado(await servico.transferirIdentificador(eu, a.contato.id, a.identificadores[0]!.id, { paraContatoId: b.contato.id }));
+      expect([recusa.status, recusa.codigo, recusa.campo]).toEqual([409, "TRANSFERENCIA_RECUSADA", "nome"]);
+      expect((await donoNoBanco("whatsapp", a.identificadores[0]!.valor))?.contato_id).toBe(a.contato.id);
+    });
+
+    it("(i) a origem mesclada é 409 CONTATO_MESCLADO (RN-CON-14) e o destino cheio recusa", async () => {
+      const absorvido = await criar({ nome: "Origem mesclada", identificadores: [{ tipo: "whatsapp", valor: zap() }] });
+      const sobrevivente = await criar({ nome: "Sobrevivente I" });
+      await poolDoDono().query(
+        "update plataforma.contatos set estado = 'mesclado', mesclado_em_id = $3, mesclado_em = now() where workspace_id = $1 and id = $2",
+        [ws, absorvido.contato.id, sobrevivente.contato.id],
+      );
+      const recusa = recusado(
+        await servico.transferirIdentificador(eu, absorvido.contato.id, absorvido.identificadores[0]!.id, { paraContatoId: sobrevivente.contato.id }),
+      );
+      expect([recusa.status, recusa.codigo]).toEqual([409, "CONTATO_MESCLADO"]);
+
+      const a = await criar({ nome: "Origem cheio", identificadores: [{ tipo: "whatsapp", valor: zap() }] });
+      const cheio = await criar({
+        nome: "Destino cheio",
+        identificadores: Array.from({ length: 20 }, (_, i) => ({ tipo: "email" as const, valor: `cheio${i}@transf.test` })),
+      });
+      const demais = recusado(await servico.transferirIdentificador(eu, a.contato.id, a.identificadores[0]!.id, { paraContatoId: cheio.contato.id }));
+      expect([demais.status, demais.codigo, demais.campo]).toEqual([409, "TRANSFERENCIA_RECUSADA", "paraContatoId"]);
+    });
+
+    it("(j) Convidado recebe 403 e nada muda", async () => {
+      const a = await criar({ nome: "Origem J", identificadores: [{ tipo: "whatsapp", valor: zap() }] });
+      const b = await criar({ nome: "Destino J" });
+      const recusa = recusado(
+        await servico.transferirIdentificador(membro(ws, "mem_convidado"), a.contato.id, a.identificadores[0]!.id, { paraContatoId: b.contato.id }),
+      );
+      expect([recusa.status, recusa.codigo]).toEqual([403, "PERMISSAO"]);
+      expect((await donoNoBanco("whatsapp", a.identificadores[0]!.valor))?.contato_id).toBe(a.contato.id);
+    });
   });
 });
