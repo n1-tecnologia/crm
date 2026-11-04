@@ -18,7 +18,9 @@
  * sem consentimento mora em `ServicoDeMensagens.enviar`. `mesclagem` (14-09) é o
  * gesto que junta dois Contatos nas duas bases, `POST /contatos/:id/mesclar`.
  * `sucessao` (14-10) é só a prévia, `GET /membros/:id/sucessao-no-crm`: a passagem
- * ao Sucessor mora em `POST /operacoes/removeMember`.
+ * ao Sucessor mora em `POST /operacoes/removeMember`. `tarefasConversacionais`
+ * (14-13) é o gesto que cria a Tarefa em `registros` e abre a Conversa nas
+ * tabelas, `POST /tarefas-conversacionais`, e a leitura em lote do cartão.
  */
 
 import type { FastifyInstance } from "fastify";
@@ -37,6 +39,7 @@ import { criarServicoDeMesclagem, type ServicoDeMesclagem } from "../../servicos
 import { criarServicoDeNegocios, type ServicoDeNegocios } from "../../servicos/crm/negocios";
 import { criarServicoDeNotas, type ServicoDeNotas } from "../../servicos/crm/notas";
 import { criarServicoDeSucessao, type ServicoDeSucessao } from "../../servicos/crm/sucessao";
+import { criarServicoDeTarefasConversacionais, type ServicoDeTarefasConversacionais } from "../../servicos/crm/tarefas-conversacionais";
 import { rotasDeCanais } from "./canais";
 import { rotasDeConsentimentos } from "./consentimentos";
 import { rotasDeContatos } from "./contatos";
@@ -48,6 +51,7 @@ import { rotasDeMesclagem } from "./mesclagem";
 import { rotasDeNegocios } from "./negocios";
 import { rotasDeNotas } from "./notas";
 import { rotasDeSucessao } from "./sucessao";
+import { rotasDeTarefasConversacionais } from "./tarefas-conversacionais";
 
 export interface OpcoesDeCrm {
   /** Padrão: o `pool()` do processo. Só é chamado quando uma requisição chega, nunca na montagem. */
@@ -74,6 +78,8 @@ export interface OpcoesDeCrm {
   readonly mesclagem?: ServicoDeMesclagem;
   /** Injeção só para teste: troca o serviço real da prévia de sucessão por um falso, sem banco. */
   readonly sucessao?: ServicoDeSucessao;
+  /** Injeção só para teste: troca o serviço real da Tarefa conversacional por um falso, sem banco. */
+  readonly tarefasConversacionais?: ServicoDeTarefasConversacionais;
   /** Padrão: lê Papel e Membro de `plataforma.registros`. Injeção para teste sem banco. */
   readonly acesso?: AcessoAoCrm;
 }
@@ -106,4 +112,6 @@ export async function rotasDeCrm(app: FastifyInstance, opcoes: OpcoesDeCrm = {})
   await app.register(rotasDeMesclagem, { servico: mesclagem });
   const sucessao = opcoes.sucessao ?? criarServicoDeSucessao({ pool: obterPool });
   await app.register(rotasDeSucessao, { servico: sucessao });
+  const tarefasConversacionais = opcoes.tarefasConversacionais ?? criarServicoDeTarefasConversacionais({ pool: obterPool, acesso });
+  await app.register(rotasDeTarefasConversacionais, { servico: tarefasConversacionais });
 }
