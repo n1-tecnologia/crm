@@ -25,7 +25,7 @@ import { fail, ok, type OperationResult } from "../state";
 import type { TipoComProvedor } from "../provedores-de-canal";
 import type { Canal } from "./canais";
 import { LIMITES_CRM } from "./comum";
-import type { TipoIdentificadorContato } from "./contatos";
+import type { Contato, TipoIdentificadorContato } from "./contatos";
 
 export const SITUACOES_DA_CONVERSA = ["aberta", "pendente", "resolvida"] as const satisfies readonly SituacaoDaConversa[];
 export type SituacaoDaConversa = "aberta" | "pendente" | "resolvida";
@@ -144,4 +144,39 @@ export function tituloDaConversa(
     .filter((parte) => parte !== "")
     .join(" ");
   return nome === "" ? identificadorExibido : nome;
+}
+
+/**
+ * Mover a Conversa para outro Contato (3.2.5): o Canal e as Mensagens ficam
+ * (INV-CXE-04); só o Contato muda. Uma Conversa na lixeira está parada
+ * (INV-CXE-13) e o destino é sempre um Contato `ativo`: arquivado, na lixeira
+ * e mesclado não recebem Conversa. A colisão com a Conversa aberta do destino
+ * não é decidida aqui: depende de ler o banco e fica com o serviço.
+ */
+export function validarMover(
+  conversa: Pick<Conversa, "estado" | "contatoId">,
+  destino: Pick<Contato, "id" | "estado">,
+): OperationResult<void> {
+  if (conversa.estado === "na_lixeira") return fail("Uma Conversa na lixeira não muda de Contato.");
+  if (destino.id === conversa.contatoId) return fail("A Conversa já é deste Contato.", "contatoId");
+  if (destino.estado !== "ativo") return fail("Escolha um Contato ativo.", "contatoId");
+  return ok(undefined);
+}
+
+/**
+ * A lista de Participantes depois de mover: o Participante do tipo contato que
+ * apontava para o Contato de origem passa a apontar para o de destino, com
+ * `principal` e as datas intactos. Membros e Agentes não se mexem. Devolve uma
+ * lista nova; a de entrada não é alterada.
+ */
+export function participantesComContato(
+  participantes: readonly ParticipanteDaConversa[],
+  deContatoId: string,
+  paraContatoId: string,
+): ParticipanteDaConversa[] {
+  return participantes.map((participante) =>
+    participante.sujeito.tipo === "contato" && participante.sujeito.id === deContatoId
+      ? { ...participante, sujeito: { tipo: "contato", id: paraContatoId } }
+      : participante,
+  );
 }

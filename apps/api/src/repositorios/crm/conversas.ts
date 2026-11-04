@@ -44,6 +44,13 @@ export interface RepositorioDeConversas {
   listar(workspaceId: string, filtro: FiltroDeConversas): Promise<Pagina<Conversa>>;
   /** `resolvida` fecha o Adiamento; `aberta` conta uma reabertura. Outra situação não é gravada por aqui. */
   definirSituacao(workspaceId: string, id: string, situacao: SituacaoDaConversa): Promise<Conversa | undefined>;
+  /** Só o Contato e a lista de Participantes mudam: o Canal e as Mensagens ficam (INV-CXE-04). */
+  trocarContato(
+    workspaceId: string,
+    id: string,
+    contatoId: string,
+    participantes: readonly ParticipanteDaConversa[],
+  ): Promise<Conversa | undefined>;
 }
 
 const COLUNAS_CONVERSA = `id, canal_id, contato_id, titulo, titulo_editado, situacao, estado, fila_id,
@@ -184,6 +191,17 @@ export function criarRepositorioDeConversasPg(cliente: Pool | PoolClient): Repos
               where workspace_id = $1 and id = $2
               returning ${COLUNAS_CONVERSA}`;
       const { rows } = await cliente.query<LinhaDoBancoDeConversa>(sql, situacao === "resolvida" ? [workspaceId, id] : [workspaceId, id, situacao]);
+      return rows[0] ? linhaParaConversa(rows[0]) : undefined;
+    },
+
+    async trocarContato(workspaceId, id, contatoId, participantes) {
+      const { rows } = await cliente.query<LinhaDoBancoDeConversa>(
+        `update plataforma.conversas
+            set contato_id = $3, participantes = $4::jsonb
+          where workspace_id = $1 and id = $2
+          returning ${COLUNAS_CONVERSA}`,
+        [workspaceId, id, contatoId, JSON.stringify(participantes)],
+      );
       return rows[0] ? linhaParaConversa(rows[0]) : undefined;
     },
   };

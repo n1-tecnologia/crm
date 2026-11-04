@@ -6,6 +6,7 @@
  *   POST /conversas                 abre a Conversa COM a primeira Mensagem, numa transação (201)
  *   POST /conversas/:id/resolver    `aberta`/`pendente` → `resolvida`
  *   POST /conversas/:id/reabrir     `resolvida` → `aberta`, contando uma reabertura
+ *   POST /conversas/:id/mover       troca o Contato da Conversa (3.2.5); `resolverExistente` resolve a que ocupa o par
  *
  * Sem `DELETE` nesta fase. As duas ações não têm corpo e por isso não declaram
  * `body` (o Fastify 5 recusa `content-type: json` sem corpo; ver `canais.ts`).
@@ -50,6 +51,8 @@ export const NOVA_CONVERSA = z
   })
   .strict();
 
+export const MOVER_CONVERSA = z.object({ contatoId: ID, resolverExistente: z.boolean().optional() }).strict();
+
 export async function rotasDeConversas(app: FastifyInstance, opcoes: { readonly servico: ServicoDeConversas }): Promise<void> {
   const rotas = app.withTypeProvider<ZodTypeProvider>();
   const { servico } = opcoes;
@@ -81,5 +84,15 @@ export async function rotasDeConversas(app: FastifyInstance, opcoes: { readonly 
 
   rotas.post("/conversas/:id/reabrir", { schema: { params: PARAMS_ID } }, async (request, reply) =>
     responder(reply, await servico.reabrir(request.membro, request.params.id)),
+  );
+
+  rotas.post("/conversas/:id/mover", { schema: { params: PARAMS_ID, body: MOVER_CONVERSA } }, async (request, reply) =>
+    responder(
+      reply,
+      await servico.mover(request.membro, request.params.id, {
+        contatoId: request.body.contatoId,
+        resolverExistente: request.body.resolverExistente ?? false,
+      }),
+    ),
   );
 }

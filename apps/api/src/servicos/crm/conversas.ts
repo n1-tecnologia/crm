@@ -31,9 +31,11 @@ import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import type { Pagina } from "@n1/dominio/crm/comum";
 import {
+  participantesComContato,
   proximaSituacao,
   TIPO_DE_IDENTIFICADOR_DO_CANAL,
   tituloDaConversa,
+  validarMover,
   validarNovaConversa,
   type AcaoDeSituacao,
   type Conversa,
@@ -62,6 +64,12 @@ export interface ServicoDeConversas {
   ): Promise<ResultadoCrm<ConversaDetalhada & { readonly primeiraMensagem: Mensagem }>>;
   resolver(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<ConversaDetalhada>>;
   reabrir(membro: MembroDaSessao, id: string): Promise<ResultadoCrm<ConversaDetalhada>>;
+  /** Troca o Contato da Conversa (3.2.5); o Canal e as Mensagens ficam. */
+  mover(
+    membro: MembroDaSessao,
+    id: string,
+    entrada: { readonly contatoId: string; readonly resolverExistente?: boolean },
+  ): Promise<ResultadoCrm<ConversaDetalhada>>;
 }
 
 const FRASE_JA_ABERTA = "Este Contato já tem uma Conversa aberta neste Canal.";
@@ -223,6 +231,69 @@ export function criarServicoDeConversas(deps: { readonly pool: () => Pool; reado
           });
 
           return sucesso({ conversa, canal: resumoDoCanal(canal), primeiraMensagem });
+        },
+        FRASES,
+      );
+    },
+
+    async mover(membro, id, entrada) {
+      const negado = await exigir(deps.acesso, membro, "mover", "conversa");
+      if (negado) return { ok: false, ...negado };
+
+      return comTransacao(
+        deps.pool,
+        async (cliente: PoolClient) => {
+          const conversas = criarRepositorioDeConversasPg(cliente);
+          const contatos = criarRepositorioDeContatosPg(cliente);
+
+          // O Contato vem ANTES da Conversa na ordem das travas (uma mesclagem
+          // concorrente trava Contatos e depois move Conversas): lê-se a Conversa
+          // sem trava só para saber a origem, trava-se origem e destino em ordem
+          // de id, e então a Conversa, conferindo que a origem não mudou.
+          const lida = await conversas.obter(membro.workspaceId, id);
+          if (!lida) return conversaNaoEncontrada();
+          const [primeiro, segundo] = [lida.contatoId, entrada.contatoId].sort();
+          const travados = new Map<string, Awaited<ReturnType<typeof contatos.obter>>>();
+          for (const contatoId of new Set([primeiro!, segundo!])) {
+            travados.set(contatoId, await contatos.obter(membro.workspaceId, contatoId, { travar: true }));
+          }
+          const destino = travados.get(entrada.contatoId);
+          if (!destino) return contatoNaoEncontrado();
+
+          const atual = await conversas.obter(membro.workspaceId, id, { travar: true });
+          if (!atual) return conversaNaoEncontrada();
+          if (atual.contatoId !== lida.contatoId) {
+            return recusa<never>(409, "A Conversa mudou de Contato enquanto você a movia. Tente de novo.", { codigo: "CONFLITO" });
+          }
+
+          const valida = validarMover(atual, destino);
+          if (!valida.ok) {
+            return recusa<never>(409, valida.error, {
+              codigo: "MOVER_INVALIDO",
+              ...(valida.field !== undefined ? { campo: valida.field } : {}),
+            });
+          }
+
+          // O índice único só cobre aberta e pendente: mover uma resolvida nunca colide.
+          if (atual.situacao !== "resolvida") {
+            const ocupante = await conversas.abertaDoPar(membro.workspaceId, destino.id, atual.canalId);
+            if (ocupante && ocupante.id !== atual.id) {
+              if (entrada.resolverExistente !== true) return jaAberta(ocupante);
+              const travada = await conversas.obter(membro.workspaceId, ocupante.id, { travar: true });
+              if (travada) await conversas.definirSituacao(membro.workspaceId, travada.id, "resolvida");
+            }
+          }
+
+          const movida = await conversas.trocarContato(
+            membro.workspaceId,
+            id,
+            destino.id,
+            participantesComContato(atual.participantes, atual.contatoId, destino.id),
+          );
+          if (!movida) return conversaNaoEncontrada();
+          const canal = await criarRepositorioDeCanaisPg(cliente).obter(membro.workspaceId, movida.canalId);
+          if (!canal) return canalNaoEncontrado();
+          return sucesso({ conversa: movida, canal: resumoDoCanal(canal) });
         },
         FRASES,
       );
