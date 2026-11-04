@@ -53,8 +53,8 @@ fora de `POST /operacoes/:nome` e de `GET /estado`. As telas de
 (`src/dados/crm/`), enquanto o resto do app continua hidratando o Espaço
 inteiro por `GET /estado`. O modelo antigo do CRM em inglês (`Contact`,
 `Company`, `Deal`, `Pipeline`) continua vivo ao lado, porque Caixa de
-Entrada e Conversas ainda dependem dele: os dois convivem até a fase de
-unificação. Antes de aplicar a 007 num banco, `npm run migrar -w @n1/api --
+Entrada e Conversas ainda dependem dele: os dois convivem até a Fase 15,
+a de unificação. Antes de aplicar a 007 num banco, `npm run migrar -w @n1/api --
 --seco` lista o que `migrar` faria sem escrever nada.
 
 A partir da Fase 8, o que faltava da Caixa de Entrada ganha tabelas próprias:
@@ -72,10 +72,45 @@ real; o popup de adicionar Canal das Listas é o caminho legado e segue
 nascendo `conectada` em `plataforma.registros`. O chat continua no modelo
 antigo e enxerga os Canais da tabela por uma projeção — em `GET /estado` e em
 `executar()`, nunca em `hidratar()` (ver `apps/api/src/persistencia/CONTEXT.md`)
-— até a fase de unificação. O fio da Conversa tem uma aba por Canal e
-"Responder por"; o seed continua, marcado como demo. A 008 já está aplicada no
-banco da plataforma e é imutável: qualquer ajuste de schema daqui em diante é
-a `009`.
+— até a Fase 15, que troca as telas para o modelo novo. O fio da Conversa tem
+uma aba por Canal e "Responder por"; o seed continua, marcado como demo. A 008
+já está aplicada no banco da plataforma e é imutável: qualquer ajuste de
+schema daqui em diante é uma migração nova, depois da última aplicada.
+
+A partir da Fase 14, o modelo novo do CRM ganha o que só o antigo tinha, sem
+trocar nenhuma tela ainda. A `011` (`apps/api/migracoes/011-crm-o-que-faltava.sql`)
+acrescenta o estado `mesclado` ao Contato, as tabelas `contato_consentimentos`
+e `contato_notas` (só inserção), `conversa_marcacoes` (estrela e leitura por
+Membro), `na_lixeira_em` na Conversa e, vazias, `crm_de_para` e
+`registros_crm_antigo`, que o script da Fase 15 enche. Ela só existe em bancos
+locais: o dono a aplica em produção no deploy da Fase 15 (backup manual antes,
+`npm run migrar -w @n1/api -- --seco`, depois `npm run banco:conceder`), e daí
+em diante é imutável como as outras. Um gesto que grava no CRM e em
+`plataforma.registros` no mesmo commit passa por `executarGestoMisto`, que lê
+o CRM dentro da transação do Espaço (`lerDoCrm`) e grava nas tabelas pelo
+`aoConfirmar` de `executar()` (ver `apps/api/src/persistencia/CONTEXT.md`).
+Sobre ele nasceram as rotas por recurso: notas e consentimentos do Contato,
+`POST /contatos/:id/mesclar`, transferir Identificador, mover, atribuir, lixeira,
+restaurar e marcar a Conversa, `GET /membros/:id/sucessao-no-crm` (a remoção de
+um Membro passa os registros do CRM ao Sucessor no mesmo commit e libera as
+Conversas dele) e `/tarefas-conversacionais`. A Tarefa conversacional passa a
+nascer nas tabelas: criá-la abre a Conversa em `plataforma.conversas`, trocar o
+Canal e ligar ou criar o Negócio vão por rota, e o cartão, a tabela e a ficha
+leem Contato, Canal, última Mensagem e Negócio de um resumo em lote
+(`POST /tarefas-conversacionais/resumo`), não do estado antigo. A única tela
+nova da fase é a ficha de Contato (mesclar, transferir, notas e
+consentimentos).
+
+O deploy da Fase 14 é cortado em dois (decisão de corte de uma vez, sem ponte
+entre as duas bases): os planos 14-01 a 14-14 são aditivos e podem subir; os
+14-15 a 14-17, que trocam os chamadores da web e tiram as quatro operações
+antigas da Tarefa conversacional de `POST /operacoes/:nome`, só sobem na
+Fase 15, junto com o script de migração dos dados. Até lá, o fio da Conversa e
+o layout de três colunas da ficha da Tarefa ainda leem o modelo antigo. Grupo
+e Flow ficam no modelo antigo até as Sessões 6 e 7: o modelo antigo não sai
+por inteiro na Fase 15. A fronteira exata, as suposições adotadas, o que o
+corte tira da tela e os itens abertos estão em
+`.planning/phases/14-unifica-o-do-crm-o-modelo-novo-ganha-o-que-falta-e-a-tarefa/14-PROVAS.md`.
 
 ## Comandos
 
