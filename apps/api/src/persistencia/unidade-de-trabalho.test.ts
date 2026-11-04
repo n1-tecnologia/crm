@@ -4,6 +4,10 @@
  * leva o prazo do lado do servidor, e a conexão que falhou sai do pool em vez
  * de servir à próxima requisição. Sem banco: pool, repositório e outbox são
  * falsos — o que se prova é o protocolo com a conexão, não o SQL de negócio.
+ *
+ * Desde a Fase 13 o regime travado fala com o banco em duas MENSAGENS de várias
+ * instruções (a entrada: begin, trava e leitura; a saída: update da revisão e
+ * commit), então o pool falso devolve um resultado por instrução.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fail, ok } from "@n1/dominio/state";
@@ -15,6 +19,10 @@ const falso = vi.hoisted(() => ({
   release: [] as unknown[],
   /** Quantas linhas o `update plataforma.workspaces` devolve: 0 simula a revisão que mudou (conflito). */
   linhasDoUpdate: 1,
+  /** Quantas linhas a trava do lote de entrada devolve: 0 simula o Espaço que não existe. */
+  linhasDaTrava: 1,
+  /** A guarda da tabela de Canais já confirmou neste processo: os Canais vão dentro do lote de entrada. */
+  canaisConfirmados: false,
 }));
 
 vi.mock("./conexao", async (importOriginal) => ({
@@ -25,8 +33,17 @@ vi.mock("./conexao", async (importOriginal) => ({
         falso.consultas.push(sql);
         const erro = falso.erroEm(sql);
         if (erro) throw erro;
-        // 12-04 — o regime travado (o padrão) toma a trava do Espaço antes de hidratar.
-        if (sql.startsWith("select revisao from plataforma.workspaces")) return { rowCount: 1, rows: [{ revisao: "7" }] };
+        // Fase 13 — o lote de entrada do travado (begin, prazos, trava, leitura e, com a guarda confirmada, Canais):
+        // um resultado por instrução, e a trava, a leitura e os Canais são sempre os últimos.
+        if (sql.startsWith("begin") && sql.includes("for update")) {
+          const vazio = { rowCount: null, rows: [] };
+          const trava = { rowCount: falso.linhasDaTrava, rows: falso.linhasDaTrava ? [{ revisao: "7" }] : [] };
+          return [vazio, vazio, vazio, vazio, trava, { rowCount: 0, rows: [] }, ...(sql.includes("from plataforma.canais") ? [{ rowCount: 0, rows: [] }] : [])];
+        }
+        // O lote de saída: o update da revisão, as escritas e o commit na mesma mensagem.
+        if (sql.startsWith("update plataforma.workspaces") && sql.endsWith("commit")) {
+          return [{ rowCount: 1, rows: [{ revisao: "8" }] }, { rowCount: null, rows: [] }];
+        }
         if (sql.startsWith("update plataforma.workspaces")) {
           return falso.linhasDoUpdate === 0 ? { rowCount: 0, rows: [] } : { rowCount: 1, rows: [{ revisao: "8" }] };
         }
@@ -38,7 +55,15 @@ vi.mock("./conexao", async (importOriginal) => ({
 }));
 vi.mock("./repositorio", () => ({
   hidratar: async () => ({ state: { automationExecutions: [] }, revisao: 7 }),
+  sqlDeHidratar: (espaco: string) => `<sql de hidratar ${espaco}>`,
+  estadoDasLinhas: () => ({ state: { automationExecutions: [] }, revisao: 7 }),
   gravar: async () => ({}),
+  planejarGravacao: () => ({ upserts: [], removidos: [], diferenca: { gravados: [], removidos: [] } }),
+  sqlsDoPlano: () => [],
+}));
+vi.mock("./canais-projetados", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./canais-projetados")>()),
+  tabelaDeCanaisConfirmada: () => falso.canaisConfirmados,
 }));
 vi.mock("./outbox", () => ({ gravarEventos: async () => undefined }));
 vi.mock("./eventos-de-canal", () => ({ execucoesNovas: () => [], eventosDeNotificacaoPorCanal: () => [] }));
@@ -48,6 +73,8 @@ beforeEach(() => {
   falso.release.length = 0;
   falso.erroEm = () => undefined;
   falso.linhasDoUpdate = 1;
+  falso.linhasDaTrava = 1;
+  falso.canaisConfirmados = false;
 });
 
 describe("Unidade de Trabalho — conexão que cai no meio", () => {
@@ -60,8 +87,9 @@ describe("Unidade de Trabalho — conexão que cai no meio", () => {
   it("sucesso: abre com o prazo, confirma, e a conexão volta ao pool", async () => {
     const r = await executar("ws_x", () => ok("feito"));
     expect(r.ok).toBe(true);
-    expect(falso.consultas[0]).toBe(inicioDaTransacao());
-    expect(falso.consultas.at(-1)).toBe("commit");
+    // A mensagem de entrada ABRE com o begin e os prazos de sempre; a de saída FECHA com o commit.
+    expect(falso.consultas[0]!.startsWith(inicioDaTransacao())).toBe(true);
+    expect(falso.consultas.at(-1)!.endsWith("commit")).toBe(true);
     expect(falso.release).toEqual([false]);
   });
 
@@ -119,6 +147,27 @@ describe("medição por etapa (D-02)", () => {
     // As fakes não têm `original` e `gravar` devolve `{}`: a contagem tem padrão 0.
     expect(m.linhasLidas).toBe(0);
     expect(m.linhasGravadas).toBe(0);
+    // Entrada, a guarda dos Canais (ainda não confirmada neste processo) e saída.
+    expect(m.idasEVoltas).toBe(3);
+  });
+
+  it("com a guarda dos Canais já confirmada, os Canais vão dentro do lote de entrada: duas idas ao banco", async () => {
+    falso.canaisConfirmados = true;
+    const { medicoes, aoMedir } = coletor();
+    await executar("ws_x", () => ok("feito"), { aoMedir });
+    expect(medicoes[0]!.idasEVoltas).toBe(2);
+    expect(falso.consultas).toHaveLength(2);
+    expect(falso.consultas[0]).toContain("from plataforma.canais");
+    expect(falso.consultas.some((sql) => sql.includes("to_regclass"))).toBe(false);
+  });
+
+  it("com aoConfirmar o fim volta a ser instrução por instrução: update, commit, e uma ida a mais", async () => {
+    falso.canaisConfirmados = true;
+    const { medicoes, aoMedir } = coletor();
+    await executar("ws_x", () => ok("feito"), { aoMedir, aoConfirmar: async () => undefined });
+    expect(medicoes[0]!.idasEVoltas).toBe(3);
+    expect(falso.consultas.at(-1)).toBe("commit");
+    expect(falso.consultas.at(-2)!.startsWith("update plataforma.workspaces")).toBe(true);
   });
 
   it("recusa do domínio: desfecho recusou, e nem o update nem o gravar rodaram", async () => {
@@ -144,8 +193,9 @@ describe("medição por etapa (D-02)", () => {
   });
 
   it("regime travado, conflito: o 55P03 na trava dá UMA tentativa, desfecho conflito, sem repetir", async () => {
+    // A trava agora vai dentro da mensagem de entrada: é ela que o servidor recusa com 55P03.
     falso.erroEm = (sql) =>
-      sql.startsWith("select revisao from plataforma.workspaces")
+      sql.startsWith("begin") && sql.includes("for update")
         ? Object.assign(new Error("canceling statement due to lock timeout"), { code: "55P03" })
         : undefined;
     const { medicoes, aoMedir } = coletor();
@@ -180,6 +230,6 @@ describe("medição por etapa (D-02)", () => {
       },
     });
     expect(r.ok).toBe(true);
-    expect(falso.consultas.at(-1)).toBe("commit");
+    expect(falso.consultas.at(-1)!.endsWith("commit")).toBe(true);
   });
 });

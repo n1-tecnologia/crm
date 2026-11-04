@@ -17,6 +17,10 @@
  *
  * Arquivo novo (CON-05), no molde de `unidade-de-trabalho.test.ts`: pool,
  * repositório e outbox são falsos. Sem banco.
+ *
+ * Fase 13: a trava do regime `travado` deixou de ser uma instrução à parte. Vai
+ * dentro da mensagem de ENTRADA (begin, prazos, trava e leitura numa ida só), e
+ * a ORDEM das instruções dentro dela é o que o texto da mensagem prova.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ok } from "@n1/dominio/state";
@@ -30,6 +34,8 @@ const falso = vi.hoisted(() => ({
   release: [] as unknown[],
   /** Quantas linhas o `select … for update` do regime travado devolve: 0 simula o Espaço que não existe. */
   linhasDaTrava: 1,
+  /** A guarda da tabela de Canais já confirmou neste processo: os Canais vão dentro do lote de entrada. */
+  canaisConfirmados: false,
 }));
 
 vi.mock("./conexao", async (importOriginal) => ({
@@ -40,7 +46,16 @@ vi.mock("./conexao", async (importOriginal) => ({
         falso.consultas.push(sql);
         const erro = falso.erroEm(sql);
         if (erro) throw erro;
-        if (sql.startsWith("select revisao from plataforma.workspaces")) return { rowCount: falso.linhasDaTrava, rows: falso.linhasDaTrava ? [{ revisao: "7" }] : [] };
+        // O lote de entrada do travado: um resultado por instrução; a trava, a leitura e os Canais são sempre os últimos.
+        if (sql.startsWith("begin") && sql.includes("for update")) {
+          const vazio = { rowCount: null, rows: [] };
+          const trava = { rowCount: falso.linhasDaTrava, rows: falso.linhasDaTrava ? [{ revisao: "7" }] : [] };
+          return [vazio, vazio, vazio, vazio, trava, { rowCount: 0, rows: [] }, ...(sql.includes("from plataforma.canais") ? [{ rowCount: 0, rows: [] }] : [])];
+        }
+        // O lote de saída: o update da revisão e o commit na mesma mensagem.
+        if (sql.startsWith("update plataforma.workspaces") && sql.endsWith("commit")) {
+          return [{ rowCount: 1, rows: [{ revisao: "8" }] }, { rowCount: null, rows: [] }];
+        }
         if (sql.startsWith("update plataforma.workspaces")) return { rowCount: 1, rows: [{ revisao: "8" }] };
         return { rowCount: 0, rows: [] };
       },
@@ -49,12 +64,23 @@ vi.mock("./conexao", async (importOriginal) => ({
   }),
 }));
 vi.mock("./repositorio", () => ({
-  // O marcador entra na mesma lista das consultas: prova a ORDEM (a trava vem antes de hidratar).
+  // O marcador entra na mesma lista das consultas: prova que o estado só é montado depois da mensagem de entrada.
   hidratar: async () => {
     falso.consultas.push(MARCA_DE_HIDRATAR);
     return { state: { automationExecutions: [] }, revisao: 7 };
   },
+  sqlDeHidratar: (espaco: string) => `<sql de hidratar ${espaco}>`,
+  estadoDasLinhas: () => {
+    falso.consultas.push(MARCA_DE_HIDRATAR);
+    return { state: { automationExecutions: [] }, revisao: 7 };
+  },
   gravar: async () => ({}),
+  planejarGravacao: () => ({ upserts: [], removidos: [], diferenca: { gravados: [], removidos: [] } }),
+  sqlsDoPlano: () => [],
+}));
+vi.mock("./canais-projetados", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./canais-projetados")>()),
+  tabelaDeCanaisConfirmada: () => falso.canaisConfirmados,
 }));
 vi.mock("./outbox", () => ({ gravarEventos: async () => undefined }));
 vi.mock("./eventos-de-canal", () => ({ execucoesNovas: () => [], eventosDeNotificacaoPorCanal: () => [] }));
@@ -64,6 +90,7 @@ beforeEach(() => {
   falso.release.length = 0;
   falso.erroEm = () => undefined;
   falso.linhasDaTrava = 1;
+  falso.canaisConfirmados = false;
 });
 
 /** Um erro do `pg` com SQLSTATE, como o driver entrega (`erro.code`). */
@@ -120,9 +147,11 @@ describe("(k) o begin leva os três prazos do servidor, abaixo do query_timeout"
   });
 });
 
-const NA_TRAVA = (sql: string) => sql.startsWith("select revisao from plataforma.workspaces");
+/** A mensagem de entrada do regime travado: é onde a trava mora. */
+const NA_TRAVA = (sql: string) => sql.startsWith("begin") && sql.includes("for update");
 const NA_REVISAO = (sql: string) => sql.startsWith("update plataforma.workspaces");
-const SQL_DA_TRAVA = "select revisao from plataforma.workspaces where workspace_id = $1 for update";
+/** O lote de saída: o `update` da revisão e o `commit` na mesma mensagem. */
+const NA_SAIDA = (sql: string) => NA_REVISAO(sql) && sql.endsWith("commit");
 const CONFLITO = { ok: false, conflito: true, error: "Outra alteração entrou antes desta. Tente de novo." };
 
 describe("(l) a trava esgotada no regime otimista (as importações longas, D-10): o update da revisão é a trava", () => {
@@ -172,57 +201,84 @@ describe("(l) a trava esgotada no regime otimista (as importações longas, D-10
 });
 
 describe("(m) o regime travado (o padrão, D-09): a trava no começo, uma tentativa só", () => {
-  it("depois do begin vem o select … for update como instrução própria, e só então hidratar; o update não confere a revisão", async () => {
+  it("a entrada vai numa ida só — begin, prazos, trava e leitura, nessa ordem —, e a saída noutra: update sem conferir a revisão, e o commit", async () => {
     const r = await executar("ws_x", () => ok("feito"));
     expect(r.ok).toBe(true);
-    expect(falso.consultas[0]).toBe(inicioDaTransacaoTravada());
-    expect(falso.consultas[1]).toBe(SQL_DA_TRAVA);
-    expect(falso.consultas.indexOf(MARCA_DE_HIDRATAR)).toBe(2);
-    const update = falso.consultas.find(NA_REVISAO);
-    expect(update).toBeDefined();
-    expect(update).not.toContain("and revisao");
-    expect(falso.consultas.at(-1)).toBe("commit");
+
+    const entrada = falso.consultas[0]!;
+    expect(entrada.startsWith(inicioDaTransacaoTravada())).toBe(true);
+    const aposOsPrazos = entrada.indexOf("lock_timeout");
+    const naTrava = entrada.indexOf("for update");
+    const naLeitura = entrada.indexOf("<sql de hidratar");
+    // A ORDEM é o que importa: em READ COMMITTED a leitura só enxerga o que o escritor anterior confirmou
+    // se COMEÇAR depois de a trava ser tomada. Na mesma mensagem, mas depois.
+    expect(aposOsPrazos).toBeGreaterThan(-1);
+    expect(naTrava).toBeGreaterThan(aposOsPrazos);
+    expect(naLeitura).toBeGreaterThan(naTrava);
+    // O Espaço vai como literal entre dólares (a mensagem de várias instruções não leva parâmetros).
+    expect(entrada).toContain("workspace_id = $n1_");
+    expect(entrada).toContain("<sql de hidratar $n1_");
+    // O estado só é montado depois que a mensagem de entrada voltou.
+    expect(falso.consultas.indexOf(MARCA_DE_HIDRATAR)).toBe(1);
+
+    const saida = falso.consultas.at(-1)!;
+    expect(NA_SAIDA(saida)).toBe(true);
+    expect(saida).not.toContain("and revisao");
+    expect(falso.consultas.filter((sql) => sql === "rollback")).toHaveLength(0);
     expect(falso.release).toEqual([false]);
   });
 
-  it("55P03 na trava: conflito com a mensagem de sempre, UM rollback, a conexão volta ao pool, sem commit e sem hidratar", async () => {
+  it("55P03 na trava, dentro da mensagem de entrada: conflito com a mensagem de sempre, UM rollback, a conexão volta ao pool, sem commit e sem montar o estado", async () => {
     falso.erroEm = (sql) => (NA_TRAVA(sql) ? erroDoBanco("55P03", "canceling statement due to lock timeout") : undefined);
     const r = await executar("ws_x", () => ok("feito"));
     expect(r).toEqual(CONFLITO);
     expect(falso.consultas.filter((sql) => sql === "rollback")).toHaveLength(1);
-    expect(falso.consultas).not.toContain("commit");
+    expect(falso.consultas.some((sql) => sql.endsWith("commit"))).toBe(false);
     expect(falso.consultas).not.toContain(MARCA_DE_HIDRATAR);
     expect(falso.release).toEqual([false]);
   });
 
-  it("o select … for update com rowCount 0: o Espaço não existe — lança, e a conexão sai do pool", async () => {
+  it("a trava com rowCount 0: o Espaço não existe — lança, e a conexão sai do pool", async () => {
     falso.linhasDaTrava = 0;
     await expect(executar("ws_x", () => ok("feito"))).rejects.toThrow('Espaço de Trabalho "ws_x" não existe.');
     expect(falso.release).toEqual([true]);
+    expect(falso.consultas).not.toContain(MARCA_DE_HIDRATAR);
   });
 
-  it("erro que não é 55P03 na trava sobe, e a conexão sai do pool", async () => {
+  it("erro que não é 55P03 na mensagem de entrada sobe, e a conexão sai do pool", async () => {
     falso.erroEm = (sql) => (NA_TRAVA(sql) ? erroDoBanco("57014", "canceling statement due to statement timeout") : undefined);
     await expect(executar("ws_x", () => ok("feito"))).rejects.toThrow("statement timeout");
     expect(falso.release).toEqual([true]);
     expect(falso.consultas).not.toContain(MARCA_DE_HIDRATAR);
   });
 
-  it("55P03 FORA da trava (no commit) sobe como exceção, também no travado", async () => {
-    falso.erroEm = (sql) => (sql === "commit" ? erroDoBanco("55P03", "lock timeout") : undefined);
+  it("55P03 FORA da trava (na mensagem de saída, onde está o commit) sobe como exceção, também no travado", async () => {
+    falso.erroEm = (sql) => (NA_SAIDA(sql) ? erroDoBanco("55P03", "lock timeout") : undefined);
     await expect(executar("ws_x", () => ok("feito"))).rejects.toThrow("lock timeout");
     expect(falso.release).toEqual([true]);
+  });
+
+  it("com aoConfirmar o fim é instrução por instrução (update, commit), e um 55P03 no commit também sobe como exceção", async () => {
+    falso.erroEm = (sql) => (sql === "commit" ? erroDoBanco("55P03", "lock timeout") : undefined);
+    await expect(executar("ws_x", () => ok("feito"), { aoConfirmar: async () => undefined })).rejects.toThrow("lock timeout");
+    expect(falso.release).toEqual([true]);
+    // O update da revisão foi sozinho (com $1), não dentro de uma mensagem de saída.
+    expect(falso.consultas.some((sql) => NA_REVISAO(sql) && !NA_SAIDA(sql))).toBe(true);
+    expect(falso.consultas.some(NA_SAIDA)).toBe(false);
   });
 
   it("aoMedir traz regime travado e tentativas 1; no conflito da trava, desfecho conflito, tentativas 1 e travaMs contado", async () => {
     const medicoes: MedicaoDaExecucao[] = [];
     await executar("ws_x", () => ok("feito"), { aoMedir: (m) => void medicoes.push(m) });
     expect(medicoes[0]).toMatchObject({ regime: "travado", tentativas: 1, desfecho: "gravou" });
-    expect(medicoes[0]!.travaMs).toBeGreaterThanOrEqual(medicoes[0]!.atualizaMs);
+    // A trava e o update vão dentro de inicioMs e gravarMs: não têm etapa própria no lote.
+    expect(medicoes[0]).toMatchObject({ travaMs: 0, atualizaMs: 0, commitMs: 0 });
 
     falso.erroEm = (sql) => (NA_TRAVA(sql) ? erroDoBanco("55P03", "canceling statement due to lock timeout") : undefined);
     await executar("ws_x", () => ok("feito"), { aoMedir: (m) => void medicoes.push(m) });
     expect(medicoes[1]).toMatchObject({ regime: "travado", tentativas: 1, desfecho: "conflito", atualizaMs: 0 });
+    // A espera pela vez morou na mensagem de entrada: é inicioMs que a conta.
+    expect(medicoes[1]!.inicioMs).toBeGreaterThanOrEqual(0);
   });
 
   it("tentativas não existe no regime travado: o tipo recusa, e em execução a gravação continua sendo uma só", async () => {

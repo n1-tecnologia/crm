@@ -74,6 +74,8 @@ export interface MedicaoLida {
   readonly totalMs: number;
   /** Só depois de 12-04. */
   readonly regime?: string;
+  /** Quantas vezes a gravação foi ao banco; só depois da Fase 13 (antes, a linha não traz e vale 0). */
+  readonly idasEVoltas?: number;
 }
 
 export interface LinhaDeMedicao {
@@ -101,6 +103,8 @@ export interface ResumoDoGesto {
   readonly foraDasEtapasMs: Estatistica;
   readonly foraDoHandlerMs: Estatistica;
   readonly tentativas: Estatistica;
+  /** As idas ao banco por gravação (Fase 13): cada uma custa a distância até o banco. 0 = a linha não traz. */
+  readonly idasEVoltas: Estatistica;
   readonly linhasLidas: Estatistica;
   readonly linhasGravadas: Estatistica;
   readonly regimes: readonly string[];
@@ -217,6 +221,7 @@ export function resumirGesto(gesto: string, operacao: string, amostras: readonly
     foraDasEtapasMs: estatistica(amostras.map((a) => a.medicao.totalMs - somaDasEtapas(a.medicao))),
     foraDoHandlerMs: estatistica(amostras.map((a) => a.pedidoMs - a.medicao.totalMs)),
     tentativas: estatistica(amostras.map((a) => a.medicao.tentativas)),
+    idasEVoltas: estatistica(amostras.map((a) => a.medicao.idasEVoltas ?? 0)),
     linhasLidas: estatistica(amostras.map((a) => a.medicao.linhasLidas)),
     linhasGravadas: estatistica(amostras.map((a) => a.medicao.linhasGravadas)),
     regimes,
@@ -278,6 +283,7 @@ function secaoDoGesto(resumo: ResumoDoGesto): string[] {
     ["foraDasEtapasMs", ms(resumo.foraDasEtapasMs.mediana), ms(resumo.foraDasEtapasMs.pior)],
     ["foraDoHandlerMs", ms(resumo.foraDoHandlerMs.mediana), ms(resumo.foraDoHandlerMs.pior)],
     ["tentativas", String(resumo.tentativas.mediana), String(resumo.tentativas.pior)],
+    ["idasEVoltas", String(resumo.idasEVoltas.mediana), String(resumo.idasEVoltas.pior)],
     ["linhasLidas", String(resumo.linhasLidas.mediana), String(resumo.linhasLidas.pior)],
     ["linhasGravadas", String(resumo.linhasGravadas.mediana), String(resumo.linhasGravadas.pior)],
   );

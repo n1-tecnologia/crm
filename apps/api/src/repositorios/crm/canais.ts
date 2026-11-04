@@ -101,6 +101,18 @@ export interface LinhaDoBancoDeCanal {
   readonly atualizado_em: Date;
 }
 
+/**
+ * A consulta de `todos()`, com o id do Espaço escrito como o chamador quiser:
+ * `"$1"` (o de sempre) ou um literal, quando `executar()` a manda dentro do
+ * lote de entrada da transação (Fase 13).
+ */
+export function sqlDeTodosOsCanais(workspaceId: string): string {
+  return `select ${COLUNAS_CANAL}
+           from plataforma.canais
+          where workspace_id = ${workspaceId}
+          order by criado_em, id`;
+}
+
 /** snake_case → camelCase; `Date` → ISO 8601; nulo continua `null`. */
 export function linhaParaCanal(linha: LinhaDoBancoDeCanal): Canal {
   return {
@@ -266,13 +278,7 @@ export function criarRepositorioDeCanaisPg(cliente: Pool | PoolClient): Reposito
     },
 
     async todos(workspaceId) {
-      const { rows } = await cliente.query<LinhaDoBancoDeCanal>(
-        `select ${COLUNAS_CANAL}
-           from plataforma.canais
-          where workspace_id = $1
-          order by criado_em, id`,
-        [workspaceId],
-      );
+      const { rows } = await cliente.query<LinhaDoBancoDeCanal>(sqlDeTodosOsCanais("$1"), [workspaceId]);
       return rows.map(linhaParaCanal);
     },
   };

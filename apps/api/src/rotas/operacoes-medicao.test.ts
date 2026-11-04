@@ -2,7 +2,8 @@
  * A linha de medição de `POST /operacoes/:nome` (Fase 12, 12-01, D-02/D-03).
  *
  * Sem banco: pool, repositório, outbox e eventos de Canal são falsos (o molde de
- * `persistencia/unidade-de-trabalho.test.ts`); o logger escreve num array, como
+ * `persistencia/unidade-de-trabalho.test.ts`, inclusive as mensagens de várias
+ * instruções do regime travado, Fase 13); o logger escreve num array, como
  * `observabilidade/log.test.ts`. O que se prova aqui é a FORMA da saída:
  *
  *   - toda gravação deixa UMA linha `"gravacao medida"` com as etapas como números;
@@ -18,9 +19,9 @@ import { buildApp } from "../app";
 import { opcoesDoLogger } from "../observabilidade/log";
 
 const falso = vi.hoisted(() => ({
-  /** Quando verdadeiro, o `select … for update` do regime travado dá 55P03 (a trava esgotada): conflito, 409. */
+  /** Quando verdadeiro, o `select … for update` do regime travado (dentro da mensagem de entrada) dá 55P03 (a trava esgotada): conflito, 409. */
   travaEsgotada: false,
-  /** Quando preenchido, `hidratar` lança isto (a exceção que vira 500). */
+  /** Quando preenchido, a leitura do Espaço lança isto (a exceção que vira 500). */
   hidratarLanca: undefined as Error | undefined,
 }));
 
@@ -29,9 +30,15 @@ vi.mock("../persistencia/conexao", async (importOriginal) => ({
   pool: () => ({
     connect: async () => ({
       query: async (sql: string) => {
-        if (sql.startsWith("select revisao from plataforma.workspaces")) {
+        // A mensagem de entrada do travado: begin, prazos, trava, leitura (um resultado por instrução).
+        if (sql.startsWith("begin") && sql.includes("for update")) {
           if (falso.travaEsgotada) throw Object.assign(new Error("canceling statement due to lock timeout"), { code: "55P03" });
-          return { rowCount: 1, rows: [{ revisao: "7" }] };
+          const vazio = { rowCount: null, rows: [] };
+          return [vazio, vazio, vazio, vazio, { rowCount: 1, rows: [{ revisao: "7" }] }, { rowCount: 0, rows: [] }];
+        }
+        // A de saída: o update da revisão e o commit.
+        if (sql.startsWith("update plataforma.workspaces") && sql.endsWith("commit")) {
+          return [{ rowCount: 1, rows: [{ revisao: "8" }] }, { rowCount: null, rows: [] }];
         }
         if (sql.startsWith("update plataforma.workspaces")) return { rowCount: 1, rows: [{ revisao: "8" }] };
         return { rowCount: 0, rows: [] };
@@ -43,12 +50,17 @@ vi.mock("../persistencia/conexao", async (importOriginal) => ({
 vi.mock("../persistencia/repositorio", async () => {
   const { buildSeed: semear } = await import("@n1/dominio/seed");
   const { DIFERENCA_VAZIA } = await import("@n1/dominio");
+  const hidratado = () => {
+    if (falso.hidratarLanca) throw falso.hidratarLanca;
+    return { state: semear(), revisao: 7, original: new Map(), ordem: new Map() };
+  };
   return {
-    hidratar: async () => {
-      if (falso.hidratarLanca) throw falso.hidratarLanca;
-      return { state: semear(), revisao: 7, original: new Map(), ordem: new Map() };
-    },
+    hidratar: async () => hidratado(),
+    sqlDeHidratar: (espaco: string) => `<sql de hidratar ${espaco}>`,
+    estadoDasLinhas: () => hidratado(),
     gravar: async () => DIFERENCA_VAZIA,
+    planejarGravacao: () => ({ upserts: [], removidos: [], diferenca: DIFERENCA_VAZIA }),
+    sqlsDoPlano: () => [],
   };
 });
 // `inviteMember` resolve e-mail → userId no Supabase Auth ANTES da transação: o teste não vai à rede.

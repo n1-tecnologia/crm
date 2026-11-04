@@ -32,13 +32,14 @@ import { createList } from "@n1/dominio/operations";
 import { buildSeed } from "@n1/dominio/seed";
 import { encerrar, pool } from "./conexao";
 import { executar, type MedicaoDaExecucao } from "./unidade-de-trabalho";
-import { hidratar, semear } from "./repositorio";
+import { estadoDasLinhas, hidratar, semear } from "./repositorio";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm } from "../testes/banco-crm";
 
-// Só `hidratar` é embrulhado (e continua o de verdade): é ele que o regime travado deve chamar uma vez por gravação.
+// Só a leitura do Espaço é embrulhada (e continua a de verdade): o regime travado deve fazê-la uma vez por gravação.
+// Desde a Fase 13 ele a faz por `estadoDasLinhas` (a consulta vai no lote de entrada); o otimista segue em `hidratar`.
 vi.mock("./repositorio", async (importOriginal) => {
   const real = await importOriginal<typeof import("./repositorio")>();
-  return { ...real, hidratar: vi.fn(real.hidratar) };
+  return { ...real, hidratar: vi.fn(real.hidratar), estadoDasLinhas: vi.fn(real.estadoDasLinhas) };
 });
 
 const PROPRIETARIO = "mem_thiago";
@@ -54,7 +55,7 @@ const operacaoCriarLista = (nome: string, listasVistas?: string[]) => (state: Da
 
 describeComBanco("duas executar() simultâneas no mesmo Espaço (GRV-03, D-09/D-10)", () => {
   const ws = novoEspacoDeTeste("conc");
-  const hidratacoes = () => vi.mocked(hidratar).mock.calls.length;
+  const hidratacoes = () => vi.mocked(hidratar).mock.calls.length + vi.mocked(estadoDasLinhas).mock.calls.length;
 
   async function revisaoDoEspaco(): Promise<number> {
     const r = await pool().query<{ revisao: string }>("select revisao from plataforma.workspaces where workspace_id = $1", [ws]);
@@ -118,6 +119,7 @@ describeComBanco("duas executar() simultâneas no mesmo Espaço (GRV-03, D-09/D-
 
   beforeEach(() => {
     vi.mocked(hidratar).mockClear();
+    vi.mocked(estadoDasLinhas).mockClear();
   });
 
   it("travado: a segunda espera a vez e grava; as duas com uma tentativa, hidratar 2 vezes, revisões n+1 e n+2, e a segunda enxerga o que a primeira gravou", async () => {
@@ -136,8 +138,9 @@ describeComBanco("duas executar() simultâneas no mesmo Espaço (GRV-03, D-09/D-
     expect(hidratacoes()).toBe(2);
     expect(medA).toMatchObject({ regime: "travado", tentativas: 1, desfecho: "gravou" });
     expect(medB).toMatchObject({ regime: "travado", tentativas: 1, desfecho: "gravou" });
-    // A espera pela vez aparece em travaMs, não em hidratarMs: a segunda ficou parada no select … for update.
-    expect(medB.travaMs).toBeGreaterThan(200);
+    // A espera pela vez aparece em inicioMs (o lote de entrada), não em hidratarMs: a segunda ficou parada
+    // no select … for update, no meio da mensagem, e a leitura que vem depois dele já viu o commit da primeira.
+    expect(medB.inicioMs).toBeGreaterThan(200);
     expect(esperouMs).toBeGreaterThanOrEqual(300);
     expect(await revisaoDoEspaco()).toBe(n + 2);
   });
