@@ -29,9 +29,7 @@ function opcoesDeAutenticacao(workspaceId: string) {
 /** Os gestos do 14-14 que o bloco em teste não chama: o falso recusa se alguém os chamar. */
 const FORA_DO_ESCOPO = {
   trocarCanal: () => Promise.reject(new Error("fora do escopo deste bloco")),
-  vincularNegocio: () => Promise.reject(new Error("fora do escopo deste bloco")),
-  criarNegocio: () => Promise.reject(new Error("fora do escopo deste bloco")),
-} satisfies Pick<ServicoDeTarefasConversacionais, "trocarCanal" | "vincularNegocio" | "criarNegocio">;
+} satisfies Pick<ServicoDeTarefasConversacionais, "trocarCanal">;
 
 const CORPO = { listId: "lst_pos_venda", contatoId: "c1", canalId: "k1", mensagem: { conteudo: "Olá!" } };
 

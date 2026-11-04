@@ -3,6 +3,7 @@
  *
  *   POST /tarefas-conversacionais          cria a Tarefa (em `registros`) e abre ou reaproveita a Conversa (em `plataforma.conversas`), no mesmo commit (201)
  *   POST /tarefas-conversacionais/resumo   Contato, Canal, última Mensagem e Negócio de até 200 Tarefas, numa chamada só (200 `{ itens, total }`)
+ *   POST /tarefas-conversacionais/:taskId/canal   troca o Canal da Tarefa: reaproveita ou abre a Conversa e troca só o Vínculo (200)
  *
  * Sem SQL e sem regra aqui (`rotas/CONTEXT.md`): a rota lê a requisição, chama o
  * serviço e formata a resposta. O Membro atuante é SEMPRE `request.membro`.
@@ -28,6 +29,17 @@ import { ACTOR_REF, PRIORITY, TASK_DATE } from "../esquemas/fragmentos";
 import { responder, responderLista, TEXTO_CURTO, TEXTO_LONGO } from "./comum";
 
 const ID = z.string().min(1).max(64);
+
+/** O Contato e a Conversa de hoje vêm do Vínculo da Tarefa, lido no servidor: o corpo só diz o Canal novo e, se precisar, a primeira Mensagem. */
+export const TROCA_DE_CANAL = z
+  .object({
+    canalId: ID,
+    /** Obrigatória só quando o Contato da Tarefa não tem Conversa aberta no Canal novo (D-07): quem decide é o serviço. */
+    mensagem: z.object({ conteudo: TEXTO_LONGO.min(1) }).strict().optional(),
+  })
+  .strict();
+
+const PARAMS_DA_TAREFA = z.object({ taskId: ID }).strict();
 
 export const NOVA_TAREFA_CONVERSACIONAL = z
   .object({
@@ -70,4 +82,8 @@ export async function rotasDeTarefasConversacionais(
     const resultado = await servico.resumo(request.membro, request.body.vinculos);
     return responderLista(reply, resultado.ok ? sucesso({ itens: [...resultado.valor], total: resultado.valor.length }) : resultado);
   });
+
+  rotas.post("/tarefas-conversacionais/:taskId/canal", { schema: { params: PARAMS_DA_TAREFA, body: TROCA_DE_CANAL } }, async (request, reply) =>
+    responder(reply, await servico.trocarCanal(request.membro, request.params.taskId, request.body)),
+  );
 }

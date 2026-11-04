@@ -400,7 +400,11 @@ describeComBanco("ServicoDeTarefasConversacionais — Postgres local", () => {
       const outro = await espaco("trocartarefab");
       const marina = await contato(e.ws, "Marina Duarte", COM_EMAIL);
       const { taskId } = await tarefaNova(e, marina);
-      const deOutro = await tarefaNova(outro, await contato(outro.ws, "Outro", COM_EMAIL));
+      // Os ids das Tarefas contam por Espaço: a do outro só "não existe aqui" se o id dela passar do último daqui.
+      const doOutro = await contato(outro.ws, "Outro", COM_EMAIL);
+      await tarefaNova(outro, doOutro);
+      await tarefaNova(outro, doOutro);
+      const deOutro = await tarefaNova(outro, doOutro);
       const mensagem = { conteudo: "Oi" };
 
       expect(recusado(await servico.trocarCanal(membro(e.ws), "tsk_que_nao_existe", { canalId: e.canalEmail, mensagem }))).toMatchObject({ status: 409, codigo: "RECUSA_DO_DOMINIO", error: "Tarefa não encontrada." });
