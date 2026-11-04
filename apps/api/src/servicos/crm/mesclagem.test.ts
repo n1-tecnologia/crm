@@ -47,6 +47,9 @@ function recusado(resultado: ResultadoCrm<unknown>) {
   return resultado;
 }
 
+/** O Vínculo que o teste semeia; o seed já tem outros Vínculos com Contatos do CRM antigo. */
+const ID_DO_VINCULO_DO_TESTE = "lnk_mesclagem_teste";
+
 const em = (iso: string): string => new Date(iso).toISOString();
 
 describeComBanco("ServicoDeMesclagem — Postgres local", () => {
@@ -163,7 +166,7 @@ describeComBanco("ServicoDeMesclagem — Postgres local", () => {
     const tarefa = buildSeed().tasks[0]!;
     await executar(ws, (state) => {
       state.links.push({
-        id: `lnk_${randomUUID().slice(0, 8)}`,
+        id: ID_DO_VINCULO_DO_TESTE,
         fromType: "task",
         fromId: tarefa.id,
         toType: "contact",
@@ -176,12 +179,13 @@ describeComBanco("ServicoDeMesclagem — Postgres local", () => {
     });
   }
 
-  async function vinculosEmRegistros(ws: string): Promise<{ toId: string; fromId: string }[]> {
-    const { rows } = await pool().query<{ dados: { toType: string; toId: string; fromId: string } }>(
-      "select dados from plataforma.registros where workspace_id = $1 and colecao = 'links'",
-      [ws],
+  /** Para onde aponta o Vínculo semeado por `vinculoDaTarefa`. */
+  async function destinoDoVinculoDoTeste(ws: string): Promise<string | undefined> {
+    const { rows } = await pool().query<{ dados: { toId: string } }>(
+      "select dados from plataforma.registros where workspace_id = $1 and colecao = 'links' and id = $2",
+      [ws, ID_DO_VINCULO_DO_TESTE],
     );
-    return rows.filter((r) => r.dados.toType === "contact").map((r) => ({ toId: r.dados.toId, fromId: r.dados.fromId }));
+    return rows[0]?.dados.toId;
   }
 
   async function atividades(ws: string, acao: string): Promise<{ objectId: string; after?: string }[]> {
@@ -321,7 +325,7 @@ describeComBanco("ServicoDeMesclagem — Postgres local", () => {
     ]);
 
     // `registros`: o Vínculo da Tarefa aponta B e as duas Atividades de hoje foram gravadas.
-    expect((await vinculosEmRegistros(ws)).map((v) => v.toId)).toEqual([b]);
+    expect(await destinoDoVinculoDoTeste(ws)).toBe(b);
     expect(await atividades(ws, "Contato sobrevivente da mesclagem")).toEqual([{ objectId: b }]);
     expect(await atividades(ws, "Contato mesclado")).toEqual([{ objectId: a, after: "Marina" }]);
   });
