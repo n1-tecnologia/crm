@@ -33,7 +33,16 @@ vi.mock("@/dados/store", () => ({
 }));
 
 import { ErroDeApi } from "./cliente-crm";
-import { ProvedorDoResumoDasTarefas, useResumoDaTarefa, useResumoDasTarefas } from "./tarefas-conversacionais";
+import {
+  ProvedorDoResumoDasTarefas,
+  conversaAbertaDoPar,
+  criarNegocioDaTarefa,
+  criarTarefaConversacional,
+  trocarCanalDaTarefa,
+  useResumoDaTarefa,
+  useResumoDasTarefas,
+  vincularNegocioATarefa,
+} from "./tarefas-conversacionais";
 
 function resposta(status: number, corpo: unknown): Response {
   return { ok: status >= 200 && status < 300, status, json: async () => corpo } as Response;
@@ -215,5 +224,140 @@ describe("ProvedorDoResumoDasTarefas e useResumoDaTarefa", () => {
     rerender();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(corpoDaChamada(1).vinculos).toEqual([{ taskId: "t0", contatoId: "c0", conversaId: "v_outra" }]);
+  });
+});
+
+// 14-16 Task 1 — as mutações da Tarefa conversacional por HTTP (3.3.4 a 3.3.6, lado web).
+// Cada função manda só ids e a primeira Mensagem; o resto o servidor lê.
+describe("as mutações da Tarefa conversacional", () => {
+  const tarefaDaApi = { id: "t9", title: "Maria" };
+
+  function chamada(indice: number): { url: string; metodo: string | undefined; corpo: unknown } {
+    const [url, init] = fetchMock.mock.calls[indice] as [string, RequestInit];
+    return { url, metodo: init.method, corpo: init.body === undefined ? undefined : JSON.parse(String(init.body)) };
+  }
+
+  it("criarTarefaConversacional: POST /tarefas-conversacionais com os ids e a primeira Mensagem; devolve a Tarefa e a Conversa", async () => {
+    fetchMock.mockResolvedValue(
+      resposta(201, { ok: true, dados: { ok: true, value: { task: tarefaDaApi }, revisao: 4, conversa: { id: "cv1", aberta: true } } }),
+    );
+    const saida = await criarTarefaConversacional({
+      listId: "l1",
+      contatoId: "c1",
+      canalId: "k1",
+      mensagem: { conteudo: "Oi, Maria" },
+      title: "Retorno",
+      assignees: [{ kind: "member", id: "m1" }],
+    });
+    expect(chamada(0)).toEqual({
+      url: "http://api/tarefas-conversacionais",
+      metodo: "POST",
+      corpo: {
+        listId: "l1",
+        contatoId: "c1",
+        canalId: "k1",
+        mensagem: { conteudo: "Oi, Maria" },
+        title: "Retorno",
+        assignees: [{ kind: "member", id: "m1" }],
+      },
+    });
+    expect(saida.task).toEqual(tarefaDaApi);
+    expect(saida.conversa).toEqual({ id: "cv1", aberta: true });
+  });
+
+  it("criarTarefaConversacional: o 400 da primeira Mensagem sobe como ErroDeApi com o campo", async () => {
+    fetchMock.mockResolvedValue(resposta(400, { ok: false, error: "A primeira Mensagem é obrigatória.", codigo: "VALOR_INVALIDO", campo: "mensagem" }));
+    const erro = await criarTarefaConversacional({ listId: "l1", contatoId: "c1", canalId: "k1" }).catch((e: unknown) => e);
+    expect(erro).toBeInstanceOf(ErroDeApi);
+    expect((erro as ErroDeApi).campo).toBe("mensagem");
+    expect((erro as ErroDeApi).status).toBe(400);
+  });
+
+  it("trocarCanalDaTarefa: POST /tarefas-conversacionais/:taskId/canal; devolve a Tarefa, mudou e a Conversa", async () => {
+    fetchMock.mockResolvedValue(
+      resposta(200, { ok: true, dados: { ok: true, value: { task: tarefaDaApi, mudou: true }, conversa: { id: "cv2", aberta: false } } }),
+    );
+    const saida = await trocarCanalDaTarefa("t 9", { canalId: "k2", mensagem: { conteudo: "Olá" } });
+    expect(chamada(0)).toEqual({
+      url: "http://api/tarefas-conversacionais/t%209/canal",
+      metodo: "POST",
+      corpo: { canalId: "k2", mensagem: { conteudo: "Olá" } },
+    });
+    expect(saida).toEqual({ task: tarefaDaApi, mudou: true, conversa: { id: "cv2", aberta: false } });
+  });
+
+  it("vincularNegocioATarefa: POST .../negocio com o id, e com null para desligar", async () => {
+    fetchMock.mockResolvedValue(resposta(200, { ok: true, dados: { ok: true, value: tarefaDaApi } }));
+    expect(await vincularNegocioATarefa("t9", "n1")).toEqual(tarefaDaApi);
+    expect(chamada(0)).toEqual({ url: "http://api/tarefas-conversacionais/t9/negocio", metodo: "POST", corpo: { negocioId: "n1" } });
+    await vincularNegocioATarefa("t9", null);
+    expect(chamada(1).corpo).toEqual({ negocioId: null });
+  });
+
+  it("criarNegocioDaTarefa: POST .../negocio/novo com o Funil; devolve a Tarefa e o Negócio que nasceu", async () => {
+    fetchMock.mockResolvedValue(
+      resposta(201, { ok: true, dados: { ok: true, value: tarefaDaApi, negocio: { id: "n7", titulo: "Proposta" } } }),
+    );
+    const saida = await criarNegocioDaTarefa("t9", { funilId: "f1", titulo: "Proposta", valor: "1500.00" });
+    expect(chamada(0)).toEqual({
+      url: "http://api/tarefas-conversacionais/t9/negocio/novo",
+      metodo: "POST",
+      corpo: { funilId: "f1", titulo: "Proposta", valor: "1500.00" },
+    });
+    expect(saida).toEqual({ task: tarefaDaApi, negocio: { id: "n7", titulo: "Proposta" } });
+  });
+
+  it("a recusa da api (409) sobe com a mensagem dela, sem reescrevê-la", async () => {
+    fetchMock.mockResolvedValue(resposta(409, { ok: false, error: "Esta Tarefa já tem Negócio vinculado.", codigo: "RECUSA_DO_DOMINIO" }));
+    const erro = await criarNegocioDaTarefa("t9", { funilId: "f1" }).catch((e: unknown) => e);
+    expect((erro as ErroDeApi).message).toBe("Esta Tarefa já tem Negócio vinculado.");
+    expect((erro as ErroDeApi).status).toBe(409);
+  });
+});
+
+describe("conversaAbertaDoPar", () => {
+  function consulta(indice: number): URLSearchParams {
+    const [url] = fetchMock.mock.calls[indice] as [string];
+    expect(url.startsWith("http://api/conversas?")).toBe(true);
+    return new URLSearchParams(url.slice(url.indexOf("?") + 1));
+  }
+
+  /** A api falsa responde por `situacao`: só devolve a Conversa da situação que o teste montou. */
+  function conversasPorSituacao(porSituacao: Record<string, { id: string }[]>): void {
+    fetchMock.mockImplementation(async (url: string) => {
+      const situacao = new URLSearchParams(url.slice(url.indexOf("?") + 1)).get("situacao") ?? "";
+      const itens = porSituacao[situacao] ?? [];
+      return resposta(200, { ok: true, itens, total: itens.length });
+    });
+  }
+
+  it("pergunta pelas Conversas ativas do par, uma `aberta` e uma `pendente`", async () => {
+    conversasPorSituacao({});
+    await conversaAbertaDoPar("c1", "k1");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const situacoes = [consulta(0), consulta(1)].map((q) => q.get("situacao")).sort();
+    expect(situacoes).toEqual(["aberta", "pendente"]);
+    for (const q of [consulta(0), consulta(1)]) {
+      expect(q.get("contatoId")).toBe("c1");
+      expect(q.get("canalId")).toBe("k1");
+      expect(q.get("estado")).toBe("ativo");
+    }
+  });
+
+  it("devolve a Conversa aberta, ou a pendente quando não há aberta", async () => {
+    conversasPorSituacao({ aberta: [{ id: "cv_a" }], pendente: [{ id: "cv_p" }] });
+    expect(await conversaAbertaDoPar("c1", "k1")).toEqual({ id: "cv_a" });
+    conversasPorSituacao({ pendente: [{ id: "cv_p" }] });
+    expect(await conversaAbertaDoPar("c1", "k1")).toEqual({ id: "cv_p" });
+  });
+
+  it("devolve null quando o par só tem Conversa resolvida (ou nenhuma)", async () => {
+    conversasPorSituacao({ resolvida: [{ id: "cv_r" }] });
+    expect(await conversaAbertaDoPar("c1", "k1")).toBeNull();
+  });
+
+  it("a falha da api sobe: quem pergunta decide o que mostrar", async () => {
+    fetchMock.mockResolvedValue(resposta(500, { ok: false, error: "Falha." }));
+    await expect(conversaAbertaDoPar("c1", "k1")).rejects.toBeInstanceOf(ErroDeApi);
   });
 });
