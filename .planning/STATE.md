@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 14
 current_phase_name: "Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional"
 status: executing
-stopped_at: Completed 14-15-PLAN.md
-last_updated: "2026-11-04T20:10:31.847Z"
+stopped_at: Completed 14-16-PLAN.md
+last_updated: "2026-11-04T20:25:34.709Z"
 last_activity: 2026-11-04
 last_activity_desc: Phase 14 execution started
-state_head: 4b6f0dcfac0567652d512135d9059847b2ccc613
+state_head: 78de93c6d39c5ccda7e9241bb58f9f753ec6bae4
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 228
-  completed_plans: 221
+  completed_plans: 222
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 14 (Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional) — EXECUTING
-Plan: 16 of 19
+Plan: 17 of 19
 Status: Ready to execute
 Last activity: 2026-11-04 — Phase 14 execution started
 
@@ -439,6 +439,7 @@ Progress: [██████░░░░] 63%
 | Phase 14 P13 | 22 min | 3 tasks | 11 files |
 | Phase 14 P14 | 25 min | 2 tasks | 8 files |
 | Phase 14 P15 | 25 min | 3 tasks | 9 files |
+| Phase 14 P16 | 20 min | 3 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -678,6 +679,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 14]: Plan 14-14: trocar o Canal e ligar ou criar o Negócio da Tarefa são gestos mistos; o Contato vem do Vínculo lido no servidor (o sobrevivente, se mesclado), nunca do corpo. criarNegocioNoCliente e prepararNegocioNovo foram extraídos de POST /negocios: lerDoCrm pré-checa Funil, Etapa e Contato (a recusa volta como valor) e gravarNoCrm só insere o Negócio depois que a operação aceitou o Vínculo, então nunca há Negócio órfão. Contato arquivado recusa criar Negócio pela Tarefa (409 CONTATO_INATIVO). Sem Conversa aberta e sem mensagem, o 400 de D-07 vem antes da recusa de Canal fora da Lista ou desconectado.
 - [Phase 14]: 14-15: o provedor do resumo cobre a página inteira da Lista e todas as Tarefas dela (filtro e busca não refazem a chamada); a chave de SWR leva os três ids de cada Tarefa; sem ponte (D-01), Empresa, temperatura e estado da Conversa saíram do cartão e da ficha até a api os devolver no resumo
 - [Phase 14]: 14-15: a ficha da Tarefa mantém a leitura antiga só para o fio de Mensagens e os três gestos de escrita (14-16); depois da migração o fio some da ficha até a Fase 15 entregar a Caixa no modelo novo
+- [Phase 14]: 14-16: trocar o Canal da ficha confirma num diálogo que pede a primeira Mensagem só sem Conversa aberta (conversaAbertaDoPar = aberta ou pendente, 2 perguntas a GET /conversas); rehidratar() depois de cada sucesso (A5); só no deploy da Fase 15
 
 ### Pending Todos
 
@@ -739,6 +741,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-04T20:10:31.581Z
-Stopped at: Completed 14-15-PLAN.md
+Last session: 2026-11-04T20:25:34.436Z
+Stopped at: Completed 14-16-PLAN.md
 Resume file: None
