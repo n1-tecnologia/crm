@@ -27,6 +27,7 @@ import { criarServicoDeEmpresas, type ServicoDeEmpresas } from "../../servicos/c
 import { criarServicoDeFunis, type ServicoDeFunis } from "../../servicos/crm/funis";
 import { criarServicoDeMensagens, type ServicoDeMensagens } from "../../servicos/crm/mensagens";
 import { criarServicoDeNegocios, type ServicoDeNegocios } from "../../servicos/crm/negocios";
+import { criarServicoDeNotas, type ServicoDeNotas } from "../../servicos/crm/notas";
 import { rotasDeCanais } from "./canais";
 import { rotasDeContatos } from "./contatos";
 import { rotasDeConversas } from "./conversas";
@@ -34,6 +35,7 @@ import { rotasDeEmpresas } from "./empresas";
 import { rotasDeFunis } from "./funis";
 import { rotasDeMensagens } from "./mensagens";
 import { rotasDeNegocios } from "./negocios";
+import { rotasDeNotas } from "./notas";
 
 export interface OpcoesDeCrm {
   /** Padrão: o `pool()` do processo. Só é chamado quando uma requisição chega, nunca na montagem. */
@@ -52,6 +54,8 @@ export interface OpcoesDeCrm {
   readonly conversas?: ServicoDeConversas;
   /** Injeção só para teste: troca o serviço real de Mensagens por um falso, sem banco. */
   readonly mensagens?: ServicoDeMensagens;
+  /** Injeção só para teste: troca o serviço real de Notas do Contato por um falso, sem banco. */
+  readonly notas?: ServicoDeNotas;
   /** Padrão: lê Papel e Membro de `plataforma.registros`. Injeção para teste sem banco. */
   readonly acesso?: AcessoAoCrm;
 }
@@ -76,4 +80,6 @@ export async function rotasDeCrm(app: FastifyInstance, opcoes: OpcoesDeCrm = {})
   await app.register(rotasDeConversas, { servico: conversas });
   const mensagens = opcoes.mensagens ?? criarServicoDeMensagens({ pool: obterPool, acesso });
   await app.register(rotasDeMensagens, { servico: mensagens });
+  const notas = opcoes.notas ?? criarServicoDeNotas({ pool: obterPool, acesso });
+  await app.register(rotasDeNotas, { servico: notas });
 }
