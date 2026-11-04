@@ -30,12 +30,14 @@ import type { ZodTypeProvider } from "@fastify/type-provider-zod";
 import type { ApprovalRequest, Comment, DataState, Id, OperationResult } from "@n1/dominio";
 import { ehNomeDeOperacao, OPERACOES, reviverArgumentos, type NomeDeOperacao } from "@n1/dominio/operations/registro";
 import type { FastifyInstance } from "fastify";
+import type { PoolClient } from "pg";
 import { z } from "zod";
 import { cutucarPonte, type ParDaPonte } from "../automacoes/ponte-ativa";
 import { recusaDeSuspenso, type MembroDaSessao } from "../plugins/autenticacao";
 import type { EventoDeSaida } from "../persistencia/outbox";
 import { executar, type MedicaoDaExecucao, type ResultadoTransacao } from "../persistencia/unidade-de-trabalho";
 import { convidarMembro } from "../servicos/convidar-membro";
+import { passarAoSucessor } from "../repositorios/crm/sucessao";
 import { LISTA_SOLICITACOES_DE_PAGAMENTO_ID } from "../servicos/dto-solicitacao";
 import { esquemaDeArgumentos } from "./esquemas-de-argumentos";
 import { recortarResposta } from "./resposta-recortada";
@@ -253,6 +255,29 @@ const SERVICOS: Partial<
   },
 };
 
+/**
+ * Operações que também mexem nas tabelas do CRM no MESMO commit da gravação em
+ * `plataforma.registros` (Fase 14, 3.2.8). Entram em `executar()` como
+ * `aoConfirmar`: rodam depois do `ok` do domínio e antes do `commit`, no mesmo
+ * cliente, então uma recusa do domínio nunca as dispara e uma exceção desfaz tudo.
+ *
+ * `removeMember` passa o dono dos Contatos, Empresas e Negócios do Membro ao
+ * Sucessor e LIBERA as Conversas atribuídas a ele (RN-ET-09 a e b). O domínio só
+ * valida o Sucessor quando o Membro ainda não tinha saído; repetir a remoção
+ * devolve `ok` sem olhar o Sucessor, então aqui ele precisa ser Membro ATIVO
+ * deste Espaço, senão nada passa. Uma operação com `aoConfirmar` sai do caminho de
+ * duas idas da Fase 13 (paga mais idas ao banco): aceito, é um gesto raro.
+ */
+const AO_CONFIRMAR: Partial<
+  Record<NomeDeOperacao, (cliente: PoolClient, args: readonly unknown[], membro: MembroDaSessao, state: DataState) => Promise<void>>
+> = {
+  removeMember: async (cliente, args, membro, state) => {
+    const sucessorId = String(args[1]);
+    if (!state.members.some((m) => m.id === sucessorId && m.state === "ativo")) return;
+    await passarAoSucessor(cliente, membro.workspaceId, String(args[0]), sucessorId);
+  },
+};
+
 export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
   app.withTypeProvider<ZodTypeProvider>().post(
     "/operacoes/:nome",
@@ -309,6 +334,7 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
       }
       const args: unknown[] = validacao.data;
       const servico = SERVICOS[nome];
+      const aoConfirmar = AO_CONFIRMAR[nome];
 
       let resultado: ResultadoTransacao<unknown>;
       let eraReplay = false;
@@ -373,6 +399,9 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
                 aoMedir: (m) => {
                   medicao = m;
                 },
+                ...(aoConfirmar
+                  ? { aoConfirmar: (cliente: PoolClient, _valor: unknown, state: DataState) => aoConfirmar(cliente, args, request.membro, state) }
+                  : {}),
               },
             );
       } catch (erro) {
