@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 12
 current_phase_name: "Clone ClickUp: gravação mais rápida"
 status: verifying
-stopped_at: Completed 12-10-PLAN.md
-last_updated: "2026-11-02T19:09:23.115Z"
+stopped_at: Phase 14 context gathered
+last_updated: "2026-11-04T14:54:37.030Z"
 last_activity: 2026-10-30
 last_activity_desc: Phase 12 execution started
-state_head: 836c7bea139aec7c1af8da6c2d907ae9568a917a
+state_head: 37fb9c4cc460e14de49e6281cdee697ca1ee08dd
 progress:
-  total_phases: 12
+  total_phases: 16
   completed_phases: 6
   total_plans: 209
-  completed_plans: 205
+  completed_plans: 206
 milestone_name: milestone
 ---
 
@@ -433,6 +433,8 @@ Progress: [██████░░░░] 63%
 - Phase 8 added (2026-10-12): Canais de comunicação — escolher e conectar Canais (WhatsApp oficial/não oficial, Instagram, E-mail) com orientação por tipo (mockup), mais de um Canal por tipo, Canal/Conversa/Mensagem no Postgres (008) e o chat ciente do Canal de origem/resposta; sem provedor real
 - Phase 9 added (2026-10-22): Segurança dos dados e base de produção — Sessão 1 do cronograma (`docs/09-planejamento/TAREFAS-POR-SESSAO.md`): recorte do `GET /estado`/`POST /operacoes`, conferências de escrita, migração `009` + usuário `n1_api`, cofre de credenciais, logs sem segredo, `limit_req` no nginx, homologação/backup/monitoramento. Aberta antes da Sessão 0 por decisão do dono; a Fase 8 segue em verificação e as Fases 2 e 4 seguem abertas
 - Phases 10, 11 e 12 added (2026-10-28): Sessão 2 do cronograma (Clone ClickUp: ajustes e lacunas, 42 subtarefas) dividida em três fases por decisão do dono, cortadas pelos arquivos que cada parte toca e não pela numeração do doc: Phase 10 Contêineres (2.1, 2.3, 2.5, 2.6.1–2.6.5; 23 subtarefas), Phase 11 Tarefa (2.4, 2.6.6–2.6.9; 9), Phase 12 gravação mais rápida (2.2; 10, começa por medir). A 2.7 (itens relatados nos testes) não vira fase: cada item entra na fase que mexe na tela dele. A lista de testes da Estrutura estava vazia em 2026-10-28
+- Phase 13 registrada (2026-11-04): Gravação em menos idas e voltas ao banco — o passo 1 já saiu (commit `1d0c554`, 7 idas viram 2); passos 2 (cache em processo) e 3 (API perto do banco) abertos. Fora do cronograma das sessões; registrada porque os commits já a chamavam de Fase 13.
+- Phases 14, 15 e 16 added (2026-11-04): Sessão 3 do cronograma (Base da mensageria e unificação do CRM, 52 subtarefas) dividida em três fases por decisão do dono: Phase 14 modelo novo ganha o que falta e Tarefa conversacional (3.1 a 3.3, 20 subtarefas, 5 decisões), Phase 15 telas no modelo novo e remoção do antigo (3.4 e 3.5, 14), Phase 16 base da mensageria (3.6 a 3.9, 18, 1 decisão).
 
 ### Decisions
 
@@ -701,6 +703,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-02T19:09:13.769Z
-Stopped at: Completed 12-10-PLAN.md
-Resume file: None
+Last session: 2026-11-04T14:54:36.318Z
+Stopped at: Phase 14 context gathered
+Resume file: .planning/phases/14-unifica-o-do-crm-o-modelo-novo-ganha-o-que-falta-e-a-tarefa/14-CONTEXT.md

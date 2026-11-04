@@ -743,5 +743,55 @@ Plans:
 
 **Ondas de execução:** 1 → [12-01] · 2 → [12-02] · 3 → [12-03] · 4 → [12-04] · 5 → [12-05] · 6 → [12-06] · 7 → [12-07] · 8 → [12-08] · 9 → [12-09] · 10 → [12-10]
 
+### Phase 13: Gravação em menos idas e voltas ao banco
+
+**Goal:** Cortar as idas ao banco de cada gravação: cada uma custa cerca de 52 ms (API na VM de Chicago, pooler do Supabase em Oregon, `us-west-2`). Continuação da 2.2 (Fase 12), fora do cronograma das sessões; registrada aqui em 2026-11-04 porque os commits já a chamam de Fase 13.
+**Já feito (passo 1, fora do fluxo do GSD):** commit `1d0c554` — `executar()` no regime travado faz 2 idas em vez de 7; publicado na VM em 2026-11-04; a linha `gravacao medida` ganhou `idasEVoltas` (esperado: 2). Ainda não medido em produção.
+**Abertos:** medir o depois (`idasEVoltas` e o total no journal); passo 2 — cache em processo que pula a releitura quando a revisão devolvida pela trava não mudou (a hidratação em uso real custa 500–800 ms, o item que mais importa); passo 3 — mover a API para perto do banco (decisão de infra do dono).
+**Requirements**: TBD (derivar em `13-CONTEXT.md` se a fase for retomada)
+**Depends on:** Phase 12
+**Plans:** 0 plans (o passo 1 saiu direto no commit `1d0c554`)
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 13 to break down)
+
+### Phase 14: Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional
+
+**Goal:** Dar ao modelo novo do CRM (as tabelas das migrações 007 e 008) tudo o que hoje só o modelo antigo tem, e levar a Tarefa conversacional para essas tabelas, para que as telas possam trocar de base sem perder gesto. Sessão 3 do cronograma, parte A, dividida em três fases (14, 15 e 16) por decisão do dono em 2026-11-04. Fonte: `docs/09-planejamento/TAREFAS-POR-SESSAO.md`, Sessão 3, tarefas 3.1 a 3.3.
+**Entra (20 subtarefas):** 3.1.1–3.1.5 decidir o corte e dar ao modelo novo o que falta · 3.2.1–3.2.8 operações que só existem no antigo (mesclar Contatos, transferir Identificador, consentimento, mover Conversa, notas, sucessor) · 3.3.1–3.3.7 Tarefa conversacional nas tabelas novas.
+**Decisões do dono (tomadas em 2026-11-04, ver `14-CONTEXT.md`):** corte de uma vez, ensaiado numa cópia local dos dados reais (sem homologação); só o essencial entra no modelo novo; Conversa de Grupo e Mensagens de Flow ficam no antigo até as Sessões 6 e 7; Meus negócios aposenta as Listas espelho; a Tarefa conversacional pede a primeira Mensagem.
+**Ordem interna:** as decisões da 3.1 primeiro; a migração nova da 3.1.5 (a próxima depois da `010`) antes das operações da 3.2; a 3.2.1 (gesto que grava nas tabelas do CRM e em `plataforma.registros` no mesmo commit) antes das demais da 3.2; a 3.3 depois da 3.2. Domínio antes de api antes de tela.
+**Requirements**: TBD (derivar em `14-CONTEXT.md`)
+**Depends on:** Phase 9 (a Sessão 3 depende só da Sessão 1)
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 14 to break down)
+
+### Phase 15: Unificação do CRM: telas no modelo novo e remoção do modelo antigo
+
+**Goal:** Trocar todas as telas e leituras para o modelo novo do CRM, migrar os dados antigos e remover o modelo antigo (`state.contacts`, `state.conversations`, `state.deals`, `state.funnels`, `state.channels`), exceto o resto de `Conversation` que guarda só Grupo e Flow até as Sessões 6 e 7 (decisão D-05 da Fase 14). Sessão 3 do cronograma, parte B. Fonte: `docs/09-planejamento/TAREFAS-POR-SESSAO.md`, Sessão 3, tarefas 3.4 e 3.5.
+**Entra (14 subtarefas):** 3.4.1–3.4.10 Caixa de Entrada (lista, fio e envio, configurações), fichas, Meus negócios e Reuniões, Busca/Lixeira/Notificações, Início/Configurações/Painel, Ferramentas, IA e Contas a receber · 3.5.1–3.5.4 script de migração, rodar em homologação e produção, tirar o CRM antigo do seed, remover o modelo antigo.
+**Atenção ao planejar:** a 3.5.2 pede a migração em homologação, e o ambiente de homologação não existe (plano 09-17 pulado por decisão do dono em 2026-10-23); o ensaio será local, com uma cópia dos dados reais (decisão D-02 da Fase 14); o backup diário também não está ligado, então o backup manual antes de produção é obrigatório. A remoção do modelo antigo (3.5.4) é a porta de uma via só desta fase.
+**Requirements**: TBD (derivar em `15-CONTEXT.md`)
+**Depends on:** Phase 14
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 15 to break down)
+
+### Phase 16: Base da mensageria: entrada, saída, tempo real e mídia
+
+**Goal:** Construir uma vez só o que os quatro provedores de Canal (Sessões 4, 7, 8 e 9) usam: porta de entrada, porta de saída, tempo real e mídia das mensagens. Sessão 3 do cronograma, parte C. Fonte: `docs/09-planejamento/TAREFAS-POR-SESSAO.md`, Sessão 3, tarefas 3.6 a 3.9.
+**Entra (18 subtarefas):** 3.6.1–3.6.5 porta de entrada (interface do provedor, recebimento completo, webhook por Canal, fila de entrada, status de entrega) · 3.7.1–3.7.3 porta de saída (fila na mesma transação, entrega pelo provedor, tentar de novo) · 3.8.1–3.8.4 tempo real · 3.9.1–3.9.6 mídia (anexo ligado a arquivo, áudio e vídeo, rotas de upload e download, baixar do provedor, tocar no fio, limpeza de órfãos).
+**Decisão do dono antes de planejar:** 3.8.1 (como mandar as novidades para a tela).
+**Pronto quando (da sessão):** uma chamada simulada ao webhook de um Canal cria (ou acha) o Contato em `plataforma.contatos`, abre ou reabre a Conversa em `plataforma.conversas` e aparece na Caixa de Entrada de outra aba em menos de 2 s, com o áudio tocando; a resposta escrita na tela passa pela fila e chega ao provedor de teste.
+**Requirements**: TBD (derivar em `16-CONTEXT.md`)
+**Depends on:** Phase 15 (a ordem do plano: unificar o CRM primeiro, mensageria depois)
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 16 to break down)
+
 ---
 *Roadmap created: 2026-09-15 a partir de `.planning/intel/` (ingest de 9 documentos, 0 blockers) e `.planning/codebase/`*
