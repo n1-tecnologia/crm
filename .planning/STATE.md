@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 14
 current_phase_name: "Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional"
 status: executing
-stopped_at: Completed 14-06-PLAN.md
-last_updated: "2026-11-04T18:14:59.028Z"
+stopped_at: Completed 14-07-PLAN.md
+last_updated: "2026-11-04T18:24:27.311Z"
 last_activity: 2026-11-04
 last_activity_desc: Phase 14 execution started
-state_head: 89befef80b26dd92cfb23d4c272b48ac0ef756e5
+state_head: a13ca65919959388a96030c52bd85a1264d8c4b1
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 228
-  completed_plans: 212
+  completed_plans: 213
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 14 (Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional) — EXECUTING
-Plan: 7 of 19
+Plan: 8 of 19
 Status: Ready to execute
 Last activity: 2026-11-04 — Phase 14 execution started
 
@@ -430,6 +430,7 @@ Progress: [██████░░░░] 63%
 | Phase 14 P04 | 8 min | 2 tasks | 7 files |
 | Phase 14 P05 | 6 min | 2 tasks | 10 files |
 | Phase 14 P06 | 10 min | 2 tasks | 17 files |
+| Phase 14 P07 | 12 min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -656,6 +657,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 14]: 14-04: a recusa CONTATO_MESCLADO mora no helper escrita de contatos.ts (antes de qualquer regra de transição) e em conferirContato/carregarContato; Contato arquivado segue aceito em Negócio
 - [Phase 14]: 14-05: mover e atribuir recusam por regra do domínio com 409 MOVER_INVALIDO / ATRIBUIDO_INVALIDO; travas em ordem Contatos (id) e depois Conversa, para não haver deadlock com a mesclagem
 - [Phase 14]: 14-06: a transferência de Identificador trava os dois Contatos em ordem de id (escrita ganhou o parâmetro tambem) e recusa tudo como 409 TRANSFERENCIA_RECUSADA com o campo do domínio; Convidado lê notas e é 403 ao escrever; nota e transferência não gravam Registro de Atividade.
+- [Phase 14]: 14-07: comEstrela=false filtra as Conversas que o Membro nao marcou; sem o parametro, as duas
+- [Phase 14]: 14-07: PUT /conversas/:id/marcacao devolve a marcacao inteira (estrela, lidaAte) e grava sempre com o Membro da sessao
 
 ### Pending Todos
 
@@ -717,6 +720,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-04T18:14:58.754Z
-Stopped at: Completed 14-06-PLAN.md
+Last session: 2026-11-04T18:24:27.049Z
+Stopped at: Completed 14-07-PLAN.md
 Resume file: None
