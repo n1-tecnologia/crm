@@ -7,7 +7,7 @@
  * deixa a regra passar por qualquer outro caminho.
  */
 
-import { containerAdminRefusal, containerPath, definesAspect, effectiveLifecycleOfContainer, effectiveListConfig, irmaosOrdenados, memberReachesContainer } from "../derive";
+import { concessaoValeParaMembro, containerAdminRefusal, containerPath, definesAspect, effectiveLifecycleOfContainer, effectiveListConfig, irmaosOrdenados, memberReachesContainer } from "../derive";
 import { ehEstruturaFixa, PASTA_MEUS_NEGOCIOS_ID } from "../estruturas-fixas";
 import { fail, ok, type DataState, type OperationResult } from "../state";
 import type { EffectiveListConfig, Folder, Id, Lifecycle, List, ModeloDeTarefa, PaiDeConteiner, Provenance, Space, StatusCategory, StatusSet, Task, Template } from "../types";
@@ -550,12 +550,8 @@ export function containerTrashRefusal(state: DataState, actingMemberId: Id, type
   const member = state.members.find((m) => m.id === actingMemberId);
   if (!member || member.state !== "ativo") return admin;
   const nosDoCaminho = new Set(containerPath(state, type, id).map((n) => n.id));
-  const teams = state.teams.filter((t) => t.memberIds.includes(actingMemberId)).map((t) => t.id);
   const temExcluir = state.grants.some(
-    (g) =>
-      g.action === "excluir" &&
-      nosDoCaminho.has(g.resourceId) &&
-      ((g.subjectKind === "member" && g.subjectId === actingMemberId) || (g.subjectKind === "team" && teams.includes(g.subjectId))),
+    (g) => g.action === "excluir" && nosDoCaminho.has(g.resourceId) && concessaoValeParaMembro(state, g, actingMemberId),
   );
   if (temExcluir) return undefined;
   return `Enviar à lixeira ou restaurar exige excluir ${ROTULO[type].artigo} ${ROTULO[type].nome}: Administrador, Proprietário ou concessão direta.`;

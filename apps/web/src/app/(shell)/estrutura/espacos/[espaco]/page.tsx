@@ -12,7 +12,7 @@
  * árvore: ele vive na casca e abre por parâmetro de URL, então aqui basta pedir.
  */
 
-import { use } from "react";
+import { use, useState } from "react";
 import Link from "next/link";
 import { ExternalLink, Folder, LayoutDashboard, List, Lock, Plus, Settings } from "lucide-react";
 import { useData, useSession } from "@/dados/store";
@@ -38,11 +38,13 @@ import {
 } from "@/features/shell/ui";
 import { shortcutHref } from "@/features/estrutura/shortcuts";
 import { useCreateContainerDialog } from "@/features/estrutura/create-container-dialog";
+import { AcessosDoConteinerDialog } from "@/features/estrutura/acessos-do-conteiner-dialog";
 
 export default function EspacoPage({ params }: { params: Promise<{ espaco: string }> }) {
   const { espaco } = use(params);
   const state = useData((data) => data);
   const { memberId } = useSession();
+  const [vendoAcessos, setVendoAcessos] = useState(false);
   const fmt = useFormat();
   const { openCreate } = useCreateContainerDialog();
   const record = state.spaces.find((s) => s.id === espaco);
@@ -97,6 +99,11 @@ export default function EspacoPage({ params }: { params: Promise<{ espaco: strin
               <Icone de={Settings} tamanho="xs" />
               Configurações
             </Link>
+            {/* 12.4.4 — quem tem acesso a este contêiner: conceder e revogar. */}
+            <button type="button" className="btn btn-fantasma btn-sm" onClick={() => setVendoAcessos(true)}>
+              Acessos
+            </button>
+            <AcessosDoConteinerDialog open={vendoAcessos} type="space" id={record.id} onClose={() => setVendoAcessos(false)} />
             {ativo ? (
               <ActionMenu
                 label="Criar neste Espaço"

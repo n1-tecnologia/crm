@@ -16,6 +16,7 @@ import { use, useState } from "react";
 import { useData, useRun, useSession } from "@/dados/store";
 import { alterarEmailDoConvite, alterarPapelDoMembro, previewSuccession } from "@n1/dominio/operations";
 import { useFormat } from "@/features/shell/use-format";
+import { AcessoDoMembro } from "@/features/membros/acesso-do-membro";
 import { AVAILABILITY_LABEL, PERMISSION_ORIGIN_LABEL, RESOURCE_TYPE_LABEL } from "@/features/shell/format";
 import {
   Button,
@@ -212,6 +213,24 @@ export default function MembroPage({ params }: { params: Promise<{ membro: strin
                 </div>
               </div>
             </Painel>
+
+            {!removed ? (
+              <AcessoDoMembro
+                member={member}
+                role={role}
+                mayGovern={mayGovern}
+                isOwner={isOwner}
+                isSelf={member.id === memberId}
+                onNotice={(frase) => {
+                  setError(null);
+                  setNotice(frase);
+                }}
+                onError={(frase) => {
+                  setNotice(null);
+                  setError(frase);
+                }}
+              />
+            ) : null}
 
             <Painel>
               <CabecalhoDePainel titulo="O que este Membro possui" contagem={preview.transfers.length} />

@@ -14,7 +14,7 @@
  * na casca e é aberto por um parâmetro de URL, então aqui basta pedir.
  */
 
-import { use } from "react";
+import { use, useState } from "react";
 import Link from "next/link";
 import { Folder, List, Plus, Settings } from "lucide-react";
 import { useData, useSession } from "@/dados/store";
@@ -44,11 +44,13 @@ import {
 import { useCreateContainerDialog } from "@/features/estrutura/create-container-dialog";
 import { useMoverConteinerDialog } from "@/features/estrutura/mover-conteiner-dialog";
 import { SprintPanel } from "@/features/estrutura/sprint-panel";
+import { AcessosDoConteinerDialog } from "@/features/estrutura/acessos-do-conteiner-dialog";
 
 export default function PastaPage({ params }: { params: Promise<{ pasta: string }> }) {
   const { pasta } = use(params);
   const state = useData((data) => data);
   const { memberId } = useSession();
+  const [vendoAcessos, setVendoAcessos] = useState(false);
   const fmt = useFormat();
   const { openCreate } = useCreateContainerDialog();
   const { openMover } = useMoverConteinerDialog();
@@ -95,6 +97,11 @@ export default function PastaPage({ params }: { params: Promise<{ pasta: string 
               <Icone de={Settings} tamanho="xs" />
               Configurações
             </Link>
+            {/* 12.4.4 — quem tem acesso a este contêiner: conceder e revogar. */}
+            <button type="button" className="btn btn-fantasma btn-sm" onClick={() => setVendoAcessos(true)}>
+              Acessos
+            </button>
+            <AcessosDoConteinerDialog open={vendoAcessos} type="folder" id={record.id} onClose={() => setVendoAcessos(false)} />
             {ativa ? (
               ehPasta ? (
                 // A Pasta cria Lista ou Subpasta; a Subpasta só cria Lista (A3.4).

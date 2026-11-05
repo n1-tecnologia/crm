@@ -7,12 +7,19 @@
  * as its base, and that base is a CEILING: the custom role never grants more
  * than it. The screen shows the ceiling next to every permission so the reading
  * is not "what I picked" but "what I am allowed to pick".
+ *
+ * 12.4.4 — Papéis personalizados se criam e editam aqui: nome, base e os seis
+ * módulos (decisões 12.1.3 A e 12.1.4 B). A lista de permissões por ação não
+ * é oferecida; a que já existe aparece só para leitura.
  */
 
 import Link from "next/link";
 import { useState } from "react";
-import { useData } from "@/dados/store";
+import type { Role } from "@n1/dominio";
+import { ROTULO_DO_MODULO, modulosDoPapel } from "@n1/dominio/derive-modulos";
+import { useData, useSession } from "@/dados/store";
 import { DeleteRoleDialog, useDeleteRoleDialog } from "@/features/configuracoes/delete-role-dialog";
+import { PapelDialog } from "@/features/configuracoes/papel-dialog";
 import { Button, CorpoDeTela, EmptyState, PageHeader, Painel, Pilula, Section, Toast } from "@/features/shell/ui";
 
 const ACTION_LABEL: Record<string, string> = {
@@ -43,6 +50,16 @@ export default function PapeisPage() {
   const state = useData((data) => data);
   const { deletingRoleId, openDeleteRole, closeDeleteRole } = useDeleteRoleDialog();
   const [notice, setNotice] = useState<string | null>(null);
+  /** O Papel em edição; `"novo"` abre o diálogo vazio. `aberturas` remonta o diálogo a cada abertura. */
+  const [emEdicao, setEmEdicao] = useState<Role | "novo" | null>(null);
+  const [aberturas, setAberturas] = useState(0);
+  const abrir = (alvo: Role | "novo") => {
+    setAberturas((n) => n + 1);
+    setEmEdicao(alvo);
+  };
+  const { memberId } = useSession();
+  const actingRole = state.roles.find((r) => r.id === state.members.find((m) => m.id === memberId)?.roleId);
+  const mayGovern = (actingRole?.base === "administrador" || actingRole?.base === "proprietario") && state.members.find((m) => m.id === memberId)?.state === "ativo";
   const system = state.roles.filter((role) => role.system);
   const custom = state.roles.filter((role) => !role.system);
 
@@ -72,6 +89,11 @@ export default function PapeisPage() {
               {holdersOf(role.id)} Membro(s) com este Papel
             </span>
             {!role.system ? (
+              <Button size="sm" onClick={() => abrir(role)} disabled={!mayGovern} disabledReason="Só um Administrador ou o Proprietário edita um Papel.">
+                Editar
+              </Button>
+            ) : null}
+            {!role.system ? (
               <Button variant="danger" size="sm" onClick={() => openDeleteRole(role.id)}>
                 Excluir
               </Button>
@@ -80,9 +102,17 @@ export default function PapeisPage() {
         </div>
 
         <div className="p-3">
-          {role.permissions.length === 0 ? (
-            <EmptyState compact title="Nenhuma permissão declarada." />
-          ) : (
+          <div className="flex flex-wrap items-center gap-1.5 px-1">
+            <span className="app-meta">Módulos:</span>
+            {modulosDoPapel(role).map((modulo) => (
+              <Pilula key={modulo} tom="neutro">
+                {ROTULO_DO_MODULO[modulo]}
+              </Pilula>
+            ))}
+          </div>
+          {role.permissions.length === 0 ? null : (
+            <>
+            <p className="app-meta mt-3 px-1">Permissões por ação, só para leitura:</p>
             <table className="tabela">
               <thead>
                 <tr>
@@ -101,6 +131,7 @@ export default function PapeisPage() {
                 ))}
               </tbody>
             </table>
+            </>
           )}
 
           {role.system ? (
@@ -123,7 +154,21 @@ export default function PapeisPage() {
         }
         title="Papéis"
         meta={`${system.length} de sistema · ${custom.length} personalizado(s)`}
+        actions={
+          <Button variant="primary" onClick={() => abrir("novo")} disabled={!mayGovern} disabledReason="Só um Administrador ou o Proprietário cria um Papel.">
+            Novo Papel
+          </Button>
+        }
       />
+
+      {emEdicao !== null ? (
+        <PapelDialog
+          key={aberturas}
+          {...(emEdicao === "novo" ? {} : { papel: emEdicao })}
+          onClose={() => setEmEdicao(null)}
+          onDone={setNotice}
+        />
+      ) : null}
 
       <DeleteRoleDialog roleId={deletingRoleId} onClose={closeDeleteRole} onDone={setNotice} />
 
