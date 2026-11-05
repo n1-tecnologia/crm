@@ -82,10 +82,10 @@ trocar nenhuma tela ainda. A `011` (`apps/api/migracoes/011-crm-o-que-faltava.sq
 acrescenta o estado `mesclado` ao Contato, as tabelas `contato_consentimentos`
 e `contato_notas` (só inserção), `conversa_marcacoes` (estrela e leitura por
 Membro), `na_lixeira_em` na Conversa e, vazias, `crm_de_para` e
-`registros_crm_antigo`, que o script da Fase 15 enche. Ela só existe em bancos
-locais: o dono a aplica em produção no deploy da Fase 15 (backup manual antes,
-`npm run migrar -w @n1/api -- --seco`, depois `npm run banco:conceder`), e daí
-em diante é imutável como as outras. Um gesto que grava no CRM e em
+`registros_crm_antigo`, que o script da Fase 15 enche. Está aplicada no banco
+de produção desde 2026-11-05 (publicada com a API no commit `49f1b54`, depois de
+um backup manual do schema `plataforma`), e daí em diante é imutável como as
+outras. Um gesto que grava no CRM e em
 `plataforma.registros` no mesmo commit passa por `executarGestoMisto`, que lê
 o CRM dentro da transação do Espaço (`lerDoCrm`) e grava nas tabelas pelo
 `aoConfirmar` de `executar()` (ver `apps/api/src/persistencia/CONTEXT.md`).
@@ -101,12 +101,15 @@ leem Contato, Canal, última Mensagem e Negócio de um resumo em lote
 nova da fase é a ficha de Contato (mesclar, transferir, notas e
 consentimentos).
 
-O deploy da Fase 14 é cortado em dois (decisão de corte de uma vez, sem ponte
-entre as duas bases): os planos 14-01 a 14-14 são aditivos e podem subir; os
+O plano de deploy da Fase 14 previa cortá-la em dois (decisão de corte de uma
+vez, sem ponte entre as duas bases): os planos 14-01 a 14-14 são aditivos; os
 14-15 a 14-17, que trocam os chamadores da web e tiram as quatro operações
-antigas da Tarefa conversacional de `POST /operacoes/:nome`, só sobem na
-Fase 15, junto com o script de migração dos dados. Até lá, o fio da Conversa e
-o layout de três colunas da ficha da Tarefa ainda leem o modelo antigo. Grupo
+antigas da Tarefa conversacional de `POST /operacoes/:nome`, só deveriam subir
+na Fase 15, junto com o script de migração dos dados. Por decisão do dono, em
+2026-11-05 a fase inteira subiu de uma vez (API na VM e `main` do
+`n1-tecnologia/crm` em `49f1b54`): em produção, os ids antigos de Tarefa
+conversacional respondem 404 e o fio da Conversa e o layout de três colunas da
+ficha da Tarefa ainda leem o modelo antigo. Grupo
 e Flow ficam no modelo antigo até as Sessões 6 e 7: o modelo antigo não sai
 por inteiro na Fase 15. A fronteira exata, as suposições adotadas, o que o
 corte tira da tela e os itens abertos estão em
