@@ -25,7 +25,7 @@ milestone_name: milestone
 See: .planning/PROJECT.md (updated 2026-10-29)
 
 **Core value:** Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de ponta a ponta sem abrir o ClickUp — dados no Postgres próprio, regras de `@n1/dominio` intactas.
-**Current focus:** Phase 14 — Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional
+**Current focus:** Phase 15 — Unificação do CRM: telas no modelo novo e remoção do modelo antigo
 
 ## Current Position
 
