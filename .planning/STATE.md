@@ -1,19 +1,20 @@
 ---
 gsd_state_version: "1.0"
 milestone: v1.0
-current_phase: 14
-current_phase_name: "Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional"
-status: verifying
-stopped_at: Completed 14-19-PLAN.md
-last_updated: "2026-11-05T13:16:08.097Z"
-last_activity: 2026-11-04
-last_activity_desc: Phase 14 execution started
-state_head: 26768fcd1625dad62eded5248d9cdeb41cd56b4c
+current_phase: 15
+current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
+status: planning
+stopped_at: Phase 14 complete, ready to plan Phase 15
+last_updated: "2026-11-05T13:33:09.147Z"
+last_activity: 2026-11-05
+last_activity_desc: Phase 14 complete, next is Phase 15
+state_head: 51e211054686af138bff14bd2a054d661a43a8cd
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 228
   completed_plans: 225
+  percent: 63
 milestone_name: milestone
 ---
 
@@ -28,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 
 ## Current Position
 
-Phase: 14 (Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional) — EXECUTING
-Plan: 19 of 19
-Status: Phase complete — ready for verification
-Last activity: 2026-11-04 — Phase 14 execution started
+Phase: 15 — Unificação do CRM: telas no modelo novo e remoção do modelo antigo
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-11-05 — Phase 14 complete, next is Phase 15
 
 **Fase 06 planejada à mão em 2026-09-29 (Conferência do Resumo e anexos), pronta para `/gsd-execute-phase 6`:**
 `.planning/phases/06-conferencia-do-resumo-e-anexos/` — `06-CONTEXT.md` (13 decisões com padrão e variável de troca) e seis planos em três ondas: 06-01 domínio · 06-02 contrato v1.1 no `financeiro-tria` · 06-03 ponte em dois momentos · 06-04 tela e jornada · 06-05 S5/S6 na Solicitação · 06-06 docs e provas `[BLOCKING]`. Origem: `docs/08-migracao-financeiro/09-…` (desenho) e `10-…` (levantamento etapa por etapa com `arquivo:linha`). Ponto de partida do código: `crm-n1-integracao@3d6f735` (branch `integra-frontend-main`, sem push) e `financeiro-tria@c272dad` (`main`, 99 commits sem push, 89 arquivos sujos só de EOL — `git add` sempre por caminho). O dono ainda não respondeu às quatro perguntas do doc 10; os padrões de D6-01..D6-04 seguem "como no ClickUp", exceto Integração manual (o seguro).
@@ -278,7 +279,7 @@ Progress: [██████░░░░] 63%
 
 **Velocity:**
 
-- Total plans completed: 46
+- Total plans completed: 65
 - Average duration: —
 - Total execution time: 0 hours
 
@@ -289,6 +290,7 @@ Progress: [██████░░░░] 63%
 | 05 | 25 | - | - |
 | 07 | 13 | - | - |
 | 11 | 8 | - | - |
+| 14 | 19 | - | - |
 
 **Recent Trend:**
 
@@ -749,5 +751,5 @@ Items acknowledged and carried forward:
 ## Session Continuity
 
 Last session: 2026-11-05T13:16:01.758Z
-Stopped at: Completed 14-19-PLAN.md
+Stopped at: Phase 14 complete, ready to plan Phase 15
 Resume file: None

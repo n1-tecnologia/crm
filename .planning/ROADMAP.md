@@ -763,7 +763,7 @@ Plans:
 **Ordem interna:** as decisões da 3.1 primeiro; a migração nova da 3.1.5 (a próxima depois da `010`) antes das operações da 3.2; a 3.2.1 (gesto que grava nas tabelas do CRM e em `plataforma.registros` no mesmo commit) antes das demais da 3.2; a 3.3 depois da 3.2. Domínio antes de api antes de tela.
 **Requirements**: UNI-01 a UNI-17 (IDs locais da fase, tabela "Phase Requirements" de `14-RESEARCH.md`)
 **Depends on:** Phase 9 (a Sessão 3 depende só da Sessão 1)
-**Plans:** 19/19 plans executed
+**Plans:** 19/19 plans complete
 **Fronteira de deploy (D-01):** 14-01 a 14-14 são aditivos e podem subir; 14-15, 14-16 e 14-17 só sobem no deploy da Fase 15; o ensaio 14-19 da 011 sobre a cópia dos dados reais foi feito em 2026-11-05 (`14-ENSAIO.md`) e não segura nada.
 
 Plans:
