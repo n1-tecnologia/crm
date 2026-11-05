@@ -3,17 +3,17 @@ gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 14
 current_phase_name: "Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional"
-status: executing
-stopped_at: Completed 14-18-PLAN.md
-last_updated: "2026-11-04T20:55:51.138Z"
+status: verifying
+stopped_at: Completed 14-19-PLAN.md
+last_updated: "2026-11-05T13:16:08.097Z"
 last_activity: 2026-11-04
 last_activity_desc: Phase 14 execution started
-state_head: fa7dd70bf785a4901b0a538f96e8f6c98879fd1d
+state_head: 26768fcd1625dad62eded5248d9cdeb41cd56b4c
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 228
-  completed_plans: 224
+  completed_plans: 225
 milestone_name: milestone
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 
 Phase: 14 (Unificação do CRM: o modelo novo ganha o que falta e a Tarefa conversacional) — EXECUTING
 Plan: 19 of 19
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-04 — Phase 14 execution started
 
 **Fase 06 planejada à mão em 2026-09-29 (Conferência do Resumo e anexos), pronta para `/gsd-execute-phase 6`:**
@@ -442,6 +442,7 @@ Progress: [██████░░░░] 63%
 | Phase 14 P16 | 20 min | 3 tasks | 15 files |
 | Phase 14 P17 | 18 min | 2 tasks | 18 files |
 | Phase 14 P18 | 14 min | 2 tasks | 3 files |
+| Phase 14 P19 | 10 min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -685,6 +686,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 14]: 14-17: contatoDaTarefa, canalDaTarefa e conversaDaTarefa ficam (o fio da ficha as lê até a 3.4.2); só ultimaMensagemDaTarefa saiu, e contatoAlcancado virou detalhe interno de contatoDaTarefa
 - [Phase 14]: 14-18: o gate da Fase 14 foi registrado como verde exceto o flake de baseline de outbox-worker (h a k), com o arquivo isolado em banco novo passando 15/15; nenhum outro teste falhou
 - [Phase 14]: 14-18: a fronteira de deploy fica em 14-PROVAS.md; 14-01 a 14-14 aditivos, 14-15 a 14-17 so com a Fase 15; as linhas de andamento.mjs ficam sugeridas para o dono colar
+- [Phase 14]: 14-19: a 011 foi ensaiada sobre a cópia dos dados reais (2128 registros do CRM antigo, 18 Espaços) e aplicou limpa; contagens iguais antes e depois, tabelas novas com 0 linhas, hidratar sem falha; só ws_n1 é Espaço real e o resto é resíduo de teste — O ensaio não cobre constraints e backfill sobre linhas reais de contatos e conversas (produção: 2 Contatos ativo, 0 Conversas) nem o banco:conceder com o papel n1_api; a cópia foi tirada pelo agente, em leitura, a pedido do dono
 
 ### Pending Todos
 
@@ -746,6 +748,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-04T20:55:50.862Z
-Stopped at: Completed 14-18-PLAN.md
+Last session: 2026-11-05T13:16:01.758Z
+Stopped at: Completed 14-19-PLAN.md
 Resume file: None
