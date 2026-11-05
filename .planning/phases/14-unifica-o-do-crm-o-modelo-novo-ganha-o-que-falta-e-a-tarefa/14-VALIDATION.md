@@ -91,8 +91,8 @@ created: "2026-11-04"
 | 14-17-2 | 14-17 | 12 | UNI-13 | — | `derive-conversacional.test.ts` sem CRM antigo no estado | unit | `cd packages/dominio && npx vitest run src/derive-conversacional.test.ts src/derive-conversacional-antigo.test.ts ...` | ❌ W0 (o `-antigo`) | ✅ green |
 | 14-18-1 | 14-18 | 13 | todos | T-14-43 | gate `npm run check` no Docker migrado | gate | Docker 18 + `npm run check` | — | ✅ green |
 | 14-18-2 | 14-18 | 13 | — | — | `CONTEXT.md` e status | doc | `grep -c "A partir da Fase 14" CONTEXT.md` | — | ✅ green |
-| 14-19-1 | 14-19 | 14 | UNI-03 | T-14-46 | cópia fora do repositório | manual (dono) | `test -s <pasta>/registros-crm-antigo.csv` | — | ⬜ pending |
-| 14-19-2 | 14-19 | 14 | UNI-03 | T-14-44, T-14-45 | 011 sobre a cópia; contagens iguais; contêiner apagado | Docker + doc | ver `14-19-PLAN.md` Task 2 | — | ⬜ pending |
+| 14-19-1 | 14-19 | 14 | UNI-03 | T-14-46 | cópia fora do repositório | manual (dono, feito pelo agente a pedido dele) | `test -s <pasta>/registros-crm-antigo.csv` | — | ✅ green |
+| 14-19-2 | 14-19 | 14 | UNI-03 | T-14-44, T-14-45 | 011 sobre a cópia; contagens iguais; contêiner apagado | Docker + doc | ver `14-19-PLAN.md` Task 2 | — | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -138,3 +138,5 @@ Cada teste novo nasce DENTRO da tarefa que o usa (TDD por tarefa); nenhuma taref
 - [x] `nyquist_compliant: true` set in frontmatter
 
 **Approval:** validada em 2026-11-04 pelo plano 14-18 (gate `npm run check` em Postgres 16 de Docker migrado até a 011, registrado em `14-PROVAS.md`). Web 1032 e domínio 2322 testes passam; a api passa tudo menos o flake de baseline de `outbox-worker.test.ts` (h a k), que isolado em banco novo passa 15/15, e, em outra rodada, o par de `colunas-geradas.test.ts`, que isolado passa 8/8. Os `<human-check>` dos planos 14-11, 14-15 e 14-16 (e a prova de tela do 14-12) viram prova manual do dono depois da migração, e o ensaio D-02 (14-19) é manual e segue pendente.
+
+**Atualização de 2026-11-05:** o plano 14-19 foi concluído (ensaio da 011 sobre a cópia dos dados reais, `14-ENSAIO.md`); as linhas 14-19-1 e 14-19-2 estão verdes. Nenhuma lacuna Nyquist nova: a auditoria da fase (State A) não achou requisito UNI sem verificação automatizada ou manual declarada.
