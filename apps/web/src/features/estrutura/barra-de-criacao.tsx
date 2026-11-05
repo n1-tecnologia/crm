@@ -30,8 +30,6 @@ import type { FinanceProfile } from "@/features/estrutura/financeiro/lens";
 
 export type LenteDaBarra = "comum" | "conversacional" | "espelhoComercial" | "financeira";
 
-type Report = (result: { ok: boolean; error?: string }, message: string) => void;
-
 /** O campo de título («Nova Tarefa» / «Nome da nova conta») e o que ele dispara. */
 export interface CampoDeCriacao {
   /** Financeira: o campo só existe sob demanda («Nova conta» ou `?nova-tarefa=1`). */
@@ -65,19 +63,17 @@ export function BarraDeCriacao({
   aoNovaConversacional,
   campo,
   financeiro,
-  report,
 }: {
   readonly lente: LenteDaBarra;
   readonly listId: string;
   readonly criacaoRecusada?: string;
-  /** O fim da barra: o botão de seleção em lote (e o de rodar a agenda, até o 10-16). */
+  /** O fim da barra: o botão de seleção em lote. */
   readonly fim?: ReactNode;
   readonly aoIniciarConversa: () => void;
   readonly aoNovaConversacional: () => void;
   readonly campo: CampoDeCriacao;
   /** Obrigatório na lente financeira. */
   readonly financeiro?: BarraFinanceira;
-  readonly report: Report;
 }) {
   const state = useData((data) => data);
   const desligada = criacaoRecusada !== undefined;
@@ -176,14 +172,12 @@ export function BarraDeCriacao({
       {financeira && financeiro ? (
         <BarraDeFiltros>
           <FinanceToolbar
-            listId={listId}
             profile={financeiro.perfil}
             filters={financeiro.filtros}
             onFilters={financeiro.aoFiltrar}
             onOpenFilters={financeiro.aoAbrirFiltros}
             filtrosAvancados={financeiro.filtrosAvancados}
             fim={fim}
-            report={report}
           />
         </BarraDeFiltros>
       ) : null}

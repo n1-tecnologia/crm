@@ -58,7 +58,6 @@ import {
   type LenteDaLista,
   type TipoDeAba,
 } from "@/features/estrutura/tipo-de-visualizacao";
-import { RunScheduledButton } from "@/features/estrutura/bulk-status-bar";
 import { BotaoDeSelecao, SelecaoEmLote } from "@/features/estrutura/selecao-em-lote";
 import { BarraDeCriacao, type LenteDaBarra } from "@/features/estrutura/barra-de-criacao";
 import { ContagemFiltrada } from "@/features/estrutura/contagem-filtrada";
@@ -685,16 +684,7 @@ export default function ListaPage({
           lente={lenteDaBarra}
           listId={list.id}
           {...(criacaoRecusada ? { criacaoRecusada } : {})}
-          fim={
-            financeira ? (
-              botaoDeSelecao
-            ) : (
-              <>
-                {botaoDeSelecao}
-                <RunScheduledButton listId={list.id} report={reportar} />
-              </>
-            )
-          }
+          fim={botaoDeSelecao}
           aoIniciarConversa={() => setIniciandoConversa({})}
           aoNovaConversacional={() => setNovaConversacional({})}
           campo={{
@@ -719,7 +709,6 @@ export default function ListaPage({
                 },
               }
             : {})}
-          report={reportar}
         />
       ) : null}
 
