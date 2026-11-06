@@ -21,8 +21,6 @@ const falso = vi.hoisted(() => ({
   linhasDoUpdate: 1,
   /** Quantas linhas a trava do lote de entrada devolve: 0 simula o Espaço que não existe. */
   linhasDaTrava: 1,
-  /** A guarda da tabela de Canais já confirmou neste processo: os Canais vão dentro do lote de entrada. */
-  canaisConfirmados: false,
 }));
 
 vi.mock("./conexao", async (importOriginal) => ({
@@ -33,12 +31,12 @@ vi.mock("./conexao", async (importOriginal) => ({
         falso.consultas.push(sql);
         const erro = falso.erroEm(sql);
         if (erro) throw erro;
-        // Fase 13 — o lote de entrada do travado (begin, prazos, trava, leitura e, com a guarda confirmada, Canais):
-        // um resultado por instrução, e a trava, a leitura e os Canais são sempre os últimos.
+        // Fase 13 — o lote de entrada do travado (begin, prazos, trava e leitura): um resultado por instrução,
+        // e a trava e a leitura são sempre os últimos. Desde o 15-33 não há Canal no lote.
         if (sql.startsWith("begin") && sql.includes("for update")) {
           const vazio = { rowCount: null, rows: [] };
           const trava = { rowCount: falso.linhasDaTrava, rows: falso.linhasDaTrava ? [{ revisao: "7" }] : [] };
-          return [vazio, vazio, vazio, vazio, trava, { rowCount: 0, rows: [] }, ...(sql.includes("from plataforma.canais") ? [{ rowCount: 0, rows: [] }] : [])];
+          return [vazio, vazio, vazio, vazio, trava, { rowCount: 0, rows: [] }];
         }
         // O lote de saída: o update da revisão, as escritas e o commit na mesma mensagem.
         if (sql.startsWith("update plataforma.workspaces") && sql.endsWith("commit")) {
@@ -61,10 +59,6 @@ vi.mock("./repositorio", () => ({
   planejarGravacao: () => ({ upserts: [], removidos: [], diferenca: { gravados: [], removidos: [] } }),
   sqlsDoPlano: () => [],
 }));
-vi.mock("./canais-projetados", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./canais-projetados")>()),
-  tabelaDeCanaisConfirmada: () => falso.canaisConfirmados,
-}));
 vi.mock("./outbox", () => ({ gravarEventos: async () => undefined }));
 vi.mock("./eventos-de-canal", () => ({ execucoesNovas: () => [], eventosDeNotificacaoPorCanal: () => [] }));
 
@@ -74,7 +68,6 @@ beforeEach(() => {
   falso.erroEm = () => undefined;
   falso.linhasDoUpdate = 1;
   falso.linhasDaTrava = 1;
-  falso.canaisConfirmados = false;
 });
 
 describe("Unidade de Trabalho — conexão que cai no meio", () => {
@@ -119,7 +112,6 @@ describe("medição por etapa (D-02)", () => {
     "inicioMs",
     "travaMs",
     "hidratarMs",
-    "canaisMs",
     "operacaoMs",
     "atualizaMs",
     "gravarMs",
@@ -147,22 +139,20 @@ describe("medição por etapa (D-02)", () => {
     // As fakes não têm `original` e `gravar` devolve `{}`: a contagem tem padrão 0.
     expect(m.linhasLidas).toBe(0);
     expect(m.linhasGravadas).toBe(0);
-    // Entrada, a guarda dos Canais (ainda não confirmada neste processo) e saída.
-    expect(m.idasEVoltas).toBe(3);
+    // Entrada e saída: desde o 15-33 não há guarda nem leitura de Canais no meio.
+    expect(m.idasEVoltas).toBe(2);
   });
 
-  it("com a guarda dos Canais já confirmada, os Canais vão dentro do lote de entrada: duas idas ao banco", async () => {
-    falso.canaisConfirmados = true;
+  it("a gravação não lê Canal em momento nenhum: duas idas ao banco, sem plataforma.canais nem to_regclass (15-33)", async () => {
     const { medicoes, aoMedir } = coletor();
     await executar("ws_x", () => ok("feito"), { aoMedir });
     expect(medicoes[0]!.idasEVoltas).toBe(2);
     expect(falso.consultas).toHaveLength(2);
-    expect(falso.consultas[0]).toContain("from plataforma.canais");
+    expect(falso.consultas.some((sql) => sql.includes("plataforma.canais"))).toBe(false);
     expect(falso.consultas.some((sql) => sql.includes("to_regclass"))).toBe(false);
   });
 
   it("com aoConfirmar o fim volta a ser instrução por instrução: update, commit, e uma ida a mais", async () => {
-    falso.canaisConfirmados = true;
     const { medicoes, aoMedir } = coletor();
     await executar("ws_x", () => ok("feito"), { aoMedir, aoConfirmar: async () => undefined });
     expect(medicoes[0]!.idasEVoltas).toBe(3);
@@ -236,7 +226,6 @@ describe("medição por etapa (D-02)", () => {
 
 describe("lerDoCrm (Fase 14)", () => {
   it("o que lerDoCrm devolve chega à operação (2º argumento) e a aoConfirmar (4º), pelo MESMO cliente, depois da entrada e antes da operação", async () => {
-    falso.canaisConfirmados = true;
     const ordem: string[] = [];
     let estadoDaLeitura: unknown;
     let estadoDaOperacao: unknown;
@@ -267,7 +256,7 @@ describe("lerDoCrm (Fase 14)", () => {
     expect(ordem).toEqual(["lerDoCrm", "operacao", "aoConfirmar"]);
     expect(lidoNaOperacao).toEqual({ x: 1 });
     expect(lidoNoFim).toEqual({ x: 1 });
-    // O mesmo estado, já com os Canais projetados: a leitura e a operação enxergam o mesmo objeto.
+    // O mesmo estado: a leitura e a operação enxergam o mesmo objeto.
     expect(estadoDaLeitura).toBe(estadoDaOperacao);
     // A consulta de `lerDoCrm` foi pelo cliente falso, DEPOIS da mensagem de entrada (trava + leitura) e antes do `update` da revisão.
     const iEntrada = falso.consultas.findIndex((sql) => sql.startsWith("begin") && sql.includes("for update"));
@@ -276,19 +265,6 @@ describe("lerDoCrm (Fase 14)", () => {
     expect(iEntrada).toBe(0);
     expect(iLeitura).toBeGreaterThan(iEntrada);
     expect(iRevisao).toBeGreaterThan(iLeitura);
-  });
-
-  it("sem a guarda dos Canais confirmada, lerDoCrm só roda depois de os Canais serem carregados", async () => {
-    falso.canaisConfirmados = false;
-    await executar("ws_x", () => ok("feito"), {
-      lerDoCrm: async (cliente) => {
-        await cliente.query("select 'do crm'");
-      },
-    });
-    const iGuarda = falso.consultas.findIndex((sql) => sql.includes("to_regclass"));
-    const iLeitura = falso.consultas.indexOf("select 'do crm'");
-    expect(iGuarda).toBeGreaterThanOrEqual(0);
-    expect(iLeitura).toBeGreaterThan(iGuarda);
   });
 
   it("lerDoCrm que lança: a transação é desfeita, a conexão sai do pool, a operação não roda e a exceção sobe", async () => {
@@ -323,7 +299,6 @@ describe("lerDoCrm (Fase 14)", () => {
   });
 
   it("com lerDoCrm e sem aoConfirmar, o fim da transação continua em UMA ida (update, escritas e commit juntos)", async () => {
-    falso.canaisConfirmados = true;
     const medicoes: MedicaoDaExecucao[] = [];
     await executar("ws_x", () => ok("feito"), {
       aoMedir: (m) => void medicoes.push(m),
@@ -349,7 +324,6 @@ describe("lerDoCrm (Fase 14)", () => {
     expect(Object.keys(medicoes[0]!).sort()).toEqual(
       [
         "atualizaMs",
-        "canaisMs",
         "commitMs",
         "conexaoMs",
         "desfecho",

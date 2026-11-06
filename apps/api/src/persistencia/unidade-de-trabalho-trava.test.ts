@@ -34,8 +34,6 @@ const falso = vi.hoisted(() => ({
   release: [] as unknown[],
   /** Quantas linhas o `select … for update` do regime travado devolve: 0 simula o Espaço que não existe. */
   linhasDaTrava: 1,
-  /** A guarda da tabela de Canais já confirmou neste processo: os Canais vão dentro do lote de entrada. */
-  canaisConfirmados: false,
 }));
 
 vi.mock("./conexao", async (importOriginal) => ({
@@ -46,11 +44,11 @@ vi.mock("./conexao", async (importOriginal) => ({
         falso.consultas.push(sql);
         const erro = falso.erroEm(sql);
         if (erro) throw erro;
-        // O lote de entrada do travado: um resultado por instrução; a trava, a leitura e os Canais são sempre os últimos.
+        // O lote de entrada do travado: um resultado por instrução; a trava e a leitura são sempre as últimas.
         if (sql.startsWith("begin") && sql.includes("for update")) {
           const vazio = { rowCount: null, rows: [] };
           const trava = { rowCount: falso.linhasDaTrava, rows: falso.linhasDaTrava ? [{ revisao: "7" }] : [] };
-          return [vazio, vazio, vazio, vazio, trava, { rowCount: 0, rows: [] }, ...(sql.includes("from plataforma.canais") ? [{ rowCount: 0, rows: [] }] : [])];
+          return [vazio, vazio, vazio, vazio, trava, { rowCount: 0, rows: [] }];
         }
         // O lote de saída: o update da revisão e o commit na mesma mensagem.
         if (sql.startsWith("update plataforma.workspaces") && sql.endsWith("commit")) {
@@ -78,10 +76,6 @@ vi.mock("./repositorio", () => ({
   planejarGravacao: () => ({ upserts: [], removidos: [], diferenca: { gravados: [], removidos: [] } }),
   sqlsDoPlano: () => [],
 }));
-vi.mock("./canais-projetados", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./canais-projetados")>()),
-  tabelaDeCanaisConfirmada: () => falso.canaisConfirmados,
-}));
 vi.mock("./outbox", () => ({ gravarEventos: async () => undefined }));
 vi.mock("./eventos-de-canal", () => ({ execucoesNovas: () => [], eventosDeNotificacaoPorCanal: () => [] }));
 
@@ -90,7 +84,6 @@ beforeEach(() => {
   falso.release.length = 0;
   falso.erroEm = () => undefined;
   falso.linhasDaTrava = 1;
-  falso.canaisConfirmados = false;
 });
 
 /** Um erro do `pg` com SQLSTATE, como o driver entrega (`erro.code`). */

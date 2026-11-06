@@ -16,8 +16,9 @@
  *       não do par provedor+conta).
  *   (c) Membro não conecta nem simula (B35): 403.
  *   (d) "Simular conexão" leva os dois a `conectada`, marcada como simulada (D-08).
- *   (e) `GET /estado` traz os dois Canais relacionais ao lado dos do seed
- *       (D-11), e `plataforma.registros` não ganha linha de `channels` (D-12).
+ *   (e) o Canal vem só por `GET /canais`: `GET /estado` não o traz em
+ *       `state.channels` (a ponte de D-11 saiu no 15-33), e `plataforma.registros`
+ *       não ganha linha de `channels` (D-12).
  *   (f) o mesmo Contato abre uma Conversa em cada Canal; a 2ª no mesmo Canal é
  *       recusada (CONVERSA_JA_ABERTA).
  *   (g) o oficial recusa texto livre fora da janela de 24 h (409
@@ -216,31 +217,21 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
     }
   });
 
-  it("(e) GET /estado traz os dois Canais relacionais ao lado do seed e plataforma.registros não ganha `channels` (D-11, D-12)", async () => {
+  it("(e) o Canal vem só por GET /canais: GET /estado não o traz em state.channels e plataforma.registros não ganha `channels` (15-33)", async () => {
     const r = await chamar("GET", "/estado", ADMIN);
     expect(r.status).toBe(200);
     const estado = (r.corpo as unknown as { data: { channels: Array<Record<string, unknown>> } }).data;
-    const porNome = (nome: string) => estado.channels.find((c) => c.name === nome);
 
-    expect(porNome("Comercial")).toMatchObject({
-      id: comercialId,
-      relational: true,
-      provider: "whatsapp-cloud",
-      connection: "conectada",
-      simulatedConnection: true,
-    });
-    expect(porNome("Suporte")).toMatchObject({
-      id: suporteId,
-      relational: true,
-      provider: "whatsapp-nao-oficial",
-      connection: "conectada",
-      simulatedConnection: true,
-    });
-    const seed = estado.channels.find((c) => c.id === "chn_wpp");
-    expect(seed).toBeDefined();
-    expect(seed?.relational).toBeUndefined();
-
+    // A ponte que projetava `plataforma.canais` em `state.channels` saiu: só o Canal antigo de `registros` continua lá.
+    expect(estado.channels.map((c) => c.id)).toEqual(["chn_wpp"]);
+    expect(estado.channels.some((c) => c.relational === true)).toBe(false);
     expect(await canaisNoRegistro(espacoA)).toBe(canaisDoSeed);
+
+    const lista = await chamar("GET", "/canais", ADMIN);
+    expect(lista.status).toBe(200);
+    const porNome = (nome: string) => (lista.corpo.itens as Array<Record<string, unknown>>).find((c) => c.nome === nome);
+    expect(porNome("Comercial")).toMatchObject({ id: comercialId, provedor: "whatsapp-cloud", conexao: "conectada", conexaoSimulada: true });
+    expect(porNome("Suporte")).toMatchObject({ id: suporteId, provedor: "whatsapp-nao-oficial", conexao: "conectada", conexaoSimulada: true });
   });
 
   it("(f) o mesmo Contato abre uma Conversa em cada Canal; a 2ª no mesmo Canal é recusada", async () => {

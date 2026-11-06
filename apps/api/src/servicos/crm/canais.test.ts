@@ -105,8 +105,8 @@ describeComBanco("ServicoDeCanais — Postgres local", () => {
     });
   });
 
-  describe("unicidade entre o acervo novo e o do seed (A5)", () => {
-    it("nome ou conta de um Canal antigo ativo → 409 com bloqueios.canais apontando o detentor", async () => {
+  describe("unicidade só dentro de plataforma.canais (15-33: a conferência com o seed saiu)", () => {
+    it("nome ou conta de um Canal antigo em registros já não bloqueia: o Canal só existe em plataforma.canais", async () => {
       const c = await espaco("antigo");
       await semearRegistro(c.ws, "channels", "chn_antigo", {
         name: "Comercial SP",
@@ -114,13 +114,8 @@ describeComBanco("ServicoDeCanais — Postgres local", () => {
         externalId: "+5511987654321",
         lifecycle: "ativo",
       });
-      const porNome = recusado(await criar(c, "comercial sp ", "+55 11 97777-0020"));
-      expect(porNome).toMatchObject({ status: 409, codigo: "CANAL_NOME_EM_USO", campo: "nome" });
-      expect(porNome.bloqueios?.canais?.[0]?.id).toBe("chn_antigo");
-
-      const porConta = recusado(await criar(c, "Outro nome", "+55 11 98765-4321"));
-      expect(porConta).toMatchObject({ status: 409, codigo: "CANAL_CONTA_EM_USO", campo: "identificador" });
-      expect(porConta.bloqueios?.canais?.[0]?.id).toBe("chn_antigo");
+      valor(await criar(c, "comercial sp ", "+55 11 97777-0020"));
+      valor(await criar(c, "Outro nome", "+55 11 98765-4321"));
     });
 
     it("um Canal antigo arquivado não bloqueia", async () => {
@@ -134,7 +129,7 @@ describeComBanco("ServicoDeCanais — Postgres local", () => {
       valor(await criar(c, "Velho", "+55 11 95555-0001"));
     });
 
-    it("renomear para o nome de um Canal antigo ativo → 409 CANAL_NOME_EM_USO", async () => {
+    it("renomear para o nome de um Canal antigo em registros já não é recusado", async () => {
       const c = await espaco("renomear");
       await semearRegistro(c.ws, "channels", "chn_antigo", {
         name: "Vendas",
@@ -143,9 +138,7 @@ describeComBanco("ServicoDeCanais — Postgres local", () => {
         lifecycle: "ativo",
       });
       const canal = valor(await criar(c, "Comercial", "+55 11 97777-0021"));
-      const r = recusado(await servico.editar(c.admin, canal.id, { nome: "vendas" }));
-      expect(r).toMatchObject({ status: 409, codigo: "CANAL_NOME_EM_USO" });
-      expect(r.bloqueios?.canais?.[0]?.id).toBe("chn_antigo");
+      expect(valor(await servico.editar(c.admin, canal.id, { nome: "vendas" })).nome).toBe("vendas");
     });
 
     it("renomear para o próprio nome (outra caixa) ou para o de um Canal novo repetido", async () => {
