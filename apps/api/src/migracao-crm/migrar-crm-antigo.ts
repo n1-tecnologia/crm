@@ -22,6 +22,7 @@ import { pool } from "../persistencia/conexao";
 import { hidratar } from "../persistencia/repositorio";
 import { executar } from "../persistencia/unidade-de-trabalho";
 import { COLECOES_DO_CRM_ANTIGO, COLECOES_SEM_GRUPO, ErroDeUso, validarEspaco } from "./colecoes";
+import { lerCrmNovoDoEspaco, lerLinhasAntigas } from "./crm-novo";
 import {
   contarReferenciasAoFunil,
   type DecisaoDeFunil,
@@ -43,6 +44,9 @@ import {
   contarGuardadas,
   copiarParaRegistrosCrmAntigo,
 } from "./guardar";
+import { type Inseridos, inserirPlano } from "./inserir";
+import { type PlanoDeMigracao, planejarMigracao } from "./mapeador";
+import type { NaoMigrado } from "./nao-migrados";
 import { chavesDaPasta, type PlanoDaPasta, planejarPasta, removerPasta } from "./pasta-meus-negocios";
 import { type EntradaDoRelatorio, type FunilDoRelatorio, montarRelatorio, montarResumoDeEscrita } from "./relatorio";
 
@@ -54,6 +58,8 @@ export interface GanchosDeTeste {
   readonly antesDeConferir?: (cliente: PoolClient) => Promise<void>;
   /** Roda no `aoConfirmar` do `--migrar`, logo depois de inserir o Funil. */
   readonly depoisDeInserirFunis?: (cliente: PoolClient) => Promise<void>;
+  /** Roda no `aoConfirmar` do `--migrar`, logo depois de `inserirPlano` (Contatos, Empresas, Negócios...). */
+  readonly depoisDeInserirPlano?: (cliente: PoolClient) => Promise<void>;
 }
 
 export interface OpcoesDeEscrita {
@@ -74,6 +80,10 @@ export interface ResultadoDeEscrita {
   readonly conversasDeGrupoQueFicaram: number;
   readonly funisMigrados: number;
   readonly funisNaoMigrados: readonly FunilNaoMigrado[];
+  /** Linhas que entraram em cada tabela nova do CRM nesta execução (sem Funil e Etapa, que vêm em `funisMigrados`). */
+  readonly entidadesMigradas: Inseridos;
+  /** O que ficou de fora das tabelas novas, só com coleção e id (continua em `registros_crm_antigo`). */
+  readonly naoMigrados: readonly NaoMigrado[];
   /** A Pasta "Meus negócios" saiu de `registros` nesta execução. */
   readonly pastaRemovida: boolean;
   /** A revisão do Espaço depois da escrita; indefinida quando não houve escrita. */
@@ -102,10 +112,20 @@ interface Plano {
   readonly apagar: Alvo;
   readonly pasta: PlanoDaPasta;
   readonly funis: PlanoDeFunis;
+  /** O que o mapeador de entidades leva para as tabelas novas (vazio no `--guardar`). */
+  readonly entidades: PlanoDeMigracao;
 }
 
 const SEM_PASTA: PlanoDaPasta = { existe: false, nome: undefined, listas: [], removivel: false };
 const SEM_FUNIS: PlanoDeFunis = { aInserir: [], naoMigrados: [] };
+const SEM_ENTIDADES: PlanoDeMigracao = {
+  linhasPorTabela: { contatos: [], contato_identificadores: [] },
+  deParas: [],
+  naoMigrados: [],
+};
+
+/** O que o mapeador já cobre; o que não está aqui o `--migrar` ainda recusa (a recusa sai por inteiro na Task 3). */
+const COLECOES_COBERTAS_PELO_MAPEADOR: readonly string[] = ["funnels", "contacts"];
 
 /** As linhas que se copiam: as nove coleções INTEIRAS (as Conversas de Grupo também) e as linhas da Pasta. */
 function alvoDeCopiar(extras: readonly ChaveDeRegistro[]): Alvo {
@@ -149,6 +169,7 @@ async function escrever(espaco: string, modo: Modo, opcoes: OpcoesDeEscrita): Pr
   let visto: Plano | undefined;
   let apagadas: Readonly<Record<string, number>> = {};
   let funisInseridos = { funis: 0, etapas: 0 };
+  let entidadesInseridas: Inseridos = {};
 
   const resultado = await executar<Plano, Plano>(
     espaco,
@@ -163,13 +184,14 @@ async function escrever(espaco: string, modo: Modo, opcoes: OpcoesDeEscrita): Pr
         const pasta = planejarPasta(estado);
         const extras = chavesDaPasta(estado, pasta);
         let funis = SEM_FUNIS;
+        let entidades = SEM_ENTIDADES;
 
         // 1) As recusas vêm ANTES de qualquer escrita (nem a cópia): o `--migrar` só cobre o que o corte do
         //    `ws_n1` precisa, o Funil. Contatos, Empresas, Negócios, Canais e Conversas comuns ficam com o 15-28.
         let recusa: string | undefined;
         if (modo === "migrar") {
           const alemDoFunil = await contarDoAlvo(cliente, espaco, {
-            colecoes: COLECOES_SEM_GRUPO.filter((c) => c !== "funnels"),
+            colecoes: COLECOES_SEM_GRUPO.filter((c) => !COLECOES_COBERTAS_PELO_MAPEADOR.includes(c)),
             conversasSemGrupo: true,
             extras: [],
           });
@@ -179,9 +201,13 @@ async function escrever(espaco: string, modo: Modo, opcoes: OpcoesDeEscrita): Pr
           else if (funisAntigos.length > 0 && opcoes.funil) {
             funis = planejarFunis(funisAntigos, await lerFunisDoCrmNovo(cliente, espaco), opcoes.funil, await lerFunilPreferido(cliente, espaco));
           }
+          if (!recusa) {
+            const antigas = await lerLinhasAntigas(cliente, espaco);
+            entidades = planejarMigracao(antigas, await lerCrmNovoDoEspaco(cliente, espaco, antigas));
+          }
         }
         if (recusa) {
-          visto = { recusa, nadaAFazer: false, copiadas: 0, aApagar: {}, conversasDeGrupo: 0, apagar: alvoDeApagar([]), pasta, funis };
+          visto = { recusa, nadaAFazer: false, copiadas: 0, aApagar: {}, conversasDeGrupo: 0, apagar: alvoDeApagar([]), pasta, funis, entidades };
           return visto;
         }
 
@@ -201,6 +227,7 @@ async function escrever(espaco: string, modo: Modo, opcoes: OpcoesDeEscrita): Pr
           apagar,
           pasta,
           funis,
+          entidades,
         };
         return visto;
       },
@@ -208,6 +235,8 @@ async function escrever(espaco: string, modo: Modo, opcoes: OpcoesDeEscrita): Pr
         if (modo === "migrar") {
           funisInseridos = await inserirFunis(cliente, espaco, plano.funis);
           if (opcoes.ganchosDeTeste?.depoisDeInserirFunis) await opcoes.ganchosDeTeste.depoisDeInserirFunis(cliente);
+          entidadesInseridas = await inserirPlano(cliente, espaco, plano.entidades);
+          if (opcoes.ganchosDeTeste?.depoisDeInserirPlano) await opcoes.ganchosDeTeste.depoisDeInserirPlano(cliente);
         }
         apagadas = await apagarDoRegistros(cliente, espaco, plano.apagar);
       },
@@ -239,6 +268,8 @@ async function escrever(espaco: string, modo: Modo, opcoes: OpcoesDeEscrita): Pr
     conversasDeGrupoQueFicaram: nadaAFazer ? 0 : (plano?.conversasDeGrupo ?? 0),
     funisMigrados: funisInseridos.funis,
     funisNaoMigrados,
+    entidadesMigradas: entidadesInseridas,
+    naoMigrados: plano?.entidades.naoMigrados ?? [],
     pastaRemovida: !nadaAFazer && pasta.removivel,
     revisao: resultado.ok ? resultado.revisao : undefined,
     mensagem,
