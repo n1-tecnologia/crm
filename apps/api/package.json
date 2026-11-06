@@ -32,7 +32,8 @@
     "ensaio:relatorio": "vite-node src/relatorios/ensaio-do-agente.cli.ts",
     "outbox:limpar-testes": "vite-node src/persistencia/limpar-outbox-de-teste.cli.ts",
     "reconciliar": "vite-node src/observabilidade/reconciliacao.cli.ts",
-    "gravacao:medir": "vite-node src/observabilidade/medir-gravacao.cli.ts"
+    "gravacao:medir": "vite-node src/observabilidade/medir-gravacao.cli.ts",
+    "migrar:crm-antigo": "vite-node src/migracao-crm/migrar.cli.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",

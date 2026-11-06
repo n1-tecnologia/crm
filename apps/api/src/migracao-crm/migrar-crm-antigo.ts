@@ -309,16 +309,67 @@ export async function relatorioSeco(espaco: string): Promise<string> {
   });
 }
 
-// --- esqueleto do RED (Task 3): a forma pública, sem o comportamento ---
+// --- --verificar ---
 
 export interface ResultadoDaVerificacao {
   readonly espaco: string;
   readonly ok: boolean;
+  /** O que não confere, em português e só com coleções e contagens; vazio quando `ok`. */
   readonly problemas: readonly string[];
+  /** O que `registros_crm_antigo` guarda do Espaço, por coleção: a base de comparação com o `--seco` de antes. */
   readonly guardadas: Readonly<Record<string, number>>;
   readonly mensagem: string;
 }
 
+/**
+ * `--verificar`: confere, sem escrever (`begin read only`), a pós-condição do corte:
+ *
+ *   (a) nenhuma linha das oito coleções sem Grupo em `registros`;
+ *   (b) em `conversations` de `registros`, só Conversas de Grupo;
+ *   (c) nenhuma linha órfã em `crm_de_para`: cada uma tem a linha de origem em `registros_crm_antigo`
+ *       (a Etapa, que mora dentro do Funil, é conferida pelo Funil: `funnels/stages`);
+ *   (d) imprime a contagem por coleção de `registros_crm_antigo`. É a base de comparação de (d): o
+ *       roteiro do ensaio (15-30) e do corte (15-34/15-35) guarda a contagem do `--seco` ANTES da escrita
+ *       e confere que é a mesma.
+ */
 export async function verificar(espaco: string): Promise<ResultadoDaVerificacao> {
-  return { espaco, ok: true, problemas: [], guardadas: {}, mensagem: "" };
+  await exigirEspacoExistente(espaco);
+  return emTransacaoSoLeitura(async (cliente) => {
+    const problemas: string[] = [];
+
+    const restantes = await contarDoAlvo(cliente, espaco, { colecoes: COLECOES_SEM_GRUPO, conversasSemGrupo: false, extras: [] });
+    for (const [colecao, n] of Object.entries(restantes)) {
+      problemas.push(`${colecao}: ${n} linha(s) ainda em registros (deveriam ter saído).`);
+    }
+    const conversas = await contarDoAlvo(cliente, espaco, { colecoes: [], conversasSemGrupo: true, extras: [] });
+    for (const [colecao, n] of Object.entries(conversas)) {
+      problemas.push(`${colecao}: ${n} Conversa(s) sem Grupo ainda em registros (só as de Grupo ficam).`);
+    }
+
+    const orfas = await cliente.query<{ colecao_antiga: string; n: string }>(
+      `select p.colecao_antiga, count(*)::text as n
+         from plataforma.crm_de_para p
+        where p.workspace_id = $1
+          and not exists (
+            select 1 from plataforma.registros_crm_antigo a
+             where a.workspace_id = p.workspace_id
+               and a.colecao = split_part(p.colecao_antiga, '/', 1)
+               and a.id = case when p.colecao_antiga like '%/%' then split_part(p.id_antigo, '/', 1) else p.id_antigo end)
+        group by p.colecao_antiga
+        order by p.colecao_antiga`,
+      [espaco],
+    );
+    for (const linha of orfas.rows) {
+      problemas.push(`crm_de_para ${linha.colecao_antiga}: ${linha.n} linha(s) órfã(s), sem a linha de origem em registros_crm_antigo.`);
+    }
+
+    const guardadas = await contarGuardadas(cliente, espaco);
+    const contagem = Object.entries(guardadas).map(([colecao, n]) => `  ${colecao} ${n}`);
+    const guardado = contagem.length > 0 ? contagem.join("\n") : "  (nada)";
+    const mensagem =
+      problemas.length === 0
+        ? `Espaço ${espaco}: ok.\nregistros_crm_antigo guarda:\n${guardado}`
+        : `Espaço ${espaco}: NÃO CONFERE.\n${problemas.map((p) => `  - ${p}`).join("\n")}\nregistros_crm_antigo guarda:\n${guardado}`;
+    return { espaco, ok: problemas.length === 0, problemas, guardadas, mensagem };
+  });
 }
