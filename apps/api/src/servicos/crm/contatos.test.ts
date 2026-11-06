@@ -359,6 +359,39 @@ describeComBanco("ServicoDeContatos — Postgres local", () => {
     expect(recusa?.error).not.toContain("conversas_workspace_id_contato_id_fkey");
   });
 
+  it("(k) WR-06: excluir de vez o sobrevivente de uma mesclagem é 409 CONTATO_COM_MESCLADOS, repetido dá o mesmo 409 e a linha continua", async () => {
+    const absorvido = await criar({ nome: "Absorvido (k)" });
+    const sobrevivente = await criar({ nome: "Sobrevivente (k)" });
+    await poolDoDono().query(
+      "update plataforma.contatos set estado = 'mesclado', mesclado_em_id = $3, mesclado_em = now() where workspace_id = $1 and id = $2",
+      [ws, absorvido.contato.id, sobrevivente.contato.id],
+    );
+    valor(await servico.enviarParaLixeira(eu, sobrevivente.contato.id));
+    const linhas = async () =>
+      (await pool().query("select * from plataforma.contatos where workspace_id = $1 and id in ($2, $3) order by id", [ws, absorvido.contato.id, sobrevivente.contato.id]))
+        .rows;
+    const antes = await linhas();
+
+    for (const _tentativa of [1, 2]) {
+      const recusa = recusado(await servico.excluirPermanentemente(eu, sobrevivente.contato.id));
+      expect([recusa.status, recusa.codigo]).toEqual([409, "CONTATO_COM_MESCLADOS"]);
+      expect(recusa.error).toBe("Este Contato absorveu outros Contatos e não pode ser excluído de vez.");
+      expect(recusa.error).not.toContain("contatos_mesclado_em_fk");
+    }
+    expect(await linhas()).toEqual(antes);
+    expect(await estadoNoBanco(sobrevivente.contato.id)).toBe("na_lixeira");
+  });
+
+  it("(k) WR-06: a corrida: o 23503 de contatos_mesclado_em_fk vira 409 CONTATO_COM_MESCLADOS, sem o nome do constraint (T-07-06)", () => {
+    const recusa = traduzirErroDePg({ code: "23503", constraint: "contatos_mesclado_em_fk" }, FRASES_DE_CONTATOS);
+    expect(recusa).toMatchObject({
+      status: 409,
+      codigo: "CONTATO_COM_MESCLADOS",
+      error: "Outros Contatos foram mesclados neste e ele não pode ser excluído de vez.",
+    });
+    expect(recusa?.error).not.toContain("contatos_mesclado_em_fk");
+  });
+
   it("(h) obter de outro Espaço é 404; listar acha por nome e por Identificador, e % não é curinga", async () => {
     const c = await criar({ nome: "Busca Única", identificadores: [{ tipo: "email", valor: "achame@busca.com" }] });
     expect(valor(await servico.obter(eu, c.contato.id)).contato.id).toBe(c.contato.id);

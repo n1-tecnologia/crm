@@ -773,6 +773,34 @@ describeComBanco("ServicoDeTarefasConversacionais — Postgres local", () => {
       expect(item).toMatchObject({ ultimaMensagem: null, negocio: null, contato: { id: marina } });
     });
 
+    it("WR-05: Contato na lixeira some do item; Conversa na lixeira deixa Canal e última Mensagem nulos; Contato arquivado continua aparecendo (RN-TAR-15)", async () => {
+      const e = await espaco("resumolixeira");
+      const marina = await contato(e.ws, "Marina Lixeira");
+      const conversaDela = await conversa(e.ws, e.canal, marina);
+      await mensagem(e.ws, conversaDela, e.canal, "recebida", "oi da Marina", "2026-03-01T10:00:00Z");
+      const vinculo = { taskId: "t", contatoId: marina, conversaId: conversaDela };
+
+      expect(valor(await servico.resumo(membro(e.ws), [vinculo]))[0]).toMatchObject({ contato: { id: marina }, canal: { id: e.canal } });
+
+      // Conversa na lixeira: nem Canal nem última Mensagem.
+      await pool().query(
+        "update plataforma.conversas set situacao = 'resolvida', resolvida_em = now(), estado = 'na_lixeira', na_lixeira_em = now() where workspace_id = $1 and id = $2",
+        [e.ws, conversaDela],
+      );
+      expect(valor(await servico.resumo(membro(e.ws), [vinculo]))[0]).toMatchObject({ canal: null, ultimaMensagem: null, contato: { id: marina } });
+
+      // Contato arquivado aparece; Contato na lixeira não.
+      await pool().query("update plataforma.conversas set estado = 'ativo', na_lixeira_em = null where workspace_id = $1 and id = $2", [e.ws, conversaDela]);
+      // (Conversa `resolvida` e `ativa` continua mostrando Canal e última Mensagem.)
+      await pool().query("update plataforma.contatos set estado = 'arquivado' where workspace_id = $1 and id = $2", [e.ws, marina]);
+      expect(valor(await servico.resumo(membro(e.ws), [vinculo]))[0]).toMatchObject({ contato: { id: marina } });
+      await pool().query("update plataforma.contatos set estado = 'na_lixeira' where workspace_id = $1 and id = $2", [e.ws, marina]);
+      const dele = valor(await servico.resumo(membro(e.ws), [vinculo]))[0]!;
+      expect(dele.contato).toBeNull();
+      expect(dele.ultimaMensagem).toBeNull();
+      expect(JSON.stringify(dele)).not.toContain("Marina Lixeira");
+    });
+
     it("ids de outro Espaço voltam vazios (não 404, não erro) e não vazam nome, Canal, trecho nem título", async () => {
       const e = await espaco("resumomeu");
       const outro = await espaco("resumooutro");
