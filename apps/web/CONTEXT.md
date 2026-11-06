@@ -247,6 +247,20 @@ lista da Caixa de Entrada mostra ícone e nome do Canal em cada item, com o
 filtro `?canal=` pelo rótulo "nome · provedor". Nenhum componente do chat ou
 das páginas de Canal renderiza HTML cru.
 
+**A lista da Caixa pelo CRM novo (Fase 15, 15-11).** `InboxColumns` não lê mais
+Contato nem Canal do `DataState`: a lista vem de `useConversas`
+(`GET /conversas`, `plataforma.conversas`) e o Canal de `useCanais`. O escopo
+Minhas é `atribuidoId` do Membro; a aba Não lidos é `naoLidas=true` e
+Marcados `comEstrela=true`; estado, Canal e Fila viram `situacao`, `canalId` e
+`filaId`. Sem Atribuído, Sem Fila e Adiadas a api ainda não filtra: a tela pede
+a página inteira (200) e recorta (o total desses recortes é o da página). Os
+contadores são o `total` da api. A estrela é `marcarConversa`
+(`PUT /conversas/:id/marcacao`), uma gravação por vez por Conversa, e a recusa
+desfaz o que a tela mostrava. A janela de resposta sai de
+`capacidadesDoCanal` e de `ConversaNaLista.ultimaRecebidaEm`. A Conversa de
+Grupo segue em `state.conversations` (F14-D-05): entra na lista e na contagem
+do topo, e a estrela dela ainda é a operação antiga.
+
 ## Monitoramento de erros (Fase 9)
 
 `@sentry/nextjs` (versão exata, a mesma do `@sentry/node` da api) registra o

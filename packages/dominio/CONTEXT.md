@@ -855,7 +855,10 @@ Conversa: `MarcacaoDaConversa` (`estrela`, `lidaAte`) mora em
 a marcação nunca é campo: é o Membro da sessão. `ConversaNaLista` é a Conversa
 mais `contatoNome` (derivado a cada leitura), `estrela` e `naoLidas`, e
 `FiltroDeConversas` ganhou `atribuidoId`, `filaId`, `comEstrela` e `q` (trecho
-literal do título); na Fase 15 (15-06), `naoLidas` (do Membro da sessão).
+literal do título); na Fase 15 (15-06), `naoLidas` (do Membro da sessão). Na
+Fase 15 (15-11), `ConversaNaLista.ultimaRecebidaEm` é o `criadoEm` da Mensagem
+`recebida` mais recente (ou `null`): a Caixa mede a janela de resposta do Canal
+(RN-CXE-19) com ele, sem uma ida por linha.
 
 **Notas do Contato e a transferência de Identificador (Fase 14, 14-06).**
 `crm/notas.ts` é o módulo novo: `NotaDoContato` (a linha de

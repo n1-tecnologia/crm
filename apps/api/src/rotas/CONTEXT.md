@@ -360,7 +360,7 @@ regra"). As tabelas são as da `008-canais-conversas-mensagens.sql`
 | `POST /canais/:id/simular-conexao` | conecta sem provedor, marcando `conexaoSimulada` (D-08) | Administrador/Proprietário |
 | `POST /canais/:id/desconectar` | volta a `desconectada` | Administrador/Proprietário |
 | `POST /canais/:id/arquivar` | arquiva e desconecta na mesma escrita | Administrador/Proprietário |
-| `GET /conversas`, `GET /conversas/:id` | lista (filtros `canalId`, `contatoId`, `situacao`, `estado`, `atribuidoId`, `filaId`, `comEstrela`, `naoLidas`, `q`) e ficha com o resumo do Canal; cada item da lista traz `contatoNome`, `estrela` e `naoLidas` do Membro da sessão | quem lê Conversa |
+| `GET /conversas`, `GET /conversas/:id` | lista (filtros `canalId`, `contatoId`, `situacao`, `estado`, `atribuidoId`, `filaId`, `comEstrela`, `naoLidas`, `q`) e ficha com o resumo do Canal; cada item da lista traz `contatoNome`, `estrela` e `naoLidas` do Membro da sessão, e `ultimaRecebidaEm` (a `recebida` mais recente, na mesma consulta) | quem lê Conversa |
 | `POST /conversas` | abre a Conversa com a 1ª Mensagem `enviada` (201) | quem envia Mensagem |
 | `POST /conversas/:id/resolver`, `/reabrir` | muda a situação, sem corpo | idem |
 | `POST /conversas/:id/mover` | troca o Contato da Conversa (3.2.5): `{ contatoId, resolverExistente? }`; o Canal e as Mensagens ficam | ação `mover` em `conversa` |
