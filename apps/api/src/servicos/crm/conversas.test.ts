@@ -816,4 +816,70 @@ describeComBanco("ServicoDeConversas — Postgres local", () => {
       expect(rows[0]?.n).toBe(0);
     });
   });
+  // 15-09 (D-15-09, UCR-03): cada gesto de Conversa deixa uma Atividade no mesmo commit.
+  describe("Atividade dos gestos (15-09)", () => {
+    interface LinhaDeAtividade {
+      readonly ator_tipo: string;
+      readonly ator_id: string;
+      readonly acao: string;
+      readonly objeto_tipo: string;
+      readonly objeto_id: string;
+      readonly objeto_nome: string;
+      readonly antes: string | null;
+      readonly depois: string | null;
+      readonly detalhe: string | null;
+    }
+
+    const atividadesDe = async (ws: string, objetoId?: string): Promise<LinhaDeAtividade[]> =>
+      (
+        await pool().query<LinhaDeAtividade>(
+          `select ator_tipo, ator_id, acao, objeto_tipo, objeto_id, objeto_nome, antes, depois, detalhe
+             from plataforma.crm_atividades
+            where workspace_id = $1 and ($2::text is null or objeto_id = $2)
+            order by em, id`,
+          [ws, objetoId ?? null],
+        )
+      ).rows;
+
+    it("mover grava 'Conversa movida para outro Contato' com os nomes de origem e destino, no mesmo commit", async () => {
+      const c = await espaco("ativmover");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966669001" }]);
+      const bia = await contato(c.ws, "Bia", [{ tipo: "whatsapp", valor: "+5511966669002" }]);
+      const canal = await comercial(c.ws);
+      const aberta = valor(await abrir(c, canal, ana));
+
+      const movida = valor(await servico.mover(c.membro, aberta.conversa.id, { contatoId: bia }));
+
+      const linhas = await atividadesDe(c.ws, aberta.conversa.id);
+      expect(linhas).toEqual([
+        {
+          ator_tipo: "member",
+          ator_id: "mem_ana",
+          acao: "Conversa movida para outro Contato",
+          objeto_tipo: "conversation",
+          objeto_id: aberta.conversa.id,
+          objeto_nome: movida.conversa.titulo,
+          antes: "Ana",
+          depois: "Bia",
+          detalhe: null,
+        },
+      ]);
+    });
+
+    it("mover recusado (destino mesclado, Papel, outro Espaço) não grava Atividade", async () => {
+      const c = await espaco("ativmoverno");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966669003" }]);
+      const absorvido = await contato(c.ws, "Abs", [{ tipo: "whatsapp", valor: "+5511966669004" }]);
+      const canal = await comercial(c.ws);
+      const aberta = valor(await abrir(c, canal, ana));
+      await poolDoDono().query(
+        "update plataforma.contatos set estado = 'mesclado', mesclado_em_id = $3, mesclado_em = now() where workspace_id = $1 and id = $2",
+        [c.ws, absorvido, ana],
+      );
+
+      expect(recusado(await servico.mover(c.membro, aberta.conversa.id, { contatoId: absorvido }))).toMatchObject({ status: 409 });
+      expect(recusado(await servico.mover(c.convidado, aberta.conversa.id, { contatoId: absorvido }))).toMatchObject({ status: 403 });
+      expect(await atividadesDe(c.ws)).toEqual([]);
+    });
+  });
 });
