@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 15
 current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
 status: executing
-stopped_at: Completed 15-39-PLAN.md
-last_updated: "2026-11-06T10:42:23.103Z"
+stopped_at: Completed 15-17-PLAN.md
+last_updated: "2026-11-06T10:58:03.149Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 15 execution started
-state_head: c4a118492446b7091d78a0edaa850d5017075d48
+state_head: 8a4d67554503df80578ce09d832db97cde2b193e
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 271
-  completed_plans: 237
+  completed_plans: 238
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 15 (Unificação do CRM: telas no modelo novo e remoção do modelo antigo) — EXECUTING
-Plan: 13 of 43
+Plan: 14 of 43
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 15 execution started
 
@@ -456,6 +456,7 @@ Progress: [██████░░░░] 63%
 | Phase 15 P37 | 8 min | 2 tasks | 9 files |
 | Phase 15 P38 | 5 min | 2 tasks | 6 files |
 | Phase 15 P39 | 12 min | 2 tasks | 12 files |
+| Phase 15 P17 | 33 min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -718,6 +719,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 15]: 15-36: atender Conversa passa ao Sucessor mas nao e propriedade; registrosPossuidos exclui conversation das checagens de rebaixamento a Convidado
 - [Phase 15]: 15-37: GET /atividades responde { ok, itens } sem total (paginacao por tempo, ate exclusivo); useAtividades filtra state.activity por objectType e objectId — Cursor de tempo nao tem total honesto; id de Negocio e de Contato nao podem se misturar na linha do tempo
 - [Phase 15]: 15-38: comIdentificador filtra GET /contatos por tipo de Identificador (exists amarrado ao Espaco, tipo por $n, z.enum do dominio); QUERY_LISTA de comum.ts intacto
+- [Phase 15]: 15-17: o Proprietário e a Origem do Contato criado por Participante de Grupo são decididos no aoConfirmar (padroesDoContatoCriado, estado de depois); ContatoACriar segue {id, nome, whatsapp} e a operação pura nunca inventa id nem escreve em state.contacts — Mantém o contrato do 15-01/15-07; o Proprietário depende de Canal, Fila, Caixa e Espaço que só o servidor enxerga na transação. Eventos do provedor reaproveitam lerContatosDosParticipantes e confirmarContatosDosParticipantes quando ganharem rota.
 
 ### Pending Todos
 
@@ -779,6 +781,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-06T10:42:22.795Z
-Stopped at: Completed 15-39-PLAN.md
+Last session: 2026-11-06T10:58:02.843Z
+Stopped at: Completed 15-17-PLAN.md
 Resume file: None
