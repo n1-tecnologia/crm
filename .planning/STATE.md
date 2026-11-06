@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 15
 current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
 status: executing
-stopped_at: Completed 15-42-PLAN.md
-last_updated: "2026-11-06T22:40:17.692Z"
+stopped_at: Completed 15-43-PLAN.md
+last_updated: "2026-11-06T23:06:24.857Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 15 execution started
-state_head: 36762c07c2ef0b2ea8de026d2f4dc160b4ce728c
+state_head: 43fd8fd6abbc6b573de5ea2f656127f77e16d863
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 271
-  completed_plans: 265
+  completed_plans: 266
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 15 (Unificação do CRM: telas no modelo novo e remoção do modelo antigo) — EXECUTING
-Plan: 41 of 43
+Plan: 42 of 43
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 15 execution started
 
@@ -484,6 +484,7 @@ Progress: [██████░░░░] 63%
 | Phase 15 P33 | 70 min | 3 tasks | 28 files |
 | Phase 15 P41 | 10 min | 2 tasks | 16 files |
 | Phase 15 P42 | 65 min | 3 tasks | 59 files |
+| Phase 15 P43 | 70 min | 2 tasks | 42 files |
 
 ## Accumulated Context
 
@@ -792,6 +793,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 15]: 15-33: a ponte dos Canais saiu de GET /estado e de executar(); Grupo, Flow e Automacao acham o Canal em crm.canais (canalPeloId), sem projecao no estado; canaisMs saiu da medicao
 - [Phase 15]: 15-41: a Pasta Meus negocios deixou de ser estrutura fixa (ehEstruturaFixa so reconhece as tres Listas do Financeiro) e as protecoes A9 sairam da arvore, da pagina da Pasta e da pagina da Lista; PASTA_MEUS_NEGOCIOS_ID segue exportada ate o 15-43
 - [Phase 15]: 15-42: responseWindowOpenUntil ficou (o popup de enviar Flow a chama) e passou a receber o Canal de plataforma.canais; createTask so aceita Vinculo de nascimento conferido (alvoConferido); o cliente das Automacoes de Contas a receber chega por OpcoesDaAgenda.clientes
+- [Phase 15]: 15-43: Channel nao sobrevive como tipo; as composicoes de Grupo/Flow usam CanalDaComposicao (local) e o recorte { channelType, provider }; ConversaDeGrupo guarda Snooze e DeletionMark porque a Caixa de Grupo os le
+- [Phase 15]: 15-43: seed-comercial.ts (MEUS_NEGOCIOS_ID) apagado junto com PASTA_MEUS_NEGOCIOS_ID; a Lista da Pasta Meus negocios nao filtra mais Tarefas de Negocio (WINDOWS #69 fechada)
 
 ### Pending Todos
 
@@ -853,6 +856,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-06T22:40:09.581Z
-Stopped at: Completed 15-42-PLAN.md
+Last session: 2026-11-06T23:06:24.627Z
+Stopped at: Completed 15-43-PLAN.md
 Resume file: None
