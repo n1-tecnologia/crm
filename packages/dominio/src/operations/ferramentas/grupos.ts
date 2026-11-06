@@ -13,7 +13,6 @@
 import { fail, ok, type DataState, type OperationResult } from "../../state";
 import type { Canal } from "../../crm/canais";
 import { CRM_DAS_FERRAMENTAS_VAZIO, type ActorRef, type Captacao, type ConfiguracoesDoGrupo, type Conversation, type CrmDasFerramentas, type Grupo, type Id, type Message, type ParticipacaoDeGrupo, type PedidoDeEntrada } from "../../types";
-import { contactDisplayName } from "../../derive";
 import { conversaDoGrupo, identidadeDeWhatsApp, participacoesVigentes, pedidosPendentes } from "../../derive-ferramentas";
 import { memberActor, nextId, recordActivity, systemActor } from "../activity";
 import { sendMessage, startConversation } from "../conversations";

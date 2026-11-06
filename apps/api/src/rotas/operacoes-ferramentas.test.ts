@@ -10,7 +10,11 @@
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { encerrar, pool } from "../persistencia/conexao";
+import type { DataState } from "@n1/dominio";
+import type { Canal } from "@n1/dominio/crm/canais";
 import { criarRepositorioDeContatosPg } from "../repositorios/crm/contatos";
+import { resolverContatosPorWhatsapp } from "../repositorios/crm/contatos-de-participantes";
+import { confirmarContatosDosParticipantes, lerContatosDosParticipantes } from "./gesto-no-crm/ferramentas";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearCanal } from "../testes/banco-crm";
 import {
   appDoEspaco,
@@ -351,6 +355,107 @@ describeComBanco("POST /operacoes — as Ferramentas conferem Canal e Contato na
       const { rows } = await pool().query<{ n: string }>("select count(*)::text as n from plataforma.contatos where workspace_id = $1 and id like 'forjado-%'", [espaco.workspaceId]);
       expect(Number(rows[0]?.n)).toBe(0);
       expect((await participacoesDosGrupos()).some((p) => p.contactId?.startsWith("forjado-"))).toBe(false);
+    });
+  });
+
+  describe("o Contato do Participante nos eventos do provedor (15-17, 3.4.8)", () => {
+    const membro = () => ({ id: espaco.membros.a.id, workspaceId: espaco.workspaceId, state: "ativo" as const });
+
+    const comCliente = async <T>(corpoDoGesto: (cliente: import("pg").PoolClient) => Promise<T>): Promise<T> => {
+      const cliente = await pool().connect();
+      try {
+        await cliente.query("begin");
+        const resultado = await corpoDoGesto(cliente);
+        await cliente.query("commit");
+        return resultado;
+      } catch (erro) {
+        await cliente.query("rollback");
+        throw erro;
+      } finally {
+        cliente.release();
+      }
+    };
+
+    const canalFalso = (extra: Partial<Canal> = {}): Canal => ({ id: "canal-x", proprietarioPadraoId: null, filaPadraoId: null, origemPadraoId: null, ...extra }) as Canal;
+
+    it("resolverContatosPorWhatsapp acha com e sem o `+`, resolve o mesclado ao sobrevivente e não enxerga outro Espaço", async () => {
+      const repo = criarRepositorioDeContatosPg(pool());
+      const ws = espaco.workspaceId;
+      const sobrevivente = await repo.inserir(ws, { nome: "Sobrevivente", modoCriacao: "manual", proprietarioId: "mem_teste", criadoPor: "mem_teste" });
+      const absorvido = await repo.inserir(ws, { nome: "Absorvido", modoCriacao: "manual", proprietarioId: "mem_teste", criadoPor: "mem_teste" });
+      await repo.inserirIdentificador(ws, absorvido.id, { tipo: "whatsapp", valor: "+5511966660001", principal: true });
+      await pool().query("update plataforma.contatos set estado = 'mesclado', mesclado_em_id = $3, mesclado_em = now() where workspace_id = $1 and id = $2", [ws, absorvido.id, sobrevivente.id]);
+      const semMais = await repo.inserir(ws, { nome: "Sem o mais", modoCriacao: "manual", proprietarioId: "mem_teste", criadoPor: "mem_teste" });
+      await repo.inserirIdentificador(ws, semMais.id, { tipo: "whatsapp", valor: "5511966660002", principal: true });
+      const alheio = await repo.inserir(outroEspaco, { nome: "Alheio", modoCriacao: "manual", proprietarioId: "mem_teste", criadoPor: "mem_teste" });
+      await repo.inserirIdentificador(outroEspaco, alheio.id, { tipo: "whatsapp", valor: "+5511966660003", principal: true });
+
+      const achados = await comCliente((c) => resolverContatosPorWhatsapp(c, ws, ["5511966660001", "5511966660002", "5511966660003", "5511966660004", "5511966660001"]));
+      expect(achados).toHaveLength(2);
+      const doAbsorvido = achados.find((c) => c.whatsapp === "+5511966660001");
+      expect(doAbsorvido).toMatchObject({ id: sobrevivente.id, nome: "Sobrevivente", estado: "ativo" });
+      expect(achados.find((c) => c.whatsapp === "5511966660002")).toMatchObject({ id: semMais.id });
+      expect(await comCliente((c) => resolverContatosPorWhatsapp(c, ws, []))).toEqual([]);
+    });
+
+    it("lerContatosDosParticipantes gera um id novo por número sem Contato e nenhum para quem já tem", async () => {
+      const repo = criarRepositorioDeContatosPg(pool());
+      const ws = espaco.workspaceId;
+      const existente = await repo.inserir(ws, { nome: "Já existe", modoCriacao: "manual", proprietarioId: "mem_teste", criadoPor: "mem_teste" });
+      await repo.inserirIdentificador(ws, existente.id, { tipo: "whatsapp", valor: "+5511955550001", principal: true });
+      const lido = await comCliente((c) => lerContatosDosParticipantes(c, ws, ["5511955550001", "5511955550002", "5511955550003"]));
+      expect(lido.contatos.map((c) => c.id)).toEqual([existente.id]);
+      expect(lido.contatosACriar.map((c) => c.whatsapp).sort()).toEqual(["5511955550002", "5511955550003"]);
+      expect(new Set(lido.contatosACriar.map((c) => c.id)).size).toBe(2);
+      expect(lido.contatosACriar.every((c) => c.id !== existente.id && /^[0-9a-f-]{36}$/.test(c.id))).toBe(true);
+    });
+
+    it("confirmarContatosDosParticipantes insere só os que o estado usa, com o Proprietário da cadeia e a Origem pelo nome", async () => {
+      const ws = espaco.workspaceId;
+      const usado = { id: "11111111-1111-4111-8111-111111111111", nome: "+55 11 95555-0010", whatsapp: "5511955550010" };
+      const usadoNoPedido = { id: "22222222-2222-4222-8222-222222222222", nome: "+55 11 95555-0011", whatsapp: "5511955550011" };
+      const naoUsado = { id: "33333333-3333-4333-8333-333333333333", nome: "+55 11 95555-0012", whatsapp: "5511955550012" };
+      const estado = {
+        grupos: [{ participacoes: [{ contactId: usado.id }, { canalParticipanteId: "canal-x" }], pedidosDeEntrada: [{ contactId: usadoNoPedido.id }] }],
+        queues: [{ id: "fila-x", defaultContactOwnerMemberId: "mem_da_fila" }],
+        inbox: { defaultContactOwnerMemberId: "mem_da_caixa" },
+        workspace: { ownerMemberId: "mem_do_espaco" },
+        catalog: [{ id: "origem-x", kind: "origem", name: "Grupo de WhatsApp" }],
+      } as unknown as DataState;
+      const lido = { contatosACriar: [usado, usadoNoPedido, naoUsado] };
+
+      const inseridos = await comCliente((c) => confirmarContatosDosParticipantes(c, membro(), estado, canalFalso({ filaPadraoId: "fila-x", origemPadraoId: "origem-x" }), lido));
+      expect(inseridos).toBe(2);
+      const { rows } = await pool().query<{ id: string; proprietario_id: string; origem: string | null; modo_criacao: string; criado_por: string }>(
+        "select id, proprietario_id, origem, modo_criacao, criado_por from plataforma.contatos where workspace_id = $1 and id = any($2::text[]) order by id",
+        [ws, [usado.id, usadoNoPedido.id, naoUsado.id]],
+      );
+      expect(rows.map((r) => r.id)).toEqual([usado.id, usadoNoPedido.id]);
+      expect(rows.every((r) => r.proprietario_id === "mem_da_fila" && r.origem === "Grupo de WhatsApp" && r.modo_criacao === "automatico_automacao" && r.criado_por === espaco.membros.a.id)).toBe(true);
+      const ident = await pool().query<{ valor: string; valor_exibido: string; verificado: boolean; principal: boolean }>(
+        "select valor, valor_exibido, verificado, principal from plataforma.contato_identificadores where workspace_id = $1 and contato_id = $2",
+        [ws, usado.id],
+      );
+      expect(ident.rows).toEqual([{ valor: "+5511955550010", valor_exibido: "+55 11 95555-0010", verificado: true, principal: true }]);
+    });
+
+    it("sem nenhum Contato usado, nada é inserido e o Canal nem é exigido", async () => {
+      const estado = { grupos: [{ participacoes: [], pedidosDeEntrada: [] }] } as unknown as DataState;
+      const lido = { contatosACriar: [{ id: "44444444-4444-4444-8444-444444444444", nome: "x", whatsapp: "5511955550020" }] };
+      expect(await comCliente((c) => confirmarContatosDosParticipantes(c, membro(), estado, undefined, lido))).toBe(0);
+      expect(await comCliente((c) => confirmarContatosDosParticipantes(c, membro(), estado, undefined, undefined))).toBe(0);
+    });
+
+    it("se o Identificador já é de outro Contato, a transação inteira cai: nem o Contato novo fica (rede de contato_identificadores_unico)", async () => {
+      const repo = criarRepositorioDeContatosPg(pool());
+      const ws = espaco.workspaceId;
+      const dono = await repo.inserir(ws, { nome: "Dono do número", modoCriacao: "manual", proprietarioId: "mem_teste", criadoPor: "mem_teste" });
+      await repo.inserirIdentificador(ws, dono.id, { tipo: "whatsapp", valor: "+5511955550030", principal: true });
+      const novo = { id: "55555555-5555-4555-8555-555555555555", nome: "x", whatsapp: "5511955550030" };
+      const estado = { grupos: [{ participacoes: [{ contactId: novo.id }], pedidosDeEntrada: [] }], queues: [], inbox: {}, workspace: { ownerMemberId: "mem_do_espaco" }, catalog: [] } as unknown as DataState;
+      await expect(comCliente((c) => confirmarContatosDosParticipantes(c, membro(), estado, canalFalso(), { contatosACriar: [novo] }))).rejects.toThrow(/contato_identificadores_unico/);
+      const { rows } = await pool().query("select 1 from plataforma.contatos where workspace_id = $1 and id = $2", [ws, novo.id]);
+      expect(rows).toHaveLength(0);
     });
   });
 

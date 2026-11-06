@@ -6,7 +6,7 @@
  */
 
 import type { DataState } from "../../state";
-import { CRM_DAS_FERRAMENTAS_VAZIO, type ActorRef, type Channel, type CrmDasFerramentas, type Grupo, type Id, type OrigemDaParticipacao, type PapelNaParticipacao, type ParticipacaoDeGrupo } from "../../types";
+import { CRM_DAS_FERRAMENTAS_VAZIO, type ActorRef, type CrmDasFerramentas, type Grupo, type Id, type OrigemDaParticipacao, type PapelNaParticipacao, type ParticipacaoDeGrupo } from "../../types";
 import { gruposComuns, membrosDoGrupo, participacoesVigentes } from "../../derive-ferramentas";
 import { nextId, recordActivity, systemActor } from "../activity";
 import { canonicalIdentifier } from "../contacts";
@@ -24,10 +24,6 @@ export function registrarNoGrupo(
   recordActivity(state, { ...input, objectType: "grupo", objectId: grupo.id, objectName: grupo.nome });
 }
 
-/** RN-GRP-11 — o número é de um Canal do Espaço de Trabalho? Então nunca vira Contato. */
-export const canalPeloNumero = (state: DataState, numero: string): Channel | undefined =>
-  state.channels.find((c) => c.channelType === "whatsapp" && canonicalIdentifier("identidadeDeWhatsApp", c.externalId) === canonicalIdentifier("identidadeDeWhatsApp", numero));
-
 const soDigitos = (valor: string): string => valor.replace(/\D/g, "");
 
 /**
@@ -36,8 +32,9 @@ const soDigitos = (valor: string): string => valor.replace(/\D/g, "");
  * Fonte única — a leitura e a operação não podem divergir sobre quem é Participante. Um número de
  * Canal do Espaço nunca vira Contato (RN-GRP-11), então não entra.
  *
- * `args` são os da operação sem o Membro e sem o `crm`. As quatro funções abaixo são as que podem
- * criar Contato; qualquer outro nome não resolve número nenhum.
+ * `args` são os da operação sem o Membro e sem o `crm`. Só `importarGruposDoCanal` e os três eventos do
+ * provedor (Pedido de Entrada, entrada no Grupo, clique de Captação) criam Contato; qualquer outro
+ * nome não resolve número nenhum.
  */
 export function numerosAResolver(nome: string, state: DataState, args: readonly unknown[], crm?: CrmDasFerramentas): readonly string[] {
   const noCrm = crm ?? CRM_DAS_FERRAMENTAS_VAZIO;
@@ -47,6 +44,16 @@ export function numerosAResolver(nome: string, state: DataState, args: readonly 
     case "importarGruposDoCanal": {
       const canal = canalNoCrm(noCrm, typeof args[0] === "string" ? args[0] : undefined);
       numeros = canal ? gruposNovosDoProvedor(state, canal).flatMap((g) => g.participantes) : [];
+      break;
+    }
+    // Eventos do provedor (não são operações de `POST /operacoes`): o servidor os lê com as mesmas funções.
+    case "receberPedidoDeEntrada": // (grupoId, numero)
+    case "simularEntradaPorClique": // (cliqueId, numero)
+      numeros = texto(args[1]);
+      break;
+    case "registrarEntradaNoGrupo": { // (grupoId, { numero })
+      const entrada = args[1];
+      numeros = typeof entrada === "object" && entrada !== null ? texto((entrada as { numero?: unknown }).numero) : [];
       break;
     }
     default:

@@ -59,6 +59,7 @@ import {
   importarGruposDoCanal,
   numeroExibido,
   numerosAResolver,
+  padroesDoContatoCriado,
   inativarCaptacao,
   publicarVersao,
   receberPedidoDeEntrada,
@@ -439,6 +440,23 @@ describe("Grupos — Participações e Captação", () => {
     expect(numerosAResolver("simularEntradaPorClique", state, ["clq_1", "5511999990002"], crm)).toEqual(["5511999990002"]);
     expect(numerosAResolver("registrarEntradaNoGrupo", state, ["grp_turma_02", { numero: "+5511987654321" }], crm)).toEqual([]);
     expect(numerosAResolver("criarGrupo", state, [{ nome: "X", canalId: "chn_wpp" }], crm)).toEqual([]);
+  });
+
+  it("DO-CXE-05 — o Proprietário do Contato criado segue Canal → Fila → Caixa → Proprietário do Espaço, e a Origem vem do catálogo pelo nome", () => {
+    const semPadrao = { proprietarioPadraoId: null, filaPadraoId: null, origemPadraoId: null };
+    const fila = state.queues[0];
+    if (!fila) throw new Error("o seed precisa de uma Fila");
+    fila.defaultContactOwnerMemberId = "mem_da_fila";
+    state.inbox.defaultContactOwnerMemberId = "mem_da_caixa";
+    expect(padroesDoContatoCriado(state, { ...semPadrao, proprietarioPadraoId: "mem_do_canal", filaPadraoId: fila.id }).proprietarioId).toBe("mem_do_canal");
+    expect(padroesDoContatoCriado(state, { ...semPadrao, filaPadraoId: fila.id }).proprietarioId).toBe("mem_da_fila");
+    expect(padroesDoContatoCriado(state, semPadrao).proprietarioId).toBe("mem_da_caixa");
+    delete state.inbox.defaultContactOwnerMemberId;
+    expect(padroesDoContatoCriado(state, semPadrao).proprietarioId).toBe(state.workspace.ownerMemberId);
+    const origem = state.catalog.find((i) => i.kind === "origem");
+    if (!origem) throw new Error("o seed precisa de uma Origem");
+    expect(padroesDoContatoCriado(state, { ...semPadrao, origemPadraoId: origem.id }).origem).toBe(origem.name);
+    expect(padroesDoContatoCriado(state, semPadrao).origem).toBeUndefined();
   });
 
   it("evento do provedor — sem o Contato do servidor o Pedido e a entrada são recusados, sem Participação e sem Atividade, e a frase não traz o número", () => {
