@@ -56,6 +56,7 @@ import {
   type FinanceGroup,
   type FinanceProfile,
   type FinanceQuickAction,
+  type NomesDosClientes,
   FILTROS_INICIAIS,
   GROUP_LABEL,
   nascimentoNoGrupo,
@@ -99,6 +100,7 @@ export {
   type FinanceFilters,
   type FinanceGroup,
   type FinanceProfile,
+  type NomesDosClientes,
 } from "./lens";
 
 /** Cor semântica do grupo — só em pílula, ponto e data, nunca na linha inteira. */
@@ -441,6 +443,7 @@ export function FinanceTable({
   state,
   profile,
   tasks,
+  nomes,
   definitions,
   selected,
   onToggle,
@@ -456,6 +459,8 @@ export function FinanceTable({
   readonly state: DataState;
   readonly profile: FinanceProfile;
   readonly tasks: readonly Task[];
+  /** `id do cliente → nome` (`useNomesDosClientes`): a página lê uma vez para a Lista inteira, então filtrar não refaz a chamada. */
+  readonly nomes: NomesDosClientes;
   readonly definitions: readonly StatusDefinition[];
   readonly selected: ReadonlySet<string>;
   readonly onToggle: (taskId: string) => void;
@@ -785,7 +790,7 @@ export function FinanceTable({
                         </button>
                       </td>
                       <td className="hidden max-w-[18ch] truncate @3xl:table-cell">
-                        {profile.counterpart(state, task)}
+                        {profile.counterpart(state, task, nomes)}
                       </td>
                       <td
                         className="hidden max-w-[14ch] truncate @6xl:table-cell"
@@ -991,11 +996,13 @@ export function FinanceCards({
   state,
   profile,
   tasks,
+  nomes,
   openTask,
 }: {
   readonly state: DataState;
   readonly profile: FinanceProfile;
   readonly tasks: readonly Task[];
+  readonly nomes: NomesDosClientes;
   readonly openTask: (taskId: string) => void;
 }) {
   const fmt = useFormat();
@@ -1035,7 +1042,7 @@ export function FinanceCards({
                 <span className="app-numero">
                   {task.dueDate ? fmt.taskDate(task.dueDate) : "sem vencimento"}
                 </span>{" "}
-                · {profile.counterpart(state, task)}
+                · {profile.counterpart(state, task, nomes)}
               </span>
               <span className="mt-2 flex flex-wrap items-center gap-1.5">
                 <StatusBadge

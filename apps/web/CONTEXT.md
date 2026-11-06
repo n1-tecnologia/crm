@@ -191,6 +191,14 @@ os alvos da tela em UMA chamada a `POST /crm/nomes` (lotes de 200), com chave es
 únicos e ordenados, então a mesma lista em outra ordem compartilha a chamada e o cache SWR), e
 `nomeDe(resultado, tipo, id)` devolve o texto, `null` (a api respondeu sem nome: id fora do
 Espaço, desconhecido ou tipo que o Papel não lê) ou `undefined` (a resposta ainda não chegou).
+Contas a receber (15-19) não lê o cliente do store: `clienteDe(state, task)` devolve só `{ tipo, id }` do
+Vínculo "cliente", e o nome vem de `useNomesDosClientes(state, tasks)`
+(`features/estrutura/financeiro/use-nomes-dos-clientes.ts`, em cima de `useNomesDoCrm`), que a página da Lista
+chama UMA vez para as contas da Lista inteira (digitar na busca não refaz a chamada) e passa a `FinanceTable`,
+`FinanceCards` e à busca da lente; `counterpart(state, task, nomes)` mostra "Cliente" quando o nome não veio,
+nunca o id. O cartão de Tarefa financeiro faz uma chamada por cartão visível. O diálogo da série escolhe o
+cliente entre os Contatos de `useContatos({ q })` e manda o `clientes` só para a execução local: o servidor
+descarta isso e confere o Contato em `plataforma.contatos`.
 Os números do Início do CRM novo vêm de `dados/crm/inicio.ts` (15-18): `usePanoramaDoCrm()`,
 `useLeadsAAtender(qualificacoes)` e `useEstatisticasDoCrm(janela, fuso)` leem `GET /crm/inicio/*`, que soma
 no servidor (nunca listas paginadas somadas no navegador, `paginaMaxima` é 200). "Meu" é o Membro da sessão:

@@ -5,11 +5,16 @@
  * criada de uma vez (seção 5 de contas-a-receber.md). O diálogo só monta o
  * pedido; as regras (RN-CR-01, RN-CR-07, alcance) vivem em
  * `createReceivableSeries`, e a recusa aparece dentro do diálogo.
+ *
+ * O cliente é um Contato do CRM novo (`useContatos`, com busca): a lista não vem do store.
+ * O servidor confere o Contato na tabela ao gravar (`clientes` que o navegador manda só serve
+ * à execução local), e o Contato escolhido fica guardado à parte para continuar na tela quando
+ * a busca muda e ele sai da página de resultados.
  */
 
-import { useState } from "react";
-import { contactDisplayName } from "@n1/dominio/derive";
+import { useMemo, useState } from "react";
 import { CP, CR, createReceivableSeries } from "@n1/dominio/operations";
+import { useContatos } from "@/dados/crm/contatos";
 import { useData, useRun } from "@/dados/store";
 import { ConfirmDialog, Field, RecordRow, Select, TextInput } from "@/features/shell/ui";
 import type { Task } from "@n1/dominio/types";
@@ -74,12 +79,16 @@ export function SerieDeParcelasDialog({
   readonly onCreated: (tasks: readonly Task[], clientName: string) => void;
 }) {
   const run = useRun();
-  const contatos = useData((data) =>
-    data.contacts
-      .filter((c) => c.lifecycle === "ativo")
-      .map((c) => ({ value: c.id, label: contactDisplayName(c) }))
-      .sort((a, b) => a.label.localeCompare(b.label, "pt-BR")),
-  );
+  // O cliente escolhido (id, nome e dono) fica à parte da lista: a busca muda a página de resultados.
+  const [cliente, setCliente] = useState<{ readonly id: string; readonly nome: string; readonly proprietarioId: string } | undefined>(undefined);
+  const [busca, setBusca] = useState("");
+  const lista = useContatos({ q: busca, limite: 30 }, { pausado: !open });
+  const contatosDaBusca = lista.data?.itens;
+  const contatos = useMemo(() => {
+    const itens = (contatosDaBusca ?? []).map((c) => ({ value: c.id, label: c.nomeDeExibicao }));
+    if (cliente && !itens.some((i) => i.value === cliente.id)) itens.unshift({ value: cliente.id, label: cliente.nome });
+    return itens;
+  }, [contatosDaBusca, cliente]);
   const opcoes = useData((data) => ({
     centro: data.fieldDefinitions.find((d) => d.id === CP.fields.centroDeCusto)?.options ?? [],
     empresa: data.fieldDefinitions.find((d) => d.id === CP.fields.empresa)?.options ?? [],
@@ -94,8 +103,15 @@ export function SerieDeParcelasDialog({
   };
   const fechar = () => {
     setForm(INICIAL);
+    setCliente(undefined);
+    setBusca("");
     setErro(null);
     onClose();
+  };
+  const escolherCliente = (contactId: string) => {
+    const achado = contatosDaBusca?.find((c) => c.id === contactId);
+    if (achado) setCliente({ id: achado.id, nome: achado.nomeDeExibicao, proprietarioId: achado.proprietarioId });
+    set({ contactId });
   };
 
   const parcelas = Number(form.parcelas);
@@ -152,20 +168,26 @@ export function SerieDeParcelasDialog({
       {...(faltando ? { confirmDisabledReason: faltando } : {})}
       onConfirm={() => {
         const result = run((data, me) =>
-          createReceivableSeries(data, me, {
-            contactId: form.contactId,
-            centroDeCusto: form.centroDeCusto,
-            ...(form.empresa ? { empresa: form.empresa } : {}),
-            ...(form.produto ? { produto: form.produto } : {}),
-            ...(form.forma ? { forma: form.forma } : {}),
-            ...(valorEntrada !== undefined ? { valorEntrada, vencimentoEntrada: form.vencimentoEntrada } : {}),
-            valorParcela,
-            parcelas,
-            primeiroVencimento: form.primeiroVencimento,
-          }),
+          createReceivableSeries(
+            data,
+            me,
+            {
+              contactId: form.contactId,
+              centroDeCusto: form.centroDeCusto,
+              ...(form.empresa ? { empresa: form.empresa } : {}),
+              ...(form.produto ? { produto: form.produto } : {}),
+              ...(form.forma ? { forma: form.forma } : {}),
+              ...(valorEntrada !== undefined ? { valorEntrada, vencimentoEntrada: form.vencimentoEntrada } : {}),
+              valorParcela,
+              parcelas,
+              primeiroVencimento: form.primeiroVencimento,
+            },
+            // Só para a execução local: o servidor descarta isto e confere o Contato em plataforma.contatos.
+            { contatos: cliente ? [{ id: cliente.id, nome: cliente.nome, estado: "ativo", proprietarioId: cliente.proprietarioId }] : [], empresas: [] },
+          ),
         );
         if (result.ok) {
-          onCreated(result.value, contatos.find((c) => c.value === form.contactId)?.label ?? "o cliente");
+          onCreated(result.value, cliente?.nome ?? "o cliente");
           fechar();
         } else {
           setErro(result.error);
@@ -184,8 +206,11 @@ export function SerieDeParcelasDialog({
             {erro}
           </p>
         ) : null}
+        <Field label="Buscar cliente">
+          {(id) => <TextInput id={id} value={busca} onChange={setBusca} placeholder="Nome, e-mail ou telefone do Contato" />}
+        </Field>
         <Field label="Cliente (Contato do CRM)">
-          {(id) => <Select id={id} value={form.contactId} onChange={(contactId) => set({ contactId })} placeholder="Escolher cliente" options={contatos} />}
+          {(id) => <Select id={id} value={form.contactId} onChange={escolherCliente} placeholder={lista.isLoading ? "Carregando Contatos…" : "Escolher cliente"} options={contatos} />}
         </Field>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Centro de Custo">

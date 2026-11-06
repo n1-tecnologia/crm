@@ -21,6 +21,7 @@ import { useResumoDaTarefa } from "@/dados/crm/tarefas-conversacionais";
 import { iconeDoTipoNoQuadro } from "@/features/estrutura/icone-de-tipo";
 import type { FinanceProfile } from "@/features/estrutura/financeiro/lens";
 import { valorDaConta } from "@/features/estrutura/financeiro/lens";
+import { useNomesDosClientes } from "@/features/estrutura/financeiro/use-nomes-dos-clientes";
 import { PRIORITY_LABEL } from "@/features/shell/format";
 import { CartaoDeQuadro, RostoDeIcone, type CampoDoCartao } from "@/features/shell/quadro";
 import { ActorAvatar, ConditionMarker, Icone, Pilula, StateSeal } from "@/features/shell/ui";
@@ -54,6 +55,9 @@ export function CartaoDeTarefa({
   // um cartão de Tarefa comum não faz chamada), e sem resumo ainda o subtítulo fica sem ele.
   const negocio = useResumoDaTarefa(task.id, { pausado: tipo?.name !== "Reunião" })?.negocio;
   const doTipo = iconeDoTipoNoQuadro(tipo);
+  // 15-19: o nome do cliente da conta vem de `POST /crm/nomes`. Uma chamada por cartão financeiro visível
+  // (aceito para o volume atual); os demais cartões passam lista vazia e não chamam a api.
+  const nomesDosClientes = useNomesDosClientes(state, financeiro ? [task] : []);
 
   const membros = task.assignees.filter((a) => a.kind === "member");
   const primeiro = membros[0] ? state.members.find((m) => m.id === membros[0]!.id) : undefined;
@@ -79,7 +83,7 @@ export function CartaoDeTarefa({
   const tipoENome = [task.readableId, negocio ? `Reunião · ${negocio.titulo}` : tipo?.name].filter(Boolean).join(" · ");
   // A contraparte da Conta; o "—" do perfil (sem cliente) é marcador de TABELA,
   // não subtítulo — aí o cartão cai no identificador · Tipo (achado da revisão).
-  const contraparte = financeiro?.counterpart(state, task).trim();
+  const contraparte = financeiro?.counterpart(state, task, nomesDosClientes).trim();
   const subtitulo = (financeiro && contraparte && contraparte !== "—" ? contraparte : tipoENome) || undefined;
   const temPilulas = task.priority !== "semPrioridade" || task.tagIds.length > 0 || vencida || bloqueada;
 

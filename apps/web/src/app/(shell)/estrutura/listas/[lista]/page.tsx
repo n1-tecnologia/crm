@@ -71,6 +71,7 @@ import {
   FinanceTable,
   type FinanceFilters,
 } from "@/features/estrutura/financeiro/contas-view";
+import { useNomesDosClientes } from "@/features/estrutura/financeiro/use-nomes-dos-clientes";
 import { dealOfTask, QuadroNegocios } from "@/features/estrutura/quadro-negocios";
 import { linkVisivel, SEM_LINK_PARA_QUEM_NAO_ADMINISTRA } from "@/features/estrutura/link-publico";
 import { MEUS_NEGOCIOS_ID } from "@n1/dominio/seed-comercial";
@@ -117,6 +118,13 @@ export default function ListaPage({
       l.id === lista && memberReachesContainer(state, memberId, "list", l.id),
   );
   const config = list ? effectiveListConfig(state, list.id) : null;
+  // 15-19: o nome do cliente das contas de Contas a receber vem de `POST /crm/nomes`, uma chamada para a
+  // Lista inteira (não para o recorte filtrado: digitar na busca não refaz a chamada). Fica antes do
+  // `return` de "Lista não encontrada" por ser hook; fora da lente financeira a lista é vazia e não chama a api.
+  const nomesDosClientes = useNomesDosClientes(
+    state,
+    list && financeProfileOf(list.id) ? state.tasks.filter((t) => t.listId === list.id) : [],
+  );
   // 2.6.2, D-07 — as abas vêm da configuração efetiva (o Espaço e a Pasta
   // definem), filtradas pela lente; a Lista abre na padrão salva dela quando o
   // tipo está entre as abas, senão na inicial da configuração (D-06).
@@ -299,7 +307,7 @@ export default function ListaPage({
     ...(sortBy ? { sortBy } : {}),
   });
   const tasks = financeira
-    ? applyFinanceFilters(state, filtradas, financeFilters, new Date())
+    ? applyFinanceFilters(state, filtradas, financeFilters, new Date(), nomesDosClientes)
     : filtradas;
   const filtrando = tasks.length !== todas.length;
   // Quando a tabela é a primeira coisa do corpo, o cabeçalho fixo dela encosta
@@ -861,6 +869,7 @@ export default function ListaPage({
                 state={state}
                 profile={lente}
                 tasks={tasks}
+                nomes={nomesDosClientes}
                 grupoFiltrado={financeFilters.grupo}
                 {...(criaNoGrupo ? { onCreateInGroup: criaNoGrupo, seletorDeTipo } : {})}
                 {...(criacaoRecusada ? { criacaoRecusada } : {})}
@@ -874,7 +883,7 @@ export default function ListaPage({
               />
             </div>
             <div className="sm:hidden">
-              <FinanceCards state={state} profile={lente} tasks={tasks} openTask={openTask} />
+              <FinanceCards state={state} profile={lente} tasks={tasks} nomes={nomesDosClientes} openTask={openTask} />
             </div>
           </>
         ) : (

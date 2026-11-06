@@ -8,7 +8,6 @@
 
 import { CP, CR, clienteDe } from "@n1/dominio/operations/financeiro";
 import {
-  contactDisplayName,
   effectiveListConfig,
   isOverdue,
   isTerminalCategory,
@@ -16,6 +15,11 @@ import {
 } from "@n1/dominio/derive";
 import type { DataState } from "@n1/dominio/state";
 import type { Id, Task } from "@n1/dominio/types";
+
+/** `id do cliente → nome` (Contato ou Empresa do CRM novo), como `useNomesDosClientes` o entrega. */
+export type NomesDosClientes = ReadonlyMap<string, string>;
+
+const SEM_NOMES: NomesDosClientes = new Map();
 
 export type FinanceGroup =
   | "autorizacao"
@@ -66,7 +70,12 @@ export interface FinanceProfile {
   readonly cards: ReadonlyArray<{ readonly grupo: FinanceGroup; readonly label: string }>;
   readonly settledStatusId: Id;
   readonly quickActions: readonly [FinanceQuickAction, FinanceQuickAction];
-  readonly counterpart: (state: DataState, task: Task) => string;
+  /**
+   * Quem é a outra ponta da conta. `nomes` é `id do cliente → nome` (`useNomesDosClientes`, que lê
+   * `POST /crm/nomes`): o Vínculo "cliente" só guarda a referência, e o nome vem da api. Sem nome no
+   * mapa (ainda carregando, ou o Papel não lê Contato) a lente mostra "Cliente", nunca o id.
+   */
+  readonly counterpart: (state: DataState, task: Task, nomes: NomesDosClientes) => string;
   readonly labels: {
     readonly description: string;
     readonly nova: string;
@@ -172,9 +181,9 @@ export const RECEBER_PROFILE: FinanceProfile = {
       notApplicable: (task) => (task.statusId === CR.status.recebido ? "Já foi recebida." : undefined),
     },
   ],
-  counterpart: (state, task) => {
+  counterpart: (state, task, nomes) => {
     const cliente = clienteDe(state, task);
-    if (cliente) return contactDisplayName(cliente);
+    if (cliente) return nomes.get(cliente.id) ?? "Cliente";
     return textoDoCampo(task, CR.fields.tipo) === CR.tipos.saque ? "Plataforma" : "—";
   },
   labels: {
@@ -361,6 +370,8 @@ export function applyFinanceFilters(
   tasks: readonly Task[],
   f: FinanceFilters,
   now: Date,
+  /** Os nomes dos clientes (`useNomesDosClientes`): a busca por texto casa o nome do cliente de Contas a receber. */
+  nomes: NomesDosClientes = SEM_NOMES,
 ): Task[] {
   const texto = f.texto.trim().toLocaleLowerCase("pt-BR");
   const inicioMes = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
@@ -387,7 +398,7 @@ export function applyFinanceFilters(
       texto &&
       !(
         t.title.toLocaleLowerCase("pt-BR").includes(texto) ||
-        (financeProfileOf(t.listId) ?? PAGAR_PROFILE).counterpart(state, t).toLocaleLowerCase("pt-BR").includes(texto) ||
+        (financeProfileOf(t.listId) ?? PAGAR_PROFILE).counterpart(state, t, nomes).toLocaleLowerCase("pt-BR").includes(texto) ||
         (t.readableId ?? "").toLocaleLowerCase("pt-BR").includes(texto)
       )
     )
