@@ -23,7 +23,7 @@ import { SWRConfig, useSWRConfig } from "swr";
 import { buildSeed } from "@n1/dominio/seed";
 import type { ConversaDetalhada } from "@n1/dominio/crm/conversas";
 import type { DataState } from "@n1/dominio/state";
-import type { Conversation } from "@n1/dominio/types";
+import type { ConversaDeGrupo } from "@n1/dominio/types";
 import { StoreProvider } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
 import ConversaPage from "@/app/(shell)/crm/caixa-de-entrada/[conversa]/page";
@@ -388,7 +388,7 @@ describe("página da Conversa — id que a api não conhece (F14-D-05)", () => {
       participants: [],
       messages: [],
       reopenCount: 0,
-    } as unknown as Conversation;
+    } as unknown as ConversaDeGrupo;
     estado.conversations.push(antiga);
     expect(antiga.groupIdentifier).toBeUndefined();
     await montarPagina(antiga.id);

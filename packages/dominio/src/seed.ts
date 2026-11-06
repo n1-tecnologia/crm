@@ -26,7 +26,6 @@ import type {
   ChatMessage,
   ChatSession,
   Collection,
-  Deal,
   FieldDefinition,
   Folder,
   Id,
@@ -757,15 +756,7 @@ export function buildSeed(): DataState {
     lists,
     tasks: buildTasks(),
     // O CRM antigo saiu do seed (15-31, D-15-13): `bootstrap:crm-demo` carrega a demonstração nas tabelas novas.
-    contacts: [],
-    companies: [],
-    deals: [],
-    funnels: [],
-    contactCompanyLinks: [],
-    companyCompanyLinks: [],
-    distinctFromLinks: [],
     inbox: { id: "inbox_n1", workspaceId: WORKSPACE_ID, reopenWindowHours: 72, defaultDistribution: "manual", defaultContactOwnerMemberId: "mem_julia" },
-    channels: [],
     queues,
     // Só as Conversas de Grupo (F14-D-05) entram, pelas Ferramentas.
     conversations: [],

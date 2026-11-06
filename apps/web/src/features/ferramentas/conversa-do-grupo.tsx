@@ -17,7 +17,7 @@ import { useRecente } from "@/features/shell/recente";
 import { enviarMensagemAoGrupo, recusaDeEnvioAoGrupo } from "@n1/dominio/operations";
 import { conversaDoGrupo } from "@n1/dominio/derive-ferramentas";
 import type { OperationResult } from "@n1/dominio/state";
-import type { Message } from "@n1/dominio/types";
+import type { MensagemDeGrupo } from "@n1/dominio/types";
 import type { Report } from "@/features/shell/ficha";
 import { useFormat } from "@/features/shell/use-format";
 import { EmptyState, Icone, cn } from "@/features/shell/ui";
@@ -66,7 +66,7 @@ export function ConversaDoGrupo({
 
   if (!grupo) return null;
 
-  const quemFalou = (m: Message): string => {
+  const quemFalou = (m: MensagemDeGrupo): string => {
     if (m.direction === "enviada") {
       if (m.actor.kind === "member") return state.members.find((x) => x.id === m.actor.id)?.displayName ?? "Membro";
       if (m.actor.kind === "automation") return state.automations.find((x) => x.id === m.actor.id)?.name ?? "Automação";

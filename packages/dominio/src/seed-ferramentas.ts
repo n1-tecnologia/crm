@@ -11,12 +11,12 @@
  * WhatsApp dele, e o Canal participante guarda o id e o identificador externo do Canal (`chn_wpp`);
  * tudo calculado aqui, sem ler as coleções do CRM antigo do estado. O que o seed antigo fazia SOBRE
  * esses registros (a Tag "Em grupo de alunos" nos Contatos, os Grupos habilitados no Canal e os
- * Envios de Flow nas Conversas do CRM) saiu junto com eles; `seed-crm-antigo.ts` os refaz para os testes.
+ * Envios de Flow nas Conversas do CRM) saiu junto com eles; o construtor `seed-crm-antigo.ts` que os refazia saiu no 15-43.
  * Nada aqui toca `cnv_1`.
  */
 
 import type { DataState } from "./state";
-import type { ActorRef, Comunidade, Conversation, Flow, Grupo, Id, LinkDeCaptacao, ParticipacaoDeGrupo, TelaDeFlow } from "./types";
+import type { ActorRef, Comunidade, ConversaDeGrupo, Flow, Grupo, Id, LinkDeCaptacao, ParticipacaoDeGrupo, TelaDeFlow } from "./types";
 import { nextId, recordActivity } from "./operations/activity";
 import { definicaoPublicavel } from "./operations/ferramentas/flows-validacao";
 import { reconciliarGrupoDeAvisos } from "./operations/ferramentas/participacoes";
@@ -339,8 +339,8 @@ export function applyFerramentas(state: DataState, clock: Clock): void {
   state.flows.push(flow);
 
   // ── Conversas de grupo (INV-GRP-05) ─────────────────────────────────────
-  const conversaDeGrupo = (id: Id, grupo: Grupo, criadaEm: string): Conversation => {
-    const c: Conversation = {
+  const conversaDeGrupo = (id: Id, grupo: Grupo, criadaEm: string): ConversaDeGrupo => {
+    const c: ConversaDeGrupo = {
       id,
       workspaceId,
       createdBy: member("mem_julia"),
@@ -363,7 +363,7 @@ export function applyFerramentas(state: DataState, clock: Clock): void {
     state.conversations.push(c);
     return c;
   };
-  const enviadaNoGrupo = (c: Conversation, texto: string, quando: string): void => {
+  const enviadaNoGrupo = (c: ConversaDeGrupo, texto: string, quando: string): void => {
     c.messages.push({ id: nextId("msg"), conversationId: c.id, direction: "enviada", actor: member("mem_julia"), content: texto, attachments: [], deliveryStatus: "entregue", internalReads: [], reactions: [], externalEdits: [], createdAt: quando });
   };
   const cnvAvisos = conversaDeGrupo("cnv_grp_avisos", avisos, at(118));

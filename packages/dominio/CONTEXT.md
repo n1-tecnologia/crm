@@ -53,9 +53,8 @@ Pós-venda), o cliente das Contas a receber (`cnt_cr_*`), as Participações dos
 calculado, Canal participante `chn_wpp` com o identificador `+5511987654321`) e as âncoras/escopos de Funil das
 Automações. O atalho "Caixa de entrada" do Comercial também fica. O que o seed antigo fazia SOBRE esses registros saiu com
 eles: a Tag "Em grupo de alunos" nos Contatos, os Grupos habilitados no Canal e os Envios de Flow nas Conversas do CRM.
-`seed-crm-antigo.ts` (`semearCrmAntigo(estado)`) é o construtor antigo, intacto. Depois do 15-42 só
-`seed-sem-crm-antigo.test.ts` o chama (o caso temporário que prova o seed sem CRM); nenhum `seed*.ts` nem código de
-produção o importa, a guarda `sem-crm-antigo.test.ts` o lista como único congelado e ele sai no 15-43.
+O construtor antigo (`seed-crm-antigo.ts`, `semearCrmAntigo`) foi apagado no 15-43, com o caso temporário de
+`seed-sem-crm-antigo.test.ts` que o chamava.
 
 **Fase 15, plano 32 (UCR-12): as operações do CRM antigo saíram de `OPERACOES`.** Os módulos
 `operations/{contacts,conversations,deals,iniciar-conversa,crm-antigo}.ts` foram apagados, e `criarCanal`
@@ -65,7 +64,7 @@ para o que ainda se usa:
 
 - `ChannelType`, `ProvedorDeCanal`, `ChannelCapabilities`, `CHANNEL_CAPABILITIES` e `capacidadesDoCanal`
   moram em `crm/capacidades.ts` (o que um Canal pode fazer, por Tipo e provedor). `types/crm.ts` os reexporta
-  enquanto os tipos antigos existem (15-43).
+  para quem importa de `@n1/dominio/types` (a web e a api).
 - Grupo, Flow e Automação (F14-D-05) ainda chamam `startConversation`, `sendMessage`,
   `sendMessageSemConferencia` e `receiveMessage`, e a Conversa de grupo na Caixa ainda resolve, reabre,
   atribui, estrela e manda para a lixeira pelo store. Isso ficou em `operations/ferramentas/conversa-de-grupo.ts`
@@ -78,8 +77,7 @@ para o que ainda se usa:
 
 **Fase 15, plano 42 (UCR-12): o domínio deixou de ler o CRM antigo.** Nenhum arquivo de produção do domínio lê as oito
 coleções (`contacts`, `companies`, `contactCompanyLinks`, `companyCompanyLinks`, `distinctFromLinks`, `funnels`,
-`deals`, `channels`) — só o construtor `seed-crm-antigo.ts`, que sai no 15-43; `conversations` fica só em Grupo e Flow.
-O `DataState` ainda tem as coleções (o 15-43 as tira), mas nada as lê:
+`deals`, `channels`); `conversations` fica só em Grupo e Flow. O `DataState` perdeu as coleções no 15-43 (ver abaixo):
 
 - **Derivações apagadas.** `derive.ts` sem `contactDisplayRole`, `principalCompanyId`, `effectiveProbability`,
   `weightedValue`, `lastInteraction`, `marketingConsentMissing` e `duplicateSuspicions`; `derive-conversacional.ts`
@@ -92,7 +90,7 @@ O `DataState` ainda tem as coleções (o 15-43 as tira), mas nada as lê:
   o Vínculo de nascimento marcado `alvoConferido` (`VINCULO_NAO_CONFERIDO`); o Canal de atendimento da Lista só vale se
   está em `canais` (`plataforma.canais`), sem recuo ao estado.
 - **Grupo, Flow e Automação (WINDOWS #37).** `startConversation`, `sendMessage` e `receiveMessage`
-  (`ferramentas/conversa-de-grupo.ts`, que NÃO sai com o 15-43) tomam o Canal de `crm.canais` e o Contato de
+  (`ferramentas/conversa-de-grupo.ts`, que NÃO saiu com o 15-43) tomam o Canal de `crm.canais` e o Contato de
   `crm.contatos`; o Contato é o `ContatoDaFerramenta` (id, nome, estado, WhatsApp). Não conferem mais o consentimento de
   marketing do Contato antigo (o Canal da tabela não tem Mensagens de modelo) nem restauram Contato arquivado ao receber
   Mensagem (RN-CON-13 é do CRM novo).
@@ -104,6 +102,18 @@ O `DataState` ainda tem as coleções (o 15-43 as tira), mas nada as lê:
   `testes/crm-das-ferramentas.ts` (o recorte do demo antigo que Grupo, Comunidade e Flow usam) substituem o
   `semearCrmAntigo` nos testes. `sobre-o-crm-antigo.test.ts` virou `painel-barra-e-modelo-da-lista.test.ts`; a Mensageria
   e o Rascunho foram para `ferramentas/conversa-de-grupo.test.ts`.
+
+**Fase 15, plano 43 (UCR-12): o `DataState` não tem mais o CRM antigo.** `contacts`, `companies`, `deals`, `funnels`,
+`contactCompanyLinks`, `companyCompanyLinks`, `distinctFromLinks` e `channels` saíram de `DataState` e de `TODAS`
+(`colecoes.ts`), e com eles os tipos `Contact`, `Company`, `Deal`, `Funnel`, `Stage`, `Channel`, `MessageTemplate` e os
+Vínculos de `types/crm.ts` (ficam `ContactIdentifierType`, `Queue`, `BusinessHours`, `Inbox` e o reexport de
+`ChannelType`/`ProvedorDeCanal`/`ChannelCapabilities`). `conversations` fica no `DataState`, agora `ConversaDeGrupo[]`
+(`types/conversa-de-grupo.ts`, com `MensagemDeGrupo`, `Draft`, `Participant`, `Snooze` e `DeletionMark`): é o que Grupo,
+Flow e as composições das Automações ainda leem (F14-D-05), e `conversa-de-grupo.ts` continua. `hidratar()` da api segue
+carregando toda coleção que achar em `registros`: uma linha antiga que sobrou volta como chave desconhecida até o
+`migrar:crm-antigo` apagá-la (`apps/api/src/persistencia/hidratar-crm-antigo.test.ts` prova as duas metades).
+`responseWindowOpenUntil` e `rotuloDoCanal` recebem o Canal pelo recorte `{ channelType, provider }` (o `Canal` de
+`plataforma.canais` serve), não pelo `Channel` antigo.
 
 `seed-financeiro.ts`/`seed-contas-a-receber.ts` aceitam `{ fixtures: false }`
 (padrão `true`): monta só a configuração do processo, sem os Membros e as

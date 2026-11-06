@@ -11,7 +11,7 @@ import { sendMessage } from "../operations/ferramentas/conversa-de-grupo";
 import { buildSeed } from "../seed";
 import type { DataState } from "../state";
 import { canalDeTeste, contatoDeTeste, conversaDeTeste, crmDeTeste } from "../testes/crm-de-teste";
-import type { Conversation, CrmDasFerramentas } from "../types";
+import type { ConversaDeGrupo, CrmDasFerramentas } from "../types";
 import { CHANNEL_CAPABILITIES, capacidadesDoCanal, type ProvedorDeCanal } from "./capacidades";
 
 const THIAGO = "mem_thiago";
@@ -32,7 +32,7 @@ afterEach(() => {
 function conversaNoCanal(
   provedor: ProvedorDeCanal,
   horas: number,
-): { canal: { channelType: "whatsapp"; provider: ProvedorDeCanal }; conversa: Conversation; crm: CrmDasFerramentas } {
+): { canal: { channelType: "whatsapp"; provider: ProvedorDeCanal }; conversa: ConversaDeGrupo; crm: CrmDasFerramentas } {
   const canalDaTabela = canalDeTeste({ id: `chn_t_${provedor}`, nome: `Teste ${provedor}`, provedor });
   const contato = contatoDeTeste("cnt_t_1", "Contato de teste");
   const conversa = conversaDeTeste(`cnv_t_${provedor}`, canalDaTabela.id, contato.id, [

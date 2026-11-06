@@ -9,7 +9,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../../seed";
 import type { DataState } from "../../state";
-import type { Conversation, Id, Member } from "../../types";
+import type { ConversaDeGrupo, Id, Member } from "../../types";
 import { canalDeTeste, contatoDeTeste, conversaDeTeste, crmDeTeste } from "../../testes/crm-de-teste";
 import { ehNomeDeOperacao, OPERACOES } from "../registro";
 import { enviarLinkDeConvite } from "../ferramentas";
@@ -39,7 +39,7 @@ const membro = (id: Id): Member => {
   if (!m) throw new Error(`Membro ${id} não está no seed.`);
   return m;
 };
-const conversa = (id: Id): Conversation => {
+const conversa = (id: Id): ConversaDeGrupo => {
   const c = state.conversations.find((x) => x.id === id);
   if (!c) throw new Error(`Conversa ${id} não está no seed.`);
   return c;
@@ -287,7 +287,7 @@ describe("Adoção de Rascunho de IA no envio (documento 14, 7.10)", () => {
   const crm = crmDeTeste([canal], [contato]);
   const THIAGO = "mem_thiago";
   const AGENTE = { kind: "agent" as const, id: "agt_rascunho" };
-  let c: Conversation;
+  let c: ConversaDeGrupo;
 
   beforeEach(() => {
     c = conversaDeTeste("cnv_rasc", canal.id, contato.id, [["recebida", new Date().toISOString()]]);

@@ -7,7 +7,7 @@
  */
 
 import type { Canal } from "../crm/canais";
-import type { ContatoDaFerramenta, Conversation, CrmDasFerramentas, Id, Message } from "../types";
+import type { ContatoDaFerramenta, ConversaDeGrupo, CrmDasFerramentas, Id, MensagemDeGrupo } from "../types";
 
 /** Um Canal de WhatsApp oficial, ativo e conectado, como a tabela `plataforma.canais` o devolve. */
 export function canalDeTeste(parcial: Partial<Canal> & Pick<Canal, "id">): Canal {
@@ -43,10 +43,10 @@ export function crmDeTeste(canais: Canal[], contatos: ContatoDaFerramenta[]): Cr
   return { canais, contatos };
 }
 
-export type Recebimento = readonly [direcao: Message["direction"], criadoEm: string];
+export type Recebimento = readonly [direcao: MensagemDeGrupo["direction"], criadoEm: string];
 
 /** Uma Conversa 1:1 ativa do Contato no Canal, com Mensagens nas direções e instantes dados. */
-export function conversaDeTeste(id: Id, canalId: Id, contatoId: Id, mensagens: readonly Recebimento[] = []): Conversation {
+export function conversaDeTeste(id: Id, canalId: Id, contatoId: Id, mensagens: readonly Recebimento[] = []): ConversaDeGrupo {
   return {
     id,
     workspaceId: "ws_n1",

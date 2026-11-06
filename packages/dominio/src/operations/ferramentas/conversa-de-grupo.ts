@@ -16,7 +16,7 @@
 import type { Canal } from "../../crm/canais";
 import { CHANNEL_CAPABILITIES, capacidadesDoCanal } from "../../crm/capacidades";
 import { fail, ok, type DataState, type OperationResult } from "../../state";
-import type { ActorRef, Channel, ContatoDaFerramenta, Conversation, CrmDasFerramentas, Id, Message } from "../../types";
+import type { ActorRef, ChannelType, ContatoDaFerramenta, ConversaDeGrupo, CrmDasFerramentas, Id, MensagemDeGrupo, ProvedorDeCanal } from "../../types";
 import { memberActor, nextId, recordActivity, systemActor } from "../activity";
 
 /**
@@ -42,28 +42,32 @@ export function recusaDeEscritaNoCrmAntigo(state: DataState, actingMemberId: Id)
 
 const now = (): string => new Date().toISOString();
 
-/** O Canal da tabela `plataforma.canais` na forma que as composições antigas leem (`Channel`). */
-function canalComoChannel(canal: Canal, workspaceId: Id): Channel {
+/**
+ * O Canal da tabela `plataforma.canais` na forma que as composições de Grupo, Flow e Automação leem:
+ * só o que elas consultam. Desde o 15-43 não há mais o tipo `Channel` do modelo antigo.
+ */
+interface CanalDaComposicao {
+  readonly id: Id;
+  readonly name: string;
+  readonly lifecycle: "ativo" | "arquivado";
+  readonly channelType: ChannelType;
+  readonly provider: ProvedorDeCanal;
+  readonly connection: "conectada" | "desconectada" | "comErro";
+  readonly defaultQueueId?: Id;
+  /** O Canal da tabela não guarda Mensagens de modelo (WINDOWS #20): a lista é sempre vazia. */
+  readonly messageTemplates: ReadonlyArray<{ readonly providerId: string; readonly approval: string }>;
+}
+
+function canalComoChannel(canal: Canal): CanalDaComposicao {
   return {
     id: canal.id,
-    workspaceId,
-    createdBy: { kind: "member", id: canal.criadoPor },
-    createdAt: canal.criadoEm,
-    lifecycle: canal.estado,
-    ...(canal.arquivadoEm !== null ? { archivedAt: canal.arquivadoEm } : {}),
     name: canal.nome,
+    lifecycle: canal.estado,
     channelType: canal.tipo,
-    externalId: canal.identificadorExterno,
-    connection: canal.conexao === "com_erro" ? "comErro" : canal.conexao,
-    configuredByMemberId: canal.configuradoPor,
-    ...(canal.filaPadraoId !== null ? { defaultQueueId: canal.filaPadraoId } : {}),
-    ...(canal.proprietarioPadraoId !== null ? { defaultContactOwnerMemberId: canal.proprietarioPadraoId } : {}),
-    ...(canal.origemPadraoId !== null ? { defaultOriginId: canal.origemPadraoId } : {}),
-    messageTemplates: [],
-    groupsEnabled: canal.gruposHabilitados,
     provider: canal.provedor,
-    relational: true,
-    simulatedConnection: canal.conexaoSimulada,
+    connection: canal.conexao === "com_erro" ? "comErro" : canal.conexao,
+    ...(canal.filaPadraoId !== null ? { defaultQueueId: canal.filaPadraoId } : {}),
+    messageTemplates: [],
   };
 }
 
@@ -73,9 +77,9 @@ function canalComoChannel(canal: Canal, workspaceId: Id): Channel {
  * as operações de Grupo, Flow e Automação já recebem. Sem `crm`, ou com um id que a tabela não tem,
  * não há Canal (15-42: o estado antigo deixou de ser consultado).
  */
-function canalPeloId(state: DataState, canalId: Id, crm?: CrmDasFerramentas): Channel | undefined {
+function canalPeloId(canalId: Id, crm?: CrmDasFerramentas): CanalDaComposicao | undefined {
   const canal = crm?.canais.find((c) => c.id === canalId);
-  return canal ? canalComoChannel(canal, state.workspace.id) : undefined;
+  return canal ? canalComoChannel(canal) : undefined;
 }
 
 /**
@@ -86,7 +90,7 @@ function contatoPeloId(contactId: Id, crm?: CrmDasFerramentas): ContatoDaFerrame
   return crm?.contatos.find((c) => c.id === contactId);
 }
 
-function windowOpenUntil(channel: Channel, conversation: Conversation): Date | null {
+function windowOpenUntil(channel: CanalDaComposicao, conversation: ConversaDeGrupo): Date | null {
   const hours = capacidadesDoCanal(channel).responseWindowHours;
   if (hours === undefined) return null;
   const lastReceived = [...conversation.messages]
@@ -127,7 +131,7 @@ export function sendMessage(
   state: DataState,
   actingMemberId: Id,
   input: SendMessageInput,
-): OperationResult<Message> {
+): OperationResult<MensagemDeGrupo> {
   // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
   const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
   if (recusa) return fail(recusa);
@@ -144,13 +148,13 @@ export function sendMessageSemConferencia(
   state: DataState,
   actingMemberId: Id,
   input: SendMessageInput,
-): OperationResult<Message> {
+): OperationResult<MensagemDeGrupo> {
   const conversation = state.conversations.find((c) => c.id === input.conversationId);
   if (!conversation) return fail("Conversa não encontrada.");
   if (conversation.lifecycle !== "ativo") return fail("Esta Conversa está na lixeira.");
   if (!input.content.trim()) return fail("Escreva a mensagem antes de enviar.", "conteudo");
 
-  const channel = canalPeloId(state, conversation.channelId, input.crm);
+  const channel = canalPeloId(conversation.channelId, input.crm);
   if (!channel) return fail("Canal não encontrado.");
 
   const actor = input.actor ?? memberActor(actingMemberId);
@@ -177,7 +181,7 @@ export function sendMessageSemConferencia(
   }
 
   const disconnected = channel.connection !== "conectada";
-  const message: Message = {
+  const message: MensagemDeGrupo = {
     id: nextId("msg"),
     conversationId: conversation.id,
     direction: input.internal ? "interna" : "enviada",
@@ -232,7 +236,7 @@ export function resolveConversation(
   state: DataState,
   actingMemberId: Id,
   conversationId: Id,
-): OperationResult<Conversation> {
+): OperationResult<ConversaDeGrupo> {
   // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
   const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
   if (recusa) return fail(recusa);
@@ -264,7 +268,7 @@ export function reopenConversation(
   state: DataState,
   actingMemberId: Id,
   conversationId: Id,
-): OperationResult<Conversation> {
+): OperationResult<ConversaDeGrupo> {
   // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
   const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
   if (recusa) return fail(recusa);
@@ -298,8 +302,8 @@ export function receiveMessage(
   contactId: Id,
   content: string,
   crm?: CrmDasFerramentas,
-): OperationResult<Conversation> {
-  const channel = canalPeloId(state, channelId, crm);
+): OperationResult<ConversaDeGrupo> {
+  const channel = canalPeloId(channelId, crm);
   if (!channel) return fail("Canal não encontrado.");
   const contact = contatoPeloId(contactId, crm);
   if (!contact) return fail("Contato não encontrado.");
@@ -399,7 +403,7 @@ export function assignConversation(
   actingMemberId: Id,
   conversationId: Id,
   assignee: ActorRef | undefined,
-): OperationResult<Conversation> {
+): OperationResult<ConversaDeGrupo> {
   // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
   const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
   if (recusa) return fail(recusa);
@@ -431,7 +435,7 @@ export function trashConversation(
   state: DataState,
   actingMemberId: Id,
   conversationId: Id,
-): OperationResult<Conversation> {
+): OperationResult<ConversaDeGrupo> {
   // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
   const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
   if (recusa) return fail(recusa);
@@ -470,7 +474,7 @@ export function startConversation(
   channelId: Id,
   contactId: Id,
   crm?: CrmDasFerramentas,
-): OperationResult<Conversation> {
+): OperationResult<ConversaDeGrupo> {
   const member = state.members.find((m) => m.id === actingMemberId);
   if (!member || member.state !== "ativo") return fail("Só um Membro ativo abre atendimento.");
   const base = state.roles.find((r) => r.id === member.roleId)?.base;
@@ -478,7 +482,7 @@ export function startConversation(
     return fail("Um Convidado não abre atendimento.");
   }
 
-  const channel = canalPeloId(state, channelId, crm);
+  const channel = canalPeloId(channelId, crm);
   if (!channel) return fail("Canal não encontrado.");
   if (channel.lifecycle !== "ativo") return fail("Este Canal não está ativo.");
 
@@ -507,7 +511,7 @@ export function startConversation(
   );
   if (existente) return ok(existente);
 
-  const conversation: Conversation = {
+  const conversation: ConversaDeGrupo = {
     id: nextId("cnv"),
     workspaceId: state.workspace.id,
     createdBy: memberActor(actingMemberId),
@@ -556,7 +560,7 @@ export function toggleConversationStar(
   state: DataState,
   actingMemberId: Id,
   conversationId: Id,
-): OperationResult<Conversation> {
+): OperationResult<ConversaDeGrupo> {
   // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
   const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
   if (recusa) return fail(recusa);

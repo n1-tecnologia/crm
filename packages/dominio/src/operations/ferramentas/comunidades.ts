@@ -8,7 +8,7 @@
  */
 
 import { fail, ok, type DataState, type OperationResult } from "../../state";
-import { CRM_DAS_FERRAMENTAS_VAZIO, type ActorRef, type Comunidade, type ConfiguracoesDaComunidade, type Conversation, type CrmDasFerramentas, type Grupo, type Id, type Message } from "../../types";
+import { CRM_DAS_FERRAMENTAS_VAZIO, type ActorRef, type Comunidade, type ConfiguracoesDaComunidade, type ConversaDeGrupo, type CrmDasFerramentas, type Grupo, type Id, type MensagemDeGrupo } from "../../types";
 import { grupoDeAvisos, gruposComuns, gruposDaComunidade, membrosDoGrupo, participacoesVigentes } from "../../derive-ferramentas";
 import { memberActor, nextId, recordActivity } from "../activity";
 import { CAPACIDADES_DE_ATIVOS, LIMITE_DE_GRUPOS_POR_ESPACO } from "./capacidades";
@@ -257,7 +257,7 @@ export function enviarMensagemAComunidade(
   comunidadeId: Id,
   input: { readonly content: string; readonly templateProviderId?: string },
   crm?: CrmDasFerramentas,
-): OperationResult<{ readonly conversa: Conversation; readonly mensagem: Message; readonly grupoDeAvisos: Grupo }> {
+): OperationResult<{ readonly conversa: ConversaDeGrupo; readonly mensagem: MensagemDeGrupo; readonly grupoDeAvisos: Grupo }> {
   const membro = recusaDeMembroAtivo(state, actingMemberId);
   if (membro) return fail(membro);
   const comunidade = comunidadePorId(state, comunidadeId);

@@ -5,10 +5,10 @@
  * que os punham no estado: nenhuma tela os lê mais.
  */
 
-import type { Conversation } from "@n1/dominio/types";
+import type { ConversaDeGrupo } from "@n1/dominio/types";
 
 /** Uma Conversa 1:1 aberta, com uma Mensagem recebida ainda não lida, atribuída a `atribuidaA`. */
-export function conversaAntigaDeTeste(sobre: Partial<Conversation> & { readonly id: string; readonly atribuidaA?: string }): Conversation {
+export function conversaAntigaDeTeste(sobre: Partial<ConversaDeGrupo> & { readonly id: string; readonly atribuidaA?: string }): ConversaDeGrupo {
   const { atribuidaA, ...resto } = sobre;
   return {
     workspaceId: "ws_n1",
@@ -42,5 +42,5 @@ export function conversaAntigaDeTeste(sobre: Partial<Conversation> & { readonly 
     ],
     reopenCount: 0,
     ...resto,
-  } as unknown as Conversation;
+  } as unknown as ConversaDeGrupo;
 }

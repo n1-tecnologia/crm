@@ -9,7 +9,7 @@
 import { nextId } from "../operations/activity";
 import { FLOW_TRIAGEM_ID } from "../seed-ferramentas";
 import type { DataState } from "../state";
-import type { ContatoDaFerramenta, Conversation, CrmDasFerramentas, Message } from "../types";
+import type { ContatoDaFerramenta, ConversaDeGrupo, CrmDasFerramentas, MensagemDeGrupo } from "../types";
 import { canalDeTeste, conversaDeTeste } from "./crm-de-teste";
 
 /** [id, nome, WhatsApp, estado]: os Contatos do demo que os Grupos e Flows do seed referenciam. */
@@ -83,15 +83,15 @@ export function semearConversasDasFerramentas(estado: DataState): void {
   const v1 = flow?.versoes.find((v) => v.numero === 1);
   if (!flow || !v1) throw new Error("o seed precisa do Flow de triagem com a v1");
   const agora = new Date().toISOString();
-  const abertas = (id: string, contatoId: string): Conversation => conversaDeTeste(id, "chn_wpp", contatoId, [["recebida", agora]]);
+  const abertas = (id: string, contatoId: string): ConversaDeGrupo => conversaDeTeste(id, "chn_wpp", contatoId, [["recebida", agora]]);
   const cnv5 = abertas("cnv_5", "cnt_5");
   const cnv9 = abertas("cnv_9", "cnt_9");
   const cnv13 = abertas("cnv_13", "cnt_13");
   const cnv17 = conversaDeTeste("cnv_17", "chn_wpp", "cnt_17", [["recebida", MARCA(4, 10)]]);
   cnv17.state = "resolvida";
   cnv17.resolvedAt = MARCA(1, 17);
-  const envio = (conversa: Conversation, quando: string, respondeu: { formacao: string; cidade: string } | undefined, quandoRespondeu: string): void => {
-    const enviada: Message = {
+  const envio = (conversa: ConversaDeGrupo, quando: string, respondeu: { formacao: string; cidade: string } | undefined, quandoRespondeu: string): void => {
+    const enviada: MensagemDeGrupo = {
       id: nextId("msg"),
       conversationId: conversa.id,
       direction: "enviada",

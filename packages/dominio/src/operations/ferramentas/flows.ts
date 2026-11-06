@@ -16,13 +16,13 @@ import type {
   CategoriaDeFlow,
   ComponenteDeFlow,
   CondicaoDeComponente,
-  Conversation,
+  ConversaDeGrupo,
   CrmDasFerramentas,
   DadoDeTela,
   EnvioDeFlow,
   Flow,
   Id,
-  Message,
+  MensagemDeGrupo,
   PropriedadesDeComponente,
   RespostaDeFlow,
   TelaDeFlow,
@@ -843,7 +843,7 @@ export interface EnviarFlowInput {
  * de resposta, modelo aprovado e consentimento valem como para qualquer
  * Mensagem (20.6). O Anexo `flow` marca a Mensagem para a Caixa de Entrada.
  */
-export function enviarFlow(state: DataState, actingMemberId: Id, input: EnviarFlowInput, crm?: CrmDasFerramentas): OperationResult<{ readonly mensagem: Message; readonly conversa: Conversation }> {
+export function enviarFlow(state: DataState, actingMemberId: Id, input: EnviarFlowInput, crm?: CrmDasFerramentas): OperationResult<{ readonly mensagem: MensagemDeGrupo; readonly conversa: ConversaDeGrupo }> {
   const membro = recusaDeMembroAtivo(state, actingMemberId);
   if (membro) return fail(membro);
   const flow = flowPorId(state, input.flowId);
@@ -886,7 +886,7 @@ export function enviarFlow(state: DataState, actingMemberId: Id, input: EnviarFl
   const anexo: Attachment = { fileId: flow.id, order: 0, mediaType: "flow", displayName: flow.nome };
   // A Mensagem tem `attachments` readonly: nasce de novo, com o Flow e o Anexo, no lugar da que `sendMessage` gravou.
   const indice = conversa.messages.findIndex((m) => m.id === envio.value.id);
-  const mensagem: Message = { ...envio.value, attachments: [anexo], flow: flowNaMensagem };
+  const mensagem: MensagemDeGrupo = { ...envio.value, attachments: [anexo], flow: flowNaMensagem };
   if (indice >= 0) conversa.messages[indice] = mensagem;
   registrarNoFlow(state, flow, { actor: input.actor ?? memberActor(actingMemberId), ...(input.delegate ? { delegate: input.delegate } : {}), action: "Flow enviado", detail: `v${publicada.numero} · ${conversa.title}` });
   return ok({ mensagem, conversa });
@@ -909,7 +909,7 @@ export interface ReceberRespostaInput {
  * Um Nome fora da Versão não descarta nada: marca `naoConforme` (20.5).
  * O Contato não muda por si (RN-FLW-14): isso é Automação.
  */
-export function receberRespostaDeFlow(state: DataState, input: ReceberRespostaInput, crm?: CrmDasFerramentas): OperationResult<{ readonly mensagem: Message; readonly conversa: Conversation }> {
+export function receberRespostaDeFlow(state: DataState, input: ReceberRespostaInput, crm?: CrmDasFerramentas): OperationResult<{ readonly mensagem: MensagemDeGrupo; readonly conversa: ConversaDeGrupo }> {
   const flow = flowPorId(state, input.flowId);
   if (!flow) return fail("Flow não encontrado.");
   const versao = input.versaoId ? flow.versoes.find((v) => v.id === input.versaoId) : versaoPublicada(flow);
@@ -941,7 +941,7 @@ export function receberRespostaDeFlow(state: DataState, input: ReceberRespostaIn
     ...(input.mensagemDeOrigemId ? { mensagemDeOrigemId: input.mensagemDeOrigemId } : {}),
     ...(naoConforme ? { naoConforme: true } : {}),
   };
-  const mensagem: Message = { ...original, attachments: [{ fileId: flow.id, order: 0, mediaType: "flow", displayName: flow.nome }], respostaDeFlow: resposta };
+  const mensagem: MensagemDeGrupo = { ...original, attachments: [{ fileId: flow.id, order: 0, mediaType: "flow", displayName: flow.nome }], respostaDeFlow: resposta };
   conversa.messages[indice] = mensagem;
   registrarNoFlow(state, flow, { actor: systemActor, action: "Resposta de Flow recebida", ...(naoConforme ? { result: "failed" as const } : {}), detail: `v${versao.numero}${versao.estado === "obsoleta" ? " (obsoleta — 20.1)" : ""} · ${contato.nome}${naoConforme ? " · não conforme: Nome fora da Versão (20.5)" : ""}` });
   emitirEventoDeFerramentas(state, { kind: "respostaDeFlowRecebida", flowId: flow.id, contactId: contato.id, conversationId: conversa.id, messageId: mensagem.id }, crm);

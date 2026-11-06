@@ -18,7 +18,7 @@ import { buildSeed } from "@n1/dominio/seed";
 import type { Canal } from "@n1/dominio/crm/canais";
 import type { ConversaNaLista } from "@n1/dominio/crm/conversas";
 import type { DataState } from "@n1/dominio/state";
-import type { Conversation } from "@n1/dominio/types";
+import type { ConversaDeGrupo } from "@n1/dominio/types";
 import { StoreProvider } from "@/dados/store";
 import { transporteEmMemoria } from "@/dados/transporte";
 import CaixaDeEntradaPage from "@/app/(shell)/crm/caixa-de-entrada/page";
@@ -109,7 +109,7 @@ function conversaDoCrm(id: string, extras: Partial<ConversaNaLista> = {}): Conve
 }
 
 /** Uma Conversa de Grupo do estado antigo (F14-D-05): não tem tabela, só `groupIdentifier`. */
-function conversaDeGrupo(id: string, nome: string): Conversation {
+function conversaDeGrupo(id: string, nome: string): ConversaDeGrupo {
   const modelo = estado.conversations[0] ?? buildSeed().conversations.find((c) => c.messages.length > 0);
   if (!modelo) throw new Error("o seed precisa de uma Conversa com Mensagem");
   const base = structuredClone(modelo);
@@ -128,7 +128,7 @@ function conversaDeGrupo(id: string, nome: string): Conversation {
     starredBy: [],
     drafts: [],
     messages: [],
-  } as Conversation;
+  } as ConversaDeGrupo;
 }
 
 type Rota = (url: string, init?: RequestInit) => Promise<Response>;

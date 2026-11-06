@@ -15,13 +15,11 @@ import type {
   ActorRef,
   AgentExecution,
   ApprovalRequest,
-  Channel,
+  ChannelType,
   ChatSession,
   Comment,
   ConfigurableAspect,
-  Contact,
-  Conversation,
-  Deal,
+  ConversaDeGrupo,
   EffectiveListConfig,
   EnabledFeatures,
   Folder,
@@ -31,6 +29,7 @@ import type {
   List,
   Money,
   PaiDeConteiner,
+  ProvedorDeCanal,
   Space,
   StatusCategory,
   StatusDefinition,
@@ -599,14 +598,10 @@ export function conversaoDeItemRecusada(state: DataState, actingMemberId: Id, ta
   return undefined;
 }
 
-/** Documento 10, 6 — derived, never stored. */
-export function contactDisplayName(contact: Contact): string {
-  const full = `${contact.firstName} ${contact.lastName}`.trim();
-  if (full) return full;
-  const principal = contact.identifiers.find((i) => i.principal) ?? contact.identifiers[0];
-  if (principal?.channelLabel) return principal.channelLabel;
-  if (principal?.displayValue) return principal.displayValue;
-  return "Contato sem nome";
+/** O que a janela de resposta lê do Canal: o tipo e, quando há, o provedor (D-02). */
+export interface CanalDaJanela {
+  readonly channelType: ChannelType;
+  readonly provider?: ProvedorDeCanal;
 }
 
 /**
@@ -616,9 +611,9 @@ export function contactDisplayName(contact: Contact): string {
  * `operations/` para não fechar ciclo de módulo. Sem Canal, sem janela.
  */
 export function responseWindowOpenUntil(
-  conversation: Conversation,
-  channel: Pick<Channel, "channelType" | "provider"> | undefined,
-  capabilities: (channel: Pick<Channel, "channelType" | "provider">) => { readonly responseWindowHours?: number },
+  conversation: ConversaDeGrupo,
+  channel: CanalDaJanela | undefined,
+  capabilities: (channel: CanalDaJanela) => { readonly responseWindowHours?: number },
 ): Date | null {
   if (!channel) return null;
   const hours = capabilities(channel).responseWindowHours;

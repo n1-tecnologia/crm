@@ -18,7 +18,7 @@ import type { ConversaNaLista } from "./crm/conversas";
 import type { EstatisticasDoCrm } from "./crm/inicio";
 import { effectiveLifecycleOfTask, memberSeesTask } from "./derive";
 import type { DataState } from "./state";
-import type { ActorRef, Conversation, Id, Instant, Money } from "./types";
+import type { ActorRef, ConversaDeGrupo, Id, Instant, Money } from "./types";
 
 const doMembro = (ator: ActorRef | undefined, memberId: Id): boolean =>
   ator?.kind === "member" && ator.id === memberId;
@@ -31,7 +31,7 @@ const doMembro = (ator: ActorRef | undefined, memberId: Id): boolean =>
  * Mensagens, e aí a Caixa mentiria para quem atende. É a MESMA conta da Caixa
  * de Entrada — ela lê daqui.
  */
-export function naoLidas(conversa: Conversation, memberId: Id): number {
+export function naoLidas(conversa: ConversaDeGrupo, memberId: Id): number {
   return conversa.messages.filter(
     (mensagem) =>
       mensagem.direction === "recebida" &&
@@ -40,7 +40,7 @@ export function naoLidas(conversa: Conversation, memberId: Id): number {
 }
 
 /** O instante da Mensagem mais recente (de qualquer direção); sem Mensagem, o nascimento da Conversa. */
-export function ultimaAtividade(conversa: Conversation): Instant {
+export function ultimaAtividade(conversa: ConversaDeGrupo): Instant {
   const ultima = [...conversa.messages].sort((a, b) => a.createdAt.localeCompare(b.createdAt)).at(-1);
   return ultima?.createdAt ?? conversa.createdAt;
 }

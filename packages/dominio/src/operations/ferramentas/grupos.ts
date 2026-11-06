@@ -12,8 +12,8 @@
 
 import { fail, ok, type DataState, type OperationResult } from "../../state";
 import type { Canal } from "../../crm/canais";
-import { CRM_DAS_FERRAMENTAS_VAZIO, type ActorRef, type Captacao, type ConfiguracoesDoGrupo, type Conversation, type CrmDasFerramentas, type Grupo, type Id, type Message, type ParticipacaoDeGrupo, type PedidoDeEntrada } from "../../types";
-import { conversaDoGrupo, identidadeDeWhatsApp, participacoesVigentes, pedidosPendentes } from "../../derive-ferramentas";
+import { CRM_DAS_FERRAMENTAS_VAZIO, type ActorRef, type Captacao, type ConfiguracoesDoGrupo, type ConversaDeGrupo, type CrmDasFerramentas, type Grupo, type Id, type MensagemDeGrupo, type ParticipacaoDeGrupo, type PedidoDeEntrada } from "../../types";
+import { conversaDoGrupo, participacoesVigentes, pedidosPendentes } from "../../derive-ferramentas";
 import { memberActor, nextId, recordActivity, systemActor } from "../activity";
 import { sendMessage, startConversation } from "./conversa-de-grupo";
 import { emitirEventoDeFerramentas } from "./automacoes";
@@ -842,13 +842,13 @@ export function registrarSaidaDoGrupo(state: DataState, grupoId: Id, input: { re
 // ── Conversa de grupo e Mensagem (RN-GRP-13) ───────────────────────────────
 
 /** INV-GRP-05 — acha a Conversa de grupo; se não existe, cria (aberta ou resolvida conforme Grupos habilitados — 14, 20.18). */
-export function conversaDoGrupoOuCriar(state: DataState, ator: ActorRef, grupo: Grupo, crm?: CrmDasFerramentas): OperationResult<Conversation> {
+export function conversaDoGrupoOuCriar(state: DataState, ator: ActorRef, grupo: Grupo, crm?: CrmDasFerramentas): OperationResult<ConversaDeGrupo> {
   const existente = conversaDoGrupo(state, grupo);
   if (existente) return ok(existente);
   const canal = canalNoCrm(crm, grupo.canalId);
   if (!canal || !grupo.identificadorExterno) return fail("O Grupo está sem Canal ou sem Identificador externo.");
   const momento = now();
-  const conversa: Conversation = {
+  const conversa: ConversaDeGrupo = {
     id: nextId("cnv"),
     workspaceId: state.workspace.id,
     createdBy: ator,
@@ -881,7 +881,7 @@ export function enviarMensagemAoGrupo(
   grupoId: Id,
   input: { readonly content: string; readonly templateProviderId?: string; readonly actor?: ActorRef; readonly delegate?: ActorRef },
   crm?: CrmDasFerramentas,
-): OperationResult<{ readonly conversa: Conversation; readonly mensagem: Message }> {
+): OperationResult<{ readonly conversa: ConversaDeGrupo; readonly mensagem: MensagemDeGrupo }> {
   const membro = recusaDeMembroAtivo(state, actingMemberId);
   if (membro) return fail(membro);
   const grupo = grupoPorId(state, grupoId);

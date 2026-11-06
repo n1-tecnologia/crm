@@ -46,7 +46,7 @@ import {
 import type { Canal } from "@n1/dominio/crm/canais";
 import { LIMITES_CRM } from "@n1/dominio/crm/comum";
 import type { ConversaNaLista, SituacaoDaConversa } from "@n1/dominio/crm/conversas";
-import type { Conversation } from "@n1/dominio/types";
+import type { ConversaDeGrupo } from "@n1/dominio/types";
 
 const SCOPES = [
   { value: "todas", label: "Todas" },
@@ -362,7 +362,7 @@ export function foraDaJanela(
 }
 
 /** A Conversa de Grupo (F14-D-05) só existe no estado antigo: não tem linha em `plataforma.conversas`. */
-export function ehConversaDeGrupo(conversa: Conversation): boolean {
+export function ehConversaDeGrupo(conversa: ConversaDeGrupo): boolean {
   return conversa.lifecycle === "ativo" && conversa.groupIdentifier !== undefined;
 }
 
@@ -402,7 +402,7 @@ function itemDoCrm(conversa: ConversaNaLista): ItemDaCaixa {
   };
 }
 
-function itemDoGrupo(conversa: Conversation, membroId: string): ItemDaCaixa {
+function itemDoGrupo(conversa: ConversaDeGrupo, membroId: string): ItemDaCaixa {
   const ultimaRecebida = [...conversa.messages]
     .filter((m) => m.direction === "recebida")
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
@@ -434,7 +434,7 @@ function ordenarItens(itens: readonly ItemDaCaixa[], ordem: Ordem): ItemDaCaixa[
 
 /** O Grupo entra no recorte da Caixa pelas mesmas regras de escopo, estado, Canal, Fila e aba. */
 function grupoNoRecorte(
-  conversa: Conversation,
+  conversa: ConversaDeGrupo,
   recorte: { readonly escopo: string; readonly situacao: string; readonly canalId: string; readonly filaId: string },
   membroId: string,
 ): boolean {
@@ -735,7 +735,7 @@ export function scopeTitle(scope: string): string {
   return "Caixa de entrada da equipe";
 }
 
-export function matchesScope(conversation: Conversation, scope: string, memberId: string): boolean {
+export function matchesScope(conversation: ConversaDeGrupo, scope: string, memberId: string): boolean {
   if (scope === "minhas") {
     return conversation.assignee?.kind === "member" && conversation.assignee.id === memberId;
   }

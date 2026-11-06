@@ -11,7 +11,8 @@
  */
 
 import type { DataState } from "./state";
-import type { Channel, Id, Link, List, ModeloDeTarefa, Task } from "./types";
+import type { ChannelType, ProvedorDeCanal } from "./crm/capacidades";
+import type { Id, Link, List, ModeloDeTarefa, Task } from "./types";
 import type { Canal } from "./crm/canais";
 import type { IdentificadorDeContato } from "./crm/contatos";
 import { TIPO_DE_IDENTIFICADOR_DO_CANAL } from "./crm/conversas";
@@ -145,18 +146,27 @@ export function marcadoresDeCanal<T extends { readonly channelId: Id }>(
   return saida;
 }
 
+/** O que o rótulo de um Canal lê: o tipo e, quando há, o provedor (o `Canal` de `plataforma.canais` traz os dois por (`tipo`, `provedor`); aqui o nome do campo é o do modelo em inglês das Capacidades). */
+interface CanalComTipo {
+  readonly channelType: ChannelType;
+  readonly provider?: ProvedorDeCanal;
+}
+interface CanalComNome extends CanalComTipo {
+  readonly name: string;
+}
+
 /** O que identifica a conta de um Canal além do nome: o provedor ("WhatsApp oficial") ou, sem provedor, o tipo. */
-function rotuloDoProvedor(canal: Pick<Channel, "channelType" | "provider">): string {
+function rotuloDoProvedor(canal: CanalComTipo): string {
   const provedor = provedorDoCanal(canal);
   return provedor !== undefined ? PROVEDORES[provedor].rotulo : ROTULO_DO_TIPO_DE_CANAL[canal.channelType];
 }
 
 /** "Comercial · WhatsApp oficial": o nome e o provedor, para o seletor "Responder por" e as abas. */
-export function rotuloDoCanal(canal: Pick<Channel, "name" | "channelType" | "provider">): string {
+export function rotuloDoCanal(canal: CanalComNome): string {
   return `${canal.name} · ${rotuloDoProvedor(canal)}`;
 }
 
 /** "via Suporte (WhatsApp não oficial)": o texto do separador de troca de Canal. */
-export function textoDoSeparadorDeCanal(canal: Pick<Channel, "name" | "channelType" | "provider">): string {
+export function textoDoSeparadorDeCanal(canal: CanalComNome): string {
   return `via ${canal.name} (${rotuloDoProvedor(canal)})`;
 }
