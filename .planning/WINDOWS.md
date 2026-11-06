@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 14
+open_count: 16
 waived_count: 1
 fixed_count: 4
-total_count: 19
-last_updated: 2026-11-06T11:12:17.184Z
+total_count: 21
+last_updated: 2026-11-06T11:29:15.005Z
 ---
 
 # Broken Windows Ledger
@@ -34,6 +34,8 @@ last_updated: 2026-11-06T11:12:17.184Z
 | 17 | 15 | deviation | apps/web/src/features/ferramentas/pedidos-de-entrada.tsx |  | 15-17: ate o 15-22 mandar crm, a simulacao local de Pedido de Entrada e de clique de Captacao (e a importacao de Grupos) no navegador recusa com 'Contato do participante nao resolvido.' (ou 'Canal nao encontrado.'); o servidor so resolve e cria o Contato do Participante em importarGruposDoCanal, os eventos do provedor ainda nao tem rota em POST /operacoes | open |  | 2026-11-06T10:56:35.691Z |  |
 | 18 | 15 | deviation | apps/web/src/features/crm/inbox-columns.tsx |  | 15-11: Sem Atribuido, Sem Fila e Adiadas ainda nao sao filtros de GET /conversas: a Caixa pede a pagina inteira (200) e recorta na tela, entao o contador e o 'de N' desses recortes sao os da pagina, nao os do Espaco; 'Mostrar mais' tambem para em 200. Trocar por filtros na api (semAtribuido, semFila, adiadas) se um Espaco passar de 200 Conversas ativas | open |  | 2026-11-06T11:12:17.121Z |  |
 | 19 | 15 | deviation | apps/web/src/features/crm/inbox-columns.tsx |  | 15-11: a linha da Conversa na lista nao mostra mais a previa da ultima Mensagem (ConversaNaLista nao traz o texto dela); mostra o titulo quando difere do nome do Contato. Acrescentar a ultima Mensagem ao resumo da lista (mesma consulta de ultimaRecebidaEm) se o dono quiser a previa de volta | open |  | 2026-11-06T11:12:17.184Z |  |
+| 20 | 15 | deviation | apps/web/src/app/(shell)/crm/caixa-de-entrada/configuracoes/canais/[canal]/page.tsx |  | 15-12: a ficha e o cartao do Canal ja nao mostram Mensagens de modelo nem 'N modelo(s) aprovado(s)': plataforma.canais nao guarda modelos (so o Canal do seed tinha) e o Canal do seed ficou sem ficha (a operacao antiga configurarCanal saiu). O Proprietario padrao de Contato do Canal fica so leitura porque PATCH /canais/:id nao aceita esse campo. Se o dono quiser editar o Proprietario padrao ou sincronizar modelos, abrir campo na api e no dominio | open |  | 2026-11-06T11:29:14.941Z |  |
+| 21 | 15 | deviation | apps/web/src/features/crm/adicionar-canal-dialog.tsx |  | 15-12: o popup 'Adicionar Canal' das Listas agora so escolhe; 'Conectar um Canal novo' navega para a pagina de conectar, entao um dialogo de criar Lista meio preenchido se perde ao sair (o popup nao cria mais Canal, D-15-12). A carga por Membro na pagina da Fila conta so Conversas abertas da Fila (situacao=aberta), antes contava todas as ativas inclusive resolvidas | open |  | 2026-11-06T11:29:15.005Z |  |
 
 ````json
 [
@@ -281,6 +283,32 @@ last_updated: 2026-11-06T11:12:17.184Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-06T11:12:17.184Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 20,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/app/(shell)/crm/caixa-de-entrada/configuracoes/canais/[canal]/page.tsx",
+    "line": null,
+    "description": "15-12: a ficha e o cartao do Canal ja nao mostram Mensagens de modelo nem 'N modelo(s) aprovado(s)': plataforma.canais nao guarda modelos (so o Canal do seed tinha) e o Canal do seed ficou sem ficha (a operacao antiga configurarCanal saiu). O Proprietario padrao de Contato do Canal fica so leitura porque PATCH /canais/:id nao aceita esse campo. Se o dono quiser editar o Proprietario padrao ou sincronizar modelos, abrir campo na api e no dominio",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T11:29:14.941Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 21,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/features/crm/adicionar-canal-dialog.tsx",
+    "line": null,
+    "description": "15-12: o popup 'Adicionar Canal' das Listas agora so escolhe; 'Conectar um Canal novo' navega para a pagina de conectar, entao um dialogo de criar Lista meio preenchido se perde ao sair (o popup nao cria mais Canal, D-15-12). A carga por Membro na pagina da Fila conta so Conversas abertas da Fila (situacao=aberta), antes contava todas as ativas inclusive resolvidas",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T11:29:15.005Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }
