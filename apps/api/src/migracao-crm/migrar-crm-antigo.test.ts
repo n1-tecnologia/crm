@@ -84,6 +84,11 @@ async function retratoDoEspaco(ws: string) {
   };
 }
 
+const idsDeContatos = (ws: string) =>
+  pool()
+    .query<{ id: string }>("select id from plataforma.contatos where workspace_id = $1 order by id", [ws])
+    .then((r) => r.rows.map((l) => l.id));
+
 const OITO_COLECOES = ["companies", "contactCompanyLinks", "contacts", "channels", "companyCompanyLinks", "deals", "distinctFromLinks", "funnels"];
 
 describeComBanco("guardar o CRM antigo de um Espaço (15-27 Task 1, D-15-01)", () => {
@@ -346,13 +351,15 @@ describeComBanco("o Funil: --migrar --funil=migrar|guardar (15-27 Task 2, D-15-0
     expect(await retratoDoEspaco(ws)).toEqual(antes);
   });
 
-  it("--migrar num Espaço com Contatos, Negócios ou Conversas além do Funil: recusa e manda usar --guardar", async () => {
+  it("--migrar num Espaço com Contatos, Negócios e Conversas além do Funil não recusa mais (15-28): migra o que cabe e relata o resto", async () => {
     const ws = await semearEspaco("alemdofunil");
-    const antes = await retratoDoEspaco(ws);
 
-    await expect(migrarCrmAntigo(ws, { funil: "guardar" })).rejects.toThrow(/além do Funil; use --guardar/);
+    const resultado = await migrarCrmAntigo(ws, { funil: "guardar" });
 
-    expect(await retratoDoEspaco(ws)).toEqual(antes);
+    expect(resultado.nadaAFazer).toBe(false);
+    expect(await idsDeContatos(ws)).toEqual(["cnt_sint_1", "cnt_sint_2"]);
+    // A Empresa sintética mínima não tem nome fantasia nem razão social: o banco a recusaria, então vai para o relatório.
+    expect(resultado.naoMigrados).toContainEqual({ categoria: "empresa-sem-nome", colecao: "companies", id: "cmp_sint_1" });
   });
 
   it("repetir o --migrar diz que não há nada a fazer e não insere de novo", async () => {
