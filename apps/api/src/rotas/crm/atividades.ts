@@ -1,15 +1,16 @@
 /**
  * Rota REST de Atividades do CRM novo (15-37, D-15-09, UCR-03):
  *
- *   GET /atividades?objetoTipo=&objetoId=&limite=&ate=
+ *   GET /atividades?objetoTipo=&objetoId=&limite=&ate=&ateId=
  *
  * Só lê. O `querystring` é `.strict()`: ator, ação, Espaço e qualquer outro campo
  * viram 400 antes do serviço (o ator e o Espaço saem da sessão, nunca do pedido,
  * T-15-12). `limite` tem teto (T-15-89) e `objetoTipo`/`objetoId` vêm juntos ou
  * nenhum — o serviço recusa o objeto pela metade com `validarFiltroDeAtividades`.
  *
- * A resposta é `{ ok: true, itens }`, sem `total`: a paginação é por tempo, com
- * `ate` (exclusivo) igual ao `at` da última linha recebida.
+ * A resposta é `{ ok: true, itens }`, sem `total`: a paginação é por cursor. `ate`
+ * (exclusivo) é o `at` da última linha recebida e `ateId` o `id` dela (15-09): juntos
+ * formam o cursor composto `(em, id)`, que não pula as linhas do mesmo instante.
  *
  * Sem SQL e sem regra aqui (`rotas/CONTEXT.md`).
  */
@@ -28,6 +29,7 @@ const QUERY_DE_ATIVIDADES = z
     objetoId: z.string().min(1).max(64).optional(),
     limite: z.coerce.number().int().min(1).max(LIMITES_DE_ATIVIDADE.paginaMaxima).default(LIMITES_DE_ATIVIDADE.paginaPadrao),
     ate: z.iso.datetime({ offset: true }).optional(),
+    ateId: z.string().min(1).max(64).optional(),
   })
   .strict();
 
@@ -36,12 +38,13 @@ export async function rotasDeAtividades(app: FastifyInstance, opcoes: { readonly
   const { servico } = opcoes;
 
   rotas.get("/atividades", { schema: { querystring: QUERY_DE_ATIVIDADES } }, async (request, reply) => {
-    const { objetoTipo, objetoId, limite, ate } = request.query;
+    const { objetoTipo, objetoId, limite, ate, ateId } = request.query;
     const filtro: FiltroDeAtividades = {
       limite,
       ...(objetoTipo !== undefined ? { objetoTipo } : {}),
       ...(objetoId !== undefined ? { objetoId } : {}),
       ...(ate !== undefined ? { ate } : {}),
+      ...(ateId !== undefined ? { ateId } : {}),
     };
     // A regra do domínio (objeto inteiro ou nenhum) é a mesma da tela: o pedido torto não chega ao serviço.
     const valido = validarFiltroDeAtividades(filtro);

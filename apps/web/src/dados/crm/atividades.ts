@@ -35,6 +35,8 @@ export interface FiltroDeAtividadesDoCrm {
   readonly limite?: number;
   /** Instante ISO, exclusivo: só vêm as Atividades anteriores a ele. */
   readonly ate?: string;
+  /** O `id` da última linha recebida: com `ate`, o cursor composto que não pula o mesmo instante (15-09). */
+  readonly ateId?: string;
 }
 
 export function chaveDeAtividades(filtro: FiltroDeAtividadesDoCrm): string {
@@ -43,6 +45,7 @@ export function chaveDeAtividades(filtro: FiltroDeAtividadesDoCrm): string {
   if (filtro.objetoId !== undefined) parametros.set("objetoId", filtro.objetoId);
   parametros.set("limite", String(filtro.limite ?? LIMITES_DE_ATIVIDADE.paginaPadrao));
   if (filtro.ate !== undefined) parametros.set("ate", filtro.ate);
+  if (filtro.ateId !== undefined) parametros.set("ateId", filtro.ateId);
   return `/atividades?${parametros.toString()}`;
 }
 

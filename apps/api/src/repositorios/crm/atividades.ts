@@ -20,7 +20,7 @@ import type { Pool, PoolClient } from "pg";
 import type { FiltroDeAtividades } from "@n1/dominio/crm/atividades";
 import type { ActivityRecord, ActorKind, ActorRef } from "@n1/dominio/types/primitives";
 
-/** O que um gesto registra. O momento é do banco (`now()`), nunca de quem chama. */
+/** O que um gesto registra. O momento é do banco (`now()`, em milissegundos), nunca de quem chama. */
 export interface EntradaDeAtividade {
   readonly ator: ActorRef;
   /** "Em nome de" (A6.2). */
@@ -36,6 +36,13 @@ export interface EntradaDeAtividade {
   /** Motivo ou causa. NUNCA o conteúdo de dado pessoal (T-15-14). */
   readonly detalhe?: string;
 }
+
+/**
+ * O momento do gesto, em milissegundos: `ActivityRecord.at` é ISO com milissegundos, então o
+ * cursor `(at, id)` da leitura só é exato se `em` não guardar microssegundos que o `at` perde.
+ * A sucessão grava no mesmo instante com o mesmo valor (`sucessao.ts`).
+ */
+export const MOMENTO_DO_GESTO = "date_trunc('milliseconds', now())";
 
 const COLUNAS =
   "id, workspace_id, ator_tipo, ator_id, delegante_tipo, delegante_id, acao, objeto_tipo, objeto_id, objeto_nome, em, resultado, antes, depois, detalhe";
@@ -83,8 +90,8 @@ function linhaParaAtividade(linha: LinhaDoBanco): ActivityRecord {
 export async function registrarAtividade(cliente: Pool | PoolClient, workspaceId: string, entrada: EntradaDeAtividade): Promise<void> {
   await cliente.query(
     `insert into plataforma.crm_atividades
-       (workspace_id, ator_tipo, ator_id, delegante_tipo, delegante_id, acao, objeto_tipo, objeto_id, objeto_nome, resultado, antes, depois, detalhe)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+       (workspace_id, ator_tipo, ator_id, delegante_tipo, delegante_id, acao, objeto_tipo, objeto_id, objeto_nome, resultado, antes, depois, detalhe, em)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, ${MOMENTO_DO_GESTO})`,
     [
       workspaceId,
       entrada.ator.kind,
@@ -120,7 +127,11 @@ export async function listar(
     valores.push(filtro.objetoTipo, filtro.objetoId);
     condicoes.push(`objeto_tipo = $${valores.length - 1}`, `objeto_id = $${valores.length}`);
   }
-  if (filtro.ate !== undefined) {
+  if (filtro.ate !== undefined && filtro.ateId !== undefined) {
+    // Cursor composto: a ordem é `(em, id)` decrescente, então "depois do cursor" é o menor par.
+    valores.push(filtro.ate, filtro.ateId);
+    condicoes.push(`(em, id) < ($${valores.length - 1}::timestamptz, $${valores.length})`);
+  } else if (filtro.ate !== undefined) {
     valores.push(filtro.ate);
     condicoes.push(`em < $${valores.length}::timestamptz`);
   }

@@ -85,6 +85,18 @@ describe("rota GET /atividades — serviço falso, sem banco", () => {
     expect(chamadas[0]?.[1]).toEqual({ limite: LIMITES_DE_ATIVIDADE.paginaMaxima, ate });
   });
 
+  it("o cursor composto (`ate` + `ateId`, 15-09) chega ao serviço inteiro", async () => {
+    const { servico, chamadas } = novoFalso();
+    const ate = "2026-11-05T10:00:00.123Z";
+    const resposta = await appCom(servico).inject({
+      method: "GET",
+      url: `/atividades?ate=${encodeURIComponent(ate)}&ateId=3f1e0c8e-6a52-4d57-9d0e-3a2d8f1d9a11`,
+      headers: AUTORIZACAO,
+    });
+    expect(resposta.statusCode).toBe(200);
+    expect(chamadas[0]?.[1]).toEqual({ limite: LIMITES_DE_ATIVIDADE.paginaPadrao, ate, ateId: "3f1e0c8e-6a52-4d57-9d0e-3a2d8f1d9a11" });
+  });
+
   it.each([
     ["limite acima do teto (T-15-89)", `limite=${LIMITES_DE_ATIVIDADE.paginaMaxima + 1}`],
     ["limite zero", "limite=0"],
@@ -93,6 +105,7 @@ describe("rota GET /atividades — serviço falso, sem banco", () => {
     ["objetoId sem objetoTipo", "objetoId=c1"],
     ["objetoTipo fora do vocabulário", "objetoTipo=grupo&objetoId=g1"],
     ["ate que não é um instante", "ate=ontem"],
+    ["ateId sem ate (o desempate precisa do instante)", "ateId=abc"],
     ["ator (a Atividade só lê)", "ator=mem_outro"],
     ["acao (a Atividade só lê)", "acao=Contato%20editado"],
     ["workspaceId (o Espaço é o da sessão)", "workspaceId=ws_de_outro"],

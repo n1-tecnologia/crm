@@ -46,13 +46,21 @@ export const LIMITES_DE_ATIVIDADE = { paginaPadrao: 50, paginaMaxima: 200 } as c
 /**
  * O filtro de uma leitura de Atividades. `objetoTipo` e `objetoId` vêm juntos ou
  * nenhum (a linha do tempo de UM objeto, ou a de todo o Espaço); `ate` é o
- * instante ISO a partir do qual se pagina para trás.
+ * instante ISO a partir do qual se pagina para trás (sozinho, exclusivo; com `ateId`,
+ * o cursor composto).
  */
 export interface FiltroDeAtividades {
   readonly objetoTipo?: string;
   readonly objetoId?: string;
   readonly limite: number;
   readonly ate?: string;
+  /**
+   * Desempate do cursor (15-09): o `id` da última linha recebida. Com ele a página seguinte
+   * começa DEPOIS de `(ate, ateId)` na ordem `(em, id)` decrescente, e as linhas gravadas no
+   * mesmo instante (uma sucessão grava várias no mesmo commit) não somem na fronteira.
+   * Só vale junto de `ate`.
+   */
+  readonly ateId?: string;
 }
 
 /** Recusa o objeto pela metade e o limite fora de `1..paginaMaxima`; devolve o filtro como veio. */
@@ -67,6 +75,9 @@ export function validarFiltroDeAtividades(filtro: FiltroDeAtividades): Operation
   }
   if (filtro.ate !== undefined && Number.isNaN(Date.parse(filtro.ate))) {
     return fail("A data limite precisa ser um instante válido.", "ate");
+  }
+  if (filtro.ateId !== undefined && filtro.ate === undefined) {
+    return fail("O desempate do cursor (ateId) vem junto da data limite (ate).", "ate");
   }
   return ok(filtro);
 }
