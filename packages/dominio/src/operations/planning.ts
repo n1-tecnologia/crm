@@ -8,6 +8,7 @@
  * a próxima com `moveTask`, deixando Registro.
  */
 
+import type { Canal } from "../crm/canais";
 import { containerAdminRefusal, effectiveContainerConfig, effectiveListConfig, isTerminalCategory, memberReachesContainer, statusCategory } from "../derive";
 import { fail, ok, type DataState, type OperationResult } from "../state";
 import type { Folder, Id, List, ModeloDeTarefa, StatusDefinition, StatusSet, Task, Template } from "../types";
@@ -334,6 +335,12 @@ export function instantiateListTemplate(
   actingMemberId: Id,
   templateId: Id,
   input: { readonly name: string; readonly parentType: "space" | "folder"; readonly parentId: Id; readonly description?: string; readonly isPrivate?: boolean; readonly modeloDeTarefa?: ModeloDeTarefa; readonly canaisDeAtendimento?: readonly Id[] },
+  /**
+   * D-15-07 — os Canais de `plataforma.canais` que o servidor leu na transação (`lerDoCrm`),
+   * repassados a `createList`: com eles, um Canal da tabela vale em `canaisDeAtendimento` sem
+   * depender de `state.channels` (que a 3.5.4 deixa vazio).
+   */
+  canais?: readonly Canal[],
 ): OperationResult<List> {
   const template = state.templates.find((t) => t.id === templateId);
   if (!template || template.lifecycle !== "ativo" || template.kind !== "lista") return fail("Template de Lista não encontrado.");
@@ -361,7 +368,7 @@ export function instantiateListTemplate(
     state.activity.splice(0, state.activity.length - antes.activity);
     return fail(motivo);
   };
-  const created = createList(state, actingMemberId, { ...input, templateId });
+  const created = createList(state, actingMemberId, { ...input, templateId }, canais);
   if (!created.ok) return created;
   const list = created.value;
   if (!cfg) return ok(list);

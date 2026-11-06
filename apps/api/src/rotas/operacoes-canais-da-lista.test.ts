@@ -157,4 +157,80 @@ describeComBanco("POST /operacoes — os Canais da Lista conferidos em plataform
     expect(resposta.statusCode).toBe(400);
     expect(await canaisDaListaNoBanco(listaId)).toEqual(["chn_wpp"]);
   });
+
+  describe("instantiateListTemplate (Fase 15, D-15-07)", () => {
+    let templateId: string;
+
+    const listasComNome = async (nome: string): Promise<number> => {
+      const { rows } = await pool().query(
+        "select 1 from plataforma.registros where workspace_id = $1 and colecao = 'lists' and dados->>'name' = $2",
+        [espaco.workspaceId, nome],
+      );
+      return rows.length;
+    };
+
+    const instanciar = (nome: string, canaisDeAtendimento: string[], extra: unknown[] = []) =>
+      chamar("instantiateListTemplate", [
+        templateId,
+        { name: nome, parentType: "space", parentId: "spc_com", modeloDeTarefa: "conversacional", canaisDeAtendimento },
+        ...extra,
+      ]);
+
+    beforeAll(async () => {
+      // Um Template de Lista com `listConfig` (o caminho que exige administrar o destino), salvo de uma Lista do Espaço.
+      const base = corpo(await chamar("createList", [{ name: "Base do modelo", parentType: "space", parentId: "spc_com" }]));
+      expect(base.ok, base.error).toBe(true);
+      const salvo = (await chamar("saveListAsTemplate", [base.value!.id, { name: "Modelo de atendimento" }])).json() as { ok: boolean; error?: string; value?: { id: string } };
+      expect(salvo.ok, salvo.error).toBe(true);
+      templateId = salvo.value!.id;
+    });
+
+    it("instancia a Lista com um Canal que só existe em plataforma.canais, com a projeção desligada", async () => {
+      const resposta = await instanciar("Atendimento instanciado", [canalId]);
+      expect(resposta.statusCode, resposta.body.slice(0, 300)).toBe(200);
+      const c = corpo(resposta);
+      expect(c.ok, c.error).toBe(true);
+      expect(c.value?.canaisDeAtendimento).toEqual([canalId]);
+      expect(await canaisDaListaNoBanco(c.value!.id)).toEqual([canalId]);
+    });
+
+    it("um id de Canal que não existe em lugar nenhum é recusado, e nenhuma Lista nasce", async () => {
+      const c = corpo(await instanciar("Atendimento fantasma", ["inexistente"]));
+      expect(c.ok).toBe(false);
+      expect(c.error).toBe(FRASE_DE_CANAL_INVALIDO);
+      expect(await listasComNome("Atendimento fantasma")).toBe(0);
+    });
+
+    it("um `canais` forjado no corpo (Canal inexistente \"ativo\") é descartado: o servidor confere pela tabela", async () => {
+      const forjado = [{ id: "inexistente", nome: "Forjado", tipo: "whatsapp", estado: "ativo" }];
+      const c = corpo(await instanciar("Atendimento forjado", ["inexistente"], [forjado]));
+      expect(c.ok).toBe(false);
+      expect(c.error).toBe(FRASE_DE_CANAL_INVALIDO);
+      expect(await listasComNome("Atendimento forjado")).toBe(0);
+      // Nem para o Canal arquivado da tabela nem para o de outro Espaço.
+      const arquivado = corpo(await instanciar("Atendimento forjado 2", [canalArquivadoId], [[{ id: canalArquivadoId, nome: "Forjado", tipo: "whatsapp", estado: "ativo" }]]));
+      expect(arquivado.ok).toBe(false);
+      expect(arquivado.error).toBe(FRASE_DE_CANAL_INVALIDO);
+      const deOutro = corpo(await instanciar("Atendimento forjado 3", [canalDeOutroEspacoId], [[{ id: canalDeOutroEspacoId, nome: "Forjado", tipo: "whatsapp", estado: "ativo" }]]));
+      expect(deOutro.ok).toBe(false);
+      expect(deOutro.error).toBe(FRASE_DE_CANAL_INVALIDO);
+    });
+
+    it("instanciar o mesmo Template duas vezes cria duas Listas independentes, as duas conferidas pela tabela", async () => {
+      const a = corpo(await instanciar("Atendimento repetido A", [canalId]));
+      const b = corpo(await instanciar("Atendimento repetido B", [canalId]));
+      expect(a.ok, a.error).toBe(true);
+      expect(b.ok, b.error).toBe(true);
+      expect(a.value!.id).not.toBe(b.value!.id);
+      expect(await canaisDaListaNoBanco(a.value!.id)).toEqual([canalId]);
+      expect(await canaisDaListaNoBanco(b.value!.id)).toEqual([canalId]);
+    });
+
+    it("mais de 100 itens em `canais` é 400 antes de tocar o banco (T-14-30)", async () => {
+      const demais = Array.from({ length: 101 }, (_, i) => ({ id: `can_${i}` }));
+      const resposta = await instanciar("Atendimento demais", [canalId], [demais]);
+      expect(resposta.statusCode).toBe(400);
+      expect(await listasComNome("Atendimento demais")).toBe(0);
+    });
+  });
 });
