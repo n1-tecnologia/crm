@@ -8,7 +8,7 @@
  */
 
 import { containerAdminRefusal, containerPath, definesAspect, effectiveLifecycleOfContainer, effectiveListConfig, irmaosOrdenados, memberReachesContainer } from "../derive";
-import { ehEstruturaFixa, PASTA_MEUS_NEGOCIOS_ID } from "../estruturas-fixas";
+import { ehEstruturaFixa } from "../estruturas-fixas";
 import type { Canal } from "../crm/canais";
 import { fail, ok, type DataState, type OperationResult } from "../state";
 import type { EffectiveListConfig, Folder, Id, Lifecycle, List, ModeloDeTarefa, PaiDeConteiner, Provenance, Space, StatusCategory, StatusSet, Task, Template } from "../types";
@@ -770,9 +770,6 @@ function recusarMover(state: DataState, actingMemberId: Id, tipo: "folder" | "li
   }
   // Q2/A7 — o conjunto fechado das estruturas que o código endereça por id; só o movido e o destino são nomeados.
   if (ehEstruturaFixa(tipo, id)) return { mensagem: `${ROTULO[tipo].nome} ${movido.name} é uma estrutura fixa e não muda de lugar.` };
-  if (containerPath(state, destino.parentType, destino.parentId).some((n) => n.type === "folder" && n.id === PASTA_MEUS_NEGOCIOS_ID)) {
-    return { mensagem: "A Pasta Meus negócios não recebe Pastas nem Listas." };
-  }
   // Profundidade (RN-SUB-11, RN-SUB-02): a estrutura tem no máximo dois níveis de Pasta.
   if (tipo === "folder" && destino.parentType === "folder") {
     if (state.folders.some((f) => f.parentType === "folder" && f.parentId === id)) {
