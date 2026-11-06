@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 7
+open_count: 8
 waived_count: 1
 fixed_count: 4
-total_count: 12
-last_updated: 2026-11-06T09:50:50.940Z
+total_count: 13
+last_updated: 2026-11-06T10:06:57.673Z
 ---
 
 # Broken Windows Ledger
@@ -27,6 +27,7 @@ last_updated: 2026-11-06T09:50:50.940Z
 | 10 | 09 | deviation | apps/api/src/app.ts |  | pentest 09-21 [baixo/informativo] apps/api e apps/web nao enviam cabecalhos de seguranca de resposta (X-Content-Type-Options, Strict-Transport-Security, Referrer-Policy, CSP) | open |  | 2026-10-28T18:14:48.569Z |  |
 | 11 | 09 | deviation | apps/api/deploy/n1-crm-limites.conf |  | pentest 09-21 [informativo] limite de taxa por IP nao existe no ambiente local/homologacao (sem nginx); provado so em Docker (09-06), pendente repetir na VPS real no 09-20 | open |  | 2026-10-28T18:14:48.632Z |  |
 | 12 | 15 | deviation | packages/dominio/src/operations/ferramentas/automacoes.ts |  | 15-07: as Acoes de Automacao contato.adicionarTag e contato.definirCampo falham (Contato do CRM novo nao guarda Tag/Campo de Automacao de Ferramentas); decidir o destino no 15-17/15-22 | open |  | 2026-11-06T09:50:50.940Z |  |
+| 13 | 15 | deviation | apps/web/src/app/(shell)/ia/chat/page.tsx |  | 15-08: ancorar Chat ou ensaio num Negocio, Contato, Empresa ou Conversa no navegador recusa/nomeia pelo id ate o 15-21 mandar nomes (o servidor grava certo pelas tabelas) | open |  | 2026-11-06T10:06:57.673Z |  |
 
 ````json
 [
@@ -183,6 +184,19 @@ last_updated: 2026-11-06T09:50:50.940Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-06T09:50:50.940Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 13,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/app/(shell)/ia/chat/page.tsx",
+    "line": null,
+    "description": "15-08: ancorar Chat ou ensaio num Negocio, Contato, Empresa ou Conversa no navegador recusa/nomeia pelo id ate o 15-21 mandar nomes (o servidor grava certo pelas tabelas)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T10:06:57.673Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }
