@@ -18,6 +18,7 @@ import type { ContatoDetalhado } from "@n1/dominio/crm/contatos";
 import type { EmpresaDetalhada } from "@n1/dominio/crm/empresas";
 import type { NegocioDetalhado } from "@n1/dominio/crm/negocios";
 import type { ActivityRecord } from "@n1/dominio/types/primitives";
+import { invalidarCrm } from "@/dados/crm/cliente-crm";
 import { StoreProvider } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
 import ReuniaoPage from "@/app/(shell)/crm/reunioes/[reuniao]/page";
@@ -260,5 +261,115 @@ describe("Reunião — o lead vem do CRM novo (3.4.5, UCR-06)", () => {
 
     await waitFor(() => expect(container.textContent).toContain("Seu Papel não permite escrever notas."));
     expect((screen.getByLabelText("Anotação da call") as HTMLTextAreaElement).value).toBe("Texto que não pode sumir.");
+  });
+});
+
+function atividade(id: string, objectType: string, objectId: string, action: string, at: string): ActivityRecord {
+  return {
+    id,
+    workspaceId: "ws_demo",
+    actor: { kind: "member", id: "mem_julia" },
+    action,
+    objectType,
+    objectId,
+    objectName: "Alvo",
+    at,
+    result: "ok",
+  };
+}
+
+describe("Reunião — Tudo que já aconteceu junta as duas fontes (D-15-09, UCR-03)", () => {
+  it("mostra a Atividade antiga da Tarefa e a do Contato vinda da api, a mais recente primeiro", async () => {
+    const estado = espaco();
+    estado.dados.activity.push(atividade("act_antiga", "task", estado.tarefaId, "Atividade antiga da Tarefa", "2026-10-02T09:00:00.000Z"));
+    rotas[`GET /atividades?objetoTipo=contact&objetoId=${CONTATO_ID}*`] = () =>
+      resposta(200, {
+        ok: true,
+        itens: [atividade("11111111-aaaa-4aaa-8aaa-111111111111", "contact", CONTATO_ID, "Conversa movida para outro Contato", "2026-10-03T09:00:00.000Z")],
+      });
+    rotas[`GET /atividades?objetoTipo=deal&objetoId=${NEGOCIO_ID}*`] = () =>
+      resposta(200, {
+        ok: true,
+        itens: [atividade("22222222-bbbb-4bbb-8bbb-222222222222", "deal", NEGOCIO_ID, "Negócio passado ao Sucessor", "2026-10-01T09:00:00.000Z")],
+      });
+    const container = await montar(estado);
+
+    await waitFor(() => expect(container.textContent).toContain("Conversa movida para outro Contato"));
+    const texto = container.textContent ?? "";
+    expect(texto).toContain("Atividade antiga da Tarefa");
+    expect(texto).toContain("Negócio passado ao Sucessor");
+    const ordem = ["Conversa movida para outro Contato", "Atividade antiga da Tarefa", "Negócio passado ao Sucessor"].map((frase) => texto.indexOf(frase));
+    expect([...ordem].sort((a, b) => a - b)).toEqual(ordem);
+    const pedidos = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(pedidos.some((url) => url.startsWith(`http://api/atividades?objetoTipo=deal&objetoId=${NEGOCIO_ID}`))).toBe(true);
+    expect(pedidos.some((url) => url.startsWith(`http://api/atividades?objetoTipo=contact&objetoId=${CONTATO_ID}`))).toBe(true);
+  });
+
+  it("não repete a mesma Atividade que as duas fontes devolvem", async () => {
+    const estado = espaco();
+    const repetida = atividade("33333333-cccc-4ccc-8ccc-333333333333", "contact", CONTATO_ID, "Consentimento registrado", "2026-10-03T09:00:00.000Z");
+    estado.dados.activity.push(repetida);
+    rotas[`GET /atividades?objetoTipo=contact&objetoId=${CONTATO_ID}*`] = () => resposta(200, { ok: true, itens: [repetida] });
+    const container = await montar(estado);
+
+    await waitFor(() => expect(container.textContent).toContain("Consentimento registrado"));
+    expect((container.textContent ?? "").split("Consentimento registrado").length - 1).toBe(1);
+  });
+
+  it("salvar a nota revalida as Atividades para ela aparecer como 'Nota registrada no Contato'", async () => {
+    rotas[`POST /contatos/${CONTATO_ID}/notas`] = () =>
+      resposta(201, { ok: true, dados: { id: "n1", contatoId: CONTATO_ID, autorId: "mem_julia", conteudo: "Fechar em novembro.", criadoEm: INSTANTE } });
+    vi.mocked(invalidarCrm).mockClear();
+    const estado = espaco();
+    const container = await montar(estado);
+    await waitFor(() => expect(container.textContent).toContain("Beatriz Lima"));
+
+    fireEvent.change(screen.getByLabelText("Anotação da call"), { target: { value: "Fechar em novembro." } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Registrar anotação" }));
+    });
+
+    await waitFor(() => expect(vi.mocked(invalidarCrm)).toHaveBeenCalledWith("/atividades"));
+  });
+});
+
+describe("Reunião — sem Negócio, com Negócio na lixeira ou fora de alcance (borda UCR-06)", () => {
+  it("Reunião sem Vínculo mostra o estado vazio e nenhuma ida à api por Negócio", async () => {
+    const estado = espaco({ negocioId: null });
+    const container = await montar(estado);
+
+    expect(container.textContent).toContain("Esta Reunião não tem Negócio.");
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/negocios/"))).toBe(false);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/atividades"))).toBe(false);
+  });
+
+  it("Negócio na lixeira mostra o mesmo estado vazio, sem erro", async () => {
+    rotas[`GET /negocios/${NEGOCIO_ID}`] = () => resposta(200, { ok: true, dados: negocio({ estado: "na_lixeira" }) });
+    const estado = espaco();
+    const container = await montar(estado);
+
+    await waitFor(() => expect(container.textContent).toContain("Esta Reunião não tem Negócio."));
+    expect(container.textContent).not.toContain("Contrato Acme 2026");
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it("404 e 403 da api também viram o estado vazio", async () => {
+    rotas[`GET /negocios/${NEGOCIO_ID}`] = () => resposta(403, { ok: false, error: "Sem permissão.", codigo: "SEM_PERMISSAO" });
+    const estado = espaco();
+    const container = await montar(estado);
+
+    await waitFor(() => expect(container.textContent).toContain("Esta Reunião não tem Negócio."));
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it("Negócio da Empresa, sem Contato, mostra a Empresa e diz que falta o Contato", async () => {
+    rotas[`GET /negocios/${NEGOCIO_ID}`] = () =>
+      resposta(200, { ok: true, dados: negocio({ contatoId: null }, { contato: null }) });
+    const estado = espaco();
+    const container = await montar(estado);
+
+    await waitFor(() => expect(container.textContent).toContain("Esta Reunião não tem Contato."));
+    expect(container.textContent).toContain("Acme Indústria");
+    expect(container.textContent).toContain("Contrato Acme 2026");
   });
 });
