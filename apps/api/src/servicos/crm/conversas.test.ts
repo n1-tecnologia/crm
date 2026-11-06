@@ -24,6 +24,7 @@ import {
   semearCanal,
   semearMembro,
 } from "../../testes/banco-crm";
+import { aindaPendenteApos, mesclarSemConfirmar } from "../../testes/duas-conexoes";
 import { criarAcessoAoCrmPg } from "./acesso";
 import { abrirConversaNoCliente, criarServicoDeConversas, FRASES_DE_CONVERSAS } from "./conversas";
 import type { ResultadoCrm } from "./resultado";
@@ -177,6 +178,31 @@ describeComBanco("ServicoDeConversas — Postgres local", () => {
       const ativo = await suporte(c.ws);
       await pool().query("update plataforma.contatos set estado = 'arquivado' where workspace_id = $1 and id = $2", [c.ws, ana]);
       expect(recusado(await abrir(c, ativo, ana))).toMatchObject({ status: 409, codigo: "CONTATO_INATIVO" });
+    });
+
+    it("WR-01: Contato mesclado no meio da abertura → 409 CONTATO_MESCLADO e nenhuma Conversa nasce", async () => {
+      const c = await espaco("mescladonomeio");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966660021" }]);
+      const sobrevivente = await contato(c.ws, "Ana Sobrevivente", [{ tipo: "whatsapp", valor: "+5511966660022" }]);
+      const canal = await comercial(c.ws);
+
+      // A mescla a Ana e ainda não confirma; B (o serviço) tenta abrir a Conversa para ela.
+      const a = await mesclarSemConfirmar(c.ws, ana, sobrevivente);
+      let depois: Awaited<ReturnType<typeof abrir>>;
+      try {
+        const b = abrir(c, canal, ana);
+        const esperando = await aindaPendenteApos(b, 400);
+        await a.confirmar();
+        depois = await b;
+        expect(esperando).toBe(true);
+      } finally {
+        await a.desfazer();
+      }
+
+      expect(recusado(depois)).toMatchObject({ status: 409, codigo: "CONTATO_MESCLADO", campo: "contatoId" });
+      const deAna = await pool().query("select 1 from plataforma.conversas where workspace_id = $1 and contato_id = $2", [c.ws, ana]);
+      expect(deAna.rowCount).toBe(0);
+      expect(await contarMensagens(c.ws)).toBe(0);
     });
 
     it("Canal ou Contato de outro Espaço → 404 com campo", async () => {

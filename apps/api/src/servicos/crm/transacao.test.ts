@@ -45,6 +45,18 @@ describe("traduzirErroDePg — erros fabricados, sem banco", () => {
     expect(traduzido?.error).not.toContain("contato_identificadores_unico");
   });
 
+  it("40P01 (deadlock) vira 409 transitório com frase fixa, com ou sem constraint e sem citá-lo", () => {
+    const esperado = {
+      status: 409,
+      error: "Outra gravação mexeu nos mesmos registros ao mesmo tempo. Tente de novo.",
+      codigo: "CONFLITO_TRANSITORIO",
+    };
+    expect(traduzirErroDePg(erroDePg("40P01"), {})).toEqual(esperado);
+    const comConstraint = traduzirErroDePg(erroDePg("40P01", "contatos_pkey"), FRASES);
+    expect(comConstraint).toEqual(esperado);
+    expect(comConstraint?.error).not.toContain("contatos_pkey");
+  });
+
   it("SQLSTATE sem frase conhecida não é traduzido", () => {
     expect(traduzirErroDePg(erroDePg("23505", "outro_constraint"), FRASES)).toBeUndefined();
     expect(traduzirErroDePg(erroDePg("23505"), FRASES)).toBeUndefined();
