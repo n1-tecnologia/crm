@@ -142,3 +142,12 @@ export async function apagarDoRegistros(cliente: PoolClient, espaco: string, alv
   for (const linha of resultado.rows) porColecao[linha.colecao] = (porColecao[linha.colecao] ?? 0) + 1;
   return porColecao;
 }
+
+/** O que `registros_crm_antigo` já guarda do Espaço, por coleção. */
+export async function contarGuardadas(cliente: PoolClient, espaco: string): Promise<Record<string, number>> {
+  const resultado = await cliente.query<{ colecao: string; n: string }>(
+    "select colecao, count(*)::text as n from plataforma.registros_crm_antigo where workspace_id = $1 group by colecao order by colecao",
+    [espaco],
+  );
+  return Object.fromEntries(resultado.rows.map((linha) => [linha.colecao, Number(linha.n)]));
+}

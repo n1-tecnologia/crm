@@ -1,26 +1,52 @@
 /**
- * O script `migrar:crm-antigo` (15-27, UCR-09): guardar o CRM antigo de UM Espaço.
+ * O script `migrar:crm-antigo` (15-27, UCR-09): guardar o CRM antigo de UM Espaço, decidir o Funil e
+ * limpar a Pasta "Meus negócios".
  *
- * Cada modo que escreve roda numa única `executar()` do Espaço (a trava padrão): a trava da
- * linha do Espaço, `revisao + 1` (os navegadores abertos se re-hidratam), os prazos do servidor e o
- * `rollback` em qualquer falha vêm de graça. A ordem dentro da transação é a de F14-D-03:
+ * Cada modo que escreve roda numa única `executar()` do Espaço (a trava padrão): a trava da linha do
+ * Espaço, `revisao + 1` (os navegadores abertos se re-hidratam), os prazos do servidor e o `rollback` em
+ * qualquer falha vêm de graça. A ordem dentro da transação é a de F14-D-03:
  *
- *   1. `lerDoCrm`     — copia para `registros_crm_antigo` e CONFERE a cópia (lança se não bate);
- *   2. `operacao`     — pura; NÃO toca nas nove coleções antigas (a remoção delas é só SQL), para o
- *                       script sobreviver à remoção do modelo antigo (3.5.4) sem mudança;
- *   3. `aoConfirmar`  — apaga de `registros` por SQL e, no `--migrar`, insere o Funil.
+ *   1. `lerDoCrm`     — decide o plano (recusa antes de escrever, se for o caso), copia para
+ *                       `registros_crm_antigo` e CONFERE a cópia (lança se não bate);
+ *   2. `operacao`     — pura; NÃO toca nas nove coleções antigas, só tira a Pasta "Meus negócios" (D-15-14);
+ *   3. `aoConfirmar`  — insere o Funil (no `--migrar --funil=migrar`) e apaga de `registros` por SQL.
  *
  * Toda leitura das coleções antigas é por SQL em `plataforma.registros`, tipada por
- * `formatos-antigos.ts`, nunca pelo `state`. Nada aqui lê nem imprime dado pessoal: só ids,
- * contagens e nomes de configuração.
+ * `formatos-antigos.ts`, nunca pelo `state`; assim o script sobrevive à remoção do modelo antigo (3.5.4)
+ * sem mudança. Nada aqui lê nem imprime dado pessoal: só ids, contagens e nomes de configuração.
  */
 
 import type { PoolClient } from "pg";
 import { fail, ok } from "@n1/dominio/state";
 import { pool } from "../persistencia/conexao";
+import { hidratar } from "../persistencia/repositorio";
 import { executar } from "../persistencia/unidade-de-trabalho";
-import { COLECAO_DE_CONVERSAS, COLECOES_DO_CRM_ANTIGO, COLECOES_SEM_GRUPO, ErroDeUso, validarEspaco } from "./colecoes";
-import { type Alvo, apagarDoRegistros, conferirCopia, contarConversasDeGrupo, contarDoAlvo, copiarParaRegistrosCrmAntigo } from "./guardar";
+import { COLECOES_DO_CRM_ANTIGO, COLECOES_SEM_GRUPO, ErroDeUso, validarEspaco } from "./colecoes";
+import {
+  contarReferenciasAoFunil,
+  type DecisaoDeFunil,
+  type FunilNaoMigrado,
+  inserirFunis,
+  lerFunilPreferido,
+  lerFunisAntigos,
+  lerFunisDoCrmNovo,
+  planejarFunis,
+  type PlanoDeFunis,
+} from "./funil";
+import {
+  type Alvo,
+  apagarDoRegistros,
+  type ChaveDeRegistro,
+  conferirCopia,
+  contarConversasDeGrupo,
+  contarDoAlvo,
+  contarGuardadas,
+  copiarParaRegistrosCrmAntigo,
+} from "./guardar";
+import { chavesDaPasta, type PlanoDaPasta, planejarPasta, removerPasta } from "./pasta-meus-negocios";
+import { type EntradaDoRelatorio, type FunilDoRelatorio, montarRelatorio, montarResumoDeEscrita } from "./relatorio";
+
+export type { DecisaoDeFunil } from "./funil";
 
 /** Ganchos só dos testes: provam a volta atrás (rollback) injetando falha entre duas etapas. */
 export interface GanchosDeTeste {
@@ -33,7 +59,7 @@ export interface GanchosDeTeste {
 export interface OpcoesDeEscrita {
   readonly ganchosDeTeste?: GanchosDeTeste;
   /** `--funil=migrar|guardar`: o que fazer com o Funil antigo (só no `--migrar`). */
-  readonly funil?: "migrar" | "guardar";
+  readonly funil?: DecisaoDeFunil;
 }
 
 export interface ResultadoDeEscrita {
@@ -42,18 +68,28 @@ export interface ResultadoDeEscrita {
   readonly nadaAFazer: boolean;
   /** Linhas que entraram em `registros_crm_antigo` NESTA execução. */
   readonly copiadas: number;
-  /** Linhas apagadas de `registros` nesta execução, por coleção. */
+  /** Linhas apagadas de `registros` nesta execução, por coleção (a Pasta "Meus negócios" não entra: sai pela operação). */
   readonly apagadas: Readonly<Record<string, number>>;
   /** Conversas de Grupo que continuam em `registros` (F14-D-05). */
   readonly conversasDeGrupoQueFicaram: number;
+  readonly funisMigrados: number;
+  readonly funisNaoMigrados: readonly FunilNaoMigrado[];
+  /** A Pasta "Meus negócios" saiu de `registros` nesta execução. */
+  readonly pastaRemovida: boolean;
   /** A revisão do Espaço depois da escrita; indefinida quando não houve escrita. */
   readonly revisao: number | undefined;
-  /** O resumo em português, só com contagens e nomes de coleção. */
+  /** O resumo em português, só com contagens e nomes de configuração. */
   readonly mensagem: string;
 }
 
 /** A marca que `operacao` devolve quando não há nada a fazer: `executar()` desfaz sem subir a revisão. */
 const NADA_A_FAZER = "nada a fazer";
+
+const RECUSA_ALEM_DO_FUNIL = "Este Espaço tem registros do CRM antigo além do Funil; use --guardar.";
+const RECUSA_SEM_DECISAO_DO_FUNIL =
+  "Este Espaço tem Funil do CRM antigo: diga o que fazer com ele com --funil=migrar (leva o Funil e as Etapas para o CRM novo) ou --funil=guardar (só na cópia; o Espaço fica sem Funil).";
+
+type Modo = "guardar" | "migrar";
 
 /** O que `lerDoCrm` decide e `operacao`/`aoConfirmar` executam. */
 interface Plano {
@@ -62,17 +98,23 @@ interface Plano {
   readonly copiadas: number;
   readonly aApagar: Readonly<Record<string, number>>;
   readonly conversasDeGrupo: number;
+  /** O alvo do `delete` em SQL: as oito coleções e as Conversas sem Grupo (a Pasta sai pela operação). */
   readonly apagar: Alvo;
+  readonly pasta: PlanoDaPasta;
+  readonly funis: PlanoDeFunis;
 }
 
-/** As linhas que se copiam: as nove coleções INTEIRAS, as Conversas de Grupo também. */
-function alvoDeCopiar(): Alvo {
-  return { colecoes: COLECOES_DO_CRM_ANTIGO, conversasSemGrupo: false, extras: [] };
+const SEM_PASTA: PlanoDaPasta = { existe: false, nome: undefined, listas: [], removivel: false };
+const SEM_FUNIS: PlanoDeFunis = { aInserir: [], naoMigrados: [] };
+
+/** As linhas que se copiam: as nove coleções INTEIRAS (as Conversas de Grupo também) e as linhas da Pasta. */
+function alvoDeCopiar(extras: readonly ChaveDeRegistro[]): Alvo {
+  return { colecoes: COLECOES_DO_CRM_ANTIGO, conversasSemGrupo: false, extras };
 }
 
-/** As linhas que saem de `registros`: as oito coleções e as Conversas sem Grupo. */
-function alvoDeApagar(): Alvo {
-  return { colecoes: COLECOES_SEM_GRUPO, conversasSemGrupo: true, extras: [] };
+/** As linhas que saem de `registros`: as oito coleções e as Conversas sem Grupo, mais (na conferência) as da Pasta. */
+function alvoDeApagar(extras: readonly ChaveDeRegistro[]): Alvo {
+  return { colecoes: COLECOES_SEM_GRUPO, conversasSemGrupo: true, extras };
 }
 
 function soma(porColecao: Readonly<Record<string, number>>): number {
@@ -86,92 +128,183 @@ async function exigirEspacoExistente(espaco: string): Promise<void> {
   if ((achou.rowCount ?? 0) === 0) throw new ErroDeUso(`Espaço não encontrado: ${espaco}.`);
 }
 
-function textoDasContagens(porColecao: Readonly<Record<string, number>>): string {
-  const partes = Object.entries(porColecao).map(([colecao, n]) => `${colecao} ${n}`);
-  return partes.length > 0 ? partes.join(", ") : "nenhuma";
+/**
+ * Uma transação SÓ DE LEITURA: `begin read only`, então o Postgres recusa qualquer escrita (`25006`).
+ * É o que faz o `--seco` e o `--verificar` não poderem escrever, mesmo com um erro de código.
+ */
+export async function emTransacaoSoLeitura<T>(fn: (cliente: PoolClient) => Promise<T>): Promise<T> {
+  const cliente = await pool().connect();
+  try {
+    await cliente.query("begin read only");
+    return await fn(cliente);
+  } finally {
+    await cliente.query("rollback").catch(() => undefined);
+    cliente.release();
+  }
 }
 
-/**
- * `--guardar`: copia as nove coleções do CRM antigo do Espaço para `registros_crm_antigo`, confere e
- * só então apaga de `registros` (D-15-01). Não cria linha no CRM novo. Repetir não faz nada.
- */
-export async function guardarCrmAntigo(espaco: string, opcoes: OpcoesDeEscrita = {}): Promise<ResultadoDeEscrita> {
+async function escrever(espaco: string, modo: Modo, opcoes: OpcoesDeEscrita): Promise<ResultadoDeEscrita> {
   await exigirEspacoExistente(espaco);
-  const copiar = alvoDeCopiar();
 
+  let visto: Plano | undefined;
   let apagadas: Readonly<Record<string, number>> = {};
+  let funisInseridos = { funis: 0, etapas: 0 };
+
   const resultado = await executar<Plano, Plano>(
     espaco,
-    (_state, plano) => {
+    (estado, plano) => {
       if (plano.recusa) return fail(plano.recusa);
       if (plano.nadaAFazer) return fail(NADA_A_FAZER);
+      removerPasta(estado, plano.pasta);
       return ok(plano);
     },
     {
-      lerDoCrm: async (cliente) => {
-        const apagar = alvoDeApagar();
+      lerDoCrm: async (cliente, estado) => {
+        const pasta = planejarPasta(estado);
+        const extras = chavesDaPasta(estado, pasta);
+        let funis = SEM_FUNIS;
+
+        // 1) As recusas vêm ANTES de qualquer escrita (nem a cópia): o `--migrar` só cobre o que o corte do
+        //    `ws_n1` precisa, o Funil. Contatos, Empresas, Negócios, Canais e Conversas comuns ficam com o 15-28.
+        let recusa: string | undefined;
+        if (modo === "migrar") {
+          const alemDoFunil = await contarDoAlvo(cliente, espaco, {
+            colecoes: COLECOES_SEM_GRUPO.filter((c) => c !== "funnels"),
+            conversasSemGrupo: true,
+            extras: [],
+          });
+          const funisAntigos = await lerFunisAntigos(cliente, espaco);
+          if (soma(alemDoFunil) > 0) recusa = RECUSA_ALEM_DO_FUNIL;
+          else if (funisAntigos.length > 0 && !opcoes.funil) recusa = RECUSA_SEM_DECISAO_DO_FUNIL;
+          else if (funisAntigos.length > 0 && opcoes.funil) {
+            funis = planejarFunis(funisAntigos, await lerFunisDoCrmNovo(cliente, espaco), opcoes.funil, await lerFunilPreferido(cliente, espaco));
+          }
+        }
+        if (recusa) {
+          visto = { recusa, nadaAFazer: false, copiadas: 0, aApagar: {}, conversasDeGrupo: 0, apagar: alvoDeApagar([]), pasta, funis };
+          return visto;
+        }
+
+        // 2) Copiar, conferir e só então deixar o `aoConfirmar` apagar.
+        const copiar = alvoDeCopiar(extras);
         const copiadas = await copiarParaRegistrosCrmAntigo(cliente, espaco, copiar);
         if (opcoes.ganchosDeTeste?.antesDeConferir) await opcoes.ganchosDeTeste.antesDeConferir(cliente);
-        await conferirCopia(cliente, espaco, copiar, apagar);
+        await conferirCopia(cliente, espaco, copiar, alvoDeApagar(extras));
+        const apagar = alvoDeApagar([]);
         const aApagar = await contarDoAlvo(cliente, espaco, apagar);
-        return {
+        visto = {
           recusa: undefined,
-          nadaAFazer: copiadas === 0 && soma(aApagar) === 0,
+          nadaAFazer: copiadas === 0 && soma(aApagar) === 0 && extras.length === 0 && funis.aInserir.length === 0,
           copiadas,
           aApagar,
           conversasDeGrupo: await contarConversasDeGrupo(cliente, espaco),
           apagar,
+          pasta,
+          funis,
         };
+        return visto;
       },
       aoConfirmar: async (cliente, plano) => {
+        if (modo === "migrar") {
+          funisInseridos = await inserirFunis(cliente, espaco, plano.funis);
+          if (opcoes.ganchosDeTeste?.depoisDeInserirFunis) await opcoes.ganchosDeTeste.depoisDeInserirFunis(cliente);
+        }
         apagadas = await apagarDoRegistros(cliente, espaco, plano.apagar);
       },
     },
   );
 
   if ("conflito" in resultado) throw new Error(resultado.error);
-  if (!resultado.ok) {
-    if (resultado.error !== NADA_A_FAZER) throw new ErroDeUso(resultado.error);
-    return {
-      espaco,
-      nadaAFazer: true,
-      copiadas: 0,
-      apagadas: {},
-      conversasDeGrupoQueFicaram: 0,
-      revisao: undefined,
-      mensagem: `Espaço ${espaco}: nada a fazer. O CRM antigo já está guardado e não há linha dele para apagar em registros.`,
-    };
-  }
-  const plano = resultado.value;
+  if (!resultado.ok && resultado.error !== NADA_A_FAZER) throw new ErroDeUso(resultado.error);
+
+  const plano = visto;
+  const nadaAFazer = !resultado.ok;
+  const pasta = plano?.pasta ?? SEM_PASTA;
+  const funisNaoMigrados = plano?.funis.naoMigrados ?? [];
+  const mensagem = montarResumoDeEscrita({
+    espaco,
+    modo,
+    nadaAFazer,
+    copiadas: nadaAFazer ? 0 : (plano?.copiadas ?? 0),
+    apagadas,
+    conversasDeGrupo: plano?.conversasDeGrupo ?? 0,
+    funis: { migrados: funisInseridos.funis, etapas: funisInseridos.etapas, naoMigrados: funisNaoMigrados },
+    pasta,
+  });
   return {
     espaco,
-    nadaAFazer: false,
-    copiadas: plano.copiadas,
+    nadaAFazer,
+    copiadas: nadaAFazer ? 0 : (plano?.copiadas ?? 0),
     apagadas,
-    conversasDeGrupoQueFicaram: plano.conversasDeGrupo,
-    revisao: resultado.revisao,
-    mensagem:
-      `Espaço ${espaco}: guardado. ${plano.copiadas} linha(s) copiadas para registros_crm_antigo; ` +
-      `apagadas de registros: ${textoDasContagens(apagadas)}. ` +
-      `${plano.conversasDeGrupo} Conversa(s) de Grupo continuam em registros (${COLECAO_DE_CONVERSAS}, F14-D-05).`,
+    conversasDeGrupoQueFicaram: nadaAFazer ? 0 : (plano?.conversasDeGrupo ?? 0),
+    funisMigrados: funisInseridos.funis,
+    funisNaoMigrados,
+    pastaRemovida: !nadaAFazer && pasta.removivel,
+    revisao: resultado.ok ? resultado.revisao : undefined,
+    mensagem,
   };
 }
 
-// --- esqueleto do RED (Task 2): a forma pública, sem o comportamento ---
-
-export async function migrarCrmAntigo(espaco: string, _opcoes: OpcoesDeEscrita = {}): Promise<ResultadoDeEscrita> {
-  return { espaco, nadaAFazer: true, copiadas: 0, apagadas: {}, conversasDeGrupoQueFicaram: 0, revisao: undefined, mensagem: "" };
+/**
+ * `--guardar`: copia as nove coleções do CRM antigo do Espaço para `registros_crm_antigo`, confere e
+ * só então apaga de `registros` (D-15-01); a Pasta "Meus negócios" sai junto se todas as Listas estão
+ * vazias (D-15-14). Não cria linha no CRM novo. Repetir não faz nada.
+ */
+export function guardarCrmAntigo(espaco: string, opcoes: OpcoesDeEscrita = {}): Promise<ResultadoDeEscrita> {
+  return escrever(espaco, "guardar", opcoes);
 }
 
-export async function relatorioSeco(_espaco: string): Promise<string> {
-  return "";
+/**
+ * `--migrar`: faz o `--guardar` e leva o Funil para o CRM novo conforme `--funil` (D-15-04). Recusa, antes
+ * de escrever, o Espaço com Contatos, Empresas, Negócios, Canais ou Conversas comuns (esse mapeador é o
+ * plano 15-28), e o Espaço com Funil antigo sem `--funil`.
+ */
+export function migrarCrmAntigo(espaco: string, opcoes: OpcoesDeEscrita = {}): Promise<ResultadoDeEscrita> {
+  return escrever(espaco, "migrar", opcoes);
 }
 
-export async function emTransacaoSoLeitura<T>(fn: (cliente: PoolClient) => Promise<T>): Promise<T> {
-  const cliente = await pool().connect();
-  try {
-    return await fn(cliente);
-  } finally {
-    cliente.release();
-  }
+/**
+ * `--seco`: o relatório do que há no Espaço e do que cada modo faria, numa sessão `begin read only`
+ * (o Postgres recusa qualquer escrita). Só imprime ids, contagens e nomes de configuração.
+ */
+export async function relatorioSeco(espaco: string): Promise<string> {
+  await exigirEspacoExistente(espaco);
+  return emTransacaoSoLeitura(async (cliente) => {
+    const { state } = await hidratar(cliente, espaco);
+    const porColecao = await contarDoAlvo(cliente, espaco, alvoDeCopiar([]));
+    const guardadas = await contarGuardadas(cliente, espaco);
+    const funisAntigos = await lerFunisAntigos(cliente, espaco);
+    const funisNovos = await lerFunisDoCrmNovo(cliente, espaco);
+    const plano = planejarFunis(funisAntigos, funisNovos, "migrar", await lerFunilPreferido(cliente, espaco));
+    const naoMigrados = new Map(plano.naoMigrados.map((f) => [f.id, f.motivo]));
+    const padraoDe = new Map(plano.aInserir.map((f) => [f.id, f.padrao]));
+
+    const funis: FunilDoRelatorio[] = [];
+    for (const antigo of funisAntigos) {
+      const motivo = naoMigrados.get(antigo.id);
+      funis.push({
+        id: antigo.id,
+        nome: antigo.name,
+        estado: antigo.lifecycle ?? "ativo",
+        privado: antigo.isPrivate === true,
+        // A posição (1..N) é a que a Etapa terá no CRM novo: a ordem antiga começa em 0 e pode ter buracos.
+        etapas: [...(antigo.stages ?? [])]
+          .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+          .map((e, indice) => ({ nome: e.name, ordem: indice + 1, probabilidade: e.defaultProbability ?? 0 })),
+        referencias: await contarReferenciasAoFunil(cliente, espaco, antigo.id),
+        destino: motivo !== undefined ? { tipo: "nao-migra", motivo } : { tipo: "migra", padrao: padraoDe.get(antigo.id) === true },
+      });
+    }
+
+    const entrada: EntradaDoRelatorio = {
+      espaco,
+      noRegistros: COLECOES_DO_CRM_ANTIGO.map((colecao) => ({ colecao, linhas: porColecao[colecao] ?? 0 })),
+      conversasDeGrupo: await contarConversasDeGrupo(cliente, espaco),
+      jaGuardadas: Object.entries(guardadas).map(([colecao, linhas]) => ({ colecao, linhas })),
+      funis,
+      funisNoCrmNovo: { total: funisNovos.length, temPadrao: funisNovos.some((f) => f.padrao) },
+      pasta: planejarPasta(state),
+    };
+    return montarRelatorio(entrada);
+  });
 }
