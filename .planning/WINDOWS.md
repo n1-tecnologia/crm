@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 37
+open_count: 40
 waived_count: 2
 fixed_count: 16
-total_count: 55
-last_updated: 2026-11-06T19:45:42.257Z
+total_count: 58
+last_updated: 2026-11-06T19:59:51.413Z
 ---
 
 # Broken Windows Ledger
@@ -70,6 +70,9 @@ last_updated: 2026-11-06T19:45:42.257Z
 | 53 | 15 | deviation | apps/api/src/migracao-crm/mapeador.ts |  | 15-28: o que o --migrar NAO leva as tabelas novas (fica so em registros_crm_antigo e aparece em 'Nao migrados' do --seco): temperatura e Tags dos Contatos; Identificadores de LinkedIn, TikTok e chat do site; Canal do LinkedIn e do chat do site e as Conversas deles (os Vinculos de Tarefa para essas Conversas seguem 'Registro indisponivel'); Empresa sem vinculo admin vigente e os Negocios dela; no Negocio, codigo legivel, campos personalizados, historico de Etapas e os Contatos alem do dono (todo Negocio com Empresa perde o Contato); vinculos Empresa-Empresa e 'distinto de'; Mensagem de Flow migra sem o Flow. No seed sintetico: 35 temperaturas, 25 Contatos com Tags, 32 Identificadores sem destino, 5 Conversas de canal sem destino, 19 Negocios com detalhes perdidos. O dono le a lista no --seco de cada Espaco antes do corte (15-34/15-35) | open |  | 2026-11-06T19:45:42.126Z |  |
 | 54 | 15 | deviation | apps/api/src/migracao-crm/mapeador.ts |  | 15-28: campos personalizados de Contato e Empresa entram em campos_adicionais com o id da Definicao como chave (ex. fd_signo), sem rotulo, e valor em lista fica de fora; o Canal migrado entra desconectado (a conexao real so vem do provedor); Qualificacao e Origem do Contato levam o id do Catalogo como texto (a tela mostra o rotulo so se o id existe no Catalogo) | open |  | 2026-11-06T19:45:42.191Z |  |
 | 55 | 15 | unrun-verify | apps/api/src/migracao-crm/migrar-entidades.test.ts |  | 15-28: os avisos 22, 32, 42, 49, 50 e 52 foram dados como corrigidos pelo codigo e pelos testes em Docker (ids antigos preservados, Vinculos achando o id); em producao o efeito so existe depois que o dono rodar o --migrar nos Espacos com CRM antigo (15-34/15-35). Antes disso os Vinculos a ids antigos seguem 'nao encontrado'. Nada foi rodado contra banco real | open |  | 2026-11-06T19:45:42.257Z |  |
+| 56 | 15 | deviation | apps/api/src/bootstrap/crm-demo.test.ts |  | 15-29: o teste dos Vinculos do demo le buildSeed().links; quando o 15-31 tirar o CRM e os Vinculos do seed, procurados fica 0 e o teste (que exige contact, conversation e deal achados) quebra. O 15-31 precisa trocar a fonte dos Vinculos (por exemplo, a lista de ids que o proprio seed novo guarda em registros) ou ajustar o caso, sem perder a prova de que os ids preservados acham o registro. | open |  | 2026-11-06T19:59:51.284Z |  |
+| 57 | 15 | deviation | apps/api/src/bootstrap/crm-demo.json |  | 15-29: o demo traz so o que o mapeador do 15-28 migra para as tabelas novas: sem temperatura e Tags dos Contatos, sem o Canal do LinkedIn e do chat do site e as Conversas deles (3 Canais e 16 Conversas, contra 5 e 23 do seed antigo), Canais desconectada e 160 itens listados em naoMigrados. A Caixa de dev fica mais magra que a do seed antigo; nao ha Canal conectado nem envio real. | open |  | 2026-11-06T19:59:51.351Z |  |
+| 58 | 15 | unrun-verify | apps/api/src/bootstrap/crm-demo.cli.ts |  | 15-29: bootstrap:crm-demo foi provado so em Postgres de Docker (testes e uma execucao de npm run em Espaco criado a mao); nenhuma tela do apps/web foi aberta sobre o Espaco carregado, entao a Caixa cheia em desenvolvimento nao foi vista no navegador. | open |  | 2026-11-06T19:59:51.413Z |  |
 
 ````json
 [
@@ -785,6 +788,45 @@ last_updated: 2026-11-06T19:45:42.257Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-06T19:45:42.257Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 56,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/api/src/bootstrap/crm-demo.test.ts",
+    "line": null,
+    "description": "15-29: o teste dos Vinculos do demo le buildSeed().links; quando o 15-31 tirar o CRM e os Vinculos do seed, procurados fica 0 e o teste (que exige contact, conversation e deal achados) quebra. O 15-31 precisa trocar a fonte dos Vinculos (por exemplo, a lista de ids que o proprio seed novo guarda em registros) ou ajustar o caso, sem perder a prova de que os ids preservados acham o registro.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T19:59:51.284Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 57,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/api/src/bootstrap/crm-demo.json",
+    "line": null,
+    "description": "15-29: o demo traz so o que o mapeador do 15-28 migra para as tabelas novas: sem temperatura e Tags dos Contatos, sem o Canal do LinkedIn e do chat do site e as Conversas deles (3 Canais e 16 Conversas, contra 5 e 23 do seed antigo), Canais desconectada e 160 itens listados em naoMigrados. A Caixa de dev fica mais magra que a do seed antigo; nao ha Canal conectado nem envio real.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T19:59:51.351Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 58,
+    "kind": "unrun-verify",
+    "phase": "15",
+    "file": "apps/api/src/bootstrap/crm-demo.cli.ts",
+    "line": null,
+    "description": "15-29: bootstrap:crm-demo foi provado so em Postgres de Docker (testes e uma execucao de npm run em Espaco criado a mao); nenhuma tela do apps/web foi aberta sobre o Espaco carregado, entao a Caixa cheia em desenvolvimento nao foi vista no navegador.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T19:59:51.413Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }
