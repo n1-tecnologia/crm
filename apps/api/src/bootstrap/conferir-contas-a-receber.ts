@@ -299,7 +299,6 @@ function construirEsperado(workspaceId: Id): DataState {
       widgetsPerPanel: 20,
     },
     defaultAgentId: "agt_padrao",
-    defaultFunnelId: "fnl_padrao",
     suspensions: [],
   };
   const inbox: Inbox = { id: "inbox_conferencia", workspaceId, reopenWindowHours: 72, defaultDistribution: "manual" };

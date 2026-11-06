@@ -28,7 +28,6 @@ import { describe, expect, it } from "vitest";
 const CONGELADOS = [
   "app/(shell)/configuracoes/campos/page.tsx",
   "app/(shell)/configuracoes/catalogos/page.tsx",
-  "app/(shell)/configuracoes/page.tsx",
   "app/(shell)/configuracoes/tags/page.tsx",
   "app/(shell)/crm/caixa-de-entrada/[conversa]/page.tsx",
   "app/(shell)/crm/reunioes/[reuniao]/page.tsx",

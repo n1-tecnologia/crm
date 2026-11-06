@@ -26,7 +26,6 @@ import { describe, expect, it } from "vitest";
 
 /** Os arquivos de `packages/dominio/src` que leem o CRM antigo hoje (a lista congelada, caminho relativo a `src`). */
 const CONGELADOS = [
-  "bootstrap-gestao.ts",
   "derive-conversacional.ts",
   "derive-ferramentas.ts",
   "derive-ia.ts",

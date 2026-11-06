@@ -71,7 +71,7 @@ describe("buildGestaoBootstrap", () => {
   it("um Espaço novo nasce sem Funil e sem nada do CRM; o Funil padrão é o da tabela (D-15-13)", () => {
     expect(s.funnels).toEqual([]);
     // O Workspace não guarda mais o Funil padrão: ele é `plataforma.funis.padrao`.
-    expect("defaultFunnelId" in s.workspace).toBe(false);
+    expect(Object.keys(s.workspace).filter((chave) => /funnel/i.test(chave))).toEqual([]);
     // O Agente padrão continua nascendo com o Espaço (B33).
     expect(s.workspace.defaultAgentId).toBe("agt_padrao");
   });

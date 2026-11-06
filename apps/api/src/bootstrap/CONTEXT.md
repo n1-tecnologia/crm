@@ -17,6 +17,11 @@ fictícias; este bootstrap é o oposto — só o que o Financeiro de verdade vai
 usar, sem nenhuma Tarefa, Contato, Negócio ou Registro de Atividade
 inventado.
 
+**Sem Funil (D-15-13).** Um Espaço novo nasce sem Funil e sem nada do CRM:
+`Workspace` não tem mais `defaultFunnelId`, e o Funil padrão do Espaço é o de
+`plataforma.funis.padrao`, criado pela tela de Funis. Rodar o bootstrap de
+novo recusa ("o Espaço já tem registros") e nunca cria Funil.
+
 ## Quando rodar
 
 Uma vez, depois de `npm run migrar -w @n1/api` (schema aplicado) e de

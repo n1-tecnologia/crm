@@ -3,7 +3,7 @@
  * 15-16 — Configurações não lê o CRM antigo (3.4.7, D-15-13).
  *
  * O Funil padrão do Espaço vem de `useFunis` (o que tem `padrao = true`), não
- * de `workspace.defaultFunnelId`. O estado é falso e traz de propósito
+ * de um campo do Workspace. O estado é falso e traz de propósito
  * Contatos, Negócios e Funis do modelo antigo: nenhum deles pode aparecer na
  * tela. A api é o hook mockado.
  */

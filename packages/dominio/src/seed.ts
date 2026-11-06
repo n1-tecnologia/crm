@@ -2113,7 +2113,6 @@ function buildWorkspace(): Workspace {
       widgetsPerPanel: 20,
     },
     defaultAgentId: "agt_padrao",
-    defaultFunnelId: "fnl_sdr",
     suspensions: [],
   };
 }

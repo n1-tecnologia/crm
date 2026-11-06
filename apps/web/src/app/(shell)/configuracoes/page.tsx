@@ -10,6 +10,8 @@
 
 import Link from "next/link";
 import { useData } from "@/dados/store";
+import { useContatos } from "@/dados/crm/contatos";
+import { useFunis } from "@/dados/crm/funis";
 import { useFormat } from "@/features/shell/use-format";
 import { CorpoDeTela, PageHeader, RecordPanel, RecordRow, Section, StateSeal } from "@/features/shell/ui";
 
@@ -37,6 +39,12 @@ export default function ConfiguracoesPage() {
   const { workspace } = state;
   const owner = state.members.find((m) => m.id === workspace.ownerMemberId);
   const activeMembers = state.members.filter((m) => m.state === "ativo" || m.state === "suspenso").length;
+  // D-15-13: o Funil padrão é o da tabela (`padrao = true`), não um campo do Workspace; e a
+  // contagem de Contatos do limite é o total da api (limite 1: só o `total` interessa).
+  const funis = useFunis({ estado: "ativo" });
+  const funilPadrao = funis.data?.itens.find((item) => item.funil.padrao)?.funil;
+  const semFunil = funis.data !== undefined && funilPadrao === undefined;
+  const contatos = useContatos({ estado: "ativo", limite: 1 });
 
   return (
     <div className="flex h-full flex-col">
@@ -107,7 +115,15 @@ export default function ConfiguracoesPage() {
                   : "desativado"}
               </RecordRow>
               <RecordRow label="Funil padrão">
-                {state.funnels.find((f) => f.id === workspace.defaultFunnelId)?.name ?? "—"}
+                {funilPadrao ? (
+                  funilPadrao.nome
+                ) : semFunil ? (
+                  <Link href="/crm/funis" className="hover:underline" style={{ color: "var(--acento)" }}>
+                    Crie seu primeiro Funil
+                  </Link>
+                ) : (
+                  "—"
+                )}
               </RecordRow>
               <RecordRow label="Agente padrão">
                 {state.agents.find((a) => a.id === workspace.defaultAgentId)?.name ?? "—"}
@@ -128,8 +144,7 @@ export default function ConfiguracoesPage() {
                 {fmt.number(workspace.limits.spaces)}
               </RecordRow>
               <RecordRow label="Contatos">
-                {fmt.number(state.contacts.filter((c) => c.lifecycle === "ativo").length)} de{" "}
-                {fmt.number(workspace.limits.contacts)}
+                {contatos.data ? fmt.number(contatos.data.total) : "—"} de {fmt.number(workspace.limits.contacts)}
               </RecordRow>
               <RecordRow label="Agentes">
                 {fmt.number(state.agents.filter((a) => a.lifecycle === "ativo").length)} de{" "}

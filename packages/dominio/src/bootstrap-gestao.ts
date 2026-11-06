@@ -21,7 +21,7 @@ import { applyContasAReceber } from "./seed-contas-a-receber";
 import { MODELOS_DA_PLATAFORMA, TOOLS } from "./seed";
 import type { DataState } from "./state";
 import { emailDoSeed, USUARIOS_DO_SEED } from "./usuarios-do-seed";
-import type { Agent, Funnel, Id, Inbox, Member, Role, Workspace } from "./types";
+import type { Agent, Id, Inbox, Member, Role, Workspace } from "./types";
 
 export interface OpcoesDoBootstrap {
   /** Padrão `"ws_n1"` — o único Espaço de Trabalho da Fase 1. */
@@ -99,9 +99,10 @@ export function buildGestaoBootstrap(opcoes: OpcoesDoBootstrap = {}): DataState 
       approvalTimeoutHoursCeiling: 168,
       widgetsPerPanel: 20,
     },
-    // B33/B60 — os dois nascem com o Espaço de Trabalho.
+    // B33 — o Agente padrão nasce com o Espaço de Trabalho. O Funil padrão
+    // não: o Espaço nasce sem Funil e o padrão é o de `plataforma.funis`
+    // (D-15-13), criado pela tela de Funis.
     defaultAgentId: "agt_padrao",
-    defaultFunnelId: "fnl_padrao",
     suspensions: [],
   };
   const inbox: Inbox = { id: "inbox_n1", workspaceId, reopenWindowHours: 72, defaultDistribution: "manual" };
@@ -133,10 +134,11 @@ export function buildGestaoBootstrap(opcoes: OpcoesDoBootstrap = {}): DataState 
   };
   state.members.push(maryane);
 
-  // Agente padrão (B33 — instanciado com o Espaço, sempre ativo) e Funil
-  // padrão (B60 — exatamente um, ativo, nunca privado): invariantes da
-  // ontologia que todo Espaço de Trabalho exige para existir, não conteúdo
-  // fictício — D-07 proíbe CRM/IA fictícios, não o mínimo estrutural.
+  // Agente padrão (B33 — instanciado com o Espaço, sempre ativo): invariante
+  // da ontologia que todo Espaço de Trabalho exige para existir, não conteúdo
+  // fictício — D-07 proíbe CRM/IA fictícios, não o mínimo estrutural. O Funil
+  // padrão (B60) deixou de ser mínimo estrutural do Espaço: o CRM vive nas
+  // tabelas e um Espaço novo nasce sem Funil (D-15-13).
   const agentePadrao: Agent = {
     id: "agt_padrao",
     workspaceId,
@@ -167,22 +169,6 @@ export function buildGestaoBootstrap(opcoes: OpcoesDoBootstrap = {}): DataState 
     memoryRetention: { maxItems: 200, maxDays: 180, keepDelegated: true },
   };
   state.agents.push(agentePadrao);
-
-  const funilPadrao: Funnel = {
-    id: "fnl_padrao",
-    workspaceId,
-    createdBy: { kind: "member", id: proprietaria.memberId },
-    createdAt: agora,
-    lifecycle: "ativo",
-    name: "Padrão",
-    order: 0,
-    isPrivate: false,
-    stages: [
-      { id: "stg_padrao_novo", name: "Novo", order: 0, defaultProbability: 0, requirements: [], allowedTransitionStageIds: [] },
-    ],
-    closingRules: { requireLossReason: false, requireValueOnWin: false },
-  };
-  state.funnels.push(funilPadrao);
 
   // A configuração do Financeiro — só o que os dois módulos montam sem
   // fixtures: Espaço "Gestão" › Pasta "Financeiro" › Listas, Status, Campos,
