@@ -175,8 +175,14 @@ conta própria). Desde a D-15-08 as Conversas que ele atendia não são liberada
 Checklist. A linha do tempo do CRM novo (15-37, D-15-09) é lida por
 `dados/crm/atividades.ts`: `useAtividades({ tipo, id })` junta `state.activity` do
 objeto (modelo antigo, já hidratado) com `GET /atividades` e ordena por `at`
-decrescente, sem repetir id; `useAtividadesDoCrm(filtro)` lê só a rota, sem
-objeto, para a Auditoria. A Auditoria (15-09) soma `state.activity` e as páginas lidas
+decrescente, sem repetir id (com `alvo` indefinido não lê nada e devolve lista vazia, para ficar
+antes de um retorno antecipado); `useAtividadesDoCrm(filtro)` lê só a rota, sem
+objeto, para a Auditoria. A Reunião (`crm/reunioes/[reuniao]`, 15-15) acha o Negócio pelo
+Vínculo da Tarefa em `state.links` e lê o lead por HTTP (`useNegocio`, que já traz Funil e
+Etapa, `useContato`, `useEmpresa`); a nota da call vai para `contato_notas`
+(`adicionarNotaAoContato`) e "Tudo que já aconteceu" junta `state.activity` da Tarefa com
+`useAtividades` do Negócio e do Contato. Diagnóstico, Roteiro, Temperatura e os perfis de
+LinkedIn e TikTok saíram: o modelo novo não os guarda. A Auditoria (15-09) soma `state.activity` e as páginas lidas
 de `useAtividadesDoCrm` (cursor composto `ate` + `ateId` da última linha da página), mistura
 por `at` e aplica os mesmos filtros às duas fontes. Só leitura: quem grava a Atividade é cada
 gesto, no servidor. O nome de um id do CRM novo (Contato, Empresa, Negócio, Conversa, Funil
