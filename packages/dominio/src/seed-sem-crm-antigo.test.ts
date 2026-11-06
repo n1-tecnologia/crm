@@ -12,13 +12,13 @@
  *  - o Grupo, a Comunidade, o Link de Captação, o Flow e as Conversas de Grupo (F14-D-05).
  *
  * As oito coleções são lidas pela CHAVE do objeto (`Record<string, unknown>`), não pelo tipo
- * `DataState`, para o teste continuar valendo quando o 15-43 as tirar do tipo.
+ * `DataState`: desde o 15-43 elas nem existem no tipo, e o construtor que as montava
+ * (`seed-crm-antigo.ts`) foi apagado.
  */
 
 import { describe, expect, it } from "vitest";
-import { TIPOS_DE_ATENDIMENTO } from "./operations/canais";
+import { COLECOES } from "./colecoes";
 import { buildSeed } from "./seed";
-import { semearCrmAntigo } from "./seed-crm-antigo";
 
 const COLECOES_DO_CRM_ANTIGO = [
   "contacts",
@@ -39,6 +39,13 @@ describe("buildSeed() sem o CRM antigo (15-31, UCR-11)", () => {
   it("as oito coleções do CRM antigo nascem vazias", () => {
     const seed = buildSeed();
     for (const chave of COLECOES_DO_CRM_ANTIGO) expect(colecao(seed, chave), chave).toHaveLength(0);
+  });
+
+  it("15-43: as oito coleções já não são coleções do DataState; `conversations` fica, só com Grupo (F14-D-05)", () => {
+    const chaves: readonly string[] = COLECOES;
+    for (const chave of COLECOES_DO_CRM_ANTIGO) expect(chaves, chave).not.toContain(chave);
+    expect(chaves).toContain("conversations");
+    expect(Object.keys(buildSeed())).not.toEqual(expect.arrayContaining(["contacts"]));
   });
 
   it("só sobram as Conversas de Grupo (F14-D-05), e nenhuma delas tem Contato", () => {
@@ -112,102 +119,6 @@ describe("buildSeed() sem o CRM antigo (15-31, UCR-11)", () => {
     for (const chave of COLECOES_DO_CRM_ANTIGO) {
       expect(colecao(a, chave), chave).toHaveLength(0);
       expect(colecao(b, chave), chave).toHaveLength(0);
-    }
-  });
-});
-
-/**
- * Caso temporário: `semearCrmAntigo` existe só para os testes de código que um plano seguinte apaga
- * (15-32, 15-33, 15-42). Este caso sai no 15-43, junto com o construtor e este arquivo.
- */
-describe("semearCrmAntigo(buildSeed()) — o CRM antigo de demonstração como era (15-31, só para testes de código que sai)", () => {
-  it("reconstrói as coleções com as contagens da fixture do 15-28", () => {
-    const estado = buildSeed();
-    semearCrmAntigo(estado);
-    expect(colecao(estado, "contacts")).toHaveLength(39);
-    expect(colecao(estado, "companies")).toHaveLength(12);
-    expect(colecao(estado, "contactCompanyLinks")).toHaveLength(30);
-    expect(colecao(estado, "companyCompanyLinks")).toHaveLength(1);
-    expect(colecao(estado, "distinctFromLinks")).toHaveLength(1);
-    expect(colecao(estado, "funnels")).toHaveLength(4);
-    expect(colecao(estado, "deals")).toHaveLength(19);
-    expect(colecao(estado, "channels")).toHaveLength(5);
-    expect(colecao(estado, "conversations")).toHaveLength(23);
-    expect(estado.links).toHaveLength(64);
-  });
-
-  it("devolve a Pasta Meus negócios com as quatro Listas espelho e uma Tarefa por Negócio", () => {
-    const estado = buildSeed();
-    semearCrmAntigo(estado);
-    expect(estado.folders.some((f) => f.id === "fld_meus_negocios")).toBe(true);
-    expect(estado.lists.filter((l) => /^lst_funil_/.test(l.id)).map((l) => l.id).sort()).toEqual([
-      "lst_funil_closer",
-      "lst_funil_sdr",
-      "lst_funil_validacao",
-      "lst_funil_venda_direta",
-    ]);
-    const espelho = estado.tasks.filter((t) => /^tsk_lst_funil_/.test(t.id));
-    expect(espelho).toHaveLength(colecao(estado, "deals").filter((d) => d.lifecycle === "ativo").length);
-  });
-
-  it("a Conversa de cada Tarefa de Pós-venda é do Contato dela, e todo id do CRM citado pelo seed novo existe", () => {
-    const estado = buildSeed();
-    semearCrmAntigo(estado);
-    const ids = (chave: string) => new Set(colecao(estado, chave).map((r) => String(r.id)));
-    const contatos = ids("contacts");
-    const conversas = ids("conversations");
-    const negocios = ids("deals");
-    const existe = (tipo: string, id: string): boolean =>
-      tipo === "contact" ? contatos.has(id) : tipo === "conversation" ? conversas.has(id) : tipo === "deal" ? negocios.has(id) : true;
-    for (const l of estado.links) {
-      expect(existe(l.toType, l.toId), `${l.id} → ${l.toType} ${l.toId}`).toBe(true);
-      expect(existe(l.fromType, l.fromId), `${l.id} ← ${l.fromType} ${l.fromId}`).toBe(true);
-    }
-    for (const tarefa of estado.tasks.filter((t) => t.listId === "lst_pos_venda")) {
-      const contato = estado.links.find((l) => l.fromId === tarefa.id && l.toType === "contact")?.toId;
-      const conversa = estado.links.find((l) => l.fromId === tarefa.id && l.toType === "conversation")?.toId;
-      const dona = colecao(estado, "conversations").find((c) => c.id === conversa);
-      expect(dona?.contactId, tarefa.id).toBe(contato);
-      expect(tarefa.provenance?.sourceId, tarefa.id).toBe(contato);
-    }
-    // O que as Participações e a Proveniência guardam por conta própria bate com o Contato que o demo carrega.
-    const contatoPorId = new Map(colecao(estado, "contacts").map((c) => [String(c.id), c]));
-    const whatsappDe = (id: string): string | undefined =>
-      ((contatoPorId.get(id)?.identifiers ?? []) as readonly { type: string; value: string }[]).find((i) => i.type === "identidadeDeWhatsApp")?.value;
-    for (const grupo of estado.grupos) {
-      for (const p of grupo.participacoes) {
-        if (p.contactId === undefined) continue;
-        expect(contatos.has(p.contactId), `${grupo.id} · ${p.id}`).toBe(true);
-        expect(p.identificadorExternoDoParticipante, `${grupo.id} · ${p.id}`).toBe(whatsappDe(p.contactId));
-      }
-      for (const pedido of grupo.pedidosDeEntrada) {
-        expect(pedido.identificadorExternoDoSolicitante, `${grupo.id} · ${pedido.id}`).toBe(whatsappDe(pedido.contactId));
-      }
-    }
-    const canal = colecao(estado, "channels").find((c) => c.id === "chn_wpp");
-    for (const grupo of estado.grupos) {
-      const doCanal = grupo.participacoes.find((p) => p.canalParticipanteId === "chn_wpp");
-      if (doCanal) expect(doCanal.identificadorExternoDoParticipante, grupo.id).toBe(canal?.externalId);
-    }
-    // C36: todo Canal de atendimento de uma Lista conversacional existe no demo, está ativo e é de tipo permitido; a
-    // Conversa de cada Tarefa de Pós-venda passa por um Canal da Lista.
-    const canaisPorId = new Map(colecao(estado, "channels").map((c) => [String(c.id), c]));
-    for (const lista of estado.lists.filter((l) => l.modeloDeTarefa === "conversacional")) {
-      expect(lista.canaisDeAtendimento?.length ?? 0, lista.name).toBeGreaterThan(0);
-      for (const canalId of lista.canaisDeAtendimento ?? []) {
-        const canal = canaisPorId.get(canalId);
-        expect(canal?.lifecycle, `${lista.name} · ${canalId}`).toBe("ativo");
-        expect(TIPOS_DE_ATENDIMENTO as readonly string[], `${lista.name} · ${canalId}`).toContain(canal?.channelType);
-      }
-    }
-    const pv = estado.lists.find((l) => l.id === "lst_pos_venda");
-    for (const tarefa of estado.tasks.filter((t) => t.listId === "lst_pos_venda")) {
-      const conversaId = estado.links.find((l) => l.fromId === tarefa.id && l.toType === "conversation")?.toId;
-      expect(pv?.canaisDeAtendimento, tarefa.id).toContain(colecao(estado, "conversations").find((c) => c.id === conversaId)?.channelId);
-    }
-    for (const tarefa of estado.tasks.filter((t) => t.listId === "lst_pos_venda")) {
-      const c = contatoPorId.get(tarefa.provenance?.sourceId ?? "");
-      expect(tarefa.provenance?.sourceName, tarefa.id).toBe(`${String(c?.firstName)} ${String(c?.lastName)}`.trim());
     }
   });
 });
