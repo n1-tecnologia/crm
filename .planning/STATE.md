@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 15
 current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
 status: executing
-stopped_at: Completed 15-12-PLAN.md
-last_updated: "2026-11-06T11:30:49.560Z"
+stopped_at: Completed 15-13-PLAN.md
+last_updated: "2026-11-06T11:37:47.238Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 15 execution started
-state_head: b03c361c12532c659eeaec9689d836acd6d4cdff
+state_head: 3fe85a613bd8082ee8c34f1c9ae49ce1181c892f
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 271
-  completed_plans: 240
+  completed_plans: 241
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 15 (Unificação do CRM: telas no modelo novo e remoção do modelo antigo) — EXECUTING
-Plan: 16 of 43
+Plan: 17 of 43
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 15 execution started
 
@@ -459,6 +459,7 @@ Progress: [██████░░░░] 63%
 | Phase 15 P17 | 33 min | 3 tasks | 9 files |
 | Phase 15 P11 | 15 min | 2 tasks | 10 files |
 | Phase 15 P12 | 16 min | 3 tasks | 16 files |
+| Phase 15 P13 | 8 min | 2 tasks | 18 files |
 
 ## Accumulated Context
 
@@ -724,6 +725,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 15]: 15-17: o Proprietário e a Origem do Contato criado por Participante de Grupo são decididos no aoConfirmar (padroesDoContatoCriado, estado de depois); ContatoACriar segue {id, nome, whatsapp} e a operação pura nunca inventa id nem escreve em state.contacts — Mantém o contrato do 15-01/15-07; o Proprietário depende de Canal, Fila, Caixa e Espaço que só o servidor enxerga na transação. Eventos do provedor reaproveitam lerContatosDosParticipantes e confirmarContatosDosParticipantes quando ganharem rota.
 - [Phase 15]: 15-11: a estrela da Caixa grava em fila por Conversa com valor otimista; Sem Atribuido/Sem Fila/Adiadas recortam a pagina de 200 na tela (WINDOWS 18); previa da ultima Mensagem some da lista (WINDOWS 19)
 - [Phase 15]: 15-12: o popup Adicionar Canal das Listas so escolhe entre useCanais e leva a pagina de conectar; Canal nasce so por la (D-15-12)
+- [Phase 15]: 15-13: fichas de Contato, Empresa e Negocio sem recuo; 404 da api e 'nao encontrado' mesmo para id do modelo antigo (sem ponte por crm_de_para); deal-screen.tsx fica ate o 15-40
 
 ### Pending Todos
 
@@ -785,6 +787,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-06T11:30:49.382Z
-Stopped at: Completed 15-12-PLAN.md
+Last session: 2026-11-06T11:37:47.060Z
+Stopped at: Completed 15-13-PLAN.md
 Resume file: None
