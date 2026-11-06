@@ -70,10 +70,10 @@ não só pelo tipo. O Canal criado pela página nova de conexão
 e só conecta por "Simular conexão", sempre marcada, enquanto não há provedor
 real; o popup de adicionar Canal das Listas deixou de criar Canal (Fase 15,
 D-15-12): só escolhe entre os Canais de `plataforma.canais` e leva à página de
-conectar, o único caminho que cria Canal. O chat continua no modelo
-antigo e enxerga os Canais da tabela por uma projeção — em `GET /estado` e em
-`executar()`, nunca em `hidratar()` (ver `apps/api/src/persistencia/CONTEXT.md`)
-— até a Fase 15, que troca as telas para o modelo novo. O fio da Conversa tem
+conectar, o único caminho que cria Canal. A projeção que levava os Canais da tabela ao modelo
+antigo — em `GET /estado` e em `executar()` — saiu na Fase 15 (plano 15-33): o
+Canal só existe em `plataforma.canais` e se lê por `GET /canais` (ver
+`apps/api/src/persistencia/CONTEXT.md`). O fio da Conversa tem
 uma aba por Canal e "Responder por"; o seed continua, marcado como demo. A 008
 já está aplicada no banco da plataforma e é imutável: qualquer ajuste de
 schema daqui em diante é uma migração nova, depois da última aplicada.

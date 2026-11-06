@@ -6,8 +6,8 @@
  * o Tipo de Canal pede). Ao confirmar, o Canal nasce DESCONECTADO em
  * `plataforma.canais` (008) por `POST /canais`; a conexão com o provedor
  * acontece depois (08-08/08-09). O web só fala HTTP com a api (`criarCanal`) e
- * depois re-hidrata o estado: o Canal chega em `state.channels` pela projeção de
- * `GET /estado` (D-11).
+ * depois re-hidrata o estado. O Canal vive só em `plataforma.canais`: a lista de
+ * Canais o lê por `GET /canais`, e `GET /estado` não o traz (15-33).
  *
  * A página é o mockup inteiro de D-07: o passo a passo do provedor, o espaço
  * reservado do QR/token (marcado "disponível quando a integração chegar") e o

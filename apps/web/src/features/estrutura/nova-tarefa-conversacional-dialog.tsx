@@ -8,8 +8,8 @@
  *
  * Fase 14 (3.3.4): a Tarefa nasce por `POST /tarefas-conversacionais`, com
  * ids das tabelas novas — o Contato vem do `SeletorDeRegistro`, o Canal de
- * `useCanais` e o Negócio de `useNegocios`, nada de `state.contacts`,
- * `state.channels` nem `state.deals`. D-07: sem Conversa aberta do Contato no
+ * `useCanais` e o Negócio de `useNegocios`, nada do estado do CRM antigo
+ * (Contato, Canal e Negócio em inglês, que saiu do `DataState`). D-07: sem Conversa aberta do Contato no
  * Canal escolhido a conversa nasce junto e pede a "Primeira Mensagem"; com uma
  * aberta, o campo some e a Tarefa a reaproveita (`conversaAbertaDoPar`, pelo
  * hook). A5: depois do sucesso a tela re-hidrata o store (`GET /estado` traz a

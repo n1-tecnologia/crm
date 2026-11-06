@@ -14,7 +14,6 @@ suficiente para o domínio nunca saber que existe um banco.
 | `repositorio.ts` | `hidratar()` (banco → `DataState`), `gravar()` (diff por comparação canônica de JSON), `reordenar()` (posição fracionária), `semear()` (escreve um `DataState` inteiro num Espaço vazio — base do bootstrap e da importação). Cada um é a soma de uma parte que só gasta processador e outra que fala com o banco: `estadoDasLinhas()`/`sqlDeHidratar()` e `planejarGravacao()`/`sqlsDoPlano()` (Fase 13), que `executar()` usa para mandar várias instruções numa ida só. |
 | `sql-literal.ts` | `literalEntreDolares()`: o texto como literal SQL entre dólares, com marca sorteada que o texto não contém. É o que deixa as mensagens de várias instruções (sem `$1`) levarem dados sem escape à mão. |
 | `unidade-de-trabalho.ts` | `executar()`: trava o Espaço no começo (`select … for update`) e hidrata → operação pura → `gravar()`, com uma tentativa só (D-09); as importações longas usam o regime otimista (revisão conferida no fim, até 3 tentativas, D-10). No `travado` isso custa DUAS idas ao banco (Fase 13, ver "Idas ao banco"). A rota HTTP é uma casca em volta disto. |
-| `canais-projetados.ts` | A ponte de D-11: projeta os Canais de `plataforma.canais` (008) em `state.channels` para o resto do app, que ainda lê o modelo antigo. `semCanaisProjetados()` tira os projetados do estado antes de `gravar()`. |
 | `migrar.ts` + `migrar.cli.ts` | Aplica `apps/api/migracoes/NNN-*.sql` em ordem, uma vez cada, dentro de transação, registrado em `plataforma.migracoes`. |
 | `persistencia.test.ts`, `colunas-geradas.test.ts`, `integracao.test.ts`, `agenda-de-automacoes.test.ts` | Testes de integração contra Postgres real; pulam sem `DATABASE_URL` (`temBanco ? describe : describe.skip`, D-DEC-09). |
 | `unidade-de-trabalho-concorrencia.test.ts` | GRV-03 contra Postgres real: duas `executar()` simultâneas no mesmo Espaço gravam com uma tentativa cada e a leitura do Espaço roda 2 vezes (3 no regime otimista); trava esgotada vira conflito sem hidratar. Arquivo próprio porque `unidade-de-trabalho-trava.test.ts` mocka `./conexao` e `./repositorio` no módulo inteiro. Pula sem Postgres local (`describeComBanco`). |
@@ -26,13 +25,13 @@ Cada ida e volta ao banco custa a distância até ele: ~52 ms da VPS (Chicago) a
 pooler do Supabase (`us-west-2`, Oregon), medidos em produção (`select 1` =
 51,4 ms). A Fase 12 fazia sete por gravação (`begin`, trava, leitura, Canais,
 `update` da revisão, `gravar`, `commit`; oito com remoção ou na primeira do
-processo, que ainda paga a guarda dos Canais), cerca de 360 ms só de rede. O
+processo, que pagava a guarda dos Canais), cerca de 360 ms só de rede. O
 regime `travado` as junta em duas **mensagens de várias instruções** (protocolo
 simples do `pg`, que devolve um resultado por instrução):
 
 - **Entrada:** `begin` com os prazos, a trava (`select … for update`), a leitura
-  do Espaço (`sqlDeHidratar`) e, quando a guarda já confirmou a tabela, os
-  Canais (`sqlDeTodosOsCanais`). A **ordem** dentro da mensagem é a mesma de
+  do Espaço (`sqlDeHidratar`). Os Canais saíram da mensagem no 15-33 (ver "A ponte
+  dos Canais saiu"). A **ordem** dentro da mensagem é a mesma de
   antes e é o que garante a regra: em READ COMMITTED cada instrução tira o
   próprio retrato quando COMEÇA, então a leitura, depois da trava, vê o que o
   escritor anterior confirmou. O que continua proibido é fundir trava e leitura
@@ -54,8 +53,8 @@ Postgres, que isso grava exatamente o que `gravar()` por parâmetros gravaria
 no meio da mensagem desfaz a revisão também.
 
 `MedicaoDaExecucao.idasEVoltas` conta as vezes que a gravação foi ao banco, e vai
-na linha `"gravacao medida"`. Uma gravação comum mede **2**; a primeira do
-processo mede até 4 (a guarda dos Canais ainda não confirmou a tabela). O
+na linha `"gravacao medida"`. Uma gravação comum mede **2**, a primeira do
+processo também: desde o 15-33 não há guarda nem leitura de Canais. O
 regime `otimista` não mudou. Com o lote, `inicioMs` guarda a mensagem de
 entrada inteira (inclusive a espera pela trava) e `gravarMs`, a de saída; `travaMs`,
 `atualizaMs` e `commitMs` ficam em 0 no caminho em lote, e `hidratarMs` passa a
@@ -69,9 +68,8 @@ uma Tarefa sem Conversa, ou uma Conversa sem Tarefa. `executar()` ganhou as duas
 peças que faltavam, sem mudar nada para quem já a chama:
 
 - **`lerDoCrm(cliente, state)`** roda no MESMO `PoolClient`, depois da trava do
-  Espaço, da hidratação e da projeção dos Canais, e antes da `operacao`. Recebe o
-  `state` já projetado (a troca de Canal da Tarefa acha o Contato pelo Vínculo
-  antes de ler o CRM). O que devolve chega à `operacao` (2º argumento) e a
+  Espaço e da hidratação, e antes da `operacao`. Recebe o `state` hidratado (a
+  troca de Canal da Tarefa acha o Contato pelo Vínculo antes de ler o CRM). O que devolve chega à `operacao` (2º argumento) e a
   `aoConfirmar` (4º, novo e opcional). O tempo soma em `hidratarMs`;
   `MedicaoDaExecucao` não ganhou campo.
 - **`aoConfirmar(cliente, valor, state, lido)`** já existia (depois das escritas de
@@ -313,53 +311,35 @@ A importação histórica de Contas a pagar (Planos 03-09/03-10) **reusa**
 nenhum ledger novo nasce para este domínio, porque dois ledgers para a mesma
 reconciliação seriam duas contagens a manter iguais.
 
-## A ponte dos Canais (Fase 8)
+## A ponte dos Canais saiu (Fase 15, 3.5.4)
 
 `008-canais-conversas-mensagens.sql` cria `plataforma.canais`,
 `plataforma.conversas` e `plataforma.mensagens`: **fora de
-`hidratar()`/`gravar()`**, como as de `003` e a de `005`. O resto do app ainda
-lê o Canal do modelo antigo em inglês (`state.channels`), então
-`canais-projetados.ts` é a ponte que traduz a tabela nova para ele (D-11).
-Ela entra em **dois lugares e nunca em `hidratar()`**:
+`hidratar()`/`gravar()`**, como as de `003` e a de `005`. Na Fase 8 o resto do
+app ainda lia o Canal do modelo antigo em inglês, e `canais-projetados.ts`
+traduzia a tabela nova para ele em `GET /estado` e em `executar()` (D-11). Essa
+ponte **saiu na Fase 15 (plano 15-33)**: todas as telas passaram a ler o Canal
+por `GET /canais` (`useCanais`), e as Ferramentas (Grupo, Flow e Automação)
+recebem o Canal pelo `crm.canais` que o servidor lê da tabela dentro da
+transação (`rotas/gesto-no-crm/`). Sem a ponte:
 
-- `GET /estado` (`rotas/estado.ts`): o Canal relacional chega à tela com
-  `relational: true`;
-- `executar()`: logo depois de `hidratar()`, para `startConversation`,
-  `sendMessage` e o resto das operações antigas rodarem no servidor com o Canal
-  à vista. Sem isso o servidor reexecutaria o gesto da tela sobre um estado sem
-  o Canal e responderia "Canal não encontrado" (Pitfall 4).
+- `GET /estado` não traz Canal em `state.channels`; o Canal só existe em
+  `plataforma.canais`.
+- `executar()` não lê Canal: nem no lote de entrada, nem na guarda
+  `to_regclass`, nem em ida própria, e grava `antes.state` como hidratou. A
+  medição perdeu o campo `canaisMs`.
+- O serviço de Canais confere nome e conta só dentro de `plataforma.canais`; o
+  `channels` de `plataforma.registros` deixou de bloquear a criação (o Canal
+  antigo sai no script de migração do corte).
+- `plataforma.registros` nunca ganha linha de `channels` pelo caminho novo
+  (D-12), e a escrita REST de Canal continua somando a revisão do Espaço (A4),
+  então uma `executar()` em voo sobre o estado antigo cai em conflito e tenta de
+  novo em vez de gravar por cima.
 
-`hidratar()` fica de fora porque bootstraps, métricas e importações a chamam e
-depois podem `gravar()`, e `gravar()` copiaria o Canal projetado para
-`plataforma.registros`: duas fontes de verdade (Pitfall 3). Pelo mesmo motivo,
-`executar()` grava o estado SEM os projetados (`semCanaisProjetados`): eles
-entram no fim de `state.channels` e não estão no que `hidratar()` leu, então
-tirá-los não gera remoção nem reordena os Canais do seed. Se uma operação do
-modelo antigo **mudou** um projetado, `semCanaisProjetados` lança ("Uma
-operação alterou o Canal … da tabela própria; ele só muda pela api de Canais.")
-e a transação é desfeita: a mudança nunca é descartada em silêncio.
-`opcoes.eventos`, `aoConfirmar` e os eventos de Canal continuam recebendo o
-estado com os projetados; o payload de `automacao.notificar-canal.v1` leva o
-tipo do Canal, não o id, então o contrato não muda.
-
-Três regras que a ponte carrega:
-
-- **Guarda `to_regclass`.** Num banco sem a 008 (o da plataforma antes de
-  aplicá-la, ou um cliente falso de teste) a tabela não existe e a consulta
-  lançaria `42P01` dentro da transação. A guarda devolve lista vazia sem
-  segunda consulta; só o resultado positivo fica em cache de módulo, porque a
-  008 pode ser aplicada com o processo no ar.
-- **O id é o UUID cru da tabela.** Não colide com `chn_*` do seed nem com o
-  `syncIdSequence`; um projetado cujo id já existe no estado hidratado é
-  pulado.
-- **A escrita REST de Canal soma a revisão do Espaço** (A4): quem altera
-  `plataforma.canais` pela api de Canais incrementa a revisão de
-  `plataforma.workspaces`, e uma `executar()` em voo que projetou o estado
-  antigo cai em conflito e tenta de novo em vez de gravar por cima.
-
-A ponte some na fase de unificação, quando as telas lerem Canal, Conversa e
-Mensagem por REST e o modelo antigo deixar de existir. Provada contra o
-Postgres real em `canais-projetados.test.ts`.
+O que ainda lê `state.channels` é o Grupo e o Flow (F14-D-05):
+`operations/ferramentas/conversa-de-grupo.ts` procura o Canal primeiro em
+`state.channels` e, na falta dele, no `crm.canais` da operação. Esse arquivo
+sai com as Sessões 6 e 7.
 
 ## Banco fechado e RLS adiada (Fase 9)
 

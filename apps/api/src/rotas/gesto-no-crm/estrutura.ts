@@ -1,7 +1,7 @@
 /**
  * As operações da Estrutura (Listas e Templates de Lista) que conferem os
- * Canais de atendimento contra `plataforma.canais`, não contra a projeção em
- * `state.channels` (que some na 3.5.4). Fase 14 (3.3.7) e Fase 15 (D-15-07).
+ * Canais de atendimento contra `plataforma.canais`: o Canal só existe lá, e a
+ * projeção que o levava ao estado antigo saiu no 15-33 (3.5.4). Fase 14 (3.3.7) e Fase 15 (D-15-07).
  *
  * O `canais` que o navegador mandou (último argumento, só para a execução
  * local) é DESCARTADO: a posição é sobrescrita com o que o servidor leu, deste

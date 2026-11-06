@@ -1,21 +1,18 @@
 /**
- * Fase 15 (UCR-12): o CRM antigo em inglês (Contato, Empresa, Negócio, Funil, Canal e os
- * Vínculos, lidos em `state.contacts`, `data.deals` e afins) está saindo, e as telas
- * trocam para o CRM novo (`@/dados/crm/*` na web, as tabelas na api) plano a plano.
- * Enquanto elas trocam, nenhum arquivo NOVO pode voltar a ler o modelo antigo.
+ * Fase 15 (UCR-12), formato final: o CRM antigo em inglês (Contato, Empresa, Negócio, Funil, Canal
+ * e os Vínculos, lidos em `state.contacts`, `data.deals` e afins) saiu do código da web, e as telas
+ * leem o CRM novo por `@/dados/crm/*`. Nenhum arquivo de produção volta a ler as oito coleções.
  *
- * Este teste LÊ o código-fonte da web (sem banco, sem navegador) e congela a lista de
- * arquivos de produção que HOJE leem o modelo antigo. Código novo não entra nela. A metade "a lista só
- * encolhe" (um arquivo que deixou de ler sai de `CONGELADOS`) fica de fora de propósito
- * durante as telas, para os planos paralelos não disputarem este arquivo: ela é ligada
- * no plano 15-33, que também esvazia a lista. Cada plano de tela prova por grep que os
- * seus arquivos saíram do regex.
+ * Este teste LÊ o código-fonte da web (sem banco, sem navegador). A lista congelada que as telas
+ * foram esvaziando chegou a zero no 15-33, e a metade "a lista só encolhe" está ligada: um arquivo
+ * que aparecer em `CONGELADOS` sem ler mais o CRM antigo faz o teste falhar (`sumidos`).
  *
- * O regex não cobre o resto do Grupo e do Flow (F14-D-05): eles seguem no modelo
- * antigo de Conversa até as Sessões 6 e 7, e nenhum plano de tela os remove.
+ * `state.conversations` é outra conta: a Conversa 1:1 foi para as tabelas, mas a Conversa de GRUPO
+ * e o envio de Flow seguem no estado antigo até as Sessões 6 e 7 (F14-D-05). Só os arquivos de
+ * Grupo e Flow listados em `DE_GRUPO_E_FLOW` podem citá-la.
  *
- * O texto inteiro conta, comentário inclusive: citar o campo num comentário já é apontar
- * para ele (reescreva o comentário, não o regex). O mesmo teste existe nas três camadas
+ * O texto inteiro conta, comentário inclusive: citar o campo num comentário já é apontar para ele
+ * (reescreva o comentário, não o regex). O mesmo teste existe nas três camadas
  * (`packages/dominio`, `apps/api`, `apps/web`).
  */
 
@@ -24,20 +21,24 @@ import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-/** Os arquivos de `apps/web/src` que leem o CRM antigo hoje (a lista congelada, caminho relativo a `src`). */
-const CONGELADOS = [
-  "features/crm/conectar-provedor.tsx",
-  "features/estrutura/financeiro/serie-dialog.tsx",
-  "features/estrutura/nova-tarefa-conversacional-dialog.tsx",
-  "features/ia/agentes/ensaiar-dialog.tsx",
-  "features/ia/ancora-do-chat.tsx",
-  "features/ia/automacoes/automacao-spec.ts",
-  "features/ia/automacoes/editor-de-automacao.tsx",
-  "features/ia/automacoes/nova-automacao-dialog.tsx",
-] as const;
+/** Os arquivos de `apps/web/src` que leem o CRM antigo hoje: nenhum (15-33). */
+const CONGELADOS: readonly string[] = [];
+
+/** Os arquivos de `apps/web/src` que citam `state.conversations`: só Grupo e Flow (F14-D-05). */
+const DE_GRUPO_E_FLOW: readonly string[] = [
+  "app/(shell)/configuracoes/campos/page.tsx",
+  "app/(shell)/crm/caixa-de-entrada/[conversa]/page.tsx",
+  "app/(shell)/crm/caixa-de-entrada/page.tsx",
+  "features/crm/conversa-de-grupo-na-caixa.tsx",
+  "features/crm/inbox-columns.tsx",
+  "features/ferramentas/conversa-do-grupo.tsx",
+  "features/ferramentas/flow-popup.tsx",
+];
 
 const LE_O_CRM_ANTIGO =
   /\b(state|data|estado|s|d)\.(contacts|companies|deals|funnels|channels|contactCompanyLinks|companyCompanyLinks|distinctFromLinks)\b/;
+
+const LE_A_CONVERSA_ANTIGA = /\b(state|data|estado|s|d)\.conversations\b/;
 
 const RAIZ = fileURLToPath(new URL(".", import.meta.url));
 
@@ -55,24 +56,46 @@ function arquivosDeProducao(pasta: string): string[] {
   return achados;
 }
 
-describe("Fase 15 — nenhum arquivo novo lê o CRM antigo (web)", () => {
+describe("Fase 15 — o CRM antigo saiu do código (web)", () => {
   const producao = arquivosDeProducao(RAIZ).map((caminho) => ({
     arquivo: relative(RAIZ, caminho).split(sep).join("/"),
     texto: readFileSync(caminho, "utf8"),
   }));
+  const nomes = producao.map((f) => f.arquivo);
 
   it("a leitura do código-fonte achou os arquivos de produção (o teste não passa por não ver nada)", () => {
     expect(producao.length).toBeGreaterThan(100);
-    expect(producao.map((f) => f.arquivo)).toContain("app/(shell)/layout.tsx");
-    expect(CONGELADOS.length).toBeGreaterThan(0);
+    expect(nomes).toContain("app/(shell)/layout.tsx");
+    // Sentinela que continua existindo: a página de conectar Canal, que lia o Canal projetado.
+    expect(nomes).toContain("features/crm/conectar-provedor.tsx");
+    expect(DE_GRUPO_E_FLOW.every((arquivo) => nomes.includes(arquivo))).toBe(true);
   });
 
-  it("nenhum arquivo fora da lista congelada lê o CRM antigo", () => {
+  it("nenhum arquivo de produção lê as oito coleções do CRM antigo (a lista só encolhe)", () => {
     const leem = producao.filter((f) => LE_O_CRM_ANTIGO.test(f.texto)).map((f) => f.arquivo).sort();
-    const novos = leem.filter((arquivo) => !(CONGELADOS as readonly string[]).includes(arquivo));
+    const novos = leem.filter((arquivo) => !CONGELADOS.includes(arquivo));
+    const sumidos = CONGELADOS.filter((arquivo) => !leem.includes(arquivo));
     expect(
       novos,
-      `Fase 15: o CRM antigo está saindo; leia o CRM novo por \`@/dados/crm/*\` (web) ou pelas tabelas (api). A lista só encolhe; o plano 15-33 a deixa vazia. Arquivo(s) novo(s) que o leem: ${novos.join(", ")}`,
+      `Fase 15: o CRM antigo saiu do código; o que resta de \`conversations\` é só Grupo e Flow (F14-D-05). Leia o CRM novo por \`@/dados/crm/*\`. Arquivo(s) que o leem: ${novos.join(", ")}`,
+    ).toEqual([]);
+    expect(
+      sumidos,
+      `A lista congelada está desatualizada: ${sumidos.join(", ")} deixou(aram) de ler o CRM antigo. Tire-o(s) de CONGELADOS (só encolhe).`,
+    ).toEqual([]);
+  });
+
+  it("`state.conversations` só aparece nos arquivos de Grupo e Flow", () => {
+    const leem = producao.filter((f) => LE_A_CONVERSA_ANTIGA.test(f.texto)).map((f) => f.arquivo).sort();
+    const novos = leem.filter((arquivo) => !DE_GRUPO_E_FLOW.includes(arquivo));
+    const sumidos = DE_GRUPO_E_FLOW.filter((arquivo) => !leem.includes(arquivo));
+    expect(
+      novos,
+      `Fase 15: o CRM antigo saiu do código; o que resta de \`conversations\` é só Grupo e Flow (F14-D-05). Arquivo(s) que a leem: ${novos.join(", ")}`,
+    ).toEqual([]);
+    expect(
+      sumidos,
+      `A lista de Grupo e Flow está desatualizada: ${sumidos.join(", ")} deixou(aram) de ler a Conversa antiga. Tire-o(s) de DE_GRUPO_E_FLOW (só encolhe).`,
     ).toEqual([]);
   });
 });
