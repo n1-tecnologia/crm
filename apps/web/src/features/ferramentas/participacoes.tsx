@@ -12,12 +12,13 @@ import Link from "next/link";
 import { useState } from "react";
 import { useData, useRun } from "@/dados/store";
 import { adicionarParticipantes, promoverParticipante, rebaixarParticipante, recusaExternaNoGrupo, removerParticipante } from "@n1/dominio/operations";
-import { contactDisplayName } from "@n1/dominio/derive";
-import { contatosComWhatsApp, participacoesVigentes } from "@n1/dominio/derive-ferramentas";
+import { participacoesVigentes } from "@n1/dominio/derive-ferramentas";
 import type { Grupo, ParticipacaoDeGrupo } from "@n1/dominio/types";
 import type { Report } from "@/features/shell/ficha";
 import { useFormat } from "@/features/shell/use-format";
-import { ActionMenu, ActorAvatar, Button, ConfirmDialog, EmptyState, Field, MultiSelect, Pilula, ReguaDeSecao, Toggle } from "@/features/shell/ui";
+import { ActionMenu, ActorAvatar, Button, ConfirmDialog, EmptyState, Field, MultiSelect, Pilula, ReguaDeSecao, TextInput, Toggle } from "@/features/shell/ui";
+import { nomeDe as nomeNoLote, useNomesDoCrm } from "@/dados/crm/nomes";
+import { recusaSePronta, useCanaisDasFerramentas, useCrmDasFerramentas, useSeletorDeContatos, montarCrmDasFerramentas } from "./crm-das-ferramentas";
 import { CAUSA_DA_SAIDA_LABEL, ORIGEM_DA_PARTICIPACAO_LABEL, PAPEL_NA_PARTICIPACAO_LABEL } from "./rotulos";
 
 export function SecaoDeParticipacoes({ grupo, report }: { readonly grupo: Grupo; readonly report: Report }) {
@@ -32,14 +33,19 @@ export function SecaoDeParticipacoes({ grupo, report }: { readonly grupo: Grupo;
     const vb = b.saidaEm === undefined ? 0 : 1;
     return va - vb || (a.papel === "administrador" ? 0 : 1) - (b.papel === "administrador" ? 0 : 1) || b.entradaEm.localeCompare(a.entradaEm);
   });
-  const externa = recusaExternaNoGrupo(state, grupo, "administrador");
+  // Canal e nome de Contato vêm do CRM novo (GET /canais e POST /crm/nomes, um lote por Grupo aberto).
+  const canaisDoCrm = useCanaisDasFerramentas();
+  const crm = useCrmDasFerramentas(canaisDoCrm);
+  const nomes = useNomesDoCrm(lista.flatMap((p) => (p.contactId && !p.canalParticipanteId ? [{ tipo: "contact" as const, id: p.contactId }] : [])));
+  const externa = recusaSePronta(canaisDoCrm, () => recusaExternaNoGrupo(state, grupo, "administrador", crm));
   const motivoAvisos = grupo.papelNaComunidade === "avisos" ? "O provedor mantém os participantes do Grupo de avisos: a plataforma só espelha (RN-COM-04)." : undefined;
   const motivoAdicionar = motivoAvisos ?? externa;
 
   const nomeDe = (p: ParticipacaoDeGrupo) => {
-    if (p.canalParticipanteId) return { nome: state.channels.find((c) => c.id === p.canalParticipanteId)?.name ?? "Canal", canal: true, href: undefined };
-    const contato = p.contactId ? state.contacts.find((c) => c.id === p.contactId) : undefined;
-    return { nome: contato ? contactDisplayName(contato) : p.anonimizada ? "Contato eliminado" : p.identificadorExternoDoParticipante, canal: false, href: contato ? `/crm/contatos/${contato.id}` : undefined };
+    if (p.canalParticipanteId) return { nome: canaisDoCrm.nomeDoCanal(p.canalParticipanteId) ?? "Canal", canal: true, href: undefined };
+    // `null` = a api não nomeou (Contato de outro Espaço, eliminado ou sem permissão de leitura): mostra o número da Participação.
+    const nome = p.contactId ? nomeNoLote(nomes, "contact", p.contactId) : undefined;
+    return { nome: nome ?? (p.anonimizada ? "Contato eliminado" : p.identificadorExternoDoParticipante), canal: false, href: nome && p.contactId ? `/crm/contatos/${p.contactId}` : undefined };
   };
 
   return (
@@ -128,12 +134,12 @@ export function SecaoDeParticipacoes({ grupo, report }: { readonly grupo: Grupo;
                     <ActionMenu
                       items={[
                         p.papel === "administrador"
-                          ? { label: "Rebaixar a membro", onSelect: () => report(run((data, me) => rebaixarParticipante(data, me, grupo.id, p.id)), `${quem.nome} agora é membro.`), ...(motivoLinha ? { disabledReason: motivoLinha } : ehOCanal ? { disabledReason: "Rebaixar o próprio Canal tiraria da plataforma o privilégio de administrar." } : {}) }
-                          : { label: "Promover a administrador", onSelect: () => report(run((data, me) => promoverParticipante(data, me, grupo.id, p.id)), `${quem.nome} agora administra.`), ...(motivoLinha ? { disabledReason: motivoLinha } : {}) },
+                          ? { label: "Rebaixar a membro", onSelect: () => report(run((data, me) => rebaixarParticipante(data, me, grupo.id, p.id, crm)), `${quem.nome} agora é membro.`), ...(motivoLinha ? { disabledReason: motivoLinha } : ehOCanal ? { disabledReason: "Rebaixar o próprio Canal tiraria da plataforma o privilégio de administrar." } : {}) }
+                          : { label: "Promover a administrador", onSelect: () => report(run((data, me) => promoverParticipante(data, me, grupo.id, p.id, crm)), `${quem.nome} agora administra.`), ...(motivoLinha ? { disabledReason: motivoLinha } : {}) },
                         {
                           label: "Remover do Grupo",
                           destructive: true,
-                          onSelect: () => report(run((data, me) => removerParticipante(data, me, grupo.id, p.id)), `${quem.nome} removido; a Participação fica encerrada na história.`),
+                          onSelect: () => report(run((data, me) => removerParticipante(data, me, grupo.id, p.id, crm)), `${quem.nome} removido; a Participação fica encerrada na história.`),
                           ...(motivoLinha ? { disabledReason: motivoLinha } : ehOCanal ? { disabledReason: "Para tirar o próprio Canal, use “Sair do Grupo”." } : {}),
                         },
                       ]}
@@ -151,18 +157,16 @@ export function SecaoDeParticipacoes({ grupo, report }: { readonly grupo: Grupo;
 }
 
 function AdicionarParticipanteDialog({ grupo, onClose, report }: { readonly grupo: Grupo; readonly onClose: () => void; readonly report: Report }) {
-  const state = useData((data) => data);
   const run = useRun();
   const [ids, setIds] = useState<readonly string[]>([]);
   const [admin, setAdmin] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const canaisDoCrm = useCanaisDasFerramentas();
+  // Só Contatos com WhatsApp, da api; a busca vai como `q` (3.4.8).
+  const seletor = useSeletorDeContatos(ids);
+  const crm = montarCrmDasFerramentas(canaisDoCrm, seletor.contatosDoCrm);
   const jaEstao = new Set(participacoesVigentes(grupo).map((p) => p.contactId));
-  const opcoes = contatosComWhatsApp(state).map((c) => ({
-    value: c.id,
-    label: contactDisplayName(c),
-    detail: c.identifiers.find((i) => i.type === "identidadeDeWhatsApp")?.displayValue ?? "",
-    ...(jaEstao.has(c.id) ? { disabledReason: "Já está no Grupo (INV-GRP-02)." } : {}),
-  }));
+  const opcoes = seletor.opcoes.map((o) => ({ ...o, ...(jaEstao.has(o.value) ? { disabledReason: "Já está no Grupo (INV-GRP-02)." } : {}) }));
   return (
     <ConfirmDialog
       open
@@ -171,7 +175,7 @@ function AdicionarParticipanteDialog({ grupo, onClose, report }: { readonly grup
       confirmLabel={ids.length > 1 ? `Adicionar ${ids.length}` : "Adicionar"}
       {...(ids.length === 0 ? { confirmDisabledReason: "Escolha ao menos um Contato." } : {})}
       onConfirm={() => {
-        const r = run((data, me) => adicionarParticipantes(data, me, grupo.id, { contactIds: ids, comoAdministrador: admin }));
+        const r = run((data, me) => adicionarParticipantes(data, me, grupo.id, { contactIds: ids, comoAdministrador: admin }, crm));
         if (!r.ok) {
           setErro(r.error);
           return;
@@ -182,6 +186,9 @@ function AdicionarParticipanteDialog({ grupo, onClose, report }: { readonly grup
       onCancel={onClose}
     >
       <div className="grid gap-4">
+        <Field label="Buscar Contato" hint="A busca filtra por nome, e-mail ou telefone.">
+          {(id) => <TextInput id={id} value={seletor.busca} onChange={seletor.setBusca} placeholder="Nome, e-mail ou telefone" />}
+        </Field>
         <Field label="Contatos" required hint="Só Contatos com identidade de WhatsApp: é por ela que o provedor os encontra.">
           {(id) => <MultiSelect id={id} values={ids} onChange={setIds} options={opcoes} placeholder="Escolher Contatos" />}
         </Field>

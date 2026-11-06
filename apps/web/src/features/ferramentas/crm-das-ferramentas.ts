@@ -12,12 +12,16 @@
  * não "não encontrado"); os Contatos, de quem chama (o seletor com `comIdentificador`).
  */
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { Canal } from "@n1/dominio/crm/canais";
 import type { ContatoACriar, ContatoResumo } from "@n1/dominio/crm/contatos";
+import { numeroExibido, numerosAResolver } from "@n1/dominio/operations";
+import type { DataState } from "@n1/dominio/state";
 import type { ContatoDaFerramenta, CrmDasFerramentas } from "@n1/dominio/types";
 import { LIMITES_CRM } from "@n1/dominio/crm/comum";
 import { useCanais } from "@/dados/crm/canais";
+import { useContatos } from "@/dados/crm/contatos";
+import { nomeDe, useNomesDoCrm } from "@/dados/crm/nomes";
 
 const PAGINA_MAXIMA = LIMITES_CRM.paginaMaxima;
 const SEM_CANAIS: readonly Canal[] = [];
@@ -81,6 +85,18 @@ export function montarCrmDasFerramentas(
   };
 }
 
+/**
+ * O `crm` para a execução LOCAL de uma operação que cria Contato de Participante (importar Grupos,
+ * Pedido de Entrada e clique de Captação simulados, RN-GRP-10): cada número ainda sem Contato ganha um
+ * `ContatoACriar` só da aplicação otimista, com id do navegador. O servidor lê os Contatos de
+ * `plataforma.contatos`, gera os ids dos que faltam e descarta o que o navegador mandar (15-17).
+ */
+export function crmParaSimular(nome: string, state: DataState, args: readonly unknown[], canais: CanaisDasFerramentas, contatos: readonly ContatoDaFerramenta[] = []): CrmDasFerramentas {
+  const base = montarCrmDasFerramentas(canais, contatos);
+  const aCriar = numerosAResolver(nome, state, args, base).map((numero) => ({ id: crypto.randomUUID(), nome: numeroExibido(numero), whatsapp: numero }));
+  return montarCrmDasFerramentas(canais, contatos, aCriar);
+}
+
 /** O `crm` da tela, memorizado pelos Canais e Contatos (muda só quando eles mudam). */
 export function useCrmDasFerramentas(canais: CanaisDasFerramentas, contatos?: readonly ContatoDaFerramenta[]): CrmDasFerramentas {
   return useMemo(() => montarCrmDasFerramentas(canais, contatos), [canais, contatos]);
@@ -92,4 +108,53 @@ export function useCrmDasFerramentas(canais: CanaisDasFerramentas, contatos?: re
  */
 export function recusaSePronta(canais: CanaisDasFerramentas, recusa: () => string | undefined): string | undefined {
   return canais.pronto ? recusa() : undefined;
+}
+
+export interface OpcaoDeContato {
+  readonly value: string;
+  readonly label: string;
+  readonly detail: string;
+}
+
+export interface SeletorDeContatos {
+  readonly busca: string;
+  readonly setBusca: (texto: string) => void;
+  /** Os Contatos com WhatsApp da página (a busca vai à api como `q`) mais os escolhidos que a busca tirou dela. */
+  readonly opcoes: readonly OpcaoDeContato[];
+  /** Os escolhidos como a operação os confere (`crm.contatos`). */
+  readonly contatosDoCrm: readonly ContatoDaFerramenta[];
+  /** O nome do Contato da lista ou, fora dela, de POST /crm/nomes; "Contato" enquanto não chega. */
+  readonly nomeDoContato: (id: string) => string;
+}
+
+const SEM_CONTATOS: readonly ContatoResumo[] = [];
+
+/**
+ * O seletor de Contatos das Ferramentas (3.4.8, UCR-08): só quem tem Identificador `whatsapp`
+ * (`GET /contatos?comIdentificador=whatsapp`, 15-38). Um Contato sem WhatsApp nunca aparece. Quem foi
+ * escolhido e a busca tirou da página continua nas opções, com o nome de `POST /crm/nomes`, para o
+ * chip não mostrar um id.
+ */
+export function useSeletorDeContatos(escolhidos: readonly string[]): SeletorDeContatos {
+  const [busca, setBusca] = useState("");
+  const lista = useContatos({ comIdentificador: "whatsapp", q: busca, limite: PAGINA_MAXIMA });
+  const pagina = useMemo(() => lista.data?.itens ?? SEM_CONTATOS, [lista.data]);
+  const unicos = [...new Set(escolhidos)];
+  const foraDaPagina = unicos.filter((id) => !pagina.some((c) => c.id === id));
+  const nomes = useNomesDoCrm(foraDaPagina.map((id) => ({ tipo: "contact" as const, id })));
+  const nomeFora = (id: string) => nomeDe(nomes, "contact", id) ?? "Contato";
+  return {
+    busca,
+    setBusca,
+    opcoes: [
+      ...pagina.map((c) => ({ value: c.id, label: c.nomeDeExibicao, detail: c.telefonePrincipal ?? "" })),
+      ...foraDaPagina.map((id) => ({ value: id, label: nomeFora(id), detail: "" })),
+    ],
+    contatosDoCrm: [
+      ...pagina.filter((c) => unicos.includes(c.id)).map(contatoDaFerramenta),
+      // Fora da página só há o nome; o resto o servidor relê (o número é estrangeiro à execução local).
+      ...foraDaPagina.map((id) => ({ id, nome: nomeFora(id), estado: "ativo", whatsapp: id })),
+    ],
+    nomeDoContato: (id) => pagina.find((c) => c.id === id)?.nomeDeExibicao ?? nomeFora(id),
+  };
 }

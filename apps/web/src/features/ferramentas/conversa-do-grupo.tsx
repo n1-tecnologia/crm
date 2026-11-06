@@ -15,13 +15,13 @@ import { Send } from "lucide-react";
 import { useData, useRun } from "@/dados/store";
 import { useRecente } from "@/features/shell/recente";
 import { enviarMensagemAoGrupo, recusaDeEnvioAoGrupo } from "@n1/dominio/operations";
-import { contactDisplayName } from "@n1/dominio/derive";
 import { conversaDoGrupo } from "@n1/dominio/derive-ferramentas";
 import type { OperationResult } from "@n1/dominio/state";
 import type { Message } from "@n1/dominio/types";
 import type { Report } from "@/features/shell/ficha";
 import { useFormat } from "@/features/shell/use-format";
 import { EmptyState, Icone, cn } from "@/features/shell/ui";
+import { recusaSePronta, useCanaisDasFerramentas, useCrmDasFerramentas } from "./crm-das-ferramentas";
 
 export function ConversaDoGrupo({
   grupoId,
@@ -43,6 +43,9 @@ export function ConversaDoGrupo({
 }) {
   const state = useData((data) => data);
   const run = useRun();
+  // O Canal do Grupo vem do CRM novo (GET /canais); a Conversa de grupo segue em `state.conversations` (F14-D-05).
+  const canaisDoCrm = useCanaisDasFerramentas();
+  const crm = useCrmDasFerramentas(canaisDoCrm);
   // A Mensagem recém-enviada surge; as outras já estão.
   const recente = useRecente();
   const fmt = useFormat();
@@ -52,7 +55,7 @@ export function ConversaDoGrupo({
   const grupo = state.grupos.find((g) => g.id === grupoId);
   const conversa = grupo ? conversaDoGrupo(state, grupo) : undefined;
   const mensagens = conversa ? [...conversa.messages].sort((a, b) => a.createdAt.localeCompare(b.createdAt)) : [];
-  const recusa = recusaPorFora ?? (grupo ? recusaDeEnvioAoGrupo(state, grupo) : "Grupo não encontrado.");
+  const recusa = recusaPorFora ?? (grupo ? recusaSePronta(canaisDoCrm, () => recusaDeEnvioAoGrupo(state, grupo, crm)) : "Grupo não encontrado.");
 
   const contagemAnterior = useRef(mensagens.length);
   useEffect(() => {
@@ -67,15 +70,15 @@ export function ConversaDoGrupo({
     if (m.direction === "enviada") {
       if (m.actor.kind === "member") return state.members.find((x) => x.id === m.actor.id)?.displayName ?? "Membro";
       if (m.actor.kind === "automation") return state.automations.find((x) => x.id === m.actor.id)?.name ?? "Automação";
-      return state.channels.find((c) => c.id === grupo.canalId)?.name ?? "Canal";
+      return canaisDoCrm.nomeDoCanal(grupo.canalId) ?? "Canal";
     }
-    const contato = state.contacts.find((c) => c.identifiers.some((i) => i.id === m.viaIdentifierId));
-    return contato ? contactDisplayName(contato) : "Participante";
+    // O Identificador de quem falou era do Contato do modelo antigo; o Contato do CRM novo não tem como casar com ele, então a Mensagem recebida diz só "Participante".
+    return "Participante";
   };
 
   const enviar = () => {
     if (!texto.trim() || recusa) return;
-    const r = enviarPorFora ? enviarPorFora(texto) : run((data, me) => enviarMensagemAoGrupo(data, me, grupo.id, { content: texto }));
+    const r = enviarPorFora ? enviarPorFora(texto) : run((data, me) => enviarMensagemAoGrupo(data, me, grupo.id, { content: texto }, crm));
     report(r, conversa ? "Mensagem enviada ao Grupo." : "Conversa de grupo criada e Mensagem enviada.");
     if (r.ok) setTexto("");
   };

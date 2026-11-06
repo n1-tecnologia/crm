@@ -29,19 +29,17 @@
  * C41) sobem aqui mesmo, pelos campos da Aparência ou clicando na prévia.
  */
 
-import { useId, useMemo, useState } from "react";
+import { useId, useState } from "react";
 import { Lock, Megaphone, ShieldCheck, UserPlus, Link2 } from "lucide-react";
 import { useData, useRun } from "@/dados/store";
 import { CONFIGURACOES_PADRAO_DO_GRUPO, criarGrupo, enviarLinkDeConvite, recusaDoCanal, recusaExternaNaComunidade, type ImagemDoGrupo } from "@n1/dominio/operations";
 import { noLimiteDeGrupos } from "@n1/dominio/derive-ferramentas";
-import type { ConfiguracoesDoGrupo, ContatoDaFerramenta } from "@n1/dominio/types";
-import { useContatos } from "@/dados/crm/contatos";
-import { nomeDe as nomeNoLote, useNomesDoCrm } from "@/dados/crm/nomes";
+import type { ConfiguracoesDoGrupo } from "@n1/dominio/types";
 import { marcarChegada } from "@/features/shell/recente";
 import { ConfirmDialog, Field, MultiSelect, Select, TextArea, TextInput } from "@/features/shell/ui";
 import { CampoDeImagem, PreviaDoGrupo, type PapelNaPrevia } from "./aparencia-do-grupo";
 import { CaixaDeConfiguracoes } from "./caixa-de-configuracoes";
-import { contatoDaFerramenta, montarCrmDasFerramentas, recusaSePronta, useCanaisDasFerramentas } from "./crm-das-ferramentas";
+import { montarCrmDasFerramentas, recusaSePronta, useCanaisDasFerramentas, useSeletorDeContatos } from "./crm-das-ferramentas";
 import { CONFIGURACAO_DO_GRUPO_LABEL } from "./rotulos";
 
 export function CriarGrupoDialog({ open, onClose, onCreated }: { readonly open: boolean; readonly onClose: () => void; readonly onCreated: (grupoId: string) => void }) {
@@ -101,30 +99,18 @@ function Formulario({ onClose, onCreated }: { readonly onClose: () => void; read
     setParticipantes(ids);
     setConvidados((atual) => sem(atual, ids));
   };
-  // Só Contatos com WhatsApp (`comIdentificador`); a busca vai à api como `q` (a página tem até 200).
-  const [busca, setBusca] = useState("");
-  const lista = useContatos({ comIdentificador: "whatsapp", q: busca, limite: 200 });
-  const pagina = useMemo(() => lista.data?.itens ?? [], [lista.data]);
-  const escolhidos = [...new Set([...(criador ? [criador] : []), ...administradores, ...participantes, ...convidados])];
-  // Quem foi escolhido e a busca tirou da página continua na lista, com o nome de POST /crm/nomes.
-  const foraDaPagina = escolhidos.filter((id) => !pagina.some((c) => c.id === id));
-  const nomesDosEscolhidos = useNomesDoCrm(foraDaPagina.map((id) => ({ tipo: "contact" as const, id })));
-  const contatosDoCrm: ContatoDaFerramenta[] = [
-    ...pagina.filter((c) => escolhidos.includes(c.id)).map(contatoDaFerramenta),
-    ...foraDaPagina.map((id) => ({ id, nome: nomeNoLote(nomesDosEscolhidos, "contact", id) ?? "Contato", estado: "ativo", whatsapp: id })),
-  ];
-  const crm = montarCrmDasFerramentas(canaisDoCrm, contatosDoCrm);
-  const contatos = [
-    ...pagina.map((c) => ({ value: c.id, label: c.nomeDeExibicao, detail: c.telefonePrincipal ?? "" })),
-    ...foraDaPagina.map((id) => ({ value: id, label: nomeNoLote(nomesDosEscolhidos, "contact", id) ?? "Contato", detail: "" })),
-  ];
+  // Só Contatos com WhatsApp (`comIdentificador`); a busca vai à api como `q` (3.4.8).
+  const seletor = useSeletorDeContatos([...(criador ? [criador] : []), ...administradores, ...participantes, ...convidados]);
+  const { busca, setBusca } = seletor;
+  const crm = montarCrmDasFerramentas(canaisDoCrm, seletor.contatosDoCrm);
+  const contatos = seletor.opcoes;
   const livresPara = (fora: readonly string[]) => contatos.filter((c) => !fora.includes(c.value));
   const acimaDosParticipantes = [...(criador ? [criador] : []), ...administradores];
 
   // Quem a prévia lista: o Canal (o primeiro participante, administrador) e,
   // na ordem dos papéis, o criador, os administradores e os adicionados.
   const canal = canais.find((c) => c.id === canalId);
-  const nomeDe = (id: string) => contatos.find((c) => c.value === id)?.label ?? "Contato";
+  const nomeDe = seletor.nomeDoContato;
   const pessoasDaPrevia: Array<{ readonly id: string; readonly nome: string; readonly papel: PapelNaPrevia }> = [
     ...(canal ? [{ id: canal.id, nome: canal.nome, papel: "canal" as const }] : []),
     ...(criador ? [{ id: criador, nome: nomeDe(criador), papel: "criador" as const }] : []),

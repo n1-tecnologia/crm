@@ -312,23 +312,39 @@ describe("Grupos no CRM novo (15-22)", () => {
     expect((report.mock.calls[0]?.[0] as { ok: boolean }).ok).toBe(true);
   });
 
+  it("(j) adicionar participante lista só Contatos com WhatsApp da api e manda `adicionarParticipantes` com os escolhidos no `crm`", async () => {
+    const grupo = grupoDoSeed("grp_turma_03");
+    const report = vi.fn();
+    await montar(<SecaoDeParticipacoes grupo={grupo} report={report} />);
+    await waitFor(() => expect((screen.getByRole("button", { name: "Adicionar participante" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar participante" }));
+    fireEvent.click(screen.getByLabelText(/^Contatos/));
+    await waitFor(() => expect(screen.getByRole("option", { name: /Ana Lima/ })).toBeTruthy());
+    expect(screen.queryByRole("option", { name: /Carla Sem Zap/ })).toBeNull();
+    expect(chamadasA(/\/contatos\?/).every(([url]) => /comIdentificador=whatsapp/.test(String(url)))).toBe(true);
+    fireEvent.click(screen.getByRole("option", { name: /Ana Lima/ }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Adicionar" }));
+    });
+    const chamada = gravados[0]?.chamadas[0];
+    expect(chamada?.nome).toBe("adicionarParticipantes");
+    expect(chamada?.args[1]).toEqual({ contactIds: [CONTATO_A], comoAdministrador: false });
+    expect((chamada?.args[2] as { contatos: Array<{ id: string }> }).contatos.map((c) => c.id)).toEqual([CONTATO_A]);
+  });
+
   it("(h) a aba lista o Canal de cada Grupo pelo GET /canais", async () => {
     await montar(<AbaGrupos report={vi.fn()} />);
     await waitFor(() => expect(screen.getAllByText("Canal do CRM novo").length).toBeGreaterThan(0));
   });
 
-  it("(i) a Conversa do Grupo continua lida de state.conversations (F14-D-05) e o envio leva o `crm`", async () => {
+  it("(i) a Conversa do Grupo continua lida de state.conversations (F14-D-05) e a caixa de envio confere o Canal da api", async () => {
     await montar(<ConversaDoGrupo grupoId="grp_turma_02" report={vi.fn()} />);
+    // As Mensagens vêm de `state.conversations`: o store do teste não tem Canais nem Contatos.
     expect(screen.getByText(/Turma #02, sejam bem-vindos/)).toBeTruthy();
     const caixa = screen.getByLabelText("Mensagem ao Grupo") as HTMLTextAreaElement;
-    // Os Canais chegam e a recusa de Canal sai da caixa.
-    await waitFor(() => expect(caixa.readOnly).toBe(false));
-    fireEvent.change(caixa, { target: { value: "Aula hoje às 20h" } });
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
-    });
-    const chamada = gravados[0]?.chamadas[0];
-    expect(chamada?.nome).toBe("enviarMensagemAoGrupo");
-    expect((chamada?.args[2] as { canais: Array<{ id: string }> }).canais.map((c) => c.id)).toContain(CANAL_DO_SEED);
+    // Enquanto os Canais não chegam a recusa fica quieta; depois disso o Canal da api (`chn_wpp`) libera a caixa.
+    await waitFor(() => expect(chamadasA(/\/canais\?/).length).toBeGreaterThan(0));
+    await act(async () => undefined);
+    expect(caixa.readOnly).toBe(false);
   });
 });

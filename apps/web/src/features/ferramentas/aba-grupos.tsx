@@ -18,6 +18,7 @@ import { RecordList } from "@/features/shell/record-list";
 import { BarraDeFiltros, ConditionMarker, CorpoDeTela, Pilula, ReguaDeSecao, Select, StateSeal } from "@/features/shell/ui";
 import { CriarGrupoDialog } from "./criar-grupo-dialog";
 import { GrupoPopup } from "./grupo-popup";
+import { useCanaisDasFerramentas } from "./crm-das-ferramentas";
 import { ImportarGruposDialog } from "./importar-grupos-dialog";
 import { CriarLinkDialog, SecaoDeLinksDeCaptacao } from "./links-de-captacao";
 import {
@@ -39,7 +40,8 @@ export function AbaGrupos({ report }: { readonly report: Report }) {
   const fmt = useFormat();
   const { get, set, hrefCom } = useParametros();
   // Um id que não está entre as opções (URL antiga, Canal arquivado) não filtra em silêncio: vale como "todos".
-  const canais = state.channels.filter((c) => c.channelType === "whatsapp" && c.lifecycle === "ativo");
+  const canaisDoCrm = useCanaisDasFerramentas();
+  const canais = canaisDoCrm.canaisDeWhatsApp;
   const comunidades = state.comunidades.filter((c) => c.lifecycle !== "naLixeira");
   const canalFiltro = canais.some((c) => c.id === get("canal")) ? (get("canal") ?? "") : "";
   const comunidadeFiltro = comunidades.some((c) => c.id === get("com")) ? (get("com") ?? "") : "";
@@ -64,7 +66,7 @@ export function AbaGrupos({ report }: { readonly report: Report }) {
     })
     .sort((a, b) => (a.papelNaComunidade === "avisos" ? 1 : 0) - (b.papelNaComunidade === "avisos" ? 1 : 0) || a.nome.localeCompare(b.nome, "pt-BR"));
 
-  const canalDe = (g: Grupo) => state.channels.find((c) => c.id === g.canalId);
+  const canalDe = (g: Grupo) => canaisDoCrm.canalPorId(g.canalId);
 
   return (
     <>
@@ -75,7 +77,7 @@ export function AbaGrupos({ report }: { readonly report: Report }) {
             value={canalFiltro}
             onChange={(v) => set({ canal: v || null })}
             placeholder="Todos os Canais"
-            options={[{ value: "", label: "Todos os Canais" }, ...canais.map((c) => ({ value: c.id, label: c.name }))]}
+            options={[{ value: "", label: "Todos os Canais" }, ...canais.map((c) => ({ value: c.id, label: c.nome }))]}
           />
         </div>
         <div className="w-48">
@@ -154,8 +156,8 @@ export function AbaGrupos({ report }: { readonly report: Report }) {
                     const canal = canalDe(g);
                     return (
                       <span className="flex items-center gap-1.5">
-                        <span className="max-w-[14ch] truncate" title={canal?.name}>
-                          {canal?.name ?? "—"}
+                        <span className="max-w-[14ch] truncate" title={canal?.nome}>
+                          {canal?.nome ?? "—"}
                         </span>
                         <Pilula tom={PAPEL_DO_CANAL_TOM[g.sincronizacao.papelDoCanal]}>{PAPEL_DO_CANAL_LABEL[g.sincronizacao.papelDoCanal]}</Pilula>
                       </span>

@@ -31,7 +31,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useData, useRun } from "@/dados/store";
-import { contactDisplayName } from "@n1/dominio/derive";
 import {
   adicionarNotaNoAtivo,
   arquivarGrupo,
@@ -54,7 +53,9 @@ import { FotoDoGrupo } from "./aparencia-do-grupo";
 import { AsideDeAtividade, EditorDeNumero, EditorDeTexto, useAvisos, useNomeDoAtor } from "@/features/shell/ficha";
 import { useFormat } from "@/features/shell/use-format";
 import { ActionMenu, Button, ConditionMarker, ConfirmDialog, CorpoDeTela, EmptyState, Icone, Pilula, ReguaDeSecao, Select, SidePanel, StateSeal, TextInput, Toggle } from "@/features/shell/ui";
+import { nomeDe, useNomesDoCrm } from "@/dados/crm/nomes";
 import { ConversaDoGrupo } from "./conversa-do-grupo";
+import { recusaSePronta, useCanaisDasFerramentas, useCrmDasFerramentas } from "./crm-das-ferramentas";
 import { SecaoDeParticipacoes } from "./participacoes";
 import { SecaoDePedidosDeEntrada } from "./pedidos-de-entrada";
 import {
@@ -125,8 +126,12 @@ export function GrupoCompleto({ grupoId, modo, onClose }: { readonly grupoId: st
   const authorLabel = useNomeDoAtor();
   const [confirmando, setConfirmando] = useState<"lixeira" | "sair" | "regenerar" | null>(null);
   const [nomeDigitado, setNomeDigitado] = useState("");
+  // Canal e Criador vêm do CRM novo (GET /canais e POST /crm/nomes), não do store (3.4.8).
+  const canaisDoCrm = useCanaisDasFerramentas();
+  const crm = useCrmDasFerramentas(canaisDoCrm);
 
   const grupo = state.grupos.find((g) => g.id === grupoId);
+  const nomeDoCriador = useNomesDoCrm(grupo?.contatoCriadorId ? [{ tipo: "contact", id: grupo.contatoCriadorId }] : []);
   if (!grupo) {
     return (
       <div className="p-6">
@@ -135,9 +140,10 @@ export function GrupoCompleto({ grupoId, modo, onClose }: { readonly grupoId: st
     );
   }
 
-  const canal = state.channels.find((c) => c.id === grupo.canalId);
+  const canal = canaisDoCrm.canalPorId(grupo.canalId);
   const comunidade = state.comunidades.find((c) => c.id === grupo.comunidadeId);
-  const externa = recusaExternaNoGrupo(state, grupo, "administrador");
+  const externa = recusaSePronta(canaisDoCrm, () => recusaExternaNoGrupo(state, grupo, "administrador", crm));
+  const externaComoParticipante = recusaSePronta(canaisDoCrm, () => recusaExternaNoGrupo(state, grupo, "participante", crm));
   const naLixeira = grupo.lifecycle === "naLixeira";
   const editavelInterno = !naLixeira;
   const somenteLeitura = naLixeira ? "Um Grupo na lixeira é somente leitura." : undefined;
@@ -150,11 +156,11 @@ export function GrupoCompleto({ grupoId, modo, onClose }: { readonly grupoId: st
   const outrosAdmins = participacoesVigentes(grupo).filter((p) => p.papel === "administrador" && p.canalParticipanteId !== grupo.canalId).length;
   const sairIrreversivel = grupo.sincronizacao.papelDoCanal === "administrador" && outrosAdmins === 0;
 
-  const gravar = (patch: Parameters<typeof editarGrupo>[3], mensagem: string) => report(run((data, me) => editarGrupo(data, me, grupo.id, patch)), mensagem);
+  const gravar = (patch: Parameters<typeof editarGrupo>[3], mensagem: string) => report(run((data, me) => editarGrupo(data, me, grupo.id, patch, crm)), mensagem);
   const gravarCaptacao = (patch: Parameters<typeof editarCaptacaoDoGrupo>[3], mensagem: string) => report(run((data, me) => editarCaptacaoDoGrupo(data, me, grupo.id, patch)), mensagem);
 
   const menu = [
-    { label: "Sincronizar", onSelect: () => report(run((data, me) => sincronizarGrupo(data, me, grupo.id)), "Grupo sincronizado."), ...(naLixeira ? { disabledReason: "Na lixeira." } : {}) },
+    { label: "Sincronizar", onSelect: () => report(run((data, me) => sincronizarGrupo(data, me, grupo.id, crm)), "Grupo sincronizado."), ...(naLixeira ? { disabledReason: "Na lixeira." } : {}) },
     grupo.lifecycle === "ativo"
       ? { label: "Arquivar", onSelect: () => report(run((data, me) => arquivarGrupo(data, me, grupo.id)), "Grupo arquivado. O grupo no provedor não muda (RN-GRP-04).") }
       : grupo.lifecycle === "arquivado"
@@ -164,7 +170,7 @@ export function GrupoCompleto({ grupoId, modo, onClose }: { readonly grupoId: st
       label: "Sair do Grupo",
       destructive: true,
       onSelect: () => setConfirmando("sair"),
-      ...(recusaExternaNoGrupo(state, grupo, "participante") ? { disabledReason: recusaExternaNoGrupo(state, grupo, "participante") } : {}),
+      ...(externaComoParticipante ? { disabledReason: externaComoParticipante } : {}),
     },
     {
       label: "Enviar à lixeira",
@@ -202,7 +208,7 @@ export function GrupoCompleto({ grupoId, modo, onClose }: { readonly grupoId: st
         destructive
         {...(sairIrreversivel && nomeDigitado.trim() !== grupo.nome ? { confirmDisabledReason: "Digite o nome exato do Grupo." } : {})}
         onConfirm={() => {
-          const r = run((data, me) => sairDoGrupo(data, me, grupo.id, { entendiIrreversivel: true }));
+          const r = run((data, me) => sairDoGrupo(data, me, grupo.id, { entendiIrreversivel: true }, crm));
           setConfirmando(null);
           setNomeDigitado("");
           report(r, "O Canal saiu do Grupo. Ele ficou inacessível; arquive-o se não for voltar.");
@@ -222,7 +228,7 @@ export function GrupoCompleto({ grupoId, modo, onClose }: { readonly grupoId: st
         destructive
         onConfirm={() => {
           setConfirmando(null);
-          report(run((data, me) => regenerarLinkDeConvite(data, me, grupo.id)), "Link de convite regenerado.");
+          report(run((data, me) => regenerarLinkDeConvite(data, me, grupo.id, crm)), "Link de convite regenerado.");
         }}
         onCancel={() => setConfirmando(null)}
       />
@@ -284,16 +290,16 @@ export function GrupoCompleto({ grupoId, modo, onClose }: { readonly grupoId: st
                   <LinhaDeProp
                     icone={Radio}
                     rotulo="Canal administrador"
-                    valor={canal ? canal.name : "Nenhum — órfão"}
+                    valor={canal ? canal.nome : "Nenhum — órfão"}
                     editavel={editavelInterno}
                     motivo={somenteLeitura ?? "Trocar o Canal exige administrar; o novo Canal precisa conferir o Grupo."}
                     editor={
                       <span className="block w-64">
                         <Select
                           value={grupo.canalId ?? ""}
-                          onChange={(v) => report(run((data, me) => definirCanalDoGrupo(data, me, grupo.id, v)), "Canal administrador alterado: sincronize.")}
+                          onChange={(v) => report(run((data, me) => definirCanalDoGrupo(data, me, grupo.id, v, crm)), "Canal administrador alterado: sincronize.")}
                           placeholder="Escolher o Canal"
-                          options={state.channels.filter((c) => c.channelType === "whatsapp" && c.lifecycle === "ativo").map((c) => ({ value: c.id, label: c.name, detail: c.connection }))}
+                          options={canaisDoCrm.canaisDeWhatsApp.map((c) => ({ value: c.id, label: c.nome, detail: c.conexao }))}
                         />
                       </span>
                     }
@@ -303,8 +309,9 @@ export function GrupoCompleto({ grupoId, modo, onClose }: { readonly grupoId: st
                       icone={Crown}
                       rotulo="Criador do grupo"
                       valor={(() => {
-                        const criador = state.contacts.find((c) => c.id === grupo.contatoCriadorId);
-                        return criador ? contactDisplayName(criador) : "Contato removido";
+                        // `null` = a api não nomeou (Contato removido, de outro Espaço ou sem permissão).
+                        const criador = nomeDe(nomeDoCriador, "contact", grupo.contatoCriadorId ?? "");
+                        return criador === undefined ? "Carregando…" : (criador ?? "Contato removido");
                       })()}
                       motivo="Escolhido na criação (C40): entrou como administrador. No WhatsApp, quem criou o grupo foi o Canal administrador."
                     />
