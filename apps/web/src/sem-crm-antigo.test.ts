@@ -49,7 +49,6 @@ const CONGELADOS = [
   "features/crm/deal-screen.tsx",
   "features/crm/empresa-popup.tsx",
   "features/crm/import-contacts-dialog.tsx",
-  "features/crm/inbox-columns.tsx",
   "features/crm/iniciar-conversa-dialog.tsx",
   "features/crm/legado/ficha-de-contato-legado.tsx",
   "features/crm/legado/ficha-de-empresa-legado.tsx",

@@ -17,21 +17,19 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { ArrowUpDown, Check, Settings, SlidersHorizontal, Star, Users } from "lucide-react";
 import { useCanais } from "@/dados/crm/canais";
-import { useConversas, type FiltroDeConversasNaTela } from "@/dados/crm/conversas";
+import { marcarConversa, useConversas, type FiltroDeConversasNaTela } from "@/dados/crm/conversas";
 import { useData, useRun, useSession } from "@/dados/store";
 import { useRecente } from "@/features/shell/recente";
-import { contactDisplayName } from "@n1/dominio/derive";
 // "Não lida" e a última atividade moram no domínio: o resumo do Início conta as mesmas mensagens novas.
 import { naoLidas, ultimaAtividade as lastActivity } from "@n1/dominio/derive-resumo";
 import { rotuloDoCanal } from "@n1/dominio/derive-conversacional";
 import { capacidadesDoCanal, toggleConversationStar } from "@n1/dominio/operations";
 import { CHANNEL_ICON } from "@/features/crm/conversation-thread";
 import { AvatarDoContato } from "@/features/crm/avatar-do-contato";
-import { ContactAvatar } from "@/features/crm/contact-card";
-import { CHANNEL_TYPE_LABEL, CONVERSATION_STATE_LABEL } from "@/features/shell/format";
+import { CONVERSATION_STATE_LABEL } from "@/features/shell/format";
 import { useFormat } from "@/features/shell/use-format";
 import {
   Abas,
@@ -43,12 +41,10 @@ import {
   Icone,
   Pilula,
   Select,
-  StateSeal,
 } from "@/features/shell/ui";
 import type { Canal } from "@n1/dominio/crm/canais";
 import { LIMITES_CRM } from "@n1/dominio/crm/comum";
 import type { ConversaNaLista, SituacaoDaConversa } from "@n1/dominio/crm/conversas";
-import type { DataState } from "@n1/dominio/state";
 import type { Conversation } from "@n1/dominio/types";
 
 const SCOPES = [
@@ -86,7 +82,8 @@ const STATES = [
 ] as const;
 
 export function InboxColumns({ children }: { readonly children: ReactNode }) {
-  const state = useData((data) => data);
+  const filas = useData((data) => data.queues);
+  const canais = useCanais({ limite: LIMITES_CRM.paginaMaxima });
   const router = useRouter();
   const pathname = usePathname();
   const query = useSearchParams();
@@ -200,31 +197,17 @@ export function InboxColumns({ children }: { readonly children: ReactNode }) {
           </div>
         </div>
 
-        {scope === "minhas" ? (
-          <ListaDoCrm
-            escopo={scope}
-            aba={aba}
-            ordem={ordem}
-            situacao={conversationState}
-            canalId={channelId}
-            filaId={queueId}
-            abertaId={openId}
-            consulta={query.toString()}
-            aoTrocarAba={(chave) => setFilter("aba", chave, "naoLidos")}
-          />
-        ) : (
-          <ListaLegada
-            escopo={scope}
-            aba={aba}
-            ordem={ordem}
-            situacao={conversationState}
-            canalId={channelId}
-            filaId={queueId}
-            abertaId={openId}
-            consulta={query.toString()}
-            aoTrocarAba={(chave) => setFilter("aba", chave, "naoLidos")}
-          />
-        )}
+        <ListaDaCaixa
+          escopo={scope}
+          aba={aba}
+          ordem={ordem}
+          situacao={conversationState}
+          canalId={channelId}
+          filaId={queueId}
+          abertaId={openId}
+          consulta={query.toString()}
+          aoTrocarAba={(chave) => setFilter("aba", chave, "naoLidos")}
+        />
       </div>
 
       {/*
@@ -285,9 +268,9 @@ export function InboxColumns({ children }: { readonly children: ReactNode }) {
                 onChange={(valor) => setFilter("canal", valor, "todos")}
                 options={[
                   { value: "todos", label: "Todos os Canais" },
-                  ...state.channels.map((c) => ({
+                  ...(canais.data?.itens ?? []).map((c) => ({
                     value: c.id,
-                    label: rotuloDoCanal(c),
+                    label: rotuloDoCanal({ name: c.nome, channelType: c.tipo, provider: c.provedor }),
                   })),
                 ]}
               />
@@ -302,7 +285,7 @@ export function InboxColumns({ children }: { readonly children: ReactNode }) {
                 options={[
                   { value: "todas", label: "Todas as Filas" },
                   { value: "semFila", label: "Sem Fila" },
-                  ...state.queues.map((q) => ({ value: q.id, label: q.name })),
+                  ...filas.map((q) => ({ value: q.id, label: q.name })),
                 ]}
               />
             )}
@@ -316,7 +299,7 @@ export function InboxColumns({ children }: { readonly children: ReactNode }) {
   );
 }
 
-/** O que as duas listas recebem da barra e do endereço: os filtros já lidos da URL. */
+/** O que a lista recebe da barra e do endereço: os filtros já lidos da URL. */
 interface PropsDaLista {
   readonly escopo: string;
   readonly aba: Aba;
@@ -331,13 +314,38 @@ interface PropsDaLista {
 }
 
 /**
- * 15-11 — o recorte do escopo como filtro da api: "Minhas" é `atribuidoId` do
- * Membro da sessão. O resto do recorte (aba, situação, Canal, Fila) se soma
- * em `filtroDaCaixa`.
+ * 15-11 — o escopo como filtro da api: "Minhas" é `atribuidoId` do Membro da
+ * sessão. Os outros escopos não filtram por atribuição na api (ver
+ * `recorteNoCliente`).
  */
 export function filtroDoEscopo(escopo: string, membroId: string): FiltroDeConversasNaTela {
   if (escopo === "minhas") return { atribuidoId: membroId };
   return {};
+}
+
+/**
+ * O que a api ainda não filtra: sem Atribuído, sem Fila e Adiadas. A tela pede a
+ * página inteira (`LIMITES_CRM.paginaMaxima`) e recorta ela; o `total` desses
+ * recortes é o da página recortada, não o do Espaço (WINDOWS.md, 15-11).
+ */
+export function recorteNoCliente(escopo: string, filaId: string): ((c: ConversaNaLista) => boolean) | undefined {
+  const regras: Array<(c: ConversaNaLista) => boolean> = [];
+  if (escopo === "semAtribuido") regras.push((c) => c.atribuido === null);
+  if (escopo === "semFila" || filaId === "semFila") regras.push((c) => c.filaId === null);
+  if (escopo === "adiadas") regras.push((c) => c.adiadaAte !== null);
+  return regras.length === 0 ? undefined : (c) => regras.every((regra) => regra(c));
+}
+
+/** Uma consulta da lista: a página da api, recortada na tela quando o filtro não existe na api. */
+export function useRecorte(filtro: FiltroDeConversasNaTela, noCliente: ((c: ConversaNaLista) => boolean) | undefined) {
+  const resposta = useConversas(noCliente ? { ...filtro, limite: LIMITES_CRM.paginaMaxima } : filtro);
+  const itens = resposta.data ? (noCliente ? resposta.data.itens.filter(noCliente) : resposta.data.itens) : [];
+  return {
+    carregada: resposta.data !== undefined,
+    erro: resposta.error,
+    itens,
+    total: noCliente ? itens.length : (resposta.data?.total ?? 0),
+  };
 }
 
 /** RN-CXE-19 — a janela de resposta do Canal já fechou: passou do prazo da última Mensagem recebida. */
@@ -352,21 +360,103 @@ export function foraDaJanela(
   return agora > Date.parse(ultimaRecebidaEm) + horas * 3_600_000;
 }
 
-function ordenarConversas(itens: readonly ConversaNaLista[], ordem: Ordem): ConversaNaLista[] {
-  const maisRecentes = (a: ConversaNaLista, b: ConversaNaLista) => b.atualizadoEm.localeCompare(a.atualizadoEm);
+/** A Conversa de Grupo (F14-D-05) só existe no estado antigo: não tem linha em `plataforma.conversas`. */
+export function ehConversaDeGrupo(conversa: Conversation): boolean {
+  return conversa.lifecycle === "ativo" && conversa.groupIdentifier !== undefined;
+}
+
+/** Um item da lista, venha de `plataforma.conversas` ou do Grupo do estado antigo. */
+interface ItemDaCaixa {
+  readonly id: string;
+  readonly origem: "crm" | "grupo";
+  readonly nome: string;
+  readonly rosto: "contato" | "grupo" | "desconhecido";
+  readonly previa: string;
+  readonly atividadeEm: string;
+  readonly naoLidas: number;
+  readonly estrela: boolean;
+  readonly canalId: string;
+  readonly situacao: string;
+  readonly adiada: boolean;
+  readonly semContatoResolvido: boolean;
+  readonly ultimaRecebidaEm: string | null;
+}
+
+function itemDoCrm(conversa: ConversaNaLista): ItemDaCaixa {
+  return {
+    id: conversa.id,
+    origem: "crm",
+    nome: conversa.contatoNome ?? "Contato não resolvido",
+    rosto: conversa.contatoNome === null ? "desconhecido" : "contato",
+    // O título nasce como o nome do Contato: repeti-lo na segunda linha seria ruído.
+    previa: conversa.titulo !== conversa.contatoNome ? conversa.titulo : "",
+    atividadeEm: conversa.atualizadoEm,
+    naoLidas: conversa.naoLidas,
+    estrela: conversa.estrela,
+    canalId: conversa.canalId,
+    situacao: conversa.situacao,
+    adiada: conversa.adiadaAte !== null,
+    semContatoResolvido: conversa.contatoNome === null,
+    ultimaRecebidaEm: conversa.ultimaRecebidaEm,
+  };
+}
+
+function itemDoGrupo(conversa: Conversation, membroId: string): ItemDaCaixa {
+  const ultimaRecebida = [...conversa.messages]
+    .filter((m) => m.direction === "recebida")
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .at(-1);
+  const ultima = [...conversa.messages].sort((a, b) => a.createdAt.localeCompare(b.createdAt)).at(-1);
+  return {
+    id: conversa.id,
+    origem: "grupo",
+    nome: conversa.groupIdentifier?.name ?? conversa.title,
+    rosto: "grupo",
+    previa: ultima ? (ultima.deletionMark ? "Mensagem apagada" : ultima.content) : conversa.title,
+    atividadeEm: lastActivity(conversa),
+    naoLidas: naoLidas(conversa, membroId),
+    estrela: conversa.starredBy.includes(membroId),
+    canalId: conversa.channelId,
+    situacao: conversa.state,
+    adiada: conversa.snooze !== undefined,
+    semContatoResolvido: false,
+    ultimaRecebidaEm: ultimaRecebida?.createdAt ?? null,
+  };
+}
+
+function ordenarItens(itens: readonly ItemDaCaixa[], ordem: Ordem): ItemDaCaixa[] {
+  const maisRecentes = (a: ItemDaCaixa, b: ItemDaCaixa) => b.atividadeEm.localeCompare(a.atividadeEm);
   if (ordem === "antigos") return [...itens].sort((a, b) => maisRecentes(b, a));
   if (ordem === "naoLidas") return [...itens].sort((a, b) => b.naoLidas - a.naoLidas || maisRecentes(a, b));
   return [...itens].sort(maisRecentes);
 }
 
+/** O Grupo entra no recorte da Caixa pelas mesmas regras de escopo, estado, Canal, Fila e aba. */
+function grupoNoRecorte(
+  conversa: Conversation,
+  recorte: { readonly escopo: string; readonly situacao: string; readonly canalId: string; readonly filaId: string },
+  membroId: string,
+): boolean {
+  return (
+    ehConversaDeGrupo(conversa) &&
+    matchesScope(conversa, recorte.escopo, membroId) &&
+    (recorte.situacao === "todos" || conversa.state === recorte.situacao) &&
+    (recorte.canalId === "todos" || conversa.channelId === recorte.canalId) &&
+    (recorte.filaId === "todas" ||
+      (recorte.filaId === "semFila" ? conversa.queueId === undefined : conversa.queueId === recorte.filaId))
+  );
+}
+
 /**
- * A lista do CRM novo: as Conversas de `plataforma.conversas`, por `GET /conversas`
- * (`useConversas`). O escopo, a aba, a situação, o Canal e a Fila viram filtros
- * da api; a ordem é aplicada à página carregada. O Canal vem de `useCanais` e a
- * janela de resposta do que a lista já traz (`ultimaRecebidaEm`), sem uma ida
- * por linha. O texto da api é renderizado como texto React (T-15-32).
+ * A lista da Caixa: as Conversas de `plataforma.conversas`, por `GET /conversas`
+ * (`useConversas`), mais as de Grupo, que seguem no estado antigo (F14-D-05). O
+ * escopo, a aba, a situação, o Canal e a Fila viram filtros da api; a ordem é
+ * aplicada à página carregada e os contadores são o `total` da api. O Canal vem
+ * de `useCanais` e a janela de resposta do que a lista já traz
+ * (`ultimaRecebidaEm`), sem uma ida por linha. O texto da api é renderizado como
+ * texto React (T-15-32).
  */
-function ListaDoCrm({
+function ListaDaCaixa({
   escopo,
   aba,
   ordem,
@@ -378,11 +468,21 @@ function ListaDoCrm({
   aoTrocarAba,
 }: PropsDaLista) {
   const { memberId } = useSession();
+  const run = useRun();
   const recente = useRecente();
   const fmt = useFormat();
   const [agora] = useState(() => Date.now());
   const [selecionadas, setSelecionadas] = useState<readonly string[]>([]);
+  const [paginas, setPaginas] = useState(1);
+  /** A estrela mostrada enquanto a gravação não terminou: o 2º clique parte dela, não da lista velha. */
+  const [marcadas, setMarcadas] = useState<Readonly<Record<string, boolean>>>({});
+  const filaDeGravacao = useRef<Record<string, Promise<unknown>>>({});
 
+  const conversasAntigas = useData((data) => data.conversations);
+  const canais = useCanais({ limite: LIMITES_CRM.paginaMaxima });
+
+  const noCliente = recorteNoCliente(escopo, filaId);
+  const limite = Math.min(LIMITES_CRM.paginaMaxima, LIMITES_CRM.paginaPadrao * paginas);
   const doRecorte: FiltroDeConversasNaTela = {
     ...filtroDoEscopo(escopo, memberId),
     ...(situacao !== "todos" ? { situacao: situacao as SituacaoDaConversa } : {}),
@@ -392,16 +492,52 @@ function ListaDoCrm({
   const daAba: FiltroDeConversasNaTela =
     aba === "naoLidos" ? { naoLidas: true } : aba === "marcados" ? { comEstrela: true } : {};
 
-  const lista = useConversas({ ...doRecorte, ...daAba });
-  const canais = useCanais({ limite: LIMITES_CRM.paginaMaxima });
+  const lista = useRecorte({ ...doRecorte, ...daAba, limite }, noCliente);
   // Os contadores das abas são `total` da api (uma consulta de uma linha cada), não o tamanho da página.
-  const naoLidosNoRecorte = useConversas({ ...doRecorte, naoLidas: true, limite: 1 });
-  const marcadosNoRecorte = useConversas({ ...doRecorte, comEstrela: true, limite: 1 });
+  const naoLidosNoRecorte = useRecorte({ ...doRecorte, naoLidas: true, limite: 1 }, noCliente);
+  const marcadosNoRecorte = useRecorte({ ...doRecorte, comEstrela: true, limite: 1 }, noCliente);
 
-  const itens = ordenarConversas(lista.data?.itens ?? [], ordem);
-  const total = lista.data?.total ?? 0;
+  const recorteDoGrupo = { escopo, situacao, canalId, filaId };
+  const gruposDoRecorte = conversasAntigas.filter((c) => grupoNoRecorte(c, recorteDoGrupo, memberId));
+  const gruposDaAba = gruposDoRecorte.filter((c) =>
+    aba === "naoLidos" ? naoLidas(c, memberId) > 0 : aba === "marcados" ? c.starredBy.includes(memberId) : true,
+  );
+
+  const itens = ordenarItens(
+    [...lista.itens.map(itemDoCrm), ...gruposDaAba.map((c) => itemDoGrupo(c, memberId))],
+    ordem,
+  );
+  const total = lista.total + gruposDaAba.length;
   const contagemDaAba = (qual: Aba): number =>
-    qual === "naoLidos" ? (naoLidosNoRecorte.data?.total ?? 0) : qual === "marcados" ? (marcadosNoRecorte.data?.total ?? 0) : 0;
+    qual === "naoLidos"
+      ? naoLidosNoRecorte.total + gruposDoRecorte.filter((c) => naoLidas(c, memberId) > 0).length
+      : qual === "marcados"
+        ? marcadosNoRecorte.total + gruposDoRecorte.filter((c) => c.starredBy.includes(memberId)).length
+        : 0;
+  const haMais = !noCliente && lista.itens.length < lista.total && limite < LIMITES_CRM.paginaMaxima;
+
+  /**
+   * Estrela do Membro. Conversa do CRM: `PUT /conversas/:id/marcacao`, uma de cada
+   * vez por Conversa (a ordem dos cliques é a ordem gravada) e cada clique parte
+   * do valor que o anterior deixou; a recusa desfaz o que a tela mostrava. O
+   * Grupo não tem Conversa nas tabelas e segue pela operação antiga.
+   */
+  const alternarEstrela = (item: ItemDaCaixa) => {
+    if (item.origem === "grupo") {
+      run((data, id) => toggleConversationStar(data, id, item.id));
+      return;
+    }
+    const novo = !(marcadas[item.id] ?? item.estrela);
+    const sem = (atual: Readonly<Record<string, boolean>>) =>
+      Object.fromEntries(Object.entries(atual).filter(([id]) => id !== item.id));
+    setMarcadas((atual) => ({ ...atual, [item.id]: novo }));
+    filaDeGravacao.current[item.id] = (filaDeGravacao.current[item.id] ?? Promise.resolve())
+      .then(() => marcarConversa(item.id, { estrela: novo }))
+      .then(
+        () => setMarcadas((atual) => (atual[item.id] === novo ? sem(atual) : atual)),
+        () => setMarcadas(sem),
+      );
+  };
 
   return (
     <>
@@ -435,11 +571,11 @@ function ListaDoCrm({
             : `Selecionar tudo · ${itens.length} de ${total}`}
         </label>
       </div>
-      {lista.error ? (
+      {lista.erro ? (
         <div className="p-3">
           <EmptyState title="Não foi possível carregar as Conversas." hint="Confira a conexão e tente de novo." />
         </div>
-      ) : lista.data && itens.length === 0 ? (
+      ) : lista.carregada && itens.length === 0 ? (
         <div className="p-3">
           <EmptyState
             title="Nenhuma Conversa com estes filtros."
@@ -448,52 +584,59 @@ function ListaDoCrm({
         </div>
       ) : (
         <ul key={aba} className="cascata aparecer pilha-solta relative min-h-0 flex-1 overflow-y-auto p-2">
-          {itens.map((conversa) => {
-            const canal = canais.data?.itens.find((c) => c.id === conversa.canalId);
+          {itens.map((item) => {
+            const canal = canais.data?.itens.find((c) => c.id === item.canalId);
             const IconeDoCanal = canal ? CHANNEL_ICON[canal.tipo] : undefined;
             const rotulo = canal
               ? rotuloDoCanal({ name: canal.nome, channelType: canal.tipo, provider: canal.provedor })
               : undefined;
-            const aberta = conversa.id === abertaId;
-            const porLer = conversa.naoLidas;
-            const nome = conversa.contatoNome ?? "Contato não resolvido";
-            // O título nasce como o nome do Contato: repeti-lo na segunda linha seria ruído.
-            const previa = conversa.titulo !== conversa.contatoNome ? conversa.titulo : "";
+            const aberta = item.id === abertaId;
+            const porLer = item.naoLidas;
+            const marcada = item.origem === "crm" ? (marcadas[item.id] ?? item.estrela) : item.estrela;
             /*
-              A peça é o <li>, não o link: a caixa de seleção fica fora do
-              link (interativo dentro de interativo não existe), mas pertence
-              à mesma Conversa.
+              A peça é o <li>, não o link: a caixa de seleção e a estrela
+              ficam fora do link (interativo dentro de interativo não existe),
+              mas pertencem à mesma Conversa.
             */
             return (
               <li
-                key={conversa.id}
+                key={item.id}
                 className="item-solto"
                 data-alinhamento="topo"
                 data-destacado={aberta || porLer > 0 ? "true" : undefined}
-                data-recente={conversa.id === recente ? "true" : undefined}
+                data-recente={item.id === recente ? "true" : undefined}
                 style={{ paddingBlock: "var(--e-2)" }}
               >
                 <input
                   type="checkbox"
-                  aria-label={`Selecionar a Conversa com ${nome}`}
+                  aria-label={`Selecionar a Conversa com ${item.nome}`}
                   className="mt-2 shrink-0 accent-[var(--acento)]"
-                  checked={selecionadas.includes(conversa.id)}
+                  checked={selecionadas.includes(item.id)}
                   onChange={(evento) =>
                     setSelecionadas((atual) =>
-                      evento.target.checked ? [...atual, conversa.id] : atual.filter((id) => id !== conversa.id),
+                      evento.target.checked ? [...atual, item.id] : atual.filter((id) => id !== item.id),
                     )
                   }
                 />
 
                 <Link
-                  href={`/crm/caixa-de-entrada/${conversa.id}${consulta !== "" ? `?${consulta}` : ""}`}
+                  href={`/crm/caixa-de-entrada/${item.id}${consulta !== "" ? `?${consulta}` : ""}`}
                   aria-current={aberta ? "page" : undefined}
                   className="flex min-w-0 flex-1 gap-2"
                 >
                   {/* O rosto com o selo do Canal embaixo: a regra do Canal muda o que dá para responder. */}
                   <span className="relative shrink-0">
-                    {conversa.contatoNome !== null ? (
-                      <AvatarDoContato nome={conversa.contatoNome} />
+                    {item.rosto === "contato" ? (
+                      <AvatarDoContato nome={item.nome} />
+                    ) : item.rosto === "grupo" ? (
+                      // Conversa de grupo (INV-GRP-05): quem fala é o Grupo, não um Contato por resolver.
+                      <span
+                        className="grid size-7 place-items-center rounded-full"
+                        style={{ background: "var(--info-lavado)", color: "var(--info)" }}
+                        title="Conversa de grupo"
+                      >
+                        <Users className="size-3.5" />
+                      </span>
                     ) : (
                       <span
                         className="app-xs grid size-7 place-items-center rounded-full"
@@ -521,18 +664,18 @@ function ListaDoCrm({
                         className={`app-base min-w-0 flex-1 truncate ${porLer > 0 ? "font-semibold" : ""}`}
                         style={{ color: "var(--texto)" }}
                       >
-                        {nome}
+                        {item.nome}
                       </span>
-                      <span className="app-meta app-numero shrink-0">{fmt.relative(conversa.atualizadoEm)}</span>
+                      <span className="app-meta app-numero shrink-0">{fmt.relative(item.atividadeEm)}</span>
                       {porLer > 0 ? (
                         <Pilula tom="acento" className="app-numero shrink-0">
                           {porLer}
                         </Pilula>
                       ) : null}
                     </span>
-                    {previa !== "" ? (
+                    {item.previa !== "" ? (
                       <span className="app-sm mt-0.5 block truncate" style={{ color: "var(--texto-3)" }}>
-                        {previa}
+                        {item.previa}
                       </span>
                     ) : null}
                     <span className="app-meta mt-1 flex flex-wrap items-center gap-2">
@@ -543,286 +686,44 @@ function ListaDoCrm({
                           <span className="max-w-[12rem] truncate">{canal.nome}</span>
                         </span>
                       ) : null}
-                      <span>{CONVERSATION_STATE_LABEL[conversa.situacao]}</span>
-                      {conversa.contatoNome === null ? (
+                      <span>{CONVERSATION_STATE_LABEL[item.situacao]}</span>
+                      {item.semContatoResolvido ? (
                         <ConditionMarker tone="warning">sem Contato resolvido</ConditionMarker>
                       ) : null}
-                      {conversa.adiadaAte !== null ? <ConditionMarker>adiada</ConditionMarker> : null}
-                      {foraDaJanela(canal, conversa.ultimaRecebidaEm, agora) ? (
+                      {item.adiada ? <ConditionMarker>adiada</ConditionMarker> : null}
+                      {foraDaJanela(canal, item.ultimaRecebidaEm, agora) ? (
                         <ConditionMarker tone="warning">fora do Prazo</ConditionMarker>
                       ) : null}
                     </span>
                   </span>
                 </Link>
+
+                <button
+                  type="button"
+                  onClick={() => alternarEstrela(item)}
+                  aria-pressed={marcada}
+                  title={marcada ? "Desmarcar" : "Marcar"}
+                  className="btn-icone btn-icone-nu -mt-0.5 shrink-0"
+                  style={marcada ? { color: "var(--acento)" } : undefined}
+                >
+                  <Icone de={Star} tamanho="sm" style={marcada ? { fill: "var(--acento)" } : undefined} />
+                  <span className="sr-only">{marcada ? "Desmarcar" : "Marcar"}</span>
+                </button>
               </li>
             );
           })}
+          {haMais ? (
+            <li className="grid place-items-center py-2">
+              <Button variant="ghost" onClick={() => setPaginas((atual) => atual + 1)}>
+                Mostrar mais
+              </Button>
+            </li>
+          ) : null}
         </ul>
       )}
     </>
   );
 }
-
-/**
- * A lista do modelo antigo: as Conversas de `state.conversations`. Fica até a
- * 15-11 (Task 2) trocar todos os escopos pelo CRM novo; depois só sobra o Grupo.
- */
-function ListaLegada({
-  escopo: scope,
-  aba,
-  ordem,
-  situacao: conversationState,
-  canalId: channelId,
-  filaId: queueId,
-  abertaId: openId,
-  consulta,
-  aoTrocarAba,
-}: PropsDaLista) {
-  const state = useData((data) => data);
-  const { memberId } = useSession();
-  const run = useRun();
-  const recente = useRecente();
-  const fmt = useFormat();
-  const [selecionadas, setSelecionadas] = useState<readonly string[]>([]);
-
-  const active = state.conversations.filter((conversation) => conversation.lifecycle === "ativo");
-
-  const filtered = active
-    .filter((conversation) => matchesScope(conversation, scope, memberId))
-    .filter((conversation) => conversationState === "todos" || conversation.state === conversationState)
-    .filter((conversation) => channelId === "todos" || conversation.channelId === channelId)
-    .filter((conversation) =>
-      queueId === "todas"
-        ? true
-        : queueId === "semFila"
-          ? conversation.queueId === undefined
-          : conversation.queueId === queueId,
-    )
-    .filter((conversation) => {
-      if (aba === "todos") return true;
-      if (aba === "marcados") return conversation.starredBy.includes(memberId);
-      if (aba === "recentes") return true;
-      return naoLidas(conversation, memberId) > 0;
-    })
-    .sort((a, b) =>
-      ordem === "antigos"
-        ? lastActivity(a).localeCompare(lastActivity(b))
-        : ordem === "naoLidas"
-          ? naoLidas(b, memberId) - naoLidas(a, memberId)
-          : lastActivity(b).localeCompare(lastActivity(a)),
-    );
-
-  const contagemDaAba = (qual: Aba): number =>
-    active
-      .filter((c) => matchesScope(c, scope, memberId))
-      .filter((c) =>
-        qual === "marcados"
-          ? c.starredBy.includes(memberId)
-          : qual === "naoLidos"
-            ? naoLidas(c, memberId) > 0
-            : true,
-      ).length;
-
-
-  return (
-    <>
-      <div className="shrink-0">
-          <Abas
-            rotulo="Recorte da Caixa"
-            abas={ABAS.map(({ value, label }) => {
-              const contagem = contagemDaAba(value);
-              return {
-                chave: value,
-                rotulo: label,
-                ...(value !== "todos" && value !== "recentes" && contagem > 0 ? { contador: contagem } : {}),
-              };
-            })}
-            ativa={aba}
-            aoTrocar={aoTrocarAba}
-          />
-
-          <label
-            className="app-sm flex items-center gap-2 px-3 py-1.5"
-            style={{ color: "var(--texto-3)", borderBottom: "1px solid var(--linha-sutil)" }}
-          >
-            <input
-              type="checkbox"
-              className="accent-[var(--acento)]"
-              checked={filtered.length > 0 && selecionadas.length === filtered.length}
-              onChange={(evento) =>
-                setSelecionadas(evento.target.checked ? filtered.map((c) => c.id) : [])
-              }
-            />
-            {selecionadas.length > 0
-              ? `${selecionadas.length} selecionada(s)`
-              : `Selecionar tudo · ${filtered.length} de ${active.length}`}
-          </label>
-      </div>
-        {filtered.length === 0 ? (
-          <div className="p-3">
-            <EmptyState
-              title="Nenhuma Conversa com estes filtros."
-              hint="Ajuste o escopo, o estado, a Fila ou o Canal na coluna ao lado."
-            />
-          </div>
-        ) : (
-          <ul key={aba} className="cascata aparecer pilha-solta relative min-h-0 flex-1 overflow-y-auto p-2">
-            {filtered.map((conversation) => {
-              const contact = conversation.contactId
-                ? state.contacts.find((c) => c.id === conversation.contactId)
-                : undefined;
-              const channel = state.channels.find((c) => c.id === conversation.channelId);
-              const last = [...conversation.messages]
-                .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-                .at(-1);
-              const outsideWindow = isOutsideWindow(state, conversation, Date.parse(lastActivity(conversation)));
-              const canal = channel?.channelType;
-              const IconeDoCanal = canal ? CHANNEL_ICON[canal] : undefined;
-              const porLer = naoLidas(conversation, memberId);
-              const marcada = conversation.starredBy.includes(memberId);
-              const aberta = conversation.id === openId;
-              /*
-                A peça é o <li>, não o link: a caixa de seleção e a estrela
-                ficam fora do link (interativo dentro de interativo não existe),
-                mas pertencem à mesma Conversa.
-              */
-              return (
-                <li
-                  key={conversation.id}
-                  className="item-solto"
-                  data-alinhamento="topo"
-                  data-destacado={aberta || porLer > 0 ? "true" : undefined}
-                  data-recente={conversation.id === recente ? "true" : undefined}
-                  style={{ paddingBlock: "var(--e-2)" }}
-                >
-                  <input
-                    type="checkbox"
-                    aria-label={`Selecionar a Conversa com ${contact ? contactDisplayName(contact) : conversation.title}`}
-                    className="mt-2 shrink-0 accent-[var(--acento)]"
-                    checked={selecionadas.includes(conversation.id)}
-                    onChange={(evento) =>
-                      setSelecionadas((atual) =>
-                        evento.target.checked
-                          ? [...atual, conversation.id]
-                          : atual.filter((id) => id !== conversation.id),
-                      )
-                    }
-                  />
-
-                  <Link
-                    href={`/crm/caixa-de-entrada/${conversation.id}${consulta !== "" ? `?${consulta}` : ""}`}
-                    aria-current={aberta ? "page" : undefined}
-                    className="flex min-w-0 flex-1 gap-2"
-                  >
-                    {/*
-                      O rosto com o selo do Canal embaixo: quem atende precisa
-                      saber POR ONDE está falando antes de abrir, porque a regra
-                      do Canal muda o que dá para responder.
-                    */}
-                    <span className="relative shrink-0">
-                      {contact ? (
-                        <ContactAvatar contact={contact} />
-                      ) : conversation.groupIdentifier ? (
-                        // Conversa de grupo (INV-GRP-05): quem fala é o Grupo, não um Contato por resolver.
-                        <span
-                          className="grid size-7 place-items-center rounded-full"
-                          style={{ background: "var(--info-lavado)", color: "var(--info)" }}
-                          title="Conversa de grupo"
-                        >
-                          <Users className="size-3.5" />
-                        </span>
-                      ) : (
-                        <span
-                          className="app-xs grid size-7 place-items-center rounded-full"
-                          style={{ background: "var(--superficie-2)", color: "var(--texto-3)" }}
-                        >
-                          ?
-                        </span>
-                      )}
-                      {canal && IconeDoCanal ? (
-                        // O disco é opaco de propósito: ele tapa o canto do rosto.
-                        <span
-                          title={channel ? rotuloDoCanal(channel) : (CHANNEL_TYPE_LABEL[canal] ?? canal)}
-                          className="absolute -bottom-1 -right-1 grid size-4 place-items-center rounded-full"
-                          style={{ background: "var(--card)", color: "var(--acento)" }}
-                        >
-                          <IconeDoCanal className="size-3" />
-                          <span className="sr-only">
-                            {channel ? rotuloDoCanal(channel) : (CHANNEL_TYPE_LABEL[canal] ?? canal)}
-                          </span>
-                        </span>
-                      ) : null}
-                    </span>
-
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-baseline gap-2">
-                        <span
-                          className={`app-base min-w-0 flex-1 truncate ${porLer > 0 ? "font-semibold" : ""}`}
-                          style={{ color: "var(--texto)" }}
-                        >
-                          {contact
-                            ? contactDisplayName(contact)
-                            : (conversation.groupIdentifier?.name ?? conversation.unresolvedIdentifier?.value ?? "Contato não resolvido")}
-                        </span>
-                        <span className="app-meta app-numero shrink-0">
-                          {fmt.relative(lastActivity(conversation))}
-                        </span>
-                        {porLer > 0 ? (
-                          <Pilula tom="acento" className="app-numero shrink-0">
-                            {porLer}
-                          </Pilula>
-                        ) : null}
-                      </span>
-                      <span className="app-sm mt-0.5 block truncate" style={{ color: "var(--texto-3)" }}>
-                        {last
-                          ? last.deletionMark
-                            ? "Mensagem apagada"
-                            : last.content
-                          : conversation.title}
-                      </span>
-                      <span className="app-meta mt-1 flex flex-wrap items-center gap-2">
-                        {/*
-                          D-16: dois WhatsApps têm o mesmo ícone; o nome do Canal
-                          é o que os separa na lista, antes de abrir a Conversa.
-                        */}
-                        {channel && IconeDoCanal ? (
-                          <span className="inline-flex min-w-0 items-center gap-1">
-                            <IconeDoCanal className="size-3 shrink-0" />
-                            <span className="max-w-[12rem] truncate">{channel.name}</span>
-                          </span>
-                        ) : null}
-                        <span>{CONVERSATION_STATE_LABEL[conversation.state]}</span>
-                        {contact && contact.lifecycle !== "ativo" ? <StateSeal state={contact.lifecycle} /> : null}
-                        {conversation.unresolvedIdentifier ? (
-                          <ConditionMarker tone="warning">sem Contato resolvido</ConditionMarker>
-                        ) : null}
-                        {conversation.snooze ? <ConditionMarker>adiada</ConditionMarker> : null}
-                        {outsideWindow ? <ConditionMarker tone="warning">fora do Prazo</ConditionMarker> : null}
-                      </span>
-                    </span>
-                  </Link>
-
-                  <button
-                    type="button"
-                    onClick={() => run((data, id) => toggleConversationStar(data, id, conversation.id))}
-                    aria-pressed={marcada}
-                    title={marcada ? "Desmarcar" : "Marcar"}
-                    className="btn-icone btn-icone-nu -mt-0.5 shrink-0"
-                    style={marcada ? { color: "var(--acento)" } : undefined}
-                  >
-                    <Icone de={Star} tamanho="sm" style={marcada ? { fill: "var(--acento)" } : undefined} />
-                    <span className="sr-only">{marcada ? "Desmarcar" : "Marcar"}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-    </>
-  );
-}
-
-
 
 /** O título da coluna diz o recorte: quem chega pelo atalho "Caixa de entrada" do Comercial vê "Minhas Conversas". */
 export function scopeTitle(scope: string): string {
@@ -842,18 +743,3 @@ export function matchesScope(conversation: Conversation, scope: string, memberId
   if (scope === "adiadas") return conversation.snooze !== undefined;
   return true;
 }
-
-/** RN-CXE-19 — the marker that says a free reply is no longer possible. */
-function isOutsideWindow(state: DataState, conversation: Conversation, now: number): boolean {
-  const channel = state.channels.find((c) => c.id === conversation.channelId);
-  if (!channel) return false;
-  const hours = capacidadesDoCanal(channel).responseWindowHours;
-  if (hours === undefined) return false;
-  const received = [...conversation.messages]
-    .filter((message) => message.direction === "recebida")
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-    .at(-1);
-  if (!received) return false;
-  return now > Date.parse(received.createdAt) + hours * 3_600_000;
-}
-

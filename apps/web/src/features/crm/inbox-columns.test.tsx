@@ -10,9 +10,10 @@
  * `fetch` roteado por URL e a sessão é falsa. Nenhuma rede.
  */
 
+import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { SWRConfig } from "swr";
+import { SWRConfig, useSWRConfig } from "swr";
 import { buildSeed } from "@n1/dominio/seed";
 import type { Canal } from "@n1/dominio/crm/canais";
 import type { ConversaNaLista } from "@n1/dominio/crm/conversas";
@@ -23,7 +24,18 @@ import { transporteEmMemoria } from "@/dados/transporte";
 import CaixaDeEntradaPage from "@/app/(shell)/crm/caixa-de-entrada/page";
 import { filtroDoEscopo, foraDaJanela, InboxColumns } from "@/features/crm/inbox-columns";
 
-const { navegacao, obterSessao } = vi.hoisted(() => ({ navegacao: { busca: "" }, obterSessao: vi.fn() }));
+const { navegacao, obterSessao, revalidador } = vi.hoisted(() => ({
+  navegacao: { busca: "" },
+  obterSessao: vi.fn(),
+  // O `mutate` do SWRConfig do teste: o global não alcança o cache isolado, este sim.
+  revalidador: { revalidar: undefined as undefined | ((prefixo: string) => Promise<unknown>) },
+}));
+
+// `invalidarCrm` real usa o `mutate` global; aqui ele repassa o prefixo ao `mutate` do cache isolado do teste.
+vi.mock("@/dados/crm/cliente-crm", async (original) => {
+  const real = await original<typeof import("@/dados/crm/cliente-crm")>();
+  return { ...real, invalidarCrm: vi.fn(async (prefixo: string) => revalidador.revalidar?.(prefixo)) };
+});
 
 vi.mock("@/autenticacao/cliente-navegador", () => ({
   clienteDoNavegador: () => ({ auth: { getSession: obterSessao } }),
@@ -100,7 +112,8 @@ function conversaDoCrm(id: string, extras: Partial<ConversaNaLista> = {}): Conve
 function conversaDeGrupo(id: string, nome: string): Conversation {
   const modelo = estado.conversations[0] ?? buildSeed().conversations.find((c) => c.messages.length > 0);
   if (!modelo) throw new Error("o seed precisa de uma Conversa com Mensagem");
-  const { contactId: _semContato, ...base } = structuredClone(modelo);
+  const base = structuredClone(modelo);
+  delete base.contactId;
   return {
     ...base,
     id,
@@ -118,7 +131,11 @@ function conversaDeGrupo(id: string, nome: string): Conversation {
   } as Conversation;
 }
 
+type Rota = (url: string, init?: RequestInit) => Promise<Response>;
+
 let fetchMock: ReturnType<typeof vi.fn>;
+/** A rota padrão da api falsa; os testes que mudam uma resposta delegam o resto a ela. */
+let rotaPadrao: Rota;
 let conversasDaApi: ConversaNaLista[];
 let canaisDaApi: Canal[];
 /** O que o PUT da marcação responde; os testes trocam para segurar ou recusar. */
@@ -153,7 +170,7 @@ beforeEach(() => {
     if (alvo && corpo.estrela !== undefined) conversasDaApi = conversasDaApi.map((c) => (c.id === id ? { ...c, estrela: corpo.estrela! } : c));
     return resposta(200, { ok: true, dados: { estrela: corpo.estrela ?? false, lidaAte: null } });
   };
-  fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+  rotaPadrao = async (url, init) => {
     const alvo = new URL(url);
     if (init?.method === "PUT" && /^\/conversas\/[^/]+\/marcacao$/.test(alvo.pathname)) {
       const id = alvo.pathname.split("/")[2]!;
@@ -166,7 +183,8 @@ beforeEach(() => {
     }
     if (alvo.pathname === "/canais") return resposta(200, { ok: true, itens: canaisDaApi, total: canaisDaApi.length });
     return resposta(404, { ok: false, error: "sem rota" });
-  });
+  };
+  fetchMock = vi.fn((url: string, init?: RequestInit) => rotaPadrao(url, init));
   vi.stubGlobal("fetch", fetchMock);
 });
 
@@ -184,15 +202,27 @@ function listasPedidas(): URL[] {
   return chamadas().filter((u) => u.pathname === "/conversas" && u.searchParams.get("limite") !== "1");
 }
 
-function montar(filhos: React.ReactNode = null) {
+function RegistrarRevalidacao() {
+  const { mutate } = useSWRConfig();
+  useEffect(() => {
+    revalidador.revalidar = (prefixo) => mutate((chave) => typeof chave === "string" && chave.startsWith(prefixo));
+    return () => {
+      revalidador.revalidar = undefined;
+    };
+  }, [mutate]);
+  return null;
+}
+
+function montar(pagina = false) {
   return render(
     <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+      <RegistrarRevalidacao />
       <StoreProvider
         sessao={{ memberId: "mem_thiago" }}
         estadoInicial={{ data: estado, revisao: 1, ordens: {} }}
         transporte={transporteEmMemoria()}
       >
-        <InboxColumns>{filhos}</InboxColumns>
+        {pagina ? <CaixaDeEntradaPage /> : <InboxColumns>{null}</InboxColumns>}
       </StoreProvider>
     </SWRConfig>,
   );
@@ -353,8 +383,8 @@ describe("InboxColumns — os escopos, as abas e os filtros viram filtros da api
     // Duas Conversas na página, 57 no total (a api pagina): o texto diz "2 de 57".
     conversasDaApi = [conversaDoCrm("t1"), conversaDoCrm("t2")];
     const total = 57;
-    const original = fetchMock.getMockImplementation()!;
-    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+    const original = rotaPadrao;
+    rotaPadrao = async (url, init) => {
       const alvo = new URL(url);
       if (alvo.pathname === "/conversas" && init?.method !== "PUT") {
         const naoLidas = alvo.searchParams.get("naoLidas") === "true";
@@ -362,7 +392,7 @@ describe("InboxColumns — os escopos, as abas e os filtros viram filtros da api
         return resposta(200, { ok: true, itens: naoLidas || estrela ? [] : conversasDaApi, total: naoLidas ? 7 : estrela ? 4 : total });
       }
       return original(url, init);
-    });
+    };
     montar();
     await waitFor(() => expect(screen.getByText("Selecionar tudo · 2 de 57")).toBeTruthy());
     await waitFor(() => expect(screen.getByRole("tab", { name: /Não lidos/ }).textContent).toContain("7"));
@@ -431,8 +461,9 @@ describe("InboxColumns — o Grupo segue na lista (F14-D-05)", () => {
   it("(17) a Conversa de Grupo do estado antigo aparece junto das Conversas da api, e uma Conversa antiga sem Grupo não", async () => {
     conversasDaApi = [conversaDoCrm("g0")];
     const antiga = conversaDeGrupo("cnv_antiga", "Conversa antiga");
-    const { groupIdentifier: _semGrupo, ...semGrupo } = antiga;
-    estado.conversations = [conversaDeGrupo("cnv_grupo", "Grupo Vendas"), semGrupo as Conversation];
+    const semGrupo = structuredClone(antiga);
+    delete semGrupo.groupIdentifier;
+    estado.conversations = [conversaDeGrupo("cnv_grupo", "Grupo Vendas"), semGrupo];
     montar();
 
     await itemApareceu("g0");
@@ -476,30 +507,30 @@ describe("foraDaJanela", () => {
 
 describe("Caixa de entrada sem Conversa aberta — a contagem do topo", () => {
   it("(21) conta as aguardando resposta pelo total da api (abertas e pendentes), não por state.conversations", async () => {
-    const original = fetchMock.getMockImplementation()!;
-    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+    const original = rotaPadrao;
+    rotaPadrao = async (url, init) => {
       const alvo = new URL(url);
       if (alvo.pathname === "/conversas") {
         const situacao = alvo.searchParams.get("situacao");
         return resposta(200, { ok: true, itens: [], total: situacao === "aberta" ? 5 : situacao === "pendente" ? 2 : 0 });
       }
       return original(url, init);
-    });
-    montar(<CaixaDeEntradaPage />);
+    };
+    montar(true);
 
     await waitFor(() => expect(screen.getByText("Caixa de entrada da equipe: 7 Conversa(s) aguardando resposta.")).toBeTruthy());
     expect(chamadas().some((u) => u.pathname === "/conversas" && u.searchParams.get("situacao") === "aberta" && u.searchParams.get("limite") === "1")).toBe(true);
   });
 
   it("(22) as Conversas de Grupo do estado antigo entram na contagem", async () => {
-    const original = fetchMock.getMockImplementation()!;
-    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+    const original = rotaPadrao;
+    rotaPadrao = async (url, init) => {
       const alvo = new URL(url);
       if (alvo.pathname === "/conversas") return resposta(200, { ok: true, itens: [], total: alvo.searchParams.get("situacao") === "aberta" ? 1 : 0 });
       return original(url, init);
-    });
+    };
     estado.conversations = [conversaDeGrupo("cnv_grupo", "Grupo Vendas")];
-    montar(<CaixaDeEntradaPage />);
+    montar(true);
 
     await waitFor(() => expect(screen.getByText("Caixa de entrada da equipe: 2 Conversa(s) aguardando resposta.")).toBeTruthy());
   });
