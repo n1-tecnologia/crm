@@ -15,7 +15,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../seed";
 import type { DataState } from "../state";
-import { previewSuccession, removeMember } from "./members";
+import { alterarPapelDoMembro, previewSuccession, removeMember } from "./members";
 
 const PROPRIETARIO = "mem_thiago";
 const ADMINISTRADOR = "mem_rafael";
@@ -156,5 +156,18 @@ describe("removeMember — Conversa de Grupo passa ao Sucessor (D-15-08)", () =>
     const previa = previewSuccession(state, ALVO);
     expect(previa.transfers.some((t) => t.type === "conversation" && t.id === conversa.id)).toBe(true);
     expect(previa.releases.some((t) => t.type === "conversation")).toBe(false);
+  });
+
+  it("atender uma Conversa não é propriedade: rebaixar a Convidado quem só atende Conversa segue permitido", () => {
+    const atendente = "mem_walter";
+    expect(membro(atendente).state).toBe("ativo");
+    expect(previewSuccession(state, atendente).transfers).toHaveLength(0);
+    const conversa = state.conversations[0];
+    if (!conversa) throw new Error("o seed precisa de uma Conversa");
+    conversa.assignee = { kind: "member", id: atendente };
+    const convidado = state.roles.find((r) => r.base === "convidado");
+    if (!convidado) throw new Error("o seed precisa de um Papel de base Convidado");
+    const r = alterarPapelDoMembro(state, PROPRIETARIO, { memberId: atendente, roleId: convidado.id });
+    expect(r.ok).toBe(true);
   });
 });

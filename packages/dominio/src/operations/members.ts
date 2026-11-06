@@ -70,9 +70,11 @@ export function previewSuccession(state: DataState, memberId: Id): SuccessionPre
       }
     }
   }
+  // D-15-08 / F14-D-05 — a Conversa que ele atendia passa ao Sucessor, como no CRM novo (`SucessaoNoCrm`):
+  // uma regra só, sem exceção para a Conversa de Grupo que ainda mora no modelo antigo.
   for (const conversation of state.conversations) {
     if (conversation.assignee?.kind === "member" && conversation.assignee.id === memberId) {
-      releases.push({ type: "conversation", id: conversation.id, name: conversation.title });
+      transfers.push({ type: "conversation", id: conversation.id, name: conversation.title });
     }
   }
 
@@ -95,6 +97,14 @@ export function previewSuccession(state: DataState, memberId: Id): SuccessionPre
   return { transfers, releases, pendingApprovals, privateContainerGrants, chatSessions };
 }
 
+/**
+ * Quantos registros o Membro POSSUI (propriedade). A Conversa que ele atende passa ao Sucessor na remoção
+ * (D-15-08), mas ser Atribuído não é propriedade: não impede rebaixar a Papel de base Convidado.
+ */
+function registrosPossuidos(state: DataState, memberId: Id): number {
+  return previewSuccession(state, memberId).transfers.filter((item) => item.type !== "conversation").length;
+}
+
 function isPrivateContainer(state: DataState, resourceType: string, resourceId: Id): boolean {
   if (resourceType === "space") return state.spaces.find((s) => s.id === resourceId)?.isPrivate ?? false;
   if (resourceType === "folder") return state.folders.find((f) => f.id === resourceId)?.isPrivate ?? false;
@@ -105,7 +115,8 @@ function isPrivateContainer(state: DataState, resourceType: string, resourceId: 
 /**
  * B28 / RN-ET-09 — removing a Member is a SUCCESSION in the same act:
  * (a) every record it owns passes to the successor;
- * (b) tasks, checklist items and conversations it executes are released;
+ * (b) tasks and checklist items it executes are released, and the conversations it
+ *     attends pass to the successor as assignee (D-15-08);
  * (c) pending approvals pass to the successor;
  * (d) authorship and activity records stay with the `removido` member (A6.4);
  * (e) chat sessions and user memory are NOT succeeded — they go to the trash
@@ -192,7 +203,7 @@ export function alterarPapelDoMembro(
   }
   if (membro.roleId === papel.id) return ok(membro);
   if (papel.base === "convidado") {
-    const transferencias = previewSuccession(state, membro.id).transfers.length;
+    const transferencias = registrosPossuidos(state, membro.id);
     if (transferencias > 0) {
       return fail(
         `Rebaixar para um Papel de base Convidado exige transferir ${transferencias} registro(s) de propriedade no mesmo ato. Encerre a participação com Sucessor ou transfira a propriedade antes.`,
@@ -307,15 +318,18 @@ export function removeMember(
       }
     }
   }
+  // D-15-08 — a Conversa não fica sem Atribuído: passa ao Sucessor (a troca de Atribuído não é propriedade).
+  // Repetir não passa nada de novo: o Membro `removido` volta cedo, e o Atribuído já é o Sucessor.
   for (const conversation of state.conversations) {
     if (conversation.assignee?.kind === "member" && conversation.assignee.id === memberId) {
-      delete conversation.assignee;
+      conversation.assignee = { kind: "member", id: successorId };
       recordActivity(state, {
         actor: memberActor(actingMemberId),
-        action: "Conversa liberada",
+        action: "Conversa passada ao Sucessor",
         objectType: "conversation",
         objectId: conversation.id,
         objectName: conversation.title,
+        after: successor.displayName,
       });
     }
   }
@@ -617,7 +631,7 @@ export function deleteRole(
     // Proprietário de nada, e a transferência tem de acontecer no mesmo ato.
     if (memberDestination.base === "convidado") {
       const owning = holders.members.filter(
-        (holder) => previewSuccession(state, holder.id).transfers.length > 0,
+        (holder) => registrosPossuidos(state, holder.id) > 0,
       );
       if (owning.length > 0) {
         return fail(
