@@ -9,15 +9,19 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, renderHook, screen, waitFor, within, fireEvent } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { SWRConfig } from "swr";
 import type { ConversaNaLista } from "@n1/dominio/crm/conversas";
-import type { EstatisticasDoCrm, LeadAAtenderDoCrm } from "@n1/dominio/crm/inicio";
+import { conferirJanelaDeEstatisticas, type EstatisticasDoCrm, type LeadAAtenderDoCrm, type PanoramaDoCrm } from "@n1/dominio/crm/inicio";
 import { contactDisplayName } from "@n1/dominio/derive";
 import { qualificacoesDeLead } from "@n1/dominio/derive-resumo";
+import { diaCivilNoFuso } from "@n1/dominio/recortes-de-tarefas";
 import { buildSeed } from "@n1/dominio/seed";
 import { StoreProvider } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
+import { makeFormatters } from "@/features/shell/format";
+import { montarPanorama, useRespostaDoRobo } from "./panorama-do-robo";
 import { ResumoDoInicio } from "./resumo-do-inicio";
 
 const { obterSessao } = vi.hoisted(() => ({ obterSessao: vi.fn() }));
@@ -216,5 +220,145 @@ describe("Início › Mensagens novas (15-23, tracer)", () => {
     });
     await montar();
     await waitFor(() => expect(screen.getByText(/primeiras 2 de 250 Conversas/)).toBeTruthy());
+  });
+});
+
+/* ───────────────────────────── Tarefa 2: estatísticas e panorama ───────────────────────────── */
+
+describe("Início › Estatísticas (15-23)", () => {
+  it("pede ao servidor a janela atual e a anterior, no fuso do Espaço, e põe os números do CRM nas métricas", async () => {
+    const dados = buildSeed();
+    const fuso = dados.workspace.locale.timezone;
+    const hoje = diaCivilNoFuso(new Date(), fuso);
+    // Só a janela que contém "agora" traz o dia de hoje; a anterior vem vazia.
+    estatisticas = (url) => {
+      const contemAgora = Date.parse(url.searchParams.get("desde") ?? "") <= Date.now() && Date.now() <= Date.parse(url.searchParams.get("ate") ?? "");
+      return { ...SEM_ESTATISTICAS, fuso, mensagensEnviadas: contemAgora ? [{ dia: hoje, quantidade: 3 }] : [] };
+    };
+    await montar();
+    await waitFor(() => {
+      const botao = screen.getByRole("button", { name: /Mensagens enviadas/ });
+      expect(botao.textContent).toContain("3");
+    });
+
+    const pedidos = chamadas("/crm/inicio/estatisticas");
+    expect(pedidos).toHaveLength(2);
+    for (const pedido of pedidos) {
+      expect(pedido.searchParams.get("fuso")).toBe(fuso);
+      expect(pedido.searchParams.has("membroId")).toBe(false);
+      expect(conferirJanelaDeEstatisticas(pedido.searchParams.get("desde") ?? "", pedido.searchParams.get("ate") ?? "", fuso)).toEqual({ ok: true });
+    }
+  });
+
+  it("no período Ano as duas janelas continuam dentro dos 400 dias que a api aceita", async () => {
+    await montar();
+    await waitFor(() => expect(chamadas("/crm/inicio/estatisticas")).toHaveLength(2));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("radio", { name: "Ano" }));
+    });
+    await waitFor(() => expect(chamadas("/crm/inicio/estatisticas")).toHaveLength(4));
+    const fuso = buildSeed().workspace.locale.timezone;
+    for (const pedido of chamadas("/crm/inicio/estatisticas")) {
+      expect(conferirJanelaDeEstatisticas(pedido.searchParams.get("desde") ?? "", pedido.searchParams.get("ate") ?? "", fuso)).toEqual({ ok: true });
+    }
+  });
+
+  it("os Negócios ganhos do CRM trazem o Valor numa moeda só, formatado", async () => {
+    const dados = buildSeed();
+    const fuso = dados.workspace.locale.timezone;
+    const hoje = diaCivilNoFuso(new Date(), fuso);
+    estatisticas = (url) => {
+      const contemAgora = Date.parse(url.searchParams.get("desde") ?? "") <= Date.now() && Date.now() <= Date.parse(url.searchParams.get("ate") ?? "");
+      return { ...SEM_ESTATISTICAS, fuso, negociosGanhos: contemAgora ? [{ dia: hoje, moeda: "BRL", quantidade: 2, valor: 27994 }] : [] };
+    };
+    await montar();
+    await waitFor(() => {
+      const botao = screen.getByRole("button", { name: /Negócios ganhos/ });
+      expect(botao.textContent).toContain("2");
+      expect(botao.textContent).toMatch(/27\.994/);
+    });
+  });
+
+  it("recusa da api: as métricas do CRM ficam em zero e a tela diz que não carregaram, sem esconder as Tarefas", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      const alvo = new URL(url);
+      if (alvo.pathname === "/crm/inicio/estatisticas") {
+        return { ok: false, status: 403, json: async () => ({ ok: false, error: "Sem acesso.", codigo: "SEM_PERMISSAO" }) } as Response;
+      }
+      return resposta({ ok: true, itens: [], total: 0 });
+    });
+    await montar();
+    await waitFor(() => expect(screen.getByText(/estatísticas do CRM não carregaram/i)).toBeTruthy());
+    expect(screen.getByRole("button", { name: /Tarefas concluídas/ })).toBeTruthy();
+  });
+});
+
+describe("Início › Panorama do robô (15-23)", () => {
+  const PANORAMA: PanoramaDoCrm = {
+    contatosRecentes: [
+      { id: "c1", nome: "Ana do CRM" },
+      { id: "c2", nome: "Bruno do CRM" },
+      { id: "c3", nome: "Carla do CRM" },
+      { id: "c4", nome: "Dario do CRM" },
+      { id: "c5", nome: "Elisa do CRM" },
+    ],
+    contatosTotal: 42,
+    negociosAbertos: { quantidade: 3, valorPonderado: 1500, moeda: "BRL" },
+    conversasAbertas: 7,
+  };
+
+  it("montarPanorama usa o que o servidor somou: Contatos recentes (3 citados), Negócios abertos com o valor ponderado e Conversas abertas", () => {
+    const dados = buildSeed();
+    const formato = makeFormatters(dados.workspace.locale);
+    const panorama = montarPanorama(dados, THIAGO, formato, new Date(), null, PANORAMA);
+    expect(panorama.contatos).toEqual({ total: 42, recentes: ["Ana do CRM", "Bruno do CRM", "Carla do CRM"] });
+    expect(panorama.negocios.abertos).toBe(3);
+    expect(panorama.negocios.valorPonderado).toBe(formato.money({ amount: 1500, currency: "BRL" }));
+    expect(panorama.conversas.abertas).toBe(7);
+  });
+
+  it("sem panorama (carregando) ou com bloco null (Papel sem `ler`), zeros e sem valor: o robô não inventa número", () => {
+    const dados = buildSeed();
+    const formato = makeFormatters(dados.workspace.locale);
+    const vazio = montarPanorama(dados, THIAGO, formato, new Date(), null, undefined);
+    expect([vazio.contatos.total, vazio.negocios.abertos, vazio.conversas.abertas]).toEqual([0, 0, 0]);
+    expect(vazio.negocios.valorPonderado).toBeNull();
+    const semAcesso = montarPanorama(dados, THIAGO, formato, new Date(), null, {
+      contatosRecentes: null,
+      contatosTotal: null,
+      negociosAbertos: null,
+      conversasAbertas: null,
+    });
+    expect([semAcesso.contatos.recentes, semAcesso.negocios.abertos, semAcesso.conversas.abertas]).toEqual([[], 0, 0]);
+    // Mais de uma moeda: a api devolve null e o robô não escolhe uma.
+    const mista = montarPanorama(dados, THIAGO, formato, new Date(), null, { ...PANORAMA, negociosAbertos: { quantidade: 2, valorPonderado: null, moeda: null } });
+    expect([mista.negocios.abertos, mista.negocios.valorPonderado]).toEqual([2, null]);
+  });
+
+  it("useRespostaDoRobo lê GET /crm/inicio/panorama: a resposta cita os números do servidor, não os do store", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      const alvo = new URL(url);
+      if (alvo.pathname === "/crm/inicio/panorama") return resposta({ ok: true, dados: PANORAMA });
+      return resposta({ ok: true, itens: [], total: 0 });
+    });
+    const dados = buildSeed();
+    expect(dados.deals.filter((d) => d.lifecycle === "ativo" && d.situation === "aberto").length).not.toBe(3);
+    const transporte: Transporte = {
+      gravar: vi.fn(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." })),
+      hidratar: vi.fn(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." })),
+    };
+    const Envoltorio = ({ children }: { children: ReactNode }) => (
+      <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
+        <StoreProvider sessao={{ memberId: THIAGO }} estadoInicial={{ data: dados, revisao: 1, ordens: {} }} transporte={transporte}>
+          {children}
+        </StoreProvider>
+      </SWRConfig>
+    );
+    const { result } = renderHook(() => useRespostaDoRobo(), { wrapper: Envoltorio });
+    await waitFor(() => expect(result.current("quantos negócios abertos?")).toContain("3 negócios abertos"));
+    expect(result.current("quantos contatos?")).toContain("42 contatos");
+    expect(result.current("quantos contatos?")).toContain("Ana do CRM");
+    expect(result.current("tem conversa aberta?")).toContain("7 conversas abertas");
+    expect(chamadas("/crm/inicio/panorama").length).toBeGreaterThan(0);
   });
 });

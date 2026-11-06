@@ -9,12 +9,13 @@
 
 import { describe, expect, it } from "vitest";
 import { buildProductSeed } from "./seed-produto";
-import { resolveConversation } from "./operations/conversations";
 import {
   METRICAS_DO_RESUMO,
   PERIODOS_DO_RESUMO,
   estatisticasDoMembro,
   janelaDoResumo,
+  janelasDeConsultaDoCrm,
+  juntarEstatisticasDoCrm,
   mensagensNovasDasConversas,
   qualificacoesDeLead,
 } from "./derive-resumo";
@@ -22,7 +23,8 @@ import { diaCivilNoFuso, recortesDeTarefas } from "./recortes-de-tarefas";
 import { isoNoFuso } from "./relogio";
 import type { DataState } from "./state";
 import type { ConversaNaLista } from "./crm/conversas";
-import type { ActivityRecord, ActorRef, Deal, Task } from "./types";
+import { conferirJanelaDeEstatisticas, type EstatisticasDoCrm } from "./crm/inicio";
+import type { ActorRef, Task } from "./types";
 
 const THIAGO = "mem_thiago";
 const FUSO = "America/Sao_Paulo"; // UTC−3, sem horário de verão desde 2019
@@ -233,39 +235,82 @@ describe("janelaDoResumo — dias civis no fuso do Espaço de Trabalho", () => {
 
 /* ───────────────────────────── Estatísticas ───────────────────────────── */
 
-describe("estatisticasDoMembro", () => {
-  it("mensagensEnviadas: as 13 de Thiago (há 12,12,11,11,11,9,9,9,9,7,7,1,0 dias) no mês; 2 na semana e 11 na anterior", () => {
-    const state = buildProductSeed();
-    const agora = agoraDoSeed(state);
+/** O CRM do Membro como `GET /crm/inicio/estatisticas` o devolve; tudo vazio por padrão. */
+function crmDoMembro(extra: Partial<EstatisticasDoCrm> = {}): EstatisticasDoCrm {
+  return {
+    desde: "2026-01-01T00:00:00.000Z",
+    ate: "2026-12-31T23:59:59.999Z",
+    fuso: FUSO,
+    mensagensEnviadas: [],
+    conversasResolvidas: [],
+    negociosGanhos: [],
+    ...extra,
+  };
+}
 
-    const mes = estatisticasDoMembro(state, THIAGO, "mes", agora).metricas.mensagensEnviadas;
-    expect([mes.valor, mes.anterior]).toEqual([13, 0]);
-    expect(mes.porBalde.reduce((a, b) => a + b, 0)).toBe(13);
-    expect(mes.porBalde.slice(-13)).toEqual([2, 3, 0, 4, 0, 2, 0, 0, 0, 0, 0, 1, 1]);
+/** O dia civil no fuso do Espaço de `base ± n dias` (o seed nasce às 09:00 UTC, 06:00 em São Paulo: sem virar de dia). */
+const diaDe = (instante: number, fuso = FUSO): string => diaCivilNoFuso(new Date(instante), fuso);
 
-    const semana = estatisticasDoMembro(state, THIAGO, "semana", agora).metricas.mensagensEnviadas;
-    expect([semana.valor, semana.anterior]).toEqual([2, 11]);
-    expect(semana.porBalde).toEqual([0, 0, 0, 0, 0, 1, 1]);
-    expect(semana.valorMonetario).toBeNull();
-
-    for (const periodo of ["trimestre", "ano"] as const) {
-      const leitura = estatisticasDoMembro(state, THIAGO, periodo, agora).metricas.mensagensEnviadas;
-      expect(leitura.valor, periodo).toBe(13);
-      expect(leitura.porBalde.reduce((a, b) => a + b, 0), periodo).toBe(13);
-    }
-
-    // Nota interna não é Mensagem enviada; a Conversa na lixeira sai da conta.
-    const sdr = exigir(state.conversations.find((c) => c.id === "cnv_sdr_1"), "cnv_sdr_1");
-    sdr.lifecycle = "naLixeira";
-    expect(estatisticasDoMembro(state, THIAGO, "mes", agora).metricas.mensagensEnviadas.valor).toBe(0);
-  });
-
-  it("uma Mensagem depois de `agora` não conta — nem no período, nem no balde", () => {
+describe("estatisticasDoMembro — o CRM vem por argumento (15-23)", () => {
+  it("mensagensEnviadas: 3 hoje vão ao último balde; o período anterior soma os dias anteriores", () => {
     const state = buildProductSeed();
     const base = baseDoSeed(state);
-    // Às 09:00 UTC em ponto, a de "hoje às 09:00" é exatamente `agora` e conta; um minuto antes, não.
-    expect(estatisticasDoMembro(state, THIAGO, "semana", new Date(base)).metricas.mensagensEnviadas.valor).toBe(2);
-    expect(estatisticasDoMembro(state, THIAGO, "semana", new Date(base - 60_000)).metricas.mensagensEnviadas.valor).toBe(1);
+    const agora = agoraDoSeed(state);
+    const crm = crmDoMembro({
+      mensagensEnviadas: [
+        { dia: diaDe(base), quantidade: 3 },
+        { dia: diaDe(base - DIA), quantidade: 1 },
+        { dia: diaDe(base - 8 * DIA), quantidade: 2 }, // semana anterior (hoje − 13 .. hoje − 7)
+        { dia: diaDe(base - 20 * DIA), quantidade: 9 }, // fora das duas janelas
+        { dia: diaDe(base + DIA), quantidade: 5 }, // depois de `agora`
+      ],
+    });
+    const leitura = estatisticasDoMembro(state, THIAGO, "semana", agora, crm).metricas.mensagensEnviadas;
+    expect([leitura.valor, leitura.anterior]).toEqual([4, 2]);
+    expect(leitura.porBalde).toEqual([0, 0, 0, 0, 0, 1, 3]);
+    expect(leitura.valorMonetario).toBeNull();
+  });
+
+  it("os baldes de mês, trimestre e ano recebem o dia no balde que o contém", () => {
+    const state = buildProductSeed();
+    const base = baseDoSeed(state);
+    const agora = agoraDoSeed(state);
+    const crm = crmDoMembro({ mensagensEnviadas: [{ dia: diaDe(base - 10 * DIA), quantidade: 4 }] });
+
+    const mes = estatisticasDoMembro(state, THIAGO, "mes", agora, crm).metricas.mensagensEnviadas;
+    expect(mes.porBalde.at(-11)).toBe(4);
+    expect(mes.porBalde.reduce((x, y) => x + y, 0)).toBe(4);
+
+    // 13 baldes de 7 dias, o primeiro começa em hoje − 90: hoje − 10 é o deslocamento 80, balde 11.
+    const trimestre = estatisticasDoMembro(state, THIAGO, "trimestre", agora, crm).metricas.mensagensEnviadas;
+    expect(trimestre.porBalde[11]).toBe(4);
+    expect(trimestre.valor).toBe(4);
+
+    const ano = estatisticasDoMembro(state, THIAGO, "ano", agora, crm).metricas.mensagensEnviadas;
+    expect(ano.valor).toBe(4);
+    expect(ano.porBalde.reduce((x, y) => x + y, 0)).toBe(4);
+  });
+
+  it("o dia vem no fuso do Espaço: 'hoje' em Kolkata cai no último balde, mesmo que em UTC seja outro dia", () => {
+    const state = buildProductSeed();
+    state.workspace.locale.timezone = "Asia/Kolkata";
+    const agora = new Date("2026-09-21T20:00:00Z"); // 01:30 do dia 22 em Kolkata
+    expect(diaDe(agora.getTime(), "Asia/Kolkata")).toBe("2026-09-22");
+    const crm = crmDoMembro({ fuso: "Asia/Kolkata", conversasResolvidas: [{ dia: "2026-09-22", quantidade: 2 }, { dia: "2026-09-21", quantidade: 1 }] });
+    const leitura = estatisticasDoMembro(state, THIAGO, "semana", agora, crm).metricas.conversasResolvidas;
+    expect(leitura.porBalde).toEqual([0, 0, 0, 0, 0, 1, 2]);
+  });
+
+  it("tarefasConcluidas continua do store, e soma com o que o CRM trouxe nas outras métricas", () => {
+    const state = buildProductSeed();
+    const base = baseDoSeed(state);
+    const agora = agoraDoSeed(state);
+    const tarefa = exigir(state.tasks.find((t) => t.listId === "lst_pos_venda"), "tarefa");
+    tarefa.completedAt = iso(base + HORA);
+    tarefa.assignees = [thiago];
+    const metricas = estatisticasDoMembro(state, THIAGO, "semana", agora, crmDoMembro({ mensagensEnviadas: [{ dia: diaDe(base), quantidade: 3 }] })).metricas;
+    expect(metricas.tarefasConcluidas.valor).toBe(1);
+    expect(metricas.mensagensEnviadas.valor).toBe(3);
   });
 
   it("tarefasConcluidas: Responsável, fora da lixeira e visível a quem olha; a anterior conta à parte", () => {
@@ -286,118 +331,87 @@ describe("estatisticasDoMembro", () => {
     concluir(exigir(naLixeira, "tarefa"), base - DIA);
     exigir(naLixeira, "tarefa").lifecycle = "naLixeira";
 
-    const leitura = estatisticasDoMembro(state, THIAGO, "semana", agora).metricas.tarefasConcluidas;
+    const leitura = estatisticasDoMembro(state, THIAGO, "semana", agora, undefined).metricas.tarefasConcluidas;
     expect([leitura.valor, leitura.anterior]).toEqual([2, 1]);
     expect(leitura.porBalde).toEqual([0, 0, 0, 1, 0, 0, 1]);
     expect(leitura.valorMonetario).toBeNull();
 
     // Reaberta, a Tarefa perde o Momento de conclusão e sai da conta.
     delete exigir(haTres, "tarefa").completedAt;
-    expect(estatisticasDoMembro(state, THIAGO, "semana", agora).metricas.tarefasConcluidas.valor).toBe(1);
+    expect(estatisticasDoMembro(state, THIAGO, "semana", agora, undefined).metricas.tarefasConcluidas.valor).toBe(1);
 
     // RN-PAI-10 — a Lista ficou privada sem concessão a Thiago: o que ele não vê não conta.
     const lista = exigir(state.lists.find((l) => l.id === "lst_pos_venda"), "lst_pos_venda");
     lista.isPrivate = true;
     expect(state.grants.some((g) => g.subjectId === THIAGO && (g.resourceId === lista.id || g.resourceId === lista.parentId))).toBe(false);
-    const semAcesso = estatisticasDoMembro(state, THIAGO, "semana", agora).metricas.tarefasConcluidas;
+    const semAcesso = estatisticasDoMembro(state, THIAGO, "semana", agora, undefined).metricas.tarefasConcluidas;
     expect([semAcesso.valor, semAcesso.anterior]).toEqual([0, 0]);
   });
 
-  it("conversasResolvidas: o Registro que `resolveConversation` grava, com Thiago como Ator", () => {
-    const state = buildProductSeed();
-    const resultado = resolveConversation(state, THIAGO, "cnv_1");
-    expect(resultado.ok).toBe(true);
-    const registro = exigir(state.activity.find((r) => r.objectId === "cnv_1" && r.actor.id === THIAGO), "registro");
-    expect(registro.action).toBe("Conversa resolvida");
-    // O Registro leva o relógio da máquina; `agora` vem dele, não de `new Date()`.
-    const agora = new Date(Date.parse(registro.at) + 60_000);
-    expect(estatisticasDoMembro(state, THIAGO, "semana", agora).metricas.conversasResolvidas.valor).toBe(1);
-    // As resolvidas do seed são de Julia.
-    expect(estatisticasDoMembro(state, "mem_julia", "mes", agora).metricas.conversasResolvidas.valor).toBeGreaterThan(0);
-  });
-
-  it("conversasResolvidas: conta cada ato, pelo instante do Registro; recusado, mesclagem e lixeira ficam fora", () => {
+  it("conversasResolvidas: cada dia do CRM entra com a quantidade que veio (não há Registro de Atividade no store)", () => {
     const state = buildProductSeed();
     const base = baseDoSeed(state);
     const agora = agoraDoSeed(state);
-    let n = 0;
-    const registrar = (quando: number, objectId: string, extra: Partial<Pick<ActivityRecord, "action" | "result" | "actor">> = {}) => {
-      n += 1;
-      state.activity.push({
-        id: `act_teste_${n}`,
-        workspaceId: state.workspace.id,
-        actor: thiago,
-        action: "Conversa resolvida",
-        objectType: "conversation",
-        objectId,
-        objectName: objectId,
-        at: iso(quando),
-        result: "ok",
-        ...extra,
-      });
-    };
-    registrar(base - DIA, "cnv_1");
-    registrar(base - 2 * DIA, "cnv_1"); // resolver, reabrir e resolver de novo: dois atos
-    registrar(base - 10 * DIA, "cnv_2"); // janela anterior
-    registrar(base - DIA, "cnv_3", { result: "denied" });
-    registrar(base - DIA, "cnv_4", { action: "Conversa resolvida por mesclagem" });
-    registrar(base - DIA, "cnv_5", { actor: { kind: "member", id: "mem_julia" } });
-    registrar(base - DIA, "cnv_inexistente"); // objeto eliminado (RN-PAI-30)
-    const naLixeira = exigir(state.conversations.find((c) => c.lifecycle === "naLixeira"), "Conversa na lixeira");
-    registrar(base - DIA, naLixeira.id);
-
-    const leitura = estatisticasDoMembro(state, THIAGO, "semana", agora).metricas.conversasResolvidas;
-    expect([leitura.valor, leitura.anterior]).toEqual([2, 1]);
-    expect(leitura.porBalde).toEqual([0, 0, 0, 0, 1, 1, 0]);
+    const crm = crmDoMembro({
+      conversasResolvidas: [
+        { dia: diaDe(base - DIA), quantidade: 2 },
+        { dia: diaDe(base - 2 * DIA), quantidade: 1 },
+        { dia: diaDe(base - 10 * DIA), quantidade: 4 }, // anterior
+      ],
+    });
+    const leitura = estatisticasDoMembro(state, THIAGO, "semana", agora, crm).metricas.conversasResolvidas;
+    expect([leitura.valor, leitura.anterior]).toEqual([3, 4]);
+    expect(leitura.porBalde).toEqual([0, 0, 0, 0, 1, 2, 0]);
   });
 
-  it("negociosGanhos: Proprietário, ganho, pelo encerramento; soma numa moeda só (RN-PAI-13)", () => {
+  it("negociosGanhos: soma os Valores numa moeda só; duas moedas, sem Valor ou só valor zero, nada de soma (RN-PAI-13)", () => {
     const state = buildProductSeed();
     const base = baseDoSeed(state);
     const agora = agoraDoSeed(state);
-    // Nenhum Negócio do seed é de Thiago: seis quaisquer, reescritos abaixo.
-    expect(state.deals.some((deal) => deal.ownerMemberId === THIAGO && deal.situation === "ganho")).toBe(false);
-    const negocios = state.deals.filter((d) => d.lifecycle === "ativo");
-    expect(negocios.length).toBeGreaterThanOrEqual(6);
-    const ganhar = (deal: Deal, quando: number, valor?: Deal["value"]) => {
-      deal.ownerMemberId = THIAGO;
-      deal.situation = "ganho";
-      deal.closedAt = iso(quando);
-      if (valor) deal.value = valor;
-      else delete deal.value;
-    };
-    const [a, b, c, d, e, f] = negocios;
-    ganhar(exigir(a, "negócio"), base - DIA, { amount: 16997, currency: "BRL" });
-    ganhar(exigir(b, "negócio"), base - 2 * DIA, { amount: 10997, currency: "BRL" });
-    ganhar(exigir(c, "negócio"), base - 3 * DIA); // sem Valor: conta, não soma
-    ganhar(exigir(d, "negócio"), base - 9 * DIA, { amount: 5000, currency: "BRL" }); // anterior
-    ganhar(exigir(e, "negócio"), base - DIA, { amount: 1000, currency: "BRL" });
-    exigir(e, "negócio").lifecycle = "naLixeira";
-    const deOutro = exigir(f, "negócio");
-    deOutro.situation = "ganho";
-    deOutro.closedAt = iso(base - DIA);
-    deOutro.ownerMemberId = "mem_rafael";
+    const ganhos = (...dias: Array<readonly [number, string, number, number]>) =>
+      crmDoMembro({ negociosGanhos: dias.map(([antes, moeda, quantidade, valor]) => ({ dia: diaDe(base - antes * DIA), moeda, quantidade, valor })) });
+    const ler = (crm: EstatisticasDoCrm) => estatisticasDoMembro(state, THIAGO, "semana", agora, crm).metricas.negociosGanhos;
 
-    const leitura = estatisticasDoMembro(state, THIAGO, "semana", agora).metricas.negociosGanhos;
-    expect([leitura.valor, leitura.anterior]).toEqual([3, 1]);
-    expect(leitura.porBalde).toEqual([0, 0, 0, 1, 1, 1, 0]);
-    expect(leitura.valorMonetario).toEqual({ amount: 27994, currency: "BRL" });
+    const brl = ler(ganhos([1, "BRL", 2, 27994], [3, "BRL", 1, 0], [9, "BRL", 1, 5000]));
+    expect([brl.valor, brl.anterior]).toEqual([3, 1]);
+    expect(brl.porBalde).toEqual([0, 0, 0, 1, 0, 2, 0]);
+    // O Negócio sem Valor conta, mas não soma nem escolhe moeda.
+    expect(brl.valorMonetario).toEqual({ amount: 27994, currency: "BRL" });
 
-    // Uma segunda moeda na janela: somar seria converter sem taxa. Nada de soma.
-    exigir(c, "negócio").value = { amount: 3000, currency: "USD" };
-    const misturada = estatisticasDoMembro(state, THIAGO, "semana", agora).metricas.negociosGanhos;
+    // Uma segunda moeda COM Valor na janela: somar seria converter sem taxa.
+    const misturada = ler(ganhos([1, "BRL", 2, 27994], [2, "USD", 1, 3000]));
     expect(misturada.valor).toBe(3);
     expect(misturada.valorMonetario).toBeNull();
 
-    // Nenhum ganho no período: nada a somar.
-    expect(estatisticasDoMembro(state, "mem_julia", "semana", agora).metricas.negociosGanhos.valorMonetario).toBeNull();
+    // Moeda diferente mas Valor zero: não conta como moeda.
+    expect(ler(ganhos([1, "BRL", 1, 100], [2, "USD", 1, 0])).valorMonetario).toEqual({ amount: 100, currency: "BRL" });
+
+    // Só ganhos sem Valor, ou nenhum ganho: nada a somar.
+    expect(ler(ganhos([1, "BRL", 1, 0])).valorMonetario).toBeNull();
+    expect(ler(crmDoMembro()).valorMonetario).toBeNull();
+  });
+
+  it("sem resposta do CRM (carregando) ou com série null (Papel sem `ler`), o CRM é zero e as Tarefas seguem", () => {
+    const state = buildProductSeed();
+    const agora = agoraDoSeed(state);
+    for (const crm of [undefined, crmDoMembro({ mensagensEnviadas: null, conversasResolvidas: null, negociosGanhos: null })]) {
+      const metricas = estatisticasDoMembro(state, THIAGO, "mes", agora, crm).metricas;
+      expect([metricas.mensagensEnviadas.valor, metricas.conversasResolvidas.valor, metricas.negociosGanhos.valor]).toEqual([0, 0, 0]);
+      expect(metricas.negociosGanhos.valorMonetario).toBeNull();
+    }
   });
 
   it("devolve as quatro métricas, na ordem declarada, com um número por balde", () => {
     const state = buildProductSeed();
+    const base = baseDoSeed(state);
     const agora = agoraDoSeed(state);
+    const crm = crmDoMembro({
+      mensagensEnviadas: [{ dia: diaDe(base), quantidade: 2 }],
+      conversasResolvidas: [{ dia: diaDe(base - DIA), quantidade: 1 }],
+      negociosGanhos: [{ dia: diaDe(base - 2 * DIA), moeda: "BRL", quantidade: 1, valor: 10 }],
+    });
     for (const periodo of PERIODOS_DO_RESUMO) {
-      const estatisticas = estatisticasDoMembro(state, THIAGO, periodo, agora);
+      const estatisticas = estatisticasDoMembro(state, THIAGO, periodo, agora, crm);
       expect(Object.keys(estatisticas.metricas)).toEqual([...METRICAS_DO_RESUMO]);
       for (const metrica of METRICAS_DO_RESUMO) {
         const leitura = estatisticas.metricas[metrica];
@@ -406,6 +420,59 @@ describe("estatisticasDoMembro", () => {
         expect(leitura.porBalde.reduce((x, y) => x + y, 0)).toBe(leitura.valor);
       }
     }
+  });
+});
+
+describe("janelasDeConsultaDoCrm e juntarEstatisticasDoCrm (15-23)", () => {
+  // Segunda-feira, 21/09/2026, 12:00 em São Paulo.
+  const agora = new Date("2026-09-21T15:00:00Z");
+
+  it("duas janelas por período, cada uma dentro dos 400 dias que a api aceita (o ano inteiro e o anterior não cabem numa só)", () => {
+    for (const periodo of PERIODOS_DO_RESUMO) {
+      const janela = janelaDoResumo(periodo, agora, FUSO);
+      const { atual, anterior } = janelasDeConsultaDoCrm(janela, FUSO);
+      for (const consulta of [atual, anterior]) {
+        expect(conferirJanelaDeEstatisticas(consulta.desde, consulta.ate, FUSO), periodo).toEqual({ ok: true });
+      }
+    }
+    const ano = janelasDeConsultaDoCrm(janelaDoResumo("ano", agora, FUSO), FUSO);
+    expect((Date.parse(ano.anterior.ate) - Date.parse(ano.anterior.desde)) / DIA).toBeGreaterThan(300);
+  });
+
+  it("a atual começa no início do primeiro balde e termina no fim do dia de hoje; a anterior termina um ms antes da atual", () => {
+    const janela = janelaDoResumo("semana", agora, FUSO);
+    const { atual, anterior } = janelasDeConsultaDoCrm(janela, FUSO);
+    expect(atual.desde).toBe(janela.inicio.toISOString());
+    expect(isoNoFuso(new Date(atual.ate), FUSO)).toMatch(/^2026-09-21T23:59/);
+    expect(diaCivilNoFuso(new Date(Date.parse(atual.ate) + 1), FUSO)).toBe("2026-09-22");
+    expect(Date.parse(anterior.ate) + 1).toBe(janela.inicio.getTime());
+    // A anterior abre no início de um dia do fuso, para a api devolver o dia inteiro.
+    expect(isoNoFuso(new Date(anterior.desde), FUSO)).toMatch(/T00:00$/);
+  });
+
+  it("as janelas não mudam com o relógio do minuto: a chave do SWR fica estável o dia inteiro", () => {
+    for (const periodo of PERIODOS_DO_RESUMO) {
+      const a = janelasDeConsultaDoCrm(janelaDoResumo(periodo, agora, FUSO), FUSO);
+      const b = janelasDeConsultaDoCrm(janelaDoResumo(periodo, new Date(agora.getTime() + 60_000), FUSO), FUSO);
+      expect(b, periodo).toEqual(a);
+    }
+  });
+
+  it("juntar põe as séries das duas janelas numa só; série null nas duas continua null", () => {
+    const atual = crmDoMembro({ desde: "2026-09-15T03:00:00.000Z", ate: "2026-09-22T02:59:59.999Z", mensagensEnviadas: [{ dia: "2026-09-21", quantidade: 1 }], conversasResolvidas: null });
+    const anterior = crmDoMembro({ desde: "2026-09-08T03:00:00.000Z", ate: "2026-09-15T02:59:59.999Z", mensagensEnviadas: [{ dia: "2026-09-10", quantidade: 2 }], conversasResolvidas: null });
+    const junto = juntarEstatisticasDoCrm(atual, anterior);
+    expect(junto.mensagensEnviadas).toEqual([{ dia: "2026-09-10", quantidade: 2 }, { dia: "2026-09-21", quantidade: 1 }]);
+    expect(junto.conversasResolvidas).toBeNull();
+    expect(junto.negociosGanhos).toEqual([]);
+    expect([junto.desde, junto.ate, junto.fuso]).toEqual(["2026-09-08T03:00:00.000Z", "2026-09-22T02:59:59.999Z", FUSO]);
+  });
+
+  it("sem uma das respostas, a junta usa só a que chegou", () => {
+    const so = crmDoMembro({ mensagensEnviadas: [{ dia: "2026-09-21", quantidade: 1 }] });
+    expect(juntarEstatisticasDoCrm(so, undefined)).toBe(so);
+    expect(juntarEstatisticasDoCrm(undefined, so)).toBe(so);
+    expect(juntarEstatisticasDoCrm(undefined, undefined)).toBeUndefined();
   });
 });
 
