@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 11
+open_count: 12
 waived_count: 1
 fixed_count: 4
-total_count: 16
-last_updated: 2026-11-06T10:41:35.401Z
+total_count: 17
+last_updated: 2026-11-06T10:56:35.691Z
 ---
 
 # Broken Windows Ledger
@@ -31,6 +31,7 @@ last_updated: 2026-11-06T10:41:35.401Z
 | 14 | 15 | deviation | apps/web/src/app/(shell)/configuracoes/membros/page.tsx |  | 15-36: o dialogo de remover Membro e a pagina do Membro filtram o tipo conversation de previewSuccession (so contam as Conversas das tabelas); as Conversas de Grupo do modelo antigo agora passam ao Sucessor em removeMember mas nao aparecem na contagem ate o 3.5.4 tirar o modelo antigo | open |  | 2026-11-06T10:20:00.602Z |  |
 | 15 | 15 | deviation | apps/api/src/repositorios/crm/atividades.ts |  | 15-37: a paginacao de GET /atividades por cursor de tempo (ate = at da ultima linha, ISO em ms, exclusivo) pode pular linhas gravadas no mesmo instante na fronteira da pagina (now() e da transacao: um gesto com varias Atividades compartilha o em; at perde os microssegundos). Aceito no desenho do plano; trocar por cursor composto (em, id) se a Auditoria (15-09) paginar paginas cheias | open |  | 2026-11-06T10:29:12.443Z |  |
 | 16 | 15 | deviation | apps/web/src/features/ia/automacoes/editor-de-automacao.tsx |  | 15-39: ate o 15-21 passar os Funis de useFunis, inoperante() na tela da IA mostra Automacao de escopo Funil como 'escopo eliminado (Funil)' e a aplicacao otimista de criarAutomacao com escopo Funil recusa localmente; o servidor confere certo pela tabela. Tambem escopo na lixeira vira 'escopo eliminado' em vez de 'escopo na lixeira' | open |  | 2026-11-06T10:41:35.401Z |  |
+| 17 | 15 | deviation | apps/web/src/features/ferramentas/pedidos-de-entrada.tsx |  | 15-17: ate o 15-22 mandar crm, a simulacao local de Pedido de Entrada e de clique de Captacao (e a importacao de Grupos) no navegador recusa com 'Contato do participante nao resolvido.' (ou 'Canal nao encontrado.'); o servidor so resolve e cria o Contato do Participante em importarGruposDoCanal, os eventos do provedor ainda nao tem rota em POST /operacoes | open |  | 2026-11-06T10:56:35.691Z |  |
 
 ````json
 [
@@ -239,6 +240,19 @@ last_updated: 2026-11-06T10:41:35.401Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-06T10:41:35.401Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 17,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/features/ferramentas/pedidos-de-entrada.tsx",
+    "line": null,
+    "description": "15-17: ate o 15-22 mandar crm, a simulacao local de Pedido de Entrada e de clique de Captacao (e a importacao de Grupos) no navegador recusa com 'Contato do participante nao resolvido.' (ou 'Canal nao encontrado.'); o servidor so resolve e cria o Contato do Participante em importarGruposDoCanal, os eventos do provedor ainda nao tem rota em POST /operacoes",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T10:56:35.691Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }
