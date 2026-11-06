@@ -16,6 +16,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { TIPOS_DE_ATENDIMENTO } from "./operations/canais";
 import { buildSeed } from "./seed";
 import { semearCrmAntigo } from "./seed-crm-antigo";
 
@@ -169,8 +170,44 @@ describe("semearCrmAntigo(buildSeed()) — o CRM antigo de demonstração como e
       expect(dona?.contactId, tarefa.id).toBe(contato);
       expect(tarefa.provenance?.sourceId, tarefa.id).toBe(contato);
     }
+    // O que as Participações e a Proveniência guardam por conta própria bate com o Contato que o demo carrega.
+    const contatoPorId = new Map(colecao(estado, "contacts").map((c) => [String(c.id), c]));
+    const whatsappDe = (id: string): string | undefined =>
+      ((contatoPorId.get(id)?.identifiers ?? []) as readonly { type: string; value: string }[]).find((i) => i.type === "identidadeDeWhatsApp")?.value;
     for (const grupo of estado.grupos) {
-      for (const p of grupo.participacoes) if (p.contactId !== undefined) expect(contatos.has(p.contactId), `${grupo.id} · ${p.id}`).toBe(true);
+      for (const p of grupo.participacoes) {
+        if (p.contactId === undefined) continue;
+        expect(contatos.has(p.contactId), `${grupo.id} · ${p.id}`).toBe(true);
+        expect(p.identificadorExternoDoParticipante, `${grupo.id} · ${p.id}`).toBe(whatsappDe(p.contactId));
+      }
+      for (const pedido of grupo.pedidosDeEntrada) {
+        expect(pedido.identificadorExternoDoSolicitante, `${grupo.id} · ${pedido.id}`).toBe(whatsappDe(pedido.contactId));
+      }
+    }
+    const canal = colecao(estado, "channels").find((c) => c.id === "chn_wpp");
+    for (const grupo of estado.grupos) {
+      const doCanal = grupo.participacoes.find((p) => p.canalParticipanteId === "chn_wpp");
+      if (doCanal) expect(doCanal.identificadorExternoDoParticipante, grupo.id).toBe(canal?.externalId);
+    }
+    // C36: todo Canal de atendimento de uma Lista conversacional existe no demo, está ativo e é de tipo permitido; a
+    // Conversa de cada Tarefa de Pós-venda passa por um Canal da Lista.
+    const canaisPorId = new Map(colecao(estado, "channels").map((c) => [String(c.id), c]));
+    for (const lista of estado.lists.filter((l) => l.modeloDeTarefa === "conversacional")) {
+      expect(lista.canaisDeAtendimento?.length ?? 0, lista.name).toBeGreaterThan(0);
+      for (const canalId of lista.canaisDeAtendimento ?? []) {
+        const canal = canaisPorId.get(canalId);
+        expect(canal?.lifecycle, `${lista.name} · ${canalId}`).toBe("ativo");
+        expect(TIPOS_DE_ATENDIMENTO as readonly string[], `${lista.name} · ${canalId}`).toContain(canal?.channelType);
+      }
+    }
+    const pv = estado.lists.find((l) => l.id === "lst_pos_venda");
+    for (const tarefa of estado.tasks.filter((t) => t.listId === "lst_pos_venda")) {
+      const conversaId = estado.links.find((l) => l.fromId === tarefa.id && l.toType === "conversation")?.toId;
+      expect(pv?.canaisDeAtendimento, tarefa.id).toContain(colecao(estado, "conversations").find((c) => c.id === conversaId)?.channelId);
+    }
+    for (const tarefa of estado.tasks.filter((t) => t.listId === "lst_pos_venda")) {
+      const c = contatoPorId.get(tarefa.provenance?.sourceId ?? "");
+      expect(tarefa.provenance?.sourceName, tarefa.id).toBe(`${String(c?.firstName)} ${String(c?.lastName)}`.trim());
     }
   });
 });

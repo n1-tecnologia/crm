@@ -1,14 +1,18 @@
 /**
  * O seed que o app carrega: só o que o produto já define — Comercial ›
- * Caixa de entrada (espelho dos Funis) e Gestão › Financeiro › Contas a
+ * atalho da Caixa de entrada e Pós-venda, e Gestão › Financeiro › Contas a
  * pagar. Os Espaços de demonstração (Entrega, Marketing) e a árvore antiga
  * do Comercial (Clientes, Propostas, Prospecção, Indicadores) continuam no
  * seed completo, que é o que os testes exercitam; aqui eles são podados com
  * tudo o que dependia deles.
+ *
+ * Desde o 15-31 (D-15-13) o seed não traz mais o CRM antigo nem a Pasta "Meus
+ * negócios" com as Listas espelho dos Funis; o CRM de demonstração é o
+ * `bootstrap:crm-demo`. As Reuniões do processo comercial, que moravam nessas
+ * Listas, ficam na árvore de demonstração e saem com ela.
  */
 
 import { buildSeed } from "./seed";
-import { MEUS_NEGOCIOS_ID } from "./seed-comercial";
 import type { DataState } from "./state";
 import type { Id } from "./types";
 
@@ -17,30 +21,8 @@ const DEMO_COMERCIAL: readonly Id[] = ["fld_clientes", "fld_propostas", "lst_pro
 
 export function buildProductSeed(): DataState {
   const state = buildSeed();
-  rehomeMeetings(state);
   pruneDemo(state);
   return state;
-}
-
-/**
- * As Reuniões do processo comercial (Tarefa de Tipo Reunião ligada a um
- * Negócio) moravam na árvore de demonstração; no produto elas vivem na Lista
- * de "Meus negócios" do Funil do Negócio, na coluna da call — é o que a tela
- * `/crm/reunioes/<id>` abre.
- */
-function rehomeMeetings(state: DataState): void {
-  const reuniao = new Set(state.taskTypes.filter((t) => t.name === "Reunião").map((t) => t.id));
-  for (const task of state.tasks) {
-    if (!task.taskTypeId || !reuniao.has(task.taskTypeId) || task.lifecycle !== "ativo") continue;
-    const link = state.links.find((l) => l.fromType === "task" && l.fromId === task.id && l.toType === "deal");
-    const deal = link ? state.deals.find((d) => d.id === link.toId) : undefined;
-    const funnel = deal ? state.funnels.find((f) => f.id === deal.funnelId) : undefined;
-    const list = funnel ? state.lists.find((l) => l.parentId === MEUS_NEGOCIOS_ID && l.name === funnel.name) : undefined;
-    if (!list?.statusSet) continue;
-    const coluna = list.statusSet.definitions.find((d) => /call/i.test(d.name)) ?? list.statusSet.definitions.find((d) => d.category === "emAndamento") ?? list.statusSet.definitions[0];
-    if (!coluna) continue;
-    Object.assign(task, { listId: list.id, statusId: coluna.id });
-  }
 }
 
 /** Remove os contêineres de demonstração e, por varredura, toda referência a eles. */

@@ -6,13 +6,17 @@
  * novo já aberto, como DO-FLW-03 manda). Tudo no Canal de WhatsApp
  * "Comercial SP" (`chn_wpp`), que passa a ter Grupos habilitados.
  *
- * Só ids que sobrevivem à poda do seed do produto (`cnt_*`, `mem_*`,
- * `chn_wpp`, `cnv_5/9/13/17`); nada aqui toca `cnv_1`.
+ * Desde o 15-31 (D-15-13) o seed NÃO cria mais Contato nem Canal: o `bootstrap:crm-demo` os carrega nas
+ * tabelas novas, com os MESMOS ids. As Participações guardam o id do Contato (`cnt_*`) e o número de
+ * WhatsApp dele, e o Canal participante guarda o id e o identificador externo do Canal (`chn_wpp`);
+ * tudo calculado aqui, sem ler as coleções do CRM antigo do estado. O que o seed antigo fazia SOBRE
+ * esses registros (a Tag "Em grupo de alunos" nos Contatos, os Grupos habilitados no Canal e os
+ * Envios de Flow nas Conversas do CRM) saiu junto com eles; `seed-crm-antigo.ts` os refaz para os testes.
+ * Nada aqui toca `cnv_1`.
  */
 
 import type { DataState } from "./state";
-import type { ActorRef, Comunidade, Contact, Conversation, Flow, Grupo, Id, LinkDeCaptacao, Message, ParticipacaoDeGrupo, TelaDeFlow } from "./types";
-import { contactDisplayName } from "./derive";
+import type { ActorRef, Comunidade, Conversation, Flow, Grupo, Id, LinkDeCaptacao, ParticipacaoDeGrupo, TelaDeFlow } from "./types";
 import { nextId, recordActivity } from "./operations/activity";
 import { definicaoPublicavel } from "./operations/ferramentas/flows-validacao";
 import { reconciliarGrupoDeAvisos } from "./operations/ferramentas/participacoes";
@@ -25,18 +29,37 @@ interface Clock {
 const member = (id: Id): ActorRef => ({ kind: "member", id });
 const SYSTEM: ActorRef = { kind: "system", id: "sistema" };
 const CANAL = "chn_wpp";
+/** O identificador externo do Canal de WhatsApp "Comercial SP" no demo (`crm-demo.json`). */
+const CANAL_IDENTIFICADOR_EXTERNO = "+5511987654321";
+const CANAL_NOME = "Comercial SP";
 export const COMUNIDADE_ALUNOS_ID = "com_alunos_ff";
 export const FLOW_TRIAGEM_ID = "flw_triagem";
 export const LINK_LANCAMENTO_ID = "lcp_lanc_set";
 
+/** O número de WhatsApp do Contato `cnt_N` (N de 1 a 30) como o demo o carrega: `5511` + 970 000 000 + 1 237 por posição. */
+const numeroDoDemo = (n: number): string => `5511${970_000_000 + (n - 1) * 1_237}`;
+
+/** Os nomes dos Contatos que a Atividade das Ferramentas cita (o id e o número vêm da conta acima). */
+const NOMES_NO_DEMO: Readonly<Record<number, string>> = {
+  9: "Eduardo Correia",
+  12: "Juliana Araújo",
+  19: "Rodrigo Peixoto",
+  29: "Otávio Prado",
+  30: "Natália Quirino",
+};
+
+/** Um Contato do demo como as Ferramentas o citam: só o id (`cnt_N`), o número de WhatsApp e o nome. */
+interface ContatoDoDemo {
+  readonly id: Id;
+  readonly numero: string;
+  readonly nome: string;
+}
+
 export function applyFerramentas(state: DataState, clock: Clock): void {
   const { at, workspaceId } = clock;
-  const canal = state.channels.find((c) => c.id === CANAL);
-  if (!canal) return;
-  canal.groupsEnabled = true;
 
-  const contato = (n: number): Contact | undefined => state.contacts.find((c) => c.id === `cnt_${n}`);
-  const numero = (c: Contact): string => c.identifiers.find((i) => i.type === "identidadeDeWhatsApp")?.value ?? "";
+  const contato = (n: number): ContatoDoDemo => ({ id: `cnt_${n}`, numero: numeroDoDemo(n), nome: NOMES_NO_DEMO[n] ?? "" });
+  const numero = (c: ContatoDoDemo): string => c.numero;
 
   // Uma Tag para a Automação de boas-vindas gravar — Tags nunca nascem de regra fixa (RN-FLW-14).
   state.tags.push({ id: "tag_aluno_grupo", workspaceId, name: "Em grupo de alunos", color: "#22c55e", appliesTo: ["contact"], lifecycle: "ativo" });
@@ -56,8 +79,7 @@ export function applyFerramentas(state: DataState, clock: Clock): void {
     comments: [],
   });
 
-  const participacao = (grupo: Grupo, c: Contact | undefined, entradaEm: string, extras: Partial<ParticipacaoDeGrupo> = {}): ParticipacaoDeGrupo | undefined => {
-    if (!c) return undefined;
+  const participacao = (grupo: Grupo, c: ContatoDoDemo, entradaEm: string, extras: Partial<ParticipacaoDeGrupo> = {}): ParticipacaoDeGrupo => {
     const origem = extras.origem ?? "adicionado";
     const p: ParticipacaoDeGrupo = {
       id: nextId("prg"),
@@ -76,7 +98,7 @@ export function applyFerramentas(state: DataState, clock: Clock): void {
     return p;
   };
   const oCanal = (grupo: Grupo, entradaEm: string, papel: ParticipacaoDeGrupo["papel"] = "administrador") => {
-    grupo.participacoes.push({ id: nextId("prg"), grupoId: grupo.id, canalParticipanteId: CANAL, identificadorExternoDoParticipante: canal.externalId, entradaEm, entradaEstimada: false, papel, origem: "adicionado" });
+    grupo.participacoes.push({ id: nextId("prg"), grupoId: grupo.id, canalParticipanteId: CANAL, identificadorExternoDoParticipante: CANAL_IDENTIFICADOR_EXTERNO, entradaEm, entradaEstimada: false, papel, origem: "adicionado" });
   };
 
   // ── Comunidade + Grupo de avisos ───────────────────────────────────────
@@ -175,13 +197,10 @@ export function applyFerramentas(state: DataState, clock: Clock): void {
   oCanal(turma3, at(30));
   for (let n = 16; n <= 18; n += 1) participacao(turma3, contato(n), at(25 - (n - 16) * 4), { origem: "linkDeCaptacao", linkDeCaptacaoId: LINK_LANCAMENTO_ID });
   const c19 = contato(19);
-  if (c19) {
-    turma3.pedidosDeEntrada.push({ id: "ped_3", grupoId: turma3.id, contactId: c19.id, identificadorExternoDoSolicitante: numero(c19), solicitadoEm: at(10, 9), estado: "aprovado", decididoPor: member("mem_julia"), decididoEm: at(10, 11), origemInformada: "linkDeCaptacao", linkDeCaptacaoId: LINK_LANCAMENTO_ID });
-    participacao(turma3, c19, at(10, 11), { origem: "linkDeCaptacao", linkDeCaptacaoId: LINK_LANCAMENTO_ID });
-  }
+  turma3.pedidosDeEntrada.push({ id: "ped_3", grupoId: turma3.id, contactId: c19.id, identificadorExternoDoSolicitante: numero(c19), solicitadoEm: at(10, 9), estado: "aprovado", decididoPor: member("mem_julia"), decididoEm: at(10, 11), origemInformada: "linkDeCaptacao", linkDeCaptacaoId: LINK_LANCAMENTO_ID });
+  participacao(turma3, c19, at(10, 11), { origem: "linkDeCaptacao", linkDeCaptacaoId: LINK_LANCAMENTO_ID });
   for (const [id, n, dias] of [["ped_1", 29, 2], ["ped_2", 30, 1]] as const) {
     const c = contato(n);
-    if (!c) continue;
     turma3.pedidosDeEntrada.push({ id, grupoId: turma3.id, contactId: c.id, identificadorExternoDoSolicitante: numero(c), solicitadoEm: at(dias, 15), estado: "pendente", origemInformada: "linkDeCaptacao", linkDeCaptacaoId: LINK_LANCAMENTO_ID });
   }
   state.grupos.push(turma3);
@@ -319,52 +338,6 @@ export function applyFerramentas(state: DataState, clock: Clock): void {
   flow.versoes.push(v1, v2);
   state.flows.push(flow);
 
-  // ── Envios e Respostas do Flow nas Conversas do WhatsApp ───────────────
-  const envio = (conversa: Conversation, quando: string, respondeu: { formacao: string; cidade: string } | undefined, quandoRespondeu: string) => {
-    const enviada: Message = {
-      id: nextId("msg"),
-      conversationId: conversa.id,
-      direction: "enviada",
-      actor: member("mem_julia"),
-      content: "Antes de falarmos, me conta em 30 segundos sobre você? É só tocar em Abrir.",
-      attachments: [{ fileId: flow.id, order: 0, mediaType: "flow", displayName: flow.nome }],
-      deliveryStatus: "lida",
-      internalReads: [],
-      reactions: [],
-      externalEdits: [],
-      createdAt: quando,
-      flow: { flowId: flow.id, versaoId: v1.id, numeroDaVersao: 1, flowNome: flow.nome, rotuloDoBotao: "Abrir", telaInicial: "perfil" },
-    };
-    conversa.messages.push(enviada);
-    if (!respondeu) return;
-    const c = state.contacts.find((x) => x.id === conversa.contactId);
-    const via = c?.identifiers.find((i) => i.type === "identidadeDeWhatsApp");
-    conversa.messages.push({
-      id: nextId("msg"),
-      conversationId: conversa.id,
-      direction: "recebida",
-      actor: { kind: "integration", id: CANAL },
-      ...(via ? { viaIdentifierId: via.id } : {}),
-      content: `Resposta ao Flow “${flow.nome}”: formacao: ${respondeu.formacao} · cidade: ${respondeu.cidade} · aceite: true`,
-      attachments: [{ fileId: flow.id, order: 0, mediaType: "flow", displayName: flow.nome }],
-      externalId: nextId("ext"),
-      internalReads: [],
-      reactions: [],
-      externalEdits: [],
-      createdAt: quandoRespondeu,
-      respostaDeFlow: { flowId: flow.id, versaoId: v1.id, numeroDaVersao: 1, flowNome: flow.nome, identificadorDeRespostaDoProvedor: nextId("resp"), em: quandoRespondeu, valores: { ...respondeu, aceite: true }, telaDeConclusao: "confirmacao", mensagemDeOrigemId: enviada.id },
-    });
-  };
-  const conversa = (id: Id) => state.conversations.find((c) => c.id === id && c.channelId === CANAL);
-  const cnv5 = conversa("cnv_5");
-  const cnv9 = conversa("cnv_9");
-  const cnv13 = conversa("cnv_13");
-  const cnv17 = conversa("cnv_17");
-  if (cnv5) envio(cnv5, at(20, 10), { formacao: "dentista", cidade: "Campinas" }, at(20, 11));
-  if (cnv9) envio(cnv9, at(14, 15), { formacao: "biomedico", cidade: "Santo André" }, at(13, 9));
-  if (cnv13) envio(cnv13, at(6, 9), { formacao: "medico", cidade: "São Paulo" }, at(6, 10));
-  if (cnv17) envio(cnv17, at(1, 16), undefined, "");
-
   // ── Conversas de grupo (INV-GRP-05) ─────────────────────────────────────
   const conversaDeGrupo = (id: Id, grupo: Grupo, criadaEm: string): Conversation => {
     const c: Conversation = {
@@ -398,11 +371,8 @@ export function applyFerramentas(state: DataState, clock: Clock): void {
   enviadaNoGrupo(cnvAvisos, "Lembrete: a aula desta terça é sobre rinomodelação. O material está na área do aluno.", at(2, 9));
   const cnvTurma2 = conversaDeGrupo("cnv_grp_turma_02", turma2, at(74));
   enviadaNoGrupo(cnvTurma2, "Turma #02, sejam bem-vindos! Eu sou a Júlia e acompanho vocês por aqui.", at(74, 10));
-  const c10 = contato(10);
-  const via10 = c10?.identifiers.find((i) => i.type === "identidadeDeWhatsApp");
-  if (c10) {
-    cnvTurma2.messages.push({ id: nextId("msg"), conversationId: cnvTurma2.id, direction: "recebida", actor: { kind: "integration", id: CANAL }, ...(via10 ? { viaIdentifierId: via10.id } : {}), content: "Obrigado! Já fiz a primeira aula, ficou muito claro.", attachments: [], externalId: nextId("ext"), internalReads: [], reactions: [], externalEdits: [], createdAt: at(73, 9) });
-  }
+  // A resposta do Contato `cnt_10` não aponta o Identificador (`viaIdentifierId`): ele mora na tabela do demo.
+  cnvTurma2.messages.push({ id: nextId("msg"), conversationId: cnvTurma2.id, direction: "recebida", actor: { kind: "integration", id: CANAL }, content: "Obrigado! Já fiz a primeira aula, ficou muito claro.", attachments: [], externalId: nextId("ext"), internalReads: [], reactions: [], externalEdits: [], createdAt: at(73, 9) });
 
   // ── Grupo de avisos = união das Turmas (RN-COM-04) ─────────────────────
   reconciliarGrupoDeAvisos(state, comunidade.id, at(0, 8));
@@ -435,39 +405,25 @@ export function applyFerramentas(state: DataState, clock: Clock): void {
       },
     ],
   });
-  for (const g of [turma1, turma2, turma3]) {
-    for (const p of g.participacoes) {
-      const c = p.contactId ? state.contacts.find((x) => x.id === p.contactId) : undefined;
-      if (c && p.saidaEm === undefined && !c.tagIds.includes("tag_aluno_grupo")) c.tagIds.push("tag_aluno_grupo");
-    }
-  }
-
   // ── Registros de Atividade históricos ──────────────────────────────────
   const registro = (objectType: string, obj: { id: Id; nome: string }, action: string, quando: string, actor: ActorRef = member("mem_julia"), detail?: string) =>
     recordActivity(state, { actor, action, objectType, objectId: obj.id, objectName: obj.nome, at: quando, ...(detail ? { detail } : {}) });
-  registro("comunidade", comunidade, "Comunidade criada", at(120), member("mem_julia"), `${canal.name} · Grupo de avisos criado pelo provedor`);
-  registro("grupo", turma1, "Grupo criado", at(118), member("mem_julia"), `${canal.name} · na Comunidade ${comunidade.nome}`);
+  registro("comunidade", comunidade, "Comunidade criada", at(120), member("mem_julia"), `${CANAL_NOME} · Grupo de avisos criado pelo provedor`);
+  registro("grupo", turma1, "Grupo criado", at(118), member("mem_julia"), `${CANAL_NOME} · na Comunidade ${comunidade.nome}`);
   registro("grupo", turma2, "Grupo criado", at(75));
   registro("grupo", turma3, "Grupo criado", at(30));
-  registro("grupo", parceiros, "Grupo importado", at(40), member("mem_rafael"), `${canal.name} · 5 participantes · Captação inativa até você ativá-la`);
+  registro("grupo", parceiros, "Grupo importado", at(40), member("mem_rafael"), `${CANAL_NOME} · 5 participantes · Captação inativa até você ativá-la`);
   registro("linkDeCaptacao", link, "Link de Captação criado", at(112), member("mem_julia"), "/l/lancamento-setembro · 3 Grupos · por ordem");
-  const c9 = contato(9);
-  if (c9) registro("grupo", turma1, "Contato saiu do Grupo", at(60, 14), SYSTEM, `${contactDisplayName(c9)} · saiu`);
-  const c12 = contato(12);
-  if (c12) {
-    registro("grupo", turma2, "Participante removido", at(30, 10), member("mem_julia"), contactDisplayName(c12));
-    registro("grupo", turma2, "Participante adicionado", at(30, 16), member("mem_julia"), contactDisplayName(c12));
-  }
-  if (c19) registro("grupo", turma3, "Pedido de Entrada aprovado", at(10, 11), member("mem_julia"), contactDisplayName(c19));
+  registro("grupo", turma1, "Contato saiu do Grupo", at(60, 14), SYSTEM, `${contato(9).nome} · saiu`);
+  registro("grupo", turma2, "Participante removido", at(30, 10), member("mem_julia"), contato(12).nome);
+  registro("grupo", turma2, "Participante adicionado", at(30, 16), member("mem_julia"), contato(12).nome);
+  registro("grupo", turma3, "Pedido de Entrada aprovado", at(10, 11), member("mem_julia"), c19.nome);
   for (const p of turma3.pedidosDeEntrada.filter((x) => x.estado === "pendente")) {
-    const c = state.contacts.find((x) => x.id === p.contactId);
-    if (c) registro("grupo", turma3, "Pedido de Entrada recebido", p.solicitadoEm, SYSTEM, contactDisplayName(c));
+    registro("grupo", turma3, "Pedido de Entrada recebido", p.solicitadoEm, SYSTEM, NOMES_NO_DEMO[Number(p.contactId?.replace("cnt_", ""))] ?? "");
   }
   registro("grupo", avisos, "Mensagem enviada ao Grupo", at(2, 9), member("mem_julia"), "Lembrete: a aula desta terça é sobre rinomodelação.");
   registro("comunidade", comunidade, "Mensagem enviada à Comunidade", at(2, 9), member("mem_julia"), "no Grupo de avisos · Lembrete: a aula desta terça é sobre rinomodelação.");
   registro("flow", flow, "Flow criado", at(45), member("mem_thiago"), "Versão 1 em rascunho, com a Tela inicial.");
   registro("flow", flow, "Versão publicada", at(40, 10), member("mem_thiago"), "v2 aberta em rascunho a partir da publicada (DO-FLW-03).");
   registro("flow", flow, "Componente adicionado", at(12, 17), member("mem_thiago"), "v2 · perfil · Campo de texto (whatsapp_clinica)");
-  registro("flow", flow, "Flow enviado", at(1, 16), member("mem_julia"), `v1 · ${cnv17?.title ?? ""}`);
-  registro("flow", flow, "Resposta de Flow recebida", at(6, 10), SYSTEM, `v1 · ${cnv13 ? (state.contacts.find((c) => c.id === cnv13.contactId)?.firstName ?? "") : ""}`);
 }

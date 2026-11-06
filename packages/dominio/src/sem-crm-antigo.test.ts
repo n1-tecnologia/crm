@@ -56,12 +56,8 @@ const CONGELADOS = [
   "operations/structure.ts",
   "operations/tarefa-conversacional-nas-tabelas.ts",
   "operations/tasks.ts",
-  "seed-comercial.ts",
-  "seed-contas-a-receber.ts",
-  "seed-ferramentas.ts",
-  "seed-pos-venda.ts",
-  "seed-produto.ts",
-  "seed.ts",
+  // 15-31: o construtor do CRM antigo de demonstração, só para testes de código que sai (15-32, 15-33, 15-42). Sai no 15-43.
+  "seed-crm-antigo.ts",
 ] as const;
 
 const LE_O_CRM_ANTIGO =
