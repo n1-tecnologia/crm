@@ -218,6 +218,24 @@ antigas (por isso nunca vão a log). A 011 não apaga nem altera linha de
 (a rede da 009 para o `n1_api`). Ela só vai a produção no deploy da Fase 15 (D-01:
 o corte é de uma vez); antes, `npm run migrar -- --seco` lista o que seria aplicado.
 
+**A `012` (Fase 15, `012-atividade-do-crm.sql`).** Cria `plataforma.crm_atividades`,
+o Registro de Atividade do CRM novo (D-15-09, UCR-03): espelha `ActivityRecord` do
+domínio (ator, delegante, ação, tipo/id/nome do objeto, momento, resultado, antes,
+depois, detalhe), com PK `(workspace_id, id)`, checks de ator, delegante, resultado e
+ação (`crm_atividades_*_ck`) e dois índices (por objeto e por tempo). **Não** tem chave
+estrangeira para o objeto: a Atividade sobrevive à eliminação dele (INV-ET-12), por isso
+guarda `objeto_nome`. É **só inserção por contrato do repositório**
+(`repositorios/crm/atividades.ts` só expõe `registrarAtividade` e `listar`; nenhum
+`update`/`delete`), como `contato_notas`, sem trigger no banco. O gesto grava a
+Atividade no MESMO cliente do `comTransacao`, então um gesto que falha não deixa a
+linha; o `detalhe` nunca leva dado pessoal (o conteúdo da Nota fica de fora). Não toca
+`plataforma.registros` (D-03). A 012 vai a produção só no corte da Fase 15 (D-15-03),
+pelo dono, e depois dela rode `npm run banco:conceder`; antes disso, só em Postgres de
+Docker, e `npm run migrar -- --seco` lista o que seria aplicado. `migracao-012.test.ts`
+prova as restrições, a idempotência, a falha no meio, a RLS e a sobrevivência à
+eliminação do objeto. A leitura (`GET /atividades`) e a fusão das duas linhas do tempo
+na web são o plano 15-37.
+
 ## Colunas geradas e índices de `002`
 
 `002-registros-colunas-geradas.sql` estende `plataforma.registros` com três
