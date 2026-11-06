@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 15
 current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
 status: executing
-stopped_at: Completed 15-43-PLAN.md
-last_updated: "2026-11-06T23:06:24.857Z"
+stopped_at: Completed 15-34-PLAN.md
+last_updated: "2026-11-06T23:34:38.580Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 15 execution started
-state_head: 43fd8fd6abbc6b573de5ea2f656127f77e16d863
+state_head: 4e674345c596db89e28fdf9544b477f6b85fc405
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 271
-  completed_plans: 266
+  completed_plans: 267
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 15 (Unificação do CRM: telas no modelo novo e remoção do modelo antigo) — EXECUTING
-Plan: 42 of 43
+Plan: 43 of 43
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 15 execution started
 
@@ -485,6 +485,7 @@ Progress: [██████░░░░] 63%
 | Phase 15 P41 | 10 min | 2 tasks | 16 files |
 | Phase 15 P42 | 65 min | 3 tasks | 59 files |
 | Phase 15 P43 | 70 min | 2 tasks | 42 files |
+| Phase 15 P34 | 45 min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -795,6 +796,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 15]: 15-42: responseWindowOpenUntil ficou (o popup de enviar Flow a chama) e passou a receber o Canal de plataforma.canais; createTask so aceita Vinculo de nascimento conferido (alvoConferido); o cliente das Automacoes de Contas a receber chega por OpcoesDaAgenda.clientes
 - [Phase 15]: 15-43: Channel nao sobrevive como tipo; as composicoes de Grupo/Flow usam CanalDaComposicao (local) e o recorte { channelType, provider }; ConversaDeGrupo guarda Snooze e DeletionMark porque a Caixa de Grupo os le
 - [Phase 15]: 15-43: seed-comercial.ts (MEUS_NEGOCIOS_ID) apagado junto com PASTA_MEUS_NEGOCIOS_ID; a Lista da Pasta Meus negocios nao filtra mais Tarefas de Negocio (WINDOWS #69 fechada)
+- [Phase 15]: 15-34: o gate rodou 3 vezes (a 3a verde; as duas primeiras so no flake do outbox-worker, que a fase nao tocou); o ensaio final repetiu os numeros do 15-30 em todos os 19 Espacos; 15-CORTE.md e o roteiro literal do corte, so do dono; as decisoes (a) copia de 2026-11-05, (b) remover e (c) seguir foram tomadas em nome do dono e estao em 15-PROVAS.md
+- [Phase 15]: 15-34: WINDOWS #73 aberta: depois do corte o Enviar Flow a um Contato fica sem destinatario (as Conversas 1:1 saem de registros); decisao do dono
 
 ### Pending Todos
 
@@ -856,6 +859,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-06T23:06:24.627Z
-Stopped at: Completed 15-43-PLAN.md
+Last session: 2026-11-06T23:34:38.354Z
+Stopped at: Completed 15-34-PLAN.md
 Resume file: None
