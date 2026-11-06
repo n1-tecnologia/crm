@@ -211,7 +211,7 @@ interface ResolvedResource {
 }
 
 /** The Resource types B38b reaches — Chat Sessions are deliberately absent. */
-function resolveResource(state: DataState, resourceId: string): ResolvedResource | null {
+export function resolveResource(state: DataState, resourceId: string): ResolvedResource | null {
   const space = state.spaces.find((s) => s.id === resourceId);
   if (space) return { type: "space", id: space.id, name: space.name, label: "Espaço" };
   const folder = state.folders.find((f) => f.id === resourceId);

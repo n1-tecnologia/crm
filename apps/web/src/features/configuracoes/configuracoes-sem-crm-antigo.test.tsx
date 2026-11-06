@@ -37,6 +37,10 @@ vi.mock("@/dados/crm/contatos", () => ({
 }));
 
 import ConfiguracoesPage from "../../app/(shell)/configuracoes/page";
+import CamposPage from "../../app/(shell)/configuracoes/campos/page";
+import TagsPage from "../../app/(shell)/configuracoes/tags/page";
+import CatalogosPage from "../../app/(shell)/configuracoes/catalogos/page";
+import { resolveResource } from "./governance-access-dialog";
 
 const LOCALE = { timezone: "America/Sao_Paulo", currency: "BRL", language: "pt-BR" };
 
@@ -128,5 +132,117 @@ describe("Configurações — Funil padrão (D-15-13)", () => {
     render(<ConfiguracoesPage />);
     expect(screen.getByText(/7 de 5\.000/)).toBeTruthy();
     expect(screen.queryByText(/1 de 5\.000/)).toBeNull();
+  });
+});
+
+const FRASE_DO_CRM = "O uso no CRM não aparece aqui.";
+
+/** O CRM antigo "sujo": Contatos, Empresas e Negócios que, se a tela os lesse, apareceriam nas contagens. */
+function estadoComCrmAntigo(extra: Record<string, unknown>): DataState {
+  const dados = {
+    workspace: { locale: LOCALE },
+    members: [{ id: "mem_a", displayName: "Maryane", state: "ativo", roleId: "role_prop" }],
+    roles: [{ id: "role_prop", base: "proprietario", name: "Proprietário", system: true }],
+    spaces: [],
+    folders: [],
+    lists: [{ id: "l1", name: "Contas a pagar", lifecycle: "ativo" }],
+    tasks: [],
+    catalog: [],
+    tags: [],
+    fieldDefinitions: [],
+    grants: [],
+    contacts: [
+      { id: "c1", tagIds: ["tag1"], originId: "o1", qualificationId: "q1", consents: [{ purposeId: "fc1" }], fieldValues: [{ definitionId: "fd_contato", state: "ativo" }] },
+      { id: "c2", tagIds: ["tag1"], originId: "o1", qualificationId: "q1", consents: [], fieldValues: [{ definitionId: "fd_contato", state: "ativo" }] },
+    ],
+    companies: [{ id: "e1", tagIds: ["tag1"], fieldValues: [] }],
+    deals: [{ id: "d1", tagIds: ["tag1"], originId: "o1", lossReasonId: "mp1", winReasonId: "mg1", fieldValues: [] }],
+    conversations: [],
+    funnels: [],
+    collections: [],
+    ...extra,
+  } as unknown as DataState;
+  estado.atual = dados;
+  return dados;
+}
+
+describe("Catálogos — sem contagem do CRM antigo (3.4.7)", () => {
+  it("origem, qualificação, finalidade e motivos mostram a frase em vez de contar Contatos e Negócios", () => {
+    estadoComCrmAntigo({
+      catalog: [
+        { id: "o1", kind: "origem", name: "Indicação", order: 0, lifecycle: "ativo" },
+        { id: "q1", kind: "qualificacao", name: "Lead quente", order: 0, lifecycle: "ativo" },
+        { id: "fc1", kind: "finalidadeConsentimento", name: "Novidades", order: 0, lifecycle: "ativo" },
+        { id: "mp1", kind: "motivoPerda", name: "Preço", order: 0, lifecycle: "ativo" },
+        { id: "mg1", kind: "motivoGanho", name: "Prazo", order: 0, lifecycle: "ativo" },
+      ],
+    });
+    render(<CatalogosPage />);
+    expect(screen.getAllByText(FRASE_DO_CRM)).toHaveLength(5);
+    expect(screen.queryByText(/em nenhum Contato/)).toBeNull();
+    expect(screen.queryByText(/Contato\(s\)/)).toBeNull();
+    expect(screen.queryByText(/Negócio\(s\)/)).toBeNull();
+  });
+});
+
+describe("Tags — o uso em Tarefas continua, o uso no CRM sai", () => {
+  it("conta Tarefas e troca a contagem de Contatos, Empresas e Negócios pela frase", () => {
+    estadoComCrmAntigo({
+      tags: [{ id: "tag1", name: "Urgente", color: "#ff0000", lifecycle: "ativo" }],
+      tasks: [{ id: "t1", tagIds: ["tag1"] }, { id: "t2", tagIds: ["tag1"] }],
+    });
+    render(<TagsPage />);
+    expect(screen.getByText("2 Tarefas")).toBeTruthy();
+    expect(screen.getByText(FRASE_DO_CRM)).toBeTruthy();
+    expect(screen.queryByText(/Contatos/)).toBeNull();
+    expect(screen.queryByText(/Negócios/)).toBeNull();
+  });
+
+  it("sem Tarefa com a Tag, a coluna mostra a frase e não afirma 'em nenhum registro'", () => {
+    estadoComCrmAntigo({
+      tags: [{ id: "tag1", name: "Urgente", color: "#ff0000", lifecycle: "ativo" }],
+    });
+    render(<TagsPage />);
+    expect(screen.getByText(FRASE_DO_CRM)).toBeTruthy();
+    expect(screen.queryByText("em nenhum registro")).toBeNull();
+  });
+});
+
+describe("Campos — o preenchimento em Tarefas continua, o do CRM sai", () => {
+  it("Campo de Tarefa conta registros; Campo de Contato mostra a frase", () => {
+    estadoComCrmAntigo({
+      lists: [{ id: "l1", name: "Contas a pagar", lifecycle: "ativo" }],
+      tasks: [{ id: "t1", fieldValues: [{ definitionId: "fd_tarefa", state: "ativo" }] }],
+      fieldDefinitions: [
+        { id: "fd_tarefa", name: "Valor", type: "numero", target: "task", definedAtType: "list", definedAtId: "l1", required: false, lifecycle: "ativo" },
+        { id: "fd_contato", name: "Porte", type: "texto", target: "contact", required: false, lifecycle: "ativo" },
+      ],
+    });
+    render(<CamposPage />);
+    expect(screen.getByText("1 registro(s)")).toBeTruthy();
+    expect(screen.getAllByText(FRASE_DO_CRM)).toHaveLength(1);
+    expect(screen.queryByText("2 registro(s)")).toBeNull();
+  });
+});
+
+describe("Governança — Funil antigo não é Recurso", () => {
+  it("procurar o id de um Funil não acha o recurso 'Funil'", () => {
+    const dados = estadoComCrmAntigo({
+      funnels: [{ id: "fnl_antigo", name: "Funil Antigo Fantasma", lifecycle: "ativo" }],
+      collections: [{ id: "col1", name: "Coleção" }],
+    });
+    expect(resolveResource(dados, "fnl_antigo")).toBeNull();
+  });
+
+  it("Espaço, Pasta, Lista e Coleção continuam sendo Recurso", () => {
+    const dados = estadoComCrmAntigo({
+      spaces: [{ id: "spc1", name: "Gestão" }],
+      folders: [{ id: "fld1", name: "Financeiro" }],
+      collections: [{ id: "col1", name: "ERP" }],
+    });
+    expect(resolveResource(dados, "spc1")?.label).toBe("Espaço");
+    expect(resolveResource(dados, "fld1")?.label).toBe("Pasta");
+    expect(resolveResource(dados, "l1")?.label).toBe("Lista");
+    expect(resolveResource(dados, "col1")?.label).toBe("Coleção");
   });
 });
