@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 17
+open_count: 19
 waived_count: 1
 fixed_count: 4
-total_count: 22
-last_updated: 2026-11-06T11:36:42.762Z
+total_count: 24
+last_updated: 2026-11-06T11:50:25.932Z
 ---
 
 # Broken Windows Ledger
@@ -37,6 +37,8 @@ last_updated: 2026-11-06T11:36:42.762Z
 | 20 | 15 | deviation | apps/web/src/app/(shell)/crm/caixa-de-entrada/configuracoes/canais/[canal]/page.tsx |  | 15-12: a ficha e o cartao do Canal ja nao mostram Mensagens de modelo nem 'N modelo(s) aprovado(s)': plataforma.canais nao guarda modelos (so o Canal do seed tinha) e o Canal do seed ficou sem ficha (a operacao antiga configurarCanal saiu). O Proprietario padrao de Contato do Canal fica so leitura porque PATCH /canais/:id nao aceita esse campo. Se o dono quiser editar o Proprietario padrao ou sincronizar modelos, abrir campo na api e no dominio | open |  | 2026-11-06T11:29:14.941Z |  |
 | 21 | 15 | deviation | apps/web/src/features/crm/adicionar-canal-dialog.tsx |  | 15-12: o popup 'Adicionar Canal' das Listas agora so escolhe; 'Conectar um Canal novo' navega para a pagina de conectar, entao um dialogo de criar Lista meio preenchido se perde ao sair (o popup nao cria mais Canal, D-15-12). A carga por Membro na pagina da Fila conta so Conversas abertas da Fila (situacao=aberta), antes contava todas as ativas inclusive resolvidas | open |  | 2026-11-06T11:29:15.005Z |  |
 | 22 | 15 | deviation | apps/web/src/app/(shell)/crm/contatos/[contato]/page.tsx |  | 15-13: Busca, Lixeira antiga, Notificacoes, /crm/meus-negocios e Caixa de Entrada ainda produzem links para ids do modelo antigo; as fichas de Contato, Empresa e Negocio nao recuam mais, entao esses links abrem 'nao encontrado' ate cada superficie migrar para o CRM novo. Decisao do plano: sem ponte de id antigo para novo; depois do script de migracao (ids preservados) o mesmo endereco abre a ficha nova | open |  | 2026-11-06T11:36:42.762Z |  |
+| 23 | 15 | deviation | apps/web/src/app/(shell)/buscar/page.tsx |  | 15-14: a Busca acha Conversa so pelo titulo (GET /conversas?q= nao olha o texto das Mensagens, como a do modelo antigo olhava). Se o dono quiser a busca por conteudo, abrir o filtro na api (junto de plataforma.mensagens) e no dominio | open |  | 2026-11-06T11:50:25.871Z |  |
+| 24 | 15 | deviation | apps/web/src/features/inicio/panorama-do-robo.ts |  | 15-14: o panorama do robo do Inicio ainda conta Conversas abertas do Espaco (conversas.abertas), Contatos e Negocios de state.conversations/contacts/deals; so as Conversas atribuidas a pessoa vem da api (hook useNotificacoesDoMembro). Fica para o plano do Inicio (15-18/15-23) | open |  | 2026-11-06T11:50:25.932Z |  |
 
 ````json
 [
@@ -323,6 +325,32 @@ last_updated: 2026-11-06T11:36:42.762Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-06T11:36:42.762Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 23,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/app/(shell)/buscar/page.tsx",
+    "line": null,
+    "description": "15-14: a Busca acha Conversa so pelo titulo (GET /conversas?q= nao olha o texto das Mensagens, como a do modelo antigo olhava). Se o dono quiser a busca por conteudo, abrir o filtro na api (junto de plataforma.mensagens) e no dominio",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T11:50:25.871Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 24,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/features/inicio/panorama-do-robo.ts",
+    "line": null,
+    "description": "15-14: o panorama do robo do Inicio ainda conta Conversas abertas do Espaco (conversas.abertas), Contatos e Negocios de state.conversations/contacts/deals; so as Conversas atribuidas a pessoa vem da api (hook useNotificacoesDoMembro). Fica para o plano do Inicio (15-18/15-23)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T11:50:25.932Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }
