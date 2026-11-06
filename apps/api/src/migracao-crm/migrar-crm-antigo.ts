@@ -308,3 +308,17 @@ export async function relatorioSeco(espaco: string): Promise<string> {
     return montarRelatorio(entrada);
   });
 }
+
+// --- esqueleto do RED (Task 3): a forma pública, sem o comportamento ---
+
+export interface ResultadoDaVerificacao {
+  readonly espaco: string;
+  readonly ok: boolean;
+  readonly problemas: readonly string[];
+  readonly guardadas: Readonly<Record<string, number>>;
+  readonly mensagem: string;
+}
+
+export async function verificar(espaco: string): Promise<ResultadoDaVerificacao> {
+  return { espaco, ok: true, problemas: [], guardadas: {}, mensagem: "" };
+}

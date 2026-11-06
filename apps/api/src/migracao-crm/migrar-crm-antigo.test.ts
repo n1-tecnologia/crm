@@ -16,7 +16,7 @@ import { readFileSync } from "node:fs";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import { encerrar, pool } from "../persistencia/conexao";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm } from "../testes/banco-crm";
-import { emTransacaoSoLeitura, guardarCrmAntigo, migrarCrmAntigo, relatorioSeco } from "./migrar-crm-antigo";
+import { emTransacaoSoLeitura, guardarCrmAntigo, migrarCrmAntigo, relatorioSeco, verificar } from "./migrar-crm-antigo";
 
 interface LinhaDaFixture {
   readonly colecao: string;
@@ -440,5 +440,96 @@ describeComBanco('a Pasta "Meus negócios" (15-27 Task 2, D-15-14)', () => {
     await guardarCrmAntigo(alvo);
 
     expect(await retratoDoEspaco(outro)).toEqual(outroAntes);
+  });
+});
+
+describeComBanco("--verificar: a pós-condição do corte (15-27 Task 3)", () => {
+  beforeAll(async () => {
+    await prepararBancoCrm();
+  });
+  afterEach(async () => {
+    for (const ws of criados.splice(0)) await limparEspaco(ws);
+  });
+  afterAll(async () => {
+    await encerrar();
+  });
+
+  it("depois do --guardar: ok, e imprime a contagem por coleção de registros_crm_antigo", async () => {
+    const ws = await semearEspaco("verifok");
+    await guardarCrmAntigo(ws);
+
+    const resultado = await verificar(ws);
+
+    expect(resultado.ok).toBe(true);
+    expect(resultado.problemas).toEqual([]);
+    expect(resultado.guardadas).toEqual({ companies: 1, contactCompanyLinks: 1, contacts: 2, channels: 1, conversations: 2, deals: 1, funnels: 1 });
+    expect(resultado.mensagem).toMatch(/\bok\b/i);
+    expect(resultado.mensagem).toMatch(/contacts\s*:?\s*2/);
+    expect(resultado.mensagem).not.toContain("Pessoa");
+  });
+
+  it("uma linha de contacts reinserida em registros: falha e diz qual coleção", async () => {
+    const ws = await semearEspaco("verifcontato");
+    await guardarCrmAntigo(ws);
+    await pool().query("insert into plataforma.registros (workspace_id, colecao, id, dados) values ($1, 'contacts', 'cnt_volta', '{\"id\":\"cnt_volta\"}')", [ws]);
+
+    const resultado = await verificar(ws);
+
+    expect(resultado.ok).toBe(false);
+    expect(resultado.problemas.join("\n")).toMatch(/contacts/);
+  });
+
+  it("uma Conversa sem Grupo em registros: falha; só a de Grupo é permitida", async () => {
+    const ws = await semearEspaco("verifconversa");
+    await guardarCrmAntigo(ws);
+    expect((await verificar(ws)).ok).toBe(true);
+    await pool().query("insert into plataforma.registros (workspace_id, colecao, id, dados) values ($1, 'conversations', 'cnv_volta', '{\"id\":\"cnv_volta\"}')", [ws]);
+
+    const resultado = await verificar(ws);
+
+    expect(resultado.ok).toBe(false);
+    expect(resultado.problemas.join("\n")).toMatch(/conversations/);
+  });
+
+  it("uma linha de crm_de_para sem origem em registros_crm_antigo: falha e diz 'órfã'", async () => {
+    const ws = await semearEspaco("veriforfa");
+    await guardarCrmAntigo(ws);
+    await pool().query(
+      "insert into plataforma.crm_de_para (workspace_id, colecao_antiga, id_antigo, tabela_nova, id_novo) values ($1, 'contacts', 'cnt_que_nao_foi_guardado', 'contatos', 'cnt_que_nao_foi_guardado')",
+      [ws],
+    );
+
+    const resultado = await verificar(ws);
+
+    expect(resultado.ok).toBe(false);
+    expect(resultado.problemas.join("\n")).toMatch(/órfã/);
+  });
+
+  it("depois do --migrar --funil=migrar: as linhas de de-para do Funil e das Etapas têm origem, e a verificação passa", async () => {
+    const ws = await semearEspaco("verifmigrar", SO_O_FUNIL);
+    await migrarCrmAntigo(ws, { funil: "migrar" });
+    expect((await pool().query("select 1 from plataforma.crm_de_para where workspace_id = $1", [ws])).rowCount).toBe(3);
+
+    const resultado = await verificar(ws);
+
+    expect(resultado.ok).toBe(true);
+  });
+
+  it("antes de guardar: falha apontando as coleções que ainda estão em registros", async () => {
+    const ws = await semearEspaco("verifantes");
+    const resultado = await verificar(ws);
+    expect(resultado.ok).toBe(false);
+    expect(resultado.problemas.join("\n")).toMatch(/contacts/);
+  });
+
+  it("só lê: o Espaço fica igual, revisão inclusive", async () => {
+    const ws = await semearEspaco("verifleitura");
+    const antes = await retratoDoEspaco(ws);
+    await verificar(ws);
+    expect(await retratoDoEspaco(ws)).toEqual(antes);
+  });
+
+  it("recusa um Espaço que não existe", async () => {
+    await expect(verificar("ws_nao_existe_1527")).rejects.toThrow(/Espaço não encontrado/);
   });
 });
