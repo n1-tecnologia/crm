@@ -48,6 +48,46 @@ e tem os próprios testes. Este módulo só grava o que ele monta, com
 `semear()` (`../persistencia/repositorio.ts`), a mesma escrita que qualquer
 importação usaria.
 
+## O demo do CRM (`bootstrap:crm-demo`, 15-29, D-15-13)
+
+Depois da 3.5.3 o seed não cria CRM: um Espaço novo nasce sem Contato, Empresa, Funil, Negócio, Canal e Conversa,
+e a Caixa de Entrada fica vazia. Para **desenvolvimento**, `crm-demo.ts` dá a um Espaço local o CRM de mentira
+que o seed antigo tinha, agora nas tabelas do CRM novo (39 Contatos, 12 Empresas, 4 Funis com 23 Etapas, 19
+Negócios, 3 Canais, 16 Conversas e 62 Mensagens):
+
+```
+DATABASE_URL=postgres://postgres:x@localhost:5432/postgres npm run bootstrap:crm-demo -w @n1/api -- --espaco ws_dev
+```
+
+**É só de desenvolvimento.** Nunca roda em produção nem em banco remoto:
+
+- o host de `DATABASE_URL` tem de ser `localhost` ou `127.0.0.1` (a regra de `testes/banco-crm.ts`, copiada), conferido
+  **antes** de abrir o pool e de novo dentro de `carregarCrmDemo` antes da primeira consulta. O `apps/api/.env` aponta
+  para o banco real, então rode sempre com a `DATABASE_URL` local explícita; sem ela o script recusa;
+- `--espaco` é obrigatório, tem de casar `^ws_[a-z0-9_]+$` e **já existir** em `plataforma.workspaces` (o script não cria
+  Espaço: use `semear(buildSeed())`, o `bootstrap:gestao` ou o fluxo de dev que o criou);
+- o Espaço não pode ter **nenhum Contato**. Rodar de novo recusa ("o Espaço já tem Contatos") e não duplica nada: a
+  conferência roda dentro da transação, com a linha do Espaço travada.
+
+Saída: `0` ok, `2` recusa ou erro de uso, `1` erro inesperado. A recusa de banco remoto sai com `2` sem abrir conexão.
+
+**De onde vêm as linhas.** `crm-demo.json` foi gerado UMA vez pelo mapeador do 15-28 (`planejarMigracao` e
+`planejarFunis`) sobre a fixture sintética congelada do seed antigo (`migracao-crm/fixtures/crm-antigo-do-seed.json`),
+com um script descartável fora do repositório; nunca de dado de produção. Os ids antigos foram preservados, então os
+Vínculos de Tarefa, a `provenance` e os escopos que o seed novo ainda guarda em `registros` apontam para o que o demo
+carrega. As Etapas têm ids fixos no JSON. O que o mapeador deixou de fora (temperatura, Tags, Canal do chat do site e
+do LinkedIn e as Conversas deles...) está em `naoMigrados` do JSON, só como coleção, id e categoria. **Este arquivo não
+importa nada de `migracao-crm/`** (que sai do repositório depois do corte) nem do modelo antigo do domínio: só lê o JSON.
+
+**Como grava.** Uma lista de colunas constante por tabela (`COLUNAS_POR_TABELA`), um `insert ... select` por tabela e
+por pedaço de 500 linhas com `jsonb_to_recordset`, na ordem das chaves estrangeiras (Funis, Etapas, Canais, Contatos —
+sobreviventes antes dos mesclados —, Identificadores, Empresas, vínculos, Negócios, Conversas, Mensagens, consentimentos),
+numa transação só. Nome de tabela e de coluna vêm só de constantes, todo valor entra por `$n` e o `workspace_id` é o
+argumento, nunca um campo do JSON (T-15-73). `crm_de_para` fica vazio: o demo não é uma migração.
+
+**Os Canais do demo nascem `desconectada`**, como os da migração: a Caixa mostra as Conversas, mas nada envia nem
+recebe de verdade. Para refazer o demo num Espaço, apague o CRM do Espaço (ou crie outro); o script nunca apaga.
+
 ## Bootstrap × evolver (Plan 02-08)
 
 Dois módulos deste diretório resolvem problemas diferentes, e nenhum dos dois
