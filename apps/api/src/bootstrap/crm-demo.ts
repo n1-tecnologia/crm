@@ -3,7 +3,7 @@
  * Empresas, Negócios, Canais e Conversas que o seed antigo tinha, agora nas tabelas do CRM novo.
  *
  * As linhas vêm de `crm-demo.json`, gerado UMA vez a partir da fixture sintética congelada do seed (mapeador do
- * 15-28). Este arquivo NÃO importa nada de `migracao-crm/` (que sai do repositório depois do corte) nem do
+ * 15-28). Este arquivo NÃO importa nada da pasta do script de migração do CRM antigo (que sai do repositório depois do corte) nem do
  * modelo antigo do domínio: só lê o JSON e grava com SQL.
  *
  * Por que JSON + colunas explícitas, e não um `.sql` de dados: a chave primária e as chaves estrangeiras
