@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 15
 current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
 status: executing
-stopped_at: Completed 15-23-PLAN.md
-last_updated: "2026-11-06T17:55:35.258Z"
+stopped_at: Completed 15-40-PLAN.md
+last_updated: "2026-11-06T18:42:12.606Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 15 execution started
-state_head: 60b184f468d6b5f33867b75944d57cced92ca8e7
+state_head: 8910ff4f271c7636aaa4e0d434c4f0102952f027
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 271
-  completed_plans: 255
+  completed_plans: 256
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 15 (Unificação do CRM: telas no modelo novo e remoção do modelo antigo) — EXECUTING
-Plan: 31 of 43
+Plan: 32 of 43
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 15 execution started
 
@@ -474,6 +474,7 @@ Progress: [██████░░░░] 63%
 | Phase 15 P25 | 11 min | 3 tasks | 7 files |
 | Phase 15 P26 | 27 min | 2 tasks | 15 files |
 | Phase 15 P23 | 16 min | 3 tasks | 15 files |
+| Phase 15 P40 | 50 min | 2 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -767,6 +768,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 15]: 15-23: as estatisticas do Inicio pedem duas janelas (atual e anterior) a api, porque ela aceita 400 dias por pedido e o ano com o anterior passa de 700; as janelas sao estaveis o dia inteiro (chave do SWR)
 - [Phase 15]: 15-23: leitura parcial dita por alvo: Mensagens novas diz 'nas primeiras N de M Conversas' e o Painel marca 'Parcial: primeiros 200' so nos Widgets cuja Fonte e do CRM (Tarefa nunca e parcial)
 - [Phase 15]: 15-23: Origem e Motivo de Perda do Painel ficam sem linhas ate NegocioResumo trazer origem/motivoPerda; Paineis semeados com ids antigos de Funil/Fila abrem zerados no CRM novo (WINDOWS, Sessao 20.3)
+- [Phase 15]: 15-40: quadro-negocios.tsx virou quadro-conversacional.tsx (era tambem o quadro da Lista conversacional); Canais da Lista via useCanais; CONGELADOS de sem-listas-espelho (web) chegou a zero
 
 ### Pending Todos
 
@@ -828,6 +830,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-06T17:55:33.300Z
-Stopped at: Completed 15-23-PLAN.md
+Last session: 2026-11-06T18:42:12.359Z
+Stopped at: Completed 15-40-PLAN.md
 Resume file: None
