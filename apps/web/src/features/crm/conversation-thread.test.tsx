@@ -748,3 +748,85 @@ describe("ConversationThread — Nota interna grava em contato_notas (15-25, 3.4
     expect(screen.queryByText("Nota registrada no Contato.")).toBeNull();
   });
 });
+
+describe("ConversationThread — o aviso de consentimento de marketing pela regra do CRM novo (15-25, 3.4.2)", () => {
+  const AVISO = /não tem consentimento vigente para marketing neste Canal/;
+  const MARKETING_ID = "cat_fin_mkt";
+
+  function consentimento(extras: Partial<ConsentimentoDoContato>): ConsentimentoDoContato {
+    return {
+      id: `cns_${Math.random().toString(36).slice(2, 8)}`,
+      contatoId: CONTATO_ID,
+      finalidadeId: MARKETING_ID,
+      tipoDeCanal: "whatsapp",
+      decisao: "concedido",
+      em: "2026-09-01T10:00:00.000Z",
+      origem: "formulario",
+      evidenciaMensagemId: null,
+      registradoPor: "mem_thiago",
+      registradoEm: "2026-09-01T10:00:00.000Z",
+      ...extras,
+    };
+  }
+
+  /** O fio na aba do Suporte (WhatsApp), pronto, com os consentimentos já lidos. */
+  async function fioDoSuporte() {
+    montar({ canalSelecionado: "chn_suporte" });
+    await fioPronto("cnv_suporte mensagem");
+    await waitFor(() => expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/consentimentos"))).toBe(true));
+  }
+
+  it("(25) consentimento de marketing revogado no tipo do Canal da aba: o aviso aparece, lido de GET /contatos/:id/consentimentos", async () => {
+    consentimentosDaApi = [
+      consentimento({ decisao: "concedido", em: "2026-08-01T10:00:00.000Z" }),
+      consentimento({ decisao: "revogado", em: "2026-09-15T10:00:00.000Z", registradoEm: "2026-09-15T10:00:00.000Z" }),
+    ];
+    await fioDoSuporte();
+    await waitFor(() => expect(screen.getByText(AVISO)).toBeTruthy());
+    // É aviso, não bloqueio: o texto livre dentro da janela continua saindo (marketing é só o modelo).
+    fireEvent.change(compositor(), { target: { value: "oi" } });
+    expect(screen.getByRole("button", { name: "Enviar" }).getAttribute("aria-disabled")).not.toBe("true");
+  });
+
+  it("(26) consentimento concedido (do tipo do Canal ou de “todos”): o aviso não aparece", async () => {
+    consentimentosDaApi = [consentimento({ tipoDeCanal: "todos", decisao: "concedido" })];
+    await fioDoSuporte();
+    // Dá um instante para o aviso aparecer, se fosse aparecer, depois de a leitura chegar.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(screen.queryByText(AVISO)).toBeNull();
+  });
+
+  it("(27) sem registro nenhum vale a regra de antes: sem consentimento vigente, o aviso aparece", async () => {
+    consentimentosDaApi = [];
+    await fioDoSuporte();
+    await waitFor(() => expect(screen.getByText(AVISO)).toBeTruthy());
+  });
+
+  it("(28) a revogação de OUTRO tipo de Canal não pesa neste: concedido no WhatsApp, revogado no Instagram, sem aviso na aba do WhatsApp", async () => {
+    consentimentosDaApi = [
+      consentimento({ tipoDeCanal: "whatsapp", decisao: "concedido", em: "2026-08-01T10:00:00.000Z" }),
+      consentimento({ tipoDeCanal: "instagram", decisao: "revogado", em: "2026-09-15T10:00:00.000Z" }),
+    ];
+    await fioDoSuporte();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(screen.queryByText(AVISO)).toBeNull();
+  });
+
+  it("(29) enquanto a leitura dos consentimentos não chegou (ou falhou) o fio não inventa aviso", async () => {
+    const padrao = rotaPadrao;
+    rotaPadrao = async (url, init) => {
+      if (new URL(url).pathname.endsWith("/consentimentos")) return resposta(500, { ok: false, error: "falhou" });
+      return padrao(url, init);
+    };
+    montar({ canalSelecionado: "chn_suporte" });
+    await fioPronto("cnv_suporte mensagem");
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(screen.queryByText(AVISO)).toBeNull();
+  });
+});
