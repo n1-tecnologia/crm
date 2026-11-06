@@ -65,7 +65,9 @@ a contagem. Entre a pré-checagem e a escrita outra requisição pode entrar;
 aí é o constraint do banco que segura, e `traduzirErroDePg` transforma
 `23505`/`23503`/`23514` em 409 com uma frase em português cadastrada em
 `FrasesDeRestricao`, **sem o nome do constraint** (T-07-06). SQLSTATE sem
-frase é relançado e vira o 500 genérico.
+frase é relançado e vira o 500 genérico. Exceção (Fase 15, D-15-07): `40P01`
+(deadlock) vira sempre 409 `CONFLITO_TRANSITORIO` ("Tente de novo."), sem
+constraint a citar.
 
 **Permissão antes de qualquer escrita (D-14, `acesso.ts`).** Todo método
 chama `exigir(acesso, membro, acao, recurso)` antes de ler ou escrever: o
@@ -98,9 +100,13 @@ banco não muda. `obter` e `listar` seguem liberados (a tela leva o absorvido ao
 sobrevivente).
 
 **Quem o referencia.** `crm/negocios.ts` (`conferirContato`, em criar e em
-editar trocando o Contato) e `crm/empresas.ts` (`carregarContato`, em criar com
-Contato admin existente, vincular e trocar admin) recusam o absorvido com o mesmo
-código e `campo: "contatoId"`. Contato `arquivado` continua aceito em Negócio
+editar trocando o Contato), `crm/empresas.ts` (`carregarContato`, em criar com
+Contato admin existente, vincular e trocar admin) e `crm/conversas.ts`
+(`abrirConversaNoCliente`) recusam o absorvido com o mesmo código e
+`campo: "contatoId"`, e o leem com `for update` (WR-01, Fase 15): uma mesclagem
+confirmada no meio faz a escrita esperar e então enxergar `mesclado`. O REST de
+Canal (`crm/canais.ts`) trava a linha do Espaço antes da do Canal, a mesma ordem
+do gesto misto (WR-02). Contato `arquivado` continua aceito em Negócio
 (RN-CON-19); a Tarefa conversacional exige `ativo` e confere isso no próprio
 serviço (14-14).
 
