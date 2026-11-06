@@ -52,12 +52,33 @@ Os ids de tarefa saem dos PLAN.md; esta tabela é o mapa por requisito, e cada l
 | UCR-06 | Fichas sem recuo (404 = "não encontrado"); Reunião mostra o Negócio de `plataforma.negocios`; `/crm/meus-negocios` não existe | componente + guarda | `cd apps/web && npx vitest run src/features/crm/ficha-de-negocio.test.tsx src/features/crm/paginas-de-empresa.test.tsx src/sem-crm-antigo.test.ts` | ✅/❌ | ⬜ pending |
 | UCR-07 | Busca, Lixeira, Notificações, Início, Painel e Configurações sem as coleções antigas no store; Espaço novo sem Funil padrão | unit + componente | `cd packages/dominio && npx vitest run src/derive-resumo.test.ts src/bootstrap-gestao.test.ts` · web idem | ✅ reescrever | ⬜ pending |
 | UCR-08 | Ferramentas com ids de `plataforma.canais`/`plataforma.contatos` (inclui criar Contato de Participante); IA e Contas a receber idem | unit + integração | `cd packages/dominio && npx vitest run src/operations/ferramentas src/operations/ia src/operations/contas-a-receber.test.ts` · `cd apps/api && … npx vitest run src/importacao/clickup/importar-contas-a-receber.test.ts` | ✅ reescrever | ⬜ pending |
-| UCR-09 | Script: `--seco` read-only; `--guardar` copia e confere a contagem antes de apagar; migrar insere na ordem das FKs; Empresa sem admin vai ao relatório; segunda execução não muda nada; `--verificar` | integração (Docker, `describeComBanco`) | `cd apps/api && … npx vitest run src/migracao-crm/` | ❌ W0 | ⬜ pending |
+| UCR-09 | Script: `--seco` read-only; `--guardar` copia e confere a contagem antes de apagar; `--migrar` insere na ordem das FKs; Empresa sem admin vai ao relatório; segunda execução não muda nada; falha depois de `inserirFunis`/`inserirPlano` não deixa nada nos quatro lugares; `--verificar` (sem órfã em `crm_de_para`, contagem igual à do `--seco`); um modo por execução | integração (Docker, `describeComBanco`) | `cd apps/api && … npx vitest run src/migracao-crm/` | ❌ W0 | ⬜ pending |
 | UCR-10 | Ensaio sobre a cópia real: contagens-base (2128 linhas, 18 Espaços), `hidratar` por Espaço sem coleção antiga | manual (Docker + cópia em `~/n1-ensaio`) | passos do `14-ENSAIO.md` + `--verificar` | ❌ manual | ⬜ pending |
 | UCR-11 | Seed sem CRM antigo; Espaço novo com CRM vazio; `bootstrap:crm-demo` carrega num Postgres migrado e os Vínculos do seed apontam para ids existentes | unit + integração | `cd packages/dominio && npx vitest run src/seed*.test.ts` · `cd apps/api && … npx vitest run src/bootstrap/crm-demo.test.ts` | ❌ W0 | ⬜ pending |
-| UCR-12 | `npm run typecheck` verde sem as coleções; `sem-crm-antigo` vazio (salvo Grupo/Flow); 404 para as 45 operações antigas; contagem 285 → 240 (reconferir); `sem-listas-espelho` atualizadas | unit (leitura de código) + tsc | `npm run typecheck` · `cd apps/api && … npx vitest run src/rotas/esquemas-de-argumentos.test.ts src/sem-crm-antigo.test.ts` | ❌ W0 | ⬜ pending |
+| UCR-12 | `npm run typecheck` verde sem as coleções; `sem-crm-antigo` vazio (salvo Grupo/Flow); 404 para as 45 operações antigas; contagem 285 → 240 (reconferir); `sem-listas-espelho` atualizadas; `hidratar()` com linha antiga não quebra e a linha some depois de `apagarDoRegistros` | unit (leitura de código) + tsc + integração (Docker) | `npm run typecheck` · `cd apps/api && … npx vitest run src/rotas/esquemas-de-argumentos.test.ts src/sem-crm-antigo.test.ts src/persistencia/hidratar-crm-antigo.test.ts` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
+
+### Mapa por plano (planejamento de 2026-11-05, revisado em 2026-11-06 depois dos checkers: 43 planos, 17 ondas)
+
+Cada plano usa um Postgres 16 de Docker próprio (`crm-n1-pg-15NN`, porta `557NN`) com as duas URLs locais escritas no comando; o `npm run check` completo roda nos planos que apagam arquivos ou mudam tipo entre camadas (15-26, 15-31, 15-32, 15-33, 15-34, 15-40, 15-42, 15-43). O 15-34 (gate final) cobre todos os requisitos e só aparece abaixo em UCR-10.
+
+Ordem que a segunda revisão fixou: o 15-40 roda na onda 6, depois do 15-26 (a página de Meus negócios importava do quadro que o 15-40 apaga); o `tsc` das três camadas compila os testes, então o 15-42 limpa os testes que ainda chamam derivação apagada (Task 1) ou montam as oito coleções (Task 3) antes de o 15-43 apagar `seed-crm-antigo.ts` e encolher o `DataState` (Task 1).
+
+| Requisito | Planos |
+|-----------|--------|
+| UCR-01 | 15-01, 15-02 |
+| UCR-02 | 15-03, 15-09, 15-36 |
+| UCR-03 | 15-04, 15-09, 15-15, 15-37 |
+| UCR-04 | 15-05, 15-25 |
+| UCR-05 | 15-06, 15-11, 15-12, 15-20, 15-24, 15-25 |
+| UCR-06 | 15-13, 15-15, 15-24, 15-26, 15-40 |
+| UCR-07 | 15-06, 15-14, 15-16, 15-18, 15-23 |
+| UCR-08 | 15-07, 15-08, 15-10, 15-17, 15-19, 15-21, 15-22, 15-38, 15-39 |
+| UCR-09 | 15-27, 15-28, 15-35 |
+| UCR-10 | 15-30, 15-34, 15-35 |
+| UCR-11 | 15-16, 15-29, 15-31 |
+| UCR-12 | 15-06, 15-32, 15-33, 15-41, 15-42, 15-43 |
 
 ---
 
@@ -68,6 +89,8 @@ Os ids de tarefa saem dos PLAN.md; esta tabela é o mapa por requisito, e cada l
 - [ ] `apps/web/src/dados/crm/{conversas,mensagens}.test.ts` (molde `contatos.test.ts`) — UCR-05
 - [ ] `apps/api/src/migracao-crm/*.test.ts` + fixture JSON congelado do CRM antigo — UCR-09
 - [ ] `apps/api/src/bootstrap/crm-demo.test.ts` — UCR-11
+- [ ] `apps/api/src/persistencia/hidratar-crm-antigo.test.ts` — UCR-12 (15-43)
+- [ ] `apps/web/src/features/crm/configuracoes-da-caixa.test.tsx` — UCR-05 (15-12)
 - [ ] `sem-crm-antigo.test.ts` nas três camadas (molde `sem-listas-espelho.test.ts`) — UCR-12
 - [ ] `rotas/esquemas-de-argumentos.test.ts:126` (285 → contagem nova) atualizado junto com a remoção — UCR-12
 
