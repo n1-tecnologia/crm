@@ -358,6 +358,81 @@ describeComBanco("POST /operacoes — as Ferramentas conferem Canal e Contato na
     });
   });
 
+  describe("importações simultâneas do mesmo Grupo (15-17, UCR-08, concorrência)", () => {
+    const NUMEROS = ["5511970002474", "5511970003711", "5511970004948", "5511999001122", "5511999003344", "5511970006185", "5511970007422", "5511970008659", "5511999005566"];
+    const JIDS = ["120363301111111111@g.us", "120363302222222222@g.us"];
+    let espacoB: EspacoDeVazamento;
+    let canalB: string;
+
+    const chamarB = (args: unknown[]) =>
+      appDoEspaco(espacoB).inject({
+        method: "POST",
+        url: "/operacoes/importarGruposDoCanal",
+        headers: { authorization: `Bearer ${TOKENS_DE_VAZAMENTO.administrador}` },
+        payload: { args },
+      });
+
+    beforeAll(async () => {
+      espacoB = montarEspacoDeVazamento("ferramentasc");
+      await semearEspacoDeVazamento(espacoB);
+      canalB = await semearCanal(espacoB.workspaceId, { nome: "WhatsApp da corrida", tipo: "whatsapp", provedor: "whatsapp-cloud", identificadorExterno: "+5511987654321", conexao: "conectada" });
+    });
+
+    afterAll(async () => {
+      await limparEspacoDeVazamento(espacoB);
+    });
+
+    it("duas chamadas simultâneas deixam 1 Contato por número e 1 Participação por número", async () => {
+      const [a, b] = await Promise.all([chamarB([canalB]), chamarB([canalB])]);
+      expect(a.statusCode, a.body.slice(0, 300)).toBe(200);
+      expect(b.statusCode, b.body.slice(0, 300)).toBe(200);
+      const ia = (corpo(a).value as unknown as { importados: unknown[] } | undefined)?.importados.length ?? -1;
+      const ib = (corpo(b).value as unknown as { importados: unknown[] } | undefined)?.importados.length ?? -1;
+      // Uma depois da outra (trava do Espaço): quem entrou primeiro importa os dois Grupos, a outra só os encontra.
+      expect([ia, ib].sort()).toEqual([0, 2]);
+
+      const contatos = await pool().query<{ valor: string; n: string }>(
+        `select i.valor, count(*)::text as n
+           from plataforma.contato_identificadores i
+          where i.workspace_id = $1 and i.tipo = 'whatsapp'
+          group by i.valor order by i.valor`,
+        [espacoB.workspaceId],
+      );
+      expect(contatos.rows.map((r) => r.valor)).toEqual(NUMEROS.map((n) => `+${n}`).sort());
+      expect(contatos.rows.every((r) => r.n === "1")).toBe(true);
+      const total = await pool().query<{ n: string }>("select count(*)::text as n from plataforma.contatos where workspace_id = $1 and modo_criacao = 'automatico_automacao'", [espacoB.workspaceId]);
+      expect(Number(total.rows[0]?.n)).toBe(NUMEROS.length);
+
+      const participacoes = await pool().query<{ numero: string; n: string; contatos: string }>(
+        `select p->>'identificadorExternoDoParticipante' as numero, count(*)::text as n, count(distinct p->>'contactId')::text as contatos
+           from plataforma.registros r, jsonb_array_elements(r.dados->'participacoes') p
+          where r.workspace_id = $1 and r.colecao = 'grupos' and r.dados->>'identificadorExterno' = any($2::text[]) and p->>'contactId' is not null
+          group by p->>'identificadorExternoDoParticipante' order by 1`,
+        [espacoB.workspaceId, JIDS],
+      );
+      expect(participacoes.rows.map((r) => r.numero)).toEqual([...NUMEROS].sort());
+      expect(participacoes.rows.every((r) => r.n === "1" && r.contatos === "1")).toBe(true);
+      const grupos = await pool().query<{ n: string }>("select count(*)::text as n from plataforma.registros where workspace_id = $1 and colecao = 'grupos' and dados->>'identificadorExterno' = any($2::text[])", [espacoB.workspaceId, JIDS]);
+      expect(Number(grupos.rows[0]?.n)).toBe(2);
+    });
+
+    it("repetir a importação depois da corrida não cria Contato nem Participação novos", async () => {
+      const contar = async () => {
+        const c = await pool().query<{ n: string }>("select count(*)::text as n from plataforma.contatos where workspace_id = $1", [espacoB.workspaceId]);
+        const p = await pool().query<{ n: string }>(
+          "select count(*)::text as n from plataforma.registros r, jsonb_array_elements(r.dados->'participacoes') p where r.workspace_id = $1 and r.colecao = 'grupos'",
+          [espacoB.workspaceId],
+        );
+        return [Number(c.rows[0]?.n), Number(p.rows[0]?.n)];
+      };
+      const antes = await contar();
+      const resposta = await chamarB([canalB]);
+      expect(resposta.statusCode, resposta.body.slice(0, 300)).toBe(200);
+      expect((corpo(resposta).value as unknown as { importados: unknown[] }).importados).toHaveLength(0);
+      expect(await contar()).toEqual(antes);
+    });
+  });
+
   describe("o Contato do Participante nos eventos do provedor (15-17, 3.4.8)", () => {
     const membro = () => ({ id: espaco.membros.a.id, workspaceId: espaco.workspaceId, state: "ativo" as const });
 
