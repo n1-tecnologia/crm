@@ -60,6 +60,9 @@ const RESUMO: ResumoDaTarefaConversacional = {
   canal: { id: "k1", nome: "Comercial", tipo: "whatsapp", provedor: "whatsapp-cloud", conexao: "conectada" },
   ultimaMensagem: { trecho: "Pode me ligar amanhã?", direcao: "recebida", criadoEm: new Date().toISOString() },
   negocio: { id: "n1", titulo: "Proposta anual", etapa: "Negociação" },
+  empresa: null,
+  qualificacaoId: null,
+  conversa: null,
 };
 
 const acoes = { onOpen: () => undefined, onDragStart: () => undefined, onDragEnd: () => undefined };
@@ -104,6 +107,20 @@ describe("CartaoConversacional — o que o resumo mostra", () => {
     expect(screen.getByText('<img src=x onerror="alert(1)">')).toBeTruthy();
   });
 
+  it("(g) D-15-05: com Empresa no resumo o cartão mostra o nome dela; sem Empresa, a linha não aparece", () => {
+    const t = task("t1");
+    const dados = definirEstado([t], [vinculo("t1", "contact", "c9", PAPEL_DO_VINCULO.contato)]);
+    resumos.set("t1", { ...RESUMO, empresa: { id: "e1", nome: "Acme" } });
+    const { unmount } = render(<CartaoConversacional data={dadosDoCartaoConversacional(dados, t)!} {...acoes} />);
+    expect(screen.getByText("Acme")).toBeTruthy();
+    unmount();
+
+    resumos.set("t1", { ...RESUMO, empresa: null });
+    render(<CartaoConversacional data={dadosDoCartaoConversacional(dados, t)!} {...acoes} />);
+    expect(screen.queryByText("Acme")).toBeNull();
+    expect(screen.queryByLabelText("Empresa")).toBeNull();
+  });
+
   it("(c) sem resumo ainda: o esqueleto, sem nome nem Mensagem inventados", () => {
     const t = task("t1");
     const dados = definirEstado([t], [vinculo("t1", "contact", "c9", PAPEL_DO_VINCULO.contato)]);
@@ -115,7 +132,7 @@ describe("CartaoConversacional — o que o resumo mostra", () => {
   it("(d) resumo sem Contato nem Mensagem: o que a api disse, sem voltar à leitura antiga (D-01)", () => {
     const t = task("t1");
     const dados = definirEstado([t], [vinculo("t1", "contact", "c9", PAPEL_DO_VINCULO.contato)]);
-    resumos.set("t1", { taskId: "t1", contato: null, canal: null, ultimaMensagem: null, negocio: null });
+    resumos.set("t1", { taskId: "t1", contato: null, canal: null, ultimaMensagem: null, negocio: null, empresa: null, qualificacaoId: null, conversa: null });
     render(<CartaoConversacional data={dadosDoCartaoConversacional(dados, t)!} {...acoes} />);
     expect(screen.getByText("Contato indisponível")).toBeTruthy();
     expect(screen.getByText("Sem mensagem trocada ainda.")).toBeTruthy();

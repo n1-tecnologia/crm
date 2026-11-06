@@ -702,6 +702,9 @@ describeComBanco("ServicoDeTarefasConversacionais — Postgres local", () => {
         canal: { id: e.canal, nome: "Comercial", tipo: "whatsapp", provedor: "whatsapp-cloud", conexao: "conectada" },
         ultimaMensagem: { trecho: "Oi, quero renovar", direcao: "recebida", criadoEm: "2026-03-01T10:00:00.000Z" },
         negocio: { id: renovacao, titulo: "Renovação 2027", etapa: "Início" },
+        empresa: null,
+        qualificacaoId: null,
+        conversa: { situacao: "aberta", estado: "ativo", atribuido: { tipo: "membro", id: SESSAO } },
       });
       expect(itens[1]).toMatchObject({
         contato: { id: joao, nome: "João" },
@@ -810,7 +813,7 @@ describeComBanco("ServicoDeTarefasConversacionais — Postgres local", () => {
       const negocioDele = await negocio(outro.ws, dele, "Negócio privado");
 
       const itens = valor(await servico.resumo(membro(e.ws), [{ taskId: "t", contatoId: dele, conversaId: conversaDele, negocioId: negocioDele }]));
-      expect(itens).toEqual([{ taskId: "t", contato: null, canal: null, ultimaMensagem: null, negocio: null }]);
+      expect(itens).toEqual([{ taskId: "t", contato: null, canal: null, ultimaMensagem: null, negocio: null, empresa: null, qualificacaoId: null, conversa: null }]);
       expect(JSON.stringify(itens)).not.toMatch(/Segredo|privado|Comercial/);
     });
 
@@ -819,10 +822,111 @@ describeComBanco("ServicoDeTarefasConversacionais — Postgres local", () => {
       const marina = await contato(e.ws, "Marina");
       const itens = valor(await servico.resumo(membro(e.ws), [{ taskId: "a", contatoId: marina }, { taskId: "b" }]));
       expect(itens).toEqual([
-        { taskId: "a", contato: { id: marina, nome: "Marina" }, canal: null, ultimaMensagem: null, negocio: null },
-        { taskId: "b", contato: null, canal: null, ultimaMensagem: null, negocio: null },
+        { taskId: "a", contato: { id: marina, nome: "Marina" }, canal: null, ultimaMensagem: null, negocio: null, empresa: null, qualificacaoId: null, conversa: null },
+        { taskId: "b", contato: null, canal: null, ultimaMensagem: null, negocio: null, empresa: null, qualificacaoId: null, conversa: null },
       ]);
       expect(valor(await servico.resumo(membro(e.ws), []))).toEqual([]);
+    });
+
+    /** Uma Empresa direto na tabela (o repositório de Empresas não é o assunto aqui). `criadoEm` fixa a ordem. */
+    async function empresa(ws: string, nomeFantasia: string, estado = "ativo"): Promise<string> {
+      return (await pool().query<{ id: string }>(
+        "insert into plataforma.empresas (workspace_id, nome_fantasia, estado, proprietario_id, criado_por) values ($1, $2, $3, $4, $4) returning id",
+        [ws, nomeFantasia, estado, SESSAO],
+      )).rows[0]!.id;
+    }
+
+    async function vincular(ws: string, contatoId: string, empresaId: string, opcoes: { admin?: boolean; criadoEm: string; fim?: string }): Promise<void> {
+      await pool().query(
+        `insert into plataforma.contato_empresa (workspace_id, contato_id, empresa_id, admin, fim, criado_por, criado_em)
+         values ($1, $2, $3, $4, $5, $6, $7)`,
+        [ws, contatoId, empresaId, opcoes.admin ?? false, opcoes.fim ?? null, SESSAO, opcoes.criadoEm],
+      );
+    }
+
+    it("Empresa (D-15-05): o vínculo vigente admin mais antigo; Empresa na lixeira passa a vez; sem vínculo vigente, null", async () => {
+      const e = await espaco("resumoempresa");
+      const x = await contato(e.ws, "Marina");
+      const e1 = await empresa(e.ws, "Acme");
+      const e2 = await empresa(e.ws, "Beta");
+      await vincular(e.ws, x, e2, { admin: false, criadoEm: "2026-01-01T10:00:00Z" });
+      await vincular(e.ws, x, e1, { admin: true, criadoEm: "2026-02-01T10:00:00Z" });
+      const vinculo = { taskId: "t", contatoId: x };
+
+      expect(valor(await servico.resumo(membro(e.ws), [vinculo]))[0]!.empresa).toEqual({ id: e1, nome: "Acme" });
+
+      await pool().query("update plataforma.empresas set estado = 'na_lixeira' where workspace_id = $1 and id = $2", [e.ws, e1]);
+      expect(valor(await servico.resumo(membro(e.ws), [vinculo]))[0]!.empresa).toEqual({ id: e2, nome: "Beta" });
+
+      await pool().query("update plataforma.contato_empresa set fim = current_date where workspace_id = $1 and contato_id = $2", [e.ws, x]);
+      expect(valor(await servico.resumo(membro(e.ws), [vinculo]))[0]!.empresa).toBeNull();
+    });
+
+    it("Empresa (borda UCR-04): várias Empresas vigentes sem admin devolvem sempre a mesma, a mais antiga; repetir devolve o mesmo; sem Empresa, null", async () => {
+      const e = await espaco("resumoempresaordem");
+      const x = await contato(e.ws, "Marina");
+      const semEmpresa = await contato(e.ws, "João");
+      const nova = await empresa(e.ws, "Nova");
+      const velha = await empresa(e.ws, "Velha");
+      await vincular(e.ws, x, nova, { criadoEm: "2026-05-01T10:00:00Z" });
+      await vincular(e.ws, x, velha, { criadoEm: "2026-03-01T10:00:00Z" });
+      const vinculos = [{ taskId: "a", contatoId: x }, { taskId: "b", contatoId: semEmpresa }];
+
+      const primeira = valor(await servico.resumo(membro(e.ws), vinculos));
+      const segunda = valor(await servico.resumo(membro(e.ws), vinculos));
+      expect(primeira[0]!.empresa).toEqual({ id: velha, nome: "Velha" });
+      expect(primeira[1]!.empresa).toBeNull();
+      expect(segunda).toEqual(primeira);
+    });
+
+    it("Empresa (T-15-16): a Empresa de outro Espaço não aparece nem vaza o nome", async () => {
+      const e = await espaco("resumoempresameu");
+      const outro = await espaco("resumoempresaoutro");
+      const dele = await contato(outro.ws, "Segredo do Outro");
+      const empresaDele = await empresa(outro.ws, "Empresa Secreta");
+      await vincular(outro.ws, dele, empresaDele, { admin: true, criadoEm: "2026-01-01T10:00:00Z" });
+
+      const itens = valor(await servico.resumo(membro(e.ws), [{ taskId: "t", contatoId: dele }]));
+      expect(itens[0]!.empresa).toBeNull();
+      expect(JSON.stringify(itens)).not.toMatch(/Secret/);
+    });
+
+    it("Empresa do Contato mesclado: vale a do sobrevivente", async () => {
+      const e = await espaco("resumoempresamesclado");
+      const b = await contato(e.ws, "Marina Duarte");
+      const a = await contato(e.ws, "Marina D.");
+      const empresaDeB = await empresa(e.ws, "Acme");
+      const empresaDeA = await empresa(e.ws, "Beta");
+      await vincular(e.ws, b, empresaDeB, { criadoEm: "2026-01-01T10:00:00Z" });
+      await vincular(e.ws, a, empresaDeA, { criadoEm: "2026-01-01T10:00:00Z" });
+      await poolDoDono().query("update plataforma.contatos set estado = 'mesclado', mesclado_em_id = $3, mesclado_em = now() where workspace_id = $1 and id = $2", [e.ws, a, b]);
+
+      expect(valor(await servico.resumo(membro(e.ws), [{ taskId: "t", contatoId: a }]))[0]!.empresa).toEqual({ id: empresaDeB, nome: "Acme" });
+    });
+
+    it("qualificação e Conversa (D-15-05): o id da qualificação do Contato; situação, estado e Atribuído da Conversa vinculada", async () => {
+      const e = await espaco("resumoconversa");
+      const marina = await contato(e.ws, "Marina");
+      await pool().query("update plataforma.contatos set qualificacao = 'cat_qual_lead' where workspace_id = $1 and id = $2", [e.ws, marina]);
+      const conversaDela = await conversa(e.ws, e.canal, marina);
+      const vinculo = { taskId: "t", contatoId: marina, conversaId: conversaDela };
+
+      const [aberta] = valor(await servico.resumo(membro(e.ws), [vinculo]));
+      expect(aberta!.qualificacaoId).toBe("cat_qual_lead");
+      expect(aberta!.conversa).toEqual({ situacao: "aberta", estado: "ativo", atribuido: { tipo: "membro", id: SESSAO } });
+
+      await resolver(e.ws, conversaDela);
+      await pool().query("update plataforma.conversas set atribuido_tipo = null, atribuido_id = null where workspace_id = $1 and id = $2", [e.ws, conversaDela]);
+      expect(valor(await servico.resumo(membro(e.ws), [vinculo]))[0]!.conversa).toEqual({ situacao: "resolvida", estado: "ativo", atribuido: null });
+    });
+
+    it("o resumo continua sem telefone, e-mail nem texto de Mensagem além do trecho (privacidade, UCR-04)", async () => {
+      const e = await espaco("resumoprivado");
+      const marina = await contato(e.ws, "Marina", [{ tipo: "whatsapp", valor: "+5511955550000" }]);
+      const conversaDela = await conversa(e.ws, e.canal, marina);
+      const [item] = valor(await servico.resumo(membro(e.ws), [{ taskId: "t", contatoId: marina, conversaId: conversaDela }]));
+      expect(Object.keys(item!).sort()).toEqual(["canal", "contato", "conversa", "empresa", "negocio", "qualificacaoId", "taskId", "ultimaMensagem"]);
+      expect(JSON.stringify(item)).not.toContain("+5511955550000");
     });
 
     it("mais de RESUMO_MAXIMO Vínculos → 400, sem consultar o banco; Convidado lê", async () => {
