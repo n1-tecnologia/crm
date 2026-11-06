@@ -7,12 +7,16 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../seed";
 import type { DataState } from "../state";
-import type { Flow, Grupo, VersaoDeFlow } from "../types";
+import type { Canal } from "../crm/canais";
+import { PROVEDOR_PADRAO_DO_TIPO, type TipoComProvedor } from "../provedores-de-canal";
+import { contactDisplayName } from "../derive";
+import type { Channel, CrmDasFerramentas, Flow, Grupo, VersaoDeFlow } from "../types";
 import {
   camposDeFlow,
   cliquesContabilizados,
   contatosComWhatsApp,
   conversaDoGrupo,
+  identidadeDeWhatsApp,
   grupoDeAvisos,
   membrosDaComunidade,
   membrosDoGrupo,
@@ -76,6 +80,40 @@ let state: DataState;
 beforeEach(() => {
   state = buildSeed();
 });
+
+
+/** O Canal do seed, na forma do CRM novo: o que o servidor leria de `plataforma.canais`. */
+function canalDoSeed(c: Channel): Canal {
+  const tipo = c.channelType as TipoComProvedor;
+  return {
+    id: c.id,
+    nome: c.name,
+    tipo,
+    provedor: c.provider ?? PROVEDOR_PADRAO_DO_TIPO[tipo],
+    identificadorExterno: c.externalId,
+    conexao: c.connection === "comErro" ? "com_erro" : c.connection,
+    conexaoSimulada: false,
+    conectadaEm: null,
+    estado: c.lifecycle,
+    arquivadoEm: null,
+    configuradoPor: c.configuredByMemberId,
+    filaPadraoId: c.defaultQueueId ?? null,
+    proprietarioPadraoId: c.defaultContactOwnerMemberId ?? null,
+    origemPadraoId: c.defaultOriginId ?? null,
+    gruposHabilitados: c.groupsEnabled,
+    criadoPor: c.configuredByMemberId,
+    criadoEm: c.createdAt,
+    atualizadoEm: c.createdAt,
+  };
+}
+
+/** O CRM das Ferramentas montado do seed, no instante da chamada (os testes mexem no estado). */
+function crmDoSeed(s: DataState): CrmDasFerramentas {
+  return {
+    canais: s.channels.map(canalDoSeed),
+    contatos: s.contacts.map((c) => ({ id: c.id, nome: contactDisplayName(c), estado: c.lifecycle, whatsapp: identidadeDeWhatsApp(c) ?? null })),
+  };
+}
 
 const grupo = (id: string): Grupo => {
   const g = state.grupos.find((x) => x.id === id);
@@ -278,7 +316,7 @@ describe("Grupos — Participações e Captação", () => {
   });
 
   it("criar Grupo — nasce sincronizado, com o Canal como administrador, Captação ativa e os participantes escolhidos", () => {
-    const g = unwrap(criarGrupo(state, "mem_julia", { nome: "Turma Full Face #04", canalId: "chn_wpp", participantesIniciaisContactIds: ["cnt_22", "cnt_23"], administradoresContactIds: ["cnt_22"], comunidadeId: COMUNIDADE_ALUNOS_ID }));
+    const g = unwrap(criarGrupo(state, "mem_julia", { nome: "Turma Full Face #04", canalId: "chn_wpp", participantesIniciaisContactIds: ["cnt_22", "cnt_23"], administradoresContactIds: ["cnt_22"], comunidadeId: COMUNIDADE_ALUNOS_ID }, crmDoSeed(state)));
     expect(g.sincronizacao).toMatchObject({ estado: "sincronizado", papelDoCanal: "administrador" });
     expect(g.captacao.estado).toBe("ativa");
     expect(g.identificadorExterno).toMatch(/@g\.us$/);
@@ -287,14 +325,14 @@ describe("Grupos — Participações e Captação", () => {
     expect(g.comunidadeId).toBe(COMUNIDADE_ALUNOS_ID);
     expect(membrosDaComunidade(state, COMUNIDADE_ALUNOS_ID)).toContain("cnt_23");
     // um Contato na lixeira não entra
-    expect(criarGrupo(state, "mem_julia", { nome: "Outra", canalId: "chn_wpp", participantesIniciaisContactIds: ["cnt_21"] }).ok).toBe(false);
-    expect(criarGrupo(state, "mem_julia", { nome: "", canalId: "chn_wpp" }).ok).toBe(false);
-    expect(criarGrupo(state, "mem_julia", { nome: "X", canalId: "chn_insta" }).ok).toBe(false);
-    expect(criarGrupo(state, "mem_beatriz", { nome: "X", canalId: "chn_wpp" }).ok).toBe(false);
+    expect(criarGrupo(state, "mem_julia", { nome: "Outra", canalId: "chn_wpp", participantesIniciaisContactIds: ["cnt_21"] }, crmDoSeed(state)).ok).toBe(false);
+    expect(criarGrupo(state, "mem_julia", { nome: "", canalId: "chn_wpp" }, crmDoSeed(state)).ok).toBe(false);
+    expect(criarGrupo(state, "mem_julia", { nome: "X", canalId: "chn_insta" }, crmDoSeed(state)).ok).toBe(false);
+    expect(criarGrupo(state, "mem_beatriz", { nome: "X", canalId: "chn_wpp" }, crmDoSeed(state)).ok).toBe(false);
   });
 
   it("criar Grupo com Contato criador e enviar o Link de convite (C40) — o criador entra como administrador; o link sai numa Conversa com cada convidado", () => {
-    const g = unwrap(criarGrupo(state, "mem_julia", { nome: "Turma Full Face #05", canalId: "chn_wpp", contatoCriadorId: "cnt_22", administradoresContactIds: ["cnt_23"] }));
+    const g = unwrap(criarGrupo(state, "mem_julia", { nome: "Turma Full Face #05", canalId: "chn_wpp", contatoCriadorId: "cnt_22", administradoresContactIds: ["cnt_23"] }, crmDoSeed(state)));
     expect(g.contatoCriadorId).toBe("cnt_22");
     // O JID é novo no Espaço: o seed tem JIDs fixos, e um repetido herdava a Conversa de grupo de outro.
     const jidsIguais = [...state.grupos, ...state.comunidades].filter((x) => x.identificadorExterno === g.identificadorExterno);
@@ -324,14 +362,14 @@ describe("Grupos — Participações e Captação", () => {
     const foto = { nome: "turma.jpg", url: "data:image/jpeg;base64,AAAA", tamanhoBytes: 3 };
     const capa = { nome: "capa.jpg", url: "data:image/jpeg;base64,BBBB", tamanhoBytes: 3 };
     const arquivosAntes = state.files.length;
-    const g = unwrap(criarGrupo(state, "mem_julia", { nome: "Turma com rosto", canalId: "chn_wpp", foto, capa }));
+    const g = unwrap(criarGrupo(state, "mem_julia", { nome: "Turma com rosto", canalId: "chn_wpp", foto, capa }, crmDoSeed(state)));
     expect(urlDoArquivo(state, g.fotoFileId)).toBe(foto.url);
     expect(urlDoArquivo(state, g.capaFileId)).toBe(capa.url);
     expect(state.files.filter((f) => f.id === g.fotoFileId || f.id === g.capaFileId).every((f) => f.mediaType === "image")).toBe(true);
     expect(state.files.length).toBe(arquivosAntes + 2);
     const grupos = state.grupos.length;
-    expect(criarGrupo(state, "mem_julia", { nome: "Sem foto", canalId: "chn_wpp", foto: { nome: "a.pdf", url: "data:application/pdf;base64,AA", tamanhoBytes: 2 } }).ok).toBe(false);
-    expect(criarGrupo(state, "mem_julia", { nome: "Capa grande", canalId: "chn_wpp", capa: { ...capa, tamanhoBytes: 6 * 1024 * 1024 } }).ok).toBe(false);
+    expect(criarGrupo(state, "mem_julia", { nome: "Sem foto", canalId: "chn_wpp", foto: { nome: "a.pdf", url: "data:application/pdf;base64,AA", tamanhoBytes: 2 } }, crmDoSeed(state)).ok).toBe(false);
+    expect(criarGrupo(state, "mem_julia", { nome: "Capa grande", canalId: "chn_wpp", capa: { ...capa, tamanhoBytes: 6 * 1024 * 1024 } }, crmDoSeed(state)).ok).toBe(false);
     expect(state.grupos.length).toBe(grupos);
     expect(state.files.length).toBe(arquivosAntes + 2);
   });
@@ -407,7 +445,7 @@ describe("Comunidades", () => {
 
   it("25, 12.1 → 12.2 — nascer vinculado exige o que vincular exige: Comunidade inacessível recusa o Grupo novo", () => {
     unwrap(sairDaComunidade(state, "mem_thiago", COMUNIDADE_ALUNOS_ID, { entendiIrreversivel: true }));
-    const r = criarGrupo(state, "mem_julia", { nome: "Turma #05", canalId: "chn_wpp", comunidadeId: COMUNIDADE_ALUNOS_ID });
+    const r = criarGrupo(state, "mem_julia", { nome: "Turma #05", canalId: "chn_wpp", comunidadeId: COMUNIDADE_ALUNOS_ID }, crmDoSeed(state));
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/inacessível/);
   });
@@ -650,12 +688,61 @@ describe("Flows — Versões, envio e resposta", () => {
 /** Realce (movimento §4.4): criar nomeia o Ativo; enviar ao Grupo nomeia a Mensagem — é ela que surge. */
 describe("Realce — o resultado nomeia o registro tocado", () => {
   it("criarGrupo devolve o id do Grupo; enviarMensagemAoGrupo, o da Mensagem", () => {
-    const g = criarGrupo(state, "mem_julia", { nome: "Turma Realce", canalId: "chn_wpp", participantesIniciaisContactIds: ["cnt_22"] });
+    const g = criarGrupo(state, "mem_julia", { nome: "Turma Realce", canalId: "chn_wpp", participantesIniciaisContactIds: ["cnt_22"] }, crmDoSeed(state));
     expect(g.ok).toBe(true);
     if (!g.ok) return;
     expect(g.id).toBe(g.value.id);
     const m = enviarMensagemAoGrupo(state, "mem_julia", g.value.id, { content: "Acendeu?" });
     expect(m.ok).toBe(true);
     if (m.ok) expect(m.id).toBe(m.value.mensagem.id);
+  });
+});
+
+describe("criarGrupo — o Canal vem do CRM novo (Fase 15, 3.4.8)", () => {
+  const canalNovo = (): Canal => {
+    const antigo = state.channels.find((c) => c.id === "chn_wpp");
+    if (!antigo) throw new Error("sem chn_wpp");
+    return { ...canalDoSeed(antigo), id: "canal-da-tabela", nome: "WhatsApp da tabela", identificadorExterno: "+5511988880001" };
+  };
+
+  it("cria o Grupo com o Canal de crm.canais, sem Canal nenhum no modelo antigo", () => {
+    state.channels = [];
+    const r = unwrap(criarGrupo(state, "mem_julia", { nome: "Turma da tabela", canalId: "canal-da-tabela" }, { canais: [canalNovo()], contatos: [] }));
+    expect(r.canalId).toBe("canal-da-tabela");
+    expect(r.tipoDeCanal).toBe("whatsapp");
+    expect(participacoesVigentes(r).some((p) => p.canalParticipanteId === "canal-da-tabela")).toBe(true);
+    expect(state.grupos.some((g) => g.id === r.id)).toBe(true);
+  });
+
+  it("recusa 'Canal não encontrado' quando crm.canais não traz o Canal, mesmo que o modelo antigo o tenha", () => {
+    const r = criarGrupo(state, "mem_julia", { nome: "Sem Canal", canalId: "chn_wpp" }, { canais: [], contatos: [] });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe("Canal não encontrado.");
+  });
+
+  it("sem crm (ausente) também recusa 'Canal não encontrado' e não lança", () => {
+    const r = criarGrupo(state, "mem_julia", { nome: "Sem crm", canalId: "chn_wpp" });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe("Canal não encontrado.");
+  });
+
+  it("um Canal arquivado ou desconectado em crm.canais é recusado com a frase de sempre", () => {
+    const arquivado = criarGrupo(state, "mem_julia", { nome: "A", canalId: "canal-da-tabela" }, { canais: [{ ...canalNovo(), estado: "arquivado" }], contatos: [] });
+    expect(arquivado.ok).toBe(false);
+    if (!arquivado.ok) expect(arquivado.error).toMatch(/arquivado/);
+    const desconectado = criarGrupo(state, "mem_julia", { nome: "B", canalId: "canal-da-tabela" }, { canais: [{ ...canalNovo(), conexao: "desconectada" }], contatos: [] });
+    expect(desconectado.ok).toBe(false);
+    if (!desconectado.ok) expect(desconectado.error).toMatch(/desconectado/);
+  });
+
+  it("os Contatos escolhidos são conferidos em crm.contatos, não no modelo antigo", () => {
+    const comContato = criarGrupo(state, "mem_julia", { nome: "Com Contato", canalId: "canal-da-tabela", participantesIniciaisContactIds: ["cnt-da-tabela"] }, {
+      canais: [canalNovo()],
+      contatos: [{ id: "cnt-da-tabela", nome: "Ana da tabela", estado: "ativo", whatsapp: "5511900000001" }],
+    });
+    expect(comContato.ok).toBe(true);
+    if (comContato.ok) expect(participacoesVigentes(comContato.value).some((p) => p.contactId === "cnt-da-tabela")).toBe(true);
+    const semContato = criarGrupo(state, "mem_julia", { nome: "Sem Contato", canalId: "canal-da-tabela", participantesIniciaisContactIds: ["cnt_22"] }, { canais: [canalNovo()], contatos: [] });
+    expect(semContato.ok).toBe(false);
   });
 });
