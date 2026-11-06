@@ -11,6 +11,7 @@
  * Domínio puro, sem React: as telas leem daqui os rótulos e as marcas.
  */
 
+import type { Funil } from "../../crm/funis";
 import type { DataState } from "../../state";
 import type { AutomationAction, AutomationScopeType, AutomationTrigger, Id } from "../../types";
 
@@ -134,8 +135,18 @@ export function escopoExecutaNoPrototipo(scopeType: AutomationScopeType, trigger
   return false;
 }
 
-/** O escopo referenciado existe? O Espaço de Trabalho é o próprio; o resto, por coleção. */
-export function escopoExiste(state: DataState, scopeType: AutomationScopeType, scopeId: Id): boolean {
+/**
+ * Os Funis do Espaço como o escopo Funil os enxerga: só `id` e `estado`. Vêm de
+ * `plataforma.funis`, lidos pelo servidor (Fase 15, 3.4.9, UCR-08) — o Funil do
+ * modelo antigo some do estado na 3.5.4. Ausente quer dizer "Funil desconhecido".
+ */
+export type FunisDoEscopo = readonly Pick<Funil, "id" | "estado">[];
+
+/**
+ * O escopo referenciado existe? O Espaço de Trabalho é o próprio; o resto, por coleção.
+ * O Funil confere em `funis`: ativo ou arquivado conta como existente, na lixeira não.
+ */
+export function escopoExiste(state: DataState, scopeType: AutomationScopeType, scopeId: Id, funis?: FunisDoEscopo): boolean {
   switch (scopeType) {
     case "workspace":
       return state.workspace.id === scopeId;
@@ -146,7 +157,7 @@ export function escopoExiste(state: DataState, scopeType: AutomationScopeType, s
     case "list":
       return state.lists.some((l) => l.id === scopeId);
     case "funnel":
-      return state.funnels.some((f) => f.id === scopeId);
+      return (funis ?? []).some((f) => f.id === scopeId && f.estado !== "na_lixeira");
     case "inbox":
       return state.inbox.id === scopeId;
     case "queue":

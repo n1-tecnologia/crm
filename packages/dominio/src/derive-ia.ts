@@ -24,7 +24,7 @@ import type {
 import { containerPath, type PathNode } from "./derive";
 import { nextId } from "./operations/activity";
 import { recusaDeGovernarAgente } from "./operations/ia/permissoes-ia";
-import { escopoExiste, eventoDoCatalogo } from "./operations/ia/automacoes-catalogo";
+import { escopoExiste, eventoDoCatalogo, type FunisDoEscopo } from "./operations/ia/automacoes-catalogo";
 
 // ── Habilidade ─────────────────────────────────────────────────────────────
 
@@ -295,8 +295,18 @@ function estadoEfetivoDoConteiner(state: DataState, type: PathNode["type"], id: 
   return efetivo;
 }
 
-/** O estado efetivo do escopo: Lista/Pasta/Espaço pela cadeia (B36); o resto pelo próprio registro. */
-function estadoDoEscopo(state: DataState, automation: Automation): Lifecycle | "suspenso" | "encerrado" | undefined {
+const LIFECYCLE_DO_FUNIL: Readonly<Record<FunisDoEscopo[number]["estado"], Lifecycle>> = { ativo: "ativo", arquivado: "arquivado", na_lixeira: "naLixeira" };
+
+const estadoDoFunil = (funis: FunisDoEscopo | undefined, id: Id): Lifecycle | undefined => {
+  const estado = funis?.find((f) => f.id === id)?.estado;
+  return estado === undefined ? undefined : LIFECYCLE_DO_FUNIL[estado];
+};
+
+/**
+ * O estado efetivo do escopo: Lista/Pasta/Espaço pela cadeia (B36); o Funil pelo estado em `funis`
+ * (lido de `plataforma.funis` pelo servidor, 15-39); o resto pelo próprio registro.
+ */
+function estadoDoEscopo(state: DataState, automation: Automation, funis?: FunisDoEscopo): Lifecycle | "suspenso" | "encerrado" | undefined {
   const id = automation.scopeId;
   switch (automation.scopeType) {
     case "workspace":
@@ -306,7 +316,7 @@ function estadoDoEscopo(state: DataState, automation: Automation): Lifecycle | "
     case "space":
       return estadoEfetivoDoConteiner(state, automation.scopeType, id);
     case "funnel":
-      return state.funnels.find((f) => f.id === id)?.lifecycle;
+      return estadoDoFunil(funis, id);
     case "inbox":
       return state.inbox.id === id ? "ativo" : undefined;
     case "queue":
@@ -374,14 +384,15 @@ function referenciaInvalida(state: DataState, version: AutomationVersion): strin
  * `ativo` cujo escopo não está efetivamente ativo (B41), cujo Espaço de
  * Trabalho ou Proprietário está suspenso (B31, RN-AUT-04) ou cuja Versão
  * vigente contém referência inválida (RN-AUT-21). Devolve o motivo; cessa sem
- * ato quando a causa cessa.
+ * ato quando a causa cessa. `funis` (opcional) são os Funis do Espaço lidos de
+ * `plataforma.funis`; ausente, o Funil é desconhecido e o escopo Funil, eliminado (15-39).
  */
-export function inoperante(state: DataState, automation: Automation): string | undefined {
+export function inoperante(state: DataState, automation: Automation, funis?: FunisDoEscopo): string | undefined {
   if (automation.lifecycle !== "ativo") return undefined;
   if (state.workspace.state === "suspenso") return "Espaço de Trabalho suspenso";
   const rotulo = ROTULO_DO_ESCOPO[automation.scopeType];
-  if (!escopoExiste(state, automation.scopeType, automation.scopeId)) return `escopo eliminado (${rotulo})`;
-  const estado = estadoDoEscopo(state, automation);
+  if (!escopoExiste(state, automation.scopeType, automation.scopeId, funis)) return `escopo eliminado (${rotulo})`;
+  const estado = estadoDoEscopo(state, automation, funis);
   if (estado === "arquivado") return `escopo arquivado (${rotulo})`;
   if (estado === "naLixeira") return `escopo na lixeira (${rotulo})`;
   if (estado === "suspenso" || estado === "encerrado") return "Espaço de Trabalho suspenso";
