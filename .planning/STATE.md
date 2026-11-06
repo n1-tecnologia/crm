@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 15
 current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
 status: executing
-stopped_at: Completed 15-37-PLAN.md
-last_updated: "2026-11-06T10:30:18.841Z"
+stopped_at: Completed 15-38-PLAN.md
+last_updated: "2026-11-06T10:35:19.739Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 15 execution started
-state_head: a8dd848f9ac1b4c7aa81f23cc53cc9dd6eaed836
+state_head: bb2ee374d2f450713239ffaf3a6a5d9403b9653a
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 271
-  completed_plans: 235
+  completed_plans: 236
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 15 (Unificação do CRM: telas no modelo novo e remoção do modelo antigo) — EXECUTING
-Plan: 11 of 43
+Plan: 12 of 43
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 15 execution started
 
@@ -454,6 +454,7 @@ Progress: [██████░░░░] 63%
 | Phase 15 P08 | 11 min | 2 tasks | 14 files |
 | Phase 15 P36 | 8 min | 2 tasks | 9 files |
 | Phase 15 P37 | 8 min | 2 tasks | 9 files |
+| Phase 15 P38 | 5 min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -715,6 +716,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 15]: 15-08: nomes (NomesDasAncoras) e o ultimo parametro opcional de createChatSession, configureChatSession e ensaiarAgente; NOMES_DO_NAVEGADOR em esquemas/fragmentos.ts — Servidor sobrescreve a posicao (T-15-24); web compila ate o 15-21 mandar nomes
 - [Phase 15]: 15-36: atender Conversa passa ao Sucessor mas nao e propriedade; registrosPossuidos exclui conversation das checagens de rebaixamento a Convidado
 - [Phase 15]: 15-37: GET /atividades responde { ok, itens } sem total (paginacao por tempo, ate exclusivo); useAtividades filtra state.activity por objectType e objectId — Cursor de tempo nao tem total honesto; id de Negocio e de Contato nao podem se misturar na linha do tempo
+- [Phase 15]: 15-38: comIdentificador filtra GET /contatos por tipo de Identificador (exists amarrado ao Espaco, tipo por $n, z.enum do dominio); QUERY_LISTA de comum.ts intacto
 
 ### Pending Todos
 
@@ -776,6 +778,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-06T10:30:18.543Z
-Stopped at: Completed 15-37-PLAN.md
+Last session: 2026-11-06T10:35:19.436Z
+Stopped at: Completed 15-38-PLAN.md
 Resume file: None
