@@ -71,6 +71,11 @@ DATABASE_URL=postgres://postgres:x@localhost:5432/postgres npm run bootstrap:crm
 
 Saída: `0` ok, `2` recusa ou erro de uso, `1` erro inesperado. A recusa de banco remoto sai com `2` sem abrir conexão.
 
+**Como se prova que os ids preservados acham o registro (15-31).** O seed novo guarda só os Vínculos que sobraram; o
+teste dos Vínculos de `crm-demo.test.ts` lê, por isso, os 64 `links` da fixture congelada do seed de antes
+(`migracao-crm/fixtures/crm-antigo-do-seed.json`), confere que todo Vínculo do seed novo está nela e exige
+`procurados > 0`: assim a prova não passa vazia quando o seed deixa de ter CRM.
+
 **De onde vêm as linhas.** `crm-demo.json` foi gerado UMA vez pelo mapeador do 15-28 (`planejarMigracao` e
 `planejarFunis`) sobre a fixture sintética congelada do seed antigo (`migracao-crm/fixtures/crm-antigo-do-seed.json`),
 com um script descartável fora do repositório; nunca de dado de produção. Os ids antigos foram preservados, então os

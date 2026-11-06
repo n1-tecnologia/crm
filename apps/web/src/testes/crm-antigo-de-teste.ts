@@ -3,7 +3,7 @@
  *
  * Várias telas já leem o CRM pelas rotas da api (`@/dados/crm/*`) e têm um teste que diz "o registro antigo do estado
  * não aparece". Até o 15-30 o registro antigo vinha do seed; o seed não cria mais CRM, então o teste põe o seu, com
- * estes construtores. Só montam o objeto: quem usa o põe em `state.contacts`, `state.deals` ou `state.conversations`.
+ * estes construtores. Só montam o objeto: quem usa o põe na coleção certa do estado.
  */
 
 import type { Contact, Conversation, Deal } from "@n1/dominio/types";
