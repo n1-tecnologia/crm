@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 15
 current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
 status: executing
-stopped_at: Completed 15-26-PLAN.md
-last_updated: "2026-11-06T15:04:45.087Z"
+stopped_at: Completed 15-23-PLAN.md
+last_updated: "2026-11-06T17:55:35.258Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 15 execution started
-state_head: aaafdb42a551a1bdbbba4bd933a381063d482e57
+state_head: 60b184f468d6b5f33867b75944d57cced92ca8e7
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 271
-  completed_plans: 254
+  completed_plans: 255
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 15 (Unificação do CRM: telas no modelo novo e remoção do modelo antigo) — EXECUTING
-Plan: 30 of 43
+Plan: 31 of 43
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 15 execution started
 
@@ -473,6 +473,7 @@ Progress: [██████░░░░] 63%
 | Phase 15 P24 | ~65 min | 3 tasks | 9 files |
 | Phase 15 P25 | 11 min | 3 tasks | 7 files |
 | Phase 15 P26 | 27 min | 2 tasks | 15 files |
+| Phase 15 P23 | 16 min | 3 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -763,6 +764,9 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 15]: 15-25: o aviso de consentimento de marketing do fio e aviso (nao bloqueia) e aparece sempre que o vigente de Marketing no tipo do Canal da aba nao e concedido, inclusive sem registro — o fio novo nao tem seletor de modelo; amarrar o aviso ao modelo o apagaria. Ruido possivel registrado em WINDOWS #43
 - [Phase 15]: 15-25: o Contato do fio da ficha da Tarefa e o do resumo quando chegou (contato null volta ao layout de sempre) e o do Vinculo enquanto nao chegou; o Canal e o do resumo — evita trocar de layout ao carregar no caso comum e respeita o sobrevivente de mesclagem
 - [Phase 15]: 15-26: o filtro Meus (?meus=1 -> GET /negocios?proprietarioId=) mora em /crm/negocios, onde QuadroDoFunil e desenhado; /crm/funis/[funil] e a ficha do Funil e nao tem quadro. Atalho Meus negocios do menu = /crm/negocios?meus=1. — O plano e F14-D-06 citavam o quadro de /crm/funis/[funil], que nao existe; a intencao (Meus negocios = filtro do quadro do Funil) foi mantida no unico quadro existente. Linha deviation aberta no WINDOWS.md.
+- [Phase 15]: 15-23: as estatisticas do Inicio pedem duas janelas (atual e anterior) a api, porque ela aceita 400 dias por pedido e o ano com o anterior passa de 700; as janelas sao estaveis o dia inteiro (chave do SWR)
+- [Phase 15]: 15-23: leitura parcial dita por alvo: Mensagens novas diz 'nas primeiras N de M Conversas' e o Painel marca 'Parcial: primeiros 200' so nos Widgets cuja Fonte e do CRM (Tarefa nunca e parcial)
+- [Phase 15]: 15-23: Origem e Motivo de Perda do Painel ficam sem linhas ate NegocioResumo trazer origem/motivoPerda; Paineis semeados com ids antigos de Funil/Fila abrem zerados no CRM novo (WINDOWS, Sessao 20.3)
 
 ### Pending Todos
 
@@ -824,6 +828,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-06T15:04:44.874Z
-Stopped at: Completed 15-26-PLAN.md
+Last session: 2026-11-06T17:55:33.300Z
+Stopped at: Completed 15-23-PLAN.md
 Resume file: None
