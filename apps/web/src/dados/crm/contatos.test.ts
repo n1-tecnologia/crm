@@ -144,6 +144,35 @@ describe("mutações de Contato — a rota certa", () => {
   });
 });
 
+describe("lista de Contatos com Identificador (15-38, 3.4.8)", () => {
+  const envoltorio = ({ children }: { readonly children: ReactNode }) =>
+    createElement(SWRConfig, { value: { provider: () => new Map(), dedupingInterval: 0 } }, children);
+
+  it("(a) comIdentificador entra na chave só quando presente, e a chave muda com o filtro", () => {
+    const sem = chaveDeContatos({});
+    const com = chaveDeContatos({ comIdentificador: "whatsapp" });
+    expect(sem).toBe("/contatos?estado=ativo&limite=50&deslocamento=0");
+    expect(com).toBe("/contatos?estado=ativo&comIdentificador=whatsapp&limite=50&deslocamento=0");
+    expect(com).not.toBe(sem);
+    expect(chaveDeContatos({ comIdentificador: undefined })).toBe(sem);
+  });
+
+  it("(a) useContatos({ comIdentificador }) chama /contatos?...&comIdentificador=whatsapp; sem o filtro, a chave sem o parâmetro", async () => {
+    fetchMock.mockResolvedValue(resposta(200, { ok: true, itens: [], total: 0 }));
+    const { result, rerender } = renderHook(
+      ({ comIdentificador }: { readonly comIdentificador?: "whatsapp" }) =>
+        useContatos(comIdentificador ? { comIdentificador } : {}),
+      { wrapper: envoltorio, initialProps: { comIdentificador: "whatsapp" } as { readonly comIdentificador?: "whatsapp" } },
+    );
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toBe("http://api/contatos?estado=ativo&comIdentificador=whatsapp&limite=50&deslocamento=0");
+
+    // Desligar o filtro troca de chave e volta à lista de hoje.
+    rerender({});
+    await waitFor(() => expect(fetchMock.mock.calls.at(-1)?.[0]).toBe("http://api/contatos?estado=ativo&limite=50&deslocamento=0"));
+  });
+});
+
 describe("mutações de Contato — invalidação e recusa", () => {
   it("(b) depois do sucesso, invalidarCrm('/contatos') é chamado", async () => {
     fetchMock.mockResolvedValueOnce(resposta(200, { ok: true, dados: DETALHADO }));
