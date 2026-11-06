@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 33
+open_count: 35
 waived_count: 2
 fixed_count: 8
-total_count: 43
-last_updated: 2026-11-06T14:45:41.486Z
+total_count: 45
+last_updated: 2026-11-06T14:59:26.663Z
 ---
 
 # Broken Windows Ledger
@@ -58,6 +58,8 @@ last_updated: 2026-11-06T14:45:41.486Z
 | 41 | 15 | deviation | apps/web/src/features/crm/conversa-de-grupo-na-caixa.tsx |  | 15-24: a Conversa de grupo aberta na Caixa (id que a api responde 404 e o store conhece como Conversa de grupo, F14-D-05) ainda resolve, reabre, atribui e manda para a lixeira pelas operacoes antigas do store; so sai quando o Grupo passar ao modelo novo (Sessoes 6 e 7). Nenhuma outra tela da Caixa usa essas operacoes | open |  | 2026-11-06T14:33:24.919Z |  |
 | 42 | 15 | deviation | apps/web/src/features/estrutura/tarefa-completa.tsx |  | 15-25: a lista de Vinculos da ficha da Tarefa mostra 'Registro indisponivel' (sem atalho) para Negocio, Contato e Conversa cujo id POST /crm/nomes nao conhece; os Vinculos de hoje em producao apontam para ids do modelo antigo, entao ate o script de migracao preservar os ids a ficha cai no layout de sempre com o aviso 'sem Contato' (resumo.contato null) e os nomes dos Vinculos nao aparecem. Antes o nome vinha do estado antigo | open |  | 2026-11-06T14:45:41.424Z |  |
 | 43 | 15 | deviation | apps/web/src/features/crm/conversation-thread.tsx |  | 15-25: o aviso de consentimento de marketing do fio e so aviso (nao bloqueia o envio) e aparece sempre que o consentimento vigente de Marketing no tipo do Canal da aba nao e 'concedido', inclusive Contato sem nenhum registro, porque o fio nao tem seletor de modelo (antes o aviso so existia com um modelo de marketing escolhido). Se o dono achar ruidoso para quem nunca teve consentimento registrado, restringir a 'revogado' ou ligar ao modelo quando houver Mensagem de modelo | open |  | 2026-11-06T14:45:41.486Z |  |
+| 44 | 15 | deviation | apps/web/src/app/(shell)/crm/negocios/page.tsx |  | 15-26: o plano e F14-D-06 mandam o filtro Meus para o quadro de /crm/funis/[funil], mas essa rota e a ficha do Funil e nao tem quadro; o quadro (QuadroDoFunil) mora em /crm/negocios. O botao Meus (?meus=1) e o atalho do menu foram para /crm/negocios; o dono decide se quer tambem um quadro na ficha do Funil | open |  | 2026-11-06T14:59:26.597Z |  |
+| 45 | 15 | deviation | apps/web/src/features/shell/app-shell.tsx |  | 15-26: o painel do CRM perdeu o grupo Pastas de Negocios (arvore da Pasta Meus negocios) para todos os Espacos e ganhou o atalho Meus negocios para /crm/negocios?meus=1; favoritos de /crm/meus-negocios agora caem no 404 do app (T-15-63 aceito) | open |  | 2026-11-06T14:59:26.663Z |  |
 
 ````json
 [
@@ -617,6 +619,32 @@ last_updated: 2026-11-06T14:45:41.486Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-06T14:45:41.486Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 44,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/app/(shell)/crm/negocios/page.tsx",
+    "line": null,
+    "description": "15-26: o plano e F14-D-06 mandam o filtro Meus para o quadro de /crm/funis/[funil], mas essa rota e a ficha do Funil e nao tem quadro; o quadro (QuadroDoFunil) mora em /crm/negocios. O botao Meus (?meus=1) e o atalho do menu foram para /crm/negocios; o dono decide se quer tambem um quadro na ficha do Funil",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T14:59:26.597Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 45,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/features/shell/app-shell.tsx",
+    "line": null,
+    "description": "15-26: o painel do CRM perdeu o grupo Pastas de Negocios (arvore da Pasta Meus negocios) para todos os Espacos e ganhou o atalho Meus negocios para /crm/negocios?meus=1; favoritos de /crm/meus-negocios agora caem no 404 do app (T-15-63 aceito)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T14:59:26.663Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }
