@@ -118,11 +118,7 @@ interface Plano {
 
 const SEM_PASTA: PlanoDaPasta = { existe: false, nome: undefined, listas: [], removivel: false };
 const SEM_FUNIS: PlanoDeFunis = { aInserir: [], naoMigrados: [] };
-const SEM_ENTIDADES: PlanoDeMigracao = {
-  linhasPorTabela: { contatos: [], contato_identificadores: [] },
-  deParas: [],
-  naoMigrados: [],
-};
+const SEM_ENTIDADES: PlanoDeMigracao = planejarMigracao([]);
 
 /** O que o mapeador já cobre; o que não está aqui o `--migrar` ainda recusa (a recusa sai por inteiro na Task 3). */
 const COLECOES_COBERTAS_PELO_MAPEADOR: readonly string[] = ["funnels", "contacts"];

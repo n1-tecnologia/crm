@@ -62,10 +62,177 @@ export interface DeParaParaInserir {
   readonly id_novo: string;
 }
 
+export interface LinhaDeEmpresa {
+  readonly id: string;
+  readonly nome_fantasia: string | null;
+  readonly razao_social: string | null;
+  readonly descricao: string | null;
+  readonly matriz_id: string | null;
+  readonly enderecos: readonly unknown[];
+  readonly campos_adicionais: Readonly<Record<string, unknown>>;
+  readonly origem: string | null;
+  readonly estado: string;
+  readonly proprietario_id: string;
+  readonly criado_por: string;
+  readonly criado_em: string | null;
+}
+
+export interface LinhaDeIdentificadorDeEmpresa {
+  readonly id: string;
+  readonly empresa_id: string;
+  readonly tipo: string;
+  readonly valor: string;
+  readonly pais: string | null;
+  readonly verificado: boolean;
+  readonly principal: boolean;
+  readonly criado_em: string | null;
+}
+
+export interface LinhaDeVinculo {
+  readonly id: string;
+  readonly contato_id: string;
+  readonly empresa_id: string;
+  readonly cargo: string | null;
+  readonly admin: boolean;
+  readonly inicio: string | null;
+  readonly fim: string | null;
+  readonly criado_por: string;
+  readonly criado_em: string | null;
+}
+
+export interface LinhaDeNegocio {
+  readonly id: string;
+  readonly titulo: string;
+  readonly objeto: string | null;
+  readonly descricao: string | null;
+  readonly empresa_id: string | null;
+  readonly contato_id: string | null;
+  readonly funil_id: string;
+  /** O id da Etapa no CRM ANTIGO: `inserirPlano` o troca pelo id novo, lendo o `crm_de_para` (`funnels/stages`). */
+  readonly etapa_id_antiga: string;
+  readonly valor: number | null;
+  readonly moeda: string;
+  readonly probabilidade: number | null;
+  readonly situacao: string;
+  readonly motivo_perda: string | null;
+  readonly motivo_ganho: string | null;
+  readonly nota_encerramento: string | null;
+  readonly origem: string | null;
+  readonly data_prevista_fechamento: string | null;
+  readonly encerrado_em: string | null;
+  readonly estado: string;
+  readonly proprietario_id: string;
+  readonly criado_por: string;
+  readonly criado_em: string | null;
+}
+
+export interface LinhaDeCanal {
+  readonly id: string;
+  readonly nome: string;
+  readonly tipo: string;
+  readonly provedor: string;
+  readonly identificador_externo: string;
+  readonly estado: string;
+  readonly arquivado_em: string | null;
+  readonly configurado_por: string;
+  readonly fila_padrao_id: string | null;
+  readonly proprietario_padrao_id: string | null;
+  readonly origem_padrao_id: string | null;
+  readonly grupos_habilitados: boolean;
+  readonly criado_por: string;
+  readonly criado_em: string | null;
+}
+
+export interface LinhaDeConversa {
+  readonly id: string;
+  readonly canal_id: string;
+  readonly contato_id: string;
+  readonly titulo: string;
+  readonly titulo_editado: boolean;
+  readonly situacao: string;
+  readonly estado: string;
+  readonly fila_id: string | null;
+  readonly atribuido_tipo: string | null;
+  readonly atribuido_id: string | null;
+  readonly adiada_ate: string | null;
+  readonly adiamento_motivo: string | null;
+  readonly participantes: readonly unknown[];
+  readonly resolvida_em: string | null;
+  readonly reaberta_em: string | null;
+  readonly reaberturas: number;
+  readonly criado_por_tipo: string;
+  readonly criado_por_id: string;
+  readonly criado_em: string | null;
+  readonly na_lixeira_em: string | null;
+}
+
+export interface LinhaDeMensagem {
+  readonly id: string;
+  readonly conversa_id: string;
+  readonly canal_id: string;
+  readonly direcao: string;
+  readonly ator_tipo: string;
+  readonly ator_id: string;
+  readonly delegante_tipo: string | null;
+  readonly delegante_id: string | null;
+  readonly remetente_participante_id: string | null;
+  readonly identificador_id: string | null;
+  readonly conteudo: string | null;
+  readonly anexos: readonly unknown[];
+  readonly assunto: string | null;
+  readonly enderecos_adicionais: readonly unknown[];
+  readonly em_resposta_a_id: string | null;
+  readonly id_externo: string | null;
+  readonly status_entrega: string | null;
+  readonly motivo_falha: string | null;
+  readonly leituras_internas: readonly unknown[];
+  readonly reacoes: readonly unknown[];
+  readonly marcacao_exclusao: unknown;
+  readonly edicoes_externas: readonly unknown[];
+  readonly anonimizada: boolean;
+  readonly criado_em: string | null;
+}
+
+export interface LinhaDeNota {
+  readonly contato_id: string;
+  readonly conteudo: string;
+  readonly autor_id: string;
+  readonly criado_em: string | null;
+}
+
+export interface LinhaDeConsentimento {
+  readonly contato_id: string;
+  readonly finalidade_id: string;
+  readonly tipo_de_canal: string;
+  readonly decisao: string;
+  readonly em: string;
+  readonly origem: string;
+  readonly evidencia_mensagem_id: string | null;
+  readonly registrado_por: string;
+  readonly registrado_em: string | null;
+}
+
+export interface LinhaDeMarcacao {
+  readonly conversa_id: string;
+  readonly membro_id: string;
+  readonly estrela: boolean;
+}
+
 export interface LinhasPorTabela {
   /** Sobreviventes antes dos mesclados: a FK `contatos_mesclado_em_fk` não é adiável. */
   readonly contatos: LinhaDeContato[];
   readonly contato_identificadores: LinhaDeIdentificadorDeContato[];
+  readonly empresas: LinhaDeEmpresa[];
+  readonly empresa_identificadores: LinhaDeIdentificadorDeEmpresa[];
+  readonly contato_empresa: LinhaDeVinculo[];
+  readonly negocios: LinhaDeNegocio[];
+  readonly canais: LinhaDeCanal[];
+  readonly conversas: LinhaDeConversa[];
+  /** Em ordem de `criadoEm`: a `seq` (identity) da Mensagem nasce na ordem da inserção. */
+  readonly mensagens: LinhaDeMensagem[];
+  readonly contato_notas: LinhaDeNota[];
+  readonly contato_consentimentos: LinhaDeConsentimento[];
+  readonly conversa_marcacoes: LinhaDeMarcacao[];
 }
 
 export interface PlanoDeMigracao {
@@ -76,8 +243,20 @@ export interface PlanoDeMigracao {
 
 /** O que o CRM novo do Espaço já tem e o mapeador não pode repetir (colisões de unicidade e de id). */
 export interface CrmNovoDoEspaco {
-  readonly identificadoresDeContato: ReadonlySet<string>;
   readonly idsDeContato: ReadonlySet<string>;
+  readonly identificadoresDeContato: ReadonlySet<string>;
+  readonly idsDeEmpresa: ReadonlySet<string>;
+  readonly identificadoresDeEmpresa: ReadonlySet<string>;
+  readonly idsDeNegocio: ReadonlySet<string>;
+  readonly idsDeCanal: ReadonlySet<string>;
+  /** `lower(btrim(nome))` dos Canais ativos (`canais_nome_uq`). */
+  readonly nomesDeCanalAtivo: ReadonlySet<string>;
+  /** `tipo` + `identificador_externo` dos Canais ativos (`canais_conta_uq`). */
+  readonly contasDeCanalAtivo: ReadonlySet<string>;
+  readonly idsDeConversa: ReadonlySet<string>;
+  /** `contato_id` + `canal_id` das Conversas aberta ou pendente e ativas (`conversas_nao_resolvida_uq`). */
+  readonly conversasNaoResolvidas: ReadonlySet<string>;
+  readonly idsDeMensagem: ReadonlySet<string>;
 }
 
 /** A chave de unicidade do Identificador de Contato no Espaço (`contato_identificadores_unico`). */
@@ -85,11 +264,43 @@ export function chaveDeIdentificadorDeContato(tipo: string, valor: string): stri
   return `${tipo}\u0000${valor}`;
 }
 
-export const CRM_NOVO_VAZIO: CrmNovoDoEspaco = { identificadoresDeContato: new Set(), idsDeContato: new Set() };
+/** A chave de unicidade do Identificador de Empresa no Espaço (`empresa_identificadores_unico`). */
+export function chaveDeIdentificadorDeEmpresa(tipo: string, valor: string): string {
+  return `${tipo}\u0000${valor}`;
+}
+
+/** A chave da conta de um Canal (`canais_conta_uq`). */
+export function chaveDeContaDeCanal(tipo: string, identificador: string): string {
+  return `${tipo}\u0000${identificador}`;
+}
+
+/** A chave do par Contato + Canal (`conversas_nao_resolvida_uq`). */
+export function chaveDeParDeConversa(contatoId: string, canalId: string): string {
+  return `${contatoId}\u0000${canalId}`;
+}
+
+export const CRM_NOVO_VAZIO: CrmNovoDoEspaco = {
+  idsDeContato: new Set(),
+  identificadoresDeContato: new Set(),
+  idsDeEmpresa: new Set(),
+  identificadoresDeEmpresa: new Set(),
+  idsDeNegocio: new Set(),
+  idsDeCanal: new Set(),
+  nomesDeCanalAtivo: new Set(),
+  contasDeCanalAtivo: new Set(),
+  idsDeConversa: new Set(),
+  conversasNaoResolvidas: new Set(),
+  idsDeMensagem: new Set(),
+};
 
 export interface OpcoesDoMapeador {
   /** Gera o id novo de Identificador e de vínculo (UUID por padrão; os testes passam um contador). */
   readonly gerarId?: () => string;
+  /**
+   * Os Funis que PASSAM a existir no CRM novo (id antigo → ids antigos das Etapas dele): o Negócio só migra para
+   * um Funil e uma Etapa desta lista. Ausente ou vazio (`--funil=guardar`), nenhum Negócio migra.
+   */
+  readonly funisMigrados?: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 // --- Leitura defensiva do JSON antigo ---
@@ -279,7 +490,20 @@ export function planejarMigracao(
   const ctx: ContextoDoMapeador = {
     crmNovo,
     gerarId: opcoes.gerarId ?? randomUUID,
-    linhas: { contatos: [], contato_identificadores: [] },
+    linhas: {
+      contatos: [],
+      contato_identificadores: [],
+      empresas: [],
+      empresa_identificadores: [],
+      contato_empresa: [],
+      negocios: [],
+      canais: [],
+      conversas: [],
+      mensagens: [],
+      contato_notas: [],
+      contato_consentimentos: [],
+      conversa_marcacoes: [],
+    },
     deParas: [],
     naoMigrados: [],
   };

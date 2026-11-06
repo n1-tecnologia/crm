@@ -4,7 +4,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { type EntradaDoRelatorio, montarRelatorio } from "./relatorio";
+import type { NaoMigrado } from "./nao-migrados";
+import { type EntradaDoRelatorio, montarRelatorio, montarResumoDeEscrita } from "./relatorio";
 
 const NOVE = ["contacts", "companies", "contactCompanyLinks", "companyCompanyLinks", "distinctFromLinks", "funnels", "deals", "channels", "conversations"];
 
@@ -122,5 +123,79 @@ describe("montarRelatorio (--seco)", () => {
     for (const proibido of ["Pessoa", "Sintetica", "+550000000001", "Texto sintetico", "firstName", "identifiers"]) {
       expect(texto, proibido).not.toContain(proibido);
     }
+  });
+});
+
+describe("a seção \"Não migrados\" (15-28 Task 2)", () => {
+  const item = (categoria: NaoMigrado["categoria"], colecao: string, id: string): NaoMigrado => ({ categoria, colecao, id });
+
+  it("lista cada categoria com a contagem e os ids, e diz que continuam em registros_crm_antigo", () => {
+    const texto = montarRelatorio(
+      entradaBase({
+        entidades: {
+          porTabela: { contatos: 39, empresas: 11 },
+          naoMigrados: [
+            item("temperatura", "contacts", "cnt_1"),
+            item("temperatura", "contacts", "cnt_2"),
+            item("empresa-sem-admin", "companies", "cmp_9"),
+            item("canal-sem-destino", "channels", "chn_site"),
+          ],
+        },
+      }),
+    );
+
+    expect(texto).toMatch(/Não migrados/);
+    expect(texto).toMatch(/registros_crm_antigo/);
+    expect(texto).toMatch(/Temperatura[^\n]*: 2/);
+    expect(texto).toContain("contacts:cnt_1");
+    expect(texto).toContain("contacts:cnt_2");
+    expect(texto).toMatch(/Empresa sem vínculo admin[^\n]*: 1/);
+    expect(texto).toContain("companies:cmp_9");
+    expect(texto).toContain("channels:chn_site");
+  });
+
+  it("mostra quantas linhas entram em cada tabela nova", () => {
+    const texto = montarRelatorio(entradaBase({ entidades: { porTabela: { contatos: 39, mensagens: 66 }, naoMigrados: [] } }));
+
+    expect(texto).toMatch(/contatos\s+39/);
+    expect(texto).toMatch(/mensagens\s+66/);
+    expect(texto).toMatch(/nenhum item/i);
+  });
+
+  it("corta a lista de ids de uma categoria grande e diz quantos faltam", () => {
+    const muitos = Array.from({ length: 30 }, (_, i) => item("tags", "contacts", `cnt_${i}`));
+
+    const texto = montarRelatorio(entradaBase({ entidades: { porTabela: {}, naoMigrados: muitos } }));
+
+    expect(texto).toContain("contacts:cnt_0");
+    expect(texto).not.toContain("contacts:cnt_29");
+    expect(texto).toMatch(/e mais 10/);
+  });
+
+  it("o resumo de uma escrita também traz as contagens migradas e o não migrado", () => {
+    const texto = montarResumoDeEscrita({
+      espaco: "ws_n1",
+      modo: "migrar",
+      nadaAFazer: false,
+      copiadas: 10,
+      apagadas: { contacts: 2 },
+      conversasDeGrupo: 0,
+      funis: { migrados: 0, etapas: 0, naoMigrados: [] },
+      pasta: { existe: false, nome: undefined, listas: [], removivel: false },
+      entidades: { porTabela: { contatos: 2, contato_identificadores: 3 }, naoMigrados: [item("identificador-sem-destino", "contacts", "cnt_1")] },
+    });
+
+    expect(texto).toMatch(/contatos\s+2/);
+    expect(texto).toMatch(/Não migrados/);
+    expect(texto).toContain("contacts:cnt_1");
+  });
+
+  it("nada pessoal: só coleção e id, mesmo que o item traga outros campos (T-15-67)", () => {
+    const comPessoal = { categoria: "tags", colecao: "contacts", id: "cnt_1", firstName: "Pessoa", value: "+550000000001" } as unknown as NaoMigrado;
+
+    const texto = montarRelatorio(entradaBase({ entidades: { porTabela: {}, naoMigrados: [comPessoal] } }));
+
+    expect(texto).not.toContain("Pessoa");
+    expect(texto).not.toContain("+550000000001");
   });
 });

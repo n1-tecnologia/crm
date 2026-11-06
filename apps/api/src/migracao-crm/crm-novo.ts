@@ -6,7 +6,7 @@
 import type { PoolClient } from "pg";
 import { COLECOES_DO_CRM_ANTIGO } from "./colecoes";
 import type { RegistroAntigo } from "./formatos-antigos";
-import { chaveDeIdentificadorDeContato, type CrmNovoDoEspaco } from "./mapeador";
+import { chaveDeIdentificadorDeContato, CRM_NOVO_VAZIO, type CrmNovoDoEspaco } from "./mapeador";
 
 /** As linhas das nove coleções do Espaço, como estão em `registros` (as Conversas de Grupo vêm junto; o mapeador as ignora). */
 export async function lerLinhasAntigas(cliente: PoolClient, espaco: string): Promise<RegistroAntigo[]> {
@@ -33,6 +33,7 @@ export async function lerCrmNovoDoEspaco(cliente: PoolClient, espaco: string, an
     [espaco],
   );
   return {
+    ...CRM_NOVO_VAZIO,
     identificadoresDeContato: new Set(identificadores.rows.map((i) => chaveDeIdentificadorDeContato(i.tipo, i.valor))),
     idsDeContato: new Set(contatos.rows.map((l) => l.id)),
   };

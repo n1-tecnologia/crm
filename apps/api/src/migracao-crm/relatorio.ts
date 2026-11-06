@@ -8,6 +8,7 @@
  */
 
 import { COLECAO_DE_CONVERSAS } from "./colecoes";
+import type { NaoMigrado } from "./nao-migrados";
 
 export interface ContagemPorColecao {
   readonly colecao: string;
@@ -54,6 +55,14 @@ export interface EntradaDoRelatorio {
   readonly funis: readonly FunilDoRelatorio[];
   readonly funisNoCrmNovo: { readonly total: number; readonly temPadrao: boolean };
   readonly pasta: PastaDoRelatorio;
+  /** O que o mapeador levaria às tabelas novas e o que deixaria de fora (15-28). Ausente = o relatório não o mostra. */
+  readonly entidades?: EntidadesDoRelatorio;
+}
+
+/** O que o mapeador de entidades prevê (`--seco`) ou fez (`--migrar`): contagens por tabela e o que ficou de fora. */
+export interface EntidadesDoRelatorio {
+  readonly porTabela: Readonly<Record<string, number>>;
+  readonly naoMigrados: readonly NaoMigrado[];
 }
 
 function alinhar(nome: string, largura: number): string {
@@ -172,6 +181,7 @@ export interface EntradaDoResumo {
   readonly conversasDeGrupo: number;
   readonly funis: { readonly migrados: number; readonly etapas: number; readonly naoMigrados: readonly { readonly id: string; readonly nome: string; readonly motivo: string }[] };
   readonly pasta: PastaDoRelatorio;
+  readonly entidades?: EntidadesDoRelatorio;
 }
 
 function textoDasContagens(porColecao: Readonly<Record<string, number>>): string {

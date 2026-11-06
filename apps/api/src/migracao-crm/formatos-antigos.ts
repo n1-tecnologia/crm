@@ -173,3 +173,175 @@ export interface ContatoAntigo {
   readonly preMergeState?: unknown;
   readonly provenance?: unknown;
 }
+
+/** Identificador de Empresa (`CompanyIdentifier`): `dominio`, `documentoFiscal` ou `telefone`. */
+export interface IdentificadorDeEmpresaAntigo {
+  readonly id: string;
+  readonly type?: string;
+  readonly value?: string;
+  readonly country?: string;
+  readonly verified?: boolean;
+  readonly principal?: boolean;
+  readonly createdAt?: string;
+}
+
+/** Empresa (`Company`). */
+export interface EmpresaAntiga {
+  readonly id: string;
+  readonly createdBy?: AtorAntigo;
+  readonly createdAt?: string;
+  readonly lifecycle?: string;
+  readonly tradeName?: string;
+  readonly legalName?: string;
+  readonly ownerMemberId?: string;
+  readonly description?: string;
+  readonly parentCompanyId?: string;
+  readonly originId?: string;
+  readonly identifiers?: readonly IdentificadorDeEmpresaAntigo[];
+  readonly addresses?: readonly EnderecoAntigo[];
+  readonly tagIds?: readonly string[];
+  readonly fieldValues?: readonly ValorDeCampoAntigo[];
+  readonly attachments?: readonly unknown[];
+  readonly comments?: readonly ComentarioAntigo[];
+  readonly mergedIntoId?: string;
+  readonly preMergeState?: unknown;
+}
+
+/** Vínculo Contato-Empresa (`ContactCompanyLink`). `end` preenchido = vínculo encerrado. */
+export interface VinculoContatoEmpresaAntigo {
+  readonly id: string;
+  readonly contactId?: string;
+  readonly companyId?: string;
+  readonly role?: string;
+  readonly principalForContact?: boolean;
+  readonly principalForCompany?: boolean;
+  readonly start?: string;
+  readonly end?: string;
+  readonly createdBy?: AtorAntigo;
+  readonly createdAt?: string;
+}
+
+/** Contato de um Negócio (`DealContactLink`). */
+export interface ContatoDoNegocioAntigo {
+  readonly id?: string;
+  readonly contactId?: string;
+  readonly principal?: boolean;
+}
+
+/** Negócio (`Deal`). `lifecycle` é `ativo`, `arquivado` ou `naLixeira`; `situation` é `aberto`, `ganho` ou `perdido`. */
+export interface NegocioAntigo {
+  readonly id: string;
+  readonly createdBy?: AtorAntigo;
+  readonly createdAt?: string;
+  readonly lifecycle?: string;
+  readonly readableId?: string;
+  readonly title?: string;
+  readonly object?: string;
+  readonly description?: string;
+  readonly companyId?: string;
+  readonly ownerMemberId?: string;
+  readonly funnelId?: string;
+  readonly stageId?: string;
+  readonly value?: { readonly amount?: number; readonly currency?: string };
+  readonly overriddenProbability?: number;
+  readonly situation?: string;
+  readonly lossReasonId?: string;
+  readonly winReasonId?: string;
+  readonly closingNote?: string;
+  readonly originId?: string;
+  readonly expectedCloseDate?: string;
+  readonly closedAt?: string;
+  readonly contactLinks?: readonly ContatoDoNegocioAntigo[];
+  readonly tagIds?: readonly string[];
+  readonly fieldValues?: readonly ValorDeCampoAntigo[];
+  readonly attachments?: readonly unknown[];
+  readonly comments?: readonly unknown[];
+  readonly stageHistory?: readonly unknown[];
+}
+
+/** Canal (`Channel`). `connection` não é lido: todo Canal migrado entra desconectado. */
+export interface CanalAntigo {
+  readonly id: string;
+  readonly createdBy?: AtorAntigo;
+  readonly createdAt?: string;
+  readonly lifecycle?: string;
+  readonly archivedAt?: string;
+  readonly name?: string;
+  readonly channelType?: string;
+  readonly provider?: string;
+  readonly externalId?: string;
+  readonly configuredByMemberId?: string;
+  readonly defaultQueueId?: string;
+  readonly defaultContactOwnerMemberId?: string;
+  readonly defaultOriginId?: string;
+  readonly messageTemplates?: readonly unknown[];
+  readonly groupsEnabled?: boolean;
+}
+
+/** Participante da Conversa (`Participant`). */
+export interface ParticipanteAntigo {
+  readonly id?: string;
+  readonly subject?: AtorAntigo;
+  readonly role?: string;
+  readonly principal?: boolean;
+  readonly enteredAt?: string;
+  readonly leftAt?: string;
+}
+
+/** Mensagem (`Message`), aninhada na Conversa. */
+export interface MensagemAntiga {
+  readonly id: string;
+  readonly direction?: string;
+  readonly actor?: AtorAntigo;
+  readonly delegate?: AtorAntigo;
+  readonly senderParticipantId?: string;
+  readonly viaIdentifierId?: string;
+  readonly content?: string;
+  readonly attachments?: ReadonlyArray<{ readonly fileId?: string; readonly mediaType?: string; readonly displayName?: string }>;
+  readonly subject?: string;
+  readonly additionalAddresses?: ReadonlyArray<{ readonly kind?: string; readonly address?: string; readonly displayName?: string }>;
+  readonly inReplyToMessageId?: string;
+  readonly usedTemplateProviderId?: string;
+  readonly externalId?: string;
+  readonly deliveryStatus?: string;
+  readonly deliveryFailureReason?: string;
+  readonly internalReads?: readonly unknown[];
+  readonly reactions?: readonly unknown[];
+  readonly deletionMark?: unknown;
+  readonly externalEdits?: readonly unknown[];
+  readonly createdAt?: string;
+  readonly anonymized?: boolean;
+  readonly flow?: unknown;
+  readonly respostaDeFlow?: unknown;
+}
+
+/** Conversa (`Conversation`); a de Grupo (`groupIdentifier`) não passa pelo mapeador. */
+export interface ConversaAntiga {
+  readonly id: string;
+  readonly createdBy?: AtorAntigo;
+  readonly createdAt?: string;
+  readonly lifecycle?: string;
+  readonly channelId?: string;
+  readonly contactId?: string;
+  readonly state?: string;
+  readonly queueId?: string;
+  readonly assignee?: AtorAntigo;
+  readonly title?: string;
+  readonly titleEdited?: boolean;
+  readonly snooze?: { readonly until?: string; readonly reason?: string };
+  readonly drafts?: readonly unknown[];
+  readonly starredBy?: readonly string[];
+  readonly tagIds?: readonly string[];
+  readonly fieldValues?: readonly ValorDeCampoAntigo[];
+  readonly participants?: readonly ParticipanteAntigo[];
+  readonly messages?: readonly MensagemAntiga[];
+  readonly trashedAt?: string;
+  readonly resolvedAt?: string;
+  readonly reopenedAt?: string;
+  readonly reopenCount?: number;
+}
+
+/** Vínculo Empresa-Empresa e "distinto de": só o id e as pontas, para o relatório. */
+export interface VinculoSoComIdAntigo {
+  readonly id: string;
+}
