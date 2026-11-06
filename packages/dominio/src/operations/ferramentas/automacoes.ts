@@ -95,10 +95,10 @@ function runAction(
       // 1.2.2 — `startConversation` confere o dono (Membro ativo, não Convidado) e segue
       // exportada; o envio vai pela variante interna: a Automação age por delegação do
       // dono, e `sendMessage` (registrada) passou a recusar pelo ator.
-      const conversa = startConversation(state, owner, canalId, contato.id);
+      const conversa = startConversation(state, owner, canalId, contato.id, crm);
       if (!conversa.ok) return { ok: false, output: conversa.error };
       const texto = spec.template.replace(/\{\{nome\}\}/g, contato.nome.trim().split(/\s+/)[0] || contato.nome).replace(/\{\{grupo\}\}/g, grupo?.nome ?? "");
-      const envio = sendMessageSemConferencia(state, owner, { conversationId: conversa.value.id, content: texto, actor: atorDaAutomacao, delegate: memberActor(owner) });
+      const envio = sendMessageSemConferencia(state, owner, { conversationId: conversa.value.id, content: texto, actor: atorDaAutomacao, delegate: memberActor(owner), ...(crm ? { crm } : {}) });
       return envio.ok ? { ok: true, output: "Mensagem enviada" } : { ok: false, output: envio.error };
     }
     default:

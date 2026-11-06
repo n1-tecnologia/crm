@@ -869,6 +869,7 @@ export function enviarFlow(state: DataState, actingMemberId: Id, input: EnviarFl
     ...(input.templateProviderId ? { templateProviderId: input.templateProviderId } : {}),
     ...(input.actor ? { actor: input.actor } : {}),
     ...(input.delegate ? { delegate: input.delegate } : {}),
+    ...(crm ? { crm } : {}),
   });
   if (!envio.ok) return envio;
   const flowNaMensagem: EnvioDeFlow = {
@@ -922,7 +923,7 @@ export function receberRespostaDeFlow(state: DataState, input: ReceberRespostaIn
   const telas = telasOrdenadas(versao);
   const telaDeConclusao = input.telaDeConclusao ?? telas.filter((t) => t.terminal).at(-1)?.identificador ?? telas.at(-1)?.identificador ?? "";
   const resumo = input.resumo ?? `Resposta ao Flow “${flow.nome}”: ${Object.entries(input.valores).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : String(v)}`).join(" · ")}`;
-  const recebida = receiveMessage(state, flow.canalId, contato.id, resumo);
+  const recebida = receiveMessage(state, flow.canalId, contato.id, resumo, crm);
   if (!recebida.ok) return recebida;
   const conversa = recebida.value;
   const indice = conversa.messages.length - 1;

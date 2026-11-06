@@ -13,10 +13,11 @@
  * Ontology: documento 14, B12, B66, B68, B69, RN-CXE-*.
  */
 
+import type { Canal } from "../../crm/canais";
 import { CHANNEL_CAPABILITIES, capacidadesDoCanal } from "../../crm/capacidades";
 import { marketingConsentMissing } from "../../derive";
 import { fail, ok, type DataState, type OperationResult } from "../../state";
-import type { ActorRef, Conversation, Id, Message } from "../../types";
+import type { ActorRef, Channel, Conversation, CrmDasFerramentas, Id, Message } from "../../types";
 import { memberActor, nextId, recordActivity, systemActor } from "../activity";
 
 /**
@@ -42,9 +43,45 @@ export function recusaDeEscritaNoCrmAntigo(state: DataState, actingMemberId: Id)
 
 const now = (): string => new Date().toISOString();
 
-function windowOpenUntil(state: DataState, conversation: Conversation): Date | null {
-  const channel = state.channels.find((c) => c.id === conversation.channelId);
-  if (!channel) return null;
+/** O Canal da tabela `plataforma.canais` na forma que as composições antigas leem (`Channel`). */
+function canalComoChannel(canal: Canal, workspaceId: Id): Channel {
+  return {
+    id: canal.id,
+    workspaceId,
+    createdBy: { kind: "member", id: canal.criadoPor },
+    createdAt: canal.criadoEm,
+    lifecycle: canal.estado,
+    ...(canal.arquivadoEm !== null ? { archivedAt: canal.arquivadoEm } : {}),
+    name: canal.nome,
+    channelType: canal.tipo,
+    externalId: canal.identificadorExterno,
+    connection: canal.conexao === "com_erro" ? "comErro" : canal.conexao,
+    configuredByMemberId: canal.configuradoPor,
+    ...(canal.filaPadraoId !== null ? { defaultQueueId: canal.filaPadraoId } : {}),
+    ...(canal.proprietarioPadraoId !== null ? { defaultContactOwnerMemberId: canal.proprietarioPadraoId } : {}),
+    ...(canal.origemPadraoId !== null ? { defaultOriginId: canal.origemPadraoId } : {}),
+    messageTemplates: [],
+    groupsEnabled: canal.gruposHabilitados,
+    provider: canal.provedor,
+    relational: true,
+    simulatedConnection: canal.conexaoSimulada,
+  };
+}
+
+/**
+ * O Canal que a composição precisa. O Canal vive só em `plataforma.canais` (15-33: a ponte que o
+ * projetava em `state.channels` saiu), então ele chega por `crm.canais`, o que o servidor leu da
+ * tabela e que as operações de Grupo, Flow e Automação já recebem. `state.channels` vem primeiro:
+ * é onde o CRM antigo de teste e os Canais antigos de `registros` ainda estão até o corte.
+ */
+function canalPeloId(state: DataState, canalId: Id, crm?: CrmDasFerramentas): Channel | undefined {
+  const antigo = state.channels.find((c) => c.id === canalId);
+  if (antigo) return antigo;
+  const canal = crm?.canais.find((c) => c.id === canalId);
+  return canal ? canalComoChannel(canal, state.workspace.id) : undefined;
+}
+
+function windowOpenUntil(channel: Channel, conversation: Conversation): Date | null {
   const hours = capacidadesDoCanal(channel).responseWindowHours;
   if (hours === undefined) return null;
   const lastReceived = [...conversation.messages]
@@ -71,6 +108,8 @@ export interface SendMessageInput {
    * Atendente o adota de novo: duplicata ao Contato, que não volta atrás.
    */
   readonly adoptedDraftOf?: ActorRef;
+  /** O Canal da Conversa, quando só a tabela `plataforma.canais` o tem (15-33). */
+  readonly crm?: CrmDasFerramentas;
 }
 
 /**
@@ -106,14 +145,14 @@ export function sendMessageSemConferencia(
   if (conversation.lifecycle !== "ativo") return fail("Esta Conversa está na lixeira.");
   if (!input.content.trim()) return fail("Escreva a mensagem antes de enviar.", "conteudo");
 
-  const channel = state.channels.find((c) => c.id === conversation.channelId);
+  const channel = canalPeloId(state, conversation.channelId, input.crm);
   if (!channel) return fail("Canal não encontrado.");
 
   const actor = input.actor ?? memberActor(actingMemberId);
 
   if (!input.internal) {
     const capabilities = capacidadesDoCanal(channel);
-    const until = windowOpenUntil(state, conversation);
+    const until = windowOpenUntil(channel, conversation);
     if (capabilities.requiresTemplateOutsideWindow && until && Date.now() > until.getTime()) {
       if (!input.templateProviderId) {
         return fail(
@@ -258,8 +297,9 @@ export function receiveMessage(
   channelId: Id,
   contactId: Id,
   content: string,
+  crm?: CrmDasFerramentas,
 ): OperationResult<Conversation> {
-  const channel = state.channels.find((c) => c.id === channelId);
+  const channel = canalPeloId(state, channelId, crm);
   if (!channel) return fail("Canal não encontrado.");
   const contact = state.contacts.find((c) => c.id === contactId);
   if (!contact) return fail("Contato não encontrado.");
@@ -445,6 +485,7 @@ export function startConversation(
   actingMemberId: Id,
   channelId: Id,
   contactId: Id,
+  crm?: CrmDasFerramentas,
 ): OperationResult<Conversation> {
   const member = state.members.find((m) => m.id === actingMemberId);
   if (!member || member.state !== "ativo") return fail("Só um Membro ativo abre atendimento.");
@@ -453,7 +494,7 @@ export function startConversation(
     return fail("Um Convidado não abre atendimento.");
   }
 
-  const channel = state.channels.find((c) => c.id === channelId);
+  const channel = canalPeloId(state, channelId, crm);
   if (!channel) return fail("Canal não encontrado.");
   if (channel.lifecycle !== "ativo") return fail("Este Canal não está ativo.");
 

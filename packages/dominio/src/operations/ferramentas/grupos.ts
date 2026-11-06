@@ -254,14 +254,14 @@ export function enviarLinkDeConvite(state: DataState, actingMemberId: Id, grupoI
     }
     // 1.2.2 — o ator já passou por `recusaDeMembroAtivo` no início da operação: as
     // exportadas `startConversation` e `sendMessage` conferem a mesma regra.
-    const conversa = startConversation(state, actingMemberId, grupo.canalId, contactId);
+    const conversa = startConversation(state, actingMemberId, grupo.canalId, contactId, crm);
     if (!conversa.ok) {
       falhas.push({ contactId, motivo: `${nome}: ${conversa.error}` });
       continue;
     }
     const primeiroNome = contato?.nome.trim().split(/\s+/)[0];
     const texto = `${primeiroNome ? `Olá, ${primeiroNome}!` : "Olá!"} Você foi convidado para o grupo “${grupo.nome}” no WhatsApp. Para entrar, abra o link: ${link.endereco}`;
-    const envio = sendMessage(state, actingMemberId, { conversationId: conversa.value.id, content: texto });
+    const envio = sendMessage(state, actingMemberId, { conversationId: conversa.value.id, content: texto, ...(crm ? { crm } : {}) });
     if (!envio.ok) {
       falhas.push({ contactId, motivo: `${nome}: ${envio.error}` });
       continue;
@@ -899,6 +899,7 @@ export function enviarMensagemAoGrupo(
     ...(input.templateProviderId ? { templateProviderId: input.templateProviderId } : {}),
     ...(input.actor ? { actor: input.actor } : {}),
     ...(input.delegate ? { delegate: input.delegate } : {}),
+    ...(crm ? { crm } : {}),
   });
   if (!envio.ok) return envio;
   registrarNoGrupo(state, grupo, { actor: ator, ...(input.delegate ? { delegate: input.delegate } : {}), action: "Mensagem enviada ao Grupo", detail: input.content.slice(0, 80) });
