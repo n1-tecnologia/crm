@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 15
 current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
 status: executing
-stopped_at: Completed 15-40-PLAN.md
-last_updated: "2026-11-06T18:42:12.606Z"
+stopped_at: Completed 15-27-PLAN.md
+last_updated: "2026-11-06T19:15:59.350Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 15 execution started
-state_head: 8910ff4f271c7636aaa4e0d434c4f0102952f027
+state_head: 74e6f9c40e87cc560ebf4c8a0f9857dac190dac1
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 271
-  completed_plans: 256
+  completed_plans: 257
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 15 (Unificação do CRM: telas no modelo novo e remoção do modelo antigo) — EXECUTING
-Plan: 32 of 43
+Plan: 33 of 43
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 15 execution started
 
@@ -475,6 +475,7 @@ Progress: [██████░░░░] 63%
 | Phase 15 P26 | 27 min | 2 tasks | 15 files |
 | Phase 15 P23 | 16 min | 3 tasks | 15 files |
 | Phase 15 P40 | 50 min | 2 tasks | 13 files |
+| Phase 15 P27 | 35 min | 3 tasks | 18 files |
 
 ## Accumulated Context
 
@@ -769,6 +770,9 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 15]: 15-23: leitura parcial dita por alvo: Mensagens novas diz 'nas primeiras N de M Conversas' e o Painel marca 'Parcial: primeiros 200' so nos Widgets cuja Fonte e do CRM (Tarefa nunca e parcial)
 - [Phase 15]: 15-23: Origem e Motivo de Perda do Painel ficam sem linhas ate NegocioResumo trazer origem/motivoPerda; Paineis semeados com ids antigos de Funil/Fila abrem zerados no CRM novo (WINDOWS, Sessao 20.3)
 - [Phase 15]: 15-40: quadro-negocios.tsx virou quadro-conversacional.tsx (era tambem o quadro da Lista conversacional); Canais da Lista via useCanais; CONGELADOS de sem-listas-espelho (web) chegou a zero
+- [Phase 15]: 15-27: a conferencia do 'guardar' exige copia IDENTICA (dados e ordem) para o que sai de registros; copia velha que difere barra o apagar — count(origem)=count(copia) aceitaria uma copia velha de linha reinserida e alterada, e o delete perderia a versao nova
+- [Phase 15]: 15-27: Etapa no crm_de_para usa colecao_antiga='funnels/stages' e id_antigo='<funil>/<etapa>'; Funil preserva o id antigo — o id da Etapa so e unico dentro do Funil; o 15-28 troca o stageId dos Negocios por essa linha
+- [Phase 15]: 15-27: repetir --guardar/--migrar devolve fail('nada a fazer') da operacao: executar() desfaz sem subir a revisao do Espaco — evita re-hidratar os navegadores abertos por uma execucao sem escrita
 
 ### Pending Todos
 
@@ -830,6 +834,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-06T18:42:12.359Z
-Stopped at: Completed 15-40-PLAN.md
+Last session: 2026-11-06T19:15:59.144Z
+Stopped at: Completed 15-27-PLAN.md
 Resume file: None
