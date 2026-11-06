@@ -15,6 +15,10 @@
  * irreversível: o absorvido fica `mesclado`, terminal e somente leitura, e abrir a
  * página dele leva ao sobrevivente (14-01).
  *
+ * Desde a Fase 15 (D-15-10) o botão só liga depois de digitar o nome de exibição do
+ * absorvido, como o diálogo antigo pedia (reverte o item 7 de `14-PROVAS.md`): sem
+ * diferença de maiúsculas e de espaços nas pontas.
+ *
  * Todo texto vindo da api é renderizado como texto React (escapado).
  */
 
@@ -23,7 +27,10 @@ import type { ErroDeApi } from "@/dados/crm/cliente-crm";
 import { mesclarContatos } from "@/dados/crm/contatos";
 import { comoErroDeApi } from "@/features/crm/formulario-de-contato";
 import { SeletorDeRegistro, type RegistroEscolhido } from "@/features/crm/seletor-de-registro";
-import { ConfirmDialog, Field } from "@/features/shell/ui";
+import { ConfirmDialog, Field, TextInput } from "@/features/shell/ui";
+
+/** Sem diferença de maiúsculas nem de espaços nas pontas (D-15-10). */
+const comparavel = (texto: string): string => texto.trim().toLowerCase();
 
 export function MesclarContatoDialog({
   contatoId,
@@ -41,11 +48,15 @@ export function MesclarContatoDialog({
   const [absorvido, setAbsorvido] = useState<RegistroEscolhido | null>(null);
   const [erro, setErro] = useState<ErroDeApi | null>(null);
   const [mesclando, setMesclando] = useState(false);
+  const [digitado, setDigitado] = useState("");
 
-  const porQueNao = absorvido === null ? "Escolha o Contato a mesclar." : mesclando ? "Mesclando…" : undefined;
+  // D-15-10: a mesclagem não se desfaz, então o gesto custa um passo a mais: digitar o nome do absorvido.
+  const confere = absorvido !== null && comparavel(digitado) === comparavel(absorvido.nome);
+  const porQueNao =
+    absorvido === null ? "Escolha o Contato a mesclar." : mesclando ? "Mesclando…" : !confere ? "Digite o nome do Contato para confirmar." : undefined;
 
   const confirmar = async () => {
-    if (absorvido === null) return;
+    if (absorvido === null || !confere) return;
     setErro(null);
     setMesclando(true);
     try {
@@ -72,13 +83,31 @@ export function MesclarContatoDialog({
     >
       <div className="grid gap-3">
         <Field label="Mesclar com" hint="Só Contatos ativos aparecem na busca.">
-          {(id) => <SeletorDeRegistro id={id} recurso="contatos" rotulo="Buscar Contato a mesclar" valor={absorvido} onChange={setAbsorvido} excluirIds={[contatoId]} />}
+          {(id) => (
+            <SeletorDeRegistro
+              id={id}
+              recurso="contatos"
+              rotulo="Buscar Contato a mesclar"
+              valor={absorvido}
+              onChange={(escolhido) => {
+                setAbsorvido(escolhido);
+                setDigitado("");
+              }}
+              excluirIds={[contatoId]}
+            />
+          )}
         </Field>
 
         <p className="app-base rounded-[var(--r-controle)] px-3 py-2" style={{ background: "var(--aviso-lavado)", color: "var(--aviso)" }}>
           <strong>Não dá para desfazer.</strong> Identificadores, Conversas, Negócios, notas e Endereços do Contato escolhido passam para {nome}; os
           consentimentos são copiados; os vínculos com Empresas se juntam (onde os dois têm vínculo com a mesma Empresa, fica um só).
         </p>
+
+        {absorvido !== null ? (
+          <Field label="Digite o nome do Contato que será absorvido" hint={`Para confirmar, escreva ${absorvido.nome}.`}>
+            {(id) => <TextInput id={id} value={digitado} onChange={setDigitado} invalid={digitado !== "" && !confere} placeholder={absorvido.nome} />}
+          </Field>
+        ) : null}
 
         {erro ? (
           <p role="alert" className="app-base" style={{ color: "var(--erro)" }}>
