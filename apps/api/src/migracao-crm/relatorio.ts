@@ -8,7 +8,7 @@
  */
 
 import { COLECAO_DE_CONVERSAS } from "./colecoes";
-import type { NaoMigrado } from "./nao-migrados";
+import { agruparNaoMigrados, type NaoMigrado } from "./nao-migrados";
 
 export interface ContagemPorColecao {
   readonly colecao: string;
@@ -90,6 +90,37 @@ export function linhasDaPasta(pasta: PastaDoRelatorio, quandoSai: "vai" | "saiu"
   ];
 }
 
+/** Quantos ids de uma categoria o texto lista; o resto vira "e mais N" (a lista completa é a de `naoMigrados`). */
+const IDS_POR_CATEGORIA = 20;
+
+/**
+ * A seção das tabelas novas e dos não migrados (15-28): contagens e ids, nada de dado pessoal. Cada item é só
+ * uma coleção antiga e um id; o que ficou de fora continua em `registros_crm_antigo`.
+ */
+export function linhasDasEntidades(entidades: EntidadesDoRelatorio): string[] {
+  const linhas: string[] = [];
+  const tabelas = Object.entries(entidades.porTabela).filter(([, n]) => n > 0);
+  const largura = Math.max(...tabelas.map(([nome]) => nome.length), 10) + 2;
+  linhas.push("Linhas nas tabelas novas do CRM:");
+  if (tabelas.length === 0) linhas.push("  nenhuma");
+  for (const [tabela, n] of tabelas) linhas.push(`  ${alinhar(tabela, largura)}${n}`);
+
+  const grupos = agruparNaoMigrados(entidades.naoMigrados);
+  if (grupos.length === 0) {
+    linhas.push("Não migrados: nenhum item.");
+    return linhas;
+  }
+  const total = grupos.reduce((soma, g) => soma + g.ids.length, 0);
+  linhas.push(`Não migrados (continuam só em registros_crm_antigo): ${pluralizar(total, "item", "itens")} em ${pluralizar(grupos.length, "categoria", "categorias")}.`);
+  for (const grupo of grupos) {
+    const mostrados = grupo.ids.slice(0, IDS_POR_CATEGORIA).join(", ");
+    const resto = grupo.ids.length - IDS_POR_CATEGORIA;
+    linhas.push(`  ${grupo.rotulo}: ${grupo.ids.length}`);
+    linhas.push(`    ${mostrados}${resto > 0 ? `, e mais ${resto}` : ""}`);
+  }
+  return linhas;
+}
+
 function somar(contagens: readonly ContagemPorColecao[], contar: (c: ContagemPorColecao) => number): number {
   return contagens.reduce((total, c) => total + contar(c), 0);
 }
@@ -151,6 +182,10 @@ export function montarRelatorio(entrada: EntradaDoRelatorio): string {
   linhas.push("");
   linhas.push(...linhasDaPasta(entrada.pasta));
   linhas.push("");
+  if (entrada.entidades) {
+    linhas.push(...linhasDasEntidades(entrada.entidades));
+    linhas.push("");
+  }
 
   const saem = linhasQueSaem(entrada);
   const alem = linhasAlemDoFunil(entrada);
@@ -205,5 +240,6 @@ export function montarResumoDeEscrita(entrada: EntradaDoResumo): string {
     for (const f of entrada.funis.naoMigrados) linhas.push(`Funil NÃO migrado: ${f.id} "${f.nome}" (${f.motivo}). Ficou só na cópia.`);
   }
   if (entrada.pasta.existe) linhas.push(...linhasDaPasta(entrada.pasta, "saiu"));
+  if (entrada.entidades) linhas.push(...linhasDasEntidades(entrada.entidades));
   return linhas.join("\n");
 }
