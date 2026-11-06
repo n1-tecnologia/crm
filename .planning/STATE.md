@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 15
 current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
 status: executing
-stopped_at: Completed 15-09-PLAN.md
-last_updated: "2026-11-06T12:23:24.134Z"
+stopped_at: Completed 15-10-PLAN.md
+last_updated: "2026-11-06T12:34:06.973Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 15 execution started
-state_head: 78cb5c399eb8f915dd9b24ce79390a79086da4e2
+state_head: e56a6f526600ce7e190e70f373289065594d6fd8
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 271
-  completed_plans: 244
+  completed_plans: 245
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 15 (Unificação do CRM: telas no modelo novo e remoção do modelo antigo) — EXECUTING
-Plan: 20 of 43
+Plan: 21 of 43
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 15 execution started
 
@@ -463,6 +463,7 @@ Progress: [██████░░░░] 63%
 | Phase 15 P14 | 18 min | 3 tasks | 20 files |
 | Phase 15 P16 | n/d | 2 tasks | 16 files |
 | Phase 15 P09 | 41 min | 3 tasks | 24 files |
+| Phase 15 P10 | 13min | 2 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -736,6 +737,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 15]: 15-09: cursor composto (em, id) em GET /atividades; ate sozinho continua exclusivo; em gravado em milissegundos — A sucessao grava varias Atividades no mesmo instante e o cursor so de tempo as perde na fronteira da pagina (teste (g): 0 de 5); fecha o WINDOWS #15 do 15-37
 - [Phase 15]: 15-09: estrela e leitura so gravam Atividade quando mudam, sob trava consultiva por Espaco, Conversa e Membro — Sem a trava duas estrelas iguais em paralelo gravariam duas linhas (provado por mutacao); T-15-26
 - [Phase 15]: 15-09: Negocio, Contato e Empresa do CRM novo nao gravam Atividade nesta fase — Escopo de D-15-09; pergunta ao dono registrada em WINDOWS.md #26
+- [Phase 15]: 15-10: POST /crm/nomes nao filtra por estado (a lixeira ainda tem nome) e devolve null igual para tipo negado, id desconhecido e id de outro Espaco; Membro suspenso recebe 403 por ser POST (WR-03, WINDOWS aberto)
 
 ### Pending Todos
 
@@ -797,6 +799,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-06T12:23:23.943Z
-Stopped at: Completed 15-09-PLAN.md
+Last session: 2026-11-06T12:34:06.762Z
+Stopped at: Completed 15-10-PLAN.md
 Resume file: None
