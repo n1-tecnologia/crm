@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 23
+open_count: 25
 waived_count: 2
 fixed_count: 5
-total_count: 30
-last_updated: 2026-11-06T12:43:30.199Z
+total_count: 32
+last_updated: 2026-11-06T13:05:24.509Z
 ---
 
 # Broken Windows Ledger
@@ -45,6 +45,8 @@ last_updated: 2026-11-06T12:43:30.199Z
 | 28 | 15 | deviation | apps/api/src/rotas/crm/nomes.ts |  | 15-10: POST /crm/nomes e leitura mas e POST, entao o Membro suspenso recebe 403 (recusarSuspensoNaEscrita, WR-03 aberto/D-15-07) e useNomesDoCrm devolve erro em vez de nomes; quem consumir (15-21 IA, Contas a receber) mostra o id ate o WR-03 liberar leituras por POST. Nenhuma tela chama a rota ainda | open |  | 2026-11-06T12:33:07.842Z |  |
 | 29 | 15 | deviation | apps/web/src/app/(shell)/crm/reunioes/[reuniao]/page.tsx |  | 15-15: a Reuniao deixou de mostrar o Diagnostico da call, o Roteiro da call (campos fd_* do Negocio), a Temperatura do Contato e os perfis de LinkedIn e TikTok: plataforma.negocios nao tem Campos personalizados e o Contato novo nao tem Temperatura nem esses tipos de Identificador (so telefone, email, whatsapp, instagram). O retrato do palco sao as iniciais (sem foto no modelo novo). O Negocio da Empresa sem Contato mostra a Empresa e diz que falta o Contato. Se o dono quiser o roteiro de volta, abrir Campos personalizados de Negocio no dominio, na api e na migracao | open |  | 2026-11-06T12:42:54.967Z |  |
 | 30 | 15 | deviation | apps/web/src/app/(shell)/crm/reunioes/[reuniao]/page.tsx |  | 15-15: nao ha ida a useFunil na Reuniao: NegocioDetalhado (GET /negocios/:id) ja traz o nome do Funil e da Etapa, entao a tela usa esse payload e poupa um pedido; o plano citava useFunil. Efeito visivel: nenhum | waived | Sem efeito visivel: so registra que a Reuniao usa o payload de useNegocio em vez de useFunil; consta no SUMMARY | 2026-11-06T12:42:55.040Z | 2026-11-06T12:43:30.199Z |
+| 31 | 15 | deviation | apps/web/src/features/crm/conversation-thread.tsx |  | 15-20: o fio nao tem mais Rascunho de IA (D-15-11, adiado para a Sessao 16) nem seletor de Mensagem de modelo (plataforma.canais nao guarda modelos, ver 15-12): fora da janela de 24 h do WhatsApp oficial o envio fica desligado dizendo 'a janela expirou e o Canal nao tem Mensagem de modelo aprovada'; e o aviso de consentimento de marketing do fio saiu e volta pela regra do CRM novo no 15-25. Se o dono quiser enviar modelo pelo fio, abrir modelos no Canal (dominio, api e migracao) e o campo modeloId em POST /mensagens | open |  | 2026-11-06T13:05:24.443Z |  |
+| 32 | 15 | deviation | apps/web/src/features/crm/conversation-thread.tsx |  | 15-20: a aba Meet do fio acha as Reunioes pelos Vinculos da Tarefa com os ids dos Negocios do Contato em GET /negocios?contatoId=; os Vinculos de hoje apontam para ids de Negocio do modelo antigo, entao a aba fica sem Reunioes em producao ate o script de migracao preservar os ids (mesma regra das fichas, 15-13). Tambem: o fio mostra as 200 ultimas Mensagens da Conversa, sem carregar as mais antigas | open |  | 2026-11-06T13:05:24.509Z |  |
 
 ````json
 [
@@ -436,6 +438,32 @@ last_updated: 2026-11-06T12:43:30.199Z
     "reason": "Sem efeito visivel: so registra que a Reuniao usa o payload de useNegocio em vez de useFunil; consta no SUMMARY",
     "recorded_at": "2026-11-06T12:42:55.040Z",
     "resolved_at": "2026-11-06T12:43:30.199Z",
+    "milestone": "v1.0"
+  },
+  {
+    "id": 31,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/features/crm/conversation-thread.tsx",
+    "line": null,
+    "description": "15-20: o fio nao tem mais Rascunho de IA (D-15-11, adiado para a Sessao 16) nem seletor de Mensagem de modelo (plataforma.canais nao guarda modelos, ver 15-12): fora da janela de 24 h do WhatsApp oficial o envio fica desligado dizendo 'a janela expirou e o Canal nao tem Mensagem de modelo aprovada'; e o aviso de consentimento de marketing do fio saiu e volta pela regra do CRM novo no 15-25. Se o dono quiser enviar modelo pelo fio, abrir modelos no Canal (dominio, api e migracao) e o campo modeloId em POST /mensagens",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T13:05:24.443Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 32,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/features/crm/conversation-thread.tsx",
+    "line": null,
+    "description": "15-20: a aba Meet do fio acha as Reunioes pelos Vinculos da Tarefa com os ids dos Negocios do Contato em GET /negocios?contatoId=; os Vinculos de hoje apontam para ids de Negocio do modelo antigo, entao a aba fica sem Reunioes em producao ate o script de migracao preservar os ids (mesma regra das fichas, 15-13). Tambem: o fio mostra as 200 ultimas Mensagens da Conversa, sem carregar as mais antigas",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T13:05:24.509Z",
+    "resolved_at": null,
     "milestone": "v1.0"
   }
 ]
