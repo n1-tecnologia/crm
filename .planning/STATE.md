@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 15
 current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
 status: executing
-stopped_at: Completed 15-15-PLAN.md
-last_updated: "2026-11-06T12:44:55.107Z"
+stopped_at: Completed 15-20-PLAN.md
+last_updated: "2026-11-06T13:07:33.476Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 15 execution started
-state_head: 41ad7949de982a1bd856fb3f562bbffc0436584a
+state_head: dfcc989682c874b0367336c2588f67955e6a8b55
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 271
-  completed_plans: 246
+  completed_plans: 247
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 15 (Unificação do CRM: telas no modelo novo e remoção do modelo antigo) — EXECUTING
-Plan: 22 of 43
+Plan: 23 of 43
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 15 execution started
 
@@ -465,6 +465,7 @@ Progress: [██████░░░░] 63%
 | Phase 15 P09 | 41 min | 3 tasks | 24 files |
 | Phase 15 P10 | 13min | 2 tasks | 14 files |
 | Phase 15 P15 | 10 min | 2 tasks | 6 files |
+| Phase 15 P20 | 15 min | 3 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -740,6 +741,9 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 15]: 15-09: Negocio, Contato e Empresa do CRM novo nao gravam Atividade nesta fase — Escopo de D-15-09; pergunta ao dono registrada em WINDOWS.md #26
 - [Phase 15]: 15-10: POST /crm/nomes nao filtra por estado (a lixeira ainda tem nome) e devolve null igual para tipo negado, id desconhecido e id de outro Espaco; Membro suspenso recebe 403 por ser POST (WR-03, WINDOWS aberto)
 - [Phase 15]: 15-15: o Funil e a Etapa da Reuniao vem do NegocioDetalhado (sem useFunil); Negocio na lixeira, 403 e 404 contam como ausente; Diagnostico, Roteiro, Temperatura, LinkedIn e TikTok saem da Reuniao (modelo novo nao os guarda, WINDOWS #29)
+- [Phase 15]: 15-20: o Canal da aba do fio vem de canalSelecionado, do clique, da Conversa pedida, de canalPreferidoId, do Canal da ultima recebida e da Conversa mais recente; a Conversa mais recente e a de maior entre ultimaRecebidaEm e atualizadoEm — A lista de Conversas nao traz a ultima Mensagem de qualquer direcao; a regra antiga olhava as Mensagens
+- [Phase 15]: 15-20: sem Conversa no Canal da aba o campo vira Primeira Mensagem e Enviar abre a Conversa COM a Mensagem (POST /conversas); com Conversa no par reaproveita por POST /mensagens — INV-CXE-05 e F14-D-07: nao existe Conversa vazia
+- [Phase 15]: 15-20: o fio nao tem Rascunho de IA nem Mensagem de modelo; fora da janela do WhatsApp oficial o envio se desliga dizendo por que (WINDOWS 31) — D-15-11 e plataforma.canais nao guarda modelos
 
 ### Pending Todos
 
@@ -801,6 +805,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-06T12:44:45.729Z
-Stopped at: Completed 15-15-PLAN.md
+Last session: 2026-11-06T13:07:33.278Z
+Stopped at: Completed 15-20-PLAN.md
 Resume file: None
