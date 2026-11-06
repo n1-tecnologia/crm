@@ -34,7 +34,6 @@ import { encerrar } from "../persistencia/conexao";
 import { describeComBanco, prepararBancoCrm } from "../testes/banco-crm";
 import {
   appDoEspaco,
-  contatosDoVazamento,
   limparEspacoDeVazamento,
   montarEspacoDeVazamento,
   semearEspacoDeVazamento,
@@ -70,14 +69,11 @@ interface Celula {
   };
 }
 
-/** O n-ésimo Contato ativo do seed: cada célula de `trashContact` usa o seu, e nenhuma depende da outra. */
-const contatoAtivo = (espaco: EspacoDeVazamento, indice: number): string => {
-  const contato = espaco.estado.contacts.filter((c) => c.lifecycle === "ativo")[indice];
-  if (!contato) throw new Error(`o seed precisa de ao menos ${indice + 1} Contatos ativos`);
-  return contato.id;
-};
-
-const INDICE_DO_CONTATO: Readonly<Record<Papel, number>> = { convidado: 0, membro: 1, administrador: 2, proprietario: 3, suspenso: 4 };
+/**
+ * A Conversa de grupo do seed: o CRM antigo que ainda recebe escrita pela rota genérica (F14-D-05). Cada Papel a
+ * estrela para si (a estrela é por Membro), então nenhuma célula depende da outra.
+ */
+const CONVERSA_DE_GRUPO = "cnv_grp_avisos";
 
 /** O Membro da fábrica que faz o Papel. */
 const membroDoPapel = (espaco: EspacoDeVazamento, papel: Papel) =>
@@ -105,11 +101,11 @@ const CORPO_DO_TICKET = { nome: "nota.pdf", mime: "application/pdf" };
 const celulas = (linhas: readonly Celula[]): readonly Celula[] => linhas;
 
 const CELULAS = celulas([
-  // POST /operacoes/:nome — o CRM antigo, pela rota genérica. A recusa do Convidado viaja em 200 (é valor, não falha de transporte).
-  { familia: "operacoes", metodo: "POST", url: () => "/operacoes/trashContact", corpo: (e, p) => ({ args: [contatoAtivo(e, INDICE_DO_CONTATO[p])] }), papel: "convidado", esperado: { status: 200, ok: false } },
-  { familia: "operacoes", metodo: "POST", url: () => "/operacoes/trashContact", corpo: (e, p) => ({ args: [contatoAtivo(e, INDICE_DO_CONTATO[p])] }), papel: "membro", esperado: { status: 200, ok: true } },
-  { familia: "operacoes", metodo: "POST", url: () => "/operacoes/trashContact", corpo: (e, p) => ({ args: [contatoAtivo(e, INDICE_DO_CONTATO[p])] }), papel: "administrador", esperado: { status: 200, ok: true } },
-  { familia: "operacoes", metodo: "POST", url: () => "/operacoes/trashContact", corpo: (e, p) => ({ args: [contatoAtivo(e, INDICE_DO_CONTATO[p])] }), papel: "suspenso", esperado: { status: 403, ok: false } },
+  // POST /operacoes/:nome — o que resta do CRM antigo (a Conversa de grupo), pela rota genérica. A recusa do Convidado viaja em 200 (é valor, não falha de transporte).
+  { familia: "operacoes", metodo: "POST", url: () => "/operacoes/toggleConversationStar", corpo: () => ({ args: [CONVERSA_DE_GRUPO] }), papel: "convidado", esperado: { status: 200, ok: false } },
+  { familia: "operacoes", metodo: "POST", url: () => "/operacoes/toggleConversationStar", corpo: () => ({ args: [CONVERSA_DE_GRUPO] }), papel: "membro", esperado: { status: 200, ok: true } },
+  { familia: "operacoes", metodo: "POST", url: () => "/operacoes/toggleConversationStar", corpo: () => ({ args: [CONVERSA_DE_GRUPO] }), papel: "administrador", esperado: { status: 200, ok: true } },
+  { familia: "operacoes", metodo: "POST", url: () => "/operacoes/toggleConversationStar", corpo: () => ({ args: [CONVERSA_DE_GRUPO] }), papel: "suspenso", esperado: { status: 403, ok: false } },
 
   // POST /contatos — o CRM novo, em REST por recurso (`podeNoCrm`).
   { familia: "crm-contatos", metodo: "POST", url: () => "/contatos", corpo: () => ({ nome: "Contato da matriz" }), papel: "convidado", esperado: { status: 403, ok: false, codigo: "PERMISSAO" } },
@@ -168,8 +164,6 @@ describeComBanco("matriz Papel × família de rota — HTTP contra Postgres loca
   beforeAll(async () => {
     await prepararBancoCrm();
     espaco = montarEspacoDeVazamento("matriz");
-    // O seed não cria mais Contato (15-31): a matriz e o caso 1.2.1 de `trashContact` usam os do vazamento.
-    espaco.estado.contacts.push(...contatosDoVazamento(espaco.estado.workspace.id, espaco.estado.workspace.ownerMemberId));
     await semearEspacoDeVazamento(espaco);
     app = appDoEspaco(espaco, { financeiro: { cliente: clienteDeEscritaFalso(), clienteDeEscrita: clienteDeEscritaFalso() } });
   });

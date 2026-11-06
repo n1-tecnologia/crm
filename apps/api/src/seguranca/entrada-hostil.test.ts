@@ -28,7 +28,7 @@ vi.mock("../persistencia/conexao", async (importarOriginal) => ({
 
 const TOKEN = "token-ativo";
 
-describe("POST /operacoes/trashContact com entrada hostil — 4xx, nunca 500, nunca o banco", () => {
+describe("POST /operacoes/toggleConversationStar com entrada hostil — 4xx, nunca 500, nunca o banco", () => {
   let app: FastifyInstance;
   const capturarErro = vi.fn();
 
@@ -55,7 +55,7 @@ describe("POST /operacoes/trashContact com entrada hostil — 4xx, nunca 500, nu
   const postar = (payload: string, contentType = "application/json") =>
     app.inject({
       method: "POST",
-      url: "/operacoes/trashContact",
+      url: "/operacoes/toggleConversationStar",
       headers: { authorization: `Bearer ${TOKEN}`, "content-type": contentType },
       payload,
     });

@@ -41,7 +41,7 @@ import type { Pagina } from "@n1/dominio/crm/comum";
 import type { Conversa } from "@n1/dominio/crm/conversas";
 import { recusaPorFaltaDeConsentimento } from "@n1/dominio/crm/consentimentos";
 import { statusInicialDeEnvio, validarEnvio, validarNovaMensagem, type Mensagem, type MensagemRecebidaDoProvedor, type NovaMensagem } from "@n1/dominio/crm/mensagens";
-import { capacidadesDoCanal } from "@n1/dominio/operations";
+import { capacidadesDoCanal } from "@n1/dominio/crm/capacidades";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { criarRepositorioDeCanaisPg } from "../../repositorios/crm/canais";
 import { criarRepositorioDeConsentimentosPg } from "../../repositorios/crm/consentimentos";

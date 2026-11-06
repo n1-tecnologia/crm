@@ -11,26 +11,8 @@ import Link from "next/link";
 import { useState } from "react";
 import { ChevronRight, Fingerprint, Hash, KeyRound, Radio, RefreshCw, Send, Tag, Type, Workflow } from "lucide-react";
 import { useData, useRun, useSession } from "@/dados/store";
-import {
-  adicionarNotaNoAtivo,
-  arquivarFlow,
-  capacidadesDoCanal,
-  copiarFlow,
-  criarRascunhoAPartirDe,
-  definirPontoDeTrocaDeDados,
-  descartarRascunho,
-  despublicarFlow,
-  editarFlow,
-  enviarFlow,
-  enviarFlowALixeira,
-  recusaDeAdministracao,
-  recusaDeEnvioDeFlow,
-  regenerarChavesDoPonto,
-  removerPontoDeTrocaDeDados,
-  restaurarFlow,
-  restaurarFlowDaLixeira,
-  sincronizarFlow,
-} from "@n1/dominio/operations";
+import { adicionarNotaNoAtivo, arquivarFlow, copiarFlow, criarRascunhoAPartirDe, definirPontoDeTrocaDeDados, descartarRascunho, despublicarFlow, editarFlow, enviarFlow, enviarFlowALixeira, recusaDeAdministracao, recusaDeEnvioDeFlow, regenerarChavesDoPonto, removerPontoDeTrocaDeDados, restaurarFlow, restaurarFlowDaLixeira, sincronizarFlow } from "@n1/dominio/operations";
+import { capacidadesDoCanal } from "@n1/dominio/crm/capacidades";
 import { responseWindowOpenUntil } from "@n1/dominio/derive";
 import { enviosDoFlow, metricasDoFlow, telasOrdenadas, versaoCorrente, versaoPublicada } from "@n1/dominio/derive-ferramentas";
 import type { CategoriaDeFlow, Flow } from "@n1/dominio/types";

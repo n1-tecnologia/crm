@@ -56,7 +56,7 @@ import {
 import { actorLabel } from "@n1/dominio/derive";
 import { nomeDeExibicaoDoContato } from "@n1/dominio/crm/contatos";
 import type { Atribuicao, ConversaDetalhada } from "@n1/dominio/crm/conversas";
-import { capacidadesDoCanal } from "@n1/dominio/operations";
+import { capacidadesDoCanal } from "@n1/dominio/crm/capacidades";
 import type { Id } from "@n1/dominio/types";
 
 export default function ConversaPage({ params }: { params: Promise<{ conversa: string }> }) {

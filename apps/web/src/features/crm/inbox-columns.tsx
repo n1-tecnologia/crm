@@ -26,7 +26,8 @@ import { useRecente } from "@/features/shell/recente";
 // "Não lida" e a última atividade moram no domínio: o resumo do Início conta as mesmas mensagens novas.
 import { naoLidas, ultimaAtividade as lastActivity } from "@n1/dominio/derive-resumo";
 import { rotuloDoCanal } from "@n1/dominio/derive-conversacional";
-import { capacidadesDoCanal, toggleConversationStar } from "@n1/dominio/operations";
+import { toggleConversationStar } from "@n1/dominio/operations";
+import { capacidadesDoCanal } from "@n1/dominio/crm/capacidades";
 import { CHANNEL_ICON } from "@/features/crm/conversation-thread";
 import { AvatarDoContato } from "@/features/crm/avatar-do-contato";
 import { CONVERSATION_STATE_LABEL } from "@/features/shell/format";

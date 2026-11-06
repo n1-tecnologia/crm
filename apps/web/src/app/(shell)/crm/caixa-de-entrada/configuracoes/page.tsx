@@ -19,7 +19,7 @@ import { useConversas } from "@/dados/crm/conversas";
 import { usePodeNoCrm } from "@/dados/crm/sessao";
 import { useData } from "@/dados/store";
 import type { Canal } from "@n1/dominio/crm/canais";
-import { capacidadesDoCanal } from "@n1/dominio/operations";
+import { capacidadesDoCanal } from "@n1/dominio/crm/capacidades";
 import { PROVEDORES } from "@n1/dominio/provedores-de-canal";
 import { MarcaDeConexaoSimulada, SeloDeOrigem, SeloDoProvedor } from "@/features/crm/selo-do-provedor";
 import { CHANNEL_TYPE_LABEL } from "@/features/shell/format";

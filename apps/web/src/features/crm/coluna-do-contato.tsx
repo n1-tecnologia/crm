@@ -3,8 +3,8 @@
 /**
  * A coluna do Contato na página da Conversa (Fase 15, 3.4.4 item 3, UCR-06): o
  * cartão do Contato no modelo novo. Lê `useContato` (Identificadores, vínculos com
- * Empresa, Proprietário, qualificação) e nada do Contato antigo; o
- * `contact-card.tsx` antigo segue vivo para a ficha do Negócio até o 3.5.4.
+ * Empresa, Proprietário, qualificação) e nada do Contato antigo (o
+ * `contact-card.tsx` antigo saiu na 15-32).
  *
  * - A Empresa é a do vínculo vigente `admin` mais antigo (`empresaDoContato`, a
  *   mesma regra do resumo da Tarefa conversacional, 15-05).

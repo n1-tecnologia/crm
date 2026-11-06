@@ -40,7 +40,8 @@ import {
 } from "@/features/shell/ui";
 import { actorLabel } from "@n1/dominio/derive";
 import { membrosDoGrupo } from "@n1/dominio/derive-ferramentas";
-import { assignConversation, capacidadesDoCanal, reopenConversation, resolveConversation, trashConversation } from "@n1/dominio/operations";
+import { assignConversation, reopenConversation, resolveConversation, trashConversation } from "@n1/dominio/operations";
+import { capacidadesDoCanal } from "@n1/dominio/crm/capacidades";
 import type { ActorRef } from "@n1/dominio/types";
 
 export function ConversaDeGrupoNaCaixa({ conversaId }: { readonly conversaId: string }) {

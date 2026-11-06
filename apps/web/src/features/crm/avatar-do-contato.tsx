@@ -6,7 +6,7 @@ import { nomeDeExibicaoDoContato } from "@n1/dominio/crm/contatos";
  * O rosto do Contato no modelo novo (`@n1/dominio/crm/contatos`): as iniciais no
  * gradiente da marca, o mesmo desenho de `ContactAvatar` (que lê o Contato
  * antigo). Recebe só o nome — sem ler o store — para as telas trocarem o avatar
- * sem tocar em `contact-card.tsx`. Não há arquivo de foto no modelo novo, então
+ * sem ler o Contato antigo (o `contact-card.tsx` que o lia saiu na 15-32). Não há arquivo de foto no modelo novo, então
  * as iniciais são sempre o rosto: a mesma pessoa não aparece de dois jeitos.
  */
 export function AvatarDoContato({

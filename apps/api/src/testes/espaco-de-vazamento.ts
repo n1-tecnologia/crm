@@ -18,7 +18,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
-import type { AgentExecution, ChatFolder, ChatSession, Contact, DataState, Form, Id, Member, View, WorkspaceFile } from "@n1/dominio";
+import type { AgentExecution, ChatFolder, ChatSession, DataState, Form, Id, Member, View, WorkspaceFile } from "@n1/dominio";
 import { containerAdminRefusal, memberReachesContainer } from "@n1/dominio/derive";
 import { setTaskFieldValue } from "@n1/dominio/operations/tasks";
 import { buildSeed } from "@n1/dominio/seed";
@@ -212,32 +212,6 @@ function listaDoSegredo(estado: DataState, a: Member, b: Member): { readonly lis
     }
   }
   throw new Error("o seed precisa de uma Lista que B alcança sem administrar, com uma Tarefa ativa e um Campo numérico que B grave");
-}
-
-/**
- * 15-31 — o seed não cria mais Contato. A matriz de Papéis (`trashContact`) e o caso 1.2.1 usam o n-ésimo Contato ativo
- * do Espaço semeado: o teste os põe em `espaco.estado` ANTES de `semearEspacoDeVazamento`, com este construtor.
- */
-export function contatosDoVazamento(workspaceId: string, donoId: Id, quantos = 5): Contact[] {
-  const agora = new Date().toISOString();
-  return Array.from({ length: quantos }, (_, i) => ({
-    id: `cnt_vaz_${i + 1}_${curto()}`,
-    workspaceId,
-    createdBy: { kind: "member" as const, id: donoId },
-    createdAt: agora,
-    lifecycle: "ativo" as const,
-    firstName: `Contato ${i + 1}`,
-    lastName: "do vazamento",
-    ownerMemberId: donoId,
-    creationMode: "manual" as const,
-    description: "",
-    identifiers: [],
-    consents: [],
-    addresses: [],
-    tagIds: [],
-    fieldValues: [],
-    comments: [],
-  }));
 }
 
 /** Monta o estado em memória; ainda não grava nada no banco. */

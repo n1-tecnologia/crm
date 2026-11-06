@@ -463,11 +463,19 @@ e uma releitura de `/conversas`, para o menu voltar a dizer o estado real. O cab
 `empresaDoContato` (o vínculo vigente `admin` mais antigo, a regra do resumo da Tarefa do 15-05) e o
 Negócio aberto de `useNegocios({ contatoId, situacao: "aberto" })`; a temperatura saiu (D-15-06). A
 coluna do Contato é `coluna-do-contato.tsx` (`useContato`, qualificação do Catálogo por
-`PATCH /contatos/:id`, ações por Canal pelo fio); `contact-card.tsx` só vive para a ficha do Negócio, até
-o 3.5.4. `TarefasDoContato` recebe o `contatoId` do Contato novo. Mover Conversa
+`PATCH /contatos/:id`, ações por Canal pelo fio); o `contact-card.tsx` antigo saiu na 15-32. `TarefasDoContato` recebe o `contatoId` do Contato novo. Mover Conversa
 (`move-conversation-dialog.tsx`) busca o destino em `GET /contatos?q=` e chama `moverConversa`; a
 Conversa que colide no destino volta no 409 (`CONVERSA_JA_ABERTA`) e a saída é "resolver no mesmo ato".
 **Grupo (F14-D-05):** um id que a api não conhece (404) e que o store conhece como Conversa de grupo
 abre `conversa-de-grupo-na-caixa.tsx`, a única parte da Caixa que ainda usa as operações antigas de
 Conversa (resolver, reabrir, atribuir, lixeira) — sai com as Sessões 6 e 7; qualquer outro 404 é
 "Conversa não encontrada.", sem ponte de id.
+
+**15-32 (UCR-12): as operações do CRM antigo saíram de `OPERACOES`.** A web não importa mais nenhuma
+operação de Contato, Empresa, Negócio, Canal nem iniciar conversa (`contact-card.tsx` foi apagado, sem
+chamador desde o 15-40), e `capacidadesDoCanal`/`CHANNEL_CAPABILITIES` vêm de
+`@n1/dominio/crm/capacidades`, não do barril de operações. O que a web ainda chama pelo store do modelo
+antigo são as cinco operações da Conversa de GRUPO (`resolveConversation`, `reopenConversation`,
+`assignConversation`, `trashConversation`, `toggleConversationStar`, em `conversa-de-grupo-na-caixa.tsx`
+e na estrela de `inbox-columns.tsx`): Grupo e Flow ficam no modelo antigo até as Sessões 6 e 7 (F14-D-05),
+e estas cinco seguem registradas em `OPERACOES`.

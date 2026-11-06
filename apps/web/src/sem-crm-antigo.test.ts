@@ -27,7 +27,6 @@ import { describe, expect, it } from "vitest";
 /** Os arquivos de `apps/web/src` que leem o CRM antigo hoje (a lista congelada, caminho relativo a `src`). */
 const CONGELADOS = [
   "features/crm/conectar-provedor.tsx",
-  "features/crm/contact-card.tsx",
   "features/estrutura/financeiro/serie-dialog.tsx",
   "features/estrutura/nova-tarefa-conversacional-dialog.tsx",
   "features/ia/agentes/ensaiar-dialog.tsx",

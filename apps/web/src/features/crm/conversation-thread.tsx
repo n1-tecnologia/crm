@@ -59,7 +59,8 @@ import { useNegocios } from "@/dados/crm/negocios";
 import { useConsentimentosDoContato } from "@/dados/crm/consentimentos";
 import { adicionarNotaAoContato } from "@/dados/crm/notas";
 import { criarTarefaConversacional } from "@/dados/crm/tarefas-conversacionais";
-import { capacidadesDoCanal, createTask } from "@n1/dominio/operations";
+import { createTask } from "@n1/dominio/operations";
+import { capacidadesDoCanal } from "@n1/dominio/crm/capacidades";
 import { statusCategory } from "@n1/dominio/derive";
 import {
   canaisDaListaNasTabelas,

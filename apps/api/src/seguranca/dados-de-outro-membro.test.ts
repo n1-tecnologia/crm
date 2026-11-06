@@ -176,9 +176,9 @@ describeComBanco("vazamento entre Espaços de Trabalho — o WORKSPACE_ID é do 
   it("o 403 vale também para a escrita: o mesmo Usuário não grava no primeiro Espaço", async () => {
     const resposta = await appDoPrimeiro.inject({
       method: "POST",
-      url: "/operacoes/trashContact",
+      url: "/operacoes/toggleConversationStar",
       headers: { authorization: `Bearer ${TOKEN_SO_DO_SEGUNDO}` },
-      payload: { args: [primeiro.estado.contacts.find((c) => c.lifecycle === "ativo")?.id ?? "x"] },
+      payload: { args: [primeiro.estado.conversations[0]?.id ?? "x"] },
     });
     expect(resposta.statusCode, resposta.body.slice(0, 200)).toBe(403);
   });

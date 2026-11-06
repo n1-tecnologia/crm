@@ -60,7 +60,7 @@ const DECLARADAS_ANTES_DO_GANCHO: readonly string[] = ["GET /saude"];
 const PREFIXO_DE_SERVICO = "/v1/integrations";
 
 /** Preenche o `:parametro` da url: `:nome` precisa ser uma operação do registro; o resto aceita qualquer texto. */
-const PARAMETRO_DE_TESTE: Readonly<Record<string, string>> = { nome: "trashContact" };
+const PARAMETRO_DE_TESTE: Readonly<Record<string, string>> = { nome: "toggleConversationStar" };
 const PARAMETRO_PADRAO = "x";
 
 /**

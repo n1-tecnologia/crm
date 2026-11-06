@@ -15,7 +15,7 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DataState } from "@n1/dominio";
 import { usuarioDoSeed } from "@n1/dominio";
-import { sendMessage, startConversation } from "@n1/dominio/operations";
+import { sendMessage, startConversation } from "@n1/dominio/operations/ferramentas/conversa-de-grupo";
 import { buildSeed } from "@n1/dominio/seed";
 import { semearCrmAntigo } from "@n1/dominio/seed-crm-antigo";
 import { ok } from "@n1/dominio/state";

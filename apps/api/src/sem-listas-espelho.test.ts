@@ -4,10 +4,10 @@
  * ganha o campo `funilId` e a regra de formato de id `funilDaLista`
  * (`lst_funil_<x>` ↔ `fnl_<x>`) não é portada: os Funis novos têm id UUID.
  *
- * Este teste LÊ o código-fonte da api (sem banco) e congela a lista de arquivos de
- * produção que HOJE citam `funilDaLista` ou o caminho `iniciar-conversa` (o schema
- * da operação e o registro que o aponta). Código novo da Fase 14 não entra nela.
- * Só os planos de corte (14-16) a encolhem, quando a operação sai; nunca a aumentam.
+ * Este teste LÊ o código-fonte da api (sem banco) e congelava a lista de arquivos de
+ * produção que citavam `funilDaLista` ou o caminho `iniciar-conversa` (o schema da
+ * operação e o registro que o aponta). A 15-32 apagou o schema e tirou a citação do
+ * registro: a lista chegou a zero e o teste continua proibindo qualquer citação nova.
  *
  * O texto inteiro conta, comentário inclusive. O mesmo teste existe em
  * `packages/dominio/src/sem-listas-espelho.test.ts`.
@@ -18,8 +18,8 @@ import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-/** Os arquivos de `apps/api/src` que citam as Listas espelho hoje (a lista congelada). */
-const CONGELADOS = ["rotas/esquemas-de-argumentos.ts", "rotas/esquemas/iniciar-conversa.ts"] as const;
+/** Os arquivos de `apps/api/src` que citam as Listas espelho hoje: nenhum (15-32). */
+const CONGELADOS: readonly string[] = [];
 
 const CITA_AS_LISTAS_ESPELHO = /funilDaLista|iniciar-conversa/;
 
@@ -43,16 +43,18 @@ describe("D-06 — nada novo depende das Listas espelho (api)", () => {
 
   it("a leitura do código-fonte achou os arquivos de produção (o teste não passa por não ver nada)", () => {
     expect(producao.length).toBeGreaterThan(50);
-    expect(producao.map((f) => f.arquivo)).toContain("rotas/esquemas/iniciar-conversa.ts");
+    // Sentinela que continua existindo: o registro de esquemas, que já citou o módulo apagado.
+    expect(producao.map((f) => f.arquivo)).toContain("rotas/esquemas-de-argumentos.ts");
+    expect(producao.map((f) => f.arquivo)).not.toContain("rotas/esquemas/iniciar-conversa.ts");
   });
 
-  it("só a lista congelada de hoje cita funilDaLista ou iniciar-conversa", () => {
+  it("nenhum arquivo de produção cita funilDaLista nem iniciar-conversa", () => {
     const citam = producao.filter((f) => CITA_AS_LISTAS_ESPELHO.test(f.texto)).map((f) => f.arquivo).sort();
     const novos = citam.filter((arquivo) => !(CONGELADOS as readonly string[]).includes(arquivo));
     const sumidos = CONGELADOS.filter((arquivo) => !citam.includes(arquivo));
     expect(
       novos,
-      `D-06 (Fase 14): as Listas espelho de Meus negócios foram aposentadas; código novo não depende delas. Só os planos de corte encolhem esta lista. Arquivo(s) novo(s) que as citam: ${novos.join(", ")}`,
+      `D-06 (Fase 14): as Listas espelho de Meus negócios foram aposentadas; código novo não depende delas. A lista congelada chegou a zero (15-32). Arquivo(s) que as citam: ${novos.join(", ")}`,
     ).toEqual([]);
     expect(
       sumidos,

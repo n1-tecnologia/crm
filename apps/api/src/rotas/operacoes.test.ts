@@ -42,7 +42,6 @@ import { FRASE_DE_SUSPENSO } from "../plugins/autenticacao";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearCanal } from "../testes/banco-crm";
 import {
   appDoEspaco,
-  contatosDoVazamento,
   limparEspacoDeVazamento,
   montarEspacoDeVazamento,
   semearEspacoDeVazamento,
@@ -949,8 +948,6 @@ describeComBanco("POST /operacoes — resposta recortada pelo que o Membro enxer
   beforeAll(async () => {
     await prepararBancoCrm();
     espaco = montarEspacoDeVazamento("operacoes");
-    // O seed não cria mais Contato (15-31): a matriz e o caso 1.2.1 de `trashContact` usam os do vazamento.
-    espaco.estado.contacts.push(...contatosDoVazamento(espaco.estado.workspace.id, espaco.estado.workspace.ownerMemberId));
     await semearEspacoDeVazamento(espaco);
   });
 
@@ -1008,17 +1005,17 @@ describeComBanco("POST /operacoes — resposta recortada pelo que o Membro enxer
     expect(corpo.diferenca?.removidos ?? []).toHaveLength(0);
   });
 
-  it("1.2.1 — o Membro suspenso chama trashContact e recebe 403; depois, o Contato continua ativo no banco", async () => {
-    const contato = espaco.estado.contacts.find((c) => c.lifecycle === "ativo");
-    expect(contato, "o seed precisa de um Contato ativo").toBeDefined();
-    const resposta = await chamar(TOKENS_DE_VAZAMENTO.suspenso, "trashContact", [contato!.id]);
+  it("1.2.1 — o Membro suspenso chama toggleConversationStar e recebe 403; depois, a Conversa continua sem estrela no banco", async () => {
+    const conversa = espaco.estado.conversations.find((c) => c.lifecycle === "ativo");
+    expect(conversa, "o seed precisa de uma Conversa de grupo ativa").toBeDefined();
+    const resposta = await chamar(TOKENS_DE_VAZAMENTO.suspenso, "toggleConversationStar", [conversa!.id]);
     expect(resposta.statusCode, resposta.body.slice(0, 200)).toBe(403);
     expect(resposta.json()).toEqual({ ok: false, error: FRASE_DE_SUSPENSO });
 
     const cliente = await pool().connect();
     try {
       const { state } = await hidratar(cliente, espaco.workspaceId);
-      expect(state.contacts.find((c) => c.id === contato!.id)?.lifecycle).toBe("ativo");
+      expect(state.conversations.find((c) => c.id === conversa!.id)?.starredBy).toEqual(conversa!.starredBy);
     } finally {
       cliente.release();
     }
