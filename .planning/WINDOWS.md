@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 48
+open_count: 49
 waived_count: 2
 fixed_count: 22
-total_count: 72
-last_updated: 2026-11-06T23:04:48.601Z
+total_count: 73
+last_updated: 2026-11-06T23:29:16.501Z
 ---
 
 # Broken Windows Ledger
@@ -87,6 +87,7 @@ last_updated: 2026-11-06T23:04:48.601Z
 | 70 | 15 | deviation | packages/dominio/src/operations/ferramentas/conversa-de-grupo.ts |  | 15-42: com o Contato lido de crm.contatos (WINDOWS #37), receiveMessage nao devolve mais a ativo o Contato arquivado ou na lixeira que recebe Mensagem (RN-CON-13): a tabela plataforma.contatos nao e gravada por esta composicao, entao a Resposta de Flow e a Mensagem recebida entram na Conversa e o estado do Contato fica como o servidor o leu. Tambem saiu a conferencia do consentimento de marketing do Contato antigo no envio (o Canal da tabela nao guarda Mensagens de modelo, linha 20). Se o dono quiser a restauracao por Mensagem recebida, ela precisa de um aoConfirmar que grave o Contato | open |  | 2026-11-06T22:38:24.018Z |  |
 | 71 | 15 | deviation | packages/dominio/src/operations/automations.ts |  | 15-42: o nome e o dono do cliente das Automacoes de Contas a receber (R4/R5) chegam por OpcoesDaAgenda.clientes, lidos de plataforma.contatos pelo scheduler-worker na transacao da volta (apps/api/src/automacoes/clientes-da-lista.ts) e mesclados pela ponte do Agente. A Execucao disparada por EVENTO (statusAlterado, tarefaCriada etc., dentro de uma operacao) nao recebe o dado: a Automacao com {{cliente}} ou mentionClientOwner diz 'o cliente' e nao menciona o dono. Hoje so a agenda (R4 D+30, R5) usa esses tokens; se uma Automacao por evento passar a usa-los, executar() precisa ler os clientes antes da operacao | open |  | 2026-11-06T22:38:24.083Z |  |
 | 72 | 15 | deviation | packages/dominio/src/operations/members.ts |  | 15-42: o Registro de Atividade do ato de governanca 'acesso concedido a Recurso privado' (grantGovernanceAccess) nomeia o Recurso pelo id quando ele e um Funil: o nome do Funil antigo (state.funnels) saiu de resourceName e o Funil novo vive em plataforma.funis, que o dominio nao le. Espaco, Pasta, Lista e Colecao seguem nomeados. Se o dono quiser o nome do Funil no Registro, a rota precisa injeta-lo como faz com os nomes do CRM | open |  | 2026-11-06T22:38:24.149Z |  |
+| 73 | 15 | deviation | apps/web/src/features/ferramentas/flow-popup.tsx | 438 | 15-34: depois do corte o 'Enviar Flow' a um Contato nao tem a quem enviar. O seletor escolhe Conversas 1:1 de state.conversations (flow-popup.tsx:438, !groupIdentifier e contactId), e o migrar:crm-antigo tira as Conversas 1:1 de plataforma.registros; so as de Grupo ficam. Em producao a lista de destinatarios do envio de Flow fica vazia (efeito do aviso 39, agora medido no codigo final). Decisao do dono: aceitar ate a Sessao 7 (Flow nas tabelas) ou pedir um seletor de Contatos com WhatsApp antes do corte. | open |  | 2026-11-06T23:29:16.501Z |  |
 
 ````json
 [
@@ -1023,6 +1024,19 @@ last_updated: 2026-11-06T23:04:48.601Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-06T22:38:24.149Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 73,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/features/ferramentas/flow-popup.tsx",
+    "line": 438,
+    "description": "15-34: depois do corte o 'Enviar Flow' a um Contato nao tem a quem enviar. O seletor escolhe Conversas 1:1 de state.conversations (flow-popup.tsx:438, !groupIdentifier e contactId), e o migrar:crm-antigo tira as Conversas 1:1 de plataforma.registros; so as de Grupo ficam. Em producao a lista de destinatarios do envio de Flow fica vazia (efeito do aviso 39, agora medido no codigo final). Decisao do dono: aceitar ate a Sessao 7 (Flow nas tabelas) ou pedir um seletor de Contatos com WhatsApp antes do corte.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T23:29:16.501Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }
