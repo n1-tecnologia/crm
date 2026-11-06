@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 40
+open_count: 37
 waived_count: 2
-fixed_count: 10
-total_count: 52
-last_updated: 2026-11-06T19:14:14.783Z
+fixed_count: 16
+total_count: 55
+last_updated: 2026-11-06T19:45:42.257Z
 ---
 
 # Broken Windows Ledger
@@ -36,7 +36,7 @@ last_updated: 2026-11-06T19:14:14.783Z
 | 19 | 15 | deviation | apps/web/src/features/crm/inbox-columns.tsx |  | 15-11: a linha da Conversa na lista nao mostra mais a previa da ultima Mensagem (ConversaNaLista nao traz o texto dela); mostra o titulo quando difere do nome do Contato. Acrescentar a ultima Mensagem ao resumo da lista (mesma consulta de ultimaRecebidaEm) se o dono quiser a previa de volta | open |  | 2026-11-06T11:12:17.184Z |  |
 | 20 | 15 | deviation | apps/web/src/app/(shell)/crm/caixa-de-entrada/configuracoes/canais/[canal]/page.tsx |  | 15-12: a ficha e o cartao do Canal ja nao mostram Mensagens de modelo nem 'N modelo(s) aprovado(s)': plataforma.canais nao guarda modelos (so o Canal do seed tinha) e o Canal do seed ficou sem ficha (a operacao antiga configurarCanal saiu). O Proprietario padrao de Contato do Canal fica so leitura porque PATCH /canais/:id nao aceita esse campo. Se o dono quiser editar o Proprietario padrao ou sincronizar modelos, abrir campo na api e no dominio | open |  | 2026-11-06T11:29:14.941Z |  |
 | 21 | 15 | deviation | apps/web/src/features/crm/adicionar-canal-dialog.tsx |  | 15-12: o popup 'Adicionar Canal' das Listas agora so escolhe; 'Conectar um Canal novo' navega para a pagina de conectar, entao um dialogo de criar Lista meio preenchido se perde ao sair (o popup nao cria mais Canal, D-15-12). A carga por Membro na pagina da Fila conta so Conversas abertas da Fila (situacao=aberta), antes contava todas as ativas inclusive resolvidas | open |  | 2026-11-06T11:29:15.005Z |  |
-| 22 | 15 | deviation | apps/web/src/app/(shell)/crm/contatos/[contato]/page.tsx |  | 15-13: Busca, Lixeira antiga, Notificacoes, /crm/meus-negocios e Caixa de Entrada ainda produzem links para ids do modelo antigo; as fichas de Contato, Empresa e Negocio nao recuam mais, entao esses links abrem 'nao encontrado' ate cada superficie migrar para o CRM novo. Decisao do plano: sem ponte de id antigo para novo; depois do script de migracao (ids preservados) o mesmo endereco abre a ficha nova | open |  | 2026-11-06T11:36:42.762Z |  |
+| 22 | 15 | deviation | apps/web/src/app/(shell)/crm/contatos/[contato]/page.tsx |  | 15-13: Busca, Lixeira antiga, Notificacoes, /crm/meus-negocios e Caixa de Entrada ainda produzem links para ids do modelo antigo; as fichas de Contato, Empresa e Negocio nao recuam mais, entao esses links abrem 'nao encontrado' ate cada superficie migrar para o CRM novo. Decisao do plano: sem ponte de id antigo para novo; depois do script de migracao (ids preservados) o mesmo endereco abre a ficha nova | fixed |  | 2026-11-06T11:36:42.762Z | 2026-11-06T19:45:26.075Z |
 | 23 | 15 | deviation | apps/web/src/app/(shell)/buscar/page.tsx |  | 15-14: a Busca acha Conversa so pelo titulo (GET /conversas?q= nao olha o texto das Mensagens, como a do modelo antigo olhava). Se o dono quiser a busca por conteudo, abrir o filtro na api (junto de plataforma.mensagens) e no dominio | open |  | 2026-11-06T11:50:25.871Z |  |
 | 24 | 15 | deviation | apps/web/src/features/inicio/panorama-do-robo.ts |  | 15-14: o panorama do robo do Inicio ainda conta Conversas abertas do Espaco (conversas.abertas), Contatos e Negocios de state.conversations/contacts/deals; so as Conversas atribuidas a pessoa vem da api (hook useNotificacoesDoMembro). Fica para o plano do Inicio (15-18/15-23) | fixed |  | 2026-11-06T11:50:25.932Z | 2026-11-06T17:53:47.740Z |
 | 25 | 15 | deviation | apps/web/src/app/(shell)/configuracoes/tags/page.tsx |  | 15-16: Tags, Campos e Catalogos nao mostram mais o uso em Contato, Empresa, Negocio e Conversa (mostram 'O uso no CRM nao aparece aqui.'); tambem some a contagem de Conversa em Tags e a de Empresa em Campos, que o plano nao citava. Para devolver o numero, abrir contagem por Tag, Campo e item de Catalogo nas rotas /contatos, /empresas, /negocios e /conversas. Sem tela para conceder acesso a Funil novo privado (a Governanca so reconhece Espaco, Pasta, Lista e Colecao): o Funil novo e governado por privado e Papel | open |  | 2026-11-06T11:59:35.240Z |  |
@@ -46,7 +46,7 @@ last_updated: 2026-11-06T19:14:14.783Z
 | 29 | 15 | deviation | apps/web/src/app/(shell)/crm/reunioes/[reuniao]/page.tsx |  | 15-15: a Reuniao deixou de mostrar o Diagnostico da call, o Roteiro da call (campos fd_* do Negocio), a Temperatura do Contato e os perfis de LinkedIn e TikTok: plataforma.negocios nao tem Campos personalizados e o Contato novo nao tem Temperatura nem esses tipos de Identificador (so telefone, email, whatsapp, instagram). O retrato do palco sao as iniciais (sem foto no modelo novo). O Negocio da Empresa sem Contato mostra a Empresa e diz que falta o Contato. Se o dono quiser o roteiro de volta, abrir Campos personalizados de Negocio no dominio, na api e na migracao | open |  | 2026-11-06T12:42:54.967Z |  |
 | 30 | 15 | deviation | apps/web/src/app/(shell)/crm/reunioes/[reuniao]/page.tsx |  | 15-15: nao ha ida a useFunil na Reuniao: NegocioDetalhado (GET /negocios/:id) ja traz o nome do Funil e da Etapa, entao a tela usa esse payload e poupa um pedido; o plano citava useFunil. Efeito visivel: nenhum | waived | Sem efeito visivel: so registra que a Reuniao usa o payload de useNegocio em vez de useFunil; consta no SUMMARY | 2026-11-06T12:42:55.040Z | 2026-11-06T12:43:30.199Z |
 | 31 | 15 | deviation | apps/web/src/features/crm/conversation-thread.tsx |  | 15-20: o fio nao tem mais Rascunho de IA (D-15-11, adiado para a Sessao 16) nem seletor de Mensagem de modelo (plataforma.canais nao guarda modelos, ver 15-12): fora da janela de 24 h do WhatsApp oficial o envio fica desligado dizendo 'a janela expirou e o Canal nao tem Mensagem de modelo aprovada'; e o aviso de consentimento de marketing do fio saiu e volta pela regra do CRM novo no 15-25. Se o dono quiser enviar modelo pelo fio, abrir modelos no Canal (dominio, api e migracao) e o campo modeloId em POST /mensagens | open |  | 2026-11-06T13:05:24.443Z |  |
-| 32 | 15 | deviation | apps/web/src/features/crm/conversation-thread.tsx |  | 15-20: a aba Meet do fio acha as Reunioes pelos Vinculos da Tarefa com os ids dos Negocios do Contato em GET /negocios?contatoId=; os Vinculos de hoje apontam para ids de Negocio do modelo antigo, entao a aba fica sem Reunioes em producao ate o script de migracao preservar os ids (mesma regra das fichas, 15-13). Tambem: o fio mostra as 200 ultimas Mensagens da Conversa, sem carregar as mais antigas | open |  | 2026-11-06T13:05:24.509Z |  |
+| 32 | 15 | deviation | apps/web/src/features/crm/conversation-thread.tsx |  | 15-20: a aba Meet do fio acha as Reunioes pelos Vinculos da Tarefa com os ids dos Negocios do Contato em GET /negocios?contatoId=; os Vinculos de hoje apontam para ids de Negocio do modelo antigo, entao a aba fica sem Reunioes em producao ate o script de migracao preservar os ids (mesma regra das fichas, 15-13). Tambem: o fio mostra as 200 ultimas Mensagens da Conversa, sem carregar as mais antigas | fixed |  | 2026-11-06T13:05:24.509Z | 2026-11-06T19:45:26.144Z |
 | 33 | 15 | deviation | apps/api/src/repositorios/crm/inicio.ts |  | 15-18: "Conversas resolvidas" das estatisticas do Inicio agora conta as Conversas resolvidas de que o Membro e o Atribuido (resolvida_em), nao as que ele clicou em resolver: o modelo novo nao guarda quem resolveu e resolver nao grava Atividade (D-15-09). Reabrir e resolver de novo conta uma vez (a Conversa), nao duas. Suposicao a confirmar com o dono; se ele quiser o ato de quem clicou, gravar o Ator ao resolver (dominio, api e migracao) | open |  | 2026-11-06T13:24:05.365Z |  |
 | 34 | 15 | deviation | apps/web/src/features/inicio/panorama-do-robo.ts |  | 15-18: GET /crm/inicio/panorama, /leads-a-atender e /estatisticas e os hooks usePanoramaDoCrm, useLeadsAAtender e useEstatisticasDoCrm existem, mas nenhuma tela os chama ainda: o panorama do robo do Inicio (linha 24, 15-14), o painel de Leads e as estatisticas seguem no store ate o 15-23 trocar as telas. Nao ha mudanca visivel neste plano | fixed |  | 2026-11-06T13:24:05.443Z | 2026-11-06T17:53:47.911Z |
 | 35 | 15 | deviation | packages/dominio/src/operations/automations.ts |  | 15-19: as Automacoes de Contas a receber ({{cliente}}, {{donoDoCliente}}, mentionClientOwner) ainda leem nome e dono do cliente em state.contacts (contatoDoCliente); clienteDe agora so devolve a referencia. Uma serie criada para um Contato de plataforma.contatos (id fora do modelo antigo) faz o comentario de cobranca dizer 'o cliente' e nao mencionar o dono dele; as contas do modelo antigo seguem como antes. automations.ts entrou na lista CONGELADOS do sem-crm-antigo do dominio. Resolver injetando nome e dono por OpcoesDaAgenda (como cnpjPorEmpresa) lidos das tabelas, antes do 3.5.4 tirar state.contacts | open |  | 2026-11-06T13:42:09.740Z |  |
@@ -56,17 +56,20 @@ last_updated: 2026-11-06T19:14:14.783Z
 | 39 | 15 | deviation | apps/web/src/features/ferramentas/flow-popup.tsx |  | 15-22: enviar o Flow a um Contato continua escolhendo uma Conversa 1:1 de state.conversations (enviarFlow recebe conversationId, F14-D-05), nao o seletor de Contatos com WhatsApp que o plano citava; o nome vem de POST /crm/nomes (sem nome, o titulo da Conversa). Um Contato da ficha nova sem Conversa no modelo antigo nao e enviavel. Resolver quando o envio e a resposta de Flow passarem ao modelo novo (Sessao 7) | open |  | 2026-11-06T14:14:34.917Z |  |
 | 40 | 15 | deviation | apps/web/src/features/crm/coluna-do-contato.tsx |  | 15-24: a coluna do Contato da Caixa nao tem mais o ponto verde de janela de resposta aberta, as acoes LinkedIn e Tarefa (virou Instagram e Abrir ficha), o resumo escrito pelo Agente Enriquecedor (mostra a descricao do Contato) nem a temperatura (D-15-06); o painel Tags da Conversa saiu porque plataforma.conversas nao guarda Tags. Se o dono quiser o ponto da janela ou as Tags da Conversa de volta, abrir na api e no dominio | open |  | 2026-11-06T14:33:24.856Z |  |
 | 41 | 15 | deviation | apps/web/src/features/crm/conversa-de-grupo-na-caixa.tsx |  | 15-24: a Conversa de grupo aberta na Caixa (id que a api responde 404 e o store conhece como Conversa de grupo, F14-D-05) ainda resolve, reabre, atribui e manda para a lixeira pelas operacoes antigas do store; so sai quando o Grupo passar ao modelo novo (Sessoes 6 e 7). Nenhuma outra tela da Caixa usa essas operacoes | open |  | 2026-11-06T14:33:24.919Z |  |
-| 42 | 15 | deviation | apps/web/src/features/estrutura/tarefa-completa.tsx |  | 15-25: a lista de Vinculos da ficha da Tarefa mostra 'Registro indisponivel' (sem atalho) para Negocio, Contato e Conversa cujo id POST /crm/nomes nao conhece; os Vinculos de hoje em producao apontam para ids do modelo antigo, entao ate o script de migracao preservar os ids a ficha cai no layout de sempre com o aviso 'sem Contato' (resumo.contato null) e os nomes dos Vinculos nao aparecem. Antes o nome vinha do estado antigo | open |  | 2026-11-06T14:45:41.424Z |  |
+| 42 | 15 | deviation | apps/web/src/features/estrutura/tarefa-completa.tsx |  | 15-25: a lista de Vinculos da ficha da Tarefa mostra 'Registro indisponivel' (sem atalho) para Negocio, Contato e Conversa cujo id POST /crm/nomes nao conhece; os Vinculos de hoje em producao apontam para ids do modelo antigo, entao ate o script de migracao preservar os ids a ficha cai no layout de sempre com o aviso 'sem Contato' (resumo.contato null) e os nomes dos Vinculos nao aparecem. Antes o nome vinha do estado antigo | fixed |  | 2026-11-06T14:45:41.424Z | 2026-11-06T19:45:26.216Z |
 | 43 | 15 | deviation | apps/web/src/features/crm/conversation-thread.tsx |  | 15-25: o aviso de consentimento de marketing do fio e so aviso (nao bloqueia o envio) e aparece sempre que o consentimento vigente de Marketing no tipo do Canal da aba nao e 'concedido', inclusive Contato sem nenhum registro, porque o fio nao tem seletor de modelo (antes o aviso so existia com um modelo de marketing escolhido). Se o dono achar ruidoso para quem nunca teve consentimento registrado, restringir a 'revogado' ou ligar ao modelo quando houver Mensagem de modelo | open |  | 2026-11-06T14:45:41.486Z |  |
 | 44 | 15 | deviation | apps/web/src/app/(shell)/crm/negocios/page.tsx |  | 15-26: o plano e F14-D-06 mandam o filtro Meus para o quadro de /crm/funis/[funil], mas essa rota e a ficha do Funil e nao tem quadro; o quadro (QuadroDoFunil) mora em /crm/negocios. O botao Meus (?meus=1) e o atalho do menu foram para /crm/negocios; o dono decide se quer tambem um quadro na ficha do Funil | open |  | 2026-11-06T14:59:26.597Z |  |
 | 45 | 15 | deviation | apps/web/src/features/shell/app-shell.tsx |  | 15-26: o painel do CRM perdeu o grupo Pastas de Negocios (arvore da Pasta Meus negocios) para todos os Espacos e ganhou o atalho Meus negocios para /crm/negocios?meus=1; favoritos de /crm/meus-negocios agora caem no 404 do app (T-15-63 aceito) | open |  | 2026-11-06T14:59:26.663Z |  |
 | 46 | 15 | deviation | apps/web/src/features/inicio/resumo-do-inicio.tsx |  | 15-23: Mensagens novas do Inicio perdeu o trecho da ultima Mensagem (a lista GET /conversas nao o traz; o dono ve so nome, quantas nao lidas e quando). Quando o total de Conversas com Mensagem nova passa de 200 o atalho diz 'nas primeiras N de M Conversas' e a soma de nao lidas e so das lidas. Leads a atender mostra iniciais no avatar (o modelo novo nao tem foto) e a api devolve no maximo 50 (o atalho avisa) | open |  | 2026-11-06T17:53:48.102Z |  |
 | 47 | 15 | deviation | apps/web/src/features/inicio/resumo-do-inicio.tsx |  | 15-23: Estatisticas do Inicio pedem duas janelas a api (atual e anterior; a api aceita 400 dias e o ano com o anterior passa de 700) e comparam por dia inteiro: o primeiro dia do periodo anterior entra inteiro, nao so a partir do instante exato. Sem escolha da pessoa a metrica aberta e a de maior valor do periodo atual (antes so da semana) e pode mudar ao trocar de periodo ate o primeiro clique. Se a api recusa, as tres metricas do CRM ficam zeradas com um aviso | open |  | 2026-11-06T17:53:48.270Z |  |
 | 48 | 15 | deviation | apps/web/src/app/(shell)/paineis/[painel]/page.tsx |  | 15-23: Paineis semeados (SDR, Closer, Atendimento) tem Fonte com ids do modelo antigo (fnl_sdr, fnl_closer, fila_com, inbox_n1): lendo o CRM novo eles abrem zerados ate a Fonte apontar para um Funil/Fila novo (Sessao 20.3). Widgets de Origem e Motivo de Perda ficam sem linhas porque NegocioResumo nao traz origem/motivoPerda (texto livre no Negocio novo). Cada Widget le ate 200 registros por recurso e diz 'Parcial: primeiros 200' quando ha mais; Etapas vem de uma GET /funis/:id por Funil lido | open |  | 2026-11-06T17:53:48.437Z |  |
-| 49 | 15 | deviation | apps/web/src/app/(shell)/estrutura/listas/[lista]/page.tsx |  | 15-40: a Lista conversacional so afirma 'sem canais' (aviso, Atende por e recusa de criar Tarefa) com a resposta de GET /canais na mao (so os Canais ativos, ate 200); enquanto carrega, ou se a api falha, o aviso e a linha 'Atende por' nao aparecem e o botao Nova Tarefa nao e desligado por falta de Canal (o servidor continua barrando). Uma Lista cujo canaisDeAtendimento guarda ids que nao estao em plataforma.canais (ids do Canal antigo, antes do script de migracao preservar ids) mostra o aviso de Lista sem Canal. O quadro da Lista conversacional ficou: quadro-negocios.tsx virou quadro-conversacional.tsx (so o card de Negocio e o subtotal em dinheiro sairam), em vez de ser apagado como o plano dizia | open |  | 2026-11-06T18:25:31.533Z |  |
-| 50 | 15 | deviation | apps/api/src/migracao-crm/migrar-crm-antigo.ts |  | 15-27: o --migrar do script so cobre o Funil: recusa, antes de escrever, o Espaco com Contatos, Empresas, Vinculos, Negocios, Canais ou Conversas comuns ('use --guardar'); o mapeador dessas entidades e o plano 15-28. A decisao do Funil (--funil=migrar ou guardar) vale antes da primeira escrita: depois de um --guardar o Funil ja saiu de registros e o script nao o le da copia (trazer depois = recriar pela tela de Funis) | open |  | 2026-11-06T19:14:14.649Z |  |
+| 49 | 15 | deviation | apps/web/src/app/(shell)/estrutura/listas/[lista]/page.tsx |  | 15-40: a Lista conversacional so afirma 'sem canais' (aviso, Atende por e recusa de criar Tarefa) com a resposta de GET /canais na mao (so os Canais ativos, ate 200); enquanto carrega, ou se a api falha, o aviso e a linha 'Atende por' nao aparecem e o botao Nova Tarefa nao e desligado por falta de Canal (o servidor continua barrando). Uma Lista cujo canaisDeAtendimento guarda ids que nao estao em plataforma.canais (ids do Canal antigo, antes do script de migracao preservar ids) mostra o aviso de Lista sem Canal. O quadro da Lista conversacional ficou: quadro-negocios.tsx virou quadro-conversacional.tsx (so o card de Negocio e o subtotal em dinheiro sairam), em vez de ser apagado como o plano dizia | fixed |  | 2026-11-06T18:25:31.533Z | 2026-11-06T19:45:26.283Z |
+| 50 | 15 | deviation | apps/api/src/migracao-crm/migrar-crm-antigo.ts |  | 15-27: o --migrar do script so cobre o Funil: recusa, antes de escrever, o Espaco com Contatos, Empresas, Vinculos, Negocios, Canais ou Conversas comuns ('use --guardar'); o mapeador dessas entidades e o plano 15-28. A decisao do Funil (--funil=migrar ou guardar) vale antes da primeira escrita: depois de um --guardar o Funil ja saiu de registros e o script nao o le da copia (trazer depois = recriar pela tela de Funis) | fixed |  | 2026-11-06T19:14:14.649Z | 2026-11-06T19:45:26.348Z |
 | 51 | 15 | deviation | apps/api/src/migracao-crm/pasta-meus-negocios.ts |  | 15-27: a Pasta Meus negocios com Tarefa em qualquer Lista nao sai (esperado nos 17 Espacos de teste; o dono ve no --seco) e, quando sai, o script nao reescreve referencias de fora as Listas removidas (Automacao ou Formulario com escopo na Lista). No ws_n1 a Pasta provavelmente nem existe (o bootstrap nao a cria); o dono confere no --seco antes do corte | open |  | 2026-11-06T19:14:14.718Z |  |
-| 52 | 15 | deviation | apps/api/src/migracao-crm/funil.ts |  | 15-27: nenhum id antigo e reescrito e nenhum link, Vinculo ou canaisDeAtendimento para Negocio, Contato ou Canal antigo e resolvido por este plano: as linhas antigas ficam em registros_crm_antigo com o id original, e so Funil (id preservado) e Etapa (id novo, crm_de_para colecao_antiga funnels/stages, id_antigo funil/etapa) chegam ao CRM novo. Os avisos 22, 32, 42 e 49 (15-40) seguem abertos ate o 15-28 preservar os ids dos Negocios, Contatos e Canais e o corte (15-34/15-35) rodar | open |  | 2026-11-06T19:14:14.783Z |  |
+| 52 | 15 | deviation | apps/api/src/migracao-crm/funil.ts |  | 15-27: nenhum id antigo e reescrito e nenhum link, Vinculo ou canaisDeAtendimento para Negocio, Contato ou Canal antigo e resolvido por este plano: as linhas antigas ficam em registros_crm_antigo com o id original, e so Funil (id preservado) e Etapa (id novo, crm_de_para colecao_antiga funnels/stages, id_antigo funil/etapa) chegam ao CRM novo. Os avisos 22, 32, 42 e 49 (15-40) seguem abertos ate o 15-28 preservar os ids dos Negocios, Contatos e Canais e o corte (15-34/15-35) rodar | fixed |  | 2026-11-06T19:14:14.783Z | 2026-11-06T19:45:26.412Z |
+| 53 | 15 | deviation | apps/api/src/migracao-crm/mapeador.ts |  | 15-28: o que o --migrar NAO leva as tabelas novas (fica so em registros_crm_antigo e aparece em 'Nao migrados' do --seco): temperatura e Tags dos Contatos; Identificadores de LinkedIn, TikTok e chat do site; Canal do LinkedIn e do chat do site e as Conversas deles (os Vinculos de Tarefa para essas Conversas seguem 'Registro indisponivel'); Empresa sem vinculo admin vigente e os Negocios dela; no Negocio, codigo legivel, campos personalizados, historico de Etapas e os Contatos alem do dono (todo Negocio com Empresa perde o Contato); vinculos Empresa-Empresa e 'distinto de'; Mensagem de Flow migra sem o Flow. No seed sintetico: 35 temperaturas, 25 Contatos com Tags, 32 Identificadores sem destino, 5 Conversas de canal sem destino, 19 Negocios com detalhes perdidos. O dono le a lista no --seco de cada Espaco antes do corte (15-34/15-35) | open |  | 2026-11-06T19:45:42.126Z |  |
+| 54 | 15 | deviation | apps/api/src/migracao-crm/mapeador.ts |  | 15-28: campos personalizados de Contato e Empresa entram em campos_adicionais com o id da Definicao como chave (ex. fd_signo), sem rotulo, e valor em lista fica de fora; o Canal migrado entra desconectado (a conexao real so vem do provedor); Qualificacao e Origem do Contato levam o id do Catalogo como texto (a tela mostra o rotulo so se o id existe no Catalogo) | open |  | 2026-11-06T19:45:42.191Z |  |
+| 55 | 15 | unrun-verify | apps/api/src/migracao-crm/migrar-entidades.test.ts |  | 15-28: os avisos 22, 32, 42, 49, 50 e 52 foram dados como corrigidos pelo codigo e pelos testes em Docker (ids antigos preservados, Vinculos achando o id); em producao o efeito so existe depois que o dono rodar o --migrar nos Espacos com CRM antigo (15-34/15-35). Antes disso os Vinculos a ids antigos seguem 'nao encontrado'. Nada foi rodado contra banco real | open |  | 2026-11-06T19:45:42.257Z |  |
 
 ````json
 [
@@ -350,10 +353,10 @@ last_updated: 2026-11-06T19:14:14.783Z
     "file": "apps/web/src/app/(shell)/crm/contatos/[contato]/page.tsx",
     "line": null,
     "description": "15-13: Busca, Lixeira antiga, Notificacoes, /crm/meus-negocios e Caixa de Entrada ainda produzem links para ids do modelo antigo; as fichas de Contato, Empresa e Negocio nao recuam mais, entao esses links abrem 'nao encontrado' ate cada superficie migrar para o CRM novo. Decisao do plano: sem ponte de id antigo para novo; depois do script de migracao (ids preservados) o mesmo endereco abre a ficha nova",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-06T11:36:42.762Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-06T19:45:26.075Z",
     "milestone": "v1.0"
   },
   {
@@ -480,10 +483,10 @@ last_updated: 2026-11-06T19:14:14.783Z
     "file": "apps/web/src/features/crm/conversation-thread.tsx",
     "line": null,
     "description": "15-20: a aba Meet do fio acha as Reunioes pelos Vinculos da Tarefa com os ids dos Negocios do Contato em GET /negocios?contatoId=; os Vinculos de hoje apontam para ids de Negocio do modelo antigo, entao a aba fica sem Reunioes em producao ate o script de migracao preservar os ids (mesma regra das fichas, 15-13). Tambem: o fio mostra as 200 ultimas Mensagens da Conversa, sem carregar as mais antigas",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-06T13:05:24.509Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-06T19:45:26.144Z",
     "milestone": "v1.0"
   },
   {
@@ -610,10 +613,10 @@ last_updated: 2026-11-06T19:14:14.783Z
     "file": "apps/web/src/features/estrutura/tarefa-completa.tsx",
     "line": null,
     "description": "15-25: a lista de Vinculos da ficha da Tarefa mostra 'Registro indisponivel' (sem atalho) para Negocio, Contato e Conversa cujo id POST /crm/nomes nao conhece; os Vinculos de hoje em producao apontam para ids do modelo antigo, entao ate o script de migracao preservar os ids a ficha cai no layout de sempre com o aviso 'sem Contato' (resumo.contato null) e os nomes dos Vinculos nao aparecem. Antes o nome vinha do estado antigo",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-06T14:45:41.424Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-06T19:45:26.216Z",
     "milestone": "v1.0"
   },
   {
@@ -701,10 +704,10 @@ last_updated: 2026-11-06T19:14:14.783Z
     "file": "apps/web/src/app/(shell)/estrutura/listas/[lista]/page.tsx",
     "line": null,
     "description": "15-40: a Lista conversacional so afirma 'sem canais' (aviso, Atende por e recusa de criar Tarefa) com a resposta de GET /canais na mao (so os Canais ativos, ate 200); enquanto carrega, ou se a api falha, o aviso e a linha 'Atende por' nao aparecem e o botao Nova Tarefa nao e desligado por falta de Canal (o servidor continua barrando). Uma Lista cujo canaisDeAtendimento guarda ids que nao estao em plataforma.canais (ids do Canal antigo, antes do script de migracao preservar ids) mostra o aviso de Lista sem Canal. O quadro da Lista conversacional ficou: quadro-negocios.tsx virou quadro-conversacional.tsx (so o card de Negocio e o subtotal em dinheiro sairam), em vez de ser apagado como o plano dizia",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-06T18:25:31.533Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-06T19:45:26.283Z",
     "milestone": "v1.0"
   },
   {
@@ -714,10 +717,10 @@ last_updated: 2026-11-06T19:14:14.783Z
     "file": "apps/api/src/migracao-crm/migrar-crm-antigo.ts",
     "line": null,
     "description": "15-27: o --migrar do script so cobre o Funil: recusa, antes de escrever, o Espaco com Contatos, Empresas, Vinculos, Negocios, Canais ou Conversas comuns ('use --guardar'); o mapeador dessas entidades e o plano 15-28. A decisao do Funil (--funil=migrar ou guardar) vale antes da primeira escrita: depois de um --guardar o Funil ja saiu de registros e o script nao o le da copia (trazer depois = recriar pela tela de Funis)",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-06T19:14:14.649Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-06T19:45:26.348Z",
     "milestone": "v1.0"
   },
   {
@@ -740,9 +743,48 @@ last_updated: 2026-11-06T19:14:14.783Z
     "file": "apps/api/src/migracao-crm/funil.ts",
     "line": null,
     "description": "15-27: nenhum id antigo e reescrito e nenhum link, Vinculo ou canaisDeAtendimento para Negocio, Contato ou Canal antigo e resolvido por este plano: as linhas antigas ficam em registros_crm_antigo com o id original, e so Funil (id preservado) e Etapa (id novo, crm_de_para colecao_antiga funnels/stages, id_antigo funil/etapa) chegam ao CRM novo. Os avisos 22, 32, 42 e 49 (15-40) seguem abertos ate o 15-28 preservar os ids dos Negocios, Contatos e Canais e o corte (15-34/15-35) rodar",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-06T19:14:14.783Z",
+    "resolved_at": "2026-11-06T19:45:26.412Z",
+    "milestone": "v1.0"
+  },
+  {
+    "id": 53,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/api/src/migracao-crm/mapeador.ts",
+    "line": null,
+    "description": "15-28: o que o --migrar NAO leva as tabelas novas (fica so em registros_crm_antigo e aparece em 'Nao migrados' do --seco): temperatura e Tags dos Contatos; Identificadores de LinkedIn, TikTok e chat do site; Canal do LinkedIn e do chat do site e as Conversas deles (os Vinculos de Tarefa para essas Conversas seguem 'Registro indisponivel'); Empresa sem vinculo admin vigente e os Negocios dela; no Negocio, codigo legivel, campos personalizados, historico de Etapas e os Contatos alem do dono (todo Negocio com Empresa perde o Contato); vinculos Empresa-Empresa e 'distinto de'; Mensagem de Flow migra sem o Flow. No seed sintetico: 35 temperaturas, 25 Contatos com Tags, 32 Identificadores sem destino, 5 Conversas de canal sem destino, 19 Negocios com detalhes perdidos. O dono le a lista no --seco de cada Espaco antes do corte (15-34/15-35)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T19:45:42.126Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 54,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/api/src/migracao-crm/mapeador.ts",
+    "line": null,
+    "description": "15-28: campos personalizados de Contato e Empresa entram em campos_adicionais com o id da Definicao como chave (ex. fd_signo), sem rotulo, e valor em lista fica de fora; o Canal migrado entra desconectado (a conexao real so vem do provedor); Qualificacao e Origem do Contato levam o id do Catalogo como texto (a tela mostra o rotulo so se o id existe no Catalogo)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T19:45:42.191Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 55,
+    "kind": "unrun-verify",
+    "phase": "15",
+    "file": "apps/api/src/migracao-crm/migrar-entidades.test.ts",
+    "line": null,
+    "description": "15-28: os avisos 22, 32, 42, 49, 50 e 52 foram dados como corrigidos pelo codigo e pelos testes em Docker (ids antigos preservados, Vinculos achando o id); em producao o efeito so existe depois que o dono rodar o --migrar nos Espacos com CRM antigo (15-34/15-35). Antes disso os Vinculos a ids antigos seguem 'nao encontrado'. Nada foi rodado contra banco real",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T19:45:42.257Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }
