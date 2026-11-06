@@ -9,25 +9,33 @@
  *
  * The retention countdown is the only thing that makes this screen urgent, so
  * it is computed per record and shown as days remaining, not as a raw date.
+ *
+ * 15-14 (UCR-07) — Contatos, Empresas, Negócios e Conversas vêm das rotas REST do
+ * CRM (`GET /<recurso>?estado=na_lixeira`) e voltam por `POST /<recurso>/:id/restaurar`
+ * (T-15-36: quem decide é a api, não o store). O resto (Tarefas, Espaços, Pastas,
+ * Listas, Agentes, Automações) segue do store e das operações de hoje. Os resumos de
+ * Contato, Empresa e Negócio não trazem o instante em que foram à lixeira: "Enviado
+ * em" e a contagem usam `atualizadoEm`, que não muda depois que o registro está lá.
  */
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useData, useRun } from "@/dados/store";
-import { contactDisplayName } from "@n1/dominio/derive";
 import {
   restoreAgent,
   restoreAutomation,
-  restoreCompany,
-  restoreContact,
   restoreContainer,
-  restoreConversation,
-  restoreDeal,
   restoreList,
   restoreTask,
   purgeTask,
 } from "@n1/dominio/operations";
+import { LIMITES_CRM } from "@n1/dominio/crm/comum";
 import type { DataState, OperationResult } from "@n1/dominio/state";
+import { ErroDeApi } from "@/dados/crm/cliente-crm";
+import { restaurarContato, useContatos } from "@/dados/crm/contatos";
+import { restaurarConversa, useConversas } from "@/dados/crm/conversas";
+import { restaurarEmpresa, useEmpresas } from "@/dados/crm/empresas";
+import { restaurarNegocio, useNegocios } from "@/dados/crm/negocios";
 import { useFormat } from "@/features/shell/use-format";
 import { Button, ConfirmDialog, CorpoDeTela, EmptyState, PageHeader, Section, Toast } from "@/features/shell/ui";
 
@@ -39,7 +47,12 @@ interface TrashedRow {
   readonly trashedAt?: string;
   readonly restorable: boolean;
   readonly restoreHint: string;
+  /** Só as famílias do CRM: restaura pela rota REST (a api recusa quando não pode). */
+  readonly restaurarNoCrm?: () => Promise<unknown>;
 }
+
+/** Os resumos do CRM na lixeira pedem a maior página: a Lixeira lista tudo, e diz quando não coube. */
+const PAGINA_DA_LIXEIRA = { estado: "na_lixeira", limite: LIMITES_CRM.paginaMaxima } as const;
 
 export default function LixeiraPage() {
   const state = useData((data) => data);
@@ -48,6 +61,13 @@ export default function LixeiraPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [now] = useState(() => Date.now());
+  const contatosNaLixeira = useContatos(PAGINA_DA_LIXEIRA);
+  const empresasNaLixeira = useEmpresas(PAGINA_DA_LIXEIRA);
+  const negociosNaLixeira = useNegocios(PAGINA_DA_LIXEIRA);
+  const conversasNaLixeira = useConversas(PAGINA_DA_LIXEIRA);
+  // Restaurações em andamento: o botão espera a resposta, então um segundo clique não manda outra gravação.
+  const emAndamento = useRef(new Set<string>());
+  const [restaurando, setRestaurando] = useState<ReadonlySet<string>>(new Set());
   // PARD-10 — "eliminar agora": só Tarefa, por enquanto; definitivo, por isso confirma.
   const [eliminando, setEliminando] = useState<TrashedRow | null>(null);
 
@@ -98,50 +118,46 @@ export default function LixeiraPage() {
         restorable: true,
         restoreHint: "Volta com as Tarefas que foram à lixeira junto com ela; as que já estavam lá antes continuam lá.",
       })),
-    ...state.contacts
-      .filter((contact) => contact.lifecycle === "naLixeira")
-      .map((contact) => ({
-        id: contact.id,
-        family: "Contato",
-        name: contactDisplayName(contact),
-        href: `/crm/contatos/${contact.id}`,
-        trashedAt: contact.trashedAt,
-        restorable: true,
-        restoreHint: "Volta ao estado que tinha antes. Uma Mensagem recebida também o traz de volta automaticamente.",
-      })),
-    ...state.companies
-      .filter((company) => company.lifecycle === "naLixeira")
-      .map((company) => ({
-        id: company.id,
-        family: "Empresa",
-        name: company.legalName,
-        href: `/crm/empresas/${company.id}`,
-        trashedAt: company.trashedAt,
-        restorable: true,
-        restoreHint: "Os Vínculos com Contatos nunca foram desfeitos e voltam visíveis com ela.",
-      })),
-    ...state.deals
-      .filter((deal) => deal.lifecycle === "naLixeira")
-      .map((deal) => ({
-        id: deal.id,
-        family: "Negócio",
-        name: deal.title,
-        href: `/crm/negocios/${deal.id}`,
-        trashedAt: deal.trashedAt,
-        restorable: true,
-        restoreHint: "Volta ao Funil e à Etapa que ocupava; se a Etapa foi removida, volta à primeira e o Registro diz de onde veio.",
-      })),
-    ...state.conversations
-      .filter((conversation) => conversation.lifecycle === "naLixeira")
-      .map((conversation) => ({
-        id: conversation.id,
-        family: "Conversa",
-        name: conversation.title,
-        href: `/crm/caixa-de-entrada/${conversation.id}`,
-        trashedAt: conversation.trashedAt,
-        restorable: true,
-        restoreHint: "Volta resolvida, com as Mensagens que nunca saíram.",
-      })),
+    ...(contatosNaLixeira.data?.itens ?? []).map((contato) => ({
+      id: contato.id,
+      family: "Contato",
+      name: contato.nomeDeExibicao,
+      href: `/crm/contatos/${contato.id}`,
+      trashedAt: contato.atualizadoEm,
+      restorable: true,
+      restoreHint: "Volta ao estado que tinha antes. Uma Mensagem recebida também o traz de volta automaticamente.",
+      restaurarNoCrm: () => restaurarContato(contato.id),
+    })),
+    ...(empresasNaLixeira.data?.itens ?? []).map((empresa) => ({
+      id: empresa.id,
+      family: "Empresa",
+      name: empresa.nomeDeExibicao,
+      href: `/crm/empresas/${empresa.id}`,
+      trashedAt: empresa.atualizadoEm,
+      restorable: true,
+      restoreHint: "Os Vínculos foram encerrados na lixeira e ficam no histórico; ela volta com um Contato admin indicado na ficha.",
+      restaurarNoCrm: () => restaurarEmpresa(empresa.id),
+    })),
+    ...(negociosNaLixeira.data?.itens ?? []).map((negocio) => ({
+      id: negocio.id,
+      family: "Negócio",
+      name: negocio.titulo,
+      href: `/crm/negocios/${negocio.id}`,
+      trashedAt: negocio.atualizadoEm,
+      restorable: true,
+      restoreHint: "Volta ao Funil e à Etapa que ocupava; se a Etapa foi removida, volta à primeira e o Registro diz de onde veio.",
+      restaurarNoCrm: () => restaurarNegocio(negocio.id),
+    })),
+    ...(conversasNaLixeira.data?.itens ?? []).map((conversa) => ({
+      id: conversa.id,
+      family: "Conversa",
+      name: conversa.titulo,
+      href: `/crm/caixa-de-entrada/${conversa.id}`,
+      trashedAt: conversa.naLixeiraEm ?? conversa.atualizadoEm,
+      restorable: true,
+      restoreHint: "Volta resolvida, com as Mensagens que nunca saíram.",
+      restaurarNoCrm: () => restaurarConversa(conversa.id),
+    })),
     ...state.agents
       .filter((agent) => agent.lifecycle === "naLixeira")
       .map((agent) => ({
@@ -166,6 +182,15 @@ export default function LixeiraPage() {
       })),
   ];
 
+  const consultasDoCrm = [contatosNaLixeira, empresasNaLixeira, negociosNaLixeira, conversasNaLixeira];
+  const carregandoCrm = consultasDoCrm.some((consulta) => consulta.isLoading);
+  const recusaDaLista = consultasDoCrm.find((consulta) => consulta.error !== undefined)?.error;
+  // A página do CRM tem teto; se a lixeira passar dele, a tela diz quantos faltam em vez de fingir que é tudo.
+  const foraDaPagina = consultasDoCrm.reduce(
+    (soma, consulta) => soma + Math.max(0, (consulta.data?.total ?? 0) - (consulta.data?.itens.length ?? 0)),
+    0,
+  );
+
   const sorted = [...rows].sort((a, b) => (b.trashedAt ?? "").localeCompare(a.trashedAt ?? ""));
 
   const daysLeft = (trashedAt?: string): number | null => {
@@ -174,7 +199,34 @@ export default function LixeiraPage() {
     return Math.max(0, Math.ceil(retentionDays - elapsed));
   };
 
+  const rotuloRestaurado = (row: TrashedRow): string =>
+    `${row.family} ${row.family === "Espaço" || row.family === "Negócio" || row.family === "Contato" || row.family === "Agente" ? "restaurado" : "restaurada"}: ${row.name}.`;
+
+  /** CRM: a rota decide. Recusa da api (segunda restauração, Empresa sem admin…) vai para o aviso, e a lista não é relida. */
+  const restoreNoCrm = async (row: TrashedRow, restaurar: () => Promise<unknown>) => {
+    const chave = `${row.family}-${row.id}`;
+    if (emAndamento.current.has(chave)) return;
+    emAndamento.current.add(chave);
+    setRestaurando(new Set(emAndamento.current));
+    try {
+      await restaurar();
+      setError(null);
+      setNotice(rotuloRestaurado(row));
+    } catch (erro) {
+      setNotice(null);
+      const mensagem = erro instanceof Error ? erro.message : "Não foi possível restaurar.";
+      setError(erro instanceof ErroDeApi && erro.codigo === "EMPRESA_SEM_ADMIN" ? `${mensagem} Abra a ficha da Empresa para escolher o admin.` : mensagem);
+    } finally {
+      emAndamento.current.delete(chave);
+      setRestaurando(new Set(emAndamento.current));
+    }
+  };
+
   const restore = (row: TrashedRow) => {
+    if (row.restaurarNoCrm) {
+      void restoreNoCrm(row, row.restaurarNoCrm);
+      return;
+    }
     const restoreOf: Record<
       string,
       (data: DataState, memberId: string) => OperationResult<unknown>
@@ -183,10 +235,6 @@ export default function LixeiraPage() {
       Espaço: (data, memberId) => restoreContainer(data, memberId, "space", row.id),
       Pasta: (data, memberId) => restoreContainer(data, memberId, "folder", row.id),
       Lista: (data, memberId) => restoreList(data, memberId, row.id),
-      Contato: (data, memberId) => restoreContact(data, memberId, row.id),
-      Empresa: (data, memberId) => restoreCompany(data, memberId, row.id),
-      Negócio: (data, memberId) => restoreDeal(data, memberId, row.id),
-      Conversa: (data, memberId) => restoreConversation(data, memberId, row.id),
       Agente: (data, memberId) => restoreAgent(data, memberId, row.id),
       Automação: (data, memberId) => restoreAutomation(data, memberId, row.id),
     };
@@ -199,7 +247,7 @@ export default function LixeiraPage() {
     const result = run(operation);
     if (result.ok) {
       setError(null);
-      setNotice(`${row.family} ${row.family === "Espaço" || row.family === "Negócio" || row.family === "Contato" || row.family === "Agente" ? "restaurado" : "restaurada"}: ${row.name}.`);
+      setNotice(rotuloRestaurado(row));
     } else {
       setNotice(null);
       setError(result.error);
@@ -265,9 +313,14 @@ export default function LixeiraPage() {
             {error}
           </Toast>
         ) : null}
+        {recusaDaLista ? <Toast tone="error">Não foi possível ler o CRM: {recusaDaLista.message}</Toast> : null}
 
         <Section title="Na lixeira" count={sorted.length}>
-          {sorted.length === 0 ? (
+          {sorted.length === 0 && carregandoCrm ? (
+            <p className="app-meta px-1" role="status">
+              Lendo a lixeira…
+            </p>
+          ) : sorted.length === 0 ? (
             <EmptyState
               title="A lixeira está vazia."
               hint="Nada foi enviado à lixeira neste Espaço de Trabalho."
@@ -322,7 +375,12 @@ export default function LixeiraPage() {
                             size="sm"
                             onClick={() => restore(row)}
                             disabled={!row.restorable}
-                            disabledReason="A restauração desta família ainda não está implementada neste protótipo."
+                            carregando={restaurando.has(`${row.family}-${row.id}`)}
+                            disabledReason={
+                              restaurando.has(`${row.family}-${row.id}`)
+                                ? "Restaurando…"
+                                : "A restauração desta família ainda não está implementada neste protótipo."
+                            }
                           >
                             Restaurar
                           </Button>
@@ -339,6 +397,11 @@ export default function LixeiraPage() {
               </tbody>
             </table>
           )}
+          {foraDaPagina > 0 ? (
+            <p className="app-meta mt-2">
+              Há mais {foraDaPagina} registro(s) do CRM na lixeira além dos {LIMITES_CRM.paginaMaxima} mais recentes de cada tipo; restaure alguns para ver o restante.
+            </p>
+          ) : null}
           <p className="app-meta mt-2">
             Restaurar devolve o registro ao estado que ele tinha antes de ir à lixeira — que nem sempre é
             ativo: o que estava arquivado volta arquivado. Passado o prazo, a agenda da Lista elimina a

@@ -377,8 +377,8 @@ describe("Lixeira › Contatos, Empresas, Negócios e Conversas pelas rotas REST
 
   it("dois cliques seguidos em Restaurar mandam uma só gravação (o botão espera a resposta)", async () => {
     paginas["contatos:na_lixeira"] = { itens: [contato("ctt_lix", "Ana Descartada", "na_lixeira")], total: 1 };
-    let liberar: (() => void) | undefined;
-    const original = fetchMock.getMockImplementation()!;
+    let liberar: () => void = () => undefined;
+    const original = fetchMock.getMockImplementation()! as (url: string, init?: RequestInit) => Promise<Response>;
     fetchMock.mockImplementation(async (url: string, init: RequestInit = {}) => {
       if (init.method === "POST") {
         await new Promise<void>((resolve) => {
@@ -400,10 +400,10 @@ describe("Lixeira › Contatos, Empresas, Negócios e Conversas pelas rotas REST
       fireEvent.click(botao);
     });
     expect(chamadasA("POST", "/contatos/ctt_lix/restaurar")).toHaveLength(1);
-    expect((botao as HTMLButtonElement).disabled).toBe(true);
+    expect(botao.getAttribute("aria-busy")).toBe("true");
 
     await act(async () => {
-      liberar?.();
+      liberar();
     });
     await vi.waitFor(() => expect(screen.queryByText("Ana Descartada", { selector: "a" })).toBeNull());
   });
