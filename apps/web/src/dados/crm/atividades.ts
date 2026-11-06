@@ -54,10 +54,13 @@ function valeRepetir(erro: Error): boolean {
   return !(erro instanceof ErroDeApi) || erro.status === 0 || erro.status >= 500;
 }
 
-/** As Atividades do CRM novo, sem objeto (a Auditoria) ou com ele; a ordem é da api. */
-export function useAtividadesDoCrm(filtro: FiltroDeAtividadesDoCrm) {
+/**
+ * As Atividades do CRM novo, sem objeto (a Auditoria) ou com ele; a ordem é da api.
+ * `pausado` não lê nada (uma tela que ainda não sabe o objeto não vai à api).
+ */
+export function useAtividadesDoCrm(filtro: FiltroDeAtividadesDoCrm, opcoes: { readonly pausado?: boolean } = {}) {
   const chave = chaveDeAtividades(filtro);
-  return useSWR<RespostaDeAtividades, Error>(chave, (k: string) => chamarCrm<RespostaDeAtividades>(k), {
+  return useSWR<RespostaDeAtividades, Error>(opcoes.pausado ? null : chave, (k: string) => chamarCrm<RespostaDeAtividades>(k), {
     keepPreviousData: true,
     shouldRetryOnError: valeRepetir,
   });
@@ -72,15 +75,19 @@ function maisRecentePrimeiro(a: ActivityRecord, b: ActivityRecord): number {
  * A linha do tempo de UM objeto: `state.activity` do objeto (modelo antigo) junto
  * com `GET /atividades` (CRM novo), a mais recente primeiro, sem repetir id.
  * Enquanto a rota não responde, a antiga já aparece; se a rota falha, `erro`
- * diz e a antiga continua à mostra.
+ * diz e a antiga continua à mostra. Sem `alvo` (a tela ainda não achou o objeto)
+ * nada é lido e a lista vem vazia: o hook pode ficar antes de um retorno antecipado.
  */
-export function useAtividades(alvo: { readonly tipo: string; readonly id: string }) {
+export function useAtividades(alvo: { readonly tipo: string; readonly id: string } | undefined) {
   const antigas = useData((data) => data.activity);
-  const { data, error, isLoading } = useAtividadesDoCrm({ objetoTipo: alvo.tipo, objetoId: alvo.id });
+  const { data, error, isLoading } = useAtividadesDoCrm(
+    alvo ? { objetoTipo: alvo.tipo, objetoId: alvo.id } : {},
+    { pausado: alvo === undefined },
+  );
 
   const porId = new Map<string, ActivityRecord>();
   for (const atividade of antigas) {
-    if (atividade.objectId === alvo.id && atividade.objectType === alvo.tipo) porId.set(atividade.id, atividade);
+    if (alvo && atividade.objectId === alvo.id && atividade.objectType === alvo.tipo) porId.set(atividade.id, atividade);
   }
   for (const atividade of data?.itens ?? []) porId.set(atividade.id, atividade);
 

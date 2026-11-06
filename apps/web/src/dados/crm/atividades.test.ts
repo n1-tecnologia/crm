@@ -119,6 +119,19 @@ describe("useAtividades — as duas fontes, juntas", () => {
   });
 });
 
+describe("useAtividades — sem objeto ainda (15-15)", () => {
+  it("(f) sem alvo não vai à api e devolve lista vazia, mesmo com Atividade antiga no Espaço", async () => {
+    const antiga = atividade("act_1", "X", "2026-11-01T10:00:00.000Z");
+    fetchMock.mockResolvedValue(resposta(200, { ok: true, itens: [] }));
+
+    const { result } = renderHook(() => useAtividades(undefined), { wrapper: comEstado([antiga]) });
+
+    expect(result.current.atividades).toEqual([]);
+    expect(result.current.carregando).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("useAtividadesDoCrm — a lista sem objeto", () => {
   it("(e) lê /atividades pelo cursor e devolve a resposta da rota", async () => {
     const nova = atividade("11111111-1111-4111-8111-111111111111", "X", "2026-11-05T10:00:00.000Z");

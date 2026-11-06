@@ -37,11 +37,14 @@ import {
   Video,
 } from "lucide-react";
 import { useData, useRun, useSession } from "@/dados/store";
-import { actorLabel, newestFirst, statusCategory } from "@n1/dominio/derive";
+import { actorLabel, statusCategory } from "@n1/dominio/derive";
 import { ehAlteracaoDeDescricao } from "@n1/dominio/descricao-da-tarefa";
 import { endMeeting, startMeeting } from "@n1/dominio/operations";
+import type { ActivityRecord } from "@n1/dominio/types/primitives";
 import { ROTULO_DO_TIPO_DE_IDENTIFICADOR, nomeDeExibicaoDoContato } from "@n1/dominio/crm/contatos";
 import { validarNovaNota } from "@n1/dominio/crm/notas";
+import { invalidarCrm } from "@/dados/crm/cliente-crm";
+import { useAtividades } from "@/dados/crm/atividades";
 import { useContato } from "@/dados/crm/contatos";
 import { useEmpresa } from "@/dados/crm/empresas";
 import { useNegocio } from "@/dados/crm/negocios";
@@ -100,6 +103,13 @@ function duracao(desde: number, agora: number): string {
   return `${h}:${m}:${s}`;
 }
 
+/** Une as listas sem repetir id e ordena da mais recente para a mais antiga (`at` é ISO em UTC). */
+function juntarAtividades(...listas: readonly ActivityRecord[][]): ActivityRecord[] {
+  const porId = new Map<string, ActivityRecord>();
+  for (const lista of listas) for (const registro of lista) porId.set(registro.id, registro);
+  return [...porId.values()].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+}
+
 export default function ReuniaoPage({
   params,
 }: {
@@ -147,6 +157,13 @@ export default function ReuniaoPage({
   const negocio = lead?.negocio;
   const consultaDoContato = useContato(negocio?.contatoId ?? undefined);
   const consultaDaEmpresa = useEmpresa(negocio?.empresaId ?? undefined);
+  const contato = consultaDoContato.data;
+  /*
+   * As duas fontes de Atividade (D-15-09): `useAtividades` junta `state.activity`
+   * do objeto com `GET /atividades`. A da Tarefa da Reunião é só do modelo antigo.
+   */
+  const atividadesDoNegocio = useAtividades(negocio ? { tipo: "deal", id: negocio.id } : undefined);
+  const atividadesDoContato = useAtividades(contato ? { tipo: "contact", id: contato.contato.id } : undefined);
 
   const agora = useRelogio();
 
@@ -164,7 +181,6 @@ export default function ReuniaoPage({
     );
   }
 
-  const contato = consultaDoContato.data;
   const empresa = consultaDaEmpresa.data?.empresa;
   const nomeDaEmpresa =
     empresa?.nomeFantasia ?? empresa?.razaoSocial ?? lead?.empresa?.nome ?? undefined;
@@ -186,14 +202,12 @@ export default function ReuniaoPage({
    * começou: sem esta lista ele teria que sair da call para saber o que foi
    * dito antes dela.
    */
-  const atividadesDoLead = newestFirst(
-    state.activity.filter(
-      (registro) =>
-        registro.objectId === negocio?.id ||
-        registro.objectId === contato?.contato.id ||
-        registro.objectId === task.id,
-    ),
+  const atividadesDoLead = juntarAtividades(
+    state.activity.filter((registro) => registro.objectId === task.id),
+    atividadesDoNegocio.atividades,
+    atividadesDoContato.atividades,
   );
+  const historicoIncompleto = Boolean(atividadesDoNegocio.erro ?? atividadesDoContato.erro);
 
   /*
    * Rede social é PERFIL PÚBLICO, que se abre e se lê antes da call. WhatsApp
@@ -267,6 +281,8 @@ export default function ReuniaoPage({
       setErro(null);
       setAviso("Anotação registrada no Contato.");
       setNota("");
+      // A api gravou "Nota registrada no Contato" na linha do tempo: revalida para ela aparecer.
+      await invalidarCrm("/atividades");
     } catch (falha) {
       setAviso(null);
       setErro(comoErroDeApi(falha, "Não foi possível salvar a anotação. Tente de novo.").message);
@@ -705,47 +721,54 @@ export default function ReuniaoPage({
               )}
             </RecordPanel>
 
-            {contato ? (
+            {lead ? (
               <RecordPanel
                 title="Anotações e atividades"
                 icon={<Icone de={ScrollText} tamanho="sm" />}
                 count={atividadesDoLead.length}
               >
-                <form
-                  className="grid gap-2"
-                  onSubmit={(evento) => {
-                    evento.preventDefault();
-                    void registrarNota();
-                  }}
-                >
-                  <label className="sr-only" htmlFor="nota-da-call">
-                    Anotação da call
-                  </label>
-                  <textarea
-                    id="nota-da-call"
-                    rows={3}
-                    value={nota}
-                    onChange={(evento) => setNota(evento.target.value)}
-                    placeholder="O que apareceu nesta call…"
-                    className="campo"
-                  />
-                  <span>
-                    <Button
-                      type="submit"
-                      variant="secondary"
-                      disabled={nota.trim() === "" || gravandoNota}
-                      disabledReason={
-                        gravandoNota
-                          ? "Gravando a anotação…"
-                          : "Escreva a anotação antes de salvar."
-                      }
-                    >
-                      Registrar anotação
-                    </Button>
-                  </span>
-                </form>
+                {contato ? (
+                  <form
+                    className="grid gap-2"
+                    onSubmit={(evento) => {
+                      evento.preventDefault();
+                      void registrarNota();
+                    }}
+                  >
+                    <label className="sr-only" htmlFor="nota-da-call">
+                      Anotação da call
+                    </label>
+                    <textarea
+                      id="nota-da-call"
+                      rows={3}
+                      value={nota}
+                      onChange={(evento) => setNota(evento.target.value)}
+                      placeholder="O que apareceu nesta call…"
+                      className="campo"
+                    />
+                    <span>
+                      <Button
+                        type="submit"
+                        variant="secondary"
+                        disabled={nota.trim() === "" || gravandoNota}
+                        disabledReason={
+                          gravandoNota
+                            ? "Gravando a anotação…"
+                            : "Escreva a anotação antes de salvar."
+                        }
+                      >
+                        Registrar anotação
+                      </Button>
+                    </span>
+                  </form>
+                ) : null}
 
                 <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--linha)" }}>
+                  {historicoIncompleto ? (
+                    <p className="app-meta mb-2" role="status">
+                      Não foi possível carregar todo o histórico do lead agora.
+                    </p>
+                  ) : null}
                   <ActivityTimeline
                     entries={atividadesDoLead
                       .slice(0, atividadesVisiveis)
