@@ -36,12 +36,12 @@
  * ## O catálogo de clientes — por que entra como `contexto`, não é lido aqui
  *
  * Resolver "Daniel Botelho" contra o CRM real (Contato ou Empresa, D5-12)
- * exige o `DataState` hidratado do Espaço de Trabalho — algo que só existe
+ * exige ler as tabelas do CRM do Espaço de Trabalho — algo que só existe
  * dentro de uma transação Postgres. Este arquivo não abre transação (não faz
  * I/O nenhum, ponto), então o catálogo chega pronto em `contexto` — a
- * orquestração (`./importar-contas-a-receber.ts`, Task 3) hidrata `ws_n1`
+ * orquestração (`./importar-contas-a-receber.ts`, Task 3) lê `ws_n1`
  * UMA vez, no início, e monta `ContextoDeMapeamento.catalogoDeClientes` a
- * partir de `state.contacts`/`state.companies`.
+ * partir de `plataforma.contatos` e `plataforma.empresas` (os registros `ativo`).
  *
  * ## O que nunca entra em `motivo`/`lacunas` (D-25, T-02-21)
  *

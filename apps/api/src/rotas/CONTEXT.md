@@ -249,6 +249,18 @@ execução local: `FUNIS_DO_NAVEGADOR` (`esquemas/fragmentos.ts`, até 200) vali
 DESCARTA (T-15-92); um Funil de outro Espaço nem aparece na leitura (T-15-93). `editarAutomacao`
 não muda de escopo, então não lê Funil.
 
+**O cliente de Contas a receber vem das tabelas (Fase 15, 15-19, 3.4.10, UCR-08).**
+`createReceivableSeries(input, clientes)` recebe do servidor, como 2º argumento, o cliente que
+`input.contactId` cita: `leituraDoClienteDaSerie` (`gesto-no-crm/financeiro.ts`) lê só esse Contato em
+`plataforma.contatos` do Espaço da sessão (id, nome de exibição, estado e Proprietário, por
+`clientesPorIds`), e o domínio recusa com "Cliente não encontrado." o que não existe, está na lixeira
+ou arquivado. A leitura só roda se o Membro pode `ler` Contato (`podeNoCrm`; sem permissão devolve
+vazio e a operação recusa sem revelar o nome, que vai para o título das contas). O `clientes` do
+navegador só serve à execução local: `CLIENTES_DO_NAVEGADOR` (`esquemas/financeiro.ts`) valida a forma
+e a rota o DESCARTA (T-15-48). A importação do ClickUp monta o catálogo de clientes de
+`plataforma.contatos` e `plataforma.empresas` ativos (`importacao/clickup/importar-contas-a-receber.ts`)
+e a operação de importação só aceita o `clienteRef` que está nele.
+
 **Tarefa conversacional nas tabelas (Fase 14, 14-13 e 14-14, 3.3.1 e 3.3.3 a 3.3.6).**
 `rotas/crm/tarefas-conversacionais.ts` tem cinco rotas (criar e resumo no 14-13;
 trocar o Canal e ligar ou criar o Negócio no 14-14):

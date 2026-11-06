@@ -15,11 +15,17 @@
  * ## O catálogo de clientes (D5-12)
  *
  * `construirCatalogoDeClientes` abre uma transação `begin`/`rollback` (nunca
- * grava — mesma disciplina do conferidor de 05-09), hidrata `workspaceId`
- * inteiro e projeta só `id`/`tipo`/nome de exibição de Contatos e Empresas
- * `ativo`. Roda UMA vez por `importarTudo`, antes do primeiro lote — não a
- * cada linha, porque o catálogo não muda durante a importação e reidratar o
- * Espaço 240 vezes custaria 240 idas e voltas por nada.
+ * grava — mesma disciplina do conferidor de 05-09) e lê de `plataforma.contatos`
+ * e `plataforma.empresas`, pelos repositórios de `repositorios/crm/`, só `id`/`tipo`/
+ * nome de exibição dos registros com `estado = 'ativo'` (Fase 15, 3.4.10: o
+ * modelo antigo em `registros` não vale mais como cliente). É a tabela inteira
+ * de ativos de UM Espaço numa consulta por tipo, sem página: o volume de
+ * Contas a receber é de centenas de clientes e a importação roda uma vez por
+ * carga. Roda UMA vez por `importarTudo`, antes do primeiro lote — não a cada
+ * linha, porque o catálogo não muda durante a importação.
+ *
+ * O MESMO catálogo vai a cada `importarLote` (`catalogoDeClientes`), e a
+ * operação de importação só aceita o `clienteRef` que está nele.
  */
 
 import { createHash } from "node:crypto";
@@ -27,16 +33,18 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { PoolClient } from "pg";
 
-import { derive, ok, type DataState, type Id, type OperationResult } from "@n1/dominio";
+import { ok, type DataState, type Id, type OperationResult } from "@n1/dominio";
 import {
   contaAReceberJaImportada,
   importarContaAReceberHistorica,
+  type ClientesConhecidos,
   ORIGEM_CONTAS_A_RECEBER,
   type EntradaDeContaAReceberHistorica,
 } from "@n1/dominio/operations/importacao-contas-a-receber";
 
 import { pool } from "../../persistencia/conexao";
-import { hidratar } from "../../persistencia/repositorio";
+import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
+import { criarRepositorioDeEmpresasPg } from "../../repositorios/crm/empresas";
 import { executar, type OpcoesExecucao } from "../../persistencia/unidade-de-trabalho";
 import { lerContasAReceberDoExport, mapearContaAReceber, verificarIntegridadeDoExportDeContasAReceber, type ClienteDoCatalogo, type ContextoDeMapeamento } from "./contas-a-receber";
 import { gravarAtomico } from "./exportar";
@@ -47,24 +55,20 @@ export { ORIGEM_CONTAS_A_RECEBER };
 /* ─────────────────────────── D5-12 — o catálogo de clientes ─────────────────────────── */
 
 /**
- * Hidrata `workspaceId` DENTRO de uma transação que sempre `rollback`
- * (nunca escreve — mesmo molde de `conferir-contas-a-receber.ts`, 05-09) e
- * projeta os Contatos e Empresas `ativo` para o formato que
- * `mapearContaAReceber` (Task 2) consome. NUNCA cria Contato nem Empresa —
- * só lê o que já existe (D5-12).
+ * Lê os Contatos e Empresas `ativo` das tabelas do CRM DENTRO de uma transação que sempre
+ * `rollback` (nunca escreve — mesmo molde de `conferir-contas-a-receber.ts`, 05-09) e os
+ * projeta para o formato que `mapearContaAReceber` (Task 2) consome. NUNCA cria Contato nem
+ * Empresa — só lê o que já existe (D5-12).
  */
 export async function construirCatalogoDeClientes(workspaceId: string): Promise<ContextoDeMapeamento> {
   const cliente = await pool().connect();
   try {
     await cliente.query("begin");
-    const { state } = await hidratar(cliente, workspaceId);
+    const contatos = await criarRepositorioDeContatosPg(cliente).ativosParaCatalogo(workspaceId);
+    const empresas = await criarRepositorioDeEmpresasPg(cliente).ativasParaCatalogo(workspaceId);
     const catalogo: ClienteDoCatalogo[] = [
-      ...state.contacts
-        .filter((c) => c.lifecycle === "ativo")
-        .map((c) => ({ tipo: "contact" as const, id: c.id, nome: derive.contactDisplayName(c) })),
-      ...state.companies
-        .filter((c) => c.lifecycle === "ativo")
-        .map((c) => ({ tipo: "company" as const, id: c.id, nome: c.tradeName || c.legalName })),
+      ...contatos.map((c) => ({ tipo: "contact" as const, id: c.id, nome: c.nome })),
+      ...empresas.map((c) => ({ tipo: "company" as const, id: c.id, nome: c.nome })),
     ];
     return { catalogoDeClientes: catalogo };
   } finally {
@@ -107,6 +111,11 @@ export interface OpcoesDeLote {
   readonly runId: string;
   readonly entradas: readonly EntradaParaImportar[];
   readonly dryRun: boolean;
+  /**
+   * O catálogo de clientes (3.4.10) que `construirCatalogoDeClientes` leu das tabelas: a operação de
+   * importação só aceita o `clienteRef` que está nele. Sem ele nenhum `clienteRef` vale.
+   */
+  readonly catalogoDeClientes?: readonly ClienteDoCatalogo[];
   /** Só o teste passa isto — o CLI nunca expõe `--origem` (mesmo critério do irmão). */
   readonly origem?: string;
   /** SÓ para prova de atomicidade em teste — ver `./importar-contas-a-pagar.ts`. */
@@ -150,6 +159,10 @@ export async function importarLote(opcoes: OpcoesDeLote): Promise<ResultadoDoLot
     };
   }
 
+  const clientesConhecidos: ClientesConhecidos = {
+    contatos: (opcoes.catalogoDeClientes ?? []).filter((c) => c.tipo === "contact").map((c) => c.id),
+    empresas: (opcoes.catalogoDeClientes ?? []).filter((c) => c.tipo === "company").map((c) => c.id),
+  };
   let resultadosDoLote: ResultadoPorConta[] = [];
   const operacaoDoLote = (state: DataState): OperationResult<readonly ResultadoPorConta[]> => {
     resultadosDoLote = [];
@@ -158,7 +171,7 @@ export async function importarLote(opcoes: OpcoesDeLote): Promise<ResultadoDoLot
         resultadosDoLote.push({ legacyTaskId: entrada.legacyTaskId, resultado: "rejeitada", motivo: "ja_importada", sourceHash });
         continue;
       }
-      const resultado = importarContaAReceberHistorica(state, opcoes.actingMemberId, entrada);
+      const resultado = importarContaAReceberHistorica(state, opcoes.actingMemberId, entrada, clientesConhecidos);
       if (!resultado.ok) {
         resultadosDoLote.push({
           legacyTaskId: entrada.legacyTaskId,
@@ -334,6 +347,7 @@ export async function importarTudo(
       runId: opcoes.runId,
       entradas: loteAtual,
       dryRun: opcoes.dryRun,
+      catalogoDeClientes: contexto.catalogoDeClientes,
       ...(opcoes.origem !== undefined ? { origem: opcoes.origem } : {}),
     });
     importadas += resultado.importadas;

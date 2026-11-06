@@ -112,6 +112,19 @@ export interface EntradaDeContaAReceberHistorica {
 }
 
 /**
+ * Os clientes que existem e valem (ativos) nas tabelas do CRM, por tipo: o que a orquestração do
+ * `apps/api` leu de `plataforma.contatos` e `plataforma.empresas` antes do lote (Fase 15, 3.4.10).
+ * O domínio não faz I/O, então o catálogo chega como argumento — e sem ele nenhum `clienteRef`
+ * vale (recusa, nunca passa em silêncio).
+ */
+export interface ClientesConhecidos {
+  readonly contatos: readonly Id[];
+  readonly empresas: readonly Id[];
+}
+
+const NENHUM_CLIENTE_CONHECIDO: ClientesConhecidos = { contatos: [], empresas: [] };
+
+/**
  * A barreira em memória de T-3-02 (mesma de 03-09), delegada a `jaImportada`
  * em vez de reescrita.
  */
@@ -131,6 +144,7 @@ export function importarContaAReceberHistorica(
   state: DataState,
   actingMemberId: Id,
   entrada: EntradaDeContaAReceberHistorica,
+  clientesConhecidos: ClientesConhecidos = NENHUM_CLIENTE_CONHECIDO,
 ): OperationResult<Task> {
   if (!entrada.legacyTaskId.trim()) return fail("O id da Tarefa legada não pode ficar vazio.");
   if (!entrada.titulo.trim()) return fail("O título da Conta a receber importada não pode ficar vazio.");
@@ -165,13 +179,10 @@ export function importarContaAReceberHistorica(
     if (!state.tags.some((t) => t.id === tagId)) return fail(`Tag "${tagId}" não encontrada.`);
   }
 
-  // D5-12 — o alvo do Vínculo precisa existir; a recusa cita o id, nunca um
-  // nome (T-3-07 do irmão vale aqui igual).
+  // D5-12 — o alvo do Vínculo precisa existir (no catálogo recebido, lido das
+  // tabelas do CRM); a recusa cita o id, nunca um nome (T-3-07 do irmão vale aqui igual).
   if (entrada.clienteRef) {
-    const existeNoCrm =
-      entrada.clienteRef.tipo === "contact"
-        ? state.contacts.some((c) => c.id === entrada.clienteRef!.id)
-        : state.companies.some((c) => c.id === entrada.clienteRef!.id);
+    const existeNoCrm = (entrada.clienteRef.tipo === "contact" ? clientesConhecidos.contatos : clientesConhecidos.empresas).includes(entrada.clienteRef.id);
     if (!existeNoCrm) {
       return fail(`Cliente "${entrada.clienteRef.id}" (${entrada.clienteRef.tipo}) não encontrado no CRM.`);
     }
