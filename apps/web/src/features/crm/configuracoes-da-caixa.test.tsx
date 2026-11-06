@@ -160,9 +160,9 @@ describe("15-12 — a página da Fila pelo CRM novo", () => {
 
     expect(await screen.findByText("Ana Souza")).toBeTruthy();
     expect(screen.getByText("Bruno Lima")).toBeTruthy();
-    // O contador do cabeçalho e o rodapé da lista usam o total (37), nunca as 2 linhas da página.
+    // O contador do cabeçalho e o rodapé da lista usam o total (37), nunca as 2 linhas da página: "2 de 37".
     expect(screen.getByText(/37 Conversa\(s\) ativa\(s\)/)).toBeTruthy();
-    expect(screen.getByText(/Mostrando 20 de 37/)).toBeTruthy();
+    expect(screen.getByText(/Mostrando 2 de 37/)).toBeTruthy();
     // O Atribuído vem do store (Membro) e a ausência dele é dita.
     expect(screen.getByText("sem Atribuído")).toBeTruthy();
 

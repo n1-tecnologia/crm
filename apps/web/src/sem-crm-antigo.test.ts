@@ -33,7 +33,6 @@ const CONGELADOS = [
   "app/(shell)/configuracoes/page.tsx",
   "app/(shell)/configuracoes/tags/page.tsx",
   "app/(shell)/crm/caixa-de-entrada/[conversa]/page.tsx",
-  "app/(shell)/crm/caixa-de-entrada/configuracoes/filas/[fila]/page.tsx",
   "app/(shell)/crm/contatos/[contato]/page.tsx",
   "app/(shell)/crm/empresas/[empresa]/page.tsx",
   "app/(shell)/crm/negocios/[negocio]/page.tsx",

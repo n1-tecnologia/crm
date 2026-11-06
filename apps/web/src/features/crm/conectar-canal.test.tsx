@@ -58,6 +58,27 @@ const ID_DO_CANAL = "9b2f6c1e-0808-4c3a-9f00-000000000001";
 const FRASE_B35 = "Só Administrador ou Proprietário conecta, configura, simula conexão, desconecta e arquiva Canais (B35).";
 const DESTINO = "/crm/caixa-de-entrada/configuracoes";
 
+const CANAL_DA_LISTA = {
+  id: "c-lista",
+  nome: "Comercial SP",
+  tipo: "whatsapp",
+  provedor: "whatsapp-cloud",
+  identificadorExterno: "+5511987654321",
+  conexao: "conectada",
+  conexaoSimulada: false,
+  conectadaEm: null,
+  estado: "ativo",
+  arquivadoEm: null,
+  configuradoPor: "mem_rafael",
+  filaPadraoId: null,
+  proprietarioPadraoId: null,
+  origemPadraoId: null,
+  gruposHabilitados: false,
+  criadoPor: "mem_rafael",
+  criadoEm: "2026-11-01T00:00:00.000Z",
+  atualizadoEm: "2026-11-01T00:00:00.000Z",
+};
+
 let fetchMock: ReturnType<typeof vi.fn>;
 let hidratar: ReturnType<typeof vi.fn>;
 let respostaDoPost: () => Response;
@@ -74,6 +95,12 @@ beforeEach(() => {
   respostaDoPost = () => resposta(201, { ok: true, dados: { id: ID_DO_CANAL } });
   fetchMock = vi.fn(async (url: string, init: RequestInit = {}) => {
     if ((init.method ?? "GET") === "POST" && url === "http://api/canais") return respostaDoPost();
+    // As Configurações da Caixa leem os Canais da api (15-12): um Canal ativo e nenhum arquivado.
+    const alvo = new URL(String(url));
+    if ((init.method ?? "GET") === "GET" && alvo.pathname === "/canais") {
+      const itens = alvo.searchParams.get("estado") === "arquivado" ? [] : [CANAL_DA_LISTA];
+      return resposta(200, { ok: true, itens, total: itens.length });
+    }
     return resposta(404, { ok: false, error: "Rota não encontrada." });
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -136,12 +163,15 @@ describe("08-08 — a tela dos quatro cartões (D-06)", () => {
     }
   });
 
-  it("as Configurações da Caixa têm o botão Conectar Canal: link para o Administrador, desabilitado para o Membro", () => {
+  it("as Configurações da Caixa têm o botão Conectar Canal: link para o Administrador, desabilitado para o Membro", async () => {
     const { unmount } = render(provedores(<ConfiguracoesDaCaixaPage />));
+    // Espera os Canais chegarem: sem eles a seção mostraria o estado vazio, com um segundo botão.
+    expect(await screen.findByText("Comercial SP")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Conectar Canal" }).getAttribute("href")).toBe(`${DESTINO}/canais/conectar`);
     unmount();
 
     render(provedores(<ConfiguracoesDaCaixaPage />, "mem_maryane"));
+    expect(await screen.findByText("Comercial SP")).toBeTruthy();
     const botao = screen.getByRole("button", { name: "Conectar Canal" });
     expect(botao.getAttribute("aria-disabled")).toBe("true");
     expect(botao.getAttribute("title")).toBe(FRASE_B35);
