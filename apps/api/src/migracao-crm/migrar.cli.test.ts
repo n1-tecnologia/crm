@@ -97,7 +97,7 @@ describeComBanco("principal contra Postgres de Docker", () => {
     try {
       expect(await principal(["--espaco", ws, "--guardar"])).toBe(0);
       const saida = log.mock.calls.map((c) => c.join(" "));
-      expect(saida[0]).toContain("localhost:55727");
+      expect(saida[0]).toContain(new URL(process.env.DATABASE_URL ?? "").host);
       expect(saida[0]).toContain(ws);
       expect(saida.join("\n")).not.toContain("postgres://");
       expect(saida.join("\n")).toMatch(/nada a fazer/i);
