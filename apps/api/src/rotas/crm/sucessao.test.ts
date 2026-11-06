@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { usuarioDoSeed } from "@n1/dominio";
 import { buildSeed } from "@n1/dominio/seed";
 import { buildApp } from "../../app";
-import type { SucessaoNoCrm } from "../../repositorios/crm/sucessao";
+import type { SucessaoNoCrm } from "@n1/dominio/crm/sucessao";
 import { recusa, sucesso, type ResultadoCrm } from "../../servicos/crm/resultado";
 import type { ServicoDeSucessao } from "../../servicos/crm/sucessao";
 
@@ -26,7 +26,7 @@ function opcoesDeAutenticacao(workspaceId: string) {
   };
 }
 
-const contagens: SucessaoNoCrm = { contatos: 2, empresas: 1, negocios: 1, conversasLiberadas: 1 };
+const contagens: SucessaoNoCrm = { contatos: 2, empresas: 1, negocios: 1, conversasPassadas: 1 };
 
 describe("rota da sucessão no CRM — serviço falso, sem banco", () => {
   function novoFalso(resposta: ResultadoCrm<SucessaoNoCrm> = sucesso(contagens)) {
@@ -51,6 +51,9 @@ describe("rota da sucessão no CRM — serviço falso, sem banco", () => {
     const resposta = await appCom(servico).inject({ method: "GET", url: "/membros/mem_x/sucessao-no-crm", headers: AUTORIZACAO });
     expect(resposta.statusCode).toBe(200);
     expect(resposta.json()).toEqual({ ok: true, dados: contagens });
+    // D-15-08: a chave da forma antiga não volta.
+    expect(resposta.json().dados).toHaveProperty("conversasPassadas", 1);
+    expect(resposta.json().dados).not.toHaveProperty("conversasLiberadas");
     expect(chamadas[0]?.[0]).toMatchObject({ id: "mem_maryane" });
     expect(chamadas[0]?.[1]).toBe("mem_x");
   });

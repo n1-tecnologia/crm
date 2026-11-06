@@ -1118,7 +1118,7 @@ describeComBanco("POST /operacoes/removeMember — a sucessão chega às tabelas
     expect(await donoDe("contatos", espaco.workspaceId, ids.contatoA)).toBe(removido());
   });
 
-  it("o Administrador remove o Membro: Contatos, Empresa e Negócio passam ao Sucessor, a Conversa dele fica sem Atribuído, e o resto não muda", async () => {
+  it("o Administrador remove o Membro: Contatos, Empresa e Negócio passam ao Sucessor, a Conversa dele passa ao Sucessor como Atribuído, e o resto não muda", async () => {
     const resposta = await chamar(TOKENS_DE_VAZAMENTO.administrador, [removido(), sucessor()]);
     expect(resposta.statusCode, resposta.body.slice(0, 200)).toBe(200);
     expect(resposta.json().ok).toBe(true);
@@ -1127,8 +1127,8 @@ describeComBanco("POST /operacoes/removeMember — a sucessão chega às tabelas
     expect(await donoDe("contatos", ws, ids.contatoB)).toBe(sucessor());
     expect(await donoDe("empresas", ws, ids.empresa)).toBe(sucessor());
     expect(await donoDe("negocios", ws, ids.negocio)).toBe(sucessor());
-    // RN-ET-09 (b): a Conversa é liberada, não passa ao Sucessor.
-    expect(await atribuicaoDe(ids.conversaDoRemovido)).toEqual({ atribuido_tipo: null, atribuido_id: null });
+    // RN-ET-09 (a) e RN-CXE-24 emendadas (D-15-08): a Conversa passa ao Sucessor como Atribuído.
+    expect(await atribuicaoDe(ids.conversaDoRemovido)).toEqual({ atribuido_tipo: "membro", atribuido_id: sucessor() });
     // O que era de outro Membro e o que era de outro Espaço ficam como estavam.
     expect(await donoDe("contatos", ws, ids.contatoDeOutro)).toBe(espaco.membros.b.id);
     expect(await atribuicaoDe(ids.conversaDeOutro)).toEqual({ atribuido_tipo: "membro", atribuido_id: espaco.membros.b.id });

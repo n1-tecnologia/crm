@@ -4,12 +4,16 @@
  * Só Administrador ou Proprietário ativo vê quanto vai mudar de mãos (T-14-26);
  * um Membro de outro Espaço, ou que não existe, é 404 — e quem não pode
  * ver nem descobre se o Membro existe (o Papel é conferido primeiro).
+ *
+ * `passarAoSucessor` (15-03, D-15-08): as Conversas do Membro removido passam ao
+ * Sucessor como Atribuído, no mesmo commit, e a de Agente não muda.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { encerrar, pool } from "../../persistencia/conexao";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearCanal, semearMembro } from "../../testes/banco-crm";
+import { contarDoMembro, passarAoSucessor } from "../../repositorios/crm/sucessao";
 import { criarServicoDeSucessao } from "./sucessao";
 import type { ResultadoCrm } from "./resultado";
 
@@ -85,14 +89,14 @@ describeComBanco("ServicoDeSucessao — Postgres local", () => {
 
   it("o Administrador ativo recebe as contagens do Membro neste Espaço", async () => {
     const resultado = await servico.previa(membro(ws, "mem_admin"), "mem_alvo");
-    expect(resultado).toEqual({ ok: true, valor: { contatos: 2, empresas: 1, negocios: 1, conversasLiberadas: 1 } });
+    expect(resultado).toEqual({ ok: true, valor: { contatos: 2, empresas: 1, negocios: 1, conversasPassadas: 1 } });
   });
 
   it("o Proprietário ativo também vê; um Membro sem nada dá tudo zero", async () => {
     expect(await servico.previa(membro(ws, "mem_dono"), "mem_alvo")).toMatchObject({ ok: true });
     expect(await servico.previa(membro(ws, "mem_dono"), "mem_convidado")).toEqual({
       ok: true,
-      valor: { contatos: 0, empresas: 0, negocios: 0, conversasLiberadas: 0 },
+      valor: { contatos: 0, empresas: 0, negocios: 0, conversasPassadas: 0 },
     });
   });
 
@@ -113,5 +117,49 @@ describeComBanco("ServicoDeSucessao — Postgres local", () => {
       expect(r.status).toBe(404);
       expect(r.codigo).toBe("MEMBRO_NAO_ENCONTRADO");
     }
+  });
+
+  // Sempre por último: muda o dono do que as contagens acima leem.
+  describe("passarAoSucessor — Conversas do Membro removido (D-15-08)", () => {
+    const conversaDe = async (titulo: string) =>
+      (
+        await pool().query<{ atribuido_tipo: string | null; atribuido_id: string | null }>(
+          "select atribuido_tipo, atribuido_id from plataforma.conversas where workspace_id = $1 and titulo = $2",
+          [ws, titulo],
+        )
+      ).rows[0];
+
+    async function passar() {
+      const cliente = await pool().connect();
+      try {
+        await cliente.query("begin");
+        await passarAoSucessor(cliente, ws, "mem_alvo", "mem_dono");
+        await cliente.query("commit");
+      } finally {
+        cliente.release();
+      }
+    }
+
+    it("a Conversa atribuída ao Membro passa ao Sucessor como membro, e a de Agente não muda", async () => {
+      const canal = await semearCanal(ws, { nome: "Canal do Agente", tipo: "whatsapp", provedor: "whatsapp-cloud", identificadorExterno: "5511922222222" });
+      const doAgente = await contato(ws, "Contato do Agente", "mem_comum");
+      await pool().query(
+        `insert into plataforma.conversas (workspace_id, canal_id, contato_id, titulo, atribuido_tipo, atribuido_id, criado_por_tipo, criado_por_id)
+         values ($1, $2, $3, 'Atribuída ao Agente', 'agente', 'age_x', 'agente', 'age_x')`,
+        [ws, canal, doAgente],
+      );
+      expect(await contarDoMembro(pool(), ws, "mem_alvo")).toMatchObject({ conversasPassadas: 1 });
+
+      await passar();
+
+      expect(await conversaDe("Atribuída ao alvo")).toEqual({ atribuido_tipo: "membro", atribuido_id: "mem_dono" });
+      expect(await conversaDe("Atribuída ao Agente")).toEqual({ atribuido_tipo: "agente", atribuido_id: "age_x" });
+    });
+
+    it("rodar de novo não muda nada: já está com o Sucessor e a contagem do removido é zero", async () => {
+      await passar();
+      expect(await conversaDe("Atribuída ao alvo")).toEqual({ atribuido_tipo: "membro", atribuido_id: "mem_dono" });
+      expect(await contarDoMembro(pool(), ws, "mem_alvo")).toEqual({ contatos: 0, empresas: 0, negocios: 0, conversasPassadas: 0 });
+    });
   });
 });
