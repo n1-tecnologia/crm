@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 35
+open_count: 36
 waived_count: 2
-fixed_count: 8
-total_count: 45
-last_updated: 2026-11-06T14:59:26.663Z
+fixed_count: 10
+total_count: 48
+last_updated: 2026-11-06T17:53:48.437Z
 ---
 
 # Broken Windows Ledger
@@ -38,7 +38,7 @@ last_updated: 2026-11-06T14:59:26.663Z
 | 21 | 15 | deviation | apps/web/src/features/crm/adicionar-canal-dialog.tsx |  | 15-12: o popup 'Adicionar Canal' das Listas agora so escolhe; 'Conectar um Canal novo' navega para a pagina de conectar, entao um dialogo de criar Lista meio preenchido se perde ao sair (o popup nao cria mais Canal, D-15-12). A carga por Membro na pagina da Fila conta so Conversas abertas da Fila (situacao=aberta), antes contava todas as ativas inclusive resolvidas | open |  | 2026-11-06T11:29:15.005Z |  |
 | 22 | 15 | deviation | apps/web/src/app/(shell)/crm/contatos/[contato]/page.tsx |  | 15-13: Busca, Lixeira antiga, Notificacoes, /crm/meus-negocios e Caixa de Entrada ainda produzem links para ids do modelo antigo; as fichas de Contato, Empresa e Negocio nao recuam mais, entao esses links abrem 'nao encontrado' ate cada superficie migrar para o CRM novo. Decisao do plano: sem ponte de id antigo para novo; depois do script de migracao (ids preservados) o mesmo endereco abre a ficha nova | open |  | 2026-11-06T11:36:42.762Z |  |
 | 23 | 15 | deviation | apps/web/src/app/(shell)/buscar/page.tsx |  | 15-14: a Busca acha Conversa so pelo titulo (GET /conversas?q= nao olha o texto das Mensagens, como a do modelo antigo olhava). Se o dono quiser a busca por conteudo, abrir o filtro na api (junto de plataforma.mensagens) e no dominio | open |  | 2026-11-06T11:50:25.871Z |  |
-| 24 | 15 | deviation | apps/web/src/features/inicio/panorama-do-robo.ts |  | 15-14: o panorama do robo do Inicio ainda conta Conversas abertas do Espaco (conversas.abertas), Contatos e Negocios de state.conversations/contacts/deals; so as Conversas atribuidas a pessoa vem da api (hook useNotificacoesDoMembro). Fica para o plano do Inicio (15-18/15-23) | open |  | 2026-11-06T11:50:25.932Z |  |
+| 24 | 15 | deviation | apps/web/src/features/inicio/panorama-do-robo.ts |  | 15-14: o panorama do robo do Inicio ainda conta Conversas abertas do Espaco (conversas.abertas), Contatos e Negocios de state.conversations/contacts/deals; so as Conversas atribuidas a pessoa vem da api (hook useNotificacoesDoMembro). Fica para o plano do Inicio (15-18/15-23) | fixed |  | 2026-11-06T11:50:25.932Z | 2026-11-06T17:53:47.740Z |
 | 25 | 15 | deviation | apps/web/src/app/(shell)/configuracoes/tags/page.tsx |  | 15-16: Tags, Campos e Catalogos nao mostram mais o uso em Contato, Empresa, Negocio e Conversa (mostram 'O uso no CRM nao aparece aqui.'); tambem some a contagem de Conversa em Tags e a de Empresa em Campos, que o plano nao citava. Para devolver o numero, abrir contagem por Tag, Campo e item de Catalogo nas rotas /contatos, /empresas, /negocios e /conversas. Sem tela para conceder acesso a Funil novo privado (a Governanca so reconhece Espaco, Pasta, Lista e Colecao): o Funil novo e governado por privado e Papel | open |  | 2026-11-06T11:59:35.240Z |  |
 | 26 | 15 | deviation | apps/api/src/servicos/crm/negocios.ts |  | 15-09: criar, editar, ganhar, perder e reabrir Negocio, criar Contato/Empresa e mandar Contato/Empresa a lixeira pelo CRM novo NAO gravam Atividade (escopo de D-15-09 e so Conversa, transferir Identificador, consentimento, Nota e sucessao); as telas antigas gravavam. Pergunta ao dono: quer a linha do tempo desses gestos no CRM novo antes de remover o modelo antigo? | open |  | 2026-11-06T12:22:04.882Z |  |
 | 27 | 15 | deviation | apps/web/src/app/(shell)/configuracoes/auditoria/page.tsx |  | 15-09: o contador '{n} Registro(s) de Atividade' e o 'de N' da Auditoria contam o state.activity inteiro mais so as paginas ja lidas do CRM novo (GET /atividades nao devolve total); cresce a cada Mostrar mais. Abrir contagem na api se o dono quiser o numero exato | open |  | 2026-11-06T12:22:04.947Z |  |
@@ -48,7 +48,7 @@ last_updated: 2026-11-06T14:59:26.663Z
 | 31 | 15 | deviation | apps/web/src/features/crm/conversation-thread.tsx |  | 15-20: o fio nao tem mais Rascunho de IA (D-15-11, adiado para a Sessao 16) nem seletor de Mensagem de modelo (plataforma.canais nao guarda modelos, ver 15-12): fora da janela de 24 h do WhatsApp oficial o envio fica desligado dizendo 'a janela expirou e o Canal nao tem Mensagem de modelo aprovada'; e o aviso de consentimento de marketing do fio saiu e volta pela regra do CRM novo no 15-25. Se o dono quiser enviar modelo pelo fio, abrir modelos no Canal (dominio, api e migracao) e o campo modeloId em POST /mensagens | open |  | 2026-11-06T13:05:24.443Z |  |
 | 32 | 15 | deviation | apps/web/src/features/crm/conversation-thread.tsx |  | 15-20: a aba Meet do fio acha as Reunioes pelos Vinculos da Tarefa com os ids dos Negocios do Contato em GET /negocios?contatoId=; os Vinculos de hoje apontam para ids de Negocio do modelo antigo, entao a aba fica sem Reunioes em producao ate o script de migracao preservar os ids (mesma regra das fichas, 15-13). Tambem: o fio mostra as 200 ultimas Mensagens da Conversa, sem carregar as mais antigas | open |  | 2026-11-06T13:05:24.509Z |  |
 | 33 | 15 | deviation | apps/api/src/repositorios/crm/inicio.ts |  | 15-18: "Conversas resolvidas" das estatisticas do Inicio agora conta as Conversas resolvidas de que o Membro e o Atribuido (resolvida_em), nao as que ele clicou em resolver: o modelo novo nao guarda quem resolveu e resolver nao grava Atividade (D-15-09). Reabrir e resolver de novo conta uma vez (a Conversa), nao duas. Suposicao a confirmar com o dono; se ele quiser o ato de quem clicou, gravar o Ator ao resolver (dominio, api e migracao) | open |  | 2026-11-06T13:24:05.365Z |  |
-| 34 | 15 | deviation | apps/web/src/features/inicio/panorama-do-robo.ts |  | 15-18: GET /crm/inicio/panorama, /leads-a-atender e /estatisticas e os hooks usePanoramaDoCrm, useLeadsAAtender e useEstatisticasDoCrm existem, mas nenhuma tela os chama ainda: o panorama do robo do Inicio (linha 24, 15-14), o painel de Leads e as estatisticas seguem no store ate o 15-23 trocar as telas. Nao ha mudanca visivel neste plano | open |  | 2026-11-06T13:24:05.443Z |  |
+| 34 | 15 | deviation | apps/web/src/features/inicio/panorama-do-robo.ts |  | 15-18: GET /crm/inicio/panorama, /leads-a-atender e /estatisticas e os hooks usePanoramaDoCrm, useLeadsAAtender e useEstatisticasDoCrm existem, mas nenhuma tela os chama ainda: o panorama do robo do Inicio (linha 24, 15-14), o painel de Leads e as estatisticas seguem no store ate o 15-23 trocar as telas. Nao ha mudanca visivel neste plano | fixed |  | 2026-11-06T13:24:05.443Z | 2026-11-06T17:53:47.911Z |
 | 35 | 15 | deviation | packages/dominio/src/operations/automations.ts |  | 15-19: as Automacoes de Contas a receber ({{cliente}}, {{donoDoCliente}}, mentionClientOwner) ainda leem nome e dono do cliente em state.contacts (contatoDoCliente); clienteDe agora so devolve a referencia. Uma serie criada para um Contato de plataforma.contatos (id fora do modelo antigo) faz o comentario de cobranca dizer 'o cliente' e nao mencionar o dono dele; as contas do modelo antigo seguem como antes. automations.ts entrou na lista CONGELADOS do sem-crm-antigo do dominio. Resolver injetando nome e dono por OpcoesDaAgenda (como cnpjPorEmpresa) lidos das tabelas, antes do 3.5.4 tirar state.contacts | open |  | 2026-11-06T13:42:09.740Z |  |
 | 36 | 15 | deviation | apps/web/src/features/estrutura/financeiro/use-nomes-dos-clientes.ts |  | 15-19: o nome do cliente de Contas a receber vem de POST /crm/nomes; sem nome (carregando, Membro suspenso por WR-03, Papel sem ler Contato) a lista, o cartao e a busca mostram 'Cliente'; o cartao financeiro faz uma chamada por cartao visivel; a serie so aceita Contato como cliente (Empresa nao, o input da operacao tem so contactId); createReceivableSeries ganhou o 4o argumento clientes (opcional, vazio recusa) | open |  | 2026-11-06T13:42:09.807Z |  |
 | 37 | 15 | deviation | apps/web/src/features/ferramentas/criar-grupo-dialog.tsx |  | 15-22: o link de convite do Novo Grupo nao sai para os convidados: enviarLinkDeConvite abre a Conversa 1:1 por startConversation, que ainda le Canal e Contato do modelo antigo (state.contacts), e o Contato da ficha nova nao esta la; o Grupo nasce e a tela avisa 'o link de convite nao saiu: <nome>: Contato nao encontrado.'. Resolver quando a Conversa 1:1 do convite passar ao modelo novo (Sessao 6 / 3.5.4) | open |  | 2026-11-06T14:14:34.792Z |  |
@@ -60,6 +60,9 @@ last_updated: 2026-11-06T14:59:26.663Z
 | 43 | 15 | deviation | apps/web/src/features/crm/conversation-thread.tsx |  | 15-25: o aviso de consentimento de marketing do fio e so aviso (nao bloqueia o envio) e aparece sempre que o consentimento vigente de Marketing no tipo do Canal da aba nao e 'concedido', inclusive Contato sem nenhum registro, porque o fio nao tem seletor de modelo (antes o aviso so existia com um modelo de marketing escolhido). Se o dono achar ruidoso para quem nunca teve consentimento registrado, restringir a 'revogado' ou ligar ao modelo quando houver Mensagem de modelo | open |  | 2026-11-06T14:45:41.486Z |  |
 | 44 | 15 | deviation | apps/web/src/app/(shell)/crm/negocios/page.tsx |  | 15-26: o plano e F14-D-06 mandam o filtro Meus para o quadro de /crm/funis/[funil], mas essa rota e a ficha do Funil e nao tem quadro; o quadro (QuadroDoFunil) mora em /crm/negocios. O botao Meus (?meus=1) e o atalho do menu foram para /crm/negocios; o dono decide se quer tambem um quadro na ficha do Funil | open |  | 2026-11-06T14:59:26.597Z |  |
 | 45 | 15 | deviation | apps/web/src/features/shell/app-shell.tsx |  | 15-26: o painel do CRM perdeu o grupo Pastas de Negocios (arvore da Pasta Meus negocios) para todos os Espacos e ganhou o atalho Meus negocios para /crm/negocios?meus=1; favoritos de /crm/meus-negocios agora caem no 404 do app (T-15-63 aceito) | open |  | 2026-11-06T14:59:26.663Z |  |
+| 46 | 15 | deviation | apps/web/src/features/inicio/resumo-do-inicio.tsx |  | 15-23: Mensagens novas do Inicio perdeu o trecho da ultima Mensagem (a lista GET /conversas nao o traz; o dono ve so nome, quantas nao lidas e quando). Quando o total de Conversas com Mensagem nova passa de 200 o atalho diz 'nas primeiras N de M Conversas' e a soma de nao lidas e so das lidas. Leads a atender mostra iniciais no avatar (o modelo novo nao tem foto) e a api devolve no maximo 50 (o atalho avisa) | open |  | 2026-11-06T17:53:48.102Z |  |
+| 47 | 15 | deviation | apps/web/src/features/inicio/resumo-do-inicio.tsx |  | 15-23: Estatisticas do Inicio pedem duas janelas a api (atual e anterior; a api aceita 400 dias e o ano com o anterior passa de 700) e comparam por dia inteiro: o primeiro dia do periodo anterior entra inteiro, nao so a partir do instante exato. Sem escolha da pessoa a metrica aberta e a de maior valor do periodo atual (antes so da semana) e pode mudar ao trocar de periodo ate o primeiro clique. Se a api recusa, as tres metricas do CRM ficam zeradas com um aviso | open |  | 2026-11-06T17:53:48.270Z |  |
+| 48 | 15 | deviation | apps/web/src/app/(shell)/paineis/[painel]/page.tsx |  | 15-23: Paineis semeados (SDR, Closer, Atendimento) tem Fonte com ids do modelo antigo (fnl_sdr, fnl_closer, fila_com, inbox_n1): lendo o CRM novo eles abrem zerados ate a Fonte apontar para um Funil/Fila novo (Sessao 20.3). Widgets de Origem e Motivo de Perda ficam sem linhas porque NegocioResumo nao traz origem/motivoPerda (texto livre no Negocio novo). Cada Widget le ate 200 registros por recurso e diz 'Parcial: primeiros 200' quando ha mais; Etapas vem de uma GET /funis/:id por Funil lido | open |  | 2026-11-06T17:53:48.437Z |  |
 
 ````json
 [
@@ -369,10 +372,10 @@ last_updated: 2026-11-06T14:59:26.663Z
     "file": "apps/web/src/features/inicio/panorama-do-robo.ts",
     "line": null,
     "description": "15-14: o panorama do robo do Inicio ainda conta Conversas abertas do Espaco (conversas.abertas), Contatos e Negocios de state.conversations/contacts/deals; so as Conversas atribuidas a pessoa vem da api (hook useNotificacoesDoMembro). Fica para o plano do Inicio (15-18/15-23)",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-06T11:50:25.932Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-06T17:53:47.740Z",
     "milestone": "v1.0"
   },
   {
@@ -499,10 +502,10 @@ last_updated: 2026-11-06T14:59:26.663Z
     "file": "apps/web/src/features/inicio/panorama-do-robo.ts",
     "line": null,
     "description": "15-18: GET /crm/inicio/panorama, /leads-a-atender e /estatisticas e os hooks usePanoramaDoCrm, useLeadsAAtender e useEstatisticasDoCrm existem, mas nenhuma tela os chama ainda: o panorama do robo do Inicio (linha 24, 15-14), o painel de Leads e as estatisticas seguem no store ate o 15-23 trocar as telas. Nao ha mudanca visivel neste plano",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-06T13:24:05.443Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-06T17:53:47.911Z",
     "milestone": "v1.0"
   },
   {
@@ -645,6 +648,45 @@ last_updated: 2026-11-06T14:59:26.663Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-06T14:59:26.663Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 46,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/features/inicio/resumo-do-inicio.tsx",
+    "line": null,
+    "description": "15-23: Mensagens novas do Inicio perdeu o trecho da ultima Mensagem (a lista GET /conversas nao o traz; o dono ve so nome, quantas nao lidas e quando). Quando o total de Conversas com Mensagem nova passa de 200 o atalho diz 'nas primeiras N de M Conversas' e a soma de nao lidas e so das lidas. Leads a atender mostra iniciais no avatar (o modelo novo nao tem foto) e a api devolve no maximo 50 (o atalho avisa)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T17:53:48.102Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 47,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/features/inicio/resumo-do-inicio.tsx",
+    "line": null,
+    "description": "15-23: Estatisticas do Inicio pedem duas janelas a api (atual e anterior; a api aceita 400 dias e o ano com o anterior passa de 700) e comparam por dia inteiro: o primeiro dia do periodo anterior entra inteiro, nao so a partir do instante exato. Sem escolha da pessoa a metrica aberta e a de maior valor do periodo atual (antes so da semana) e pode mudar ao trocar de periodo ate o primeiro clique. Se a api recusa, as tres metricas do CRM ficam zeradas com um aviso",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T17:53:48.270Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 48,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/app/(shell)/paineis/[painel]/page.tsx",
+    "line": null,
+    "description": "15-23: Paineis semeados (SDR, Closer, Atendimento) tem Fonte com ids do modelo antigo (fnl_sdr, fnl_closer, fila_com, inbox_n1): lendo o CRM novo eles abrem zerados ate a Fonte apontar para um Funil/Fila novo (Sessao 20.3). Widgets de Origem e Motivo de Perda ficam sem linhas porque NegocioResumo nao traz origem/motivoPerda (texto livre no Negocio novo). Cada Widget le ate 200 registros por recurso e diz 'Parcial: primeiros 200' quando ha mais; Etapas vem de uma GET /funis/:id por Funil lido",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T17:53:48.437Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }
