@@ -804,3 +804,76 @@ describe("Conversas e Mensagens (15-28 Task 2)", () => {
     expect(plano(tudo).deParas.filter((d) => d.colecao_antiga === "conversations/messages").every((d) => d.id_antigo.includes("/"))).toBe(true);
   });
 });
+
+describe("destino que já está nas tabelas novas (15-44 Task 1, H-01)", () => {
+  const mensagem = (id: string) => ({ id, direction: "enviada", actor: ATOR, content: `Texto ${id}`, attachments: [], createdAt: EM });
+  const comCanalExistente = (id: string, tipo = "whatsapp"): Partial<CrmNovoDoEspaco> => ({ canaisExistentes: new Map([[id, tipo]]) });
+
+  it("a Conversa de um Canal que só existe em plataforma.canais migra com as Mensagens, e o Canal não é reinserido", () => {
+    // `ch_tab` não está na coleção `channels`: foi criado pelo CRM novo (a Fase 8) e o chat antigo o enxergava por projeção.
+    const antigas = [contatoMin("c1"), conversaMin("cv", { channelId: "ch_tab", messages: [mensagem("m1"), mensagem("m2")] })];
+    const crmNovo: CrmNovoDoEspaco = { ...CRM_NOVO_VAZIO, ...comCanalExistente("ch_tab") };
+
+    const { linhasPorTabela, naoMigrados, deParas } = planoCom(antigas, { crmNovo });
+
+    expect(linhasPorTabela.canais).toEqual([]);
+    expect(linhasPorTabela.conversas.map((c) => [c.id, c.canal_id, c.contato_id])).toEqual([["cv", "ch_tab", "c1"]]);
+    expect(linhasPorTabela.mensagens.map((m) => [m.id, m.canal_id])).toEqual([
+      ["m1", "ch_tab"],
+      ["m2", "ch_tab"],
+    ]);
+    expect(naoMigrados.filter((n) => n.categoria === "conversa-sem-canal-migrado")).toEqual([]);
+    // O Canal não é do script: nenhuma linha de de-para para ele.
+    expect(deParas.filter((d) => d.colecao_antiga === "channels")).toEqual([]);
+  });
+
+  it("o mesmo id no CRM antigo e no novo: o Canal vai para o relatório (id-ja-existe), não é reinserido, e a Conversa dele migra", () => {
+    const antigas = [contatoMin("c1"), canalMin("ch1", {}, 0), conversaMin("cv", { messages: [mensagem("m1")] })];
+    const crmNovo: CrmNovoDoEspaco = { ...CRM_NOVO_VAZIO, idsDeCanal: new Set(["ch1"]), ...comCanalExistente("ch1") };
+
+    const { linhasPorTabela, naoMigrados } = planoCom(antigas, { crmNovo });
+
+    expect(linhasPorTabela.canais).toEqual([]);
+    expect(naoMigrados).toContainEqual({ categoria: "id-ja-existe", colecao: "channels", id: "ch1" });
+    expect(linhasPorTabela.conversas.map((c) => c.id)).toEqual(["cv"]);
+    expect(linhasPorTabela.mensagens.map((m) => m.id)).toEqual(["m1"]);
+  });
+
+  it("o Contato que já está em plataforma.contatos recebe a Conversa e o Negócio do CRM antigo, sem ser duplicado", () => {
+    const antigas = [
+      contatoMin("c_dup"),
+      canalMin("ch1", {}, 0),
+      conversaMin("cv", { contactId: "c_dup" }),
+      negocioMin("n1", { contactLinks: [{ contactId: "c_dup", principal: true }] }),
+    ];
+    const crmNovo: CrmNovoDoEspaco = { ...CRM_NOVO_VAZIO, idsDeContato: new Set(["c_dup"]), contatosExistentes: new Set(["c_dup"]) };
+
+    const { linhasPorTabela, naoMigrados } = planoCom(antigas, { crmNovo });
+
+    expect(linhasPorTabela.contatos).toEqual([]);
+    expect(naoMigrados).toContainEqual({ categoria: "id-ja-existe", colecao: "contacts", id: "c_dup" });
+    expect(linhasPorTabela.conversas.map((c) => [c.id, c.contato_id])).toEqual([["cv", "c_dup"]]);
+    expect(linhasPorTabela.negocios.map((n) => [n.id, n.contato_id])).toEqual([["n1", "c_dup"]]);
+    expect(naoMigrados.filter((n) => n.categoria === "conversa-sem-contato" || n.categoria === "negocio-sem-dono")).toEqual([]);
+  });
+
+  it("Canal e Contato que não existem em lugar nenhum continuam indo para o relatório", () => {
+    const antigas = [contatoMin("c1"), conversaMin("sem_canal", { channelId: "fantasma" })];
+    const crmNovo: CrmNovoDoEspaco = { ...CRM_NOVO_VAZIO, ...comCanalExistente("outro_canal") };
+
+    const { linhasPorTabela, naoMigrados } = planoCom(antigas, { crmNovo });
+
+    expect(linhasPorTabela.conversas).toEqual([]);
+    expect(naoMigrados).toContainEqual({ categoria: "conversa-sem-canal-migrado", colecao: "conversations", id: "sem_canal" });
+  });
+
+  it("a Conversa que cita um Canal existente respeita o par já ocupado no CRM novo (conversa-repetida)", () => {
+    const antigas = [contatoMin("c1"), conversaMin("cv", { channelId: "ch_tab" })];
+    const crmNovo: CrmNovoDoEspaco = { ...CRM_NOVO_VAZIO, ...comCanalExistente("ch_tab"), conversasNaoResolvidas: new Set([chaveDeParDeConversa("c1", "ch_tab")]) };
+
+    const { linhasPorTabela, naoMigrados } = planoCom(antigas, { crmNovo });
+
+    expect(linhasPorTabela.conversas).toEqual([]);
+    expect(naoMigrados).toContainEqual({ categoria: "conversa-repetida", colecao: "conversations", id: "cv" });
+  });
+});

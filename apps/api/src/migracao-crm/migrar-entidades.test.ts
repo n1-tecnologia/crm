@@ -347,3 +347,100 @@ function ehConversaDeCanalSemDestino(id: string): boolean {
   const conversa = CRM_ANTIGO.find((l) => l.colecao === "conversations" && l.id === id);
   return conversa !== undefined && ["chn_site", "chn_linkedin"].includes(dadosDe(conversa).channelId);
 }
+
+// --- 15-44 Task 1 (H-01): o destino pode ser o Canal e o Contato que já estão nas tabelas novas ---
+
+describeComBanco("Conversa cujo Canal e Contato já estão nas tabelas novas (15-44 H-01)", () => {
+  const ator = { kind: "member", id: "mem_x" };
+  const EM = "2026-10-01T10:00:00.000Z";
+  const contato = (id: string): RegistroAntigo => ({
+    colecao: "contacts",
+    id,
+    ordem: 0,
+    dados: { id, firstName: "Sintetico", lastName: id, ownerMemberId: "mem_x", createdBy: ator, createdAt: EM, lifecycle: "ativo", creationMode: "manual", identifiers: [] },
+  });
+  const conversa = (id: string, canal: string, contatoId: string, ordem = 0): RegistroAntigo => ({
+    colecao: "conversations",
+    id,
+    ordem,
+    dados: {
+      id,
+      channelId: canal,
+      contactId: contatoId,
+      state: "aberta",
+      lifecycle: "ativo",
+      title: `Conversa ${id}`,
+      createdBy: ator,
+      createdAt: EM,
+      participants: [],
+      starredBy: [],
+      drafts: [],
+      messages: [
+        { id: `${id}_m1`, direction: "enviada", actor: ator, content: "Texto sintetico 1", attachments: [], createdAt: EM },
+        { id: `${id}_m2`, direction: "enviada", actor: ator, content: "Texto sintetico 2", attachments: [], createdAt: "2026-10-01T10:05:00.000Z" },
+      ],
+    },
+  });
+  const canalNaTabela = (ws: string, id: string, nome: string, identificador: string) =>
+    pool().query(
+      `insert into plataforma.canais (id, workspace_id, nome, tipo, provedor, identificador_externo, configurado_por, criado_por)
+       values ($1, $2, $3, 'whatsapp', 'whatsapp-cloud', $4, 'mem_x', 'mem_x')`,
+      [id, ws, nome, identificador],
+    );
+  const contatoNaTabela = (ws: string, id: string) =>
+    pool().query("insert into plataforma.contatos (id, workspace_id, nome, proprietario_id, criado_por) values ($1, $2, 'Existente', 'mem_x', 'mem_x')", [id, ws]);
+
+  beforeAll(async () => {
+    await prepararBancoCrm();
+  });
+  afterEach(async () => {
+    for (const ws of criados.splice(0)) await limparEspaco(ws);
+  });
+  afterAll(async () => {
+    await encerrar();
+  });
+
+  it("a Conversa de um Canal que só existe em plataforma.canais migra com as Mensagens e o Canal não muda", async () => {
+    const ws = await semearEspaco("canalexistente", [contato("cnt_h1"), conversa("cnv_h1", "chn_tabela", "cnt_h1")]);
+    await canalNaTabela(ws, "chn_tabela", "Canal da tabela", "+5511990000001");
+    const canalAntes = (await pool().query("select * from plataforma.canais where workspace_id = $1 and id = 'chn_tabela'", [ws])).rows;
+
+    const resultado = await migrarCrmAntigo(ws);
+
+    expect(await idsDe("conversas", ws)).toEqual(["cnv_h1"]);
+    const mensagens = await pool().query<{ id: string; canal_id: string }>("select id, canal_id from plataforma.mensagens where workspace_id = $1 order by seq", [ws]);
+    expect(mensagens.rows).toEqual([
+      { id: "cnv_h1_m1", canal_id: "chn_tabela" },
+      { id: "cnv_h1_m2", canal_id: "chn_tabela" },
+    ]);
+    expect(await idsDe("canais", ws)).toEqual(["chn_tabela"]);
+    expect((await pool().query("select * from plataforma.canais where workspace_id = $1 and id = 'chn_tabela'", [ws])).rows).toEqual(canalAntes);
+    expect(resultado.naoMigrados.filter((n) => n.categoria === "conversa-sem-canal-migrado")).toEqual([]);
+    // A Conversa saiu de registros (migrou) e continua na cópia.
+    expect((await pool().query("select 1 from plataforma.registros where workspace_id = $1 and colecao = 'conversations'", [ws])).rowCount).toBe(0);
+    expect((await pool().query("select 1 from plataforma.registros_crm_antigo where workspace_id = $1 and colecao = 'conversations'", [ws])).rowCount).toBe(1);
+  });
+
+  it("o Contato que já está em plataforma.contatos (mesmo id do antigo) recebe a Conversa e não é duplicado nem alterado", async () => {
+    const ws = await semearEspaco("contatoexistente", [contato("cnt_dup"), conversa("cnv_dup", "chn_tabela2", "cnt_dup")]);
+    await canalNaTabela(ws, "chn_tabela2", "Outro canal", "+5511990000002");
+    await contatoNaTabela(ws, "cnt_dup");
+
+    const resultado = await migrarCrmAntigo(ws);
+
+    expect(await idsDe("contatos", ws)).toEqual(["cnt_dup"]);
+    expect((await pool().query<{ nome: string }>("select nome from plataforma.contatos where workspace_id = $1 and id = 'cnt_dup'", [ws])).rows[0]!.nome).toBe("Existente");
+    expect(await idsDe("conversas", ws)).toEqual(["cnv_dup"]);
+    expect(resultado.naoMigrados).toContainEqual({ categoria: "id-ja-existe", colecao: "contacts", id: "cnt_dup" });
+    expect(resultado.naoMigrados.filter((n) => n.categoria === "conversa-sem-contato")).toEqual([]);
+  });
+
+  it("uma Conversa que cita um Canal que não existe em lugar nenhum continua no relatório (conversa-sem-canal-migrado)", async () => {
+    const ws = await semearEspaco("canalfantasma", [contato("cnt_h3"), conversa("cnv_h3", "chn_fantasma", "cnt_h3")]);
+
+    const resultado = await migrarCrmAntigo(ws);
+
+    expect(await idsDe("conversas", ws)).toEqual([]);
+    expect(resultado.naoMigrados).toContainEqual({ categoria: "conversa-sem-canal-migrado", colecao: "conversations", id: "cnv_h3" });
+  });
+});
