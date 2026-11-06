@@ -929,3 +929,18 @@ barril, subcaminho `@n1/dominio/crm/nomes`) tem só os tipos e o teto: `AlvoDoCr
 `NOMES_MAXIMO` (200 alvos por chamada). `nome: null` quer dizer "sem nome para mostrar" (id
 desconhecido, de outro Espaço ou tipo que o Papel não lê) sem distinguir a causa. A regra de
 quem pode ler é a de sempre, `podeNoCrm`; a consulta é da api (`POST /crm/nomes`).
+
+**Abas e Canal de resposta do fio sobre as tabelas (Fase 15, 15-20, 3.4.2, UCR-05).**
+`crm/canais-de-resposta.ts` (sem barril, subcaminho `@n1/dominio/crm/canais-de-resposta`) leva as
+regras de abas e de Canal de resposta de `derive-conversacional` (D-13, D-14, D-15) para `Canal`,
+`IdentificadorDeContato` e `ConversaNaLista`, que a tela lê por HTTP e entrega como argumento:
+nenhuma função toca `DataState`. `canaisDoFioNasTabelas` (uma aba por Canal ativo, ordem fixa
+tipo/criação/id, `alcancavel: false` para o Canal que o Contato não alcança),
+`canaisDeRespostaNasTabelas` (só `conectada` e alcançável), `canalPadraoDeRespostaNasTabelas` (o Canal
+da última recebida; se não serve, o primeiro do mesmo tipo; senão o primeiro), `canalDaAbaInicialNasTabelas`,
+`canalPadraoDoTipoNasTabelas` e `canaisQueAlcancamNasTabelas`, mais `rotuloDoCanalNasTabelas` e
+`textoDoSeparadorNasTabelas`. O alcance é do TIPO do Canal (`TIPO_DE_IDENTIFICADOR_DO_CANAL`);
+`identificadores` indefinido quer dizer "Contato ainda não lido" e todo Canal alcança. A lista de
+Conversas não traz a última Mensagem de qualquer direção, só `ultimaRecebidaEm`: "a Conversa mais
+recente" é a de maior entre `ultimaRecebidaEm` e `atualizadoEm`, e Conversa na lixeira não conta. As
+funções antigas ficam em `derive-conversacional.ts` até o 15-42.
