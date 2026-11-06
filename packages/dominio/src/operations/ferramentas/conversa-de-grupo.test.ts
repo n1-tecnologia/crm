@@ -8,10 +8,9 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../../seed";
-import { semearCrmAntigo } from "../../seed-crm-antigo";
 import type { DataState } from "../../state";
 import type { Conversation, Id, Member } from "../../types";
-import { canalDeTeste, contatoDeTeste, crmDeTeste } from "../../testes/crm-de-teste";
+import { canalDeTeste, contatoDeTeste, conversaDeTeste, crmDeTeste } from "../../testes/crm-de-teste";
 import { ehNomeDeOperacao, OPERACOES } from "../registro";
 import { enviarLinkDeConvite } from "../ferramentas";
 import {
@@ -95,39 +94,48 @@ describe("Conversa de grupo — 1.2.2: Convidado e Membro não ativo recebem ok:
   });
 });
 
-describe("composições internas das Ferramentas sobre o CRM antigo semeado", () => {
+describe("composições internas das Ferramentas (Canal e Contato do CRM novo, Conversa no estado)", () => {
+  const canal = canalDeTeste({ id: "chn_interno" });
+  const contato = contatoDeTeste("cnt_interno", "Ana Ribeiro", "+5511988880003");
+  const crm = crmDeTeste([canal], [contato]);
+  const CONVERSA = "cnv_interno";
+
   beforeEach(() => {
-    // Testa código do CRM antigo que sai (15-43): o seed deixou de criar o CRM (15-31), então ele é semeado aqui.
-    state = semearCrmAntigo(buildSeed());
+    state.conversations.push(conversaDeTeste(CONVERSA, canal.id, contato.id, [["recebida", new Date().toISOString()]]));
   });
 
   it("startConversation recusa o Convidado e o Membro não ativo", () => {
-    expect(startConversation(state, CONVIDADO, "chn_wpp", "cnt_5").ok).toBe(false);
+    expect(startConversation(state, CONVIDADO, canal.id, contato.id, crm).ok).toBe(false);
     membro(MEMBRO).state = "suspenso";
     const suspenso = structuredClone(state);
-    expect(startConversation(state, MEMBRO, "chn_wpp", "cnt_5").ok).toBe(false);
+    expect(startConversation(state, MEMBRO, canal.id, contato.id, crm).ok).toBe(false);
     expect(state).toStrictEqual(suspenso);
   });
 
   it("sendMessage: o Convidado não envia Mensagem numa Conversa; o estado fica intacto", () => {
     const antes = structuredClone(state);
-    const r = sendMessage(state, CONVIDADO, { conversationId: "cnv_1", content: "Olá", internal: true });
+    const r = sendMessage(state, CONVIDADO, { conversationId: CONVERSA, content: "Olá", internal: true, crm });
     expect(r.ok).toBe(false);
     expect(state).toStrictEqual(antes);
   });
 
   it("um Membro ativo de base membro envia Mensagem com ok: true", () => {
-    const total = conversa("cnv_1").messages.length;
-    const r = sendMessage(state, MEMBRO, { conversationId: "cnv_1", content: "Olá", internal: true });
+    const total = conversa(CONVERSA).messages.length;
+    const r = sendMessage(state, MEMBRO, { conversationId: CONVERSA, content: "Olá", internal: true, crm });
     expect(r.ok).toBe(true);
-    expect(conversa("cnv_1").messages.length).toBe(total + 1);
+    expect(conversa(CONVERSA).messages.length).toBe(total + 1);
   });
 
   it("sendMessageSemConferencia não confere o ator (quem a chama já foi conferido) e grava a Mensagem", () => {
-    const total = conversa("cnv_1").messages.length;
-    const r = sendMessageSemConferencia(state, CONVIDADO, { conversationId: "cnv_1", content: "Automático", internal: true });
+    const total = conversa(CONVERSA).messages.length;
+    const r = sendMessageSemConferencia(state, CONVIDADO, { conversationId: CONVERSA, content: "Automático", internal: true, crm });
     expect(r.ok).toBe(true);
-    expect(conversa("cnv_1").messages.length).toBe(total + 1);
+    expect(conversa(CONVERSA).messages.length).toBe(total + 1);
+  });
+
+  it("sem o Canal em crm.canais a Mensagem é recusada: o estado não é consultado", () => {
+    const r = sendMessage(state, MEMBRO, { conversationId: CONVERSA, content: "Olá", internal: true });
+    expect(r).toMatchObject({ ok: false, error: "Canal não encontrado." });
   });
 
   it("sendMessage, sendMessageSemConferencia e startConversation nunca entram em OPERACOES", () => {
@@ -192,5 +200,125 @@ describe("o Contato só existe no CRM novo (crm.contatos)", () => {
     expect(r.value.enviados).toEqual([marina.id]);
     const conversa = state.conversations.find((c) => c.contactId === marina.id && c.channelId === canal.id);
     expect(conversa?.messages.at(-1)?.content).toContain(grupo.linkDeConvite?.endereco ?? "sem link");
+  });
+});
+
+/**
+ * A Mensageria e o Rascunho das Mensagens que as Ferramentas (Grupo, Flow, Automação) ainda enviam
+ * (RN-CXE-09, RN-CXE-19, RN-CXE-33, B66, doc 14, 7.10). Eram blocos de `sobre-o-crm-antigo.test.ts`, que
+ * dependia do CRM antigo semeado: aqui o Canal e o Contato são os do CRM novo e a Conversa é montada no teste.
+ */
+describe("Mensageria sobre Canal e Contato do CRM novo (RN-CXE-09, RN-CXE-19, RN-CXE-33, B66)", () => {
+  const canal = canalDeTeste({ id: "chn_msg" });
+  const desligado = canalDeTeste({ id: "chn_off", nome: "Instagram da loja", conexao: "desconectada" });
+  const contato = contatoDeTeste("cnt_msg", "Carla Dias", "+5511988880004");
+  const crm = crmDeTeste([canal, desligado], [contato]);
+  const THIAGO = "mem_thiago";
+
+  it("envia, esvazia o Rascunho do autor e mantém a autoria de quem enviou", () => {
+    const c = conversaDeTeste("cnv_msg", canal.id, contato.id, [["recebida", new Date().toISOString()]]);
+    c.drafts = [{ actor: { kind: "agent", id: "agt_x" }, content: "Rascunho do Agente", origin: "agente", at: new Date().toISOString() }];
+    state.conversations.push(c);
+
+    const result = sendMessage(state, THIAGO, { conversationId: c.id, content: "Segue o cronograma.", crm });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.actor).toEqual({ kind: "member", id: THIAGO });
+    // O Membro escreveu o seu próprio texto: o Rascunho do Agente segue à espera.
+    expect(c.drafts).toHaveLength(1);
+    expect(c.messages.at(-1)?.content).toBe("Segue o cronograma.");
+  });
+
+  it("grava a Mensagem como pendente quando o Canal está desconectado, sem descarte silencioso", () => {
+    const c = conversaDeTeste("cnv_off", desligado.id, contato.id);
+    state.conversations.push(c);
+
+    const result = sendMessage(state, THIAGO, { conversationId: c.id, content: "Oi!", crm });
+
+    expect(result.ok).toBe(true);
+    expect(c.messages.at(-1)?.deliveryStatus).toBe("pendente");
+    expect(state.activity[0]?.detail).toContain("Canal desconectado");
+  });
+
+  it("reabre a MESMA Conversa quando a Mensagem chega dentro do Prazo de reabertura", () => {
+    const c = conversaDeTeste("cnv_res", canal.id, contato.id);
+    c.state = "resolvida";
+    c.resolvedAt = new Date().toISOString();
+    state.conversations.push(c);
+    const before = state.conversations.length;
+
+    const result = receiveMessage(state, canal.id, contato.id, "Voltei!", crm);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.id).toBe(c.id);
+    expect(result.value.state).toBe("aberta");
+    expect(result.value.reopenCount).toBe(1);
+    expect(state.conversations.length).toBe(before);
+  });
+
+  it("cria uma Conversa NOVA quando a Mensagem chega fora do prazo", () => {
+    const c = conversaDeTeste("cnv_velha", canal.id, contato.id);
+    c.state = "resolvida";
+    c.resolvedAt = new Date(Date.now() - 100 * 3_600_000).toISOString();
+    state.conversations.push(c);
+    const before = state.conversations.length;
+
+    const result = receiveMessage(state, canal.id, contato.id, "Muito tempo depois", crm);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.id).not.toBe(c.id);
+    expect(state.conversations.length).toBe(before + 1);
+  });
+
+  it("uma Conversa na lixeira não recebe Mensagem (RN-CXE-33)", () => {
+    const c = conversaDeTeste("cnv_lixo", canal.id, contato.id);
+    c.lifecycle = "naLixeira";
+    state.conversations.push(c);
+    expect(sendMessage(state, THIAGO, { conversationId: c.id, content: "Oi", crm })).toMatchObject({ ok: false, error: "Esta Conversa está na lixeira." });
+  });
+});
+
+describe("Adoção de Rascunho de IA no envio (documento 14, 7.10)", () => {
+  const canal = canalDeTeste({ id: "chn_rasc" });
+  const contato = contatoDeTeste("cnt_rasc", "Carla Dias", "+5511988880004");
+  const crm = crmDeTeste([canal], [contato]);
+  const THIAGO = "mem_thiago";
+  const AGENTE = { kind: "agent" as const, id: "agt_rascunho" };
+  let c: Conversation;
+
+  beforeEach(() => {
+    c = conversaDeTeste("cnv_rasc", canal.id, contato.id, [["recebida", new Date().toISOString()]]);
+    c.drafts = [{ actor: AGENTE, content: "Posso ajudar com o certificado?", origin: "agente", at: new Date().toISOString() }];
+    state.conversations.push(c);
+  });
+
+  it("adotar e enviar esvazia o Rascunho do Agente e registra a adoção", () => {
+    const rascunho = c.drafts[0];
+    if (!rascunho) throw new Error("sem Rascunho");
+
+    const result = sendMessage(state, THIAGO, { conversationId: c.id, content: rascunho.content, adoptedDraftOf: rascunho.actor, crm });
+
+    expect(result.ok).toBe(true);
+    expect(c.drafts).toHaveLength(0);
+    const record = state.activity.find((entry) => entry.action === "Mensagem enviada");
+    expect(record?.detail).toContain("Rascunho de Agente adotado");
+  });
+
+  it("o mesmo Rascunho não vai duas vezes ao Contato", () => {
+    const rascunho = c.drafts[0];
+    if (!rascunho) throw new Error("sem Rascunho");
+
+    sendMessage(state, THIAGO, { conversationId: c.id, content: rascunho.content, adoptedDraftOf: rascunho.actor, crm });
+    // Não há mais Rascunho para o próximo Atendente adotar.
+    expect(c.drafts).toHaveLength(0);
+    expect(c.messages.filter((m) => m.direction === "enviada" && m.content === rascunho.content)).toHaveLength(1);
+  });
+
+  it("a nota interna não consome o Rascunho: ela não sai da plataforma", () => {
+    sendMessage(state, THIAGO, { conversationId: c.id, content: "Confere isto antes de eu responder.", internal: true, crm });
+    expect(c.drafts).toHaveLength(1);
   });
 });

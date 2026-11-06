@@ -338,7 +338,7 @@ export function instantiateListTemplate(
   /**
    * D-15-07 — os Canais de `plataforma.canais` que o servidor leu na transação (`lerDoCrm`),
    * repassados a `createList`: com eles, um Canal da tabela vale em `canaisDeAtendimento` sem
-   * depender de `state.channels` (que a 3.5.4 deixa vazio).
+   * depender do Canal do estado (que a 3.5.4 tirou).
    */
   canais?: readonly Canal[],
 ): OperationResult<List> {

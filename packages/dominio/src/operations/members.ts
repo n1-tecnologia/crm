@@ -24,19 +24,8 @@ export function previewSuccession(state: DataState, memberId: Id): SuccessionPre
   const transfers: Array<{ type: string; id: Id; name: string }> = [];
   const releases: Array<{ type: string; id: Id; name: string }> = [];
 
-  for (const contact of state.contacts) {
-    if (contact.ownerMemberId === memberId) {
-      transfers.push({ type: "contact", id: contact.id, name: `${contact.firstName} ${contact.lastName}`.trim() });
-    }
-  }
-  for (const company of state.companies) {
-    if (company.ownerMemberId === memberId) {
-      transfers.push({ type: "company", id: company.id, name: company.tradeName || company.legalName });
-    }
-  }
-  for (const deal of state.deals) {
-    if (deal.ownerMemberId === memberId) transfers.push({ type: "deal", id: deal.id, name: deal.title });
-  }
+  // Contato, Empresa e Negócio moram nas tabelas do CRM (Fase 15, 3.5.4): a prévia e a sucessão deles saem de
+  // `GET /membros/:id/sucessao-no-crm`, no mesmo commit da remoção. Aqui fica só o que mora em `registros`.
   for (const agent of state.agents) {
     if (agent.ownerMemberId === memberId) transfers.push({ type: "agent", id: agent.id, name: agent.name });
   }
@@ -256,10 +245,7 @@ export function removeMember(
 
   const preview = previewSuccession(state, memberId);
 
-  // (a) ownership passes to the successor.
-  for (const contact of state.contacts) if (contact.ownerMemberId === memberId) contact.ownerMemberId = successorId;
-  for (const company of state.companies) if (company.ownerMemberId === memberId) company.ownerMemberId = successorId;
-  for (const deal of state.deals) if (deal.ownerMemberId === memberId) deal.ownerMemberId = successorId;
+  // (a) ownership passes to the successor (o CRM passa pela sucessão no CRM, na api).
   for (const agent of state.agents) if (agent.ownerMemberId === memberId) agent.ownerMemberId = successorId;
   for (const panel of state.panels) if (panel.ownerMemberId === memberId) panel.ownerMemberId = successorId;
   for (const collection of state.collections) {
@@ -819,7 +805,6 @@ function resourceName(state: DataState, resourceType: string, resourceId: Id): s
     space: () => state.spaces.find((s) => s.id === resourceId)?.name,
     folder: () => state.folders.find((f) => f.id === resourceId)?.name,
     list: () => state.lists.find((l) => l.id === resourceId)?.name,
-    funnel: () => state.funnels.find((f) => f.id === resourceId)?.name,
     collection: () => state.collections.find((c) => c.id === resourceId)?.name,
   };
   return lookup[resourceType]?.() ?? resourceId;

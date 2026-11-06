@@ -1223,12 +1223,12 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
   // pela retenção). Antes chamavam só `runScheduledAutomations`: com a ponte
   // ligada (`AGENTE_CONTAS_A_PAGAR_ATIVO=true`), nem a Lista dela nem as outras
   // geravam a próxima ocorrência por calendário nem expurgavam pela agenda.
-  const rodarAgenda: RodarAgenda = (state, atorId, listIdRecebido, diaCivilData) => {
+  const rodarAgenda: RodarAgenda = (state, atorId, listIdRecebido, diaCivilData, doServidor) => {
     // A ponte só injeta opções no par configurado — qualquer outra Lista (mesmo
     // Espaço ou outro) segue o padrão do agendador. A ponte não pode quebrar
     // a agenda das outras Listas.
     if (state.workspace.id !== workspaceId || listIdRecebido !== listId) {
-      return agendaDoDia(state, atorId, listIdRecebido, diaCivilData);
+      return agendaDoDia(state, atorId, listIdRecebido, diaCivilData, doServidor);
     }
     // Plano pós-auditoria, 1.4/1.5 — sem cache e sem rede: o lançamento não
     // acontece pela agenda. `rehearsal: false` com `tarefasLancadas: []`
@@ -1238,6 +1238,7 @@ export function criarPonteDoAgente(opcoes: OpcoesDaPonte): PonteDoAgente {
     // (A5/A6) rodam como sempre, com o CNPJ da Empresa injetado.
     return agendaDoDia(state, atorId, listId, diaCivilData, {
       ...(cnpjPorEmpresa ? { cnpjPorEmpresa } : {}),
+      ...(doServidor?.clientes ? { clientes: doServidor.clientes } : {}),
       lancamento: { rehearsal: false, tarefasLancadas: [], dePara: DE_PARA_VAZIO },
     });
   };

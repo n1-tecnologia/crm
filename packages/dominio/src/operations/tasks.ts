@@ -67,10 +67,9 @@ export interface VinculoDeNascimento {
   readonly role?: string;
   /**
    * O alvo já foi conferido em quem o guarda (as tabelas novas do CRM), dentro
-   * da transação: `createTask` não o procura em `state.contacts`, `state.conversations`
-   * nem `state.deals`. Preenchido só pelo servidor — `createTask` por HTTP não
-   * aceita `vinculos`, então o navegador não o forja. Sem ele, a conferência
-   * antiga segue para os chamadores antigos até o corte da Fase 15.
+   * da transação: `createTask` não o procura no estado. Preenchido só pelo
+   * servidor — `createTask` por HTTP não aceita `vinculos`, então o navegador
+   * não o forja. Sem ele, o Vínculo é recusado (`VINCULO_NAO_CONFERIDO`).
    */
   readonly alvoConferido?: true;
 }
@@ -78,23 +77,16 @@ export interface VinculoDeNascimento {
 /** C35 — a recusa da Lista conversacional para a Tarefa raiz que chega sem Contato. */
 export const TAREFA_SEM_CONTATO = "Nesta Lista toda Tarefa nasce de um Contato.";
 
-/** O alvo de cada Vínculo de nascimento existe e está ativo — conferido antes de a Tarefa nascer. */
-function vinculoRefusal(state: DataState, vinculo: VinculoDeNascimento): string | undefined {
-  if (vinculo.alvoConferido === true) return undefined;
-  if (vinculo.toType === "contact") {
-    const contact = state.contacts.find((c) => c.id === vinculo.toId);
-    if (!contact) return "Contato não encontrado.";
-    if (contact.lifecycle !== "ativo") return "Este Contato não está ativo.";
-    return undefined;
-  }
-  if (vinculo.toType === "conversation") {
-    const conversation = state.conversations.find((c) => c.id === vinculo.toId);
-    if (!conversation || conversation.lifecycle !== "ativo") return "Conversa não encontrada.";
-    return undefined;
-  }
-  const deal = state.deals.find((d) => d.id === vinculo.toId);
-  if (!deal || deal.lifecycle !== "ativo") return "Negócio não encontrado.";
-  return undefined;
+/**
+ * O alvo de cada Vínculo de nascimento existe e está ativo — conferido antes de a Tarefa nascer. Quem confere é
+ * quem guarda o alvo (as tabelas do CRM, na api, dentro da transação): o domínio só aceita o Vínculo marcado
+ * `alvoConferido`. Um Vínculo sem a marca recusa (Fase 15, 3.5.4: o estado não guarda mais Contato, Conversa
+ * nem Negócio para conferir).
+ */
+export const VINCULO_NAO_CONFERIDO = "O alvo do Vínculo precisa ser conferido nas tabelas do CRM antes de a Tarefa nascer.";
+
+function vinculoRefusal(vinculo: VinculoDeNascimento): string | undefined {
+  return vinculo.alvoConferido === true ? undefined : VINCULO_NAO_CONFERIDO;
 }
 
 /**
@@ -131,7 +123,7 @@ export function createTask(
     return fail(TAREFA_SEM_CONTATO);
   }
   for (const vinculo of input.vinculos ?? []) {
-    const recusa = vinculoRefusal(state, vinculo);
+    const recusa = vinculoRefusal(vinculo);
     if (recusa) return fail(recusa);
   }
 

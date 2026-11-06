@@ -118,7 +118,7 @@ describe("Processo Contas a receber", () => {
   it("R4/R5 sem o que o servidor leu dos clientes: o comentário diz \"o cliente\" e não menciona o dono (nada é lido do estado)", () => {
     const t = conta("tsk_cr_gab_2");
     expect(runScheduledAutomations(state, CP.financeiroId, CR.listId, hoje).ok).toBe(true);
-    expect(t.comments.at(-1)?.content).toMatch(/O cliente entrou em cobrança/);
+    expect(t.comments.at(-1)?.content).toMatch(/sem recebimento: o cliente entrou em cobrança/);
     const depois = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + 31);
     expect(runScheduledAutomations(state, CP.financeiroId, CR.listId, depois).ok).toBe(true);
     expect(t.comments.at(-1)?.mentions.map((m) => m.id) ?? []).not.toContain(CR.comercialId);

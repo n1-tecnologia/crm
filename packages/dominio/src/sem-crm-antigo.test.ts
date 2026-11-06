@@ -24,39 +24,13 @@ import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-/** Os arquivos de `packages/dominio/src` que leem o CRM antigo hoje (a lista congelada, caminho relativo a `src`). */
-const CONGELADOS = [
-  "derive-conversacional.ts",
-  "derive-ferramentas.ts",
-  "derive-ia.ts",
-  "derive.ts",
-  "operations/ai.ts",
-  // 15-19: `clienteDe` passou a devolver só a referência, e o nome e o dono do cliente que as Automações
-  // de Contas a receber usam ({{cliente}}, {{donoDoCliente}}) ainda saem de `state.contacts`. Não é leitura
-  // nova: mudou de arquivo (antes morava em `clienteDe`, em financeiro.ts). Sai da lista quando o servidor
-  // injetar esses dados como já injeta `cnpjPorEmpresa` (deviation aberta em .planning/WINDOWS.md).
-  "operations/automations.ts",
-  "operations/canais.ts",
-  "operations/ferramentas/automacoes.ts",
-  "operations/ferramentas/comunidades.ts",
-  // 15-32: o que sobrou de `operations/conversations.ts` para o Grupo, o Flow e a Automação (F14-D-05). Sai com eles (Sessões 6 e 7).
-  "operations/ferramentas/conversa-de-grupo.ts",
-  "operations/ferramentas/flows.ts",
-  "operations/ferramentas/grupos.ts",
-  "operations/ferramentas/participacoes.ts",
-  "operations/ferramentas/permissoes.ts",
-  "operations/financeiro.ts",
-  "operations/ia/agentes.ts",
-  "operations/ia/automacoes-catalogo.ts",
-  "operations/importacao-contas-a-receber.ts",
-  "operations/members.ts",
-  "operations/planning.ts",
-  "operations/structure.ts",
-  "operations/tarefa-conversacional-nas-tabelas.ts",
-  "operations/tasks.ts",
-  // 15-31: o construtor do CRM antigo de demonstração, só para testes de código que sai (15-32, 15-33, 15-42). Sai no 15-43.
-  "seed-crm-antigo.ts",
-] as const;
+/**
+ * Os arquivos de `packages/dominio/src` que leem o CRM antigo hoje (a lista congelada, caminho relativo a `src`).
+ * Fase 15, 15-42: só o construtor do CRM antigo de demonstração ainda monta as oito coleções; nenhum arquivo de
+ * operação nem de derivação as lê (WINDOWS #35 e #37 fechadas: `automations.ts` recebe nome e dono dos clientes
+ * por `OpcoesDaAgenda.clientes` e `conversa-de-grupo.ts` acha o Canal e o Contato em `crm`). Sai no 15-43.
+ */
+const CONGELADOS = ["seed-crm-antigo.ts"] as const;
 
 const LE_O_CRM_ANTIGO =
   /\b(state|data|estado|s|d)\.(contacts|companies|deals|funnels|channels|contactCompanyLinks|companyCompanyLinks|distinctFromLinks)\b/;

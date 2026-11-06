@@ -49,6 +49,8 @@ import { resolverMembroAgenteDoPipeline } from "../persistencia/credenciais-de-s
 import { sanitizarErro } from "../persistencia/outbox-worker";
 import { pool } from "../persistencia/conexao";
 import { executar } from "../persistencia/unidade-de-trabalho";
+import type { ClientesLidos } from "@n1/dominio/operations/financeiro";
+import { lerClientesDaLista } from "./clientes-da-lista";
 import { type Relogio, relogioDoSistema } from "../testes/relogio";
 
 /** Um dia em milissegundos — a única unidade que este arquivo soma a um `Date`. */
@@ -170,6 +172,8 @@ export type RodarAgenda = (
   atorId: Id,
   listId: Id,
   diaCivil: Date,
+  /** O que o servidor leu das tabelas para a rodada (os clientes das contas, 15-42); a ponte do Agente mescla o seu. */
+  opcoes?: OpcoesDaAgenda,
 ) => OperationResult<{
   readonly executed: number;
   readonly failed: number;
@@ -207,6 +211,9 @@ export const agendaDoDia = (
     failures: [...automacoes.value.failures, ...recorrencias.value.failures, ...expurgo.value.failures],
   });
 };
+
+/** O que uma volta da agenda devolve quando dá certo. */
+type ValorDaAgenda = Extract<ReturnType<RodarAgenda>, { readonly ok: true }>["value"];
 
 export interface OpcoesSchedulerWorker {
   /** Identifica esta instância em `locked_by` — dois processos precisam de valores distintos. */
@@ -705,7 +712,7 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
       // `gravarEventos` (o mesmo `if (!resultado.ok)` que já desfaz a
       // Execução inteira) — a derivação obrigatória que agora mora em
       // `executar()` nunca chega a rodar nesse caminho.
-      const resultadoDaTransacao = await executar(workspaceId, (state) => {
+      const resultadoDaTransacao = await executar<ValorDaAgenda, ClientesLidos>(workspaceId, (state, clientes) => {
         // `executar()` repete a operação em conflito de revisão: zera o que a
         // tentativa anterior deixou.
         ensaioContagem = undefined;
@@ -719,7 +726,8 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
         }
         const emEnsaio = primeiraVolta && escolherRegime(state, listId) === "ensaio";
 
-        const resultado = rodarAgenda(state, atorId, listId, diaCivilData);
+        // 15-42 — o nome e o dono dos clientes das contas, lidos de `plataforma.contatos` na mesma transação.
+        const resultado = rodarAgenda(state, atorId, listId, diaCivilData, { clientes });
         if (emEnsaio && resultado.ok) {
           ensaioContagem = { executed: resultado.value.executed, failed: resultado.value.failed, skipped: resultado.value.skipped };
           foiForcadoAoEnsaio = true;
@@ -727,7 +735,7 @@ export function criarSchedulerWorker(opcoes: OpcoesSchedulerWorker): SchedulerWo
           return { ok: false, error: mensagemDeEnsaio(workspaceId, listId) };
         }
         return resultado;
-      });
+      }, { lerDoCrm: (cliente, state) => lerClientesDaLista(cliente, workspaceId, state, listId) });
 
       if ("conflito" in resultadoDaTransacao && resultadoDaTransacao.conflito) {
         const erro = sanitizarErro(resultadoDaTransacao.error, CODIGOS_DA_AGENDA.CONFLITO_DE_REVISAO);

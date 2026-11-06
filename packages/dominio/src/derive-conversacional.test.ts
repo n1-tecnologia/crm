@@ -24,10 +24,11 @@ import {
 import type { Canal } from "./crm/canais";
 import { effectiveListConfig } from "./derive";
 import { createList } from "./operations/structure";
-import { createTask, moveTask } from "./operations/tasks";
+import { VINCULO_NAO_CONFERIDO, createTask, moveTask } from "./operations/tasks";
 import { buildSeed } from "./seed";
 import type { DataState } from "./state";
-import type { Contact, Deal, Link, List, Task } from "./types";
+import { canalDeTeste } from "./testes/crm-de-teste";
+import type { Link, List, Task } from "./types";
 
 describe("marcadoresDeCanal (D-13: o separador marca a troca de Canal)", () => {
   const itens = [{ channelId: "a" }, { channelId: "a" }, { channelId: "b" }, { channelId: "a" }];
@@ -158,37 +159,22 @@ describe("leituras por id (3.3.2)", () => {
 
   beforeEach(() => {
     limpo = buildSeed();
-    // A Lista conversacional que o teste usa nasce com um Canal e depois o estado é esvaziado. O seed não cria
-    // mais Canal (15-31): este é montado aqui, só com o que `createList` confere.
-    limpo.channels.push({
-      id: "chn_wpp",
-      workspaceId: "ws_n1",
-      createdBy: { kind: "member", id: THIAGO },
-      createdAt: "2026-01-01T00:00:00.000Z",
-      lifecycle: "ativo",
-      name: "Comercial SP",
-      channelType: "whatsapp",
-      externalId: "+5511987654321",
-      connection: "conectada",
-      configuredByMemberId: THIAGO,
-      defaultQueueId: "fila_com",
-      messageTemplates: [],
-      groupsEnabled: false,
-    });
-    const nasceu = createList(limpo, THIAGO, {
-      name: "Suporte por id",
-      parentType: "space",
-      parentId: "spc_com",
-      modeloDeTarefa: "conversacional",
-      canaisDeAtendimento: ["chn_wpp"],
-    });
+    // A Lista conversacional que o teste usa nasce com um Canal da tabela (o que o servidor leria de `plataforma.canais`).
+    const nasceu = createList(
+      limpo,
+      THIAGO,
+      {
+        name: "Suporte por id",
+        parentType: "space",
+        parentId: "spc_com",
+        modeloDeTarefa: "conversacional",
+        canaisDeAtendimento: ["chn_wpp"],
+      },
+      [canalDeTeste({ id: "chn_wpp" })],
+    );
     if (!nasceu.ok) throw new Error(nasceu.error);
     listaDoSuporte = nasceu.value;
     listaDoSuporte.canaisDeAtendimento = [CANAL_A];
-    limpo.contacts = [];
-    limpo.conversations = [];
-    limpo.channels = [];
-    limpo.deals = [];
   });
 
   it("vinculosDoCrmDaTarefa devolve Contato, Conversa e Negócio só pelos Vínculos", () => {
@@ -247,14 +233,14 @@ describe("leituras por id (3.3.2)", () => {
     expect(listaSemCanaisNasTabelas({ modeloDeTarefa: "operacional" }, canais)).toBe(false);
   });
 
-  it("createTask com alvoConferido nasce sem o Contato no estado; sem ele recusa como hoje", () => {
+  it("createTask com alvoConferido nasce sem o Contato no estado; sem ele o Vínculo é recusado", () => {
     const sem = createTask(limpo, THIAGO, {
       listId: listaDoSuporte.id,
       title: "Sem conferência",
       vinculos: [{ toType: "contact", toId: CONTATO, role: PAPEL_DO_VINCULO.contato }],
     });
     expect(sem.ok).toBe(false);
-    if (!sem.ok) expect(sem.error).toBe("Contato não encontrado.");
+    if (!sem.ok) expect(sem.error).toBe(VINCULO_NAO_CONFERIDO);
 
     const com = createTask(limpo, THIAGO, {
       listId: listaDoSuporte.id,
@@ -276,19 +262,8 @@ describe("leituras por id (3.3.2)", () => {
     expect("ultimaMensagemDaTarefa" in derivacoes).toBe(false);
   });
 
-  it("moveTask só olha o Vínculo de Contato: o Contato principal do Negócio, que o estado antigo ainda alcança, não basta", () => {
-    // Estado com o CRM antigo de volta: a Tarefa só aponta para um Negócio que tem Contato principal.
-    // O seed não cria mais Contato nem Negócio (15-31): montamos só o par que o teste usa.
-    limpo.contacts = [{ id: "cnt_35", workspaceId: "ws_n1", lifecycle: "ativo", firstName: "Iallas", lastName: "" } as unknown as Contact];
-    limpo.deals = [
-      {
-        id: "deal_sdr_1",
-        workspaceId: "ws_n1",
-        lifecycle: "ativo",
-        situation: "aberto",
-        contactLinks: [{ id: "dcl_ref_1", contactId: "cnt_35", role: "influenciador", principal: true }],
-      } as unknown as Deal,
-    ];
+  it("moveTask só olha o Vínculo de Contato: um Negócio vinculado, sozinho, não basta", () => {
+    // A Tarefa só aponta para um Negócio (sem Contato): a Lista conversacional não a recebe.
     const operacional = limpo.lists.find((l) => l.id === "lst_ativacao");
     if (!operacional) throw new Error("o seed precisa de lst_ativacao");
     const nasceu = createTask(limpo, THIAGO, { listId: operacional.id, title: "Só com Negócio" });

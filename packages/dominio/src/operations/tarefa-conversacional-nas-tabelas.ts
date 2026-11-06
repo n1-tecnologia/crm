@@ -1,9 +1,8 @@
 /**
  * A Tarefa conversacional (C35) sobre os ids das tabelas novas do CRM
  * (3.3.4 a 3.3.6). É o par de `tarefas-conversacionais.ts` para quem não tem o
- * CRM antigo no estado: Contato, Canal, Conversa e Negócio não são procurados em
- * `state.contacts`, `state.channels`, `state.conversations` nem `state.deals`,
- * chegam em `referencias`, já lidos e conferidos pelo servidor dentro da
+ * CRM antigo no estado: Contato, Canal, Conversa e Negócio não são procurados no
+ * estado, chegam em `referencias`, já lidos e conferidos pelo servidor dentro da
  * transação. A Tarefa continua só com Vínculos (`state.links`), e os Vínculos
  * nascem com `alvoConferido: true` para o `createTask` não procurar o alvo.
  *
@@ -18,8 +17,7 @@
  * quem a abre, em `plataforma.conversas`, é a api, no mesmo commit da Tarefa
  * (D-07). Aqui só se grava o Vínculo para o id que ela devolveu.
  *
- * As operações antigas ficam como estão, para as telas antigas, e saem junto
- * com elas no corte da Fase 15 (D-01).
+ * As operações antigas saíram no corte da Fase 15 (D-01); este é o único caminho.
  */
 
 import { taskWriteRefusal } from "../derive";

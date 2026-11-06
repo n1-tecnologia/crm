@@ -16,7 +16,7 @@
 import type { Canal } from "../../crm/canais";
 import { CHANNEL_CAPABILITIES, capacidadesDoCanal } from "../../crm/capacidades";
 import { fail, ok, type DataState, type OperationResult } from "../../state";
-import type { ActorRef, Channel, Conversation, CrmDasFerramentas, Id, Message } from "../../types";
+import type { ActorRef, Channel, ContatoDaFerramenta, Conversation, CrmDasFerramentas, Id, Message } from "../../types";
 import { memberActor, nextId, recordActivity, systemActor } from "../activity";
 
 /**
@@ -69,15 +69,21 @@ function canalComoChannel(canal: Canal, workspaceId: Id): Channel {
 
 /**
  * O Canal que a composição precisa. O Canal vive só em `plataforma.canais` (15-33: a ponte que o
- * projetava em `state.channels` saiu), então ele chega por `crm.canais`, o que o servidor leu da
- * tabela e que as operações de Grupo, Flow e Automação já recebem. `state.channels` vem primeiro:
- * é onde o CRM antigo de teste e os Canais antigos de `registros` ainda estão até o corte.
+ * projetava no estado saiu), então ele chega por `crm.canais`, o que o servidor leu da tabela e que
+ * as operações de Grupo, Flow e Automação já recebem. Sem `crm`, ou com um id que a tabela não tem,
+ * não há Canal (15-42: o estado antigo deixou de ser consultado).
  */
 function canalPeloId(state: DataState, canalId: Id, crm?: CrmDasFerramentas): Channel | undefined {
-  const antigo = state.channels.find((c) => c.id === canalId);
-  if (antigo) return antigo;
   const canal = crm?.canais.find((c) => c.id === canalId);
   return canal ? canalComoChannel(canal, state.workspace.id) : undefined;
+}
+
+/**
+ * O Contato que a composição precisa, do mesmo `crm` do Canal: o que o servidor leu de
+ * `plataforma.contatos` (15-42, WINDOWS #37). Um `mesclado` já vem resolvido ao sobrevivente (B14).
+ */
+function contatoPeloId(contactId: Id, crm?: CrmDasFerramentas): ContatoDaFerramenta | undefined {
+  return crm?.contatos.find((c) => c.id === contactId);
 }
 
 function windowOpenUntil(channel: Channel, conversation: Conversation): Date | null {
@@ -295,20 +301,10 @@ export function receiveMessage(
 ): OperationResult<Conversation> {
   const channel = canalPeloId(state, channelId, crm);
   if (!channel) return fail("Canal não encontrado.");
-  const contact = state.contacts.find((c) => c.id === contactId);
+  const contact = contatoPeloId(contactId, crm);
   if (!contact) return fail("Contato não encontrado.");
-
-  if (contact.lifecycle === "arquivado" || contact.lifecycle === "naLixeira") {
-    contact.lifecycle = "ativo";
-    delete contact.lifecycleBeforeTrash;
-    recordActivity(state, {
-      actor: systemActor,
-      action: "Contato restaurado por Mensagem recebida",
-      objectType: "contact",
-      objectId: contact.id,
-      objectName: `${contact.firstName} ${contact.lastName}`.trim(),
-    });
-  }
+  // RN-CON-13 (um Contato arquivado ou na lixeira volta a `ativo` ao receber Mensagem) é do CRM novo: a tabela
+  // `plataforma.contatos` não é gravada por esta composição, então o estado do Contato fica como o servidor o leu.
 
   const pair = state.conversations.filter(
     (c) => c.channelId === channelId && c.contactId === contactId && c.lifecycle === "ativo",
@@ -381,17 +377,11 @@ export function receiveMessage(
     delete conversation.snooze;
   }
 
-  const identifier =
-    contact.identifiers.find((i) =>
-      CHANNEL_CAPABILITIES[channel.channelType].resolvesIdentifierTypes.includes(i.type),
-    ) ?? contact.identifiers[0];
-
   conversation.messages.push({
     id: nextId("msg"),
     conversationId: conversation.id,
     direction: "recebida",
     actor: { kind: "integration", id: channel.id },
-    ...(identifier ? { viaIdentifierId: identifier.id } : {}),
     content,
     attachments: [],
     externalId: nextId("ext"),
@@ -492,17 +482,16 @@ export function startConversation(
   if (!channel) return fail("Canal não encontrado.");
   if (channel.lifecycle !== "ativo") return fail("Este Canal não está ativo.");
 
-  const contact = state.contacts.find((c) => c.id === contactId);
+  const contact = contatoPeloId(contactId, crm);
   if (!contact) return fail("Contato não encontrado.");
-  if (contact.lifecycle !== "ativo") {
+  if (contact.estado !== "ativo") {
     return fail("Este Contato não está ativo: restaure-o antes de abrir atendimento.");
   }
 
-  // Sem Identificador que o Canal resolva não há para onde a Mensagem sair.
+  // Sem Identificador que o Canal resolva não há para onde a Mensagem sair. O Contato das Ferramentas só
+  // traz o WhatsApp (`ContatoDaFerramenta`): é o único Identificador que estes Canais resolvem aqui.
   const capacidades = capacidadesDoCanal(channel);
-  const identificador = contact.identifiers.find((i) =>
-    capacidades.resolvesIdentifierTypes.includes(i.type),
-  );
+  const identificador = capacidades.resolvesIdentifierTypes.includes("identidadeDeWhatsApp") ? contact.whatsapp : null;
   if (!identificador) {
     return fail(
       `Este Contato não tem Identificador que o Canal ${channel.name} alcance. Acrescente um antes de abrir atendimento.`,
@@ -529,7 +518,7 @@ export function startConversation(
     state: "aberta",
     ...(channel.defaultQueueId ? { queueId: channel.defaultQueueId } : {}),
     assignee: memberActor(actingMemberId),
-    title: `${contact.firstName} ${contact.lastName}`.trim() || identificador.displayValue,
+    title: contact.nome.trim() || identificador,
     titleEdited: false,
     drafts: [],
     starredBy: [],

@@ -322,7 +322,7 @@ export function createList(
   /**
    * 3.3.7 — os Canais de `plataforma.canais` que o servidor leu na transação
    * (`lerDoCrm`); com eles, um Canal da tabela vale em `canaisDeAtendimento`
-   * sem depender de `state.channels`. Ver `validarCanaisDeAtendimento`.
+   * sem depender do estado. Ver `validarCanaisDeAtendimento`.
    */
   canais?: readonly Canal[],
 ): OperationResult<List> {
@@ -422,14 +422,11 @@ export function createList(
 }
 
 /**
- * Os nomes dos Canais, na ordem dada, para o Registro de Atividade. 3.3.7: o
- * nome vem de `canais` (as tabelas, lidas pelo servidor) primeiro e de
- * `state.channels` depois; esse segundo ramo sai com o CRM antigo (3.5.4).
+ * Os nomes dos Canais, na ordem dada, para o Registro de Atividade. 3.3.7: o nome vem de `canais` (as
+ * tabelas, lidas pelo servidor); um id que ela não tem aparece como o próprio id.
  */
-export function nomesDosCanais(state: DataState, ids: readonly Id[], canais?: readonly Canal[]): string {
-  return ids
-    .map((id) => canais?.find((c) => c.id === id)?.nome ?? state.channels.find((c) => c.id === id)?.name ?? id)
-    .join(", ");
+export function nomesDosCanais(_state: DataState, ids: readonly Id[], canais?: readonly Canal[]): string {
+  return ids.map((id) => canais?.find((c) => c.id === id)?.nome ?? id).join(", ");
 }
 
 /**

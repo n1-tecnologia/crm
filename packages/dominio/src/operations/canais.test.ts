@@ -7,7 +7,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Canal } from "../crm/canais";
 import { buildSeed } from "../seed";
-import { semearCrmAntigo } from "../seed-crm-antigo";
+import { canalDeTeste } from "../testes/crm-de-teste";
 import type { DataState } from "../state";
 import { identificadorCanonico } from "./canais";
 import { baseDoPapel } from "./ia/permissoes-ia";
@@ -18,9 +18,14 @@ const THIAGO = "mem_thiago";
 
 let state: DataState;
 beforeEach(() => {
-  // Testa código do CRM antigo que sai (15-32/15-42): o seed deixou de criar o CRM (15-31), então ele é semeado aqui.
-  state = semearCrmAntigo(buildSeed());
+  state = buildSeed();
 });
+
+/** Os Canais de `plataforma.canais` que o servidor leria na transação (`lerDoCrm`): é por eles que a Lista confere os ids. */
+const CANAIS: Canal[] = [
+  canalDeTeste({ id: "chn_wpp", nome: "Comercial SP" }),
+  canalDeTeste({ id: "chn_mail", nome: "contato@institutoigoralves.com.br", tipo: "email", provedor: "email-imap-smtp", identificadorExterno: "contato@institutoigoralves.com.br" }),
+];
 
 /** Uma Lista conversacional recém-nascida, sem canais (virou conversacional depois de nascer). */
 const listaConversacionalVazia = (): string => {
@@ -33,7 +38,7 @@ const listaConversacionalVazia = (): string => {
 
 describe("Canais de atendimento da Lista (C36)", () => {
   it("createList conversacional sem canais recusa; com canais grava e a Atividade diz por onde atende", () => {
-    const sem = createList(state, THIAGO, { name: "Suporte", parentType: "space", parentId: "spc_com", modeloDeTarefa: "conversacional" });
+    const sem = createList(state, THIAGO, { name: "Suporte", parentType: "space", parentId: "spc_com", modeloDeTarefa: "conversacional" }, CANAIS);
     expect(sem.ok).toBe(false);
     if (!sem.ok) {
       expect(sem.error).toBe("Escolha ao menos um Canal de atendimento.");
@@ -46,7 +51,7 @@ describe("Canais de atendimento da Lista (C36)", () => {
       parentId: "spc_com",
       modeloDeTarefa: "conversacional",
       canaisDeAtendimento: ["chn_wpp", "chn_wpp", "chn_mail"],
-    });
+    }, CANAIS);
     expect(com.ok).toBe(true);
     if (!com.ok) return;
     // Sem repetição, na ordem em que foram marcados.
@@ -55,17 +60,13 @@ describe("Canais de atendimento da Lista (C36)", () => {
     expect(atividade?.detail).toContain("Atende por Comercial SP, contato@institutoigoralves.com.br");
   });
 
-  it("createList recusa Canal inexistente, Chat do site e canais numa Lista operacional", () => {
+  it("createList recusa Canal inexistente e canais numa Lista operacional (o Chat do site não tem linha em plataforma.canais)", () => {
     const base = { name: "Suporte", parentType: "space" as const, parentId: "spc_com", modeloDeTarefa: "conversacional" as const };
-    const inexistente = createList(state, THIAGO, { ...base, canaisDeAtendimento: ["chn_nada"] });
+    const inexistente = createList(state, THIAGO, { ...base, canaisDeAtendimento: ["chn_nada"] }, CANAIS);
     expect(inexistente.ok).toBe(false);
     if (!inexistente.ok) expect(inexistente.error).toBe("Canal não encontrado ou arquivado.");
 
-    const site = createList(state, THIAGO, { ...base, canaisDeAtendimento: ["chn_site"] });
-    expect(site.ok).toBe(false);
-    if (!site.ok) expect(site.error).toBe("Chat do site não é canal de atendimento de Lista.");
-
-    const operacional = createList(state, THIAGO, { name: "Gestão", parentType: "space", parentId: "spc_com", canaisDeAtendimento: ["chn_wpp"] });
+    const operacional = createList(state, THIAGO, { name: "Gestão", parentType: "space", parentId: "spc_com", canaisDeAtendimento: ["chn_wpp"] }, CANAIS);
     expect(operacional.ok).toBe(false);
     if (!operacional.ok) expect(operacional.error).toBe("Só uma Lista conversacional tem canais de atendimento.");
     expect(state.lists.some((l) => l.name === "Suporte" || l.name === "Gestão")).toBe(false);
@@ -76,12 +77,12 @@ describe("Canais de atendimento da Lista (C36)", () => {
 
     const convidado = state.members.find((m) => m.state === "ativo" && baseDoPapel(state, m.id) === "convidado");
     if (convidado) {
-      const recusa = definirCanaisDaLista(state, convidado.id, listId, ["chn_wpp"]);
+      const recusa = definirCanaisDaLista(state, convidado.id, listId, ["chn_wpp"], CANAIS);
       expect(recusa.ok).toBe(false);
     }
 
     const antes = state.activity.length;
-    const gravado = definirCanaisDaLista(state, THIAGO, listId, ["chn_wpp"]);
+    const gravado = definirCanaisDaLista(state, THIAGO, listId, ["chn_wpp"], CANAIS);
     expect(gravado.ok).toBe(true);
     if (gravado.ok) expect(gravado.id).toBe(listId);
     expect(state.lists.find((l) => l.id === listId)?.canaisDeAtendimento).toEqual(["chn_wpp"]);
@@ -90,22 +91,22 @@ describe("Canais de atendimento da Lista (C36)", () => {
     expect(state.activity[0]?.after).toBe("Comercial SP");
     expect(state.activity.length).toBe(antes + 1);
 
-    const igual = definirCanaisDaLista(state, THIAGO, listId, ["chn_wpp"]);
+    const igual = definirCanaisDaLista(state, THIAGO, listId, ["chn_wpp"], CANAIS);
     expect(igual.ok).toBe(true);
     expect(state.activity.length).toBe(antes + 1);
 
-    const vazio = definirCanaisDaLista(state, THIAGO, listId, []);
+    const vazio = definirCanaisDaLista(state, THIAGO, listId, [], CANAIS);
     expect(vazio.ok).toBe(false);
     if (!vazio.ok) expect(vazio.error).toBe("Escolha ao menos um Canal de atendimento.");
 
-    const operacional = definirCanaisDaLista(state, THIAGO, "lst_ativacao", ["chn_wpp"]);
+    const operacional = definirCanaisDaLista(state, THIAGO, "lst_ativacao", ["chn_wpp"], CANAIS);
     expect(operacional.ok).toBe(false);
     if (!operacional.ok) expect(operacional.error).toBe("Só uma Lista conversacional tem canais de atendimento.");
   });
 
   it("virar operacional apaga os canais de atendimento", () => {
     const listId = listaConversacionalVazia();
-    expect(definirCanaisDaLista(state, THIAGO, listId, ["chn_wpp"]).ok).toBe(true);
+    expect(definirCanaisDaLista(state, THIAGO, listId, ["chn_wpp"], CANAIS).ok).toBe(true);
     expect(alterarModeloDaLista(state, THIAGO, listId, "operacional").ok).toBe(true);
     expect(state.lists.find((l) => l.id === listId)?.canaisDeAtendimento).toBeUndefined();
   });
@@ -150,9 +151,8 @@ describe("Canais da Lista conferidos num Canal[] recebido (3.3.7)", () => {
     ...parcial,
   });
 
-  it("definirCanaisDaLista marca um Canal da tabela com state.channels vazio, e a Atividade usa o nome dele", () => {
+  it("definirCanaisDaLista marca um Canal da tabela, e a Atividade usa o nome dele", () => {
     const listId = listaConversacionalVazia();
-    state.channels = [];
     const gravado = definirCanaisDaLista(state, THIAGO, listId, ["can_tabela"], [canalDaTabela()]);
     expect(gravado.ok).toBe(true);
     expect(state.lists.find((l) => l.id === listId)?.canaisDeAtendimento).toEqual(["can_tabela"]);
@@ -160,9 +160,8 @@ describe("Canais da Lista conferidos num Canal[] recebido (3.3.7)", () => {
     expect(state.activity[0]?.after).toBe("WhatsApp da loja");
   });
 
-  it("um id fora de `canais` e de state.channels recusa com a frase de hoje e field canais", () => {
+  it("um id fora de `canais` recusa com a frase de hoje e field canais", () => {
     const listId = listaConversacionalVazia();
-    state.channels = [];
     const recusa = definirCanaisDaLista(state, THIAGO, listId, ["inexistente"], [canalDaTabela()]);
     expect(recusa.ok).toBe(false);
     if (!recusa.ok) {
@@ -173,27 +172,22 @@ describe("Canais da Lista conferidos num Canal[] recebido (3.3.7)", () => {
 
   it("Canal da tabela arquivado recusa", () => {
     const listId = listaConversacionalVazia();
-    state.channels = [];
     const recusa = definirCanaisDaLista(state, THIAGO, listId, ["can_tabela"], [canalDaTabela({ estado: "arquivado", arquivadoEm: "2026-11-02T10:00:00.000Z" })]);
     expect(recusa.ok).toBe(false);
     if (!recusa.ok) expect(recusa.error).toBe("Canal não encontrado ou arquivado.");
   });
 
-  it("sem `canais`, o Canal antigo de state.channels segue valendo; com `canais` vazio também (o servidor leu a tabela e não há nada)", () => {
+  it("sem `canais`, ou com `canais` vazio, nenhum id vale: o estado não é consultado (15-42)", () => {
     const listId = listaConversacionalVazia();
-    expect(definirCanaisDaLista(state, THIAGO, listId, ["chn_wpp"], []).ok).toBe(true);
-    expect(state.lists.find((l) => l.id === listId)?.canaisDeAtendimento).toEqual(["chn_wpp"]);
-  });
-
-  it("o nome do Canal da tabela vence o de state.channels quando o id coincide (a projeção repete o id)", () => {
-    const listId = listaConversacionalVazia();
-    const gravado = definirCanaisDaLista(state, THIAGO, listId, ["chn_wpp"], [canalDaTabela({ id: "chn_wpp", nome: "Nome da tabela" })]);
-    expect(gravado.ok).toBe(true);
-    expect(state.activity[0]?.after).toBe("Nome da tabela");
+    for (const canais of [undefined, []] as const) {
+      const recusa = definirCanaisDaLista(state, THIAGO, listId, ["chn_wpp"], canais);
+      expect(recusa.ok).toBe(false);
+      if (!recusa.ok) expect(recusa.error).toBe("Canal não encontrado ou arquivado.");
+    }
+    expect(state.lists.find((l) => l.id === listId)?.canaisDeAtendimento).toBeUndefined();
   });
 
   it("createList conversacional com o Canal da tabela passa, e a Atividade traz o nome dele", () => {
-    state.channels = [];
     const criada = createList(
       state,
       THIAGO,
@@ -208,7 +202,6 @@ describe("Canais da Lista conferidos num Canal[] recebido (3.3.7)", () => {
   });
 
   it("createList com Canal inexistente recusa mesmo com `canais` e não deixa Lista", () => {
-    state.channels = [];
     const recusa = createList(
       state,
       THIAGO,
