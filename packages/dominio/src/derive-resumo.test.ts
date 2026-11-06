@@ -293,7 +293,7 @@ describe("estatisticasDoMembro — o CRM vem por argumento (15-23)", () => {
 
   it("o dia vem no fuso do Espaço: 'hoje' em Kolkata cai no último balde, mesmo que em UTC seja outro dia", () => {
     const state = buildProductSeed();
-    state.workspace.locale.timezone = "Asia/Kolkata";
+    Object.assign(state.workspace.locale, { timezone: "Asia/Kolkata" });
     const agora = new Date("2026-09-21T20:00:00Z"); // 01:30 do dia 22 em Kolkata
     expect(diaDe(agora.getTime(), "Asia/Kolkata")).toBe("2026-09-22");
     const crm = crmDoMembro({ fuso: "Asia/Kolkata", conversasResolvidas: [{ dia: "2026-09-22", quantidade: 2 }, { dia: "2026-09-21", quantidade: 1 }] });
@@ -461,7 +461,7 @@ describe("janelasDeConsultaDoCrm e juntarEstatisticasDoCrm (15-23)", () => {
   it("juntar põe as séries das duas janelas numa só; série null nas duas continua null", () => {
     const atual = crmDoMembro({ desde: "2026-09-15T03:00:00.000Z", ate: "2026-09-22T02:59:59.999Z", mensagensEnviadas: [{ dia: "2026-09-21", quantidade: 1 }], conversasResolvidas: null });
     const anterior = crmDoMembro({ desde: "2026-09-08T03:00:00.000Z", ate: "2026-09-15T02:59:59.999Z", mensagensEnviadas: [{ dia: "2026-09-10", quantidade: 2 }], conversasResolvidas: null });
-    const junto = juntarEstatisticasDoCrm(atual, anterior);
+    const junto = exigir(juntarEstatisticasDoCrm(atual, anterior), "junta");
     expect(junto.mensagensEnviadas).toEqual([{ dia: "2026-09-10", quantidade: 2 }, { dia: "2026-09-21", quantidade: 1 }]);
     expect(junto.conversasResolvidas).toBeNull();
     expect(junto.negociosGanhos).toEqual([]);

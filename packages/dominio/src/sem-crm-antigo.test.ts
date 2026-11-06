@@ -29,7 +29,6 @@ const CONGELADOS = [
   "derive-conversacional.ts",
   "derive-ferramentas.ts",
   "derive-ia.ts",
-  "derive-resumo.ts",
   "derive.ts",
   "operations/ai.ts",
   // 15-19: `clienteDe` passou a devolver só a referência, e o nome e o dono do cliente que as Automações

@@ -55,6 +55,9 @@ import { isOverdue, statusDefinition, tarefasAbertasDoMembro } from "@n1/dominio
 import {
   METRICAS_DO_RESUMO,
   estatisticasDoMembro,
+  janelaDoResumo,
+  janelasDeConsultaDoCrm,
+  juntarEstatisticasDoCrm,
   mensagensNovasDasConversas,
   qualificacoesDeLead,
   type MensagensNovasDoMembro,
@@ -64,7 +67,7 @@ import {
 import type { DataState } from "@n1/dominio/state";
 import type { Task } from "@n1/dominio/types";
 import { useConversas } from "@/dados/crm/conversas";
-import { useLeadsAAtender } from "@/dados/crm/inicio";
+import { useEstatisticasDoCrm, useLeadsAAtender } from "@/dados/crm/inicio";
 import { reduzido } from "@/design/movimento";
 import { AvatarDoContato } from "@/features/crm/avatar-do-contato";
 import { ICONE_DE_OBJETO, Selo, SeloDaTarefa } from "@/features/estrutura/icone-de-tipo";
@@ -619,13 +622,26 @@ const METRICA: Record<MetricaDoResumo, { readonly rotulo: string; readonly cor: 
  */
 function Estatisticas({ state, memberId, agora }: { readonly state: DataState; readonly memberId: string; readonly agora: Date }) {
   const fmt = useFormat();
+  const fuso = state.workspace.locale.timezone;
   const [periodo, setPeriodo] = useState<PeriodoDoResumo>("semana");
-  const [metrica, setMetrica] = useState<MetricaDoResumo>(() => {
-    const semana = estatisticasDoMembro(state, memberId, "semana", agora).metricas;
-    return METRICAS_DO_RESUMO.reduce((melhor, chave) => (semana[chave].valor > semana[melhor].valor ? chave : melhor), METRICAS_DO_RESUMO[0] ?? "tarefasConcluidas");
-  });
+  // Mensagens, Conversas resolvidas e Negócios ganhos vêm do servidor, por dia (15-23). Duas consultas: a janela
+  // atual e a anterior, porque a api aceita 400 dias por pedido e o "ano" com o anterior passa de 700. As janelas
+  // só mudam na virada do dia (chave estável do SWR); o relógio do minuto não pede nada de novo.
+  const consultas = janelasDeConsultaDoCrm(janelaDoResumo(periodo, agora, fuso), fuso);
+  const atual = useEstatisticasDoCrm(consultas.atual, fuso);
+  const anterior = useEstatisticasDoCrm(consultas.anterior, fuso);
+  const crm = juntarEstatisticasDoCrm(atual.estatisticas, anterior.estatisticas);
+  const recusado = atual.erro !== undefined || anterior.erro !== undefined;
   // Por render, sem memo por `state`: o armazém muda no lugar (só a revisão avisa).
-  const leitura = estatisticasDoMembro(state, memberId, periodo, agora);
+  const leitura = estatisticasDoMembro(state, memberId, periodo, agora, crm);
+  // Sem escolha da pessoa, abre a métrica que mais tem o que mostrar no período.
+  const [escolhidaPelaPessoa, setMetrica] = useState<MetricaDoResumo | null>(null);
+  const metrica =
+    escolhidaPelaPessoa ??
+    METRICAS_DO_RESUMO.reduce(
+      (melhor, chave) => (leitura.metricas[chave].valor > leitura.metricas[melhor].valor ? chave : melhor),
+      METRICAS_DO_RESUMO[0] ?? "tarefasConcluidas",
+    );
   const janela = JANELA[periodo];
   const escolhida = leitura.metricas[metrica];
 
@@ -639,6 +655,11 @@ function Estatisticas({ state, memberId, agora }: { readonly state: DataState; r
       <p className="app-meta inicio-estatisticas-janela">
         {janela.descricao}, {janela.comparacao}.
       </p>
+      {recusado ? (
+        <p role="status" className="app-meta inicio-estatisticas-janela" style={{ color: "var(--aviso)" }}>
+          As estatísticas do CRM não carregaram: Mensagens enviadas, Conversas resolvidas e Negócios ganhos aparecem zeradas.
+        </p>
+      ) : null}
       {/* O corpo no molde da grade: largo, o gráfico sob as Tarefas e as
           métricas 2×2 sob Leads e Mensagens; médio, as métricas nas metades
           e o gráfico embaixo, na largura toda. */}

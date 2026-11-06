@@ -38,7 +38,6 @@ const CONGELADOS = [
   "features/ia/automacoes/automacao-spec.ts",
   "features/ia/automacoes/editor-de-automacao.tsx",
   "features/ia/automacoes/nova-automacao-dialog.tsx",
-  "features/inicio/panorama-do-robo.ts",
 ] as const;
 
 const LE_O_CRM_ANTIGO =

@@ -15,6 +15,7 @@
 
 import { diaCivilNoFuso } from "./recortes-de-tarefas";
 import type { ConversaNaLista } from "./crm/conversas";
+import type { EstatisticasDoCrm } from "./crm/inicio";
 import { effectiveLifecycleOfTask, memberSeesTask } from "./derive";
 import type { DataState } from "./state";
 import type { ActorRef, Conversation, Id, Instant, Money } from "./types";
@@ -315,16 +316,10 @@ export interface EstatisticasDoMembro {
   readonly metricas: Readonly<Record<MetricaDoResumo, LeituraDaMetrica>>;
 }
 
-/**
- * A ação que o Registro de Atividade grava quando um Membro resolve uma
- * Conversa (`resolveConversation` e a resolução no ato de mover Conversa,
- * `operations/conversations.ts`). A Conversa guarda `resolvedAt` mas não
- * quem resolveu: o Ator do Registro é a única atribuição.
- */
-const ACAO_CONVERSA_RESOLVIDA = "Conversa resolvida";
-
 interface Ocorrencia {
   readonly instante: number;
+  /** Quantas ocorrências este ponto representa; o CRM entrega a contagem do dia, não uma linha por ato. */
+  readonly quantidade?: number;
   readonly valor?: Money;
 }
 
@@ -335,31 +330,39 @@ function somaNumaMoeda(ocorrencias: readonly Ocorrencia[]): Money | null {
   return { amount: valores.reduce((soma, v) => soma + v.amount, 0), currency: moeda };
 }
 
-function lerMetrica(metrica: MetricaDoResumo, ocorrencias: readonly Ocorrencia[], janela: JanelaDoResumo): LeituraDaMetrica {
+function lerMetrica(
+  metrica: MetricaDoResumo,
+  ocorrencias: readonly Ocorrencia[],
+  janela: JanelaDoResumo,
+  /** Onde a janela anterior começa; as contagens por dia a abrem no início do dia que contém `anteriorInicio`. */
+  anteriorDesde: number = janela.anteriorInicio.getTime(),
+): LeituraDaMetrica {
   const inicio = janela.inicio.getTime();
   const fim = janela.fim.getTime();
-  const anteriorInicio = janela.anteriorInicio.getTime();
   const porBalde = janela.baldes.map(() => 0);
   const contadas: Ocorrencia[] = [];
+  let valor = 0;
   let anterior = 0;
   for (const ocorrencia of ocorrencias) {
     const t = ocorrencia.instante;
+    const quantidade = ocorrencia.quantidade ?? 1;
     if (t >= inicio && t <= fim) {
       contadas.push(ocorrencia);
+      valor += quantidade;
       // Os baldes são contíguos a partir de `inicio`: o do instante é o último que já começou.
       for (let i = janela.baldes.length - 1; i >= 0; i -= 1) {
         if (t >= (janela.baldes[i]?.inicio.getTime() ?? Number.POSITIVE_INFINITY)) {
-          porBalde[i] = (porBalde[i] ?? 0) + 1;
+          porBalde[i] = (porBalde[i] ?? 0) + quantidade;
           break;
         }
       }
-    } else if (t >= anteriorInicio && t < inicio) {
-      anterior += 1;
+    } else if (t >= anteriorDesde && t < inicio) {
+      anterior += quantidade;
     }
   }
   return {
     metrica,
-    valor: contadas.length,
+    valor,
     anterior,
     porBalde,
     valorMonetario: metrica === "negociosGanhos" ? somaNumaMoeda(contadas) : null,
@@ -371,27 +374,37 @@ function lerMetrica(metrica: MetricaDoResumo, ocorrencias: readonly Ocorrencia[]
  * comparar. Um registro conta quando o seu instante está em `[inicio, agora]`
  * e vai para "anterior" quando está em `[anteriorInicio, inicio)`. A lixeira
  * nunca conta (INV-PAI-04).
- * - `tarefasConcluidas`: Tarefas com Momento de conclusão, das quais ele é
- *   Responsável, fora da lixeira (estado efetivo, B36) e que ele VÊ hoje —
+ * - `tarefasConcluidas` (do store): Tarefas com Momento de conclusão, das quais
+ *   ele é Responsável, fora da lixeira (estado efetivo, B36) e que ele VÊ hoje —
  *   nunca se conta o que quem olha não vê (RN-PAI-10; B103);
- * - `mensagensEnviadas`: Mensagens `enviada` cujo Ator é ele, pelo momento de
- *   criação, em Conversas fora da lixeira;
- * - `conversasResolvidas`: Registros de Atividade "Conversa resolvida" com
- *   resultado `ok` e Ator = ele, pelo instante do Registro — cada ato de
- *   resolver conta (resolver, reabrir e resolver de novo são dois). O
- *   Registro de uma Conversa hoje na lixeira ou eliminada não entra
- *   (INV-PAI-04; RN-PAI-30);
- * - `negociosGanhos`: Negócios `ganho` de que ele é o Proprietário (o Negócio
- *   tem Proprietário, nunca Responsável), pelo Momento de encerramento, fora
- *   da lixeira; com a soma dos Valores numa moeda só (RN-PAI-13).
+ * - as outras três vêm do servidor (`GET /crm/inicio/estatisticas`, 15-18), já
+ *   somadas por dia no fuso do Espaço e SÓ do Membro da sessão, e entram por
+ *   `crm` (3.4.7, UCR-07):
+ *   - `mensagensEnviadas`: Mensagens `enviada` de que ele é o Ator, em Conversas
+ *     fora da lixeira;
+ *   - `conversasResolvidas`: Conversas `resolvida` de que ele é o Atribuído, pelo
+ *     momento de resolução (o modelo novo não guarda quem clicou em resolver);
+ *   - `negociosGanhos`: Negócios `ganho` de que ele é o Proprietário, pelo
+ *     Momento de encerramento, fora da lixeira; com a soma dos Valores numa moeda
+ *     só (RN-PAI-13).
+ *
+ * `crm` é `undefined` enquanto a api não respondeu (ou se recusou) e uma série é
+ * `null` quando o Papel não lê o recurso: as duas leituras valem zero, nunca um
+ * número inventado. Um dia do CRM é um ponto só, no início do dia civil no fuso do
+ * Espaço: entra na janela atual quando esse início está em `[inicio, agora]` e na
+ * anterior quando está entre o início do dia que contém `anteriorInicio` e `inicio`
+ * (a comparação é por dia inteiro; as janelas de `janelasDeConsultaDoCrm` pedem ao
+ * servidor exatamente esses dias).
  */
 export function estatisticasDoMembro(
   state: DataState,
   memberId: Id,
   periodo: PeriodoDoResumo,
   agora: Date,
+  crm: EstatisticasDoCrm | undefined,
 ): EstatisticasDoMembro {
-  const janela = janelaDoResumo(periodo, agora, state.workspace.locale.timezone);
+  const fuso = state.workspace.locale.timezone;
+  const janela = janelaDoResumo(periodo, agora, fuso);
   const desde = janela.anteriorInicio.getTime();
   const ate = janela.fim.getTime();
   // Recorte barato primeiro: só o que cai numa das duas janelas passa às
@@ -411,41 +424,88 @@ export function estatisticasDoMembro(
     tarefasConcluidas.push({ instante: t });
   }
 
-  const mensagensEnviadas: Ocorrencia[] = [];
-  for (const conversa of state.conversations) {
-    if (conversa.lifecycle === "naLixeira") continue;
-    for (const mensagem of conversa.messages) {
-      if (mensagem.direction !== "enviada" || !doMembro(mensagem.actor, memberId)) continue;
-      const t = noAlcance(mensagem.createdAt);
-      if (t !== null) mensagensEnviadas.push({ instante: t });
-    }
-  }
+  const inicioDoDiaDoCrm = (dia: string): number | null =>
+    /^\d{4}-\d{2}-\d{2}$/.test(dia) ? inicioDoDiaNoFuso(dia, fuso).getTime() : null;
+  const doCrm = <T extends { readonly dia: string; readonly quantidade: number }>(
+    linhas: readonly T[] | null | undefined,
+    comoOcorrencia: (linha: T) => Omit<Ocorrencia, "instante">,
+  ): Ocorrencia[] =>
+    (linhas ?? []).flatMap((linha) => {
+      const instante = inicioDoDiaDoCrm(linha.dia);
+      return instante === null ? [] : [{ instante, ...comoOcorrencia(linha) }];
+    });
+  const anteriorDesdeDoCrm = inicioDoDiaNoFuso(diaCivilNoFuso(janela.anteriorInicio, fuso), fuso).getTime();
 
-  const conversasResolvidas: Ocorrencia[] = [];
-  for (const registro of state.activity) {
-    if (registro.action !== ACAO_CONVERSA_RESOLVIDA || registro.objectType !== "conversation") continue;
-    if (registro.result !== "ok" || !doMembro(registro.actor, memberId)) continue;
-    const t = noAlcance(registro.at);
-    if (t === null) continue;
-    const conversa = state.conversations.find((c) => c.id === registro.objectId);
-    if (!conversa || conversa.lifecycle === "naLixeira") continue;
-    conversasResolvidas.push({ instante: t });
-  }
-
-  const negociosGanhos: Ocorrencia[] = [];
-  for (const deal of state.deals) {
-    if (deal.ownerMemberId !== memberId || deal.situation !== "ganho" || deal.lifecycle === "naLixeira") continue;
-    const t = noAlcance(deal.closedAt);
-    if (t !== null) negociosGanhos.push(deal.value ? { instante: t, valor: deal.value } : { instante: t });
-  }
+  const mensagensEnviadas = doCrm(crm?.mensagensEnviadas, (linha) => ({ quantidade: linha.quantidade }));
+  const conversasResolvidas = doCrm(crm?.conversasResolvidas, (linha) => ({ quantidade: linha.quantidade }));
+  // Negócio ganho sem Valor soma 0 e não escolhe moeda: só o Valor positivo entra na soma de uma moeda só (RN-PAI-13).
+  const negociosGanhos = doCrm(crm?.negociosGanhos, (linha) => ({
+    quantidade: linha.quantidade,
+    ...(linha.valor > 0 ? { valor: { amount: linha.valor, currency: linha.moeda } } : {}),
+  }));
 
   return {
     janela,
     metricas: {
       tarefasConcluidas: lerMetrica("tarefasConcluidas", tarefasConcluidas, janela),
-      mensagensEnviadas: lerMetrica("mensagensEnviadas", mensagensEnviadas, janela),
-      conversasResolvidas: lerMetrica("conversasResolvidas", conversasResolvidas, janela),
-      negociosGanhos: lerMetrica("negociosGanhos", negociosGanhos, janela),
+      mensagensEnviadas: lerMetrica("mensagensEnviadas", mensagensEnviadas, janela, anteriorDesdeDoCrm),
+      conversasResolvidas: lerMetrica("conversasResolvidas", conversasResolvidas, janela, anteriorDesdeDoCrm),
+      negociosGanhos: lerMetrica("negociosGanhos", negociosGanhos, janela, anteriorDesdeDoCrm),
     },
+  };
+}
+
+/** Uma janela de consulta de `GET /crm/inicio/estatisticas`: instantes ISO 8601. */
+export interface JanelaDeConsultaDoCrm {
+  readonly desde: string;
+  readonly ate: string;
+}
+
+/**
+ * As duas consultas que as estatísticas pedem ao servidor: a janela ATUAL e a
+ * ANTERIOR, cada uma sozinha. Duas e não uma porque a api aceita no máximo 400
+ * dias entre `desde` e `ate`, e o "ano" com o ano anterior para comparar passa de
+ * 700. As duas são estáveis o dia inteiro (viram a chave do SWR): a atual vai do
+ * início do primeiro balde ao fim do dia de hoje (não ao "agora", que muda a cada
+ * minuto) e a anterior começa no início de um dia do fuso e termina um milissegundo
+ * antes da atual. `agora` mexe em `anteriorInicio` só quando cruza a meia-noite
+ * local, e nesse instante `desde` também troca de dia.
+ */
+export function janelasDeConsultaDoCrm(
+  janela: JanelaDoResumo,
+  fuso: string,
+): { readonly atual: JanelaDeConsultaDoCrm; readonly anterior: JanelaDeConsultaDoCrm } {
+  const hoje = diaCivilNoFuso(janela.fim, fuso);
+  const fimDeHoje = inicioDoDiaNoFuso(somarDias(hoje, 1), fuso).getTime() - 1;
+  return {
+    atual: { desde: janela.inicio.toISOString(), ate: new Date(fimDeHoje).toISOString() },
+    anterior: {
+      desde: inicioDoDiaNoFuso(diaCivilNoFuso(janela.anteriorInicio, fuso), fuso).toISOString(),
+      ate: new Date(janela.inicio.getTime() - 1).toISOString(),
+    },
+  };
+}
+
+const juntarSeries = <T>(anterior: readonly T[] | null, atual: readonly T[] | null): readonly T[] | null =>
+  anterior === null ? atual : atual === null ? anterior : [...anterior, ...atual];
+
+/**
+ * As respostas das duas janelas numa só, para `estatisticasDoMembro`. Janelas que
+ * não se encostam não repetem dia, então basta concatenar. Sem uma das respostas
+ * (ainda carregando, ou recusada), vale a outra; sem nenhuma, `undefined`.
+ */
+export function juntarEstatisticasDoCrm(
+  atual: EstatisticasDoCrm | undefined,
+  anterior: EstatisticasDoCrm | undefined,
+): EstatisticasDoCrm | undefined {
+  if (atual === undefined) return anterior;
+  if (anterior === undefined) return atual;
+  return {
+    desde: anterior.desde < atual.desde ? anterior.desde : atual.desde,
+    ate: anterior.ate > atual.ate ? anterior.ate : atual.ate,
+    fuso: atual.fuso,
+    mensagensEnviadas: juntarSeries(anterior.mensagensEnviadas, atual.mensagensEnviadas),
+    conversasResolvidas: juntarSeries(anterior.conversasResolvidas, atual.conversasResolvidas),
+    negociosGanhos: juntarSeries(anterior.negociosGanhos, atual.negociosGanhos),
   };
 }

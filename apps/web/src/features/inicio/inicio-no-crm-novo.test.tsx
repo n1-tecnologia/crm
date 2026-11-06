@@ -254,7 +254,7 @@ describe("Início › Estatísticas (15-23)", () => {
     await montar();
     await waitFor(() => expect(chamadas("/crm/inicio/estatisticas")).toHaveLength(2));
     await act(async () => {
-      fireEvent.click(screen.getByRole("radio", { name: "Ano" }));
+      fireEvent.click(screen.getByRole("button", { name: "Ano" }));
     });
     await waitFor(() => expect(chamadas("/crm/inicio/estatisticas")).toHaveLength(4));
     const fuso = buildSeed().workspace.locale.timezone;
