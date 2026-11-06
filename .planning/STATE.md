@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 15
 current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
 status: executing
-stopped_at: Completed 15-18-PLAN.md
-last_updated: "2026-11-06T13:25:15.159Z"
+stopped_at: Completed 15-19-PLAN.md
+last_updated: "2026-11-06T13:43:42.834Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 15 execution started
-state_head: ec46ec1559520f37b5e2b0369229795e530b8f6b
+state_head: 2711adbf7c42f5bfb326d35f06bbc44f9f4c3563
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 271
-  completed_plans: 248
+  completed_plans: 249
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 15 (Unificação do CRM: telas no modelo novo e remoção do modelo antigo) — EXECUTING
-Plan: 24 of 43
+Plan: 25 of 43
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 15 execution started
 
@@ -467,6 +467,7 @@ Progress: [██████░░░░] 63%
 | Phase 15 P15 | 10 min | 2 tasks | 6 files |
 | Phase 15 P20 | 15 min | 3 tasks | 17 files |
 | Phase 15 P18 | 15 min | 3 tasks | 13 files |
+| Phase 15 P19 | 14 min | 3 tasks | 28 files |
 
 ## Accumulated Context
 
@@ -746,6 +747,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 15]: 15-20: sem Conversa no Canal da aba o campo vira Primeira Mensagem e Enviar abre a Conversa COM a Mensagem (POST /conversas); com Conversa no par reaproveita por POST /mensagens — INV-CXE-05 e F14-D-07: nao existe Conversa vazia
 - [Phase 15]: 15-20: o fio nao tem Rascunho de IA nem Mensagem de modelo; fora da janela do WhatsApp oficial o envio se desliga dizendo por que (WINDOWS 31) — D-15-11 e plataforma.canais nao guarda modelos
 - [Phase 15]: 15-18: o agregado do Início sai do servidor (GET /crm/inicio/{panorama,leads-a-atender,estatisticas}); "meu" é sempre o Membro da sessão e o querystring .strict() recusa membroId — Com o CRM fora do store só um agregado no servidor dá o número certo (paginaMaxima é 200); "Conversas resolvidas" passa a contar as resolvidas de que o Membro é o Atribuído (suposição a confirmar com o dono, WINDOWS 33)
+- [Phase 15]: 15-19: o cliente lido pelo servidor leva nome e Proprietario; clientes e clientesConhecidos opcionais com padrao vazio recusam — Titulo das contas e concessao de comentar ao dono do cliente precisam desses campos; esquecer o argumento nunca deve deixar passar
+- [Phase 15]: 15-19: automations.ts le nome e dono do cliente em state.contacts (contatoDoCliente) e entrou na lista congelada do sem-crm-antigo do dominio — clienteDe devolve so a referencia; injetar nome e dono por OpcoesDaAgenda fica para antes do 3.5.4 (WINDOWS #35)
 
 ### Pending Todos
 
@@ -807,6 +810,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-06T13:25:14.941Z
-Stopped at: Completed 15-18-PLAN.md
+Last session: 2026-11-06T13:43:42.597Z
+Stopped at: Completed 15-19-PLAN.md
 Resume file: None
