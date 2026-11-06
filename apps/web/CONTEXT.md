@@ -285,3 +285,24 @@ maps é outro passo, com `SENTRY_AUTH_TOKEN` na Vercel.
 Cor só sai de `src/estilos/tokens.css`. `npm run verificar:tokens` falha se
 alguém escrever um hex direto no componente, com poucas exceções já registradas
 no próprio script.
+
+**Configurações da Caixa, Fila, Canal e o popup das Listas pelo CRM novo (Fase 15,
+15-12).** A ficha do Canal (`configuracoes/canais/[canal]`) lê `GET /canais/:id`
+por `useCanal` e salva por `PATCH /canais/:id` (`editarCanal`); um id que a api
+não conhece (404) é "Canal não encontrado.", e o Canal do seed (demo) já não tem
+ficha nem a operação antiga `configurarCanal`. A seção "Mensagens de modelo" da
+ficha fica sempre vazia: a tabela `plataforma.canais` não guarda modelos
+(só o seed os tinha). O número de Conversas do Canal é o `total` de
+`GET /conversas?canalId=`. A página da Fila lista as Conversas por
+`useConversas({ filaId })` e mostra o `total`, nunca o tamanho da página; a carga
+de cada Membro elegível é `useConversas({ filaId, atribuidoId, situacao: "aberta",
+limite: 1 })`; os Canais da Fila são os de `useCanais` com `filaPadraoId` igual.
+As Configurações da Caixa listam Canais ativos e arquivados de `GET /canais` e
+contam as Conversas de cada Fila pelo `total`. A Caixa e a Fila (elegíveis,
+distribuição, horário) seguem no store: são configuração do Espaço. O popup
+"Adicionar Canal" das Listas conversacionais (`features/crm/adicionar-canal-dialog.tsx`)
+não cria Canal (D-15-12): lista os Canais ativos de `useCanais` que a Lista ainda
+não usa, devolve o id escolhido em `onEscolher` e tem o link "Conectar um Canal
+novo" para a página de conectar, o único caminho que cria Canal (nasce
+`desconectada`); a seção de Canais de atendimento (`canais-de-atendimento.tsx`)
+também lê `useCanais`.

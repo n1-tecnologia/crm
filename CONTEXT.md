@@ -68,8 +68,9 @@ oficial, Instagram, E-mail — a tabela está em
 não só pelo tipo. O Canal criado pela página nova de conexão
 (`/crm/caixa-de-entrada/configuracoes/canais/conectar`) nasce `desconectada`
 e só conecta por "Simular conexão", sempre marcada, enquanto não há provedor
-real; o popup de adicionar Canal das Listas é o caminho legado e segue
-nascendo `conectada` em `plataforma.registros`. O chat continua no modelo
+real; o popup de adicionar Canal das Listas deixou de criar Canal (Fase 15,
+D-15-12): só escolhe entre os Canais de `plataforma.canais` e leva à página de
+conectar, o único caminho que cria Canal. O chat continua no modelo
 antigo e enxerga os Canais da tabela por uma projeção — em `GET /estado` e em
 `executar()`, nunca em `hidratar()` (ver `apps/api/src/persistencia/CONTEXT.md`)
 — até a Fase 15, que troca as telas para o modelo novo. O fio da Conversa tem
