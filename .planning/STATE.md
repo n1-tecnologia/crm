@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 15
 current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
 status: executing
-stopped_at: Completed 15-29-PLAN.md
-last_updated: "2026-11-06T20:01:14.287Z"
+stopped_at: Completed 15-30-PLAN.md
+last_updated: "2026-11-06T20:20:34.597Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 15 execution started
-state_head: 2dd55c439fe5e260904e2100abb1ec6bff9d39e4
+state_head: 00d71f9f9316a75757c7035c28f1e90179e182ce
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 271
-  completed_plans: 259
+  completed_plans: 260
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 15 (Unificação do CRM: telas no modelo novo e remoção do modelo antigo) — EXECUTING
-Plan: 35 of 43
+Plan: 36 of 43
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 15 execution started
 
@@ -478,6 +478,7 @@ Progress: [██████░░░░] 63%
 | Phase 15 P27 | 35 min | 3 tasks | 18 files |
 | Phase 15 P28 | 32 min | 3 tasks | 17 files |
 | Phase 15 P29 | 6 min | 2 tasks | 8 files |
+| Phase 15 P30 | 15 min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -778,6 +779,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 15]: 15-28: o id antigo de Contato, Empresa, Funil, Negocio, Canal, Conversa e Mensagem vira o id novo; Identificador, vinculo Contato-Empresa e Etapa ganham id novo com linha em crm_de_para — Vinculo de Tarefa, provenance, escopo e canaisDeAtendimento ficam em registros e nao sao reescritos; so onde a chave nao e unica no Espaco o id muda
 - [Phase 15]: 15-28: o mapeador decide as constraints do banco antes do insert (Empresa sem admin vigente nao migra com os Negocios dela; --funil=guardar nao migra Negocio); o que fica de fora vai para o relatorio Nao migrados, so colecao e id — Uma constraint deferida (empresa_exige_admin) derrubaria o commit do Espaco inteiro; o --migrar nao e desfazivel (D-15-02), entao o dono le o --seco antes de escrever
 - [Phase 15]: 15-29: o demo do CRM so roda em banco local; o host de DATABASE_URL e conferido na CLI antes do pool e no carregador antes da primeira consulta, e toda recusa lanca RecusaDoDemo (saida 2)
+- [Phase 15]: 15-30: o ensaio usou a copia de 2026-11-05 importada pelo .dump (dado real da Pasta Meus negocios); o Funil Padrao do ws_n1 e vazio, entao --funil=guardar nao muda o CRM novo e --funil=migrar acrescenta um Funil vazio (3 Funis); o dono decide no --seco do dia
 
 ### Pending Todos
 
@@ -839,6 +841,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-06T20:01:14.074Z
-Stopped at: Completed 15-29-PLAN.md
+Last session: 2026-11-06T20:20:34.376Z
+Stopped at: Completed 15-30-PLAN.md
 Resume file: None
