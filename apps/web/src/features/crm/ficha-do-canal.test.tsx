@@ -210,8 +210,10 @@ describe("08-09 — a ficha do Canal relacional", () => {
     fireEvent.click(screen.getAllByRole("combobox")[0]!);
     fireEvent.click(await screen.findByRole("option", { name: "Comercial" }));
 
-    await waitFor(() => expect(chamadasRest().some(([url]) => url === "http://api/canais/uuid-1")).toBe(true));
-    const [, init] = chamadasRest().find(([url]) => url === "http://api/canais/uuid-1")!;
+    // O mesmo endereço também é o GET da ficha: o PATCH é a chamada com método próprio.
+    const patch = () => chamadasRest().find(([url, init]) => url === "http://api/canais/uuid-1" && init?.method === "PATCH");
+    await waitFor(() => expect(patch()).toBeTruthy());
+    const [, init] = patch()!;
     expect(init?.method).toBe("PATCH");
     expect(JSON.parse(init?.body as string)).toEqual({ filaPadraoId: "fila_com" });
     expect((init?.headers as Record<string, string>)["content-type"]).toBe("application/json");
