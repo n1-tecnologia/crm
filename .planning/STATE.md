@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 15
 current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
 status: executing
-stopped_at: Completed 15-03-PLAN.md
-last_updated: "2026-11-06T08:53:31.281Z"
+stopped_at: Completed 15-04-PLAN.md
+last_updated: "2026-11-06T09:02:31.857Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 15 execution started
-state_head: ad8d8ac6743c287e2760ff364acb0d0ba52baf4f
+state_head: b9ef70dcc6f6d29b6d1a8ab631af55135650ccd7
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 271
-  completed_plans: 228
+  completed_plans: 229
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 15 (Unificação do CRM: telas no modelo novo e remoção do modelo antigo) — EXECUTING
-Plan: 4 of 43
+Plan: 5 of 43
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 15 execution started
 
@@ -447,6 +447,7 @@ Progress: [██████░░░░] 63%
 | Phase 15 P01 | 9 min | 3 tasks | 14 files |
 | Phase 15 P02 | 9 min | 3 tasks | 16 files |
 | Phase 15 P03 | 10 min | 2 tasks | 15 files |
+| Phase 15 P04 | 12 min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -695,6 +696,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 15]: 15-02: 40P01 vira 409 CONFLITO_TRANSITORIO em comTransacao; Negócio.editar não foi reordenado (Negócio antes do Contato)
 - [Phase 15]: 15-02: resumo da Tarefa conversacional mantém o primeiro Vínculo de cada tipo (lista de candidatos fica aberta); Conversa só tem ativo/na_lixeira
 - [Phase 15]: D-15-08: na remocao de um Membro, as Conversas de que ele e Atribuido passam ao Sucessor como Atribuido (emenda B28-a, RN-ET-09, RN-CXE-24); Conversa de Agente nao muda
+- [Phase 15]: 15-04 D-15-09: crm_atividades (012) espelha ActivityRecord, sem FK para o objeto, so insercao por contrato do repositorio; registrarAtividade grava no mesmo cliente do comTransacao
+- [Phase 15]: 15-04: objeto_tipo da Atividade usa as cadeias do modelo antigo (contact, company, deal, conversation, funnel, channel), sem check de lista no banco
 
 ### Pending Todos
 
@@ -756,6 +759,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-06T08:53:30.993Z
-Stopped at: Completed 15-03-PLAN.md
+Last session: 2026-11-06T09:02:31.563Z
+Stopped at: Completed 15-04-PLAN.md
 Resume file: None
