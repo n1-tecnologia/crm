@@ -30,7 +30,7 @@ import { useRecente } from "@/features/shell/recente";
 import { membroVeSessaoDeChat } from "@n1/dominio/derive";
 import { configureChatSession, sendChatMessage } from "@n1/dominio/operations";
 import { reduzido } from "@/design/movimento";
-import { useDialogoDeAncora } from "@/features/ia/ancora-do-chat";
+import { ancoraDaEscolha, nomesDaEscolha, useDialogoDeAncora } from "@/features/ia/ancora-do-chat";
 import { useChatFolderDialogs } from "@/features/ia/chat-folder-dialogs";
 import { CompositorDoChat, type AjustesDoChat } from "@/features/ia/compositor-do-chat";
 import { useLarguraDoChat } from "@/features/ia/largura-do-chat";
@@ -98,16 +98,17 @@ export default function SessaoPage({ params }: { params: Promise<{ sessao: strin
     jaRolou.current = true;
   }, [quantas]);
 
-  const ajustarSessao = (input: Parameters<typeof configureChatSession>[3]) => {
+  // `nomes`: o nome que a tela tem do registro do CRM da Âncora; o servidor o descarta e relê (15-08).
+  const ajustarSessao = (input: Parameters<typeof configureChatSession>[3], nomes?: Parameters<typeof configureChatSession>[4]) => {
     if (!record) return;
-    const result = run((data, actingMemberId) => configureChatSession(data, actingMemberId, record.id, input));
+    const result = run((data, actingMemberId) => configureChatSession(data, actingMemberId, record.id, input, nomes));
     setError(result.ok ? null : result.error);
   };
   // "Nova pasta…" pelo compositor: a pasta nasce e já guarda esta Sessão.
   const { dialogs: dialogosDaPasta, openCreate } = useChatFolderDialogs((_mensagem, criadaId) => {
     if (criadaId) ajustarSessao({ folderId: criadaId });
   });
-  const { dialogo: dialogoDaAncora, abrir: abrirAncora } = useDialogoDeAncora((escolha) => ajustarSessao({ anchor: escolha }));
+  const { dialogo: dialogoDaAncora, abrir: abrirAncora } = useDialogoDeAncora((escolha) => ajustarSessao({ anchor: ancoraDaEscolha(escolha) }, nomesDaEscolha(escolha)));
 
   if (!record) {
     return (
@@ -209,7 +210,7 @@ export default function SessaoPage({ params }: { params: Promise<{ sessao: strin
       aoAjustar={aoAjustar}
       {...(record.anchor ? { ancora: record.anchor.nameAtTheTime } : {})}
       {...(record.messages.length > 0 ? { ancoraTravada: "A Âncora é fixada na criação: com Mensagens, ela não muda." } : {})}
-      aoAncorar={() => abrirAncora(record.anchor ? { type: record.anchor.type, id: record.anchor.id } : undefined)}
+      aoAncorar={() => abrirAncora(record.anchor ? { type: record.anchor.type, id: record.anchor.id, nome: record.anchor.nameAtTheTime } : undefined)}
       aoTirarAncora={() => ajustarSessao({ anchor: null })}
       aoNovaPasta={openCreate}
       largura={largura}

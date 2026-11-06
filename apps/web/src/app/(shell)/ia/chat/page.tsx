@@ -27,7 +27,7 @@ import { useRef, useState } from "react";
 import { useData, useRun, useRunConfirmado, useSession } from "@/dados/store";
 import { createChatSession, sendChatMessage } from "@n1/dominio/operations";
 import { recusaDeTrocarModelo } from "@n1/dominio/derive-ia";
-import { nomeDaEscolha, useDialogoDeAncora, type EscolhaDeAncora } from "@/features/ia/ancora-do-chat";
+import { ancoraDaEscolha, nomesDaEscolha, useDialogoDeAncora, useNomeDaEscolha, type EscolhaDeAncora } from "@/features/ia/ancora-do-chat";
 import { useChatFolderDialogs } from "@/features/ia/chat-folder-dialogs";
 import { CompositorDoChat, type AjustesDoChat } from "@/features/ia/compositor-do-chat";
 import { useLarguraDoChat } from "@/features/ia/largura-do-chat";
@@ -60,6 +60,8 @@ export default function ChatPage() {
     if (criadaId) setAjustes((atual) => ({ ...atual, folderId: criadaId }));
   });
   const { dialogo: dialogoDaAncora, abrir: abrirAncora } = useDialogoDeAncora(setAncora);
+  // O nome da Âncora no CRM vem de POST /crm/nomes; "Registro indisponível" se a api não devolveu.
+  const nomeDaAncora = useNomeDaEscolha(ancora);
 
   const eu = state.members.find((m) => m.id === memberId);
   // Uma pasta escolhida e depois excluída (no menu lateral) deixa de valer:
@@ -91,14 +93,20 @@ export default function ChatPage() {
     if (comecando.current) return;
     comecando.current = true;
     const { local: criada, confirmado } = runConfirmado((data, id) =>
-      createChatSession(data, id, {
-        title: tituloDe(texto),
-        ...(ajustesEfetivos.agentId ? { mainAgentId: ajustesEfetivos.agentId } : {}),
-        ...(ajustesEfetivos.modelId ? { chosenModelId: ajustesEfetivos.modelId } : {}),
-        ...(ajustesEfetivos.folderId ? { folderId: ajustesEfetivos.folderId } : {}),
-        ...(ajustesEfetivos.skillId ? { skillId: ajustesEfetivos.skillId } : {}),
-        ...(ancora ? { anchor: ancora } : {}),
-      }),
+      createChatSession(
+        data,
+        id,
+        {
+          title: tituloDe(texto),
+          ...(ajustesEfetivos.agentId ? { mainAgentId: ajustesEfetivos.agentId } : {}),
+          ...(ajustesEfetivos.modelId ? { chosenModelId: ajustesEfetivos.modelId } : {}),
+          ...(ajustesEfetivos.folderId ? { folderId: ajustesEfetivos.folderId } : {}),
+          ...(ajustesEfetivos.skillId ? { skillId: ajustesEfetivos.skillId } : {}),
+          ...(ancora ? { anchor: ancoraDaEscolha(ancora) } : {}),
+        },
+        // O nome que a tela tem do registro do CRM: o servidor o descarta e relê das tabelas (15-08).
+        ancora ? nomesDaEscolha(ancora) : {},
+      ),
     );
     if (!criada.ok) {
       comecando.current = false;
@@ -158,7 +166,7 @@ export default function ChatPage() {
               {...(bloqueio ? { bloqueio } : {})}
               ajustes={ajustesEfetivos}
               aoAjustar={ajustar}
-              {...(ancora ? { ancora: nomeDaEscolha(state, memberId, ancora) ?? "Registro" } : {})}
+              {...(ancora ? { ancora: nomeDaAncora ?? "Registro" } : {})}
               aoAncorar={() => abrirAncora(ancora ?? undefined)}
               aoTirarAncora={() => setAncora(null)}
               aoNovaPasta={openCreate}
