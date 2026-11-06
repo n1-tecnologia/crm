@@ -4,17 +4,16 @@ milestone: v1.0
 current_phase: 15
 current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
 status: planning
-stopped_at: Phase 14 complete, ready to plan Phase 15
-last_updated: "2026-11-05T13:33:09.147Z"
+stopped_at: Phase 15 context gathered
+last_updated: "2026-11-06T00:48:30.331Z"
 last_activity: 2026-11-05
 last_activity_desc: Phase 14 complete, next is Phase 15
-state_head: 51e211054686af138bff14bd2a054d661a43a8cd
+state_head: 9cd68229d82e603c51d1c7a0c219363d1de4bd25
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 228
   completed_plans: 225
-  percent: 63
 milestone_name: milestone
 ---
 
@@ -750,6 +749,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-05T13:16:01.758Z
-Stopped at: Phase 14 complete, ready to plan Phase 15
-Resume file: None
+Last session: 2026-11-06T00:48:29.452Z
+Stopped at: Phase 15 context gathered
+Resume file: .planning/phases/15-unifica-o-do-crm-telas-no-modelo-novo-e-remo-o-do-modelo-ant/15-CONTEXT.md
