@@ -106,10 +106,30 @@ export interface RepositorioDeContatos {
    * não volta, e mais de `TETO_DE_CONTATOS_RESUMIDOS` ids é erro (T-15-21, T-15-22).
    */
   resumidosPorIds(workspaceId: string, ids: readonly string[]): Promise<ContatoDaFerramenta[]>;
+  /**
+   * Os Contatos do Espaço entre os `ids` citados, como CLIENTE de Contas a receber (Fase 15, 3.4.10):
+   * id, nome de exibição, estado e Proprietário (o dono do cliente, que comenta as contas dele). O
+   * estado volta como está — quem decide se vale é o domínio. Mesmo teto de `resumidosPorIds`.
+   */
+  clientesPorIds(workspaceId: string, ids: readonly string[]): Promise<ClienteDoContato[]>;
+  /**
+   * Os Contatos ATIVOS do Espaço, só id e nome de exibição: o catálogo de clientes da importação de
+   * Contas a receber (3.4.10). É a tabela inteira de ativos de UM Espaço, de uma vez — a importação
+   * roda uma vez por carga, a volume de Contas a receber (centenas de clientes); sem página.
+   */
+  ativosParaCatalogo(workspaceId: string): Promise<Array<{ readonly id: string; readonly nome: string }>>;
   /** Somente leitura de `plataforma.negocios` — a escrita de Negócio é de 07-08. */
   negociosDoContato(workspaceId: string, contatoId: string, opcoes: { readonly incluirLixeira: boolean }): Promise<NegociosDoContato>;
   /** Somente leitura de `plataforma.conversas` (008): total e até 5 Conversas, as mais novas primeiro. */
   conversasDoContato(workspaceId: string, contatoId: string): Promise<ConversasDoContato>;
+}
+
+/** Um Contato como cliente de uma conta (3.4.10): o bastante para conferir, nomear e dar o direito de comentar ao dono. */
+export interface ClienteDoContato {
+  readonly id: string;
+  readonly nome: string;
+  readonly estado: string;
+  readonly proprietarioId: string;
 }
 
 /** O teto de ids de `resumidosPorIds`: a lista vem dos `args` de uma operação, nunca é a tabela inteira. */
@@ -452,6 +472,46 @@ export function criarRepositorioDeContatosPg(cliente: Pool | PoolClient): Reposi
         estado: linha.estado,
         whatsapp: linha.whatsapp,
       }));
+    },
+
+    async clientesPorIds(workspaceId, ids) {
+      const unicos = [...new Set(ids)];
+      if (unicos.length > TETO_DE_CONTATOS_RESUMIDOS) {
+        throw new Error(`clientesPorIds: no máximo ${TETO_DE_CONTATOS_RESUMIDOS} ids por consulta.`);
+      }
+      if (unicos.length === 0) return [];
+      const { rows } = await cliente.query<{ id: string; nome: string | null; sobrenome: string | null; estado: string; proprietario_id: string; whatsapp: string | null }>(
+        `select c.id, c.nome, c.sobrenome, c.estado, c.proprietario_id,
+                (select i.valor from plataforma.contato_identificadores i
+                  where i.workspace_id = c.workspace_id and i.contato_id = c.id and i.tipo = 'whatsapp'
+                  order by i.principal desc, i.criado_em, i.id
+                  limit 1) as whatsapp
+           from plataforma.contatos c
+          where c.workspace_id = $1 and c.id = any($2::text[])
+          order by c.criado_em, c.id`,
+        [workspaceId, unicos],
+      );
+      return rows.map((linha) => ({
+        id: linha.id,
+        nome: nomeDeExibicaoDoContato(linha, linha.whatsapp),
+        estado: linha.estado,
+        proprietarioId: linha.proprietario_id,
+      }));
+    },
+
+    async ativosParaCatalogo(workspaceId) {
+      const { rows } = await cliente.query<{ id: string; nome: string | null; sobrenome: string | null; whatsapp: string | null }>(
+        `select c.id, c.nome, c.sobrenome,
+                (select i.valor from plataforma.contato_identificadores i
+                  where i.workspace_id = c.workspace_id and i.contato_id = c.id and i.tipo = 'whatsapp'
+                  order by i.principal desc, i.criado_em, i.id
+                  limit 1) as whatsapp
+           from plataforma.contatos c
+          where c.workspace_id = $1 and c.estado = 'ativo'
+          order by c.criado_em, c.id`,
+        [workspaceId],
+      );
+      return rows.map((linha) => ({ id: linha.id, nome: nomeDeExibicaoDoContato(linha, linha.whatsapp) }));
     },
 
     async negociosDoContato(workspaceId, contatoId, opcoes) {

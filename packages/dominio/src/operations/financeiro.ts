@@ -10,9 +10,9 @@
  * conteúdo em texto, e este módulo o aplica.
  */
 
-import { agentSeesTask, contactDisplayName, effectiveLifecycleOfTask, memberSeesTask, newestFirst, statusDefinition } from "../derive";
+import { agentSeesTask, effectiveLifecycleOfTask, memberSeesTask, newestFirst, statusDefinition } from "../derive";
 import { fail, ok, type DataState, type OperationResult } from "../state";
-import type { Agent, AgentExecution, ApprovalRequest, Comment, Contact, Id, Task } from "../types";
+import type { Agent, AgentExecution, ApprovalRequest, Comment, Id, Task } from "../types";
 import { memberActor, nextId, recordActivity } from "./activity";
 // Sem ciclo em tempo de carga: `./ai` importa `./tasks`, que importa
 // `./automations`, que importa este arquivo — mas nenhum deles usa o outro no
@@ -1741,11 +1741,41 @@ export const CR = {
   linkRole: "cliente",
 } as const;
 
-/** O Contato do CRM que deve esta conta (RN-CR-02). */
-export function clienteDe(state: DataState, task: Task): Contact | undefined {
-  const link = state.links.find((l) => l.fromType === "task" && l.fromId === task.id && l.toType === "contact");
-  return link ? state.contacts.find((c) => c.id === link.toId) : undefined;
+/**
+ * Quem deve esta conta: a referência do Vínculo "cliente" (RN-CR-02), Contato ou Empresa de
+ * `plataforma.*`. Só tipo e id — o nome vem de `POST /crm/nomes` (na tela) e o dono do cliente é
+ * lido pelo servidor ao criar a série; o domínio não guarda mais o Contato (Fase 15, 3.4.10).
+ */
+export interface ClienteDaConta {
+  readonly tipo: "contact" | "company";
+  readonly id: Id;
 }
+
+export function clienteDe(state: DataState, task: Task): ClienteDaConta | undefined {
+  const link = state.links.find((l) => l.fromType === "task" && l.fromId === task.id && (l.toType === "contact" || l.toType === "company") && l.role === CR.linkRole);
+  return link ? { tipo: link.toType as "contact" | "company", id: link.toId } : undefined;
+}
+
+/**
+ * Um cliente como o servidor o leu da tabela (`plataforma.contatos` ou `plataforma.empresas`) dentro
+ * da transação da série: o bastante para conferir que vale (`estado`), nomear as contas e conceder
+ * ao dono do cliente o direito de comentá-las (seção 10). O `clientes` que o navegador manda é
+ * descartado — a forma é a mesma de `ClienteLido` em `apps/api/src/rotas/gesto-no-crm/tipos.ts`.
+ */
+export interface ClienteLido {
+  readonly id: Id;
+  readonly nome: string;
+  readonly estado: string;
+  readonly proprietarioId: Id;
+}
+
+export interface ClientesLidos {
+  readonly contatos: readonly ClienteLido[];
+  readonly empresas: readonly ClienteLido[];
+}
+
+/** Sem o que o servidor leu, nenhum cliente vale: esquecer o argumento recusa, nunca deixa passar. */
+const SEM_CLIENTES_LIDOS: ClientesLidos = { contatos: [], empresas: [] };
 
 /** RN-CR-02 — Entrada ou Parcela sem cliente: a soma por cliente fica errada. */
 export function contaSemCliente(state: DataState, task: Task): boolean {
@@ -1769,7 +1799,8 @@ export function parcelaDuplicada(state: DataState, task: Task): Task | undefined
       effectiveLifecycleOfTask(state, t.id) === "ativo" &&
       fieldValue(t, CR.fields.tipo) === tipo &&
       fieldValue(t, CR.fields.numeroParcela) === numero &&
-      clienteDe(state, t)?.id === cliente.id,
+      clienteDe(state, t)?.id === cliente.id &&
+      clienteDe(state, t)?.tipo === cliente.tipo,
   );
 }
 
@@ -1803,15 +1834,19 @@ const parseCivil = (value: string): Date | undefined => {
  * como o Financeiro fazia à mão (seção 5). Cada conta passa por `createTask`
  * (alcance, Tipo, Status inicial) e ganha Vínculo com o cliente. Uma recusa
  * no meio desfaz o que já nasceu — meia série é pior que nenhuma.
+ *
+ * `clientes` é o que o servidor leu de `plataforma.contatos` na transação
+ * (Fase 15, 3.4.10): o cliente (`input.contactId`) precisa estar ali e `ativo`.
  */
-export function createReceivableSeries(state: DataState, actingMemberId: Id, input: ReceivableSeriesInput): OperationResult<Task[]> {
+export function createReceivableSeries(state: DataState, actingMemberId: Id, input: ReceivableSeriesInput, clientes: ClientesLidos = SEM_CLIENTES_LIDOS): OperationResult<Task[]> {
   // 1.2.3 — quem chama é conferido antes de qualquer validação da entrada: a
   // série cria Tarefas na Lista de Contas a receber, e a mesma recusa de
   // `createTask` (Membro ativo, não Convidado, alcança a Lista) vale aqui.
   const recusa = listWriteRefusal(state, actingMemberId, CR.listId);
   if (recusa) return fail(recusa);
-  const contact = state.contacts.find((c) => c.id === input.contactId);
-  if (!contact || contact.lifecycle !== "ativo") return fail("Escolha um Contato ativo do CRM como cliente.", "contactId");
+  // 3.4.10 — o cliente é o que o servidor leu de `plataforma.contatos` na transação, nunca o Contato do modelo antigo.
+  const contact = clientes.contatos.find((c) => c.id === input.contactId);
+  if (!contact || contact.estado !== "ativo") return fail("Cliente não encontrado.", "contactId");
   if (!input.centroDeCusto.trim()) return fail("Centro de Custo é obrigatório.", "centroDeCusto");
   if (!Number.isInteger(input.parcelas) || input.parcelas < 1 || input.parcelas > 60) return fail("Informe de 1 a 60 parcelas.", "parcelas");
   if (!(input.valorParcela > 0)) return fail("O valor da parcela precisa ser maior que zero.", "valorParcela");
@@ -1820,7 +1855,7 @@ export function createReceivableSeries(state: DataState, actingMemberId: Id, inp
   if (!primeiro) return fail("Informe o vencimento da 1ª parcela.", "primeiroVencimento");
   const vencimentoEntrada = input.valorEntrada !== undefined ? parseCivil(input.vencimentoEntrada ?? "") : undefined;
   if (input.valorEntrada !== undefined && !vencimentoEntrada) return fail("Informe o vencimento da entrada.", "vencimentoEntrada");
-  const nome = contactDisplayName(contact);
+  const nome = contact.nome;
 
   // RN-CR-07 antes de criar: uma série sobre outra faria a soma do cliente dobrar.
   const existentes = state.tasks.filter((t) => t.listId === CR.listId && effectiveLifecycleOfTask(state, t.id) === "ativo" && clienteDe(state, t)?.id === contact.id);
@@ -1867,7 +1902,7 @@ export function createReceivableSeries(state: DataState, actingMemberId: Id, inp
     }
     state.links.push({ id: nextId("lnk"), fromType: "task", fromId: r.value.id, toType: "contact", toId: contact.id, role: CR.linkRole, createdBy: memberActor(actingMemberId), createdAt: now() });
     // Seção 10 — o dono do cliente no CRM vê e comenta as contas dos seus clientes, e só elas.
-    state.grants.push({ id: nextId("gr"), workspaceId: state.workspace.id, subjectKind: "member", subjectId: contact.ownerMemberId, action: "comentar", resourceType: "task", resourceId: r.value.id, scope: "subarvore", origin: "concessaoDireta", grantedBy: actingMemberId, grantedAt: now() });
+    state.grants.push({ id: nextId("gr"), workspaceId: state.workspace.id, subjectKind: "member", subjectId: contact.proprietarioId, action: "comentar", resourceType: "task", resourceId: r.value.id, scope: "subarvore", origin: "concessaoDireta", grantedBy: actingMemberId, grantedAt: now() });
     return undefined;
   };
   if (input.valorEntrada !== undefined && vencimentoEntrada) {

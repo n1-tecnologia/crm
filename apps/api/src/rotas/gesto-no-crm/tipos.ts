@@ -16,6 +16,7 @@
 import type { DataState } from "@n1/dominio";
 import type { Canal } from "@n1/dominio/crm/canais";
 import type { Funil } from "@n1/dominio/crm/funis";
+import type { ClientesLidos } from "@n1/dominio/operations/financeiro";
 import type { NomeDeOperacao } from "@n1/dominio/operations/registro";
 import type { PoolClient } from "pg";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
@@ -56,6 +57,8 @@ export interface LidoDoCrm {
   /** id → nome de exibição, para as âncoras da IA. */
   readonly nomes?: Readonly<Record<string, string>>;
   readonly contatosACriar?: readonly ContatoACriar[];
+  /** O cliente da série de Contas a receber, lido de `plataforma.contatos`/`empresas` (Fase 15, 3.4.10). */
+  readonly clientes?: ClientesLidos;
 }
 
 /**

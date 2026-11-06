@@ -168,6 +168,17 @@ function conditionsHold(state: DataState, task: Task, version: AutomationVersion
 }
 
 /**
+ * O Contato do cliente da conta, com nome e dono, enquanto o modelo antigo existe (Fase 15, 3.4.10).
+ * `clienteDe` devolve só a referência; o nome e o dono de um cliente que só mora em `plataforma.contatos`
+ * não chegam ao motor, e as Automações dizem "o cliente" e não mencionam o dono dele (deviation aberta
+ * no ledger, a resolver quando o servidor injetar esses dados como faz com `cnpjPorEmpresa`).
+ */
+function contatoDoCliente(state: DataState, task: Task) {
+  const ref = clienteDe(state, task);
+  return ref?.tipo === "contact" ? state.contacts.find((c) => c.id === ref.id) : undefined;
+}
+
+/**
  * Substitui `{{campo:<id>}}` (um Campo de pessoa vira o nome), `{{cnpjEmpresa}}`,
  * `{{titulo}}`, `{{vencimento}}`, `{{cliente}}` e `{{donoDoCliente}}` no
  * texto de um Comentário.
@@ -178,7 +189,7 @@ function conditionsHold(state: DataState, task: Task, version: AutomationVersion
  * é o mesmo de antes: nenhum número inventado sobrevive à falta de configuração.
  */
 function fillTemplate(state: DataState, task: Task, template: string, cnpjPorEmpresa?: Readonly<Record<string, string>>): string {
-  const cliente = clienteDe(state, task);
+  const cliente = contatoDoCliente(state, task);
   const donoDoCliente = cliente ? state.members.find((m) => m.id === cliente.ownerMemberId)?.displayName : undefined;
   // Sem dono conhecido, a saudação sai inteira ("{{donoDoCliente}}, …"), em vez
   // de virar "—, o cliente está…" — achado da simulação no ws_n1 (2026-09-28).
@@ -577,7 +588,7 @@ function runAction(
         if (typeof pessoa === "string" && pessoa) mentions.push({ type: "member", id: pessoa });
       }
       if (spec.mentionClientOwner) {
-        const cliente = clienteDe(state, task);
+        const cliente = contatoDoCliente(state, task);
         if (cliente) mentions.push({ type: "member", id: cliente.ownerMemberId });
       }
       // O autor é a Automação (em nome do dono): uma Menção ao próprio dono é lida como aviso, não como monólogo.

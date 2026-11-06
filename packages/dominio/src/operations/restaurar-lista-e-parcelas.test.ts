@@ -5,15 +5,22 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
+import { contactDisplayName } from "../derive";
 import { buildSeed } from "../seed";
 import type { DataState } from "../state";
 import type { List } from "../types";
-import { CP, CR, createReceivableSeries, type ReceivableSeriesInput } from "./financeiro";
+import { CP, CR, createReceivableSeries, type ClientesLidos, type ReceivableSeriesInput } from "./financeiro";
 import { restoreList } from "./tasks";
 import { restoreContainer } from "./structure";
 
 const CONVIDADO = "mem_beatriz";
 const LISTA_NA_LIXEIRA = "lst_piloto";
+
+/** Os clientes como o servidor os leria das tabelas: aqui, os Contatos do seed (Fase 15, 3.4.10). */
+const clientesDoSeed = (s: DataState): ClientesLidos => ({
+  contatos: s.contacts.map((c) => ({ id: c.id, nome: contactDisplayName(c), estado: c.lifecycle, proprietarioId: c.ownerMemberId })),
+  empresas: [],
+});
 
 let state: DataState;
 beforeEach(() => {
@@ -75,21 +82,21 @@ describe("createReceivableSeries (1.2.3)", () => {
   it("o Convidado não cria a série: ok: false e nenhuma Tarefa nasce na Lista de Contas a receber", () => {
     const antes = structuredClone(state);
     const total = tarefasDaListaDeContasAReceber();
-    const r = createReceivableSeries(state, CONVIDADO, entrada());
+    const r = createReceivableSeries(state, CONVIDADO, entrada(), clientesDoSeed(state));
     expect(r.ok).toBe(false);
     expect(tarefasDaListaDeContasAReceber()).toBe(total);
     expect(state).toStrictEqual(antes);
   });
 
   it("a conferência de quem chama vem antes da validação da entrada: entrada inválida não vaza mensagem de validação ao Convidado", () => {
-    const r = createReceivableSeries(state, CONVIDADO, entrada({ contactId: "cnt_que_nao_existe" }));
+    const r = createReceivableSeries(state, CONVIDADO, entrada({ contactId: "cnt_que_nao_existe" }), clientesDoSeed(state));
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/Convidado/);
   });
 
   it("um Membro do Financeiro do seed cria a série com ok: true", () => {
     const total = tarefasDaListaDeContasAReceber();
-    const r = createReceivableSeries(state, CP.financeiroId, entrada());
+    const r = createReceivableSeries(state, CP.financeiroId, entrada(), clientesDoSeed(state));
     expect(r.ok).toBe(true);
     expect(tarefasDaListaDeContasAReceber()).toBeGreaterThan(total);
   });

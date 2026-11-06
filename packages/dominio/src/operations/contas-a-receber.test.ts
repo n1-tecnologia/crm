@@ -5,12 +5,18 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../seed";
-import { containerAdminRefusal, effectiveListConfig, memberReachesContainer, memberSeesTask } from "../derive";
+import { containerAdminRefusal, contactDisplayName, effectiveListConfig, memberReachesContainer, memberSeesTask } from "../derive";
 import type { DataState } from "../state";
 import type { Task } from "../types";
 import { runScheduledAutomations } from "./automations";
-import { CP, CR, clienteDe, contaSemCliente, createReceivableSeries, parcelaDuplicada } from "./financeiro";
+import { CP, CR, clienteDe, contaSemCliente, createReceivableSeries, parcelaDuplicada, type ClientesLidos } from "./financeiro";
 import { addTaskComment, changeTaskStatus, createTask, setTaskFieldValue, statusOptionRefusal, trashTask } from "./tasks";
+
+/** Os clientes como o servidor os leria das tabelas: aqui, os Contatos do seed (Fase 15, 3.4.10). */
+const clientesDoSeed = (s: DataState): ClientesLidos => ({
+  contatos: s.contacts.map((c) => ({ id: c.id, nome: contactDisplayName(c), estado: c.lifecycle, proprietarioId: c.ownerMemberId })),
+  empresas: [],
+});
 
 let state: DataState;
 beforeEach(() => {
@@ -115,7 +121,7 @@ describe("Processo Contas a receber", () => {
   it("R1: a série nasce de uma vez, vinculada ao cliente, com o Financeiro; RN-CR-07 recusa a segunda série; recusa no meio desfaz tudo", () => {
     const ativas = () => state.tasks.filter((t) => t.lifecycle === "ativo").length;
     const antes = ativas();
-    const r = createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_2", centroDeCusto: "Tria Tech", empresa: "Tria Company", valorEntrada: 5000, vencimentoEntrada: em(1), valorParcela: 2500, parcelas: 3, primeiroVencimento: "2026-01-31" });
+    const r = createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_2", centroDeCusto: "Tria Tech", empresa: "Tria Company", valorEntrada: 5000, vencimentoEntrada: em(1), valorParcela: 2500, parcelas: 3, primeiroVencimento: "2026-01-31" }, clientesDoSeed(state));
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.value.map((t) => t.title)).toEqual(["Entrada – Marina Alves", "1ª Parcela – Marina Alves", "2ª Parcela – Marina Alves", "3ª Parcela – Marina Alves"]);
@@ -124,11 +130,11 @@ describe("Processo Contas a receber", () => {
     expect(campo(r.value[2] ?? r.value[0]!, F.numeroParcela)).toBe(2);
     expect(memberSeesTask(state, "mem_rafael", r.value[0]?.id ?? "")).toBe(true); // Marina é do Rafael
     expect(contaSemCliente(state, r.value[1]!)).toBe(false);
-    const dobrada = createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_2", centroDeCusto: "Tria Tech", valorParcela: 1, parcelas: 1, primeiroVencimento: em(5) });
+    const dobrada = createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_2", centroDeCusto: "Tria Tech", valorParcela: 1, parcelas: 1, primeiroVencimento: em(5) }, clientesDoSeed(state));
     expect(dobrada.ok).toBe(false);
     if (!dobrada.ok) expect(dobrada.error).toMatch(/já tem a 1ª Parcela nesta Lista\. Descarte a série antiga/);
     // Sem alcance à Lista: nada nasce.
-    const semAlcance = createReceivableSeries(state, "mem_julia", { contactId: "cnt_1", centroDeCusto: "Tria Tech", valorParcela: 1, parcelas: 2, primeiroVencimento: em(5) });
+    const semAlcance = createReceivableSeries(state, "mem_julia", { contactId: "cnt_1", centroDeCusto: "Tria Tech", valorParcela: 1, parcelas: 2, primeiroVencimento: em(5) }, clientesDoSeed(state));
     expect(semAlcance.ok).toBe(false);
     expect(ativas()).toBe(antes + 4);
     // Recusa no meio (o limite de Tarefas por Lista cai na 2ª conta): a 1ª já
@@ -136,14 +142,14 @@ describe("Processo Contas a receber", () => {
     const linksAntes = state.links.length;
     const grantsAntes = state.grants.length;
     Object.assign(state.workspace, { limits: { ...state.workspace.limits, tasksPerList: state.tasks.filter((t) => t.listId === CR.listId && t.lifecycle === "ativo" && !t.parentTaskId).length + 1 } });
-    const meio = createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_3", centroDeCusto: "Tria Tech", valorParcela: 10, parcelas: 2, primeiroVencimento: em(5) });
+    const meio = createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_3", centroDeCusto: "Tria Tech", valorParcela: 10, parcelas: 2, primeiroVencimento: em(5) }, clientesDoSeed(state));
     expect(meio.ok).toBe(false);
     if (!meio.ok) expect(meio.error).toMatch(/Limite/);
     expect(ativas()).toBe(antes + 4);
     expect(state.links.length).toBe(linksAntes);
     expect(state.grants.length).toBe(grantsAntes);
     // Data inválida não vira fevereiro do ano seguinte.
-    expect(createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_4", centroDeCusto: "Tria Tech", valorParcela: 10, parcelas: 1, primeiroVencimento: "2026-13-45" }).ok).toBe(false);
+    expect(createReceivableSeries(state, CP.financeiroId, { contactId: "cnt_4", centroDeCusto: "Tria Tech", valorParcela: 10, parcelas: 1, primeiroVencimento: "2026-13-45" }, clientesDoSeed(state)).ok).toBe(false);
   });
 
   it("RN-CR-02 e RN-CR-07 como avisos: conta criada à mão sem cliente; parcela repetida", () => {

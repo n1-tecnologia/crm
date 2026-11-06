@@ -32,6 +32,11 @@ const CONGELADOS = [
   "derive-resumo.ts",
   "derive.ts",
   "operations/ai.ts",
+  // 15-19: `clienteDe` passou a devolver só a referência, e o nome e o dono do cliente que as Automações
+  // de Contas a receber usam ({{cliente}}, {{donoDoCliente}}) ainda saem de `state.contacts`. Não é leitura
+  // nova: mudou de arquivo (antes morava em `clienteDe`, em financeiro.ts). Sai da lista quando o servidor
+  // injetar esses dados como já injeta `cnpjPorEmpresa` (deviation aberta em .planning/WINDOWS.md).
+  "operations/automations.ts",
   "operations/canais.ts",
   "operations/contacts.ts",
   "operations/conversations.ts",
