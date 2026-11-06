@@ -265,6 +265,17 @@ export interface CrmNovoDoEspaco {
   readonly identificadoresDeEmpresa: ReadonlySet<string>;
   readonly idsDeNegocio: ReadonlySet<string>;
   readonly idsDeCanal: ReadonlySet<string>;
+  /**
+   * Os Canais de `plataforma.canais` que as Conversas e os Canais antigos citam (id → tipo). Valem como DESTINO
+   * da Conversa sem serem inseridos nem alterados (15-44, H-01): desde a Fase 8 o Canal só nasce na tabela nova, e
+   * o chat antigo o enxergava por projeção com o mesmo id.
+   */
+  readonly canaisExistentes: ReadonlyMap<string, string>;
+  /**
+   * Os Contatos de `plataforma.contatos` que as Conversas, os Negócios e os Contatos antigos citam. Valem como
+   * DESTINO da Conversa e do Negócio sem serem inseridos nem alterados (15-44, H-01).
+   */
+  readonly contatosExistentes: ReadonlySet<string>;
   /** `lower(btrim(nome))` dos Canais ativos (`canais_nome_uq`). */
   readonly nomesDeCanalAtivo: ReadonlySet<string>;
   /** `tipo` + `identificador_externo` dos Canais ativos (`canais_conta_uq`). */
@@ -302,6 +313,8 @@ export const CRM_NOVO_VAZIO: CrmNovoDoEspaco = {
   identificadoresDeEmpresa: new Set(),
   idsDeNegocio: new Set(),
   idsDeCanal: new Set(),
+  canaisExistentes: new Map(),
+  contatosExistentes: new Set(),
   nomesDeCanalAtivo: new Set(),
   contasDeCanalAtivo: new Set(),
   idsDeConversa: new Set(),
@@ -832,7 +845,8 @@ function mapearNegocios(
 
     // O dono: a Empresa, se tem; senão o Contato principal; senão o primeiro Contato que migrou.
     const empresaId = texto(antigo.companyId);
-    const ligacoes = lista(antigo.contactLinks).filter((l) => texto(l.contactId) !== null && contatosMigrados.has(l.contactId!));
+    // O Contato é destino válido se migra agora ou se já está em `plataforma.contatos` (15-44, H-01).
+    const ligacoes = lista(antigo.contactLinks).filter((l) => texto(l.contactId) !== null && (contatosMigrados.has(l.contactId!) || ctx.crmNovo.contatosExistentes.has(l.contactId!)));
     let donoEmpresa: string | null = null;
     let donoContato: string | null = null;
     if (empresaId !== null) {
@@ -1013,11 +1027,13 @@ function mapearConversas(
       relatar(ctx, "id-ja-existe", "conversations", antiga.id);
       return;
     }
-    if (contatoId === null || !contatosMigrados.has(contatoId)) {
+    // Contato e Canal são destino válido se migram agora OU se já estão nas tabelas novas (15-44, H-01): o id
+    // preservado faz a Conversa achar o mesmo registro, e o existente não é inserido nem alterado.
+    if (contatoId === null || !(contatosMigrados.has(contatoId) || ctx.crmNovo.contatosExistentes.has(contatoId))) {
       relatar(ctx, "conversa-sem-contato", "conversations", antiga.id);
       return;
     }
-    if (canalId === null || !canaisMigrados.has(canalId)) {
+    if (canalId === null || !(canaisMigrados.has(canalId) || ctx.crmNovo.canaisExistentes.has(canalId))) {
       relatar(ctx, "conversa-sem-canal-migrado", "conversations", antiga.id);
       return;
     }

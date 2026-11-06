@@ -29,11 +29,28 @@ export async function lerCrmNovoDoEspaco(cliente: PoolClient, espaco: string, an
     .flatMap((l) => ((l.dados as { messages?: Array<{ id?: unknown }> }).messages ?? []).map((m) => m.id))
     .filter((id): id is string => typeof id === "string");
 
+  // Os ids que as Conversas e os Negócios antigos CITAM como destino (15-44, H-01): o Contato e o Canal de uma
+  // Conversa, e os Contatos de um Negócio. Se já estão nas tabelas novas, valem como destino sem serem reinseridos.
+  const conversas = antigas.filter((l) => l.colecao === "conversations").map((l) => l.dados as { contactId?: unknown; channelId?: unknown });
+  const negocios = antigas.filter((l) => l.colecao === "deals").map((l) => l.dados as { contactLinks?: Array<{ contactId?: unknown }> });
+  const textos = (valores: readonly unknown[]): string[] => [...new Set(valores.filter((v): v is string => typeof v === "string" && v.trim() !== "").map((v) => v.trim()))];
+  const contatosCitados = textos([
+    ...idsDe("contacts"),
+    ...conversas.map((c) => c.contactId),
+    ...negocios.flatMap((n) => (Array.isArray(n.contactLinks) ? n.contactLinks : []).map((l) => l?.contactId)),
+  ]);
+  const canaisCitados = textos([...idsDe("channels"), ...conversas.map((c) => c.channelId)]);
+
   const idsExistentes = async (tabela: "contatos" | "empresas" | "negocios" | "canais" | "conversas" | "mensagens", candidatos: string[]): Promise<Set<string>> => {
     if (candidatos.length === 0) return new Set();
     const resultado = await cliente.query<{ id: string }>(`select id from plataforma.${tabela} where workspace_id = $1 and id = any($2::text[])`, [espaco, candidatos]);
     return new Set(resultado.rows.map((l) => l.id));
   };
+
+  const canaisDaTabela =
+    canaisCitados.length === 0
+      ? []
+      : (await cliente.query<{ id: string; tipo: string }>("select id, tipo from plataforma.canais where workspace_id = $1 and id = any($2::text[])", [espaco, canaisCitados])).rows;
 
   const identificadoresDeContato = await cliente.query<{ tipo: string; valor: string }>(
     "select tipo, valor from plataforma.contato_identificadores where workspace_id = $1",
@@ -59,6 +76,8 @@ export async function lerCrmNovoDoEspaco(cliente: PoolClient, espaco: string, an
     identificadoresDeEmpresa: new Set(identificadoresDeEmpresa.rows.map((i) => chaveDeIdentificadorDeEmpresa(i.tipo, i.valor))),
     idsDeNegocio: await idsExistentes("negocios", idsDe("deals")),
     idsDeCanal: await idsExistentes("canais", idsDe("channels")),
+    canaisExistentes: new Map(canaisDaTabela.map((l) => [l.id, l.tipo])),
+    contatosExistentes: await idsExistentes("contatos", contatosCitados),
     // `lower(btrim(nome))`, como o índice `canais_nome_uq`.
     nomesDeCanalAtivo: new Set(canaisAtivos.rows.map((l) => l.nome.trim().toLowerCase())),
     contasDeCanalAtivo: new Set(canaisAtivos.rows.map((l) => chaveDeContaDeCanal(l.tipo, l.identificador_externo))),
