@@ -1,8 +1,8 @@
 /**
  * Massa mínima para testar o que ainda manda Mensagem pelo modelo antigo de Conversa (Grupo, Flow e
  * Automação, F14-D-05) sem o CRM antigo semeado (15-42, 3.5.4): o Canal e o Contato vêm do CRM novo,
- * na forma em que o servidor os leria das tabelas (`CrmDasFerramentas`), e só a Conversa mora em
- * `state.conversations`. Nada aqui toca as coleções do CRM antigo do estado: é o que deixa o
+ * na forma em que o servidor os leria das tabelas (`CrmDasFerramentas`), e só a Conversa mora no estado
+ * (Grupo e Flow). Nada aqui toca as coleções do CRM antigo do estado: é o que deixa o
  * `DataState` encolher no 15-43 sem este arquivo quebrar o `tsc`.
  */
 

@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../seed";
 import { containerAdminRefusal, effectiveListConfig, memberReachesContainer, memberSeesTask } from "../derive";
 import type { DataState } from "../state";
-import type { Contact, Task } from "../types";
+import type { Task } from "../types";
 import { runScheduledAutomations } from "./automations";
 import { CP, CR, clienteDe, contaSemCliente, createReceivableSeries, parcelaDuplicada, type ClientesLidos } from "./financeiro";
 import { addTaskComment, changeTaskStatus, createTask, setTaskFieldValue, statusOptionRefusal, trashTask } from "./tasks";
@@ -36,12 +36,6 @@ const clientesDoSeed = (_s: DataState): ClientesLidos => ({
 let state: DataState;
 beforeEach(() => {
   state = buildSeed();
-  // As Automações R4/R5 ainda nomeiam o cliente e o dono pelo Contato do estado (deviation aberta do 15-19).
-  state.contacts.push(
-    ...CLIENTES_DO_DEMO.map(
-      ([id, firstName, lastName, ownerMemberId]) => ({ id, workspaceId: state.workspace.id, lifecycle: "ativo", firstName, lastName, ownerMemberId, identifiers: [] }) as unknown as Contact,
-    ),
-  );
 });
 const F = CR.fields;
 const S = CR.status;
@@ -121,16 +115,27 @@ describe("Processo Contas a receber", () => {
     expect(campo(cancelada, F.situacao)).toBe(CR.situacoes.emDia);
   });
 
+  it("R4/R5 sem o que o servidor leu dos clientes: o comentário diz \"o cliente\" e não menciona o dono (nada é lido do estado)", () => {
+    const t = conta("tsk_cr_gab_2");
+    expect(runScheduledAutomations(state, CP.financeiroId, CR.listId, hoje).ok).toBe(true);
+    expect(t.comments.at(-1)?.content).toMatch(/O cliente entrou em cobrança/);
+    const depois = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + 31);
+    expect(runScheduledAutomations(state, CP.financeiroId, CR.listId, depois).ok).toBe(true);
+    expect(t.comments.at(-1)?.mentions.map((m) => m.id) ?? []).not.toContain(CR.comercialId);
+  });
+
   it("R2/R4/R6: D+1 leva a pendente + em cobrança; D+30 menciona o dono do cliente; descartar em cobrança vira inadimplente", () => {
     const t = conta("tsk_cr_gab_2"); // venceu ontem, para receber
-    const r = runScheduledAutomations(state, CP.financeiroId, CR.listId, hoje);
+    // O nome e o dono do cliente chegam por `OpcoesDaAgenda.clientes` (o que o servidor leu de `plataforma.contatos`).
+    const opcoes = { clientes: clientesDoSeed(state) };
+    const r = runScheduledAutomations(state, CP.financeiroId, CR.listId, hoje, opcoes);
     expect(r.ok).toBe(true);
     expect(t.statusId).toBe(S.pendente);
     expect(campo(t, F.situacao)).toBe(CR.situacoes.emCobranca);
     expect(t.comments.at(-1)?.content).toMatch(/Helena Vasconcelos entrou em cobrança/);
     // R4 ainda não: só a D+30. Simulando o relógio 31 dias à frente.
     const depois = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + 31);
-    expect(runScheduledAutomations(state, CP.financeiroId, CR.listId, depois).ok).toBe(true);
+    expect(runScheduledAutomations(state, CP.financeiroId, CR.listId, depois, opcoes).ok).toBe(true);
     const aviso = t.comments.at(-1);
     expect(aviso?.content).toMatch(/há 30 dias em cobrança/);
     expect(aviso?.mentions.map((m) => m.id)).toContain(CR.comercialId);
@@ -188,7 +193,7 @@ describe("Processo Contas a receber", () => {
 });
 
 describe("Cliente da conta vindo das tabelas do CRM (Fase 15, 3.4.10, UCR-08)", () => {
-  // Um Contato que só existe em `plataforma.contatos`: o `state.contacts` do seed nem sabe dele.
+  // Um Contato que só existe em `plataforma.contatos`: o estado do seed nem sabe dele.
   const NOVO = "11111111-1111-4111-8111-111111111111";
   const clienteDaTabela = (over: Partial<{ id: string; nome: string; estado: string; proprietarioId: string }> = {}) => ({
     contatos: [{ id: NOVO, nome: "Ana Lima", estado: "ativo", proprietarioId: "mem_rafael", ...over }],
@@ -201,7 +206,7 @@ describe("Cliente da conta vindo das tabelas do CRM (Fase 15, 3.4.10, UCR-08)", 
   });
 
   it("a série nasce para um Contato que só está na tabela: o Vínculo cliente leva o id dele e o título, o nome lido", () => {
-    expect(state.contacts.some((c) => c.id === NOVO)).toBe(false);
+    expect(state.links.some((l) => l.toId === NOVO)).toBe(false);
     const r = createReceivableSeries(state, CP.financeiroId, entrada, clienteDaTabela());
     expect(r.ok, r.ok ? "" : r.error).toBe(true);
     if (!r.ok) return;
@@ -222,7 +227,7 @@ describe("Cliente da conta vindo das tabelas do CRM (Fase 15, 3.4.10, UCR-08)", 
     expect(state.tasks.length).toBe(antes);
   });
 
-  it("o Contato do `state.contacts` (modelo antigo) já não vale como cliente: só o que o servidor leu", () => {
+  it("um Contato que o servidor não leu já não vale como cliente: só o que ele leu", () => {
     const r = createReceivableSeries(state, CP.financeiroId, { ...entrada, contactId: "cnt_2" }, { contatos: [], empresas: [] });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toBe("Cliente não encontrado.");

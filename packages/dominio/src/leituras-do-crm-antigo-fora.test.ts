@@ -10,7 +10,8 @@
  * Cada caso lê o módulo (as chaves exportadas) ou o código-fonte, nunca chama o que saiu.
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import * as derive from "./derive";
@@ -93,5 +94,38 @@ describe("as derivações do CRM antigo saíram (15-42, Task 1)", () => {
     expect(ate?.getTime()).toBe(Date.parse(recebidaHa30h) + 24 * 3_600_000);
     expect(derive.responseWindowOpenUntil(conversa, naoOficial, capacidadesDoCanal)).toBeNull();
     expect(derive.responseWindowOpenUntil(conversa, undefined, capacidadesDoCanal)).toBeNull();
+  });
+});
+
+/**
+ * 15-42, Task 2 — os ramos antigos das operações saíram. Nenhum arquivo de produção do domínio lê as
+ * oito coleções (o `DataState` ainda as tem; o 15-43 as tira). O único que as monta é o construtor
+ * do CRM antigo de demonstração, que o 15-43 apaga. `conversations` fica só no Grupo e no Flow.
+ */
+describe("nenhum arquivo de produção do domínio lê o CRM antigo (15-42, Task 2)", () => {
+  const RAIZ = fileURLToPath(new URL(".", import.meta.url));
+  const arquivos = (pasta: string): string[] =>
+    readdirSync(pasta, { withFileTypes: true }).flatMap((e) => {
+      const caminho = join(pasta, e.name);
+      if (e.isDirectory()) return arquivos(caminho);
+      return e.name.endsWith(".ts") && !e.name.endsWith(".test.ts") ? [caminho] : [];
+    });
+  const producao = arquivos(RAIZ).map((c) => ({ arquivo: relative(RAIZ, c).split(sep).join("/"), texto: readFileSync(c, "utf8") }));
+
+  it("só o construtor do CRM antigo de demonstração ainda cita as coleções", () => {
+    const leem = producao.filter((f) => LE_O_CRM_ANTIGO.test(f.texto)).map((f) => f.arquivo).sort();
+    expect(leem).toEqual(["seed-crm-antigo.ts"]);
+  });
+
+  it("state.conversations só aparece no Grupo, no Flow e no que os dois usam (F14-D-05)", () => {
+    // members.ts passa as Conversas de Grupo ao Sucessor (D-15-08) e ia/agentes.ts lê as do Agente; seed-* e
+    // o construtor do CRM antigo montam o estado.
+    const DE_GRUPO_E_FLOW = ["derive-ferramentas.ts", "operations/members.ts", "operations/ia/agentes.ts", "seed-crm-antigo.ts", "seed-ferramentas.ts"];
+    const leem = producao
+      .filter((f) => /\b(state|data|estado|s|d)\.conversations\b/.test(f.texto))
+      .map((f) => f.arquivo)
+      .filter((a) => !a.startsWith("operations/ferramentas/") && !DE_GRUPO_E_FLOW.includes(a))
+      .sort();
+    expect(leem).toEqual([]);
   });
 });

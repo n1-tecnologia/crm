@@ -11,9 +11,12 @@ import { buildSeed } from "../../seed";
 import { semearCrmAntigo } from "../../seed-crm-antigo";
 import type { DataState } from "../../state";
 import type { Conversation, Id, Member } from "../../types";
+import { canalDeTeste, contatoDeTeste, crmDeTeste } from "../../testes/crm-de-teste";
 import { ehNomeDeOperacao, OPERACOES } from "../registro";
+import { enviarLinkDeConvite } from "../ferramentas";
 import {
   assignConversation,
+  receiveMessage,
   reopenConversation,
   resolveConversation,
   sendMessage,
@@ -132,5 +135,62 @@ describe("composições internas das Ferramentas sobre o CRM antigo semeado", ()
     expect(Object.values(OPERACOES)).not.toContain(sendMessageSemConferencia);
     expect(Object.values(OPERACOES)).not.toContain(sendMessage);
     expect(Object.values(OPERACOES)).not.toContain(startConversation);
+  });
+});
+
+/**
+ * 15-42, WINDOWS #37 — o Contato das composições antigas vem do `crm` (o que o servidor leu de
+ * `plataforma.contatos`), do mesmo lugar do Canal. Nenhum destes casos tem Contato nem Canal no
+ * estado: o link de convite do "Novo Grupo" não diz mais "Contato não encontrado".
+ */
+describe("o Contato só existe no CRM novo (crm.contatos)", () => {
+  const canal = canalDeTeste({ id: "chn_so_no_crm" });
+  const marina = contatoDeTeste("cnt_so_no_crm", "Marina Alves", "+5511988880001");
+  const crm = crmDeTeste([canal], [marina]);
+
+  it("startConversation abre a Conversa 1:1 do Contato, com o nome dele no título", () => {
+    const r = startConversation(state, MEMBRO, canal.id, marina.id, crm);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value).toMatchObject({ channelId: canal.id, contactId: marina.id, title: "Marina Alves", lifecycle: "ativo" });
+    expect(state.conversations.some((c) => c.id === r.value.id)).toBe(true);
+    // Repetir devolve a mesma Conversa aberta, sem criar outra.
+    const outra = startConversation(state, MEMBRO, canal.id, marina.id, crm);
+    expect(outra.ok && outra.value.id).toBe(r.value.id);
+  });
+
+  it("startConversation recusa o Contato que o servidor não leu, o que não está ativo e o sem WhatsApp", () => {
+    expect(startConversation(state, MEMBRO, canal.id, "cnt_inexistente", crm)).toMatchObject({ ok: false, error: "Contato não encontrado." });
+    const naLixeira = crmDeTeste([canal], [contatoDeTeste("cnt_lixo", "Na lixeira", "+5511988880002", "na_lixeira")]);
+    expect(startConversation(state, MEMBRO, canal.id, "cnt_lixo", naLixeira)).toMatchObject({ ok: false });
+    const semZap = crmDeTeste([canal], [contatoDeTeste("cnt_sem_zap", "Sem WhatsApp", null)]);
+    const r = startConversation(state, MEMBRO, canal.id, "cnt_sem_zap", semZap);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/não tem Identificador que o Canal/);
+    expect(startConversation(state, MEMBRO, canal.id, marina.id)).toMatchObject({ ok: false });
+  });
+
+  it("receiveMessage põe a Mensagem recebida do Contato na Conversa aberta, criando-a se não houver", () => {
+    const r = receiveMessage(state, canal.id, marina.id, "Oi, quero saber do grupo", crm);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.messages.at(-1)).toMatchObject({ direction: "recebida", content: "Oi, quero saber do grupo" });
+    expect(r.value.contactId).toBe(marina.id);
+    const segunda = receiveMessage(state, canal.id, marina.id, "Mais uma", crm);
+    expect(segunda.ok && segunda.value.id).toBe(r.value.id);
+    expect(receiveMessage(state, canal.id, "cnt_inexistente", "x", crm)).toMatchObject({ ok: false, error: "Contato não encontrado." });
+  });
+
+  it("enviarLinkDeConvite manda o link ao Contato que só está no CRM novo (o Novo Grupo)", () => {
+    const grupo = state.grupos.find((g) => g.linkDeConvite && g.lifecycle === "ativo");
+    if (!grupo) throw new Error("o seed precisa de um Grupo com link de convite");
+    grupo.canalId = canal.id;
+    const r = enviarLinkDeConvite(state, MEMBRO, grupo.id, [marina.id], crm);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.falhas).toEqual([]);
+    expect(r.value.enviados).toEqual([marina.id]);
+    const conversa = state.conversations.find((c) => c.contactId === marina.id && c.channelId === canal.id);
+    expect(conversa?.messages.at(-1)?.content).toContain(grupo.linkDeConvite?.endereco ?? "sem link");
   });
 });
