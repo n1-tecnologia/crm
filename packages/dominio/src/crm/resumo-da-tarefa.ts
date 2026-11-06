@@ -1,6 +1,7 @@
 /**
  * O resumo do cartão da Tarefa conversacional (Fase 14, 3.3.3): Contato, Canal,
- * última Mensagem e Negócio de uma Tarefa, lidos das tabelas novas em lote.
+ * última Mensagem e Negócio de uma Tarefa, lidos das tabelas novas em lote; e, desde
+ * a Fase 15 (D-15-05), a Empresa, a qualificação do Contato e o estado da Conversa.
  *
  * Só tipos e o teto do lote: a tela monta os `VinculoParaResumo` com
  * `vinculosDoCrmDaTarefa` (os ids que a Tarefa guarda em `state.links`) e a api
@@ -15,6 +16,7 @@
  */
 
 import type { Canal } from "./canais";
+import type { EstadoDaConversa, SituacaoDaConversa } from "./conversas";
 
 /** Quantas Tarefas cabem numa chamada de resumo: a Lista maior que isso vai em lotes. */
 export const RESUMO_MAXIMO = 200;
@@ -40,4 +42,19 @@ export interface ResumoDaTarefaConversacional {
     readonly criadoEm: string;
   } | null;
   readonly negocio: { readonly id: string; readonly titulo: string; readonly etapa: string | null } | null;
+  /**
+   * A Empresa do Contato (D-15-05): entre os vínculos vigentes (`fim is null`) com Empresa fora da lixeira,
+   * o `admin` mais antigo; sem admin, o mais antigo. A 007 não tem vínculo principal, então a ordem é
+   * `admin desc, criado_em, id` e vale sempre a mesma. `null` sem Contato ou sem Empresa.
+   */
+  readonly empresa: { readonly id: string; readonly nome: string } | null;
+  /** O id do item de Catálogo (`kind = "qualificacao"`) guardado no Contato; a tela resolve o rótulo. `null` sem Contato ou sem valor. */
+  readonly qualificacaoId: string | null;
+  /** O estado da Conversa vinculada (D-15-05); `null` sem Conversa, ou se ela não existe neste Espaço ou está na lixeira. */
+  readonly conversa: {
+    readonly situacao: SituacaoDaConversa;
+    readonly estado: EstadoDaConversa;
+    /** Quem atende: a tela resolve o nome em `members` ou `agents`. */
+    readonly atribuido: { readonly tipo: "membro" | "agente"; readonly id: string } | null;
+  } | null;
 }

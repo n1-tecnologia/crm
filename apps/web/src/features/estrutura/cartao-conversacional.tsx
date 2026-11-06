@@ -12,13 +12,13 @@
  * Fase 14 (3.3.3): quem é o Contato, qual é o Canal e qual foi a última Mensagem
  * vêm do RESUMO da api (`useResumoDaTarefa`), não do estado em memória. O cartão
  * não cai para a leitura antiga quando o resumo vem vazio (D-01): sem Contato
- * no resumo ele diz "Contato indisponível". A Empresa e a temperatura do Contato
- * saíram do cartão: o resumo não as carrega, e ler `state.contacts` por id seria
- * a ponte que a D-01 proíbe. O Responsável e o Tipo seguem do estado (a Tarefa os
- * guarda).
+ * no resumo ele diz "Contato indisponível". A Empresa voltou ao cartão na Fase 15
+ * (D-15-05), vinda do resumo (`plataforma.empresas`). A temperatura do Contato não
+ * volta (D-15-06): o modelo novo não tem a coluna. O Responsável e o Tipo seguem
+ * do estado (a Tarefa os guarda).
  */
 
-import { CalendarClock, MessageSquare, User as UserIcon } from "lucide-react";
+import { Building2, CalendarClock, MessageSquare, User as UserIcon } from "lucide-react";
 import { vinculosDoCrmDaTarefa } from "@n1/dominio/derive-conversacional";
 import type { ResumoDaTarefaConversacional } from "@n1/dominio/crm/resumo-da-tarefa";
 import type { DataState } from "@n1/dominio/state";
@@ -108,6 +108,7 @@ export function CartaoConversacional({
   const resumo = useResumoDaTarefa(task.id);
   const canal = resumo?.canal ?? null;
   const ultimaMensagem = resumo?.ultimaMensagem ?? null;
+  const empresa = resumo?.empresa ?? null;
   return (
     <CartaoDeQuadro
       onOpen={onOpen}
@@ -122,6 +123,15 @@ export function CartaoConversacional({
         )
       }
       titulo={resumo === undefined ? <Esqueleto largura="9rem" altura="1.1rem" /> : (resumo.contato?.nome ?? "Contato indisponível")}
+      subtitulo={
+        empresa ? (
+          <span className="inline-flex max-w-full items-center gap-1.5">
+            <Icone de={Building2} tamanho="xs" />
+            <span className="sr-only">Empresa: </span>
+            <span className="min-w-0 truncate">{empresa.nome}</span>
+          </span>
+        ) : undefined
+      }
       pilulas={
         <>
           {/* O quê: a Tarefa, com o ícone do Tipo (a call, numa Reunião). */}

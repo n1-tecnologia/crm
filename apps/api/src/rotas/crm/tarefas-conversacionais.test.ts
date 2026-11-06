@@ -142,6 +142,9 @@ const itemDeResumo: ResumoDaTarefaConversacional = {
   canal: { id: "k1", nome: "Comercial", tipo: "whatsapp", provedor: "whatsapp-cloud", conexao: "conectada" },
   ultimaMensagem: { trecho: "Oi", direcao: "recebida", criadoEm: "2026-03-01T10:00:00.000Z" },
   negocio: null,
+  empresa: null,
+  qualificacaoId: null,
+  conversa: null,
 };
 
 describe("POST /tarefas-conversacionais/resumo — serviço falso, sem banco", () => {

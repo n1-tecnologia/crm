@@ -78,6 +78,9 @@ function itemDoResumo(taskId: string): ResumoDaTarefaConversacional {
     canal: null,
     ultimaMensagem: null,
     negocio: null,
+    empresa: null,
+    qualificacaoId: null,
+    conversa: null,
   };
 }
 
@@ -173,7 +176,7 @@ describe("useResumoDasTarefas — o lote", () => {
     estado.atual = { tasks: [tarefa("solta")], links: [] } as unknown as DataState;
     const { result } = renderHook(() => useResumoDasTarefas([tarefa("solta")]), { wrapper: envoltorio });
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(result.current.porTarefa.get("solta")).toEqual({ taskId: "solta", contato: null, canal: null, ultimaMensagem: null, negocio: null });
+    expect(result.current.porTarefa.get("solta")).toEqual({ taskId: "solta", contato: null, canal: null, ultimaMensagem: null, negocio: null, empresa: null, qualificacaoId: null, conversa: null });
     expect(result.current.carregando).toBe(false);
   });
 });

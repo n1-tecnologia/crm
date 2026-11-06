@@ -50,7 +50,7 @@ export interface ResultadoDoResumo {
 }
 
 function resumoVazio(taskId: string): ResumoDaTarefaConversacional {
-  return { taskId, contato: null, canal: null, ultimaMensagem: null, negocio: null };
+  return { taskId, contato: null, canal: null, ultimaMensagem: null, negocio: null, empresa: null, qualificacaoId: null, conversa: null };
 }
 
 function temVinculo(v: VinculoParaResumo): boolean {

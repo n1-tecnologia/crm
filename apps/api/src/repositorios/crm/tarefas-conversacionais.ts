@@ -7,7 +7,9 @@
  * por Tarefa: o Contato (seguindo `mesclado_em_id` até o sobrevivente), a Conversa
  * vinculada e o Canal dela, a última Mensagem que não é `interna` entre as
  * Conversas `ativas` do Contato EFETIVO no Canal da Tarefa, e o Negócio com a
- * Etapa. A ordem de saída é a de entrada.
+ * Etapa. Desde a Fase 15 (D-15-05) soma a Empresa do Contato (vínculo vigente `admin` mais
+ * antigo; a 007 não tem vínculo principal), o id da qualificação e a situação, o estado e o
+ * Atribuído da Conversa, na mesma consulta. A ordem de saída é a de entrada.
  *
  * Regras que valem aqui (as mesmas dos outros repositórios do CRM):
  *   - todo `join` leva `workspace_id = $1` (T-14-32): um id de outro Espaço não
@@ -22,6 +24,8 @@ import type { Pool, PoolClient } from "pg";
 import { nomeDeExibicaoDoContato } from "@n1/dominio/crm/contatos";
 import type { ResumoDaTarefaConversacional, VinculoParaResumo } from "@n1/dominio/crm/resumo-da-tarefa";
 import type { Canal } from "@n1/dominio/crm/canais";
+import type { EstadoDaConversa, SituacaoDaConversa } from "@n1/dominio/crm/conversas";
+import { nomeDeExibicaoDaEmpresa } from "@n1/dominio/crm/empresas";
 
 /** Quantos caracteres da última Mensagem o cartão mostra. */
 const TAMANHO_DO_TRECHO = 140;
@@ -43,6 +47,14 @@ interface LinhaDoResumo {
   readonly negocio_id: string | null;
   readonly negocio_titulo: string | null;
   readonly etapa_nome: string | null;
+  readonly empresa_id: string | null;
+  readonly empresa_nome_fantasia: string | null;
+  readonly empresa_razao_social: string | null;
+  readonly qualificacao: string | null;
+  readonly conversa_situacao: SituacaoDaConversa | null;
+  readonly conversa_estado: EstadoDaConversa | null;
+  readonly conversa_atribuido_tipo: "membro" | "agente" | null;
+  readonly conversa_atribuido_id: string | null;
 }
 
 const linhaParaResumo = (linha: LinhaDoResumo): ResumoDaTarefaConversacional => ({
@@ -69,6 +81,22 @@ const linhaParaResumo = (linha: LinhaDoResumo): ResumoDaTarefaConversacional => 
       ? null
       : { trecho: linha.trecho ?? "", direcao: linha.direcao, criadoEm: linha.mensagem_em.toISOString() },
   negocio: linha.negocio_id === null ? null : { id: linha.negocio_id, titulo: linha.negocio_titulo!, etapa: linha.etapa_nome },
+  empresa:
+    linha.empresa_id === null
+      ? null
+      : { id: linha.empresa_id, nome: nomeDeExibicaoDaEmpresa({ nomeFantasia: linha.empresa_nome_fantasia, razaoSocial: linha.empresa_razao_social }) },
+  qualificacaoId: linha.qualificacao,
+  conversa:
+    linha.conversa_situacao === null || linha.conversa_estado === null
+      ? null
+      : {
+          situacao: linha.conversa_situacao,
+          estado: linha.conversa_estado,
+          atribuido:
+            linha.conversa_atribuido_tipo === null || linha.conversa_atribuido_id === null
+              ? null
+              : { tipo: linha.conversa_atribuido_tipo, id: linha.conversa_atribuido_id },
+        },
 });
 
 /**
@@ -92,7 +120,11 @@ export async function resumoDasTarefas(
               order by i.criado_em, i.id limit 1) as identificador_principal,
             cn.id as canal_id, cn.nome as canal_nome, cn.tipo as canal_tipo, cn.provedor as canal_provedor, cn.conexao as canal_conexao,
             ult.trecho, ult.direcao, ult.criado_em as mensagem_em,
-            n.id as negocio_id, n.titulo as negocio_titulo, et.nome as etapa_nome
+            n.id as negocio_id, n.titulo as negocio_titulo, et.nome as etapa_nome,
+            emp.id as empresa_id, emp.nome_fantasia as empresa_nome_fantasia, emp.razao_social as empresa_razao_social,
+            ef.qualificacao,
+            cv.situacao as conversa_situacao, cv.estado as conversa_estado,
+            cv.atribuido_tipo as conversa_atribuido_tipo, cv.atribuido_id as conversa_atribuido_id
        from unnest($2::text[], $3::text[], $4::text[], $5::text[])
               with ordinality as e(task_id, contato_id, conversa_id, negocio_id, ordem)
        left join plataforma.contatos c
@@ -119,6 +151,17 @@ export async function resumoDasTarefas(
           order by m.criado_em desc, m.seq desc
           limit 1
        ) ult on true
+       left join lateral (
+         select em.id, em.nome_fantasia, em.razao_social
+           from plataforma.contato_empresa ce
+           join plataforma.empresas em
+             on em.workspace_id = ce.workspace_id and em.id = ce.empresa_id and em.estado <> 'na_lixeira'
+          where ce.workspace_id = $1
+            and ce.contato_id = ef.id
+            and ce.fim is null
+          order by ce.admin desc, ce.criado_em, ce.id
+          limit 1
+       ) emp on true
        left join plataforma.negocios n
               on n.workspace_id = $1 and n.id = e.negocio_id and n.estado <> 'na_lixeira'
        left join plataforma.etapas et

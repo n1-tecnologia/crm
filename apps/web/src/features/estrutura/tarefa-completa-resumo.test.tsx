@@ -49,6 +49,9 @@ const RESUMO: ResumoDaTarefaConversacional = {
   canal: { id: "ck_novo_1", nome: "Atendimento do Resumo", tipo: "whatsapp", provedor: "whatsapp-nao-oficial", conexao: "conectada" },
   ultimaMensagem: null,
   negocio: { id: "ng_novo_5", titulo: "Proposta do Resumo", etapa: "Etapa do Resumo" },
+  empresa: null,
+  qualificacaoId: null,
+  conversa: null,
 };
 
 let state: DataState;
@@ -115,7 +118,7 @@ describe("a ficha da Tarefa conversacional lê o resumo da api", () => {
   });
 
   it("(c) sem Contato no resumo, o aviso aparece e nada do Contato do seed é mostrado (D-01)", () => {
-    resumo.atual = { taskId: TAREFA, contato: null, canal: null, ultimaMensagem: null, negocio: null } satisfies ResumoDaTarefaConversacional;
+    resumo.atual = { taskId: TAREFA, contato: null, canal: null, ultimaMensagem: null, negocio: null, empresa: null, qualificacaoId: null, conversa: null } satisfies ResumoDaTarefaConversacional;
     montar();
     expect(screen.getByText(/Tarefa conversacional sem Contato/)).toBeTruthy();
     expect(screen.queryByText("CRM")).toBeNull();

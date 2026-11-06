@@ -828,29 +828,47 @@ describeComBanco("ServicoDeTarefasConversacionais — Postgres local", () => {
       expect(valor(await servico.resumo(membro(e.ws), []))).toEqual([]);
     });
 
-    /** Uma Empresa direto na tabela (o repositório de Empresas não é o assunto aqui). `criadoEm` fixa a ordem. */
-    async function empresa(ws: string, nomeFantasia: string, estado = "ativo"): Promise<string> {
-      return (await pool().query<{ id: string }>(
-        "insert into plataforma.empresas (workspace_id, nome_fantasia, estado, proprietario_id, criado_por) values ($1, $2, $3, $4, $4) returning id",
-        [ws, nomeFantasia, estado, SESSAO],
-      )).rows[0]!.id;
+    /**
+     * Uma Empresa direto na tabela, já com o seu Contato admin vigente: a 007 exige um por Empresa, checado no commit
+     * (`empresas_exige_admin`), então Empresa e vínculo nascem na mesma transação.
+     */
+    async function empresa(ws: string, nomeFantasia: string, adminId: string, criadoEm = "2026-01-01T10:00:00Z"): Promise<string> {
+      const cliente = await pool().connect();
+      try {
+        await cliente.query("begin");
+        const { id } = (await cliente.query<{ id: string }>(
+          "insert into plataforma.empresas (workspace_id, nome_fantasia, proprietario_id, criado_por) values ($1, $2, $3, $3) returning id",
+          [ws, nomeFantasia, SESSAO],
+        )).rows[0]!;
+        await cliente.query(
+          "insert into plataforma.contato_empresa (workspace_id, contato_id, empresa_id, admin, criado_por, criado_em) values ($1, $2, $3, true, $4, $5)",
+          [ws, adminId, id, SESSAO, criadoEm],
+        );
+        await cliente.query("commit");
+        return id;
+      } catch (erro) {
+        await cliente.query("rollback");
+        throw erro;
+      } finally {
+        cliente.release();
+      }
     }
 
-    async function vincular(ws: string, contatoId: string, empresaId: string, opcoes: { admin?: boolean; criadoEm: string; fim?: string }): Promise<void> {
+    async function vincular(ws: string, contatoId: string, empresaId: string, opcoes: { criadoEm: string }): Promise<void> {
       await pool().query(
-        `insert into plataforma.contato_empresa (workspace_id, contato_id, empresa_id, admin, fim, criado_por, criado_em)
-         values ($1, $2, $3, $4, $5, $6, $7)`,
-        [ws, contatoId, empresaId, opcoes.admin ?? false, opcoes.fim ?? null, SESSAO, opcoes.criadoEm],
+        `insert into plataforma.contato_empresa (workspace_id, contato_id, empresa_id, admin, criado_por, criado_em)
+         values ($1, $2, $3, false, $4, $5)`,
+        [ws, contatoId, empresaId, SESSAO, opcoes.criadoEm],
       );
     }
 
     it("Empresa (D-15-05): o vínculo vigente admin mais antigo; Empresa na lixeira passa a vez; sem vínculo vigente, null", async () => {
       const e = await espaco("resumoempresa");
       const x = await contato(e.ws, "Marina");
-      const e1 = await empresa(e.ws, "Acme");
-      const e2 = await empresa(e.ws, "Beta");
-      await vincular(e.ws, x, e2, { admin: false, criadoEm: "2026-01-01T10:00:00Z" });
-      await vincular(e.ws, x, e1, { admin: true, criadoEm: "2026-02-01T10:00:00Z" });
+      const z = await contato(e.ws, "Admin da Beta");
+      const e1 = await empresa(e.ws, "Acme", x, "2026-02-01T10:00:00Z");
+      const e2 = await empresa(e.ws, "Beta", z);
+      await vincular(e.ws, x, e2, { criadoEm: "2026-01-01T10:00:00Z" });
       const vinculo = { taskId: "t", contatoId: x };
 
       expect(valor(await servico.resumo(membro(e.ws), [vinculo]))[0]!.empresa).toEqual({ id: e1, nome: "Acme" });
@@ -866,8 +884,9 @@ describeComBanco("ServicoDeTarefasConversacionais — Postgres local", () => {
       const e = await espaco("resumoempresaordem");
       const x = await contato(e.ws, "Marina");
       const semEmpresa = await contato(e.ws, "João");
-      const nova = await empresa(e.ws, "Nova");
-      const velha = await empresa(e.ws, "Velha");
+      const z = await contato(e.ws, "Admin das duas");
+      const nova = await empresa(e.ws, "Nova", z);
+      const velha = await empresa(e.ws, "Velha", z);
       await vincular(e.ws, x, nova, { criadoEm: "2026-05-01T10:00:00Z" });
       await vincular(e.ws, x, velha, { criadoEm: "2026-03-01T10:00:00Z" });
       const vinculos = [{ taskId: "a", contatoId: x }, { taskId: "b", contatoId: semEmpresa }];
@@ -883,8 +902,7 @@ describeComBanco("ServicoDeTarefasConversacionais — Postgres local", () => {
       const e = await espaco("resumoempresameu");
       const outro = await espaco("resumoempresaoutro");
       const dele = await contato(outro.ws, "Segredo do Outro");
-      const empresaDele = await empresa(outro.ws, "Empresa Secreta");
-      await vincular(outro.ws, dele, empresaDele, { admin: true, criadoEm: "2026-01-01T10:00:00Z" });
+      await empresa(outro.ws, "Empresa Secreta", dele);
 
       const itens = valor(await servico.resumo(membro(e.ws), [{ taskId: "t", contatoId: dele }]));
       expect(itens[0]!.empresa).toBeNull();
@@ -895,10 +913,8 @@ describeComBanco("ServicoDeTarefasConversacionais — Postgres local", () => {
       const e = await espaco("resumoempresamesclado");
       const b = await contato(e.ws, "Marina Duarte");
       const a = await contato(e.ws, "Marina D.");
-      const empresaDeB = await empresa(e.ws, "Acme");
-      const empresaDeA = await empresa(e.ws, "Beta");
-      await vincular(e.ws, b, empresaDeB, { criadoEm: "2026-01-01T10:00:00Z" });
-      await vincular(e.ws, a, empresaDeA, { criadoEm: "2026-01-01T10:00:00Z" });
+      const empresaDeB = await empresa(e.ws, "Acme", b);
+      await empresa(e.ws, "Beta", a);
       await poolDoDono().query("update plataforma.contatos set estado = 'mesclado', mesclado_em_id = $3, mesclado_em = now() where workspace_id = $1 and id = $2", [e.ws, a, b]);
 
       expect(valor(await servico.resumo(membro(e.ws), [{ taskId: "t", contatoId: a }]))[0]!.empresa).toEqual({ id: empresaDeB, nome: "Acme" });

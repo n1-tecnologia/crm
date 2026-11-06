@@ -97,6 +97,9 @@ const RESUMO: ResumoDaTarefaConversacional = {
   canal: { id: "ck_novo_1", nome: "Atendimento do Resumo", tipo: "whatsapp", provedor: "whatsapp-nao-oficial", conexao: "conectada" },
   ultimaMensagem: null,
   negocio: { id: "ng_novo_5", titulo: "Proposta do Resumo", etapa: "Etapa do Resumo" },
+  empresa: null,
+  qualificacaoId: null,
+  conversa: null,
 };
 
 let state: DataState;
