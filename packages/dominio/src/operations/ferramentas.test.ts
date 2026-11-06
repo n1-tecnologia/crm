@@ -6,6 +6,7 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../seed";
+import { semearCrmAntigo } from "../seed-crm-antigo";
 import type { DataState } from "../state";
 import type { Canal } from "../crm/canais";
 import { PROVEDOR_PADRAO_DO_TIPO, type TipoComProvedor } from "../provedores-de-canal";
@@ -83,7 +84,11 @@ import {
 
 let state: DataState;
 beforeEach(() => {
-  state = buildSeed();
+  // Os testes de Grupo, Comunidade e Flow ainda leem o Canal, os Contatos e as Conversas do CRM antigo do estado (o
+  // `crm` que o servidor monta é derivado deles, e os Envios de Flow moram nas Conversas). O seed não os cria mais
+  // (15-31): `semearCrmAntigo` os devolve. DÍVIDA ABERTA (.planning/WINDOWS.md): este arquivo sobrevive ao 15-43, que
+  // apaga `semearCrmAntigo`, então ele precisa montar um Canal, Contatos e Conversas próprios antes disso.
+  state = semearCrmAntigo(buildSeed());
 });
 
 

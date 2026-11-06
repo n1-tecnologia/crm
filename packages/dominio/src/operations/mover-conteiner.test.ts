@@ -31,6 +31,28 @@ beforeEach(() => {
   state = buildSeed();
 });
 
+/**
+ * A Pasta "Meus negócios", estrutura fixa (A9). O seed não a cria mais (15-31, D-15-13): os casos de proteção a montam
+ * no próprio arranjo, no lugar em que ela ficava (Comercial, ordem 3). A proteção sai no 15-41.
+ */
+const montarMeusNegocios = (): void => {
+  state.folders.push({
+    id: MEUS_NEGOCIOS_ID,
+    workspaceId: state.workspace.id,
+    createdBy: { kind: "member", id: JULIA },
+    createdAt: "2026-01-01T00:00:00.000Z",
+    lifecycle: "ativo",
+    name: "Meus negócios",
+    description: "Uma Lista por Funil de Negócios, com as Etapas como Status e cada Negócio como Tarefa.",
+    order: 3,
+    isPrivate: false,
+    modes: {},
+    blocks: {},
+    parentType: "space",
+    parentId: "spc_com",
+  });
+};
+
 const pasta = (nome: string, parentId = "spc_com", parentType: "space" | "folder" = "space", por = THIAGO, extra: { isPrivate?: boolean } = {}): string => {
   const r = createFolder(state, por, { name: nome, parentType, parentId, ...extra });
   if (!r.ok) throw new Error(r.error);
@@ -580,6 +602,7 @@ describe("reorderContainers — paridade entre o recorte do Membro e o Espaço i
 
 describe("reorderContainers — o resultado não traz id que o ator não alcança (10-REVIEW MEDIUM-03)", () => {
   it("devolve só os irmãos que o Administrador alcança, e o diff recortado também não traz o privado", () => {
+    montarMeusNegocios();
     const P1 = pasta("Visível 1");
     const PRIVADA = pasta("Privada da diretoria", "spc_com", "space", THIAGO, { isPrivate: true });
     const P2 = pasta("Visível 2");
@@ -934,6 +957,7 @@ describe("moveContainer — bloqueio, colisão de nome, Formulário e estrutura 
     });
 
     it("recusa mover a Pasta Meus negócios", () => {
+      montarMeusNegocios();
       const r = moveContainer(state, THIAGO, "folder", MEUS_NEGOCIOS_ID, { parentType: "space", parentId: "spc_ops" });
       expect(r.ok).toBe(false);
       if (r.ok) return;
@@ -942,6 +966,7 @@ describe("moveContainer — bloqueio, colisão de nome, Formulário e estrutura 
     });
 
     it("recusa qualquer destino dentro de Meus negócios, para Lista e para Pasta", () => {
+      montarMeusNegocios();
       const lista1 = moveContainer(state, THIAGO, "list", ALFA, { parentType: "folder", parentId: MEUS_NEGOCIOS_ID });
       expect(lista1.ok).toBe(false);
       if (lista1.ok) return;
@@ -1121,6 +1146,7 @@ describe("recusaDeMover × moveContainer — paridade (L1, Pitfall 6)", () => {
   });
 
   it("para as estruturas fixas e para um Membro que não administra, todo destino é recusado nos dois lados", () => {
+    montarMeusNegocios();
     expect(divergencias(THIAGO, "list", CP.listId)).toMatchObject({ achados: [], aceitos: 0 });
     expect(divergencias(THIAGO, "folder", MEUS_NEGOCIOS_ID)).toMatchObject({ achados: [], aceitos: 0 });
     expect(divergencias(JULIA, "list", "lst_propostas")).toMatchObject({ achados: [], aceitos: 0 });

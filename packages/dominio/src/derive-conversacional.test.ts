@@ -24,7 +24,7 @@ import { createList } from "./operations/structure";
 import { createTask, moveTask } from "./operations/tasks";
 import { buildSeed } from "./seed";
 import type { DataState } from "./state";
-import type { Link, List, Task } from "./types";
+import type { Contact, Deal, Link, List, Task } from "./types";
 
 describe("marcadoresDeCanal (D-13: o separador marca a troca de Canal)", () => {
   const itens = [{ channelId: "a" }, { channelId: "a" }, { channelId: "b" }, { channelId: "a" }];
@@ -107,7 +107,23 @@ describe("leituras por id (3.3.2)", () => {
 
   beforeEach(() => {
     limpo = buildSeed();
-    // A Lista conversacional que o teste usa nasce com um Canal do seed e depois o seed é esvaziado.
+    // A Lista conversacional que o teste usa nasce com um Canal e depois o estado é esvaziado. O seed não cria
+    // mais Canal (15-31): este é montado aqui, só com o que `createList` confere.
+    limpo.channels.push({
+      id: "chn_wpp",
+      workspaceId: "ws_n1",
+      createdBy: { kind: "member", id: THIAGO },
+      createdAt: "2026-01-01T00:00:00.000Z",
+      lifecycle: "ativo",
+      name: "Comercial SP",
+      channelType: "whatsapp",
+      externalId: "+5511987654321",
+      connection: "conectada",
+      configuredByMemberId: THIAGO,
+      defaultQueueId: "fila_com",
+      messageTemplates: [],
+      groupsEnabled: false,
+    });
     const nasceu = createList(limpo, THIAGO, {
       name: "Suporte por id",
       parentType: "space",
@@ -211,9 +227,17 @@ describe("leituras por id (3.3.2)", () => {
 
   it("moveTask só olha o Vínculo de Contato: o Contato principal do Negócio, que o estado antigo ainda alcança, não basta", () => {
     // Estado com o CRM antigo de volta: a Tarefa só aponta para um Negócio que tem Contato principal.
-    const antigo = buildSeed();
-    limpo.contacts = antigo.contacts;
-    limpo.deals = antigo.deals;
+    // O seed não cria mais Contato nem Negócio (15-31): montamos só o par que o teste usa.
+    limpo.contacts = [{ id: "cnt_35", workspaceId: "ws_n1", lifecycle: "ativo", firstName: "Iallas", lastName: "" } as unknown as Contact];
+    limpo.deals = [
+      {
+        id: "deal_sdr_1",
+        workspaceId: "ws_n1",
+        lifecycle: "ativo",
+        situation: "aberto",
+        contactLinks: [{ id: "dcl_ref_1", contactId: "cnt_35", role: "influenciador", principal: true }],
+      } as unknown as Deal,
+    ];
     const operacional = limpo.lists.find((l) => l.id === "lst_ativacao");
     if (!operacional) throw new Error("o seed precisa de lst_ativacao");
     const nasceu = createTask(limpo, THIAGO, { listId: operacional.id, title: "Só com Negócio" });

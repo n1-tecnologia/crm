@@ -10,6 +10,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildProductSeed } from "../seed-produto";
 import { buildSeed } from "../seed";
+import { semearCrmAntigo } from "../seed-crm-antigo";
 import type { ConversaNaLista } from "../crm/conversas";
 import {
   checklistProgress,
@@ -172,6 +173,16 @@ beforeEach(() => {
   state = buildSeed();
 });
 
+/**
+ * O estado como o seed o entregava antes do 15-31 (D-15-13): com o CRM antigo de demonstração. Só os blocos de
+ * operação antiga do CRM o usam; o 15-32 apaga esses blocos junto com as operações.
+ */
+function estadoComCrmAntigo(): DataState {
+  const estado = buildSeed();
+  semearCrmAntigo(estado);
+  return estado;
+}
+
 describe("Mapeamento de status (RN-LIS-06, B40)", () => {
   it("rejeita mover para Lista com outro Conjunto sem mapear, nomeando o status em uso", () => {
     const task = state.tasks.find((t) => t.id === "tsk_seed_1");
@@ -294,6 +305,10 @@ describe("Conversão de Item de Checklist (B48)", () => {
 });
 
 describe("Requisito de Etapa (B59, RN-FUN-07)", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   /** O Negócio do SDR que está em Qualificado e ainda não tem Contato. */
   const semContato = () => {
     const deal = negocioEm(state, "fnl_sdr", "sdr_qualificado");
@@ -355,6 +370,10 @@ describe("Requisito de Etapa (B59, RN-FUN-07)", () => {
 });
 
 describe("Regras de encerramento do Funil (RN-NEG-09)", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   /** Um Negócio aberto no Closer, que é o Funil onde `ganho` é a Venda. */
   const noCloser = () => {
     const deal = state.deals.find(
@@ -398,6 +417,10 @@ describe("Regras de encerramento do Funil (RN-NEG-09)", () => {
 });
 
 describe("Reabertura de Negócio (B9, RN-NEG-10, RN-NEG-11)", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   it("recusa reabrir um Negócio ganho para quem não é Administrador", () => {
     const won = state.deals.find((d) => d.situation === "ganho");
     if (!won) throw new Error("seed sem Negócio ganho");
@@ -448,6 +471,10 @@ describe("Reabertura de Negócio (B9, RN-NEG-10, RN-NEG-11)", () => {
 });
 
 describe("Remoção de Etapa com remapeamento (RN-FUN-10)", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   it("exige Etapa de destino", () => {
     const result = removeStage(state, JULIA, "fnl_sdr", "sdr_conexao", "sdr_conexao");
 
@@ -473,6 +500,10 @@ describe("Remoção de Etapa com remapeamento (RN-FUN-10)", () => {
 });
 
 describe("Mensageria (RN-CXE-09, RN-CXE-19, RN-CXE-33, B66)", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   it("envia, esvazia o Rascunho do autor e mantém a autoria de quem enviou", () => {
     const conversation = state.conversations.find((c) => c.id === "cnv_1");
     expect(conversation?.drafts).toHaveLength(1);
@@ -550,6 +581,10 @@ describe("Mensageria (RN-CXE-09, RN-CXE-19, RN-CXE-33, B66)", () => {
 });
 
 describe("Adoção de Rascunho de IA no envio (documento 14, 7.10)", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   it("adotar e enviar esvazia o Rascunho do Agente e registra a adoção", () => {
     const conversation = state.conversations.find((c) => c.id === "cnv_1");
     const rascunho = conversation?.drafts[0];
@@ -602,6 +637,10 @@ describe("Adoção de Rascunho de IA no envio (documento 14, 7.10)", () => {
 });
 
 describe("Descarte de Rascunho de IA (B66)", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   const conversaComRascunho = () => {
     const conversation = state.conversations.find((c) => c.drafts.length > 0);
     if (!conversation) throw new Error("seed sem Conversa com Rascunho");
@@ -648,6 +687,10 @@ describe("Descarte de Rascunho de IA (B66)", () => {
 });
 
 describe("Identificador de Contato (RN-CON-11)", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   it("rejeita duplicata nomeando o detentor e oferecendo as duas saídas", () => {
     const existing = state.contacts.find((c) => c.id === "cnt_2");
     const email = existing?.identifiers.find((i) => i.type === "email")?.displayValue;
@@ -664,6 +707,10 @@ describe("Identificador de Contato (RN-CON-11)", () => {
 });
 
 describe("Suspeita de Duplicidade (RN-CON-10, DO-CON-14)", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   it("acusa o par com Nome idêntico e mesmo número em Tipos distintos, nomeando cada motivo", () => {
     const suspeitas = duplicateSuspicions(state);
 
@@ -725,6 +772,10 @@ describe("Suspeita de Duplicidade (RN-CON-10, DO-CON-14)", () => {
 });
 
 describe("Mesclagem de Contatos (B14)", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   it("recusa mesclar um Contato já mesclado", () => {
     const result = mergeContacts(state, THIAGO, "cnt_2", "cnt_32");
 
@@ -1103,6 +1154,10 @@ function crmDoSeed(estado: DataState): LeituraDoCrmParaPainel {
 }
 
 describe("Leitura de Widget e permissões do visualizador (RN-PAI-15, RN-PAI-13, B38a)", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   const CONVIDADA = "mem_beatriz";
 
   const widgetDe = (panelId: string, widgetId: string) => {
@@ -1341,6 +1396,10 @@ describe("Criação de contêiner (A3, A3.4, RN-ESP-03, B38a)", () => {
 });
 
 describe("Funil SDR → Closer (DO-FUN-11, B59, A7)", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   const noEstagio = (stageId: string) => negocioEm(state, "fnl_sdr", stageId);
 
   it("recusa sair de Conexão sem o fato da conexão gravado, nomeando o campo", () => {
@@ -1460,16 +1519,17 @@ describe("Funil SDR → Closer (DO-FUN-11, B59, A7)", () => {
 describe("Volumes do seed (PRD II.7)", () => {
   it("entrega os volumes mínimos que a fase 6 precisa exercitar", () => {
     expect(state.spaces).toHaveLength(4); // + Gestão (Financeiro)
-    expect(state.folders).toHaveLength(8); // + Financeiro + Meus negócios (espelho comercial)
-    expect(state.lists).toHaveLength(15); // 7 na estrutura + 1 na lixeira + Contas a pagar + Contas a receber + 4 Listas de Funil + Pós-venda
+    expect(state.folders).toHaveLength(7); // + Financeiro; a Pasta Meus negócios saiu com o CRM antigo (15-31)
+    expect(state.lists).toHaveLength(11); // 7 na estrutura + 1 na lixeira + Contas a pagar + Contas a receber + Pós-venda; as 4 Listas de Funil saíram (15-31)
     expect(state.tasks.length).toBeGreaterThanOrEqual(55);
-    expect(state.contacts.length).toBeGreaterThanOrEqual(30);
-    expect(state.companies).toHaveLength(12);
-    expect(state.deals).toHaveLength(19); // 4 abertos do Iallas (um por Funil) + 6 desqualificados no SDR + 9 encerrados no Closer
-    expect(state.funnels).toHaveLength(4); // SDR, Closer, Validação Full Face Avançado e Venda direta
-    expect(state.channels).toHaveLength(5); // + LinkedIn
+    // O CRM de demonstração é o `bootstrap:crm-demo`: o seed não cria mais Contato, Empresa, Funil, Negócio, Canal nem Conversa (15-31).
+    expect(state.contacts).toHaveLength(0);
+    expect(state.companies).toHaveLength(0);
+    expect(state.deals).toHaveLength(0);
+    expect(state.funnels).toHaveLength(0);
+    expect(state.channels).toHaveLength(0);
     expect(state.queues).toHaveLength(2);
-    expect(state.conversations).toHaveLength(23); // + as duas Conversas de grupo (Ferramentas) + a conversa de WhatsApp do Negócio de referência
+    expect(state.conversations).toHaveLength(2); // só as duas Conversas de grupo (Ferramentas, F14-D-05)
     expect(state.agents).toHaveLength(7); // + Enriquecedor, Classificador de conexão, Agente de lançamento e o Assistente de onboarding em rascunho
     expect(state.skills).toHaveLength(9); // + as três do processo SDR
     expect(state.automations).toHaveLength(27); // + Boas-vindas nos Grupos (Ferramentas) · 3 herdadas + o rascunho de Lista (Avisar ao criar Tarefa) + 7 do SDR + 3 do Closer + 6 de Contas a pagar (A2–A6, A9; A7 saiu no 1.5) + 6 de Contas a receber (R2, R2b, R3–R6)
@@ -1477,12 +1537,10 @@ describe("Volumes do seed (PRD II.7)", () => {
     expect(state.documents).toHaveLength(16); // + De-para ClickUp → Omie
     expect(state.chatSessions).toHaveLength(6); // + a Sessão solta do Thiago, fora de pasta
     expect(state.panels).toHaveLength(4);
-    expect(state.activity.length).toBeGreaterThanOrEqual(200);
+    expect(state.activity.length).toBeGreaterThanOrEqual(150);
   });
 
   it("inclui os casos limítrofes que os fluxos exigem", () => {
-    expect(state.contacts.some((c) => c.lifecycle === "mesclado")).toBe(true);
-    expect(state.contacts.some((c) => !c.firstName && !c.lastName)).toBe(true);
     // 2 soltas + 3 na Lista da lixeira, e as 3 não são iguais entre si: duas
     // foram na cascata, uma já estava lá antes.
     const naLixeira = state.tasks.filter((t) => t.lifecycle === "naLixeira");
@@ -1490,18 +1548,30 @@ describe("Volumes do seed (PRD II.7)", () => {
     const lista = state.lists.find((l) => l.id === "lst_piloto");
     expect(naLixeira.filter((t) => t.trashedAt === lista?.trashedAt)).toHaveLength(2);
     expect(state.tasks.some((t) => t.lifecycle === "arquivado")).toBe(true);
-    expect(state.channels.some((c) => c.connection === "desconectada")).toBe(true);
-    expect(state.deals.filter((d) => d.situation === "ganho").length).toBeGreaterThanOrEqual(4);
-    const perdidos = state.deals.filter((d) => d.situation === "perdido");
+    expect(state.members.some((m) => m.state === "removido")).toBe(true);
+    expect(state.agents.some((a) => a.lifecycle === "ativo" && a.createdBy.kind === "system")).toBe(true);
+  });
+
+  // Os casos limítrofes do CRM (Contato mesclado e sem nome, Canal desconectado, Negócios ganhos e perdidos com
+  // Motivo) moram no demo; `semearCrmAntigo` os reconstrói para os testes de código que sai.
+  it("o CRM antigo reconstruído traz os casos limítrofes do CRM", () => {
+    const antigo = estadoComCrmAntigo();
+    expect(antigo.contacts.some((c) => c.lifecycle === "mesclado")).toBe(true);
+    expect(antigo.contacts.some((c) => !c.firstName && !c.lastName)).toBe(true);
+    expect(antigo.channels.some((c) => c.connection === "desconectada")).toBe(true);
+    expect(antigo.deals.filter((d) => d.situation === "ganho").length).toBeGreaterThanOrEqual(4);
+    const perdidos = antigo.deals.filter((d) => d.situation === "perdido");
     expect(perdidos.length).toBeGreaterThanOrEqual(4);
     // RN-NEG: perder exige Motivo; um Negócio perdido sem Motivo é perda de informação.
     expect(perdidos.every((d) => d.lossReasonId !== undefined)).toBe(true);
-    expect(state.members.some((m) => m.state === "removido")).toBe(true);
-    expect(state.agents.some((a) => a.lifecycle === "ativo" && a.createdBy.kind === "system")).toBe(true);
   });
 });
 
 describe("Restauração de cópia de Contato mesclado (RN-CON-15)", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   it("cria um registro NOVO e não reativa o absorvido", () => {
     const [survivor, absorbed] = state.contacts.filter((c) => c.lifecycle === "ativo");
     if (!survivor || !absorbed) throw new Error("seed sem dois Contatos ativos");
@@ -1535,6 +1605,10 @@ describe("Restauração de cópia de Contato mesclado (RN-CON-15)", () => {
 });
 
 describe("Mover Conversa para outro Contato (RN-CXE-11)", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   it("recusa quando o destino já tem Conversa não resolvida no mesmo Canal", () => {
     const open = state.conversations.filter((c) => c.lifecycle === "ativo" && c.state !== "resolvida");
     const pair = open.find((a) =>
@@ -1743,6 +1817,10 @@ describe("Ato de governança sobre Recurso privado (B38b)", () => {
 });
 
 describe("Importação de Contatos (documento 10, 12.1; RN-CON-20)", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   it("nunca cria duplicata: rejeita a colisão quando o ator escolheu rejeitar", () => {
     const existing = state.contacts.find((c) => c.identifiers.length > 0);
     const identifier = existing?.identifiers[0];
@@ -1899,6 +1977,10 @@ describe("Convite de Membro (RN-ET-06, RN-ET-11, RN-ET-23, RN-ET-24)", () => {
 });
 
 describe("Migração de Negócios entre Funis (RN-FUN-12, RN-FUN-13, RN-FUN-15)", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   const twoFunnels = () => {
     const from = state.funnels.find((f) => state.deals.some((d) => d.funnelId === f.id));
     const to = state.funnels.find((f) => f.id !== from?.id && f.lifecycle === "ativo");
@@ -1957,6 +2039,10 @@ describe("Migração de Negócios entre Funis (RN-FUN-12, RN-FUN-13, RN-FUN-15)"
 });
 
 describe("Criação de registro de CRM", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   const CONVIDADA = "mem_beatriz";
 
   it("recusa Contato sem nome e sem Identificador — ele não seria ninguém", () => {
@@ -2076,6 +2162,10 @@ describe("Criação de registro de CRM", () => {
 });
 
 describe("Limites, autorização e valor na criação de CRM", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   const CONVIDADA = "mem_beatriz";
 
   it("recusa o Contato que passaria do Limite imposto, como a importação recusa", () => {
@@ -2157,6 +2247,10 @@ describe("Limites, autorização e valor na criação de CRM", () => {
 });
 
 describe("Abrir atendimento e vincular à Empresa", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   it("abre a Conversa que o Contato novo ainda não tinha, e devolve a mesma na segunda chamada", () => {
     const criado = createContact(state, JULIA, {
       firstName: "Carlos",
@@ -2226,6 +2320,10 @@ describe("Abrir atendimento e vincular à Empresa", () => {
 });
 
 describe("Leitura de Widget: dimensões comerciais, moeda e Filtro fixo", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   const ler = (widget: Parameters<typeof widgetReading>[1]) =>
     widgetReading(state, widget, THIAGO, new Date(), crmDoSeed(state));
 
@@ -2320,6 +2418,10 @@ describe("Leitura de Widget: dimensões comerciais, moeda e Filtro fixo", () => 
 });
 
 describe("Qualificação e Temperatura do Contato", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   const contatoAtivo = () => {
     const contato = state.contacts.find((c) => c.lifecycle === "ativo");
     if (!contato) throw new Error("seed sem Contato ativo");
@@ -2389,6 +2491,10 @@ describe("Qualificação e Temperatura do Contato", () => {
 });
 
 describe("Valor de Campo do Negócio (A5.1, B37)", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   const aberto = () => {
     const deal = state.deals.find(
       (d) => d.funnelId === "fnl_sdr" && d.situation === "aberto" && d.lifecycle === "ativo",
@@ -2460,6 +2566,10 @@ describe("Valor de Campo do Negócio (A5.1, B37)", () => {
 });
 
 describe("Roteiro de qualificação: os dois Critérios (documento do funil, seção 4)", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   const ETAPA = "sdr_qualificacao";
 
   it("exige os SEIS campos na saída, e os dois Critérios estão entre eles", () => {
@@ -2513,6 +2623,10 @@ describe("Roteiro de qualificação: os dois Critérios (documento do funil, se�
 });
 
 describe("Processo do Closer", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   const ETAPAS = ["clo_agendamento", "clo_call", "clo_proposta", "clo_negociacao", "clo_fechamento"];
 
   it("tem cinco Etapas, e cada uma cobra o que só existe depois da anterior", () => {
@@ -3835,34 +3949,16 @@ describe("Processo Contas a pagar (docs/07-processos/contas-a-pagar.md)", () => 
   });
 });
 
-describe("Espelho comercial na Estrutura (Comercial › Meus negócios › Funil)", () => {
-  it("uma Lista por Funil ativo, Etapas como Status, um cartão por Negócio, Quadro por padrão e Vínculo com o Negócio", () => {
-    const pasta = state.folders.find((f) => f.id === "fld_meus_negocios");
-    expect(pasta?.parentId).toBe("spc_com");
-    const funis = state.funnels.filter((f) => f.lifecycle === "ativo");
-    for (const funil of funis) {
-      const lista = state.lists.find((l) => l.parentId === "fld_meus_negocios" && l.name === funil.name);
-      expect(lista, funil.name).toBeDefined();
-      if (!lista) continue;
-      const cfg = effectiveListConfig(state, lista.id);
-      const etapas = [...funil.stages].sort((a, b) => a.order - b.order).map((s) => s.name);
-      expect(cfg?.statusSet.definitions.slice(0, etapas.length).map((d) => d.name)).toEqual(etapas);
-      expect(cfg?.statusSet.definitions.slice(-2).map((d) => d.name)).toEqual(["Ganho", "Perdido"]);
-      const negocios = state.deals.filter((d) => d.funnelId === funil.id && d.lifecycle === "ativo");
-      const cartoes = state.tasks.filter((t) => t.listId === lista.id);
-      expect(cartoes).toHaveLength(negocios.length);
-      expect(cartoes.every((t) => t.provenance?.kind === "deal" && state.links.some((l) => l.fromId === t.id && l.toType === "deal" && l.toId === t.provenance?.sourceId))).toBe(true);
-      expect(state.views.some((v) => v.listId === lista.id && v.isDefault && v.kind === "quadro")).toBe(true);
-    }
-  });
-});
-
 /**
  * Realce (movimento §4.4): o resultado nomeia o registro que a operação criou,
  * alterou ou moveu, e a tela acende só essa peça (`useRecente`). Enviar nomeia a
  * Mensagem; comentar, o Comentário — a peça nova é a que surge, não o pai.
  */
 describe("Realce — o resultado nomeia o registro tocado (OperationResult.id)", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   it("criar, alterar e mover devolvem o id da peça", () => {
     const contato = createContact(state, THIAGO, { firstName: "Ana", lastName: "Realce" });
     expect(contato.ok).toBe(true);
@@ -3947,6 +4043,10 @@ function conversaNaLista(id: string, atribuidoA: string): ConversaNaLista {
 const SEM_CONVERSAS = { itens: [], total: 0 } as const;
 
 describe("Barra global — o que espera pela pessoa (notificacoesDoMembro)", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   it("o total é a soma dos seis grupos, filtrados pelo Membro", () => {
     const now = new Date();
     const n = notificacoesDoMembro(state, "mem_thiago", now, SEM_CONVERSAS);
@@ -3997,6 +4097,10 @@ describe("Barra global — o que espera pela pessoa (notificacoesDoMembro)", () 
  * só por Vínculos; a Lista operacional segue como sempre.
  */
 describe("Modelo de Tarefa da Lista (C35)", () => {
+  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
+  beforeEach(() => {
+    state = estadoComCrmAntigo();
+  });
   it("createList nasce operacional sem dizer o modelo; conversacional é gravado e nomeado na Atividade", () => {
     const padrao = createList(state, THIAGO, { name: "Onboarding", parentType: "space", parentId: "spc_com" });
     expect(padrao.ok).toBe(true);

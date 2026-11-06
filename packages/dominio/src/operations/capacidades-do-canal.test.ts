@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { responseWindowOpenUntil } from "../derive";
 import { buildSeed } from "../seed";
+import { semearCrmAntigo } from "../seed-crm-antigo";
 import type { DataState } from "../state";
 import type { Channel, Conversation, Message } from "../types";
 import { CHANNEL_CAPABILITIES, capacidadesDoCanal, sendMessage } from "./conversations";
@@ -20,7 +21,8 @@ let state: DataState;
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(AGORA);
-  state = buildSeed();
+  // Testa código do CRM antigo que sai (15-32/15-42): o seed deixou de criar o CRM (15-31), então ele é semeado aqui.
+  state = semearCrmAntigo(buildSeed());
 });
 afterEach(() => {
   vi.useRealTimers();

@@ -8,6 +8,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { buildSeed } from "./seed";
 import { buildProductSeed } from "./seed-produto";
 import {
   METRICAS_DO_RESUMO,
@@ -32,11 +33,11 @@ const HORA = 3_600_000;
 const DIA = 24 * HORA;
 const thiago: ActorRef = { kind: "member", id: THIAGO };
 
-/** O `BASE` do seed (hoje, 09:00 UTC), lido de um registro: o Contato `cnt_31` nasce em `at(2)`. */
+/** O `BASE` do seed (hoje, 09:00 UTC), lido de um registro: o Membro `mem_thiago` entra em `at(400)`. */
 function baseDoSeed(state: DataState): number {
-  const criado = state.contacts.find((c) => c.id === "cnt_31")?.createdAt;
-  if (!criado) throw new Error("seed sem cnt_31");
-  const base = Date.parse(criado) + 2 * DIA;
+  const entrou = state.members.find((m) => m.id === THIAGO)?.joinedAt;
+  if (!entrou) throw new Error("seed sem mem_thiago");
+  const base = Date.parse(entrou) + 400 * DIA;
   expect(new Date(base).getUTCHours()).toBe(9);
   return base;
 }
@@ -480,21 +481,24 @@ describe("janelasDeConsultaDoCrm e juntarEstatisticasDoCrm (15-23)", () => {
 
 describe("recortesDeTarefas — os números das abas de Minhas Tarefas", () => {
   it("a call de hoje é agenda e semana antes da hora; depois dela, vencida", () => {
-    const state = buildProductSeed();
+    // O seed completo: as Reuniões do processo comercial moravam, no seed do produto, na Pasta "Meus negócios",
+    // que saiu com o CRM antigo (15-31) — o seed do produto não tem mais Tarefa de hoje para o Thiago.
+    const state = buildSeed();
     const base = baseDoSeed(state);
     const call = exigir(state.tasks.find((t) => t.id === "tsk_call_ref"), "tsk_call_ref");
     expect(call.dueDate?.form).toBe("instant");
+    const reunioesDeHoje = ["tsk_reuniao_1", "tsk_call_ref", "tsk_reuniao_2", "tsk_reuniao_3"];
 
     const cedo = recortesDeTarefas(state, THIAGO, new Date(base));
-    expect(cedo.minhas).toHaveLength(3);
-    expect(cedo.hoje.map((t) => t.id)).toEqual(["tsk_call_ref"]);
-    expect(cedo.semana.map((t) => t.id)).toEqual(["tsk_call_ref"]);
-    expect(cedo.vencidas).toEqual([]);
+    expect(cedo.minhas).toHaveLength(6);
+    expect(cedo.hoje.map((t) => t.id)).toEqual(reunioesDeHoje);
+    expect(cedo.semana.map((t) => t.id)).toEqual(["tsk_call_ref", "tsk_reuniao_2", "tsk_reuniao_3", "tsk_seed_3"]);
+    expect(cedo.vencidas.map((t) => t.id)).toEqual(["tsk_seed_1", "tsk_reuniao_1"]);
 
     const tarde = recortesDeTarefas(state, THIAGO, agoraDoSeed(state));
-    expect(tarde.hoje.map((t) => t.id)).toEqual(["tsk_call_ref"]);
-    expect(tarde.vencidas.map((t) => t.id)).toEqual(["tsk_call_ref"]);
-    expect(tarde.semana).toEqual([]);
+    expect(tarde.hoje.map((t) => t.id)).toEqual(reunioesDeHoje);
+    expect(tarde.vencidas.map((t) => t.id)).toEqual(["tsk_seed_1", ...reunioesDeHoje.slice(0, 1), "tsk_call_ref", "tsk_reuniao_2", "tsk_reuniao_3"]);
+    expect(tarde.semana.map((t) => t.id)).toEqual(["tsk_seed_3"]);
     // Vencimento mais próximo primeiro; sem data ao fim.
     const chaves = tarde.minhas.map((t) => String(t.dueDate?.value ?? "9999"));
     expect(chaves).toEqual([...chaves].sort());

@@ -9,7 +9,6 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { contactDisplayName } from "../derive";
 import { buildSeed } from "../seed";
 import type { DataState } from "../state";
 import { CP, createReceivableSeries, type ClientesLidos } from "./financeiro";
@@ -18,9 +17,15 @@ import { createFolder } from "./structure";
 /** A expressão do UI-SPEC S10: RN-/INV-/DO-, (B..) e (A..). */
 const CODIGO_DE_REGRA = /\((RN|INV|DO)-[A-Z]+-[0-9]+\)|\(B[0-9]+[a-z]?\)|\(A[0-9]+\.[0-9]+\)/;
 
-/** Os clientes como o servidor os leria das tabelas: aqui, os Contatos do seed (Fase 15, 3.4.10). */
-const clientesDoSeed = (s: DataState): ClientesLidos => ({
-  contatos: s.contacts.map((c) => ({ id: c.id, nome: contactDisplayName(c), estado: c.lifecycle, proprietarioId: c.ownerMemberId })),
+/**
+ * Os clientes como o servidor os leria das tabelas (Fase 15, 3.4.10). O seed não cria mais Contato (15-31): são os
+ * Contatos do demo que estes testes usam, com o nome e o dono que o demo carrega.
+ */
+const clientesDoSeed = (_s: DataState): ClientesLidos => ({
+  contatos: [
+    { id: "cnt_2", nome: "Marina Alves", estado: "ativo", proprietarioId: "mem_rafael" },
+    { id: "cnt_4", nome: "Renata Moreira", estado: "ativo", proprietarioId: "mem_julia" },
+  ],
   empresas: [],
 });
 

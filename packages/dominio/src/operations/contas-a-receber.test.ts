@@ -5,22 +5,43 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../seed";
-import { containerAdminRefusal, contactDisplayName, effectiveListConfig, memberReachesContainer, memberSeesTask } from "../derive";
+import { containerAdminRefusal, effectiveListConfig, memberReachesContainer, memberSeesTask } from "../derive";
 import type { DataState } from "../state";
-import type { Task } from "../types";
+import type { Contact, Task } from "../types";
 import { runScheduledAutomations } from "./automations";
 import { CP, CR, clienteDe, contaSemCliente, createReceivableSeries, parcelaDuplicada, type ClientesLidos } from "./financeiro";
 import { addTaskComment, changeTaskStatus, createTask, setTaskFieldValue, statusOptionRefusal, trashTask } from "./tasks";
 
-/** Os clientes como o servidor os leria das tabelas: aqui, os Contatos do seed (Fase 15, 3.4.10). */
-const clientesDoSeed = (s: DataState): ClientesLidos => ({
-  contatos: s.contacts.map((c) => ({ id: c.id, nome: contactDisplayName(c), estado: c.lifecycle, proprietarioId: c.ownerMemberId })),
+/**
+ * Os Contatos do demo que estes testes usam como cliente: o seed não cria mais Contato (15-31), mas as Contas a
+ * receber do seed guardam os ids `cnt_cr_*` por Vínculo. O nome e o dono de cada um vêm do demo.
+ */
+const CLIENTES_DO_DEMO: ReadonlyArray<readonly [id: string, nome: string, sobrenome: string, dono: string]> = [
+  ["cnt_cr_helena", "Helena", "Vasconcelos", CR.comercialId],
+  ["cnt_cr_ricardo", "Ricardo", "Tavares", CR.comercialId],
+  ["cnt_cr_camila", "Camila", "Duarte", "mem_rafael"],
+  ["cnt_cr_otavio", "Otávio", "Ramires", "mem_rafael"],
+  ["cnt_1", "Ana", "Ribeiro", "mem_julia"],
+  ["cnt_2", "Marina", "Alves", "mem_rafael"],
+  ["cnt_3", "Paulo", "Cardoso", "mem_thiago"],
+  ["cnt_4", "Renata", "Moreira", "mem_julia"],
+];
+
+/** Os clientes como o servidor os leria das tabelas (Fase 15, 3.4.10). */
+const clientesDoSeed = (_s: DataState): ClientesLidos => ({
+  contatos: CLIENTES_DO_DEMO.map(([id, nome, sobrenome, dono]) => ({ id, nome: `${nome} ${sobrenome}`, estado: "ativo" as const, proprietarioId: dono })),
   empresas: [],
 });
 
 let state: DataState;
 beforeEach(() => {
   state = buildSeed();
+  // As Automações R4/R5 ainda nomeiam o cliente e o dono pelo Contato do estado (deviation aberta do 15-19).
+  state.contacts.push(
+    ...CLIENTES_DO_DEMO.map(
+      ([id, firstName, lastName, ownerMemberId]) => ({ id, workspaceId: state.workspace.id, lifecycle: "ativo", firstName, lastName, ownerMemberId, identifiers: [] }) as unknown as Contact,
+    ),
+  );
 });
 const F = CR.fields;
 const S = CR.status;

@@ -38,6 +38,7 @@ import {
   textoDoSeparadorDeCanal,
 } from "./derive-conversacional";
 import { buildSeed } from "./seed";
+import { semearCrmAntigo } from "./seed-crm-antigo";
 import type { DataState } from "./state";
 import type { Channel, Contact, Conversation, Message } from "./types";
 
@@ -96,7 +97,8 @@ function novaConversa(id: string, canalId: string, mensagens: readonly Recebimen
 }
 
 beforeEach(() => {
-  state = buildSeed();
+  // Testa código do CRM antigo que sai (15-32/15-42): o seed deixou de criar o CRM (15-31), então ele é semeado aqui.
+  state = semearCrmAntigo(buildSeed());
   const candidato = state.contacts.find((c) => c.identifiers.some((i) => i.type === "identidadeDeWhatsApp"));
   if (!candidato) throw new Error("o seed precisa de um Contato com WhatsApp");
   // Só o WhatsApp: o e-mail e os demais Canais não o alcançam.

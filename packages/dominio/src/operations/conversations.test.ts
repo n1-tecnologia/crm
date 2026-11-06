@@ -7,6 +7,7 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../seed";
+import { semearCrmAntigo } from "../seed-crm-antigo";
 import type { DataState } from "../state";
 import type { Conversation, Id, Member } from "../types";
 import {
@@ -31,7 +32,8 @@ const CONVERSA = "cnv_1";
 
 let state: DataState;
 beforeEach(() => {
-  state = buildSeed();
+  // Testa código do CRM antigo que sai (15-32/15-42): o seed deixou de criar o CRM (15-31), então ele é semeado aqui.
+  state = semearCrmAntigo(buildSeed());
 });
 
 const membro = (id: Id): Member => {

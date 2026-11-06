@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { Canal } from "../crm/canais";
 import { canaisDaLista, canaisDaListaQueAlcancam, listaSemCanais } from "../derive-conversacional";
 import { buildSeed } from "../seed";
+import { semearCrmAntigo } from "../seed-crm-antigo";
 import type { DataState } from "../state";
 import {
   FORMA_DO_IDENTIFICADOR,
@@ -24,7 +25,8 @@ const THIAGO = "mem_thiago";
 
 let state: DataState;
 beforeEach(() => {
-  state = buildSeed();
+  // Testa código do CRM antigo que sai (15-32/15-42): o seed deixou de criar o CRM (15-31), então ele é semeado aqui.
+  state = semearCrmAntigo(buildSeed());
 });
 
 /** Um Membro ativo que NÃO administra o Espaço de Trabalho (para as recusas de B35). */

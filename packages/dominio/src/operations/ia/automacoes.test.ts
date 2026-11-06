@@ -49,8 +49,9 @@ const registro = <T extends { readonly id: string }>(lista: readonly T[], id: st
 };
 
 /** Os Funis do seed como `plataforma.funis` os devolveria ao servidor: só `id` e `estado` (15-39). */
-const funisDoSeed = (s: DataState) =>
-  s.funnels.map((f) => ({ id: f.id, estado: f.lifecycle === "naLixeira" ? ("na_lixeira" as const) : f.lifecycle }));
+/** Os quatro Funis do demo (`bootstrap:crm-demo`) como `plataforma.funis` os devolveria: o seed não cria mais Funil (15-31). */
+const funisDoSeed = (_s: DataState) =>
+  ["fnl_sdr", "fnl_closer", "fnl_validacao", "fnl_venda_direta"].map((id) => ({ id, estado: "ativo" as const }));
 
 const valor = <T>(r: { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: string }): T => {
   if (!r.ok) throw new Error(r.error);
@@ -229,6 +230,12 @@ describe("29b — a Disponibilidade da Concessão entra na validação e no inop
   it("nenhuma Automação publicada do seed nasce inoperante nem com problema por Habilidade indisponível", () => {
     for (const a of state.automations) {
       if (a.lifecycle !== "ativo") continue;
+      // A Lista espelho do Funil saiu do seed com a Pasta "Meus negócios" (15-31): a Automação que a tem por escopo
+      // fica inoperante até alguém decidir o destino dela (linha aberta em .planning/WINDOWS.md).
+      if (a.scopeType === "list" && /^lst_funil_/.test(a.scopeId)) {
+        expect(inoperante(state, a, funisDoSeed(state)), a.id).toBe("escopo eliminado (Lista)");
+        continue;
+      }
       expect(inoperante(state, a, funisDoSeed(state)), a.id).toBeUndefined();
       const vigente = a.versions.find((v) => v.state === "publicada");
       if (vigente) expect(validarAutomacao(state, a, vigente).map((p) => p.mensagem), a.id).toEqual([]);

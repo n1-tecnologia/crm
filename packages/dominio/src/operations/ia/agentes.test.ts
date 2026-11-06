@@ -36,6 +36,9 @@ const registro = <T extends { readonly id: string }>(lista: readonly T[], id: st
   return item;
 };
 
+/** O título que o servidor leria da Conversa `cnv_1` do demo (o seed não cria mais Conversa, 15-31). */
+const TITULO_DA_CONVERSA = "Bom dia! Recebi a proposta e queria entender como funciona o acompanhamento";
+
 const erroDe = <T>(r: { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: string }): string => (r.ok ? "" : r.error);
 
 const rascunho: AgentDraft = {
@@ -281,7 +284,7 @@ describe("Ensaio e Execução (DO-AGE-13, RN-AGE-21)", () => {
     const sdr = registro(state.agents, "agt_sdr");
     const execucoes = state.agentExecutions.length;
     const memoria = sdr.memory.length;
-    const r = ensaiarAgente(state, "mem_rafael", sdr.id, { texto: "Qualifique a Marina Alves", anchor: { type: "conversation", id: "cnv_1" } }, { cnv_1: registro(state.conversations, "cnv_1").title });
+    const r = ensaiarAgente(state, "mem_rafael", sdr.id, { texto: "Qualifique a Marina Alves", anchor: { type: "conversation", id: "cnv_1" } }, { cnv_1: TITULO_DA_CONVERSA });
     expect(r.ok, erroDe(r)).toBe(true);
     if (!r.ok) return;
     const e = r.value;
@@ -309,7 +312,7 @@ describe("Ensaio e Execução (DO-AGE-13, RN-AGE-21)", () => {
     expect(e.knowledgeReferences).toHaveLength(3);
     expect(e.knowledgeReferences[0]).toMatchObject({ documentId: "doc_1", collectionId: "col_comercial", collectionName: "Material comercial", fragmentIds: ["frg_1"] });
     expect(e.contextComposition.fragmentRefs).toHaveLength(3);
-    expect(e.contextComposition.anchor).toEqual({ type: "conversation", id: "cnv_1", name: registro(state.conversations, "cnv_1").title });
+    expect(e.contextComposition.anchor).toEqual({ type: "conversation", id: "cnv_1", name: TITULO_DA_CONVERSA });
     // Nada de Memória e nada aplicado: a Qualificação do Contato segue a mesma.
     expect(sdr.memory).toHaveLength(memoria);
     expect(state.activity[0]).toMatchObject({ action: "Ensaio executado", objectType: "agent", objectId: sdr.id });
@@ -335,8 +338,9 @@ describe("Ensaio e Execução (DO-AGE-13, RN-AGE-21)", () => {
   it("27a3. sem nomes o ensaio não lê mais o modelo antigo: a Âncora de Negócio, Contato ou Conversa cai no id", () => {
     const sdr = registro(state.agents, "agt_sdr");
     for (const [type, id] of [
-      ["deal", registro(state.deals, state.deals[0]?.id ?? "x").id],
-      ["contact", registro(state.contacts, state.contacts[0]?.id ?? "x").id],
+      // O seed não cria mais Negócio, Contato nem Conversa (15-31): o ensaio não os lê, então o id basta.
+      ["deal", "deal_sdr_1"],
+      ["contact", "cnt_35"],
       ["conversation", "cnv_1"],
     ] as const) {
       const r = ensaiarAgente(state, "mem_rafael", sdr.id, { texto: "Qualifique", anchor: { type, id } });

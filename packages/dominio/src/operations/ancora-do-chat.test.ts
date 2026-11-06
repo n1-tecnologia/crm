@@ -8,6 +8,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../seed";
 import type { DataState } from "../state";
+import type { Deal } from "../types";
 import { configureChatSession, createChatSession } from "./ai";
 
 const THIAGO = "mem_thiago";
@@ -17,6 +18,13 @@ let state: DataState;
 beforeEach(() => {
   state = buildSeed();
 });
+
+/** O seed não cria mais Negócio (15-31): o teste põe um no modelo antigo, que a Âncora NÃO pode ler. */
+function comNegocioAntigo(estado: DataState): Deal {
+  const negocio = { id: "deal_antigo", workspaceId: "ws_n1", title: "Negócio do modelo antigo", lifecycle: "ativo", situation: "aberto", contactLinks: [] } as unknown as Deal;
+  estado.deals.push(negocio);
+  return negocio;
+}
 
 const erroDe = (r: { readonly ok: boolean; readonly error?: string }): string => (r.ok ? "" : (r.error ?? ""));
 
@@ -35,8 +43,7 @@ describe("createChatSession — a Âncora nomeada pelo que o servidor leu (nomes
   });
 
   it("com nomes vazio recusa, mesmo que o modelo antigo tenha o registro (não lê mais state.deals)", () => {
-    const negocio = state.deals[0];
-    if (!negocio) throw new Error("seed sem Negócio");
+    const negocio = comNegocioAntigo(state);
     const sessoes = state.chatSessions.length;
     const r = createChatSession(state, THIAGO, { title: "Conversa", anchor: { type: "deal", id: negocio.id } }, {});
     expect(erroDe(r)).toBe(RECUSA);
@@ -44,8 +51,7 @@ describe("createChatSession — a Âncora nomeada pelo que o servidor leu (nomes
   });
 
   it("sem o parâmetro nomes vale {}: o Negócio do modelo antigo também não é achado", () => {
-    const negocio = state.deals[0];
-    if (!negocio) throw new Error("seed sem Negócio");
+    const negocio = comNegocioAntigo(state);
     expect(erroDe(createChatSession(state, THIAGO, { title: "Conversa", anchor: { type: "deal", id: negocio.id } }))).toBe(RECUSA);
   });
 
