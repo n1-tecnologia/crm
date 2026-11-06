@@ -226,6 +226,10 @@ describeComBanco("a fixture inteira do seed (15-28 Task 3)", () => {
     const ana = await pool().query<{ qualificacao: string; origem: string }>("select qualificacao, origem from plataforma.contatos where workspace_id = $1 and id = 'cnt_1'", [ws]);
     expect(ana.rows[0]).toEqual({ qualificacao: "cat_qual_cli", origem: "cat_org_site" });
     expect(await idsDe("canais", ws)).toEqual(["chn_insta", "chn_mail", "chn_wpp"]);
+    // O id antigo é o id novo (é o que faz o Vínculo de Tarefa e o canaisDeAtendimento acharem o registro sem reescrita).
+    expect(await idsDe("empresas", ws)).toEqual(doSeed("companies").map((l) => l.id).sort());
+    expect(await idsDe("negocios", ws)).toEqual(doSeed("deals").map((l) => l.id).sort());
+    expect(await idsDe("contatos", ws)).toEqual(doSeed("contacts").map((l) => l.id).sort());
     const conversas = await idsDe("conversas", ws);
     expect(conversas).toEqual(CONVERSAS_QUE_MIGRAM.map((l) => l.id).sort());
     const canais = await pool().query<{ id: string; conexao: string; provedor: string }>("select id, conexao, provedor from plataforma.canais where workspace_id = $1 order by id", [ws]);
