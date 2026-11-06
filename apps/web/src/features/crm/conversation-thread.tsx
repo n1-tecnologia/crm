@@ -56,8 +56,9 @@ import { useContato } from "@/dados/crm/contatos";
 import { abrirConversa, useConversa, useConversas } from "@/dados/crm/conversas";
 import { enviarMensagem, useMensagens } from "@/dados/crm/mensagens";
 import { useNegocios } from "@/dados/crm/negocios";
+import { adicionarNotaAoContato } from "@/dados/crm/notas";
 import { criarTarefaConversacional } from "@/dados/crm/tarefas-conversacionais";
-import { capacidadesDoCanal, addContactNote, createTask } from "@n1/dominio/operations";
+import { capacidadesDoCanal, createTask } from "@n1/dominio/operations";
 import { statusCategory } from "@n1/dominio/derive";
 import {
   canaisDaListaNasTabelas,
@@ -73,6 +74,7 @@ import {
 } from "@n1/dominio/crm/canais-de-resposta";
 import { LIMITES_CRM } from "@n1/dominio/crm/comum";
 import { nomeDeExibicaoDoContato, ROTULO_DO_TIPO_DE_IDENTIFICADOR } from "@n1/dominio/crm/contatos";
+import { recusaDeNotaNoContato, validarNovaNota } from "@n1/dominio/crm/notas";
 import { TIPO_DE_IDENTIFICADOR_DO_CANAL, type ConversaNaLista } from "@n1/dominio/crm/conversas";
 import { LISTA_SEM_CANAIS } from "@n1/dominio/operations/canais";
 import { SeletorDeTipoDeTarefa } from "@/features/estrutura/seletor-de-tipo";
@@ -222,6 +224,9 @@ export function ConversationThread({
   const [erro, setErro] = useState<string | null>(null);
   // A Tarefa conversacional é uma chamada à api: o botão espera a resposta, sem criar duas.
   const [criandoTarefa, setCriandoTarefa] = useState(false);
+  // A Nota também é uma chamada à api (`POST /contatos/:id/notas`): o `ref` fecha o intervalo do duplo clique (UCR-05).
+  const [salvandoNota, setSalvandoNota] = useState(false);
+  const salvandoNotaRef = useRef(false);
   /*
     O envio é uma chamada à api: o botão desliga enquanto a primeira está em voo
     (borda UCR-05). O `ref` fecha o intervalo entre o clique e a renderização, em
@@ -466,6 +471,43 @@ export function ConversationThread({
       enviandoRef.current = false;
       setEnviando(false);
       setConfirmandoEnvio(false);
+    }
+  };
+
+  /*
+    A Nota é do Contato (3.2.7): o texto vai para `POST /contatos/:id/notas` e o
+    autor é o Membro da sessão. A regra de forma é a do domínio (`validarNovaNota`,
+    a mesma que o endpoint aplica), conferida ANTES de ir à api; o Contato que não
+    aceita Nota (mesclado, na lixeira) é recusado pela mesma `recusaDeNotaNoContato`.
+    A recusa da api aparece aqui com a frase dela e o texto fica no campo.
+  */
+  const registrarNota = async () => {
+    if (salvandoNotaRef.current) return;
+    const valida = validarNovaNota({ conteudo: textoDoRegistro });
+    if (!valida.ok) {
+      setAviso(null);
+      setErro(valida.error);
+      return;
+    }
+    const recusa = contato ? recusaDeNotaNoContato(contato) : undefined;
+    if (recusa) {
+      setAviso(null);
+      setErro(recusa);
+      return;
+    }
+    salvandoNotaRef.current = true;
+    setSalvandoNota(true);
+    try {
+      await adicionarNotaAoContato(contatoId, valida.value.conteudo);
+      setErro(null);
+      setAviso("Nota registrada no Contato.");
+      setTextoDoRegistro("");
+    } catch (falha) {
+      setAviso(null);
+      setErro(falha instanceof ErroDeApi ? falha.message : "Não foi possível registrar a nota. Tente de novo.");
+    } finally {
+      salvandoNotaRef.current = false;
+      setSalvandoNota(false);
     }
   };
 
@@ -790,21 +832,11 @@ export function ConversationThread({
               className="grid gap-2"
               onSubmit={(evento) => {
                 evento.preventDefault();
-                const resultado = run((data, memberId) =>
-                  addContactNote(data, memberId, contatoId, textoDoRegistro),
-                );
-                if (resultado.ok) {
-                  setErro(null);
-                  setAviso("Nota registrada no Contato.");
-                  setTextoDoRegistro("");
-                } else {
-                  setAviso(null);
-                  setErro(resultado.error);
-                }
+                void registrarNota();
               }}
             >
               <p className="app-sm" style={{ color: "var(--texto-3)" }}>
-                A Nota é Comentário do registro: ela não sai da plataforma e o
+                A Nota fica na ficha do Contato: ela não sai da plataforma e o
                 Contato nunca a vê.
               </p>
               <label className="sr-only" htmlFor="nota-da-conversa">
@@ -821,8 +853,8 @@ export function ConversationThread({
               <span>
                 <Button
                   type="submit"
-                  disabled={textoDoRegistro.trim() === ""}
-                  disabledReason="Escreva a nota antes de salvar."
+                  disabled={textoDoRegistro.trim() === "" || salvandoNota}
+                  disabledReason={salvandoNota ? "Registrando a nota…" : "Escreva a nota antes de salvar."}
                 >
                   Registrar nota
                 </Button>
