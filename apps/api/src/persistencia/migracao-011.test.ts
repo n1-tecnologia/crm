@@ -306,7 +306,9 @@ describeComBanco("011 — o que o CRM novo ganha (D-04, D-05) — Postgres local
       // Sem o gatilho, a mesma 011 aplica e registra.
       await banco.pool.query("drop trigger m011_recusa on plataforma.conversas");
       const aplicadas = await migrar(banco.pool);
-      expect(aplicadas.map((a) => a.nome)).toEqual([ARQUIVO_011]);
+      // `migrar()` aplica tudo o que está pendente, na ordem: a 011 vem primeiro e as migrações
+      // posteriores (a 012 em diante) não dependem deste teste.
+      expect(aplicadas.map((a) => a.nome)[0]).toBe(ARQUIVO_011);
       const agora = await banco.pool.query("select 1 from plataforma.migracoes where nome = $1", [ARQUIVO_011]);
       expect(agora.rowCount).toBe(1);
     } finally {
