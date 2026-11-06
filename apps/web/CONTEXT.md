@@ -222,10 +222,12 @@ Entrada continuam lendo o modelo antigo do CRM (`state.contacts`,
 `state.companies`, `state.deals`, `state.pipelines` do `DataState`) e **não
 mostram os registros da api nova**. As fichas de Contato
 (`/crm/contatos/[contato]`), Empresa (`/crm/empresas/[empresa]`) e Negócio
-(`/crm/negocios/[negocio]`) tentam a api primeiro e, num 404 cujo id existe
-no `DataState`, **abrem a tela antiga** (`features/crm/legado/*`,
-`DealScreen`) para os ids do modelo antigo. Isso fica assim até a fase de
-unificação, que aposenta o modelo em inglês e religa essas superfícies.
+(`/crm/negocios/[negocio]`) **não têm mais recuo** (Fase 15, plano 15-13,
+UCR-06): um 404 da api mostra "Contato/Empresa/Negócio não encontrado(a)." mesmo
+quando o id existe no `DataState`, e não há ponte de id antigo para id novo. Com
+a migração, que preserva os ids, o mesmo endereço passa a abrir a ficha nova.
+`features/crm/legado/` deixou de existir; `deal-screen.tsx` segue só porque a
+Lista conversacional ainda a embute e sai no plano 15-40.
 
 **A terceira fronteira (Fase 8): o Canal relacional também fala REST.** O
 chat — Caixa de Entrada, fio da Conversa, Listas — segue no store (D-11); só

@@ -218,6 +218,6 @@ describe("página /crm/empresas/[empresa] — a ficha nova e o não encontrado (
     const antiga = buildSeed().companies[0]!;
     const container = await montarPagina(antiga.id);
     await vi.waitFor(() => expect(container.textContent).toContain("Empresa não encontrada."), { timeout: 3000 });
-    expect(container.textContent).not.toContain(antiga.name);
+    expect(container.textContent).not.toContain(antiga.tradeName);
   });
 });
