@@ -211,13 +211,18 @@ async function detalhar(cliente: Cliente, workspaceId: string, empresa: Empresa)
   return { empresa, identificadores, vinculos, matriz, filiais };
 }
 
-/** O Contato do Espaço da sessão, nem mesclado nem na lixeira (admin e vínculo exigem um Contato que existe e vale). */
+/**
+ * O Contato do Espaço da sessão, nem mesclado nem na lixeira (admin e vínculo exigem um Contato que existe e vale).
+ * Por padrão trava a linha (`for update`): uma mesclagem confirmada no meio faz esta escrita esperar e então
+ * enxergar `mesclado`, em vez de ligar a Empresa a um Contato que já não aceita escrita (WR-01, RN-CON-14).
+ */
 async function carregarContato(
   repositorio: RepositorioDeContatos,
   workspaceId: string,
   contatoId: string,
+  { travar = true }: { readonly travar?: boolean } = {},
 ): Promise<ResultadoCrm<Contato>> {
-  const contato = await repositorio.obter(workspaceId, contatoId);
+  const contato = await repositorio.obter(workspaceId, contatoId, { travar });
   if (!contato) return contatoNaoEncontrado();
   // RN-CON-14: o absorvido é somente leitura; o vínculo vai para o Contato que ficou.
   if (contato.estado === "mesclado") {

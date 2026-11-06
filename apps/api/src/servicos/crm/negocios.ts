@@ -142,9 +142,20 @@ async function conferirEmpresa(cliente: Cliente, workspaceId: string, empresaId:
   return undefined;
 }
 
-/** Contato do Espaço, nem mesclado nem na lixeira (RN-CON-19: arquivado continua referenciável). */
-async function conferirContato(cliente: Cliente, workspaceId: string, contatoId: string): Promise<ResultadoCrm<never> | undefined> {
-  const contato = await criarRepositorioDeContatosPg(cliente).obter(workspaceId, contatoId);
+/**
+ * Contato do Espaço, nem mesclado nem na lixeira (RN-CON-19: arquivado continua referenciável).
+ * Por padrão trava a linha (`for update`): com uma mesclagem confirmada no meio, a escrita espera e enxerga
+ * `mesclado` (WR-01, RN-CON-14). Em `editar` o Negócio já está travado, a ordem inversa da mesclagem
+ * (Contato → Negócio): se o Postgres escolher esta transação num deadlock, `comTransacao` devolve 409
+ * `CONFLITO_TRANSITORIO` (D-15-07).
+ */
+async function conferirContato(
+  cliente: Cliente,
+  workspaceId: string,
+  contatoId: string,
+  { travar = true }: { readonly travar?: boolean } = {},
+): Promise<ResultadoCrm<never> | undefined> {
+  const contato = await criarRepositorioDeContatosPg(cliente).obter(workspaceId, contatoId, { travar });
   if (!contato) return recusa<never>(404, "Contato não encontrado.", { codigo: "CONTATO_NAO_ENCONTRADO", campo: "contatoId" });
   // RN-CON-14: o absorvido é somente leitura; o Negócio vai para o Contato que ficou.
   if (contato.estado === "mesclado") {

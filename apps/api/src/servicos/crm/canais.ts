@@ -21,7 +21,7 @@
  *     domínio (`proximaConexao`), o serviço só a grava;
  *   - arquivar desconectando na mesma escrita (11.1);
  *   - a revisão do Espaço somada na mesma transação de toda escrita (A4).
- * Toda escrita carrega o Canal travado (`for update`) NESTE Espaço: id de
+ * Toda escrita trava a linha do Espaço e, só depois, carrega o Canal travado (`for update`) NESTE Espaço: id de
  * outro Espaço é 404, nunca 403 (T-08-13).
  */
 
@@ -159,6 +159,9 @@ export function criarServicoDeCanais(deps: { readonly pool: () => Pool; readonly
     return comTransacao(
       deps.pool,
       async (cliente) => {
+        // A linha do Espaço ANTES da do Canal, a mesma ordem de `executar()` e do gesto misto (WR-02): travar o
+        // Canal primeiro e só depois subir a revisão do Espaço dá `40P01` contra um gesto misto em curso.
+        await cliente.query("select 1 from plataforma.workspaces where workspace_id = $1 for update", [membro.workspaceId]);
         const repositorio = criarRepositorioDeCanaisPg(cliente);
         const canal = await repositorio.obter(membro.workspaceId, id, { travar: true });
         if (!canal) return naoEncontrado();
