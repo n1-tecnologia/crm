@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildGestaoBootstrap } from "@n1/dominio/bootstrap-gestao";
 import { CP } from "@n1/dominio/operations/financeiro";
 import { createTask } from "@n1/dominio/operations/tasks";
+import { colecaoPelaChave } from "@n1/dominio/testes/crm-de-teste";
 import { carregarEnv, encerrar, pool } from "../persistencia/conexao";
 import { hidratar } from "../persistencia/repositorio";
 import { executar } from "../persistencia/unidade-de-trabalho";
@@ -73,10 +74,10 @@ d("bootstrapGestao — o Espaço 'Gestão' de produção", () => {
     try {
       const { state, revisao } = await hidratar(cliente2, WS);
       expect(state.tasks.length).toBe(0);
-      expect(state.contacts.length).toBe(0);
+      expect(colecaoPelaChave(state, "contacts")).toHaveLength(0);
       expect(state.activity.length).toBe(0);
       // D-15-13: o Espaço nasce sem Funil; o padrão é o de plataforma.funis.
-      expect(state.funnels.length).toBe(0);
+      expect(colecaoPelaChave(state, "funnels")).toHaveLength(0);
       expect(Object.keys(state.workspace).filter((chave) => /funnel/i.test(chave))).toEqual([]);
       expect(state.members.length).toBe(1);
       expect(state.members[0]!.id).toBe("mem_maryane");
@@ -109,7 +110,7 @@ d("bootstrapGestao — o Espaço 'Gestão' de produção", () => {
     const cliente2 = await pool().connect();
     try {
       const { state } = await hidratar(cliente2, WS);
-      expect(state.funnels.length).toBe(0);
+      expect(colecaoPelaChave(state, "funnels")).toHaveLength(0);
     } finally {
       cliente2.release();
     }

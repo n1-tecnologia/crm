@@ -92,7 +92,7 @@ describe("28 — criar Automação", () => {
   it("o escopo Funil confere o Funil que o servidor leu: ativo e arquivado valem, na lixeira, ausente e sem a lista recusam (15-39, 3.4.9)", () => {
     const entrada = (scopeId: string) => ({ name: `Qualificar ${scopeId}`, scopeType: "funnel" as const, scopeId });
     const antes = state.automations.length;
-    // O Funil só existe na lista passada (nunca em `state.funnels`): é a tabela quem responde.
+    // O Funil só existe na lista passada (nunca no estado): é a tabela quem responde.
     const ativa = criarAutomacao(state, RAFAEL, entrada("fun_so_na_tabela"), [{ id: "fun_so_na_tabela", estado: "ativo" }]);
     expect(ativa.ok).toBe(true);
     if (ativa.ok) expect(ativa.value.scopeId).toBe("fun_so_na_tabela");

@@ -13,6 +13,8 @@ que a chamada acontece.
 |---|---|
 | `scheduler-worker.ts` | `criarSchedulerWorker()` — o poller: lease por `for update skip locked` sobre `plataforma.automacao_agenda`, catch-up do dia perdido, Ator de sistema, e o gate da primeira volta em ensaio. |
 | `scheduler-worker.test.ts` | Os 19 casos (item Wave 0 de `03-VALIDATION.md`) — puros (a)-(e) e (s), os demais contra Postgres real. |
+| `clientes-da-lista.ts` (15-42) | `lerClientesDaLista()` — o nome e o dono dos clientes das contas da Lista, lidos de `plataforma.contatos` na transação da volta (`lerDoCrm` de `executar()`) e passados à agenda por `OpcoesDaAgenda.clientes`; a ponte do Agente os mescla ao CNPJ. |
+| `clientes-da-lista.test.ts` | Sem banco: os ids citados pelos Vínculos `cliente` e a leitura (cliente do pool falso). |
 | `scheduler-worker-drenagem.test.ts` | 10-REVIEW MEDIUM-05, sem banco (`pool()` falso que falha): a volta que rejeita vai para o log (`Volta do relógio falhou.`) e não derruba o processo; `semear()` que falhou é tentada de novo no mesmo dia. |
 | `liberar.cli.ts` | CLI fino de liberação da primeira volta em ensaio — só compõe `liberarLista()`. |
 | `invocar-agente.ts` (Plan 03-11; plano pós-auditoria 1.4; Plan 06-03) | `criarPonteDoAgente()` — a ponte HTTP do Agente de lançamento em DOIS momentos (Fase 6): publica o Resumo para conferência (`/resolver`), lê o fio, e só lança (`/lancar`, com o código conferido e os anexos) com a Conferência aprovada; e entrega ao scheduler acima uma `rodarAgenda` que nunca lança. |

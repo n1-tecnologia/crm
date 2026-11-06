@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import { TIPOS_DE_ATENDIMENTO } from "./operations/canais";
 import { buildSeed } from "./seed";
 import { buildProductSeed } from "./seed-produto";
+import { colecaoPelaChave } from "./testes/crm-de-teste";
 
 const idsOf = (state: object): Set<string> => {
   const ids = new Set<string>();
@@ -49,7 +50,7 @@ describe("seed do produto", () => {
     walk(state, "state");
     expect(dangling).toEqual([]);
     // O CRM antigo não está no seed (15-31): o Comercial se apoia nas tabelas do CRM novo.
-    expect(state.deals).toHaveLength(0);
+    expect(colecaoPelaChave(state, "deals")).toHaveLength(0);
     // As Ferramentas do CRM também: Comunidade + 3 Turmas + avisos + importado, o Link e o Flow.
     expect(state.grupos.length).toBe(5);
     expect(state.comunidades.length).toBe(1);

@@ -143,8 +143,7 @@ describe("paridade tela ↔ operação", () => {
 describe("RECEBER_PROFILE.counterpart: o nome do cliente vem de POST /crm/nomes (Fase 15, 3.4.10)", () => {
   const helena = () => conta("tsk_cr_gab_2");
 
-  it("devolve o nome do mapa para o cliente do Vínculo, sem olhar o state.contacts", () => {
-    state.contacts = [];
+  it("devolve o nome do mapa para o cliente do Vínculo, sem olhar o estado (que não guarda Contato)", () => {
     expect(RECEBER_PROFILE.counterpart(state, helena(), new Map([["cnt_cr_helena", "Ana Lima"]]))).toBe("Ana Lima");
   });
 

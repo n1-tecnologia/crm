@@ -8,7 +8,7 @@
  * Mantém o que o fio provou na Fase 8 (D-13, D-14, D-15): uma aba por Canal, a
  * aba que abre no Canal da última recebida, o "Responder por" só com Canais
  * conectados que alcançam o Contato e o envio pelo Canal da aba — agora com dois
- * WhatsApps vindos de `GET /canais`, não de `state.channels`.
+ * WhatsApps vindos de `GET /canais`, não do estado.
  *
  * `StoreProvider` de verdade com o seed (Listas, Membros e Tarefas ainda moram no
  * estado); a api é um `fetch` roteado por URL e a sessão é falsa. Nenhuma rede.

@@ -2,7 +2,7 @@
 /**
  * 15-23 Task 3 (UCR-07, 3.4.7) — o Painel lê Negócios, Conversas, Contatos e Funis das rotas
  * (`GET /negocios`, `/conversas`, `/contatos`, `/funis`, até 200 cada) e `widgetReading` os recebe por
- * argumento: nada de `state.deals`. Quando o `total` passa do que foi lido, o Widget diz
+ * argumento: nada vem do estado, que não guarda Negócio. Quando o `total` passa do que foi lido, o Widget diz
  * "Parcial: primeiros 200" (T-15-57). Nenhuma rede: `fetch` roteado, sessão falsa, `StoreProvider` real.
  */
 
@@ -12,7 +12,6 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { SWRConfig } from "swr";
 import type { NegocioResumo } from "@n1/dominio/crm/negocios";
 import { buildSeed } from "@n1/dominio/seed";
-import { negocioAntigoDeTeste } from "@/testes/crm-antigo-de-teste";
 import type { DataState } from "@n1/dominio/state";
 import type { Widget } from "@n1/dominio/types";
 import { StoreProvider } from "@/dados/store";
@@ -72,8 +71,6 @@ let negociosRecusados: boolean;
 
 beforeEach(() => {
   state = buildSeed();
-  // O seed não cria mais Negócio (15-31): o Negócio do modelo antigo no Funil Closer, que o Painel NÃO conta, é posto aqui.
-  state.deals.push(negocioAntigoDeTeste({ id: "deal_antigo_closer", funnelId: "fnl_closer" }));
   totalDeNegocios = NEGOCIOS.length;
   negociosRecusados = false;
   process.env.NEXT_PUBLIC_API_URL = "http://api";
@@ -159,8 +156,7 @@ describe("Painel › CRM novo por argumento (15-23)", () => {
     expect(chamadas("/contatos")).toHaveLength(0);
   });
 
-  it("o Funil do modelo antigo (Fonte com id do seed) não conta os Negócios antigos: lê zero das rotas", async () => {
-    expect(state.deals.some((d) => d.funnelId === "fnl_closer")).toBe(true);
+  it("o Funil do seed antigo (Fonte com id fnl_closer) lê zero das rotas: o Painel não conta nada do estado", async () => {
     await montar();
     await waitFor(() => expect(chamadas("/negocios").length).toBeGreaterThan(0));
     await waitFor(() => expect(screen.queryByText("Lendo os dados do CRM…")).toBeNull());

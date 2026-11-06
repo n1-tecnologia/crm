@@ -17,7 +17,6 @@ import type { ConversaNaLista } from "@n1/dominio/crm/conversas";
 import type { EmpresaResumo } from "@n1/dominio/crm/empresas";
 import type { NegocioResumo } from "@n1/dominio/crm/negocios";
 import { buildSeed } from "@n1/dominio/seed";
-import { contatoAntigoDeTeste } from "@/testes/crm-antigo-de-teste";
 import { StoreProvider } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
 import BuscarPage from "@/app/(shell)/buscar/page";
@@ -188,10 +187,7 @@ describe("Busca › Contatos, Empresas, Negócios e Conversas pelas rotas REST (
   it("um Contato criado pela ficha nova é achado pelo nome mesmo que o seed antigo não o conheça", async () => {
     parametros.atual = new URLSearchParams("q=Zuleica");
     paginas["contatos:ativo"] = { itens: [contato("ctt_zu", "Zuleica Prado")], total: 1 };
-    const seed = buildSeed();
-    expect(seed.contacts.some((c) => c.firstName === "Zuleica")).toBe(false);
-
-    await montar(<BuscarPage />, seed);
+    await montar(<BuscarPage />, buildSeed());
 
     await vi.waitFor(() => expect(screen.getByText("Zuleica Prado")).toBeTruthy());
   });
@@ -201,19 +197,6 @@ describe("Busca › Contatos, Empresas, Negócios e Conversas pelas rotas REST (
     await montar(<BuscarPage />);
     expect(screen.getByText("Escreva ao menos duas letras.")).toBeTruthy();
     expect(chamadas()).toEqual([]);
-  });
-
-  it("nada do CRM vem do store: o Contato antigo do seed não aparece quando a api não o devolve", async () => {
-    const seed = buildSeed();
-    // O seed não cria mais Contato (15-31): o Contato do modelo antigo, que a busca NÃO pode mostrar, é posto aqui.
-    const antigo = contatoAntigoDeTeste({ id: "cnt_antigo_busca", firstName: "Antiga" });
-    seed.contacts.push(antigo);
-    parametros.atual = new URLSearchParams(`q=${encodeURIComponent(antigo.firstName)}`);
-
-    await montar(<BuscarPage />, seed);
-
-    await vi.waitFor(() => expect(chamadas().length).toBeGreaterThan(0));
-    expect(document.querySelector(`a[href="/crm/contatos/${antigo.id}"]`)).toBeNull();
   });
 
   it("o total da api conta, não a página: mostra 10 de 14", async () => {
@@ -312,20 +295,6 @@ describe("Lixeira › Contatos, Empresas, Negócios e Conversas pelas rotas REST
       expect(within(linha).getByText(familia)).toBeTruthy();
       expect(within(linha).getByText(nome).closest("a")?.getAttribute("href")).toBe(href);
     }
-  });
-
-  it("nada do CRM vem do store: o Contato antigo na lixeira do seed não aparece", async () => {
-    const seed = buildSeed();
-    // O seed não cria mais Contato (15-31): o Contato do modelo antigo, que a Lixeira NÃO pode mostrar, é posto aqui.
-    const antigo = contatoAntigoDeTeste({ id: "cnt_antigo_lixeira" });
-    seed.contacts.push(antigo);
-    antigo.lifecycle = "naLixeira";
-    antigo.trashedAt = AGORA;
-
-    await montarLixeira(seed);
-
-    await vi.waitFor(() => expect(chamadas().length).toBeGreaterThan(0));
-    expect(document.querySelector(`a[href="/crm/contatos/${antigo.id}"]`)).toBeNull();
   });
 
   it("restaurar um Contato chama POST /contatos/<id>/restaurar uma vez, e o item some da lista", async () => {

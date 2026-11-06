@@ -11,7 +11,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { buildSeed } from "@n1/dominio/seed";
-import { contatoAntigoDeTeste } from "@/testes/crm-antigo-de-teste";
 import { previewSuccession } from "@n1/dominio/operations";
 import type { DataState } from "@n1/dominio/state";
 import { ErroDeApi } from "@/dados/crm/cliente-crm";
@@ -74,10 +73,6 @@ function contagemDe(rotulo: string): string | undefined {
 
 describe("a página do Membro lê a sucessão do CRM nas tabelas", () => {
   it("(a) Contatos, Empresas, Negócios e Conversas vêm da api, não do estado em memória", () => {
-    // O seed não cria mais Contato (15-31): o Contato do modelo antigo, que a tela NÃO pode ler, é posto aqui.
-    const contatoAntigo = contatoAntigoDeTeste({ id: "cnt_antigo_sucessao" });
-    state.contacts.push(contatoAntigo);
-    contatoAntigo.ownerMemberId = alvoId;
     sucessao.atual = { data: { contatos: 7, empresas: 2, negocios: 5, conversasPassadas: 3 }, error: undefined };
     montar();
     expect(contagemDe("Contatos")).toBe("7");

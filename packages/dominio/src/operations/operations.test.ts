@@ -12,6 +12,7 @@ import { buildProductSeed } from "../seed-produto";
 import { buildSeed } from "../seed";
 import { checklistProgress, containerAdminRefusal, effectiveContainerConfig, effectiveLifecycleOfTask, effectiveListConfig, memberReachesContainer, memberSeesResource, memberSeesTask, tipoPadraoDaLista, tiposDaLista, weekStartOf } from "../derive";
 import type { DataState } from "../state";
+import { colecaoPelaChave } from "../testes/crm-de-teste";
 import { addTaskComment, assignTask, changeTaskStatus, convertChecklistItem, createTask, moveTask, resolveTaskComment, restoreTask, setTaskFieldValue, setTaskTags, startMeeting, trashTask, updateTask, watchTask } from "./tasks";
 import { resolveConversation } from "./ferramentas/conversa-de-grupo";
 import { deleteRole, grantGovernanceAccess, inviteMember, previewSuccession, removeMember, roleHolders } from "./members";
@@ -627,11 +628,7 @@ describe("Volumes do seed (PRD II.7)", () => {
     expect(state.lists).toHaveLength(11); // 7 na estrutura + 1 na lixeira + Contas a pagar + Contas a receber + Pós-venda; as 4 Listas de Funil saíram (15-31)
     expect(state.tasks.length).toBeGreaterThanOrEqual(55);
     // O CRM de demonstração é o `bootstrap:crm-demo`: o seed não cria mais Contato, Empresa, Funil, Negócio, Canal nem Conversa (15-31).
-    expect(state.contacts).toHaveLength(0);
-    expect(state.companies).toHaveLength(0);
-    expect(state.deals).toHaveLength(0);
-    expect(state.funnels).toHaveLength(0);
-    expect(state.channels).toHaveLength(0);
+    for (const colecao of ["contacts", "companies", "deals", "funnels", "channels"]) expect(colecaoPelaChave(state, colecao), colecao).toHaveLength(0);
     expect(state.queues).toHaveLength(2);
     expect(state.conversations).toHaveLength(2); // só as duas Conversas de grupo (Ferramentas, F14-D-05)
     expect(state.agents).toHaveLength(7); // + Enriquecedor, Classificador de conexão, Agente de lançamento e o Assistente de onboarding em rascunho

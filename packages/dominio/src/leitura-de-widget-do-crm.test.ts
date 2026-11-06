@@ -1,7 +1,7 @@
 /**
  * 15-23 Task 3 (UCR-07, 3.4.7) — `widgetReading` lê Negócios, Conversas, Contatos e Funis do CRM
  * NOVO por argumento (as linhas que as rotas `GET /negocios`, `/conversas`, `/contatos` e `/funis`
- * devolvem), não de `state.deals`/`conversations`/`contacts`/`funnels`. Quando a lista lida é só
+ * devolvem), não do estado (que não guarda mais Negócio, Contato nem Funil). Quando a lista lida é só
  * uma parte do que a api tem, a leitura sai marcada `parcial` (T-15-57).
  *
  * O `state` do seed continua trazendo Negócios, Conversas e Contatos do modelo antigo: nenhum
@@ -16,7 +16,7 @@ import type { NegocioResumo } from "./crm/negocios";
 import { widgetReading, type LeituraDoCrmParaPainel, type WidgetReading } from "./derive";
 import { buildSeed } from "./seed";
 import type { DataState } from "./state";
-import type { Contact, Deal } from "./types";
+import { colecaoPelaChave } from "./testes/crm-de-teste";
 
 const THIAGO = "mem_thiago";
 const AGORA = new Date("2026-11-06T15:00:00Z");
@@ -124,14 +124,13 @@ beforeEach(() => {
 });
 
 describe("widgetReading — Negócios do CRM novo por argumento", () => {
-  it("'Negócios do Funil F' conta os que vieram no argumento, não os de state.deals", () => {
-    // O seed não cria mais Negócio (15-31): põe um no modelo antigo, que a leitura NÃO pode contar.
-    state.deals.push({ id: "deal_antigo", workspaceId: state.workspace.id, funnelId: "fnl_sdr", stageId: "sdr_novo", lifecycle: "ativo", situation: "aberto", contactLinks: [] } as unknown as Deal);
-    expect(state.deals.length).toBeGreaterThan(0);
+  it("'Negócios do Funil F' conta os que vieram no argumento, não os do estado", () => {
+    // O estado não tem Negócio nenhum (15-31): tudo o que a leitura conta vem do argumento.
+    expect(colecaoPelaChave(state, "deals")).toHaveLength(0);
     const crm = crmCom({ negocios: [negocio("n1"), negocio("n2"), negocio("n3", { funilId: "fun_b", etapaId: "eta_b1" })] });
     expect(numero(ler(deFunil(), crm))).toBe(2);
     expect(numero(ler(deFunil({ funis: ["fun_b"] }), crm))).toBe(1);
-    // Um Funil do modelo antigo no escopo: o seed tem Negócios nele, o argumento não.
+    // Um Funil do seed antigo no escopo: o argumento não traz Negócio nele.
     expect(numero(ler(deFunil({ funis: ["fnl_sdr"] }), crm))).toBe(0);
     // Sem Negócio nenhum no argumento, o seed antigo não vaza.
     expect(numero(ler(deFunil({ funis: ["fnl_sdr"] }), crmCom()))).toBe(0);
@@ -286,9 +285,8 @@ describe("widgetReading — Conversas e Contatos do CRM novo por argumento", () 
   });
 
   it("Contatos ativos: arquivado e lixeira não contam", () => {
-    // O seed não cria mais Contato (15-31): põe um no modelo antigo, que a leitura NÃO pode contar.
-    state.contacts.push({ id: "cnt_antigo", workspaceId: state.workspace.id, lifecycle: "ativo", firstName: "Antigo", lastName: "" } as unknown as Contact);
-    expect(state.contacts.length).toBeGreaterThan(0);
+    // O estado não tem Contato nenhum (15-31): tudo o que a leitura conta vem do argumento.
+    expect(colecaoPelaChave(state, "contacts")).toHaveLength(0);
     const crm = crmCom({ contatos: [contato("a"), contato("b"), contato("c", "arquivado"), contato("d", "na_lixeira")] });
     const widget: EntradaDoWidget = {
       viewType: "numero",

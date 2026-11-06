@@ -4,14 +4,12 @@
  * (Fase 14, 3.3.7). O servidor lê a tabela pela opção `lerDoCrm` de `executar()`
  * e SUBSTITUI o `canais` que veio do navegador (Pitfall 12, T-14-29).
  *
- * A projeção dos Canais para `state.channels` saiu no 15-33 (3.5.4): a
- * conferência lê só a tabela. O seed ainda traz os Canais antigos em
- * `registros` (`chn_wpp`), e o ramo antigo segue valendo para eles.
+ * A projeção dos Canais para o estado saiu no 15-33 (3.5.4) e o recuo ao Canal
+ * antigo de `registros` saiu no 15-42: a conferência lê só a tabela.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { encerrar, pool } from "../persistencia/conexao";
-import { canalAntigoDeTeste } from "../testes/canal-antigo";
 import { describeComBanco, novoEspacoDeTeste, limparEspaco, prepararBancoCrm, semearCanal } from "../testes/banco-crm";
 import {
   appDoEspaco,
@@ -53,8 +51,6 @@ describeComBanco("POST /operacoes — os Canais da Lista conferidos em plataform
   beforeAll(async () => {
     await prepararBancoCrm();
     espaco = montarEspacoDeVazamento("canaislista");
-    // O seed não cria mais Canal (15-31): o Canal antigo de `registros` que o caso "segue aceito" usa é posto aqui.
-    espaco.estado.channels.push(canalAntigoDeTeste(espaco.estado.workspace.id));
     await semearEspacoDeVazamento(espaco);
     outroEspaco = novoEspacoDeTeste("canaislistab");
     const ws = espaco.workspaceId;
@@ -77,7 +73,7 @@ describeComBanco("POST /operacoes — os Canais da Lista conferidos em plataform
     await encerrar();
   });
 
-  it("marcar um Canal da tabela na Lista funciona com a projeção desligada, e a Atividade usa o nome dele", async () => {
+  it("marcar um Canal da tabela na Lista funciona, e a Atividade usa o nome dele", async () => {
     const resposta = await chamar("definirCanaisDaLista", [listaId, [canalId]]);
     expect(resposta.statusCode, resposta.body.slice(0, 300)).toBe(200);
     const c = corpo(resposta);
@@ -116,10 +112,11 @@ describeComBanco("POST /operacoes — os Canais da Lista conferidos em plataform
     expect(await canaisDaListaNoBanco(listaId)).toEqual([canalId]);
   });
 
-  it("o Canal antigo de `registros` (o seed) segue aceito pelo mesmo id, sem tradução", async () => {
+  it("o id de um Canal antigo de `registros` (chn_wpp) já não vale: só `plataforma.canais` confere (15-42)", async () => {
     const c = corpo(await chamar("definirCanaisDaLista", [listaId, ["chn_wpp"]]));
-    expect(c.ok, c.error).toBe(true);
-    expect(await canaisDaListaNoBanco(listaId)).toEqual(["chn_wpp"]);
+    expect(c.ok).toBe(false);
+    expect(c.error).toBe(FRASE_DE_CANAL_INVALIDO);
+    expect(await canaisDaListaNoBanco(listaId)).toEqual([canalId]);
   });
 
   it("createList de uma Lista conversacional com o Canal da tabela passa; com um Canal inexistente não cria nada", async () => {
@@ -151,7 +148,7 @@ describeComBanco("POST /operacoes — os Canais da Lista conferidos em plataform
     const demais = Array.from({ length: 101 }, (_, i) => ({ id: `can_${i}` }));
     const resposta = await chamar("definirCanaisDaLista", [listaId, [canalId], demais]);
     expect(resposta.statusCode).toBe(400);
-    expect(await canaisDaListaNoBanco(listaId)).toEqual(["chn_wpp"]);
+    expect(await canaisDaListaNoBanco(listaId)).toEqual([canalId]);
   });
 
   describe("instantiateListTemplate (Fase 15, D-15-07)", () => {

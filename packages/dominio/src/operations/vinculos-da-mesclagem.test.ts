@@ -80,9 +80,7 @@ describe("mesclarContatoNoEspaco", () => {
 
   beforeEach(() => {
     state = buildSeed();
-    state.contacts = [];
     state.conversations = [];
-    state.deals = [];
     state.links = [vinculo("l1", { toId: A }), vinculo("l2", { toId: OUTRO })];
   });
 

@@ -14,11 +14,10 @@ import type { ReactNode } from "react";
 import { SWRConfig } from "swr";
 import type { ConversaNaLista } from "@n1/dominio/crm/conversas";
 import { conferirJanelaDeEstatisticas, type EstatisticasDoCrm, type LeadAAtenderDoCrm, type PanoramaDoCrm } from "@n1/dominio/crm/inicio";
-import { contactDisplayName } from "@n1/dominio/derive";
 import { qualificacoesDeLead } from "@n1/dominio/derive-resumo";
 import { diaCivilNoFuso } from "@n1/dominio/recortes-de-tarefas";
 import { buildSeed } from "@n1/dominio/seed";
-import { contatoAntigoDeTeste, conversaAntigaDeTeste } from "@/testes/crm-antigo-de-teste";
+import { conversaAntigaDeTeste } from "@/testes/crm-antigo-de-teste";
 import { StoreProvider } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
 import { makeFormatters } from "@/features/shell/format";
@@ -119,8 +118,7 @@ afterEach(() => {
 
 async function montar() {
   const dados = buildSeed();
-  // O seed não cria mais Contato nem Conversa (15-31): o Lead e a Conversa não lida do modelo antigo, que o Início NÃO lê, são postos aqui.
-  dados.contacts.push(contatoAntigoDeTeste({ id: "cnt_antigo_lead", firstName: "Lead", lastName: "Antigo", ownerMemberId: THIAGO, qualificationId: "cat_qual_lead" }));
+  // O seed não cria mais Contato nem Conversa (15-31): a Conversa não lida do modelo antigo, que o Início NÃO lê, é posta aqui.
   dados.conversations.push(conversaAntigaDeTeste({ id: "cnv_sdr_1", atribuidaA: THIAGO, title: "Iallas, Full Face Avançado" }));
   const transporte: Transporte = {
     gravar: vi.fn(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." })),
@@ -166,13 +164,9 @@ describe("Início › Leads a atender (15-23, tracer)", () => {
     expect(pedidos[0]?.searchParams.has("membroId")).toBe(false);
   });
 
-  it("os Contatos antigos do Membro com a Qualificação Lead (state.contacts) não entram no bloco", async () => {
-    const dados = await montar();
+  it("o bloco só tem os Leads que a api devolveu, e o número do atalho é o das linhas dela", async () => {
+    await montar();
     await waitFor(() => expect(within(bloco("Leads a atender")).getByRole("link", { name: /Marina Alves do CRM/ })).toBeTruthy());
-    const antigos = dados.contacts.filter((c) => c.ownerMemberId === THIAGO && c.qualificationId === "cat_qual_lead" && c.lifecycle === "ativo");
-    expect(antigos.length).toBeGreaterThan(0);
-    const texto = bloco("Leads a atender").textContent ?? "";
-    for (const contato of antigos) expect(texto).not.toContain(contactDisplayName(contato));
     // O número do atalho é o das linhas da api (2), não o do store.
     const atalho = screen.getByText("Leads a atender", { selector: "span" }).closest("a");
     expect(atalho?.textContent).toContain("2");
@@ -346,7 +340,6 @@ describe("Início › Panorama do robô (15-23)", () => {
       return resposta({ ok: true, itens: [], total: 0 });
     });
     const dados = buildSeed();
-    expect(dados.deals.filter((d) => d.lifecycle === "ativo" && d.situation === "aberto").length).not.toBe(3);
     const transporte: Transporte = {
       gravar: vi.fn(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." })),
       hidratar: vi.fn(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." })),

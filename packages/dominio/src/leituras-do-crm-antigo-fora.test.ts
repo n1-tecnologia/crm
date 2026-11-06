@@ -5,7 +5,7 @@
  * sobra: a Tarefa conversacional, o fio e os Canais da Lista leem o CRM novo por ids e pelas tabelas
  * (`...NasTabelas`). O que o Grupo e o Flow usam (F14-D-05) continua: `tarefasConversacionaisDoContato`,
  * `marcadoresDeCanal`, `rotuloDoCanal`, `textoDoSeparadorDeCanal` e `responseWindowOpenUntil`, que passou
- * a receber o Canal em vez de procurá-lo em `state.channels`.
+ * a receber o Canal em vez de procurá-lo no estado.
  *
  * Cada caso lê o módulo (as chaves exportadas) ou o código-fonte, nunca chama o que saiu.
  */
@@ -85,7 +85,7 @@ describe("as derivações do CRM antigo saíram (15-42, Task 1)", () => {
     }
   });
 
-  it("responseWindowOpenUntil recebe o Canal (o de plataforma.canais), não o procura em state.channels", () => {
+  it("responseWindowOpenUntil recebe o Canal (o de plataforma.canais), não o procura no estado", () => {
     const recebidaHa30h = new Date(Date.now() - 30 * 3_600_000).toISOString();
     const conversa = { messages: [{ direction: "recebida", createdAt: recebidaHa30h }] } as unknown as Conversation;
     const oficial = { channelType: "whatsapp" as const, provider: "whatsapp-cloud" as const };
@@ -124,7 +124,7 @@ describe("nenhum arquivo de produção do domínio lê o CRM antigo (15-42, Task
     const leem = producao
       .filter((f) => /\b(state|data|estado|s|d)\.conversations\b/.test(f.texto))
       .map((f) => f.arquivo)
-      .filter((a) => !a.startsWith("operations/ferramentas/") && !DE_GRUPO_E_FLOW.includes(a))
+      .filter((a) => !a.startsWith("operations/ferramentas/") && !a.startsWith("testes/") && !DE_GRUPO_E_FLOW.includes(a))
       .sort();
     expect(leem).toEqual([]);
   });

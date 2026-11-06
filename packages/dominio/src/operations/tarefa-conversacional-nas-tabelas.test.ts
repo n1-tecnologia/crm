@@ -49,10 +49,8 @@ beforeEach(() => {
   const lista = state.lists.find((l) => l.id === LISTA);
   if (!lista) throw new Error("o seed precisa de lst_pos_venda");
   lista.canaisDeAtendimento = [CANAL_A, CANAL_B];
-  state.contacts = [];
+  // O seed não cria Contato, Canal nem Negócio (15-31): a operação só enxerga as referências.
   state.conversations = [];
-  state.channels = [];
-  state.deals = [];
 });
 
 /** O tamanho do que a operação pode deixar para trás. */

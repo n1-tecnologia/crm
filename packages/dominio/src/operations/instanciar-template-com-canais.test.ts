@@ -1,9 +1,8 @@
 /**
  * Fase 15 (D-15-07, UCR-01) — `instantiateListTemplate` confere os Canais de
  * atendimento contra os Canais que o servidor leu de `plataforma.canais`
- * (5º parâmetro `canais`), não só contra `state.channels`. Com a projeção dos
- * Canais desligada (3.5.4), `state.channels` fica vazio e um Template de Lista
- * com `listConfig` precisa instanciar a Lista conversacional mesmo assim.
+ * (5º parâmetro `canais`). O estado não guarda mais Canal (3.5.4): um Template de Lista
+ * com `listConfig` precisa instanciar a Lista conversacional só com o que o servidor leu.
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
@@ -41,8 +40,7 @@ let templateId: string;
 
 beforeEach(() => {
   state = buildSeed();
-  // A projeção dos Canais desligada: o Canal só existe na tabela.
-  state.channels = [];
+  // O Canal só existe na tabela.
   // `TEMPLATES` do seed é um array de módulo, compartilhado entre `buildSeed()`s: sem a cópia,
   // o Template salvo por um teste vaza para o seguinte.
   state.templates = [...state.templates];
@@ -60,8 +58,7 @@ const entrada = (canaisDeAtendimento: readonly string[]) => ({
 });
 
 describe("instantiateListTemplate — Canais de atendimento conferidos nos Canais lidos da tabela", () => {
-  it("instancia a Lista conversacional com um Canal ativo que só existe em `canais`, com state.channels vazio", () => {
-    expect(state.channels).toHaveLength(0);
+  it("instancia a Lista conversacional com um Canal ativo que só existe em `canais`", () => {
     const r = instantiateListTemplate(state, THIAGO, templateId, entrada(["can_so_na_tabela"]), [umCanal()]);
     expect(r.ok, r.ok ? "" : r.error).toBe(true);
     if (!r.ok) return;

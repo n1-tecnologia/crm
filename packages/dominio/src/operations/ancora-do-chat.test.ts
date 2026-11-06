@@ -1,14 +1,13 @@
 /**
  * Fase 15 (3.4.9, UCR-08) — a Âncora de uma Sessão de Chat num Negócio, Contato,
  * Empresa ou Conversa guarda o nome que o servidor leu das tabelas do CRM novo
- * (último parâmetro `nomes`, opcional), não o do modelo antigo em `state.deals`,
- * `state.contacts`, `state.companies` e `state.conversations`, que a 3.5.4 apaga.
+ * (último parâmetro `nomes`, opcional). O estado não guarda mais Negócio, Contato, Empresa
+ * nem Conversa 1:1 para procurar (3.5.4): sem o nome lido, a Âncora recusa.
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../seed";
 import type { DataState } from "../state";
-import type { Deal } from "../types";
 import { configureChatSession, createChatSession } from "./ai";
 
 const THIAGO = "mem_thiago";
@@ -19,12 +18,8 @@ beforeEach(() => {
   state = buildSeed();
 });
 
-/** O seed não cria mais Negócio (15-31): o teste põe um no modelo antigo, que a Âncora NÃO pode ler. */
-function comNegocioAntigo(estado: DataState): Deal {
-  const negocio = { id: "deal_antigo", workspaceId: "ws_n1", title: "Negócio do modelo antigo", lifecycle: "ativo", situation: "aberto", contactLinks: [] } as unknown as Deal;
-  estado.deals.push(negocio);
-  return negocio;
-}
+/** Um id que nenhum `nomes` traz: o estado não tem onde procurá-lo. */
+const NEGOCIO_SEM_NOME = "deal_sem_nome";
 
 const erroDe = (r: { readonly ok: boolean; readonly error?: string }): string => (r.ok ? "" : (r.error ?? ""));
 
@@ -42,17 +37,15 @@ describe("createChatSession — a Âncora nomeada pelo que o servidor leu (nomes
     expect(state.activity[0]?.detail).toBe(`Ancorada em ${nome}`);
   });
 
-  it("com nomes vazio recusa, mesmo que o modelo antigo tenha o registro (não lê mais state.deals)", () => {
-    const negocio = comNegocioAntigo(state);
+  it("com nomes vazio recusa: o nome vem do que o servidor leu, não do estado", () => {
     const sessoes = state.chatSessions.length;
-    const r = createChatSession(state, THIAGO, { title: "Conversa", anchor: { type: "deal", id: negocio.id } }, {});
+    const r = createChatSession(state, THIAGO, { title: "Conversa", anchor: { type: "deal", id: NEGOCIO_SEM_NOME } }, {});
     expect(erroDe(r)).toBe(RECUSA);
     expect(state.chatSessions).toHaveLength(sessoes);
   });
 
-  it("sem o parâmetro nomes vale {}: o Negócio do modelo antigo também não é achado", () => {
-    const negocio = comNegocioAntigo(state);
-    expect(erroDe(createChatSession(state, THIAGO, { title: "Conversa", anchor: { type: "deal", id: negocio.id } }))).toBe(RECUSA);
+  it("sem o parâmetro nomes vale {}: nenhum registro é achado", () => {
+    expect(erroDe(createChatSession(state, THIAGO, { title: "Conversa", anchor: { type: "deal", id: NEGOCIO_SEM_NOME } }))).toBe(RECUSA);
   });
 
   it("um id como \"constructor\" não herda nome do protótipo de nomes", () => {

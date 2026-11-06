@@ -78,3 +78,13 @@ export function conversaDeTeste(id: Id, canalId: Id, contatoId: Id, mensagens: r
     reopenCount: 0,
   };
 }
+
+/**
+ * Uma coleção do estado lida PELA CHAVE do objeto, não pelo tipo: as provas de ausência do CRM antigo (um Espaço novo
+ * sem Contato, `GET /estado` sem Canal) continuam valendo quando o `DataState` perder as coleções (15-43) — a chave
+ * que não existe devolve vazio.
+ */
+export function colecaoPelaChave(estado: object, nome: string): readonly unknown[] {
+  const valor = (estado as Record<string, unknown>)[nome];
+  return Array.isArray(valor) ? valor : [];
+}

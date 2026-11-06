@@ -11,7 +11,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { buildSeed } from "@n1/dominio/seed";
-import { contatoAntigoDeTeste } from "@/testes/crm-antigo-de-teste";
 import type { DataState } from "@n1/dominio/state";
 import { ErroDeApi } from "@/dados/crm/cliente-crm";
 import { StoreProvider } from "@/dados/store";
@@ -62,21 +61,12 @@ function montar() {
 
 describe("o diálogo de remover Membro lê a sucessão do CRM nas tabelas", () => {
   it("(a) mostra as contagens da api, sem listar Contatos, Empresas, Negócios ou Conversas do estado em memória", () => {
-    // Um Contato do modelo antigo deste Membro: se o diálogo ainda lesse o estado, o nome dele apareceria.
-    const alvoId = membroEmRemocao.atual;
-    // O seed não cria mais Contato (15-31): o Contato do modelo antigo, que a tela NÃO pode ler, é posto aqui.
-    const contatoAntigo = contatoAntigoDeTeste({ id: "cnt_antigo_sucessao" });
-    state.contacts.push(contatoAntigo);
-    contatoAntigo.ownerMemberId = alvoId;
-    contatoAntigo.firstName = "Zenaide";
-    contatoAntigo.lastName = "Antiga-do-Estado";
     sucessao.atual = { data: { contatos: 7, empresas: 2, negocios: 5, conversasPassadas: 3 }, error: undefined };
     montar();
     expect(screen.getByText("Contatos: 7")).toBeTruthy();
     expect(screen.getByText("Empresas: 2")).toBeTruthy();
     expect(screen.getByText("Negócios: 5")).toBeTruthy();
     expect(screen.getByText("Conversas: 3")).toBeTruthy();
-    expect(screen.queryByText(/Zenaide/)).toBeNull();
     // Os totais dos títulos somam o que veio da api com o que o estado ainda conta (Agentes, Automações…).
     expect(screen.getByText(/Passa ao Sucessor \(\d+\)/)).toBeTruthy();
     expect(screen.getByText(/Fica sem Responsável \(\d+\)/)).toBeTruthy();

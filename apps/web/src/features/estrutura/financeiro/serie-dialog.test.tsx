@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * Fase 15, 3.4.10 (UCR-08) — o diálogo "Nova série de parcelas" escolhe o cliente entre os Contatos
- * do CRM novo (`useContatos`, com busca), não do store: o `state.contacts` do seed fica VAZIO aqui.
+ * do CRM novo (`useContatos`, com busca), não do store: o estado não guarda Contato.
  * A chamada que vai ao servidor leva o id do Contato escolhido (o `clientes` junto serve só à
  * execução local, e o servidor o descarta).
  */
@@ -38,7 +38,6 @@ beforeEach(() => {
     },
   );
   state = buildSeed();
-  state.contacts = [];
   gravados = [];
   crm.pedidos = [];
   crm.itens = [

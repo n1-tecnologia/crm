@@ -209,7 +209,7 @@ async function montar(estado: ReturnType<typeof espaco>) {
 }
 
 describe("Reunião — o lead vem do CRM novo (3.4.5, UCR-06)", () => {
-  it("mostra o Negócio, a Etapa e o Funil, o Contato e a Empresa lidos pela api, nada do state.deals", async () => {
+  it("mostra o Negócio, a Etapa e o Funil, o Contato e a Empresa lidos pela api, nada do estado", async () => {
     const estado = espaco();
     const container = await montar(estado);
 

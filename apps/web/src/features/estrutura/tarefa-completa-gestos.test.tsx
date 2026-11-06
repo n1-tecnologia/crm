@@ -304,7 +304,7 @@ describe("criar o Negócio", () => {
 
 /**
  * 15-25 (3.4.2, UCR-04) — a ficha acha o Contato, a Conversa e o Canal pelos Vínculos e pelo
- * resumo da api, não por `state.contacts` / `state.conversations` / `state.channels`. Os ids são
+ * resumo da api, não pelo estado (que não guarda Contato, Conversa 1:1 nem Canal). Os ids são
  * do CRM novo: o estado antigo não os conhece, e mesmo assim o fio e as três colunas voltam.
  */
 describe("o fio e as três colunas pelos Vínculos do CRM novo", () => {
@@ -344,7 +344,7 @@ describe("o fio e as três colunas pelos Vínculos do CRM novo", () => {
     expect(fio.getAttribute("data-conversa-id")).toBe(CONVERSA);
     expect(fio.getAttribute("data-contato-id")).toBe(CONTATO);
     expect(fio.getAttribute("data-tarefa-id")).toBe(TAREFA);
-    // O Canal vem do resumo (o Canal da Conversa), não de `state.channels`.
+    // O Canal vem do resumo (o Canal da Conversa), não do estado.
     expect(fio.getAttribute("data-canal-selecionado")).toBe("ck_novo_1");
     expect(screen.getByRole("region", { name: "Conversa" })).toBeTruthy();
   });

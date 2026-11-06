@@ -16,8 +16,8 @@
  *       não do par provedor+conta).
  *   (c) Membro não conecta nem simula (B35): 403.
  *   (d) "Simular conexão" leva os dois a `conectada`, marcada como simulada (D-08).
- *   (e) o Canal vem só por `GET /canais`: `GET /estado` não o traz em
- *       `state.channels` (a ponte de D-11 saiu no 15-33), e `plataforma.registros`
+ *   (e) o Canal vem só por `GET /canais`: `GET /estado` não o traz
+ *       (a ponte de D-11 saiu no 15-33), e `plataforma.registros`
  *       não ganha linha de `channels` (D-12).
  *   (f) o mesmo Contato abre uma Conversa em cada Canal; a 2ª no mesmo Canal é
  *       recusada (CONVERSA_JA_ABERTA).
@@ -27,7 +27,7 @@
  *   (h) depois de "Desconectar", a Mensagem `enviada` nasce `pendente` (B69).
  *   (i) um Membro de OUTRO Espaço recebe 404 e lista vazia (T-08-50).
  *
- * Números: nenhum colide com o seed (`chn_wpp` usa `+5511987654321`).
+ * Números: nenhum colide com o seed.
  *
  * Rode com `TZ=America/Sao_Paulo` (Pitfall 5) e `DATABASE_URL` local:
  *
@@ -37,7 +37,7 @@
 
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { buildSeed } from "@n1/dominio/seed";
-import { canalAntigoDeTeste } from "../testes/canal-antigo";
+import { colecaoPelaChave } from "@n1/dominio/testes/crm-de-teste";
 import { buildApp } from "../app";
 import { encerrar, pool } from "../persistencia/conexao";
 import { semear } from "../persistencia/repositorio";
@@ -144,10 +144,8 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
     await prepararBancoCrm();
     const cliente = await pool().connect();
     try {
-      // O seed não cria mais Canal (15-31): o Canal antigo `chn_wpp` que a ponte projeta ao lado dos da tabela é posto aqui.
-      const seed = buildSeed();
-      seed.channels.push(canalAntigoDeTeste(seed.workspace.id));
-      await semear(cliente, espacoA, seed);
+      // O seed não cria Canal (15-31): `plataforma.registros` nasce sem `channels`, e os Canais deste fluxo são os da tabela.
+      await semear(cliente, espacoA, buildSeed());
     } finally {
       cliente.release();
     }
@@ -164,7 +162,7 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
   });
 
   it("(a) o Administrador conecta Comercial (oficial) e Suporte (não oficial) com números distintos; ambos nascem desconectados", async () => {
-    expect(canaisDoSeed).toBeGreaterThan(0);
+    expect(canaisDoSeed).toBe(0);
 
     const comercial = await chamar("POST", "/canais", ADMIN, {
       provedor: "whatsapp-cloud",
@@ -217,14 +215,13 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
     }
   });
 
-  it("(e) o Canal vem só por GET /canais: GET /estado não o traz em state.channels e plataforma.registros não ganha `channels` (15-33)", async () => {
+  it("(e) o Canal vem só por GET /canais: GET /estado não o traz e plataforma.registros não ganha `channels` (15-33)", async () => {
     const r = await chamar("GET", "/estado", ADMIN);
     expect(r.status).toBe(200);
-    const estado = (r.corpo as unknown as { data: { channels: Array<Record<string, unknown>> } }).data;
+    const estado = (r.corpo as unknown as { data: Record<string, unknown> }).data;
 
-    // A ponte que projetava `plataforma.canais` em `state.channels` saiu: só o Canal antigo de `registros` continua lá.
-    expect(estado.channels.map((c) => c.id)).toEqual(["chn_wpp"]);
-    expect(estado.channels.some((c) => c.relational === true)).toBe(false);
+    // A ponte que projetava `plataforma.canais` no estado saiu e o seed não cria Canal: a coleção está vazia (lida pela chave).
+    expect(colecaoPelaChave(estado, "channels")).toEqual([]);
     expect(await canaisNoRegistro(espacoA)).toBe(canaisDoSeed);
 
     const lista = await chamar("GET", "/canais", ADMIN);

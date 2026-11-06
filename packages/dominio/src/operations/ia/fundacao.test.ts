@@ -68,7 +68,7 @@ describe("Catálogo do editor de Automação", () => {
   });
 
   it("o escopo Funil existe pela lista que o servidor leu: ativo e arquivado valem, na lixeira, ausente e sem a lista não (15-39, 3.4.9)", () => {
-    // `fnl_sdr` está em `state.funnels` do seed; a resposta vem só da lista passada.
+    // `fnl_sdr` é o Funil do seed antigo; a resposta vem só da lista passada.
     expect(escopoExiste(state, "funnel", "fnl_sdr", [{ id: "fnl_sdr", estado: "ativo" }])).toBe(true);
     expect(escopoExiste(state, "funnel", "fnl_sdr", [{ id: "fnl_sdr", estado: "arquivado" }])).toBe(true);
     expect(escopoExiste(state, "funnel", "fnl_sdr", [{ id: "fnl_sdr", estado: "na_lixeira" }])).toBe(false);

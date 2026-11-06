@@ -29,6 +29,7 @@ import type { DataState } from "@n1/dominio";
 import { createList } from "@n1/dominio/operations";
 import { fail, ok } from "@n1/dominio/state";
 import { buildSeed } from "@n1/dominio/seed";
+import { colecaoPelaChave } from "@n1/dominio/testes/crm-de-teste";
 import { encerrar, pool } from "./conexao";
 import { executar, type MedicaoDaExecucao } from "./unidade-de-trabalho";
 import { gravar, hidratar, planejarGravacao, semear, sqlsDoPlano } from "./repositorio";
@@ -191,7 +192,7 @@ describeComBanco("executar() no regime travado: duas idas ao banco (Fase 13)", (
     const r = await executar(
       ws,
       (state) => {
-        vistos = state.channels.map((c) => c.id);
+        vistos = colecaoPelaChave(state, "channels").map((c) => (c as { id: string }).id);
         return ok("visto");
       },
       { aoMedir },

@@ -6,8 +6,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../seed";
 import type { DataState } from "../state";
-import type { Contact, Member } from "../types";
-import { alterarPapelDoMembro } from "./members";
+import type { Member } from "../types";
+import { alterarPapelDoMembro, previewSuccession } from "./members";
 
 let state: DataState;
 const base = (m: Member) => state.roles.find((r) => r.id === m.roleId)?.base;
@@ -47,10 +47,10 @@ describe("alterarPapelDoMembro", () => {
 
   it("rebaixar a Convidado quem ainda é dono de registros: recusa com a contagem", () => {
     const dono = state.workspace.ownerMemberId;
-    // O seed não cria mais Contato (15-31): a Júlia (Papel Vendas, base Membro) passa a ser dona de um.
-    state.contacts.push({ id: "cnt_da_julia", workspaceId: state.workspace.id, lifecycle: "ativo", firstName: "Ana", lastName: "Ribeiro", ownerMemberId: "mem_julia", identifiers: [] } as unknown as Contact);
+    // Contato, Empresa e Negócio moram nas tabelas do CRM (15-42): o que se transfere aqui é o que mora em `registros`
+    // (Agente, Automação, Painel, Formulário, Coleção). Um Membro que é dono de algo disso não vira Convidado.
     const comRegistros = state.members.find(
-      (m) => m.id !== dono && m.state === "ativo" && base(m) !== "convidado" && state.contacts.some((c) => c.ownerMemberId === m.id),
+      (m) => m.id !== dono && m.state === "ativo" && base(m) !== "convidado" && previewSuccession(state, m.id).transfers.length > 0,
     )!;
     const r = alterarPapelDoMembro(state, dono, { memberId: comRegistros.id, roleId: papelDeBase("convidado").id });
     expect(r.ok).toBe(false);

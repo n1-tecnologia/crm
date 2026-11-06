@@ -6,17 +6,14 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../seed";
-import { semearCrmAntigo } from "../seed-crm-antigo";
 import type { DataState } from "../state";
-import type { Canal } from "../crm/canais";
-import { PROVEDOR_PADRAO_DO_TIPO, type TipoComProvedor } from "../provedores-de-canal";
-import { contactDisplayName } from "../derive";
-import type { Channel, CrmDasFerramentas, Flow, Grupo, VersaoDeFlow } from "../types";
+import { canalDeTeste } from "../testes/crm-de-teste";
+import { crmDasFerramentas, semearConversasDasFerramentas } from "../testes/crm-das-ferramentas";
+import type { CrmDasFerramentas, Flow, Grupo, VersaoDeFlow } from "../types";
 import {
   camposDeFlow,
   cliquesContabilizados,
   conversaDoGrupo,
-  identidadeDeWhatsApp,
   grupoDeAvisos,
   membrosDaComunidade,
   membrosDoGrupo,
@@ -81,50 +78,18 @@ import {
   zerarCliques,
 } from "./ferramentas";
 
-// Provisório (Task 3 monta o CRM próprio): os Contatos do estado semeado com WhatsApp.
-const contatosComWhatsApp = (s: DataState) => s.contacts.filter((c) => c.lifecycle === "ativo" && c.identifiers.some((i) => i.type === "identidadeDeWhatsApp"));
-
 let state: DataState;
 beforeEach(() => {
-  // Os testes de Grupo, Comunidade e Flow ainda leem o Canal, os Contatos e as Conversas do CRM antigo do estado (o
-  // `crm` que o servidor monta é derivado deles, e os Envios de Flow moram nas Conversas). O seed não os cria mais
-  // (15-31): `semearCrmAntigo` os devolve. DÍVIDA ABERTA (.planning/WINDOWS.md): este arquivo sobrevive ao 15-43, que
-  // apaga `semearCrmAntigo`, então ele precisa montar um Canal, Contatos e Conversas próprios antes disso.
-  state = semearCrmAntigo(buildSeed());
+  // Os testes de Grupo, Comunidade e Flow leem o Canal e os Contatos do CRM novo (`crm`, o que o servidor lê das tabelas) e
+  // as Conversas 1:1 do WhatsApp do estado (os Envios de Flow moram nelas, F14-D-05). O seed não cria nada disso (15-31):
+  // `testes/crm-das-ferramentas.ts` monta o recorte que estes testes usam, sem o CRM antigo.
+  state = buildSeed();
+  semearConversasDasFerramentas(state);
 });
 
-
-/** O Canal do seed, na forma do CRM novo: o que o servidor leria de `plataforma.canais`. */
-function canalDoSeed(c: Channel): Canal {
-  const tipo = c.channelType as TipoComProvedor;
-  return {
-    id: c.id,
-    nome: c.name,
-    tipo,
-    provedor: c.provider ?? PROVEDOR_PADRAO_DO_TIPO[tipo],
-    identificadorExterno: c.externalId,
-    conexao: c.connection === "comErro" ? "com_erro" : c.connection,
-    conexaoSimulada: false,
-    conectadaEm: null,
-    estado: c.lifecycle,
-    arquivadoEm: null,
-    configuradoPor: c.configuredByMemberId,
-    filaPadraoId: c.defaultQueueId ?? null,
-    proprietarioPadraoId: c.defaultContactOwnerMemberId ?? null,
-    origemPadraoId: c.defaultOriginId ?? null,
-    gruposHabilitados: c.groupsEnabled,
-    criadoPor: c.configuredByMemberId,
-    criadoEm: c.createdAt,
-    atualizadoEm: c.createdAt,
-  };
-}
-
-/** O CRM das Ferramentas montado do seed, no instante da chamada (os testes mexem no estado). */
-function crmDoSeed(s: DataState): CrmDasFerramentas {
-  return {
-    canais: s.channels.map(canalDoSeed),
-    contatos: s.contacts.map((c) => ({ id: c.id, nome: contactDisplayName(c), estado: c.lifecycle, whatsapp: identidadeDeWhatsApp(c) ?? null })),
-  };
+/** O CRM das Ferramentas: o Canal e os Contatos como o servidor os leria das tabelas. O estado não entra (15-42). */
+function crmDoSeed(_s: DataState): CrmDasFerramentas {
+  return crmDasFerramentas();
 }
 
 /**
@@ -292,15 +257,13 @@ describe("Grupos — Participações e Captação", () => {
   });
 
   it("RN-GRP-10/11 — a importação usa o Contato que o servidor gerou para número desconhecido, nunca para o Canal, e é idempotente", () => {
-    const contatos = state.contacts.length;
     const crm = crmDaOperacao(state, "importarGruposDoCanal", ["chn_wpp"]);
     // 3 números desconhecidos pedem Contato novo; os outros já eram cnt_3..cnt_8; o número do Canal nunca entra
     expect(crm.contatosACriar).toHaveLength(3);
     expect(numerosAResolver("importarGruposDoCanal", state, ["chn_wpp"], crm).some((n) => n.replace(/\D/g, "") === "5511987654321")).toBe(false);
     const r = unwrap(importarGruposDoCanal(state, "mem_rafael", "chn_wpp", crm));
     expect(r.importados.map((g) => g.nome)).toEqual(["Fornecedores Full Face", "Ex-alunos 2024"]);
-    // a operação não escreve em state.contacts: o INSERT é do `aoConfirmar`, em plataforma.contatos
-    expect(state.contacts.length).toBe(contatos);
+    // a operação não escreve Contato em lugar nenhum: o INSERT é do `aoConfirmar`, em plataforma.contatos
     const idsNovos = new Set((crm.contatosACriar ?? []).map((c) => c.id));
     const usados = r.importados.flatMap((g) => g.participacoes.map((p) => p.contactId)).filter((id): id is string => id !== undefined && idsNovos.has(id));
     expect(new Set(usados)).toEqual(idsNovos);
@@ -339,10 +302,9 @@ describe("Grupos — Participações e Captação", () => {
     expect(b.conversa.id).toBe(a.conversa.id);
     expect(state.conversations.filter((c) => c.groupIdentifier?.externalId === t1.identificadorExterno)).toHaveLength(1);
     expect(state.activity.filter((x) => x.action === "Mensagem enviada ao Grupo" && x.objectId === t1.id)).toHaveLength(2);
-    const canal = state.channels.find((c) => c.id === "chn_wpp");
-    if (canal) canal.groupsEnabled = false;
+    const semGrupos: CrmDasFerramentas = { ...crmDoSeed(state), canais: crmDoSeed(state).canais.map((c) => (c.id === "chn_wpp" ? { ...c, gruposHabilitados: false } : c)) };
     const t3 = grupo("grp_turma_03");
-    const c = unwrap(enviarMensagemAoGrupo(state, "mem_julia", t3.id, { content: "Oi" }, crmDoSeed(state)));
+    const c = unwrap(enviarMensagemAoGrupo(state, "mem_julia", t3.id, { content: "Oi" }, semGrupos));
     expect(c.conversa.state).toBe("resolvida");
   });
 
@@ -387,7 +349,7 @@ describe("Grupos — Participações e Captação", () => {
     expect(participacoesVigentes(g).find((p) => p.contactId === "cnt_23")?.papel).toBe("administrador");
     // Dois convidados sem Conversa aberta no Canal (a janela de resposta não entra no caminho) e o criador, que já está no Grupo.
     const semConversa = (id: string) => !state.conversations.some((c) => c.contactId === id && c.channelId === "chn_wpp" && c.lifecycle === "ativo" && c.state !== "resolvida");
-    const convidados = contatosComWhatsApp(state).map((c) => c.id).filter((id) => id !== "cnt_22" && id !== "cnt_23" && semConversa(id)).slice(0, 2);
+    const convidados = crmDoSeed(state).contatos.filter((c) => c.estado === "ativo" && c.whatsapp !== null).map((c) => c.id).filter((id) => id !== "cnt_22" && id !== "cnt_23" && semConversa(id)).slice(0, 2);
     expect(convidados).toHaveLength(2);
     const envio = unwrap(enviarLinkDeConvite(state, "mem_julia", g.id, [...convidados, "cnt_22"], crmDoSeed(state)));
     expect(envio.enviados).toEqual(convidados);
@@ -427,9 +389,8 @@ describe("Grupos — Participações e Captação", () => {
     const e = unwrap(simularEntradaPorClique(state, r.clique.id, "5511977770001", crmComContatosACriar(state, ["5511977770001"])));
     expect(e.participacao?.origem).toBe("linkDeCaptacao");
     expect(e.participacao?.cliqueId).toBe(r.clique.id);
-    // o Contato é o que o servidor gerou (`contatosACriar`); a operação não o grava em state.contacts
+    // o Contato é o que o servidor gerou (`contatosACriar`); a operação não o grava em lugar nenhum
     expect(e.participacao?.contactId).toBe("cnt_novo_5511977770001");
-    expect(state.contacts.some((c) => c.id === "cnt_novo_5511977770001")).toBe(false);
     expect(state.activity.some((a) => a.objectId === "cnt_novo_5511977770001" && a.action === "Contato criado por Participação em Grupo")).toBe(true);
     // no Grupo que aprova entrada, o clique vira Pedido
     unwrap(inativarCaptacao(state, "mem_julia", "grp_turma_02"));
@@ -496,11 +457,9 @@ describe("Grupos — Participações e Captação", () => {
   });
 
   it("evento do provedor — entrada de outro Canal do Espaço de Trabalho vira “É o Canal”, sem Contato", () => {
-    const antes = state.contacts.length;
     const p = unwrap(registrarEntradaNoGrupo(state, "grp_turma_02", { numero: "+5511987654321" }, crmDoSeed(state)));
     expect(p.canalParticipanteId).toBe("chn_wpp");
     expect(p.contactId).toBeUndefined();
-    expect(state.contacts.length).toBe(antes);
   });
 });
 
@@ -801,15 +760,10 @@ describe("Realce — o resultado nomeia o registro tocado", () => {
 });
 
 describe("criarGrupo — o Canal vem do CRM novo (Fase 15, 3.4.8)", () => {
-  const canalNovo = (): Canal => {
-    const antigo = state.channels.find((c) => c.id === "chn_wpp");
-    if (!antigo) throw new Error("sem chn_wpp");
-    return { ...canalDoSeed(antigo), id: "canal-da-tabela", nome: "WhatsApp da tabela", identificadorExterno: "+5511988880001" };
-  };
+  const canalNovo = () => canalDeTeste({ id: "canal-da-tabela", nome: "WhatsApp da tabela", identificadorExterno: "+5511988880001" });
 
-  it("cria o Grupo com o Canal de crm.canais, sem Canal nenhum no modelo antigo", () => {
+  it("cria o Grupo com o Canal de crm.canais", () => {
     const canais = [canalNovo()];
-    state.channels = [];
     const r = unwrap(criarGrupo(state, "mem_julia", { nome: "Turma da tabela", canalId: "canal-da-tabela" }, { canais, contatos: [] }));
     expect(r.canalId).toBe("canal-da-tabela");
     expect(r.tipoDeCanal).toBe("whatsapp");
@@ -817,7 +771,7 @@ describe("criarGrupo — o Canal vem do CRM novo (Fase 15, 3.4.8)", () => {
     expect(state.grupos.some((g) => g.id === r.id)).toBe(true);
   });
 
-  it("recusa 'Canal não encontrado' quando crm.canais não traz o Canal, mesmo que o modelo antigo o tenha", () => {
+  it("recusa 'Canal não encontrado' quando crm.canais não traz o Canal", () => {
     const r = criarGrupo(state, "mem_julia", { nome: "Sem Canal", canalId: "chn_wpp" }, { canais: [], contatos: [] });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toBe("Canal não encontrado.");
@@ -897,10 +851,7 @@ describe("Grupo, Comunidade e Flow conferem Canal e Contato no CRM novo (Fase 15
   it("Comunidade — sincronizar com o Canal fora de crm.canais deixa a Comunidade órfã; criar confere o Canal de crm.canais", () => {
     const c = unwrap(sincronizarComunidade(state, "mem_julia", COMUNIDADE_ALUNOS_ID, vazio));
     expect(c.sincronizacao.estado).toBe("orfao");
-    const antigo = state.channels.find((x) => x.id === "chn_wpp");
-    if (!antigo) throw new Error("sem chn_wpp");
-    const canais = [{ ...canalDoSeed(antigo), id: "canal-da-tabela", nome: "WhatsApp da tabela" }];
-    state.channels = [];
+    const canais = [canalDeTeste({ id: "canal-da-tabela", nome: "WhatsApp da tabela" })];
     const nova = unwrap(criarComunidade(state, "mem_julia", { nome: "Mentoria da tabela", canalId: "canal-da-tabela" }, { canais, contatos: [] }));
     expect(nova.comunidade.canalId).toBe("canal-da-tabela");
     expect(nova.grupoDeAvisos.canalId).toBe("canal-da-tabela");
@@ -939,13 +890,12 @@ describe("Grupo, Comunidade e Flow conferem Canal e Contato no CRM novo (Fase 15
   });
 });
 
-// 15-33 — a ponte que levava os Canais de `plataforma.canais` a `state.channels` saiu de `GET /estado` e de
-// `executar()`. O Canal do Grupo e do Flow passou a existir só em `crm.canais` (o que o servidor lê da tabela):
-// o envio, a abertura de atendimento e a Resposta de Flow precisam achá-lo ali, sem `state.channels`.
-describe("Ferramentas — o Canal vem de crm.canais quando state.channels não o tem (15-33)", () => {
+// 15-33 — a ponte que levava os Canais de `plataforma.canais` ao estado saiu de `GET /estado` e de `executar()`.
+// O Canal do Grupo e do Flow existe só em `crm.canais` (o que o servidor lê da tabela): o envio, a abertura
+// de atendimento e a Resposta de Flow o acham ali (15-42: o estado nem é consultado).
+describe("Ferramentas — o Canal vem só de crm.canais (15-33, 15-42)", () => {
   it("enviarMensagemAoGrupo envia pelo Canal que só existe em crm.canais", () => {
     const crm = crmDoSeed(state);
-    state.channels = [];
     const t1 = grupo("grp_turma_01");
     const r = unwrap(enviarMensagemAoGrupo(state, "mem_julia", t1.id, { content: "Aula amanhã!" }, crm));
     expect(r.mensagem.direction).toBe("enviada");
@@ -954,14 +904,12 @@ describe("Ferramentas — o Canal vem de crm.canais quando state.channels não o
 
   it("enviarFlow envia pelo Canal publicador que só existe em crm.canais", () => {
     const crm = crmDoSeed(state);
-    state.channels = [];
     const r = unwrap(enviarFlow(state, "mem_julia", { flowId: flow().id, conversationId: "cnv_5", corpo: "Me conta sobre você?" }, crm));
     expect(state.conversations.find((c) => c.id === "cnv_5")?.messages.at(-1)?.id).toBe(r.mensagem.id);
   });
 
   it("enviarLinkDeConvite abre a Conversa 1:1 pelo Canal que só existe em crm.canais", () => {
     const crm = crmDoSeed(state);
-    state.channels = [];
     const g = unwrap(criarGrupo(state, "mem_julia", { nome: "Convites", canalId: "chn_wpp" }, crm));
     const r = unwrap(enviarLinkDeConvite(state, "mem_julia", g.id, ["cnt_22"], crm));
     expect(r.falhas.map((f) => f.motivo).join(" ")).not.toContain("Canal não encontrado");
@@ -969,12 +917,10 @@ describe("Ferramentas — o Canal vem de crm.canais quando state.channels não o
 
   it("receberRespostaDeFlow recebe pelo Canal que só existe em crm.canais", () => {
     const crm = crmDoSeed(state);
-    state.channels = [];
     unwrap(receberRespostaDeFlow(state, { flowId: flow().id, contactId: "cnt_17", valores: { formacao: "dentista", cidade: "Osasco", aceite: true } }, crm));
   });
 
-  it("um Canal que nem state.channels nem crm.canais têm continua recusado", () => {
-    state.channels = [];
+  it("um Canal que crm.canais não tem continua recusado", () => {
     const r = enviarMensagemAoGrupo(state, "mem_julia", grupo("grp_turma_01").id, { content: "x" }, { canais: [], contatos: [] });
     expect(r.ok).toBe(false);
   });

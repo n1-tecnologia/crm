@@ -15,7 +15,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildGestaoBootstrap } from "../bootstrap-gestao";
 import type { DataState } from "../state";
-import type { Contact, Id } from "../types";
+import type { Id } from "../types";
 import { CP, CR } from "./financeiro";
 import {
   contaAReceberJaImportada,
@@ -33,25 +33,9 @@ const NASCEU = "2025-02-19T12:55:00.000Z";
 const ENTROU_PARA_RECEBER = "2025-02-19T12:55:00.000Z";
 const FOI_RECEBIDA = "2025-03-15T09:12:00.000Z";
 
-function contatoFicticio(id: Id): Contact {
-  return {
-    id,
-    workspaceId: "ws_n1",
-    createdBy: { kind: "member", id: OPERADOR },
-    createdAt: AGORA,
-    lifecycle: "ativo",
-    firstName: "Gabriela",
-    lastName: "Melo",
-    ownerMemberId: CR.comercialId,
-    creationMode: "manual",
-    description: "",
-    identifiers: [],
-    consents: [],
-    addresses: [],
-    tagIds: [],
-    fieldValues: [],
-    comments: [],
-  };
+/** Um cliente que só o catálogo recebido (as tabelas do CRM) conhece: o estado não guarda Contato. */
+function contatoFicticio(id: Id): { readonly id: Id } {
+  return { id };
 }
 
 function entradaBase(overrides: Partial<EntradaDeContaAReceberHistorica> = {}): EntradaDeContaAReceberHistorica {
@@ -135,7 +119,7 @@ describe("importarContaAReceberHistorica", () => {
   });
 
   it("(d) clienteRef vira Vínculo Tarefa → Contato com linkRole “cliente”, e nenhuma lacuna “sem-cliente” nasce", () => {
-    // O Contato só está no catálogo recebido (as tabelas); o `state.contacts` nem sabe dele (Fase 15, 3.4.10).
+    // O Contato só está no catálogo recebido (as tabelas); o estado nem sabe dele (Fase 15, 3.4.10).
     const gabriela = contatoFicticio("cnt_teste_gabriela");
 
     const r = importarContaAReceberHistorica(s, OPERADOR, entradaBase({ clienteRef: { tipo: "contact", id: gabriela.id } }), { contatos: [gabriela.id], empresas: [] });
@@ -157,9 +141,8 @@ describe("importarContaAReceberHistorica", () => {
     expect(s.links.some((l) => l.fromId === r.value.id && l.toType === "company" && l.toId === "emp_da_tabela" && l.role === CR.linkRole)).toBe(true);
   });
 
-  it("(d3) o Contato do `state.contacts` (modelo antigo) já não basta: fora do catálogo recebido a importação recusa", () => {
+  it("(d3) o Contato que o catálogo recebido não traz não basta: a importação recusa", () => {
     const gabriela = contatoFicticio("cnt_teste_gabriela");
-    s.contacts.push(gabriela);
     const tarefasAntes = s.tasks.length;
 
     const semCatalogo = importarContaAReceberHistorica(s, OPERADOR, entradaBase({ clienteRef: { tipo: "contact", id: gabriela.id } }));
@@ -173,13 +156,11 @@ describe("importarContaAReceberHistorica", () => {
     expect(tipoErrado.ok).toBe(false);
   });
 
-  it("(e) sem clienteRef, a Tarefa nasce com a lacuna “sem-cliente” registrada e nenhum Contato inventado", () => {
-    const contatosAntes = s.contacts.length;
+  it("(e) sem clienteRef, a Tarefa nasce com a lacuna “sem-cliente” registrada e nenhum cliente inventado", () => {
     const r = importarContaAReceberHistorica(s, OPERADOR, entradaBase());
     expect(r.ok, r.ok ? "" : r.error).toBe(true);
     if (!r.ok) throw new Error("unreachable");
 
-    expect(s.contacts.length).toBe(contatosAntes);
     expect(s.links.some((l) => l.fromType === "task" && l.fromId === r.value.id)).toBe(false);
     const lacuna = s.activity.find((a) => a.objectId === r.value.id && a.action === "Lacuna de importação" && a.detail === "sem-cliente");
     expect(lacuna).toBeDefined();

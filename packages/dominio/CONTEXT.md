@@ -53,9 +53,9 @@ Pós-venda), o cliente das Contas a receber (`cnt_cr_*`), as Participações dos
 calculado, Canal participante `chn_wpp` com o identificador `+5511987654321`) e as âncoras/escopos de Funil das
 Automações. O atalho "Caixa de entrada" do Comercial também fica. O que o seed antigo fazia SOBRE esses registros saiu com
 eles: a Tag "Em grupo de alunos" nos Contatos, os Grupos habilitados no Canal e os Envios de Flow nas Conversas do CRM.
-`seed-crm-antigo.ts` (`semearCrmAntigo(estado)`) é o construtor antigo, intacto, **só para testes** de código que sai
-(15-32, 15-33, 15-42) e, por dívida registrada, `ferramentas.test.ts`; nenhum `seed*.ts` nem código de produção o importa,
-a guarda `sem-crm-antigo.test.ts` o lista como congelado e ele sai no 15-43.
+`seed-crm-antigo.ts` (`semearCrmAntigo(estado)`) é o construtor antigo, intacto. Depois do 15-42 só
+`seed-sem-crm-antigo.test.ts` o chama (o caso temporário que prova o seed sem CRM); nenhum `seed*.ts` nem código de
+produção o importa, a guarda `sem-crm-antigo.test.ts` o lista como único congelado e ele sai no 15-43.
 
 **Fase 15, plano 32 (UCR-12): as operações do CRM antigo saíram de `OPERACOES`.** Os módulos
 `operations/{contacts,conversations,deals,iniciar-conversa,crm-antigo}.ts` foram apagados, e `criarCanal`
@@ -73,8 +73,37 @@ para o que ainda se usa:
   `trashConversation` e `toggleConversationStar` continuam em `OPERACOES` e no barril; o resto é composição
   interna, sem rota. `canonicalIdentifier` (comparar números de WhatsApp) foi para `ferramentas/permissoes.ts`.
   Tudo isso sai com Grupo e Flow (Sessões 6 e 7); linha `deviation` aberta em `.planning/WINDOWS.md`.
-- Os testes de leitura do CRM antigo e de Mensageria que ainda precisam do `semearCrmAntigo` moraram em
-  `operations/sobre-o-crm-antigo.test.ts`; o 15-42 e o 15-43 os reescrevem ou apagam.
+- Os testes de leitura do CRM antigo e de Mensageria que moraram em `operations/sobre-o-crm-antigo.test.ts` foram
+  reescritos no 15-42 (ver abaixo).
+
+**Fase 15, plano 42 (UCR-12): o domínio deixou de ler o CRM antigo.** Nenhum arquivo de produção do domínio lê as oito
+coleções (`contacts`, `companies`, `contactCompanyLinks`, `companyCompanyLinks`, `distinctFromLinks`, `funnels`,
+`deals`, `channels`) — só o construtor `seed-crm-antigo.ts`, que sai no 15-43; `conversations` fica só em Grupo e Flow.
+O `DataState` ainda tem as coleções (o 15-43 as tira), mas nada as lê:
+
+- **Derivações apagadas.** `derive.ts` sem `contactDisplayRole`, `principalCompanyId`, `effectiveProbability`,
+  `weightedValue`, `lastInteraction`, `marketingConsentMissing` e `duplicateSuspicions`; `derive-conversacional.ts`
+  sem `contatoDaTarefa`, `conversaDaTarefa`, `canalDaTarefa`, `negocioDaTarefa`, `canaisQueAlcancam`, `canaisDaLista*`,
+  `listaSemCanais`, `canaisDoFio`, `canaisDeResposta`, `canalPadraoDe*` e `canalDaAbaInicial` (ficam as por ids e as
+  `...NasTabelas`); `derive-ferramentas.ts` sem `contatosComWhatsApp`. `responseWindowOpenUntil(conversa, canal,
+  capacidades)` recebe o Canal em vez de procurá-lo no estado (o Flow passa o de `plataforma.canais`).
+- **Operações.** `removeMember`/`previewSuccession` só tocam o que mora em `registros` (a sucessão do CRM é de
+  `GET /membros/:id/sucessao-no-crm`; a Conversa de Grupo continua passando ao Sucessor, D-15-08); `createTask` só aceita
+  o Vínculo de nascimento marcado `alvoConferido` (`VINCULO_NAO_CONFERIDO`); o Canal de atendimento da Lista só vale se
+  está em `canais` (`plataforma.canais`), sem recuo ao estado.
+- **Grupo, Flow e Automação (WINDOWS #37).** `startConversation`, `sendMessage` e `receiveMessage`
+  (`ferramentas/conversa-de-grupo.ts`, que NÃO sai com o 15-43) tomam o Canal de `crm.canais` e o Contato de
+  `crm.contatos`; o Contato é o `ContatoDaFerramenta` (id, nome, estado, WhatsApp). Não conferem mais o consentimento de
+  marketing do Contato antigo (o Canal da tabela não tem Mensagens de modelo) nem restauram Contato arquivado ao receber
+  Mensagem (RN-CON-13 é do CRM novo).
+- **Automações de Contas a receber (WINDOWS #35).** `OpcoesDaAgenda.clientes` (`ClientesLidos`) leva o nome e o dono dos
+  clientes lidos de `plataforma.contatos`; o `scheduler-worker` os lê na transação da volta
+  (`automacoes/clientes-da-lista.ts`). Sem eles, R4/R5 dizem "o cliente" e não mencionam o dono. A Execução disparada
+  por evento (não pela agenda) ainda não recebe o dado.
+- **Testes.** `testes/crm-de-teste.ts` (Canal, Contato e Conversa mínimos, `colecaoPelaChave`) e
+  `testes/crm-das-ferramentas.ts` (o recorte do demo antigo que Grupo, Comunidade e Flow usam) substituem o
+  `semearCrmAntigo` nos testes. `sobre-o-crm-antigo.test.ts` virou `painel-barra-e-modelo-da-lista.test.ts`; a Mensageria
+  e o Rascunho foram para `ferramentas/conversa-de-grupo.test.ts`.
 
 `seed-financeiro.ts`/`seed-contas-a-receber.ts` aceitam `{ fixtures: false }`
 (padrão `true`): monta só a configuração do processo, sem os Membros e as
@@ -958,4 +987,4 @@ da última recebida; se não serve, o primeiro do mesmo tipo; senão o primeiro)
 `identificadores` indefinido quer dizer "Contato ainda não lido" e todo Canal alcança. A lista de
 Conversas não traz a última Mensagem de qualquer direção, só `ultimaRecebidaEm`: "a Conversa mais
 recente" é a de maior entre `ultimaRecebidaEm` e `atualizadoEm`, e Conversa na lixeira não conta. As
-funções antigas ficam em `derive-conversacional.ts` até o 15-42.
+funções antigas saíram de `derive-conversacional.ts` no 15-42.
