@@ -292,6 +292,54 @@ describeComBanco("POST /operacoes — a IA nomeia a Âncora pelas tabelas e libe
     });
   });
 
+  describe("criarAutomacao com escopo Funil confere o Funil na tabela (15-39, 3.4.9)", () => {
+    const ADMIN = TOKENS_DE_VAZAMENTO.administrador;
+    const automacoesNoBanco = async (): Promise<number> => {
+      const { rows } = await pool().query<{ n: string }>("select count(*)::text as n from plataforma.registros where workspace_id = $1 and colecao = 'automations'", [espaco.workspaceId]);
+      return Number(rows[0]?.n ?? 0);
+    };
+    const semearFunil = async (workspaceId: string, nome: string, estado: "ativo" | "arquivado" | "na_lixeira" = "ativo"): Promise<string> =>
+      (
+        await pool().query<{ id: string }>("insert into plataforma.funis (workspace_id, nome, estado, criado_por) values ($1, $2, $3, $4) returning id", [workspaceId, nome, estado, espaco.membros.a.id])
+      ).rows[0]!.id;
+    const criar = (nome: string, funilId: string, extra: unknown[] = []) =>
+      chamar("criarAutomacao", [{ name: nome, scopeType: "funnel", scopeId: funilId }, ...extra], ADMIN);
+
+    it("cria com o escopo num Funil que só existe em plataforma.funis, ativo ou arquivado", async () => {
+      const ativo = await semearFunil(espaco.workspaceId, "Funil ativo da IA");
+      const arquivado = await semearFunil(espaco.workspaceId, "Funil arquivado da IA", "arquivado");
+      const a = corpo(await criar("Qualificar no funil ativo", ativo));
+      expect(a.ok, a.error).toBe(true);
+      expect(a.value).toMatchObject({ scopeType: "funnel", scopeId: ativo });
+      const b = corpo(await criar("Qualificar no funil arquivado", arquivado));
+      expect(b.ok, b.error).toBe(true);
+    });
+
+    it("recusa o Funil na lixeira e o Funil de outro Espaço", async () => {
+      const antes = await automacoesNoBanco();
+      const lixeira = await semearFunil(espaco.workspaceId, "Funil na lixeira da IA", "na_lixeira");
+      const alheio = await semearFunil(outroEspaco, "Funil alheio da IA");
+      for (const funil of [lixeira, alheio]) {
+        const c = corpo(await criar(`Tentativa em ${funil}`, funil));
+        expect(c.ok).toBe(false);
+        expect(c.error).toBe("O escopo indicado não existe.");
+      }
+      expect(await automacoesNoBanco()).toBe(antes);
+    });
+
+    it("um `funis` forjado pelo navegador para um Funil que não existe na tabela é recusado, e repetido também (T-15-92)", async () => {
+      const antes = await automacoesNoBanco();
+      for (let tentativa = 0; tentativa < 2; tentativa += 1) {
+        const resposta = await criar("Funil forjado", "fun_fantasma", [[{ id: "fun_fantasma", estado: "ativo" }]]);
+        expect(resposta.statusCode, resposta.body.slice(0, 300)).toBe(200);
+        const c = corpo(resposta);
+        expect(c.ok).toBe(false);
+        expect(c.error).toBe("O escopo indicado não existe.");
+      }
+      expect(await automacoesNoBanco()).toBe(antes);
+    });
+  });
+
   describe("a leitura confere `ler` antes de revelar o nome (T-15-23)", () => {
     const lerNomes = async (membro: { id: string; state: "ativo" | "suspenso" | "pendente" | "removido" }, tipo: string, id: string) => {
       const cliente = await pool().connect();

@@ -84,6 +84,25 @@ describe("28 — criar Automação", () => {
     expect(atividade?.detail).toBe("Versão 1 em rascunho · escopo Lista");
   });
 
+  it("o escopo Funil confere o Funil que o servidor leu: ativo e arquivado valem, na lixeira, ausente e sem a lista recusam (15-39, 3.4.9)", () => {
+    const entrada = (scopeId: string) => ({ name: `Qualificar ${scopeId}`, scopeType: "funnel" as const, scopeId });
+    const antes = state.automations.length;
+    // O Funil só existe na lista passada (nunca em `state.funnels`): é a tabela quem responde.
+    const ativa = criarAutomacao(state, RAFAEL, entrada("fun_so_na_tabela"), [{ id: "fun_so_na_tabela", estado: "ativo" }]);
+    expect(ativa.ok).toBe(true);
+    if (ativa.ok) expect(ativa.value.scopeId).toBe("fun_so_na_tabela");
+    expect(criarAutomacao(state, RAFAEL, entrada("fun_arquivado"), [{ id: "fun_arquivado", estado: "arquivado" }]).ok).toBe(true);
+    expect(state.automations).toHaveLength(antes + 2);
+
+    const erroDoEscopo = { error: "O escopo indicado não existe.", field: "escopo" };
+    expect(erro(criarAutomacao(state, RAFAEL, entrada("fun_lixeira"), [{ id: "fun_lixeira", estado: "na_lixeira" }]))).toEqual(erroDoEscopo);
+    expect(erro(criarAutomacao(state, RAFAEL, entrada("fun_de_outro_espaco"), [{ id: "fun_so_na_tabela", estado: "ativo" }]))).toEqual(erroDoEscopo);
+    // Sem a lista, o Funil é desconhecido: recusa sem lançar — mesmo para um id que o seed antigo conhece.
+    expect(erro(criarAutomacao(state, RAFAEL, entrada("fnl_sdr")))).toEqual(erroDoEscopo);
+    expect(erro(criarAutomacao(state, RAFAEL, entrada("fnl_sdr"), []))).toEqual(erroDoEscopo);
+    expect(state.automations).toHaveLength(antes + 2);
+  });
+
   it("recusa escopo inexistente, nome repetido no escopo (sem caixa nem espaços) e Evento incompatível — e o Convidado", () => {
     expect(erro(criarAutomacao(state, RAFAEL, { name: "X", scopeType: "list", scopeId: "lst_inexistente" })).error).toBe("O escopo indicado não existe.");
     expect(erro(criarAutomacao(state, RAFAEL, { name: "X", scopeType: "list", scopeId: "grp_turma_01" })).error).toBe("O escopo indicado não existe.");
