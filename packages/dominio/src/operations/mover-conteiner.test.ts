@@ -32,8 +32,9 @@ beforeEach(() => {
 });
 
 /**
- * A Pasta "Meus negócios", estrutura fixa (A9). O seed não a cria mais (15-31, D-15-13): os casos de proteção a montam
- * no próprio arranjo, no lugar em que ela ficava (Comercial, ordem 3). A proteção sai no 15-41.
+ * A Pasta "Meus negócios", agora uma Pasta comum (15-41, D-15-14). O seed não a cria mais (15-31, D-15-13): os casos
+ * que a usam a montam no próprio arranjo, no lugar em que ela ficava (Comercial, ordem 3) — é o que ainda existe nos
+ * Espaços de teste com Tarefas espelho.
  */
 const montarMeusNegocios = (): void => {
   state.folders.push({
@@ -956,27 +957,42 @@ describe("moveContainer — bloqueio, colisão de nome, Formulário e estrutura 
       expect(r.error).toBe("Lista Solicitações de pagamento é uma estrutura fixa e não muda de lugar.");
     });
 
-    it("recusa mover a Pasta Meus negócios", () => {
+    it("a Pasta Meus negócios já não é fixa: muda de Espaço como qualquer Pasta", () => {
       montarMeusNegocios();
       const r = moveContainer(state, THIAGO, "folder", MEUS_NEGOCIOS_ID, { parentType: "space", parentId: "spc_ops" });
-      expect(r.ok).toBe(false);
-      if (r.ok) return;
-      expect(r.error).toBe("Pasta Meus negócios é uma estrutura fixa e não muda de lugar.");
-      expect(state.folders.find((f) => f.id === MEUS_NEGOCIOS_ID)?.parentId).toBe("spc_com");
+      expect(r.ok).toBe(true);
+      expect(state.folders.find((f) => f.id === MEUS_NEGOCIOS_ID)?.parentId).toBe("spc_ops");
     });
 
-    it("recusa qualquer destino dentro de Meus negócios, para Lista e para Pasta", () => {
+    it("a Pasta Meus negócios recebe Listas e Pastas como qualquer Pasta", () => {
       montarMeusNegocios();
       const lista1 = moveContainer(state, THIAGO, "list", ALFA, { parentType: "folder", parentId: MEUS_NEGOCIOS_ID });
-      expect(lista1.ok).toBe(false);
-      if (lista1.ok) return;
-      expect(lista1.error).toBe("A Pasta Meus negócios não recebe Pastas nem Listas.");
+      expect(lista1.ok).toBe(true);
+      expect(listaPorId(ALFA).parentId).toBe(MEUS_NEGOCIOS_ID);
 
       const pasta1 = moveContainer(state, THIAGO, "folder", DEST, { parentType: "folder", parentId: MEUS_NEGOCIOS_ID });
-      expect(pasta1.ok).toBe(false);
-      if (pasta1.ok) return;
-      expect(pasta1.error).toBe("A Pasta Meus negócios não recebe Pastas nem Listas.");
-      expect(listaPorId(ALFA).parentId).toBe(ORIGEM);
+      expect(pasta1.ok).toBe(true);
+      expect(state.folders.find((f) => f.id === DEST)?.parentId).toBe(MEUS_NEGOCIOS_ID);
+    });
+
+    it("UCR-12: mover a ex-Pasta fixa para dentro de outra Pasta e voltar deixa a árvore como estava", () => {
+      montarMeusNegocios();
+      const dentro = lista("Dentro", MEUS_NEGOCIOS_ID);
+      const arvore = () =>
+        JSON.stringify({
+          pastas: state.folders.map((f) => [f.id, f.parentType, f.parentId]).sort(),
+          listas: state.lists.map((l) => [l.id, l.parentType, l.parentId]).sort(),
+        });
+      const antes = arvore();
+
+      const ida = moveContainer(state, THIAGO, "folder", MEUS_NEGOCIOS_ID, { parentType: "folder", parentId: DEST });
+      expect(ida.ok).toBe(true);
+      expect(state.folders.find((f) => f.id === MEUS_NEGOCIOS_ID)?.parentId).toBe(DEST);
+      expect(listaPorId(dentro).parentId).toBe(MEUS_NEGOCIOS_ID);
+
+      const volta = moveContainer(state, THIAGO, "folder", MEUS_NEGOCIOS_ID, { parentType: "space", parentId: "spc_com" });
+      expect(volta.ok).toBe(true);
+      expect(arvore()).toBe(antes);
     });
   });
 });
@@ -1146,10 +1162,16 @@ describe("recusaDeMover × moveContainer — paridade (L1, Pitfall 6)", () => {
   });
 
   it("para as estruturas fixas e para um Membro que não administra, todo destino é recusado nos dois lados", () => {
-    montarMeusNegocios();
     expect(divergencias(THIAGO, "list", CP.listId)).toMatchObject({ achados: [], aceitos: 0 });
-    expect(divergencias(THIAGO, "folder", MEUS_NEGOCIOS_ID)).toMatchObject({ achados: [], aceitos: 0 });
+    expect(divergencias(THIAGO, "list", CR.listId)).toMatchObject({ achados: [], aceitos: 0 });
     expect(divergencias(JULIA, "list", "lst_propostas")).toMatchObject({ achados: [], aceitos: 0 });
+  });
+
+  it("a ex-Pasta fixa Meus negócios é uma Pasta comum: os dois lados aceitam os mesmos destinos (15-41)", () => {
+    montarMeusNegocios();
+    const r = divergencias(THIAGO, "folder", MEUS_NEGOCIOS_ID);
+    expect(r.achados).toEqual([]);
+    expect(r.aceitos).toBeGreaterThan(0);
   });
 
   it("sobre o recorte do Membro (`visibilidadePara`), a recusa é a mesma do estado inteiro para um destino que ele vê (Pitfall 6)", () => {

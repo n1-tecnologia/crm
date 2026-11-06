@@ -17,8 +17,8 @@ describe("estruturas fixas (Q2)", () => {
     expect(LISTA_SOLICITACOES_DE_PAGAMENTO_ID).toBe(LISTA_ID);
   });
 
-  it("reconhece a Pasta Meus negócios e as três Listas, e só elas", () => {
-    expect(ehEstruturaFixa("folder", MEUS_NEGOCIOS_ID)).toBe(true);
+  it("reconhece as três Listas fixas, e só elas: a Pasta Meus negócios deixou de ser fixa (15-41, D-15-14)", () => {
+    expect(ehEstruturaFixa("folder", MEUS_NEGOCIOS_ID)).toBe(false);
     expect(ehEstruturaFixa("list", CP.listId)).toBe(true);
     expect(ehEstruturaFixa("list", CR.listId)).toBe(true);
     expect(ehEstruturaFixa("list", LISTA_ID)).toBe(true);

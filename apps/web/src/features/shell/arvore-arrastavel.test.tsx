@@ -124,8 +124,9 @@ function servidorFalso(): Servidor {
 let state: DataState;
 
 /**
- * A Pasta fixa «Meus negócios» (A9) com uma Lista de Funil dentro. O seed não as cria mais (15-31, D-15-13): os casos de
- * proteção as montam no próprio arranjo, onde ficavam (Comercial, ordem 3). A proteção sai no 15-41.
+ * A Pasta «Meus negócios», agora comum (15-41, D-15-14), com uma Lista de Funil dentro. O seed não as cria mais (15-31,
+ * D-15-13): os casos que as usam as montam no próprio arranjo, onde ficavam (Comercial, ordem 3) — é o que ainda existe
+ * nos Espaços de teste com Tarefas espelho.
  */
 function montarMeusNegocios(): void {
   const origem = { kind: "member", id: "mem_julia" } as const;
@@ -522,21 +523,24 @@ describe("Arrastar na árvore — reordenar, Espaços, diálogo, recusa e árvor
     expect(filhosDe(P)).toEqual([GAMA, ALFA, BETA]);
   });
 
-  it("a Pasta «Meus negócios» e as Listas dela não arrastam nem recebem soltura (A9)", async () => {
+  it("a Pasta «Meus negócios» é uma Pasta comum: arrasta, recebe soltura e as Listas dela também arrastam (15-41)", async () => {
     montarMeusNegocios();
     await abrirArvore();
     await waitFor(() => expect(temLinha(MEUS_NEGOCIOS_ID)).toBe(true));
     const listaDeNegocios = filhosDe(MEUS_NEGOCIOS_ID)[0];
     expect(listaDeNegocios).toBeTruthy();
 
-    expect(linha(MEUS_NEGOCIOS_ID).getAttribute("draggable")).toBeNull();
-    expect(linha(listaDeNegocios!).getAttribute("draggable")).toBeNull();
+    expect(linha(MEUS_NEGOCIOS_ID).getAttribute("draggable")).toBe("true");
+    expect(linha(listaDeNegocios!).getAttribute("draggable")).toBe("true");
 
     comecar(ALFA);
-    expect(passarSobre(MEUS_NEGOCIOS_ID, 50)).toBe(false);
-    expect(zonaAcesa(MEUS_NEGOCIOS_ID)).toBeNull();
+    expect(passarSobre(MEUS_NEGOCIOS_ID, 50)).toBe(true);
+    expect(zonaAcesa(MEUS_NEGOCIOS_ID)).toBe("dentro");
     soltarEm(MEUS_NEGOCIOS_ID, 50);
-    expect(servidor.gravar).not.toHaveBeenCalled();
+    await waitFor(() => expect(servidor.gravar).toHaveBeenCalledTimes(1));
+    const chamada = servidor.gravar.mock.calls[0]?.[0]?.chamadas[0];
+    expect(chamada?.nome).toBe("moveContainer");
+    expect(chamada?.args.slice(0, 3)).toEqual(["list", ALFA, { parentType: "folder", parentId: MEUS_NEGOCIOS_ID }]);
   });
 
   it("o Convidado vê a árvore inerte: nenhuma linha é arrastável e a soltura não grava (D-09)", async () => {
