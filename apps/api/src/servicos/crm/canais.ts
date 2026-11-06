@@ -14,8 +14,9 @@
  * (RN-CXE-31, INV-CXE-01); a frase não carrega o nome do constraint (T-08-04).
  *
  * 08-03 completa o recurso:
- *   - a pré-checagem rica de nome e conta nos DOIS acervos (a tabela nova e o
- *     `channels` do seed, A5), com `bloqueios.canais` apontando o detentor;
+ *   - a pré-checagem rica de nome e conta em `plataforma.canais`, com
+ *     `bloqueios.canais` apontando o detentor (o `channels` do seed deixou de
+ *     contar no 15-33: o Canal só existe na tabela);
  *   - Fila e Origem padrão validadas contra o Espaço (D-07);
  *   - a conexão em dois atos sem provedor (D-08): a decisão da transição é do
  *     domínio (`proximaConexao`), o serviço só a grava;
@@ -41,7 +42,7 @@ import {
 } from "@n1/dominio/crm/canais";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { criarRepositorioDeCanaisPg, type RepositorioDeCanais } from "../../repositorios/crm/canais";
-import { avancarRevisaoDoEspaco, canalAntigoEmConflito, filaAtiva, origemAtiva } from "../../repositorios/crm/referencias";
+import { avancarRevisaoDoEspaco, filaAtiva, origemAtiva } from "../../repositorios/crm/referencias";
 import { exigir, type AcessoAoCrm } from "./acesso";
 import { recusa, sucesso, type ResultadoCrm } from "./resultado";
 import { comTransacao, type FrasesDeRestricao } from "./transacao";
@@ -119,18 +120,14 @@ async function referenciasInvalidas(
   return undefined;
 }
 
-/** O nome ou a conta já são de outro Canal ativo, na tabela nova ou no seed (A5)? */
+/** O nome ou a conta já são de outro Canal ativo de `plataforma.canais`? */
 async function conflitoDeCanal(
-  cliente: Cliente,
   repositorio: RepositorioDeCanais,
   workspaceId: string,
   alvo: Parameters<RepositorioDeCanais["ativoEmConflito"]>[1],
 ) {
   const novo = await repositorio.ativoEmConflito(workspaceId, alvo);
-  if (novo) return emUso(novo);
-  // O seed só tem ids do modelo antigo: `excetoId` (um UUID da tabela nova) não se aplica a ele.
-  const antigo = await canalAntigoEmConflito(cliente, workspaceId, alvo);
-  return antigo ? emUso(antigo) : undefined;
+  return novo ? emUso(novo) : undefined;
 }
 
 export function criarServicoDeCanais(deps: { readonly pool: () => Pool; readonly acesso: AcessoAoCrm }): ServicoDeCanais {
@@ -211,7 +208,7 @@ export function criarServicoDeCanais(deps: { readonly pool: () => Pool; readonly
           const repositorio = criarRepositorioDeCanaisPg(cliente);
           const referencia = await referenciasInvalidas(cliente, membro.workspaceId, entrada);
           if (referencia) return referencia;
-          const conflito = await conflitoDeCanal(cliente, repositorio, membro.workspaceId, { nome, tipo, identificadorExterno });
+          const conflito = await conflitoDeCanal(repositorio, membro.workspaceId, { nome, tipo, identificadorExterno });
           if (conflito) return conflito;
           const canal = await repositorio.inserir(membro.workspaceId, {
             nome,
@@ -241,7 +238,7 @@ export function criarServicoDeCanais(deps: { readonly pool: () => Pool; readonly
           if (canal.estado === "arquivado") return canalArquivado();
           const campos = validacao.value;
           if (campos.nome !== undefined) {
-            const conflito = await conflitoDeCanal(cliente, repositorio, membro.workspaceId, { nome: campos.nome, excetoId: id });
+            const conflito = await conflitoDeCanal(repositorio, membro.workspaceId, { nome: campos.nome, excetoId: id });
             if (conflito) return conflito;
           }
           const referencia = await referenciasInvalidas(cliente, membro.workspaceId, campos);

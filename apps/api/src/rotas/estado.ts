@@ -26,7 +26,6 @@ import type { WorkspaceFile } from "@n1/dominio";
 import { filtrarOrdens, membroVeArquivo, visibilidadePara } from "@n1/dominio/derive-visibilidade";
 import { maiorIdDe } from "@n1/dominio/operations";
 import { arquivoSemConteudo } from "@n1/dominio/operations/anexos-enviados";
-import { acrescentarCanaisProjetados, carregarCanaisProjetados } from "../persistencia/canais-projetados";
 import { pool } from "../persistencia/conexao";
 import { hidratar, ordensComoObjeto } from "../persistencia/repositorio";
 import { urlDeDownload } from "../servicos/storage-uploads";
@@ -36,9 +35,7 @@ export async function rotasDeEstado(app: FastifyInstance): Promise<void> {
     const cliente = await pool().connect();
     try {
       const { state, revisao, ordem } = await hidratar(cliente, request.membro.workspaceId);
-      // D-11: os Canais de `plataforma.canais` (008) entram no corpo como Canais relacionais.
-      // Só aqui (e em `executar()`, 08-07), nunca dentro de `hidratar` — ver `persistencia/canais-projetados.ts`.
-      acrescentarCanaisProjetados(state, await carregarCanaisProjetados(cliente, request.membro.workspaceId));
+      // O Canal não vem aqui (15-33): ele só existe em `plataforma.canais` e a tela o lê por `GET /canais`.
       // PRIV-03 — o Membro recebe só o que alcança (B38): contêiner privado
       // sem concessão, e as Tarefas dele, não saem do servidor. `sequencia` é
       // o contador de ids do estado INTEIRO, para a cópia local gerar os

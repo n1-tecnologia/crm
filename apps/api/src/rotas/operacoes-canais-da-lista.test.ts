@@ -4,13 +4,12 @@
  * (Fase 14, 3.3.7). O servidor lê a tabela pela opção `lerDoCrm` de `executar()`
  * e SUBSTITUI o `canais` que veio do navegador (Pitfall 12, T-14-29).
  *
- * A projeção dos Canais para `state.channels` fica DESLIGADA aqui
- * (`carregarCanaisProjetados` devolve `[]`): é o que prova que a conferência não
- * depende dela, que some na 3.5.4. O seed ainda traz os Canais antigos em
+ * A projeção dos Canais para `state.channels` saiu no 15-33 (3.5.4): a
+ * conferência lê só a tabela. O seed ainda traz os Canais antigos em
  * `registros` (`chn_wpp`), e o ramo antigo segue valendo para eles.
  */
 
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { encerrar, pool } from "../persistencia/conexao";
 import { canalAntigoDeTeste } from "../testes/canal-antigo";
 import { describeComBanco, novoEspacoDeTeste, limparEspaco, prepararBancoCrm, semearCanal } from "../testes/banco-crm";
@@ -22,12 +21,6 @@ import {
   TOKENS_DE_VAZAMENTO,
   type EspacoDeVazamento,
 } from "../testes/espaco-de-vazamento";
-
-// A projeção desligada: a Lista conversacional não pode depender dela (3.3.7).
-vi.mock("../persistencia/canais-projetados", async (importarOriginal) => ({
-  ...(await importarOriginal<typeof import("../persistencia/canais-projetados")>()),
-  carregarCanaisProjetados: async () => [],
-}));
 
 const FRASE_DE_CANAL_INVALIDO = "Canal não encontrado ou arquivado.";
 

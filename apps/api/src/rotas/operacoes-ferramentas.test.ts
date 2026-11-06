@@ -8,7 +8,7 @@
  * conferência não depende dela, que some na 3.5.4.
  */
 
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { encerrar, pool } from "../persistencia/conexao";
 import type { DataState } from "@n1/dominio";
 import type { Canal } from "@n1/dominio/crm/canais";
@@ -24,11 +24,6 @@ import {
   TOKENS_DE_VAZAMENTO,
   type EspacoDeVazamento,
 } from "../testes/espaco-de-vazamento";
-
-vi.mock("../persistencia/canais-projetados", async (importarOriginal) => ({
-  ...(await importarOriginal<typeof import("../persistencia/canais-projetados")>()),
-  carregarCanaisProjetados: async () => [],
-}));
 
 const CANAL_NAO_ENCONTRADO = "Canal não encontrado.";
 

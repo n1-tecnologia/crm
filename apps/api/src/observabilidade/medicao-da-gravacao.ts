@@ -37,7 +37,6 @@ export const ETAPAS_DE_EXECUTAR = [
   "inicioMs",
   "travaMs",
   "hidratarMs",
-  "canaisMs",
   "operacaoMs",
   "atualizaMs",
   "gravarMs",
@@ -59,7 +58,6 @@ export interface MedicaoLida {
   readonly inicioMs: number;
   readonly travaMs: number;
   readonly hidratarMs: number;
-  readonly canaisMs: number;
   readonly operacaoMs: number;
   readonly atualizaMs: number;
   readonly gravarMs: number;
