@@ -1,6 +1,6 @@
 /**
  * Gesto misto de Contas a receber (Fase 15, 3.4.10, UCR-08): quem é o cliente de uma série vem de
- * `plataforma.contatos`, não do modelo antigo (`state.contacts`), que some na 3.5.4.
+ * `plataforma.contatos`, não do Contato do modelo antigo no estado, que some na 3.5.4.
  *
  * `createReceivableSeries(input, clientes)`: o servidor lê só o Contato que `input.contactId` cita,
  * do Espaço da sessão e em qualquer estado — quem decide se vale (`ativo`) é o domínio. O `clientes`
