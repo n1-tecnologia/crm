@@ -9,9 +9,8 @@
  * destino com o teto de Identificadores, origem que ficaria sem nome nem
  * Identificador) e a frase dela aparece no próprio diálogo, que continua aberto.
  *
- * É a versão sobre a api do `transfer-identifier-dialog.tsx` da ficha antiga, que
- * lê o store antigo e por isso não se reaproveita. Daquele fica o aviso central,
- * dito antes do ato: só a resolução FUTURA muda; Conversas e Mensagens já trocadas
+ * Herda da ficha antiga (apagada na 15-13) o aviso central, dito antes do ato: só a
+ * resolução FUTURA muda; Conversas e Mensagens já trocadas
  * continuam com o Contato de origem.
  *
  * Todo texto vindo da api é renderizado como texto React (escapado).

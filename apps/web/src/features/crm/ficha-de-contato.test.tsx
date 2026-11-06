@@ -7,9 +7,9 @@
  * URL, sessão falsa, `StoreProvider` de verdade com o seed.
  */
 
-import { Suspense, useEffect } from "react";
+import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { SWRConfig, useSWRConfig } from "swr";
 import { buildSeed } from "@n1/dominio/seed";
 import { podeNoCrm } from "@n1/dominio/crm/permissoes";
@@ -20,7 +20,6 @@ import { StoreProvider } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
 import { invalidarCrm } from "@/dados/crm/cliente-crm";
 import { useContato } from "@/dados/crm/contatos";
-import ContatoPage from "@/app/(shell)/crm/contatos/[contato]/page";
 import { FichaDeContato } from "./ficha-de-contato";
 
 const { obterSessao, trocarRota, revalidador } = vi.hoisted(() => ({
@@ -710,52 +709,5 @@ describe("FichaDeContato — Transferir Identificador (14-06, 3.2.3)", () => {
     expect(botao.getAttribute("title")).toBe(podeNoCrm("convidado", "ativo", "editar", "contato"));
     fireEvent.click(botao);
     expect(screen.queryByRole("alertdialog")).toBeNull();
-  });
-});
-
-describe("página /crm/contatos/[contato] — recuo para o modelo antigo (D-15)", () => {
-  async function montarPagina(id: string, resposta404 = true) {
-    if (resposta404) fetchMock.mockResolvedValue(resposta(404, { ok: false, error: "Contato não encontrado.", codigo: "CONTATO_NAO_ENCONTRADO" }));
-    const transporte: Transporte = {
-      gravar: vi.fn(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." })),
-      hidratar: vi.fn(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." })),
-    };
-    const params = Promise.resolve({ contato: id });
-    let resultado!: ReturnType<typeof render>;
-    await act(async () => {
-      resultado = render(
-        <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-          <StoreProvider sessao={{ memberId: "mem_julia" }} estadoInicial={{ data: buildSeed(), revisao: 1, ordens: {} }} transporte={transporte}>
-            <Suspense fallback="carregando">
-              <ContatoPage params={params} />
-            </Suspense>
-          </StoreProvider>
-        </SWRConfig>,
-      );
-    });
-    return resultado.container;
-  }
-
-  it("(i) 404 da api para um id que não existe em lugar nenhum mostra Contato não encontrado", async () => {
-    const container = await montarPagina("nao-existe");
-    await vi.waitFor(() => expect(container.textContent).toContain("Contato não encontrado."));
-    expect(container.textContent).toContain("Ele pode ter sido excluído permanentemente.");
-  });
-
-  it("(j) 404 da api para um id do modelo antigo abre a ficha antiga, com o que a nova não tem", async () => {
-    const antigo = buildSeed().contacts[0]!;
-    const container = await montarPagina(antigo.id);
-    await vi.waitFor(() => expect(container.textContent).toContain("Consentimentos"));
-    expect(container.textContent).not.toContain("Contato não encontrado.");
-  });
-
-  it("(k) Contato mesclado (011): a página leva ao sobrevivente e não desenha a ficha do absorvido", async () => {
-    fetchMock.mockResolvedValue(
-      resposta(200, { ok: true, dados: detalhado({ id: "c_absorvido", estado: "mesclado", mescladoEmId: "c_sobrevivente", mescladoEm: "2026-11-01T10:00:00.000Z" }) }),
-    );
-    const container = await montarPagina("c_absorvido", false);
-    await vi.waitFor(() => expect(trocarRota).toHaveBeenCalledWith("/crm/contatos/c_sobrevivente"));
-    expect(container.textContent).not.toContain("ana@x.com");
-    expect(container.textContent).not.toContain("Ana Souza");
   });
 });

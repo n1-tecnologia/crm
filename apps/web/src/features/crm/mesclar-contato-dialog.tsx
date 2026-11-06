@@ -7,11 +7,10 @@
  * recusa por 409 (`MESCLAGEM_RECUSADA`: o escolhido já está mesclado, na lixeira…)
  * e a frase dela aparece no próprio diálogo, que continua aberto.
  *
- * É a versão sobre a api do `merge-contacts-dialog.tsx` da ficha antiga, que lê o
- * store antigo e por isso não se reaproveita. Daquele ficam o aviso antes do ato e
- * a ideia de que o gesto precisa custar o que a consequência custa; mudam duas
- * coisas: o sobrevivente já está decidido (a ficha em que se está), e o outro
- * Contato é buscado na api (`SeletorDeRegistro`), nunca o próprio. A mesclagem é
+ * Herda da ficha antiga (apagada na 15-13) o aviso antes do ato e a ideia de que o
+ * gesto precisa custar o que a consequência custa; o sobrevivente já está decidido
+ * (a ficha em que se está), e o outro Contato é buscado na api
+ * (`SeletorDeRegistro`), nunca o próprio. A mesclagem é
  * irreversível: o absorvido fica `mesclado`, terminal e somente leitura, e abrir a
  * página dele leva ao sobrevivente (14-01).
  *
