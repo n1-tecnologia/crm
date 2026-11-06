@@ -139,7 +139,7 @@ function resposta(status: number, corpo: unknown): Response {
 
 let fetchMock: ReturnType<typeof vi.fn>;
 let rotas: Record<string, () => Response>;
-let gravar: ReturnType<typeof vi.fn>;
+let gravar: ReturnType<typeof vi.fn<Transporte["gravar"]>>;
 
 beforeEach(() => {
   process.env.NEXT_PUBLIC_API_URL = "http://api";
@@ -161,7 +161,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
   obterSessao.mockReset();
   obterSessao.mockResolvedValue({ data: { session: { access_token: "tok" } } });
-  gravar = vi.fn(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." }));
+  gravar = vi.fn<Transporte["gravar"]>(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." }));
 });
 
 afterEach(() => {

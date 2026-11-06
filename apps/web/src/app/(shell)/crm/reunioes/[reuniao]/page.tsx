@@ -5,8 +5,16 @@
  *
  * Não existe entidade Reunião: isto é uma Tarefa de Tipo Reunião ligada ao
  * Negócio por Vínculo (D8 deixou Evento de calendário como decisão futura).
- * Tudo que a coluna da direita mostra é leitura desse Negócio e do Contato
- * principal dele — nada aqui é digitado duas vezes.
+ * O Vínculo mora em `state.links` (a Tarefa é do modelo antigo); o lead mora no
+ * CRM novo e é lido por HTTP: o Negócio (`useNegocio`, que já traz Etapa e
+ * Funil), o Contato dele (`useContato`) e a Empresa (`useEmpresa`). Tudo que a
+ * coluna da direita mostra é leitura desse lead — nada aqui é digitado duas vezes.
+ * A nota da call vai para `contato_notas` (`adicionarNotaAoContato`).
+ *
+ * O Negócio novo não guarda Campos personalizados, e o Contato novo não tem
+ * Temperatura nem perfis de LinkedIn e TikTok: o Diagnóstico e o Roteiro da call
+ * saíram da tela com o modelo antigo (WINDOWS.md, Fase 15). Histórico de Etapas,
+ * Tags e vários Contatos por Negócio também não voltam (F14-D-04).
  *
  * O vídeo NÃO existe: o protótipo não tem mídia nem servidor. O palco diz isso
  * em vez de fingir uma chamada, porque uma imagem parada no lugar do vídeo faz
@@ -29,22 +37,18 @@ import {
   Video,
 } from "lucide-react";
 import { useData, useRun, useSession } from "@/dados/store";
-import {
-  actorLabel,
-  contactDisplayName,
-  contactDisplayRole,
-  newestFirst,
-  statusCategory,
-} from "@n1/dominio/derive";
+import { actorLabel, newestFirst, statusCategory } from "@n1/dominio/derive";
 import { ehAlteracaoDeDescricao } from "@n1/dominio/descricao-da-tarefa";
-import { addContactNote, endMeeting, startMeeting } from "@n1/dominio/operations";
-import { ContactAvatar } from "@/features/crm/contact-card";
-import {
-  InstagramIcon,
-  LinkedinIcon,
-  TikTokIcon,
-} from "@/features/crm/brand-icons";
-import { IDENTIFIER_TYPE_LABEL } from "@/features/shell/format";
+import { endMeeting, startMeeting } from "@n1/dominio/operations";
+import { ROTULO_DO_TIPO_DE_IDENTIFICADOR, nomeDeExibicaoDoContato } from "@n1/dominio/crm/contatos";
+import { validarNovaNota } from "@n1/dominio/crm/notas";
+import { useContato } from "@/dados/crm/contatos";
+import { useEmpresa } from "@/dados/crm/empresas";
+import { useNegocio } from "@/dados/crm/negocios";
+import { adicionarNotaAoContato } from "@/dados/crm/notas";
+import { AvatarDoContato } from "@/features/crm/avatar-do-contato";
+import { InstagramIcon } from "@/features/crm/brand-icons";
+import { comoErroDeApi } from "@/features/crm/formulario-de-contato";
 import { useFormat } from "@/features/shell/use-format";
 import {
   ActivityTimeline,
@@ -53,6 +57,7 @@ import {
   ConfirmDialog,
   CorpoDeTela,
   EmptyState,
+  EsqueletoDeLinhas,
   Icone,
   PageHeader,
   Painel,
@@ -106,6 +111,7 @@ export default function ReuniaoPage({
   const run = useRun();
   const fmt = useFormat();
   const [nota, setNota] = useState("");
+  const [gravandoNota, setGravandoNota] = useState(false);
 
   const [encerrando, setEncerrando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -114,6 +120,33 @@ export default function ReuniaoPage({
     useState(ATIVIDADES_POR_VEZ);
 
   const task = state.tasks.find((t) => t.id === reuniao);
+
+  /*
+   * O Vínculo da Tarefa aponta o Negócio; daí em diante o lead é do CRM novo.
+   * Os hooks vêm ANTES do retorno antecipado (regra dos hooks): sem Vínculo o
+   * id é `undefined` e nenhum deles vai à api.
+   */
+  const vinculo = task
+    ? state.links.find(
+        (l) =>
+          (l.fromId === task.id && l.toType === "deal") ||
+          (l.toId === task.id && l.fromType === "deal"),
+      )
+    : undefined;
+  const negocioId = vinculo
+    ? vinculo.fromId === task?.id
+      ? vinculo.toId
+      : vinculo.fromId
+    : undefined;
+  const consultaDoNegocio = useNegocio(negocioId);
+  // Negócio na lixeira (ou 404/403 da api) é o mesmo que ausente: estado vazio, sem erro.
+  const lead =
+    consultaDoNegocio.data && consultaDoNegocio.data.negocio.estado !== "na_lixeira"
+      ? consultaDoNegocio.data
+      : undefined;
+  const negocio = lead?.negocio;
+  const consultaDoContato = useContato(negocio?.contatoId ?? undefined);
+  const consultaDaEmpresa = useEmpresa(negocio?.empresaId ?? undefined);
 
   const agora = useRelogio();
 
@@ -131,21 +164,21 @@ export default function ReuniaoPage({
     );
   }
 
-  const vinculo = state.links.find(
-    (l) =>
-      (l.fromId === task.id && l.toType === "deal") ||
-      (l.toId === task.id && l.fromType === "deal"),
-  );
-  const deal = state.deals.find(
-    (d) =>
-      d.id === (vinculo?.fromId === task.id ? vinculo.toId : vinculo?.fromId),
-  );
-  const principalLink =
-    deal?.contactLinks.find((l) => l.principal) ?? deal?.contactLinks[0];
-  const contato = state.contacts.find((c) => c.id === principalLink?.contactId);
-  const diagnostico = deal?.fieldValues.find(
-    (v) => v.definitionId === "fd_diagnostico",
-  )?.value;
+  const contato = consultaDoContato.data;
+  const empresa = consultaDaEmpresa.data?.empresa;
+  const nomeDaEmpresa =
+    empresa?.nomeFantasia ?? empresa?.razaoSocial ?? lead?.empresa?.nome ?? undefined;
+  const principal = contato?.identificadores.find((i) => i.principal) ?? contato?.identificadores[0];
+  const nomeDoContato = contato
+    ? nomeDeExibicaoDoContato(contato.contato, principal?.valorExibido ?? principal?.valor)
+    : undefined;
+  const localizacao = contato?.contato.enderecos[0]
+    ? [contato.contato.enderecos[0].cidade, contato.contato.enderecos[0].estado].filter(Boolean).join(", ")
+    : "";
+  /** O cargo vem do vínculo vigente do Contato com a Empresa (o primeiro sem `fim`). */
+  const vinculoVigente = contato?.vinculos.find((v) => v.fim === null);
+  const carregandoOLead =
+    negocioId !== undefined && consultaDoNegocio.isLoading && consultaDoNegocio.data === undefined;
 
   /**
    * Tudo que já aconteceu com este lead — o Negócio, o Contato e esta Reunião —
@@ -156,69 +189,26 @@ export default function ReuniaoPage({
   const atividadesDoLead = newestFirst(
     state.activity.filter(
       (registro) =>
-        registro.objectId === deal?.id ||
-        registro.objectId === contato?.id ||
+        registro.objectId === negocio?.id ||
+        registro.objectId === contato?.contato.id ||
         registro.objectId === task.id,
     ),
   );
-
-  /** O roteiro do Funil do Negócio, na ordem do processo. */
-  const camposDoRoteiro = [
-    "fd_criterio_fit",
-    "fd_criterio",
-    "fd_dor",
-    "fd_decisor",
-    "fd_orcamento",
-    "fd_prazo",
-  ]
-    .map((id) => state.fieldDefinitions.find((d) => d.id === id))
-    .filter((definicao) => definicao !== undefined);
 
   /*
    * Rede social é PERFIL PÚBLICO, que se abre e se lê antes da call. WhatsApp
    * e e-mail ficam de fora de propósito: são endereço de envio, e tratá-los
    * como rede social misturaria "onde ver a pessoa" com "por onde falar".
    */
-  const perfis = (contato?.identifiers ?? [])
-    .map((identificador) => {
-      if (identificador.type === "usuarioDeInstagram") {
-        return {
-          identificador,
-          rotulo: "Instagram",
-          href: `https://instagram.com/${identificador.value.replace(/^@/, "")}`,
-          icone: InstagramIcon,
-        };
-      }
-      if (identificador.type === "perfilDeLinkedIn") {
-        return {
-          identificador,
-          rotulo: "LinkedIn",
-          href: `https://${identificador.value.replace(/^https?:\/\//, "")}`,
-          icone: LinkedinIcon,
-        };
-      }
-      if (identificador.type === "perfilDeTikTok") {
-        return {
-          identificador,
-          rotulo: "TikTok",
-          href: `https://tiktok.com/${identificador.value.startsWith("@") ? identificador.value : `@${identificador.value}`}`,
-          icone: TikTokIcon,
-        };
-      }
-      return undefined;
-    })
-    .filter((perfil) => perfil !== undefined);
-  const company = deal?.companyId
-    ? state.companies.find((c) => c.id === deal.companyId)
-    : undefined;
+  const perfis = (contato?.identificadores ?? [])
+    .filter((identificador) => identificador.tipo === "instagram")
+    .map((identificador) => ({
+      identificador,
+      rotulo: "Instagram",
+      href: `https://instagram.com/${encodeURIComponent(identificador.valor.replace(/^@/, ""))}`,
+      icone: InstagramIcon,
+    }));
   const eu = state.members.find((m) => m.id === memberId);
-  const funnel = deal
-    ? state.funnels.find((f) => f.id === deal.funnelId)
-    : undefined;
-  const stage = funnel?.stages.find((s) => s.id === deal?.stageId);
-  const temperatura = contato
-    ? state.catalog.find((c) => c.id === contato.temperatureId)
-    : undefined;
 
   const emAndamento = statusCategory(state, task) === "emAndamento";
   const apontamento = [...task.timeEntries]
@@ -230,7 +220,7 @@ export default function ReuniaoPage({
     .filter((t) => t.id !== task.id && t.lifecycle === "ativo")
     .filter((t) =>
       t.assignees.some(
-        (a) => a.kind === "member" && a.id === deal?.ownerMemberId,
+        (a) => a.kind === "member" && a.id === negocio?.proprietarioId,
       ),
     )
     .filter((t) => statusCategory(state, t) !== "concluido")
@@ -254,6 +244,34 @@ export default function ReuniaoPage({
     } else {
       setAviso(null);
       setErro(resultado.error ?? "Não foi possível concluir a operação.");
+    }
+  };
+
+  /**
+   * A nota da call é do Contato (3.2.7): vai para `contato_notas`, não para a
+   * Tarefa. A mesma `validarNovaNota` da api pré-valida; a recusa dela aparece
+   * na tela, e o texto só some se gravou — apagá-lo junto com o erro perderia o
+   * que a pessoa escreveu durante a call.
+   */
+  const registrarNota = async () => {
+    if (!contato) return;
+    const validacao = validarNovaNota({ conteudo: nota });
+    if (!validacao.ok) {
+      setAviso(null);
+      setErro(validacao.error);
+      return;
+    }
+    setGravandoNota(true);
+    try {
+      await adicionarNotaAoContato(contato.contato.id, validacao.value.conteudo);
+      setErro(null);
+      setAviso("Anotação registrada no Contato.");
+      setNota("");
+    } catch (falha) {
+      setAviso(null);
+      setErro(comoErroDeApi(falha, "Não foi possível salvar a anotação. Tente de novo.").message);
+    } finally {
+      setGravandoNota(false);
     }
   };
 
@@ -304,32 +322,38 @@ export default function ReuniaoPage({
             tela larga, fica preso ao topo enquanto o dossiê rola ao lado.
           */}
           <Painel className="relative grid aspect-video min-w-0 place-items-center self-start overflow-hidden xl:sticky xl:top-0">
-            {contato ? (
+            {carregandoOLead ? (
+              <EsqueletoDeLinhas quantidade={2} />
+            ) : contato ? (
               <>
                 {/*
                   A moldura é a real; o vídeo ainda não existe, e o lugar dele é
                   ocupado pelo retrato do Contato. Quem é a pessoa está dito no
                   bloco "Detalhes do cliente", ao lado — repetir sobre a imagem
-                  só cobriria o rosto.
+                  só cobriria o rosto. No modelo novo não há arquivo de foto: o
+                  retrato são as iniciais.
                 */}
                 <span className="absolute inset-0 grid place-items-center overflow-hidden bg-[var(--page)]">
-                  {contato.photoFileId ? (
-                    <Image
-                      src={`/contatos/${contato.photoFileId}.jpg`}
-                      alt={contactDisplayName(contato)}
-                      fill
-                      sizes="70vw"
-                      className="object-cover opacity-90"
-                    />
-                  ) : (
-                    <ContactAvatar contact={contato} size="grande" />
-                  )}
+                  <AvatarDoContato
+                    nome={contato.contato.nome}
+                    sobrenome={contato.contato.sobrenome}
+                    tamanho="grande"
+                  />
                 </span>
               </>
+            ) : !lead ? (
+              <EmptyState
+                title="Esta Reunião não tem Negócio."
+                hint="Sem Negócio vinculado não há lead para mostrar. Ele pode estar na lixeira, ou você não tem permissão para vê-lo."
+              />
             ) : (
               <EmptyState
                 title="Esta Reunião não tem Contato."
-                hint="Sem Contato vinculado ao Negócio não há com quem falar."
+                hint={
+                  nomeDaEmpresa
+                    ? `O Negócio é da Empresa ${nomeDaEmpresa}, sem Contato vinculado: não há com quem falar.`
+                    : "Sem Contato vinculado ao Negócio não há com quem falar."
+                }
               />
             )}
 
@@ -470,62 +494,51 @@ export default function ReuniaoPage({
                 title="Detalhes do cliente"
                 icon={<Icone de={User} tamanho="sm" />}
                 action={
-                  temperatura ? (
-                    <Pilula cor={temperatura.color}>
-                      Lead {temperatura.name.toLocaleLowerCase("pt-BR")}
-                    </Pilula>
+                  contato.contato.qualificacao ? (
+                    <Pilula tom="neutro">{contato.contato.qualificacao}</Pilula>
                   ) : undefined
                 }
               >
                 <div className="mb-3 flex items-center gap-3">
-                  <ContactAvatar contact={contato} />
+                  <AvatarDoContato
+                    nome={contato.contato.nome}
+                    sobrenome={contato.contato.sobrenome}
+                  />
                   <span className="min-w-0">
                     <Link
-                      href={`/crm/contatos/${contato.id}`}
+                      href={`/crm/contatos/${contato.contato.id}`}
                       className="app-md block truncate hover:underline"
                       style={{ color: "var(--texto)" }}
                     >
-                      {contactDisplayName(contato)}
+                      {nomeDoContato}
                     </Link>
                     <span className="app-sm block truncate" style={{ color: "var(--texto-3)" }}>
-                      {contactDisplayRole(state, contato.id) || "sem cargo"}
-                      {company ? ` · ${company.tradeName}` : ""}
+                      {vinculoVigente?.cargo || "sem cargo"}
+                      {nomeDaEmpresa ? ` · ${nomeDaEmpresa}` : ""}
                     </span>
                   </span>
                 </div>
                 <dl className="grid gap-1">
-                  {contato.identifiers
-                    .filter(
-                      (identificador) =>
-                        identificador.type !== "usuarioDeInstagram" &&
-                        identificador.type !== "perfilDeLinkedIn" &&
-                        identificador.type !== "perfilDeTikTok",
-                    )
+                  {contato.identificadores
+                    .filter((identificador) => identificador.tipo !== "instagram")
                     .map((identificador) => (
                       <RecordRow
                         key={identificador.id}
-                        label={
-                          IDENTIFIER_TYPE_LABEL[identificador.type] ??
-                          identificador.type
-                        }
+                        label={ROTULO_DO_TIPO_DE_IDENTIFICADOR[identificador.tipo] ?? identificador.tipo}
                       >
                         <span className="identificador">
-                          {identificador.displayValue}
+                          {identificador.valorExibido ?? identificador.valor}
                         </span>
                       </RecordRow>
                     ))}
-                  {contato.addresses[0] ? (
-                    <RecordRow label="Localização">
-                      {[contato.addresses[0].city, contato.addresses[0].region]
-                        .filter(Boolean)
-                        .join(", ")}
-                    </RecordRow>
+                  {localizacao ? (
+                    <RecordRow label="Localização">{localizacao}</RecordRow>
                   ) : null}
                 </dl>
               </RecordPanel>
             ) : null}
 
-            {deal ? (
+            {lead && negocio ? (
               <>
                 <RecordPanel
                   title="Detalhes da call"
@@ -565,14 +578,6 @@ export default function ReuniaoPage({
                       </span>
                     </RecordRow>
                   </dl>
-                  <p className="app-meta mt-2">
-                    Diagnóstico da call
-                  </p>
-                  <p className="app-base" style={{ color: "var(--texto)" }}>
-                    {diagnostico
-                      ? String(diagnostico)
-                      : "Ainda não registrado. A Etapa Call não fecha sem ele."}
-                  </p>
                 </RecordPanel>
 
                 <RecordPanel
@@ -580,7 +585,7 @@ export default function ReuniaoPage({
                   icon={<Icone de={ScrollText} tamanho="sm" />}
                   action={
                     <Link
-                      href={`/crm/negocios/${deal.id}`}
+                      href={`/crm/negocios/${negocio.id}`}
                       className="app-sm hover:underline"
                       style={{ color: "var(--texto-3)" }}
                     >
@@ -589,62 +594,37 @@ export default function ReuniaoPage({
                   }
                 >
                   <dl className="grid gap-2">
-                    <RecordRow label="Objeto">{deal.object || "—"}</RecordRow>
+                    <RecordRow label="Negócio">{negocio.titulo}</RecordRow>
+                    <RecordRow label="Objeto">{negocio.objeto || "—"}</RecordRow>
                     <RecordRow label="Valor">
-                      {deal.value ? fmt.money(deal.value) : "sem valor declarado"}
+                      {negocio.valor
+                        ? fmt.money({ amount: Number(negocio.valor), currency: negocio.moeda })
+                        : "sem valor declarado"}
                     </RecordRow>
-                    <RecordRow label="Etapa">{stage?.name ?? "—"}</RecordRow>
+                    <RecordRow label="Funil">{lead.funil.nome}</RecordRow>
+                    <RecordRow label="Etapa">{lead.etapa.nome}</RecordRow>
+                    {nomeDaEmpresa ? (
+                      <RecordRow label="Empresa">
+                        {lead.empresa ? (
+                          <Link
+                            href={`/crm/empresas/${lead.empresa.id}`}
+                            className="hover:underline"
+                          >
+                            {nomeDaEmpresa}
+                          </Link>
+                        ) : (
+                          nomeDaEmpresa
+                        )}
+                      </RecordRow>
+                    ) : null}
                     <RecordRow label="Fechamento previsto">
-                      {deal.expectedCloseDate
-                        ? fmt.civilDate(deal.expectedCloseDate)
+                      {negocio.dataPrevistaFechamento
+                        ? fmt.civilDate(negocio.dataPrevistaFechamento)
                         : "—"}
                     </RecordRow>
                   </dl>
                 </RecordPanel>
               </>
-            ) : null}
-
-            {deal ? (
-              <RecordPanel
-                title="Roteiro da call"
-                icon={<Icone de={ScrollText} tamanho="sm" />}
-                count={camposDoRoteiro.length}
-              >
-                <dl className="grid gap-3">
-                  {camposDoRoteiro.map((definicao) => {
-                    const valor = deal.fieldValues.find(
-                      (v) => v.definitionId === definicao.id,
-                    )?.value;
-                    const vazio =
-                      valor === undefined || valor === null || valor === "";
-                    return (
-                      <div key={definicao.id}>
-                        <dt className="app-meta">
-                          {definicao.name}
-                        </dt>
-                        <dd
-                          className="app-base"
-                          style={{ color: vazio ? "var(--texto-3)" : "var(--texto)" }}
-                        >
-                          {vazio
-                            ? (definicao.description ?? "Ainda não preenchido.")
-                            : definicao.type === "currency" &&
-                                typeof valor === "number"
-                              ? fmt.money({
-                                  amount: valor,
-                                  currency: state.workspace.locale.currency,
-                                })
-                              : String(valor)}
-                        </dd>
-                      </div>
-                    );
-                  })}
-                </dl>
-                <p className="app-meta mt-3">
-                  O que o SDR levantou. O que aparecer de novo nesta call vai na
-                  anotação, e sai da Etapa Call como Diagnóstico.
-                </p>
-              </RecordPanel>
             ) : null}
 
             {contato ? (
@@ -663,7 +643,7 @@ export default function ReuniaoPage({
                           href={href}
                           target="_blank"
                           rel="noreferrer"
-                          title={identificador.displayValue}
+                          title={identificador.valorExibido ?? identificador.valor}
                           className="item-solto"
                           data-bloco="true"
                           style={{ color: "var(--acento)" }}
@@ -735,13 +715,7 @@ export default function ReuniaoPage({
                   className="grid gap-2"
                   onSubmit={(evento) => {
                     evento.preventDefault();
-                    const resultado = run((data, id) =>
-                      addContactNote(data, id, contato.id, nota),
-                    );
-                    reportar(resultado, "Anotação registrada no Contato.");
-                    // Só limpa se gravou: apagar o texto junto com o erro
-                    // perderia o que a pessoa escreveu durante a call.
-                    if (resultado.ok) setNota("");
+                    void registrarNota();
                   }}
                 >
                   <label className="sr-only" htmlFor="nota-da-call">
@@ -759,8 +733,12 @@ export default function ReuniaoPage({
                     <Button
                       type="submit"
                       variant="secondary"
-                      disabled={nota.trim() === ""}
-                      disabledReason="Escreva a anotação antes de salvar."
+                      disabled={nota.trim() === "" || gravandoNota}
+                      disabledReason={
+                        gravandoNota
+                          ? "Gravando a anotação…"
+                          : "Escreva a anotação antes de salvar."
+                      }
                     >
                       Registrar anotação
                     </Button>
