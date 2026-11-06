@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 31
+open_count: 33
 waived_count: 2
 fixed_count: 8
-total_count: 41
-last_updated: 2026-11-06T14:33:24.919Z
+total_count: 43
+last_updated: 2026-11-06T14:45:41.486Z
 ---
 
 # Broken Windows Ledger
@@ -56,6 +56,8 @@ last_updated: 2026-11-06T14:33:24.919Z
 | 39 | 15 | deviation | apps/web/src/features/ferramentas/flow-popup.tsx |  | 15-22: enviar o Flow a um Contato continua escolhendo uma Conversa 1:1 de state.conversations (enviarFlow recebe conversationId, F14-D-05), nao o seletor de Contatos com WhatsApp que o plano citava; o nome vem de POST /crm/nomes (sem nome, o titulo da Conversa). Um Contato da ficha nova sem Conversa no modelo antigo nao e enviavel. Resolver quando o envio e a resposta de Flow passarem ao modelo novo (Sessao 7) | open |  | 2026-11-06T14:14:34.917Z |  |
 | 40 | 15 | deviation | apps/web/src/features/crm/coluna-do-contato.tsx |  | 15-24: a coluna do Contato da Caixa nao tem mais o ponto verde de janela de resposta aberta, as acoes LinkedIn e Tarefa (virou Instagram e Abrir ficha), o resumo escrito pelo Agente Enriquecedor (mostra a descricao do Contato) nem a temperatura (D-15-06); o painel Tags da Conversa saiu porque plataforma.conversas nao guarda Tags. Se o dono quiser o ponto da janela ou as Tags da Conversa de volta, abrir na api e no dominio | open |  | 2026-11-06T14:33:24.856Z |  |
 | 41 | 15 | deviation | apps/web/src/features/crm/conversa-de-grupo-na-caixa.tsx |  | 15-24: a Conversa de grupo aberta na Caixa (id que a api responde 404 e o store conhece como Conversa de grupo, F14-D-05) ainda resolve, reabre, atribui e manda para a lixeira pelas operacoes antigas do store; so sai quando o Grupo passar ao modelo novo (Sessoes 6 e 7). Nenhuma outra tela da Caixa usa essas operacoes | open |  | 2026-11-06T14:33:24.919Z |  |
+| 42 | 15 | deviation | apps/web/src/features/estrutura/tarefa-completa.tsx |  | 15-25: a lista de Vinculos da ficha da Tarefa mostra 'Registro indisponivel' (sem atalho) para Negocio, Contato e Conversa cujo id POST /crm/nomes nao conhece; os Vinculos de hoje em producao apontam para ids do modelo antigo, entao ate o script de migracao preservar os ids a ficha cai no layout de sempre com o aviso 'sem Contato' (resumo.contato null) e os nomes dos Vinculos nao aparecem. Antes o nome vinha do estado antigo | open |  | 2026-11-06T14:45:41.424Z |  |
+| 43 | 15 | deviation | apps/web/src/features/crm/conversation-thread.tsx |  | 15-25: o aviso de consentimento de marketing do fio e so aviso (nao bloqueia o envio) e aparece sempre que o consentimento vigente de Marketing no tipo do Canal da aba nao e 'concedido', inclusive Contato sem nenhum registro, porque o fio nao tem seletor de modelo (antes o aviso so existia com um modelo de marketing escolhido). Se o dono achar ruidoso para quem nunca teve consentimento registrado, restringir a 'revogado' ou ligar ao modelo quando houver Mensagem de modelo | open |  | 2026-11-06T14:45:41.486Z |  |
 
 ````json
 [
@@ -589,6 +591,32 @@ last_updated: 2026-11-06T14:33:24.919Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-06T14:33:24.919Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 42,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/features/estrutura/tarefa-completa.tsx",
+    "line": null,
+    "description": "15-25: a lista de Vinculos da ficha da Tarefa mostra 'Registro indisponivel' (sem atalho) para Negocio, Contato e Conversa cujo id POST /crm/nomes nao conhece; os Vinculos de hoje em producao apontam para ids do modelo antigo, entao ate o script de migracao preservar os ids a ficha cai no layout de sempre com o aviso 'sem Contato' (resumo.contato null) e os nomes dos Vinculos nao aparecem. Antes o nome vinha do estado antigo",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T14:45:41.424Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 43,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/features/crm/conversation-thread.tsx",
+    "line": null,
+    "description": "15-25: o aviso de consentimento de marketing do fio e so aviso (nao bloqueia o envio) e aparece sempre que o consentimento vigente de Marketing no tipo do Canal da aba nao e 'concedido', inclusive Contato sem nenhum registro, porque o fio nao tem seletor de modelo (antes o aviso so existia com um modelo de marketing escolhido). Se o dono achar ruidoso para quem nunca teve consentimento registrado, restringir a 'revogado' ou ligar ao modelo quando houver Mensagem de modelo",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T14:45:41.486Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }

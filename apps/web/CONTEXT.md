@@ -161,8 +161,8 @@ diálogo de nova Tarefa e do diálogo de trocar o Canal só aparece quando o Con
 não tem Conversa aberta no Canal. Os chamadores são o diálogo da Lista
 (`nova-tarefa-conversacional-dialog.tsx`), o botão "Criar Tarefa" do fio
 (`conversation-thread.tsx`) e os três gestos da ficha (`tarefa-completa.tsx`);
-nenhum chama mais as operações antigas. O fio já lê o CRM novo (15-20, mais abaixo); o
-layout de três colunas da ficha ainda lê o Contato e o Canal do modelo antigo até o 15-25. Como
+nenhum chama mais as operações antigas. O fio lê o CRM novo (15-20, mais abaixo) e o layout de
+três colunas da ficha também (15-25, mais abaixo). Como
 as Tarefas e as Conversas de hoje ainda apontam para ids antigos, estas telas só
 vão ao ar junto com o script de migração da Fase 15. A prévia da remoção de um
 Membro (`dados/crm/sucessao.ts`, `useSucessaoNoCrm`) lê Contatos, Empresas,
@@ -387,13 +387,13 @@ Governança (`resolveResource`) já não reconhece Funil como Recurso: o Funil n
 se governa por `privado` e pelo Papel no servidor.
 
 **O fio da Conversa pelo CRM novo (Fase 15, 15-20).** `ConversationThread` recebe ids —
-`conversaId?`, `contatoId`, `canalPreferidoId?`, `tarefaId?` (ainda não lido: o 15-25 liga a Nota e o
-"Criar Tarefa" a ela), mais `canalSelecionado`/`onCanalChange` (a aba controlada pela ficha) e
+`conversaId?`, `contatoId`, `canalPreferidoId?`, `tarefaId?` (declarado e não lido: a Nota é do Contato e o
+"Criar Tarefa" nasce da Lista escolhida), mais `canalSelecionado`/`onCanalChange` (a aba controlada pela ficha) e
 `onConversaAberta?` — e lê tudo pela api: `useContato` (nome e Identificadores), `useCanais`
 (as abas), `useConversas({ contatoId })` (as Conversas do Contato, com `ultimaRecebidaEm`),
 `useConversa` (a Conversa que a tela pediu, mesmo fora da lista) e `useMensagens` (as 200 últimas
 do fio). Nada do fio lê Conversa, Contato nem Canal do `DataState`; o estado guarda só Listas,
-Tarefas, Membros e Agentes (Nota, "Criar Tarefa" e a aba Meet). As abas e o Canal padrão de resposta
+Tarefas, Membros e Agentes ("Criar Tarefa" e a aba Meet). As abas e o Canal padrão de resposta
 são `crm/canais-de-resposta` do domínio; a aba que abre é, em ordem, a de `canalSelecionado`, a que a
 pessoa clicou, a Conversa pedida, `canalPreferidoId` e o Canal da última recebida. Responder é
 `enviarMensagem` (`POST /mensagens`, uma linha em `plataforma.mensagens`); sem Conversa no Canal da
@@ -405,6 +405,21 @@ novo não tem Rascunho de IA (D-15-11) nem Mensagem de modelo (`plataforma.canai
 fora da janela de 24 h do WhatsApp oficial o envio fica desligado dizendo por quê. A aba Meet acha as
 Reuniões pelos Vínculos com os Negócios de `useNegocios({ contatoId })`. `seletor-de-canal`,
 `separador-de-canal` e `selo-do-provedor` tipam com `Canal` de `@n1/dominio/crm/canais`.
+
+**Nota e consentimento do fio, e a ficha da Tarefa por Vínculos (Fase 15, 15-25).** A aba "Nota
+interna" do fio grava por `adicionarNotaAoContato` (`POST /contatos/:id/notas`, uma linha em
+`contato_notas`, autor da sessão): `validarNovaNota` e `recusaDeNotaNoContato` do domínio conferem
+ANTES de ir à api, um `ref` e o botão desligado em voo seguram o duplo clique, e a recusa da api aparece
+no fio com o texto no campo. O aviso de consentimento de marketing é a conta do CRM novo:
+`consentimentoVigente` sobre `useConsentimentosDoContato`, para a finalidade "Marketing" do Catálogo e o
+tipo do Canal da aba; vigente que não seja `concedido` (ou nenhum registro) mostra o aviso, que NÃO
+bloqueia o envio (texto livre dentro da janela não é marketing) e não aparece enquanto a leitura não
+chegou. A ficha da Tarefa conversacional (`tarefa-completa.tsx`) não lê mais Contato, Conversa nem Canal
+do `DataState`: o Contato do fio é o do resumo (`useResumoDaTarefa`, o sobrevivente se foi mesclado) ou,
+até o resumo chegar, o do Vínculo (`vinculosDoCrmDaTarefa`); `resumo.contato === null` volta ao layout
+de sempre com o aviso "sem Contato"; o Canal do fio é o do resumo, e sem Vínculo de Conversa o fio
+aparece pronto para abrir uma com a primeira Mensagem. Os nomes da lista de Vínculos (Negócio, Contato,
+Conversa) vêm de `useNomesDoCrm` (`POST /crm/nomes`): `null` é "Registro indisponível", sem atalho.
 
 **A página da Conversa pelo CRM novo (Fase 15, 15-24).** `crm/caixa-de-entrada/[conversa]/page.tsx`
 lê `useConversa(id)` e cada gesto do cabeçalho é uma rota de `/conversas/:id/*`: atribuir
