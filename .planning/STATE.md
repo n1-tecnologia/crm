@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 15
 current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
 status: executing
-stopped_at: Completed 15-04-PLAN.md
-last_updated: "2026-11-06T09:02:31.857Z"
+stopped_at: Completed 15-05-PLAN.md
+last_updated: "2026-11-06T09:16:05.624Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 15 execution started
-state_head: b9ef70dcc6f6d29b6d1a8ab631af55135650ccd7
+state_head: 5dc96d4eb322b79f71c2110a871f1485567e92b6
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 271
-  completed_plans: 229
+  completed_plans: 230
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 15 (Unificação do CRM: telas no modelo novo e remoção do modelo antigo) — EXECUTING
-Plan: 5 of 43
+Plan: 6 of 43
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 15 execution started
 
@@ -448,6 +448,7 @@ Progress: [██████░░░░] 63%
 | Phase 15 P02 | 9 min | 3 tasks | 16 files |
 | Phase 15 P03 | 10 min | 2 tasks | 15 files |
 | Phase 15 P04 | 12 min | 2 tasks | 10 files |
+| Phase 15 P05 | 40 min | 3 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -698,6 +699,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 15]: D-15-08: na remocao de um Membro, as Conversas de que ele e Atribuido passam ao Sucessor como Atribuido (emenda B28-a, RN-ET-09, RN-CXE-24); Conversa de Agente nao muda
 - [Phase 15]: 15-04 D-15-09: crm_atividades (012) espelha ActivityRecord, sem FK para o objeto, so insercao por contrato do repositorio; registrarAtividade grava no mesmo cliente do comTransacao
 - [Phase 15]: 15-04: objeto_tipo da Atividade usa as cadeias do modelo antigo (contact, company, deal, conversation, funnel, channel), sem check de lista no banco
+- [Phase 15]: 15-05: a Empresa do cartao da Tarefa conversacional e o vinculo vigente admin mais antigo (a 007 nao tem vinculo principal); a confirmar com o dono
+- [Phase 15]: 15-05: qualificacao e Atribuido saem do resumo como ids; a web resolve rotulo/nome em catalog, members e agents; temperatura nao volta (D-15-06)
 
 ### Pending Todos
 
@@ -759,6 +762,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-06T09:02:31.563Z
-Stopped at: Completed 15-04-PLAN.md
+Last session: 2026-11-06T09:16:05.329Z
+Stopped at: Completed 15-05-PLAN.md
 Resume file: None
