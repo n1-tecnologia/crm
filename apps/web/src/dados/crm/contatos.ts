@@ -21,12 +21,15 @@ import type {
   EdicaoDeIdentificador,
   NovoContato,
   NovoIdentificadorDeContato,
+  TipoIdentificadorContato,
 } from "@n1/dominio/crm/contatos";
 import { chamarCrm, ErroDeApi, invalidarCrm } from "./cliente-crm";
 
 export interface FiltroDeContatos {
   readonly estado?: EstadoCrm;
   readonly q?: string;
+  /** Só Contatos com Identificador desse tipo — o seletor de Contatos com WhatsApp das Ferramentas (3.4.8). */
+  readonly comIdentificador?: TipoIdentificadorContato;
   readonly limite?: number;
   readonly deslocamento?: number;
 }
@@ -37,12 +40,13 @@ export interface RespostaDaListaDeContatos {
   readonly total: number;
 }
 
-/** `/contatos?estado=…&q=…&limite=…&deslocamento=…` — a mesma forma para a lista e para a invalidação. */
+/** `/contatos?estado=…&q=…&comIdentificador=…&limite=…&deslocamento=…` — a mesma forma para a lista e para a invalidação. */
 export function chaveDeContatos(filtro: FiltroDeContatos): string {
   const parametros = new URLSearchParams();
   parametros.set("estado", filtro.estado ?? "ativo");
   const busca = (filtro.q ?? "").trim();
   if (busca !== "") parametros.set("q", busca);
+  if (filtro.comIdentificador !== undefined) parametros.set("comIdentificador", filtro.comIdentificador);
   parametros.set("limite", String(filtro.limite ?? LIMITES_CRM.paginaPadrao));
   parametros.set("deslocamento", String(filtro.deslocamento ?? 0));
   return `/contatos?${parametros.toString()}`;
