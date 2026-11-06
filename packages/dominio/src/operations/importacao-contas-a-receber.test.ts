@@ -135,10 +135,10 @@ describe("importarContaAReceberHistorica", () => {
   });
 
   it("(d) clienteRef vira Vínculo Tarefa → Contato com linkRole “cliente”, e nenhuma lacuna “sem-cliente” nasce", () => {
+    // O Contato só está no catálogo recebido (as tabelas); o `state.contacts` nem sabe dele (Fase 15, 3.4.10).
     const gabriela = contatoFicticio("cnt_teste_gabriela");
-    s.contacts.push(gabriela);
 
-    const r = importarContaAReceberHistorica(s, OPERADOR, entradaBase({ clienteRef: { tipo: "contact", id: gabriela.id } }));
+    const r = importarContaAReceberHistorica(s, OPERADOR, entradaBase({ clienteRef: { tipo: "contact", id: gabriela.id } }), { contatos: [gabriela.id], empresas: [] });
     expect(r.ok, r.ok ? "" : r.error).toBe(true);
     if (!r.ok) throw new Error("unreachable");
 
@@ -148,6 +148,29 @@ describe("importarContaAReceberHistorica", () => {
 
     const lacunaSemCliente = s.activity.find((a) => a.objectId === r.value.id && a.action === "Lacuna de importação" && a.detail === "sem-cliente");
     expect(lacunaSemCliente).toBeUndefined();
+  });
+
+  it("(d2) clienteRef de Empresa vale quando o catálogo recebido a traz, e o Vínculo leva o tipo company", () => {
+    const r = importarContaAReceberHistorica(s, OPERADOR, entradaBase({ clienteRef: { tipo: "company", id: "emp_da_tabela" } }), { contatos: [], empresas: ["emp_da_tabela"] });
+    expect(r.ok, r.ok ? "" : r.error).toBe(true);
+    if (!r.ok) throw new Error("unreachable");
+    expect(s.links.some((l) => l.fromId === r.value.id && l.toType === "company" && l.toId === "emp_da_tabela" && l.role === CR.linkRole)).toBe(true);
+  });
+
+  it("(d3) o Contato do `state.contacts` (modelo antigo) já não basta: fora do catálogo recebido a importação recusa", () => {
+    const gabriela = contatoFicticio("cnt_teste_gabriela");
+    s.contacts.push(gabriela);
+    const tarefasAntes = s.tasks.length;
+
+    const semCatalogo = importarContaAReceberHistorica(s, OPERADOR, entradaBase({ clienteRef: { tipo: "contact", id: gabriela.id } }));
+    expect(semCatalogo.ok).toBe(false);
+    const catalogoSemEle = importarContaAReceberHistorica(s, OPERADOR, entradaBase({ clienteRef: { tipo: "contact", id: gabriela.id } }), { contatos: ["outro"], empresas: [] });
+    expect(catalogoSemEle.ok).toBe(false);
+    if (!catalogoSemEle.ok) expect(catalogoSemEle.error).toBe(`Cliente "${gabriela.id}" (contact) não encontrado no CRM.`);
+    expect(s.tasks.length).toBe(tarefasAntes);
+    // O id do tipo errado não vale: um id de Empresa no catálogo não faz de um Contato cliente.
+    const tipoErrado = importarContaAReceberHistorica(s, OPERADOR, entradaBase({ clienteRef: { tipo: "contact", id: "emp_x" } }), { contatos: [], empresas: ["emp_x"] });
+    expect(tipoErrado.ok).toBe(false);
   });
 
   it("(e) sem clienteRef, a Tarefa nasce com a lacuna “sem-cliente” registrada e nenhum Contato inventado", () => {
