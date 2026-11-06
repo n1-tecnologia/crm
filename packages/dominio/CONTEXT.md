@@ -822,8 +822,11 @@ fronteira.
 
 **O que não mudou.** `types/crm.ts` (`Contact`, `Company`, `Deal`,
 `Pipeline`…), `operations/{contacts,deals}.ts` e o seed de CRM continuam
-inteiros: Caixa de Entrada, Conversas, Busca global, Lixeira, Notificações
-e `/crm/meus-negocios` ainda leem esse modelo. Os dois convivem até a fase
+inteiros: Caixa de Entrada, Conversas e `/crm/meus-negocios` ainda leem esse
+modelo (Busca global, Lixeira e Notificações saíram dele no 15-14:
+`notificacoesDoMembro(state, membro, agora, conversasAtribuidas)` recebe as
+Conversas atribuídas e não resolvidas da api — `{ itens, total }`, e é o `total`
+que entra no selo — e não lê mais `state.conversations`). Os dois convivem até a fase
 de unificação (D-01, D-15); nenhum módulo de `src/crm/` importa o antigo
 nem vice-versa.
 

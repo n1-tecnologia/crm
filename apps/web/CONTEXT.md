@@ -194,7 +194,7 @@ cliente de qualquer forma.
 | Página da Lista (`estrutura/listas/[lista]`) | `memberReachesContainer` — alcance do contêiner |
 | Página e popup da Tarefa | `memberSeesTask` |
 | "Compartilhadas comigo" (trilho, `shell/compartilhadas-comigo.tsx`) | `memberSeesTask && !memberReachesContainer` — só o que a árvore não dá |
-| Busca global (`/buscar`) | `memberSeesTask` nas Tarefas, `memberReachesContainer` nas Listas |
+| Busca global (`/buscar`) | `memberSeesTask` nas Tarefas, `memberReachesContainer` nas Listas; Contatos, Empresas, Negócios e Conversas vêm da api (`?q=`, 15-14) |
 | "Minhas Tarefas" / "Todas que eu vejo" (`estrutura/tarefas`) | `memberSeesTask` |
 
 A visibilidade da Tarefa é **derivada**, nunca lida de `state.grants` à mão
@@ -216,11 +216,18 @@ de verdade é a do backend. O escopo "próprios" (vendedor vê só os seus
 Negócios) e a visibilidade de Funil privado ficaram para uma fase futura:
 `privado` é gravado e exibido, mas nenhuma regra o consulta.
 
-**Limitação aceita (D-15).** Busca global (`/buscar`), Lixeira
-(`/configuracoes/lixeira`), Notificações, `/crm/meus-negocios` e Caixa de
-Entrada continuam lendo o modelo antigo do CRM (`state.contacts`,
-`state.companies`, `state.deals`, `state.pipelines` do `DataState`) e **não
-mostram os registros da api nova**. As fichas de Contato
+**Limitação aceita (D-15).** `/crm/meus-negocios` e a Caixa de Entrada ainda
+leem o modelo antigo do CRM (`state.contacts`, `state.companies`, `state.deals`,
+`state.pipelines` do `DataState`) e **não mostram os registros da api nova**. A
+Busca global (`/buscar`), a Lixeira (`/configuracoes/lixeira`) e as Notificações
+(inclusive o selo da barra e do trilho) saíram desse grupo no plano 15-14
+(UCR-07): Contatos, Empresas, Negócios e Conversas vêm das rotas REST
+(`useContatos`/`useEmpresas`/`useNegocios`/`useConversas`, com `?q=` na Busca e
+`estado=na_lixeira` na Lixeira; restaurar é `POST /<recurso>/:id/restaurar`), e o
+hook `features/shell/use-notificacoes.ts` (`useNotificacoesDoMembro`) soma o
+`total` de `GET /conversas?atribuidoId=<Membro>&situacao=aberta|pendente` ao que
+`notificacoesDoMembro` deriva do store. A Busca de Conversa é pelo título (a rota
+não olha o texto das Mensagens). As fichas de Contato
 (`/crm/contatos/[contato]`), Empresa (`/crm/empresas/[empresa]`) e Negócio
 (`/crm/negocios/[negocio]`) **não têm mais recuo** (Fase 15, plano 15-13,
 UCR-06): um 404 da api mostra "Contato/Empresa/Negócio não encontrado(a)." mesmo
