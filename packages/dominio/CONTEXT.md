@@ -922,3 +922,10 @@ regra é a de antes e olha `state.channels`. Quem preenche `canais` é o servido
 dentro da transação (`lerDoCrm`, em `POST /operacoes`): o que o navegador manda
 nesse argumento é descartado. O ramo de `state.channels` sai com o CRM antigo
 (3.5.4).
+
+**Nomes do CRM novo em lote (Fase 15, 15-10, 3.4.9 e 3.4.10, UCR-08).** `crm/nomes.ts` (sem
+barril, subcaminho `@n1/dominio/crm/nomes`) tem só os tipos e o teto: `AlvoDoCrm` (`tipo` de
+`TIPOS_DE_OBJETO_DO_CRM` e `id`), `NomeDoAlvo` (o alvo com `nome: string | null`) e
+`NOMES_MAXIMO` (200 alvos por chamada). `nome: null` quer dizer "sem nome para mostrar" (id
+desconhecido, de outro Espaço ou tipo que o Papel não lê) sem distinguir a causa. A regra de
+quem pode ler é a de sempre, `podeNoCrm`; a consulta é da api (`POST /crm/nomes`).

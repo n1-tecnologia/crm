@@ -336,6 +336,21 @@ só de leitura:
   objeto só saem os tipos que o Papel pode ler, e sem nenhum é 403. Não existe
   POST, PATCH nem DELETE: a Atividade é gravada por cada gesto na transação dele.
 
+**Nomes do CRM novo em lote (Fase 15, 15-10, 3.4.9 e 3.4.10, UCR-08).** `rotas/crm/nomes.ts`
+tem UMA rota, de leitura:
+
+- `POST /crm/nomes` com `{ alvos: [{ tipo, id }] }` — `{ ok: true, itens, total }`, um item
+  `{ tipo, id, nome }` por alvo, NA ORDEM pedida. É POST porque até 200 pares não cabem numa
+  query string (como `POST /tarefas-conversacionais/resumo`); não grava nada nem sobe a
+  revisão do Espaço. Corpo `.strict()` com `alvos` de no máximo `NOMES_MAXIMO` (200) e `tipo`
+  em `TIPOS_DE_OBJETO_DO_CRM`: o excesso e o campo a mais são 400 antes do serviço. O Espaço é
+  sempre o da sessão (`workspace_id = $1` em toda consulta, uma por tipo presente). O Papel
+  decide por tipo com `podeNoCrm(…, "ler", recurso)`: tipo que ele não lê, id desconhecido e id
+  de outro Espaço voltam IGUAIS, com `nome: null` (nunca 403 por item, e a resposta não revela
+  qual das três causas). O que está na lixeira ou arquivado ainda tem nome. Lista vazia
+  responde `[]` sem ler Papel nem banco. Por ser POST, a rota herda `recusarSuspensoNaEscrita`:
+  o Membro `suspenso` recebe 403 aqui também (WR-03 segue aberto, D-15-07).
+
 **Atenção (3.3.6):** o Negócio cujo dono é a Empresa do Contato não aparece para
 ligar. A 007 dá um dono por Negócio (`negocios_dono_ck`), então a conferência é
 só por `contato_id`; trazer os Negócios da Empresa é decisão à parte.

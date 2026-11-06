@@ -179,7 +179,13 @@ decrescente, sem repetir id; `useAtividadesDoCrm(filtro)` lê só a rota, sem
 objeto, para a Auditoria. A Auditoria (15-09) soma `state.activity` e as páginas lidas
 de `useAtividadesDoCrm` (cursor composto `ate` + `ateId` da última linha da página), mistura
 por `at` e aplica os mesmos filtros às duas fontes. Só leitura: quem grava a Atividade é cada
-gesto, no servidor. `src/sem-listas-espelho.test.ts`
+gesto, no servidor. O nome de um id do CRM novo (Contato, Empresa, Negócio, Conversa, Funil
+ou Canal) sem carregar a lista vem de `dados/crm/nomes.ts` (15-10): `useNomesDoCrm(alvos)` junta
+os alvos da tela em UMA chamada a `POST /crm/nomes` (lotes de 200), com chave estável (alvos
+únicos e ordenados, então a mesma lista em outra ordem compartilha a chamada e o cache SWR), e
+`nomeDe(resultado, tipo, id)` devolve o texto, `null` (a api respondeu sem nome: id fora do
+Espaço, desconhecido ou tipo que o Papel não lê) ou `undefined` (a resposta ainda não chegou).
+`src/sem-listas-espelho.test.ts`
 (D-06) congela os dois arquivos da web que ainda citam as Listas espelho e proíbe
 um terceiro.
 
