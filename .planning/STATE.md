@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 15
 current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
 status: executing
-stopped_at: Completed 15-21-PLAN.md
-last_updated: "2026-11-06T13:57:08.813Z"
+stopped_at: Completed 15-22-PLAN.md
+last_updated: "2026-11-06T14:16:07.212Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 15 execution started
-state_head: 9a0bd5ac8679f4b3dddcd81630fc8962e0a0f4d6
+state_head: 0c672737b398a4c27887f009075a82424f0680f0
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 271
-  completed_plans: 250
+  completed_plans: 251
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 15 (Unificação do CRM: telas no modelo novo e remoção do modelo antigo) — EXECUTING
-Plan: 26 of 43
+Plan: 27 of 43
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 15 execution started
 
@@ -469,6 +469,7 @@ Progress: [██████░░░░] 63%
 | Phase 15 P18 | 15 min | 3 tasks | 13 files |
 | Phase 15 P19 | 14 min | 3 tasks | 28 files |
 | Phase 15 P21 | 14 min | 2 tasks | 14 files |
+| Phase 15 P22 | 17 min | 3 tasks | 20 files |
 
 ## Accumulated Context
 
@@ -752,6 +753,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 15]: 15-19: automations.ts le nome e dono do cliente em state.contacts (contatoDoCliente) e entrou na lista congelada do sem-crm-antigo do dominio — clienteDe devolve so a referencia; injetar nome e dono por OpcoesDaAgenda fica para antes do 3.5.4 (WINDOWS #35)
 - [Phase 15]: 15-21: o diálogo da Âncora e o do ensaio ganharam o campo 'Buscar registro' (q para a api, 30 por busca); a escolha leva o nome para nomes e a Âncora do pedido leva só tipo e id
 - [Phase 15]: 15-21: useFunisDoEscopo lê Funis ativos e arquivados de GET /funis; inoperanteComFunis não acusa escopo eliminado enquanto a lista não chegou (ou se a api a recusou)
+- [Phase 15]: 15-22: as Ferramentas mandam o crm (Canais de GET /canais, Contatos escolhidos) como ultimo argumento; o servidor o descarta e relê. Seletor de Contatos com WhatsApp em useSeletorDeContatos (comIdentificador + q); eventos so locais usam crmParaSimular
+- [Phase 15]: 15-22: Conversa do Grupo e Conversa 1:1 do envio de Flow seguem em state.conversations (F14-D-05); nome de Contato por POST /crm/nomes, com numero da Participacao ou titulo da Conversa quando a api nao nomeia
 
 ### Pending Todos
 
@@ -813,6 +816,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-06T13:57:08.611Z
-Stopped at: Completed 15-21-PLAN.md
+Last session: 2026-11-06T14:16:07.017Z
+Stopped at: Completed 15-22-PLAN.md
 Resume file: None
