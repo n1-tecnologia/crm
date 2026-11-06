@@ -2,9 +2,9 @@
 phase: "15"
 slug: unifica-o-do-crm-telas-no-modelo-novo-e-remo-o-do-modelo-ant
 # status lifecycle: draft (seeded by plan-phase) → validated (set by validate-phase §6)
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: validated
+nyquist_compliant: true
+wave_0_complete: true
 created: "2026-11-05"
 ---
 
@@ -44,18 +44,18 @@ Os ids de tarefa saem dos PLAN.md; esta tabela é o mapa por requisito, e cada l
 
 | Requisito | Comportamento | Test Type | Automated Command | File Exists | Status |
 |-----------|---------------|-----------|-------------------|-------------|--------|
-| UCR-01 | WR-01 (3 portas), WR-02 (trava do Espaço antes do Canal), WR-05, WR-06, `instantiateListTemplate` com `canais`, `operacoes.test.ts` pula sem Postgres local | integração (Docker) + unit | `cd apps/api && … npx vitest run src/servicos/crm/{conversas,negocios,empresas,canais,contatos,tarefas-conversacionais}.test.ts src/rotas/operacoes-canais-da-lista.test.ts src/rotas/operacoes.test.ts` | ✅ casos novos | ⬜ pending |
-| UCR-02 | Sucessão passa as Conversas ao Sucessor; contagens; contrato na ontologia; diálogo de remover Membro | integração + unit web | `cd apps/api && … npx vitest run src/servicos/crm/sucessao.test.ts src/rotas/crm/sucessao.test.ts` · `cd apps/web && npx vitest run src/features/shell/membros-sucessao-no-crm.test.tsx` | ✅ reescrever expectativas | ⬜ pending |
-| UCR-03 | `012` aplica, idempotente, tabela só-inserção; gestos gravam Atividade na mesma transação (rollback não deixa linha); `GET /atividades` por Papel e Espaço; fusão na web | integração + unit | `cd apps/api && … npx vitest run src/persistencia/migracao-012.test.ts src/servicos/crm/*.test.ts src/rotas/crm/atividades.test.ts` · `cd apps/web && npx vitest run src/dados/crm/atividades.test.ts` | ❌ W0 | ⬜ pending |
-| UCR-04 | Resumo traz Empresa, qualificação, estado, Atribuído; cartão e ficha mostram; "Mesclar" só libera com o nome digitado | integração + componente | `cd apps/api && … npx vitest run src/servicos/crm/tarefas-conversacionais.test.ts` · `cd apps/web && npx vitest run src/features/estrutura/tarefa-completa-resumo.test.tsx src/features/crm/ficha-de-contato.test.tsx` | ✅ casos novos | ⬜ pending |
-| UCR-05 | Caixa, fio e configurações leem e gravam por REST; nenhuma linha de `conversations` em `registros`; sem rascunho; popup só liga ao Canal | componente com cliente falso + guarda | `cd apps/web && npx vitest run src/features/crm/{inbox-columns,conversation-thread}.test.tsx src/dados/crm/{conversas,mensagens}.test.ts src/sem-crm-antigo.test.ts` | ❌ W0 | ⬜ pending |
-| UCR-06 | Fichas sem recuo (404 = "não encontrado"); Reunião mostra o Negócio de `plataforma.negocios`; `/crm/meus-negocios` não existe | componente + guarda | `cd apps/web && npx vitest run src/features/crm/ficha-de-negocio.test.tsx src/features/crm/paginas-de-empresa.test.tsx src/sem-crm-antigo.test.ts` | ✅/❌ | ⬜ pending |
-| UCR-07 | Busca, Lixeira, Notificações, Início, Painel e Configurações sem as coleções antigas no store; Espaço novo sem Funil padrão | unit + componente | `cd packages/dominio && npx vitest run src/derive-resumo.test.ts src/bootstrap-gestao.test.ts` · web idem | ✅ reescrever | ⬜ pending |
-| UCR-08 | Ferramentas com ids de `plataforma.canais`/`plataforma.contatos` (inclui criar Contato de Participante); IA e Contas a receber idem | unit + integração | `cd packages/dominio && npx vitest run src/operations/ferramentas src/operations/ia src/operations/contas-a-receber.test.ts` · `cd apps/api && … npx vitest run src/importacao/clickup/importar-contas-a-receber.test.ts` | ✅ reescrever | ⬜ pending |
-| UCR-09 | Script: `--seco` read-only; `--guardar` copia e confere a contagem antes de apagar; `--migrar` insere na ordem das FKs; Empresa sem admin vai ao relatório; segunda execução não muda nada; falha depois de `inserirFunis`/`inserirPlano` não deixa nada nos quatro lugares; `--verificar` (sem órfã em `crm_de_para`, contagem igual à do `--seco`); um modo por execução | integração (Docker, `describeComBanco`) | `cd apps/api && … npx vitest run src/migracao-crm/` | ❌ W0 | ⬜ pending |
-| UCR-10 | Ensaio sobre a cópia real: contagens-base (2128 linhas, 18 Espaços), `hidratar` por Espaço sem coleção antiga | manual (Docker + cópia em `~/n1-ensaio`) | passos do `14-ENSAIO.md` + `--verificar` | ❌ manual | ⬜ pending |
-| UCR-11 | Seed sem CRM antigo; Espaço novo com CRM vazio; `bootstrap:crm-demo` carrega num Postgres migrado e os Vínculos do seed apontam para ids existentes | unit + integração | `cd packages/dominio && npx vitest run src/seed*.test.ts` · `cd apps/api && … npx vitest run src/bootstrap/crm-demo.test.ts` | ❌ W0 | ⬜ pending |
-| UCR-12 | `npm run typecheck` verde sem as coleções; `sem-crm-antigo` vazio (salvo Grupo/Flow); 404 para as 45 operações antigas; contagem 285 → 240 (reconferir); `sem-listas-espelho` atualizadas; `hidratar()` com linha antiga não quebra e a linha some depois de `apagarDoRegistros` | unit (leitura de código) + tsc + integração (Docker) | `npm run typecheck` · `cd apps/api && … npx vitest run src/rotas/esquemas-de-argumentos.test.ts src/sem-crm-antigo.test.ts src/persistencia/hidratar-crm-antigo.test.ts` | ❌ W0 | ⬜ pending |
+| UCR-01 | WR-01 (3 portas), WR-02 (trava do Espaço antes do Canal), WR-05, WR-06, `instantiateListTemplate` com `canais`, `operacoes.test.ts` pula sem Postgres local | integração (Docker) + unit | `cd apps/api && … npx vitest run src/servicos/crm/{conversas,negocios,empresas,canais,contatos,tarefas-conversacionais}.test.ts src/rotas/operacoes-canais-da-lista.test.ts src/rotas/operacoes.test.ts` | ✅ | ✅ green |
+| UCR-02 | Sucessão passa as Conversas ao Sucessor; contagens; contrato na ontologia; diálogo de remover Membro | integração + unit web | `cd apps/api && … npx vitest run src/servicos/crm/sucessao.test.ts src/rotas/crm/sucessao.test.ts` · `cd apps/web && npx vitest run src/features/shell/membros-sucessao-no-crm.test.tsx` | ✅ | ✅ green |
+| UCR-03 | `012` aplica, idempotente, tabela só-inserção; gestos gravam Atividade na mesma transação (rollback não deixa linha); `GET /atividades` por Papel e Espaço; fusão na web | integração + unit | `cd apps/api && … npx vitest run src/persistencia/migracao-012.test.ts src/servicos/crm/*.test.ts src/rotas/crm/atividades.test.ts` · `cd apps/web && npx vitest run src/dados/crm/atividades.test.ts` | ✅ | ✅ green |
+| UCR-04 | Resumo traz Empresa, qualificação, estado, Atribuído; cartão e ficha mostram; "Mesclar" só libera com o nome digitado | integração + componente | `cd apps/api && … npx vitest run src/servicos/crm/tarefas-conversacionais.test.ts` · `cd apps/web && npx vitest run src/features/estrutura/tarefa-completa-resumo.test.tsx src/features/crm/ficha-de-contato.test.tsx` | ✅ | ✅ green |
+| UCR-05 | Caixa, fio e configurações leem e gravam por REST; nenhuma linha de `conversations` em `registros`; sem rascunho; popup só liga ao Canal | componente com cliente falso + guarda | `cd apps/web && npx vitest run src/features/crm/{inbox-columns,conversation-thread}.test.tsx src/dados/crm/{conversas,mensagens}.test.ts src/sem-crm-antigo.test.ts` | ✅ | ✅ green |
+| UCR-06 | Fichas sem recuo (404 = "não encontrado"); Reunião mostra o Negócio de `plataforma.negocios`; `/crm/meus-negocios` não existe | componente + guarda | `cd apps/web && npx vitest run src/features/crm/ficha-de-negocio.test.tsx src/features/crm/paginas-de-empresa.test.tsx src/sem-crm-antigo.test.ts` | ✅ | ✅ green |
+| UCR-07 | Busca, Lixeira, Notificações, Início, Painel e Configurações sem as coleções antigas no store; Espaço novo sem Funil padrão | unit + componente | `cd packages/dominio && npx vitest run src/derive-resumo.test.ts src/bootstrap-gestao.test.ts` · web idem | ✅ | ✅ green |
+| UCR-08 | Ferramentas com ids de `plataforma.canais`/`plataforma.contatos` (inclui criar Contato de Participante); IA e Contas a receber idem | unit + integração | `cd packages/dominio && npx vitest run src/operations/ferramentas src/operations/ia src/operations/contas-a-receber.test.ts` · `cd apps/api && … npx vitest run src/importacao/clickup/importar-contas-a-receber.test.ts` | ✅ | ✅ green |
+| UCR-09 | Script: `--seco` read-only; `--guardar` copia e confere a contagem antes de apagar; `--migrar` insere na ordem das FKs; Empresa sem admin vai ao relatório; segunda execução não muda nada; falha depois de `inserirFunis`/`inserirPlano` não deixa nada nos quatro lugares; `--verificar` (sem órfã em `crm_de_para`, contagem igual à do `--seco`); um modo por execução | integração (Docker, `describeComBanco`) | `cd apps/api && … npx vitest run src/migracao-crm/` | ✅ | ✅ automático (Docker); rodar em produção é o 15-35 |
+| UCR-10 | Ensaio sobre a cópia real: contagens-base (2128 linhas, 18 Espaços), `hidratar` por Espaço sem coleção antiga | manual (Docker + cópia em `~/n1-ensaio`) | passos do `14-ENSAIO.md` + `--verificar` | ✅ | ✅ ensaio (15-30 e final do 15-34); o corte é o 15-35, do dono |
+| UCR-11 | Seed sem CRM antigo; Espaço novo com CRM vazio; `bootstrap:crm-demo` carrega num Postgres migrado e os Vínculos do seed apontam para ids existentes | unit + integração | `cd packages/dominio && npx vitest run src/seed*.test.ts` · `cd apps/api && … npx vitest run src/bootstrap/crm-demo.test.ts` | ✅ | ✅ green |
+| UCR-12 | `npm run typecheck` verde sem as coleções; `sem-crm-antigo` vazio (salvo Grupo/Flow); 404 para as 40 operações antigas (as 5 da Conversa de Grupo ficam, WINDOWS #41/#65); contagem 285 → 245; `sem-listas-espelho` atualizadas; `hidratar()` com linha antiga não quebra e a linha some depois de `apagarDoRegistros` | unit (leitura de código) + tsc + integração (Docker) | `npm run typecheck` · `cd apps/api && … npx vitest run src/rotas/esquemas-de-argumentos.test.ts src/sem-crm-antigo.test.ts src/persistencia/hidratar-crm-antigo.test.ts` | ✅ | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -84,15 +84,15 @@ Ordem que a segunda revisão fixou: o 15-40 roda na onda 6, depois do 15-26 (a p
 
 ## Wave 0 Requirements
 
-- [ ] `apps/api/src/persistencia/migracao-012.test.ts` — UCR-03
-- [ ] `apps/api/src/rotas/crm/atividades.test.ts`, `apps/api/src/servicos/crm/atividades.test.ts`, `apps/web/src/dados/crm/atividades.test.ts` — UCR-03
-- [ ] `apps/web/src/dados/crm/{conversas,mensagens}.test.ts` (molde `contatos.test.ts`) — UCR-05
-- [ ] `apps/api/src/migracao-crm/*.test.ts` + fixture JSON congelado do CRM antigo — UCR-09
-- [ ] `apps/api/src/bootstrap/crm-demo.test.ts` — UCR-11
-- [ ] `apps/api/src/persistencia/hidratar-crm-antigo.test.ts` — UCR-12 (15-43)
-- [ ] `apps/web/src/features/crm/configuracoes-da-caixa.test.tsx` — UCR-05 (15-12)
-- [ ] `sem-crm-antigo.test.ts` nas três camadas (molde `sem-listas-espelho.test.ts`) — UCR-12
-- [ ] `rotas/esquemas-de-argumentos.test.ts:126` (285 → contagem nova) atualizado junto com a remoção — UCR-12
+- [x] `apps/api/src/persistencia/migracao-012.test.ts` — UCR-03
+- [x] `apps/api/src/rotas/crm/atividades.test.ts`, `apps/api/src/servicos/crm/atividades.test.ts`, `apps/web/src/dados/crm/atividades.test.ts` — UCR-03
+- [x] `apps/web/src/dados/crm/{conversas,mensagens}.test.ts` (molde `contatos.test.ts`) — UCR-05
+- [x] `apps/api/src/migracao-crm/*.test.ts` + fixture JSON congelado do CRM antigo — UCR-09
+- [x] `apps/api/src/bootstrap/crm-demo.test.ts` — UCR-11
+- [x] `apps/api/src/persistencia/hidratar-crm-antigo.test.ts` — UCR-12 (15-43)
+- [x] `apps/web/src/features/crm/configuracoes-da-caixa.test.tsx` — UCR-05 (15-12)
+- [x] `sem-crm-antigo.test.ts` nas três camadas (molde `sem-listas-espelho.test.ts`) — UCR-12
+- [x] `rotas/esquemas-de-argumentos.test.ts:126` (285 → contagem nova) atualizado junto com a remoção — UCR-12
 
 ---
 
@@ -101,7 +101,7 @@ Ordem que a segunda revisão fixou: o 15-40 roda na onda 6, depois do 15-26 (a p
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
 | Dono aprova o relatório `--seco` (Funil do `ws_n1`, não migrados, Pasta "Meus negócios") | UCR-09 | Decisão do dono (D-15-03, D-15-04, D-15-14); nenhuma escrita em produção antes dela | Rodar `npm run migrar:crm-antigo -w @n1/api -- --espaco ws_n1 --seco` e colar o relatório ao dono |
-| Ensaio do script com a cópia real dos dados | UCR-10 | Os dados reais ficam em `~/n1-ensaio` no notebook do dono; não há homologação | Seguir `14-ENSAIO.md`: Postgres 16 em Docker, 001 a 012, `\copy`, `--seco`, migrar, `--verificar`, `hidratar` por Espaço |
+| Ensaio do script com a cópia real dos dados | UCR-10 | Os dados reais ficam em `~/n1-ensaio` no notebook do dono; não há homologação | **Feito** (15-30 e o final do 15-34, sobre a cópia de 2026-11-05; `15-ENSAIO.md`): Postgres 16 em Docker, 001 a 012, `pg_restore`, `--seco`, migrar, `--verificar`, `hidratar` por Espaço |
 | Corte em produção na janela combinada | UCR-09, UCR-12 | Procedimento de deploy com backup manual, API na VM e web no push (D-15-03) | Backup `pg_dump -Fc --schema=plataforma` restaurado e conferido em Docker → `--seco` → relatório aprovado → script → `publicar.sh` → push em `main` do n1 |
 | Olhar cada tela migrada | UCR-04..08 | `human_verify_mode: end-of-phase` | `npm run dev` apontado para um Postgres local migrado; percorrer 3.4.1 a 3.4.10 |
 | Provas manuais pendentes da Fase 14 (14-11, 14-12, 14-15, 14-16) | UCR-04, UCR-05 | Só fazem sentido depois da troca das telas | Lista em `14-PROVAS.md` |
@@ -110,11 +110,11 @@ Ordem que a segunda revisão fixou: o 15-40 roda na onda 6, depois do 15-26 (a p
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 240s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 240s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** validado em 2026-11-06 pelo plano 15-34: `npm run check` verde na 3ª rodada (`15-PROVAS.md`), com as duas primeiras só no flake de baseline do `outbox-worker`; o ensaio com a cópia real passou duas vezes (15-30 e o final do 15-34, `15-ENSAIO.md`). Ficam manuais e do dono: aprovar o relatório `--seco`, o corte em produção (`15-CORTE.md`, plano 15-35) e olhar as telas (`15-PROVAS.md`, "Provas manuais pendentes").

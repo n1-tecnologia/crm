@@ -281,12 +281,13 @@ de verdade é a do backend. O escopo "próprios" (vendedor vê só os seus
 Negócios) e a visibilidade de Funil privado ficaram para uma fase futura:
 `privado` é gravado e exibido, mas nenhuma regra o consulta.
 
-**Limitação aceita (D-15).** A Caixa de Entrada ainda
-lê o modelo antigo do CRM (`state.contacts`, `state.companies`, `state.deals`,
-`state.pipelines` do `DataState`) e **não mostram os registros da api nova**. A
-Busca global (`/buscar`), a Lixeira (`/configuracoes/lixeira`) e as Notificações
-(inclusive o selo da barra e do trilho) saíram desse grupo no plano 15-14
-(UCR-07): Contatos, Empresas, Negócios e Conversas vêm das rotas REST
+**O modelo antigo do CRM saiu da tela (Fase 15, D-15; antes, "limitação aceita").** Nenhuma tela lê Contato,
+Empresa, Negócio, Funil ou Canal do `DataState`: as oito coleções saíram dele no 15-43 e a Caixa de Entrada, o fio,
+as fichas, o Início, o Painel, as Ferramentas, a IA e Contas a receber falam com a api por `src/dados/crm/`. O que
+resta do modelo antigo é só a Conversa de Grupo e o Flow (F14-D-05, até as Sessões 6 e 7; ver o fim desta seção).
+"Meus negócios" é o filtro `?meus=1` de `/crm/negocios`, não uma Pasta nem uma rota. A Busca global (`/buscar`), a
+Lixeira (`/configuracoes/lixeira`) e as Notificações (inclusive o selo da barra e do trilho) saíram primeiro, no plano
+15-14 (UCR-07): Contatos, Empresas, Negócios e Conversas vêm das rotas REST
 (`useContatos`/`useEmpresas`/`useNegocios`/`useConversas`, com `?q=` na Busca e
 `estado=na_lixeira` na Lixeira; restaurar é `POST /<recurso>/:id/restaurar`), e o
 hook `features/shell/use-notificacoes.ts` (`useNotificacoesDoMembro`) soma o

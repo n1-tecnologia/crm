@@ -8,6 +8,7 @@ Os arquivos deste diretório, desde o Plan 01-04 (`esquemas-de-argumentos.ts` ch
 
 - `operacoes.ts` — `POST /operacoes/:nome`, genérica sobre `OPERACOES` (o registro explícito de `@n1/dominio`, uma entrada por operação de domínio alcançável por HTTP).
 - `estado.ts` — `GET /estado`, a carga inicial do Espaço de Trabalho.
+- `gesto-no-crm/` — as tabelas do gesto misto de `POST /operacoes/:nome` (Fase 15, 15-01): `LER_DO_CRM` (o que a operação confere contra as tabelas do CRM antes de decidir) e `AO_CONFIRMAR` (o que grava nelas no mesmo commit), um arquivo por módulo (`estrutura.ts`, `membros.ts`, `ferramentas.ts`, `ia.ts`, `financeiro.ts`), compostas em `index.ts`, que lança se uma operação aparece em dois módulos. É o mapa de leituras do CRM: `operacoes.ts` só o consome.
 - `esquemas-de-argumentos.ts` — compõe `esquemas/<modulo>.ts` (um por módulo do domínio) sob `satisfies EsquemasCompletos`: toda operação de `OPERACOES` tem schema; a rota valida antes de `executar()`, forma errada é 400, regra de negócio continua no domínio (recusa em 200).
 - `esquemas/` — a FORMA dos `args` por operação (tipos espelhados da assinatura do domínio, não regras), um arquivo por módulo — ver [`esquemas/CONTEXT.md`](esquemas/CONTEXT.md).
 
@@ -92,7 +93,7 @@ Três rotas ao lado das de Contato, nas tabelas da 011:
   Recusas: 400 `VALOR_INVALIDO` (campo `conteudo`), 404
   `CONTATO_NAO_ENCONTRADO` (outro Espaço), 409 `NOTA_RECUSADA` (Contato
   `mesclado` ou na lixeira, com a frase do domínio). A nota é só texto
-  (D-04). O fio da Caixa e a Reunião ainda não escrevem aqui: é a Fase 15.
+  (D-04). Desde a Fase 15 o fio da Caixa (15-25) e a Reunião (15-15) escrevem aqui.
 - `POST /contatos/:id/identificadores/:identificadorId/transferir` — corpo
   `{ paraContatoId }` (`.strict()`: `principal` é 400, quem decide é o
   serviço), 200 com a ficha da ORIGEM. O Identificador chega ao destino como
@@ -156,7 +157,7 @@ Contato, sobre `plataforma.contato_consentimentos` (011), que é SÓ INSERÇÃO:
 lado do mesmo gesto:
 
 - `POST /operacoes/removeMember` ganhou um `aoConfirmar` (mapa `AO_CONFIRMAR` em
-  `operacoes.ts`, ao lado de `SERVICOS`): no MESMO commit da remoção, depois do
+  `gesto-no-crm/membros.ts`, composto em `gesto-no-crm/index.ts`): no MESMO commit da remoção, depois do
   `ok` do domínio, `passarAoSucessor` (`repositorios/crm/sucessao.ts`) muda
   `proprietario_id` de Contatos, Empresas e Negócios do Membro para o Sucessor
   (RN-ET-09 a) e passa ao Sucessor as Conversas atribuídas a ele
@@ -186,14 +187,14 @@ lado do mesmo gesto:
 **Canais da Lista conferidos na tabela (Fase 14, 14-12, 3.3.7).**
 `POST /operacoes/definirCanaisDaLista` e `POST /operacoes/createList` leem
 `plataforma.canais` NA transação, pela opção `lerDoCrm` de `executar()` (mapa
-`LER_DO_CRM` em `operacoes.ts`: a posição do argumento e o leitor), e entregam
+`LER_DO_CRM` de `gesto-no-crm/`, no arquivo de `estrutura.ts`: a posição do argumento e o leitor), e entregam
 ao domínio o `Canal[]` do Espaço, em qualquer estado, como último argumento
 (`[listId, ids, canais]` e `[input, canais]`). O `canais` que o navegador manda
 nessa posição só existe para a execução local do `run()`: o schema
 (`CANAIS_DO_NAVEGADOR`, até 100 itens com `id`) valida a forma e o tamanho, e a
 rota o DESCARTA, trocando a posição pelo que `lerDoCrm` leu (Pitfall 12,
-T-14-29). Um Canal forjado no corpo nunca vale; o ramo antigo, `state.channels`
-(o mesmo id, sem tradução), segue valendo até a 3.5.4. Estas duas operações
+T-14-29). Um Canal forjado no corpo nunca vale. Desde o 15-33 não existe mais o ramo
+antigo em `state.channels`: o domínio confere só o `Canal[]` que a tabela deu. Estas duas operações
 pagam uma ida a mais ao banco (a leitura de `plataforma.canais`); são gestos
 raros. Não gravam nas tabelas do CRM nem avançam a revisão do Espaço por fora de
 `executar()`.
@@ -393,9 +394,9 @@ a série dele volta `null`; um Membro sem Papel algum recebe 403.
 ligar. A 007 dá um dono por Negócio (`negocios_dono_ck`), então a conferência é
 só por `contato_id`; trazer os Negócios da Empresa é decisão à parte.
 
-O diálogo de criar da Lista, o botão do fio e a ficha da Tarefa só chamam estas
-rotas no deploy da Fase 15 (14-15 e 14-16). No mesmo deploy, o 14-17 tira de
-`POST /operacoes/:nome` as quatro operações antigas (`criarTarefaConversacional` e
+O diálogo de criar da Lista, o botão do fio e a ficha da Tarefa chamam estas
+rotas desde os planos 14-15 e 14-16, que sobem com o corte da Fase 15 (`15-CORTE.md`).
+No mesmo deploy, o 14-17 tirou de `POST /operacoes/:nome` as quatro operações antigas (`criarTarefaConversacional` e
 as outras três): daí em diante a Tarefa conversacional só nasce e muda por estas rotas
 e `POST /operacoes/criarTarefaConversacional` responde 404.
 
@@ -443,7 +444,7 @@ Contato, ou Conversa na lixeira. Contato de outro Espaço é 404
 (`campo: "atribuido"`) o Membro que não é ativo neste Espaço e o Agente que não
 existe ativo aqui, e com `TRANSICAO_INVALIDA` a Conversa na lixeira. Nenhuma das
 duas grava Registro de Atividade nesta fase. A Caixa antiga continua no diálogo
-de mover do modelo antigo; a troca para estas rotas é da Fase 15.
+de mover do modelo antigo até o 15-24, que trocou a Caixa por estas rotas.
 
 **Lixeira, restaurar e marcação (Fase 14, 14-07).** `lixeira` e `restaurar`
 não declaram `body`. `lixeira` recusa com 409 `TRANSICAO_INVALIDA` a Conversa
@@ -471,8 +472,8 @@ Conversa e Membro). Gesto recusado não grava. `transferirIdentificador` e o con
 também gravam, no Contato: a transferência com o nome do destino e só o TIPO do Identificador
 em `detalhe`; o consentimento com finalidade, tipo de Canal e decisão, sem a evidência.
 Criar, editar, ganhar, perder e reabrir Negócio, criar Contato/Empresa e mandar Contato/Empresa
-à lixeira pelo CRM novo NÃO gravam Atividade nesta fase. O fio da Caixa antiga segue na leitura antiga
-(`leituras_internas` da 008, que ninguém escreve aqui) até a Fase 15.
+à lixeira pelo CRM novo NÃO gravam Atividade nesta fase. O fio da Caixa lê e grava pelas rotas desde o 15-20
+(`leituras_internas` da 008 segue sem escritor aqui).
 
 **Consentimento no envio (Fase 14, 14-08).** `ServicoDeMensagens.enviar` recusa
 com 409 `SEM_CONSENTIMENTO` (`campo: "modelo"`) a Mensagem `enviada` cujo modelo é
@@ -500,11 +501,10 @@ devolvê-la. O e2e `canais-fluxo.test.ts` confere a string crua da resposta.
 - **409:** `CANAL_NOME_EM_USO` e `CANAL_CONTA_EM_USO` (com o detentor em `bloqueios.canais`; a conta é única entre provedores — INV-CXE-01), `CANAL_ARQUIVADO`, `FILA_INVALIDA`, `ORIGEM_INVALIDA`, `TRANSICAO_INVALIDA`, `CONVERSA_JA_ABERTA`, `CONVERSA_NA_LIXEIRA`, `MOVER_INVALIDO`, `ATRIBUIDO_INVALIDO`, `CONTATO_INATIVO`, `CONTATO_SEM_IDENTIFICADOR_DO_CANAL`, `RESPOSTA_DE_OUTRA_CONVERSA`, `SEM_CONSENTIMENTO` e `JANELA_EXPIRADA` (WhatsApp oficial, texto livre fora das 24 h; o não oficial nunca é recusado — D-02).
 - **400:** forma (zod) e `VALOR_INVALIDO`. **403:** `PERMISSAO`.
 
-**A ponte.** `GET /estado` (e `executar()` em `/operacoes`) projeta os Canais de
-`plataforma.canais` como Canais relacionais (`relational: true`, `provider`,
-`simulatedConnection`) ao lado dos do seed, sem gravá-los em
-`plataforma.registros` (D-11, D-12); ver `persistencia/CONTEXT.md`. O cenário
-que prova isso por HTTP é `e2e/canais-fluxo.test.ts`.
+**Sem ponte (Fase 15, 15-33).** `GET /estado` e `executar()` em `/operacoes` não projetam mais os Canais de
+`plataforma.canais` em `state.channels`: o Canal só chega à tela por `GET /canais`. Para Grupo, Flow e Automação, o
+servidor lê o Canal da tabela como `crm.canais` e o passa como argumento (nada é gravado em `plataforma.registros`);
+ver `persistencia/CONTEXT.md`. O cenário que prova isso por HTTP é `e2e/canais-fluxo.test.ts`.
 
 ## Webhooks da Meta — WhatsApp oficial e Instagram (só escutam)
 

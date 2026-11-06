@@ -52,9 +52,8 @@ fora de `POST /operacoes/:nome` e de `GET /estado`. As telas de
 `apps/web/src/app/(shell)/crm/` falam com essas rotas por HTTP
 (`src/dados/crm/`), enquanto o resto do app continua hidratando o Espaço
 inteiro por `GET /estado`. O modelo antigo do CRM em inglês (`Contact`,
-`Company`, `Deal`, `Pipeline`) continua vivo ao lado, porque Caixa de
-Entrada e Conversas ainda dependem dele: os dois convivem até a Fase 15,
-a de unificação. Antes de aplicar a 007 num banco, `npm run migrar -w @n1/api --
+`Company`, `Deal`, `Pipeline`) conviveu ao lado até a Fase 15, a de
+unificação, que o tirou do código (ver "A partir da Fase 15"). Antes de aplicar a 007 num banco, `npm run migrar -w @n1/api --
 --seco` lista o que `migrar` faria sem escrever nada.
 
 A partir da Fase 8, o que faltava da Caixa de Entrada ganha tabelas próprias:
@@ -100,7 +99,7 @@ Canal e ligar ou criar o Negócio vão por rota, e o cartão, a tabela e a ficha
 leem Contato, Canal, última Mensagem e Negócio de um resumo em lote
 (`POST /tarefas-conversacionais/resumo`), não do estado antigo. A única tela
 nova da fase é a ficha de Contato (mesclar, transferir, notas e
-consentimentos).
+consentimentos). O que a Fase 14 deixou para depois, a Fase 15 fez (ver adiante).
 
 O plano de deploy da Fase 14 previa cortá-la em dois (decisão de corte de uma
 vez, sem ponte entre as duas bases): os planos 14-01 a 14-14 são aditivos; os
@@ -110,11 +109,52 @@ na Fase 15, junto com o script de migração dos dados. Por decisão do dono, em
 2026-11-05 a fase inteira subiu de uma vez (API na VM e `main` do
 `n1-tecnologia/crm` em `49f1b54`): em produção, os ids antigos de Tarefa
 conversacional respondem 404 e o fio da Conversa e o layout de três colunas da
-ficha da Tarefa ainda leem o modelo antigo. Grupo
-e Flow ficam no modelo antigo até as Sessões 6 e 7: o modelo antigo não sai
+ficha da Tarefa ainda leem o modelo antigo (até o corte da Fase 15, abaixo). Grupo
+e Flow ficam no modelo antigo até as Sessões 6 e 7: o modelo antigo não saiu
 por inteiro na Fase 15. A fronteira exata, as suposições adotadas, o que o
 corte tira da tela e os itens abertos estão em
 `.planning/phases/14-unifica-o-do-crm-o-modelo-novo-ganha-o-que-falta-e-a-tarefa/14-PROVAS.md`.
+
+A partir da Fase 15, o CRM novo é o único no código: as telas do CRM (Caixa de
+Entrada e fio, fichas, Funis e Negócios, Busca, Lixeira, Notificações, Início,
+Painel, Ferramentas, IA e Contas a receber) leem e gravam só as tabelas, por
+HTTP (`apps/web/src/dados/crm/`), e o modelo antigo em inglês saiu do código. O
+`DataState` perdeu as oito coleções (`contacts`, `companies`, `deals`,
+`funnels`, os três tipos de Vínculo e `channels`); `conversations` ficou,
+restrita a `ConversaDeGrupo[]`, porque Grupo e Flow só passam às tabelas nas
+Sessões 6 e 7 (F14-D-05) e são os únicos leitores do que sobrou. Quarenta
+operações antigas (Contato, Empresa, Negócio, Conversa 1:1, iniciar conversa,
+criar e configurar Canal) saíram de `OPERACOES` e respondem 404 em
+`POST /operacoes/:nome`; cinco da Conversa de Grupo seguem lá. A projeção dos
+Canais em `GET /estado` e em `executar()` foi apagada: o Canal só chega à tela
+por `GET /canais`, e Grupo, Flow e Automação o leem da tabela dentro da
+transação. Um Espaço novo nasce com o CRM vazio e sem Funil padrão (D-15-13); a
+demonstração do CRM existe só para desenvolvimento, por
+`npm run bootstrap:crm-demo -w @n1/api -- --espaco <id>` (recusa banco que não
+seja local). "Meus negócios" é o filtro `?meus=1` de `/crm/negocios`; a Pasta
+de mesmo nome virou uma Pasta comum.
+
+A migração `012` (`apps/api/migracoes/012-atividade-do-crm.sql`) acrescenta
+`plataforma.crm_atividades`, o Registro de Atividade do CRM novo (só inserção,
+gravado no mesmo commit do gesto); `GET /atividades` e a Auditoria juntam essa
+linha do tempo com a de `state.activity`. A `012` só existe em bancos locais:
+ela entra em produção no corte. O script de dados é
+`npm run migrar:crm-antigo -w @n1/api -- --espaco <id> --seco|--guardar|--migrar|--verificar`
+(`apps/api/src/migracao-crm/CONTEXT.md`): copia o CRM antigo de um Espaço para
+`plataforma.registros_crm_antigo`, confere e só então o apaga de `registros`,
+e com `--migrar` leva o que cabe às tabelas novas com os ids antigos
+preservados. É temporário, e quem publica deve rodá-lo **antes** de subir esta
+versão: uma linha antiga que sobra em `registros` volta como chave desconhecida
+em `GET /estado` até ser apagada.
+
+**O corte em produção é só do dono e ainda não aconteceu.** O roteiro literal
+(backup, `--seco` por Espaço, aprovação do relatório, `migrar`, `--guardar` nos
+17 Espaços de teste, `--migrar` no `ws_n1`, `--verificar`, `publicar.sh`, push
+da web) está em
+`.planning/phases/15-unifica-o-do-crm-telas-no-modelo-novo-e-remo-o-do-modelo-ant/15-CORTE.md`;
+o ensaio com a cópia dos dados reais, em `15-ENSAIO.md`, e as provas, as
+suposições e o que o dono ainda decide, em `15-PROVAS.md` da mesma pasta. Não
+existe script de desfazer: voltar é restaurar o backup do corte.
 
 ## Comandos
 

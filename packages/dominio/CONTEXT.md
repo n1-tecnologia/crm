@@ -851,15 +851,16 @@ esconder — a regra mora aqui para os dois lados dizerem a mesma coisa.
 Mesma forma de `operations`: `OperationResult`, sem exceção pela
 fronteira.
 
-**O que não mudou.** `types/crm.ts` (`Contact`, `Company`, `Deal`,
-`Pipeline`…), `operations/{contacts,deals}.ts` e o seed de CRM continuam
-inteiros: Caixa de Entrada e Conversas ainda leem esse
-modelo (Busca global, Lixeira e Notificações saíram dele no 15-14:
-`notificacoesDoMembro(state, membro, agora, conversasAtribuidas)` recebe as
-Conversas atribuídas e não resolvidas da api — `{ itens, total }`, e é o `total`
-que entra no selo — e não lê mais `state.conversations`). Os dois convivem até a fase
-de unificação (D-01, D-15); nenhum módulo de `src/crm/` importa o antigo
-nem vice-versa.
+**O modelo antigo saiu (Fase 15), salvo Grupo e Flow.** `types/crm.ts` não tem mais `Contact`, `Company`, `Deal`,
+`Funnel` nem `Channel`; `operations/{contacts,deals,iniciar-conversa,crm-antigo}.ts` foram apagados no 15-32 e o
+`DataState` perdeu as oito coleções no 15-43. O que resta do modelo antigo é só o necessário a Grupo, Comunidade e Flow
+(F14-D-05, até as Sessões 6 e 7): `ConversaDeGrupo` e `operations/ferramentas/conversa-de-grupo.ts`. Busca global,
+Lixeira, Notificações, Caixa, fichas, Início e Painel leem as tabelas por HTTP e entregam ao domínio, como argumento,
+o que ele precisa (`notificacoesDoMembro(state, membro, agora, conversasAtribuidas)` recebe as Conversas atribuídas e
+não resolvidas da api — `{ itens, total }`, e é o `total` que entra no selo). Nenhum módulo de `src/crm/` importa o
+antigo nem vice-versa. A convivência dos dois modelos, prevista até a fase de unificação (D-01, D-15), acabou; o que
+sobra dela em produção é o dado em `plataforma.registros`, que o `migrar:crm-antigo` retira no corte
+(`15-CORTE.md`).
 
 **Gestos da Conversa nova (Fase 14).** `crm/conversas.ts` ganhou as regras
 de dois gestos, para a tela pré-validar e o endpoint aplicar as mesmas.
@@ -949,10 +950,9 @@ servidor, e a operação não os procura em `state.contacts`.
 (`Canal` de `crm/canais`, a linha de `plataforma.canais`). Um id que está
 em `canais` vale pelo Canal da tabela (`estado` `ativo`, tipo de atendimento) e
 o nome na Atividade vem dele; sem `canais`, ou para um id que não está nele, a
-regra é a de antes e olha `state.channels`. Quem preenche `canais` é o servidor,
-dentro da transação (`lerDoCrm`, em `POST /operacoes`): o que o navegador manda
-nesse argumento é descartado. O ramo de `state.channels` sai com o CRM antigo
-(3.5.4).
+regra recusa o id (o ramo de `state.channels` saiu no 15-33, junto com o CRM antigo).
+Quem preenche `canais` é o servidor, dentro da transação (`lerDoCrm`, em
+`POST /operacoes`): o que o navegador manda nesse argumento é descartado.
 
 **Nomes do CRM novo em lote (Fase 15, 15-10, 3.4.9 e 3.4.10, UCR-08).** `crm/nomes.ts` (sem
 barril, subcaminho `@n1/dominio/crm/nomes`) tem só os tipos e o teto: `AlvoDoCrm` (`tipo` de
@@ -977,8 +977,8 @@ Negócio nem Conversa do store: `qualificacoesDeLead(state)` devolve os ids das 
 (`EstatisticasDoCrm`) e só mantém as Tarefas concluídas do store; sem `crm` (carregando) ou com série `null`, o CRM vale
 zero. A api aceita 400 dias por pedido e o "ano" com o anterior passa de 700: `janelasDeConsultaDoCrm` dá a janela
 atual e a anterior em separado, estáveis o dia inteiro (chave do SWR), e `juntarEstatisticasDoCrm` as une. O dia do
-CRM é um ponto no início do dia civil do fuso do Espaço. `naoLidas` e `ultimaAtividade` seguem sobre a Conversa do
-modelo antigo porque a Caixa de Entrada ainda as usa. `widgetReading(state, widget, membro, agora, crm)` recebe
+CRM é um ponto no início do dia civil do fuso do Espaço. `naoLidas` e `ultimaAtividade` seguem, sobre `ConversaDeGrupo`,
+porque a Caixa de Grupo ainda as usa. `widgetReading(state, widget, membro, agora, crm)` recebe
 `LeituraDoCrmParaPainel` (Negócios, Conversas, Contatos, Funis e Etapas das rotas, mais `parcial`): a leitura de
 Widget cuja Fonte é do CRM sai marcada `parcial` quando o total passa do lido, e a Tarefa nunca é parcial. Origem e
 Motivo de Perda são texto livre no Negócio novo e a lista resumida não os traz: essas duas dimensões ficam sem linhas
