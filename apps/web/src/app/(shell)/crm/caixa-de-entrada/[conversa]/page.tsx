@@ -19,7 +19,7 @@
  */
 
 import Link from "next/link";
-import { Briefcase, Link2, MessageSquare, PanelRight, Radio, User as UserIcon, UserRound, Users, Wallet } from "lucide-react";
+import { Briefcase, Link2, MessageSquare, PanelRight, Radio, User as UserIcon, Users, Wallet } from "lucide-react";
 import { use, useRef, useState } from "react";
 import { useData } from "@/dados/store";
 import { ErroDeApi, invalidarCrm } from "@/dados/crm/cliente-crm";
@@ -28,7 +28,7 @@ import { atribuirConversa, conversaParaLixeira, reabrirConversa, resolverConvers
 import { useNegocio, useNegocios } from "@/dados/crm/negocios";
 import { useNomeDoMembro, usePodeNoCrm } from "@/dados/crm/sessao";
 import { AvatarDoContato } from "@/features/crm/avatar-do-contato";
-import { ContactDataPanel, ContactIdentity, ContactQuickActions, ContactSummary } from "@/features/crm/contact-card";
+import { ColunaDoContato } from "@/features/crm/coluna-do-contato";
 import { ConversaDeGrupoNaCaixa } from "@/features/crm/conversa-de-grupo-na-caixa";
 import { ConversationThread } from "@/features/crm/conversation-thread";
 import { empresaDoContato } from "@/features/crm/empresa-do-contato";
@@ -102,7 +102,6 @@ function ConversaAberta({ detalhe }: { readonly detalhe: ConversaDetalhada }) {
   const members = useData((data) => data.members);
   const agents = useData((data) => data.agents);
   const queues = useData((data) => data.queues);
-  const contatoAntigo = useData((data) => data.contacts.find((c) => c.id === conversation.contatoId));
   const state = useData((data) => data);
   const fmt = useFormat();
   const nomeDoMembro = useNomeDoMembro();
@@ -413,25 +412,9 @@ function ConversaAberta({ detalhe }: { readonly detalhe: ConversaDetalhada }) {
             Capacidades) vem depois, na mesma família de painéis. */}
         <aside hidden={!showingContact} className="relative w-[22rem] shrink-0 overflow-y-auto p-3" style={{ borderLeft: "1px solid var(--linha)" }}>
           <div className="grid content-start gap-3">
-            {contatoAntigo ? (
-              <>
-                <ContactIdentity contact={contatoAntigo} editavel={!inTrash} abaixo={atribuidoESituacao} />
-                <ContactQuickActions contact={contatoAntigo} onCanal={setCanal} />
-                <ContactDataPanel contact={contatoAntigo} />
-                <ContactSummary contact={contatoAntigo} />
-              </>
-            ) : (
-              <RecordPanel title="Contato" icon={<Icone de={UserRound} tamanho="sm" />}>
-                <p className="app-base" style={{ color: "var(--texto)" }}>
-                  <Link href={`/crm/contatos/${conversation.contatoId}`} className="hover:underline">
-                    {nomeDoContato}
-                  </Link>
-                </p>
-                <div className="mt-2">{atribuidoESituacao}</div>
-              </RecordPanel>
-            )}
+            <ColunaDoContato contatoId={conversation.contatoId} somenteLeitura={inTrash} abaixo={atribuidoESituacao} onCanal={setCanal} />
             <TarefasDoContato
-              contactId={conversation.contatoId}
+              contatoId={conversation.contatoId}
               onCriar={() => setCriandoTarefa(true)}
               rotuloDoBotao="Criar Tarefa a partir da Conversa"
             />
