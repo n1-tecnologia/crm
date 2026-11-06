@@ -56,7 +56,7 @@ export default function ConectarCanalPage() {
                     <Icone className="size-[var(--icone-md)]" />
                     {rotulo}
                   </span>
-                  <SeloDoProvedor canal={{ channelType: tipo, provider: provedor, relational: true }} />
+                  <SeloDoProvedor canal={{ tipo, provedor }} />
                 </p>
                 <p className="app-meta flex-1">{ORIENTACAO_DO_PROVEDOR[provedor].quandoUsar}</p>
                 <div>

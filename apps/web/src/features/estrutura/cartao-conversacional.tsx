@@ -59,7 +59,7 @@ export function PilulasDoCanal({ canal }: { readonly canal: NonNullable<ResumoDa
       <Pilula tom="neutro" className="max-w-full">
         <span className="min-w-0 truncate">{canal.nome}</span>
       </Pilula>
-      <SeloDoProvedor canal={{ channelType: canal.tipo, provider: canal.provedor }} />
+      <SeloDoProvedor canal={canal} />
     </>
   );
 }

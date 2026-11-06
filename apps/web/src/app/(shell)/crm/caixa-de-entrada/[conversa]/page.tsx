@@ -427,7 +427,9 @@ export default function ConversaPage({ params }: { params: Promise<{ conversa: s
           {contact ? (
             <div className="min-h-0 flex-1">
               <ConversationThread
-                contact={contact}
+                conversaId={conversa}
+                contatoId={contact.id}
+                canalPreferidoId={channel.id}
                 canalSelecionado={canal ?? channel.id}
                 onCanalChange={setCanal}
                 flush

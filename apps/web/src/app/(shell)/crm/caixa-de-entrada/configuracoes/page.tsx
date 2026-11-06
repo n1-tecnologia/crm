@@ -111,7 +111,6 @@ export default function ConfiguracoesDaCaixaPage() {
               {channels.map((channel) => {
                 const capabilities = capacidadesDoCanal({ channelType: channel.tipo, provider: channel.provedor });
                 const queue = queues.find((q) => q.id === channel.filaPadraoId);
-                const selos = { channelType: channel.tipo, provider: channel.provedor, relational: true, simulatedConnection: channel.conexaoSimulada };
                 return (
                   <li key={channel.id}>
                     <Link
@@ -124,9 +123,9 @@ export default function ConfiguracoesDaCaixaPage() {
                           {channel.nome}
                         </span>
                         <span className="flex shrink-0 items-center gap-1">
-                          <SeloDoProvedor canal={selos} />
-                          <SeloDeOrigem canal={selos} />
-                          <MarcaDeConexaoSimulada canal={selos} />
+                          <SeloDoProvedor canal={channel} />
+                          <SeloDeOrigem canal={channel} />
+                          <MarcaDeConexaoSimulada canal={channel} />
                           <StateSeal state={channel.estado} />
                         </span>
                       </p>

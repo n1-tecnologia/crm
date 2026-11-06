@@ -654,7 +654,7 @@ export function DealScreen({
           <div className="min-w-0 xl:min-h-0">
             {principal ? (
               <ConversationThread
-                contact={principal}
+                contatoId={principal.id}
                 canalSelecionado={canalDaConversa}
                 onCanalChange={setCanalDaConversa}
               />

@@ -142,8 +142,6 @@ function FichaDoCanal({ channel }: { readonly channel: Canal }) {
   const channelType = CHANNEL_TYPE_LABEL[channel.tipo] ?? channel.tipo;
   const provedor = channel.provedor;
   const rotuloDoProvedor = PROVEDORES[provedor]?.rotulo ?? channelType;
-  // Os selos são de apresentação e leem a forma do modelo antigo; todo Canal daqui é da tabela (cadastrado).
-  const selos = { channelType: channel.tipo, provider: channel.provedor, relational: true, simulatedConnection: channel.conexaoSimulada };
   const resolvedIdentifiers = capabilities.resolvesIdentifierTypes
     .map((type) => IDENTIFIER_TYPE_LABEL[type] ?? type)
     .join(", ");
@@ -167,9 +165,9 @@ function FichaDoCanal({ channel }: { readonly channel: Canal }) {
         seal={
           <>
             <StateSeal state={channel.estado} />
-            <SeloDoProvedor canal={selos} />
-            <SeloDeOrigem canal={selos} />
-            <MarcaDeConexaoSimulada canal={selos} />
+            <SeloDoProvedor canal={channel} />
+            <SeloDeOrigem canal={channel} />
+            <MarcaDeConexaoSimulada canal={channel} />
             {channel.conexao === "conectada" ? null : (
               <ConditionMarker tone={channel.conexao === "com_erro" ? "danger" : "warning"}>
                 {channel.conexao === "com_erro" ? "com erro" : "desconectada"}
@@ -221,11 +219,11 @@ function FichaDoCanal({ channel }: { readonly channel: Canal }) {
                 <RecordRow label="Provedor">
                   <span className="flex min-w-0 items-center gap-2">
                     <span>{rotuloDoProvedor}</span>
-                    <SeloDoProvedor canal={selos} />
+                    <SeloDoProvedor canal={channel} />
                   </span>
                 </RecordRow>
                 <RecordRow label="Origem do cadastro">
-                  <SeloDeOrigem canal={selos} />
+                  <SeloDeOrigem canal={channel} />
                 </RecordRow>
                 <RecordRow label="Identificador externo">
                   <span className="identificador">{channel.identificadorExterno}</span>

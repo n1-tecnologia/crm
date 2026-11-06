@@ -29,7 +29,6 @@ const CONGELADOS = [
   "app/(shell)/crm/caixa-de-entrada/[conversa]/page.tsx",
   "features/crm/conectar-provedor.tsx",
   "features/crm/contact-card.tsx",
-  "features/crm/conversation-thread.tsx",
   "features/crm/deal-card.tsx",
   "features/crm/deal-screen.tsx",
   "features/crm/iniciar-conversa-dialog.tsx",

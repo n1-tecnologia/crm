@@ -402,7 +402,7 @@ describe("ConversationThread — responder numa Conversa aberta grava em platafo
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("A janela de resposta deste Canal expirou."));
     expect((compositor() as HTMLTextAreaElement).value).toBe("fora da hora");
     // Nada foi gravado: o fio não ganhou a Mensagem.
-    expect(screen.queryByText("fora da hora", { selector: "p" })).toBeNull();
+    expect(within(document.querySelector("[data-fio='mensagens']") as HTMLElement).queryByText("fora da hora")).toBeNull();
   });
 
   it("(4) o fio não tem Rascunho nem botão de descartar (D-15-11)", async () => {
@@ -499,9 +499,10 @@ describe("ConversationThread — o fio por Canal", () => {
   });
 
   it("(12) a Mensagem sai pela Conversa do Canal da aba, não pela de outro WhatsApp", async () => {
-    montar({ canalSelecionado: "chn_comercial" });
+    montar({ canalPreferidoId: "chn_comercial" });
     await waitFor(() => expect(screen.getByText("cnv_comercial mensagem 1")).toBeTruthy());
     // Canal oficial e recebida há mais de 24 h: a janela fechou e só Mensagem de modelo sairia.
+    fireEvent.change(compositor(), { target: { value: "fora da janela" } });
     expect(screen.getByRole("button", { name: "Enviar" }).getAttribute("aria-disabled")).toBe("true");
     expect(document.querySelector("[data-regra-do-canal]")?.textContent).toContain("janela expirada");
 

@@ -1353,7 +1353,7 @@ export function TarefaCompleta({
                                   {CHANNEL_TYPE_LABEL[canalDoResumo.tipo]}
                                 </Pilula>
                                 <span className="truncate">{canalDoResumo.nome}</span>
-                                <SeloDoProvedor canal={{ channelType: canalDoResumo.tipo, provider: canalDoResumo.provedor }} />
+                                <SeloDoProvedor canal={canalDoResumo} />
                               </span>
                             );
                           })()
@@ -2244,7 +2244,9 @@ export function TarefaCompleta({
             {/* Nas colunas, rola só se as partes fixas do fio (abas, Rascunho, compositor) não couberem; empilhada, nada aqui rola — só o fio. */}
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto @max-4xl:overflow-visible">
               <ConversationThread
-                contact={contato}
+                {...(conversaId ? { conversaId } : {})}
+                contatoId={contato.id}
+                tarefaId={task.id}
                 canalSelecionado={canalDoFio ?? canal?.id ?? null}
                 onCanalChange={setCanalDoFio}
                 flush
