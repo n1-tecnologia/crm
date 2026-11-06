@@ -9,7 +9,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { buildSeed } from "@n1/dominio/seed";
 import { PAPEL_DO_VINCULO } from "@n1/dominio/derive-conversacional";
 import type { ResumoDaTarefaConversacional } from "@n1/dominio/crm/resumo-da-tarefa";
@@ -18,7 +18,10 @@ import { StoreProvider } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
 import { TarefaCompleta } from "@/features/estrutura/tarefa-completa";
 
-const { resumo } = vi.hoisted(() => ({ resumo: { atual: undefined as unknown } }));
+const { resumo, funis } = vi.hoisted(() => ({
+  resumo: { atual: undefined as unknown },
+  funis: { atual: undefined as unknown },
+}));
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/estrutura/tarefas/x",
@@ -39,7 +42,7 @@ vi.mock("@/dados/crm/tarefas-conversacionais", () => ({
 vi.mock("@/dados/crm/contatos", () => ({ useContato: () => ({ data: undefined }) }));
 vi.mock("@/dados/crm/canais", () => ({ useCanais: () => ({ data: undefined }) }));
 vi.mock("@/dados/crm/negocios", () => ({ useNegocios: () => ({ data: undefined }) }));
-vi.mock("@/dados/crm/funis", () => ({ useFunis: () => ({ data: undefined }) }));
+vi.mock("@/dados/crm/funis", () => ({ useFunis: () => ({ data: funis.atual }) }));
 
 const TAREFA = "tsk_lst_funil_sdr_deal_sdr_2";
 
@@ -66,6 +69,7 @@ beforeEach(() => {
     },
   );
   state = buildSeed();
+  funis.atual = undefined;
 });
 
 afterEach(() => {
@@ -129,5 +133,77 @@ describe("a ficha da Tarefa conversacional lê o resumo da api", () => {
     montar();
     expect(screen.queryByText(/Tarefa conversacional sem Contato/)).toBeNull();
     expect(screen.queryByText("CRM")).toBeNull();
+  });
+});
+
+describe("a ficha mostra Empresa, qualificação, estado e Atribuído do resumo (D-15-05)", () => {
+  const CONVERSA = { situacao: "pendente", estado: "ativo", atribuido: null } as const;
+
+  it("(e) Empresa e qualificação (rótulo do Catálogo) no bloco do Contato; a Empresa leva à ficha dela", () => {
+    state.catalog.push({ id: "cat_qual_resumo", workspaceId: state.workspace.id, kind: "qualificacao", name: "Qualificação do Resumo", order: 99, lifecycle: "ativo" });
+    resumo.atual = { ...RESUMO, empresa: { id: "emp_77", nome: "Acme do Resumo" }, qualificacaoId: "cat_qual_resumo" };
+    montar();
+    expect(screen.getByText("Acme do Resumo").closest("a")?.getAttribute("href")).toBe("/crm/empresas/emp_77");
+    expect(screen.getByText("Qualificação do Resumo")).toBeTruthy();
+  });
+
+  it("(f) qualificação com id que o Catálogo não tem: a linha não inventa rótulo", () => {
+    resumo.atual = { ...RESUMO, qualificacaoId: "cat_que_nao_existe" };
+    montar();
+    expect(screen.queryByText("cat_que_nao_existe")).toBeNull();
+  });
+
+  it("(g) estado da Conversa (Aberta, Pendente ou Resolvida) e o Atribuído Membro pelo nome de exibição", () => {
+    const dono = state.members.find((m) => m.id === state.workspace.ownerMemberId)!;
+    resumo.atual = { ...RESUMO, conversa: { ...CONVERSA, atribuido: { tipo: "membro", id: dono.id } } };
+    montar();
+    expect(screen.getByText("Pendente")).toBeTruthy();
+    expect(screen.getAllByText(dono.displayName).length).toBeGreaterThan(0);
+    expect(screen.queryByText("Sem Atribuído")).toBeNull();
+  });
+
+  it("(h) Atribuído Agente pelo nome do Agente; sem Atribuído, \"Sem Atribuído\"", () => {
+    state.agents.push({ id: "ag_resumo", name: "Agente do Resumo" } as unknown as DataState["agents"][number]);
+    resumo.atual = { ...RESUMO, conversa: { ...CONVERSA, atribuido: { tipo: "agente", id: "ag_resumo" } } };
+    montar();
+    expect(screen.getByText("Agente do Resumo")).toBeTruthy();
+    cleanup();
+
+    resumo.atual = { ...RESUMO, conversa: { ...CONVERSA, atribuido: null } };
+    montar();
+    expect(screen.getByText("Sem Atribuído")).toBeTruthy();
+  });
+
+  it("(i) D-15-06: a temperatura do Contato não aparece na ficha", () => {
+    resumo.atual = { ...RESUMO, empresa: { id: "emp_77", nome: "Acme do Resumo" }, conversa: CONVERSA };
+    montar();
+    expect(screen.queryByText(/temperatura/i)).toBeNull();
+  });
+});
+
+describe("criar Negócio num Espaço sem Funil (D-15-13)", () => {
+  function abrirOMenuECriar(): void {
+    fireEvent.click(screen.getAllByRole("button", { name: "Ações" })[0] as HTMLElement);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Criar Negócio a partir desta Tarefa" }));
+  }
+
+  it("(j) sem Funil, o diálogo diz \"Crie seu primeiro Funil\" com o link para /crm/funis e não deixa confirmar", () => {
+    resumo.atual = { ...RESUMO, negocio: null };
+    funis.atual = { ok: true, total: 0, itens: [] };
+    montar();
+    abrirOMenuECriar();
+    expect(screen.getByRole("link", { name: /Crie seu primeiro Funil/ }).getAttribute("href")).toBe("/crm/funis");
+    const confirmar = screen.getByRole("button", { name: "Criar Negócio" }) as HTMLButtonElement;
+    expect(confirmar.disabled || confirmar.getAttribute("aria-disabled") === "true").toBe(true);
+    expect(screen.queryByRole("combobox", { name: /Funil/ })).toBeNull();
+  });
+
+  it("(k) com Funil, o seletor continua (nada mudou para quem tem Funil)", () => {
+    resumo.atual = { ...RESUMO, negocio: null };
+    funis.atual = { ok: true, total: 1, itens: [{ funil: { id: "fn_1", nome: "Funil de Vendas" }, totalEtapas: 3, negociosAbertos: 0 }] };
+    montar();
+    abrirOMenuECriar();
+    expect(screen.queryByText(/Crie seu primeiro Funil/)).toBeNull();
+    expect(screen.getByRole("combobox", { name: /Funil/ })).toBeTruthy();
   });
 });

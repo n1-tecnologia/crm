@@ -34,6 +34,8 @@ import { CartaoConversacional, dadosDoCartaoConversacional } from "./cartao-conv
 import { CartaoDeTarefa } from "./cartao-de-tarefa";
 import { CelulaDoCanal, CelulaDoContato } from "./tabela-de-tarefas";
 
+const CONVERSA_PENDENTE = { situacao: "pendente", estado: "ativo", atribuido: null } as const;
+
 function task(id: string, extra: Partial<Task> = {}): Task {
   return { id, listId: "l1", title: `Tarefa ${id}`, assignees: [], taskTypeId: "tt1", tagIds: [], dependencies: [], checklists: [], priority: "semPrioridade", lifecycle: "ativo", ...extra } as unknown as Task;
 }
@@ -42,11 +44,15 @@ function vinculo(taskId: string, toType: Link["toType"], toId: string, role: str
   return { id: `v_${taskId}_${toType}`, fromType: "task", fromId: taskId, toType, toId, role } as unknown as Link;
 }
 
+const QUALIFICACAO = { id: "cat_qual_lead", workspaceId: "ws", kind: "qualificacao", name: "Lead quente", order: 0, lifecycle: "ativo" };
+
 function definirEstado(tarefas: Task[], links: Link[]): DataState {
   const dados = {
     tasks: tarefas,
     links,
     members: [],
+    agents: [],
+    catalog: [QUALIFICACAO],
     taskTypes: [{ id: "tt1", name: "Reunião", icon: "calendar" }],
     workspace: { locale: { tag: "pt-BR", timeZone: "America/Sao_Paulo", currency: "BRL", firstDayOfWeek: 1 } },
   } as unknown as DataState;
@@ -121,6 +127,42 @@ describe("CartaoConversacional — o que o resumo mostra", () => {
     expect(screen.queryByLabelText("Empresa")).toBeNull();
   });
 
+  it("(h) D-15-05: a qualificação mostra o rótulo do Catálogo; id que o Catálogo não tem não mostra nada", () => {
+    const t = task("t1");
+    const dados = definirEstado([t], [vinculo("t1", "contact", "c9", PAPEL_DO_VINCULO.contato)]);
+    resumos.set("t1", { ...RESUMO, qualificacaoId: "cat_qual_lead" });
+    const { unmount } = render(<CartaoConversacional data={dadosDoCartaoConversacional(dados, t)!} {...acoes} />);
+    expect(screen.getByText("Lead quente")).toBeTruthy();
+    unmount();
+
+    resumos.set("t1", { ...RESUMO, qualificacaoId: "cat_que_nao_existe" });
+    render(<CartaoConversacional data={dadosDoCartaoConversacional(dados, t)!} {...acoes} />);
+    expect(screen.queryByText("Lead quente")).toBeNull();
+    expect(screen.queryByText("cat_que_nao_existe")).toBeNull();
+  });
+
+  it("(i) D-15-05: o estado da Conversa aparece em pílula (Aberta, Pendente ou Resolvida); sem Conversa, nada", () => {
+    const t = task("t1");
+    const dados = definirEstado([t], [vinculo("t1", "contact", "c9", PAPEL_DO_VINCULO.contato)]);
+    resumos.set("t1", { ...RESUMO, conversa: CONVERSA_PENDENTE });
+    const { unmount } = render(<CartaoConversacional data={dadosDoCartaoConversacional(dados, t)!} {...acoes} />);
+    expect(screen.getByText("Pendente")).toBeTruthy();
+    unmount();
+
+    resumos.set("t1", { ...RESUMO, conversa: null });
+    render(<CartaoConversacional data={dadosDoCartaoConversacional(dados, t)!} {...acoes} />);
+    expect(screen.queryByText("Pendente")).toBeNull();
+    expect(screen.queryByText("Aberta")).toBeNull();
+  });
+
+  it("(j) D-15-06: a temperatura do Contato não volta ao cartão", () => {
+    const t = task("t1");
+    const dados = definirEstado([t], [vinculo("t1", "contact", "c9", PAPEL_DO_VINCULO.contato)]);
+    resumos.set("t1", { ...RESUMO, empresa: { id: "e1", nome: "Acme" }, qualificacaoId: "cat_qual_lead", conversa: CONVERSA_PENDENTE });
+    const { container } = render(<CartaoConversacional data={dadosDoCartaoConversacional(dados, t)!} {...acoes} />);
+    expect(container.textContent?.toLowerCase()).not.toContain("temperatura");
+  });
+
   it("(c) sem resumo ainda: o esqueleto, sem nome nem Mensagem inventados", () => {
     const t = task("t1");
     const dados = definirEstado([t], [vinculo("t1", "contact", "c9", PAPEL_DO_VINCULO.contato)]);
@@ -170,6 +212,24 @@ describe("a tabela e o cartão de Reunião leem o resumo", () => {
       </table>,
     );
     expect(screen.getAllByText("—")).toHaveLength(2);
+  });
+
+  it("(g) D-15-05: a linha da tabela mostra a Empresa e a qualificação junto do Contato, e o estado da Conversa junto do Canal", () => {
+    definirEstado([task("t1")], []);
+    resumos.set("t1", { ...RESUMO, empresa: { id: "e1", nome: "Acme" }, qualificacaoId: "cat_qual_lead", conversa: CONVERSA_PENDENTE });
+    render(
+      <table>
+        <tbody>
+          <tr>
+            <CelulaDoContato taskId="t1" />
+            <CelulaDoCanal taskId="t1" />
+          </tr>
+        </tbody>
+      </table>,
+    );
+    expect(screen.getByText("Acme")).toBeTruthy();
+    expect(screen.getByText("Lead quente")).toBeTruthy();
+    expect(screen.getByText("Pendente")).toBeTruthy();
   });
 
   it("(f) o cartão de Tarefa de uma Reunião mostra o título do Negócio do resumo", () => {
