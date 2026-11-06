@@ -57,6 +57,7 @@ export interface FiltroDeNegocios {
   readonly situacao?: SituacaoNegocio | undefined;
   readonly empresaId?: string | undefined;
   readonly contatoId?: string | undefined;
+  readonly proprietarioId?: string | undefined;
   readonly q?: string | undefined;
   readonly limite: number;
   readonly deslocamento: number;
@@ -413,6 +414,7 @@ export function criarServicoDeNegocios(deps: {
           situacao: filtro.situacao,
           empresaId: filtro.empresaId,
           contatoId: filtro.contatoId,
+          proprietarioId: filtro.proprietarioId,
           q: filtro.q,
           limite: filtro.limite,
           deslocamento: filtro.deslocamento,

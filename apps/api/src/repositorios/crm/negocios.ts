@@ -33,6 +33,7 @@ export interface FiltroDaListaDeNegocios {
   readonly situacao?: SituacaoNegocio | undefined;
   readonly empresaId?: string | undefined;
   readonly contatoId?: string | undefined;
+  readonly proprietarioId?: string | undefined;
   readonly q?: string | undefined;
   readonly limite: number;
   readonly deslocamento: number;
@@ -184,6 +185,7 @@ export function criarRepositorioDeNegociosPg(cliente: Pool | PoolClient): Reposi
       if (filtro.situacao !== undefined) adicionar("situacao", filtro.situacao);
       if (filtro.empresaId !== undefined) adicionar("empresa_id", filtro.empresaId);
       if (filtro.contatoId !== undefined) adicionar("contato_id", filtro.contatoId);
+      if (filtro.proprietarioId !== undefined) adicionar("proprietario_id", filtro.proprietarioId);
       const texto = filtro.q?.trim() ?? "";
       if (texto !== "") {
         parametros.push(contemTexto(texto));

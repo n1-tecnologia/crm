@@ -36,6 +36,8 @@ export interface FiltroDeNegocios {
   readonly estado?: EstadoCrm;
   readonly empresaId?: string;
   readonly contatoId?: string;
+  /** O filtro "Meus" do quadro (F14-D-06): o id do Membro da sessão. A api só restringe; Papel e Espaço seguem valendo. */
+  readonly proprietarioId?: string;
   readonly q?: string;
   readonly limite?: number;
   readonly deslocamento?: number;
@@ -55,6 +57,7 @@ export function chaveDeNegocios(filtro: FiltroDeNegocios): string {
   if (filtro.situacao !== undefined) parametros.set("situacao", filtro.situacao);
   if (filtro.empresaId !== undefined) parametros.set("empresaId", filtro.empresaId);
   if (filtro.contatoId !== undefined) parametros.set("contatoId", filtro.contatoId);
+  if (filtro.proprietarioId !== undefined) parametros.set("proprietarioId", filtro.proprietarioId);
   const busca = (filtro.q ?? "").trim();
   if (busca !== "") parametros.set("q", busca);
   parametros.set("limite", String(filtro.limite ?? LIMITES_CRM.paginaPadrao));

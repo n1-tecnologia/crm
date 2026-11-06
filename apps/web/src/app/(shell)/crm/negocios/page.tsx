@@ -11,8 +11,12 @@
  *
  * Esta tela é o quadro das ETAPAS DO FUNIL. O quadro de Status das Listas
  * conversacionais (Tarefas-espelho) é outro arquivo,
- * `features/estrutura/quadro-negocios.tsx`, e `/crm/meus-negocios` segue o
- * modelo de Tarefas: nenhum dos dois muda aqui (D-15).
+ * `features/estrutura/quadro-negocios.tsx`, e não muda aqui (D-15).
+ *
+ * "Meus negócios" (F14-D-06) é o botão "Meus" deste quadro: `?meus=1` na URL
+ * (sobrevive a recarregar e entra no histórico) pede a lista com
+ * `proprietarioId` = Membro da sessão. Não existe mais rota nem árvore de
+ * "Meus negócios"; o atalho do menu do CRM leva a `/crm/negocios?meus=1`.
  *
  * O cabeçalho soma só os abertos: o valor declarado e o ponderado pela
  * probabilidade efetiva (`totaisDoQuadro`). A lista do quadro é lida aqui e no
@@ -23,12 +27,13 @@
  */
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { Briefcase } from "lucide-react";
 import { ErroDeApi } from "@/dados/crm/cliente-crm";
 import { useFunis } from "@/dados/crm/funis";
 import { usePodeNoCrm } from "@/dados/crm/sessao";
+import { useSession } from "@/dados/store";
 import { useCreateRecordDialog } from "@/features/crm/create-record-dialog";
 import { DialogoNovoNegocio, FUNIS_ATIVOS } from "@/features/crm/formulario-de-negocio";
 import { negociosDoFunil, QuadroDoFunil, totaisDoQuadro, useNegociosDoQuadro } from "@/features/crm/quadro-do-funil";
@@ -39,8 +44,14 @@ import { useFormat } from "@/features/shell/use-format";
 /** Os totais do cabeçalho são somados em BRL, a moeda padrão dos Negócios. */
 const MOEDA_DOS_TOTAIS = "BRL";
 
+/** O parâmetro de URL do filtro "Meus" (F14-D-06). */
+const PARAMETRO_MEUS = "meus";
+
 export default function NegociosPage() {
   const router = useRouter();
+  const pathname = usePathname();
+  const busca = useSearchParams();
+  const { memberId } = useSession();
   const fmt = useFormat();
   const funis = useFunis(FUNIS_ATIVOS);
   const [escolhido, setEscolhido] = useState("");
@@ -50,7 +61,10 @@ export default function NegociosPage() {
   // `keepPreviousData`: só os Funis ativos entram, venha a lista de onde vier.
   const ativos = (funis.data?.itens ?? []).filter((item) => item.funil.estado === "ativo").map((item) => item.funil);
   const funil = ativos.find((item) => item.id === escolhido) ?? ativos.find((item) => item.padrao) ?? ativos[0];
-  const lista = useNegociosDoQuadro(funil?.id);
+  // "Meus": a MESMA chave de SWR na página (totais) e no quadro (cartões), com e sem o filtro.
+  const meus = busca.get(PARAMETRO_MEUS) === "1";
+  const proprietarioId = meus ? memberId : undefined;
+  const lista = useNegociosDoQuadro(funil?.id, proprietarioId);
   const totais = totaisDoQuadro(funil ? negociosDoFunil(lista.data?.itens, funil.id) : []);
 
   const corpo = () => {
@@ -78,7 +92,15 @@ export default function NegociosPage() {
         />
       );
     }
-    return <QuadroDoFunil funilId={funil.id} onNovo={openCreate} />;
+    return <QuadroDoFunil funilId={funil.id} onNovo={openCreate} {...(proprietarioId !== undefined ? { proprietarioId } : {})} />;
+  };
+
+  /** Ligar põe `?meus=1`; desligar tira só ele, preservando os outros parâmetros da tela. */
+  const alternarMeus = () => {
+    const proximo = new URLSearchParams(busca.toString());
+    if (meus) proximo.delete(PARAMETRO_MEUS);
+    else proximo.set(PARAMETRO_MEUS, "1");
+    router.replace(proximo.size > 0 ? `${pathname}?${proximo}` : pathname, { scroll: false });
   };
 
   return (
@@ -99,6 +121,18 @@ export default function NegociosPage() {
         }
         actions={
           <>
+            {funil ? (
+              <button
+                type="button"
+                onClick={alternarMeus}
+                aria-pressed={meus}
+                title={meus ? "Mostrar os Negócios de todos" : "Mostrar só os Negócios em que você é o Proprietário"}
+                className="btn btn-contorno btn-sm"
+                style={meus ? { background: "var(--acento-lavado)", color: "var(--acento)" } : undefined}
+              >
+                Meus
+              </button>
+            ) : null}
             {funil ? (
               <span className="flex items-center gap-2">
                 <label htmlFor="funil-do-quadro" className="app-sm shrink-0" style={{ color: "var(--texto-3)" }}>
