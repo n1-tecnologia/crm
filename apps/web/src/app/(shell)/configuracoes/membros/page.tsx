@@ -51,7 +51,7 @@ const TRANSFER_LABEL: Record<string, string> = {
   form: "Formulário",
 };
 
-/** As Conversas liberadas também vêm das tabelas; aqui, só o que o estado em memória ainda sabe. */
+/** As Conversas não são liberadas: passam ao Sucessor e vêm das tabelas. Aqui, só o que o estado em memória ainda libera. */
 const RELEASE_LABEL: Record<string, string> = {
   task: "Tarefa",
   checklistItem: "Item de Checklist",
@@ -98,13 +98,13 @@ export default function MembrosPage() {
 
   const target = removing ? state.members.find((m) => m.id === removing) : undefined;
   const preview = target ? previewSuccession(state, target.id) : null;
-  // 14-16 (3.2.8): Contatos, Empresas, Negócios e Conversas liberadas vêm das tabelas pela api; o resto, do estado.
+  // 14-16 (3.2.8): Contatos, Empresas, Negócios e Conversas (D-15-08: passam ao Sucessor) vêm das tabelas pela api; o resto, do estado.
   const sucessaoNoCrm = useSucessaoNoCrm(target?.id);
   const aTransferir = preview?.transfers.filter((item) => !TIPOS_DO_CRM_NAS_TABELAS.has(item.type)) ?? [];
   const aLiberar = preview?.releases.filter((item) => !TIPOS_DO_CRM_NAS_TABELAS.has(item.type)) ?? [];
   const noCrm = sucessaoNoCrm.data;
-  const totalAPassar = aTransferir.length + (noCrm ? noCrm.contatos + noCrm.empresas + noCrm.negocios : 0);
-  const totalALiberar = aLiberar.length + (noCrm?.conversasLiberadas ?? 0);
+  const totalAPassar = aTransferir.length + (noCrm ? noCrm.contatos + noCrm.empresas + noCrm.negocios + noCrm.conversasPassadas : 0);
+  const totalALiberar = aLiberar.length;
   /** Uma linha por tipo do CRM com algo a mover; sem a resposta da api, a linha diz o que falta em vez de mostrar zero. */
   const linhasDoCrm = (itens: ReadonlyArray<readonly [string, number | undefined]>) => {
     if (sucessaoNoCrm.error) {
@@ -275,7 +275,7 @@ export default function MembrosPage() {
           <ConfirmDialog
             open={target !== undefined && preview !== null}
             title={`Remover ${target?.displayName ?? "Membro"}`}
-            description="O Membro não é apagado: a autoria de tudo o que ele fez continua registrada. O que ele possuía passa ao Sucessor; o que ele apenas atendia é liberado."
+            description="O Membro não é apagado: a autoria de tudo o que ele fez continua registrada. O que ele possuía e as Conversas que ele atendia passam ao Sucessor; as Tarefas e os itens de Checklist que ele apenas executava ficam sem Responsável."
             confirmLabel="Remover Membro"
             destructive
             {...(successorId === ""
@@ -293,7 +293,8 @@ export default function MembrosPage() {
               </h2>
               <p className="app-base" style={{ color: "var(--texto-3)" }}>
                 O Membro não é apagado: a autoria de tudo o que ele fez continua registrada. O que ele
-                possuía passa ao Sucessor; o que ele apenas atendia é liberado.
+                possuía e as Conversas que ele atendia passam ao Sucessor; as Tarefas e os itens de
+                Checklist que ele apenas executava ficam sem Responsável.
               </p>
 
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
@@ -309,6 +310,7 @@ export default function MembrosPage() {
                         ["Contatos", noCrm?.contatos],
                         ["Empresas", noCrm?.empresas],
                         ["Negócios", noCrm?.negocios],
+                        ["Conversas", noCrm?.conversasPassadas],
                       ])}
                       {aTransferir.map((item) => (
                         <li key={`${item.type}-${item.id}`}>
@@ -322,11 +324,10 @@ export default function MembrosPage() {
                   <p className="app-coluna">
                     Fica sem Responsável ({totalALiberar})
                   </p>
-                  {noCrm && totalALiberar === 0 ? (
+                  {totalALiberar === 0 ? (
                     <p className="app-base mt-1" style={{ color: "var(--texto-3)" }}>Nada a liberar.</p>
                   ) : (
                     <ul className="app-base relative mt-1 max-h-40 space-y-0.5 overflow-y-auto" style={{ color: "var(--texto-3)" }}>
-                      {linhasDoCrm([["Conversas", noCrm?.conversasLiberadas]])}
                       {aLiberar.map((item) => (
                         <li key={`${item.type}-${item.id}`}>
                           {RELEASE_LABEL[item.type] ?? item.type}: {item.name}

@@ -166,8 +166,13 @@ ainda leem o Contato e o Canal do modelo antigo até a Caixa nova (Fase 15). Com
 as Tarefas e as Conversas de hoje ainda apontam para ids antigos, estas telas só
 vão ao ar junto com o script de migração da Fase 15. A prévia da remoção de um
 Membro (`dados/crm/sucessao.ts`, `useSucessaoNoCrm`) lê Contatos, Empresas,
-Negócios e Conversas liberadas de `GET /membros/:id/sucessao-no-crm`; Agentes,
-Automações e o resto continuam de `previewSuccession`. `src/sem-listas-espelho.test.ts`
+Negócios e Conversas de `GET /membros/:id/sucessao-no-crm`, com o tipo
+`SucessaoNoCrm` de `@n1/dominio/crm/sucessao` (a web não declara a forma por
+conta própria). Desde a D-15-08 as Conversas que ele atendia não são liberadas:
+`conversasPassadas` passa ao Sucessor como Atribuído, e a contagem fica no grupo
+"Passa ao Sucessor" do diálogo. Agentes, Automações e o resto continuam de
+`previewSuccession`; o que fica sem Responsável são só Tarefas e itens de
+Checklist. `src/sem-listas-espelho.test.ts`
 (D-06) congela os dois arquivos da web que ainda citam as Listas espelho e proíbe
 um terceiro.
 
