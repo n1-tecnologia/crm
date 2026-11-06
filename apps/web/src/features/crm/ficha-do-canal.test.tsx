@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 /**
- * 08-09 Task 2 — a ficha do Canal (`/crm/caixa-de-entrada/configuracoes/canais/[canal]`)
- * fala com o Canal relacional por REST (D-11) e deixa o do seed no caminho
- * antigo (D-12):
+ * 08-09 Task 2 + 15-12 Task 2 — a ficha do Canal (`/crm/caixa-de-entrada/configuracoes/canais/[canal]`)
+ * lê e grava o Canal só pela api (D-11), sem o caminho do Canal do seed:
  *
+ *   - o Canal vem de `GET /canais/:id` (`useCanal`); 404 mostra "Canal não encontrado.";
  *   - o Administrador vê "Simular conexão" num Canal `desconectada`; o clique faz
  *     `POST /canais/:id/simular-conexao` sem corpo e sem `content-type` e
  *     re-hidrata o store (D-08);
@@ -11,9 +11,9 @@
  *   - a conexão simulada nunca aparece sem a marca e o aviso de que nenhuma
  *     Mensagem sai da plataforma (T-08-36);
  *   - "Arquivar" pede confirmação e depois faz `POST …/arquivar`;
- *   - Setor/Origem do Canal relacional gravam por `PATCH /canais/:id`; os do
- *     `chn_wpp` (seed) continuam pela operação `configurarCanal`, sem `fetch`
- *     (T-08-38).
+ *   - Setor/Origem gravam por `PATCH /canais/:id`, nunca pela operação antiga;
+ *   - as Conversas do Canal vêm de `GET /conversas?canalId=…&limite=20` e o número
+ *     mostrado é o `total` da resposta.
  *
  * O teste mora em `features/crm/` porque `app/` só guarda convenção de arquivo
  * do Next. Nenhuma rede: `fetch` roteado, sessão falsa, `StoreProvider` de
@@ -24,7 +24,7 @@ import { Suspense } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { SWRConfig } from "swr";
-import type { Channel } from "@n1/dominio/types";
+import type { Canal } from "@n1/dominio/crm/canais";
 import { buildSeed } from "@n1/dominio/seed";
 import { StoreProvider } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
@@ -52,23 +52,27 @@ function resposta(status: number, corpo: unknown): Response {
   return { ok: status >= 200 && status < 300, status, json: async () => corpo } as Response;
 }
 
-/** O Canal da 008 na forma do modelo antigo (`canalParaChannel`, apps/api). */
-function canalRelacional(sobre: Partial<Channel> = {}): Channel {
-  const whatsapp = buildSeed().channels.find((c) => c.id === "chn_wpp")!;
-  const base: Channel = { ...whatsapp };
-  delete base.defaultQueueId;
-  delete base.defaultOriginId;
+/** O Canal da 008 como a api o devolve em `GET /canais/:id`. */
+function canalRelacional(sobre: Partial<Canal> = {}): Canal {
   return {
-    ...base,
     id: "uuid-1",
-    name: "Suporte do Zap",
-    channelType: "whatsapp",
-    provider: "whatsapp-nao-oficial",
-    relational: true,
-    simulatedConnection: false,
-    connection: "desconectada",
-    lifecycle: "ativo",
-    externalId: "+5511977770001",
+    nome: "Suporte do Zap",
+    tipo: "whatsapp",
+    provedor: "whatsapp-nao-oficial",
+    identificadorExterno: "+5511977770001",
+    conexao: "desconectada",
+    conexaoSimulada: false,
+    conectadaEm: null,
+    estado: "ativo",
+    arquivadoEm: null,
+    configuradoPor: "mem_rafael",
+    filaPadraoId: null,
+    proprietarioPadraoId: null,
+    origemPadraoId: null,
+    gruposHabilitados: false,
+    criadoPor: "mem_rafael",
+    criadoEm: "2026-11-01T00:00:00.000Z",
+    atualizadoEm: "2026-11-01T00:00:00.000Z",
     ...sobre,
   };
 }
@@ -96,10 +100,12 @@ afterEach(() => {
   cleanup();
 });
 
-/** Seed + o Canal relacional; `memberId` decide o Papel (Rafael administra, Júlia é Membro). */
-async function montar(id: string, canal: Channel, memberId = "mem_rafael") {
-  const seed = buildSeed();
-  const data = { ...seed, channels: [...seed.channels, canal] };
+/** Seed + `GET /canais/<id>` devolvendo o Canal; `memberId` decide o Papel (Rafael administra, Júlia é Membro). */
+async function montar(id: string, canal: Canal | null, memberId = "mem_rafael", totalDeConversas = 3) {
+  if (canal) rotas[`GET /canais/${id}`] = () => resposta(200, { ok: true, dados: canal });
+  else rotas[`GET /canais/${id}`] = () => resposta(404, { ok: false, error: "Canal não encontrado.", codigo: "NAO_ENCONTRADO" });
+  rotas[`GET /conversas?estado=ativo&canalId=${id}&limite=20&deslocamento=0`] = () =>
+    resposta(200, { ok: true, itens: [], total: totalDeConversas });
   const transporte: Transporte = {
     gravar: gravar as unknown as Transporte["gravar"],
     hidratar: hidratar as unknown as Transporte["hidratar"],
@@ -108,7 +114,7 @@ async function montar(id: string, canal: Channel, memberId = "mem_rafael") {
   await act(async () => {
     render(
       <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
-        <StoreProvider sessao={{ memberId }} estadoInicial={{ data, revisao: 1, ordens: {} }} transporte={transporte}>
+        <StoreProvider sessao={{ memberId }} estadoInicial={{ data: buildSeed(), revisao: 1, ordens: {} }} transporte={transporte}>
           <Suspense fallback="carregando">
             <CanalPage params={params} />
           </Suspense>
@@ -160,7 +166,7 @@ describe("08-09 — a ficha do Canal relacional", () => {
 
   it("(3) Canal conectado por simulação: marca, aviso fixo e o botão Desconectar", async () => {
     rotas["POST /canais/uuid-1/desconectar"] = () => resposta(200, { ok: true, dados: { id: "uuid-1", conexao: "desconectada" } });
-    await montar("uuid-1", canalRelacional({ connection: "conectada", simulatedConnection: true }));
+    await montar("uuid-1", canalRelacional({ conexao: "conectada", conexaoSimulada: true }));
 
     expect(await screen.findByRole("heading", { name: /Suporte do Zap/ })).toBeTruthy();
     expect(screen.getAllByText("conexão simulada").length).toBeGreaterThan(0);
@@ -213,19 +219,35 @@ describe("08-09 — a ficha do Canal relacional", () => {
     expect(gravar).not.toHaveBeenCalled();
   });
 
-  it("(6) Setor do Canal do seed (chn_wpp) continua pela operação configurarCanal: transporte.gravar, nenhum fetch", async () => {
-    await montar("chn_wpp", canalRelacional());
+  it("(6) Canal que a api não conhece (404): \"Canal não encontrado.\", sem gravar nada", async () => {
+    await montar("chn_wpp", null);
 
-    expect(await screen.findByRole("heading", { name: /Comercial SP/ })).toBeTruthy();
-    // O Canal do seed é "demo": sem provedor e sem bloco de Conexão (T-08-38).
-    expect(screen.getAllByText("demo").length).toBeGreaterThanOrEqual(1);
+    expect(await screen.findByText("Canal não encontrado.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Simular conexão" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Arquivar" })).toBeNull();
+    expect(gravar).not.toHaveBeenCalled();
+    // Nenhuma Conversa é pedida para um Canal que não existe.
+    expect(chamadasRest().some(([url]) => String(url).includes("/conversas"))).toBe(false);
+  });
 
-    fireEvent.click(screen.getAllByRole("combobox")[0]!);
-    fireEvent.click(await screen.findByRole("option", { name: "Suporte" }));
+  it("(7) as Conversas do Canal vêm de /conversas?canalId=…&limite=20 e o número é o total da resposta", async () => {
+    await montar("uuid-1", canalRelacional(), "mem_rafael", 37);
 
-    await waitFor(() => expect(gravar).toHaveBeenCalled());
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await screen.findByRole("heading", { name: /Suporte do Zap/ })).toBeTruthy();
+    expect(await screen.findByText(/37 Conversa\(s\)/)).toBeTruthy();
+    const pedido = chamadasRest().find(([url]) => String(url).includes("/conversas"));
+    expect(pedido).toBeTruthy();
+    const url = new URL(String(pedido![0]));
+    expect(url.searchParams.get("canalId")).toBe("uuid-1");
+    expect(url.searchParams.get("limite")).toBe("20");
+  });
+
+  it("(8) a ficha mostra o Setor, o identificador e quem configurou a partir do Canal da api", async () => {
+    await montar("uuid-1", canalRelacional({ filaPadraoId: "fila_com", configuradoPor: "mem_rafael" }));
+
+    expect(await screen.findByRole("heading", { name: /Suporte do Zap/ })).toBeTruthy();
+    expect(screen.getByText("+5511977770001")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "ver a Fila" }).getAttribute("href")).toBe("/crm/caixa-de-entrada/configuracoes/filas/fila_com");
+    const seed = buildSeed();
+    expect(screen.getByText(seed.members.find((m) => m.id === "mem_rafael")!.displayName)).toBeTruthy();
   });
 });
