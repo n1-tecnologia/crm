@@ -15,6 +15,9 @@ export const TAREFA_DO_ESPELHO = "tsk_lst_funil_sdr_deal_sdr_2";
 export function montarTarefaConversacional(state: DataState): void {
   const origem = { kind: "member", id: "mem_julia" } as const;
   const criadaEm = "2026-10-01T09:00:00.000Z";
+  // Os Status da Lista são os do Espaço Comercial, com ids próprios: a cor de um Status é dado, e não mora neste arquivo.
+  const doEspaco = state.spaces.find((e) => e.id === "spc_com")?.statusSet?.definitions ?? [];
+  const definitions = doEspaco.map((d) => ({ ...d, id: `st_${LISTA_DO_ESPELHO}_${d.id}` }));
   state.lists.push({
     id: LISTA_DO_ESPELHO,
     workspaceId: state.workspace.id,
@@ -27,15 +30,7 @@ export function montarTarefaConversacional(state: DataState): void {
     modeloDeTarefa: "conversacional",
     canaisDeAtendimento: ["chn_wpp"],
     modes: { statusSet: "sobrescrito" },
-    statusSet: {
-      id: "sts_lst_funil_sdr",
-      definitions: [
-        { id: "st_lst_funil_sdr_novo", name: "Novo Lead", color: "#94a3b8", category: "naoIniciado", order: 0 },
-        { id: "st_lst_funil_sdr_qualificacao", name: "Qualificação", color: "#60a5fa", category: "emAndamento", order: 1 },
-        { id: "st_lst_funil_sdr_ganho", name: "Ganho", color: "#22c55e", category: "concluido", order: 2 },
-        { id: "st_lst_funil_sdr_perdido", name: "Perdido", color: "#64748b", category: "fechado", order: 3 },
-      ],
-    },
+    statusSet: { id: "sts_lst_funil_sdr", definitions },
     features: { subtarefas: false, checklists: false },
     parentType: "space",
     parentId: "spc_com",
@@ -51,7 +46,7 @@ export function montarTarefaConversacional(state: DataState): void {
     readableId: "NEG-002",
     title: "Módulo prático para Iallas",
     description: "Full Face Avançado",
-    statusId: "st_lst_funil_sdr_qualificacao",
+    statusId: `st_${LISTA_DO_ESPELHO}_st_com_exec`,
     taskTypeId: "tt_tarefa_com",
     priority: "normal",
     assignees: [{ kind: "member", id: "mem_marcos" }],
