@@ -13,17 +13,16 @@ import { resolveConversation } from "./operations/conversations";
 import {
   METRICAS_DO_RESUMO,
   PERIODOS_DO_RESUMO,
-  conversasComMensagensNovas,
   estatisticasDoMembro,
   janelaDoResumo,
-  leadsAAtender,
-  naoLidas,
-  ultimaAtividade,
+  mensagensNovasDasConversas,
+  qualificacoesDeLead,
 } from "./derive-resumo";
 import { diaCivilNoFuso, recortesDeTarefas } from "./recortes-de-tarefas";
 import { isoNoFuso } from "./relogio";
 import type { DataState } from "./state";
-import type { ActivityRecord, ActorRef, Conversation, Deal, Message, Task } from "./types";
+import type { ConversaNaLista } from "./crm/conversas";
+import type { ActivityRecord, ActorRef, Deal, Task } from "./types";
 
 const THIAGO = "mem_thiago";
 const FUSO = "America/Sao_Paulo"; // UTC−3, sem horário de verão desde 2019
@@ -50,170 +49,88 @@ function exigir<T>(valor: T | undefined, oQue: string): T {
   return valor;
 }
 
-let sequencia = 0;
-function mensagem(conversationId: string, direction: Message["direction"], actor: ActorRef, createdAt: string): Message {
-  sequencia += 1;
-  return {
-    id: `msg_teste_${sequencia}`,
-    conversationId,
-    direction,
-    actor,
-    content: "…",
-    attachments: [],
-    internalReads: [],
-    reactions: [],
-    externalEdits: [],
-    createdAt,
-  };
-}
-
-/** Uma Conversa nova do Contato, copiada do molde de uma do seed. */
-function conversaDe(
-  state: DataState,
-  id: string,
-  contactId: string,
-  estado: Conversation["state"],
-  mensagens: ReadonlyArray<readonly [Message["direction"], string]>,
-  channelId = "chn_wpp",
-): Conversation {
-  const molde = exigir(state.conversations.find((c) => c.id === "cnv_1"), "cnv_1");
-  const contatoExterno: ActorRef = { kind: "integration", id: channelId };
-  const conversa: Conversation = {
-    ...molde,
-    id,
-    channelId,
-    contactId,
-    state: estado,
-    lifecycle: "ativo",
-    assignee: thiago,
-    createdAt: mensagens[0]?.[1] ?? molde.createdAt,
-    messages: mensagens.map(([direcao, quando]) =>
-      mensagem(id, direcao, direcao === "recebida" ? contatoExterno : thiago, quando),
-    ),
-  };
-  state.conversations.push(conversa);
-  return conversa;
-}
-
 /* ───────────────────────────── Mensagens novas ───────────────────────────── */
 
-describe("mensagens novas — a mesma conta da Caixa de Entrada", () => {
-  it("Thiago tem 13 não lidas: 12 na conversa do Iallas e 1 em cnv_1, a mais recente primeiro", () => {
-    const state = buildProductSeed();
-    const novas = conversasComMensagensNovas(state, THIAGO);
-    expect(novas.map((n) => [n.conversa.id, n.naoLidas])).toEqual([
-      ["cnv_sdr_1", 12],
-      ["cnv_1", 1],
+/** Uma Conversa como `GET /conversas?naoLidas=true` a devolve (15-23): só o que o bloco do Início lê. */
+function daLista(id: string, extra: Partial<ConversaNaLista> = {}): ConversaNaLista {
+  return {
+    id,
+    canalId: "can_1",
+    contatoId: `ctt_${id}`,
+    titulo: `Conversa ${id}`,
+    tituloEditado: false,
+    situacao: "aberta",
+    estado: "ativo",
+    naLixeiraEm: null,
+    filaId: null,
+    atribuido: { tipo: "membro", id: THIAGO },
+    adiadaAte: null,
+    adiamentoMotivo: null,
+    participantes: [],
+    resolvidaEm: null,
+    reabertaEm: null,
+    reaberturas: 0,
+    criadoPor: { tipo: "membro", id: THIAGO },
+    criadoEm: "2026-11-01T10:00:00.000Z",
+    atualizadoEm: "2026-11-02T10:00:00.000Z",
+    contatoNome: `Contato ${id}`,
+    estrela: false,
+    naoLidas: 1,
+    ultimaRecebidaEm: null,
+    ...extra,
+  };
+}
+
+describe("mensagens novas — as linhas que a api devolve (15-23)", () => {
+  it("soma as não lidas das linhas e põe a Conversa de Mensagem mais recente primeiro", () => {
+    const itens = [
+      daLista("a", { naoLidas: 2, ultimaRecebidaEm: "2026-11-03T10:00:00.000Z" }),
+      daLista("b", { naoLidas: 12, ultimaRecebidaEm: "2026-11-05T10:00:00.000Z" }),
+      // Sem Mensagem recebida registrada: vale a última mudança da Conversa.
+      daLista("c", { naoLidas: 1, ultimaRecebidaEm: null, atualizadoEm: "2026-11-04T10:00:00.000Z" }),
+    ];
+    const novas = mensagensNovasDasConversas(itens, 3);
+    expect(novas.linhas.map((l) => [l.conversaId, l.naoLidas])).toEqual([
+      ["b", 12],
+      ["c", 1],
+      ["a", 2],
     ]);
-    expect(novas.reduce((soma, n) => soma + n.naoLidas, 0)).toBe(13);
-
-    const iallas = exigir(novas[0], "cnv_sdr_1");
-    expect(iallas.contato?.id).toBe("cnt_35");
-    expect(iallas.ultima?.direction).toBe("recebida");
-    expect(iallas.ultimaAtividade).toBe(ultimaAtividade(iallas.conversa));
-    // A última de cnv_1 é uma nota interna: ela move a atividade, mas não é a "última trocada com o Contato".
-    const cnv1 = exigir(novas[1], "cnv_1");
-    expect(cnv1.ultima?.direction).not.toBe("interna");
+    expect(novas.naoLidas).toBe(15);
+    expect(novas.conversas).toBe(3);
+    expect(novas.parcial).toBe(false);
+    expect(novas.linhas[0]).toMatchObject({ contatoNome: "Contato b", ultimaAtividade: "2026-11-05T10:00:00.000Z" });
   });
 
-  it("uma leitura registrada por Thiago tira a Mensagem da conta; a de outro Membro não", () => {
-    const state = buildProductSeed();
-    const conversa = exigir(state.conversations.find((c) => c.id === "cnv_sdr_1"), "cnv_sdr_1");
-    const recebida = exigir(conversa.messages.find((m) => m.direction === "recebida"), "recebida");
-
-    recebida.internalReads.push({ actor: { kind: "member", id: "mem_julia" }, at: recebida.createdAt });
-    expect(naoLidas(conversa, THIAGO)).toBe(12);
-
-    recebida.internalReads.push({ actor: thiago, at: recebida.createdAt });
-    expect(naoLidas(conversa, THIAGO)).toBe(11);
-    expect(conversasComMensagensNovas(state, THIAGO).find((n) => n.conversa.id === "cnv_sdr_1")?.naoLidas).toBe(11);
-
-    // Lida inteira, a Conversa sai do resumo.
-    for (const m of conversa.messages) if (m.direction === "recebida") m.internalReads.push({ actor: thiago, at: m.createdAt });
-    expect(conversasComMensagensNovas(state, THIAGO).map((n) => n.conversa.id)).toEqual(["cnv_1"]);
+  it("o `total` da api é o número de Conversas; passando do que veio, a leitura diz que é parcial", () => {
+    const novas = mensagensNovasDasConversas([daLista("a", { naoLidas: 4 })], 250);
+    expect(novas.conversas).toBe(250);
+    expect(novas.parcial).toBe(true);
+    expect(novas.naoLidas).toBe(4);
   });
 
-  it("só Conversa ativa e atribuída a quem olha — resolvida com não lida conta, como na Caixa", () => {
-    const state = buildProductSeed();
-    const cnv1 = exigir(state.conversations.find((c) => c.id === "cnv_1"), "cnv_1");
-    cnv1.state = "resolvida";
-    const sdr = exigir(state.conversations.find((c) => c.id === "cnv_sdr_1"), "cnv_sdr_1");
-    sdr.assignee = { kind: "member", id: "mem_julia" };
-    // A resolvida fica (a aba "Não lidos" da Caixa também a conta); a de Julia sai.
-    expect(conversasComMensagensNovas(state, THIAGO).map((n) => n.conversa.id)).toEqual(["cnv_1"]);
-    cnv1.lifecycle = "naLixeira";
-    expect(conversasComMensagensNovas(state, THIAGO)).toEqual([]);
-    // A de Julia agora é dela.
-    expect(conversasComMensagensNovas(state, "mem_julia").some((n) => n.conversa.id === "cnv_sdr_1")).toBe(true);
+  it("linha sem não lida não entra (a api filtra, mas o domínio não confia na forma)", () => {
+    const novas = mensagensNovasDasConversas([daLista("a", { naoLidas: 0 }), daLista("b", { naoLidas: 3 })], 2);
+    expect(novas.linhas.map((l) => l.conversaId)).toEqual(["b"]);
+    expect(novas.naoLidas).toBe(3);
+  });
+
+  it("sem linhas: tudo zero e nada parcial", () => {
+    expect(mensagensNovasDasConversas([], 0)).toEqual({ linhas: [], naoLidas: 0, conversas: 0, parcial: false });
+  });
+
+  it("empate de instante desempata pelo id, para a ordem não depender da ordem da api", () => {
+    const mesmoInstante = "2026-11-05T10:00:00.000Z";
+    const novas = mensagensNovasDasConversas([daLista("z", { ultimaRecebidaEm: mesmoInstante }), daLista("m", { ultimaRecebidaEm: mesmoInstante })], 2);
+    expect(novas.linhas.map((l) => l.conversaId)).toEqual(["m", "z"]);
   });
 });
 
 /* ───────────────────────────── Leads a atender ───────────────────────────── */
 
-describe("Leads a atender — Qualificação Lead, Proprietário = quem olha", () => {
-  it("no seed, Thiago tem 3 Leads sem contato nenhum, o mais antigo primeiro; o da lixeira fica fora", () => {
+describe("Leads a atender — as Qualificações que a api recebe (15-23)", () => {
+  it("o seed tem uma Qualificação chamada Lead: o id sai do Catálogo", () => {
     const state = buildProductSeed();
-    const leads = leadsAAtender(state, THIAGO);
-    expect(leads.map((l) => [l.contato.id, l.motivo])).toEqual([
-      ["cnt_24", "semContato"],
-      ["cnt_27", "semContato"],
-      ["cnt_30", "semContato"],
-    ]);
-    for (const lead of leads) {
-      expect(lead.desde).toBe(lead.contato.createdAt);
-      expect(lead.conversa).toBeUndefined();
-    }
-    // cnt_21 também é Lead de Thiago, mas está na lixeira.
-    const naLixeira = exigir(state.contacts.find((c) => c.id === "cnt_21"), "cnt_21");
-    expect([naLixeira.lifecycle, naLixeira.ownerMemberId, naLixeira.qualificationId]).toEqual(["naLixeira", THIAGO, "cat_qual_lead"]);
-    naLixeira.lifecycle = "ativo";
-    expect(leadsAAtender(state, THIAGO).map((l) => l.contato.id)).toContain("cnt_21");
-  });
-
-  it("aguardandoResposta: Conversa aberta cuja última Mensagem trocada é recebida; vale a que espera há mais tempo", () => {
-    const state = buildProductSeed();
-    const base = baseDoSeed(state);
-    const recebidaAntiga = iso(base - 2 * DIA);
-    conversaDe(state, "cnv_teste_a", "cnt_24", "aberta", [
-      ["enviada", iso(base - 3 * DIA)],
-      ["recebida", recebidaAntiga],
-      // A nota interna depois da recebida não devolve a bola ao Contato.
-      ["interna", iso(base - DIA)],
-    ]);
-    // Outra Conversa aberta, noutro Canal (uma só não resolvida por par Contato–Canal), esperando há menos tempo.
-    conversaDe(state, "cnv_teste_b", "cnt_24", "aberta", [["recebida", iso(base - DIA)]], "chn_mail");
-
-    const lead = leadsAAtender(state, THIAGO).find((l) => l.contato.id === "cnt_24");
-    expect(lead?.motivo).toBe("aguardandoResposta");
-    expect(lead?.conversa?.id).toBe("cnv_teste_a");
-    expect(lead?.desde).toBe(recebidaAntiga);
-  });
-
-  it("fica fora: última Mensagem enviada, Conversa pendente, Qualificação Cliente, outro Proprietário, lixeira", () => {
-    const state = buildProductSeed();
-    const base = baseDoSeed(state);
-    // cnt_24 — respondemos por último: a bola está com o Contato.
-    conversaDe(state, "cnv_teste_c", "cnt_24", "aberta", [
-      ["recebida", iso(base - 2 * DIA)],
-      ["enviada", iso(base - DIA)],
-    ]);
-    // cnt_27 — recebida por último, mas a Conversa está `pendente` (DO-CXE-07: aguarda o outro lado).
-    conversaDe(state, "cnv_teste_d", "cnt_27", "pendente", [["recebida", iso(base - DIA)]]);
-    // cnt_30 — virou Cliente.
-    exigir(state.contacts.find((c) => c.id === "cnt_30"), "cnt_30").qualificationId = "cat_qual_cli";
-    expect(leadsAAtender(state, THIAGO)).toEqual([]);
-
-    // Outro Proprietário: o Lead de Julia não aparece para Thiago, e aparece para ela.
-    const deJulia = exigir(state.contacts.find((c) => c.id === "cnt_31"), "cnt_31");
-    expect(deJulia.qualificationId).toBe("cat_qual_lead");
-    expect(leadsAAtender(state, "mem_julia").map((l) => l.contato.id)).toContain("cnt_31");
-    deJulia.ownerMemberId = "mem_rafael";
-    expect(leadsAAtender(state, "mem_julia").map((l) => l.contato.id)).not.toContain("cnt_31");
-
-    // Lixeira: o Lead que esperava sai.
-    const state2 = buildProductSeed();
-    exigir(state2.contacts.find((c) => c.id === "cnt_27"), "cnt_27").lifecycle = "naLixeira";
-    expect(leadsAAtender(state2, THIAGO).map((l) => l.contato.id)).toEqual(["cnt_24", "cnt_30"]);
+    expect(qualificacoesDeLead(state)).toEqual(["cat_qual_lead"]);
   });
 
   it("a Qualificação é lida pelo nome, sem maiúsculas nem acentos (C23: não há categoria fixa)", () => {
@@ -221,9 +138,17 @@ describe("Leads a atender — Qualificação Lead, Proprietário = quem olha", (
     const indice = state.catalog.findIndex((c) => c.id === "cat_qual_lead");
     const item = exigir(state.catalog[indice], "cat_qual_lead");
     state.catalog[indice] = { ...item, name: "  LEAD " };
-    expect(leadsAAtender(state, THIAGO)).toHaveLength(3);
+    expect(qualificacoesDeLead(state)).toEqual(["cat_qual_lead"]);
     state.catalog[indice] = { ...item, name: "Lead frio" };
-    expect(leadsAAtender(state, THIAGO)).toEqual([]);
+    expect(qualificacoesDeLead(state)).toEqual([]);
+  });
+
+  it("a Definição arquivada continua valendo para quem já a tem; só Qualificação conta", () => {
+    const state = buildProductSeed();
+    const indice = state.catalog.findIndex((c) => c.id === "cat_qual_lead");
+    const item = exigir(state.catalog[indice], "cat_qual_lead");
+    state.catalog.push({ ...item, id: "cat_origem_lead", kind: "origem", name: "Lead" });
+    expect(qualificacoesDeLead(state)).toEqual(["cat_qual_lead"]);
   });
 });
 
