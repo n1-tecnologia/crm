@@ -315,3 +315,14 @@ não usa, devolve o id escolhido em `onEscolher` e tem o link "Conectar um Canal
 novo" para a página de conectar, o único caminho que cria Canal (nasce
 `desconectada`); a seção de Canais de atendimento (`canais-de-atendimento.tsx`)
 também lê `useCanais`.
+
+**Configurações do Espaço sem o CRM antigo (Fase 15, 15-16).** O Funil padrão de
+`/configuracoes` é o de `useFunis({ estado: "ativo" })` com `padrao = true`
+(D-15-13: `Workspace` não tem mais `defaultFunnelId`, e um Espaço novo nasce sem
+Funil); sem Funil a linha vira o link "Crie seu primeiro Funil" para `/crm/funis`,
+e enquanto a lista não chega mostra "—". O limite de Contatos é o `total` de
+`useContatos({ limite: 1 })`. Campos, Tags e Catálogos contam só o uso em Tarefas
+(que vive no estado); onde contavam Contato, Empresa, Negócio e Conversa, mostram
+"O uso no CRM não aparece aqui." em vez de um zero falso. O diálogo de acesso da
+Governança (`resolveResource`) já não reconhece Funil como Recurso: o Funil novo
+se governa por `privado` e pelo Papel no servidor.

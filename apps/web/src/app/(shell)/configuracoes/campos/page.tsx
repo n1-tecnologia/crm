@@ -94,17 +94,16 @@ export default function CamposPage() {
       ? containerAdminRefusal(state, memberId, definition.definedAtType, definition.definedAtId)
       : "Este Campo não é definido em um contêiner.";
 
-  const usageOf = (definition: FieldDefinition): { filled: number; archived: number } => {
-    const records =
-      definition.target === "task"
-        ? state.tasks
-        : definition.target === "contact"
-          ? state.contacts
-          : definition.target === "company"
-            ? state.companies
-            : definition.target === "deal"
-              ? state.deals
-              : state.conversations;
+  /**
+   * Quantos registros preencheram a Definição. Tarefa vem do estado; Contato, Empresa, Negócio e
+   * Conversa moram nas tabelas do CRM (3.4.7) e não se contam aqui (`null`: a tela diz isso em vez de
+   * um "0" falso). Grupo, Comunidade e Flow seguem no modelo antigo de Conversa até as Sessões 6 e 7.
+   */
+  const usageOf = (definition: FieldDefinition): { filled: number; archived: number } | null => {
+    if (definition.target === "contact" || definition.target === "company" || definition.target === "deal" || definition.target === "conversation") {
+      return null;
+    }
+    const records = definition.target === "task" ? state.tasks : state.conversations;
     let filled = 0;
     let archived = 0;
     for (const record of records) {
@@ -159,12 +158,18 @@ export default function CamposPage() {
                 ) : null}
               </td>
               <td>
-                <span className="app-numero">{usage.filled} registro(s)</span>
-                {usage.archived > 0 ? (
-                  <span className="app-meta app-numero block" style={{ color: "var(--aviso)" }}>
-                    {usage.archived} valor(es) arquivado(s) fora do alcance
-                  </span>
-                ) : null}
+                {usage === null ? (
+                  <span className="app-meta">O uso no CRM não aparece aqui.</span>
+                ) : (
+                  <>
+                    <span className="app-numero">{usage.filled} registro(s)</span>
+                    {usage.archived > 0 ? (
+                      <span className="app-meta app-numero block" style={{ color: "var(--aviso)" }}>
+                        {usage.archived} valor(es) arquivado(s) fora do alcance
+                      </span>
+                    ) : null}
+                  </>
+                )}
               </td>
               <td>
                 {definition.lifecycle === "ativo" ? (

@@ -46,29 +46,15 @@ const KINDS: ReadonlyArray<{
   },
 ];
 
+/**
+ * Origens, qualificações, finalidades e motivos só são usados por Contato e Negócio, que
+ * moram nas tabelas do CRM (D-15-13, 3.4.7): contar no estado do CRM antigo mostraria
+ * um número que não é o do Espaço. Em vez de um "0" falso, a tela diz que não conta.
+ */
+const USO_NO_CRM = "O uso no CRM não aparece aqui.";
+
 export default function CatalogosPage() {
   const state = useData((data) => data);
-
-  const usageOf = (item: CatalogItem): string => {
-    if (item.kind === "origem") {
-      const contacts = state.contacts.filter((contact) => contact.originId === item.id).length;
-      const deals = state.deals.filter((deal) => deal.originId === item.id).length;
-      return contacts + deals === 0 ? "em nenhum registro" : `${contacts} Contato(s) · ${deals} Negócio(s)`;
-    }
-    if (item.kind === "qualificacao") {
-      const contacts = state.contacts.filter((contact) => contact.qualificationId === item.id).length;
-      return contacts === 0 ? "em nenhum Contato" : `${contacts} Contato(s)`;
-    }
-    if (item.kind === "finalidadeConsentimento") {
-      const contacts = state.contacts.filter((contact) =>
-        contact.consents.some((consent) => consent.purposeId === item.id),
-      ).length;
-      return contacts === 0 ? "sem Consentimento registrado" : `${contacts} Contato(s) com registro`;
-    }
-    const key = item.kind === "motivoPerda" ? "lossReasonId" : "winReasonId";
-    const deals = state.deals.filter((deal) => deal[key] === item.id).length;
-    return deals === 0 ? "em nenhum Negócio" : `${deals} Negócio(s)`;
-  };
 
   return (
     <div className="flex h-full flex-col">
@@ -120,7 +106,7 @@ export default function CatalogosPage() {
                         ) : null}
                       </span>
                       <span className="app-meta flex shrink-0 items-center gap-3">
-                        {usageOf(item)}
+                        {USO_NO_CRM}
                         {item.lifecycle === "ativo" ? null : <StateSeal state={item.lifecycle} />}
                       </span>
                     </li>
