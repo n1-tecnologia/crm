@@ -9,7 +9,7 @@
  */
 
 import Link from "next/link";
-import { BookOpen, Briefcase, Link2, MessageSquare } from "lucide-react";
+import { BookOpen, Link2, MessageSquare } from "lucide-react";
 import { use, useState } from "react";
 import { useData, useIdsNaoConfirmados, useRunConfirmado, useSession } from "@/dados/store";
 import {
@@ -18,21 +18,20 @@ import {
   memberReachesContainer,
   effectiveListConfig,
   effectiveLifecycleOfTask,
-  isTerminalCategory,
-  statusCategory,
 } from "@n1/dominio/derive";
 import {
   applyView,
   createTask,
   listWriteRefusal,
 } from "@n1/dominio/operations";
-import { listaSemCanais, vinculosDoCrmDaTarefa } from "@n1/dominio/derive-conversacional";
+import { listaSemCanaisNasTabelas, vinculosDoCrmDaTarefa } from "@n1/dominio/derive-conversacional";
 import { LISTA_SEM_CANAIS } from "@n1/dominio/operations/canais";
+import { LIMITES_CRM } from "@n1/dominio/crm/comum";
+import { useCanais } from "@/dados/crm/canais";
 import { ProvedorDoResumoDasTarefas } from "@/dados/crm/tarefas-conversacionais";
 import { CP } from "@n1/dominio/operations/financeiro";
 import { abrirGuiaDoFinanceiro } from "@/features/financeiro/guia/guia-do-financeiro-dialogo";
 import { DetalhesDaLista } from "@/features/estrutura/detalhes-da-lista";
-import { useFormat } from "@/features/shell/use-format";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { TASK_PANEL_PARAM, useTaskPanel } from "@/features/estrutura/task-panel";
 import { useMoveTaskDialog } from "@/features/estrutura/move-task-dialog";
@@ -72,7 +71,7 @@ import {
   type FinanceFilters,
 } from "@/features/estrutura/financeiro/contas-view";
 import { useNomesDosClientes } from "@/features/estrutura/financeiro/use-nomes-dos-clientes";
-import { dealOfTask, QuadroNegocios } from "@/features/estrutura/quadro-negocios";
+import { QuadroConversacional } from "@/features/estrutura/quadro-conversacional";
 import { linkVisivel, SEM_LINK_PARA_QUEM_NAO_ADMINISTRA } from "@/features/estrutura/link-publico";
 import { MEUS_NEGOCIOS_ID } from "@n1/dominio/seed-comercial";
 import {
@@ -94,8 +93,7 @@ const VIEW_LABEL = ROTULO_DA_ABA;
 
 /**
  * A lente de tipos de Visualização: as Listas do Financeiro não têm restrição;
- * a conversacional não planeja esforço (sem Linha do tempo). O espelho comercial
- * é conversacional, e herda a restrição.
+ * a conversacional não planeja esforço (sem Linha do tempo).
  */
 function lenteDaLista(list: { readonly id: string; readonly modeloDeTarefa?: string }): LenteDaLista {
   if (financeProfileOf(list.id) !== undefined) return "financeira";
@@ -109,7 +107,6 @@ export default function ListaPage({
 }) {
   const { lista } = use(params);
   const state = useData((data) => data);
-  const fmt = useFormat();
   const runConfirmado = useRunConfirmado();
   const { memberId } = useSession();
   // B38a — a Lista que o Membro não alcança não existe para ele.
@@ -118,6 +115,12 @@ export default function ListaPage({
       l.id === lista && memberReachesContainer(state, memberId, "list", l.id),
   );
   const config = list ? effectiveListConfig(state, list.id) : null;
+  // 15-40 (3.4.5): os Canais de atendimento da Lista conversacional vêm das tabelas (`GET /canais`, só os
+  // ativos), não do Canal projetado no estado antigo. Hook antes do `return` de "Lista não encontrada";
+  // só a Lista conversacional vai à api. Enquanto a resposta não chega (ou se ela falha) a página não
+  // afirma "sem canais": o servidor é a barreira de verdade (D-04), a tela só avisa com o dado na mão.
+  const canaisDaApi = useCanais({ limite: LIMITES_CRM.paginaMaxima }, { pausado: list?.modeloDeTarefa !== "conversacional" });
+  const canais = canaisDaApi.data?.itens;
   // 15-19: o nome do cliente das contas de Contas a receber vem de `POST /crm/nomes`, uma chamada para a
   // Lista inteira (não para o recorte filtrado: digitar na busca não refaz a chamada). Fica antes do
   // `return` de "Lista não encontrada" por ser hook; fora da lente financeira a lista é vazia e não chama a api.
@@ -147,8 +150,6 @@ export default function ListaPage({
      feita aqui não governa o "+" de um grupo, nem o contrário. */
   const [novoTipo, setNovoTipo] = useState<string | undefined>(undefined);
   const [criandoConta, setCriandoConta] = useState(false);
-  // "Iniciar conversa" (lado do CRM de Meus negócios): a Etapa vem do "+" do grupo.
-  const [iniciandoConversa, setIniciandoConversa] = useState<{ readonly stageId?: string } | null>(null);
   // "Nova Tarefa" da Lista conversacional (C35): o Status vem do "+" do grupo.
   const [novaConversacional, setNovaConversacional] = useState<{ readonly statusId?: string } | null>(null);
   const [criandoSerie, setCriandoSerie] = useState(false);
@@ -218,13 +219,8 @@ export default function ListaPage({
     effective !== list.lifecycle ? config.path.at(-2) : undefined;
   const administra = containerAdminRefusal(state, memberId, "list", list.id);
   // Quem não cria Tarefa aqui (Convidado) vê o porquê antes do clique.
-  // No lado do CRM da Pasta "Meus negócios" não nasce Tarefa: o Negócio nasce em Negócios.
   const criacaoRecusada =
-    pathname.startsWith("/crm/") && config.path.some((node) => node.type === "folder" && node.id === MEUS_NEGOCIOS_ID)
-      ? "Um Negócio nasce em Negócios; esta é a cópia do Funil."
-      : listaSemCanais(state, list.id)
-        ? LISTA_SEM_CANAIS
-        : listWriteRefusal(state, memberId, list.id);
+    canais !== undefined && listaSemCanaisNasTabelas(list, canais) ? LISTA_SEM_CANAIS : listWriteRefusal(state, memberId, list.id);
   const reportar = (
     result: { ok: boolean; error?: string },
     message: string,
@@ -254,47 +250,24 @@ export default function ListaPage({
   // financeira: pelo id da Lista, não pelo nome de um Tipo.
   const lente = financeProfileOf(list.id);
   const financeira = lente !== undefined;
-  // Lista da Pasta "Meus negócios": cópia do Funil, não sincronizada. O lado do
-  // CRM (os NEGÓCIOS espelhados) só existia sob a rota meus-negocios do CRM, apagada no
-  // 15-26 (F14-D-06): o ramo `espelhoComercial` abaixo já não é alcançável e sai
-  // com o resto do espelho no 15-40. Na Estrutura a Lista mostra só as TAREFAS
-  // (a call, o que se faz), como qualquer outra.
+  // Lista da Pasta "Meus negócios": cópia do Funil, não sincronizada. O espelho do lado do CRM (os
+  // NEGÓCIOS como cartões da Lista) saiu no 15-40 (F14-D-06): o Negócio vive em `/crm/negocios`. A
+  // Lista da Pasta mostra só as TAREFAS (a call, o que se faz), como qualquer outra. A Pasta fixa em si
+  // é do 15-41.
   const pastaDeNegocios = config.path.some(
     (node) => node.type === "folder" && node.id === MEUS_NEGOCIOS_ID,
   );
-  const noCrm = pathname.startsWith("/crm/");
-  // O Status da Lista espelhada guarda a Etapa: st_<lista>_<etapa>. Ganho e
-  // Perdido não são Etapa — um lead não começa ganho.
-  const etapaDoStatus = (statusId: string): string | undefined => {
-    const etapa = statusId.replace(`st_${list.id}_`, "");
-    return etapa === "ganho" || etapa === "perdido" ? undefined : etapa;
-  };
-  const espelhoComercial = pastaDeNegocios && noCrm;
-  // C35 — a Lista conversacional: cada Tarefa nasce de um Contato. A
-  // precedência das lentes é financeira > espelhoComercial > conversacional:
-  // o espelho é o caso particular (conversacional COM Negócio obrigatório) e
-  // guarda a barra "Iniciar conversa"; o que segue vale para a conversacional
-  // pura (Pós-venda) e para o lado da Estrutura das Listas de "Meus negócios".
+  // C35 — a Lista conversacional: cada Tarefa nasce de um Contato.
   const conversacional = list.modeloDeTarefa === "conversacional";
-  const conversacionalPura = conversacional && !espelhoComercial;
-  // Precedência das lentes da barra principal: financeira > espelho > conversacional.
-  const lenteDaBarra: LenteDaBarra = financeira
-    ? "financeira"
-    : espelhoComercial
-      ? "espelhoComercial"
-      : conversacional
-        ? "conversacional"
-        : "comum";
+  // Precedência das lentes da barra principal: financeira > conversacional.
+  const lenteDaBarra: LenteDaBarra = financeira ? "financeira" : conversacional ? "conversacional" : "comum";
   const pedidaPelaUrl = query.get("nova-tarefa") !== null;
   const todas = state.tasks
     .filter(
       (task) => task.listId === list.id && task.parentTaskId === undefined,
     )
     .filter((task) => effectiveLifecycleOfTask(state, task.id) !== "naLixeira")
-    .filter((task) => !pastaDeNegocios || (task.provenance?.kind === "deal") === noCrm);
-  const tarefaAberta = openTaskId ? todas.find((t) => t.id === openTaskId) : undefined;
-  const negocioAberto =
-    espelhoComercial && tarefaAberta?.provenance?.kind === "deal" ? dealOfTask(state, tarefaAberta) : undefined;
+    .filter((task) => !pastaDeNegocios || task.provenance?.kind !== "deal");
   // No Quadro do Funil, uma Reunião é a call: abre a tela dela, não um painel.
   const abrirNoQuadro = (taskId: string) => {
     if (naoConfirmados.has(taskId)) return;
@@ -434,7 +407,7 @@ export default function ListaPage({
 
   // Na Lista conversacional o "+" da árvore (`?nova-tarefa=1`) abre o diálogo,
   // não um campo de título: o pedido da URL vale como o clique no botão.
-  const dialogoConversacional = conversacionalPura && effective === "ativo" && (novaConversacional !== null || pedidaPelaUrl);
+  const dialogoConversacional = conversacional && effective === "ativo" && (novaConversacional !== null || pedidaPelaUrl);
   const fecharNovaConversacional = () => {
     setNovaConversacional(null);
     if (pedidaPelaUrl) fecharCriacao();
@@ -479,7 +452,7 @@ export default function ListaPage({
   // diálogo com o Status daquele grupo (`onMais`), e a Tarefa nasce do Contato.
   const criaNoGrupo = effective === "ativo" && !conversacional ? criarNoGrupo : undefined;
   const maisConversacional =
-    conversacionalPura && effective === "ativo" ? { onMais: (statusId: string) => setNovaConversacional({ statusId }) } : {};
+    conversacional && effective === "ativo" ? { onMais: (statusId: string) => setNovaConversacional({ statusId }) } : {};
 
   return (
     // 14-15 (3.3.3): UMA chamada ao resumo da api por Lista; o cartão, a linha da tabela, o cartão de
@@ -487,52 +460,36 @@ export default function ListaPage({
     <ProvedorDoResumoDasTarefas tarefas={conversacional ? todas : []}>
     <div className="flex h-full flex-col">
       <PageHeader
-        path={
-          espelhoComercial ? (
-            <>
-              <Link href="/crm/negocios" className="hover:underline">
-                Negócios
+        path={config.path.map((node, index) => (
+          <span key={node.id}>
+            {index > 0 ? " › " : ""}
+            {node.type === "list" ? (
+              node.name
+            ) : (
+              <Link
+                href={
+                  node.type === "space"
+                    ? `/estrutura/espacos/${node.id}`
+                    : `/estrutura/pastas/${node.id}`
+                }
+                className="hover:underline"
+              >
+                {node.name}
               </Link>
-              {" › "}
-              <Link href="/crm/negocios?meus=1" className="hover:underline">
-                Meus negócios
-              </Link>
-              {" › "}
-              {list.name}
-            </>
-          ) : (
-            config.path.map((node, index) => (
-              <span key={node.id}>
-                {index > 0 ? " › " : ""}
-                {node.type === "list" ? (
-                  node.name
-                ) : (
-                  <Link
-                    href={
-                      node.type === "space"
-                        ? `/estrutura/espacos/${node.id}`
-                        : `/estrutura/pastas/${node.id}`
-                    }
-                    className="hover:underline"
-                  >
-                    {node.name}
-                  </Link>
-                )}
-              </span>
-            ))
-          )
-        }
+            )}
+          </span>
+        ))}
         title={list.name}
-        {...(espelhoComercial || conversacionalPura
+        {...(conversacional
           ? {
-              // O espelho leva a maleta do Negócio; a conversacional, o balão da conversa.
+              // A conversacional leva o balão da conversa.
               icon: (
                 <span
                   aria-hidden="true"
                   className="grid place-items-center rounded-[var(--r-controle)]"
                   style={{ width: "var(--controle-h-sm)", height: "var(--controle-h-sm)", background: "var(--acento-lavado)", color: "var(--acento)" }}
                 >
-                  <Icone de={espelhoComercial ? Briefcase : MessageSquare} tamanho="sm" />
+                  <Icone de={MessageSquare} tamanho="sm" />
                 </span>
               ),
             }
@@ -541,28 +498,17 @@ export default function ListaPage({
         meta={
           lente
             ? `${todas.length} ${todas.length === 1 ? "conta" : "contas"}`
-            : espelhoComercial
+            : conversacional
               ? (() => {
-                  const abertas = todas.filter((t) => !isTerminalCategory(statusCategory(state, t)));
-                  const valor = fmt.money({
-                    amount: abertas.reduce((sum, t) => sum + (dealOfTask(state, t)?.value?.amount ?? 0), 0),
-                    currency: "BRL",
-                  });
-                  return `${abertas.length} ${abertas.length === 1 ? "aberto" : "abertos"} · ${valor} em valor declarado`;
+                  // Quantas pessoas, não quantos Vínculos: duas Tarefas do mesmo Contato contam um. Pelos ids dos Vínculos, sem chamar a api.
+                  const contatos = new Set(todas.map((t) => vinculosDoCrmDaTarefa(state, t).contatoId).filter(Boolean)).size;
+                  return `${todas.length} ${todas.length === 1 ? "Tarefa" : "Tarefas"} · ${contatos} ${contatos === 1 ? "Contato" : "Contatos"}`;
                 })()
-              : conversacionalPura
-                ? (() => {
-                    // Quantas pessoas, não quantos Vínculos: duas Tarefas do mesmo Contato contam um. Pelos ids dos Vínculos, sem chamar a api.
-                    const contatos = new Set(todas.map((t) => vinculosDoCrmDaTarefa(state, t).contatoId).filter(Boolean)).size;
-                    return `${todas.length} ${todas.length === 1 ? "Tarefa" : "Tarefas"} · ${contatos} ${contatos === 1 ? "Contato" : "Contatos"}`;
-                  })()
-                : `${todas.length} ${todas.length === 1 ? "Tarefa" : "Tarefas"}`
+              : `${todas.length} ${todas.length === 1 ? "Tarefa" : "Tarefas"}`
         }
-        {...(espelhoComercial || conversacional || list.plannedPeriod?.start
+        {...(conversacional || list.plannedPeriod?.start
           ? {
-              details: (
-                <DetalhesDaLista list={list} conversacional={conversacional} espelhoComercial={espelhoComercial} />
-              ),
+              details: <DetalhesDaLista list={list} conversacional={conversacional} canais={canais} />,
             }
           : {})}
         actions={
@@ -694,7 +640,6 @@ export default function ListaPage({
           listId={list.id}
           {...(criacaoRecusada ? { criacaoRecusada } : {})}
           fim={botaoDeSelecao}
-          aoIniciarConversa={() => setIniciandoConversa({})}
           aoNovaConversacional={() => setNovaConversacional({})}
           campo={{
             aberto: criandoConta || pedidaPelaUrl,
@@ -827,17 +772,14 @@ export default function ListaPage({
             <EmptyState title="Nenhuma Tarefa nesta Lista ainda." />
           )
         ) : view === "quadro" && conversacional ? (
-          // O quadro de cartões com rosto: o de Negócio no espelho, o
-          // conversacional na Lista pura. Só o espelho soma dinheiro na coluna.
-          <QuadroNegocios
+          // O quadro de cartões com rosto da Lista conversacional.
+          <QuadroConversacional
             state={state}
             tasks={tasks}
             definitions={definitions}
             onError={setError}
             openTask={abrirNoQuadro}
-            comValor={espelhoComercial}
             {...(criacaoRecusada ? { criacaoRecusada } : {})}
-            {...(espelhoComercial && effective === "ativo" ? { onMais: (statusId: string) => setIniciandoConversa({ stageId: etapaDoStatus(statusId) }) } : {})}
             {...maisConversacional}
           />
         ) : view === "quadro" ? (
@@ -898,9 +840,8 @@ export default function ListaPage({
             filters={filters}
             report={reportar}
             selecionando={selecionando}
-            rotulo={espelhoComercial ? "Negócio" : "Tarefa"}
+            rotulo="Tarefa"
             conversacional={conversacional}
-            {...(espelhoComercial && effective === "ativo" ? { onMais: (statusId: string) => setIniciandoConversa({ stageId: etapaDoStatus(statusId) }) } : {})}
             {...maisConversacional}
             {...(criaNoGrupo ? { onCreateInGroup: criaNoGrupo, seletorDeTipo } : {})}
             {...(criacaoRecusada ? { criacaoRecusada } : {})}
@@ -915,8 +856,7 @@ export default function ListaPage({
       <DialogosDaLista
         listId={list.id}
         financeira={financeira}
-        espelhoComercial={espelhoComercial}
-        conversacionalPura={conversacionalPura}
+        conversacional={conversacional}
         {...(lente?.kind === "receber"
           ? {
               serie: {
@@ -934,12 +874,6 @@ export default function ListaPage({
               },
             }
           : {})}
-        iniciandoConversa={iniciandoConversa}
-        aoFecharIniciarConversa={() => setIniciandoConversa(null)}
-        aoIniciarConversa={(text) => {
-          setIniciandoConversa(null);
-          setNotice({ text });
-        }}
         conversacionalAberto={dialogoConversacional}
         statusDaConversacional={novaConversacional?.statusId}
         aoFecharConversacional={fecharNovaConversacional}
@@ -952,8 +886,6 @@ export default function ListaPage({
         }}
         openTaskId={openTaskId}
         aoFecharTarefa={closeTask}
-        negocioAberto={negocioAberto}
-        caminho={config.path}
         movingTaskId={movingTaskId}
         aoFecharMover={closeMove}
         aoMoverTarefa={(text) => {

@@ -2,38 +2,30 @@
 
 /**
  * O Quadro das Listas conversacionais (C35), no quadro padrão
- * (`features/shell/quadro.tsx`) — a mesma cara do quadro de `/crm/negocios`:
- * colunas em trilho com selo de contagem e — quando a Lista é a cópia do Funil
- * (`comValor`) — o subtotal em dinheiro. Cada Tarefa vira o card do que ela
- * carrega: a que espelha um Negócio (Vínculo Tarefa → Negócio, proveniência
- * `deal`) é o card de Negócio; a que nasce de um Contato é o cartão
- * conversacional (rosto, Canal, última Mensagem); a que não tem nem um nem
- * outro, o cartão de Tarefa. Arrastar muda o Status da Tarefa — não a Etapa do
- * Negócio (a Lista é uma cópia, e o cabeçalho avisa).
+ * (`features/shell/quadro.tsx`): colunas em trilho com selo de contagem. Cada
+ * Tarefa vira o card do que ela carrega: a que nasce de um Contato é o cartão
+ * conversacional (rosto, Canal, última Mensagem); a que não tem Contato, o
+ * cartão de Tarefa. Arrastar muda o Status da Tarefa.
+ *
+ * 15-40 (F14-D-06): este arquivo era `quadro-negocios.tsx` e também desenhava o
+ * card de Negócio da Lista espelho de «Meus negócios» (subtotal em dinheiro
+ * incluído). O espelho saiu; o Negócio vive em `/crm/negocios`, no quadro do Funil.
  */
 
 import { useState, type ReactNode } from "react";
 import { changeTaskStatus } from "@n1/dominio/operations";
 import type { DataState } from "@n1/dominio/state";
 import { useRun } from "@/dados/store";
-import type { Deal, StatusDefinition, Task } from "@n1/dominio/types";
-import { negocioDaTarefa } from "@n1/dominio/derive-conversacional";
-import { DealCard, dealCardData } from "@/features/crm/deal-card";
+import type { StatusDefinition, Task } from "@n1/dominio/types";
 import { CartaoConversacional, dadosDoCartaoConversacional } from "@/features/estrutura/cartao-conversacional";
 import { CartaoDeTarefa } from "@/features/estrutura/cartao-de-tarefa";
 import { STATUS_CATEGORY_LABEL } from "@/features/shell/format";
 import { ColunaDeQuadro, VazioDaColuna } from "@/features/shell/quadro";
 import { RolagemNoTopo } from "@/features/shell/ui";
 import { BotaoDeMais, CompositorNoGrupo } from "@/features/estrutura/novo-no-grupo";
-import { useFormat } from "@/features/shell/use-format";
 import { useRecente } from "@/features/shell/recente";
 
-/** O Negócio da Tarefa — a leitura mora em derive-conversacional; o nome fica pelos chamadores. */
-export function dealOfTask(state: DataState, task: Task): Deal | undefined {
-  return negocioDaTarefa(state, task);
-}
-
-export function QuadroNegocios({
+export function QuadroConversacional({
   state,
   tasks,
   definitions,
@@ -43,7 +35,6 @@ export function QuadroNegocios({
   seletorDeTipo,
   criacaoRecusada,
   onMais,
-  comValor = false,
 }: {
   readonly state: DataState;
   readonly tasks: readonly Task[];
@@ -57,13 +48,10 @@ export function QuadroNegocios({
   readonly criacaoRecusada?: string;
   /** O "+" da coluna faz OUTRA coisa (iniciar uma conversa naquela Etapa) em vez de abrir o compositor. */
   readonly onMais?: (statusId: string) => void;
-  /** O subtotal em dinheiro da coluna: só na cópia do Funil, onde cada Tarefa espelha um Negócio com valor. */
-  readonly comValor?: boolean;
 }) {
   // O cartão que acabou de nascer ou mudar de coluna (o drop já devolve o id).
   const recente = useRecente();
   const run = useRun();
-  const fmt = useFormat();
   const [dragging, setDragging] = useState<string | null>(null);
   const [criandoEm, setCriandoEm] = useState<string | null>(null);
   const motivoDoMais = onMais ? undefined : onCreateInGroup ? criacaoRecusada : (criacaoRecusada ?? "Esta Lista não recebe Tarefas novas.");
@@ -80,8 +68,6 @@ export function QuadroNegocios({
       <div className="flex gap-4">
         {definitions.map((definition) => {
           const column = tasks.filter((task) => task.statusId === definition.id);
-          // Só a Tarefa-espelho conta o valor: uma Reunião ligada ao mesmo Negócio não o soma duas vezes.
-          const columnValue = column.reduce((sum, task) => sum + (task.provenance?.kind === "deal" ? (dealOfTask(state, task)?.value?.amount ?? 0) : 0), 0);
           const criar = (onMais || onCreateInGroup) && !motivoDoMais ? () => (onMais ? onMais(definition.id) : setCriandoEm(definition.id)) : undefined;
           return (
             <ColunaDeQuadro
@@ -98,7 +84,7 @@ export function QuadroNegocios({
                   {...(motivoDoMais ? { motivo: motivoDoMais } : {})}
                 />
               }
-              subtitulo={`${STATUS_CATEGORY_LABEL[definition.category] ?? definition.category}${comValor ? ` · ${fmt.money({ amount: columnValue, currency: "BRL" })}` : ""}`}
+              subtitulo={STATUS_CATEGORY_LABEL[definition.category] ?? definition.category}
             >
               {criandoEm === definition.id && onCreateInGroup ? (
                 <CompositorNoGrupo
@@ -112,21 +98,10 @@ export function QuadroNegocios({
                 <VazioDaColuna texto={`Nenhuma Tarefa em “${definition.name}”.`} {...(criar ? { onCriar: criar } : {})} />
               ) : (
                 column.map((task) => {
-                  // Só a Tarefa-espelho vira card de Negócio; uma Reunião ligada ao mesmo Negócio é outra coisa.
-                  const deal = task.provenance?.kind === "deal" ? dealOfTask(state, task) : undefined;
-                  // Sem Negócio espelhado, o Contato decide: com ele, o cartão conversacional.
-                  const conversacional = deal ? undefined : dadosDoCartaoConversacional(state, task);
+                  // O Contato decide: com ele, o cartão conversacional.
+                  const conversacional = dadosDoCartaoConversacional(state, task);
                   const arraste = { onDragStart: () => setDragging(task.id), onDragEnd: () => setDragging(null) };
-                  return deal ? (
-                    <DealCard
-                      key={task.id}
-                      recente={task.id === recente || deal.id === recente}
-                      data={dealCardData(state, deal)}
-                      href={`/estrutura/tarefas/${task.id}`}
-                      onOpen={() => openTask(task.id)}
-                      {...arraste}
-                    />
-                  ) : conversacional ? (
+                  return conversacional ? (
                     <CartaoConversacional key={task.id} recente={task.id === recente} data={conversacional} onOpen={() => openTask(task.id)} {...arraste} />
                   ) : (
                     <CartaoDeTarefa key={task.id} recente={task.id === recente} state={state} task={task} onOpen={() => openTask(task.id)} {...arraste} />

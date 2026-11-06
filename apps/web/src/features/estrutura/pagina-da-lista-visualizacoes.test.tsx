@@ -225,7 +225,8 @@ describe("Página da Lista — os Canais da Lista conversacional vêm das tabela
   it("sem Canal ativo nas tabelas para a Lista, mostra o aviso e a criação fica recusada", async () => {
     await montar("lst_pos_venda");
 
-    expect(screen.getByText(/ainda não tem canais de atendimento/)).toBeTruthy();
+    // O aviso aparece no cabeçalho e de novo como motivo do botão desligado.
+    expect(screen.getAllByText(/ainda não tem canais de atendimento/).length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: "Configurar os canais" })).toBeTruthy();
     expect(screen.queryByText("Atende por")).toBeNull();
     expect(screen.getByRole("button", { name: /Nova Tarefa/ }).getAttribute("aria-disabled")).toBe("true");
@@ -248,7 +249,7 @@ describe("Página da Lista — os Canais da Lista conversacional vêm das tabela
 });
 
 describe("Página da Lista — o espelho de Meus negócios saiu (15-40, F14-D-06)", () => {
-  it("a Lista espelho sob /crm/ é uma Lista como as outras: sem «Iniciar conversa», sem «valor declarado» e com o caminho da Estrutura", async () => {
+  it("a Lista espelho sob /crm/ é uma Lista como as outras: sem «Iniciar conversa», sem «valor declarado» e sem o caminho do CRM", async () => {
     const espelho = state.lists.find((l) => l.id.startsWith("lst_funil_"));
     if (!espelho) throw new Error("o seed não tem uma Lista espelho de Funil");
     caminho = `/crm/lista/${espelho.id}`;
@@ -258,6 +259,7 @@ describe("Página da Lista — o espelho de Meus negócios saiu (15-40, F14-D-06
 
     expect(screen.queryByRole("button", { name: /Iniciar conversa/ })).toBeNull();
     expect(screen.queryByText(/valor declarado/)).toBeNull();
-    expect(screen.queryByRole("link", { name: "Meus negócios" })).toBeNull();
+    // O caminho é o da Estrutura (a Pasta), não o «Negócios › Meus negócios» do CRM.
+    expect(document.querySelector('a[href^="/crm/negocios"]')).toBeNull();
   });
 });
