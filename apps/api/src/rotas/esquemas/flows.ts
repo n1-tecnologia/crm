@@ -17,7 +17,7 @@ import type {
   TipoDeDadoDeTela,
   TipoDeEntradaDeTexto,
 } from "@n1/dominio";
-import { ACTOR_REF, ID, opcional, type Confere, type Esquemas, type Igual } from "./fragmentos";
+import { ACTOR_REF, CRM_DO_NAVEGADOR, ID, opcional, type Confere, type Esquemas, type Igual } from "./fragmentos";
 import { z } from "zod";
 
 const CATEGORIA_DE_FLOW = z.enum(["formularioDeCadastro", "agendamento", "pesquisa", "outro"]);
@@ -205,8 +205,8 @@ const ENVIAR_FLOW_INPUT = z
  * para `z.ZodTypeAny`.
  */
 export const FLOWS = {
-  criarFlow: z.tuple([CRIAR_FLOW_INPUT]),
-  editarFlow: z.tuple([ID, EDITAR_FLOW_INPUT]),
+  criarFlow: z.tuple([CRIAR_FLOW_INPUT, opcional(CRM_DO_NAVEGADOR)]),
+  editarFlow: z.tuple([ID, EDITAR_FLOW_INPUT, opcional(CRM_DO_NAVEGADOR)]),
   definirPontoDeTrocaDeDados: z.tuple([ID, z.string()]),
   regenerarChavesDoPonto: z.tuple([ID]),
   removerPontoDeTrocaDeDados: z.tuple([ID]),
@@ -221,7 +221,7 @@ export const FLOWS = {
   duplicarComponente: z.tuple([ID, ID, ID]),
   removerComponente: z.tuple([ID, ID, ID]),
   // `input: {...} = {}` — parâmetro posicional opcional no fim.
-  publicarVersao: z.tuple([ID, opcional(PUBLICAR_VERSAO_INPUT)]),
+  publicarVersao: z.tuple([ID, opcional(PUBLICAR_VERSAO_INPUT), opcional(CRM_DO_NAVEGADOR)]),
   despublicarFlow: z.tuple([ID]),
   descartarRascunho: z.tuple([ID]),
   criarRascunhoAPartirDe: z.tuple([ID, ID]),
@@ -230,8 +230,8 @@ export const FLOWS = {
   restaurarFlow: z.tuple([ID]),
   enviarFlowALixeira: z.tuple([ID]),
   restaurarFlowDaLixeira: z.tuple([ID]),
-  sincronizarFlow: z.tuple([ID]),
-  enviarFlow: z.tuple([ENVIAR_FLOW_INPUT]),
+  sincronizarFlow: z.tuple([ID, opcional(CRM_DO_NAVEGADOR)]),
+  enviarFlow: z.tuple([ENVIAR_FLOW_INPUT, opcional(CRM_DO_NAVEGADOR)]),
 } satisfies Esquemas;
 
 // ── Portão de enum bidirecional — falta ou sobra de membro não compila ──

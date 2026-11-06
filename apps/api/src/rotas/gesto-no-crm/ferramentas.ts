@@ -18,21 +18,94 @@
  * Participante (`AO_CONFIRMAR_FERRAMENTAS`).
  */
 
+import type { DataState } from "@n1/dominio";
 import { criarRepositorioDeCanaisPg } from "../../repositorios/crm/canais";
+import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
 import type { LeituraDoCrm, TabelaDeConfirmacoes, TabelaDeLeituras } from "./tipos";
 
-/** A leitura dos Canais do Espaço; só a posição do `crm` em `args` muda de operação para operação. */
-const leituraDasFerramentas = (posicao: number): LeituraDoCrm => ({
+/** Os ids de Contato que a operação cita; só o que for texto entra (o esquema já fixou a forma dos `args`). */
+type IdsDeContato = (args: readonly unknown[], state: DataState) => readonly unknown[];
+
+const textos = (valor: unknown): string[] => (Array.isArray(valor) ? valor.filter((v): v is string => typeof v === "string") : []);
+const objetoOuVazio = (valor: unknown): Record<string, unknown> => (typeof valor === "object" && valor !== null ? (valor as Record<string, unknown>) : {});
+
+/** `criarGrupo`: os Participantes iniciais, os administradores e o Contato criador do `input`. */
+const contatosDoCriarGrupo: IdsDeContato = (args) => {
+  const input = objetoOuVazio(args[0]);
+  return [...textos(input.participantesIniciaisContactIds), ...textos(input.administradoresContactIds), ...textos([input.contatoCriadorId])];
+};
+
+/** `enviarLinkDeConvite(grupoId, contactIds)`. */
+const contatosDoEnvioDeConvite: IdsDeContato = (args) => textos(args[1]);
+
+/** `adicionarParticipantes(grupoId, { contactIds })`. */
+const contatosDoAdicionar: IdsDeContato = (args) => textos(objetoOuVazio(args[1]).contactIds);
+
+/** `removerParticipante`, `promoverParticipante`, `rebaixarParticipante`: o Contato da Participação alvo, para o nome no Registro. */
+const contatoDaParticipacaoAlvo: IdsDeContato = (args, state) => {
+  const grupo = state.grupos.find((g) => g.id === args[0]);
+  const participacao = grupo?.participacoes.find((p) => p.id === args[1]);
+  return participacao?.contactId ? [participacao.contactId] : [];
+};
+
+/** `aprovarPedidoDeEntrada`, `recusarPedidoDeEntrada`: o Contato do Pedido alvo. */
+const contatoDoPedidoAlvo: IdsDeContato = (args, state) => {
+  const grupo = state.grupos.find((g) => g.id === args[0]);
+  const pedido = grupo?.pedidosDeEntrada.find((p) => p.id === args[1]);
+  return pedido ? [pedido.contactId] : [];
+};
+
+/**
+ * A leitura de uma operação de Ferramenta: os Canais do Espaço e os Contatos
+ * citados (`resumidosPorIds`, do Espaço da sessão, teto de 500). `posicao` é o
+ * índice do `crm` em `args`; sem `idsDeContato` a operação não confere Contato.
+ */
+const leituraDasFerramentas = (posicao: number, idsDeContato?: IdsDeContato): LeituraDoCrm => ({
   posicao,
-  ler: async (cliente, workspaceId) => ({
+  ler: async (cliente, workspaceId, args, state) => ({
     canais: await criarRepositorioDeCanaisPg(cliente).todos(workspaceId),
-    contatos: [],
+    contatos: idsDeContato
+      ? await criarRepositorioDeContatosPg(cliente).resumidosPorIds(
+          workspaceId,
+          idsDeContato(args, state).filter((id): id is string => typeof id === "string"),
+        )
+      : [],
   }),
   argumento: (lido) => ({ canais: lido.canais ?? [], contatos: lido.contatos ?? [] }),
 });
 
 export const LER_DO_CRM_FERRAMENTAS: TabelaDeLeituras = {
-  criarGrupo: leituraDasFerramentas(1),
+  // Grupo — `[..., crm]`: a posição é o índice logo depois dos argumentos da operação.
+  criarGrupo: leituraDasFerramentas(1, contatosDoCriarGrupo),
+  importarGruposDoCanal: leituraDasFerramentas(1),
+  sincronizarGrupo: leituraDasFerramentas(1),
+  editarGrupo: leituraDasFerramentas(2),
+  definirCanalDoGrupo: leituraDasFerramentas(2),
+  regenerarLinkDeConvite: leituraDasFerramentas(1),
+  enviarLinkDeConvite: leituraDasFerramentas(2, contatosDoEnvioDeConvite),
+  adicionarParticipantes: leituraDasFerramentas(2, contatosDoAdicionar),
+  removerParticipante: leituraDasFerramentas(2, contatoDaParticipacaoAlvo),
+  promoverParticipante: leituraDasFerramentas(2, contatoDaParticipacaoAlvo),
+  rebaixarParticipante: leituraDasFerramentas(2, contatoDaParticipacaoAlvo),
+  sairDoGrupo: leituraDasFerramentas(2),
+  aprovarPedidoDeEntrada: leituraDasFerramentas(2, contatoDoPedidoAlvo),
+  recusarPedidoDeEntrada: leituraDasFerramentas(3, contatoDoPedidoAlvo),
+  enviarMensagemAoGrupo: leituraDasFerramentas(2),
+  // Comunidade
+  criarComunidade: leituraDasFerramentas(1),
+  sincronizarComunidade: leituraDasFerramentas(1),
+  editarComunidade: leituraDasFerramentas(2),
+  alterarConfiguracoesDaComunidade: leituraDasFerramentas(2),
+  vincularGrupoAComunidade: leituraDasFerramentas(2),
+  desvincularGrupoDaComunidade: leituraDasFerramentas(2),
+  enviarMensagemAComunidade: leituraDasFerramentas(2),
+  sairDaComunidade: leituraDasFerramentas(2),
+  // Flow
+  criarFlow: leituraDasFerramentas(1),
+  editarFlow: leituraDasFerramentas(2),
+  publicarVersao: leituraDasFerramentas(2),
+  sincronizarFlow: leituraDasFerramentas(1),
+  enviarFlow: leituraDasFerramentas(1),
 };
 
 export const AO_CONFIRMAR_FERRAMENTAS: TabelaDeConfirmacoes = {};

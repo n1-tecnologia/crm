@@ -10,26 +10,11 @@
  * regra de negócio.
  */
 
-import type { CrmDasFerramentas } from "@n1/dominio";
-import { ACTOR_REF, ID, opcional, type Esquemas } from "./fragmentos";
+import { ACTOR_REF, CRM_DO_NAVEGADOR, ID, opcional, type Esquemas } from "./fragmentos";
 import { z } from "zod";
 
-/**
- * O `crm` que o navegador manda como ÚLTIMO argumento das operações de
- * Ferramentas (Grupo, Comunidade, Flow), só para a execução local: o servidor o
- * DESCARTA e troca a posição pelo que leu de `plataforma.canais` e
- * `plataforma.contatos` (`gesto-no-crm/ferramentas.ts`, T-15-20). Aqui só a
- * forma de transporte, com tetos; o tipo de saída declarado é o do domínio
- * apenas para o esquema satisfazer a assinatura da operação (`Esquemas`) — o
- * valor que sai daqui nunca chega ao domínio.
- */
-export const CRM_DO_NAVEGADOR = z
-  .object({
-    canais: z.array(z.object({ id: ID }).passthrough()).max(200),
-    contatos: z.array(z.object({ id: ID }).passthrough()).max(200),
-    contatosACriar: z.array(z.object({ id: ID }).passthrough()).max(200).optional(),
-  })
-  .passthrough() as unknown as z.ZodType<CrmDasFerramentas>;
+/** Re-exportado aqui por ser o `crm` do módulo de Grupos; o fragmento vive em `fragmentos.ts` (usado também por Comunidades e Flows). */
+export { CRM_DO_NAVEGADOR } from "./fragmentos";
 
 const CONFIGURACOES_DO_GRUPO = z
   .object({
@@ -108,29 +93,29 @@ const ENVIAR_MENSAGEM_AO_GRUPO_INPUT = z
  */
 export const GRUPOS = {
   criarGrupo: z.tuple([CRIAR_GRUPO_INPUT, opcional(CRM_DO_NAVEGADOR)]),
-  importarGruposDoCanal: z.tuple([ID]),
-  sincronizarGrupo: z.tuple([ID]),
-  editarGrupo: z.tuple([ID, EDITAR_GRUPO_INPUT]),
-  definirCanalDoGrupo: z.tuple([ID, ID]),
+  importarGruposDoCanal: z.tuple([ID, opcional(CRM_DO_NAVEGADOR)]),
+  sincronizarGrupo: z.tuple([ID, opcional(CRM_DO_NAVEGADOR)]),
+  editarGrupo: z.tuple([ID, EDITAR_GRUPO_INPUT, opcional(CRM_DO_NAVEGADOR)]),
+  definirCanalDoGrupo: z.tuple([ID, ID, opcional(CRM_DO_NAVEGADOR)]),
   // Partial<Captacao> é posicional obrigatório (sem `?`), mas todos os seus
   // campos são opcionais — o mesmo schema de CRIAR_GRUPO_INPUT.captacao.
   editarCaptacaoDoGrupo: z.tuple([ID, CAPTACAO]),
   ativarCaptacao: z.tuple([ID]),
   inativarCaptacao: z.tuple([ID]),
   zerarCliques: z.tuple([ID]),
-  regenerarLinkDeConvite: z.tuple([ID]),
-  enviarLinkDeConvite: z.tuple([ID, z.array(ID)]),
-  adicionarParticipantes: z.tuple([ID, ADICIONAR_PARTICIPANTES_INPUT]),
-  removerParticipante: z.tuple([ID, ID]),
-  promoverParticipante: z.tuple([ID, ID]),
-  rebaixarParticipante: z.tuple([ID, ID]),
+  regenerarLinkDeConvite: z.tuple([ID, opcional(CRM_DO_NAVEGADOR)]),
+  enviarLinkDeConvite: z.tuple([ID, z.array(ID), opcional(CRM_DO_NAVEGADOR)]),
+  adicionarParticipantes: z.tuple([ID, ADICIONAR_PARTICIPANTES_INPUT, opcional(CRM_DO_NAVEGADOR)]),
+  removerParticipante: z.tuple([ID, ID, opcional(CRM_DO_NAVEGADOR)]),
+  promoverParticipante: z.tuple([ID, ID, opcional(CRM_DO_NAVEGADOR)]),
+  rebaixarParticipante: z.tuple([ID, ID, opcional(CRM_DO_NAVEGADOR)]),
   // `input: {...} = {}` — parâmetro posicional opcional no fim.
-  sairDoGrupo: z.tuple([ID, opcional(SAIR_INPUT)]),
+  sairDoGrupo: z.tuple([ID, opcional(SAIR_INPUT), opcional(CRM_DO_NAVEGADOR)]),
   arquivarGrupo: z.tuple([ID]),
   restaurarGrupo: z.tuple([ID]),
   enviarGrupoALixeira: z.tuple([ID]),
   restaurarGrupoDaLixeira: z.tuple([ID]),
-  aprovarPedidoDeEntrada: z.tuple([ID, ID]),
-  recusarPedidoDeEntrada: z.tuple([ID, ID, opcional(ID)]),
-  enviarMensagemAoGrupo: z.tuple([ID, ENVIAR_MENSAGEM_AO_GRUPO_INPUT]),
+  aprovarPedidoDeEntrada: z.tuple([ID, ID, opcional(CRM_DO_NAVEGADOR)]),
+  recusarPedidoDeEntrada: z.tuple([ID, ID, opcional(ID), opcional(CRM_DO_NAVEGADOR)]),
+  enviarMensagemAoGrupo: z.tuple([ID, ENVIAR_MENSAGEM_AO_GRUPO_INPUT, opcional(CRM_DO_NAVEGADOR)]),
 } satisfies Esquemas;

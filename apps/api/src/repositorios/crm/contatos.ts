@@ -13,6 +13,7 @@
  */
 
 import type { Pool, PoolClient } from "pg";
+import type { ContatoDaFerramenta } from "@n1/dominio";
 import type { CamposAdicionais, Endereco, EstadoCrm, ModoDeCriacao, Pagina } from "@n1/dominio/crm/comum";
 import {
   nomeDeExibicaoDoContato,
@@ -96,11 +97,21 @@ export interface RepositorioDeContatos {
   moverIdentificador(workspaceId: string, identificadorId: string, paraContatoId: string, principal: boolean): Promise<void>;
   detentorDoIdentificador(workspaceId: string, tipo: TipoIdentificadorContato, valor: string): Promise<DetentorDeIdentificador | undefined>;
 
+  /**
+   * Os Contatos do Espaço entre os `ids` citados, no resumo que as Ferramentas conferem (Fase 15,
+   * 3.4.8): id, nome de exibição, estado e o WhatsApp principal (Identificador `whatsapp` com
+   * `principal`, senão o mais antigo). Id repetido conta uma vez, id de outro Espaço ou inexistente
+   * não volta, e mais de `TETO_DE_CONTATOS_RESUMIDOS` ids é erro (T-15-21, T-15-22).
+   */
+  resumidosPorIds(workspaceId: string, ids: readonly string[]): Promise<ContatoDaFerramenta[]>;
   /** Somente leitura de `plataforma.negocios` — a escrita de Negócio é de 07-08. */
   negociosDoContato(workspaceId: string, contatoId: string, opcoes: { readonly incluirLixeira: boolean }): Promise<NegociosDoContato>;
   /** Somente leitura de `plataforma.conversas` (008): total e até 5 Conversas, as mais novas primeiro. */
   conversasDoContato(workspaceId: string, contatoId: string): Promise<ConversasDoContato>;
 }
+
+/** O teto de ids de `resumidosPorIds`: a lista vem dos `args` de uma operação, nunca é a tabela inteira. */
+export const TETO_DE_CONTATOS_RESUMIDOS = 500;
 
 /** As colunas de `plataforma.contatos` na forma que `linhaParaContato` lê (data como texto). */
 const COLUNAS = `id, nome, sobrenome, data_nascimento::text as data_nascimento, idioma, fuso_horario,
@@ -407,6 +418,31 @@ export function criarRepositorioDeContatosPg(cliente: Pool | PoolClient): Reposi
       const linha = resultado.rows[0];
       if (!linha) return undefined;
       return { contatoId: linha.contato_id, nome: nomeDeExibicaoDoContato(linha, valor) };
+    },
+
+    async resumidosPorIds(workspaceId, ids) {
+      const unicos = [...new Set(ids)];
+      if (unicos.length > TETO_DE_CONTATOS_RESUMIDOS) {
+        throw new Error(`resumidosPorIds: no máximo ${TETO_DE_CONTATOS_RESUMIDOS} ids por consulta.`);
+      }
+      if (unicos.length === 0) return [];
+      const { rows } = await cliente.query<{ id: string; nome: string | null; sobrenome: string | null; estado: string; whatsapp: string | null }>(
+        `select c.id, c.nome, c.sobrenome, c.estado,
+                (select i.valor from plataforma.contato_identificadores i
+                  where i.workspace_id = c.workspace_id and i.contato_id = c.id and i.tipo = 'whatsapp'
+                  order by i.principal desc, i.criado_em, i.id
+                  limit 1) as whatsapp
+           from plataforma.contatos c
+          where c.workspace_id = $1 and c.id = any($2::text[])
+          order by c.criado_em, c.id`,
+        [workspaceId, unicos],
+      );
+      return rows.map((linha) => ({
+        id: linha.id,
+        nome: nomeDeExibicaoDoContato(linha, linha.whatsapp),
+        estado: linha.estado,
+        whatsapp: linha.whatsapp,
+      }));
     },
 
     async negociosDoContato(workspaceId, contatoId, opcoes) {

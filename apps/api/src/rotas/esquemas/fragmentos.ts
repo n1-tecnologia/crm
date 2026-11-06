@@ -21,7 +21,7 @@
  * irmão desta pasta.
  */
 
-import type { ActorKind, ConfigurableAspect, DataState, Id, ModeloDeTarefa, Priority, StatusCategory, View } from "@n1/dominio";
+import type { ActorKind, ConfigurableAspect, CrmDasFerramentas, DataState, Id, ModeloDeTarefa, Priority, StatusCategory, View } from "@n1/dominio";
 import { OPERACOES, type NomeDeOperacao } from "@n1/dominio/operations/registro";
 import { z } from "zod";
 
@@ -96,6 +96,23 @@ export const MODELO_DE_TAREFA = z.enum(["operacional", "conversacional"]);
  * (a Carga saiu em 10-07).
  */
 export const VIEW_KIND = z.enum(["lista", "quadro", "calendario", "linhaDoTempo", "tabela"]);
+
+/**
+ * O `crm` que o navegador manda como ÚLTIMO argumento das operações de
+ * Ferramentas (Grupo, Comunidade, Flow), só para a execução local: o servidor o
+ * DESCARTA e troca a posição pelo que leu de `plataforma.canais` e
+ * `plataforma.contatos` (`gesto-no-crm/ferramentas.ts`, T-15-20). Aqui só a
+ * forma de transporte, com tetos; o tipo de saída declarado é o do domínio
+ * apenas para o esquema satisfazer a assinatura da operação (`Esquemas`) — o
+ * valor que sai daqui nunca chega ao domínio.
+ */
+export const CRM_DO_NAVEGADOR = z
+  .object({
+    canais: z.array(z.object({ id: ID }).passthrough()).max(200),
+    contatos: z.array(z.object({ id: ID }).passthrough()).max(200),
+    contatosACriar: z.array(z.object({ id: ID }).passthrough()).max(200).optional(),
+  })
+  .passthrough() as unknown as z.ZodType<CrmDasFerramentas>;
 
 // ── Portão de enum bidirecional — falta ou sobra de membro não compila ──
 
