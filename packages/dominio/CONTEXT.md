@@ -930,6 +930,15 @@ barril, subcaminho `@n1/dominio/crm/nomes`) tem só os tipos e o teto: `AlvoDoCr
 desconhecido, de outro Espaço ou tipo que o Papel não lê) sem distinguir a causa. A regra de
 quem pode ler é a de sempre, `podeNoCrm`; a consulta é da api (`POST /crm/nomes`).
 
+**Agregado do Início do CRM novo (Fase 15, 15-18, 3.4.7, UCR-07).** `crm/inicio.ts` (sem barril,
+subcaminho `@n1/dominio/crm/inicio`) tem os tipos do que o Início soma no servidor (`PanoramaDoCrm`,
+`LeadAAtenderDoCrm`, `EstatisticasDoCrm`), os limites (`CONTATOS_RECENTES_DO_PANORAMA` 5, `LIMITE_DE_LEADS`
+50, `QUALIFICACOES_MAXIMAS` 20, `JANELA_MAXIMA_DE_ESTATISTICAS_DIAS` 400) e a conferência de forma da janela
+(`conferirJanelaDeEstatisticas`, `fusoValido`) que a rota e o serviço aplicam igual. Nenhum tipo carrega o id
+do Membro nem o do Espaço: "meu" é o Membro da sessão. Um bloco ou série `null` quer dizer que o Papel não lê
+o recurso dele. `derive-resumo` (`leadsAAtender`, `estatisticasDoMembro`) segue para o modelo antigo até a tela
+do Início trocar (15-23); a consulta do modelo novo é da api.
+
 **Abas e Canal de resposta do fio sobre as tabelas (Fase 15, 15-20, 3.4.2, UCR-05).**
 `crm/canais-de-resposta.ts` (sem barril, subcaminho `@n1/dominio/crm/canais-de-resposta`) leva as
 regras de abas e de Canal de resposta de `derive-conversacional` (D-13, D-14, D-15) para `Canal`,

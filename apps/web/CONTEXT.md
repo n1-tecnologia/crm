@@ -191,6 +191,11 @@ os alvos da tela em UMA chamada a `POST /crm/nomes` (lotes de 200), com chave es
 únicos e ordenados, então a mesma lista em outra ordem compartilha a chamada e o cache SWR), e
 `nomeDe(resultado, tipo, id)` devolve o texto, `null` (a api respondeu sem nome: id fora do
 Espaço, desconhecido ou tipo que o Papel não lê) ou `undefined` (a resposta ainda não chegou).
+Os números do Início do CRM novo vêm de `dados/crm/inicio.ts` (15-18): `usePanoramaDoCrm()`,
+`useLeadsAAtender(qualificacoes)` e `useEstatisticasDoCrm(janela, fuso)` leem `GET /crm/inicio/*`, que soma
+no servidor (nunca listas paginadas somadas no navegador, `paginaMaxima` é 200). "Meu" é o Membro da sessão:
+nenhum hook manda o id do Membro. A chave dos Leads é a das Qualificações únicas e ordenadas; a das
+estatísticas leva `desde`, `ate` e `fuso`, então quem chama passa instantes estáveis (arredonde "agora").
 `src/sem-listas-espelho.test.ts`
 (D-06) congela os dois arquivos da web que ainda citam as Listas espelho e proíbe
 um terceiro.

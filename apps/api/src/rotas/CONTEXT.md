@@ -351,6 +351,32 @@ tem UMA rota, de leitura:
   responde `[]` sem ler Papel nem banco. Por ser POST, a rota herda `recusarSuspensoNaEscrita`:
   o Membro `suspenso` recebe 403 aqui também (WR-03 segue aberto, D-15-07).
 
+**Agregado do Início (Fase 15, 15-18, 3.4.7, UCR-07).** `rotas/crm/inicio.ts` tem TRÊS rotas, todas
+de leitura, que somam no banco o que o Início somava sobre o store:
+
+- `GET /crm/inicio/panorama` — `{ ok: true, dados }` com `contatosRecentes` (5, id e nome),
+  `contatosTotal`, `negociosAbertos` (`quantidade`, `valorPonderado` e `moeda`) e `conversasAbertas`.
+  Numa consulta só (uma fotografia). O valor ponderado é `valor × probabilidade / 100` (a do Negócio,
+  senão a padrão da Etapa); com mais de uma moeda entre os Negócios abertos com Valor, `valorPonderado`
+  e `moeda` são `null` (moedas não se somam). Conversa "aberta" é a ativa (fora da lixeira) que não está
+  resolvida, `pendente` incluída. Cada bloco vem `null` quando o Papel não lê o recurso dele.
+- `GET /crm/inicio/leads-a-atender?qualificacao=<id>` (repetível, até 20) — `{ ok: true, itens, total }`,
+  os Contatos ativos de que o Membro da SESSÃO é Proprietário, com Qualificação na lista, sem nenhuma
+  Mensagem externa (`semContato`, desde a criação do Contato; a nota `interna` não conta) ou com Conversa
+  `aberta` cuja última Mensagem externa é `recebida` (`aguardandoResposta`, desde essa Mensagem; com várias
+  Conversas vale a que espera há mais tempo). Quem espera há mais tempo primeiro, até 50.
+- `GET /crm/inicio/estatisticas?desde=&ate=&fuso=` — `{ ok: true, dados }` com três séries por dia
+  (`YYYY-MM-DD` cortado no `fuso`, instantes ISO com fuso): Mensagens `enviada` do Membro (Ator) em Conversa
+  fora da lixeira, Conversas `resolvida` de que o Membro é o Atribuído (o modelo novo não guarda quem
+  clicou em resolver) e Negócios `ganho` do Membro por dia e moeda. Janela de no máximo 400 dias, `desde`
+  não depois de `ate` e fuso IANA conhecido: tudo 400, conferido no domínio (`conferirJanelaDeEstatisticas`)
+  antes do serviço. O fuso viaja como `$n` no SQL.
+
+O Espaço e o Membro ("meus") são SEMPRE os da sessão: o `querystring` é `.strict()` e um `membroId` ou
+`workspaceId` é 400 antes do serviço. Nenhuma das três grava nada nem sobe a revisão do Espaço; repetir
+devolve o mesmo, e leituras concorrentes veem uma fotografia consistente. Sem `ler` num recurso o bloco ou
+a série dele volta `null`; um Membro sem Papel algum recebe 403.
+
 **Atenção (3.3.6):** o Negócio cujo dono é a Empresa do Contato não aparece para
 ligar. A 007 dá um dono por Negócio (`negocios_dono_ck`), então a conferência é
 só por `contato_id`; trazer os Negócios da Empresa é decisão à parte.
