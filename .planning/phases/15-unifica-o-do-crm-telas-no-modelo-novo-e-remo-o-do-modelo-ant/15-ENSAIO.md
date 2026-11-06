@@ -191,3 +191,94 @@ Antes, as contagens eram as da tabela do `14-ENSAIO.md` (39/12/30/1/1/4/19/5/21 
 ## Como repetir com a cópia renovada
 
 O dono, em sessão `psql` de produção com `set default_transaction_read_only = on;`, gera de novo o `pg_dump -Fc --schema=plataforma` (ou os `\copy` do plano) em `~/n1-ensaio/`, fora do repositório. Quem ensaiar restaura num `postgres:16` de Docker (`pg_restore --no-owner --no-privileges`), aplica as migrações que faltarem (`migrar -- --seco`, `migrar`, `banco:conceder`) e roda, em cada Espaço, `--seco`, `--guardar` ou `--migrar --funil=migrar|guardar` e `--verificar`, sempre com as duas URLs do Docker escritas no comando.
+
+---
+
+# Ensaio final (código final) — plano 15-34
+
+**Quando:** 2026-11-06 · **SHA do código:** `f268958` (o `HEAD` depois do 15-43, 45 commits depois do `8866140` do ensaio acima) · **Cópia:** a mesma de 2026-11-05 (`~/n1-ensaio`, o `.dump` restaurado inteiro; ninguém renovou a cópia).
+
+**Resultado: o código final passou sobre a cópia com os mesmos números do ensaio do 15-30, Espaço a Espaço, sem nenhuma diferença.** As 60 chamadas do script registradas saíram com 0. Nada aqui é novo no número; o que é novo é o código sob teste (sem a ponte dos Canais em `executar()`, sem as oito coleções no `DataState`, com o `--migrar` completo do 15-28). Este trecho só tem números e nomes de configuração; as saídas brutas (conferidas com `grep`: nenhum endereço de e-mail e nenhum telefone) e o ponto de restauração (`.dump` com dado pessoal) foram apagados; o contêiner foi apagado por `trap`.
+
+## Como foi feito (igual ao do 15-30, com as diferenças marcadas)
+
+1. Contêiner `postgres:16` (`crm-n1-pg-1534`, porta 55734, só em `127.0.0.1`). Toda chamada levou `DATABASE_URL` e `DATABASE_URL_MIGRACAO` locais escritas na linha; o `.env` não foi lido. As 80 linhas `Banco:` que o script imprimiu (host e porta, sem usuário) diziam `localhost:55734`.
+2. `pg_restore --no-owner --no-privileges` do `.dump` (um único erro ignorável, `transaction_timeout`, como antes): 23952 registros, 19 Espaços, 51 coleções, 10 migrações registradas.
+3. Migrações: `--seco` (011 e 012 pendentes); 011 pelo texto (`psql -1`) e registrada em `plataforma.migracoes`, que é o estado de produção; `--seco` (só a 012); `npm run migrar` (aplicou só a 012); `banco:conceder` (ramo "o papel não existe").
+4. Contagens, revisões e ponto de restauração (`pg_dump -Fc`).
+5. `--seco` nos 19 Espaços (todos 0; contagens e revisões iguais depois: sim).
+6. `--guardar` nos 18 Espaços de teste e `--migrar --funil=guardar` no `ws_n1`; `--verificar` nos 19.
+7. Repetir `ws_n1` e `ws_spike`: "nada a fazer", revisão não sobe. `hidratar` dos 19 Espaços.
+8. Segundo banco restaurado do ponto: `ws_n1` com `--migrar --funil=migrar`, `--verificar` e repetição; duas execuções simultâneas; `kill -9` no meio.
+9. Terceiro banco: `--migrar --funil=migrar` em dois Espaços de teste. Quarto banco: o papel `n1_api`.
+
+**O que difere do método do 15-30:** (a) o código; (b) no `kill -9`, a primeira rodada deste ensaio mostrou um artefato do roteiro e não do script: a sessão que segurava a linha ficou presa no `pg_sleep` (o servidor só percebe o `psql` morto depois dele), então o `--guardar` seguinte esbarrou no `lock timeout`; o roteiro passou a encerrar essa sessão do próprio ensaio antes de medir, e a rodada que vale é a segunda; (c) a comparação por Espaço contra os números do 15-30 foi automática (diferença zero).
+
+## Contagem por coleção, antes e depois (igual ao 15-30)
+
+| Coleção | Antes (`--seco`) | Depois (`registros_crm_antigo`) |
+|---|---:|---:|
+| `contacts` | 624 | 624 |
+| `companies` | 192 | 192 |
+| `contactCompanyLinks` | 480 | 480 |
+| `companyCompanyLinks` | 16 | 16 |
+| `distinctFromLinks` | 16 | 16 |
+| `funnels` | 66 | 66 |
+| `deals` | 304 | 304 |
+| `channels` | 80 | 80 |
+| `conversations` | 350 | 350 |
+| **Total** | **2128** | **2128** |
+
+- **Por Espaço e coleção, as 146 contagens de antes e as de depois são idênticas** (19 Espaços), e a revisão de antes e de depois e as linhas guardadas de cada um dos 19 Espaços são idênticas às da tabela do 15-30 (comparação automática, diferença zero). A revisão subiu 1 em 18 Espaços e ficou em 5 no `ws_agendaworker_…` ("nada a fazer").
+- `registros`: **23952 → 21838** (saíram 2114 = 2128 menos as 14 Conversas de Grupo que ficam, em 7 Espaços com 2).
+- O roteiro de comparação do `15-CORTE.md` (passo 7, `seco/<Espaço>.txt` contra `verificar/<Espaço>.txt`) foi testado sobre estas saídas: 19 Espaços "igual".
+
+## `ws_n1`: os dois caminhos do Funil (igual ao 15-30)
+
+| | `--funil=guardar` (banco `postgres`) | `--funil=migrar` (banco restaurado do mesmo ponto) |
+|---|---|---|
+| Saída | 0 · "migrado. 1 linha(s) copiadas…; apagadas de registros: funnels 1. Não migrados: nenhum item." | 0 · o mesmo, mais "Funil: 1 migrado (1 Etapa)" |
+| Revisão do Espaço | 779 → 780 | 779 → 780 |
+| Funis no CRM novo | 2 → 2 | 2 → **3** |
+| Etapas no CRM novo | 6 → 6 | 6 → **7** |
+| `crm_de_para` | 0 | 2 |
+| Contatos, Empresas, vínculo, Negócios, Canais, Conversas, Mensagens no CRM novo | 2, 1, 1, 1, 0, 0, 0 (iguais) | 2, 1, 1, 1, 0, 0, 0 (iguais) |
+| `--verificar` | ok | ok |
+| Repetir o `--migrar` | "nada a fazer"; a revisão não subiu | "nada a fazer"; a revisão não subiu |
+
+O CRM antigo do `ws_n1` na cópia continua sendo só o Funil "Padrão" (1 Etapa, nenhum Negócio), sem a Pasta "Meus negócios". O Funil entra não padrão, porque o Espaço já tem Funil padrão.
+
+## A Pasta "Meus negócios" (D-15-14), com dado real (igual ao 15-30)
+
+3 Espaços não a têm (`ws_n1`, `ws_teste_importar_sol_…_ref`, `ws_agendaworker_…`); **16 Espaços de teste têm a Pasta com 18 Tarefas em 4 Listas** (`SDR` 6, `Closer` 10, `Validação Full Face Avançado` 1, `Venda direta` 1) e **nada da Pasta saiu**: depois de tudo, os mesmos 16 Espaços ainda têm `fld_meus_negocios` em `registros`. O ramo "remover a Pasta vazia" segue provado só em Docker com dado sintético (15-27).
+
+## Não migrados (iguais ao 15-30)
+
+`ws_n1`: nenhum item. 7 Espaços de teste (os de 134 linhas): **160 itens em 16 categorias**. 9 Espaços de teste (os de 132 linhas): **141 itens em 15 categorias**.
+
+## `--migrar --funil=migrar` em dois Espaços de teste (igual ao 15-30)
+
+Saída 0, `--verificar` ok, repetir "nada a fazer", e as linhas que o `--seco` anunciou foram as que entraram.
+
+| Espaço | contatos | identificadores | empresas | id. de empresa | contato_empresa | Funis | Etapas | negócios | canais | conversas | mensagens | consentimentos | `crm_de_para` |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `ws_spike_10x` | 39 | 75 | 12 | 24 | 30 | 4 | 23 | 19 | 3 | 16 | 62 | 45 | 307 |
+| `ws_outbox_1790002249349_te7t5z` | 39 | 75 | 12 | 24 | 30 | 4 | 23 | 19 | 3 | 16 | 55 | 45 | 300 |
+
+## Com o papel `n1_api` (igual ao 15-30)
+
+`banco:conceder` ("n1_api: concessões aplicadas"); com `DATABASE_URL` do `n1_api` e `DATABASE_URL_MIGRACAO` do dono: `ws_n1 --migrar --funil=migrar` (0), `ws_spike --guardar` (0), `--verificar` dos dois (0). `ws_n1`: Funis 3, Etapas 7, `crm_de_para` 2; `ws_spike`: 876 em `registros`, 134 em `registros_crm_antigo`.
+
+## `hidratar` por Espaço, com o código final
+
+`hidratar: 19 Espaço(s), 0 falha(s)`, **nenhum Espaço com alguma das oito coleções antigas**, e 14 Conversas de Grupo (as 2 de cada um dos 7 Espaços). É o mesmo resultado do 15-30, agora com o `DataState` sem as oito coleções. O que o `DataState` novo não faz sozinho é recusar uma linha antiga que sobre em `registros`: `hidratar()` a carrega como chave desconhecida (`hidratar-crm-antigo.test.ts` prova as duas metades). Por isso o `15-CORTE.md` manda rodar o script antes de publicar.
+
+## Concorrência e interrupção (UCR-10), em banco restaurado do ponto
+
+- **Duas execuções simultâneas** no mesmo Espaço (`ws_teste_classificacoes_1790201209011_rkgmin`): as duas saíram com 0; uma disse "guardado. 134 linha(s) copiadas" e a outra "nada a fazer". Revisão 2 → 3 (uma vez só); `registros` 1036 → 904; `registros_crm_antigo` 134; `--verificar` ok.
+- **`kill -9` no meio** (`ws_outbox_1790002249349_te7t5z`): o `--guardar` parou no `delete from plataforma.registros` esperando uma linha travada por outra sessão (visto em `pg_stat_activity`, uma sessão em `Lock`) e levou `kill -9`. Depois de soltar a linha e de não restar sessão ligada ao banco: revisão 5 → 5, `registros` 920 → 920, `registros_crm_antigo` 0 → 0. Um `--guardar` normal em seguida terminou com 0 ("guardado. 132 linha(s) copiadas") e o `--verificar` deu ok.
+
+## O que este ensaio final não cobre (além dos limites do ensaio do 15-30, que seguem valendo)
+
+- **A API e a web finais não foram levantadas sobre a cópia migrada.** Só o script, as migrações e `hidratar` rodaram; `GET /estado` e as telas sobre esse banco não. As telas nunca foram abertas em navegador real nesta fase (ver "Provas manuais pendentes" em `15-PROVAS.md`).
+- **A cópia continua sendo a de 2026-11-05 11:13.** O corte precisa do `--seco` do dia em cada Espaço (`15-CORTE.md`, passo 4), e o dono pode renovar a cópia e repetir este ensaio antes.
