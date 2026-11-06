@@ -201,6 +201,28 @@ describe("rotas de Negócios — serviço falso, sem banco", () => {
     expect(chamadas[1]?.[2]).toMatchObject({ empresaId: "e1", contatoId: "c1", q: "alfa", estado: "arquivado", limite: 200, deslocamento: 10 });
   });
 
+  it("(b) GET /negocios?proprietarioId= chega ao serviço (o filtro \"Meus\" do quadro, F14-D-06); sem o parâmetro, o campo não vai", async () => {
+    const { servico, chamadas } = novoFalso({ listar: sucesso({ itens: [], total: 0 }) });
+    const com = await appCom(servico).inject({
+      method: "GET",
+      url: "/negocios?funilId=f1&proprietarioId=mem_maryane",
+      headers: AUTORIZACAO,
+    });
+    expect(com.statusCode).toBe(200);
+    expect(chamadas[0]?.[2]).toMatchObject({ funilId: "f1", proprietarioId: "mem_maryane", estado: "ativo" });
+
+    const sem = await appCom(servico).inject({ method: "GET", url: "/negocios?funilId=f1", headers: AUTORIZACAO });
+    expect(sem.statusCode).toBe(200);
+    expect(chamadas[1]?.[2]).not.toHaveProperty("proprietarioId");
+
+    // Vazio ou longo demais não é um id: 400, e o serviço não é chamado de novo.
+    expect((await appCom(servico).inject({ method: "GET", url: "/negocios?proprietarioId=", headers: AUTORIZACAO })).statusCode).toBe(400);
+    expect(
+      (await appCom(servico).inject({ method: "GET", url: `/negocios?proprietarioId=${"x".repeat(65)}`, headers: AUTORIZACAO })).statusCode,
+    ).toBe(400);
+    expect(chamadas).toHaveLength(2);
+  });
+
   it("(c) POST /negocios/n1/reabrir sem corpo e sem content-type chega ao serviço; com Etapa também", async () => {
     const { servico, chamadas } = novoFalso();
     const semCorpo = await appCom(servico).inject({ method: "POST", url: "/negocios/n1/reabrir", headers: AUTORIZACAO });
@@ -464,6 +486,37 @@ describeComBanco("rotas de Negócios — serviço real, Postgres local", () => {
     expect(apagado.status).toBe(200);
     expect(apagado.corpo.dados).toEqual({ id: idSemValor });
     expect((await chamar("GET", `/negocios/${idSemValor}`)).status).toBe(404);
+  });
+
+  it("(f) GET /negocios?proprietarioId= devolve só os Negócios do Proprietário (o filtro \"Meus\"), no banco real e junto do total", async () => {
+    // O Funil padrão nasceu no caso (e), no mesmo Espaço de teste.
+    const contato = await app().inject({ method: "POST", url: "/contatos", headers: MEMBRO, payload: { nome: "Cliente do filtro" } });
+    const contatoId = (contato.json().dados as { contato: { id: string } }).contato.id;
+
+    const daAna = await chamar("POST", "/negocios", { titulo: "Da Ana", contatoId, proprietarioId: "mem_ana" });
+    const doAdmin = await chamar("POST", "/negocios", { titulo: "Do Admin", contatoId, proprietarioId: "mem_admin" });
+    expect(daAna.status).toBe(201);
+    expect(doAdmin.status).toBe(201);
+
+    const lerTitulos = async (url: string) => {
+      const resposta = await chamar("GET", url);
+      expect(resposta.status).toBe(200);
+      const { itens, total } = resposta.corpo as unknown as { itens: NegocioResumo[]; total: number };
+      return { titulos: itens.map((n) => n.titulo), total, proprietarios: itens.map((n) => n.proprietarioId) };
+    };
+
+    const meusDaAna = await lerTitulos("/negocios?proprietarioId=mem_ana&q=Da%20Ana");
+    expect(meusDaAna.titulos).toEqual(["Da Ana"]);
+    expect(meusDaAna.proprietarios).toEqual(["mem_ana"]);
+    expect(meusDaAna.total).toBe(1);
+
+    const doAdminSo = await lerTitulos("/negocios?proprietarioId=mem_admin");
+    expect(doAdminSo.titulos).toEqual(["Do Admin"]);
+    expect(doAdminSo.total).toBe(1);
+
+    // Sem o filtro, os dois aparecem; um Proprietário sem Negócio devolve lista vazia, não erro.
+    expect((await lerTitulos("/negocios?q=Do")).titulos).toContain("Do Admin");
+    expect(await lerTitulos("/negocios?proprietarioId=mem_ninguem")).toMatchObject({ titulos: [], total: 0 });
   });
 
   it("(e) um Convidado lê e recebe 403 em POST /negocios (D-14)", async () => {
