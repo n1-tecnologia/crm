@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 19
+open_count: 20
 waived_count: 1
 fixed_count: 4
-total_count: 24
-last_updated: 2026-11-06T11:50:25.932Z
+total_count: 25
+last_updated: 2026-11-06T11:59:35.240Z
 ---
 
 # Broken Windows Ledger
@@ -39,6 +39,7 @@ last_updated: 2026-11-06T11:50:25.932Z
 | 22 | 15 | deviation | apps/web/src/app/(shell)/crm/contatos/[contato]/page.tsx |  | 15-13: Busca, Lixeira antiga, Notificacoes, /crm/meus-negocios e Caixa de Entrada ainda produzem links para ids do modelo antigo; as fichas de Contato, Empresa e Negocio nao recuam mais, entao esses links abrem 'nao encontrado' ate cada superficie migrar para o CRM novo. Decisao do plano: sem ponte de id antigo para novo; depois do script de migracao (ids preservados) o mesmo endereco abre a ficha nova | open |  | 2026-11-06T11:36:42.762Z |  |
 | 23 | 15 | deviation | apps/web/src/app/(shell)/buscar/page.tsx |  | 15-14: a Busca acha Conversa so pelo titulo (GET /conversas?q= nao olha o texto das Mensagens, como a do modelo antigo olhava). Se o dono quiser a busca por conteudo, abrir o filtro na api (junto de plataforma.mensagens) e no dominio | open |  | 2026-11-06T11:50:25.871Z |  |
 | 24 | 15 | deviation | apps/web/src/features/inicio/panorama-do-robo.ts |  | 15-14: o panorama do robo do Inicio ainda conta Conversas abertas do Espaco (conversas.abertas), Contatos e Negocios de state.conversations/contacts/deals; so as Conversas atribuidas a pessoa vem da api (hook useNotificacoesDoMembro). Fica para o plano do Inicio (15-18/15-23) | open |  | 2026-11-06T11:50:25.932Z |  |
+| 25 | 15 | deviation | apps/web/src/app/(shell)/configuracoes/tags/page.tsx |  | 15-16: Tags, Campos e Catalogos nao mostram mais o uso em Contato, Empresa, Negocio e Conversa (mostram 'O uso no CRM nao aparece aqui.'); tambem some a contagem de Conversa em Tags e a de Empresa em Campos, que o plano nao citava. Para devolver o numero, abrir contagem por Tag, Campo e item de Catalogo nas rotas /contatos, /empresas, /negocios e /conversas. Sem tela para conceder acesso a Funil novo privado (a Governanca so reconhece Espaco, Pasta, Lista e Colecao): o Funil novo e governado por privado e Papel | open |  | 2026-11-06T11:59:35.240Z |  |
 
 ````json
 [
@@ -351,6 +352,19 @@ last_updated: 2026-11-06T11:50:25.932Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-06T11:50:25.932Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 25,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/app/(shell)/configuracoes/tags/page.tsx",
+    "line": null,
+    "description": "15-16: Tags, Campos e Catalogos nao mostram mais o uso em Contato, Empresa, Negocio e Conversa (mostram 'O uso no CRM nao aparece aqui.'); tambem some a contagem de Conversa em Tags e a de Empresa em Campos, que o plano nao citava. Para devolver o numero, abrir contagem por Tag, Campo e item de Catalogo nas rotas /contatos, /empresas, /negocios e /conversas. Sem tela para conceder acesso a Funil novo privado (a Governanca so reconhece Espaco, Pasta, Lista e Colecao): o Funil novo e governado por privado e Papel",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T11:59:35.240Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }
