@@ -159,3 +159,53 @@ describe("Processo Contas a receber", () => {
     expect(parcelaDuplicada(state, solta.value)?.id).toBe(gab2.id);
   });
 });
+
+describe("Cliente da conta vindo das tabelas do CRM (Fase 15, 3.4.10, UCR-08)", () => {
+  // Um Contato que só existe em `plataforma.contatos`: o `state.contacts` do seed nem sabe dele.
+  const NOVO = "11111111-1111-4111-8111-111111111111";
+  const clienteDaTabela = (over: Partial<{ id: string; nome: string; estado: string; proprietarioId: string }> = {}) => ({
+    contatos: [{ id: NOVO, nome: "Ana Lima", estado: "ativo", proprietarioId: "mem_rafael", ...over }],
+    empresas: [],
+  });
+  const entrada = { contactId: NOVO, centroDeCusto: "Tria Tech", valorEntrada: 1000, vencimentoEntrada: em(1), valorParcela: 500, parcelas: 2, primeiroVencimento: em(30) };
+
+  it("clienteDe devolve só a referência do Vínculo cliente (tipo e id), sem nome nem dono", () => {
+    expect(clienteDe(state, conta("tsk_cr_gab_2"))).toEqual({ tipo: "contact", id: "cnt_cr_helena" });
+  });
+
+  it("a série nasce para um Contato que só está na tabela: o Vínculo cliente leva o id dele e o título, o nome lido", () => {
+    expect(state.contacts.some((c) => c.id === NOVO)).toBe(false);
+    const r = createReceivableSeries(state, CP.financeiroId, entrada, clienteDaTabela());
+    expect(r.ok, r.ok ? "" : r.error).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.map((t) => t.title)).toEqual(["Entrada – Ana Lima", "1ª Parcela – Ana Lima", "2ª Parcela – Ana Lima"]);
+    expect(r.value.every((t) => clienteDe(state, t)?.id === NOVO)).toBe(true);
+    expect(state.links.filter((l) => l.toId === NOVO).map((l) => [l.toType, l.role])).toEqual([["contact", "cliente"], ["contact", "cliente"], ["contact", "cliente"]]);
+    // O dono do cliente (lido da tabela) vê e comenta as contas dele.
+    expect(memberSeesTask(state, "mem_rafael", r.value[0]?.id ?? "")).toBe(true);
+  });
+
+  it("cliente na lixeira, arquivado ou ausente do que o servidor leu: \"Cliente não encontrado.\" e nada nasce", () => {
+    const antes = state.tasks.length;
+    for (const clientes of [clienteDaTabela({ estado: "na_lixeira" }), clienteDaTabela({ estado: "arquivado" }), { contatos: [], empresas: [] }]) {
+      const r = createReceivableSeries(state, CP.financeiroId, entrada, clientes);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.error).toBe("Cliente não encontrado.");
+    }
+    expect(state.tasks.length).toBe(antes);
+  });
+
+  it("o Contato do `state.contacts` (modelo antigo) já não vale como cliente: só o que o servidor leu", () => {
+    const r = createReceivableSeries(state, CP.financeiroId, { ...entrada, contactId: "cnt_2" }, { contatos: [], empresas: [] });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe("Cliente não encontrado.");
+  });
+
+  it("criar a mesma série duas vezes segue a regra de hoje (RN-CR-07): a segunda é recusada", () => {
+    const primeira = createReceivableSeries(state, CP.financeiroId, entrada, clienteDaTabela());
+    expect(primeira.ok).toBe(true);
+    const segunda = createReceivableSeries(state, CP.financeiroId, { ...entrada, valorEntrada: undefined, vencimentoEntrada: undefined }, clienteDaTabela());
+    expect(segunda.ok).toBe(false);
+    if (!segunda.ok) expect(segunda.error).toBe("Ana Lima já tem a 1ª Parcela nesta Lista. Descarte a série antiga antes de criar outra.");
+  });
+});
