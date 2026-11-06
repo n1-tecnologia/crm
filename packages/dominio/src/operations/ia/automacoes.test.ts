@@ -48,6 +48,10 @@ const registro = <T extends { readonly id: string }>(lista: readonly T[], id: st
   return item;
 };
 
+/** Os Funis do seed como `plataforma.funis` os devolveria ao servidor: só `id` e `estado` (15-39). */
+const funisDoSeed = (s: DataState) =>
+  s.funnels.map((f) => ({ id: f.id, estado: f.lifecycle === "naLixeira" ? ("na_lixeira" as const) : f.lifecycle }));
+
 const valor = <T>(r: { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: string }): T => {
   if (!r.ok) throw new Error(r.error);
   return r.value;
@@ -225,7 +229,7 @@ describe("29b — a Disponibilidade da Concessão entra na validação e no inop
   it("nenhuma Automação publicada do seed nasce inoperante nem com problema por Habilidade indisponível", () => {
     for (const a of state.automations) {
       if (a.lifecycle !== "ativo") continue;
-      expect(inoperante(state, a), a.id).toBeUndefined();
+      expect(inoperante(state, a, funisDoSeed(state)), a.id).toBeUndefined();
       const vigente = a.versions.find((v) => v.state === "publicada");
       if (vigente) expect(validarAutomacao(state, a, vigente).map((p) => p.mensagem), a.id).toEqual([]);
     }

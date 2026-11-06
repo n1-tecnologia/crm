@@ -14,6 +14,10 @@ import { permitirFerramenta } from "./operations/ia/agentes";
 import { buildSeed } from "./seed";
 import { buildProductSeed } from "./seed-produto";
 
+/** Os Funis do seed como `plataforma.funis` os devolveria ao servidor: só `id` e `estado` (15-39). */
+const funisDoSeed = (s: ReturnType<typeof buildSeed>) =>
+  s.funnels.map((f) => ({ id: f.id, estado: f.lifecycle === "naLixeira" ? ("na_lixeira" as const) : f.lifecycle }));
+
 const SEEDS = [
   ["completo", buildSeed],
   ["produto", buildProductSeed],
@@ -30,7 +34,7 @@ describe("seed da IA — Automações", () => {
         if (!vigente) continue;
         const problemas = validarAutomacao(state, automacao, vigente).map((p) => `${p.regra}: ${p.mensagem}`);
         expect(problemas, `${nome} · ${automacao.id}`).toEqual([]);
-        expect(inoperante(state, automacao), `${nome} · ${automacao.id}`).toBeUndefined();
+        expect(inoperante(state, automacao, funisDoSeed(state)), `${nome} · ${automacao.id}`).toBeUndefined();
       }
     }
   });

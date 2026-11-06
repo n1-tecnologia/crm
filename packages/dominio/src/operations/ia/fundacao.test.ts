@@ -67,6 +67,16 @@ describe("Catálogo do editor de Automação", () => {
     expect(escopoExiste(state, "space", "lst_revisoes")).toBe(false);
   });
 
+  it("o escopo Funil existe pela lista que o servidor leu: ativo e arquivado valem, na lixeira, ausente e sem a lista não (15-39, 3.4.9)", () => {
+    // `fnl_sdr` está em `state.funnels` do seed; a resposta vem só da lista passada.
+    expect(escopoExiste(state, "funnel", "fnl_sdr", [{ id: "fnl_sdr", estado: "ativo" }])).toBe(true);
+    expect(escopoExiste(state, "funnel", "fnl_sdr", [{ id: "fnl_sdr", estado: "arquivado" }])).toBe(true);
+    expect(escopoExiste(state, "funnel", "fnl_sdr", [{ id: "fnl_sdr", estado: "na_lixeira" }])).toBe(false);
+    expect(escopoExiste(state, "funnel", "fnl_sdr", [])).toBe(false);
+    expect(escopoExiste(state, "funnel", "fnl_sdr")).toBe(false);
+    expect(escopoExiste(state, "funnel", "fnl_so_na_tabela", [{ id: "fnl_so_na_tabela", estado: "ativo" }])).toBe(true);
+  });
+
   it("marca o que os motores executam: Lista por Tarefa, Grupo pelos Eventos de Grupo; o resto não", () => {
     expect(escopoExecutaNoPrototipo("list", { kind: "evento", eventType: "tarefaCriada" })).toBe(true);
     expect(escopoExecutaNoPrototipo("list", { kind: "condicaoTemporal", temporalPredicate: "{}" })).toBe(true);
@@ -167,5 +177,23 @@ describe("Leituras derivadas da IA", () => {
     // Um Proprietário suspenso torna a Automação inoperante sem ato.
     registro(state.members, "mem_julia").state = "suspenso";
     expect(inoperante(state, registro(state.automations, "aut_boasvindas"))).toBe("Proprietário suspenso");
+  });
+});
+
+describe("Escopo Funil da Automação lê os Funis por argumento (15-39, 3.4.9)", () => {
+  const publicada = () => registro(state.automations, "aut_sdr_enriquecimento");
+
+  it("com o Funil ativo na lista a Automação opera; com a lista vazia ou ausente o escopo é eliminado", () => {
+    const a = publicada();
+    expect(a.scopeType).toBe("funnel");
+    expect(inoperante(state, a, [{ id: a.scopeId, estado: "ativo" }])).toBeUndefined();
+    expect(inoperante(state, a, [])).toBe("escopo eliminado (Funil)");
+    expect(inoperante(state, a)).toBe("escopo eliminado (Funil)");
+  });
+
+  it("o estado do Funil na lista vira o motivo: arquivado e outro Funil ausente", () => {
+    const a = publicada();
+    expect(inoperante(state, a, [{ id: a.scopeId, estado: "arquivado" }])).toBe("escopo arquivado (Funil)");
+    expect(inoperante(state, a, [{ id: "fnl_outro", estado: "ativo" }])).toBe("escopo eliminado (Funil)");
   });
 });
