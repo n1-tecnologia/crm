@@ -479,7 +479,7 @@ describe("mover a Conversa para outro Contato (3.2.5)", () => {
   }
 
   async function buscarEEscolher(dialogo: HTMLElement, busca: string, nome: string) {
-    fireEvent.change(within(dialogo).getByRole("combobox", { name: "Buscar Contato de destino" }), { target: { value: busca } });
+    fireEvent.change(within(dialogo).getByRole("combobox", { name: "Contato de destino" }), { target: { value: busca } });
     const opcao = await within(dialogo).findByRole("option", { name: new RegExp(nome) });
     fireEvent.click(opcao);
   }
@@ -489,7 +489,7 @@ describe("mover a Conversa para outro Contato (3.2.5)", () => {
     await paginaPronta();
     const dialogo = await abrirMover();
     expect(within(dialogo).getByText("Mover Conversa para outro Contato")).toBeTruthy();
-    fireEvent.change(within(dialogo).getByRole("combobox", { name: "Buscar Contato de destino" }), { target: { value: "Ana" } });
+    fireEvent.change(within(dialogo).getByRole("combobox", { name: "Contato de destino" }), { target: { value: "Ana" } });
     await within(dialogo).findByRole("option", { name: /Ana Lima/ });
     expect(within(dialogo).queryByRole("option", { name: /Ana Souza/ })).toBeNull();
     const busca = fetchMock.mock.calls.map((c) => new URL(String(c[0]))).find((u) => u.pathname === "/contatos" && u.searchParams.get("q") === "Ana");
@@ -531,8 +531,9 @@ describe("mover a Conversa para outro Contato (3.2.5)", () => {
     const dialogo = await abrirMover();
     await buscarEEscolher(dialogo, "Ana", "Ana Lima");
     fireEvent.click(within(dialogo).getByRole("button", { name: "Mover" }));
-    await waitFor(() => expect(within(dialogo).getByText("Ana Lima no WhatsApp")).toBeTruthy());
-    expect(within(dialogo).getByText(/Comercial SP/)).toBeTruthy();
+    await waitFor(() => expect(within(dialogo).getAllByText("Ana Lima no WhatsApp")).toHaveLength(2));
+    // O Canal é nomeado na descrição do diálogo e no aviso da colisão.
+    expect(within(dialogo).getAllByText(/Comercial SP/).length).toBeGreaterThanOrEqual(2);
     // Sem marcar, Mover fica desligado: a saída é uma escolha explícita.
     const mover = within(dialogo).getByRole("button", { name: "Mover" });
     expect(mover.hasAttribute("disabled") || mover.getAttribute("aria-disabled") === "true").toBe(true);

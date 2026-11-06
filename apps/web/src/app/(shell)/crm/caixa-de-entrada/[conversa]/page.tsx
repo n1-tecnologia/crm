@@ -337,7 +337,17 @@ function ConversaAberta({ detalhe }: { readonly detalhe: ConversaDetalhada }) {
         }
       />
 
-      <MoveConversationDialog conversationId={conversation.id} open={moving} onClose={closeMoveConversation} onDone={setNotice} />
+      <MoveConversationDialog
+        conversationId={conversation.id}
+        contatoAtualId={conversation.contatoId}
+        canalNome={channel.nome}
+        open={moving}
+        onClose={closeMoveConversation}
+        onDone={(mensagem) => {
+          setError(null);
+          setNotice(mensagem);
+        }}
+      />
 
       {/* Chaveado pela Conversa: o Contato e o Canal iniciais do diálogo são os dela. */}
       <NovaTarefaConversacionalDialog

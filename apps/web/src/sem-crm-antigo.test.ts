@@ -31,7 +31,6 @@ const CONGELADOS = [
   "features/crm/deal-card.tsx",
   "features/crm/deal-screen.tsx",
   "features/crm/iniciar-conversa-dialog.tsx",
-  "features/crm/move-conversation-dialog.tsx",
   "features/estrutura/financeiro/serie-dialog.tsx",
   "features/estrutura/nova-tarefa-conversacional-dialog.tsx",
   "features/estrutura/tarefa-completa.tsx",

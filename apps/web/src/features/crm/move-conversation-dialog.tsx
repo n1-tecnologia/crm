@@ -3,18 +3,25 @@
 /**
  * D12 — Mover Conversa para outro Contato, aberto por `?mover-conversa=`.
  *
- * A colisão que a regra proíbe é dita ANTES, com o nome do Canal e a Conversa
- * que colide: RN-CXE-11 rejeita mover para um Contato que já tenha Conversa não
- * resolvida no mesmo Canal, salvo resolver a existente no mesmo ato — e essa
- * saída aparece como uma escolha explícita, nunca como efeito colateral.
+ * Fase 15 (3.2.5): o destino se busca na api (`SeletorDeRegistro`, `GET /contatos?q=`,
+ * só Contatos ativos e sem o atual) e o gesto é `POST /conversas/:id/mover`. A
+ * regra é a da api: Conversa na lixeira não muda de Contato, o destino precisa
+ * estar ativo, e o Canal e as Mensagens ficam onde estão — o diálogo mostra a
+ * recusa dela.
+ *
+ * A colisão que a regra proíbe é dita DEPOIS da recusa, com o nome do Canal e a
+ * Conversa que colide (a api devolve a Conversa em `bloqueios.conversas`):
+ * RN-CXE-11 rejeita mover para um Contato que já tenha Conversa não resolvida no
+ * mesmo Canal, salvo resolver a existente no mesmo ato — e essa saída aparece como
+ * uma escolha explícita, nunca como efeito colateral.
  */
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
-import { useData, useRun } from "@/dados/store";
-import { contactDisplayName } from "@n1/dominio/derive";
-import { moveConversationToContact } from "@n1/dominio/operations";
-import { ConfirmDialog, Field, Select } from "@/features/shell/ui";
+import { useRef, useState } from "react";
+import { ErroDeApi } from "@/dados/crm/cliente-crm";
+import { moverConversa } from "@/dados/crm/conversas";
+import { SeletorDeRegistro, type RegistroEscolhido } from "@/features/crm/seletor-de-registro";
+import { ConfirmDialog, Field } from "@/features/shell/ui";
 
 export const MOVE_CONVERSATION_PARAM = "mover-conversa";
 
@@ -42,75 +49,73 @@ export function useMoveConversationDialog(): {
   };
 }
 
+/** A Conversa que já ocupa o par (Contato de destino, Canal), como a api a devolve na recusa 409. */
+interface ConversaQueColide {
+  readonly id: string;
+  readonly titulo: string;
+}
+
 export function MoveConversationDialog({
   conversationId,
+  contatoAtualId,
+  canalNome,
   open,
   onClose,
   onDone,
 }: {
   readonly conversationId: string;
+  /** O Contato de hoje: não é destino possível. */
+  readonly contatoAtualId: string;
+  /** O nome do Canal da Conversa, que não muda. */
+  readonly canalNome: string;
   readonly open: boolean;
   readonly onClose: () => void;
   readonly onDone: (message: string) => void;
 }) {
-  const state = useData((data) => data);
-  const run = useRun();
-  const [toContactId, setToContactId] = useState("");
-  const [resolveExisting, setResolveExisting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [destino, setDestino] = useState<RegistroEscolhido | null>(null);
+  const [colide, setColide] = useState<ConversaQueColide | null>(null);
+  const [resolverExistente, setResolverExistente] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [movendo, setMovendo] = useState(false);
+  // Um clique por vez: o segundo, antes da resposta do primeiro, não grava de novo.
+  const emVoo = useRef(false);
 
-  const conversation = state.conversations.find((c) => c.id === conversationId);
-  if (!conversation) return null;
-
-  const channel = state.channels.find((c) => c.id === conversation.channelId);
-  const current = conversation.contactId
-    ? state.contacts.find((c) => c.id === conversation.contactId)
-    : undefined;
-
-  const targets = state.contacts.filter(
-    (contact) => contact.id !== conversation.contactId && contact.lifecycle !== "mesclado",
-  );
-
-  // The collision the rule forbids, named before the act.
-  const colliding = toContactId
-    ? state.conversations.find(
-        (other) =>
-          other.id !== conversation.id &&
-          other.contactId === toContactId &&
-          other.channelId === conversation.channelId &&
-          other.lifecycle === "ativo" &&
-          other.state !== "resolvida",
-      )
-    : undefined;
-
-  const blockedReason =
-    toContactId === ""
+  const motivoParaNaoMover = movendo
+    ? "Movendo…"
+    : destino === null
       ? "Escolha o Contato de destino."
-      : colliding && !resolveExisting
+      : colide && !resolverExistente
         ? "Marque resolver a Conversa existente, ou escolha outro Contato."
         : undefined;
 
   const reset = () => {
-    setToContactId("");
-    setResolveExisting(false);
-    setError(null);
+    setDestino(null);
+    setColide(null);
+    setResolverExistente(false);
+    setErro(null);
   };
 
-  const confirm = () => {
-    const result = run((data, memberId) =>
-      moveConversationToContact(data, memberId, conversation.id, toContactId, resolveExisting),
-    );
-    if (result.ok) {
-      const target = state.contacts.find((c) => c.id === toContactId);
-      onDone(
-        `Conversa movida para ${target ? contactDisplayName(target) : "outro Contato"}.${
-          colliding ? " A Conversa que colidia foi resolvida." : ""
-        }`,
-      );
+  const confirm = async () => {
+    if (destino === null || emVoo.current) return;
+    emVoo.current = true;
+    setErro(null);
+    setMovendo(true);
+    try {
+      await moverConversa(conversationId, destino.id, resolverExistente ? true : undefined);
+      onDone(`Conversa movida para ${destino.nome}.${colide ? " A Conversa que colidia foi resolvida." : ""}`);
       reset();
       onClose();
-    } else {
-      setError(result.error);
+    } catch (falha) {
+      const colisao = falha instanceof ErroDeApi && falha.codigo === "CONVERSA_JA_ABERTA" ? falha.bloqueios?.conversas?.itens[0] : undefined;
+      if (colisao) {
+        setColide(colisao);
+        setResolverExistente(false);
+      } else {
+        setErro(falha instanceof Error ? falha.message : "Não foi possível mover a Conversa.");
+      }
+    } finally {
+      emVoo.current = false;
+      setMovendo(false);
     }
   };
 
@@ -118,61 +123,58 @@ export function MoveConversationDialog({
     <ConfirmDialog
       open={open}
       title="Mover Conversa para outro Contato"
-      description={`O Canal ${channel?.name ?? ""} não muda, e nenhuma Mensagem é movida: só a quem a Conversa pertence.`}
+      description={`O Canal ${canalNome} não muda, e nenhuma Mensagem é movida: só a quem a Conversa pertence.`}
       confirmLabel="Mover"
-      {...(blockedReason ? { confirmDisabledReason: blockedReason } : {})}
-      onConfirm={confirm}
+      {...(motivoParaNaoMover ? { confirmDisabledReason: motivoParaNaoMover } : {})}
+      confirmCarregando={movendo}
+      onConfirm={() => void confirm()}
       onCancel={() => {
         reset();
         onClose();
       }}
     >
       <div className="grid gap-3">
-        <Field
-          label="Contato de destino"
-          hint={current ? `Hoje pertence a ${contactDisplayName(current)}.` : "Hoje o Contato não está resolvido."}
-        >
+        <Field label="Contato de destino" hint="Só Contatos ativos aparecem na busca.">
           {(id) => (
-            <Select
+            <SeletorDeRegistro
               id={id}
-              value={toContactId}
-              onChange={(value) => {
-                setToContactId(value);
-                setResolveExisting(false);
+              recurso="contatos"
+              rotulo="Buscar Contato de destino"
+              valor={destino}
+              onChange={(escolhido) => {
+                setDestino(escolhido);
+                setColide(null);
+                setResolverExistente(false);
+                setErro(null);
               }}
-              searchable
-              placeholder="Escolher Contato"
-              options={targets.map((contact) => ({
-                value: contact.id,
-                label: contactDisplayName(contact),
-                detail: contact.identifiers[0]?.displayValue ?? "sem identificador",
-              }))}
+              excluirIds={[contatoAtualId]}
             />
           )}
         </Field>
 
-        {colliding ? (
+        {colide ? (
           <div className="rounded-[var(--r-controle)] px-3 py-2" style={{ background: "var(--aviso-lavado)", color: "var(--aviso)" }}>
             <p className="app-base">
-              Este Contato já tem a Conversa <em>{colliding.title}</em> não resolvida em{" "}
-              {channel?.name}. Duas Conversas abertas do mesmo Contato no mesmo Canal quebram o
-              roteamento da próxima Mensagem recebida.
+              Este Contato já tem a Conversa <em>{colide.titulo}</em> não resolvida em {canalNome}. Duas Conversas abertas do mesmo Contato no mesmo
+              Canal quebram o roteamento da próxima Mensagem recebida.
             </p>
             <label className="app-base mt-2 flex items-start gap-2">
               <input
                 type="checkbox"
-                checked={resolveExisting}
-                onChange={(event) => setResolveExisting(event.target.checked)}
+                checked={resolverExistente}
+                onChange={(event) => setResolverExistente(event.target.checked)}
                 className="mt-0.5 size-4 accent-[var(--acento)]"
               />
-              Resolver <em>{colliding.title}</em> no mesmo ato
+              <span>
+                Resolver <em>{colide.titulo}</em> no mesmo ato
+              </span>
             </label>
           </div>
         ) : null}
 
-        {error ? (
+        {erro ? (
           <p role="alert" className="app-base" style={{ color: "var(--erro)" }}>
-            {error}
+            {erro}
           </p>
         ) : null}
       </div>
