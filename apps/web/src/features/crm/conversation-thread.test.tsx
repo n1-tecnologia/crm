@@ -21,6 +21,7 @@ import { SWRConfig, useSWRConfig } from "swr";
 import { buildSeed } from "@n1/dominio/seed";
 import type { Canal } from "@n1/dominio/crm/canais";
 import type { ContatoDetalhado, IdentificadorDeContato } from "@n1/dominio/crm/contatos";
+import type { ConsentimentoDoContato } from "@n1/dominio/crm/consentimentos";
 import type { ConversaNaLista } from "@n1/dominio/crm/conversas";
 import type { Mensagem } from "@n1/dominio/crm/mensagens";
 import type { DataState } from "@n1/dominio/state";
@@ -66,6 +67,10 @@ type Rota = (url: string, init?: RequestInit) => Promise<Response>;
 let rotaPadrao: Rota;
 /** O que `POST /mensagens` responde; os testes trocam para segurar ou recusar. */
 let gravarMensagem: (corpo: { conversaId: string; direcao: string; conteudo: string }) => Promise<Response>;
+/** O que `POST /contatos/:id/notas` responde (15-25). */
+let gravarNota: (corpo: { conteudo: string }) => Promise<Response>;
+/** O que `GET /contatos/:id/consentimentos` responde (15-25). */
+let consentimentosDaApi: ConsentimentoDoContato[];
 /** O que `POST /conversas` responde. */
 let abrirNaApi: (corpo: { canalId: string; contatoId: string; mensagem: { conteudo: string } }) => Promise<Response>;
 
@@ -250,6 +255,12 @@ beforeEach(() => {
     mensagensDaApi[corpo.conversaId] = [...lista, nova];
     return resposta(201, { ok: true, dados: nova });
   };
+  gravarNota = async (corpo) =>
+    resposta(201, {
+      ok: true,
+      dados: { id: "nota_1", contatoId: CONTATO_ID, conteudo: corpo.conteudo, autorId: "mem_thiago", criadoEm: new Date().toISOString() },
+    });
+  consentimentosDaApi = [];
   abrirNaApi = async (corpo) => {
     const id = `cnv_nova_${conversasDaApi.length}`;
     const conversa = novaConversa(id, corpo.canalId, { atualizadoEm: new Date().toISOString() });
@@ -279,6 +290,10 @@ beforeEach(() => {
       return resposta(200, { ok: true, itens, total: itens.length });
     }
     if (metodo === "GET" && alvo.pathname === "/negocios") return resposta(200, { ok: true, itens: [], total: 0 });
+    if (metodo === "GET" && alvo.pathname === `/contatos/${CONTATO_ID}/consentimentos`) {
+      return resposta(200, { ok: true, itens: consentimentosDaApi, total: consentimentosDaApi.length });
+    }
+    if (metodo === "POST" && alvo.pathname === `/contatos/${CONTATO_ID}/notas`) return gravarNota(JSON.parse(String(init?.body)) as { conteudo: string });
     if (metodo === "POST" && alvo.pathname === "/mensagens") return gravarMensagem(JSON.parse(String(init?.body)) as Parameters<typeof gravarMensagem>[0]);
     if (metodo === "POST" && alvo.pathname === "/conversas") return abrirNaApi(JSON.parse(String(init?.body)) as Parameters<typeof abrirNaApi>[0]);
     return resposta(404, { ok: false, error: "sem rota" });
@@ -664,5 +679,72 @@ describe("ConversationThread — Criar Tarefa numa Lista conversacional (14-16)"
     await criarPeloFio();
     await waitFor(() => expect(screen.getByText("Escreva a primeira Mensagem.")).toBeTruthy());
     expect(rehidratar).not.toHaveBeenCalled();
+  });
+});
+
+describe("ConversationThread — Nota interna grava em contato_notas (15-25, 3.4.2 / 3.2.7)", () => {
+  async function abrirNota() {
+    montar({ canalSelecionado: "chn_wpp" });
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Nota interna" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("tab", { name: "Nota interna" }));
+  }
+  const campoDaNota = () => screen.getByLabelText("Nota interna") as HTMLTextAreaElement;
+  const registrar = () => screen.getByRole("button", { name: "Registrar nota" });
+
+  it("(21) registrar a nota chama POST /contatos/:id/notas uma vez, sem operação do store, e esvazia o campo", async () => {
+    await abrirNota();
+    fireEvent.change(campoDaNota(), { target: { value: "  Pediu retorno na sexta.  " } });
+    fireEvent.click(registrar());
+
+    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Nota registrada no Contato."));
+    // O texto sai aparado, como o domínio o aparou (`validarNovaNota`).
+    expect(gravacoes()).toEqual([{ caminho: `/contatos/${CONTATO_ID}/notas`, metodo: "POST", corpo: { conteudo: "Pediu retorno na sexta." } }]);
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/operacoes/"))).toBe(false);
+    expect(campoDaNota().value).toBe("");
+  });
+
+  it("(22) borda UCR-05: duplo clique em Registrar nota grava uma nota só", async () => {
+    let solta: (() => void) | undefined;
+    const segurada = new Promise<void>((resolve) => {
+      solta = resolve;
+    });
+    const original = gravarNota;
+    gravarNota = async (corpo) => {
+      await segurada;
+      return original(corpo);
+    };
+    await abrirNota();
+    fireEvent.change(campoDaNota(), { target: { value: "uma só" } });
+    const botao = registrar();
+    fireEvent.click(botao);
+    fireEvent.click(botao);
+    fireEvent.submit(botao.closest("form") as HTMLFormElement);
+    await act(async () => {
+      solta?.();
+      await segurada;
+    });
+    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Nota registrada no Contato."));
+    expect(gravacoes().filter((g) => g.caminho === `/contatos/${CONTATO_ID}/notas`)).toHaveLength(1);
+  });
+
+  it("(23) borda UCR-05: nota só com espaços não chega à api e mostra a frase da regra do domínio", async () => {
+    await abrirNota();
+    fireEvent.change(campoDaNota(), { target: { value: "   \n  " } });
+    // O botão já vem desligado; o envio do formulário (Enter num leitor de tela, por exemplo) cai na mesma regra.
+    fireEvent.submit(registrar().closest("form") as HTMLFormElement);
+
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Escreva a nota antes de salvar."));
+    expect(gravacoes()).toEqual([]);
+  });
+
+  it("(24) a recusa da api aparece no fio, a nota continua no campo e nada é dado por registrado", async () => {
+    gravarNota = async () => resposta(409, { ok: false, error: "Um Contato mesclado é somente leitura. Escreva a nota no Contato que ficou.", codigo: "CONTATO_MESCLADO" });
+    await abrirNota();
+    fireEvent.change(campoDaNota(), { target: { value: "vai ser recusada" } });
+    fireEvent.click(registrar());
+
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Um Contato mesclado é somente leitura."));
+    expect(campoDaNota().value).toBe("vai ser recusada");
+    expect(screen.queryByText("Nota registrada no Contato.")).toBeNull();
   });
 });
