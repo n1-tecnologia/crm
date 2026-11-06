@@ -243,8 +243,8 @@ Leads a atender é `useLeadsAAtender(qualificacoesDeLead(state))`, Mensagens nov
 as Etapas pela ficha de cada Funil (`useEtapasDosFunis`); a lista curta vira "Parcial: primeiros 200" no Widget, e é uma
 ponte até a Sessão 20 (20.3), quando o servidor soma.
 `src/sem-listas-espelho.test.ts`
-(D-06) congela os dois arquivos da web que ainda citam as Listas espelho e proíbe
-um terceiro.
+(D-06) proíbe qualquer arquivo da web de citar as Listas espelho (`funilDaLista`,
+`iniciar-conversa`); a lista congelada chegou a zero no plano 15-40.
 
 ## Quem vê o quê na tela
 
@@ -298,8 +298,19 @@ não olha o texto das Mensagens). As fichas de Contato
 UCR-06): um 404 da api mostra "Contato/Empresa/Negócio não encontrado(a)." mesmo
 quando o id existe no `DataState`, e não há ponte de id antigo para id novo. Com
 a migração, que preserva os ids, o mesmo endereço passa a abrir a ficha nova.
-`features/crm/legado/` deixou de existir; `deal-screen.tsx` segue só porque a
-Lista conversacional ainda a embute e sai no plano 15-40.
+`features/crm/legado/` deixou de existir, e `deal-screen.tsx` saiu no plano 15-40.
+
+**A página da Lista não tem mais o espelho de Negócios (Fase 15, plano 15-40,
+UCR-06, F14-D-06).** `deal-card.tsx`, `iniciar-conversa-dialog.tsx` e
+`deal-screen.tsx` foram apagados, e `quadro-negocios.tsx` virou
+`features/estrutura/quadro-conversacional.tsx`: o quadro da Lista conversacional
+(cartão conversacional ou de Tarefa), sem o card de Negócio nem o subtotal em dinheiro.
+`estrutura/listas/[lista]/page.tsx` não tem a lente `espelhoComercial`, `dealOfTask`
+nem a barra «Iniciar conversa». Os Canais de atendimento da Lista conversacional
+(o selo "Atende por…" de `DetalhesDaLista` e o aviso de Lista sem Canal, que recusa
+criar Tarefa) vêm de `useCanais` (`GET /canais`, só os ativos) com
+`canaisDaListaNasTabelas`/`listaSemCanaisNasTabelas`; enquanto a api não responde a
+página não afirma "sem canais" (o servidor é quem barra).
 
 **"Meus negócios" é um filtro, não uma rota (Fase 15, plano 15-26, UCR-06,
 F14-D-06).** `/crm/meus-negocios` e `/crm/meus-negocios/[lista]` foram apagadas

@@ -11,7 +11,7 @@
  *
  * Esta tela é o quadro das ETAPAS DO FUNIL. O quadro de Status das Listas
  * conversacionais (Tarefas-espelho) é outro arquivo,
- * `features/estrutura/quadro-negocios.tsx`, e não muda aqui (D-15).
+ * `features/estrutura/quadro-conversacional.tsx`, e não muda aqui (D-15).
  *
  * "Meus negócios" (F14-D-06) é o botão "Meus" deste quadro: `?meus=1` na URL
  * (sobrevive a recarregar e entra no histórico) pede a lista com

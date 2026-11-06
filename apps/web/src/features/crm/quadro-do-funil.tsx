@@ -34,7 +34,7 @@
  * que já estava em cache. O filtro só restringe: quem barra de verdade é a api.
  *
  * O quadro de Status das Listas conversacionais é OUTRO arquivo
- * (`features/estrutura/quadro-negocios.tsx`, modelo de Tarefas) e não muda.
+ * (`features/estrutura/quadro-conversacional.tsx`, modelo de Tarefas) e não muda.
  */
 
 import Link from "next/link";
