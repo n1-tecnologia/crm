@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 15
 current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
 status: executing
-stopped_at: Completed 15-14-PLAN.md
-last_updated: "2026-11-06T11:51:26.689Z"
+stopped_at: Completed 15-16-PLAN.md
+last_updated: "2026-11-06T12:00:40.027Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 15 execution started
-state_head: bd8889b9496b6d3670539dea25ef15de9a5ffbee
+state_head: ae8529a8b7658674426c931d404fed72c6c72071
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 271
-  completed_plans: 242
+  completed_plans: 243
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 15 (Unificação do CRM: telas no modelo novo e remoção do modelo antigo) — EXECUTING
-Plan: 18 of 43
+Plan: 19 of 43
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 15 execution started
 
@@ -461,6 +461,7 @@ Progress: [██████░░░░] 63%
 | Phase 15 P12 | 16 min | 3 tasks | 16 files |
 | Phase 15 P13 | 8 min | 2 tasks | 18 files |
 | Phase 15 P14 | 18 min | 3 tasks | 20 files |
+| Phase 15 P16 | n/d | 2 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -729,6 +730,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 15]: 15-13: fichas de Contato, Empresa e Negocio sem recuo; 404 da api e 'nao encontrado' mesmo para id do modelo antigo (sem ponte por crm_de_para); deal-screen.tsx fica ate o 15-40
 - [Phase 15]: 15-14: o selo global soma o total de GET /conversas por situacao (aberta + pendente), nao a pagina de 20; sem resposta da api nenhuma Conversa entra
 - [Phase 15]: 15-14: Lixeira restaura Empresa por restaurarEmpresa(id) sem corpo; na recusa EMPRESA_SEM_ADMIN manda abrir a ficha (onde o dialogo de admin existe)
+- [Phase 15]: 15-16: Espaco novo nasce sem Funil; Workspace perde defaultFunnelId e o Funil padrao e o de plataforma.funis.padrao (D-15-13). Configuracoes mostra o padrao de useFunis ou 'Crie seu primeiro Funil'
+- [Phase 15]: 15-16: Campos, Tags e Catalogos trocam a contagem do CRM antigo (Contato, Empresa, Negocio, Conversa) por 'O uso no CRM nao aparece aqui.'; o uso em Tarefas continua
 
 ### Pending Todos
 
@@ -790,6 +793,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-06T11:51:26.512Z
-Stopped at: Completed 15-14-PLAN.md
+Last session: 2026-11-06T12:00:39.841Z
+Stopped at: Completed 15-16-PLAN.md
 Resume file: None
