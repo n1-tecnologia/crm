@@ -211,6 +211,19 @@ Grupo e Flow continuam gravando a Conversa de Grupo e o envio de Flow em
 `state.conversations` (F14-D-05); só a conferência de Canal e de Contato vem das
 tabelas. A criação do Contato de um Participante desconhecido é do 15-17.
 
+**Chat e Agentes nomeiam a Âncora pelas tabelas e soltam as Conversas do Agente nelas (Fase 15, 15-08, 3.4.9, UCR-08).**
+`createChatSession`, `configureChatSession` e `ensaiarAgente` recebem do servidor, como ÚLTIMO
+argumento, o `nomes` (`NomesDasAncoras`, de `@n1/dominio`): o nome do Negócio, Contato, Empresa ou
+Conversa citado pela Âncora, lido de `plataforma.negocios`, `contatos`, `empresas` e `conversas` do
+Espaço da sessão por `LER_DO_CRM_IA` (`gesto-no-crm/ia.ts`) e só se o Membro pode `ler` o recurso
+(`podeNoCrm`; sem permissão a leitura devolve `{}` e a operação recusa sem revelar o nome). O
+`nomes` que o navegador manda só serve à execução local: `NOMES_DO_NAVEGADOR`
+(`esquemas/fragmentos.ts`, até 200 ids, 300 caracteres por nome) valida a forma e a rota o DESCARTA
+(T-15-24). `LeituraDoCrm.ler` recebe o Membro da sessão como 5º parâmetro. `arquivarAgente` e
+`enviarAgenteALixeira` soltam, no mesmo commit (`AO_CONFIRMAR_IA` -> `liberarDoAgente`,
+`repositorios/crm/liberacao-do-agente.ts`), as Conversas de `plataforma.conversas` atribuídas ao
+Agente; o domínio solta as Tarefas e as Conversas de Grupo que ainda moram em `registros`.
+
 **Tarefa conversacional nas tabelas (Fase 14, 14-13 e 14-14, 3.3.1 e 3.3.3 a 3.3.6).**
 `rotas/crm/tarefas-conversacionais.ts` tem cinco rotas (criar e resumo no 14-13;
 trocar o Canal e ligar ou criar o Negócio no 14-14):
