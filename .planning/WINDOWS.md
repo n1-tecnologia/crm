@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 29
+open_count: 31
 waived_count: 2
 fixed_count: 8
-total_count: 39
-last_updated: 2026-11-06T14:14:34.917Z
+total_count: 41
+last_updated: 2026-11-06T14:33:24.919Z
 ---
 
 # Broken Windows Ledger
@@ -54,6 +54,8 @@ last_updated: 2026-11-06T14:14:34.917Z
 | 37 | 15 | deviation | apps/web/src/features/ferramentas/criar-grupo-dialog.tsx |  | 15-22: o link de convite do Novo Grupo nao sai para os convidados: enviarLinkDeConvite abre a Conversa 1:1 por startConversation, que ainda le Canal e Contato do modelo antigo (state.contacts), e o Contato da ficha nova nao esta la; o Grupo nasce e a tela avisa 'o link de convite nao saiu: <nome>: Contato nao encontrado.'. Resolver quando a Conversa 1:1 do convite passar ao modelo novo (Sessao 6 / 3.5.4) | open |  | 2026-11-06T14:14:34.792Z |  |
 | 38 | 15 | deviation | apps/web/src/features/ferramentas/conversa-do-grupo.tsx |  | 15-22: na Conversa do Grupo a Mensagem recebida de um participante mostra 'Participante' em vez do nome: o Identificador da Mensagem (viaIdentifierId) era de um Contato do modelo antigo e o Contato da ficha nova nao tem como casar com ele. Volta a ter nome quando a Mensagem de Grupo passar ao modelo novo (Sessao 6) | open |  | 2026-11-06T14:14:34.854Z |  |
 | 39 | 15 | deviation | apps/web/src/features/ferramentas/flow-popup.tsx |  | 15-22: enviar o Flow a um Contato continua escolhendo uma Conversa 1:1 de state.conversations (enviarFlow recebe conversationId, F14-D-05), nao o seletor de Contatos com WhatsApp que o plano citava; o nome vem de POST /crm/nomes (sem nome, o titulo da Conversa). Um Contato da ficha nova sem Conversa no modelo antigo nao e enviavel. Resolver quando o envio e a resposta de Flow passarem ao modelo novo (Sessao 7) | open |  | 2026-11-06T14:14:34.917Z |  |
+| 40 | 15 | deviation | apps/web/src/features/crm/coluna-do-contato.tsx |  | 15-24: a coluna do Contato da Caixa nao tem mais o ponto verde de janela de resposta aberta, as acoes LinkedIn e Tarefa (virou Instagram e Abrir ficha), o resumo escrito pelo Agente Enriquecedor (mostra a descricao do Contato) nem a temperatura (D-15-06); o painel Tags da Conversa saiu porque plataforma.conversas nao guarda Tags. Se o dono quiser o ponto da janela ou as Tags da Conversa de volta, abrir na api e no dominio | open |  | 2026-11-06T14:33:24.856Z |  |
+| 41 | 15 | deviation | apps/web/src/features/crm/conversa-de-grupo-na-caixa.tsx |  | 15-24: a Conversa de grupo aberta na Caixa (id que a api responde 404 e o store conhece como Conversa de grupo, F14-D-05) ainda resolve, reabre, atribui e manda para a lixeira pelas operacoes antigas do store; so sai quando o Grupo passar ao modelo novo (Sessoes 6 e 7). Nenhuma outra tela da Caixa usa essas operacoes | open |  | 2026-11-06T14:33:24.919Z |  |
 
 ````json
 [
@@ -561,6 +563,32 @@ last_updated: 2026-11-06T14:14:34.917Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-06T14:14:34.917Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 40,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/features/crm/coluna-do-contato.tsx",
+    "line": null,
+    "description": "15-24: a coluna do Contato da Caixa nao tem mais o ponto verde de janela de resposta aberta, as acoes LinkedIn e Tarefa (virou Instagram e Abrir ficha), o resumo escrito pelo Agente Enriquecedor (mostra a descricao do Contato) nem a temperatura (D-15-06); o painel Tags da Conversa saiu porque plataforma.conversas nao guarda Tags. Se o dono quiser o ponto da janela ou as Tags da Conversa de volta, abrir na api e no dominio",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T14:33:24.856Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 41,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/features/crm/conversa-de-grupo-na-caixa.tsx",
+    "line": null,
+    "description": "15-24: a Conversa de grupo aberta na Caixa (id que a api responde 404 e o store conhece como Conversa de grupo, F14-D-05) ainda resolve, reabre, atribui e manda para a lixeira pelas operacoes antigas do store; so sai quando o Grupo passar ao modelo novo (Sessoes 6 e 7). Nenhuma outra tela da Caixa usa essas operacoes",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T14:33:24.919Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }

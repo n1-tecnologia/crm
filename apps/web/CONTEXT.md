@@ -405,3 +405,21 @@ novo não tem Rascunho de IA (D-15-11) nem Mensagem de modelo (`plataforma.canai
 fora da janela de 24 h do WhatsApp oficial o envio fica desligado dizendo por quê. A aba Meet acha as
 Reuniões pelos Vínculos com os Negócios de `useNegocios({ contatoId })`. `seletor-de-canal`,
 `separador-de-canal` e `selo-do-provedor` tipam com `Canal` de `@n1/dominio/crm/canais`.
+
+**A página da Conversa pelo CRM novo (Fase 15, 15-24).** `crm/caixa-de-entrada/[conversa]/page.tsx`
+lê `useConversa(id)` e cada gesto do cabeçalho é uma rota de `/conversas/:id/*`: atribuir
+(`atribuirConversa`), resolver, reabrir, mover e enviar à lixeira (`conversaParaLixeira`). Nada passa
+por `POST /operacoes` nem pelo store, então `plataforma.registros` não muda. Um gesto por vez (um `ref`
+segura o segundo clique) e a recusa da api (resolver o que outra aba já resolveu) vira o aviso da página
+e uma releitura de `/conversas`, para o menu voltar a dizer o estado real. O cabeçalho lê a Empresa de
+`empresaDoContato` (o vínculo vigente `admin` mais antigo, a regra do resumo da Tarefa do 15-05) e o
+Negócio aberto de `useNegocios({ contatoId, situacao: "aberto" })`; a temperatura saiu (D-15-06). A
+coluna do Contato é `coluna-do-contato.tsx` (`useContato`, qualificação do Catálogo por
+`PATCH /contatos/:id`, ações por Canal pelo fio); `contact-card.tsx` só vive para a ficha do Negócio, até
+o 3.5.4. `TarefasDoContato` recebe o `contatoId` do Contato novo. Mover Conversa
+(`move-conversation-dialog.tsx`) busca o destino em `GET /contatos?q=` e chama `moverConversa`; a
+Conversa que colide no destino volta no 409 (`CONVERSA_JA_ABERTA`) e a saída é "resolver no mesmo ato".
+**Grupo (F14-D-05):** um id que a api não conhece (404) e que o store conhece como Conversa de grupo
+abre `conversa-de-grupo-na-caixa.tsx`, a única parte da Caixa que ainda usa as operações antigas de
+Conversa (resolver, reabrir, atribuir, lixeira) — sai com as Sessões 6 e 7; qualquer outro 404 é
+"Conversa não encontrada.", sem ponte de id.
