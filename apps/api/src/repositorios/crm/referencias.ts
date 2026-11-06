@@ -139,6 +139,40 @@ export async function finalidadeDeConsentimentoAtiva(cliente: Cliente, workspace
   return (rowCount ?? 0) > 0;
 }
 
+/** O nome do item `finalidadeConsentimento` ativo do Espaço; `undefined` se não existe, é de outro Espaço ou não está ativo. */
+export async function nomeDaFinalidadeAtiva(cliente: Cliente, workspaceId: string, id: string): Promise<string | undefined> {
+  const { rows } = await cliente.query<{ nome: string | null }>(
+    `select dados->>'name' as nome
+       from plataforma.registros
+      where workspace_id = $1
+        and colecao = 'catalog'
+        and id = $2
+        and dados->>'kind' = 'finalidadeConsentimento'
+        and dados->>'lifecycle' = 'ativo'`,
+    [workspaceId, id],
+  );
+  return rows[0] === undefined ? undefined : (rows[0].nome ?? id);
+}
+
+/**
+ * O nome de exibição de quem é (ou era) Atribuído de uma Conversa, para a Atividade: o Membro
+ * (`displayName`) ou o Agente (`name`) DESTE Espaço, em qualquer estado. `undefined` quando o
+ * registro não existe — quem chama omite o nome em vez de inventar um.
+ */
+export async function nomeDoAtribuido(
+  cliente: Cliente,
+  workspaceId: string,
+  atribuido: { readonly tipo: "membro" | "agente"; readonly id: string },
+): Promise<string | undefined> {
+  const { rows } = await cliente.query<{ nome: string | null }>(
+    `select dados->>$3 as nome
+       from plataforma.registros
+      where workspace_id = $1 and colecao = $4 and id = $2`,
+    [workspaceId, atribuido.id, atribuido.tipo === "membro" ? "displayName" : "name", atribuido.tipo === "membro" ? "members" : "agents"],
+  );
+  return rows[0]?.nome ?? undefined;
+}
+
 /**
  * O id da finalidade "marketing" do Espaço: o item `finalidadeConsentimento` de nome
  * "marketing", sem diferenciar maiúscula — o mesmo critério com que

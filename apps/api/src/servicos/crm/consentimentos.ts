@@ -19,11 +19,14 @@
 
 import type { Pool, PoolClient } from "pg";
 import type { Pagina } from "@n1/dominio/crm/comum";
+import { ACOES_DO_CRM } from "@n1/dominio/crm/atividades";
+import { nomeDeExibicaoDoContato } from "@n1/dominio/crm/contatos";
 import { validarNovoConsentimento, type ConsentimentoDoContato, type NovoConsentimento } from "@n1/dominio/crm/consentimentos";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
+import { registrarAtividade } from "../../repositorios/crm/atividades";
 import { criarRepositorioDeConsentimentosPg } from "../../repositorios/crm/consentimentos";
 import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
-import { finalidadeDeConsentimentoAtiva } from "../../repositorios/crm/referencias";
+import { nomeDaFinalidadeAtiva } from "../../repositorios/crm/referencias";
 import { exigir, type AcessoAoCrm } from "./acesso";
 import { recusa, sucesso, type ResultadoCrm } from "./resultado";
 import { comTransacao } from "./transacao";
@@ -74,7 +77,8 @@ export function criarServicoDeConsentimentos(deps: { readonly pool: () => Pool; 
           });
         }
 
-        if (!(await finalidadeDeConsentimentoAtiva(cliente, membro.workspaceId, novo.finalidadeId))) {
+        const finalidade = await nomeDaFinalidadeAtiva(cliente, membro.workspaceId, novo.finalidadeId);
+        if (finalidade === undefined) {
           return valorInvalido("A finalidade escolhida não existe neste Espaço de Trabalho.", "finalidadeId");
         }
         const consentimentos = criarRepositorioDeConsentimentosPg(cliente);
@@ -86,7 +90,18 @@ export function criarServicoDeConsentimentos(deps: { readonly pool: () => Pool; 
         }
 
         // O registrador é o Membro da sessão, nunca um campo do corpo (T-14-19).
-        return sucesso(await consentimentos.inserir(membro.workspaceId, contatoId, novo, membro.id));
+        const registrado = await consentimentos.inserir(membro.workspaceId, contatoId, novo, membro.id);
+        // A Atividade leva a finalidade, o tipo de Canal e a decisão. A evidência (Mensagem) e o texto
+        // dela são dado pessoal e ficam de fora (T-15-27).
+        await registrarAtividade(cliente, membro.workspaceId, {
+          ator: { kind: "member", id: membro.id },
+          acao: ACOES_DO_CRM.consentimentoRegistrado,
+          objetoTipo: "contact",
+          objetoId: contatoId,
+          objetoNome: nomeDeExibicaoDoContato(contato),
+          detalhe: `${finalidade} (${novo.tipoDeCanal}): ${novo.decisao}`,
+        });
+        return sucesso(registrado);
       });
     },
   };

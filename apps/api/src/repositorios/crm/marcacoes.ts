@@ -19,6 +19,20 @@ export interface RepositorioDeMarcacoes {
   obter(workspaceId: string, conversaId: string, membroId: string): Promise<MarcacaoDaConversa>;
   /** Upsert: só os campos presentes na edição mudam; o outro fica como estava. */
   gravar(workspaceId: string, conversaId: string, membroId: string, edicao: EdicaoDeMarcacao): Promise<MarcacaoDaConversa>;
+  /**
+   * Como `gravar`, mas devolve também o valor de ANTES, lido sob uma trava consultiva da
+   * marcação (Conversa + Membro) que dura até o fim da transação: dois gestos iguais em
+   * paralelo enxergam, um depois do outro, o valor que o outro deixou (15-09, T-15-26).
+   * Só faz sentido dentro de uma transação (`cliente` é o `PoolClient` do gesto).
+   */
+  gravarComAnterior(
+    workspaceId: string,
+    conversaId: string,
+    membroId: string,
+    edicao: EdicaoDeMarcacao,
+  ): Promise<{ readonly anterior: MarcacaoDaConversa; readonly atual: MarcacaoDaConversa }>;
+  /** Há Mensagem recebida da Conversa com `criado_em` em `(desde, ate]`? `desde` nulo = desde sempre. */
+  temRecebidaEntre(workspaceId: string, conversaId: string, desde: string | null, ate: string): Promise<boolean>;
 }
 
 interface LinhaDeMarcacao {
@@ -58,6 +72,28 @@ export function criarRepositorioDeMarcacoesPg(cliente: Pool | PoolClient): Repos
         [workspaceId, conversaId, membroId, edicao.estrela ?? null, edicao.lidaAte ?? null],
       );
       return paraMarcacao(rows[0]!);
+    },
+
+    async gravarComAnterior(workspaceId, conversaId, membroId, edicao) {
+      // A trava é por (Espaço, Conversa, Membro) e solta no commit; o hash de 64 bits é só a chave dela.
+      await cliente.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`marcacao:${workspaceId}:${conversaId}:${membroId}`]);
+      const anterior = await this.obter(workspaceId, conversaId, membroId);
+      const atual = await this.gravar(workspaceId, conversaId, membroId, edicao);
+      return { anterior, atual };
+    },
+
+    async temRecebidaEntre(workspaceId, conversaId, desde, ate) {
+      const { rowCount } = await cliente.query(
+        `select 1
+           from plataforma.mensagens
+          where workspace_id = $1 and conversa_id = $2
+            and direcao = 'recebida'
+            and criado_em > coalesce($3::timestamptz, '-infinity'::timestamptz)
+            and criado_em <= $4::timestamptz
+          limit 1`,
+        [workspaceId, conversaId, desde, ate],
+      );
+      return (rowCount ?? 0) > 0;
     },
   };
 }

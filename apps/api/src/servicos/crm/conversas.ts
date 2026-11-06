@@ -64,7 +64,7 @@ import { criarRepositorioDeConversasPg } from "../../repositorios/crm/conversas"
 import { criarRepositorioDeMarcacoesPg } from "../../repositorios/crm/marcacoes";
 import { criarRepositorioDeMensagensPg } from "../../repositorios/crm/mensagens";
 import { membroAtivo } from "../../repositorios/crm/membros";
-import { agenteAtivo } from "../../repositorios/crm/referencias";
+import { agenteAtivo, nomeDoAtribuido } from "../../repositorios/crm/referencias";
 import { exigir, type AcessoAoCrm } from "./acesso";
 import { recusa, sucesso, type ResultadoCrm } from "./resultado";
 import { comTransacao, type FrasesDeRestricao } from "./transacao";
@@ -131,7 +131,7 @@ function jaAberta(existente: Pick<Conversa, "id" | "titulo">) {
  * linha junto. O ator é o Membro da sessão (T-15-13). `antes`/`depois` são NOMES de exibição
  * ou rótulos; nunca texto de Mensagem nem valor de Identificador (T-15-27).
  */
-async function atividadeDaConversa(
+async function registrarAtividadeDaConversa(
   cliente: PoolClient,
   membro: MembroDaSessao,
   conversa: Pick<Conversa, "id" | "titulo">,
@@ -276,7 +276,7 @@ export function criarServicoDeConversas(deps: { readonly pool: () => Pool; reado
           );
           if (!movida) return conversaNaoEncontrada();
           const origem = travados.get(lida.contatoId);
-          await atividadeDaConversa(cliente, membro, movida, ACOES_DO_CRM.conversaMovida, {
+          await registrarAtividadeDaConversa(cliente, membro, movida, ACOES_DO_CRM.conversaMovida, {
             ...(origem ? { antes: nomeDeExibicaoDoContato(origem) } : {}),
             depois: nomeDeExibicaoDoContato(destino),
           });
@@ -320,6 +320,19 @@ export function criarServicoDeConversas(deps: { readonly pool: () => Pool; reado
 
           const atualizada = await conversas.definirAtribuicao(membro.workspaceId, id, destino);
           if (!atualizada) return conversaNaoEncontrada();
+          // Os nomes são os de exibição; um registro que não achamos fica sem nome em vez de com o id.
+          const nomeAntes = atual.atribuido ? await nomeDoAtribuido(cliente, membro.workspaceId, atual.atribuido) : undefined;
+          const nomeDepois = destino ? await nomeDoAtribuido(cliente, membro.workspaceId, destino) : undefined;
+          await registrarAtividadeDaConversa(
+            cliente,
+            membro,
+            atualizada,
+            destino === null ? ACOES_DO_CRM.atribuidoRemovido : ACOES_DO_CRM.conversaAtribuida,
+            {
+              ...(nomeAntes !== undefined ? { antes: nomeAntes } : {}),
+              ...(nomeDepois !== undefined ? { depois: nomeDepois } : {}),
+            },
+          );
           const canal = await criarRepositorioDeCanaisPg(cliente).obter(membro.workspaceId, atualizada.canalId);
           if (!canal) return canalNaoEncontrado();
           return sucesso({ conversa: atualizada, canal: resumoDoCanal(canal) });
@@ -344,6 +357,7 @@ export function criarServicoDeConversas(deps: { readonly pool: () => Pool; reado
 
           const atualizada = await conversas.enviarParaLixeira(membro.workspaceId, id);
           if (!atualizada) return conversaNaoEncontrada();
+          await registrarAtividadeDaConversa(cliente, membro, atualizada, ACOES_DO_CRM.conversaParaLixeira);
           const canal = await criarRepositorioDeCanaisPg(cliente).obter(membro.workspaceId, atualizada.canalId);
           if (!canal) return canalNaoEncontrado();
           return sucesso({ conversa: atualizada, canal: resumoDoCanal(canal) });
@@ -381,6 +395,7 @@ export function criarServicoDeConversas(deps: { readonly pool: () => Pool; reado
 
           const atualizada = await conversas.restaurar(membro.workspaceId, id);
           if (!atualizada) return conversaNaoEncontrada();
+          await registrarAtividadeDaConversa(cliente, membro, atualizada, ACOES_DO_CRM.conversaRestaurada);
           const canal = await criarRepositorioDeCanaisPg(cliente).obter(membro.workspaceId, atualizada.canalId);
           if (!canal) return canalNaoEncontrado();
           return sucesso({ conversa: atualizada, canal: resumoDoCanal(canal) });
@@ -397,10 +412,24 @@ export function criarServicoDeConversas(deps: { readonly pool: () => Pool; reado
       if (!valida.ok) return valorInvalido(valida);
 
       // O Membro da marcação é SEMPRE o da sessão (T-14-17); a Conversa precisa existir NESTE Espaço.
-      const pool = deps.pool();
-      const conversa = await criarRepositorioDeConversasPg(pool).obter(membro.workspaceId, id);
-      if (!conversa) return conversaNaoEncontrada();
-      return sucesso(await criarRepositorioDeMarcacoesPg(pool).gravar(membro.workspaceId, id, membro.id, valida.value));
+      // A Atividade só nasce quando algo muda de fato (T-15-26): a estrela trocou, ou o `lidaAte`
+      // avançou por cima de Mensagem recebida. Repetir o mesmo valor não grava linha.
+      return comTransacao(deps.pool, async (cliente: PoolClient) => {
+        const conversa = await criarRepositorioDeConversasPg(cliente).obter(membro.workspaceId, id);
+        if (!conversa) return conversaNaoEncontrada();
+        const marcacoes = criarRepositorioDeMarcacoesPg(cliente);
+        const { anterior, atual } = await marcacoes.gravarComAnterior(membro.workspaceId, id, membro.id, valida.value);
+
+        if (atual.estrela !== anterior.estrela) {
+          await registrarAtividadeDaConversa(cliente, membro, conversa, atual.estrela ? ACOES_DO_CRM.estrelaMarcada : ACOES_DO_CRM.estrelaRemovida);
+        }
+        const avancou =
+          atual.lidaAte !== null && (anterior.lidaAte === null || Date.parse(atual.lidaAte) > Date.parse(anterior.lidaAte));
+        if (avancou && (await marcacoes.temRecebidaEntre(membro.workspaceId, id, anterior.lidaAte, atual.lidaAte!))) {
+          await registrarAtividadeDaConversa(cliente, membro, conversa, ACOES_DO_CRM.conversaLida);
+        }
+        return sucesso(atual);
+      });
     },
 
     resolver: (membro, id) => mudarSituacao(membro, id, "resolver"),

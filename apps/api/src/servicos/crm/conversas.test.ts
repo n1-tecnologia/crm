@@ -14,6 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { encerrar, pool } from "../../persistencia/conexao";
 import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
+import { criarRepositorioDeMarcacoesPg } from "../../repositorios/crm/marcacoes";
 import { criarRepositorioDeMensagensPg } from "../../repositorios/crm/mensagens";
 import {
   describeComBanco,
@@ -24,7 +25,7 @@ import {
   semearCanal,
   semearMembro,
 } from "../../testes/banco-crm";
-import { aindaPendenteApos, mesclarSemConfirmar } from "../../testes/duas-conexoes";
+import { abrirTransacaoDeA, aindaPendenteApos, mesclarSemConfirmar } from "../../testes/duas-conexoes";
 import { criarAcessoAoCrmPg } from "./acesso";
 import { abrirConversaNoCliente, criarServicoDeConversas, FRASES_DE_CONVERSAS } from "./conversas";
 import type { ResultadoCrm } from "./resultado";
@@ -953,14 +954,26 @@ describeComBanco("ServicoDeConversas — Postgres local", () => {
       expect(linhas.every((l) => l.ator_id === "mem_ana" && l.antes === null && l.depois === null && l.detalhe === null)).toBe(true);
     });
 
-    it("estrela repetida em paralelo grava uma linha só (a leitura do valor anterior é serializada)", async () => {
+    it("duas estrelas iguais ao mesmo tempo: a segunda espera a primeira e enxerga o valor dela, então só uma linha nasce", async () => {
       const c = await espaco("ativestrelapar");
       const { conversa } = await conversaDeAna(c);
 
-      const resultados = await Promise.all(Array.from({ length: 6 }, () => servico.marcar(c.membro, conversa.id, { estrela: true })));
-      resultados.forEach((r) => valor(r));
+      // A marca a estrela e segura a transação aberta; B (o serviço) pede a mesma estrela no meio.
+      const a = await abrirTransacaoDeA();
+      try {
+        const deA = await criarRepositorioDeMarcacoesPg(a.cliente).gravarComAnterior(c.ws, conversa.id, "mem_ana", { estrela: true });
+        expect(deA.anterior.estrela).toBe(false);
 
-      expect((await atividadesDe(c.ws, conversa.id)).map((l) => l.acao)).toEqual(["Conversa marcada com estrela"]);
+        const b = servico.marcar(c.membro, conversa.id, { estrela: true });
+        expect(await aindaPendenteApos(b, 400)).toBe(true);
+        await a.confirmar();
+        expect(valor(await b)).toEqual({ estrela: true, lidaAte: null });
+      } finally {
+        await a.desfazer();
+      }
+
+      // B leu `estrela = true` como valor anterior (o de A, já confirmado): nada mudou, nenhuma linha.
+      expect(await atividadesDe(c.ws, conversa.id)).toEqual([]);
     });
 
     it("leitura só grava quando o lidaAte avança E há Mensagem recebida entre o anterior e o novo", async () => {

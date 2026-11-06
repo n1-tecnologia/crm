@@ -16,9 +16,11 @@
 import type { Pool, PoolClient } from "pg";
 import type { BloqueiosCrm, EstadoCrm, Pagina } from "@n1/dominio/crm/comum";
 import { LIMITES_CRM, validarCamposAdicionais, validarEnderecos } from "@n1/dominio/crm/comum";
+import { ACOES_DO_CRM } from "@n1/dominio/crm/atividades";
 import {
   fraseDeContatoBloqueado,
   fraseDeIdentificadorEmUso,
+  nomeDeExibicaoDoContato,
   primeiroDoTipo,
   validarContato,
   validarIdentificadorDeContato,
@@ -34,6 +36,7 @@ import {
 } from "@n1/dominio/crm/contatos";
 import type { AcaoCrm } from "@n1/dominio/crm/permissoes";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
+import { registrarAtividade } from "../../repositorios/crm/atividades";
 import { criarRepositorioDeContatosPg, type RepositorioDeContatos } from "../../repositorios/crm/contatos";
 import { empresasEmQueEhUnicoAdmin, listarDoContato } from "../../repositorios/crm/vinculos";
 import { exigir, resolverProprietario, type AcessoAoCrm } from "./acesso";
@@ -448,6 +451,17 @@ export function criarServicoDeContatos(deps: {
           // INV-CON-03: chega principal só se o destino ainda não tem principal desse tipo.
           const principal = !doDestino.some((identificador) => identificador.tipo === alvo.tipo && identificador.principal);
           await repositorio.moverIdentificador(membro.workspaceId, alvo.id, destino.id, principal);
+          // A Atividade fica no Contato de origem, com o NOME do destino. O `detalhe` é só o tipo do
+          // Identificador ("whatsapp"): o valor dele é dado pessoal e não entra na linha (T-15-27).
+          await registrarAtividade(cliente, membro.workspaceId, {
+            ator: { kind: "member", id: membro.id },
+            acao: ACOES_DO_CRM.identificadorTransferido,
+            objetoTipo: "contact",
+            objetoId: contato.id,
+            objetoNome: nomeDeExibicaoDoContato(contato),
+            depois: nomeDeExibicaoDoContato(destino),
+            detalhe: alvo.tipo,
+          });
           if (alvo.principal) {
             // Na origem, o mesmo tratamento de `removerIdentificador`: promove o mais antigo do mesmo tipo.
             const proximo = restantes.find((identificador) => identificador.tipo === alvo.tipo);
