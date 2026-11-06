@@ -139,6 +139,36 @@ describe("rotas de Contatos — serviço falso, sem banco", () => {
     expect(resposta.json()).toEqual({ ok: true, itens: [resumo], total: 1 });
   });
 
+  it("(l) GET /contatos?comIdentificador=whatsapp repassa o tipo ao serviço (3.4.8)", async () => {
+    const { servico, chamadas } = novoFalso({ listar: sucesso({ itens: [resumo], total: 1 }) });
+    const resposta = await appCom(servico).inject({
+      method: "GET",
+      url: "/contatos?comIdentificador=whatsapp",
+      headers: AUTORIZACAO,
+    });
+    expect(resposta.statusCode).toBe(200);
+    expect(chamadas[0]?.[0]).toBe("listar");
+    expect(chamadas[0]?.[2]).toMatchObject({ estado: "ativo", comIdentificador: "whatsapp" });
+  });
+
+  it("(l) GET /contatos sem comIdentificador não manda o filtro ao serviço", async () => {
+    const { servico, chamadas } = novoFalso({ listar: sucesso({ itens: [resumo], total: 1 }) });
+    await appCom(servico).inject({ method: "GET", url: "/contatos", headers: AUTORIZACAO });
+    expect(chamadas[0]?.[2]).not.toHaveProperty("comIdentificador");
+  });
+
+  it("(l) comIdentificador=fax responde 400 sem chegar ao serviço (T-15-90)", async () => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({
+      method: "GET",
+      url: "/contatos?comIdentificador=fax",
+      headers: AUTORIZACAO,
+    });
+    expect(resposta.statusCode).toBe(400);
+    expect(resposta.json().ok).toBe(false);
+    expect(chamadas).toHaveLength(0);
+  });
+
   it("(a) GET /contatos/c1 devolve { ok, dados } do serviço", async () => {
     const { servico, chamadas } = novoFalso();
     const resposta = await appCom(servico).inject({ method: "GET", url: "/contatos/c1", headers: AUTORIZACAO });
@@ -594,5 +624,51 @@ describeComBanco("rotas de Contatos — serviço real, Postgres local", () => {
       codigo: "IDENTIFICADOR_EM_USO",
       bloqueios: { contatos: [{ id: dono.json().dados.contato.id, nome: "Dona do E-mail" }] },
     });
+  });
+
+  it("(l) GET /contatos?comIdentificador=whatsapp lista só quem tem WhatsApp, no Espaço da sessão (3.4.8, T-15-91)", async () => {
+    const criar = (appDe: typeof appA, nome: string, identificadores: unknown[]) =>
+      appDe().inject({ method: "POST", url: "/contatos", headers: AUTORIZACAO, payload: { nome, identificadores } });
+    const comZap = await criar(appA, "Zap Filtro", [{ tipo: "whatsapp", valor: "5511999990001" }]);
+    const soEmail = await criar(appA, "Email Filtro", [{ tipo: "email", valor: "so-email-filtro@x.com" }]);
+    const zapDeB = await criar(appB, "Zap de B", [{ tipo: "whatsapp", valor: "5511999990002" }]);
+    expect([comZap.statusCode, soEmail.statusCode, zapDeB.statusCode]).toEqual([201, 201, 201]);
+    const idZap: string = comZap.json().dados.contato.id;
+    const idEmail: string = soEmail.json().dados.contato.id;
+
+    const filtrada = await appA().inject({
+      method: "GET",
+      url: "/contatos?comIdentificador=whatsapp&limite=100",
+      headers: AUTORIZACAO,
+    });
+    expect(filtrada.statusCode).toBe(200);
+    const idsFiltrados = (filtrada.json().itens as { id: string }[]).map((i) => i.id);
+    expect(idsFiltrados).toContain(idZap);
+    expect(idsFiltrados).not.toContain(idEmail);
+    expect(filtrada.json().total).toBe(idsFiltrados.length);
+    // Nenhum Contato do Espaço B vaza pelo filtro.
+    expect((filtrada.json().itens as { nomeDeExibicao: string }[]).map((i) => i.nomeDeExibicao)).not.toContain("Zap de B");
+
+    const semFiltro = await appA().inject({ method: "GET", url: "/contatos?limite=100", headers: AUTORIZACAO });
+    const idsTodos = (semFiltro.json().itens as { id: string }[]).map((i) => i.id);
+    expect(idsTodos).toEqual(expect.arrayContaining([idZap, idEmail]));
+  });
+
+  it("(l) comIdentificador respeita o estado: Contato com WhatsApp na lixeira não aparece entre os ativos", async () => {
+    const app = appA();
+    const criado = await app.inject({
+      method: "POST",
+      url: "/contatos",
+      headers: AUTORIZACAO,
+      payload: { nome: "Zap na Lixeira", identificadores: [{ tipo: "whatsapp", valor: "5511999990003" }] },
+    });
+    const id: string = criado.json().dados.contato.id;
+    expect((await app.inject({ method: "DELETE", url: `/contatos/${id}`, headers: AUTORIZACAO })).statusCode).toBe(200);
+    const ativos = await app.inject({
+      method: "GET",
+      url: "/contatos?comIdentificador=whatsapp&limite=100",
+      headers: AUTORIZACAO,
+    });
+    expect((ativos.json().itens as { id: string }[]).map((i) => i.id)).not.toContain(id);
   });
 });
