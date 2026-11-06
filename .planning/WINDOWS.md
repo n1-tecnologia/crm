@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 27
+open_count: 29
 waived_count: 2
-fixed_count: 7
-total_count: 36
-last_updated: 2026-11-06T13:55:39.779Z
+fixed_count: 8
+total_count: 39
+last_updated: 2026-11-06T14:14:34.917Z
 ---
 
 # Broken Windows Ledger
@@ -31,7 +31,7 @@ last_updated: 2026-11-06T13:55:39.779Z
 | 14 | 15 | deviation | apps/web/src/app/(shell)/configuracoes/membros/page.tsx |  | 15-36: o dialogo de remover Membro e a pagina do Membro filtram o tipo conversation de previewSuccession (so contam as Conversas das tabelas); as Conversas de Grupo do modelo antigo agora passam ao Sucessor em removeMember mas nao aparecem na contagem ate o 3.5.4 tirar o modelo antigo | open |  | 2026-11-06T10:20:00.602Z |  |
 | 15 | 15 | deviation | apps/api/src/repositorios/crm/atividades.ts |  | 15-37: a paginacao de GET /atividades por cursor de tempo (ate = at da ultima linha, ISO em ms, exclusivo) pode pular linhas gravadas no mesmo instante na fronteira da pagina (now() e da transacao: um gesto com varias Atividades compartilha o em; at perde os microssegundos). Aceito no desenho do plano; trocar por cursor composto (em, id) se a Auditoria (15-09) paginar paginas cheias | fixed |  | 2026-11-06T10:29:12.443Z | 2026-11-06T12:22:04.811Z |
 | 16 | 15 | deviation | apps/web/src/features/ia/automacoes/editor-de-automacao.tsx |  | 15-39: ate o 15-21 passar os Funis de useFunis, inoperante() na tela da IA mostra Automacao de escopo Funil como 'escopo eliminado (Funil)' e a aplicacao otimista de criarAutomacao com escopo Funil recusa localmente; o servidor confere certo pela tabela. Tambem escopo na lixeira vira 'escopo eliminado' em vez de 'escopo na lixeira' | fixed |  | 2026-11-06T10:41:35.401Z | 2026-11-06T13:55:39.779Z |
-| 17 | 15 | deviation | apps/web/src/features/ferramentas/pedidos-de-entrada.tsx |  | 15-17: ate o 15-22 mandar crm, a simulacao local de Pedido de Entrada e de clique de Captacao (e a importacao de Grupos) no navegador recusa com 'Contato do participante nao resolvido.' (ou 'Canal nao encontrado.'); o servidor so resolve e cria o Contato do Participante em importarGruposDoCanal, os eventos do provedor ainda nao tem rota em POST /operacoes | open |  | 2026-11-06T10:56:35.691Z |  |
+| 17 | 15 | deviation | apps/web/src/features/ferramentas/pedidos-de-entrada.tsx |  | 15-17: ate o 15-22 mandar crm, a simulacao local de Pedido de Entrada e de clique de Captacao (e a importacao de Grupos) no navegador recusa com 'Contato do participante nao resolvido.' (ou 'Canal nao encontrado.'); o servidor so resolve e cria o Contato do Participante em importarGruposDoCanal, os eventos do provedor ainda nao tem rota em POST /operacoes | fixed |  | 2026-11-06T10:56:35.691Z | 2026-11-06T14:14:34.729Z |
 | 18 | 15 | deviation | apps/web/src/features/crm/inbox-columns.tsx |  | 15-11: Sem Atribuido, Sem Fila e Adiadas ainda nao sao filtros de GET /conversas: a Caixa pede a pagina inteira (200) e recorta na tela, entao o contador e o 'de N' desses recortes sao os da pagina, nao os do Espaco; 'Mostrar mais' tambem para em 200. Trocar por filtros na api (semAtribuido, semFila, adiadas) se um Espaco passar de 200 Conversas ativas | open |  | 2026-11-06T11:12:17.121Z |  |
 | 19 | 15 | deviation | apps/web/src/features/crm/inbox-columns.tsx |  | 15-11: a linha da Conversa na lista nao mostra mais a previa da ultima Mensagem (ConversaNaLista nao traz o texto dela); mostra o titulo quando difere do nome do Contato. Acrescentar a ultima Mensagem ao resumo da lista (mesma consulta de ultimaRecebidaEm) se o dono quiser a previa de volta | open |  | 2026-11-06T11:12:17.184Z |  |
 | 20 | 15 | deviation | apps/web/src/app/(shell)/crm/caixa-de-entrada/configuracoes/canais/[canal]/page.tsx |  | 15-12: a ficha e o cartao do Canal ja nao mostram Mensagens de modelo nem 'N modelo(s) aprovado(s)': plataforma.canais nao guarda modelos (so o Canal do seed tinha) e o Canal do seed ficou sem ficha (a operacao antiga configurarCanal saiu). O Proprietario padrao de Contato do Canal fica so leitura porque PATCH /canais/:id nao aceita esse campo. Se o dono quiser editar o Proprietario padrao ou sincronizar modelos, abrir campo na api e no dominio | open |  | 2026-11-06T11:29:14.941Z |  |
@@ -51,6 +51,9 @@ last_updated: 2026-11-06T13:55:39.779Z
 | 34 | 15 | deviation | apps/web/src/features/inicio/panorama-do-robo.ts |  | 15-18: GET /crm/inicio/panorama, /leads-a-atender e /estatisticas e os hooks usePanoramaDoCrm, useLeadsAAtender e useEstatisticasDoCrm existem, mas nenhuma tela os chama ainda: o panorama do robo do Inicio (linha 24, 15-14), o painel de Leads e as estatisticas seguem no store ate o 15-23 trocar as telas. Nao ha mudanca visivel neste plano | open |  | 2026-11-06T13:24:05.443Z |  |
 | 35 | 15 | deviation | packages/dominio/src/operations/automations.ts |  | 15-19: as Automacoes de Contas a receber ({{cliente}}, {{donoDoCliente}}, mentionClientOwner) ainda leem nome e dono do cliente em state.contacts (contatoDoCliente); clienteDe agora so devolve a referencia. Uma serie criada para um Contato de plataforma.contatos (id fora do modelo antigo) faz o comentario de cobranca dizer 'o cliente' e nao mencionar o dono dele; as contas do modelo antigo seguem como antes. automations.ts entrou na lista CONGELADOS do sem-crm-antigo do dominio. Resolver injetando nome e dono por OpcoesDaAgenda (como cnpjPorEmpresa) lidos das tabelas, antes do 3.5.4 tirar state.contacts | open |  | 2026-11-06T13:42:09.740Z |  |
 | 36 | 15 | deviation | apps/web/src/features/estrutura/financeiro/use-nomes-dos-clientes.ts |  | 15-19: o nome do cliente de Contas a receber vem de POST /crm/nomes; sem nome (carregando, Membro suspenso por WR-03, Papel sem ler Contato) a lista, o cartao e a busca mostram 'Cliente'; o cartao financeiro faz uma chamada por cartao visivel; a serie so aceita Contato como cliente (Empresa nao, o input da operacao tem so contactId); createReceivableSeries ganhou o 4o argumento clientes (opcional, vazio recusa) | open |  | 2026-11-06T13:42:09.807Z |  |
+| 37 | 15 | deviation | apps/web/src/features/ferramentas/criar-grupo-dialog.tsx |  | 15-22: o link de convite do Novo Grupo nao sai para os convidados: enviarLinkDeConvite abre a Conversa 1:1 por startConversation, que ainda le Canal e Contato do modelo antigo (state.contacts), e o Contato da ficha nova nao esta la; o Grupo nasce e a tela avisa 'o link de convite nao saiu: <nome>: Contato nao encontrado.'. Resolver quando a Conversa 1:1 do convite passar ao modelo novo (Sessao 6 / 3.5.4) | open |  | 2026-11-06T14:14:34.792Z |  |
+| 38 | 15 | deviation | apps/web/src/features/ferramentas/conversa-do-grupo.tsx |  | 15-22: na Conversa do Grupo a Mensagem recebida de um participante mostra 'Participante' em vez do nome: o Identificador da Mensagem (viaIdentifierId) era de um Contato do modelo antigo e o Contato da ficha nova nao tem como casar com ele. Volta a ter nome quando a Mensagem de Grupo passar ao modelo novo (Sessao 6) | open |  | 2026-11-06T14:14:34.854Z |  |
+| 39 | 15 | deviation | apps/web/src/features/ferramentas/flow-popup.tsx |  | 15-22: enviar o Flow a um Contato continua escolhendo uma Conversa 1:1 de state.conversations (enviarFlow recebe conversationId, F14-D-05), nao o seletor de Contatos com WhatsApp que o plano citava; o nome vem de POST /crm/nomes (sem nome, o titulo da Conversa). Um Contato da ficha nova sem Conversa no modelo antigo nao e enviavel. Resolver quando o envio e a resposta de Flow passarem ao modelo novo (Sessao 7) | open |  | 2026-11-06T14:14:34.917Z |  |
 
 ````json
 [
@@ -269,10 +272,10 @@ last_updated: 2026-11-06T13:55:39.779Z
     "file": "apps/web/src/features/ferramentas/pedidos-de-entrada.tsx",
     "line": null,
     "description": "15-17: ate o 15-22 mandar crm, a simulacao local de Pedido de Entrada e de clique de Captacao (e a importacao de Grupos) no navegador recusa com 'Contato do participante nao resolvido.' (ou 'Canal nao encontrado.'); o servidor so resolve e cria o Contato do Participante em importarGruposDoCanal, os eventos do provedor ainda nao tem rota em POST /operacoes",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-06T10:56:35.691Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-06T14:14:34.729Z",
     "milestone": "v1.0"
   },
   {
@@ -519,6 +522,45 @@ last_updated: 2026-11-06T13:55:39.779Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-06T13:42:09.807Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 37,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/features/ferramentas/criar-grupo-dialog.tsx",
+    "line": null,
+    "description": "15-22: o link de convite do Novo Grupo nao sai para os convidados: enviarLinkDeConvite abre a Conversa 1:1 por startConversation, que ainda le Canal e Contato do modelo antigo (state.contacts), e o Contato da ficha nova nao esta la; o Grupo nasce e a tela avisa 'o link de convite nao saiu: <nome>: Contato nao encontrado.'. Resolver quando a Conversa 1:1 do convite passar ao modelo novo (Sessao 6 / 3.5.4)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T14:14:34.792Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 38,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/features/ferramentas/conversa-do-grupo.tsx",
+    "line": null,
+    "description": "15-22: na Conversa do Grupo a Mensagem recebida de um participante mostra 'Participante' em vez do nome: o Identificador da Mensagem (viaIdentifierId) era de um Contato do modelo antigo e o Contato da ficha nova nao tem como casar com ele. Volta a ter nome quando a Mensagem de Grupo passar ao modelo novo (Sessao 6)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T14:14:34.854Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 39,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/features/ferramentas/flow-popup.tsx",
+    "line": null,
+    "description": "15-22: enviar o Flow a um Contato continua escolhendo uma Conversa 1:1 de state.conversations (enviarFlow recebe conversationId, F14-D-05), nao o seletor de Contatos com WhatsApp que o plano citava; o nome vem de POST /crm/nomes (sem nome, o titulo da Conversa). Um Contato da ficha nova sem Conversa no modelo antigo nao e enviavel. Resolver quando o envio e a resposta de Flow passarem ao modelo novo (Sessao 7)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T14:14:34.917Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }
