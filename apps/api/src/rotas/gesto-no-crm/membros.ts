@@ -8,7 +8,8 @@
  * valida o Sucessor quando o Membro ainda não tinha saído; repetir a remoção
  * devolve `ok` sem olhar o Sucessor, então aqui ele precisa ser Membro ATIVO
  * deste Espaço, senão nada passa. Uma operação com `aoConfirmar` sai do caminho de
- * duas idas da Fase 13 (paga mais idas ao banco): aceito, é um gesto raro.
+ * duas idas da Fase 13 (paga mais idas ao banco): aceito, é um gesto raro. Cada registro que
+ * passa deixa o seu Registro de Atividade no mesmo commit (15-09, D-15-08).
  */
 
 import { passarAoSucessor } from "../../repositorios/crm/sucessao";
@@ -18,6 +19,7 @@ export const AO_CONFIRMAR_DOS_MEMBROS: TabelaDeConfirmacoes = {
   removeMember: async (cliente, args, membro, state) => {
     const sucessorId = String(args[1]);
     if (!state.members.some((m) => m.id === sucessorId && m.state === "ativo")) return;
-    await passarAoSucessor(cliente, membro.workspaceId, String(args[0]), sucessorId);
+    // O ator das Atividades é quem removeu (a sessão), nunca o Membro removido.
+    await passarAoSucessor(cliente, membro.workspaceId, String(args[0]), sucessorId, { kind: "member", id: membro.id });
   },
 };
