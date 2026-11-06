@@ -385,7 +385,7 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
                   medicao = m;
                 },
                 ...(leituraDoCrm
-                  ? { lerDoCrm: (cliente: PoolClient, state: DataState) => leituraDoCrm.ler(cliente, request.membro.workspaceId, args, state) }
+                  ? { lerDoCrm: (cliente: PoolClient, state: DataState) => leituraDoCrm.ler(cliente, request.membro.workspaceId, args, state, request.membro) }
                   : {}),
                 ...(aoConfirmar
                   ? { aoConfirmar: (cliente: PoolClient, _valor: unknown, state: DataState, lido: LidoDoCrm | undefined) => aoConfirmar(cliente, args, request.membro, state, lido) }

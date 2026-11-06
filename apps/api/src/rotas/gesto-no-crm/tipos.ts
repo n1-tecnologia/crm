@@ -72,7 +72,12 @@ export interface LidoDoCrm {
 export interface LeituraDoCrm {
   /** O índice em `args` que recebe o que o servidor leu. */
   readonly posicao: number;
-  ler(cliente: PoolClient, workspaceId: string, args: readonly unknown[], state: DataState): Promise<LidoDoCrm>;
+  /**
+   * `membro` é o Membro da sessão: a leitura que revela dado do CRM (o nome de uma Âncora da
+   * IA) confere `podeNoCrm(..., "ler", ...)` com ele ANTES de ler. As leituras que não precisam
+   * dele o ignoram.
+   */
+  ler(cliente: PoolClient, workspaceId: string, args: readonly unknown[], state: DataState, membro: MembroDaSessao): Promise<LidoDoCrm>;
   argumento(lido: LidoDoCrm): unknown;
 }
 

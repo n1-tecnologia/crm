@@ -114,6 +114,17 @@ export const CRM_DO_NAVEGADOR = z
   })
   .passthrough() as unknown as z.ZodType<CrmDasFerramentas>;
 
+/**
+ * O `nomes` que o navegador PODE mandar como ÚLTIMO argumento de `createChatSession`,
+ * `configureChatSession` e `ensaiarAgente`, só para a execução local: o servidor o
+ * DESCARTA e troca a posição pelo nome que leu de `plataforma.negocios`, `contatos`,
+ * `empresas` e `conversas` (`gesto-no-crm/ia.ts`, T-15-24). Aqui só a forma de
+ * transporte, com teto de 200 ids e de 300 caracteres por nome.
+ */
+export const NOMES_DO_NAVEGADOR = z
+  .record(ID, z.string().max(300))
+  .refine((nomes) => Object.keys(nomes).length <= 200, { message: "nomes: no máximo 200 ids." });
+
 // ── Portão de enum bidirecional — falta ou sobra de membro não compila ──
 
 type _EnumsCompletos = Confere<

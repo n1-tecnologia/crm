@@ -52,6 +52,8 @@ describe("esquemas/ia — a forma dos args de ai.ts", () => {
       ["configureChatSession", ["cht1", { folderId: null }]],
       ["configureChatSession", ["cht1", { anchor: null, skillId: "s1" }]],
       ["configureChatSession", ["cht1", {}]],
+      ["createChatSession", [{ title: "t", anchor: { type: "deal", id: "neg1" } }, { neg1: "Proposta" }]],
+      ["configureChatSession", ["cht1", { anchor: { type: "contact", id: "con1" } }, { con1: "Maria" }]],
       ["sendChatMessage", ["cht1", "oi"]],
       ["solicitarAprovacao", [{ taskId: "tsk1", approverMemberId: "mem1", threadCommentId: "cmt1" }]],
       [
@@ -78,6 +80,9 @@ describe("esquemas/ia — a forma dos args de ai.ts", () => {
       ).success,
     ).toBe(false);
     expect(IA.configureChatSession.safeParse(viaJson(["cht1", { folderId: 3 }])).success).toBe(false);
+    expect(IA.createChatSession.safeParse(viaJson([{ title: "t" }, { neg1: 1 }])).success).toBe(false);
+    const demais = Object.fromEntries(Array.from({ length: 201 }, (_, i) => [`id${i}`, "n"]));
+    expect(IA.createChatSession.safeParse(viaJson([{ title: "t" }, demais])).success).toBe(false);
     expect(IA.sendChatMessage.safeParse(viaJson(["cht1", {}])).success).toBe(false);
     expect(
       IA.decideProcessApproval.safeParse(viaJson(["apr1", "talvez", { source: "click" }])).success,
