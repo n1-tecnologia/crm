@@ -9,7 +9,8 @@
  *   1. `lerDoCrm`     — decide o plano (recusa antes de escrever, se for o caso), copia para
  *                       `registros_crm_antigo` e CONFERE a cópia (lança se não bate);
  *   2. `operacao`     — pura; NÃO toca nas nove coleções antigas, só tira a Pasta "Meus negócios" (D-15-14);
- *   3. `aoConfirmar`  — insere o Funil (no `--migrar --funil=migrar`) e apaga de `registros` por SQL.
+ *   3. `aoConfirmar`  — insere o Funil e, em seguida, o plano do mapeador de entidades (no `--migrar`), e só
+ *                       então apaga de `registros` por SQL.
  *
  * Toda leitura das coleções antigas é por SQL em `plataforma.registros`, tipada por
  * `formatos-antigos.ts`, nunca pelo `state`; assim o script sobrevive à remoção do modelo antigo (3.5.4)
@@ -26,6 +27,7 @@ import { lerCrmNovoDoEspaco, lerLinhasAntigas } from "./crm-novo";
 import {
   contarReferenciasAoFunil,
   type DecisaoDeFunil,
+  etapasDosFunisAInserir,
   type FunilNaoMigrado,
   inserirFunis,
   lerFunilPreferido,
@@ -45,7 +47,7 @@ import {
   copiarParaRegistrosCrmAntigo,
 } from "./guardar";
 import { type Inseridos, inserirPlano } from "./inserir";
-import { type PlanoDeMigracao, planejarMigracao } from "./mapeador";
+import { contarLinhasDoPlano, type PlanoDeMigracao, planejarMigracao } from "./mapeador";
 import type { NaoMigrado } from "./nao-migrados";
 import { chavesDaPasta, type PlanoDaPasta, planejarPasta, removerPasta } from "./pasta-meus-negocios";
 import { type EntradaDoRelatorio, type FunilDoRelatorio, montarRelatorio, montarResumoDeEscrita } from "./relatorio";
@@ -95,7 +97,6 @@ export interface ResultadoDeEscrita {
 /** A marca que `operacao` devolve quando não há nada a fazer: `executar()` desfaz sem subir a revisão. */
 const NADA_A_FAZER = "nada a fazer";
 
-const RECUSA_ALEM_DO_FUNIL = "Este Espaço tem registros do CRM antigo além do Funil; use --guardar.";
 const RECUSA_SEM_DECISAO_DO_FUNIL =
   "Este Espaço tem Funil do CRM antigo: diga o que fazer com ele com --funil=migrar (leva o Funil e as Etapas para o CRM novo) ou --funil=guardar (só na cópia; o Espaço fica sem Funil).";
 
@@ -120,8 +121,6 @@ const SEM_PASTA: PlanoDaPasta = { existe: false, nome: undefined, listas: [], re
 const SEM_FUNIS: PlanoDeFunis = { aInserir: [], naoMigrados: [] };
 const SEM_ENTIDADES: PlanoDeMigracao = planejarMigracao([]);
 
-/** O que o mapeador já cobre; o que não está aqui o `--migrar` ainda recusa (a recusa sai por inteiro na Task 3). */
-const COLECOES_COBERTAS_PELO_MAPEADOR: readonly string[] = ["funnels", "contacts"];
 
 /** As linhas que se copiam: as nove coleções INTEIRAS (as Conversas de Grupo também) e as linhas da Pasta. */
 function alvoDeCopiar(extras: readonly ChaveDeRegistro[]): Alvo {
@@ -182,24 +181,20 @@ async function escrever(espaco: string, modo: Modo, opcoes: OpcoesDeEscrita): Pr
         let funis = SEM_FUNIS;
         let entidades = SEM_ENTIDADES;
 
-        // 1) As recusas vêm ANTES de qualquer escrita (nem a cópia): o `--migrar` só cobre o que o corte do
-        //    `ws_n1` precisa, o Funil. Contatos, Empresas, Negócios, Canais e Conversas comuns ficam com o 15-28.
+        // 1) A recusa vem ANTES de qualquer escrita (nem a cópia): com Funil antigo o dono precisa dizer o que
+        //    fazer com ele. O resto do CRM antigo (Contatos, Empresas, Negócios, Canais, Conversas) passa pelo
+        //    mapeador, que manda ao relatório o que o banco recusaria (15-28).
         let recusa: string | undefined;
         if (modo === "migrar") {
-          const alemDoFunil = await contarDoAlvo(cliente, espaco, {
-            colecoes: COLECOES_SEM_GRUPO.filter((c) => !COLECOES_COBERTAS_PELO_MAPEADOR.includes(c)),
-            conversasSemGrupo: true,
-            extras: [],
-          });
           const funisAntigos = await lerFunisAntigos(cliente, espaco);
-          if (soma(alemDoFunil) > 0) recusa = RECUSA_ALEM_DO_FUNIL;
-          else if (funisAntigos.length > 0 && !opcoes.funil) recusa = RECUSA_SEM_DECISAO_DO_FUNIL;
-          else if (funisAntigos.length > 0 && opcoes.funil) {
-            funis = planejarFunis(funisAntigos, await lerFunisDoCrmNovo(cliente, espaco), opcoes.funil, await lerFunilPreferido(cliente, espaco));
-          }
-          if (!recusa) {
+          if (funisAntigos.length > 0 && !opcoes.funil) {
+            recusa = RECUSA_SEM_DECISAO_DO_FUNIL;
+          } else {
+            if (funisAntigos.length > 0 && opcoes.funil) {
+              funis = planejarFunis(funisAntigos, await lerFunisDoCrmNovo(cliente, espaco), opcoes.funil, await lerFunilPreferido(cliente, espaco));
+            }
             const antigas = await lerLinhasAntigas(cliente, espaco);
-            entidades = planejarMigracao(antigas, await lerCrmNovoDoEspaco(cliente, espaco, antigas));
+            entidades = planejarMigracao(antigas, await lerCrmNovoDoEspaco(cliente, espaco, antigas), { funisMigrados: etapasDosFunisAInserir(funis) });
           }
         }
         if (recusa) {
@@ -255,6 +250,7 @@ async function escrever(espaco: string, modo: Modo, opcoes: OpcoesDeEscrita): Pr
     conversasDeGrupo: plano?.conversasDeGrupo ?? 0,
     funis: { migrados: funisInseridos.funis, etapas: funisInseridos.etapas, naoMigrados: funisNaoMigrados },
     pasta,
+    ...(modo === "migrar" && !nadaAFazer ? { entidades: { porTabela: entidadesInseridas, naoMigrados: plano?.entidades.naoMigrados ?? [] } } : {}),
   });
   return {
     espaco,
@@ -282,9 +278,10 @@ export function guardarCrmAntigo(espaco: string, opcoes: OpcoesDeEscrita = {}): 
 }
 
 /**
- * `--migrar`: faz o `--guardar` e leva o Funil para o CRM novo conforme `--funil` (D-15-04). Recusa, antes
- * de escrever, o Espaço com Contatos, Empresas, Negócios, Canais ou Conversas comuns (esse mapeador é o
- * plano 15-28), e o Espaço com Funil antigo sem `--funil`.
+ * `--migrar`: faz o `--guardar`, leva o Funil para o CRM novo conforme `--funil` (D-15-04) e, na mesma
+ * transação, Contatos, Empresas, vínculos, Negócios, Canais, Conversas e Mensagens (15-28). O que o banco
+ * novo recusaria vai para o relatório de não migrados em vez de derrubar o Espaço. Recusa, antes de
+ * escrever, o Espaço com Funil antigo sem `--funil`.
  */
 export function migrarCrmAntigo(espaco: string, opcoes: OpcoesDeEscrita = {}): Promise<ResultadoDeEscrita> {
   return escrever(espaco, "migrar", opcoes);
@@ -323,6 +320,10 @@ export async function relatorioSeco(espaco: string): Promise<string> {
       });
     }
 
+    // O que o `--migrar` levaria às tabelas novas e o que deixaria de fora (a mesma conta, sem escrever).
+    const antigas = await lerLinhasAntigas(cliente, espaco);
+    const previsto = planejarMigracao(antigas, await lerCrmNovoDoEspaco(cliente, espaco, antigas), { funisMigrados: etapasDosFunisAInserir(plano) });
+
     const entrada: EntradaDoRelatorio = {
       espaco,
       noRegistros: COLECOES_DO_CRM_ANTIGO.map((colecao) => ({ colecao, linhas: porColecao[colecao] ?? 0 })),
@@ -331,6 +332,7 @@ export async function relatorioSeco(espaco: string): Promise<string> {
       funis,
       funisNoCrmNovo: { total: funisNovos.length, temPadrao: funisNovos.some((f) => f.padrao) },
       pasta: planejarPasta(state),
+      entidades: { porTabela: contarLinhasDoPlano(previsto), naoMigrados: previsto.naoMigrados },
     };
     return montarRelatorio(entrada);
   });

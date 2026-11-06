@@ -186,6 +186,11 @@ export function planejarFunis(
   return { aInserir: candidatos.map((c) => ({ ...c, padrao: c.id === escolhido?.id })), naoMigrados };
 }
 
+/** Os Funis que PASSAM a existir no CRM novo e as Etapas (ids ANTIGOS) de cada um: o que o mapeador de Negócios consulta. */
+export function etapasDosFunisAInserir(plano: PlanoDeFunis): Map<string, ReadonlySet<string>> {
+  return new Map(plano.aInserir.map((funil) => [funil.id, new Set(funil.etapas.map((etapa) => etapa.idAntigo))]));
+}
+
 /** Os Funis do CRM antigo do Espaço, por SQL, na ordem em que estão em `registros`. */
 export async function lerFunisAntigos(cliente: PoolClient, espaco: string): Promise<FunilAntigo[]> {
   const resultado = await cliente.query<{ dados: FunilAntigo }>(

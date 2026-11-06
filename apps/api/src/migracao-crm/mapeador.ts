@@ -1200,6 +1200,11 @@ function mapearMensagens(
   }
 }
 
+/** Quantas linhas o plano leva a cada tabela (as que ficam vazias também aparecem, com zero). */
+export function contarLinhasDoPlano(plano: PlanoDeMigracao): Record<string, number> {
+  return Object.fromEntries(Object.entries(plano.linhasPorTabela).map(([tabela, linhas]) => [tabela, (linhas as readonly unknown[]).length]));
+}
+
 /**
  * Decide o que cada linha do CRM antigo vira. `linhasAntigas` são as linhas de `plataforma.registros` (ou da
  * fixture) das nove coleções; as Conversas de Grupo ficam em `registros` e não entram aqui (F14-D-05).

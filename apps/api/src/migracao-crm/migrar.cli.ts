@@ -5,8 +5,9 @@
  *
  *   --seco        relatório do Espaço e do que cada modo faria; a sessão é só de leitura, nada é escrito.
  *   --guardar     copia o CRM antigo para registros_crm_antigo, confere e apaga de registros (D-15-01).
- *   --migrar      faz o --guardar e leva o Funil ao CRM novo; com Funil antigo exige --funil=migrar ou
- *                 --funil=guardar (D-15-04).
+ *   --migrar      faz o --guardar e leva ao CRM novo o Funil e as entidades que cabem (Contatos, Empresas,
+ *                 Negócios, Canais, Conversas, Mensagens), com o relatório do que ficou de fora; com Funil
+ *                 antigo exige --funil=migrar ou --funil=guardar (D-15-04).
  *   --verificar   confere, sem escrever, a pós-condição; sai com 1 se algo não bate.
  *
  * `--espaco` é obrigatório; não existe "todos os Espaços". Antes de qualquer escrita o script imprime o

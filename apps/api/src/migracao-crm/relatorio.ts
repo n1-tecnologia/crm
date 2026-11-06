@@ -130,13 +130,6 @@ function linhasQueSaem(entrada: EntradaDoRelatorio): number {
   return somar(entrada.noRegistros, (c) => (c.colecao === COLECAO_DE_CONVERSAS ? c.linhas - entrada.conversasDeGrupo : c.linhas));
 }
 
-/** O que `--migrar` recusaria: registros do CRM antigo que não são Funil nem Grupo. */
-function linhasAlemDoFunil(entrada: EntradaDoRelatorio): number {
-  return somar(entrada.noRegistros, (c) =>
-    c.colecao === "funnels" ? 0 : c.colecao === COLECAO_DE_CONVERSAS ? c.linhas - entrada.conversasDeGrupo : c.linhas,
-  );
-}
-
 function linhasDoFunil(funil: FunilDoRelatorio): string[] {
   const etapas = [...funil.etapas].sort((a, b) => a.ordem - b.ordem).map((e) => `${e.ordem}. ${e.nome} (${e.probabilidade}%)`);
   const referencias = funil.referencias.length > 0 ? funil.referencias.map((r) => `${r.colecao} ${r.quantidade}`).join(", ") : "nada";
@@ -183,25 +176,22 @@ export function montarRelatorio(entrada: EntradaDoRelatorio): string {
   linhas.push(...linhasDaPasta(entrada.pasta));
   linhas.push("");
   if (entrada.entidades) {
+    linhas.push("O que o --migrar --funil=migrar levaria ao CRM novo (a mesma conta, sem escrever):");
     linhas.push(...linhasDasEntidades(entrada.entidades));
     linhas.push("");
   }
 
   const saem = linhasQueSaem(entrada);
-  const alem = linhasAlemDoFunil(entrada);
   linhas.push("O que cada modo faria neste Espaço:");
   linhas.push(
     `  --guardar                    copia as nove coleções para registros_crm_antigo (Grupo inclusive) e apaga ${saem} linha(s) de registros; ${entrada.conversasDeGrupo} Conversa(s) de Grupo ficam. Não cria nada no CRM novo.`,
   );
-  if (alem > 0) {
-    linhas.push(`  --migrar --funil=migrar      recusa: este Espaço tem ${alem} registro(s) do CRM antigo além do Funil; use --guardar.`);
-    linhas.push(`  --migrar --funil=guardar     recusa, pelo mesmo motivo.`);
-  } else {
-    const migram = entrada.funis.filter((f) => f.destino.tipo === "migra").length;
-    linhas.push(`  --migrar --funil=migrar      guarda como o --guardar e insere ${pluralizar(migram, "Funil", "Funis")} (com as Etapas) no CRM novo.`);
-    linhas.push(`  --migrar --funil=guardar     guarda como o --guardar e deixa o Espaço sem Funil no CRM novo.`);
-    if (entrada.funis.length > 0) linhas.push("  Com Funil antigo, o --migrar exige --funil=migrar ou --funil=guardar.");
-  }
+  const migram = entrada.funis.filter((f) => f.destino.tipo === "migra").length;
+  linhas.push(
+    `  --migrar --funil=migrar      guarda como o --guardar, insere ${pluralizar(migram, "Funil", "Funis")} (com as Etapas) e leva ao CRM novo os Contatos, Empresas, Negócios, Canais e Conversas que cabem (veja "Não migrados").`,
+  );
+  linhas.push(`  --migrar --funil=guardar     guarda como o --guardar e leva o que cabe, menos o Funil: sem Funil, nenhum Negócio migra.`);
+  if (entrada.funis.length > 0) linhas.push("  Com Funil antigo, o --migrar exige --funil=migrar ou --funil=guardar.");
   return linhas.join("\n");
 }
 
