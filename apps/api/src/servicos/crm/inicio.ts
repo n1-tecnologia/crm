@@ -15,13 +15,14 @@
 import type { Pool } from "pg";
 import {
   conferirJanelaDeEstatisticas,
+  QUALIFICACOES_MAXIMAS,
   type EstatisticasDoCrm,
   type LeadAAtenderDoCrm,
   type PanoramaDoCrm,
 } from "@n1/dominio/crm/inicio";
 import { podeNoCrm, type RecursoCrm } from "@n1/dominio/crm/permissoes";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
-import { panoramaDoEspaco } from "../../repositorios/crm/inicio";
+import { estatisticasDoMembro, leadsDoMembro, panoramaDoEspaco } from "../../repositorios/crm/inicio";
 import type { AcessoAoCrm } from "./acesso";
 import { recusa, sucesso, type ResultadoCrm } from "./resultado";
 
@@ -48,7 +49,7 @@ async function leituras(
   acesso: AcessoAoCrm,
   membro: MembroDaSessao,
   recursos: readonly RecursoCrm[],
-): Promise<{ readonly pode: ReadonlyMap<RecursoCrm, boolean>; readonly frase: string | undefined }> {
+): Promise<{ readonly pode: ReadonlyMap<RecursoCrm, boolean>; readonly frase: string | undefined; readonly nenhum: boolean }> {
   // O Papel é lido do banco a cada chamada (como em `exigir`): mudar o Papel vale na requisição seguinte.
   const papel = await acesso.papelDe(membro.workspaceId, membro.id);
   const pode = new Map<RecursoCrm, boolean>();
@@ -58,15 +59,15 @@ async function leituras(
     pode.set(recurso, recusaDoPapel === undefined);
     frase ??= recusaDoPapel;
   }
-  // Só há frase "geral" quando nenhum recurso pôde ser lido (Membro desconhecido ou removido).
-  return { pode, frase: [...pode.values()].some(Boolean) ? undefined : frase };
+  // `frase` é a da primeira recusa; `nenhum` diz que o Papel não leu recurso nenhum (Membro desconhecido ou removido).
+  return { pode, frase, nenhum: ![...pode.values()].some(Boolean) };
 }
 
 export function criarServicoDoInicio(deps: { readonly pool: () => Pool; readonly acesso: AcessoAoCrm }): ServicoDoInicio {
   return {
     async panorama(membro) {
-      const { pode, frase } = await leituras(deps.acesso, membro, ["contato", "negocio", "conversa"]);
-      if (frase !== undefined) return recusa<never>(403, frase, { codigo: "PERMISSAO" });
+      const { pode, frase, nenhum } = await leituras(deps.acesso, membro, ["contato", "negocio", "conversa"]);
+      if (nenhum && frase !== undefined) return recusa<never>(403, frase, { codigo: "PERMISSAO" });
       const lido = await panoramaDoEspaco(deps.pool(), membro.workspaceId, {
         contatos: pode.get("contato") === true,
         negocios: pode.get("negocio") === true,
@@ -75,14 +76,39 @@ export function criarServicoDoInicio(deps: { readonly pool: () => Pool; readonly
       return sucesso(lido);
     },
 
-    async leadsAAtender() {
-      return sucesso([]);
+    async leadsAAtender(membro, qualificacoes) {
+      // O teto é de forma (400): a rota já o confere no zod, o serviço de novo porque também é chamado sem ela.
+      if (qualificacoes.length > QUALIFICACOES_MAXIMAS || qualificacoes.some((id) => id === "")) {
+        return recusa<never>(400, `Informe até ${QUALIFICACOES_MAXIMAS} Qualificações, sem identificador vazio.`, {
+          codigo: "VALOR_INVALIDO",
+          campo: "qualificacao",
+        });
+      }
+      const { frase } = await leituras(deps.acesso, membro, ["contato", "conversa"]);
+      if (frase !== undefined) return recusa<never>(403, frase, { codigo: "PERMISSAO" });
+      if (qualificacoes.length === 0) return sucesso([]);
+      return sucesso(await leadsDoMembro(deps.pool(), membro.workspaceId, membro.id, qualificacoes));
     },
 
-    async estatisticas(_membro, janela) {
+    async estatisticas(membro, janela) {
       const conferida = conferirJanelaDeEstatisticas(janela.desde, janela.ate, janela.fuso);
       if (!conferida.ok) return recusa<never>(400, conferida.error, { codigo: "VALOR_INVALIDO", campo: conferida.field });
-      return sucesso({ ...janela, mensagensEnviadas: [], conversasResolvidas: [], negociosGanhos: [] });
+      const { pode, frase, nenhum } = await leituras(deps.acesso, membro, ["mensagem", "conversa", "negocio"]);
+      if (nenhum && frase !== undefined) return recusa<never>(403, frase, { codigo: "PERMISSAO" });
+      try {
+        const lidas = await estatisticasDoMembro(deps.pool(), membro.workspaceId, membro.id, janela, {
+          mensagens: pode.get("mensagem") === true,
+          conversas: pode.get("conversa") === true,
+          negocios: pode.get("negocio") === true,
+        });
+        return sucesso({ desde: janela.desde, ate: janela.ate, fuso: janela.fuso, ...lidas });
+      } catch (erro) {
+        // O Node conhece um fuso que a tzdata do Postgres não conhece: é pedido torto (400), não falha do servidor.
+        if ((erro as { code?: string }).code === "22023") {
+          return recusa<never>(400, "Fuso horário desconhecido.", { codigo: "VALOR_INVALIDO", campo: "fuso" });
+        }
+        throw erro;
+      }
     },
   };
 }
