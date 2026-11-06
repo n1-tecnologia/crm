@@ -30,6 +30,7 @@ import {
   type EdicaoDeIdentificador,
   type NovoContato,
   type NovoIdentificadorDeContato,
+  type TipoIdentificadorContato,
 } from "@n1/dominio/crm/contatos";
 import type { AcaoCrm } from "@n1/dominio/crm/permissoes";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
@@ -42,6 +43,7 @@ import { comTransacao, type FrasesDeRestricao } from "./transacao";
 export interface FiltroDeContatos {
   readonly estado: EstadoCrm;
   readonly q?: string | undefined;
+  readonly comIdentificador?: TipoIdentificadorContato | undefined;
   readonly limite: number;
   readonly deslocamento: number;
 }
@@ -230,6 +232,7 @@ export function criarServicoDeContatos(deps: {
         await repositorio.listar(membro.workspaceId, {
           estado: filtro.estado,
           q: filtro.q,
+          comIdentificador: filtro.comIdentificador,
           limite: filtro.limite,
           deslocamento: filtro.deslocamento,
         }),

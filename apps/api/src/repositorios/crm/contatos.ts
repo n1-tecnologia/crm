@@ -35,6 +35,8 @@ export type LinhaDeContato = Omit<NovoContato, "identificadores" | "proprietario
 export interface FiltroDeContatos {
   readonly estado: EstadoCrm;
   readonly q?: string | undefined;
+  /** Só Contatos que têm ao menos um Identificador desse tipo (Fase 15, 3.4.8). */
+  readonly comIdentificador?: TipoIdentificadorContato | undefined;
   readonly limite: number;
   readonly deslocamento: number;
 }
@@ -251,6 +253,13 @@ export function criarRepositorioDeContatosPg(cliente: Pool | PoolClient): Reposi
                   or exists (select 1 from plataforma.contato_identificadores bi
                               where bi.workspace_id = c.workspace_id and bi.contato_id = c.id
                                 and bi.valor ilike ${p} ${CLAUSULA_ESCAPE}))`;
+      }
+      if (filtro.comIdentificador !== undefined) {
+        // O tipo vai por `$n` (T-15-90) e o `exists` amarra o Espaço (T-15-91).
+        parametros.push(filtro.comIdentificador);
+        busca += ` and exists (select 1 from plataforma.contato_identificadores ci
+                               where ci.workspace_id = c.workspace_id and ci.contato_id = c.id
+                                 and ci.tipo = $${parametros.length})`;
       }
       const total = await cliente.query<{ total: number }>(
         `select count(*)::int as total from plataforma.contatos c where c.workspace_id = $1 and c.estado = $2 ${busca}`,
