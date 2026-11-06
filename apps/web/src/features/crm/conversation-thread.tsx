@@ -56,6 +56,7 @@ import { useContato } from "@/dados/crm/contatos";
 import { abrirConversa, useConversa, useConversas } from "@/dados/crm/conversas";
 import { enviarMensagem, useMensagens } from "@/dados/crm/mensagens";
 import { useNegocios } from "@/dados/crm/negocios";
+import { useConsentimentosDoContato } from "@/dados/crm/consentimentos";
 import { adicionarNotaAoContato } from "@/dados/crm/notas";
 import { criarTarefaConversacional } from "@/dados/crm/tarefas-conversacionais";
 import { capacidadesDoCanal, createTask } from "@n1/dominio/operations";
@@ -74,6 +75,7 @@ import {
 } from "@n1/dominio/crm/canais-de-resposta";
 import { LIMITES_CRM } from "@n1/dominio/crm/comum";
 import { nomeDeExibicaoDoContato, ROTULO_DO_TIPO_DE_IDENTIFICADOR } from "@n1/dominio/crm/contatos";
+import { consentimentoVigente } from "@n1/dominio/crm/consentimentos";
 import { recusaDeNotaNoContato, validarNovaNota } from "@n1/dominio/crm/notas";
 import { TIPO_DE_IDENTIFICADOR_DO_CANAL, type ConversaNaLista } from "@n1/dominio/crm/conversas";
 import { LISTA_SEM_CANAIS } from "@n1/dominio/operations/canais";
@@ -251,6 +253,7 @@ export function ConversationThread({
   const seguida = aberta ?? conversaId;
   const pedidaQ = useConversa(seguida);
   const negociosQ = useNegocios({ contatoId, estado: "ativo", limite: LIMITES_CRM.paginaMaxima });
+  const consentimentosQ = useConsentimentosDoContato(contatoId);
 
   const canais = canaisQ.data?.itens;
   const contato = contatoQ.data?.contato;
@@ -387,6 +390,26 @@ export function ConversationThread({
   const mensagens = daConversa;
 
   const IconeDaAba = canal ? CHANNEL_ICON[canal.tipo] : undefined;
+
+  /*
+    3.4.2 — o aviso de consentimento de marketing é a regra do CRM novo: o
+    consentimento vigente (`consentimentoVigente`) da finalidade Marketing do
+    Catálogo, para o tipo do Canal da aba, sobre o histórico de
+    `GET /contatos/:id/consentimentos`. Vigente que não seja `concedido` (revogado,
+    ou nenhum registro, ou Espaço sem a finalidade) dispara o aviso — a mesma conta
+    que o fio antigo fazia e que `recusaPorFaltaDeConsentimento` aplica, no
+    envio da api, ao modelo de marketing. É AVISO: o texto livre dentro da
+    janela não é marketing e continua saindo. Sem a leitura (carregando ou falha)
+    o fio não afirma nada.
+  */
+  const finalidadeDeMarketingId = state.catalog.find(
+    (item) => item.kind === "finalidadeConsentimento" && item.name.toLowerCase() === "marketing",
+  )?.id;
+  const semConsentimentoDeMarketing =
+    canal !== undefined &&
+    consentimentosQ.data !== undefined &&
+    (finalidadeDeMarketingId === undefined ||
+      consentimentoVigente(consentimentosQ.data.itens, finalidadeDeMarketingId, canal.tipo)?.decisao !== "concedido");
 
   // A Capacidade é do Canal da aba (D-02): o provedor muda a janela.
   const capacidades = canal ? capacidadesDoCanal({ channelType: canal.tipo, provider: canal.provedor }) : undefined;
@@ -729,6 +752,17 @@ export function ConversationThread({
               : ""}
           </span>
         </div>
+      ) : null}
+
+      {semConsentimentoDeMarketing && registro !== "meet" ? (
+        <p
+          data-aviso="consentimento-de-marketing"
+          className="app-sm shrink-0 px-3 py-2"
+          style={{ background: "var(--aviso-lavado)", color: "var(--aviso)", borderBottom: "1px solid var(--linha)" }}
+        >
+          {primeiroNome || "Este Contato"} não tem consentimento vigente para marketing neste Canal. Mensagem de modelo
+          de marketing só sai com o consentimento registrado na ficha do Contato.
+        </p>
       ) : null}
 
       {registro !== null ? (
