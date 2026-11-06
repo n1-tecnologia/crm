@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 15
 current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
 status: executing
-stopped_at: Completed 15-27-PLAN.md
-last_updated: "2026-11-06T19:15:59.350Z"
+stopped_at: Completed 15-28-PLAN.md
+last_updated: "2026-11-06T19:48:01.581Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 15 execution started
-state_head: 74e6f9c40e87cc560ebf4c8a0f9857dac190dac1
+state_head: 59ad97ead67c181e7c8586cfbc0610eaa7720e4c
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 271
-  completed_plans: 257
+  completed_plans: 258
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 15 (Unificação do CRM: telas no modelo novo e remoção do modelo antigo) — EXECUTING
-Plan: 33 of 43
+Plan: 34 of 43
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 15 execution started
 
@@ -476,6 +476,7 @@ Progress: [██████░░░░] 63%
 | Phase 15 P23 | 16 min | 3 tasks | 15 files |
 | Phase 15 P40 | 50 min | 2 tasks | 13 files |
 | Phase 15 P27 | 35 min | 3 tasks | 18 files |
+| Phase 15 P28 | 32 min | 3 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -773,6 +774,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 15]: 15-27: a conferencia do 'guardar' exige copia IDENTICA (dados e ordem) para o que sai de registros; copia velha que difere barra o apagar — count(origem)=count(copia) aceitaria uma copia velha de linha reinserida e alterada, e o delete perderia a versao nova
 - [Phase 15]: 15-27: Etapa no crm_de_para usa colecao_antiga='funnels/stages' e id_antigo='<funil>/<etapa>'; Funil preserva o id antigo — o id da Etapa so e unico dentro do Funil; o 15-28 troca o stageId dos Negocios por essa linha
 - [Phase 15]: 15-27: repetir --guardar/--migrar devolve fail('nada a fazer') da operacao: executar() desfaz sem subir a revisao do Espaco — evita re-hidratar os navegadores abertos por uma execucao sem escrita
+- [Phase 15]: 15-28: o id antigo de Contato, Empresa, Funil, Negocio, Canal, Conversa e Mensagem vira o id novo; Identificador, vinculo Contato-Empresa e Etapa ganham id novo com linha em crm_de_para — Vinculo de Tarefa, provenance, escopo e canaisDeAtendimento ficam em registros e nao sao reescritos; so onde a chave nao e unica no Espaco o id muda
+- [Phase 15]: 15-28: o mapeador decide as constraints do banco antes do insert (Empresa sem admin vigente nao migra com os Negocios dela; --funil=guardar nao migra Negocio); o que fica de fora vai para o relatorio Nao migrados, so colecao e id — Uma constraint deferida (empresa_exige_admin) derrubaria o commit do Espaco inteiro; o --migrar nao e desfazivel (D-15-02), entao o dono le o --seco antes de escrever
 
 ### Pending Todos
 
@@ -834,6 +837,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-06T19:15:59.144Z
-Stopped at: Completed 15-27-PLAN.md
+Last session: 2026-11-06T19:48:01.377Z
+Stopped at: Completed 15-28-PLAN.md
 Resume file: None
