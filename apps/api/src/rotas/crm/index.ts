@@ -21,6 +21,8 @@
  * ao Sucessor mora em `POST /operacoes/removeMember`. `tarefasConversacionais`
  * (14-13) é o gesto que cria a Tarefa em `registros` e abre a Conversa nas
  * tabelas, `POST /tarefas-conversacionais`, e a leitura em lote do cartão.
+ * `atividades` (15-37) é só leitura, `GET /atividades`: a linha do tempo do CRM
+ * novo, por Espaço e Papel; quem grava é cada gesto, na transação dele (15-04).
  */
 
 import type { FastifyInstance } from "fastify";
@@ -28,6 +30,7 @@ import type { Pool } from "pg";
 import { pool } from "../../persistencia/conexao";
 import { recusarSuspensoNaEscrita } from "../../plugins/autenticacao";
 import { criarAcessoAoCrmPg, type AcessoAoCrm } from "../../servicos/crm/acesso";
+import { criarServicoDeAtividades, type ServicoDeAtividades } from "../../servicos/crm/atividades";
 import { criarServicoDeCanais, type ServicoDeCanais } from "../../servicos/crm/canais";
 import { criarServicoDeContatos, type ServicoDeContatos } from "../../servicos/crm/contatos";
 import { criarServicoDeConsentimentos, type ServicoDeConsentimentos } from "../../servicos/crm/consentimentos";
@@ -40,6 +43,7 @@ import { criarServicoDeNegocios, type ServicoDeNegocios } from "../../servicos/c
 import { criarServicoDeNotas, type ServicoDeNotas } from "../../servicos/crm/notas";
 import { criarServicoDeSucessao, type ServicoDeSucessao } from "../../servicos/crm/sucessao";
 import { criarServicoDeTarefasConversacionais, type ServicoDeTarefasConversacionais } from "../../servicos/crm/tarefas-conversacionais";
+import { rotasDeAtividades } from "./atividades";
 import { rotasDeCanais } from "./canais";
 import { rotasDeConsentimentos } from "./consentimentos";
 import { rotasDeContatos } from "./contatos";
@@ -80,6 +84,8 @@ export interface OpcoesDeCrm {
   readonly sucessao?: ServicoDeSucessao;
   /** Injeção só para teste: troca o serviço real da Tarefa conversacional por um falso, sem banco. */
   readonly tarefasConversacionais?: ServicoDeTarefasConversacionais;
+  /** Injeção só para teste: troca o serviço real de leitura das Atividades por um falso, sem banco. */
+  readonly atividades?: ServicoDeAtividades;
   /** Padrão: lê Papel e Membro de `plataforma.registros`. Injeção para teste sem banco. */
   readonly acesso?: AcessoAoCrm;
 }
@@ -114,4 +120,6 @@ export async function rotasDeCrm(app: FastifyInstance, opcoes: OpcoesDeCrm = {})
   await app.register(rotasDeSucessao, { servico: sucessao });
   const tarefasConversacionais = opcoes.tarefasConversacionais ?? criarServicoDeTarefasConversacionais({ pool: obterPool, acesso });
   await app.register(rotasDeTarefasConversacionais, { servico: tarefasConversacionais });
+  const atividades = opcoes.atividades ?? criarServicoDeAtividades({ pool: obterPool, acesso });
+  await app.register(rotasDeAtividades, { servico: atividades });
 }
