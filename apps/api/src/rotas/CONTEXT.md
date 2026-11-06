@@ -209,7 +209,22 @@ O `crm` que o navegador manda ali só serve à execução local: o esquema
 a forma e o tamanho, e a rota o DESCARTA, trocando a posição pelo que leu (T-15-20).
 Grupo e Flow continuam gravando a Conversa de Grupo e o envio de Flow em
 `state.conversations` (F14-D-05); só a conferência de Canal e de Contato vem das
-tabelas. A criação do Contato de um Participante desconhecido é do 15-17.
+tabelas.
+
+**O Contato do Participante de Grupo nasce em `plataforma.contatos` (Fase 15, 15-17, 3.4.8, UCR-08).**
+`importarGruposDoCanal` (e, quando ganharem rota, os eventos do provedor: Pedido de Entrada, entrada no
+Grupo, clique de Captação) precisa do Contato de cada número de WhatsApp do Grupo. A leitura
+(`leituraDaImportacaoDeGrupos`) pede os números a `numerosAResolver` (a mesma função que a operação usa),
+procura cada um por Identificador `whatsapp` em `contato_identificadores` (`resolverContatosPorWhatsapp`;
+mesclado resolve ao sobrevivente) e GERA com `randomUUID()` o id dos que faltam (`contatosACriar`) — nunca
+vem do navegador (T-15-42). A operação pura só usa o id; o `aoConfirmar` insere, no mesmo commit
+(`inserirContatosDeParticipantes`), só os Contatos que o estado de depois usa em Participação ou Pedido de
+Entrada, com `modo_criacao = 'automatico_automacao'`, sem nome (o de exibição é o número), Proprietário
+pela cadeia Canal → Fila → Caixa → Proprietário do Espaço (DO-CXE-05, `padroesDoContatoCriado`) e Origem
+padrão do Canal pelo nome. A corrida entre duas importações do mesmo Grupo é resolvida pela trava do
+Espaço em `executar()`; `contato_identificadores_unico` derruba a transação inteira se ainda assim o
+Identificador colidir. O número de telefone nunca vai para log nem para erro (T-15-44). A Atividade
+"Contato criado por Participação em Grupo" segue em `plataforma.registros` (não em `crm_atividades`).
 
 **Chat e Agentes nomeiam a Âncora pelas tabelas e soltam as Conversas do Agente nelas (Fase 15, 15-08, 3.4.9, UCR-08).**
 `createChatSession`, `configureChatSession` e `ensaiarAgente` recebem do servidor, como ÚLTIMO
