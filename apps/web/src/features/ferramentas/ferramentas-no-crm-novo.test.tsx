@@ -18,9 +18,15 @@ import type { Canal } from "@n1/dominio/crm/canais";
 import type { DataState } from "@n1/dominio/state";
 import { StoreProvider } from "@/dados/store";
 import type { PedidoDeGravacao, RespostaDeGravacao, Transporte } from "@/dados/transporte";
+import { AbaComunidades } from "./aba-comunidades";
+import { AbaFlows } from "./aba-flows";
 import { AbaGrupos } from "./aba-grupos";
 import { ConversaDoGrupo } from "./conversa-do-grupo";
+import { ComunidadeCompleta } from "./comunidade-popup";
+import { CriarComunidadeDialog } from "./criar-comunidade-dialog";
+import { CriarFlowDialog } from "./criar-flow-dialog";
 import { CriarGrupoDialog } from "./criar-grupo-dialog";
+import { EnviarFlowDialog } from "./flow-popup";
 import { ImportarGruposDialog } from "./importar-grupos-dialog";
 import { SecaoDeParticipacoes } from "./participacoes";
 import { SecaoDePedidosDeEntrada } from "./pedidos-de-entrada";
@@ -346,5 +352,70 @@ describe("Grupos no CRM novo (15-22)", () => {
     await waitFor(() => expect(chamadasA(/\/canais\?/).length).toBeGreaterThan(0));
     await act(async () => undefined);
     expect(caixa.readOnly).toBe(false);
+  });
+});
+
+// ── Task 3: Comunidades e Flows ───────────────────────────────────────────────────────────────────
+
+describe("Comunidades e Flows no CRM novo (15-22)", () => {
+  it("(k) criar Comunidade com o Canal da tabela manda `criarComunidade` com o `crm`", async () => {
+    const aoCriar = vi.fn();
+    await montar(<CriarComunidadeDialog open onClose={() => undefined} onCreated={aoCriar} />);
+    fireEvent.change(screen.getByLabelText(/^Nome/), { target: { value: "Alunos 2027" } });
+    fireEvent.click(screen.getByLabelText(/^Canal administrador/));
+    await waitFor(() => expect(screen.getByRole("option", { name: /WhatsApp Vendas/ })).toBeTruthy());
+    fireEvent.click(screen.getByRole("option", { name: /WhatsApp Vendas/ }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Criar Comunidade" }));
+    });
+    const chamada = gravados[0]?.chamadas[0];
+    expect(chamada?.nome).toBe("criarComunidade");
+    expect(chamada?.args[0]).toMatchObject({ nome: "Alunos 2027", canalId: CANAL });
+    expect((chamada?.args[1] as { canais: Array<{ id: string }> }).canais.map((c) => c.id)).toContain(CANAL);
+    expect(aoCriar).toHaveBeenCalledTimes(1);
+  });
+
+  it("(l) a aba de Comunidades mostra o Canal de cada uma pelo GET /canais", async () => {
+    await montar(<AbaComunidades />);
+    await waitFor(() => expect(screen.getAllByText("Canal do CRM novo").length).toBeGreaterThan(0));
+  });
+
+  it("(m) a ficha da Comunidade mostra o Canal da api e sincroniza com o `crm`", async () => {
+    await montar(<ComunidadeCompleta comunidadeId="com_alunos_ff" modo="pagina" />);
+    await waitFor(() => expect(screen.getAllByText("Canal do CRM novo").length).toBeGreaterThan(0));
+    await waitFor(() => expect((screen.getAllByRole("button", { name: "Sincronizar" })[0] as HTMLButtonElement | undefined)?.getAttribute("aria-disabled")).not.toBe("true"));
+  });
+
+  it("(n) criar Flow lista o Canal publicador da api e manda `criarFlow` com o `crm`", async () => {
+    const aoCriar = vi.fn();
+    await montar(<CriarFlowDialog open onClose={() => undefined} onCreated={aoCriar} />);
+    fireEvent.change(screen.getByLabelText(/^Nome/), { target: { value: "Agendamento" } });
+    fireEvent.click(screen.getByLabelText(/^Canal publicador/));
+    await waitFor(() => expect(screen.getByRole("option", { name: /WhatsApp Vendas/ })).toBeTruthy());
+    fireEvent.click(screen.getByRole("option", { name: /WhatsApp Vendas/ }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Criar e abrir o construtor" }));
+    });
+    const chamada = gravados[0]?.chamadas[0];
+    expect(chamada?.nome).toBe("criarFlow");
+    expect(chamada?.args[0]).toMatchObject({ nome: "Agendamento", canalId: CANAL });
+    expect((chamada?.args[1] as { canais: Array<{ id: string }> }).canais.map((c) => c.id)).toContain(CANAL);
+    expect(aoCriar).toHaveBeenCalledTimes(1);
+  });
+
+  it("(o) a aba de Flows mostra o Canal publicador pela api e só avisa \"sem Canal publicador\" quando ele não existe lá", async () => {
+    await montar(<AbaFlows onAbrirConstrutor={() => undefined} />);
+    await waitFor(() => expect(screen.getAllByText("Canal do CRM novo").length).toBeGreaterThan(0));
+    expect(screen.queryByText("sem Canal publicador")).toBeNull();
+  });
+
+  it("(p) enviar o Flow a um Contato continua escolhendo a Conversa de state.conversations, com o nome do Contato pelo POST /crm/nomes (F14-D-05)", async () => {
+    nomesDaApi = { cnt_2: "Marina Alves" };
+    const flow = state.flows.find((f) => f.id === "flw_triagem");
+    expect(flow).toBeDefined();
+    await montar(<EnviarFlowDialog flow={flow as NonNullable<typeof flow>} onClose={() => undefined} report={vi.fn()} />);
+    await waitFor(() => expect(nomesPedidos().length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByLabelText(/^Conversa/));
+    await waitFor(() => expect(screen.getByRole("option", { name: /Marina Alves/ })).toBeTruthy());
   });
 });
