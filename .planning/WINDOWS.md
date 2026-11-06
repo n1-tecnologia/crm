@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 21
+open_count: 22
 waived_count: 1
 fixed_count: 5
-total_count: 27
-last_updated: 2026-11-06T12:22:04.947Z
+total_count: 28
+last_updated: 2026-11-06T12:33:07.842Z
 ---
 
 # Broken Windows Ledger
@@ -42,6 +42,7 @@ last_updated: 2026-11-06T12:22:04.947Z
 | 25 | 15 | deviation | apps/web/src/app/(shell)/configuracoes/tags/page.tsx |  | 15-16: Tags, Campos e Catalogos nao mostram mais o uso em Contato, Empresa, Negocio e Conversa (mostram 'O uso no CRM nao aparece aqui.'); tambem some a contagem de Conversa em Tags e a de Empresa em Campos, que o plano nao citava. Para devolver o numero, abrir contagem por Tag, Campo e item de Catalogo nas rotas /contatos, /empresas, /negocios e /conversas. Sem tela para conceder acesso a Funil novo privado (a Governanca so reconhece Espaco, Pasta, Lista e Colecao): o Funil novo e governado por privado e Papel | open |  | 2026-11-06T11:59:35.240Z |  |
 | 26 | 15 | deviation | apps/api/src/servicos/crm/negocios.ts |  | 15-09: criar, editar, ganhar, perder e reabrir Negocio, criar Contato/Empresa e mandar Contato/Empresa a lixeira pelo CRM novo NAO gravam Atividade (escopo de D-15-09 e so Conversa, transferir Identificador, consentimento, Nota e sucessao); as telas antigas gravavam. Pergunta ao dono: quer a linha do tempo desses gestos no CRM novo antes de remover o modelo antigo? | open |  | 2026-11-06T12:22:04.882Z |  |
 | 27 | 15 | deviation | apps/web/src/app/(shell)/configuracoes/auditoria/page.tsx |  | 15-09: o contador '{n} Registro(s) de Atividade' e o 'de N' da Auditoria contam o state.activity inteiro mais so as paginas ja lidas do CRM novo (GET /atividades nao devolve total); cresce a cada Mostrar mais. Abrir contagem na api se o dono quiser o numero exato | open |  | 2026-11-06T12:22:04.947Z |  |
+| 28 | 15 | deviation | apps/api/src/rotas/crm/nomes.ts |  | 15-10: POST /crm/nomes e leitura mas e POST, entao o Membro suspenso recebe 403 (recusarSuspensoNaEscrita, WR-03 aberto/D-15-07) e useNomesDoCrm devolve erro em vez de nomes; quem consumir (15-21 IA, Contas a receber) mostra o id ate o WR-03 liberar leituras por POST. Nenhuma tela chama a rota ainda | open |  | 2026-11-06T12:33:07.842Z |  |
 
 ````json
 [
@@ -393,6 +394,19 @@ last_updated: 2026-11-06T12:22:04.947Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-06T12:22:04.947Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 28,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/api/src/rotas/crm/nomes.ts",
+    "line": null,
+    "description": "15-10: POST /crm/nomes e leitura mas e POST, entao o Membro suspenso recebe 403 (recusarSuspensoNaEscrita, WR-03 aberto/D-15-07) e useNomesDoCrm devolve erro em vez de nomes; quem consumir (15-21 IA, Contas a receber) mostra o id ate o WR-03 liberar leituras por POST. Nenhuma tela chama a rota ainda",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T12:33:07.842Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }
