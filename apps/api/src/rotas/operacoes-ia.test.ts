@@ -26,6 +26,8 @@ interface Ancoras {
   empresa: string;
   conversa: string;
   negocioDeOutroEspaco: string;
+  canal: string;
+  canalDeOutroEspaco: string;
 }
 
 describeComBanco("POST /operacoes — a IA nomeia a Âncora pelas tabelas e libera as Conversas do Agente nelas (15-08, 3.4.9)", () => {
@@ -94,7 +96,8 @@ describeComBanco("POST /operacoes — a IA nomeia a Âncora pelas tabelas e libe
       )
     ).rows[0]!.id;
     const negocioDeOutroEspaco = await semearNegocio(outroEspaco, "Negócio alheio", dono);
-    ids = { negocio, contato, empresa, conversa, negocioDeOutroEspaco };
+    const canalDeOutroEspaco = await semearCanal(outroEspaco, { nome: "Canal alheio", tipo: "whatsapp", provedor: "whatsapp-cloud", identificadorExterno: "+5511933330102", conexao: "conectada" });
+    ids = { negocio, contato, empresa, conversa, negocioDeOutroEspaco, canal, canalDeOutroEspaco };
   });
 
   afterAll(async () => {
@@ -170,6 +173,122 @@ describeComBanco("POST /operacoes — a IA nomeia a Âncora pelas tabelas e libe
       const c = corpo(await chamar("configureChatSession", [nova.value!.id, { anchor: { type: "company", id: "emp_fantasma" } }, { emp_fantasma: "Empresa inventada" }]));
       expect(c.ok).toBe(false);
       expect(c.error).toBe("O registro da Âncora não foi encontrado.");
+    });
+  });
+
+  describe("Agente na lixeira ou arquivado libera as Conversas dele nas tabelas (RN-AGE-20)", () => {
+    const ATRIBUIDO = "select atribuido_tipo, atribuido_id from plataforma.conversas where id = $1";
+
+    /** Uma Conversa nova (um Contato novo por Conversa: o par Contato/Canal só admite uma aberta). */
+    const conversaAtribuida = async (workspaceId: string, canalId: string, tipo: "agente" | "membro", atribuidoId: string, titulo: string): Promise<string> => {
+      const dono = espaco.membros.a.id;
+      const contato = (await pool().query<{ id: string }>("insert into plataforma.contatos (workspace_id, nome, proprietario_id, criado_por) values ($1, $2, $3, $3) returning id", [workspaceId, titulo, dono])).rows[0]!.id;
+      return (
+        await pool().query<{ id: string }>(
+          `insert into plataforma.conversas (workspace_id, canal_id, contato_id, titulo, atribuido_tipo, atribuido_id, criado_por_tipo, criado_por_id)
+           values ($1, $2, $3, $4, $5, $6, 'membro', $7) returning id`,
+          [workspaceId, canalId, contato, titulo, tipo, atribuidoId, dono],
+        )
+      ).rows[0]!.id;
+    };
+    const atribuicao = async (conversaId: string) => (await pool().query<{ atribuido_tipo: string | null; atribuido_id: string | null }>(ATRIBUIDO, [conversaId])).rows[0];
+    const ADMIN = TOKENS_DE_VAZAMENTO.administrador;
+
+    it("enviar o Agente à lixeira solta as Conversas atribuídas a ele no mesmo commit; a de Membro e a de outro Espaço ficam", async () => {
+      const agente = "agt_redator";
+      const doAgente1 = await conversaAtribuida(espaco.workspaceId, ids.canal, "agente", agente, "Do Agente 1");
+      const doAgente2 = await conversaAtribuida(espaco.workspaceId, ids.canal, "agente", agente, "Do Agente 2");
+      const deMembro = await conversaAtribuida(espaco.workspaceId, ids.canal, "membro", espaco.membros.b.id, "De um Membro");
+      const doMesmoAgenteEmOutroEspaco = await conversaAtribuida(outroEspaco, ids.canalDeOutroEspaco, "agente", agente, "Do Agente alheio");
+
+      const c = corpo(await chamar("enviarAgenteALixeira", [agente], ADMIN));
+      expect(c.ok, c.error).toBe(true);
+
+      expect(await atribuicao(doAgente1)).toEqual({ atribuido_tipo: null, atribuido_id: null });
+      expect(await atribuicao(doAgente2)).toEqual({ atribuido_tipo: null, atribuido_id: null });
+      expect(await atribuicao(deMembro)).toEqual({ atribuido_tipo: "membro", atribuido_id: espaco.membros.b.id });
+      expect(await atribuicao(doMesmoAgenteEmOutroEspaco)).toEqual({ atribuido_tipo: "agente", atribuido_id: agente });
+    });
+
+    it("repetir o envio à lixeira não falha com 5xx, não solta de novo e não mexe no que mudou depois", async () => {
+      const agente = "agt_redator";
+      // Depois da lixeira alguém atribuiu uma Conversa ao mesmo Agente (por exemplo, por ele ainda existir): a repetição recusada não a solta.
+      const posterior = await conversaAtribuida(espaco.workspaceId, ids.canal, "agente", agente, "Atribuída depois");
+      const resposta = await chamar("enviarAgenteALixeira", [agente], ADMIN);
+      expect(resposta.statusCode, resposta.body.slice(0, 300)).toBe(200);
+      const c = corpo(resposta);
+      expect(c.ok).toBe(false);
+      expect(c.error).toBe("O Agente já está na lixeira.");
+      expect(await atribuicao(posterior)).toEqual({ atribuido_tipo: "agente", atribuido_id: agente });
+    });
+
+    it("arquivar o Agente também solta as Conversas dele", async () => {
+      const agente = "agt_enriquecedor";
+      const conversaId = await conversaAtribuida(espaco.workspaceId, ids.canal, "agente", agente, "Do enriquecedor");
+      const c = corpo(await chamar("arquivarAgente", [agente], ADMIN));
+      expect(c.ok, c.error).toBe(true);
+      expect(await atribuicao(conversaId)).toEqual({ atribuido_tipo: null, atribuido_id: null });
+    });
+
+    it("uma recusa do domínio não solta nada: o Assistente padrão não vai à lixeira", async () => {
+      const padrao = espaco.estado.workspace.defaultAgentId;
+      const conversaId = await conversaAtribuida(espaco.workspaceId, ids.canal, "agente", padrao, "Do Assistente padrão");
+      const c = corpo(await chamar("enviarAgenteALixeira", [padrao], ADMIN));
+      expect(c.ok).toBe(false);
+      expect(await atribuicao(conversaId)).toEqual({ atribuido_tipo: "agente", atribuido_id: padrao });
+    });
+
+    it("um Convidado não administra Agente: a recusa não solta nada", async () => {
+      const agente = "agt_classificador";
+      const conversaId = await conversaAtribuida(espaco.workspaceId, ids.canal, "agente", agente, "Do classificador");
+      const c = corpo(await chamar("enviarAgenteALixeira", [agente], TOKENS_DE_VAZAMENTO.convidado));
+      expect(c.ok).toBe(false);
+      expect(await atribuicao(conversaId)).toEqual({ atribuido_tipo: "agente", atribuido_id: agente });
+    });
+
+    it("liberarDoAgente devolve quantas soltou, só do Espaço e do Agente, e a segunda chamada solta zero", async () => {
+      const { liberarDoAgente } = await import("../repositorios/crm/liberacao-do-agente");
+      const agente = "agt_lancamento";
+      const doAgente = await conversaAtribuida(espaco.workspaceId, ids.canal, "agente", agente, "Do lançamento");
+      const deOutroAgente = await conversaAtribuida(espaco.workspaceId, ids.canal, "agente", "agt_sdr", "Do SDR");
+      const cliente = await pool().connect();
+      try {
+        expect(await liberarDoAgente(cliente, espaco.workspaceId, agente)).toBe(1);
+        expect(await liberarDoAgente(cliente, espaco.workspaceId, agente)).toBe(0);
+        expect(await liberarDoAgente(cliente, outroEspaco, "agt_sdr")).toBe(0);
+      } finally {
+        cliente.release();
+      }
+      expect(await atribuicao(doAgente)).toEqual({ atribuido_tipo: null, atribuido_id: null });
+      expect(await atribuicao(deOutroAgente)).toEqual({ atribuido_tipo: "agente", atribuido_id: "agt_sdr" });
+    });
+  });
+
+  describe("ensaiarAgente nomeia a Âncora pelas tabelas", () => {
+    const ensaiar = (anchor: { type: string; id: string }, nomes?: Record<string, string>) =>
+      chamar("ensaiarAgente", ["agt_sdr", { texto: "Qualifique", anchor }, ...(nomes ? [nomes] : [])], TOKENS_DE_VAZAMENTO.administrador);
+    const nomeDaAncora = (c: ReturnType<typeof corpo>) => (c.value as { contextComposition?: { anchor?: { name: string } } } | undefined)?.contextComposition?.anchor?.name;
+
+    it("o Negócio e o Contato só das tabelas dão o nome delas à Âncora do ensaio", async () => {
+      const negocio = corpo(await ensaiar({ type: "deal", id: ids.negocio }));
+      expect(negocio.ok, negocio.error).toBe(true);
+      expect(nomeDaAncora(negocio)).toBe("Proposta Acme da tabela");
+      const contato = corpo(await ensaiar({ type: "contact", id: ids.contato }));
+      expect(contato.ok, contato.error).toBe(true);
+      expect(nomeDaAncora(contato)).toBe("Maria Souza");
+    });
+
+    it("um `nomes` forjado não vale: o id sem registro na tabela fica com o id, e o que existe fica com o nome da tabela (T-15-24)", async () => {
+      const inexistente = corpo(await ensaiar({ type: "deal", id: "neg_fantasma" }, { neg_fantasma: "Nome inventado" }));
+      expect(inexistente.ok, inexistente.error).toBe(true);
+      expect(nomeDaAncora(inexistente)).toBe("neg_fantasma");
+      const existente = corpo(await ensaiar({ type: "deal", id: ids.negocio }, { [ids.negocio]: "Nome forjado" }));
+      expect(nomeDaAncora(existente)).toBe("Proposta Acme da tabela");
+    });
+
+    it("um Negócio de outro Espaço não dá o nome", async () => {
+      const c = corpo(await ensaiar({ type: "deal", id: ids.negocioDeOutroEspaco }));
+      expect(nomeDaAncora(c)).toBe(ids.negocioDeOutroEspaco);
     });
   });
 

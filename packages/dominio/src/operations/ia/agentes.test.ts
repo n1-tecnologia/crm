@@ -281,7 +281,7 @@ describe("Ensaio e Execução (DO-AGE-13, RN-AGE-21)", () => {
     const sdr = registro(state.agents, "agt_sdr");
     const execucoes = state.agentExecutions.length;
     const memoria = sdr.memory.length;
-    const r = ensaiarAgente(state, "mem_rafael", sdr.id, { texto: "Qualifique a Marina Alves", anchor: { type: "conversation", id: "cnv_1" } });
+    const r = ensaiarAgente(state, "mem_rafael", sdr.id, { texto: "Qualifique a Marina Alves", anchor: { type: "conversation", id: "cnv_1" } }, { cnv_1: registro(state.conversations, "cnv_1").title });
     expect(r.ok, erroDe(r)).toBe(true);
     if (!r.ok) return;
     const e = r.value;
@@ -317,6 +317,33 @@ describe("Ensaio e Execução (DO-AGE-13, RN-AGE-21)", () => {
     expect(erroDe(ensaiarAgente(state, "mem_rafael", sdr.id, { texto: "  " }))).toBe("Escreva o pedido do ensaio.");
     expect(pausarAgente(state, "mem_rafael", sdr.id).ok).toBe(true);
     expect(erroDe(ensaiarAgente(state, "mem_rafael", sdr.id, { texto: "De novo" }))).toBe("Só um Agente em rascunho ou ativo ensaia (DO-AGE-13).");
+  });
+
+  it.each([
+    ["deal", "Proposta Acme"],
+    ["contact", "Maria Souza"],
+    ["conversation", "Atendimento da Maria"],
+  ] as const)("27a2. o ensaio ancorado num registro do tipo %s (CRM novo) nomeia a Âncora pelo que o servidor leu em nomes (3.4.9)", (type, nome) => {
+    const sdr = registro(state.agents, "agt_sdr");
+    const r = ensaiarAgente(state, "mem_rafael", sdr.id, { texto: "Qualifique", anchor: { type, id: "id_da_tabela" } }, { id_da_tabela: nome });
+    expect(r.ok, erroDe(r)).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.contextComposition.anchor).toEqual({ type, id: "id_da_tabela", name: nome });
+    expect(r.value.anchor).toEqual({ type, id: "id_da_tabela" });
+  });
+
+  it("27a3. sem nomes o ensaio não lê mais o modelo antigo: a Âncora de Negócio, Contato ou Conversa cai no id", () => {
+    const sdr = registro(state.agents, "agt_sdr");
+    for (const [type, id] of [
+      ["deal", registro(state.deals, state.deals[0]?.id ?? "x").id],
+      ["contact", registro(state.contacts, state.contacts[0]?.id ?? "x").id],
+      ["conversation", "cnv_1"],
+    ] as const) {
+      const r = ensaiarAgente(state, "mem_rafael", sdr.id, { texto: "Qualifique", anchor: { type, id } });
+      expect(r.ok, erroDe(r)).toBe(true);
+      if (!r.ok) continue;
+      expect(r.value.contextComposition.anchor?.name, type).toBe(id);
+    }
   });
 
   it("27b. um rascunho ensaia; com Modelo descontinuado a Execução nasce e termina falhou, sem Passos (RN-AGE-08)", () => {
