@@ -37,10 +37,9 @@ import { recusaDeSuspenso, type MembroDaSessao } from "../plugins/autenticacao";
 import type { EventoDeSaida } from "../persistencia/outbox";
 import { executar, type MedicaoDaExecucao, type ResultadoTransacao } from "../persistencia/unidade-de-trabalho";
 import { convidarMembro } from "../servicos/convidar-membro";
-import { passarAoSucessor } from "../repositorios/crm/sucessao";
 import { LISTA_SOLICITACOES_DE_PAGAMENTO_ID } from "../servicos/dto-solicitacao";
 import { esquemaDeArgumentos } from "./esquemas-de-argumentos";
-import { LER_DO_CRM, type LidoDoCrm } from "./gesto-no-crm";
+import { AO_CONFIRMAR, LER_DO_CRM, type LidoDoCrm } from "./gesto-no-crm";
 import { recortarResposta } from "./resposta-recortada";
 
 /**
@@ -256,29 +255,6 @@ const SERVICOS: Partial<
   },
 };
 
-/**
- * Operações que também mexem nas tabelas do CRM no MESMO commit da gravação em
- * `plataforma.registros` (Fase 14, 3.2.8). Entram em `executar()` como
- * `aoConfirmar`: rodam depois do `ok` do domínio e antes do `commit`, no mesmo
- * cliente, então uma recusa do domínio nunca as dispara e uma exceção desfaz tudo.
- *
- * `removeMember` passa o dono dos Contatos, Empresas e Negócios do Membro ao
- * Sucessor e LIBERA as Conversas atribuídas a ele (RN-ET-09 a e b). O domínio só
- * valida o Sucessor quando o Membro ainda não tinha saído; repetir a remoção
- * devolve `ok` sem olhar o Sucessor, então aqui ele precisa ser Membro ATIVO
- * deste Espaço, senão nada passa. Uma operação com `aoConfirmar` sai do caminho de
- * duas idas da Fase 13 (paga mais idas ao banco): aceito, é um gesto raro.
- */
-const AO_CONFIRMAR: Partial<
-  Record<NomeDeOperacao, (cliente: PoolClient, args: readonly unknown[], membro: MembroDaSessao, state: DataState) => Promise<void>>
-> = {
-  removeMember: async (cliente, args, membro, state) => {
-    const sucessorId = String(args[1]);
-    if (!state.members.some((m) => m.id === sucessorId && m.state === "ativo")) return;
-    await passarAoSucessor(cliente, membro.workspaceId, String(args[0]), sucessorId);
-  },
-};
-
 /** Os `args` com a posição `posicao` trocada pelo que o servidor leu; o que o navegador mandou ali some. */
 function comLidoDoCrm(args: readonly unknown[], posicao: number, lido: unknown): unknown[] {
   const copia = args.slice(0, posicao);
@@ -412,7 +388,7 @@ export async function rotasDeOperacoes(app: FastifyInstance): Promise<void> {
                   ? { lerDoCrm: (cliente: PoolClient, state: DataState) => leituraDoCrm.ler(cliente, request.membro.workspaceId, args, state) }
                   : {}),
                 ...(aoConfirmar
-                  ? { aoConfirmar: (cliente: PoolClient, _valor: unknown, state: DataState) => aoConfirmar(cliente, args, request.membro, state) }
+                  ? { aoConfirmar: (cliente: PoolClient, _valor: unknown, state: DataState, lido: LidoDoCrm | undefined) => aoConfirmar(cliente, args, request.membro, state, lido) }
                   : {}),
               },
             );
