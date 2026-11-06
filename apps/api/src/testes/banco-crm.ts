@@ -92,6 +92,8 @@ export async function limparEspaco(workspaceId: string): Promise<void> {
       "funis",
       "crm_de_para",
       "registros_crm_antigo",
+      // A Atividade (012) não tem FK para o objeto (sobrevive à eliminação, INV-ET-12): entra na lista.
+      "crm_atividades",
     ]) {
       await cliente.query(`delete from plataforma.${tabela} where workspace_id = $1`, [workspaceId]);
     }

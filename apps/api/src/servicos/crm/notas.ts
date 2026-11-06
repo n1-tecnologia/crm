@@ -11,14 +11,18 @@
  * também o trava, então uma nota não escapa para um Contato que acabou de ser
  * absorvido. O `conteudo` da nota é dado pessoal e nunca é logado (T-14-15).
  *
- * Este plano não liga o fio da Caixa nem a Reunião a estas notas: isso é a
- * Fase 15 (3.4.2 e 3.4.5).
+ * A nota grava a sua Atividade ("Nota registrada no Contato", 012) no mesmo
+ * commit, sem o conteúdo (15-04). Ligar o fio da Caixa e a Reunião a estas notas
+ * é a Fase 15 (3.4.2 e 3.4.5).
  */
 
 import type { Pool, PoolClient } from "pg";
 import type { Pagina } from "@n1/dominio/crm/comum";
+import { ACOES_DO_CRM } from "@n1/dominio/crm/atividades";
+import { nomeDeExibicaoDoContato } from "@n1/dominio/crm/contatos";
 import { recusaDeNotaNoContato, validarNovaNota, type NotaDoContato, type NovaNota } from "@n1/dominio/crm/notas";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
+import { registrarAtividade } from "../../repositorios/crm/atividades";
 import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
 import { criarRepositorioDeNotasPg } from "../../repositorios/crm/notas";
 import { exigir, type AcessoAoCrm } from "./acesso";
@@ -68,7 +72,17 @@ export function criarServicoDeNotas(deps: { readonly pool: () => Pool; readonly 
         const frase = recusaDeNotaNoContato(contato);
         if (frase !== undefined) return recusa<never>(409, frase, { codigo: "NOTA_RECUSADA" });
         // O autor é o Membro da sessão, nunca um campo do corpo (T-14-13).
-        return sucesso(await criarRepositorioDeNotasPg(cliente).inserir(membro.workspaceId, contatoId, validacao.value.conteudo, membro.id));
+        const nota = await criarRepositorioDeNotasPg(cliente).inserir(membro.workspaceId, contatoId, validacao.value.conteudo, membro.id);
+        // A Atividade entra no MESMO commit da nota (D-15-09, UCR-03). O conteúdo da nota é dado
+        // pessoal e não vai para `detalhe` (T-14-15, T-15-14); o ator é o Membro da sessão (T-15-13).
+        await registrarAtividade(cliente, membro.workspaceId, {
+          ator: { kind: "member", id: membro.id },
+          acao: ACOES_DO_CRM.notaRegistrada,
+          objetoTipo: "contact",
+          objetoId: contatoId,
+          objetoNome: nomeDeExibicaoDoContato(contato),
+        });
+        return sucesso(nota);
       });
     },
   };
