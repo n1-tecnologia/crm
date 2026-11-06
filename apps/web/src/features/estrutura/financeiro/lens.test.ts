@@ -139,3 +139,43 @@ describe("paridade tela ↔ operação", () => {
     expect(statusOptionRefusal(state, CP.aprovadorId, t, CP.status.pago)).toBeUndefined();
   });
 });
+
+describe("RECEBER_PROFILE.counterpart: o nome do cliente vem de POST /crm/nomes (Fase 15, 3.4.10)", () => {
+  const helena = () => conta("tsk_cr_gab_2");
+
+  it("devolve o nome do mapa para o cliente do Vínculo, sem olhar o state.contacts", () => {
+    state.contacts = [];
+    expect(RECEBER_PROFILE.counterpart(state, helena(), new Map([["cnt_cr_helena", "Ana Lima"]]))).toBe("Ana Lima");
+  });
+
+  it("sem nome no mapa mostra “Cliente”, nunca o id", () => {
+    const texto = RECEBER_PROFILE.counterpart(state, helena(), new Map());
+    expect(texto).toBe("Cliente");
+    expect(texto).not.toContain("cnt_cr_helena");
+  });
+
+  it("saque de plataforma, que não tem cliente, mostra “Plataforma”; conta solta sem Tipo mostra “—”", () => {
+    // Uma cópia sem Vínculo (o id é outro): é o saque, que não tem cliente.
+    const base = helena();
+    const saque = { ...base, id: "tsk_saque", fieldValues: [{ ...base.fieldValues[0]!, definitionId: CR.fields.tipo, value: CR.tipos.saque, state: "ativo" as const }] } as Task;
+    expect(state.links.some((l) => l.fromId === saque.id)).toBe(false);
+    expect(RECEBER_PROFILE.counterpart(state, saque, new Map())).toBe("Plataforma");
+    const solta = { ...base, id: "tsk_solta", fieldValues: [] } as Task;
+    expect(RECEBER_PROFILE.counterpart(state, solta, new Map())).toBe("—");
+  });
+
+  it("o PAGAR_PROFILE segue pelo Campo de fornecedor e ignora o mapa", () => {
+    const t = conta("tsk_cp_konq");
+    expect(PAGAR_PROFILE.counterpart(state, t, new Map([["qualquer", "x"]]))).toBe(PAGAR_PROFILE.counterpart(state, t, new Map()));
+  });
+
+  it("a busca da lente casa o nome do cliente do mapa, e sem o mapa não casa", () => {
+    const now = new Date();
+    const contasReceber = state.tasks.filter((t) => t.listId === CR.listId);
+    const nomes = new Map([["cnt_cr_helena", "Ana Lima"]]);
+    const com = applyFinanceFilters(state, contasReceber, { ...FILTROS_INICIAIS, texto: "ana lima" }, now, nomes);
+    expect(com.length).toBeGreaterThan(0);
+    expect(com.every((t) => t.title.toLowerCase().includes("ana lima") || state.links.some((l) => l.fromId === t.id && l.toId === "cnt_cr_helena"))).toBe(true);
+    expect(applyFinanceFilters(state, contasReceber, { ...FILTROS_INICIAIS, texto: "ana lima" }, now, new Map())).toHaveLength(0);
+  });
+});
