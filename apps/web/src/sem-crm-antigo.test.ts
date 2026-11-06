@@ -33,7 +33,6 @@ const CONGELADOS = [
   "features/crm/iniciar-conversa-dialog.tsx",
   "features/estrutura/financeiro/serie-dialog.tsx",
   "features/estrutura/nova-tarefa-conversacional-dialog.tsx",
-  "features/estrutura/tarefa-completa.tsx",
   "features/ia/agentes/ensaiar-dialog.tsx",
   "features/ia/ancora-do-chat.tsx",
   "features/ia/automacoes/automacao-spec.ts",

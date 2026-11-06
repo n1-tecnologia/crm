@@ -98,6 +98,7 @@ import { useCanais } from "@/dados/crm/canais";
 import { useContato } from "@/dados/crm/contatos";
 import { useFunis } from "@/dados/crm/funis";
 import { useNegocios } from "@/dados/crm/negocios";
+import { nomeDe, useNomesDoCrm } from "@/dados/crm/nomes";
 import { marcarSeMuda, useNavegar } from "@/features/shell/navegacao";
 import { useData, useIdsNaoConfirmados, useRehidratar, useRun, useSession } from "@/dados/store";
 import {
@@ -119,9 +120,7 @@ import {
   tempoRegistrado,
 } from "@n1/dominio/derive";
 import {
-  canalDaTarefa,
   canaisDaListaQueAlcancamNasTabelas,
-  contatoDaTarefa,
   listaConversacional,
   vinculosDoCrmDaTarefa,
 } from "@n1/dominio/derive-conversacional";
@@ -189,6 +188,9 @@ const FAIXA_DE_AVISO = {
 } as const;
 
 /** O aviso de regra dentro de um Painel: a mesma família da faixa, em caixa. */
+/** O que a ficha mostra no lugar do nome de um Vínculo para o qual `POST /crm/nomes` respondeu `null` (T-15-61). */
+const NOME_INDISPONIVEL = "Registro indisponível";
+
 const AVISO_EM_CAIXA = {
   background: "var(--aviso-lavado)",
   color: "var(--aviso)",
@@ -294,6 +296,16 @@ export function TarefaCompleta({
   // chamada. Uma Lista que não é conversacional não pergunta nada. O hook fica antes do retorno antecipado.
   const listaDaTarefa = state.tasks.find((t) => t.id === tarefa)?.listId;
   const resumo = useResumoDaTarefa(tarefa, { pausado: listaDaTarefa === undefined || !listaConversacional(state, listaDaTarefa) });
+  // 15-25 (T-15-61): os nomes dos Vínculos para Negócio, Contato e Conversa vêm de `POST /crm/nomes`, numa chamada só;
+  // `null` da api é "Registro indisponível" (sem registro ou sem permissão, a resposta não distingue). O hook fica antes do retorno antecipado.
+  const alvosDosVinculos = state.links
+    .filter((l) => l.fromId === tarefa || l.toId === tarefa)
+    .flatMap((l) => {
+      const outroTipo = l.fromId === tarefa ? l.toType : l.fromType;
+      const outroId = l.fromId === tarefa ? l.toId : l.fromId;
+      return outroTipo === "deal" || outroTipo === "contact" || outroTipo === "conversation" ? [{ tipo: outroTipo, id: outroId }] : [];
+    });
+  const nomesDosVinculos = useNomesDoCrm(alvosDosVinculos);
   // 14-16: o que os gestos de escrita oferecem (Canais, Negócios, Funis) vem das tabelas pela api, pelo Contato
   // do resumo (o sobrevivente, se foi mesclado). Só uma Tarefa conversacional com Contato pergunta; os Funis, só com o diálogo aberto.
   const contatoIdDoResumo = listaDaTarefa !== undefined && listaConversacional(state, listaDaTarefa) ? resumo?.contato?.id : undefined;
@@ -367,12 +379,14 @@ export function TarefaCompleta({
    * o fio não tem com quem ser.
    *
    * 14-15: a seção "CRM" e o aviso leem o RESUMO da api (`resumo`); a Conversa
-   * é o id do Vínculo. `contato` e `canal` abaixo são a leitura ANTIGA e ficam
-   * só para o fio de Mensagens (`ConversationThread`) e o layout de três
-   * colunas, que a Caixa nova (Fase 15, 3.4.2) troca. Os três gestos de escrita
-   * (trocar o Canal, ligar o Negócio, criar o Negócio) já falam com a api (14-16)
-   * e decidem pelo resumo. Nenhuma exibição cai para a leitura antiga quando o
-   * resumo vem vazio (D-01).
+   * é o id do Vínculo. 15-25 (3.4.2): o fio de Mensagens e o layout de três
+   * colunas também: o Contato é o do resumo (o sobrevivente, se foi mesclado) e,
+   * enquanto o resumo não chega, o do Vínculo; o Canal do fio é o do resumo. Nada
+   * disto olha o CRM antigo do estado (Contatos, Conversas, Canais): os
+   * ids são os do CRM novo e quem confere se existem é a api. Os três gestos de
+   * escrita (trocar o Canal, ligar o Negócio, criar o Negócio) falam com a api
+   * (14-16) e decidem pelo resumo. Nenhuma exibição cai para a leitura antiga
+   * quando o resumo vem vazio (D-01).
    */
   const conversacional = listaConversacional(state, task.listId);
   const contatoDoResumo = resumo?.contato ?? undefined;
@@ -385,10 +399,16 @@ export function TarefaCompleta({
   const conversaDoResumo = resumo?.conversa ?? undefined;
   const nomeDoAtribuidoDaConversa = conversaDoResumo?.atribuido ? nomeDoAtribuido(state, conversaDoResumo.atribuido) : undefined;
   const semFunil = funisDasTabelas.data !== undefined && funisDasTabelas.data.itens.length === 0;
-  const conversaId = conversacional ? vinculosDoCrmDaTarefa(state, task).conversaId : undefined;
-  const contato = conversacional ? contatoDaTarefa(state, task) : undefined;
-  const canal = contato ? canalDaTarefa(state, task) : undefined;
-  const fichaConversacional = contato !== undefined;
+  const vinculosDoCrm = conversacional ? vinculosDoCrmDaTarefa(state, task) : undefined;
+  const conversaId = vinculosDoCrm?.conversaId;
+  /*
+    O Contato do fio. Com o resumo na mão, vale a palavra dele: `contato: null` é
+    um Contato que a api não conhece neste Espaço, e a ficha cai no layout de
+    sempre com o aviso. Sem o resumo (a chegar, ou a api fora) o fio segue o
+    Vínculo e dá a própria resposta.
+  */
+  const contatoIdDoFio = vinculosDoCrm === undefined ? undefined : resumo !== undefined ? resumo.contato?.id : vinculosDoCrm.contatoId;
+  const fichaConversacional = contatoIdDoFio !== undefined;
 
   const blockReason = terminalStatusBlockReason(state, task);
   // O que impede sair do Status atual, dito na tela e não só no hover dos chips.
@@ -2109,17 +2129,18 @@ export function TarefaCompleta({
                       link.fromId === task.id ? link.toType : link.fromType;
                     const otherId =
                       link.fromId === task.id ? link.toId : link.fromId;
-                    const label =
-                      otherType === "deal"
-                        ? state.deals.find((d) => d.id === otherId)?.title
-                        : otherType === "contact"
-                          ? state.contacts.find((c) => c.id === otherId)
-                              ?.firstName
-                          : otherType === "conversation"
-                            ? state.conversations.find(
-                                (c) => c.id === otherId,
-                              )?.title
-                            : undefined;
+                    /*
+                      O nome vem de `POST /crm/nomes` (15-25). `null` é "Registro
+                      indisponível": o registro não existe neste Espaço ou o Papel
+                      não o lê, e a tela não diz qual das duas (T-15-61). Outros
+                      tipos de Vínculo (Tarefa, Documento…) não têm nome aqui.
+                    */
+                    const ehDoCrm = otherType === "deal" || otherType === "contact" || otherType === "conversation";
+                    const nomeDaApi = ehDoCrm ? nomeDe(nomesDosVinculos, otherType, otherId) : undefined;
+                    // Com nome há atalho para o registro; "Carregando…" e "Registro indisponível" não o têm.
+                    const label = !ehDoCrm
+                      ? undefined
+                      : (nomeDaApi ?? (nomeDaApi === undefined && nomesDosVinculos.carregando ? "Carregando…" : NOME_INDISPONIVEL));
                     const href =
                       otherType === "deal"
                         ? `/crm/negocios/${otherId}`
@@ -2144,14 +2165,16 @@ export function TarefaCompleta({
                           <span style={{ color: "var(--texto-3)" }}>
                             registro não encontrado
                           </span>
-                        ) : (
+                        ) : typeof nomeDaApi === "string" ? (
                           label
+                        ) : (
+                          <span style={{ color: "var(--texto-3)" }}>{label}</span>
                         )}
                       </span>
                     );
                     return (
                       <li key={link.id}>
-                        {label !== undefined && href ? (
+                        {typeof nomeDaApi === "string" && href ? (
                           <Link href={href} className="item-solto">
                             {conteudo}
                           </Link>
@@ -2198,8 +2221,8 @@ export function TarefaCompleta({
         {/*
           Na ficha conversacional o trilho leva as DUAS regiões: abaixo de @4xl
           elas empilham sob a ficha — o trilho tem a altura do seu conteúdo
-          (o fio de Mensagens com `--conversa-empilhada-min`, o Rascunho da IA
-          recolhido numa linha, o compositor inteiro) e a ficha fica com o
+          (o fio de Mensagens com `--conversa-empilhada-min` e o compositor
+          inteiro) e a ficha fica com o
           resto; a Atividade nasce recolhida e, recolhida, nem ocupa faixa: o
           botão que a abre mora no cabeçalho da Conversa. De @4xl o trilho é a
           segunda coluna, conversa em cima e Atividade recolhida embaixo; de
@@ -2214,7 +2237,7 @@ export function TarefaCompleta({
               : "contents",
           )}
         >
-        {fichaConversacional && contato ? (
+        {contatoIdDoFio !== undefined ? (
           <section
             aria-label="Conversa"
             className="flex min-h-0 w-full flex-1 flex-col border-[var(--linha)] border-t @4xl:border-t-0 @4xl:border-l @6xl:w-[24rem] @6xl:flex-none"
@@ -2245,9 +2268,9 @@ export function TarefaCompleta({
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto @max-4xl:overflow-visible">
               <ConversationThread
                 {...(conversaId ? { conversaId } : {})}
-                contatoId={contato.id}
+                contatoId={contatoIdDoFio}
                 tarefaId={task.id}
-                canalSelecionado={canalDoFio ?? canal?.id ?? null}
+                canalSelecionado={canalDoFio ?? canalDoResumo?.id ?? null}
                 onCanalChange={setCanalDoFio}
                 flush
               />

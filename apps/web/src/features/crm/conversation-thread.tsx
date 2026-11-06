@@ -182,7 +182,8 @@ export function ConversationThread({
   readonly canalPreferidoId?: string;
   /**
    * A Tarefa conversacional a que este fio pertence (ficha da Tarefa). Ainda não é
-   * lida aqui: a Nota e o "Criar Tarefa" do fio passam a usá-la no 15-25.
+   * lida aqui: a Nota é do Contato (`POST /contatos/:id/notas`) e o "Criar Tarefa"
+   * nasce da Lista que se escolhe, então nenhum dos dois precisa dela.
    */
   readonly tarefaId?: string;
   /** O id do Canal da aba; controlado quando a tela tem atalho de Canal fora da aba. */
