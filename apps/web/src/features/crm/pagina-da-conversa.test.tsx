@@ -266,7 +266,7 @@ describe("página da Conversa pelo CRM novo — gestos por REST (3.4.1, UCR-05)"
       expect(screen.getByRole("menuitem", { name: "Reabrir" })).toBeTruthy();
     });
     fireEvent.click(screen.getByRole("menuitem", { name: "Enviar à lixeira" }));
-    const dialogo = await screen.findByRole("dialog");
+    const dialogo = await screen.findByRole("alertdialog");
     fireEvent.click(within(dialogo).getByRole("button", { name: "Enviar à lixeira" }));
     await waitFor(() => expect(screen.getByText("Conversa enviada à lixeira.")).toBeTruthy());
     expect(gravacoes().map((g) => g.caminho)).toEqual([`/conversas/${CONVERSA_ID}/reabrir`, `/conversas/${CONVERSA_ID}/lixeira`]);
@@ -321,7 +321,8 @@ describe("página da Conversa — id que a api não conhece (F14-D-05)", () => {
   });
 
   it("(7) 404 e Conversa 1:1 do modelo antigo mostra 'Conversa não encontrada.' (sem ponte de id)", async () => {
-    const antiga = estado.conversations.find((c) => c.groupIdentifier === undefined)!;
+    const antiga = estado.conversations.find((c) => c.id === "cnv_5")!;
+    expect(antiga.groupIdentifier).toBeUndefined();
     await montarPagina(antiga.id);
     await waitFor(() => expect(screen.getAllByText("Conversa não encontrada.").length).toBeGreaterThan(0));
     expect(screen.queryByTestId("fio")).toBeNull();
