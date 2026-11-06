@@ -936,3 +936,44 @@ describe("Grupo, Comunidade e Flow conferem Canal e Contato no CRM novo (Fase 15
     unwrap(receberRespostaDeFlow(state, { flowId: f.id, contactId: "cnt_17", valores: { formacao: "dentista", cidade: "Osasco", aceite: true } }, crmDoSeed(state)));
   });
 });
+
+// 15-33 — a ponte que levava os Canais de `plataforma.canais` a `state.channels` saiu de `GET /estado` e de
+// `executar()`. O Canal do Grupo e do Flow passou a existir só em `crm.canais` (o que o servidor lê da tabela):
+// o envio, a abertura de atendimento e a Resposta de Flow precisam achá-lo ali, sem `state.channels`.
+describe("Ferramentas — o Canal vem de crm.canais quando state.channels não o tem (15-33)", () => {
+  it("enviarMensagemAoGrupo envia pelo Canal que só existe em crm.canais", () => {
+    const crm = crmDoSeed(state);
+    state.channels = [];
+    const t1 = grupo("grp_turma_01");
+    const r = unwrap(enviarMensagemAoGrupo(state, "mem_julia", t1.id, { content: "Aula amanhã!" }, crm));
+    expect(r.mensagem.direction).toBe("enviada");
+    expect(r.conversa.messages.at(-1)?.id).toBe(r.mensagem.id);
+  });
+
+  it("enviarFlow envia pelo Canal publicador que só existe em crm.canais", () => {
+    const crm = crmDoSeed(state);
+    state.channels = [];
+    const r = unwrap(enviarFlow(state, "mem_julia", { flowId: flow().id, conversationId: "cnv_5", corpo: "Me conta sobre você?" }, crm));
+    expect(state.conversations.find((c) => c.id === "cnv_5")?.messages.at(-1)?.id).toBe(r.mensagem.id);
+  });
+
+  it("enviarLinkDeConvite abre a Conversa 1:1 pelo Canal que só existe em crm.canais", () => {
+    const crm = crmDoSeed(state);
+    state.channels = [];
+    const g = unwrap(criarGrupo(state, "mem_julia", { nome: "Convites", canalId: "chn_wpp" }, crm));
+    const r = unwrap(enviarLinkDeConvite(state, "mem_julia", g.id, ["cnt_22"], crm));
+    expect(r.falhas.map((f) => f.motivo).join(" ")).not.toContain("Canal não encontrado");
+  });
+
+  it("receberRespostaDeFlow recebe pelo Canal que só existe em crm.canais", () => {
+    const crm = crmDoSeed(state);
+    state.channels = [];
+    unwrap(receberRespostaDeFlow(state, { flowId: flow().id, contactId: "cnt_17", valores: { formacao: "dentista", cidade: "Osasco", aceite: true } }, crm));
+  });
+
+  it("um Canal que nem state.channels nem crm.canais têm continua recusado", () => {
+    state.channels = [];
+    const r = enviarMensagemAoGrupo(state, "mem_julia", grupo("grp_turma_01").id, { content: "x" }, { canais: [], contatos: [] });
+    expect(r.ok).toBe(false);
+  });
+});
