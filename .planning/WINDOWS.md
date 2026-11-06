@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 49
+open_count: 50
 waived_count: 2
 fixed_count: 17
-total_count: 68
-last_updated: 2026-11-06T21:40:47.230Z
+total_count: 69
+last_updated: 2026-11-06T22:01:19.208Z
 ---
 
 # Broken Windows Ledger
@@ -83,6 +83,7 @@ last_updated: 2026-11-06T21:40:47.230Z
 | 66 | 15 | deviation | packages/dominio/src/operations/sobre-o-crm-antigo.test.ts |  | 15-32: os blocos de operations.test.ts que nao testavam so operacao apagada (Mensageria e Adocao de Rascunho de sendMessage/receiveMessage, Suspeita de Duplicidade, Leitura de Widget, Barra global, Modelo de Tarefa da Lista com Contato antigo) foram movidos sem mudar para sobre-o-crm-antigo.test.ts, que ainda usa semearCrmAntigo; crm/capacidades.test.ts tambem (sendMessage fora da janela, estado antigo). operations.test.ts ficou sem semearCrmAntigo. O 15-42 apaga as leituras antigas com os blocos delas e o 15-43 apaga semearCrmAntigo: o que valer para o CRM novo precisa ser reescrito sobre as tabelas antes. | open |  | 2026-11-06T21:19:56.005Z |  |
 | 67 | 15 | deviation | packages/dominio/src/operations/ferramentas/conversa-de-grupo.ts |  | 15-33: com a ponte dos Canais fora de GET /estado e de executar(), state.channels deixou de ter o Canal de plataforma.canais. Para Grupo, Flow e Automacao continuarem enviando, sendMessage, startConversation e receiveMessage (conversa-de-grupo.ts) acham o Canal primeiro em state.channels e, na falta dele, no crm.canais que o servidor le da tabela (canalPeloId + canalComoChannel; SendMessageInput ganhou crm opcional; grupos.ts, flows.ts e automacoes.ts o repassam). NAO e projecao: o Canal nao entra no estado nem e gravado. Mensagens de modelo seguem vazias (a tabela nao guarda modelos, linha 20). Sai com o arquivo, nas Sessoes 6 e 7; as linhas 35, 37 e 41 continuam abertas (Contato antigo ainda e lido de state.contacts). | open |  | 2026-11-06T21:40:47.161Z |  |
 | 68 | 15 | deviation | apps/api/src/servicos/crm/canais.ts |  | 15-33: criar ou renomear um Canal deixou de conferir nome e conta contra os Canais antigos de plataforma.registros (canalAntigoEmConflito saiu; o Canal so existe em plataforma.canais). Antes do corte, um Canal novo pode repetir nome ou numero de um chn_* antigo; o --seco e o --migrar do 15-28 relatam canal-repetido e id-ja-existe, e o chn_* antigo repetido fica de fora do que o --migrar leva (so em registros_crm_antigo). Tambem saiu o campo canaisMs da medicao de executar() (MedicaoDaExecucao e a linha 'gravacao medida'): nao ha mais leitura de Canal para medir; idasEVoltas de uma gravacao comum e 2 tambem na primeira do processo. | open |  | 2026-11-06T21:40:47.230Z |  |
+| 69 | 15 | deviation | apps/web/src/app/(shell)/estrutura/listas/[lista]/page.tsx |  | 15-41: a Lista da Pasta Meus negocios ainda esconde as Tarefas com proveniencia 'deal' (filtro pastaDeNegocios, que le MEUS_NEGOCIOS_ID); o resto da tela ja a trata como Pasta comum. Sai com a Pasta (script de migracao, D-15-14) e com a constante (15-43), ou antes se o dono quiser ver essas Tarefas nos Espacos de teste | open |  | 2026-11-06T22:01:19.208Z |  |
 
 ````json
 [
@@ -967,6 +968,19 @@ last_updated: 2026-11-06T21:40:47.230Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-06T21:40:47.230Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 69,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/app/(shell)/estrutura/listas/[lista]/page.tsx",
+    "line": null,
+    "description": "15-41: a Lista da Pasta Meus negocios ainda esconde as Tarefas com proveniencia 'deal' (filtro pastaDeNegocios, que le MEUS_NEGOCIOS_ID); o resto da tela ja a trata como Pasta comum. Sai com a Pasta (script de migracao, D-15-14) e com a constante (15-43), ou antes se o dono quiser ver essas Tarefas nos Espacos de teste",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T22:01:19.208Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }
