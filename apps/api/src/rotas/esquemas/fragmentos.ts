@@ -125,6 +125,16 @@ export const NOMES_DO_NAVEGADOR = z
   .record(ID, z.string().max(300))
   .refine((nomes) => Object.keys(nomes).length <= 200, { message: "nomes: no máximo 200 ids." });
 
+/**
+ * O `funis` que o navegador PODE mandar como ÚLTIMO argumento de `criarAutomacao`, só para a
+ * execução local: o servidor o DESCARTA e troca a posição pelo Funil que leu de `plataforma.funis`
+ * (`gesto-no-crm/ia.ts`, T-15-92). Aqui só a forma de transporte, com teto de 200 Funis; o tipo de
+ * saída declarado é o do domínio apenas para o esquema satisfazer a assinatura da operação.
+ */
+export const FUNIS_DO_NAVEGADOR = z
+  .array(z.object({ id: ID, estado: z.enum(["ativo", "arquivado", "na_lixeira"]) }).passthrough())
+  .max(200) as unknown as z.ZodType<readonly { readonly id: string; readonly estado: "ativo" | "arquivado" | "na_lixeira" }[]>;
+
 // ── Portão de enum bidirecional — falta ou sobra de membro não compila ──
 
 type _EnumsCompletos = Confere<

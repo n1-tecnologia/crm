@@ -30,6 +30,7 @@ import { podeNoCrm, type RecursoCrm } from "@n1/dominio/crm/permissoes";
 import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
 import { criarRepositorioDeConversasPg } from "../../repositorios/crm/conversas";
 import { criarRepositorioDeEmpresasPg } from "../../repositorios/crm/empresas";
+import { criarRepositorioDeFunisPg } from "../../repositorios/crm/funis";
 import { liberarDoAgente } from "../../repositorios/crm/liberacao-do-agente";
 import { criarRepositorioDeNegociosPg } from "../../repositorios/crm/negocios";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
@@ -108,7 +109,25 @@ export const leituraDasAncoras = (posicao: number, ancoraNosArgs: AncoraNosArgs)
   argumento: (lido) => lido.nomes ?? {},
 });
 
+/**
+ * `criarAutomacao(input, funis)`: o escopo Funil confere o Funil em `plataforma.funis`. O servidor
+ * lê só o Funil que o `input.scopeId` cita (nada de listar o Espaço para conferir um id), do Espaço da
+ * sessão e em qualquer estado — quem decide se vale (na lixeira não) é o domínio. Um Funil de outro
+ * Espaço ou inexistente fica fora de `funis`, e o `funis` do navegador é descartado (T-15-92/93).
+ */
+export const leituraDoFunilDaAutomacao: LeituraDoCrm = {
+  posicao: 1,
+  ler: async (cliente, workspaceId, args) => {
+    const { scopeType, scopeId } = objetoOuVazio(args[0]);
+    if (scopeType !== "funnel" || typeof scopeId !== "string") return { funis: [] };
+    const funil = await criarRepositorioDeFunisPg(cliente).obter(workspaceId, scopeId);
+    return { funis: funil ? [funil] : [] };
+  },
+  argumento: (lido) => lido.funis ?? [],
+};
+
 export const LER_DO_CRM_IA: TabelaDeLeituras = {
+  criarAutomacao: leituraDoFunilDaAutomacao,
   createChatSession: leituraDasAncoras(1, ancoraDoCriarSessao),
   configureChatSession: leituraDasAncoras(2, ancoraDoConfigurarSessao),
   ensaiarAgente: leituraDasAncoras(2, ancoraDoEnsaio),

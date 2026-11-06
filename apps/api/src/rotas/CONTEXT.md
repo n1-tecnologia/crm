@@ -224,6 +224,15 @@ Espaço da sessão por `LER_DO_CRM_IA` (`gesto-no-crm/ia.ts`) e só se o Membro 
 `repositorios/crm/liberacao-do-agente.ts`), as Conversas de `plataforma.conversas` atribuídas ao
 Agente; o domínio solta as Tarefas e as Conversas de Grupo que ainda moram em `registros`.
 
+**O escopo Funil da Automação confere o Funil na tabela (Fase 15, 15-39, 3.4.9, UCR-08).**
+`criarAutomacao(input, funis)` recebe do servidor, como 2º argumento, os Funis que o escopo cita:
+`leituraDoFunilDaAutomacao` (`gesto-no-crm/ia.ts`) lê só o Funil de `input.scopeId`, em
+`plataforma.funis` do Espaço da sessão e em qualquer estado, e o domínio (`escopoExiste`) recusa o
+que está na lixeira ou não existe (ativo e arquivado valem). O `funis` do navegador só serve à
+execução local: `FUNIS_DO_NAVEGADOR` (`esquemas/fragmentos.ts`, até 200) valida a forma e a rota o
+DESCARTA (T-15-92); um Funil de outro Espaço nem aparece na leitura (T-15-93). `editarAutomacao`
+não muda de escopo, então não lê Funil.
+
 **Tarefa conversacional nas tabelas (Fase 14, 14-13 e 14-14, 3.3.1 e 3.3.3 a 3.3.6).**
 `rotas/crm/tarefas-conversacionais.ts` tem cinco rotas (criar e resumo no 14-13;
 trocar o Canal e ligar ou criar o Negócio no 14-14):
