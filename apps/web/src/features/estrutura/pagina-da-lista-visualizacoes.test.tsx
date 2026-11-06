@@ -17,12 +17,22 @@ import { buildSeed } from "@n1/dominio/seed";
 import { setContainerDefaultViews } from "@n1/dominio/operations/configuration";
 import { saveView, setDefaultView } from "@n1/dominio/operations";
 import type { DataState } from "@n1/dominio/state";
+import type { Canal } from "@n1/dominio/crm/canais";
 import { StoreProvider, useRun } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
 import ListaPage from "@/app/(shell)/estrutura/listas/[lista]/page";
 
+/** O caminho que o `usePathname` devolve; um teste de 15-40 o põe sob `/crm/` (onde o espelho vivia). */
+let caminho = "/estrutura/listas/x";
+
+/** 15-40: os Canais das tabelas (`GET /canais`) que a página da Lista lê; o teste escolhe quais. */
+let canaisDasTabelas: Canal[] = [];
+vi.mock("@/dados/crm/canais", () => ({
+  useCanais: () => ({ data: { ok: true, itens: canaisDasTabelas, total: canaisDasTabelas.length } }),
+}));
+
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/estrutura/listas/x",
+  usePathname: () => caminho,
   useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
 }));
@@ -45,6 +55,8 @@ beforeEach(() => {
   );
   state = buildSeed();
   dono = state.workspace.ownerMemberId;
+  caminho = "/estrutura/listas/x";
+  canaisDasTabelas = [];
 });
 
 afterEach(() => {
@@ -202,5 +214,50 @@ describe("Página da Lista — uma só aba, sem a aba Lista e a aba que some (A1
 
     expect(nomesDasAbas()).not.toContain("Calendário");
     expect(abaAtiva()).toBe("Quadro");
+  });
+});
+
+/** Um Canal das tabelas novas, `ativo` (o que `GET /canais` devolve por padrão). */
+const canalDasTabelas = (id: string, nome: string): Canal =>
+  ({ id, nome, tipo: "whatsapp", provedor: "whatsapp-nao-oficial", identificadorExterno: "5511999990000", conexao: "conectada", estado: "ativo" }) as unknown as Canal;
+
+describe("Página da Lista — os Canais da Lista conversacional vêm das tabelas (15-40, 3.4.5)", () => {
+  it("sem Canal ativo nas tabelas para a Lista, mostra o aviso e a criação fica recusada", async () => {
+    await montar("lst_pos_venda");
+
+    expect(screen.getByText(/ainda não tem canais de atendimento/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Configurar os canais" })).toBeTruthy();
+    expect(screen.queryByText("Atende por")).toBeNull();
+    expect(screen.getByRole("button", { name: /Nova Tarefa/ }).getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("com um Canal ativo das tabelas entre os da Lista, nomeia o Canal e não mostra o aviso (o Canal antigo do estado não conta)", async () => {
+    const lista = state.lists.find((l) => l.id === "lst_pos_venda");
+    if (!lista) throw new Error("o seed não tem a Lista de pós-venda");
+    // Um id que o estado antigo não conhece: só as tabelas o enxergam.
+    (lista as { canaisDeAtendimento?: string[] }).canaisDeAtendimento = ["cnl_das_tabelas"];
+    canaisDasTabelas = [canalDasTabelas("cnl_das_tabelas", "WhatsApp das tabelas")];
+
+    await montar("lst_pos_venda");
+
+    expect(screen.getByText("Atende por")).toBeTruthy();
+    expect(screen.getByText("WhatsApp das tabelas")).toBeTruthy();
+    expect(screen.queryByText(/ainda não tem canais de atendimento/)).toBeNull();
+    expect(screen.getByRole("button", { name: /Nova Tarefa/ }).getAttribute("aria-disabled")).toBe("false");
+  });
+});
+
+describe("Página da Lista — o espelho de Meus negócios saiu (15-40, F14-D-06)", () => {
+  it("a Lista espelho sob /crm/ é uma Lista como as outras: sem «Iniciar conversa», sem «valor declarado» e com o caminho da Estrutura", async () => {
+    const espelho = state.lists.find((l) => l.id.startsWith("lst_funil_"));
+    if (!espelho) throw new Error("o seed não tem uma Lista espelho de Funil");
+    caminho = `/crm/lista/${espelho.id}`;
+    canaisDasTabelas = [canalDasTabelas("chn_wpp", "WhatsApp")];
+
+    await montar(espelho.id);
+
+    expect(screen.queryByRole("button", { name: /Iniciar conversa/ })).toBeNull();
+    expect(screen.queryByText(/valor declarado/)).toBeNull();
+    expect(screen.queryByRole("link", { name: "Meus negócios" })).toBeNull();
   });
 });
