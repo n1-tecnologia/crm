@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 15
 current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
 status: executing
-stopped_at: Completed 15-22-PLAN.md
-last_updated: "2026-11-06T14:16:07.212Z"
+stopped_at: Completed 15-24-PLAN.md
+last_updated: "2026-11-06T14:34:58.424Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 15 execution started
-state_head: 0c672737b398a4c27887f009075a82424f0680f0
+state_head: 71efff4b82f43f5230639b04f9126e73a01da76a
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 271
-  completed_plans: 251
+  completed_plans: 252
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 15 (Unificação do CRM: telas no modelo novo e remoção do modelo antigo) — EXECUTING
-Plan: 27 of 43
+Plan: 28 of 43
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 15 execution started
 
@@ -470,6 +470,7 @@ Progress: [██████░░░░] 63%
 | Phase 15 P19 | 14 min | 3 tasks | 28 files |
 | Phase 15 P21 | 14 min | 2 tasks | 14 files |
 | Phase 15 P22 | 17 min | 3 tasks | 20 files |
+| Phase 15 P24 | ~65 min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -755,6 +756,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 15]: 15-21: useFunisDoEscopo lê Funis ativos e arquivados de GET /funis; inoperanteComFunis não acusa escopo eliminado enquanto a lista não chegou (ou se a api a recusou)
 - [Phase 15]: 15-22: as Ferramentas mandam o crm (Canais de GET /canais, Contatos escolhidos) como ultimo argumento; o servidor o descarta e relê. Seletor de Contatos com WhatsApp em useSeletorDeContatos (comIdentificador + q); eventos so locais usam crmParaSimular
 - [Phase 15]: 15-22: Conversa do Grupo e Conversa 1:1 do envio de Flow seguem em state.conversations (F14-D-05); nome de Contato por POST /crm/nomes, com numero da Participacao ou titulo da Conversa quando a api nao nomeia
+- [Phase 15]: 15-24: a pagina da Conversa so recua para o Grupo no 404 da api; Conversa 1:1 antiga diz 'nao encontrada' (F14-D-01); o ramo do Grupo mora em conversa-de-grupo-na-caixa.tsx e ainda usa as operacoes antigas de Conversa — F14-D-05: Grupo e Flow ficam no modelo antigo ate as Sessoes 6 e 7
+- [Phase 15]: 15-24: a Empresa do cartao do Contato e o vinculo vigente admin de menor inicio (ContatoDetalhado nao traz criado_em do vinculo); o destino de mover vem do SeletorDeRegistro (GET /contatos?q=) — Mesma regra do 15-05 com o dado que a api devolve; reaproveita o seletor dos dialogos de mesclar e transferir
 
 ### Pending Todos
 
@@ -816,6 +819,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-06T14:16:07.017Z
-Stopped at: Completed 15-22-PLAN.md
+Last session: 2026-11-06T14:34:58.212Z
+Stopped at: Completed 15-24-PLAN.md
 Resume file: None
