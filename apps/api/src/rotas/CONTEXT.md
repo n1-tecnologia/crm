@@ -295,6 +295,20 @@ trocar o Canal e ligar ou criar o Negócio no 14-14):
   pré-checadas e voltam como valor; Contato `arquivado` ou na lixeira é 409
   `CONTATO_INATIVO`; Convidado é 403.
 
+**Atividades do CRM novo (Fase 15, 15-37).** `rotas/crm/atividades.ts` tem UMA rota,
+só de leitura:
+
+- `GET /atividades?objetoTipo=&objetoId=&limite=&ate=` — `{ ok: true, itens }` com
+  `ActivityRecord` do Espaço da sessão, da mais recente para a mais antiga; sem
+  `total`, a paginação é por tempo (`ate`, ISO, exclusivo: a `at` da última linha
+  recebida). Querystring `.strict()`: ator, ação, `workspaceId` e qualquer outro
+  campo são 400. `objetoTipo` é um de `TIPOS_DE_OBJETO_DO_CRM` e vem junto com
+  `objetoId` ou nenhum dos dois (`validarFiltroDeAtividades`, 400 antes do serviço);
+  `limite` vai de 1 a `LIMITES_DE_ATIVIDADE.paginaMaxima` (padrão 50). O Papel decide
+  por tipo: com objeto exige `ler` no recurso daquele tipo (403 `PERMISSAO`); sem
+  objeto só saem os tipos que o Papel pode ler, e sem nenhum é 403. Não existe
+  POST, PATCH nem DELETE: a Atividade é gravada por cada gesto na transação dele.
+
 **Atenção (3.3.6):** o Negócio cujo dono é a Empresa do Contato não aparece para
 ligar. A 007 dá um dono por Negócio (`negocios_dono_ck`), então a conferência é
 só por `contato_id`; trazer os Negócios da Empresa é decisão à parte.

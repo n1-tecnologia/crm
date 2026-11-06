@@ -172,7 +172,12 @@ conta própria). Desde a D-15-08 as Conversas que ele atendia não são liberada
 `conversasPassadas` passa ao Sucessor como Atribuído, e a contagem fica no grupo
 "Passa ao Sucessor" do diálogo. Agentes, Automações e o resto continuam de
 `previewSuccession`; o que fica sem Responsável são só Tarefas e itens de
-Checklist. `src/sem-listas-espelho.test.ts`
+Checklist. A linha do tempo do CRM novo (15-37, D-15-09) é lida por
+`dados/crm/atividades.ts`: `useAtividades({ tipo, id })` junta `state.activity` do
+objeto (modelo antigo, já hidratado) com `GET /atividades` e ordena por `at`
+decrescente, sem repetir id; `useAtividadesDoCrm(filtro)` lê só a rota, sem
+objeto, para a Auditoria. Só leitura: quem grava a Atividade é cada gesto, no
+servidor. `src/sem-listas-espelho.test.ts`
 (D-06) congela os dois arquivos da web que ainda citam as Listas espelho e proíbe
 um terceiro.
 

@@ -17,8 +17,9 @@
 import type { ZodTypeProvider } from "@fastify/type-provider-zod";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { LIMITES_DE_ATIVIDADE, TIPOS_DE_OBJETO_DO_CRM, type FiltroDeAtividades } from "@n1/dominio/crm/atividades";
+import { LIMITES_DE_ATIVIDADE, TIPOS_DE_OBJETO_DO_CRM, validarFiltroDeAtividades, type FiltroDeAtividades } from "@n1/dominio/crm/atividades";
 import type { ServicoDeAtividades } from "../../servicos/crm/atividades";
+import { recusa } from "../../servicos/crm/resultado";
 import { responder } from "./comum";
 
 const QUERY_DE_ATIVIDADES = z
@@ -42,6 +43,14 @@ export async function rotasDeAtividades(app: FastifyInstance, opcoes: { readonly
       ...(objetoId !== undefined ? { objetoId } : {}),
       ...(ate !== undefined ? { ate } : {}),
     };
+    // A regra do domínio (objeto inteiro ou nenhum) é a mesma da tela: o pedido torto não chega ao serviço.
+    const valido = validarFiltroDeAtividades(filtro);
+    if (!valido.ok) {
+      return responder(
+        reply,
+        recusa<never>(400, valido.error, { codigo: "VALOR_INVALIDO", ...(valido.field !== undefined ? { campo: valido.field } : {}) }),
+      );
+    }
     const resultado = await servico.listar(request.membro, filtro);
     if (!resultado.ok) return responder(reply, resultado);
     return reply.status(200).send({ ok: true, itens: resultado.valor });
