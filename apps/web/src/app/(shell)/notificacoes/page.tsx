@@ -11,8 +11,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useData, useSession } from "@/dados/store";
-import { contactDisplayName, notificacoesDoMembro } from "@n1/dominio/derive";
+import { useData } from "@/dados/store";
+import { useNotificacoesDoMembro } from "@/features/shell/use-notificacoes";
 import { useFormat } from "@/features/shell/use-format";
 import { ConditionMarker, CorpoDeTela, EmptyState, PageHeader, Section } from "@/features/shell/ui";
 import { ICONE_DE_OBJETO, Selo, SeloDaTarefa } from "@/features/estrutura/icone-de-tipo";
@@ -20,27 +20,28 @@ import { ICONE_DE_OBJETO, Selo, SeloDaTarefa } from "@/features/estrutura/icone-
 export default function NotificacoesPage() {
   const state = useData((data) => data);
   const fmt = useFormat();
-  const { memberId } = useSession();
   const [now] = useState(() => new Date());
 
-  // O mesmo derive que alimenta o sino da barra global: os números nunca discordam.
+  // O mesmo hook que alimenta o sino da barra global e o painel: os números nunca discordam.
   const {
     aprovacoes: approvals,
     mencoes: mentions,
     observadas: watched,
     conversas: conversations,
+    conversasTotal: conversationsTotal,
     vencidas: overdue,
     bloqueadas: blocked,
     execucoesFalhas: failedExecutions,
     total,
-  } = notificacoesDoMembro(state, memberId, now);
+    carregando,
+  } = useNotificacoesDoMembro();
 
   return (
     <div className="flex h-full flex-col">
       <PageHeader title="Notificações" meta={total > 0 ? `${total} item(ns)` : undefined} />
 
       <CorpoDeTela>
-        {total === 0 ? (
+        {total === 0 && !carregando ? (
           <EmptyState
             title="Nada aguarda você."
             hint="Aparecem aqui Aprovações para você decidir, menções a você em Comentários e nas descrições, Comentários em Tarefas que você acompanha, Conversas atribuídas, Tarefas vencidas ou bloqueadas e Execuções que falharam."
@@ -154,29 +155,29 @@ export default function NotificacoesPage() {
         ) : null}
 
         {conversations.length > 0 ? (
-          <Section title="Conversas atribuídas a você" count={conversations.length}>
+          <Section title="Conversas atribuídas a você" count={conversationsTotal}>
             <ul className="cascata pilha-solta" data-chegada="foco">
-              {conversations.map((conversation) => {
-                const contact = conversation.contactId
-                  ? state.contacts.find((c) => c.id === conversation.contactId)
-                  : undefined;
-                return (
-                  <li key={conversation.id}>
-                    <Link href={`/crm/caixa-de-entrada/${conversation.id}`} className="item-solto py-3">
-                      <Selo icone={ICONE_DE_OBJETO.conversa} cor="var(--info)" lavado="var(--info-lavado)" />
-                      <span className="min-w-0 flex-1">
-                        <span className="app-base block truncate text-[var(--texto)]">
-                          {contact ? contactDisplayName(contact) : "Contato não resolvido"}
-                        </span>
-                        <span className="app-sm block truncate text-[var(--texto-3)]">
-                          {conversation.state} · {conversation.title}
-                        </span>
+              {conversations.map((conversation) => (
+                <li key={conversation.id}>
+                  <Link href={`/crm/caixa-de-entrada/${conversation.id}`} className="item-solto py-3">
+                    <Selo icone={ICONE_DE_OBJETO.conversa} cor="var(--info)" lavado="var(--info-lavado)" />
+                    <span className="min-w-0 flex-1">
+                      <span className="app-base block truncate text-[var(--texto)]">
+                        {conversation.contatoNome ?? "Contato não resolvido"}
                       </span>
-                    </Link>
-                  </li>
-                );
-              })}
+                      <span className="app-sm block truncate text-[var(--texto-3)]">
+                        {conversation.situacao} · {conversation.titulo}
+                      </span>
+                    </span>
+                  </Link>
+                </li>
+              ))}
             </ul>
+            {conversationsTotal > conversations.length ? (
+              <p className="app-meta app-numero px-1 pt-2">
+                Mostrando {conversations.length} de {conversationsTotal}. As demais estão na Caixa de Entrada.
+              </p>
+            ) : null}
           </Section>
         ) : null}
 

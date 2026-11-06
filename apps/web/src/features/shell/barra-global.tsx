@@ -25,13 +25,14 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Bell, ListTodo, Search, type LucideIcon } from "lucide-react";
 import { useData, useSession } from "@/dados/store";
-import { isOverdue, notificacoesDoMembro, tarefasAbertasDoMembro } from "@n1/dominio/derive";
+import { isOverdue, tarefasAbertasDoMembro } from "@n1/dominio/derive";
 import { ActionMenu, ActorAvatar } from "@/design/components";
 import { Icone } from "@/design/icone";
 import { useHidratado } from "./hidratado";
 import { marcarSeMuda, useNavegar } from "./navegacao";
 import { PendenciaDoLink } from "./pendencia-do-link";
 import { sair } from "./sair";
+import { useNotificacoesDoMembro } from "./use-notificacoes";
 
 /** Um campo de texto, um seletor ou algo editável: o "/" ali é texto, não atalho. */
 function alvoEditavel(alvo: EventTarget | null): boolean {
@@ -53,7 +54,7 @@ export function BarraGlobal() {
 
   const abertas = tarefasAbertasDoMembro(state, memberId);
   const vencidas = abertas.filter((task) => isOverdue(state, task, now));
-  const notificacoes = notificacoesDoMembro(state, memberId, now);
+  const notificacoes = useNotificacoesDoMembro();
 
   /*
     O atalho "/": abre a busca de qualquer tela, como no painel antigo prometia

@@ -7,21 +7,27 @@
  */
 
 import { useCallback } from "react";
-import { contactDisplayName, isOverdue, notificacoesDoMembro, tarefasAbertasDoMembro, weightedValue } from "@n1/dominio/derive";
+import { contactDisplayName, isOverdue, tarefasAbertasDoMembro, weightedValue, type NotificacoesDoMembro } from "@n1/dominio/derive";
 import type { DataState } from "@n1/dominio/state";
 import { useData, useSession } from "@/dados/store";
 import type { Formatters } from "@/features/shell/format";
+import { useNotificacoesDoMembro } from "@/features/shell/use-notificacoes";
 import { useFormat } from "@/features/shell/use-format";
 import { responderEmTexto, type Panorama } from "./respostas-do-robo";
 
 /** Quantos títulos e nomes o robô cita. */
 const CITADOS = 3;
 
-export function montarPanorama(state: DataState, memberId: string | undefined, formato: Formatters, agora: Date): Panorama {
+export function montarPanorama(
+  state: DataState,
+  memberId: string | undefined,
+  formato: Formatters,
+  agora: Date,
+  notificacoes: NotificacoesDoMembro | null,
+): Panorama {
   const membro = state.members.find((m) => m.id === memberId);
   const minhas = memberId ? tarefasAbertasDoMembro(state, memberId) : [];
   const vencidas = minhas.filter((tarefa) => isOverdue(state, tarefa, agora));
-  const notificacoes = memberId ? notificacoesDoMembro(state, memberId, agora) : null;
   const contatos = state.contacts.filter((contato) => contato.lifecycle === "ativo");
   const recentes = [...contatos]
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
@@ -42,12 +48,12 @@ export function montarPanorama(state: DataState, memberId: string | undefined, f
       total: notificacoes?.total ?? 0,
       mencoes: notificacoes?.mencoes.length ?? 0,
       aprovacoes: notificacoes?.aprovacoes.length ?? 0,
-      conversas: notificacoes?.conversas.length ?? 0,
+      conversas: notificacoes?.conversasTotal ?? 0,
       vencidas: notificacoes?.vencidas.length ?? 0,
     },
     contatos: { total: contatos.length, recentes },
     negocios: { abertos: abertos.length, valorPonderado },
-    conversas: { abertas: conversasAbertas.length, minhas: notificacoes?.conversas.length ?? 0 },
+    conversas: { abertas: conversasAbertas.length, minhas: notificacoes?.conversasTotal ?? 0 },
   };
 }
 
@@ -58,5 +64,10 @@ export function useRespostaDoRobo(): (pergunta: string | null) => string {
   const dados = useData((estado) => estado);
   const { memberId } = useSession();
   const formato = useFormat();
-  return useCallback((pergunta) => responderEmTexto(pergunta, montarPanorama(dados, memberId, formato, new Date())), [dados, memberId, formato]);
+  // As notificações (com as Conversas atribuídas da api) vêm do mesmo hook do selo e da página.
+  const notificacoes = useNotificacoesDoMembro();
+  return useCallback(
+    (pergunta) => responderEmTexto(pergunta, montarPanorama(dados, memberId, formato, new Date(), memberId ? notificacoes : null)),
+    [dados, memberId, formato, notificacoes],
+  );
 }

@@ -84,9 +84,9 @@ import {
   irmaosOrdenados,
   memberReachesContainer,
   memberSeesResource,
-  notificacoesDoMembro,
 } from "@n1/dominio/derive";
 import { useSidebarCollapsed } from "./use-sidebar";
+import { useNotificacoesDoMembro } from "./use-notificacoes";
 import { TarefasCompartilhadas } from "./compartilhadas-comigo";
 import {
   CreateContainerDialog,
@@ -357,15 +357,15 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
   const luz = useRef<HTMLSpanElement>(null);
   const pendingApprovals = useData((data) => data.approvals.filter((a) => a.decision === undefined).length);
   /*
-    A contagem do sino no painel é a MESMA da barra global e da tela: o derivado
-    filtrado por Membro. Só entra depois da hidratação, porque depende de "hoje"
-    (o que venceu) e o HTML do servidor não pode trazer número nenhum.
+    A contagem do sino no painel é a MESMA da barra global e da tela: o hook
+    `useNotificacoesDoMembro` (derivado filtrado por Membro, com as Conversas
+    atribuídas lidas da api). Só entra depois da hidratação, porque depende de
+    "hoje" (o que venceu) e o HTML do servidor não pode trazer número nenhum.
   */
-  const estado = useData((data) => data);
   const { memberId } = useSession();
   const hidratado = useHidratado();
-  const [agora] = useState(() => new Date());
-  const notificacoes = hidratado ? notificacoesDoMembro(estado, memberId, agora).total : 0;
+  const { total: totalDeNotificacoes } = useNotificacoesDoMembro();
+  const notificacoes = hidratado ? totalDeNotificacoes : 0;
   const [showArchived, setShowArchived] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   // O aviso de recusa da árvore: não expira (WCAG 2.2.1), a pessoa dispensa.

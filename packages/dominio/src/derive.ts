@@ -3,6 +3,7 @@
  * the recorded state, as the ontology requires (B36, B45, B100, RN-CRM-16).
  */
 
+import type { ConversaNaLista } from "./crm/conversas";
 import { ACAO_DESCRICAO_ALTERADA, membrosMencionadosNaDescricao, trechoDaMencao } from "./descricao-da-tarefa";
 import { ACTOR_KIND_LABEL } from "./rotulos";
 import type { DataState } from "./state";
@@ -1465,7 +1466,10 @@ export interface NotificacoesDoMembro {
   readonly mencoes: MencaoPendente[];
   /** AVIS-02 — Comentários em Tarefas que o Membro acompanha (observador), ainda não resolvidos. */
   readonly observadas: Array<{ readonly task: Task; readonly comment: Comment }>;
-  readonly conversas: Conversation[];
+  /** As Conversas atribuídas ao Membro e não resolvidas, como a api as devolveu (a página dela, não todas). */
+  readonly conversas: readonly ConversaNaLista[];
+  /** Quantas são ao todo: o `total` da api, que conta mais que a página em `conversas`. */
+  readonly conversasTotal: number;
   readonly vencidas: Task[];
   readonly bloqueadas: Task[];
   readonly execucoesFalhas: AgentExecution[];
@@ -1473,18 +1477,29 @@ export interface NotificacoesDoMembro {
 }
 
 /**
+ * As Conversas atribuídas ao Membro e não resolvidas, lidas das tabelas do CRM
+ * (`GET /conversas?atribuidoId=…&situacao=aberta|pendente`): `itens` é a página
+ * que a tela lista e `total` é o que a api contou — é ele que entra no selo.
+ */
+export interface ConversasAtribuidas {
+  readonly itens: readonly ConversaNaLista[];
+  readonly total: number;
+}
+
+/**
  * O que a pessoa tem de responder (T51). Não há Notificação na ontologia: é
  * tudo derivado de registros que já existem, filtrado pelo Membro. O sino da
  * barra global e a tela de Notificações leem daqui — nunca discordam.
+ *
+ * As Conversas não saem do estado em memória: o CRM mora em tabelas (Fase 15),
+ * então quem chama traz `conversasAtribuidas` da api (o hook
+ * `useNotificacoesDoMembro`); o resto segue derivado do store.
  */
-export function notificacoesDoMembro(state: DataState, memberId: Id, now: Date): NotificacoesDoMembro {
+export function notificacoesDoMembro(state: DataState, memberId: Id, now: Date, conversasAtribuidas: ConversasAtribuidas): NotificacoesDoMembro {
   const aprovacoes = state.approvals.filter((a) => a.decision === undefined && a.approverMemberId === memberId);
   const minhas = tarefasAbertasDoMembro(state, memberId);
   const vencidas = minhas.filter((task) => isOverdue(state, task, now));
   const bloqueadas = minhas.filter((task) => isBlocked(state, task));
-  const conversas = state.conversations.filter(
-    (c) => c.lifecycle === "ativo" && c.state !== "resolvida" && c.assignee?.kind === "member" && c.assignee.id === memberId,
-  );
   const execucoesFalhas = state.agentExecutions.filter((execution) => {
     if (execution.state !== "falhou") return false;
     return state.agents.find((a) => a.id === execution.agentId)?.ownerMemberId === memberId;
@@ -1495,11 +1510,12 @@ export function notificacoesDoMembro(state: DataState, memberId: Id, now: Date):
     aprovacoes,
     mencoes,
     observadas,
-    conversas,
+    conversas: conversasAtribuidas.itens,
+    conversasTotal: conversasAtribuidas.total,
     vencidas,
     bloqueadas,
     execucoesFalhas,
-    total: aprovacoes.length + mencoes.length + observadas.length + conversas.length + vencidas.length + bloqueadas.length + execucoesFalhas.length,
+    total: aprovacoes.length + mencoes.length + observadas.length + conversasAtribuidas.total + vencidas.length + bloqueadas.length + execucoesFalhas.length,
   };
 }
 
