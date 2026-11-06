@@ -91,6 +91,11 @@ export const FRASES_DE_CONTATOS: FrasesDeRestricao = {
     codigo: "CONTATO_COM_NEGOCIOS",
     error: "Este Contato ainda tem Negócios. Troque o Contato deles antes.",
   },
+  // 011: o absorvido aponta para o sobrevivente (`mesclado_em_id`); a pré-checagem dá a frase rica, esta é a rede (WR-06).
+  contatos_mesclado_em_fk: {
+    codigo: "CONTATO_COM_MESCLADOS",
+    error: "Outros Contatos foram mesclados neste e ele não pode ser excluído de vez.",
+  },
   // 008: a Conversa referencia o Contato; a pré-checagem dá a frase rica, esta é a rede contra corrida.
   conversas_workspace_id_contato_id_fkey: {
     codigo: "CONTATO_COM_CONVERSAS",
@@ -521,6 +526,17 @@ export function criarServicoDeContatos(deps: {
               : `Este Contato tem ${conversas.total} Conversas na Caixa de Entrada e não pode ser excluído permanentemente.`,
             { codigo: "CONTATO_COM_CONVERSAS", bloqueios: { conversas } },
           );
+        }
+        // WR-06: o sobrevivente de uma mesclagem é o destino de `mesclado_em_id` dos absorvidos; o `delete`
+        // violaria `contatos_mesclado_em_fk` e viraria 500. Repetir a chamada dá o mesmo 409 e nada muda.
+        const absorvidos = await cliente.query(
+          "select 1 from plataforma.contatos where workspace_id = $1 and mesclado_em_id = $2 limit 1",
+          [membro.workspaceId, contato.id],
+        );
+        if ((absorvidos.rowCount ?? 0) > 0) {
+          return recusa<never>(409, "Este Contato absorveu outros Contatos e não pode ser excluído de vez.", {
+            codigo: "CONTATO_COM_MESCLADOS",
+          });
         }
         // O `delete` cascateia o vínculo e o trigger recusaria no commit; antecipar dá a mensagem rica.
         const empresas = await empresasEmQueEhUnicoAdmin(cliente, membro.workspaceId, contato.id);

@@ -74,8 +74,9 @@ const linhaParaResumo = (linha: LinhaDoResumo): ResumoDaTarefaConversacional => 
 /**
  * Um resumo por Vínculo, na ordem pedida. Lista vazia não consulta o banco.
  *
- * O Negócio na lixeira não aparece (RN-TAR-15: o Vínculo fica suspenso enquanto ele está lá);
- * o arquivado aparece. A Mensagem com marcação de exclusão não é candidata a "última".
+ * O que está na lixeira não aparece (RN-TAR-15: o Vínculo fica suspenso enquanto o Negócio está lá;
+ * WR-05: o mesmo vale para o Contato e para a Conversa, que ficam nulos, e o Canal e a última
+ * Mensagem com a Conversa); o arquivado aparece. A Mensagem com marcação de exclusão não é candidata a "última".
  */
 export async function resumoDasTarefas(
   cliente: Pool | PoolClient,
@@ -99,8 +100,9 @@ export async function resumoDasTarefas(
        left join plataforma.contatos ef
               on ef.workspace_id = $1
              and ef.id = case when c.estado = 'mesclado' then c.mesclado_em_id else c.id end
+             and ef.estado <> 'na_lixeira'
        left join plataforma.conversas cv
-              on cv.workspace_id = $1 and cv.id = e.conversa_id
+              on cv.workspace_id = $1 and cv.id = e.conversa_id and cv.estado = 'ativo'
        left join plataforma.canais cn
               on cn.workspace_id = $1 and cn.id = cv.canal_id
        left join lateral (
