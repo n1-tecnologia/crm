@@ -2,8 +2,9 @@
  * As operações de Membros que também mexem nas tabelas do CRM no MESMO commit
  * da gravação em `plataforma.registros` (Fase 14, 3.2.8).
  *
- * `removeMember` passa o dono dos Contatos, Empresas e Negócios do Membro ao
- * Sucessor e LIBERA as Conversas atribuídas a ele (RN-ET-09 a e b). O domínio só
+ * `removeMember` passa ao Sucessor os Contatos, Empresas, Negócios e as Conversas
+ * atribuídas a ele (RN-ET-09 e RN-CXE-24 emendadas, D-15-08): o dono dos três
+ * primeiros muda, e a Conversa muda de Atribuído, não de Proprietário. O domínio só
  * valida o Sucessor quando o Membro ainda não tinha saído; repetir a remoção
  * devolve `ok` sem olhar o Sucessor, então aqui ele precisa ser Membro ATIVO
  * deste Espaço, senão nada passa. Uma operação com `aoConfirmar` sai do caminho de
