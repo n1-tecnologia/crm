@@ -14,12 +14,14 @@
  */
 
 import { readFileSync } from "node:fs";
-import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { buildSeed } from "@n1/dominio/seed";
 import { encerrar, pool } from "../persistencia/conexao";
 import { semear } from "../persistencia/repositorio";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm } from "../testes/banco-crm";
-import { carregarCrmDemo } from "./crm-demo";
+import type { PoolClient } from "pg";
+import { carregarCrmDemo, exigirBancoLocal, hostEhLocal, RecusaDoDemo, validarEspacoDoDemo } from "./crm-demo";
+import { lerArgumentos, principal } from "./crm-demo.cli";
 
 interface DemoEmJson {
   readonly tabelas: Readonly<Record<string, readonly { readonly id?: string }[]>>;
@@ -133,5 +135,167 @@ describeComBanco("carregarCrmDemo — o CRM de demonstração num Espaço de des
     await expect(carregar(ws)).rejects.toThrow(/o Espaço já tem Contatos/);
 
     expect(await contagens(ws)).toEqual(antes);
+  });
+});
+
+// --- 15-29 Task 2: as recusas e a CLI ---
+
+const URL_REMOTA = "postgres://usuario:segredo@db.exemplo.com:5432/postgres";
+
+/** Um cliente que EXPLODE se alguém o usar: prova que a recusa veio antes de qualquer consulta. */
+function clienteQueNaoPodeSerUsado(): { cliente: PoolClient; consultas: string[] } {
+  const consultas: string[] = [];
+  const cliente = {
+    query: async (sql: string) => {
+      consultas.push(sql);
+      throw new Error("o cliente não podia ser usado");
+    },
+  } as unknown as PoolClient;
+  return { cliente, consultas };
+}
+
+describe("o host do banco: só local", () => {
+  it("localhost e 127.0.0.1 são locais, com qualquer porta e usuário", () => {
+    expect(hostEhLocal("postgres://postgres:x@localhost:5432/postgres")).toBe(true);
+    expect(hostEhLocal("postgres://u:p@127.0.0.1:6543/x")).toBe(true);
+  });
+
+  it("host remoto, parecido com local, URL vazia ou ilegível NÃO são locais", () => {
+    expect(hostEhLocal(URL_REMOTA)).toBe(false);
+    expect(hostEhLocal("postgres://u:p@localhost.exemplo.com/x")).toBe(false);
+    expect(hostEhLocal("postgres://u:p@exemplo.com/localhost")).toBe(false);
+    expect(hostEhLocal("")).toBe(false);
+    expect(hostEhLocal(undefined)).toBe(false);
+    expect(hostEhLocal("isto não é uma url")).toBe(false);
+  });
+
+  it("exigirBancoLocal recusa banco remoto com a mensagem de que só roda em banco local", () => {
+    expect(() => exigirBancoLocal(URL_REMOTA)).toThrow(RecusaDoDemo);
+    expect(() => exigirBancoLocal(URL_REMOTA)).toThrow(/só roda em banco local/);
+    expect(() => exigirBancoLocal(undefined)).toThrow(/só roda em banco local/);
+    expect(() => exigirBancoLocal("postgres://postgres:x@localhost:5432/postgres")).not.toThrow();
+  });
+
+  it("carregarCrmDemo recusa banco remoto antes de qualquer consulta (nem o begin)", async () => {
+    const { cliente, consultas } = clienteQueNaoPodeSerUsado();
+    await expect(carregarCrmDemo(cliente, { workspaceId: "ws_dev", urlDoBanco: URL_REMOTA })).rejects.toThrow(/só roda em banco local/);
+    expect(consultas).toEqual([]);
+  });
+
+  it("sem urlDoBanco, carregarCrmDemo usa DATABASE_URL: remoto recusa antes de consultar", async () => {
+    vi.stubEnv("DATABASE_URL", URL_REMOTA);
+    try {
+      const { cliente, consultas } = clienteQueNaoPodeSerUsado();
+      await expect(carregarCrmDemo(cliente, { workspaceId: "ws_dev" })).rejects.toThrow(/só roda em banco local/);
+      expect(consultas).toEqual([]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("o id do Espaço fora de ^ws_[a-z0-9_]+$ é recusado antes de consultar", async () => {
+    for (const ruim of ["", "n1", "WS_N1", "ws-n1", "ws_n1; drop table x", "ws_n1 ", "ws_"]) {
+      expect(() => validarEspacoDoDemo(ruim), JSON.stringify(ruim)).toThrow(RecusaDoDemo);
+    }
+    expect(() => validarEspacoDoDemo("ws_dev_1")).not.toThrow();
+    const { cliente, consultas } = clienteQueNaoPodeSerUsado();
+    await expect(carregarCrmDemo(cliente, { workspaceId: "WS_N1", urlDoBanco: "postgres://postgres:x@localhost/x" })).rejects.toThrow(/Espaço inválido/);
+    expect(consultas).toEqual([]);
+  });
+});
+
+describe("lerArgumentos do bootstrap:crm-demo", () => {
+  it("--espaco <id> e --espaco=<id>", () => {
+    expect(lerArgumentos(["--espaco", "ws_dev"])).toEqual({ espaco: "ws_dev" });
+    expect(lerArgumentos(["--espaco=ws_dev_2"])).toEqual({ espaco: "ws_dev_2" });
+  });
+
+  it("sem --espaco, sem valor, repetido, desconhecido ou mal formado: recusa", () => {
+    expect(() => lerArgumentos([])).toThrow(RecusaDoDemo);
+    expect(() => lerArgumentos([])).toThrow(/--espaco/);
+    expect(() => lerArgumentos(["--espaco"])).toThrow(/Falta o valor/);
+    expect(() => lerArgumentos(["--espaco", "ws_a", "--espaco", "ws_b"])).toThrow(/uma vez/);
+    expect(() => lerArgumentos(["--espaco", "ws_a", "--todos"])).toThrow(/Argumento desconhecido/);
+    expect(() => lerArgumentos(["--espaco", "WS_N1"])).toThrow(/Espaço inválido/);
+  });
+});
+
+describe("principal: a CLI devolve o código de saída", () => {
+  it("erro de uso (sem --espaco) sai com 2 e mostra a ajuda", async () => {
+    const erro = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      expect(await principal([])).toBe(2);
+      expect(erro.mock.calls.flat().join("\n")).toMatch(/Uso: npm run bootstrap:crm-demo/);
+    } finally {
+      erro.mockRestore();
+    }
+  });
+
+  it("banco remoto: sai com 2 dizendo que só roda em banco local, sem tentar conectar", async () => {
+    vi.stubEnv("DATABASE_URL", URL_REMOTA);
+    const erro = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      // Se tentasse conectar em db.exemplo.com, o resultado seria 1 ("Falhou: ..."), não 2.
+      expect(await principal(["--espaco", "ws_dev"])).toBe(2);
+      const saida = erro.mock.calls.flat().join("\n");
+      expect(saida).toMatch(/só roda em banco local/);
+      expect(saida).not.toMatch(/Falhou/);
+      // Nem usuário nem senha vão para o log.
+      expect([...log.mock.calls.flat(), saida].join("\n")).not.toMatch(/segredo|usuario/);
+    } finally {
+      erro.mockRestore();
+      log.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
+});
+
+describeComBanco("as recusas contra o Postgres local (15-29 Task 2)", () => {
+  beforeAll(async () => {
+    await prepararBancoCrm();
+  });
+  afterEach(async () => {
+    for (const ws of criados.splice(0)) await limparEspaco(ws);
+  });
+  afterAll(async () => {
+    await encerrar();
+  });
+
+  it("Espaço que não existe no banco local: \"Espaço não encontrado\", nada gravado", async () => {
+    const ws = novoEspacoDeTeste("naoexiste");
+    await expect(carregar(ws)).rejects.toThrow(/Espaço não encontrado/);
+    const r = await pool().query<{ n: string }>("select count(*)::text as n from plataforma.contatos where workspace_id = $1", [ws]);
+    expect(r.rows[0]!.n).toBe("0");
+  });
+
+  it("principal --espaco de um Espaço inexistente no banco local sai com 2", async () => {
+    const erro = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      expect(await principal(["--espaco", novoEspacoDeTeste("cli")])).toBe(2);
+      expect(erro.mock.calls.flat().join("\n")).toMatch(/Espaço não encontrado/);
+    } finally {
+      erro.mockRestore();
+      log.mockRestore();
+    }
+  });
+
+  it("principal carrega o demo num Espaço semeado e a segunda execução sai com 2 sem duplicar", async () => {
+    const ws = await espacoSemeado("clicarga");
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const erro = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      expect(await principal(["--espaco", ws])).toBe(0);
+      const aposPrimeira = await contagens(ws);
+      expect(aposPrimeira.conversas).toBeGreaterThan(0);
+      expect(log.mock.calls.flat().join("\n")).not.toMatch(/postgres:\/\/|:x@/); // sem usuário nem senha
+      expect(await principal(["--espaco", ws])).toBe(2);
+      expect(erro.mock.calls.flat().join("\n")).toMatch(/já tem Contatos/);
+      expect(await contagens(ws)).toEqual(aposPrimeira);
+    } finally {
+      erro.mockRestore();
+      log.mockRestore();
+    }
   });
 });
