@@ -127,6 +127,52 @@ describeComBanco("ServicoDeConsentimentos — Postgres local", () => {
     expect(lista.itens[0]?.id).toBe(registrado.id);
   });
 
+  it("(a2) registrar grava 'Consentimento registrado' com a finalidade e a decisão, sem a evidência (15-09)", async () => {
+    const contatoId = await semearContato(ws, "Consentiu Atv");
+    const mensagemId = await semearMensagem(ws, contatoId, "atv");
+    valor(await servico.registrar(membro(ws, "mem_bia"), contatoId, { ...marketingWhatsapp, evidenciaMensagemId: mensagemId }));
+
+    const linhas = (
+      await pool().query<{ acao: string; ator_id: string; objeto_tipo: string; objeto_nome: string; antes: string | null; depois: string | null; detalhe: string | null }>(
+        "select acao, ator_id, objeto_tipo, objeto_nome, antes, depois, detalhe from plataforma.crm_atividades where workspace_id = $1 and objeto_id = $2",
+        [ws, contatoId],
+      )
+    ).rows;
+    expect(linhas).toEqual([
+      {
+        acao: "Consentimento registrado",
+        ator_id: "mem_bia",
+        objeto_tipo: "contact",
+        objeto_nome: "Consentiu Atv",
+        antes: null,
+        depois: null,
+        detalhe: "Marketing (whatsapp): concedido",
+      },
+    ]);
+    expect(JSON.stringify(linhas)).not.toContain("Pode mandar as novidades");
+    expect(JSON.stringify(linhas)).not.toContain(mensagemId);
+  });
+
+  it("(a3) o consentimento recusado (finalidade ruim, Contato mesclado, Convidado, outro Espaço) não grava Atividade", async () => {
+    const mesclado = await semearContato(ws, "Mesclado Atv");
+    await poolDoDono().query("update plataforma.contatos set estado = 'mesclado', mesclado_em_id = $3, mesclado_em = now() where workspace_id = $1 and id = $2", [
+      ws,
+      mesclado,
+      await semearContato(ws, "Sobrevivente Atv"),
+    ]);
+    const livre = await semearContato(ws, "Livre Atv");
+    const contar = async (contatoId: string) =>
+      Number((await pool().query<{ n: string }>("select count(*) as n from plataforma.crm_atividades where workspace_id = $1 and objeto_id = $2", [ws, contatoId])).rows[0]!.n);
+
+    recusado(await servico.registrar(eu, livre, { ...marketingWhatsapp, finalidadeId: "cat_fin_inexistente" }));
+    recusado(await servico.registrar(eu, mesclado, marketingWhatsapp));
+    recusado(await servico.registrar(membro(ws, "mem_convidado"), livre, marketingWhatsapp));
+    recusado(await servico.registrar(membro(outroWs), livre, marketingWhatsapp));
+
+    expect(await contar(livre)).toBe(0);
+    expect(await contar(mesclado)).toBe(0);
+  });
+
   it("(b) revogar é registrar um revogado: a linha anterior continua e o vigente passa a ser o revogado (T-14-19)", async () => {
     const contatoId = await semearContato(ws, "Revogou");
     const concedido = valor(await servico.registrar(eu, contatoId, { ...marketingWhatsapp, em: "2026-10-01T10:00:00.000Z" }));

@@ -459,6 +459,48 @@ describeComBanco("ServicoDeContatos — Postgres local", () => {
       expect(valor(await servico.obter(eu, b.contato.id)).identificadores.map((i) => i.id)).toContain(identificador.id);
     });
 
+    it("(a2) transferir grava 'Identificador transferido' no Contato de origem, com o nome do destino e sem o valor do Identificador (15-09)", async () => {
+      const numero = zap();
+      const a = await criar({ nome: "Origem Atv", identificadores: [{ tipo: "whatsapp", valor: numero }] });
+      const b = await criar({ nome: "Destino Atv", identificadores: [{ tipo: "email", valor: "destino-atv@transf.test" }] });
+      const identificador = a.identificadores[0]!;
+
+      valor(await servico.transferirIdentificador(eu, a.contato.id, identificador.id, { paraContatoId: b.contato.id }));
+
+      const linhas = (
+        await pool().query<{ acao: string; ator_id: string; objeto_tipo: string; objeto_id: string; objeto_nome: string; antes: string | null; depois: string | null; detalhe: string | null }>(
+          "select acao, ator_id, objeto_tipo, objeto_id, objeto_nome, antes, depois, detalhe from plataforma.crm_atividades where workspace_id = $1 and objeto_id = $2",
+          [ws, a.contato.id],
+        )
+      ).rows;
+      expect(linhas).toEqual([
+        {
+          acao: "Identificador transferido",
+          ator_id: eu.id,
+          objeto_tipo: "contact",
+          objeto_id: a.contato.id,
+          objeto_nome: "Origem Atv",
+          antes: null,
+          depois: "Destino Atv",
+          detalhe: "whatsapp",
+        },
+      ]);
+      // Nenhum campo da linha leva o valor do Identificador (T-15-27).
+      expect(JSON.stringify(linhas)).not.toContain(identificador.valor);
+      expect(JSON.stringify(linhas)).not.toContain(numero);
+    });
+
+    it("(a3) a transferência recusada não grava Atividade", async () => {
+      const a = await criar({ nome: "Origem Recusa", identificadores: [{ tipo: "whatsapp", valor: zap() }] });
+      const antes = Number((await pool().query<{ n: string }>("select count(*) as n from plataforma.crm_atividades where workspace_id = $1", [ws])).rows[0]!.n);
+
+      recusado(await servico.transferirIdentificador(eu, a.contato.id, a.identificadores[0]!.id, { paraContatoId: a.contato.id }));
+      recusado(await servico.transferirIdentificador(eu, a.contato.id, "identificador-que-nao-existe", { paraContatoId: a.contato.id }));
+
+      const depois = Number((await pool().query<{ n: string }>("select count(*) as n from plataforma.crm_atividades where workspace_id = $1", [ws])).rows[0]!.n);
+      expect(depois).toBe(antes);
+    });
+
     it("(b) o destino que já tem WhatsApp principal recebe o transferido como não principal", async () => {
       const a = await criar({ nome: "Origem B1", identificadores: [{ tipo: "whatsapp", valor: zap() }] });
       const b = await criar({ nome: "Destino B1", identificadores: [{ tipo: "whatsapp", valor: zap() }] });

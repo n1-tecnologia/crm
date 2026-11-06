@@ -866,6 +866,143 @@ describeComBanco("ServicoDeConversas — Postgres local", () => {
       ]);
     });
 
+    /** Conversa aberta de Ana com um WhatsApp novo a cada chamada. */
+    let numero = 0;
+    async function conversaDeAna(c: Contexto) {
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: `+551196667${String(++numero).padStart(4, "0")}` }]);
+      const canal = await comercial(c.ws);
+      return { ...valor(await abrir(c, canal, ana)), canalId: canal };
+    }
+
+    async function recebidaEm(ws: string, conversaId: string, canalId: string, idExterno: string, criadoEm: string) {
+      await criarRepositorioDeMensagensPg(pool()).inserirRecebida(ws, {
+        conversaId,
+        canalId,
+        idExterno,
+        criadoEm,
+        conteudo: "mensagem de teste",
+        anexos: [],
+        assunto: null,
+        enderecosAdicionais: [],
+        remetenteExterno: null,
+        identificadorId: null,
+        cargaBruta: {},
+      });
+    }
+
+    const resumo = (linhas: LinhaDeAtividade[]) => linhas.map((l) => [l.acao, l.antes, l.depois]);
+
+    it("atribuir a um Membro, a um Agente e a ninguém grava uma linha cada, com os nomes", async () => {
+      const c = await espaco("ativatribuir");
+      const { conversa } = await conversaDeAna(c);
+      await pool().query(
+        `insert into plataforma.registros (workspace_id, colecao, id, dados) values ($1, 'agents', 'age_x', $2::jsonb)`,
+        [c.ws, JSON.stringify({ id: "age_x", lifecycle: "ativo", name: "Robô da Triagem" })],
+      );
+
+      valor(await servico.atribuir(c.membro, conversa.id, { atribuido: { tipo: "membro", id: "mem_admin" } }));
+      valor(await servico.atribuir(c.membro, conversa.id, { atribuido: { tipo: "agente", id: "age_x" } }));
+      valor(await servico.atribuir(c.membro, conversa.id, { atribuido: null }));
+
+      expect(resumo(await atividadesDe(c.ws, conversa.id))).toEqual([
+        ["Conversa atribuída", "mem_ana", "mem_admin"],
+        ["Conversa atribuída", "mem_admin", "Robô da Triagem"],
+        ["Atribuído removido da Conversa", "Robô da Triagem", null],
+      ]);
+    });
+
+    it("atribuir recusado (Membro suspenso, Convidado, outro Espaço) não grava", async () => {
+      const c = await espaco("ativatribuirno");
+      const outro = await espaco("ativatribuirnob");
+      await semearMembro(c.ws, { id: "mem_suspenso", base: "membro", state: "suspenso" });
+      const { conversa } = await conversaDeAna(c);
+
+      expect(recusado(await servico.atribuir(c.membro, conversa.id, { atribuido: { tipo: "membro", id: "mem_suspenso" } }))).toMatchObject({ status: 409 });
+      expect(recusado(await servico.atribuir(c.convidado, conversa.id, { atribuido: null }))).toMatchObject({ status: 403 });
+      expect(recusado(await servico.atribuir(outro.membro, conversa.id, { atribuido: null }))).toMatchObject({ status: 404 });
+      expect(await atividadesDe(c.ws)).toEqual([]);
+    });
+
+    it("lixeira e restaurar gravam uma linha cada; a recusa (Conversa aberta) não grava", async () => {
+      const c = await espaco("ativlixeira");
+      const { conversa } = await conversaDeAna(c);
+
+      expect(recusado(await servico.enviarParaLixeira(c.membro, conversa.id))).toMatchObject({ status: 409 });
+      expect(await atividadesDe(c.ws)).toEqual([]);
+
+      valor(await servico.resolver(c.membro, conversa.id));
+      valor(await servico.enviarParaLixeira(c.membro, conversa.id));
+      valor(await servico.restaurar(c.membro, conversa.id));
+      expect(recusado(await servico.restaurar(c.membro, conversa.id))).toMatchObject({ status: 409 });
+
+      expect((await atividadesDe(c.ws, conversa.id)).map((l) => l.acao)).toEqual(["Conversa enviada à lixeira", "Conversa restaurada"]);
+    });
+
+    it("estrela só grava quando o valor muda: marcar duas vezes = 1 linha; desmarcar = mais 1; desmarcar de novo = nenhuma", async () => {
+      const c = await espaco("ativestrela");
+      const { conversa } = await conversaDeAna(c);
+
+      valor(await servico.marcar(c.membro, conversa.id, { estrela: false }));
+      valor(await servico.marcar(c.membro, conversa.id, { estrela: true }));
+      valor(await servico.marcar(c.membro, conversa.id, { estrela: true }));
+      valor(await servico.marcar(c.membro, conversa.id, { estrela: false }));
+      valor(await servico.marcar(c.membro, conversa.id, { estrela: false }));
+
+      const linhas = await atividadesDe(c.ws, conversa.id);
+      expect(linhas.map((l) => l.acao)).toEqual(["Conversa marcada com estrela", "Estrela removida da Conversa"]);
+      expect(linhas.every((l) => l.ator_id === "mem_ana" && l.antes === null && l.depois === null && l.detalhe === null)).toBe(true);
+    });
+
+    it("estrela repetida em paralelo grava uma linha só (a leitura do valor anterior é serializada)", async () => {
+      const c = await espaco("ativestrelapar");
+      const { conversa } = await conversaDeAna(c);
+
+      const resultados = await Promise.all(Array.from({ length: 6 }, () => servico.marcar(c.membro, conversa.id, { estrela: true })));
+      resultados.forEach((r) => valor(r));
+
+      expect((await atividadesDe(c.ws, conversa.id)).map((l) => l.acao)).toEqual(["Conversa marcada com estrela"]);
+    });
+
+    it("leitura só grava quando o lidaAte avança E há Mensagem recebida entre o anterior e o novo", async () => {
+      const c = await espaco("ativleitura");
+      const { conversa, canalId } = await conversaDeAna(c);
+      const agora = Date.now();
+      const iso = (deslocamentoMs: number) => new Date(agora + deslocamentoMs).toISOString();
+      await recebidaEm(c.ws, conversa.id, canalId, "wamid.l1", iso(-7_200_000));
+      await recebidaEm(c.ws, conversa.id, canalId, "wamid.l2", iso(-3_600_000));
+      const acoes = async () => (await atividadesDe(c.ws, conversa.id)).map((l) => l.acao);
+
+      // Primeira leitura, com duas recebidas por ler: uma linha.
+      valor(await servico.marcar(c.membro, conversa.id, { lidaAte: iso(-1_800_000) }));
+      expect(await acoes()).toEqual(["Conversa lida"]);
+      // O mesmo valor de novo: nada.
+      valor(await servico.marcar(c.membro, conversa.id, { lidaAte: iso(-1_800_000) }));
+      // Avançar sem Mensagem recebida nova entre os dois valores: nada.
+      valor(await servico.marcar(c.membro, conversa.id, { lidaAte: iso(-600_000) }));
+      // Recuar: nada.
+      valor(await servico.marcar(c.membro, conversa.id, { lidaAte: iso(-3_000_000) }));
+      expect(await acoes()).toEqual(["Conversa lida"]);
+
+      // Chega Mensagem recebida nova e a pessoa lê de novo: mais uma linha, sem conteúdo nenhum.
+      await recebidaEm(c.ws, conversa.id, canalId, "wamid.l3", iso(-300_000));
+      valor(await servico.marcar(c.membro, conversa.id, { lidaAte: iso(-60_000) }));
+      const linhas = await atividadesDe(c.ws, conversa.id);
+      expect(linhas.map((l) => l.acao)).toEqual(["Conversa lida", "Conversa lida"]);
+      expect(linhas.every((l) => l.antes === null && l.depois === null && l.detalhe === null)).toBe(true);
+    });
+
+    it("marcar recusado (corpo vazio, data torta, outro Espaço, Convidado) não grava Atividade", async () => {
+      const c = await espaco("ativmarcarno");
+      const outro = await espaco("ativmarcarnob");
+      const { conversa } = await conversaDeAna(c);
+
+      recusado(await servico.marcar(c.membro, conversa.id, {}));
+      recusado(await servico.marcar(c.membro, conversa.id, { lidaAte: "ontem" }));
+      recusado(await servico.marcar(outro.membro, conversa.id, { estrela: true }));
+      recusado(await servico.marcar(c.convidado, conversa.id, { estrela: true }));
+      expect(await atividadesDe(c.ws)).toEqual([]);
+    });
+
     it("mover recusado (destino mesclado, Papel, outro Espaço) não grava Atividade", async () => {
       const c = await espaco("ativmoverno");
       const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966669003" }]);
