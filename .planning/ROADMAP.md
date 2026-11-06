@@ -823,7 +823,7 @@ Plans:
 **Atenção ao planejar:** a 3.5.2 pede a migração em homologação, e o ambiente de homologação não existe (plano 09-17 pulado por decisão do dono em 2026-10-23); o ensaio será local, com uma cópia dos dados reais (decisão D-02 da Fase 14); o backup diário também não está ligado, então o backup manual antes de produção é obrigatório. A remoção do modelo antigo (3.5.4) é a porta de uma via só desta fase.
 **Requirements**: UCR-01 a UCR-12 (IDs locais da fase, tabela "Phase Requirements" de `15-RESEARCH.md`; os UNI-04 a UNI-08 do `15-CONTEXT.md` colidem com a Fase 14 e ficam só como equivalência)
 **Depends on:** Phase 14
-**Plans:** 24/43 plans executed (17 ondas; 15-30, 15-32, 15-33 e 15-35 têm checkpoint do dono — a do 15-33 cobre também 15-41 a 15-43; nenhum plano toca produção — o corte é do dono no 15-35)
+**Plans:** 25/43 plans executed (17 ondas; 15-30, 15-32, 15-33 e 15-35 têm checkpoint do dono — a do 15-33 cobre também 15-41 a 15-43; nenhum plano toca produção — o corte é do dono no 15-35)
 
 Plans:
 **Wave 1**
@@ -859,7 +859,7 @@ Plans:
 **Wave 5** *(blocked on Wave 4 completion)*
 - [x] 15-18-PLAN.md — 3.4.7 api: agregados do Início (`/crm/inicio/*`)
 - [x] 15-19-PLAN.md — 3.4.10: Contas a receber pelo CRM novo
-- [ ] 15-21-PLAN.md — 3.4.9 tela: IA pelo CRM novo
+- [x] 15-21-PLAN.md — 3.4.9 tela: IA pelo CRM novo
 - [ ] 15-22-PLAN.md — 3.4.8 (4/4): telas das Ferramentas pelo CRM novo
 - [ ] 15-24-PLAN.md — 3.4.1 (2/2): página da Conversa, gestos, coluna do Contato e mover
 - [ ] 15-25-PLAN.md — 3.4.2 (2/2): nota e consentimento no fio; ficha da Tarefa conversacional com fio para ids novos

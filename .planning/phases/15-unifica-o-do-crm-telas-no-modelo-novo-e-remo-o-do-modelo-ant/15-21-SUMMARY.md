@@ -146,7 +146,7 @@ status: complete
 
 - **RED 1** (`5536fc2`): 7 casos da Âncora; falharam por `ancoraDaEscolha`, `nomesDaEscolha`, `useNomeDaEscolha` e `NOME_INDISPONIVEL` ainda não existirem. É um RED de API ausente (TypeError), não de asserção; o diálogo, que existia, só ficou provado pela asserção depois. `workflow.tdd_mode` é `false`; o classificador `check tdd-red-evidence` não foi usado.
 - **GREEN 1** (`1b05fbb`): 7/7, `tsc` limpo. Gate do traçador (modo `end-of-phase`, `<verify>` só automatizado): reexecutado ponta a ponta (vitest + `tsc`) e passou, expansão liberada.
-- **RED 2** (`f53013c`): 8 casos novos com esqueletos que só compilam (`conversas-do-agente.ts` devolvia `undefined`, `funis-do-escopo.ts` devolvia lista vazia e `pronto: false`). Falharam pelas asserções planejadas: lista de Contatos do ensaio vazia (store vazio), `expected undefined to be 7`, `expected 'escopo eliminado (Funil)' to be 'sem sem motivo'`, Funil de Vendas ausente da Nova Automação, Canais ausentes do campo. Uma falha inicial de teste (`getByLabelText("Pedido")` sem aceitar o asterisco de obrigatório) foi corrigida antes de o RED valer.
+- **RED 2** (`f53013c`): 8 casos novos com esqueletos que só compilam (`conversas-do-agente.ts` devolvia `undefined`, `funis-do-escopo.ts` devolvia lista vazia e `pronto: false`). Falharam pelas asserções planejadas: lista de Contatos do ensaio vazia (store vazio), `expected undefined to be 7`, `expected 'escopo eliminado (Funil)' to be 'sem motivo'`, Funil de Vendas ausente da Nova Automação, Canais ausentes do campo. Uma falha inicial de teste (`getByLabelText("Pedido")` sem aceitar o asterisco de obrigatório) foi corrigida antes de o RED valer.
 - **GREEN 2** (`c716bb8`): 15/15 no arquivo; web inteira verde.
 - **REFACTOR:** nenhum.
 

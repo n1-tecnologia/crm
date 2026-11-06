@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 15
 current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
 status: executing
-stopped_at: Completed 15-19-PLAN.md
-last_updated: "2026-11-06T13:43:42.834Z"
+stopped_at: Completed 15-21-PLAN.md
+last_updated: "2026-11-06T13:57:08.813Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 15 execution started
-state_head: 2711adbf7c42f5bfb326d35f06bbc44f9f4c3563
+state_head: 9a0bd5ac8679f4b3dddcd81630fc8962e0a0f4d6
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 271
-  completed_plans: 249
+  completed_plans: 250
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 15 (Unificação do CRM: telas no modelo novo e remoção do modelo antigo) — EXECUTING
-Plan: 25 of 43
+Plan: 26 of 43
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 15 execution started
 
@@ -468,6 +468,7 @@ Progress: [██████░░░░] 63%
 | Phase 15 P20 | 15 min | 3 tasks | 17 files |
 | Phase 15 P18 | 15 min | 3 tasks | 13 files |
 | Phase 15 P19 | 14 min | 3 tasks | 28 files |
+| Phase 15 P21 | 14 min | 2 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -749,6 +750,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 15]: 15-18: o agregado do Início sai do servidor (GET /crm/inicio/{panorama,leads-a-atender,estatisticas}); "meu" é sempre o Membro da sessão e o querystring .strict() recusa membroId — Com o CRM fora do store só um agregado no servidor dá o número certo (paginaMaxima é 200); "Conversas resolvidas" passa a contar as resolvidas de que o Membro é o Atribuído (suposição a confirmar com o dono, WINDOWS 33)
 - [Phase 15]: 15-19: o cliente lido pelo servidor leva nome e Proprietario; clientes e clientesConhecidos opcionais com padrao vazio recusam — Titulo das contas e concessao de comentar ao dono do cliente precisam desses campos; esquecer o argumento nunca deve deixar passar
 - [Phase 15]: 15-19: automations.ts le nome e dono do cliente em state.contacts (contatoDoCliente) e entrou na lista congelada do sem-crm-antigo do dominio — clienteDe devolve so a referencia; injetar nome e dono por OpcoesDaAgenda fica para antes do 3.5.4 (WINDOWS #35)
+- [Phase 15]: 15-21: o diálogo da Âncora e o do ensaio ganharam o campo 'Buscar registro' (q para a api, 30 por busca); a escolha leva o nome para nomes e a Âncora do pedido leva só tipo e id
+- [Phase 15]: 15-21: useFunisDoEscopo lê Funis ativos e arquivados de GET /funis; inoperanteComFunis não acusa escopo eliminado enquanto a lista não chegou (ou se a api a recusou)
 
 ### Pending Todos
 
@@ -810,6 +813,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-06T13:43:42.597Z
-Stopped at: Completed 15-19-PLAN.md
+Last session: 2026-11-06T13:57:08.611Z
+Stopped at: Completed 15-21-PLAN.md
 Resume file: None
