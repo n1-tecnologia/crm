@@ -6,11 +6,12 @@
  */
 
 import type { DataState } from "../../state";
-import type { ActorRef, Channel, Contact, Grupo, Id, OrigemDaParticipacao, PapelNaParticipacao, ParticipacaoDeGrupo } from "../../types";
-import { contactDisplayName } from "../../derive";
+import { CRM_DAS_FERRAMENTAS_VAZIO, type ActorRef, type Channel, type CrmDasFerramentas, type Grupo, type Id, type OrigemDaParticipacao, type PapelNaParticipacao, type ParticipacaoDeGrupo } from "../../types";
 import { gruposComuns, membrosDoGrupo, participacoesVigentes } from "../../derive-ferramentas";
 import { nextId, recordActivity, systemActor } from "../activity";
 import { canonicalIdentifier } from "../contacts";
+import { canalNoCrm, canalPeloNumeroNoCrm } from "./permissoes";
+import { gruposNovosDoProvedor } from "./provedor-simulado";
 
 const now = (): string => new Date().toISOString();
 
@@ -27,78 +28,104 @@ export function registrarNoGrupo(
 export const canalPeloNumero = (state: DataState, numero: string): Channel | undefined =>
   state.channels.find((c) => c.channelType === "whatsapp" && canonicalIdentifier("identidadeDeWhatsApp", c.externalId) === canonicalIdentifier("identidadeDeWhatsApp", numero));
 
-/**
- * RN-GRP-10 — resolve o Contato pelo Identificador `identidadeDeWhatsApp`
- * (B13); um `mesclado` resolve ao sobrevivente (B14); sem Contato, o Sistema
- * cria um "Não identificado" com Proprietário pela cadeia Canal → Caixa →
- * Proprietário do ET (DO-CXE-05) e Origem padrão do Canal. O Canal é lido só
- * pelos padrões: serve o Canal do CRM novo (15-07) e, até o 15-17 levar a
- * criação do Contato para `plataforma.contatos`, o Contato nasce no estado.
- */
-export function resolverOuCriarContato(
-  state: DataState,
-  canal: Pick<Channel, "id" | "defaultContactOwnerMemberId" | "defaultQueueId" | "defaultOriginId">,
-  numero: string,
-  detalhe: string,
-): Contact {
-  const valor = canonicalIdentifier("identidadeDeWhatsApp", numero);
-  let contato = state.contacts.find((c) => c.identifiers.some((i) => i.type === "identidadeDeWhatsApp" && i.value === valor));
-  let saltos = 0;
-  while (contato?.lifecycle === "mesclado" && contato.mergedIntoId && saltos < 10) {
-    const alvo = state.contacts.find((c) => c.id === contato?.mergedIntoId);
-    if (!alvo) break;
-    contato = alvo;
-    saltos += 1;
-  }
-  if (contato) return contato;
+const soDigitos = (valor: string): string => valor.replace(/\D/g, "");
 
-  const dono =
-    canal.defaultContactOwnerMemberId ??
-    state.queues.find((q) => q.id === canal.defaultQueueId)?.defaultContactOwnerMemberId ??
+/**
+ * Os números que o servidor precisa resolver ANTES da operação (3.4.8): `ler` os procura em
+ * `plataforma.contato_identificadores` e gera o id dos que faltam; a operação usa o mesmo conjunto.
+ * Fonte única — a leitura e a operação não podem divergir sobre quem é Participante. Um número de
+ * Canal do Espaço nunca vira Contato (RN-GRP-11), então não entra.
+ *
+ * `args` são os da operação sem o Membro e sem o `crm`. As quatro funções abaixo são as que podem
+ * criar Contato; qualquer outro nome não resolve número nenhum.
+ */
+export function numerosAResolver(nome: string, state: DataState, args: readonly unknown[], crm?: CrmDasFerramentas): readonly string[] {
+  const noCrm = crm ?? CRM_DAS_FERRAMENTAS_VAZIO;
+  const texto = (v: unknown): string[] => (typeof v === "string" && v.trim() !== "" ? [v] : []);
+  let numeros: string[];
+  switch (nome) {
+    case "importarGruposDoCanal": {
+      const canal = canalNoCrm(noCrm, typeof args[0] === "string" ? args[0] : undefined);
+      numeros = canal ? gruposNovosDoProvedor(state, canal).flatMap((g) => g.participantes) : [];
+      break;
+    }
+    default:
+      numeros = [];
+  }
+  const vistos = new Set<string>();
+  const unicos: string[] = [];
+  for (const numero of numeros) {
+    const digitos = soDigitos(numero);
+    if (digitos === "" || vistos.has(digitos) || canalPeloNumeroNoCrm(noCrm, numero)) continue;
+    vistos.add(digitos);
+    unicos.push(numero);
+  }
+  return unicos;
+}
+
+/**
+ * Os padrões de um Contato que o Sistema cria por um Canal, na cadeia de DO-CXE-05: Proprietário do
+ * Canal, senão o da Fila do Canal, senão o da Caixa, senão o Proprietário do Espaço de Trabalho; e a
+ * Origem padrão do Canal pelo NOME no catálogo (a coluna `origem` do Contato é texto). Roda no
+ * `aoConfirmar`, com o estado de depois da operação: a operação pura não conhece o Proprietário.
+ */
+export function padroesDoContatoCriado(
+  state: DataState,
+  canal: { readonly proprietarioPadraoId: Id | null; readonly filaPadraoId: Id | null; readonly origemPadraoId: Id | null },
+): { readonly proprietarioId: Id; readonly origem?: string } {
+  const proprietarioId =
+    canal.proprietarioPadraoId ??
+    state.queues.find((q) => q.id === canal.filaPadraoId)?.defaultContactOwnerMemberId ??
     state.inbox.defaultContactOwnerMemberId ??
     state.workspace.ownerMemberId;
-  const exibicao = valor.length === 13 ? `+${valor.slice(0, 2)} ${valor.slice(2, 4)} ${valor.slice(4, 9)}-${valor.slice(9)}` : `+${valor}`;
-  const criado: Contact = {
-    id: nextId("cnt"),
-    workspaceId: state.workspace.id,
-    createdBy: systemActor,
-    createdAt: now(),
-    lifecycle: "ativo",
-    firstName: "",
-    lastName: "",
-    ownerMemberId: dono,
-    creationMode: "automaticoPorGrupo",
-    ...(canal.defaultOriginId ? { originId: canal.defaultOriginId } : {}),
-    description: "",
-    identifiers: [
-      {
-        id: nextId("cid"),
-        type: "identidadeDeWhatsApp",
-        value: valor,
-        displayValue: exibicao,
-        channelOriginId: canal.id,
-        verified: true,
-        principal: true,
-        createdBy: systemActor,
-        createdAt: now(),
-      },
-    ],
-    consents: [],
-    addresses: [],
-    tagIds: [],
-    fieldValues: [],
-    comments: [],
-  };
-  state.contacts.push(criado);
-  recordActivity(state, {
-    actor: systemActor,
-    action: "Contato criado por Participação em Grupo",
-    objectType: "contact",
-    objectId: criado.id,
-    objectName: contactDisplayName(criado),
-    detail: detalhe,
-  });
-  return criado;
+  const origem = canal.origemPadraoId ? state.catalog.find((i) => i.id === canal.origemPadraoId && i.kind === "origem")?.name : undefined;
+  return { proprietarioId, ...(origem ? { origem } : {}) };
+}
+
+/** O número como o Contato criado o mostra: `+55 11 97000-2474` quando é um celular brasileiro, senão `+<dígitos>`. */
+export function numeroExibido(numero: string): string {
+  const valor = canonicalIdentifier("identidadeDeWhatsApp", numero);
+  return valor.length === 13 ? `+${valor.slice(0, 2)} ${valor.slice(2, 4)} ${valor.slice(4, 9)}-${valor.slice(9)}` : `+${valor}`;
+}
+
+/** O Contato de um Participante como as Ferramentas o usam: o id e o nome de exibição. */
+export interface ContatoDoParticipante {
+  readonly id: Id;
+  readonly nome: string;
+}
+
+export const SEM_CONTATO_DO_PARTICIPANTE = "Contato do participante não resolvido.";
+
+/**
+ * O Contato que o servidor já deixou à mão para o número, sem registrar nada: o que ele leu de
+ * `plataforma.contatos` (`crm.contatos`; um `mesclado` já vem resolvido ao sobrevivente, B14) ou, sem
+ * esse, o `ContatoACriar` do mesmo número, com o id que o servidor gerou (`crm.contatosACriar`).
+ */
+export function contatoJaResolvido(crm: CrmDasFerramentas | undefined, numero: string): (ContatoDoParticipante & { readonly novo: boolean }) | undefined {
+  const noCrm = crm ?? CRM_DAS_FERRAMENTAS_VAZIO;
+  const digitos = soDigitos(canonicalIdentifier("identidadeDeWhatsApp", numero));
+  const existente = noCrm.contatos.find((c) => c.whatsapp !== null && soDigitos(c.whatsapp) === digitos);
+  if (existente) return { id: existente.id, nome: existente.nome, novo: false };
+  const aCriar = (noCrm.contatosACriar ?? []).find((c) => soDigitos(c.whatsapp) === digitos);
+  return aCriar ? { id: aCriar.id, nome: aCriar.nome, novo: true } : undefined;
+}
+
+/**
+ * RN-GRP-10 — resolve o Contato pelo Identificador `whatsapp` (B13) com `contatoJaResolvido`. NUNCA
+ * inventa um id: sem Contato lido nem `ContatoACriar` devolve o erro, e quem chama recusa a operação.
+ * O INSERT do Contato novo é do `aoConfirmar`, no mesmo commit; aqui só se decide e se registra a
+ * Atividade. O número não vai para a frase de erro.
+ */
+export function resolverOuCriarContato(state: DataState, numero: string, detalhe: string, crm?: CrmDasFerramentas): ContatoDoParticipante | { readonly erro: string } {
+  const contato = contatoJaResolvido(crm, numero);
+  if (!contato) return { erro: SEM_CONTATO_DO_PARTICIPANTE };
+  if (contato.novo) {
+    const jaRegistrado = state.activity.some((a) => a.objectType === "contact" && a.objectId === contato.id && a.action === "Contato criado por Participação em Grupo");
+    if (!jaRegistrado) {
+      recordActivity(state, { actor: systemActor, action: "Contato criado por Participação em Grupo", objectType: "contact", objectId: contato.id, objectName: contato.nome, detail: detalhe });
+    }
+  }
+  return { id: contato.id, nome: contato.nome };
 }
 
 export interface AberturaDeParticipacao {
@@ -166,12 +193,6 @@ export function encerrarParticipacao(
   // Se saiu quem estava acima da Capacidade, a divergência acabou.
   if (grupo.divergenciaDeCapacidade && participacoesVigentes(grupo).length <= grupo.capacidade) delete grupo.divergenciaDeCapacidade;
 }
-
-export const nomeDoParticipante = (state: DataState, p: ParticipacaoDeGrupo): string => {
-  if (p.canalParticipanteId) return state.channels.find((c) => c.id === p.canalParticipanteId)?.name ?? "o Canal";
-  const contato = p.contactId ? state.contacts.find((c) => c.id === p.contactId) : undefined;
-  return contato ? contactDisplayName(contato) : p.identificadorExternoDoParticipante;
-};
 
 /**
  * RN-COM-04 — as Participações do Grupo de avisos são a união dos membros dos

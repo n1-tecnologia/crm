@@ -13,15 +13,30 @@
  * Grupo e o envio de Flow em `state.conversations` (F14-D-05): só a conferência
  * de Canal e de Contato vem das tabelas.
  *
+ * O Contato do Participante (15-17, 3.4.8): quando uma operação precisa do Contato
+ * de um número de WhatsApp (importar Grupo do Canal), a LEITURA procura o Contato
+ * por Identificador `whatsapp` em `plataforma.contato_identificadores` (mesclado
+ * resolve ao sobrevivente) e GERA o id dos que faltam (`contatosACriar`, `randomUUID`
+ * — nunca vem do navegador, T-15-42). A operação pura usa esse id; o `aoConfirmar`
+ * insere, no mesmo commit, só os Contatos que ela de fato usou. Os eventos do
+ * provedor (Pedido de Entrada, entrada no Grupo, clique de Captação) não são
+ * operações de `POST /operacoes`: quando ganharem rota, usam as mesmas duas
+ * funções, `lerContatosDosParticipantes` e `confirmarContatosDosParticipantes`.
+ *
  * Fica num arquivo próprio para que os planos paralelos não disputem o mesmo
- * arquivo; `index.ts` compõe. O 15-17 acrescenta aqui a criação do Contato do
- * Participante (`AO_CONFIRMAR_FERRAMENTAS`).
+ * arquivo; `index.ts` compõe.
  */
 
+import { randomUUID } from "node:crypto";
+import type { PoolClient } from "pg";
 import type { DataState } from "@n1/dominio";
+import type { Canal } from "@n1/dominio/crm/canais";
+import { numeroExibido, numerosAResolver, padroesDoContatoCriado } from "@n1/dominio/operations/ferramentas/participacoes";
+import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { criarRepositorioDeCanaisPg } from "../../repositorios/crm/canais";
 import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
-import type { LeituraDoCrm, TabelaDeConfirmacoes, TabelaDeLeituras } from "./tipos";
+import { inserirContatosDeParticipantes, resolverContatosPorWhatsapp } from "../../repositorios/crm/contatos-de-participantes";
+import type { ContatoACriar, ContatoResumido, LeituraDoCrm, LidoDoCrm, TabelaDeConfirmacoes, TabelaDeLeituras } from "./tipos";
 
 /** Os ids de Contato que a operação cita; só o que for texto entra (o esquema já fixou a forma dos `args`). */
 type IdsDeContato = (args: readonly unknown[], state: DataState) => readonly unknown[];
@@ -56,6 +71,55 @@ const contatoDoPedidoAlvo: IdsDeContato = (args, state) => {
 };
 
 /**
+ * O que a leitura devolve para a operação que precisa do Contato de números de WhatsApp: os Contatos
+ * que a tabela já tem (mesclado → sobrevivente) e, para cada número sem Contato, um `ContatoACriar`
+ * com id novo. O número fica no `whatsapp` do item, nunca em log (T-15-44).
+ */
+export async function lerContatosDosParticipantes(
+  cliente: PoolClient,
+  workspaceId: string,
+  numeros: readonly string[],
+): Promise<{ readonly contatos: readonly ContatoResumido[]; readonly contatosACriar: readonly ContatoACriar[] }> {
+  const contatos = await resolverContatosPorWhatsapp(cliente, workspaceId, numeros);
+  const resolvidos = new Set(contatos.map((c) => (c.whatsapp ?? "").replace(/\D/g, "")));
+  const contatosACriar = numeros
+    .filter((n) => !resolvidos.has(n.replace(/\D/g, "")))
+    .map((n) => ({ id: randomUUID(), nome: numeroExibido(n), whatsapp: n }));
+  return { contatos, contatosACriar };
+}
+
+/** Os ids de Contato que algum Grupo do estado usa em Participação ou Pedido de Entrada. */
+function contatosUsadosNosGrupos(state: DataState): Set<string> {
+  const usados = new Set<string>();
+  for (const grupo of state.grupos) {
+    for (const p of grupo.participacoes) if (p.contactId !== undefined) usados.add(p.contactId);
+    for (const p of grupo.pedidosDeEntrada) usados.add(p.contactId);
+  }
+  return usados;
+}
+
+/**
+ * Insere, no mesmo commit da operação, só os `contatosACriar` que a operação usou (o id aparece em
+ * Participação ou Pedido de Entrada do estado de DEPOIS): Proprietário pela cadeia do Canal
+ * (DO-CXE-05) e Origem padrão do Canal, como o Contato criado por Grupo sempre teve.
+ */
+export async function confirmarContatosDosParticipantes(cliente: PoolClient, membro: MembroDaSessao, state: DataState, canal: Canal | undefined, lido: LidoDoCrm | undefined): Promise<number> {
+  const aCriar = lido?.contatosACriar ?? [];
+  if (aCriar.length === 0) return 0;
+  const usados = contatosUsadosNosGrupos(state);
+  const doUso = aCriar.filter((c) => usados.has(c.id));
+  if (doUso.length === 0) return 0;
+  if (!canal) throw new Error("confirmarContatosDosParticipantes: o Canal da operação não está no que a leitura trouxe.");
+  const { proprietarioId, origem } = padroesDoContatoCriado(state, canal);
+  return inserirContatosDeParticipantes(
+    cliente,
+    membro.workspaceId,
+    membro.id,
+    doUso.map((c) => ({ id: c.id, numero: c.whatsapp, valorExibido: c.nome, proprietarioId, origem })),
+  );
+}
+
+/**
  * A leitura de uma operação de Ferramenta: os Canais do Espaço e os Contatos
  * citados (`resumidosPorIds`, do Espaço da sessão, teto de 500). `posicao` é o
  * índice do `crm` em `args`; sem `idsDeContato` a operação não confere Contato.
@@ -74,10 +138,24 @@ const leituraDasFerramentas = (posicao: number, idsDeContato?: IdsDeContato): Le
   argumento: (lido) => ({ canais: lido.canais ?? [], contatos: lido.contatos ?? [] }),
 });
 
+/**
+ * `importarGruposDoCanal`: além dos Canais, os Contatos dos Participantes dos Grupos que o provedor
+ * mostra e o Espaço ainda não espelhou (`numerosAResolver`, a fonte única que a operação também usa).
+ */
+const leituraDaImportacaoDeGrupos: LeituraDoCrm = {
+  posicao: 1,
+  ler: async (cliente, workspaceId, args, state) => {
+    const canais = await criarRepositorioDeCanaisPg(cliente).todos(workspaceId);
+    const numeros = numerosAResolver("importarGruposDoCanal", state, args, { canais, contatos: [] });
+    return { canais, ...(await lerContatosDosParticipantes(cliente, workspaceId, numeros)) };
+  },
+  argumento: (lido) => ({ canais: lido.canais ?? [], contatos: lido.contatos ?? [], contatosACriar: lido.contatosACriar ?? [] }),
+};
+
 export const LER_DO_CRM_FERRAMENTAS: TabelaDeLeituras = {
   // Grupo — `[..., crm]`: a posição é o índice logo depois dos argumentos da operação.
   criarGrupo: leituraDasFerramentas(1, contatosDoCriarGrupo),
-  importarGruposDoCanal: leituraDasFerramentas(1),
+  importarGruposDoCanal: leituraDaImportacaoDeGrupos,
   sincronizarGrupo: leituraDasFerramentas(1),
   editarGrupo: leituraDasFerramentas(2),
   definirCanalDoGrupo: leituraDasFerramentas(2),
@@ -108,4 +186,15 @@ export const LER_DO_CRM_FERRAMENTAS: TabelaDeLeituras = {
   enviarFlow: leituraDasFerramentas(1),
 };
 
-export const AO_CONFIRMAR_FERRAMENTAS: TabelaDeConfirmacoes = {};
+export const AO_CONFIRMAR_FERRAMENTAS: TabelaDeConfirmacoes = {
+  // O Canal é o primeiro argumento: dele vêm o Proprietário e a Origem padrão do Contato criado.
+  importarGruposDoCanal: async (cliente, args, membro, state, lido) => {
+    await confirmarContatosDosParticipantes(
+      cliente,
+      membro,
+      state,
+      lido?.canais?.find((c) => c.id === args[0]),
+      lido,
+    );
+  },
+};

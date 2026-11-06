@@ -57,6 +57,8 @@ import {
   enviarMensagemAComunidade,
   enviarMensagemAoGrupo,
   importarGruposDoCanal,
+  numeroExibido,
+  numerosAResolver,
   inativarCaptacao,
   publicarVersao,
   receberPedidoDeEntrada,
@@ -115,6 +117,23 @@ function crmDoSeed(s: DataState): CrmDasFerramentas {
     canais: s.channels.map(canalDoSeed),
     contatos: s.contacts.map((c) => ({ id: c.id, nome: contactDisplayName(c), estado: c.lifecycle, whatsapp: identidadeDeWhatsApp(c) ?? null })),
   };
+}
+
+/**
+ * O que o servidor geraria para os números sem Contato em `plataforma.contatos`: um id por número.
+ * A operação só usa esse id, nunca o inventa (15-17, 3.4.8).
+ */
+function crmComContatosACriar(s: DataState, numeros: readonly string[]): CrmDasFerramentas {
+  const base = crmDoSeed(s);
+  const digitos = (v: string): string => v.replace(/\D/g, "");
+  const sem = numeros.filter((n) => !base.contatos.some((c) => c.whatsapp !== null && digitos(c.whatsapp) === digitos(n)));
+  return { ...base, contatosACriar: sem.map((n) => ({ id: `cnt_novo_${digitos(n)}`, nome: numeroExibido(n), whatsapp: n })) };
+}
+
+/** `crmDoSeed` mais os Contatos a criar para os números que `numerosAResolver` pede à operação. */
+function crmDaOperacao(s: DataState, nome: string, args: readonly unknown[]): CrmDasFerramentas {
+  const base = crmDoSeed(s);
+  return crmComContatosACriar(s, numerosAResolver(nome, s, args, base));
 }
 
 const grupo = (id: string): Grupo => {
@@ -257,30 +276,47 @@ describe("Grupos — Participações e Captação", () => {
     expect(t3.pedidosDeEntrada.find((x) => x.id === "ped_2")?.motivoDaRecusaId).toBe("cat_perda_semret");
     expect(aprovarPedidoDeEntrada(state, "mem_julia", t3.id, "ped_2", crmDoSeed(state)).ok).toBe(false);
     expect(receberPedidoDeEntrada(state, "grp_turma_02", "5511999990000", {}, crmDoSeed(state)).ok).toBe(false);
-    const novo = unwrap(receberPedidoDeEntrada(state, t3.id, "5511999990000", {}, crmDoSeed(state)));
+    const novo = unwrap(receberPedidoDeEntrada(state, t3.id, "5511999990000", {}, crmComContatosACriar(state, ["5511999990000"])));
     expect(novo.estado).toBe("pendente");
     t3.configuracoes.administradoresAprovamEntrada = false;
     unwrap(sincronizarGrupo(state, "mem_julia", t3.id, crmDoSeed(state)));
     expect(t3.pedidosDeEntrada.find((x) => x.id === novo.id)?.estado).toBe("expirado");
   });
 
-  it("RN-GRP-10/11 — a importação cria Contato para número desconhecido, nunca para o Canal, e é idempotente", () => {
+  it("RN-GRP-10/11 — a importação usa o Contato que o servidor gerou para número desconhecido, nunca para o Canal, e é idempotente", () => {
     const contatos = state.contacts.length;
-    const r = unwrap(importarGruposDoCanal(state, "mem_rafael", "chn_wpp", crmDoSeed(state)));
+    const crm = crmDaOperacao(state, "importarGruposDoCanal", ["chn_wpp"]);
+    // 3 números desconhecidos pedem Contato novo; os outros já eram cnt_3..cnt_8; o número do Canal nunca entra
+    expect(crm.contatosACriar).toHaveLength(3);
+    expect(numerosAResolver("importarGruposDoCanal", state, ["chn_wpp"], crm).some((n) => n.replace(/\D/g, "") === "5511987654321")).toBe(false);
+    const r = unwrap(importarGruposDoCanal(state, "mem_rafael", "chn_wpp", crm));
     expect(r.importados.map((g) => g.nome)).toEqual(["Fornecedores Full Face", "Ex-alunos 2024"]);
-    // 3 números desconhecidos viram Contatos "não identificados"; os outros já eram cnt_3..cnt_8
-    expect(state.contacts.length).toBe(contatos + 3);
-    const novos = state.contacts.slice(contatos);
-    expect(novos.every((c) => c.creationMode === "automaticoPorGrupo" && c.firstName === "")).toBe(true);
+    // a operação não escreve em state.contacts: o INSERT é do `aoConfirmar`, em plataforma.contatos
+    expect(state.contacts.length).toBe(contatos);
+    const idsNovos = new Set((crm.contatosACriar ?? []).map((c) => c.id));
+    const usados = r.importados.flatMap((g) => g.participacoes.map((p) => p.contactId)).filter((id): id is string => id !== undefined && idsNovos.has(id));
+    expect(new Set(usados)).toEqual(idsNovos);
+    expect(state.activity.filter((a) => a.action === "Contato criado por Participação em Grupo")).toHaveLength(3);
     const fornecedores = r.importados[0] as Grupo;
     expect(participacoesVigentes(fornecedores).some((p) => p.canalParticipanteId === "chn_wpp")).toBe(true);
     expect(participacoesVigentes(fornecedores).filter((p) => p.canalParticipanteId).every((p) => p.contactId === undefined)).toBe(true);
     expect(fornecedores.captacao.estado).toBe("inativa");
     expect((r.importados[1] as Grupo).sincronizacao.estado).toBe("semPrivilegio");
+    expect(numerosAResolver("importarGruposDoCanal", state, ["chn_wpp"], crmDoSeed(state))).toEqual([]);
     const de_novo = unwrap(importarGruposDoCanal(state, "mem_rafael", "chn_wpp", crmDoSeed(state)));
     expect(de_novo.importados).toHaveLength(0);
     expect(de_novo.jaExistiam).toBe(2);
     expect(state.grupos.filter((g) => g.identificadorExterno === fornecedores.identificadorExterno)).toHaveLength(1);
+  });
+
+  it("RN-GRP-10 — sem o Contato do servidor a importação recusa antes de mexer no estado, sem inventar id e sem o número na frase", () => {
+    const grupos = state.grupos.length;
+    const atividades = state.activity.length;
+    const r = importarGruposDoCanal(state, "mem_rafael", "chn_wpp", crmDoSeed(state));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe("Contato do participante não resolvido.");
+    expect(state.grupos.length).toBe(grupos);
+    expect(state.activity.length).toBe(atividades);
   });
 
   it("RN-GRP-13 / INV-GRP-05 — enviar cria a Conversa de grupo uma vez, sem Contato, aberta com Grupos habilitados; resolvida sem", () => {
@@ -380,17 +416,18 @@ describe("Grupos — Participações e Captação", () => {
     unwrap(inativarCaptacao(state, "mem_julia", "grp_turma_01"));
     const r = unwrap(registrarClique(state, "lancamento-setembro"));
     expect(r.grupo?.id).toBe("grp_turma_02");
-    const e = unwrap(simularEntradaPorClique(state, r.clique.id, "5511977770001", crmDoSeed(state)));
+    const e = unwrap(simularEntradaPorClique(state, r.clique.id, "5511977770001", crmComContatosACriar(state, ["5511977770001"])));
     expect(e.participacao?.origem).toBe("linkDeCaptacao");
     expect(e.participacao?.cliqueId).toBe(r.clique.id);
-    const contato = state.contacts.find((c) => c.id === e.participacao?.contactId);
-    expect(contato?.creationMode).toBe("automaticoPorGrupo");
-    expect(contato?.identifiers[0]?.value).toBe("5511977770001");
+    // o Contato é o que o servidor gerou (`contatosACriar`); a operação não o grava em state.contacts
+    expect(e.participacao?.contactId).toBe("cnt_novo_5511977770001");
+    expect(state.contacts.some((c) => c.id === "cnt_novo_5511977770001")).toBe(false);
+    expect(state.activity.some((a) => a.objectId === "cnt_novo_5511977770001" && a.action === "Contato criado por Participação em Grupo")).toBe(true);
     // no Grupo que aprova entrada, o clique vira Pedido
     unwrap(inativarCaptacao(state, "mem_julia", "grp_turma_02"));
     const r3 = unwrap(registrarClique(state, "lancamento-setembro"));
     expect(r3.grupo?.id).toBe("grp_turma_03");
-    const e3 = unwrap(simularEntradaPorClique(state, r3.clique.id, "5511977770002", crmDoSeed(state)));
+    const e3 = unwrap(simularEntradaPorClique(state, r3.clique.id, "5511977770002", crmComContatosACriar(state, ["5511977770002"])));
     expect(e3.pedidoId).toBeTruthy();
     expect(e3.participacao).toBeUndefined();
   });

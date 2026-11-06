@@ -19,9 +19,9 @@ import { memberActor, nextId, recordActivity, systemActor } from "../activity";
 import { sendMessage, startConversation } from "../conversations";
 import { emitirEventoDeFerramentas } from "./automacoes";
 import { CAPACIDADES_DE_ATIVOS, LIMITE_DE_GRUPOS_POR_ESPACO } from "./capacidades";
-import { abrirParticipacao, encerrarParticipacao, reconciliarGrupoDeAvisos, registrarNoGrupo, resolverOuCriarContato } from "./participacoes";
+import { abrirParticipacao, contatoJaResolvido, encerrarParticipacao, numerosAResolver, reconciliarGrupoDeAvisos, registrarNoGrupo, resolverOuCriarContato, SEM_CONTATO_DO_PARTICIPANTE } from "./participacoes";
 import { canalNoCrm, canalPeloNumeroNoCrm, contatoNoCrm, nomeDoParticipanteNoCrm, recusaDeAdministracao, recusaDeEnvioAoGrupo, recusaDeMembroAtivo, recusaDoCanal, recusaExternaNaComunidade, recusaExternaNoGrupo } from "./permissoes";
-import { GRUPOS_NO_PROVEDOR, gerarEnderecoDeConvite, gerarJid } from "./provedor-simulado";
+import { GRUPOS_NO_PROVEDOR, gerarEnderecoDeConvite, gerarJid, gruposNovosDoProvedor } from "./provedor-simulado";
 
 const now = (): string => new Date().toISOString();
 
@@ -31,14 +31,6 @@ export const CONFIGURACOES_PADRAO_DO_GRUPO: ConfiguracoesDoGrupo = {
   administradoresAprovamEntrada: false,
   somenteAdministradoresAdicionamParticipantes: false,
 };
-
-/** O Canal do CRM novo na forma que `resolverOuCriarContato` lê: só os padrões do Canal. */
-const padroesDoCanal = (canal: Canal): { readonly id: Id; readonly defaultContactOwnerMemberId?: Id; readonly defaultQueueId?: Id; readonly defaultOriginId?: Id } => ({
-  id: canal.id,
-  ...(canal.proprietarioPadraoId ? { defaultContactOwnerMemberId: canal.proprietarioPadraoId } : {}),
-  ...(canal.filaPadraoId ? { defaultQueueId: canal.filaPadraoId } : {}),
-  ...(canal.origemPadraoId ? { defaultOriginId: canal.origemPadraoId } : {}),
-});
 
 const grupoPorId = (state: DataState, grupoId: Id): Grupo | undefined => state.grupos.find((g) => g.id === grupoId);
 
@@ -298,10 +290,14 @@ export function importarGruposDoCanal(state: DataState, actingMemberId: Id, cana
   const canal = canalNoCrm(noCrm, canalId);
   if (!canal) return fail("Canal não encontrado.", "canal");
   const noProvedor = GRUPOS_NO_PROVEDOR[canal.identificadorExterno] ?? [];
-  const existentes = new Set(state.grupos.map((g) => g.identificadorExterno));
-  const novos = noProvedor.filter((g) => !existentes.has(g.jid));
+  const novos = gruposNovosDoProvedor(state, canal);
   const limite = recusaDeLimiteDeGrupos(state, novos.length);
   if (limite) return fail(limite);
+  // 3.4.8 — todo Participante de Contato precisa estar resolvido ANTES de mexer no estado: a operação
+  // nunca inventa o id (quem gera é o servidor) e uma recusa no meio não deixa Grupo pela metade.
+  for (const numero of numerosAResolver("importarGruposDoCanal", state, [canalId], noCrm)) {
+    if (!contatoJaResolvido(noCrm, numero)) return fail(SEM_CONTATO_DO_PARTICIPANTE);
+  }
 
   const momento = now();
   const ator = memberActor(actingMemberId);
@@ -343,7 +339,8 @@ export function importarGruposDoCanal(state: DataState, actingMemberId: Id, cana
         abrirParticipacao(state, grupo, { canalParticipanteId: outroCanal.id, identificadorExterno: numero, papel: admins.has(numero) ? "administrador" : "membro", origem: "importado", at: momento, estimada: true, doProvedor: true });
         continue;
       }
-      const contato = resolverOuCriarContato(state, padroesDoCanal(canal), numero, `Importação do Grupo ${remoto.nome}`);
+      const contato = resolverOuCriarContato(state, numero, `Importação do Grupo ${remoto.nome}`, noCrm);
+      if ("erro" in contato) return fail(contato.erro);
       abrirParticipacao(state, grupo, { contactId: contato.id, identificadorExterno: numero, papel: admins.has(numero) ? "administrador" : "membro", origem: "importado", at: momento, estimada: true, doProvedor: true });
     }
     state.grupos.push(grupo);
@@ -711,7 +708,8 @@ export function receberPedidoDeEntrada(state: DataState, grupoId: Id, numero: st
   const canal = canalNoCrm(crm, grupo.canalId);
   if (!canal) return fail("O Grupo está sem Canal.");
   if (canalPeloNumeroNoCrm(crm, numero)) return fail("O número é de um Canal do Espaço de Trabalho (RN-GRP-11).");
-  const contato = resolverOuCriarContato(state, padroesDoCanal(canal), numero, `Pedido de entrada no Grupo ${grupo.nome}`);
+  const contato = resolverOuCriarContato(state, numero, `Pedido de entrada no Grupo ${grupo.nome}`, crm);
+  if ("erro" in contato) return fail(contato.erro);
   const pendente = pedidosPendentes(grupo).find((p) => p.contactId === contato.id);
   if (pendente) return ok(pendente);
   const pedido: PedidoDeEntrada = {
@@ -724,7 +722,7 @@ export function receberPedidoDeEntrada(state: DataState, grupoId: Id, numero: st
     ...(input.linkDeCaptacaoId ? { origemInformada: "linkDeCaptacao" as const, linkDeCaptacaoId: input.linkDeCaptacaoId } : { origemInformada: "linkDeConvite" as const }),
   };
   grupo.pedidosDeEntrada.push(pedido);
-  registrarNoGrupo(state, grupo, { actor: systemActor, action: "Pedido de Entrada recebido", detail: contactDisplayName(contato) });
+  registrarNoGrupo(state, grupo, { actor: systemActor, action: "Pedido de Entrada recebido", detail: contato.nome });
   emitirEventoDeFerramentas(state, { kind: "pedidoDeEntradaRecebido", grupoId: grupo.id, contactId: contato.id, pedidoId: pedido.id }, crm);
   return ok(pedido);
 }
@@ -807,7 +805,8 @@ export function registrarEntradaNoGrupo(state: DataState, grupoId: Id, input: En
   const r = outroCanal
     ? abrirParticipacao(state, grupo, { ...base, canalParticipanteId: outroCanal.id })
     : (() => {
-        const contato = resolverOuCriarContato(state, padroesDoCanal(canal), input.numero, `Entrada no Grupo ${grupo.nome}`);
+        const contato = resolverOuCriarContato(state, input.numero, `Entrada no Grupo ${grupo.nome}`, crm);
+        if ("erro" in contato) return contato;
         return abrirParticipacao(state, grupo, {
           ...base,
           contactId: contato.id,

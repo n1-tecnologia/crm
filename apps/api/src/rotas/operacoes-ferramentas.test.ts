@@ -259,6 +259,7 @@ describeComBanco("POST /operacoes — as Ferramentas conferem Canal e Contato na
     const NUMERO_DO_CANAL_DO_PROVEDOR = "+5511987654321";
     // Fornecedores Full Face (5 Participantes) e Ex-alunos 2024 (4): nove números distintos.
     const NUMERO_CONHECIDO = "5511970002474";
+    const JIDS_DO_PROVEDOR = ["120363301111111111@g.us", "120363302222222222@g.us"];
     const DESCONHECIDOS = ["5511970003711", "5511970004948", "5511999001122", "5511999003344", "5511970006185", "5511970007422", "5511970008659", "5511999005566"];
     let canalDoProvedorId: string;
     let conhecidoId: string;
@@ -284,8 +285,8 @@ describeComBanco("POST /operacoes — as Ferramentas conferem Canal e Contato na
       const { rows } = await pool().query<{ contact_id: string | null; numero: string }>(
         `select p->>'contactId' as contact_id, p->>'identificadorExternoDoParticipante' as numero
            from plataforma.registros r, jsonb_array_elements(r.dados->'participacoes') p
-          where r.workspace_id = $1 and r.colecao = 'grupos' and r.dados->>'origemDeCriacao' = 'importado'`,
-        [espaco.workspaceId],
+          where r.workspace_id = $1 and r.colecao = 'grupos' and r.dados->>'identificadorExterno' = any($2::text[])`,
+        [espaco.workspaceId, JIDS_DO_PROVEDOR],
       );
       return rows.map((r) => ({ contactId: r.contact_id, numero: r.numero }));
     };
@@ -331,7 +332,7 @@ describeComBanco("POST /operacoes — as Ferramentas conferem Canal e Contato na
     });
 
     it("uma recusa do domínio (Canal desconectado) não deixa Contato novo na tabela", async () => {
-      await pool().query("delete from plataforma.registros where workspace_id = $1 and colecao = 'grupos' and dados->>'origemDeCriacao' = 'importado'", [espaco.workspaceId]);
+      await pool().query("delete from plataforma.registros where workspace_id = $1 and colecao = 'grupos' and dados->>'identificadorExterno' = any($2::text[])", [espaco.workspaceId, JIDS_DO_PROVEDOR]);
       await pool().query("delete from plataforma.contatos where workspace_id = $1 and modo_criacao = 'automatico_automacao'", [espaco.workspaceId]);
       await pool().query("update plataforma.canais set conexao = 'desconectada' where workspace_id = $1 and id = $2", [espaco.workspaceId, canalDoProvedorId]);
       const antes = await contatosDoEspaco();
@@ -342,7 +343,7 @@ describeComBanco("POST /operacoes — as Ferramentas conferem Canal e Contato na
     });
 
     it("um `contatosACriar` forjado no corpo não cria Contato (T-15-42): vale o que o servidor gerou", async () => {
-      await pool().query("delete from plataforma.registros where workspace_id = $1 and colecao = 'grupos' and dados->>'origemDeCriacao' = 'importado'", [espaco.workspaceId]);
+      await pool().query("delete from plataforma.registros where workspace_id = $1 and colecao = 'grupos' and dados->>'identificadorExterno' = any($2::text[])", [espaco.workspaceId, JIDS_DO_PROVEDOR]);
       await pool().query("delete from plataforma.contatos where workspace_id = $1 and modo_criacao = 'automatico_automacao'", [espaco.workspaceId]);
       const forjado = { canais: [], contatos: [], contatosACriar: DESCONHECIDOS.map((n) => ({ id: `forjado-${n}`, nome: "Forjado", whatsapp: n })) };
       const c = corpo(await chamar("importarGruposDoCanal", [canalDoProvedorId, forjado]));
