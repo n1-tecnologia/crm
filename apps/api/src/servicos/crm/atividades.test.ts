@@ -167,6 +167,32 @@ describeComBanco("ServicoDeAtividades — Postgres local", () => {
     expect(duas.map((a) => a.action)).toEqual(["terceira", "segunda"]);
   });
 
+  it("(g) cursor composto (ate + ateId): linhas do MESMO instante atravessam a fronteira da pagina sem pular nem repetir (WINDOWS 15-37)", async () => {
+    // A sucessao grava varias Atividades no mesmo commit, e `now()` e o da transacao: elas dividem o `em`.
+    const objetoId = "obj-do-mesmo-instante";
+    const mesmoInstante = "2026-10-10T10:00:00.123Z";
+    for (const acao of ["a", "b", "c", "d", "e"]) await semearAtividade(ws, "contact", objetoId, acao, mesmoInstante);
+
+    const todas = valor(await servico.listar(eu, { objetoTipo: "contact", objetoId, limite: 50 }));
+    expect(todas).toHaveLength(5);
+
+    // Cursor so de tempo: a fronteira da pagina corta o grupo e o resto some (a limitacao registrada).
+    const soTempo = valor(await servico.listar(eu, { objetoTipo: "contact", objetoId, limite: 50, ate: todas[1]!.at }));
+    expect(soTempo).toHaveLength(0);
+
+    // Cursor composto: pagina a pagina (2 por vez) devolve as cinco, na ordem, sem repetir.
+    const vistas: string[] = [];
+    let cursor: { ate?: string; ateId?: string } = {};
+    for (let paginas = 0; paginas < 5; paginas += 1) {
+      const pagina = valor(await servico.listar(eu, { objetoTipo: "contact", objetoId, limite: 2, ...cursor }));
+      if (pagina.length === 0) break;
+      vistas.push(...pagina.map((a) => a.id));
+      const ultima = pagina[pagina.length - 1]!;
+      cursor = { ate: ultima.at, ateId: ultima.id };
+    }
+    expect(vistas).toEqual(todas.map((a) => a.id));
+  });
+
   it("(f) o pedido torto é 400 e a leitura nunca grava", async () => {
     const antes = await contarAtividades(ws);
     expect(await servico.listar(eu, { objetoTipo: "contact", limite: 50 })).toMatchObject({ ok: false, status: 400, campo: "objetoId" });

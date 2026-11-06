@@ -22,6 +22,11 @@ describe("validarFiltroDeAtividades", () => {
     expect(validarFiltroDeAtividades({ limite: 50, ate: "ontem" })).toMatchObject({ ok: false, field: "ate" });
   });
 
+  it("o desempate do cursor (ateId) vem sempre com o instante (ate)", () => {
+    expect(validarFiltroDeAtividades({ limite: 50, ateId: "a1" })).toMatchObject({ ok: false, field: "ate" });
+    expect(validarFiltroDeAtividades({ limite: 50, ate: "2026-11-06T10:00:00.000Z", ateId: "a1" }).ok).toBe(true);
+  });
+
   it("aceita os dois do objeto, nenhum dos dois e o limite no teto", () => {
     expect(validarFiltroDeAtividades({ objetoTipo: "contact", objetoId: "c1", limite: 50 }).ok).toBe(true);
     expect(validarFiltroDeAtividades({ limite: LIMITES_DE_ATIVIDADE.paginaMaxima, ate: "2026-11-06T10:00:00.000Z" }).ok).toBe(true);
