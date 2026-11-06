@@ -486,11 +486,13 @@ describeComBanco("--verificar: a pós-condição do corte (15-27 Task 3)", () =>
     expect(resultado.problemas.join("\n")).toMatch(/contacts/);
   });
 
-  it("uma Conversa sem Grupo em registros: falha; só a de Grupo é permitida", async () => {
+  it("uma Conversa do CRM antigo em registros (Contato antigo): falha; só a de Grupo e a de Flow são permitidas", async () => {
     const ws = await semearEspaco("verifconversa");
     await guardarCrmAntigo(ws);
     expect((await verificar(ws)).ok).toBe(true);
-    await pool().query("insert into plataforma.registros (workspace_id, colecao, id, dados) values ($1, 'conversations', 'cnv_volta', '{\"id\":\"cnv_volta\"}')", [ws]);
+    // O Contato antigo e a Conversa dele voltam juntos: a Conversa é do CRM antigo (15-44, H-02).
+    await pool().query("insert into plataforma.registros (workspace_id, colecao, id, dados) values ($1, 'contacts', 'cnt_volta', '{\"id\":\"cnt_volta\"}')", [ws]);
+    await pool().query("insert into plataforma.registros (workspace_id, colecao, id, dados) values ($1, 'conversations', 'cnv_volta', '{\"id\":\"cnv_volta\",\"contactId\":\"cnt_volta\"}')", [ws]);
 
     const resultado = await verificar(ws);
 
@@ -538,5 +540,86 @@ describeComBanco("--verificar: a pós-condição do corte (15-27 Task 3)", () =>
 
   it("recusa um Espaço que não existe", async () => {
     await expect(verificar("ws_nao_existe_1527")).rejects.toThrow(/Espaço não encontrado/);
+  });
+});
+
+// --- 15-44 Task 2 (H-02): a Conversa 1:1 de Flow, Automação e convite de Grupo fica em registros ---
+
+describeComBanco("a Conversa 1:1 do modelo que fica (Flow, Automação, convite de Grupo) (15-44, H-02)", () => {
+  /** O Contato da Conversa de Flow vem de `plataforma.contatos`: não existe na coleção `contacts` antiga. */
+  const flow = (id: string, extra: Record<string, unknown> = {}): LinhaDaFixture => ({
+    colecao: "conversations",
+    id,
+    ordem: 9,
+    dados: { id, channelId: "chn_sint_1", contactId: "ctt_so_na_tabela", state: "aberta", lifecycle: "ativo", title: "Conversa de Flow", messages: [], participants: [], ...extra },
+  });
+  const comFlow = [...FIXTURE.linhas, flow("cnv_flow")];
+  const idsEmRegistros = async (ws: string, colecao = "conversations") =>
+    (await pool().query<{ id: string }>("select id from plataforma.registros where workspace_id = $1 and colecao = $2 order by id", [ws, colecao])).rows.map((l) => l.id);
+
+  beforeAll(async () => {
+    await prepararBancoCrm();
+  });
+  afterEach(async () => {
+    for (const ws of criados.splice(0)) await limparEspaco(ws);
+  });
+  afterAll(async () => {
+    await encerrar();
+  });
+
+  it("--guardar copia a Conversa de Flow, NÃO a apaga, e o resultado diz quantas ficaram e por quê", async () => {
+    const ws = await semearEspaco("h02guardar", comFlow);
+
+    const resultado = await guardarCrmAntigo(ws);
+
+    expect(await idsEmRegistros(ws)).toEqual(["cnv_flow", "cnv_sint_grupo"]);
+    expect((await contagemPorColecao("registros_crm_antigo", ws)).conversations).toBe(3);
+    expect(resultado.apagadas.conversations).toBe(1);
+    expect(resultado.conversasDeGrupoQueFicaram).toBe(1);
+    expect(resultado.conversasDeFlowQueFicaram).toBe(1);
+    expect(resultado.mensagem).toMatch(/1 Conversa\(s\) 1:1 de Flow, Automação ou convite de Grupo continuam em registros/);
+  });
+
+  it("--migrar não migra nem relata a Conversa de Flow, e o --verificar passa", async () => {
+    const ws = await semearEspaco("h02migrar", comFlow);
+
+    const resultado = await migrarCrmAntigo(ws, { funil: "migrar" });
+
+    expect(await idsEmRegistros(ws)).toEqual(["cnv_flow", "cnv_sint_grupo"]);
+    expect((await pool().query("select 1 from plataforma.conversas where workspace_id = $1 and id = 'cnv_flow'", [ws])).rowCount).toBe(0);
+    expect(resultado.naoMigrados.filter((n) => n.id === "cnv_flow")).toEqual([]);
+    expect(resultado.conversasDeFlowQueFicaram).toBe(1);
+    const verificacao = await verificar(ws);
+    expect(verificacao.problemas).toEqual([]);
+    expect(verificacao.ok).toBe(true);
+  });
+
+  it("repetir --guardar e --migrar não apaga a Conversa de Flow, nem a que nasce DEPOIS do corte, e o --verificar continua passando", async () => {
+    const ws = await semearEspaco("h02repetir", comFlow);
+    await migrarCrmAntigo(ws, { funil: "migrar" });
+    // Depois do corte a API nova está no ar: uma Automação abre outra Conversa 1:1 em registros.
+    await pool().query("insert into plataforma.registros (workspace_id, colecao, id, dados) values ($1, 'conversations', 'cnv_flow_tarde', $2::jsonb)", [
+      ws,
+      JSON.stringify(flow("cnv_flow_tarde").dados),
+    ]);
+
+    await guardarCrmAntigo(ws);
+    await migrarCrmAntigo(ws, { funil: "migrar" });
+    const terceira = await migrarCrmAntigo(ws, { funil: "migrar" });
+
+    expect(await idsEmRegistros(ws)).toEqual(["cnv_flow", "cnv_flow_tarde", "cnv_sint_grupo"]);
+    expect(terceira.nadaAFazer).toBe(true);
+    expect((await verificar(ws)).ok).toBe(true);
+  });
+
+  it("--seco conta as Conversas que ficam e não as soma às que saem", async () => {
+    const ws = await semearEspaco("h02seco", comFlow);
+
+    const texto = await relatorioSeco(ws);
+
+    expect(texto).toMatch(/1 de Grupo/);
+    expect(texto).toMatch(/1 de Flow, Automação ou convite de Grupo/);
+    // As oito coleções têm 7 linhas (Contatos 2, Empresa, vínculo, Canal, Negócio e Funil) e sai 1 Conversa: 8.
+    expect(texto).toMatch(/apaga 8 linha\(s\) de registros/);
   });
 });
