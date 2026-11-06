@@ -10,6 +10,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildProductSeed } from "../seed-produto";
 import { buildSeed } from "../seed";
+import type { ConversaNaLista } from "../crm/conversas";
 import {
   checklistProgress,
   duplicateSuspicions,
@@ -3878,13 +3879,43 @@ describe("Realce — o resultado nomeia o registro tocado (OperationResult.id)",
   });
 });
 
+/** Uma Conversa do CRM novo, como `GET /conversas` a devolve: só o que a derivação lê. */
+function conversaNaLista(id: string, atribuidoA: string): ConversaNaLista {
+  return {
+    id,
+    canalId: "can_1",
+    contatoId: "ctt_1",
+    titulo: `Conversa ${id}`,
+    tituloEditado: false,
+    situacao: "aberta",
+    estado: "ativo",
+    naLixeiraEm: null,
+    filaId: null,
+    atribuido: { tipo: "membro", id: atribuidoA },
+    adiadaAte: null,
+    adiamentoMotivo: null,
+    participantes: [],
+    resolvidaEm: null,
+    reabertaEm: null,
+    reaberturas: 0,
+    criadoPor: { tipo: "membro", id: atribuidoA },
+    criadoEm: "2026-11-01T10:00:00.000Z",
+    atualizadoEm: "2026-11-01T10:00:00.000Z",
+    contatoNome: "Ana Souza",
+    estrela: false,
+    naoLidas: 0,
+    ultimaRecebidaEm: null,
+  };
+}
+
+const SEM_CONVERSAS = { itens: [], total: 0 } as const;
+
 describe("Barra global — o que espera pela pessoa (notificacoesDoMembro)", () => {
   it("o total é a soma dos seis grupos, filtrados pelo Membro", () => {
     const now = new Date();
-    const n = notificacoesDoMembro(state, "mem_thiago", now);
+    const n = notificacoesDoMembro(state, "mem_thiago", now, SEM_CONVERSAS);
     expect(n.total).toBe(n.aprovacoes.length + n.mencoes.length + n.conversas.length + n.vencidas.length + n.bloqueadas.length + n.execucoesFalhas.length);
     for (const a of n.aprovacoes) expect(a.approverMemberId).toBe("mem_thiago");
-    for (const c of n.conversas) expect(c.assignee?.kind === "member" && c.assignee.id).toBe("mem_thiago");
     for (const t of n.vencidas) expect(t.assignees.some((x) => x.kind === "member" && x.id === "mem_thiago")).toBe(true);
   });
 
@@ -3893,9 +3924,34 @@ describe("Barra global — o que espera pela pessoa (notificacoesDoMembro)", () 
     if (!pendente) throw new Error("sem aprovação pendente no seed");
     const outro = state.members.find((m) => m.id !== pendente.approverMemberId && m.state === "ativo");
     if (!outro) throw new Error("sem outro Membro");
-    expect(notificacoesDoMembro(state, outro.id, new Date()).aprovacoes.some((a) => a.id === pendente.id)).toBe(false);
+    expect(notificacoesDoMembro(state, outro.id, new Date(), SEM_CONVERSAS).aprovacoes.some((a) => a.id === pendente.id)).toBe(false);
     const abertas = tarefasAbertasDoMembro(state, "mem_thiago");
     for (const t of abertas) expect(isTerminalCategory(statusCategory(state, t))).toBe(false);
+  });
+
+  it("15-14: as Conversas atribuídas vêm do argumento e o total geral soma o `total` dele", () => {
+    const base = notificacoesDoMembro(state, "mem_thiago", new Date(), SEM_CONVERSAS);
+    const duas = [conversaNaLista("cnv_1", "mem_thiago"), conversaNaLista("cnv_2", "mem_thiago")];
+    const n = notificacoesDoMembro(state, "mem_thiago", new Date(), { itens: duas, total: 2 });
+    expect(n.conversas.map((c) => c.id)).toEqual(["cnv_1", "cnv_2"]);
+    expect(n.total).toBe(base.total + 2);
+  });
+
+  it("15-14: o `total` da api conta, não a página (20 itens de 57 Conversas)", () => {
+    const base = notificacoesDoMembro(state, "mem_thiago", new Date(), SEM_CONVERSAS);
+    const pagina = Array.from({ length: 20 }, (_, i) => conversaNaLista(`cnv_${i}`, "mem_thiago"));
+    const n = notificacoesDoMembro(state, "mem_thiago", new Date(), { itens: pagina, total: 57 });
+    expect(n.conversas).toHaveLength(20);
+    expect(n.total).toBe(base.total + 57);
+  });
+
+  it("15-14: Conversas do modelo antigo atribuídas ao Membro não entram (nada vem de state.conversations)", () => {
+    const base = notificacoesDoMembro(state, "mem_thiago", new Date(), SEM_CONVERSAS);
+    const antigas = state.conversations.filter((c) => c.assignee?.kind === "member" && c.assignee.id === "mem_thiago");
+    expect(antigas.length).toBeGreaterThan(0);
+    expect(base.conversas).toEqual([]);
+    const sem = { ...state, conversations: [] } as DataState;
+    expect(notificacoesDoMembro(sem, "mem_thiago", new Date(), SEM_CONVERSAS).total).toBe(base.total);
   });
 });
 

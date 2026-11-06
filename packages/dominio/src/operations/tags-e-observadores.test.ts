@@ -68,19 +68,19 @@ describe("Notificações — quem acompanha é avisado", () => {
     const tarefa = state.tasks.find((t) => t.lifecycle === "ativo" && !t.observerMemberIds.includes(eu) && t.comments.length === 0 && state.lists.find((l) => l.id === t.listId)?.isPrivate !== true);
     if (!tarefa) throw new Error("seed sem Tarefa para observar");
     expect(watchTask(state, eu, tarefa.id, eu, true).ok).toBe(true);
-    const antes = notificacoesDoMembro(state, eu, new Date());
+    const antes = notificacoesDoMembro(state, eu, new Date(), { itens: [], total: 0 });
     expect(antes.observadas.some((o) => o.task.id === tarefa.id)).toBe(false);
 
     const c = addTaskComment(state, outro, tarefa.id, { content: "Atualizei o orçamento." });
     expect(c.ok, c.ok ? "" : c.error).toBe(true);
     if (!c.ok) return;
-    const depois = notificacoesDoMembro(state, eu, new Date());
+    const depois = notificacoesDoMembro(state, eu, new Date(), { itens: [], total: 0 });
     expect(depois.observadas.map((o) => o.comment.id)).toContain(c.value.id);
     expect(depois.total).toBe(antes.total + 1);
     // Quem comentou não é avisado do próprio Comentário.
     expect(comentariosObservados(state, outro).some((o) => o.comment.id === c.value.id)).toBe(false);
 
     expect(resolveTaskComment(state, outro, tarefa.id, c.value.id, true).ok).toBe(true);
-    expect(notificacoesDoMembro(state, eu, new Date()).observadas.some((o) => o.comment.id === c.value.id)).toBe(false);
+    expect(notificacoesDoMembro(state, eu, new Date(), { itens: [], total: 0 }).observadas.some((o) => o.comment.id === c.value.id)).toBe(false);
   });
 });
