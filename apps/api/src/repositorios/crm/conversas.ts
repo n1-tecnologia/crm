@@ -202,6 +202,16 @@ export function criarRepositorioDeConversasPg(cliente: Pool | PoolClient): Repos
       if (filtro.atribuidoId !== undefined) somar((n) => `c.atribuido_id = $${n}`, filtro.atribuidoId);
       if (filtro.filaId !== undefined) somar((n) => `c.fila_id = $${n}`, filtro.filaId);
       if (filtro.comEstrela !== undefined) somar((n) => `coalesce(mc.estrela, false) = $${n}`, filtro.comEstrela);
+      // `naoLidas` é do Membro da sessão ($3, via `mc`): o mesmo critério do `nao_lidas` da lista, agora no WHERE.
+      // Fragmento constante, sem valor do cliente no texto (T-15-19).
+      if (filtro.naoLidas !== undefined) {
+        condicoes.push(
+          `${filtro.naoLidas ? "exists" : "not exists"} (select 1 from plataforma.mensagens m
+              where m.workspace_id = c.workspace_id and m.conversa_id = c.id
+                and m.direcao = 'recebida'
+                and m.criado_em > coalesce(mc.lida_ate, '-infinity'::timestamptz))`,
+        );
+      }
       // Busca literal: `position` não tem curinga, então `%` e `_` do cliente valem só por si.
       if (filtro.q !== undefined) somar((n) => `position(lower($${n}) in lower(c.titulo)) > 0`, filtro.q);
       const onde = condicoes.join(" and ");

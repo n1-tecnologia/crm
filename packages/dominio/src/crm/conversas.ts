@@ -91,6 +91,11 @@ export interface FiltroDeConversas {
   readonly filaId?: string;
   /** `true`: só as que o Membro da sessão marcou com estrela; `false`: só as que não marcou. */
   readonly comEstrela?: boolean;
+  /**
+   * Do Membro da sessão (nunca de um id do cliente): `true` só as que têm Mensagem
+   * recebida depois do `lidaAte` dele; `false` só as sem Mensagem nova para ele.
+   */
+  readonly naoLidas?: boolean;
   /** Trecho do título, sem diferenciar maiúscula; é texto literal, sem curinga. */
   readonly q?: string;
 }

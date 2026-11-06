@@ -2,7 +2,7 @@
  * Rotas REST de Conversa relacional (Fase 8, 08-06): o fio entre um Contato e um Canal.
  *
  *   GET  /conversas                 lista (só `ativo` ou `na_lixeira`; filtros por Canal, Contato, situação, Atribuído, Fila,
- *                                   estrela e `q`; cada item traz `contatoNome`, `estrela` e `naoLidas` do Membro da sessão)
+ *                                   estrela, `naoLidas` e `q`; cada item traz `contatoNome`, `estrela` e `naoLidas` do Membro da sessão)
  *   GET  /conversas/:id             a Conversa com o resumo do Canal
  *   POST /conversas                 abre a Conversa COM a primeira Mensagem, numa transação (201)
  *   POST /conversas/:id/resolver    `aberta`/`pendente` → `resolvida`
@@ -46,6 +46,8 @@ export const QUERY_LISTA_DE_CONVERSAS = z
     atribuidoId: ID.optional(),
     filaId: ID.optional(),
     comEstrela: z.enum(["true", "false"]).transform((texto) => texto === "true").optional(),
+    /** Do Membro da sessão, nunca de um id do cliente (T-15-18). */
+    naoLidas: z.enum(["true", "false"]).transform((texto) => texto === "true").optional(),
     q: TEXTO_CURTO.optional(),
     limite: z.coerce.number().int().min(1).max(LIMITES_CRM.paginaMaxima).default(LIMITES_CRM.paginaPadrao),
     deslocamento: z.coerce.number().int().min(0).default(0),
@@ -79,7 +81,7 @@ export async function rotasDeConversas(app: FastifyInstance, opcoes: { readonly 
   const { servico } = opcoes;
 
   rotas.get("/conversas", { schema: { querystring: QUERY_LISTA_DE_CONVERSAS } }, async (request, reply) => {
-    const { estado, canalId, contatoId, situacao, atribuidoId, filaId, comEstrela, q, limite, deslocamento } = request.query;
+    const { estado, canalId, contatoId, situacao, atribuidoId, filaId, comEstrela, naoLidas, q, limite, deslocamento } = request.query;
     const filtro: FiltroDeConversas = {
       estado,
       limite,
@@ -90,6 +92,7 @@ export async function rotasDeConversas(app: FastifyInstance, opcoes: { readonly 
       ...(atribuidoId !== undefined ? { atribuidoId } : {}),
       ...(filaId !== undefined ? { filaId } : {}),
       ...(comEstrela !== undefined ? { comEstrela } : {}),
+      ...(naoLidas !== undefined ? { naoLidas } : {}),
       ...(q !== undefined && q !== "" ? { q } : {}),
     };
     return responderLista(reply, await servico.listar(request.membro, filtro));
