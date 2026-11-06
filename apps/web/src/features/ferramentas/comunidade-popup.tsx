@@ -40,6 +40,7 @@ import { useFormat } from "@/features/shell/use-format";
 import { useSession } from "@/dados/store";
 import { ActionMenu, Button, ConditionMarker, ConfirmDialog, CorpoDeTela, EmptyState, Field, Icone, Pilula, ReguaDeSecao, Select, SidePanel, StateSeal, TextInput, Toggle } from "@/features/shell/ui";
 import { ConversaDoGrupo } from "./conversa-do-grupo";
+import { recusaSePronta, useCanaisDasFerramentas, useCrmDasFerramentas } from "./crm-das-ferramentas";
 import {
   CONFIGURACAO_DA_COMUNIDADE_LABEL,
   FAIXA_DE_OCUPACAO_LABEL,
@@ -106,6 +107,9 @@ export function ComunidadeCompleta({ comunidadeId, modo, onClose }: { readonly c
   const [confirmando, setConfirmando] = useState<"lixeira" | "sair" | null>(null);
   const [nomeDigitado, setNomeDigitado] = useState("");
   const [vinculando, setVinculando] = useState(false);
+  // O Canal vem de GET /canais (3.4.8), não do store.
+  const canaisDoCrm = useCanaisDasFerramentas();
+  const crm = useCrmDasFerramentas(canaisDoCrm);
 
   const comunidade = state.comunidades.find((c) => c.id === comunidadeId);
   if (!comunidade) {
@@ -116,8 +120,9 @@ export function ComunidadeCompleta({ comunidadeId, modo, onClose }: { readonly c
     );
   }
 
-  const canal = state.channels.find((c) => c.id === comunidade.canalId);
-  const externa = recusaExternaNaComunidade(state, comunidade, "administrador");
+  const canal = canaisDoCrm.canalPorId(comunidade.canalId);
+  const externa = recusaSePronta(canaisDoCrm, () => recusaExternaNaComunidade(state, comunidade, "administrador", crm));
+  const externaComoParticipante = recusaSePronta(canaisDoCrm, () => recusaExternaNaComunidade(state, comunidade, "participante", crm));
   const adm = recusaDeAdministracao(state, memberId);
   const naLixeira = comunidade.lifecycle === "naLixeira";
   const somenteLeitura = naLixeira ? "Uma Comunidade na lixeira é somente leitura." : undefined;
@@ -129,16 +134,16 @@ export function ComunidadeCompleta({ comunidadeId, modo, onClose }: { readonly c
   const activity = state.activity.filter((a) => a.objectId === comunidade.id);
   const sairIrreversivel = comunidade.sincronizacao.papelDoCanal === "administrador";
 
-  const gravar = (patch: Parameters<typeof editarComunidade>[3], mensagem: string) => report(run((data, me) => editarComunidade(data, me, comunidade.id, patch)), mensagem);
+  const gravar = (patch: Parameters<typeof editarComunidade>[3], mensagem: string) => report(run((data, me) => editarComunidade(data, me, comunidade.id, patch, crm)), mensagem);
 
   const menu = [
-    { label: "Sincronizar", onSelect: () => report(run((data, me) => sincronizarComunidade(data, me, comunidade.id)), "Comunidade sincronizada."), ...(naLixeira ? { disabledReason: "Na lixeira." } : {}) },
+    { label: "Sincronizar", onSelect: () => report(run((data, me) => sincronizarComunidade(data, me, comunidade.id, crm)), "Comunidade sincronizada."), ...(naLixeira ? { disabledReason: "Na lixeira." } : {}) },
     comunidade.lifecycle === "ativo"
       ? { label: "Arquivar", onSelect: () => report(run((data, me) => arquivarComunidade(data, me, comunidade.id)), "Comunidade arquivada. Os Grupos não mudam (INV-COM-01).") }
       : comunidade.lifecycle === "arquivado"
         ? { label: "Restaurar", onSelect: () => report(run((data, me) => restaurarComunidade(data, me, comunidade.id)), "Comunidade restaurada.") }
         : { label: "Restaurar da lixeira", onSelect: () => report(run((data, me) => restaurarComunidadeDaLixeira(data, me, comunidade.id)), "Comunidade restaurada: sincronize antes de qualquer Ferramenta externa.") },
-    { label: "Sair da Comunidade", destructive: true, onSelect: () => setConfirmando("sair"), ...(adm ? { disabledReason: adm } : recusaExternaNaComunidade(state, comunidade, "participante") ? { disabledReason: recusaExternaNaComunidade(state, comunidade, "participante") } : {}) },
+    { label: "Sair da Comunidade", destructive: true, onSelect: () => setConfirmando("sair"), ...(adm ? { disabledReason: adm } : externaComoParticipante ? { disabledReason: externaComoParticipante } : {}) },
     { label: "Enviar à lixeira", destructive: true, onSelect: () => setConfirmando("lixeira"), ...(naLixeira ? { disabledReason: "Já está na lixeira." } : {}) },
   ];
 
@@ -170,7 +175,7 @@ export function ComunidadeCompleta({ comunidadeId, modo, onClose }: { readonly c
         destructive
         {...(sairIrreversivel && nomeDigitado.trim() !== comunidade.nome ? { confirmDisabledReason: "Digite o nome exato da Comunidade." } : {})}
         onConfirm={() => {
-          const r = run((data, me) => sairDaComunidade(data, me, comunidade.id, { entendiIrreversivel: true }));
+          const r = run((data, me) => sairDaComunidade(data, me, comunidade.id, { entendiIrreversivel: true }, crm));
           setConfirmando(null);
           setNomeDigitado("");
           report(r, "O Canal saiu da Comunidade. Ela ficou inacessível; arquive-a se não for voltar.");
@@ -218,7 +223,7 @@ export function ComunidadeCompleta({ comunidadeId, modo, onClose }: { readonly c
               <div className="mt-4 grid gap-x-8 gap-y-0.5 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                 <div className="grid min-w-0 content-start gap-0.5">
                   <LinhaDeProp icone={Layers} rotulo="Nome" valor={comunidade.nome} editavel={!naLixeira && !externa} motivo={somenteLeitura ?? externa} editor={<EditorDeTexto valor={comunidade.nome} onSave={(v) => gravar({ nome: v }, "Nome alterado no provedor.")} />} />
-                  <LinhaDeProp icone={Radio} rotulo="Canal administrador" valor={canal ? canal.name : "Nenhum — órfã"} motivo="A Comunidade nasce no Canal que a criou ou importou." />
+                  <LinhaDeProp icone={Radio} rotulo="Canal administrador" valor={canal ? canal.nome : "Nenhum — órfã"} motivo="A Comunidade nasce no Canal que a criou ou importou." />
                   <LinhaDeProp icone={ShieldCheck} rotulo="Papel do Canal" valor={<Pilula tom={PAPEL_DO_CANAL_TOM[comunidade.sincronizacao.papelDoCanal]}>{PAPEL_DO_CANAL_LABEL[comunidade.sincronizacao.papelDoCanal]}</Pilula>} motivo="Vem da Sincronização." />
                   <LinhaDeProp icone={Layers} rotulo="Grupos vinculados" valor={<span className="app-numero">{fmt.number(grupos.length)} / {fmt.number(comunidade.limiteDeGruposDoProvedor)}</span>} motivo="Inclui o Grupo de avisos; o limite é do provedor." />
                   <LinhaDeProp icone={Users} rotulo="Membros" valor={<span className="app-numero">{fmt.number(membros.length)}</span>} motivo="União das Participações vigentes dos Grupos comuns; um Contato conta uma vez (RN-COM-06)." />
@@ -234,7 +239,7 @@ export function ComunidadeCompleta({ comunidadeId, modo, onClose }: { readonly c
                         <ToggleDeLinha
                           rotulo={CONFIGURACAO_DA_COMUNIDADE_LABEL[chave].titulo}
                           ligado={comunidade.configuracoes[chave]}
-                          onChange={(v) => report(run((data, me) => alterarConfiguracoesDaComunidade(data, me, comunidade.id, { [chave]: v })), `${CONFIGURACAO_DA_COMUNIDADE_LABEL[chave].titulo}: ${v ? "sim" : "não"} — alterado no provedor.`)}
+                          onChange={(v) => report(run((data, me) => alterarConfiguracoesDaComunidade(data, me, comunidade.id, { [chave]: v }, crm)), `${CONFIGURACAO_DA_COMUNIDADE_LABEL[chave].titulo}: ${v ? "sim" : "não"} — alterado no provedor.`)}
                           motivo={somenteLeitura ?? externa}
                         />
                       }
@@ -327,7 +332,7 @@ export function ComunidadeCompleta({ comunidadeId, modo, onClose }: { readonly c
                                     {
                                       label: "Desvincular",
                                       destructive: true,
-                                      onSelect: () => report(run((data, me) => desvincularGrupoDaComunidade(data, me, comunidade.id, g.id)), `${g.nome} desvinculado; Participações intactas.`),
+                                      onSelect: () => report(run((data, me) => desvincularGrupoDaComunidade(data, me, comunidade.id, g.id, crm)), `${g.nome} desvinculado; Participações intactas.`),
                                       ...(ehAvisos ? { disabledReason: "O Grupo de avisos não é desvinculável (INV-COM-02)." } : adm ? { disabledReason: adm } : externa ? { disabledReason: externa } : {}),
                                     },
                                   ]}
@@ -355,7 +360,7 @@ export function ComunidadeCompleta({ comunidadeId, modo, onClose }: { readonly c
                       grupoId={avisos.id}
                       report={report}
                       nota="Enviar à Comunidade é falar no Grupo de avisos: todos os membros leem, ninguém responde lá (RN-COM-05)."
-                      enviar={(texto) => run((data, me) => enviarMensagemAComunidade(data, me, comunidade.id, { content: texto }))}
+                      enviar={(texto) => run((data, me) => enviarMensagemAComunidade(data, me, comunidade.id, { content: texto }, crm))}
                       {...(naLixeira ? { recusaPorFora: "A Comunidade está na lixeira." } : {})}
                     />
                   ) : (
@@ -384,14 +389,16 @@ export function ComunidadeCompleta({ comunidadeId, modo, onClose }: { readonly c
 function VincularGrupoDialog({ comunidade, onClose, report }: { readonly comunidade: Comunidade; readonly onClose: () => void; readonly report: Report }) {
   const state = useData((data) => data);
   const run = useRun();
+  const canaisDoCrm = useCanaisDasFerramentas();
+  const crm = useCrmDasFerramentas(canaisDoCrm);
   const [grupoId, setGrupoId] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const opcoes = state.grupos
     .filter((g) => g.lifecycle !== "naLixeira")
     .map((g) => {
       // A mesma ordem da operação: primeiro o que o Grupo exige (sincronizado, Canal conectado), depois o vínculo.
-      const recusa = recusaExternaNoGrupo(state, g, "administrador") ?? recusaDeVinculo(state, comunidade, g);
-      return { value: g.id, label: g.nome, detail: state.channels.find((c) => c.id === g.canalId)?.name ?? "", ...(recusa ? { disabledReason: recusa } : {}) };
+      const recusa = recusaSePronta(canaisDoCrm, () => recusaExternaNoGrupo(state, g, "administrador", crm)) ?? recusaDeVinculo(state, comunidade, g);
+      return { value: g.id, label: g.nome, detail: canaisDoCrm.nomeDoCanal(g.canalId) ?? "", ...(recusa ? { disabledReason: recusa } : {}) };
     });
   return (
     <ConfirmDialog
@@ -401,7 +408,7 @@ function VincularGrupoDialog({ comunidade, onClose, report }: { readonly comunid
       confirmLabel="Vincular"
       {...(grupoId ? {} : { confirmDisabledReason: "Escolha o Grupo." })}
       onConfirm={() => {
-        const r = run((data, me) => vincularGrupoAComunidade(data, me, comunidade.id, grupoId));
+        const r = run((data, me) => vincularGrupoAComunidade(data, me, comunidade.id, grupoId, crm));
         if (!r.ok) {
           // Um Toast na ficha ficaria atrás do véu deste diálogo: a recusa fica aqui dentro.
           setErro(r.error);

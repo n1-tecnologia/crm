@@ -31,13 +31,15 @@ import {
   restaurarFlowDaLixeira,
   sincronizarFlow,
 } from "@n1/dominio/operations";
-import { contactDisplayName, responseWindowOpenUntil } from "@n1/dominio/derive";
+import { responseWindowOpenUntil } from "@n1/dominio/derive";
 import { enviosDoFlow, metricasDoFlow, telasOrdenadas, versaoCorrente, versaoPublicada } from "@n1/dominio/derive-ferramentas";
 import type { CategoriaDeFlow, Flow } from "@n1/dominio/types";
 import { LinhaDeProp } from "@/features/estrutura/linha-de-propriedade";
 import { AsideDeAtividade, EditorDeTexto, useAvisos, useNomeDoAtor, type Report } from "@/features/shell/ficha";
 import { useFormat } from "@/features/shell/use-format";
 import { ActionMenu, Button, ConditionMarker, ConfirmDialog, CorpoDeTela, EmptyState, Field, Icone, Pilula, ReguaDeSecao, Select, SidePanel, StateSeal, TextArea, TextInput } from "@/features/shell/ui";
+import { nomeDe, useNomesDoCrm } from "@/dados/crm/nomes";
+import { recusaSePronta, useCanaisDasFerramentas, useCrmDasFerramentas } from "./crm-das-ferramentas";
 import { CATEGORIA_DE_FLOW_LABEL, ESTADO_NO_PROVEDOR_LABEL, ESTADO_NO_PROVEDOR_TOM, SINCRONIZACAO_LABEL, SINCRONIZACAO_TOM, VERSAO_LABEL, VERSAO_TOM } from "./rotulos";
 
 export function FlowPopup({ flowId, onClose, onAbrirConstrutor }: { readonly flowId: string | null; readonly onClose: () => void; readonly onAbrirConstrutor: (flowId: string) => void }) {
@@ -71,8 +73,15 @@ export function FlowCompleto({ flowId, onClose, onAbrirConstrutor }: { readonly 
   const [confirmando, setConfirmando] = useState<"lixeira" | "arquivar" | "despublicar" | "chaves" | "descartar" | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [ponto, setPonto] = useState<string | null>(null);
+  // O Canal publicador vem de GET /canais (3.4.8), não do store.
+  const canaisDoCrm = useCanaisDasFerramentas();
+  const crm = useCrmDasFerramentas(canaisDoCrm);
 
   const flow = state.flows.find((f) => f.id === flowId);
+  // O nome de quem recebeu o Flow vem de POST /crm/nomes (um lote); o envio em si segue em `state.conversations` (F14-D-05).
+  const nomesDosEnvios = useNomesDoCrm(
+    flow ? enviosDoFlow(state, flow.id).slice(0, 8).flatMap(({ conversa }) => (conversa.contactId ? [{ tipo: "contact" as const, id: conversa.contactId }] : [])) : [],
+  );
   if (!flow) {
     return (
       <div className="p-6">
@@ -81,24 +90,24 @@ export function FlowCompleto({ flowId, onClose, onAbrirConstrutor }: { readonly 
     );
   }
 
-  const canal = state.channels.find((c) => c.id === flow.canalId);
+  const canal = canaisDoCrm.canalPorId(flow.canalId);
   const publicada = versaoPublicada(flow);
   const rascunho = versaoCorrente(flow);
   const naLixeira = flow.lifecycle === "naLixeira";
   const somenteLeitura = naLixeira ? "Um Flow na lixeira é somente leitura." : undefined;
   const adm = recusaDeAdministracao(state, memberId);
-  const recusaEnvio = recusaDeEnvioDeFlow(state, flow);
+  const recusaEnvio = recusaSePronta(canaisDoCrm, () => recusaDeEnvioDeFlow(state, flow, crm));
   const metricas = metricasDoFlow(state, flow.id);
   const envios = enviosDoFlow(state, flow.id).slice(0, 8);
   const activity = state.activity.filter((a) => a.objectId === flow.id);
   const versoes = [...flow.versoes].sort((a, b) => b.numero - a.numero);
 
-  const gravar = (patch: Parameters<typeof editarFlow>[3], mensagem: string) => report(run((data, me) => editarFlow(data, me, flow.id, patch)), mensagem);
+  const gravar = (patch: Parameters<typeof editarFlow>[3], mensagem: string) => report(run((data, me) => editarFlow(data, me, flow.id, patch, crm)), mensagem);
 
   const menu = [
     { label: "Abrir no construtor", onSelect: () => onAbrirConstrutor(flow.id) },
     { label: "Enviar a um Contato", onSelect: () => setEnviando(true), ...(recusaEnvio ? { disabledReason: recusaEnvio } : {}) },
-    { label: "Sincronizar", onSelect: () => report(run((data, me) => sincronizarFlow(data, me, flow.id)), "Flow sincronizado."), ...(naLixeira ? { disabledReason: "Na lixeira." } : {}) },
+    { label: "Sincronizar", onSelect: () => report(run((data, me) => sincronizarFlow(data, me, flow.id, crm)), "Flow sincronizado."), ...(naLixeira ? { disabledReason: "Na lixeira." } : {}) },
     { label: "Copiar", onSelect: () => report(run((data, me) => copiarFlow(data, me, flow.id)), "Flow copiado, com Proveniência.") },
     { label: "Despublicar", destructive: true, onSelect: () => setConfirmando("despublicar"), ...(adm ? { disabledReason: adm } : !publicada ? { disabledReason: "Não há Versão publicada." } : {}) },
     flow.lifecycle === "ativo"
@@ -205,7 +214,7 @@ export function FlowCompleto({ flowId, onClose, onAbrirConstrutor }: { readonly 
                 <StateSeal state={flow.lifecycle} />
                 {publicada ? <Pilula tom="sucesso">v{publicada.numero} publicada</Pilula> : <ConditionMarker tone="neutral">sem Versão publicada</ConditionMarker>}
                 {rascunho ? <Pilula tom="aviso">v{rascunho.numero} em rascunho</Pilula> : null}
-                {!canal ? <ConditionMarker tone="warning">sem Canal publicador</ConditionMarker> : null}
+                {(flow.canalId === undefined || canaisDoCrm.pronto) && !canal ? <ConditionMarker tone="warning">sem Canal publicador</ConditionMarker> : null}
                 <span className="ml-auto">
                   <ActionMenu items={menu} />
                 </span>
@@ -232,7 +241,7 @@ export function FlowCompleto({ flowId, onClose, onAbrirConstrutor }: { readonly 
                   <LinhaDeProp
                     icone={Radio}
                     rotulo="Canal publicador"
-                    valor={canal ? canal.name : "Nenhum"}
+                    valor={canal ? canal.nome : "Nenhum"}
                     editavel={!naLixeira}
                     motivo={somenteLeitura ?? (publicada ? "Trocar com Versão publicada exige administrar e torna a publicada obsoleta (RN-FLW-09)." : undefined)}
                     editor={
@@ -241,7 +250,7 @@ export function FlowCompleto({ flowId, onClose, onAbrirConstrutor }: { readonly 
                           value={flow.canalId ?? ""}
                           onChange={(v) => gravar({ canalId: v || null }, v ? "Canal publicador alterado." : "Canal publicador removido.")}
                           placeholder="Nenhum"
-                          options={[{ value: "", label: "Nenhum" }, ...state.channels.filter((c) => c.channelType === "whatsapp" && c.lifecycle === "ativo").map((c) => ({ value: c.id, label: c.name, detail: c.connection }))]}
+                          options={[{ value: "", label: "Nenhum" }, ...canaisDoCrm.canaisDeWhatsApp.map((c) => ({ value: c.id, label: c.nome, detail: c.conexao }))]}
                         />
                       </span>
                     }
@@ -387,14 +396,15 @@ export function FlowCompleto({ flowId, onClose, onAbrirConstrutor }: { readonly 
                   ) : (
                     <ul className="pilha-solta">
                       {envios.map(({ conversa, mensagem }) => {
-                        const contato = state.contacts.find((c) => c.id === conversa.contactId);
+                        // `null`/`undefined` = a api não nomeou (outro Espaço, sem permissão ou id do modelo antigo): vale o título da Conversa.
+                        const nomeDoContato = conversa.contactId ? nomeDe(nomesDosEnvios, "contact", conversa.contactId) : undefined;
                         const respondeu = conversa.messages.some((m) => m.respostaDeFlow?.mensagemDeOrigemId === mensagem.id);
                         return (
                           <li key={mensagem.id}>
                             <Link href={`/crm/caixa-de-entrada/${conversa.id}`} className="item-solto">
                               <span className="min-w-0 flex-1">
                                 <span className="app-md block truncate" style={{ color: "var(--texto)" }}>
-                                  {contato ? contactDisplayName(contato) : conversa.title}
+                                  {nomeDoContato ?? conversa.title}
                                 </span>
                                 <span className="app-meta block truncate">
                                   v{mensagem.flow?.numeroDaVersao} · {fmt.relative(mensagem.createdAt)} · {mensagem.deliveryStatus ?? ""}
@@ -431,6 +441,8 @@ export function FlowCompleto({ flowId, onClose, onAbrirConstrutor }: { readonly 
 export function EnviarFlowDialog({ flow, onClose, report }: { readonly flow: Flow; readonly onClose: () => void; readonly report: Report }) {
   const state = useData((data) => data);
   const run = useRun();
+  const canaisDoCrm = useCanaisDasFerramentas();
+  const crm = useCrmDasFerramentas(canaisDoCrm);
   const publicada = versaoPublicada(flow);
   const [conversationId, setConversationId] = useState("");
   const [corpo, setCorpo] = useState("Antes de falarmos, me conta em 30 segundos sobre você? É só tocar em Abrir.");
@@ -440,13 +452,15 @@ export function EnviarFlowDialog({ flow, onClose, report }: { readonly flow: Flo
   // O instante de abertura: a Janela de resposta não muda enquanto o diálogo está aberto.
   const [agora] = useState(() => Date.now());
 
-  const conversas = state.conversations
-    .filter((c) => c.lifecycle === "ativo" && c.channelId === flow.canalId && !c.groupIdentifier && c.contactId)
+  // A Conversa 1:1 segue em `state.conversations` (F14-D-05); o nome do Contato vem de POST /crm/nomes.
+  const candidatas = state.conversations.filter((c) => c.lifecycle === "ativo" && c.channelId === flow.canalId && !c.groupIdentifier && c.contactId);
+  const nomes = useNomesDoCrm(candidatas.flatMap((c) => (c.contactId ? [{ tipo: "contact" as const, id: c.contactId }] : [])));
+  const conversas = candidatas
     .map((c) => {
-      const contato = state.contacts.find((x) => x.id === c.contactId);
+      const nomeDoContato = c.contactId ? nomeDe(nomes, "contact", c.contactId) : undefined;
       const janela = responseWindowOpenUntil(state, c, capacidadesDoCanal);
       const fora = janela !== null && janela.getTime() < agora;
-      return { value: c.id, label: contato ? contactDisplayName(contato) : c.title, detail: `${c.state}${fora ? " · fora da janela de resposta" : ""}`, ...(fora ? { disabledReason: "Fora da Janela de resposta: só Mensagem de modelo (RN-CXE-19)." } : {}) };
+      return { value: c.id, label: nomeDoContato ?? c.title, detail: `${c.state}${fora ? " · fora da janela de resposta" : ""}`, ...(fora ? { disabledReason: "Fora da Janela de resposta: só Mensagem de modelo (RN-CXE-19)." } : {}) };
     });
 
   return (
@@ -458,7 +472,7 @@ export function EnviarFlowDialog({ flow, onClose, report }: { readonly flow: Flo
       wide
       {...(!publicada ? { confirmDisabledReason: "Publique antes de enviar (RN-FLW-01)." } : !conversationId ? { confirmDisabledReason: "Escolha a Conversa." } : !corpo.trim() ? { confirmDisabledReason: "Escreva o corpo da Mensagem." } : {})}
       onConfirm={() => {
-        const r = run((data, me) => enviarFlow(data, me, { flowId: flow.id, conversationId, corpo, rotuloDoBotao: rotulo, telaInicial }));
+        const r = run((data, me) => enviarFlow(data, me, { flowId: flow.id, conversationId, corpo, rotuloDoBotao: rotulo, telaInicial }, crm));
         if (!r.ok) {
           setErro(r.error);
           return;

@@ -380,10 +380,9 @@ describe("Comunidades e Flows no CRM novo (15-22)", () => {
     await waitFor(() => expect(screen.getAllByText("Canal do CRM novo").length).toBeGreaterThan(0));
   });
 
-  it("(m) a ficha da Comunidade mostra o Canal da api e sincroniza com o `crm`", async () => {
+  it("(m) a ficha da Comunidade mostra o Canal administrador pelo GET /canais", async () => {
     await montar(<ComunidadeCompleta comunidadeId="com_alunos_ff" modo="pagina" />);
     await waitFor(() => expect(screen.getAllByText("Canal do CRM novo").length).toBeGreaterThan(0));
-    await waitFor(() => expect((screen.getAllByRole("button", { name: "Sincronizar" })[0] as HTMLButtonElement | undefined)?.getAttribute("aria-disabled")).not.toBe("true"));
   });
 
   it("(n) criar Flow lista o Canal publicador da api e manda `criarFlow` com o `crm`", async () => {

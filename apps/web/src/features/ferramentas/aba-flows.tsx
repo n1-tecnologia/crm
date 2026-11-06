@@ -15,13 +15,15 @@ import { BarraDeFiltros, ConditionMarker, CorpoDeTela, Pilula, Select, StateSeal
 import { CriarFlowDialog } from "./criar-flow-dialog";
 import { FlowPopup } from "./flow-popup";
 import { CATEGORIA_DE_FLOW_LABEL, ESTADO_NO_PROVEDOR_LABEL, ESTADO_NO_PROVEDOR_TOM } from "./rotulos";
+import { useCanaisDasFerramentas } from "./crm-das-ferramentas";
 import { useParametros } from "./url";
 
 export function AbaFlows({ onAbrirConstrutor }: { readonly onAbrirConstrutor: (flowId: string) => void }) {
   const state = useData((data) => data);
   const fmt = useFormat();
   const { get, set, hrefCom } = useParametros();
-  const canais = state.channels.filter((c) => c.channelType === "whatsapp" && c.lifecycle === "ativo");
+  const canaisDoCrm = useCanaisDasFerramentas();
+  const canais = canaisDoCrm.canaisDeWhatsApp;
   const canalFiltro = canais.some((c) => c.id === get("canal")) ? (get("canal") ?? "") : "";
   const marca = get("marca") ?? "";
   const arquivados = get("arquivados") === "1";
@@ -39,7 +41,7 @@ export function AbaFlows({ onAbrirConstrutor }: { readonly onAbrirConstrutor: (f
     <>
       <BarraDeFiltros>
         <div className="w-44">
-          <Select size="sm" value={canalFiltro} onChange={(v) => set({ canal: v || null })} placeholder="Todos os Canais" options={[{ value: "", label: "Todos os Canais" }, ...canais.map((c) => ({ value: c.id, label: c.name }))]} />
+          <Select size="sm" value={canalFiltro} onChange={(v) => set({ canal: v || null })} placeholder="Todos os Canais" options={[{ value: "", label: "Todos os Canais" }, ...canais.map((c) => ({ value: c.id, label: c.nome }))]} />
         </div>
         <div className="w-40">
           <Select
@@ -79,7 +81,7 @@ export function AbaFlows({ onAbrirConstrutor }: { readonly onAbrirConstrutor: (f
                       {f.nome}
                     </span>
                     <StateSeal state={f.lifecycle} />
-                    {f.canalId === undefined || !state.channels.some((c) => c.id === f.canalId && c.lifecycle === "ativo") ? <ConditionMarker tone="warning">sem Canal publicador</ConditionMarker> : null}
+                    {f.canalId === undefined || (canaisDoCrm.pronto && !canais.some((c) => c.id === f.canalId)) ? <ConditionMarker tone="warning">sem Canal publicador</ConditionMarker> : null}
                   </span>
                 ),
               },
@@ -89,10 +91,10 @@ export function AbaFlows({ onAbrirConstrutor }: { readonly onAbrirConstrutor: (f
                 label: "Canal publicador",
                 className: "whitespace-nowrap",
                 render: (f) => {
-                  const canal = state.channels.find((c) => c.id === f.canalId);
+                  const canal = canaisDoCrm.canalPorId(f.canalId);
                   return canal ? (
-                    <span className="block max-w-[16ch] truncate" title={canal.name}>
-                      {canal.name}
+                    <span className="block max-w-[16ch] truncate" title={canal.nome}>
+                      {canal.nome}
                     </span>
                   ) : (
                     <span className="app-meta">—</span>

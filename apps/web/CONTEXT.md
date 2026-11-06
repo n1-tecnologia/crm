@@ -211,6 +211,25 @@ não chegou) e a `criarAutomacao` (`funis`, descartado no servidor); o Canal da 
 `useCanais` (`CampoSpec.usaCanais`); o total de Conversas que o Agente solta ao sair vem de
 `GET /conversas?atribuidoId=` (`agentes/conversas-do-agente.ts`). `features/ia/` não lê mais Negócio, Contato,
 Empresa, Funil, Canal nem Conversa do CRM em `state`.
+As Ferramentas (15-22, 3.4.8: Grupos, Comunidades e Flows) também leem Canal e Contato do CRM novo.
+`features/ferramentas/crm-das-ferramentas.ts` reúne o que as telas dividem: `useCanaisDasFerramentas()` lê
+`GET /canais` (ativos e arquivados, para a recusa dizer "arquivado" e não "não encontrado"; `pronto` só vale
+depois da lista de ativos), `useSeletorDeContatos(escolhidos)` é o seletor de Contatos
+(`useContatos({ comIdentificador: "whatsapp", q })`: um Contato sem WhatsApp nunca aparece; quem foi escolhido e
+a busca tirou da página continua nas opções, nomeado por `POST /crm/nomes`) e `montarCrmDasFerramentas` monta o
+`crm: CrmDasFerramentas` que toda operação e toda recusa de Ferramentas leva como ÚLTIMO argumento. O servidor
+descarta esse `crm` e relê `plataforma.canais` e `plataforma.contatos` (15-07, 15-17): o navegador manda o que
+tem só para a execução local não recusar com "Canal não encontrado". O número do WhatsApp do Contato escolhido
+não vem na lista (só o telefone principal), então `contatoDaFerramenta` usa o telefone principal ou o id como
+número de passagem na execução local; o servidor grava o verdadeiro. As recusas de Canal ficam em silêncio
+enquanto `pronto` é falso (`recusaSePronta`). Os eventos do provedor que só a execução local conhece (importar
+Grupos, simular Pedido de Entrada, simular entrada por Link de Captação) passam por `crmParaSimular`, que dá a
+cada número ainda sem Contato um `ContatoACriar` com id do navegador. Nome de Participante, de solicitante de
+Pedido de Entrada, de Criador do Grupo e de quem recebeu um Flow vem de `useNomesDoCrm`; `null` da api mostra o
+número da própria Participação ou o título da Conversa, nunca um nome que a api não devolveu. A Conversa do
+Grupo, os envios e as respostas de Flow seguem em `state.conversations` (F14-D-05); na Conversa do Grupo, quem
+falou numa Mensagem recebida aparece como "Participante" (o Identificador era do Contato do modelo antigo).
+`features/ferramentas/` não lê mais Contato nem Canal do store.
 Os números do Início do CRM novo vêm de `dados/crm/inicio.ts` (15-18): `usePanoramaDoCrm()`,
 `useLeadsAAtender(qualificacoes)` e `useEstatisticasDoCrm(janela, fuso)` leem `GET /crm/inicio/*`, que soma
 no servidor (nunca listas paginadas somadas no navegador, `paginaMaxima` é 200). "Meu" é o Membro da sessão:

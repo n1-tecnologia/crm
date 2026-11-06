@@ -15,13 +15,15 @@ import { BarraDeFiltros, ConditionMarker, CorpoDeTela, Pilula, Select, StateSeal
 import { ComunidadePopup } from "./comunidade-popup";
 import { CriarComunidadeDialog } from "./criar-comunidade-dialog";
 import { MARCADOR_DA_COMUNIDADE_LABEL, MARCADOR_DA_COMUNIDADE_TOM, PAPEL_DO_CANAL_LABEL, PAPEL_DO_CANAL_TOM, SINCRONIZACAO_LABEL, SINCRONIZACAO_TOM } from "./rotulos";
+import { useCanaisDasFerramentas } from "./crm-das-ferramentas";
 import { useParametros } from "./url";
 
 export function AbaComunidades() {
   const state = useData((data) => data);
   const fmt = useFormat();
   const { get, set, hrefCom } = useParametros();
-  const canais = state.channels.filter((c) => c.channelType === "whatsapp" && c.lifecycle === "ativo");
+  const canaisDoCrm = useCanaisDasFerramentas();
+  const canais = canaisDoCrm.canaisDeWhatsApp;
   const canalFiltro = canais.some((c) => c.id === get("canal")) ? (get("canal") ?? "") : "";
   const arquivados = get("arquivados") === "1";
   const aberta = get("comunidade");
@@ -37,7 +39,7 @@ export function AbaComunidades() {
     <>
       <BarraDeFiltros>
         <div className="w-44">
-          <Select size="sm" value={canalFiltro} onChange={(v) => set({ canal: v || null })} placeholder="Todos os Canais" options={[{ value: "", label: "Todos os Canais" }, ...canais.map((c) => ({ value: c.id, label: c.name }))]} />
+          <Select size="sm" value={canalFiltro} onChange={(v) => set({ canal: v || null })} placeholder="Todos os Canais" options={[{ value: "", label: "Todos os Canais" }, ...canais.map((c) => ({ value: c.id, label: c.nome }))]} />
         </div>
         <label className="app-sm flex items-center gap-2" style={{ color: "var(--texto-3)" }}>
           <input type="checkbox" className="accent-[var(--acento)]" checked={arquivados} onChange={(e) => set({ arquivados: e.target.checked ? "1" : null })} />
@@ -78,8 +80,8 @@ export function AbaComunidades() {
                 className: "whitespace-nowrap",
                 render: (c) => (
                   <span className="flex items-center gap-1.5">
-                    <span className="max-w-[14ch] truncate" title={state.channels.find((x) => x.id === c.canalId)?.name}>
-                      {state.channels.find((x) => x.id === c.canalId)?.name ?? "—"}
+                    <span className="max-w-[14ch] truncate" title={canaisDoCrm.nomeDoCanal(c.canalId)}>
+                      {canaisDoCrm.nomeDoCanal(c.canalId) ?? "—"}
                     </span>
                     <Pilula tom={PAPEL_DO_CANAL_TOM[c.sincronizacao.papelDoCanal]}>{PAPEL_DO_CANAL_LABEL[c.sincronizacao.papelDoCanal]}</Pilula>
                   </span>

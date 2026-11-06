@@ -39,12 +39,13 @@ import {
   type GrupoDoCatalogo,
 } from "@n1/dominio/operations";
 import { componentesDaTela, telasOrdenadas, versaoCorrente, versaoPublicada } from "@n1/dominio/derive-ferramentas";
-import type { ComponenteDeFlow, DadoDeTela, Flow, TelaDeFlow, TipoDeComponente, TipoDeDadoDeTela, VersaoDeFlow } from "@n1/dominio/types";
+import type { ComponenteDeFlow, CrmDasFerramentas, DadoDeTela, Flow, TelaDeFlow, TipoDeComponente, TipoDeDadoDeTela, VersaoDeFlow } from "@n1/dominio/types";
 import { LinhaDeProp } from "@/features/estrutura/linha-de-propriedade";
 import { Selo } from "@/features/estrutura/icone-de-tipo";
 import { EditorDeTexto, useAvisos, type Report } from "@/features/shell/ficha";
 import { useFormat } from "@/features/shell/use-format";
 import { ActionMenu, Button, ConditionMarker, ConfirmDialog, CorpoDeTela, EmptyState, Field, Icone, PageHeader, Painel, Pilula, RecordPanel, ReguaDeSecao, Select, SetaDeOrdem, TextInput, Toggle, cn } from "@/features/shell/ui";
+import { recusaSePronta, useCanaisDasFerramentas, useCrmDasFerramentas } from "./crm-das-ferramentas";
 import { EnviarFlowDialog } from "./flow-popup";
 import { PreviaDoFlow } from "./flow-previa";
 import { FormularioDeComponente } from "./flow-componente-form";
@@ -69,6 +70,9 @@ export function FlowBuilder({ flowId }: { readonly flowId: string }) {
   const { avisos, report } = useAvisos();
   const [componenteId, setComponenteId] = useState<string | null>(null);
   const [dialogo, setDialogo] = useState<"tela" | "componente" | "publicar" | "descartar" | "enviar" | null>(null);
+  // O Canal publicador vem de GET /canais (3.4.8), não do store.
+  const canaisDoCrm = useCanaisDasFerramentas();
+  const crm = useCrmDasFerramentas(canaisDoCrm);
 
   const flow = state.flows.find((f) => f.id === flowId);
   if (!flow) {
@@ -100,9 +104,9 @@ export function FlowBuilder({ flowId }: { readonly flowId: string }) {
   const telas = telasOrdenadas(versao);
   const telaSelecionada = telas.find((t) => t.id === get("tela")) ?? telas[0];
   const problemas = validarVersao(flow, versao, state.files);
-  const canal = state.channels.find((c) => c.id === flow.canalId);
+  const canal = canaisDoCrm.canalPorId(flow.canalId);
   const adm = recusaDeAdministracao(state, memberId);
-  const recusaPublicar = !rascunho ? "Não há rascunho para publicar." : (recusaDePublicacao(state, flow) ?? adm ?? (problemas.length > 0 ? `${problemas.length} problema${problemas.length > 1 ? "s" : ""} de validação (7.5).` : undefined));
+  const recusaPublicar = !rascunho ? "Não há rascunho para publicar." : (recusaSePronta(canaisDoCrm, () => recusaDePublicacao(state, flow, crm)) ?? adm ?? (problemas.length > 0 ? `${problemas.length} problema${problemas.length > 1 ? "s" : ""} de validação (7.5).` : undefined));
   const selecionarTela = (id: string) => {
     setComponenteId(null);
     set({ tela: id });
@@ -140,7 +144,7 @@ export function FlowBuilder({ flowId }: { readonly flowId: string }) {
         details={
           <>
             <span className="app-meta">Esquema {versao.versaoDeEsquema}</span>
-            <span className="app-meta">· Canal publicador: {canal ? `${canal.name} (${canal.connection})` : "nenhum"}</span>
+            <span className="app-meta">· Canal publicador: {canal ? `${canal.nome} (${canal.conexao})` : canaisDoCrm.pronto || flow.canalId === undefined ? "nenhum" : "…"}</span>
             {publicada ? <span className="app-meta">· publicada v{publicada.numero}</span> : <span className="app-meta">· nunca publicado</span>}
             <span className="app-meta">· {telas.length} Tela{telas.length === 1 ? "" : "s"}</span>
           </>
@@ -151,13 +155,13 @@ export function FlowBuilder({ flowId }: { readonly flowId: string }) {
         <p className="app-base shrink-0 px-4 py-2" style={{ background: "var(--aviso-lavado)", color: "var(--aviso)", borderBottom: "1px solid var(--linha)" }}>
           {motivoLeitura}
         </p>
-      ) : !canal ? (
+      ) : !canaisDoCrm.pronto && flow.canalId !== undefined ? null : !canal ? (
         <p className="app-base shrink-0 px-4 py-2" style={{ background: "var(--aviso-lavado)", color: "var(--aviso)", borderBottom: "1px solid var(--linha)" }}>
           Sem Canal publicador: dá para editar e validar, mas publicar exige um Canal de WhatsApp conectado (RN-FLW-06). Escolha-o na ficha do Flow.
         </p>
-      ) : canal.connection !== "conectada" ? (
+      ) : canal.conexao !== "conectada" ? (
         <p className="app-base shrink-0 px-4 py-2" style={{ background: "var(--aviso-lavado)", color: "var(--aviso)", borderBottom: "1px solid var(--linha)" }}>
-          O Canal {canal.name} está desconectado: publicar espera a conexão voltar.
+          O Canal {canal.nome} está desconectado: publicar espera a conexão voltar.
         </p>
       ) : null}
 
@@ -315,7 +319,7 @@ export function FlowBuilder({ flowId }: { readonly flowId: string }) {
           report={report}
         />
       ) : null}
-      {dialogo === "publicar" && rascunho ? <PublicarDialog flow={flow} rascunho={rascunho} publicada={publicada} onClose={() => setDialogo(null)} report={report} /> : null}
+      {dialogo === "publicar" && rascunho ? <PublicarDialog crm={crm} flow={flow} rascunho={rascunho} publicada={publicada} onClose={() => setDialogo(null)} report={report} /> : null}
       {dialogo === "enviar" ? <EnviarFlowDialog flow={flow} onClose={() => setDialogo(null)} report={report} /> : null}
       <ConfirmDialog
         open={dialogo === "descartar"}
@@ -684,7 +688,7 @@ function CatalogoDialog({ flow, tela, onClose, onCreated, report }: { readonly f
   );
 }
 
-function PublicarDialog({ flow, rascunho, publicada, onClose, report }: { readonly flow: Flow; readonly rascunho: VersaoDeFlow; readonly publicada: VersaoDeFlow | undefined; readonly onClose: () => void; readonly report: Report }) {
+function PublicarDialog({ crm, flow, rascunho, publicada, onClose, report }: { readonly crm: CrmDasFerramentas; readonly flow: Flow; readonly rascunho: VersaoDeFlow; readonly publicada: VersaoDeFlow | undefined; readonly onClose: () => void; readonly report: Report }) {
   const run = useRun();
   const [notas, setNotas] = useState("");
   const [erro, setErro] = useState<string | null>(null);
@@ -695,7 +699,7 @@ function PublicarDialog({ flow, rascunho, publicada, onClose, report }: { readon
       description={`A Definição publicável vai ao provedor pelo Canal publicador. ${publicada ? `A v${publicada.numero} vira obsoleta; ` : ""}a v${rascunho.numero} vira publicada e um rascunho novo (v${rascunho.numero + 1}) abre a partir dela — editar nunca parte do vazio (DO-FLW-03).`}
       confirmLabel="Publicar"
       onConfirm={() => {
-        const r = run((data, me) => publicarVersao(data, me, flow.id, { notas }));
+        const r = run((data, me) => publicarVersao(data, me, flow.id, { notas }, crm));
         if (!r.ok) {
           setErro(r.error);
           return;

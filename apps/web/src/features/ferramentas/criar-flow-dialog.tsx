@@ -7,10 +7,11 @@
  */
 
 import { useState } from "react";
-import { useData, useRun } from "@/dados/store";
+import { useRun } from "@/dados/store";
 import { criarFlow } from "@n1/dominio/operations";
 import type { CategoriaDeFlow } from "@n1/dominio/types";
 import { ConfirmDialog, Field, Select, TextArea, TextInput } from "@/features/shell/ui";
+import { useCanaisDasFerramentas, useCrmDasFerramentas } from "./crm-das-ferramentas";
 import { CATEGORIA_DE_FLOW_LABEL } from "./rotulos";
 
 export function CriarFlowDialog({ open, onClose, onCreated }: { readonly open: boolean; readonly onClose: () => void; readonly onCreated: (flowId: string) => void }) {
@@ -19,13 +20,17 @@ export function CriarFlowDialog({ open, onClose, onCreated }: { readonly open: b
 }
 
 function Formulario({ onClose, onCreated }: { readonly onClose: () => void; readonly onCreated: (flowId: string) => void }) {
-  const state = useData((data) => data);
   const run = useRun();
-  const canais = state.channels.filter((c) => c.channelType === "whatsapp" && c.lifecycle === "ativo");
+  // O Canal publicador vem de GET /canais (3.4.8), não do store.
+  const canaisDoCrm = useCanaisDasFerramentas();
+  const canais = canaisDoCrm.canaisDeWhatsApp;
+  const crm = useCrmDasFerramentas(canaisDoCrm);
   const [nome, setNome] = useState("");
   const [descricao, setDescricao] = useState("");
   const [categoria, setCategoria] = useState<CategoriaDeFlow>("formularioDeCadastro");
-  const [canalId, setCanalId] = useState(canais.find((c) => c.connection === "conectada")?.id ?? "");
+  const [canalEscolhido, setCanalEscolhido] = useState<string | null>(null);
+  const canalId = canalEscolhido ?? canais.find((c) => c.conexao === "conectada")?.id ?? "";
+  const setCanalId = setCanalEscolhido;
   const [erro, setErro] = useState<string | null>(null);
 
   return (
@@ -36,7 +41,7 @@ function Formulario({ onClose, onCreated }: { readonly onClose: () => void; read
       confirmLabel="Criar e abrir o construtor"
       {...(nome.trim() ? {} : { confirmDisabledReason: "Dê um nome ao Flow." })}
       onConfirm={() => {
-        const r = run((data, me) => criarFlow(data, me, { nome, descricao, categoria, ...(canalId ? { canalId } : {}) }));
+        const r = run((data, me) => criarFlow(data, me, { nome, descricao, categoria, ...(canalId ? { canalId } : {}) }, crm));
         if (!r.ok) {
           setErro(r.error);
           return;
@@ -57,7 +62,7 @@ function Formulario({ onClose, onCreated }: { readonly onClose: () => void; read
             {(id) => <Select id={id} value={categoria} onChange={(v) => setCategoria(v as CategoriaDeFlow)} options={(Object.keys(CATEGORIA_DE_FLOW_LABEL) as CategoriaDeFlow[]).map((c) => ({ value: c, label: CATEGORIA_DE_FLOW_LABEL[c] }))} />}
           </Field>
           <Field label="Canal publicador" hint="Pode ficar para depois; publicar exige um Canal conectado (RN-FLW-06).">
-            {(id) => <Select id={id} value={canalId} onChange={setCanalId} placeholder="Escolher depois" options={[{ value: "", label: "Escolher depois" }, ...canais.map((c) => ({ value: c.id, label: c.name, detail: c.connection }))]} />}
+            {(id) => <Select id={id} value={canalId} onChange={setCanalId} placeholder="Escolher depois" options={[{ value: "", label: "Escolher depois" }, ...canais.map((c) => ({ value: c.id, label: c.nome, detail: c.conexao }))]} />}
           </Field>
         </div>
         {erro ? (
