@@ -26,10 +26,14 @@ import { type Alvo, apagarDoRegistros, conferirCopia, contarConversasDeGrupo, co
 export interface GanchosDeTeste {
   /** Roda depois da cópia e antes da conferência. */
   readonly antesDeConferir?: (cliente: PoolClient) => Promise<void>;
+  /** Roda no `aoConfirmar` do `--migrar`, logo depois de inserir o Funil. */
+  readonly depoisDeInserirFunis?: (cliente: PoolClient) => Promise<void>;
 }
 
 export interface OpcoesDeEscrita {
   readonly ganchosDeTeste?: GanchosDeTeste;
+  /** `--funil=migrar|guardar`: o que fazer com o Funil antigo (só no `--migrar`). */
+  readonly funil?: "migrar" | "guardar";
 }
 
 export interface ResultadoDeEscrita {
@@ -151,4 +155,23 @@ export async function guardarCrmAntigo(espaco: string, opcoes: OpcoesDeEscrita =
       `apagadas de registros: ${textoDasContagens(apagadas)}. ` +
       `${plano.conversasDeGrupo} Conversa(s) de Grupo continuam em registros (${COLECAO_DE_CONVERSAS}, F14-D-05).`,
   };
+}
+
+// --- esqueleto do RED (Task 2): a forma pública, sem o comportamento ---
+
+export async function migrarCrmAntigo(espaco: string, _opcoes: OpcoesDeEscrita = {}): Promise<ResultadoDeEscrita> {
+  return { espaco, nadaAFazer: true, copiadas: 0, apagadas: {}, conversasDeGrupoQueFicaram: 0, revisao: undefined, mensagem: "" };
+}
+
+export async function relatorioSeco(_espaco: string): Promise<string> {
+  return "";
+}
+
+export async function emTransacaoSoLeitura<T>(fn: (cliente: PoolClient) => Promise<T>): Promise<T> {
+  const cliente = await pool().connect();
+  try {
+    return await fn(cliente);
+  } finally {
+    cliente.release();
+  }
 }
