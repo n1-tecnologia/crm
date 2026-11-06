@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 45
+open_count: 47
 waived_count: 2
 fixed_count: 17
-total_count: 64
-last_updated: 2026-11-06T20:48:49.716Z
+total_count: 66
+last_updated: 2026-11-06T21:19:56.005Z
 ---
 
 # Broken Windows Ledger
@@ -79,6 +79,8 @@ last_updated: 2026-11-06T20:48:49.716Z
 | 62 | 15 | deviation | packages/dominio/src/seed-ferramentas.ts |  | 15-31: sem Contato, Canal e Conversa do CRM no seed, saiu do seed o que as Ferramentas faziam SOBRE eles: os Envios e Respostas de Flow nas Conversas cnv_5/9/13/17 (4 Mensagens e 2 Registros de Atividade), a Tag Em grupo de alunos nos Contatos e o groupsEnabled do Canal chn_wpp. O Flow, as versoes, os Grupos, as Participacoes por id e as Conversas de Grupo ficam. As metricas do Flow nascem com zero envios e o demo (bootstrap:crm-demo) nao liga Grupos no Canal. | open |  | 2026-11-06T20:48:44.567Z |  |
 | 63 | 15 | deviation | packages/dominio/src/operations/ferramentas.test.ts |  | 15-31: ferramentas.test.ts (Grupo, Comunidade e Flow, 15-07/15-17) depende do Canal, dos Contatos e das Conversas do CRM antigo e dos Envios de Flow; reescrever as 933 linhas passou do escopo do plano, entao o beforeEach usa semearCrmAntigo(buildSeed()). O 15-43 apaga semearCrmAntigo mas Grupo/Flow ficam ate as Sessoes 6 e 7: este teste precisa montar Canal, Contatos e Conversas proprios antes do 15-43. | open |  | 2026-11-06T20:48:44.683Z |  |
 | 64 | 15 | deviation | packages/dominio/src/seed-produto.ts |  | 15-31: as Reunioes do processo comercial (tsk_reuniao_1/2/3 e tsk_call_ref, ligadas a Negocio) moravam no seed do produto na Lista de Meus negocios do Funil; sem a Pasta, a poda as leva junto com a arvore de demonstracao, e buildProductSeed() nasce sem Tarefa de hoje para o Thiago. rehomeMeetings saiu. O seed do produto so e usado em testes; derive-resumo.test.ts passou a conferir o seed completo. | open |  | 2026-11-06T20:48:44.782Z |  |
+| 65 | 15 | deviation | packages/dominio/src/operations/ferramentas/conversa-de-grupo.ts |  | 15-32: o plano mandava apagar operations/conversations.ts e tirar os 11 nomes de Conversa de OPERACOES, mas Grupo, Flow e Automacao (F14-D-05) ainda chamam startConversation, sendMessage, sendMessageSemConferencia e receiveMessage, e a Conversa de grupo na Caixa ainda resolve, reabre, atribui, estrela e manda para a lixeira pelo store (linha 41). Ficaram em ferramentas/conversa-de-grupo.ts (com recusaDeEscritaNoCrmAntigo, que era de crm-antigo.ts): so resolveConversation, reopenConversation, assignConversation, trashConversation e toggleConversationStar seguem em OPERACOES e no barril; por isso 40 nomes (nao 45) respondem 404 em POST /operacoes/:nome. Sai com Grupo e Flow (Sessoes 6 e 7); 15-42 e 15-43 nao podem apagar este arquivo, e a linha 37 (startConversation le Canal e Contato antigos) continua valendo. | open |  | 2026-11-06T21:19:55.942Z |  |
+| 66 | 15 | deviation | packages/dominio/src/operations/sobre-o-crm-antigo.test.ts |  | 15-32: os blocos de operations.test.ts que nao testavam so operacao apagada (Mensageria e Adocao de Rascunho de sendMessage/receiveMessage, Suspeita de Duplicidade, Leitura de Widget, Barra global, Modelo de Tarefa da Lista com Contato antigo) foram movidos sem mudar para sobre-o-crm-antigo.test.ts, que ainda usa semearCrmAntigo; crm/capacidades.test.ts tambem (sendMessage fora da janela, estado antigo). operations.test.ts ficou sem semearCrmAntigo. O 15-42 apaga as leituras antigas com os blocos delas e o 15-43 apaga semearCrmAntigo: o que valer para o CRM novo precisa ser reescrito sobre as tabelas antes. | open |  | 2026-11-06T21:19:56.005Z |  |
 
 ````json
 [
@@ -911,6 +913,32 @@ last_updated: 2026-11-06T20:48:49.716Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-06T20:48:44.782Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 65,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "packages/dominio/src/operations/ferramentas/conversa-de-grupo.ts",
+    "line": null,
+    "description": "15-32: o plano mandava apagar operations/conversations.ts e tirar os 11 nomes de Conversa de OPERACOES, mas Grupo, Flow e Automacao (F14-D-05) ainda chamam startConversation, sendMessage, sendMessageSemConferencia e receiveMessage, e a Conversa de grupo na Caixa ainda resolve, reabre, atribui, estrela e manda para a lixeira pelo store (linha 41). Ficaram em ferramentas/conversa-de-grupo.ts (com recusaDeEscritaNoCrmAntigo, que era de crm-antigo.ts): so resolveConversation, reopenConversation, assignConversation, trashConversation e toggleConversationStar seguem em OPERACOES e no barril; por isso 40 nomes (nao 45) respondem 404 em POST /operacoes/:nome. Sai com Grupo e Flow (Sessoes 6 e 7); 15-42 e 15-43 nao podem apagar este arquivo, e a linha 37 (startConversation le Canal e Contato antigos) continua valendo.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T21:19:55.942Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 66,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "packages/dominio/src/operations/sobre-o-crm-antigo.test.ts",
+    "line": null,
+    "description": "15-32: os blocos de operations.test.ts que nao testavam so operacao apagada (Mensageria e Adocao de Rascunho de sendMessage/receiveMessage, Suspeita de Duplicidade, Leitura de Widget, Barra global, Modelo de Tarefa da Lista com Contato antigo) foram movidos sem mudar para sobre-o-crm-antigo.test.ts, que ainda usa semearCrmAntigo; crm/capacidades.test.ts tambem (sendMessage fora da janela, estado antigo). operations.test.ts ficou sem semearCrmAntigo. O 15-42 apaga as leituras antigas com os blocos delas e o 15-43 apaga semearCrmAntigo: o que valer para o CRM novo precisa ser reescrito sobre as tabelas antes.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T21:19:56.005Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }
