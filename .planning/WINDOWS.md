@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 27
+open_count: 29
 waived_count: 2
 fixed_count: 5
-total_count: 34
-last_updated: 2026-11-06T13:24:05.443Z
+total_count: 36
+last_updated: 2026-11-06T13:42:09.807Z
 ---
 
 # Broken Windows Ledger
@@ -49,6 +49,8 @@ last_updated: 2026-11-06T13:24:05.443Z
 | 32 | 15 | deviation | apps/web/src/features/crm/conversation-thread.tsx |  | 15-20: a aba Meet do fio acha as Reunioes pelos Vinculos da Tarefa com os ids dos Negocios do Contato em GET /negocios?contatoId=; os Vinculos de hoje apontam para ids de Negocio do modelo antigo, entao a aba fica sem Reunioes em producao ate o script de migracao preservar os ids (mesma regra das fichas, 15-13). Tambem: o fio mostra as 200 ultimas Mensagens da Conversa, sem carregar as mais antigas | open |  | 2026-11-06T13:05:24.509Z |  |
 | 33 | 15 | deviation | apps/api/src/repositorios/crm/inicio.ts |  | 15-18: "Conversas resolvidas" das estatisticas do Inicio agora conta as Conversas resolvidas de que o Membro e o Atribuido (resolvida_em), nao as que ele clicou em resolver: o modelo novo nao guarda quem resolveu e resolver nao grava Atividade (D-15-09). Reabrir e resolver de novo conta uma vez (a Conversa), nao duas. Suposicao a confirmar com o dono; se ele quiser o ato de quem clicou, gravar o Ator ao resolver (dominio, api e migracao) | open |  | 2026-11-06T13:24:05.365Z |  |
 | 34 | 15 | deviation | apps/web/src/features/inicio/panorama-do-robo.ts |  | 15-18: GET /crm/inicio/panorama, /leads-a-atender e /estatisticas e os hooks usePanoramaDoCrm, useLeadsAAtender e useEstatisticasDoCrm existem, mas nenhuma tela os chama ainda: o panorama do robo do Inicio (linha 24, 15-14), o painel de Leads e as estatisticas seguem no store ate o 15-23 trocar as telas. Nao ha mudanca visivel neste plano | open |  | 2026-11-06T13:24:05.443Z |  |
+| 35 | 15 | deviation | packages/dominio/src/operations/automations.ts |  | 15-19: as Automacoes de Contas a receber ({{cliente}}, {{donoDoCliente}}, mentionClientOwner) ainda leem nome e dono do cliente em state.contacts (contatoDoCliente); clienteDe agora so devolve a referencia. Uma serie criada para um Contato de plataforma.contatos (id fora do modelo antigo) faz o comentario de cobranca dizer 'o cliente' e nao mencionar o dono dele; as contas do modelo antigo seguem como antes. automations.ts entrou na lista CONGELADOS do sem-crm-antigo do dominio. Resolver injetando nome e dono por OpcoesDaAgenda (como cnpjPorEmpresa) lidos das tabelas, antes do 3.5.4 tirar state.contacts | open |  | 2026-11-06T13:42:09.740Z |  |
+| 36 | 15 | deviation | apps/web/src/features/estrutura/financeiro/use-nomes-dos-clientes.ts |  | 15-19: o nome do cliente de Contas a receber vem de POST /crm/nomes; sem nome (carregando, Membro suspenso por WR-03, Papel sem ler Contato) a lista, o cartao e a busca mostram 'Cliente'; o cartao financeiro faz uma chamada por cartao visivel; a serie so aceita Contato como cliente (Empresa nao, o input da operacao tem so contactId); createReceivableSeries ganhou o 4o argumento clientes (opcional, vazio recusa) | open |  | 2026-11-06T13:42:09.807Z |  |
 
 ````json
 [
@@ -491,6 +493,32 @@ last_updated: 2026-11-06T13:24:05.443Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-06T13:24:05.443Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 35,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "packages/dominio/src/operations/automations.ts",
+    "line": null,
+    "description": "15-19: as Automacoes de Contas a receber ({{cliente}}, {{donoDoCliente}}, mentionClientOwner) ainda leem nome e dono do cliente em state.contacts (contatoDoCliente); clienteDe agora so devolve a referencia. Uma serie criada para um Contato de plataforma.contatos (id fora do modelo antigo) faz o comentario de cobranca dizer 'o cliente' e nao mencionar o dono dele; as contas do modelo antigo seguem como antes. automations.ts entrou na lista CONGELADOS do sem-crm-antigo do dominio. Resolver injetando nome e dono por OpcoesDaAgenda (como cnpjPorEmpresa) lidos das tabelas, antes do 3.5.4 tirar state.contacts",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T13:42:09.740Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 36,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/features/estrutura/financeiro/use-nomes-dos-clientes.ts",
+    "line": null,
+    "description": "15-19: o nome do cliente de Contas a receber vem de POST /crm/nomes; sem nome (carregando, Membro suspenso por WR-03, Papel sem ler Contato) a lista, o cartao e a busca mostram 'Cliente'; o cartao financeiro faz uma chamada por cartao visivel; a serie so aceita Contato como cliente (Empresa nao, o input da operacao tem so contactId); createReceivableSeries ganhou o 4o argumento clientes (opcional, vazio recusa)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T13:42:09.807Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }
