@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 15
 current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
 status: executing
-stopped_at: Completed 15-01-PLAN.md
-last_updated: "2026-11-06T08:31:08.352Z"
+stopped_at: Completed 15-02-PLAN.md
+last_updated: "2026-11-06T08:40:48.094Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 15 execution started
-state_head: 5cf503028270b2e1614dc56f5add291ab4f1e035
+state_head: 62b0dd7921c89e65601ad93f6704dac3993de0ba
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 271
-  completed_plans: 226
+  completed_plans: 227
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 15 (Unificação do CRM: telas no modelo novo e remoção do modelo antigo) — EXECUTING
-Plan: 2 of 43
+Plan: 3 of 43
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 15 execution started
 
@@ -445,6 +445,7 @@ Progress: [██████░░░░] 63%
 | Phase 14 P18 | 14 min | 2 tasks | 3 files |
 | Phase 14 P19 | 10 min | 2 tasks | 1 files |
 | Phase 15 P01 | 9 min | 3 tasks | 14 files |
+| Phase 15 P02 | 9 min | 3 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -690,6 +691,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 14]: 14-18: a fronteira de deploy fica em 14-PROVAS.md; 14-01 a 14-14 aditivos, 14-15 a 14-17 so com a Fase 15; as linhas de andamento.mjs ficam sugeridas para o dono colar
 - [Phase 14]: 14-19: a 011 foi ensaiada sobre a cópia dos dados reais (2128 registros do CRM antigo, 18 Espaços) e aplicou limpa; contagens iguais antes e depois, tabelas novas com 0 linhas, hidratar sem falha; só ws_n1 é Espaço real e o resto é resíduo de teste — O ensaio não cobre constraints e backfill sobre linhas reais de contatos e conversas (produção: 2 Contatos ativo, 0 Conversas) nem o banco:conceder com o papel n1_api; a cópia foi tirada pelo agente, em leitura, a pedido do dono
 - [Phase 15]: 15-01: LeituraDoCrm ganha argumento(lido); tabelas de gesto misto por módulo em rotas/gesto-no-crm, composição lança na carga se um nome repete
+- [Phase 15]: 15-02: 40P01 vira 409 CONFLITO_TRANSITORIO em comTransacao; Negócio.editar não foi reordenado (Negócio antes do Contato)
+- [Phase 15]: 15-02: resumo da Tarefa conversacional mantém o primeiro Vínculo de cada tipo (lista de candidatos fica aberta); Conversa só tem ativo/na_lixeira
 
 ### Pending Todos
 
@@ -751,6 +754,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-06T08:31:08.065Z
-Stopped at: Completed 15-01-PLAN.md
+Last session: 2026-11-06T08:40:47.766Z
+Stopped at: Completed 15-02-PLAN.md
 Resume file: None
