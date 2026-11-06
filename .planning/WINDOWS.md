@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 22
-waived_count: 1
+open_count: 23
+waived_count: 2
 fixed_count: 5
-total_count: 28
-last_updated: 2026-11-06T12:33:07.842Z
+total_count: 30
+last_updated: 2026-11-06T12:43:30.199Z
 ---
 
 # Broken Windows Ledger
@@ -43,6 +43,8 @@ last_updated: 2026-11-06T12:33:07.842Z
 | 26 | 15 | deviation | apps/api/src/servicos/crm/negocios.ts |  | 15-09: criar, editar, ganhar, perder e reabrir Negocio, criar Contato/Empresa e mandar Contato/Empresa a lixeira pelo CRM novo NAO gravam Atividade (escopo de D-15-09 e so Conversa, transferir Identificador, consentimento, Nota e sucessao); as telas antigas gravavam. Pergunta ao dono: quer a linha do tempo desses gestos no CRM novo antes de remover o modelo antigo? | open |  | 2026-11-06T12:22:04.882Z |  |
 | 27 | 15 | deviation | apps/web/src/app/(shell)/configuracoes/auditoria/page.tsx |  | 15-09: o contador '{n} Registro(s) de Atividade' e o 'de N' da Auditoria contam o state.activity inteiro mais so as paginas ja lidas do CRM novo (GET /atividades nao devolve total); cresce a cada Mostrar mais. Abrir contagem na api se o dono quiser o numero exato | open |  | 2026-11-06T12:22:04.947Z |  |
 | 28 | 15 | deviation | apps/api/src/rotas/crm/nomes.ts |  | 15-10: POST /crm/nomes e leitura mas e POST, entao o Membro suspenso recebe 403 (recusarSuspensoNaEscrita, WR-03 aberto/D-15-07) e useNomesDoCrm devolve erro em vez de nomes; quem consumir (15-21 IA, Contas a receber) mostra o id ate o WR-03 liberar leituras por POST. Nenhuma tela chama a rota ainda | open |  | 2026-11-06T12:33:07.842Z |  |
+| 29 | 15 | deviation | apps/web/src/app/(shell)/crm/reunioes/[reuniao]/page.tsx |  | 15-15: a Reuniao deixou de mostrar o Diagnostico da call, o Roteiro da call (campos fd_* do Negocio), a Temperatura do Contato e os perfis de LinkedIn e TikTok: plataforma.negocios nao tem Campos personalizados e o Contato novo nao tem Temperatura nem esses tipos de Identificador (so telefone, email, whatsapp, instagram). O retrato do palco sao as iniciais (sem foto no modelo novo). O Negocio da Empresa sem Contato mostra a Empresa e diz que falta o Contato. Se o dono quiser o roteiro de volta, abrir Campos personalizados de Negocio no dominio, na api e na migracao | open |  | 2026-11-06T12:42:54.967Z |  |
+| 30 | 15 | deviation | apps/web/src/app/(shell)/crm/reunioes/[reuniao]/page.tsx |  | 15-15: nao ha ida a useFunil na Reuniao: NegocioDetalhado (GET /negocios/:id) ja traz o nome do Funil e da Etapa, entao a tela usa esse payload e poupa um pedido; o plano citava useFunil. Efeito visivel: nenhum | waived | Sem efeito visivel: so registra que a Reuniao usa o payload de useNegocio em vez de useFunil; consta no SUMMARY | 2026-11-06T12:42:55.040Z | 2026-11-06T12:43:30.199Z |
 
 ````json
 [
@@ -408,6 +410,32 @@ last_updated: 2026-11-06T12:33:07.842Z
     "reason": "",
     "recorded_at": "2026-11-06T12:33:07.842Z",
     "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 29,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/app/(shell)/crm/reunioes/[reuniao]/page.tsx",
+    "line": null,
+    "description": "15-15: a Reuniao deixou de mostrar o Diagnostico da call, o Roteiro da call (campos fd_* do Negocio), a Temperatura do Contato e os perfis de LinkedIn e TikTok: plataforma.negocios nao tem Campos personalizados e o Contato novo nao tem Temperatura nem esses tipos de Identificador (so telefone, email, whatsapp, instagram). O retrato do palco sao as iniciais (sem foto no modelo novo). O Negocio da Empresa sem Contato mostra a Empresa e diz que falta o Contato. Se o dono quiser o roteiro de volta, abrir Campos personalizados de Negocio no dominio, na api e na migracao",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T12:42:54.967Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 30,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/app/(shell)/crm/reunioes/[reuniao]/page.tsx",
+    "line": null,
+    "description": "15-15: nao ha ida a useFunil na Reuniao: NegocioDetalhado (GET /negocios/:id) ja traz o nome do Funil e da Etapa, entao a tela usa esse payload e poupa um pedido; o plano citava useFunil. Efeito visivel: nenhum",
+    "status": "waived",
+    "reason": "Sem efeito visivel: so registra que a Reuniao usa o payload de useNegocio em vez de useFunil; consta no SUMMARY",
+    "recorded_at": "2026-11-06T12:42:55.040Z",
+    "resolved_at": "2026-11-06T12:43:30.199Z",
     "milestone": "v1.0"
   }
 ]
