@@ -20,8 +20,10 @@ import { StoreProvider } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
 import { TarefaCompleta } from "@/features/estrutura/tarefa-completa";
 
-const { resumo, conversa, trocar, vincular, criarNegocio, rehidratar } = vi.hoisted(() => ({
+const { resumo, conversa, trocar, vincular, criarNegocio, rehidratar, nomes } = vi.hoisted(() => ({
   resumo: { atual: undefined as unknown },
+  /** 15-25: o que `POST /crm/nomes` responderia por `tipo:id`, e o que a ficha pediu. */
+  nomes: { porAlvo: new Map<string, string | null>(), pedidos: [] as Array<{ tipo: string; id: string }> },
   /** `undefined` = verificando, `null` = sem Conversa aberta, `{ id }` = há uma. */
   conversa: { atual: { id: "cv_1" } as { id: string } | null | undefined },
   trocar: vi.fn(),
@@ -39,6 +41,27 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/dados/store", async (original) => ({
   ...(await original<typeof import("@/dados/store")>()),
   useRehidratar: () => rehidratar,
+}));
+
+// 15-25: o fio de Mensagens é testado à parte; aqui só interessa COM QUE ids a ficha o monta.
+vi.mock("@/features/crm/conversation-thread", async (original) => ({
+  ...(await original<typeof import("@/features/crm/conversation-thread")>()),
+  ConversationThread: (props: Record<string, unknown>) => (
+    <div
+      data-testid="fio-da-conversa"
+      data-conversa-id={String(props.conversaId ?? "")}
+      data-contato-id={String(props.contatoId ?? "")}
+      data-tarefa-id={String(props.tarefaId ?? "")}
+      data-canal-selecionado={String(props.canalSelecionado ?? "")}
+    />
+  ),
+}));
+vi.mock("@/dados/crm/nomes", async (original) => ({
+  ...(await original<typeof import("@/dados/crm/nomes")>()),
+  useNomesDoCrm: (alvos: ReadonlyArray<{ tipo: string; id: string }>) => {
+    nomes.pedidos.push(...alvos);
+    return { porAlvo: nomes.porAlvo, carregando: false };
+  },
 }));
 
 vi.mock("@/dados/crm/tarefas-conversacionais", () => ({
@@ -119,6 +142,8 @@ beforeEach(() => {
   lista.canaisDeAtendimento = ["ck_novo_1", "ck_novo_2"];
   resumo.atual = RESUMO;
   conversa.atual = { id: "cv_1" };
+  nomes.porAlvo = new Map();
+  nomes.pedidos = [];
   trocar.mockReset();
   vincular.mockReset();
   criarNegocio.mockReset();
@@ -271,5 +296,105 @@ describe("criar o Negócio", () => {
     fireEvent.click(screen.getByRole("button", { name: "Criar Negócio" }));
     await waitFor(() => expect(screen.getByText("Esta Tarefa já tem Negócio vinculado.")).toBeTruthy());
     expect(rehidratar).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * 15-25 (3.4.2, UCR-04) — a ficha acha o Contato, a Conversa e o Canal pelos Vínculos e pelo
+ * resumo da api, não por `state.contacts` / `state.conversations` / `state.channels`. Os ids são
+ * do CRM novo: o estado antigo não os conhece, e mesmo assim o fio e as três colunas voltam.
+ */
+describe("o fio e as três colunas pelos Vínculos do CRM novo", () => {
+  const CONTATO = "ct_novo_77";
+  const CONVERSA = "cv_novo_1";
+  const NEGOCIO = "ng_novo_5";
+
+  /** Troca os Vínculos de CRM da Tarefa do seed pelos ids novos; `semConversa` tira o da Conversa. */
+  function comVinculos(opcoes: { readonly semConversa?: boolean } = {}): void {
+    const ator = { kind: "member" as const, id: state.workspace.ownerMemberId };
+    const vinculo = (sufixo: string, toType: "contact" | "conversation" | "deal", toId: string, role: string) => ({
+      id: `lnk_${TAREFA}_${sufixo}`,
+      fromType: "task" as const,
+      fromId: TAREFA,
+      toType,
+      toId,
+      role,
+      createdBy: ator,
+      createdAt: "2026-11-01T10:00:00.000Z",
+    });
+    const dosOutros = state.links.filter((l) => !((l.fromId === TAREFA || l.toId === TAREFA) && ["contact", "conversation", "deal"].includes(l.toType)));
+    state = {
+      ...state,
+      links: [
+        ...dosOutros,
+        vinculo("contato", "contact", CONTATO, "contato da Tarefa"),
+        ...(opcoes.semConversa ? [] : [vinculo("conversa", "conversation", CONVERSA, "conversa da Tarefa")]),
+        vinculo("negocio", "deal", NEGOCIO, "Negócio da Tarefa"),
+      ],
+    } as DataState;
+  }
+
+  it("(j) com Vínculos para o Contato X e a Conversa C (ids novos) a ficha monta as três colunas e o fio com conversaId, contatoId e o Canal do resumo", () => {
+    comVinculos();
+    montar();
+    const fio = screen.getByTestId("fio-da-conversa");
+    expect(fio.getAttribute("data-conversa-id")).toBe(CONVERSA);
+    expect(fio.getAttribute("data-contato-id")).toBe(CONTATO);
+    expect(fio.getAttribute("data-tarefa-id")).toBe(TAREFA);
+    // O Canal vem do resumo (o Canal da Conversa), não de `state.channels`.
+    expect(fio.getAttribute("data-canal-selecionado")).toBe("ck_novo_1");
+    expect(screen.getByRole("region", { name: "Conversa" })).toBeTruthy();
+  });
+
+  it("(k) a Tarefa sem Conversa ainda tem o fio, pronto para abrir uma com a primeira Mensagem (F14-D-07)", () => {
+    comVinculos({ semConversa: true });
+    resumo.atual = { ...RESUMO, canal: null, conversa: null };
+    montar();
+    const fio = screen.getByTestId("fio-da-conversa");
+    expect(fio.getAttribute("data-conversa-id")).toBe("");
+    expect(fio.getAttribute("data-contato-id")).toBe(CONTATO);
+    expect(fio.getAttribute("data-canal-selecionado")).toBe("");
+  });
+
+  it("(l) o Contato que o resumo diz que não existe neste Espaço não abre fio: layout de sempre com o aviso", () => {
+    comVinculos();
+    resumo.atual = { ...RESUMO, contato: null, canal: null, negocio: null, conversa: null };
+    montar();
+    expect(screen.queryByTestId("fio-da-conversa")).toBeNull();
+    expect(screen.queryByRole("region", { name: "Conversa" })).toBeNull();
+    expect(screen.getByText(/Tarefa conversacional sem Contato/)).toBeTruthy();
+  });
+
+  it("(m) enquanto o resumo não chegou o fio já segue o Contato do Vínculo", () => {
+    comVinculos();
+    resumo.atual = undefined;
+    montar();
+    expect(screen.getByTestId("fio-da-conversa").getAttribute("data-contato-id")).toBe(CONTATO);
+  });
+
+  it("(n) os nomes dos Vínculos vêm de POST /crm/nomes: o nome da api, e “Registro indisponível” quando a api responde null", () => {
+    comVinculos();
+    nomes.porAlvo = new Map<string, string | null>([
+      [`deal:${NEGOCIO}`, "Proposta da Helena (nome da api)"],
+      [`contact:${CONTATO}`, "Helena Prado (nome da api)"],
+      [`conversation:${CONVERSA}`, null],
+    ]);
+    montar();
+    expect(nomes.pedidos).toEqual(
+      expect.arrayContaining([
+        { tipo: "deal", id: NEGOCIO },
+        { tipo: "contact", id: CONTATO },
+        { tipo: "conversation", id: CONVERSA },
+      ]),
+    );
+    const secao = screen.getByText("Vínculos").closest("section") as HTMLElement;
+    expect(secao.textContent).toContain("Proposta da Helena (nome da api)");
+    expect(secao.textContent).toContain("Helena Prado (nome da api)");
+    // T-15-61: sem permissão (ou sem registro) a tela não revela qual das duas coisas é.
+    expect(secao.textContent).toContain("Registro indisponível");
+    expect(secao.textContent).not.toContain("registro não encontrado");
+    // Com nome há atalho para o registro; sem nome, não.
+    expect(secao.querySelector(`a[href="/crm/negocios/${NEGOCIO}"]`)).not.toBeNull();
+    expect(secao.querySelector(`a[href="/crm/caixa-de-entrada/${CONVERSA}"]`)).toBeNull();
   });
 });
