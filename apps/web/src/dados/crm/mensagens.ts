@@ -1,10 +1,61 @@
 "use client";
 
-// Esqueleto do RED (15-06): existe para o teste carregar e falhar na asserção; a implementação vem no GREEN.
-export const chaveDasMensagens = (_conversaId: string, _pagina?: object): string => {
-  throw new Error("não implementado");
-};
-export const useMensagens = (_conversaId: string | undefined): never => {
-  throw new Error("não implementado");
-};
-export const enviarMensagem = (_entrada: object): Promise<{ id: string }> => Promise.reject(new Error("não implementado"));
+/**
+ * Mensagens do CRM (o fio de uma Conversa), lidas e gravadas só por HTTP (D-04):
+ * cada função aqui é uma rota de `apps/api` (`rotas/crm/mensagens.ts`) atrás de
+ * `chamarCrm`. A Mensagem `recebida` não nasce por aqui — só a integração a
+ * registra —, então o envio é `enviada` ao Contato ou `interna` (nota). O Ator
+ * e o Canal saem da sessão e da Conversa: o corpo leva só `conversaId`,
+ * `direcao`, `conteudo` e, se for resposta, `emRespostaAId`.
+ *
+ * A chave de SWR começa por `/mensagens`. Depois de enviar, o fio e a lista de
+ * Conversas (a última Mensagem e o `atualizadoEm` mudam) são revalidados — e só
+ * no sucesso: numa recusa (409 de janela de 24 h, 403) a `ErroDeApi` sobe com
+ * `status` e `codigo` e nada é invalidado.
+ */
+
+import useSWR from "swr";
+import { LIMITES_CRM } from "@n1/dominio/crm/comum";
+import type { Mensagem, NovaMensagem } from "@n1/dominio/crm/mensagens";
+import { chamarCrm, ErroDeApi, invalidarCrm } from "./cliente-crm";
+
+export interface RespostaDasMensagens {
+  readonly ok: true;
+  readonly itens: Mensagem[];
+  readonly total: number;
+}
+
+export interface PaginaDeMensagens {
+  readonly limite?: number;
+  readonly deslocamento?: number;
+}
+
+/** `/mensagens?conversaId=…&limite=…&deslocamento=…` — a mesma forma para a leitura e para a invalidação. */
+export function chaveDasMensagens(conversaId: string, pagina: PaginaDeMensagens = {}): string {
+  const parametros = new URLSearchParams();
+  parametros.set("conversaId", conversaId);
+  parametros.set("limite", String(pagina.limite ?? LIMITES_CRM.paginaPadrao));
+  parametros.set("deslocamento", String(pagina.deslocamento ?? 0));
+  return `/mensagens?${parametros.toString()}`;
+}
+
+/** Recusa 4xx não melhora ao repetir: só rede e 5xx tentam de novo. */
+function valeRepetir(erro: Error): boolean {
+  return !(erro instanceof ErroDeApi) || erro.status === 0 || erro.status >= 500;
+}
+
+/** O fio da Conversa, na ordem da api (`criado_em`, `seq`). Sem Conversa escolhida, não chama a rede. */
+export function useMensagens(conversaId: string | undefined, pagina: PaginaDeMensagens = {}) {
+  return useSWR<RespostaDasMensagens, Error>(
+    conversaId === undefined ? null : chaveDasMensagens(conversaId, pagina),
+    (chave: string) => chamarCrm<RespostaDasMensagens>(chave),
+    { keepPreviousData: true, shouldRetryOnError: valeRepetir },
+  );
+}
+
+/** Envia (`enviada`) ou anota (`interna`). A regra de Canal e janela é da api; a tela mostra a recusa. */
+export async function enviarMensagem(entrada: NovaMensagem): Promise<Mensagem> {
+  const resposta = await chamarCrm<{ ok: true; dados: Mensagem }>("/mensagens", { method: "POST", corpo: entrada });
+  await Promise.all([invalidarCrm("/mensagens"), invalidarCrm("/conversas")]);
+  return resposta.dados;
+}
