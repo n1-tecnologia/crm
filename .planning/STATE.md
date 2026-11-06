@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 15
 current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
 status: executing
-stopped_at: Completed 15-32-PLAN.md
-last_updated: "2026-11-06T21:25:08.296Z"
+stopped_at: Completed 15-33-PLAN.md
+last_updated: "2026-11-06T21:46:39.370Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 15 execution started
-state_head: 5c1402113012aafb00b627e3a521c8fc76234b13
+state_head: f86296201193120bebd797df5b7a42d38e9262ef
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 271
-  completed_plans: 262
+  completed_plans: 263
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 15 (Unificação do CRM: telas no modelo novo e remoção do modelo antigo) — EXECUTING
-Plan: 38 of 43
+Plan: 39 of 43
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 15 execution started
 
@@ -481,6 +481,7 @@ Progress: [██████░░░░] 63%
 | Phase 15 P30 | 15 min | 2 tasks | 2 files |
 | Phase 15 P31 | 31 min | 3 tasks | 59 files |
 | Phase 15 P32 | 45 min | 3 tasks | 66 files |
+| Phase 15 P33 | 70 min | 3 tasks | 28 files |
 
 ## Accumulated Context
 
@@ -786,6 +787,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 15]: 15-31: ferramentas.test.ts usa semearCrmAntigo por divida registrada em WINDOWS; o 15-43 precisa dar a ele fixture propria antes de apagar o construtor — Reescrever as 933 linhas passou do escopo do plano; Grupo e Flow ficam ate as Sessoes 6 e 7.
 - [Phase 15]: 15-32: 40 nomes (nao 45) saem de OPERACOES e respondem 404; as 5 operacoes da Conversa de grupo (resolve, reopen, assign, trash, toggleConversationStar) ficam em ferramentas/conversa-de-grupo.ts porque a Conversa de grupo na Caixa ainda as chama (F14-D-05) — Grupo e Flow ficam no modelo antigo ate as Sessoes 6 e 7; apagar conversations.ts quebraria Grupo, Flow e Automacao
 - [Phase 15]: 15-32: capacidadesDoCanal e os tipos de Canal moram em packages/dominio/src/crm/capacidades.ts; types/crm.ts os reexporta ate o 15-43 — o CRM novo e as Ferramentas nao dependem do modelo antigo de Conversa
+- [Phase 15]: 15-33: a ponte dos Canais saiu de GET /estado e de executar(); Grupo, Flow e Automacao acham o Canal em crm.canais (canalPeloId), sem projecao no estado; canaisMs saiu da medicao
 
 ### Pending Todos
 
@@ -847,6 +849,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-06T21:25:08.031Z
-Stopped at: Completed 15-32-PLAN.md
+Last session: 2026-11-06T21:46:39.154Z
+Stopped at: Completed 15-33-PLAN.md
 Resume file: None
