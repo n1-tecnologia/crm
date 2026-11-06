@@ -102,7 +102,7 @@ describe("Auditoria — as duas fontes (D-15-09)", () => {
 
     expect(acoes()).toEqual(["Conversa movida para outro Contato", "Contato editado"]);
     expect(screen.getByText("2 Registro(s) de Atividade")).toBeTruthy();
-    expect(screen.getByText("Bia", { exact: false })).toBeTruthy();
+    expect(screen.getByText("Ana → Bia")).toBeTruthy();
     // A primeira consulta da fonte nova é a primeira página, sem cursor.
     expect(chamadasDoHook[0]).toEqual({ limite: 50 });
   });

@@ -29,7 +29,9 @@
 
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
+import { ACOES_DO_CRM, type AcaoDoCrm } from "@n1/dominio/crm/atividades";
 import type { Pagina } from "@n1/dominio/crm/comum";
+import { nomeDeExibicaoDoContato } from "@n1/dominio/crm/contatos";
 import {
   participantesComContato,
   proximaSituacao,
@@ -55,6 +57,7 @@ import {
 import { statusInicialDeEnvio, type Mensagem } from "@n1/dominio/crm/mensagens";
 import type { Canal } from "@n1/dominio/crm/canais";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
+import { registrarAtividade } from "../../repositorios/crm/atividades";
 import { criarRepositorioDeCanaisPg } from "../../repositorios/crm/canais";
 import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
 import { criarRepositorioDeConversasPg } from "../../repositorios/crm/conversas";
@@ -119,6 +122,30 @@ function jaAberta(existente: Pick<Conversa, "id" | "titulo">) {
   return recusa<never>(409, FRASE_JA_ABERTA, {
     codigo: "CONVERSA_JA_ABERTA",
     bloqueios: { conversas: { total: 1, itens: [{ id: existente.id, titulo: existente.titulo }] } },
+  });
+}
+
+/**
+ * A Atividade de um gesto de Conversa (D-15-09, UCR-03), gravada no cliente da transação do
+ * gesto e só depois da escrita: a recusa devolve antes de chegar aqui e o rollback leva a
+ * linha junto. O ator é o Membro da sessão (T-15-13). `antes`/`depois` são NOMES de exibição
+ * ou rótulos; nunca texto de Mensagem nem valor de Identificador (T-15-27).
+ */
+async function atividadeDaConversa(
+  cliente: PoolClient,
+  membro: MembroDaSessao,
+  conversa: Pick<Conversa, "id" | "titulo">,
+  acao: AcaoDoCrm,
+  mudanca: { readonly antes?: string; readonly depois?: string } = {},
+): Promise<void> {
+  await registrarAtividade(cliente, membro.workspaceId, {
+    ator: { kind: "member", id: membro.id },
+    acao,
+    objetoTipo: "conversation",
+    objetoId: conversa.id,
+    objetoNome: conversa.titulo,
+    ...(mudanca.antes !== undefined ? { antes: mudanca.antes } : {}),
+    ...(mudanca.depois !== undefined ? { depois: mudanca.depois } : {}),
   });
 }
 
@@ -248,6 +275,11 @@ export function criarServicoDeConversas(deps: { readonly pool: () => Pool; reado
             participantesComContato(atual.participantes, atual.contatoId, destino.id),
           );
           if (!movida) return conversaNaoEncontrada();
+          const origem = travados.get(lida.contatoId);
+          await atividadeDaConversa(cliente, membro, movida, ACOES_DO_CRM.conversaMovida, {
+            ...(origem ? { antes: nomeDeExibicaoDoContato(origem) } : {}),
+            depois: nomeDeExibicaoDoContato(destino),
+          });
           const canal = await criarRepositorioDeCanaisPg(cliente).obter(membro.workspaceId, movida.canalId);
           if (!canal) return canalNaoEncontrado();
           return sucesso({ conversa: movida, canal: resumoDoCanal(canal) });
