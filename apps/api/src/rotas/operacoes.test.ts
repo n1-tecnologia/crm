@@ -1129,6 +1129,21 @@ describeComBanco("POST /operacoes/removeMember — a sucessão chega às tabelas
     expect(await donoDe("negocios", ws, ids.negocio)).toBe(sucessor());
     // RN-ET-09 (a) e RN-CXE-24 emendadas (D-15-08): a Conversa passa ao Sucessor como Atribuído.
     expect(await atribuicaoDe(ids.conversaDoRemovido)).toEqual({ atribuido_tipo: "membro", atribuido_id: sucessor() });
+    // 15-09: cada registro passado deixou a Atividade, no mesmo commit, com o Administrador que removeu como ator.
+    const linhas = (
+      await pool().query<{ acao: string; ator_id: string }>(
+        "select acao, ator_id from plataforma.crm_atividades where workspace_id = $1 order by acao",
+        [ws],
+      )
+    ).rows;
+    expect(linhas.map((l) => l.acao)).toEqual([
+      "Contato passado ao Sucessor",
+      "Contato passado ao Sucessor",
+      "Conversa passada ao Sucessor",
+      "Empresa passada ao Sucessor",
+      "Negócio passado ao Sucessor",
+    ]);
+    expect(linhas.every((l) => l.ator_id === espaco.membros.administrador.id)).toBe(true);
     // O que era de outro Membro e o que era de outro Espaço ficam como estavam.
     expect(await donoDe("contatos", ws, ids.contatoDeOutro)).toBe(espaco.membros.b.id);
     expect(await atribuicaoDe(ids.conversaDeOutro)).toEqual({ atribuido_tipo: "membro", atribuido_id: espaco.membros.b.id });
