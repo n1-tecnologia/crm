@@ -444,3 +444,78 @@ describeComBanco("Conversa cujo Canal e Contato já estão nas tabelas novas (15
     expect(resultado.naoMigrados).toContainEqual({ categoria: "conversa-sem-canal-migrado", colecao: "conversations", id: "cnv_h3" });
   });
 });
+
+// --- 15-44 Task 3 (M-04): dado sujo não derruba o Espaço ---
+
+describeComBanco("dado sujo não derruba o Espaço (15-44, M-04)", () => {
+  const ator = { kind: "member", id: "mem_x" };
+  const EM = "2026-10-01T10:00:00.000Z";
+
+  beforeAll(async () => {
+    await prepararBancoCrm();
+  });
+  afterEach(async () => {
+    for (const ws of criados.splice(0)) await limparEspaco(ws);
+  });
+  afterAll(async () => {
+    await encerrar();
+  });
+
+  it("Mensagem sem id e Identificadores sem id ou repetidos: o --migrar conclui, o resto migra e o relatório diz", async () => {
+    const linhas: RegistroAntigo[] = [
+      {
+        colecao: "contacts",
+        id: "cnt_sujo",
+        ordem: 0,
+        dados: {
+          id: "cnt_sujo",
+          firstName: "Sintetico",
+          lastName: "Sujo",
+          ownerMemberId: "mem_x",
+          createdBy: ator,
+          createdAt: EM,
+          lifecycle: "ativo",
+          creationMode: "manual",
+          identifiers: [
+            { type: "email", value: "um@exemplo.invalid" },
+            { type: "email", value: "dois@exemplo.invalid" },
+            { id: "i_rep", type: "telefone", value: "+5511900000011" },
+            { id: "i_rep", type: "telefone", value: "+5511900000012" },
+          ],
+        },
+      },
+      { colecao: "channels", id: "chn_sujo", ordem: 0, dados: { id: "chn_sujo", name: "Canal sujo", channelType: "whatsapp", externalId: "+5511900000099", createdBy: ator, createdAt: EM, lifecycle: "ativo", configuredByMemberId: "mem_x" } },
+      {
+        colecao: "conversations",
+        id: "cnv_suja",
+        ordem: 0,
+        dados: {
+          id: "cnv_suja",
+          channelId: "chn_sujo",
+          contactId: "cnt_sujo",
+          state: "aberta",
+          lifecycle: "ativo",
+          createdBy: ator,
+          createdAt: EM,
+          participants: [],
+          starredBy: [],
+          drafts: [],
+          messages: [
+            { id: "m_ok", direction: "enviada", actor: ator, content: "Texto sintetico", attachments: [], createdAt: EM },
+            { direction: "enviada", actor: ator, content: "Sem id sintetico", attachments: [], createdAt: EM },
+          ],
+        },
+      },
+    ];
+    const ws = await semearEspaco("sujo", linhas);
+
+    const resultado = await migrarCrmAntigo(ws);
+
+    expect(resultado.nadaAFazer).toBe(false);
+    expect(await idsDe("contatos", ws)).toEqual(["cnt_sujo"]);
+    expect((await contagens(ws, ["contato_identificadores"])).contato_identificadores).toBe(4);
+    expect(await idsDe("mensagens", ws)).toEqual(["m_ok"]);
+    expect(resultado.naoMigrados).toContainEqual({ categoria: "mensagem-sem-id", colecao: "conversations", id: "cnv_suja" });
+    expect(resultado.mensagem).not.toContain("Sem id sintetico");
+  });
+});

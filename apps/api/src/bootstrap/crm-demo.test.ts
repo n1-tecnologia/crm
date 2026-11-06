@@ -194,6 +194,12 @@ describe("o host do banco: só local", () => {
     expect(hostEhLocal("isto não é uma url")).toBe(false);
   });
 
+  it("?host= remoto com localhost no corpo da URL é recusado (15-44, M-01)", () => {
+    const disfarcada = "postgres://u:p@localhost:5432/postgres?host=db.exemplo.com&port=6543";
+    expect(hostEhLocal(disfarcada)).toBe(false);
+    expect(() => exigirBancoLocal(disfarcada)).toThrow(/só roda em banco local/);
+  });
+
   it("exigirBancoLocal recusa banco remoto com a mensagem de que só roda em banco local", () => {
     expect(() => exigirBancoLocal(URL_REMOTA)).toThrow(RecusaDoDemo);
     expect(() => exigirBancoLocal(URL_REMOTA)).toThrow(/só roda em banco local/);

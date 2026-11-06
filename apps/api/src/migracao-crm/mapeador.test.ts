@@ -888,3 +888,71 @@ describe("destino que já está nas tabelas novas (15-44 Task 1, H-01)", () => {
     expect(naoMigrados).toContainEqual({ categoria: "conversa-repetida", colecao: "conversations", id: "cv" });
   });
 });
+
+describe("dado sujo não derruba o Espaço (15-44 Task 3, M-04)", () => {
+  const ator = ATOR;
+  const msg = (extra: Record<string, unknown> = {}) => ({ direction: "enviada", actor: ator, content: "Texto", attachments: [], createdAt: EM, ...extra });
+
+  it("a Mensagem sem id vai para mensagem-sem-id (coleção e id da Conversa) e as outras da Conversa migram", () => {
+    const antigas = [
+      contatoMin("c1"),
+      canalMin("ch1", {}, 0),
+      conversaMin("cv", { messages: [msg({ id: "m_ok" }), msg({ id: undefined }), msg({ id: "   " }), msg({ id: "m_ok2", createdAt: "2026-01-02T00:00:00.000Z" })] }),
+    ];
+
+    const { linhasPorTabela, naoMigrados } = planoCom(antigas);
+
+    expect(linhasPorTabela.mensagens.map((m) => m.id)).toEqual(["m_ok", "m_ok2"]);
+    expect(naoMigrados).toContainEqual({ categoria: "mensagem-sem-id", colecao: "conversations", id: "cv" });
+    // Uma entrada por Conversa e categoria, só com ids (nunca texto).
+    expect(naoMigrados.filter((n) => n.categoria === "mensagem-sem-id")).toHaveLength(1);
+  });
+
+  it("Identificadores de Contato sem id, ou com o mesmo id, ganham chaves de de-para que não colidem e todos migram", () => {
+    const antigas = [
+      contatoMin("c1", {
+        identifiers: [
+          { type: "email", value: "um@exemplo.test" },
+          { type: "email", value: "dois@exemplo.test" },
+          { id: "i_rep", type: "telefone", value: "+5511900000001" },
+          { id: "i_rep", type: "telefone", value: "+5511900000002" },
+        ],
+      }),
+    ];
+
+    const { linhasPorTabela, deParas } = plano(antigas);
+
+    expect(linhasPorTabela.contato_identificadores).toHaveLength(4);
+    const chaves = deParas.filter((d) => d.colecao_antiga === "contacts/identifiers").map((d) => d.id_antigo);
+    expect(chaves).toHaveLength(4);
+    expect(new Set(chaves).size).toBe(4);
+    // Todas levam o Contato no primeiro trecho, que é o que o --verificar usa para achar a origem.
+    expect(chaves.every((c) => c.startsWith("c1/"))).toBe(true);
+  });
+
+  it("Identificadores de Empresa sem id ou repetidos também não colidem", () => {
+    const antigas = [
+      contatoMin("c1"),
+      empresaMin("e1", { identifiers: [{ type: "dominio", value: "um.exemplo.test" }, { type: "dominio", value: "dois.exemplo.test" }, { id: "x", type: "telefone", value: "+5511911110000" }, { id: "x", type: "telefone", value: "+5511911110001" }] }),
+      linha("contactCompanyLinks", "l1", { contactId: "c1", companyId: "e1", principalForCompany: true, start: "2026-01-01" }),
+    ];
+
+    const { linhasPorTabela, deParas } = plano(antigas);
+
+    expect(linhasPorTabela.empresa_identificadores).toHaveLength(4);
+    const chaves = deParas.filter((d) => d.colecao_antiga === "companies/identifiers").map((d) => d.id_antigo);
+    expect(new Set(chaves).size).toBe(4);
+  });
+
+  it("a Mensagem de um Contato com Identificador sem id continua achando o Identificador pelo id que ela cita", () => {
+    const antigas = [
+      contatoMin("c1", { identifiers: [{ id: "i1", type: "email", value: "um@exemplo.test" }, { type: "email", value: "dois@exemplo.test" }] }),
+      canalMin("ch1", {}, 0),
+      conversaMin("cv", { messages: [msg({ id: "m1", viaIdentifierId: "i1" })] }),
+    ];
+
+    const { linhasPorTabela } = plano(antigas);
+
+    expect(linhasPorTabela.mensagens[0]!.identificador_id).toBe(linhasPorTabela.contato_identificadores.find((i) => i.valor === "um@exemplo.test")!.id);
+  });
+});
