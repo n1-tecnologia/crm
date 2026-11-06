@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 20
+open_count: 21
 waived_count: 1
-fixed_count: 4
-total_count: 25
-last_updated: 2026-11-06T11:59:35.240Z
+fixed_count: 5
+total_count: 27
+last_updated: 2026-11-06T12:22:04.947Z
 ---
 
 # Broken Windows Ledger
@@ -29,7 +29,7 @@ last_updated: 2026-11-06T11:59:35.240Z
 | 12 | 15 | deviation | packages/dominio/src/operations/ferramentas/automacoes.ts |  | 15-07: as Acoes de Automacao contato.adicionarTag e contato.definirCampo falham (Contato do CRM novo nao guarda Tag/Campo de Automacao de Ferramentas); decidir o destino no 15-17/15-22 | open |  | 2026-11-06T09:50:50.940Z |  |
 | 13 | 15 | deviation | apps/web/src/app/(shell)/ia/chat/page.tsx |  | 15-08: ancorar Chat ou ensaio num Negocio, Contato, Empresa ou Conversa no navegador recusa/nomeia pelo id ate o 15-21 mandar nomes (o servidor grava certo pelas tabelas) | open |  | 2026-11-06T10:06:57.673Z |  |
 | 14 | 15 | deviation | apps/web/src/app/(shell)/configuracoes/membros/page.tsx |  | 15-36: o dialogo de remover Membro e a pagina do Membro filtram o tipo conversation de previewSuccession (so contam as Conversas das tabelas); as Conversas de Grupo do modelo antigo agora passam ao Sucessor em removeMember mas nao aparecem na contagem ate o 3.5.4 tirar o modelo antigo | open |  | 2026-11-06T10:20:00.602Z |  |
-| 15 | 15 | deviation | apps/api/src/repositorios/crm/atividades.ts |  | 15-37: a paginacao de GET /atividades por cursor de tempo (ate = at da ultima linha, ISO em ms, exclusivo) pode pular linhas gravadas no mesmo instante na fronteira da pagina (now() e da transacao: um gesto com varias Atividades compartilha o em; at perde os microssegundos). Aceito no desenho do plano; trocar por cursor composto (em, id) se a Auditoria (15-09) paginar paginas cheias | open |  | 2026-11-06T10:29:12.443Z |  |
+| 15 | 15 | deviation | apps/api/src/repositorios/crm/atividades.ts |  | 15-37: a paginacao de GET /atividades por cursor de tempo (ate = at da ultima linha, ISO em ms, exclusivo) pode pular linhas gravadas no mesmo instante na fronteira da pagina (now() e da transacao: um gesto com varias Atividades compartilha o em; at perde os microssegundos). Aceito no desenho do plano; trocar por cursor composto (em, id) se a Auditoria (15-09) paginar paginas cheias | fixed |  | 2026-11-06T10:29:12.443Z | 2026-11-06T12:22:04.811Z |
 | 16 | 15 | deviation | apps/web/src/features/ia/automacoes/editor-de-automacao.tsx |  | 15-39: ate o 15-21 passar os Funis de useFunis, inoperante() na tela da IA mostra Automacao de escopo Funil como 'escopo eliminado (Funil)' e a aplicacao otimista de criarAutomacao com escopo Funil recusa localmente; o servidor confere certo pela tabela. Tambem escopo na lixeira vira 'escopo eliminado' em vez de 'escopo na lixeira' | open |  | 2026-11-06T10:41:35.401Z |  |
 | 17 | 15 | deviation | apps/web/src/features/ferramentas/pedidos-de-entrada.tsx |  | 15-17: ate o 15-22 mandar crm, a simulacao local de Pedido de Entrada e de clique de Captacao (e a importacao de Grupos) no navegador recusa com 'Contato do participante nao resolvido.' (ou 'Canal nao encontrado.'); o servidor so resolve e cria o Contato do Participante em importarGruposDoCanal, os eventos do provedor ainda nao tem rota em POST /operacoes | open |  | 2026-11-06T10:56:35.691Z |  |
 | 18 | 15 | deviation | apps/web/src/features/crm/inbox-columns.tsx |  | 15-11: Sem Atribuido, Sem Fila e Adiadas ainda nao sao filtros de GET /conversas: a Caixa pede a pagina inteira (200) e recorta na tela, entao o contador e o 'de N' desses recortes sao os da pagina, nao os do Espaco; 'Mostrar mais' tambem para em 200. Trocar por filtros na api (semAtribuido, semFila, adiadas) se um Espaco passar de 200 Conversas ativas | open |  | 2026-11-06T11:12:17.121Z |  |
@@ -40,6 +40,8 @@ last_updated: 2026-11-06T11:59:35.240Z
 | 23 | 15 | deviation | apps/web/src/app/(shell)/buscar/page.tsx |  | 15-14: a Busca acha Conversa so pelo titulo (GET /conversas?q= nao olha o texto das Mensagens, como a do modelo antigo olhava). Se o dono quiser a busca por conteudo, abrir o filtro na api (junto de plataforma.mensagens) e no dominio | open |  | 2026-11-06T11:50:25.871Z |  |
 | 24 | 15 | deviation | apps/web/src/features/inicio/panorama-do-robo.ts |  | 15-14: o panorama do robo do Inicio ainda conta Conversas abertas do Espaco (conversas.abertas), Contatos e Negocios de state.conversations/contacts/deals; so as Conversas atribuidas a pessoa vem da api (hook useNotificacoesDoMembro). Fica para o plano do Inicio (15-18/15-23) | open |  | 2026-11-06T11:50:25.932Z |  |
 | 25 | 15 | deviation | apps/web/src/app/(shell)/configuracoes/tags/page.tsx |  | 15-16: Tags, Campos e Catalogos nao mostram mais o uso em Contato, Empresa, Negocio e Conversa (mostram 'O uso no CRM nao aparece aqui.'); tambem some a contagem de Conversa em Tags e a de Empresa em Campos, que o plano nao citava. Para devolver o numero, abrir contagem por Tag, Campo e item de Catalogo nas rotas /contatos, /empresas, /negocios e /conversas. Sem tela para conceder acesso a Funil novo privado (a Governanca so reconhece Espaco, Pasta, Lista e Colecao): o Funil novo e governado por privado e Papel | open |  | 2026-11-06T11:59:35.240Z |  |
+| 26 | 15 | deviation | apps/api/src/servicos/crm/negocios.ts |  | 15-09: criar, editar, ganhar, perder e reabrir Negocio, criar Contato/Empresa e mandar Contato/Empresa a lixeira pelo CRM novo NAO gravam Atividade (escopo de D-15-09 e so Conversa, transferir Identificador, consentimento, Nota e sucessao); as telas antigas gravavam. Pergunta ao dono: quer a linha do tempo desses gestos no CRM novo antes de remover o modelo antigo? | open |  | 2026-11-06T12:22:04.882Z |  |
+| 27 | 15 | deviation | apps/web/src/app/(shell)/configuracoes/auditoria/page.tsx |  | 15-09: o contador '{n} Registro(s) de Atividade' e o 'de N' da Auditoria contam o state.activity inteiro mais so as paginas ja lidas do CRM novo (GET /atividades nao devolve total); cresce a cada Mostrar mais. Abrir contagem na api se o dono quiser o numero exato | open |  | 2026-11-06T12:22:04.947Z |  |
 
 ````json
 [
@@ -232,10 +234,10 @@ last_updated: 2026-11-06T11:59:35.240Z
     "file": "apps/api/src/repositorios/crm/atividades.ts",
     "line": null,
     "description": "15-37: a paginacao de GET /atividades por cursor de tempo (ate = at da ultima linha, ISO em ms, exclusivo) pode pular linhas gravadas no mesmo instante na fronteira da pagina (now() e da transacao: um gesto com varias Atividades compartilha o em; at perde os microssegundos). Aceito no desenho do plano; trocar por cursor composto (em, id) se a Auditoria (15-09) paginar paginas cheias",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-06T10:29:12.443Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-06T12:22:04.811Z",
     "milestone": "v1.0"
   },
   {
@@ -365,6 +367,32 @@ last_updated: 2026-11-06T11:59:35.240Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-06T11:59:35.240Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 26,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/api/src/servicos/crm/negocios.ts",
+    "line": null,
+    "description": "15-09: criar, editar, ganhar, perder e reabrir Negocio, criar Contato/Empresa e mandar Contato/Empresa a lixeira pelo CRM novo NAO gravam Atividade (escopo de D-15-09 e so Conversa, transferir Identificador, consentimento, Nota e sucessao); as telas antigas gravavam. Pergunta ao dono: quer a linha do tempo desses gestos no CRM novo antes de remover o modelo antigo?",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T12:22:04.882Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 27,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/app/(shell)/configuracoes/auditoria/page.tsx",
+    "line": null,
+    "description": "15-09: o contador '{n} Registro(s) de Atividade' e o 'de N' da Auditoria contam o state.activity inteiro mais so as paginas ja lidas do CRM novo (GET /atividades nao devolve total); cresce a cada Mostrar mais. Abrir contagem na api se o dono quiser o numero exato",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T12:22:04.947Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }
