@@ -14,6 +14,7 @@ import { SWRConfig } from "swr";
 import { notificacoesDoMembro } from "@n1/dominio/derive";
 import type { ConversaNaLista } from "@n1/dominio/crm/conversas";
 import { buildSeed } from "@n1/dominio/seed";
+import { conversaAntigaDeTeste } from "@/testes/crm-antigo-de-teste";
 import { StoreProvider } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
 import { useNotificacoesDoMembro } from "./use-notificacoes";
@@ -85,6 +86,8 @@ function envolver() {
     hidratar: vi.fn(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." })),
   };
   const dados = buildSeed();
+  // O seed não cria mais Conversa (15-31): a Conversa do modelo antigo atribuída ao Membro, que a lista NÃO conta, é posta aqui.
+  dados.conversations.push(conversaAntigaDeTeste({ id: "cnv_antiga_1", atribuidaA: THIAGO }));
   const Envoltorio = ({ children }: { children: ReactNode }) => (
     <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>
       <StoreProvider sessao={{ memberId: THIAGO }} estadoInicial={{ data: dados, revisao: 1, ordens: {} }} transporte={transporte}>

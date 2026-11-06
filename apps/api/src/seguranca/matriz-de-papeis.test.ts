@@ -34,6 +34,7 @@ import { encerrar } from "../persistencia/conexao";
 import { describeComBanco, prepararBancoCrm } from "../testes/banco-crm";
 import {
   appDoEspaco,
+  contatosDoVazamento,
   limparEspacoDeVazamento,
   montarEspacoDeVazamento,
   semearEspacoDeVazamento,
@@ -167,6 +168,8 @@ describeComBanco("matriz Papel × família de rota — HTTP contra Postgres loca
   beforeAll(async () => {
     await prepararBancoCrm();
     espaco = montarEspacoDeVazamento("matriz");
+    // O seed não cria mais Contato (15-31): a matriz e o caso 1.2.1 de `trashContact` usam os do vazamento.
+    espaco.estado.contacts.push(...contatosDoVazamento(espaco.estado.workspace.id, espaco.estado.workspace.ownerMemberId));
     await semearEspacoDeVazamento(espaco);
     app = appDoEspaco(espaco, { financeiro: { cliente: clienteDeEscritaFalso(), clienteDeEscrita: clienteDeEscritaFalso() } });
   });

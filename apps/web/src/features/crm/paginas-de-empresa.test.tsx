@@ -215,7 +215,8 @@ describe("página /crm/empresas/[empresa] — a ficha nova e o não encontrado (
   });
 
   it("(g) 404 da api para um id que existe no modelo antigo também mostra Empresa não encontrada (sem recuo, UCR-06)", async () => {
-    const antiga = buildSeed().companies[0]!;
+    // O seed não cria mais Empresa (15-31): basta o id e o nome da Empresa do modelo antigo (do demo).
+    const antiga = { id: "cmp_1", tradeName: "Clínica Sorriso Vivo" };
     const container = await montarPagina(antiga.id);
     await vi.waitFor(() => expect(container.textContent).toContain("Empresa não encontrada."), { timeout: 3000 });
     expect(container.textContent).not.toContain(antiga.tradeName);

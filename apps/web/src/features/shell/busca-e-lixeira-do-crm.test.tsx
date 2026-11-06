@@ -17,6 +17,7 @@ import type { ConversaNaLista } from "@n1/dominio/crm/conversas";
 import type { EmpresaResumo } from "@n1/dominio/crm/empresas";
 import type { NegocioResumo } from "@n1/dominio/crm/negocios";
 import { buildSeed } from "@n1/dominio/seed";
+import { contatoAntigoDeTeste } from "@/testes/crm-antigo-de-teste";
 import { StoreProvider } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
 import BuscarPage from "@/app/(shell)/buscar/page";
@@ -204,7 +205,9 @@ describe("Busca › Contatos, Empresas, Negócios e Conversas pelas rotas REST (
 
   it("nada do CRM vem do store: o Contato antigo do seed não aparece quando a api não o devolve", async () => {
     const seed = buildSeed();
-    const antigo = seed.contacts[0]!;
+    // O seed não cria mais Contato (15-31): o Contato do modelo antigo, que a busca NÃO pode mostrar, é posto aqui.
+    const antigo = contatoAntigoDeTeste({ id: "cnt_antigo_busca", firstName: "Antiga" });
+    seed.contacts.push(antigo);
     parametros.atual = new URLSearchParams(`q=${encodeURIComponent(antigo.firstName)}`);
 
     await montar(<BuscarPage />, seed);
@@ -313,7 +316,9 @@ describe("Lixeira › Contatos, Empresas, Negócios e Conversas pelas rotas REST
 
   it("nada do CRM vem do store: o Contato antigo na lixeira do seed não aparece", async () => {
     const seed = buildSeed();
-    const antigo = seed.contacts[0]!;
+    // O seed não cria mais Contato (15-31): o Contato do modelo antigo, que a Lixeira NÃO pode mostrar, é posto aqui.
+    const antigo = contatoAntigoDeTeste({ id: "cnt_antigo_lixeira" });
+    seed.contacts.push(antigo);
     antigo.lifecycle = "naLixeira";
     antigo.trashedAt = AGORA;
 

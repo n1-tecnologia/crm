@@ -13,6 +13,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { buildSeed } from "@n1/dominio/seed";
+import { conversaAntigaDeTeste } from "@/testes/crm-antigo-de-teste";
 import { addTaskComment, changeTaskStatus, updateTask } from "@n1/dominio/operations";
 import type { DataState } from "@n1/dominio/state";
 import { SWRConfig } from "swr";
@@ -41,6 +42,8 @@ let state: DataState;
 
 beforeEach(() => {
   state = buildSeed();
+  // O seed não cria mais Conversa (15-31): a Conversa do modelo antigo atribuída ao Membro, que a página NÃO lista, é posta aqui.
+  state.conversations.push(conversaAntigaDeTeste({ id: "cnv_antiga_1", atribuidaA: JULIA, title: "Conversa antiga da Júlia" }));
   process.env.NEXT_PUBLIC_API_URL = "http://api";
   obterSessao.mockReset();
   obterSessao.mockResolvedValue({ data: { session: { access_token: "tok" } } });

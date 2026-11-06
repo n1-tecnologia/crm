@@ -125,14 +125,16 @@ describe("página /crm/contatos/[contato] — só o modelo novo (UCR-06)", () =>
   });
 
   it("404 da api para um id que existe no modelo antigo também mostra Contato não encontrado (sem recuo)", async () => {
-    const antigo = buildSeed().contacts[0]!;
+    // O seed não cria mais Contato (15-31): basta o id do Contato do modelo antigo (do demo), que a api não conhece.
+    const antigo = { id: "cnt_1" };
     const container = await montarPagina(antigo.id);
     await vi.waitFor(() => expect(container.textContent).toContain("Contato não encontrado."));
     expect(container.textContent).not.toContain("Consentimentos");
   });
 
   it("borda UCR-06: abrir o mesmo id antigo de novo mostra o mesmo não encontrado", async () => {
-    const antigo = buildSeed().contacts[0]!;
+    // O seed não cria mais Contato (15-31): basta o id do Contato do modelo antigo (do demo), que a api não conhece.
+    const antigo = { id: "cnt_1" };
     const primeira = await montarPagina(antigo.id);
     await vi.waitFor(() => expect(primeira.textContent).toContain("Contato não encontrado."));
     cleanup();

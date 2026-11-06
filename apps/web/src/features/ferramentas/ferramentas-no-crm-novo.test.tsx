@@ -18,6 +18,7 @@ import type { Canal } from "@n1/dominio/crm/canais";
 import type { DataState } from "@n1/dominio/state";
 import { StoreProvider } from "@/dados/store";
 import type { PedidoDeGravacao, RespostaDeGravacao, Transporte } from "@/dados/transporte";
+import { conversaAntigaDeTeste } from "@/testes/crm-antigo-de-teste";
 import { AbaComunidades } from "./aba-comunidades";
 import { AbaFlows } from "./aba-flows";
 import { AbaGrupos } from "./aba-grupos";
@@ -410,6 +411,8 @@ describe("Comunidades e Flows no CRM novo (15-22)", () => {
 
   it("(p) enviar o Flow a um Contato continua escolhendo a Conversa de state.conversations, com o nome do Contato pelo POST /crm/nomes (F14-D-05)", async () => {
     nomesDaApi = { cnt_2: "Marina Alves" };
+    // O seed não cria mais Conversa 1:1 (15-31): a do Contato `cnt_2`, que o diálogo oferece, é posta aqui.
+    state.conversations.push(conversaAntigaDeTeste({ id: "cnv_1", contactId: "cnt_2", atribuidaA: "mem_julia" }));
     const flow = state.flows.find((f) => f.id === "flw_triagem");
     expect(flow).toBeDefined();
     await montar(<EnviarFlowDialog flow={flow as NonNullable<typeof flow>} onClose={() => undefined} report={vi.fn()} />);

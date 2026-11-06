@@ -42,6 +42,7 @@ import { FRASE_DE_SUSPENSO } from "../plugins/autenticacao";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearCanal } from "../testes/banco-crm";
 import {
   appDoEspaco,
+  contatosDoVazamento,
   limparEspacoDeVazamento,
   montarEspacoDeVazamento,
   semearEspacoDeVazamento,
@@ -948,6 +949,8 @@ describeComBanco("POST /operacoes — resposta recortada pelo que o Membro enxer
   beforeAll(async () => {
     await prepararBancoCrm();
     espaco = montarEspacoDeVazamento("operacoes");
+    // O seed não cria mais Contato (15-31): a matriz e o caso 1.2.1 de `trashContact` usam os do vazamento.
+    espaco.estado.contacts.push(...contatosDoVazamento(espaco.estado.workspace.id, espaco.estado.workspace.ownerMemberId));
     await semearEspacoDeVazamento(espaco);
   });
 

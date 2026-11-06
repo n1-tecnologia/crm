@@ -30,6 +30,19 @@ interface DemoEmJson {
 
 const DEMO = JSON.parse(readFileSync(new URL("./crm-demo.json", import.meta.url), "utf8")) as DemoEmJson;
 
+interface VinculoDaFixture {
+  readonly id: string;
+  readonly fromType: string;
+  readonly fromId: string;
+  readonly toType: string;
+  readonly toId: string;
+}
+
+/** O `buildSeed()` sintético de antes da 3.5.3, congelado pelo 15-28: as nove coleções do CRM antigo e os 64 `links`. */
+const FIXTURE_DO_SEED_ANTIGO = JSON.parse(
+  readFileSync(new URL("../migracao-crm/fixtures/crm-antigo-do-seed.json", import.meta.url), "utf8"),
+) as { readonly linhas: readonly { readonly colecao: string; readonly id: string; readonly dados: VinculoDaFixture }[] };
+
 const TABELA_DO_TIPO: Readonly<Record<string, { tabela: string; colecao: string }>> = {
   contact: { tabela: "contatos", colecao: "contacts" },
   company: { tabela: "empresas", colecao: "companies" },
@@ -108,11 +121,21 @@ describeComBanco("carregarCrmDemo — o CRM de demonstração num Espaço de des
     const noDemo = Object.fromEntries(Object.entries(DEMO.tabelas).map(([tabela, linhas]) => [tabela, new Set(linhas.map((l) => l.id))]));
     const foraDoDemo = new Set(DEMO.naoMigrados.map((n) => `${n.colecao}:${n.id}`));
     const achados: Record<string, number> = {};
+    let procurados = 0;
 
-    for (const vinculo of buildSeed().links) {
-      for (const ponta of [{ tipo: vinculo.fromType as string, id: vinculo.fromId }, { tipo: vinculo.toType as string, id: vinculo.toId }]) {
+    // Desde o 15-31 o seed não cria o CRM antigo nem os Vínculos da Pasta "Meus negócios": a fonte dos Vínculos é a
+    // fixture congelada do seed de ANTES (64 `links`, com os do espelho), que cobre os do seed novo e mais.
+    const vinculosDoSeedAntigo = FIXTURE_DO_SEED_ANTIGO.linhas.filter((l) => l.colecao === "links").map((l) => l.dados);
+    expect(vinculosDoSeedAntigo).toHaveLength(64);
+    // Todo Vínculo que o seed NOVO ainda guarda está na fixture (os ids do demo são os do seed antigo).
+    const idsDaFixture = new Set(vinculosDoSeedAntigo.map((v) => v.id));
+    for (const vinculo of buildSeed().links) expect(idsDaFixture.has(vinculo.id), `o Vínculo ${vinculo.id} do seed novo não está na fixture`).toBe(true);
+
+    for (const vinculo of vinculosDoSeedAntigo) {
+      for (const ponta of [{ tipo: vinculo.fromType, id: vinculo.fromId }, { tipo: vinculo.toType, id: vinculo.toId }]) {
         const alvo = TABELA_DO_TIPO[ponta.tipo];
         if (alvo === undefined) continue; // tarefa, grupo, flow...: não são do CRM
+        procurados += 1;
         const achou = await pool().query(`select 1 from plataforma.${alvo.tabela} where workspace_id = $1 and id = $2`, [ws, ponta.id]);
         if ((achou.rowCount ?? 0) > 0) {
           achados[ponta.tipo] = (achados[ponta.tipo] ?? 0) + 1;
@@ -124,6 +147,8 @@ describeComBanco("carregarCrmDemo — o CRM de demonstração num Espaço de des
       }
     }
 
+    // A prova não pode passar vazia: há Vínculos procurados, e os ids preservados acham o registro.
+    expect(procurados).toBeGreaterThan(0);
     expect(Object.keys(achados).sort()).toEqual(["contact", "conversation", "deal"]);
   });
 

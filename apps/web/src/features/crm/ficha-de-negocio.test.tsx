@@ -429,7 +429,8 @@ describe("página /crm/negocios/[negocio] — não encontrado, sem recuo para a 
   });
 
   it("404 da api para um id que existe no modelo antigo também mostra Negócio não encontrado (sem recuo)", async () => {
-    const antigo = buildSeed().deals[0]!;
+    // O seed não cria mais Negócio (15-31): basta o id e o título do Negócio do modelo antigo (do demo).
+    const antigo = { id: "deal_sdr_1", title: "Full Face Avançado para Iallas" };
     rotas[`GET /negocios/${antigo.id}`] = () => resposta(404, NAO_ENCONTRADO);
     await montarPagina(antigo.id);
     await vi.waitFor(() => expect(texto()).toContain("Negócio não encontrado."), { timeout: 3000 });

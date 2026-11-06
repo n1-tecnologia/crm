@@ -17,6 +17,7 @@ import { buildSeed } from "@n1/dominio/seed";
 import { setContainerDefaultViews } from "@n1/dominio/operations/configuration";
 import { saveView, setDefaultView } from "@n1/dominio/operations";
 import type { DataState } from "@n1/dominio/state";
+import type { List } from "@n1/dominio/types";
 import type { Canal } from "@n1/dominio/crm/canais";
 import { StoreProvider, useRun } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
@@ -250,8 +251,23 @@ describe("Página da Lista — os Canais da Lista conversacional vêm das tabela
 
 describe("Página da Lista — o espelho de Meus negócios saiu (15-40, F14-D-06)", () => {
   it("a Lista espelho sob /crm/ é uma Lista como as outras: sem «Iniciar conversa», sem «valor declarado» e sem o caminho do CRM", async () => {
-    const espelho = state.lists.find((l) => l.id.startsWith("lst_funil_"));
-    if (!espelho) throw new Error("o seed não tem uma Lista espelho de Funil");
+    // O seed não cria mais as Listas espelho dos Funis (15-31): a que o caso usa é montada aqui, como era (Comercial).
+    const espelho: List = {
+      id: "lst_funil_closer",
+      workspaceId: state.workspace.id,
+      createdBy: { kind: "member", id: "mem_julia" },
+      createdAt: "2026-01-01T00:00:00.000Z",
+      lifecycle: "ativo",
+      name: "Closer",
+      order: 0,
+      isPrivate: false,
+      modeloDeTarefa: "conversacional",
+      canaisDeAtendimento: ["chn_wpp"],
+      modes: {},
+      parentType: "space",
+      parentId: "spc_com",
+    };
+    state.lists.push(espelho);
     caminho = `/crm/lista/${espelho.id}`;
     canaisDasTabelas = [canalDasTabelas("chn_wpp", "WhatsApp")];
 

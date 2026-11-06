@@ -11,6 +11,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { buildSeed } from "@n1/dominio/seed";
+import { montarTarefaConversacional } from "./tarefa-conversacional-de-teste";
 import { PAPEL_DO_VINCULO } from "@n1/dominio/derive-conversacional";
 import type { ResumoDaTarefaConversacional } from "@n1/dominio/crm/resumo-da-tarefa";
 import type { DataState } from "@n1/dominio/state";
@@ -69,6 +70,8 @@ beforeEach(() => {
     },
   );
   state = buildSeed();
+  // O seed não cria mais a Pasta Meus negócios nem as Tarefas-espelho (15-31): a ficha lê a Tarefa conversacional montada aqui.
+  montarTarefaConversacional(state);
   funis.atual = undefined;
 });
 

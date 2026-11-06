@@ -12,6 +12,7 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { SWRConfig } from "swr";
 import type { NegocioResumo } from "@n1/dominio/crm/negocios";
 import { buildSeed } from "@n1/dominio/seed";
+import { negocioAntigoDeTeste } from "@/testes/crm-antigo-de-teste";
 import type { DataState } from "@n1/dominio/state";
 import type { Widget } from "@n1/dominio/types";
 import { StoreProvider } from "@/dados/store";
@@ -71,6 +72,8 @@ let negociosRecusados: boolean;
 
 beforeEach(() => {
   state = buildSeed();
+  // O seed não cria mais Negócio (15-31): o Negócio do modelo antigo no Funil Closer, que o Painel NÃO conta, é posto aqui.
+  state.deals.push(negocioAntigoDeTeste({ id: "deal_antigo_closer", funnelId: "fnl_closer" }));
   totalDeNegocios = NEGOCIOS.length;
   negociosRecusados = false;
   process.env.NEXT_PUBLIC_API_URL = "http://api";

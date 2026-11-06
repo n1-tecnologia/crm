@@ -128,6 +128,42 @@ function servidorFalso(): Servidor {
 }
 
 let state: DataState;
+
+/**
+ * A Pasta fixa «Meus negócios» (A9) com uma Lista de Funil dentro. O seed não as cria mais (15-31, D-15-13): os casos de
+ * proteção as montam no próprio arranjo, onde ficavam (Comercial, ordem 3). A proteção sai no 15-41.
+ */
+function montarMeusNegocios(): void {
+  const origem = { kind: "member", id: "mem_julia" } as const;
+  state.folders.push({
+    id: MEUS_NEGOCIOS_ID,
+    workspaceId: state.workspace.id,
+    createdBy: origem,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    lifecycle: "ativo",
+    name: "Meus negócios",
+    order: 3,
+    isPrivate: false,
+    modes: {},
+    blocks: {},
+    parentType: "space",
+    parentId: "spc_com",
+  });
+  state.lists.push({
+    id: "lst_funil_closer",
+    workspaceId: state.workspace.id,
+    createdBy: origem,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    lifecycle: "ativo",
+    name: "Closer",
+    order: 0,
+    isPrivate: false,
+    modeloDeTarefa: "operacional",
+    modes: {},
+    parentType: "folder",
+    parentId: MEUS_NEGOCIOS_ID,
+  });
+}
 let servidor: Servidor;
 
 const THIAGO = "mem_thiago"; // Proprietário
@@ -435,6 +471,7 @@ describe("Subir e Descer — a fatia visível, a falha e a gravação (EST-06, T
   });
 
   it("a Pasta Meus negócios e as Listas dela não ganham «⋯» (A9), e a vizinha fora dela, sim", async () => {
+    montarMeusNegocios();
     await abrirArvore();
     await waitFor(() => expect(temLinha(MEUS_NEGOCIOS_ID)).toBe(true));
 
@@ -578,6 +615,7 @@ describe("A página da Pasta e da Subpasta (D-10, A8-bis, F2)", () => {
   });
 
   it("a Pasta Meus negócios não tem «Mais ações» (A9)", async () => {
+    montarMeusNegocios();
     await montarPagina(MEUS_NEGOCIOS_ID);
 
     expect(screen.queryByRole("button", { name: "Mais ações" })).toBeNull();

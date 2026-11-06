@@ -12,6 +12,7 @@
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { encerrar, pool } from "../persistencia/conexao";
+import { canalAntigoDeTeste } from "../testes/canal-antigo";
 import { describeComBanco, novoEspacoDeTeste, limparEspaco, prepararBancoCrm, semearCanal } from "../testes/banco-crm";
 import {
   appDoEspaco,
@@ -59,6 +60,8 @@ describeComBanco("POST /operacoes — os Canais da Lista conferidos em plataform
   beforeAll(async () => {
     await prepararBancoCrm();
     espaco = montarEspacoDeVazamento("canaislista");
+    // O seed não cria mais Canal (15-31): o Canal antigo de `registros` que o caso "segue aceito" usa é posto aqui.
+    espaco.estado.channels.push(canalAntigoDeTeste(espaco.estado.workspace.id));
     await semearEspacoDeVazamento(espaco);
     outroEspaco = novoEspacoDeTeste("canaislistab");
     const ws = espaco.workspaceId;

@@ -17,6 +17,7 @@ import type { DataState } from "@n1/dominio";
 import { usuarioDoSeed } from "@n1/dominio";
 import { sendMessage, startConversation } from "@n1/dominio/operations";
 import { buildSeed } from "@n1/dominio/seed";
+import { semearCrmAntigo } from "@n1/dominio/seed-crm-antigo";
 import { ok } from "@n1/dominio/state";
 import type { Canal } from "@n1/dominio/crm/canais";
 import { PROVEDORES, PROVEDORES_DE_CANAL, TIPOS_COM_PROVEDOR } from "@n1/dominio/provedores-de-canal";
@@ -116,7 +117,7 @@ describe("ponte de Canais — sem banco", () => {
   });
 
   it("acrescenta ao fim e pula o Canal cujo id já foi hidratado", () => {
-    const seed = buildSeed();
+    const seed = semearCrmAntigo(buildSeed());
     const estado = { channels: [...seed.channels] } as DataState;
     const projetado = canalParaChannel(CANAL, "ws");
     const colide = { ...canalParaChannel(CANAL, "ws"), id: seed.channels[0]!.id };
@@ -131,7 +132,7 @@ describe("semCanaisProjetados — sem banco (08-07)", () => {
   const projetado = canalParaChannel(CANAL, "ws");
 
   function estadoComProjetado() {
-    const seed = buildSeed();
+    const seed = semearCrmAntigo(buildSeed());
     const estado = { channels: [...seed.channels] } as DataState;
     const fotografia = acrescentarCanaisProjetados(estado, [projetado]);
     return { estado, fotografia, doSeed: seed.channels.length };
@@ -190,7 +191,7 @@ describeComBanco("ponte de Canais — Postgres local", () => {
     redefinirGuardaDaTabelaDeCanais();
     const cliente = await pool().connect();
     try {
-      await semear(cliente, espaco, buildSeed());
+      await semear(cliente, espaco, semearCrmAntigo(buildSeed()));
     } finally {
       cliente.release();
     }
@@ -275,7 +276,7 @@ const PASTA_DE_MIGRACOES = fileURLToPath(new URL("../../migracoes", import.meta.
 
 describeComBanco("a ponte em executar() — Postgres local (08-07)", () => {
   const espaco = novoEspacoDeTeste("canaisexec");
-  const seed = buildSeed();
+  const seed = semearCrmAntigo(buildSeed());
   const administrador = seed.members.find((m) => seed.roles.find((r) => r.id === m.roleId)?.base === "administrador")!;
   const contato = seed.contacts.find((c) => c.lifecycle === "ativo" && c.identifiers.some((i) => i.type === "identidadeDeWhatsApp"))!;
   let idComercial = "";
@@ -285,7 +286,7 @@ describeComBanco("a ponte em executar() — Postgres local (08-07)", () => {
     redefinirGuardaDaTabelaDeCanais();
     const cliente = await pool().connect();
     try {
-      await semear(cliente, espaco, buildSeed());
+      await semear(cliente, espaco, semearCrmAntigo(buildSeed()));
     } finally {
       cliente.release();
     }

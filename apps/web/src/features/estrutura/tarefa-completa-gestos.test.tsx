@@ -12,6 +12,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { buildSeed } from "@n1/dominio/seed";
+import { montarTarefaConversacional } from "./tarefa-conversacional-de-teste";
 import type { Canal } from "@n1/dominio/crm/canais";
 import type { ResumoDaTarefaConversacional } from "@n1/dominio/crm/resumo-da-tarefa";
 import type { DataState } from "@n1/dominio/state";
@@ -137,6 +138,8 @@ beforeEach(() => {
     },
   );
   state = buildSeed();
+  // O seed não cria mais a Pasta Meus negócios nem as Tarefas-espelho (15-31): a ficha lê a Tarefa conversacional montada aqui.
+  montarTarefaConversacional(state);
   const lista = state.lists.find((l) => l.id === state.tasks.find((t) => t.id === TAREFA)?.listId);
   if (!lista) throw new Error("a Lista da Tarefa do seed não existe");
   lista.canaisDeAtendimento = ["ck_novo_1", "ck_novo_2"];

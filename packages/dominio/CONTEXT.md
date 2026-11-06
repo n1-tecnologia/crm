@@ -44,6 +44,19 @@ como chama — o closure continua o mesmo, só a exportação por baixo mudou.
   nomear o Ator de um Registro. A interface reexporta de lá, para haver uma
   fonte só.
 
+**O seed não cria o CRM antigo (Fase 15, 15-31, 3.5.3, UCR-11, D-15-13).** `buildSeed()` nasce sem Contato, Empresa,
+Vínculo, Funil, Negócio, Canal e Conversa (só as duas Conversas de Grupo, F14-D-05) e sem a Pasta "Meus negócios" e as
+Listas espelho dos Funis; a demonstração do CRM é `npm run bootstrap:crm-demo -w @n1/api`, que carrega as mesmas linhas nas
+tabelas novas com os mesmos ids. O que o seed guarda em `registros` para ids do CRM continua, apontando para o demo:
+os Vínculos de Tarefa (`lnk_*`, `lnk_cr_*`, `lnk_tsk_pv_*`), a Proveniência (com o nome do Contato escrito na Tarefa de
+Pós-venda), o cliente das Contas a receber (`cnt_cr_*`), as Participações dos Grupos (id do Contato e número de WhatsApp
+calculado, Canal participante `chn_wpp` com o identificador `+5511987654321`) e as âncoras/escopos de Funil das
+Automações. O atalho "Caixa de entrada" do Comercial também fica. O que o seed antigo fazia SOBRE esses registros saiu com
+eles: a Tag "Em grupo de alunos" nos Contatos, os Grupos habilitados no Canal e os Envios de Flow nas Conversas do CRM.
+`seed-crm-antigo.ts` (`semearCrmAntigo(estado)`) é o construtor antigo, intacto, **só para testes** de código que sai
+(15-32, 15-33, 15-42) e, por dívida registrada, `ferramentas.test.ts`; nenhum `seed*.ts` nem código de produção o importa,
+a guarda `sem-crm-antigo.test.ts` o lista como congelado e ele sai no 15-43.
+
 `seed-financeiro.ts`/`seed-contas-a-receber.ts` aceitam `{ fixtures: false }`
 (padrão `true`): monta só a configuração do processo, sem os Membros e as
 Tarefas fictícias que reproduzem o histórico do ClickUp — é o que

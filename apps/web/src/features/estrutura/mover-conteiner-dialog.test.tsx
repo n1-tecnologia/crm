@@ -139,6 +139,42 @@ function servidorFalso(): Servidor {
 }
 
 let state: DataState;
+
+/**
+ * A Pasta fixa «Meus negócios» (A9) com uma Lista de Funil dentro. O seed não as cria mais (15-31, D-15-13): os casos de
+ * proteção as montam no próprio arranjo, onde ficavam (Comercial, ordem 3). A proteção sai no 15-41.
+ */
+function montarMeusNegocios(): void {
+  const origem = { kind: "member", id: "mem_julia" } as const;
+  state.folders.push({
+    id: MEUS_NEGOCIOS_ID,
+    workspaceId: state.workspace.id,
+    createdBy: origem,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    lifecycle: "ativo",
+    name: "Meus negócios",
+    order: 3,
+    isPrivate: false,
+    modes: {},
+    blocks: {},
+    parentType: "space",
+    parentId: "spc_com",
+  });
+  state.lists.push({
+    id: "lst_funil_closer",
+    workspaceId: state.workspace.id,
+    createdBy: origem,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    lifecycle: "ativo",
+    name: "Closer",
+    order: 0,
+    isPrivate: false,
+    modeloDeTarefa: "operacional",
+    modes: {},
+    parentType: "folder",
+    parentId: MEUS_NEGOCIOS_ID,
+  });
+}
 let servidor: Servidor;
 
 const THIAGO = "mem_thiago"; // Proprietário
@@ -578,6 +614,7 @@ describe("Mover para… — as linhas de Pasta, Subpasta e Lista da árvore (D-0
   });
 
   it("a Pasta Meus negócios e as Listas dela não têm o ⋯ de mover", async () => {
+    montarMeusNegocios();
     const dosNegocios = state.lists.filter((l) => l.parentId === MEUS_NEGOCIOS_ID);
     expect(dosNegocios.length).toBeGreaterThan(0);
     await abrirArvore();
@@ -685,6 +722,7 @@ describe("Mover para… — o cabeçalho da página da Lista", () => {
   });
 
   it("não aparece na Lista de Meus negócios", async () => {
+    montarMeusNegocios();
     const dosNegocios = state.lists.find((l) => l.parentId === MEUS_NEGOCIOS_ID);
     expect(dosNegocios).toBeDefined();
     await montarPagina(dosNegocios!.id);

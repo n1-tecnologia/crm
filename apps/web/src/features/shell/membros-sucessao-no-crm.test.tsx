@@ -11,6 +11,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { buildSeed } from "@n1/dominio/seed";
+import { contatoAntigoDeTeste } from "@/testes/crm-antigo-de-teste";
 import type { DataState } from "@n1/dominio/state";
 import { ErroDeApi } from "@/dados/crm/cliente-crm";
 import { StoreProvider } from "@/dados/store";
@@ -63,8 +64,9 @@ describe("o diálogo de remover Membro lê a sucessão do CRM nas tabelas", () =
   it("(a) mostra as contagens da api, sem listar Contatos, Empresas, Negócios ou Conversas do estado em memória", () => {
     // Um Contato do modelo antigo deste Membro: se o diálogo ainda lesse o estado, o nome dele apareceria.
     const alvoId = membroEmRemocao.atual;
-    const contatoAntigo = state.contacts[0];
-    if (!contatoAntigo) throw new Error("o seed precisa de um Contato");
+    // O seed não cria mais Contato (15-31): o Contato do modelo antigo, que a tela NÃO pode ler, é posto aqui.
+    const contatoAntigo = contatoAntigoDeTeste({ id: "cnt_antigo_sucessao" });
+    state.contacts.push(contatoAntigo);
     contatoAntigo.ownerMemberId = alvoId;
     contatoAntigo.firstName = "Zenaide";
     contatoAntigo.lastName = "Antiga-do-Estado";

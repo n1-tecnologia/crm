@@ -23,6 +23,7 @@ import { SWRConfig, useSWRConfig } from "swr";
 import { buildSeed } from "@n1/dominio/seed";
 import type { ConversaDetalhada } from "@n1/dominio/crm/conversas";
 import type { DataState } from "@n1/dominio/state";
+import type { Conversation } from "@n1/dominio/types";
 import { StoreProvider } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
 import ConversaPage from "@/app/(shell)/crm/caixa-de-entrada/[conversa]/page";
@@ -368,7 +369,27 @@ describe("página da Conversa — id que a api não conhece (F14-D-05)", () => {
   });
 
   it("(7) 404 e Conversa 1:1 do modelo antigo mostra 'Conversa não encontrada.' (sem ponte de id)", async () => {
-    const antiga = estado.conversations.find((c) => c.id === "cnv_5")!;
+    // O seed não cria mais Conversa 1:1 (15-31): a do modelo antigo que o caso usa é posta aqui.
+    const antiga = {
+      id: "cnv_5",
+      workspaceId: estado.workspace.id,
+      createdBy: { kind: "system", id: "sistema" },
+      createdAt: "2026-10-01T09:00:00.000Z",
+      lifecycle: "ativo",
+      channelId: "chn_wpp",
+      contactId: "cnt_5",
+      state: "aberta",
+      title: "Conversa do modelo antigo",
+      titleEdited: false,
+      drafts: [],
+      starredBy: [],
+      tagIds: [],
+      fieldValues: [],
+      participants: [],
+      messages: [],
+      reopenCount: 0,
+    } as unknown as Conversation;
+    estado.conversations.push(antiga);
     expect(antiga.groupIdentifier).toBeUndefined();
     await montarPagina(antiga.id);
     await waitFor(() => expect(screen.getAllByText("Conversa não encontrada.").length).toBeGreaterThan(0));

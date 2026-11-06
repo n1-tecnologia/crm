@@ -18,6 +18,7 @@ import { contactDisplayName } from "@n1/dominio/derive";
 import { qualificacoesDeLead } from "@n1/dominio/derive-resumo";
 import { diaCivilNoFuso } from "@n1/dominio/recortes-de-tarefas";
 import { buildSeed } from "@n1/dominio/seed";
+import { contatoAntigoDeTeste, conversaAntigaDeTeste } from "@/testes/crm-antigo-de-teste";
 import { StoreProvider } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
 import { makeFormatters } from "@/features/shell/format";
@@ -118,6 +119,9 @@ afterEach(() => {
 
 async function montar() {
   const dados = buildSeed();
+  // O seed não cria mais Contato nem Conversa (15-31): o Lead e a Conversa não lida do modelo antigo, que o Início NÃO lê, são postos aqui.
+  dados.contacts.push(contatoAntigoDeTeste({ id: "cnt_antigo_lead", firstName: "Lead", lastName: "Antigo", ownerMemberId: THIAGO, qualificationId: "cat_qual_lead" }));
+  dados.conversations.push(conversaAntigaDeTeste({ id: "cnv_sdr_1", atribuidaA: THIAGO, title: "Iallas, Full Face Avançado" }));
   const transporte: Transporte = {
     gravar: vi.fn(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." })),
     hidratar: vi.fn(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." })),

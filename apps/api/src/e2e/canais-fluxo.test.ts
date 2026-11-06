@@ -36,6 +36,7 @@
 
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { buildSeed } from "@n1/dominio/seed";
+import { canalAntigoDeTeste } from "../testes/canal-antigo";
 import { buildApp } from "../app";
 import { encerrar, pool } from "../persistencia/conexao";
 import { semear } from "../persistencia/repositorio";
@@ -142,7 +143,10 @@ describeComBanco("Fase 8 ponta a ponta: dois WhatsApps lado a lado, pelo HTTP, c
     await prepararBancoCrm();
     const cliente = await pool().connect();
     try {
-      await semear(cliente, espacoA, buildSeed());
+      // O seed não cria mais Canal (15-31): o Canal antigo `chn_wpp` que a ponte projeta ao lado dos da tabela é posto aqui.
+      const seed = buildSeed();
+      seed.channels.push(canalAntigoDeTeste(seed.workspace.id));
+      await semear(cliente, espacoA, seed);
     } finally {
       cliente.release();
     }
