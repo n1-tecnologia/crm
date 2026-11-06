@@ -23,6 +23,8 @@
  * tabelas, `POST /tarefas-conversacionais`, e a leitura em lote do cartão.
  * `atividades` (15-37) é só leitura, `GET /atividades`: a linha do tempo do CRM
  * novo, por Espaço e Papel; quem grava é cada gesto, na transação dele (15-04).
+ * `nomes` (15-10) é só leitura, `POST /crm/nomes`: o nome de até 200 ids do CRM novo
+ * numa chamada, para as telas que só têm o id (a IA, Contas a receber).
  */
 
 import type { FastifyInstance } from "fastify";
@@ -40,6 +42,7 @@ import { criarServicoDeFunis, type ServicoDeFunis } from "../../servicos/crm/fun
 import { criarServicoDeMensagens, type ServicoDeMensagens } from "../../servicos/crm/mensagens";
 import { criarServicoDeMesclagem, type ServicoDeMesclagem } from "../../servicos/crm/mesclagem";
 import { criarServicoDeNegocios, type ServicoDeNegocios } from "../../servicos/crm/negocios";
+import { criarServicoDeNomes, type ServicoDeNomes } from "../../servicos/crm/nomes";
 import { criarServicoDeNotas, type ServicoDeNotas } from "../../servicos/crm/notas";
 import { criarServicoDeSucessao, type ServicoDeSucessao } from "../../servicos/crm/sucessao";
 import { criarServicoDeTarefasConversacionais, type ServicoDeTarefasConversacionais } from "../../servicos/crm/tarefas-conversacionais";
@@ -53,6 +56,7 @@ import { rotasDeFunis } from "./funis";
 import { rotasDeMensagens } from "./mensagens";
 import { rotasDeMesclagem } from "./mesclagem";
 import { rotasDeNegocios } from "./negocios";
+import { rotasDeNomes } from "./nomes";
 import { rotasDeNotas } from "./notas";
 import { rotasDeSucessao } from "./sucessao";
 import { rotasDeTarefasConversacionais } from "./tarefas-conversacionais";
@@ -86,6 +90,8 @@ export interface OpcoesDeCrm {
   readonly tarefasConversacionais?: ServicoDeTarefasConversacionais;
   /** Injeção só para teste: troca o serviço real de leitura das Atividades por um falso, sem banco. */
   readonly atividades?: ServicoDeAtividades;
+  /** Injeção só para teste: troca o serviço real de nomes em lote por um falso, sem banco. */
+  readonly nomes?: ServicoDeNomes;
   /** Padrão: lê Papel e Membro de `plataforma.registros`. Injeção para teste sem banco. */
   readonly acesso?: AcessoAoCrm;
 }
@@ -122,4 +128,6 @@ export async function rotasDeCrm(app: FastifyInstance, opcoes: OpcoesDeCrm = {})
   await app.register(rotasDeTarefasConversacionais, { servico: tarefasConversacionais });
   const atividades = opcoes.atividades ?? criarServicoDeAtividades({ pool: obterPool, acesso });
   await app.register(rotasDeAtividades, { servico: atividades });
+  const nomes = opcoes.nomes ?? criarServicoDeNomes({ pool: obterPool, acesso });
+  await app.register(rotasDeNomes, { servico: nomes });
 }

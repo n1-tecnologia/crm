@@ -38,8 +38,8 @@ export interface ServicoDeAtividades {
   listar(membro: MembroDaSessao, filtro: FiltroDeAtividades): Promise<ResultadoCrm<ActivityRecord[]>>;
 }
 
-/** O recurso de permissão de cada tipo de objeto da Atividade (as cadeias de `ActivityRecord.objectType`). */
-const RECURSO_DO_TIPO: Readonly<Record<TipoDeObjetoDoCrm, RecursoCrm>> = {
+/** O recurso de permissão de cada tipo de objeto da Atividade (as cadeias de `ActivityRecord.objectType`). Os nomes em lote (15-10) leem o mesmo mapa. */
+export const RECURSO_DO_TIPO: Readonly<Record<TipoDeObjetoDoCrm, RecursoCrm>> = {
   contact: "contato",
   company: "empresa",
   deal: "negocio",
@@ -48,7 +48,7 @@ const RECURSO_DO_TIPO: Readonly<Record<TipoDeObjetoDoCrm, RecursoCrm>> = {
   channel: "canal",
 };
 
-function ehTipoDoCrm(tipo: string): tipo is TipoDeObjetoDoCrm {
+export function ehTipoDoCrm(tipo: string): tipo is TipoDeObjetoDoCrm {
   return (TIPOS_DE_OBJETO_DO_CRM as readonly string[]).includes(tipo);
 }
 
