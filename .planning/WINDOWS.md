@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 50
+open_count: 49
 waived_count: 2
-fixed_count: 17
-total_count: 69
-last_updated: 2026-11-06T22:01:19.208Z
+fixed_count: 21
+total_count: 72
+last_updated: 2026-11-06T22:38:24.149Z
 ---
 
 # Broken Windows Ledger
@@ -49,9 +49,9 @@ last_updated: 2026-11-06T22:01:19.208Z
 | 32 | 15 | deviation | apps/web/src/features/crm/conversation-thread.tsx |  | 15-20: a aba Meet do fio acha as Reunioes pelos Vinculos da Tarefa com os ids dos Negocios do Contato em GET /negocios?contatoId=; os Vinculos de hoje apontam para ids de Negocio do modelo antigo, entao a aba fica sem Reunioes em producao ate o script de migracao preservar os ids (mesma regra das fichas, 15-13). Tambem: o fio mostra as 200 ultimas Mensagens da Conversa, sem carregar as mais antigas | fixed |  | 2026-11-06T13:05:24.509Z | 2026-11-06T19:45:26.144Z |
 | 33 | 15 | deviation | apps/api/src/repositorios/crm/inicio.ts |  | 15-18: "Conversas resolvidas" das estatisticas do Inicio agora conta as Conversas resolvidas de que o Membro e o Atribuido (resolvida_em), nao as que ele clicou em resolver: o modelo novo nao guarda quem resolveu e resolver nao grava Atividade (D-15-09). Reabrir e resolver de novo conta uma vez (a Conversa), nao duas. Suposicao a confirmar com o dono; se ele quiser o ato de quem clicou, gravar o Ator ao resolver (dominio, api e migracao) | open |  | 2026-11-06T13:24:05.365Z |  |
 | 34 | 15 | deviation | apps/web/src/features/inicio/panorama-do-robo.ts |  | 15-18: GET /crm/inicio/panorama, /leads-a-atender e /estatisticas e os hooks usePanoramaDoCrm, useLeadsAAtender e useEstatisticasDoCrm existem, mas nenhuma tela os chama ainda: o panorama do robo do Inicio (linha 24, 15-14), o painel de Leads e as estatisticas seguem no store ate o 15-23 trocar as telas. Nao ha mudanca visivel neste plano | fixed |  | 2026-11-06T13:24:05.443Z | 2026-11-06T17:53:47.911Z |
-| 35 | 15 | deviation | packages/dominio/src/operations/automations.ts |  | 15-19: as Automacoes de Contas a receber ({{cliente}}, {{donoDoCliente}}, mentionClientOwner) ainda leem nome e dono do cliente em state.contacts (contatoDoCliente); clienteDe agora so devolve a referencia. Uma serie criada para um Contato de plataforma.contatos (id fora do modelo antigo) faz o comentario de cobranca dizer 'o cliente' e nao mencionar o dono dele; as contas do modelo antigo seguem como antes. automations.ts entrou na lista CONGELADOS do sem-crm-antigo do dominio. Resolver injetando nome e dono por OpcoesDaAgenda (como cnpjPorEmpresa) lidos das tabelas, antes do 3.5.4 tirar state.contacts | open |  | 2026-11-06T13:42:09.740Z |  |
+| 35 | 15 | deviation | packages/dominio/src/operations/automations.ts |  | 15-19: as Automacoes de Contas a receber ({{cliente}}, {{donoDoCliente}}, mentionClientOwner) ainda leem nome e dono do cliente em state.contacts (contatoDoCliente); clienteDe agora so devolve a referencia. Uma serie criada para um Contato de plataforma.contatos (id fora do modelo antigo) faz o comentario de cobranca dizer 'o cliente' e nao mencionar o dono dele; as contas do modelo antigo seguem como antes. automations.ts entrou na lista CONGELADOS do sem-crm-antigo do dominio. Resolver injetando nome e dono por OpcoesDaAgenda (como cnpjPorEmpresa) lidos das tabelas, antes do 3.5.4 tirar state.contacts | fixed |  | 2026-11-06T13:42:09.740Z | 2026-11-06T22:38:14.159Z |
 | 36 | 15 | deviation | apps/web/src/features/estrutura/financeiro/use-nomes-dos-clientes.ts |  | 15-19: o nome do cliente de Contas a receber vem de POST /crm/nomes; sem nome (carregando, Membro suspenso por WR-03, Papel sem ler Contato) a lista, o cartao e a busca mostram 'Cliente'; o cartao financeiro faz uma chamada por cartao visivel; a serie so aceita Contato como cliente (Empresa nao, o input da operacao tem so contactId); createReceivableSeries ganhou o 4o argumento clientes (opcional, vazio recusa) | open |  | 2026-11-06T13:42:09.807Z |  |
-| 37 | 15 | deviation | apps/web/src/features/ferramentas/criar-grupo-dialog.tsx |  | 15-22: o link de convite do Novo Grupo nao sai para os convidados: enviarLinkDeConvite abre a Conversa 1:1 por startConversation, que ainda le Canal e Contato do modelo antigo (state.contacts), e o Contato da ficha nova nao esta la; o Grupo nasce e a tela avisa 'o link de convite nao saiu: <nome>: Contato nao encontrado.'. Resolver quando a Conversa 1:1 do convite passar ao modelo novo (Sessao 6 / 3.5.4) | open |  | 2026-11-06T14:14:34.792Z |  |
+| 37 | 15 | deviation | apps/web/src/features/ferramentas/criar-grupo-dialog.tsx |  | 15-22: o link de convite do Novo Grupo nao sai para os convidados: enviarLinkDeConvite abre a Conversa 1:1 por startConversation, que ainda le Canal e Contato do modelo antigo (state.contacts), e o Contato da ficha nova nao esta la; o Grupo nasce e a tela avisa 'o link de convite nao saiu: <nome>: Contato nao encontrado.'. Resolver quando a Conversa 1:1 do convite passar ao modelo novo (Sessao 6 / 3.5.4) | fixed |  | 2026-11-06T14:14:34.792Z | 2026-11-06T22:38:14.226Z |
 | 38 | 15 | deviation | apps/web/src/features/ferramentas/conversa-do-grupo.tsx |  | 15-22: na Conversa do Grupo a Mensagem recebida de um participante mostra 'Participante' em vez do nome: o Identificador da Mensagem (viaIdentifierId) era de um Contato do modelo antigo e o Contato da ficha nova nao tem como casar com ele. Volta a ter nome quando a Mensagem de Grupo passar ao modelo novo (Sessao 6) | open |  | 2026-11-06T14:14:34.854Z |  |
 | 39 | 15 | deviation | apps/web/src/features/ferramentas/flow-popup.tsx |  | 15-22: enviar o Flow a um Contato continua escolhendo uma Conversa 1:1 de state.conversations (enviarFlow recebe conversationId, F14-D-05), nao o seletor de Contatos com WhatsApp que o plano citava; o nome vem de POST /crm/nomes (sem nome, o titulo da Conversa). Um Contato da ficha nova sem Conversa no modelo antigo nao e enviavel. Resolver quando o envio e a resposta de Flow passarem ao modelo novo (Sessao 7) | open |  | 2026-11-06T14:14:34.917Z |  |
 | 40 | 15 | deviation | apps/web/src/features/crm/coluna-do-contato.tsx |  | 15-24: a coluna do Contato da Caixa nao tem mais o ponto verde de janela de resposta aberta, as acoes LinkedIn e Tarefa (virou Instagram e Abrir ficha), o resumo escrito pelo Agente Enriquecedor (mostra a descricao do Contato) nem a temperatura (D-15-06); o painel Tags da Conversa saiu porque plataforma.conversas nao guarda Tags. Se o dono quiser o ponto da janela ou as Tags da Conversa de volta, abrir na api e no dominio | open |  | 2026-11-06T14:33:24.856Z |  |
@@ -77,13 +77,16 @@ last_updated: 2026-11-06T22:01:19.208Z
 | 60 | 15 | deviation | .planning/phases/15-unifica-o-do-crm-telas-no-modelo-novo-e-remo-o-do-modelo-ant/15-ENSAIO.md |  | 15-30: decisao do Funil do ws_n1 e achados da Pasta. O CRM antigo do ws_n1 tem so o Funil fnl_padrao 'Padrao' (1 Etapa 'Novo', nenhum Negocio, nenhum Contato); --funil=guardar deixa o CRM novo como esta (2 Funis, 6 Etapas), --funil=migrar acrescenta 1 Funil vazio e 1 Etapa (3 Funis, 7 Etapas, 2 linhas de crm_de_para), sem nome em uso. A Pasta Meus negocios nao existe no ws_n1; em 16 dos 18 Espacos de teste ela tem Tarefa em 4 Listas (18 Tarefas) e por isso nao sai (atualiza o aviso 51: sao 16, nao 17). O dono decide o Funil no --seco do dia | open |  | 2026-11-06T20:19:25.669Z |  |
 | 61 | 15 | deviation | packages/dominio/src/seed.ts |  | 15-31: as Automacoes do seed com escopo de Lista espelho (aut_clo_proposta, escopo lst_funil_closer) e as Acoes criar_tarefa com alvo lst_funil_sdr/lst_funil_closer apontam para Listas que sairam do seed com a Pasta Meus negocios; num estado novo a aut_clo_proposta nasce inoperante (escopo eliminado (Lista)). seed-ia.test.ts e ia/automacoes.test.ts passaram a esperar isso. Alguem precisa decidir o destino delas (mover para o Funil, ou remover) antes do 15-41. | open |  | 2026-11-06T20:48:44.453Z |  |
 | 62 | 15 | deviation | packages/dominio/src/seed-ferramentas.ts |  | 15-31: sem Contato, Canal e Conversa do CRM no seed, saiu do seed o que as Ferramentas faziam SOBRE eles: os Envios e Respostas de Flow nas Conversas cnv_5/9/13/17 (4 Mensagens e 2 Registros de Atividade), a Tag Em grupo de alunos nos Contatos e o groupsEnabled do Canal chn_wpp. O Flow, as versoes, os Grupos, as Participacoes por id e as Conversas de Grupo ficam. As metricas do Flow nascem com zero envios e o demo (bootstrap:crm-demo) nao liga Grupos no Canal. | open |  | 2026-11-06T20:48:44.567Z |  |
-| 63 | 15 | deviation | packages/dominio/src/operations/ferramentas.test.ts |  | 15-31: ferramentas.test.ts (Grupo, Comunidade e Flow, 15-07/15-17) depende do Canal, dos Contatos e das Conversas do CRM antigo e dos Envios de Flow; reescrever as 933 linhas passou do escopo do plano, entao o beforeEach usa semearCrmAntigo(buildSeed()). O 15-43 apaga semearCrmAntigo mas Grupo/Flow ficam ate as Sessoes 6 e 7: este teste precisa montar Canal, Contatos e Conversas proprios antes do 15-43. | open |  | 2026-11-06T20:48:44.683Z |  |
+| 63 | 15 | deviation | packages/dominio/src/operations/ferramentas.test.ts |  | 15-31: ferramentas.test.ts (Grupo, Comunidade e Flow, 15-07/15-17) depende do Canal, dos Contatos e das Conversas do CRM antigo e dos Envios de Flow; reescrever as 933 linhas passou do escopo do plano, entao o beforeEach usa semearCrmAntigo(buildSeed()). O 15-43 apaga semearCrmAntigo mas Grupo/Flow ficam ate as Sessoes 6 e 7: este teste precisa montar Canal, Contatos e Conversas proprios antes do 15-43. | fixed |  | 2026-11-06T20:48:44.683Z | 2026-11-06T22:38:14.292Z |
 | 64 | 15 | deviation | packages/dominio/src/seed-produto.ts |  | 15-31: as Reunioes do processo comercial (tsk_reuniao_1/2/3 e tsk_call_ref, ligadas a Negocio) moravam no seed do produto na Lista de Meus negocios do Funil; sem a Pasta, a poda as leva junto com a arvore de demonstracao, e buildProductSeed() nasce sem Tarefa de hoje para o Thiago. rehomeMeetings saiu. O seed do produto so e usado em testes; derive-resumo.test.ts passou a conferir o seed completo. | open |  | 2026-11-06T20:48:44.782Z |  |
 | 65 | 15 | deviation | packages/dominio/src/operations/ferramentas/conversa-de-grupo.ts |  | 15-32: o plano mandava apagar operations/conversations.ts e tirar os 11 nomes de Conversa de OPERACOES, mas Grupo, Flow e Automacao (F14-D-05) ainda chamam startConversation, sendMessage, sendMessageSemConferencia e receiveMessage, e a Conversa de grupo na Caixa ainda resolve, reabre, atribui, estrela e manda para a lixeira pelo store (linha 41). Ficaram em ferramentas/conversa-de-grupo.ts (com recusaDeEscritaNoCrmAntigo, que era de crm-antigo.ts): so resolveConversation, reopenConversation, assignConversation, trashConversation e toggleConversationStar seguem em OPERACOES e no barril; por isso 40 nomes (nao 45) respondem 404 em POST /operacoes/:nome. Sai com Grupo e Flow (Sessoes 6 e 7); 15-42 e 15-43 nao podem apagar este arquivo, e a linha 37 (startConversation le Canal e Contato antigos) continua valendo. | open |  | 2026-11-06T21:19:55.942Z |  |
-| 66 | 15 | deviation | packages/dominio/src/operations/sobre-o-crm-antigo.test.ts |  | 15-32: os blocos de operations.test.ts que nao testavam so operacao apagada (Mensageria e Adocao de Rascunho de sendMessage/receiveMessage, Suspeita de Duplicidade, Leitura de Widget, Barra global, Modelo de Tarefa da Lista com Contato antigo) foram movidos sem mudar para sobre-o-crm-antigo.test.ts, que ainda usa semearCrmAntigo; crm/capacidades.test.ts tambem (sendMessage fora da janela, estado antigo). operations.test.ts ficou sem semearCrmAntigo. O 15-42 apaga as leituras antigas com os blocos delas e o 15-43 apaga semearCrmAntigo: o que valer para o CRM novo precisa ser reescrito sobre as tabelas antes. | open |  | 2026-11-06T21:19:56.005Z |  |
+| 66 | 15 | deviation | packages/dominio/src/operations/sobre-o-crm-antigo.test.ts |  | 15-32: os blocos de operations.test.ts que nao testavam so operacao apagada (Mensageria e Adocao de Rascunho de sendMessage/receiveMessage, Suspeita de Duplicidade, Leitura de Widget, Barra global, Modelo de Tarefa da Lista com Contato antigo) foram movidos sem mudar para sobre-o-crm-antigo.test.ts, que ainda usa semearCrmAntigo; crm/capacidades.test.ts tambem (sendMessage fora da janela, estado antigo). operations.test.ts ficou sem semearCrmAntigo. O 15-42 apaga as leituras antigas com os blocos delas e o 15-43 apaga semearCrmAntigo: o que valer para o CRM novo precisa ser reescrito sobre as tabelas antes. | fixed |  | 2026-11-06T21:19:56.005Z | 2026-11-06T22:38:14.359Z |
 | 67 | 15 | deviation | packages/dominio/src/operations/ferramentas/conversa-de-grupo.ts |  | 15-33: com a ponte dos Canais fora de GET /estado e de executar(), state.channels deixou de ter o Canal de plataforma.canais. Para Grupo, Flow e Automacao continuarem enviando, sendMessage, startConversation e receiveMessage (conversa-de-grupo.ts) acham o Canal primeiro em state.channels e, na falta dele, no crm.canais que o servidor le da tabela (canalPeloId + canalComoChannel; SendMessageInput ganhou crm opcional; grupos.ts, flows.ts e automacoes.ts o repassam). NAO e projecao: o Canal nao entra no estado nem e gravado. Mensagens de modelo seguem vazias (a tabela nao guarda modelos, linha 20). Sai com o arquivo, nas Sessoes 6 e 7; as linhas 35, 37 e 41 continuam abertas (Contato antigo ainda e lido de state.contacts). | open |  | 2026-11-06T21:40:47.161Z |  |
 | 68 | 15 | deviation | apps/api/src/servicos/crm/canais.ts |  | 15-33: criar ou renomear um Canal deixou de conferir nome e conta contra os Canais antigos de plataforma.registros (canalAntigoEmConflito saiu; o Canal so existe em plataforma.canais). Antes do corte, um Canal novo pode repetir nome ou numero de um chn_* antigo; o --seco e o --migrar do 15-28 relatam canal-repetido e id-ja-existe, e o chn_* antigo repetido fica de fora do que o --migrar leva (so em registros_crm_antigo). Tambem saiu o campo canaisMs da medicao de executar() (MedicaoDaExecucao e a linha 'gravacao medida'): nao ha mais leitura de Canal para medir; idasEVoltas de uma gravacao comum e 2 tambem na primeira do processo. | open |  | 2026-11-06T21:40:47.230Z |  |
 | 69 | 15 | deviation | apps/web/src/app/(shell)/estrutura/listas/[lista]/page.tsx |  | 15-41: a Lista da Pasta Meus negocios ainda esconde as Tarefas com proveniencia 'deal' (filtro pastaDeNegocios, que le MEUS_NEGOCIOS_ID); o resto da tela ja a trata como Pasta comum. Sai com a Pasta (script de migracao, D-15-14) e com a constante (15-43), ou antes se o dono quiser ver essas Tarefas nos Espacos de teste | open |  | 2026-11-06T22:01:19.208Z |  |
+| 70 | 15 | deviation | packages/dominio/src/operations/ferramentas/conversa-de-grupo.ts |  | 15-42: com o Contato lido de crm.contatos (WINDOWS #37), receiveMessage nao devolve mais a ativo o Contato arquivado ou na lixeira que recebe Mensagem (RN-CON-13): a tabela plataforma.contatos nao e gravada por esta composicao, entao a Resposta de Flow e a Mensagem recebida entram na Conversa e o estado do Contato fica como o servidor o leu. Tambem saiu a conferencia do consentimento de marketing do Contato antigo no envio (o Canal da tabela nao guarda Mensagens de modelo, linha 20). Se o dono quiser a restauracao por Mensagem recebida, ela precisa de um aoConfirmar que grave o Contato | open |  | 2026-11-06T22:38:24.018Z |  |
+| 71 | 15 | deviation | packages/dominio/src/operations/automations.ts |  | 15-42: o nome e o dono do cliente das Automacoes de Contas a receber (R4/R5) chegam por OpcoesDaAgenda.clientes, lidos de plataforma.contatos pelo scheduler-worker na transacao da volta (apps/api/src/automacoes/clientes-da-lista.ts) e mesclados pela ponte do Agente. A Execucao disparada por EVENTO (statusAlterado, tarefaCriada etc., dentro de uma operacao) nao recebe o dado: a Automacao com {{cliente}} ou mentionClientOwner diz 'o cliente' e nao menciona o dono. Hoje so a agenda (R4 D+30, R5) usa esses tokens; se uma Automacao por evento passar a usa-los, executar() precisa ler os clientes antes da operacao | open |  | 2026-11-06T22:38:24.083Z |  |
+| 72 | 15 | deviation | packages/dominio/src/operations/members.ts |  | 15-42: o Registro de Atividade do ato de governanca 'acesso concedido a Recurso privado' (grantGovernanceAccess) nomeia o Recurso pelo id quando ele e um Funil: o nome do Funil antigo (state.funnels) saiu de resourceName e o Funil novo vive em plataforma.funis, que o dominio nao le. Espaco, Pasta, Lista e Colecao seguem nomeados. Se o dono quiser o nome do Funil no Registro, a rota precisa injeta-lo como faz com os nomes do CRM | open |  | 2026-11-06T22:38:24.149Z |  |
 
 ````json
 [
@@ -536,10 +539,10 @@ last_updated: 2026-11-06T22:01:19.208Z
     "file": "packages/dominio/src/operations/automations.ts",
     "line": null,
     "description": "15-19: as Automacoes de Contas a receber ({{cliente}}, {{donoDoCliente}}, mentionClientOwner) ainda leem nome e dono do cliente em state.contacts (contatoDoCliente); clienteDe agora so devolve a referencia. Uma serie criada para um Contato de plataforma.contatos (id fora do modelo antigo) faz o comentario de cobranca dizer 'o cliente' e nao mencionar o dono dele; as contas do modelo antigo seguem como antes. automations.ts entrou na lista CONGELADOS do sem-crm-antigo do dominio. Resolver injetando nome e dono por OpcoesDaAgenda (como cnpjPorEmpresa) lidos das tabelas, antes do 3.5.4 tirar state.contacts",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-06T13:42:09.740Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-06T22:38:14.159Z",
     "milestone": "v1.0"
   },
   {
@@ -562,10 +565,10 @@ last_updated: 2026-11-06T22:01:19.208Z
     "file": "apps/web/src/features/ferramentas/criar-grupo-dialog.tsx",
     "line": null,
     "description": "15-22: o link de convite do Novo Grupo nao sai para os convidados: enviarLinkDeConvite abre a Conversa 1:1 por startConversation, que ainda le Canal e Contato do modelo antigo (state.contacts), e o Contato da ficha nova nao esta la; o Grupo nasce e a tela avisa 'o link de convite nao saiu: <nome>: Contato nao encontrado.'. Resolver quando a Conversa 1:1 do convite passar ao modelo novo (Sessao 6 / 3.5.4)",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-06T14:14:34.792Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-06T22:38:14.226Z",
     "milestone": "v1.0"
   },
   {
@@ -900,10 +903,10 @@ last_updated: 2026-11-06T22:01:19.208Z
     "file": "packages/dominio/src/operations/ferramentas.test.ts",
     "line": null,
     "description": "15-31: ferramentas.test.ts (Grupo, Comunidade e Flow, 15-07/15-17) depende do Canal, dos Contatos e das Conversas do CRM antigo e dos Envios de Flow; reescrever as 933 linhas passou do escopo do plano, entao o beforeEach usa semearCrmAntigo(buildSeed()). O 15-43 apaga semearCrmAntigo mas Grupo/Flow ficam ate as Sessoes 6 e 7: este teste precisa montar Canal, Contatos e Conversas proprios antes do 15-43.",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-06T20:48:44.683Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-06T22:38:14.292Z",
     "milestone": "v1.0"
   },
   {
@@ -939,10 +942,10 @@ last_updated: 2026-11-06T22:01:19.208Z
     "file": "packages/dominio/src/operations/sobre-o-crm-antigo.test.ts",
     "line": null,
     "description": "15-32: os blocos de operations.test.ts que nao testavam so operacao apagada (Mensageria e Adocao de Rascunho de sendMessage/receiveMessage, Suspeita de Duplicidade, Leitura de Widget, Barra global, Modelo de Tarefa da Lista com Contato antigo) foram movidos sem mudar para sobre-o-crm-antigo.test.ts, que ainda usa semearCrmAntigo; crm/capacidades.test.ts tambem (sendMessage fora da janela, estado antigo). operations.test.ts ficou sem semearCrmAntigo. O 15-42 apaga as leituras antigas com os blocos delas e o 15-43 apaga semearCrmAntigo: o que valer para o CRM novo precisa ser reescrito sobre as tabelas antes.",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-06T21:19:56.005Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-06T22:38:14.359Z",
     "milestone": "v1.0"
   },
   {
@@ -981,6 +984,45 @@ last_updated: 2026-11-06T22:01:19.208Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-06T22:01:19.208Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 70,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "packages/dominio/src/operations/ferramentas/conversa-de-grupo.ts",
+    "line": null,
+    "description": "15-42: com o Contato lido de crm.contatos (WINDOWS #37), receiveMessage nao devolve mais a ativo o Contato arquivado ou na lixeira que recebe Mensagem (RN-CON-13): a tabela plataforma.contatos nao e gravada por esta composicao, entao a Resposta de Flow e a Mensagem recebida entram na Conversa e o estado do Contato fica como o servidor o leu. Tambem saiu a conferencia do consentimento de marketing do Contato antigo no envio (o Canal da tabela nao guarda Mensagens de modelo, linha 20). Se o dono quiser a restauracao por Mensagem recebida, ela precisa de um aoConfirmar que grave o Contato",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T22:38:24.018Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 71,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "packages/dominio/src/operations/automations.ts",
+    "line": null,
+    "description": "15-42: o nome e o dono do cliente das Automacoes de Contas a receber (R4/R5) chegam por OpcoesDaAgenda.clientes, lidos de plataforma.contatos pelo scheduler-worker na transacao da volta (apps/api/src/automacoes/clientes-da-lista.ts) e mesclados pela ponte do Agente. A Execucao disparada por EVENTO (statusAlterado, tarefaCriada etc., dentro de uma operacao) nao recebe o dado: a Automacao com {{cliente}} ou mentionClientOwner diz 'o cliente' e nao menciona o dono. Hoje so a agenda (R4 D+30, R5) usa esses tokens; se uma Automacao por evento passar a usa-los, executar() precisa ler os clientes antes da operacao",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T22:38:24.083Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 72,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "packages/dominio/src/operations/members.ts",
+    "line": null,
+    "description": "15-42: o Registro de Atividade do ato de governanca 'acesso concedido a Recurso privado' (grantGovernanceAccess) nomeia o Recurso pelo id quando ele e um Funil: o nome do Funil antigo (state.funnels) saiu de resourceName e o Funil novo vive em plataforma.funis, que o dominio nao le. Espaco, Pasta, Lista e Colecao seguem nomeados. Se o dono quiser o nome do Funil no Registro, a rota precisa injeta-lo como faz com os nomes do CRM",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T22:38:24.149Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }
