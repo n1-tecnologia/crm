@@ -432,6 +432,44 @@ describe("Grupos — Participações e Captação", () => {
     expect(e3.participacao).toBeUndefined();
   });
 
+  it("numerosAResolver — os eventos do provedor pedem o número do Participante, e o de um Canal do Espaço nunca entra", () => {
+    const crm = crmDoSeed(state);
+    expect(numerosAResolver("receberPedidoDeEntrada", state, ["grp_turma_03", "5511999990000"], crm)).toEqual(["5511999990000"]);
+    expect(numerosAResolver("registrarEntradaNoGrupo", state, ["grp_turma_02", { numero: "5511999990001" }], crm)).toEqual(["5511999990001"]);
+    expect(numerosAResolver("simularEntradaPorClique", state, ["clq_1", "5511999990002"], crm)).toEqual(["5511999990002"]);
+    expect(numerosAResolver("registrarEntradaNoGrupo", state, ["grp_turma_02", { numero: "+5511987654321" }], crm)).toEqual([]);
+    expect(numerosAResolver("criarGrupo", state, [{ nome: "X", canalId: "chn_wpp" }], crm)).toEqual([]);
+  });
+
+  it("evento do provedor — sem o Contato do servidor o Pedido e a entrada são recusados, sem Participação e sem Atividade, e a frase não traz o número", () => {
+    const t3 = grupo("grp_turma_03");
+    const pedidos = t3.pedidosDeEntrada.length;
+    const atividades = state.activity.length;
+    const pedido = receberPedidoDeEntrada(state, t3.id, "5511999990000", {}, crmDoSeed(state));
+    expect(pedido.ok).toBe(false);
+    const entrada = registrarEntradaNoGrupo(state, "grp_turma_02", { numero: "5511999990000" }, crmDoSeed(state));
+    expect(entrada.ok).toBe(false);
+    for (const r of [pedido, entrada]) if (!r.ok) expect(r.error).toBe("Contato do participante não resolvido.");
+    expect(t3.pedidosDeEntrada.length).toBe(pedidos);
+    expect(state.activity.length).toBe(atividades);
+  });
+
+  it("evento do provedor — um Contato lido de plataforma.contatos (o sobrevivente de uma mesclagem) é o que a Participação usa, sem criar outro", () => {
+    const crm: CrmDasFerramentas = { ...crmDoSeed(state), contatos: [{ id: "cnt_sobrevivente", nome: "Quem ficou", estado: "ativo", whatsapp: "+5511999990003" }] };
+    const atividades = state.activity.length;
+    const p = unwrap(registrarEntradaNoGrupo(state, "grp_turma_02", { numero: "5511999990003" }, crm));
+    expect(p.contactId).toBe("cnt_sobrevivente");
+    expect(state.activity.filter((a) => a.action === "Contato criado por Participação em Grupo")).toHaveLength(0);
+    expect(state.activity.length).toBeGreaterThan(atividades);
+  });
+
+  it("evento do provedor — o Contato novo é registrado uma vez só, mesmo quando o número aparece em duas operações da mesma leitura", () => {
+    const crm = crmComContatosACriar(state, ["5511999990004"]);
+    unwrap(registrarEntradaNoGrupo(state, "grp_turma_02", { numero: "5511999990004" }, crm));
+    unwrap(registrarEntradaNoGrupo(state, "grp_turma_01", { numero: "5511999990004" }, crm));
+    expect(state.activity.filter((a) => a.action === "Contato criado por Participação em Grupo" && a.objectId === "cnt_novo_5511999990004")).toHaveLength(1);
+  });
+
   it("evento do provedor — entrada de outro Canal do Espaço de Trabalho vira “É o Canal”, sem Contato", () => {
     const antes = state.contacts.length;
     const p = unwrap(registrarEntradaNoGrupo(state, "grp_turma_02", { numero: "+5511987654321" }, crmDoSeed(state)));
