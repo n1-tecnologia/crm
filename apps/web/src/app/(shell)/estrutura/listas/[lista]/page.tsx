@@ -254,10 +254,11 @@ export default function ListaPage({
   // financeira: pelo id da Lista, não pelo nome de um Tipo.
   const lente = financeProfileOf(list.id);
   const financeira = lente !== undefined;
-  // Lista da Pasta "Meus negócios": cópia do Funil, não sincronizada. Ela tem
-  // dois lados. No CRM (/crm/meus-negocios/…) mostra os NEGÓCIOS espelhados —
-  // o que abre a conversa, o contato, o roteiro. Na Estrutura mostra só as
-  // TAREFAS (a call, o que se faz), como qualquer outra Lista.
+  // Lista da Pasta "Meus negócios": cópia do Funil, não sincronizada. O lado do
+  // CRM (os NEGÓCIOS espelhados) só existia sob a rota meus-negocios do CRM, apagada no
+  // 15-26 (F14-D-06): o ramo `espelhoComercial` abaixo já não é alcançável e sai
+  // com o resto do espelho no 15-40. Na Estrutura a Lista mostra só as TAREFAS
+  // (a call, o que se faz), como qualquer outra.
   const pastaDeNegocios = config.path.some(
     (node) => node.type === "folder" && node.id === MEUS_NEGOCIOS_ID,
   );
@@ -493,7 +494,7 @@ export default function ListaPage({
                 Negócios
               </Link>
               {" › "}
-              <Link href="/crm/meus-negocios" className="hover:underline">
+              <Link href="/crm/negocios?meus=1" className="hover:underline">
                 Meus negócios
               </Link>
               {" › "}

@@ -30,6 +30,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import {
   Bell,
+  Briefcase,
   Building2,
   ChevronLeft,
   ChevronRight,
@@ -107,6 +108,10 @@ type Tela = {
   readonly icone: LucideIcon;
   /** Casa também os descendentes: /crm/contatos/123 acende "Contatos". */
   readonly prefixo?: boolean;
+  /** O `href` leva um parâmetro (`?meus=1`): a tela só acende com ele ligado na URL. */
+  readonly comParametro?: string;
+  /** A tela irmã que leva o parâmetro tira o acendimento desta quando ele está ligado ("Negócios" cede a "Meus negócios"). */
+  readonly semParametro?: string;
 };
 
 type Assunto = {
@@ -117,8 +122,6 @@ type Assunto = {
   readonly comArvore?: boolean;
   /** O assunto "IA" desenha as Sessões de Chat abaixo das telas. */
   readonly comChat?: boolean;
-  /** O assunto "CRM" desenha as Listas de "Meus negócios" (uma por Funil) abaixo das telas. */
-  readonly comMeusNegocios?: boolean;
   /** Para onde o botão do trilho leva quando não é a primeira tela do painel. */
   readonly raiz?: string;
   readonly telas: ReadonlyArray<Tela>;
@@ -148,12 +151,13 @@ const ASSUNTOS: ReadonlyArray<Assunto> = [
     chave: "crm",
     rotulo: "CRM",
     icone: Contact,
-    comMeusNegocios: true,
     telas: [
       { href: "/crm/caixa-de-entrada", rotulo: "Caixa de Entrada", icone: InboxIcon, prefixo: true },
       { href: "/crm/contatos", rotulo: "Contatos", icone: Contact, prefixo: true },
       { href: "/crm/empresas", rotulo: "Empresas", icone: Building2, prefixo: true },
-      { href: "/crm/negocios", rotulo: "Negócios", icone: Handshake, prefixo: true },
+      { href: "/crm/negocios", rotulo: "Negócios", icone: Handshake, prefixo: true, semParametro: "meus" },
+      // F14-D-06: "Meus negócios" não é rota nem árvore, é o filtro "Meus" do quadro de Negócios.
+      { href: "/crm/negocios?meus=1", rotulo: "Meus negócios", icone: Briefcase, comParametro: "meus" },
       { href: "/crm/funis", rotulo: "Funis", icone: Split, prefixo: true },
     ],
   },
@@ -209,12 +213,15 @@ function assuntoDe(pathname: string): Assunto {
 
 const IA_PERSONALIZAR = ["/ia/agentes", "/ia/habilidades", "/ia/automacoes", "/ia/conhecimento", "/ia/aprovacoes"];
 
-function telaAtiva(pathname: string, tela: Tela): boolean {
+function telaAtiva(pathname: string, tela: Tela, busca: URLSearchParams | null): boolean {
   if (tela.href === "/ia/personalizar/agente") {
     return pathname.startsWith("/ia/personalizar") || IA_PERSONALIZAR.some((p) => pathname.startsWith(p));
   }
-  if (tela.prefixo) return pathname === tela.href || pathname.startsWith(tela.href + "/");
-  return pathname === tela.href;
+  if (tela.comParametro !== undefined && busca?.get(tela.comParametro) !== "1") return false;
+  if (tela.semParametro !== undefined && busca?.get(tela.semParametro) === "1") return false;
+  const caminho = tela.href.split("?")[0] ?? tela.href;
+  if (tela.prefixo) return pathname === caminho || pathname.startsWith(caminho + "/");
+  return pathname === caminho;
 }
 
 /* ─────────────────────────────────────────────────────────── a casca */
@@ -290,67 +297,9 @@ function RotuloDeGrupo({ children, acao }: { readonly children: React.ReactNode;
   );
 }
 
-/**
- * A Pasta "Meus negócios" no painel do CRM — a MESMA árvore da Estrutura
- * (a pasta que abre e fecha, o "+" que cria Lista e Subpasta, Mostrar
- * arquivados, cadeado, selo de arquivado), só que os nós apontam para o lado
- * do CRM: /crm/meus-negocios e /crm/meus-negocios/<lista>. O "+" de uma Lista
- * aqui cria um Negócio, que nasce em Negócios.
- */
-function MeusNegociosNoPainel({
-  openCreate,
-}: {
-  readonly openCreate: (kind: ContainerKind, parentType?: "space" | "folder", parentId?: string) => void;
-}) {
-  const { memberId } = useSession();
-  const data = useData((current) => current);
-  const [showArchived, setShowArchived] = useState(false);
-  const pasta = data.folders.find((f) => f.id === MEUS_NEGOCIOS_ID);
-  if (!pasta || pasta.lifecycle === "naLixeira" || !memberSeesResource(data, memberId, pasta.id)) {
-    return <p className="app-meta px-3 py-1">Nenhum Funil visível para você.</p>;
-  }
-  const listsUnder = (parentId: Id) =>
-    data.lists
-      .filter((l) => l.parentId === parentId)
-      .filter((l) => l.lifecycle !== "naLixeira")
-      .filter((l) => l.lifecycle !== "arquivado" || showArchived)
-      .filter((l) => memberSeesResource(data, memberId, l.id));
-  const foldersUnder = (parentId: Id): Folder[] =>
-    data.folders
-      .filter((f) => f.parentId === parentId)
-      .filter((f) => f.lifecycle !== "naLixeira")
-      .filter((f) => f.lifecycle !== "arquivado" || showArchived);
-  const enderecos: EnderecosDaArvore = {
-    pasta: (folder) => (folder.id === MEUS_NEGOCIOS_ID ? "/crm/meus-negocios" : `/crm/meus-negocios?pasta=${folder.id}`),
-    lista: (list) => `/crm/meus-negocios/${list.id}`,
-    novoNaLista: { rotulo: "Negócio", href: () => "/crm/negocios" },
-  };
-  return (
-    <>
-      <ul>
-        <TreeFolder
-          folder={pasta}
-          depth={0}
-          inert={false}
-          foldersUnder={foldersUnder}
-          listsUnder={listsUnder}
-          openCreate={openCreate}
-          enderecos={enderecos}
-        />
-      </ul>
-      <button
-        type="button"
-        onClick={() => setShowArchived((value) => !value)}
-        className="app-meta mt-1 w-full rounded-[var(--r-controle)] px-3 py-1 text-left transition-colors hover:bg-[var(--superficie-hover)]"
-      >
-        {showArchived ? "Ocultar arquivados" : "Mostrar arquivados"}
-      </button>
-    </>
-  );
-}
-
 function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; readonly onRecolher: () => void }) {
   const pathname = usePathname();
+  const busca = useSearchParams();
   const [navegar] = useNavegar();
   const alvo = useAlvo();
   const trilho = useRef<HTMLElement>(null);
@@ -505,7 +454,7 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
         <CascataDeNavegacao key={assunto.chave} className="sem-barra min-h-0 flex-1 overflow-y-auto px-2 pb-3">
           <RotuloDeGrupo>{assunto.rotulo}</RotuloDeGrupo>
           {assunto.telas.map((t) => {
-            const ativo = telaAtiva(pathname, t);
+            const ativo = telaAtiva(pathname, t, busca);
             const contador = t.href === "/notificacoes" ? notificacoes : 0;
             return (
               <Link
@@ -563,20 +512,6 @@ function Navegacao({ recolhido, onRecolher }: { readonly recolhido: boolean; rea
                 {showArchived ? "Ocultar arquivados" : "Mostrar arquivados"}
               </button>
               <TarefasCompartilhadas />
-            </div>
-          ) : null}
-
-          {assunto.comMeusNegocios ? (
-            <div className="mt-4 pt-3" style={{ borderTop: "1px solid var(--linha-sutil)" }}>
-              <RotuloDeGrupo>Pastas de Negócios</RotuloDeGrupo>
-              <MeusNegociosNoPainel openCreate={openCreate} />
-            </div>
-          ) : null}
-
-          {assunto.comMeusNegocios ? (
-            <div className="mt-4 pt-3" style={{ borderTop: "1px solid var(--linha-sutil)" }}>
-              <RotuloDeGrupo>Pastas de Negócios</RotuloDeGrupo>
-              <MeusNegociosNoPainel openCreate={openCreate} />
             </div>
           ) : null}
 
@@ -922,8 +857,9 @@ function TreeShortcut({ shortcut, depth }: { readonly shortcut: SpaceShortcut; r
 }
 
 /**
- * Onde cada nó da árvore leva. A Estrutura é o padrão; o lado do CRM
- * ("Meus negócios") aponta os mesmos nós para /crm/meus-negocios/….
+ * Onde cada nó da árvore leva. A Estrutura é o padrão; a árvore do CRM
+ * ("Meus negócios") saiu do painel (F14-D-06) e o parâmetro ficou para quem
+ * precisar de outro destino.
  */
 type EnderecosDaArvore = {
   readonly pasta: (folder: Folder) => string;

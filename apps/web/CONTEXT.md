@@ -274,8 +274,8 @@ de verdade é a do backend. O escopo "próprios" (vendedor vê só os seus
 Negócios) e a visibilidade de Funil privado ficaram para uma fase futura:
 `privado` é gravado e exibido, mas nenhuma regra o consulta.
 
-**Limitação aceita (D-15).** `/crm/meus-negocios` e a Caixa de Entrada ainda
-leem o modelo antigo do CRM (`state.contacts`, `state.companies`, `state.deals`,
+**Limitação aceita (D-15).** A Caixa de Entrada ainda
+lê o modelo antigo do CRM (`state.contacts`, `state.companies`, `state.deals`,
 `state.pipelines` do `DataState`) e **não mostram os registros da api nova**. A
 Busca global (`/buscar`), a Lixeira (`/configuracoes/lixeira`) e as Notificações
 (inclusive o selo da barra e do trilho) saíram desse grupo no plano 15-14
@@ -293,6 +293,21 @@ quando o id existe no `DataState`, e não há ponte de id antigo para id novo. C
 a migração, que preserva os ids, o mesmo endereço passa a abrir a ficha nova.
 `features/crm/legado/` deixou de existir; `deal-screen.tsx` segue só porque a
 Lista conversacional ainda a embute e sai no plano 15-40.
+
+**"Meus negócios" é um filtro, não uma rota (Fase 15, plano 15-26, UCR-06,
+F14-D-06).** `/crm/meus-negocios` e `/crm/meus-negocios/[lista]` foram apagadas
+(o endereço cai no 404 do app) e o painel do CRM deixou de desenhar a árvore da
+Pasta "Meus negócios" — para todos os Espaços (D-15-14). O lugar dos "meus" é o
+botão **Meus** do quadro de `/crm/negocios` (a página que desenha o
+`QuadroDoFunil`; `/crm/funis/[funil]` é a ficha do Funil e não tem quadro): liga
+`?meus=1` na URL, a lista sai pedida com `proprietarioId` = Membro da sessão
+(`GET /negocios?proprietarioId=`, que só restringe — Papel e Espaço seguem
+valendo na api) e a página soma os totais do cabeçalho com a MESMA chave de SWR
+do quadro. Ligar e desligar mexe só na URL e volta à mesma chave. O atalho
+"Meus negócios" do menu do CRM é `/crm/negocios?meus=1`
+(`Tela.comParametro`/`semParametro` fazem só um dos dois acender). Fica para o
+plano 15-41 o tratamento especial da Pasta fixa na árvore da *Estrutura* (não
+mover, não receber Pastas): Espaços de teste com Tarefas espelho ainda a têm.
 
 **A terceira fronteira (Fase 8): o Canal relacional também fala REST.** Na Fase 8 o
 chat — Caixa de Entrada, fio da Conversa, Listas — seguia no store (D-11) e só

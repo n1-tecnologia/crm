@@ -822,7 +822,7 @@ fronteira.
 
 **O que não mudou.** `types/crm.ts` (`Contact`, `Company`, `Deal`,
 `Pipeline`…), `operations/{contacts,deals}.ts` e o seed de CRM continuam
-inteiros: Caixa de Entrada, Conversas e `/crm/meus-negocios` ainda leem esse
+inteiros: Caixa de Entrada e Conversas ainda leem esse
 modelo (Busca global, Lixeira e Notificações saíram dele no 15-14:
 `notificacoesDoMembro(state, membro, agora, conversasAtribuidas)` recebe as
 Conversas atribuídas e não resolvidas da api — `{ itens, total }`, e é o `total`
