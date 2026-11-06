@@ -143,7 +143,7 @@ describe("Leads a atender — as Qualificações que a api recebe (15-23)", () =
     expect(qualificacoesDeLead(state)).toEqual([]);
   });
 
-  it("a Definição arquivada continua valendo para quem já a tem; só Qualificação conta", () => {
+  it("só a Definição de Qualificação conta: uma Origem chamada Lead não é Qualificação", () => {
     const state = buildProductSeed();
     const indice = state.catalog.findIndex((c) => c.id === "cat_qual_lead");
     const item = exigir(state.catalog[indice], "cat_qual_lead");

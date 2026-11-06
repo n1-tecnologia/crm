@@ -142,13 +142,12 @@ const bloco = (titulo: string): HTMLElement => {
 describe("Início › Leads a atender (15-23, tracer)", () => {
   it("lista os Leads que a api devolveu, com o motivo e o link certo, e pede só as Qualificações Lead do Catálogo", async () => {
     const dados = await montar();
-    await waitFor(() => expect(within(bloco("Leads a atender")).getByText("Marina Alves do CRM")).toBeTruthy());
+    await waitFor(() => expect(within(bloco("Leads a atender")).getByRole("link", { name: /Marina Alves do CRM/ })).toBeTruthy());
 
     const leadsBloco = bloco("Leads a atender");
-    expect(within(leadsBloco).getByText("Otávio Prado do CRM")).toBeTruthy();
-    expect(within(leadsBloco).getByText("Marina Alves do CRM").closest("a")?.getAttribute("href")).toBe("/crm/contatos/ctt_lead_1");
+    expect(within(leadsBloco).getByRole("link", { name: /Marina Alves do CRM/ }).getAttribute("href")).toBe("/crm/contatos/ctt_lead_1");
     // Esperando resposta leva direto à Conversa.
-    expect(within(leadsBloco).getByText("Otávio Prado do CRM").closest("a")?.getAttribute("href")).toBe("/crm/caixa-de-entrada/cnv_lead_2");
+    expect(within(leadsBloco).getByRole("link", { name: /Otávio Prado do CRM/ }).getAttribute("href")).toBe("/crm/caixa-de-entrada/cnv_lead_2");
     expect(within(leadsBloco).getByText(/Sem contato/)).toBeTruthy();
     expect(within(leadsBloco).getByText(/Esperando resposta/)).toBeTruthy();
 
@@ -161,7 +160,7 @@ describe("Início › Leads a atender (15-23, tracer)", () => {
 
   it("os Contatos antigos do Membro com a Qualificação Lead (state.contacts) não entram no bloco", async () => {
     const dados = await montar();
-    await waitFor(() => expect(within(bloco("Leads a atender")).getByText("Marina Alves do CRM")).toBeTruthy());
+    await waitFor(() => expect(within(bloco("Leads a atender")).getByRole("link", { name: /Marina Alves do CRM/ })).toBeTruthy());
     const antigos = dados.contacts.filter((c) => c.ownerMemberId === THIAGO && c.qualificationId === "cat_qual_lead" && c.lifecycle === "ativo");
     expect(antigos.length).toBeGreaterThan(0);
     const texto = bloco("Leads a atender").textContent ?? "";

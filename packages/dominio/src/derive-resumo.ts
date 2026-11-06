@@ -1,29 +1,26 @@
 /**
  * O resumo do Membro no Início: mensagens novas, Leads a atender e as
- * estatísticas do período. Tudo derivado dos registros que já existem —
- * nada aqui é gravado (B100: o que se mostra é recalculado a cada leitura).
+ * estatísticas do período. Tudo derivado — nada aqui é gravado (B100: o que se
+ * mostra é recalculado a cada leitura).
+ *
+ * Desde o 15-23 (3.4.7, UCR-07) o que é do CRM NÃO sai do store: as linhas de
+ * Conversa, os Leads e as ocorrências por dia chegam por argumento, lidas das
+ * rotas (`GET /conversas`, `GET /crm/inicio/*`). Do store só ficam o Catálogo (as
+ * Qualificações "Lead") e as Tarefas. As funções `naoLidas` e `ultimaAtividade`
+ * seguem sobre a Conversa do modelo antigo porque a Caixa de Entrada ainda as usa.
  *
  * Funções puras, sem React: `agora` vem de fora, para o teste fixar o relógio
  * e para o HTML do servidor não depender da hora de quem renderiza.
  */
 
 import { diaCivilNoFuso } from "./recortes-de-tarefas";
-import { effectiveLifecycleOfTask, lastInteraction, memberSeesTask } from "./derive";
+import type { ConversaNaLista } from "./crm/conversas";
+import { effectiveLifecycleOfTask, memberSeesTask } from "./derive";
 import type { DataState } from "./state";
-import type { ActorRef, Contact, Conversation, Id, Instant, Message, Money } from "./types";
+import type { ActorRef, Conversation, Id, Instant, Money } from "./types";
 
 const doMembro = (ator: ActorRef | undefined, memberId: Id): boolean =>
   ator?.kind === "member" && ator.id === memberId;
-
-/** A última Mensagem trocada com o Contato na Conversa: nota interna não conta (mesma leitura de `lastInteraction`). */
-function ultimaMensagemExterna(conversa: Conversation): Message | undefined {
-  let ultima: Message | undefined;
-  for (const mensagem of conversa.messages) {
-    if (mensagem.direction === "interna") continue;
-    if (!ultima || mensagem.createdAt >= ultima.createdAt) ultima = mensagem;
-  }
-  return ultima;
-}
 
 /* ───────────────────────────── Mensagens novas ───────────────────────────── */
 
@@ -47,109 +44,79 @@ export function ultimaAtividade(conversa: Conversation): Instant {
   return ultima?.createdAt ?? conversa.createdAt;
 }
 
-export interface ConversaComNovas {
-  readonly conversa: Conversation;
-  readonly contato: Contact | undefined;
+/** Uma Conversa do bloco "Mensagens novas", como `GET /conversas?naoLidas=true` a devolve. */
+export interface MensagemNovaDaConversa {
+  readonly conversaId: string;
+  /** `null` só quando o Contato não é achado neste Espaço. */
+  readonly contatoNome: string | null;
+  /** As Mensagens recebidas que o Membro ainda não leu nesta Conversa. */
   readonly naoLidas: number;
-  /** A última Mensagem trocada com o Contato (recebida ou enviada; nota interna não conta). */
-  readonly ultima: Message | undefined;
+  /** Quando chegou a Mensagem recebida mais recente; sem ela, a última mudança da Conversa (ISO 8601 UTC). */
   readonly ultimaAtividade: Instant;
 }
 
+export interface MensagensNovasDoMembro {
+  /** A mais recente primeiro. */
+  readonly linhas: readonly MensagemNovaDaConversa[];
+  /** Soma das não lidas das linhas lidas. Com `parcial`, é um piso, não o total do Espaço. */
+  readonly naoLidas: number;
+  /** Quantas Conversas têm Mensagem nova: o `total` da api, não o tamanho da página. */
+  readonly conversas: number;
+  /** A api tem mais Conversas do que as linhas lidas: o número de mensagens é só das lidas. */
+  readonly parcial: boolean;
+}
+
 /**
- * As Conversas que esperam por quem olha: ativas, atribuídas a ele e com
- * Mensagem recebida que ele ainda não leu — a mais recente primeiro. Uma
- * resolvida com não lida CONTA: é a mesma conta da aba "Não lidos" da Caixa
- * de Entrada, o destino do atalho — os dois números têm de bater
- * (PENDENCIAS-FRONTEND P32). Ser Atribuído exige `ver` na Conversa (a Fila é a origem da
- * permissão por referência operacional, B70), então não há filtro de
- * permissão a mais aqui.
+ * As Conversas que esperam por quem olha, como a api as listou
+ * (`naoLidas=true&atribuidoId=<Membro>`: ativas, atribuídas a ele e com Mensagem
+ * recebida depois do ponto de leitura dele). Uma resolvida com não lida CONTA: é
+ * a mesma conta da aba "Não lidos" da Caixa de Entrada, o destino do atalho — os
+ * dois números têm de bater (PENDENCIAS-FRONTEND P32).
+ *
+ * Ninguém soma páginas no navegador sem dizer: a soma das não lidas é só das
+ * linhas lidas, e `parcial` avisa quando a api tem mais Conversas do que veio
+ * (`total` maior que as linhas).
  */
-export function conversasComMensagensNovas(state: DataState, memberId: Id): ConversaComNovas[] {
-  const encontradas: ConversaComNovas[] = [];
-  for (const conversa of state.conversations) {
-    if (conversa.lifecycle !== "ativo") continue;
-    if (!doMembro(conversa.assignee, memberId)) continue;
-    const novas = naoLidas(conversa, memberId);
-    if (novas === 0) continue;
-    encontradas.push({
-      conversa,
-      contato: state.contacts.find((c) => c.id === conversa.contactId),
-      naoLidas: novas,
-      ultima: ultimaMensagemExterna(conversa),
-      ultimaAtividade: ultimaAtividade(conversa),
-    });
-  }
-  return encontradas.sort(
-    (a, b) => b.ultimaAtividade.localeCompare(a.ultimaAtividade) || a.conversa.id.localeCompare(b.conversa.id),
-  );
+export function mensagensNovasDasConversas(itens: readonly ConversaNaLista[], total: number): MensagensNovasDoMembro {
+  const linhas = itens
+    .filter((conversa) => conversa.naoLidas > 0)
+    .map(
+      (conversa): MensagemNovaDaConversa => ({
+        conversaId: conversa.id,
+        contatoNome: conversa.contatoNome,
+        naoLidas: conversa.naoLidas,
+        ultimaAtividade: conversa.ultimaRecebidaEm ?? conversa.atualizadoEm,
+      }),
+    )
+    .sort((a, b) => b.ultimaAtividade.localeCompare(a.ultimaAtividade) || a.conversaId.localeCompare(b.conversaId));
+  return {
+    linhas,
+    naoLidas: linhas.reduce((soma, linha) => soma + linha.naoLidas, 0),
+    conversas: total,
+    parcial: total > itens.length,
+  };
 }
 
 /* ───────────────────────────── Leads a atender ───────────────────────────── */
-
-export type MotivoDoLead = "semContato" | "aguardandoResposta";
-
-export interface LeadAAtender {
-  readonly contato: Contact;
-  readonly motivo: MotivoDoLead;
-  /** Só em `aguardandoResposta`: a Conversa em que a bola está com a organização. */
-  readonly conversa: Conversation | undefined;
-  /** Desde quando espera: o nascimento do Contato, ou a Mensagem recebida sem resposta. */
-  readonly desde: Instant;
-}
 
 const normalizar = (texto: string): string =>
   texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("pt-BR");
 
 /**
- * As Definições de Qualificação chamadas "Lead". Lead não é entidade nem
+ * Os ids das Definições de Qualificação chamadas "Lead". Lead não é entidade nem
  * Etapa de Negócio: é uma Qualificação do Contato (contatos.md, seção 6;
  * negocios.md; Glossário; DO-CON-05). Sem categoria fixa de Qualificação
  * ainda (C23 aberta), a única leitura possível é pelo NOME — sem distinguir
  * maiúsculas nem acentos. A Definição arquivada continua valendo para quem já
  * a tem.
- */
-function qualificacoesDeLead(state: DataState): ReadonlySet<Id> {
-  return new Set(
-    state.catalog.filter((item) => item.kind === "qualificacao" && normalizar(item.name) === "lead").map((item) => item.id),
-  );
-}
-
-/**
- * Os Leads do Membro que pedem ação dele: Contatos ativos de que ele é o
- * Proprietário, com Qualificação "Lead", e
- * - `semContato`: ninguém falou com eles ainda — nenhuma Mensagem (fora nota
- *   interna) em Conversa nenhuma (a "Última interação" vazia, documento 10);
- *   esperam desde o nascimento do Contato; ou
- * - `aguardandoResposta`: têm Conversa ativa `aberta` cuja última Mensagem é
- *   `recebida` — a bola está com a organização (DO-CXE-07); esperam desde essa
- *   Mensagem, e com várias Conversas assim vale a que espera há mais tempo.
  *
- * O Lead cuja última Mensagem é `enviada` espera pelo Contato, não por nós, e
- * fica fora. A ordem é de quem espera há mais tempo primeiro.
+ * Os Leads em si (Contatos do Membro com essa Qualificação que nunca tiveram
+ * Mensagem ou esperam resposta nossa) saem do servidor:
+ * `GET /crm/inicio/leads-a-atender?qualificacao=<id>` (15-18). O Catálogo é a
+ * única parte que a tela ainda lê do store.
  */
-export function leadsAAtender(state: DataState, memberId: Id): LeadAAtender[] {
-  const lead = qualificacoesDeLead(state);
-  const encontrados: LeadAAtender[] = [];
-  for (const contato of state.contacts) {
-    if (contato.lifecycle !== "ativo" || contato.ownerMemberId !== memberId) continue;
-    if (contato.qualificationId === undefined || !lead.has(contato.qualificationId)) continue;
-
-    if (lastInteraction(state, contato.id) === null) {
-      encontrados.push({ contato, motivo: "semContato", conversa: undefined, desde: contato.createdAt });
-      continue;
-    }
-
-    let esperando: { readonly conversa: Conversation; readonly desde: Instant } | undefined;
-    for (const conversa of state.conversations) {
-      if (conversa.contactId !== contato.id || conversa.lifecycle !== "ativo" || conversa.state !== "aberta") continue;
-      const ultima = ultimaMensagemExterna(conversa);
-      if (ultima?.direction !== "recebida") continue;
-      if (!esperando || ultima.createdAt < esperando.desde) esperando = { conversa, desde: ultima.createdAt };
-    }
-    if (esperando) encontrados.push({ contato, motivo: "aguardandoResposta", ...esperando });
-  }
-  return encontrados.sort((a, b) => a.desde.localeCompare(b.desde) || a.contato.id.localeCompare(b.contato.id));
+export function qualificacoesDeLead(state: DataState): readonly Id[] {
+  return state.catalog.filter((item) => item.kind === "qualificacao" && normalizar(item.name) === "lead").map((item) => item.id);
 }
 
 /* ───────────────────────────── Estatísticas do período ───────────────────────────── */
