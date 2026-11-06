@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * 14-16 Task 3 — o diálogo de remover Membro mostra as contagens de Contatos,
- * Empresas, Negócios e Conversas liberadas lidas das TABELAS (`useSucessaoNoCrm`),
+ * Empresas, Negócios e Conversas passadas ao Sucessor lidas das TABELAS (`useSucessaoNoCrm`),
  * não as do estado em memória (`previewSuccession`); Agentes, Automações e o resto
  * continuam do estado. A remoção segue por `removeMember`. Molde de
  * `membros-sem-capacidade.test.tsx`: `buildSeed()`, `StoreProvider` de verdade,
@@ -68,7 +68,7 @@ describe("o diálogo de remover Membro lê a sucessão do CRM nas tabelas", () =
     contatoAntigo.ownerMemberId = alvoId;
     contatoAntigo.firstName = "Zenaide";
     contatoAntigo.lastName = "Antiga-do-Estado";
-    sucessao.atual = { data: { contatos: 7, empresas: 2, negocios: 5, conversasLiberadas: 3 }, error: undefined };
+    sucessao.atual = { data: { contatos: 7, empresas: 2, negocios: 5, conversasPassadas: 3 }, error: undefined };
     montar();
     expect(screen.getByText("Contatos: 7")).toBeTruthy();
     expect(screen.getByText("Empresas: 2")).toBeTruthy();
@@ -80,19 +80,32 @@ describe("o diálogo de remover Membro lê a sucessão do CRM nas tabelas", () =
     expect(screen.getByText(/Fica sem Responsável \(\d+\)/)).toBeTruthy();
   });
 
+  it("(a2) as Conversas que ele atendia passam ao Sucessor: a contagem fica no grupo certo e o texto não diz que são liberadas (D-15-08)", () => {
+    sucessao.atual = { data: { contatos: 2, empresas: 1, negocios: 1, conversasPassadas: 3 }, error: undefined };
+    montar();
+    expect(screen.getAllByText(/as Conversas que ele atendia passam ao Sucessor/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/é liberado/)).toBeNull();
+    // O total do grupo soma Contatos, Empresas, Negócios e Conversas (2 + 1 + 1 + 3) com o que o estado ainda conta.
+    const tituloDoGrupoQuePassa = screen.getByText(/Passa ao Sucessor \(\d+\)/);
+    expect(Number(/\((\d+)\)/.exec(tituloDoGrupoQuePassa.textContent ?? "")?.[1])).toBeGreaterThanOrEqual(7);
+    expect(tituloDoGrupoQuePassa.parentElement?.textContent).toContain("Conversas: 3");
+    const tituloDoGrupoLiberado = screen.getByText(/Fica sem Responsável \(\d+\)/);
+    expect(tituloDoGrupoLiberado.parentElement?.textContent).not.toContain("Conversas");
+  });
+
   it("(b) o que não é do CRM continua vindo do estado: um Agente do Membro aparece na lista", () => {
     const alvoId = membroEmRemocao.atual;
     const agente = state.agents[0];
     if (!agente) throw new Error("o seed precisa de um Agente");
     agente.ownerMemberId = alvoId;
     agente.name = "Agente da Sucessão";
-    sucessao.atual = { data: { contatos: 0, empresas: 0, negocios: 0, conversasLiberadas: 0 }, error: undefined };
+    sucessao.atual = { data: { contatos: 0, empresas: 0, negocios: 0, conversasPassadas: 0 }, error: undefined };
     montar();
     expect(screen.getByText("Agente: Agente da Sucessão")).toBeTruthy();
   });
 
   it("(c) sem nada no CRM, as linhas de zero não aparecem", () => {
-    sucessao.atual = { data: { contatos: 0, empresas: 0, negocios: 0, conversasLiberadas: 0 }, error: undefined };
+    sucessao.atual = { data: { contatos: 0, empresas: 0, negocios: 0, conversasPassadas: 0 }, error: undefined };
     montar();
     expect(screen.queryByText(/^Contatos:/)).toBeNull();
     expect(screen.queryByText(/^Conversas:/)).toBeNull();

@@ -25,6 +25,7 @@ vi.mock("./cliente-crm", async (original) => {
 });
 
 import { ErroDeApi, invalidarCrm } from "./cliente-crm";
+import type { SucessaoNoCrm } from "@n1/dominio/crm/sucessao";
 import { chaveDaSucessao, invalidarCrmDaSucessao, useSucessaoNoCrm } from "./sucessao";
 
 function resposta(status: number, corpo: unknown): Response {
@@ -51,9 +52,11 @@ afterEach(() => {
 
 describe("useSucessaoNoCrm", () => {
   it("lê GET /membros/:id/sucessao-no-crm e devolve as quatro contagens", async () => {
-    fetchMock.mockResolvedValue(resposta(200, { ok: true, dados: { contatos: 3, empresas: 1, negocios: 2, conversasLiberadas: 4 } }));
+    fetchMock.mockResolvedValue(resposta(200, { ok: true, dados: { contatos: 3, empresas: 1, negocios: 2, conversasPassadas: 4 } }));
     const { result } = renderHook(() => useSucessaoNoCrm("mem_9"), { wrapper: envoltorio });
-    await waitFor(() => expect(result.current.data).toEqual({ contatos: 3, empresas: 1, negocios: 2, conversasLiberadas: 4 }));
+    // A resposta é tipada pelo domínio: a web não declara a forma por conta própria (D-15-08).
+    const esperada: SucessaoNoCrm = { contatos: 3, empresas: 1, negocios: 2, conversasPassadas: 4 };
+    await waitFor(() => expect(result.current.data).toEqual(esperada));
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("http://api/membros/mem_9/sucessao-no-crm");
     expect(init.method).toBe("GET");
