@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 49
+open_count: 48
 waived_count: 2
-fixed_count: 21
+fixed_count: 22
 total_count: 72
-last_updated: 2026-11-06T22:38:24.149Z
+last_updated: 2026-11-06T23:04:48.601Z
 ---
 
 # Broken Windows Ledger
@@ -83,7 +83,7 @@ last_updated: 2026-11-06T22:38:24.149Z
 | 66 | 15 | deviation | packages/dominio/src/operations/sobre-o-crm-antigo.test.ts |  | 15-32: os blocos de operations.test.ts que nao testavam so operacao apagada (Mensageria e Adocao de Rascunho de sendMessage/receiveMessage, Suspeita de Duplicidade, Leitura de Widget, Barra global, Modelo de Tarefa da Lista com Contato antigo) foram movidos sem mudar para sobre-o-crm-antigo.test.ts, que ainda usa semearCrmAntigo; crm/capacidades.test.ts tambem (sendMessage fora da janela, estado antigo). operations.test.ts ficou sem semearCrmAntigo. O 15-42 apaga as leituras antigas com os blocos delas e o 15-43 apaga semearCrmAntigo: o que valer para o CRM novo precisa ser reescrito sobre as tabelas antes. | fixed |  | 2026-11-06T21:19:56.005Z | 2026-11-06T22:38:14.359Z |
 | 67 | 15 | deviation | packages/dominio/src/operations/ferramentas/conversa-de-grupo.ts |  | 15-33: com a ponte dos Canais fora de GET /estado e de executar(), state.channels deixou de ter o Canal de plataforma.canais. Para Grupo, Flow e Automacao continuarem enviando, sendMessage, startConversation e receiveMessage (conversa-de-grupo.ts) acham o Canal primeiro em state.channels e, na falta dele, no crm.canais que o servidor le da tabela (canalPeloId + canalComoChannel; SendMessageInput ganhou crm opcional; grupos.ts, flows.ts e automacoes.ts o repassam). NAO e projecao: o Canal nao entra no estado nem e gravado. Mensagens de modelo seguem vazias (a tabela nao guarda modelos, linha 20). Sai com o arquivo, nas Sessoes 6 e 7; as linhas 35, 37 e 41 continuam abertas (Contato antigo ainda e lido de state.contacts). | open |  | 2026-11-06T21:40:47.161Z |  |
 | 68 | 15 | deviation | apps/api/src/servicos/crm/canais.ts |  | 15-33: criar ou renomear um Canal deixou de conferir nome e conta contra os Canais antigos de plataforma.registros (canalAntigoEmConflito saiu; o Canal so existe em plataforma.canais). Antes do corte, um Canal novo pode repetir nome ou numero de um chn_* antigo; o --seco e o --migrar do 15-28 relatam canal-repetido e id-ja-existe, e o chn_* antigo repetido fica de fora do que o --migrar leva (so em registros_crm_antigo). Tambem saiu o campo canaisMs da medicao de executar() (MedicaoDaExecucao e a linha 'gravacao medida'): nao ha mais leitura de Canal para medir; idasEVoltas de uma gravacao comum e 2 tambem na primeira do processo. | open |  | 2026-11-06T21:40:47.230Z |  |
-| 69 | 15 | deviation | apps/web/src/app/(shell)/estrutura/listas/[lista]/page.tsx |  | 15-41: a Lista da Pasta Meus negocios ainda esconde as Tarefas com proveniencia 'deal' (filtro pastaDeNegocios, que le MEUS_NEGOCIOS_ID); o resto da tela ja a trata como Pasta comum. Sai com a Pasta (script de migracao, D-15-14) e com a constante (15-43), ou antes se o dono quiser ver essas Tarefas nos Espacos de teste | open |  | 2026-11-06T22:01:19.208Z |  |
+| 69 | 15 | deviation | apps/web/src/app/(shell)/estrutura/listas/[lista]/page.tsx |  | 15-41: a Lista da Pasta Meus negocios ainda esconde as Tarefas com proveniencia 'deal' (filtro pastaDeNegocios, que le MEUS_NEGOCIOS_ID); o resto da tela ja a trata como Pasta comum. Sai com a Pasta (script de migracao, D-15-14) e com a constante (15-43), ou antes se o dono quiser ver essas Tarefas nos Espacos de teste | fixed |  | 2026-11-06T22:01:19.208Z | 2026-11-06T23:04:48.601Z |
 | 70 | 15 | deviation | packages/dominio/src/operations/ferramentas/conversa-de-grupo.ts |  | 15-42: com o Contato lido de crm.contatos (WINDOWS #37), receiveMessage nao devolve mais a ativo o Contato arquivado ou na lixeira que recebe Mensagem (RN-CON-13): a tabela plataforma.contatos nao e gravada por esta composicao, entao a Resposta de Flow e a Mensagem recebida entram na Conversa e o estado do Contato fica como o servidor o leu. Tambem saiu a conferencia do consentimento de marketing do Contato antigo no envio (o Canal da tabela nao guarda Mensagens de modelo, linha 20). Se o dono quiser a restauracao por Mensagem recebida, ela precisa de um aoConfirmar que grave o Contato | open |  | 2026-11-06T22:38:24.018Z |  |
 | 71 | 15 | deviation | packages/dominio/src/operations/automations.ts |  | 15-42: o nome e o dono do cliente das Automacoes de Contas a receber (R4/R5) chegam por OpcoesDaAgenda.clientes, lidos de plataforma.contatos pelo scheduler-worker na transacao da volta (apps/api/src/automacoes/clientes-da-lista.ts) e mesclados pela ponte do Agente. A Execucao disparada por EVENTO (statusAlterado, tarefaCriada etc., dentro de uma operacao) nao recebe o dado: a Automacao com {{cliente}} ou mentionClientOwner diz 'o cliente' e nao menciona o dono. Hoje so a agenda (R4 D+30, R5) usa esses tokens; se uma Automacao por evento passar a usa-los, executar() precisa ler os clientes antes da operacao | open |  | 2026-11-06T22:38:24.083Z |  |
 | 72 | 15 | deviation | packages/dominio/src/operations/members.ts |  | 15-42: o Registro de Atividade do ato de governanca 'acesso concedido a Recurso privado' (grantGovernanceAccess) nomeia o Recurso pelo id quando ele e um Funil: o nome do Funil antigo (state.funnels) saiu de resourceName e o Funil novo vive em plataforma.funis, que o dominio nao le. Espaco, Pasta, Lista e Colecao seguem nomeados. Se o dono quiser o nome do Funil no Registro, a rota precisa injeta-lo como faz com os nomes do CRM | open |  | 2026-11-06T22:38:24.149Z |  |
@@ -981,10 +981,10 @@ last_updated: 2026-11-06T22:38:24.149Z
     "file": "apps/web/src/app/(shell)/estrutura/listas/[lista]/page.tsx",
     "line": null,
     "description": "15-41: a Lista da Pasta Meus negocios ainda esconde as Tarefas com proveniencia 'deal' (filtro pastaDeNegocios, que le MEUS_NEGOCIOS_ID); o resto da tela ja a trata como Pasta comum. Sai com a Pasta (script de migracao, D-15-14) e com a constante (15-43), ou antes se o dono quiser ver essas Tarefas nos Espacos de teste",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-06T22:01:19.208Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-06T23:04:48.601Z",
     "milestone": "v1.0"
   },
   {
