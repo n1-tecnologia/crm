@@ -75,6 +75,9 @@ d("bootstrapGestao — o Espaço 'Gestão' de produção", () => {
       expect(state.tasks.length).toBe(0);
       expect(state.contacts.length).toBe(0);
       expect(state.activity.length).toBe(0);
+      // D-15-13: o Espaço nasce sem Funil; o padrão é o de plataforma.funis.
+      expect(state.funnels.length).toBe(0);
+      expect("defaultFunnelId" in state.workspace).toBe(false);
       expect(state.members.length).toBe(1);
       expect(state.members[0]!.id).toBe("mem_maryane");
       expect(state.members[0]!.roleId).toBe("role_prop");
@@ -99,8 +102,17 @@ d("bootstrapGestao — o Espaço 'Gestão' de produção", () => {
       cliente.release();
     }
     expect(resultado.criado).toBe(false);
-    expect(resultado.motivo).toBeDefined();
+    expect(resultado.motivo).toContain("já tem");
     expect(await contarLinhas()).toBe(antes);
+
+    // UCR-07 / UCR-11: repetir o bootstrap nunca cria Funil (nem no modelo antigo).
+    const cliente2 = await pool().connect();
+    try {
+      const { state } = await hidratar(cliente2, WS);
+      expect(state.funnels.length).toBe(0);
+    } finally {
+      cliente2.release();
+    }
   });
 
   it("a Maryane cria uma Conta a pagar contra o banco de verdade", async () => {

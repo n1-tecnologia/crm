@@ -61,12 +61,19 @@ describe("buildGestaoBootstrap", () => {
     expect(s.tags.filter((t) => t.name.startsWith("conta ")).length).toBe(8);
   });
 
-  it("o Agente de lançamento, o Agente padrão, o Funil padrão e a Coleção existem", () => {
+  it("o Agente de lançamento, o Agente padrão e a Coleção existem", () => {
     const agentIds = s.agents.map((x) => x.id);
     expect(agentIds).toContain("agt_padrao");
     expect(agentIds).toContain(CP.agentId);
-    expect(s.funnels.map((x) => x.id)).toEqual(["fnl_padrao"]);
     expect(s.collections.some((c) => c.id === "col_financeiro_erp")).toBe(true);
+  });
+
+  it("um Espaço novo nasce sem Funil e sem nada do CRM; o Funil padrão é o da tabela (D-15-13)", () => {
+    expect(s.funnels).toEqual([]);
+    // O Workspace não guarda mais o Funil padrão: ele é `plataforma.funis.padrao`.
+    expect("defaultFunnelId" in s.workspace).toBe(false);
+    // O Agente padrão continua nascendo com o Espaço (B33).
+    expect(s.workspace.defaultAgentId).toBe("agt_padrao");
   });
 
   it("as Automações A2–A6, A9 e R2–R6 são exatamente as que buildSeed() já monta (config, não fixture)", () => {
