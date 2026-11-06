@@ -554,6 +554,11 @@ async function buscarEscolher(dialogo: HTMLElement, rotulo: string, digitado: st
   fireEvent.click(await within(lista).findByText(nome, undefined, { timeout: 2000 }));
 }
 
+/** D-15-10: a mesclagem é irreversível, então o botão só liga com o nome do absorvido digitado. */
+function digitarONomeDoAbsorvido(dialogo: HTMLElement, nome: string) {
+  fireEvent.change(within(dialogo).getByLabelText("Digite o nome do Contato que será absorvido"), { target: { value: nome } });
+}
+
 describe("FichaDeContato — Mesclar com… (14-09, 3.2.2)", () => {
   it("(u) o diálogo não oferece o próprio Contato; confirmar chama POST /contatos/c1/mesclar com o absorvido e a ficha mostra o resultado", async () => {
     servir({ contatosDaBusca: BUSCA });
@@ -571,6 +576,7 @@ describe("FichaDeContato — Mesclar com… (14-09, 3.2.2)", () => {
     expect(await within(lista).findByText("Bruno Dias", undefined, { timeout: 2000 })).toBeTruthy();
     expect(within(lista).queryByText("Ana Souza")).toBeNull();
     fireEvent.click(within(lista).getByText("Bruno Dias"));
+    digitarONomeDoAbsorvido(dialogo, "Bruno Dias");
 
     fireEvent.click(within(dialogo).getByRole("button", { name: "Mesclar" }));
 
@@ -592,12 +598,41 @@ describe("FichaDeContato — Mesclar com… (14-09, 3.2.2)", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Mesclar com…" }));
     const dialogo = await screen.findByRole("alertdialog");
     await buscarEscolher(dialogo, "Mesclar com", "bru", "Bruno Dias");
+    digitarONomeDoAbsorvido(dialogo, "Bruno Dias");
     fireEvent.click(within(dialogo).getByRole("button", { name: "Mesclar" }));
 
     const aviso = await within(dialogo).findByText(frase);
     expect(aviso.getAttribute("role")).toBe("alert");
     expect(screen.getByRole("alertdialog")).toBeTruthy();
     expect(screen.queryByText(/Contatos mesclados\./)).toBeNull();
+  });
+
+  it("(w) D-15-10: o botão só liga com o nome do absorvido digitado (sem diferença de maiúsculas e de espaços nas pontas)", async () => {
+    servir({ contatosDaBusca: BUSCA });
+    montar();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Mesclar com…" }));
+    const dialogo = await screen.findByRole("alertdialog");
+    await buscarEscolher(dialogo, "Mesclar com", "bru", "Bruno Dias");
+    const confirmar = within(dialogo).getByRole("button", { name: "Mesclar" });
+
+    // Escolheu o Contato, mas ainda não digitou o nome: o botão diz o que falta e o clique não chama a api.
+    expect(confirmar.getAttribute("aria-disabled")).toBe("true");
+    expect(confirmar.getAttribute("title")).toBe("Digite o nome do Contato para confirmar.");
+    fireEvent.click(confirmar);
+    expect(chamadas()).not.toContain("POST /contatos/c1/mesclar");
+
+    // Nome errado ou incompleto continua desligado.
+    digitarONomeDoAbsorvido(dialogo, "Bruno");
+    expect(confirmar.getAttribute("aria-disabled")).toBe("true");
+
+    // O nome do sobrevivente (o da ficha) não serve: é o do absorvido que se confirma.
+    digitarONomeDoAbsorvido(dialogo, "Ana Souza");
+    expect(confirmar.getAttribute("aria-disabled")).toBe("true");
+
+    // Caixa e espaços nas pontas não contam.
+    digitarONomeDoAbsorvido(dialogo, "  bruno dias ");
+    expect(confirmar.getAttribute("aria-disabled")).not.toBe("true");
   });
 
   it("(x) um Convidado vê Mesclar com… desligado com a frase do Papel, e o diálogo não abre", async () => {
