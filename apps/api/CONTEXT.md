@@ -52,7 +52,7 @@ não escreve nada — nem o schema nasce num banco vazio (D-12 da Fase 7).
 | `src/repositorios/` | Persistência. Uma interface por agregado, e a implementação atrás dela. `repositorios/crm/` (Fase 7) inaugura o padrão — ver o `CONTEXT.md` de lá. |
 | `src/testes/` | Apoio de teste. `banco-crm.ts`: o Postgres LOCAL descartável dos testes do CRM (`describeComBanco`, `prepararBancoCrm`, `semearMembro`, `limparEspaco`) — contra qualquer host que não seja `localhost` os blocos pulam, e `migrar()` nunca roda contra o banco remoto por um teste. |
 | `src/e2e/` | Cenários ponta a ponta por `app.inject()`. `crm-fluxo.test.ts` percorre o CRM inteiro pelo HTTP contra o Postgres local. |
-| `src/bootstrap/` | Script idempotente que materializa a configuração de um Espaço (Plan 01-05). |
+| `src/bootstrap/` | Script idempotente que materializa a configuração de um Espaço (Plan 01-05) e, só em banco local, o CRM de demonstração (`bootstrap:crm-demo`, 15-29). |
 | `src/migracao-crm/` | O script `migrar:crm-antigo` do corte da Fase 15: guarda o CRM em inglês de UM Espaço em `registros_crm_antigo`, decide o Funil, leva Contatos, Empresas, Negócios, Canais, Conversas e Mensagens às tabelas novas (com ids preservados e um relatório do que ficou de fora), limpa a Pasta "Meus negócios" e confere o resultado. Roda na mão do dono, nunca por rota; é temporário. Ver o `CONTEXT.md` de lá. |
 
 A direção é sempre `rotas → servicos → repositorios`. Uma rota que chama
