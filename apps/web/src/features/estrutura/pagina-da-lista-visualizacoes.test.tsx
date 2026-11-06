@@ -279,3 +279,51 @@ describe("Página da Lista — o espelho de Meus negócios saiu (15-40, F14-D-06
     expect(document.querySelector('a[href^="/crm/negocios"]')).toBeNull();
   });
 });
+
+describe("Página da Lista — a Pasta Meus negócios é uma Pasta comum (15-43, WINDOWS #69)", () => {
+  it("a Lista dentro da Pasta que ainda se chama Meus negócios mostra as Tarefas com proveniência de Negócio, como qualquer Lista", async () => {
+    const origem = { kind: "member", id: "mem_julia" } as const;
+    state.folders.push({
+      id: "fld_meus_negocios",
+      workspaceId: state.workspace.id,
+      createdBy: origem,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      lifecycle: "ativo",
+      name: "Meus negócios",
+      order: 3,
+      isPrivate: false,
+      modes: {},
+      blocks: {},
+      parentType: "space",
+      parentId: "spc_com",
+    });
+    state.lists.push({
+      id: "lst_funil_closer",
+      workspaceId: state.workspace.id,
+      createdBy: origem,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      lifecycle: "ativo",
+      name: "Closer",
+      order: 0,
+      isPrivate: false,
+      modeloDeTarefa: "operacional",
+      modes: {},
+      parentType: "folder",
+      parentId: "fld_meus_negocios",
+    });
+    // Uma Tarefa de uma Lista comum do Comercial vira a Tarefa nascida de um Negócio, dentro da Lista da Pasta.
+    const modelo = state.tasks.find((t) => t.listId === LISTA && t.parentTaskId === undefined && t.lifecycle === "ativo");
+    if (!modelo) throw new Error("o seed não tem uma Tarefa ativa em Prospecção");
+    state.tasks.push({
+      ...modelo,
+      id: "tsk_nascida_de_negocio",
+      listId: "lst_funil_closer",
+      title: "Call de fechamento do Negócio",
+      provenance: { kind: "deal", sourceId: "deal_x", sourceName: "Negócio X", at: "2026-01-01T00:00:00.000Z" },
+    });
+
+    await montar("lst_funil_closer");
+
+    expect(screen.getAllByText("Call de fechamento do Negócio").length).toBeGreaterThan(0);
+  });
+});
