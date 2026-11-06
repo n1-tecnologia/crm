@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 15
 current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
 status: executing
-stopped_at: Completed 15-06-PLAN.md
-last_updated: "2026-11-06T09:26:27.105Z"
+stopped_at: Completed 15-07-PLAN.md
+last_updated: "2026-11-06T09:52:41.253Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 15 execution started
-state_head: 32b35124210400255c7134ce588007c62ed998d8
+state_head: 8030d80008cf5033a1351a91553c02d4c1d356c5
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 271
-  completed_plans: 231
+  completed_plans: 232
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 15 (Unificação do CRM: telas no modelo novo e remoção do modelo antigo) — EXECUTING
-Plan: 7 of 43
+Plan: 8 of 43
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 15 execution started
 
@@ -450,6 +450,7 @@ Progress: [██████░░░░] 63%
 | Phase 15 P04 | 12 min | 2 tasks | 10 files |
 | Phase 15 P05 | 40 min | 3 tasks | 14 files |
 | Phase 15 P06 | 15 min | 3 tasks | 16 files |
+| Phase 15 P07 | 32 min | 3 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -704,6 +705,9 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 15]: 15-05: qualificacao e Atribuido saem do resumo como ids; a web resolve rotulo/nome em catalog, members e agents; temperatura nao volta (D-15-06)
 - [Phase 15]: 15-06: naoLidas de GET /conversas e condicao no WHERE (exists/not exists sobre mensagens recebidas depois do lida_ate), com o Membro da sessao pelo $3 ja existente; marcarConversa so com lidaAte invalida so /conversas/<id>
 - [Phase 15]: 15-06: guardas sem-crm-antigo congelam 33 arquivos no dominio, 6 na api e 57 na web; so conferem 'nenhum arquivo novo', a metade 'so encolhe' fica para 15-33 e 15-43
+- [Phase 15]: CRM_DO_NAVEGADOR mora em esquemas/fragmentos.ts (fragmento de três módulos) e grupos.ts o reexporta; a leitura das Ferramentas segue chamada LER_DO_CRM_FERRAMENTAS
+- [Phase 15]: As Ações de Automação contato.adicionarTag e contato.definirCampo falham dizendo que o Contato do CRM novo não guarda Tag nem Campo (WINDOWS.md, deviation aberto); destino a decidir no 15-17 ou 15-22
+- [Phase 15]: Contatos das Ferramentas lidos só pelos ids dos args e da Participação ou Pedido alvo (resumidosPorIds, teto 500), nunca por todas as Participações do Grupo
 
 ### Pending Todos
 
@@ -765,6 +769,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-06T09:26:26.811Z
-Stopped at: Completed 15-06-PLAN.md
+Last session: 2026-11-06T09:52:40.957Z
+Stopped at: Completed 15-07-PLAN.md
 Resume file: None
