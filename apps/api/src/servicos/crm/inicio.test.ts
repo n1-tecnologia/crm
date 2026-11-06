@@ -116,8 +116,8 @@ describeComBanco("ServicoDoInicio — Postgres local", () => {
   ) =>
     inserir(
       `insert into plataforma.conversas
-         (workspace_id, canal_id, contato_id, titulo, situacao, estado, atribuido_tipo, atribuido_id, resolvida_em, criado_por_tipo, criado_por_id)
-       values ($1, $2, $3, 'Conversa do Início', $4, $5, $6, $7, $8::timestamptz, 'membro', 'mem_ana') returning id`,
+         (workspace_id, canal_id, contato_id, titulo, situacao, estado, atribuido_tipo, atribuido_id, resolvida_em, na_lixeira_em, criado_por_tipo, criado_por_id)
+       values ($1, $2, $3, 'Conversa do Início', $4, $5, $6, $7, $8::timestamptz, case when $5 = 'na_lixeira' then now() end, 'membro', 'mem_ana') returning id`,
       [
         ws,
         canalId,

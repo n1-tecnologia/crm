@@ -25,6 +25,8 @@
  * novo, por Espaço e Papel; quem grava é cada gesto, na transação dele (15-04).
  * `nomes` (15-10) é só leitura, `POST /crm/nomes`: o nome de até 200 ids do CRM novo
  * numa chamada, para as telas que só têm o id (a IA, Contas a receber).
+ * `inicio` (15-18) é só leitura, `GET /crm/inicio/{panorama,leads-a-atender,estatisticas}`: os
+ * números do Início somados no banco, sempre do Espaço e do Membro da sessão.
  */
 
 import type { FastifyInstance } from "fastify";
@@ -39,6 +41,7 @@ import { criarServicoDeConsentimentos, type ServicoDeConsentimentos } from "../.
 import { criarServicoDeConversas, type ServicoDeConversas } from "../../servicos/crm/conversas";
 import { criarServicoDeEmpresas, type ServicoDeEmpresas } from "../../servicos/crm/empresas";
 import { criarServicoDeFunis, type ServicoDeFunis } from "../../servicos/crm/funis";
+import { criarServicoDoInicio, type ServicoDoInicio } from "../../servicos/crm/inicio";
 import { criarServicoDeMensagens, type ServicoDeMensagens } from "../../servicos/crm/mensagens";
 import { criarServicoDeMesclagem, type ServicoDeMesclagem } from "../../servicos/crm/mesclagem";
 import { criarServicoDeNegocios, type ServicoDeNegocios } from "../../servicos/crm/negocios";
@@ -53,6 +56,7 @@ import { rotasDeContatos } from "./contatos";
 import { rotasDeConversas } from "./conversas";
 import { rotasDeEmpresas } from "./empresas";
 import { rotasDeFunis } from "./funis";
+import { rotasDoInicio } from "./inicio";
 import { rotasDeMensagens } from "./mensagens";
 import { rotasDeMesclagem } from "./mesclagem";
 import { rotasDeNegocios } from "./negocios";
@@ -92,6 +96,8 @@ export interface OpcoesDeCrm {
   readonly atividades?: ServicoDeAtividades;
   /** Injeção só para teste: troca o serviço real de nomes em lote por um falso, sem banco. */
   readonly nomes?: ServicoDeNomes;
+  /** Injeção só para teste: troca o serviço real do agregado do Início por um falso, sem banco. */
+  readonly inicio?: ServicoDoInicio;
   /** Padrão: lê Papel e Membro de `plataforma.registros`. Injeção para teste sem banco. */
   readonly acesso?: AcessoAoCrm;
 }
@@ -130,4 +136,6 @@ export async function rotasDeCrm(app: FastifyInstance, opcoes: OpcoesDeCrm = {})
   await app.register(rotasDeAtividades, { servico: atividades });
   const nomes = opcoes.nomes ?? criarServicoDeNomes({ pool: obterPool, acesso });
   await app.register(rotasDeNomes, { servico: nomes });
+  const inicio = opcoes.inicio ?? criarServicoDoInicio({ pool: obterPool, acesso });
+  await app.register(rotasDoInicio, { servico: inicio });
 }
