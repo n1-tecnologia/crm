@@ -45,7 +45,7 @@ import {
 import type { DataState } from "@n1/dominio/state";
 import type { Priority, StatusDefinition, Task, ViewFilters } from "@n1/dominio/types";
 import { useResumoDaTarefa } from "@/dados/crm/tarefas-conversacionais";
-import { PilulasDoCanal, RostoDoContato } from "@/features/estrutura/cartao-conversacional";
+import { PilulaDaQualificacao, PilulaDoEstadoDaConversa, PilulasDoCanal, RostoDoContato } from "@/features/estrutura/cartao-conversacional";
 import { PRIORITY_LABEL, STATUS_CATEGORY_LABEL } from "@/features/shell/format";
 import { useFormat } from "@/features/shell/use-format";
 import {
@@ -61,15 +61,28 @@ import {
 import { BotaoDeMais, CompositorNoGrupo } from "@/features/estrutura/novo-no-grupo";
 import { iconeDeTipo } from "@/features/estrutura/icone-de-tipo";
 
-/** C35 / 14-15 — o Contato da linha, do resumo da api (a Tarefa guarda só o id). Sem resumo ainda, o travessão. */
+/**
+ * C35 / 14-15 — o Contato da linha, do resumo da api (a Tarefa guarda só o id). Sem resumo ainda, o travessão.
+ * Fase 15 (D-15-05): a Empresa e a qualificação do Contato voltam junto do nome.
+ */
 export function CelulaDoContato({ taskId }: { readonly taskId: string }) {
-  const contato = useResumoDaTarefa(taskId)?.contato;
+  const resumo = useResumoDaTarefa(taskId);
+  const contato = resumo?.contato;
+  const empresa = resumo?.empresa;
   return (
     <td>
       {contato ? (
-        <span className="inline-flex items-center gap-1.5" style={{ color: "var(--texto)" }}>
-          <RostoDoContato nome={contato.nome} tamanho="normal" />
-          <span className="max-w-[14ch] truncate">{contato.nome}</span>
+        <span className="grid gap-0.5">
+          <span className="inline-flex items-center gap-1.5" style={{ color: "var(--texto)" }}>
+            <RostoDoContato nome={contato.nome} tamanho="normal" />
+            <span className="max-w-[14ch] truncate">{contato.nome}</span>
+          </span>
+          {empresa ? <span className="app-meta max-w-[18ch] truncate">{empresa.nome}</span> : null}
+          {resumo?.qualificacaoId ? (
+            <span className="flex flex-wrap items-center gap-1">
+              <PilulaDaQualificacao qualificacaoId={resumo.qualificacaoId} />
+            </span>
+          ) : null}
         </span>
       ) : (
         <span style={{ color: "var(--texto-4)" }}>—</span>
@@ -78,14 +91,16 @@ export function CelulaDoContato({ taskId }: { readonly taskId: string }) {
   );
 }
 
-/** C35 / 14-15 — o Canal da linha (nome e selo do provedor), do resumo da api. */
+/** C35 / 14-15 — o Canal da linha (nome e selo do provedor), do resumo da api; e o estado da Conversa (D-15-05). */
 export function CelulaDoCanal({ taskId }: { readonly taskId: string }) {
-  const canal = useResumoDaTarefa(taskId)?.canal;
+  const resumo = useResumoDaTarefa(taskId);
+  const canal = resumo?.canal;
   return (
     <td className="hidden @4xl:table-cell">
       {canal ? (
         <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
           <PilulasDoCanal canal={canal} />
+          <PilulaDoEstadoDaConversa conversa={resumo?.conversa ?? null} />
         </span>
       ) : (
         <span style={{ color: "var(--texto-4)" }}>—</span>

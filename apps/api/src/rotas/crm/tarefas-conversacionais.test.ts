@@ -186,6 +186,19 @@ describe("POST /tarefas-conversacionais/resumo — serviço falso, sem banco", (
     expect(chamadas[0]?.[1]).toEqual(vinculos);
   });
 
+  it("D-15-05: empresa, qualificacaoId e conversa (com Atribuído) do serviço passam pelo responder como vieram", async () => {
+    const completo: ResumoDaTarefaConversacional = {
+      ...itemDeResumo,
+      empresa: { id: "e1", nome: "Acme" },
+      qualificacaoId: "cat_qual_lead",
+      conversa: { situacao: "pendente", estado: "ativo", atribuido: { tipo: "agente", id: "ag_1" } },
+    };
+    const { servico } = novoFalso(sucesso([completo, itemDeResumo]));
+    const r = await resumir(servico, { vinculos: [vinculo(1), vinculo(2)] });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toEqual({ ok: true, itens: [completo, itemDeResumo], total: 2 });
+  });
+
   it(`aceita ${RESUMO_MAXIMO} Vínculos e recusa ${RESUMO_MAXIMO + 1} com 400 antes do serviço`, async () => {
     const { servico, chamadas } = novoFalso();
     expect((await resumir(servico, { vinculos: Array.from({ length: RESUMO_MAXIMO }, (_, i) => vinculo(i)) })).statusCode).toBe(200);

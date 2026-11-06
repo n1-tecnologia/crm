@@ -47,7 +47,9 @@ import { PainelDeAnexos } from "@/features/tarefa/anexos";
 import { useId, useRef, useState, type ReactNode } from "react";
 import {
   ArrowRight,
+  BadgeCheck,
   Briefcase,
+  Building2,
   CalendarDays,
   Check,
   ChevronDown,
@@ -82,7 +84,7 @@ import { valorDaLinhaDeTempo } from "@/features/estrutura/tempo";
 import { financeProfileOf, valorDaConta } from "@/features/estrutura/financeiro/lens";
 import { CHANNEL_ICON, ConversationThread } from "@/features/crm/conversation-thread";
 import { SeloDoProvedor } from "@/features/crm/selo-do-provedor";
-import { RostoDoContato } from "@/features/estrutura/cartao-conversacional";
+import { nomeDoAtribuido, ROTULO_DA_SITUACAO, rotuloDaQualificacao, RostoDoContato } from "@/features/estrutura/cartao-conversacional";
 import {
   criarNegocioDaTarefa,
   trocarCanalDaTarefa,
@@ -376,6 +378,13 @@ export function TarefaCompleta({
   const contatoDoResumo = resumo?.contato ?? undefined;
   const canalDoResumo = resumo?.canal ?? undefined;
   const negocioDoResumo = resumo?.negocio ?? undefined;
+  // Fase 15 (D-15-05): a Empresa, a qualificação (rótulo do Catálogo) e a Conversa (estado e Atribuído) vêm do mesmo resumo.
+  // A temperatura do Contato não volta (D-15-06).
+  const empresaDoResumo = resumo?.empresa ?? undefined;
+  const qualificacaoDoResumo = rotuloDaQualificacao(state, resumo?.qualificacaoId ?? null);
+  const conversaDoResumo = resumo?.conversa ?? undefined;
+  const nomeDoAtribuidoDaConversa = conversaDoResumo?.atribuido ? nomeDoAtribuido(state, conversaDoResumo.atribuido) : undefined;
+  const semFunil = funisDasTabelas.data !== undefined && funisDasTabelas.data.itens.length === 0;
   const conversaId = conversacional ? vinculosDoCrmDaTarefa(state, task).conversaId : undefined;
   const contato = conversacional ? contatoDaTarefa(state, task) : undefined;
   const canal = contato ? canalDaTarefa(state, task) : undefined;
@@ -744,9 +753,11 @@ export function TarefaCompleta({
           wide
           {...(criandoNegocioNaApi
             ? { confirmDisabledReason: "Criando…" }
-            : funilDoNegocio === ""
-              ? { confirmDisabledReason: "Escolha o Funil." }
-              : {})}
+            : semFunil
+              ? { confirmDisabledReason: "Crie um Funil primeiro." }
+              : funilDoNegocio === ""
+                ? { confirmDisabledReason: "Escolha o Funil." }
+                : {})}
           confirmCarregando={criandoNegocioNaApi}
           onConfirm={() => {
             setErroDoNegocio(null);
@@ -768,17 +779,28 @@ export function TarefaCompleta({
           onCancel={() => setCriandoNegocio(false)}
         >
           <div className="grid gap-4">
-            <Field label="Funil" required hint="O Negócio nasce na primeira Etapa do Funil.">
-              {(id) => (
-                <Select
-                  id={id}
-                  value={funilDoNegocio}
-                  onChange={setFunilDoNegocio}
-                  placeholder={funisDasTabelas.data === undefined ? "Carregando os Funis…" : "Escolha o Funil"}
-                  options={(funisDasTabelas.data?.itens ?? []).map((f) => ({ value: f.funil.id, label: f.funil.nome }))}
-                />
-              )}
-            </Field>
+            {semFunil ? (
+              // D-15-13: um Espaço novo nasce sem Funil; o seletor vazio não diz o que fazer.
+              <p role="status" className="app-base rounded-[var(--r-controle)] px-3 py-2" style={AVISO_EM_CAIXA}>
+                Este Espaço ainda não tem Funil, e o Negócio nasce na primeira Etapa de um.{" "}
+                <Link href="/crm/funis" onNavigate={() => marcarSeMuda("/crm/funis")} className="underline">
+                  Crie seu primeiro Funil
+                </Link>{" "}
+                e volte para criar o Negócio.
+              </p>
+            ) : (
+              <Field label="Funil" required hint="O Negócio nasce na primeira Etapa do Funil.">
+                {(id) => (
+                  <Select
+                    id={id}
+                    value={funilDoNegocio}
+                    onChange={setFunilDoNegocio}
+                    placeholder={funisDasTabelas.data === undefined ? "Carregando os Funis…" : "Escolha o Funil"}
+                    options={(funisDasTabelas.data?.itens ?? []).map((f) => ({ value: f.funil.id, label: f.funil.nome }))}
+                  />
+                )}
+              </Field>
+            )}
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Título" hint="Vazio, fica o título da Tarefa.">
                 {(id) => <TextInput id={id} value={tituloDoNegocio} onChange={setTituloDoNegocio} placeholder={task.title} />}
@@ -1295,6 +1317,28 @@ export function TarefaCompleta({
                       );
                     })()}
                   />
+                  {empresaDoResumo ? (
+                    <LinhaDeProp
+                      icone={Building2}
+                      rotulo="Empresa"
+                      controle={(() => {
+                        const href = `/crm/empresas/${empresaDoResumo.id}`;
+                        return (
+                          <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                            <Link
+                              href={href}
+                              onNavigate={() => marcarSeMuda(href)}
+                              className="app-base min-w-0 truncate hover:underline"
+                              style={{ color: "var(--texto)" }}
+                            >
+                              {empresaDoResumo.nome}
+                            </Link>
+                          </span>
+                        );
+                      })()}
+                    />
+                  ) : null}
+                  {qualificacaoDoResumo ? <LinhaDeProp icone={BadgeCheck} rotulo="Qualificação" valor={qualificacaoDoResumo} /> : null}
                   <LinhaDeProp
                     icone={Radio}
                     rotulo="Canal"
@@ -1375,6 +1419,16 @@ export function TarefaCompleta({
                         }
                       : { valor: "sem Conversa" })}
                   />
+                  {conversaDoResumo ? (
+                    <>
+                      <LinhaDeProp icone={CircleDot} rotulo="Estado da Conversa" valor={ROTULO_DA_SITUACAO[conversaDoResumo.situacao]} />
+                      <LinhaDeProp
+                        icone={UserRound}
+                        rotulo="Atribuído"
+                        valor={conversaDoResumo.atribuido === null ? "Sem Atribuído" : (nomeDoAtribuidoDaConversa ?? "Atribuído indisponível")}
+                      />
+                    </>
+                  ) : null}
                 </div>
 
                 <div className="grid min-w-0 content-start gap-0.5">

@@ -13,17 +13,20 @@
  * vêm do RESUMO da api (`useResumoDaTarefa`), não do estado em memória. O cartão
  * não cai para a leitura antiga quando o resumo vem vazio (D-01): sem Contato
  * no resumo ele diz "Contato indisponível". A Empresa voltou ao cartão na Fase 15
- * (D-15-05), vinda do resumo (`plataforma.empresas`). A temperatura do Contato não
- * volta (D-15-06): o modelo novo não tem a coluna. O Responsável e o Tipo seguem
- * do estado (a Tarefa os guarda).
+ * (D-15-05), vinda do resumo (`plataforma.empresas`), com a qualificação e o estado
+ * da Conversa. O que a D-15-06 adiou (o modelo novo não tem a coluna) não volta. O
+ * Responsável e o Tipo seguem do estado (a Tarefa os guarda).
  */
 
 import { Building2, CalendarClock, MessageSquare, User as UserIcon } from "lucide-react";
 import { vinculosDoCrmDaTarefa } from "@n1/dominio/derive-conversacional";
+import type { SituacaoDaConversa } from "@n1/dominio/crm/conversas";
 import type { ResumoDaTarefaConversacional } from "@n1/dominio/crm/resumo-da-tarefa";
 import type { DataState } from "@n1/dominio/state";
 import type { Task } from "@n1/dominio/types";
+import type { TomPilula } from "@/design/basicos";
 import { useResumoDaTarefa } from "@/dados/crm/tarefas-conversacionais";
+import { useData } from "@/dados/store";
 import { SeloDoProvedor } from "@/features/crm/selo-do-provedor";
 import { iconeDoTipoNoQuadro } from "@/features/estrutura/icone-de-tipo";
 import { CartaoDeQuadro } from "@/features/shell/quadro";
@@ -59,6 +62,50 @@ export function PilulasDoCanal({ canal }: { readonly canal: NonNullable<ResumoDa
       <SeloDoProvedor canal={{ channelType: canal.tipo, provider: canal.provedor }} />
     </>
   );
+}
+
+/** Os rótulos de produto do estado da Conversa, os mesmos do filtro da Caixa de Entrada. */
+export const ROTULO_DA_SITUACAO: Record<SituacaoDaConversa, string> = {
+  aberta: "Aberta",
+  pendente: "Pendente",
+  resolvida: "Resolvida",
+};
+
+const TOM_DA_SITUACAO: Record<SituacaoDaConversa, TomPilula> = {
+  aberta: "info",
+  pendente: "aviso",
+  resolvida: "sucesso",
+};
+
+/** O rótulo do item de Catálogo (`qualificacao`) com esse id; `undefined` se o Catálogo não o tem (a tela não inventa texto). */
+export function rotuloDaQualificacao(state: Pick<DataState, "catalog">, qualificacaoId: string | null): string | undefined {
+  if (qualificacaoId === null) return undefined;
+  return state.catalog.find((c) => c.kind === "qualificacao" && c.id === qualificacaoId)?.name;
+}
+
+/** O nome de quem atende a Conversa, resolvido no estado (Membro pelo nome de exibição, Agente pelo nome); `undefined` se o id não está no estado. */
+export function nomeDoAtribuido(
+  state: Pick<DataState, "members" | "agents">,
+  atribuido: { readonly tipo: "membro" | "agente"; readonly id: string },
+): string | undefined {
+  return atribuido.tipo === "membro"
+    ? state.members.find((m) => m.id === atribuido.id)?.displayName
+    : state.agents.find((a) => a.id === atribuido.id)?.name;
+}
+
+/** A qualificação do Contato em pílula, com o rótulo do Catálogo; sem rótulo no Catálogo, nada (D-15-05). */
+export function PilulaDaQualificacao({ qualificacaoId }: { readonly qualificacaoId: string | null }) {
+  const rotulo = useData((dados) => rotuloDaQualificacao(dados, qualificacaoId));
+  return rotulo ? (
+    <Pilula tom="acento" className="max-w-full">
+      <span className="min-w-0 truncate">{rotulo}</span>
+    </Pilula>
+  ) : null;
+}
+
+/** O estado da Conversa vinculada em pílula (Aberta, Pendente ou Resolvida); sem Conversa, nada (D-15-05). */
+export function PilulaDoEstadoDaConversa({ conversa }: { readonly conversa: ResumoDaTarefaConversacional["conversa"] }) {
+  return conversa ? <Pilula tom={TOM_DA_SITUACAO[conversa.situacao]}>{ROTULO_DA_SITUACAO[conversa.situacao]}</Pilula> : null;
 }
 
 export interface DadosDoCartaoConversacional {
@@ -140,6 +187,8 @@ export function CartaoConversacional({
             <span className="min-w-0 truncate">{task.title}</span>
           </Pilula>
           {canal ? <PilulasDoCanal canal={canal} /> : null}
+          <PilulaDaQualificacao qualificacaoId={resumo?.qualificacaoId ?? null} />
+          <PilulaDoEstadoDaConversa conversa={resumo?.conversa ?? null} />
         </>
       }
       destaque={
