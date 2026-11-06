@@ -5,10 +5,11 @@
  * (`lst_funil_<x>` ↔ `fnl_<x>`) não é portada: os Funis novos têm id UUID.
  *
  * Este teste LÊ o código-fonte da web (sem navegador, sem banco) e congela a lista
- * de arquivos de produção que HOJE citam `funilDaLista` ou o caminho
+ * de arquivos de produção que citam `funilDaLista` ou o caminho
  * `iniciar-conversa`. Código novo não entra nela, e o diálogo de nova Tarefa
- * conversacional já saiu (14-16). Só o corte do modelo antigo (3.4.5) a encolhe,
- * quando o diálogo "Iniciar conversa" e quem o abre forem removidos; nunca a aumenta.
+ * conversacional já saiu (14-16). O corte do modelo antigo (3.4.5, plano 15-40)
+ * apagou o diálogo "Iniciar conversa" e tirou a página da Lista do espelho: a lista
+ * congelada ficou VAZIA e assim fica. Nenhum arquivo da web cita as Listas espelho.
  *
  * O texto inteiro conta, comentário inclusive: citar a regra num comentário já é
  * apontar para ela. O mesmo teste existe em `packages/dominio` e em `apps/api`.
@@ -19,8 +20,8 @@ import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-/** Os arquivos de `apps/web/src` que citam as Listas espelho hoje (a lista congelada). */
-const CONGELADOS = ["features/crm/iniciar-conversa-dialog.tsx", "features/estrutura/dialogos-da-lista.tsx"] as const;
+/** Os arquivos de `apps/web/src` que citam as Listas espelho hoje: nenhum (15-40). Só encolhia, e chegou a zero. */
+const CONGELADOS: readonly string[] = [];
 
 const CITA_AS_LISTAS_ESPELHO = /funilDaLista|iniciar-conversa/;
 
@@ -51,9 +52,9 @@ describe("D-06 — nada novo depende das Listas espelho (web)", () => {
     expect(producao.map((f) => f.arquivo)).toContain("features/estrutura/nova-tarefa-conversacional-dialog.tsx");
   });
 
-  it("só a lista congelada de hoje cita funilDaLista ou iniciar-conversa", () => {
+  it("nenhum arquivo cita funilDaLista ou iniciar-conversa (a lista congelada chegou a zero)", () => {
     const citam = producao.filter((f) => CITA_AS_LISTAS_ESPELHO.test(f.texto)).map((f) => f.arquivo).sort();
-    const novos = citam.filter((arquivo) => !(CONGELADOS as readonly string[]).includes(arquivo));
+    const novos = citam.filter((arquivo) => !CONGELADOS.includes(arquivo));
     const sumidos = CONGELADOS.filter((arquivo) => !citam.includes(arquivo));
     expect(
       novos,

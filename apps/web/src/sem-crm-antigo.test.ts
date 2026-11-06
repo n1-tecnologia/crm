@@ -28,9 +28,6 @@ import { describe, expect, it } from "vitest";
 const CONGELADOS = [
   "features/crm/conectar-provedor.tsx",
   "features/crm/contact-card.tsx",
-  "features/crm/deal-card.tsx",
-  "features/crm/deal-screen.tsx",
-  "features/crm/iniciar-conversa-dialog.tsx",
   "features/estrutura/financeiro/serie-dialog.tsx",
   "features/estrutura/nova-tarefa-conversacional-dialog.tsx",
   "features/ia/agentes/ensaiar-dialog.tsx",
