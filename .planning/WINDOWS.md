@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 42
+open_count: 45
 waived_count: 2
-fixed_count: 16
-total_count: 60
-last_updated: 2026-11-06T20:19:25.669Z
+fixed_count: 17
+total_count: 64
+last_updated: 2026-11-06T20:48:49.716Z
 ---
 
 # Broken Windows Ledger
@@ -70,11 +70,15 @@ last_updated: 2026-11-06T20:19:25.669Z
 | 53 | 15 | deviation | apps/api/src/migracao-crm/mapeador.ts |  | 15-28: o que o --migrar NAO leva as tabelas novas (fica so em registros_crm_antigo e aparece em 'Nao migrados' do --seco): temperatura e Tags dos Contatos; Identificadores de LinkedIn, TikTok e chat do site; Canal do LinkedIn e do chat do site e as Conversas deles (os Vinculos de Tarefa para essas Conversas seguem 'Registro indisponivel'); Empresa sem vinculo admin vigente e os Negocios dela; no Negocio, codigo legivel, campos personalizados, historico de Etapas e os Contatos alem do dono (todo Negocio com Empresa perde o Contato); vinculos Empresa-Empresa e 'distinto de'; Mensagem de Flow migra sem o Flow. No seed sintetico: 35 temperaturas, 25 Contatos com Tags, 32 Identificadores sem destino, 5 Conversas de canal sem destino, 19 Negocios com detalhes perdidos. O dono le a lista no --seco de cada Espaco antes do corte (15-34/15-35) | open |  | 2026-11-06T19:45:42.126Z |  |
 | 54 | 15 | deviation | apps/api/src/migracao-crm/mapeador.ts |  | 15-28: campos personalizados de Contato e Empresa entram em campos_adicionais com o id da Definicao como chave (ex. fd_signo), sem rotulo, e valor em lista fica de fora; o Canal migrado entra desconectado (a conexao real so vem do provedor); Qualificacao e Origem do Contato levam o id do Catalogo como texto (a tela mostra o rotulo so se o id existe no Catalogo) | open |  | 2026-11-06T19:45:42.191Z |  |
 | 55 | 15 | unrun-verify | apps/api/src/migracao-crm/migrar-entidades.test.ts |  | 15-28: os avisos 22, 32, 42, 49, 50 e 52 foram dados como corrigidos pelo codigo e pelos testes em Docker (ids antigos preservados, Vinculos achando o id); em producao o efeito so existe depois que o dono rodar o --migrar nos Espacos com CRM antigo (15-34/15-35). Antes disso os Vinculos a ids antigos seguem 'nao encontrado'. Nada foi rodado contra banco real | open |  | 2026-11-06T19:45:42.257Z |  |
-| 56 | 15 | deviation | apps/api/src/bootstrap/crm-demo.test.ts |  | 15-29: o teste dos Vinculos do demo le buildSeed().links; quando o 15-31 tirar o CRM e os Vinculos do seed, procurados fica 0 e o teste (que exige contact, conversation e deal achados) quebra. O 15-31 precisa trocar a fonte dos Vinculos (por exemplo, a lista de ids que o proprio seed novo guarda em registros) ou ajustar o caso, sem perder a prova de que os ids preservados acham o registro. | open |  | 2026-11-06T19:59:51.284Z |  |
+| 56 | 15 | deviation | apps/api/src/bootstrap/crm-demo.test.ts |  | 15-29: o teste dos Vinculos do demo le buildSeed().links; quando o 15-31 tirar o CRM e os Vinculos do seed, procurados fica 0 e o teste (que exige contact, conversation e deal achados) quebra. O 15-31 precisa trocar a fonte dos Vinculos (por exemplo, a lista de ids que o proprio seed novo guarda em registros) ou ajustar o caso, sem perder a prova de que os ids preservados acham o registro. | fixed |  | 2026-11-06T19:59:51.284Z | 2026-11-06T20:48:49.716Z |
 | 57 | 15 | deviation | apps/api/src/bootstrap/crm-demo.json |  | 15-29: o demo traz so o que o mapeador do 15-28 migra para as tabelas novas: sem temperatura e Tags dos Contatos, sem o Canal do LinkedIn e do chat do site e as Conversas deles (3 Canais e 16 Conversas, contra 5 e 23 do seed antigo), Canais desconectada e 160 itens listados em naoMigrados. A Caixa de dev fica mais magra que a do seed antigo; nao ha Canal conectado nem envio real. | open |  | 2026-11-06T19:59:51.351Z |  |
 | 58 | 15 | unrun-verify | apps/api/src/bootstrap/crm-demo.cli.ts |  | 15-29: bootstrap:crm-demo foi provado so em Postgres de Docker (testes e uma execucao de npm run em Espaco criado a mao); nenhuma tela do apps/web foi aberta sobre o Espaco carregado, entao a Caixa cheia em desenvolvimento nao foi vista no navegador. | open |  | 2026-11-06T19:59:51.413Z |  |
 | 59 | 15 | deviation | .planning/phases/15-unifica-o-do-crm-telas-no-modelo-novo-e-remo-o-do-modelo-ant/15-ENSAIO.md |  | 15-30: o ensaio rodou sobre a copia de 2026-11-05 (dump 11:13, CSV 10:11), nao sobre uma copia renovada: o dono nao renovou e mandou 'pode fazer o que precisar para fechar a fase'. Vale para aquele momento; o corte (15-34/15-35) precisa rodar o --seco do dia em cada Espaco, e o dono pode renovar a copia e repetir o ensaio antes. A copia tem 19 Espacos e nao 18 (ws_agendaworker_* sem nenhuma linha em registros); no dump o ws_n1 tem no CRM novo 2 Contatos, 1 Empresa, 2 Funis, 6 Etapas e 1 Negocio, que nao foram recopiados | open |  | 2026-11-06T20:19:25.592Z |  |
 | 60 | 15 | deviation | .planning/phases/15-unifica-o-do-crm-telas-no-modelo-novo-e-remo-o-do-modelo-ant/15-ENSAIO.md |  | 15-30: decisao do Funil do ws_n1 e achados da Pasta. O CRM antigo do ws_n1 tem so o Funil fnl_padrao 'Padrao' (1 Etapa 'Novo', nenhum Negocio, nenhum Contato); --funil=guardar deixa o CRM novo como esta (2 Funis, 6 Etapas), --funil=migrar acrescenta 1 Funil vazio e 1 Etapa (3 Funis, 7 Etapas, 2 linhas de crm_de_para), sem nome em uso. A Pasta Meus negocios nao existe no ws_n1; em 16 dos 18 Espacos de teste ela tem Tarefa em 4 Listas (18 Tarefas) e por isso nao sai (atualiza o aviso 51: sao 16, nao 17). O dono decide o Funil no --seco do dia | open |  | 2026-11-06T20:19:25.669Z |  |
+| 61 | 15 | deviation | packages/dominio/src/seed.ts |  | 15-31: as Automacoes do seed com escopo de Lista espelho (aut_clo_proposta, escopo lst_funil_closer) e as Acoes criar_tarefa com alvo lst_funil_sdr/lst_funil_closer apontam para Listas que sairam do seed com a Pasta Meus negocios; num estado novo a aut_clo_proposta nasce inoperante (escopo eliminado (Lista)). seed-ia.test.ts e ia/automacoes.test.ts passaram a esperar isso. Alguem precisa decidir o destino delas (mover para o Funil, ou remover) antes do 15-41. | open |  | 2026-11-06T20:48:44.453Z |  |
+| 62 | 15 | deviation | packages/dominio/src/seed-ferramentas.ts |  | 15-31: sem Contato, Canal e Conversa do CRM no seed, saiu do seed o que as Ferramentas faziam SOBRE eles: os Envios e Respostas de Flow nas Conversas cnv_5/9/13/17 (4 Mensagens e 2 Registros de Atividade), a Tag Em grupo de alunos nos Contatos e o groupsEnabled do Canal chn_wpp. O Flow, as versoes, os Grupos, as Participacoes por id e as Conversas de Grupo ficam. As metricas do Flow nascem com zero envios e o demo (bootstrap:crm-demo) nao liga Grupos no Canal. | open |  | 2026-11-06T20:48:44.567Z |  |
+| 63 | 15 | deviation | packages/dominio/src/operations/ferramentas.test.ts |  | 15-31: ferramentas.test.ts (Grupo, Comunidade e Flow, 15-07/15-17) depende do Canal, dos Contatos e das Conversas do CRM antigo e dos Envios de Flow; reescrever as 933 linhas passou do escopo do plano, entao o beforeEach usa semearCrmAntigo(buildSeed()). O 15-43 apaga semearCrmAntigo mas Grupo/Flow ficam ate as Sessoes 6 e 7: este teste precisa montar Canal, Contatos e Conversas proprios antes do 15-43. | open |  | 2026-11-06T20:48:44.683Z |  |
+| 64 | 15 | deviation | packages/dominio/src/seed-produto.ts |  | 15-31: as Reunioes do processo comercial (tsk_reuniao_1/2/3 e tsk_call_ref, ligadas a Negocio) moravam no seed do produto na Lista de Meus negocios do Funil; sem a Pasta, a poda as leva junto com a arvore de demonstracao, e buildProductSeed() nasce sem Tarefa de hoje para o Thiago. rehomeMeetings saiu. O seed do produto so e usado em testes; derive-resumo.test.ts passou a conferir o seed completo. | open |  | 2026-11-06T20:48:44.782Z |  |
 
 ````json
 [
@@ -800,10 +804,10 @@ last_updated: 2026-11-06T20:19:25.669Z
     "file": "apps/api/src/bootstrap/crm-demo.test.ts",
     "line": null,
     "description": "15-29: o teste dos Vinculos do demo le buildSeed().links; quando o 15-31 tirar o CRM e os Vinculos do seed, procurados fica 0 e o teste (que exige contact, conversation e deal achados) quebra. O 15-31 precisa trocar a fonte dos Vinculos (por exemplo, a lista de ids que o proprio seed novo guarda em registros) ou ajustar o caso, sem perder a prova de que os ids preservados acham o registro.",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-06T19:59:51.284Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-06T20:48:49.716Z",
     "milestone": "v1.0"
   },
   {
@@ -855,6 +859,58 @@ last_updated: 2026-11-06T20:19:25.669Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-06T20:19:25.669Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 61,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "packages/dominio/src/seed.ts",
+    "line": null,
+    "description": "15-31: as Automacoes do seed com escopo de Lista espelho (aut_clo_proposta, escopo lst_funil_closer) e as Acoes criar_tarefa com alvo lst_funil_sdr/lst_funil_closer apontam para Listas que sairam do seed com a Pasta Meus negocios; num estado novo a aut_clo_proposta nasce inoperante (escopo eliminado (Lista)). seed-ia.test.ts e ia/automacoes.test.ts passaram a esperar isso. Alguem precisa decidir o destino delas (mover para o Funil, ou remover) antes do 15-41.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T20:48:44.453Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 62,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "packages/dominio/src/seed-ferramentas.ts",
+    "line": null,
+    "description": "15-31: sem Contato, Canal e Conversa do CRM no seed, saiu do seed o que as Ferramentas faziam SOBRE eles: os Envios e Respostas de Flow nas Conversas cnv_5/9/13/17 (4 Mensagens e 2 Registros de Atividade), a Tag Em grupo de alunos nos Contatos e o groupsEnabled do Canal chn_wpp. O Flow, as versoes, os Grupos, as Participacoes por id e as Conversas de Grupo ficam. As metricas do Flow nascem com zero envios e o demo (bootstrap:crm-demo) nao liga Grupos no Canal.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T20:48:44.567Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 63,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "packages/dominio/src/operations/ferramentas.test.ts",
+    "line": null,
+    "description": "15-31: ferramentas.test.ts (Grupo, Comunidade e Flow, 15-07/15-17) depende do Canal, dos Contatos e das Conversas do CRM antigo e dos Envios de Flow; reescrever as 933 linhas passou do escopo do plano, entao o beforeEach usa semearCrmAntigo(buildSeed()). O 15-43 apaga semearCrmAntigo mas Grupo/Flow ficam ate as Sessoes 6 e 7: este teste precisa montar Canal, Contatos e Conversas proprios antes do 15-43.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T20:48:44.683Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 64,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "packages/dominio/src/seed-produto.ts",
+    "line": null,
+    "description": "15-31: as Reunioes do processo comercial (tsk_reuniao_1/2/3 e tsk_call_ref, ligadas a Negocio) moravam no seed do produto na Lista de Meus negocios do Funil; sem a Pasta, a poda as leva junto com a arvore de demonstracao, e buildProductSeed() nasce sem Tarefa de hoje para o Thiago. rehomeMeetings saiu. O seed do produto so e usado em testes; derive-resumo.test.ts passou a conferir o seed completo.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T20:48:44.782Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }
