@@ -313,6 +313,27 @@ describe("rotas de Conversas — serviço falso, sem banco", () => {
     expect(chamadas[1]?.[2]).toMatchObject({ comEstrela: false });
   });
 
+  it("GET /conversas repassa naoLidas (texto vira boolean) ao serviço", async () => {
+    const { servico, chamadas } = novoFalso();
+    const app = appCom(servico);
+    const ok = await app.inject({ method: "GET", url: "/conversas?naoLidas=true", headers: AUTORIZACAO });
+    expect(ok.statusCode).toBe(200);
+    expect(chamadas[0]?.[2]).toMatchObject({ naoLidas: true });
+    const falso = await app.inject({ method: "GET", url: "/conversas?naoLidas=false", headers: AUTORIZACAO });
+    expect(falso.statusCode).toBe(200);
+    expect(chamadas[1]?.[2]).toMatchObject({ naoLidas: false });
+    const sem = await app.inject({ method: "GET", url: "/conversas", headers: AUTORIZACAO });
+    expect(sem.statusCode).toBe(200);
+    expect(chamadas[2]?.[2]).not.toHaveProperty("naoLidas");
+  });
+
+  it.each(["naoLidas=talvez", "naoLidas=1", "naoLidas="])("GET /conversas?%s responde 400 e o serviço não é chamado", async (consulta) => {
+    const { servico, chamadas } = novoFalso();
+    const resposta = await appCom(servico).inject({ method: "GET", url: `/conversas?${consulta}`, headers: AUTORIZACAO });
+    expect(resposta.statusCode).toBe(400);
+    expect(chamadas).toEqual([]);
+  });
+
   it.each(["comEstrela=talvez", "comEstrela=1", `q=${"a".repeat(201)}`, "membroId=mem_outro"])("GET /conversas?%s responde 400", async (consulta) => {
     const { servico, chamadas } = novoFalso();
     const resposta = await appCom(servico).inject({ method: "GET", url: `/conversas?${consulta}`, headers: AUTORIZACAO });

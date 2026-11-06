@@ -693,6 +693,35 @@ describeComBanco("ServicoDeConversas — Postgres local", () => {
       expect(await naoLidas(c.admin)).toBe(2);
     });
 
+    it("o filtro naoLidas é do Membro da sessão: true traz só as com Mensagem nova, false as lidas, e o total conta o filtrado", async () => {
+      const c = await espaco("filtronaolidas");
+      const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966664010" }]);
+      const bia = await contato(c.ws, "Bia", [{ tipo: "whatsapp", valor: "+5511966664011" }]);
+      const canal = await comercial(c.ws);
+      const c1 = valor(await abrir(c, canal, ana)).conversa;
+      const c2 = valor(await abrir(c, canal, bia)).conversa;
+      await recebida(c.ws, c1.id, canal, "wamid.f1", horasAtras(1));
+      await recebida(c.ws, c2.id, canal, "wamid.f2", horasAtras(3));
+      // O Membro leu a C2 depois da Mensagem dela; a C1 ficou com uma Mensagem recebida depois do lidaAte.
+      valor(await servico.marcar(c.membro, c2.id, { lidaAte: horasAtras(2) }));
+      valor(await servico.marcar(c.membro, c1.id, { lidaAte: horasAtras(2) }));
+
+      const ids = async (quem: MembroDaSessao, filtro: object) =>
+        valor(await servico.listar(quem, { ...todas, ...filtro }));
+      const nao = await ids(c.membro, { naoLidas: true });
+      expect(nao.itens.map((i) => i.id)).toEqual([c1.id]);
+      expect(nao.total).toBe(1);
+      const lidas = await ids(c.membro, { naoLidas: false });
+      expect(lidas.itens.map((i) => i.id)).toEqual([c2.id]);
+      expect(lidas.total).toBe(1);
+
+      // Outro Membro, sem marcação: as duas têm Mensagem recebida que ele nunca leu (T-15-18).
+      const doOutro = await ids(c.admin, { naoLidas: true });
+      expect(doOutro.itens.map((i) => i.id).sort()).toEqual([c1.id, c2.id].sort());
+      expect(doOutro.total).toBe(2);
+      expect((await ids(c.admin, { naoLidas: false })).total).toBe(0);
+    });
+
     it("marcar só um campo não apaga o outro", async () => {
       const c = await espaco("doiscampos");
       const ana = await contato(c.ws, "Ana", [{ tipo: "whatsapp", valor: "+5511966664003" }]);
