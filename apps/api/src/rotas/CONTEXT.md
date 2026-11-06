@@ -197,6 +197,20 @@ pagam uma ida a mais ao banco (a leitura de `plataforma.canais`); são gestos
 raros. Não gravam nas tabelas do CRM nem avançam a revisão do Espaço por fora de
 `executar()`.
 
+**Ferramentas do Canal conferem Canal e Contato nas tabelas (Fase 15, 15-07, 3.4.8, UCR-08).**
+As 28 operações de Grupo, Comunidade e Flow que conferem Canal ou Contato
+(`criarGrupo`, `adicionarParticipantes`, `criarComunidade`, `publicarVersao`,
+`enviarFlow` e as demais de `gesto-no-crm/ferramentas.ts`) recebem do servidor,
+como ÚLTIMO argumento, o `crm` (`CrmDasFerramentas`, de `@n1/dominio`): os Canais
+de `plataforma.canais` em qualquer estado e os Contatos de `plataforma.contatos`
+que os `args` citam (`resumidosPorIds`, do Espaço da sessão, teto de 500 ids).
+O `crm` que o navegador manda ali só serve à execução local: o esquema
+(`CRM_DO_NAVEGADOR`, em `esquemas/fragmentos.ts`, até 200 itens por lista) valida
+a forma e o tamanho, e a rota o DESCARTA, trocando a posição pelo que leu (T-15-20).
+Grupo e Flow continuam gravando a Conversa de Grupo e o envio de Flow em
+`state.conversations` (F14-D-05); só a conferência de Canal e de Contato vem das
+tabelas. A criação do Contato de um Participante desconhecido é do 15-17.
+
 **Tarefa conversacional nas tabelas (Fase 14, 14-13 e 14-14, 3.3.1 e 3.3.3 a 3.3.6).**
 `rotas/crm/tarefas-conversacionais.ts` tem cinco rotas (criar e resumo no 14-13;
 trocar o Canal e ligar ou criar o Negócio no 14-14):
