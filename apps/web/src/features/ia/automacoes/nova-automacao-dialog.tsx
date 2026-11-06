@@ -16,6 +16,7 @@ import type { AutomationScopeType, AutomationTrigger, Id, TriggerKind } from "@n
 import { OBJECT_TYPE_LABEL, TRIGGER_KIND_LABEL } from "@/features/shell/format";
 import { ConfirmDialog, Field, Select, TextArea, TextInput, type Option } from "@/features/shell/ui";
 import { EXECUTA_LABEL, NAO_EXECUTA_LABEL } from "../rotulos";
+import { useFunisDoEscopo, type FunisParaOEscopo } from "./funis-do-escopo";
 
 const ESCOPOS: readonly AutomationScopeType[] = ["workspace", "space", "folder", "list", "funnel", "inbox", "queue", "grupo", "comunidade", "flow"];
 
@@ -48,7 +49,9 @@ function Formulario({ onClose, onDone }: { readonly onClose: () => void; readonl
   const [erro, setErro] = useState<string | null>(null);
 
   const convidado = recusaDeConvidado(state, memberId, "cria Automação");
-  const registros = registrosDoEscopo(state, scopeType);
+  // Os Funis vêm do CRM novo (GET /funis), só quando o escopo é Funil (15-39, 15-21).
+  const funis = useFunisDoEscopo({ pausado: scopeType !== "funnel" });
+  const registros = registrosDoEscopo(state, scopeType, funis);
   const escopoFixo = scopeType === "workspace" || scopeType === "inbox";
   const registroId = escopoFixo ? (registros[0]?.value ?? "") : scopeId;
   const eventos = eventosDoEscopo(scopeType);
@@ -87,7 +90,9 @@ function Formulario({ onClose, onDone }: { readonly onClose: () => void; readonl
       {...(motivo ? { confirmDisabledReason: motivo } : {})}
       onConfirm={() => {
         const trigger = gatilhoInicial();
-        const r = run((data, me) => criarAutomacao(data, me, { name: nome, description: descricao, scopeType, scopeId: registroId, ...(trigger ? { trigger } : {}) }));
+        const entrada = { name: nome, description: descricao, scopeType, scopeId: registroId, ...(trigger ? { trigger } : {}) };
+        // `funis`: os Funis que a tela tem, só para aplicar na hora; o servidor o descarta e relê de plataforma.funis (T-15-92).
+        const r = run((data, me) => (scopeType === "funnel" ? criarAutomacao(data, me, entrada, funis.funis) : criarAutomacao(data, me, entrada)));
         if (!r.ok) {
           setErro(r.error);
           return;
@@ -175,7 +180,7 @@ const caminho = (state: DataState, type: "folder" | "list", id: Id): string =>
     .join(" › ");
 
 /** As coleções ativas de cada tipo de escopo, como opções; o Espaço de Trabalho e a Caixa de Entrada são únicos. */
-function registrosDoEscopo(state: DataState, scopeType: AutomationScopeType): Option[] {
+function registrosDoEscopo(state: DataState, scopeType: AutomationScopeType, funis: FunisParaOEscopo): Option[] {
   const ativos = <T extends { readonly id: Id; readonly lifecycle: string }>(lista: readonly T[]): T[] => lista.filter((r) => r.lifecycle === "ativo");
   switch (scopeType) {
     case "workspace":
@@ -187,7 +192,7 @@ function registrosDoEscopo(state: DataState, scopeType: AutomationScopeType): Op
     case "list":
       return ativos(state.lists).map((l) => ({ value: l.id, label: l.name, detail: caminho(state, "list", l.id) }));
     case "funnel":
-      return ativos(state.funnels).map((f) => ({ value: f.id, label: f.name }));
+      return funis.funis.filter((f) => f.estado === "ativo").map((f) => ({ value: f.id, label: funis.nomes.get(f.id) ?? f.id }));
     case "inbox":
       return [{ value: state.inbox.id, label: "Caixa de Entrada" }];
     case "queue":

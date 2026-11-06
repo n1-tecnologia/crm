@@ -199,6 +199,18 @@ chama UMA vez para as contas da Lista inteira (digitar na busca não refaz a cha
 nunca o id. O cartão de Tarefa financeiro faz uma chamada por cartão visível. O diálogo da série escolhe o
 cliente entre os Contatos de `useContatos({ q })` e manda o `clientes` só para a execução local: o servidor
 descarta isso e confere o Contato em `plataforma.contatos`.
+A IA (15-21, 3.4.9) também escolhe e mostra o CRM novo pela api. A Âncora do Chat e do ensaio de Agente lista
+Negócios, Contatos e Conversas pelas rotas de lista, com a busca indo como `q` (`features/ia/ancora-do-chat.tsx`,
+`agentes/ensaiar-dialog.tsx`), e o nome da Âncora vem de `useNomesDoCrm`: `null` da api é "Registro
+indisponível" (`NOME_INDISPONIVEL`), nunca um nome que a api não devolveu. `createChatSession`,
+`configureChatSession` e `ensaiarAgente` saem com `nomes` (o nome que a tela tem; `nomesDaEscolha`) no último
+argumento e a Âncora sem o nome (`ancoraDaEscolha`): o servidor descarta o `nomes` e relê das tabelas. O escopo
+Funil das Automações vem de `GET /funis` (`automacoes/funis-do-escopo.ts`: `useFunisDoEscopo`, ativos e
+arquivados) e vai às derivações de escopo (`inoperanteComFunis`, que NÃO acusa "escopo eliminado" enquanto a lista
+não chegou) e a `criarAutomacao` (`funis`, descartado no servidor); o Canal da Ação de mensagem vem de
+`useCanais` (`CampoSpec.usaCanais`); o total de Conversas que o Agente solta ao sair vem de
+`GET /conversas?atribuidoId=` (`agentes/conversas-do-agente.ts`). `features/ia/` não lê mais Negócio, Contato,
+Empresa, Funil, Canal nem Conversa do CRM em `state`.
 Os números do Início do CRM novo vêm de `dados/crm/inicio.ts` (15-18): `usePanoramaDoCrm()`,
 `useLeadsAAtender(qualificacoes)` e `useEstatisticasDoCrm(janela, fuso)` leem `GET /crm/inicio/*`, que soma
 no servidor (nunca listas paginadas somadas no navegador, `paginaMaxima` é 200). "Meu" é o Membro da sessão:

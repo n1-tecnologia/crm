@@ -2,8 +2,8 @@
 /**
  * Fase 15, 3.4.9 (UCR-08) — a IA escolhe e mostra registros do CRM novo, não do store.
  *
- * O traçador (15-21, Task 1): a Âncora do Chat. O `state.deals`, `state.contacts` e
- * `state.conversations` do seed ficam VAZIOS aqui, então tudo o que a tela mostra vem da api
+ * O traçador (15-21, Task 1): a Âncora do Chat. As coleções do CRM antigo no seed (Negócios,
+ * Contatos, Conversas, Canais, Funis) ficam VAZIAS aqui, então tudo o que a tela mostra vem da api
  * falsa (`fetch` falso): a lista de Negócios para escolher e `POST /crm/nomes` para o nome. A
  * operação sai com `nomes` do navegador (o servidor o descarta e relê, 15-08).
  */
@@ -76,9 +76,7 @@ beforeEach(() => {
     },
   );
   state = buildSeed();
-  state.deals = [];
-  state.contacts = [];
-  state.conversations = [];
+  Object.assign(state, { deals: [], contacts: [], conversations: [], channels: [], funnels: [] });
   gravados = [];
   nomesDaApi = { [NEGOCIO]: "Proposta Acme", [CONTATO]: "Ana Lima" };
   funisDaApi = { ativo: [{ id: FUNIL, nome: "Funil de Vendas", estado: "ativo" }], arquivado: [] };
@@ -371,7 +369,6 @@ describe("Escopo Funil das Automações no CRM novo (15-21)", () => {
 
 describe("Canal das Automações no CRM novo (15-21)", () => {
   it("(o) o campo Canal da Ação de mensagem lista os Canais de GET /canais (o store não tem Canais)", async () => {
-    state.channels = [];
     const spec = specDaAcao(state, { kind: "escrita", toolId: "mensagem.enviarAoContato" });
     await montar(<BlocoForm spec={spec} valor={{}} onChange={() => undefined} scopeType="grupo" scopeId="grp_x" />);
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => /\/canais\?/.test(String(url)))).toBe(true));
