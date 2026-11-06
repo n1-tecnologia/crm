@@ -21,6 +21,15 @@ const navegacao = vi.hoisted(() => ({
   replace: vi.fn(),
 }));
 
+/** Os Canais de `plataforma.canais` que `useCanais` devolve neste arquivo (15-12). */
+const canaisDaTabela = vi.hoisted(() => ({ itens: [] as unknown[] }));
+
+vi.mock("@/dados/crm/canais", () => ({
+  useCanais: (_filtro: unknown, opcoes?: { pausado?: boolean }) => ({
+    data: opcoes?.pausado ? undefined : { ok: true, itens: canaisDaTabela.itens, total: canaisDaTabela.itens.length },
+  }),
+}));
+
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
   useRouter: () => ({ replace: navegacao.replace, push: vi.fn() }),
@@ -256,5 +265,68 @@ describe("ContainerSettings — Geral e o painel da aba", () => {
   it("contêiner inexistente mostra \"Contêiner não encontrado.\"", () => {
     montar("list", "lst_que_nao_existe");
     expect(screen.getByText("Contêiner não encontrado.")).toBeTruthy();
+  });
+});
+
+describe("ContainerSettings — Modelo e canais pelos Canais da tabela (15-12, D-15-12)", () => {
+  const canalDaTabela = (id: string, nome: string, identificadorExterno: string) => ({
+    id,
+    nome,
+    tipo: "whatsapp",
+    provedor: "whatsapp-nao-oficial",
+    identificadorExterno,
+    conexao: "conectada",
+    conexaoSimulada: false,
+    conectadaEm: null,
+    estado: "ativo",
+    arquivadoEm: null,
+    configuradoPor: "mem_rafael",
+    filaPadraoId: null,
+    proprietarioPadraoId: null,
+    origemPadraoId: null,
+    gruposHabilitados: false,
+    criadoPor: "mem_rafael",
+    criadoEm: "2026-11-01T00:00:00.000Z",
+    atualizadoEm: "2026-11-01T00:00:00.000Z",
+  });
+
+  function listaConversacional(): DataState {
+    const estado = buildSeed();
+    const lista = estado.lists.find((l) => l.id === "lst_prospeccao")!;
+    lista.modeloDeTarefa = "conversacional";
+    lista.canaisDeAtendimento = ["tab_1"];
+    return estado;
+  }
+
+  it("a seção lista os Canais da tabela e o popup oferece só os que a Lista não usa, com o link de conectar", () => {
+    canaisDaTabela.itens = [canalDaTabela("tab_1", "Suporte do Zap", "+5511977770001"), canalDaTabela("tab_2", "Comercial do Zap", "+5511977770002")];
+    navegacao.params = new URLSearchParams({ aba: "modelo-e-canais" });
+    montar("list", "lst_prospeccao", listaConversacional());
+
+    expect(screen.getByRole("checkbox", { name: /Suporte do Zap/ }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("checkbox", { name: /Comercial do Zap/ }).getAttribute("aria-checked")).toBe("false");
+
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar WhatsApp" }));
+
+    const dialogo = screen.getByRole("alertdialog");
+    expect(within(dialogo).getByRole("radio", { name: /Comercial do Zap/ })).toBeTruthy();
+    expect(within(dialogo).queryByRole("radio", { name: /Suporte do Zap/ })).toBeNull();
+    expect(within(dialogo).getByRole("link", { name: "Conectar um Canal novo" }).getAttribute("href")).toBe(
+      "/crm/caixa-de-entrada/configuracoes/canais/conectar",
+    );
+  });
+
+  it("escolher o Canal no popup o marca na Lista (definirCanaisDaLista) e fecha o popup", () => {
+    canaisDaTabela.itens = [canalDaTabela("tab_1", "Suporte do Zap", "+5511977770001"), canalDaTabela("tab_2", "Comercial do Zap", "+5511977770002")];
+    navegacao.params = new URLSearchParams({ aba: "modelo-e-canais" });
+    montar("list", "lst_prospeccao", listaConversacional());
+
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar WhatsApp" }));
+    const dialogo = screen.getByRole("alertdialog");
+    fireEvent.click(within(dialogo).getByRole("radio", { name: /Comercial do Zap/ }));
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Marcar nesta Lista" }));
+
+    expect(screen.getByText("Comercial do Zap marcado nesta Lista.")).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: /Comercial do Zap/ }).getAttribute("aria-checked")).toBe("true");
   });
 });

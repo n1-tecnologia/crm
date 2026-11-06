@@ -86,7 +86,7 @@ export function ContainerSettings({
   const recente = useRecente();
   // 3.3.7 — os Canais ativos das tabelas, só numa Lista conversacional. O servidor DESCARTA este argumento de
   // `definirCanaisDaLista` e lê `plataforma.canais` na transação; ele existe para a execução local não depender
-  // da projeção em `state.channels`.
+  // da projeção do Canal no estado antigo.
   const canaisDaTabela = useCanais(
     { estado: "ativo", limite: 100 },
     { pausado: kind !== "list" || state.lists.find((l) => l.id === id)?.modeloDeTarefa !== "conversacional" },
@@ -363,14 +363,16 @@ export function ContainerSettings({
                     {...(adicionando ? { tipo: adicionando } : {})}
                     open={adicionando !== null}
                     onClose={() => setAdicionando(null)}
-                    onDone={(canal) => {
+                    jaLigados={lista.canaisDeAtendimento ?? []}
+                    onEscolher={(canalId) => {
                       setAdicionando(null);
+                      const nome = canaisDaTabela.data?.itens.find((canal) => canal.id === canalId)?.nome ?? "O Canal";
                       report(
                         run((data, me) => {
-                          const ids = [...(lista.canaisDeAtendimento ?? []), canal.id];
+                          const ids = [...(lista.canaisDeAtendimento ?? []).filter((id) => id !== canalId), canalId];
                           return definirCanaisDaLista(data, me, lista.id, ids, canaisDosIds(ids));
                         }),
-                        `${canal.name} conectado e marcado nesta Lista.`,
+                        `${nome} marcado nesta Lista.`,
                       );
                     }}
                   />

@@ -166,7 +166,7 @@ export function CreateContainerDialog({
   const [error, setError] = useState<string | null>(null);
   // 3.3.7 — os Canais ativos das tabelas, só enquanto a Lista conversacional escolhe canais. O servidor DESCARTA
   // este argumento e lê `plataforma.canais` na transação; ele existe para a execução local não depender da
-  // projeção em `state.channels`.
+  // projeção do Canal no estado antigo.
   const canaisDaTabela = useCanais({ estado: "ativo", limite: 100 }, { pausado: !target || target.kind !== "lista" || modeloDeTarefa !== "conversacional" });
 
   if (!target) return null;
@@ -461,14 +461,16 @@ export function CreateContainerDialog({
         ) : null}
       </div>
     </ConfirmDialog>
-    {/* C36 — o popup de conectar uma conta nova. Irmão, não filho: um diálogo
-        de cada vez. Ao criar, a conta entra marcada e este diálogo volta. */}
+    {/* C36 — o popup de escolher uma conta (D-15-12: ele não cria Canal). Irmão,
+        não filho: um diálogo de cada vez. Ao escolher, a conta entra marcada e
+        este diálogo volta. */}
     <AdicionarCanalDialog
       {...(adicionando ? { tipo: adicionando } : {})}
       open={adicionando !== null}
       onClose={() => setAdicionando(null)}
-      onDone={(canal) => {
-        setCanais((atuais) => (atuais.includes(canal.id) ? atuais : [...atuais, canal.id]));
+      jaLigados={canais}
+      onEscolher={(canalId) => {
+        setCanais((atuais) => (atuais.includes(canalId) ? atuais : [...atuais, canalId]));
         setAdicionando(null);
       }}
     />
