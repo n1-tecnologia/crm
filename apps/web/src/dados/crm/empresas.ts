@@ -70,11 +70,12 @@ export function chaveDeEmpresas(filtro: FiltroDeEmpresas): string {
   return `/empresas?${parametros.toString()}`;
 }
 
-export function useEmpresas(filtro: FiltroDeEmpresas) {
+/** `pausado` não lê nada (a Busca só consulta arquivadas e a lixeira quando a pessoa pede). */
+export function useEmpresas(filtro: FiltroDeEmpresas, opcoes: { readonly pausado?: boolean } = {}) {
   const chave = chaveDeEmpresas(filtro);
   // `keepPreviousData`: "Mostrar mais" (o `limite` muda a chave) não pisca o esqueleto nem volta ao topo.
   // Quem usa confere se os dados são do estado pedido (a troca de aba também muda a chave).
-  return useSWR<RespostaDaListaDeEmpresas, Error>(chave, (k: string) => chamarCrm<RespostaDaListaDeEmpresas>(k), {
+  return useSWR<RespostaDaListaDeEmpresas, Error>(opcoes.pausado ? null : chave, (k: string) => chamarCrm<RespostaDaListaDeEmpresas>(k), {
     keepPreviousData: true,
   });
 }

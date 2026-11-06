@@ -19,13 +19,20 @@
  * otimização (T-3-79, achado para o orquestrador, correção durável é
  * `apps/api`).
  *
- * As outras sete famílias — **Contatos, Empresas, Negócios, Conversas,
- * Documentos, Agentes, Automações** — continuam sem filtro nesta rodada.
- * Não por serem difíceis: o predicado correto de cada uma (alcance do
- * contêiner de origem? dono do registro? `memberSeesResource`?) não está
- * decidido em nenhum artefato deste projeto, e o requisito que abriu este
+ * As outras famílias — **Documentos, Agentes, Automações** — continuam sem
+ * filtro nesta rodada. Não por serem difíceis: o predicado correto de cada uma
+ * (alcance do contêiner de origem? dono do registro? `memberSeesResource`?) não
+ * está decidido em nenhum artefato deste projeto, e o requisito que abriu este
  * plano (PAG-06) nomeia só Tarefa e Lista. Dívida conhecida, não descuido —
  * T-3-80, achado para o orquestrador.
+ *
+ * 15-14 (UCR-07) — **Contatos, Empresas, Negócios e Conversas** não vêm mais do
+ * store: são `GET /contatos?q=`, `/empresas?q=`, `/negocios?q=` e `/conversas?q=`
+ * (`dados/crm/*`), e quem aplica Papel e Espaço é a api (T-15-36). Só com 2 ou
+ * mais caracteres (T-15-37); o `total` da api é o número do grupo. "Incluir
+ * arquivados e na lixeira" acrescenta uma consulta por estado, só enquanto a
+ * opção está marcada. A busca de Conversa é pelo título (a rota não olha o
+ * texto das Mensagens, como a do modelo antigo olhava).
  *
  * O atalho "/" e a pílula da barra global prometem "tecle e busque": chegando
  * sem termo, o campo recebe o foco sozinho (as letras tecladas em seguida caem
@@ -38,8 +45,17 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { useData, useSession } from "@/dados/store";
-import { contactDisplayName, memberReachesContainer, memberSeesTask } from "@n1/dominio/derive";
-import { BarraDeFiltros, CorpoDeTela, EmptyState, Icone, PageHeader, Section, StateSeal } from "@/features/shell/ui";
+import { memberReachesContainer, memberSeesTask } from "@n1/dominio/derive";
+import type { EstadoCrm } from "@n1/dominio/crm/comum";
+import type { ContatoResumo } from "@n1/dominio/crm/contatos";
+import type { ConversaNaLista } from "@n1/dominio/crm/conversas";
+import type { EmpresaResumo } from "@n1/dominio/crm/empresas";
+import type { NegocioResumo } from "@n1/dominio/crm/negocios";
+import { useContatos } from "@/dados/crm/contatos";
+import { useConversas } from "@/dados/crm/conversas";
+import { useEmpresas } from "@/dados/crm/empresas";
+import { useNegocios } from "@/dados/crm/negocios";
+import { BarraDeFiltros, CorpoDeTela, EmptyState, Icone, PageHeader, Section, StateSeal, Toast } from "@/features/shell/ui";
 
 interface Hit {
   readonly id: string;
@@ -50,6 +66,115 @@ interface Hit {
 }
 
 const MIN_QUERY = 2;
+/** Quantos resultados cada grupo lista (e pede à api). */
+const POR_GRUPO = 10;
+
+/** O vocabulário do selo (`StateSeal`) para o `estado` das tabelas do CRM. */
+const SELO_DO_ESTADO: Readonly<Record<EstadoCrm, string>> = { ativo: "ativo", arquivado: "arquivado", na_lixeira: "naLixeira" };
+
+interface ConsultaDoCrm<T> {
+  readonly liga: boolean;
+  readonly dados: { readonly itens: T[]; readonly total: number } | undefined;
+  readonly carregando: boolean;
+  readonly erro: Error | undefined;
+}
+
+interface GrupoDoCrm {
+  readonly hits: readonly Hit[];
+  readonly total: number;
+  readonly carregando: boolean;
+  readonly erro: Error | undefined;
+}
+
+/** Junta as consultas LIGADAS de um grupo (uma por estado); `keepPreviousData` não vaza resultado de consulta desligada. */
+function reunir<T>(consultas: readonly ConsultaDoCrm<T>[], paraHit: (item: T) => Hit): GrupoDoCrm {
+  const ligadas = consultas.filter((consulta) => consulta.liga);
+  return {
+    hits: ligadas.flatMap((consulta) => (consulta.dados?.itens ?? []).map(paraHit)),
+    total: ligadas.reduce((soma, consulta) => soma + (consulta.dados?.total ?? 0), 0),
+    carregando: ligadas.some((consulta) => consulta.carregando),
+    erro: ligadas.find((consulta) => consulta.erro !== undefined)?.erro,
+  };
+}
+
+/**
+ * Contatos, Empresas, Negócios e Conversas pelas rotas REST. A consulta de `ativo` liga com o termo
+ * pronto; as de `arquivado` e `na_lixeira` só com a opção marcada. Conversa não tem `arquivado`.
+ */
+function useBuscaNoCrm(termo: string, pronta: boolean, comInativos: boolean) {
+  const q = termo.trim();
+  const ligaInativos = pronta && comInativos;
+  const pausadoAtivo = { pausado: !pronta };
+  const pausadoInativo = { pausado: !ligaInativos };
+  const contatos = [
+    useContatos({ q, limite: POR_GRUPO }, pausadoAtivo),
+    useContatos({ q, estado: "arquivado", limite: POR_GRUPO }, pausadoInativo),
+    useContatos({ q, estado: "na_lixeira", limite: POR_GRUPO }, pausadoInativo),
+  ];
+  const empresas = [
+    useEmpresas({ q, limite: POR_GRUPO }, pausadoAtivo),
+    useEmpresas({ q, estado: "arquivado", limite: POR_GRUPO }, pausadoInativo),
+    useEmpresas({ q, estado: "na_lixeira", limite: POR_GRUPO }, pausadoInativo),
+  ];
+  const negocios = [
+    useNegocios({ q, limite: POR_GRUPO }, pausadoAtivo),
+    useNegocios({ q, estado: "arquivado", limite: POR_GRUPO }, pausadoInativo),
+    useNegocios({ q, estado: "na_lixeira", limite: POR_GRUPO }, pausadoInativo),
+  ];
+  const conversas = [
+    useConversas({ q, limite: POR_GRUPO }, pausadoAtivo),
+    useConversas({ q, estado: "na_lixeira", limite: POR_GRUPO }, pausadoInativo),
+  ];
+  const ligas = (indice: number) => (indice === 0 ? pronta : ligaInativos);
+  const consulta = <T,>(resposta: { data: { itens: T[]; total: number } | undefined; isLoading: boolean; error: Error | undefined }, indice: number): ConsultaDoCrm<T> => ({
+    liga: ligas(indice),
+    dados: resposta.data,
+    carregando: resposta.isLoading,
+    erro: resposta.error,
+  });
+  return {
+    contatos: reunir(
+      contatos.map(consulta),
+      (contato: ContatoResumo): Hit => ({
+        id: contato.id,
+        href: `/crm/contatos/${contato.id}`,
+        title: contato.nomeDeExibicao,
+        detail: [contato.emailPrincipal, contato.telefonePrincipal].filter(Boolean).join(" · "),
+        lifecycle: SELO_DO_ESTADO[contato.estado],
+      }),
+    ),
+    empresas: reunir(
+      empresas.map(consulta),
+      (empresa: EmpresaResumo): Hit => ({
+        id: empresa.id,
+        href: `/crm/empresas/${empresa.id}`,
+        title: empresa.nomeDeExibicao,
+        detail: empresa.dominioPrincipal ?? empresa.documentoPrincipal ?? "",
+        lifecycle: SELO_DO_ESTADO[empresa.estado],
+      }),
+    ),
+    negocios: reunir(
+      negocios.map(consulta),
+      (negocio: NegocioResumo): Hit => ({
+        id: negocio.id,
+        href: `/crm/negocios/${negocio.id}`,
+        title: negocio.titulo,
+        detail: [negocio.contato?.nome, negocio.empresa?.nome].filter(Boolean).join(" · "),
+        lifecycle: SELO_DO_ESTADO[negocio.estado],
+      }),
+    ),
+    conversas: reunir(
+      conversas.map(consulta),
+      (conversa: ConversaNaLista): Hit => ({
+        id: conversa.id,
+        href: `/crm/caixa-de-entrada/${conversa.id}`,
+        title: conversa.titulo,
+        detail: conversa.contatoNome ?? "",
+        lifecycle: SELO_DO_ESTADO[conversa.estado],
+      }),
+    ),
+  };
+}
 
 export default function BuscarPage() {
   const state = useData((data) => data);
@@ -74,11 +199,13 @@ export default function BuscarPage() {
   const term = query.trim().toLowerCase();
   const ready = term.length >= MIN_QUERY;
 
+  const crm = useBuscaNoCrm(query, ready, includeInactive);
+
   const keep = (lifecycle: string): boolean => includeInactive || lifecycle === "ativo";
   const matches = (...fields: ReadonlyArray<string | undefined>): boolean =>
     fields.some((field) => field !== undefined && field.toLowerCase().includes(term));
 
-  const groups: ReadonlyArray<{ readonly label: string; readonly hits: readonly Hit[] }> = !ready
+  const groups: ReadonlyArray<{ readonly label: string; readonly hits: readonly Hit[]; readonly total?: number }> = !ready
     ? []
     : [
         {
@@ -107,66 +234,10 @@ export default function BuscarPage() {
               lifecycle: list.lifecycle,
             })),
         },
-        {
-          label: "Contatos",
-          hits: state.contacts
-            .filter(
-              (contact) =>
-                keep(contact.lifecycle) &&
-                (matches(contact.firstName, contact.lastName) ||
-                  contact.identifiers.some((identifier) => matches(identifier.displayValue))),
-            )
-            .map((contact) => ({
-              id: contact.id,
-              href: `/crm/contatos/${contact.id}`,
-              title: contactDisplayName(contact),
-              detail: contact.identifiers.map((identifier) => identifier.displayValue).join(" · "),
-              lifecycle: contact.lifecycle,
-            })),
-        },
-        {
-          label: "Empresas",
-          hits: state.companies
-            .filter((company) => keep(company.lifecycle) && matches(company.legalName, company.tradeName))
-            .map((company) => ({
-              id: company.id,
-              href: `/crm/empresas/${company.id}`,
-              title: company.legalName,
-              detail: company.tradeName ?? "",
-              lifecycle: company.lifecycle,
-            })),
-        },
-        {
-          label: "Negócios",
-          hits: state.deals
-            .filter((deal) => keep(deal.lifecycle) && matches(deal.title, deal.readableId, deal.object))
-            .map((deal) => ({
-              id: deal.id,
-              href: `/crm/negocios/${deal.id}`,
-              title: deal.title,
-              detail: state.funnels.find((f) => f.id === deal.funnelId)?.name ?? "",
-              lifecycle: deal.lifecycle,
-            })),
-        },
-        {
-          label: "Conversas",
-          hits: state.conversations
-            .filter(
-              (conversation) =>
-                keep(conversation.lifecycle) &&
-                (matches(conversation.title) ||
-                  conversation.messages.some(
-                    (message) => message.deletionMark === undefined && matches(message.content),
-                  )),
-            )
-            .map((conversation) => ({
-              id: conversation.id,
-              href: `/crm/caixa-de-entrada/${conversation.id}`,
-              title: conversation.title,
-              detail: state.channels.find((c) => c.id === conversation.channelId)?.name ?? "",
-              lifecycle: conversation.lifecycle,
-            })),
-        },
+        { label: "Contatos", hits: crm.contatos.hits, total: crm.contatos.total },
+        { label: "Empresas", hits: crm.empresas.hits, total: crm.empresas.total },
+        { label: "Negócios", hits: crm.negocios.hits, total: crm.negocios.total },
+        { label: "Conversas", hits: crm.conversas.hits, total: crm.conversas.total },
         {
           label: "Documentos",
           hits: state.documents
@@ -208,7 +279,10 @@ export default function BuscarPage() {
         },
       ].filter((group) => group.hits.length > 0);
 
-  const total = groups.reduce((sum, group) => sum + group.hits.length, 0);
+  const countOf = (group: { readonly hits: readonly Hit[]; readonly total?: number }): number => group.total ?? group.hits.length;
+  const total = groups.reduce((sum, group) => sum + countOf(group), 0);
+  const consultando = ready && [crm.contatos, crm.empresas, crm.negocios, crm.conversas].some((grupo) => grupo.carregando);
+  const recusaDoCrm = ready ? [crm.contatos, crm.empresas, crm.negocios, crm.conversas].find((grupo) => grupo.erro !== undefined)?.erro : undefined;
 
   return (
     <div className="flex h-full flex-col">
@@ -250,11 +324,18 @@ export default function BuscarPage() {
       </BarraDeFiltros>
 
       <CorpoDeTela>
+        {recusaDoCrm ? (
+          <Toast tone="error">Não foi possível buscar no CRM: {recusaDoCrm.message}</Toast>
+        ) : null}
         {!ready ? (
           <EmptyState
             title="Escreva ao menos duas letras."
             hint="A busca cobre Tarefas, Listas, Contatos, Empresas, Negócios, Conversas, Documentos, Agentes e Automações."
           />
+        ) : total === 0 && consultando ? (
+          <p className="app-meta px-1" role="status">
+            Buscando…
+          </p>
         ) : total === 0 ? (
           <EmptyState
             title={`Nada encontrado para "${query.trim()}".`}
@@ -266,9 +347,9 @@ export default function BuscarPage() {
           />
         ) : (
           groups.map((group) => (
-            <Section key={group.label} title={group.label} count={group.hits.length}>
+            <Section key={group.label} title={group.label} count={countOf(group)}>
               <ul className="cascata pilha-solta">
-                {group.hits.slice(0, 10).map((hit) => (
+                {group.hits.slice(0, POR_GRUPO).map((hit) => (
                   <li key={hit.id}>
                     <Link href={hit.href} className="item-solto" data-bloco="true">
                       <span className="flex items-center gap-2">
@@ -282,9 +363,9 @@ export default function BuscarPage() {
                   </li>
                 ))}
               </ul>
-              {group.hits.length > 10 ? (
+              {countOf(group) > POR_GRUPO ? (
                 <p className="app-meta app-numero px-1 pt-2">
-                  Mostrando 10 de {group.hits.length}. Refine o termo para ver o restante.
+                  Mostrando {POR_GRUPO} de {countOf(group)}. Refine o termo para ver o restante.
                 </p>
               ) : null}
             </Section>

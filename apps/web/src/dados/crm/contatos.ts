@@ -52,11 +52,12 @@ export function chaveDeContatos(filtro: FiltroDeContatos): string {
   return `/contatos?${parametros.toString()}`;
 }
 
-export function useContatos(filtro: FiltroDeContatos) {
+/** `pausado` não lê nada (a Busca só consulta arquivados e a lixeira quando a pessoa pede). */
+export function useContatos(filtro: FiltroDeContatos, opcoes: { readonly pausado?: boolean } = {}) {
   const chave = chaveDeContatos(filtro);
   // `keepPreviousData`: "Mostrar mais" (o `limite` muda a chave) não pisca o esqueleto nem volta ao topo.
   // Quem usa confere se os dados são do estado pedido (a troca de aba também muda a chave).
-  return useSWR<RespostaDaListaDeContatos, Error>(chave, (k: string) => chamarCrm<RespostaDaListaDeContatos>(k), {
+  return useSWR<RespostaDaListaDeContatos, Error>(opcoes.pausado ? null : chave, (k: string) => chamarCrm<RespostaDaListaDeContatos>(k), {
     keepPreviousData: true,
   });
 }

@@ -84,10 +84,11 @@ function valeRepetir(erro: Error): boolean {
   return !(erro instanceof ErroDeApi) || erro.status === 0 || erro.status >= 500;
 }
 
-export function useConversas(filtro: FiltroDeConversasNaTela) {
+/** `pausado` não lê nada (a Busca só consulta a lixeira quando a pessoa pede). */
+export function useConversas(filtro: FiltroDeConversasNaTela, opcoes: { readonly pausado?: boolean } = {}) {
   const chave = chaveDeConversas(filtro);
   // `keepPreviousData`: "Mostrar mais" e a troca de aba mudam a chave sem piscar o esqueleto.
-  return useSWR<RespostaDaListaDeConversas, Error>(chave, (k: string) => chamarCrm<RespostaDaListaDeConversas>(k), {
+  return useSWR<RespostaDaListaDeConversas, Error>(opcoes.pausado ? null : chave, (k: string) => chamarCrm<RespostaDaListaDeConversas>(k), {
     keepPreviousData: true,
     shouldRetryOnError: valeRepetir,
   });

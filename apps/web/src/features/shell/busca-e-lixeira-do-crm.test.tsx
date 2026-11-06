@@ -169,7 +169,8 @@ describe("Busca › Contatos, Empresas, Negócios e Conversas pelas rotas REST (
       expect(u.searchParams.get("limite")).toBe("10");
       expect(u.searchParams.get("estado")).toBe("ativo");
     }
-    expect(screen.getByText("Ana Souza").closest("a")?.getAttribute("href")).toBe("/crm/contatos/ctt_nova");
+    // "Ana Souza" também é o detalhe do Negócio e da Conversa: o link do Contato é o que o identifica.
+    expect(document.querySelector('a[href="/crm/contatos/ctt_nova"]')?.textContent).toContain("Ana Souza");
     expect(screen.getByText("Ana Comércio").closest("a")?.getAttribute("href")).toBe("/crm/empresas/emp_nova");
     expect(screen.getByText("Proposta Ana").closest("a")?.getAttribute("href")).toBe("/crm/negocios/neg_novo");
     expect(screen.getByText("Dúvida da Ana").closest("a")?.getAttribute("href")).toBe("/crm/caixa-de-entrada/cnv_nova");
