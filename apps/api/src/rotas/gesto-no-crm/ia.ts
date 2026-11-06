@@ -30,9 +30,10 @@ import { podeNoCrm, type RecursoCrm } from "@n1/dominio/crm/permissoes";
 import { criarRepositorioDeContatosPg } from "../../repositorios/crm/contatos";
 import { criarRepositorioDeConversasPg } from "../../repositorios/crm/conversas";
 import { criarRepositorioDeEmpresasPg } from "../../repositorios/crm/empresas";
+import { liberarDoAgente } from "../../repositorios/crm/liberacao-do-agente";
 import { criarRepositorioDeNegociosPg } from "../../repositorios/crm/negocios";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
-import type { LeituraDoCrm, TabelaDeConfirmacoes, TabelaDeLeituras } from "./tipos";
+import type { AoConfirmarNoCrm, LeituraDoCrm, TabelaDeConfirmacoes, TabelaDeLeituras } from "./tipos";
 import type { PoolClient } from "pg";
 
 /** De onde sai o `{ type, id }` da Âncora nos `args` já validados pelo esquema. */
@@ -55,7 +56,7 @@ const ancoraDoCriarSessao: AncoraNosArgs = (args) => ancoraDe(objetoOuVazio(args
 const ancoraDoConfigurarSessao: AncoraNosArgs = (args) => ancoraDe(objetoOuVazio(args[1]).anchor);
 
 /** `ensaiarAgente(agenteId, input, nomes)`: a Âncora está em `input.anchor`. */
-export const ancoraDoEnsaio: AncoraNosArgs = (args) => ancoraDe(objetoOuVazio(args[1]).anchor);
+const ancoraDoEnsaio: AncoraNosArgs = (args) => ancoraDe(objetoOuVazio(args[1]).anchor);
 
 function ancoraDe(valor: unknown): { readonly type: unknown; readonly id: unknown } | undefined {
   if (typeof valor !== "object" || valor === null) return undefined;
@@ -110,6 +111,21 @@ export const leituraDasAncoras = (posicao: number, ancoraNosArgs: AncoraNosArgs)
 export const LER_DO_CRM_IA: TabelaDeLeituras = {
   createChatSession: leituraDasAncoras(1, ancoraDoCriarSessao),
   configureChatSession: leituraDasAncoras(2, ancoraDoConfigurarSessao),
+  ensaiarAgente: leituraDasAncoras(2, ancoraDoEnsaio),
 };
 
-export const AO_CONFIRMAR_IA: TabelaDeConfirmacoes = {};
+/**
+ * RN-AGE-20 — arquivar e enviar à lixeira soltam o Agente das Conversas dele. As que moram em
+ * `plataforma.conversas` saem aqui, no commit do gesto; `args[0]` é o id do Agente. Só roda
+ * depois do `ok` do domínio, então repetir (que o domínio recusa) ou recusar não solta nada.
+ */
+const soltarConversasDoAgente: AoConfirmarNoCrm = async (cliente, args, membro) => {
+  const agenteId = args[0];
+  if (typeof agenteId !== "string") return;
+  await liberarDoAgente(cliente, membro.workspaceId, agenteId);
+};
+
+export const AO_CONFIRMAR_IA: TabelaDeConfirmacoes = {
+  arquivarAgente: soltarConversasDoAgente,
+  enviarAgenteALixeira: soltarConversasDoAgente,
+};
