@@ -295,7 +295,7 @@ regra"). As tabelas são as da `008-canais-conversas-mensagens.sql`
 | `POST /canais/:id/simular-conexao` | conecta sem provedor, marcando `conexaoSimulada` (D-08) | Administrador/Proprietário |
 | `POST /canais/:id/desconectar` | volta a `desconectada` | Administrador/Proprietário |
 | `POST /canais/:id/arquivar` | arquiva e desconecta na mesma escrita | Administrador/Proprietário |
-| `GET /conversas`, `GET /conversas/:id` | lista (filtros `canalId`, `contatoId`, `situacao`, `estado`, `atribuidoId`, `filaId`, `comEstrela`, `q`) e ficha com o resumo do Canal; cada item da lista traz `contatoNome`, `estrela` e `naoLidas` do Membro da sessão | quem lê Conversa |
+| `GET /conversas`, `GET /conversas/:id` | lista (filtros `canalId`, `contatoId`, `situacao`, `estado`, `atribuidoId`, `filaId`, `comEstrela`, `naoLidas`, `q`) e ficha com o resumo do Canal; cada item da lista traz `contatoNome`, `estrela` e `naoLidas` do Membro da sessão | quem lê Conversa |
 | `POST /conversas` | abre a Conversa com a 1ª Mensagem `enviada` (201) | quem envia Mensagem |
 | `POST /conversas/:id/resolver`, `/reabrir` | muda a situação, sem corpo | idem |
 | `POST /conversas/:id/mover` | troca o Contato da Conversa (3.2.5): `{ contatoId, resolverExistente? }`; o Canal e as Mensagens ficam | ação `mover` em `conversa` |
@@ -338,7 +338,9 @@ são ids; `comEstrela=true` traz só as que o Membro da sessão marcou e `false`
 só as que ele não marcou (sem o parâmetro, as duas); `q` é um trecho do
 título, sem diferenciar maiúscula, e é literal (`%` e `_` não são curingas).
 `naoLidas` conta as Mensagens `recebida` depois do `lidaAte` do Membro (sem
-marcação, todas as recebidas). Nada disso grava Registro de Atividade nem
+marcação, todas as recebidas). Como filtro (Fase 15, 15-06), `naoLidas=true` traz
+só as Conversas com ao menos uma dessas e `false` só as sem nenhuma, sempre para
+o Membro da sessão (nunca um id do cliente); o `total` conta o filtrado. Nada disso grava Registro de Atividade nem
 avança a revisão do Espaço. O fio da Caixa antiga segue na leitura antiga
 (`leituras_internas` da 008, que ninguém escreve aqui) até a Fase 15.
 
