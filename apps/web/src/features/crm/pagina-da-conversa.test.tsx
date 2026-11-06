@@ -26,6 +26,9 @@ import type { DataState } from "@n1/dominio/state";
 import { StoreProvider } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
 import ConversaPage from "@/app/(shell)/crm/caixa-de-entrada/[conversa]/page";
+import { empresaDoContato } from "@/features/crm/empresa-do-contato";
+import { listaConversacional } from "@n1/dominio/derive-conversacional";
+import type { VinculoDoContato } from "@n1/dominio/crm/contatos";
 
 const { obterSessao, revalidador, trocarRota } = vi.hoisted(() => ({
   obterSessao: vi.fn(),
@@ -98,6 +101,9 @@ function conversaDeTeste(sobre: Partial<ConversaDetalhada["conversa"]> = {}): Co
   };
 }
 
+/** O Contato que a api devolve; os testes da coluna trocam vínculos e qualificação. */
+let contatoAtual: { qualificacao: string | null; vinculos: VinculoDoContato[] };
+
 function contatoDaApi() {
   return {
     contato: {
@@ -112,7 +118,7 @@ function contatoDaApi() {
       enderecos: [],
       camposAdicionais: {},
       origem: null,
-      qualificacao: null,
+      qualificacao: contatoAtual.qualificacao,
       modoCriacao: "manual",
       estado: "ativo",
       mescladoEmId: null,
@@ -125,9 +131,12 @@ function contatoDaApi() {
     identificadores: [
       { id: "ident_wpp", contatoId: CONTATO_ID, tipo: "whatsapp", valor: "5511999990000", valorExibido: null, rotuloCanal: null, verificado: false, principal: true, criadoEm: "2026-01-01T00:00:00.000Z" },
     ],
-    vinculos: [],
+    vinculos: contatoAtual.vinculos,
   };
 }
+
+/** O que `PATCH /contatos/:id` responde; os testes trocam para recusar. */
+let editarContatoNaApi: (corpo: { qualificacao?: string }) => Response;
 
 /** Gestos que a api falsa já aceita: mudam a Conversa em memória e devolvem o detalhe. */
 let responderGesto: (acao: string, corpo: unknown) => Response;
@@ -139,9 +148,14 @@ beforeEach(() => {
   obterSessao.mockResolvedValue({ data: { session: { access_token: "tok" } } });
   trocarRota.mockClear();
   conversaDaApi = conversaDeTeste();
+  contatoAtual = { qualificacao: null, vinculos: [] };
   transporte = {
     gravar: vi.fn(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." })),
     hidratar: vi.fn(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." })),
+  };
+  editarContatoNaApi = (corpo) => {
+    if (corpo.qualificacao !== undefined) contatoAtual = { ...contatoAtual, qualificacao: corpo.qualificacao };
+    return resposta(200, { ok: true, dados: contatoDaApi() });
   };
   responderGesto = (acao, corpo) => {
     if (!conversaDaApi) return resposta(404, { ok: false, error: "Conversa não encontrada." });
@@ -162,6 +176,7 @@ beforeEach(() => {
     const gesto = /^\/conversas\/([^/]+)\/(resolver|reabrir|atribuir|lixeira|mover)$/.exec(alvo.pathname);
     if (metodo === "POST" && gesto) return responderGesto(gesto[2] as string, corpo);
     if (metodo === "GET" && alvo.pathname === `/contatos/${CONTATO_ID}`) return resposta(200, { ok: true, dados: contatoDaApi() });
+    if (metodo === "PATCH" && alvo.pathname === `/contatos/${CONTATO_ID}`) return editarContatoNaApi(corpo as { qualificacao?: string });
     if (metodo === "GET" && alvo.pathname === "/negocios") return resposta(200, { ok: true, itens: [], total: 0 });
     if (metodo === "GET" && alvo.pathname === "/canais") return resposta(200, { ok: true, itens: [], total: 0 });
     return resposta(404, { ok: false, error: "Conversa não encontrada." });
@@ -331,5 +346,96 @@ describe("página da Conversa — id que a api não conhece (F14-D-05)", () => {
   it("(8) 404 e id que não existe em lugar nenhum mostra 'Conversa não encontrada.'", async () => {
     await montarPagina("cnv_que_nao_existe");
     await waitFor(() => expect(screen.getAllByText("Conversa não encontrada.").length).toBeGreaterThan(0));
+  });
+});
+
+function vinculo(id: string, empresaNome: string, sobre: Partial<VinculoDoContato> = {}): VinculoDoContato {
+  return { id, empresaId: `emp_${id}`, empresaNome, cargo: null, admin: false, inicio: null, fim: null, ...sobre };
+}
+
+describe("a Empresa do cartão do Contato (D-15-05, mesma regra do 15-05)", () => {
+  it("(9) é o vínculo vigente admin mais antigo; sem admin, o vigente mais antigo; encerrado nunca", () => {
+    const vinculos = [
+      vinculo("v1", "Beta", { inicio: "2020-01-01" }),
+      vinculo("v2", "Alfa", { admin: true, inicio: "2021-01-01" }),
+      vinculo("v3", "Gama", { admin: true, inicio: "2019-01-01" }),
+      vinculo("v4", "Antiga", { admin: true, inicio: "2010-01-01", fim: "2015-01-01" }),
+    ];
+    expect(empresaDoContato(vinculos)?.empresaNome).toBe("Gama");
+    expect(empresaDoContato(vinculos.filter((v) => !v.admin))?.empresaNome).toBe("Beta");
+    expect(empresaDoContato([vinculo("v4", "Antiga", { fim: "2015-01-01" })])).toBeUndefined();
+    expect(empresaDoContato([])).toBeUndefined();
+  });
+});
+
+describe("a coluna do Contato da Caixa — modelo novo (3.4.4 item 3, UCR-06)", () => {
+  it("(10) mostra nome, Identificador, Empresa, Proprietário e qualificação do Contato novo, sem temperatura", async () => {
+    contatoAtual = {
+      qualificacao: "cat_qual_qualificado",
+      vinculos: [vinculo("v1", "Beta", { inicio: "2020-01-01" }), vinculo("v3", "Gama", { admin: true, inicio: "2019-01-01" })],
+    };
+    await montarPagina();
+    await paginaPronta();
+    await abrirDadosDoContato();
+    const coluna = await screen.findByRole("complementary");
+    await waitFor(() => expect(within(coluna).getByText("Gama")).toBeTruthy());
+    expect(within(coluna).queryByText("Beta")).toBeNull();
+    expect(within(coluna).getAllByText("Ana Souza").length).toBeGreaterThan(0);
+    expect(within(coluna).getByText("5511999990000")).toBeTruthy();
+    expect(within(coluna).getByText(estado.members.find((m) => m.id === "mem_julia")!.displayName)).toBeTruthy();
+    await waitFor(() => expect(within(coluna).getByRole("combobox", { name: "Qualificação" }).textContent).toContain("Qualificado"));
+    expect(within(coluna).queryByText(/Temperatura/)).toBeNull();
+    // A coluna não lê o Contato antigo: o seed tem um Contato com este nome, mas não este id.
+    expect(within(coluna).getByRole("link", { name: /Abrir ficha/ }).getAttribute("href")).toBe(`/crm/contatos/${CONTATO_ID}`);
+  });
+
+  it("(11) trocar a qualificação chama PATCH /contatos/:id com { qualificacao } e a recusa da api aparece na coluna", async () => {
+    await montarPagina();
+    await paginaPronta();
+    await abrirDadosDoContato();
+    const coluna = await screen.findByRole("complementary");
+    await waitFor(() => expect(within(coluna).getByRole("combobox", { name: "Qualificação" })).toBeTruthy());
+    fireEvent.click(within(coluna).getByRole("combobox", { name: "Qualificação" }));
+    fireEvent.click(screen.getAllByRole("option").find((o) => o.textContent === "Cliente") as HTMLElement);
+    await waitFor(() => expect(gravacoes()).toEqual([{ caminho: `/contatos/${CONTATO_ID}`, metodo: "PATCH", corpo: { qualificacao: "cat_qual_cli" } }]));
+    await waitFor(() => expect(within(coluna).getByRole("combobox", { name: "Qualificação" }).textContent).toContain("Cliente"));
+    expect(transporte.gravar).not.toHaveBeenCalled();
+
+    editarContatoNaApi = () => resposta(403, { ok: false, error: "Só um Membro ativo altera o CRM." });
+    fireEvent.click(within(coluna).getByRole("combobox", { name: "Qualificação" }));
+    fireEvent.click(screen.getAllByRole("option").find((o) => o.textContent === "Lead") as HTMLElement);
+    await waitFor(() => expect(within(coluna).getByRole("alert").textContent).toContain("Só um Membro ativo altera o CRM."));
+    // O valor que ficou é o do servidor, não o que a pessoa tentou.
+    expect(within(coluna).getByRole("combobox", { name: "Qualificação" }).textContent).toContain("Cliente");
+  });
+
+  it("(12) 'Tarefas' do Contato lista as Tarefas conversacionais com Vínculo para o id do Contato novo", async () => {
+    const tarefa = estado.tasks.find((t) => t.lifecycle === "ativo" && listaConversacional(estado, t.listId))!;
+    estado.links.push({
+      id: "lnk_teste_24",
+      fromType: "task",
+      fromId: tarefa.id,
+      toType: "contact",
+      toId: CONTATO_ID,
+      createdBy: { kind: "member", id: "mem_thiago" },
+      createdAt: "2026-10-29T09:00:00.000Z",
+    } as DataState["links"][number]);
+    await montarPagina();
+    await paginaPronta();
+    await abrirDadosDoContato();
+    const coluna = await screen.findByRole("complementary");
+    expect(within(coluna).getByText(tarefa.title)).toBeTruthy();
+    expect(within(coluna).getByRole("button", { name: "Criar Tarefa a partir da Conversa" })).toBeTruthy();
+  });
+
+  it("(13) Conversa na lixeira deixa a qualificação só leitura", async () => {
+    conversaDaApi = conversaDeTeste({ estado: "na_lixeira", naLixeiraEm: "2026-10-03T10:00:00.000Z", situacao: "resolvida" });
+    await montarPagina();
+    await paginaPronta();
+    await abrirDadosDoContato();
+    const coluna = await screen.findByRole("complementary");
+    await waitFor(() => expect(within(coluna).getByRole("combobox", { name: "Qualificação" })).toBeTruthy());
+    const seletor = within(coluna).getByRole("combobox", { name: "Qualificação" });
+    expect(seletor.hasAttribute("disabled") || seletor.getAttribute("aria-disabled") === "true").toBe(true);
   });
 });
