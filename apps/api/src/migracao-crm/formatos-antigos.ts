@@ -77,3 +77,99 @@ export interface EstadoComPasta {
   readonly views: VisualizacaoAntiga[];
   readonly tasks: readonly TarefaAntiga[];
 }
+
+// --- O mapeador de entidades (15-28) ---
+//
+// Só os campos que o mapeador LÊ de cada linha do CRM antigo. Tudo é opcional ou `unknown` onde o JSON
+// de `registros` pode trazer coisa fora do tipo: o mapeador desconfia do dado e manda para o relatório
+// o que o banco recusaria, em vez de derrubar a transação do Espaço.
+
+/** Quem fez: `{ kind, id }` (`ActorRef`). */
+export interface AtorAntigo {
+  readonly kind?: string;
+  readonly id?: string;
+}
+
+/** Identificador de Contato (`ContactIdentifier`). */
+export interface IdentificadorAntigo {
+  readonly id: string;
+  readonly type?: string;
+  readonly value?: string;
+  readonly displayValue?: string;
+  readonly channelLabel?: string;
+  readonly verified?: boolean;
+  readonly principal?: boolean;
+  readonly createdAt?: string;
+}
+
+/** Consentimento (`ConsentRecord`): histórico só de inserção. */
+export interface ConsentimentoAntigo {
+  readonly purposeId?: string;
+  readonly channelType?: string;
+  readonly decision?: string;
+  readonly at?: string;
+  readonly origin?: string;
+  readonly evidenceMessageId?: string;
+  readonly recordedBy?: AtorAntigo;
+  readonly recordedAt?: string;
+}
+
+/** Comentário (`Comment`) do Contato: vira Nota. */
+export interface ComentarioAntigo {
+  readonly id?: string;
+  readonly author?: AtorAntigo;
+  readonly content?: string;
+  readonly createdAt?: string;
+  readonly deletedAt?: string;
+}
+
+/** Endereço (`Address`). */
+export interface EnderecoAntigo {
+  readonly kind?: string;
+  readonly street?: string;
+  readonly number?: string;
+  readonly complement?: string;
+  readonly district?: string;
+  readonly city?: string;
+  readonly region?: string;
+  readonly country?: string;
+  readonly postalCode?: string;
+  readonly principal?: boolean;
+}
+
+/** Valor de campo personalizado (`FieldValue`). */
+export interface ValorDeCampoAntigo {
+  readonly definitionId?: string;
+  readonly value?: unknown;
+  readonly state?: string;
+}
+
+/** Contato (`Contact`). `lifecycle` é `ativo`, `arquivado`, `naLixeira` ou `mesclado`. */
+export interface ContatoAntigo {
+  readonly id: string;
+  readonly createdBy?: AtorAntigo;
+  readonly createdAt?: string;
+  readonly lifecycle?: string;
+  readonly firstName?: string;
+  readonly lastName?: string;
+  readonly mergedIntoId?: string;
+  readonly mergedAt?: string;
+  readonly ownerMemberId?: string;
+  readonly creationMode?: string;
+  readonly originId?: string;
+  readonly qualificationId?: string;
+  readonly temperatureId?: string;
+  readonly birthDate?: string;
+  readonly language?: string;
+  readonly timezone?: string;
+  readonly photoFileId?: string;
+  readonly description?: string;
+  readonly identifiers?: readonly IdentificadorAntigo[];
+  readonly consents?: readonly ConsentimentoAntigo[];
+  readonly addresses?: readonly EnderecoAntigo[];
+  readonly tagIds?: readonly string[];
+  readonly fieldValues?: readonly ValorDeCampoAntigo[];
+  readonly comments?: readonly ComentarioAntigo[];
+  readonly preMergeState?: unknown;
+  readonly provenance?: unknown;
+}
