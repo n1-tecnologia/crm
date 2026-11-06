@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 40
+open_count: 42
 waived_count: 2
 fixed_count: 16
-total_count: 58
-last_updated: 2026-11-06T19:59:51.413Z
+total_count: 60
+last_updated: 2026-11-06T20:19:25.669Z
 ---
 
 # Broken Windows Ledger
@@ -73,6 +73,8 @@ last_updated: 2026-11-06T19:59:51.413Z
 | 56 | 15 | deviation | apps/api/src/bootstrap/crm-demo.test.ts |  | 15-29: o teste dos Vinculos do demo le buildSeed().links; quando o 15-31 tirar o CRM e os Vinculos do seed, procurados fica 0 e o teste (que exige contact, conversation e deal achados) quebra. O 15-31 precisa trocar a fonte dos Vinculos (por exemplo, a lista de ids que o proprio seed novo guarda em registros) ou ajustar o caso, sem perder a prova de que os ids preservados acham o registro. | open |  | 2026-11-06T19:59:51.284Z |  |
 | 57 | 15 | deviation | apps/api/src/bootstrap/crm-demo.json |  | 15-29: o demo traz so o que o mapeador do 15-28 migra para as tabelas novas: sem temperatura e Tags dos Contatos, sem o Canal do LinkedIn e do chat do site e as Conversas deles (3 Canais e 16 Conversas, contra 5 e 23 do seed antigo), Canais desconectada e 160 itens listados em naoMigrados. A Caixa de dev fica mais magra que a do seed antigo; nao ha Canal conectado nem envio real. | open |  | 2026-11-06T19:59:51.351Z |  |
 | 58 | 15 | unrun-verify | apps/api/src/bootstrap/crm-demo.cli.ts |  | 15-29: bootstrap:crm-demo foi provado so em Postgres de Docker (testes e uma execucao de npm run em Espaco criado a mao); nenhuma tela do apps/web foi aberta sobre o Espaco carregado, entao a Caixa cheia em desenvolvimento nao foi vista no navegador. | open |  | 2026-11-06T19:59:51.413Z |  |
+| 59 | 15 | deviation | .planning/phases/15-unifica-o-do-crm-telas-no-modelo-novo-e-remo-o-do-modelo-ant/15-ENSAIO.md |  | 15-30: o ensaio rodou sobre a copia de 2026-11-05 (dump 11:13, CSV 10:11), nao sobre uma copia renovada: o dono nao renovou e mandou 'pode fazer o que precisar para fechar a fase'. Vale para aquele momento; o corte (15-34/15-35) precisa rodar o --seco do dia em cada Espaco, e o dono pode renovar a copia e repetir o ensaio antes. A copia tem 19 Espacos e nao 18 (ws_agendaworker_* sem nenhuma linha em registros); no dump o ws_n1 tem no CRM novo 2 Contatos, 1 Empresa, 2 Funis, 6 Etapas e 1 Negocio, que nao foram recopiados | open |  | 2026-11-06T20:19:25.592Z |  |
+| 60 | 15 | deviation | .planning/phases/15-unifica-o-do-crm-telas-no-modelo-novo-e-remo-o-do-modelo-ant/15-ENSAIO.md |  | 15-30: decisao do Funil do ws_n1 e achados da Pasta. O CRM antigo do ws_n1 tem so o Funil fnl_padrao 'Padrao' (1 Etapa 'Novo', nenhum Negocio, nenhum Contato); --funil=guardar deixa o CRM novo como esta (2 Funis, 6 Etapas), --funil=migrar acrescenta 1 Funil vazio e 1 Etapa (3 Funis, 7 Etapas, 2 linhas de crm_de_para), sem nome em uso. A Pasta Meus negocios nao existe no ws_n1; em 16 dos 18 Espacos de teste ela tem Tarefa em 4 Listas (18 Tarefas) e por isso nao sai (atualiza o aviso 51: sao 16, nao 17). O dono decide o Funil no --seco do dia | open |  | 2026-11-06T20:19:25.669Z |  |
 
 ````json
 [
@@ -827,6 +829,32 @@ last_updated: 2026-11-06T19:59:51.413Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-06T19:59:51.413Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 59,
+    "kind": "deviation",
+    "phase": "15",
+    "file": ".planning/phases/15-unifica-o-do-crm-telas-no-modelo-novo-e-remo-o-do-modelo-ant/15-ENSAIO.md",
+    "line": null,
+    "description": "15-30: o ensaio rodou sobre a copia de 2026-11-05 (dump 11:13, CSV 10:11), nao sobre uma copia renovada: o dono nao renovou e mandou 'pode fazer o que precisar para fechar a fase'. Vale para aquele momento; o corte (15-34/15-35) precisa rodar o --seco do dia em cada Espaco, e o dono pode renovar a copia e repetir o ensaio antes. A copia tem 19 Espacos e nao 18 (ws_agendaworker_* sem nenhuma linha em registros); no dump o ws_n1 tem no CRM novo 2 Contatos, 1 Empresa, 2 Funis, 6 Etapas e 1 Negocio, que nao foram recopiados",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T20:19:25.592Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 60,
+    "kind": "deviation",
+    "phase": "15",
+    "file": ".planning/phases/15-unifica-o-do-crm-telas-no-modelo-novo-e-remo-o-do-modelo-ant/15-ENSAIO.md",
+    "line": null,
+    "description": "15-30: decisao do Funil do ws_n1 e achados da Pasta. O CRM antigo do ws_n1 tem so o Funil fnl_padrao 'Padrao' (1 Etapa 'Novo', nenhum Negocio, nenhum Contato); --funil=guardar deixa o CRM novo como esta (2 Funis, 6 Etapas), --funil=migrar acrescenta 1 Funil vazio e 1 Etapa (3 Funis, 7 Etapas, 2 linhas de crm_de_para), sem nome em uso. A Pasta Meus negocios nao existe no ws_n1; em 16 dos 18 Espacos de teste ela tem Tarefa em 4 Listas (18 Tarefas) e por isso nao sai (atualiza o aviso 51: sao 16, nao 17). O dono decide o Funil no --seco do dia",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T20:19:25.669Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }
