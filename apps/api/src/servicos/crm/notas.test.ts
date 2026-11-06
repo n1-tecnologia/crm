@@ -11,9 +11,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { encerrar, pool } from "../../persistencia/conexao";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, poolDoDono, prepararBancoCrm, semearMembro } from "../../testes/banco-crm";
+import { listar as listarAtividades, registrarAtividade } from "../../repositorios/crm/atividades";
+import { criarRepositorioDeNotasPg } from "../../repositorios/crm/notas";
 import { criarAcessoAoCrmPg } from "./acesso";
 import { criarServicoDeNotas } from "./notas";
 import type { ResultadoCrm } from "./resultado";
+import { comTransacao } from "./transacao";
 
 const servico = criarServicoDeNotas({ pool, acesso: criarAcessoAoCrmPg(pool) });
 
@@ -132,5 +135,93 @@ describeComBanco("ServicoDeNotas — Postgres local", () => {
     expect(recusado(await servico.adicionar(convidado, contatoId, { conteudo: "tentativa" })).status).toBe(403);
     expect(valor(await servico.listar(convidado, contatoId, { limite: 50, deslocamento: 0 })).total).toBe(1);
     expect(await notasNoBanco(contatoId)).toHaveLength(1);
+  });
+
+  const atividadesNoBanco = async (contatoId: string) =>
+    (
+      await pool().query<{ acao: string; objeto_tipo: string; objeto_id: string; objeto_nome: string; ator_tipo: string; ator_id: string; detalhe: string | null }>(
+        "select acao, objeto_tipo, objeto_id, objeto_nome, ator_tipo, ator_id, detalhe from plataforma.crm_atividades where workspace_id = $1 and objeto_id = $2 order by em, id",
+        [ws, contatoId],
+      )
+    ).rows;
+
+  it("(h) adicionar grava a Atividade \"Nota registrada no Contato\" no mesmo commit, sem o conteúdo da nota (D-15-09, T-15-14)", async () => {
+    const contatoId = await semearContato(ws, "Contato da Atividade");
+    valor(await servico.adicionar(membro(ws, "mem_bia"), contatoId, { conteudo: "dado pessoal que não pode vazar" }));
+    const atividades = await atividadesNoBanco(contatoId);
+    expect(atividades).toEqual([
+      {
+        acao: "Nota registrada no Contato",
+        objeto_tipo: "contact",
+        objeto_id: contatoId,
+        objeto_nome: "Contato da Atividade",
+        ator_tipo: "member",
+        ator_id: "mem_bia",
+        detalhe: null,
+      },
+    ]);
+    expect(JSON.stringify(atividades)).not.toContain("dado pessoal");
+  });
+
+  it("(i) o repositório devolve a Atividade como ActivityRecord, com a data em ISO", async () => {
+    const contatoId = await semearContato(ws, "Contato da leitura");
+    valor(await servico.adicionar(eu, contatoId, { conteudo: "uma nota" }));
+    const lidas = await listarAtividades(pool(), ws, { objetoTipo: "contact", objetoId: contatoId, limite: 50 }, ["contact"]);
+    expect(lidas).toHaveLength(1);
+    expect(lidas[0]).toMatchObject({
+      workspaceId: ws,
+      actor: { kind: "member", id: "mem_ana" },
+      action: "Nota registrada no Contato",
+      objectType: "contact",
+      objectId: contatoId,
+      objectName: "Contato da leitura",
+      result: "ok",
+    });
+    expect(new Date(lidas[0]!.at).toISOString()).toBe(lidas[0]!.at);
+    // Outro tipo permitido não enxerga a Atividade do Contato (a leitura respeita o que o Papel pode ver).
+    expect(await listarAtividades(pool(), ws, { objetoTipo: "contact", objetoId: contatoId, limite: 50 }, ["deal"])).toEqual([]);
+    // Outro Espaço não enxerga a Atividade deste.
+    expect(await listarAtividades(pool(), outroWs, { objetoTipo: "contact", objetoId: contatoId, limite: 50 }, ["contact"])).toEqual([]);
+  });
+
+  it("(j) um gesto que lança depois de registrarAtividade não deixa linha em contato_notas nem em crm_atividades", async () => {
+    const contatoId = await semearContato(ws, "Contato do rollback");
+    await expect(
+      comTransacao(pool, async (cliente) => {
+        await criarRepositorioDeNotasPg(cliente).inserir(ws, contatoId, "vai desfazer", "mem_ana");
+        await registrarAtividade(cliente, ws, {
+          ator: { kind: "member", id: "mem_ana" },
+          acao: "Nota registrada no Contato",
+          objetoTipo: "contact",
+          objetoId: contatoId,
+          objetoNome: "Contato do rollback",
+        });
+        throw new Error("falha depois da Atividade");
+      }),
+    ).rejects.toThrow("falha depois da Atividade");
+    expect(await notasNoBanco(contatoId)).toEqual([]);
+    expect(await atividadesNoBanco(contatoId)).toEqual([]);
+  });
+
+  it("(k) se o serviço falha depois de gravar a Atividade, nem a nota nem a Atividade ficam", async () => {
+    const contatoId = await semearContato(ws, "Contato da falha no serviço");
+    // Um pool cujo cliente lança LOGO DEPOIS do insert em crm_atividades: o commit nunca acontece.
+    const poolQueFalha = () =>
+      ({
+        connect: async () => {
+          const cliente = await pool().connect();
+          const original = cliente.query.bind(cliente) as (...args: unknown[]) => Promise<unknown>;
+          (cliente as unknown as { query: unknown }).query = async (...args: unknown[]) => {
+            const resultado = await original(...args);
+            if (typeof args[0] === "string" && /insert into plataforma\.crm_atividades/.test(args[0])) throw new Error("falha depois da Atividade");
+            return resultado;
+          };
+          return cliente;
+        },
+      }) as never;
+    const servicoQueFalha = criarServicoDeNotas({ pool: poolQueFalha, acesso: criarAcessoAoCrmPg(pool) });
+    await expect(servicoQueFalha.adicionar(eu, contatoId, { conteudo: "não pode ficar" })).rejects.toThrow("falha depois da Atividade");
+    expect(await notasNoBanco(contatoId)).toEqual([]);
+    expect(await atividadesNoBanco(contatoId)).toEqual([]);
   });
 });
