@@ -176,8 +176,10 @@ Checklist. A linha do tempo do CRM novo (15-37, D-15-09) é lida por
 `dados/crm/atividades.ts`: `useAtividades({ tipo, id })` junta `state.activity` do
 objeto (modelo antigo, já hidratado) com `GET /atividades` e ordena por `at`
 decrescente, sem repetir id; `useAtividadesDoCrm(filtro)` lê só a rota, sem
-objeto, para a Auditoria. Só leitura: quem grava a Atividade é cada gesto, no
-servidor. `src/sem-listas-espelho.test.ts`
+objeto, para a Auditoria. A Auditoria (15-09) soma `state.activity` e as páginas lidas
+de `useAtividadesDoCrm` (cursor composto `ate` + `ateId` da última linha da página), mistura
+por `at` e aplica os mesmos filtros às duas fontes. Só leitura: quem grava a Atividade é cada
+gesto, no servidor. `src/sem-listas-espelho.test.ts`
 (D-06) congela os dois arquivos da web que ainda citam as Listas espelho e proíbe
 um terceiro.
 

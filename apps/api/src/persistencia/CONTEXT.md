@@ -234,7 +234,11 @@ pelo dono, e depois dela rode `npm run banco:conceder`; antes disso, só em Post
 Docker, e `npm run migrar -- --seco` lista o que seria aplicado. `migracao-012.test.ts`
 prova as restrições, a idempotência, a falha no meio, a RLS e a sobrevivência à
 eliminação do objeto. A leitura (`GET /atividades`) e a fusão das duas linhas do tempo
-na web são o plano 15-37.
+na web são o plano 15-37. O `em` é gravado em MILISSEGUNDOS (`date_trunc('milliseconds',
+now())`, `MOMENTO_DO_GESTO`), igual ao `at` do `ActivityRecord`, para o cursor composto
+`(em, id)` da leitura ser exato (15-09). Quem grava, desde o 15-09: Nota (15-04), mover,
+atribuir, lixeira, restaurar, estrela, leitura, transferir Identificador, consentimento e a
+sucessão (`passarAoSucessor`, um `insert ... select` por tabela antes do `update`).
 
 ## Colunas geradas e índices de `002`
 

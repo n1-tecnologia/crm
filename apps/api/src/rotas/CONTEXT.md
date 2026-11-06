@@ -171,10 +171,11 @@ lado do mesmo gesto:
   Todos os estados dos registros entram (inclusive arquivado e na lixeira) e
   nada de outro Espaço muda (`workspace_id` em todo `WHERE`). Gesto com
   `aoConfirmar` sai do caminho de duas idas da Fase 13 e paga mais idas ao banco:
-  aceito, é raro. Ainda não grava Registro de Atividade no CRM (o Registro por
-  Conversa passada depende de `crm_atividades` e entra no 15-09) nem muda o modelo
-  antigo: o diálogo de remoção das Configurações segue com os números antigos até
-  o 15-36.
+  aceito, é raro. Grava um Registro de Atividade por Contato, Empresa, Negócio e
+  Conversa passados (15-09, `insert ... select` por tabela antes do `update`, no mesmo
+  commit): ator é quem removeu (a sessão), `depois` é o nome do Sucessor; repetir não
+  grava de novo. Não muda o modelo antigo: o diálogo de remoção das Configurações
+  segue com os números antigos até o 15-36.
 - `GET /membros/:id/sucessao-no-crm` — as contagens `{ contatos, empresas,
   negocios, conversasPassadas }` (tipo `SucessaoNoCrm`, de `@n1/dominio/crm/sucessao`) que o `aoConfirmar` vai mover, em
   `{ ok: true, dados }`. Só Administrador ou Proprietário ATIVO (403
@@ -322,10 +323,12 @@ trocar o Canal e ligar ou criar o Negócio no 14-14):
 **Atividades do CRM novo (Fase 15, 15-37).** `rotas/crm/atividades.ts` tem UMA rota,
 só de leitura:
 
-- `GET /atividades?objetoTipo=&objetoId=&limite=&ate=` — `{ ok: true, itens }` com
+- `GET /atividades?objetoTipo=&objetoId=&limite=&ate=&ateId=` — `{ ok: true, itens }` com
   `ActivityRecord` do Espaço da sessão, da mais recente para a mais antiga; sem
-  `total`, a paginação é por tempo (`ate`, ISO, exclusivo: a `at` da última linha
-  recebida). Querystring `.strict()`: ator, ação, `workspaceId` e qualquer outro
+  `total`, a paginação é por cursor: `ate` (ISO, a `at` da última linha recebida) é
+  exclusivo sozinho; com `ateId` (o `id` dessa linha, 15-09) o cursor é composto
+  `(em, id)` e as linhas gravadas no mesmo instante não somem na fronteira da página
+  (uma sucessão grava várias no mesmo commit). `ateId` sem `ate` é 400. Querystring `.strict()`: ator, ação, `workspaceId` e qualquer outro
   campo são 400. `objetoTipo` é um de `TIPOS_DE_OBJETO_DO_CRM` e vem junto com
   `objetoId` ou nenhum dos dois (`validarFiltroDeAtividades`, 400 antes do serviço);
   `limite` vai de 1 a `LIMITES_DE_ATIVIDADE.paginaMaxima` (padrão 50). O Papel decide
@@ -405,8 +408,17 @@ título, sem diferenciar maiúscula, e é literal (`%` e `_` não são curingas)
 `naoLidas` conta as Mensagens `recebida` depois do `lidaAte` do Membro (sem
 marcação, todas as recebidas). Como filtro (Fase 15, 15-06), `naoLidas=true` traz
 só as Conversas com ao menos uma dessas e `false` só as sem nenhuma, sempre para
-o Membro da sessão (nunca um id do cliente); o `total` conta o filtrado. Nada disso grava Registro de Atividade nem
-avança a revisão do Espaço. O fio da Caixa antiga segue na leitura antiga
+o Membro da sessão (nunca um id do cliente); o `total` conta o filtrado. Nada disso avança a
+revisão do Espaço. Desde o 15-09 (D-15-09), `mover`, `atribuir` (e tirar o Atribuído), `lixeira`,
+`restaurar`, a estrela e a leitura gravam um Registro de Atividade no mesmo commit do gesto
+(`crm_atividades`, ator = Membro da sessão, nome = título da Conversa); a estrela só grava
+quando troca e a leitura só quando o `lidaAte` avança por cima de Mensagem recebida (repetir o
+mesmo valor não grava; a leitura do valor anterior é serializada por trava consultiva por
+Conversa e Membro). Gesto recusado não grava. `transferirIdentificador` e o consentimento
+também gravam, no Contato: a transferência com o nome do destino e só o TIPO do Identificador
+em `detalhe`; o consentimento com finalidade, tipo de Canal e decisão, sem a evidência.
+Criar, editar, ganhar, perder e reabrir Negócio, criar Contato/Empresa e mandar Contato/Empresa
+à lixeira pelo CRM novo NÃO gravam Atividade nesta fase. O fio da Caixa antiga segue na leitura antiga
 (`leituras_internas` da 008, que ninguém escreve aqui) até a Fase 15.
 
 **Consentimento no envio (Fase 14, 14-08).** `ServicoDeMensagens.enviar` recusa
