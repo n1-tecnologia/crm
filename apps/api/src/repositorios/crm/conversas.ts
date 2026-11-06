@@ -84,6 +84,7 @@ interface LinhaDaListaDeConversas extends LinhaDoBancoDeConversa {
   readonly email_principal: string | null;
   readonly telefone_principal: string | null;
   readonly nao_lidas: number;
+  readonly ultima_recebida_em: Date | null;
 }
 
 export interface LinhaDoBancoDeConversa {
@@ -235,7 +236,10 @@ export function criarRepositorioDeConversasPg(cliente: Pool | PoolClient): Repos
                 (select count(*)::int from plataforma.mensagens m
                   where m.workspace_id = c.workspace_id and m.conversa_id = c.id
                     and m.direcao = 'recebida'
-                    and m.criado_em > coalesce(mc.lida_ate, '-infinity'::timestamptz)) as nao_lidas
+                    and m.criado_em > coalesce(mc.lida_ate, '-infinity'::timestamptz)) as nao_lidas,
+                (select max(m.criado_em) from plataforma.mensagens m
+                  where m.workspace_id = c.workspace_id and m.conversa_id = c.id
+                    and m.direcao = 'recebida') as ultima_recebida_em
            from plataforma.conversas c
            ${deMarcacao}
            left join plataforma.contatos ct on ct.workspace_id = c.workspace_id and ct.id = c.contato_id
@@ -257,6 +261,7 @@ export function criarRepositorioDeConversasPg(cliente: Pool | PoolClient): Repos
                 ),
           estrela: linha.estrela,
           naoLidas: linha.nao_lidas,
+          ultimaRecebidaEm: iso(linha.ultima_recebida_em),
         })),
       };
     },

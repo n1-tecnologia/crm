@@ -110,6 +110,12 @@ export interface ConversaNaLista extends Conversa {
   readonly contatoNome: string | null;
   readonly estrela: boolean;
   readonly naoLidas: number;
+  /**
+   * Quando chegou a Mensagem RECEBIDA mais recente (`criadoEm`, do provedor), ou
+   * `null` se nenhuma chegou. É o que a janela de resposta do Canal (RN-CXE-19)
+   * mede, e vem na mesma consulta da página: a lista não faz uma ida por linha.
+   */
+  readonly ultimaRecebidaEm: string | null;
 }
 
 /** A estrela e o ponto até onde o Membro leu a Conversa (`conversa_marcacoes`, 011). */
