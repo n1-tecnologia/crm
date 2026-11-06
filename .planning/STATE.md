@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 15
 current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
 status: executing
-stopped_at: Completed 15-41-PLAN.md
-last_updated: "2026-11-06T22:02:16.446Z"
+stopped_at: Completed 15-42-PLAN.md
+last_updated: "2026-11-06T22:40:17.692Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 15 execution started
-state_head: 869f7e38284945f5b0c90e2cc7311ad85975c54e
+state_head: 36762c07c2ef0b2ea8de026d2f4dc160b4ce728c
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 271
-  completed_plans: 264
+  completed_plans: 265
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 15 (Unificação do CRM: telas no modelo novo e remoção do modelo antigo) — EXECUTING
-Plan: 40 of 43
+Plan: 41 of 43
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 15 execution started
 
@@ -483,6 +483,7 @@ Progress: [██████░░░░] 63%
 | Phase 15 P32 | 45 min | 3 tasks | 66 files |
 | Phase 15 P33 | 70 min | 3 tasks | 28 files |
 | Phase 15 P41 | 10 min | 2 tasks | 16 files |
+| Phase 15 P42 | 65 min | 3 tasks | 59 files |
 
 ## Accumulated Context
 
@@ -790,6 +791,7 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 15]: 15-32: capacidadesDoCanal e os tipos de Canal moram em packages/dominio/src/crm/capacidades.ts; types/crm.ts os reexporta ate o 15-43 — o CRM novo e as Ferramentas nao dependem do modelo antigo de Conversa
 - [Phase 15]: 15-33: a ponte dos Canais saiu de GET /estado e de executar(); Grupo, Flow e Automacao acham o Canal em crm.canais (canalPeloId), sem projecao no estado; canaisMs saiu da medicao
 - [Phase 15]: 15-41: a Pasta Meus negocios deixou de ser estrutura fixa (ehEstruturaFixa so reconhece as tres Listas do Financeiro) e as protecoes A9 sairam da arvore, da pagina da Pasta e da pagina da Lista; PASTA_MEUS_NEGOCIOS_ID segue exportada ate o 15-43
+- [Phase 15]: 15-42: responseWindowOpenUntil ficou (o popup de enviar Flow a chama) e passou a receber o Canal de plataforma.canais; createTask so aceita Vinculo de nascimento conferido (alvoConferido); o cliente das Automacoes de Contas a receber chega por OpcoesDaAgenda.clientes
 
 ### Pending Todos
 
@@ -851,6 +853,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-06T22:02:16.217Z
-Stopped at: Completed 15-41-PLAN.md
+Last session: 2026-11-06T22:40:09.581Z
+Stopped at: Completed 15-42-PLAN.md
 Resume file: None
