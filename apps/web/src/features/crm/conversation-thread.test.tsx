@@ -532,6 +532,106 @@ describe("ConversationThread — o fio por Canal", () => {
   });
 });
 
+describe("ConversationThread — abrir a Conversa pelo fio com a primeira Mensagem (F14-D-07)", () => {
+  /** O Contato nunca falou em "Comercial": o Canal alcança, mas não há Conversa nele. */
+  function semConversaEmComercial() {
+    conversasDaApi = conversasDaApi.filter((c) => c.id !== "cnv_comercial");
+    delete mensagensDaApi.cnv_comercial;
+  }
+
+  async function irParaComercial() {
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Responder por" })).toBeTruthy());
+    fireEvent.click(respondePor());
+    fireEvent.click(screen.getAllByRole("option").find((o) => o.textContent === "Comercial · WhatsApp oficial") as HTMLElement);
+    await waitFor(() => expect(abaDe("Comercial · WhatsApp oficial").getAttribute("aria-selected")).toBe("true"));
+  }
+
+  async function enviarPeloFio(texto: string) {
+    fireEvent.change(compositor(), { target: { value: texto } });
+    fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
+    const dialogo = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Enviar" }));
+  }
+
+  it("(17) sem Conversa no Canal escolhido o fio pede a “Primeira Mensagem”; Enviar chama POST /conversas e passa a mostrar a Conversa criada", async () => {
+    semConversaEmComercial();
+    const aberta = vi.fn();
+    montar({ onConversaAberta: aberta });
+    await irParaComercial();
+    expect(screen.getByRole("textbox", { name: "Primeira Mensagem" })).toBeTruthy();
+    expect(screen.getByText("Nenhuma Conversa em Comercial · WhatsApp oficial.")).toBeTruthy();
+
+    await enviarPeloFio("oi, aqui é do Comercial");
+
+    await waitFor(() => expect(screen.getByText("oi, aqui é do Comercial")).toBeTruthy());
+    expect(gravacoes()).toEqual([
+      { caminho: "/conversas", metodo: "POST", corpo: { canalId: "chn_comercial", contatoId: CONTATO_ID, mensagem: { conteudo: "oi, aqui é do Comercial" } } },
+    ]);
+    expect(aberta).toHaveBeenCalledTimes(1);
+    expect(aberta.mock.calls[0]?.[0]).toMatch(/^cnv_nova_/);
+    // Depois da primeira, o campo volta a ser o de responder.
+    expect(screen.getByRole("textbox", { name: /Escrever para/ })).toBeTruthy();
+  });
+
+  it("(18) com Conversa já aberta no par o fio a reaproveita: a Mensagem vai por POST /mensagens e nenhuma Conversa nasce", async () => {
+    // A recebida de há uma hora: a janela de 24 h do Comercial (oficial) está aberta.
+    conversasDaApi = conversasDaApi.map((c) => (c.id === "cnv_comercial" ? { ...c, ultimaRecebidaEm: new Date(Date.now() - 3_600_000).toISOString() } : c));
+    montar();
+    await irParaComercial();
+    await waitFor(() => expect(screen.getByText("cnv_comercial mensagem 1")).toBeTruthy());
+    expect(screen.queryByRole("textbox", { name: "Primeira Mensagem" })).toBeNull();
+    expect(screen.queryByText(/Nenhuma Conversa em/)).toBeNull();
+
+    await enviarPeloFio("na Conversa que já existe");
+
+    await waitFor(() => expect(screen.getByText("na Conversa que já existe")).toBeTruthy());
+    expect(gravacoes()).toEqual([
+      { caminho: "/mensagens", metodo: "POST", corpo: { conversaId: "cnv_comercial", direcao: "enviada", conteudo: "na Conversa que já existe" } },
+    ]);
+  });
+
+  it("(19) borda UCR-05: duas vezes Enviar na primeira Mensagem abre uma Conversa só", async () => {
+    semConversaEmComercial();
+    let solta: (() => void) | undefined;
+    const segurada = new Promise<void>((resolve) => {
+      solta = resolve;
+    });
+    const original = abrirNaApi;
+    abrirNaApi = async (corpo) => {
+      await segurada;
+      return original(corpo);
+    };
+    montar();
+    await irParaComercial();
+    fireEvent.change(compositor(), { target: { value: "uma só" } });
+    fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
+    const dialogo = await screen.findByRole("alertdialog");
+    const confirmar = within(dialogo).getByRole("button", { name: "Enviar" });
+    fireEvent.click(confirmar);
+    fireEvent.click(confirmar);
+    await act(async () => {
+      solta?.();
+      await segurada;
+    });
+    await waitFor(() => expect(screen.getByText("uma só")).toBeTruthy());
+    expect(gravacoes().filter((g) => g.caminho === "/conversas")).toHaveLength(1);
+  });
+
+  it("(20) a recusa da api ao abrir a Conversa aparece no fio, o texto fica no campo e nenhuma Conversa passa a existir", async () => {
+    semConversaEmComercial();
+    abrirNaApi = async () => resposta(409, { ok: false, error: "Já existe uma Conversa aberta deste Contato neste Canal.", codigo: "CONVERSA_ABERTA_NO_PAR" });
+    const aberta = vi.fn();
+    montar({ onConversaAberta: aberta });
+    await irParaComercial();
+    await enviarPeloFio("tentativa");
+
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Já existe uma Conversa aberta deste Contato neste Canal."));
+    expect((screen.getByRole("textbox", { name: "Primeira Mensagem" }) as HTMLTextAreaElement).value).toBe("tentativa");
+    expect(aberta).not.toHaveBeenCalled();
+    expect(screen.getByText("Nenhuma Conversa em Comercial · WhatsApp oficial.")).toBeTruthy();
+  });
+});
+
 describe("ConversationThread — Criar Tarefa numa Lista conversacional (14-16)", () => {
   async function criarPeloFio() {
     montar({ canalSelecionado: "chn_wpp" });
