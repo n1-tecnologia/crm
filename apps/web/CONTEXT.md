@@ -235,6 +235,13 @@ Os números do Início do CRM novo vêm de `dados/crm/inicio.ts` (15-18): `usePa
 no servidor (nunca listas paginadas somadas no navegador, `paginaMaxima` é 200). "Meu" é o Membro da sessão:
 nenhum hook manda o id do Membro. A chave dos Leads é a das Qualificações únicas e ordenadas; a das
 estatísticas leva `desde`, `ate` e `fuso`, então quem chama passa instantes estáveis (arredonde "agora").
+O Início (`features/inicio/resumo-do-inicio.tsx`, 15-23) abre sem Contatos, Negócios nem Conversas do store:
+Leads a atender é `useLeadsAAtender(qualificacoesDeLead(state))`, Mensagens novas é `useConversas({ naoLidas, atribuidoId })`
+(sem o trecho da última Mensagem, que a lista não traz) e as estatísticas pedem DUAS janelas (atual e anterior,
+`janelasDeConsultaDoCrm`) porque a api aceita 400 dias por pedido; o robô lê `usePanoramaDoCrm`. O Painel
+(`paineis/[painel]`) lê Negócios, Conversas, Contatos e Funis das rotas (200 cada, só dos alvos que algum Widget usa) e
+as Etapas pela ficha de cada Funil (`useEtapasDosFunis`); a lista curta vira "Parcial: primeiros 200" no Widget, e é uma
+ponte até a Sessão 20 (20.3), quando o servidor soma.
 `src/sem-listas-espelho.test.ts`
 (D-06) congela os dois arquivos da web que ainda citam as Listas espelho e proíbe
 um terceiro.

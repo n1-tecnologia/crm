@@ -936,8 +936,22 @@ subcaminho `@n1/dominio/crm/inicio`) tem os tipos do que o Início soma no servi
 50, `QUALIFICACOES_MAXIMAS` 20, `JANELA_MAXIMA_DE_ESTATISTICAS_DIAS` 400) e a conferência de forma da janela
 (`conferirJanelaDeEstatisticas`, `fusoValido`) que a rota e o serviço aplicam igual. Nenhum tipo carrega o id
 do Membro nem o do Espaço: "meu" é o Membro da sessão. Um bloco ou série `null` quer dizer que o Papel não lê
-o recurso dele. `derive-resumo` (`leadsAAtender`, `estatisticasDoMembro`) segue para o modelo antigo até a tela
-do Início trocar (15-23); a consulta do modelo novo é da api.
+o recurso dele. A consulta do modelo novo é da api.
+
+**Início e Painel sem o CRM antigo (Fase 15, 15-23, 3.4.7, UCR-07).** `derive-resumo` não lê mais Contato,
+Negócio nem Conversa do store: `qualificacoesDeLead(state)` devolve os ids das Qualificações "Lead" do Catálogo
+(a única parte que a tela ainda lê do store; os Leads saem de `GET /crm/inicio/leads-a-atender`),
+`mensagensNovasDasConversas(itens, total)` soma as linhas de `GET /conversas?naoLidas=true` e diz `parcial` quando o
+`total` passa do que veio, e `estatisticasDoMembro(state, membro, periodo, agora, crm)` recebe as contagens por dia
+(`EstatisticasDoCrm`) e só mantém as Tarefas concluídas do store; sem `crm` (carregando) ou com série `null`, o CRM vale
+zero. A api aceita 400 dias por pedido e o "ano" com o anterior passa de 700: `janelasDeConsultaDoCrm` dá a janela
+atual e a anterior em separado, estáveis o dia inteiro (chave do SWR), e `juntarEstatisticasDoCrm` as une. O dia do
+CRM é um ponto no início do dia civil do fuso do Espaço. `naoLidas` e `ultimaAtividade` seguem sobre a Conversa do
+modelo antigo porque a Caixa de Entrada ainda as usa. `widgetReading(state, widget, membro, agora, crm)` recebe
+`LeituraDoCrmParaPainel` (Negócios, Conversas, Contatos, Funis e Etapas das rotas, mais `parcial`): a leitura de
+Widget cuja Fonte é do CRM sai marcada `parcial` quando o total passa do lido, e a Tarefa nunca é parcial. Origem e
+Motivo de Perda são texto livre no Negócio novo e a lista resumida não os traz: essas duas dimensões ficam sem linhas
+até virem na lista.
 
 **Abas e Canal de resposta do fio sobre as tabelas (Fase 15, 15-20, 3.4.2, UCR-05).**
 `crm/canais-de-resposta.ts` (sem barril, subcaminho `@n1/dominio/crm/canais-de-resposta`) leva as
