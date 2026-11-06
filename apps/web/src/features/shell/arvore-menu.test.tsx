@@ -130,8 +130,9 @@ function servidorFalso(): Servidor {
 let state: DataState;
 
 /**
- * A Pasta fixa «Meus negócios» (A9) com uma Lista de Funil dentro. O seed não as cria mais (15-31, D-15-13): os casos de
- * proteção as montam no próprio arranjo, onde ficavam (Comercial, ordem 3). A proteção sai no 15-41.
+ * A Pasta «Meus negócios», agora comum (15-41, D-15-14), com uma Lista de Funil dentro. O seed não as cria mais (15-31,
+ * D-15-13): os casos que as usam as montam no próprio arranjo, onde ficavam (Comercial, ordem 3) — é o que ainda existe
+ * nos Espaços de teste com Tarefas espelho.
  */
 function montarMeusNegocios(): void {
   const origem = { kind: "member", id: "mem_julia" } as const;
@@ -470,16 +471,17 @@ describe("Subir e Descer — a fatia visível, a falha e a gravação (EST-06, T
     expect(servidor.gravar).not.toHaveBeenCalled();
   });
 
-  it("a Pasta Meus negócios e as Listas dela não ganham «⋯» (A9), e a vizinha fora dela, sim", async () => {
+  it("a Pasta Meus negócios e as Listas dela ganham «⋯» como qualquer outra, com «Subir», «Descer» e «Mover para…» (15-41)", async () => {
     montarMeusNegocios();
     await abrirArvore();
     await waitFor(() => expect(temLinha(MEUS_NEGOCIOS_ID)).toBe(true));
 
-    expect(within(linha(MEUS_NEGOCIOS_ID)).queryByRole("button", { name: /^Ações de / })).toBeNull();
+    expect(within(linha(MEUS_NEGOCIOS_ID)).queryByRole("button", { name: /^Ações de / })).not.toBeNull();
     const dela = state.lists.filter((l) => l.parentId === MEUS_NEGOCIOS_ID && temLinha(l.id));
     expect(dela.length).toBeGreaterThan(0);
-    for (const l of dela) expect(within(linha(l.id)).queryByRole("button", { name: /^Ações de / })).toBeNull();
-    expect(within(linha("lst_prospeccao")).queryByRole("button", { name: /^Ações de / })).not.toBeNull();
+    for (const l of dela) expect(within(linha(l.id)).queryByRole("button", { name: /^Ações de / })).not.toBeNull();
+
+    expect(nomes(abrirMenuDaLinha(MEUS_NEGOCIOS_ID))).toEqual(expect.arrayContaining(["Subir", "Descer", "Mover para…"]));
   });
 
   it("o Convidado vê a árvore inerte como hoje: nenhuma linha tem «⋯»", async () => {
@@ -614,12 +616,12 @@ describe("A página da Pasta e da Subpasta (D-10, A8-bis, F2)", () => {
     expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
-  it("a Pasta Meus negócios não tem «Mais ações» (A9)", async () => {
+  it("a Pasta Meus negócios tem «Mais ações» como qualquer Pasta (15-41)", async () => {
     montarMeusNegocios();
     await montarPagina(MEUS_NEGOCIOS_ID);
 
-    expect(screen.queryByRole("button", { name: "Mais ações" })).toBeNull();
-    // O controle: o botão «Criar» da Pasta continua lá.
+    fireEvent.click(screen.getByRole("button", { name: "Mais ações" }));
+    expect(nomes(screen.getAllByRole("menuitem"))).toEqual(["Mover para…"]);
     expect(screen.getByRole("button", { name: "Criar nesta Pasta" })).toBeTruthy();
   });
 
