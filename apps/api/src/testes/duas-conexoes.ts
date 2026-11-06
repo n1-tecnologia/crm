@@ -62,3 +62,26 @@ export async function aindaPendenteApos(promessa: Promise<unknown>, ms: number):
     new Promise<boolean>((resolver) => setTimeout(() => resolver(true), ms)),
   ]);
 }
+
+/**
+ * Roda `chamada` (o serviço, cliente B) enquanto A segura a mesclagem de `absorvidoId` sem confirmar,
+ * e só então confirma A. `esperando` diz se B de fato ficou preso à trava de A (ordem de travas
+ * provada); `resultado` é o que B devolveu depois do `commit` de A.
+ */
+export async function comMesclagemNoMeio<T>(
+  workspaceId: string,
+  absorvidoId: string,
+  sobreviventeId: string,
+  chamada: () => Promise<T>,
+  ms = 400,
+): Promise<{ readonly esperando: boolean; readonly resultado: T }> {
+  const a = await mesclarSemConfirmar(workspaceId, absorvidoId, sobreviventeId);
+  try {
+    const b = chamada();
+    const esperando = await aindaPendenteApos(b, ms);
+    await a.confirmar();
+    return { esperando, resultado: await b };
+  } finally {
+    await a.desfazer();
+  }
+}

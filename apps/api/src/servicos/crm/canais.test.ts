@@ -13,7 +13,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Canal } from "@n1/dominio/crm/canais";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { encerrar, pool } from "../../persistencia/conexao";
-import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearMembro } from "../../testes/banco-crm";
+import { describeComBanco, limparEspaco, novoEspacoDeTeste, poolDoDono, prepararBancoCrm, semearMembro } from "../../testes/banco-crm";
+import { abrirTransacaoDeA, aindaPendenteApos } from "../../testes/duas-conexoes";
 import { criarAcessoAoCrmPg } from "./acesso";
 import { criarServicoDeCanais } from "./canais";
 import type { ResultadoCrm } from "./resultado";
@@ -260,6 +261,39 @@ describeComBanco("ServicoDeCanais — Postgres local", () => {
       const c = await espaco("semlinha");
       await pool().query("delete from plataforma.workspaces where workspace_id = $1", [c.ws]);
       valor(await criar(c, "Comercial", "+55 11 97777-0061"));
+    });
+  });
+
+  describe("ordem de travas com o gesto misto (WR-02)", () => {
+    it("o REST de Canal espera o Espaço ANTES de travar o Canal: um terceiro cliente trava o Canal com nowait enquanto ele espera", async () => {
+      const c = await espaco("ordemtravas");
+      const canal = valor(await criar(c, "Comercial", "+55 11 97777-0070"));
+
+      // A é o gesto misto em curso: já tem a linha do Espaço (`executar()` trava o Espaço primeiro).
+      const a = await abrirTransacaoDeA();
+      try {
+        await a.cliente.query("select revisao from plataforma.workspaces where workspace_id = $1 for update", [c.ws]);
+
+        const b = servico.simularConexao(c.admin, canal.id);
+        expect(await aindaPendenteApos(b, 400)).toBe(true);
+
+        // O gesto misto chega ao Canal DEPOIS do Espaço. Se B tivesse travado o Canal primeiro, isto falharia
+        // com 55P03 (e, com A pedindo o Canal, seria `40P01`).
+        const d = await poolDoDono().connect();
+        try {
+          await d.query("begin");
+          const livre = await d.query("select 1 from plataforma.canais where workspace_id = $1 and id = $2 for update nowait", [c.ws, canal.id]);
+          expect(livre.rowCount).toBe(1);
+          await d.query("rollback");
+        } finally {
+          d.release();
+        }
+
+        await a.confirmar();
+        expect(valor(await b)).toMatchObject({ id: canal.id, conexao: "conectada" });
+      } finally {
+        await a.desfazer();
+      }
     });
   });
 

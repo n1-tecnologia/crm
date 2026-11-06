@@ -16,6 +16,7 @@ import type { EmpresaDetalhada, NovaEmpresa } from "@n1/dominio/crm/empresas";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { encerrar, pool } from "../../persistencia/conexao";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, poolDoDono, prepararBancoCrm, semearMembro } from "../../testes/banco-crm";
+import { comMesclagemNoMeio } from "../../testes/duas-conexoes";
 import { criarAcessoAoCrmPg } from "./acesso";
 import { criarServicoDeContatos } from "./contatos";
 import { criarServicoDeEmpresas } from "./empresas";
@@ -462,5 +463,16 @@ describeComBanco("ServicoDeEmpresas — Postgres local", () => {
     expect(comoAdmin.status).toBe(409);
     expect(comoAdmin.codigo).toBe("CONTATO_MESCLADO");
     expect(await quantasEmpresas("Empresa (j) com absorvido")).toBe(0);
+  });
+
+  it("(k) WR-01: Contato mesclado no meio do vínculo → 409 e nenhum contato_empresa novo", async () => {
+    const e = await empresa("Empresa (k)");
+    const absorvido = await contato("Absorvido no meio (k)");
+    const sobrevivente = await contato("Sobrevivente no meio (k)");
+
+    const vinculo = await comMesclagemNoMeio(ws, absorvido, sobrevivente, () => servico.vincularContato(eu, e.id, { contatoId: absorvido }));
+    expect(vinculo.esperando).toBe(true);
+    expect(recusado(vinculo.resultado)).toMatchObject({ status: 409, codigo: "CONTATO_MESCLADO", campo: "contatoId" });
+    expect((await vinculosNoBanco(e.id)).some((v) => v.contato_id === absorvido)).toBe(false);
   });
 });

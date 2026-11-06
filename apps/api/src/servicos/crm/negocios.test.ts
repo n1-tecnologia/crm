@@ -18,6 +18,7 @@ import type { NegocioDetalhado, NovoNegocio } from "@n1/dominio/crm/negocios";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { encerrar, pool } from "../../persistencia/conexao";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, poolDoDono, prepararBancoCrm, semearMembro } from "../../testes/banco-crm";
+import { comMesclagemNoMeio } from "../../testes/duas-conexoes";
 import { criarAcessoAoCrmPg } from "./acesso";
 import { criarServicoDeContatos } from "./contatos";
 import { criarServicoDeEmpresas } from "./empresas";
@@ -533,5 +534,33 @@ describeComBanco("ServicoDeNegocios — Postgres local", () => {
     const arquivado = await contato("Arquivado de Negócio");
     valor(await contatos.arquivar(admin, arquivado));
     expect(valor(await servico.criar(membro, { titulo: "Mesclado (i) arquivado", contatoId: arquivado })).negocio.contatoId).toBe(arquivado);
+  });
+
+  it("(j) WR-01: Contato mesclado no meio da criação ou da edição → 409, e nenhuma linha nasce nem muda", async () => {
+    const absorvido = await contato("Absorvido no meio (j)");
+    const sobrevivente = await contato("Sobrevivente no meio (j)");
+    const quantos = async () =>
+      (await pool().query<{ n: number }>("select count(*)::int as n from plataforma.negocios where workspace_id = $1 and titulo like 'No meio (j)%'", [ws]))
+        .rows[0]!.n;
+
+    // Criar: B espera a trava do Contato e, depois do commit de A, enxerga `mesclado`.
+    const criacao = await comMesclagemNoMeio(ws, absorvido, sobrevivente, () =>
+      servico.criar(membro, { titulo: "No meio (j) criar", contatoId: absorvido }),
+    );
+    expect(criacao.esperando).toBe(true);
+    expect(recusado(criacao.resultado)).toMatchObject({ status: 409, codigo: "CONTATO_MESCLADO", campo: "contatoId" });
+    expect(await quantos()).toBe(0);
+
+    // Editar trocando para o Contato que está sendo mesclado. O Postgres pode escolher B como vítima de um
+    // deadlock; as duas saídas são recusas 409 e a linha do Negócio não muda.
+    const outroAbsorvido = await contato("Absorvido no meio (j) edição");
+    const doSobrevivente = await negocio("No meio (j) edição", { contatoId: sobrevivente });
+    const edicao = await comMesclagemNoMeio(ws, outroAbsorvido, sobrevivente, () =>
+      servico.editar(membro, doSobrevivente.negocio.id, { contatoId: outroAbsorvido }),
+    );
+    const recusada = recusado(edicao.resultado);
+    expect(recusada.status).toBe(409);
+    expect(["CONTATO_MESCLADO", "CONFLITO_TRANSITORIO"]).toContain(recusada.codigo);
+    expect((await linhaNoBanco(doSobrevivente.negocio.id))?.contato_id).toBe(sobrevivente);
   });
 });
