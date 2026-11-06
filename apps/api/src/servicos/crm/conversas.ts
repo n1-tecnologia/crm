@@ -422,8 +422,16 @@ export async function abrirConversaNoCliente(
   if (canal.estado === "arquivado") return canalArquivado();
 
   const contatos = criarRepositorioDeContatosPg(cliente);
-  const contato = await contatos.obter(membro.workspaceId, entrada.contatoId);
+  // `for update`: uma mesclagem confirmada no meio faz esta transação esperar e então enxergar
+  // `mesclado`, em vez de abrir a Conversa para um Contato que já não aceita escrita (WR-01, RN-CON-14).
+  const contato = await contatos.obter(membro.workspaceId, entrada.contatoId, { travar: true });
   if (!contato) return contatoNaoEncontrado();
+  if (contato.estado === "mesclado") {
+    return recusa<never>(409, "Este Contato foi mesclado e agora é somente leitura. Abra o Contato que ficou.", {
+      codigo: "CONTATO_MESCLADO",
+      campo: "contatoId",
+    });
+  }
   if (contato.estado !== "ativo") {
     return recusa<never>(409, "Só um Contato ativo abre Conversa.", { codigo: "CONTATO_INATIVO", campo: "contatoId" });
   }
