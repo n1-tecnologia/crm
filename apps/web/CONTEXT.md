@@ -323,9 +323,12 @@ botão **Meus** do quadro de `/crm/negocios` (a página que desenha o
 valendo na api) e a página soma os totais do cabeçalho com a MESMA chave de SWR
 do quadro. Ligar e desligar mexe só na URL e volta à mesma chave. O atalho
 "Meus negócios" do menu do CRM é `/crm/negocios?meus=1`
-(`Tela.comParametro`/`semParametro` fazem só um dos dois acender). Fica para o
-plano 15-41 o tratamento especial da Pasta fixa na árvore da *Estrutura* (não
-mover, não receber Pastas): Espaços de teste com Tarefas espelho ainda a têm.
+(`Tela.comParametro`/`semParametro` fazem só um dos dois acender). No plano
+15-41 (D-15-14) a Pasta deixou de ser especial também na árvore da *Estrutura*:
+o menu "⋯" (Subir, Descer, Mover para…), o gesto de arrastar, a página da Pasta
+e a da Lista a tratam como qualquer Pasta, e o domínio já não recusa mover nem
+receber Pastas nela. Espaços de teste com Tarefas espelho ainda a têm, e ali ela
+é uma Pasta comum.
 
 **A terceira fronteira (Fase 8): o Canal relacional também fala REST.** Na Fase 8 o
 chat — Caixa de Entrada, fio da Conversa, Listas — seguia no store (D-11) e só
