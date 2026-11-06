@@ -35,7 +35,7 @@ import { buildSeed } from "@n1/dominio/seed";
 import { SOL } from "@n1/dominio/solicitacao-de-pagamento";
 import { evoluirConfiguracaoDeSolicitacoes } from "@n1/dominio/solicitacao-de-pagamento-evolver";
 import { buildApp } from "../app";
-import { carregarEnv, encerrar, pool } from "../persistencia/conexao";
+import { encerrar, pool } from "../persistencia/conexao";
 import { hidratar, semear } from "../persistencia/repositorio";
 import { criarRepositorioDeContatosPg } from "../repositorios/crm/contatos";
 import { FRASE_DE_SUSPENSO } from "../plugins/autenticacao";
@@ -265,9 +265,9 @@ describe("POST /operacoes/:nome — sem banco", () => {
   });
 });
 
-carregarEnv();
-const temBanco = Boolean(process.env.DATABASE_URL);
-const d = temBanco ? describe : describe.skip;
+// D-15-07 — o bloco "contra o banco real" só roda com `DATABASE_URL` no Postgres LOCAL
+// (`describeComBanco`, `../testes/banco-crm`). Este arquivo NÃO carrega o `.env`: ele aponta
+// para o banco de produção, e um `npm test` sem `DATABASE_URL` já abriu esse banco por aqui.
 const WS = "ws_rotas_teste";
 
 /** A Automação de Canal do caso (w)/(x): publicada em `CANAL_LISTA_ID` (Solicitações de pagamento, D5-19/05-13), gatilho por evento — ao ENTRAR em "em aprovação". */
@@ -328,7 +328,7 @@ async function contarOutboxCanalDaTarefa(taskId: string): Promise<number> {
   }
 }
 
-d("POST /operacoes/:nome — contra o banco real", () => {
+describeComBanco("POST /operacoes/:nome — contra o banco real", () => {
   const tarefaDeContasAPagar = semente.tasks.find(
     (t) => t.listId === CP.listId && t.statusId === CP.status.paraPagar,
   );
