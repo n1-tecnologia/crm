@@ -70,6 +70,8 @@ import {
   sairDaComunidade,
   sairDoGrupo,
   simularEntradaPorClique,
+  sincronizarComunidade,
+  sincronizarFlow,
   sincronizarGrupo,
   validarVersao,
   vincularGrupoAComunidade,
@@ -745,5 +747,94 @@ describe("criarGrupo — o Canal vem do CRM novo (Fase 15, 3.4.8)", () => {
     if (comContato.ok) expect(participacoesVigentes(comContato.value).some((p) => p.contactId === "cnt-da-tabela")).toBe(true);
     const semContato = criarGrupo(state, "mem_julia", { nome: "Sem Contato", canalId: "canal-da-tabela", participantesIniciaisContactIds: ["cnt_22"] }, { canais: [canalNovo()], contatos: [] });
     expect(semContato.ok).toBe(false);
+  });
+});
+
+describe("Grupo, Comunidade e Flow conferem Canal e Contato no CRM novo (Fase 15, 3.4.8)", () => {
+  const vazio: CrmDasFerramentas = { canais: [], contatos: [] };
+
+  it("Grupo — sincronizar com o Canal fora de crm.canais deixa o Grupo órfão, mesmo que o modelo antigo tenha o Canal", () => {
+    const g = unwrap(sincronizarGrupo(state, "mem_julia", "grp_turma_02", vazio));
+    expect(g.sincronizacao.estado).toBe("orfao");
+  });
+
+  it("Grupo — administrar com crm vazio recusa 'Canal não encontrado.' (a recusa nunca olha o modelo antigo)", () => {
+    const r = adicionarParticipantes(state, "mem_julia", "grp_turma_02", { contactIds: ["cnt_20"] }, vazio);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe("Canal não encontrado.");
+    const sem = regenerarLinkDeConvite(state, "mem_julia", "grp_turma_02");
+    expect(sem.ok).toBe(false);
+    if (!sem.ok) expect(sem.error).toBe("Canal não encontrado.");
+  });
+
+  it("Grupo — adicionar Participante confere o Contato em crm.contatos: o da tabela entra, o que só existe no modelo antigo não", () => {
+    const base = crmDoSeed(state);
+    const novo = { id: "cnt-da-tabela", nome: "Ana da tabela", estado: "ativo", whatsapp: "5511900000042" };
+    const r = unwrap(adicionarParticipantes(state, "mem_julia", "grp_turma_02", { contactIds: ["cnt-da-tabela"] }, { ...base, contatos: [...base.contatos, novo] }));
+    expect(r.adicionados.map((p) => p.contactId)).toEqual(["cnt-da-tabela"]);
+    const fora = adicionarParticipantes(state, "mem_julia", "grp_turma_02", { contactIds: ["cnt_20"] }, { ...base, contatos: [novo] });
+    expect(fora.ok).toBe(false);
+    if (!fora.ok) expect(fora.error).toMatch(/não está ativo/);
+  });
+
+  it("Grupo — enviar ao Grupo confere o Canal em crm.canais, e a Conversa do Grupo continua em state.conversations (F14-D-05)", () => {
+    const sem = enviarMensagemAoGrupo(state, "mem_julia", "grp_turma_01", { content: "Oi" }, vazio);
+    expect(sem.ok).toBe(false);
+    const r = unwrap(enviarMensagemAoGrupo(state, "mem_julia", "grp_turma_01", { content: "Aula amanhã!" }, crmDoSeed(state)));
+    expect(state.conversations.some((c) => c.id === r.conversa.id)).toBe(true);
+    expect(r.conversa.groupIdentifier?.externalId).toBe(grupo("grp_turma_01").identificadorExterno);
+  });
+
+  it("Grupo — o nome do Canal e do Contato no Registro vêm de crm", () => {
+    const base = crmDoSeed(state);
+    const p = participacoesVigentes(grupo("grp_turma_02")).find((x) => x.contactId === "cnt_11");
+    expect(p).toBeTruthy();
+    const nomeNovo = { id: "cnt_11", nome: "Nome vindo da tabela", estado: "ativo", whatsapp: "5511900000011" };
+    unwrap(removerParticipante(state, "mem_julia", "grp_turma_02", p?.id ?? "", { ...base, contatos: [nomeNovo] }));
+    expect(state.activity.find((a) => a.action === "Participante removido" && a.objectId === "grp_turma_02")?.detail).toBe("Nome vindo da tabela");
+  });
+
+  it("Comunidade — sincronizar com o Canal fora de crm.canais deixa a Comunidade órfã; criar confere o Canal de crm.canais", () => {
+    const c = unwrap(sincronizarComunidade(state, "mem_julia", COMUNIDADE_ALUNOS_ID, vazio));
+    expect(c.sincronizacao.estado).toBe("orfao");
+    const antigo = state.channels.find((x) => x.id === "chn_wpp");
+    if (!antigo) throw new Error("sem chn_wpp");
+    const canais = [{ ...canalDoSeed(antigo), id: "canal-da-tabela", nome: "WhatsApp da tabela" }];
+    state.channels = [];
+    const nova = unwrap(criarComunidade(state, "mem_julia", { nome: "Mentoria da tabela", canalId: "canal-da-tabela" }, { canais, contatos: [] }));
+    expect(nova.comunidade.canalId).toBe("canal-da-tabela");
+    expect(nova.grupoDeAvisos.canalId).toBe("canal-da-tabela");
+    const recusa = criarComunidade(state, "mem_julia", { nome: "Sem Canal", canalId: "chn_wpp" }, vazio);
+    expect(recusa.ok).toBe(false);
+    if (!recusa.ok) expect(recusa.error).toBe("Canal não encontrado.");
+  });
+
+  it("Flow — publicar e sincronizar conferem o Canal publicador em crm.canais", () => {
+    const f = flow();
+    const r = publicarVersao(state, "mem_thiago", f.id, {}, vazio);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe("Canal não encontrado.");
+    unwrap(publicarVersao(state, "mem_thiago", f.id, {}, crmDoSeed(state)));
+    const orfao = unwrap(sincronizarFlow(state, "mem_julia", f.id, vazio));
+    expect(orfao.sincronizacao.estado).toBe("orfao");
+  });
+
+  it("Flow — enviar confere o Canal publicador em crm.canais; a Mensagem continua em state.conversations (F14-D-05)", () => {
+    const f = flow();
+    const sem = enviarFlow(state, "mem_julia", { flowId: f.id, conversationId: "cnv_5", corpo: "x" }, vazio);
+    expect(sem.ok).toBe(false);
+    const r = unwrap(enviarFlow(state, "mem_julia", { flowId: f.id, conversationId: "cnv_5", corpo: "Me conta sobre você?" }, crmDoSeed(state)));
+    expect(state.conversations.find((c) => c.id === "cnv_5")?.messages.at(-1)?.id).toBe(r.mensagem.id);
+  });
+
+  it("Flow — criar com Canal confere crm.canais; a Resposta confere o Contato em crm.contatos", () => {
+    const sem = criarFlow(state, "mem_julia", { nome: "Pesquisa", categoria: "pesquisa", canalId: "chn_wpp" }, vazio);
+    expect(sem.ok).toBe(false);
+    if (!sem.ok) expect(sem.error).toBe("Escolha um Canal ativo.");
+    const f = flow();
+    const semContato = receberRespostaDeFlow(state, { flowId: f.id, contactId: "cnt_17", valores: { formacao: "dentista", cidade: "Osasco", aceite: true } }, vazio);
+    expect(semContato.ok).toBe(false);
+    if (!semContato.ok) expect(semContato.error).toBe("Contato não encontrado.");
+    unwrap(receberRespostaDeFlow(state, { flowId: f.id, contactId: "cnt_17", valores: { formacao: "dentista", cidade: "Osasco", aceite: true } }, crmDoSeed(state)));
   });
 });
