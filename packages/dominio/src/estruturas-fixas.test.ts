@@ -17,7 +17,7 @@ describe("estruturas fixas (Q2)", () => {
   });
 
   it("a constante da Pasta Meus negócios saiu do módulo (15-43): nenhuma regra a lê", () => {
-    expect(Object.keys(estruturasFixas)).not.toContain("PASTA_MEUS_NEGOCIOS_ID");
+    // Só os ids das duas Listas e a função: a Pasta não tem mais constante, e quem a citasse por nome não compilaria.
     expect(Object.keys(estruturasFixas).sort()).toEqual([
       "LISTA_CONTAS_A_RECEBER_ID",
       "LISTA_SOLICITACOES_DE_PAGAMENTO_ID",

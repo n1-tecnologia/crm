@@ -328,7 +328,9 @@ do quadro. Ligar e desligar mexe só na URL e volta à mesma chave. O atalho
 o menu "⋯" (Subir, Descer, Mover para…), o gesto de arrastar, a página da Pasta
 e a da Lista a tratam como qualquer Pasta, e o domínio já não recusa mover nem
 receber Pastas nela. Espaços de teste com Tarefas espelho ainda a têm, e ali ela
-é uma Pasta comum.
+é uma Pasta comum. No 15-43 saiu o último caso especial: a Lista dessa Pasta já não
+esconde as Tarefas com proveniência de Negócio (o filtro `pastaDeNegocios` da página
+da Lista, WINDOWS #69), e a constante do id da Pasta deixou de existir no domínio.
 
 **A terceira fronteira (Fase 8): o Canal relacional também fala REST.** Na Fase 8 o
 chat — Caixa de Entrada, fio da Conversa, Listas — seguia no store (D-11) e só

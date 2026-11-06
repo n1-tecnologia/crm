@@ -73,7 +73,6 @@ import {
 import { useNomesDosClientes } from "@/features/estrutura/financeiro/use-nomes-dos-clientes";
 import { QuadroConversacional } from "@/features/estrutura/quadro-conversacional";
 import { linkVisivel, SEM_LINK_PARA_QUEM_NAO_ADMINISTRA } from "@/features/estrutura/link-publico";
-import { MEUS_NEGOCIOS_ID } from "@n1/dominio/seed-comercial";
 import {
   Abas,
   ActionMenu,
@@ -250,13 +249,6 @@ export default function ListaPage({
   // financeira: pelo id da Lista, não pelo nome de um Tipo.
   const lente = financeProfileOf(list.id);
   const financeira = lente !== undefined;
-  // Lista da Pasta "Meus negócios": cópia do Funil, não sincronizada. O espelho do lado do CRM (os
-  // NEGÓCIOS como cartões da Lista) saiu no 15-40 (F14-D-06): o Negócio vive em `/crm/negocios`. A
-  // Lista da Pasta mostra só as TAREFAS (a call, o que se faz), como qualquer outra. A Pasta em si
-  // deixou de ser fixa no 15-41: pode ser movida e a Lista dela também.
-  const pastaDeNegocios = config.path.some(
-    (node) => node.type === "folder" && node.id === MEUS_NEGOCIOS_ID,
-  );
   // C35 — a Lista conversacional: cada Tarefa nasce de um Contato.
   const conversacional = list.modeloDeTarefa === "conversacional";
   // Precedência das lentes da barra principal: financeira > conversacional.
@@ -266,8 +258,7 @@ export default function ListaPage({
     .filter(
       (task) => task.listId === list.id && task.parentTaskId === undefined,
     )
-    .filter((task) => effectiveLifecycleOfTask(state, task.id) !== "naLixeira")
-    .filter((task) => !pastaDeNegocios || task.provenance?.kind !== "deal");
+    .filter((task) => effectiveLifecycleOfTask(state, task.id) !== "naLixeira");
   // No Quadro do Funil, uma Reunião é a call: abre a tela dela, não um painel.
   const abrirNoQuadro = (taskId: string) => {
     if (naoConfirmados.has(taskId)) return;

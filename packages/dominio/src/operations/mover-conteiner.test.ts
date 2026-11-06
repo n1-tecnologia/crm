@@ -12,7 +12,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { effectiveContainerConfig, effectiveListConfig, irmaosOrdenados, memberReachesContainer } from "../derive";
 import { recortarDiferenca, recortarValor, visibilidadePara } from "../derive-visibilidade";
-import { MEUS_NEGOCIOS_ID } from "../seed-comercial";
 import { buildSeed } from "../seed";
 import { LISTA_ID as LISTA_SOLICITACOES_ID } from "../solicitacao-de-pagamento-evolver";
 import type { DataState } from "../state";
@@ -21,6 +20,9 @@ import { createForm, shareTaskPublicly } from "./scale";
 import { CP, CR } from "./financeiro";
 import { archiveContainer, consequenciasDeMover, createFolder, createList, createSpace, moveContainer, recusaDeMover, recusaDeReordenar, reorderContainers } from "./structure";
 import { createTask, setTaskFieldValue, updateTask } from "./tasks";
+
+/** A Pasta que ainda se chama «Meus negócios» nos Espaços de teste: uma Pasta comum (15-41, D-15-14); a constante do domínio saiu no 15-43. */
+const MEUS_NEGOCIOS_ID = "fld_meus_negocios";
 
 const THIAGO = "mem_thiago"; // Proprietário
 const RAFAEL = "mem_rafael"; // Administrador

@@ -16,7 +16,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { buildSeed } from "@n1/dominio/seed";
 import { containerAdminRefusal } from "@n1/dominio/derive";
-import { MEUS_NEGOCIOS_ID } from "@n1/dominio/seed-comercial";
 import type { Ordens } from "@n1/dominio";
 import {
   createFieldDefinition,
@@ -36,6 +35,9 @@ import type { RespostaDeGravacao, Transporte } from "@/dados/transporte";
 import { AppShell } from "@/features/shell/app-shell";
 import { MoverConteinerDialog } from "@/features/estrutura/mover-conteiner-dialog";
 import ListaPage from "@/app/(shell)/estrutura/listas/[lista]/page";
+
+/** A Pasta que ainda se chama «Meus negócios» nos Espaços de teste: uma Pasta comum (15-41, D-15-14); a constante do domínio saiu no 15-43. */
+const MEUS_NEGOCIOS_ID = "fld_meus_negocios";
 
 // O robô flutuante mede a tela com APIs que o jsdom não tem, e o Guia do Financeiro não é o assunto aqui.
 vi.mock("@/features/shell/robo-flutuante", () => ({ RoboFlutuante: () => null }));

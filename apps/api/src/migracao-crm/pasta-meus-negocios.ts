@@ -13,7 +13,7 @@
 import type { EstadoComPasta } from "./formatos-antigos";
 import type { ChaveDeRegistro } from "./guardar";
 
-/** O id da Pasta espelho (`MEUS_NEGOCIOS_ID` do seed). Texto aqui porque o seed vai sair do domínio. */
+/** O id da Pasta espelho. Texto aqui porque o seed já não a cria nem o domínio exporta o id (15-43). */
 export const ID_DA_PASTA_MEUS_NEGOCIOS = "fld_meus_negocios";
 
 export interface ListaDaPasta {

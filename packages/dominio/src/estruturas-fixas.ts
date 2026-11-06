@@ -7,26 +7,19 @@
  *
  * A Pasta Meus negócios saiu do conjunto (15-41, D-15-14): ela só era fixa
  * porque o espelho dos Funis a endereçava por id, e o espelho saiu (F14-D-06).
- * Nos Espaços de teste que ainda a guardam ela é uma Pasta comum.
+ * A constante do id dela saiu no 15-43; nos Espaços de teste que ainda a guardam
+ * ela é uma Pasta comum.
  *
  * Por que este arquivo existe: `CR` mora em `operations/financeiro` e `LISTA_ID`
  * em `solicitacao-de-pagamento-evolver`, e os dois chegam a `operations/tasks`,
  * que importa `operations/structure` — importá-los de lá faria um ciclo de
  * carga. Os dois ids vêm escritos aqui; `estruturas-fixas.test.ts` confere cada
  * um contra a constante de origem, então a cópia não pode divergir em silêncio.
- * `CP` e `MEUS_NEGOCIOS_ID` vêm de módulos-folha, sem ciclo.
+ * `CP` vem de um módulo-folha, sem ciclo.
  */
 
 import { CP } from "./operations/financeiro-base";
-import { MEUS_NEGOCIOS_ID } from "./seed-comercial";
 import type { Id } from "./types";
-
-/**
- * A Pasta espelho dos Funis do CRM. Já não é estrutura fixa nem regra alguma a
- * lê (15-41): a constante fica exportada até o 15-43, que a apaga junto com
- * `seed-crm-antigo.ts`, o último que a usa.
- */
-export const PASTA_MEUS_NEGOCIOS_ID: Id = MEUS_NEGOCIOS_ID;
 
 /** Contas a receber (`CR.listId`). */
 export const LISTA_CONTAS_A_RECEBER_ID: Id = "lst_contas_a_receber";
