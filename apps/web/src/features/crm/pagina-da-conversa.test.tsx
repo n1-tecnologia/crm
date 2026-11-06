@@ -30,11 +30,13 @@ import { empresaDoContato } from "@/features/crm/empresa-do-contato";
 import { listaConversacional } from "@n1/dominio/derive-conversacional";
 import type { VinculoDoContato } from "@n1/dominio/crm/contatos";
 
-const { obterSessao, revalidador, trocarRota } = vi.hoisted(() => ({
+const { obterSessao, revalidador, trocarRota, navegacao } = vi.hoisted(() => ({
   obterSessao: vi.fn(),
   // O `mutate` do SWRConfig do teste: o global não alcança o cache isolado, este sim.
   revalidador: { revalidar: undefined as undefined | ((prefixo: string) => Promise<unknown>) },
   trocarRota: vi.fn(),
+  // A query string da URL: o diálogo de mover abre por `?mover-conversa=` e `router.replace` a muda.
+  navegacao: { busca: "", ouvintes: new Set<() => void>() },
 }));
 
 vi.mock("@/autenticacao/cliente-navegador", () => ({
@@ -44,11 +46,18 @@ vi.mock("@/dados/crm/cliente-crm", async (original) => {
   const real = await original<typeof import("@/dados/crm/cliente-crm")>();
   return { ...real, invalidarCrm: vi.fn(async (prefixo: string) => revalidador.revalidar?.(prefixo)) };
 });
-vi.mock("next/navigation", () => ({
-  usePathname: () => "/crm/caixa-de-entrada/cnv_1",
-  useRouter: () => ({ replace: trocarRota, push: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(),
-}));
+vi.mock("next/navigation", async () => {
+  const { useSyncExternalStore } = await import("react");
+  const assinar = (ouvinte: () => void) => {
+    navegacao.ouvintes.add(ouvinte);
+    return () => void navegacao.ouvintes.delete(ouvinte);
+  };
+  return {
+    usePathname: () => "/crm/caixa-de-entrada/cnv_1",
+    useRouter: () => ({ replace: trocarRota, push: vi.fn() }),
+    useSearchParams: () => new URLSearchParams(useSyncExternalStore(assinar, () => navegacao.busca, () => navegacao.busca)),
+  };
+});
 // A lista da Caixa tem teste próprio (15-11); aqui só importa o que a página põe dentro dela.
 vi.mock("@/features/crm/inbox-columns", () => ({
   InboxColumns: ({ children }: { children?: React.ReactNode }) => <div data-testid="caixa">{children}</div>,
@@ -135,6 +144,10 @@ function contatoDaApi() {
   };
 }
 
+/** Os Contatos que a busca `GET /contatos?q=` devolve, e o que `POST /conversas/:id/mover` responde. */
+let contatosDaBusca: Array<{ id: string; nomeDeExibicao: string }>;
+let moverNaApi: (corpo: { contatoId: string; resolverExistente?: boolean }) => Response;
+
 /** O que `PATCH /contatos/:id` responde; os testes trocam para recusar. */
 let editarContatoNaApi: (corpo: { qualificacao?: string }) => Response;
 
@@ -146,12 +159,26 @@ beforeEach(() => {
   process.env.NEXT_PUBLIC_API_URL = "http://api";
   obterSessao.mockReset();
   obterSessao.mockResolvedValue({ data: { session: { access_token: "tok" } } });
-  trocarRota.mockClear();
+  navegacao.busca = "";
+  trocarRota.mockReset();
+  trocarRota.mockImplementation((url: string) => {
+    navegacao.busca = url.includes("?") ? (url.split("?")[1] ?? "") : "";
+    for (const ouvinte of navegacao.ouvintes) ouvinte();
+  });
   conversaDaApi = conversaDeTeste();
   contatoAtual = { qualificacao: null, vinculos: [] };
   transporte = {
     gravar: vi.fn(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." })),
     hidratar: vi.fn(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." })),
+  };
+  contatosDaBusca = [
+    { id: CONTATO_ID, nomeDeExibicao: "Ana Souza" },
+    { id: "ctt_lima", nomeDeExibicao: "Ana Lima" },
+  ];
+  moverNaApi = (corpo) => {
+    if (!conversaDaApi) return resposta(404, { ok: false, error: "Conversa não encontrada." });
+    conversaDaApi = { ...conversaDaApi, conversa: { ...conversaDaApi.conversa, contatoId: corpo.contatoId } };
+    return resposta(200, { ok: true, dados: conversaDaApi });
   };
   editarContatoNaApi = (corpo) => {
     if (corpo.qualificacao !== undefined) contatoAtual = { ...contatoAtual, qualificacao: corpo.qualificacao };
@@ -174,7 +201,12 @@ beforeEach(() => {
       return conversaDaApi ? resposta(200, { ok: true, dados: conversaDaApi }) : resposta(404, { ok: false, error: "Conversa não encontrada." });
     }
     const gesto = /^\/conversas\/([^/]+)\/(resolver|reabrir|atribuir|lixeira|mover)$/.exec(alvo.pathname);
+    if (metodo === "POST" && gesto && gesto[2] === "mover") return moverNaApi(corpo as { contatoId: string; resolverExistente?: boolean });
     if (metodo === "POST" && gesto) return responderGesto(gesto[2] as string, corpo);
+    if (metodo === "GET" && alvo.pathname === "/contatos") {
+      const itens = contatosDaBusca.map((c) => ({ ...c, estado: "ativo", proprietarioId: "mem_julia", emailPrincipal: null, telefonePrincipal: null, atualizadoEm: "2026-10-01T10:00:00.000Z" }));
+      return resposta(200, { ok: true, itens, total: itens.length });
+    }
     if (metodo === "GET" && alvo.pathname === `/contatos/${CONTATO_ID}`) return resposta(200, { ok: true, dados: contatoDaApi() });
     if (metodo === "PATCH" && alvo.pathname === `/contatos/${CONTATO_ID}`) return editarContatoNaApi(corpo as { qualificacao?: string });
     if (metodo === "GET" && alvo.pathname === "/negocios") return resposta(200, { ok: true, itens: [], total: 0 });
@@ -437,5 +469,76 @@ describe("a coluna do Contato da Caixa — modelo novo (3.4.4 item 3, UCR-06)", 
     await waitFor(() => expect(within(coluna).getByRole("combobox", { name: "Qualificação" })).toBeTruthy());
     const seletor = within(coluna).getByRole("combobox", { name: "Qualificação" });
     expect(seletor.hasAttribute("disabled") || seletor.getAttribute("aria-disabled") === "true").toBe(true);
+  });
+});
+
+describe("mover a Conversa para outro Contato (3.2.5)", () => {
+  async function abrirMover() {
+    escolherNoMenu("Mover para outro Contato");
+    return screen.findByRole("alertdialog");
+  }
+
+  async function buscarEEscolher(dialogo: HTMLElement, busca: string, nome: string) {
+    fireEvent.change(within(dialogo).getByRole("combobox", { name: "Buscar Contato de destino" }), { target: { value: busca } });
+    const opcao = await within(dialogo).findByRole("option", { name: new RegExp(nome) });
+    fireEvent.click(opcao);
+  }
+
+  it("(14) a busca lista os Contatos de GET /contatos?q= sem o atual; confirmar chama POST /conversas/:id/mover", async () => {
+    await montarPagina();
+    await paginaPronta();
+    const dialogo = await abrirMover();
+    expect(within(dialogo).getByText("Mover Conversa para outro Contato")).toBeTruthy();
+    fireEvent.change(within(dialogo).getByRole("combobox", { name: "Buscar Contato de destino" }), { target: { value: "Ana" } });
+    await within(dialogo).findByRole("option", { name: /Ana Lima/ });
+    expect(within(dialogo).queryByRole("option", { name: /Ana Souza/ })).toBeNull();
+    const busca = fetchMock.mock.calls.map((c) => new URL(String(c[0]))).find((u) => u.pathname === "/contatos" && u.searchParams.get("q") === "Ana");
+    expect(busca).toBeTruthy();
+
+    fireEvent.click(within(dialogo).getByRole("option", { name: /Ana Lima/ }));
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Mover" }));
+    await waitFor(() => expect(screen.getByText("Conversa movida para Ana Lima.")).toBeTruthy());
+    expect(gravacoes()).toEqual([{ caminho: `/conversas/${CONVERSA_ID}/mover`, metodo: "POST", corpo: { contatoId: "ctt_lima" } }]);
+    // O diálogo fecha e a Conversa passa a ser do destino.
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(transporte.gravar).not.toHaveBeenCalled();
+  });
+
+  it("(15) a recusa da api (destino mesclado) aparece no diálogo e nada é gravado de outro jeito", async () => {
+    moverNaApi = () => resposta(409, { ok: false, error: "Escolha um Contato ativo.", codigo: "MOVER_INVALIDO", campo: "contatoId" });
+    await montarPagina();
+    await paginaPronta();
+    const dialogo = await abrirMover();
+    await buscarEEscolher(dialogo, "Ana", "Ana Lima");
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Mover" }));
+    await waitFor(() => expect(within(dialogo).getByRole("alert").textContent).toContain("Escolha um Contato ativo."));
+    expect(screen.queryByText(/Conversa movida/)).toBeNull();
+    expect(transporte.gravar).not.toHaveBeenCalled();
+  });
+
+  it("(16) Conversa já aberta no destino: o diálogo nomeia a que colide e só repete com 'resolver no mesmo ato'", async () => {
+    moverNaApi = (corpo) =>
+      corpo.resolverExistente === true
+        ? resposta(200, { ok: true, dados: conversaDaApi })
+        : resposta(409, {
+            ok: false,
+            error: "Este Contato já tem uma Conversa aberta neste Canal.",
+            codigo: "CONVERSA_JA_ABERTA",
+            bloqueios: { conversas: { total: 1, itens: [{ id: "cnv_lima", titulo: "Ana Lima no WhatsApp" }] } },
+          });
+    await montarPagina();
+    await paginaPronta();
+    const dialogo = await abrirMover();
+    await buscarEEscolher(dialogo, "Ana", "Ana Lima");
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Mover" }));
+    await waitFor(() => expect(within(dialogo).getByText("Ana Lima no WhatsApp")).toBeTruthy());
+    expect(within(dialogo).getByText(/Comercial SP/)).toBeTruthy();
+    // Sem marcar, Mover fica desligado: a saída é uma escolha explícita.
+    const mover = within(dialogo).getByRole("button", { name: "Mover" });
+    expect(mover.hasAttribute("disabled") || mover.getAttribute("aria-disabled") === "true").toBe(true);
+    fireEvent.click(within(dialogo).getByRole("checkbox"));
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Mover" }));
+    await waitFor(() => expect(screen.getByText(/A Conversa que colidia foi resolvida\./)).toBeTruthy());
+    expect(gravacoes().map((g) => g.corpo)).toEqual([{ contatoId: "ctt_lima" }, { contatoId: "ctt_lima", resolverExistente: true }]);
   });
 });
