@@ -56,7 +56,7 @@ export function TreeRow({
     /** Desligado, com o motivo embaixo do rótulo (o `ActionMenu` desenha). */
     readonly disabledReason?: string;
   }>;
-  /** O gesto de arrastar (só as linhas da Estrutura; Convidado e Meus negócios não recebem). */
+  /** O gesto de arrastar (só as linhas da Estrutura; o Convidado não recebe). */
   readonly arrastar?: PropsDeArrasto;
   /**
    * D-15 — o contêiner aparece na hora (D-13), mas o servidor ainda não devolveu o

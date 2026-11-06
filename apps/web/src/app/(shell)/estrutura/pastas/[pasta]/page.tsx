@@ -20,14 +20,12 @@ import { Folder, List, Plus, Settings } from "lucide-react";
 import { useData, useSession } from "@/dados/store";
 import {
   containerAdminRefusal,
-  containerPath,
   effectiveLifecycleOfList,
   irmaosOrdenados,
   isTerminalCategory,
   memberReachesContainer,
   statusCategory,
 } from "@n1/dominio/derive";
-import { MEUS_NEGOCIOS_ID } from "@n1/dominio/seed-comercial";
 import type { Folder as Pasta, List as Lista } from "@n1/dominio/types";
 import { useFormat } from "@/features/shell/use-format";
 import {
@@ -72,8 +70,6 @@ export default function PastaPage({ params }: { params: Promise<{ pasta: string 
   const pai = { type: "folder", id: record.id } as const;
   const subpastas = (irmaosOrdenados(state, "folder", pai) as readonly Pasta[]).filter((f) => memberReachesContainer(state, memberId, "folder", f.id));
   const listas = (irmaosOrdenados(state, "list", pai) as readonly Lista[]).filter((l) => memberReachesContainer(state, memberId, "list", l.id));
-  // A9: a Pasta «Meus negócios» (e o que mora nela) não se move; o CRM tem a árvore própria.
-  const moravelAqui = !containerPath(state, "folder", record.id).some((no) => no.id === MEUS_NEGOCIOS_ID);
   const recusaDeMover = containerAdminRefusal(state, memberId, "folder", record.id);
   const abertasEm = (listId: string) =>
     state.tasks.filter(
@@ -118,13 +114,11 @@ export default function PastaPage({ params }: { params: Promise<{ pasta: string 
               )
             ) : null}
             {/* A8-bis: a casa das próximas ações da Pasta; hoje só «Mover para…» (D-10). */}
-            {moravelAqui ? (
-              <ActionMenu
-                label="Mais ações"
-                gatilhoClassName="btn-icone"
-                items={[{ label: "Mover para…", onSelect: () => openMover(record.id), ...(recusaDeMover ? { disabledReason: recusaDeMover } : {}) }]}
-              />
-            ) : null}
+            <ActionMenu
+              label="Mais ações"
+              gatilhoClassName="btn-icone"
+              items={[{ label: "Mover para…", onSelect: () => openMover(record.id), ...(recusaDeMover ? { disabledReason: recusaDeMover } : {}) }]}
+            />
           </>
         }
       />

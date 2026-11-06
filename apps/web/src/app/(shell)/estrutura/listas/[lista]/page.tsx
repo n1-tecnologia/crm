@@ -252,8 +252,8 @@ export default function ListaPage({
   const financeira = lente !== undefined;
   // Lista da Pasta "Meus negócios": cópia do Funil, não sincronizada. O espelho do lado do CRM (os
   // NEGÓCIOS como cartões da Lista) saiu no 15-40 (F14-D-06): o Negócio vive em `/crm/negocios`. A
-  // Lista da Pasta mostra só as TAREFAS (a call, o que se faz), como qualquer outra. A Pasta fixa em si
-  // é do 15-41.
+  // Lista da Pasta mostra só as TAREFAS (a call, o que se faz), como qualquer outra. A Pasta em si
+  // deixou de ser fixa no 15-41: pode ser movida e a Lista dela também.
   const pastaDeNegocios = config.path.some(
     (node) => node.type === "folder" && node.id === MEUS_NEGOCIOS_ID,
   );
@@ -568,16 +568,12 @@ export default function ListaPage({
                   onSelect: () => setSalvandoModelo(true),
                   ...(administra ? { disabledReason: administra } : {}),
                 },
-                // D-10 — por último; a Lista de Meus negócios é o espelho do Funil e não se move (A9).
-                ...(pastaDeNegocios
-                  ? []
-                  : [
-                      {
-                        label: "Mover para…",
-                        onSelect: () => openMover(list.id),
-                        ...(administra ? { disabledReason: administra } : {}),
-                      },
-                    ]),
+                // D-10 — por último.
+                {
+                  label: "Mover para…",
+                  onSelect: () => openMover(list.id),
+                  ...(administra ? { disabledReason: administra } : {}),
+                },
               ]}
             />
           </>

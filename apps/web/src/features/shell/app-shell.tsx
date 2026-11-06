@@ -76,12 +76,10 @@ import { TreeRow } from "./linha-da-arvore";
 import { useArrastarNaArvore, type NoDaArvore, type PropsDeArrasto } from "./arrastar-na-arvore";
 
 import { useData, useIdsNaoConfirmados, useRun, useRunConfirmado, useSession } from "@/dados/store";
-import { MEUS_NEGOCIOS_ID } from "@n1/dominio/seed-comercial";
 import { moveChatSessionToFolder, recusaDeReordenar, reorderContainers, type PaiDeConteiner } from "@n1/dominio/operations";
 import { useChatFolderDialogs } from "@/features/ia/chat-folder-dialogs";
 import {
   containerAdminRefusal,
-  containerPath,
   irmaosOrdenados,
   memberReachesContainer,
   memberSeesResource,
@@ -692,8 +690,7 @@ type TipoDoGrupo = "space" | "folder" | "list";
 /**
  * O que a árvore da Estrutura sabe e as linhas precisam para «Subir»/«Descer»:
  * os irmãos que ela mostra, o comando que grava e se há gravação em curso. Só a
- * `StructureTree` fornece; a árvore de «Meus negócios» fica sem (A9), e então
- * nenhuma linha dela ganha item de ordem.
+ * `StructureTree` fornece; a árvore sem ela não dá item de ordem a nenhuma linha.
  */
 interface OrdemDaArvore {
   readonly ocupado: boolean;
@@ -714,15 +711,13 @@ type ItemDeLinha = { readonly label: string; readonly onSelect: () => void; read
  * VISÍVEL do mesmo grupo por `reorderContainers`. São o caminho por teclado e
  * leitor de tela da reordenação. Desligados pelo topo/fim, pela frase de
  * `recusaDeReordenar` e durante uma gravação. Vazio para o Convidado (árvore
- * inerte), para a árvore sem `StructureTree` e para a Pasta «Meus negócios» e o
- * que mora nela (A9).
+ * inerte) e para a árvore sem `StructureTree`.
  */
 function useMenuDeOrdem(tipo: TipoDoGrupo, id: Id, pai: PaiDeConteiner, inert: boolean): ReadonlyArray<ItemDeLinha> {
   const ordem = useContext(OrdemDaArvoreContext);
   const { memberId } = useSession();
   const data = useData((current) => current);
   if (!ordem || inert) return [];
-  if (tipo !== "space" && containerPath(data, tipo, id).some((node) => node.id === MEUS_NEGOCIOS_ID)) return [];
   const irmaos = ordem.irmaos(tipo, pai);
   const posicao = irmaos.indexOf(id);
   if (posicao < 0) return [];
@@ -739,8 +734,7 @@ function useMenuDeOrdem(tipo: TipoDoGrupo, id: Id, pai: PaiDeConteiner, inert: b
 /**
  * O menu "⋯" de uma Pasta, Subpasta ou Lista da Estrutura: só "Mover para…"
  * (D-10). Vazio, e então sem "⋯", para o Convidado (árvore inerte, D-09), para
- * a árvore que não passa `openMover` e para a Pasta "Meus negócios" e tudo
- * dentro dela (A9). Sem permissão, o item vem desligado com a frase do domínio.
+ * a árvore que não passa `openMover`. Sem permissão, o item vem desligado com a frase do domínio.
  */
 function useMenuDeMover(
   tipo: "folder" | "list",
@@ -751,7 +745,6 @@ function useMenuDeMover(
   const { memberId } = useSession();
   const data = useData((current) => current);
   if (!openMover) return [];
-  if (containerPath(data, tipo, id).some((node) => node.id === MEUS_NEGOCIOS_ID)) return [];
   const recusa = containerAdminRefusal(data, memberId, tipo, id) ?? (ordem?.ocupado ? MOTIVO_GRAVANDO : undefined);
   return [{ label: "Mover para…", onSelect: () => openMover(id), ...(recusa ? { disabledReason: recusa } : {}) }];
 }
@@ -888,7 +881,7 @@ function TreeFolder({
   readonly foldersUnder: (parentId: Id) => Folder[];
   readonly listsUnder: (parentId: Id) => List[];
   readonly openCreate: (kind: ContainerKind, parentType?: "space" | "folder", parentId?: string) => void;
-  /** Só a árvore da Estrutura passa: a de "Meus negócios" não tem o gesto (A9). */
+  /** Só a árvore da Estrutura passa; sem ele a linha não tem «Mover para…». */
   readonly openMover?: (id: Id) => void;
   readonly enderecos?: EnderecosDaArvore;
 }) {
@@ -977,7 +970,7 @@ function TreeList({
   readonly list: List;
   readonly depth: number;
   readonly inert?: boolean;
-  /** Só a árvore da Estrutura passa: a de "Meus negócios" não tem o gesto (A9). */
+  /** Só a árvore da Estrutura passa; sem ele a linha não tem «Mover para…». */
   readonly openMover?: (id: Id) => void;
   readonly enderecos?: EnderecosDaArvore;
 }) {
