@@ -1,5 +1,5 @@
 /**
- * A sucessão de um Membro nas tabelas do CRM (14-10, 3.2.8).
+ * A sucessão de um Membro nas tabelas do CRM (14-10, 3.2.8; emendada em 15-03).
  *
  * `removeMember` (domínio) já passa ao Sucessor o que o Membro tinha no
  * modelo antigo, em `plataforma.registros`. Estas duas funções fazem o mesmo
@@ -7,9 +7,11 @@
  *
  *   - RN-ET-09 (a): `proprietario_id` de Contatos, Empresas e Negócios passa
  *     ao Sucessor;
- *   - RN-ET-09 (b): a Conversa atribuída ao Membro fica LIBERADA
- *     (`atribuido_tipo` e `atribuido_id` nulos), não vai ao Sucessor. Quem
- *     assume a fila decide a quem passar.
+ *   - RN-ET-09 (a) e RN-CXE-24, emendadas por B28-a (D-15-08): a Conversa
+ *     atribuída ao Membro (`atribuido_tipo = 'membro'`) passa ao Sucessor como
+ *     Atribuído: `atribuido_id` vira o Sucessor e `atribuido_tipo` continua
+ *     `membro`. A Conversa atribuída a Agente não muda. O Registro de Atividade
+ *     por Conversa depende de `crm_atividades` (15-04) e é gravado no 15-09.
  *
  * Todo `WHERE` leva `workspace_id = $1`: o que é de outro Espaço nunca muda
  * (T-14-25). Nenhuma das duas decide se a remoção vale: quem chama é o
@@ -19,14 +21,9 @@
  */
 
 import type { Pool, PoolClient } from "pg";
+import type { SucessaoNoCrm } from "@n1/dominio/crm/sucessao";
 
-/** O que a remoção de um Membro move ou libera nas tabelas do CRM. */
-export interface SucessaoNoCrm {
-  readonly contatos: number;
-  readonly empresas: number;
-  readonly negocios: number;
-  readonly conversasLiberadas: number;
-}
+export type { SucessaoNoCrm };
 
 const TABELAS_COM_DONO = ["contatos", "empresas", "negocios"] as const;
 
@@ -45,7 +42,7 @@ export async function contarDoMembro(cliente: Pool | PoolClient, workspaceId: st
     contatos: Number(linha.contatos),
     empresas: Number(linha.empresas),
     negocios: Number(linha.negocios),
-    conversasLiberadas: Number(linha.conversas),
+    conversasPassadas: Number(linha.conversas),
   };
 }
 
@@ -60,9 +57,11 @@ export async function passarAoSucessor(cliente: PoolClient, workspaceId: string,
     ]);
   }
   await cliente.query(
+    // Só pega `atribuido_id = <removido>`: repetir a remoção não acha mais nada. O
+    // `atribuido_tipo` continua `membro` (conversas_atribuido_ck exige o par).
     `update plataforma.conversas
-        set atribuido_tipo = null, atribuido_id = null
+        set atribuido_id = $3
       where workspace_id = $1 and atribuido_tipo = 'membro' and atribuido_id = $2`,
-    [workspaceId, membroId],
+    [workspaceId, membroId, sucessorId],
   );
 }

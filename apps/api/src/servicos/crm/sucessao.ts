@@ -1,8 +1,8 @@
 /**
  * A prévia da sucessão de um Membro nas tabelas do CRM (14-10, 3.2.8): quantos
- * Contatos, Empresas e Negócios passam ao Sucessor e quantas Conversas ficam sem
- * Atribuído (RN-ET-09 a e b) se ele for removido. Só números: a tela mostra o
- * que a remoção vai mudar ANTES de pedi-la (B28).
+ * Contatos, Empresas e Negócios e quantas Conversas passam ao Sucessor
+ * (RN-ET-09 e RN-CXE-24, emendadas por B28-a) se ele for removido. Só números:
+ * a tela mostra o que a remoção vai mudar ANTES de pedi-la (B28).
  *
  * O Papel de quem pede é lido do banco e conferido ANTES de olhar o Membro
  * pedido: quem não é Administrador nem Proprietário ativo recebe 403 mesmo
@@ -18,7 +18,8 @@ import type { Pool } from "pg";
 import { ehAdministracao } from "@n1/dominio/crm/permissoes";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { papelDoMembro } from "../../repositorios/crm/membros";
-import { contarDoMembro, type SucessaoNoCrm } from "../../repositorios/crm/sucessao";
+import type { SucessaoNoCrm } from "@n1/dominio/crm/sucessao";
+import { contarDoMembro } from "../../repositorios/crm/sucessao";
 import { recusa, sucesso, type ResultadoCrm } from "./resultado";
 
 export interface ServicoDeSucessao {

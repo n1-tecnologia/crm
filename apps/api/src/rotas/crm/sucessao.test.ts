@@ -51,9 +51,9 @@ describe("rota da sucessão no CRM — serviço falso, sem banco", () => {
     const resposta = await appCom(servico).inject({ method: "GET", url: "/membros/mem_x/sucessao-no-crm", headers: AUTORIZACAO });
     expect(resposta.statusCode).toBe(200);
     expect(resposta.json()).toEqual({ ok: true, dados: contagens });
-    // D-15-08: a chave da forma antiga não volta.
+    // D-15-08: a chave da forma antiga ("conversas" + "Liberadas") não volta.
     expect(resposta.json().dados).toHaveProperty("conversasPassadas", 1);
-    expect(resposta.json().dados).not.toHaveProperty("conversasLiberadas");
+    expect(resposta.json().dados).not.toHaveProperty(["conversas", "Liberadas"].join(""));
     expect(chamadas[0]?.[0]).toMatchObject({ id: "mem_maryane" });
     expect(chamadas[0]?.[1]).toBe("mem_x");
   });

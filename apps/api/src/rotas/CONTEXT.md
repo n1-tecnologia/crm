@@ -159,21 +159,24 @@ lado do mesmo gesto:
   `operacoes.ts`, ao lado de `SERVICOS`): no MESMO commit da remoção, depois do
   `ok` do domínio, `passarAoSucessor` (`repositorios/crm/sucessao.ts`) muda
   `proprietario_id` de Contatos, Empresas e Negócios do Membro para o Sucessor
-  (RN-ET-09 a) e LIBERA as Conversas atribuídas a ele, `atribuido_tipo` e
-  `atribuido_id` nulos (RN-ET-09 b: a Conversa NÃO passa ao Sucessor; é a
-  suposição OQ2/A8, a confirmar com o dono, mesma de `removeMember` no modelo
-  antigo). Recusa do domínio (quem pede não é Administrador nem Proprietário
+  (RN-ET-09 a) e passa ao Sucessor as Conversas atribuídas a ele
+  (`atribuido_id` = Sucessor; `atribuido_tipo` continua `membro`; a Conversa
+  atribuída a Agente não muda). RN-ET-09 e RN-CXE-24 foram emendadas por B28-a
+  (D-15-08): a Conversa muda de Atribuído, não de Proprietário (DO-CXE-02). Repetir
+  a remoção não passa nada de novo: o `update` só pega `atribuido_id` = removido.
+  Recusa do domínio (quem pede não é Administrador nem Proprietário
   ativo, Sucessor inválido) não roda o `aoConfirmar`: as tabelas ficam iguais. O
   domínio só valida o Sucessor quando o Membro ainda não tinha saído, então o
   `aoConfirmar` exige que ele seja Membro ATIVO do Espaço, senão nada passa.
   Todos os estados dos registros entram (inclusive arquivado e na lixeira) e
   nada de outro Espaço muda (`workspace_id` em todo `WHERE`). Gesto com
   `aoConfirmar` sai do caminho de duas idas da Fase 13 e paga mais idas ao banco:
-  aceito, é raro. Não grava Registro de Atividade no CRM nem muda o modelo
+  aceito, é raro. Ainda não grava Registro de Atividade no CRM (o Registro por
+  Conversa passada depende de `crm_atividades` e entra no 15-09) nem muda o modelo
   antigo: o diálogo de remoção das Configurações segue com os números antigos até
-  o corte (14-16).
+  o 15-36.
 - `GET /membros/:id/sucessao-no-crm` — as contagens `{ contatos, empresas,
-  negocios, conversasLiberadas }` que o `aoConfirmar` vai mover, em
+  negocios, conversasPassadas }` (tipo `SucessaoNoCrm`, de `@n1/dominio/crm/sucessao`) que o `aoConfirmar` vai mover, em
   `{ ok: true, dados }`. Só Administrador ou Proprietário ATIVO (403
   `PERMISSAO`, conferido ANTES de olhar o Membro pedido, então quem não pode não
   descobre quem é Membro); 404 `MEMBRO_NAO_ENCONTRADO` para Membro de outro
