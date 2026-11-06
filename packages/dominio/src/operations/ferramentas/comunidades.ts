@@ -8,13 +8,13 @@
  */
 
 import { fail, ok, type DataState, type OperationResult } from "../../state";
-import type { ActorRef, Comunidade, ConfiguracoesDaComunidade, Conversation, Grupo, Id, Message } from "../../types";
+import { CRM_DAS_FERRAMENTAS_VAZIO, type ActorRef, type Comunidade, type ConfiguracoesDaComunidade, type Conversation, type CrmDasFerramentas, type Grupo, type Id, type Message } from "../../types";
 import { grupoDeAvisos, gruposComuns, gruposDaComunidade, membrosDoGrupo, participacoesVigentes } from "../../derive-ferramentas";
 import { memberActor, nextId, recordActivity } from "../activity";
 import { CAPACIDADES_DE_ATIVOS, LIMITE_DE_GRUPOS_POR_ESPACO } from "./capacidades";
 import { enviarMensagemAoGrupo } from "./grupos";
 import { abrirParticipacao, encerrarParticipacao, reconciliarGrupoDeAvisos } from "./participacoes";
-import { recusaDeAdministracao, recusaDeMembroAtivo, recusaDoCanal, recusaExternaNaComunidade, recusaExternaNoGrupo } from "./permissoes";
+import { canalNoCrm, recusaDeAdministracao, recusaDeMembroAtivo, recusaDoCanal, recusaExternaNaComunidade, recusaExternaNoGrupo } from "./permissoes";
 import { gerarJid } from "./provedor-simulado";
 
 const now = (): string => new Date().toISOString();
@@ -42,14 +42,15 @@ export interface CriarComunidadeInput {
 }
 
 /** 25, 12.1 — o provedor cria a comunidade e o grupo de avisos; a plataforma grava os dois. */
-export function criarComunidade(state: DataState, actingMemberId: Id, input: CriarComunidadeInput): OperationResult<{ readonly comunidade: Comunidade; readonly grupoDeAvisos: Grupo }> {
+export function criarComunidade(state: DataState, actingMemberId: Id, input: CriarComunidadeInput, crm?: CrmDasFerramentas): OperationResult<{ readonly comunidade: Comunidade; readonly grupoDeAvisos: Grupo }> {
+  const noCrm = crm ?? CRM_DAS_FERRAMENTAS_VAZIO;
   const membro = recusaDeMembroAtivo(state, actingMemberId);
   if (membro) return fail(membro);
-  const canalRecusa = recusaDoCanal(state, input.canalId, "comunidades");
+  const canalRecusa = recusaDoCanal(state, input.canalId, "comunidades", noCrm);
   if (canalRecusa) return fail(canalRecusa, "canal");
-  const canal = state.channels.find((c) => c.id === input.canalId);
+  const canal = canalNoCrm(noCrm, input.canalId);
   if (!canal) return fail("Canal não encontrado.", "canal");
-  const capacidades = CAPACIDADES_DE_ATIVOS[canal.channelType];
+  const capacidades = CAPACIDADES_DE_ATIVOS[canal.tipo];
   const nome = input.nome.trim();
   if (!nome) return fail("Dê um nome à Comunidade.", "nome");
   if (nome.length > capacidades.limiteDoNome) return fail(`O nome passa do limite do provedor (${capacidades.limiteDoNome} caracteres).`, "nome");
@@ -66,7 +67,7 @@ export function criarComunidade(state: DataState, actingMemberId: Id, input: Cri
     createdAt: momento,
     lifecycle: "ativo",
     nome,
-    tipoDeCanal: canal.channelType,
+    tipoDeCanal: canal.tipo,
     identificadorExterno: gerarJid(state),
     canalId: canal.id,
     sincronizacao: { estado: "sincronizado", conferidoEm: momento, papelDoCanal: "administrador" },
@@ -85,7 +86,7 @@ export function criarComunidade(state: DataState, actingMemberId: Id, input: Cri
     createdAt: momento,
     lifecycle: "ativo",
     nome: `${nome} · Avisos`,
-    tipoDeCanal: canal.channelType,
+    tipoDeCanal: canal.tipo,
     identificadorExterno: gerarJid(state),
     canalId: canal.id,
     sincronizacao: { estado: "sincronizado", conferidoEm: momento, papelDoCanal: "administrador" },
@@ -103,16 +104,16 @@ export function criarComunidade(state: DataState, actingMemberId: Id, input: Cri
     vinculadoAComunidadeEm: momento,
     captacao: { estado: "inativa" },
   };
-  abrirParticipacao(state, avisos, { canalParticipanteId: canal.id, identificadorExterno: canal.externalId, papel: "administrador", origem: "adicionado", at: momento, adicionadoPor: ator });
+  abrirParticipacao(state, avisos, { canalParticipanteId: canal.id, identificadorExterno: canal.identificadorExterno, papel: "administrador", origem: "adicionado", at: momento, adicionadoPor: ator });
   state.comunidades.push(comunidade);
   state.grupos.push(avisos);
-  registrarNaComunidade(state, comunidade, { actor: ator, action: "Comunidade criada", detail: `${canal.name} · Grupo de avisos “${avisos.nome}” criado pelo provedor` });
+  registrarNaComunidade(state, comunidade, { actor: ator, action: "Comunidade criada", detail: `${canal.nome} · Grupo de avisos “${avisos.nome}” criado pelo provedor` });
   recordActivity(state, { actor: ator, action: "Grupo criado", objectType: "grupo", objectId: avisos.id, objectName: avisos.nome, detail: `Grupo de avisos da Comunidade ${nome}` });
   return ok({ comunidade, grupoDeAvisos: avisos }, comunidade.id);
 }
 
 /** 25, 12.3 — espelha o que o provedor sabe; sem Grupo de avisos, Registro de inconsistência. */
-export function sincronizarComunidade(state: DataState, actingMemberId: Id, comunidadeId: Id): OperationResult<Comunidade> {
+export function sincronizarComunidade(state: DataState, actingMemberId: Id, comunidadeId: Id, crm?: CrmDasFerramentas): OperationResult<Comunidade> {
   const membro = recusaDeMembroAtivo(state, actingMemberId);
   if (membro) return fail(membro);
   const comunidade = comunidadePorId(state, comunidadeId);
@@ -120,11 +121,11 @@ export function sincronizarComunidade(state: DataState, actingMemberId: Id, comu
   if (comunidade.lifecycle === "naLixeira") return fail("A Comunidade está na lixeira.");
   const momento = now();
   const antes = comunidade.sincronizacao.estado;
-  const canal = comunidade.canalId ? state.channels.find((c) => c.id === comunidade.canalId) : undefined;
-  if (!canal || canal.lifecycle !== "ativo") {
+  const canal = canalNoCrm(crm, comunidade.canalId);
+  if (!canal || canal.estado !== "ativo") {
     comunidade.sincronizacao = { estado: "orfao", conferidoEm: momento, papelDoCanal: "ausente", detalhe: "O Canal administrador foi arquivado ou não existe." };
-  } else if (canal.connection !== "conectada") {
-    return fail(`O Canal ${canal.name} está desconectado: não há como conferir a Comunidade.`);
+  } else if (canal.conexao !== "conectada") {
+    return fail(`O Canal ${canal.nome} está desconectado: não há como conferir a Comunidade.`);
   } else if (comunidade.sincronizacao.papelDoCanal === "ausente") {
     comunidade.sincronizacao = { estado: "inacessivel", conferidoEm: momento, papelDoCanal: "ausente", detalhe: "O Canal não está mais na comunidade." };
   } else if (comunidade.sincronizacao.papelDoCanal === "participante") {
@@ -147,12 +148,12 @@ export interface EditarComunidadeInput {
   readonly descricao?: string;
 }
 
-export function editarComunidade(state: DataState, actingMemberId: Id, comunidadeId: Id, input: EditarComunidadeInput): OperationResult<Comunidade> {
+export function editarComunidade(state: DataState, actingMemberId: Id, comunidadeId: Id, input: EditarComunidadeInput, crm?: CrmDasFerramentas): OperationResult<Comunidade> {
   const membro = recusaDeMembroAtivo(state, actingMemberId);
   if (membro) return fail(membro);
   const comunidade = comunidadePorId(state, comunidadeId);
   if (!comunidade) return fail("Comunidade não encontrada.");
-  const externa = recusaExternaNaComunidade(state, comunidade, "administrador");
+  const externa = recusaExternaNaComunidade(state, comunidade, "administrador", crm);
   if (externa) return fail(externa);
   const capacidades = CAPACIDADES_DE_ATIVOS[comunidade.tipoDeCanal];
   const mudancas: string[] = [];
@@ -174,12 +175,12 @@ export function editarComunidade(state: DataState, actingMemberId: Id, comunidad
 }
 
 /** 25, 7.1 — Ferramenta `alterar Configurações` (externa); RN-COM-10: nada é copiado aos Grupos. */
-export function alterarConfiguracoesDaComunidade(state: DataState, actingMemberId: Id, comunidadeId: Id, input: Partial<ConfiguracoesDaComunidade>): OperationResult<Comunidade> {
+export function alterarConfiguracoesDaComunidade(state: DataState, actingMemberId: Id, comunidadeId: Id, input: Partial<ConfiguracoesDaComunidade>, crm?: CrmDasFerramentas): OperationResult<Comunidade> {
   const membro = recusaDeMembroAtivo(state, actingMemberId);
   if (membro) return fail(membro);
   const comunidade = comunidadePorId(state, comunidadeId);
   if (!comunidade) return fail("Comunidade não encontrada.");
-  const externa = recusaExternaNaComunidade(state, comunidade, "administrador");
+  const externa = recusaExternaNaComunidade(state, comunidade, "administrador", crm);
   if (externa) return fail(externa);
   const antes = comunidade.configuracoes;
   const depois = { ...antes, ...input };
@@ -203,16 +204,16 @@ export function recusaDeVinculo(state: DataState, comunidade: Comunidade, grupo:
 }
 
 /** 25, 12.2 — Ferramenta `vincular Grupo` (externa). */
-export function vincularGrupoAComunidade(state: DataState, actingMemberId: Id, comunidadeId: Id, grupoId: Id): OperationResult<Grupo> {
+export function vincularGrupoAComunidade(state: DataState, actingMemberId: Id, comunidadeId: Id, grupoId: Id, crm?: CrmDasFerramentas): OperationResult<Grupo> {
   const adm = recusaDeAdministracao(state, actingMemberId);
   if (adm) return fail(adm);
   const comunidade = comunidadePorId(state, comunidadeId);
   if (!comunidade) return fail("Comunidade não encontrada.");
-  const externa = recusaExternaNaComunidade(state, comunidade, "administrador");
+  const externa = recusaExternaNaComunidade(state, comunidade, "administrador", crm);
   if (externa) return fail(externa);
   const grupo = state.grupos.find((g) => g.id === grupoId);
   if (!grupo) return fail("Grupo não encontrado.");
-  const externaNoGrupo = recusaExternaNoGrupo(state, grupo, "administrador");
+  const externaNoGrupo = recusaExternaNoGrupo(state, grupo, "administrador", crm);
   if (externaNoGrupo) return fail(externaNoGrupo);
   const recusa = recusaDeVinculo(state, comunidade, grupo);
   if (recusa) return fail(recusa, "grupo");
@@ -228,12 +229,12 @@ export function vincularGrupoAComunidade(state: DataState, actingMemberId: Id, c
 }
 
 /** 25, 12.2 — o Grupo continua a existir; Participações intactas; sai do Grupo de avisos. O avisos não é desvinculável (INV-COM-02). */
-export function desvincularGrupoDaComunidade(state: DataState, actingMemberId: Id, comunidadeId: Id, grupoId: Id): OperationResult<Grupo> {
+export function desvincularGrupoDaComunidade(state: DataState, actingMemberId: Id, comunidadeId: Id, grupoId: Id, crm?: CrmDasFerramentas): OperationResult<Grupo> {
   const adm = recusaDeAdministracao(state, actingMemberId);
   if (adm) return fail(adm);
   const comunidade = comunidadePorId(state, comunidadeId);
   if (!comunidade) return fail("Comunidade não encontrada.");
-  const externa = recusaExternaNaComunidade(state, comunidade, "administrador");
+  const externa = recusaExternaNaComunidade(state, comunidade, "administrador", crm);
   if (externa) return fail(externa);
   const grupo = state.grupos.find((g) => g.id === grupoId);
   if (!grupo || grupo.comunidadeId !== comunidade.id) return fail("O Grupo não está nesta Comunidade.");
@@ -255,6 +256,7 @@ export function enviarMensagemAComunidade(
   actingMemberId: Id,
   comunidadeId: Id,
   input: { readonly content: string; readonly templateProviderId?: string },
+  crm?: CrmDasFerramentas,
 ): OperationResult<{ readonly conversa: Conversation; readonly mensagem: Message; readonly grupoDeAvisos: Grupo }> {
   const membro = recusaDeMembroAtivo(state, actingMemberId);
   if (membro) return fail(membro);
@@ -263,7 +265,7 @@ export function enviarMensagemAComunidade(
   if (comunidade.lifecycle === "naLixeira") return fail("A Comunidade está na lixeira.");
   const avisos = grupoDeAvisos(state, comunidade.id);
   if (!avisos) return fail("A Comunidade está sem Grupo de avisos: sincronize antes (INV-COM-02).");
-  const envio = enviarMensagemAoGrupo(state, actingMemberId, avisos.id, input);
+  const envio = enviarMensagemAoGrupo(state, actingMemberId, avisos.id, input, crm);
   if (!envio.ok) return envio;
   registrarNaComunidade(state, comunidade, { actor: memberActor(actingMemberId), action: "Mensagem enviada à Comunidade", detail: `no Grupo de avisos · ${input.content.slice(0, 80)}` });
   return ok({ ...envio.value, grupoDeAvisos: avisos }, envio.value.mensagem.id);
@@ -276,12 +278,12 @@ export const MOTIVO_SEM_ENVIO_A_TODOS = "Enviar a cada Grupo comum é uma Automa
  * 25, 12.4 — o Canal sai da comunidade E do Grupo de avisos; os Grupos
  * `comum` permanecem (RN-COM-08). Irreversível quando único administrador.
  */
-export function sairDaComunidade(state: DataState, actingMemberId: Id, comunidadeId: Id, input: { readonly entendiIrreversivel?: boolean } = {}): OperationResult<Comunidade> {
+export function sairDaComunidade(state: DataState, actingMemberId: Id, comunidadeId: Id, input: { readonly entendiIrreversivel?: boolean } = {}, crm?: CrmDasFerramentas): OperationResult<Comunidade> {
   const adm = recusaDeAdministracao(state, actingMemberId);
   if (adm) return fail(adm);
   const comunidade = comunidadePorId(state, comunidadeId);
   if (!comunidade) return fail("Comunidade não encontrada.");
-  const externa = recusaExternaNaComunidade(state, comunidade, "participante");
+  const externa = recusaExternaNaComunidade(state, comunidade, "participante", crm);
   if (externa) return fail(externa);
   const irreversivel = comunidade.sincronizacao.papelDoCanal === "administrador";
   if (irreversivel && !input.entendiIrreversivel) {

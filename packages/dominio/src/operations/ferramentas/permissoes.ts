@@ -13,8 +13,9 @@
 
 import type { DataState } from "../../state";
 import type { Canal } from "../../crm/canais";
-import { CRM_DAS_FERRAMENTAS_VAZIO, type ChannelType, type Comunidade, type CrmDasFerramentas, type Flow, type Grupo, type Id } from "../../types";
+import { CRM_DAS_FERRAMENTAS_VAZIO, type ChannelType, type Comunidade, type ContatoDaFerramenta, type CrmDasFerramentas, type Flow, type Grupo, type Id, type ParticipacaoDeGrupo } from "../../types";
 import { versaoPublicada } from "../../derive-ferramentas";
+import { canonicalIdentifier } from "../contacts";
 import { CAPACIDADES_DE_ATIVOS } from "./capacidades";
 
 /**
@@ -33,17 +34,25 @@ interface CanalConferido {
   readonly conexao: "conectada" | "desconectada" | "comErro";
 }
 
-/**
- * TRANSITÓRIO (traçador do 15-07): sem `crm`, a recusa ainda olha o Canal do
- * modelo antigo; a Task 2 troca todo chamador e remove este ramo.
- */
-function canalConferido(state: DataState, canalId: Id | undefined, crm: CrmDasFerramentas | undefined): CanalConferido | undefined {
-  if (crm !== undefined) {
-    const c = canalNoCrm(crm, canalId);
-    return c && { nome: c.nome, tipo: c.tipo, ativo: c.estado === "ativo", conexao: c.conexao === "com_erro" ? "comErro" : c.conexao };
-  }
-  const antigo = state.channels.find((c) => c.id === canalId);
-  return antigo && { nome: antigo.name, tipo: antigo.channelType, ativo: antigo.lifecycle === "ativo", conexao: antigo.connection };
+function canalConferido(canalId: Id | undefined, crm: CrmDasFerramentas | undefined): CanalConferido | undefined {
+  const c = canalNoCrm(crm, canalId);
+  return c && { nome: c.nome, tipo: c.tipo, ativo: c.estado === "ativo", conexao: c.conexao === "com_erro" ? "comErro" : c.conexao };
+}
+
+/** O Contato que a operação cita, lido do CRM novo (ausente = vazio). */
+export const contatoNoCrm = (crm: CrmDasFerramentas | undefined, contatoId: Id | undefined): ContatoDaFerramenta | undefined =>
+  contatoId === undefined ? undefined : (crm ?? CRM_DAS_FERRAMENTAS_VAZIO).contatos.find((c) => c.id === contatoId);
+
+/** RN-GRP-11 — o número é de um Canal do Espaço de Trabalho? Então nunca vira Contato. */
+export const canalPeloNumeroNoCrm = (crm: CrmDasFerramentas | undefined, numero: string): Canal | undefined =>
+  (crm ?? CRM_DAS_FERRAMENTAS_VAZIO).canais.find(
+    (c) => c.tipo === "whatsapp" && canonicalIdentifier("identidadeDeWhatsApp", c.identificadorExterno) === canonicalIdentifier("identidadeDeWhatsApp", numero),
+  );
+
+/** O nome que o Registro mostra de quem participa: o Canal ou o Contato do CRM novo, senão o número. */
+export function nomeDoParticipanteNoCrm(crm: CrmDasFerramentas | undefined, p: ParticipacaoDeGrupo): string {
+  if (p.canalParticipanteId) return canalNoCrm(crm, p.canalParticipanteId)?.nome ?? "o Canal";
+  return contatoNoCrm(crm, p.contactId)?.nome || p.identificadorExternoDoParticipante;
 }
 
 /** Só um Membro ativo age; um Convidado só alcança o que foi compartilhado. */
@@ -70,7 +79,7 @@ export const canalDoAtivo = (ativo: { readonly canalId?: Id }, crm?: CrmDasFerra
 /** Um Canal ativo, conectado e cujo Tipo tem a Capacidade pedida. */
 export function recusaDoCanal(state: DataState, canalId: Id | undefined, capacidade: "gruposAdministraveis" | "comunidades" | "formulariosInterativos", crm?: CrmDasFerramentas): string | undefined {
   if (canalId === undefined) return "Escolha o Canal.";
-  const canal = canalConferido(state, canalId, crm);
+  const canal = canalConferido(canalId, crm);
   if (!canal) return "Canal não encontrado.";
   if (!canal.ativo) return `O Canal ${canal.nome} está arquivado.`;
   if (!CAPACIDADES_DE_ATIVOS[canal.tipo][capacidade]) {
@@ -119,7 +128,7 @@ export function recusaExternaNaComunidade(state: DataState, comunidade: Comunida
 export function recusaDeEnvioAoGrupo(state: DataState, grupo: Grupo, crm?: CrmDasFerramentas): string | undefined {
   if (grupo.lifecycle === "naLixeira") return "O Grupo está na lixeira.";
   if (grupo.canalId === undefined || grupo.sincronizacao.estado === "orfao") return "O Grupo está sem Canal: não há por onde enviar.";
-  const canal = canalConferido(state, grupo.canalId, crm);
+  const canal = canalConferido(grupo.canalId, crm);
   if (!canal?.ativo) return "O Canal do Grupo está arquivado.";
   if (grupo.sincronizacao.estado === "nuncaConferido") return "Sincronize o Grupo antes de enviar (RN-ATV-08).";
   if (grupo.sincronizacao.estado === "inacessivel" || grupo.sincronizacao.papelDoCanal === "ausente") return "O Canal não está mais no Grupo.";
@@ -136,7 +145,7 @@ export function recusaDePublicacao(state: DataState, flow: Flow, crm?: CrmDasFer
   if (flow.canalId === undefined) return "Escolha o Canal publicador antes de publicar.";
   const canal = recusaDoCanal(state, flow.canalId, "formulariosInterativos", crm);
   if (canal) return canal;
-  const publicador = canalConferido(state, flow.canalId, crm);
+  const publicador = canalConferido(flow.canalId, crm);
   if (publicador && publicador.tipo !== flow.tipoDeCanal) return "O Canal publicador precisa ser do mesmo Tipo do Flow.";
   if (flow.estadoNoProvedor === "bloqueadoPeloProvedor") return "O provedor bloqueou este Flow.";
   return undefined;
@@ -147,7 +156,7 @@ export function recusaDeEnvioDeFlow(state: DataState, flow: Flow, crm?: CrmDasFe
   if (flow.lifecycle !== "ativo") return "Um Flow arquivado ou na lixeira não é enviável (RN-FLW-13).";
   if (!versaoPublicada(flow)) return "O Flow não tem Versão publicada: publique antes de enviar (RN-FLW-01).";
   if (flow.canalId === undefined) return "O Flow está sem Canal publicador.";
-  const canal = canalConferido(state, flow.canalId, crm);
+  const canal = canalConferido(flow.canalId, crm);
   if (!canal?.ativo) return "O Canal publicador está arquivado: o Flow ficou órfão (20.3).";
   if (flow.estadoNoProvedor === "bloqueadoPeloProvedor") return "O provedor bloqueou este Flow: não enviável.";
   if (flow.estadoNoProvedor === "descontinuado") return "A Versão de esquema foi descontinuada pelo provedor: migre o rascunho e publique.";

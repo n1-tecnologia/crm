@@ -10,7 +10,7 @@
  */
 
 import { fail, ok, type DataState, type OperationResult } from "../../state";
-import type { ActorRef, CliqueDeLink, CriterioDeCaptacao, Grupo, Id, LinkDeCaptacao, ParticipacaoDeGrupo } from "../../types";
+import type { ActorRef, CliqueDeLink, CriterioDeCaptacao, CrmDasFerramentas, Grupo, Id, LinkDeCaptacao, ParticipacaoDeGrupo } from "../../types";
 import { motivoDeInelegibilidade, proximoGrupoDoLink } from "../../derive-ferramentas";
 import { memberActor, nextId, recordActivity, systemActor } from "../activity";
 import { receberPedidoDeEntrada, registrarEntradaNoGrupo } from "./grupos";
@@ -185,7 +185,7 @@ export function registrarClique(state: DataState, slugOuId: string): OperationRe
  * correlaciona; aqui a simulação correlaciona pelo Clique). Com
  * `administradoresAprovamEntrada`, vira Pedido de Entrada em vez de Participação.
  */
-export function simularEntradaPorClique(state: DataState, cliqueId: Id, numero: string): OperationResult<{ readonly participacao?: ParticipacaoDeGrupo; readonly pedidoId?: Id; readonly grupo: Grupo }> {
+export function simularEntradaPorClique(state: DataState, cliqueId: Id, numero: string, crm?: CrmDasFerramentas): OperationResult<{ readonly participacao?: ParticipacaoDeGrupo; readonly pedidoId?: Id; readonly grupo: Grupo }> {
   const link = state.linksDeCaptacao.find((l) => l.cliques.some((c) => c.id === cliqueId));
   const clique = link?.cliques.find((c) => c.id === cliqueId);
   if (!link || !clique) return fail("Clique não encontrado.");
@@ -193,11 +193,11 @@ export function simularEntradaPorClique(state: DataState, cliqueId: Id, numero: 
   const grupo = state.grupos.find((g) => g.id === clique.grupoId);
   if (!grupo) return fail("O Grupo do Clique não existe mais.");
   if (grupo.configuracoes.administradoresAprovamEntrada) {
-    const pedido = receberPedidoDeEntrada(state, grupo.id, numero, { linkDeCaptacaoId: link.id });
+    const pedido = receberPedidoDeEntrada(state, grupo.id, numero, { linkDeCaptacaoId: link.id }, crm);
     if (!pedido.ok) return pedido;
     return ok({ pedidoId: pedido.value.id, grupo });
   }
-  const r = registrarEntradaNoGrupo(state, grupo.id, { numero, origem: "linkDeCaptacao", linkDeCaptacaoId: link.id, cliqueId: clique.id });
+  const r = registrarEntradaNoGrupo(state, grupo.id, { numero, origem: "linkDeCaptacao", linkDeCaptacaoId: link.id, cliqueId: clique.id }, crm);
   if (!r.ok) return r;
   return ok({ participacao: r.value, grupo });
 }

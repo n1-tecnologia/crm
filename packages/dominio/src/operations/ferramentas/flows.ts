@@ -17,6 +17,7 @@ import type {
   ComponenteDeFlow,
   CondicaoDeComponente,
   Conversation,
+  CrmDasFerramentas,
   DadoDeTela,
   EnvioDeFlow,
   Flow,
@@ -28,7 +29,6 @@ import type {
   TipoDeComponente,
   VersaoDeFlow,
 } from "../../types";
-import { contactDisplayName } from "../../derive";
 import { camposDeFlow, telaInicial, telasOrdenadas, versaoCorrente, versaoPublicada } from "../../derive-ferramentas";
 import { memberActor, nextId, recordActivity, systemActor } from "../activity";
 import { CHANNEL_CAPABILITIES, receiveMessage, sendMessage } from "../conversations";
@@ -36,7 +36,7 @@ import { emitirEventoDeFerramentas } from "./automacoes";
 import { CAPACIDADES_DE_ATIVOS, VERSAO_DE_ESQUEMA_CORRENTE } from "./capacidades";
 import { CATALOGO_DE_COMPONENTES } from "./flows-catalogo";
 import { IDENTIFICADOR_DE_TELA, definicaoPublicavel, validarVersao, type ProblemaDeValidacao } from "./flows-validacao";
-import { recusaDeAdministracao, recusaDeEnvioDeFlow, recusaDeMembroAtivo, recusaDePublicacao, recusaDoCanal } from "./permissoes";
+import { canalNoCrm, contatoNoCrm, recusaDeAdministracao, recusaDeEnvioDeFlow, recusaDeMembroAtivo, recusaDePublicacao, recusaDoCanal } from "./permissoes";
 import { gerarChavePublica, gerarIdentificadorDeFlow, gerarIdentificadorDeResposta } from "./provedor-simulado";
 
 const now = (): string => new Date().toISOString();
@@ -121,7 +121,7 @@ export interface CriarFlowInput {
 }
 
 /** 23, 12.1 — registro ativo, Origem `criadoPelaPlataforma`, Versão 1 rascunho com uma Tela. */
-export function criarFlow(state: DataState, actingMemberId: Id, input: CriarFlowInput): OperationResult<Flow> {
+export function criarFlow(state: DataState, actingMemberId: Id, input: CriarFlowInput, crm?: CrmDasFerramentas): OperationResult<Flow> {
   const membro = recusaDeMembroAtivo(state, actingMemberId);
   if (membro) return fail(membro);
   const nome = input.nome.trim();
@@ -129,10 +129,10 @@ export function criarFlow(state: DataState, actingMemberId: Id, input: CriarFlow
   if (nome.length > 100) return fail("O nome passa de 100 caracteres.", "nome");
   let tipoDeCanal: Flow["tipoDeCanal"] = "whatsapp";
   if (input.canalId !== undefined) {
-    const canal = state.channels.find((c) => c.id === input.canalId);
-    if (!canal || canal.lifecycle !== "ativo") return fail("Escolha um Canal ativo.", "canal");
-    if (!CAPACIDADES_DE_ATIVOS[canal.channelType].formulariosInterativos) return fail(`O Tipo de Canal ${canal.channelType} não tem formulários interativos.`, "canal");
-    tipoDeCanal = canal.channelType;
+    const canal = canalNoCrm(crm, input.canalId);
+    if (!canal || canal.estado !== "ativo") return fail("Escolha um Canal ativo.", "canal");
+    if (!CAPACIDADES_DE_ATIVOS[canal.tipo].formulariosInterativos) return fail(`O Tipo de Canal ${canal.tipo} não tem formulários interativos.`, "canal");
+    tipoDeCanal = canal.tipo;
   }
   const momento = now();
   const ator = memberActor(actingMemberId);
@@ -168,7 +168,7 @@ export interface EditarFlowInput {
 }
 
 /** RN-FLW-09 — trocar o Canal publicador com Versão publicada exige administrar e torna a publicada obsoleta. */
-export function editarFlow(state: DataState, actingMemberId: Id, flowId: Id, input: EditarFlowInput): OperationResult<Flow> {
+export function editarFlow(state: DataState, actingMemberId: Id, flowId: Id, input: EditarFlowInput, crm?: CrmDasFerramentas): OperationResult<Flow> {
   const membro = recusaDeMembroAtivo(state, actingMemberId);
   if (membro) return fail(membro);
   const flow = flowPorId(state, flowId);
@@ -198,14 +198,14 @@ export function editarFlow(state: DataState, actingMemberId: Id, flowId: Id, inp
       if (adm) return fail(adm, "canal");
     }
     if (input.canalId !== null) {
-      const canal = state.channels.find((c) => c.id === input.canalId);
-      if (!canal || canal.lifecycle !== "ativo") return fail("Escolha um Canal ativo.", "canal");
-      if (!CAPACIDADES_DE_ATIVOS[canal.channelType].formulariosInterativos || canal.channelType !== flow.tipoDeCanal) return fail("O Canal publicador precisa ser do mesmo Tipo do Flow, com formulários interativos.", "canal");
+      const canal = canalNoCrm(crm, input.canalId);
+      if (!canal || canal.estado !== "ativo") return fail("Escolha um Canal ativo.", "canal");
+      if (!CAPACIDADES_DE_ATIVOS[canal.tipo].formulariosInterativos || canal.tipo !== flow.tipoDeCanal) return fail("O Canal publicador precisa ser do mesmo Tipo do Flow, com formulários interativos.", "canal");
     }
-    const antes = state.channels.find((c) => c.id === flow.canalId)?.name ?? "—";
+    const antes = canalNoCrm(crm, flow.canalId)?.nome ?? "—";
     if (input.canalId === null) delete flow.canalId;
     else flow.canalId = input.canalId;
-    const depois = state.channels.find((c) => c.id === flow.canalId)?.name ?? "—";
+    const depois = canalNoCrm(crm, flow.canalId)?.nome ?? "—";
     if (publicada) {
       publicada.estado = "obsoleta";
       publicada.obsoletaEm = now();
@@ -621,12 +621,12 @@ export function validarVersaoDoFlow(state: DataState, flowId: Id, versaoId?: Id)
  * `publicada`; a anterior `obsoleta`; nova `rascunho` copiada (DO-FLW-03).
  * Falha: nada muda; Registro com motivo.
  */
-export function publicarVersao(state: DataState, actingMemberId: Id, flowId: Id, input: { readonly notas?: string } = {}): OperationResult<{ readonly publicada: VersaoDeFlow; readonly rascunho: VersaoDeFlow }> {
+export function publicarVersao(state: DataState, actingMemberId: Id, flowId: Id, input: { readonly notas?: string } = {}, crm?: CrmDasFerramentas): OperationResult<{ readonly publicada: VersaoDeFlow; readonly rascunho: VersaoDeFlow }> {
   const adm = recusaDeAdministracao(state, actingMemberId);
   if (adm) return fail(adm);
   const flow = flowPorId(state, flowId);
   if (!flow) return fail("Flow não encontrado.");
-  const recusa = recusaDePublicacao(state, flow);
+  const recusa = recusaDePublicacao(state, flow, crm);
   if (recusa) return fail(recusa);
   const rascunho = versaoCorrente(flow);
   if (!rascunho) return fail("O Flow não tem rascunho para publicar.");
@@ -793,17 +793,17 @@ export function restaurarFlowDaLixeira(state: DataState, actingMemberId: Id, flo
 }
 
 /** Sincronizar: confere o estado no provedor (simulado: confirma o que está gravado). */
-export function sincronizarFlow(state: DataState, actingMemberId: Id, flowId: Id): OperationResult<Flow> {
+export function sincronizarFlow(state: DataState, actingMemberId: Id, flowId: Id, crm?: CrmDasFerramentas): OperationResult<Flow> {
   const membro = recusaDeMembroAtivo(state, actingMemberId);
   if (membro) return fail(membro);
   const flow = flowPorId(state, flowId);
   if (!flow) return fail("Flow não encontrado.");
   const momento = now();
   const antes = flow.sincronizacao.estado;
-  const canal = flow.canalId ? state.channels.find((c) => c.id === flow.canalId) : undefined;
+  const canal = canalNoCrm(crm, flow.canalId);
   if (!flow.identificadorExterno) {
     flow.sincronizacao = { estado: "nuncaConferido", conferidoEm: momento, papelDoCanal: canal ? "administrador" : "ausente", detalhe: "Ainda não publicado: nada a conferir no provedor." };
-  } else if (!canal || canal.lifecycle !== "ativo") {
+  } else if (!canal || canal.estado !== "ativo") {
     flow.sincronizacao = { estado: "orfao", conferidoEm: momento, papelDoCanal: "ausente", detalhe: "O Canal publicador foi arquivado (20.3)." };
     const publicada = versaoPublicada(flow);
     if (publicada) {
@@ -812,7 +812,7 @@ export function sincronizarFlow(state: DataState, actingMemberId: Id, flowId: Id
       registrarNoFlow(state, flow, { actor: memberActor(actingMemberId), action: "Versão tornada obsoleta", before: `v${publicada.numero} publicada`, after: `v${publicada.numero} obsoleta`, detail: "Canal publicador arquivado (RN-FLW-09, 20.3)." });
     }
   } else {
-    const recusa = recusaDoCanal(state, canal.id, "formulariosInterativos");
+    const recusa = recusaDoCanal(state, canal.id, "formulariosInterativos", crm);
     if (recusa) return fail(recusa);
     flow.sincronizacao = { estado: "sincronizado", conferidoEm: momento, papelDoCanal: "administrador" };
   }
@@ -842,12 +842,12 @@ export interface EnviarFlowInput {
  * de resposta, modelo aprovado e consentimento valem como para qualquer
  * Mensagem (20.6). O Anexo `flow` marca a Mensagem para a Caixa de Entrada.
  */
-export function enviarFlow(state: DataState, actingMemberId: Id, input: EnviarFlowInput): OperationResult<{ readonly mensagem: Message; readonly conversa: Conversation }> {
+export function enviarFlow(state: DataState, actingMemberId: Id, input: EnviarFlowInput, crm?: CrmDasFerramentas): OperationResult<{ readonly mensagem: Message; readonly conversa: Conversation }> {
   const membro = recusaDeMembroAtivo(state, actingMemberId);
   if (membro) return fail(membro);
   const flow = flowPorId(state, input.flowId);
   if (!flow) return fail("Flow não encontrado.");
-  const recusa = recusaDeEnvioDeFlow(state, flow);
+  const recusa = recusaDeEnvioDeFlow(state, flow, crm);
   if (recusa) return fail(recusa);
   const publicada = versaoPublicada(flow);
   if (!publicada) return fail("O Flow não tem Versão publicada (RN-FLW-01).");
@@ -855,8 +855,8 @@ export function enviarFlow(state: DataState, actingMemberId: Id, input: EnviarFl
   if (!conversa) return fail("Conversa não encontrada.");
   if (conversa.channelId !== flow.canalId) return fail("A Conversa é de outro Canal: o Flow só sai pelo Canal publicador.");
   if (conversa.groupIdentifier) return fail("Um Flow é enviado a um Contato, não a um Grupo (7.6).");
-  const canal = state.channels.find((c) => c.id === conversa.channelId);
-  if (canal && !CHANNEL_CAPABILITIES[canal.channelType].sendableMediaTypes.includes("flow")) return fail("Este Canal não envia formulários interativos.");
+  const canal = canalNoCrm(crm, conversa.channelId);
+  if (canal && !CHANNEL_CAPABILITIES[canal.tipo].sendableMediaTypes.includes("flow")) return fail("Este Canal não envia formulários interativos.");
   const inicial = input.telaInicial ?? telaInicial(publicada)?.identificador ?? "";
   if (!publicada.telas.some((t) => t.identificador === inicial)) return fail(`A Tela inicial “${inicial}” não existe na Versão publicada.`, "telaInicial");
   if (!input.corpo.trim()) return fail("Escreva o corpo da Mensagem.", "corpo");
@@ -907,14 +907,14 @@ export interface ReceberRespostaInput {
  * Um Nome fora da Versão não descarta nada: marca `naoConforme` (20.5).
  * O Contato não muda por si (RN-FLW-14): isso é Automação.
  */
-export function receberRespostaDeFlow(state: DataState, input: ReceberRespostaInput): OperationResult<{ readonly mensagem: Message; readonly conversa: Conversation }> {
+export function receberRespostaDeFlow(state: DataState, input: ReceberRespostaInput, crm?: CrmDasFerramentas): OperationResult<{ readonly mensagem: Message; readonly conversa: Conversation }> {
   const flow = flowPorId(state, input.flowId);
   if (!flow) return fail("Flow não encontrado.");
   const versao = input.versaoId ? flow.versoes.find((v) => v.id === input.versaoId) : versaoPublicada(flow);
   if (!versao) return fail("Versão não encontrada.");
   if (versao.estado === "rascunho") return fail("Um rascunho nunca chegou ao aparelho de ninguém: não há Resposta para ele.");
   if (!flow.canalId) return fail("O Flow está sem Canal: a Resposta não tem por onde entrar (20.3).");
-  const contato = state.contacts.find((c) => c.id === input.contactId);
+  const contato = contatoNoCrm(crm, input.contactId);
   if (!contato) return fail("Contato não encontrado.");
   const nomes = new Set(camposDeFlow(versao).map((c) => c.nome));
   const naoConforme = Object.keys(input.valores).some((n) => !nomes.has(n));
@@ -941,7 +941,7 @@ export function receberRespostaDeFlow(state: DataState, input: ReceberRespostaIn
   };
   const mensagem: Message = { ...original, attachments: [{ fileId: flow.id, order: 0, mediaType: "flow", displayName: flow.nome }], respostaDeFlow: resposta };
   conversa.messages[indice] = mensagem;
-  registrarNoFlow(state, flow, { actor: systemActor, action: "Resposta de Flow recebida", ...(naoConforme ? { result: "failed" as const } : {}), detail: `v${versao.numero}${versao.estado === "obsoleta" ? " (obsoleta — 20.1)" : ""} · ${contactDisplayName(contato)}${naoConforme ? " · não conforme: Nome fora da Versão (20.5)" : ""}` });
-  emitirEventoDeFerramentas(state, { kind: "respostaDeFlowRecebida", flowId: flow.id, contactId: contato.id, conversationId: conversa.id, messageId: mensagem.id });
+  registrarNoFlow(state, flow, { actor: systemActor, action: "Resposta de Flow recebida", ...(naoConforme ? { result: "failed" as const } : {}), detail: `v${versao.numero}${versao.estado === "obsoleta" ? " (obsoleta — 20.1)" : ""} · ${contato.nome}${naoConforme ? " · não conforme: Nome fora da Versão (20.5)" : ""}` });
+  emitirEventoDeFerramentas(state, { kind: "respostaDeFlowRecebida", flowId: flow.id, contactId: contato.id, conversationId: conversa.id, messageId: mensagem.id }, crm);
   return ok({ mensagem, conversa });
 }

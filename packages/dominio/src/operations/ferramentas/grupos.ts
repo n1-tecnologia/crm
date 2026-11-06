@@ -11,6 +11,7 @@
  */
 
 import { fail, ok, type DataState, type OperationResult } from "../../state";
+import type { Canal } from "../../crm/canais";
 import { CRM_DAS_FERRAMENTAS_VAZIO, type ActorRef, type Captacao, type ConfiguracoesDoGrupo, type Conversation, type CrmDasFerramentas, type Grupo, type Id, type Message, type ParticipacaoDeGrupo, type PedidoDeEntrada } from "../../types";
 import { contactDisplayName } from "../../derive";
 import { conversaDoGrupo, identidadeDeWhatsApp, participacoesVigentes, pedidosPendentes } from "../../derive-ferramentas";
@@ -18,16 +19,8 @@ import { memberActor, nextId, recordActivity, systemActor } from "../activity";
 import { sendMessage, startConversation } from "../conversations";
 import { emitirEventoDeFerramentas } from "./automacoes";
 import { CAPACIDADES_DE_ATIVOS, LIMITE_DE_GRUPOS_POR_ESPACO } from "./capacidades";
-import {
-  abrirParticipacao,
-  canalPeloNumero,
-  encerrarParticipacao,
-  nomeDoParticipante,
-  reconciliarGrupoDeAvisos,
-  registrarNoGrupo,
-  resolverOuCriarContato,
-} from "./participacoes";
-import { canalNoCrm, recusaDeAdministracao, recusaDeEnvioAoGrupo, recusaDeMembroAtivo, recusaDoCanal, recusaExternaNaComunidade, recusaExternaNoGrupo } from "./permissoes";
+import { abrirParticipacao, encerrarParticipacao, reconciliarGrupoDeAvisos, registrarNoGrupo, resolverOuCriarContato } from "./participacoes";
+import { canalNoCrm, canalPeloNumeroNoCrm, contatoNoCrm, nomeDoParticipanteNoCrm, recusaDeAdministracao, recusaDeEnvioAoGrupo, recusaDeMembroAtivo, recusaDoCanal, recusaExternaNaComunidade, recusaExternaNoGrupo } from "./permissoes";
 import { GRUPOS_NO_PROVEDOR, gerarEnderecoDeConvite, gerarJid } from "./provedor-simulado";
 
 const now = (): string => new Date().toISOString();
@@ -38,6 +31,14 @@ export const CONFIGURACOES_PADRAO_DO_GRUPO: ConfiguracoesDoGrupo = {
   administradoresAprovamEntrada: false,
   somenteAdministradoresAdicionamParticipantes: false,
 };
+
+/** O Canal do CRM novo na forma que `resolverOuCriarContato` lê: só os padrões do Canal. */
+const padroesDoCanal = (canal: Canal): { readonly id: Id; readonly defaultContactOwnerMemberId?: Id; readonly defaultQueueId?: Id; readonly defaultOriginId?: Id } => ({
+  id: canal.id,
+  ...(canal.proprietarioPadraoId ? { defaultContactOwnerMemberId: canal.proprietarioPadraoId } : {}),
+  ...(canal.filaPadraoId ? { defaultQueueId: canal.filaPadraoId } : {}),
+  ...(canal.origemPadraoId ? { defaultOriginId: canal.origemPadraoId } : {}),
+});
 
 const grupoPorId = (state: DataState, grupoId: Id): Grupo | undefined => state.grupos.find((g) => g.id === grupoId);
 
@@ -212,7 +213,7 @@ export function criarGrupo(state: DataState, actingMemberId: Id, input: CriarGru
   const nomeDoCriador = input.contatoCriadorId ? contatos.find((c) => c?.id === input.contatoCriadorId) : undefined;
   registrarNoGrupo(state, grupo, { actor: ator, action: "Grupo criado", detail: `${canal.nome}${comunidade ? ` · na Comunidade ${comunidade.nome}` : ""}${nomeDoCriador ? ` · criador ${nomeDoCriador.nome}` : ""}` });
   for (const p of participacoesVigentes(grupo)) {
-    if (p.contactId) emitirEventoDeFerramentas(state, { kind: "contatoEntrouNoGrupo", grupoId: grupo.id, contactId: p.contactId, participacaoId: p.id });
+    if (p.contactId) emitirEventoDeFerramentas(state, { kind: "contatoEntrouNoGrupo", grupoId: grupo.id, contactId: p.contactId, participacaoId: p.id }, noCrm);
   }
   if (comunidade) reconciliarGrupoDeAvisos(state, comunidade.id, momento);
   return ok(grupo, grupo.id);
@@ -236,7 +237,7 @@ export interface EnvioDeConvite {
  * as regras do Canal (`sendMessage`: janela de resposta, consentimento) e a
  * recusa de um não impede os outros.
  */
-export function enviarLinkDeConvite(state: DataState, actingMemberId: Id, grupoId: Id, contactIds: readonly Id[]): OperationResult<EnvioDeConvite> {
+export function enviarLinkDeConvite(state: DataState, actingMemberId: Id, grupoId: Id, contactIds: readonly Id[], crm?: CrmDasFerramentas): OperationResult<EnvioDeConvite> {
   const membro = recusaDeMembroAtivo(state, actingMemberId);
   if (membro) return fail(membro);
   const grupo = grupoPorId(state, grupoId);
@@ -245,7 +246,7 @@ export function enviarLinkDeConvite(state: DataState, actingMemberId: Id, grupoI
   const link = grupo.linkDeConvite;
   if (!link || link.estado === "invalido") return fail("O Grupo não tem Link de convite válido: regenere ou sincronize antes de enviar.", "link");
   if (!grupo.canalId) return fail("O Grupo não tem Canal administrador para enviar o link.", "canal");
-  const canalRecusa = recusaDoCanal(state, grupo.canalId, "gruposAdministraveis");
+  const canalRecusa = recusaDoCanal(state, grupo.canalId, "gruposAdministraveis", crm);
   if (canalRecusa) return fail(canalRecusa, "canal");
   const unicos = [...new Set(contactIds)];
   if (unicos.length === 0) return fail("Escolha ao menos um Contato para receber o link.", "contatos");
@@ -254,8 +255,8 @@ export function enviarLinkDeConvite(state: DataState, actingMemberId: Id, grupoI
   const enviados: Id[] = [];
   const falhas: Array<{ readonly contactId: Id; readonly motivo: string }> = [];
   for (const contactId of unicos) {
-    const contato = state.contacts.find((c) => c.id === contactId);
-    const nome = contato ? contactDisplayName(contato) : "Contato";
+    const contato = contatoNoCrm(crm, contactId);
+    const nome = contato?.nome || "Contato";
     if (noGrupo.has(contactId)) {
       falhas.push({ contactId, motivo: `${nome} já está no Grupo.` });
       continue;
@@ -267,7 +268,7 @@ export function enviarLinkDeConvite(state: DataState, actingMemberId: Id, grupoI
       falhas.push({ contactId, motivo: `${nome}: ${conversa.error}` });
       continue;
     }
-    const primeiroNome = contato?.firstName.trim();
+    const primeiroNome = contato?.nome.trim().split(/\s+/)[0];
     const texto = `${primeiroNome ? `Olá, ${primeiroNome}!` : "Olá!"} Você foi convidado para o grupo “${grupo.nome}” no WhatsApp. Para entrar, abra o link: ${link.endereco}`;
     const envio = sendMessage(state, actingMemberId, { conversationId: conversa.value.id, content: texto });
     if (!envio.ok) {
@@ -277,10 +278,7 @@ export function enviarLinkDeConvite(state: DataState, actingMemberId: Id, grupoI
     enviados.push(contactId);
   }
   if (enviados.length > 0) {
-    const nomes = enviados.map((id) => {
-      const c = state.contacts.find((x) => x.id === id);
-      return c ? contactDisplayName(c) : id;
-    });
+    const nomes = enviados.map((id) => contatoNoCrm(crm, id)?.nome || id);
     registrarNoGrupo(state, grupo, { actor: memberActor(actingMemberId), action: "Link de convite enviado", detail: `para ${nomes.join(", ")}` });
   }
   return ok({ enviados, falhas }, grupo.id);
@@ -291,14 +289,15 @@ export function enviarLinkDeConvite(state: DataState, actingMemberId: Id, grupoI
  * existem, com Participações `importado`, o Papel do Canal e Captação
  * `inativa` até o Membro decidir (DO-GRP-05). O Limite é conferido antes.
  */
-export function importarGruposDoCanal(state: DataState, actingMemberId: Id, canalId: Id): OperationResult<{ readonly importados: Grupo[]; readonly jaExistiam: number }> {
+export function importarGruposDoCanal(state: DataState, actingMemberId: Id, canalId: Id, crm?: CrmDasFerramentas): OperationResult<{ readonly importados: Grupo[]; readonly jaExistiam: number }> {
+  const noCrm = crm ?? CRM_DAS_FERRAMENTAS_VAZIO;
   const membro = recusaDeMembroAtivo(state, actingMemberId);
   if (membro) return fail(membro);
-  const canalRecusa = recusaDoCanal(state, canalId, "gruposAdministraveis");
+  const canalRecusa = recusaDoCanal(state, canalId, "gruposAdministraveis", noCrm);
   if (canalRecusa) return fail(canalRecusa, "canal");
-  const canal = state.channels.find((c) => c.id === canalId);
+  const canal = canalNoCrm(noCrm, canalId);
   if (!canal) return fail("Canal não encontrado.", "canal");
-  const noProvedor = GRUPOS_NO_PROVEDOR[canal.externalId] ?? [];
+  const noProvedor = GRUPOS_NO_PROVEDOR[canal.identificadorExterno] ?? [];
   const existentes = new Set(state.grupos.map((g) => g.identificadorExterno));
   const novos = noProvedor.filter((g) => !existentes.has(g.jid));
   const limite = recusaDeLimiteDeGrupos(state, novos.length);
@@ -315,7 +314,7 @@ export function importarGruposDoCanal(state: DataState, actingMemberId: Id, cana
       createdAt: momento,
       lifecycle: "ativo",
       nome: remoto.nome,
-      tipoDeCanal: canal.channelType,
+      tipoDeCanal: canal.tipo,
       identificadorExterno: remoto.jid,
       canalId: canal.id,
       sincronizacao: {
@@ -331,27 +330,27 @@ export function importarGruposDoCanal(state: DataState, actingMemberId: Id, cana
       descricao: remoto.descricao,
       configuracoes: { ...remoto.configuracoes },
       ...(remoto.papelDoCanal === "administrador" && remoto.linkDeConvite ? { linkDeConvite: { endereco: remoto.linkDeConvite, estado: "valido" as const, validadoEm: momento } } : {}),
-      capacidade: CAPACIDADES_DE_ATIVOS[canal.channelType].capacidadeDoGrupo,
+      capacidade: CAPACIDADES_DE_ATIVOS[canal.tipo].capacidadeDoGrupo,
       participacoes: [],
       pedidosDeEntrada: [],
       captacao: { estado: "inativa" },
     };
-    abrirParticipacao(state, grupo, { canalParticipanteId: canal.id, identificadorExterno: canal.externalId, papel: remoto.papelDoCanal === "administrador" ? "administrador" : "membro", origem: "importado", at: momento, estimada: true, doProvedor: true });
+    abrirParticipacao(state, grupo, { canalParticipanteId: canal.id, identificadorExterno: canal.identificadorExterno, papel: remoto.papelDoCanal === "administrador" ? "administrador" : "membro", origem: "importado", at: momento, estimada: true, doProvedor: true });
     const admins = new Set(remoto.administradores);
     for (const numero of remoto.participantes) {
-      const outroCanal = canalPeloNumero(state, numero);
+      const outroCanal = canalPeloNumeroNoCrm(noCrm, numero);
       if (outroCanal) {
         abrirParticipacao(state, grupo, { canalParticipanteId: outroCanal.id, identificadorExterno: numero, papel: admins.has(numero) ? "administrador" : "membro", origem: "importado", at: momento, estimada: true, doProvedor: true });
         continue;
       }
-      const contato = resolverOuCriarContato(state, canal, numero, `Importação do Grupo ${remoto.nome}`);
+      const contato = resolverOuCriarContato(state, padroesDoCanal(canal), numero, `Importação do Grupo ${remoto.nome}`);
       abrirParticipacao(state, grupo, { contactId: contato.id, identificadorExterno: numero, papel: admins.has(numero) ? "administrador" : "membro", origem: "importado", at: momento, estimada: true, doProvedor: true });
     }
     state.grupos.push(grupo);
-    registrarNoGrupo(state, grupo, { actor: ator, action: "Grupo importado", detail: `${canal.name} · ${remoto.participantes.length + 1} participantes · Captação inativa até você ativá-la` });
+    registrarNoGrupo(state, grupo, { actor: ator, action: "Grupo importado", detail: `${canal.nome} · ${remoto.participantes.length + 1} participantes · Captação inativa até você ativá-la` });
     importados.push(grupo);
   }
-  recordActivity(state, { actor: ator, action: "Grupos importados do Canal", objectType: "channel", objectId: canal.id, objectName: canal.name, detail: `${importados.length} novos, ${noProvedor.length - novos.length} já existiam` });
+  recordActivity(state, { actor: ator, action: "Grupos importados do Canal", objectType: "channel", objectId: canal.id, objectName: canal.nome, detail: `${importados.length} novos, ${noProvedor.length - novos.length} já existiam` });
   return ok({ importados, jaExistiam: noProvedor.length - novos.length });
 }
 
@@ -362,7 +361,7 @@ export function importarGruposDoCanal(state: DataState, actingMemberId: Id, cana
  * gravado, valida o Link de convite, expira Pedidos quando a Configuração
  * deixou de aprová-los (RN-GRP-16) e reconcilia o Grupo de avisos.
  */
-export function sincronizarGrupo(state: DataState, actingMemberId: Id, grupoId: Id): OperationResult<Grupo> {
+export function sincronizarGrupo(state: DataState, actingMemberId: Id, grupoId: Id, crm?: CrmDasFerramentas): OperationResult<Grupo> {
   const membro = recusaDeMembroAtivo(state, actingMemberId);
   if (membro) return fail(membro);
   const grupo = grupoPorId(state, grupoId);
@@ -370,11 +369,11 @@ export function sincronizarGrupo(state: DataState, actingMemberId: Id, grupoId: 
   if (grupo.lifecycle === "naLixeira") return fail("O Grupo está na lixeira.");
   const momento = now();
   const antes = grupo.sincronizacao.estado;
-  const canal = grupo.canalId ? state.channels.find((c) => c.id === grupo.canalId) : undefined;
-  if (!canal || canal.lifecycle !== "ativo") {
+  const canal = canalNoCrm(crm, grupo.canalId);
+  if (!canal || canal.estado !== "ativo") {
     grupo.sincronizacao = { estado: "orfao", conferidoEm: momento, papelDoCanal: "ausente", detalhe: "O Canal administrador foi arquivado ou não existe." };
-  } else if (canal.connection !== "conectada") {
-    return fail(`O Canal ${canal.name} está desconectado: não há como conferir o Grupo.`);
+  } else if (canal.conexao !== "conectada") {
+    return fail(`O Canal ${canal.nome} está desconectado: não há como conferir o Grupo.`);
   } else if (grupo.sincronizacao.papelDoCanal === "ausente") {
     grupo.sincronizacao = { estado: "inacessivel", conferidoEm: momento, papelDoCanal: "ausente", detalhe: "O Canal não está mais no grupo." };
   } else if (grupo.sincronizacao.papelDoCanal === "participante") {
@@ -412,12 +411,12 @@ export interface EditarGrupoInput {
 }
 
 /** Nome, Descrição e Configurações são espelhados: mudar é Ferramenta externa com efeito no provedor. */
-export function editarGrupo(state: DataState, actingMemberId: Id, grupoId: Id, input: EditarGrupoInput): OperationResult<Grupo> {
+export function editarGrupo(state: DataState, actingMemberId: Id, grupoId: Id, input: EditarGrupoInput, crm?: CrmDasFerramentas): OperationResult<Grupo> {
   const membro = recusaDeMembroAtivo(state, actingMemberId);
   if (membro) return fail(membro);
   const grupo = grupoPorId(state, grupoId);
   if (!grupo) return fail("Grupo não encontrado.");
-  const externa = recusaExternaNoGrupo(state, grupo, "administrador");
+  const externa = recusaExternaNoGrupo(state, grupo, "administrador", crm);
   if (externa) return fail(externa);
   const capacidades = CAPACIDADES_DE_ATIVOS[grupo.tipoDeCanal];
   const mudancas: string[] = [];
@@ -453,20 +452,20 @@ export function editarGrupo(state: DataState, actingMemberId: Id, grupoId: Id, i
 }
 
 /** RN-ATV-03 — trocar o Canal administrador; o novo precisa conferir o Grupo (`nuncaConferido`). */
-export function definirCanalDoGrupo(state: DataState, actingMemberId: Id, grupoId: Id, canalId: Id): OperationResult<Grupo> {
+export function definirCanalDoGrupo(state: DataState, actingMemberId: Id, grupoId: Id, canalId: Id, crm?: CrmDasFerramentas): OperationResult<Grupo> {
   const adm = recusaDeAdministracao(state, actingMemberId);
   if (adm) return fail(adm);
   const grupo = grupoPorId(state, grupoId);
   if (!grupo) return fail("Grupo não encontrado.");
   if (grupo.canalId === canalId) return ok(grupo);
-  const canal = state.channels.find((c) => c.id === canalId);
-  if (!canal || canal.lifecycle !== "ativo") return fail("Escolha um Canal ativo.", "canal");
-  if (!CAPACIDADES_DE_ATIVOS[canal.channelType].gruposAdministraveis || canal.channelType !== grupo.tipoDeCanal) return fail("O Canal precisa ser do mesmo Tipo do Grupo, com grupos administráveis.", "canal");
-  const antes = state.channels.find((c) => c.id === grupo.canalId)?.name ?? "—";
+  const canal = canalNoCrm(crm, canalId);
+  if (!canal || canal.estado !== "ativo") return fail("Escolha um Canal ativo.", "canal");
+  if (!CAPACIDADES_DE_ATIVOS[canal.tipo].gruposAdministraveis || canal.tipo !== grupo.tipoDeCanal) return fail("O Canal precisa ser do mesmo Tipo do Grupo, com grupos administráveis.", "canal");
+  const antes = canalNoCrm(crm, grupo.canalId)?.nome ?? "—";
   grupo.canalId = canal.id;
   const papel = participacoesVigentes(grupo).find((p) => p.canalParticipanteId === canal.id)?.papel;
   grupo.sincronizacao = { estado: "nuncaConferido", papelDoCanal: papel === "administrador" ? "administrador" : papel === "membro" ? "participante" : "ausente", detalhe: "Canal administrador trocado: sincronize." };
-  registrarNoGrupo(state, grupo, { actor: memberActor(actingMemberId), action: "Canal administrador alterado", before: antes, after: canal.name });
+  registrarNoGrupo(state, grupo, { actor: memberActor(actingMemberId), action: "Canal administrador alterado", before: antes, after: canal.nome });
   return ok(grupo, grupo.id);
 }
 
@@ -519,12 +518,12 @@ export function zerarCliques(state: DataState, actingMemberId: Id, grupoId: Id):
 // ── Link de convite ────────────────────────────────────────────────────────
 
 /** 24, 7.3 — invalida o anterior no provedor (classe `externa`); os Links de Captação não mudam (RN-GRP-06). */
-export function regenerarLinkDeConvite(state: DataState, actingMemberId: Id, grupoId: Id): OperationResult<Grupo> {
+export function regenerarLinkDeConvite(state: DataState, actingMemberId: Id, grupoId: Id, crm?: CrmDasFerramentas): OperationResult<Grupo> {
   const membro = recusaDeMembroAtivo(state, actingMemberId);
   if (membro) return fail(membro);
   const grupo = grupoPorId(state, grupoId);
   if (!grupo) return fail("Grupo não encontrado.");
-  const externa = recusaExternaNoGrupo(state, grupo, "administrador");
+  const externa = recusaExternaNoGrupo(state, grupo, "administrador", crm);
   if (externa) return fail(externa);
   const momento = now();
   const anterior = grupo.linkDeConvite?.endereco;
@@ -544,13 +543,14 @@ export function adicionarParticipantes(
   actingMemberId: Id,
   grupoId: Id,
   input: { readonly contactIds: readonly Id[]; readonly comoAdministrador?: boolean },
+  crm?: CrmDasFerramentas,
 ): OperationResult<{ readonly grupo: Grupo; readonly adicionados: ParticipacaoDeGrupo[]; readonly jaEstavam: number }> {
   const membro = recusaDeMembroAtivo(state, actingMemberId);
   if (membro) return fail(membro);
   const grupo = grupoPorId(state, grupoId);
   if (!grupo) return fail("Grupo não encontrado.");
   if (grupo.papelNaComunidade === "avisos") return fail("O provedor mantém os participantes do Grupo de avisos: ninguém é adicionado lá diretamente (RN-COM-04).");
-  const externa = recusaExternaNoGrupo(state, grupo, "administrador");
+  const externa = recusaExternaNoGrupo(state, grupo, "administrador", crm);
   if (externa) return fail(externa);
   if (input.contactIds.length === 0) return fail("Escolha ao menos um Contato.", "contatos");
   const ator = memberActor(actingMemberId);
@@ -558,10 +558,10 @@ export function adicionarParticipantes(
   const adicionados: ParticipacaoDeGrupo[] = [];
   let jaEstavam = 0;
   for (const contactId of input.contactIds) {
-    const contato = state.contacts.find((c) => c.id === contactId);
-    if (!contato || contato.lifecycle !== "ativo") return fail("Um dos Contatos não está ativo.", "contatos");
-    const numero = identidadeDeWhatsApp(contato);
-    if (!numero) return fail(`${contactDisplayName(contato)} não tem identidade de WhatsApp: o provedor não o encontra.`, "contatos");
+    const contato = contatoNoCrm(crm, contactId);
+    if (!contato || contato.estado !== "ativo") return fail("Um dos Contatos não está ativo.", "contatos");
+    const numero = contato.whatsapp;
+    if (!numero) return fail(`${contato.nome} não tem identidade de WhatsApp: o provedor não o encontra.`, "contatos");
     const r = abrirParticipacao(state, grupo, { contactId: contato.id, identificadorExterno: numero, papel: input.comoAdministrador ? "administrador" : "membro", origem: "adicionado", at: momento, adicionadoPor: ator });
     if ("erro" in r) return fail(r.erro, "contatos");
     if (!r.nova) {
@@ -569,21 +569,21 @@ export function adicionarParticipantes(
       continue;
     }
     adicionados.push(r.participacao);
-    registrarNoGrupo(state, grupo, { actor: ator, action: "Participante adicionado", detail: `${contactDisplayName(contato)}${input.comoAdministrador ? " (administrador)" : ""}` });
-    emitirEventoDeFerramentas(state, { kind: "contatoEntrouNoGrupo", grupoId: grupo.id, contactId: contato.id, participacaoId: r.participacao.id });
+    registrarNoGrupo(state, grupo, { actor: ator, action: "Participante adicionado", detail: `${contato.nome}${input.comoAdministrador ? " (administrador)" : ""}` });
+    emitirEventoDeFerramentas(state, { kind: "contatoEntrouNoGrupo", grupoId: grupo.id, contactId: contato.id, participacaoId: r.participacao.id }, crm);
   }
   if (grupo.comunidadeId) reconciliarGrupoDeAvisos(state, grupo.comunidadeId, momento);
   return ok({ grupo, adicionados, jaEstavam }, grupo.id);
 }
 
 /** RN-GRP-14 — Ferramenta `externa`; a Participação é encerrada, nunca eliminada (INV-GRP-07). */
-export function removerParticipante(state: DataState, actingMemberId: Id, grupoId: Id, participacaoId: Id): OperationResult<Grupo> {
+export function removerParticipante(state: DataState, actingMemberId: Id, grupoId: Id, participacaoId: Id, crm?: CrmDasFerramentas): OperationResult<Grupo> {
   const membro = recusaDeMembroAtivo(state, actingMemberId);
   if (membro) return fail(membro);
   const grupo = grupoPorId(state, grupoId);
   if (!grupo) return fail("Grupo não encontrado.");
   if (grupo.papelNaComunidade === "avisos") return fail("O provedor mantém os participantes do Grupo de avisos (RN-COM-04).");
-  const externa = recusaExternaNoGrupo(state, grupo, "administrador");
+  const externa = recusaExternaNoGrupo(state, grupo, "administrador", crm);
   if (externa) return fail(externa);
   const p = grupo.participacoes.find((x) => x.id === participacaoId);
   if (!p) return fail("Participação não encontrada.");
@@ -592,45 +592,45 @@ export function removerParticipante(state: DataState, actingMemberId: Id, grupoI
   const ator = memberActor(actingMemberId);
   const momento = now();
   encerrarParticipacao(grupo, p, { causa: "removido", removidoPor: ator, at: momento });
-  registrarNoGrupo(state, grupo, { actor: ator, action: "Participante removido", detail: nomeDoParticipante(state, p) });
-  if (p.contactId) emitirEventoDeFerramentas(state, { kind: "contatoSaiuDoGrupo", grupoId: grupo.id, contactId: p.contactId, participacaoId: p.id });
+  registrarNoGrupo(state, grupo, { actor: ator, action: "Participante removido", detail: nomeDoParticipanteNoCrm(crm, p) });
+  if (p.contactId) emitirEventoDeFerramentas(state, { kind: "contatoSaiuDoGrupo", grupoId: grupo.id, contactId: p.contactId, participacaoId: p.id }, crm);
   if (grupo.comunidadeId) reconciliarGrupoDeAvisos(state, grupo.comunidadeId, momento);
   return ok(grupo, grupo.id);
 }
 
-function mudarPapel(state: DataState, actingMemberId: Id, grupoId: Id, participacaoId: Id, papel: ParticipacaoDeGrupo["papel"]): OperationResult<Grupo> {
+function mudarPapel(state: DataState, actingMemberId: Id, grupoId: Id, participacaoId: Id, papel: ParticipacaoDeGrupo["papel"], crm?: CrmDasFerramentas): OperationResult<Grupo> {
   const membro = recusaDeMembroAtivo(state, actingMemberId);
   if (membro) return fail(membro);
   const grupo = grupoPorId(state, grupoId);
   if (!grupo) return fail("Grupo não encontrado.");
-  const externa = recusaExternaNoGrupo(state, grupo, "administrador");
+  const externa = recusaExternaNoGrupo(state, grupo, "administrador", crm);
   if (externa) return fail(externa);
   const p = grupo.participacoes.find((x) => x.id === participacaoId);
   if (!p || p.saidaEm !== undefined) return fail("Participação vigente não encontrada.");
   if (p.papel === papel) return ok(grupo);
   if (papel === "membro" && p.canalParticipanteId === grupo.canalId) return fail("Rebaixar o próprio Canal tiraria da plataforma o privilégio de administrar o Grupo.");
   p.papel = papel;
-  registrarNoGrupo(state, grupo, { actor: memberActor(actingMemberId), action: papel === "administrador" ? "Participante promovido a administrador" : "Administrador rebaixado a membro", detail: nomeDoParticipante(state, p) });
+  registrarNoGrupo(state, grupo, { actor: memberActor(actingMemberId), action: papel === "administrador" ? "Participante promovido a administrador" : "Administrador rebaixado a membro", detail: nomeDoParticipanteNoCrm(crm, p) });
   return ok(grupo, grupo.id);
 }
 
-export const promoverParticipante = (state: DataState, actingMemberId: Id, grupoId: Id, participacaoId: Id): OperationResult<Grupo> =>
-  mudarPapel(state, actingMemberId, grupoId, participacaoId, "administrador");
+export const promoverParticipante = (state: DataState, actingMemberId: Id, grupoId: Id, participacaoId: Id, crm?: CrmDasFerramentas): OperationResult<Grupo> =>
+  mudarPapel(state, actingMemberId, grupoId, participacaoId, "administrador", crm);
 
-export const rebaixarParticipante = (state: DataState, actingMemberId: Id, grupoId: Id, participacaoId: Id): OperationResult<Grupo> =>
-  mudarPapel(state, actingMemberId, grupoId, participacaoId, "membro");
+export const rebaixarParticipante = (state: DataState, actingMemberId: Id, grupoId: Id, participacaoId: Id, crm?: CrmDasFerramentas): OperationResult<Grupo> =>
+  mudarPapel(state, actingMemberId, grupoId, participacaoId, "membro", crm);
 
 /**
  * 24, 12.4 — Ferramenta `sair do Grupo` (classe `externa`; IRREVERSÍVEL
  * quando o Canal é o único administrador — 20.6): o Canal deixa o grupo, o
  * Papel fica `ausente`, o Grupo `inacessível`. Nunca arquiva por si.
  */
-export function sairDoGrupo(state: DataState, actingMemberId: Id, grupoId: Id, input: { readonly entendiIrreversivel?: boolean } = {}): OperationResult<Grupo> {
+export function sairDoGrupo(state: DataState, actingMemberId: Id, grupoId: Id, input: { readonly entendiIrreversivel?: boolean } = {}, crm?: CrmDasFerramentas): OperationResult<Grupo> {
   const adm = recusaDeAdministracao(state, actingMemberId);
   if (adm) return fail(adm);
   const grupo = grupoPorId(state, grupoId);
   if (!grupo) return fail("Grupo não encontrado.");
-  const externa = recusaExternaNoGrupo(state, grupo, "participante");
+  const externa = recusaExternaNoGrupo(state, grupo, "participante", crm);
   if (externa) return fail(externa);
   const canal = participacoesVigentes(grupo).find((p) => p.canalParticipanteId === grupo.canalId);
   const outrosAdministradores = participacoesVigentes(grupo).filter((p) => p.papel === "administrador" && p.canalParticipanteId !== grupo.canalId).length;
@@ -704,14 +704,14 @@ export function restaurarGrupoDaLixeira(state: DataState, actingMemberId: Id, gr
 // ── Pedidos de Entrada (24, 7.2) ───────────────────────────────────────────
 
 /** Evento do provedor: alguém pediu para entrar. Sem Membro — é o Sistema que registra. */
-export function receberPedidoDeEntrada(state: DataState, grupoId: Id, numero: string, input: { readonly linkDeCaptacaoId?: Id } = {}): OperationResult<PedidoDeEntrada> {
+export function receberPedidoDeEntrada(state: DataState, grupoId: Id, numero: string, input: { readonly linkDeCaptacaoId?: Id } = {}, crm?: CrmDasFerramentas): OperationResult<PedidoDeEntrada> {
   const grupo = grupoPorId(state, grupoId);
   if (!grupo) return fail("Grupo não encontrado.");
   if (!grupo.configuracoes.administradoresAprovamEntrada) return fail("Este Grupo não aprova entradas: o provedor deixa entrar direto (RN-GRP-16).");
-  const canal = grupo.canalId ? state.channels.find((c) => c.id === grupo.canalId) : undefined;
+  const canal = canalNoCrm(crm, grupo.canalId);
   if (!canal) return fail("O Grupo está sem Canal.");
-  if (canalPeloNumero(state, numero)) return fail("O número é de um Canal do Espaço de Trabalho (RN-GRP-11).");
-  const contato = resolverOuCriarContato(state, canal, numero, `Pedido de entrada no Grupo ${grupo.nome}`);
+  if (canalPeloNumeroNoCrm(crm, numero)) return fail("O número é de um Canal do Espaço de Trabalho (RN-GRP-11).");
+  const contato = resolverOuCriarContato(state, padroesDoCanal(canal), numero, `Pedido de entrada no Grupo ${grupo.nome}`);
   const pendente = pedidosPendentes(grupo).find((p) => p.contactId === contato.id);
   if (pendente) return ok(pendente);
   const pedido: PedidoDeEntrada = {
@@ -725,17 +725,17 @@ export function receberPedidoDeEntrada(state: DataState, grupoId: Id, numero: st
   };
   grupo.pedidosDeEntrada.push(pedido);
   registrarNoGrupo(state, grupo, { actor: systemActor, action: "Pedido de Entrada recebido", detail: contactDisplayName(contato) });
-  emitirEventoDeFerramentas(state, { kind: "pedidoDeEntradaRecebido", grupoId: grupo.id, contactId: contato.id, pedidoId: pedido.id });
+  emitirEventoDeFerramentas(state, { kind: "pedidoDeEntradaRecebido", grupoId: grupo.id, contactId: contato.id, pedidoId: pedido.id }, crm);
   return ok(pedido);
 }
 
 /** Ferramenta `aprovar Pedido` (externa): gera a Participação com a Origem que o provedor informou. */
-export function aprovarPedidoDeEntrada(state: DataState, actingMemberId: Id, grupoId: Id, pedidoId: Id): OperationResult<ParticipacaoDeGrupo> {
+export function aprovarPedidoDeEntrada(state: DataState, actingMemberId: Id, grupoId: Id, pedidoId: Id, crm?: CrmDasFerramentas): OperationResult<ParticipacaoDeGrupo> {
   const membro = recusaDeMembroAtivo(state, actingMemberId);
   if (membro) return fail(membro);
   const grupo = grupoPorId(state, grupoId);
   if (!grupo) return fail("Grupo não encontrado.");
-  const externa = recusaExternaNoGrupo(state, grupo, "administrador");
+  const externa = recusaExternaNoGrupo(state, grupo, "administrador", crm);
   if (externa) return fail(externa);
   const pedido = grupo.pedidosDeEntrada.find((p) => p.id === pedidoId);
   if (!pedido) return fail("Pedido não encontrado.");
@@ -753,19 +753,19 @@ export function aprovarPedidoDeEntrada(state: DataState, actingMemberId: Id, gru
   pedido.estado = "aprovado";
   pedido.decididoPor = ator;
   pedido.decididoEm = momento;
-  const contato = state.contacts.find((c) => c.id === pedido.contactId);
-  registrarNoGrupo(state, grupo, { actor: ator, action: "Pedido de Entrada aprovado", detail: contato ? contactDisplayName(contato) : pedido.identificadorExternoDoSolicitante });
-  if (r.nova) emitirEventoDeFerramentas(state, { kind: "contatoEntrouNoGrupo", grupoId: grupo.id, contactId: pedido.contactId, participacaoId: r.participacao.id });
+  const contato = contatoNoCrm(crm, pedido.contactId);
+  registrarNoGrupo(state, grupo, { actor: ator, action: "Pedido de Entrada aprovado", detail: contato ? contato.nome : pedido.identificadorExternoDoSolicitante });
+  if (r.nova) emitirEventoDeFerramentas(state, { kind: "contatoEntrouNoGrupo", grupoId: grupo.id, contactId: pedido.contactId, participacaoId: r.participacao.id }, crm);
   if (grupo.comunidadeId) reconciliarGrupoDeAvisos(state, grupo.comunidadeId, momento);
   return ok(r.participacao);
 }
 
-export function recusarPedidoDeEntrada(state: DataState, actingMemberId: Id, grupoId: Id, pedidoId: Id, motivoId?: Id): OperationResult<PedidoDeEntrada> {
+export function recusarPedidoDeEntrada(state: DataState, actingMemberId: Id, grupoId: Id, pedidoId: Id, motivoId?: Id, crm?: CrmDasFerramentas): OperationResult<PedidoDeEntrada> {
   const membro = recusaDeMembroAtivo(state, actingMemberId);
   if (membro) return fail(membro);
   const grupo = grupoPorId(state, grupoId);
   if (!grupo) return fail("Grupo não encontrado.");
-  const externa = recusaExternaNoGrupo(state, grupo, "administrador");
+  const externa = recusaExternaNoGrupo(state, grupo, "administrador", crm);
   if (externa) return fail(externa);
   const pedido = grupo.pedidosDeEntrada.find((p) => p.id === pedidoId);
   if (!pedido) return fail("Pedido não encontrado.");
@@ -775,9 +775,9 @@ export function recusarPedidoDeEntrada(state: DataState, actingMemberId: Id, gru
   pedido.decididoPor = memberActor(actingMemberId);
   pedido.decididoEm = now();
   if (motivoId) pedido.motivoDaRecusaId = motivoId;
-  const contato = state.contacts.find((c) => c.id === pedido.contactId);
+  const contato = contatoNoCrm(crm, pedido.contactId);
   const motivo = state.catalog.find((c) => c.id === motivoId)?.name;
-  registrarNoGrupo(state, grupo, { actor: memberActor(actingMemberId), action: "Pedido de Entrada recusado", detail: `${contato ? contactDisplayName(contato) : pedido.identificadorExternoDoSolicitante}${motivo ? ` — ${motivo}` : ""}` });
+  registrarNoGrupo(state, grupo, { actor: memberActor(actingMemberId), action: "Pedido de Entrada recusado", detail: `${contato ? contato.nome : pedido.identificadorExternoDoSolicitante}${motivo ? ` — ${motivo}` : ""}` });
   return ok(pedido);
 }
 
@@ -795,19 +795,19 @@ export interface EntradaNoGrupoInput {
 }
 
 /** O provedor avisou que alguém entrou (ou a Sincronização o viu — 20.3). Resolve/cria o Contato (RN-GRP-10). */
-export function registrarEntradaNoGrupo(state: DataState, grupoId: Id, input: EntradaNoGrupoInput): OperationResult<ParticipacaoDeGrupo> {
+export function registrarEntradaNoGrupo(state: DataState, grupoId: Id, input: EntradaNoGrupoInput, crm?: CrmDasFerramentas): OperationResult<ParticipacaoDeGrupo> {
   const grupo = grupoPorId(state, grupoId);
   if (!grupo) return fail("Grupo não encontrado.");
   if (grupo.lifecycle === "naLixeira") return fail("O Grupo está na lixeira.");
-  const canal = grupo.canalId ? state.channels.find((c) => c.id === grupo.canalId) : undefined;
+  const canal = canalNoCrm(crm, grupo.canalId);
   if (!canal) return fail("O Grupo está sem Canal.");
   const momento = input.at ?? now();
-  const outroCanal = canalPeloNumero(state, input.numero);
+  const outroCanal = canalPeloNumeroNoCrm(crm, input.numero);
   const base = { identificadorExterno: input.numero, origem: input.origem ?? "desconhecida", at: momento, estimada: input.estimada ?? false, doProvedor: true, ...(input.papel ? { papel: input.papel } : {}) };
   const r = outroCanal
     ? abrirParticipacao(state, grupo, { ...base, canalParticipanteId: outroCanal.id })
     : (() => {
-        const contato = resolverOuCriarContato(state, canal, input.numero, `Entrada no Grupo ${grupo.nome}`);
+        const contato = resolverOuCriarContato(state, padroesDoCanal(canal), input.numero, `Entrada no Grupo ${grupo.nome}`);
         return abrirParticipacao(state, grupo, {
           ...base,
           contactId: contato.id,
@@ -818,14 +818,14 @@ export function registrarEntradaNoGrupo(state: DataState, grupoId: Id, input: En
       })();
   if ("erro" in r) return fail(r.erro);
   if (r.nova) {
-    registrarNoGrupo(state, grupo, { actor: systemActor, action: "Contato entrou no Grupo", detail: `${nomeDoParticipante(state, r.participacao)} · origem: ${r.participacao.origem}${r.participacao.origemInferida ? " (inferida)" : ""}`, at: momento });
-    if (r.participacao.contactId) emitirEventoDeFerramentas(state, { kind: "contatoEntrouNoGrupo", grupoId: grupo.id, contactId: r.participacao.contactId, participacaoId: r.participacao.id });
+    registrarNoGrupo(state, grupo, { actor: systemActor, action: "Contato entrou no Grupo", detail: `${nomeDoParticipanteNoCrm(crm, r.participacao)} · origem: ${r.participacao.origem}${r.participacao.origemInferida ? " (inferida)" : ""}`, at: momento });
+    if (r.participacao.contactId) emitirEventoDeFerramentas(state, { kind: "contatoEntrouNoGrupo", grupoId: grupo.id, contactId: r.participacao.contactId, participacaoId: r.participacao.id }, crm);
     if (grupo.comunidadeId) reconciliarGrupoDeAvisos(state, grupo.comunidadeId, momento);
   }
   return ok(r.participacao);
 }
 
-export function registrarSaidaDoGrupo(state: DataState, grupoId: Id, input: { readonly numero: string; readonly causa?: ParticipacaoDeGrupo["causaDaSaida"]; readonly at?: string; readonly estimada?: boolean }): OperationResult<ParticipacaoDeGrupo> {
+export function registrarSaidaDoGrupo(state: DataState, grupoId: Id, input: { readonly numero: string; readonly causa?: ParticipacaoDeGrupo["causaDaSaida"]; readonly at?: string; readonly estimada?: boolean }, crm?: CrmDasFerramentas): OperationResult<ParticipacaoDeGrupo> {
   const grupo = grupoPorId(state, grupoId);
   if (!grupo) return fail("Grupo não encontrado.");
   const p = participacoesVigentes(grupo).find((x) => x.identificadorExternoDoParticipante === input.numero);
@@ -835,8 +835,8 @@ export function registrarSaidaDoGrupo(state: DataState, grupoId: Id, input: { re
   if (p.canalParticipanteId === grupo.canalId) {
     grupo.sincronizacao = { estado: "inacessivel", conferidoEm: momento, papelDoCanal: "ausente", detalhe: "O provedor informou a saída do Canal." };
   }
-  registrarNoGrupo(state, grupo, { actor: systemActor, action: "Contato saiu do Grupo", detail: `${nomeDoParticipante(state, p)} · ${p.causaDaSaida ?? "saiu"}`, at: momento });
-  if (p.contactId) emitirEventoDeFerramentas(state, { kind: "contatoSaiuDoGrupo", grupoId: grupo.id, contactId: p.contactId, participacaoId: p.id });
+  registrarNoGrupo(state, grupo, { actor: systemActor, action: "Contato saiu do Grupo", detail: `${nomeDoParticipanteNoCrm(crm, p)} · ${p.causaDaSaida ?? "saiu"}`, at: momento });
+  if (p.contactId) emitirEventoDeFerramentas(state, { kind: "contatoSaiuDoGrupo", grupoId: grupo.id, contactId: p.contactId, participacaoId: p.id }, crm);
   if (grupo.comunidadeId) reconciliarGrupoDeAvisos(state, grupo.comunidadeId, momento);
   return ok(p);
 }
@@ -844,10 +844,10 @@ export function registrarSaidaDoGrupo(state: DataState, grupoId: Id, input: { re
 // ── Conversa de grupo e Mensagem (RN-GRP-13) ───────────────────────────────
 
 /** INV-GRP-05 — acha a Conversa de grupo; se não existe, cria (aberta ou resolvida conforme Grupos habilitados — 14, 20.18). */
-export function conversaDoGrupoOuCriar(state: DataState, ator: ActorRef, grupo: Grupo): OperationResult<Conversation> {
+export function conversaDoGrupoOuCriar(state: DataState, ator: ActorRef, grupo: Grupo, crm?: CrmDasFerramentas): OperationResult<Conversation> {
   const existente = conversaDoGrupo(state, grupo);
   if (existente) return ok(existente);
-  const canal = grupo.canalId ? state.channels.find((c) => c.id === grupo.canalId) : undefined;
+  const canal = canalNoCrm(crm, grupo.canalId);
   if (!canal || !grupo.identificadorExterno) return fail("O Grupo está sem Canal ou sem Identificador externo.");
   const momento = now();
   const conversa: Conversation = {
@@ -857,8 +857,8 @@ export function conversaDoGrupoOuCriar(state: DataState, ator: ActorRef, grupo: 
     createdAt: momento,
     lifecycle: "ativo",
     channelId: canal.id,
-    state: canal.groupsEnabled ? "aberta" : "resolvida",
-    ...(canal.defaultQueueId ? { queueId: canal.defaultQueueId } : {}),
+    state: canal.gruposHabilitados ? "aberta" : "resolvida",
+    ...(canal.filaPadraoId ? { queueId: canal.filaPadraoId } : {}),
     title: grupo.nome,
     titleEdited: false,
     drafts: [],
@@ -869,10 +869,10 @@ export function conversaDoGrupoOuCriar(state: DataState, ator: ActorRef, grupo: 
     participants: [],
     messages: [],
     reopenCount: 0,
-    ...(canal.groupsEnabled ? {} : { resolvedAt: momento }),
+    ...(canal.gruposHabilitados ? {} : { resolvedAt: momento }),
   };
   state.conversations.push(conversa);
-  recordActivity(state, { actor: ator, action: "Conversa de grupo criada", objectType: "conversation", objectId: conversa.id, objectName: conversa.title, detail: canal.groupsEnabled ? "Grupos habilitados no Canal: nasce aberta." : "Grupos não habilitados no Canal: nasce resolvida (14, 20.18)." });
+  recordActivity(state, { actor: ator, action: "Conversa de grupo criada", objectType: "conversation", objectId: conversa.id, objectName: conversa.title, detail: canal.gruposHabilitados ? "Grupos habilitados no Canal: nasce aberta." : "Grupos não habilitados no Canal: nasce resolvida (14, 20.18)." });
   return ok(conversa);
 }
 
@@ -882,16 +882,17 @@ export function enviarMensagemAoGrupo(
   actingMemberId: Id,
   grupoId: Id,
   input: { readonly content: string; readonly templateProviderId?: string; readonly actor?: ActorRef; readonly delegate?: ActorRef },
+  crm?: CrmDasFerramentas,
 ): OperationResult<{ readonly conversa: Conversation; readonly mensagem: Message }> {
   const membro = recusaDeMembroAtivo(state, actingMemberId);
   if (membro) return fail(membro);
   const grupo = grupoPorId(state, grupoId);
   if (!grupo) return fail("Grupo não encontrado.");
-  const recusa = recusaDeEnvioAoGrupo(state, grupo);
+  const recusa = recusaDeEnvioAoGrupo(state, grupo, crm);
   if (recusa) return fail(recusa);
   if (!input.content.trim()) return fail("Escreva a mensagem antes de enviar.", "conteudo");
   const ator = input.actor ?? memberActor(actingMemberId);
-  const conversa = conversaDoGrupoOuCriar(state, ator, grupo);
+  const conversa = conversaDoGrupoOuCriar(state, ator, grupo, crm);
   if (!conversa.ok) return conversa;
   // 1.2.2 — o ator já passou por `recusaDeMembroAtivo` acima; a `sendMessage` registrada confere a mesma regra.
   const envio = sendMessage(state, actingMemberId, {

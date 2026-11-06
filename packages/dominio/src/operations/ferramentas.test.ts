@@ -151,7 +151,7 @@ describe("Grupos — Participações e Captação", () => {
   });
 
   it("INV-GRP-02 — no máximo uma Participação vigente por Contato: adicionar quem já está devolve `jaEstavam`", () => {
-    const r = unwrap(adicionarParticipantes(state, "mem_julia", "grp_turma_02", { contactIds: ["cnt_10", "cnt_20"] }));
+    const r = unwrap(adicionarParticipantes(state, "mem_julia", "grp_turma_02", { contactIds: ["cnt_10", "cnt_20"] }, crmDoSeed(state)));
     expect(r.jaEstavam).toBe(1);
     expect(r.adicionados.map((p) => p.contactId)).toEqual(["cnt_20"]);
     expect(participacoesVigentes(grupo("grp_turma_02")).filter((p) => p.contactId === "cnt_10")).toHaveLength(1);
@@ -162,31 +162,31 @@ describe("Grupos — Participações e Captação", () => {
     const antes = grupo("grp_turma_02").participacoes.length;
     const p = participacoesVigentes(grupo("grp_turma_02")).find((x) => x.contactId === "cnt_11");
     expect(p).toBeTruthy();
-    expect(removerParticipante(state, "mem_julia", "grp_turma_02", p?.id ?? "").ok).toBe(true);
+    expect(removerParticipante(state, "mem_julia", "grp_turma_02", p?.id ?? "", crmDoSeed(state)).ok).toBe(true);
     expect(grupo("grp_turma_02").participacoes.length).toBe(antes);
     expect(p?.saidaEm).toBeTruthy();
     expect(p?.causaDaSaida).toBe("removido");
     expect(p?.removidoPor).toEqual({ kind: "member", id: "mem_julia" });
-    // e o Contato novo que entra ganha a Tag pela Automação da Comunidade
-    const c20 = state.contacts.find((c) => c.id === "cnt_20");
-    expect(c20?.tagIds).not.toContain("tag_aluno_grupo");
-    unwrap(adicionarParticipantes(state, "mem_julia", "grp_turma_02", { contactIds: ["cnt_20"] }));
-    expect(c20?.tagIds).toContain("tag_aluno_grupo");
-    expect(state.automationExecutions.find((e) => e.automationId === "aut_boas_vindas_grupos")?.state).toBe("concluida");
+    // e a Automação da Comunidade reage à entrada. A Tag do Contato não migrou para o CRM novo
+    // (3.4.8): a Ação falha dizendo por quê, em vez de fingir que gravou.
+    unwrap(adicionarParticipantes(state, "mem_julia", "grp_turma_02", { contactIds: ["cnt_20"] }, crmDoSeed(state)));
+    const execucao = state.automationExecutions.find((e) => e.automationId === "aut_boas_vindas_grupos");
+    expect(execucao?.state).toBe("falhou");
+    expect(execucao?.terminationReason).toMatch(/Contato do CRM novo/);
   });
 
   it("RN-GRP-05 — Grupo em que o Canal é participante recusa administrar, mas aceita sincronizar", () => {
-    const r = adicionarParticipantes(state, "mem_julia", "grp_parceiros", { contactIds: ["cnt_20"] });
+    const r = adicionarParticipantes(state, "mem_julia", "grp_parceiros", { contactIds: ["cnt_20"] }, crmDoSeed(state));
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/participante/);
-    expect(regenerarLinkDeConvite(state, "mem_julia", "grp_parceiros").ok).toBe(false);
-    expect(sincronizarGrupo(state, "mem_julia", "grp_parceiros").ok).toBe(true);
+    expect(regenerarLinkDeConvite(state, "mem_julia", "grp_parceiros", crmDoSeed(state)).ok).toBe(false);
+    expect(sincronizarGrupo(state, "mem_julia", "grp_parceiros", crmDoSeed(state)).ok).toBe(true);
     expect(grupo("grp_parceiros").sincronizacao.estado).toBe("semPrivilegio");
   });
 
   it("RN-GRP-06 — regenerar o Link de convite não toca os Links de Captação", () => {
     const antes = grupo("grp_turma_02").linkDeConvite?.endereco;
-    unwrap(regenerarLinkDeConvite(state, "mem_julia", "grp_turma_02"));
+    unwrap(regenerarLinkDeConvite(state, "mem_julia", "grp_turma_02", crmDoSeed(state)));
     expect(grupo("grp_turma_02").linkDeConvite?.endereco).not.toBe(antes);
     const link = state.linksDeCaptacao.find((l) => l.id === LINK_LANCAMENTO_ID);
     expect(link?.gruposElegiveisIds).toContain("grp_turma_02");
@@ -240,33 +240,33 @@ describe("Grupos — Participações e Captação", () => {
     unwrap(enviarGrupoALixeira(state, "mem_julia", "grp_turma_02"));
     unwrap(restaurarGrupoDaLixeira(state, "mem_julia", "grp_turma_02"));
     expect(grupo("grp_turma_02").sincronizacao.estado).toBe("nuncaConferido");
-    const r = adicionarParticipantes(state, "mem_julia", "grp_turma_02", { contactIds: ["cnt_20"] });
+    const r = adicionarParticipantes(state, "mem_julia", "grp_turma_02", { contactIds: ["cnt_20"] }, crmDoSeed(state));
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/Sincronize/);
-    unwrap(sincronizarGrupo(state, "mem_julia", "grp_turma_02"));
-    expect(adicionarParticipantes(state, "mem_julia", "grp_turma_02", { contactIds: ["cnt_20"] }).ok).toBe(true);
+    unwrap(sincronizarGrupo(state, "mem_julia", "grp_turma_02", crmDoSeed(state)));
+    expect(adicionarParticipantes(state, "mem_julia", "grp_turma_02", { contactIds: ["cnt_20"] }, crmDoSeed(state)).ok).toBe(true);
   });
 
   it("Pedidos de Entrada — aprovar gera Participação; recusar guarda o motivo; sem aprovação o Grupo não recebe Pedido; a Sincronização expira", () => {
     const t3 = grupo("grp_turma_03");
-    const p = unwrap(aprovarPedidoDeEntrada(state, "mem_julia", t3.id, "ped_1"));
+    const p = unwrap(aprovarPedidoDeEntrada(state, "mem_julia", t3.id, "ped_1", crmDoSeed(state)));
     expect(p.contactId).toBe("cnt_29");
     expect(p.origem).toBe("linkDeCaptacao");
     expect(t3.pedidosDeEntrada.find((x) => x.id === "ped_1")?.estado).toBe("aprovado");
-    unwrap(recusarPedidoDeEntrada(state, "mem_julia", t3.id, "ped_2", "cat_perda_semret"));
+    unwrap(recusarPedidoDeEntrada(state, "mem_julia", t3.id, "ped_2", "cat_perda_semret", crmDoSeed(state)));
     expect(t3.pedidosDeEntrada.find((x) => x.id === "ped_2")?.motivoDaRecusaId).toBe("cat_perda_semret");
-    expect(aprovarPedidoDeEntrada(state, "mem_julia", t3.id, "ped_2").ok).toBe(false);
-    expect(receberPedidoDeEntrada(state, "grp_turma_02", "5511999990000").ok).toBe(false);
-    const novo = unwrap(receberPedidoDeEntrada(state, t3.id, "5511999990000"));
+    expect(aprovarPedidoDeEntrada(state, "mem_julia", t3.id, "ped_2", crmDoSeed(state)).ok).toBe(false);
+    expect(receberPedidoDeEntrada(state, "grp_turma_02", "5511999990000", {}, crmDoSeed(state)).ok).toBe(false);
+    const novo = unwrap(receberPedidoDeEntrada(state, t3.id, "5511999990000", {}, crmDoSeed(state)));
     expect(novo.estado).toBe("pendente");
     t3.configuracoes.administradoresAprovamEntrada = false;
-    unwrap(sincronizarGrupo(state, "mem_julia", t3.id));
+    unwrap(sincronizarGrupo(state, "mem_julia", t3.id, crmDoSeed(state)));
     expect(t3.pedidosDeEntrada.find((x) => x.id === novo.id)?.estado).toBe("expirado");
   });
 
   it("RN-GRP-10/11 — a importação cria Contato para número desconhecido, nunca para o Canal, e é idempotente", () => {
     const contatos = state.contacts.length;
-    const r = unwrap(importarGruposDoCanal(state, "mem_rafael", "chn_wpp"));
+    const r = unwrap(importarGruposDoCanal(state, "mem_rafael", "chn_wpp", crmDoSeed(state)));
     expect(r.importados.map((g) => g.nome)).toEqual(["Fornecedores Full Face", "Ex-alunos 2024"]);
     // 3 números desconhecidos viram Contatos "não identificados"; os outros já eram cnt_3..cnt_8
     expect(state.contacts.length).toBe(contatos + 3);
@@ -277,7 +277,7 @@ describe("Grupos — Participações e Captação", () => {
     expect(participacoesVigentes(fornecedores).filter((p) => p.canalParticipanteId).every((p) => p.contactId === undefined)).toBe(true);
     expect(fornecedores.captacao.estado).toBe("inativa");
     expect((r.importados[1] as Grupo).sincronizacao.estado).toBe("semPrivilegio");
-    const de_novo = unwrap(importarGruposDoCanal(state, "mem_rafael", "chn_wpp"));
+    const de_novo = unwrap(importarGruposDoCanal(state, "mem_rafael", "chn_wpp", crmDoSeed(state)));
     expect(de_novo.importados).toHaveLength(0);
     expect(de_novo.jaExistiam).toBe(2);
     expect(state.grupos.filter((g) => g.identificadorExterno === fornecedores.identificadorExterno)).toHaveLength(1);
@@ -286,35 +286,35 @@ describe("Grupos — Participações e Captação", () => {
   it("RN-GRP-13 / INV-GRP-05 — enviar cria a Conversa de grupo uma vez, sem Contato, aberta com Grupos habilitados; resolvida sem", () => {
     const t1 = grupo("grp_turma_01");
     expect(conversaDoGrupo(state, t1)).toBeUndefined();
-    const a = unwrap(enviarMensagemAoGrupo(state, "mem_julia", t1.id, { content: "Aula amanhã!" }));
+    const a = unwrap(enviarMensagemAoGrupo(state, "mem_julia", t1.id, { content: "Aula amanhã!" }, crmDoSeed(state)));
     expect(a.conversa.contactId).toBeUndefined();
     expect(a.conversa.groupIdentifier?.externalId).toBe(t1.identificadorExterno);
     expect(a.conversa.state).toBe("aberta");
     expect(a.mensagem.direction).toBe("enviada");
-    const b = unwrap(enviarMensagemAoGrupo(state, "mem_julia", t1.id, { content: "Trazer dúvidas." }));
+    const b = unwrap(enviarMensagemAoGrupo(state, "mem_julia", t1.id, { content: "Trazer dúvidas." }, crmDoSeed(state)));
     expect(b.conversa.id).toBe(a.conversa.id);
     expect(state.conversations.filter((c) => c.groupIdentifier?.externalId === t1.identificadorExterno)).toHaveLength(1);
     expect(state.activity.filter((x) => x.action === "Mensagem enviada ao Grupo" && x.objectId === t1.id)).toHaveLength(2);
     const canal = state.channels.find((c) => c.id === "chn_wpp");
     if (canal) canal.groupsEnabled = false;
     const t3 = grupo("grp_turma_03");
-    const c = unwrap(enviarMensagemAoGrupo(state, "mem_julia", t3.id, { content: "Oi" }));
+    const c = unwrap(enviarMensagemAoGrupo(state, "mem_julia", t3.id, { content: "Oi" }, crmDoSeed(state)));
     expect(c.conversa.state).toBe("resolvida");
   });
 
   it("sair do Grupo — só administrar; único administrador exige confirmação; fica inacessível e o Link de convite some; não arquiva", () => {
-    expect(sairDoGrupo(state, "mem_julia", "grp_turma_02").ok).toBe(false);
-    const semConfirmar = sairDoGrupo(state, "mem_thiago", "grp_turma_02");
+    expect(sairDoGrupo(state, "mem_julia", "grp_turma_02", {}, crmDoSeed(state)).ok).toBe(false);
+    const semConfirmar = sairDoGrupo(state, "mem_thiago", "grp_turma_02", {}, crmDoSeed(state));
     expect(semConfirmar.ok).toBe(false);
     if (!semConfirmar.ok) expect(semConfirmar.error).toMatch(/irreversível/);
-    unwrap(sairDoGrupo(state, "mem_thiago", "grp_turma_02", { entendiIrreversivel: true }));
+    unwrap(sairDoGrupo(state, "mem_thiago", "grp_turma_02", { entendiIrreversivel: true }, crmDoSeed(state)));
     const t2 = grupo("grp_turma_02");
     expect(t2.sincronizacao).toMatchObject({ estado: "inacessivel", papelDoCanal: "ausente" });
     expect(t2.linkDeConvite).toBeUndefined();
     expect(t2.lifecycle).toBe("ativo");
     expect(participacoesVigentes(t2).some((p) => p.canalParticipanteId === "chn_wpp")).toBe(false);
     // a Turma #01 tem outro administrador (cnt_1): sai sem confirmação
-    expect(sairDoGrupo(state, "mem_thiago", "grp_turma_01").ok).toBe(true);
+    expect(sairDoGrupo(state, "mem_thiago", "grp_turma_01", {}, crmDoSeed(state)).ok).toBe(true);
   });
 
   it("criar Grupo — nasce sincronizado, com o Canal como administrador, Captação ativa e os participantes escolhidos", () => {
@@ -345,7 +345,7 @@ describe("Grupos — Participações e Captação", () => {
     const semConversa = (id: string) => !state.conversations.some((c) => c.contactId === id && c.channelId === "chn_wpp" && c.lifecycle === "ativo" && c.state !== "resolvida");
     const convidados = contatosComWhatsApp(state).map((c) => c.id).filter((id) => id !== "cnt_22" && id !== "cnt_23" && semConversa(id)).slice(0, 2);
     expect(convidados).toHaveLength(2);
-    const envio = unwrap(enviarLinkDeConvite(state, "mem_julia", g.id, [...convidados, "cnt_22"]));
+    const envio = unwrap(enviarLinkDeConvite(state, "mem_julia", g.id, [...convidados, "cnt_22"], crmDoSeed(state)));
     expect(envio.enviados).toEqual(convidados);
     expect(envio.falhas.map((f) => f.contactId)).toEqual(["cnt_22"]);
     for (const id of convidados) {
@@ -355,9 +355,9 @@ describe("Grupos — Participações e Captação", () => {
     // O convite não é entrada: ninguém entrou ainda.
     expect(participacoesVigentes(g).filter((p) => p.contactId && convidados.includes(p.contactId))).toHaveLength(0);
     // Sem Contato escolhido, e com o Link de convite inválido, nada sai.
-    expect(enviarLinkDeConvite(state, "mem_julia", g.id, []).ok).toBe(false);
+    expect(enviarLinkDeConvite(state, "mem_julia", g.id, [], crmDoSeed(state)).ok).toBe(false);
     if (g.linkDeConvite) g.linkDeConvite.estado = "invalido";
-    expect(enviarLinkDeConvite(state, "mem_julia", g.id, convidados).ok).toBe(false);
+    expect(enviarLinkDeConvite(state, "mem_julia", g.id, convidados, crmDoSeed(state)).ok).toBe(false);
   });
 
   it("criar Grupo com foto e capa (C41) — viram Arquivos do Espaço; o que não é imagem, ou passa do teto, é recusado sem deixar nada", () => {
@@ -380,7 +380,7 @@ describe("Grupos — Participações e Captação", () => {
     unwrap(inativarCaptacao(state, "mem_julia", "grp_turma_01"));
     const r = unwrap(registrarClique(state, "lancamento-setembro"));
     expect(r.grupo?.id).toBe("grp_turma_02");
-    const e = unwrap(simularEntradaPorClique(state, r.clique.id, "5511977770001"));
+    const e = unwrap(simularEntradaPorClique(state, r.clique.id, "5511977770001", crmDoSeed(state)));
     expect(e.participacao?.origem).toBe("linkDeCaptacao");
     expect(e.participacao?.cliqueId).toBe(r.clique.id);
     const contato = state.contacts.find((c) => c.id === e.participacao?.contactId);
@@ -390,14 +390,14 @@ describe("Grupos — Participações e Captação", () => {
     unwrap(inativarCaptacao(state, "mem_julia", "grp_turma_02"));
     const r3 = unwrap(registrarClique(state, "lancamento-setembro"));
     expect(r3.grupo?.id).toBe("grp_turma_03");
-    const e3 = unwrap(simularEntradaPorClique(state, r3.clique.id, "5511977770002"));
+    const e3 = unwrap(simularEntradaPorClique(state, r3.clique.id, "5511977770002", crmDoSeed(state)));
     expect(e3.pedidoId).toBeTruthy();
     expect(e3.participacao).toBeUndefined();
   });
 
   it("evento do provedor — entrada de outro Canal do Espaço de Trabalho vira “É o Canal”, sem Contato", () => {
     const antes = state.contacts.length;
-    const p = unwrap(registrarEntradaNoGrupo(state, "grp_turma_02", { numero: "+5511987654321" }));
+    const p = unwrap(registrarEntradaNoGrupo(state, "grp_turma_02", { numero: "+5511987654321" }, crmDoSeed(state)));
     expect(p.canalParticipanteId).toBe("chn_wpp");
     expect(p.contactId).toBeUndefined();
     expect(state.contacts.length).toBe(antes);
@@ -406,38 +406,38 @@ describe("Grupos — Participações e Captação", () => {
 
 describe("Comunidades", () => {
   it("criar — o provedor cria a Comunidade e o Grupo de avisos; o avisos tem Captação inativa e só administradores enviam", () => {
-    const r = unwrap(criarComunidade(state, "mem_julia", { nome: "Mentoria", canalId: "chn_wpp" }));
+    const r = unwrap(criarComunidade(state, "mem_julia", { nome: "Mentoria", canalId: "chn_wpp" }, crmDoSeed(state)));
     expect(r.grupoDeAvisos.papelNaComunidade).toBe("avisos");
     expect(r.grupoDeAvisos.comunidadeId).toBe(r.comunidade.id);
     expect(r.grupoDeAvisos.captacao.estado).toBe("inativa");
     expect(r.grupoDeAvisos.configuracoes.somenteAdministradoresEnviam).toBe(true);
     expect(grupoDeAvisos(state, r.comunidade.id)?.id).toBe(r.grupoDeAvisos.id);
-    expect(criarComunidade(state, "mem_julia", { nome: "X", canalId: "chn_mail" }).ok).toBe(false);
+    expect(criarComunidade(state, "mem_julia", { nome: "X", canalId: "chn_mail" }, crmDoSeed(state)).ok).toBe(false);
   });
 
   it("RN-COM-03 / INV-COM-04 — vincular exige Grupo sem Comunidade, mesmo Canal e admin; desvincular preserva Participações e sai do avisos", () => {
-    const r = unwrap(criarComunidade(state, "mem_thiago", { nome: "Mentoria", canalId: "chn_wpp" }));
-    const jaVinculado = vincularGrupoAComunidade(state, "mem_thiago", r.comunidade.id, "grp_turma_02");
+    const r = unwrap(criarComunidade(state, "mem_thiago", { nome: "Mentoria", canalId: "chn_wpp" }, crmDoSeed(state)));
+    const jaVinculado = vincularGrupoAComunidade(state, "mem_thiago", r.comunidade.id, "grp_turma_02", crmDoSeed(state));
     expect(jaVinculado.ok).toBe(false);
     if (!jaVinculado.ok) expect(jaVinculado.error).toMatch(/outra Comunidade/);
-    const semPrivilegio = vincularGrupoAComunidade(state, "mem_thiago", r.comunidade.id, "grp_parceiros");
+    const semPrivilegio = vincularGrupoAComunidade(state, "mem_thiago", r.comunidade.id, "grp_parceiros", crmDoSeed(state));
     expect(semPrivilegio.ok).toBe(false);
-    unwrap(desvincularGrupoDaComunidade(state, "mem_thiago", COMUNIDADE_ALUNOS_ID, "grp_turma_02"));
+    unwrap(desvincularGrupoDaComunidade(state, "mem_thiago", COMUNIDADE_ALUNOS_ID, "grp_turma_02", crmDoSeed(state)));
     const t2 = grupo("grp_turma_02");
     expect(t2.comunidadeId).toBeUndefined();
     expect(participacoesVigentes(t2).length).toBeGreaterThan(1);
     // saiu do avisos: os membros só da #02 não estão mais lá
     const avisos = grupoDeAvisos(state, COMUNIDADE_ALUNOS_ID) as Grupo;
     expect(membrosDoGrupo(avisos).some((p) => p.contactId === "cnt_10")).toBe(false);
-    unwrap(vincularGrupoAComunidade(state, "mem_thiago", r.comunidade.id, "grp_turma_02"));
+    unwrap(vincularGrupoAComunidade(state, "mem_thiago", r.comunidade.id, "grp_turma_02", crmDoSeed(state)));
     expect(grupo("grp_turma_02").comunidadeId).toBe(r.comunidade.id);
     expect(membrosDoGrupo(r.grupoDeAvisos).some((p) => p.contactId === "cnt_10")).toBe(true);
     // só administrar vincula
-    expect(vincularGrupoAComunidade(state, "mem_julia", r.comunidade.id, "grp_turma_03").ok).toBe(false);
+    expect(vincularGrupoAComunidade(state, "mem_julia", r.comunidade.id, "grp_turma_03", crmDoSeed(state)).ok).toBe(false);
   });
 
   it("INV-COM-02 / INV-COM-01 — o Grupo de avisos não é desvinculável, mas tem o ciclo de vida de qualquer Grupo", () => {
-    expect(desvincularGrupoDaComunidade(state, "mem_thiago", COMUNIDADE_ALUNOS_ID, "grp_avisos_ff").ok).toBe(false);
+    expect(desvincularGrupoDaComunidade(state, "mem_thiago", COMUNIDADE_ALUNOS_ID, "grp_avisos_ff", crmDoSeed(state)).ok).toBe(false);
     // A lixeira da Comunidade não leva o avisos (INV-COM-01); a do Grupo é um ato próprio.
     unwrap(enviarComunidadeALixeira(state, "mem_thiago", COMUNIDADE_ALUNOS_ID));
     expect(grupo("grp_avisos_ff").lifecycle).toBe("ativo");
@@ -446,15 +446,15 @@ describe("Comunidades", () => {
   });
 
   it("25, 12.1 → 12.2 — nascer vinculado exige o que vincular exige: Comunidade inacessível recusa o Grupo novo", () => {
-    unwrap(sairDaComunidade(state, "mem_thiago", COMUNIDADE_ALUNOS_ID, { entendiIrreversivel: true }));
+    unwrap(sairDaComunidade(state, "mem_thiago", COMUNIDADE_ALUNOS_ID, { entendiIrreversivel: true }, crmDoSeed(state)));
     const r = criarGrupo(state, "mem_julia", { nome: "Turma #05", canalId: "chn_wpp", comunidadeId: COMUNIDADE_ALUNOS_ID }, crmDoSeed(state));
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/inacessível/);
   });
 
   it("RN-COM-04 — ninguém é adicionado ao avisos diretamente; RN-COM-06 — membros contados uma vez", () => {
-    expect(adicionarParticipantes(state, "mem_julia", "grp_avisos_ff", { contactIds: ["cnt_20"] }).ok).toBe(false);
-    unwrap(adicionarParticipantes(state, "mem_julia", "grp_turma_02", { contactIds: ["cnt_16"] }));
+    expect(adicionarParticipantes(state, "mem_julia", "grp_avisos_ff", { contactIds: ["cnt_20"] }, crmDoSeed(state)).ok).toBe(false);
+    unwrap(adicionarParticipantes(state, "mem_julia", "grp_turma_02", { contactIds: ["cnt_16"] }, crmDoSeed(state)));
     const membros = membrosDaComunidade(state, COMUNIDADE_ALUNOS_ID);
     expect(membros.filter((id) => id === "cnt_16")).toHaveLength(1);
     const avisos = grupoDeAvisos(state, COMUNIDADE_ALUNOS_ID) as Grupo;
@@ -462,7 +462,7 @@ describe("Comunidades", () => {
   });
 
   it("RN-COM-05 — enviar à Comunidade é enviar ao Grupo de avisos, com Registro na Comunidade", () => {
-    const r = unwrap(enviarMensagemAComunidade(state, "mem_julia", COMUNIDADE_ALUNOS_ID, { content: "Aviso geral" }));
+    const r = unwrap(enviarMensagemAComunidade(state, "mem_julia", COMUNIDADE_ALUNOS_ID, { content: "Aviso geral" }, crmDoSeed(state)));
     expect(r.grupoDeAvisos.id).toBe("grp_avisos_ff");
     expect(r.conversa.id).toBe("cnv_grp_avisos");
     expect(state.activity.find((a) => a.action === "Mensagem enviada à Comunidade" && a.objectId === COMUNIDADE_ALUNOS_ID && a.detail?.includes("Aviso geral"))).toBeTruthy();
@@ -472,7 +472,7 @@ describe("Comunidades", () => {
   it("Comunidade na lixeira — enviar à Comunidade recusa pela Comunidade, mesmo com o Grupo de avisos ativo (INV-COM-01)", () => {
     unwrap(enviarComunidadeALixeira(state, "mem_thiago", COMUNIDADE_ALUNOS_ID));
     expect(grupo("grp_avisos_ff").lifecycle).toBe("ativo");
-    const r = enviarMensagemAComunidade(state, "mem_julia", COMUNIDADE_ALUNOS_ID, { content: "Oi" });
+    const r = enviarMensagemAComunidade(state, "mem_julia", COMUNIDADE_ALUNOS_ID, { content: "Oi" }, crmDoSeed(state));
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toBe("A Comunidade está na lixeira.");
   });
@@ -487,8 +487,8 @@ describe("Comunidades", () => {
       c.lifecycle = "ativo";
       delete c.archivedAt;
     }
-    expect(sairDaComunidade(state, "mem_thiago", COMUNIDADE_ALUNOS_ID).ok).toBe(false);
-    unwrap(sairDaComunidade(state, "mem_thiago", COMUNIDADE_ALUNOS_ID, { entendiIrreversivel: true }));
+    expect(sairDaComunidade(state, "mem_thiago", COMUNIDADE_ALUNOS_ID, {}, crmDoSeed(state)).ok).toBe(false);
+    unwrap(sairDaComunidade(state, "mem_thiago", COMUNIDADE_ALUNOS_ID, { entendiIrreversivel: true }, crmDoSeed(state)));
     expect(state.comunidades.find((x) => x.id === COMUNIDADE_ALUNOS_ID)?.sincronizacao.papelDoCanal).toBe("ausente");
     expect(grupo("grp_avisos_ff").sincronizacao.papelDoCanal).toBe("ausente");
     expect(grupo("grp_turma_02").sincronizacao.papelDoCanal).toBe("administrador");
@@ -601,7 +601,7 @@ describe("Flows — Versões, envio e resposta", () => {
 
   it("DO-FLW-03 / RN-FLW-02/04/06 — publicar torna a anterior obsoleta, o rascunho publicada e abre um rascunho novo; a publicada é imutável; inválida não publica", () => {
     const f = flow();
-    const r = unwrap(publicarVersao(state, "mem_thiago", f.id, { notas: "Agora com o WhatsApp da clínica." }));
+    const r = unwrap(publicarVersao(state, "mem_thiago", f.id, { notas: "Agora com o WhatsApp da clínica." }, crmDoSeed(state)));
     expect(r.publicada.numero).toBe(2);
     expect(r.publicada.instantaneoPublicado).toContain("whatsapp_clinica");
     expect(r.rascunho.numero).toBe(3);
@@ -617,12 +617,12 @@ describe("Flows — Versões, envio e resposta", () => {
     const perfil = v3.telas.find((t) => t.identificador === "perfil");
     const rodape = perfil?.componentes.find((c) => c.tipo === "rodape");
     unwrap(editarComponente(state, "mem_thiago", f.id, perfil?.id ?? "", rodape?.id ?? "", { acao: { tipo: "navegar", telaDeDestino: "nada" } }));
-    const falha = publicarVersao(state, "mem_thiago", f.id);
+    const falha = publicarVersao(state, "mem_thiago", f.id, {}, crmDoSeed(state));
     expect(falha.ok).toBe(false);
     expect(state.activity.find((a) => a.action === "Validação falhou" && a.objectId === f.id)?.result).toBe("failed");
     expect(versaoPublicada(f)?.numero).toBe(2);
     // publicar exige administrar
-    expect(publicarVersao(state, "mem_julia", f.id).ok).toBe(false);
+    expect(publicarVersao(state, "mem_julia", f.id, {}, crmDoSeed(state)).ok).toBe(false);
   });
 
   it("RN-FLW-03 / RN-FLW-05 — descartar o único rascunho é recusado; criar rascunho a partir de uma obsoleta traz a Proveniência", () => {
@@ -633,7 +633,7 @@ describe("Flows — Versões, envio e resposta", () => {
     expect(novo.numero).toBe(2);
     expect(novo.proveniencia?.numero).toBe(1);
     expect(criarRascunhoAPartirDe(state, "mem_thiago", f.id, "vfl_triagem_1").ok).toBe(false);
-    const solto = unwrap(criarFlow(state, "mem_julia", { nome: "Pesquisa", categoria: "pesquisa", canalId: "chn_wpp" }));
+    const solto = unwrap(criarFlow(state, "mem_julia", { nome: "Pesquisa", categoria: "pesquisa", canalId: "chn_wpp" }, crmDoSeed(state)));
     expect(solto.versoes).toHaveLength(1);
     expect(descartarRascunho(state, "mem_julia", solto.id).ok).toBe(false);
     expect(validarVersao(solto, solto.versoes[0] as VersaoDeFlow, state.files)).toEqual([]);
@@ -642,38 +642,38 @@ describe("Flows — Versões, envio e resposta", () => {
   it("INV-FLW-02 / RN-FLW-01 / RN-FLW-13 — enviar leva a publicada dentro da Mensagem; despublicado, arquivado ou outro Canal recusam", () => {
     const f = flow();
     const cnv = state.conversations.find((c) => c.id === "cnv_5");
-    const r = unwrap(enviarFlow(state, "mem_julia", { flowId: f.id, conversationId: "cnv_5", corpo: "Me conta sobre você?", rotuloDoBotao: "Responder" }));
+    const r = unwrap(enviarFlow(state, "mem_julia", { flowId: f.id, conversationId: "cnv_5", corpo: "Me conta sobre você?", rotuloDoBotao: "Responder" }, crmDoSeed(state)));
     expect(r.mensagem.flow).toMatchObject({ flowId: f.id, versaoId: "vfl_triagem_1", numeroDaVersao: 1, rotuloDoBotao: "Responder", telaInicial: "perfil" });
     expect(r.mensagem.attachments[0]?.mediaType).toBe("flow");
     expect(cnv?.messages.at(-1)?.id).toBe(r.mensagem.id);
     expect(metricasDoFlow(state, f.id).envios).toBe(5);
-    expect(enviarFlow(state, "mem_julia", { flowId: f.id, conversationId: "cnv_2", corpo: "x" }).ok).toBe(false);
-    expect(enviarFlow(state, "mem_julia", { flowId: f.id, conversationId: "cnv_grp_avisos", corpo: "x" }).ok).toBe(false);
+    expect(enviarFlow(state, "mem_julia", { flowId: f.id, conversationId: "cnv_2", corpo: "x" }, crmDoSeed(state)).ok).toBe(false);
+    expect(enviarFlow(state, "mem_julia", { flowId: f.id, conversationId: "cnv_grp_avisos", corpo: "x" }, crmDoSeed(state)).ok).toBe(false);
     unwrap(despublicarFlow(state, "mem_thiago", f.id));
-    const semPublicada = enviarFlow(state, "mem_julia", { flowId: f.id, conversationId: "cnv_5", corpo: "x" });
+    const semPublicada = enviarFlow(state, "mem_julia", { flowId: f.id, conversationId: "cnv_5", corpo: "x" }, crmDoSeed(state));
     expect(semPublicada.ok).toBe(false);
     if (!semPublicada.ok) expect(semPublicada.error).toMatch(/publicada/);
-    unwrap(publicarVersao(state, "mem_thiago", f.id));
+    unwrap(publicarVersao(state, "mem_thiago", f.id, {}, crmDoSeed(state)));
     unwrap(arquivarFlow(state, "mem_thiago", f.id));
-    expect(enviarFlow(state, "mem_julia", { flowId: f.id, conversationId: "cnv_5", corpo: "x" }).ok).toBe(false);
-    expect(publicarVersao(state, "mem_thiago", f.id).ok).toBe(false);
+    expect(enviarFlow(state, "mem_julia", { flowId: f.id, conversationId: "cnv_5", corpo: "x" }, crmDoSeed(state)).ok).toBe(false);
+    expect(publicarVersao(state, "mem_thiago", f.id, {}, crmDoSeed(state)).ok).toBe(false);
   });
 
   it("DO-FLW-02 / 20.1 / 20.5 — a Resposta entra como Mensagem recebida na Conversa 1:1; obsoleta aceita; Nome estranho marca não conforme; métricas por Versão", () => {
     const f = flow();
     const antes = metricasDoFlow(state, f.id);
     expect(antes).toEqual({ envios: 4, respostas: 3, taxa: 0.75 });
-    const r = unwrap(receberRespostaDeFlow(state, { flowId: f.id, contactId: "cnt_17", valores: { formacao: "dentista", cidade: "Osasco", aceite: true } }));
+    const r = unwrap(receberRespostaDeFlow(state, { flowId: f.id, contactId: "cnt_17", valores: { formacao: "dentista", cidade: "Osasco", aceite: true } }, crmDoSeed(state)));
     expect(r.mensagem.direction).toBe("recebida");
     expect(r.mensagem.respostaDeFlow?.naoConforme).toBeUndefined();
     expect(r.conversa.id).toBe("cnv_17");
     expect(metricasDoFlow(state, f.id)).toEqual({ envios: 4, respostas: 4, taxa: 1 });
-    unwrap(publicarVersao(state, "mem_thiago", f.id));
-    const obsoleta = unwrap(receberRespostaDeFlow(state, { flowId: f.id, contactId: "cnt_5", versaoId: "vfl_triagem_1", valores: { formacao: "medico", cidade: "x", aceite: true, inventado: 1 } }));
+    unwrap(publicarVersao(state, "mem_thiago", f.id, {}, crmDoSeed(state)));
+    const obsoleta = unwrap(receberRespostaDeFlow(state, { flowId: f.id, contactId: "cnt_5", versaoId: "vfl_triagem_1", valores: { formacao: "medico", cidade: "x", aceite: true, inventado: 1 } }, crmDoSeed(state)));
     expect(obsoleta.mensagem.respostaDeFlow?.numeroDaVersao).toBe(1);
     expect(obsoleta.mensagem.respostaDeFlow?.naoConforme).toBe(true);
     expect(metricasDoFlow(state, f.id, "vfl_triagem_1").respostas).toBe(5);
-    expect(receberRespostaDeFlow(state, { flowId: f.id, contactId: "cnt_5", versaoId: rascunho().id, valores: {} }).ok).toBe(false);
+    expect(receberRespostaDeFlow(state, { flowId: f.id, contactId: "cnt_5", versaoId: rascunho().id, valores: {} }, crmDoSeed(state)).ok).toBe(false);
   });
 
   it("copiar — nasce com Proveniência, um rascunho copiado da corrente e chaves novas", () => {
@@ -694,7 +694,7 @@ describe("Realce — o resultado nomeia o registro tocado", () => {
     expect(g.ok).toBe(true);
     if (!g.ok) return;
     expect(g.id).toBe(g.value.id);
-    const m = enviarMensagemAoGrupo(state, "mem_julia", g.value.id, { content: "Acendeu?" });
+    const m = enviarMensagemAoGrupo(state, "mem_julia", g.value.id, { content: "Acendeu?" }, crmDoSeed(state));
     expect(m.ok).toBe(true);
     if (m.ok) expect(m.id).toBe(m.value.mensagem.id);
   });

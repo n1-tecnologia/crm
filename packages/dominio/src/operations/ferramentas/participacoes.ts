@@ -31,9 +31,16 @@ export const canalPeloNumero = (state: DataState, numero: string): Channel | und
  * RN-GRP-10 — resolve o Contato pelo Identificador `identidadeDeWhatsApp`
  * (B13); um `mesclado` resolve ao sobrevivente (B14); sem Contato, o Sistema
  * cria um "Não identificado" com Proprietário pela cadeia Canal → Caixa →
- * Proprietário do ET (DO-CXE-05) e Origem padrão do Canal.
+ * Proprietário do ET (DO-CXE-05) e Origem padrão do Canal. O Canal é lido só
+ * pelos padrões: serve o Canal do CRM novo (15-07) e, até o 15-17 levar a
+ * criação do Contato para `plataforma.contatos`, o Contato nasce no estado.
  */
-export function resolverOuCriarContato(state: DataState, canal: Channel, numero: string, detalhe: string): Contact {
+export function resolverOuCriarContato(
+  state: DataState,
+  canal: Pick<Channel, "id" | "defaultContactOwnerMemberId" | "defaultQueueId" | "defaultOriginId">,
+  numero: string,
+  detalhe: string,
+): Contact {
   const valor = canonicalIdentifier("identidadeDeWhatsApp", numero);
   let contato = state.contacts.find((c) => c.identifiers.some((i) => i.type === "identidadeDeWhatsApp" && i.value === valor));
   let saltos = 0;
