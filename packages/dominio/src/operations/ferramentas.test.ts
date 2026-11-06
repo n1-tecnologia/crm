@@ -706,8 +706,9 @@ describe("criarGrupo — o Canal vem do CRM novo (Fase 15, 3.4.8)", () => {
   };
 
   it("cria o Grupo com o Canal de crm.canais, sem Canal nenhum no modelo antigo", () => {
+    const canais = [canalNovo()];
     state.channels = [];
-    const r = unwrap(criarGrupo(state, "mem_julia", { nome: "Turma da tabela", canalId: "canal-da-tabela" }, { canais: [canalNovo()], contatos: [] }));
+    const r = unwrap(criarGrupo(state, "mem_julia", { nome: "Turma da tabela", canalId: "canal-da-tabela" }, { canais, contatos: [] }));
     expect(r.canalId).toBe("canal-da-tabela");
     expect(r.tipoDeCanal).toBe("whatsapp");
     expect(participacoesVigentes(r).some((p) => p.canalParticipanteId === "canal-da-tabela")).toBe(true);

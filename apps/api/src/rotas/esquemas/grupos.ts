@@ -10,8 +10,26 @@
  * regra de negócio.
  */
 
+import type { CrmDasFerramentas } from "@n1/dominio";
 import { ACTOR_REF, ID, opcional, type Esquemas } from "./fragmentos";
 import { z } from "zod";
+
+/**
+ * O `crm` que o navegador manda como ÚLTIMO argumento das operações de
+ * Ferramentas (Grupo, Comunidade, Flow), só para a execução local: o servidor o
+ * DESCARTA e troca a posição pelo que leu de `plataforma.canais` e
+ * `plataforma.contatos` (`gesto-no-crm/ferramentas.ts`, T-15-20). Aqui só a
+ * forma de transporte, com tetos; o tipo de saída declarado é o do domínio
+ * apenas para o esquema satisfazer a assinatura da operação (`Esquemas`) — o
+ * valor que sai daqui nunca chega ao domínio.
+ */
+export const CRM_DO_NAVEGADOR = z
+  .object({
+    canais: z.array(z.object({ id: ID }).passthrough()).max(200),
+    contatos: z.array(z.object({ id: ID }).passthrough()).max(200),
+    contatosACriar: z.array(z.object({ id: ID }).passthrough()).max(200).optional(),
+  })
+  .passthrough() as unknown as z.ZodType<CrmDasFerramentas>;
 
 const CONFIGURACOES_DO_GRUPO = z
   .object({
@@ -89,7 +107,7 @@ const ENVIAR_MENSAGEM_AO_GRUPO_INPUT = z
  * para `z.ZodTypeAny`.
  */
 export const GRUPOS = {
-  criarGrupo: z.tuple([CRIAR_GRUPO_INPUT]),
+  criarGrupo: z.tuple([CRIAR_GRUPO_INPUT, opcional(CRM_DO_NAVEGADOR)]),
   importarGruposDoCanal: z.tuple([ID]),
   sincronizarGrupo: z.tuple([ID]),
   editarGrupo: z.tuple([ID, EDITAR_GRUPO_INPUT]),

@@ -53,6 +53,18 @@ export interface Contato {
   readonly atualizadoEm: string;
 }
 
+/**
+ * Um Contato que uma operação decidiu criar: o id é gerado pelo servidor antes
+ * da operação e o `aoConfirmar` faz o INSERT no mesmo commit. A forma é a mesma
+ * do `ContatoACriar` de `apps/api/src/rotas/gesto-no-crm/tipos.ts` (a
+ * compatibilidade é estrutural: o domínio não importa a api).
+ */
+export interface ContatoACriar {
+  readonly id: string;
+  readonly nome: string;
+  readonly whatsapp: string;
+}
+
 export interface IdentificadorDeContato {
   readonly id: string;
   readonly contatoId: string;

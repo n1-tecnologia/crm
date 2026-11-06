@@ -9,6 +9,8 @@
  * o vocabulário é o da ontologia, e a tela o repete palavra por palavra.
  */
 
+import type { Canal } from "../crm/canais";
+import type { ContatoACriar } from "../crm/contatos";
 import type { ChannelType } from "./crm";
 import type { ActorRef, Comment, FieldValue, Id, Instant, Provenance, RecordBase } from "./primitives";
 import type { VersionState } from "./ai";
@@ -416,3 +418,33 @@ export interface RespostaDeFlow {
 
 /** (22, 7.5) — classe de efeito de uma Ferramenta do Canal. */
 export type ClasseDeEfeito = "interna" | "externa" | "externaIrreversivel";
+
+// ── O CRM que as Ferramentas conferem (Fase 15, 3.4.8) ─────────────────────
+
+/**
+ * Um Contato como as Ferramentas o enxergam: o bastante para achar por
+ * Identificador `whatsapp` e saber se ainda vale. Tem a MESMA forma de
+ * `ContatoResumido` da api, então o que o servidor leu passa sem conversão.
+ */
+export interface ContatoDaFerramenta {
+  readonly id: Id;
+  readonly nome: string;
+  readonly estado: string;
+  /** O Identificador `whatsapp` do Contato, quando tem. */
+  readonly whatsapp: string | null;
+}
+
+/**
+ * O que as operações de Grupo, Comunidade e Flow conferem do CRM novo: os
+ * Canais de `plataforma.canais` e os Contatos de `plataforma.contatos` que a
+ * operação cita. É o ÚLTIMO argumento, opcional: o servidor o lê na transação e
+ * sobrescreve o que o navegador mandar; ausente vale vazio.
+ */
+export interface CrmDasFerramentas {
+  readonly canais: readonly Canal[];
+  readonly contatos: readonly ContatoDaFerramenta[];
+  /** Contatos que a operação decidiu criar (ids já gerados pelo servidor; quem insere é o `aoConfirmar`). */
+  readonly contatosACriar?: readonly ContatoACriar[];
+}
+
+export const CRM_DAS_FERRAMENTAS_VAZIO: CrmDasFerramentas = { canais: [], contatos: [] };

@@ -11,7 +11,7 @@
  */
 
 import { fail, ok, type DataState, type OperationResult } from "../../state";
-import type { ActorRef, Captacao, ConfiguracoesDoGrupo, Conversation, Grupo, Id, Message, ParticipacaoDeGrupo, PedidoDeEntrada } from "../../types";
+import { CRM_DAS_FERRAMENTAS_VAZIO, type ActorRef, type Captacao, type ConfiguracoesDoGrupo, type Conversation, type CrmDasFerramentas, type Grupo, type Id, type Message, type ParticipacaoDeGrupo, type PedidoDeEntrada } from "../../types";
 import { contactDisplayName } from "../../derive";
 import { conversaDoGrupo, identidadeDeWhatsApp, participacoesVigentes, pedidosPendentes } from "../../derive-ferramentas";
 import { memberActor, nextId, recordActivity, systemActor } from "../activity";
@@ -27,7 +27,7 @@ import {
   registrarNoGrupo,
   resolverOuCriarContato,
 } from "./participacoes";
-import { recusaDeAdministracao, recusaDeEnvioAoGrupo, recusaDeMembroAtivo, recusaDoCanal, recusaExternaNaComunidade, recusaExternaNoGrupo } from "./permissoes";
+import { canalNoCrm, recusaDeAdministracao, recusaDeEnvioAoGrupo, recusaDeMembroAtivo, recusaDoCanal, recusaExternaNaComunidade, recusaExternaNoGrupo } from "./permissoes";
 import { GRUPOS_NO_PROVEDOR, gerarEnderecoDeConvite, gerarJid } from "./provedor-simulado";
 
 const now = (): string => new Date().toISOString();
@@ -102,14 +102,15 @@ function recusaDaImagem(imagem: ImagemDoGrupo | undefined, qual: "A foto" | "A c
  * com o Canal como administrador, Origem `criadoPelaPlataforma` e Captação
  * `ativa`.
  */
-export function criarGrupo(state: DataState, actingMemberId: Id, input: CriarGrupoInput): OperationResult<Grupo> {
+export function criarGrupo(state: DataState, actingMemberId: Id, input: CriarGrupoInput, crm?: CrmDasFerramentas): OperationResult<Grupo> {
+  const noCrm = crm ?? CRM_DAS_FERRAMENTAS_VAZIO;
   const membro = recusaDeMembroAtivo(state, actingMemberId);
   if (membro) return fail(membro);
-  const canalRecusa = recusaDoCanal(state, input.canalId, "gruposAdministraveis");
+  const canalRecusa = recusaDoCanal(state, input.canalId, "gruposAdministraveis", noCrm);
   if (canalRecusa) return fail(canalRecusa, "canal");
-  const canal = state.channels.find((c) => c.id === input.canalId);
+  const canal = canalNoCrm(noCrm, input.canalId);
   if (!canal) return fail("Canal não encontrado.", "canal");
-  const capacidades = CAPACIDADES_DE_ATIVOS[canal.channelType];
+  const capacidades = CAPACIDADES_DE_ATIVOS[canal.tipo];
   const nomeRecusa = recusaDeNome(input.nome, capacidades.limiteDoNome);
   if (nomeRecusa) return fail(nomeRecusa, "nome");
   if ((input.descricao?.length ?? 0) > capacidades.limiteDaDescricao) return fail(`A descrição passa do limite do provedor (${capacidades.limiteDaDescricao} caracteres).`, "descricao");
@@ -125,7 +126,7 @@ export function criarGrupo(state: DataState, actingMemberId: Id, input: CriarGru
     const c = state.comunidades.find((x) => x.id === input.comunidadeId);
     if (!c || c.lifecycle !== "ativo") return fail("A Comunidade escolhida não está ativa.", "comunidade");
     // Nascer vinculado é vincular (25, 12.1 → 12.2): a Comunidade precisa estar acessível e administrada pelo Canal.
-    const externaNaComunidade = recusaExternaNaComunidade(state, c, "administrador");
+    const externaNaComunidade = recusaExternaNaComunidade(state, c, "administrador", noCrm);
     if (externaNaComunidade) return fail(externaNaComunidade, "comunidade");
     if (c.canalId !== canal.id) return fail("A Comunidade é administrada por outro Canal (INV-COM-03).", "comunidade");
     const vinculados = state.grupos.filter((g) => g.comunidadeId === c.id && g.lifecycle !== "naLixeira").length;
@@ -136,10 +137,10 @@ export function criarGrupo(state: DataState, actingMemberId: Id, input: CriarGru
   // C40 — o Contato criador entra como administrador, como os escolhidos para administrar.
   const criador = input.contatoCriadorId ? [input.contatoCriadorId] : [];
   const participantes = [...new Set([...criador, ...(input.participantesIniciaisContactIds ?? []), ...(input.administradoresContactIds ?? [])])];
-  const contatos = participantes.map((id) => state.contacts.find((c) => c.id === id && c.lifecycle === "ativo"));
+  const contatos = participantes.map((id) => noCrm.contatos.find((c) => c.id === id && c.estado === "ativo"));
   for (const contato of contatos) {
     if (!contato) return fail("Um dos Contatos escolhidos não está ativo.", "participantes");
-    if (!identidadeDeWhatsApp(contato)) return fail(`${contactDisplayName(contato)} não tem identidade de WhatsApp: o provedor não o encontra.`, "participantes");
+    if (!contato.whatsapp) return fail(`${contato.nome} não tem identidade de WhatsApp: o provedor não o encontra.`, "participantes");
   }
   if (contatos.length + 1 > capacidades.capacidadeDoGrupo) return fail(`Mais participantes do que a Capacidade do Grupo (${capacidades.capacidadeDoGrupo}).`, "participantes");
 
@@ -152,7 +153,7 @@ export function criarGrupo(state: DataState, actingMemberId: Id, input: CriarGru
     createdAt: momento,
     lifecycle: "ativo",
     nome: input.nome.trim(),
-    tipoDeCanal: canal.channelType,
+    tipoDeCanal: canal.tipo,
     identificadorExterno: gerarJid(state),
     canalId: canal.id,
     sincronizacao: { estado: "sincronizado", conferidoEm: momento, papelDoCanal: "administrador" },
@@ -171,13 +172,13 @@ export function criarGrupo(state: DataState, actingMemberId: Id, input: CriarGru
     ...(input.contatoCriadorId ? { contatoCriadorId: input.contatoCriadorId } : {}),
   };
   // O próprio Canal é o primeiro participante — administrador, "É o Canal" (RN-GRP-11).
-  abrirParticipacao(state, grupo, { canalParticipanteId: canal.id, identificadorExterno: canal.externalId, papel: "administrador", origem: "adicionado", at: momento, adicionadoPor: ator });
+  abrirParticipacao(state, grupo, { canalParticipanteId: canal.id, identificadorExterno: canal.identificadorExterno, papel: "administrador", origem: "adicionado", at: momento, adicionadoPor: ator });
   const administradores = new Set([...criador, ...(input.administradoresContactIds ?? [])]);
   for (const contato of contatos) {
     if (!contato) continue;
     const r = abrirParticipacao(state, grupo, {
       contactId: contato.id,
-      identificadorExterno: identidadeDeWhatsApp(contato) ?? "",
+      identificadorExterno: contato.whatsapp ?? "",
       papel: administradores.has(contato.id) ? "administrador" : "membro",
       origem: "adicionado",
       at: momento,
@@ -209,7 +210,7 @@ export function criarGrupo(state: DataState, actingMemberId: Id, input: CriarGru
   if (input.capa) grupo.capaFileId = arquivo(input.capa);
   state.grupos.push(grupo);
   const nomeDoCriador = input.contatoCriadorId ? contatos.find((c) => c?.id === input.contatoCriadorId) : undefined;
-  registrarNoGrupo(state, grupo, { actor: ator, action: "Grupo criado", detail: `${canal.name}${comunidade ? ` · na Comunidade ${comunidade.nome}` : ""}${nomeDoCriador ? ` · criador ${contactDisplayName(nomeDoCriador)}` : ""}` });
+  registrarNoGrupo(state, grupo, { actor: ator, action: "Grupo criado", detail: `${canal.nome}${comunidade ? ` · na Comunidade ${comunidade.nome}` : ""}${nomeDoCriador ? ` · criador ${nomeDoCriador.nome}` : ""}` });
   for (const p of participacoesVigentes(grupo)) {
     if (p.contactId) emitirEventoDeFerramentas(state, { kind: "contatoEntrouNoGrupo", grupoId: grupo.id, contactId: p.contactId, participacaoId: p.id });
   }
