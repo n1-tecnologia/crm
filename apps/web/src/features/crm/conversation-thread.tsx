@@ -53,7 +53,7 @@ import { useData, useRehidratar, useRun } from "@/dados/store";
 import { ErroDeApi } from "@/dados/crm/cliente-crm";
 import { useCanais } from "@/dados/crm/canais";
 import { useContato } from "@/dados/crm/contatos";
-import { useConversa, useConversas } from "@/dados/crm/conversas";
+import { abrirConversa, useConversa, useConversas } from "@/dados/crm/conversas";
 import { enviarMensagem, useMensagens } from "@/dados/crm/mensagens";
 import { useNegocios } from "@/dados/crm/negocios";
 import { criarTarefaConversacional } from "@/dados/crm/tarefas-conversacionais";
@@ -231,6 +231,8 @@ export function ConversationThread({
   const enviandoRef = useRef(false);
   // A Mensagem que acabou de sair, para o fio acender só ela.
   const [recemEnviada, setRecemEnviada] = useState<string | null>(null);
+  // A Conversa que o próprio fio acabou de abrir: dali em diante é ela que ele segue.
+  const [aberta, setAberta] = useState<string | undefined>(undefined);
   const [agora] = useState(() => Date.now());
 
   /*
@@ -241,7 +243,8 @@ export function ConversationThread({
   const contatoQ = useContato(contatoId);
   const canaisQ = useCanais({ estado: "ativo", limite: LIMITES_CRM.paginaMaxima });
   const conversasQ = useConversas({ contatoId, estado: "ativo", limite: LIMITES_CRM.paginaMaxima });
-  const pedidaQ = useConversa(conversaId);
+  const seguida = aberta ?? conversaId;
+  const pedidaQ = useConversa(seguida);
   const negociosQ = useNegocios({ contatoId, estado: "ativo", limite: LIMITES_CRM.paginaMaxima });
 
   const canais = canaisQ.data?.itens;
@@ -354,7 +357,7 @@ export function ConversationThread({
       ? { id: pedida.id, canalId: pedida.canalId, situacao: pedida.situacao, ultimaRecebidaEm: null }
       : undefined;
   const conversa: ConversaDaAba | undefined =
-    doCanal.find((c) => c.id === conversaId) ??
+    doCanal.find((c) => c.id === seguida) ??
     pedidaDestaAba ??
     doCanal.find((c) => c.situacao !== "resolvida") ??
     doCanal[0];
@@ -399,10 +402,12 @@ export function ConversationThread({
 
   const bloqueio = enviando
     ? "Enviando a Mensagem…"
-    : !conversa
-      ? "Abra o atendimento antes de escrever."
+    : !canal
+      ? "Este Contato não tem Canal."
       : draft.trim() === ""
-        ? "Escreva a mensagem antes de enviar."
+        ? conversa
+          ? "Escreva a mensagem antes de enviar."
+          : "Escreva a primeira Mensagem antes de enviar."
         : exigeModelo
           ? "A janela de resposta expirou e este Canal não tem Mensagem de modelo aprovada: não dá para enviar agora."
           : janelaFechada
@@ -431,16 +436,30 @@ export function ConversationThread({
     setErro(falha instanceof ErroDeApi ? falha.message : "Não foi possível enviar a Mensagem. Tente de novo.");
   };
 
+  /*
+    Com Conversa no Canal da aba, a Mensagem vai para ela (`POST /mensagens`).
+    Sem ela, a Conversa nasce COM a primeira Mensagem (`POST /conversas`,
+    INV-CXE-05, F14-D-07): não existe Conversa vazia. O Canal da Conversa é o da
+    aba, para sempre (INV-CXE-04).
+  */
   const enviar = async () => {
-    if (enviandoRef.current || !conversa) return;
+    if (enviandoRef.current || !canal) return;
     enviandoRef.current = true;
     setEnviando(true);
     try {
-      const enviada = await enviarMensagem({ conversaId: conversa.id, direcao: "enviada", conteudo: draft });
-      setRecemEnviada(enviada.id);
+      if (conversa) {
+        const enviada = await enviarMensagem({ conversaId: conversa.id, direcao: "enviada", conteudo: draft });
+        setRecemEnviada(enviada.id);
+        setAviso("Mensagem enviada.");
+      } else {
+        const nova = await abrirConversa({ canalId: canal.id, contatoId, mensagem: { conteudo: draft } });
+        setAberta(nova.conversa.id);
+        setRecemEnviada(nova.primeiraMensagem.id);
+        setAviso("Conversa aberta e Mensagem enviada.");
+        onConversaAberta?.(nova.conversa.id);
+      }
       setDraft("");
       setErro(null);
-      setAviso("Mensagem enviada.");
     } catch (falha) {
       recusar(falha);
     } finally {
@@ -482,7 +501,7 @@ export function ConversationThread({
       <ConfirmDialog
         open={confirmandoEnvio}
         title={`Enviar a ${nomeDoContato} por ${canal ? rotuloDoCanalNasTabelas(canal) : ""}?`}
-        description="Esta Mensagem sai da plataforma. Depois de enviada, nada aqui a apaga do lado de quem recebeu."
+        description={`${conversa ? "Esta Mensagem sai da plataforma." : "Esta é a primeira Mensagem: ela abre a Conversa neste Canal e sai da plataforma."} Depois de enviada, nada aqui a apaga do lado de quem recebeu.`}
         confirmLabel="Enviar"
         {...(enviando ? { confirmDisabledReason: "Enviando a Mensagem…" } : {})}
         confirmCarregando={enviando}
@@ -984,7 +1003,7 @@ export function ConversationThread({
             {!conversa ? (
               <EmptyState
                 title={`Nenhuma Conversa em ${canal ? rotuloDoCanalNasTabelas(canal) : "nenhum Canal"}.`}
-                hint="A Conversa nasce quando a Mensagem do Contato chega."
+                hint="A Conversa nasce quando a Mensagem do Contato chega — ou agora, com a sua primeira Mensagem, escrita abaixo."
               />
             ) : (
               marcadoresDeCanal(
@@ -1252,7 +1271,7 @@ export function ConversationThread({
                 ) : null}
 
                 <label className="sr-only" htmlFor="compositor-ficha">
-                  Escrever para {nomeDoContato}
+                  {conversa ? `Escrever para ${nomeDoContato}` : "Primeira Mensagem"}
                 </label>
                 <textarea
                   id="compositor-ficha"
@@ -1265,8 +1284,8 @@ export function ConversationThread({
                     }
                   }}
                   rows={1}
-                  disabled={!conversa}
-                  placeholder={conversa ? "Digite uma mensagem" : "Abra o atendimento para escrever"}
+                  disabled={!canal}
+                  placeholder={conversa ? "Digite uma mensagem" : "Escreva a primeira Mensagem"}
                   className="app-base max-h-40 min-h-10 min-w-0 flex-1 resize-none border-0 bg-[var(--page)] px-4 py-2.5 outline-none [field-sizing:content] placeholder:text-[var(--texto-3)] disabled:opacity-50"
                   style={{ borderRadius: "calc(var(--controle-h) / 2)" }}
                 />
