@@ -30,6 +30,7 @@ import {
   tiposDaLista,
   tipoPadraoDaLista,
 } from "../derive";
+import type { LeituraDoCrmParaPainel } from "../derive";
 import type { DataState } from "../state";
 import {
   changeTaskStatus,
@@ -1066,6 +1067,41 @@ describe("Restauração de Agente (B94)", () => {
   });
 });
 
+/**
+ * O CRM como o Painel o lê desde o 15-23: as linhas das rotas, por argumento. Estes testes
+ * seguem usando os Negócios do seed antigo como MASSA de dados; o helper só os põe na forma da
+ * lista (`valor` em texto, `estado` do CRM novo, Origem e Motivo de Perda pelo nome no Catálogo).
+ */
+function crmDoSeed(estado: DataState): LeituraDoCrmParaPainel {
+  const estadoCrm = (lifecycle: string) => (lifecycle === "ativo" ? "ativo" : lifecycle === "arquivado" ? "arquivado" : "na_lixeira");
+  const nome = (id: string | undefined) => (id ? (estado.catalog.find((item) => item.id === id)?.name ?? null) : null);
+  return {
+    negocios: estado.deals.map((deal) => ({
+      id: deal.id,
+      funilId: deal.funnelId,
+      etapaId: deal.stageId,
+      situacao: deal.situation,
+      estado: estadoCrm(deal.lifecycle),
+      valor: deal.value ? String(deal.value.amount) : null,
+      moeda: deal.value?.currency ?? "BRL",
+      proprietarioId: deal.ownerMemberId,
+      encerradoEm: deal.closedAt ?? null,
+      origem: nome(deal.originId),
+      motivoPerda: nome(deal.lossReasonId),
+    })),
+    conversas: estado.conversations.map((conversa) => ({
+      id: conversa.id,
+      situacao: conversa.state,
+      estado: conversa.lifecycle === "ativo" ? ("ativo" as const) : ("na_lixeira" as const),
+      filaId: conversa.queueId ?? null,
+    })),
+    contatos: estado.contacts.map((contato) => ({ id: contato.id, estado: estadoCrm(contato.lifecycle) })),
+    funis: estado.funnels.map((funil) => ({ id: funil.id, nome: funil.name })),
+    etapas: estado.funnels.flatMap((funil) => funil.stages.map((etapa) => ({ id: etapa.id, funilId: funil.id, nome: etapa.name }))),
+    parcial: false,
+  };
+}
+
 describe("Leitura de Widget e permissões do visualizador (RN-PAI-15, RN-PAI-13, B38a)", () => {
   const CONVIDADA = "mem_beatriz";
 
@@ -1077,7 +1113,7 @@ describe("Leitura de Widget e permissões do visualizador (RN-PAI-15, RN-PAI-13,
   };
 
   it("conta Negócios por Etapa e nomeia cada Etapa, não o identificador", () => {
-    const reading = widgetReading(state, widgetDe("pnl_sdr", "wg_sdr_funil"), THIAGO, new Date());
+    const reading = widgetReading(state, widgetDe("pnl_sdr", "wg_sdr_funil"), THIAGO, new Date(), crmDoSeed(state));
 
     expect(reading.kind).toBe("serie");
     if (reading.kind !== "serie") throw new Error("esperava série");
@@ -1094,7 +1130,7 @@ describe("Leitura de Widget e permissões do visualizador (RN-PAI-15, RN-PAI-13,
   });
 
   it("soma dinheiro por moeda e nunca consolida (RN-PAI-13)", () => {
-    const reading = widgetReading(state, widgetDe("pnl_closer", "wg_clo_valor"), THIAGO, new Date());
+    const reading = widgetReading(state, widgetDe("pnl_closer", "wg_clo_valor"), THIAGO, new Date(), crmDoSeed(state));
 
     expect(reading.kind).toBe("moeda");
     if (reading.kind !== "moeda") throw new Error("esperava moeda");
@@ -1114,11 +1150,11 @@ describe("Leitura de Widget e permissões do visualizador (RN-PAI-15, RN-PAI-13,
     // A Convidada não tem concessão no Espaço de escopo deste Widget.
     expect(memberSeesResource(state, CONVIDADA, "spc_ops")).toBe(false);
 
-    const reading = widgetReading(state, widget, CONVIDADA, new Date());
+    const reading = widgetReading(state, widget, CONVIDADA, new Date(), crmDoSeed(state));
 
     expect(reading.kind).toBe("semAcesso");
     // E a mesma leitura, para quem alcança, traz número: zero seria mentira.
-    const daProprietaria = widgetReading(state, widget, THIAGO, new Date());
+    const daProprietaria = widgetReading(state, widget, THIAGO, new Date(), crmDoSeed(state));
     expect(daProprietaria.kind).toBe("serie");
   });
 
@@ -2191,7 +2227,7 @@ describe("Abrir atendimento e vincular à Empresa", () => {
 
 describe("Leitura de Widget: dimensões comerciais, moeda e Filtro fixo", () => {
   const ler = (widget: Parameters<typeof widgetReading>[1]) =>
-    widgetReading(state, widget, THIAGO, new Date());
+    widgetReading(state, widget, THIAGO, new Date(), crmDoSeed(state));
 
   const fonte = {
     target: "deal",

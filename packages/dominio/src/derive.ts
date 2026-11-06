@@ -3,7 +3,10 @@
  * the recorded state, as the ontology requires (B36, B45, B100, RN-CRM-16).
  */
 
+import type { ContatoResumo } from "./crm/contatos";
 import type { ConversaNaLista } from "./crm/conversas";
+import type { Etapa, Funil } from "./crm/funis";
+import type { NegocioResumo } from "./crm/negocios";
 import { ACAO_DESCRICAO_ALTERADA, membrosMencionadosNaDescricao, trechoDaMencao } from "./descricao-da-tarefa";
 import { ACTOR_KIND_LABEL } from "./rotulos";
 import type { DataState } from "./state";
@@ -26,6 +29,7 @@ import type {
   Id,
   Lifecycle,
   List,
+  Money,
   PaiDeConteiner,
   Space,
   StatusCategory,
@@ -845,12 +849,13 @@ export function memberSeesResource(state: DataState, memberId: Id, resourceId: I
 export type WidgetReading =
   | { readonly kind: "semAcesso" }
   | { readonly kind: "texto"; readonly content: string }
-  | { readonly kind: "numero"; readonly value: number; readonly label: string }
+  | { readonly kind: "numero"; readonly value: number; readonly label: string; readonly parcial?: true }
   /** RN-PAI-13 — o Painel nunca converte: uma série por moeda, sempre rotulada. */
   | {
       readonly kind: "moeda";
       readonly label: string;
       readonly byCurrency: ReadonlyArray<{ readonly currency: string; readonly amount: number }>;
+      readonly parcial?: true;
     }
   | {
       readonly kind: "serie";
@@ -860,7 +865,38 @@ export type WidgetReading =
       readonly rows: ReadonlyArray<{ readonly label: string; readonly value: number }>;
       readonly total: number;
       readonly shown: number;
+      readonly parcial?: true;
     };
+
+/**
+ * O CRM novo que o Painel lê (15-23, 3.4.7, UCR-07): as linhas que as rotas
+ * `GET /negocios`, `/conversas`, `/contatos` e `/funis` devolvem (até
+ * `LIMITES_CRM.paginaMaxima` cada), mais as Etapas dos Funis. Nada disto sai do
+ * store: os `deals`, `conversations`, `contacts` e `funnels` dele são o modelo
+ * antigo. As formas são só o que o Widget lê (`Pick`), então a lista resumida da
+ * api serve sem conversão.
+ *
+ * `origem` e `motivoPerda` são texto livre no Negócio novo e a lista resumida não os traz:
+ * quando vierem, as dimensões Origem e Motivo de Perda passam a ter linhas; sem eles, ficam
+ * sem linhas (o Widget diz "nenhum registro", não inventa categoria).
+ */
+export interface LeituraDoCrmParaPainel {
+  readonly negocios: ReadonlyArray<
+    Pick<NegocioResumo, "id" | "funilId" | "etapaId" | "situacao" | "estado" | "valor" | "moeda" | "proprietarioId" | "encerradoEm"> & {
+      readonly origem?: string | null;
+      readonly motivoPerda?: string | null;
+    }
+  >;
+  readonly conversas: ReadonlyArray<Pick<ConversaNaLista, "id" | "situacao" | "estado" | "filaId">>;
+  readonly contatos: ReadonlyArray<Pick<ContatoResumo, "id" | "estado">>;
+  readonly funis: ReadonlyArray<Pick<Funil, "id" | "nome">>;
+  readonly etapas: ReadonlyArray<Pick<Etapa, "id" | "funilId" | "nome">>;
+  /**
+   * A lista lida é só uma parte do que a api tem (o `total` passa do que veio). Quem monta o
+   * argumento decide por alvo; a leitura carrega a marca só nos Widgets cuja Fonte é do CRM.
+   */
+  readonly parcial: boolean;
+}
 
 /**
  * Documento 21 — o Widget lê o dado no momento da consulta e SEMPRE pelas
@@ -890,6 +926,7 @@ export function widgetReading(
   },
   memberId: Id,
   now: Date,
+  crm: LeituraDoCrmParaPainel,
 ): WidgetReading {
   if (widget.viewType === "texto") {
     return { kind: "texto", content: widget.content ?? "" };
@@ -904,7 +941,9 @@ export function widgetReading(
   );
   if (!scopeVisible) return { kind: "semAcesso" };
 
-  const todos = recordsOfTarget(state, source.target, source.scopeType, source.scopeIds);
+  const todos = recordsOfTarget(state, crm, source.target, source.scopeType, source.scopeIds);
+  // A marca de parcial só vale onde o dado é do CRM e a lista lida ficou curta; Tarefa lê o store inteiro.
+  const marca: { readonly parcial?: true } = crm.parcial && ALVOS_DO_CRM.has(source.target) ? { parcial: true } : {};
 
   /*
    * Documento 21, 7.5 — o Filtro fixo é gravado e vale em toda leitura. Sem
@@ -920,7 +959,7 @@ export function widgetReading(
       ? todos
       : todos.filter((record) =>
           filtros.every((filtro) => {
-            const lido = dimensionLabel(state, record, filtro.attribute, undefined) ?? "";
+            const lido = dimensionLabel(state, crm, record, filtro.attribute, undefined) ?? "";
             const alvo = filtro.value.toLocaleLowerCase("pt-BR");
             const atual = lido.toLocaleLowerCase("pt-BR");
             return filtro.operator === "diferenteDe" ? atual !== alvo : atual === alvo;
@@ -932,17 +971,16 @@ export function widgetReading(
   if (metric.aggregation === "soma" && metric.attribute === "value") {
     const byCurrency = new Map<string, number>();
     for (const record of records) {
-      if (!("value" in record) || !record.value) continue;
-      byCurrency.set(
-        record.value.currency,
-        (byCurrency.get(record.value.currency) ?? 0) + record.value.amount,
-      );
+      const dinheiro = dinheiroDe(record);
+      if (!dinheiro) continue;
+      byCurrency.set(dinheiro.currency, (byCurrency.get(dinheiro.currency) ?? 0) + dinheiro.amount);
     }
     if (!dimension) {
       return {
         kind: "moeda",
         label: metric.label,
         byCurrency: [...byCurrency.entries()].map(([currency, amount]) => ({ currency, amount })),
+        ...marca,
       };
     }
     // Com dimensão a série é uma barra por categoria, e uma barra não cabe duas
@@ -962,14 +1000,14 @@ export function widgetReading(
       }
       return 1;
     }
-    if (metric.attribute === "value") return "value" in record ? (record.value?.amount ?? 0) : 0;
+    if (metric.attribute === "value") return dinheiroDe(record)?.amount ?? 0;
     if (metric.attribute === "estimate") return "estimate" in record ? (record.estimate ?? 0) : 0;
     return 0;
   };
 
   if (!dimension) {
     const value = records.reduce((sum, record) => sum + valueOf(record), 0);
-    return { kind: "numero", value, label: metric.label };
+    return { kind: "numero", value, label: metric.label, ...marca };
   }
 
   const buckets = new Map<string, number>();
@@ -983,7 +1021,7 @@ export function widgetReading(
       }
       continue;
     }
-    const key = dimensionLabel(state, record, dimension.attribute, dimension.timeGranularity);
+    const key = dimensionLabel(state, crm, record, dimension.attribute, dimension.timeGranularity);
     if (key === undefined) continue;
     buckets.set(key, (buckets.get(key) ?? 0) + valueOf(record));
   }
@@ -994,8 +1032,7 @@ export function widgetReading(
   const limit = widget.limit ?? 12;
   const currency =
     metric.aggregation === "soma" && metric.attribute === "value"
-      ? records.find((record): record is Deal => "value" in record && record.value !== undefined)
-          ?.value?.currency
+      ? records.map(dinheiroDe).find((dinheiro) => dinheiro !== undefined)?.currency
       : undefined;
   return {
     kind: "serie",
@@ -1004,29 +1041,69 @@ export function widgetReading(
     rows: all.slice(0, limit),
     total: all.length,
     shown: Math.min(limit, all.length),
+    ...marca,
   };
 }
 
-type TargetRecord = Deal | Conversation | Task | Contact;
+/** Os alvos de Widget cujo dado é do CRM novo (por argumento); `task` lê o store. */
+const ALVOS_DO_CRM: ReadonlySet<string> = new Set(["deal", "conversation", "contact"]);
+
+/** Um Negócio do CRM novo, com os nomes que o Widget usa (funil, etapa, situação) e o dinheiro já como número. */
+interface NegocioDoPainel {
+  readonly alvo: "deal";
+  readonly funnelId: Id;
+  readonly stageId: Id;
+  readonly situation: string;
+  readonly value: Money | undefined;
+  readonly closedAt: string | undefined;
+  readonly ownerMemberId: Id;
+  readonly originLabel: string | undefined;
+  readonly lossLabel: string | undefined;
+}
+interface ConversaDoPainel {
+  readonly alvo: "conversation";
+  readonly state: string;
+}
+interface ContatoDoPainel {
+  readonly alvo: "contact";
+}
+type TargetRecord = Task | NegocioDoPainel | ConversaDoPainel | ContatoDoPainel;
+
+const comoNegocio = (negocio: LeituraDoCrmParaPainel["negocios"][number]): NegocioDoPainel => {
+  // `valor` trafega como texto decimal (numeric(15,2)); Negócio sem Valor não soma nem escolhe moeda.
+  const quantia = negocio.valor === null ? Number.NaN : Number(negocio.valor);
+  return {
+    alvo: "deal",
+    funnelId: negocio.funilId,
+    stageId: negocio.etapaId,
+    situation: negocio.situacao,
+    value: Number.isFinite(quantia) ? { amount: quantia, currency: negocio.moeda } : undefined,
+    closedAt: negocio.encerradoEm ?? undefined,
+    ownerMemberId: negocio.proprietarioId,
+    originLabel: negocio.origem ?? undefined,
+    lossLabel: negocio.motivoPerda ?? undefined,
+  };
+};
+
+const dinheiroDe = (record: TargetRecord): Money | undefined => ("alvo" in record && record.alvo === "deal" ? record.value : undefined);
 
 function recordsOfTarget(
   state: DataState,
+  crm: LeituraDoCrmParaPainel,
   target: string,
   scopeType: string,
   scopeIds: readonly Id[],
 ): readonly TargetRecord[] {
-  const inScope = (value: Id | undefined): boolean =>
-    scopeType === "workspace" || (value !== undefined && scopeIds.includes(value));
+  const inScope = (value: Id | undefined | null): boolean =>
+    scopeType === "workspace" || (value !== undefined && value !== null && scopeIds.includes(value));
 
   switch (target) {
     case "deal":
-      return state.deals.filter((deal) => deal.lifecycle === "ativo" && inScope(deal.funnelId));
+      return crm.negocios.filter((negocio) => negocio.estado === "ativo" && inScope(negocio.funilId)).map(comoNegocio);
     case "conversation":
-      return state.conversations.filter(
-        (conversation) =>
-          conversation.lifecycle === "ativo" &&
-          (scopeType === "inbox" || scopeType === "workspace" || inScope(conversation.queueId)),
-      );
+      return crm.conversas
+        .filter((conversa) => conversa.estado === "ativo" && (scopeType === "inbox" || scopeType === "workspace" || inScope(conversa.filaId)))
+        .map((conversa): ConversaDoPainel => ({ alvo: "conversation", state: conversa.situacao }));
     case "task":
       return state.tasks.filter((task) => {
         if (effectiveLifecycleOfTask(state, task.id) !== "ativo") return false;
@@ -1036,7 +1113,7 @@ function recordsOfTarget(
         return path.some((node) => scopeIds.includes(node.id));
       });
     case "contact":
-      return state.contacts.filter((contact) => contact.lifecycle === "ativo");
+      return crm.contatos.filter((contato) => contato.estado === "ativo").map((): ContatoDoPainel => ({ alvo: "contact" }));
     default:
       return [];
   }
@@ -1046,31 +1123,25 @@ const capitalize = (value: string): string => value.charAt(0).toUpperCase() + va
 
 function dimensionLabel(
   state: DataState,
+  crm: LeituraDoCrmParaPainel,
   record: TargetRecord,
   attribute: string,
   granularity: string | undefined,
 ): string | undefined {
-  if (attribute === "stageId" && "stageId" in record) {
-    const funnel = state.funnels.find((f) => f.id === record.funnelId);
-    return funnel?.stages.find((s) => s.id === record.stageId)?.name;
-  }
-  if (attribute === "state" && "state" in record) return capitalize(record.state);
   if (attribute === "statusCategory" && "statusId" in record) {
     return statusCategory(state, record as Task);
   }
-  if (attribute === "lossReasonId" && "lossReasonId" in record) {
-    if (!record.lossReasonId) return undefined;
-    return state.catalog.find((c) => c.id === record.lossReasonId)?.name;
-  }
-  if (attribute === "originId" && "originId" in record) {
-    if (!record.originId) return undefined;
-    return state.catalog.find((c) => c.id === record.originId)?.name;
-  }
-  if (attribute === "situation" && "situation" in record) return capitalize(record.situation);
-  if (attribute === "ownerMemberId" && "ownerMemberId" in record) {
-    return state.members.find((m) => m.id === record.ownerMemberId)?.displayName;
-  }
-  if (attribute === "closedAt" && "closedAt" in record) {
+  if (!("alvo" in record)) return undefined;
+  if (record.alvo === "conversation") return attribute === "state" ? capitalize(record.state) : undefined;
+  if (record.alvo !== "deal") return undefined;
+
+  if (attribute === "stageId") return crm.etapas.find((etapa) => etapa.id === record.stageId)?.nome;
+  if (attribute === "funnelId") return crm.funis.find((funil) => funil.id === record.funnelId)?.nome;
+  if (attribute === "lossReasonId") return record.lossLabel;
+  if (attribute === "originId") return record.originLabel;
+  if (attribute === "situation") return capitalize(record.situation);
+  if (attribute === "ownerMemberId") return state.members.find((m) => m.id === record.ownerMemberId)?.displayName;
+  if (attribute === "closedAt") {
     if (!record.closedAt) return undefined;
     const date = new Date(record.closedAt);
     if (granularity === "ano") return String(date.getFullYear());

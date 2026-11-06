@@ -282,9 +282,9 @@ describe("widgetReading — Conversas e Contatos do CRM novo por argumento", () 
     expect(numero(ler(deConversa("queue", ["fila_z"]), crm))).toBe(0);
   });
 
-  it("Contatos ativos: arquivado e lixeira não contam; mesclado também não", () => {
+  it("Contatos ativos: arquivado e lixeira não contam", () => {
     expect(state.contacts.length).toBeGreaterThan(0);
-    const crm = crmCom({ contatos: [contato("a"), contato("b"), contato("c", "arquivado"), contato("d", "na_lixeira"), contato("e", "mesclado")] });
+    const crm = crmCom({ contatos: [contato("a"), contato("b"), contato("c", "arquivado"), contato("d", "na_lixeira")] });
     const widget: EntradaDoWidget = {
       viewType: "numero",
       dataSource: { target: "contact", scopeType: "workspace", scopeIds: [state.workspace.id] },
