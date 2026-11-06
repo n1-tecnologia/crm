@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 9
+open_count: 10
 waived_count: 1
 fixed_count: 4
-total_count: 14
-last_updated: 2026-11-06T10:20:00.602Z
+total_count: 15
+last_updated: 2026-11-06T10:29:12.443Z
 ---
 
 # Broken Windows Ledger
@@ -29,6 +29,7 @@ last_updated: 2026-11-06T10:20:00.602Z
 | 12 | 15 | deviation | packages/dominio/src/operations/ferramentas/automacoes.ts |  | 15-07: as Acoes de Automacao contato.adicionarTag e contato.definirCampo falham (Contato do CRM novo nao guarda Tag/Campo de Automacao de Ferramentas); decidir o destino no 15-17/15-22 | open |  | 2026-11-06T09:50:50.940Z |  |
 | 13 | 15 | deviation | apps/web/src/app/(shell)/ia/chat/page.tsx |  | 15-08: ancorar Chat ou ensaio num Negocio, Contato, Empresa ou Conversa no navegador recusa/nomeia pelo id ate o 15-21 mandar nomes (o servidor grava certo pelas tabelas) | open |  | 2026-11-06T10:06:57.673Z |  |
 | 14 | 15 | deviation | apps/web/src/app/(shell)/configuracoes/membros/page.tsx |  | 15-36: o dialogo de remover Membro e a pagina do Membro filtram o tipo conversation de previewSuccession (so contam as Conversas das tabelas); as Conversas de Grupo do modelo antigo agora passam ao Sucessor em removeMember mas nao aparecem na contagem ate o 3.5.4 tirar o modelo antigo | open |  | 2026-11-06T10:20:00.602Z |  |
+| 15 | 15 | deviation | apps/api/src/repositorios/crm/atividades.ts |  | 15-37: a paginacao de GET /atividades por cursor de tempo (ate = at da ultima linha, ISO em ms, exclusivo) pode pular linhas gravadas no mesmo instante na fronteira da pagina (now() e da transacao: um gesto com varias Atividades compartilha o em; at perde os microssegundos). Aceito no desenho do plano; trocar por cursor composto (em, id) se a Auditoria (15-09) paginar paginas cheias | open |  | 2026-11-06T10:29:12.443Z |  |
 
 ````json
 [
@@ -211,6 +212,19 @@ last_updated: 2026-11-06T10:20:00.602Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-06T10:20:00.602Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 15,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/api/src/repositorios/crm/atividades.ts",
+    "line": null,
+    "description": "15-37: a paginacao de GET /atividades por cursor de tempo (ate = at da ultima linha, ISO em ms, exclusivo) pode pular linhas gravadas no mesmo instante na fronteira da pagina (now() e da transacao: um gesto com varias Atividades compartilha o em; at perde os microssegundos). Aceito no desenho do plano; trocar por cursor composto (em, id) se a Auditoria (15-09) paginar paginas cheias",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T10:29:12.443Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }
