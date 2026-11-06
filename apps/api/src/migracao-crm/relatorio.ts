@@ -51,6 +51,8 @@ export interface EntradaDoRelatorio {
   /** As nove coleções em `plataforma.registros` agora (com zero também). */
   readonly noRegistros: readonly ContagemPorColecao[];
   readonly conversasDeGrupo: number;
+  /** Conversas 1:1 que ficam em `registros` (Flow, Automação, convite de Grupo, ou sem classificação) — 15-44, H-02. */
+  readonly conversasDeFlow: number;
   readonly jaGuardadas: readonly ContagemPorColecao[];
   readonly funis: readonly FunilDoRelatorio[];
   readonly funisNoCrmNovo: { readonly total: number; readonly temPadrao: boolean };
@@ -125,9 +127,9 @@ function somar(contagens: readonly ContagemPorColecao[], contar: (c: ContagemPor
   return contagens.reduce((total, c) => total + contar(c), 0);
 }
 
-/** Quantas linhas saem de `registros` num `--guardar`: as oito coleções e as Conversas sem Grupo. */
+/** Quantas linhas saem de `registros` num `--guardar`: as oito coleções e as Conversas do CRM antigo (as que ficam não entram). */
 function linhasQueSaem(entrada: EntradaDoRelatorio): number {
-  return somar(entrada.noRegistros, (c) => (c.colecao === COLECAO_DE_CONVERSAS ? c.linhas - entrada.conversasDeGrupo : c.linhas));
+  return somar(entrada.noRegistros, (c) => (c.colecao === COLECAO_DE_CONVERSAS ? c.linhas - entrada.conversasDeGrupo - entrada.conversasDeFlow : c.linhas));
 }
 
 function linhasDoFunil(funil: FunilDoRelatorio): string[] {
@@ -155,7 +157,10 @@ export function montarRelatorio(entrada: EntradaDoRelatorio): string {
   linhas.push("");
   linhas.push("CRM antigo em plataforma.registros (o que o corte tira):");
   for (const c of entrada.noRegistros) {
-    const nota = c.colecao === COLECAO_DE_CONVERSAS && entrada.conversasDeGrupo > 0 ? `   (${entrada.conversasDeGrupo} de Grupo: ficam em registros, F14-D-05)` : "";
+    const ficam: string[] = [];
+    if (c.colecao === COLECAO_DE_CONVERSAS && entrada.conversasDeGrupo > 0) ficam.push(`${entrada.conversasDeGrupo} de Grupo`);
+    if (c.colecao === COLECAO_DE_CONVERSAS && entrada.conversasDeFlow > 0) ficam.push(`${entrada.conversasDeFlow} de Flow, Automação ou convite de Grupo`);
+    const nota = ficam.length > 0 ? `   (${ficam.join(" e ")}: ficam em registros, F14-D-05)` : "";
     linhas.push(`  ${alinhar(c.colecao, larguraDaColecao)}${c.linhas}${nota}`);
   }
   linhas.push("");
@@ -184,7 +189,7 @@ export function montarRelatorio(entrada: EntradaDoRelatorio): string {
   const saem = linhasQueSaem(entrada);
   linhas.push("O que cada modo faria neste Espaço:");
   linhas.push(
-    `  --guardar                    copia as nove coleções para registros_crm_antigo (Grupo inclusive) e apaga ${saem} linha(s) de registros; ${entrada.conversasDeGrupo} Conversa(s) de Grupo ficam. Não cria nada no CRM novo.`,
+    `  --guardar                    copia as nove coleções para registros_crm_antigo (Grupo inclusive) e apaga ${saem} linha(s) de registros; ${entrada.conversasDeGrupo} Conversa(s) de Grupo e ${entrada.conversasDeFlow} 1:1 de Flow ou Automação ficam. Não cria nada no CRM novo.`,
   );
   const migram = entrada.funis.filter((f) => f.destino.tipo === "migra").length;
   linhas.push(
@@ -204,6 +209,7 @@ export interface EntradaDoResumo {
   readonly copiadas: number;
   readonly apagadas: Readonly<Record<string, number>>;
   readonly conversasDeGrupo: number;
+  readonly conversasDeFlow: number;
   readonly funis: { readonly migrados: number; readonly etapas: number; readonly naoMigrados: readonly { readonly id: string; readonly nome: string; readonly motivo: string }[] };
   readonly pasta: PastaDoRelatorio;
   readonly entidades?: EntidadesDoRelatorio;
@@ -224,6 +230,7 @@ export function montarResumoDeEscrita(entrada: EntradaDoResumo): string {
       `Espaço ${entrada.espaco}: ${entrada.modo === "migrar" ? "migrado" : "guardado"}. ${entrada.copiadas} linha(s) copiadas para registros_crm_antigo; apagadas de registros: ${textoDasContagens(entrada.apagadas)}.`,
     );
     linhas.push(`${entrada.conversasDeGrupo} Conversa(s) de Grupo continuam em registros (${COLECAO_DE_CONVERSAS}, F14-D-05).`);
+    linhas.push(`${entrada.conversasDeFlow} Conversa(s) 1:1 de Flow, Automação ou convite de Grupo continuam em registros (${COLECAO_DE_CONVERSAS}; o Contato delas não é do CRM antigo).`);
   }
   if (entrada.modo === "migrar" || entrada.funis.naoMigrados.length > 0) {
     if (entrada.funis.migrados > 0) linhas.push(`Funil: ${pluralizar(entrada.funis.migrados, "migrado", "migrados")} (${pluralizar(entrada.funis.etapas, "Etapa", "Etapas")}).`);

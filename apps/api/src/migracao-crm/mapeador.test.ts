@@ -658,13 +658,15 @@ describe("Conversas e Mensagens (15-28 Task 2)", () => {
     expect(naoMigrados).toContainEqual({ categoria: "conversa-repetida", colecao: "conversations", id: "antiga" });
   });
 
-  it("Conversa sem Contato, de Canal que não migrou ou de Contato inexistente vai para o relatório com as Mensagens; a de Grupo nem entra", () => {
+  it("Conversa de Canal que não migrou vai para o relatório com as Mensagens; a de Grupo e a sem Contato do CRM antigo nem entram (ficam em registros)", () => {
     const antigas = [
       ...base,
       canalMin("site", { channelType: "chatDoSite" }, 1),
+      // Sem `contactId` ou com um que não é da coleção `contacts` (Flow, Automação, convite de Grupo): não dá para
+      // classificar como CRM antigo, então fica em `registros`, não migra e não vai para o relatório (15-44, H-02).
       conversaMin("sem_contato", { contactId: undefined, unresolvedIdentifier: { type: "perfilDeLinkedIn", value: "x" }, messages: [mensagem("m1")] }, 0),
       conversaMin("canal_fora", { channelId: "site", messages: [mensagem("m2")] }, 1),
-      conversaMin("contato_fantasma", { contactId: "fantasma" }, 2),
+      conversaMin("contato_fora_do_crm_antigo", { contactId: "fantasma" }, 2),
       conversaMin("grupo", { groupIdentifier: { externalId: "g", name: "Turma" }, messages: [mensagem("m3")] }, 3),
     ];
 
@@ -676,10 +678,19 @@ describe("Conversas e Mensagens (15-28 Task 2)", () => {
       [
         ["canal-sem-destino", "site"],
         ["conversa-sem-canal-migrado", "canal_fora"],
-        ["conversa-sem-contato", "contato_fantasma"],
-        ["conversa-sem-contato", "sem_contato"],
       ].sort(),
     );
+  });
+
+  it("a Conversa 1:1 de Flow/Automação (Contato só em plataforma.contatos) fica em registros: não migra, mesmo com o Canal e o Contato existentes", () => {
+    const antigas = [contatoMin("c1"), conversaMin("flow", { contactId: "ctt_so_na_tabela", channelId: "ch_tab", messages: [mensagem("m1")] }), conversaMin("antiga", { channelId: "ch_tab" }, 1)];
+    const crmNovo: CrmNovoDoEspaco = { ...CRM_NOVO_VAZIO, canaisExistentes: new Map([["ch_tab", "whatsapp"]]), contatosExistentes: new Set(["ctt_so_na_tabela"]) };
+
+    const { linhasPorTabela, naoMigrados } = planoCom(antigas, { crmNovo });
+
+    expect(linhasPorTabela.conversas.map((c) => c.id)).toEqual(["antiga"]);
+    expect(linhasPorTabela.mensagens).toEqual([]);
+    expect(naoMigrados.filter((n) => n.id === "flow")).toEqual([]);
   });
 
   it("estrela vira marcação por Membro; rascunhos, Tags e campos da Conversa vão para o relatório; participantes trocam de vocabulário", () => {

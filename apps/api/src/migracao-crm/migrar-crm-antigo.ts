@@ -41,6 +41,7 @@ import {
   apagarDoRegistros,
   type ChaveDeRegistro,
   conferirCopia,
+  contarConversasDeFlow,
   contarConversasDeGrupo,
   contarDoAlvo,
   contarGuardadas,
@@ -80,6 +81,11 @@ export interface ResultadoDeEscrita {
   readonly apagadas: Readonly<Record<string, number>>;
   /** Conversas de Grupo que continuam em `registros` (F14-D-05). */
   readonly conversasDeGrupoQueFicaram: number;
+  /**
+   * Conversas 1:1 que continuam em `registros` por serem do modelo que fica (15-44, H-02): as que o Flow, a Automação
+   * e o convite de Grupo abrem com um Contato de `plataforma.contatos`, e as que não dá para classificar.
+   */
+  readonly conversasDeFlowQueFicaram: number;
   readonly funisMigrados: number;
   readonly funisNaoMigrados: readonly FunilNaoMigrado[];
   /** Linhas que entraram em cada tabela nova do CRM nesta execução (sem Funil e Etapa, que vêm em `funisMigrados`). */
@@ -109,7 +115,8 @@ interface Plano {
   readonly copiadas: number;
   readonly aApagar: Readonly<Record<string, number>>;
   readonly conversasDeGrupo: number;
-  /** O alvo do `delete` em SQL: as oito coleções e as Conversas sem Grupo (a Pasta sai pela operação). */
+  readonly conversasDeFlow: number;
+  /** O alvo do `delete` em SQL: as oito coleções e as Conversas do CRM antigo (a Pasta sai pela operação). */
   readonly apagar: Alvo;
   readonly pasta: PlanoDaPasta;
   readonly funis: PlanoDeFunis;
@@ -127,7 +134,7 @@ function alvoDeCopiar(extras: readonly ChaveDeRegistro[]): Alvo {
   return { colecoes: COLECOES_DO_CRM_ANTIGO, conversasSemGrupo: false, extras };
 }
 
-/** As linhas que saem de `registros`: as oito coleções e as Conversas sem Grupo, mais (na conferência) as da Pasta. */
+/** As linhas que saem de `registros`: as oito coleções e as Conversas do CRM antigo, mais (na conferência) as da Pasta. */
 function alvoDeApagar(extras: readonly ChaveDeRegistro[]): Alvo {
   return { colecoes: COLECOES_SEM_GRUPO, conversasSemGrupo: true, extras };
 }
@@ -198,7 +205,7 @@ async function escrever(espaco: string, modo: Modo, opcoes: OpcoesDeEscrita): Pr
           }
         }
         if (recusa) {
-          visto = { recusa, nadaAFazer: false, copiadas: 0, aApagar: {}, conversasDeGrupo: 0, apagar: alvoDeApagar([]), pasta, funis, entidades };
+          visto = { recusa, nadaAFazer: false, copiadas: 0, aApagar: {}, conversasDeGrupo: 0, conversasDeFlow: 0, apagar: alvoDeApagar([]), pasta, funis, entidades };
           return visto;
         }
 
@@ -215,6 +222,7 @@ async function escrever(espaco: string, modo: Modo, opcoes: OpcoesDeEscrita): Pr
           copiadas,
           aApagar,
           conversasDeGrupo: await contarConversasDeGrupo(cliente, espaco),
+          conversasDeFlow: await contarConversasDeFlow(cliente, espaco),
           apagar,
           pasta,
           funis,
@@ -248,6 +256,7 @@ async function escrever(espaco: string, modo: Modo, opcoes: OpcoesDeEscrita): Pr
     copiadas: nadaAFazer ? 0 : (plano?.copiadas ?? 0),
     apagadas,
     conversasDeGrupo: plano?.conversasDeGrupo ?? 0,
+    conversasDeFlow: plano?.conversasDeFlow ?? 0,
     funis: { migrados: funisInseridos.funis, etapas: funisInseridos.etapas, naoMigrados: funisNaoMigrados },
     pasta,
     ...(modo === "migrar" && !nadaAFazer ? { entidades: { porTabela: entidadesInseridas, naoMigrados: plano?.entidades.naoMigrados ?? [] } } : {}),
@@ -258,6 +267,7 @@ async function escrever(espaco: string, modo: Modo, opcoes: OpcoesDeEscrita): Pr
     copiadas: nadaAFazer ? 0 : (plano?.copiadas ?? 0),
     apagadas,
     conversasDeGrupoQueFicaram: nadaAFazer ? 0 : (plano?.conversasDeGrupo ?? 0),
+    conversasDeFlowQueFicaram: nadaAFazer ? 0 : (plano?.conversasDeFlow ?? 0),
     funisMigrados: funisInseridos.funis,
     funisNaoMigrados,
     entidadesMigradas: entidadesInseridas,
@@ -328,6 +338,7 @@ export async function relatorioSeco(espaco: string): Promise<string> {
       espaco,
       noRegistros: COLECOES_DO_CRM_ANTIGO.map((colecao) => ({ colecao, linhas: porColecao[colecao] ?? 0 })),
       conversasDeGrupo: await contarConversasDeGrupo(cliente, espaco),
+      conversasDeFlow: await contarConversasDeFlow(cliente, espaco),
       jaGuardadas: Object.entries(guardadas).map(([colecao, linhas]) => ({ colecao, linhas })),
       funis,
       funisNoCrmNovo: { total: funisNovos.length, temPadrao: funisNovos.some((f) => f.padrao) },
@@ -354,7 +365,8 @@ export interface ResultadoDaVerificacao {
  * `--verificar`: confere, sem escrever (`begin read only`), a pós-condição do corte:
  *
  *   (a) nenhuma linha das oito coleções sem Grupo em `registros`;
- *   (b) em `conversations` de `registros`, só Conversas de Grupo;
+ *   (b) em `conversations` de `registros`, nenhuma Conversa do CRM antigo (só ficam as de Grupo e as 1:1 de
+ *       Flow/Automação/convite, cujo Contato não é da coleção `contacts` — o MESMO critério do `--guardar`, 15-44);
  *   (c) nenhuma linha órfã em `crm_de_para`: cada uma tem a linha de origem em `registros_crm_antigo`
  *       (a Etapa, que mora dentro do Funil, é conferida pelo Funil: `funnels/stages`);
  *   (d) imprime a contagem por coleção de `registros_crm_antigo`. É a base de comparação de (d): o
@@ -372,7 +384,7 @@ export async function verificar(espaco: string): Promise<ResultadoDaVerificacao>
     }
     const conversas = await contarDoAlvo(cliente, espaco, { colecoes: [], conversasSemGrupo: true, extras: [] });
     for (const [colecao, n] of Object.entries(conversas)) {
-      problemas.push(`${colecao}: ${n} Conversa(s) sem Grupo ainda em registros (só as de Grupo ficam).`);
+      problemas.push(`${colecao}: ${n} Conversa(s) do CRM antigo ainda em registros (só ficam as de Grupo e as 1:1 de Flow ou Automação).`);
     }
 
     const orfas = await cliente.query<{ colecao_antiga: string; n: string }>(

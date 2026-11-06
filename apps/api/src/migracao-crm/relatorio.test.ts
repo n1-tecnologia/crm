@@ -14,6 +14,7 @@ function entradaBase(sobre: Partial<EntradaDoRelatorio> = {}): EntradaDoRelatori
     espaco: "ws_n1",
     noRegistros: NOVE.map((colecao) => ({ colecao, linhas: colecao === "funnels" ? 1 : 0 })),
     conversasDeGrupo: 0,
+    conversasDeFlow: 0,
     jaGuardadas: [],
     funis: [
       {
@@ -180,6 +181,7 @@ describe("a seção \"Não migrados\" (15-28 Task 2)", () => {
       copiadas: 10,
       apagadas: { contacts: 2 },
       conversasDeGrupo: 0,
+      conversasDeFlow: 0,
       funis: { migrados: 0, etapas: 0, naoMigrados: [] },
       pasta: { existe: false, nome: undefined, listas: [], removivel: false },
       entidades: { porTabela: { contatos: 2, contato_identificadores: 3 }, naoMigrados: [item("identificador-sem-destino", "contacts", "cnt_1")] },

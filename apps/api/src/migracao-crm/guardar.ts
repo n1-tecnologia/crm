@@ -5,12 +5,12 @@
  * Valores entram só por `$n`; os nomes de tabela e de coluna são constantes deste arquivo (T-15-66).
  *
  * O que sai de `registros` é o `alvo` de apagar; o que se copia é o `alvo` de copiar (as mesmas
- * oito coleções e `conversations` INTEIRA, com as de Grupo). A conferência exige, para cada linha a
- * apagar, uma cópia IDÊNTICA (dados e ordem): sem isso nada é apagado.
+ * oito coleções e `conversations` INTEIRA, com as de Grupo e as 1:1 de Flow). A conferência exige, para cada
+ * linha a apagar, uma cópia IDÊNTICA (dados e ordem): sem isso nada é apagado.
  */
 
 import type { PoolClient } from "pg";
-import { COLECAO_DE_CONVERSAS, SQL_E_CONVERSA_DE_GRUPO } from "./colecoes";
+import { COLECAO_DE_CONVERSAS, SQL_E_CONVERSA_1A1_QUE_FICA, SQL_E_CONVERSA_DE_GRUPO, SQL_E_CONVERSA_DO_CRM_ANTIGO } from "./colecoes";
 
 /** Uma linha de `registros` pela chave: coleção e id. */
 export interface ChaveDeRegistro {
@@ -22,7 +22,10 @@ export interface ChaveDeRegistro {
 export interface Alvo {
   /** Coleções inteiras. */
   readonly colecoes: readonly string[];
-  /** `conversations` só nas Conversas SEM Grupo (as de Grupo ficam). */
+  /**
+   * `conversations` só nas Conversas do CRM ANTIGO (`SQL_E_CONVERSA_DO_CRM_ANTIGO`, 15-44): as de Grupo e as 1:1 de
+   * Flow/Automação/convite ficam. O nome é de antes do 15-44; o critério não é mais só "sem Grupo".
+   */
   readonly conversasSemGrupo: boolean;
   /** Linhas avulsas (a Pasta "Meus negócios", D-15-14). */
   readonly extras: readonly ChaveDeRegistro[];
@@ -34,7 +37,7 @@ export interface Alvo {
  */
 const ONDE_DO_ALVO = `r.workspace_id = $1 and (
   r.colecao = any($2::text[])
-  or ($6::boolean and r.colecao = $3 and not (${SQL_E_CONVERSA_DE_GRUPO}))
+  or ($6::boolean and r.colecao = $3 and ${SQL_E_CONVERSA_DO_CRM_ANTIGO})
   or (r.colecao, r.id) in (select x.colecao, x.id from unnest($4::text[], $5::text[]) as x(colecao, id))
 )`;
 
@@ -127,6 +130,19 @@ export async function contarConversasDeGrupo(cliente: PoolClient, espaco: string
   const resultado = await cliente.query<{ n: string }>(
     `select count(*)::text as n from plataforma.registros r
       where r.workspace_id = $1 and r.colecao = $2 and ${SQL_E_CONVERSA_DE_GRUPO}`,
+    [espaco, COLECAO_DE_CONVERSAS],
+  );
+  return Number(resultado.rows[0]!.n);
+}
+
+/**
+ * Quantas Conversas 1:1 ficam em `registros` por não serem do CRM antigo (15-44, H-02): as que o Flow, a Automação e o
+ * convite de Grupo abrem com um Contato de `plataforma.contatos`, e as que não dá para classificar.
+ */
+export async function contarConversasDeFlow(cliente: PoolClient, espaco: string): Promise<number> {
+  const resultado = await cliente.query<{ n: string }>(
+    `select count(*)::text as n from plataforma.registros r
+      where r.workspace_id = $1 and r.colecao = $2 and ${SQL_E_CONVERSA_1A1_QUE_FICA}`,
     [espaco, COLECAO_DE_CONVERSAS],
   );
   return Number(resultado.rows[0]!.n);

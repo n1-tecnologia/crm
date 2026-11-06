@@ -16,7 +16,7 @@
 import { randomUUID } from "node:crypto";
 import { normalizarIdentificadorDeContato, normalizarIdentificadorDeEmpresa } from "@n1/dominio/crm/normalizacao";
 import { PROVEDOR_PADRAO_DO_TIPO, PROVEDORES, type TipoComProvedor } from "@n1/dominio/provedores-de-canal";
-import { ehConversaDeGrupo } from "./colecoes";
+import { ehConversaDoCrmAntigo } from "./colecoes";
 import type {
   AtorAntigo,
   CanalAntigo,
@@ -1223,7 +1223,7 @@ export function contarLinhasDoPlano(plano: PlanoDeMigracao): Record<string, numb
 
 /**
  * Decide o que cada linha do CRM antigo vira. `linhasAntigas` são as linhas de `plataforma.registros` (ou da
- * fixture) das nove coleções; as Conversas de Grupo ficam em `registros` e não entram aqui (F14-D-05).
+ * fixture) das nove coleções; as Conversas que ficam em `registros` (Grupo, Flow, Automação) não entram aqui (F14-D-05, 15-44).
  *
  * A ordem das etapas é a das dependências: Contato → Empresa e vínculo → Canal → Negócio → Conversa e Mensagem.
  */
@@ -1232,8 +1232,11 @@ export function planejarMigracao(
   crmNovo: CrmNovoDoEspaco = CRM_NOVO_VAZIO,
   opcoes: OpcoesDoMapeador = {},
 ): PlanoDeMigracao {
-  const semGrupo = linhasAntigas.filter((l) => !(l.colecao === "conversations" && ehConversaDeGrupo(l.dados)));
-  const porColecao = agruparPorColecao(semGrupo);
+  // Só a Conversa do CRM antigo entra (15-44, H-02): a de Grupo e a 1:1 de Flow/Automação/convite, cujo Contato não é
+  // da coleção `contacts`, ficam em `registros` e nunca migram. O critério é o mesmo do `--guardar` (SQL).
+  const idsDeContatosAntigos = new Set(linhasAntigas.filter((l) => l.colecao === "contacts").map((l) => l.id));
+  const doCrmAntigo = linhasAntigas.filter((l) => l.colecao !== "conversations" || ehConversaDoCrmAntigo(l.dados, idsDeContatosAntigos));
+  const porColecao = agruparPorColecao(doCrmAntigo);
   const funisMigrados = opcoes.funisMigrados ?? new Map<string, ReadonlySet<string>>();
   const ctx: Contexto = {
     crmNovo,
