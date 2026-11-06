@@ -609,47 +609,17 @@ export function contactDisplayName(contact: Contact): string {
   return "Contato sem nome";
 }
 
-/** DO-CON-04 — the job title belongs to the principal, current link. */
-export function contactDisplayRole(state: DataState, contactId: Id): string {
-  const link = state.contactCompanyLinks.find(
-    (l) => l.contactId === contactId && l.principalForContact && l.end === undefined,
-  );
-  return link?.role ?? "";
-}
-
-export function principalCompanyId(state: DataState, contactId: Id): Id | undefined {
-  return state.contactCompanyLinks.find(
-    (l) => l.contactId === contactId && l.principalForContact && l.end === undefined,
-  )?.companyId;
-}
-
-/** DO-NEG-05 — overridden if present, otherwise the stage default; 100/0 when closed. */
-export function effectiveProbability(state: DataState, deal: Deal): number {
-  if (deal.situation === "ganho") return 100;
-  if (deal.situation === "perdido") return 0;
-  if (deal.overriddenProbability !== undefined) return deal.overriddenProbability;
-  const funnel = state.funnels.find((f) => f.id === deal.funnelId);
-  return funnel?.stages.find((s) => s.id === deal.stageId)?.defaultProbability ?? 0;
-}
-
-/** DO-NEG-04 — amount × effective probability, in the value's currency. */
-export function weightedValue(state: DataState, deal: Deal): number | null {
-  if (!deal.value) return null;
-  return (deal.value.amount * effectiveProbability(state, deal)) / 100;
-}
-
 /**
- * RN-CXE-19 — derived: last received message + the channel window. O callback
- * recebe o Canal, não o tipo, porque a janela depende do provedor (D-02);
- * quem chama entrega `capacidadesDoCanal`. `derive.ts` não importa
- * `operations/` para não fechar ciclo de módulo.
+ * RN-CXE-19 — derived: last received message + the channel window. Quem chama entrega o
+ * Canal da Conversa (o de `plataforma.canais`: o estado não os tem mais, 15-33) e
+ * `capacidadesDoCanal`, porque a janela depende do provedor (D-02). `derive.ts` não importa
+ * `operations/` para não fechar ciclo de módulo. Sem Canal, sem janela.
  */
 export function responseWindowOpenUntil(
-  state: DataState,
   conversation: Conversation,
-  capabilities: (channel: Channel) => { readonly responseWindowHours?: number },
+  channel: Pick<Channel, "channelType" | "provider"> | undefined,
+  capabilities: (channel: Pick<Channel, "channelType" | "provider">) => { readonly responseWindowHours?: number },
 ): Date | null {
-  const channel = state.channels.find((c) => c.id === conversation.channelId);
   if (!channel) return null;
   const hours = capabilities(channel).responseWindowHours;
   if (hours === undefined) return null;
@@ -659,19 +629,6 @@ export function responseWindowOpenUntil(
     .at(-1);
   if (!lastReceived) return null;
   return new Date(new Date(lastReceived.createdAt).getTime() + hours * 3_600_000);
-}
-
-/** Documento 10, 6 — most recent message of any conversation of the contact. */
-export function lastInteraction(state: DataState, contactId: Id): string | null {
-  let latest: string | null = null;
-  for (const conversation of state.conversations) {
-    if (conversation.contactId !== contactId) continue;
-    for (const message of conversation.messages) {
-      if (message.direction === "interna") continue;
-      if (latest === null || message.createdAt > latest) latest = message.createdAt;
-    }
-  }
-  return latest;
 }
 
 /** B79 — full chain, from the root execution down to this one. */
@@ -716,39 +673,6 @@ export const rootTasksOf = (state: DataState, listId: Id): Task[] =>
 
 export const subtasksOf = (state: DataState, taskId: Id): Task[] =>
   state.tasks.filter((t) => t.parentTaskId === taskId);
-
-/**
- * RN-CON-16 — a marketing template may only be sent to a Contact with a current
- * consent for that purpose on that Channel. Derived here so the composer and
- * `sendMessage` read the SAME rule: a screen that decides this on its own drifts
- * from the operation and starts enabling a button that fails on click.
- */
-export function marketingConsentMissing(
-  state: DataState,
-  conversation: Conversation,
-  templateProviderId: string | undefined,
-): boolean {
-  if (!templateProviderId) return false;
-  const channel = state.channels.find((c) => c.id === conversation.channelId);
-  const template = channel?.messageTemplates.find((t) => t.providerId === templateProviderId);
-  if (!channel || template?.category !== "marketing") return false;
-  const contact = state.contacts.find((c) => c.id === conversation.contactId);
-  if (!contact) return false;
-
-  const purpose = state.catalog.find(
-    (c) => c.kind === "finalidadeConsentimento" && c.name.toLowerCase() === "marketing",
-  );
-  const current = [...contact.consents]
-    .filter(
-      (c) =>
-        c.purposeId === purpose?.id &&
-        (c.channelType === "todos" || c.channelType === channel.channelType),
-    )
-    .sort((a, b) => a.at.localeCompare(b.at))
-    .at(-1);
-  return current?.decision !== "concedido";
-}
-
 /**
  * PADROES §10 — why a terminal Status is unavailable for this Task, computed
  * from what the screen already shows. `undefined` means it is available.
@@ -1148,89 +1072,6 @@ function dimensionLabel(
     return `${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
   }
   return undefined;
-}
-
-/**
- * RN-CON-10 — Suspeita de Duplicidade é CALCULADA, nunca gravada: par de
- * Contatos não `mesclado`, motivo e momento. Força `certa` não existe — dois
- * Contatos com o mesmo Identificador são impossíveis (INV-CON-02) e a colisão é
- * interceptada na criação (RN-CON-11).
- *
- * O Vínculo `distinto de` (DO-CON-14) suprime o par: é a única persistência
- * associada, e existe justamente porque a suspeita se repetiria para sempre.
- *
- * Um Contato `arquivado` sai do cálculo (documento 10, tabela de transições).
- */
-export function duplicateSuspicions(
-  state: DataState,
-): ReadonlyArray<{ readonly a: Contact; readonly b: Contact; readonly reasons: readonly string[] }> {
-  const eligible = state.contacts.filter((contact) => contact.lifecycle === "ativo");
-  const suppressed = new Set(
-    state.distinctFromLinks.flatMap((link) => [
-      `${link.contactAId}|${link.contactBId}`,
-      `${link.contactBId}|${link.contactAId}`,
-    ]),
-  );
-
-  const normalize = (value: string): string =>
-    value
-      .normalize("NFD")
-      .replace(/[̀-ͯ]/g, "")
-      .toLowerCase()
-      .replace(/\s+/g, " ")
-      .trim();
-  const digits = (value: string): string => value.replace(/\D/g, "");
-
-  const found: Array<{ a: Contact; b: Contact; reasons: string[] }> = [];
-  for (let i = 0; i < eligible.length; i += 1) {
-    for (let j = i + 1; j < eligible.length; j += 1) {
-      const a = eligible[i];
-      const b = eligible[j];
-      if (!a || !b) continue;
-      if (suppressed.has(`${a.id}|${b.id}`)) continue;
-
-      const reasons: string[] = [];
-
-      const nameA = normalize(contactDisplayName(a));
-      const nameB = normalize(contactDisplayName(b));
-      if (nameA !== "" && nameA === nameB) reasons.push("Nome de exibição idêntico");
-
-      // Telefone × identidade de WhatsApp: mesmo número, Tipos distintos.
-      for (const idA of a.identifiers) {
-        for (const idB of b.identifiers) {
-          const bothPhoneish =
-            (idA.type === "telefone" || idA.type === "identidadeDeWhatsApp") &&
-            (idB.type === "telefone" || idB.type === "identidadeDeWhatsApp");
-          if (bothPhoneish && idA.type !== idB.type && digits(idA.value) === digits(idB.value)) {
-            reasons.push(`Mesmo número em Tipos distintos: ${idA.displayValue}`);
-          }
-          if (
-            idA.type === "email" &&
-            idB.type === "email" &&
-            idA.value.toLowerCase() === idB.value.toLowerCase() &&
-            idA.value !== idB.value
-          ) {
-            reasons.push("E-mail igual a menos de maiúsculas");
-          }
-        }
-      }
-
-      // Rótulo informado pelo Canal igual ao Nome de outro Contato.
-      for (const identifier of a.identifiers) {
-        if (identifier.channelLabel && normalize(identifier.channelLabel) === nameB) {
-          reasons.push(`Rótulo do Canal “${identifier.channelLabel}” é o Nome do outro`);
-        }
-      }
-      for (const identifier of b.identifiers) {
-        if (identifier.channelLabel && normalize(identifier.channelLabel) === nameA) {
-          reasons.push(`Rótulo do Canal “${identifier.channelLabel}” é o Nome do outro`);
-        }
-      }
-
-      if (reasons.length > 0) found.push({ a, b, reasons: [...new Set(reasons)] });
-    }
-  }
-  return found;
 }
 
 /**

@@ -9,10 +9,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { responseWindowOpenUntil } from "../derive";
 import { sendMessage } from "../operations/ferramentas/conversa-de-grupo";
 import { buildSeed } from "../seed";
-import { semearCrmAntigo } from "../seed-crm-antigo";
 import type { DataState } from "../state";
-import type { Channel, Conversation, Message } from "../types";
-import { CHANNEL_CAPABILITIES, capacidadesDoCanal } from "./capacidades";
+import { canalDeTeste, contatoDeTeste, conversaDeTeste, crmDeTeste } from "../testes/crm-de-teste";
+import type { Conversation, CrmDasFerramentas } from "../types";
+import { CHANNEL_CAPABILITIES, capacidadesDoCanal, type ProvedorDeCanal } from "./capacidades";
 
 const THIAGO = "mem_thiago";
 const AGORA = new Date("2026-10-12T12:00:00.000Z");
@@ -22,41 +22,24 @@ let state: DataState;
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(AGORA);
-  // Testa código do CRM antigo que sai (15-32/15-42): o seed deixou de criar o CRM (15-31), então ele é semeado aqui.
-  state = semearCrmAntigo(buildSeed());
+  state = buildSeed();
 });
 afterEach(() => {
   vi.useRealTimers();
 });
 
-/** Um Canal de WhatsApp e uma Conversa dele, com uma só Mensagem recebida há `horas`. */
-function conversaNoCanal(provider: Channel["provider"], horas: number): { canal: Channel; conversa: Conversation } {
-  const base = state.channels.find((c) => c.id === "chn_wpp");
-  const modelo = state.conversations.find((c) => c.channelId === "chn_wpp");
-  const recebida = modelo?.messages.find((m) => m.direction === "recebida");
-  if (!base || !modelo || !recebida) throw new Error("o seed precisa de um Canal de WhatsApp com uma Mensagem recebida");
-  const sufixo = provider ?? "padrao";
-  const canal: Channel = {
-    ...structuredClone(base),
-    id: `chn_t_${sufixo}`,
-    name: `Teste ${sufixo}`,
-    externalId: `+5511900000${sufixo.length}`,
-    connection: "conectada",
-    messageTemplates: [],
-    ...(provider ? { provider } : {}),
-  };
-  if (!provider) delete (canal as { provider?: unknown }).provider;
-  const mensagem: Message = { ...structuredClone(recebida), createdAt: new Date(AGORA.getTime() - horas * HORA).toISOString() };
-  const conversa: Conversation = {
-    ...structuredClone(modelo),
-    id: `cnv_t_${sufixo}`,
-    channelId: canal.id,
-    drafts: [],
-    messages: [mensagem],
-  };
-  state.channels.push(canal);
+/** O Canal de WhatsApp do provedor dado e uma Conversa dele, com uma só Mensagem recebida há `horas`. */
+function conversaNoCanal(
+  provedor: ProvedorDeCanal,
+  horas: number,
+): { canal: { channelType: "whatsapp"; provider: ProvedorDeCanal }; conversa: Conversation; crm: CrmDasFerramentas } {
+  const canalDaTabela = canalDeTeste({ id: `chn_t_${provedor}`, nome: `Teste ${provedor}`, provedor });
+  const contato = contatoDeTeste("cnt_t_1", "Contato de teste");
+  const conversa = conversaDeTeste(`cnv_t_${provedor}`, canalDaTabela.id, contato.id, [
+    ["recebida", new Date(AGORA.getTime() - horas * HORA).toISOString()],
+  ]);
   state.conversations.push(conversa);
-  return { canal, conversa };
+  return { canal: { channelType: "whatsapp", provider: provedor }, conversa, crm: crmDeTeste([canalDaTabela], [contato]) };
 }
 
 describe("capacidadesDoCanal (D-02)", () => {
@@ -86,48 +69,46 @@ describe("capacidadesDoCanal (D-02)", () => {
 
 describe("responseWindowOpenUntil por Canal (RN-CXE-19, D-02)", () => {
   it("Canal não oficial não tem janela", () => {
-    const { conversa } = conversaNoCanal("whatsapp-nao-oficial", 30);
-    expect(responseWindowOpenUntil(state, conversa, capacidadesDoCanal)).toBeNull();
+    const { conversa, canal } = conversaNoCanal("whatsapp-nao-oficial", 30);
+    expect(responseWindowOpenUntil(conversa, canal, capacidadesDoCanal)).toBeNull();
   });
 
   it("Canal oficial com recebida há 30 h tem a janela encerrada 6 h atrás", () => {
-    const { conversa } = conversaNoCanal("whatsapp-cloud", 30);
-    const ate = responseWindowOpenUntil(state, conversa, capacidadesDoCanal);
+    const { conversa, canal } = conversaNoCanal("whatsapp-cloud", 30);
+    const ate = responseWindowOpenUntil(conversa, canal, capacidadesDoCanal);
     expect(ate?.toISOString()).toBe(new Date(AGORA.getTime() - 6 * HORA).toISOString());
   });
 
-  it("Canal sem provedor (seed) mantém a janela de 24 h", () => {
-    const { conversa } = conversaNoCanal(undefined, 30);
-    const ate = responseWindowOpenUntil(state, conversa, capacidadesDoCanal);
+  it("Canal sem provedor mantém a janela de 24 h (a tabela do tipo)", () => {
+    const { conversa } = conversaNoCanal("whatsapp-cloud", 30);
+    const ate = responseWindowOpenUntil(conversa, { channelType: "whatsapp" }, capacidadesDoCanal);
     expect(ate?.toISOString()).toBe(new Date(AGORA.getTime() - 6 * HORA).toISOString());
+  });
+
+  it("sem Canal não há janela", () => {
+    const { conversa } = conversaNoCanal("whatsapp-cloud", 30);
+    expect(responseWindowOpenUntil(conversa, undefined, capacidadesDoCanal)).toBeNull();
   });
 });
 
 describe("sendMessage fora da janela (RN-CXE-19, D-02)", () => {
   it("não oficial com recebida há 30 h envia sem Mensagem de modelo", () => {
-    const { conversa } = conversaNoCanal("whatsapp-nao-oficial", 30);
-    const resultado = sendMessage(state, THIAGO, { conversationId: conversa.id, content: "Oi, tudo bem?" });
+    const { conversa, crm } = conversaNoCanal("whatsapp-nao-oficial", 30);
+    const resultado = sendMessage(state, THIAGO, { conversationId: conversa.id, content: "Oi, tudo bem?", crm });
     expect(resultado.ok).toBe(true);
     expect(conversa.messages.at(-1)?.content).toBe("Oi, tudo bem?");
   });
 
   it("oficial com recebida há 30 h é recusado com campo modelo", () => {
-    const { conversa } = conversaNoCanal("whatsapp-cloud", 30);
-    const resultado = sendMessage(state, THIAGO, { conversationId: conversa.id, content: "Oi, tudo bem?" });
+    const { conversa, crm } = conversaNoCanal("whatsapp-cloud", 30);
+    const resultado = sendMessage(state, THIAGO, { conversationId: conversa.id, content: "Oi, tudo bem?", crm });
     expect(resultado.ok).toBe(false);
     if (!resultado.ok) expect(resultado.field).toBe("modelo");
     expect(conversa.messages).toHaveLength(1);
   });
 
-  it("Canal sem provedor com recebida há 30 h também é recusado (como hoje)", () => {
-    const { conversa } = conversaNoCanal(undefined, 30);
-    const resultado = sendMessage(state, THIAGO, { conversationId: conversa.id, content: "Oi, tudo bem?" });
-    expect(resultado.ok).toBe(false);
-    if (!resultado.ok) expect(resultado.field).toBe("modelo");
-  });
-
   it("oficial dentro da janela (recebida há 2 h) envia livre", () => {
-    const { conversa } = conversaNoCanal("whatsapp-cloud", 2);
-    expect(sendMessage(state, THIAGO, { conversationId: conversa.id, content: "Oi!" }).ok).toBe(true);
+    const { conversa, crm } = conversaNoCanal("whatsapp-cloud", 2);
+    expect(sendMessage(state, THIAGO, { conversationId: conversa.id, content: "Oi!", crm }).ok).toBe(true);
   });
 });

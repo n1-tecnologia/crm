@@ -15,7 +15,6 @@
 
 import type { Canal } from "../../crm/canais";
 import { CHANNEL_CAPABILITIES, capacidadesDoCanal } from "../../crm/capacidades";
-import { marketingConsentMissing } from "../../derive";
 import { fail, ok, type DataState, type OperationResult } from "../../state";
 import type { ActorRef, Channel, Conversation, CrmDasFerramentas, Id, Message } from "../../types";
 import { memberActor, nextId, recordActivity, systemActor } from "../activity";
@@ -166,14 +165,9 @@ export function sendMessageSemConferencia(
       }
     }
 
-    // RN-CON-16 — a purpose that requires consent is checked before sending.
-    if (marketingConsentMissing(state, conversation, input.templateProviderId)) {
-      const contact = state.contacts.find((c) => c.id === conversation.contactId);
-      return fail(
-        `${contact?.firstName ?? "Este Contato"} não tem consentimento vigente para marketing neste Canal.`,
-        "consentimento",
-      );
-    }
+    // RN-CON-16 (consentimento de marketing do Contato) não é conferida aqui: o Canal chega de `crm.canais`, que não
+    // guarda Mensagens de modelo (`messageTemplates: []`, WINDOWS #20), e sem modelo de marketing não há o que consentir.
+    // O consentimento do Contato vive em `plataforma.contato_consentimentos` e é conferido pelo CRM novo (`crm/consentimentos.ts`).
   }
 
   const disconnected = channel.connection !== "conectada";

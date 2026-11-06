@@ -4,8 +4,8 @@
  * por quem chama. Nenhuma destas leituras olha o CRM antigo: o estado de teste
  * abaixo esvazia `contacts`, `conversations`, `channels` e `deals`, e tudo passa.
  *
- * As leituras que ainda leem o CRM antigo no estado, e têm chamador de produção até
- * a Fase 15, estão em `derive-conversacional-antigo.test.ts`.
+ * Fase 15 (15-42): as leituras que procuravam o Contato, a Conversa, o Canal e o Negócio no estado
+ * (e o `derive-conversacional-antigo.test.ts` que as cobria) saíram do módulo.
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
@@ -16,6 +16,9 @@ import {
   canaisDaListaQueAlcancamNasTabelas,
   listaSemCanaisNasTabelas,
   marcadoresDeCanal,
+  rotuloDoCanal,
+  tarefasConversacionaisDoContato,
+  textoDoSeparadorDeCanal,
   vinculosDoCrmDaTarefa,
 } from "./derive-conversacional";
 import type { Canal } from "./crm/canais";
@@ -47,6 +50,54 @@ describe("marcadoresDeCanal (D-13: o separador marca a troca de Canal)", () => {
 
   it("lista vazia, nada", () => {
     expect(marcadoresDeCanal([])).toEqual([]);
+  });
+});
+
+describe("rotuloDoCanal e textoDoSeparadorDeCanal (D-13)", () => {
+  const comercial = { name: "Comercial", channelType: "whatsapp" as const, provider: "whatsapp-cloud" as const };
+  const suporte = { name: "Suporte", channelType: "whatsapp" as const, provider: "whatsapp-nao-oficial" as const };
+
+  it("o rótulo junta o nome e o provedor", () => {
+    expect(rotuloDoCanal(comercial)).toBe("Comercial · WhatsApp oficial");
+    expect(rotuloDoCanal(suporte)).toBe("Suporte · WhatsApp não oficial");
+  });
+
+  it("Canal sem provider usa o provedor padrão do tipo; sem provedor, o rótulo do tipo", () => {
+    expect(rotuloDoCanal({ name: "Comercial SP", channelType: "whatsapp" })).toBe("Comercial SP · WhatsApp oficial");
+    expect(rotuloDoCanal({ name: "Instituto Igor Alves no LinkedIn", channelType: "linkedin" })).toBe("Instituto Igor Alves no LinkedIn · LinkedIn");
+    expect(rotuloDoCanal({ name: "Chat do site", channelType: "chatDoSite" })).toBe("Chat do site · Chat do site");
+  });
+
+  it("o separador diz por qual Canal a Mensagem passou", () => {
+    expect(textoDoSeparadorDeCanal(suporte)).toBe("via Suporte (WhatsApp não oficial)");
+    expect(textoDoSeparadorDeCanal({ name: "Instituto Igor Alves no LinkedIn", channelType: "linkedin" })).toBe("via Instituto Igor Alves no LinkedIn (LinkedIn)");
+  });
+});
+
+describe("tarefasConversacionaisDoContato (a ficha do Contato)", () => {
+  it("traz as Tarefas ativas de Listas conversacionais ligadas ao Contato, a mais recente primeiro", () => {
+    const estado = buildSeed();
+    const lista = estado.lists[0];
+    const base = estado.tasks[0];
+    if (!lista || !base) throw new Error("o seed precisa de uma Lista e de uma Tarefa");
+    lista.modeloDeTarefa = "conversacional";
+    const antiga = { ...structuredClone(base), id: "tsk_c_antiga", listId: lista.id, lifecycle: "ativo" as const, createdAt: "2026-09-01T00:00:00.000Z" };
+    const nova = { ...structuredClone(base), id: "tsk_c_nova", listId: lista.id, lifecycle: "ativo" as const, createdAt: "2026-10-01T00:00:00.000Z" };
+    const naLixeira = { ...structuredClone(base), id: "tsk_c_lixo", listId: lista.id, lifecycle: "naLixeira" as const, createdAt: "2026-10-02T00:00:00.000Z" };
+    estado.tasks.push(antiga, nova, naLixeira);
+    for (const t of [antiga, nova, naLixeira]) {
+      estado.links.push({
+        id: `lnk_${t.id}`,
+        fromType: "task",
+        fromId: t.id,
+        toType: "contact",
+        toId: "cnt_x",
+        createdBy: { kind: "member", id: "mem_thiago" },
+        createdAt: "2026-10-01T00:00:00.000Z",
+      });
+    }
+    expect(tarefasConversacionaisDoContato(estado, "cnt_x").map((t) => t.id)).toEqual(["tsk_c_nova", "tsk_c_antiga"]);
+    expect(tarefasConversacionaisDoContato(estado, "cnt_nao_existe")).toEqual([]);
   });
 });
 

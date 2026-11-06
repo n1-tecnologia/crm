@@ -14,14 +14,14 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { buildSeed } from "../seed";
 import { semearCrmAntigo } from "../seed-crm-antigo";
 import type { ConversaNaLista } from "../crm/conversas";
-import { duplicateSuspicions, isTerminalCategory, memberSeesResource, notificacoesDoMembro, statusCategory, tarefasAbertasDoMembro, widgetReading, type LeituraDoCrmParaPainel } from "../derive";
+import { isTerminalCategory, memberSeesResource, notificacoesDoMembro, statusCategory, tarefasAbertasDoMembro, widgetReading, type LeituraDoCrmParaPainel } from "../derive";
 import type { DataState } from "../state";
 import { TAREFA_SEM_CONTATO, createTask, moveTask } from "./tasks";
 import { receiveMessage, sendMessage } from "./ferramentas/conversa-de-grupo";
 import { createList } from "./structure";
 import { FORMULARIO_EM_LISTA_CONVERSACIONAL, archiveForm, createForm, formBySecret, formOutdatedReason, submitForm, updateForm } from "./scale";
 import { FORMULARIOS_ANTES_DO_MODELO, alterarModeloDaLista } from "./tarefas-conversacionais";
-import { PAPEL_DO_VINCULO, contatoDaTarefa, conversaDaTarefa } from "../derive-conversacional";
+import { PAPEL_DO_VINCULO } from "../derive-conversacional";
 
 const THIAGO = "mem_thiago";
 const RAFAEL = "mem_rafael";
@@ -208,35 +208,6 @@ describe("Adoção de Rascunho de IA no envio (documento 14, 7.10)", () => {
     });
 
     expect(conversation.drafts).toHaveLength(1);
-  });
-});
-
-describe("Suspeita de Duplicidade (RN-CON-10, DO-CON-14)", () => {
-  // Operação antiga do CRM (15-32 a apaga): o estado ainda precisa do CRM que o seed deixou de criar (15-31).
-  beforeEach(() => {
-    state = estadoComCrmAntigo();
-  });
-  it("acusa o par com Nome idêntico e mesmo número em Tipos distintos, nomeando cada motivo", () => {
-    const suspeitas = duplicateSuspicions(state);
-
-    expect(suspeitas.length).toBeGreaterThan(0);
-    const primeira = suspeitas[0];
-    if (!primeira) throw new Error("sem suspeita");
-    expect(primeira.reasons).toContain("Nome de exibição idêntico");
-    expect(primeira.reasons.some((r) => r.startsWith("Mesmo número em Tipos distintos"))).toBe(true);
-    // INV-CON-02 — nunca é o MESMO Identificador: os Tipos diferem.
-    const tiposA = primeira.a.identifiers.map((i) => i.type);
-    const tiposB = primeira.b.identifiers.map((i) => i.type);
-    expect(tiposA.some((t) => tiposB.includes(t) === false)).toBe(true);
-  });
-
-  it("um Contato mesclado sai do cálculo: ele já não é uma pessoa candidata", () => {
-    const mesclado = state.contacts.find((c) => c.lifecycle === "mesclado");
-    if (!mesclado) throw new Error("seed sem Contato mesclado");
-
-    const suspeitas = duplicateSuspicions(state);
-
-    expect(suspeitas.some((p) => p.a.id === mesclado.id || p.b.id === mesclado.id)).toBe(false);
   });
 });
 
@@ -701,13 +672,11 @@ describe("Modelo de Tarefa da Lista (C35)", () => {
     const link = state.links.find((l) => l.fromType === "task" && l.fromId === comContato.value.id && l.toType === "contact");
     expect(link?.toId).toBe("cnt_1");
     expect(link?.role).toBe(PAPEL_DO_VINCULO.contato);
-    expect(contatoDaTarefa(state, comContato.value)?.id).toBe("cnt_1");
   });
 
   it("moveTask: entrar numa Lista conversacional exige Contato; sair dela para uma operacional é livre e o Vínculo fica", () => {
     const solta = state.tasks.find((t) => t.id === "tsk_seed_4");
     if (!solta) throw new Error("seed sem tsk_seed_4");
-    expect(contatoDaTarefa(state, solta)).toBeUndefined();
     const entrada = moveTask(state, THIAGO, "tsk_seed_4", "lst_pos_venda");
     expect(entrada.ok).toBe(false);
     if (!entrada.ok) expect(entrada.error).toBe("Uma Lista conversacional só recebe Tarefa com Contato vinculado.");
@@ -719,7 +688,6 @@ describe("Modelo de Tarefa da Lista (C35)", () => {
     expect(movida?.listId).toBe("lst_ativacao");
     expect(movida?.statusId).toBe("st_atv_kick");
     expect(state.links.some((l) => l.fromType === "task" && l.fromId === "tsk_pv_1" && l.toType === "contact" && l.toId === "cnt_2")).toBe(true);
-    if (movida) expect(contatoDaTarefa(state, movida)?.id).toBe("cnt_2");
   });
 
   it("a Subtarefa nasce sem Vínculo próprio e herda o Contato da raiz", () => {
@@ -727,8 +695,6 @@ describe("Modelo de Tarefa da Lista (C35)", () => {
     expect(sub.ok).toBe(true);
     if (!sub.ok) return;
     expect(state.links.some((l) => l.fromType === "task" && l.fromId === sub.value.id)).toBe(false);
-    expect(contatoDaTarefa(state, sub.value)?.id).toBe("cnt_2");
-    expect(conversaDaTarefa(state, sub.value)?.id).toBe("cnv_1");
   });
 
   it("Formulário numa Lista conversacional: createForm recusa com a frase do domínio", () => {
@@ -781,15 +747,4 @@ describe("Modelo de Tarefa da Lista (C35)", () => {
     if (!edicao.ok) expect(edicao.error).toBe(FORMULARIO_EM_LISTA_CONVERSACIONAL);
     expect(archiveForm(state, THIAGO, form.value.id).ok).toBe(true);
   });
-
-  it("um Vínculo que ainda aponta para um Contato mesclado responde pelo sobrevivente (RN-CON-14)", () => {
-    // cnt_32 está `mesclado` em cnt_2 no seed; um Vínculo anterior à mesclagem aponta para ele.
-    const tarefa = createTask(state, THIAGO, { listId: "lst_pos_venda", title: "Antiga", vinculos: [{ toType: "contact", toId: "cnt_2", role: PAPEL_DO_VINCULO.contato }] });
-    if (!tarefa.ok) throw new Error(tarefa.error);
-    const link = state.links.find((l) => l.fromType === "task" && l.fromId === tarefa.value.id && l.toType === "contact");
-    if (!link) throw new Error("sem Vínculo");
-    state.links = state.links.map((l) => (l === link ? { ...l, toId: "cnt_32" } : l));
-    expect(contatoDaTarefa(state, tarefa.value)?.id).toBe("cnt_2");
-  });
-
 });

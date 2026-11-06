@@ -6,7 +6,6 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Canal } from "../crm/canais";
-import { canaisDaLista, canaisDaListaQueAlcancam, listaSemCanais } from "../derive-conversacional";
 import { buildSeed } from "../seed";
 import { semearCrmAntigo } from "../seed-crm-antigo";
 import type { DataState } from "../state";
@@ -54,7 +53,6 @@ describe("Canais de atendimento da Lista (C36)", () => {
     expect(com.value.canaisDeAtendimento).toEqual(["chn_wpp", "chn_mail"]);
     const atividade = state.activity.find((a) => a.action === "Lista criada" && a.objectId === com.value.id);
     expect(atividade?.detail).toContain("Atende por Comercial SP, contato@institutoigoralves.com.br");
-    expect(canaisDaLista(state, com.value.id).map((c) => c.id)).toEqual(["chn_wpp", "chn_mail"]);
   });
 
   it("createList recusa Canal inexistente, Chat do site e canais numa Lista operacional", () => {
@@ -75,7 +73,6 @@ describe("Canais de atendimento da Lista (C36)", () => {
 
   it("definirCanaisDaLista: grava com Atividade antes/depois; igual não grava; vazio e Lista operacional recusam; quem não administra recusa", () => {
     const listId = listaConversacionalVazia();
-    expect(listaSemCanais(state, listId)).toBe(true);
 
     const convidado = state.members.find((m) => m.state === "ativo" && baseDoPapel(state, m.id) === "convidado");
     if (convidado) {
@@ -111,23 +108,6 @@ describe("Canais de atendimento da Lista (C36)", () => {
     expect(definirCanaisDaLista(state, THIAGO, listId, ["chn_wpp"]).ok).toBe(true);
     expect(alterarModeloDaLista(state, THIAGO, listId, "operacional").ok).toBe(true);
     expect(state.lists.find((l) => l.id === listId)?.canaisDeAtendimento).toBeUndefined();
-    expect(canaisDaLista(state, listId)).toEqual([]);
-  });
-
-  it("canaisDaListaQueAlcancam cruza os canais da Lista com os Identificadores do Contato", () => {
-    // Um Contato com WhatsApp e sem e-mail: só o WhatsApp da Lista o alcança.
-    const soWhats = state.contacts.find(
-      (c) => c.lifecycle === "ativo" && c.identifiers.some((i) => i.type === "identidadeDeWhatsApp") && !c.identifiers.some((i) => i.type === "email"),
-    );
-    if (!soWhats) throw new Error("o seed precisa de um Contato com WhatsApp e sem e-mail");
-    expect(canaisDaListaQueAlcancam(state, "lst_pos_venda", soWhats).map((c) => c.id)).toEqual(["chn_wpp"]);
-    // Um Contato com os dois é alcançado pelos dois.
-    const iallas = state.contacts.find((c) => c.id === "cnt_35");
-    expect(canaisDaListaQueAlcancam(state, "lst_pos_venda", iallas).map((c) => c.id)).toEqual(["chn_wpp", "chn_mail"]);
-    // Sem Contato, todos os canais da Lista.
-    expect(canaisDaListaQueAlcancam(state, "lst_pos_venda", undefined).map((c) => c.id)).toEqual(["chn_wpp", "chn_mail"]);
-    // Numa Lista operacional não há canais.
-    expect(canaisDaListaQueAlcancam(state, "lst_ativacao", soWhats)).toEqual([]);
   });
 });
 

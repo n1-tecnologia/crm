@@ -440,7 +440,9 @@ export function EnviarFlowDialog({ flow, onClose, report }: { readonly flow: Flo
   const conversas = candidatas
     .map((c) => {
       const nomeDoContato = c.contactId ? nomeDe(nomes, "contact", c.contactId) : undefined;
-      const janela = responseWindowOpenUntil(state, c, capacidadesDoCanal);
+      // O Canal vem de `plataforma.canais` (15-42): o estado não guarda mais Canal, então a janela olha o da tabela.
+      const canalDaConversa = canaisDoCrm.todos.find((canal) => canal.id === c.channelId);
+      const janela = responseWindowOpenUntil(c, canalDaConversa ? { channelType: canalDaConversa.tipo, provider: canalDaConversa.provedor } : undefined, capacidadesDoCanal);
       const fora = janela !== null && janela.getTime() < agora;
       return { value: c.id, label: nomeDoContato ?? c.title, detail: `${c.state}${fora ? " · fora da janela de resposta" : ""}`, ...(fora ? { disabledReason: "Fora da Janela de resposta: só Mensagem de modelo (RN-CXE-19)." } : {}) };
     });

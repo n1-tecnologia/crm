@@ -15,7 +15,6 @@ import type { Channel, CrmDasFerramentas, Flow, Grupo, VersaoDeFlow } from "../t
 import {
   camposDeFlow,
   cliquesContabilizados,
-  contatosComWhatsApp,
   conversaDoGrupo,
   identidadeDeWhatsApp,
   grupoDeAvisos,
@@ -81,6 +80,9 @@ import {
   vincularGrupoAComunidade,
   zerarCliques,
 } from "./ferramentas";
+
+// Provisório (Task 3 monta o CRM próprio): os Contatos do estado semeado com WhatsApp.
+const contatosComWhatsApp = (s: DataState) => s.contacts.filter((c) => c.lifecycle === "ativo" && c.identifiers.some((i) => i.type === "identidadeDeWhatsApp"));
 
 let state: DataState;
 beforeEach(() => {
