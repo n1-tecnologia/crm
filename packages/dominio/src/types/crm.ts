@@ -3,6 +3,7 @@
  * Ontology: documentos 09–14, A4.4, A4.5, B8–B14, B50–B70.
  */
 
+import type { ChannelCapabilities, ChannelType, ProvedorDeCanal } from "../crm/capacidades";
 import type { EnvioDeFlow, RespostaDeFlow } from "./ferramentas";
 import type {
   ActorRef,
@@ -325,44 +326,12 @@ export interface Funnel extends RecordBase {
   provenance?: Provenance;
 }
 
-/** A1.3 — global enumeration. */
-export type ChannelType =
-  | "whatsapp"
-  | "instagram"
-  /**
-   * Mensagem direta do LinkedIn. Entrou como Canal quando a tela passou a
-   * precisar ENVIAR por ele; antes era só Identificador, porque registrar por
-   * onde a pessoa existe não é o mesmo que poder falar com ela.
-   */
-  | "linkedin"
-  | "email"
-  | "chatDoSite";
-
-/** Documento 14, 7.1 — fixed per channel type; neither Channel nor Conversation redefine it. */
-export interface ChannelCapabilities {
-  readonly resolvesIdentifierTypes: readonly ContactIdentifierType[];
-  readonly responseWindowHours?: number;
-  readonly requiresTemplateOutsideWindow: boolean;
-  readonly hasSubjectAndCopies: boolean;
-  readonly reportedDeliveryStatuses: readonly MessageDeliveryStatus[];
-  readonly externalSenderMayEdit: boolean;
-  readonly reactions: boolean;
-  readonly groups: boolean;
-  readonly multimodalInOneMessage: boolean;
-  readonly anonymousIdentity: boolean;
-  /**
-   * O que dá para anexar NESTE Canal. Oferecer na tela um tipo que o Canal não
-   * aceita é prometer um envio que vai falhar do lado de fora, onde nada aqui
-   * desfaz.
-   */
-  readonly sendableMediaTypes: readonly Attachment["mediaType"][];
-  /** Mídia que se apaga depois de vista uma vez. Só o WhatsApp tem. */
-  readonly viewOnce: boolean;
-  /** Áudio gravado na hora, diferente de anexar um arquivo de áudio. */
-  readonly voiceNote: boolean;
-  /** Corpo com formatação e imagem embutida, em vez de texto puro. */
-  readonly richText: boolean;
-}
+/*
+ * `ChannelType`, `ChannelCapabilities` e `ProvedorDeCanal` moraram aqui até a 15-32; a definição
+ * passou a `../crm/capacidades` (o CRM novo e as Ferramentas importam de lá). O reexport
+ * mantém o modelo antigo compilando até os tipos antigos saírem (15-43).
+ */
+export type { ChannelCapabilities, ChannelType, ProvedorDeCanal };
 
 /** B69 — pre-approved text; not a Template and not a Message. */
 export interface MessageTemplate {
@@ -374,14 +343,6 @@ export interface MessageTemplate {
   readonly approval: "aprovado" | "pendente" | "rejeitado" | "pausado";
   readonly syncedAt: Instant;
 }
-
-/**
- * D-01 (Fase 8) — por onde a conta do Canal conversa. O provedor é atributo do
- * Canal, não um Tipo de Canal novo: cada provedor pertence a um Tipo só
- * (`PROVEDORES` em `provedores-de-canal.ts`, e o `CHECK canais_provedor_tipo_ck`
- * da 008 é a mesma tabela).
- */
-export type ProvedorDeCanal = "whatsapp-cloud" | "whatsapp-nao-oficial" | "instagram-graph" | "email-imap-smtp";
 
 /** A4.1 domain exception — the Channel has no `naLixeira`. */
 export interface Channel extends Omit<RecordBase, "lifecycle" | "lifecycleBeforeTrash"> {

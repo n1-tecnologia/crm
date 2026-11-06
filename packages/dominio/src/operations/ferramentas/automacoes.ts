@@ -15,7 +15,7 @@ import type { DataState } from "../../state";
 import type { Automation, AutomationAction, AutomationExecution, AutomationVersion, ContatoDaFerramenta, CrmDasFerramentas, Grupo, Id } from "../../types";
 import { participacoesVigentes } from "../../derive-ferramentas";
 import { memberActor, nextId, recordActivity } from "../activity";
-import { sendMessageSemConferencia, startConversation } from "../conversations";
+import { sendMessageSemConferencia, startConversation } from "./conversa-de-grupo";
 import { encerrarParticipacao, registrarNoGrupo } from "./participacoes";
 import { contatoNoCrm, nomeDoParticipanteNoCrm } from "./permissoes";
 

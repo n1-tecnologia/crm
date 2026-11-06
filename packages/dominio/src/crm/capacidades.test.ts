@@ -1,5 +1,5 @@
 /**
- * D-02 (Fase 8) — as Capacidades continuam do Tipo de Canal (RN-CXE-05), mas o
+ * D-02 (Fase 8), movido para `crm/capacidades.ts` na 15-32 — as Capacidades continuam do Tipo de Canal (RN-CXE-05), mas o
  * provedor sobrepõe o que difere: o WhatsApp não oficial não tem janela de
  * 24 h nem exige Mensagem de modelo. Cada teste afirma o resultado, nunca que
  * uma função foi chamada.
@@ -7,11 +7,12 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { responseWindowOpenUntil } from "../derive";
+import { sendMessage } from "../operations/ferramentas/conversa-de-grupo";
 import { buildSeed } from "../seed";
 import { semearCrmAntigo } from "../seed-crm-antigo";
 import type { DataState } from "../state";
 import type { Channel, Conversation, Message } from "../types";
-import { CHANNEL_CAPABILITIES, capacidadesDoCanal, sendMessage } from "./conversations";
+import { CHANNEL_CAPABILITIES, capacidadesDoCanal } from "./capacidades";
 
 const THIAGO = "mem_thiago";
 const AGORA = new Date("2026-10-12T12:00:00.000Z");

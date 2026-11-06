@@ -9,8 +9,7 @@ import type { DataState } from "../../state";
 import { CRM_DAS_FERRAMENTAS_VAZIO, type ActorRef, type CrmDasFerramentas, type Grupo, type Id, type OrigemDaParticipacao, type PapelNaParticipacao, type ParticipacaoDeGrupo } from "../../types";
 import { gruposComuns, membrosDoGrupo, participacoesVigentes } from "../../derive-ferramentas";
 import { nextId, recordActivity, systemActor } from "../activity";
-import { canonicalIdentifier } from "../contacts";
-import { canalNoCrm, canalPeloNumeroNoCrm } from "./permissoes";
+import { canalNoCrm, canalPeloNumeroNoCrm, canonicalIdentifier } from "./permissoes";
 import { gruposNovosDoProvedor } from "./provedor-simulado";
 
 const now = (): string => new Date().toISOString();

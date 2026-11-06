@@ -22,7 +22,7 @@
 import { fail, ok, type OperationResult } from "../state";
 import { FORMA_DO_IDENTIFICADOR, identificadorCanonico } from "../operations/canais";
 import { PROVEDORES, PROVEDORES_DE_CANAL, type TipoComProvedor } from "../provedores-de-canal";
-import type { ProvedorDeCanal } from "../types/crm";
+import type { ProvedorDeCanal } from "./capacidades";
 import { LIMITES_CRM } from "./comum";
 
 export const CONEXOES_DO_CANAL = ["conectada", "desconectada", "com_erro"] as const;

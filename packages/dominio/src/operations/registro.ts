@@ -54,60 +54,6 @@ import {
   watchTask,
 } from "./tasks";
 
-// ── deals.ts ────────────────────────────────────────────────────────────
-import {
-  createDeal,
-  linkContactToDeal,
-  loseDeal,
-  migrateDealsToFunnel,
-  moveDealToFunnel,
-  moveDealToStage,
-  removeStage,
-  reopenDeal,
-  restoreDeal,
-  setDealFieldValue,
-  unlinkContactFromDeal,
-  winDeal,
-} from "./deals";
-
-// ── conversations.ts ────────────────────────────────────────────────────
-import {
-  assignConversation,
-  discardDraft,
-  markConversationRead,
-  moveConversationToContact,
-  reopenConversation,
-  resolveConversation,
-  restoreConversation,
-  sendMessage,
-  startConversation,
-  toggleConversationStar,
-  trashConversation,
-} from "./conversations";
-
-// ── contacts.ts ─────────────────────────────────────────────────────────
-import {
-  addCompanyIdentifier,
-  addContactIdentifier,
-  addCompanyNote,
-  addContactNote,
-  createCompany,
-  createContact,
-  endContactCompanyLink,
-  importContacts,
-  linkContactToCompany,
-  markContactsAsDistinct,
-  mergeContacts,
-  restoreCompany,
-  restoreContact,
-  restoreMergedCopy,
-  setContactCatalogValue,
-  trashCompany,
-  trashContact,
-  transferContactIdentifier,
-  updateCompany,
-} from "./contacts";
-
 // ── ai.ts ───────────────────────────────────────────────────────────────
 import {
   configureChatSession,
@@ -217,8 +163,16 @@ import { alterarEmailDoConvite, alterarPapelDoMembro, deleteRole, grantGovernanc
 // ── structure.ts ────────────────────────────────────────────────────────
 import { archiveContainer, createFolder, createList, createSpace, moveContainer, reorderContainers, restoreContainer, trashContainer, unarchiveContainer, updateContainer } from "./structure";
 
-// ── iniciar-conversa.ts ─────────────────────────────────────────────────
-import { iniciarConversa } from "./iniciar-conversa";
+// ── ferramentas/conversa-de-grupo.ts ────────────────────────────────────
+// Só as cinco que a Conversa de grupo na Caixa ainda chama (F14-D-05); o resto do módulo é
+// composição interna das Ferramentas e não entra aqui.
+import {
+  assignConversation,
+  reopenConversation,
+  resolveConversation,
+  toggleConversationStar,
+  trashConversation,
+} from "./ferramentas/conversa-de-grupo";
 
 // ── ferramentas/notas.ts ───────────────────────────────────────────────
 import { adicionarNotaNoAtivo } from "./ferramentas/notas";
@@ -311,14 +265,6 @@ import {
   sincronizarComunidade,
   vincularGrupoAComunidade,
 } from "./ferramentas/comunidades";
-
-// ── canais.ts ────────────────────────────────────────────────────────────
-// `recusaDeGerirCanais`, `validarCanaisDeAtendimento` e `identificadorCanonico` NÃO
-// entram: recusa pré-calculada, validação e helper.
-import {
-  configurarCanal,
-  criarCanal,
-} from "./canais";
 
 // ── tarefas-conversacionais.ts ───────────────────────────────────────────
 import { alterarModeloDaLista, definirCanaisDaLista } from "./tarefas-conversacionais";
@@ -439,51 +385,12 @@ export const OPERACOES = {
   resolveTaskComment,
   setTaskTags,
   watchTask,
-  // deals.ts
-  moveDealToStage,
-  winDeal,
-  loseDeal,
-  reopenDeal,
-  linkContactToDeal,
-  removeStage,
-  migrateDealsToFunnel,
-  restoreDeal,
-  moveDealToFunnel,
-  createDeal,
-  unlinkContactFromDeal,
-  setDealFieldValue,
-  // conversations.ts
-  sendMessage,
+  // ferramentas/conversa-de-grupo.ts
   resolveConversation,
   reopenConversation,
   assignConversation,
   trashConversation,
-  moveConversationToContact,
-  discardDraft,
-  restoreConversation,
-  startConversation,
   toggleConversationStar,
-  markConversationRead,
-  // contacts.ts
-  addContactIdentifier,
-  transferContactIdentifier,
-  mergeContacts,
-  endContactCompanyLink,
-  trashContact,
-  trashCompany,
-  restoreMergedCopy,
-  importContacts,
-  restoreContact,
-  restoreCompany,
-  markContactsAsDistinct,
-  addContactNote,
-  createContact,
-  createCompany,
-  linkContactToCompany,
-  addCompanyIdentifier,
-  setContactCatalogValue,
-  updateCompany,
-  addCompanyNote,
   // ai.ts
   decideApproval,
   decideProcessApproval,
@@ -586,8 +493,6 @@ export const OPERACOES = {
   unarchiveContainer,
   trashContainer,
   restoreContainer,
-  // iniciar-conversa.ts
-  iniciarConversa,
   // ferramentas/notas.ts
   adicionarNotaNoAtivo,
   // ferramentas/captacao.ts
@@ -659,9 +564,6 @@ export const OPERACOES = {
   restaurarComunidade,
   enviarComunidadeALixeira,
   restaurarComunidadeDaLixeira,
-  // canais.ts
-  criarCanal,
-  configurarCanal,
   // tarefas-conversacionais.ts
   alterarModeloDaLista,
   definirCanaisDaLista,

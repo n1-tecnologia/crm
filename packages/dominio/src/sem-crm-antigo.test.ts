@@ -37,11 +37,10 @@ const CONGELADOS = [
   // injetar esses dados como já injeta `cnpjPorEmpresa` (deviation aberta em .planning/WINDOWS.md).
   "operations/automations.ts",
   "operations/canais.ts",
-  "operations/contacts.ts",
-  "operations/conversations.ts",
-  "operations/deals.ts",
   "operations/ferramentas/automacoes.ts",
   "operations/ferramentas/comunidades.ts",
+  // 15-32: o que sobrou de `operations/conversations.ts` para o Grupo, o Flow e a Automação (F14-D-05). Sai com eles (Sessões 6 e 7).
+  "operations/ferramentas/conversa-de-grupo.ts",
   "operations/ferramentas/flows.ts",
   "operations/ferramentas/grupos.ts",
   "operations/ferramentas/participacoes.ts",
@@ -50,7 +49,6 @@ const CONGELADOS = [
   "operations/ia/agentes.ts",
   "operations/ia/automacoes-catalogo.ts",
   "operations/importacao-contas-a-receber.ts",
-  "operations/iniciar-conversa.ts",
   "operations/members.ts",
   "operations/planning.ts",
   "operations/structure.ts",

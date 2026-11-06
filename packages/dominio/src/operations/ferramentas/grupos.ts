@@ -15,7 +15,7 @@ import type { Canal } from "../../crm/canais";
 import { CRM_DAS_FERRAMENTAS_VAZIO, type ActorRef, type Captacao, type ConfiguracoesDoGrupo, type Conversation, type CrmDasFerramentas, type Grupo, type Id, type Message, type ParticipacaoDeGrupo, type PedidoDeEntrada } from "../../types";
 import { conversaDoGrupo, identidadeDeWhatsApp, participacoesVigentes, pedidosPendentes } from "../../derive-ferramentas";
 import { memberActor, nextId, recordActivity, systemActor } from "../activity";
-import { sendMessage, startConversation } from "../conversations";
+import { sendMessage, startConversation } from "./conversa-de-grupo";
 import { emitirEventoDeFerramentas } from "./automacoes";
 import { CAPACIDADES_DE_ATIVOS, LIMITE_DE_GRUPOS_POR_ESPACO } from "./capacidades";
 import { abrirParticipacao, contatoJaResolvido, encerrarParticipacao, numerosAResolver, reconciliarGrupoDeAvisos, registrarNoGrupo, resolverOuCriarContato, SEM_CONTATO_DO_PARTICIPANTE } from "./participacoes";

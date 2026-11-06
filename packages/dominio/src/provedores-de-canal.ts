@@ -4,13 +4,13 @@
  * Canal e pertence a UM tipo só (A2.4) — "e-mail com provedor de WhatsApp" não
  * existe.
  *
- * Arquivo folha: importa só tipos de `./types/crm`. O `CHECK canais_provedor_tipo_ck`
+ * Arquivo folha: importa só tipos de `./crm/capacidades`. O `CHECK canais_provedor_tipo_ck`
  * da 008 (`apps/api/migracoes/008-canais-conversas-mensagens.sql`) e o `z.enum`
  * da rota `POST /canais` são cópia literal desta tabela — quem mudar um, muda
  * os três no mesmo commit.
  */
 
-import type { ChannelType, ProvedorDeCanal } from "./types/crm";
+import type { ChannelType, ProvedorDeCanal } from "./crm/capacidades";
 
 /** Na ordem dos quatro cartões da tela de conexão (D-06). */
 export const PROVEDORES_DE_CANAL = [

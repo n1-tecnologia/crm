@@ -11,7 +11,7 @@ import type { Canal } from "./crm/canais";
 import type { IdentificadorDeContato } from "./crm/contatos";
 import { TIPO_DE_IDENTIFICADOR_DO_CANAL } from "./crm/conversas";
 import { ROTULO_DO_TIPO_DE_CANAL } from "./operations/canais";
-import { CHANNEL_CAPABILITIES } from "./operations/conversations";
+import { CHANNEL_CAPABILITIES } from "./crm/capacidades";
 import { PROVEDORES, provedorDoCanal } from "./provedores-de-canal";
 
 /** Os papéis dos Vínculos com que a Tarefa conversacional nasce. */

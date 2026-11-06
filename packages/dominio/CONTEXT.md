@@ -57,6 +57,25 @@ eles: a Tag "Em grupo de alunos" nos Contatos, os Grupos habilitados no Canal e 
 (15-32, 15-33, 15-42) e, por dívida registrada, `ferramentas.test.ts`; nenhum `seed*.ts` nem código de produção o importa,
 a guarda `sem-crm-antigo.test.ts` o lista como congelado e ele sai no 15-43.
 
+**Fase 15, plano 32 (UCR-12): as operações do CRM antigo saíram de `OPERACOES`.** Os módulos
+`operations/{contacts,conversations,deals,iniciar-conversa,crm-antigo}.ts` foram apagados, e `criarCanal`
+e `configurarCanal` saíram de `operations/canais.ts`: 40 nomes (deals 12, Conversa 6, Contato e Empresa 19,
+`iniciarConversa` 1, Canal 2) respondem 404 em `POST /operacoes/:nome` (285 -> 245 operações). Dois destinos
+para o que ainda se usa:
+
+- `ChannelType`, `ProvedorDeCanal`, `ChannelCapabilities`, `CHANNEL_CAPABILITIES` e `capacidadesDoCanal`
+  moram em `crm/capacidades.ts` (o que um Canal pode fazer, por Tipo e provedor). `types/crm.ts` os reexporta
+  enquanto os tipos antigos existem (15-43).
+- Grupo, Flow e Automação (F14-D-05) ainda chamam `startConversation`, `sendMessage`,
+  `sendMessageSemConferencia` e `receiveMessage`, e a Conversa de grupo na Caixa ainda resolve, reabre,
+  atribui, estrela e manda para a lixeira pelo store. Isso ficou em `operations/ferramentas/conversa-de-grupo.ts`
+  (com `recusaDeEscritaNoCrmAntigo`): só `resolveConversation`, `reopenConversation`, `assignConversation`,
+  `trashConversation` e `toggleConversationStar` continuam em `OPERACOES` e no barril; o resto é composição
+  interna, sem rota. `canonicalIdentifier` (comparar números de WhatsApp) foi para `ferramentas/permissoes.ts`.
+  Tudo isso sai com Grupo e Flow (Sessões 6 e 7); linha `deviation` aberta em `.planning/WINDOWS.md`.
+- Os testes de leitura do CRM antigo e de Mensageria que ainda precisam do `semearCrmAntigo` moraram em
+  `operations/sobre-o-crm-antigo.test.ts`; o 15-42 e o 15-43 os reescrevem ou apagam.
+
 `seed-financeiro.ts`/`seed-contas-a-receber.ts` aceitam `{ fixtures: false }`
 (padrão `true`): monta só a configuração do processo, sem os Membros e as
 Tarefas fictícias que reproduzem o histórico do ClickUp — é o que
@@ -82,9 +101,9 @@ O que cada nome de recusa quer dizer, em uma linha:
 - `listWriteRefusal` (`tasks.ts`): Membro ativo, não Convidado, que alcança a Lista (criar Tarefa).
 - `containerAdminRefusal` (`derive.ts`): Administrador ou Proprietário que alcança o contêiner, ou concessão `administrar` nele ou acima. `mayConfigure` e `sprintFolder` a embrulham. `containerTrashRefusal` (`structure.ts`) aceita também a concessão `excluir`.
 - `mayBuild` (`structure.ts`): criar contêiner. Membro ativo, não Convidado, que alcança o pai.
-- `templateAdminRefusal` / `recusaDeGerirTags` / `recusaDeGerirCanais`: Administrador ou Proprietário ativo (catálogo de Templates), ou quem administra o Espaço (Tags, Canais).
+- `templateAdminRefusal` / `recusaDeGerirTags`: Administrador ou Proprietário ativo (catálogo de Templates), ou quem administra o Espaço (Tags). `recusaDeGerirCanais` saiu na 15-32 com `criarCanal` e `configurarCanal`: o Canal grava pelas rotas `/canais`.
 - `mayEditView`: o dono da Visão pessoal, ou `containerAdminRefusal` na compartilhada.
-- `recusaDeEscritaNoCrmAntigo` (`crm-antigo.ts`, 09-03): Membro ativo de Papel base diferente de Convidado. `mayCreateCrmRecord` (`contacts.ts`) é a mesma regra com a frase "cria registro", nas seis operações de Contato e Empresa que já conferiam.
+- `recusaDeEscritaNoCrmAntigo` (`operations/ferramentas/conversa-de-grupo.ts`, 09-03; era `crm-antigo.ts`): Membro ativo de Papel base diferente de Convidado. Só as cinco operações da Conversa de grupo na Caixa a usam depois da 15-32.
 - `recusaDeMembroAtivo`: em `ferramentas/` (`ferramentas/permissoes.ts`) exige Membro ativo e não Convidado; em `ia/` (`ia/permissoes-ia.ts`) exige só Membro ativo, e o Convidado é barrado por outra recusa da mesma linha quando existe. `recusaDeAdministracao` (Ferramentas): Proprietário ou Administrador.
 - `crm?: CrmDasFerramentas` (`types/ferramentas.ts`, Fase 15, 15-07): o ÚLTIMO parâmetro, opcional, das operações de Grupo, Comunidade e Flow e das recusas de `ferramentas/permissoes.ts` que conferem Canal ou Contato. O servidor o lê de `plataforma.canais` e `plataforma.contatos` na transação e o navegador não o decide; ausente vale `{ canais: [], contatos: [] }` (a recusa diz "Canal não encontrado."). `state` continua na primeira posição. A Conversa de Grupo e o envio de Flow ficam em `state.conversations` (F14-D-05).
 - `resolverOuCriarContato(state, numero, detalhe, crm)` (`ferramentas/participacoes.ts`, Fase 15, 15-17): o Contato de um número de WhatsApp vem de `crm.contatos` (já resolvido ao sobrevivente se mesclado) ou do `ContatoACriar` do mesmo número em `crm.contatosACriar`, com o id que o servidor gerou; sem nenhum dos dois devolve `{ erro }` ("Contato do participante não resolvido.") e a operação recusa — nunca inventa id nem escreve em `state.contacts`. `numerosAResolver(nome, state, args, crm)` é a fonte única dos números que a operação e a leitura do servidor resolvem; `padroesDoContatoCriado` dá o Proprietário (Canal → Fila → Caixa → Espaço) e a Origem do Contato criado, para o `aoConfirmar`.
@@ -123,48 +142,11 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `resolveTaskComment` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask`; resolver o fio de outra pessoa exige ser Administrador ou Proprietário (`isWorkspaceAdmin`) ou, no fio do Resumo, o aprovador ou revisor da Conferência vigente |
 | `setTaskTags` | `operations/tasks.ts` | `taskWriteRefusal` | via `mayWriteTask` |
 | `watchTask` | `operations/tasks.ts` | `memberSeesTask`, `taskWriteRefusal` | observar a si mesmo exige ver a Tarefa; pôr outro Membro como Observador exige `mayWriteTask` |
-| `moveDealToStage` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `winDeal` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `loseDeal` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `reopenDeal` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `linkContactToDeal` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `removeStage` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `migrateDealsToFunnel` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `restoreDeal` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `moveDealToFunnel` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `createDeal` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `unlinkContactFromDeal` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `setDealFieldValue` | `operations/deals.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `sendMessage` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `resolveConversation` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `reopenConversation` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `assignConversation` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `trashConversation` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `moveConversationToContact` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `discardDraft` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `restoreConversation` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `startConversation` | `operations/conversations.ts` | recusa embutida (Membro ativo, não Convidado) | a mesma regra de `recusaDeEscritaNoCrmAntigo`, escrita dentro da operação desde antes da Fase 9 (09-03 não criou variante) |
-| `toggleConversationStar` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `markConversationRead` | `operations/conversations.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `addContactIdentifier` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `transferContactIdentifier` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `mergeContacts` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `endContactCompanyLink` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `trashContact` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `trashCompany` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `restoreMergedCopy` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `importContacts` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `restoreContact` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `restoreCompany` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `markContactsAsDistinct` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `addContactNote` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
-| `createContact` | `operations/contacts.ts` | `mayCreateCrmRecord` |  |
-| `createCompany` | `operations/contacts.ts` | `mayCreateCrmRecord` |  |
-| `linkContactToCompany` | `operations/contacts.ts` | `mayCreateCrmRecord` |  |
-| `addCompanyIdentifier` | `operations/contacts.ts` | `mayCreateCrmRecord` |  |
-| `setContactCatalogValue` | `operations/contacts.ts` | `mayCreateCrmRecord` |  |
-| `updateCompany` | `operations/contacts.ts` | `mayCreateCrmRecord` |  |
-| `addCompanyNote` | `operations/contacts.ts` | `recusaDeEscritaNoCrmAntigo` |  |
+| `resolveConversation` | `operations/ferramentas/conversa-de-grupo.ts` | `recusaDeEscritaNoCrmAntigo` | a Conversa de grupo na Caixa (F14-D-05); sai com ela |
+| `reopenConversation` | `operations/ferramentas/conversa-de-grupo.ts` | `recusaDeEscritaNoCrmAntigo` | a Conversa de grupo na Caixa (F14-D-05); sai com ela |
+| `assignConversation` | `operations/ferramentas/conversa-de-grupo.ts` | `recusaDeEscritaNoCrmAntigo` | a Conversa de grupo na Caixa (F14-D-05); sai com ela |
+| `trashConversation` | `operations/ferramentas/conversa-de-grupo.ts` | `recusaDeEscritaNoCrmAntigo` | a Conversa de grupo na Caixa (F14-D-05); sai com ela |
+| `toggleConversationStar` | `operations/ferramentas/conversa-de-grupo.ts` | `recusaDeEscritaNoCrmAntigo` | a Conversa de grupo na Caixa (F14-D-05); sai com ela |
 | `decideApproval` | `operations/ai.ts` | `mayDecideApproval` | o aprovador designado, o dono do Agente ou um Administrador ou Proprietário ativo |
 | `decideProcessApproval` | `operations/ai.ts` | `mayDecideApproval` | o aprovador designado ou um Administrador ou Proprietário ativo; o alcance da Tarefa vem da resposta no fio (`addTaskComment`) |
 | `solicitarAprovacao` | `operations/ai.ts` | `taskWriteRefusal` | o ator é conferido ao mover a Tarefa para 'em aprovação' (`changeTaskStatus`, via `mayWriteTaskStatus`), antes de qualquer gravação |
@@ -254,7 +236,6 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `unarchiveContainer` | `operations/structure.ts` | `containerAdminRefusal` |  |
 | `trashContainer` | `operations/structure.ts` | `containerTrashRefusal` |  |
 | `restoreContainer` | `operations/structure.ts` | `containerTrashRefusal` |  |
-| `iniciarConversa` | `operations/iniciar-conversa.ts` | `recusaDeEscritaNoCrmAntigo`, `listWriteRefusal` | composição: `createDeal`, `createTask` e `setContactCatalogValue` conferem (esta última por `mayCreateCrmRecord`); as validações anteriores só leem, e a operação desfaz o que criou se um ato recusar |
 | `adicionarNotaNoAtivo` | `operations/ferramentas/notas.ts` | `recusaDeMembroAtivo` |  |
 | `criarLinkDeCaptacao` | `operations/ferramentas/captacao.ts` | `recusaDeMembroAtivo` |  |
 | `editarLinkDeCaptacao` | `operations/ferramentas/captacao.ts` | `recusaDeMembroAtivo` |  |
@@ -321,8 +302,6 @@ O que cada nome de recusa quer dizer, em uma linha:
 | `restaurarComunidade` | `operations/ferramentas/comunidades.ts` | `recusaDeMembroAtivo` |  |
 | `enviarComunidadeALixeira` | `operations/ferramentas/comunidades.ts` | `recusaDeMembroAtivo` |  |
 | `restaurarComunidadeDaLixeira` | `operations/ferramentas/comunidades.ts` | `recusaDeMembroAtivo` |  |
-| `criarCanal` | `operations/canais.ts` | `recusaDeGerirCanais` |  |
-| `configurarCanal` | `operations/canais.ts` | `recusaDeGerirCanais` |  |
 | `alterarModeloDaLista` | `operations/tarefas-conversacionais.ts` | `containerAdminRefusal` |  |
 | `definirCanaisDaLista` | `operations/tarefas-conversacionais.ts` | `containerAdminRefusal` |  |
 | `ativarAgente` | `operations/ia/agentes.ts` | `recusaDeGovernarAgente` |  |

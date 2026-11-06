@@ -1,129 +1,46 @@
 /**
- * Inbox operations: sending, resolving, reopening and assigning conversations.
+ * A Conversa de GRUPO e as Mensagens do modelo antigo (F14-D-05): o que as Ferramentas — Grupo, Flow
+ * e Automação — ainda chamam depois que as operações do CRM antigo saíram de `OPERACOES` (15-32,
+ * 3.5.4). Grupo e Flow ficam no modelo antigo de Conversa até as Sessões 6 e 7; este arquivo é o
+ * que sobrou de `operations/conversations.ts` e sai com elas.
+ *
+ * Ficam registradas em `OPERACOES` só as cinco que a tela da Conversa de grupo na Caixa ainda
+ * chama pelo store (`resolveConversation`, `reopenConversation`, `assignConversation`,
+ * `trashConversation`, `toggleConversationStar`). `sendMessage`, `sendMessageSemConferencia`,
+ * `receiveMessage` e `startConversation` são composições internas das Ferramentas: nenhuma rota as
+ * alcança. Ver a linha `deviation` do 15-32 em `.planning/WINDOWS.md`.
+ *
  * Ontology: documento 14, B12, B66, B68, B69, RN-CXE-*.
  */
 
-import { fail, ok, type DataState, type OperationResult } from "../state";
-import type { ActorRef, ChannelCapabilities, ChannelType, Conversation, Id, Message } from "../types";
-import { marketingConsentMissing } from "../derive";
-import { provedorDoCanal } from "../provedores-de-canal";
-import type { ProvedorDeCanal } from "../types";
-import { memberActor, nextId, recordActivity, systemActor } from "./activity";
-import { recusaDeEscritaNoCrmAntigo } from "./crm-antigo";
+import { CHANNEL_CAPABILITIES, capacidadesDoCanal } from "../../crm/capacidades";
+import { marketingConsentMissing } from "../../derive";
+import { fail, ok, type DataState, type OperationResult } from "../../state";
+import type { ActorRef, Conversation, Id, Message } from "../../types";
+import { memberActor, nextId, recordActivity, systemActor } from "../activity";
+
+/**
+ * Fase 9, 1.2.2 — quem escreve no CRM antigo (Conversas e Mensagens do modelo em inglês que vive
+ * em `plataforma.registros`) é Membro `ativo` com Papel base diferente de `convidado`: a mesma
+ * regra de escrita de `podeNoCrm` (`../../crm/permissoes`). Devolve `undefined` quando pode e a
+ * frase de recusa quando não pode. A rota recusa o suspenso (09-07) e esta é a segunda barreira,
+ * no domínio, onde a regra mora para valer igual na tela e no endpoint.
+ *
+ * Composições internas (Automações, Flows, Grupos) que agem em nome do Agente do pipeline
+ * (Convidado) ou de uma Automação chamam `sendMessageSemConferencia`, que nunca entra em
+ * `OPERACOES`: lá o ator já foi conferido por quem disparou a composição.
+ */
+export function recusaDeEscritaNoCrmAntigo(state: DataState, actingMemberId: Id): string | undefined {
+  const member = state.members.find((m) => m.id === actingMemberId);
+  if (!member || member.state !== "ativo") return "Só um Membro ativo altera o CRM.";
+  const base = state.roles.find((r) => r.id === member.roleId)?.base;
+  if (base === "convidado") {
+    return "Um Convidado não altera o CRM: ele alcança só o que foi compartilhado com ele.";
+  }
+  return undefined;
+}
 
 const now = (): string => new Date().toISOString();
-
-/**
- * Documento 14, 7.1 — capabilities belong to the CHANNEL TYPE (RN-CXE-05). Esta
- * é a tabela do tipo; quem decide o que um Canal pode lê `capacidadesDoCanal`,
- * que parte daqui e só sobrepõe o que o provedor muda (D-02).
- */
-export const CHANNEL_CAPABILITIES: Record<ChannelType, ChannelCapabilities> = {
-  whatsapp: {
-    resolvesIdentifierTypes: ["identidadeDeWhatsApp"],
-    responseWindowHours: 24,
-    requiresTemplateOutsideWindow: true,
-    hasSubjectAndCopies: false,
-    reportedDeliveryStatuses: ["enviada", "entregue", "lida"],
-    externalSenderMayEdit: true,
-    reactions: true,
-    groups: true,
-    multimodalInOneMessage: false,
-    anonymousIdentity: false,
-    sendableMediaTypes: ["image", "video", "audio", "document", "sticker", "location", "flow"],
-    viewOnce: true,
-    voiceNote: true,
-    richText: false,
-  },
-  instagram: {
-    resolvesIdentifierTypes: ["usuarioDeInstagram"],
-    responseWindowHours: 24,
-    requiresTemplateOutsideWindow: true,
-    hasSubjectAndCopies: false,
-    reportedDeliveryStatuses: ["enviada", "lida"],
-    externalSenderMayEdit: true,
-    reactions: true,
-    groups: false,
-    multimodalInOneMessage: false,
-    anonymousIdentity: false,
-    // Sem documento: o Direct não aceita arquivo, só mídia.
-    sendableMediaTypes: ["image", "video", "audio"],
-    viewOnce: true,
-    voiceNote: true,
-    richText: false,
-  },
-  /*
-   * LinkedIn: mensagem direta. Não tem janela de resposta, porque a permissão
-   * para falar vem da conexão e não do tempo desde a última resposta. Também
-   * não tem modelo aprovado: o que existe lá é limite de InMail, que é cota do
-   * remetente e não aprovação de conteúdo.
-   */
-  linkedin: {
-    resolvesIdentifierTypes: ["perfilDeLinkedIn"],
-    requiresTemplateOutsideWindow: false,
-    hasSubjectAndCopies: false,
-    reportedDeliveryStatuses: ["enviada", "lida"],
-    externalSenderMayEdit: true,
-    reactions: true,
-    groups: true,
-    multimodalInOneMessage: false,
-    anonymousIdentity: false,
-    sendableMediaTypes: ["image", "video", "document"],
-    viewOnce: false,
-    voiceNote: true,
-    richText: false,
-  },
-  email: {
-    resolvesIdentifierTypes: ["email"],
-    requiresTemplateOutsideWindow: false,
-    hasSubjectAndCopies: true,
-    reportedDeliveryStatuses: ["enviada"],
-    externalSenderMayEdit: false,
-    reactions: false,
-    groups: true,
-    multimodalInOneMessage: true,
-    anonymousIdentity: false,
-    // O e-mail aceita qualquer arquivo, e vários na mesma Mensagem.
-    sendableMediaTypes: ["image", "video", "audio", "document", "spreadsheet", "other"],
-    viewOnce: false,
-    voiceNote: false,
-    richText: true,
-  },
-  chatDoSite: {
-    resolvesIdentifierTypes: ["identificadorDeChatDoSite"],
-    requiresTemplateOutsideWindow: false,
-    hasSubjectAndCopies: false,
-    reportedDeliveryStatuses: ["entregue", "lida"],
-    externalSenderMayEdit: false,
-    reactions: false,
-    groups: false,
-    multimodalInOneMessage: true,
-    anonymousIdentity: true,
-    sendableMediaTypes: ["image", "document"],
-    viewOnce: false,
-    voiceNote: false,
-    richText: false,
-  },
-};
-
-/**
- * As Capacidades de UM Canal. Elas continuam sendo do Tipo de Canal (RN-CXE-05;
- * documento 14, 7.1): o provedor só sobrepõe o que difere (D-02) — o WhatsApp
- * não oficial não tem janela de 24 h nem exige Mensagem de modelo aprovada.
- * Canal sem `provider` (o seed, o `criarCanal` antigo) usa `provedorDoCanal`,
- * que cai no padrão do tipo, e o resultado é a tabela do tipo, como sempre foi.
- */
-export function capacidadesDoCanal(canal: {
-  readonly channelType: ChannelType;
-  readonly provider?: ProvedorDeCanal;
-}): ChannelCapabilities {
-  const base = CHANNEL_CAPABILITIES[canal.channelType];
-  if (provedorDoCanal(canal) === "whatsapp-nao-oficial") {
-    const { responseWindowHours: _semJanela, ...semJanela } = base;
-    return { ...semJanela, requiresTemplateOutsideWindow: false };
-  }
-  return base;
-}
 
 function windowOpenUntil(state: DataState, conversation: Conversation): Date | null {
   const channel = state.channels.find((c) => c.id === conversation.channelId);
@@ -512,213 +429,6 @@ export function trashConversation(
 }
 
 /**
- * RN-CXE-11 / RN-CXE-10 — mover a Conversa para outro Contato.
- *
- * A regra dura: é REJEITADO se o destino já tiver uma Conversa não resolvida no
- * mesmo Canal, salvo resolver a existente no mesmo ato. Duas Conversas abertas
- * do mesmo Contato no mesmo Canal quebram a identidade (Contato, Canal) que a
- * Caixa de Entrada usa para rotear a próxima Mensagem recebida.
- *
- * O Canal da Conversa é imutável (INV-CXE-04): mover troca o Contato, nunca o
- * Canal, e as Mensagens permanecem exatamente como estão.
- */
-export function moveConversationToContact(
-  state: DataState,
-  actingMemberId: Id,
-  conversationId: Id,
-  toContactId: Id,
-  resolveExisting = false,
-): OperationResult<Conversation> {
-  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
-  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
-  if (recusa) return fail(recusa);
-  const conversation = state.conversations.find((c) => c.id === conversationId);
-  if (!conversation) return fail("Conversa não encontrada.");
-  if (conversation.lifecycle !== "ativo") return fail("Esta Conversa está na lixeira.");
-
-  const target = state.contacts.find((c) => c.id === toContactId);
-  if (!target) return fail("Contato de destino não encontrado.");
-  if (target.lifecycle === "mesclado") {
-    return fail("Este Contato foi mesclado. Mova para o Contato sobrevivente.");
-  }
-  if (conversation.contactId === toContactId) return ok(conversation);
-
-  const colliding = state.conversations.find(
-    (other) =>
-      other.id !== conversation.id &&
-      other.contactId === toContactId &&
-      other.channelId === conversation.channelId &&
-      other.lifecycle === "ativo" &&
-      other.state !== "resolvida",
-  );
-  if (colliding && !resolveExisting) {
-    const channel = state.channels.find((c) => c.id === conversation.channelId);
-    return fail(
-      `${target.firstName} já tem uma Conversa não resolvida em ${channel?.name ?? "este Canal"}. Resolva-a no mesmo ato para mover.`,
-      "destino",
-    );
-  }
-  if (colliding) {
-    colliding.state = "resolvida";
-    colliding.resolvedAt = now();
-    delete colliding.snooze;
-    recordActivity(state, {
-      actor: memberActor(actingMemberId),
-      action: "Conversa resolvida",
-      objectType: "conversation",
-      objectId: colliding.id,
-      objectName: colliding.title,
-      before: "aberta",
-      after: "resolvida",
-      detail: "Resolvida no ato de mover outra Conversa para este Contato",
-    });
-  }
-
-  const previous = conversation.contactId
-    ? state.contacts.find((c) => c.id === conversation.contactId)
-    : undefined;
-  conversation.contactId = toContactId;
-  delete conversation.unresolvedIdentifier;
-
-  /**
-   * RN-CXE-11 move o Contato PRINCIPAL. Sem trocar o Participante, a Conversa
-   * passaria a pertencer a um Contato enquanto a lista de Participantes ainda
-   * mostraria o outro como principal — a tela mentindo sobre quem está ali.
-   */
-  const principal = conversation.participants.find(
-    (participant) => participant.subject.kind === "contact" && participant.principal,
-  );
-  if (principal) {
-    const index = conversation.participants.indexOf(principal);
-    conversation.participants[index] = {
-      ...principal,
-      subject: { kind: "contact", id: toContactId },
-    };
-  } else {
-    conversation.participants.push({
-      id: nextId("prt"),
-      subject: { kind: "contact", id: toContactId },
-      role: "contato",
-      principal: true,
-      enteredAt: now(),
-    });
-  }
-
-  const previousName = previous ? `${previous.firstName} ${previous.lastName}`.trim() : "não resolvido";
-  const targetName = `${target.firstName} ${target.lastName}`.trim();
-
-  recordActivity(state, {
-    actor: memberActor(actingMemberId),
-    action: "Conversa movida para outro Contato",
-    objectType: "conversation",
-    objectId: conversation.id,
-    objectName: conversation.title,
-    before: previousName,
-    after: targetName,
-  });
-  // RN-CXE-11 — registrado nas DUAS pontas: quem procura pelo Contato de origem
-  // precisa achar para onde a Conversa foi.
-  if (previous) {
-    recordActivity(state, {
-      actor: memberActor(actingMemberId),
-      action: "Conversa saiu deste Contato",
-      objectType: "contact",
-      objectId: previous.id,
-      objectName: previousName,
-      after: targetName,
-      detail: conversation.title,
-    });
-  }
-  recordActivity(state, {
-    actor: memberActor(actingMemberId),
-    action: "Conversa recebida de outro Contato",
-    objectType: "contact",
-    objectId: target.id,
-    objectName: targetName,
-    before: previousName,
-    detail: conversation.title,
-  });
-  return ok(conversation, conversation.id);
-}
-
-/**
- * B66 — descartar um Rascunho é irrecuperável: ele nunca foi Mensagem, então
- * não há lixeira nem versão anterior para onde voltar. Por isso o descarte é um
- * ato registrado, e não um efeito colateral de fechar a tela.
- */
-export function discardDraft(
-  state: DataState,
-  actingMemberId: Id,
-  conversationId: Id,
-  draftActor: ActorRef,
-): OperationResult<null> {
-  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
-  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
-  if (recusa) return fail(recusa);
-  const conversation = state.conversations.find((c) => c.id === conversationId);
-  if (!conversation) return fail("Conversa não encontrada.");
-  if (conversation.lifecycle !== "ativo") return fail("Esta Conversa está na lixeira.");
-
-  const draft = conversation.drafts.find(
-    (d) => d.actor.kind === draftActor.kind && d.actor.id === draftActor.id,
-  );
-  if (!draft) return fail("Este Rascunho já não existe.");
-
-  conversation.drafts = conversation.drafts.filter((d) => d !== draft);
-  recordActivity(state, {
-    actor: memberActor(actingMemberId),
-    action: "Rascunho de IA descartado",
-    objectType: "conversation",
-    objectId: conversation.id,
-    objectName: conversation.title,
-    detail:
-      draftActor.kind === "agent"
-        ? (state.agents.find((a) => a.id === draftActor.id)?.name ?? "Agente")
-        : (state.members.find((m) => m.id === draftActor.id)?.displayName ?? "Membro"),
-  });
-  return ok(null);
-}
-
-/**
- * RN-CXE-33 — a Conversa vai à lixeira só `resolvida`, e volta `resolvida`: o
- * estado de atendimento não é efeito colateral da restauração. As Mensagens
- * nunca saíram, então nada precisa voltar com ela.
- */
-export function restoreConversation(
-  state: DataState,
-  actingMemberId: Id,
-  conversationId: Id,
-): OperationResult<Conversation> {
-  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
-  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
-  if (recusa) return fail(recusa);
-  const conversation = state.conversations.find((c) => c.id === conversationId);
-  if (!conversation) return fail("Conversa não encontrada.");
-  if (conversation.lifecycle !== "naLixeira") return ok(conversation);
-
-  const contact = conversation.contactId
-    ? state.contacts.find((c) => c.id === conversation.contactId)
-    : undefined;
-  if (contact && contact.lifecycle === "naLixeira") {
-    return fail(
-      `O Contato ${contact.firstName} está na lixeira. Restaure o Contato antes: uma Conversa sem Contato resolvido não é roteável.`,
-    );
-  }
-
-  conversation.lifecycle = "ativo";
-  delete conversation.trashedAt;
-  recordActivity(state, {
-    actor: memberActor(actingMemberId),
-    action: "Conversa restaurada",
-    objectType: "conversation",
-    objectId: conversation.id,
-    objectName: conversation.title,
-    detail: `Volta ${conversation.state}.`,
-  });
-  return ok(conversation, conversation.id);
-}
-
-/**
  * Abrir atendimento: a Conversa que o Membro começa, sem esperar o Contato
  * escrever primeiro.
  *
@@ -848,31 +558,3 @@ export function toggleConversationStar(
   return ok(conversation, conversation.id);
 }
 
-/**
- * Dar a Conversa por lida por quem está olhando. RN-CXE — "não lida" é
- * derivada: existe Mensagem sem leitura registrada deste Membro. Não existe um
- * campo `lida` que possa divergir das Mensagens.
- */
-export function markConversationRead(
-  state: DataState,
-  actingMemberId: Id,
-  conversationId: Id,
-): OperationResult<Conversation> {
-  // 1.2.2 — primeira conferência: quem escreve no CRM antigo é Membro ativo e não Convidado.
-  const recusa = recusaDeEscritaNoCrmAntigo(state, actingMemberId);
-  if (recusa) return fail(recusa);
-  const conversation = state.conversations.find((c) => c.id === conversationId);
-  if (!conversation) return fail("Conversa não encontrada.");
-
-  const agora = now();
-  for (const message of conversation.messages) {
-    if (message.direction === "enviada") continue;
-    const jaLeu = message.internalReads.some(
-      (r) => r.actor.kind === "member" && r.actor.id === actingMemberId,
-    );
-    if (!jaLeu) {
-      message.internalReads.push({ actor: memberActor(actingMemberId), at: agora });
-    }
-  }
-  return ok(conversation);
-}

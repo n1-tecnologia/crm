@@ -1,6 +1,6 @@
 /**
- * C36 — os canais de atendimento da Lista conversacional e o Canal como
- * registro (criar e configurar). Cada teste afirma o RESULTADO da operação e
+ * C36 — os canais de atendimento da Lista conversacional e a forma do
+ * identificador de cada Tipo de Canal (criar e configurar Canal saíram na 15-32). Cada teste afirma o RESULTADO da operação e
  * o estado que ela deixou, nunca que uma função foi chamada.
  */
 
@@ -10,14 +10,8 @@ import { canaisDaLista, canaisDaListaQueAlcancam, listaSemCanais } from "../deri
 import { buildSeed } from "../seed";
 import { semearCrmAntigo } from "../seed-crm-antigo";
 import type { DataState } from "../state";
-import {
-  FORMA_DO_IDENTIFICADOR,
-  configurarCanal,
-  criarCanal,
-  identificadorCanonico,
-} from "./canais";
-import { administraOEspaco, baseDoPapel } from "./ia/permissoes-ia";
-import { funilDaLista, iniciarConversa } from "./iniciar-conversa";
+import { identificadorCanonico } from "./canais";
+import { baseDoPapel } from "./ia/permissoes-ia";
 import { createList } from "./structure";
 import { alterarModeloDaLista, definirCanaisDaLista } from "./tarefas-conversacionais";
 
@@ -28,18 +22,6 @@ beforeEach(() => {
   // Testa código do CRM antigo que sai (15-32/15-42): o seed deixou de criar o CRM (15-31), então ele é semeado aqui.
   state = semearCrmAntigo(buildSeed());
 });
-
-/** Um Membro ativo que NÃO administra o Espaço de Trabalho (para as recusas de B35). */
-const semAdmin = (): string => {
-  const m = state.members.find((x) => x.state === "ativo" && !administraOEspaco(state, x.id));
-  if (!m) throw new Error("o seed precisa de um Membro ativo que não administre o Espaço");
-  return m.id;
-};
-const admin = (): string => {
-  const m = state.members.find((x) => x.state === "ativo" && administraOEspaco(state, x.id));
-  if (!m) throw new Error("o seed precisa de um Administrador");
-  return m.id;
-};
 
 /** Uma Lista conversacional recém-nascida, sem canais (virou conversacional depois de nascer). */
 const listaConversacionalVazia = (): string => {
@@ -132,27 +114,6 @@ describe("Canais de atendimento da Lista (C36)", () => {
     expect(canaisDaLista(state, listId)).toEqual([]);
   });
 
-  it("iniciarConversa (espelho do Funil) respeita os canais da Lista e não deixa rastro ao recusar", () => {
-    // O SDR atende por WhatsApp e LinkedIn: o e-mail fica de fora.
-    const funil = funilDaLista(state, "lst_funil_sdr");
-    if (!funil) throw new Error("lst_funil_sdr devia espelhar um Funil");
-    const etapa = funil.stages[0];
-    if (!etapa) throw new Error("o Funil precisa de uma Etapa");
-    const negocios = state.deals.length;
-    const tarefas = state.tasks.length;
-    const conversas = state.conversations.length;
-    const fora = iniciarConversa(state, THIAGO, { listId: "lst_funil_sdr", contactId: "cnt_1", stageId: etapa.id, channelId: "chn_mail" });
-    expect(fora.ok).toBe(false);
-    if (!fora.ok) expect(fora.error).toContain("não atende por");
-    expect(state.deals.length).toBe(negocios);
-    expect(state.tasks.length).toBe(tarefas);
-    expect(state.conversations.length).toBe(conversas);
-    // Por um canal da Lista nasce — numa Etapa em que o Negócio possa nascer
-    // (algumas exigem campo preenchido, regra que não é desta história).
-    const nasceu = funil.stages.some((s) => iniciarConversa(state, THIAGO, { listId: "lst_funil_sdr", contactId: "cnt_1", stageId: s.id, channelId: "chn_wpp" }).ok);
-    expect(nasceu).toBe(true);
-  });
-
   it("canaisDaListaQueAlcancam cruza os canais da Lista com os Identificadores do Contato", () => {
     // Um Contato com WhatsApp e sem e-mail: só o WhatsApp da Lista o alcança.
     const soWhats = state.contacts.find(
@@ -170,7 +131,7 @@ describe("Canais de atendimento da Lista (C36)", () => {
   });
 });
 
-describe("O Canal como registro: conectar e configurar (C36)", () => {
+describe("A forma canônica do identificador de cada Tipo de Canal (C36)", () => {
   it("a forma canônica de cada tipo, e a recusa quando a forma não serve", () => {
     expect(identificadorCanonico("whatsapp", "+55 (11) 98765-4321")).toBe("+5511987654321");
     expect(identificadorCanonico("whatsapp", "11 98765-4321")).toBeUndefined();
@@ -182,115 +143,6 @@ describe("O Canal como registro: conectar e configurar (C36)", () => {
     expect(identificadorCanonico("linkedin", "in/maria-silva")).toBe("in/maria-silva");
     expect(identificadorCanonico("linkedin", "maria-silva")).toBe("in/maria-silva");
     expect(identificadorCanonico("linkedin", "pub/x/y/z")).toBeUndefined();
-
-    const invalido = criarCanal(state, admin(), { channelType: "whatsapp", name: "Loja", externalId: "98765" });
-    expect(invalido.ok).toBe(false);
-    if (!invalido.ok) {
-      expect(invalido.error).toBe(FORMA_DO_IDENTIFICADOR.whatsapp.dica);
-      expect(invalido.field).toBe("identificador");
-    }
-  });
-
-  it("criarCanal: só quem administra o Espaço conecta (B35); o Canal nasce conectado e acende como recente", () => {
-    const recusa = criarCanal(state, semAdmin(), { channelType: "email", name: "Suporte", externalId: "suporte@x.com.br" });
-    expect(recusa.ok).toBe(false);
-    if (!recusa.ok) expect(recusa.error).toBe("Só quem administra o Espaço de Trabalho conecta e configura Canais.");
-
-    const quem = admin();
-    const criado = criarCanal(state, quem, {
-      channelType: "email",
-      name: "Suporte",
-      externalId: "Suporte@X.com.br",
-      defaultQueueId: "fila_sup",
-      defaultOriginId: "cat_org_site",
-    });
-    expect(criado.ok).toBe(true);
-    if (!criado.ok) return;
-    expect(criado.id).toBe(criado.value.id);
-    const canal = state.channels.find((c) => c.id === criado.value.id);
-    expect(canal?.connection).toBe("conectada");
-    expect(canal?.lifecycle).toBe("ativo");
-    expect(canal?.externalId).toBe("suporte@x.com.br");
-    expect(canal?.configuredByMemberId).toBe(quem);
-    expect(canal?.defaultQueueId).toBe("fila_sup");
-    expect(canal?.defaultOriginId).toBe("cat_org_site");
-    expect(canal?.messageTemplates).toEqual([]);
-    expect(canal?.groupsEnabled).toBe(false);
-    expect(state.activity[0]?.action).toBe("Canal conectado");
-    expect(state.activity[0]?.detail).toBe("E-mail · suporte@x.com.br");
-    // O Canal novo já pode ser canal de atendimento de uma Lista.
-    const lista = createList(state, THIAGO, { name: "Suporte", parentType: "space", parentId: "spc_com", modeloDeTarefa: "conversacional", canaisDeAtendimento: [criado.value.id] });
-    expect(lista.ok).toBe(true);
-  });
-
-  it("criarCanal: nome repetido e a mesma conta são recusados (RN-CXE-31, INV-CXE-01); Fila e Origem inválidas também", () => {
-    const quem = admin();
-    const nome = criarCanal(state, quem, { channelType: "whatsapp", name: "  comercial sp ", externalId: "+5511900000000" });
-    expect(nome.ok).toBe(false);
-    if (!nome.ok) expect(nome.error).toBe("Já existe um Canal chamado “Comercial SP”.");
-
-    const conta = criarCanal(state, quem, { channelType: "whatsapp", name: "Outro nome", externalId: "+55 11 98765-4321" });
-    expect(conta.ok).toBe(false);
-    if (!conta.ok) {
-      expect(conta.error).toBe("Esta conta já está conectada como “Comercial SP”.");
-      expect(conta.field).toBe("identificador");
-    }
-
-    const fila = criarCanal(state, quem, { channelType: "whatsapp", name: "Outro nome", externalId: "+5511900000000", defaultQueueId: "fila_nada" });
-    expect(fila.ok).toBe(false);
-    if (!fila.ok) expect(fila.field).toBe("fila");
-
-    const naoOrigem = state.catalog.find((i) => i.kind !== "origem");
-    if (!naoOrigem) throw new Error("o catálogo precisa de um item que não seja Origem");
-    const origem = criarCanal(state, quem, { channelType: "whatsapp", name: "Outro nome", externalId: "+5511900000000", defaultOriginId: naoOrigem.id });
-    expect(origem.ok).toBe(false);
-    if (!origem.ok) expect(origem.field).toBe("origem");
-    expect(state.channels.some((c) => c.name === "Outro nome")).toBe(false);
-  });
-
-  it("configurarCanal troca o setor e a origem, null limpa, e registra antes/depois; sem mudança não registra", () => {
-    const quem = admin();
-    const recusa = configurarCanal(state, semAdmin(), "chn_wpp", { defaultQueueId: "fila_sup" });
-    expect(recusa.ok).toBe(false);
-
-    const antes = state.activity.length;
-    const trocado = configurarCanal(state, quem, "chn_wpp", { defaultQueueId: "fila_sup", defaultOriginId: "cat_org_site" });
-    expect(trocado.ok).toBe(true);
-    const canal = state.channels.find((c) => c.id === "chn_wpp");
-    expect(canal?.defaultQueueId).toBe("fila_sup");
-    expect(canal?.defaultOriginId).toBe("cat_org_site");
-    expect(state.activity[0]?.action).toBe("Canal configurado");
-    expect(state.activity[0]?.before).toContain("Fila: Comercial");
-    expect(state.activity[0]?.after).toContain("Fila: Suporte");
-    expect(state.activity.length).toBe(antes + 1);
-
-    const igual = configurarCanal(state, quem, "chn_wpp", { defaultQueueId: "fila_sup" });
-    expect(igual.ok).toBe(true);
-    expect(state.activity.length).toBe(antes + 1);
-
-    const limpo = configurarCanal(state, quem, "chn_wpp", { defaultQueueId: null, defaultOriginId: null });
-    expect(limpo.ok).toBe(true);
-    expect(canal?.defaultQueueId).toBeUndefined();
-    expect(canal?.defaultOriginId).toBeUndefined();
-    expect(state.activity[0]?.after).toContain("Fila: nenhuma · Origem: nenhuma");
-
-    const semNome = configurarCanal(state, quem, "chn_wpp", { name: "  " });
-    expect(semNome.ok).toBe(false);
-    const nomeEmUso = configurarCanal(state, quem, "chn_wpp", { name: "Chat do site" });
-    expect(nomeEmUso.ok).toBe(false);
-  });
-});
-
-describe("configurarCanal e o Canal relacional (D-11)", () => {
-  it("recusa Canal da tabela própria e não muda nada", () => {
-    const canal = state.channels.find((c) => c.id === "chn_wpp");
-    if (!canal) throw new Error("seed sem chn_wpp");
-    (canal as { relational?: boolean }).relational = true;
-    const nomeAntes = canal.name;
-    const resultado = configurarCanal(state, admin(), canal.id, { name: "X" });
-    expect(resultado.ok).toBe(false);
-    if (!resultado.ok) expect(resultado.error).toBe("Este Canal vem da tabela própria: configure-o pela ficha do Canal, que grava pela api.");
-    expect(canal.name).toBe(nomeAntes);
   });
 });
 

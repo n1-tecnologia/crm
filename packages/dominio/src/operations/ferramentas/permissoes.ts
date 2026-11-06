@@ -13,10 +13,21 @@
 
 import type { DataState } from "../../state";
 import type { Canal } from "../../crm/canais";
-import { CRM_DAS_FERRAMENTAS_VAZIO, type ChannelType, type Comunidade, type ContatoDaFerramenta, type CrmDasFerramentas, type Flow, type Grupo, type Id, type ParticipacaoDeGrupo } from "../../types";
+import { CRM_DAS_FERRAMENTAS_VAZIO, type ChannelType, type Comunidade, type ContactIdentifierType, type ContatoDaFerramenta, type CrmDasFerramentas, type Flow, type Grupo, type Id, type ParticipacaoDeGrupo } from "../../types";
 import { versaoPublicada } from "../../derive-ferramentas";
-import { canonicalIdentifier } from "../contacts";
 import { CAPACIDADES_DE_ATIVOS } from "./capacidades";
+
+/**
+ * A forma canônica do Identificador de Contato do modelo antigo: a chave de unicidade é (tipo, valor
+ * canônico) — B13. As Ferramentas só a usam para comparar números de WhatsApp. Era de
+ * `operations/contacts.ts`, que saiu com o CRM antigo (15-32).
+ */
+export function canonicalIdentifier(type: ContactIdentifierType, value: string): string {
+  const trimmed = value.trim();
+  if (type === "email") return trimmed.toLowerCase();
+  if (type === "telefone" || type === "identidadeDeWhatsApp") return trimmed.replace(/\D/g, "");
+  return trimmed;
+}
 
 /**
  * O Canal que as Ferramentas conferem vem do CRM novo: o servidor lê

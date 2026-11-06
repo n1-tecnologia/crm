@@ -31,7 +31,8 @@ import type {
 } from "../../types";
 import { camposDeFlow, telaInicial, telasOrdenadas, versaoCorrente, versaoPublicada } from "../../derive-ferramentas";
 import { memberActor, nextId, recordActivity, systemActor } from "../activity";
-import { CHANNEL_CAPABILITIES, receiveMessage, sendMessage } from "../conversations";
+import { CHANNEL_CAPABILITIES } from "../../crm/capacidades";
+import { receiveMessage, sendMessage } from "./conversa-de-grupo";
 import { emitirEventoDeFerramentas } from "./automacoes";
 import { CAPACIDADES_DE_ATIVOS, VERSAO_DE_ESQUEMA_CORRENTE } from "./capacidades";
 import { CATALOGO_DE_COMPONENTES } from "./flows-catalogo";

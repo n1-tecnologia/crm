@@ -1,39 +1,23 @@
 /**
  * CANAIS (C36): o Canal é a conta conectada de um Tipo de Canal — um número de
  * WhatsApp, um endereço de e-mail, um perfil de Instagram ou de LinkedIn —
- * contida pela Caixa de Entrada (documento 14, 7.2). Até 2026-09-22 nenhuma
- * operação o criava ou configurava: os Canais eram só os do seed.
+ * contida pela Caixa de Entrada (documento 14, 7.2).
  *
- * Duas coisas moram aqui:
- *   1. o Canal como registro: `criarCanal` (o "adicionar" do popup) e
- *      `configurarCanal` (nome, o setor — a Fila padrão — e a Origem padrão);
- *   2. o que a Lista conversacional faz com Canais: os "canais de atendimento"
- *      (`validarCanaisDeAtendimento`, `canalForaDaLista`, `LISTA_SEM_CANAIS`),
- *      lidos por `createList`, `definirCanaisDaLista`, `criarTarefaConversacional`,
- *      `trocarCanalDaTarefa` e `iniciarConversa`.
- *
- * Quem governa: criar e configurar Canal é ato de quem administra o Espaço de
- * Trabalho (B35; RN-ET-24) — o Canal não tem Proprietário (DO-CXE-02). Marcar
- * ou desmarcar os canais de UMA Lista é de quem administra a Lista (fica em
- * `definirCanaisDaLista`).
- *
- * `criarCanal` (o popup das Listas) é o caminho legado: segue nascendo
- * `conectada`, como C36 registrou (o protótipo simulava o provedor). A página
- * nova de conexão cria pela api, `desconectada` (D-08; ontologia 12.2 — a
- * conta nasce desconectada e conecta depois).
+ * O Canal como registro mora em `plataforma.canais` e nasce pelas rotas `/canais`
+ * (`crm/canais.ts`); `criarCanal` e `configurarCanal`, as operações do modelo antigo, saíram de
+ * `OPERACOES` na 15-32. Aqui ficou o que a Lista conversacional faz com Canais: os "canais de
+ * atendimento" (`validarCanaisDeAtendimento`, `canalForaDaListaNasTabelas`, `LISTA_SEM_CANAIS`),
+ * lidos por `createList`, `definirCanaisDaLista` e pela Tarefa conversacional, e a tabela de
+ * rótulos e de forma do identificador por Tipo de Canal.
  *
  * O Chat do site é Tipo de Canal do domínio, mas não é canal de atendimento
  * de Lista: ele nasce de visitante anônimo, não de um Contato que a Tarefa
  * carrega. A tela não o oferece porque o domínio o recusa — não o contrário.
  */
 
-import { fail, ok, type DataState, type OperationResult } from "../state";
-import type { Channel, ChannelType, Id, List } from "../types";
+import type { DataState } from "../state";
+import type { ChannelType, Id, List } from "../types";
 import type { Canal } from "../crm/canais";
-import { memberActor, nextId, recordActivity } from "./activity";
-import { administraOEspaco } from "./ia/permissoes-ia";
-
-const now = (): string => new Date().toISOString();
 
 /** Os Tipos de Canal por onde uma Lista conversacional atende. */
 export const TIPOS_DE_ATENDIMENTO = ["whatsapp", "email", "instagram", "linkedin"] as const;
@@ -110,16 +94,6 @@ export function identificadorCanonico(tipo: TipoDeAtendimento, bruto: string): s
   return `${prefixo}/${nome}`;
 }
 
-/** Só quem administra o Espaço de Trabalho conecta e configura Canais (B35). */
-export function recusaDeGerirCanais(state: DataState, memberId: Id): string | undefined {
-  const member = state.members.find((m) => m.id === memberId);
-  if (!member || member.state !== "ativo") return "Só um Membro ativo mexe nos Canais.";
-  if (!administraOEspaco(state, memberId)) {
-    return "Só quem administra o Espaço de Trabalho conecta e configura Canais.";
-  }
-  return undefined;
-}
-
 export const LISTA_SEM_CANAIS =
   "Esta Lista ainda não tem canais de atendimento: configure-os nas Configurações da Lista.";
 
@@ -162,184 +136,11 @@ export function validarCanaisDeAtendimento(
   return { ids: unicos };
 }
 
-/** A recusa quando o Canal não está entre os de atendimento da Lista. */
-export function canalForaDaLista(state: DataState, list: List, channel: Channel): string | undefined {
-  if (list.modeloDeTarefa !== "conversacional") return undefined;
-  const canais = list.canaisDeAtendimento ?? [];
-  if (canais.length === 0) return LISTA_SEM_CANAIS;
-  if (canais.includes(channel.id)) return undefined;
-  return `Esta Lista não atende por “${channel.name}” (${ROTULO_DO_TIPO_DE_CANAL[channel.channelType]}).`;
-}
-
-/** `canalForaDaLista` para o Canal da tabela nova: as mesmas frases, o Canal só por id, nome e tipo. */
+/** A recusa quando o Canal da tabela não está entre os de atendimento da Lista: o Canal só por id, nome e tipo. */
 export function canalForaDaListaNasTabelas(list: List, canal: Pick<Canal, "id" | "nome" | "tipo">): string | undefined {
   if (list.modeloDeTarefa !== "conversacional") return undefined;
   const canais = list.canaisDeAtendimento ?? [];
   if (canais.length === 0) return LISTA_SEM_CANAIS;
   if (canais.includes(canal.id)) return undefined;
   return `Esta Lista não atende por “${canal.nome}” (${ROTULO_DO_TIPO_DE_CANAL[canal.tipo]}).`;
-}
-
-/** Nome único entre Canais ativos (RN-CXE-31), sem distinção de caixa nem espaços nas pontas. */
-function nomeEmUso(state: DataState, nome: string, excetoId?: Id): Channel | undefined {
-  const norm = (valor: string) => valor.trim().toLocaleLowerCase("pt-BR");
-  return state.channels.find((c) => c.lifecycle === "ativo" && c.id !== excetoId && norm(c.name) === norm(nome));
-}
-
-function filaValida(state: DataState, queueId: Id): string | undefined {
-  const fila = state.queues.find((q) => q.id === queueId);
-  if (!fila || fila.lifecycle !== "ativo") return "Fila não encontrada ou arquivada.";
-  return undefined;
-}
-
-function origemValida(state: DataState, originId: Id): string | undefined {
-  const origem = state.catalog.find((item) => item.id === originId && item.kind === "origem");
-  if (!origem || origem.lifecycle !== "ativo") return "Origem não encontrada no catálogo do Espaço de Trabalho.";
-  return undefined;
-}
-
-export interface CriarCanalInput {
-  readonly channelType: TipoDeAtendimento;
-  readonly name: string;
-  /** Como a pessoa digitou; a forma canônica é decidida aqui. */
-  readonly externalId: string;
-  /** O setor que atende: a Fila em que as Conversas deste Canal entram. */
-  readonly defaultQueueId?: Id;
-  /** De onde vêm os Contatos que nascem por este Canal. */
-  readonly defaultOriginId?: Id;
-}
-
-/**
- * Conecta uma conta nova. Nasce `conectada` (o protótipo simula o provedor),
- * sem Mensagens de modelo e sem grupos — os dois se configuram depois, na
- * ficha do Canal. Quem conectou fica como Membro configurador: rastreabilidade,
- * não governança (B35).
- */
-export function criarCanal(state: DataState, actingMemberId: Id, input: CriarCanalInput): OperationResult<Channel> {
-  const permissao = recusaDeGerirCanais(state, actingMemberId);
-  if (permissao) return fail(permissao);
-  const nome = input.name.trim();
-  if (!nome) return fail("Dê um nome ao Canal.", "nome");
-  if (!(TIPOS_DE_ATENDIMENTO as readonly string[]).includes(input.channelType)) {
-    return fail("Este Tipo de Canal não se conecta por aqui.", "tipo");
-  }
-  const externalId = identificadorCanonico(input.channelType, input.externalId);
-  if (!externalId) return fail(FORMA_DO_IDENTIFICADOR[input.channelType].dica, "identificador");
-
-  const mesmoNome = nomeEmUso(state, nome);
-  if (mesmoNome) return fail(`Já existe um Canal chamado “${mesmoNome.name}”.`, "nome");
-  // INV-CXE-01 — a mesma conta não é conectada duas vezes.
-  const mesmaConta = state.channels.find(
-    (c) => c.lifecycle === "ativo" && c.channelType === input.channelType && c.externalId === externalId,
-  );
-  if (mesmaConta) return fail(`Esta conta já está conectada como “${mesmaConta.name}”.`, "identificador");
-  if (input.defaultQueueId !== undefined) {
-    const fila = filaValida(state, input.defaultQueueId);
-    if (fila) return fail(fila, "fila");
-  }
-  if (input.defaultOriginId !== undefined) {
-    const origem = origemValida(state, input.defaultOriginId);
-    if (origem) return fail(origem, "origem");
-  }
-
-  const channel: Channel = {
-    id: nextId("chn"),
-    workspaceId: state.workspace.id,
-    createdBy: memberActor(actingMemberId),
-    createdAt: now(),
-    lifecycle: "ativo",
-    name: nome,
-    channelType: input.channelType,
-    externalId,
-    connection: "conectada",
-    configuredByMemberId: actingMemberId,
-    ...(input.defaultQueueId !== undefined ? { defaultQueueId: input.defaultQueueId } : {}),
-    ...(input.defaultOriginId !== undefined ? { defaultOriginId: input.defaultOriginId } : {}),
-    messageTemplates: [],
-    groupsEnabled: false,
-  };
-  state.channels.push(channel);
-  recordActivity(state, {
-    actor: memberActor(actingMemberId),
-    action: "Canal conectado",
-    objectType: "channel",
-    objectId: channel.id,
-    objectName: channel.name,
-    detail: `${ROTULO_DO_TIPO_DE_CANAL[channel.channelType]} · ${channel.externalId}`,
-  });
-  return ok(channel, channel.id);
-}
-
-export interface ConfigurarCanalInput {
-  readonly name?: string;
-  /** `null` limpa: as Conversas passam a nascer sem Fila. */
-  readonly defaultQueueId?: Id | null;
-  /** `null` limpa. */
-  readonly defaultOriginId?: Id | null;
-}
-
-/** O resumo de uma configuração, para o antes/depois do Registro de Atividade. */
-function resumoDeConfiguracao(state: DataState, channel: Channel): string {
-  const fila = channel.defaultQueueId ? state.queues.find((q) => q.id === channel.defaultQueueId)?.name : undefined;
-  const origem = channel.defaultOriginId ? state.catalog.find((i) => i.id === channel.defaultOriginId)?.name : undefined;
-  return `${channel.name} · Fila: ${fila ?? "nenhuma"} · Origem: ${origem ?? "nenhuma"}`;
-}
-
-/**
- * Configura o Canal: o nome, o setor (Fila padrão) e a Origem padrão. O Tipo e
- * o identificador externo são imutáveis (INV-CXE-02; seção 5): outra conta é
- * outro Canal.
- */
-export function configurarCanal(
-  state: DataState,
-  actingMemberId: Id,
-  channelId: Id,
-  input: ConfigurarCanalInput,
-): OperationResult<Channel> {
-  const permissao = recusaDeGerirCanais(state, actingMemberId);
-  if (permissao) return fail(permissao);
-  const channel = state.channels.find((c) => c.id === channelId);
-  if (!channel) return fail("Canal não encontrado.");
-  if (channel.lifecycle !== "ativo") return fail("Um Canal arquivado não muda de configuração.");
-  // D-11 — defesa em profundidade: o Canal da tabela própria grava pela api (PATCH /canais/:id).
-  if (channel.relational) return fail("Este Canal vem da tabela própria: configure-o pela ficha do Canal, que grava pela api.");
-
-  const nome = input.name?.trim();
-  if (input.name !== undefined && !nome) return fail("Dê um nome ao Canal.", "nome");
-  if (nome !== undefined) {
-    const mesmoNome = nomeEmUso(state, nome, channel.id);
-    if (mesmoNome) return fail(`Já existe um Canal chamado “${mesmoNome.name}”.`, "nome");
-  }
-  if (input.defaultQueueId) {
-    const fila = filaValida(state, input.defaultQueueId);
-    if (fila) return fail(fila, "fila");
-  }
-  if (input.defaultOriginId) {
-    const origem = origemValida(state, input.defaultOriginId);
-    if (origem) return fail(origem, "origem");
-  }
-
-  const antes = resumoDeConfiguracao(state, channel);
-  if (nome !== undefined) channel.name = nome;
-  if (input.defaultQueueId !== undefined) {
-    if (input.defaultQueueId === null) delete channel.defaultQueueId;
-    else channel.defaultQueueId = input.defaultQueueId;
-  }
-  if (input.defaultOriginId !== undefined) {
-    if (input.defaultOriginId === null) delete channel.defaultOriginId;
-    else channel.defaultOriginId = input.defaultOriginId;
-  }
-  const depois = resumoDeConfiguracao(state, channel);
-  if (antes === depois) return ok(channel);
-
-  recordActivity(state, {
-    actor: memberActor(actingMemberId),
-    action: "Canal configurado",
-    objectType: "channel",
-    objectId: channel.id,
-    objectName: channel.name,
-    before: antes,
-    after: depois,
-  });
-  return ok(channel, channel.id);
 }
