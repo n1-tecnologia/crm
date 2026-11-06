@@ -254,6 +254,105 @@ describeComBanco("POST /operacoes — as Ferramentas conferem Canal e Contato na
     });
   });
 
+  describe("importarGruposDoCanal cria o Contato do Participante desconhecido em plataforma.contatos (15-17, 3.4.8)", () => {
+    // O provedor simulado tem uma chave só: o número do Canal do seed do domínio.
+    const NUMERO_DO_CANAL_DO_PROVEDOR = "+5511987654321";
+    // Fornecedores Full Face (5 Participantes) e Ex-alunos 2024 (4): nove números distintos.
+    const NUMERO_CONHECIDO = "5511970002474";
+    const DESCONHECIDOS = ["5511970003711", "5511970004948", "5511999001122", "5511999003344", "5511970006185", "5511970007422", "5511970008659", "5511999005566"];
+    let canalDoProvedorId: string;
+    let conhecidoId: string;
+
+    const contatosDoEspaco = async (): Promise<number> => {
+      const { rows } = await pool().query<{ n: string }>("select count(*)::text as n from plataforma.contatos where workspace_id = $1", [espaco.workspaceId]);
+      return Number(rows[0]?.n ?? 0);
+    };
+
+    const identificadoresWhatsapp = async (): Promise<Array<{ valor: string; principal: boolean; contato_id: string; modo_criacao: string; proprietario_id: string; estado: string; nome: string | null }>> => {
+      const { rows } = await pool().query(
+        `select i.valor, i.principal, i.contato_id, c.modo_criacao, c.proprietario_id, c.estado, c.nome
+           from plataforma.contato_identificadores i
+           join plataforma.contatos c on c.workspace_id = i.workspace_id and c.id = i.contato_id
+          where i.workspace_id = $1 and i.tipo = 'whatsapp' and c.modo_criacao = 'automatico_automacao'
+          order by i.valor`,
+        [espaco.workspaceId],
+      );
+      return rows;
+    };
+
+    const participacoesDosGrupos = async (): Promise<Array<{ contactId: string | null; numero: string }>> => {
+      const { rows } = await pool().query<{ contact_id: string | null; numero: string }>(
+        `select p->>'contactId' as contact_id, p->>'identificadorExternoDoParticipante' as numero
+           from plataforma.registros r, jsonb_array_elements(r.dados->'participacoes') p
+          where r.workspace_id = $1 and r.colecao = 'grupos' and r.dados->>'origemDeCriacao' = 'importado'`,
+        [espaco.workspaceId],
+      );
+      return rows.map((r) => ({ contactId: r.contact_id, numero: r.numero }));
+    };
+
+    beforeAll(async () => {
+      canalDoProvedorId = await semearCanal(espaco.workspaceId, { nome: "WhatsApp do provedor", tipo: "whatsapp", provedor: "whatsapp-cloud", identificadorExterno: NUMERO_DO_CANAL_DO_PROVEDOR, conexao: "conectada" });
+      await pool().query("update plataforma.canais set proprietario_padrao_id = $3 where workspace_id = $1 and id = $2", [espaco.workspaceId, canalDoProvedorId, espaco.membros.b.id]);
+      const repo = criarRepositorioDeContatosPg(pool());
+      const conhecido = await repo.inserir(espaco.workspaceId, { nome: "Fornecedor que já existe", modoCriacao: "manual", proprietarioId: "mem_teste", criadoPor: "mem_teste" });
+      await repo.inserirIdentificador(espaco.workspaceId, conhecido.id, { tipo: "whatsapp", valor: `+${NUMERO_CONHECIDO}`, principal: true });
+      conhecidoId = conhecido.id;
+    });
+
+    it("o conhecido vira Participação com o id dele; cada desconhecido gera 1 Contato e 1 Identificador whatsapp principal, e a Participação aponta para esse id", async () => {
+      const antes = await contatosDoEspaco();
+      const resposta = await chamar("importarGruposDoCanal", [canalDoProvedorId]);
+      expect(resposta.statusCode, resposta.body.slice(0, 300)).toBe(200);
+      const c = corpo(resposta);
+      expect(c.ok, c.error).toBe(true);
+
+      expect(await contatosDoEspaco()).toBe(antes + DESCONHECIDOS.length);
+      const criados = await identificadoresWhatsapp();
+      expect(criados.map((i) => i.valor)).toEqual(DESCONHECIDOS.map((n) => `+${n}`).sort());
+      expect(criados.every((i) => i.principal && i.estado === "ativo" && i.nome === null)).toBe(true);
+      // O Proprietário vem do Canal (primeiro elo da cadeia DO-CXE-05).
+      expect(criados.every((i) => i.proprietario_id === espaco.membros.b.id)).toBe(true);
+
+      const participacoes = (await participacoesDosGrupos()).filter((p) => p.contactId !== null);
+      expect(participacoes).toHaveLength(DESCONHECIDOS.length + 1);
+      expect(participacoes.find((p) => p.numero === NUMERO_CONHECIDO)?.contactId).toBe(conhecidoId);
+      const porNumero = new Map(criados.map((i) => [i.valor, i.contato_id]));
+      for (const numero of DESCONHECIDOS) expect(participacoes.find((p) => p.numero === numero)?.contactId).toBe(porNumero.get(`+${numero}`));
+    });
+
+    it("importar de novo (repetir) não cria Contato nem Participação duplicados", async () => {
+      const contatosAntes = await contatosDoEspaco();
+      const participacoesAntes = (await participacoesDosGrupos()).length;
+      const c = corpo(await chamar("importarGruposDoCanal", [canalDoProvedorId]));
+      expect(c.ok, c.error).toBe(true);
+      expect((c.value as unknown as { importados: unknown[] }).importados).toHaveLength(0);
+      expect(await contatosDoEspaco()).toBe(contatosAntes);
+      expect((await participacoesDosGrupos()).length).toBe(participacoesAntes);
+    });
+
+    it("uma recusa do domínio (Canal desconectado) não deixa Contato novo na tabela", async () => {
+      await pool().query("delete from plataforma.registros where workspace_id = $1 and colecao = 'grupos' and dados->>'origemDeCriacao' = 'importado'", [espaco.workspaceId]);
+      await pool().query("delete from plataforma.contatos where workspace_id = $1 and modo_criacao = 'automatico_automacao'", [espaco.workspaceId]);
+      await pool().query("update plataforma.canais set conexao = 'desconectada' where workspace_id = $1 and id = $2", [espaco.workspaceId, canalDoProvedorId]);
+      const antes = await contatosDoEspaco();
+      const c = corpo(await chamar("importarGruposDoCanal", [canalDoProvedorId]));
+      await pool().query("update plataforma.canais set conexao = 'conectada' where workspace_id = $1 and id = $2", [espaco.workspaceId, canalDoProvedorId]);
+      expect(c.ok).toBe(false);
+      expect(await contatosDoEspaco()).toBe(antes);
+    });
+
+    it("um `contatosACriar` forjado no corpo não cria Contato (T-15-42): vale o que o servidor gerou", async () => {
+      await pool().query("delete from plataforma.registros where workspace_id = $1 and colecao = 'grupos' and dados->>'origemDeCriacao' = 'importado'", [espaco.workspaceId]);
+      await pool().query("delete from plataforma.contatos where workspace_id = $1 and modo_criacao = 'automatico_automacao'", [espaco.workspaceId]);
+      const forjado = { canais: [], contatos: [], contatosACriar: DESCONHECIDOS.map((n) => ({ id: `forjado-${n}`, nome: "Forjado", whatsapp: n })) };
+      const c = corpo(await chamar("importarGruposDoCanal", [canalDoProvedorId, forjado]));
+      expect(c.ok, c.error).toBe(true);
+      const { rows } = await pool().query<{ n: string }>("select count(*)::text as n from plataforma.contatos where workspace_id = $1 and id like 'forjado-%'", [espaco.workspaceId]);
+      expect(Number(rows[0]?.n)).toBe(0);
+      expect((await participacoesDosGrupos()).some((p) => p.contactId?.startsWith("forjado-"))).toBe(false);
+    });
+  });
+
   describe("resumidosPorIds (T-15-21, T-15-22)", () => {
     it("devolve só Contatos do Espaço, com o WhatsApp principal (senão o mais antigo)", async () => {
       const repo = criarRepositorioDeContatosPg(pool());
