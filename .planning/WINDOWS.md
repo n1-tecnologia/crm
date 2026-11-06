@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 37
+open_count: 40
 waived_count: 2
 fixed_count: 10
-total_count: 49
-last_updated: 2026-11-06T18:25:31.533Z
+total_count: 52
+last_updated: 2026-11-06T19:14:14.783Z
 ---
 
 # Broken Windows Ledger
@@ -64,6 +64,9 @@ last_updated: 2026-11-06T18:25:31.533Z
 | 47 | 15 | deviation | apps/web/src/features/inicio/resumo-do-inicio.tsx |  | 15-23: Estatisticas do Inicio pedem duas janelas a api (atual e anterior; a api aceita 400 dias e o ano com o anterior passa de 700) e comparam por dia inteiro: o primeiro dia do periodo anterior entra inteiro, nao so a partir do instante exato. Sem escolha da pessoa a metrica aberta e a de maior valor do periodo atual (antes so da semana) e pode mudar ao trocar de periodo ate o primeiro clique. Se a api recusa, as tres metricas do CRM ficam zeradas com um aviso | open |  | 2026-11-06T17:53:48.270Z |  |
 | 48 | 15 | deviation | apps/web/src/app/(shell)/paineis/[painel]/page.tsx |  | 15-23: Paineis semeados (SDR, Closer, Atendimento) tem Fonte com ids do modelo antigo (fnl_sdr, fnl_closer, fila_com, inbox_n1): lendo o CRM novo eles abrem zerados ate a Fonte apontar para um Funil/Fila novo (Sessao 20.3). Widgets de Origem e Motivo de Perda ficam sem linhas porque NegocioResumo nao traz origem/motivoPerda (texto livre no Negocio novo). Cada Widget le ate 200 registros por recurso e diz 'Parcial: primeiros 200' quando ha mais; Etapas vem de uma GET /funis/:id por Funil lido | open |  | 2026-11-06T17:53:48.437Z |  |
 | 49 | 15 | deviation | apps/web/src/app/(shell)/estrutura/listas/[lista]/page.tsx |  | 15-40: a Lista conversacional so afirma 'sem canais' (aviso, Atende por e recusa de criar Tarefa) com a resposta de GET /canais na mao (so os Canais ativos, ate 200); enquanto carrega, ou se a api falha, o aviso e a linha 'Atende por' nao aparecem e o botao Nova Tarefa nao e desligado por falta de Canal (o servidor continua barrando). Uma Lista cujo canaisDeAtendimento guarda ids que nao estao em plataforma.canais (ids do Canal antigo, antes do script de migracao preservar ids) mostra o aviso de Lista sem Canal. O quadro da Lista conversacional ficou: quadro-negocios.tsx virou quadro-conversacional.tsx (so o card de Negocio e o subtotal em dinheiro sairam), em vez de ser apagado como o plano dizia | open |  | 2026-11-06T18:25:31.533Z |  |
+| 50 | 15 | deviation | apps/api/src/migracao-crm/migrar-crm-antigo.ts |  | 15-27: o --migrar do script so cobre o Funil: recusa, antes de escrever, o Espaco com Contatos, Empresas, Vinculos, Negocios, Canais ou Conversas comuns ('use --guardar'); o mapeador dessas entidades e o plano 15-28. A decisao do Funil (--funil=migrar ou guardar) vale antes da primeira escrita: depois de um --guardar o Funil ja saiu de registros e o script nao o le da copia (trazer depois = recriar pela tela de Funis) | open |  | 2026-11-06T19:14:14.649Z |  |
+| 51 | 15 | deviation | apps/api/src/migracao-crm/pasta-meus-negocios.ts |  | 15-27: a Pasta Meus negocios com Tarefa em qualquer Lista nao sai (esperado nos 17 Espacos de teste; o dono ve no --seco) e, quando sai, o script nao reescreve referencias de fora as Listas removidas (Automacao ou Formulario com escopo na Lista). No ws_n1 a Pasta provavelmente nem existe (o bootstrap nao a cria); o dono confere no --seco antes do corte | open |  | 2026-11-06T19:14:14.718Z |  |
+| 52 | 15 | deviation | apps/api/src/migracao-crm/funil.ts |  | 15-27: nenhum id antigo e reescrito e nenhum link, Vinculo ou canaisDeAtendimento para Negocio, Contato ou Canal antigo e resolvido por este plano: as linhas antigas ficam em registros_crm_antigo com o id original, e so Funil (id preservado) e Etapa (id novo, crm_de_para colecao_antiga funnels/stages, id_antigo funil/etapa) chegam ao CRM novo. Os avisos 22, 32, 42 e 49 (15-40) seguem abertos ate o 15-28 preservar os ids dos Negocios, Contatos e Canais e o corte (15-34/15-35) rodar | open |  | 2026-11-06T19:14:14.783Z |  |
 
 ````json
 [
@@ -701,6 +704,45 @@ last_updated: 2026-11-06T18:25:31.533Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-06T18:25:31.533Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 50,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/api/src/migracao-crm/migrar-crm-antigo.ts",
+    "line": null,
+    "description": "15-27: o --migrar do script so cobre o Funil: recusa, antes de escrever, o Espaco com Contatos, Empresas, Vinculos, Negocios, Canais ou Conversas comuns ('use --guardar'); o mapeador dessas entidades e o plano 15-28. A decisao do Funil (--funil=migrar ou guardar) vale antes da primeira escrita: depois de um --guardar o Funil ja saiu de registros e o script nao o le da copia (trazer depois = recriar pela tela de Funis)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T19:14:14.649Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 51,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/api/src/migracao-crm/pasta-meus-negocios.ts",
+    "line": null,
+    "description": "15-27: a Pasta Meus negocios com Tarefa em qualquer Lista nao sai (esperado nos 17 Espacos de teste; o dono ve no --seco) e, quando sai, o script nao reescreve referencias de fora as Listas removidas (Automacao ou Formulario com escopo na Lista). No ws_n1 a Pasta provavelmente nem existe (o bootstrap nao a cria); o dono confere no --seco antes do corte",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T19:14:14.718Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 52,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/api/src/migracao-crm/funil.ts",
+    "line": null,
+    "description": "15-27: nenhum id antigo e reescrito e nenhum link, Vinculo ou canaisDeAtendimento para Negocio, Contato ou Canal antigo e resolvido por este plano: as linhas antigas ficam em registros_crm_antigo com o id original, e so Funil (id preservado) e Etapa (id novo, crm_de_para colecao_antiga funnels/stages, id_antigo funil/etapa) chegam ao CRM novo. Os avisos 22, 32, 42 e 49 (15-40) seguem abertos ate o 15-28 preservar os ids dos Negocios, Contatos e Canais e o corte (15-34/15-35) rodar",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-06T19:14:14.783Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }
