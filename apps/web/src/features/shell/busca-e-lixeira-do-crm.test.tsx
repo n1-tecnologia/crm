@@ -11,7 +11,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { SWRConfig } from "swr";
+import { mutate, SWRConfig } from "swr";
 import type { ContatoResumo } from "@n1/dominio/crm/contatos";
 import type { ConversaNaLista } from "@n1/dominio/crm/conversas";
 import type { EmpresaResumo } from "@n1/dominio/crm/empresas";
@@ -20,6 +20,7 @@ import { buildSeed } from "@n1/dominio/seed";
 import { StoreProvider } from "@/dados/store";
 import type { Transporte } from "@/dados/transporte";
 import BuscarPage from "@/app/(shell)/buscar/page";
+import LixeiraPage from "@/app/(shell)/configuracoes/lixeira/page";
 
 const { obterSessao, parametros } = vi.hoisted(() => ({
   obterSessao: vi.fn(),
@@ -106,6 +107,8 @@ let fetchMock: ReturnType<typeof vi.fn>;
 /** O que a api devolve por recurso e estado; o que não está aqui volta vazio. */
 let paginas: Partial<Record<`${Recurso}:${string}`, Pagina>>;
 let recusas: Partial<Record<Recurso, { status: number; error: string }>>;
+/** Respostas das gravações (`POST /contatos/<id>/restaurar`…), por "METODO caminho". */
+let gravacoes: Record<string, () => Response>;
 
 beforeEach(() => {
   process.env.NEXT_PUBLIC_API_URL = "http://api";
@@ -114,8 +117,11 @@ beforeEach(() => {
   parametros.atual = new URLSearchParams();
   paginas = {};
   recusas = {};
-  fetchMock = vi.fn(async (url: string) => {
+  gravacoes = {};
+  fetchMock = vi.fn(async (url: string, init: RequestInit = {}) => {
     const endereco = new URL(url);
+    const gravacao = gravacoes[`${init.method ?? "GET"} ${endereco.pathname}`];
+    if (gravacao) return gravacao();
     const recurso = endereco.pathname.slice(1) as Recurso;
     const recusa = recusas[recurso];
     if (recusa) return resposta(recusa.status, { ok: false, error: recusa.error });
@@ -125,9 +131,11 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   vi.unstubAllGlobals();
+  // A Lixeira roda no cache global do SWR (a invalidação do CRM usa o `mutate` global): zera entre os casos.
+  await mutate(() => true, undefined, { revalidate: false });
 });
 
 async function montar(pagina: React.ReactNode, estado = buildSeed()) {
@@ -251,6 +259,186 @@ describe("Busca › Contatos, Empresas, Negócios e Conversas pelas rotas REST (
     recusas.contatos = { status: 403, error: "Seu Papel não lê Contatos." };
 
     await montar(<BuscarPage />);
+
+    await vi.waitFor(() => expect(screen.getByText(/Seu Papel não lê Contatos\./)).toBeTruthy());
+  });
+});
+
+/** A Lixeira usa o cache global do SWR de propósito: `invalidarCrm` (o `mutate` global) tem de alcançá-lo. */
+async function montarLixeira(estado = buildSeed()) {
+  const transporte: Transporte = {
+    gravar: vi.fn(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." })),
+    hidratar: vi.fn(async () => ({ tipo: "falha" as const, erro: "não configurado neste teste." })),
+  };
+  await act(async () => {
+    render(
+      <SWRConfig value={{ dedupingInterval: 0 }}>
+        <StoreProvider sessao={{ memberId: THIAGO }} estadoInicial={{ data: estado, revisao: 1, ordens: {} }} transporte={transporte}>
+          <LixeiraPage />
+        </StoreProvider>
+      </SWRConfig>,
+    );
+  });
+}
+
+const linhaDe = (nome: string): HTMLElement => screen.getByText(nome).closest("tr") as HTMLElement;
+const chamadasA = (metodo: string, caminho: string) =>
+  fetchMock.mock.calls.filter((c) => ((c[1] as RequestInit | undefined)?.method ?? "GET") === metodo && new URL(c[0] as string).pathname === caminho);
+
+describe("Lixeira › Contatos, Empresas, Negócios e Conversas pelas rotas REST (15-14)", () => {
+  it("lista os quatro tipos com estado=na_lixeira, com a família e o link da ficha nova", async () => {
+    paginas["contatos:na_lixeira"] = { itens: [contato("ctt_lix", "Ana Descartada", "na_lixeira")], total: 1 };
+    paginas["empresas:na_lixeira"] = { itens: [empresa("emp_lix", "Comércio Descartado", "na_lixeira")], total: 1 };
+    paginas["negocios:na_lixeira"] = { itens: [negocio("neg_lix", "Proposta Descartada", "na_lixeira")], total: 1 };
+    paginas["conversas:na_lixeira"] = { itens: [conversa("cnv_lix", "Conversa Descartada", "na_lixeira")], total: 1 };
+
+    await montarLixeira();
+
+    await vi.waitFor(() => expect(screen.getByText("Conversa Descartada")).toBeTruthy());
+    const crm = chamadas().filter((u) => ["/contatos", "/empresas", "/negocios", "/conversas"].includes(u.pathname));
+    expect(crm.map((u) => u.pathname).sort()).toEqual(["/contatos", "/conversas", "/empresas", "/negocios"]);
+    for (const u of crm) expect(u.searchParams.get("estado")).toBe("na_lixeira");
+    const esperado: Array<[string, string, string]> = [
+      ["Ana Descartada", "Contato", "/crm/contatos/ctt_lix"],
+      ["Comércio Descartado", "Empresa", "/crm/empresas/emp_lix"],
+      ["Proposta Descartada", "Negócio", "/crm/negocios/neg_lix"],
+      ["Conversa Descartada", "Conversa", "/crm/caixa-de-entrada/cnv_lix"],
+    ];
+    for (const [nome, familia, href] of esperado) {
+      const linha = linhaDe(nome);
+      expect(within(linha).getByText(familia)).toBeTruthy();
+      expect(within(linha).getByText(nome).closest("a")?.getAttribute("href")).toBe(href);
+    }
+  });
+
+  it("nada do CRM vem do store: o Contato antigo na lixeira do seed não aparece", async () => {
+    const seed = buildSeed();
+    const antigo = seed.contacts[0]!;
+    antigo.lifecycle = "naLixeira";
+    antigo.trashedAt = AGORA;
+
+    await montarLixeira(seed);
+
+    await vi.waitFor(() => expect(chamadas().length).toBeGreaterThan(0));
+    expect(document.querySelector(`a[href="/crm/contatos/${antigo.id}"]`)).toBeNull();
+  });
+
+  it("restaurar um Contato chama POST /contatos/<id>/restaurar uma vez, e o item some da lista", async () => {
+    paginas["contatos:na_lixeira"] = { itens: [contato("ctt_lix", "Ana Descartada", "na_lixeira")], total: 1 };
+    gravacoes["POST /contatos/ctt_lix/restaurar"] = () => {
+      paginas["contatos:na_lixeira"] = { itens: [], total: 0 };
+      return resposta(200, { ok: true, dados: { contato: { id: "ctt_lix" }, identificadores: [], vinculos: [] } });
+    };
+    await montarLixeira();
+    await vi.waitFor(() => expect(screen.getByText("Ana Descartada")).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.click(within(linhaDe("Ana Descartada")).getByRole("button", { name: "Restaurar" }));
+    });
+
+    await vi.waitFor(() => expect(screen.queryByText("Ana Descartada", { selector: "a" })).toBeNull());
+    expect(chamadasA("POST", "/contatos/ctt_lix/restaurar")).toHaveLength(1);
+    expect(screen.getByText("Contato restaurado: Ana Descartada.")).toBeTruthy();
+  });
+
+  it("restaurar uma Conversa chama POST /conversas/<id>/restaurar (restaurarConversa)", async () => {
+    paginas["conversas:na_lixeira"] = { itens: [conversa("cnv_lix", "Conversa Descartada", "na_lixeira")], total: 1 };
+    gravacoes["POST /conversas/cnv_lix/restaurar"] = () => {
+      paginas["conversas:na_lixeira"] = { itens: [], total: 0 };
+      return resposta(200, { ok: true, dados: { conversa: { id: "cnv_lix" }, canal: {} } });
+    };
+    await montarLixeira();
+    await vi.waitFor(() => expect(screen.getByText("Conversa Descartada")).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.click(within(linhaDe("Conversa Descartada")).getByRole("button", { name: "Restaurar" }));
+    });
+
+    await vi.waitFor(() => expect(screen.queryByText("Conversa Descartada", { selector: "a" })).toBeNull());
+    expect(chamadasA("POST", "/conversas/cnv_lix/restaurar")).toHaveLength(1);
+  });
+
+  it("borda UCR-07: a segunda restauração do mesmo item recebe a recusa da api na tela e a lista não é relida", async () => {
+    paginas["contatos:na_lixeira"] = { itens: [contato("ctt_lix", "Ana Descartada", "na_lixeira")], total: 1 };
+    gravacoes["POST /contatos/ctt_lix/restaurar"] = () =>
+      resposta(409, { ok: false, error: "O Contato já está ativo.", codigo: "TRANSICAO_INVALIDA" });
+    await montarLixeira();
+    await vi.waitFor(() => expect(screen.getByText("Ana Descartada")).toBeTruthy());
+    const listagensAntes = chamadasA("GET", "/contatos").length;
+
+    await act(async () => {
+      fireEvent.click(within(linhaDe("Ana Descartada")).getByRole("button", { name: "Restaurar" }));
+    });
+
+    await vi.waitFor(() => expect(screen.getByText("O Contato já está ativo.")).toBeTruthy());
+    expect(chamadasA("GET", "/contatos")).toHaveLength(listagensAntes);
+    expect(screen.queryByText(/restaurado:/)).toBeNull();
+  });
+
+  it("dois cliques seguidos em Restaurar mandam uma só gravação (o botão espera a resposta)", async () => {
+    paginas["contatos:na_lixeira"] = { itens: [contato("ctt_lix", "Ana Descartada", "na_lixeira")], total: 1 };
+    let liberar: (() => void) | undefined;
+    const original = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url: string, init: RequestInit = {}) => {
+      if (init.method === "POST") {
+        await new Promise<void>((resolve) => {
+          liberar = resolve;
+        });
+        paginas["contatos:na_lixeira"] = { itens: [], total: 0 };
+        return resposta(200, { ok: true, dados: { contato: { id: "ctt_lix" }, identificadores: [], vinculos: [] } });
+      }
+      return original(url, init);
+    });
+    await montarLixeira();
+    await vi.waitFor(() => expect(screen.getByText("Ana Descartada")).toBeTruthy());
+    const botao = within(linhaDe("Ana Descartada")).getByRole("button", { name: "Restaurar" });
+
+    await act(async () => {
+      fireEvent.click(botao);
+    });
+    await act(async () => {
+      fireEvent.click(botao);
+    });
+    expect(chamadasA("POST", "/contatos/ctt_lix/restaurar")).toHaveLength(1);
+    expect((botao as HTMLButtonElement).disabled).toBe(true);
+
+    await act(async () => {
+      liberar?.();
+    });
+    await vi.waitFor(() => expect(screen.queryByText("Ana Descartada", { selector: "a" })).toBeNull());
+  });
+
+  it("Empresa sem admin: a recusa da api é dita e a tela manda abrir a ficha para escolher o admin", async () => {
+    paginas["empresas:na_lixeira"] = { itens: [empresa("emp_lix", "Comércio Descartado", "na_lixeira")], total: 1 };
+    gravacoes["POST /empresas/emp_lix/restaurar"] = () =>
+      resposta(409, { ok: false, error: "Toda Empresa precisa de ao menos um Contato admin.", codigo: "EMPRESA_SEM_ADMIN" });
+    await montarLixeira();
+    await vi.waitFor(() => expect(screen.getByText("Comércio Descartado")).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.click(within(linhaDe("Comércio Descartado")).getByRole("button", { name: "Restaurar" }));
+    });
+
+    await vi.waitFor(() => expect(screen.getByText(/Toda Empresa precisa de ao menos um Contato admin\./)).toBeTruthy());
+    expect(screen.getByText(/Abra a ficha da Empresa para escolher o admin\./)).toBeTruthy();
+  });
+
+  it("o que não é do CRM segue do store: uma Tarefa na lixeira é listada e restaurada sem chamar a api do CRM", async () => {
+    const seed = buildSeed();
+    const tarefa = seed.tasks[0]!;
+    tarefa.lifecycle = "naLixeira";
+    tarefa.trashedAt = AGORA;
+
+    await montarLixeira(seed);
+
+    expect(screen.getByText(tarefa.title)).toBeTruthy();
+    expect(within(linhaDe(tarefa.title)).getByText("Tarefa")).toBeTruthy();
+  });
+
+  it("uma recusa ao LISTAR o CRM é dita na tela, sem inventar linha do store", async () => {
+    recusas.contatos = { status: 403, error: "Seu Papel não lê Contatos." };
+
+    await montarLixeira();
 
     await vi.waitFor(() => expect(screen.getByText(/Seu Papel não lê Contatos\./)).toBeTruthy());
   });
