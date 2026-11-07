@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 49
+open_count: 54
 waived_count: 2
 fixed_count: 22
-total_count: 73
-last_updated: 2026-11-06T23:29:16.501Z
+total_count: 78
+last_updated: 2026-11-07T00:07:24.279Z
 ---
 
 # Broken Windows Ledger
@@ -88,6 +88,11 @@ last_updated: 2026-11-06T23:29:16.501Z
 | 71 | 15 | deviation | packages/dominio/src/operations/automations.ts |  | 15-42: o nome e o dono do cliente das Automacoes de Contas a receber (R4/R5) chegam por OpcoesDaAgenda.clientes, lidos de plataforma.contatos pelo scheduler-worker na transacao da volta (apps/api/src/automacoes/clientes-da-lista.ts) e mesclados pela ponte do Agente. A Execucao disparada por EVENTO (statusAlterado, tarefaCriada etc., dentro de uma operacao) nao recebe o dado: a Automacao com {{cliente}} ou mentionClientOwner diz 'o cliente' e nao menciona o dono. Hoje so a agenda (R4 D+30, R5) usa esses tokens; se uma Automacao por evento passar a usa-los, executar() precisa ler os clientes antes da operacao | open |  | 2026-11-06T22:38:24.083Z |  |
 | 72 | 15 | deviation | packages/dominio/src/operations/members.ts |  | 15-42: o Registro de Atividade do ato de governanca 'acesso concedido a Recurso privado' (grantGovernanceAccess) nomeia o Recurso pelo id quando ele e um Funil: o nome do Funil antigo (state.funnels) saiu de resourceName e o Funil novo vive em plataforma.funis, que o dominio nao le. Espaco, Pasta, Lista e Colecao seguem nomeados. Se o dono quiser o nome do Funil no Registro, a rota precisa injeta-lo como faz com os nomes do CRM | open |  | 2026-11-06T22:38:24.149Z |  |
 | 73 | 15 | deviation | apps/web/src/features/ferramentas/flow-popup.tsx | 438 | 15-34: depois do corte o 'Enviar Flow' a um Contato nao tem a quem enviar. O seletor escolhe Conversas 1:1 de state.conversations (flow-popup.tsx:438, !groupIdentifier e contactId), e o migrar:crm-antigo tira as Conversas 1:1 de plataforma.registros; so as de Grupo ficam. Em producao a lista de destinatarios do envio de Flow fica vazia (efeito do aviso 39, agora medido no codigo final). Decisao do dono: aceitar ate a Sessao 7 (Flow nas tabelas) ou pedir um seletor de Contatos com WhatsApp antes do corte. | open |  | 2026-11-06T23:29:16.501Z |  |
+| 74 | 15 | deviation | apps/api/src/migracao-crm/colecoes.ts |  | 15-44 (H-02): o criterio de Conversa do CRM antigo (nao e de Grupo e o contactId e um id da colecao contacts do mesmo Espaco) trata como antigo o Contato cujo id existe nas duas colecoes antes do corte, e deixa em registros (nunca migra) a Conversa 1:1 sem contactId, inclusive uma antiga com unresolvedIdentifier; nenhuma das duas aparece na copia de 2026-11-05. O aviso 73 segue valendo para as Conversas 1:1 de Contatos antigos (saem no corte); as 1:1 que Flow, Automacao e convite de Grupo abrirem DEPOIS ficam em registros. | open |  | 2026-11-07T00:07:24.016Z |  |
+| 75 | 15 | deviation | apps/api/src/persistencia/conexao.ts |  | 15-44 (M-01, resto): HOST_LOCAL em conexao.ts (regex localhost ou 127.0.0.1 sem ancora, usada por construirSsl) desliga o TLS quando localhost aparece em qualquer parte da connection string (senha, nome do banco, query). Nao e a trava de banco local (essa agora e persistencia/host-local.ts), mas pode desligar o TLS de uma URL remota disfarcada. Nao corrigido neste plano (fora dos arquivos dele): ancorar ao host analisado e testar em conexao.test.ts. | open |  | 2026-11-07T00:07:24.086Z |  |
+| 76 | 15 | deviation | apps/api/src/persistencia/unidade-de-trabalho.ts | 532 | 15-44 (L-03 da revisao): depois do corte syncIdSequence usa o maior id que esta no estado, e Contatos, Conversas e Mensagens antigos deixam de estar nele; um msg_ ou cnv_ novo em registros pode repetir o id de uma linha migrada ou de uma chave de registros_crm_antigo (a copia seguinte seria pulada por on conflict do nothing). Nao importa para o ws_n1 (so o Funil). Nao corrigido: sugestao da revisao e passar a syncIdSequence um minimo lido de registros_crm_antigo. | open |  | 2026-11-07T00:07:24.150Z |  |
+| 77 | 15 | deviation | apps/api/src/migracao-crm/mapeador.ts |  | 15-44 (L-04 da revisao): matriz e filial em ciclo, divididas entre pedacos de 500 linhas de inserir.ts, quebram a FK da matriz e o Espaco volta inteiro (nada se perde, o corte daquele Espaco trava). Borda; nao aparece na copia. Nao corrigido: relatar empresa-matriz-perdida e matriz_id nulo no ciclo. | open |  | 2026-11-07T00:07:24.214Z |  |
+| 78 | 15 | deviation | apps/api/src/migracao-crm/funil.ts |  | 15-44 (L-05 e L-06 da revisao): Etapa antiga sem id, ou com id repetido no mesmo Funil, e engolida no de-para (os Negocios dela vao para a Etapa da primeira); instanteValido do Funil devolve o texto cru e um formato que o V8 aceita e o Postgres recusa derruba o Espaco no timestamptz. Bordas: so o Funil do ws_n1 passa por aqui no corte (id e datas do bootstrap). Nao corrigidos: recusar o Funil com motivo Etapa sem id ou repetida e usar o instante() do mapeador. | open |  | 2026-11-07T00:07:24.279Z |  |
 
 ````json
 [
@@ -1037,6 +1042,71 @@ last_updated: 2026-11-06T23:29:16.501Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-06T23:29:16.501Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 74,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/api/src/migracao-crm/colecoes.ts",
+    "line": null,
+    "description": "15-44 (H-02): o criterio de Conversa do CRM antigo (nao e de Grupo e o contactId e um id da colecao contacts do mesmo Espaco) trata como antigo o Contato cujo id existe nas duas colecoes antes do corte, e deixa em registros (nunca migra) a Conversa 1:1 sem contactId, inclusive uma antiga com unresolvedIdentifier; nenhuma das duas aparece na copia de 2026-11-05. O aviso 73 segue valendo para as Conversas 1:1 de Contatos antigos (saem no corte); as 1:1 que Flow, Automacao e convite de Grupo abrirem DEPOIS ficam em registros.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-07T00:07:24.016Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 75,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/api/src/persistencia/conexao.ts",
+    "line": null,
+    "description": "15-44 (M-01, resto): HOST_LOCAL em conexao.ts (regex localhost ou 127.0.0.1 sem ancora, usada por construirSsl) desliga o TLS quando localhost aparece em qualquer parte da connection string (senha, nome do banco, query). Nao e a trava de banco local (essa agora e persistencia/host-local.ts), mas pode desligar o TLS de uma URL remota disfarcada. Nao corrigido neste plano (fora dos arquivos dele): ancorar ao host analisado e testar em conexao.test.ts.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-07T00:07:24.086Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 76,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/api/src/persistencia/unidade-de-trabalho.ts",
+    "line": 532,
+    "description": "15-44 (L-03 da revisao): depois do corte syncIdSequence usa o maior id que esta no estado, e Contatos, Conversas e Mensagens antigos deixam de estar nele; um msg_ ou cnv_ novo em registros pode repetir o id de uma linha migrada ou de uma chave de registros_crm_antigo (a copia seguinte seria pulada por on conflict do nothing). Nao importa para o ws_n1 (so o Funil). Nao corrigido: sugestao da revisao e passar a syncIdSequence um minimo lido de registros_crm_antigo.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-07T00:07:24.150Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 77,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/api/src/migracao-crm/mapeador.ts",
+    "line": null,
+    "description": "15-44 (L-04 da revisao): matriz e filial em ciclo, divididas entre pedacos de 500 linhas de inserir.ts, quebram a FK da matriz e o Espaco volta inteiro (nada se perde, o corte daquele Espaco trava). Borda; nao aparece na copia. Nao corrigido: relatar empresa-matriz-perdida e matriz_id nulo no ciclo.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-07T00:07:24.214Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 78,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/api/src/migracao-crm/funil.ts",
+    "line": null,
+    "description": "15-44 (L-05 e L-06 da revisao): Etapa antiga sem id, ou com id repetido no mesmo Funil, e engolida no de-para (os Negocios dela vao para a Etapa da primeira); instanteValido do Funil devolve o texto cru e um formato que o V8 aceita e o Postgres recusa derruba o Espaco no timestamptz. Bordas: so o Funil do ws_n1 passa por aqui no corte (id e datas do bootstrap). Nao corrigidos: recusar o Funil com motivo Etapa sem id ou repetida e usar o instante() do mapeador.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-07T00:07:24.279Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }
