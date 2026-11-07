@@ -1,19 +1,20 @@
 ---
 gsd_state_version: "1.0"
 milestone: v1.0
-current_phase: 15
-current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
-status: verifying
-stopped_at: Completed 15-44-PLAN.md
-last_updated: "2026-11-07T11:29:58.586Z"
-last_activity: 2026-11-06
-last_activity_desc: Phase 15 execution started
-state_head: 4d0582245d8347cd60d8dd66177dd6d5093b96cb
+current_phase: 16
+current_phase_name: "Base da mensageria: entrada, saída, tempo real e mídia"
+status: planning
+stopped_at: Phase 15 complete, ready to plan Phase 16
+last_updated: "2026-11-07T12:55:36.786Z"
+last_activity: 2026-11-07
+last_activity_desc: Phase 15 complete, transitioned to Phase 16
+state_head: 262c1b6d20d55140248990548c29bdcf4b69a73b
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 272
   completed_plans: 269
+  percent: 63
 milestone_name: milestone
 ---
 
@@ -24,14 +25,16 @@ milestone_name: milestone
 See: .planning/PROJECT.md (updated 2026-10-29)
 
 **Core value:** Um solicitante cria o pedido no CRM N1 e o Financeiro opera Contas a pagar de ponta a ponta sem abrir o ClickUp — dados no Postgres próprio, regras de `@n1/dominio` intactas.
-**Current focus:** Phase 15 — Unificação do CRM: telas no modelo novo e remoção do modelo antigo
+**Current focus:** Phase 16 — Base da mensageria: entrada, saída, tempo real e mídia
 
 ## Current Position
 
-Phase: 15 (Unificação do CRM: telas no modelo novo e remoção do modelo antigo) — EXECUTING
-Plan: 43 of 43
-Status: Phase complete — ready for verification
-Last activity: 2026-11-06 — Phase 15 execution started
+Phase: 16 — Base da mensageria: entrada, saída, tempo real e mídia
+Plan: Not started
+Status: Ready to plan (decisão do dono 3.8.1 antes de planejar — ver ROADMAP)
+Last activity: 2026-11-07 — Phase 15 complete (UAT 7/7, SECURITY threats_open 0), transitioned to Phase 16
+
+> Nota: `phase.complete` apontou a Fase 2 como "próxima" por ela estar sem `[x]` no ROADMAP; corrigido à mão para a Fase 16 (que declara `Depends on: Phase 15`). As Fases 2, 4 e 8 seguem abertas no ROADMAP e não foram tocadas.
 
 **Fase 06 planejada à mão em 2026-09-29 (Conferência do Resumo e anexos), pronta para `/gsd-execute-phase 6`:**
 `.planning/phases/06-conferencia-do-resumo-e-anexos/` — `06-CONTEXT.md` (13 decisões com padrão e variável de troca) e seis planos em três ondas: 06-01 domínio · 06-02 contrato v1.1 no `financeiro-tria` · 06-03 ponte em dois momentos · 06-04 tela e jornada · 06-05 S5/S6 na Solicitação · 06-06 docs e provas `[BLOCKING]`. Origem: `docs/08-migracao-financeiro/09-…` (desenho) e `10-…` (levantamento etapa por etapa com `arquivo:linha`). Ponto de partida do código: `crm-n1-integracao@3d6f735` (branch `integra-frontend-main`, sem push) e `financeiro-tria@c272dad` (`main`, 99 commits sem push, 89 arquivos sujos só de EOL — `git add` sempre por caminho). O dono ainda não respondeu às quatro perguntas do doc 10; os padrões de D6-01..D6-04 seguem "como no ClickUp", exceto Integração manual (o seguro).
@@ -278,7 +281,7 @@ Progress: [██████░░░░] 63%
 
 **Velocity:**
 
-- Total plans completed: 65
+- Total plans completed: 109
 - Average duration: —
 - Total execution time: 0 hours
 
@@ -290,6 +293,7 @@ Progress: [██████░░░░] 63%
 | 07 | 13 | - | - |
 | 11 | 8 | - | - |
 | 14 | 19 | - | - |
+| 15 | 44 | - | - |
 
 **Recent Trend:**
 
@@ -863,5 +867,5 @@ Items acknowledged and carried forward:
 ## Session Continuity
 
 Last session: 2026-11-07T00:13:53.746Z
-Stopped at: Completed 15-44-PLAN.md
+Stopped at: Phase 15 complete, ready to plan Phase 2
 Resume file: None
