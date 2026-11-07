@@ -76,7 +76,7 @@ describe("os lugares que usam a regra (15-44, M-01)", () => {
     it(`${arquivo.split("/").pop()} usa o helper e não tem regra de host própria`, () => {
       const codigo = readFileSync(new URL(arquivo, import.meta.url), "utf8");
       expect(codigo).toMatch(/host-local/);
-      expect(codigo).not.toMatch(/new URL\(/);
+      expect(codigo).not.toMatch(/\.hostname/);
     });
   }
 });

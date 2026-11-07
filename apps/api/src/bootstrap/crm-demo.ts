@@ -11,8 +11,9 @@
  * não serve (coluna ausente vira `NULL`, não o `default`).
  *
  * Segurança (T-15-72, T-15-73):
- * - só roda em banco local: o host de `DATABASE_URL` tem de ser `localhost` ou `127.0.0.1`, e isso é checado
- *   ANTES de qualquer consulta (a regra é a mesma de `testes/banco-crm.ts`, copiada, não importada);
+ * - só roda em banco local: o host de `DATABASE_URL` tem de ser `localhost`, `127.0.0.1` ou `[::1]`, sem query
+ *   (`?host=` trocaria o destino do `pg`), e isso é checado ANTES de qualquer consulta; a regra é a de
+ *   `persistencia/host-local.ts`, a mesma de `testes/banco-crm.ts` e da CLI do corte (15-44, M-01);
  * - recusa `--espaco` fora de `^ws_[a-z0-9_]+$`, Espaço que não existe e Espaço que já tem Contato;
  * - nome de tabela e de coluna vêm só das constantes deste arquivo; todo valor entra por `$n` (o `workspace_id`
  *   é o argumento, nunca um campo do JSON).
@@ -20,6 +21,7 @@
 
 import { readFileSync } from "node:fs";
 import type { PoolClient } from "pg";
+import { hostEhLocal } from "../persistencia/host-local";
 
 /** Uma recusa esperada (host remoto, Espaço inválido, inexistente ou já carregado): a CLI sai com 2. */
 export class RecusaDoDemo extends Error {
@@ -37,16 +39,7 @@ export interface ResultadoDoDemo {
 
 // --- A regra de host local ---
 
-/** `localhost` ou `127.0.0.1` (a regra de `testes/banco-crm.ts`). URL vazia ou ilegível não é local. */
-export function hostEhLocal(url: string | undefined): boolean {
-  if (!url) return false;
-  try {
-    const host = new URL(url).hostname;
-    return host === "localhost" || host === "127.0.0.1";
-  } catch {
-    return false;
-  }
-}
+export { hostEhLocal };
 
 /** Lança `RecusaDoDemo` se a URL não é de banco local. Pura: não conecta, não lê o ambiente. */
 export function exigirBancoLocal(url: string | undefined): void {

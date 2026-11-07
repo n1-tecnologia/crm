@@ -412,6 +412,20 @@ function relatar(ctx: Contexto, categoria: CategoriaNaoMigrada, colecao: string,
   ctx.naoMigrados.push({ categoria, colecao, id });
 }
 
+/**
+ * A chave de de-para de um item aninhado (Identificador de Contato e de Empresa): `<pai>/<id do item>`. O item sem
+ * id, ou com id repetido no mesmo pai, ganha um sufixo (`#<posição>`) para a chave não colidir: `crm_de_para` tem
+ * chave primária e uma colisão derrubaria o Espaço inteiro (15-44, M-04). O primeiro trecho continua sendo o pai,
+ * que é o que o `--verificar` usa para achar a origem.
+ */
+function chaveAninhada(pai: string, idDoItem: unknown, posicao: number, usadas: Set<string>): string {
+  const id = texto(idDoItem);
+  let chave = `${pai}/${id ?? `sem-id#${posicao}`}`;
+  if (usadas.has(chave)) chave = `${chave}#${posicao}`;
+  usadas.add(chave);
+  return chave;
+}
+
 function dePara(ctx: Contexto, colecaoAntiga: string, idAntigo: string, tabelaNova: string, idNovo: string): void {
   ctx.deParas.push({ colecao_antiga: colecaoAntiga, id_antigo: idAntigo, tabela_nova: tabelaNova, id_novo: idNovo });
 }
@@ -554,7 +568,8 @@ function mapearContatos(contatos: readonly ContatoAntigo[], ctx: Contexto): Cont
 
     // Identificadores: o principal de cada tipo é o primeiro que vier marcado (índice único parcial da 007).
     const principalDoTipo = new Set<string>();
-    for (const ident of lista<IdentificadorAntigo>(antigo.identifiers)) {
+    const chavesDeParaUsadas = new Set<string>();
+    for (const [posicao, ident] of lista<IdentificadorAntigo>(antigo.identifiers).entries()) {
       const tipo = TIPO_DE_IDENTIFICADOR[ident.type ?? ""];
       const bruto = texto(ident.value);
       if (tipo === undefined) {
@@ -583,8 +598,10 @@ function mapearContatos(contatos: readonly ContatoAntigo[], ctx: Contexto): Cont
         principal,
         criado_em: instante(ident.createdAt),
       });
-      identificadores.set(`${antigo.id}/${ident.id}`, idNovo);
-      dePara(ctx, "contacts/identifiers", `${antigo.id}/${ident.id}`, "contato_identificadores", idNovo);
+      const chaveDePara = chaveAninhada(antigo.id, ident.id, posicao, chavesDeParaUsadas);
+      // A Mensagem cita o Identificador pelo id dele: com id repetido, o primeiro vale; sem id, ninguém o cita.
+      if (texto(ident.id) !== null && !identificadores.has(`${antigo.id}/${texto(ident.id)}`)) identificadores.set(`${antigo.id}/${texto(ident.id)}`, idNovo);
+      dePara(ctx, "contacts/identifiers", chaveDePara, "contato_identificadores", idNovo);
     }
 
     // Comentários viram Notas (só inserção); o apagado não vai.
@@ -741,7 +758,8 @@ function mapearEmpresas(
     if (lista(empresa.attachments).length > 0 || lista(empresa.comments).length > 0) relatar(ctx, "anexos-e-comentarios", "companies", empresa.id);
 
     const principalDoTipo = new Set<string>();
-    for (const ident of lista(empresa.identifiers)) {
+    const chavesDeParaUsadas = new Set<string>();
+    for (const [posicao, ident] of lista(empresa.identifiers).entries()) {
       const tipo = TIPO_DE_IDENTIFICADOR_DE_EMPRESA[ident.type ?? ""];
       const bruto = texto(ident.value);
       if (tipo === undefined || bruto === null) continue;
@@ -770,7 +788,7 @@ function mapearEmpresas(
         principal,
         criado_em: instante(ident.createdAt),
       });
-      dePara(ctx, "companies/identifiers", `${empresa.id}/${ident.id}`, "empresa_identificadores", idNovo);
+      dePara(ctx, "companies/identifiers", chaveAninhada(empresa.id, ident.id, posicao, chavesDeParaUsadas), "empresa_identificadores", idNovo);
     }
   }
   // Matriz antes da filial: emite cada Empresa depois da matriz dela.
@@ -1138,6 +1156,11 @@ function mapearMensagens(
   const idsExternos = new Set<string>();
   for (const { mensagem: antiga, conversa } of mensagens) {
     const { linha: daConversa, antiga: conversaAntiga } = conversa;
+    // `mensagens.id` é NOT NULL: a Mensagem sem id não derruba o Espaço, vai para o relatório (só o id da Conversa) (15-44, M-04).
+    if (texto(antiga.id) === null) {
+      relatar(ctx, "mensagem-sem-id", "conversations", conversaAntiga.id);
+      continue;
+    }
     if (ctx.crmNovo.idsDeMensagem.has(antiga.id) || idsEmitidos.has(antiga.id)) {
       relatar(ctx, "id-ja-existe", "conversations", conversaAntiga.id);
       continue;

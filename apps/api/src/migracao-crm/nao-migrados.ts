@@ -53,6 +53,7 @@ export const CATEGORIAS_NAO_MIGRADAS = {
   "conversa-repetida": "Conversa não resolvida repetida no mesmo Contato e Canal (a mais recente entra)",
   "conversa-detalhes": "Rascunhos (D-15-11), Tags e campos personalizados da Conversa",
   "mensagem-vazia": "Mensagem sem texto nem anexo",
+  "mensagem-sem-id": "Mensagem sem id (o id é obrigatório no CRM novo; o id da Conversa é o que o relatório mostra)",
   "mensagem-flow": "Mensagem de Flow (Flow fica no modelo antigo)",
 } as const;
 

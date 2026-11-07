@@ -3,8 +3,8 @@
  *
  * Carrega o CRM de demonstração (Contatos, Empresas, Funis, Negócios, Canais, Conversas e Mensagens de
  * mentira) nas tabelas do CRM novo de um Espaço de DESENVOLVIMENTO que já existe e ainda não tem Contato.
- * Só roda em banco local: o host de `DATABASE_URL` tem de ser `localhost` ou `127.0.0.1`, e isso é conferido
- * ANTES de abrir qualquer conexão. Como `apps/api/.env` aponta para o banco real, rode sempre com a URL local
+ * Só roda em banco local: o host de `DATABASE_URL` tem de ser `localhost`, `127.0.0.1` ou `[::1]`, sem `?host=` nem
+ * outra query, e isso é conferido ANTES de abrir qualquer conexão. Como `apps/api/.env` aponta para o banco real, rode sempre com a URL local
  * explícita:
  *
  *   DATABASE_URL=postgres://postgres:x@localhost:5432/postgres npm run bootstrap:crm-demo -w @n1/api -- --espaco ws_dev
@@ -14,6 +14,7 @@
  */
 
 import { carregarEnv, encerrar, pool } from "../persistencia/conexao";
+import { hostDaConexao } from "../persistencia/host-local";
 import { carregarCrmDemo, exigirBancoLocal, RecusaDoDemo, validarEspacoDoDemo } from "./crm-demo";
 
 export interface ArgumentosDoDemo {
@@ -52,15 +53,6 @@ export function lerArgumentos(argv: readonly string[]): ArgumentosDoDemo {
   return { espaco };
 }
 
-/** O host e a porta do banco, SEM usuário nem senha. */
-function bancoDaConexao(): string {
-  try {
-    return new URL(process.env.DATABASE_URL ?? "").host || "(host indefinido)";
-  } catch {
-    return "(host indefinido)";
-  }
-}
-
 /** Roda o script e devolve o código de saída. Não chama `process.exit`: quem chama decide. */
 export async function principal(argv: readonly string[]): Promise<number> {
   let argumentos: ArgumentosDoDemo;
@@ -78,7 +70,7 @@ export async function principal(argv: readonly string[]): Promise<number> {
   try {
     // A recusa de banco não local vem ANTES de `pool()`: nenhuma conexão é aberta.
     exigirBancoLocal(process.env.DATABASE_URL);
-    console.log(`Banco: ${bancoDaConexao()} · Espaço: ${argumentos.espaco}`);
+    console.log(`Banco: ${hostDaConexao(process.env.DATABASE_URL)} · Espaço: ${argumentos.espaco}`);
     const cliente = await pool().connect();
     try {
       const resultado = await carregarCrmDemo(cliente, { workspaceId: argumentos.espaco });

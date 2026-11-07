@@ -18,6 +18,7 @@
  */
 
 import { carregarEnv, encerrar } from "../persistencia/conexao";
+import { hostDaConexao } from "../persistencia/host-local";
 import { ErroDeUso, validarEspaco } from "./colecoes";
 import type { DecisaoDeFunil } from "./funil";
 import { guardarCrmAntigo, migrarCrmAntigo, relatorioSeco, verificar } from "./migrar-crm-antigo";
@@ -68,7 +69,7 @@ export function lerArgumentos(argv: readonly string[]): ArgumentosDoScript {
       const lido = valorDe(argv, i, "--funil");
       funil = lido.valor;
       i = lido.proximo;
-    } else if (atual in MODOS) {
+    } else if (Object.hasOwn(MODOS, atual)) {
       modos.push(MODOS[atual]!);
       i += 1;
     } else {
@@ -89,15 +90,6 @@ export function lerArgumentos(argv: readonly string[]): ArgumentosDoScript {
   return { espaco, modo };
 }
 
-/** O host e a porta do banco, SEM usuário nem senha: o que o dono confere antes de deixar o script escrever. */
-function bancoDaConexao(): string {
-  try {
-    return new URL(process.env.DATABASE_URL ?? "").host || "(host indefinido)";
-  } catch {
-    return "(host indefinido)";
-  }
-}
-
 /** Roda o script e devolve o código de saída. Não chama `process.exit`: quem chama decide. */
 export async function principal(argv: readonly string[]): Promise<number> {
   let argumentos: ArgumentosDoScript;
@@ -114,7 +106,7 @@ export async function principal(argv: readonly string[]): Promise<number> {
   carregarEnv();
   try {
     // Antes de qualquer escrita: onde e em quê.
-    console.log(`Banco: ${bancoDaConexao()} · Espaço: ${argumentos.espaco} · Modo: --${argumentos.modo}${argumentos.funil ? ` --funil=${argumentos.funil}` : ""}`);
+    console.log(`Banco: ${hostDaConexao(process.env.DATABASE_URL)} · Espaço: ${argumentos.espaco} · Modo: --${argumentos.modo}${argumentos.funil ? ` --funil=${argumentos.funil}` : ""}`);
     switch (argumentos.modo) {
       case "seco":
         console.log(await relatorioSeco(argumentos.espaco));
