@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 48
+open_count: 49
 waived_count: 2
 fixed_count: 28
-total_count: 78
-last_updated: 2026-11-07T11:29:29.238Z
+total_count: 79
+last_updated: 2026-11-07T11:41:29.741Z
 ---
 
 # Broken Windows Ledger
@@ -93,6 +93,7 @@ last_updated: 2026-11-07T11:29:29.238Z
 | 76 | 15 | deviation | apps/api/src/persistencia/unidade-de-trabalho.ts | 532 | 15-44 (L-03 da revisao): depois do corte syncIdSequence usa o maior id que esta no estado, e Contatos, Conversas e Mensagens antigos deixam de estar nele; um msg_ ou cnv_ novo em registros pode repetir o id de uma linha migrada ou de uma chave de registros_crm_antigo (a copia seguinte seria pulada por on conflict do nothing). Nao importa para o ws_n1 (so o Funil). Nao corrigido: sugestao da revisao e passar a syncIdSequence um minimo lido de registros_crm_antigo. | open |  | 2026-11-07T00:07:24.150Z |  |
 | 77 | 15 | deviation | apps/api/src/migracao-crm/mapeador.ts |  | 15-44 (L-04 da revisao): matriz e filial em ciclo, divididas entre pedacos de 500 linhas de inserir.ts, quebram a FK da matriz e o Espaco volta inteiro (nada se perde, o corte daquele Espaco trava). Borda; nao aparece na copia. Nao corrigido: relatar empresa-matriz-perdida e matriz_id nulo no ciclo. | open |  | 2026-11-07T00:07:24.214Z |  |
 | 78 | 15 | deviation | apps/api/src/migracao-crm/funil.ts |  | 15-44 (L-05 e L-06 da revisao): Etapa antiga sem id, ou com id repetido no mesmo Funil, e engolida no de-para (os Negocios dela vao para a Etapa da primeira); instanteValido do Funil devolve o texto cru e um formato que o V8 aceita e o Postgres recusa derruba o Espaco no timestamptz. Bordas: so o Funil do ws_n1 passa por aqui no corte (id e datas do bootstrap). Nao corrigidos: recusar o Funil com motivo Etapa sem id ou repetida e usar o instante() do mapeador. | open |  | 2026-11-07T00:07:24.279Z |  |
+| 79 | 15 | deviation | apps/web/src/features/crm/inbox-columns.tsx |  | 15-VERIFICATION W-1 (verificador, 2026-11-07): as Conversas 1:1 que o Flow, a Automacao e o convite de Grupo abrem e que FICAM em plataforma.registros (regra H-02 do 15-44) nao aparecem em lugar nenhum da Caixa de Entrada: inbox-columns.tsx (grupoNoRecorte -> ehConversaDeGrupo), caixa-de-entrada/page.tsx e [conversa]/page.tsx so aceitam Conversa com groupIdentifier. A resposta de um Contato a um Flow ou a um convite cai onde nenhum atendente a abre. Decisao do dono: listar essas Conversas pela ConversaDeGrupoNaCaixa ou aceitar ate a Sessao 7. Relacionado a #39 e #73. | open |  | 2026-11-07T11:41:29.741Z |  |
 
 ````json
 [
@@ -1107,6 +1108,19 @@ last_updated: 2026-11-07T11:29:29.238Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-11-07T00:07:24.279Z",
+    "resolved_at": null,
+    "milestone": "v1.0"
+  },
+  {
+    "id": 79,
+    "kind": "deviation",
+    "phase": "15",
+    "file": "apps/web/src/features/crm/inbox-columns.tsx",
+    "line": null,
+    "description": "15-VERIFICATION W-1 (verificador, 2026-11-07): as Conversas 1:1 que o Flow, a Automacao e o convite de Grupo abrem e que FICAM em plataforma.registros (regra H-02 do 15-44) nao aparecem em lugar nenhum da Caixa de Entrada: inbox-columns.tsx (grupoNoRecorte -> ehConversaDeGrupo), caixa-de-entrada/page.tsx e [conversa]/page.tsx so aceitam Conversa com groupIdentifier. A resposta de um Contato a um Flow ou a um convite cai onde nenhum atendente a abre. Decisao do dono: listar essas Conversas pela ConversaDeGrupoNaCaixa ou aceitar ate a Sessao 7. Relacionado a #39 e #73.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-07T11:41:29.741Z",
     "resolved_at": null,
     "milestone": "v1.0"
   }
