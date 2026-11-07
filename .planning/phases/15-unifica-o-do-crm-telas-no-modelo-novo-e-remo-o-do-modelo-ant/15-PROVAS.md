@@ -2,6 +2,8 @@
 
 Este arquivo guarda o gate da Fase 15 (planos 15-01 a 15-43, menos o 15-35, que é o corte), o que foi decidido em nome do dono, as suposições adotadas, o que ainda é decisão dele, as linhas abertas do `.planning/WINDOWS.md`, as provas manuais que ninguém fez e as linhas sugeridas para o `andamento.mjs`. Foi escrito pelo plano 15-34. O ensaio final com o código final é a seção "Ensaio final" de `15-ENSAIO.md`, e o roteiro do corte é `15-CORTE.md`.
 
+**Revisão pré-corte (plano 15-44).** Depois do 15-34, uma revisão independente do script (`15-REVIEW.md`, sem BLOCKER) achou dois HIGH e cinco MEDIUM. O 15-44 corrigiu o que mudaria o corte: o mapeador agora aceita o Canal e o Contato que já estão nas tabelas novas (H-01); o critério do que fica em `registros` deixou de ser só "Grupo" e passou a ser o mesmo, em TypeScript e SQL, no `--guardar`, `--migrar`, `--seco` e `--verificar` (H-02: a Conversa 1:1 de Flow, Automação e convite de Grupo fica); a trava "só banco local" olha o host que o `pg` usa (M-01); dado sujo não derruba o Espaço (M-04); e o `15-CORTE.md` ganhou os textos de M-02, M-03, M-05, H-02, L-01 e L-08. O ensaio foi repetido com o código corrigido sobre a mesma cópia e deu os mesmos números (seção "Ensaio pós-revisão" de `15-ENSAIO.md`). A "Disposição" de cada achado, inclusive o que ficou aberto, está no fim de `15-REVIEW.md`. O corte (15-35) depende deste plano.
+
 **Em uma frase:** o código do CRM novo está fechado e o gate fechou verde (na 3ª rodada; nas duas primeiras só falhou o flake de baseline do `outbox-worker`), mas **nada foi cortado em produção, nenhuma tela foi aberta em navegador real, e há decisões suas pendentes** (as mais importantes estão em "O que o dono decide antes do corte", logo abaixo).
 
 ## O que o dono decide antes do corte (resumo)
@@ -9,7 +11,7 @@ Este arquivo guarda o gate da Fase 15 (planos 15-01 a 15-43, menos o 15-35, que 
 1. **O Funil do `ws_n1`** (`--funil=migrar` acrescenta um Funil vazio ao lado dos 2 que o CRM novo dele já tem; `--funil=guardar` não muda nada lá). Decide-se no `--seco` do dia. Detalhe em `15-CORTE.md`.
 2. **As três decisões que o orquestrador tomou por você** (próxima seção): ficar com elas, ou reverter os commits do ramo antes do corte.
 3. **WINDOWS #61:** as Automações do seed apontam para Listas espelho que o seed não cria mais. Recomendação: tirar `aut_clo_proposta` do seed, ou apontá-la para uma Lista real.
-4. **WINDOWS #73 (novo):** depois do corte, "Enviar Flow" a um Contato não tem a quem enviar (as Conversas 1:1 saem de `registros`). Aceitar até a Sessão 7, ou pedir o seletor de Contatos com WhatsApp antes.
+4. **WINDOWS #73:** depois do corte, "Enviar Flow" a um Contato não tem a quem enviar (as Conversas 1:1 do CRM antigo saem de `registros`; desde o 15-44, as 1:1 que o Flow, a Automação e o convite de Grupo abrirem **depois** do corte ficam). Aceitar até a Sessão 7, ou pedir o seletor de Contatos com WhatsApp antes.
 5. **Renovar a cópia de `~/n1-ensaio`** e repetir o ensaio, ou aceitar o ensaio sobre a cópia de 2026-11-05.
 6. As decisões de produto da seção "Decisões do dono ainda pendentes" (nenhuma trava o corte).
 
