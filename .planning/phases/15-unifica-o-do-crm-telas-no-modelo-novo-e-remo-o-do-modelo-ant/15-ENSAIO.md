@@ -282,3 +282,59 @@ Saída 0, `--verificar` ok, repetir "nada a fazer", e as linhas que o `--seco` a
 
 - **A API e a web finais não foram levantadas sobre a cópia migrada.** Só o script, as migrações e `hidratar` rodaram; `GET /estado` e as telas sobre esse banco não. As telas nunca foram abertas em navegador real nesta fase (ver "Provas manuais pendentes" em `15-PROVAS.md`).
 - **A cópia continua sendo a de 2026-11-05 11:13.** O corte precisa do `--seco` do dia em cada Espaço (`15-CORTE.md`, passo 4), e o dono pode renovar a cópia e repetir este ensaio antes.
+
+---
+
+# Ensaio pós-revisão — plano 15-44
+
+**Quando:** 2026-11-06 · **SHA do código:** `9e8d05e` (o `HEAD` depois das correções H-01, H-02, M-01 e M-04 da revisão `15-REVIEW.md`) · **Cópia:** a mesma de 2026-11-05 (`~/n1-ensaio`, o `.dump` restaurado inteiro; ninguém renovou a cópia).
+
+**Resultado: o código corrigido deu os mesmos números do 15-30 e do 15-34, Espaço a Espaço, sem nenhuma diferença.** Nenhuma chamada do script saiu com código diferente de 0. Este trecho só tem números e nomes de configuração. As saídas brutas (conferidas com `grep`: 0 endereços de e-mail e 0 telefones) e o ponto de restauração (`.dump` com dado pessoal) foram apagados; o contêiner foi apagado por `trap`.
+
+## Como foi feito (o método do 15-34, com o script do ensaio refeito)
+
+Os scripts descartáveis do 15-30 e do 15-34 tinham sido apagados; este foi reescrito do zero, **fora do repositório** (diretório de sessão), com `trap` que remove o contêiner mesmo em falha. Mesma sequência: contêiner `postgres:16` (`crm-n1-pg-1544`, porta 55744, só em `127.0.0.1`); `pg_restore --no-owner --no-privileges` do `.dump` (um único erro ignorável, `transaction_timeout`; 23952 registros, 19 Espaços, 51 coleções, 10 migrações); `--seco` das migrações (011 e 012 pendentes); 011 pelo texto e registrada em `plataforma.migracoes` (o estado de produção); `--seco` (só a 012); `migrar` (aplicou só a 012); `banco:conceder` (ramo "o papel não existe"); ponto de restauração; `--seco` nos 19 Espaços; `--guardar` nos 18 Espaços de teste e `--migrar --funil=guardar` no `ws_n1`; `--verificar` nos 19; repetir `ws_n1` e `ws_spike`; `hidratar` dos 19; segundo banco restaurado do ponto (`ws_n1 --funil=migrar`, concorrência, `kill -9`); terceiro banco (`--migrar --funil=migrar` em dois Espaços de teste); quarto banco (papel `n1_api`). Toda chamada levou `DATABASE_URL` e `DATABASE_URL_MIGRACAO` locais escritas na linha; o `.env` não foi lido. As 19 linhas `Banco:` do `--seco` dizem `localhost:55744`, agora vindas do host que o `pg` usa (M-01, L-02).
+
+A comparação com o 15-30/15-34 foi automática: uma tabela esperada (revisão antes e depois, linhas de `registros` antes e depois, as nove coleções do `--seco` e as Conversas que ficam) contra a medida, nos 19 Espaços: **igual**.
+
+## Os números (iguais aos do 15-30 e do 15-34)
+
+| Coleção | Antes (`--seco`) | Depois (`registros_crm_antigo`) |
+|---|---:|---:|
+| `contacts` | 624 | 624 |
+| `companies` | 192 | 192 |
+| `contactCompanyLinks` | 480 | 480 |
+| `companyCompanyLinks` | 16 | 16 |
+| `distinctFromLinks` | 16 | 16 |
+| `funnels` | 66 | 66 |
+| `deals` | 304 | 304 |
+| `channels` | 80 | 80 |
+| `conversations` | 350 | 350 |
+| **Total** | **2128** | **2128** |
+
+- **2128 = 2128 em cada um dos 19 Espaços** (a comparação do passo 7 do `15-CORTE.md`, com o filtro das nove coleções dos dois lados: 19 "igual"). Todas as saídas do `--seco`, do `--guardar`/`--migrar` e do `--verificar` saíram com 0.
+- `registros`: **23952 → 21838**. As **14 Conversas de Grupo ficam** (2 em cada um dos 7 Espaços). A revisão de cada Espaço subiu 1, exceto `ws_agendaworker_…` (5 → 5, "nada a fazer"), como no 15-30.
+- **Nenhuma Conversa 1:1 de Flow ou Automação** na cópia: as linhas "1:1 de Flow, Automação ou convite de Grupo continuam em registros" saíram com 0 nos 19 Espaços. O novo critério (H-02) não mudou nada nesta cópia; ele muda o que o script faz com dado vivo depois do corte, e isso está provado só com dado sintético em Docker (`colecoes.test.ts`, `migrar-crm-antigo.test.ts`).
+- **A Pasta "Meus negócios" fica em 16 Espaços de teste, com 18 Tarefas em 4 Listas** (`SDR` 6, `Closer` 10, `Validação Full Face Avançado` 1, `Venda direta` 1); 3 Espaços não a têm. `fld_meus_negocios` continua em `registros` nos mesmos 16.
+- **`ws_n1`, os dois caminhos do Funil (igual ao 15-34):** `--funil=guardar` (banco `postgres`): saída 0, "migrado", `funnels` 1 apagada de `registros`, Funis 2 → 2, Etapas 6 → 6, `crm_de_para` 0, revisão 779 → 780; `--funil=migrar` (segundo banco, mesmo ponto): saída 0, "Funil: 1 migrado (1 Etapa)", Funis 2 → **3**, Etapas 6 → **7**, `crm_de_para` 2, revisão 779 → 780. Contatos 2, Empresas 1, vínculo 1, Negócios 1, Canais 0, Conversas 0 nos dois. `--verificar` ok e repetir "nada a fazer" (revisão 780 → 780 no primeiro banco).
+- **Não migrados (iguais):** `ws_n1`, `ws_teste_importar_sol_…_ref` e `ws_agendaworker_…`: nenhum item; 7 Espaços de 134 linhas: **160 itens em 16 categorias** (Temperatura 35, Tags 25, Foto 1, Cópia pré-mesclagem 1, Identificadores de LinkedIn/TikTok/chat do site 32, Campo com lista 1, Vínculo Empresa-Empresa 1, "distinto de" 1, Marca de Empresa principal 27, Requisitos e transições da Etapa 4, detalhes do Negócio 19, Canal sem destino 2, Modelos de Mensagem 1, Conversa de Canal que não migrou 5, detalhes da Conversa 1, Mensagem de Flow 4); 9 Espaços de 132 linhas: **141 itens em 15 categorias**. A categoria nova `mensagem-sem-id` (M-04) não apareceu: nenhuma Mensagem da cópia está sem id.
+- **`--migrar --funil=migrar` em dois Espaços de teste (igual):** saída 0, `--verificar` 0, repetir "nada a fazer", as linhas do `--seco` foram as que entraram.
+
+  | Espaço | contatos | identificadores | empresas | id. de empresa | contato_empresa | Funis | Etapas | negócios | canais | conversas | mensagens | consentimentos | `crm_de_para` |
+  |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+  | `ws_spike_10x` | 39 | 75 | 12 | 24 | 30 | 4 | 23 | 19 | 3 | 16 | 62 | 45 | 307 |
+  | `ws_outbox_1790002249349_te7t5z` | 39 | 75 | 12 | 24 | 30 | 4 | 23 | 19 | 3 | 16 | 55 | 45 | 300 |
+
+- **Papel `n1_api` (igual):** "n1_api: concessões aplicadas"; `ws_n1 --migrar --funil=migrar` (0), `ws_spike --guardar` (0), `--verificar` dos dois (0); `ws_n1`: Funis 3, Etapas 7, `crm_de_para` 2; `ws_spike`: 876 em `registros`, 134 em `registros_crm_antigo`.
+- **`hidratar` (igual):** `19 Espaço(s), 0 falha(s)`; nenhum Espaço com alguma das oito coleções antigas; 14 Conversas de Grupo no total.
+
+## Concorrência e interrupção (UCR-10, M-05)
+
+- **Espera medida:** uma sessão travou a linha do Espaço `ws_spike` por cerca de 7 s; o `--guardar` lançado 1 s depois saiu com 0 e 6,1 s depois do lançamento, isto é, esperou a trava (a trava durou ~6 s depois do lançamento). Dentro do prazo de ~10 s.
+- **Duas execuções simultâneas** no mesmo Espaço (`ws_teste_classificacoes_1790201209011_rkgmin`): as duas saíram com 0; uma "guardado" e a outra "nada a fazer"; revisão 2 → 3 (uma vez só); `--verificar` ok. Isso vale porque a primeira terminou em menos de ~10 s. **A segunda espera a trava por ~10 s; se a primeira demorar mais, a segunda sai com 1 e "Outra alteração entrou antes desta. Tente de novo." sem escrever nada (M-05; o texto do `15-CORTE.md` foi corrigido).** Esse caminho (esgotar o prazo) está provado por `unidade-de-trabalho-concorrencia.test.ts`, não por este ensaio.
+- **`kill -9` no meio** (`ws_outbox_1790002249349_te7t5z`): o `--guardar` parou no `delete from plataforma.registros` esperando uma linha travada por outra sessão (1 sessão em `Lock`) e levou `kill -9` (nenhum processo restou). Depois de encerrar a sessão do próprio ensaio: nenhuma transação aberta esquecida, revisão 5 → 5, `registros` 920 → 920, `registros_crm_antigo` 0 → 0. Um `--guardar` normal em seguida terminou com 0 ("guardado. 132 linha(s)") e o `--verificar` deu ok.
+
+## O que este ensaio não cobre (além dos limites do 15-30 e do 15-34, que seguem valendo)
+
+- **H-01 e H-02 não aparecem nesta cópia.** Não há nela Conversa cujo Canal já esteja só em `plataforma.canais`, nem Conversa 1:1 de Flow em `registros`: o ensaio prova que o código corrigido não mudou nenhum número do caminho antigo; o caminho novo está provado só em Docker com dado sintético (`mapeador.test.ts`, `migrar-entidades.test.ts`, `migrar-crm-antigo.test.ts`, `colecoes.test.ts`). O dono pode ter dado vivo desse tipo hoje: por isso o `15-CORTE.md` manda rodar o `--seco` do `ws_n1` de novo imediatamente antes do `--migrar`.
+- **A cópia continua sendo a de 2026-11-05 11:13.**

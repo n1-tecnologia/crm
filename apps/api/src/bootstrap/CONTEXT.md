@@ -61,7 +61,9 @@ DATABASE_URL=postgres://postgres:x@localhost:5432/postgres npm run bootstrap:crm
 
 **É só de desenvolvimento.** Nunca roda em produção nem em banco remoto:
 
-- o host de `DATABASE_URL` tem de ser `localhost` ou `127.0.0.1` (a regra de `testes/banco-crm.ts`, copiada), conferido
+- o host de `DATABASE_URL` tem de ser `localhost`, `127.0.0.1` ou `[::1]`, e a URL **não pode ter query** (`?host=` e `?hostaddr=`
+  trocam o destino que o `pg` usa; a regra é `persistencia/host-local.ts`, a mesma de `testes/banco-crm.ts` e da CLI do corte,
+  15-44, M-01), conferido
   **antes** de abrir o pool e de novo dentro de `carregarCrmDemo` antes da primeira consulta. O `apps/api/.env` aponta
   para o banco real, então rode sempre com a `DATABASE_URL` local explícita; sem ela o script recusa;
 - `--espaco` é obrigatório, tem de casar `^ws_[a-z0-9_]+$` e **já existir** em `plataforma.workspaces` (o script não cria

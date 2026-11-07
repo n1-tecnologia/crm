@@ -21,14 +21,14 @@ sempre explícito (não existe "todos os Espaços"):
 | Comando | O que faz |
 |---|---|
 | `npm run migrar:crm-antigo -w @n1/api -- --espaco ws_n1 --seco` | Relatório: contagem por coleção, o Funil com as Etapas, o que aponta para ele, a Pasta "Meus negócios" e o que cada modo faria. A sessão é `begin read only`: o Postgres recusa qualquer escrita. |
-| `… --espaco <id> --guardar` | Copia as nove coleções para `registros_crm_antigo`, confere e apaga de `registros` (D-15-01). Não cria linha no CRM novo. Serve aos 17 Espaços de teste e ao `ws_n1` se o dono decidir guardar o Funil. |
+| `… --espaco <id> --guardar` | Copia as nove coleções para `registros_crm_antigo`, confere e apaga de `registros` o CRM antigo (D-15-01). Não cria linha no CRM novo. Serve aos 17 Espaços de teste e ao Espaço vazio. **No `ws_n1` não é o caminho de "guardar o Funil"** (L-08): `--guardar` tira de `registros` tudo o que houver de CRM antigo lá (Contatos, Conversas...) sem levar nada ao CRM novo, e o script não relê `registros_crm_antigo`, então o que saiu assim só volta por um script novo. Quem quer guardar o Funil no `ws_n1` usa `--migrar --funil=guardar`, que o guarda e leva ao CRM novo o que cabe. |
 | `… --espaco ws_n1 --migrar --funil=migrar` | Faz o `--guardar`, leva o Funil e as Etapas para `plataforma.funis`/`etapas` (D-15-04) e, na mesma transação, Contatos, Empresas, Negócios, Canais, Conversas e Mensagens (15-28). |
 | `… --espaco ws_n1 --migrar --funil=guardar` | Faz o `--guardar` e leva o que cabe, **sem** Funil (D-15-13): como não há Funil, nenhum Negócio migra. |
 | `… --espaco <id> --verificar` | Confere, sem escrever, a pós-condição; sai com 1 se algo não bate. |
 
 Saída: `0` ok, `1` falha da verificação ou erro inesperado, `2` erro de uso (argumento, Espaço inexistente,
-recusa antes de escrever). Antes de qualquer escrita o script imprime o host do banco (sem usuário nem
-senha) e o Espaço.
+recusa antes de escrever). Antes de qualquer escrita o script imprime o host e a porta que o `pg` usa (sem usuário nem
+senha; `persistencia/host-local.ts`, o `?host=` da URL conta) e o Espaço.
 
 ## O que cada modo faz
 
@@ -40,10 +40,23 @@ senha) e o Espaço.
    tem cópia com a mesma chave. Uma divergência lança e a transação inteira volta.
 2. A `operacao` (pura) tira só a Pasta "Meus negócios" do estado, se for o caso (abaixo). Ela **não** toca
    nas nove coleções antigas.
-3. `aoConfirmar` apaga de `registros` por SQL: as oito coleções inteiras e as Conversas sem Grupo.
+3. `aoConfirmar` apaga de `registros` por SQL: as oito coleções inteiras e as Conversas do CRM antigo (abaixo).
 
-**Conversa de Grupo.** Grupo e Flow ficam no modelo antigo até as Sessões 6 e 7 (F14-D-05). As Conversas
-com `groupIdentifier` são **copiadas** mas **continuam** em `registros`; o resultado diz quantas ficaram.
+**O que fica em `registros` (15-44, H-02).** Grupo e Flow ficam no modelo antigo até as Sessões 6 e 7 (F14-D-05),
+e esse modelo também abre Conversa **1:1**, sem `groupIdentifier`: o convite de Grupo, a Resposta de Flow e a Ação
+"enviar ao Contato" da Automação (`receiveMessage` e `startConversation`, em `conversa-de-grupo.ts`), sempre com um
+Contato de `plataforma.contatos`. Por isso "sem Grupo" não basta. A Conversa é **do CRM antigo** (copiada, migrada
+quando há destino, apagada de `registros`) só quando NÃO é de Grupo e o `contactId` dela **é um id da coleção
+`contacts` antiga do MESMO Espaço**. Todo o resto é **copiado mas NUNCA apagado nem migrado**: a Conversa de Grupo
+(`groupIdentifier` objeto), a 1:1 de Flow/Automação/convite (Contato fora de `contacts`) e qualquer Conversa que não dá
+para classificar (`contactId` ausente, nulo, vazio ou que não é texto): nunca se apaga o que não se sabe classificar.
+O critério existe em TypeScript (`ehConversaDoCrmAntigo`, que o mapeador usa) e em SQL (`SQL_E_CONVERSA_DO_CRM_ANTIGO`, com
+um `exists` sobre `contacts` do mesmo `workspace_id`) e é **o mesmo** no `--guardar`, no `--migrar`, no `--seco` e no
+`--verificar` (b); `colecoes.test.ts` confere que os dois concordam numa tabela de casos. O resultado e o `--seco` dizem
+quantas ficaram e por quê (de Grupo / 1:1 de Flow, Automação ou convite). **Limitação conhecida:** um Contato cujo id
+existe nas duas coleções antes do corte é tratado como antigo. **Alternativa rejeitada:** decidir pelo Canal (o da
+Conversa existe só em `plataforma.canais`): desde a Fase 8 toda Conversa da Caixa antiga também cita um Canal que está
+na tabela nova, com o mesmo id, então o Canal não separa a Conversa de Flow da antiga.
 
 **Pasta "Meus negócios" (D-15-14).** Achada pelo id do seed (`fld_meus_negocios`), nunca pelo nome. Se
 **todas** as Listas dela estão vazias (nenhuma Tarefa, em qualquer estado), a Pasta, as Listas e as
@@ -75,7 +88,8 @@ decide as linhas novas, o de-para e o relatório. O `aoConfirmar` insere o Funil
 (`inserirPlano`), e só então apaga de `registros`. Detalhes na seção "O mapeador" abaixo.
 
 **`--verificar`** confere em `begin read only`: (a) nenhuma linha das oito coleções sem Grupo em `registros`;
-(b) em `conversations` de `registros`, só Conversas de Grupo; (c) nenhuma linha órfã em `crm_de_para` (a
+(b) em `conversations` de `registros`, nenhuma Conversa **do CRM antigo** (só ficam as de Grupo e as 1:1 de Flow/Automação,
+o mesmo critério do `--guardar`; a 1:1 de Flow não é falha); (c) nenhuma linha órfã em `crm_de_para` (a
 Etapa se confere pelo Funil); (d) imprime a contagem por coleção de `registros_crm_antigo`. A contagem de
 (d) é a base de comparação com o `--seco` de antes da escrita: o roteiro do ensaio (15-30) e do corte
 (15-34/15-35) guarda as duas e confere que são iguais.
@@ -101,6 +115,14 @@ Etapas, que `inserirFunis` já pôs] → Negócios → Conversas → Mensagens (
 pedaço de 500 linhas, com `jsonb_to_recordset` e lista de colunas explícita (`inserir.ts`); nome de tabela e de
 coluna só de constantes, valor só por parâmetro.
 
+**Destino que já está nas tabelas novas (15-44, H-01).** O Canal e o Contato que as Conversas e os Negócios antigos
+citam e que **já estão** em `plataforma.canais`/`plataforma.contatos` do Espaço (`crm-novo.ts` os lê, com o tipo do
+Canal) valem como destino: a Conversa migra para `plataforma.conversas` com as Mensagens, apontando para o Canal
+e o Contato existentes, que **não** são inseridos nem alterados (o id repetido continua no relatório como
+`id-ja-existe`, mas não tira o id do destino). Antes disso a Conversa de Canal criado pela Fase 8 caía em
+`conversa-sem-canal-migrado` e era apagada de `registros` sem migrar. Canal ou Contato que não existe em lugar nenhum
+continua indo ao relatório (`conversa-sem-canal-migrado`, `conversa-sem-contato`).
+
 **O banco não é surpreendido.** O que uma constraint da 007/008/011 recusaria é decidido no mapeador e o item vai
 para o relatório, em vez de derrubar a transação do Espaço no `commit`:
 
@@ -114,6 +136,8 @@ para o relatório, em vez de derrubar a transação do Espaço no `commit`:
 | `conversas_nao_resolvida_uq` | Duas abertas/pendentes no mesmo par Contato+Canal: a mais recente entra. Se o CRM novo já ocupa o par, a antiga fica de fora. |
 | `canais_nome_uq`, `canais_conta_uq` | Só entre Canais ativos; o segundo vai para o relatório. O Canal entra `desconectada`, com o provedor padrão do tipo. |
 | `contato_identificadores_unico` | O segundo Identificador igual (no CRM antigo ou já no novo) vai para o relatório. O valor segue a forma canônica do CRM novo (`+55…` no WhatsApp). |
+| Mensagem sem `id` (`mensagens.id` é NOT NULL) | Vai para `mensagem-sem-id` (coleção `conversations` e o id da Conversa); as outras Mensagens dela migram. |
+| Identificador de Contato ou de Empresa sem `id`, ou com `id` repetido no mesmo pai (PK de `crm_de_para`) | Migra; a chave de de-para ganha um sufixo (`<pai>/sem-id#<posição>`) para não colidir, e o primeiro trecho segue sendo o pai (o `--verificar` acha a origem por ele). |
 | `mensagens_*` | Recebida sem id externo ganha `migrado:<id>` e o ator `integration` do Canal; enviada sempre tem `status_entrega`; interna não tem id externo; a resposta só aponta para Mensagem anterior da mesma Conversa; Mensagem sem texto nem anexo fica de fora. |
 
 **O que vai para o relatório de não migrados** (`nao-migrados.ts`, só coleção e id, nunca nome, telefone,
@@ -147,13 +171,15 @@ Contato e Empresa entram em `campos_adicionais` com o **id da Definição** como
   Docker) mais a cópia.
 - **Valores só por `$n`**; nome de tabela e de coluna só de constantes (T-15-66).
 - **Nunca rode contra um banco que não seja o que você quer escrever.** Os testes usam só Postgres de Docker
-  (`describeComBanco`, host local). Em produção quem roda é o dono, no corte.
+  (`describeComBanco`, host local). A trava "só local" (demo, testes de banco) olha o host que o `pg` USA, não só o
+  da URL: `persistencia/host-local.ts` recusa qualquer URL com `?…` (`?host=` e `?hostaddr=` trocam o destino) e
+  só aceita `localhost`, `127.0.0.1` e `[::1]` exatos (15-44, M-01). Em produção quem roda é o dono, no corte.
 
 ## Os arquivos
 
 | Arquivo | O que faz |
 |---|---|
-| `colecoes.ts` | As nove coleções, `ehConversaDeGrupo` e o mesmo critério em SQL, `ErroDeUso`, `validarEspaco`. |
+| `colecoes.ts` | As nove coleções, `ehConversaDeGrupo`, `ehConversaDoCrmAntigo` e os mesmos critérios em SQL, `ErroDeUso`, `validarEspaco`. |
 | `formatos-antigos.ts` | Interfaces estruturais mínimas do que o script lê (sem import do domínio). |
 | `guardar.ts` | `copiarParaRegistrosCrmAntigo`, `conferirCopia`, `contarDoAlvo`, `apagarDoRegistros`, `contarGuardadas`. |
 | `funil.ts` | `planejarFunis` (puro), `inserirFunis` (lock do padrão, `crm_de_para`) e as leituras por SQL. |
@@ -162,7 +188,7 @@ Contato e Empresa entram em `campos_adicionais` com o **id da Definição** como
 | `mapeador.ts` | `planejarMigracao` (puro): linhas antigas → linhas das tabelas novas, de-para e não migrados. |
 | `nao-migrados.ts` | As categorias do relatório (rótulo em português) e `agruparNaoMigrados`. |
 | `inserir.ts` | `inserirPlano`: um `insert` em lote por tabela, na ordem das FKs. |
-| `crm-novo.ts` | As leituras por SQL do mapeador: as linhas antigas e o que o CRM novo do Espaço já tem. |
+| `crm-novo.ts` | As leituras por SQL do mapeador: as linhas antigas e o que o CRM novo do Espaço já tem (inclusive os Canais e Contatos que as Conversas e Negócios citam). |
 | `migrar-crm-antigo.ts` | `guardarCrmAntigo`, `migrarCrmAntigo`, `relatorioSeco`, `verificar`, `emTransacaoSoLeitura`. |
 | `migrar.cli.ts` | A CLI: `lerArgumentos` (pura), `principal` (devolve o código de saída). |
 | `fixtures/registros-antigos-minimos.json` | CRM antigo SINTÉTICO congelado (nove coleções, uma Conversa de Grupo, a Pasta e uma Tarefa espelho) para os testes. |
@@ -176,10 +202,18 @@ não prova nada.
 - **15-34 / 15-35 — o corte.** Rodar o `--seco` e o `--guardar`/`--migrar` no `ws_n1` e nos 17 Espaços de
   teste, em produção, pelo dono, atrás de backup. Este script só foi provado em Docker. O que o corte precisa
   fazer com o mapeador:
+  - rodar o `--seco` do `ws_n1` **de novo imediatamente antes** do `--migrar` e conferir que é igual ao do passo 4 e que
+    `conversa-sem-canal-migrado` e `conversa-sem-contato` não têm item (M-03; o roteiro `15-CORTE.md` tem o comando);
   - ler o "Não migrados" do `--seco` de cada Espaço **antes** de escrever, e decidir se o que ficou de fora
     (temperatura, Tags, Canal do chat do site e LinkedIn e as Conversas deles, Negócio de Empresa sem admin...)
     é aceitável: o `--migrar` não é desfazível (D-15-02);
-  - rodar o `--migrar` Espaço por Espaço (a transação de cada um é independente) e o `--verificar` em seguida;
+  - rodar o `--migrar` Espaço por Espaço (a transação de cada um é independente) e o `--verificar` em seguida. Nunca duas
+    execuções ao mesmo tempo no mesmo Espaço: a segunda espera a trava por ~10 s e, se a primeira não terminou, sai com 1
+    ("Outra alteração entrou antes desta") sem escrever (M-05);
+  - um `--verificar` que falha depois da publicação da API (passo 8) se investiga **linha a linha**, nunca se resolve com
+    `--guardar` às cegas (H-02); e voltar o código da API depois do `--guardar`/`--migrar` exige restaurar o backup (M-02);
+  - o `--seco` e o `--verificar` do roteiro comparam só as nove coleções: quando a Pasta "Meus negócios" sai,
+    `registros_crm_antigo` também guarda `folders`, `lists` e `views` (L-01);
   - guardar a contagem de `registros_crm_antigo` do `--seco` e conferir com a do `--verificar`.
 - Nenhuma referência em `registros` é reescrita: os ids de Contato, Empresa, Funil, Negócio, Canal, Conversa e
   Mensagem são preservados. Ficam apontando para um id que **não existe** mais (abrem "não encontrado") só os

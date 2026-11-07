@@ -6,13 +6,14 @@
 
 ## Leia antes de começar
 
-1. **O que o corte faz.** Tira o CRM antigo (Contato, Empresa, Negócio, Funil, Canal, Conversa 1:1 e os Vínculos) de `plataforma.registros`, guarda uma cópia em `plataforma.registros_crm_antigo`, leva ao CRM novo o que o `ws_n1` precisa, aplica a migração `012` (só cria a tabela vazia `plataforma.crm_atividades`) e sobe a API e a web desta versão.
+1. **O que o corte faz.** Tira o CRM antigo (Contato, Empresa, Negócio, Funil, Canal, Conversa 1:1 do CRM antigo e os Vínculos) de `plataforma.registros`, guarda uma cópia em `plataforma.registros_crm_antigo`, leva ao CRM novo o que o `ws_n1` precisa, aplica a migração `012` (só cria a tabela vazia `plataforma.crm_atividades`) e sobe a API e a web desta versão.
 2. **Não existe script de desfazer (D-15-02).** Voltar é restaurar o backup do passo 2 e perder tudo o que foi criado depois dele no CRM novo. A cópia em `registros_crm_antigo` guarda as linhas antigas, mas nada as devolve a `registros` sozinho.
 3. **Ordem importa: o script de dados roda ANTES de a API nova subir.** Quem publica deve rodar o `--guardar`/`--migrar` antes do `publicar.sh`: uma linha antiga que sobra em `plataforma.registros` volta como chave desconhecida em `GET /estado` até ser apagada (`apps/api/src/persistencia/hidratar-crm-antigo.test.ts` documenta). Por isso os passos 6 e 7 vêm antes do 8.
 4. **Parar se o passo falhar.** Cada passo diz o que conferir. Se a conferência não bate, pare, anote e não siga para o próximo (T-15-84). Cada execução do script é uma transação por Espaço: uma falha deixa o Espaço como estava, e repetir é seguro (a repetição diz "nada a fazer").
 5. **Onde rodar.** Da raiz de um checkout deste repositório **no commit que vai subir** (os comandos `migrar:crm-antigo` só existem nele), com `npm ci` feito. Os comandos `npm run … -w @n1/api` leem o `apps/api/.env`, que aponta para produção. **Antes de qualquer escrita o script imprime a linha `Banco: <host> · Espaço: … · Modo: …` (sem usuário nem senha): leia o host e confirme que é o de produção que você quer escrever.** (**A CONFIRMAR PELO DONO:** que o `DATABASE_URL` do `.env` é o papel de runtime e o `DATABASE_URL_MIGRACAO` é o dono do banco; no ensaio o script rodou com os dois.)
 6. **Anote hora e resultado de cada passo** nas linhas "Hora" e "Resultado" ao fim de cada um.
-7. **Janela (D-15-03).** Não há modo manutenção. Quem abrir o CRM entre o passo 6 e o fim do passo 9 vê erro ou a Caixa vazia por alguns minutos (a API antiga ainda está no ar, mas o CRM antigo já saiu de `registros`; a web antiga ainda não foi trocada). Um navegador que já estava aberto no app antigo pode gravar CRM antigo em `registros` nesse intervalo (entre os passos 6 e 8): por isso o `--verificar` do passo 10 e, se ele falhar, `--guardar` de novo no Espaço.
+7. **Janela (D-15-03).** Não há modo manutenção. Quem abrir o CRM entre o passo 6 e o fim do passo 9 vê erro ou a Caixa vazia por alguns minutos (a API antiga ainda está no ar, mas o CRM antigo já saiu de `registros`; a web antiga ainda não foi trocada). Um navegador que já estava aberto no app antigo pode gravar CRM antigo em `registros` nesse intervalo (entre os passos 6 e 8): por isso o `--verificar` do passo 10. **Se ele falhar, não resolva com `--guardar` às cegas:** leia o passo 10, que manda investigar linha a linha.
+8. **O que NÃO sai de `registros` (revisão 15-44, H-02).** Ficam, copiadas para `registros_crm_antigo` mas nunca apagadas nem migradas, (a) a Conversa de Grupo e (b) a Conversa 1:1 que o Flow, a Automação e o convite de Grupo abrem com um Contato de `plataforma.contatos` (o `contactId` dela **não** é um id da coleção `contacts` antiga do mesmo Espaço) e qualquer Conversa que não dá para classificar (`contactId` ausente). Só é "do CRM antigo" a Conversa sem Grupo cujo `contactId` **é** um id de `contacts` do mesmo Espaço. O `--seco` e o resumo de `--guardar`/`--migrar` dizem quantas ficaram e por quê; o `--verificar` não reclama delas. Na cópia de 2026-11-05 são só as 14 Conversas de Grupo (nenhuma 1:1 de Flow). Limitação conhecida: um Contato cujo id existe nas duas coleções antes do corte é tratado como antigo.
 
 ### Os Espaços
 
@@ -135,10 +136,21 @@ for ws in $TESTES_17 $VAZIO; do
 done
 ```
 
-Cada Espaço: copia as nove coleções para `registros_crm_antigo`, confere por conteúdo e só então as apaga de `registros` (as 2 Conversas de Grupo, quando há, **ficam**: F14-D-05). A Pasta "Meus negócios" segue a regra do passo 5. Saída esperada por Espaço: "guardado. 134 linha(s) copiadas…" (ou "nada a fazer" no vazio). Se um Espaço falha, ele ficou como estava: leia a mensagem e decida; não passe ao `ws_n1` com a causa desconhecida.
+Cada Espaço: copia as nove coleções para `registros_crm_antigo`, confere por conteúdo e só então as apaga de `registros` (as 2 Conversas de Grupo, quando há, **ficam**: F14-D-05). A Pasta "Meus negócios" segue a regra do passo 5. Saída esperada por Espaço: "guardado. 134 linha(s) copiadas…" (ou "nada a fazer" no vazio). O resumo traz duas linhas de Conversas que continuam em `registros`: as de Grupo (2 nos 7 Espaços que as têm) e as "1:1 de Flow, Automação ou convite de Grupo" (0 na cópia; um número maior que 0 num Espaço de teste é dado vivo do Flow, não erro). Se um Espaço falha, ele ficou como estava: leia a mensagem e decida; não passe ao `ws_n1` com a causa desconhecida.
 Hora: ______  Resultado: ______
 
 ### 6c. O `ws_n1` — use a linha da sua escolha no passo 5
+
+**Antes de escrever, rode o `--seco` do `ws_n1` de novo, imediatamente antes (M-03).** O relatório que você aprovou no passo 4 é de minutos ou horas atrás, o app antigo continua no ar e o `--migrar` não se desfaz: ele replaneja na hora e só mostra o "Não migrados" real depois de confirmar. Compare com o do passo 4 e **pare** se mudou ou se alguma destas duas categorias tiver item (leia o item antes de seguir): "Conversa de um Canal que não migrou" (`conversa-sem-canal-migrado`) e "Conversa sem Contato" (`conversa-sem-contato`).
+
+```bash
+mkdir -p ~/n1-corte/seco-6c
+npm run --silent migrar:crm-antigo -w @n1/api -- --espaco ws_n1 --seco | tee ~/n1-corte/seco-6c/ws_n1.txt
+diff ~/n1-corte/seco/ws_n1.txt ~/n1-corte/seco-6c/ws_n1.txt && echo "ws_n1: igual ao passo 4" || echo "ws_n1: DIFERENTE do passo 4 (leia o diff antes de escrever)"
+grep -E 'Conversa de um Canal que não migrou|Conversa sem Contato' ~/n1-corte/seco-6c/ws_n1.txt || echo "nenhuma das duas categorias tem item"
+```
+
+Só então escolha a linha:
 
 ```bash
 # escolha A: levar o Funil Padrão do CRM antigo ao CRM novo
@@ -146,6 +158,8 @@ npm run migrar:crm-antigo -w @n1/api -- --espaco ws_n1 --migrar --funil=migrar |
 # escolha B: só guardar o Funil na cópia (o CRM novo fica como está)
 npm run migrar:crm-antigo -w @n1/api -- --espaco ws_n1 --migrar --funil=guardar | tee ~/n1-corte/migrar-ws_n1.txt
 ```
+
+(A Conversa antiga cujo Canal ou Contato **já está** em `plataforma.canais`/`plataforma.contatos` migra para `plataforma.conversas` com as Mensagens, sem mexer no Canal nem no Contato (15-44, H-01); as duas categorias acima só aparecem quando o Canal ou o Contato não existe em lugar nenhum.)
 
 Rode **uma** das duas. Esperado no ensaio: A → "Funil: 1 migrado (1 Etapa)", Funis 2 → 3, Etapas 6 → 7, 2 linhas em `crm_de_para`; B → nada novo no CRM novo. O resumo repete a lista de "Não migrados".
 Hora: ______  Resultado: ______
@@ -164,11 +178,11 @@ Esperado: `ok` e saída 0 em todos. Agora compare a contagem por coleção de `r
 ```bash
 for ws in ws_n1 $TESTES_17 $VAZIO; do
   diff <(grep -E '^  (contacts|companies|contactCompanyLinks|companyCompanyLinks|distinctFromLinks|funnels|deals|channels|conversations) ' ~/n1-corte/seco/$ws.txt | awk '$2 != 0 {print $1, $2}' | sort) \
-       <(sed -n '/^registros_crm_antigo guarda:/,$p' ~/n1-corte/verificar/$ws.txt | grep -E '^  [A-Za-z]+ [0-9]+$' | awk '{print $1, $2}' | sort) >/dev/null && echo "$ws igual" || echo "$ws DIFERENTE"
+       <(sed -n '/^registros_crm_antigo guarda:/,$p' ~/n1-corte/verificar/$ws.txt | grep -E '^  (contacts|companies|contactCompanyLinks|companyCompanyLinks|distinctFromLinks|funnels|deals|channels|conversations) [0-9]+$' | awk '{print $1, $2}' | sort) >/dev/null && echo "$ws igual" || echo "$ws DIFERENTE"
 done
 ```
 
-(O `--seco` lista as nove coleções, inclusive as de contagem 0; o `--verificar` só lista as que têm linha guardada — por isso o `awk` descarta os zeros do lado do `--seco`.) Esperado: nenhum "DIFERENTE". Se algum Espaço sair diferente ou o `--verificar` sair com 1, **pare**: não publique. Rode `--seco` do Espaço para ver o que sobrou em `registros`, e `--guardar` de novo nele (é seguro). Se não se explicar, decida entre seguir e restaurar o backup do passo 2.
+(O `--seco` lista as nove coleções, inclusive as de contagem 0; o `--verificar` só lista as que têm linha guardada — por isso o `awk` descarta os zeros do lado do `--seco`. **Os dois lados filtram as mesmas nove coleções (L-01):** `registros_crm_antigo` também guarda `folders`, `lists` e `views` quando a Pasta "Meus negócios" sai (D-15-14), e o `--verificar` as imprime; o `--seco` não as conta, então sem o filtro dos dois lados a Pasta que saiu faria o Espaço parecer "DIFERENTE" sem ser. Nos Espaços em que a Pasta **sai**, a lista de `--verificar` tem essas linhas a mais, e isso é esperado: elas só aparecem fora da comparação. Na cópia de 2026-11-05 nenhuma Pasta saiu.) Esperado: nenhum "DIFERENTE". Se algum Espaço sair diferente ou o `--verificar` sair com 1, **pare**: não publique. Rode `--seco` do Espaço para ver o que sobrou em `registros` e leia o `--verificar` linha a linha (coleção e contagem); se não se explicar, decida entre seguir e restaurar o backup do passo 2. (Antes do passo 8, `--guardar` de novo no Espaço é seguro e é o que a repetição prevê; depois do passo 8, siga o passo 10.)
 Hora: ______  Resultado: ______
 
 ## Passo 8 — Publicar a API na VM (`publicar.sh`)
@@ -184,7 +198,7 @@ VPS_HOST=85.155.186.214 VPS_USER=n1crm SSH_KEY=~/.ssh/n1_crm_deploy_ci apps/api/
 (Os valores de `VPS_HOST`, `VPS_USER` e `SSH_KEY` são os do cabeçalho de `apps/api/deploy/publicar.sh`.) Na VM, `instalar-release.sh` extrai o pacote, faz `npm ci`, roda `migrar` (já não há nada a aplicar depois do passo 6) e `banco:conceder`, troca o link `current`, reinicia o serviço e espera `/saude`; se `/saude` não responder em 40 s, ele volta o link para a versão anterior (a migração não volta).
 
 Conferir: o fim da saída diz que a versão nova está no ar; `curl -s https://crm-n1-api.85.155.186.214.nip.io/saude` responde. Anote o SHA que estava no ar antes (`no ar:` na primeira linha da saída; no `CONTEXT.md` da raiz consta `49f1b54`) — é o SHA para voltar.
-Se falhar: não suba a web. Volte à versão anterior com `FORCAR=1` e o SHA anterior no mesmo comando (`FORCAR=1 VPS_HOST=… VPS_USER=n1crm SSH_KEY=… apps/api/deploy/publicar.sh <sha-anterior>`).
+Se falhar: não suba a web. **Voltar o código da API depois do passo 6 não basta (M-02):** os passos 6b e 6c já tiraram o CRM antigo de `registros`, então a API anterior (`49f1b54`) volta, lê o CRM antigo de `registros` e o encontra vazio; e o que a tela antiga gravar a partir daí cai em `registros` e é "guardado" (apagado) na próxima execução do script. Escolha uma das duas e anote qual: **(1)** voltar a API com `FORCAR=1` e o SHA anterior (`FORCAR=1 VPS_HOST=… VPS_USER=n1crm SSH_KEY=… apps/api/deploy/publicar.sh <sha-anterior>`) **e** restaurar o backup do passo 2 (perde o que foi criado no CRM novo depois dele; **A CONFIRMAR PELO DONO:** o comando de restauração em produção, ver a última linha da tabela "Se um passo falhar"); ou **(2)** voltar só o código, aceitando explicitamente que a versão antiga mostra o CRM vazio até a correção. O `publicar.sh` não tem modo a seco: o que dá para conferir **antes do passo 6**, sem publicar nada, é a mesma leitura que ele faz primeiro, `ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/n1_crm_deploy_ci -o IdentitiesOnly=yes n1crm@85.155.186.214 "cat /opt/n1-crm/current/REVISION"` (chave carregada, host alcançável e o SHA que está no ar); se ela falhar, a publicação do passo 8 também falharia.
 Hora: ______  SHA publicado: ______  Resultado: ______
 
 ## Passo 9 — Subir a web (push para `main` do `n1-tecnologia/crm`)
@@ -209,7 +223,15 @@ npm run migrar:crm-antigo -w @n1/api -- --espaco ws_n1 --verificar
 for ws in $TESTES_17 $VAZIO; do npm run --silent migrar:crm-antigo -w @n1/api -- --espaco "$ws" --verificar; echo "$ws saiu com $?"; done
 ```
 
-Esperado: `ok` e saída 0 em todos (era o risco da janela: um navegador antigo gravando CRM antigo entre os passos 6 e 8). Se algum falhar: `--guardar` de novo nesse Espaço (para o `ws_n1`, a mesma linha de `--migrar --funil=…` que você escolheu; repetir é seguro) e `--verificar` outra vez.
+Esperado: `ok` e saída 0 em todos (era o risco da janela: um navegador antigo gravando CRM antigo entre os passos 6 e 8). A Conversa 1:1 que o Flow ou a Automação abriu depois do passo 8 **não** faz o `--verificar` falhar (ela fica em `registros` de propósito, ver "Leia antes", item 8).
+
+**Se algum falhar, não rode `--guardar` nem `--migrar` às cegas (H-02).** Leia as linhas do `--verificar`: cada uma diz a coleção e a contagem (`contacts: N linha(s) ainda em registros`, `conversations: N Conversa(s) do CRM antigo ainda em registros`, `crm_de_para …: N linha(s) órfã(s)`). Investigue linha a linha, só leitura, sem imprimir dado pessoal (só ids e contagens):
+
+```bash
+psql "<URL do banco de produção>" -At -c "set default_transaction_read_only = on; select colecao, count(*) from plataforma.registros where workspace_id = '<Espaço>' and colecao in ('contacts','companies','contactCompanyLinks','companyCompanyLinks','distinctFromLinks','funnels','deals','channels','conversations') group by 1 order by 1"
+```
+
+(**A CONFIRMAR PELO DONO:** a URL de leitura, como no passo 2.) Só depois de entender de onde veio cada linha decida: se for CRM antigo que um navegador antigo gravou na janela, repetir o `--guardar` (para o `ws_n1`, a mesma linha de `--migrar --funil=…` que você escolheu) o copia e o tira de `registros`, sem migrar nada no `--guardar`; se for outra coisa, **não** repita: restaure ou peça ajuda. Em seguida, `--verificar` outra vez.
 
 Depois, no app em produção, como `ws_n1`: a lista de provas manuais de `15-PROVAS.md` ("Provas manuais pendentes") diz o que olhar — Caixa de Entrada, ficha de Contato (mesclar, notas, consentimentos), Funis e Negócios, Busca, Início, o diálogo de remover Membro. Uma Caixa vazia no `ws_n1` é o esperado (o CRM antigo dele era só o Funil).
 Hora: ______  Resultado: ______
@@ -222,9 +244,9 @@ Hora: ______  Resultado: ______
 |---|---|---|
 | Passos 1 a 5 | Nada foi escrito em produção. | Corrigir e recomeçar quando quiser. |
 | `migrar` (6a) | Uma transação por arquivo: nada fica pela metade. | Ler a mensagem; repetir depois de entender. |
-| Script num Espaço (6b, 6c) | Uma transação por Espaço (trava a linha do Espaço e sobe a revisão): falhou, ficou como estava. | Ler a mensagem; repetir é seguro ("nada a fazer" se já foi). Duas execuções simultâneas no mesmo Espaço esperam uma à outra. |
-| `--verificar` diferente (7, 10) | A cópia ou o apagar não fecha. | Não publique (passo 7). `--seco` do Espaço mostra o que sobrou; `--guardar` de novo. |
-| `publicar.sh` (8) | A VM volta o link se `/saude` não responder. | Não suba a web; `FORCAR=1` com o SHA anterior, se precisar. |
+| Script num Espaço (6b, 6c) | Uma transação por Espaço (trava a linha do Espaço e sobe a revisão): falhou, ficou como estava. | Ler a mensagem; repetir é seguro ("nada a fazer" se já foi). **Não rode duas execuções no mesmo Espaço ao mesmo tempo (M-05):** a segunda espera a trava da linha do Espaço por cerca de 10 s; se a primeira não terminou nesse prazo, a segunda **sai com 1** e diz "Outra alteração entrou antes desta. Tente de novo.", sem escrever nada. Repita depois que a primeira terminar; um `--verificar` que falha logo depois dessa tentativa não é problema de dado — espere a primeira terminar e rode o `--verificar` de novo. |
+| `--verificar` diferente (7, 10) | A cópia ou o apagar não fecha. | Passo 7: não publique; `--seco` do Espaço mostra o que sobrou e o `--verificar` diz a coleção. Passo 10: investigue linha a linha (passo 10) e **nunca** repita `--guardar` às cegas. |
+| `publicar.sh` (8) | A VM volta o link se `/saude` não responder. | Não suba a web. Voltar o código depois do passo 6 exige restaurar o backup do passo 2 ou aceitar o CRM vazio na versão antiga (passo 8, M-02). |
 | Qualquer coisa inexplicável depois de escrever | Não há script de desfazer. | Restaurar o backup do passo 2 e a API anterior. **A CONFIRMAR PELO DONO:** o comando de restauração em produção (o repositório só documenta a restauração num Postgres descartável em Docker, como no passo 2 e em `apps/api/deploy/restaurar-backup.sh`, que não escreve em banco remoto). Perde-se o que foi criado no CRM novo depois do backup. |
 
 ## Depois do corte
