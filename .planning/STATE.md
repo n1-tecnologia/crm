@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 15
 current_phase_name: "Unificação do CRM: telas no modelo novo e remoção do modelo antigo"
 status: executing
-stopped_at: Completed 15-34-PLAN.md
-last_updated: "2026-11-06T23:34:38.580Z"
+stopped_at: Completed 15-44-PLAN.md
+last_updated: "2026-11-07T00:13:54.051Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 15 execution started
-state_head: 4e674345c596db89e28fdf9544b477f6b85fc405
+state_head: 7bafb1cad3731b28ecfe75ac4ad0751724c49e9f
 progress:
   total_phases: 16
   completed_phases: 6
-  total_plans: 271
-  completed_plans: 267
+  total_plans: 272
+  completed_plans: 268
 milestone_name: milestone
 ---
 
@@ -486,6 +486,7 @@ Progress: [██████░░░░] 63%
 | Phase 15 P42 | 65 min | 3 tasks | 59 files |
 | Phase 15 P43 | 70 min | 2 tasks | 42 files |
 | Phase 15 P34 | 45 min | 3 tasks | 9 files |
+| Phase 15 P44 | 35min | 4 tasks | 25 files |
 
 ## Accumulated Context
 
@@ -798,6 +799,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 15]: 15-43: seed-comercial.ts (MEUS_NEGOCIOS_ID) apagado junto com PASTA_MEUS_NEGOCIOS_ID; a Lista da Pasta Meus negocios nao filtra mais Tarefas de Negocio (WINDOWS #69 fechada)
 - [Phase 15]: 15-34: o gate rodou 3 vezes (a 3a verde; as duas primeiras so no flake do outbox-worker, que a fase nao tocou); o ensaio final repetiu os numeros do 15-30 em todos os 19 Espacos; 15-CORTE.md e o roteiro literal do corte, so do dono; as decisoes (a) copia de 2026-11-05, (b) remover e (c) seguir foram tomadas em nome do dono e estao em 15-PROVAS.md
 - [Phase 15]: 15-34: WINDOWS #73 aberta: depois do corte o Enviar Flow a um Contato fica sem destinatario (as Conversas 1:1 saem de registros); decisao do dono
+- [Phase 15]: 15-44 H-02: a Conversa e do CRM antigo so se nao e de Grupo e o contactId e um id de contacts do mesmo Espaco; Grupo, 1:1 de Flow/Automacao/convite e a nao classificavel ficam em registros (rejeitado: decidir pelo Canal, que tambem existe na tabela nova para a Conversa antiga)
+- [Phase 15]: 15-44 M-01: a trava de banco local recusa qualquer URL com query e confere o host efetivo por new Client(url).host (persistencia/host-local.ts); [::1] aceito
 
 ### Pending Todos
 
@@ -859,6 +862,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-06T23:34:38.354Z
-Stopped at: Completed 15-34-PLAN.md
+Last session: 2026-11-07T00:13:53.746Z
+Stopped at: Completed 15-44-PLAN.md
 Resume file: None
