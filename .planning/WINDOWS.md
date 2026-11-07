@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 54
+open_count: 48
 waived_count: 2
-fixed_count: 22
+fixed_count: 28
 total_count: 78
-last_updated: 2026-11-07T00:07:24.279Z
+last_updated: 2026-11-07T11:29:29.238Z
 ---
 
 # Broken Windows Ledger
@@ -65,16 +65,16 @@ last_updated: 2026-11-07T00:07:24.279Z
 | 48 | 15 | deviation | apps/web/src/app/(shell)/paineis/[painel]/page.tsx |  | 15-23: Paineis semeados (SDR, Closer, Atendimento) tem Fonte com ids do modelo antigo (fnl_sdr, fnl_closer, fila_com, inbox_n1): lendo o CRM novo eles abrem zerados ate a Fonte apontar para um Funil/Fila novo (Sessao 20.3). Widgets de Origem e Motivo de Perda ficam sem linhas porque NegocioResumo nao traz origem/motivoPerda (texto livre no Negocio novo). Cada Widget le ate 200 registros por recurso e diz 'Parcial: primeiros 200' quando ha mais; Etapas vem de uma GET /funis/:id por Funil lido | open |  | 2026-11-06T17:53:48.437Z |  |
 | 49 | 15 | deviation | apps/web/src/app/(shell)/estrutura/listas/[lista]/page.tsx |  | 15-40: a Lista conversacional so afirma 'sem canais' (aviso, Atende por e recusa de criar Tarefa) com a resposta de GET /canais na mao (so os Canais ativos, ate 200); enquanto carrega, ou se a api falha, o aviso e a linha 'Atende por' nao aparecem e o botao Nova Tarefa nao e desligado por falta de Canal (o servidor continua barrando). Uma Lista cujo canaisDeAtendimento guarda ids que nao estao em plataforma.canais (ids do Canal antigo, antes do script de migracao preservar ids) mostra o aviso de Lista sem Canal. O quadro da Lista conversacional ficou: quadro-negocios.tsx virou quadro-conversacional.tsx (so o card de Negocio e o subtotal em dinheiro sairam), em vez de ser apagado como o plano dizia | fixed |  | 2026-11-06T18:25:31.533Z | 2026-11-06T19:45:26.283Z |
 | 50 | 15 | deviation | apps/api/src/migracao-crm/migrar-crm-antigo.ts |  | 15-27: o --migrar do script so cobre o Funil: recusa, antes de escrever, o Espaco com Contatos, Empresas, Vinculos, Negocios, Canais ou Conversas comuns ('use --guardar'); o mapeador dessas entidades e o plano 15-28. A decisao do Funil (--funil=migrar ou guardar) vale antes da primeira escrita: depois de um --guardar o Funil ja saiu de registros e o script nao o le da copia (trazer depois = recriar pela tela de Funis) | fixed |  | 2026-11-06T19:14:14.649Z | 2026-11-06T19:45:26.348Z |
-| 51 | 15 | deviation | apps/api/src/migracao-crm/pasta-meus-negocios.ts |  | 15-27: a Pasta Meus negocios com Tarefa em qualquer Lista nao sai (esperado nos 17 Espacos de teste; o dono ve no --seco) e, quando sai, o script nao reescreve referencias de fora as Listas removidas (Automacao ou Formulario com escopo na Lista). No ws_n1 a Pasta provavelmente nem existe (o bootstrap nao a cria); o dono confere no --seco antes do corte | open |  | 2026-11-06T19:14:14.718Z |  |
+| 51 | 15 | deviation | apps/api/src/migracao-crm/pasta-meus-negocios.ts |  | 15-27: a Pasta Meus negocios com Tarefa em qualquer Lista nao sai (esperado nos 17 Espacos de teste; o dono ve no --seco) e, quando sai, o script nao reescreve referencias de fora as Listas removidas (Automacao ou Formulario com escopo na Lista). No ws_n1 a Pasta provavelmente nem existe (o bootstrap nao a cria); o dono confere no --seco antes do corte | fixed |  | 2026-11-06T19:14:14.718Z | 2026-11-07T11:29:28.885Z |
 | 52 | 15 | deviation | apps/api/src/migracao-crm/funil.ts |  | 15-27: nenhum id antigo e reescrito e nenhum link, Vinculo ou canaisDeAtendimento para Negocio, Contato ou Canal antigo e resolvido por este plano: as linhas antigas ficam em registros_crm_antigo com o id original, e so Funil (id preservado) e Etapa (id novo, crm_de_para colecao_antiga funnels/stages, id_antigo funil/etapa) chegam ao CRM novo. Os avisos 22, 32, 42 e 49 (15-40) seguem abertos ate o 15-28 preservar os ids dos Negocios, Contatos e Canais e o corte (15-34/15-35) rodar | fixed |  | 2026-11-06T19:14:14.783Z | 2026-11-06T19:45:26.412Z |
-| 53 | 15 | deviation | apps/api/src/migracao-crm/mapeador.ts |  | 15-28: o que o --migrar NAO leva as tabelas novas (fica so em registros_crm_antigo e aparece em 'Nao migrados' do --seco): temperatura e Tags dos Contatos; Identificadores de LinkedIn, TikTok e chat do site; Canal do LinkedIn e do chat do site e as Conversas deles (os Vinculos de Tarefa para essas Conversas seguem 'Registro indisponivel'); Empresa sem vinculo admin vigente e os Negocios dela; no Negocio, codigo legivel, campos personalizados, historico de Etapas e os Contatos alem do dono (todo Negocio com Empresa perde o Contato); vinculos Empresa-Empresa e 'distinto de'; Mensagem de Flow migra sem o Flow. No seed sintetico: 35 temperaturas, 25 Contatos com Tags, 32 Identificadores sem destino, 5 Conversas de canal sem destino, 19 Negocios com detalhes perdidos. O dono le a lista no --seco de cada Espaco antes do corte (15-34/15-35) | open |  | 2026-11-06T19:45:42.126Z |  |
-| 54 | 15 | deviation | apps/api/src/migracao-crm/mapeador.ts |  | 15-28: campos personalizados de Contato e Empresa entram em campos_adicionais com o id da Definicao como chave (ex. fd_signo), sem rotulo, e valor em lista fica de fora; o Canal migrado entra desconectado (a conexao real so vem do provedor); Qualificacao e Origem do Contato levam o id do Catalogo como texto (a tela mostra o rotulo so se o id existe no Catalogo) | open |  | 2026-11-06T19:45:42.191Z |  |
-| 55 | 15 | unrun-verify | apps/api/src/migracao-crm/migrar-entidades.test.ts |  | 15-28: os avisos 22, 32, 42, 49, 50 e 52 foram dados como corrigidos pelo codigo e pelos testes em Docker (ids antigos preservados, Vinculos achando o id); em producao o efeito so existe depois que o dono rodar o --migrar nos Espacos com CRM antigo (15-34/15-35). Antes disso os Vinculos a ids antigos seguem 'nao encontrado'. Nada foi rodado contra banco real | open |  | 2026-11-06T19:45:42.257Z |  |
+| 53 | 15 | deviation | apps/api/src/migracao-crm/mapeador.ts |  | 15-28: o que o --migrar NAO leva as tabelas novas (fica so em registros_crm_antigo e aparece em 'Nao migrados' do --seco): temperatura e Tags dos Contatos; Identificadores de LinkedIn, TikTok e chat do site; Canal do LinkedIn e do chat do site e as Conversas deles (os Vinculos de Tarefa para essas Conversas seguem 'Registro indisponivel'); Empresa sem vinculo admin vigente e os Negocios dela; no Negocio, codigo legivel, campos personalizados, historico de Etapas e os Contatos alem do dono (todo Negocio com Empresa perde o Contato); vinculos Empresa-Empresa e 'distinto de'; Mensagem de Flow migra sem o Flow. No seed sintetico: 35 temperaturas, 25 Contatos com Tags, 32 Identificadores sem destino, 5 Conversas de canal sem destino, 19 Negocios com detalhes perdidos. O dono le a lista no --seco de cada Espaco antes do corte (15-34/15-35) | fixed |  | 2026-11-06T19:45:42.126Z | 2026-11-07T11:29:28.965Z |
+| 54 | 15 | deviation | apps/api/src/migracao-crm/mapeador.ts |  | 15-28: campos personalizados de Contato e Empresa entram em campos_adicionais com o id da Definicao como chave (ex. fd_signo), sem rotulo, e valor em lista fica de fora; o Canal migrado entra desconectado (a conexao real so vem do provedor); Qualificacao e Origem do Contato levam o id do Catalogo como texto (a tela mostra o rotulo so se o id existe no Catalogo) | fixed |  | 2026-11-06T19:45:42.191Z | 2026-11-07T11:29:29.038Z |
+| 55 | 15 | unrun-verify | apps/api/src/migracao-crm/migrar-entidades.test.ts |  | 15-28: os avisos 22, 32, 42, 49, 50 e 52 foram dados como corrigidos pelo codigo e pelos testes em Docker (ids antigos preservados, Vinculos achando o id); em producao o efeito so existe depois que o dono rodar o --migrar nos Espacos com CRM antigo (15-34/15-35). Antes disso os Vinculos a ids antigos seguem 'nao encontrado'. Nada foi rodado contra banco real | fixed |  | 2026-11-06T19:45:42.257Z | 2026-11-07T11:29:29.104Z |
 | 56 | 15 | deviation | apps/api/src/bootstrap/crm-demo.test.ts |  | 15-29: o teste dos Vinculos do demo le buildSeed().links; quando o 15-31 tirar o CRM e os Vinculos do seed, procurados fica 0 e o teste (que exige contact, conversation e deal achados) quebra. O 15-31 precisa trocar a fonte dos Vinculos (por exemplo, a lista de ids que o proprio seed novo guarda em registros) ou ajustar o caso, sem perder a prova de que os ids preservados acham o registro. | fixed |  | 2026-11-06T19:59:51.284Z | 2026-11-06T20:48:49.716Z |
 | 57 | 15 | deviation | apps/api/src/bootstrap/crm-demo.json |  | 15-29: o demo traz so o que o mapeador do 15-28 migra para as tabelas novas: sem temperatura e Tags dos Contatos, sem o Canal do LinkedIn e do chat do site e as Conversas deles (3 Canais e 16 Conversas, contra 5 e 23 do seed antigo), Canais desconectada e 160 itens listados em naoMigrados. A Caixa de dev fica mais magra que a do seed antigo; nao ha Canal conectado nem envio real. | open |  | 2026-11-06T19:59:51.351Z |  |
 | 58 | 15 | unrun-verify | apps/api/src/bootstrap/crm-demo.cli.ts |  | 15-29: bootstrap:crm-demo foi provado so em Postgres de Docker (testes e uma execucao de npm run em Espaco criado a mao); nenhuma tela do apps/web foi aberta sobre o Espaco carregado, entao a Caixa cheia em desenvolvimento nao foi vista no navegador. | open |  | 2026-11-06T19:59:51.413Z |  |
-| 59 | 15 | deviation | .planning/phases/15-unifica-o-do-crm-telas-no-modelo-novo-e-remo-o-do-modelo-ant/15-ENSAIO.md |  | 15-30: o ensaio rodou sobre a copia de 2026-11-05 (dump 11:13, CSV 10:11), nao sobre uma copia renovada: o dono nao renovou e mandou 'pode fazer o que precisar para fechar a fase'. Vale para aquele momento; o corte (15-34/15-35) precisa rodar o --seco do dia em cada Espaco, e o dono pode renovar a copia e repetir o ensaio antes. A copia tem 19 Espacos e nao 18 (ws_agendaworker_* sem nenhuma linha em registros); no dump o ws_n1 tem no CRM novo 2 Contatos, 1 Empresa, 2 Funis, 6 Etapas e 1 Negocio, que nao foram recopiados | open |  | 2026-11-06T20:19:25.592Z |  |
-| 60 | 15 | deviation | .planning/phases/15-unifica-o-do-crm-telas-no-modelo-novo-e-remo-o-do-modelo-ant/15-ENSAIO.md |  | 15-30: decisao do Funil do ws_n1 e achados da Pasta. O CRM antigo do ws_n1 tem so o Funil fnl_padrao 'Padrao' (1 Etapa 'Novo', nenhum Negocio, nenhum Contato); --funil=guardar deixa o CRM novo como esta (2 Funis, 6 Etapas), --funil=migrar acrescenta 1 Funil vazio e 1 Etapa (3 Funis, 7 Etapas, 2 linhas de crm_de_para), sem nome em uso. A Pasta Meus negocios nao existe no ws_n1; em 16 dos 18 Espacos de teste ela tem Tarefa em 4 Listas (18 Tarefas) e por isso nao sai (atualiza o aviso 51: sao 16, nao 17). O dono decide o Funil no --seco do dia | open |  | 2026-11-06T20:19:25.669Z |  |
+| 59 | 15 | deviation | .planning/phases/15-unifica-o-do-crm-telas-no-modelo-novo-e-remo-o-do-modelo-ant/15-ENSAIO.md |  | 15-30: o ensaio rodou sobre a copia de 2026-11-05 (dump 11:13, CSV 10:11), nao sobre uma copia renovada: o dono nao renovou e mandou 'pode fazer o que precisar para fechar a fase'. Vale para aquele momento; o corte (15-34/15-35) precisa rodar o --seco do dia em cada Espaco, e o dono pode renovar a copia e repetir o ensaio antes. A copia tem 19 Espacos e nao 18 (ws_agendaworker_* sem nenhuma linha em registros); no dump o ws_n1 tem no CRM novo 2 Contatos, 1 Empresa, 2 Funis, 6 Etapas e 1 Negocio, que nao foram recopiados | fixed |  | 2026-11-06T20:19:25.592Z | 2026-11-07T11:29:29.171Z |
+| 60 | 15 | deviation | .planning/phases/15-unifica-o-do-crm-telas-no-modelo-novo-e-remo-o-do-modelo-ant/15-ENSAIO.md |  | 15-30: decisao do Funil do ws_n1 e achados da Pasta. O CRM antigo do ws_n1 tem so o Funil fnl_padrao 'Padrao' (1 Etapa 'Novo', nenhum Negocio, nenhum Contato); --funil=guardar deixa o CRM novo como esta (2 Funis, 6 Etapas), --funil=migrar acrescenta 1 Funil vazio e 1 Etapa (3 Funis, 7 Etapas, 2 linhas de crm_de_para), sem nome em uso. A Pasta Meus negocios nao existe no ws_n1; em 16 dos 18 Espacos de teste ela tem Tarefa em 4 Listas (18 Tarefas) e por isso nao sai (atualiza o aviso 51: sao 16, nao 17). O dono decide o Funil no --seco do dia | fixed |  | 2026-11-06T20:19:25.669Z | 2026-11-07T11:29:29.238Z |
 | 61 | 15 | deviation | packages/dominio/src/seed.ts |  | 15-31: as Automacoes do seed com escopo de Lista espelho (aut_clo_proposta, escopo lst_funil_closer) e as Acoes criar_tarefa com alvo lst_funil_sdr/lst_funil_closer apontam para Listas que sairam do seed com a Pasta Meus negocios; num estado novo a aut_clo_proposta nasce inoperante (escopo eliminado (Lista)). seed-ia.test.ts e ia/automacoes.test.ts passaram a esperar isso. Alguem precisa decidir o destino delas (mover para o Funil, ou remover) antes do 15-41. | open |  | 2026-11-06T20:48:44.453Z |  |
 | 62 | 15 | deviation | packages/dominio/src/seed-ferramentas.ts |  | 15-31: sem Contato, Canal e Conversa do CRM no seed, saiu do seed o que as Ferramentas faziam SOBRE eles: os Envios e Respostas de Flow nas Conversas cnv_5/9/13/17 (4 Mensagens e 2 Registros de Atividade), a Tag Em grupo de alunos nos Contatos e o groupsEnabled do Canal chn_wpp. O Flow, as versoes, os Grupos, as Participacoes por id e as Conversas de Grupo ficam. As metricas do Flow nascem com zero envios e o demo (bootstrap:crm-demo) nao liga Grupos no Canal. | open |  | 2026-11-06T20:48:44.567Z |  |
 | 63 | 15 | deviation | packages/dominio/src/operations/ferramentas.test.ts |  | 15-31: ferramentas.test.ts (Grupo, Comunidade e Flow, 15-07/15-17) depende do Canal, dos Contatos e das Conversas do CRM antigo e dos Envios de Flow; reescrever as 933 linhas passou do escopo do plano, entao o beforeEach usa semearCrmAntigo(buildSeed()). O 15-43 apaga semearCrmAntigo mas Grupo/Flow ficam ate as Sessoes 6 e 7: este teste precisa montar Canal, Contatos e Conversas proprios antes do 15-43. | fixed |  | 2026-11-06T20:48:44.683Z | 2026-11-06T22:38:14.292Z |
@@ -753,10 +753,10 @@ last_updated: 2026-11-07T00:07:24.279Z
     "file": "apps/api/src/migracao-crm/pasta-meus-negocios.ts",
     "line": null,
     "description": "15-27: a Pasta Meus negocios com Tarefa em qualquer Lista nao sai (esperado nos 17 Espacos de teste; o dono ve no --seco) e, quando sai, o script nao reescreve referencias de fora as Listas removidas (Automacao ou Formulario com escopo na Lista). No ws_n1 a Pasta provavelmente nem existe (o bootstrap nao a cria); o dono confere no --seco antes do corte",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-06T19:14:14.718Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-07T11:29:28.885Z",
     "milestone": "v1.0"
   },
   {
@@ -779,10 +779,10 @@ last_updated: 2026-11-07T00:07:24.279Z
     "file": "apps/api/src/migracao-crm/mapeador.ts",
     "line": null,
     "description": "15-28: o que o --migrar NAO leva as tabelas novas (fica so em registros_crm_antigo e aparece em 'Nao migrados' do --seco): temperatura e Tags dos Contatos; Identificadores de LinkedIn, TikTok e chat do site; Canal do LinkedIn e do chat do site e as Conversas deles (os Vinculos de Tarefa para essas Conversas seguem 'Registro indisponivel'); Empresa sem vinculo admin vigente e os Negocios dela; no Negocio, codigo legivel, campos personalizados, historico de Etapas e os Contatos alem do dono (todo Negocio com Empresa perde o Contato); vinculos Empresa-Empresa e 'distinto de'; Mensagem de Flow migra sem o Flow. No seed sintetico: 35 temperaturas, 25 Contatos com Tags, 32 Identificadores sem destino, 5 Conversas de canal sem destino, 19 Negocios com detalhes perdidos. O dono le a lista no --seco de cada Espaco antes do corte (15-34/15-35)",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-06T19:45:42.126Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-07T11:29:28.965Z",
     "milestone": "v1.0"
   },
   {
@@ -792,10 +792,10 @@ last_updated: 2026-11-07T00:07:24.279Z
     "file": "apps/api/src/migracao-crm/mapeador.ts",
     "line": null,
     "description": "15-28: campos personalizados de Contato e Empresa entram em campos_adicionais com o id da Definicao como chave (ex. fd_signo), sem rotulo, e valor em lista fica de fora; o Canal migrado entra desconectado (a conexao real so vem do provedor); Qualificacao e Origem do Contato levam o id do Catalogo como texto (a tela mostra o rotulo so se o id existe no Catalogo)",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-06T19:45:42.191Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-07T11:29:29.038Z",
     "milestone": "v1.0"
   },
   {
@@ -805,10 +805,10 @@ last_updated: 2026-11-07T00:07:24.279Z
     "file": "apps/api/src/migracao-crm/migrar-entidades.test.ts",
     "line": null,
     "description": "15-28: os avisos 22, 32, 42, 49, 50 e 52 foram dados como corrigidos pelo codigo e pelos testes em Docker (ids antigos preservados, Vinculos achando o id); em producao o efeito so existe depois que o dono rodar o --migrar nos Espacos com CRM antigo (15-34/15-35). Antes disso os Vinculos a ids antigos seguem 'nao encontrado'. Nada foi rodado contra banco real",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-06T19:45:42.257Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-07T11:29:29.104Z",
     "milestone": "v1.0"
   },
   {
@@ -857,10 +857,10 @@ last_updated: 2026-11-07T00:07:24.279Z
     "file": ".planning/phases/15-unifica-o-do-crm-telas-no-modelo-novo-e-remo-o-do-modelo-ant/15-ENSAIO.md",
     "line": null,
     "description": "15-30: o ensaio rodou sobre a copia de 2026-11-05 (dump 11:13, CSV 10:11), nao sobre uma copia renovada: o dono nao renovou e mandou 'pode fazer o que precisar para fechar a fase'. Vale para aquele momento; o corte (15-34/15-35) precisa rodar o --seco do dia em cada Espaco, e o dono pode renovar a copia e repetir o ensaio antes. A copia tem 19 Espacos e nao 18 (ws_agendaworker_* sem nenhuma linha em registros); no dump o ws_n1 tem no CRM novo 2 Contatos, 1 Empresa, 2 Funis, 6 Etapas e 1 Negocio, que nao foram recopiados",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-06T20:19:25.592Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-07T11:29:29.171Z",
     "milestone": "v1.0"
   },
   {
@@ -870,10 +870,10 @@ last_updated: 2026-11-07T00:07:24.279Z
     "file": ".planning/phases/15-unifica-o-do-crm-telas-no-modelo-novo-e-remo-o-do-modelo-ant/15-ENSAIO.md",
     "line": null,
     "description": "15-30: decisao do Funil do ws_n1 e achados da Pasta. O CRM antigo do ws_n1 tem so o Funil fnl_padrao 'Padrao' (1 Etapa 'Novo', nenhum Negocio, nenhum Contato); --funil=guardar deixa o CRM novo como esta (2 Funis, 6 Etapas), --funil=migrar acrescenta 1 Funil vazio e 1 Etapa (3 Funis, 7 Etapas, 2 linhas de crm_de_para), sem nome em uso. A Pasta Meus negocios nao existe no ws_n1; em 16 dos 18 Espacos de teste ela tem Tarefa em 4 Listas (18 Tarefas) e por isso nao sai (atualiza o aviso 51: sao 16, nao 17). O dono decide o Funil no --seco do dia",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-11-06T20:19:25.669Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-07T11:29:29.238Z",
     "milestone": "v1.0"
   },
   {

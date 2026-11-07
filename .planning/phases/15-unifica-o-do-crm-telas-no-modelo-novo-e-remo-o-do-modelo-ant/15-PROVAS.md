@@ -4,7 +4,9 @@ Este arquivo guarda o gate da Fase 15 (planos 15-01 a 15-43, menos o 15-35, que 
 
 **Revisão pré-corte (plano 15-44).** Depois do 15-34, uma revisão independente do script (`15-REVIEW.md`, sem BLOCKER) achou dois HIGH e cinco MEDIUM. O 15-44 corrigiu o que mudaria o corte: o mapeador agora aceita o Canal e o Contato que já estão nas tabelas novas (H-01); o critério do que fica em `registros` deixou de ser só "Grupo" e passou a ser o mesmo, em TypeScript e SQL, no `--guardar`, `--migrar`, `--seco` e `--verificar` (H-02: a Conversa 1:1 de Flow, Automação e convite de Grupo fica); a trava "só banco local" olha o host que o `pg` usa (M-01); dado sujo não derruba o Espaço (M-04); e o `15-CORTE.md` ganhou os textos de M-02, M-03, M-05, H-02, L-01 e L-08. O ensaio foi repetido com o código corrigido sobre a mesma cópia e deu os mesmos números (seção "Ensaio pós-revisão" de `15-ENSAIO.md`). A "Disposição" de cada achado, inclusive o que ficou aberto, está no fim de `15-REVIEW.md`. O corte (15-35) depende deste plano.
 
-**Em uma frase:** o código do CRM novo está fechado e o gate fechou verde (na 3ª rodada; nas duas primeiras só falhou o flake de baseline do `outbox-worker`), mas **nada foi cortado em produção, nenhuma tela foi aberta em navegador real, e há decisões suas pendentes** (as mais importantes estão em "O que o dono decide antes do corte", logo abaixo).
+**Atualização de 2026-11-07: o corte em produção foi executado e verificado** (seção "Corte em produção"). O que vem abaixo, do gate às decisões pendentes, descreve o estado ANTES dele.
+
+**Em uma frase (antes do corte):** o código do CRM novo está fechado e o gate fechou verde (na 3ª rodada; nas duas primeiras só falhou o flake de baseline do `outbox-worker`), mas **nada foi cortado em produção, nenhuma tela foi aberta em navegador real, e há decisões suas pendentes** (as mais importantes estão em "O que o dono decide antes do corte", logo abaixo).
 
 ## O que o dono decide antes do corte (resumo)
 
@@ -248,13 +250,59 @@ Para você colar (o arquivo não é rastreado pelo git e tem trabalho seu em and
   "3.4.9": feito("IA: alvos, escopos e âncoras", "15-08, 15-10, 15-21 e 15-39", "A Âncora do Chat e do ensaio é nomeada por `POST /crm/nomes`; o escopo Funil da Automação é conferido em `plataforma.funis`; arquivar um Agente solta as Conversas dele nas tabelas.", "2026-11-06"),
   "3.4.10": feito("Contas a receber: o cliente", "15-19", "O cliente é um Contato de `plataforma.contatos`, conferido pelo servidor ao criar a série e ao importar; o nome aparece por `POST /crm/nomes`.", "2026-11-06"),
   "3.5.1": feito("Escrever o script de migração", "15-27, 15-28 e 15-29", "`npm run migrar:crm-antigo -w @n1/api -- --espaco <id> --seco|--guardar|--migrar|--verificar`: copia, confere e só então apaga; `--migrar` leva Contatos, Empresas, Negócios, Canais, Conversas e Mensagens com os ids antigos preservados e lista o que não migra. Provado só em Docker.", "2026-11-06"),
-  "3.5.2": parcial("Rodar a migração em homologação", "15-30 e 15-34", "Ensaiada em Docker sobre a cópia de 2026-11-05 (2128 = 2128 em cada um dos 19 Espaços) e de novo com o código final; o roteiro do corte está em `15-CORTE.md`. Falta o corte em produção, que é só seu (plano 15-35).", "2026-11-06"),
+  "3.5.2": feito("Rodar a migração em produção", "15-30, 15-34 e 15-35", "Ensaiada em Docker sobre a cópia de 2026-11-05 e executada em produção em 2026-11-07: 012 aplicada, o CRM antigo guardado nos 18 Espaços de teste e no ws_n1 (2114 linhas saíram de `registros`; as 14 Conversas de Grupo ficam), `--verificar` ok em 19 de 19, API 20b4d01 no ar e web na main do n1. Não havia homologação: o ensaio foi local.", "2026-11-07"),
   "3.5.3": feito("Tirar o CRM antigo do seed", "15-29 e 15-31", "`buildSeed()` nasce sem Contatos, Empresas, Funis, Negócios, Canais e Conversas 1:1; a demonstração é `npm run bootstrap:crm-demo` (só banco local).", "2026-11-06"),
   "3.5.4": feito("Remover o modelo antigo", "15-32, 15-33, 15-41, 15-42 e 15-43", "O `DataState` perdeu as oito coleções; 40 operações antigas respondem 404; a ponte dos Canais saiu. Sobra só a Conversa de Grupo e o Flow (F14-D-05), até as Sessões 6 e 7. Em produção o antigo só sai com o corte.", "2026-11-06"),
 ```
 
+## Corte em produção (2026-11-07)
+
+**O corte foi executado e verificado.** Quem rodou foi o assistente, a pedido do dono, e não o dono, como o plano 15-35 previa: em 2026-11-07 o dono escreveu, literalmente, "pode fazer tudo isso ai e fazer o corte". É um desvio do texto do 15-35 (que reservava a execução ao dono) e do cabeçalho do `15-CORTE.md` (que dizia que nenhum agente roda estes passos); a autorização explícita do dono é o que o cobre. O passo 1 (avisar a equipe e combinar o horário) **não foi feito pelo assistente**: a mensagem do dono foi tomada como o aval da janela.
+
+**Como a credencial foi tratada.** O hook de proteção do projeto impede que a conversa leia o `apps/api/.env`, e isso foi respeitado. Tudo o que tocou produção usou as CLIs do projeto (`npm run migrar`, `migrar:crm-antigo`, `banco:conceder`), que carregam o `.env` sozinhas, e dois scripts de uma vez só, fora do repositório (leitura de contagens e `pg_dump`), que usam o carregador do próprio projeto dentro do processo e entregam a conexão ao `pg_dump` por variáveis de ambiente do processo filho. Nenhuma URL, usuário ou senha foi impressa nem gravada. Os registros do corte estão em `~/n1-corte` (fora do repositório, permissão 700).
+
+### Decisões
+
+| Decisão | Escolha | Por quê |
+|---|---|---|
+| Funil do `ws_n1` | `--migrar --funil=guardar` | O Funil antigo era o "Padrão" do bootstrap (1 Etapa "Novo", 0 Negócios). `--funil=migrar` acrescentaria um terceiro Funil vazio ao lado dos 2 que o `ws_n1` já usa. Nenhum código de produção lê mais o `defaultFunnelId` do Espaço, a única coisa que apontava para ele. O Funil antigo ficou em `registros_crm_antigo` e no backup. |
+| Pasta "Meus negócios" nos Espaços de teste | Regra única (D-15-14) | 16 dos 18 Espaços de teste têm a Pasta com Tarefa em 4 Listas: nada dela saiu. Os outros 2 (e o `ws_n1`) não a têm. Nada foi apagado à mão. |
+| "Não migrados" do `ws_n1` | Aceito | Nenhum item, antes e depois. |
+
+### O que aconteceu, passo a passo (hora local)
+
+| Passo | Hora | Resultado |
+|---|---|---|
+| Antes de escrever | 08:0x | Ferramentas: `pg_dump` 18.3, Docker, chave `deploy n1-crm` no ssh-agent. VM com `49f1b54` no ar; `main` do `n1` em `49f1b54`; o push seria fast-forward (321 commits). |
+| 3. `migrar --seco` | 08:11 | 001 a 011 `aplicada`, só a `012` `pendente`. |
+| Leitura de produção | 08:12 | Os 19 Espaços eram exatamente os do roteiro (`ws_n1` + 17 de teste + `ws_agendaworker_…` vazio). `registros=24233`, `espacos=19`, `migracoes=11`. CRM antigo nas nove coleções: **2128**, idêntico à cópia de 2026-11-05 coleção por coleção. |
+| 4. `--seco` nos 19 Espaços | 08:13 | 19 de 19 com saída 0; a soma das nove coleções deu 2128. O relatório do `ws_n1` = o do ensaio (1 Funil "Padrão", 1 Etapa, 0 Negócios, sem Pasta, "Não migrados: nenhum item"). O host impresso na linha `Banco:` foi o de produção do projeto. |
+| 2. Backup | 08:17 | `pg_dump -Fc --schema=plataforma --no-owner --no-acl`: 1.656.939 bytes, permissão 600, em `~/n1-corte`. Restaurado num `postgres:16` descartável (um único erro ignorável, `transaction_timeout`): **`registros=24233`, `espacos=19`, `migracoes=11`, 2128 nas nove coleções, 10 tabelas do CRM novo**: iguais às de produção. Contêiner removido. |
+| 5. Aprovação | 08:17 | Pelas três decisões da tabela acima. |
+| 6a. `012` e concessões | 08:18 | `aplicada 012-atividade-do-crm.sql (818 ms)`; "n1_api: concessões aplicadas"; `--seco` depois: 0 pendentes. |
+| 6b. `--guardar` nos 17 de teste + vazio | 08:18 a 08:19 | 18 de 18 com saída 0. 16 Espaços apagaram 132 linhas cada (134 copiadas nos 7 que têm Grupo: as 2 Conversas de Grupo ficam), 1 apagou 1 linha, o vazio disse "nada a fazer". |
+| 6c. `ws_n1` | 08:20 | `--seco` de novo antes: **igual ao do passo 4**, sem itens em `conversa-sem-canal-migrado` nem `conversa-sem-contato`. `--migrar --funil=guardar`: "migrado. 1 linha(s) copiadas para registros_crm_antigo; apagadas de registros: funnels 1." Nenhuma linha nova no CRM novo. |
+| 7. `--verificar` | 08:20 | **19 de 19 com saída 0 e 19 "igual"** na comparação com o `--seco` do passo 4, nenhum "DIFERENTE". |
+| Releitura de produção | 08:21 | `registros=22119` (24233 − 2114, como previsto), `migracoes=12`, CRM antigo restante = só as **14 Conversas de Grupo** (que ficam, F14-D-05). |
+| 8. `publicar.sh` | 08:22 | SHA **`20b4d01484476b4db46a63c97c8276d352903590`** no ar (anterior `49f1b54`). A VM: `npm ci` (204 pacotes), "Nada a aplicar: o banco já está em dia", concessões do `n1_api`, "no ar … 127.0.0.1:3020". `GET /saude` = 200 `{"ok":true,"servico":"apps/api"}`, serviço `active`, `REVISION` = o SHA acima. |
+| 9. Push da web | 08:24 | `git push n1 20b4d01…:main`, direto (como na Fase 14): `49f1b54..20b4d01`. Status do commit na Vercel: `pending` até `success`; deployment com `success`. |
+| 10. `--verificar` de novo | 08:26 | **19 de 19 com saída 0**; `registros` ainda em 22119: nenhum navegador antigo gravou CRM antigo na janela. |
+| Fumaça | 08:27 | A API recusa sem token (401, sem 500) em `/estado`, `/contatos`, `/conversas`, `/negocios` e `/funis`. |
+
+### Para voltar atrás (se for preciso)
+
+Não há script de desfazer (D-15-02). Caminho: restaurar o backup `~/n1-corte/backup-plataforma-pre-15-20261107-0816.dump` e republicar a API anterior com `FORCAR=1 … apps/api/deploy/publicar.sh 49f1b54`. A web volta com um novo commit em `main` (um `git revert` do intervalo `49f1b54..20b4d01`) ou, só com decisão sua, um push forçado do SHA anterior. **A CONFIRMAR PELO DONO:** o comando de restauração em produção. Guarde o backup: ele e `registros_crm_antigo` são a única memória do CRM antigo.
+
+### O que este corte NÃO provou (limites)
+
+- **Nenhuma tela foi aberta num navegador autenticado.** O passo 10 pede conferir as telas (Caixa de Entrada, fichas, Funis e Negócios, Busca, Início, remover Membro, e as listadas em "Provas manuais pendentes"). Isso fica com você.
+- **O 404 das operações antigas não foi testado em produção:** sem token a API responde 401 antes de olhar a operação. Está provado nos testes da API (40 nomes, duas vezes, sem tocar o banco), não ao vivo.
+- **O `ws_n1` quase não tinha CRM antigo** (só o Funil "Padrão"), então o mapeador de `--migrar` (Contatos, Negócios, Conversas) **nunca viu dado real**: tudo o que ele faz além do Funil está provado só com dados sintéticos. Os 17 Espaços de teste só foram guardados.
+- **A sua configuração local tem `DATABASE_SSL_INSECURE=true`** (a CLI avisa a cada execução): a verificação do certificado TLS ficou desligada nas conexões feitas deste computador a produção (backup, migração e o script). Não foi alterada; vale rever.
+- O passo 1 (avisar a equipe) e o tempo de erro da janela (alguns minutos, sem modo manutenção) não foram observados pelo assistente.
+
 ## Incidentes e limites desta rodada
 
-- **Nada foi rodado contra produção.** O gate e o ensaio usaram só Postgres de Docker local, com as duas URLs locais escritas em cada comando; o `.env` não foi lido. Nenhum contêiner `supabase_*` nem volume alheio foi tocado. Não houve push, deploy nem acesso à VM.
+- **Nada foi rodado contra produção até o plano 15-44** (o corte de 2026-11-07 está na seção "Corte em produção"). O gate e o ensaio usaram só Postgres de Docker local, com as duas URLs locais escritas em cada comando; o `.env` não foi lido. Nenhum contêiner `supabase_*` nem volume alheio foi tocado. Não houve push, deploy nem acesso à VM.
 - **Dado pessoal.** O ensaio final leu o `.dump` de `~/n1-ensaio` só para dentro do Docker; nada da cópia foi impresso nem colado. `15-ENSAIO.md` e `15-CORTE.md` passam na checagem de "nenhum e-mail e nenhum telefone" (`grep` devolve 0). O ponto de restauração do ensaio e os scripts descartáveis foram apagados, e nenhum contêiner ficou de pé.
 - **O gate não fechou totalmente verde** (acima); a evidência de que a falha é o flake de baseline está na seção "Flakes de baseline".
