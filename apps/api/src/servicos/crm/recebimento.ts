@@ -31,7 +31,7 @@ import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import type { Conversa, ParticipanteDaConversa } from "@n1/dominio/crm/conversas";
 import { TIPO_DE_IDENTIFICADOR_DO_CANAL, tituloDaConversa } from "@n1/dominio/crm/conversas";
-import type { Mensagem } from "@n1/dominio/crm/mensagens";
+import type { AnexoDaMensagem, Mensagem } from "@n1/dominio/crm/mensagens";
 import { normalizarIdentificadorDeContato } from "@n1/dominio/crm/normalizacao";
 import {
   JANELA_DE_REABERTURA_PADRAO_HORAS,
@@ -57,8 +57,19 @@ export interface ResultadoDoRecebimento {
   readonly repetida: boolean;
 }
 
+/** O que a entrada de mídia (16-10) já fez com os anexos do evento, antes da transação. */
+export interface OpcoesDoRecebimento {
+  /** Um item por anexo do evento, na mesma ordem; sem isto o anexo grava só a referência do provedor (`baixado: false`). */
+  readonly anexos?: readonly AnexoDaMensagem[];
+}
+
 export interface ServicoDeRecebimento {
-  receberMensagem(workspaceId: string, canalId: string, evento: RecebidaDoProvedor): Promise<ResultadoCrm<ResultadoDoRecebimento>>;
+  receberMensagem(
+    workspaceId: string,
+    canalId: string,
+    evento: RecebidaDoProvedor,
+    opcoes?: OpcoesDoRecebimento,
+  ): Promise<ResultadoCrm<ResultadoDoRecebimento>>;
 }
 
 /** Os dois índices únicos que a corrida do número novo pode estourar (Pitfall 11). */
@@ -118,6 +129,7 @@ async function processar(
   workspaceId: string,
   canalId: string,
   evento: RecebidaDoProvedor,
+  opcoes: OpcoesDoRecebimento,
 ): Promise<ResultadoCrm<ResultadoDoRecebimento>> {
   const canais = criarRepositorioDeCanaisPg(cliente);
   const contatos = criarRepositorioDeContatosPg(cliente);
@@ -243,8 +255,10 @@ async function processar(
     idExterno: evento.idExterno,
     criadoEm: evento.criadoEm,
     conteudo: evento.conteudo ?? null,
-    // `baixado: false`: só a referência do provedor; a entrada de mídia (16-10) guarda o arquivo e o passa a `true`.
-    anexos: (evento.anexos ?? []).map((anexo) => ({ tipoDeMidia: anexo.tipoDeMidia, nome: anexo.nome, referenciaExterna: anexo.referenciaNoProvedor, baixado: false })),
+    // Com a entrada de mídia (16-10) os anexos chegam prontos (`baixado: true` e a chave); sem ela, só a referência do provedor.
+    anexos:
+      opcoes.anexos ??
+      (evento.anexos ?? []).map((anexo) => ({ tipoDeMidia: anexo.tipoDeMidia, nome: anexo.nome, referenciaExterna: anexo.referenciaNoProvedor, baixado: false })),
     assunto: evento.assunto ?? null,
     enderecosAdicionais: [],
     remetenteExterno: evento.remetente.valor,
@@ -263,13 +277,13 @@ async function processar(
 
 export function criarServicoDeRecebimento(deps: { readonly pool: () => Pool }): ServicoDeRecebimento {
   return {
-    async receberMensagem(workspaceId, canalId, evento) {
+    async receberMensagem(workspaceId, canalId, evento, opcoes = {}) {
       const invalida = validarEvento(evento);
       if (invalida) return valorInvalido(invalida);
 
       for (let tentativa = 1; ; tentativa += 1) {
         try {
-          const resultado = await comTransacao(deps.pool, (cliente) => processar(cliente, workspaceId, canalId, evento));
+          const resultado = await comTransacao(deps.pool, (cliente) => processar(cliente, workspaceId, canalId, evento, opcoes));
           if (resultado.ok || resultado.codigo !== REPETIDA_NA_CORRIDA) return resultado;
           if (tentativa >= TENTATIVAS) throw new Error("recebimento: a Mensagem recebida disputou o mesmo id externo em todas as tentativas");
         } catch (erro) {

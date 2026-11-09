@@ -39,9 +39,11 @@ import { lerChavesDoCofre, type ChavesDoCofre } from "../servicos/cofre";
 import { criarServicoDeRecebimento, type ServicoDeRecebimento } from "../servicos/crm/recebimento";
 import type { Relogio } from "../testes/relogio";
 import { relogioDoSistema } from "../testes/relogio";
+import type { ArmazenamentoDeAnexos } from "../servicos/armazenamento-de-anexos";
 import { avisarCrm } from "./avisar";
 import { FRASES_DA_SAIDA } from "./entregar-mensagem";
 import { reenfileirarPendentesDoCanal } from "./fila-de-saida";
+import { criarGuardaDeMidia } from "./midia";
 import { canalParaProvedor, provedorDoCanal, registroPadrao, type RegistroDeProvedores } from "./registro";
 
 export interface OpcoesDoProcessadorDeEntrada {
@@ -53,6 +55,8 @@ export interface OpcoesDoProcessadorDeEntrada {
   readonly registro?: RegistroDeProvedores;
   readonly recebimento?: ServicoDeRecebimento;
   readonly relogio?: Relogio;
+  /** 16-10: o bucket onde a mídia recebida é guardada antes da transação. Padrão: o do Supabase; os testes injetam o falso. */
+  readonly armazenamento?: ArmazenamentoDeAnexos;
   /**
    * 16-07: acorda o worker de saída depois do commit que reenfileirou as Mensagens `pendente` de um Canal que
    * voltou a `conectada` (evento `conexao`), para elas não esperarem o intervalo de reserva do worker.
@@ -102,6 +106,7 @@ export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada):
   const registro = opcoes.registro ?? registroPadrao();
   const recebimento = opcoes.recebimento ?? criarServicoDeRecebimento({ pool });
   const relogio = opcoes.relogio ?? relogioDoSistema;
+  const guardaDeMidia = criarGuardaDeMidia(opcoes.armazenamento ? { armazenamento: opcoes.armazenamento } : {});
   const intervaloMs = opcoes.intervaloMs ?? 10_000;
   const maxTentativas = opcoes.maxTentativas ?? 8;
   const travaVenceEmMs = opcoes.travaVenceEmMs ?? 120_000;
@@ -242,7 +247,12 @@ export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada):
     for (const evento of eventos) {
       if (evento.tipo === "mensagem") {
         const { tipo: _tipo, ...recebida } = evento;
-        const r = await recebimento.receberMensagem(linha.workspace_id, linha.canal_id, recebida);
+        // 16-10 / 3.9.4: a mídia é baixada e guardada ANTES da transação, para a conexão do banco não esperar o provedor.
+        const guardados =
+          (recebida.anexos ?? []).length > 0
+            ? await guardaDeMidia.guardarAnexosRecebidos({ workspaceId: linha.workspace_id, canal: paraOProvedor, provedor, anexos: recebida.anexos ?? [] })
+            : undefined;
+        const r = await recebimento.receberMensagem(linha.workspace_id, linha.canal_id, recebida, guardados ? { anexos: guardados.anexos } : undefined);
         if (r.ok) mensagens += 1;
         else recusa ??= r.codigo ?? `RECUSADA_${r.status}`;
       } else if (evento.tipo === "ignorado") {
