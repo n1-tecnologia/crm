@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 16
 current_phase_name: "Base da mensageria: entrada, saída, tempo real e mídia"
 status: executing
-stopped_at: Completed 16-13-PLAN.md
-last_updated: "2026-11-09T20:47:42.159Z"
+stopped_at: Completed 16-14-PLAN.md
+last_updated: "2026-11-09T21:14:39.733Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 16 execution started
-state_head: 08df406236091e8a6496bf5361868e21fee70b9e
+state_head: 92ecedbfb0b351a296b9d0e961a83bb3b5da14c0
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 288
-  completed_plans: 282
+  completed_plans: 283
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 16 (Base da mensageria: entrada, saída, tempo real e mídia) — EXECUTING
-Plan: 14 of 16
+Plan: 15 of 16
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 16 execution started
 
@@ -503,6 +503,7 @@ Progress: [██████░░░░] 63%
 | Phase 16 P11 | 9 min | 3 tasks | 9 files |
 | Phase 16 P12 | 11 min | 3 tasks | 15 files |
 | Phase 16 P13 | 16 min | 2 tasks | 8 files |
+| Phase 16 P14 | 16 min | 3 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -845,6 +846,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 16]: 16-12: credencial do Canal no cofre tipo whatsapp-nao-oficial = JSON { instancia, apikey } (token da instancia); registroPadrao liga a Evolution so com EVOLUTION_URL
 - [Phase 16]: 16-13: o cofre guarda só o token da instância da Evolution; sem token o comando canal:ligar-evolution recusa em vez de usar a chave global (decisão do dono, A10)
 - [Phase 16]: 16-13: conexao_confirmada aceita Canal já conectado (rodar de novo troca o segredo e tira a marca de simulada); conectar e conexao_perdida ficam para a Sessão 4
+- [Phase 16]: 16-14: EVOLUTION_API_KEY (chave global) fica fora do .env.example do runtime; so a linha de comando de canal:ligar-evolution a le e o cofre nunca a guarda
+- [Phase 16]: 16-14: bug latente em repositorios/crm/mensagens.ts:239 (ORDER BY seq liga ao alias seq::text) causa o flake de mensagens.test.ts; corrigir com plataforma.mensagens.seq antes da prova ao vivo (16-16)
 
 ### Pending Todos
 
@@ -906,6 +909,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-09T20:47:41.890Z
-Stopped at: Completed 16-13-PLAN.md
+Last session: 2026-11-09T21:14:39.465Z
+Stopped at: Completed 16-14-PLAN.md
 Resume file: None
