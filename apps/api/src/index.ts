@@ -30,6 +30,10 @@
  * (Fase 16, 16-05, `criarWorkerDeSaida`) sobe junto, pela mesma variável: um segundo worker do outbox só com
  * `mensagem.enviar.v1`.
  *
+ * O tempo real (Fase 16, 16-07, D-16-01) sobe aqui sempre, salvo `TEMPO_REAL_ATIVO=false`: o hub de eventos nasce antes
+ * do `buildApp` (a rota `GET /eventos` o recebe) e o ouvinte `LISTEN crm_eventos` o alimenta. Na desmontagem os
+ * fluxos SSE abertos fecham ANTES do `app.close()`, que senão pendura esperando as abas (e o systemd mata aos 20 s).
+ *
  * A ponte do Agente (Plan 03-11, `automacoes/invocar-agente.ts`) segue a
  * MESMA separação e é a terceira peça do mesmo molde: não conhece
  * `buildApp()`/Fastify, só é ativada aqui por env
@@ -65,10 +69,13 @@
 import { buildApp } from "./app";
 import { opcoesDoLogger } from "./observabilidade/log";
 import { fecharSentry, iniciarSentry } from "./observabilidade/sentry";
-import { carregarEnv, encerrar } from "./persistencia/conexao";
+import { carregarEnv, encerrar, pool } from "./persistencia/conexao";
 import { criarOutboxWorker } from "./persistencia/outbox-worker";
 import { criarWorkerDeSaida } from "./mensageria/entregar-mensagem";
+import { criarHubDeEventos } from "./mensageria/hub-de-eventos";
+import { criarOuvinteDoCrm } from "./mensageria/ouvinte-pg";
 import { criarProcessadorDeEntrada } from "./mensageria/processador-de-entrada";
+import { criarAcessoAoCrmPg, exigir } from "./servicos/crm/acesso";
 import { criarSchedulerWorker, escopoDoAgendador } from "./automacoes/scheduler-worker";
 import {
   criarPonteDoAgente,
@@ -110,12 +117,19 @@ const host = process.env.HOST ?? "127.0.0.1";
 // Os acordadores da mensageria, por referência: a rota do webhook nasce em `buildApp`, antes de o processador de
 // entrada existir (e ele só existe com `MENSAGERIA_WORKER_ATIVO=true`). Sem o processador, a rota só grava na fila
 // e o acordador é um no-op. `saida` acorda o worker de saída logo depois do commit de uma Mensagem (o ouvinte do
-// tempo real, 16-07, o chama); até lá vale o intervalo de reserva de 5 s.
+// tempo real o chama a cada `mensagem.nova` e `mensagem.status`); sem ele vale o intervalo de reserva de 5 s.
 const acordadores = { entrada: () => {}, saida: () => {} };
+
+// O hub do tempo real (16-07): o Papel é lido do banco a cada pergunta (`exigir`), na abertura do fluxo e na
+// reconferência de 60 s, para uma remoção ou troca de Papel cortar o fluxo sem esperar o token vencer.
+const hub = criarHubDeEventos({
+  podeLer: async (membro) => (await exigir(criarAcessoAoCrmPg(pool), membro, "ler", "conversa")) === undefined,
+});
 
 const app = buildApp({
   logger: opcoesDoLogger(),
   webhooksDeMensageria: { acordarProcessador: () => acordadores.entrada() },
+  eventos: { hub },
 });
 
 /** O que esta instância precisa parar ao ser desmontada, e os ouvintes de SIGTERM que ela pendurou no processo. */
@@ -137,6 +151,30 @@ function aoEncerrar(parar: () => Promise<void>): void {
 // sair (T-09-65).
 if (sentryAtivo) app.log.info(`Sentry ativo (ambiente=${process.env.SENTRY_AMBIENTE?.trim() || "desenvolvimento"})`);
 aoEncerrar(fecharSentry);
+
+// Fase 16 (16-07): o ouvinte `LISTEN crm_eventos`, uma conexão por processo fora do pool. Sem ele o hub fica
+// indisponível e `GET /eventos` responde 503 (a tela relê a cada 5 s). O fim vem ANTES do `app.close()` da
+// desmontagem: os fluxos fecham e só então o servidor para (Pitfall 5, T-16-28).
+if (process.env.TEMPO_REAL_ATIVO !== "false") {
+  const ouvinte = criarOuvinteDoCrm({
+    aoEvento: (evento) => {
+      hub.publicar(evento);
+      // A Mensagem acabou de ser confirmada (nova, ou voltou a `pendente` por "Tentar de novo"): a saída não espera os 5 s.
+      if (evento.tipo === "mensagem.nova" || evento.tipo === "mensagem.status") acordadores.saida();
+    },
+    aoConectar: () => hub.definirDisponivel(true),
+    aoCair: () => hub.definirDisponivel(false),
+    registrar: (nivel, mensagem, dados) => {
+      app.log[nivel](dados ?? {}, mensagem);
+    },
+  });
+  ouvinte.iniciar();
+  aoEncerrar(async () => {
+    hub.encerrarTodos();
+    await ouvinte.parar();
+  });
+  app.log.info("ouvinte do tempo real ativo");
+}
 
 let ponte: PonteDoAgente | undefined;
 

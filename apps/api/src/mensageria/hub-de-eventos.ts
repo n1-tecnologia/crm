@@ -41,16 +41,61 @@ interface Assinante {
   readonly fechar: () => void;
 }
 
+/** Um Membro é a dupla (Espaço, id): o mesmo id em outro Espaço é outra pessoa. */
+const chaveDoMembro = (membro: MembroDaSessao) => `${membro.workspaceId}\u0000${membro.id}`;
+
 export function criarHubDeEventos(opcoes: OpcoesDoHubDeEventos): HubDeEventos {
+  // Um `Set` guarda a ordem de inserção: o primeiro de um Membro é sempre o mais antigo.
   const assinantes = new Set<Assinante>();
+  const maxPorMembro = opcoes.maxPorMembro ?? 5;
+  const reconferirMs = opcoes.reconferirMs ?? 60_000;
   let disponivel = false;
+  let temporizador: ReturnType<typeof setInterval> | undefined;
+  let reconferindo = false;
+
+  /** Tira o assinante sem fechá-lo; sem ninguém, o temporizador de reconferência para (não segura o processo). */
+  function remover(assinante: Assinante): boolean {
+    const tirou = assinantes.delete(assinante);
+    if (assinantes.size === 0 && temporizador !== undefined) {
+      clearInterval(temporizador);
+      temporizador = undefined;
+    }
+    return tirou;
+  }
 
   function encerrar(assinante: Assinante): void {
-    if (!assinantes.delete(assinante)) return;
+    if (!remover(assinante)) return;
     try {
       assinante.fechar();
     } catch {
       // um fechar que lança não pode impedir o hub de fechar os outros
+    }
+  }
+
+  /**
+   * O Papel pode mudar com a aba aberta (Membro removido, Papel trocado): a cada volta pergunta de novo por Membro
+   * (uma consulta por Membro, não por aba) e fecha quem não pode mais ler Conversas. Um `podeLer` que lança (o banco
+   * falhou) não é negação: o fluxo fica e a próxima volta tenta de novo. Voltas não se sobrepõem.
+   */
+  async function reconferir(): Promise<void> {
+    if (reconferindo) return;
+    reconferindo = true;
+    try {
+      const respostas = new Map<string, boolean | undefined>();
+      for (const assinante of [...assinantes]) {
+        if (!assinantes.has(assinante)) continue;
+        const chave = chaveDoMembro(assinante.membro);
+        if (!respostas.has(chave)) {
+          try {
+            respostas.set(chave, await opcoes.podeLer(assinante.membro));
+          } catch {
+            respostas.set(chave, undefined);
+          }
+        }
+        if (respostas.get(chave) === false) encerrar(assinante);
+      }
+    } finally {
+      reconferindo = false;
     }
   }
 
@@ -60,8 +105,15 @@ export function criarHubDeEventos(opcoes: OpcoesDoHubDeEventos): HubDeEventos {
     assinar(membro, enviar, fechar) {
       const assinante: Assinante = { membro, enviar, fechar };
       assinantes.add(assinante);
+      if (temporizador === undefined) {
+        temporizador = setInterval(() => void reconferir(), reconferirMs);
+        temporizador.unref();
+      }
+      // T-16-26: aba esquecida. A mais antiga do mesmo Membro cai quando passa do limite.
+      const doMembro = [...assinantes].filter((a) => chaveDoMembro(a.membro) === chaveDoMembro(membro));
+      for (const antigo of doMembro.slice(0, Math.max(0, doMembro.length - maxPorMembro))) encerrar(antigo);
       return () => {
-        assinantes.delete(assinante);
+        remover(assinante);
       };
     },
 
