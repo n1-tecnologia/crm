@@ -15,6 +15,7 @@ import type { Canal } from "@n1/dominio/crm/canais";
 import type { ProvedorDeCanal } from "@n1/dominio/crm/capacidades";
 import { lerChavesDoCofre, lerCredencial, type ChavesDoCofre } from "../servicos/cofre";
 import { ErroDeProvedor, TIPO_DO_SEGREDO_DO_WEBHOOK, type CanalParaProvedor, type ProvedorDeMensageria } from "./provedor";
+import { criarProvedorEvolution } from "./provedores/evolution/provedor";
 import { provedorDeTeste } from "./provedores/teste";
 
 export interface RegistroDeProvedores {
@@ -22,9 +23,17 @@ export interface RegistroDeProvedores {
   readonly porProvedor: Partial<Record<ProvedorDeCanal, ProvedorDeMensageria>>;
 }
 
-/** Nesta fase só o de teste; o 16-11 acrescenta `whatsapp-nao-oficial`. */
+/**
+ * O de teste, mais a Evolution (`whatsapp-nao-oficial`) SÓ quando `EVOLUTION_URL` existe (16-12): sem ela, um Canal
+ * real `whatsapp-nao-oficial` continua sem provedor e a Mensagem não é dada como enviada (MSG-05). A URL é o host fixo
+ * da Evolution; nenhum corpo de webhook o troca.
+ */
 export function registroPadrao(): RegistroDeProvedores {
-  return { teste: provedorDeTeste, porProvedor: {} };
+  const urlDaEvolution = process.env.EVOLUTION_URL?.trim();
+  return {
+    teste: provedorDeTeste,
+    porProvedor: urlDaEvolution ? { "whatsapp-nao-oficial": criarProvedorEvolution({ url: urlDaEvolution }) } : {},
+  };
 }
 
 export function provedorDoCanal(
