@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 16
 current_phase_name: "Base da mensageria: entrada, saída, tempo real e mídia"
 status: executing
-stopped_at: Completed 16-06-PLAN.md
-last_updated: "2026-11-09T18:27:42.022Z"
+stopped_at: Completed 16-07-PLAN.md
+last_updated: "2026-11-09T18:53:27.443Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 16 execution started
-state_head: b3f622cbb695f3ddf1ae4ed122c57eee20bebbd6
+state_head: 255923c39fadc5298cd2663f61277c126e828213
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 288
-  completed_plans: 275
+  completed_plans: 276
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 16 (Base da mensageria: entrada, saída, tempo real e mídia) — EXECUTING
-Plan: 7 of 16
+Plan: 8 of 16
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 16 execution started
 
@@ -496,6 +496,7 @@ Progress: [██████░░░░] 63%
 | Phase 16 P04 | 9 min | 3 tasks | 13 files |
 | Phase 16 P05 | 16 min | 3 tasks | 7 files |
 | Phase 16 P06 | 11 min | 3 tasks | 12 files |
+| Phase 16 P07 | 22 min | 3 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -824,6 +825,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 16]: 16-06: reenfileirarEnvio so reabre linha failed/delivered do outbox (nunca pending nem delivering), para o Canal que volta ou um evento conexao repetido nao soltar a trava de um worker nem reenviar ao cliente
 - [Phase 16]: 16-06: o evento conexao do provedor so muda Canal real (simulado = ignorado:conexao_simulada); evento repetido nao sobe a revisao do Espaco mas ainda reenfileira as pendentes de um Canal conectado
 - [Phase 16]: 16-06: status do provedor so avanca (proximoStatusDeEntrega no dominio); nao avancar grava ignorado:status_atrasado e id externo sem Mensagem grava ignorado:status_sem_mensagem
+- [Phase 16]: 16-07: o aviso ao tempo real vai no MESMO cliente da transacao do gesto (avisarCrm/pg_notify so entrega no commit); GET /eventos entrega por SSE com reply.send(PassThrough), nunca o socket cru (perderia o CORS); hub.encerrarTodos() antes do app.close(). — Pitfalls 5 e 6 da RESEARCH; D-16-01. O hub filtra por workspaceId (que nao sai para a aba), reconfere o Papel a cada 60 s e limita 5 fluxos por Membro.
+- [Phase 16]: 16-07: o ouvinte do tempo real acorda o worker de saida a cada mensagem.nova e mensagem.status (cobre o Tentar de novo); o processador acorda a saida ao reenfileirar pendentes de Canal real (acordarSaida). simularConexao, mesclagem, sucessao, marcacao e troca de Canal da Tarefa conversacional NAO avisam (a tela cobre pela releitura de 5 s). — canais.ts e os outros servicos nao estavam nos files_modified do plano; o acordar e idempotente.
 
 ### Pending Todos
 
@@ -885,6 +888,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-09T18:27:40.439Z
-Stopped at: Completed 16-06-PLAN.md
+Last session: 2026-11-09T18:53:27.188Z
+Stopped at: Completed 16-07-PLAN.md
 Resume file: None
