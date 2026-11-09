@@ -442,4 +442,76 @@ d("worker com entregador próprio (16-05, Postgres real)", () => {
 
     expect((await buscarLinha(daSolicitacao)).status).toBe("delivering");
   });
+
+  it("(v) acordar() num worker com intervalo de 60 s entrega a linha disponível em menos de 500 ms", async () => {
+    const id = await linhaDaMensagem();
+    // O intervalo é só a reserva: `iniciar()` com 60 s nunca rodaria dentro do teste.
+    const comIntervaloLongo = criarOutboxWorker({
+      workerId: "worker_acordar",
+      workspaceId: WORKSPACE,
+      tiposDeEvento: ["mensagem.enviar.v1"],
+      entregador: async () => ({ desfecho: "entregue" }),
+      intervaloMs: 60_000,
+    });
+    comIntervaloLongo.iniciar();
+    try {
+      const antes = Date.now();
+      comIntervaloLongo.acordar();
+      while ((await buscarLinha(id)).status !== "delivered" && Date.now() - antes < 2_000) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect((await buscarLinha(id)).status).toBe("delivered");
+      expect(Date.now() - antes).toBeLessThan(500);
+    } finally {
+      await comIntervaloLongo.parar();
+    }
+  });
+
+  it("(w) acordar() com uma volta em voo não abre outra em paralelo: pede mais uma e a segunda linha sai depois da primeira", async () => {
+    const primeira = await linhaDaMensagem({ availableAt: haSegundos(10) });
+    let emAndamento = 0;
+    let maximo = 0;
+    const ordem: string[] = [];
+    let liberar!: () => void;
+    const portao = new Promise<void>((resolve) => {
+      liberar = resolve;
+    });
+    const worker = criarOutboxWorker({
+      workerId: "worker_acordar_paralelo",
+      workspaceId: WORKSPACE,
+      tiposDeEvento: ["mensagem.enviar.v1"],
+      intervaloMs: 60_000,
+      entregador: async (l) => {
+        emAndamento += 1;
+        maximo = Math.max(maximo, emAndamento);
+        if (l.id === primeira) await portao;
+        ordem.push(l.id);
+        emAndamento -= 1;
+        return { desfecho: "entregue" };
+      },
+    });
+
+    worker.acordar();
+    // Espera a primeira estar em voo (presa no portão).
+    const espera = Date.now();
+    while (emAndamento === 0 && Date.now() - espera < 2_000) await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(emAndamento).toBe(1);
+    const segunda = await linhaDaMensagem({ availableAt: haSegundos(5) });
+    worker.acordar();
+    worker.acordar();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(maximo).toBe(1);
+    expect((await buscarLinha(segunda)).status).toBe("pending");
+
+    liberar();
+    const inicio = Date.now();
+    while ((await buscarLinha(segunda)).status !== "delivered" && Date.now() - inicio < 2_000) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    await worker.parar();
+
+    expect(maximo).toBe(1);
+    expect(ordem).toEqual([primeira, segunda]);
+    expect((await buscarLinha(segunda)).status).toBe("delivered");
+  });
 });
