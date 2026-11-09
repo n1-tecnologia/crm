@@ -5,7 +5,9 @@
  *
  * Como cada linha termina:
  *   - `processado`: todos os eventos foram tratados. `resultado` diz o que NÃO virou Mensagem
- *     (`ignorado:<motivo>`, `sem_tratamento:<tipo>`; o 16-05 trata `status` e `conexao`);
+ *     (`ignorado:<motivo>`, `sem_tratamento:<tipo>`). O evento `status` muda a Mensagem pelo domínio
+ *     (`atualizarStatusDeEntrega`: só avança) e deixa `ignorado:status_sem_mensagem` quando nenhuma Mensagem do
+ *     Canal tem o id externo, ou `ignorado:status_atrasado` quando o status não avança;
  *   - `falhou` com o `codigo` em `ultimo_erro`: o recebimento recusou por regra (4xx: Canal arquivado,
  *     valor inválido). É permanente: tentar de novo daria a mesma recusa;
  *   - `pendente` de novo, com `disponivel_em` no futuro (`backoff`): uma exceção (banco, cofre, provedor
@@ -23,13 +25,16 @@
  */
 
 import type { Pool } from "pg";
+import type { StatusDeEntrega } from "@n1/dominio/crm/mensagens";
 import { pool as poolPadrao } from "../persistencia/conexao";
 import { backoff, sanitizarErro } from "../persistencia/outbox-worker";
 import { criarRepositorioDeCanaisPg } from "../repositorios/crm/canais";
+import { criarRepositorioDeMensagensPg } from "../repositorios/crm/mensagens";
 import { lerChavesDoCofre, type ChavesDoCofre } from "../servicos/cofre";
 import { criarServicoDeRecebimento, type ServicoDeRecebimento } from "../servicos/crm/recebimento";
 import type { Relogio } from "../testes/relogio";
 import { relogioDoSistema } from "../testes/relogio";
+import { FRASES_DA_SAIDA } from "./entregar-mensagem";
 import { canalParaProvedor, provedorDoCanal, registroPadrao, type RegistroDeProvedores } from "./registro";
 
 export interface OpcoesDoProcessadorDeEntrada {
@@ -73,6 +78,12 @@ interface LinhaReivindicada {
 type Desfecho =
   | { readonly tipo: "processado"; readonly resultado: string | null; readonly eventos: number; readonly mensagens: number }
   | { readonly tipo: "recusada"; readonly codigo: string };
+
+/** O motivo que o provedor deu para a falha, sem `apikey`, Bearer nem documento; vazio vira a frase padrão. */
+function motivoDaFalha(motivo: string | undefined): string {
+  const limpo = sanitizarErro(motivo ?? "").summary.trim();
+  return limpo === "" ? FRASES_DA_SAIDA.recusou : limpo;
+}
 
 export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada): ProcessadorDeEntrada {
   const pool = opcoes.pool ?? poolPadrao;
@@ -121,6 +132,39 @@ export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada):
     return r.rows[0];
   }
 
+  /**
+   * 3.6.5: o status que o provedor informa, numa transação própria (o `for update` do repositório segura a linha da
+   * Mensagem até o commit: dois status da mesma Mensagem se aplicam um depois do outro). Devolve o motivo de
+   * `resultado` quando o evento não mudou nada.
+   */
+  async function aplicarStatus(
+    linha: LinhaReivindicada,
+    evento: { readonly idExterno: string; readonly status: StatusDeEntrega; readonly em: string; readonly motivo?: string },
+  ): Promise<string | undefined> {
+    const quando = Number.isNaN(Date.parse(evento.em)) ? relogio.agora() : new Date(evento.em);
+    const motivo = evento.status === "falhou" ? motivoDaFalha(evento.motivo) : undefined;
+    const cliente = await pool().connect();
+    try {
+      await cliente.query("begin");
+      const r = await criarRepositorioDeMensagensPg(cliente).atualizarStatusDeEntrega(
+        linha.workspace_id,
+        linha.canal_id,
+        evento.idExterno,
+        evento.status,
+        quando.toISOString(),
+        motivo,
+      );
+      await cliente.query("commit");
+      if (r === undefined) return "ignorado:status_sem_mensagem";
+      return r.mudou ? undefined : "ignorado:status_atrasado";
+    } catch (erro) {
+      await cliente.query("rollback").catch(() => undefined);
+      throw erro;
+    } finally {
+      cliente.release();
+    }
+  }
+
   async function processar(linha: LinhaReivindicada): Promise<Desfecho> {
     const canal = await criarRepositorioDeCanaisPg(pool()).obter(linha.workspace_id, linha.canal_id);
     if (!canal) return { tipo: "recusada", codigo: "CANAL_NAO_ENCONTRADO" };
@@ -144,6 +188,9 @@ export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada):
         else recusa ??= r.codigo ?? `RECUSADA_${r.status}`;
       } else if (evento.tipo === "ignorado") {
         resultados.add(`ignorado:${evento.motivo}`);
+      } else if (evento.tipo === "status") {
+        const resultado = await aplicarStatus(linha, evento);
+        if (resultado !== undefined) resultados.add(resultado);
       } else {
         resultados.add(`sem_tratamento:${evento.tipo}`);
       }

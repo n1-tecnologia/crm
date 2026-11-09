@@ -27,6 +27,7 @@ import { registroPadrao, type RegistroDeProvedores } from "./registro";
 
 const chaves: ChavesDoCofre = { atual: { versao: 1, chave: randomBytes(32) } };
 const WHATSAPP_DA_ANA = "+5511987654321";
+let contadorDeContatos = 0;
 
 function corpoDeMensagem(idExterno: string) {
   return { eventos: [{ tipo: "mensagem", idExterno, remetente: { tipo: "whatsapp", valor: WHATSAPP_DA_ANA, nomeExibido: "Ana" }, conteudo: "oi" }] };
@@ -65,7 +66,13 @@ describeComBanco("processador da fila de entrada — Postgres local", () => {
   /** Uma Mensagem `enviada` que o provedor já aceitou (`enviada`, com `id_externo`), numa Conversa nova do Canal. */
   async function mensagemEnviada(c: { ws: string; canalId: string }, idExterno: string): Promise<string> {
     const contato = await criarRepositorioDeContatosPg(pool()).inserir(c.ws, { nome: "Ana", proprietarioId: "mem_dona", criadoPor: "mem_dona" });
-    await criarRepositorioDeContatosPg(pool()).inserirIdentificador(c.ws, contato.id, { tipo: "whatsapp", valor: WHATSAPP_DA_ANA, principal: true });
+    // Um número por chamada: o Identificador é único no Espaço (`contato_identificadores_unico`).
+    contadorDeContatos += 1;
+    await criarRepositorioDeContatosPg(pool()).inserirIdentificador(c.ws, contato.id, {
+      tipo: "whatsapp",
+      valor: `+551198000${String(contadorDeContatos).padStart(4, "0")}`,
+      principal: true,
+    });
     const conversa = await criarRepositorioDeConversasPg(pool()).inserir(c.ws, {
       canalId: c.canalId,
       contatoId: contato.id,

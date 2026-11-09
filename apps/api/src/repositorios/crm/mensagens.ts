@@ -20,14 +20,15 @@
 
 import type { Pool, PoolClient } from "pg";
 import type { Pagina } from "@n1/dominio/crm/comum";
-import type {
-  AnexoDaMensagem,
-  AtorDaMensagem,
-  DirecaoDaMensagem,
-  EnderecoAdicional,
-  Mensagem,
-  StatusDeEntrega,
-  TipoDeAtorDaMensagem,
+import {
+  proximoStatusDeEntrega,
+  type AnexoDaMensagem,
+  type AtorDaMensagem,
+  type DirecaoDaMensagem,
+  type EnderecoAdicional,
+  type Mensagem,
+  type StatusDeEntrega,
+  type TipoDeAtorDaMensagem,
 } from "@n1/dominio/crm/mensagens";
 
 /** O que o serviço decide gravar numa Mensagem enviada por uma pessoa. */
@@ -94,6 +95,21 @@ export interface RepositorioDeMensagens {
    * O `id_externo` não muda: uma `falhou` por resposta ambígua pode ter saído, e quem a reenvia assume isso.
    */
   voltarParaPendente(workspaceId: string, id: string): Promise<Mensagem | undefined>;
+  /**
+   * O status que o provedor informa (16-06, 3.6.5): acha a Mensagem por (Canal, id externo) com `for update` e só a
+   * muda se o status AVANÇA (`proximoStatusDeEntrega`: uma `lida` seguida de um `entregue` atrasado continua `lida`).
+   * `em` é o momento que o provedor deu, e `motivo` só vale quando o novo status é `falhou`. Chamar com o cliente
+   * de uma transação, senão o `for update` não segura nada. `undefined` quando nenhuma Mensagem do Canal tem esse
+   * id externo; `mudou: false` quando o status não avança (a Mensagem vem como estava).
+   */
+  atualizarStatusDeEntrega(
+    workspaceId: string,
+    canalId: string,
+    idExterno: string,
+    status: StatusDeEntrega,
+    em: string,
+    motivo?: string,
+  ): Promise<{ readonly mensagem: Mensagem; readonly mudou: boolean } | undefined>;
   /**
    * O payload cru do provedor. SÓ ingestão e teste — nunca rota (A9): é dado
    * pessoal e a anonimização futura precisa zerá-lo.
@@ -303,6 +319,30 @@ export function criarRepositorioDeMensagensPg(cliente: Pool | PoolClient): Repos
         [workspaceId, id],
       );
       return rows[0] ? linhaParaMensagem(rows[0]) : undefined;
+    },
+
+    async atualizarStatusDeEntrega(workspaceId, canalId, idExterno, status, em, motivo) {
+      const atual = await cliente.query<LinhaDoBancoDeMensagem>(
+        `select ${COLUNAS_DE_MENSAGEM}
+           from plataforma.mensagens
+          where workspace_id = $1 and canal_id = $2 and id_externo = $3
+            for update`,
+        [workspaceId, canalId, idExterno],
+      );
+      if (!atual.rows[0]) return undefined;
+      const mensagem = linhaParaMensagem(atual.rows[0]);
+      const proximo = proximoStatusDeEntrega(mensagem.statusEntrega, status);
+      if (proximo === null || proximo === mensagem.statusEntrega) return { mensagem, mudou: false };
+
+      const { rows } = await cliente.query<LinhaDoBancoDeMensagem>(
+        `update plataforma.mensagens
+            set status_entrega = $3, status_entrega_em = $4::timestamptz,
+                motivo_falha = case when $3::text = 'falhou' then $5::text else null end
+          where workspace_id = $1 and id = $2
+          returning ${COLUNAS_DE_MENSAGEM}`,
+        [workspaceId, mensagem.id, proximo, em, proximo === "falhou" ? (motivo ?? null) : null],
+      );
+      return { mensagem: linhaParaMensagem(rows[0]!), mudou: true };
     },
 
     async cargaBruta(workspaceId, id) {

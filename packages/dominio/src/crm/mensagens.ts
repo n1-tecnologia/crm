@@ -186,6 +186,14 @@ export function statusInicialDeEnvio(_conexao: ConexaoDoCanal): StatusDeEntrega 
   return "pendente";
 }
 
+/** A escada da entrega. `falhou` fica de fora: não é um degrau, é uma saída que só `pendente`/`enviada` têm. */
+const POSICAO_NA_ENTREGA: Readonly<Record<Exclude<StatusDeEntrega, "falhou">, number>> = {
+  pendente: 0,
+  enviada: 1,
+  entregue: 2,
+  lida: 3,
+};
+
 /**
  * 3.6.5, MSG-02: o status de entrega que o provedor informa SÓ avança. A ordem é
  * `pendente` < `enviada` < `entregue` < `lida`; um `entregue` que chega depois de um `lida` (a rede não garante a
@@ -197,6 +205,8 @@ export function statusInicialDeEnvio(_conexao: ConexaoDoCanal): StatusDeEntrega 
  * aplica e a resposta é `null`. Devolve o próprio `atual` quando o novo não avança, para quem chama comparar.
  */
 export function proximoStatusDeEntrega(atual: StatusDeEntrega | null, novo: StatusDeEntrega): StatusDeEntrega | null {
-  void novo;
-  return atual;
+  if (atual === null || atual === "falhou") return atual;
+  if (novo === "falhou") return atual === "pendente" || atual === "enviada" ? "falhou" : atual;
+  return POSICAO_NA_ENTREGA[novo] > POSICAO_NA_ENTREGA[atual] ? novo : atual;
 }
+
