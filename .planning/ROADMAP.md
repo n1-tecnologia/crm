@@ -914,7 +914,7 @@ Plans:
 **Ajuste (D-16-04):** a fase inclui um adaptador mínimo da Evolution (fronteira em `COVERAGE.md`) e uma prova ao vivo com a instância do dono; o "Pronto quando" da fase passa a ter as duas partes de `16-CONTEXT.md` (provedor de teste nos testes automáticos; WhatsApp real ao vivo).
 **Requirements**: MSG-01 a MSG-06 (IDs locais da fase, definidos em `16-CONTEXT.md` `<domain>`)
 **Depends on:** Phase 15 (a ordem do plano: unificar o CRM primeiro, mensageria depois)
-**Plans:** 8/16 plans executed (14 ondas; 16-15 e 16-16 têm checkpoints do dono — pré-voo, publicação, prova ao vivo e a decisão do áudio; nenhum plano autônomo toca produção)
+**Plans:** 9/16 plans executed (14 ondas; 16-15 e 16-16 têm checkpoints do dono — pré-voo, publicação, prova ao vivo e a decisão do áudio; nenhum plano autônomo toca produção)
 
 Plans:
 
@@ -941,7 +941,7 @@ Plans:
 
 **Wave 8** *(blocked on Wave 7 completion)*
 - [x] 16-08-PLAN.md — 3.8.4 (D-16-02): tempo real na tela
-- [ ] 16-09-PLAN.md — 3.9.1 a 3.9.3 (D-16-08, D-16-09): tipos e tetos da Mensagem, ticket, envio com anexo e download
+- [x] 16-09-PLAN.md — 3.9.1 a 3.9.3 (D-16-08, D-16-09): tipos e tetos da Mensagem, ticket, envio com anexo e download
 
 **Wave 9** *(blocked on Wave 8 completion)*
 - [ ] 16-10-PLAN.md — 3.9.4 + 3.9.6: mídia recebida guardada, medição por etapa, URL assinada no envio, coleta de órfãos
