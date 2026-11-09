@@ -9,7 +9,7 @@
  *   - aceito → `gravarEnvio` (`enviada`, `id_externo`) e a linha do outbox `delivered`;
  *   - recusa permanente → `falhou` com o motivo do provedor (ou "O provedor recusou a Mensagem."), sem nova tentativa;
  *   - resposta ambígua (tempo esgotado, resposta perdida: o provedor pode ter enviado) → `falhou` com
- *     "Sem confirmação do provedor: confira no WhatsApp antes de tentar de novo." e NUNCA reenvia sozinha: o
+ *     a frase de "sem confirmação" (`FRASES_DA_SAIDA.semConfirmacao`) e NUNCA reenvia sozinha: o
  *     reenvio é da pessoa, por "Tentar de novo" (T-16-16);
  *   - transitória (certamente não processada) → volta à fila na escada de `backoff()`, até `maxTentativas`; na
  *     última, `falhou` com "O provedor não respondeu depois de várias tentativas.";
