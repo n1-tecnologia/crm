@@ -590,5 +590,298 @@ describeComBanco("rotas de Mensagens — serviço real, Postgres local", () => {
       expect(armazenamento.urlsEmitidas).toHaveLength(antes + 1);
       expect(armazenamento.urlsEmitidas.at(-1)).toEqual({ objectKey: armazenamento.chaveDoObjeto(objectId) });
     });
+
+    describe("recusas por Conversa, Espaço, Papel e Canal (Task 3)", () => {
+      const MIB = 1024 * 1024;
+      const instagram = { canalId: "", conversaId: "" };
+      const comoMembro = (id: string, workspaceId = ws) =>
+        appComArmazenamento({
+          ...opcoesDeAutenticacao(workspaceId),
+          resolverMembro: async () => ({ ...membros.find((m) => m.userId === MARYANE)!, id, workspaceId }),
+        });
+
+      async function conversaNova(espaco: string, canalId: string, nome: string): Promise<string> {
+        const contato = await criarRepositorioDeContatosPg(pool()).inserir(espaco, { nome, proprietarioId: "mem_maryane", criadoPor: "mem_maryane" });
+        const conversa = await criarRepositorioDeConversasPg(pool()).inserir(espaco, {
+          canalId, contatoId: contato.id, titulo: nome, filaId: null,
+          atribuido: { tipo: "membro", id: "mem_maryane" }, participantes: [], criadoPor: { tipo: "member", id: "mem_maryane" },
+        });
+        return conversa.id;
+      }
+
+      const enviarComAnexo = (conversaId: string, submissionId: string, objectId: string, aplicacao = appComArmazenamento(), extra: Record<string, unknown> = {}) =>
+        aplicacao.inject({
+          method: "POST",
+          url: "/mensagens",
+          headers: AUTORIZACAO,
+          payload: { conversaId, direcao: "enviada", conteudo: "", anexos: [{ submissionId, objectId }], ...extra },
+        });
+
+      const total = async (conversaId: string) => (await mensagens().listar(ws, { conversaId, limite: 200, deslocamento: 0 })).total;
+      const ogg = (bytes: number) => {
+        const conteudo = new Uint8Array(bytes);
+        conteudo.set(Buffer.from("OggS"));
+        return conteudo;
+      };
+
+      beforeAll(async () => {
+        instagram.canalId = await semearCanal(ws, { nome: "Instagram", tipo: "instagram", provedor: "instagram-graph", identificadorExterno: "@n1_teste", conexao: "desconectada" });
+        instagram.conversaId = await conversaNova(ws, instagram.canalId, "Dani");
+      });
+
+      it("a sessão de outra Conversa responde 422 \"Este arquivo não é desta Conversa.\" e nenhuma Mensagem é gravada", async () => {
+        const outra = await conversaNova(ws, ids.suporte.canalId, "Edu");
+        const { submissionId, objectId } = await subirAnexo(ids.suporte.conversaId);
+        const antes = await total(outra);
+        const resposta = await enviarComAnexo(outra, submissionId, objectId);
+        expect(resposta.statusCode).toBe(422);
+        expect(resposta.json()).toMatchObject({ ok: false, error: "Este arquivo não é desta Conversa.", codigo: "ANEXO_DE_OUTRA_CONVERSA" });
+        expect(await total(outra)).toBe(antes);
+        expect(armazenamento.sessaoConsumida(submissionId)).toBe(false);
+        expect(resposta.body).not.toContain("workspace/");
+      });
+
+      it("a sessão de outro Espaço (mesmo com o formId da Conversa) responde 422 e nada é gravado", async () => {
+        const deFora = await armazenamento.abrirSessao({ workspaceId: ws2, formId: `conversa-${ids.suporte.conversaId}` });
+        const ticket = await armazenamento.emitirTicket({
+          submissionId: deFora.submissionId, displayName: "foto.png", mediaType: "image/png",
+          tipos: ["image/png"], prefixoDaChave: `workspace/${ws2}/conversas/${ids.suporte.conversaId}`, tetoBytes: MIB,
+        });
+        armazenamento.colocarBytes(ticket.objectId, PNG);
+        const antes = await total(ids.suporte.conversaId);
+        const resposta = await enviarComAnexo(ids.suporte.conversaId, deFora.submissionId, ticket.objectId);
+        expect(resposta.statusCode).toBe(422);
+        expect(resposta.json()).toMatchObject({ codigo: "ANEXO_DE_OUTRA_CONVERSA" });
+        expect(await total(ids.suporte.conversaId)).toBe(antes);
+        expect(armazenamento.sessaoConsumida(deFora.submissionId)).toBe(false);
+      });
+
+      it("referência de sessão que não existe responde 422 ANEXO_NAO_ENCONTRADO; objeto de OUTRA sessão responde 422 como de outra Conversa", async () => {
+        const inexistente = await enviarComAnexo(ids.suporte.conversaId, "sessao-que-nao-existe", "objeto-x");
+        expect(inexistente.statusCode).toBe(422);
+        expect(inexistente.json()).toMatchObject({ codigo: "ANEXO_NAO_ENCONTRADO" });
+        const a = await subirAnexo(ids.suporte.conversaId);
+        const b = await subirAnexo(ids.suporte.conversaId);
+        const cruzado = await enviarComAnexo(ids.suporte.conversaId, a.submissionId, b.objectId);
+        expect(cruzado.statusCode).toBe(422);
+        expect(cruzado.json()).toMatchObject({ codigo: "ANEXO_DE_OUTRA_CONVERSA" });
+      });
+
+      it("a sessão que já virou anexo não vale de novo: 409 ANEXO_JA_USADO e a segunda Mensagem não é gravada", async () => {
+        const { submissionId, objectId } = await subirAnexo(ids.suporte.conversaId);
+        expect((await enviarComAnexo(ids.suporte.conversaId, submissionId, objectId)).statusCode).toBe(201);
+        const depois = await total(ids.suporte.conversaId);
+        const repetida = await enviarComAnexo(ids.suporte.conversaId, submissionId, objectId);
+        expect(repetida.statusCode).toBe(409);
+        expect(repetida.json()).toMatchObject({ ok: false, codigo: "ANEXO_JA_USADO" });
+        expect(await total(ids.suporte.conversaId)).toBe(depois);
+      });
+
+      it("dois anexos na mesma Mensagem respondem 400 e nada é gravado", async () => {
+        const a = await subirAnexo(ids.suporte.conversaId);
+        const b = await subirAnexo(ids.suporte.conversaId);
+        const antes = await total(ids.suporte.conversaId);
+        const resposta = await appComArmazenamento().inject({
+          method: "POST",
+          url: "/mensagens",
+          headers: AUTORIZACAO,
+          payload: { conversaId: ids.suporte.conversaId, direcao: "enviada", conteudo: "", anexos: [a, b] },
+        });
+        expect(resposta.statusCode).toBe(400);
+        expect(await total(ids.suporte.conversaId)).toBe(antes);
+      });
+
+      it("o Canal que não envia documento (Instagram) recusa um PDF no ticket, sem abrir sessão, e no envio", async () => {
+        const sessoes = armazenamento.quantidadeDeSessoes();
+        const ticket = await pedirTicket(instagram.conversaId, { nome: "contrato.pdf", tipoDeMidia: "application/pdf", tamanhoBytes: 1000 });
+        expect(ticket.statusCode).toBe(422);
+        expect(ticket.json()).toMatchObject({ ok: false, error: "Este Canal não envia este tipo de arquivo.", codigo: "TIPO_NAO_ENVIADO_PELO_CANAL" });
+        expect(armazenamento.quantidadeDeSessoes()).toBe(sessoes);
+
+        // Um envio forjado (a sessão aberta direto no falso, com o PDF) tem de ser recusado também na hora de gravar.
+        const forjada = await armazenamento.abrirSessao({ workspaceId: ws, formId: `conversa-${instagram.conversaId}` });
+        const objeto = await armazenamento.emitirTicket({
+          submissionId: forjada.submissionId, displayName: "contrato.pdf", mediaType: "application/pdf",
+          tipos: ["application/pdf"], prefixoDaChave: `workspace/${ws}/conversas/${instagram.conversaId}`, tetoBytes: MIB,
+        });
+        armazenamento.colocarBytes(objeto.objectId, Buffer.from("%PDF-1.4\n%teste\n"));
+        const antes = await total(instagram.conversaId);
+        const envio = await enviarComAnexo(instagram.conversaId, forjada.submissionId, objeto.objectId);
+        expect(envio.statusCode).toBe(422);
+        expect(envio.json()).toMatchObject({ ok: false, error: "Este Canal não envia este tipo de arquivo.", codigo: "TIPO_NAO_ENVIADO_PELO_CANAL" });
+        expect(await total(instagram.conversaId)).toBe(antes);
+        expect(armazenamento.sessaoConsumida(forjada.submissionId)).toBe(false);
+      });
+
+      it("o Instagram aceita uma imagem; um tipo fora da lista da Mensagem responde 422 TIPO_NAO_ACEITO", async () => {
+        expect((await pedirTicket(instagram.conversaId)).statusCode).toBe(200);
+        const fora = await pedirTicket(ids.suporte.conversaId, { nome: "setup.exe", tipoDeMidia: "application/x-msdownload", tamanhoBytes: 1000 });
+        expect(fora.statusCode).toBe(422);
+        expect(fora.json()).toMatchObject({ codigo: "TIPO_NAO_ACEITO" });
+      });
+
+      it("o ticket acima do teto responde 422 \"O arquivo passa do tamanho máximo.\" sem abrir sessão; no teto exato passa", async () => {
+        const sessoes = armazenamento.quantidadeDeSessoes();
+        for (const [tipo, tamanho] of [["image/png", 25 * MIB + 1], ["audio/ogg", 17 * MIB], ["video/mp4", 16 * MIB + 1]] as const) {
+          const resposta = await pedirTicket(ids.suporte.conversaId, { nome: "grande", tipoDeMidia: tipo, tamanhoBytes: tamanho });
+          expect(resposta.statusCode).toBe(422);
+          expect(resposta.json()).toMatchObject({ ok: false, error: "O arquivo passa do tamanho máximo.", codigo: "ARQUIVO_GRANDE_DEMAIS" });
+        }
+        expect(armazenamento.quantidadeDeSessoes()).toBe(sessoes);
+        expect((await pedirTicket(ids.suporte.conversaId, { nome: "voz.ogg", tipoDeMidia: "audio/ogg; codecs=opus", tamanhoBytes: 16 * MIB })).statusCode).toBe(200);
+        expect((await pedirTicket(ids.suporte.conversaId, { nome: "foto", tipoDeMidia: "image/png", tamanhoBytes: 20 * MIB })).statusCode).toBe(200);
+      });
+
+      it("T-16-31: o arquivo que não é o que diz ser, ou que não chegou, ou que passa do teto ao subir, é recusado na confirmação", async () => {
+        const disfarcado = await subirAnexo(ids.suporte.conversaId, Buffer.from("isto é só um texto"), { nome: "voz.ogg", tipoDeMidia: "audio/ogg", tamanhoBytes: 100 });
+        const antes = await total(ids.suporte.conversaId);
+        const r1 = await enviarComAnexo(ids.suporte.conversaId, disfarcado.submissionId, disfarcado.objectId);
+        expect(r1.statusCode).toBe(422);
+        expect(r1.json()).toMatchObject({ error: "O conteúdo do arquivo não confere com o tipo dele.", codigo: "ARQUIVO_NAO_CONFERE" });
+
+        const ticket = await pedirTicket(ids.suporte.conversaId);
+        const { submissionId, objectId } = (ticket.json() as { dados: { submissionId: string; objectId: string } }).dados;
+        const r2 = await enviarComAnexo(ids.suporte.conversaId, submissionId, objectId);
+        expect(r2.statusCode).toBe(422);
+        expect(r2.json()).toMatchObject({ codigo: "ARQUIVO_AUSENTE" });
+
+        // O ticket dizia 100 bytes de áudio; o navegador subiu 17 MiB: a confirmação mede o que chegou.
+        const grande = await subirAnexo(ids.suporte.conversaId, ogg(17 * MIB), { nome: "voz.ogg", tipoDeMidia: "audio/ogg", tamanhoBytes: 100 });
+        const r3 = await enviarComAnexo(ids.suporte.conversaId, grande.submissionId, grande.objectId);
+        expect(r3.statusCode).toBe(422);
+        expect(r3.json()).toMatchObject({ error: "O arquivo passa do tamanho máximo.", codigo: "ARQUIVO_GRANDE_DEMAIS" });
+        expect(await total(ids.suporte.conversaId)).toBe(antes);
+        for (const r of [r1, r2, r3]) expect(r.body).not.toContain("workspace/");
+      });
+
+      it("o áudio de verdade (OggS, com codec no tipo) sobe e vira anexo com o tipo normalizado", async () => {
+        const voz = await subirAnexo(ids.suporte.conversaId, ogg(2048), { nome: "voz.ogg", tipoDeMidia: "audio/ogg; codecs=opus", tamanhoBytes: 2048 });
+        const resposta = await enviarComAnexo(ids.suporte.conversaId, voz.submissionId, voz.objectId);
+        expect(resposta.statusCode).toBe(201);
+        expect((resposta.json() as { dados: Mensagem }).dados.anexos[0]).toMatchObject({ tipoDeMidia: "audio/ogg", nome: "voz.ogg", baixado: true, tamanhoBytes: 2048 });
+      });
+
+      it("Convidado (sem poder enviar) recebe 403 no ticket e no envio; Membro suspenso, 403 SUSPENSO", async () => {
+        await semearMembro(ws, { id: "mem_convidado", base: "convidado", state: "ativo" });
+        const comoConvidado = comoMembro("mem_convidado");
+        expect((await pedirTicket(ids.suporte.conversaId, {}, comoConvidado)).statusCode).toBe(403);
+        expect((await enviarComAnexo(ids.suporte.conversaId, "s", "o", comoConvidado)).statusCode).toBe(403);
+        const comoSuspenso = appComArmazenamento({
+          ...opcoesDeAutenticacao(ws),
+          resolverMembro: async () => ({ ...membros.find((m) => m.userId === MARYANE)!, state: "suspenso" as const }),
+        });
+        const suspenso = await pedirTicket(ids.suporte.conversaId, {}, comoSuspenso);
+        expect(suspenso.statusCode).toBe(403);
+        expect(suspenso.json()).toMatchObject({ codigo: "SUSPENSO" });
+      });
+
+      it("o ticket de uma Conversa de outro Espaço, ou que não existe, responde 404; na lixeira, 409", async () => {
+        const deFora = await pedirTicket("conversa-que-nao-existe");
+        expect(deFora.statusCode).toBe(404);
+        const conversa = await conversaNova(ws, ids.suporte.canalId, "Fabi");
+        await pool().query("update plataforma.conversas set estado = 'na_lixeira', situacao = 'resolvida', na_lixeira_em = now() where workspace_id = $1 and id = $2", [ws, conversa]);
+        const lixeira = await pedirTicket(conversa);
+        expect(lixeira.statusCode).toBe(409);
+        expect(lixeira.json()).toMatchObject({ codigo: "CONVERSA_NA_LIXEIRA" });
+      });
+
+      it("uma falha do armazenamento vira 500 genérico e nunca cita a chave nem a mensagem do erro", async () => {
+        armazenamento.falharNaProxima(new Error(`boom: workspace/${ws}/conversas/x/segredo`));
+        const resposta = await pedirTicket(ids.suporte.conversaId);
+        expect(resposta.statusCode).toBe(500);
+        expect(resposta.body).not.toContain("workspace/");
+        expect(resposta.body).not.toContain("segredo");
+      });
+
+      describe("download", () => {
+        async function mensagemComAnexo(anexo: { tipoDeMidia: string; nome: string; objectKey?: string; baixado: boolean }): Promise<string> {
+          const criada = await mensagens().inserir(ws, {
+            conversaId: ids.suporte.conversaId, canalId: ids.suporte.canalId, direcao: "interna",
+            ator: { tipo: "member", id: "mem_maryane" }, conteudo: "com anexo", statusEntrega: null, anexos: [anexo],
+          });
+          return criada.id;
+        }
+        const baixar = (id: string, indice: number | string, aplicacao = appComArmazenamento()) =>
+          aplicacao.inject({ method: "GET", url: `/mensagens/${id}/anexos/${indice}`, headers: AUTORIZACAO });
+
+        it("PDF sai com download = o nome do arquivo (nunca abre no navegador); imagem sai sem download", async () => {
+          const chavePdf = `workspace/${ws}/conversas/${ids.suporte.conversaId}/pdf-1`;
+          const chaveImagem = `workspace/${ws}/conversas/${ids.suporte.conversaId}/img-1`;
+          const id = await mensagemComAnexo({ tipoDeMidia: "application/pdf", nome: "contrato.pdf", objectKey: chavePdf, baixado: true });
+          const idImagem = await mensagemComAnexo({ tipoDeMidia: "image/png", nome: "foto.png", objectKey: chaveImagem, baixado: true });
+          expect((await baixar(id, 0)).statusCode).toBe(200);
+          expect(armazenamento.urlsEmitidas.at(-1)).toEqual({ objectKey: chavePdf, download: "contrato.pdf" });
+          expect((await baixar(idImagem, 0)).statusCode).toBe(200);
+          expect(armazenamento.urlsEmitidas.at(-1)).toEqual({ objectKey: chaveImagem });
+        });
+
+        it.each([
+          ["xml", "application/xml"],
+          ["zip", "application/zip"],
+          ["csv", "text/csv"],
+          ["txt", "text/plain"],
+          ["docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+        ])("o documento %s também sai sempre como anexo para baixar", async (extensao, tipo) => {
+          const chave = `workspace/${ws}/conversas/${ids.suporte.conversaId}/doc-${extensao}`;
+          const id = await mensagemComAnexo({ tipoDeMidia: tipo, nome: `arquivo.${extensao}`, objectKey: chave, baixado: true });
+          expect((await baixar(id, 0)).statusCode).toBe(200);
+          expect(armazenamento.urlsEmitidas.at(-1)).toEqual({ objectKey: chave, download: `arquivo.${extensao}` });
+        });
+
+        it("o anexo com baixado false responde 404 \"O arquivo não está disponível.\" e não pede URL ao bucket", async () => {
+          const id = await mensagemComAnexo({ tipoDeMidia: "audio/ogg", nome: "voz.ogg", baixado: false });
+          const antes = armazenamento.urlsEmitidas.length;
+          const resposta = await baixar(id, 0);
+          expect(resposta.statusCode).toBe(404);
+          expect(resposta.json()).toEqual({ ok: false, error: "O arquivo não está disponível.", codigo: "ARQUIVO_INDISPONIVEL" });
+          expect(armazenamento.urlsEmitidas).toHaveLength(antes);
+        });
+
+        it("a chave de OUTRO Espaço gravada na linha nunca vira URL (a chave é conferida contra o Espaço da sessão)", async () => {
+          const id = await mensagemComAnexo({ tipoDeMidia: "image/png", nome: "x.png", objectKey: `workspace/${ws2}/conversas/z/img`, baixado: true });
+          const antes = armazenamento.urlsEmitidas.length;
+          const resposta = await baixar(id, 0);
+          expect(resposta.statusCode).toBe(404);
+          expect(resposta.json()).toMatchObject({ codigo: "ARQUIVO_INDISPONIVEL" });
+          expect(armazenamento.urlsEmitidas).toHaveLength(antes);
+        });
+
+        it("índice que não existe responde 404; Mensagem sem anexo e Mensagem inexistente também", async () => {
+          const id = await mensagemComAnexo({ tipoDeMidia: "image/png", nome: "foto.png", objectKey: `workspace/${ws}/conversas/c/img`, baixado: true });
+          const alem = await baixar(id, 5);
+          expect(alem.statusCode).toBe(404);
+          expect(alem.json()).toMatchObject({ ok: false, codigo: "ANEXO_NAO_ENCONTRADO" });
+          const semAnexo = await mensagens().inserir(ws, {
+            conversaId: ids.suporte.conversaId, canalId: ids.suporte.canalId, direcao: "interna",
+            ator: { tipo: "member", id: "mem_maryane" }, conteudo: "sem anexo", statusEntrega: null,
+          });
+          expect((await baixar(semAnexo.id, 0)).statusCode).toBe(404);
+          expect((await baixar("mensagem-que-nao-existe", 0)).json()).toMatchObject({ codigo: "MENSAGEM_NAO_ENCONTRADA" });
+        });
+
+        it("Membro de outro Espaço recebe 404 (nunca 403, nunca a URL); Membro removido recebe 403", async () => {
+          const chave = `workspace/${ws}/conversas/${ids.suporte.conversaId}/img-2`;
+          const id = await mensagemComAnexo({ tipoDeMidia: "image/png", nome: "foto.png", objectKey: chave, baixado: true });
+          const antes = armazenamento.urlsEmitidas.length;
+
+          await semearMembro(ws2, { id: "mem_de_fora", base: "membro", state: "ativo" });
+          const deFora = await baixar(id, 0, comoMembro("mem_de_fora", ws2));
+          expect(deFora.statusCode).toBe(404);
+          expect(deFora.json()).toMatchObject({ ok: false, codigo: "MENSAGEM_NAO_ENCONTRADA" });
+
+          await semearMembro(ws, { id: "mem_removido", base: "membro", state: "removido" });
+          const removido = await baixar(id, 0, comoMembro("mem_removido"));
+          expect(removido.statusCode).toBe(403);
+          expect(removido.json()).toMatchObject({ ok: false, codigo: "PERMISSAO" });
+          expect(removido.body).not.toContain("workspace/");
+          expect(armazenamento.urlsEmitidas).toHaveLength(antes);
+        });
+
+        it("índice inválido (negativo, fracionado, texto) não chega ao serviço", async () => {
+          const id = await mensagemComAnexo({ tipoDeMidia: "image/png", nome: "foto.png", objectKey: `workspace/${ws}/conversas/c/img`, baixado: true });
+          for (const indice of ["-1", "1.5", "abc"]) expect((await baixar(id, indice)).statusCode).toBe(400);
+        });
+      });
+    });
   });
 });

@@ -41,6 +41,8 @@ export interface ArmazenamentoFalso extends ArmazenamentoDeAnexos {
   readonly urlsEmitidas: { readonly objectKey: string; readonly download?: string }[];
   readonly removidos: string[];
   chavesGuardadas(): readonly string[];
+  /** Quantas sessões de envio foram abertas: um pedido recusado não deixa nenhuma. */
+  quantidadeDeSessoes(): number;
   /** Faz a próxima chamada ao bucket falhar com este erro (uma vez). */
   falharNaProxima(erro: Error): void;
 }
@@ -164,6 +166,7 @@ export function criarArmazenamentoFalso(opcoes: { readonly tetos?: { readonly mi
     urlsEmitidas,
     removidos,
     chavesGuardadas: () => [...guardados.keys()],
+    quantidadeDeSessoes: () => sessoes.size,
     falharNaProxima(erro) {
       falhaPendente = erro;
     },
