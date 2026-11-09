@@ -74,6 +74,8 @@ export async function limparEspaco(workspaceId: string): Promise<void> {
     for (const tabela of [
       "mensagens",
       "conversas",
+      // A fila de entrada da mensageria (013) tem FK para `canais`: sai antes dele.
+      "webhooks_recebidos",
       "canais",
       "negocios",
       "contato_empresa",

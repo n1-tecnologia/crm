@@ -33,6 +33,7 @@ import { rotasDeFinanceiro, type OpcoesDeFinanceiro } from "./rotas/financeiro";
 import { rotasDeFormulariosPublicos, type OpcoesDeFormulariosPublicos } from "./rotas/formularios-publicos";
 import { rotasDeTarefasPublicas, type OpcoesDeTarefasPublicas } from "./rotas/tarefas-publicas";
 import { rotasDeWebhookMeta, type OpcoesDeWebhookMeta } from "./rotas/webhook-meta";
+import { rotasDeWebhooksDeMensageria, type OpcoesDeWebhooksDeMensageria } from "./rotas/webhooks-de-mensageria";
 import { rotasDeIntegracaoDeSolicitacoes } from "./rotas/integracao-solicitacoes";
 import { rotasDeOperacoes } from "./rotas/operacoes";
 
@@ -87,6 +88,12 @@ export interface OpcoesDoApp {
   readonly tarefasPublicas?: Omit<OpcoesDeTarefasPublicas, "workspaceId">;
   /** Os webhooks da Meta (WhatsApp oficial e Instagram): testes injetam o token e os segredos em vez de ler o ambiente. */
   readonly webhookMeta?: OpcoesDeWebhookMeta;
+  /**
+   * Fase 16 (16-03) — o webhook de mensageria por Canal (`POST /webhooks/mensageria/:canalId`): testes injetam o
+   * cofre, o registro de provedores, o limite por IP e um acordador em vez de ler o ambiente; `index.ts` liga o
+   * acordador ao processador de entrada quando `MENSAGERIA_WORKER_ATIVO=true`.
+   */
+  readonly webhooksDeMensageria?: OpcoesDeWebhooksDeMensageria;
   /**
    * Plan 02-24 — `POST /v1/integrations/payment-approvals/classifications`
    * (`./rotas/classificacoes.ts`) aceita o mesmo padrão de injeção: testes
@@ -261,6 +268,10 @@ export function buildApp(opcoes: OpcoesDoApp = {}): FastifyInstance {
   // O webhook da Meta chama de servidor, sem JWT: a confiança vem do token de
   // verificação (GET) e da assinatura do corpo (POST), não de Authorization.
   app.register(rotasDeWebhookMeta, opcoes.webhookMeta ?? {});
+  // O webhook de mensageria por Canal também chama de servidor, sem JWT: a confiança é o segredo do Canal
+  // no cabeçalho `x-n1-webhook-segredo` (D-16-03). Plugin irmão do da Meta e fora de `rotasDeCrm`, para o
+  // `config: { publica: true }` valer só para ele e o parser do corpo cru não vazar para as outras rotas.
+  app.register(rotasDeWebhooksDeMensageria, opcoes.webhooksDeMensageria ?? {});
 
   // Rotas serviço-a-serviço: credencial própria
   // (`plugins/autenticacao-servico.ts`), nunca JWT humano. Rotas
