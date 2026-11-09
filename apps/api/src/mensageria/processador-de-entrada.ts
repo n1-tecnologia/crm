@@ -7,7 +7,10 @@
  *   - `processado`: todos os eventos foram tratados. `resultado` diz o que NÃO virou Mensagem
  *     (`ignorado:<motivo>`, `sem_tratamento:<tipo>`). O evento `status` muda a Mensagem pelo domínio
  *     (`atualizarStatusDeEntrega`: só avança) e deixa `ignorado:status_sem_mensagem` quando nenhuma Mensagem do
- *     Canal tem o id externo, ou `ignorado:status_atrasado` quando o status não avança;
+ *     Canal tem o id externo, ou `ignorado:status_atrasado` quando o status não avança. O evento `conexao` só muda
+ *     Canal REAL: num Canal simulado fica `ignorado:<motivo>` com o motivo da conexão simulada (a conexão simulada é dos botões da ficha,
+ *     D-15-12); num real grava a conexão, sobe a revisão do Espaço e, se voltou a `conectada`, reenfileira as
+ *     Mensagens `pendente` dele, tudo numa transação;
  *   - `falhou` com o `codigo` em `ultimo_erro`: o recebimento recusou por regra (4xx: Canal arquivado,
  *     valor inválido). É permanente: tentar de novo daria a mesma recusa;
  *   - `pendente` de novo, com `disponivel_em` no futuro (`backoff`): uma exceção (banco, cofre, provedor
@@ -25,16 +28,19 @@
  */
 
 import type { Pool } from "pg";
+import type { ConexaoDoCanal } from "@n1/dominio/crm/canais";
 import type { StatusDeEntrega } from "@n1/dominio/crm/mensagens";
 import { pool as poolPadrao } from "../persistencia/conexao";
 import { backoff, sanitizarErro } from "../persistencia/outbox-worker";
 import { criarRepositorioDeCanaisPg } from "../repositorios/crm/canais";
 import { criarRepositorioDeMensagensPg } from "../repositorios/crm/mensagens";
+import { avancarRevisaoDoEspaco } from "../repositorios/crm/referencias";
 import { lerChavesDoCofre, type ChavesDoCofre } from "../servicos/cofre";
 import { criarServicoDeRecebimento, type ServicoDeRecebimento } from "../servicos/crm/recebimento";
 import type { Relogio } from "../testes/relogio";
 import { relogioDoSistema } from "../testes/relogio";
 import { FRASES_DA_SAIDA } from "./entregar-mensagem";
+import { reenfileirarPendentesDoCanal } from "./fila-de-saida";
 import { canalParaProvedor, provedorDoCanal, registroPadrao, type RegistroDeProvedores } from "./registro";
 
 export interface OpcoesDoProcessadorDeEntrada {
@@ -165,6 +171,44 @@ export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada):
     }
   }
 
+  /**
+   * 3.7.1 item 5 / B69: o provedor diz que a conexão do Canal mudou. Só vale para Canal REAL; o evento chega por
+   * webhook verificado (16-03), mas um Canal simulado continua sendo dos botões da ficha. A mesma ordem de travas de
+   * `servicos/crm/canais.ts` (WR-02): a linha do Espaço ANTES da do Canal. Um evento que repete a conexão atual não
+   * sobe a revisão (a tela não recarrega à toa), mas ainda reenfileira as pendentes de um Canal `conectada`: é a rede
+   * para a Mensagem que ficou guardada, e a linha que já está `pending` ou `delivering` não é tocada.
+   */
+  async function aplicarConexao(linha: LinhaReivindicada, conexao: ConexaoDoCanal): Promise<string | undefined> {
+    const cliente = await pool().connect();
+    try {
+      await cliente.query("begin");
+      await cliente.query("select 1 from plataforma.workspaces where workspace_id = $1 for update", [linha.workspace_id]);
+      const canais = criarRepositorioDeCanaisPg(cliente);
+      const canal = await canais.obter(linha.workspace_id, linha.canal_id, { travar: true });
+      let resultado: string | undefined;
+      if (!canal) {
+        resultado = "ignorado:canal_nao_encontrado";
+      } else if (canal.estado === "arquivado") {
+        resultado = "ignorado:canal_arquivado";
+      } else if (canal.conexaoSimulada) {
+        resultado = "ignorado:conexao_simulada";
+      } else {
+        if (canal.conexao !== conexao) {
+          await canais.definirConexao(linha.workspace_id, linha.canal_id, { conexao, conexaoSimulada: false });
+          await avancarRevisaoDoEspaco(cliente, linha.workspace_id);
+        }
+        if (conexao === "conectada") await reenfileirarPendentesDoCanal(cliente, linha.workspace_id, linha.canal_id);
+      }
+      await cliente.query("commit");
+      return resultado;
+    } catch (erro) {
+      await cliente.query("rollback").catch(() => undefined);
+      throw erro;
+    } finally {
+      cliente.release();
+    }
+  }
+
   async function processar(linha: LinhaReivindicada): Promise<Desfecho> {
     const canal = await criarRepositorioDeCanaisPg(pool()).obter(linha.workspace_id, linha.canal_id);
     if (!canal) return { tipo: "recusada", codigo: "CANAL_NAO_ENCONTRADO" };
@@ -191,8 +235,14 @@ export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada):
       } else if (evento.tipo === "status") {
         const resultado = await aplicarStatus(linha, evento);
         if (resultado !== undefined) resultados.add(resultado);
+      } else if (evento.tipo === "conexao") {
+        const resultado = await aplicarConexao(linha, evento.conexao);
+        if (resultado !== undefined) resultados.add(resultado);
       } else {
-        resultados.add(`sem_tratamento:${evento.tipo}`);
+        // Todos os tipos de `EventoDoProvedor` têm ramo: um tipo novo quebra a compilação aqui e obriga a tratá-lo.
+        // Em tempo de execução, um tipo que o provedor inventou fica registrado e a linha segue processada.
+        const naoTratado: never = evento;
+        resultados.add(`sem_tratamento:${(naoTratado as { readonly tipo: string }).tipo}`);
       }
     }
     if (recusa !== undefined) return { tipo: "recusada", codigo: recusa };

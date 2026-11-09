@@ -22,6 +22,8 @@
  *     domínio (`proximaConexao`), o serviço só a grava;
  *   - arquivar desconectando na mesma escrita (11.1);
  *   - a revisão do Espaço somada na mesma transação de toda escrita (A4).
+ *   - 16-06: o Canal que volta a `conectada` reenfileira, na mesma transação, as Mensagens `pendente` dele
+ *     (`reenfileirarPendentesDoCanal`).
  * Toda escrita trava a linha do Espaço e, só depois, carrega o Canal travado (`for update`) NESTE Espaço: id de
  * outro Espaço é 404, nunca 403 (T-08-13).
  */
@@ -41,6 +43,7 @@ import {
   type NovoCanal,
 } from "@n1/dominio/crm/canais";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
+import { reenfileirarPendentesDoCanal } from "../../mensageria/fila-de-saida";
 import { criarRepositorioDeCanaisPg, type RepositorioDeCanais } from "../../repositorios/crm/canais";
 import { avancarRevisaoDoEspaco, filaAtiva, origemAtiva } from "../../repositorios/crm/referencias";
 import { exigir, type AcessoAoCrm } from "./acesso";
@@ -176,6 +179,9 @@ export function criarServicoDeCanais(deps: { readonly pool: () => Pool; readonly
       const atualizado = await repositorio.definirConexao(membro.workspaceId, id, proxima.value);
       if (!atualizado) return naoEncontrado();
       await avancarRevisaoDoEspaco(cliente, membro.workspaceId);
+      // B69 (16-06): as Mensagens guardadas enquanto o Canal estava fora do ar saem agora, no MESMO commit da
+      // conexão: se a fila falhar, o Canal também não muda. Nada é descartado.
+      if (atualizado.conexao === "conectada") await reenfileirarPendentesDoCanal(cliente, membro.workspaceId, id);
       return sucesso(atualizado);
     });
   }
