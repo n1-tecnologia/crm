@@ -258,4 +258,44 @@ d("worker de entrega (Postgres real)", () => {
     expect([a, b].filter(Boolean)).toHaveLength(1);
     expect(servidor.recebidas).toHaveLength(1);
   });
+
+  describe("convivência com a fila da mensageria (16-04, Pitfall 1)", () => {
+    const PAYLOAD_DA_MENSAGEM = { mensagemId: "msg_1", conversaId: "cnv_1", canalId: "can_1" };
+    const haSegundos = (s: number) => new Date(Date.now() - s * 1000);
+
+    it("sem tiposDeEvento o worker nunca reivindica mensagem.%: a da Mensagem, mais antiga, continua pending com attempts 0", async () => {
+      const daMensagem = await inserirLinhaPendente({ eventType: "mensagem.enviar.v1", payload: PAYLOAD_DA_MENSAGEM, availableAt: haSegundos(10) });
+      const daSolicitacao = await inserirLinhaPendente({ availableAt: haSegundos(5) });
+      servidor.enfileirar({ kind: "ok", status: 202, corpo: { ok: true } });
+
+      const worker = criarOutboxWorker({ destinoUrl: servidor.url, token: "tok_teste", workerId: "worker_pitfall1", workspaceId: WORKSPACE, relogio: relogioFixo(new Date()) });
+      expect(await worker.processarUm()).toBe(true);
+      expect(await worker.processarUm()).toBe(false);
+
+      expect((await buscarLinha(daSolicitacao)).status).toBe("delivered");
+      const intacta = await buscarLinha(daMensagem);
+      expect(intacta).toMatchObject({ status: "pending", attempts: 0, last_error_code: null });
+      expect(servidor.recebidas).toHaveLength(1);
+    });
+
+    it("com tiposDeEvento: [mensagem.enviar.v1] o worker reivindica só a da Mensagem", async () => {
+      const daMensagem = await inserirLinhaPendente({ eventType: "mensagem.enviar.v1", payload: PAYLOAD_DA_MENSAGEM, availableAt: haSegundos(5) });
+      const daSolicitacao = await inserirLinhaPendente({ availableAt: haSegundos(10) });
+      // 503: a linha volta a `pending`, mas `attempts` já conta quem a reivindicou.
+      servidor.enfileirar({ kind: "ok", status: 503, corpo: { error: { code: "INDISPONIVEL" } } });
+
+      const worker = criarOutboxWorker({
+        destinoUrl: servidor.url,
+        token: "tok_teste",
+        workerId: "worker_so_mensagem",
+        workspaceId: WORKSPACE,
+        relogio: relogioFixo(new Date()),
+        tiposDeEvento: ["mensagem.enviar.v1"],
+      });
+      expect(await worker.processarUm()).toBe(true);
+
+      expect((await buscarLinha(daMensagem)).attempts).toBe(1);
+      expect(await buscarLinha(daSolicitacao)).toMatchObject({ status: "pending", attempts: 0 });
+    });
+  });
 });
