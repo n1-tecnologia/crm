@@ -220,6 +220,48 @@ describeComBanco("ServicoDeRecebimento — Postgres local", () => {
     const r = valor(await servico.receberMensagem(c.ws, c.canalId, soAnexo));
     expect(r.mensagem.anexos).toEqual([{ tipoDeMidia: "audio/ogg", nome: "audio.ogg", referenciaExterna: "midia-9", baixado: false }]);
   });
+
+  describe("opcoes.anexos: a entrada de mídia (16-10)", () => {
+    const guardado = (chave: string) => ({ tipoDeMidia: "audio/ogg", nome: "audio.ogg", objectKey: chave, tamanhoBytes: 2048, baixado: true }) as const;
+    const perdido = { tipoDeMidia: "audio/ogg", nome: "audio.ogg", referenciaExterna: "midia-9", baixado: false } as const;
+    const eventoDeAudio = (): RecebidaDoProvedor => ({
+      idExterno: "ext-audio",
+      criadoEm: new Date().toISOString(),
+      remetente: { tipo: "whatsapp", valor: WHATSAPP_DA_ANA },
+      anexos: [{ referenciaNoProvedor: "midia-9", tipoDeMidia: "audio/ogg", nome: "audio.ogg" }],
+      cargaBruta: {},
+    });
+    const anexosGravados = async (ws: string) =>
+      (await pool().query<{ anexos: unknown }>("select anexos from plataforma.mensagens where workspace_id = $1 and id_externo = 'ext-audio'", [ws])).rows[0]!.anexos;
+
+    it("a Mensagem nova grava os anexos que vieram prontos (baixado: true, com a chave), no lugar da referência provisória", async () => {
+      const c = await espaco("anexopronto");
+      const r = valor(await servico.receberMensagem(c.ws, c.canalId, eventoDeAudio(), { anexos: [guardado("workspace/x/entrada/y/z")] }));
+      expect(r.repetida).toBe(false);
+      expect(r.mensagem.anexos).toEqual([guardado("workspace/x/entrada/y/z")]);
+      expect(await anexosGravados(c.ws)).toEqual([guardado("workspace/x/entrada/y/z")]);
+    });
+
+    it("a repetida completa o anexo que estava baixado: false e devolve a Mensagem já completa, sem gravar outra", async () => {
+      const c = await espaco("anexocompleta");
+      valor(await servico.receberMensagem(c.ws, c.canalId, eventoDeAudio(), { anexos: [perdido] }));
+      const segunda = valor(await servico.receberMensagem(c.ws, c.canalId, eventoDeAudio(), { anexos: [guardado("workspace/x/entrada/y/z")] }));
+      expect(segunda.repetida).toBe(true);
+      expect(segunda.mensagem.anexos).toEqual([guardado("workspace/x/entrada/y/z")]);
+      expect(await anexosGravados(c.ws)).toEqual([guardado("workspace/x/entrada/y/z")]);
+      expect(await contar(c.ws, "mensagens")).toBe(1);
+    });
+
+    it("a repetida nunca troca um anexo que já estava guardado, nem volta atrás para baixado: false", async () => {
+      const c = await espaco("anexonaotroca");
+      valor(await servico.receberMensagem(c.ws, c.canalId, eventoDeAudio(), { anexos: [guardado("workspace/x/entrada/y/primeiro")] }));
+      const duplicada = valor(await servico.receberMensagem(c.ws, c.canalId, eventoDeAudio(), { anexos: [guardado("workspace/x/entrada/y/segundo")] }));
+      expect(duplicada.mensagem.anexos).toEqual([guardado("workspace/x/entrada/y/primeiro")]);
+      const pior = valor(await servico.receberMensagem(c.ws, c.canalId, eventoDeAudio(), { anexos: [perdido] }));
+      expect(pior.mensagem.anexos).toEqual([guardado("workspace/x/entrada/y/primeiro")]);
+      expect(await anexosGravados(c.ws)).toEqual([guardado("workspace/x/entrada/y/primeiro")]);
+    });
+  });
   /** Põe a Conversa no estado de partida de um caso: situação, há quantas horas foi resolvida, lixeira, adiamento. */
   async function prepararConversa(
     ws: string,

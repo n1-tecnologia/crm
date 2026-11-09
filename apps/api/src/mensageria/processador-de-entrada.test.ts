@@ -11,6 +11,7 @@
  */
 
 import { randomBytes } from "node:crypto";
+import { Client } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { encerrar, pool } from "../persistencia/conexao";
 import { criarRepositorioDeContatosPg } from "../repositorios/crm/contatos";
@@ -19,7 +20,9 @@ import { criarRepositorioDeMensagensPg } from "../repositorios/crm/mensagens";
 import { guardarCredencial, type ChavesDoCofre } from "../servicos/cofre";
 import { criarServicoDeRecebimento, type ServicoDeRecebimento } from "../servicos/crm/recebimento";
 import { recusa } from "../servicos/crm/resultado";
+import { criarArmazenamentoFalso } from "../testes/armazenamento-falso";
 import { describeComBanco, limparEspaco, novoEspacoDeTeste, prepararBancoCrm, semearCanal, semearMembro } from "../testes/banco-crm";
+import { CANAL_DO_NOTIFY } from "./avisar";
 import { TIPO_DO_SEGREDO_DO_WEBHOOK } from "./provedor";
 import { criarProcessadorDeEntrada } from "./processador-de-entrada";
 import { provedorDeTeste } from "./provedores/teste";
@@ -449,5 +452,146 @@ describeComBanco("processador da fila de entrada — Postgres local", () => {
     } finally {
       await processador.parar();
     }
+  });
+
+  // --- 16-10 (3.9.4, D-16-08): a mídia que chega é baixada antes da transação; a que falhou por instabilidade se completa ---
+
+  const corpoComAudio = (idExterno: string, referencia: string) => ({
+    eventos: [
+      {
+        tipo: "mensagem",
+        idExterno,
+        remetente: { tipo: "whatsapp", valor: WHATSAPP_DA_ANA, nomeExibido: "Ana" },
+        anexos: [{ referenciaNoProvedor: referencia, tipoDeMidia: "audio/ogg", nome: "audio.ogg" }],
+      },
+    ],
+  });
+  const ogg = (bytes: number) => {
+    const conteudo = new Uint8Array(bytes);
+    conteudo.set(Buffer.from("OggS"));
+    return conteudo;
+  };
+  /** Um provedor de teste cujo `baixarMidia` obedece a `falhar()`: lança erro de rede enquanto for verdadeiro. */
+  function registroComDownloadInstavel(falhar: () => boolean): RegistroDeProvedores {
+    return {
+      ...registroPadrao(),
+      teste: {
+        ...provedorDeTeste,
+        baixarMidia: async (canal, referencia, opcoes) => {
+          if (falhar()) throw new Error("read ECONNRESET");
+          return provedorDeTeste.baixarMidia(canal, referencia, opcoes);
+        },
+      },
+    };
+  }
+  const liberarAgora = (id: string) => pool().query("update plataforma.webhooks_recebidos set disponivel_em = now() where id = $1", [id]);
+  const anexosDoEspaco = async (ws: string) =>
+    (await pool().query<{ id: string; anexos: Array<Record<string, unknown>> }>("select id, anexos from plataforma.mensagens where workspace_id = $1", [ws])).rows;
+
+  it("falha transitória da mídia: a Mensagem é gravada com o anexo baixado: false e a linha volta a pendente (midia_pendente); a passada seguinte completa a MESMA Mensagem e avisa mensagem.status", async () => {
+    provedorDeTeste.limpar();
+    const c = await cenario("midiatrans");
+    const armazenamento = criarArmazenamentoFalso();
+    provedorDeTeste.guardarMidia("ref-t1", { bytes: ogg(2048), tipoDeMidia: "audio/ogg" });
+    let instavel = true;
+    const processador = criarProcessadorDeEntrada({ workerId: "w1", chaves, armazenamento, registro: registroComDownloadInstavel(() => instavel) });
+    const id = await semearLinha(c, corpoComAudio("audio-1", "ref-t1"));
+
+    expect(await processador.processarUm()).toBe(true);
+    expect(await lerLinha(id)).toMatchObject({ estado: "pendente", resultado: "midia_pendente", tentativas: 1, no_futuro: true, locked_at: null });
+    const primeira = await anexosDoEspaco(c.ws);
+    expect(primeira).toHaveLength(1);
+    expect(primeira[0]!.anexos).toEqual([{ tipoDeMidia: "audio/ogg", nome: "audio.ogg", referenciaExterna: "ref-t1", baixado: false }]);
+    expect(armazenamento.chavesGuardadas()).toEqual([]);
+
+    // A segunda passada, com a mídia disponível: a mesma Mensagem ganha o arquivo, e a aba é avisada.
+    instavel = false;
+    await liberarAgora(id);
+    const avisos: Array<Record<string, unknown>> = [];
+    const ouvinte = new Client({ connectionString: process.env.DATABASE_URL });
+    await ouvinte.connect();
+    ouvinte.on("notification", (n) => {
+      const lido = n.payload ? (JSON.parse(n.payload) as Record<string, unknown>) : {};
+      if (n.channel === CANAL_DO_NOTIFY && lido.workspaceId === c.ws) avisos.push(lido);
+    });
+    await ouvinte.query(`LISTEN ${CANAL_DO_NOTIFY}`);
+    try {
+      expect(await processador.processarUm()).toBe(true);
+      const limite = Date.now() + 2_000;
+      while (avisos.length < 1 && Date.now() < limite) await new Promise((resolver) => setTimeout(resolver, 10));
+    } finally {
+      await ouvinte.end();
+    }
+
+    expect(await lerLinha(id)).toMatchObject({ estado: "processado", tentativas: 2, resultado: null });
+    const depois = await anexosDoEspaco(c.ws);
+    expect(depois).toHaveLength(1);
+    expect(depois[0]!.id).toBe(primeira[0]!.id);
+    expect(depois[0]!.anexos).toEqual([
+      { tipoDeMidia: "audio/ogg", nome: "audio.ogg", objectKey: expect.stringMatching(new RegExp(`^workspace/${c.ws}/entrada/${c.canalId}/`)), tamanhoBytes: 2048, baixado: true },
+    ]);
+    expect(avisos).toEqual([{ workspaceId: c.ws, tipo: "mensagem.status", conversaId: expect.any(String), mensagemId: primeira[0]!.id }]);
+  });
+
+  it("depois de 3 passadas sem a mídia: a linha fica processado com midia_indisponivel, e a Mensagem segue gravada com o anexo marcado como indisponível", async () => {
+    provedorDeTeste.limpar();
+    const c = await cenario("midia3");
+    const processador = criarProcessadorDeEntrada({ workerId: "w1", chaves, armazenamento: criarArmazenamentoFalso(), registro: registroComDownloadInstavel(() => true) });
+    const id = await semearLinha(c, corpoComAudio("audio-1", "ref-t3"));
+
+    for (const esperada of ["midia_pendente", "midia_pendente"]) {
+      expect(await processador.processarUm()).toBe(true);
+      expect(await lerLinha(id)).toMatchObject({ estado: "pendente", resultado: esperada });
+      await liberarAgora(id);
+    }
+    expect(await processador.processarUm()).toBe(true);
+    expect(await lerLinha(id)).toMatchObject({ estado: "processado", resultado: "midia_indisponivel", tentativas: 3, locked_at: null });
+    expect(await processador.processarUm()).toBe(false);
+
+    const mensagens = await anexosDoEspaco(c.ws);
+    expect(mensagens).toHaveLength(1);
+    expect(mensagens[0]!.anexos).toEqual([{ tipoDeMidia: "audio/ogg", nome: "audio.ogg", referenciaExterna: "ref-t3", baixado: false }]);
+  });
+
+  it("mídia que o provedor já esqueceu (MIDIA_INDISPONIVEL) não pede nova passada: a Mensagem é gravada e a linha fica processada", async () => {
+    provedorDeTeste.limpar();
+    const c = await cenario("midiaperdida");
+    const processador = criarProcessadorDeEntrada({ workerId: "w1", chaves, armazenamento: criarArmazenamentoFalso() });
+    const id = await semearLinha(c, corpoComAudio("audio-1", "ref-que-nao-existe"));
+
+    expect(await processador.processarUm()).toBe(true);
+    expect(await lerLinha(id)).toMatchObject({ estado: "processado", tentativas: 1 });
+    expect((await anexosDoEspaco(c.ws))[0]!.anexos).toEqual([{ tipoDeMidia: "audio/ogg", nome: "audio.ogg", referenciaExterna: "ref-que-nao-existe", baixado: false }]);
+  });
+
+  it("registra UMA linha de etapas por chamada, com o id da linha e só números (nenhum dado pessoal)", async () => {
+    provedorDeTeste.limpar();
+    const c = await cenario("etapas");
+    provedorDeTeste.guardarMidia("ref-e1", { bytes: ogg(1024), tipoDeMidia: "audio/ogg" });
+    const registros: Array<{ nivel: string; mensagem: string; dados?: Record<string, unknown> }> = [];
+    const processador = criarProcessadorDeEntrada({
+      workerId: "w1",
+      chaves,
+      armazenamento: criarArmazenamentoFalso(),
+      registrar: (nivel, mensagem, dados) => registros.push({ nivel, mensagem, ...(dados ? { dados } : {}) }),
+    });
+    const id = await semearLinha(c, corpoComAudio("audio-1", "ref-e1"));
+
+    expect(await processador.processarUm()).toBe(true);
+    const etapas = registros.filter((r) => r.mensagem === "mensageria.etapas");
+    expect(etapas).toHaveLength(1);
+    const dados = etapas[0]!.dados!;
+    expect(Object.keys(dados).sort()).toEqual(["anexos", "baixarMs", "esperaMs", "subirMs", "totalMs", "transacaoMs", "webhookId"]);
+    expect(dados.webhookId).toBe(id);
+    expect(dados.anexos).toBe(1);
+    for (const chave of ["esperaMs", "baixarMs", "subirMs", "transacaoMs", "totalMs"]) {
+      expect(typeof dados[chave]).toBe("number");
+      expect(Number.isFinite(dados[chave])).toBe(true);
+      expect(dados[chave] as number).toBeGreaterThanOrEqual(0);
+    }
+    expect(dados.totalMs as number).toBeGreaterThanOrEqual(dados.transacaoMs as number);
+    // Nem o telefone, nem o nome do arquivo, nem a referência do provedor entram na linha de etapas.
+    const texto = JSON.stringify(etapas);
+    for (const proibido of [WHATSAPP_DA_ANA, "audio.ogg", "ref-e1", "Ana"]) expect(texto).not.toContain(proibido);
   });
 });
