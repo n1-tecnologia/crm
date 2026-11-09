@@ -21,12 +21,23 @@
  * derruba o processo não voltar para sempre). Como `receberMensagem` é idempotente por (Canal, idExterno),
  * reprocessar uma linha que já tinha gravado parte das Mensagens não duplica nada.
  *
+ * A mídia (16-10, 3.9.4, D-16-08): o anexo de uma Mensagem recebida é baixado do provedor e guardado no bucket ANTES da
+ * transação do recebimento (`midia.ts`). Mídia grande, de tipo fora da lista, com assinatura que não bate ou que o provedor
+ * já esqueceu grava a Mensagem assim mesmo, com o anexo `baixado: false`. Se a falha pode passar sozinha (rede, provedor ou
+ * bucket fora do ar), a linha volta a `pendente` com `resultado = "midia_pendente"` e a passada seguinte COMPLETA o anexo da
+ * Mensagem já gravada (a repetida não duplica nada); depois de `TENTATIVAS_DA_MIDIA` passadas a linha fica `processado` com
+ * `resultado = "midia_indisponivel"` e o anexo continua marcado como indisponível.
+ *
+ * Cada chamada registra UMA linha de etapas (espera na fila, baixar, subir, transação e total, em ms): é a medição da prova
+ * ao vivo do "menos de 2 s" com áudio, e leva só o id da linha e números.
+ *
  * A rota do webhook chama `acordar()` depois do 200 (Pitfall 3): o laço de `intervaloMs` é só a reserva.
  *
  * Nada aqui loga corpo, texto, telefone nem segredo: `registrar` só recebe o id da linha, contagens e
  * códigos.
  */
 
+import { performance } from "node:perf_hooks";
 import type { Pool } from "pg";
 import type { ConexaoDoCanal } from "@n1/dominio/crm/canais";
 import type { StatusDeEntrega } from "@n1/dominio/crm/mensagens";
@@ -89,11 +100,34 @@ interface LinhaReivindicada {
   readonly canal_id: string;
   readonly corpo: unknown;
   readonly tentativas: number;
+  /** Quanto a linha esperou na fila até esta reivindicação (desde que ficou disponível), em ms. */
+  readonly espera_ms: number;
 }
 
 type Desfecho =
-  | { readonly tipo: "processado"; readonly resultado: string | null; readonly eventos: number; readonly mensagens: number }
+  | {
+      readonly tipo: "processado";
+      readonly resultados: readonly string[];
+      readonly eventos: number;
+      readonly mensagens: number;
+      /** Algum anexo falhou por causa que pode passar sozinha: vale outra passada. */
+      readonly midiaPendente: boolean;
+    }
   | { readonly tipo: "recusada"; readonly codigo: string };
+
+/** As etapas de UMA chamada, somadas sobre os eventos dela (16-10). */
+interface Etapas {
+  baixarMs: number;
+  subirMs: number;
+  transacaoMs: number;
+  anexos: number;
+}
+
+const RESULTADO_MIDIA_PENDENTE = "midia_pendente";
+const RESULTADO_MIDIA_INDISPONIVEL = "midia_indisponivel";
+
+/** Quantas passadas uma linha com mídia transitória ganha antes de ficar `processado` com `midia_indisponivel`. */
+const TENTATIVAS_DA_MIDIA = 3;
 
 /** O motivo que o provedor deu para a falha, sem `apikey`, Bearer nem documento; vazio vira a frase padrão. */
 function motivoDaFalha(motivo: string | undefined): string {
@@ -143,7 +177,8 @@ export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada):
            limit 1
              for update skip locked
         )
-        returning id, workspace_id, canal_id, corpo, tentativas`,
+        returning id, workspace_id, canal_id, corpo, tentativas,
+          greatest(0, extract(epoch from (now() - disponivel_em)) * 1000)::float8 as espera_ms`,
       [opcoes.workerId],
     );
     return r.rows[0];
@@ -229,7 +264,7 @@ export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada):
     }
   }
 
-  async function processar(linha: LinhaReivindicada): Promise<Desfecho> {
+  async function processar(linha: LinhaReivindicada, etapas: Etapas): Promise<Desfecho> {
     const canal = await criarRepositorioDeCanaisPg(pool()).obter(linha.workspace_id, linha.canal_id);
     if (!canal) return { tipo: "recusada", codigo: "CANAL_NAO_ENCONTRADO" };
     // Arquivado depois da chamada: sem provedor para ele (um Canal arquivado nunca é simulado), e o
@@ -244,6 +279,7 @@ export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada):
     const resultados = new Set<string>();
     let recusa: string | undefined;
     let mensagens = 0;
+    let midiaPendente = false;
     for (const evento of eventos) {
       if (evento.tipo === "mensagem") {
         const { tipo: _tipo, ...recebida } = evento;
@@ -252,7 +288,15 @@ export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada):
           (recebida.anexos ?? []).length > 0
             ? await guardaDeMidia.guardarAnexosRecebidos({ workspaceId: linha.workspace_id, canal: paraOProvedor, provedor, anexos: recebida.anexos ?? [] })
             : undefined;
+        if (guardados) {
+          etapas.anexos += guardados.anexos.length;
+          etapas.baixarMs += guardados.baixarMs;
+          etapas.subirMs += guardados.subirMs;
+          if (guardados.algumTransitorio) midiaPendente = true;
+        }
+        const inicioDaTransacao = performance.now();
         const r = await recebimento.receberMensagem(linha.workspace_id, linha.canal_id, recebida, guardados ? { anexos: guardados.anexos } : undefined);
+        etapas.transacaoMs += performance.now() - inicioDaTransacao;
         if (r.ok) mensagens += 1;
         else recusa ??= r.codigo ?? `RECUSADA_${r.status}`;
       } else if (evento.tipo === "ignorado") {
@@ -271,7 +315,7 @@ export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada):
       }
     }
     if (recusa !== undefined) return { tipo: "recusada", codigo: recusa };
-    return { tipo: "processado", resultado: resultados.size > 0 ? [...resultados].join(",") : null, eventos: eventos.length, mensagens };
+    return { tipo: "processado", resultados: [...resultados], eventos: eventos.length, mensagens, midiaPendente };
   }
 
   async function marcarProcessado(id: string, resultado: string | null): Promise<void> {
@@ -287,6 +331,17 @@ export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada):
     await pool().query(
       "update plataforma.webhooks_recebidos set estado = 'falhou', ultimo_erro = $2, locked_at = null, locked_by = null where id = $1",
       [id, codigo],
+    );
+  }
+
+  /** A mídia falhou por causa que pode passar: a linha volta a `pendente` na escada de `backoff()` e a próxima passada completa o anexo. */
+  async function marcarMidiaPendente(linha: LinhaReivindicada): Promise<void> {
+    const disponivelEm = new Date(relogio.agora().getTime() + backoff(linha.tentativas));
+    await pool().query(
+      `update plataforma.webhooks_recebidos
+          set estado = 'pendente', disponivel_em = $2, resultado = $3, ultimo_erro = null, locked_at = null, locked_by = null
+        where id = $1`,
+      [linha.id, disponivelEm.toISOString(), RESULTADO_MIDIA_PENDENTE],
     );
   }
 
@@ -320,18 +375,35 @@ export function criarProcessadorDeEntrada(opcoes: OpcoesDoProcessadorDeEntrada):
     await devolverTravasVencidas();
     const linha = await reivindicar();
     if (!linha) return false;
+    const inicio = performance.now();
+    const etapas: Etapas = { baixarMs: 0, subirMs: 0, transacaoMs: 0, anexos: 0 };
     try {
-      const desfecho = await processar(linha);
+      const desfecho = await processar(linha, etapas);
       if (desfecho.tipo === "recusada") {
         await marcarRecusada(linha.id, desfecho.codigo);
         registrar("warn", "chamada da fila de entrada recusada", { id: linha.id, codigo: desfecho.codigo });
+      } else if (desfecho.midiaPendente && linha.tentativas < TENTATIVAS_DA_MIDIA) {
+        // A Mensagem já está gravada (com o anexo `baixado: false`); a próxima passada só completa o anexo.
+        await marcarMidiaPendente(linha);
+        registrar("info", "mídia da fila de entrada adiada para nova passada", { id: linha.id, tentativa: linha.tentativas });
       } else {
-        await marcarProcessado(linha.id, desfecho.resultado);
+        const resultados = desfecho.midiaPendente ? [...desfecho.resultados, RESULTADO_MIDIA_INDISPONIVEL] : desfecho.resultados;
+        await marcarProcessado(linha.id, resultados.length > 0 ? resultados.join(",") : null);
         registrar("info", "chamada da fila de entrada processada", { id: linha.id, eventos: desfecho.eventos, mensagens: desfecho.mensagens });
       }
     } catch (erro) {
       await marcarTransitoria(linha, erro);
     }
+    // Uma linha por chamada, só o id da linha e números (T-16-40): nenhum telefone, texto, nome de arquivo nem referência.
+    registrar("info", "mensageria.etapas", {
+      webhookId: linha.id,
+      esperaMs: Math.round(linha.espera_ms),
+      baixarMs: Math.round(etapas.baixarMs),
+      subirMs: Math.round(etapas.subirMs),
+      transacaoMs: Math.round(etapas.transacaoMs),
+      totalMs: Math.round(linha.espera_ms + (performance.now() - inicio)),
+      anexos: etapas.anexos,
+    });
     return true;
   }
 

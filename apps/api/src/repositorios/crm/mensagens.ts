@@ -15,7 +15,8 @@
  * único lugar que escreve e lê `carga_bruta`. 16-05 acrescenta `obter`,
  * `gravarEnvio` e `marcarFalha`: o desfecho da entrega pelo provedor. 16-06 acrescenta
  * `voltarParaPendente` ("Tentar de novo") e `atualizarStatusDeEntrega` (o status que o provedor informa): as únicas
- * mudanças de status que o repositório faz.
+ * mudanças de status que o repositório faz. 16-10 acrescenta `completarAnexos` (a mídia recebida que baixou numa passada
+ * seguinte): a única mudança de anexo, e só na `recebida`.
  */
 
 import type { Pool, PoolClient } from "pg";
@@ -113,6 +114,11 @@ export interface RepositorioDeMensagens {
     em: string,
     motivo?: string,
   ): Promise<{ readonly mensagem: Mensagem; readonly mudou: boolean } | undefined>;
+  /**
+   * A entrada de mídia (16-10): troca a lista de anexos de uma Mensagem `recebida` já gravada (a mídia que não tinha baixado
+   * e agora baixou). SÓ de `recebida`: o anexo da `enviada` nasce pronto e nunca muda. `undefined` quando não há essa Mensagem.
+   */
+  completarAnexos(workspaceId: string, id: string, anexos: readonly AnexoDaMensagem[]): Promise<Mensagem | undefined>;
   /**
    * O payload cru do provedor. SÓ ingestão e teste — nunca rota (A9): é dado
    * pessoal e a anonimização futura precisa zerá-lo.
@@ -348,6 +354,17 @@ export function criarRepositorioDeMensagensPg(cliente: Pool | PoolClient): Repos
         [workspaceId, mensagem.id, proximo, em, proximo === "falhou" ? (motivo ?? null) : null],
       );
       return { mensagem: linhaParaMensagem(rows[0]!), mudou: true };
+    },
+
+    async completarAnexos(workspaceId, id, anexos) {
+      const { rows } = await cliente.query<LinhaDoBancoDeMensagem>(
+        `update plataforma.mensagens
+            set anexos = $3::jsonb
+          where workspace_id = $1 and id = $2 and direcao = 'recebida'
+          returning ${COLUNAS_DE_MENSAGEM}`,
+        [workspaceId, id, JSON.stringify(anexos)],
+      );
+      return rows[0] ? linhaParaMensagem(rows[0]) : undefined;
     },
 
     async cargaBruta(workspaceId, id) {

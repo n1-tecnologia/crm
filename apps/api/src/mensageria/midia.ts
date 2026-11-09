@@ -24,7 +24,7 @@ import type { AnexoRecebidoDoProvedor } from "@n1/dominio/crm/recebimento";
 import { TIPOS_ACEITOS_NA_MENSAGEM, normalizarTipoDeMidia, tetoDaMidia } from "@n1/dominio/crm/midia";
 import { armazenamentoDeAnexosPadrao, type ArmazenamentoDeAnexos } from "../servicos/armazenamento-de-anexos";
 import { assinaturaConfereComTipo } from "../servicos/storage-uploads";
-import type { CanalParaProvedor, ProvedorDeMensageria } from "./provedor";
+import { ErroDeProvedor, type CanalParaProvedor, type ProvedorDeMensageria } from "./provedor";
 
 export interface DependenciasDoGuardaDeMidia {
   /** O bucket. Padrão: o do Supabase (só é tocado quando um anexo chega); os testes injetam `criarArmazenamentoFalso()`. */
@@ -54,6 +54,15 @@ export interface GuardaDeMidia {
 
 const ACEITOS: ReadonlySet<string> = new Set(TIPOS_ACEITOS_NA_MENSAGEM);
 
+/**
+ * O que pode passar sozinho: o provedor fora do ar, rede, tempo esgotado, 5xx e o bucket fora do ar. A mídia que o provedor
+ * já não tem (`MIDIA_INDISPONIVEL`), a que passa do teto (`MIDIA_GRANDE_DEMAIS`) e a credencial ausente não mudam com o tempo.
+ */
+function ehTransitorio(erro: unknown): boolean {
+  if (erro instanceof ErroDeProvedor) return erro.codigo === "PROVEDOR_INDISPONIVEL";
+  return true;
+}
+
 export function criarGuardaDeMidia(deps: DependenciasDoGuardaDeMidia = {}): GuardaDeMidia {
   // Criar o padrão não abre conexão nem lê variável: só tocar nele o faz.
   const armazenamento = deps.armazenamento ?? armazenamentoDeAnexosPadrao();
@@ -62,36 +71,50 @@ export function criarGuardaDeMidia(deps: DependenciasDoGuardaDeMidia = {}): Guar
   return {
     async guardarAnexosRecebidos({ workspaceId, canal, provedor, anexos }) {
       const guardados: AnexoDaMensagem[] = [];
+      let algumTransitorio = false;
       let baixarMs = 0;
       let subirMs = 0;
 
       for (const anexo of anexos) {
         const declarado = normalizarTipoDeMidia(anexo.tipoDeMidia);
+        // O que a Mensagem mostra quando o arquivo não pôde ser guardado: o atendente vê que o cliente mandou um arquivo.
         const indisponivel: AnexoDaMensagem = { tipoDeMidia: declarado, nome: anexo.nome, referenciaExterna: anexo.referenciaNoProvedor, baixado: false };
         if (!ACEITOS.has(declarado)) {
           guardados.push(indisponivel);
           continue;
         }
 
-        const inicioDoDownload = performance.now();
-        const midia = await provedor.baixarMidia(canal, anexo.referenciaNoProvedor, { tetoBytes: tetoDoTipo(declarado) });
-        baixarMs += performance.now() - inicioDoDownload;
+        let etapa: "baixar" | "subir" = "baixar";
+        let inicio = performance.now();
+        try {
+          const teto = tetoDoTipo(declarado);
+          const midia = await provedor.baixarMidia(canal, anexo.referenciaNoProvedor, { tetoBytes: teto });
+          baixarMs += performance.now() - inicio;
 
-        const tipo = normalizarTipoDeMidia(midia.tipoDeMidia);
-        if (!ACEITOS.has(tipo) || !assinaturaConfereComTipo(midia.bytes, tipo)) {
+          // O provedor devolve o que quiser: o tipo e o conteúdo são conferidos de novo, e o teto também.
+          const tipo = normalizarTipoDeMidia(midia.tipoDeMidia);
+          if (!ACEITOS.has(tipo) || midia.bytes.byteLength > tetoDoTipo(tipo) || !assinaturaConfereComTipo(midia.bytes, tipo)) {
+            guardados.push(indisponivel);
+            continue;
+          }
+
+          etapa = "subir";
+          inicio = performance.now();
+          const objectKey = `workspace/${workspaceId}/entrada/${canal.canal.id}/${randomUUID()}`;
+          await armazenamento.subir(objectKey, midia.bytes, tipo);
+          subirMs += performance.now() - inicio;
+
+          guardados.push({ tipoDeMidia: tipo, nome: anexo.nome, objectKey, tamanhoBytes: midia.bytes.byteLength, baixado: true });
+        } catch (erro) {
+          if (etapa === "baixar") baixarMs += performance.now() - inicio;
+          else subirMs += performance.now() - inicio;
+          // Falha do bucket no upload é sempre transitória; no download, depende do que o provedor disse.
+          if (etapa === "subir" || ehTransitorio(erro)) algumTransitorio = true;
           guardados.push(indisponivel);
-          continue;
         }
-
-        const objectKey = `workspace/${workspaceId}/entrada/${canal.canal.id}/${randomUUID()}`;
-        const inicioDoUpload = performance.now();
-        await armazenamento.subir(objectKey, midia.bytes, tipo);
-        subirMs += performance.now() - inicioDoUpload;
-
-        guardados.push({ tipoDeMidia: tipo, nome: anexo.nome, objectKey, tamanhoBytes: midia.bytes.byteLength, baixado: true });
       }
 
-      return { anexos: guardados, algumTransitorio: false, baixarMs, subirMs };
+      return { anexos: guardados, algumTransitorio, baixarMs, subirMs };
     },
   };
 }

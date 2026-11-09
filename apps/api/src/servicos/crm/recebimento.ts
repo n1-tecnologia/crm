@@ -7,7 +7,8 @@
  * Ordem dentro da transação:
  *   1. o Canal vem de `(workspaceId, canalId)` de QUEM CHAMA — nunca do evento (T-16-01);
  *   2. o mesmo `idExterno` no mesmo Canal já gravado devolve a existente com `repetida: true` e não
- *      grava nada (INV-CXE-08);
+ *      grava Contato, Conversa nem Mensagem (INV-CXE-08); só completa o anexo que estava `baixado: false` quando a
+ *      entrada de mídia (16-10) o trouxe pronto numa passada seguinte;
  *   3. o Contato é achado por `detentorDoIdentificador` com o valor NORMALIZADO exato, ou criado com
  *      `modo_criacao = 'automatico_mensagem'`. Nada de casar por semelhança ou variante do nono dígito
  *      (T-16-03, 4.4.3 é da Sessão 4): a conversa de uma pessoa nunca cai no Contato de outra;
@@ -99,6 +100,23 @@ function ehErroDaCorrida(erro: unknown): boolean {
   return code === "23505" && typeof constraint === "string" && CONSTRAINTS_DA_CORRIDA.has(constraint);
 }
 
+/**
+ * Os anexos da Mensagem já gravada com o que a passada nova baixou: só entra o anexo que estava `baixado: false` e agora veio
+ * `baixado: true`. Um anexo já guardado nunca é trocado (a passada nova subiu outro objeto, que a coleta de órfãos apaga) nem
+ * volta atrás. `undefined` quando nada mudou.
+ */
+function completarComOsNovos(atuais: readonly AnexoDaMensagem[], novos: readonly AnexoDaMensagem[] | undefined): readonly AnexoDaMensagem[] | undefined {
+  if (!novos) return undefined;
+  let mudou = false;
+  const completos = atuais.map((atual, i) => {
+    const novo = novos[i];
+    if (atual.baixado || !novo?.baixado) return atual;
+    mudou = true;
+    return novo;
+  });
+  return mudou ? completos : undefined;
+}
+
 /** `inbox.reopenWindowHours` do Espaço (coleção `inbox` de `plataforma.registros`); ausente ou inválido, o padrão do seed. */
 async function janelaDeReaberturaHoras(cliente: PoolClient, workspaceId: string): Promise<number> {
   const { rows } = await cliente.query<{ horas: string | null }>(
@@ -155,8 +173,18 @@ async function processar(
   if (existente) {
     const daExistente = await conversas.obter(workspaceId, existente.conversaId);
     if (!daExistente) return recusa<never>(404, "Conversa não encontrada.", { codigo: "CONVERSA_NAO_ENCONTRADA" });
+    // 16-10: a mídia que não tinha baixado e agora baixou completa o anexo da Mensagem já gravada (nunca grava outra).
+    let mensagem = existente;
+    const completados = completarComOsNovos(existente.anexos, opcoes.anexos);
+    if (completados) {
+      const atualizada = await mensagens.completarAnexos(workspaceId, existente.id, completados);
+      if (atualizada) {
+        mensagem = atualizada;
+        await avisarCrm(cliente, { workspaceId, tipo: "mensagem.status", conversaId: existente.conversaId, mensagemId: existente.id });
+      }
+    }
     return sucesso({
-      mensagem: existente,
+      mensagem,
       conversa: daExistente,
       contatoId: daExistente.contatoId,
       contatoNovo: false,
