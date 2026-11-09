@@ -137,6 +137,27 @@ describe("provedor de teste: interpretarChamada — sem banco", () => {
   });
 });
 
+describe("provedor de teste: enviar — sem banco", () => {
+  const envio = { mensagemId: "m1", destino: { tipo: "whatsapp", valor: "+5511987654321" }, conteudo: "oi" } as const;
+
+  it("Canal simulado: grava o envio e devolve um idExterno de teste", async () => {
+    provedorDeTeste.limpar();
+    const r = await provedorDeTeste.enviar(paraProvedor("s1"), envio);
+    expect(r).toMatchObject({ ok: true });
+    expect(r.ok && r.idExterno).toMatch(/^teste-/);
+    expect(provedorDeTeste.enviados).toHaveLength(1);
+    provedorDeTeste.limpar();
+  });
+
+  it("Canal real nunca é dado como enviado pelo provedor de teste (MSG-05)", async () => {
+    provedorDeTeste.limpar();
+    const real: CanalParaProvedor = { workspaceId: "ws_x", canal: canalDeMentira({ conexaoSimulada: false }) };
+    const r = await provedorDeTeste.enviar(real, envio);
+    expect(r).toMatchObject({ ok: false, transitorio: false, codigo: "PROVEDOR_INDISPONIVEL" });
+    expect(provedorDeTeste.enviados).toHaveLength(0);
+  });
+});
+
 describeComBanco("canalParaProvedor + provedorDoCanal — Postgres local", () => {
   const espacos: string[] = [];
 
