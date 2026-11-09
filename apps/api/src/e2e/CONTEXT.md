@@ -140,7 +140,8 @@ os dois como Canais relacionais sem gravar `channels` em `plataforma.registros`
 24 h o oficial recusa texto livre (409 `JANELA_EXPIRADA`) e o não oficial envia
 (D-02); depois de "Desconectar" a Mensagem nasce `pendente` (B69); Membro não
 conecta (B35) e um Membro de outro Espaço recebe 404 e lista vazia. A recebida
-entra por `registrarRecebida` (não há rota humana) e nenhuma resposta leva
+entrava por `registrarRecebida` (não há rota humana); desde a Fase 16 esse gesto saiu e a
+recebida entra por `receberMensagem` (ver "A mensageria da Fase 16", abaixo). Nenhuma resposta leva
 `carga_bruta`.
 
 Roda **só contra Postgres local** (`testes/banco-crm.ts`: `describeComBanco`
@@ -151,3 +152,34 @@ pula fora de `localhost`/`127.0.0.1`, nunca toca o pooler do Supabase). Containe
 TZ=America/Sao_Paulo DATABASE_URL=postgres://postgres:x@localhost:55593/postgres \
   npx vitest run src/e2e/canais-fluxo.test.ts
 ```
+
+## A mensageria da Fase 16 — cinco cenários, um Postgres de Docker cada
+
+Os cinco arquivos `mensageria*.test.ts` provam a Fase 16 do lado do servidor. Todos rodam **só contra Postgres
+local** (`describeComBanco` pula fora de `localhost`), com a `013` aplicada (`npm run migrar`), e nenhum fala com
+Supabase Storage, pooler, Evolution ou WhatsApp reais: o provedor é o de teste ou o servidor falso
+(`../testes/servidor-falso.ts`), e o bucket é `../testes/armazenamento-falso.ts`. Cada arquivo traz no cabeçalho a
+porta do Docker com que foi desenvolvido (um container `postgres:16` por arquivo evita um depender do outro); o que
+vale é a variável `DATABASE_URL`, qualquer porta serve.
+
+| Arquivo | Porta | O que prova |
+|---|---|---|
+| `mensageria-entrada.test.ts` | 55718 | `POST /webhooks/mensageria/:canalId` de um Canal simulado grava UMA linha `pendente` em `webhooks_recebidos` e responde 200; o processador cria Contato, Conversa e Mensagem; sem o cabeçalho do segredo, 401 e nada gravado (MSG-01). |
+| `mensageria.test.ts` | 55720 | A resposta escrita na Caixa entra na fila como `mensagem.enviar.v1`, o worker de saída a entrega pelo provedor de teste e a Mensagem fica `enviada` com o `id_externo`; erro transitório volta à fila e nenhuma chamada sai por HTTP (MSG-02). |
+| `mensageria-tempo-real.test.ts` | 55722 | `pg_notify` no cliente da transação, uma conexão `LISTEN` e o hub entregam `GET /eventos` por SSE só ao Espaço do evento; o app escuta numa porta de verdade (`inject` não serve a fluxo) e cada "aba" é um `fetch` que lê o corpo em fluxo (MSG-03). |
+| `mensageria-midia.test.ts` | 55725 | O áudio recebido vira Mensagem com o arquivo JÁ guardado (chave de `entrada/`) e continua abrindo por `GET /mensagens/:id/anexos/0` depois de o provedor esquecer a mídia; a imagem anexada na Caixa chega ao provedor com a URL assinada (MSG-04). |
+| `mensageria-evolution.test.ts` | 55727 | Canal REAL `whatsapp-nao-oficial` com segredo e credencial no cofre: o `MESSAGES_UPSERT` de texto entra pelo webhook e a resposta sai por `POST /message/sendText/<instancia>` no falso; o segredo certo com a instância de outro Canal recebe 401 (MSG-06). |
+
+Este é o jeito de rodar um deles (a `013` primeiro):
+
+```
+docker run -d --rm --name crm-n1-pg-teste -e POSTGRES_PASSWORD=x -p 55729:5432 postgres:16
+(cd apps/api && DATABASE_URL=postgres://postgres:x@localhost:55729/postgres \
+  DATABASE_URL_MIGRACAO=postgres://postgres:x@localhost:55729/postgres npm run --silent migrar)
+DATABASE_URL=postgres://postgres:x@localhost:55729/postgres \
+  DATABASE_URL_MIGRACAO=postgres://postgres:x@localhost:55729/postgres \
+  npx vitest run src/e2e/mensageria-evolution.test.ts
+```
+
+O que ficou fora do e2e, por só existir ao vivo: a Evolution, o Storage e o pooler reais, o `X-Accel-Buffering` do
+nginx e o Safari tocando o áudio do WhatsApp. É a prova do dono em 16-15 e 16-16.

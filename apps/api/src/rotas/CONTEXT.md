@@ -425,7 +425,10 @@ regra"). As tabelas são as da `008-canais-conversas-mensagens.sql`
 | `POST /conversas/:id/lixeira`, `/restaurar` | manda a Conversa `resolvida` para a lixeira guardando `naLixeiraEm`; volta para `ativo` e zera a data (3.2.6); sem corpo | ações `enviar_para_lixeira` e `restaurar` em `conversa` |
 | `PUT /conversas/:id/marcacao` | estrela e leitura do PRÓPRIO Membro: `{ estrela?, lidaAte? }` (ao menos um); devolve `{ estrela, lidaAte }` | ação `editar` em `conversa` |
 | `GET /mensagens?conversaId=` | o fio, por `(criado_em, seq)` | quem lê Mensagem |
-| `POST /mensagens` | envia (`enviada`) ou anota (`interna`) — 201 | quem envia Mensagem |
+| `POST /mensagens` | envia (`enviada`) ou anota (`interna`) — 201; com `anexos: [{ submissionId, objectId }]` e `conteudo` vazio, confirma o arquivo e consome a sessão no mesmo `comTransacao` (Fase 16) | quem envia Mensagem |
+| `POST /mensagens/anexos` | o ticket para subir um arquivo ao bucket (a chave nasce no servidor, sessão `conversa-<id>`) — 200 | quem envia Mensagem |
+| `GET /mensagens/:id/anexos/:indice` | uma URL assinada NOVA do anexo (TTL 5 min; documento só baixa) — 200 | quem lê Mensagem |
+| `POST /mensagens/:id/reenviar` | "Tentar de novo": só a `enviada` com `falhou` volta a `pendente` e à fila — 200 com a Mensagem | quem envia Mensagem |
 
 Não há `DELETE` em `/canais`: Canal não tem lixeira (DO-CXE-03), arquivar é o
 fim de uso. As ações sem corpo (`simular-conexao`, `desconectar`, `arquivar`,
@@ -533,6 +536,45 @@ deste plugin guarda os bytes, encapsulado, e não vaza para as outras rotas); se
 ele aceita e avisa no log.
 
 **Não grava nada e não cria Mensagem.** O formato do payload ainda será validado;
-quando for, a porta é `registrarRecebida` do serviço de Mensagens (idempotente por
-Canal + id externo). O log leva o corpo inteiro — número e texto de quem escreveu —
+quando for, a porta é `receberMensagem` (`servicos/crm/recebimento.ts`; o gesto
+`registrarRecebida` saiu na Fase 16), pela rota por Canal e pela fila de entrada
+abaixo, e não por aqui: esta rota fica como está até as Sessões 7 e 8 (D-16-07).
+O log leva o corpo inteiro — número e texto de quem escreveu —
 e deve ser reduzido quando o formato estiver conhecido.
+
+## Webhook de mensageria por Canal e tempo real (Fase 16)
+
+**`POST /webhooks/mensageria/:canalId`** (`webhooks-de-mensageria.ts`, `rotasDeWebhooksDeMensageria`): o endereço
+que um provedor chama para entregar o que chegou. É **pública** (`config: { publica: true }`), sem `Authorization:
+Bearer`: a confiança é o segredo do Canal no cabeçalho `x-n1-webhook-segredo`, guardado no cofre e conferido pelo
+provedor do Canal (`verificarChamada`). Plugin próprio, irmão do de Meta (parser de corpo cru encapsulado), fora de
+`rotasDeCrm`. A rota acha o Canal só pelo `id` da URL (o Espaço vem da linha do Canal, nunca do cliente), resolve o
+provedor pelo Canal, verifica e grava UMA linha `pendente` em `plataforma.webhooks_recebidos` (a `chave` deduplica o
+reenvio), responde 200 e acorda o processador de entrada; nada é processado dentro da requisição.
+
+- **A mesma 401 para toda recusa** (`{ ok: false, error: "Não autorizado." }`): Canal inexistente, ambíguo entre
+  Espaços, arquivado, sem segredo, sem provedor ou com segredo errado (inclusive o segredo certo com a instância de
+  outro Canal). Toda recusa roda uma comparação em tempo constante contra um valor de sombra. Falha de banco é 500
+  (o provedor reenvia), não 401.
+- Teto por IP de 300 por minuto no `onRequest` (429, antes de ler corpo ou consultar), corpo de até 2 MiB (413), JSON
+  inválido 400. A chave `apikey` do topo do corpo é retirada antes do `insert`. Nada loga corpo, cabeçalho ou segredo.
+- A rota **nunca importa `servicos/cofre`** (o `cofre.test.ts` impede): a chave mestra é lida por
+  `mensageria/registro.ts`.
+
+**`GET /eventos`** (`eventos.ts`, `rotasDeEventos`): o fluxo SSE (`text/event-stream`) do tempo real, entregue por
+`reply.send(PassThrough)` para o CORS do Fastify valer. **Exige JWT** (`Authorization: Bearer`, por `fetch`, não
+`EventSource`): 401 sem token, 403 `PERMISSAO` quando o Papel não lê Conversa, 503 `TEMPO_REAL_INDISPONIVEL` sem o
+ouvinte `LISTEN` de pé (ou com `TEMPO_REAL_ATIVO=false`). Abre com `: aberto`, bate `: batida` a cada 25 s (abaixo do
+`proxy_read_timeout` de 120 s do nginx; `X-Accel-Buffering: no` desliga o buffer dele), fecha sozinho em 45 min (o JWT
+só é conferido ao abrir; a aba reconecta com o token renovado) e a aba lenta cai ao passar de 64 KiB pendentes. Cada
+quadro é `data: {"tipo","conversaId","mensagemId?"}` (ids e tipo, nunca texto): a tela busca o resto pelas rotas que
+conferem o acesso. No máximo 5 fluxos por Membro; o hub reconfere o Papel a cada 60 s.
+
+**Os 422 e 404 dos anexos** (`POST /mensagens` e `POST /mensagens/anexos`): `ANEXO_DE_OUTRA_CONVERSA`,
+`ANEXO_NAO_ENCONTRADO`, `ARQUIVO_GRANDE_DEMAIS`, `TIPO_NAO_ACEITO`, `TIPO_NAO_ENVIADO_PELO_CANAL`,
+`ARQUIVO_NAO_CONFERE` e `ARQUIVO_AUSENTE` respondem 422; `ANEXO_JA_USADO` responde 409; `ARQUIVO_INDISPONIVEL` (404) é
+o anexo recebido que o provedor não entregou (`baixado: false`).
+
+**`POST /mensagens/:id/reenviar`**: 409 `NAO_FALHOU` (a Mensagem não está `falhou`, com a frase de produto),
+409 `CONVERSA_NA_LIXEIRA`, 409 `CANAL_ARQUIVADO`, 404 para Mensagem ausente ou de outro Espaço e 403 para quem não
+envia ou está suspenso. Canal fora do ar só devolve a Mensagem a `pendente` (a fila espera a reconexão).

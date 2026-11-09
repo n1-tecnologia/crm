@@ -137,8 +137,8 @@ de mesmo nome virou uma Pasta comum.
 A migração `012` (`apps/api/migracoes/012-atividade-do-crm.sql`) acrescenta
 `plataforma.crm_atividades`, o Registro de Atividade do CRM novo (só inserção,
 gravado no mesmo commit do gesto); `GET /atividades` e a Auditoria juntam essa
-linha do tempo com a de `state.activity`. A `012` só existe em bancos locais:
-ela entra em produção no corte. O script de dados é
+linha do tempo com a de `state.activity`. A `012` entrou em produção no corte de
+2026-11-07 (abaixo). O script de dados é
 `npm run migrar:crm-antigo -w @n1/api -- --espaco <id> --seco|--guardar|--migrar|--verificar`
 (`apps/api/src/migracao-crm/CONTEXT.md`): copia o CRM antigo de um Espaço para
 `plataforma.registros_crm_antigo`, confere e só então o apaga de `registros`,
@@ -147,14 +147,54 @@ preservados. É temporário, e quem publica deve rodá-lo **antes** de subir est
 versão: uma linha antiga que sobra em `registros` volta como chave desconhecida
 em `GET /estado` até ser apagada.
 
-**O corte em produção é só do dono e ainda não aconteceu.** O roteiro literal
-(backup, `--seco` por Espaço, aprovação do relatório, `migrar`, `--guardar` nos
-17 Espaços de teste, `--migrar` no `ws_n1`, `--verificar`, `publicar.sh`, push
-da web) está em
+**O corte em produção foi feito em 2026-11-07** e verificado: backup do schema
+`plataforma`, `--seco` nos 19 Espaços, `migrar` (a `012`), `--guardar` nos 17
+Espaços de teste e no vazio, `--migrar --funil=guardar` no `ws_n1`, `--verificar`
+(19 de 19 iguais), `publicar.sh` (API no SHA `20b4d01`) e push da web. Quem rodou
+foi o assistente, por pedido escrito do dono. O que ele **não** provou: nenhuma tela
+foi aberta num navegador autenticado e o 404 das operações antigas só está provado
+nos testes. O roteiro literal está em
 `.planning/phases/15-unifica-o-do-crm-telas-no-modelo-novo-e-remo-o-do-modelo-ant/15-CORTE.md`;
-o ensaio com a cópia dos dados reais, em `15-ENSAIO.md`, e as provas, as
-suposições e o que o dono ainda decide, em `15-PROVAS.md` da mesma pasta. Não
-existe script de desfazer: voltar é restaurar o backup do corte.
+o relato do corte, as suposições e o que o dono ainda decide, em `15-PROVAS.md` da
+mesma pasta (seção "Corte em produção"). Não existe script de desfazer: voltar é
+restaurar o backup do corte.
+
+A partir da Fase 16, a mensageria do CRM nasce em `apps/api/src/mensageria/`,
+sobre o domínio, e dá ao Canal o caminho de entrada e o de saída de uma Mensagem
+de verdade. A migração `013` (`apps/api/migracoes/013-mensageria.sql`) cria
+`plataforma.webhooks_recebidos`, a fila de entrada, e o índice único do
+`mensagem.enviar.v1` no outbox. A mensagem recebida entra por
+`POST /webhooks/mensageria/:canalId` (rota pública, um endereço por Canal, segredo
+do Canal no cabeçalho `x-n1-webhook-segredo`, a mesma 401 para toda recusa) e pelo
+**processador de entrada**, que cria Contato, Conversa e Mensagem por
+`receberMensagem` (o gesto `registrarRecebida` saiu) e também trata o status de
+entrega e o evento de conexão. A resposta escrita na Caixa nasce `pendente`, grava
+`mensagem.enviar.v1` no mesmo commit e sai pelo **worker de saída**, que entrega pelo
+provedor do Canal; resposta ambígua nunca é reenviada sozinha e "Tentar de novo" é
+`POST /mensagens/:id/reenviar`. Os dois workers sobem pela mesma flag,
+`MENSAGERIA_WORKER_ATIVO=true`, e a unidade de produção a fixa em `false`. O tempo
+real é `GET /eventos`, um fluxo SSE do próprio `apps/api` alimentado por
+`LISTEN/NOTIFY` do Postgres (D-16-01): cada aba só recebe o que o Membro pode ler, e
+a tela soma o fluxo à releitura por revisão de 5 s, que continua de reserva. O
+anexo da Mensagem aponta para um arquivo no bucket (áudio, vídeo, documento e
+imagem, com assinatura conferida; a mídia recebida é baixada e guardada em
+`entrada/`) e uma coleta diária apaga os órfãos (`COLETA_DE_ORFAOS_ATIVA`). O
+provedor de teste só vale para Canal simulado, com segredo próprio no cofre
+(D-16-03). Um adaptador mínimo da Evolution (`provedores/evolution/`, registrado só
+com `EVOLUTION_URL`) recebe e envia texto e mídia de um Canal real, e quem liga o
+Canal a uma instância é `npm run canal:ligar-evolution -w @n1/api -- --canal <id>
+--instancia <nome>`, que recusa a instância `numeropvmarcos` (é do `automation/`).
+Ficam para a Sessão 4 o QR code e o botão "Conectar", a mensagem que a pessoa
+digita no celular, o status de entrega e a conexão vindos da Evolution, e o nono
+dígito. Ver `apps/api/src/mensageria/CONTEXT.md`.
+
+**A `013` só existe em bancos locais.** Entra em produção só pela publicação do
+dono, com backup manual do schema `plataforma` antes e `npm run migrar -w @n1/api
+-- --seco` primeiro. **O que não está provado:** nada da fase rodou contra o
+Supabase Storage, o pooler de produção (a suposição A9, de que o pooler em modo
+sessão entrega `LISTEN/NOTIFY`) nem a Evolution real; tudo foi provado com o
+provedor de teste, o servidor falso da Evolution e um Postgres 16 de Docker. Isso
+é a prova ao vivo do dono, nos planos 16-15 e 16-16.
 
 ## Comandos
 

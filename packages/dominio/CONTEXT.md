@@ -998,3 +998,29 @@ da última recebida; se não serve, o primeiro do mesmo tipo; senão o primeiro)
 Conversas não traz a última Mensagem de qualquer direção, só `ultimaRecebidaEm`: "a Conversa mais
 recente" é a de maior entre `ultimaRecebidaEm` e `atualizadoEm`, e Conversa na lixeira não conta. As
 funções antigas saíram de `derive-conversacional.ts` no 15-42.
+
+**A mensageria no domínio (Fase 16).** Três módulos novos de `src/crm/` (sem barril) levam para o domínio o que a
+`apps/api` e a tela leem igual, e um acréscimo em `crm/canais.ts`:
+
+- `crm/recebimento.ts` (`@n1/dominio/crm/recebimento`): `RecebidaDoProvedor` (o evento de mensagem que o provedor
+  entrega: remetente, conteúdo, anexos, `idExterno`, `criadoEm`; sem `workspaceId`, o Espaço vem do Canal) e as duas
+  decisões puras de `receberMensagem`: `destinoDaRecebida` (RN-CXE-09: usa a aberta ou pendente, reabre a última
+  resolvida dentro da janela do Espaço, `JANELA_DE_REABERTURA_PADRAO_HORAS = 72`, ou abre outra; a lixeira nunca
+  reabre) e `contatoDaRecebida` (RN-CON-13: arquivado e na lixeira reativam, o mesclado é recusado).
+- `crm/eventos.ts` (`@n1/dominio/crm/eventos`): `EventoDoCrm` (`mensagem.nova`, `mensagem.status`, `conversa.mudou`;
+  só ids, nunca texto, nome nem telefone) e `EventoParaATela` (sem `workspaceId`), com `lerEventoDoCrm` e
+  `lerEventoParaATela`, que recusam campo a mais, id vazio e id com mais de 64 caracteres: a api (que escreve o
+  NOTIFY e o fluxo SSE) e a web (que lê o fluxo) usam a mesma forma.
+- `crm/midia.ts` (`@n1/dominio/crm/midia`): `TIPOS_ACEITOS_NA_MENSAGEM` (17 tipos; só da Mensagem, o Formulário
+  mantém a lista dele), `normalizarTipoDeMidia` (`audio/ogg; codecs=opus` vira `audio/ogg`), `categoriaDaMidia`,
+  `tiposAceitosParaOCanal(sendableMediaTypes)` (o seletor de arquivo da tela e a recusa da api), `tetoDaMidia` (16 MiB
+  áudio e vídeo, 25 MiB o resto) e `ehDocumento`. O anexo da Mensagem ganhou `objectKey`, `tamanhoBytes` e `baixado`;
+  `validarNovaMensagem` aceita texto OU um anexo (no máximo um) e `validarAnexosDoEnvio` recusa a categoria que o
+  Canal não declara. A assinatura do conteúdo é conferida na api, não aqui.
+- `crm/canais.ts`: `AcaoDeConexao` ganhou `conexao_confirmada` (leva a `conectada` com `conexaoSimulada: false`,
+  aceita o Canal que já está conectado e recusa o arquivado) e `conferirNumeroConectado(canal, numeroDoProvedor)`
+  (o número que o provedor informa é o do Canal, tolerando o nono dígito brasileiro; recusa outro número mostrando só
+  os finais). `conectar` (QR) e `conexao_perdida` ficam para a Sessão 4; juntar Contatos com e sem o nono dígito é a
+  4.4.3. O status de entrega só avança: `proximoStatusDeEntrega` (em `crm/mensagens.ts`) nunca deixa `lida` voltar a
+  `entregue`.
+

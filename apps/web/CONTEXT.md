@@ -485,3 +485,52 @@ antigo são as cinco operações da Conversa de GRUPO (`resolveConversation`, `r
 `assignConversation`, `trashConversation`, `toggleConversationStar`, em `conversa-de-grupo-na-caixa.tsx`
 e na estrela de `inbox-columns.tsx`): Grupo e Flow ficam no modelo antigo até as Sessões 6 e 7 (F14-D-05),
 e estas cinco seguem registradas em `OPERACOES`.
+
+**Entrega e mídia no fio (Fase 16, 16-11, 3.7.3 e 3.9.5).** O fio da 15-20 ganhou três peças, todas em
+`features/crm/`:
+
+- `estado-da-entrega.tsx` (`EstadoDaEntrega`) troca o `· enviada` cru por Enviando…, Enviada, Entregue e Lida; a
+  Mensagem `falhou` mostra "Não enviada", o `motivoFalha` e **"Tentar de novo"**, que é `reenviarMensagem`
+  (`POST /mensagens/:id/reenviar`, em `dados/crm/mensagens.ts`). O botão fica desligado em "Enviando…" enquanto
+  espera, não volta a "Não enviada" antes de a leitura nova chegar, e mostra a frase da api ao lado se ela recusar
+  (`NAO_FALHOU`, `CONVERSA_NA_LIXEIRA`, `CANAL_ARQUIVADO`). Recebe a Mensagem inteira (só usa `id`, `direcao`,
+  `statusEntrega` e `motivoFalha`): quando o tempo real troca o `statusEntrega` no cache, o rótulo acompanha sozinho.
+- `anexo-da-mensagem.tsx` (`AnexoDaMensagemNoFio`) desenha cada anexo abaixo do texto: `<audio controls>`,
+  `<video controls>`, `<img alt=nome>` e, para documento e `video/3gpp`, o link "Baixar nome". O endereço vem de
+  `useUrlDoAnexo(mensagemId, indice, baixado)` (`GET /mensagens/:id/anexos/:indice`, uma URL assinada nova a cada
+  abertura); o erro do player pede a URL de novo uma vez. Anexo `baixado: false` vira "Arquivo indisponível: o
+  provedor não entregou este arquivo." sem chamar a rota, nunca some. A chave SWR do anexo começa por `/mensagens`,
+  então todo `invalidarCrm("/mensagens")` (envio, tempo real) revalida as URLs dos anexos visíveis, uma chamada por
+  anexo.
+- O compositor anexa arquivo de verdade: uma barra por categoria que o Canal aceita (Imagem, Áudio, Vídeo,
+  Documento), com o `accept` dos tipos de `tiposAceitosParaOCanal` (`@n1/dominio/crm/midia`), tipo e teto (16 MiB áudio
+  e vídeo, 25 MiB o resto) conferidos ANTES de subir; depois ticket (`pedirTicketDeAnexo`), `enviarBytesAoBucket`
+  (`dados/envio-ao-bucket.ts`) e `POST /mensagens` com `anexos` e `conteudo` vazio. Falha no bucket ou no ticket mantém
+  o arquivo escolhido. **Não há microfone nem "Visualização única"** (D-16-10: enviar áudio é anexar um arquivo; gravar
+  pelo navegador seria uma decisão nova), e saíram a localização, a figurinha e o Flow do compositor.
+
+**O tempo real na tela (Fase 16, 16-08, 3.8.4, D-16-01 e D-16-02).** `src/dados/tempo-real.ts` abre `GET /eventos`
+da api e revalida as chaves SWR certas a cada evento, para a Mensagem que chega pelo webhook aparecer sem recarregar.
+
+- **`fetch` com `Authorization: Bearer`, não `EventSource`**: a API nativa de fluxo de eventos do navegador não manda
+  cabeçalho, e a api só aceita o JWT do Supabase assim. O corpo é lido em fluxo (`getReader` + `TextDecoder`) por
+  `lerQuadrosSse` (junta o resto e o pedaço, quebra em linha em branco, lê só as linhas `data:`, ignora comentário
+  `: aberto`/`: batida`, JSON inválido e campo a mais). O token é pedido a cada tentativa (401 pega o renovado; sem
+  sessão não chama `fetch`) e nunca vai para a URL nem para log.
+- **Chaves por tipo de evento** (`chavesDoEvento`/`chavesDosEventos`, unidas sem repetir): o evento só revalida listas
+  e o fio (as chaves de `/mensagens`, `/conversas` e o resumo das Tarefas conversacionais); sem toast, som nem título
+  da aba piscando (D-16-02). Os eventos de 300 ms são agrupados (`JANELA_DE_AGRUPAMENTO_MS`).
+- **Releitura completa a cada conexão aberta e a cada 5 s enquanto cai** (`INTERVALO_SEM_TEMPO_REAL_MS`): o fluxo não
+  entrega o que passou no intervalo e não existe evento "ressincronizar", então a tela relê as chaves de base
+  (`CHAVES_DE_BASE`) ao (re)conectar. A reconexão espera `min(1 s × 2^n, 30 s)`; um 503 `TEMPO_REAL_INDISPONIVEL` cai
+  na releitura. A api fecha o fluxo em 45 min e a aba reconecta sozinha.
+- **`invalidarCrmComArrays(prefixo)`** (`dados/crm/cliente-crm.ts`) alcança também a chave em array do resumo das
+  Tarefas; `invalidarCrm` ficou como era e continua sem casar array.
+- **`AcompanhanteDoTempoReal`**, montado no `StoreProvider` ao lado do `AcompanhanteDaRevisao`: **soma** à releitura
+  por revisão do Espaço e não a substitui (os gestos que a api não avisa, como mesclar, sucessão, marcação, troca de
+  Canal e "Simular conexão", só aparecem na outra aba por essa releitura). O padrão de `ativo` é desligado sob o
+  Vitest (`NODE_ENV === "test"`): dezenas de testes de tela montam o `StoreProvider` com um `fetch` falso que conta
+  pedidos, e um `GET /eventos` a mais quebraria a contagem sem o tempo real ter nada a ver com o que provam.
+- **Ainda sem prova ao vivo:** medir as duas abas abaixo de 2 s, derrubar e religar a api, e o `X-Accel-Buffering` atrás
+  do nginx são do dono (16-16); o áudio ogg/opus no Safari (pressuposto A5) idem.
+

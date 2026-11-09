@@ -31,3 +31,14 @@ código que decide a janela de 90 dias ou o backoff do outbox chamando
 `new Date()` diretamente não tem como ser testado sem esperar tempo real;
 recebendo um `Relogio`, o teste avança o tempo com `avancar(ms)` ou pula
 direto para um instante com `definir(instante)`.
+
+## O armazenamento falso (`armazenamento-falso.ts`, Fase 16)
+
+`criarArmazenamentoFalso()` é a mesma porta `ArmazenamentoDeAnexos` (`servicos/armazenamento-de-anexos.ts`) que o
+bucket do Supabase, em memória, para os testes de rota, de mídia e e2e da mensageria rodarem sem rede e sem a
+service role. Nunca chama o Storage real. Confere o que o real confere (o objeto pertence à sessão, existe, respeita
+o teto do tipo e a assinatura do conteúdo bate com o tipo reservado, pela mesma função pura de `storage-uploads.ts`);
+a única diferença de propósito é que a sessão consumida vive em memória e não volta atrás num `rollback`. Os métodos
+depois de `listar` são só do teste (`colocarBytes` faz o papel do navegador subindo o arquivo pelo ticket). Por isso
+**nada da Fase 16 foi provado contra o Storage real**: `storage-uploads.test.ts` é o único teste que o toca, e só
+roda com as chaves do Supabase.

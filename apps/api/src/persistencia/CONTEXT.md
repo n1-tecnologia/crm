@@ -257,6 +257,28 @@ com backup manual do schema `plataforma` antes, `npm run migrar -w @n1/api -- --
 `migracao-013.test.ts` prova as restrições, a idempotência, a falha no fim, a RLS e a ausência de
 `grant`. O processador sobe com `MENSAGERIA_WORKER_ATIVO=true` (e `MENSAGERIA_WORKER_ID`).
 
+**O que a Fase 16 acrescentou à persistência** (o código de cada peça está em `../mensageria/CONTEXT.md`):
+
+- **`mensagem.enviar.v1` na mesma transação da Mensagem.** `enfileirarEnvio` grava a linha do outbox (só ids, nunca
+  texto nem telefone) pelo mesmo `PoolClient` que grava a Mensagem `enviada`, nos três pontos de gravação (o serviço
+  de Mensagens, abrir Conversa e a Tarefa conversacional, que herda), e só num Canal `conectada`. A Mensagem nasce
+  `pendente`. A `013` tem UM índice único parcial por (Espaço, agregado, evento) para esse tipo, então o reenfileirar
+  é um **upsert** sobre a linha única (`on conflict ... do update`, só quando a linha está `failed` ou `delivered`).
+- **Dois workers no mesmo outbox.** O `OutboxWorker` do `automation/` passou a ignorar `event_type like 'mensagem.%'`
+  quando não recebe `tiposDeEvento`; o worker de saída da mensageria o recebe com `["mensagem.enviar.v1"]`, ganhou
+  `entregador` próprio, `recuperarTravasVencidasMs` (só dos tipos dele) e `acordar()` (uma volta única), e o
+  `sanitizarErro` esconde o padrão `apikey`. O caminho HTTP do `automation/` ficou como era.
+- **`avisarCrm` no mesmo commit.** Os serviços do CRM e o entregador avisam o tempo real por `pg_notify` no cliente da
+  transação (nada antes do `commit`, nada depois do `rollback`). A conexão `LISTEN` (`mensageria/ouvinte-pg.ts`)
+  fica **fora do pool**, uma por processo, e soma 1 ao orçamento de conexões (o pool tem 10): quem dimensiona o
+  pooler conta 10 + 1 por processo. Um gesto misto continua sem aviso.
+- **O anexo da Mensagem** mora em `plataforma.mensagens.anexos` (jsonb: tipo normalizado, nome, `objectKey`,
+  `tamanhoBytes`, `baixado`, `referenciaExterna`), não em tabela própria. O anexo ENVIADO sobe pela sessão de upload
+  `conversa-<id>` (`formId`, mesma `upload_sessions` do Formulário) e a chave nasce no servidor; o RECEBIDO é guardado
+  com a chave de `entrada/` (`workspace/<ws>/entrada/<canalId>/<uuid>`). `completarAnexos` é a única mudança de
+  anexo depois da gravação e só vale na Mensagem `recebida` (a mídia que baixou numa passada seguinte).
+- A recebida (`receberMensagem`) **não sobe a revisão do Espaço**: quem avisa a tela é o SSE.
+
 ## Colunas geradas e índices de `002`
 
 `002-registros-colunas-geradas.sql` estende `plataforma.registros` com três

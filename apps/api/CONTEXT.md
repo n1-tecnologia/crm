@@ -52,12 +52,31 @@ não escreve nada — nem o schema nasce num banco vazio (D-12 da Fase 7).
 | `src/repositorios/` | Persistência. Uma interface por agregado, e a implementação atrás dela. `repositorios/crm/` (Fase 7) inaugura o padrão — ver o `CONTEXT.md` de lá. |
 | `src/testes/` | Apoio de teste. `banco-crm.ts`: o Postgres LOCAL descartável dos testes do CRM (`describeComBanco`, `prepararBancoCrm`, `semearMembro`, `limparEspaco`) — contra qualquer host que não seja `localhost` os blocos pulam, e `migrar()` nunca roda contra o banco remoto por um teste. |
 | `src/e2e/` | Cenários ponta a ponta por `app.inject()`. `crm-fluxo.test.ts` percorre o CRM inteiro pelo HTTP contra o Postgres local. |
+| `src/mensageria/` | A entrada e a saída de rede das mensagens (Fase 16): a interface de provedor e o registro, o processador da fila de entrada, o worker de saída, o tempo real (NOTIFY, ouvinte e hub do SSE), a mídia, a coleta de órfãos e o adaptador mínimo da Evolution. Ver o `CONTEXT.md` de lá. |
 | `src/bootstrap/` | Script idempotente que materializa a configuração de um Espaço (Plan 01-05) e, só em banco local, o CRM de demonstração (`bootstrap:crm-demo`, 15-29). |
 | `src/migracao-crm/` | O script `migrar:crm-antigo` do corte da Fase 15: guarda o CRM em inglês de UM Espaço em `registros_crm_antigo`, decide o Funil, leva Contatos, Empresas, Negócios, Canais, Conversas e Mensagens às tabelas novas (com ids preservados e um relatório do que ficou de fora), limpa a Pasta "Meus negócios" e confere o resultado. Roda na mão do dono, nunca por rota; é temporário. Ver o `CONTEXT.md` de lá. |
 
 A direção é sempre `rotas → servicos → repositorios`. Uma rota que chama
 repositório pula a camada onde a regra deveria estar, e é assim que a lógica
 começa a se espalhar.
+
+## As variáveis da mensageria (Fase 16)
+
+Todas opcionais e **desligadas por padrão**; o modelo está em `.env.example` ("Mensageria (Fase 16)") e a unidade
+`deploy/n1-crm-api.service` fixa os dois workers em `false`.
+
+| Variável | O que faz |
+|---|---|
+| `MENSAGERIA_WORKER_ATIVO` | `true` liga o processador da fila de entrada E o worker de saída (os dois, por uma flag só). |
+| `MENSAGERIA_WORKER_ID` | Nome do worker de entrada; o de saída é `${MENSAGERIA_WORKER_ID}-saida`. Sem ela, `apps-api-entrada-<pid>` e `apps-api-saida-<pid>`. |
+| `TEMPO_REAL_ATIVO` | Padrão ligado: só `false` desliga o ouvinte `LISTEN` (e `GET /eventos` responde 503). O ouvinte soma 1 conexão ao pool de 10. |
+| `UPLOAD_MAX_BYTES_MIDIA` | Teto de áudio e vídeo da Mensagem (padrão 16 MiB); os demais tipos seguem `UPLOAD_MAX_BYTES` (25 MiB). |
+| `COLETA_DE_ORFAOS_ATIVA` | `true` liga a coleta diária de arquivos órfãos do bucket. |
+| `EVOLUTION_URL` | Base da Evolution, sem barra final: só com ela o provedor `whatsapp-nao-oficial` é registrado. |
+| `API_URL_PUBLICA` | Origem pública da API, sem barra final: só o comando `canal:ligar-evolution` a lê. |
+
+A chave GLOBAL da Evolution (`EVOLUTION_API_KEY`) NÃO é variável do runtime: existe só na linha de comando de
+`canal:ligar-evolution`, e o cofre nunca a guarda.
 
 ## O que já foi decidido
 
