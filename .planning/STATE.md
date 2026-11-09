@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 16
 current_phase_name: "Base da mensageria: entrada, saída, tempo real e mídia"
 status: executing
-stopped_at: Completed 16-01-PLAN.md
-last_updated: "2026-11-09T17:15:03.834Z"
+stopped_at: Completed 16-02-PLAN.md
+last_updated: "2026-11-09T17:24:21.435Z"
 last_activity: 2026-11-09
 last_activity_desc: Phase 16 execution started
-state_head: 9228a4e59b17c4b586c4fc86b7e9cd0cf0141536
+state_head: 51ce3e4075d77d27edb146d649af26373d3a848c
 progress:
   total_phases: 16
   completed_phases: 6
   total_plans: 288
-  completed_plans: 270
+  completed_plans: 271
 milestone_name: milestone
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-29)
 ## Current Position
 
 Phase: 16 (Base da mensageria: entrada, saída, tempo real e mídia) — EXECUTING
-Plan: 2 of 16
+Plan: 3 of 16
 Status: Ready to execute
 Last activity: 2026-11-09 — Phase 16 execution started
 
@@ -491,6 +491,7 @@ Progress: [██████░░░░] 63%
 | Phase 15 P34 | 45 min | 3 tasks | 9 files |
 | Phase 15 P44 | 35min | 4 tasks | 25 files |
 | Phase 16 P01 | 8 min | 3 tasks | 11 files |
+| Phase 16 P02 | 7 min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -806,6 +807,8 @@ Decisões travadas (DEC-01..DEC-17) no bloco `<decisions>` de PROJECT.md; candid
 - [Phase 15]: 15-44 H-02: a Conversa e do CRM antigo so se nao e de Grupo e o contactId e um id de contacts do mesmo Espaco; Grupo, 1:1 de Flow/Automacao/convite e a nao classificavel ficam em registros (rejeitado: decidir pelo Canal, que tambem existe na tabela nova para a Conversa antiga)
 - [Phase 15]: 15-44 M-01: a trava de banco local recusa qualquer URL com query e confere o host efetivo por new Client(url).host (persistencia/host-local.ts); [::1] aceito
 - [Phase 16]: 16-01: o tipo do evento recebido (RecebidaDoProvedor) mora em @n1/dominio/crm/recebimento; receberMensagem e a unica porta da recebida; a corrida do numero novo refaz a transacao uma vez e a segunda falha sobe como excecao
+- [Phase 16]: 16-02: provedorDoCanal devolve o provedor de teste só com conexaoSimulada=true; Canal real sem implementação lança PROVEDOR_INDISPONIVEL; enviar do de teste também recusa Canal real
+- [Phase 16]: 16-02: verificarChamada recebe o CanalParaProvedor (emenda da 3.6.1); segredo do webhook por Canal vive no cofre (webhook_segredo), sem segredo fixo de teste
 
 ### Pending Todos
 
@@ -867,6 +870,6 @@ Items acknowledged and carried forward:
 
 ## Session Continuity
 
-Last session: 2026-11-09T17:15:03.586Z
-Stopped at: Completed 16-01-PLAN.md
+Last session: 2026-11-09T17:24:21.178Z
+Stopped at: Completed 16-02-PLAN.md
 Resume file: None
