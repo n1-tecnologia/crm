@@ -31,8 +31,7 @@ import type { FastifyInstance } from "fastify";
 import type { Pool } from "pg";
 import { criarRepositorioDeCanaisPg } from "../repositorios/crm/canais";
 import { CABECALHO_DO_SEGREDO } from "../mensageria/provedor";
-import { canalParaProvedor, provedorDoCanal, registroPadrao, type RegistroDeProvedores } from "../mensageria/registro";
-import { lerChavesDoCofre, type ChavesDoCofre } from "../servicos/cofre";
+import { canalParaProvedor, provedorDoCanal, registroPadrao, type ChavesDoCofre, type RegistroDeProvedores } from "../mensageria/registro";
 import { criarLimiteDeTaxa } from "../servicos/limite-de-taxa";
 import { pool as poolPadrao } from "../persistencia/conexao";
 
@@ -136,8 +135,7 @@ export async function rotasDeWebhooksDeMensageria(app: FastifyInstance, opcoes: 
       let provedorDaChamada: string;
       let chave: string | null;
       try {
-        const chaves = opcoes.chaves ?? lerChavesDoCofre();
-        const paraOProvedor = await canalParaProvedor(pool(), chaves, achado.workspace_id, canal);
+        const paraOProvedor = await canalParaProvedor(pool(), opcoes.chaves, achado.workspace_id, canal);
         const provedor = provedorDoCanal(canal, registro);
         const verificada = provedor.verificarChamada(
           { cabecalhos: cabecalhosEmTexto(request.headers), corpoCru: corpo?.bruto ?? Buffer.alloc(0), corpo: corpo?.json ?? null },

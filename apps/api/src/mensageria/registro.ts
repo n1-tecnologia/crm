@@ -13,7 +13,7 @@
 import type { PoolClient } from "pg";
 import type { Canal } from "@n1/dominio/crm/canais";
 import type { ProvedorDeCanal } from "@n1/dominio/crm/capacidades";
-import { lerCredencial, type ChavesDoCofre } from "../servicos/cofre";
+import { lerChavesDoCofre, lerCredencial, type ChavesDoCofre } from "../servicos/cofre";
 import { ErroDeProvedor, TIPO_DO_SEGREDO_DO_WEBHOOK, type CanalParaProvedor, type ProvedorDeMensageria } from "./provedor";
 import { provedorDeTeste } from "./provedores/teste";
 
@@ -39,12 +39,19 @@ export function provedorDoCanal(
   return provedor;
 }
 
+export type { ChavesDoCofre };
+
+/**
+ * `chavesInformadas` é a injeção dos testes; sem ela a chave mestra é lida do ambiente aqui, na camada
+ * de serviço: `rotas/` nunca importa `servicos/cofre` (cofre.test.ts).
+ */
 export async function canalParaProvedor(
   cliente: Pick<PoolClient, "query">,
-  chaves: ChavesDoCofre,
+  chavesInformadas: ChavesDoCofre | undefined,
   workspaceId: string,
   canal: Canal,
 ): Promise<CanalParaProvedor> {
+  const chaves = chavesInformadas ?? lerChavesDoCofre();
   const dono = { workspaceId, donoTipo: "canal", donoId: canal.id } as const;
   const segredoDoWebhook = await lerCredencial(cliente, chaves, { ...dono, tipo: TIPO_DO_SEGREDO_DO_WEBHOOK });
   const credencial = canal.conexaoSimulada ? undefined : await lerCredencial(cliente, chaves, { ...dono, tipo: canal.provedor });

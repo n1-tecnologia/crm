@@ -189,7 +189,8 @@ describeComBanco("012 — a Atividade do CRM novo (D-15-09) — Postgres local",
       // Sem o gatilho, a mesma 012 aplica e registra.
       await banco.pool.query("drop event trigger m012_recusa");
       const aplicadas = await migrar(banco.pool);
-      expect(aplicadas.map((a) => a.nome)).toEqual([ARQUIVO_012]);
+      // A 012 volta a ser a primeira a aplicar; as migrações que vieram depois dela (013 em diante) aplicam em seguida.
+      expect(aplicadas.map((a) => a.nome)[0]).toBe(ARQUIVO_012);
       const agora = await banco.pool.query("select 1 from plataforma.migracoes where nome = $1", [ARQUIVO_012]);
       expect(agora.rowCount).toBe(1);
       expect((await banco.pool.query("select to_regclass('plataforma.crm_atividades') as tabela")).rows[0]?.tabela).toBe("plataforma.crm_atividades");

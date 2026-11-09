@@ -31,7 +31,9 @@ simulado perde o provedor de teste na hora.
 
 `canalParaProvedor(cliente, chaves, workspaceId, canal)` lê do cofre (`servicos/cofre.ts`) o segredo do
 webhook (`donoTipo: "canal"`, `tipo: "webhook_segredo"`) e, para Canal real, a credencial cujo `tipo` é o nome
-do provedor. Nesta fase o registro só tem o de teste; o plano 16-11 acrescenta `whatsapp-nao-oficial`.
+do provedor. `chaves` é opcional: sem ela, a chave mestra é lida do ambiente aqui, e `rotas/` nunca importa
+`servicos/cofre` (a rota só repassa a injeção dos testes). Nesta fase o registro só tem o de teste; o plano
+16-11 acrescenta `whatsapp-nao-oficial`.
 
 ## O segredo do webhook
 
