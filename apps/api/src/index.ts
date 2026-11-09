@@ -25,6 +25,9 @@
  * vezes — a exclusão é do banco (`for update skip locked` sobre
  * `plataforma.automacao_agenda`), não deste arquivo.
  *
+ * O processador da fila de entrada da mensageria (Fase 16, 16-03) é do mesmo molde: só sobe aqui por
+ * `MENSAGERIA_WORKER_ATIVO === "true"`, e a rota `POST /webhooks/mensageria/:canalId` o acorda depois do 200.
+ *
  * A ponte do Agente (Plan 03-11, `automacoes/invocar-agente.ts`) segue a
  * MESMA separação e é a terceira peça do mesmo molde: não conhece
  * `buildApp()`/Fastify, só é ativada aqui por env
@@ -62,6 +65,7 @@ import { opcoesDoLogger } from "./observabilidade/log";
 import { fecharSentry, iniciarSentry } from "./observabilidade/sentry";
 import { carregarEnv, encerrar } from "./persistencia/conexao";
 import { criarOutboxWorker } from "./persistencia/outbox-worker";
+import { criarProcessadorDeEntrada } from "./mensageria/processador-de-entrada";
 import { criarSchedulerWorker, escopoDoAgendador } from "./automacoes/scheduler-worker";
 import {
   criarPonteDoAgente,
@@ -100,7 +104,15 @@ const sentryAtivo = iniciarSentry();
 const porta = Number(process.env.PORT ?? 3002);
 const host = process.env.HOST ?? "127.0.0.1";
 
-const app = buildApp({ logger: opcoesDoLogger() });
+// O acordador do processador de entrada da mensageria, por referência: a rota do webhook nasce em `buildApp`,
+// antes de o processador existir (e ele só existe com `MENSAGERIA_WORKER_ATIVO=true`). Sem o processador, a rota
+// só grava na fila e o acordador é um no-op.
+const acordadores = { entrada: () => {} };
+
+const app = buildApp({
+  logger: opcoesDoLogger(),
+  webhooksDeMensageria: { acordarProcessador: () => acordadores.entrada() },
+});
 
 /** O que esta instância precisa parar ao ser desmontada, e os ouvintes de SIGTERM que ela pendurou no processo. */
 const paradas: Array<() => Promise<void>> = [];
@@ -229,6 +241,22 @@ if (process.env.AUTOMACOES_WORKER_ATIVO === "true") {
   schedulerWorker.iniciar();
   aoEncerrar(() => schedulerWorker.parar());
   app.log.info({ espaco: escopo.workspaceId, lista: escopo.listId ?? "todas" }, "scheduler de Automações ativo");
+}
+
+// Fase 16 (16-03): o processador da fila de entrada da mensageria (`webhooks_recebidos`). Mesma separação do
+// outbox e do agendador: não conhece `buildApp()`, só é ativado por env, e duas instâncias podem rodá-lo juntas
+// (`for update skip locked`). A rota do webhook o acorda depois do 200; o intervalo de 10 s é só a reserva.
+if (process.env.MENSAGERIA_WORKER_ATIVO === "true") {
+  const processador = criarProcessadorDeEntrada({
+    workerId: process.env.MENSAGERIA_WORKER_ID ?? `apps-api-entrada-${process.pid}`,
+    registrar: (nivel, mensagem, dados) => {
+      app.log[nivel](dados ?? {}, mensagem);
+    },
+  });
+  processador.iniciar();
+  acordadores.entrada = () => processador.acordar();
+  aoEncerrar(() => processador.parar());
+  app.log.info("processador de entrada da mensageria ativo");
 }
 
 // Registrada ANTES do `listen`: se ele falhar (porta ocupada), a próxima
