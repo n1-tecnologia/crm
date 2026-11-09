@@ -128,7 +128,7 @@ describe("AcompanhanteDoTempoReal (traçador)", () => {
     const { corpo } = fluxoDe(": aberto\n\n", QUADRO_NOVA);
     fetchMock.mockResolvedValue({ ok: true, status: 200, body: corpo } as Response);
 
-    render(createElement(AcompanhanteDoTempoReal));
+    render(createElement(AcompanhanteDoTempoReal, { ativo: true }));
 
     await waitFor(() => expect(invalidarCrmComArrays).toHaveBeenCalledWith("/mensagens?conversaId=c1"), { timeout: 2000 });
     expect(invalidarCrmComArrays).toHaveBeenCalledWith("/conversas");
@@ -207,7 +207,7 @@ describe("criarConexaoDoTempoReal — reconexão, releitura de 5 s e rajada (3.8
     expect(aoReler).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(INTERVALO_SEM_TEMPO_REAL_MS);
     expect(aoReler).toHaveBeenCalledTimes(2);
-    expect(aoCair).toHaveBeenCalledTimes(1);
+    expect(aoCair).toHaveBeenCalledTimes(1); // aviso por episódio, não por tentativa
   });
 
   it("a conexão que abre relê tudo uma vez, para a releitura de 5 s e a espera volta a 1 s", async () => {
@@ -230,7 +230,7 @@ describe("criarConexaoDoTempoReal — reconexão, releitura de 5 s e rajada (3.8
 
     fluxo.fechar(); // o servidor fecha: cai e volta a tentar em 1 s (a espera foi zerada)
     await vi.advanceTimersByTimeAsync(0);
-    expect(aoCair).toHaveBeenCalledTimes(3);
+    expect(aoCair).toHaveBeenCalledTimes(2); // uma por episódio: as duas tentativas que falharam e a queda depois de aberta
     expect(fetchImpl).toHaveBeenCalledTimes(3);
     await vi.advanceTimersByTimeAsync(1_000);
     expect(fetchImpl).toHaveBeenCalledTimes(4);
@@ -350,7 +350,7 @@ describe("AcompanhanteDoTempoReal — D-16-02 e a sessão", () => {
     const fetchMock = vi.fn().mockResolvedValue(respostaAberta(fluxoDe(": aberto\n\n", QUADRO_NOVA).corpo));
     vi.stubGlobal("fetch", fetchMock);
 
-    render(createElement(AcompanhanteDoTempoReal));
+    render(createElement(AcompanhanteDoTempoReal, { ativo: true }));
     await waitFor(() => expect(invalidarCrmComArrays).toHaveBeenCalledWith("/conversas"), { timeout: 2000 });
 
     expect(Notificacao).not.toHaveBeenCalled();
@@ -363,7 +363,7 @@ describe("AcompanhanteDoTempoReal — D-16-02 e a sessão", () => {
     obterSessao.mockResolvedValue({ data: { session: null } });
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    render(createElement(AcompanhanteDoTempoReal));
+    render(createElement(AcompanhanteDoTempoReal, { ativo: true }));
     await new Promise((resolver) => setTimeout(resolver, 50));
     expect(fetchMock).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
@@ -372,12 +372,22 @@ describe("AcompanhanteDoTempoReal — D-16-02 e a sessão", () => {
   it("desmontar aborta o fetch (a saída da sessão derruba o fluxo)", async () => {
     const fetchMock = vi.fn().mockResolvedValue(respostaAberta(fluxoControlado().corpo));
     vi.stubGlobal("fetch", fetchMock);
-    const { unmount } = render(createElement(AcompanhanteDoTempoReal));
+    const { unmount } = render(createElement(AcompanhanteDoTempoReal, { ativo: true }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     const sinal = (fetchMock.mock.calls[0]![1] as RequestInit).signal as AbortSignal;
     expect(sinal.aborted).toBe(false);
     unmount();
     expect(sinal.aborted).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
+  it("sob o Vitest, sem `ativo`, o acompanhante não abre conexão (os testes de tela que contam fetch não mudam)", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    render(createElement(AcompanhanteDoTempoReal));
+    await new Promise((resolver) => setTimeout(resolver, 50));
+    expect(obterSessao).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 });

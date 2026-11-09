@@ -91,43 +91,135 @@ export function chavesDosEventos(eventos: readonly EventoParaATela[]): readonly 
   return [...new Set(eventos.flatMap((evento) => chavesDoEvento(evento)))];
 }
 
+type Temporizador = ReturnType<typeof setTimeout>;
+
+/**
+ * A conexão com `GET /eventos`, do abrir ao `parar()`.
+ *
+ * - Cai (rede, 401, 403, 503, token indefinido, o servidor que fecha aos 45 min): `aoCair`, liga a releitura de
+ *   `INTERVALO_SEM_TEMPO_REAL_MS` e tenta de novo com espera de 1 s, 2 s, 4 s… até `ESPERA_MAXIMA_DE_RECONEXAO_MS`.
+ *   Cada tentativa pede o token de novo: um 401 de token vencido pega o renovado.
+ * - Abre (primeiro pedaço do corpo, o `: aberto` do servidor): `aoAbrir`, desliga a releitura, zera a espera e relê
+ *   tudo uma vez (`aoReler`) — o servidor não reenvia o que se perdeu no intervalo (não há "ressincronizar").
+ * - Eventos em rajada esperam `JANELA_DE_AGRUPAMENTO_MS` e saem em UMA chamada de `aoEventos` (T-16-30).
+ * - `parar()` aborta o `fetch`, limpa os temporizadores e descarta o que esperava a janela.
+ */
 export function criarConexaoDoTempoReal(opcoes: OpcoesDaConexao): { parar(): void } {
   const buscar = opcoes.fetchImpl ?? ((entrada, init) => fetch(entrada, init));
+  // Lazy de propósito: pega o `setTimeout` de quando agenda, não o de quando o módulo carregou.
+  const agendar: (retorno: () => void, ms: number) => Temporizador = opcoes.agendar
+    ? (retorno, ms) => opcoes.agendar!(retorno, ms)
+    : (retorno, ms) => setTimeout(retorno, ms);
   const controle = new AbortController();
   let parado = false;
+  let tentativas = 0;
+  let emQueda = false;
+  let reconexao: Temporizador | undefined;
+  let releitura: Temporizador | undefined;
+  let agrupamento: Temporizador | undefined;
+  let pendentes: EventoParaATela[] = [];
+
+  function ligarReleitura(): void {
+    if (releitura !== undefined) return;
+    releitura = agendar(() => {
+      releitura = undefined;
+      if (parado) return;
+      opcoes.aoReler();
+      ligarReleitura();
+    }, INTERVALO_SEM_TEMPO_REAL_MS);
+  }
+
+  function desligarReleitura(): void {
+    if (releitura !== undefined) clearTimeout(releitura);
+    releitura = undefined;
+  }
+
+  function cair(): void {
+    if (parado) return;
+    // `aoCair` avisa a queda uma vez por episódio: as tentativas que falham em seguida não repetem o aviso.
+    if (!emQueda) opcoes.aoCair();
+    emQueda = true;
+    ligarReleitura();
+    const espera = Math.min(1_000 * 2 ** Math.min(tentativas, 16), ESPERA_MAXIMA_DE_RECONEXAO_MS);
+    tentativas += 1;
+    reconexao = agendar(() => {
+      reconexao = undefined;
+      void conectar();
+    }, espera);
+  }
+
+  function abrir(): void {
+    tentativas = 0;
+    emQueda = false;
+    desligarReleitura();
+    opcoes.aoAbrir();
+    opcoes.aoReler();
+  }
+
+  function receber(eventos: readonly EventoParaATela[]): void {
+    pendentes.push(...eventos);
+    if (agrupamento !== undefined) return;
+    agrupamento = agendar(() => {
+      agrupamento = undefined;
+      if (parado) return;
+      const lote = pendentes;
+      pendentes = [];
+      if (lote.length > 0) opcoes.aoEventos(lote);
+    }, JANELA_DE_AGRUPAMENTO_MS);
+  }
 
   async function conectar(): Promise<void> {
-    const token = await opcoes.obterToken();
-    if (parado || !token) return;
-    const resposta = await buscar(`${opcoes.urlBase}/eventos`, {
-      headers: { authorization: `Bearer ${token}` },
-      signal: controle.signal,
-    });
-    if (parado || !resposta.ok || !resposta.body) return;
-    const leitor = resposta.body.getReader();
-    const decodificador = new TextDecoder();
-    let resto = "";
-    let abriu = false;
-    for (;;) {
-      const { done, value } = await leitor.read();
-      if (done || parado) break;
-      if (!abriu) {
-        abriu = true;
-        opcoes.aoAbrir();
-        opcoes.aoReler();
+    if (parado) return;
+    try {
+      const token = await opcoes.obterToken().catch(() => undefined);
+      if (parado) return;
+      if (!token) {
+        cair();
+        return;
       }
-      const lido = lerQuadrosSse(resto, decodificador.decode(value, { stream: true }));
-      resto = lido.resto;
-      if (lido.eventos.length > 0) opcoes.aoEventos(lido.eventos);
+      const resposta = await buscar(`${opcoes.urlBase}/eventos`, {
+        headers: { authorization: `Bearer ${token}` },
+        signal: controle.signal,
+      });
+      if (parado) return;
+      if (!resposta.ok || !resposta.body) {
+        void resposta.body?.cancel().catch(() => undefined);
+        cair();
+        return;
+      }
+      const leitor = resposta.body.getReader();
+      const decodificador = new TextDecoder();
+      let resto = "";
+      let abriu = false;
+      for (;;) {
+        const { done, value } = await leitor.read();
+        if (parado) return;
+        if (done) break;
+        if (!abriu) {
+          abriu = true;
+          abrir();
+        }
+        const lido = lerQuadrosSse(resto, decodificador.decode(value, { stream: true }));
+        resto = lido.resto;
+        if (lido.eventos.length > 0) receber(lido.eventos);
+      }
+      cair();
+    } catch {
+      cair();
     }
   }
 
-  void conectar().catch(() => undefined);
+  void conectar();
 
   return {
     parar() {
       parado = true;
       controle.abort();
+      for (const temporizador of [reconexao, releitura, agrupamento]) {
+        if (temporizador !== undefined) clearTimeout(temporizador);
+      }
+      reconexao = releitura = agrupamento = undefined;
+      pendentes = [];
     },
   };
 }
@@ -139,11 +231,16 @@ async function tokenDaSessao(): Promise<string | undefined> {
 /**
  * Montado no `StoreProvider` ao lado do `AcompanhanteDaRevisao`: o fluxo SOMA à releitura da revisão do Espaço, não
  * a substitui. Não mostra nada na tela.
+ *
+ * `ativo` liga a conexão. O padrão é ligado, menos sob o Vitest (`NODE_ENV === "test"`): dezenas de testes de tela
+ * montam o `StoreProvider` com `NEXT_PUBLIC_API_URL` e um `fetch` falso que conta os pedidos, e um `GET /eventos` a
+ * mais em cada um quebraria a contagem sem que o tempo real tivesse nada a ver com o que eles provam. Os testes
+ * deste módulo passam `ativo` de propósito.
  */
-export function AcompanhanteDoTempoReal(): null {
+export function AcompanhanteDoTempoReal({ ativo = process.env.NODE_ENV !== "test" }: { readonly ativo?: boolean }): null {
   useEffect(() => {
     const urlBase = process.env.NEXT_PUBLIC_API_URL;
-    if (!urlBase) return undefined;
+    if (!ativo || !urlBase) return undefined;
     const conexao = criarConexaoDoTempoReal({
       urlBase,
       obterToken: tokenDaSessao,
@@ -157,6 +254,6 @@ export function AcompanhanteDoTempoReal(): null {
       aoCair: () => undefined,
     });
     return () => conexao.parar();
-  }, []);
+  }, [ativo]);
   return null;
 }
