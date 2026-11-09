@@ -59,8 +59,11 @@ export interface LinhaOutbox {
   readonly delivered_at: string | null;
 }
 
-/** O caminho do webhook que cada tipo de evento dispara no `automation/` (contrato v1 §8). */
-const CAMINHO_POR_EVENTO: Record<NomeDeEvento, string> = {
+/**
+ * O caminho do webhook que cada tipo de evento dispara no `automation/` (contrato v1 §8).
+ * `mensagem.enviar.v1` não tem caminho: é da mensageria, não do `automation/`.
+ */
+const CAMINHO_POR_EVENTO: Record<Exclude<NomeDeEvento, "mensagem.enviar.v1">, string> = {
   "solicitacao.criada.v1": "/webhooks/plataforma/solicitacao-criada",
   "solicitacao.comentario-criado.v1": "/webhooks/plataforma/comentario-criado",
   "solicitacao.aprovacao-decidida.v1": "/webhooks/plataforma/aprovacao-decidida",
@@ -228,7 +231,7 @@ export function criarOutboxWorker(opcoes: OpcoesOutboxWorker): OutboxWorker {
   }
 
   async function entregar(linha: LinhaOutbox): Promise<void> {
-    const caminho = CAMINHO_POR_EVENTO[linha.event_type as NomeDeEvento] ?? "/webhooks/plataforma/desconhecido";
+    const caminho = CAMINHO_POR_EVENTO[linha.event_type as keyof typeof CAMINHO_POR_EVENTO] ?? "/webhooks/plataforma/desconhecido";
     let resposta: Response | undefined;
     let erroDeRede: unknown;
     try {

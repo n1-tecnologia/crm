@@ -14,9 +14,12 @@
  *     modelo (`modelosAprovados: []`): o WhatsApp oficial fora da janela recebe
  *     409 `JANELA_EXPIRADA` com `campo: "modelo"`; o não oficial nunca é
  *     barrado por janela. É o servidor que recusa, independente da tela.
- *   - B69: `enviada` num Canal que não está `conectada` nasce `pendente`
- *     (`statusInicialDeEnvio`); `interna` não tem status de entrega e não passa
- *     pela janela (INV-CXE-09).
+ *   - B69 + 3.7.1 (MSG-02): `enviada` nasce SEMPRE `pendente`
+ *     (`statusInicialDeEnvio`: só o provedor diz que saiu). Num Canal `conectada` entra, no
+ *     MESMO cliente da transação, uma linha `mensagem.enviar.v1` no outbox
+ *     (`enfileirarEnvio`); se ela falha, a Mensagem também não fica. Num Canal fora do ar a
+ *     Mensagem é só guardada, sem linha. `interna` não tem status de entrega, não enfileira e
+ *     não passa pela janela (INV-CXE-09).
  *   - 3.2.4: o modelo de marketing só sai se o consentimento vigente do Contato, para
  *     o tipo do Canal, é `concedido` — 409 `SEM_CONSENTIMENTO` (campo `modelo`). A regra
  *     é `recusaPorFaltaDeConsentimento` do domínio; quem diz a categoria do modelo é
@@ -37,6 +40,7 @@ import { recusaPorFaltaDeConsentimento } from "@n1/dominio/crm/consentimentos";
 import { statusInicialDeEnvio, validarEnvio, validarNovaMensagem, type Mensagem, type NovaMensagem } from "@n1/dominio/crm/mensagens";
 import { capacidadesDoCanal } from "@n1/dominio/crm/capacidades";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
+import { enfileirarEnvio } from "../../mensageria/fila-de-saida";
 import { criarRepositorioDeCanaisPg } from "../../repositorios/crm/canais";
 import { criarRepositorioDeConsentimentosPg } from "../../repositorios/crm/consentimentos";
 import { criarRepositorioDeConversasPg } from "../../repositorios/crm/conversas";
@@ -76,7 +80,10 @@ export function criarServicoDeMensagens(deps: {
    * de marketing só sai com consentimento vigente (3.2.4).
    */
   readonly categoriaDoModelo?: (cliente: PoolClient, workspaceId: string, conversa: Conversa, entrada: NovaMensagem) => Promise<string | undefined>;
+  /** Quem enfileira o envio. Só o teste de rollback troca o padrão (`enfileirarEnvio`). */
+  readonly enfileirar?: typeof enfileirarEnvio;
 }): ServicoDeMensagens {
+  const enfileirar = deps.enfileirar ?? enfileirarEnvio;
   return {
     async listar(membro, filtro) {
       const negado = await exigir(deps.acesso, membro, "ler", "mensagem");
@@ -144,6 +151,8 @@ export function criarServicoDeMensagens(deps: {
             statusEntrega: entrada.direcao === "enviada" ? statusInicialDeEnvio(canal.conexao) : null,
             ...(entrada.emRespostaAId !== undefined ? { emRespostaAId: entrada.emRespostaAId } : {}),
           });
+          // 3.7.1: no mesmo cliente da transação, antes do commit. Só a `enviada` sai; a `interna` não.
+          if (entrada.direcao === "enviada") await enfileirar(cliente, membro.workspaceId, mensagem, canal);
           return sucesso(mensagem);
         },
         FRASES,

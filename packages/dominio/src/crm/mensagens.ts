@@ -173,9 +173,15 @@ export function validarEnvio(entrada: EntradaDeEnvio): OperationResult<void> {
 }
 
 /**
- * B69: com o Canal fora do ar a Mensagem é guardada `pendente` — nunca
- * descartada em silêncio. Só um Canal `conectada` a dá como `enviada`.
+ * B69 + 3.7.1: a Mensagem escrita na Caixa nasce SEMPRE `pendente`. Com o Canal
+ * fora do ar ela é guardada, nunca descartada em silêncio; com o Canal
+ * `conectada` ela entra na fila de saída e só o provedor diz que saiu — quem
+ * a passa a `enviada` é a entrega, depois da confirmação dele. O atendente
+ * jamais vê "enviada" numa Mensagem que ainda não saiu (MSG-02).
+ *
+ * O parâmetro `conexao` fica na assinatura: os chamadores já o passam e a regra
+ * pode voltar a distinguir o Canal sem tocar neles.
  */
-export function statusInicialDeEnvio(conexao: ConexaoDoCanal): StatusDeEntrega {
-  return conexao === "conectada" ? "enviada" : "pendente";
+export function statusInicialDeEnvio(_conexao: ConexaoDoCanal): StatusDeEntrega {
+  return "pendente";
 }
