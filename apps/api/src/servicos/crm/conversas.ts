@@ -11,8 +11,11 @@
  * falha, o `rollback` leva a Conversa junto.
  *
  * Regras de produto aplicadas aqui:
- *   - B69: a primeira Mensagem nasce `enviada` num Canal `conectada` e
- *     `pendente` num Canal fora do ar; nada é descartado (`statusInicialDeEnvio`).
+ *   - B69 + 3.7.1 (MSG-02): a primeira Mensagem nasce SEMPRE `pendente`
+ *     (`statusInicialDeEnvio`: só o provedor diz que saiu). Num Canal `conectada` ela entra
+ *     na fila de saída (`enfileirarEnvio`, no MESMO `PoolClient`, e a Tarefa conversacional
+ *     herda por usar `abrirConversaNoCliente`); num Canal fora do ar é só guardada, sem
+ *     linha — nada é descartado.
  *   - INV-CXE-03 / ontologia 12.4: uma Conversa aberta ou pendente por
  *     (Contato, Canal). O mesmo Contato conversa em outro Canal do mesmo tipo
  *     (ontologia 20.6: dois WhatsApps).
@@ -56,6 +59,7 @@ import {
 } from "@n1/dominio/crm/conversas";
 import { statusInicialDeEnvio, type Mensagem } from "@n1/dominio/crm/mensagens";
 import type { Canal } from "@n1/dominio/crm/canais";
+import { enfileirarEnvio } from "../../mensageria/fila-de-saida";
 import type { MembroDaSessao } from "../../plugins/autenticacao";
 import { registrarAtividade } from "../../repositorios/crm/atividades";
 import { criarRepositorioDeCanaisPg } from "../../repositorios/crm/canais";
@@ -529,6 +533,8 @@ export async function abrirConversaNoCliente(
     conteudo: entrada.mensagem.conteudo,
     statusEntrega: statusInicialDeEnvio(canal.conexao),
   });
+  // 3.7.1: o evento nasce no mesmo cliente da transação; se falhar, a Conversa e a Mensagem vão embora juntas.
+  await enfileirarEnvio(cliente, membro.workspaceId, primeiraMensagem, canal);
 
   return sucesso({ conversa, canal: resumoDoCanal(canal), primeiraMensagem });
 }
