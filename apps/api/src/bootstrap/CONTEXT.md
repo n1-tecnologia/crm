@@ -95,6 +95,49 @@ argumento, nunca um campo do JSON (T-15-73). `crm_de_para` fica vazio: o demo n�
 **Os Canais do demo nascem `desconectada`**, como os da migração: a Caixa mostra as Conversas, mas nada envia nem
 recebe de verdade. Para refazer o demo num Espaço, apague o CRM do Espaço (ou crie outro); o script nunca apaga.
 
+## Os comandos dos Canais de mensageria (Fase 16)
+
+Dois comandos de linha cuidam do que a tela de conexão (Sessão 4) ainda não faz. Nenhum deles é de desenvolvimento
+só: os dois falam com o banco que o `DATABASE_URL` apontar, então rode-os sabendo qual é. Os testes rodam só contra
+Postgres local e contra a Evolution falsa de `testes/servidor-falso.ts`.
+
+**`canal:segredo-de-teste` (16-02, D-16-03).** `npm run canal:segredo-de-teste -w @n1/api -- --canal <id>` gera o
+segredo do webhook de um Canal **simulado**, guarda no cofre (`donoTipo: "canal"`, `tipo: "webhook_segredo"`), revoga o
+anterior e o mostra uma única vez, com o caminho, o cabeçalho e um `curl` de exemplo. Canal real é recusado (sai com 2):
+o WhatsApp de verdade se liga pelo comando abaixo.
+
+**`canal:ligar-evolution` (16-13, D-16-05, D-16-06, MSG-06).**
+`npm run canal:ligar-evolution -w @n1/api -- --canal <id> --instancia <nome> [--seco] [--url-publica <url>]` liga um
+Canal `whatsapp-nao-oficial` à instância da Evolution do dono. Lê a instância com a chave global
+(`GET /instance/fetchInstances?instanceName=`), exige `connectionState` `open`, confere o número conectado com o do
+Canal (`conferirNumeroConectado`, que tolera o nono dígito brasileiro), gera o segredo do webhook, aponta o webhook da
+instância para `<API_URL_PUBLICA>/webhooks/mensageria/<canalId>` com o segredo no cabeçalho `x-n1-webhook-segredo` e,
+numa transação, guarda no cofre o segredo e a credencial do Canal (`tipo: "whatsapp-nao-oficial"`, JSON
+`{ instancia, apikey }`), marca o Canal `conectada` com `conexao_simulada = false` (`conexao_confirmada`), sobe a
+revisão do Espaço e reenfileira as Mensagens `pendente` do Canal.
+
+- **Nunca liga a `numeropvmarcos`.** Essa instância é do `automation/` (extratos e avisos do Financeiro): o comando a
+  recusa, sem diferença de maiúsculas e espaços, antes de qualquer chamada à rede ou ao banco, com código 2. Nenhum
+  teste nem fixture configura webhook ou guarda credencial dela.
+- **O cofre guarda o token da instância, nunca a chave global.** A global cria e apaga instâncias, inclusive a do
+  Financeiro. Se `fetchInstances` não devolver o token, o comando recusa e explica; usar outra credencial no lugar é
+  decisão do dono (RESEARCH, A10), não do comando.
+- **Ordem e falha no meio.** Tudo o que pode recusar vem antes do `webhook/set`; ele vem antes da transação. Se o
+  `webhook/set` falha, nada é gravado. Se a transação falha depois dele, a instância já aponta para um segredo que o
+  banco não tem: as chamadas dela recebem 401 até o comando rodar de novo (a saída avisa), nunca um Canal `conectada`
+  sem webhook.
+- **Rodar de novo é seguro.** Troca o segredo (o anterior é revogado), reaponta o webhook e deixa o Canal `conectada`.
+- **`--seco`** percorre o mesmo caminho até a conferência do número e para: mostra a versão da Evolution (`GET /`), o
+  estado da instância, se o número confere (só os 4 últimos dígitos) e a URL do webhook que seria configurada, sem
+  escrever na Evolution, no banco nem no cofre (nem pede a `COFRE_CHAVE`).
+- **Saída.** Nenhuma linha mostra a chave global, o token da instância ou o segredo do webhook; do número, só o final.
+  Sai com `0` ok, `2` recusa ou erro de uso, `1` erro inesperado.
+- **Ambiente.** `EVOLUTION_URL` (base da Evolution), `EVOLUTION_API_KEY` (a chave **global** da Evolution: passe-a só na
+  linha de comando, não no `api.env` do runtime, que só precisa de `EVOLUTION_URL`), `API_URL_PUBLICA` (o endereço público
+  da API, ou `--url-publica`) e `COFRE_CHAVE`, que tem de ser **a mesma do `api.env` de produção**: o runtime decifra o
+  que o comando cifrou. O comando grava no banco do `DATABASE_URL`; para ligar o Canal de produção, rode-o com a
+  `DATABASE_URL` e a `COFRE_CHAVE` de produção, de uma máquina com acesso ao banco.
+
 ## Bootstrap × evolver (Plan 02-08)
 
 Dois módulos deste diretório resolvem problemas diferentes, e nenhum dos dois
