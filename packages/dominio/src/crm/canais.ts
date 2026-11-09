@@ -126,7 +126,7 @@ export function validarEdicaoDeCanal(edicao: EdicaoDeCanal): OperationResult<Edi
  * simulada (D-08) — `conexaoSimulada` só vale com `conectada`, e desconectar
  * apaga a marca.
  */
-export type AcaoDeConexao = "simular_conexao" | "desconectar";
+export type AcaoDeConexao = "simular_conexao" | "desconectar" | "conexao_confirmada";
 
 export function proximaConexao(
   canal: Pick<Canal, "conexao" | "estado">,
@@ -148,5 +148,10 @@ export function proximaConexao(
  */
 export function validarArquivamento(canal: Pick<Canal, "estado">): OperationResult<void> {
   if (canal.estado === "arquivado") return fail("O Canal já está arquivado.");
+  return ok(undefined);
+}
+
+/** Esqueleto do RED (16-13): ainda não confere nada. */
+export function conferirNumeroConectado(_canal: Pick<Canal, "identificadorExterno">, _numeroDoProvedor: string): OperationResult<void> {
   return ok(undefined);
 }
