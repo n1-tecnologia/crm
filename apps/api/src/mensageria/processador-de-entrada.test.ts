@@ -63,8 +63,11 @@ describeComBanco("processador da fila de entrada — Postgres local", () => {
     return { ws, canalId };
   }
 
-  /** Uma Mensagem `enviada` que o provedor já aceitou (`enviada`, com `id_externo`), numa Conversa nova do Canal. */
-  async function mensagemEnviada(c: { ws: string; canalId: string }, idExterno: string): Promise<string> {
+  /**
+   * Uma Mensagem `enviada` numa Conversa nova do Canal: com `idExterno` o provedor já a aceitou (`enviada`, com o id
+   * dele); sem ele ela fica `pendente`, sem linha no outbox (como a de um Canal que estava fora do ar).
+   */
+  async function mensagemEnviada(c: { ws: string; canalId: string }, idExterno?: string): Promise<string> {
     const contato = await criarRepositorioDeContatosPg(pool()).inserir(c.ws, { nome: "Ana", proprietarioId: "mem_dona", criadoPor: "mem_dona" });
     // Um número por chamada: o Identificador é único no Espaço (`contato_identificadores_unico`).
     contadorDeContatos += 1;
@@ -91,9 +94,51 @@ describeComBanco("processador da fila de entrada — Postgres local", () => {
       conteudo: "olá",
       statusEntrega: "pendente",
     });
-    await mensagens.gravarEnvio(c.ws, criada.id, { idExterno, em: "2026-11-09T09:00:00.000Z" });
+    if (idExterno !== undefined) await mensagens.gravarEnvio(c.ws, criada.id, { idExterno, em: "2026-11-09T09:00:00.000Z" });
     return criada.id;
   }
+
+  /** Um Canal REAL (`conexao_simulada = false`) cujo provedor é o falso registrado como `whatsapp-nao-oficial`. */
+  async function cenarioReal(rotulo: string, conexao: "conectada" | "desconectada") {
+    const ws = novoEspacoDeTeste(rotulo);
+    espacos.push(ws);
+    await semearMembro(ws, { id: "mem_dona", base: "membro", state: "ativo" });
+    await pool().query("insert into plataforma.workspaces (workspace_id) values ($1) on conflict do nothing", [ws]);
+    const canalId = await semearCanal(ws, {
+      nome: "Comercial",
+      tipo: "whatsapp",
+      provedor: "whatsapp-nao-oficial",
+      identificadorExterno: "+5511977770002",
+      conexao,
+      conexaoSimulada: false,
+      configuradoPor: "mem_dona",
+    });
+    return { ws, canalId };
+  }
+
+  const registroComProvedorReal = (): RegistroDeProvedores => ({
+    ...registroPadrao(),
+    porProvedor: { "whatsapp-nao-oficial": provedorDeTeste },
+  });
+
+  const revisaoDoEspaco = async (ws: string) =>
+    Number((await pool().query<{ revisao: string }>("select revisao from plataforma.workspaces where workspace_id = $1", [ws])).rows[0]!.revisao);
+
+  const conexaoDoCanal = async (ws: string, canalId: string) =>
+    (
+      await pool().query<{ conexao: string; conectada_em: Date | null }>(
+        "select conexao, conectada_em from plataforma.canais where workspace_id = $1 and id = $2",
+        [ws, canalId],
+      )
+    ).rows[0]!;
+
+  const linhasDoOutbox = async (ws: string, mensagemId: string) =>
+    (
+      await pool().query<{ status: string; attempts: number }>(
+        "select status, attempts from plataforma.integration_outbox where workspace_id = $1 and aggregate_id = $2",
+        [ws, mensagemId],
+      )
+    ).rows;
 
   const estadoDaMensagem = async (ws: string, id: string) =>
     (
@@ -140,6 +185,7 @@ describeComBanco("processador da fila de entrada — Postgres local", () => {
 
   afterAll(async () => {
     for (const ws of espacos) {
+      await pool().query("delete from plataforma.integration_outbox where workspace_id = $1", [ws]);
       await pool().query("delete from plataforma.credenciais where workspace_id = $1", [ws]);
       await limparEspaco(ws);
     }
@@ -239,7 +285,7 @@ describeComBanco("processador da fila de entrada — Postgres local", () => {
     expect(await contarMensagens(c.ws)).toBe(0);
   });
 
-  it("evento de conexão ainda fica sem tratamento (a Task 3 do 16-06 o trata); status de Mensagem desconhecida é ignorado", async () => {
+  it("evento de conexão num Canal simulado e status de Mensagem desconhecida ficam processados como ignorados, com o motivo", async () => {
     const c = await cenario("semtrat");
     const id = await semearLinha(c, {
       eventos: [
@@ -250,7 +296,66 @@ describeComBanco("processador da fila de entrada — Postgres local", () => {
     const processador = criarProcessadorDeEntrada({ workerId: "w1", chaves });
 
     expect(await processador.processarUm()).toBe(true);
-    expect(await lerLinha(id)).toMatchObject({ estado: "processado", resultado: "ignorado:status_sem_mensagem,sem_tratamento:conexao" });
+    expect(await lerLinha(id)).toMatchObject({ estado: "processado", resultado: "ignorado:status_sem_mensagem,ignorado:conexao_simulada" });
+  });
+
+  it("evento conexão conectada num Canal REAL desconectado: o Canal conecta, a revisão do Espaço sobe e a Mensagem pendente ganha a linha do outbox", async () => {
+    const c = await cenarioReal("conexao", "desconectada");
+    const pendente = await mensagemEnviada(c);
+    expect(await linhasDoOutbox(c.ws, pendente)).toEqual([]);
+    const revisaoAntes = await revisaoDoEspaco(c.ws);
+    const id = await semearLinha(c, { eventos: [{ tipo: "conexao", conexao: "conectada" }] });
+    const processador = criarProcessadorDeEntrada({ workerId: "w1", chaves, registro: registroComProvedorReal() });
+
+    expect(await processador.processarUm()).toBe(true);
+    expect(await lerLinha(id)).toMatchObject({ estado: "processado", resultado: null });
+    const canal = await conexaoDoCanal(c.ws, c.canalId);
+    expect(canal.conexao).toBe("conectada");
+    expect(canal.conectada_em).not.toBeNull();
+    expect(await revisaoDoEspaco(c.ws)).toBe(revisaoAntes + 1);
+    expect(await linhasDoOutbox(c.ws, pendente)).toEqual([{ status: "pending", attempts: 0 }]);
+    expect((await estadoDaMensagem(c.ws, pendente)).status_entrega).toBe("pendente");
+  });
+
+  it("evento conexão desconectada num Canal REAL conectado: o Canal cai, a revisão sobe e nada é reenfileirado", async () => {
+    const c = await cenarioReal("conexaocai", "conectada");
+    const pendente = await mensagemEnviada(c);
+    const revisaoAntes = await revisaoDoEspaco(c.ws);
+    const id = await semearLinha(c, { eventos: [{ tipo: "conexao", conexao: "desconectada" }] });
+    const processador = criarProcessadorDeEntrada({ workerId: "w1", chaves, registro: registroComProvedorReal() });
+
+    expect(await processador.processarUm()).toBe(true);
+    expect(await lerLinha(id)).toMatchObject({ estado: "processado", resultado: null });
+    expect(await conexaoDoCanal(c.ws, c.canalId)).toMatchObject({ conexao: "desconectada", conectada_em: null });
+    expect(await revisaoDoEspaco(c.ws)).toBe(revisaoAntes + 1);
+    expect(await linhasDoOutbox(c.ws, pendente)).toEqual([]);
+  });
+
+  it("o mesmo evento conectada de novo (Canal já conectado): a revisão não sobe e a linha do outbox continua uma só", async () => {
+    const c = await cenarioReal("conexaorepete", "desconectada");
+    const pendente = await mensagemEnviada(c);
+    const processador = criarProcessadorDeEntrada({ workerId: "w1", chaves, registro: registroComProvedorReal() });
+    await semearLinha(c, { eventos: [{ tipo: "conexao", conexao: "conectada" }] });
+    expect(await processador.processarUm()).toBe(true);
+    const revisaoDepoisDaPrimeira = await revisaoDoEspaco(c.ws);
+
+    await semearLinha(c, { eventos: [{ tipo: "conexao", conexao: "conectada" }] });
+    expect(await processador.processarUm()).toBe(true);
+    expect(await revisaoDoEspaco(c.ws)).toBe(revisaoDepoisDaPrimeira);
+    expect(await linhasDoOutbox(c.ws, pendente)).toEqual([{ status: "pending", attempts: 0 }]);
+  });
+
+  it("evento conexão num Canal SIMULADO: ignorado:conexao_simulada e nada muda (a conexão simulada é dos botões da ficha)", async () => {
+    const c = await cenario("conexaosim");
+    await pool().query("insert into plataforma.workspaces (workspace_id) values ($1) on conflict do nothing", [c.ws]);
+    const revisaoAntes = await revisaoDoEspaco(c.ws);
+    const id = await semearLinha(c, { eventos: [{ tipo: "conexao", conexao: "desconectada" }] });
+    const processador = criarProcessadorDeEntrada({ workerId: "w1", chaves });
+
+    expect(await processador.processarUm()).toBe(true);
+    expect(await lerLinha(id)).toMatchObject({ estado: "processado", resultado: "ignorado:conexao_simulada" });
+    expect((await conexaoDoCanal(c.ws, c.canalId)).conexao).toBe("conectada");
+    expect(await revisaoDoEspaco(c.ws)).toBe(revisaoAntes);
   });
 
   it("evento status (3.6.5): a Mensagem enviada vira lida com o `em` do evento; um entregue atrasado não a faz voltar", async () => {
