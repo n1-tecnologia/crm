@@ -236,7 +236,7 @@ export function criarRepositorioDeMensagensPg(cliente: Pool | PoolClient): Repos
         `select ${COLUNAS_DE_MENSAGEM}
            from plataforma.mensagens
           where workspace_id = $1 and conversa_id = $2
-          order by criado_em, seq
+          order by criado_em, plataforma.mensagens.seq
           limit $3 offset $4`,
         [workspaceId, filtro.conversaId, filtro.limite, filtro.deslocamento],
       );

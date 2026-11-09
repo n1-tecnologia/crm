@@ -106,6 +106,23 @@ describeComBanco("RepositorioDeMensagens — Postgres local", () => {
     expect(await mensagens.cargaBruta(ws, gravada!.id)).toEqual(carga);
   });
 
+  it("desempata o mesmo criadoEm por `seq` como NÚMERO, não como texto (99999 antes de 100000)", async () => {
+    // `seq` sai como texto (`seq::text as seq`); um `order by ... seq` solto liga a esse alias e ordena "100000" antes de "99999".
+    // Os valores são postos à mão e na ordem inversa, para o teste não depender de onde o contador da sequência está.
+    const { ws, comercial } = await cenario("seq-numerico");
+    const mesmoInstante = "2026-10-12T09:00:00.000Z";
+    await pool().query(
+      `insert into plataforma.mensagens (workspace_id, conversa_id, canal_id, seq, direcao, ator_tipo, ator_id, conteudo, criado_em)
+       overriding system value
+       values ($1, $2, $3, 100000, 'interna', 'member', 'mem_ana', 'seis dígitos', $4),
+              ($1, $2, $3, 99999, 'interna', 'member', 'mem_ana', 'cinco dígitos', $4)`,
+      [ws, comercial.conversaId, comercial.canalId, mesmoInstante],
+    );
+
+    const pagina = await mensagens.listar(ws, { conversaId: comercial.conversaId, limite: 50, deslocamento: 0 });
+    expect(pagina.itens.map((m) => m.seq)).toEqual([99999, 100000]);
+  });
+
   it("lista por (criado_em, seq) — mesmo criadoEm sai na ordem de inserção — e sem cargaBruta", async () => {
     const { ws, comercial } = await cenario("lista");
     const mesmoInstante = "2026-10-12T09:00:00.000Z";
