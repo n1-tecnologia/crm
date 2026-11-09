@@ -213,7 +213,8 @@ describe("cliente da Evolution: falhas de transporte e HTTP sem vazar a apikey",
   });
 });
 
-function canalReal(credencial: string | undefined = JSON.stringify({ instancia: INSTANCIA, apikey: APIKEY })): CanalParaProvedor {
+/** `null` é o Canal sem credencial no cofre. */
+function canalReal(credencial: string | null = JSON.stringify({ instancia: INSTANCIA, apikey: APIKEY })): CanalParaProvedor {
   const agora = new Date().toISOString();
   const canal: Canal = {
     id: "canal_evolution",
@@ -235,7 +236,7 @@ function canalReal(credencial: string | undefined = JSON.stringify({ instancia: 
     criadoEm: agora,
     atualizadoEm: agora,
   };
-  return { workspaceId: "ws_evolution", canal, segredoDoWebhook: SEGREDO_DO_WEBHOOK, ...(credencial === undefined ? {} : { credencial }) };
+  return { workspaceId: "ws_evolution", canal, segredoDoWebhook: SEGREDO_DO_WEBHOOK, ...(credencial === null ? {} : { credencial }) };
 }
 
 const envioDeTexto: EnvioAoProvedor = { mensagemId: "msg_1", destino: { tipo: "whatsapp", valor: "+5511987654321" }, conteudo: "olá" };
@@ -290,7 +291,7 @@ describe("provedor da Evolution: enviar nunca reenvia o que pode ter saído", ()
   });
 
   it("sem credencial no Canal: recusa permanente, sem tocar a rede", async () => {
-    expect(await provedor().enviar(canalReal(undefined), envioDeTexto)).toMatchObject({ ok: false, transitorio: false, codigo: "CREDENCIAL_AUSENTE" });
+    expect(await provedor().enviar(canalReal(null), envioDeTexto)).toMatchObject({ ok: false, transitorio: false, codigo: "CREDENCIAL_AUSENTE" });
     expect(falso.recebidas).toHaveLength(0);
   });
 
@@ -369,7 +370,7 @@ describe("provedor da Evolution: baixarMidia e estadoDaConexao", () => {
 
   it("referência que não é o JSON do webhook ou Canal sem credencial: MIDIA_INDISPONIVEL e nenhuma chamada", async () => {
     await expect(provedor().baixarMidia(canalReal(), "referencia-qualquer", { tetoBytes: 1_000 })).rejects.toBeInstanceOf(ErroDeProvedor);
-    await expect(provedor().baixarMidia(canalReal(undefined), referencia, { tetoBytes: 1_000 })).rejects.toMatchObject({ codigo: "CREDENCIAL_AUSENTE" });
+    await expect(provedor().baixarMidia(canalReal(null), referencia, { tetoBytes: 1_000 })).rejects.toMatchObject({ codigo: "CREDENCIAL_AUSENTE" });
     expect(falso.recebidas).toHaveLength(0);
   });
 

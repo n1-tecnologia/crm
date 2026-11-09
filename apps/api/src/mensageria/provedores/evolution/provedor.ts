@@ -18,6 +18,7 @@
 
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { ConexaoDoCanal } from "@n1/dominio/crm/canais";
+import { categoriaDaMidia, normalizarTipoDeMidia } from "@n1/dominio/crm/midia";
 import {
   CABECALHO_DO_SEGREDO,
   ErroDeProvedor,
@@ -153,16 +154,69 @@ export function criarProvedorEvolution(opcoes: OpcoesDoProvedorEvolution): Prove
       if (envio.destino.tipo !== "whatsapp") return recusa("DESTINO_INVALIDO", "Este Canal só envia para um número de WhatsApp.");
       const numero = digitosDoDestino(envio.destino.valor);
       const texto = envio.conteudo ?? "";
-      if (texto.trim() === "") return recusa("MENSAGEM_VAZIA", "A Mensagem está vazia.");
+      const anexos = envio.anexos ?? [];
+      const { apikey, instancia } = credencial;
       try {
-        return resultadoDaResposta(await cliente.enviarTexto(credencial.apikey, credencial.instancia, { numero, texto }));
+        if (anexos.length === 0) {
+          if (texto.trim() === "") return recusa("MENSAGEM_VAZIA", "A Mensagem está vazia.");
+          return resultadoDaResposta(await cliente.enviarTexto(apikey, instancia, { numero, texto }));
+        }
+        if (anexos.length > 1) return recusa("ANEXO_INVALIDO", "Uma Mensagem leva um arquivo por vez.");
+        const anexo = anexos[0]!;
+        const categoria = categoriaDaMidia(anexo.tipoDeMidia);
+        if (categoria === undefined) return recusa("TIPO_NAO_ENVIADO", "Este tipo de arquivo não é enviado pelo WhatsApp.");
+
+        if (categoria === "audio") {
+          // A mensagem de voz não tem legenda: o texto, se houver, vai em seguida como mensagem à parte.
+          const audio = resultadoDaResposta(await cliente.enviarAudio(apikey, instancia, { numero, audio: anexo.urlAssinada }));
+          if (!audio.ok || texto.trim() === "") return audio;
+          const depois = resultadoDaResposta(await cliente.enviarTexto(apikey, instancia, { numero, texto }));
+          // O áudio já saiu: se o texto não se confirma, a Mensagem não volta à fila (reenviaria o áudio).
+          if (!depois.ok) return { ok: false, transitorio: false, ambiguo: true, codigo: "TEXTO_NAO_CONFIRMADO", motivo: "O áudio saiu, mas o texto não pôde ser confirmado." };
+          return audio;
+        }
+
+        // Um anexo com texto é UMA mensagem do WhatsApp: o texto vira a legenda do arquivo.
+        return resultadoDaResposta(
+          await cliente.enviarMidia(apikey, instancia, {
+            numero,
+            mediatype: categoria === "image" || categoria === "video" ? categoria : "document",
+            media: anexo.urlAssinada,
+            mimetype: normalizarTipoDeMidia(anexo.tipoDeMidia),
+            fileName: anexo.nome,
+            ...(texto.trim() === "" ? {} : { caption: texto }),
+          }),
+        );
       } catch (erro) {
         return resultadoDoErro(erro);
       }
     },
 
-    async baixarMidia(): Promise<MidiaBaixada> {
-      throw new ErroDeProvedor("MIDIA_INDISPONIVEL", "A mídia não está disponível no provedor.");
+    async baixarMidia(canal: CanalParaProvedor, referenciaNoProvedor: string, opcoes: { tetoBytes: number }): Promise<MidiaBaixada> {
+      const credencial = lerCredencial(canal);
+      if (!credencial) throw new ErroDeProvedor("CREDENCIAL_AUSENTE", FALHAS.semCredencial.motivo);
+      // A referência é o `{ key, message }` do webhook (traduzir.ts): é o que a Evolution precisa para achar a mídia.
+      let message: unknown;
+      try {
+        message = JSON.parse(referenciaNoProvedor);
+      } catch {
+        message = undefined;
+      }
+      if (typeof message !== "object" || message === null) throw new ErroDeProvedor("MIDIA_INDISPONIVEL", "A mídia não está disponível no provedor.");
+      try {
+        const midia = await cliente.baixarMidia(credencial.apikey, credencial.instancia, { message, tetoBytes: opcoes.tetoBytes });
+        return { bytes: midia.bytes, tipoDeMidia: midia.mimetype, ...(midia.fileName === undefined ? {} : { nome: midia.fileName }) };
+      } catch (erro) {
+        if (erro instanceof ErroDeProvedor) throw erro;
+        if (erro instanceof ErroDaEvolution && erro.tipo === "http") {
+          const status = erro.status ?? 0;
+          // Fora do ar ou sobrecarregada: passa sozinha. Credencial recusada: nunca passa. O resto (404, 400): a mídia já não existe.
+          if (status === 429 || status >= 500) throw new ErroDeProvedor("PROVEDOR_INDISPONIVEL", "A Evolution está indisponível no momento.");
+          if (status === 401 || status === 403) throw new ErroDeProvedor("CREDENCIAL_AUSENTE", "A Evolution recusou a credencial do Canal.");
+          throw new ErroDeProvedor("MIDIA_INDISPONIVEL", "A mídia não está disponível no provedor.");
+        }
+        throw new ErroDeProvedor("PROVEDOR_INDISPONIVEL", "A Evolution não respondeu.");
+      }
     },
 
     async estadoDaConexao(canal: CanalParaProvedor): Promise<ConexaoDoCanal> {

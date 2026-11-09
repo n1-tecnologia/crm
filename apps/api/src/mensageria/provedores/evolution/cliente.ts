@@ -14,6 +14,9 @@
  * `tempo_esgotado`, `resposta_perdida`). As demais funções lançam também o status HTTP que não é 2xx.
  */
 
+import { normalizarTipoDeMidia } from "@n1/dominio/crm/midia";
+import { ErroDeProvedor } from "../../provedor";
+
 export type TipoDeErroDaEvolution = "rede" | "tempo_esgotado" | "resposta_perdida" | "http";
 
 export class ErroDaEvolution extends Error {
@@ -51,6 +54,9 @@ export interface OpcoesDoClienteDaEvolution {
 
 export const TIMEOUT_PADRAO_DA_EVOLUTION_MS = 15_000;
 
+/** A folga do envelope JSON (`mimetype`, `fileName`, `mediaType`...) em volta do base64 que o corte de `baixarMidia` soma ao teto. */
+const MARGEM_DO_JSON_BYTES = 64 * 1024;
+
 /**
  * Erros de conexão que provam que o pedido nem saiu (ninguém recebeu): a chamada pode ser tentada de novo sem risco
  * de duplicar. Qualquer outra falha depois de o pedido ter ido é "resposta perdida".
@@ -87,6 +93,7 @@ function classificarFalhaDeTransporte(erro: unknown): ErroDaEvolution {
 
 type Metodo = "GET" | "POST";
 
+/** A mídia de `getBase64FromMediaMessage`, já em bytes. */
 export interface MidiaDaEvolution {
   readonly bytes: Uint8Array;
   /** Normalizado (`audio/ogg; codecs=opus` → `audio/ogg`). */
@@ -128,6 +135,15 @@ function ehObjeto(valor: unknown): valor is Record<string, unknown> {
   return typeof valor === "object" && valor !== null && !Array.isArray(valor);
 }
 
+/** O 400 de `sendMessageWithTyping` quando o número não está no WhatsApp: algum item com `exists: false`. */
+function numeroSemWhatsapp(corpo: unknown, profundidade = 0): boolean {
+  if (profundidade > 5) return false;
+  if (Array.isArray(corpo)) return corpo.some((item) => numeroSemWhatsapp(item, profundidade + 1));
+  if (!ehObjeto(corpo)) return false;
+  if (corpo.exists === false) return true;
+  return Object.values(corpo).some((valor) => numeroSemWhatsapp(valor, profundidade + 1));
+}
+
 /** O `key.id` da mensagem que a Evolution devolve num envio aceito. */
 export function idDaRespostaDeEnvio(corpo: unknown): string | undefined {
   if (!ehObjeto(corpo) || !ehObjeto(corpo.key)) return undefined;
@@ -154,38 +170,160 @@ export function criarClienteDaEvolution(opcoes: OpcoesDoClienteDaEvolution): Cli
     }
   }
 
+  /** Solta a conexão de uma resposta cujo corpo não interessa. */
+  async function descartar(resposta: Response): Promise<void> {
+    await resposta.body?.cancel().catch(() => undefined);
+  }
+
+  /** O JSON de uma resposta 2xx; qualquer outro status lança `http`; falha ao ler o corpo é falha de transporte. */
+  async function lerJson(metodo: Metodo, caminho: string, apikey: string, corpo?: unknown): Promise<unknown> {
+    const resposta = await chamar(metodo, caminho, apikey, corpo);
+    if (resposta.status < 200 || resposta.status >= 300) {
+      await descartar(resposta);
+      throw new ErroDaEvolution("http", resposta.status);
+    }
+    try {
+      return await resposta.json();
+    } catch (erro) {
+      throw classificarFalhaDeTransporte(erro);
+    }
+  }
+
+  /** Um envio: a `RespostaDaEvolution` de qualquer status. Só o 400 tem o corpo lido (para saber se o número não tem WhatsApp). */
+  async function enviar(caminho: string, apikey: string, corpo: unknown): Promise<RespostaDaEvolution> {
+    const resposta = await chamar("POST", caminho, apikey, corpo);
+    const { status } = resposta;
+    if (status >= 200 && status < 300) {
+      const lido = await resposta.json().catch(() => undefined);
+      const idExterno = idDaRespostaDeEnvio(lido);
+      return { status, ...(idExterno === undefined ? {} : { idExterno }) };
+    }
+    if (status === 400) {
+      const lido = await resposta.json().catch(() => undefined);
+      return { status, ...(numeroSemWhatsapp(lido) ? { semWhatsapp: true } : {}) };
+    }
+    await descartar(resposta);
+    return { status };
+  }
+
   return {
-    async versao() {
-      throw new Error("não implementado");
-    },
-    async buscarInstancia() {
-      throw new Error("não implementado");
-    },
-    async estadoDaConexao() {
-      throw new Error("não implementado");
-    },
-    async configurarWebhook() {
-      throw new Error("não implementado");
-    },
-    async enviarMidia() {
-      throw new Error("não implementado");
-    },
-    async enviarAudio() {
-      throw new Error("não implementado");
-    },
-    async baixarMidia() {
-      throw new Error("não implementado");
+    async versao(apikeyGlobal) {
+      const corpo = await lerJson("GET", "/", apikeyGlobal);
+      return ehObjeto(corpo) && typeof corpo.version === "string" ? corpo.version : "desconhecida";
     },
 
-    async enviarTexto(apikey, instancia, { numero, texto }) {
-      const resposta = await chamar("POST", `/message/sendText/${encodeURIComponent(instancia)}`, apikey, { number: numero, text: texto });
-      if (resposta.status < 200 || resposta.status >= 300) {
-        // Só o 400 diz algo que decide (número sem WhatsApp); o resto do corpo é descartado sem ser lido.
-        return { status: resposta.status };
+    async buscarInstancia(apikeyGlobal, nome) {
+      let corpo: unknown;
+      try {
+        corpo = await lerJson("GET", `/instance/fetchInstances?instanceName=${encodeURIComponent(nome)}`, apikeyGlobal);
+      } catch (erro) {
+        if (erro instanceof ErroDaEvolution && erro.tipo === "http" && erro.status === 404) return undefined;
+        throw erro;
       }
-      const corpo = await resposta.json().catch(() => undefined);
-      const idExterno = idDaRespostaDeEnvio(corpo);
-      return { status: resposta.status, ...(idExterno === undefined ? {} : { idExterno }) };
+      const lista = Array.isArray(corpo) ? corpo : [corpo];
+      for (const item of lista) {
+        const linha = ehObjeto(item) && ehObjeto(item.instance) ? item.instance : item;
+        if (!ehObjeto(linha)) continue;
+        const nomeDaLinha = typeof linha.name === "string" ? linha.name : typeof linha.instanceName === "string" ? linha.instanceName : undefined;
+        if (nomeDaLinha !== undefined && nomeDaLinha !== nome) continue;
+        return {
+          ownerJid: typeof linha.ownerJid === "string" && linha.ownerJid !== "" ? linha.ownerJid : null,
+          token: typeof linha.token === "string" && linha.token !== "" ? linha.token : null,
+          connectionStatus: typeof linha.connectionStatus === "string" ? linha.connectionStatus : "close",
+        };
+      }
+      return undefined;
+    },
+
+    async estadoDaConexao(apikey, instancia) {
+      const corpo = await lerJson("GET", `/instance/connectionState/${encodeURIComponent(instancia)}`, apikey);
+      const estado = ehObjeto(corpo) && ehObjeto(corpo.instance) ? corpo.instance.state : undefined;
+      return estado === "open" || estado === "connecting" ? estado : "close";
+    },
+
+    async configurarWebhook(apikey, instancia, { url, segredo }) {
+      await lerJson("POST", `/webhook/set/${encodeURIComponent(instancia)}`, apikey, {
+        webhook: {
+          enabled: true,
+          url,
+          headers: { "x-n1-webhook-segredo": segredo },
+          byEvents: false,
+          base64: false,
+          events: ["MESSAGES_UPSERT"],
+        },
+      });
+    },
+
+    enviarTexto(apikey, instancia, { numero, texto }) {
+      return enviar(`/message/sendText/${encodeURIComponent(instancia)}`, apikey, { number: numero, text: texto });
+    },
+
+    enviarMidia(apikey, instancia, { numero, mediatype, media, mimetype, fileName, caption }) {
+      return enviar(`/message/sendMedia/${encodeURIComponent(instancia)}`, apikey, {
+        number: numero,
+        mediatype,
+        media,
+        mimetype,
+        fileName,
+        ...(caption === undefined || caption === "" ? {} : { caption }),
+      });
+    },
+
+    enviarAudio(apikey, instancia, { numero, audio }) {
+      return enviar(`/message/sendWhatsAppAudio/${encodeURIComponent(instancia)}`, apikey, { number: numero, audio });
+    },
+
+    async baixarMidia(apikey, instancia, { message, tetoBytes }) {
+      // Sem conversão para mp4: o ffmpeg estouraria o orçamento de 2 s da prova, e o áudio sai como a Evolution o tem.
+      const resposta = await chamar("POST", `/chat/getBase64FromMediaMessage/${encodeURIComponent(instancia)}`, apikey, { message, convertToMp4: false });
+      if (resposta.status < 200 || resposta.status >= 300) {
+        await descartar(resposta);
+        throw new ErroDaEvolution("http", resposta.status);
+      }
+      if (!resposta.body) throw new ErroDeProvedor("MIDIA_INDISPONIVEL", "A Evolution não devolveu a mídia.");
+
+      // O base64 é 4/3 do arquivo: lê em fluxo e corta acima do teto do tipo + a margem do JSON em volta (T-16-46).
+      const limite = Math.ceil((tetoBytes * 4) / 3) + MARGEM_DO_JSON_BYTES;
+      const leitor = resposta.body.getReader();
+      const pedacos: Uint8Array[] = [];
+      let total = 0;
+      try {
+        for (;;) {
+          const { done, value } = await leitor.read();
+          if (done) break;
+          total += value.byteLength;
+          if (total > limite) {
+            await leitor.cancel().catch(() => undefined);
+            throw new ErroDeProvedor("MIDIA_GRANDE_DEMAIS", "A mídia passa do teto de tamanho.");
+          }
+          pedacos.push(value);
+        }
+      } catch (erro) {
+        if (erro instanceof ErroDeProvedor) throw erro;
+        throw classificarFalhaDeTransporte(erro);
+      }
+
+      let lido: unknown;
+      try {
+        lido = JSON.parse(Buffer.concat(pedacos).toString("utf8"));
+      } catch {
+        throw new ErroDeProvedor("MIDIA_INDISPONIVEL", "A Evolution devolveu a mídia num formato que não se lê.");
+      }
+      const base64 = ehObjeto(lido) && typeof lido.base64 === "string" ? lido.base64.replace(/\s+/g, "") : "";
+      if (base64 === "" || base64.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) {
+        throw new ErroDeProvedor("MIDIA_INDISPONIVEL", "A Evolution devolveu a mídia num formato que não se lê.");
+      }
+      const bytes = Buffer.from(base64, "base64");
+      if (bytes.toString("base64") !== base64) throw new ErroDeProvedor("MIDIA_INDISPONIVEL", "A Evolution devolveu a mídia num formato que não se lê.");
+      if (bytes.byteLength > tetoBytes) throw new ErroDeProvedor("MIDIA_GRANDE_DEMAIS", "A mídia passa do teto de tamanho.");
+
+      const mimetype = normalizarTipoDeMidia(ehObjeto(lido) && typeof lido.mimetype === "string" ? lido.mimetype : "");
+      const fileName = ehObjeto(lido) && typeof lido.fileName === "string" && lido.fileName !== "" ? lido.fileName : undefined;
+      return {
+        bytes: new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength),
+        mimetype: mimetype === "" ? "application/octet-stream" : mimetype,
+        ...(fileName === undefined ? {} : { fileName }),
+      };
     },
   };
 }
